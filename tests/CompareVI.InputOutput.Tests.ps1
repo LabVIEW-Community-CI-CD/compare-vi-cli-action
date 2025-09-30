@@ -9,7 +9,9 @@ BeforeAll {
 
 Describe 'Invoke-CompareVI input and output validation (no CLI)' {
   BeforeEach {
-    $TestDrive = Join-Path $env:TEMP ("comparevi-io-tests-" + [guid]::NewGuid())
+    # Use Pester's TestDrive or create a temp directory that works cross-platform
+    $tempBase = if ($env:TEMP) { $env:TEMP } elseif ($env:TMPDIR) { $env:TMPDIR } else { '/tmp' }
+    $TestDrive = Join-Path $tempBase ("comparevi-io-tests-" + [guid]::NewGuid())
     New-Item -ItemType Directory -Path $TestDrive -Force | Out-Null
 
     $vis = Join-Path $TestDrive 'vis'

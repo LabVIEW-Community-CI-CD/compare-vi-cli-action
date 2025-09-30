@@ -7,18 +7,36 @@ $root = Split-Path -Parent $PSScriptRoot
 $resultsDir = Join-Path $root 'tests' 'results'
 New-Item -ItemType Directory -Force -Path $resultsDir | Out-Null
 
-# Use a repo-local Pester to avoid conflicts with system Pester v3
+# Use a repo-local Pester to avoid conflicts with system Pester v3, fall back to system Pester 5+
 $toolsModules = Join-Path $root 'tools' 'modules'
 $pesterPath = Join-Path $toolsModules 'Pester'
-if (-not (Test-Path -LiteralPath $pesterPath)) {
-  Write-Host 'Installing Pester v5 locally under tools/modules...'
-  New-Item -ItemType Directory -Force -Path $toolsModules | Out-Null
-  Save-Module -Name Pester -RequiredVersion 5.4.0 -Path $toolsModules -Force
+$useLocalPester = $false
+
+if (Test-Path -LiteralPath $pesterPath) {
+  Write-Host 'Using repo-local Pester...'
+  $importTarget = Get-ChildItem -Path $pesterPath -Directory | Sort-Object Name -Descending | Select-Object -First 1
+  Import-Module (Join-Path $importTarget.FullName 'Pester.psd1') -Force
+  $useLocalPester = $true
+} else {
+  # Try to install locally
+  try {
+    Write-Host 'Installing Pester v5 locally under tools/modules...'
+    New-Item -ItemType Directory -Force -Path $toolsModules | Out-Null
+    Save-Module -Name Pester -RequiredVersion 5.4.0 -Path $toolsModules -Force
+    $importTarget = Get-ChildItem -Path $pesterPath -Directory | Sort-Object Name -Descending | Select-Object -First 1
+    Import-Module (Join-Path $importTarget.FullName 'Pester.psd1') -Force
+    $useLocalPester = $true
+  } catch {
+    Write-Host "Could not install Pester locally: $_"
+    Write-Host 'Falling back to system Pester...'
+  }
 }
 
-# Import Pester v5 explicitly
-$importTarget = Get-ChildItem -Path $pesterPath -Directory | Sort-Object Name -Descending | Select-Object -First 1
-Import-Module (Join-Path $importTarget.FullName 'Pester.psd1') -Force
+# Fall back to system Pester if local install failed
+if (-not $useLocalPester) {
+  Import-Module Pester -MinimumVersion 5.0 -Force -ErrorAction Stop
+}
+
 Write-Host ("Using Pester {0}" -f (Get-Module Pester).Version)
 
 # Build configuration
