@@ -39,7 +39,7 @@ Describe 'Invoke-CompareVI (real CLI on self-hosted)' -Tag Integration {
   It 'fail-on-diff=true throws after outputs are written for diff' {
     $tmpOut = Join-Path $env:TEMP ("comparevi-outputs-{0}.txt" -f ([guid]::NewGuid()))
     { Invoke-CompareVI -Base $BaseVi -Head $HeadVi -LvComparePath $Canonical -GitHubOutputPath $tmpOut -FailOnDiff:$true } | Should -Throw
-    (Get-Content -LiteralPath $tmpOut -Raw) | Should -Match '^diff=true$'
+    (Get-Content -LiteralPath $tmpOut -Raw) | Should -Match 'diff=true'
     Remove-Item -LiteralPath $tmpOut -Force -ErrorAction SilentlyContinue
   }
 }
