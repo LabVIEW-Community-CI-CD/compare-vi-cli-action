@@ -1,0 +1,14 @@
+# Test results and artifacts
+tests/results/
+testResults.xml
+
+# Pester module cache
+tools/modules/
+
+# Temporary files
+*.tmp
+*.log
+
+# OS files
+.DS_Store
+Thumbs.db

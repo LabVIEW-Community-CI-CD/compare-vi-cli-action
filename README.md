@@ -116,9 +116,17 @@ Troubleshooting
 
 Tests
 
-- Unit tests (no external CLI):
-  - Run: `pwsh -File ./tools/Run-Pester.ps1`
-  - Produces artifacts under `tests/results/` (NUnit XML and summary)
-- Integration tests (may use mock CLI):
-  - Run: `pwsh -File ./tools/Run-Pester.ps1 -IncludeIntegration`
-- CI workflow: `.github/workflows/test-pester.yml` runs unit tests by default and uploads artifacts. Use the "Run workflow" input to include integration tests.
+Run unit tests locally (excludes Integration-tagged tests, works cross-platform):
+```powershell
+pwsh -File ./tools/Run-Pester.ps1
+```
+
+Include Integration tests:
+```powershell
+pwsh -File ./tools/Run-Pester.ps1 -IncludeIntegration
+```
+
+- Produces artifacts under `tests/results/` (NUnit XML and summary)
+- Uses Pester v5 (falls back to system Pester if PSGallery is unavailable)
+- CI workflow: `.github/workflows/test-pester.yml` runs unit tests by default and uploads artifacts
+- Use the "Run workflow" input in GitHub Actions to include integration tests
