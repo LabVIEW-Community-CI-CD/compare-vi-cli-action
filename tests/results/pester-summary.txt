@@ -1,3 +1,0 @@
-Tests Passed: 7
-Tests Failed: 0
-Tests Skipped: 0
