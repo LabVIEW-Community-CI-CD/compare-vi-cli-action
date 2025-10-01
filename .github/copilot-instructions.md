@@ -71,6 +71,42 @@
 - Release workflow extracts changelog section matching tag name from `CHANGELOG.md`.
 - Keep changelog format: `## [vX.Y.Z] - YYYY-MM-DD` for automated extraction.
 
+## File structure
+
+- `action.yml`: Composite action definition with PowerShell script
+- `scripts/CompareVI.ps1`: Core PowerShell module with CLI resolution and execution logic
+- `scripts/Render-CompareReport.ps1`: Optional report generation utilities
+- `tests/*.Tests.ps1`: Pester test suites (unit tests run without CLI, integration tests require self-hosted runner)
+- `tools/Run-Pester.ps1`: Test orchestration script
+- `Invoke-PesterTests.ps1`: Local test dispatcher for development
+- `.github/workflows/`: CI/CD workflows (validate, test-mock, smoke, release)
+- `docs/`: Documentation including runner setup, CI/CD setup, and knowledge base
+
+## Testing structure
+
+- **Unit tests** (`tests/CompareVI.Tests.ps1`, `tests/CompareVI.InputOutput.Tests.ps1`): Mock-based, no CLI dependency, run on GitHub-hosted runners
+- **Integration tests** (`tests/CompareVI.Integration.Tests.ps1`): Require self-hosted Windows runner with LabVIEW CLI installed at canonical path
+- Use `./Invoke-PesterTests.ps1` locally or `./tools/Run-Pester.ps1 -IncludeIntegration` for full test suite
+- Test results output to `tests/results/` directory
+
+## Dependencies
+
+- PowerShell 7+ (pwsh) - required for all scripts and action execution
+- Pester 5.x - testing framework (auto-installed by test scripts if missing)
+- LabVIEW 2025 Q3 with LVCompare.exe - required only for integration tests and production use
+- markdownlint-cli2 - for markdown linting (installed via npx in CI)
+- actionlint - for workflow validation (installed in CI)
+
+## Tool calling
+
+When making function calls that accept array or object parameters, structure them using JSON. For example:
+
+```json
+[{"key": "value", "nested": {"option": true}}, {"key": "value2"}]
+```
+
+When exploring repositories or validating changes, call multiple independent tools simultaneously rather than sequentially for efficiency.
+
 ## Next steps for contributors
 
 - Tag a release (e.g., `v0.1.0`) and keep README usage in sync.
