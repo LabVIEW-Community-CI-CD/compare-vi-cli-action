@@ -1,0 +1,11 @@
+# sample.gitattributes — LabVIEW binary artifacts
+*.vi   binary
+*.vim  binary
+*.vit  binary
+*.ctl  binary
+*.ctt  binary
+
+# Optional: keep text diffs for project/library metadata (XML). Uncomment if desired.
+# *.lvproj text
+# *.lvlib  text
+# *.lvclass text
