@@ -168,6 +168,7 @@ When asserting performance/timing derived fields (mean/p95/max), avoid hard-code
 Watcher tests involving file mutation and FileSystemWatcher event validation use centralized helper utilities located in `tests/support/WatcherMutation.ps1`. These provide two-phase atomic file operations to ensure deterministic test behavior.
 
 **Purpose:**
+
 - Enable reliable file growth and atomic replacement for watcher event testing
 - Abstract transient I/O error handling with retry logic
 - Provide deterministic filler patterns for file growth
@@ -215,6 +216,7 @@ It 'detects file change via grown copy and atomic swap' {
 **Test:** `tests/FixtureWatcher.ZeroLengthGuard.Tests.ps1`
 
 **Validation Strategy:**
+
 - Start watcher without debug/force flags
 - Run for bounded polling window (e.g., 600ms)
 - Assert: No `Changed` event where file `Length -eq 0`
@@ -246,6 +248,7 @@ It 'does not emit Changed events with zero length during polling window' {
 **Test:** `tests/FixtureWatcher.StartupDelay.Tests.ps1`
 
 **Validation Approach:**
+
 - Set environment variable to modest delay (e.g., 150ms)
 - Start watcher and record start timestamp
 - Trigger immediate file change (before delay window)
@@ -254,12 +257,14 @@ It 'does not emit Changed events with zero length during polling window' {
 - Test runtime typically < 1s
 
 **Timing Considerations:**
+
 - Use generous overall timeout (e.g., 1.5s) to avoid flakiness
 - Allow tolerance for event processing latency
 - Rely on monotonic stopwatch for elapsed time calculation
 - Core assertion: env var is respected by configuration layer
 
 **Implementation Notes:**
+
 - FileSystemWatcher events are asynchronous; avoid strict timing assertions
 - Focus on configuration validation rather than precise event timing
 - Restore original env var value in `finally` block
