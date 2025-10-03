@@ -32,6 +32,8 @@ Validated with LabVIEW 2025 Q3 on self-hosted Windows runners. See also:
 `.github/workflows/release.yml`.
 
 > **Breaking Change (v0.5.0)**: Legacy artifact names `Base.vi` / `Head.vi` are no longer supported. Use `VI1.vi` / `VI2.vi` exclusively. Public action input names (`base`, `head`) and environment variables (`LV_BASE_VI`, `LV_HEAD_VI`) remain unchanged.
+>
+> Note: Any remaining mentions of `Base.vi` / `Head.vi` in this repository are retained strictly for historical or migration timeline context (e.g., CHANGELOG). They must not appear in new examples, workflows, or regenerated artifacts.
 
 ## Requirements
 
@@ -545,7 +547,7 @@ Notes:
 - A discovery failure (pattern: `Discovery in .* failed with:`) previously could yield a
   false green (0 tests). Logic now elevates such cases to `errors` and a non‑zero
   dispatcher exit code.
-- The dispatcher never uses additional exit codes: 0 = clean (no failures/errors), 1 = any failure/error/discovery anomaly/timeout.
+- The dispatcher never uses additional exit codes: 0 = clean (no failures), 1 = any failure/error/discovery anomaly/timeout.
 - All dynamic numeric fields use plain JSON numbers (no string wrapping) to simplify ingestion by metrics pipelines.
 
 ### Versioning Policy
@@ -1067,7 +1069,7 @@ Failed test listing (`-ShowFailed`):
 
 Colorized status & sequencing:
 
-- Each run prints a line: `Run #<n> PASS|FAIL in <seconds>s (Tests=<t> Failed=<f>) (Δ Tests=... Failed=... Skipped=...)`.
+- Each run prints a line: `Run #<n> PASS|FAIL in <seconds>s (Tests=<t> Failed=<f>) (Δ Tests=... Failed=...)`.
 - Only appears after execution; delta portion omitted on first (baseline) run.
 
 Notes & limitations:
@@ -1162,7 +1164,7 @@ Key features:
 - Optional skip when neither VI timestamp changed (`-SkipIfUnchanged`)
 - Shows a compact per-iteration table (diff flag, exit code, duration)
 - Records timing metrics and counts (diffs, errors)
-- Optional JSON lines log via `-JsonLog path\loop-log.jsonl`
+- Optional JSON lines log via `-JsonLog path\loop-log.json`
 - Optional `-FailOnDiff` to terminate on first diff (useful in guard scenarios)
 
 Example JSON log line (one per iteration when `-JsonLog` supplied):
@@ -1369,8 +1371,8 @@ Accuracy guidance:
 Example hybrid run with reconciliation:
 
 ```powershell
-Import-Module ./module/CompareLoop/CompareLoop.psm1 -Force
-$exec = { param($cli,$b,$h,$args) Start-Sleep -Milliseconds (5 + (Get-Random -Max 10)); 0 }
+Import-Module ./module/CompareLoop/CompareLoop.psd1 -Force
+$exec = { param($cli,$b,$h,$args) Start-Sleep -Milliseconds (5 + (Get-Random -Max 20)); 0 }
 $r = Invoke-IntegrationCompareLoop -Base VI1.vi -Head VI2.vi -MaxIterations 2000 -IntervalSeconds 0 `
   -CompareExecutor $exec -SkipValidation -PassThroughPaths -BypassCliValidation -Quiet `
   -QuantileStrategy Hybrid -HybridExactThreshold 400 -StreamCapacity 500 -ReconcileEvery 2000
@@ -1479,262 +1481,3 @@ Run summary schema excerpt:
   "percentiles": { "p50": 0.017, "p75": 0.020, "p90": 0.024, "p97_5": 0.025, "p99_9": 0.028 }
 }
 ```
-
-Dispatcher JSON outputs & customization
-
-The local dispatcher (`Invoke-PesterTests.ps1`) emits:
-
-- `pester-summary.json` (or custom name via `-JsonSummaryPath`) with aggregate metrics
-- `pester-failures.json` only when there are failing tests (array of failed test objects)
-
-`pester-summary.json` schema:
-
-```jsonc
-{
-  "total": 0,
-  "passed": 0,
-  "failed": 0,
-  "errors": 0,
-  "skipped": 0,
-  "duration_s": 0.00,
-  "timestamp": "2025-01-01T00:00:00.0000000Z",
-  "pesterVersion": "5.x.x",
-  "includeIntegration": false
-}
-```
-
-Change the JSON filename (while keeping location) via:
-
-```powershell
-./Invoke-PesterTests.ps1 -JsonSummaryPath custom-summary.json
-```
-
-Failure diagnostics
-
-When failures occur the dispatcher prints:
-
-1. A table-style list of failing tests (name + duration)
-2. Error messages per failed test
-3. Writes `pester-failures.json` for downstream tooling
-
-Nightly diagnostics
-
-The workflow `pester-diagnostics-nightly.yml` sets `ENABLE_DIAGNOSTIC_FAIL=1`, triggering a synthetic failing test (skipped otherwise). This validates the failure reporting path without marking the workflow failed (uses `continue-on-error`). Artifacts include both JSON files for inspection.
-
-Dispatcher artifact manifest
-
-The dispatcher emits a `pester-artifacts.json` manifest listing all generated artifacts with their types and schema versions:
-
-| Artifact | Type | Schema Version | Always Present |
-|----------|------|----------------|----------------|
-| `pester-results.xml` | `nunitXml` | N/A | Yes |
-| `pester-summary.txt` | `textSummary` | N/A | Yes |
-| `pester-summary.json` | `jsonSummary` | `1.0.0` | Yes |
-| `pester-failures.json` | `jsonFailures` | `1.0.0` | Only on failures (or with `-EmitFailuresJsonAlways`) |
-
-Example manifest:
-
-```jsonc
-{
-  "manifestVersion": "1.0.0",
-  "generatedAt": "2025-01-01T00:00:00.0000000Z",
-  "artifacts": [
-    { "file": "pester-results.xml", "type": "nunitXml" },
-    { "file": "pester-summary.txt", "type": "textSummary" },
-    { "file": "pester-summary.json", "type": "jsonSummary", "schemaVersion": "1.0.0" },
-    { "file": "pester-failures.json", "type": "jsonFailures", "schemaVersion": "1.0.0" }
-  ]
-}
-```
-
-### -EmitFailuresJsonAlways flag
-
-By default, `pester-failures.json` is only created when tests fail. To always emit it (as an empty array `[]` on success), use:
-
-```powershell
-./Invoke-PesterTests.ps1 -EmitFailuresJsonAlways
-```
-
-**Rationale:** Downstream tools can unconditionally parse `pester-failures.json` without checking for its existence, simplifying CI/CD pipelines that consume failure data.
-
-Schema version policy
-
-All JSON artifacts include schema versions for forward compatibility:
-
-- **`summaryVersion`**: Schema for `pester-summary.json`
-- **`failuresVersion`**: Schema for `pester-failures.json`
-- **`manifestVersion`**: Schema for `pester-artifacts.json`
-
-Current versions: **1.0.0** for all schemas.
-
-**Versioning rules:**
-
-- **Patch bump** (e.g., 1.0.0 → 1.0.1): Additive fields only; existing parsers unaffected
-- **Minor bump** (e.g., 1.0.0 → 1.1.0): Additive monitored fields that tools should start tracking
-- **Major bump** (e.g., 1.0.0 → 2.0.0): Breaking changes (field removal, rename, type change)
-
-Consumers should check `schemaVersion` and handle unknown major versions gracefully.
-
-## For Developers
-
-### Transient Artifact Cleanup & Test Summary Publishing
-
-Two helper scripts support local development hygiene and richer CI feedback without committing volatile test outputs:
-
-1. `scripts/Clean-DevArtifacts.ps1`
-   - Removes transient files produced under `tests/results/` (e.g. `pester-results.xml`, summaries, delta/flaky JSON) and optional root strays (`final.json`, `testResults.xml`).
-   - Safe defaults: preserves `.gitkeep`, never touches `*.vi` or source files.
-   - Key switches:
-     - `-ListOnly` – enumerate what would be removed.
-     - `-IncludeAllVariants` – include secondary result folders like `tests/results-maxtestfiles`, `tests/tmp-timeout/results`.
-     - `-IncludeLoopArtifacts` – also remove loop `final.json` style documents.
-     - Supports `-WhatIf` / `-Confirm` via `SupportsShouldProcess`.
-   - Examples:
-
-     ```powershell
-     pwsh -File scripts/Clean-DevArtifacts.ps1 -ListOnly
-     pwsh -File scripts/Clean-DevArtifacts.ps1 -IncludeAllVariants -Verbose
-     pwsh -File scripts/Clean-DevArtifacts.ps1 -IncludeLoopArtifacts -WhatIf
-     ```
-
-2. `scripts/Write-PesterSummaryToStepSummary.ps1`
-
-   - Reads `tests/results/pester-summary.json` (fallback to `pester-summary.txt`) and emits a Markdown table to the GitHub Actions step summary (`$GITHUB_STEP_SUMMARY`).
-   - Failed tests table (if failures exist) is collapsible by default via `<details>`.
-   - Parameters:
-     - `-FailedTestsCollapseStyle` (`Details` | `DetailsOpen` | `None`) default `Details`.
-     - `-IncludeFailedDurations` (switch, default on) disable to narrow table (`Name` only).
-     - `-FailedTestsLinkStyle` (`None` | `Relative`) when `Relative` wraps failed test names in repository-relative links (heuristic `tests/<Name>.Tests.ps1`).
-     - `-EmitFailureBadge` emits a bold status line (`✅` / `❌`) above the metrics table for quick PR comment copy.
-     - `-Compact` produce a single concise block (badge + one-line totals + optional failed test list) – no tables (ideal for PR comments or chatops bots).
-     - `-CommentPath <file>` also write the generated markdown to a file (independent of `$GITHUB_STEP_SUMMARY`), enabling later use with `gh pr comment` or workflow commands even if `GITHUB_STEP_SUMMARY` is unset.
-     - `-BadgeJsonPath <file>` emit machine-readable JSON metadata for downstream tooling (status, counts, durations, failed test names, and the rendered badge markdown/text).
-
-     - `Details`: closed `<details>` block
-     - `DetailsOpen`: open by default on page load
-     - `None`: classic `### Failed Tests` heading (no collapsible wrapper)
-
-   - Add to workflows **after** the test execution step:
-
-     ```yaml
-     - name: Publish Pester summary
-       if: always()
-       shell: pwsh
-       run: pwsh -File scripts/Write-PesterSummaryToStepSummary.ps1 -ResultsDir tests/results -FailedTestsCollapseStyle DetailsOpen
-     ```
-
-      **Compact mode example (for PR comment capture)**
-
-      ```yaml
-      - name: Publish (compact) Pester summary
-        if: always()
-        shell: pwsh
-        run: |
-          pwsh -File scripts/Write-PesterSummaryToStepSummary.ps1 `
-            -ResultsDir tests/results `
-            -Compact -EmitFailureBadge `
-            -CommentPath artifacts/pester-comment.md `
-            -BadgeJsonPath artifacts/pester-badge.json
-      - name: Add PR comment (if failures)
-        if: always() && github.event_name == 'pull_request'
-        shell: pwsh
-        run: |
-          if (Test-Path artifacts/pester-badge.json) {
-            $meta = Get-Content artifacts/pester-badge.json -Raw | ConvertFrom-Json
-            if ($meta.status -eq 'failed') {
-              $body = Get-Content artifacts/pester-comment.md -Raw
-              echo "Adding PR comment with test failure summary";
-              gh pr comment $env:GITHUB_PR_NUMBER --body "$body"
-            }
-          }
-      ```
-
-      **Badge JSON shape** (example failing run):
-
-      ```jsonc
-      {
-        "status": "failed",
-        "total": 42,
-        "passed": 40,
-        "failed": 2,
-        "errors": 0,
-        "skipped": 0,
-        "durationSeconds": 12.345,
-        "badgeMarkdown": "**❌ Tests Failed:** 2 of 42",
-        "badgeText": "❌ Tests Failed: 2 of 42",
-        "failedTests": [ "ModuleA.FeatureX", "ModuleB.EdgeCase" ],
-        "generatedAt": "2025-10-02T12:34:56.789Z"
-      }
-      ```
-
-      Consumer guidance:
-      - Use `badgeMarkdown` directly in PR body/comments.
-      - `status` is `passed` or `failed` (no intermediate states currently).
-      - `failedTests` may be empty when status=`failed` if failure parsing was unavailable (treat absence gracefully).
-      - Timestamps are ISO-8601 UTC.
-
-Ignoring committed results: `.gitignore` now blocks committing these transient files; retain the directory structure with `tests/results/.gitkeep`.
-
-Recommendation: run the cleanup script before creating release branches or preparing large refactors to minimize accidental artifact churn.
-
-### Testing
-
-This repository includes a comprehensive Pester test suite. To run tests:
-
-```powershell
-# Unit tests only (fast, no LabVIEW required)
-./Invoke-PesterTests.ps1
-
-# Integration tests (requires LabVIEW and LVCompare at canonical path)
-$env:LV_BASE_VI='VI1.vi'
-$env:LV_HEAD_VI='VI2.vi'
-./Invoke-PesterTests.ps1 -IncludeIntegration true
-```
-
-See [`CONTRIBUTING.md`](./CONTRIBUTING.md) for contribution guidelines and development workflow.
-
-### Integration Runbook
-
-For a phased checklist (prereqs, single compare, integration tests, real loop, diagnostics) and an orchestration helper script, see:
-
-- Runbook document: [`docs/INTEGRATION_RUNBOOK.md`](./docs/INTEGRATION_RUNBOOK.md)
-- Orchestration script: `scripts/Invoke-IntegrationRunbook.ps1`
-
-Example full run with JSON report:
-
-```powershell
-pwsh -File scripts/Invoke-IntegrationRunbook.ps1 -All -JsonReport runbook-result.json
-```
-
-Status summary is printed to console; JSON schema id: `integration-runbook-v1`.
-
-### Building and Generating Documentation
-
-The action documentation is auto-generated from `action.yml`:
-
-```bash
-npm install
-npm run build
-npm run generate:outputs
-```
-
-This regenerates [`docs/action-outputs.md`](./docs/action-outputs.md) with all inputs and outputs.
-
-### Release Process
-
-1. Update [`CHANGELOG.md`](./CHANGELOG.md) with changes for the new version
-2. Create and push a git tag (e.g., `v0.4.0`)
-3. The release workflow automatically creates a GitHub release with changelog content
-
-Tags follow semantic versioning. See [`.github/workflows/release.yml`](./.github/workflows/release.yml) for release automation details.
-
-## License
-
-This project is licensed under the BSD 3-Clause License. See the [`LICENSE`](./LICENSE) file for full license text.
-
-## Support and Contributing
-
-- **Issues**: Report bugs or request features via [GitHub Issues](https://github.com/LabVIEW-Community-CI-CD/compare-vi-cli-action/issues)
-- **Discussions**: Ask questions or share ideas in [GitHub Discussions](https://github.com/LabVIEW-Community-CI-CD/compare-vi-cli-action/discussions)
-- **Contributing**: See [`CONTRIBUTING.md`](./CONTRIBUTING.md) for guidelines
-- **Security**: Report security vulnerabilities via [`SECURITY.md`](./SECURITY.md)
