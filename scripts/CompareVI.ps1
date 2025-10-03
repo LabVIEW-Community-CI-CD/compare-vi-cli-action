@@ -77,6 +77,13 @@ function Invoke-CompareVI {
 
     $cli = Resolve-Cli -Explicit $LvComparePath
 
+    # Preflight: same leaf filename but different paths – LVCompare raises an IDE dialog; stop early with actionable error
+    $baseLeaf = Split-Path -Leaf $baseAbs
+    $headLeaf = Split-Path -Leaf $headAbs
+    if ($baseLeaf -ieq $headLeaf -and $baseAbs -ne $headAbs) {
+      throw "LVCompare limitation: Cannot compare two VIs sharing the same filename '$baseLeaf' located in different directories. Rename one copy or provide distinct filenames. Base=$baseAbs Head=$headAbs"
+    }
+
     $cliArgs = @()
     if ($LvCompareArgs) {
       $pattern = '"[^"]+"|\S+'
@@ -85,6 +92,52 @@ function Invoke-CompareVI {
     }
 
     $cmdline = (@(Quote $cli; Quote $baseAbs; Quote $headAbs) + ($cliArgs | ForEach-Object { Quote $_ })) -join ' '
+
+    # Relocated identical-path short-circuit (after args/tokenization so command reflects flags)
+    if ($baseAbs -eq $headAbs) {
+      $cwd = (Get-Location).Path
+      $code = 0
+      $diff = $false
+      $compareDurationSeconds = 0
+      $compareDurationNanoseconds = 0
+      if ($GitHubOutputPath) {
+        "exitCode=$code"   | Out-File -FilePath $GitHubOutputPath -Append -Encoding utf8
+        "cliPath=$cli"     | Out-File -FilePath $GitHubOutputPath -Append -Encoding utf8
+        "command=$cmdline" | Out-File -FilePath $GitHubOutputPath -Append -Encoding utf8
+        "diff=false"       | Out-File -FilePath $GitHubOutputPath -Append -Encoding utf8
+        "compareDurationSeconds=$compareDurationSeconds" | Out-File -FilePath $GitHubOutputPath -Append -Encoding utf8
+        "compareDurationNanoseconds=$compareDurationNanoseconds" | Out-File -FilePath $GitHubOutputPath -Append -Encoding utf8
+        "shortCircuitedIdentical=true" | Out-File -FilePath $GitHubOutputPath -Append -Encoding utf8
+      }
+      if ($GitHubStepSummaryPath) {
+        $summaryLines = @(
+          '### Compare VI',
+          "- Working directory: $cwd",
+          "- Base: $baseAbs",
+          "- Head: $headAbs",
+          "- CLI: $cli",
+          "- Command: $cmdline",
+          "- Exit code: $code",
+          "- Diff: false",
+          "- Duration (s): $compareDurationSeconds",
+          "- Duration (ns): $compareDurationNanoseconds",
+          '- Note: Short-circuited identical path comparison (no LVCompare invocation)'
+        )
+        ($summaryLines -join "`n") | Out-File -FilePath $GitHubStepSummaryPath -Append -Encoding utf8
+      }
+      return [pscustomobject]@{
+        Base                        = $baseAbs
+        Head                        = $headAbs
+        Cwd                         = $cwd
+        CliPath                     = $cli
+        Command                     = $cmdline
+        ExitCode                    = $code
+        Diff                        = $diff
+        CompareDurationSeconds      = $compareDurationSeconds
+        CompareDurationNanoseconds  = $compareDurationNanoseconds
+        ShortCircuitedIdenticalPath = $true
+      }
+    }
 
     # Measure execution time
     $sw = [System.Diagnostics.Stopwatch]::StartNew()
@@ -137,7 +190,8 @@ function Invoke-CompareVI {
       "cliPath=$cli"          | Out-File -FilePath $GitHubOutputPath -Append -Encoding utf8
       "command=$cmdline"      | Out-File -FilePath $GitHubOutputPath -Append -Encoding utf8
       $diffLower = if ($diff) { 'true' } else { 'false' }
-      "diff=$diffLower"       | Out-File -FilePath $GitHubOutputPath -Append -Encoding utf8
+  "diff=$diffLower"       | Out-File -FilePath $GitHubOutputPath -Append -Encoding utf8
+  "shortCircuitedIdentical=false" | Out-File -FilePath $GitHubOutputPath -Append -Encoding utf8
   "compareDurationSeconds=$compareDurationSeconds" | Out-File -FilePath $GitHubOutputPath -Append -Encoding utf8
   "compareDurationNanoseconds=$compareDurationNanoseconds" | Out-File -FilePath $GitHubOutputPath -Append -Encoding utf8
     }
@@ -173,6 +227,8 @@ function Invoke-CompareVI {
       Diff                   = $diff
       CompareDurationSeconds     = $compareDurationSeconds
       CompareDurationNanoseconds = $compareDurationNanoseconds
+      # Always include this flag for downstream consumers (action.yml) to avoid property-missing errors
+      ShortCircuitedIdenticalPath = $false
     }
   }
   finally {

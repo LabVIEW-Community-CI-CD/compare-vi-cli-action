@@ -24,14 +24,14 @@ jobs:
           $base = $env:LV_BASE_VI
           $head = $env:LV_HEAD_VI
           
-          # Fallback to repo root Base.vi and Head.vi for publish validation
+          # Fallback to repo root VI1.vi and VI2.vi for publish validation
           if ([string]::IsNullOrWhiteSpace($base) -or -not (Test-Path -LiteralPath $base)) {
-            $base = Join-Path $env:GITHUB_WORKSPACE 'Base.vi'
-            Write-Host "Using fallback Base.vi from repo root: $base"
+            $base = Join-Path $env:GITHUB_WORKSPACE 'VI1.vi'
+            Write-Host "Using fallback VI1.vi from repo root: $base"
           }
           if ([string]::IsNullOrWhiteSpace($head) -or -not (Test-Path -LiteralPath $head)) {
-            $head = Join-Path $env:GITHUB_WORKSPACE 'Head.vi'
-            Write-Host "Using fallback Head.vi from repo root: $head"
+            $head = Join-Path $env:GITHUB_WORKSPACE 'VI2.vi'
+            Write-Host "Using fallback VI2.vi from repo root: $head"
           }
           
           # Validate files exist

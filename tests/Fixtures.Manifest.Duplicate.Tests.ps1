@@ -1,0 +1,26 @@
+Set-StrictMode -Version Latest
+$ErrorActionPreference = 'Stop'
+
+Describe 'Fixture manifest duplicate detection' -Tag 'Unit' {
+  BeforeAll {
+    $repoRoot = Resolve-Path (Join-Path $PSScriptRoot '..') | Select-Object -ExpandProperty Path
+    $script:validator = Join-Path $repoRoot 'tools' 'Validate-Fixtures.ps1'
+    $script:manifestPath = Join-Path $repoRoot 'fixtures.manifest.json'
+    $script:original = Get-Content -LiteralPath $manifestPath -Raw
+  }
+  AfterAll {
+    $original | Set-Content -LiteralPath $manifestPath -Encoding utf8
+  }
+
+  It 'returns exit 8 for duplicate entries only' {
+    $m = $original | ConvertFrom-Json
+    foreach ($it in $m.items) { $it.minBytes = 1 }
+    # Add a duplicate of first item
+    $dup = $m.items[0] | Select-Object *
+    $m.items += $dup
+    ($m | ConvertTo-Json -Depth 6) | Set-Content -LiteralPath $manifestPath -Encoding utf8
+    pwsh -NoLogo -NoProfile -File $validator -DisableToken -MinBytes 1 | Out-Null
+    # If only duplicate issue should be 8 (not aggregated with others)
+    $LASTEXITCODE | Should -Be 8
+  }
+}

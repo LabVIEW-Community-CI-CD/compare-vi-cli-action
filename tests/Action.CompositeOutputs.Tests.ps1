@@ -52,9 +52,34 @@ Describe 'Composite action output shape (emulated)' -Tag 'Unit' {
     $content = Get-Content $outPath -Raw
     $content | Should -Match 'compareDurationSeconds='
     $content | Should -Match 'compareDurationNanoseconds='
-    $content | Should -Match 'diff=true'
+  $content | Should -Match 'diff=true'
+  $content | Should -Match 'shortCircuitedIdentical=false'
     (Get-Content $sumPath -Raw) | Should -Match 'Duration \(s\):'
     (Get-Content $sumPath -Raw) | Should -Match 'Duration \(ns\):'
+  }
+
+  It 'short-circuits identical path and marks output object flag' {
+    $vis = Join-Path $TestDrive 'vis'
+    New-Item -ItemType Directory -Path $vis -Force | Out-Null
+    $a = Join-Path $vis 'same.vi'
+    New-Item -ItemType File -Path $a -Force | Out-Null
+    Mock -CommandName Resolve-Cli -MockWith { 'C:\\Program Files\\National Instruments\\Shared\\LabVIEW Compare\\LVCompare.exe' }
+    $res = Invoke-CompareVI -Base $a -Head $a -FailOnDiff:$false -Executor { 0 }
+    $res.ShortCircuitedIdenticalPath | Should -BeTrue
+    $res.Diff | Should -BeFalse
+    $res.ExitCode | Should -Be 0
+  }
+
+  It 'emits shortCircuitedIdentical output line when identical and using GitHubOutputPath' {
+    $vis = Join-Path $TestDrive 'vis'
+    New-Item -ItemType Directory -Path $vis -Force | Out-Null
+    $a = Join-Path $vis 'same2.vi'
+    New-Item -ItemType File -Path $a -Force | Out-Null
+    Mock -CommandName Resolve-Cli -MockWith { 'C:\\Program Files\\National Instruments\\Shared\\LabVIEW Compare\\LVCompare.exe' }
+    $outPath = Join-Path $TestDrive 'gout_identical.txt'
+    Invoke-CompareVI -Base $a -Head $a -GitHubOutputPath $outPath -FailOnDiff:$false -Executor { 0 } | Out-Null
+    $content = Get-Content -LiteralPath $outPath -Raw
+    $content | Should -Match 'shortCircuitedIdentical=true'
   }
 
   It 'loop mode emits percentile and loop outputs (simulated executor)' {

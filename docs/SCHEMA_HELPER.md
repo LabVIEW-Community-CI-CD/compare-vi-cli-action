@@ -149,6 +149,12 @@ Current specs:
 | SnapshotV2   | Metrics snapshot NDJSON lines (`metrics-snapshot-v2`) | `Invoke-IntegrationCompareLoop -MetricsSnapshotEvery/-MetricsSnapshotPath` |
 | LoopEvent    | Loop event & meta NDJSON lines (`loop-script-events-v1`) | `Run-AutonomousIntegrationLoop.ps1` JSON log |
 
+Additional JSON Schemas (artifact producers):
+
+- `fixture-drift-summary-v1` — drift summary emitted by `scripts/On-FixtureValidationFail.ps1`.
+  - Schema file: `docs/schemas/fixture-drift-summary-v1.schema.json`
+  - Validated in CI by the composite action step “Validate drift summary schema (schema-lite)”.
+
 ### Predicate Philosophy
 
 Predicates intentionally allow multiple primitive numeric types (`[int]`, `[long]`, `[double]`) and,

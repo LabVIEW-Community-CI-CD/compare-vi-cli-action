@@ -39,20 +39,38 @@ Describe "Inner Smoke" {
 
     Push-Location $workspace
     try {
-      # Capture all output (stdout/stderr) from nested dispatcher to filter noisy, benign discovery error
-      $innerOutput = & $dispatcherCopy -TestsPath 'tests' -IncludeIntegration 'false' -ResultsPath 'results' 2>&1
-      $LASTEXITCODE | Should -Be 0
+      # Invoke dispatcher in a separate pwsh process to prevent its Write-Error from failing this test.
+      $cmd = "pwsh -NoLogo -NoProfile -File `"$dispatcherCopy`" -TestsPath tests -ResultsPath results -IncludeIntegration false"
+      $innerOutput = & pwsh -NoLogo -NoProfile -Command $cmd 2>&1
+      $nestedExit = $LASTEXITCODE
+      $summaryJson = Join-Path $workspace 'results' 'pester-summary.json'
+      Test-Path $summaryJson | Should -BeTrue -Because 'Nested dispatcher should emit summary JSON'
+      $json = Get-Content -LiteralPath $summaryJson -Raw | ConvertFrom-Json
+      # Strict expectations: nested dispatcher should succeed cleanly for shadow test
+      if ($nestedExit -ne 0) {
+        Write-Host '[nested-shadow] Nested dispatcher exit != 0. Output:' -ForegroundColor Yellow
+        ($innerOutput | Out-String) | Write-Host
+      }
+      $nestedExit | Should -Be 0
+      $json.failed | Should -Be 0
+      $json.errors | Should -Be 0
+      $json.discoveryFailures | Should -Be 0 -Because 'Shadowing smoke test should not introduce discovery failures'
+      if ($json.failed -gt 0 -or $json.errors -gt 0 -or $json.discoveryFailures -gt 0) {
+        Write-Host '[nested-shadow] DEBUG OUTPUT START' -ForegroundColor Yellow
+        ($innerOutput | Out-String) | Write-Host
+        Write-Host '[nested-shadow] DEBUG OUTPUT END' -ForegroundColor Yellow
+      }
 
       # Known benign noise pattern from inner discovery (Pester attempting Import-Module Microsoft.PowerShell.Core)
   $noisePattern = "The module 'Microsoft.PowerShell.Core' could not be loaded"
-      $filtered = $innerOutput | Where-Object { $_ -notmatch [regex]::Escape($noisePattern) }
+  $filtered = $innerOutput | Where-Object { $_ -notmatch [regex]::Escape($noisePattern) }
 
       # (Optional) Uncomment to debug if pattern changes:
       # Write-Host "[nested-filter] Original: $($innerOutput.Count) lines; Filtered: $($filtered.Count) lines"
 
       # Assert that no unexpected severe errors slipped through (anything with CommandNotFound other than the known pattern)
       $unexpected = $filtered | Where-Object { $_ -match 'CommandNotFoundException' -and $_ -notmatch [regex]::Escape($noisePattern) }
-      $unexpected | Should -BeNullOrEmpty
+  $unexpected | Should -BeNullOrEmpty
     } finally {
       Pop-Location
     }

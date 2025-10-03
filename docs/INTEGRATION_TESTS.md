@@ -30,8 +30,8 @@ This design prevents container-level failures during discovery and keeps CI gree
 1. Set environment variables:
 
   ```powershell
-  $env:LV_BASE_VI = 'C:\Path\To\Base.vi'
-  $env:LV_HEAD_VI = 'C:\Path\To\Head.vi'
+  $env:LV_BASE_VI = 'C:\Path\To\VI1.vi'
+  $env:LV_HEAD_VI = 'C:\Path\To\VI2.vi'
   ```
 
 1. Verify paths:

@@ -150,7 +150,7 @@ This document summarizes the implementation status of self-hosted Windows runner
 - Automatically triggered on PR events (labeled, reopened, synchronize)
 - Manual dispatch also supported
 - Generates comprehensive VI comparison reports:
-  - Single-run comparison (Base.vi vs Head.vi)
+  - Single-run comparison (VI1.vi vs VI2.vi)
   - Loop mode comparison with latency metrics (25 iterations)
   - HTML reports, JSON summaries, and Markdown snippets
 - Posts results as PR comment (requires XCLI_PAT secret)

@@ -11,8 +11,8 @@ Describe 'Run-AutonomousIntegrationLoop FinalStatusJsonPath emission' -Tag 'Unit
     $outDir = Join-Path $TestDrive 'loop'
     New-Item -ItemType Directory -Path $outDir -Force | Out-Null
     $finalStatusPath = Join-Path $outDir 'final-status.json'
-    $base = Join-Path $outDir 'Base.vi'
-    $head = Join-Path $outDir 'Head.vi'
+    $base = Join-Path $outDir 'VI1.vi'
+    $head = Join-Path $outDir 'VI2.vi'
     New-Item -ItemType File -Path $base -Force | Out-Null
     New-Item -ItemType File -Path $head -Force | Out-Null
 
@@ -33,8 +33,8 @@ exit `$LASTEXITCODE
     $json.iterations | Should -Be 3
     $json.errors | Should -Be 0
     $json.succeeded | Should -BeTrue
-    $json.basePath | Should -Match 'Base\.vi'
-    $json.headPath | Should -Match 'Head\.vi'
+    $json.basePath | Should -Match 'VI1\.vi'
+    $json.headPath | Should -Match 'VI2\.vi'
   }
 }
 

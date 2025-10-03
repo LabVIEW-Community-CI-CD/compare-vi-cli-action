@@ -24,7 +24,7 @@ Describe 'Schema Helper Negative Cases' -Tag 'Unit' {
 
   It 'fails when a predicate check fails (negative number for iterations)' {
     $tmp = Join-Path $TestDrive 'bad-final-status.json'
-    '{"schema":"loop-final-status-v1","timestamp":"2025-10-01T00:00:00Z","iterations":-5,"diffs":0,"errors":0,"succeeded":true,"averageSeconds":0.01,"totalSeconds":0.01,"percentiles":{},"histogram":null,"diffSummaryEmitted":false,"basePath":"Base.vi","headPath":"Head.vi"}' | Set-Content -Path $tmp -Encoding UTF8
+    '{"schema":"loop-final-status-v1","timestamp":"2025-10-01T00:00:00Z","iterations":-5,"diffs":0,"errors":0,"succeeded":true,"averageSeconds":0.01,"totalSeconds":0.01,"percentiles":{},"histogram":null,"diffSummaryEmitted":false,"basePath":"VI1.vi","headPath":"VI2.vi"}' | Set-Content -Path $tmp -Encoding UTF8
     { Assert-JsonShape -Path $tmp -Spec 'FinalStatus' } | Should -Throw -ErrorId *
   }
 }

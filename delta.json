@@ -1,0 +1,29 @@
+{
+  "schema": "fixture-validation-delta-v1",
+  "baselinePath": "C:\\dev\\compare-vi-cli-action\\baseline-fixture-validation.json",
+  "currentPath": "C:\\dev\\compare-vi-cli-action\\current-fixture-validation.json",
+  "generatedAt": "2025-10-03T11:15:10.5963500-07:00",
+  "baselineOk": false,
+  "currentOk": false,
+  "deltaCounts": {
+    "duplicate": 1
+  },
+  "changes": [
+    {
+      "category": "duplicate",
+      "baseline": 0,
+      "current": 1,
+      "delta": 1
+    }
+  ],
+  "newStructuralIssues": [
+    {
+      "category": "duplicate",
+      "baseline": 0,
+      "current": 1,
+      "delta": 1
+    }
+  ],
+  "failOnNewStructuralIssue": false,
+  "willFail": false
+}

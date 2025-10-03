@@ -17,8 +17,8 @@ Describe 'Run-AutonomousIntegrationLoop JSON log rotation (size-based)' -Tag 'Un
   It 'rotates when JsonLogMaxBytes threshold small (multi-run accumulation)' {
     $jsonLog = Join-Path $script:tmpDir 'loop.log.json'
     $final   = Join-Path $script:tmpDir 'final-status.json'
-    $base = Join-Path $script:tmpDir 'Base.vi'; New-Item -ItemType File -Path $base -Force | Out-Null
-    $head = Join-Path $script:tmpDir 'Head.vi'; New-Item -ItemType File -Path $head -Force | Out-Null
+    $base = Join-Path $script:tmpDir 'VI1.vi'; New-Item -ItemType File -Path $base -Force | Out-Null
+    $head = Join-Path $script:tmpDir 'VI2.vi'; New-Item -ItemType File -Path $head -Force | Out-Null
 
     $runner = Join-Path $script:tmpDir 'rotation-runner.ps1'
   $runnerContent = @"

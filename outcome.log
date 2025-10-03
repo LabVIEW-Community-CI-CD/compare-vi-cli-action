@@ -1,0 +1,57 @@
+=== Pester Test Dispatcher ===
+Script Version: 1.0.0
+PowerShell Version: 7.5.3
+
+Configuration:
+  Tests Path: tests
+  Include Integration: false
+  Results Path: tests/results
+  JSON Summary File: pester-summary.json
+  Emit Failures JSON Always: False
+  Timeout Minutes: 0
+  Timeout Seconds: 0
+  Max Test Files: 1
+
+Resolved Paths:
+  Script Root: C:\dev\compare-vi-cli-action
+  Tests Directory: C:\dev\compare-vi-cli-action\tests
+  Results Directory: C:\dev\compare-vi-cli-action\tests\results
+
+Found 51 test file(s) in tests directory
+Selecting first 1 test file(s) for execution (loop count mode).
+Selected test file list written to: C:\dev\compare-vi-cli-action\tests\results\pester-selected-files.txt
+Results directory ready: C:\dev\compare-vi-cli-action\tests\results
+
+Checking for Pester availability...
+Pester module found: v5.7.1
+Using Pester v5.7.1
+
+Configuring Pester...
+  Excluding Integration-tagged tests
+  Output Verbosity: Detailed
+  Result Format: NUnitXml
+
+Executing Pester tests...
+----------------------------------------
+----------------------------------------
+
+Test execution completed in 2.00 seconds
+
+Parsing test results...
+
+=== Pester Test Summary ===
+Total Tests: 3
+Passed: 3
+Failed: 0
+Errors: 0
+Skipped: 0
+Duration: 2.00s
+ (mean=195.61ms p95=236.32ms max=303.43ms)
+
+
+Summary written to: C:\dev\compare-vi-cli-action\tests\results\pester-summary.txt
+JSON summary written to: C:\dev\compare-vi-cli-action\tests\results\pester-summary.json
+Results written to: C:\dev\compare-vi-cli-action\tests\results\pester-results.xml
+
+✅ All tests passed!
+Artifact manifest written to: C:\dev\compare-vi-cli-action\tests\results\pester-artifacts.json

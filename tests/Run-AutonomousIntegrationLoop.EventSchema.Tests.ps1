@@ -17,8 +17,8 @@ Describe 'Run-AutonomousIntegrationLoop LoopEvent NDJSON schema' -Tag 'Unit' {
   It 'emits LoopEvent lines conforming to schema (no rotation)' {
     $jsonLog = Join-Path $script:tmpDir 'loop.events.json'
     $final   = Join-Path $script:tmpDir 'final-status.json'
-    $base = Join-Path $script:tmpDir 'Base.vi'; New-Item -ItemType File -Path $base -Force | Out-Null
-    $head = Join-Path $script:tmpDir 'Head.vi'; New-Item -ItemType File -Path $head -Force | Out-Null
+    $base = Join-Path $script:tmpDir 'VI1.vi'; New-Item -ItemType File -Path $base -Force | Out-Null
+    $head = Join-Path $script:tmpDir 'VI2.vi'; New-Item -ItemType File -Path $head -Force | Out-Null
 
     & $scriptPath -Base $base -Head $head -MaxIterations 8 -IntervalSeconds 0 -JsonLogPath $jsonLog -JsonLogMaxBytes 500000 -FinalStatusJsonPath $final -DiffSummaryFormat None -FailOnDiff:$false -LogVerbosity Quiet -CustomExecutor { param($CliPath,$Base,$Head,$ExecArgs) return 0 }
     $LASTEXITCODE | Should -Be 0

@@ -51,6 +51,22 @@ param(
 
   [Parameter(Mandatory = $false)]
   [int]$MaxTestFiles = 0
+,
+  [Parameter(Mandatory = $false)]
+  [switch]$EmitContext,
+  [Parameter(Mandatory = $false)]
+  [switch]$EmitTimingDetail
+,
+  [Parameter(Mandatory = $false)]
+  [switch]$EmitStability
+,
+  [Parameter(Mandatory = $false)]
+  [switch]$EmitDiscoveryDetail
+,
+  [Parameter(Mandatory = $false)]
+  [switch]$EmitOutcome,
+  # Optional: emit aggregationHints block (schema v1.7.1+ with timing metric)
+  [switch]$EmitAggregationHints
 )
 
 Set-StrictMode -Version Latest
@@ -62,7 +78,7 @@ if ($TimeoutSeconds -gt 0) { $effectiveTimeoutSeconds = [double]$TimeoutSeconds 
 elseif ($TimeoutMinutes -gt 0) { $effectiveTimeoutSeconds = [double]$TimeoutMinutes * 60 }
 
 # Schema version identifiers for emitted JSON artifacts (increment on breaking schema changes)
-$SchemaSummaryVersion  = '1.1.0'
+$SchemaSummaryVersion  = '1.7.1'
 $SchemaFailuresVersion = '1.0.0'
 $SchemaManifestVersion = '1.0.0'
 
@@ -140,21 +156,26 @@ function Write-ArtifactManifest {
     }
     
     # Optional: include lightweight metrics if summary JSON exists
-    $metrics = $null
+  $metrics = $null
     try {
       $jsonSummaryFile = Split-Path -Leaf $SummaryJsonPath
       if ($jsonSummaryFile) {
         $jsonPath = Join-Path $Directory $jsonSummaryFile
         if (Test-Path -LiteralPath $jsonPath) {
           $summaryJson = Get-Content -LiteralPath $jsonPath -Raw | ConvertFrom-Json -ErrorAction Stop
+          $aggMsValue = $null
+          if ($summaryJson.PSObject.Properties.Name -contains 'aggregatorBuildMs' -and $null -ne $summaryJson.aggregatorBuildMs) {
+            $aggMsValue = $summaryJson.aggregatorBuildMs
+          }
           $metrics = [PSCustomObject]@{
-            totalTests = $summaryJson.total
-            failed     = $summaryJson.failed
-            skipped    = $summaryJson.skipped
-            duration_s = $summaryJson.duration_s
-            meanTest_ms = $summaryJson.meanTest_ms
-            p95Test_ms  = $summaryJson.p95Test_ms
-            maxTest_ms  = $summaryJson.maxTest_ms
+            totalTests       = $summaryJson.total
+            failed           = $summaryJson.failed
+            skipped          = $summaryJson.skipped
+            duration_s       = $summaryJson.duration_s
+            meanTest_ms      = $summaryJson.meanTest_ms
+            p95Test_ms       = $summaryJson.p95Test_ms
+            maxTest_ms       = $summaryJson.maxTest_ms
+            aggregatorBuildMs = $aggMsValue
           }
         }
       }
@@ -317,12 +338,22 @@ if ($limitToSingle) {
   Write-Host "Running single test file: $singleTestFile" -ForegroundColor Green
 } else {
   $testFiles = @(Get-ChildItem -Path $testsDir -Filter '*.Tests.ps1' -Recurse -File | Sort-Object FullName)
-  Write-Host "Found $($testFiles.Count) test file(s) in tests directory" -ForegroundColor Green
+  $originalTestFileCount = $testFiles.Count
+  # Pre-filter integration files entirely (stronger than tag exclusion) when integration disabled, unless explicitly overridden.
+  if (-not $IncludeIntegration -and ($env:DISABLE_INTEGRATION_FILE_PREFILTER -ne '1')) {
+    $before = $testFiles.Count
+    $testFiles = @($testFiles | Where-Object { $_.Name -notmatch '\.Integration\.Tests\.ps1$' })
+    $removed = $before - $testFiles.Count
+    if ($removed -gt 0) { Write-Host "Prefiltered $removed integration test file(s) (file-level exclusion)" -ForegroundColor DarkGray }
+  }
+  Write-Host "Found $originalTestFileCount test file(s) in tests directory" -ForegroundColor Green
   if ($MaxTestFiles -gt 0 -and $testFiles.Count -gt $MaxTestFiles) {
     Write-Host "Selecting first $MaxTestFiles test file(s) for execution (loop count mode)." -ForegroundColor Yellow
     $selected = $testFiles | Select-Object -First $MaxTestFiles
     $testFiles = @($selected)
   }
+  $selectedTestFileCount = $testFiles.Count
+  $maxTestFilesApplied = ($MaxTestFiles -gt 0 -and $originalTestFileCount -gt $selectedTestFileCount)
 }
 
 # Early exit path when zero tests discovered: emit minimal artifacts for stable downstream handling
@@ -459,6 +490,7 @@ if (-not $includeIntegrationBool) {
 
 # Configure output
 $conf.Output.Verbosity = 'Detailed'
+$conf.Run.PassThru = $true
 
 # Configure test results
 $conf.TestResult.Enabled = $true
@@ -476,7 +508,6 @@ Write-Host "  Output Verbosity: Detailed" -ForegroundColor Cyan
 Write-Host "  Result Format: NUnitXml" -ForegroundColor Cyan
 Write-Host ""
 
-# Execute Pester without changing location since OutputPath is absolute
 Write-Host "Executing Pester tests..." -ForegroundColor Yellow
 Write-Host "----------------------------------------" -ForegroundColor DarkGray
 
@@ -491,6 +522,9 @@ Write-Host "----------------------------------------" -ForegroundColor DarkGray
 
 ${script:timedOut} = $false
 $testStartTime = Get-Date
+$capturedOutputLines = @()  # Will hold textual console lines for discovery failure scanning (non-timeout path)
+$partialLogPath = $null     # Set when timeout job path uses partial logging
+$result = $null              # Initialize result object holder to satisfy StrictMode before first conditional access
 if ($effectiveTimeoutSeconds -gt 0) {
   Write-Host "Executing with timeout guard: $effectiveTimeoutSeconds second(s)" -ForegroundColor Yellow
   $job = Start-Job -ScriptBlock { param($c) Invoke-Pester -Configuration $c } -ArgumentList ($conf)
@@ -529,9 +563,29 @@ if ($effectiveTimeoutSeconds -gt 0) {
   $testDuration = $testEndTime - $testStartTime
 } else {
   try {
-    $result = Invoke-Pester -Configuration $conf
+    # Capture output; Pester may emit both rich objects and strings. We keep ordering for detection.
+    # Capture all streams (Information/Verbose/Warning/Error) to ensure discovery failure host messages are collected
+    $rawOutput = & {
+      $InformationPreference = 'Continue'
+      Invoke-Pester -Configuration $conf *>&1
+    }
     $testEndTime = Get-Date
     $testDuration = $testEndTime - $testStartTime
+    foreach ($entry in $rawOutput) {
+      if ($entry -is [string]) {
+        $capturedOutputLines += $entry
+      } elseif ($null -ne $entry -and ($entry.PSObject.Properties.Name -contains 'Tests') -and -not $result) {
+        $result = $entry
+      } elseif ($entry -isnot [string]) {
+        # Non-string, non-primary result objects (e.g., progress records) -> stringify
+        $capturedOutputLines += ($entry | Out-String)
+      }
+    }
+    # If PassThru did not surface a result object earlier, attempt to assign from last object
+    if (-not $result) {
+      $maybe = $rawOutput | Where-Object { $_ -isnot [string] -and ($_.PSObject.Properties.Name -contains 'Tests') }
+      if ($maybe) { $result = $maybe[-1] }
+    }
   } catch {
     Write-Error "Pester execution failed: $_"
     try {
@@ -572,6 +626,67 @@ Write-Host ""
 Write-Host "Test execution completed in $($testDuration.TotalSeconds.ToString('F2')) seconds" -ForegroundColor Green
 Write-Host ""
 
+# Detect discovery failures in captured output (inline) or partial log (timeout path)
+$discoveryFailurePatterns = @(
+  # Use single-line (?s) with non-greedy match so wrapped (newline-inserted) long file paths between
+  # 'Discovery in ' and ' failed with:' are matched correctly even when console wrapping introduces line breaks.
+  '(?s)Discovery in .*? failed with:'
+)
+$discoveryFailureCount = 0
+try {
+  $ansiPattern = "`e\[[0-9;]*[A-Za-z]" # strip ANSI color codes for reliable matching
+  $scanTextBlocks = @()
+  if ($capturedOutputLines.Count -gt 0) {
+    $clean = ($capturedOutputLines -join [Environment]::NewLine) -replace $ansiPattern,''
+    $scanTextBlocks += $clean
+  }
+  if ($partialLogPath -and (Test-Path -LiteralPath $partialLogPath)) {
+    $pl = (Get-Content -LiteralPath $partialLogPath -Raw) -replace $ansiPattern,''
+    $scanTextBlocks += $pl
+  }
+  $suppressNested = ($env:SUPPRESS_NESTED_DISCOVERY -ne '0')
+  $debugDiscovery = ($env:DEBUG_DISCOVERY_SCAN -eq '1')
+  $suppressedMatchTotal = 0
+  $countedMatchTotal = 0
+  foreach ($block in $scanTextBlocks) {
+    # Determine header occurrences to infer nested dispatcher invocations
+    $headerRegex = [regex]'=== Pester Test Summary ==='
+    $headers = $headerRegex.Matches($block)
+    $headerCount = $headers.Count
+    foreach ($pat in $discoveryFailurePatterns) {
+      $patMatches = [regex]::Matches($block, $pat, 'IgnoreCase')
+      if ($patMatches.Count -gt 0) {
+        $isNestedContext = ($headerCount -gt 1)
+        $shouldSuppress = $suppressNested -and $isNestedContext
+        if ($debugDiscovery) {
+          foreach ($m in $patMatches) {
+            Write-Host ("[debug-discovery] match='{0}' nested={1} headers={2} suppress={3}" -f ($m.Value.Replace([Environment]::NewLine,' ')), $isNestedContext, $headerCount, $shouldSuppress) -ForegroundColor DarkCyan
+            try {
+              $dbgPath = Join-Path $resultsDir 'discovery-debug.log'
+              $start = [Math]::Max(0,$m.Index-200)
+              $len = [Math]::Min(400, ($block.Length - $start))
+              $snippet = $block.Substring($start,$len).Replace("`r"," ").Replace("`n"," ")
+              Add-Content -Path $dbgPath -Value ("MATCH nested={0} suppress={1} headers={2} index={3} snippet=>>> {4} <<<" -f $isNestedContext,$shouldSuppress,$headerCount,$m.Index,$snippet)
+            } catch { }
+          }
+        }
+        if ($shouldSuppress) { $suppressedMatchTotal += $patMatches.Count }
+        else { $discoveryFailureCount += $patMatches.Count; $countedMatchTotal += $patMatches.Count }
+      }
+    }
+  }
+  if ($suppressNested -and $countedMatchTotal -eq 0 -and $suppressedMatchTotal -gt 0) {
+    if ($debugDiscovery) { Write-Host "[debug-discovery] all $suppressedMatchTotal matches suppressed (nested); forcing discoveryFailureCount=0" -ForegroundColor DarkCyan }
+    $discoveryFailureCount = 0
+  }
+  # Hardening: if all potential matches occurred only in nested contexts and were suppressed,
+  # discoveryFailureCount should remain zero. If non-zero here but suppression was active
+  # and headerCount suggested nested-only context, allow an override via DEBUG to inspect.
+  if ($suppressNested -and $discoveryFailureCount -gt 0 -and $debugDiscovery) {
+    Write-Host "[debug-discovery] post-scan count=$discoveryFailureCount (suppression active)" -ForegroundColor DarkCyan
+  }
+} catch { Write-Warning "Discovery failure scan encountered an error: $_" }
+
 # Verify results file exists
 $xmlPath = Join-Path $resultsDir 'pester-results.xml'
 if (-not (Test-Path -LiteralPath $xmlPath -PathType Leaf)) {
@@ -610,6 +725,12 @@ try {
   [int]$skipped = $rootNode.'not-run'
   $passed = $total - $failed - $errors
 
+  # Discovery failure adjustment: if discovery failures detected and no existing failures/errors recorded, promote to errors
+  if ($discoveryFailureCount -gt 0 -and $failed -eq 0 -and $errors -eq 0) {
+    Write-Host "Discovery failures detected ($discoveryFailureCount) with zero test failures; elevating to error state." -ForegroundColor Red
+    $errors = $discoveryFailureCount
+  }
+
   if ($timedOut) {
     Write-Host "⚠️ Timeout reached before tests completed." -ForegroundColor Yellow
   }
@@ -619,14 +740,15 @@ try {
   exit 1
 }
 
-# Derive per-test timing metrics if detailed result available
+# Derive per-test timing metrics if detailed result available (legacy root fields)
 $meanMs = $null; $p95Ms = $null; $maxMs = $null
+$_timingDurations = @()
 try {
   if ($result -and $result.Tests) {
-    $durations = @($result.Tests | Where-Object { $_.Duration } | ForEach-Object { $_.Duration.TotalMilliseconds })
-    if ($durations.Count -gt 0) {
-      $meanMs = [math]::Round(($durations | Measure-Object -Average).Average,2)
-      $sorted = $durations | Sort-Object
+    $_timingDurations = @($result.Tests | Where-Object { $_.Duration } | ForEach-Object { $_.Duration.TotalMilliseconds })
+    if ($_timingDurations.Count -gt 0) {
+      $meanMs = [math]::Round(($_timingDurations | Measure-Object -Average).Average,2)
+      $sorted = $_timingDurations | Sort-Object
       $maxMs = [math]::Round(($sorted[-1]),2)
       $pIndex = [int][math]::Floor(0.95 * ($sorted.Count - 1))
       if ($pIndex -ge 0) { $p95Ms = [math]::Round($sorted[$pIndex],2) }
@@ -676,6 +798,200 @@ try {
     maxTest_ms         = $maxMs
     schemaVersion      = $SchemaSummaryVersion
     timedOut           = $timedOut
+    discoveryFailures  = $discoveryFailureCount
+  }
+
+  # Optional context enrichment (schema v1.2.0+)
+  if ($EmitContext) {
+    try {
+      $envBlock = [PSCustomObject]@{
+        osPlatform       = [System.Runtime.InteropServices.RuntimeInformation]::OSDescription
+        psVersion        = $PSVersionTable.PSVersion.ToString()
+        pesterModulePath = $loadedPester.Path
+      }
+      $runBlock = [PSCustomObject]@{
+        startTime        = $testStartTime.ToString('o')
+        endTime          = $testEndTime.ToString('o')
+        wallClockSeconds = [double]::Parse($testDuration.TotalSeconds.ToString('F3'))
+      }
+      $selectionBlock = [PSCustomObject]@{
+        totalDiscoveredFileCount = $originalTestFileCount
+        selectedTestFileCount    = $selectedTestFileCount
+        maxTestFilesApplied      = $maxTestFilesApplied
+      }
+      Add-Member -InputObject $jsonObj -Name environment -MemberType NoteProperty -Value $envBlock
+      Add-Member -InputObject $jsonObj -Name run -MemberType NoteProperty -Value $runBlock
+      Add-Member -InputObject $jsonObj -Name selection -MemberType NoteProperty -Value $selectionBlock
+    } catch { Write-Warning "Failed to emit context blocks: $_" }
+  }
+
+  # Optional extended timing block (schema v1.3.0+)
+  if ($EmitTimingDetail) {
+    try {
+      if ($_timingDurations.Count -gt 0) {
+        $sortedAll = $_timingDurations | Sort-Object
+        function _pct { param($p,[double[]]$arr) if ($arr.Count -eq 0) { return $null } $idx = [math]::Floor(($p/100) * ($arr.Count - 1)); return [math]::Round($arr[[int]$idx],2) }
+        $minMs = [math]::Round($sortedAll[0],2)
+        $medianMs = _pct 50 $sortedAll
+        $p50Ms = $medianMs
+        $p75Ms = _pct 75 $sortedAll
+        $p90Ms = _pct 90 $sortedAll
+        $p95dMs = _pct 95 $sortedAll
+        $p99Ms = _pct 99 $sortedAll
+        # std dev (population)
+        $meanAll = ($sortedAll | Measure-Object -Average).Average
+        $variance = 0
+        foreach ($v in $sortedAll) { $variance += [math]::Pow(($v - $meanAll),2) }
+        $variance = $variance / $sortedAll.Count
+        $stdDevMs = [math]::Round([math]::Sqrt($variance),2)
+        $timingBlock = [PSCustomObject]@{
+          count        = $sortedAll.Count
+          totalMs      = [math]::Round(($_timingDurations | Measure-Object -Sum).Sum,2)
+          minMs        = $minMs
+          maxMs        = $maxMs
+          meanMs       = $meanMs
+          medianMs     = $medianMs
+          stdDevMs     = $stdDevMs
+          p50Ms        = $p50Ms
+          p75Ms        = $p75Ms
+          p90Ms        = $p90Ms
+          p95Ms        = $p95dMs
+          p99Ms        = $p99Ms
+        }
+      } else {
+        $timingBlock = [PSCustomObject]@{ count = 0; totalMs = 0; minMs = $null; maxMs = $null; meanMs = $null; medianMs = $null; stdDevMs = $null; p50Ms=$null; p75Ms=$null; p90Ms=$null; p95Ms=$null; p99Ms=$null }
+      }
+      Add-Member -InputObject $jsonObj -Name timing -MemberType NoteProperty -Value $timingBlock
+    } catch { Write-Warning "Failed to emit extended timing block: $_" }
+  }
+
+  # Optional stability block (schema v1.4.0+) – placeholder scaffolding (no retry engine yet)
+  if ($EmitStability) {
+    try {
+      $initialFailed = $failed
+      $finalFailed = $failed
+      $recovered = $false # Will remain false until retry logic added
+      $stabilityBlock = [PSCustomObject]@{
+        supportsRetries   = $false
+        retryAttempts     = 0
+        initialFailed     = $initialFailed
+        finalFailed       = $finalFailed
+        recovered         = $recovered
+        flakySuspects     = @()  # Future: list of test names considered flaky
+        retriedTestFiles  = @()  # Future: test file containers retried
+      }
+      Add-Member -InputObject $jsonObj -Name stability -MemberType NoteProperty -Value $stabilityBlock
+    } catch { Write-Warning "Failed to emit stability block: $_" }
+  }
+
+  # Optional discovery diagnostics block (schema v1.5.0+)
+  if ($EmitDiscoveryDetail) {
+    try {
+      $sampleLimit = 5
+      $patternsUsed = @($discoveryFailurePatterns)
+      $samples = @()
+      if ($discoveryFailureCount -gt 0) {
+        # Re-scan combined text capturing snippet lines around the match (first line only for now)
+        $scanSource = ''
+        try {
+          if ($capturedOutputLines.Count -gt 0) { $scanSource = ($capturedOutputLines -join [Environment]::NewLine) }
+          elseif ($partialLogPath -and (Test-Path -LiteralPath $partialLogPath)) { $scanSource = Get-Content -LiteralPath $partialLogPath -Raw }
+        } catch {}
+        if ($scanSource) {
+          $idx = 0
+          foreach ($pat in $discoveryFailurePatterns) {
+            foreach ($m in [regex]::Matches($scanSource,$pat,'IgnoreCase')) {
+              if ($samples.Count -ge $sampleLimit) { break }
+              $snippet = $m.Value
+              # Trim very long snippet to first 200 chars for compactness
+              if ($snippet.Length -gt 200) { $snippet = $snippet.Substring(0,200) + '…' }
+              $samples += [pscustomobject]@{ index = $idx; snippet = $snippet }
+              $idx++
+            }
+            if ($samples.Count -ge $sampleLimit) { break }
+          }
+        }
+      }
+      $discoveryBlock = [pscustomobject]@{
+        failureCount = $discoveryFailureCount
+        patterns     = $patternsUsed
+        sampleLimit  = $sampleLimit
+        samples      = $samples
+        truncated    = ($discoveryFailureCount -gt $samples.Count)
+      }
+      Add-Member -InputObject $jsonObj -Name discovery -MemberType NoteProperty -Value $discoveryBlock
+    } catch { Write-Warning "Failed to emit discovery diagnostics block: $_" }
+  }
+  # Optional outcome classification block (schema v1.6.0+)
+  if ($EmitOutcome) {
+    try {
+      # Derive coarse status
+      $overallStatus = 'Success'
+      $severityRank = 0
+      $flags = @()
+      if ($timedOut) { $overallStatus = 'Timeout'; $severityRank = 4; $flags += 'TimedOut' }
+      elseif ($discoveryFailureCount -gt 0 -and ($failed -eq 0 -and $errors -eq 0)) { $overallStatus = 'DiscoveryFailure'; $severityRank = 3; $flags += 'DiscoveryIssues' }
+      elseif ($failed -gt 0 -or $errors -gt 0) { $overallStatus = 'Failed'; $severityRank = 2; if ($failed -gt 0) { $flags += 'TestFailures' }; if ($errors -gt 0) { $flags += 'Errors' } }
+      elseif ($skipped -gt 0) { $overallStatus = 'Partial'; $severityRank = 1; $flags += 'SkippedTests' }
+      if ($discoveryFailureCount -gt 0) { $flags += 'DiscoveryScanMatches' }
+      $countsBlock = [pscustomobject]@{ total=$total; passed=$passed; failed=$failed; errors=$errors; skipped=$skipped; discoveryFailures=$discoveryFailureCount }
+      $outcomeBlock = [pscustomobject]@{
+        overallStatus = $overallStatus
+        severityRank  = $severityRank
+        flags         = $flags
+        counts        = $countsBlock
+        classificationStrategy = 'heuristic/v1'
+        exitCodeModel = if ($overallStatus -eq 'Success') { 0 } else { 1 }
+      }
+      Add-Member -InputObject $jsonObj -Name outcome -MemberType NoteProperty -Value $outcomeBlock
+    } catch { Write-Warning "Failed to emit outcome classification block: $_" }
+  }
+  # Optional aggregation hints (schema v1.7.1+)
+  if ($EmitAggregationHints) {
+    try {
+      $aggScript = Join-Path $PSScriptRoot 'scripts' 'AggregationHints.Internal.ps1'
+      if (Test-Path -LiteralPath $aggScript) { . $aggScript }
+      # Derive lightweight grouping hints to aid external summarizers.
+      # Contract (initial):
+      #   - dominantTags: top N (<=5) most frequent test tags (excluding Integration by default)
+      #   - fileBucketCounts: size categories by test file test counts (small/medium/large)
+      #   - durationBuckets: count of tests by duration ranges
+      #   - suggestions: advisory strings for potential aggregation strategies
+      if (Get-Command Get-AggregationHintsBlock -ErrorAction SilentlyContinue) {
+        $testsForAgg = @()
+        if ($result -and $result.Tests) { $testsForAgg = $result.Tests }
+        $aggSw = [System.Diagnostics.Stopwatch]::StartNew()
+        $aggBlock = Get-AggregationHintsBlock -Tests $testsForAgg
+        $aggSw.Stop()
+        $aggregatorBuildMs = [math]::Round($aggSw.Elapsed.TotalMilliseconds,2)
+        Add-Member -InputObject $jsonObj -Name aggregationHints -MemberType NoteProperty -Value $aggBlock
+        # Emit timing metric (v1.7.1+)
+        if ($null -eq $jsonObj.PSObject.Properties['aggregatorBuildMs']) {
+          Add-Member -InputObject $jsonObj -Name aggregatorBuildMs -MemberType NoteProperty -Value $aggregatorBuildMs
+        } else {
+          $jsonObj.aggregatorBuildMs = $aggregatorBuildMs
+        }
+        $aggSuccess = $true
+      } else {
+        $aggSuccess = $false
+      }
+      if (-not $aggSuccess) { throw 'Aggregation helper not loaded' }
+    } catch {
+      Write-Warning "Failed to emit aggregation hints: $_"
+      try {
+        $fallback = [pscustomobject]@{
+          dominantTags     = @()
+          fileBucketCounts = [ordered]@{ small=0; medium=0; large=0 }
+          durationBuckets  = [ordered]@{ subSecond=0; oneToFive=0; overFive=0 }
+          suggestions      = @('aggregation-error')
+          strategy         = 'heuristic/v1'
+        }
+        Add-Member -InputObject $jsonObj -Name aggregationHints -MemberType NoteProperty -Value $fallback -Force
+        if ($null -eq $jsonObj.PSObject.Properties['aggregatorBuildMs']) {
+          Add-Member -InputObject $jsonObj -Name aggregatorBuildMs -MemberType NoteProperty -Value $null
+        }
+      } catch { Write-Warning "Failed to attach fallback aggregation hints: $_" }
+    }
   }
   $jsonObj | ConvertTo-Json -Depth 4 | Out-File -FilePath $jsonSummaryPath -Encoding utf8 -ErrorAction Stop
   Write-Host "JSON summary written to: $jsonSummaryPath" -ForegroundColor Gray
@@ -705,12 +1021,28 @@ if ($failed -gt 0 -or $errors -gt 0) {
   if ($null -ne $result) { Write-FailureDiagnostics -PesterResult $result -ResultsDirectory $resultsDir -SkippedCount $skipped -FailuresSchemaVersion $SchemaFailuresVersion }
   elseif ($EmitFailuresJsonAlways) { Ensure-FailuresJson -Directory $resultsDir -Force }
   Write-ArtifactManifest -Directory $resultsDir -SummaryJsonPath $jsonSummaryPath -ManifestVersion $SchemaManifestVersion
-  Write-Host "❌ Tests failed: $failed failure(s), $errors error(s)" -ForegroundColor Red
+  $failureLine = "❌ Tests failed: $failed failure(s), $errors error(s)"
+  if ($discoveryFailureCount -gt 0) { $failureLine += " (includes $discoveryFailureCount discovery failure(s))" }
+  Write-Host $failureLine -ForegroundColor Red
   Write-Error "Test execution completed with failures"
   exit 1
 }
 
 Write-Host "✅ All tests passed!" -ForegroundColor Green
+# Final safety: if discovery failures were detected but no failures/errors were registered, treat as failure.
+if ($discoveryFailureCount -gt 0) {
+  Write-Host "Discovery failures detected ($discoveryFailureCount) but test counts showed success; forcing failure exit." -ForegroundColor Red
+  try {
+    if ($jsonSummaryPath -and (Test-Path -LiteralPath $jsonSummaryPath)) {
+      $adjust = Get-Content -LiteralPath $jsonSummaryPath -Raw | ConvertFrom-Json
+      $adjust.errors = ($adjust.errors + $discoveryFailureCount)
+      $adjust.discoveryFailures = $discoveryFailureCount
+      $adjust | ConvertTo-Json -Depth 4 | Out-File -FilePath $jsonSummaryPath -Encoding utf8
+    }
+  } catch { Write-Warning "Failed to adjust JSON summary for discovery failures: $_" }
+  Write-Error "Test execution completed with discovery failures"
+  exit 1
+}
 if ($EmitFailuresJsonAlways) { Ensure-FailuresJson -Directory $resultsDir -Normalize -Quiet }
 Write-ArtifactManifest -Directory $resultsDir -SummaryJsonPath $jsonSummaryPath -ManifestVersion $SchemaManifestVersion
 exit 0

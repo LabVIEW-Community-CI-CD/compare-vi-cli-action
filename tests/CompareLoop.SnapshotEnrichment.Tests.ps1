@@ -10,8 +10,8 @@ Describe 'Invoke-IntegrationCompareLoop metrics snapshot enrichment' -Tag 'Unit'
     . "$PSScriptRoot/TestHelpers.Schema.ps1"
     $tempDir = Join-Path ([IO.Path]::GetTempPath()) ("snaptest_" + [guid]::NewGuid())
     New-Item -ItemType Directory -Path $tempDir -Force | Out-Null
-    $base = Join-Path $tempDir 'Base.vi'; 'a' | Out-File -FilePath $base
-    $head = Join-Path $tempDir 'Head.vi'; 'b' | Out-File -FilePath $head
+    $base = Join-Path $tempDir 'VI1.vi'; 'a' | Out-File -FilePath $base
+    $head = Join-Path $tempDir 'VI2.vi'; 'b' | Out-File -FilePath $head
     $snapPath = Join-Path $tempDir 'metrics.ndjson'
   $exec = { param($cli,$b,$h,$argList) $dur = 5 + ($script:__d++ % 5); Start-Sleep -Milliseconds $dur; return 0 }
     $script:__d = 0

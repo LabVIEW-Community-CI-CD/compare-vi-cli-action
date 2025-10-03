@@ -1,0 +1,25 @@
+name: Fixture Drift Validation
+
+on:
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  validate:
+    name: Fixture Drift
+    runs-on: windows-latest
+    permissions:
+      actions: read
+      contents: read
+      pull-requests: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Fixture Drift Orchestrator
+        uses: ./.github/actions/fixture-drift
+        with:
+          render-report: 'true'
+          comment-on-fail: 'true'
+          upload-artifacts: 'true'
+          artifact-name: fixture-drift

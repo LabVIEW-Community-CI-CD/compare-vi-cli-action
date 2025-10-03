@@ -6,8 +6,8 @@
   Adjust the paths below to real LabVIEW VI files before invoking. Not intended for production use.
 #>
 param(
-  [string]$BaseVi = 'C:\Path\To\Base.vi',
-  [string]$HeadVi = 'C:\Path\To\Head.vi'
+  [string]$BaseVi = 'C:\Path\To\VI1.vi',
+  [string]$HeadVi = 'C:\Path\To\VI2.vi'
 )
 
 if (-not (Test-Path -LiteralPath $BaseVi)) { Write-Warning "Base VI not found: $BaseVi" }

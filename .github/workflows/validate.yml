@@ -5,7 +5,12 @@ on:
     branches: [ main ]
   push:
     branches: [ main ]
-  workflow_dispatch: {}
+  workflow_dispatch:
+    inputs:
+      summary-verbose:
+        description: 'Emit verbose fixture summary (sets SUMMARY_VERBOSE=true)'
+        required: false
+        default: 'false'
 
 jobs:
   lint:
@@ -29,3 +34,88 @@ jobs:
       - name: Run actionlint
         run: |
           ./bin/actionlint -color
+
+  fixtures:
+    runs-on: [self-hosted, Windows, X64]
+    env:
+      FAIL_ON_NEW_STRUCTURAL: 'false' # toggle to 'true' to fail job on new structural fixture issues
+      SUMMARY_VERBOSE: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.summary-verbose || 'false' }}
+    steps:
+      - uses: actions/checkout@v5
+      - name: Run fixture validator (JSON)
+        shell: pwsh
+        run: |
+          pwsh -File tools/Validate-Fixtures.ps1 -Json -MinBytes 32 > fixture-validation.json
+          $data = Get-Content fixture-validation.json -Raw | ConvertFrom-Json
+          if (-not $data.ok) {
+            Write-Host 'Fixture validation issues detected. (Non-fatal: continuing for now)'
+          }
+      - name: Restore previous fixture validation snapshot (cache)
+        id: restore_prev_fixture_validation
+        uses: actions/cache/restore@v4
+        with:
+          path: fixture-validation-prev.json
+          key: fixture-validation-${{ github.sha }}
+          restore-keys: |
+            fixture-validation-
+      - name: Compute delta vs previous snapshot
+        if: steps.restore_prev_fixture_validation.outputs.cache-hit == 'true'
+        shell: pwsh
+        run: |
+          Write-Host 'Previous snapshot restored. Computing delta.'
+          pwsh -File tools/Diff-FixtureValidationJson.ps1 -Baseline fixture-validation-prev.json -Current fixture-validation.json -FailOnNewStructuralIssue > fixture-validation-delta.json
+          if ($LASTEXITCODE -eq 3) {
+            Write-Host 'New structural fixture issues detected (delta willFail=true).'
+            if ($env:FAIL_ON_NEW_STRUCTURAL -eq 'true') {
+              Write-Error 'Failing job due to FAIL_ON_NEW_STRUCTURAL=true'
+              exit 3
+            } else {
+              Write-Host 'FAIL_ON_NEW_STRUCTURAL=false -> continuing without failing.'
+            }
+          }
+      - name: Validate delta JSON schema (basic)
+        if: steps.restore_prev_fixture_validation.outputs.cache-hit == 'true' && hashFiles('fixture-validation-delta.json') != ''
+        shell: pwsh
+        run: |
+          pwsh -File tools/Test-FixtureValidationDeltaSchema.ps1 -DeltaJsonPath fixture-validation-delta.json
+      - name: Lite schema validate (delta)
+        if: steps.restore_prev_fixture_validation.outputs.cache-hit == 'true' && hashFiles('fixture-validation-delta.json') != ''
+        shell: pwsh
+        run: |
+          pwsh -File tools/Invoke-JsonSchemaLite.ps1 -JsonPath fixture-validation-delta.json -SchemaPath docs/schemas/fixture-validation-delta-v1.schema.json
+      - name: Upload fixture validation delta JSON
+        if: steps.restore_prev_fixture_validation.outputs.cache-hit == 'true' && hashFiles('fixture-validation-delta.json') != ''
+        uses: actions/upload-artifact@v4
+        with:
+          name: validate-fixture-validation-delta-json
+          path: fixture-validation-delta.json
+      - name: Upload fixture validation JSON
+        uses: actions/upload-artifact@v4
+        with:
+          name: validate-fixture-validation-json
+          path: fixture-validation.json
+      - name: Lite schema validate (snapshot)
+        shell: pwsh
+        run: |
+          if (Test-Path fixture-validation.json) { pwsh -File tools/Invoke-JsonSchemaLite.ps1 -JsonPath fixture-validation.json -SchemaPath docs/schemas/fixture-manifest-v1.schema.json 2>$null || Write-Host 'Snapshot schema-lite skipped or failed (non-fatal).' }
+      - name: Append fixture summary
+        shell: pwsh
+        run: pwsh -File tools/Write-FixtureValidationSummary.ps1 -ValidationJson fixture-validation.json -DeltaJson fixture-validation-delta.json
+      - name: Write fixture summary file
+        if: always()
+        shell: pwsh
+        run: pwsh -File tools/Write-FixtureValidationSummary.ps1 -ValidationJson fixture-validation.json -DeltaJson fixture-validation-delta.json -SummaryPath fixture-summary.md
+      - name: Upload fixture summary artifact
+        if: always() && hashFiles('fixture-summary.md') != ''
+        uses: actions/upload-artifact@v4
+        with:
+          name: fixture-validation-summary
+          path: fixture-summary.md
+      - name: Save current snapshot to cache
+        uses: actions/cache/save@v4
+        with:
+          path: fixture-validation.json
+          key: fixture-validation-${{ github.sha }}
+      - name: Copy snapshot for next run reference
+        shell: pwsh
+        run: Copy-Item -LiteralPath fixture-validation.json -Destination fixture-validation-prev.json -Force

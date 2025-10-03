@@ -8,7 +8,9 @@ Describe 'VI Binary Handling Invariants' -Tag 'Unit' {
 
   It 'does not attempt textual reads of .vi files in scripts (grep heuristic)' {
     $root = Resolve-Path (Join-Path $PSScriptRoot '..')
-    $psFiles = Get-ChildItem $root -Recurse -Include *.ps1,*.psm1 | Where-Object { $_.FullName -notmatch '\\tests\\' -and $_.FullName -notmatch '\\tools\\' }
+    $psFiles = Get-ChildItem $root -Recurse -Include *.ps1,*.psm1 | Where-Object { 
+      $_.FullName -notmatch '[/\\]tests[/\\]' -and $_.FullName -notmatch '[/\\]tools[/\\]' 
+    }
     $badPatterns = @(
       'Get-Content\s+[^\n]*\.vi',
       'ReadAllText\(',

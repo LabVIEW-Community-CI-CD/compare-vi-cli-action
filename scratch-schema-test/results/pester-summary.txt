@@ -1,0 +1,9 @@
+=== Pester Test Summary ===
+Total Tests: 3
+Passed: 3
+Failed: 0
+Errors: 0
+Skipped: 0
+Duration: 2.02s
+
+

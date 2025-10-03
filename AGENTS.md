@@ -144,8 +144,8 @@ For Integration tests that require the LabVIEW CLI:
 
 ```powershell
 # Set environment variables
-$env:LV_BASE_VI = "C:\Path\To\Your\TestVIs\Base.vi"
-$env:LV_HEAD_VI = "C:\Path\To\Your\TestVIs\Modified.vi"
+$env:LV_BASE_VI = "C:\Path\To\Your\TestVIs\VI1.vi"
+$env:LV_HEAD_VI = "C:\Path\To\Your\TestVIs\VI2.vi"
 
 # Verify CLI exists
 Test-Path 'C:\Program Files\National Instruments\Shared\LabVIEW Compare\LVCompare.exe'
@@ -289,8 +289,8 @@ cd /path/to/compare-vi-cli-action
 Test-Path 'C:\Program Files\National Instruments\Shared\LabVIEW Compare\LVCompare.exe'
 
 # 2. Set environment variables
-$env:LV_BASE_VI = "C:\TestVIs\Base.vi"
-$env:LV_HEAD_VI = "C:\TestVIs\Modified.vi"
+$env:LV_BASE_VI = "C:\TestVIs\VI1.vi"
+$env:LV_HEAD_VI = "C:\TestVIs\VI2.vi"
 
 # 3. Run without integration tests if CLI not available
 ./Invoke-PesterTests.ps1 -IncludeIntegration false

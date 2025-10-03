@@ -50,6 +50,48 @@ jobs:
     steps:
       - uses: actions/checkout@v5
 
+      - name: Validate canonical fixtures
+        shell: pwsh
+        run: pwsh -File tools/Validate-Fixtures.ps1 -MinBytes 32
+
+      - name: Validate canonical fixtures (JSON)
+        if: always()
+        id: fixtures_json
+        shell: pwsh
+        run: |
+          pwsh -File tools/Validate-Fixtures.ps1 -Json -MinBytes 32 > fixture-validation.json
+          Write-Host 'Wrote fixture-validation.json'
+          $json = Get-Content fixture-validation.json -Raw | ConvertFrom-Json
+          "exitCode=$($json.exitCode)" >> $env:GITHUB_OUTPUT
+          if (-not $json.ok) { Write-Host 'Fixture validation reported issues (non-blocking for smoke)'; }
+
+      - name: Upload fixture validation JSON
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: fixture-validation-json
+          path: fixture-validation.json
+
+      - name: Enforce fixture policy (fail on disallowed issues)
+        if: always()
+        shell: pwsh
+        run: |
+          if (-not (Test-Path fixture-validation.json)) { Write-Host 'No fixture-validation.json found'; exit 0 }
+          $data = Get-Content fixture-validation.json -Raw | ConvertFrom-Json
+          if (-not $data.ok) {
+            $disallowed = @('missing','untracked','hashMismatch','manifestError','duplicate','schema')
+            $found = @($data.issues | Where-Object { $disallowed -contains $_.type })
+            if ($found.Count -gt 0) {
+              Write-Host 'Disallowed fixture issues detected:'
+              $found | ForEach-Object { Write-Host " - $($_.type)" }
+              Write-Error 'Failing smoke due to disallowed fixture validation issues.'
+            } else {
+              Write-Host 'Only size (tooSmall) issues present; continuing.'
+            }
+          } else {
+            Write-Host 'Fixture validation clean.'
+          }
+
       - name: Resolve inputs from repo variables when empty
         id: res
         shell: pwsh
@@ -130,3 +172,22 @@ jobs:
         with:
           name: smoke-html-report
           path: ${{ runner.temp }}/smoke-report/compare-report.html
+
+      - name: Summarize fixture JSON (step summary)
+        if: always()
+        shell: pwsh
+        run: |
+          if (Test-Path fixture-validation.json) {
+            $data = Get-Content fixture-validation.json -Raw | ConvertFrom-Json
+            $lines = @()
+            $lines += '### Fixture Validation (JSON)'
+            $lines += ''
+            $lines += "Exit Code: $($data.exitCode)  OK: $($data.ok)"
+            $lines += ''
+            $lines += 'Counts:'
+            foreach ($k in $data.summaryCounts.PSObject.Properties.Name) { $lines += "- $k: $($data.summaryCounts.$k)" }
+            $lines += ''
+            $lines += 'Issues:'
+            if ($data.issues.Count -eq 0) { $lines += '- (none)' } else { foreach ($i in $data.issues) { $lines += "- $($i.type)" } }
+            $lines -join "`n" | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8
+          }

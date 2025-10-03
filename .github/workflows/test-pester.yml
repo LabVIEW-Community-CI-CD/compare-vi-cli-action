@@ -34,6 +34,12 @@ jobs:
             ./tools/Run-Pester.ps1
           }
 
+      - name: Publish Pester summary
+        if: always()
+        shell: pwsh
+        run: |
+          pwsh -File scripts/Write-PesterSummaryToStepSummary.ps1 -ResultsDir 'tests/results'
+
       - name: Upload Pester artifacts
         if: always()
         uses: actions/upload-artifact@v4

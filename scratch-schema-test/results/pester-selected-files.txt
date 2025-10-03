@@ -1,0 +1,1 @@
+C:\dev\compare-vi-cli-action\tests\Action.CompositeOutputs.Tests.ps1

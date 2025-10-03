@@ -1,0 +1,1 @@
+C:\dev\compare-vi-cli-action\tmp-agg\Mini.Tests.ps1
