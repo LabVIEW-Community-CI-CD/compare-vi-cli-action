@@ -280,6 +280,25 @@ Write-Host "  Timeout Seconds: $TimeoutSeconds"
 Write-Host "  Max Test Files: $MaxTestFiles"
 Write-Host ""
 
+# Fixture protection (snapshot before tests if enabled) ----------------------
+$fixtureProtect = ($env:FIXTURE_PROTECT -eq '1' -or $env:FIXTURE_PROTECT -eq 'true')
+$fixtureProtectReadonly = ($env:FIXTURE_PROTECT_READONLY -eq '1' -or $env:FIXTURE_PROTECT_READONLY -eq 'true')
+$fixtureProtectSnapshotPath = '.fixture-snapshot.json'
+if ($fixtureProtect) {
+  try {
+    $protectScript = Join-Path $PSScriptRoot 'tools' 'Protect-Fixtures.ps1'
+    if (Test-Path -LiteralPath $protectScript) {
+      Write-Host "[FixtureProtect] Starting snapshot (env FIXTURE_PROTECT=1)" -ForegroundColor DarkCyan
+      pwsh -NoLogo -NoProfile -File $protectScript -Command Start -SnapshotPath $fixtureProtectSnapshotPath @(@{SetReadOnly=$true}[$fixtureProtectReadonly]) | Out-Null
+      $fpExit = $LASTEXITCODE
+      if ($fpExit -ne 0) {
+        Write-Host "[FixtureProtect] Snapshot failed (exit $fpExit) – continuing test run but will report" -ForegroundColor Yellow
+        $script:fixtureProtectSnapshotFailed = $true
+      }
+    } else { Write-Host "[FixtureProtect] Script not found at $protectScript" -ForegroundColor Yellow }
+  } catch { Write-Warning "[FixtureProtect] Snapshot phase encountered error: $_" }
+}
+
 # Debug instrumentation (opt-in via COMPARISON_ACTION_DEBUG=1)
 if ($env:COMPARISON_ACTION_DEBUG -eq '1') {
   Write-Host '[debug] Bound parameters:' -ForegroundColor DarkCyan
@@ -1017,6 +1036,19 @@ try {
 
 # Exit with appropriate code
 if ($failed -gt 0 -or $errors -gt 0) {
+  # Run fixture integrity assert (best-effort) before exiting with failures
+  if ($fixtureProtect) {
+    try {
+      $protectScript = Join-Path $PSScriptRoot 'tools' 'Protect-Fixtures.ps1'
+      if (Test-Path -LiteralPath $protectScript -and -not $script:fixtureProtectAsserted) {
+        Write-Host "[FixtureProtect] Asserting fixture integrity (pre-failure exit)" -ForegroundColor DarkCyan
+        pwsh -NoLogo -NoProfile -File $protectScript -Command Assert -SnapshotPath $fixtureProtectSnapshotPath @(@{ClearReadOnly=$true}[$fixtureProtectReadonly]) | Out-Null
+        $script:fixtureProtectAsserted = $true
+        $script:fixtureProtectAssertExit = $LASTEXITCODE
+        if ($script:fixtureProtectAssertExit -ne 0) { Write-Host "[FixtureProtect] Integrity violations detected (exit $script:fixtureProtectAssertExit)" -ForegroundColor Red }
+      }
+    } catch { Write-Warning "[FixtureProtect] Assert phase error: $_" }
+  }
   # Emit failure diagnostics using helper function (guard null result)
   if ($null -ne $result) { Write-FailureDiagnostics -PesterResult $result -ResultsDirectory $resultsDir -SkippedCount $skipped -FailuresSchemaVersion $SchemaFailuresVersion }
   elseif ($EmitFailuresJsonAlways) { Ensure-FailuresJson -Directory $resultsDir -Force }
@@ -1045,4 +1077,20 @@ if ($discoveryFailureCount -gt 0) {
 }
 if ($EmitFailuresJsonAlways) { Ensure-FailuresJson -Directory $resultsDir -Normalize -Quiet }
 Write-ArtifactManifest -Directory $resultsDir -SummaryJsonPath $jsonSummaryPath -ManifestVersion $SchemaManifestVersion
+# Final success path: run fixture integrity assert if enabled and not yet asserted
+if ($fixtureProtect -and -not $script:fixtureProtectAsserted) {
+  try {
+    $protectScript = Join-Path $PSScriptRoot 'tools' 'Protect-Fixtures.ps1'
+    if (Test-Path -LiteralPath $protectScript) {
+      Write-Host "[FixtureProtect] Asserting fixture integrity (success path)" -ForegroundColor DarkCyan
+      pwsh -NoLogo -NoProfile -File $protectScript -Command Assert -SnapshotPath $fixtureProtectSnapshotPath @(@{ClearReadOnly=$true}[$fixtureProtectReadonly]) | Out-Null
+      $script:fixtureProtectAssertExit = $LASTEXITCODE
+      if ($script:fixtureProtectAssertExit -ne 0) { Write-Host "[FixtureProtect] Integrity violations detected (exit $script:fixtureProtectAssertExit)" -ForegroundColor Red }
+    }
+  } catch { Write-Warning "[FixtureProtect] Assert phase error: $_" }
+}
+if ($fixtureProtect -and $script:fixtureProtectAssertExit -and $script:fixtureProtectAssertExit -ne 0) {
+  Write-Host "[FixtureProtect] Returning fixture integrity violation exit code override $script:fixtureProtectAssertExit" -ForegroundColor Red
+  exit $script:fixtureProtectAssertExit
+}
 exit 0

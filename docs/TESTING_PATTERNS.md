@@ -167,3 +167,75 @@ When asserting performance/timing derived fields (mean/p95/max), avoid hard-code
 - Add a focused regression test ensuring PesterAvailability continues to pass after a nested dispatcher run with synthetic failures.
 
 Contributions welcome—open an issue or PR if you extend these patterns.
+
+---
+
+## Watcher-Specific Patterns (Fixture Mutation)
+
+### Problem: Post-Startup Mutation Lock Contention
+
+Early attempts to mutate `VI1.vi` immediately after launching `tools/Start-FixtureWatcher.ps1` caused repeated `UnauthorizedAccessException` during file growth (append/SetLength/read+write). The watcher performs rapid size/hash polling (every ~150ms) plus initial hashing, creating high contention for writes—especially in environments with AV or indexing.
+
+### Added Parameter: `-StartupPollDelayMs` / `WATCHER_STARTUP_POLL_DELAY_MS`
+
+The watcher now supports a startup synthetic-poll defer window. When set, the internal length/hash synthetic polling is skipped until the delay elapses. This is useful if a test *must* mutate immediately after start without competing reads. (Default = 0, meaning no delay.)
+
+Usage example:
+
+```powershell
+$env:WATCHER_STARTUP_POLL_DELAY_MS = '1000'
+pwsh -File tools/Start-FixtureWatcher.ps1 -Targets VI1.vi -DurationSeconds 5
+```
+
+### Two-Phase Atomic Swap Strategy (Preferred)
+
+Instead of fighting for an exclusive write handle right after watcher startup, tests now:
+
+1. Copy fixture into sandbox.
+2. Pre-grow the sandbox copy *before* starting the watcher (Initial event captures enlarged length + hash).
+3. Start watcher.
+4. Create a second temporary enlarged copy, then perform an atomic rename swap (`Move-Item -Force`) to introduce a new size/hash.
+5. Assert a `Changed` event with the final target length and a non-null sha256.
+
+Benefits:
+
+- Avoids prolonged exclusive locks.
+- Short rename swap reduces contention versus in-place growth.
+- Still validates runtime detection semantics (Changed event) without relying on forced debug emissions.
+
+### When to Use Startup Delay vs. Atomic Swap
+
+| Scenario | Use Delay | Use Atomic Swap |
+|----------|-----------|-----------------|
+| Need to mutate immediately after start with minimal size delta | ✅ | Possible |
+| Large mutations or multiple growth steps | Optional | ✅ (preferred) |
+| CI environments with aggressive AV scanning | Optional | ✅ |
+| Simplest deterministic single change | ❌ (not needed) | ✅ |
+
+### Anti-Pattern: Forced Synthetic `Changed` Spam
+
+Earlier debugging relied on `WATCHER_FORCE_CHANGED` and produced zero-length `Changed` events, obscuring real detection quality. Tests should explicitly filter zero-length `Changed` lines and avoid enabling forced mode outside targeted diagnostics.
+
+### Sample Snippet (Atomic Swap Core)
+
+```powershell
+$firstGrowth = 2048
+$secondGrowth = 3072
+Copy-Item $src $dest
+# Phase 1 grow
+$fs = [IO.File]::Open($dest,'Open','Write','ReadWrite'); try { $fs.SetLength($baseline + $firstGrowth) } finally { $fs.Dispose() }
+$proc = Start-Process pwsh -PassThru -ArgumentList @('-File','tools/Start-FixtureWatcher.ps1','-Targets','VI1.vi','-DurationSeconds','10','-Quiet','-LogPath','watch.ndjson')
+# Wait Initial...
+$temp = Join-Path (Split-Path $dest) ([guid]::NewGuid())
+Copy-Item $dest $temp; (Get-Item $temp).IsReadOnly=$false
+$fs2=[IO.File]::Open($temp,'Open','Write','ReadWrite'); try { $fs2.SetLength((Get-Item $dest).Length + $secondGrowth) } finally { $fs2.Dispose() }
+Move-Item $temp $dest -Force
+# Poll for Changed...
+```
+
+### Future Watcher Enhancements
+
+- Optional hash-on-demand mode: compute hash only after size delta to further reduce early contention.
+- Lightweight content sampler (first/last N bytes) to avoid full `ReadAllBytes` for large files in loop tests.
+- Structured diagnostic event type (instead of synthetic forced Changed) for clearer debugging without polluting metrics.
+

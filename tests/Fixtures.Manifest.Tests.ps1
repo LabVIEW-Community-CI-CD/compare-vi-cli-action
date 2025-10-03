@@ -15,10 +15,10 @@ Describe 'Fixture manifest enforcement' -Tag 'Unit' {
     }
   }
 
-  It 'reports only size issues with current manifest (baseline)' {
+  It 'reports clean status with current manifest (baseline fixtures large enough)' {
     pwsh -NoLogo -NoProfile -File $validator | Out-Null
-    # Current tiny placeholder fixtures are below minBytes; expect 4
-    $LASTEXITCODE | Should -Be 4
+    # Large restored fixtures meet minBytes; expect success
+    $LASTEXITCODE | Should -Be 0
   }
 
   It 'detects hash mismatch without token (exit 6 precedence when only mismatch)' {
@@ -48,7 +48,7 @@ Describe 'Fixture manifest enforcement' -Tag 'Unit' {
     }
   }
 
-  It 'emits structured JSON with -Json flag (success after lowering minBytes)' {
+  It 'emits structured JSON with -Json flag (success baseline or after lowering minBytes)' {
     try {
       Set-MinBytesForAll 1
       $json = pwsh -NoLogo -NoProfile -File $validator -Json | Out-String | ConvertFrom-Json

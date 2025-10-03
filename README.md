@@ -581,6 +581,114 @@ To retain the rendered summary as an artifact for external dashboards, append:
 
 Set `SUMMARY_VERBOSE: 'true'` (or run the `Validate` workflow manually with the input `summary-verbose: true`) to enrich `fixture-summary.md` with detailed sections.
 
+## Fixture Integrity Protection & Live Watcher
+
+To defend against silent truncation or mutation of the canonical fixtures during a test or workflow run, the dispatcher ships optional **snapshot + assert** protection and an event **watcher**.
+
+### Protection (Snapshot / Assert)
+
+Script: `tools/Protect-Fixtures.ps1`
+
+Two phases:
+
+1. Snapshot (`-Command Start`): records length + SHA256 + manifest cross-check (and optionally sets files read-only).
+2. Assert   (`-Command Assert`): re-computes and compares; returns integrity-specific exit codes.
+
+Environment flags (consumed automatically by `Invoke-PesterTests.ps1`):
+
+| Env Var | Values | Effect |
+|---------|--------|--------|
+| `FIXTURE_PROTECT` | `1` / `true` | Enable snapshot before tests and assert after tests |
+| `FIXTURE_PROTECT_READONLY` | `1` / `true` | Apply read-only attribute after snapshot; cleared after assert |
+
+Exit codes (integrity):
+
+| Code | Meaning |
+|------|---------|
+| 11 | Missing fixture at snapshot |
+| 12 | Manifest mismatch at snapshot (hash/minBytes) |
+| 13 | Hash mismatch at assert |
+| 14 | Size shrink at assert |
+| 15 | Missing (previously existed) at assert |
+| 16 | Snapshot file invalid / unreadable |
+| 17 | Manifest drift (unless ignored) |
+
+Dispatcher logic: test failures still surface as exit code `1`; if tests pass but integrity fails, the integrity exit code overrides (causing the job to fail with meaningful classification).
+
+Manual usage examples:
+
+```powershell
+pwsh -File tools/Protect-Fixtures.ps1 -Command Start -SetReadOnly
+pwsh -File tools/Protect-Fixtures.ps1 -Command Assert -ClearReadOnly
+```
+
+### Live Watcher (Optional Forensics)
+
+Script: `tools/Start-FixtureWatcher.ps1`
+
+Emits JSON lines (stdout and optional `-LogPath`) when `VI1.vi` / `VI2.vi` (or custom `-Targets`) change:
+
+Events: `Initial`, `Changed`, `Created`, `Deleted`, `Renamed`, `Heartbeat`, `Error`.
+
+When `-IncludePerfMetrics` is supplied, each `Heartbeat` event is enriched with:
+
+| Field | Meaning |
+|-------|---------|
+| `cpuPercent` | Approximate overall host CPU utilization (100 - % Idle Time) rounded to 2 decimals |
+| `diskWriteBytesPerSec` | LogicalDisk write throughput (bytes/sec) for the drive hosting the repo (rounded) |
+
+Key parameters:
+
+| Param | Purpose |
+|-------|---------|
+| `-HeartbeatSeconds <n>` | Periodically emit a `Heartbeat` event capturing current size/hash |
+| `-Once` | Emit initial state then exit (single snapshot) |
+| `-IncludeSubdirectories` | Include `.vi` changes in subdirectories |
+| `-DurationSeconds <n>` | Auto-stop after N seconds |
+| `-LogPath <file>` | Append each JSON event line to a file (UTF-8) |
+| `-IncludePerfMetrics` | Add CPU and disk write metrics to Heartbeat events |
+| `-IncludeProcessStatus` | Add `labviewRunning` / `lvcompareRunning` flags to Heartbeat events |
+
+Example (5‑minute watch with 30‑second heartbeats):
+
+```powershell
+pwsh -File tools/Start-FixtureWatcher.ps1 -DurationSeconds 300 -HeartbeatSeconds 30 -LogPath fixture-watch.ndjson
+```
+
+Sample event line (formatted for readability):
+
+```jsonc
+{
+  "schema":"fixture-watch-log-v1",
+  "tsUtc":"2025-10-03T12:34:56.789Z",
+  "event":"Changed",
+  "name":"VI1.vi",
+  "length":7659,
+  "sha256":"...",
+  "exists":true
+}
+```
+
+Sample heartbeat with performance metrics (when `-IncludePerfMetrics`):
+
+```jsonc
+{
+  "schema":"fixture-watch-log-v1",
+  "tsUtc":"2025-10-03T12:35:26.012Z",
+  "event":"Heartbeat",
+  "name":"VI1.vi",
+  "length":7659,
+  "sha256":"...",
+  "exists":true,
+  "cpuPercent":17.42,
+  "diskWriteBytesPerSec":2048.11,
+  "labviewRunning":false,
+  "lvcompareRunning":false
+}
+```
+
+Combine watcher + protection for maximum assurance (start watcher in parallel; integrity assert consumes snapshot independently).
+
 
 For information on testing, building, documentation generation, and the release process, see the **[Developer Guide](./docs/DEVELOPER_GUIDE.md)**.
 
@@ -613,6 +721,30 @@ Validation tests:
 ## Troubleshooting
 
 For common issues including path resolution problems, exit code interpretation, performance tuning, and test environment setup, see the **[Troubleshooting Guide](./docs/TROUBLESHOOTING.md)**.
+
+### Fixture Protection & Watcher Troubleshooting
+
+| Symptom | Possible Cause | Suggested Action |
+|---------|----------------|------------------|
+| Integrity assert returns 13 (hash mismatch) after tests | Test mutated fixture or external process rewrote file | Inspect `fixture-integrity-report-v1` JSON; start watcher with heartbeats to capture mutation timeline. |
+| Integrity assert returns 14 (size shrink) | Truncation or failed write replaced file | Compare `expectedLength` vs `actualLength`; correlate watcher `Changed` events near shrink timestamp. |
+| Integrity assert returns 15 (missing) | File deleted or renamed mid-run | Check watcher `Deleted` / `Renamed` events; restore file from git and re-run. |
+| Snapshot fails with 12 (manifest mismatch) on legitimate update | Manifest not regenerated with `[fixture-update]` practice | Run `pwsh -File tools/Update-FixtureManifest.ps1 -Allow` after intentional change; commit with rationale. |
+| No correlated watcher events in integrity report | `-CorrelateWatcher` not supplied or log path missing | Ensure dispatcher or manual assert passes `-CorrelateWatcher -WatcherLogPath <path>` and watcher ran concurrently. |
+| Heartbeat events missing | Heartbeat interval longer than run, or watcher ended early | Lower `-HeartbeatSeconds`, increase `-DurationSeconds`, verify watcher process still active. |
+| Read-only not applied | File attribute set failed (locked file) | Check warnings; ensure no process holds exclusive handle; retry without read-only to isolate. |
+| Exit code 17 (manifest drift) | Manifest updated after snapshot (branch switch or regeneration) | Set `IgnoreManifestDrift` if acceptable, otherwise snapshot again after manifest change. |
+
+Correlating watcher events: run watcher in parallel and pass its log path when asserting manually:
+
+```powershell
+$env:FIXTURE_PROTECT='1'
+powershell -File tools/Start-FixtureWatcher.ps1 -HeartbeatSeconds 15 -LogPath fixture-watch.ndjson -DurationSeconds 600 &
+# run tests ...
+pwsh -File tools/Protect-Fixtures.ps1 -Command Assert -CorrelateWatcher -WatcherLogPath fixture-watch.ndjson
+```
+
+Integrity report fields `correlatedWatcherEvents` (last <=25) and `correlatedWatcherSource` help time-align file mutations with test phases.
 
 ## Documentation
 
