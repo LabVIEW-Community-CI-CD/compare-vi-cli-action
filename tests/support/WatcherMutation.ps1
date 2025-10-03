@@ -115,8 +115,8 @@ function Invoke-AtomicSwap {
       return $true
     } catch {
       $lastError = $_
-      $isTransient = $_.Exception -is [System.IO.IOException] -or 
-                     $_.Exception -is [System.UnauthorizedAccessException]
+      $isTransient = $_.Exception -is [System.IO.IOException]
+                     -or $_.Exception -is [System.UnauthorizedAccessException]
       
       if (-not $isTransient -or $attempt -ge $MaxRetries) {
         throw "Atomic swap failed after $($attempt + 1) attempts: $lastError"
