@@ -161,6 +161,127 @@ When asserting performance/timing derived fields (mean/p95/max), avoid hard-code
 
 ---
 
+## Watcher-Specific Patterns
+
+### Helper Utilities
+
+Watcher tests involving file mutation and FileSystemWatcher event validation use centralized helper utilities located in `tests/support/WatcherMutation.ps1`. These provide two-phase atomic file operations to ensure deterministic test behavior.
+
+**Purpose:**
+- Enable reliable file growth and atomic replacement for watcher event testing
+- Abstract transient I/O error handling with retry logic
+- Provide deterministic filler patterns for file growth
+
+**Available Functions:**
+
+1. **`New-GrownCopy`** - Copies a source file and grows it by appending extra bytes
+   - Parameters: `-Source <path>`, `-ExtraBytes <int>`, `-Destination <optional path>`
+   - Returns object with `Path` and `FinalLength` properties
+   - Uses deterministic 'A' byte pattern for growth
+
+2. **`Invoke-AtomicSwap`** - Atomically replaces original file with replacement file
+   - Parameters: `-Original <path>`, `-Replacement <path>`, `-MaxRetries 12`, `-RetryDelayMs 50`
+   - Handles read-only attributes and retries on transient I/O errors
+   - Returns boolean success indicator
+
+**Usage Example (from FixtureWatcher.ChangeHash.Tests.ps1):**
+
+```powershell
+BeforeAll {
+  . "$PSScriptRoot/support/WatcherMutation.ps1"
+  $script:baselineFile = Join-Path $TestDrive "baseline.txt"
+  "Original content" | Set-Content -NoNewline -LiteralPath $script:baselineFile -Encoding utf8
+}
+
+It 'detects file change via grown copy and atomic swap' {
+  # Use helper to create grown copy
+  $grown = New-GrownCopy -Source $script:baselineFile -ExtraBytes 100
+  $grown.FinalLength | Should -BeGreaterThan (Get-Item -LiteralPath $script:baselineFile).Length
+
+  # Use helper to atomically swap
+  $swapSuccess = Invoke-AtomicSwap -Original $script:baselineFile -Replacement $grown.Path
+  $swapSuccess | Should -BeTrue
+  
+  # Verify file hash changed
+  $newHash = (Get-FileHash -LiteralPath $script:baselineFile -Algorithm SHA256).Hash
+  # ... assertions
+}
+```
+
+### Zero-Length Changed Guard
+
+**Rationale:** Prevent regression where FileSystemWatcher emits `Changed` events for zero-length files, which can cause spurious event spam and invalid hash calculations.
+
+**Test:** `tests/FixtureWatcher.ZeroLengthGuard.Tests.ps1`
+
+**Validation Strategy:**
+- Start watcher without debug/force flags
+- Run for bounded polling window (e.g., 600ms)
+- Assert: No `Changed` event where file `Length -eq 0`
+- Passes reliably with typical runtime < 1s
+
+**Code Fragment:**
+
+```powershell
+It 'does not emit Changed events with zero length during polling window' {
+  $fsw = [System.IO.FileSystemWatcher]::new($watchDir)
+  $fsw.EnableRaisingEvents = $true
+  
+  # ... register event handler that captures file length
+  
+  Start-Sleep -Milliseconds 600
+  
+  # Verify no zero-length Changed events
+  foreach ($evt in $receivedEvents) {
+    $fileInfo = Get-Item -LiteralPath $evt.SourceEventArgs.FullPath
+    $fileInfo.Length | Should -BeGreaterThan 0
+  }
+}
+```
+
+### Startup Poll Delay Test
+
+**Purpose:** Validate that watcher honors `WATCHER_STARTUP_POLL_DELAY_MS` environment variable for deferring initial polling operations.
+
+**Test:** `tests/FixtureWatcher.StartupDelay.Tests.ps1`
+
+**Validation Approach:**
+- Set environment variable to modest delay (e.g., 150ms)
+- Start watcher and record start timestamp
+- Trigger immediate file change (before delay window)
+- Wait beyond delay window and trigger second change
+- Verify environment variable was applied correctly
+- Test runtime typically < 1s
+
+**Timing Considerations:**
+- Use generous overall timeout (e.g., 1.5s) to avoid flakiness
+- Allow tolerance for event processing latency
+- Rely on monotonic stopwatch for elapsed time calculation
+- Core assertion: env var is respected by configuration layer
+
+**Implementation Notes:**
+- FileSystemWatcher events are asynchronous; avoid strict timing assertions
+- Focus on configuration validation rather than precise event timing
+- Restore original env var value in `finally` block
+
+### Tagging
+
+All watcher-related tests include a shared `Watcher` tag in the `Describe` block for selective test runs:
+
+```powershell
+Describe 'FixtureWatcher ChangeHash' -Tag 'Unit', 'Watcher' { ... }
+Describe 'FixtureWatcher ZeroLengthChangedGuard' -Tag 'Unit', 'Watcher' { ... }
+Describe 'FixtureWatcher StartupPollDelay' -Tag 'Unit', 'Watcher' { ... }
+```
+
+**Running watcher tests only:**
+
+```powershell
+Invoke-Pester -Tag Watcher -Output Detailed
+```
+
+---
+
 ## Future Enhancements
 
 - Optional wrapper to run nested dispatcher in a separate PowerShell process to further insulate mock state.
