@@ -8,6 +8,13 @@ BeforeAll {
   
   # Canonical path constant
   $script:canonical = 'C:\Program Files\National Instruments\Shared\LabVIEW Compare\LVCompare.exe'
+  # Enable test bypass for Resolve-Cli to avoid filesystem dependency
+  $script:_origBypass = $env:LVCOMPARE_TEST_BYPASS
+  $env:LVCOMPARE_TEST_BYPASS = '1'
+}
+
+AfterAll {
+  if ($null -ne $script:_origBypass) { $env:LVCOMPARE_TEST_BYPASS = $script:_origBypass } else { Remove-Item Env:LVCOMPARE_TEST_BYPASS -ErrorAction SilentlyContinue }
 }
 
 Describe 'Invoke-CompareVI core behavior' -Tag 'Unit' {
@@ -100,6 +107,13 @@ Describe 'Invoke-CompareVI core behavior' -Tag 'Unit' {
 }
 
 Describe 'Resolve-Cli canonical path enforcement' -Tag 'Unit' {
+  BeforeAll {
+    $script:_origAllow32 = $env:LVCOMPARE_ALLOW_32BIT
+    $env:LVCOMPARE_ALLOW_32BIT = '1'
+  }
+  AfterAll {
+    if ($null -ne $script:_origAllow32) { $env:LVCOMPARE_ALLOW_32BIT = $script:_origAllow32 } else { Remove-Item Env:LVCOMPARE_ALLOW_32BIT -ErrorAction SilentlyContinue }
+  }
   BeforeEach {
     # Use Pester's native TestDrive
     $vis = Join-Path $TestDrive 'vis'

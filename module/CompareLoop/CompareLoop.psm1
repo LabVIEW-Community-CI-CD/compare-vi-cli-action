@@ -497,9 +497,9 @@ function Invoke-IntegrationCompareLoop {
   }
   if ($result.DiffCount -gt 0 -and $DiffSummaryFormat -ne 'None') {
     $summary = switch ($DiffSummaryFormat) {
-      'Text' { "Diffs detected: $($result.DiffCount) between `nBase: $($result.BasePath)`nHead: $($result.HeadPath)" }
-      'Markdown' { "### VI Compare Diff Summary\n\n*Base:* `$($result.BasePath)`  \n*Head:* `$($result.HeadPath)`  \n**Diff Iterations:** $($result.DiffCount)  \n**Total Iterations:** $($result.Iterations)" }
-      'Html' { "<h3>VI Compare Diff Summary</h3><ul><li><b>Base:</b> $([System.Web.HttpUtility]::HtmlEncode($result.BasePath))</li><li><b>Head:</b> $([System.Web.HttpUtility]::HtmlEncode($result.HeadPath))</li><li><b>Diff Iterations:</b> $($result.DiffCount)</li><li><b>Total Iterations:</b> $($result.Iterations)</li></ul>" }
+  'Text' { "Diffs detected: $($result.DiffCount) between `nVI1: $($result.BasePath)`nVI2: $($result.HeadPath)" }
+  'Markdown' { "### VI Compare Diff Summary\n\n*VI1:* `$($result.BasePath)`  \n*VI2:* `$($result.HeadPath)`  \n**Diff Iterations:** $($result.DiffCount)  \n**Total Iterations:** $($result.Iterations)" }
+  'Html' { "<h3>VI Compare Diff Summary</h3><ul><li><b>VI1:</b> $([System.Web.HttpUtility]::HtmlEncode($result.BasePath))</li><li><b>VI2:</b> $([System.Web.HttpUtility]::HtmlEncode($result.HeadPath))</li><li><b>Diff Iterations:</b> $($result.DiffCount)</li><li><b>Total Iterations:</b> $($result.Iterations)</li></ul>" }
     }
     $result.DiffSummary = $summary
     if ($DiffSummaryPath) {

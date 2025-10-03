@@ -18,13 +18,20 @@ $script:HeadVi = $env:LV_HEAD_VI
 # Authoritative fallback: always try to resolve repo-root VIs; environment vars override only if valid.
 try {
   $repoRootForFallback = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path
-  $fallbackBase = Resolve-Path (Join-Path $repoRootForFallback 'Base.vi') -ErrorAction SilentlyContinue
-  $fallbackHead = Resolve-Path (Join-Path $repoRootForFallback 'Head.vi') -ErrorAction SilentlyContinue
+  # Prefer real VI artifacts VI1.vi / VI2.vi; fall back to legacy Base.vi / Head.vi only if needed
+  $candidateNamesBase = @('VI1.vi','Base.vi')
+  $candidateNamesHead = @('VI2.vi','Head.vi')
   if (-not $script:BaseVi -or -not (Test-Path -LiteralPath $script:BaseVi -PathType Leaf)) {
-    if ($fallbackBase) { $script:BaseVi = $fallbackBase.Path }
+    foreach ($n in $candidateNamesBase) {
+      $cand = Resolve-Path (Join-Path $repoRootForFallback $n) -ErrorAction SilentlyContinue
+      if ($cand) { $script:BaseVi = $cand.Path; break }
+    }
   }
   if (-not $script:HeadVi -or -not (Test-Path -LiteralPath $script:HeadVi -PathType Leaf)) {
-    if ($fallbackHead) { $script:HeadVi = $fallbackHead.Path }
+    foreach ($n in $candidateNamesHead) {
+      $cand = Resolve-Path (Join-Path $repoRootForFallback $n) -ErrorAction SilentlyContinue
+      if ($cand) { $script:HeadVi = $cand.Path; break }
+    }
   }
   # Final guard: if still missing, set to explicit null marker for diagnostics
   if (-not $script:BaseVi) { $script:BaseVi = $null }
@@ -84,7 +91,7 @@ BeforeAll {
   }
 }
 
-Describe 'Invoke-CompareVI (real CLI on self-hosted)' -Tag Integration {
+Describe 'Invoke-CompareVI (real CLI on self-hosted; VI1.vi vs VI2.vi artifacts)' -Tag Integration {
   It 'prerequisites available (skip remaining if not)' {
     try {
       $prereq = $false
@@ -119,7 +126,7 @@ Describe 'Invoke-CompareVI (real CLI on self-hosted)' -Tag Integration {
     if ($res.ExitCode -eq 1) {
       $res.Diff | Should -BeTrue
     } else {
-      Write-Host "NOTE: LVCompare reported no diff for Base vs Head (exit 0). Treating as acceptable (environment VIs may be identical)." -ForegroundColor Yellow
+  Write-Host "NOTE: LVCompare reported no diff for VI1.vi vs VI2.vi (exit 0). Treating as acceptable (environment VIs may be identical)." -ForegroundColor Yellow
       $res.Diff | Should -BeFalse
       Set-ItResult -Skipped -Because 'No diff produced; cannot assert diff=true semantics'
     }

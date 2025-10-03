@@ -1,0 +1,23 @@
+{
+  "schema": "integration-runbook-v1",
+  "generated": "2025-10-03T00:13:55.6063568-07:00",
+  "phases": [
+    {
+      "name": "Prereqs",
+      "status": "Passed",
+      "details": {
+        "powerShellVersion": "7.5.3",
+        "powerShellOk": true
+      }
+    },
+    {
+      "name": "CanonicalCli",
+      "status": "Passed",
+      "details": {
+        "canonicalPath": "C:\\\\Program Files\\\\National Instruments\\\\Shared\\\\LabVIEW Compare\\\\LVCompare.exe",
+        "exists": true
+      }
+    }
+  ],
+  "overallStatus": "Passed"
+}

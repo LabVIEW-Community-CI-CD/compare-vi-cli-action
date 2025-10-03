@@ -9,12 +9,19 @@ $script:HeadVi = $env:LV_HEAD_VI
 try {
   $repoRootForFallback = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path
   if (-not $script:BaseVi -or -not (Test-Path -LiteralPath $script:BaseVi -PathType Leaf)) {
-    $candidate = Resolve-Path (Join-Path $repoRootForFallback 'Base.vi') -ErrorAction SilentlyContinue
-    if ($candidate) { $script:BaseVi = $candidate.Path }
+    # Prefer real VIs VI1.vi / VI2.vi over legacy Base.vi / Head.vi names
+    $candidates = @('VI1.vi','Base.vi')
+    foreach ($name in $candidates) {
+      $candidate = Resolve-Path (Join-Path $repoRootForFallback $name) -ErrorAction SilentlyContinue
+      if ($candidate) { $script:BaseVi = $candidate.Path; break }
+    }
   }
   if (-not $script:HeadVi -or -not (Test-Path -LiteralPath $script:HeadVi -PathType Leaf)) {
-    $candidate = Resolve-Path (Join-Path $repoRootForFallback 'Head.vi') -ErrorAction SilentlyContinue
-    if ($candidate) { $script:HeadVi = $candidate.Path }
+    $candidates = @('VI2.vi','Head.vi')
+    foreach ($name in $candidates) {
+      $candidate = Resolve-Path (Join-Path $repoRootForFallback $name) -ErrorAction SilentlyContinue
+      if ($candidate) { $script:HeadVi = $candidate.Path; break }
+    }
   }
 } catch { Write-Verbose "Fallback resolution failed: $($_.Exception.Message)" -Verbose }
 $script:Prereqs = $false

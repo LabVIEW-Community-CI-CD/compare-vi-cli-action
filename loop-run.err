@@ -1,0 +1,6 @@
+[31;1mif: [0mC:\dev\compare-vi-cli-action\scripts\Run-AutonomousIntegrationLoop.ps1:115:33[0m
+[31;1m[0m[36;1mLine |[0m
+[31;1m[0m[36;1m[36;1m 115 | [0m   [string]$DiffSummaryFormat = ([36;1mif[0m ($env:LOOP_DIFF_SUMMARY_FORMAT) {  .[0m
+[31;1m[0m[36;1m[36;1m[0m[36;1m[0m[36;1m     | [31;1m                                 ~~[0m
+[31;1m[0m[36;1m[36;1m[0m[36;1m[0m[36;1m[31;1m[31;1m[36;1m     | [31;1mThe term 'if' is not recognized as a name of a cmdlet, function, script file, or executable program. Check the[0m
+[31;1m[0m[36;1m[36;1m[0m[36;1m[0m[36;1m[31;1m[31;1m[36;1m[31;1m[36;1m     | [31;1mspelling of the name, or if a path was included, verify that the path is correct and try again.[0m

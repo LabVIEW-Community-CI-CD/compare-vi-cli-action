@@ -40,3 +40,8 @@ jobs:
           $json = Get-Content runbook-ci.json -Raw | ConvertFrom-Json
           if ($json.schema -ne 'integration-runbook-v1') { throw 'Schema mismatch' }
           if (-not $json.phases) { throw 'No phases in runbook output' }
+      - name: Validate Runbook JSON (extended ordering & shape)
+        shell: pwsh
+        run: |
+          if (-not (Test-Path scripts/Validate-RunbookJson.ps1)) { throw 'Validator script missing' }
+          pwsh -File scripts/Validate-RunbookJson.ps1 -Path runbook-ci.json -FailOnWarning

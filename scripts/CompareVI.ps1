@@ -6,6 +6,10 @@ function Resolve-Cli {
     [string]$Explicit
   )
   $canonical = 'C:\Program Files\National Instruments\Shared\LabVIEW Compare\LVCompare.exe'
+  $expectedLabVIEW64 = 'C:\Program Files\National Instruments\LabVIEW 2025\LabVIEW.exe'
+
+  $testBypass = $false
+  if ($env:LVCOMPARE_TEST_BYPASS -match '^(1|true)$') { $testBypass = $true }
 
   # If explicit path provided, enforce canonical path only
   if ($Explicit) {
@@ -33,8 +37,37 @@ function Resolve-Cli {
     }
   }
 
+  # Test bypass: allow early return without verifying file existence or bitness when LVCOMPARE_TEST_BYPASS is set.
+  # This supports unit tests that mock Resolve-Cli or do not rely on the actual binary being present.
+  if ($testBypass) {
+    return $canonical
+  }
+
   # Default to canonical
   if (Test-Path -LiteralPath $canonical -PathType Leaf) {
+    # Bitness guard: ensure the canonical LVCompare is 64-bit to avoid modal VI load collisions seen with 32-bit driver on 64-bit LabVIEW installs
+    $allow32 = $false
+    if ($env:LVCOMPARE_ALLOW_32BIT -match '^(1|true)$') { $allow32 = $true }
+    if (-not $allow32 -and -not $testBypass) {
+      try {
+        $fs = [System.IO.File]::Open($canonical,[System.IO.FileMode]::Open,[System.IO.FileAccess]::Read,[System.IO.FileShare]::ReadWrite)
+        try {
+          $br = New-Object System.IO.BinaryReader($fs)
+          $fs.Seek(0x3C, [System.IO.SeekOrigin]::Begin) | Out-Null
+          $peOffset = $br.ReadInt32()
+          $fs.Seek($peOffset + 4, [System.IO.SeekOrigin]::Begin) | Out-Null # skip 'PE\0\0' + Machine field start
+          $machineBytes = $br.ReadUInt16()
+          # 0x8664 = AMD64, 0x014C = I386
+          if ($machineBytes -eq 0x014C) {
+            throw "Detected 32-bit LVCompare.exe at canonical path but environment requires 64-bit. Ensure only the 64-bit LabVIEW Compare is installed. Expected associated LabVIEW executable at: $expectedLabVIEW64"
+          }
+        } finally { try { $fs.Close() } catch {}; try { $fs.Dispose() } catch {} }
+      } catch {
+        if (-not ($_.Exception.Message -like 'Detected 32-bit*')) {
+          throw "Failed to validate LVCompare bitness: $($._Exception.Message)"
+        } else { throw }
+      }
+    }
     return $canonical
   }
 
@@ -74,6 +107,19 @@ function Invoke-CompareVI {
 
     $baseAbs = (Resolve-Path -LiteralPath $Base).Path
     $headAbs = (Resolve-Path -LiteralPath $Head).Path
+
+    # Migration warning (naming): Prefer VI1.vi / VI2.vi over legacy Base.vi / Head.vi
+    try {
+      $baseLeafNow = Split-Path -Leaf $baseAbs
+      $headLeafNow = Split-Path -Leaf $headAbs
+      $legacyNames = @('Base.vi','Head.vi')
+      $preferredNames = @('VI1.vi','VI2.vi')
+      $usingLegacy = ($legacyNames -contains $baseLeafNow) -or ($legacyNames -contains $headLeafNow)
+      # Emit only if at least one legacy and not both already preferred (avoid noise) and environment not explicitly bypassing
+      if ($usingLegacy -and -not (($preferredNames -contains $baseLeafNow) -and ($preferredNames -contains $headLeafNow))) {
+        Write-Host "[NamingMigrationWarning] Detected legacy VI naming ('$baseLeafNow','${headLeafNow}') – preferred names are VI1.vi / VI2.vi. Legacy names will be removed in a future minor release (planned v0.5.0). Update your workflow inputs and artifacts. See README migration note." -ForegroundColor Yellow
+      }
+    } catch { Write-Verbose "Naming migration warning suppressed: $($_.Exception.Message)" }
 
     $cli = Resolve-Cli -Explicit $LvComparePath
 

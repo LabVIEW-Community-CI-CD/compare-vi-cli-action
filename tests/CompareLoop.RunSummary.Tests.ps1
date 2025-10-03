@@ -10,8 +10,9 @@ Describe 'Invoke-IntegrationCompareLoop run summary JSON emission' -Tag 'Unit' {
     . "$PSScriptRoot/TestHelpers.Schema.ps1"
     $tmp = Join-Path ([IO.Path]::GetTempPath()) ("runsum_" + [guid]::NewGuid())
     New-Item -ItemType Directory -Path $tmp -Force | Out-Null
-    $base = Join-Path $tmp 'Base.vi'; 'a' | Out-File -FilePath $base
-    $head = Join-Path $tmp 'Head.vi'; 'b' | Out-File -FilePath $head
+  # Migrated fixtures
+  $base = Join-Path $tmp 'VI1.vi'; 'a' | Out-File -FilePath $base
+  $head = Join-Path $tmp 'VI2.vi'; 'b' | Out-File -FilePath $head
     $summaryPath = Join-Path $tmp 'run-summary.json'
     $exec = { param($cli,$b,$h,$argList) Start-Sleep -Milliseconds (5 + (Get-Random -Max 5)); 0 }
     Invoke-IntegrationCompareLoop -Base $base -Head $head -MaxIterations 15 -IntervalSeconds 0 -CompareExecutor $exec -BypassCliValidation -SkipValidation -PassThroughPaths -Quiet -RunSummaryJsonPath $summaryPath | Out-Null
@@ -28,8 +29,9 @@ Describe 'Invoke-IntegrationCompareLoop run summary JSON emission' -Tag 'Unit' {
     . "$PSScriptRoot/TestHelpers.Schema.ps1"
     $tmp2 = Join-Path ([IO.Path]::GetTempPath()) ("runsum_pct_" + [guid]::NewGuid())
     New-Item -ItemType Directory -Path $tmp2 -Force | Out-Null
-    $base2 = Join-Path $tmp2 'Base.vi'; 'a' | Out-File -FilePath $base2
-    $head2 = Join-Path $tmp2 'Head.vi'; 'b' | Out-File -FilePath $head2
+  # Migrated fixtures
+  $base2 = Join-Path $tmp2 'VI1.vi'; 'a' | Out-File -FilePath $base2
+  $head2 = Join-Path $tmp2 'VI2.vi'; 'b' | Out-File -FilePath $head2
     $summaryPath2 = Join-Path $tmp2 'run-summary.json'
     $exec2 = { param($cli,$b,$h,$argList) Start-Sleep -Milliseconds (6 + (Get-Random -Max 4)); 0 }
     Invoke-IntegrationCompareLoop -Base $base2 -Head $head2 -MaxIterations 12 -IntervalSeconds 0 -CompareExecutor $exec2 -BypassCliValidation -SkipValidation -PassThroughPaths -Quiet -RunSummaryJsonPath $summaryPath2 -CustomPercentiles '50,75,90,97.5,99.9' | Out-Null

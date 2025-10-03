@@ -150,7 +150,7 @@ This document summarizes the implementation status of self-hosted Windows runner
 - Automatically triggered on PR events (labeled, reopened, synchronize)
 - Manual dispatch also supported
 - Generates comprehensive VI comparison reports:
-  - Single-run comparison (Base.vi vs Head.vi)
+  - Single-run comparison (VI1.vi vs VI2.vi)
   - Loop mode comparison with latency metrics (25 iterations)
   - HTML reports, JSON summaries, and Markdown snippets
 - Posts results as PR comment (requires XCLI_PAT secret)
@@ -246,6 +246,38 @@ Potential improvements for consideration:
 - Performance benchmarking for large VI files
 - Parallel test execution for faster CI feedback
 - Automated runner health checks
+
+### Naming Migration (Artifacts)
+
+Status: In progress (adoption phase) – preferred filenames are now `VI1.vi` / `VI2.vi`; legacy `Base.vi` / `Head.vi` remain temporarily supported.
+
+Rationale:
+
+- Align artifact naming with neutral, ordinal semantics used throughout latency loop mode (`VI1`, `VI2`).
+- Reduce ambiguity between “base/head” terminology and branching strategies in consuming pipelines.
+
+Current Behavior:
+
+- Fallback resolution in integration tests and helper scripts prefers `VI1.vi` / `VI2.vi` but will use legacy names if present.
+- `CompareVI.ps1` emits a one-time `[NamingMigrationWarning]` when legacy names are supplied, advising migration.
+- Documentation examples (README, integration guide, module guide) updated to show new names; schema keys (`basePath`, `headPath`) unchanged.
+- Guard test (`Migration.Guard.Naming.Tests.ps1`) currently scopes enforcement to module sources only (prevents regression of updated labels/output) – will expand post-deprecation.
+
+Deprecation / Removal Plan:
+
+- v0.4.x: Transitional period (warnings + fallback).
+- v0.5.0: Remove fallback to `Base.vi` / `Head.vi`; expand guard to scripts + docs; update CHANGELOG with removal notice.
+- Post-removal: Simplify resolution logic (drop candidate arrays), remove warning path, and tighten tests to forbid legacy names anywhere (except historical changelog sections).
+
+Action Items Remaining:
+
+- Monitor user feedback during v0.4.x; if blocking usage discovered, consider extending fallback one additional minor version.
+- Add follow-up issue tracking removal tasks (code deletion, guard expansion, doc pruning).
+
+Risk & Mitigation:
+
+- Risk: Downstream workflows still referencing legacy names fail after removal. Mitigation: clear warning now + CHANGELOG + README note + release PR banner section.
+- Rollback: Reintroduce fallback with warning behind a feature flag if unforeseen breakage emerges.
 
 ## Verification Checklist
 

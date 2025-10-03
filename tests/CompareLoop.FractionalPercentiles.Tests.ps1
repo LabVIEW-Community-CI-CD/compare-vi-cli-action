@@ -9,8 +9,9 @@ Describe 'Invoke-IntegrationCompareLoop fractional percentile labels' -Tag 'Unit
   It 'emits underscored labels for fractional custom percentiles' {
     $tmp = Join-Path ([IO.Path]::GetTempPath()) ("fracPct_" + [guid]::NewGuid())
     New-Item -ItemType Directory -Path $tmp -Force | Out-Null
-    $base = Join-Path $tmp 'Base.vi'; 'a' | Out-File -FilePath $base
-    $head = Join-Path $tmp 'Head.vi'; 'b' | Out-File -FilePath $head
+  # Migrated fixtures
+  $base = Join-Path $tmp 'VI1.vi'; 'a' | Out-File -FilePath $base
+  $head = Join-Path $tmp 'VI2.vi'; 'b' | Out-File -FilePath $head
   $exec = { param($cli,$b,$h,$argList) Start-Sleep -Milliseconds (5 + (Get-Random -Max 10)); 0 }
     $r = Invoke-IntegrationCompareLoop -Base $base -Head $head -MaxIterations 30 -IntervalSeconds 0 -CompareExecutor $exec -BypassCliValidation -SkipValidation -PassThroughPaths -Quiet -CustomPercentiles '50,75,90,97.5,99.9'
     $r.Percentiles | Should -Not -BeNullOrEmpty

@@ -16,8 +16,6 @@ This runbook standardizes bringing a self‑hosted Windows runner (or local work
 
 You can automate these via `scripts/Invoke-IntegrationRunbook.ps1`.
 
----
- 
 ## Canonical Path Policy
 
 LVCompare must exist at:
@@ -34,8 +32,6 @@ Validation quick check:
 Test-Path 'C:\\Program Files\\National Instruments\\Shared\\LabVIEW Compare\\LVCompare.exe'
 ```
 
----
- 
 ## Environment Variables
 
 | Variable | Purpose | Required |
@@ -44,11 +40,12 @@ Test-Path 'C:\\Program Files\\National Instruments\\Shared\\LabVIEW Compare\\LVC
 | `LV_HEAD_VI` | Absolute path to head VI | Yes |
 | `LOOP_SIMULATE` | When `1` forces simulation (disable for real loop) | Optional |
 | `LOOP_MAX_ITERATIONS` | Loop iteration count (`0` = infinite) | Optional |
+| `LOOP_CLOSE_LABVIEW` | When `1` attempt to close/kill LabVIEW after each loop iteration (idempotency) | Optional |
+| `LOOP_CLOSE_LABVIEW_GRACE_MS` | Milliseconds to wait after graceful close before kill (default 5000) | Optional |
+| `LOOP_CLOSE_LABVIEW_FORCE` | When `1` perform an additional `taskkill /F /IM LabVIEW.exe /T` after graceful attempts (clears modal dialogs) | Optional |
 
 Both VI paths must exist. If they resolve to the same absolute path the compare short‑circuits (no CLI call, diff=false).
 
----
- 
 ## Orchestration Script (Quick Start)
 
 ```pwsh
@@ -75,8 +72,6 @@ JSON result schema (excerpt):
 
 Status values: `Passed | Failed | Skipped`.
 
----
- 
 ## Single Compare (Manual)
 
 ```pwsh
@@ -87,17 +82,14 @@ $res | Format-List
 
 Key fields: `ExitCode` (0|1), `Diff` (bool), `CompareDurationSeconds`, `ShortCircuitedIdenticalPath`.
 
----
- 
 ## Running Integration Tests
 
 ```pwsh
 pwsh -File Invoke-PesterTests.ps1 -IncludeIntegration true
 ```
+
 Result summary is written to `tests/results/pester-summary.txt`.
 
----
- 
 ## Real Loop Mode
 
 ```pwsh
@@ -105,6 +97,7 @@ Remove-Item Env:LOOP_SIMULATE -ErrorAction SilentlyContinue
 $env:LOOP_MAX_ITERATIONS='25'
 $env:LOOP_INTERVAL_SECONDS='0.1'
 $env:LOOP_FAIL_ON_DIFF='false'
+$env:LOOP_CLOSE_LABVIEW='1'   # enforce clean LabVIEW state each iteration
 pwsh -File scripts/Run-AutonomousIntegrationLoop.ps1
 ```
 
@@ -115,8 +108,6 @@ $env:LOOP_CUSTOM_PERCENTILES='95 97.5'
 $env:LOOP_HISTOGRAM_BINS='20'
 ```
 
----
- 
 ## Diagnostics Capture (Manual)
 
 ```pwsh
@@ -129,8 +120,6 @@ Set-Content lvcompare-stderr.txt $stderr -Encoding utf8
 "$($p.ExitCode)" | Set-Content lvcompare-exitcode.txt
 ```
 
----
- 
 ## Troubleshooting Quick Table
 
 | Symptom | Cause | Action |
@@ -141,21 +130,47 @@ Set-Content lvcompare-stderr.txt $stderr -Encoding utf8
 | Loop stops at 1 iteration | FailOnDiff true and diff found | Set `LOOP_FAIL_ON_DIFF=false` |
 | Percentiles empty | Too few iterations or errors | Increase iterations / fix errors |
 | Histogram absent | `LOOP_HISTOGRAM_BINS` unset | Set a positive bin count |
+| Growing LabVIEW.exe count / memory | LabVIEW instances left open each iteration | Set `LOOP_CLOSE_LABVIEW=1` to auto-close |
+| Loop stuck (dialog blocking) | Modal dialog in hidden LabVIEW window | Enable `LOOP_CLOSE_LABVIEW_FORCE=1` to add taskkill fallback |
+| Repeated modal "Open VI Reference" errors | Mixing 32-bit LVCompare with 64-bit LabVIEW install | Remove 32-bit components; rely on bitness guard (script throws on 32-bit); ensure canonical 64-bit path only |
+| Stray LVCompare.exe processes accumulate | Legacy (32-bit) compare processes not cleaned | Auto-close + stray killer: ensure `LOOP_CLOSE_LABVIEW=1`; verify JSON event `lvcompareStrayKill` appears |
 
 ---
- 
+
 ## Orchestration Script Reference
 
 See `scripts/Invoke-IntegrationRunbook.ps1 -Help` for parameters.
 
 ---
- 
+
 ## Schema & Versioning
 
 Runbook JSON schema: `integration-runbook-v1` (additive fields allowed; do not rename existing keys without a major schema bump).
 
 ---
- 
+
+## Loop JSON Events Reference
+
+The loop script (`Run-AutonomousIntegrationLoop.ps1`) may emit per-run JSON NDJSON events when `LOOP_JSON_LOG` is set:
+
+| Event | Description | Key Fields |
+|-------|-------------|-----------|
+| `plan` | Initial invocation plan | simulate, maxIterations, interval, diffSummaryFormat |
+| `result` | Final aggregated outcome | iterations, diffs, errors, succeeded |
+| `labviewCloseAttempt` | Per-iteration LabVIEW close/kill summary | attempted, closed, killed, forceKill, forceKillSuccess, graceMs |
+| `lvcompareStrayKill` | Stray 32-bit LVCompare detection & termination | detected, killed |
+| `finalStatusEmitted` | Final status JSON written | path |
+| `stepSummaryAppended` | Diff summary appended to GitHub step summary | path |
+
+Interpretation Notes:
+
+* `labviewCloseAttempt.forceKill=true` indicates `LOOP_CLOSE_LABVIEW_FORCE` was active; `forceKillSuccess=1` means `taskkill` exited 0.
+* Absence of `lvcompareStrayKill` means no LVCompare processes were observed or all were already 64-bit.
+* Add new events only in an additive manner to avoid breaking parsers; maintain deterministic key ordering.
+
+
+---
+
 ## Next Enhancements (Future Ideas)
 
 * Optional code coverage integration for integration-tagged tests.

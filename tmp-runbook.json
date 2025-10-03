@@ -1,0 +1,26 @@
+{
+  "schema": "integration-runbook-v1",
+  "generated": "2025-10-03T00:13:51.5893625-07:00",
+  "phases": [
+    {
+      "name": "Prereqs",
+      "status": "Passed",
+      "details": {
+        "powerShellVersion": "7.5.3",
+        "powerShellOk": true
+      }
+    },
+    {
+      "name": "ViInputs",
+      "status": "Passed",
+      "details": {
+        "head": "C:\\dev\\compare-vi-cli-action\\VI2.vi",
+        "baseExists": true,
+        "pathsIdentical": false,
+        "base": "C:\\dev\\compare-vi-cli-action\\VI1.vi",
+        "headExists": true
+      }
+    }
+  ],
+  "overallStatus": "Passed"
+}

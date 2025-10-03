@@ -27,12 +27,14 @@ This design prevents container-level failures during discovery and keeps CI gree
 
 1. Install LabVIEW with the Compare feature (LVCompare) and (optionally) LabVIEW CLI.
 
-1. Set environment variables:
+1. Set environment variables (preferred migrated filenames shown):
 
   ```powershell
-  $env:LV_BASE_VI = 'C:\Path\To\Base.vi'
-  $env:LV_HEAD_VI = 'C:\Path\To\Head.vi'
+  $env:LV_BASE_VI = 'C:\Path\To\VI1.vi'
+  $env:LV_HEAD_VI = 'C:\Path\To\VI2.vi'
   ```
+
+  Migration note: Prior examples used `Base.vi` / `Head.vi`. These legacy names still work for one release via fallback resolution, but will emit a warning in future scripts and are scheduled for removal in v0.5.0. Rename your repository comparison artifacts to `VI1.vi` / `VI2.vi` to avoid future breakage.
 
 1. Verify paths:
 

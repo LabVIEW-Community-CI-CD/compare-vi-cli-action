@@ -107,32 +107,22 @@ function Invoke-PhaseViInputs {
   Write-PhaseBanner $r.name
   $base = $ctx.basePath; $head = $ctx.headPath
   $r.details.base=$base; $r.details.head=$head
-  Write-Host "Base VI: $base" -ForegroundColor Gray
-  Write-Host "Head VI: $head" -ForegroundColor Gray
   $missing = @()
   if (-not $base) { $missing += 'LV_BASE_VI' }
   if (-not $head) { $missing += 'LV_HEAD_VI' }
   if ($missing) { $r.details.missing = $missing; $r.status='Failed'; return }
   $bExists = Test-Path $base; $hExists = Test-Path $head
   $r.details.baseExists=$bExists; $r.details.headExists=$hExists
-  Write-Host "Base Exists: $bExists  Head Exists: $hExists" -ForegroundColor Gray
   if (-not ($bExists -and $hExists)) { $r.status='Failed'; return }
   $same = (Resolve-Path $base).ProviderPath -eq (Resolve-Path $head).ProviderPath
   $r.details.pathsIdentical=$same
-  Write-Host "Paths Identical: $same" -ForegroundColor Gray
   $r.status = 'Passed'
 }
 
 function Invoke-PhaseCompare {
   param($r,$ctx)
   Write-PhaseBanner $r.name
-  $compareScript = Join-Path -Path $PSScriptRoot -ChildPath 'CompareVI.ps1'
-  if (-not (Test-Path $compareScript)) {
-    $alt = Join-Path -Path (Join-Path -Path $PSScriptRoot -ChildPath 'scripts') -ChildPath 'CompareVI.ps1'
-    if (Test-Path $alt) { $compareScript = $alt }
-  }
-  if (-not (Test-Path $compareScript)) { throw "CompareVI.ps1 not found at expected locations (tried: $compareScript)" }
-  . $compareScript
+  . "$PSScriptRoot/CompareVI.ps1"
   try {
     $compare = Invoke-CompareVI -Base $ctx.basePath -Head $ctx.headPath -LvCompareArgs '-nobdcosm -nofppos -noattr' -FailOnDiff:$false
     $ctx.compareResult = $compare
@@ -231,37 +221,15 @@ $final = [pscustomobject]@{
   schema = $script:Schema
   generated = (Get-Date).ToString('o')
   phases = $results
-  overallStatus = $( if ($overallFailed) { 'Failed' } else { 'Passed' } )
+  overallStatus = if ($overallFailed) { 'Failed' } else { 'Passed' }
 }
 
-Write-Host "Overall Status: $($final.overallStatus)" -ForegroundColor $( if ($overallFailed) { 'Red' } else { 'Green' } )
+Write-Host "Overall Status: $($final.overallStatus)" -ForegroundColor (if ($overallFailed) { 'Red' } else { 'Green' })
 
 if ($JsonReport) {
   $json = $final | ConvertTo-Json -Depth 6
   Set-Content -Path $JsonReport -Value $json -Encoding utf8
   Write-Host "JSON report written: $JsonReport" -ForegroundColor Yellow
-}
-
-# GitHub Step Summary emission (optional)
-if ($env:GITHUB_STEP_SUMMARY) {
-  try {
-    if (-not (Test-Path $env:GITHUB_STEP_SUMMARY)) { New-Item -ItemType File -Path $env:GITHUB_STEP_SUMMARY -Force | Out-Null }
-    $sb = New-Object System.Text.StringBuilder
-    [void]$sb.AppendLine("### Integration Runbook Summary")
-    [void]$sb.AppendLine()
-    [void]$sb.AppendLine("Overall Status: **$($final.overallStatus)**")
-    [void]$sb.AppendLine()
-    [void]$sb.AppendLine("| Phase | Status | Key Details |")
-    [void]$sb.AppendLine("|-------|--------|-------------|")
-    foreach ($p in $final.phases) {
-      $detailStr = ($p.details.GetEnumerator() | Select-Object -First 3 | ForEach-Object { "${($_.Name)}=${($_.Value)}" }) -join '; '
-      [void]$sb.AppendLine("| $($p.name) | $($p.status) | $detailStr |")
-    }
-    Add-Content -Path $env:GITHUB_STEP_SUMMARY -Value $sb.ToString() -Encoding utf8
-    Write-Host "Step summary appended." -ForegroundColor DarkCyan
-  } catch {
-    Write-Warning "Failed to write step summary: $($_.Exception.Message)"
-  }
 }
 
 if ($PassThru) { return $final }

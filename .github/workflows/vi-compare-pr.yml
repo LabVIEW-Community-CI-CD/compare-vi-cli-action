@@ -36,7 +36,7 @@ jobs:
           Write-Host "Environment validation passed:"
           Write-Host "  - CLI: $cliPath"
 
-      - name: Single compare (Base.vi vs Head.vi)
+      - name: Single compare (VI1.vi vs VI2.vi)
         id: single
         shell: pwsh
         run: |

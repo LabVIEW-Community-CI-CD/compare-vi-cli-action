@@ -1,0 +1,53 @@
+{
+  "version": "0.4.0",
+  "branchName": "release/v0.4.0-rc.1",
+  "branchMatchesReleasePattern": true,
+  "workingDirectoryClean": false,
+  "changelogVersionFound": true,
+  "changelogDateLooksValid": true,
+  "actionOutputs": [
+    "diff",
+    "exitCode",
+    "cliPath",
+    "command",
+    "compareDurationSeconds",
+    "compareDurationNanoseconds",
+    "compareSummaryPath",
+    "iterations",
+    "diffCount",
+    "errorCount",
+    "averageSeconds",
+    "totalSeconds",
+    "p50",
+    "p90",
+    "p99",
+    "quantileStrategy",
+    "streamingWindowCount",
+    "loopResultPath",
+    "histogramPath",
+    "shortCircuitedIdentical"
+  ],
+  "actionOutputsCount": 20,
+  "actionOutputsDocMissing": [],
+  "actionOutputsDocExtra": [
+    "false",
+    "StreamingReservoir",
+    "true"
+  ],
+  "shortCircuitedIdenticalPresent": true,
+  "helperFilesPresent": [
+    "PR_NOTES.md",
+    "TAG_PREP_CHECKLIST.md",
+    "POST_RELEASE_FOLLOWUPS.md",
+    "ROLLBACK_PLAN.md"
+  ],
+  "helperFilesMissing": [],
+  "markdownLintExitCode": 0,
+  "unitTestExitCode": null,
+  "integrationTestAttempted": false,
+  "integrationTestExitCode": null,
+  "integrationPrereqsDetected": false,
+  "errors": [],
+  "overallStatus": "PASS",
+  "timestampUtc": "2025-10-03T07:32:06.2776682Z"
+}

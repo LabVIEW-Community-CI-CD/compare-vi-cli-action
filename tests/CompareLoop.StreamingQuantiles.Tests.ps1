@@ -6,8 +6,9 @@ Import-Module "$PSScriptRoot/../module/CompareLoop/CompareLoop.psm1" -Force
 Describe 'Invoke-IntegrationCompareLoop streaming quantiles' -Tag 'Unit' {
   BeforeAll {
     # Use existing sample VI files in repo root
-    $script:basePath = Join-Path $PSScriptRoot '..' 'Base.vi'
-    $script:headPath = Join-Path $PSScriptRoot '..' 'Head.vi'
+  # Migrated shared artifacts
+  $script:basePath = Join-Path $PSScriptRoot '..' 'VI1.vi'
+  $script:headPath = Join-Path $PSScriptRoot '..' 'VI2.vi'
   }
 
   It 'StreamingReservoir percentiles stay within 0.02 absolute error of Exact for synthetic distribution' {

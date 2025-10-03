@@ -5,6 +5,13 @@ BeforeAll {
   $here = Split-Path -Parent $PSCommandPath
   $root = Resolve-Path (Join-Path $here '..')
   . (Join-Path $root 'scripts' 'CompareVI.ps1')
+  # Enable test bypass so Resolve-Cli does not require real binary presence
+  $script:_origBypass = $env:LVCOMPARE_TEST_BYPASS
+  $env:LVCOMPARE_TEST_BYPASS = '1'
+}
+
+AfterAll {
+  if ($null -ne $script:_origBypass) { $env:LVCOMPARE_TEST_BYPASS = $script:_origBypass } else { Remove-Item Env:LVCOMPARE_TEST_BYPASS -ErrorAction SilentlyContinue }
 }
 
 Describe 'Invoke-CompareVI input and output validation (no CLI)' {

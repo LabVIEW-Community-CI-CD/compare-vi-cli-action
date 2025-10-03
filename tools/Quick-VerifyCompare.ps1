@@ -5,9 +5,9 @@
   Creates temporary placeholder .vi files (unless explicit paths provided), invokes Invoke-CompareVI and
   prints a concise output block similar to GITHUB_OUTPUT plus a timing summary. Does not fail on diff.
 .PARAMETER Base
-  Path to base VI; if omitted a temp file is created.
+  Path to VI1 (base) VI; if omitted a temp file named VI1.vi is created.
 .PARAMETER Head
-  Path to head VI; if omitted a temp file is created (different file => diff exit code 1).
+  Path to VI2 (head) VI; if omitted a temp file named VI2.vi is created (different file => diff exit code 1).
 .PARAMETER Same
   Switch: if set, uses the same file for Base and Head (expect diff=false, exitCode 0).
 .PARAMETER ShowSummary
@@ -37,7 +37,7 @@ try {
   if (-not $Base) {
     $tempDir = Join-Path ([IO.Path]::GetTempPath()) ("comparevi-base-" + [guid]::NewGuid())
     New-Item -ItemType Directory -Force -Path $tempDir | Out-Null
-    $Base = Join-Path $tempDir 'Base.vi'
+  $Base = Join-Path $tempDir 'VI1.vi'
     New-Item -ItemType File -Force -Path $Base | Out-Null
     $cleanup += $tempDir
   }
@@ -46,7 +46,7 @@ try {
   } elseif (-not $Head) {
     $tempDir2 = Join-Path ([IO.Path]::GetTempPath()) ("comparevi-head-" + [guid]::NewGuid())
     New-Item -ItemType Directory -Force -Path $tempDir2 | Out-Null
-    $Head = Join-Path $tempDir2 'Head.vi'
+  $Head = Join-Path $tempDir2 'VI2.vi'
     New-Item -ItemType File -Force -Path $Head | Out-Null
     $cleanup += $tempDir2
   }
@@ -76,8 +76,8 @@ try {
   $diffLower = if ($result.Diff) { 'true' } else { 'false' }
 
   Write-Host "=== Quick Verify Compare ===" -ForegroundColor Cyan
-  Write-Host ("Base: {0}" -f $result.Base)
-  Write-Host ("Head: {0}" -f $result.Head)
+  Write-Host ("VI1: {0}" -f $result.Base)
+  Write-Host ("VI2: {0}" -f $result.Head)
   Write-Host ("ExitCode: {0}" -f $result.ExitCode)
   Write-Host ("Diff: {0}" -f $diffLower)
   Write-Host ("compareDurationSeconds: {0}" -f $result.CompareDurationSeconds)

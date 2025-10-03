@@ -1,8 +1,8 @@
 <#
 .SYNOPSIS
- Generates HTML + Markdown diff summary (PR body snippet) for repository Base.vi vs Head.vi using LVCompare.
+Generates HTML + Markdown diff summary (PR body snippet) for repository VI1.vi vs VI2.vi using LVCompare (legacy Base/Head naming deprecated in examples; still supported as fallback if VI1/VI2 absent).
 .DESCRIPTION
- Runs one real LVCompare invocation (canonical path enforced) against Base.vi & Head.vi in repo root.
+Runs one real LVCompare invocation (canonical path enforced) against VI1.vi & VI2.vi in repo root; if those are missing, falls back to legacy Base.vi / Head.vi for backward compatibility (will emit a warning when falling back).
  Emits:
   - HTML report file (self-contained) via Render-CompareReport.ps1
   - Markdown snippet file with key metadata + link placeholder
@@ -24,10 +24,28 @@ $ErrorActionPreference = 'Stop'
 $canonical = 'C:\Program Files\National Instruments\Shared\LabVIEW Compare\LVCompare.exe'
 if (-not (Test-Path -LiteralPath $canonical -PathType Leaf)) { throw "LVCompare not found at canonical path: $canonical" }
 $repoRoot = Resolve-Path (Join-Path $PSScriptRoot '..')
-$baseVi = (Resolve-Path (Join-Path $repoRoot 'Base.vi')).Path
-$headVi = (Resolve-Path (Join-Path $repoRoot 'Head.vi')).Path
+function Resolve-VIArtifactPair {
+  param([string]$Root)
+  $primary = @('VI1.vi','VI2.vi')
+  $fallback = @('Base.vi','Head.vi')
+  $paths = @{}
+  $primaryFound = $true
+  for ($i=0; $i -lt $primary.Length; $i+=2) { }
+  $vi1 = Join-Path $Root 'VI1.vi'
+  $vi2 = Join-Path $Root 'VI2.vi'
+  if (-not (Test-Path -LiteralPath $vi1 -PathType Leaf) -or -not (Test-Path -LiteralPath $vi2 -PathType Leaf)) {
+    $primaryFound = $false
+    $vi1 = Join-Path $Root 'Base.vi'
+    $vi2 = Join-Path $Root 'Head.vi'
+    if (-not (Test-Path -LiteralPath $vi1 -PathType Leaf) -or -not (Test-Path -LiteralPath $vi2 -PathType Leaf)) {
+      throw 'Required VI artifacts not found: expected VI1.vi & VI2.vi (preferred) or Base.vi & Head.vi (fallback).'
+    }
+  }
+  if (-not $primaryFound) { Write-Warning 'Falling back to legacy Base.vi / Head.vi naming (preferred VI1.vi / VI2.vi not present).' }
+  return ,@((Resolve-Path $vi1).Path,(Resolve-Path $vi2).Path)
+}
+($baseVi,$headVi) = Resolve-VIArtifactPair -Root $repoRoot
 foreach ($p in @($baseVi,$headVi)) {
-  if (-not (Test-Path -LiteralPath $p -PathType Leaf)) { throw "Required VI file missing: $p" }
   $len = (Get-Item -LiteralPath $p).Length
   if ($len -lt 1024) { Write-Warning "VI file $p is unusually small ($len bytes) – ensure this is a real LabVIEW .vi binary." }
 }
@@ -38,7 +56,7 @@ New-Item -ItemType Directory -Path $OutputDirectory -Force | Out-Null
 if ($LoopMode) {
   # Import loop module
   Import-Module (Join-Path $repoRoot 'module' 'CompareLoop' 'CompareLoop.psd1') -Force
-  Write-Host "Invoking Loop Mode (Iterations=$LoopIterations Strategy=$QuantileStrategy) on:`n Base=$baseVi`n Head=$headVi" -ForegroundColor Cyan
+  Write-Host "Invoking Loop Mode (Iterations=$LoopIterations Strategy=$QuantileStrategy) on:`n VI1=$baseVi`n VI2=$headVi" -ForegroundColor Cyan
   $exec = {
     param($cli,$base,$head,$extraArgs)
     $psi = New-Object System.Diagnostics.ProcessStartInfo -Property @{ FileName=$cli; ArgumentList=@($base,$head) }
@@ -57,7 +75,7 @@ if ($LoopMode) {
     CompareDurationSeconds = $loop.AverageSeconds
   }
 } else {
-  Write-Host "Invoking LVCompare on:`n Base=$baseVi`n Head=$headVi" -ForegroundColor Cyan
+  Write-Host "Invoking LVCompare on:`n VI1=$baseVi`n VI2=$headVi" -ForegroundColor Cyan
   $res = Invoke-CompareVI -Base $baseVi -Head $headVi -LvComparePath $canonical -FailOnDiff:$false
 }
 
@@ -100,8 +118,8 @@ $md += ''
 $md += '| Metric | Value |'
 $md += '|--------|-------|'
 $md += "| Mode | $(if ($LoopMode) { 'Loop' } else { 'Single' }) |"
-$md += "| Base | $([System.IO.Path]::GetFileName($baseVi)) |"
-$md += "| Head | $([System.IO.Path]::GetFileName($headVi)) |"
+$md += "| VI1 | $([System.IO.Path]::GetFileName($baseVi)) |"
+$md += "| VI2 | $([System.IO.Path]::GetFileName($headVi)) |"
 $md += "| Diff | $($res.Diff) |"
 $md += "| Duration (s) | $([string]::Format('{0:F3}',$res.CompareDurationSeconds)) |"
 if ($LoopMode -and $loop.Percentiles) {

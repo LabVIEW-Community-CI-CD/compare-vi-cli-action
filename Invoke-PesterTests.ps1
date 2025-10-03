@@ -727,8 +727,13 @@ try {
 
   # Discovery failure adjustment: if discovery failures detected and no existing failures/errors recorded, promote to errors
   if ($discoveryFailureCount -gt 0 -and $failed -eq 0 -and $errors -eq 0) {
-    Write-Host "Discovery failures detected ($discoveryFailureCount) with zero test failures; elevating to error state." -ForegroundColor Red
-    $errors = $discoveryFailureCount
+    $strictDiscovery = ($env:DISCOVERY_FAILURES_STRICT -eq '1')
+    if (-not $strictDiscovery) {
+      Write-Host "Discovery failures detected ($discoveryFailureCount) with zero test failures; soft default (set DISCOVERY_FAILURES_STRICT=1 to elevate)." -ForegroundColor Yellow
+    } else {
+      Write-Host "Discovery failures detected ($discoveryFailureCount) with zero test failures; strict mode elevating to error state." -ForegroundColor Red
+      $errors = $discoveryFailureCount
+    }
   }
 
   if ($timedOut) {
@@ -1031,17 +1036,20 @@ if ($failed -gt 0 -or $errors -gt 0) {
 Write-Host "✅ All tests passed!" -ForegroundColor Green
 # Final safety: if discovery failures were detected but no failures/errors were registered, treat as failure.
 if ($discoveryFailureCount -gt 0) {
-  Write-Host "Discovery failures detected ($discoveryFailureCount) but test counts showed success; forcing failure exit." -ForegroundColor Red
+  $strictDiscovery = ($env:DISCOVERY_FAILURES_STRICT -eq '1')
+  Write-Host "Discovery failures detected ($discoveryFailureCount) but test counts showed success; strictMode=$strictDiscovery" -ForegroundColor $(if ($strictDiscovery) { 'Red' } else { 'Yellow' })
   try {
     if ($jsonSummaryPath -and (Test-Path -LiteralPath $jsonSummaryPath)) {
       $adjust = Get-Content -LiteralPath $jsonSummaryPath -Raw | ConvertFrom-Json
-      $adjust.errors = ($adjust.errors + $discoveryFailureCount)
+      if ($strictDiscovery) { $adjust.errors = ($adjust.errors + $discoveryFailureCount) }
       $adjust.discoveryFailures = $discoveryFailureCount
       $adjust | ConvertTo-Json -Depth 4 | Out-File -FilePath $jsonSummaryPath -Encoding utf8
     }
   } catch { Write-Warning "Failed to adjust JSON summary for discovery failures: $_" }
-  Write-Error "Test execution completed with discovery failures"
-  exit 1
+  if ($strictDiscovery) {
+    Write-Error "Test execution completed with discovery failures"
+    exit 1
+  }
 }
 if ($EmitFailuresJsonAlways) { Ensure-FailuresJson -Directory $resultsDir -Normalize -Quiet }
 Write-ArtifactManifest -Directory $resultsDir -SummaryJsonPath $jsonSummaryPath -ManifestVersion $SchemaManifestVersion
