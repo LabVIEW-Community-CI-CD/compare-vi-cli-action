@@ -29,25 +29,9 @@ Describe 'FixtureWatcher ZeroLengthChangedGuard' -Tag 'Unit', 'Watcher' {
     $fsw.EnableRaisingEvents = $true
 
     $eventSourceId = "ZeroLengthGuard_$([guid]::NewGuid().ToString('N'))"
-    $allEvents = [System.Collections.Generic.List[object]]::new()
     
     try {
-      Register-ObjectEvent -InputObject $fsw -EventName Changed -SourceIdentifier $eventSourceId -Action {
-        $fileLength = -1
-        $filePath = $Event.SourceEventArgs.FullPath
-        if (Test-Path -LiteralPath $filePath) {
-          try {
-            $info = Get-Item -LiteralPath $filePath -ErrorAction SilentlyContinue
-            if ($info) { $fileLength = $info.Length }
-          } catch {}
-        }
-        $script:allEvents.Add([PSCustomObject]@{
-          Time = [DateTime]::UtcNow
-          Path = $filePath
-          ChangeType = $Event.SourceEventArgs.ChangeType
-          Length = $fileLength
-        })
-      } | Out-Null
+      Register-ObjectEvent -InputObject $fsw -EventName Changed -SourceIdentifier $eventSourceId | Out-Null
 
       # Wait for bounded polling window (600ms)
       Start-Sleep -Milliseconds 600
@@ -57,10 +41,6 @@ Describe 'FixtureWatcher ZeroLengthChangedGuard' -Tag 'Unit', 'Watcher' {
       while ($null -ne ($evt = Get-Event -SourceIdentifier $eventSourceId -ErrorAction SilentlyContinue | Select-Object -First 1)) {
         Remove-Event -EventIdentifier $evt.EventIdentifier
       }
-
-      # Check collected events (via script scope if action block populated)
-      # Since events captured in separate runspace via action block, check no zero-length
-      # For this test we verify the watcher did not trigger on a zero-length state
 
       # Create an explicit scenario: touch the file without zeroing it
       "Updated content" | Add-Content -LiteralPath $script:testFile -Encoding utf8 -NoNewline
