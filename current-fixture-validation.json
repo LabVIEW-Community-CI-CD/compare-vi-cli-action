@@ -1,20 +1,8 @@
 {
   "ok": false,
-  "exitCode": 5,
+  "exitCode": 8,
   "summary": "Fixture validation failed",
   "issues": [
-    {
-      "type": "tooSmall",
-      "fixture": "VI1.vi",
-      "length": 19,
-      "min": 32
-    },
-    {
-      "type": "tooSmall",
-      "fixture": "VI2.vi",
-      "length": 8,
-      "min": 32
-    },
     {
       "type": "duplicate",
       "path": "VI1.vi"
@@ -29,7 +17,7 @@
   "summaryCounts": {
     "missing": 0,
     "untracked": 0,
-    "tooSmall": 2,
+    "tooSmall": 0,
     "hashMismatch": 0,
     "manifestError": 0,
     "duplicate": 1,
