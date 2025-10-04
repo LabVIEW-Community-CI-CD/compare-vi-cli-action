@@ -171,6 +171,19 @@ if (-not $RunSummaryJsonPath -and $env:LOOP_EMIT_RUN_SUMMARY -match '^(1|true)$'
 
 Import-Module (Join-Path $PSScriptRoot '../module/CompareLoop/CompareLoop.psd1') -Force
 
+$preClean = $false
+if ($env:LOOP_PRE_CLEAN -match '^(1|true)$') { $preClean = $true }
+if ($preClean) {
+  try {
+    . (Join-Path $PSScriptRoot 'Ensure-LVCompareClean.ps1')
+    $k1 = Stop-LVCompareProcesses -Quiet
+    $k2 = Stop-LabVIEWProcesses -Quiet
+    if ($k1 -gt 0 -or $k2 -gt 0) { Write-Host "Pre-cleaned LVCompare=$k1, LabVIEW=$k2 stray process(es)." -ForegroundColor DarkYellow }
+  } catch {
+    Write-Host "Pre-clean attempt failed: $($_.Exception.Message)" -ForegroundColor DarkYellow
+  }
+}
+
 $exec = $null
 if ($CustomExecutor) { $exec = $CustomExecutor }
 elseif ($simulate) {

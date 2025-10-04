@@ -36,3 +36,4 @@ tmp-*.json
 tests/tmp-*/
 tests/results-*/
 home/
+delta.json

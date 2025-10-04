@@ -25,7 +25,7 @@ Describe 'Delta schema validation script' -Tag 'Unit' {
     $currIdx = $currRaw.IndexOf('{'); $currEnd = $currRaw.LastIndexOf('}')
     $currOut = $currRaw.Substring($currIdx, $currEnd-$currIdx+1)
     Set-Content -LiteralPath $current -Value $currOut -Encoding utf8
-    $orig | Set-Content -LiteralPath $manifestPath -Encoding utf8
+    $orig | Set-Content -LiteralPath $manifestPath -Encoding utf8 -NoNewline
 
     pwsh -NoLogo -NoProfile -File $diff -Baseline $baseline -Current $current > delta.json
     pwsh -NoLogo -NoProfile -File $schemaScript -DeltaJsonPath delta.json

@@ -11,7 +11,7 @@ Describe 'Fixture manifest enforcement' -Tag 'Unit' {
     function Set-MinBytesForAll($value) {
       $m = Get-Content -LiteralPath $script:manifest -Raw | ConvertFrom-Json
       foreach ($it in $m.items) { $it.minBytes = $value }
-      ($m | ConvertTo-Json -Depth 5) | Set-Content -LiteralPath $script:manifest -Encoding utf8
+      ($m | ConvertTo-Json -Depth 5) | Set-Content -LiteralPath $script:manifest -Encoding utf8 -NoNewline
     }
   }
 
@@ -27,11 +27,11 @@ Describe 'Fixture manifest enforcement' -Tag 'Unit' {
       $m = Get-Content -LiteralPath $manifest -Raw | ConvertFrom-Json
       # Invalidate hash for VI1.vi
       ($m.items | Where-Object { $_.path -eq 'VI1.vi' }).sha256 = 'BADHASH'
-      ($m | ConvertTo-Json -Depth 5) | Set-Content -LiteralPath $manifest -Encoding utf8
+      ($m | ConvertTo-Json -Depth 5) | Set-Content -LiteralPath $manifest -Encoding utf8 -NoNewline
   pwsh -NoLogo -NoProfile -File $validator -DisableToken | Out-Null
       $LASTEXITCODE | Should -Be 6
     } finally {
-      $originalManifest | Set-Content -LiteralPath $manifest -Encoding utf8
+      $originalManifest | Set-Content -LiteralPath $manifest -Encoding utf8 -NoNewline
     }
   }
 
@@ -40,11 +40,11 @@ Describe 'Fixture manifest enforcement' -Tag 'Unit' {
       Set-MinBytesForAll 1
       $m = Get-Content -LiteralPath $manifest -Raw | ConvertFrom-Json
       ($m.items | Where-Object { $_.path -eq 'VI2.vi' }).sha256 = 'DEADBEEF'
-      ($m | ConvertTo-Json -Depth 5) | Set-Content -LiteralPath $manifest -Encoding utf8
+      ($m | ConvertTo-Json -Depth 5) | Set-Content -LiteralPath $manifest -Encoding utf8 -NoNewline
   pwsh -NoLogo -NoProfile -File $validator -TestAllowFixtureUpdate -DisableToken | Out-Null
       $LASTEXITCODE | Should -Be 0
     } finally {
-      $originalManifest | Set-Content -LiteralPath $manifest -Encoding utf8
+      $originalManifest | Set-Content -LiteralPath $manifest -Encoding utf8 -NoNewline
     }
   }
 
@@ -63,7 +63,7 @@ Describe 'Fixture manifest enforcement' -Tag 'Unit' {
       $json.summaryCounts.hashMismatch | Should -Be 0
       $json.summaryCounts.schema | Should -Be 0
     } finally {
-      $originalManifest | Set-Content -LiteralPath $manifest -Encoding utf8
+      $originalManifest | Set-Content -LiteralPath $manifest -Encoding utf8 -NoNewline
     }
   }
 }

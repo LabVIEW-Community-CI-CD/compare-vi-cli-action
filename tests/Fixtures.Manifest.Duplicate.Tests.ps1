@@ -9,7 +9,7 @@ Describe 'Fixture manifest duplicate detection' -Tag 'Unit' {
     $script:original = Get-Content -LiteralPath $manifestPath -Raw
   }
   AfterAll {
-    $original | Set-Content -LiteralPath $manifestPath -Encoding utf8
+    $original | Set-Content -LiteralPath $manifestPath -Encoding utf8 -NoNewline
   }
 
   It 'returns exit 8 for duplicate entries only' {

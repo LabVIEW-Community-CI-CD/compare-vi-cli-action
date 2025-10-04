@@ -13,6 +13,8 @@ The integration test suite exercises the real LabVIEW Compare CLI (`LVCompare.ex
 
 Both `LV_BASE_VI` and `LV_HEAD_VI` must point to existing files; they should be different when validating diff scenarios.
 
+See also: [Environment appendix](./ENVIRONMENT.md) for a consolidated list of environment variables used across tests and scripts.
+
 ## Skip Behavior
 
 The file `tests/CompareVI.Integration.Tests.ps1` computes a boolean `$script:CompareVIPrereqsAvailable`. If prerequisites are missing:
@@ -45,7 +47,11 @@ This design prevents container-level failures during discovery and keeps CI gree
 1. Run the dispatcher including integration tests:
 
   ```powershell
-  ./Invoke-PesterTests.ps1 -IncludeIntegration true
+  # Recommended CI leak defaults
+  $env:CLEAN_AFTER = '1'
+  $env:KILL_LEAKS = '1'
+  $env:LEAK_GRACE_SECONDS = '1.0'
+  ./Invoke-PesterTests.ps1 -IncludeIntegration true -DetectLeaks
   ```
 
 To include HTML report tests also verify:

@@ -232,6 +232,7 @@ See [`docs/action-outputs.md`](./docs/action-outputs.md) for complete output doc
 For advanced configuration including lvCompareArgs recipes, working-directory usage, path resolution, and HTML report generation, see the **[Usage Guide](./docs/USAGE_GUIDE.md)**.
 
 Tip: Environment variables quick reference moved to the **[Environment appendix](./docs/ENVIRONMENT.md)**.
+Note: For CI integration test runs, consider setting CLEAN_AFTER=1, KILL_LEAKS=1, and `LEAK_GRACE_SECONDS`≈1.0 to avoid lingering LabVIEW/LVCompare processes; see Troubleshooting → Leak Detection and the Environment appendix for details.
 
 ## Loop Mode
 
@@ -637,6 +638,19 @@ Notes:
 - LVCompare must exist at the canonical path: `C:\Program Files\National Instruments\Shared\LabVIEW Compare\LVCompare.exe`.
 - Direct artifact download URLs use the GitHub REST API and require `actions: read` permission.
 - PR comments are skipped for forked PRs (no write permission).
+
+### Make it a Required Check
+
+To enforce Fixture Drift as a branch protection rule:
+
+1. Open repository Settings → Branches → Branch protection rules.
+2. Edit the rule for your main branch.
+3. Enable “Require status checks to pass before merging”.
+4. Add “Fixture Drift” to Required status checks.
+
+Optional badge (replace workflow path if customized):
+
+`[![Fixture Drift](https://github.com/LabVIEW-Community-CI-CD/compare-vi-cli-action/actions/workflows/fixture-drift.yml/badge.svg)](.github/workflows/fixture-drift.yml)`
 
 
 For information on testing, building, documentation generation, and the release process, see the **[Developer Guide](./docs/DEVELOPER_GUIDE.md)**.

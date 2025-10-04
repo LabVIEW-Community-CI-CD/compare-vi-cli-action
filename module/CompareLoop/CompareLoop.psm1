@@ -3,6 +3,11 @@ Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 $script:CanonicalLVCompare = 'C:\Program Files\National Instruments\Shared\LabVIEW Compare\LVCompare.exe'
 
+# Import shared tokenization pattern - navigate up to repo root then to scripts
+$moduleDir = Split-Path -Parent $PSCommandPath
+$repoRoot = Split-Path -Parent $moduleDir | Split-Path -Parent
+Import-Module (Join-Path $repoRoot 'scripts' 'ArgTokenization.psm1') -Force
+
 function Test-CanonicalCli {
   if (-not (Test-Path -LiteralPath $script:CanonicalLVCompare -PathType Leaf)) {
     throw "LVCompare.exe not found at canonical path: $script:CanonicalLVCompare"
@@ -13,6 +18,12 @@ function Test-CanonicalCli {
 function Format-LoopDuration([double]$Seconds) {
   if ($Seconds -lt 1) { return ('{0} ms' -f [math]::Round($Seconds*1000,1)) }
   '{0:N3} s' -f $Seconds
+}
+
+# Local quoting helper (aligns with scripts/CompareVI.ps1 behavior)
+function Quote($s) {
+  if ($null -eq $s) { return '""' }
+  if ($s -match '\s|"') { return '"' + ($s -replace '"','\"') + '"' } else { return $s }
 }
 
 # Streaming Quantile Approximation (Ring Buffer Reservoir)
@@ -53,6 +64,7 @@ function Invoke-IntegrationCompareLoop {
     [string]$LvCompareArgs = '-nobdcosm -nofppos -noattr',
     [switch]$FailOnDiff,
     [switch]$Quiet,
+    [switch]$PreviewArgs,
     [scriptblock]$CompareExecutor,
     [switch]$BypassCliValidation,
     [switch]$SkipValidation,
@@ -96,12 +108,108 @@ function Invoke-IntegrationCompareLoop {
 
   $cli = if ($BypassCliValidation) { $script:CanonicalLVCompare } else { Test-CanonicalCli }
 
+  # Preflight: disallow comparing two VIs with identical filenames in different directories (LVCompare may raise IDE dialog)
+  try {
+    $baseLeaf = Split-Path -Leaf $baseAbs
+    $headLeaf = Split-Path -Leaf $headAbs
+    if ($baseLeaf -ieq $headLeaf -and $baseAbs -ne $headAbs) {
+      $msg = "LVCompare limitation: Cannot compare two VIs sharing the same filename '$baseLeaf' located in different directories. Rename one copy or provide distinct filenames. Base=$baseAbs Head=$headAbs"
+      if (-not $Quiet) { Write-Error $msg }
+      return [pscustomobject]@{ Succeeded=$false; Reason='InvalidInput'; Error=$msg }
+    }
+  } catch {}
+
   if ($SkipValidation -and $PassThroughPaths) {
     $prevBaseTime = (Get-Date).ToUniversalTime()
     $prevHeadTime = $prevBaseTime
   } else {
     $prevBaseTime = (Get-Item -LiteralPath $baseAbs).LastWriteTimeUtc
     $prevHeadTime = (Get-Item -LiteralPath $headAbs).LastWriteTimeUtc
+  }
+
+  # Build a one-time tokenized args list and command preview (matching per-iteration logic)
+  $previewArgsList = @()
+  if ($LvCompareArgs) {
+    $pattern = Get-LVCompareArgTokenPattern
+    $tokens = [regex]::Matches($LvCompareArgs, $pattern) | ForEach-Object { $_.Value }
+    foreach ($t in $tokens) {
+      $tok = $t.Trim()
+      if ($tok.StartsWith('"') -and $tok.EndsWith('"')) { $tok = $tok.Substring(1, $tok.Length-2) }
+      elseif ($tok.StartsWith("'") -and $tok.EndsWith("'")) { $tok = $tok.Substring(1, $tok.Length-2) }
+      if ($tok) { $previewArgsList += $tok }
+    }
+    # Normalize combined flag/value tokens and -flag=value
+    function Normalize-PathToken([string]$s) {
+      if ($null -eq $s) { return $s }
+      if ($s -match '^[A-Za-z]:/') { return ($s -replace '/', '\') }
+      if ($s -match '^//') { return ($s -replace '/', '\') }
+      return $s
+    }
+    $norm = @(); foreach ($t in $previewArgsList) {
+      $tok = $t
+      if ($tok.StartsWith('-') -and $tok.Contains('=')) {
+        $eq = $tok.IndexOf('=')
+        if ($eq -gt 0) {
+          $f = $tok.Substring(0, $eq)
+          $v = $tok.Substring($eq + 1)
+          if ($v.StartsWith('"') -and $v.EndsWith('"')) {
+            $v = $v.Substring(1, $v.Length - 2)
+          } elseif ($v.StartsWith("'") -and $v.EndsWith("'")) {
+            $v = $v.Substring(1, $v.Length - 2)
+          }
+          if ($f) { $norm += $f }
+          if ($v) { $norm += (Normalize-PathToken $v) }
+          continue
+        }
+      }
+      if ($tok.StartsWith('-') -and $tok -match '\s+') {
+        $sp = $tok.IndexOf(' ')
+        if ($sp -gt 0) {
+          $f = $tok.Substring(0, $sp)
+          $v = $tok.Substring($sp + 1)
+          if ($f) { $norm += $f }
+          if ($v) { $norm += (Normalize-PathToken $v) }
+          continue
+        }
+      }
+      if (-not $tok.StartsWith('-')) { $tok = Normalize-PathToken $tok }
+      $norm += $tok
+    }
+    $previewArgsList = $norm
+  }
+  $previewCmd = (@(Quote $cli; Quote $baseAbs; Quote $headAbs) + ($previewArgsList | ForEach-Object { Quote $_ })) -join ' '
+
+  if ($PreviewArgs -or $env:LV_PREVIEW -eq '1') {
+    if (-not $Quiet) {
+      Write-Host 'Preview (no loop execution):' -ForegroundColor Cyan
+      Write-Host "  CLI:     $cli" -ForegroundColor Gray
+      Write-Host "  Base:    $baseAbs" -ForegroundColor Gray
+      Write-Host "  Head:    $headAbs" -ForegroundColor Gray
+      Write-Host ("  Tokens:  {0}" -f (($previewArgsList) -join ' | ')) -ForegroundColor Gray
+      Write-Host ("  Command: {0}" -f $previewCmd) -ForegroundColor Gray
+    }
+    $result = [pscustomobject]@{
+      Succeeded = $true
+      Iterations = 0
+      DiffCount = 0
+      ErrorCount = 0
+      AverageSeconds = 0
+      TotalSeconds = 0
+      Records = @()
+      BasePath = $baseAbs
+      HeadPath = $headAbs
+      Args = $LvCompareArgs
+      Mode = if ($UseEventDriven) { 'Event' } else { 'Polling' }
+      Percentiles = [pscustomobject]@{ p50=0; p90=0; p99=0 }
+      Histogram = $null
+      DiffSummary = $null
+      QuantileStrategy = $QuantileStrategy
+      StreamingWindowCount = 0
+      CliPath = $cli
+      Command = $previewCmd
+      PreviewArgs = $true
+    }
+    return $result
   }
 
   $iteration = 0; $diffCount = 0; $errorCount = 0; $totalSeconds = 0.0
@@ -269,9 +377,29 @@ function Invoke-IntegrationCompareLoop {
       $iterationSw = [System.Diagnostics.Stopwatch]::StartNew()
       $argsList = @()
       if ($LvCompareArgs) {
-        $pattern = '"[^\"]+"|\S+'
+        $pattern = Get-LVCompareArgTokenPattern
         $tokens = [regex]::Matches($LvCompareArgs, $pattern) | ForEach-Object { $_.Value }
-        foreach ($t in $tokens) { $argsList += $t.Trim('"') }
+        foreach ($t in $tokens) {
+          $tok = $t.Trim()
+          if ($tok.StartsWith('"') -and $tok.EndsWith('"')) { $tok = $tok.Substring(1, $tok.Length-2) }
+          elseif ($tok.StartsWith("'") -and $tok.EndsWith("'")) { $tok = $tok.Substring(1, $tok.Length-2) }
+          if ($tok) { $argsList += $tok }
+        }
+        # Normalize combined flag/value tokens and -flag=value
+        function Normalize-PathToken([string]$s) {
+          if ($null -eq $s) { return $s }
+          if ($s -match '^[A-Za-z]:/') { return ($s -replace '/', '\') }
+          if ($s -match '^//') { return ($s -replace '/', '\') }
+          return $s
+        }
+        $norm = @(); foreach ($t in $argsList) {
+          $tok = $t
+          if ($tok.StartsWith('-') -and $tok.Contains('=')) { $eq=$tok.IndexOf('='); if ($eq -gt 0){ $f=$tok.Substring(0,$eq); $v=$tok.Substring($eq+1); if ($v.StartsWith('"') -and $v.EndsWith('"')){ $v=$v.Substring(1,$v.Length-2)} elseif ($v.StartsWith("'") -and $v.EndsWith("'")){ $v=$v.Substring(1,$v.Length-2)}; if($f){$norm+=$f}; if($v){$norm+=(Normalize-PathToken $v)}; continue } }
+          if ($tok.StartsWith('-') -and $tok -match '\s+') { $sp=$tok.IndexOf(' '); if ($sp -gt 0){ $f=$tok.Substring(0,$sp); $v=$tok.Substring($sp+1); if($f){$norm+=$f}; if($v){$norm+=(Normalize-PathToken $v)}; continue } }
+          if (-not $tok.StartsWith('-')) { $tok = Normalize-PathToken $tok }
+          $norm += $tok
+        }
+        $argsList = $norm
       }
       if ($CompareExecutor) {
         # Invoke executor positionally to avoid parameter name coupling.

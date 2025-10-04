@@ -1,8 +1,16 @@
 {
   "ok": false,
-  "exitCode": 8,
+  "exitCode": 5,
   "summary": "Fixture validation failed",
   "issues": [
+    {
+      "type": "untracked",
+      "fixture": "VI1.vi"
+    },
+    {
+      "type": "untracked",
+      "fixture": "VI2.vi"
+    },
     {
       "type": "duplicate",
       "path": "VI1.vi"
@@ -16,7 +24,7 @@
   ],
   "summaryCounts": {
     "missing": 0,
-    "untracked": 0,
+    "untracked": 2,
     "tooSmall": 0,
     "hashMismatch": 0,
     "manifestError": 0,

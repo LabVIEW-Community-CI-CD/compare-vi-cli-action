@@ -9,6 +9,10 @@ Describe 'Invoke-CompareVI result contract' -Tag 'Unit' {
     $compareScript = Join-Path $script:RepoRoot 'scripts' 'CompareVI.ps1'
     if (-not (Test-Path -LiteralPath $compareScript)) { throw "CompareVI.ps1 not found under RepoRoot=$script:RepoRoot" }
     . $compareScript
+    
+    # Mock Resolve-Cli to avoid dependency on actual LVCompare installation
+    $script:canonical = 'C:\Program Files\National Instruments\Shared\LabVIEW Compare\LVCompare.exe'
+    Mock -CommandName Resolve-Cli -MockWith { $script:canonical }
   }
   Context 'Non short-circuit path (different files)' {
     # Use the provided VI1.vi and VI2.vi in repo root (they should differ)

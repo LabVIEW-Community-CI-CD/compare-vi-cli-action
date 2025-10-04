@@ -35,6 +35,35 @@ jobs:
         run: |
           ./bin/actionlint -color
 
+      - name: Local markdown link check (intra-repo)
+        shell: pwsh
+        run: |
+          # Simple intra-repo link checker: scans markdown for (./...) links and verifies files exist.
+          $ErrorActionPreference = 'Stop'
+          $mdFiles = Get-ChildItem -Path . -Recurse -Include *.md
+          $errors = @()
+          foreach ($file in $mdFiles) {
+            $text = Get-Content -LiteralPath $file.FullName -Raw
+            $matches = [regex]::Matches($text, '\]\((\.\/?[^)#\s]+)\)')
+            foreach ($m in $matches) {
+              $rel = $m.Groups[1].Value
+              if ($rel -like 'http*' -or $rel -like '#*') { continue }
+              # Strip anchors like file.md#section
+              $pathOnly = $rel.Split('#')[0]
+              $target = Join-Path $file.DirectoryName $pathOnly
+              if (-not (Test-Path -LiteralPath $target)) {
+                $errors += "[$($file.FullName)] broken link -> $rel (resolved: $target)"
+              }
+            }
+          }
+          if ($errors.Count -gt 0) {
+            Write-Host 'Broken intra-repo links detected:'
+            $errors | ForEach-Object { Write-Host " - $_" }
+            exit 2
+          } else {
+            Write-Host 'Intra-repo markdown links OK.'
+          }
+
   fixtures:
     runs-on: [self-hosted, Windows, X64]
     env:
