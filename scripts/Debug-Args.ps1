@@ -20,6 +20,9 @@ param(
   [object]$Args
 )
 
+# Import shared tokenization module
+Import-Module (Join-Path $PSScriptRoot 'ArgTokenization.psm1') -Force
+
 function Convert-ArgTokenList([string[]]$tokens) {
   $out = @()
   foreach ($t in $tokens) {
@@ -68,7 +71,7 @@ function Split-ArgSpec([object]$value) {
   }
   $s = [string]$value
   if ($s -match '^\s*$') { return @() }
-  $pattern = '"[^"]+"|''[^'']+''|[^,\s]+'
+  $pattern = Get-LVCompareArgTokenPattern
   $mList = [regex]::Matches($s, $pattern)
   $list = @()
   foreach ($m in $mList) {
