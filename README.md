@@ -378,6 +378,14 @@ Use the helper script to assess prerequisites before enabling integration tests:
 
 Exit code 0 means ready; 1 indicates missing prerequisites (non-fatal for CI gating).
 
+CI tip (leak remediation defaults):
+
+```powershell
+$env:CLEAN_AFTER = '1'
+$env:KILL_LEAKS = '1'
+$env:LEAK_GRACE_SECONDS = '1.0'
+```
+
 Troubleshooting unknown exit codes
 
 - The action treats 0 as no diff and 1 as diff. Any other exit code fails fast.

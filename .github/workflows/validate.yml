@@ -35,6 +35,23 @@ jobs:
         run: |
           ./bin/actionlint -color
 
+      - name: Check internal markdown links
+        run: |
+          set -e
+          # Simple intra-repo link checker: looks for [text](./path) and verifies file exists
+          # Note: intentionally limited; avoids network calls
+          grep -Rho "\(\./[a-zA-Z0-9_./-]*\)" -- "**/*.md" | sed -e 's/[()]//g' | sort -u > .links.txt || true
+          missing=0
+          while IFS= read -r p; do
+            # strip anchors
+            f="${p%%#*}"
+            if [ -n "$f" ] && [ ! -e "$f" ]; then
+              echo "Missing link target: $p"
+              missing=1
+            fi
+          done < .links.txt
+          exit $missing
+
   fixtures:
     runs-on: [self-hosted, Windows, X64]
     env:

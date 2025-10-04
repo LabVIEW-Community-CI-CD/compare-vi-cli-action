@@ -47,7 +47,11 @@ This design prevents container-level failures during discovery and keeps CI gree
 1. Run the dispatcher including integration tests:
 
   ```powershell
-  ./Invoke-PesterTests.ps1 -IncludeIntegration true
+  # Recommended CI leak defaults
+  $env:CLEAN_AFTER = '1'
+  $env:KILL_LEAKS = '1'
+  $env:LEAK_GRACE_SECONDS = '1.0'
+  ./Invoke-PesterTests.ps1 -IncludeIntegration true -DetectLeaks
   ```
 
 To include HTML report tests also verify:
