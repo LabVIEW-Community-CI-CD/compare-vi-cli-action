@@ -7,7 +7,7 @@ on:
 jobs:
   validate:
     name: Fixture Drift
-    runs-on: windows-latest
+    runs-on: ubuntu-latest
     permissions:
       actions: read
       contents: read
@@ -19,7 +19,7 @@ jobs:
       - name: Fixture Drift Orchestrator
         uses: ./.github/actions/fixture-drift
         with:
-          render-report: 'true'
+          render-report: 'false'
           comment-on-fail: 'true'
           upload-artifacts: 'true'
           artifact-name: fixture-drift
