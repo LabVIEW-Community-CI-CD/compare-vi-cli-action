@@ -6,8 +6,20 @@ on:
 
 jobs:
   validate:
-    name: Fixture Drift
-    runs-on: ubuntu-latest
+    name: Fixture Drift (${{ matrix.os-label }})
+    runs-on: ${{ matrix.runs-on }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os-label: Ubuntu
+            runs-on: ubuntu-latest
+            render-report: 'false'
+            artifact-suffix: '-ubuntu'
+          - os-label: Windows (self-hosted)
+            runs-on: [self-hosted, Windows, X64]
+            render-report: 'true'
+            artifact-suffix: '-windows'
     permissions:
       actions: read
       contents: read
@@ -19,7 +31,7 @@ jobs:
       - name: Fixture Drift Orchestrator
         uses: ./.github/actions/fixture-drift
         with:
-          render-report: 'false'
+          render-report: ${{ matrix.render-report }}
           comment-on-fail: 'true'
           upload-artifacts: 'true'
-          artifact-name: fixture-drift
+          artifact-name: fixture-drift${{ matrix.artifact-suffix }}
