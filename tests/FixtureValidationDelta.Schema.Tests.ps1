@@ -27,7 +27,7 @@ Describe 'Fixture validation delta schema' -Tag 'Unit' {
     $currOut = $currRaw.Substring($currIdx, $currEnd-$currIdx+1)
     Set-Content -LiteralPath $current -Value $currOut -Encoding utf8
     # Restore manifest
-    $originalManifest | Set-Content -LiteralPath $manifestPath -Encoding utf8
+    $originalManifest | Set-Content -LiteralPath $manifestPath -Encoding utf8 -NoNewline
 
     $deltaRaw = (pwsh -NoLogo -NoProfile -File $diff -Baseline $baseline -Current $current | Out-String)
     $delta = $deltaRaw | ConvertFrom-Json

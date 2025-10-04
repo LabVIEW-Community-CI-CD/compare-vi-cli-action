@@ -12,7 +12,7 @@ Describe 'Fixture validation delta script' -Tag 'Unit' {
     $script:originalManifest = Get-Content -LiteralPath $manifestPath -Raw
 
     function Write-Manifest($jsonRaw) {
-      $jsonRaw | Set-Content -LiteralPath $script:manifestPath -Encoding utf8
+      $jsonRaw | Set-Content -LiteralPath $script:manifestPath -Encoding utf8 -NoNewline
     }
 
   function Convert-JsonOutputSegment([string]$raw) {
