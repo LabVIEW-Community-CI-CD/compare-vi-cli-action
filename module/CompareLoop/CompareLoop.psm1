@@ -136,8 +136,8 @@ function Invoke-IntegrationCompareLoop {
     # Normalize combined flag/value tokens and -flag=value
     function Normalize-PathToken([string]$s) {
       if ($null -eq $s) { return $s }
-      if ($s -match '^[A-Za-z]:/') { return ($s -replace '/', '\\') }
-      if ($s -match '^//') { return ($s -replace '/', '\\') }
+      if ($s -match '^[A-Za-z]:/') { return ($s.Replace('/', [IO.Path]::DirectorySeparatorChar)) }
+      if ($s -match '^//') { return ($s.Replace('/', [IO.Path]::DirectorySeparatorChar)) }
       return $s
     }
     $norm = @(); foreach ($t in $previewArgsList) {
@@ -383,8 +383,8 @@ function Invoke-IntegrationCompareLoop {
         # Normalize combined flag/value tokens and -flag=value
         function Normalize-PathToken([string]$s) {
           if ($null -eq $s) { return $s }
-          if ($s -match '^[A-Za-z]:/') { return ($s -replace '/', '\\') }
-          if ($s -match '^//') { return ($s -replace '/', '\\') }
+          if ($s -match '^[A-Za-z]:/') { return ($s.Replace('/', [IO.Path]::DirectorySeparatorChar)) }
+          if ($s -match '^//') { return ($s.Replace('/', [IO.Path]::DirectorySeparatorChar)) }
           return $s
         }
         $norm = @(); foreach ($t in $argsList) {

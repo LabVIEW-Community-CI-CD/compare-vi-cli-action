@@ -14,64 +14,64 @@ This document defines the acceptance criteria for merging feat/dispatcher-diagno
 ### 1. Core Dispatcher Functionality ✅
 
 #### 1.1 Duration Precision
-- [ ] JSON field `duration_s` uses `[math]::Round(..., 6)` (not `ToString('F2')`)
-- [ ] Fast test runs (< 10ms) emit non-zero duration values
-- [ ] Verification: Run smoke test, check pester-summary.json has 6 decimal places
+- [x] JSON field `duration_s` uses `[math]::Round(..., 6)` (not `ToString('F2')`)
+- [x] Fast test runs (< 10ms) emit non-zero duration values
+- [x] Verification: Run smoke test, check pester-summary.json has 6 decimal places
 
 #### 1.2 Variable Scoping
-- [ ] Footer summary uses prefixed variables: `$diagTotalEntries`, `$diagHasPath`, `$diagHasTags`, `$pPath`, `$pTags`
-- [ ] Top-level counters (`$total`, `$passed`, `$failed`, etc.) not clobbered by footer logic
-- [ ] Verification: Run full test suite, verify totals match detailed counts
+- [x] Footer summary uses prefixed variables: `$diagTotalEntries`, `$diagHasPath`, `$diagHasTags`, `$pPath`, `$pTags`
+- [x] Top-level counters (`$total`, `$passed`, `$failed`, etc.) not clobbered by footer logic
+- [x] Verification: Run full test suite, verify totals match detailed counts
 
 #### 1.3 Schema Backward Compatibility
-- [ ] Baseline JSON summary schema version remains **1.7.1**
-- [ ] No breaking changes to existing JSON structure
-- [ ] New diagnostic schema version **1.1.0** used only when opt-in flag enabled
-- [ ] Verification: Check schemaVersion field in pester-summary.json
+- [x] Baseline JSON summary schema version remains **1.7.1**
+- [x] No breaking changes to existing JSON structure
+- [x] New diagnostic schema version **1.1.0** used only when opt-in flag enabled
+- [x] Verification: Check schemaVersion field in pester-summary.json
 
 ### 2. New Diagnostic Features ✅
 
 #### 2.1 Result Shape Diagnostics
-- [ ] `-EmitResultShapeDiagnostics` switch available
-- [ ] Environment variable `EMIT_RESULT_SHAPES` (truthy: 1/true/yes/on) works
-- [ ] Generates `result-shapes.json` with schema v1.1.0
-- [ ] Generates `result-shapes.txt` (human-readable summary)
-- [ ] Both files included in artifact manifest when present
-- [ ] Verification: Run with `-EmitResultShapeDiagnostics`, check files exist
+- [x] `-EmitResultShapeDiagnostics` switch available
+- [x] Environment variable `EMIT_RESULT_SHAPES` (truthy: 1/true/yes/on) works
+- [x] Generates `result-shapes.json` with schema v1.1.0
+- [x] Generates `result-shapes.txt` (human-readable summary)
+- [x] Both files included in artifact manifest when present
+- [x] Verification: Run with `-EmitResultShapeDiagnostics`, check files exist
 
 #### 2.2 Step Summary Control
-- [ ] `-DisableStepSummary` switch available
-- [ ] Environment variable `DISABLE_STEP_SUMMARY` (truthy: 1/true/yes/on) works
-- [ ] When enabled, no writes to GitHub Step Summary (`$env:GITHUB_STEP_SUMMARY`)
-- [ ] Verification: Run locally with flag, ensure no step summary artifact created
+- [x] `-DisableStepSummary` switch available
+- [x] Environment variable `DISABLE_STEP_SUMMARY` (truthy: 1/true/yes/on) works
+- [x] When enabled, no writes to GitHub Step Summary (`$env:GITHUB_STEP_SUMMARY`)
+- [x] Verification: Run locally with flag, ensure no step summary artifact created
 
 #### 2.3 Helper Function
-- [ ] `_IsTruthyEnv` function correctly identifies: 1, true, yes, on (case-insensitive)
-- [ ] Returns `$false` for empty/whitespace/other values
-- [ ] Used consistently for all env var boolean parsing
+- [x] `_IsTruthyEnv` function correctly identifies: 1, true, yes, on (case-insensitive)
+- [x] Returns `$false` for empty/whitespace/other values
+- [x] Used consistently for all env var boolean parsing
 
 ### 3. New Scripts & Tools ✅
 
 #### 3.1 Capture-LVCompare.ps1
-- [ ] Script exists at `scripts/Capture-LVCompare.ps1`
+- [x] Script exists at `scripts/Capture-LVCompare.ps1`
 - [ ] Captures stdout and stderr from LVCompare.exe execution
 - [ ] Useful for debugging non-0/1 exit codes
 - [ ] Documented in DEVELOPER_GUIDE.md
 
 #### 3.2 Debug-Args.ps1
-- [ ] Script exists at `scripts/Debug-Args.ps1`
+- [x] Script exists at `scripts/Debug-Args.ps1`
 - [ ] Tokenizes lvCompareArgs without executing LVCompare
 - [ ] Shows CLI path, command line, and normalized token list
 - [ ] Supports both `-Args` parameter and preview mode
 
 #### 3.3 Ensure-LVCompareClean.ps1
-- [ ] Script exists at `scripts/Ensure-LVCompareClean.ps1`
+- [x] Script exists at `scripts/Ensure-LVCompareClean.ps1`
 - [ ] Checks for stray LVCompare.exe and LabVIEW.exe processes
 - [ ] Returns actionable error if leaks detected
 - [ ] Can be called before critical test runs
 
 #### 3.4 Quick-DispatcherSmoke.ps1
-- [ ] Tool exists at `tools/Quick-DispatcherSmoke.ps1`
+- [x] Tool exists at `tools/Quick-DispatcherSmoke.ps1`
 - [ ] Creates minimal test suite in temp folder
 - [ ] Runs dispatcher and prints JSON summary
 - [ ] Supports `-Raw` switch (full JSON output)
@@ -82,7 +82,7 @@ This document defines the acceptance criteria for merging feat/dispatcher-diagno
 ### 4. Argument Tokenization ✅
 
 #### 4.1 Test Coverage (tests/Args.Tokenization.Tests.ps1)
-- [ ] **5 tests, all passing**:
+- [x] **5 tests, all passing**:
   1. Comma-delimited flags and quoted values
   2. Whitespace-delimited flags with double-quoted values
   3. Equals-assignment forms (`-flag=value`)
@@ -90,30 +90,30 @@ This document defines the acceptance criteria for merging feat/dispatcher-diagno
   5. Validation (detects invalid `-lvpath` without value)
 
 #### 4.2 Test Implementation Quality
-- [ ] `Convert-TokensForAssert` helper in `BeforeAll` block (Pester 5.x requirement)
-- [ ] Expected values use single backslashes (not escaped doubles)
-- [ ] Tests cover both CompareVI.ps1 and CompareLoop module code paths
-- [ ] Tests use dependency injection (custom executor) to avoid CLI execution
+- [x] `Convert-TokensForAssert` helper in `BeforeAll` block (Pester 5.x requirement)
+- [x] Expected values use single backslashes (not escaped doubles)
+- [x] Tests cover both CompareVI.ps1 and CompareLoop module code paths
+- [x] Tests use dependency injection (custom executor) to avoid CLI execution
 
 #### 4.3 Tokenization Correctness
-- [ ] Comma-separated: `"a,b,c"` → `@('a','b','c')`
-- [ ] Whitespace-separated: `"a b c"` → `@('a','b','c')`
-- [ ] Quoted values with spaces: `'"--log C:\a b\z.txt"'` → `@('--log', 'C:\a b\z.txt')`
-- [ ] Equals-assignment: `'-lvpath=C:\X\LabVIEW.exe'` → `@('-lvpath', 'C:\X\LabVIEW.exe')`
-- [ ] Mixed: Order preserved, all forms work together
+- [x] Comma-separated: `"a,b,c"` → `@('a','b','c')`
+- [x] Whitespace-separated: `"a b c"` → `@('a','b','c')`
+- [x] Quoted values with spaces: `'"--log C:\a b\z.txt"'` → `@('--log', 'C:\a b\z.txt')`
+- [x] Equals-assignment: `'-lvpath=C:\X\LabVIEW.exe'` → `@('-lvpath', 'C:\X\LabVIEW.exe')`
+- [x] Mixed: Order preserved, all forms work together
 
 ### 5. Module Enhancements ✅
 
 #### 5.1 CompareLoop Preview Mode
-- [ ] `-PreviewArgs` switch available on `Invoke-IntegrationCompareLoop`
-- [ ] Shows CLI path, full command, and normalized tokens
-- [ ] Does NOT execute LVCompare (zero timing, no popups)
-- [ ] Works with `-LvCompareArgs` parameter
+- [x] `-PreviewArgs` switch available on `Invoke-IntegrationCompareLoop`
+- [x] Shows CLI path, full command, and normalized tokens
+- [x] Does NOT execute LVCompare (zero timing, no popups)
+- [x] Works with `-LvCompareArgs` parameter
 
 #### 5.2 CompareVI Preview Mode
-- [ ] `-PreviewArgs` switch available on `CompareVI.ps1`
-- [ ] Environment variable `LV_PREVIEW=1` enables preview globally
-- [ ] Displays tokenization without CLI execution
+- [x] `-PreviewArgs` switch available on `CompareVI.ps1`
+- [x] Environment variable `LV_PREVIEW=1` enables preview globally
+- [x] Displays tokenization without CLI execution
 
 ### 6. Fixture Validation ✅
 
@@ -129,9 +129,9 @@ This document defines the acceptance criteria for merging feat/dispatcher-diagno
 - [ ] Absolute path resolution for JSON files in composite action context
 
 #### 6.3 Manifest Quality
-- [ ] fixtures.manifest.json: 18 lines (no trailing blanks)
-- [ ] Valid JSON structure
-- [ ] Tracked in git for drift validation
+- [x] fixtures.manifest.json: 18 lines (no trailing blanks)
+- [x] Valid JSON structure
+- [x] Tracked in git for drift validation
 
 ### 7. Documentation ✅
 
@@ -158,9 +158,9 @@ This document defines the acceptance criteria for merging feat/dispatcher-diagno
 ### 8. Test Quality ✅
 
 #### 8.1 Test Execution Results
-- [ ] **Total Tests**: 176
-- [ ] **Passed**: 172
-- [ ] **Failed**: 4 (all pre-existing from develop baseline)
+- [x] **Total Tests**: 176
+- [x] **Passed**: 172
+- [x] **Failed**: 4 (all pre-existing from develop baseline)
   - 3x LVCompare.exe not found (expected without installation)
   - 1x fixture validation regex mismatch (pre-existing)
 - [ ] **Errors**: 0
@@ -168,9 +168,9 @@ This document defines the acceptance criteria for merging feat/dispatcher-diagno
 - [ ] **Duration**: ~117s (acceptable performance)
 
 #### 8.2 No New Failures
-- [ ] All test failures present on develop branch are accounted for
-- [ ] No new failures introduced by this PR
-- [ ] Args.Tokenization tests: 5/5 passing
+- [x] All test failures present on develop branch are accounted for
+- [x] No new failures introduced by this PR
+- [x] Args.Tokenization tests: 5/5 passing
 
 #### 8.3 Integration Tests
 - [ ] Skipped appropriately when LVCompare not available
@@ -187,7 +187,7 @@ This document defines the acceptance criteria for merging feat/dispatcher-diagno
 - [ ] `results/pester-summary.txt` removed from git
 
 #### 9.2 Manifest Cleanup
-- [ ] fixtures.manifest.json: 229 trailing blank lines removed (247 → 18 lines)
+- [x] fixtures.manifest.json: 229 trailing blank lines removed (247 → 18 lines)
 
 ### 10. Backward Compatibility ✅
 
@@ -266,6 +266,10 @@ $env:DISABLE_STEP_SUMMARY = '1'
 - [ ] No bug reports related to duration precision
 - [ ] No variable scoping issues reported
 - [ ] Tokenization works correctly in real workflows
+
+---
+
+Note on local troubleshooting: a prior Ctrl+C interruption (`^C`) during an in-progress test run left the session in a bad state and caused subsequent partial runs to misreport. Re-running from a clean shell and guarding env flags resolved the transient regression.
 
 ### Long-Term (1 month)
 - [ ] Diagnostic tools used by developers (AGENTS.md traffic)

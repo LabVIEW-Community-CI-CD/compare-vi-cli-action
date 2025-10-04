@@ -51,8 +51,8 @@ function Convert-ArgTokenList([string[]]$tokens) {
   function Normalize-PathToken([string]$s) {
     if ($null -eq $s) { return $s }
     # Convert Windows-style forward slashes to backslashes for drive-letter and UNC forms
-    if ($s -match '^[A-Za-z]:/') { return ($s -replace '/', '\\') }
-    if ($s -match '^//') { return ($s -replace '/', '\\') }
+    if ($s -match '^[A-Za-z]:/') { return ($s.Replace('/', [IO.Path]::DirectorySeparatorChar)) }
+    if ($s -match '^//') { return ($s.Replace('/', [IO.Path]::DirectorySeparatorChar)) }
     return $s
   }
   foreach ($t in $tokens) {
