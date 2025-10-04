@@ -1142,7 +1142,13 @@ try {
   $diagJsonPath = Join-Path $resultsDir 'result-shapes.json'
   $diagTotalEntries = $null; $diagHasPath = $null; $diagHasTags = $null
   if (Test-Path -LiteralPath $diagJsonPath -PathType Leaf) {
-    try { $diagObj = Get-Content -LiteralPath $diagJsonPath -Raw | ConvertFrom-Json -ErrorAction Stop; $diagTotalEntries=[int]$diagObj.totalEntries; $diagHasPath=[int]$diagObj.overall.hasPath; $diagHasTags=[int]$diagObj.overall.hasTags } catch {}
+    try {
+      $diagJsonRaw = Get-Content -LiteralPath $diagJsonPath -Raw
+      $diagObj = $diagJsonRaw | ConvertFrom-Json -ErrorAction Stop
+      $diagTotalEntries = [int]$diagObj.totalEntries
+      $diagHasPath = [int]$diagObj.overall.hasPath
+      $diagHasTags = [int]$diagObj.overall.hasTags
+    } catch {}
   }
   if ($null -eq $diagTotalEntries -and $result -and $result.Tests) {
     try { $testsLocal=@($result.Tests); $diagTotalEntries=$testsLocal.Count; $diagHasPath=@($testsLocal | Where-Object { $_.PSObject.Properties.Name -contains 'Path' }).Count; $diagHasTags=@($testsLocal | Where-Object { $_.PSObject.Properties.Name -contains 'Tags' }).Count } catch {}
