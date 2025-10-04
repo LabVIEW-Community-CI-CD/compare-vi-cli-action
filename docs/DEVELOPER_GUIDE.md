@@ -327,6 +327,30 @@ For quick local verification without running full Pester:
 ./tools/Quick-VerifyCompare.ps1 -Base path\to\A.vi -Head path\to\B.vi
 ```
 
+### Minimal Preview Mode (No CLI, fewer options)
+
+When you just want to see how arguments will be passed to LVCompare without launching it, use the minimal preview:
+
+```powershell
+# One-shot compare script: show tokens and the final command
+pwsh -File ./scripts/CompareVI.ps1 -Base VI1.vi -Head VI2.vi -LvCompareArgs "-nobdcosm -nofppos --log C:\temp\log.txt" -PreviewArgs
+
+# Or set an env to enable preview globally
+$env:LV_PREVIEW = '1'
+pwsh -File ./scripts/CompareVI.ps1 -Base VI1.vi -Head VI2.vi -LvCompareArgs "--log=C:\temp\log.txt"
+
+# Loop module (programmatic): preview without executing iterations
+Import-Module ./module/CompareLoop/CompareLoop.psd1 -Force
+Invoke-IntegrationCompareLoop -Base VI1.vi -Head VI2.vi -LvCompareArgs "-lvpath C:\Program Files\National Instruments\LabVIEW 2025\LabVIEW.exe" -PreviewArgs -Quiet
+```
+
+What you get:
+
+- CLI path, fully-quoted command line, and normalized token list
+- No LVCompare invocation, no LabVIEW popups, zero timing recorded
+- Works with both whitespace/comma separated forms and -flag=value pairs
+
+
 ## Contributing Guidelines
 
 See [`../CONTRIBUTING.md`](../CONTRIBUTING.md) for:
