@@ -136,7 +136,21 @@ function Invoke-IntegrationCompareLoop {
     # Normalize combined flag/value tokens and -flag=value
     $norm = @(); foreach ($t in $previewArgsList) {
       $tok = $t
-      if ($tok.StartsWith('-') -and $tok.Contains('=')) { $eq=$tok.IndexOf('='); if ($eq -gt 0){ $f=$tok.Substring(0,$eq); $v=$tok.Substring($eq+1); if ($v.StartsWith('"') -and $v.EndsWith('"')){ $v=$v.Substring(1,$v.Length-2)} elseif ($v.StartsWith("'") -and $v.EndsWith("'")){ $v=$v.Substring(1,$v.Length-2)}; if($f){$norm+=$f}; if($v){$norm+=$v}; continue } }
+      if ($tok.StartsWith('-') -and $tok.Contains('=')) {
+        $eq = $tok.IndexOf('=')
+        if ($eq -gt 0) {
+          $f = $tok.Substring(0, $eq)
+          $v = $tok.Substring($eq + 1)
+          if ($v.StartsWith('"') -and $v.EndsWith('"')) {
+            $v = $v.Substring(1, $v.Length - 2)
+          } elseif ($v.StartsWith("'") -and $v.EndsWith("'")) {
+            $v = $v.Substring(1, $v.Length - 2)
+          }
+          if ($f) { $norm += $f }
+          if ($v) { $norm += $v }
+          continue
+        }
+      }
       if ($tok.StartsWith('-') -and $tok -match '\s+') { $sp=$tok.IndexOf(' '); if ($sp -gt 0){ $f=$tok.Substring(0,$sp); $v=$tok.Substring($sp+1); if($f){$norm+=$f}; if($v){$norm+=$v}; continue } }
       $norm += $tok
     }
