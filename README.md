@@ -232,6 +232,7 @@ See [`docs/action-outputs.md`](./docs/action-outputs.md) for complete output doc
 For advanced configuration including lvCompareArgs recipes, working-directory usage, path resolution, and HTML report generation, see the **[Usage Guide](./docs/USAGE_GUIDE.md)**.
 
 Tip: Environment variables quick reference moved to the **[Environment appendix](./docs/ENVIRONMENT.md)**.
+Note: For CI integration test runs, consider setting CLEAN_AFTER=1, KILL_LEAKS=1, and `LEAK_GRACE_SECONDS`≈1.0 to avoid lingering LabVIEW/LVCompare processes; see Troubleshooting → Leak Detection and the Environment appendix for details.
 
 ## Loop Mode
 
@@ -377,14 +378,6 @@ Use the helper script to assess prerequisites before enabling integration tests:
 ```
 
 Exit code 0 means ready; 1 indicates missing prerequisites (non-fatal for CI gating).
-
-CI tip (leak remediation defaults):
-
-```powershell
-$env:CLEAN_AFTER = '1'
-$env:KILL_LEAKS = '1'
-$env:LEAK_GRACE_SECONDS = '1.0'
-```
 
 Troubleshooting unknown exit codes
 
