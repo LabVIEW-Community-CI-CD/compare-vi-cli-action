@@ -201,13 +201,13 @@ runs:
           if ($j.exitCode) { $exitCode = [string]$j.exitCode }
           if ($j.artifactPaths) { $artifactsList = @($j.artifactPaths) }
         }
-        # Query run artifacts for direct links
+        # Query run artifacts for listing (names only; link to run page for downloads)
         $repoFull = '${{ github.repository }}'
         $owner,$repo = $repoFull.Split('/')
         $runId = '${{ github.run_id }}'
         $apiBase = "https://api.github.com"
         $headers = @{ Authorization = "Bearer $env:GITHUB_TOKEN"; 'X-GitHub-Api-Version' = '2022-11-28'; Accept='application/vnd.github+json' }
-        $artifactLinks = @()
+        $artifactNames = @()
         try {
           $page = 1; $pageSize = 100
           while ($true) {
@@ -216,8 +216,7 @@ runs:
             if (-not $resp -or -not $resp.artifacts -or $resp.artifacts.Count -eq 0) { break }
             foreach ($art in $resp.artifacts) {
               $name = [string]$art.name
-              $dl = if ($art.archive_download_url) { [string]$art.archive_download_url } else { "$apiBase/repos/$owner/$repo/actions/artifacts/$($art.id)/zip" }
-              $artifactLinks += "[$name]($dl)"
+              $artifactNames += $name
             }
             if ($resp.artifacts.Count -lt $pageSize) { break }
             $page += 1; if ($page -gt 5) { break } # safety cap
@@ -229,19 +228,19 @@ runs:
         $lines += 'Fixture Drift validation failed on this PR.'
         $lines += "Status: $status (exit $exitCode)"
         $lines += ''
-        $lines += "Artifacts are available on the workflow run: $runUrl"
+        $lines += "**Download artifacts**: Visit the [workflow run page]($runUrl) and scroll to the Artifacts section at the bottom."
         $lines += ''
+        if ($artifactNames.Count -gt 0) {
+          $lines += 'Available artifacts:'
+          foreach ($name in $artifactNames) { $lines += "- $name" }
+          $lines += ''
+        }
         $lines += 'Environment quick toggles:'
         $lines += '- DETECT_LEAKS=1 — emit leak report (tests/results/pester-leak-report.json)'
         $lines += '- CLEAN_AFTER=1 — best-effort stop LabVIEW/LVCompare after run'
         $lines += '- FAIL_ON_LEAKS=1 — fail when leaks are detected'
         $lines += ''
         $lines += 'Full reference: docs/ENVIRONMENT.md'
-        if ($artifactLinks.Count -gt 0) {
-          $lines += ''
-          $lines += 'Direct downloads:'
-          foreach ($l in $artifactLinks) { $lines += "- $l" }
-        }
         if ($artifactsList.Count -gt 0) {
           $lines += ''
           $lines += 'Included artifact files:'
