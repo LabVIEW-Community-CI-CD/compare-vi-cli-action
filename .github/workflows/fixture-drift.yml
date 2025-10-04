@@ -5,9 +5,28 @@ on:
   workflow_dispatch:
 
 jobs:
-  validate:
-    name: Fixture Drift
-    runs-on: windows-latest
+  validate-ubuntu:
+    name: Fixture Drift (Ubuntu)
+    runs-on: ubuntu-latest
+    permissions:
+      actions: read
+      contents: read
+      pull-requests: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Fixture Drift Orchestrator
+        uses: ./.github/actions/fixture-drift
+        with:
+          render-report: 'false'
+          comment-on-fail: 'true'
+          upload-artifacts: 'true'
+          artifact-name: fixture-drift-ubuntu
+
+  validate-windows:
+    name: Fixture Drift (Windows)
+    runs-on: [self-hosted, Windows, X64]
     permissions:
       actions: read
       contents: read
@@ -22,4 +41,4 @@ jobs:
           render-report: 'true'
           comment-on-fail: 'true'
           upload-artifacts: 'true'
-          artifact-name: fixture-drift
+          artifact-name: fixture-drift-windows
