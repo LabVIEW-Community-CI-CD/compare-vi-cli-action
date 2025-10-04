@@ -11,7 +11,8 @@ Describe 'LVCompare args tokenization' -Tag 'Unit' {
   }
   
   It 'tokenizes comma-delimited flags and quoted values consistently' {
-  $argSpec = "-nobdcosm,-nofppos,-noattr,'-lvpath C:\Path With Space\LabVIEW.exe','--log C:\t x\l.log'"
+  # Use forward slashes for cross-platform compatibility in test data
+  $argSpec = "-nobdcosm,-nofppos,-noattr,'-lvpath C:/Path With Space/LabVIEW.exe','--log C:/t x/l.log'"
 
   # CompareVI (direct tokenization pipeline)
   . (Join-Path $PSScriptRoot '..' 'scripts' 'CompareVI.ps1')
