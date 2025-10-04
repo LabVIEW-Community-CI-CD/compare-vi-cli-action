@@ -105,6 +105,13 @@ param(
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
+# Minimal DX toggles (env-only): VERBOSE_TRACE=1, PAUSE_AFTER_RUN_SECONDS
+$script:VerboseTrace = ($env:VERBOSE_TRACE -eq '1')
+$script:PauseAfterSeconds = 0.0
+if ($env:PAUSE_AFTER_RUN_SECONDS) {
+  try { $script:PauseAfterSeconds = [double]$env:PAUSE_AFTER_RUN_SECONDS } catch { $script:PauseAfterSeconds = 0.0 }
+}
+
 # Env toggle support: CLEAN_LABVIEW=1 and/or CLEAN_AFTER=1 act as implicit switches
 if (-not $CleanLabVIEW) { $CleanLabVIEW = ($env:CLEAN_LABVIEW -eq '1') }
 if (-not $CleanAfter)   { $CleanAfter   = ($env:CLEAN_AFTER   -eq '1') }
@@ -346,6 +353,10 @@ if ($DetectLeaks) {
   Write-Host ("  Kill Leaks: {0}" -f $KillLeaks)
 }
 Write-Host ""
+
+if ($script:VerboseTrace) {
+  Write-Host "[trace] VERBOSE_TRACE enabled" -ForegroundColor DarkCyan
+}
 
 # Debug instrumentation (opt-in via COMPARISON_ACTION_DEBUG=1)
 if ($env:COMPARISON_ACTION_DEBUG -eq '1') {
@@ -709,6 +720,10 @@ if (-not $includeIntegrationBool) {
   Write-Host "  Including Integration-tagged tests" -ForegroundColor Cyan
 }
 
+if ($script:VerboseTrace) {
+  Write-Host ("[trace] IncludeIntegration (normalized): {0}" -f $includeIntegrationBool) -ForegroundColor DarkCyan
+}
+
 # Configure output
 $conf.Output.Verbosity = 'Detailed'
 $conf.Run.PassThru = $true
@@ -731,6 +746,11 @@ Write-Host ""
 
 Write-Host "Executing Pester tests..." -ForegroundColor Yellow
 Write-Host "----------------------------------------" -ForegroundColor DarkGray
+
+if ($script:VerboseTrace) {
+  Write-Host ("[trace] Effective timeout (s): {0}" -f $effectiveTimeoutSeconds) -ForegroundColor DarkCyan
+  Write-Host ("[trace] MaxTestFiles: {0}" -f $MaxTestFiles) -ForegroundColor DarkCyan
+}
 
 # Legacy structural pattern retained for dispatcher unit tests expecting historical Push/Pop and try/finally constructs.
 # (Commented out to avoid changing current absolute-path execution strategy.)
@@ -847,6 +867,10 @@ Write-Host "----------------------------------------" -ForegroundColor DarkGray
 Write-Host ""
 Write-Host "Test execution completed in $($testDuration.TotalSeconds.ToString('F2')) seconds" -ForegroundColor Green
 Write-Host ""
+
+if ($script:VerboseTrace) {
+  Write-Host ("[trace] Results dir: {0}" -f $resultsDir) -ForegroundColor DarkCyan
+}
 
 # Artifact tracking post-snapshot and delta
 if ($TrackArtifacts) {
@@ -1440,5 +1464,15 @@ Write-ArtifactManifest -Directory $resultsDir -SummaryJsonPath $jsonSummaryPath 
       }
     }
   } catch { Write-Warning "Failed to emit final sweep leak report: $_" }
+  # Optional pause at end for local readability
+  try {
+    if ($script:PauseAfterSeconds -gt 0) {
+      $ms = [int]([math]::Round($script:PauseAfterSeconds * 1000))
+      if ($ms -gt 0) {
+        Write-Host ("Pausing {0} ms (PAUSE_AFTER_RUN_SECONDS)" -f $ms) -ForegroundColor DarkGray
+        Start-Sleep -Milliseconds $ms
+      }
+    }
+  } catch { }
 }
 exit 0
