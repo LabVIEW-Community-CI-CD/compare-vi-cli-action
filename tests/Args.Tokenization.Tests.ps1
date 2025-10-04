@@ -16,7 +16,7 @@ Describe 'LVCompare args tokenization' -Tag 'Unit' {
 
   # CompareVI (direct tokenization pipeline)
   . (Join-Path $PSScriptRoot '..' 'scripts' 'CompareVI.ps1')
-  $pattern = '"[^\"]+"|''[^'']+''|[^,\s]+'
+  $pattern = Get-LVCompareArgTokenPattern
   $tokens = [regex]::Matches($argSpec, $pattern) | ForEach-Object { $_.Value }
   $cliArgs = @(); foreach ($t in $tokens) { $tok = $t.Trim(); if ($tok.StartsWith('"') -and $tok.EndsWith('"')) { $tok = $tok.Substring(1,$tok.Length-2) } elseif ($tok.StartsWith("'") -and $tok.EndsWith("'")) { $tok = $tok.Substring(1,$tok.Length-2) }; if ($tok){ $cliArgs += $tok } }
   $normalized = Convert-ArgTokenList -tokens $cliArgs
@@ -40,7 +40,7 @@ Describe 'LVCompare args tokenization' -Tag 'Unit' {
   $argSpec = '-nobdcosm -nofppos -noattr "--log C:\a b\z.txt" -lvpath=C:\X\LabVIEW.exe "-lvpath C:\Y\LabVIEW.exe"'
   # CompareVI (whitespace/equals pipeline only)
   . (Join-Path $PSScriptRoot '..' 'scripts' 'CompareVI.ps1')
-  $pattern2 = '"[^\"]+"|''[^'']+''|[^,\s]+'
+  $pattern2 = Get-LVCompareArgTokenPattern
   $tok2 = [regex]::Matches($argSpec, $pattern2) | ForEach-Object { $_.Value }
   $list2 = @(); foreach ($t in $tok2) { $u=$t.Trim(); if ($u.StartsWith('"') -and $u.EndsWith('"')){$u=$u.Substring(1,$u.Length-2)} elseif ($u.StartsWith("'") -and $u.EndsWith("'")){$u=$u.Substring(1,$u.Length-2)}; if ($u){$list2+=$u}}
   $norm2 = Convert-ArgTokenList -tokens $list2
@@ -52,7 +52,7 @@ Describe 'LVCompare args tokenization' -Tag 'Unit' {
   $argSpec = "'-lvpath=C:\X Space\LabVIEW.exe', '--log=C:\logs\a b\log.txt'"
     # CompareVI pipeline
     . (Join-Path $PSScriptRoot '..' 'scripts' 'CompareVI.ps1')
-    $pattern = '"[^\"]+"|''[^'']+''|[^,\s]+'
+    $pattern = Get-LVCompareArgTokenPattern
     $tokens = [regex]::Matches($argSpec, $pattern) | ForEach-Object { $_.Value }
     $cliArgs = @(); foreach ($t in $tokens) { $tok=$t.Trim(); if ($tok.StartsWith('"') -and $tok.EndsWith('"')){ $tok=$tok.Substring(1,$tok.Length-2)} elseif ($tok.StartsWith("'") -and $tok.EndsWith("'")){ $tok=$tok.Substring(1,$tok.Length-2)}; if ($tok){ $cliArgs += $tok } }
     $normalized = Convert-ArgTokenList -tokens $cliArgs
@@ -77,7 +77,7 @@ Describe 'LVCompare args tokenization' -Tag 'Unit' {
 '@
     # CompareVI pipeline
     . (Join-Path $PSScriptRoot '..' 'scripts' 'CompareVI.ps1')
-    $pattern = '"[^\"]+"|''[^'']+''|[^,\s]+'
+    $pattern = Get-LVCompareArgTokenPattern
     $tokens = [regex]::Matches($argSpec, $pattern) | ForEach-Object { $_.Value }
     $cliArgs = @(); foreach ($t in $tokens) { $tok=$t.Trim(); if ($tok.StartsWith('"') -and $tok.EndsWith('"')){ $tok=$tok.Substring(1,$tok.Length-2)} elseif ($tok.StartsWith("'") -and $tok.EndsWith("'")){ $tok=$tok.Substring(1,$tok.Length-2)}; if ($tok){ $cliArgs += $tok } }
     $normalized = Convert-ArgTokenList -tokens $cliArgs
@@ -101,7 +101,7 @@ Describe 'LVCompare args tokenization' -Tag 'Unit' {
     # perform a simple local validation to ensure a missing value would be caught upstream before CLI invocation.
     $argSpec = "-nobdcosm -lvpath -noattr"
     . (Join-Path $PSScriptRoot '..' 'scripts' 'CompareVI.ps1')
-    $pattern = '"[^\"]+"|''[^'']+''|[^,\s]+'
+    $pattern = Get-LVCompareArgTokenPattern
     $tok = [regex]::Matches($argSpec, $pattern) | ForEach-Object { $_.Value }
     $list = @(); foreach ($t in $tok) { $u=$t.Trim(); if ($u.StartsWith('"') -and $u.EndsWith('"')){ $u=$u.Substring(1,$u.Length-2)} elseif ($u.StartsWith("'") -and $u.EndsWith("'")){ $u=$u.Substring(1,$u.Length-2)}; if ($u){ $list += $u } }
     $norm = Convert-ArgTokenList -tokens $list

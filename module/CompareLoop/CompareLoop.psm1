@@ -3,6 +3,11 @@ Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 $script:CanonicalLVCompare = 'C:\Program Files\National Instruments\Shared\LabVIEW Compare\LVCompare.exe'
 
+# Import shared tokenization pattern - navigate up to repo root then to scripts
+$moduleDir = Split-Path -Parent $PSCommandPath
+$repoRoot = Split-Path -Parent $moduleDir | Split-Path -Parent
+Import-Module (Join-Path $repoRoot 'scripts' 'ArgTokenization.psm1') -Force
+
 function Test-CanonicalCli {
   if (-not (Test-Path -LiteralPath $script:CanonicalLVCompare -PathType Leaf)) {
     throw "LVCompare.exe not found at canonical path: $script:CanonicalLVCompare"
@@ -125,7 +130,7 @@ function Invoke-IntegrationCompareLoop {
   # Build a one-time tokenized args list and command preview (matching per-iteration logic)
   $previewArgsList = @()
   if ($LvCompareArgs) {
-    $pattern = '"[^\"]+"|''[^'']+''|[^,\s]+'
+    $pattern = Get-LVCompareArgTokenPattern
     $tokens = [regex]::Matches($LvCompareArgs, $pattern) | ForEach-Object { $_.Value }
     foreach ($t in $tokens) {
       $tok = $t.Trim()
@@ -136,8 +141,8 @@ function Invoke-IntegrationCompareLoop {
     # Normalize combined flag/value tokens and -flag=value
     function Normalize-PathToken([string]$s) {
       if ($null -eq $s) { return $s }
-      if ($s -match '^[A-Za-z]:/') { return ($s -replace '/', '\\') }
-      if ($s -match '^//') { return ($s -replace '/', '\\') }
+      if ($s -match '^[A-Za-z]:/') { return ($s -replace '/', '\') }
+      if ($s -match '^//') { return ($s -replace '/', '\') }
       return $s
     }
     $norm = @(); foreach ($t in $previewArgsList) {
@@ -372,7 +377,7 @@ function Invoke-IntegrationCompareLoop {
       $iterationSw = [System.Diagnostics.Stopwatch]::StartNew()
       $argsList = @()
       if ($LvCompareArgs) {
-        $pattern = '"[^\"]+"|''[^'']+''|[^,\s]+'
+        $pattern = Get-LVCompareArgTokenPattern
         $tokens = [regex]::Matches($LvCompareArgs, $pattern) | ForEach-Object { $_.Value }
         foreach ($t in $tokens) {
           $tok = $t.Trim()
@@ -383,8 +388,8 @@ function Invoke-IntegrationCompareLoop {
         # Normalize combined flag/value tokens and -flag=value
         function Normalize-PathToken([string]$s) {
           if ($null -eq $s) { return $s }
-          if ($s -match '^[A-Za-z]:/') { return ($s -replace '/', '\\') }
-          if ($s -match '^//') { return ($s -replace '/', '\\') }
+          if ($s -match '^[A-Za-z]:/') { return ($s -replace '/', '\') }
+          if ($s -match '^//') { return ($s -replace '/', '\') }
           return $s
         }
         $norm = @(); foreach ($t in $argsList) {
