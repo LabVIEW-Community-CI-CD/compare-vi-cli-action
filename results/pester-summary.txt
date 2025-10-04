@@ -1,9 +1,0 @@
-=== Pester Test Summary ===
-Total Tests: 117
-Passed: 94
-Failed: 23
-Errors: 0
-Skipped: 16
-Duration: 255.33s
- (mean=1883.15ms p95=3413.78ms max=145702.62ms)
-
