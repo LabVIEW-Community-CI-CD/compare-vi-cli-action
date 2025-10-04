@@ -151,7 +151,16 @@ function Invoke-IntegrationCompareLoop {
           continue
         }
       }
-      if ($tok.StartsWith('-') -and $tok -match '\s+') { $sp=$tok.IndexOf(' '); if ($sp -gt 0){ $f=$tok.Substring(0,$sp); $v=$tok.Substring($sp+1); if($f){$norm+=$f}; if($v){$norm+=$v}; continue } }
+      if ($tok.StartsWith('-') -and $tok -match '\s+') {
+        $sp = $tok.IndexOf(' ')
+        if ($sp -gt 0) {
+          $f = $tok.Substring(0, $sp)
+          $v = $tok.Substring($sp + 1)
+          if ($f) { $norm += $f }
+          if ($v) { $norm += $v }
+          continue
+        }
+      }
       $norm += $tok
     }
     $previewArgsList = $norm
