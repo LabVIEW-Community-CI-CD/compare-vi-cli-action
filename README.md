@@ -638,6 +638,19 @@ Notes:
 - Direct artifact download URLs use the GitHub REST API and require `actions: read` permission.
 - PR comments are skipped for forked PRs (no write permission).
 
+### Make it a Required Check
+
+To enforce Fixture Drift as a branch protection rule:
+
+1. Open repository Settings → Branches → Branch protection rules.
+2. Edit the rule for your main branch.
+3. Enable “Require status checks to pass before merging”.
+4. Add “Fixture Drift” to Required status checks.
+
+Optional badge (replace workflow path if customized):
+
+`[![Fixture Drift](https://github.com/LabVIEW-Community-CI-CD/compare-vi-cli-action/actions/workflows/fixture-drift.yml/badge.svg)](.github/workflows/fixture-drift.yml)`
+
 
 For information on testing, building, documentation generation, and the release process, see the **[Developer Guide](./docs/DEVELOPER_GUIDE.md)**.
 

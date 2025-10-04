@@ -53,6 +53,8 @@ pwsh -File ./tools/Run-Pester.ps1 -IncludeIntegration
 
 See [Integration Tests Guide](./INTEGRATION_TESTS.md) for detailed prerequisites and skip behavior.
 
+Environment variables quick reference: see [Environment appendix](./ENVIRONMENT.md) for toggles used by the dispatcher (leak detection, cleanup), loop mode, and fixture validation.
+
 ### Test Design Patterns
 
 For advanced test patterns including:

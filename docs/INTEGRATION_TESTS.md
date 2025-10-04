@@ -13,6 +13,8 @@ The integration test suite exercises the real LabVIEW Compare CLI (`LVCompare.ex
 
 Both `LV_BASE_VI` and `LV_HEAD_VI` must point to existing files; they should be different when validating diff scenarios.
 
+See also: [Environment appendix](./ENVIRONMENT.md) for a consolidated list of environment variables used across tests and scripts.
+
 ## Skip Behavior
 
 The file `tests/CompareVI.Integration.Tests.ps1` computes a boolean `$script:CompareVIPrereqsAvailable`. If prerequisites are missing:

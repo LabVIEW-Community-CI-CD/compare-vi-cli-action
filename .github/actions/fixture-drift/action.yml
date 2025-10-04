@@ -224,6 +224,13 @@ runs:
         $lines += "Status: $status (exit $exitCode)"
         $lines += ''
         $lines += "Artifacts are available on the workflow run: $runUrl"
+        $lines += ''
+        $lines += 'Environment quick toggles:'
+        $lines += '- DETECT_LEAKS=1 — emit leak report (tests/results/pester-leak-report.json)'
+        $lines += '- CLEAN_AFTER=1 — best-effort stop LabVIEW/LVCompare after run'
+        $lines += '- FAIL_ON_LEAKS=1 — fail when leaks are detected'
+        $lines += ''
+        $lines += 'Full reference: docs/ENVIRONMENT.md'
         if ($artifactLinks.Count -gt 0) {
           $lines += ''
           $lines += 'Direct downloads:'
