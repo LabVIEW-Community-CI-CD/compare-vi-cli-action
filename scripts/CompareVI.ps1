@@ -48,6 +48,13 @@ function Quote($s) {
 
 function Convert-ArgTokenList([string[]]$tokens) {
   $out = @()
+  function Normalize-PathToken([string]$s) {
+    if ($null -eq $s) { return $s }
+    # Convert Windows-style forward slashes to backslashes for drive-letter and UNC forms
+    if ($s -match '^[A-Za-z]:/') { return ($s -replace '/', '\\') }
+    if ($s -match '^//') { return ($s -replace '/', '\\') }
+    return $s
+  }
   foreach ($t in $tokens) {
     if ($null -eq $t) { continue }
     $tok = $t.Trim()
@@ -60,7 +67,7 @@ function Convert-ArgTokenList([string[]]$tokens) {
         if ($val.StartsWith('"') -and $val.EndsWith('"')) { $val = $val.Substring(1,$val.Length-2) }
         elseif ($val.StartsWith("'") -and $val.EndsWith("'")) { $val = $val.Substring(1,$val.Length-2) }
         if ($flag) { $out += $flag }
-        if ($val) { $out += $val }
+        if ($val) { $out += (Normalize-PathToken $val) }
         continue
       }
     }
@@ -71,10 +78,12 @@ function Convert-ArgTokenList([string[]]$tokens) {
         $flag = $tok.Substring(0,$idx)
         $val = $tok.Substring($idx+1)
         if ($flag) { $out += $flag }
-        if ($val) { $out += $val }
+        if ($val) { $out += (Normalize-PathToken $val) }
         continue
       }
     }
+    # If token looks like a value (not a flag), normalize path slashes
+    if (-not $tok.StartsWith('-')) { $tok = Normalize-PathToken $tok }
     $out += $tok
   }
   return $out

@@ -134,6 +134,12 @@ function Invoke-IntegrationCompareLoop {
       if ($tok) { $previewArgsList += $tok }
     }
     # Normalize combined flag/value tokens and -flag=value
+    function Normalize-PathToken([string]$s) {
+      if ($null -eq $s) { return $s }
+      if ($s -match '^[A-Za-z]:/') { return ($s -replace '/', '\\') }
+      if ($s -match '^//') { return ($s -replace '/', '\\') }
+      return $s
+    }
     $norm = @(); foreach ($t in $previewArgsList) {
       $tok = $t
       if ($tok.StartsWith('-') -and $tok.Contains('=')) {
@@ -147,7 +153,7 @@ function Invoke-IntegrationCompareLoop {
             $v = $v.Substring(1, $v.Length - 2)
           }
           if ($f) { $norm += $f }
-          if ($v) { $norm += $v }
+          if ($v) { $norm += (Normalize-PathToken $v) }
           continue
         }
       }
@@ -157,10 +163,11 @@ function Invoke-IntegrationCompareLoop {
           $f = $tok.Substring(0, $sp)
           $v = $tok.Substring($sp + 1)
           if ($f) { $norm += $f }
-          if ($v) { $norm += $v }
+          if ($v) { $norm += (Normalize-PathToken $v) }
           continue
         }
       }
+      if (-not $tok.StartsWith('-')) { $tok = Normalize-PathToken $tok }
       $norm += $tok
     }
     $previewArgsList = $norm
@@ -374,10 +381,17 @@ function Invoke-IntegrationCompareLoop {
           if ($tok) { $argsList += $tok }
         }
         # Normalize combined flag/value tokens and -flag=value
+        function Normalize-PathToken([string]$s) {
+          if ($null -eq $s) { return $s }
+          if ($s -match '^[A-Za-z]:/') { return ($s -replace '/', '\\') }
+          if ($s -match '^//') { return ($s -replace '/', '\\') }
+          return $s
+        }
         $norm = @(); foreach ($t in $argsList) {
           $tok = $t
-          if ($tok.StartsWith('-') -and $tok.Contains('=')) { $eq=$tok.IndexOf('='); if ($eq -gt 0){ $f=$tok.Substring(0,$eq); $v=$tok.Substring($eq+1); if ($v.StartsWith('"') -and $v.EndsWith('"')){ $v=$v.Substring(1,$v.Length-2)} elseif ($v.StartsWith("'") -and $v.EndsWith("'")){ $v=$v.Substring(1,$v.Length-2)}; if($f){$norm+=$f}; if($v){$norm+=$v}; continue } }
-          if ($tok.StartsWith('-') -and $tok -match '\s+') { $sp=$tok.IndexOf(' '); if ($sp -gt 0){ $f=$tok.Substring(0,$sp); $v=$tok.Substring($sp+1); if($f){$norm+=$f}; if($v){$norm+=$v}; continue } }
+          if ($tok.StartsWith('-') -and $tok.Contains('=')) { $eq=$tok.IndexOf('='); if ($eq -gt 0){ $f=$tok.Substring(0,$eq); $v=$tok.Substring($eq+1); if ($v.StartsWith('"') -and $v.EndsWith('"')){ $v=$v.Substring(1,$v.Length-2)} elseif ($v.StartsWith("'") -and $v.EndsWith("'")){ $v=$v.Substring(1,$v.Length-2)}; if($f){$norm+=$f}; if($v){$norm+=(Normalize-PathToken $v)}; continue } }
+          if ($tok.StartsWith('-') -and $tok -match '\s+') { $sp=$tok.IndexOf(' '); if ($sp -gt 0){ $f=$tok.Substring(0,$sp); $v=$tok.Substring($sp+1); if($f){$norm+=$f}; if($v){$norm+=(Normalize-PathToken $v)}; continue } }
+          if (-not $tok.StartsWith('-')) { $tok = Normalize-PathToken $tok }
           $norm += $tok
         }
         $argsList = $norm
