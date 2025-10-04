@@ -2,11 +2,14 @@ Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
 Describe 'LVCompare args tokenization' -Tag 'Unit' {
-  function Convert-TokensForAssert($arr) {
-    $out = @()
-    foreach ($t in @($arr)) { if ($t -is [string]) { $out += ($t -replace '\\\\','\\') } else { $out += $t } }
-    ,$out
+  BeforeAll {
+    function Convert-TokensForAssert($arr) {
+      $out = @()
+      foreach ($t in @($arr)) { if ($t -is [string]) { $out += ($t -replace '\\\\','\\') } else { $out += $t } }
+      ,$out
+    }
   }
+  
   It 'tokenizes comma-delimited flags and quoted values consistently' {
   $argSpec = "-nobdcosm,-nofppos,-noattr,'-lvpath C:\Path With Space\LabVIEW.exe','--log C:\t x\l.log'"
 
@@ -77,7 +80,7 @@ Describe 'LVCompare args tokenization' -Tag 'Unit' {
     $tokens = [regex]::Matches($argSpec, $pattern) | ForEach-Object { $_.Value }
     $cliArgs = @(); foreach ($t in $tokens) { $tok=$t.Trim(); if ($tok.StartsWith('"') -and $tok.EndsWith('"')){ $tok=$tok.Substring(1,$tok.Length-2)} elseif ($tok.StartsWith("'") -and $tok.EndsWith("'")){ $tok=$tok.Substring(1,$tok.Length-2)}; if ($tok){ $cliArgs += $tok } }
     $normalized = Convert-ArgTokenList -tokens $cliArgs
-    $expected = @('--log','C:\\a b\\x.txt','-nofppos','-lvpath','C:\\Y\\LabVIEW.exe','-noattr','-lvpath','C:\\Z\\LabVIEW.exe')
+    $expected = @('--log','C:\a b\x.txt','-nofppos','-lvpath','C:\Y\LabVIEW.exe','-noattr','-lvpath','C:\Z\LabVIEW.exe')
   (Convert-TokensForAssert $normalized) | Should -Be (Convert-TokensForAssert $expected)
 
     # CompareLoop DI executor capture
