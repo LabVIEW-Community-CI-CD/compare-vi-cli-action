@@ -68,8 +68,10 @@ runs:
       shell: pwsh
       run: |
         $ErrorActionPreference = 'Stop'
-        pwsh -NoLogo -NoProfile -File "${{ github.workspace }}/tools/Validate-Fixtures.ps1" -Json | Out-File -FilePath strict.json -Encoding utf8
-        pwsh -NoLogo -NoProfile -File "${{ github.workspace }}/tools/Validate-Fixtures.ps1" -Json -TestAllowFixtureUpdate | Out-File -FilePath override.json -Encoding utf8
+        $strictPath = Join-Path (Get-Location) 'strict.json'
+        $overridePath = Join-Path (Get-Location) 'override.json'
+        pwsh -NoLogo -NoProfile -File "${{ github.workspace }}/tools/Validate-Fixtures.ps1" -Json | Out-File -FilePath $strictPath -Encoding utf8
+        pwsh -NoLogo -NoProfile -File "${{ github.workspace }}/tools/Validate-Fixtures.ps1" -Json -TestAllowFixtureUpdate | Out-File -FilePath $overridePath -Encoding utf8
 
     - name: Orchestrate drift artifacts
       id: orchestrate
@@ -77,7 +79,9 @@ runs:
       run: |
         $ErrorActionPreference = 'Continue'
         $outDir = if ('${{ inputs.output-dir }}') { '${{ inputs.output-dir }}' } else { Join-Path 'results' 'fixture-drift' }
-        $args = @('-StrictJson','strict.json','-OverrideJson','override.json')
+        $strictPath = Join-Path (Get-Location) 'strict.json'
+        $overridePath = Join-Path (Get-Location) 'override.json'
+        $args = @('-StrictJson',$strictPath,'-OverrideJson',$overridePath)
         if ('${{ inputs.render-report }}' -eq 'true') { $args += '-RenderReport' }
         if ('${{ inputs.base-path }}') { $args += @('-BasePath','${{ inputs.base-path }}') }
         if ('${{ inputs.head-path }}') { $args += @('-HeadPath','${{ inputs.head-path }}') }
