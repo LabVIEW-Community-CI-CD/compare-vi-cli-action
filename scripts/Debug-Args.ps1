@@ -91,6 +91,6 @@ Write-Host ('Raw:        {0}' -f ($raw -join ' '))
 Write-Host ('Tokens:     {0}' -f ((Convert-ForDisplay $tokens) -join ' | '))
 Write-Host ('Normalized: {0}' -f ((Convert-ForDisplay $normalized) -join ' | '))
 
-Set-Variable -Name DEBUG_ARGS_TOKENS -Value $tokens -Scope Global -Force
-Set-Variable -Name DEBUG_ARGS_NORMALIZED -Value $normalized -Scope Global -Force
-Write-Host 'Exported $DEBUG_ARGS_TOKENS and $DEBUG_ARGS_NORMALIZED in session scope.' -ForegroundColor Gray
+Set-Variable -Name DEBUG_ARGS_TOKENS -Value $tokens -Scope Script -Force
+Set-Variable -Name DEBUG_ARGS_NORMALIZED -Value $normalized -Scope Script -Force
+Write-Host 'Exported $DEBUG_ARGS_TOKENS and $DEBUG_ARGS_NORMALIZED in script scope.' -ForegroundColor Gray
