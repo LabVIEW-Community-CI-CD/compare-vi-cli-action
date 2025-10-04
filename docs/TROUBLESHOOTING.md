@@ -336,6 +336,8 @@ pwsh -File ./Invoke-PesterTests.ps1 `
    -LeakGraceSeconds 0.25
 ```
 
+Recommended CI defaults (integration): set `CLEAN_AFTER=1`, `KILL_LEAKS=1`, and consider `LEAK_GRACE_SECONDS=1.0` to minimize stragglers. These can also be passed as switches (`-CleanAfter -KillLeaks -LeakGraceSeconds 1.0`).
+
 Artifacts:
 
 - `tests/results/pester-leak-report.json` — rich report with before/after process/job state, actions taken, and detection result (schema: `docs/schemas/pester-leak-report-v1.schema.json`).

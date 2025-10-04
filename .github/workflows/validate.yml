@@ -35,22 +35,34 @@ jobs:
         run: |
           ./bin/actionlint -color
 
-      - name: Check internal markdown links
+      - name: Local markdown link check (intra-repo)
+        shell: pwsh
         run: |
-          set -e
-          # Simple intra-repo link checker: looks for [text](./path) and verifies file exists
-          # Note: intentionally limited; avoids network calls
-          grep -Rho "\(\./[a-zA-Z0-9_./-]*\)" -- "**/*.md" | sed -e 's/[()]//g' | sort -u > .links.txt || true
-          missing=0
-          while IFS= read -r p; do
-            # strip anchors
-            f="${p%%#*}"
-            if [ -n "$f" ] && [ ! -e "$f" ]; then
-              echo "Missing link target: $p"
-              missing=1
-            fi
-          done < .links.txt
-          exit $missing
+          # Simple intra-repo link checker: scans markdown for (./...) links and verifies files exist.
+          $ErrorActionPreference = 'Stop'
+          $mdFiles = Get-ChildItem -Path . -Recurse -Include *.md
+          $errors = @()
+          foreach ($file in $mdFiles) {
+            $text = Get-Content -LiteralPath $file.FullName -Raw
+            $matches = [regex]::Matches($text, '\]\((\.\/?[^)#\s]+)\)')
+            foreach ($m in $matches) {
+              $rel = $m.Groups[1].Value
+              if ($rel -like 'http*' -or $rel -like '#*') { continue }
+              # Strip anchors like file.md#section
+              $pathOnly = $rel.Split('#')[0]
+              $target = Join-Path $file.DirectoryName $pathOnly
+              if (-not (Test-Path -LiteralPath $target)) {
+                $errors += "[$($file.FullName)] broken link -> $rel (resolved: $target)"
+              }
+            }
+          }
+          if ($errors.Count -gt 0) {
+            Write-Host 'Broken intra-repo links detected:'
+            $errors | ForEach-Object { Write-Host " - $_" }
+            exit 2
+          } else {
+            Write-Host 'Intra-repo markdown links OK.'
+          }
 
   fixtures:
     runs-on: [self-hosted, Windows, X64]
