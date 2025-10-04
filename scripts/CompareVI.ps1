@@ -110,7 +110,9 @@ function Invoke-CompareVI {
     $baseAbs = (Resolve-Path -LiteralPath $Base).Path
     $headAbs = (Resolve-Path -LiteralPath $Head).Path
 
-    $cli = Resolve-Cli -Explicit $LvComparePath
+  # Determine candidate CLI path string (avoid validating if preview-only)
+  $canonical = 'C:\Program Files\National Instruments\Shared\LabVIEW Compare\LVCompare.exe'
+  $cliCandidate = $canonical
 
     # Preflight: same leaf filename but different paths – LVCompare raises an IDE dialog; stop early with actionable error
     $baseLeaf = Split-Path -Leaf $baseAbs
@@ -134,18 +136,19 @@ function Invoke-CompareVI {
       $cliArgs = Convert-ArgTokenList -tokens $cliArgs
     }
 
-    $cmdline = (@(Quote $cli; Quote $baseAbs; Quote $headAbs) + ($cliArgs | ForEach-Object { Quote $_ })) -join ' '
+  # For preview, we show the canonical path string (no existence check needed)
+  $cmdline = (@(Quote $cliCandidate; Quote $baseAbs; Quote $headAbs) + ($cliArgs | ForEach-Object { Quote $_ })) -join ' '
 
     # Preview mode: print tokens/command and skip CLI invocation
     if ($PreviewArgs -or $env:LV_PREVIEW -eq '1') {
       if ($GitHubOutputPath) {
-        "cliPath=$cli"     | Out-File -FilePath $GitHubOutputPath -Append -Encoding utf8
+        "cliPath=$cliCandidate"     | Out-File -FilePath $GitHubOutputPath -Append -Encoding utf8
         "command=$cmdline" | Out-File -FilePath $GitHubOutputPath -Append -Encoding utf8
         "previewArgs=true" | Out-File -FilePath $GitHubOutputPath -Append -Encoding utf8
       }
       if (-not $PSBoundParameters.ContainsKey('Quiet') -and -not $env:GITHUB_ACTIONS) {
         Write-Host 'Preview (no CLI invocation):' -ForegroundColor Cyan
-        Write-Host "  CLI:     $cli" -ForegroundColor Gray
+        Write-Host "  CLI:     $cliCandidate" -ForegroundColor Gray
         Write-Host "  Base:    $baseAbs" -ForegroundColor Gray
         Write-Host "  Head:    $headAbs" -ForegroundColor Gray
         Write-Host ("  Tokens:  {0}" -f (($cliArgs) -join ' | ')) -ForegroundColor Gray
@@ -154,7 +157,7 @@ function Invoke-CompareVI {
       return [pscustomobject]@{
         Base                       = $baseAbs
         Head                       = $headAbs
-        CliPath                    = $cli
+        CliPath                    = $cliCandidate
         Command                    = $cmdline
         ExitCode                   = 0
         Diff                       = $false
@@ -163,6 +166,9 @@ function Invoke-CompareVI {
         PreviewArgs                = $true
       }
     }
+
+    # Resolve CLI only when actually executing
+    $cli = Resolve-Cli -Explicit $LvComparePath
 
     # Relocated identical-path short-circuit (after args/tokenization so command reflects flags)
     if ($baseAbs -eq $headAbs) {
