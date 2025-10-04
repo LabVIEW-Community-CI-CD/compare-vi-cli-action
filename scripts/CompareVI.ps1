@@ -46,6 +46,40 @@ function Quote($s) {
   if ($s -match '\s|"') { return '"' + ($s -replace '"','\"') + '"' } else { return $s }
 }
 
+function Convert-ArgTokenList([string[]]$tokens) {
+  $out = @()
+  foreach ($t in $tokens) {
+    if ($null -eq $t) { continue }
+    $tok = $t.Trim()
+    # Handle -flag=value (strip quotes from value)
+    if ($tok.StartsWith('-') -and $tok.Contains('=')) {
+      $eq = $tok.IndexOf('=')
+      if ($eq -gt 0) {
+        $flag = $tok.Substring(0,$eq)
+        $val = $tok.Substring($eq+1)
+        if ($val.StartsWith('"') -and $val.EndsWith('"')) { $val = $val.Substring(1,$val.Length-2) }
+        elseif ($val.StartsWith("'") -and $val.EndsWith("'")) { $val = $val.Substring(1,$val.Length-2) }
+        if ($flag) { $out += $flag }
+        if ($val) { $out += $val }
+        continue
+      }
+    }
+    # Handle combined "-flag value" provided as a single token (e.g., quoted as one string in YAML)
+    if ($tok.StartsWith('-') -and $tok -match '\s+') {
+      $idx = $tok.IndexOf(' ')
+      if ($idx -gt 0) {
+        $flag = $tok.Substring(0,$idx)
+        $val = $tok.Substring($idx+1)
+        if ($flag) { $out += $flag }
+        if ($val) { $out += $val }
+        continue
+      }
+    }
+    $out += $tok
+  }
+  return $out
+}
+
 function Invoke-CompareVI {
   [CmdletBinding()]
   param(
@@ -57,7 +91,8 @@ function Invoke-CompareVI {
     [bool] $FailOnDiff = $true,
     [string] $GitHubOutputPath,
     [string] $GitHubStepSummaryPath,
-    [ScriptBlock] $Executor
+    [ScriptBlock] $Executor,
+    [switch] $PreviewArgs
   )
 
   $pushed = $false
@@ -86,12 +121,48 @@ function Invoke-CompareVI {
 
     $cliArgs = @()
     if ($LvCompareArgs) {
-      $pattern = '"[^"]+"|\S+'
+      # Tokenize by comma and/or whitespace while respecting quotes
+      $pattern = '"[^\"]+"|''[^'']+''|[^,\s]+'
       $tokens = [regex]::Matches($LvCompareArgs, $pattern) | ForEach-Object { $_.Value }
-      foreach ($t in $tokens) { $cliArgs += $t.Trim('"') }
+      foreach ($t in $tokens) {
+        $tok = $t.Trim()
+        if ($tok.StartsWith('"') -and $tok.EndsWith('"')) { $tok = $tok.Substring(1, $tok.Length-2) }
+        elseif ($tok.StartsWith("'") -and $tok.EndsWith("'")) { $tok = $tok.Substring(1, $tok.Length-2) }
+        if ($tok) { $cliArgs += $tok }
+      }
+      # Normalize combined flag/value tokens
+      $cliArgs = Convert-ArgTokenList -tokens $cliArgs
     }
 
     $cmdline = (@(Quote $cli; Quote $baseAbs; Quote $headAbs) + ($cliArgs | ForEach-Object { Quote $_ })) -join ' '
+
+    # Preview mode: print tokens/command and skip CLI invocation
+    if ($PreviewArgs -or $env:LV_PREVIEW -eq '1') {
+      if ($GitHubOutputPath) {
+        "cliPath=$cli"     | Out-File -FilePath $GitHubOutputPath -Append -Encoding utf8
+        "command=$cmdline" | Out-File -FilePath $GitHubOutputPath -Append -Encoding utf8
+        "previewArgs=true" | Out-File -FilePath $GitHubOutputPath -Append -Encoding utf8
+      }
+      if (-not $PSBoundParameters.ContainsKey('Quiet') -and -not $env:GITHUB_ACTIONS) {
+        Write-Host 'Preview (no CLI invocation):' -ForegroundColor Cyan
+        Write-Host "  CLI:     $cli" -ForegroundColor Gray
+        Write-Host "  Base:    $baseAbs" -ForegroundColor Gray
+        Write-Host "  Head:    $headAbs" -ForegroundColor Gray
+        Write-Host ("  Tokens:  {0}" -f (($cliArgs) -join ' | ')) -ForegroundColor Gray
+        Write-Host ("  Command: {0}" -f $cmdline) -ForegroundColor Gray
+      }
+      return [pscustomobject]@{
+        Base                       = $baseAbs
+        Head                       = $headAbs
+        CliPath                    = $cli
+        Command                    = $cmdline
+        ExitCode                   = 0
+        Diff                       = $false
+        CompareDurationSeconds     = 0
+        CompareDurationNanoseconds = 0
+        PreviewArgs                = $true
+      }
+    }
 
     # Relocated identical-path short-circuit (after args/tokenization so command reflects flags)
     if ($baseAbs -eq $headAbs) {
