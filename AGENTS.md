@@ -72,6 +72,43 @@ This change eliminates brittle global or helper-managed restoration logic and en
 ```powershell
 # From repository root
 ./Invoke-PesterTests.ps1 -IncludeIntegration true
+### Quick Local Smoke Test (No Integration)
+
+Use the helper script to validate the dispatcher wiring without touching CI step summaries:
+
+```powershell
+# From repository root
+./tools/Quick-DispatcherSmoke.ps1
+
+# Optional flags
+./tools/Quick-DispatcherSmoke.ps1 -Raw     # also prints raw JSON
+./tools/Quick-DispatcherSmoke.ps1 -Keep    # keeps temp folder for inspection
+```
+
+Or a safe single-call one-liner using a scriptblock (avoids nested shells and quoting pitfalls):
+
+```powershell
+pwsh -NoLogo -NoProfile -Command '& {
+  $ErrorActionPreference = ''Stop''
+  $tmp  = [IO.Path]::Combine([IO.Path]::GetTempPath(),[guid]::NewGuid().ToString())
+  $t    = Join-Path $tmp ''tests''
+  $res  = Join-Path $tmp ''results''
+  New-Item -ItemType Directory -Path $t -Force | Out-Null
+  $mini = @(
+    ''Describe ''''Mini'''' {'',
+    ''  It ''''passes'''' { 1 | Should -Be 1 }'',
+    ''}''
+  )
+  Set-Content -LiteralPath (Join-Path $t ''Mini.Tests.ps1'') -Value ($mini -join [Environment]::NewLine) -Encoding UTF8
+  $root = (Get-Location).Path
+  $env:DISABLE_STEP_SUMMARY = ''1''
+  & (Join-Path $root ''Invoke-PesterTests.ps1'') -TestsPath $t -ResultsPath $res | Out-Null
+  $sp = Join-Path $res ''pester-summary.json''
+  if (Test-Path $sp) { Get-Content -LiteralPath $sp -Raw | Write-Output }
+  Remove-Item -Recurse -Force $tmp -ErrorAction SilentlyContinue
+}'
+```
+
 ```
 
 **Note:** Requires LabVIEW CLI and environment variables `LV_BASE_VI` and `LV_HEAD_VI` to be set.

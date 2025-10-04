@@ -100,17 +100,18 @@ param(
   # - Attempt automatic cleanup of detected leaks (stop processes and jobs)
   [Parameter(Mandatory = $false)]
   [switch]$KillLeaks
+  ,
+  # Emit diagnostics summarizing the shapes/types of objects in $result.Tests
+  [Parameter(Mandatory = $false)]
+  [switch]$EmitResultShapeDiagnostics
+,
+  # Opt-out: prevent writing diagnostics to GitHub Step Summary even if available
+  [Parameter(Mandatory = $false)]
+  [switch]$DisableStepSummary
 )
 
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
-
-# Minimal DX toggles (env-only): VERBOSE_TRACE=1, PAUSE_AFTER_RUN_SECONDS
-$script:VerboseTrace = ($env:VERBOSE_TRACE -eq '1')
-$script:PauseAfterSeconds = 0.0
-if ($env:PAUSE_AFTER_RUN_SECONDS) {
-  try { $script:PauseAfterSeconds = [double]$env:PAUSE_AFTER_RUN_SECONDS } catch { $script:PauseAfterSeconds = 0.0 }
-}
 
 # Env toggle support: CLEAN_LABVIEW=1 and/or CLEAN_AFTER=1 act as implicit switches
 if (-not $CleanLabVIEW) { $CleanLabVIEW = ($env:CLEAN_LABVIEW -eq '1') }
@@ -124,6 +125,15 @@ if ($env:LEAK_GRACE_SECONDS) {
   try { $LeakGraceSeconds = [double]$env:LEAK_GRACE_SECONDS } catch {}
 }
 if (-not $KillLeaks) { $KillLeaks = ($env:KILL_LEAKS -eq '1') }
+# Helper to interpret truthy env toggles (1/true/yes/on)
+function _IsTruthyEnv {
+  param([string]$Value)
+  if ([string]::IsNullOrWhiteSpace($Value)) { return $false }
+  $v = $Value.Trim()
+  return ($v -match '^(?i:1|true|yes|on)$')
+}
+if (-not $EmitResultShapeDiagnostics) { $EmitResultShapeDiagnostics = (_IsTruthyEnv $env:EMIT_RESULT_SHAPES) }
+if (-not $DisableStepSummary) { $DisableStepSummary = (_IsTruthyEnv $env:DISABLE_STEP_SUMMARY) }
 
 # Derive effective timeout seconds (seconds param takes precedence if >0)
 $effectiveTimeoutSeconds = 0
@@ -135,6 +145,7 @@ $SchemaSummaryVersion  = '1.7.1'
 $SchemaFailuresVersion = '1.0.0'
 $SchemaManifestVersion = '1.0.0'
 ${SchemaLeakReportVersion} = '1.0.0'
+${SchemaDiagnosticsVersion} = '1.1.0'
 
 function Ensure-FailuresJson {
   param(
@@ -191,6 +202,22 @@ function Write-ArtifactManifest {
     if (Test-Path -LiteralPath $txtPath) {
       $artifacts += [PSCustomObject]@{ file = 'pester-summary.txt'; type = 'textSummary' }
     }
+    # Include rendered compare report(s) if present
+    $cmpPath = Join-Path $Directory 'compare-report.html'
+    if (Test-Path -LiteralPath $cmpPath) {
+      $artifacts += [PSCustomObject]@{ file = 'compare-report.html'; type = 'htmlCompare' }
+    }
+    # Include results index if present
+    $idxPath = Join-Path $Directory 'results-index.html'
+    if (Test-Path -LiteralPath $idxPath) {
+      $artifacts += [PSCustomObject]@{ file = 'results-index.html'; type = 'htmlIndex' }
+    }
+    try {
+      $extraHtml = @(Get-ChildItem -LiteralPath $Directory -Filter '*compare-report*.html' -File -ErrorAction SilentlyContinue | Where-Object { $_.Name -ne 'compare-report.html' })
+      foreach ($h in $extraHtml) {
+        $artifacts += [PSCustomObject]@{ file = $h.Name; type = 'htmlCompare' }
+      }
+    } catch {}
     
     if (-not [string]::IsNullOrWhiteSpace($SummaryJsonPath)) {
       try {
@@ -215,6 +242,15 @@ function Write-ArtifactManifest {
     $leakPath = Join-Path $Directory 'pester-leak-report.json'
     if (Test-Path -LiteralPath $leakPath) {
       $artifacts += [PSCustomObject]@{ file = 'pester-leak-report.json'; type = 'jsonLeaks'; schemaVersion = $SchemaLeakReportVersion }
+    }
+    # Optional diagnostics files (result shapes)
+    $diagTxt = Join-Path $Directory 'result-shapes.txt'
+    if (Test-Path -LiteralPath $diagTxt) {
+      $artifacts += [PSCustomObject]@{ file = 'result-shapes.txt'; type = 'textDiagnostics' }
+    }
+    $diagJson = Join-Path $Directory 'result-shapes.json'
+    if (Test-Path -LiteralPath $diagJson) {
+      $artifacts += [PSCustomObject]@{ file = 'result-shapes.json'; type = 'jsonDiagnostics'; schemaVersion = ${SchemaDiagnosticsVersion} }
     }
     
     # Optional: include lightweight metrics if summary JSON exists
@@ -353,10 +389,6 @@ if ($DetectLeaks) {
   Write-Host ("  Kill Leaks: {0}" -f $KillLeaks)
 }
 Write-Host ""
-
-if ($script:VerboseTrace) {
-  Write-Host "[trace] VERBOSE_TRACE enabled" -ForegroundColor DarkCyan
-}
 
 # Debug instrumentation (opt-in via COMPARISON_ACTION_DEBUG=1)
 if ($env:COMPARISON_ACTION_DEBUG -eq '1') {
@@ -720,10 +752,6 @@ if (-not $includeIntegrationBool) {
   Write-Host "  Including Integration-tagged tests" -ForegroundColor Cyan
 }
 
-if ($script:VerboseTrace) {
-  Write-Host ("[trace] IncludeIntegration (normalized): {0}" -f $includeIntegrationBool) -ForegroundColor DarkCyan
-}
-
 # Configure output
 $conf.Output.Verbosity = 'Detailed'
 $conf.Run.PassThru = $true
@@ -746,11 +774,6 @@ Write-Host ""
 
 Write-Host "Executing Pester tests..." -ForegroundColor Yellow
 Write-Host "----------------------------------------" -ForegroundColor DarkGray
-
-if ($script:VerboseTrace) {
-  Write-Host ("[trace] Effective timeout (s): {0}" -f $effectiveTimeoutSeconds) -ForegroundColor DarkCyan
-  Write-Host ("[trace] MaxTestFiles: {0}" -f $MaxTestFiles) -ForegroundColor DarkCyan
-}
 
 # Legacy structural pattern retained for dispatcher unit tests expecting historical Push/Pop and try/finally constructs.
 # (Commented out to avoid changing current absolute-path execution strategy.)
@@ -867,10 +890,6 @@ Write-Host "----------------------------------------" -ForegroundColor DarkGray
 Write-Host ""
 Write-Host "Test execution completed in $($testDuration.TotalSeconds.ToString('F2')) seconds" -ForegroundColor Green
 Write-Host ""
-
-if ($script:VerboseTrace) {
-  Write-Host ("[trace] Results dir: {0}" -f $resultsDir) -ForegroundColor DarkCyan
-}
 
 # Artifact tracking post-snapshot and delta
 if ($TrackArtifacts) {
@@ -1048,6 +1067,67 @@ Write-Host ""
 Write-Host $summary -ForegroundColor $(if ($failed -eq 0 -and $errors -eq 0) { 'Green' } else { 'Red' })
 Write-Host ""
 
+# Optional: emit result shape diagnostics for $result.Tests (types and property presence)
+if ($EmitResultShapeDiagnostics) {
+  try {
+    $txtPath = Join-Path $resultsDir 'result-shapes.txt'
+    $jsonPath = Join-Path $resultsDir 'result-shapes.json'
+    $diag = [ordered]@{
+      schema       = 'pester-result-shapes/v1'
+      schemaVersion= ${SchemaDiagnosticsVersion}
+      generatedAt  = (Get-Date).ToString('o')
+      totalEntries = 0
+      byType       = @()
+      overall      = [ordered]@{ hasPath=0; hasTags=0 }
+    }
+    if ($result -and $result.Tests) {
+      $tests = @($result.Tests)
+      $diag.totalEntries = $tests.Count
+      $groups = $tests | Group-Object { $_.GetType().FullName }
+      # deterministic ordering
+      $groups = $groups | Sort-Object Name
+      $overallHasPath = 0
+      $overallHasTags = 0
+      foreach ($g in $groups) {
+        $arr = @($g.Group)
+        $hasPath = @($arr | Where-Object { $_.PSObject.Properties.Name -contains 'Path' }).Count
+        $hasTags = @($arr | Where-Object { $_.PSObject.Properties.Name -contains 'Tags' }).Count
+        $overallHasPath += $hasPath
+        $overallHasTags += $hasTags
+        $typeName = ($arr[0].GetType().Name)
+        $entry = [ordered]@{
+          typeName   = $typeName
+          typeFull   = $g.Name
+          count      = $arr.Count
+          hasPathCnt = $hasPath
+          hasTagsCnt = $hasTags
+        }
+        $diag.byType += [pscustomobject]$entry
+      }
+      $diag.overall.hasPath = $overallHasPath
+      $diag.overall.hasTags = $overallHasTags
+    }
+    # Write text summary
+    $lines = @()
+    $lines += '=== Pester Result Shapes ==='
+    $lines += ("Generated: {0}" -f $diag.generatedAt)
+    $lines += ("Total entries: {0}" -f $diag.totalEntries)
+    if ($diag.byType.Count -gt 0) {
+      $lines += 'By type:'
+      foreach ($t in $diag.byType) {
+        $lines += ("  - {0} ({1}): count={2}; hasPath={3}; hasTags={4}" -f $t.typeName,$t.typeFull,$t.count,$t.hasPathCnt,$t.hasTagsCnt)
+      }
+      $lines += ("Overall: hasPath={0}/{1}; hasTags={2}/{1}" -f $diag.overall.hasPath,$diag.totalEntries,$diag.overall.hasTags)
+    } else {
+      $lines += 'No result test entries available.'
+    }
+    Set-Content -LiteralPath $txtPath -Value ($lines -join "`n") -Encoding UTF8
+    # Write JSON summary
+    ($diag | ConvertTo-Json -Depth 4) | Out-File -FilePath $jsonPath -Encoding utf8 -ErrorAction Stop
+    Write-Host ("Result shape diagnostics written: {0}, {1}" -f $txtPath,$jsonPath) -ForegroundColor Gray
+  } catch { Write-Warning "Failed to emit result shape diagnostics: $_" }
+}
+
 # Write summary to file
 $summaryPath = Join-Path $resultsDir 'pester-summary.txt'
 try {
@@ -1056,6 +1136,32 @@ try {
 } catch {
   Write-Warning "Failed to write summary file: $_"
 }
+
+# Optional: append diagnostics footer to Pester summary
+try {
+  $diagJsonPath = Join-Path $resultsDir 'result-shapes.json'
+  $diagTotalEntries = $null; $diagHasPath = $null; $diagHasTags = $null
+  if (Test-Path -LiteralPath $diagJsonPath -PathType Leaf) {
+    try { $diagObj = Get-Content -LiteralPath $diagJsonPath -Raw | ConvertFrom-Json -ErrorAction Stop; $diagTotalEntries=[int]$diagObj.totalEntries; $diagHasPath=[int]$diagObj.overall.hasPath; $diagHasTags=[int]$diagObj.overall.hasTags } catch {}
+  }
+  if ($null -eq $diagTotalEntries -and $result -and $result.Tests) {
+    try { $testsLocal=@($result.Tests); $diagTotalEntries=$testsLocal.Count; $diagHasPath=@($testsLocal | Where-Object { $_.PSObject.Properties.Name -contains 'Path' }).Count; $diagHasTags=@($testsLocal | Where-Object { $_.PSObject.Properties.Name -contains 'Tags' }).Count } catch {}
+  }
+  if ($null -ne $diagTotalEntries) {
+    function _pctTxt { param([int]$n,[int]$d) if ($d -le 0) { return '0%' } ('{0:P1}' -f ([double]$n/[double]$d)) }
+    $pPath = _pctTxt $diagHasPath $diagTotalEntries
+    $pTags = _pctTxt $diagHasTags $diagTotalEntries
+    $footer = @()
+    $footer += ''
+    $footer += '---'
+    $footer += 'Diagnostics Summary'
+    $footer += ''
+    $footer += ('Total entries: {0}' -f $diagTotalEntries)
+    $footer += ('Has Path: {0} ({1})' -f $diagHasPath,$pPath)
+    $footer += ('Has Tags: {0} ({1})' -f $diagHasTags,$pTags)
+    Add-Content -LiteralPath $summaryPath -Value ($footer -join "`n") -Encoding utf8
+  }
+} catch { Write-Host "(warn) failed to append diagnostics footer: $_" -ForegroundColor DarkYellow }
 
 # Persist artifact trail (if collected)
 if ($TrackArtifacts -and $script:artifactTrail) {
@@ -1077,7 +1183,7 @@ try {
     failed             = $failed
     errors             = $errors
     skipped            = $skipped
-    duration_s         = [double]::Parse($testDuration.TotalSeconds.ToString('F2'))
+    duration_s         = [math]::Round($testDuration.TotalSeconds, 6)
     timestamp          = (Get-Date).ToString('o')
     pesterVersion      = $loadedPester.Version.ToString()
     includeIntegration = [bool]$includeIntegrationBool
@@ -1290,6 +1396,148 @@ try {
 Write-Host "Results written to: $xmlPath" -ForegroundColor Gray
 Write-Host ""
 
+# Best-effort: copy any compare report produced by tests into the results directory for standardized artifact pickup
+try {
+  $destReport = Join-Path $resultsDir 'compare-report.html'
+  $candidates = @()
+  $fixedCandidates = @(
+    (Join-Path $root 'tests' 'results' 'integration-compare-report.html'),
+    (Join-Path $root 'tests' 'results' 'compare-report.html'),
+    (Join-Path $root 'tests' 'results-single' 'pr-body-compare-report.html')
+  )
+  foreach ($p in $fixedCandidates) { if (Test-Path -LiteralPath $p -PathType Leaf) { try { $candidates += (Get-Item -LiteralPath $p -ErrorAction SilentlyContinue) } catch {} } }
+  try {
+    $dynamic = Get-ChildItem -LiteralPath (Join-Path $root 'tests' 'results') -Filter '*compare-report*.html' -Recurse -File -ErrorAction SilentlyContinue
+    if ($dynamic) { $candidates += $dynamic }
+  } catch {}
+  if ($candidates.Count -gt 0) {
+    $latest = $candidates | Sort-Object LastWriteTimeUtc -Descending | Select-Object -First 1
+    # Copy the latest to the canonical filename
+    try { Copy-Item -LiteralPath $latest.FullName -Destination $destReport -Force; Write-Host ("Compare report copied to: {0}" -f $destReport) -ForegroundColor Gray } catch { Write-Warning "Failed to copy compare report: $_" }
+    # Also copy all candidates preserving their base filenames to the results directory
+    foreach ($cand in ($candidates | Sort-Object LastWriteTimeUtc)) {
+      try {
+        $destName = (Split-Path -Leaf $cand.FullName)
+        $destFull = Join-Path $resultsDir $destName
+        Copy-Item -LiteralPath $cand.FullName -Destination $destFull -Force -ErrorAction SilentlyContinue
+      } catch { Write-Host "(warn) failed to copy extra report '$($cand.FullName)': $_" -ForegroundColor DarkYellow }
+    }
+    # Generate a small deterministic index HTML linking to all report variants
+    try {
+  $indexPath = Join-Path $resultsDir 'results-index.html'
+      # Gather all report htmls in results dir (including canonical)
+  $reports = @(Get-ChildItem -LiteralPath $resultsDir -Filter '*compare-report*.html' -File -ErrorAction SilentlyContinue | Sort-Object Name)
+      function _HtmlEncode {
+        param([string]$s)
+        if ([string]::IsNullOrEmpty($s)) { return '' }
+        $t = $s.Replace('&','&amp;').Replace('<','&lt;').Replace('>','&gt;').Replace('"','&quot;').Replace("'",'&#39;')
+        return $t
+      }
+      $now = (Get-Date).ToString('u')
+      $lines = @()
+      $lines += '<!DOCTYPE html>'
+      $lines += '<html lang="en">'
+      $lines += '<head><meta charset="utf-8"/><title>Compare Reports Index</title><style>body{font-family:Segoe UI,SegoeUI,Helvetica,Arial,sans-serif;margin:16px} ul{line-height:1.6} .meta{color:#666} code{background:#f5f5f5;padding:2px 4px;border-radius:3px}</style></head>'
+      $lines += '<body>'
+      $lines += '<h1>Compare Reports Index</h1>'
+      $lines += ('<p class=''meta''>Generated at <code>{0}</code></p>' -f (_HtmlEncode $now))
+      $lines += ('<p>Total reports: <strong>{0}</strong> — canonical: <code>compare-report.html</code></p>' -f $reports.Count)
+      if ($reports.Count -gt 0) {
+        $lines += '<ul>'
+        foreach ($r in $reports) {
+          $nameEnc = _HtmlEncode $r.Name
+          $ts = _HtmlEncode ($r.LastWriteTimeUtc.ToString('u'))
+          $size = '{0:N0} bytes' -f $r.Length
+          $meta = ('last write: {0}; size: {1}' -f $ts, (_HtmlEncode $size))
+          $canonicalTag = if ($r.Name -ieq 'compare-report.html') { ' <em class="meta">(canonical)</em>' } else { '' }
+          $lines += ('<li><a href="{0}">{0}</a>{2} <span class=''meta''>({1})</span></li>' -f $nameEnc,$meta,$canonicalTag)
+        }
+        $lines += '</ul>'
+      } else {
+        $lines += '<p class="meta">No compare-report HTML files found in this results directory.</p>'
+      }
+      # Diagnostics links (if present)
+      try {
+        $diagTxt = Join-Path $resultsDir 'result-shapes.txt'
+        $diagJson = Join-Path $resultsDir 'result-shapes.json'
+        if ((Test-Path -LiteralPath $diagTxt) -or (Test-Path -LiteralPath $diagJson)) {
+          $lines += '<hr/>'
+          $lines += '<h3>Diagnostics</h3>'
+          $lines += '<ul>'
+          if (Test-Path -LiteralPath $diagTxt) { $lines += '<li><a href="result-shapes.txt">result-shapes.txt</a></li>' }
+          if (Test-Path -LiteralPath $diagJson) { $lines += '<li><a href="result-shapes.json">result-shapes.json</a></li>' }
+          $lines += '</ul>'
+          # Optional: show a compact summary table if JSON exists
+          if (Test-Path -LiteralPath $diagJson) {
+            try {
+              $diagObj = Get-Content -LiteralPath $diagJson -Raw | ConvertFrom-Json -ErrorAction Stop
+              $total = [int]($diagObj.totalEntries)
+              $hasPath = [int]($diagObj.overall.hasPath)
+              $hasTags = [int]($diagObj.overall.hasTags)
+              function _pct { param([int]$num,[int]$den) if ($den -le 0) { return '0%' } else { return ('{0:P1}' -f ([double]$num/[double]$den)) } }
+              $pPath = _pct $hasPath $total
+              $pTags = _pct $hasTags $total
+              $lines += '<table style="border-collapse:collapse;margin-top:8px">'
+              $lines += '<thead><tr><th style="text-align:left;padding:4px 8px;border-bottom:1px solid #e5e7eb">Metric</th><th style="text-align:right;padding:4px 8px;border-bottom:1px solid #e5e7eb">Count</th><th style="text-align:right;padding:4px 8px;border-bottom:1px solid #e5e7eb">Percent</th></tr></thead>'
+              $lines += '<tbody>'
+              $lines += ('<tr><td style="padding:4px 8px">Total entries</td><td style="text-align:right;padding:4px 8px">{0}</td><td style="text-align:right;padding:4px 8px">-</td></tr>' -f $total)
+              $lines += ('<tr><td style="padding:4px 8px">Has Path</td><td style="text-align:right;padding:4px 8px">{0}</td><td style="text-align:right;padding:4px 8px">{1}</td></tr>' -f $hasPath,$pPath)
+              $lines += ('<tr><td style="padding:4px 8px">Has Tags</td><td style="text-align:right;padding:4px 8px">{0}</td><td style="text-align:right;padding:4px 8px">{1}</td></tr>' -f $hasTags,$pTags)
+              $lines += '</tbody></table>'
+            } catch { }
+          }
+        }
+      } catch {}
+      $lines += '</body></html>'
+      Set-Content -LiteralPath $indexPath -Value ($lines -join "`n") -Encoding UTF8
+      Write-Host ("Results index written to: {0}" -f $indexPath) -ForegroundColor Gray
+    } catch { Write-Host "(warn) failed to write results index: $_" -ForegroundColor DarkYellow }
+  }
+} catch { Write-Host "(warn) compare report copy step failed: $_" -ForegroundColor DarkYellow }
+
+# Optional: Write diagnostics summary to GitHub Step Summary (Markdown)
+try {
+  $stepSummary = $env:GITHUB_STEP_SUMMARY
+  if ($stepSummary -and -not $DisableStepSummary) {
+    $total = $null; $hasPath = $null; $hasTags = $null
+    $diagJsonPath = Join-Path $resultsDir 'result-shapes.json'
+    if (Test-Path -LiteralPath $diagJsonPath -PathType Leaf) {
+      try {
+        $diagObj = Get-Content -LiteralPath $diagJsonPath -Raw | ConvertFrom-Json -ErrorAction Stop
+        $total = [int]($diagObj.totalEntries)
+        $hasPath = [int]($diagObj.overall.hasPath)
+        $hasTags = [int]($diagObj.overall.hasTags)
+      } catch {}
+    }
+    # Fallback: derive counts from $result.Tests when JSON not available
+    if ($null -eq $total -and $result -and $result.Tests) {
+      try {
+        $testsLocal = @($result.Tests)
+        $total = $testsLocal.Count
+        $hasPath = @($testsLocal | Where-Object { $_.PSObject.Properties.Name -contains 'Path' }).Count
+        $hasTags = @($testsLocal | Where-Object { $_.PSObject.Properties.Name -contains 'Tags' }).Count
+      } catch {}
+    }
+    if ($null -ne $total) {
+      function _pctMd { param([int]$n,[int]$d) if ($d -le 0) { return '0%' } ('{0:P1}' -f ([double]$n/[double]$d)) }
+      $pPath = _pctMd $hasPath $total
+      $pTags = _pctMd $hasTags $total
+      $md = @()
+      $md += '### Diagnostics Summary'
+      $md += ''
+      $md += '| Metric | Count | Percent |'
+      $md += '|---|---:|---:|'
+      $md += ("| Total entries | {0} | - |" -f $total)
+      $md += ("| Has Path | {0} | {1} |" -f $hasPath,$pPath)
+      $md += ("| Has Tags | {0} | {1} |" -f $hasTags,$pTags)
+      $mdText = ($md -join "`n") + "`n"
+      try { $dir = Split-Path -Parent $stepSummary; if ($dir) { New-Item -ItemType Directory -Force -Path $dir -ErrorAction SilentlyContinue | Out-Null } } catch {}
+      Add-Content -LiteralPath $stepSummary -Value $mdText -Encoding utf8
+      Write-Host ("Step summary updated: {0}" -f $stepSummary) -ForegroundColor Gray
+    }
+  }
+} catch { Write-Host "(warn) failed to write GitHub Step Summary: $_" -ForegroundColor DarkYellow }
+
 # Leak detection (processes/jobs) and report
 if ($DetectLeaks) {
   try {
@@ -1379,7 +1627,10 @@ try {
   if ($includeIntegrationBool) {
     $hadIntegrationDescribe = $false
     if ($result -and $result.Tests) {
-      $hadIntegrationDescribe = ($result.Tests | Where-Object { $_.Path -match 'Integration' -or $_.Tags -contains 'Integration' } | Measure-Object).Count -gt 0
+      $hadIntegrationDescribe = ($result.Tests | Where-Object {
+        ($_.PSObject.Properties.Name -contains 'Path' -and $_.Path -match 'Integration') -or 
+        ($_.PSObject.Properties.Name -contains 'Tags' -and ($_.Tags -contains 'Integration'))
+      } | Measure-Object).Count -gt 0
     }
     if (-not $hadIntegrationDescribe) {
       Write-Host "NOTE: Integration flag was enabled but no Integration-tagged tests were executed (prerequisites may be missing)." -ForegroundColor Yellow
@@ -1464,15 +1715,5 @@ Write-ArtifactManifest -Directory $resultsDir -SummaryJsonPath $jsonSummaryPath 
       }
     }
   } catch { Write-Warning "Failed to emit final sweep leak report: $_" }
-  # Optional pause at end for local readability
-  try {
-    if ($script:PauseAfterSeconds -gt 0) {
-      $ms = [int]([math]::Round($script:PauseAfterSeconds * 1000))
-      if ($ms -gt 0) {
-        Write-Host ("Pausing {0} ms (PAUSE_AFTER_RUN_SECONDS)" -f $ms) -ForegroundColor DarkGray
-        Start-Sleep -Milliseconds $ms
-      }
-    }
-  } catch { }
 }
 exit 0
