@@ -71,6 +71,7 @@ function Split-ArgSpec([object]$value) {
   }
   $s = [string]$value
   if ($s -match '^\s*$') { return @() }
+  # Use shared tokenization pattern
   $pattern = Get-LVCompareArgTokenPattern
   $mList = [regex]::Matches($s, $pattern)
   $list = @()

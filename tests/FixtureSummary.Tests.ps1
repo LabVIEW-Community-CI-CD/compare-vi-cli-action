@@ -31,7 +31,8 @@ Describe 'Fixture summary script' -Tag 'Unit' {
 
     pwsh -NoLogo -NoProfile -File $diff -Baseline $baseline -Current $current > delta.json
     $env:SUMMARY_VERBOSE = 'true'
-    $out = (pwsh -NoLogo -NoProfile -File $summary -ValidationJson $current -DeltaJson delta.json | Out-String)
+    # Pass empty SummaryPath to force stdout output instead of using inherited GITHUB_STEP_SUMMARY
+    $out = (pwsh -NoLogo -NoProfile -File $summary -ValidationJson $current -DeltaJson delta.json -SummaryPath '' | Out-String)
     $out | Should -Match '### New Structural Issues Detail'
     $out | Should -Match 'duplicate'
     $out | Should -Match '### All Changes'
