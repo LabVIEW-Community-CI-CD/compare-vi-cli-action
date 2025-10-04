@@ -9,6 +9,9 @@ param(
 
 $ErrorActionPreference = 'Stop'
 
+# Import shared tokenization module
+Import-Module (Join-Path $PSScriptRoot 'ArgTokenization.psm1') -Force
+
 function Resolve-CanonicalCliPath {
 	$cli = 'C:\Program Files\National Instruments\Shared\LabVIEW Compare\LVCompare.exe'
 	if (-not (Test-Path -LiteralPath $cli)) {
@@ -34,7 +37,7 @@ function ConvertTo-ArgList([object]$value) {
 	$s = [string]$value
 	if ($s -match '^\s*$') { return @() }
 	# Tokenize by comma and/or whitespace while respecting quotes (single or double)
-	$pattern = '"[^"]+"|''[^'']+''|[^,\s]+'
+	$pattern = Get-LVCompareArgTokenPattern
 	$mList = [regex]::Matches($s, $pattern)
 	$list = @()
 	foreach ($m in $mList) {
