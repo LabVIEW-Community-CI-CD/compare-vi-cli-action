@@ -44,7 +44,15 @@ $fixtures = @(
   @{ Name='VI1.vi'; Path=(Join-Path $repoRoot 'VI1.vi') }
   @{ Name='VI2.vi'; Path=(Join-Path $repoRoot 'VI2.vi') }
 )
-$tracked = (& git ls-files) -split "`n" | Where-Object { $_ }
+$tracked = $null
+try {
+  $tracked = (& git ls-files) -split "`n" | Where-Object { $_ }
+} catch {}
+# If not inside a git repository (no .git) OR git returned nothing/unavailable, treat fixtures as tracked to avoid false positives in local/non-git runs
+$repoHasGitDir = Test-Path -LiteralPath (Join-Path $repoRoot '.git')
+if (-not $repoHasGitDir -or -not $tracked -or $tracked.Count -eq 0) {
+  $tracked = @($fixtures | ForEach-Object { $_.Name })
+}
 $missing = @(); $untracked = @(); $tooSmall = @(); $hashMismatch = @(); $manifestError = $false; $duplicateEntries = @(); $schemaIssues = @();
 
 # Phase 2: Load manifest if present

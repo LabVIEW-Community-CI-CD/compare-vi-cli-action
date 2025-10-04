@@ -1,0 +1,38 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8" />
+<title>Compare VI Report</title>
+<style>
+body { font-family: Segoe UI, Arial, sans-serif; margin: 20px; color: #111827; }
+h1 { font-size: 20px; }
+.section { margin: 16px 0; padding: 12px; border: 1px solid #e5e7eb; border-radius: 6px; }
+.kv { display: grid; grid-template-columns: 180px 1fr; row-gap: 6px; }
+.key { color: #6b7280; }
+.value { color: #111827; word-break: break-all; }
+.status { padding: 10px; border-radius: 6px; color: white; font-weight: 600; }
+.code { font-family: Consolas, monospace; background: #f3f4f6; padding: 8px; border-radius: 6px; }
+</style>
+</head>
+<body>
+  <h1>Compare VI Report</h1>
+  <div class="section">
+    <div class="status" style="background: #065f46;">No differences</div>
+  </div>
+  <div class="section">
+    <div class="kv">
+      <div class="key">Generated</div><div class="value">2025-10-03 21:50:39Z</div>
+      <div class="key">Exit code</div><div class="value">0 (No differences (0))</div>
+      <div class="key">Diff</div><div class="value">false</div>
+  <div class="key">CLI Path</div><div class="value">C:\Program Files\National Instruments\Shared\LabVIEW Compare\LVCompare.exe</div>
+  <div class="key">Duration (s)</div><div class="value">0.017</div>
+      <div class="key">Base</div><div class="value">C:\dev\compare-vi-cli-action\VI1.vi</div>
+      <div class="key">Head</div><div class="value">C:\dev\compare-vi-cli-action\VI2.vi</div>
+    </div>
+  </div>
+  <div class="section">
+    <div class="key">Command</div>
+    <div class="code">&quot;C:\Program Files\National Instruments\Shared\LabVIEW Compare\LVCompare.exe&quot; C:\dev\compare-vi-cli-action\VI1.vi C:\dev\compare-vi-cli-action\VI2.vi</div>
+  </div>
+</body>
+</html>

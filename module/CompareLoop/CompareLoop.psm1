@@ -84,6 +84,21 @@ function Invoke-IntegrationCompareLoop {
   [int]$ReconcileEvery = 0
   , [string]$CustomPercentiles
   , [string]$RunSummaryJsonPath
+  , [switch]$UseHandshake
+  , [string]$HandshakeMutexName
+  , [switch]$HandshakeCanonicalOnly
+  , [string]$HandshakeOutputJson
+  , [int]$CycleTargetMs = 0
+  , [int]$HandshakePreWaitMs
+  , [int]$HandshakePostWaitMs
+  , [int]$HandshakeSettlePolls
+  , [int]$HandshakeSettleIntervalMs
+  , [int]$HandshakeStartTimeoutMs
+  , [int]$HandshakeExitTimeoutMs
+  , [int]$HandshakeQuiescentTimeoutMs
+  , [switch]$HandshakeForceCleanup
+  , [switch]$HandshakeCleanupOnError
+  , [switch]$Simulate
   )
 
   if (-not $SkipValidation) {
@@ -101,7 +116,13 @@ function Invoke-IntegrationCompareLoop {
     if ($Head) { try { $headAbs = (Resolve-Path -LiteralPath $Head -ErrorAction Stop).Path } catch { $headAbs = $Head } } else { $headAbs = $Head }
   }
 
-  $cli = if ($BypassCliValidation) { $script:CanonicalLVCompare } else { Test-CanonicalCli }
+  # Determine CLI path string; if preview-only, skip existence validation
+  $cli = $null
+  if ($PreviewArgs -or $env:LV_PREVIEW -eq '1') {
+    $cli = $script:CanonicalLVCompare
+  } else {
+    $cli = if ($BypassCliValidation) { $script:CanonicalLVCompare } else { Test-CanonicalCli }
+  }
 
   # Preflight: disallow comparing two VIs with identical filenames in different directories (LVCompare may raise IDE dialog)
   try {
@@ -173,6 +194,7 @@ function Invoke-IntegrationCompareLoop {
       CliPath = $cli
       Command = $previewCmd
       PreviewArgs = $true
+      HandshakeEnabled = $UseHandshake.IsPresent
     }
     return $result
   }
@@ -209,6 +231,9 @@ function Invoke-IntegrationCompareLoop {
   }
   $swOverall = [System.Diagnostics.Stopwatch]::StartNew()
   $records = @()
+  # Cycle gating metrics (when CycleTargetMs > 0)
+  $cycleTimesMs = New-Object System.Collections.Generic.List[int]
+  $cycleOverrunCount = 0
   # --- Quantile Strategy State ---
   if ($QuantileStrategy -eq 'StreamingP2') {
     if (-not $Quiet) { Write-Warning '[DEPRECATED] QuantileStrategy "StreamingP2" has been renamed to "StreamingReservoir"; it now uses a bounded reservoir approximation.' }
@@ -258,6 +283,10 @@ function Invoke-IntegrationCompareLoop {
   $watchers = @()
   $eventSourceId = "CompareLoopChanged_$([guid]::NewGuid().ToString('N'))"
   if ($UseEventDriven) {
+    if ($CycleTargetMs -gt 0) {
+      if (-not $Quiet) { Write-Warning 'CycleTargetMs is set while UseEventDriven=true; falling back to polling to maintain fixed-cycle timing.' }
+      $UseEventDriven = $false
+    }
     if ($SkipValidation -or $PassThroughPaths) {
       if (-not $Quiet) { Write-Warning 'UseEventDriven ignored because validation is skipped or paths are synthetic.' }
       $UseEventDriven = $false
@@ -363,6 +392,74 @@ function Invoke-IntegrationCompareLoop {
         # Invoke executor positionally to avoid parameter name coupling.
         $exitCode = & $CompareExecutor $cli $baseAbs $headAbs $argsList
       } else {
+        # Default executor path: direct CLI or handshake-backed invocation
+        if ($UseHandshake) {
+          try {
+            # In simulation mode, bypass handshake and honor LOOP_SIMULATE_EXIT_CODE directly
+            if ($Simulate -or $env:LOOP_SIMULATE -eq '1') {
+              $simCode = 0; [void][int]::TryParse($env:LOOP_SIMULATE_EXIT_CODE, [ref]$simCode)
+              $exitCode = $simCode
+            }
+            else {
+            # Resolve handshake script path (../scripts/Invoke-CompareWithHandshake.ps1 relative to module root)
+            # Module layout: repoRoot/module/CompareLoop; scripts are at repoRoot/scripts
+            $repoRoot = (Resolve-Path (Join-Path $PSScriptRoot '..' '..') -ErrorAction SilentlyContinue).Path
+            if (-not $repoRoot) { $repoRoot = (Split-Path -Parent (Split-Path -Parent $PSScriptRoot)) }
+            $scriptsDir = Join-Path $repoRoot 'scripts'
+            $hsPath = Join-Path $scriptsDir 'Invoke-CompareWithHandshake.ps1'
+            $hs = try { (Resolve-Path -LiteralPath $hsPath -ErrorAction Stop).Path } catch { $hsPath }
+            if (-not (Test-Path -LiteralPath $hs -PathType Leaf)) { throw "Handshake script not found: $hs" }
+            # Create per-iteration temp GitHub outputs file to capture CompareVI exitCode
+            $tmpDir = Join-Path ([IO.Path]::GetTempPath()) 'compare-vi-loop'
+            if (-not (Test-Path -LiteralPath $tmpDir)) { New-Item -ItemType Directory -Path $tmpDir -Force | Out-Null }
+            $ghOut = Join-Path $tmpDir ("ghout_{0}_{1}.txt" -f ([IO.Path]::GetFileNameWithoutExtension([IO.Path]::GetRandomFileName())), $iteration)
+            $hsArgs = @('-Base', $baseAbs, '-Head', $headAbs, '-LvCompareArgs', $LvCompareArgs, '-GitHubOutputPath', $ghOut)
+            if ($HandshakeCanonicalOnly) { $hsArgs += '-CanonicalOnly' }
+            if ($HandshakeMutexName) { $hsArgs += @('-MutexName', $HandshakeMutexName) }
+            if ($HandshakeOutputJson) { $hsArgs += @('-OutputJson', $HandshakeOutputJson) }
+            if ($HandshakePreWaitMs) { $hsArgs += @('-PreWaitMs', $HandshakePreWaitMs) }
+            if ($HandshakePostWaitMs) { $hsArgs += @('-PostWaitMs', $HandshakePostWaitMs) }
+            if ($HandshakeSettlePolls) { $hsArgs += @('-SettlePolls', $HandshakeSettlePolls) }
+            if ($HandshakeSettleIntervalMs) { $hsArgs += @('-SettleIntervalMs', $HandshakeSettleIntervalMs) }
+            if ($HandshakeStartTimeoutMs) { $hsArgs += @('-StartTimeoutMs', $HandshakeStartTimeoutMs) }
+            if ($HandshakeExitTimeoutMs) { $hsArgs += @('-ExitTimeoutMs', $HandshakeExitTimeoutMs) }
+            if ($HandshakeQuiescentTimeoutMs) { $hsArgs += @('-QuiescentTimeoutMs', $HandshakeQuiescentTimeoutMs) }
+            if ($Simulate -or $env:LOOP_SIMULATE -eq '1') { $hsArgs += '-Simulate' }
+            if ($HandshakeForceCleanup -or $env:COMPARE_HANDSHAKE_FORCE_CLEANUP -eq '1') { $hsArgs += '-ForceCleanup' }
+            if ($HandshakeCleanupOnError -or $env:COMPARE_HANDSHAKE_CLEANUP_ON_ERROR -eq '1') { $hsArgs += '-CleanupOnError' }
+            # Invoke handshake inline to avoid spawning extra terminals
+            $hsResult = & $hs @hsArgs
+            # Parse exitCode from GitHub outputs file
+            $exitCode = -999
+            try {
+              if (Test-Path -LiteralPath $ghOut) {
+                $lines = Get-Content -LiteralPath $ghOut -Encoding utf8 -ErrorAction Stop
+                $line = $lines | Where-Object { $_ -like 'exitCode=*' } | Select-Object -First 1
+                if ($line) { $exitStr = $line.Substring('exitCode='.Length); [void][int]::TryParse($exitStr, [ref]$exitCode) }
+              }
+              # Simulation fallback: if outputs not found or unparseable, honor LOOP_SIMULATE_EXIT_CODE
+              if ($exitCode -eq -999 -and ($Simulate -or $env:LOOP_SIMULATE -eq '1')) {
+                $simCode = 0; [void][int]::TryParse($env:LOOP_SIMULATE_EXIT_CODE, [ref]$simCode); $exitCode = $simCode
+              }
+              # Secondary fallback: derive from handshake result object (compare.output like '[simulated] exitCode=1')
+              if ($exitCode -eq -999 -and $hsResult) {
+                try {
+                  $outStr = $null
+                  if ($hsResult.compare -and $hsResult.compare.output) { $outStr = [string]$hsResult.compare.output }
+                  elseif ($hsResult.output) { $outStr = [string]$hsResult.output }
+                  if ($outStr) {
+                    $m = [regex]::Match($outStr, 'exitCode\s*=\s*(?<code>-?\d+)')
+                    if ($m.Success) { [void][int]::TryParse($m.Groups['code'].Value, [ref]$exitCode) }
+                  }
+                } catch {}
+              }
+            } catch { if (-not $Quiet) { Write-Verbose "Failed to parse handshake GitHub outputs: $_" } }
+            }
+          } catch {
+            if (-not $Quiet) { Write-Verbose "Handshake executor failed: $_" }
+            $exitCode = -999
+          }
+        } else {
         try {
           & $cli $baseAbs $headAbs @argsList 2>$null
         } catch {
@@ -375,6 +472,7 @@ function Invoke-IntegrationCompareLoop {
         } else {
           # Fallback sentinel when process did not launch under strict mode
           $exitCode = -999
+        }
         }
       }
       $iterationSw.Stop()
@@ -409,6 +507,15 @@ function Invoke-IntegrationCompareLoop {
     $prevHeadTime = $headInfo.LastWriteTimeUtc
 
     if (-not $UseEventDriven) {
+      # Fixed-cycle gating (Single-Cycle Timed Loop style): enforce minimum cycle duration per iteration
+      if ($CycleTargetMs -gt 0) {
+        $elapsedMs = [int]([math]::Round($iterationSw.Elapsed.TotalMilliseconds))
+        $remMs = $CycleTargetMs - $elapsedMs
+        # Collect cycle metrics
+        if ($elapsedMs -gt $CycleTargetMs) { $cycleOverrunCount++ }
+        $cycleTimesMs.Add([int]([math]::Max($elapsedMs, $CycleTargetMs))) | Out-Null
+        if ($remMs -gt 0) { Start-Sleep -Milliseconds $remMs }
+      }
       if ($AdaptiveInterval) {
         if ($diff -or $status -eq 'ERROR' -or -not $skipReason) {
           # Reset interval to baseline on activity
@@ -417,15 +524,15 @@ function Invoke-IntegrationCompareLoop {
           # Backoff on quiet iteration
             $currentInterval = [math]::Min($MaxIntervalSeconds, [math]::Ceiling($currentInterval * $BackoffFactor * 1000.0)/1000.0)
         }
-        if ($currentInterval -ge 1) {
+        if ($CycleTargetMs -le 0 -and $currentInterval -ge 1) {
           Start-Sleep -Seconds ([int][math]::Floor($currentInterval))
           $remainder = $currentInterval - [math]::Floor($currentInterval)
           if ($remainder -gt 0) { Start-Sleep -Milliseconds ([int]([math]::Round($remainder*1000))) }
-        } elseif ($currentInterval -gt 0) {
+        } elseif ($CycleTargetMs -le 0 -and $currentInterval -gt 0) {
           Start-Sleep -Milliseconds ([int]([math]::Round($currentInterval*1000)))
         }
       } else {
-        if ($IntervalSeconds -gt 0) {
+        if ($CycleTargetMs -le 0 -and $IntervalSeconds -gt 0) {
           if ($IntervalSeconds -ge 1) {
             Start-Sleep -Seconds ([int][math]::Floor($IntervalSeconds))
             $rem = $IntervalSeconds - [math]::Floor($IntervalSeconds)
@@ -580,6 +687,14 @@ function Invoke-IntegrationCompareLoop {
     DiffSummary = $null
     QuantileStrategy = $QuantileStrategy
     StreamingWindowCount = if ($streamingActive) { $streamSamples.Count } else { 0 }
+    HandshakeEnabled = $UseHandshake.IsPresent
+    CycleTargetMs = $CycleTargetMs
+    CycleOverrunCount = $cycleOverrunCount
+    CycleAvgMs = if ($cycleTimesMs.Count -gt 0) { [int]([math]::Round(($cycleTimesMs | Measure-Object -Average).Average)) } else { 0 }
+    CycleP95Ms = if ($cycleTimesMs.Count -gt 0) {
+      $arr=@($cycleTimesMs.ToArray() | Sort-Object); $rank=0.95*($arr.Count-1); $lo=[math]::Floor($rank); $hi=[math]::Ceiling($rank); if($lo -eq $hi){ $arr[$lo] } else { [int]([math]::Round($arr[$lo]*(1-($rank-$lo)) + $arr[$hi]*($rank-$lo))) }
+    } else { 0 }
+    CycleMaxMs = if ($cycleTimesMs.Count -gt 0) { ($cycleTimesMs | Measure-Object -Maximum).Maximum } else { 0 }
   }
   if ($result.DiffCount -gt 0 -and $DiffSummaryFormat -ne 'None') {
     $summary = switch ($DiffSummaryFormat) {
@@ -624,6 +739,11 @@ function Invoke-IntegrationCompareLoop {
         headPath = $result.HeadPath
         rebaselineApplied = $result.RebaselineApplied
         rebaselineCandidate = $result.RebaselineCandidate
+        cycleTargetMs = $CycleTargetMs
+        cycleOverrunCount = $cycleOverrunCount
+        cycleAvgMs = $result.CycleAvgMs
+        cycleP95Ms = $result.CycleP95Ms
+        cycleMaxMs = $result.CycleMaxMs
       }
       $json = $summary | ConvertTo-Json -Depth 6
       [IO.File]::WriteAllText($RunSummaryJsonPath, $json, [Text.Encoding]::UTF8)

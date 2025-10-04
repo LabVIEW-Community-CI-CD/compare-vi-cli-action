@@ -155,6 +155,11 @@ Additional JSON Schemas (artifact producers):
   - Schema file: `docs/schemas/fixture-drift-summary-v1.schema.json`
   - Validated in CI by the composite action step “Validate drift summary schema (schema-lite)”.
 
+- `fixture-drift-orchestrator-debug-v1` — orchestrator debug artifact emitted by the fixture‑drift
+  composite action (centralized run context and PR update decisions).
+  - Schema file: `docs/schemas/fixture-drift-orchestrator-debug-v1.schema.json`
+  - Validated in CI by the composite action step “Validate orchestrator debug schema (schema-lite)”.
+
 ### Predicate Philosophy
 
 Predicates intentionally allow multiple primitive numeric types (`[int]`, `[long]`, `[double]`) and,

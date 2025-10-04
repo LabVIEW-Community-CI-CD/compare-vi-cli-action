@@ -1,0 +1,17 @@
+{
+  "total": 47,
+  "passed": 47,
+  "failed": 0,
+  "errors": 0,
+  "skipped": 2,
+  "duration_s": 49.182149,
+  "timestamp": "2025-10-04T08:08:10.1589494-07:00",
+  "pesterVersion": "5.7.1",
+  "includeIntegration": false,
+  "meanTest_ms": 941.43,
+  "p95Test_ms": 5052.73,
+  "maxTest_ms": 9042.0,
+  "schemaVersion": "1.7.1",
+  "timedOut": false,
+  "discoveryFailures": 0
+}

@@ -12,6 +12,9 @@
 #>
 [CmdletBinding()] param(
   [string]$OutputDirectory = 'compare-artifacts',
+  [string]$LvCompareArgs,
+  [string]$Base,
+  [string]$Head,
   [switch]$LoopMode,
   [int]$LoopIterations = 15,
   [double]$LoopIntervalSeconds = 0,
@@ -24,8 +27,8 @@ $ErrorActionPreference = 'Stop'
 $canonical = 'C:\Program Files\National Instruments\Shared\LabVIEW Compare\LVCompare.exe'
 if (-not (Test-Path -LiteralPath $canonical -PathType Leaf)) { throw "LVCompare not found at canonical path: $canonical" }
 $repoRoot = Resolve-Path (Join-Path $PSScriptRoot '..')
-$baseVi = (Resolve-Path (Join-Path $repoRoot 'VI1.vi')).Path
-$headVi = (Resolve-Path (Join-Path $repoRoot 'VI2.vi')).Path
+if ($PSBoundParameters.ContainsKey('Base') -and -not [string]::IsNullOrWhiteSpace($Base)) { $baseVi = (Resolve-Path $Base).Path } else { $baseVi = (Resolve-Path (Join-Path $repoRoot 'VI1.vi')).Path }
+if ($PSBoundParameters.ContainsKey('Head') -and -not [string]::IsNullOrWhiteSpace($Head)) { $headVi = (Resolve-Path $Head).Path } else { $headVi = (Resolve-Path (Join-Path $repoRoot 'VI2.vi')).Path }
 foreach ($p in @($baseVi,$headVi)) {
   if (-not (Test-Path -LiteralPath $p -PathType Leaf)) { throw "Required VI file missing: $p" }
   $len = (Get-Item -LiteralPath $p).Length
@@ -58,7 +61,11 @@ if ($LoopMode) {
   }
 } else {
   Write-Host "Invoking LVCompare on:`n Base=$baseVi`n Head=$headVi" -ForegroundColor Cyan
-  $res = Invoke-CompareVI -Base $baseVi -Head $headVi -LvComparePath $canonical -FailOnDiff:$false
+  if ($PSBoundParameters.ContainsKey('LvCompareArgs') -and -not [string]::IsNullOrWhiteSpace($LvCompareArgs)) {
+    $res = Invoke-CompareVI -Base $baseVi -Head $headVi -LvComparePath $canonical -LvCompareArgs $LvCompareArgs -FailOnDiff:$false
+  } else {
+    $res = Invoke-CompareVI -Base $baseVi -Head $headVi -LvComparePath $canonical -FailOnDiff:$false
+  }
 }
 
 $htmlPath = Join-Path $OutputDirectory 'compare-report.html'
@@ -104,6 +111,9 @@ $md += "| Base | $([System.IO.Path]::GetFileName($baseVi)) |"
 $md += "| Head | $([System.IO.Path]::GetFileName($headVi)) |"
 $md += "| Diff | $($res.Diff) |"
 $md += "| Duration (s) | $([string]::Format('{0:F3}',$res.CompareDurationSeconds)) |"
+if (-not $LoopMode -and $PSBoundParameters.ContainsKey('LvCompareArgs') -and -not [string]::IsNullOrWhiteSpace($LvCompareArgs)) {
+  $md += "| Args | $($LvCompareArgs.Replace('|','\|')) |"
+}
 if ($LoopMode -and $loop.Percentiles) {
   $md += "| Iterations | $($loop.Iterations) |"
   $md += "| Avg (s) | $([string]::Format('{0:F4}',$loop.AverageSeconds)) |"

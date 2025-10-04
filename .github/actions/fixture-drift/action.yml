@@ -40,6 +40,18 @@ inputs:
     description: Additional LVCompare args
     required: false
     default: -nobdcosm -nofppos -noattr
+  pr-update-enabled:
+    description: Update PR body with a sticky VI Compare summary section (pull_request events only)
+    required: false
+    default: 'true'
+  pr-update-on:
+    description: "When to update PR body: non-ok | drift-only | always"
+    required: false
+    default: 'non-ok'
+  pr-section-id:
+    description: Marker ID for PR body section (renders as <!-- <id>:start --> / <!-- <id>:end -->)
+    required: false
+    default: fixture-drift-vi-compare
 
 outputs:
   status:
@@ -96,6 +108,7 @@ runs:
         }
         "status=$status" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
         if ($sumPath) { "summary_path=$sumPath" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8 }
+        if ($latest) { "run_dir=$($latest.FullName)" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8 }
         # Do not fail here to allow artifact upload and comment; a later step will enforce failure.
 
     - name: Upload drift artifacts (with retention)
@@ -172,6 +185,117 @@ runs:
           pwsh -NoLogo -NoProfile -File "${{ github.workspace }}\tools\Invoke-JsonSchemaLite.ps1" -JsonPath $sum -SchemaPath $schemaPath
           # Do not fail the job here; schema errors will have been printed for diagnosis.
           if ($LASTEXITCODE -ne 0) { Write-Host "Schema-lite validation returned code $LASTEXITCODE" }
+        }
+
+    - name: Generate VI Compare PR snippet (optional)
+      if: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.fork == false && inputs.comment-on-fail == 'true' && inputs.render-report == 'true' && inputs.pr-update-enabled == 'true' }}
+      shell: pwsh
+      run: |
+        $ErrorActionPreference = 'Continue'
+        try {
+          $canonical = 'C:\\Program Files\\National Instruments\\Shared\\LabVIEW Compare\\LVCompare.exe'
+          if (-not (Test-Path -LiteralPath $canonical -PathType Leaf)) {
+            Write-Host 'LVCompare.exe not found at canonical path; skipping VI Compare snippet generation.'
+            return
+          }
+          $root = Join-Path (Get-Location) 'results/fixture-drift'
+          $latest = $null; if (Test-Path $root) { $latest = Get-ChildItem -LiteralPath $root -Directory | Sort-Object Name -Descending | Select-Object -First 1 }
+          $outDir = if ($latest) { Join-Path $latest.FullName 'vi-compare' } else { 'results/fixture-drift/vi-compare' }
+          New-Item -ItemType Directory -Force -Path $outDir | Out-Null
+          $args = @('-OutputDirectory',$outDir)
+          if ('${{ inputs.base-path }}') { $args += @('-Base','${{ inputs.base-path }}') }
+          if ('${{ inputs.head-path }}') { $args += @('-Head','${{ inputs.head-path }}') }
+          if ('${{ inputs.lv-compare-args }}') { $args += @('-LvCompareArgs','${{ inputs.lv-compare-args }}') }
+          pwsh -NoLogo -NoProfile -File "${{ github.workspace }}\scripts\Generate-PullRequestCompareReport.ps1" @args | Out-Null
+        } catch {
+          Write-Host "VI Compare snippet generation failed: $_"
+        }
+
+    - name: Update PR body with VI Compare summary (sticky section)
+      if: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.fork == false && inputs.comment-on-fail == 'true' && inputs.render-report == 'true' && inputs.pr-update-enabled == 'true' }}
+      env:
+        GITHUB_TOKEN: ${{ github.token }}
+      shell: pwsh
+      run: |
+        $ErrorActionPreference = 'Continue'
+        # Determine if PR update should run based on inputs.pr-update-on and orchestrate status
+        $when = '${{ inputs.pr-update-on }}'
+        $status = '${{ steps.orchestrate.outputs.status }}'
+        $eligible = $false
+        switch ($when) {
+          'always' { $eligible = $true }
+          'non-ok' { if ($status -ne 'ok') { $eligible = $true } }
+          'drift-only' { if ($status -eq 'drift') { $eligible = $true } }
+          default { if ($status -ne 'ok') { $eligible = $true } }
+        }
+        if (-not $eligible) { Write-Host "PR update skipped by policy (status='$status', when='$when')."; exit 0 }
+        $root = Join-Path (Get-Location) 'results/fixture-drift'
+        $latest = $null; if (Test-Path $root) { $latest = Get-ChildItem -LiteralPath $root -Directory | Sort-Object Name -Descending | Select-Object -First 1 }
+        $snippet = if ($latest) { Join-Path $latest.FullName 'vi-compare/pr-diff-snippet.md' } else { 'results/fixture-drift/vi-compare/pr-diff-snippet.md' }
+        if (Test-Path -LiteralPath $snippet -PathType Leaf) {
+          $id = '${{ inputs.pr-section-id }}'
+          $start = "<!-- $id:start -->"
+          $end = "<!-- $id:end -->"
+          try { pwsh -NoLogo -NoProfile -File "${{ github.workspace }}\scripts\Update-PullRequestBody.ps1" -MarkdownPath $snippet -StartMarker $start -EndMarker $end }
+          catch { Write-Host "PR body update failed: $_" }
+        } else {
+          Write-Host 'No VI Compare snippet found; skipping PR body update.'
+        }
+
+    - name: Consolidate orchestrator debug JSON
+      if: always()
+      shell: pwsh
+      run: |
+        $runDir = '${{ steps.orchestrate.outputs.run_dir }}'
+        if (-not $runDir) { $runDir = Join-Path (Get-Location) 'results/fixture-drift' }
+        if (-not (Test-Path $runDir)) { New-Item -ItemType Directory -Force -Path $runDir | Out-Null }
+        $status = '${{ steps.orchestrate.outputs.status }}'
+        $summary = '${{ steps.orchestrate.outputs.summary_path }}'
+        $id = '${{ inputs.pr-section-id }}'
+        $snippet = Join-Path $runDir 'vi-compare/pr-diff-snippet.md'
+        $snippetExists = Test-Path -LiteralPath $snippet -PathType Leaf
+        $when = '${{ inputs.pr-update-on }}'
+        $eligible = $false; if ($when -eq 'always' -or ($when -eq 'non-ok' -and $status -ne 'ok') -or ($when -eq 'drift-only' -and $status -eq 'drift')) { $eligible = $true }
+        $obj = [ordered]@{
+          schema = 'fixture-drift-orchestrator-debug-v1'
+          status = $status
+          summaryPath = $summary
+          runDir = $runDir
+          prSectionId = $id
+          prUpdatePolicy = $when
+          prUpdateEligible = $eligible
+          viCompare = [ordered]@{
+            snippetPath = $snippet
+            snippetExists = $snippetExists
+          }
+          generatedAtUtc = [DateTime]::UtcNow.ToString('o')
+        }
+        $out = Join-Path $runDir 'orchestrator-debug.json'
+        $obj | ConvertTo-Json -Depth 5 | Out-File -FilePath $out -Encoding utf8
+        Write-Host "Orchestrator debug saved: $out"
+
+    - name: Upload orchestrator debug (always)
+      if: always()
+      uses: actions/upload-artifact@v4
+      with:
+        name: fixture-orchestrator-debug
+        path: |
+          ${{ steps.orchestrate.outputs.run_dir }}/orchestrator-debug.json
+          results/fixture-drift/orchestrator-debug.json
+
+    - name: Schema-lite validate orchestrator debug
+      if: always()
+      shell: pwsh
+      run: |
+        $runDir = '${{ steps.orchestrate.outputs.run_dir }}'
+        if (-not $runDir) { $runDir = 'results/fixture-drift' }
+        $path1 = Join-Path $runDir 'orchestrator-debug.json'
+        $schema = Join-Path "${{ github.workspace }}" 'docs/schemas/fixture-drift-orchestrator-debug-v1.schema.json'
+        if (Test-Path $path1 -PathType Leaf -and (Test-Path $schema -PathType Leaf)) {
+          pwsh -NoLogo -NoProfile -File "${{ github.workspace }}\tools\Invoke-JsonSchemaLite.ps1" -JsonPath $path1 -SchemaPath $schema
+          if ($LASTEXITCODE -ne 0) { Write-Host "orchestrator-debug schema-lite returned $LASTEXITCODE (non-fatal)" }
+        } else {
+          Write-Host 'orchestrator-debug.json or schema not found; skipping schema-lite.'
         }
 
     - name: Comment on PR with artifact links (sticky)

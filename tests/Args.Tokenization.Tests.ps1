@@ -2,10 +2,17 @@ Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
 Describe 'LVCompare args tokenization' -Tag 'Unit' {
-  function Convert-TokensForAssert($arr) {
-    $out = @()
-    foreach ($t in @($arr)) { if ($t -is [string]) { $out += ($t -replace '\\\\','\\') } else { $out += $t } }
-    ,$out
+  BeforeAll {
+    function Convert-TokensForAssert($arr) {
+      $out = @()
+      foreach ($t in @($arr)) {
+        if ($t -is [string]) {
+          # Replace double backslashes with single to normalize assertion formatting
+          $out += ($t -replace '\\\\','\')
+        } else { $out += $t }
+      }
+      ,$out
+    }
   }
   It 'tokenizes comma-delimited flags and quoted values consistently' {
   $argSpec = "-nobdcosm,-nofppos,-noattr,'-lvpath C:\Path With Space\LabVIEW.exe','--log C:\t x\l.log'"

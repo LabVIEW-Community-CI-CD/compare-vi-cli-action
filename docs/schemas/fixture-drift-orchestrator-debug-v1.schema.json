@@ -1,0 +1,35 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Fixture Drift Orchestrator Debug (v1)",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "schema": { "const": "fixture-drift-orchestrator-debug-v1" },
+    "status": { "type": "string", "enum": ["ok", "drift", "fail-structural", "unknown"] },
+    "summaryPath": { "type": "string" },
+    "runDir": { "type": "string" },
+    "prSectionId": { "type": "string" },
+    "prUpdatePolicy": { "type": "string", "enum": ["non-ok", "drift-only", "always"] },
+    "prUpdateEligible": { "type": "boolean" },
+    "viCompare": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "snippetPath": { "type": "string" },
+        "snippetExists": { "type": "boolean" }
+      },
+      "required": ["snippetPath", "snippetExists"]
+    },
+    "generatedAtUtc": { "type": "string", "format": "date-time" }
+  },
+  "required": [
+    "schema",
+    "status",
+    "runDir",
+    "prSectionId",
+    "prUpdatePolicy",
+    "prUpdateEligible",
+    "viCompare",
+    "generatedAtUtc"
+  ]
+}

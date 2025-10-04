@@ -139,36 +139,37 @@ Describe 'Invoke-CompareVI (real CLI on self-hosted)' -Tag Integration {
     Remove-Item -LiteralPath $tmpOut -Force -ErrorAction SilentlyContinue
   }
 
-  It 'generates HTML report from real comparison results' -Skip:(-not $script:CompareVIPrereqsAvailable) {
-    # Run comparison (with diff expected)
+  It 'generates HTML report from comparison results (diff or no diff)' -Skip:(-not $script:CompareVIPrereqsAvailable) {
+    # Run comparison (diff may or may not occur depending on fixtures/environment)
     $res = Invoke-CompareVI -Base $BaseVi -Head $HeadVi -LvComparePath $Canonical -FailOnDiff:$false
     $res.ExitCode | Should -BeIn @(0,1)
-    if ($res.ExitCode -ne 1) {
-      Write-Host 'NOTE: No diff detected; skipping diff-oriented HTML assertions.' -ForegroundColor Yellow
-      Set-ItResult -Skipped -Because 'No diff produced; HTML diff content assertions not applicable'
-      return
-    }
-    $res.Diff | Should -BeTrue
 
-    # Generate HTML report
+    # Always generate HTML report regardless of diff outcome
     $htmlPath = Join-Path $ResultsDir 'integration-compare-report.html'
-    
     $renderer = Join-Path (Split-Path -Parent $here) 'scripts' 'Render-CompareReport.ps1'
     & $renderer `
       -Command $res.Command `
       -ExitCode $res.ExitCode `
       -Diff ($res.Diff.ToString().ToLower()) `
       -CliPath $res.CliPath `
-      -OutputPath $htmlPath
+      -OutputPath $htmlPath `
+      -DurationSeconds $res.CompareDurationSeconds
 
     # Verify HTML was created
     Test-Path -LiteralPath $htmlPath | Should -BeTrue
-    
-    # Verify HTML contains expected content
+
+    # Verify HTML contains expected content for either case
     $html = Get-Content -LiteralPath $htmlPath -Raw
     $html | Should -Match 'Compare VI Report'
-    $html | Should -Match 'Differences detected'
-    $html | Should -Match 'Exit code.*1'
+    if ($res.ExitCode -eq 1) {
+      $res.Diff | Should -BeTrue
+      $html | Should -Match 'Differences detected'
+      $html | Should -Match 'Exit code.*1'
+    } else {
+      $res.Diff | Should -BeFalse
+      $html | Should -Match 'No differences'
+      $html | Should -Match 'Exit code.*0'
+    }
   }
 
   It 'accepts recommended knowledgebase CLI flags: -nobdcosm -nofppos -noattr' -Skip:(-not $script:CompareVIPrereqsAvailable) {

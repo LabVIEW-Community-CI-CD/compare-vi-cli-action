@@ -1,0 +1,7 @@
+exitCode=0
+cliPath=C:\Program Files\National Instruments\Shared\LabVIEW Compare\LVCompare.exe
+command="C:\Program Files\National Instruments\Shared\LabVIEW Compare\LVCompare.exe" C:\dev\compare-vi-cli-action\VI1.vi C:\dev\compare-vi-cli-action\VI2.vi -nobdcosm -nofppos -noattr
+diff=false
+shortCircuitedIdentical=false
+compareDurationSeconds=0.038
+compareDurationNanoseconds=37854900

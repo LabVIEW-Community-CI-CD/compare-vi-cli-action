@@ -1,3 +1,16 @@
+param(
+  [string] $Base,
+  [string] $Head,
+  [string] $LvComparePath,
+  [string] $LvCompareArgs = '',
+  [string] $WorkingDirectory = '',
+  [bool]   $FailOnDiff = $true,
+  [string] $GitHubOutputPath,
+  [string] $GitHubStepSummaryPath,
+  [switch] $PreviewArgs,
+  [switch] $UseHandshake
+)
+
 set-strictmode -version latest
 $ErrorActionPreference = 'Stop'
 
@@ -311,4 +324,35 @@ function Invoke-CompareVI {
   finally {
     if ($pushed) { Pop-Location }
   }
+}
+
+# Script entrypoint: if invoked with Base/Head, execute compare (supports preview mode and GitHub outputs)
+if ($PSBoundParameters.ContainsKey('Base') -and $PSBoundParameters.ContainsKey('Head')) {
+  # Optional handshake adoption for script entrypoint only (avoid recursion via COMPARE_BYPASS_HANDSHAKE)
+  $wantHandshake = $UseHandshake.IsPresent -or ($env:COMPARE_USE_HANDSHAKE -eq '1')
+  $bypass = ($env:COMPARE_BYPASS_HANDSHAKE -eq '1')
+  if ($wantHandshake -and -not $PreviewArgs -and -not $bypass) {
+    $handshake = Join-Path $PSScriptRoot 'Invoke-CompareWithHandshake.ps1'
+    if (-not (Test-Path -LiteralPath $handshake)) { throw "Handshake script not found: $handshake" }
+    # Thread common knobs from env if provided
+    $argsHS = @('-Base', $Base, '-Head', $Head, '-LvCompareArgs', $LvCompareArgs)
+    if ($env:COMPARE_HANDSHAKE_CANONICAL_ONLY -eq '1') { $argsHS += '-CanonicalOnly' }
+    foreach ($kv in @(
+      @{k='-PreWaitMs'; v=$env:COMPARE_HANDSHAKE_PREWAIT_MS},
+      @{k='-PostWaitMs'; v=$env:COMPARE_HANDSHAKE_POSTWAIT_MS},
+      @{k='-SettlePolls'; v=$env:COMPARE_HANDSHAKE_SETTLE_POLLS},
+      @{k='-SettleIntervalMs'; v=$env:COMPARE_HANDSHAKE_SETTLE_INTERVAL_MS},
+      @{k='-StartTimeoutMs'; v=$env:COMPARE_HANDSHAKE_START_TIMEOUT_MS},
+      @{k='-ExitTimeoutMs'; v=$env:COMPARE_HANDSHAKE_EXIT_TIMEOUT_MS},
+      @{k='-QuiescentTimeoutMs'; v=$env:COMPARE_HANDSHAKE_QUIESCENT_TIMEOUT_MS},
+      @{k='-MutexName'; v=$env:COMPARE_HANDSHAKE_MUTEX},
+      @{k='-BufferMax'; v=$env:COMPARE_HANDSHAKE_BUFFER_MAX},
+      @{k='-OutputJson'; v=$env:COMPARE_HANDSHAKE_OUTPUT_JSON}
+    )) { if ($kv.v) { $argsHS += @($kv.k, $kv.v) } }
+    if ($env:COMPARE_HANDSHAKE_FORCE_CLEANUP -eq '1') { $argsHS += '-ForceCleanup' }
+    # Invoke handshake wrapper (inner run writes GitHub outputs/summary)
+    & $handshake @argsHS | Out-Null
+    return
+  }
+  $null = Invoke-CompareVI -Base $Base -Head $Head -LvComparePath $LvComparePath -LvCompareArgs $LvCompareArgs -WorkingDirectory $WorkingDirectory -FailOnDiff:$FailOnDiff -GitHubOutputPath $GitHubOutputPath -GitHubStepSummaryPath $GitHubStepSummaryPath -PreviewArgs:$PreviewArgs
 }

@@ -1,0 +1,5 @@
+exitCode=0
+cliPath=C:\\Program Files\\National Instruments\\Shared\\LabVIEW Compare\\LVCompare.exe
+command=c:/dev/compare-vi-cli-action/VI1.vi c:/dev/compare-vi-cli-action/VI2.vi 
+diff=
+false

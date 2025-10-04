@@ -48,14 +48,14 @@ BeforeAll {
 }
 
 Describe 'Single real LVCompare invocation (repo VI1.vi vs VI2.vi)' -Tag Integration {
-  It 'produces expected diff outputs and HTML report' -Skip:(-not $script:Prereqs) {
+  It 'produces outputs and HTML report (diff or no diff)' -Skip:(-not $script:Prereqs) {
   $cliPath = if ($Canonical) { $Canonical } else { $script:Canonical }
   if (-not $cliPath) { Set-ItResult -Skipped -Because 'Canonical path unavailable'; return }
   $res = Invoke-CompareVI -Base $BaseVi -Head $HeadVi -LvComparePath $cliPath -FailOnDiff:$false
     $res.ExitCode | Should -BeIn @(0,1)
     $res.Command | Should -Match 'LVCompare.exe'
 
-    # Render HTML report for PR body usage
+  # Always render HTML report for PR body usage
     $htmlPath = Join-Path $script:ResultsDir 'pr-body-compare-report.html'
     try {
       $repoRoot = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path
@@ -65,7 +65,7 @@ Describe 'Single real LVCompare invocation (repo VI1.vi vs VI2.vi)' -Tag Integra
         Set-ItResult -Skipped -Because 'Renderer script missing'
         return
       }
-      & $renderer -Command $res.Command -ExitCode $res.ExitCode -Diff ($res.Diff.ToString().ToLower()) -CliPath $res.CliPath -OutputPath $htmlPath -DurationSeconds $res.CompareDurationSeconds
+  & $renderer -Command $res.Command -ExitCode $res.ExitCode -Diff ($res.Diff.ToString().ToLower()) -CliPath $res.CliPath -OutputPath $htmlPath -DurationSeconds $res.CompareDurationSeconds
     } catch {
       Write-Host "[RendererError] $($_.Exception.Message)" -ForegroundColor Yellow
       Set-ItResult -Skipped -Because "Renderer execution error: $($_.Exception.Message)"
@@ -74,5 +74,12 @@ Describe 'Single real LVCompare invocation (repo VI1.vi vs VI2.vi)' -Tag Integra
     Test-Path -LiteralPath $htmlPath | Should -BeTrue
     $html = Get-Content -LiteralPath $htmlPath -Raw
     $html | Should -Match 'Compare VI Report'
+    if ($res.ExitCode -eq 1) {
+      $html | Should -Match 'Differences detected'
+      $html | Should -Match 'Exit code.*1'
+    } else {
+      $html | Should -Match 'No differences'
+      $html | Should -Match 'Exit code.*0'
+    }
   }
 }

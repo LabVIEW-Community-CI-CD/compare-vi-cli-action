@@ -1,5 +1,10 @@
 param(
-  [switch]$IncludeIntegration
+  [switch]$IncludeIntegration,
+  # Optional: run only a specific test file or directory
+  [string]$Path,
+  # Optional: set Pester output verbosity (Quiet|Normal|Detailed|Diagnostic)
+  [ValidateSet('Quiet','Normal','Detailed','Diagnostic')]
+  [string]$Output = 'Detailed'
 )
 
 $ErrorActionPreference = 'Stop'
@@ -25,12 +30,20 @@ if (-not $pesterModule) {
 Write-Host ("Using Pester {0}" -f (Get-Module Pester).Version)
 
 # Build configuration
+${script:startTime} = Get-Date
 $conf = New-PesterConfiguration
-$conf.Run.Path = (Join-Path $root 'tests')
+
+# Resolve target path
+if ($Path) {
+  $target = if ([System.IO.Path]::IsPathRooted($Path)) { $Path } else { Join-Path $root $Path }
+  $conf.Run.Path = $target
+} else {
+  $conf.Run.Path = (Join-Path $root 'tests')
+}
 if (-not $IncludeIntegration) {
   $conf.Filter.ExcludeTag = @('Integration')
 }
-$conf.Output.Verbosity = 'Detailed'
+$conf.Output.Verbosity = $Output
 $conf.TestResult.Enabled = $true
 $conf.TestResult.OutputFormat = 'NUnitXml'
 $conf.TestResult.OutputPath = 'pester-results.xml'  # filename relative to CWD per Pester 5
@@ -55,12 +68,20 @@ $rootNode = $doc.'test-results'
 [int]$total = $rootNode.total
 [int]$failed = $rootNode.failures
 [int]$errors = $rootNode.errors
-$passed = $total - $failed - $errors
-$skipped = 0
+[int]$notRun = $rootNode.'not-run'
+[int]$inconclusive = $rootNode.inconclusive
+[int]$ignored = $rootNode.ignored
+[int]$invalid = $rootNode.invalid
+# Treat not-run as skipped for summary purposes
+$skipped = $notRun
+# Passed excludes failures, errors, and not-run categories
+$passed = $total - $failed - $errors - $skipped
+if ($passed -lt 0) { $passed = 0 }
+
+$duration = ((Get-Date) - $script:startTime).TotalSeconds
 $summary = @(
-  "Tests Passed: $passed",
-  "Tests Failed: $failed",
-  "Tests Skipped: $skipped"
+  "Tests completed in {0:N2}s" -f $duration,
+  "Tests Passed: $passed, Failed: $failed, Skipped: $skipped, Inconclusive: $inconclusive, NotRun: $notRun"
 ) -join [Environment]::NewLine
 $summary | Tee-Object -FilePath (Join-Path $resultsDir 'pester-summary.txt')
 

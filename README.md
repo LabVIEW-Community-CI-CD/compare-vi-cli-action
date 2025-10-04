@@ -5,6 +5,8 @@
 [![Validate](https://github.com/LabVIEW-Community-CI-CD/compare-vi-cli-action/actions/workflows/validate.yml/badge.svg)](https://github.com/LabVIEW-Community-CI-CD/compare-vi-cli-action/actions/workflows/validate.yml)
 [![Smoke test](https://github.com/LabVIEW-Community-CI-CD/compare-vi-cli-action/actions/workflows/smoke.yml/badge.svg)](https://github.com/LabVIEW-Community-CI-CD/compare-vi-cli-action/actions/workflows/smoke.yml)
 [![Test (mock)](https://github.com/LabVIEW-Community-CI-CD/compare-vi-cli-action/actions/workflows/test-mock.yml/badge.svg)](https://github.com/LabVIEW-Community-CI-CD/compare-vi-cli-action/actions/workflows/test-mock.yml)
+[![Fixture Drift](https://github.com/LabVIEW-Community-CI-CD/compare-vi-cli-action/actions/workflows/fixture-drift.yml/badge.svg)](https://github.com/LabVIEW-Community-CI-CD/compare-vi-cli-action/actions/workflows/fixture-drift.yml)
+[![Actionlint](https://github.com/LabVIEW-Community-CI-CD/compare-vi-cli-action/actions/workflows/actionlint.yml/badge.svg)](https://github.com/LabVIEW-Community-CI-CD/compare-vi-cli-action/actions/workflows/actionlint.yml)
 [![Marketplace](https://img.shields.io/badge/GitHub%20Marketplace-Action-blue?logo=github)](https://github.com/marketplace/actions/compare-vi-cli-action)
 [![Environment](https://img.shields.io/badge/docs-Environment%20Vars-6A5ACD)](./docs/ENVIRONMENT.md)
 
@@ -50,14 +52,14 @@ Two canonical LabVIEW VI files live at the repository root:
 | `VI2.vi` | Canonical head fixture |
 
 Purpose:
- 
+
 - Fallback pair for examples, smoke workflows, and quick local validation.
 - Guard test anchor ensuring legacy `Base.vi` / `Head.vi` names are not reintroduced.
 - Stable targets for loop / latency simulation when no custom inputs provided.
 - External dispatcher compatibility (LabVIEW-hosted tooling can intentionally evolve them in controlled commits).
 
 Phase 1 Policy (enforced by tests & `tools/Validate-Fixtures.ps1`):
- 
+
 - Files MUST exist, be git-tracked, and be non-trivial in size (minimum enforced).
 - Do not delete or rename them without a migration plan.
 - Intentional content changes should include a rationale in the commit message (future phases may require a token such as `[fixture-update]`).
@@ -93,25 +95,56 @@ Flags:
 
 ```text
   -MinBytes <n>             Global minimum size (fallback when item.minBytes absent)
-  -Quiet / -QuietOutput     Suppress non-error console lines
-  -Json                     Emit single JSON object (suppresses human lines)
-  -TestAllowFixtureUpdate   INTERNAL: ignore hash mismatches (used in tests)
-  -DisableToken             INTERNAL: disable commit message token override for tests
+
+### Posting a diff summary to a PR body (optional)
+
+This repository includes a small helper to generate an HTML report and a Markdown summary for the compare result, then update the pull request body with a sticky section.
+
+Workflow example (PowerShell shell):
+
+```yaml
+  - name: Compare VIs and generate report
+    if: github.event_name == 'pull_request'
+    shell: pwsh
+    run: |
+      pwsh -File scripts/Generate-PullRequestCompareReport.ps1 -OutputDirectory compare-artifacts | Out-Null
+      # Attach artifact if desired (HTML is self-contained)
+  - name: Upload compare artifacts
+    if: github.event_name == 'pull_request'
+    uses: actions/upload-artifact@v4
+    with:
+      name: vi-compare-artifacts
+      path: compare-artifacts/
+  - name: Update PR body with diff summary
+    if: github.event_name == 'pull_request'
+    shell: pwsh
+    env:
+      GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+    run: |
+      pwsh -File scripts/Update-PullRequestBody.ps1 -MarkdownPath compare-artifacts/pr-diff-snippet.md
 ```
 
-JSON output fields:
+Notes:
+
+- The PR section is wrapped between markers: `<!-- vi-compare:start -->` and `<!-- vi-compare:end -->`. Re-runs replace the block in-place.
+- The HTML file `compare-report.html` is self-contained; keep it as an artifact or serve from your tooling.
+- The helper infers the PR number from the GitHub event payload. You can also pass `-PRNumber 123` manually if needed.
+
+Composite (fixture-drift) integration:
+
+- Use `./.github/actions/fixture-drift` with:
+  - `render-report: 'true'` to enable VI Compare snippet generation
+  - `pr-update-enabled: 'true'` to allow PR body updates
+  - `pr-update-on: 'non-ok' | 'drift-only' | 'always'` to control when updates occur
+  - `pr-section-id: 'fixture-drift-vi-compare'` to customize the sticky section markers
+  - Optional `base-path`, `head-path`, and `lv-compare-args` to match your compare targets and flags
+- For fast triage, the composite emits a single consolidated debug JSON at `results/fixture-drift/<run>/orchestrator-debug.json` and uploads it as `fixture-orchestrator-debug`.
+
+Fixture-drift workflow link: see `.github/workflows/fixture-drift.yml`. On drift or structural failure, the composite can update the PR body with a sticky VI Compare section and always uploads a single `fixture-orchestrator-debug` artifact to centralize troubleshooting.
 
 ```json
 {
   "ok": true|false,
-  "exitCode": <int>,
-  "summary": "text",
-  "issues": [ { type, ... } ],
-  "manifestPresent": true|false,
-  "fixtureCount": 2,
-  "fixtures": ["VI1.vi","VI2.vi"],
-  "checked": ["VI1.vi","VI2.vi"]
-}
 ```
 
 Issue objects may include:
@@ -148,7 +181,7 @@ jobs:
       - uses: actions/checkout@v5
       - name: Compare VIs
         id: compare
-  uses: LabVIEW-Community-CI-CD/compare-vi-cli-action@v0.4.1
+  uses: LabVIEW-Community-CI-CD/compare-vi-cli-action@v0.5.0
         with:
           base: path/to/VI1.vi
           head: path/to/VI2.vi
@@ -203,7 +236,7 @@ See [`docs/action-outputs.md`](./docs/action-outputs.md) for complete output doc
 ```yaml
   - name: Compare VIs
     id: compare
-  uses: LabVIEW-Community-CI-CD/compare-vi-cli-action@v0.4.1
+  uses: LabVIEW-Community-CI-CD/compare-vi-cli-action@v0.5.0
     with:
   base: VI1.vi
   head: VI1.vi  # Intentional identical path
@@ -234,6 +267,70 @@ For advanced configuration including lvCompareArgs recipes, working-directory us
 Tip: Environment variables quick reference moved to the **[Environment appendix](./docs/ENVIRONMENT.md)**.
 Note: For CI integration test runs, consider setting CLEAN_AFTER=1, KILL_LEAKS=1, and `LEAK_GRACE_SECONDS`≈1.0 to avoid lingering LabVIEW/LVCompare processes; see Troubleshooting → Leak Detection and the Environment appendix for details.
 
+### Minimal Preview Mode (no CLI)
+
+Preview how arguments will be passed to LVCompare without launching it (useful locally and in CI diagnostics):
+
+Local usage:
+
+```powershell
+pwsh -File ./scripts/CompareVI.ps1 -Base VI1.vi -Head VI2.vi -LvCompareArgs "--log=C:\temp\lv.log" -PreviewArgs
+```
+
+Workflow usage:
+
+```yaml
+  - name: Preview compare (no execution)
+    shell: pwsh
+    env:
+      LV_PREVIEW: '1'
+    run: |
+      pwsh -File scripts/CompareVI.ps1 -Base VI1.vi -Head VI2.vi -LvCompareArgs "-nobdcosm"
+```
+
+Outputs include the canonical `cliPath`, fully-quoted `command`, and `previewArgs=true`.
+
+### How to replay integration locally
+
+Prereqs:
+
+- Windows + PowerShell 7+
+- LVCompare installed at the canonical path: `C:\Program Files\National Instruments\Shared\LabVIEW Compare\LVCompare.exe`
+- Pester 5+ (for the full test run)
+
+Quick smoke (real compare):
+
+```powershell
+# From repository root
+pwsh -File ./scripts/CompareVI.ps1 `
+  -Base ./VI1.vi -Head ./VI2.vi `
+  -LvCompareArgs "-nobdcosm -nofppos -noattr" `
+  -FailOnDiff:$false
+```
+
+Full integration suite (includes real LVCompare tests):
+
+```powershell
+$env:LV_BASE_VI = (Resolve-Path './VI1.vi').Path
+$env:LV_HEAD_VI = (Resolve-Path './VI2.vi').Path
+./Invoke-PesterTests.ps1 -IncludeIntegration true
+```
+
+Notes:
+
+- If the canonical LVCompare path or VI env vars are missing, Integration-tagged tests will be skipped or fail early with clear messaging.
+- You can set `LV_PREVIEW=1` to dry-run argument handling without invoking LVCompare.
+
+PowerShell 5.1 one-liners (Windows PowerShell):
+
+```powershell
+# Quick smoke (real compare)
+powershell -NoLogo -NoProfile -Command "& '.\\scripts\\CompareVI.ps1' -Base '.\\VI1.vi' -Head '.\\VI2.vi' -LvCompareArgs '-nobdcosm -nofppos -noattr' -FailOnDiff:$false"
+
+# Full integration suite
+powershell -NoLogo -NoProfile -Command "$env:LV_BASE_VI=(Resolve-Path '.\\VI1.vi').Path; $env:LV_HEAD_VI=(Resolve-Path '.\\VI2.vi').Path; & '.\\Invoke-PesterTests.ps1' -IncludeIntegration:$true"
+```
+
 ## Loop Mode
 
 The action supports an experimental loop mode for performance testing and stability analysis. For complete details on loop mode, percentile strategies, histogram generation, and the autonomous runner script, see the **[Loop Mode Guide](./docs/COMPARE_LOOP_MODULE.md)**.
@@ -242,7 +339,7 @@ The action supports an experimental loop mode for performance testing and stabil
 
 ```yaml
 - name: Performance test loop
-  uses: LabVIEW-Community-CI-CD/compare-vi-cli-action@v0.4.1
+  uses: LabVIEW-Community-CI-CD/compare-vi-cli-action@v0.5.0
   with:
     base: VI1.vi
     head: VI2.vi
@@ -682,6 +779,19 @@ Validation tests:
 - Context emission (when opt-in flag used): [`tests/PesterSummary.Context.Tests.ps1`](./tests/PesterSummary.Context.Tests.ps1)
 
 ## Troubleshooting
+
+- Integration note warning: Missing `Tags` property
+  - Symptom: `WARNING: Failed to evaluate integration execution note: The property 'Tags' cannot be found on this object.`
+  - Cause: Under `Set-StrictMode -Version Latest`, accessing `Tags` on Pester result objects that don’t expose it throws. Pester returns heterogeneous result shapes; some only have `Path`.
+  - Status: Guarded checks prevent the warning (we verify property existence before access). No action needed in normal use.
+  - Optional diagnostics: Enable a one-off shape report of `$result.Tests`:
+    - Via env: set `EMIT_RESULT_SHAPES=1` (truthy values: `1`, `true`, `yes`, `on`).
+    - Or pass `-EmitResultShapeDiagnostics` to `Invoke-PesterTests.ps1`.
+    - Artifacts (in your `ResultsPath`):
+      - `result-shapes.txt` (human-readable)
+      - `result-shapes.json` (schema `pester-result-shapes/v1`)
+    - The results index (`results-index.html`) links to these files when present.
+    - GitHub Step Summary: If `GITHUB_STEP_SUMMARY` is set by the runner, the dispatcher appends a compact diagnostics table (total entries, Path/Tags counts and %) to the step summary. Opt out with `-DisableStepSummary` or `DISABLE_STEP_SUMMARY=1`.
 
 For common issues including path resolution problems, exit code interpretation, performance tuning, and test environment setup, see the **[Troubleshooting Guide](./docs/TROUBLESHOOTING.md)**.
 

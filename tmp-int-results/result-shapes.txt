@@ -1,0 +1,6 @@
+=== Pester Result Shapes ===
+Generated: 2025-10-04T07:47:26.5077029-07:00
+Total entries: 197
+By type:
+  - Test (Pester.Test): count=197; hasPath=197; hasTags=0
+Overall: hasPath=197/197; hasTags=0/197

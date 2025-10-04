@@ -1,0 +1,39 @@
+{
+  "schema": "labview-lifecycle-diagnose-v1",
+  "startedAt": "2025-10-03T22:31:14.2758623-07:00",
+  "base": "C:\\dev\\compare-vi-cli-action\\VI1.vi",
+  "head": "C:\\dev\\compare-vi-cli-action\\VI2.vi",
+  "lvCompareArgs": "-nobdcosm -nofppos -noattr",
+  "canonicalCli": "C:\\\\Program Files\\\\National Instruments\\\\Shared\\\\LabVIEW Compare\\\\LVCompare.exe",
+  "pre": [
+    {
+      "Name": "LabVIEW",
+      "Id": 37588,
+      "Path": "C:\\Program Files\\National Instruments\\LabVIEW 2025\\LabVIEW.exe",
+      "StartTime": "2025-10-03T22:30:16.8799366-07:00"
+    }
+  ],
+  "post1": [
+    {
+      "Name": "LabVIEW",
+      "Id": 37588,
+      "Path": "C:\\Program Files\\National Instruments\\LabVIEW 2025\\LabVIEW.exe",
+      "StartTime": "2025-10-03T22:30:16.8799366-07:00"
+    }
+  ],
+  "post2": [
+    {
+      "Name": "LabVIEW",
+      "Id": 37588,
+      "Path": "C:\\Program Files\\National Instruments\\LabVIEW 2025\\LabVIEW.exe",
+      "StartTime": "2025-10-03T22:30:16.8799366-07:00"
+    }
+  ],
+  "newLabVIEWAfterRun": {
+    "post2": 0,
+    "post1": 0
+  },
+  "newLabVIEWPids": [],
+  "lvComparePresentAfterRun": false,
+  "suspectedLeak": false
+}

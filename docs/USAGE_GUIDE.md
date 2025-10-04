@@ -62,7 +62,7 @@ When your VIs are in a subdirectory, use `working-directory` to avoid repeating 
 
 ```yaml
 - name: Compare VIs
-  uses: LabVIEW-Community-CI-CD/compare-vi-cli-action@v0.4.1
+  uses: LabVIEW-Community-CI-CD/compare-vi-cli-action@v0.5.0
   with:
     working-directory: my-labview-project
     base: src/VI1.vi
@@ -128,7 +128,7 @@ This generates a self-contained HTML file with:
 ```yaml
 - name: Compare VIs
   id: compare
-  uses: LabVIEW-Community-CI-CD/compare-vi-cli-action@v0.4.1
+  uses: LabVIEW-Community-CI-CD/compare-vi-cli-action@v0.5.0
   with:
     base: VI1.vi
     head: VI2.vi
@@ -148,7 +148,7 @@ This generates a self-contained HTML file with:
 ```yaml
 - name: Compare VIs
   id: compare
-  uses: LabVIEW-Community-CI-CD/compare-vi-cli-action@v0.4.1
+  uses: LabVIEW-Community-CI-CD/compare-vi-cli-action@v0.5.0
   with:
     base: VI1.vi
     head: VI2.vi
@@ -174,7 +174,7 @@ When base and head resolve to the same path, the action short-circuits without i
 ```yaml
 - name: Compare VIs
   id: compare
-  uses: LabVIEW-Community-CI-CD/compare-vi-cli-action@v0.4.1
+  uses: LabVIEW-Community-CI-CD/compare-vi-cli-action@v0.5.0
   with:
     base: MyVI.vi
     head: MyVI.vi

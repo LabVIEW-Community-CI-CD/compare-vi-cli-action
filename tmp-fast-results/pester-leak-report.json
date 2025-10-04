@@ -1,0 +1,29 @@
+{
+  "schema": "pester-leak-report/v1",
+  "schemaVersion": "1.0.0",
+  "generatedAt": "2025-10-04T07:53:54.4341201-07:00",
+  "targets": [
+    "LVCompare",
+    "LabVIEW"
+  ],
+  "graceSeconds": 0,
+  "waitedMs": 0,
+  "procsBefore": [],
+  "procsAfter": [
+    {
+      "name": "LabVIEW",
+      "pid": 35948,
+      "startTime": "2025-10-04T07:32:40.1802339-07:00"
+    }
+  ],
+  "runningJobs": [],
+  "allJobs": [],
+  "jobsBefore": [],
+  "leakDetected": true,
+  "actions": [],
+  "killedProcs": [],
+  "stoppedJobs": [],
+  "notes": [
+    "Final sweep leak report to ensure artifact presence; see main leak block for full details when enabled"
+  ]
+}

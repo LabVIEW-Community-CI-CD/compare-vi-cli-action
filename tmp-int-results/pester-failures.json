@@ -1,0 +1,10 @@
+{
+  "name": "emits JSON with required fields matching schema expectations",
+  "path": [
+    "Pester Summary Schema",
+    "emits JSON with required fields matching schema expectations"
+  ],
+  "duration_ms": 3442.23,
+  "message": "Expected the actual value to be greater than 0, but got 0.",
+  "schemaVersion": "1.0.0"
+}

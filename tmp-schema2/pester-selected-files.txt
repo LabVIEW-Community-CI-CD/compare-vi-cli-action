@@ -1,0 +1,1 @@
+C:\dev\compare-vi-cli-action\tests\PesterSummary.Schema.Tests.ps1

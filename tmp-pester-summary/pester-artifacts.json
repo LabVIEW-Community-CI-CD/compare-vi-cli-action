@@ -1,0 +1,50 @@
+{
+  "manifestVersion": "1.0.0",
+  "generatedAt": "2025-10-04T08:08:10.2673441-07:00",
+  "artifacts": [
+    {
+      "file": "pester-results.xml",
+      "type": "nunitXml"
+    },
+    {
+      "file": "pester-summary.txt",
+      "type": "textSummary"
+    },
+    {
+      "file": "compare-report.html",
+      "type": "htmlCompare"
+    },
+    {
+      "file": "results-index.html",
+      "type": "htmlIndex"
+    },
+    {
+      "file": "integration-compare-report.html",
+      "type": "htmlCompare"
+    },
+    {
+      "file": "pr-body-compare-report.html",
+      "type": "htmlCompare"
+    },
+    {
+      "file": "pester-summary.json",
+      "type": "jsonSummary",
+      "schemaVersion": "1.7.1"
+    },
+    {
+      "file": "pester-leak-report.json",
+      "type": "jsonLeaks",
+      "schemaVersion": "1.0.0"
+    }
+  ],
+  "metrics": {
+    "totalTests": 47,
+    "failed": 0,
+    "skipped": 2,
+    "duration_s": 49.182149,
+    "meanTest_ms": 941.43,
+    "p95Test_ms": 5052.73,
+    "maxTest_ms": 9042.0,
+    "aggregatorBuildMs": null
+  }
+}

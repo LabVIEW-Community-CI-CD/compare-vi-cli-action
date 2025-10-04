@@ -10,6 +10,7 @@ This guide covers common issues and solutions when using the compare-vi-cli-acti
 - [Path Resolution Problems](#path-resolution-problems)
 - [Loop Mode Issues](#loop-mode-issues)
 - [Test Environment Issues](#test-environment-issues)
+- [Integration Note Warning (Tags)](#integration-note-warning-tags)
 
 ## Installation and Path Issues
 
@@ -242,6 +243,24 @@ with:
 
 ## Test Environment Issues
 
+## Integration Note Warning (Tags)
+
+**Symptom:** `Failed to evaluate integration execution note: The property 'Tags' cannot be found on this object.`
+
+**Why it happens:** Pester result objects can lack a `Tags` property. With `Set-StrictMode` enabled, directly accessing `Tags` on those objects throws. The dispatcher now guards property access by verifying that `Path`/`Tags` properties exist before reading them.
+
+**Status:** Fixed in the dispatcher. Update to the latest `develop` branch if you still see this.
+
+**Optional diagnostics:** You can emit a one-off shape report for `$result.Tests`.
+
+- Enable via environment: set `EMIT_RESULT_SHAPES=1` (truthy values supported: `1`, `true`, `yes`, `on`).
+- Or pass `-EmitResultShapeDiagnostics` to `Invoke-PesterTests.ps1`.
+- After a run, check in your `ResultsPath`:
+      - `result-shapes.txt` (human-readable)
+      - `result-shapes.json` (schema `pester-result-shapes/v1`)
+- The `results-index.html` generated in the results folder links to these files when present.
+
+
 ### Integration Tests Skipped
 
 **Symptom:** All CompareVI integration tests show as skipped
@@ -352,7 +371,7 @@ To diagnose unexpected exit codes, capture LVCompare output:
 ```yaml
 - name: Compare VIs
   id: compare
-  uses: LabVIEW-Community-CI-CD/compare-vi-cli-action@v0.4.1
+   uses: LabVIEW-Community-CI-CD/compare-vi-cli-action@v0.5.0
   with:
     base: VI1.vi
     head: VI2.vi

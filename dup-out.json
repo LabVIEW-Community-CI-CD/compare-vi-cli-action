@@ -1,0 +1,26 @@
+{
+  "ok": false,
+  "exitCode": 8,
+  "summary": "Fixture validation failed",
+  "issues": [
+    {
+      "type": "duplicate",
+      "path": "VI1.vi"
+    }
+  ],
+  "manifestPresent": true,
+  "fixtureCount": 2,
+  "checked": [
+    "VI1.vi",
+    "VI2.vi"
+  ],
+  "summaryCounts": {
+    "missing": 0,
+    "untracked": 0,
+    "tooSmall": 0,
+    "hashMismatch": 0,
+    "manifestError": 0,
+    "duplicate": 1,
+    "schema": 0
+  }
+}

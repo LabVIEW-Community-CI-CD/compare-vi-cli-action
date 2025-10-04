@@ -1,0 +1,16 @@
+=== Pester Test Summary ===
+Total Tests: 2
+Passed: 2
+Failed: 0
+Errors: 0
+Skipped: 0
+Duration: 7.08s
+ (mean=2986.66ms p95=2918.98ms max=3054.33ms)
+
+
+---
+Diagnostics Summary
+
+Total entries: 2
+Has Path: 2 (100.0%)
+Has Tags: 0 (0.0%)

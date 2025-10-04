@@ -9,6 +9,9 @@ jobs:
   vi-compare:
     if: github.event_name == 'workflow_dispatch' || contains(github.event.pull_request.labels.*.name, 'vi-compare')
     runs-on: [self-hosted, Windows, X64]
+    permissions:
+      contents: read
+      pull-requests: write
     steps:
       - name: Checkout
         uses: actions/checkout@v5
@@ -57,6 +60,18 @@ jobs:
             compare-artifacts/*
             loop-artifacts/*
           if-no-files-found: warn
+
+      - name: Update PR body with diff summary
+        if: always() && github.event_name == 'pull_request' && github.event.pull_request.number
+        shell: pwsh
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          if (Test-Path 'compare-artifacts/pr-diff-snippet.md') {
+            pwsh -File scripts/Update-PullRequestBody.ps1 -MarkdownPath compare-artifacts/pr-diff-snippet.md
+          } else {
+            Write-Host 'No single-run diff snippet found; skipping PR body update.'
+          }
 
       - name: Append summary
         if: always()

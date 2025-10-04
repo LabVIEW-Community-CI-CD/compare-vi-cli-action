@@ -1,0 +1,19 @@
+{
+  "schema": "pester-result-shapes/v1",
+  "schemaVersion": "1.1.0",
+  "generatedAt": "2025-10-04T07:47:26.5077029-07:00",
+  "totalEntries": 197,
+  "byType": [
+    {
+      "typeName": "Test",
+      "typeFull": "Pester.Test",
+      "count": 197,
+      "hasPathCnt": 197,
+      "hasTagsCnt": 0
+    }
+  ],
+  "overall": {
+    "hasPath": 197,
+    "hasTags": 0
+  }
+}

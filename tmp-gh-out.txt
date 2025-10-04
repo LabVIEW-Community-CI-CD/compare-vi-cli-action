@@ -1,0 +1,3 @@
+cliPath=C:\Program Files\National Instruments\Shared\LabVIEW Compare\LVCompare.exe
+command="C:\Program Files\National Instruments\Shared\LabVIEW Compare\LVCompare.exe" C:\dev\compare-vi-cli-action\VI1.vi C:\dev\compare-vi-cli-action\VI2.vi
+previewArgs=true

@@ -367,3 +367,38 @@ See [`../CONTRIBUTING.md`](../CONTRIBUTING.md) for:
 - [Schema Helper](./SCHEMA_HELPER.md) - JSON schema validation
 - [E2E Testing Guide](./E2E_TESTING_GUIDE.md) - End-to-end testing
 - [Usage Guide](./USAGE_GUIDE.md) - Advanced action configuration
+
+## Orchestrator Debug JSON (Fixture Drift)
+
+The fixture-drift composite action produces a single consolidated debug artifact for fast triage.
+
+- Location: `results/fixture-drift/<run>/orchestrator-debug.json`
+- Uploaded artifact name: `fixture-orchestrator-debug`
+- Purpose: Single point of debug aggregating core status, PR-update policy, and snippet presence.
+
+Shape (v1):
+
+```jsonc
+{
+  "schema": "fixture-drift-orchestrator-debug-v1",
+  "status": "ok | drift | fail-structural | unknown",
+  "summaryPath": "results/fixture-drift/<run>/drift-summary.json",
+  "runDir": "results/fixture-drift/<run>",
+  "prSectionId": "fixture-drift-vi-compare",
+  "prUpdatePolicy": "non-ok | drift-only | always",
+  "prUpdateEligible": true,
+  "viCompare": {
+    "snippetPath": "results/fixture-drift/<run>/vi-compare/pr-diff-snippet.md",
+    "snippetExists": true
+  },
+  "generatedAtUtc": "2025-10-03T12:34:56.789Z"
+}
+```
+
+Notes:
+
+- `status` mirrors the orchestrator outcome for the run.
+- `summaryPath` points to the definitive drift summary JSON.
+- `prUpdateEligible` records whether PR-body update would/could run for this status given policy.
+- `viCompare.snippetExists` indicates if the VI Compare snippet was generated (requires canonical LVCompare + `render-report: 'true'`).
+- This file is always uploaded to provide a consistent debugging entry point.

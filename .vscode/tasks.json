@@ -1,0 +1,79 @@
+{
+  "version": "2.0.0",
+  "inputs": [
+    {
+      "id": "argSpec",
+      "type": "promptString",
+      "description": "LVCompare args",
+      "default": "-nobdcosm -nofppos -noattr"
+    },
+    {
+      "id": "baseVi",
+      "type": "pickString",
+      "description": "Base VI",
+      "options": [
+        "${workspaceFolder}/VI1.vi",
+        "${workspaceFolder}/VI2.vi"
+      ],
+      "default": "${workspaceFolder}/VI1.vi"
+    },
+    {
+      "id": "headVi",
+      "type": "pickString",
+      "description": "Head VI",
+      "options": [
+        "${workspaceFolder}/VI2.vi",
+        "${workspaceFolder}/VI1.vi"
+      ],
+      "default": "${workspaceFolder}/VI2.vi"
+    }
+  ],
+  "tasks": [
+    {
+      "label": "Preview Compare Args",
+      "type": "shell",
+      "command": "pwsh",
+      "args": [
+        "-NoLogo",
+        "-NoProfile",
+        "-File",
+        "${workspaceFolder}/scripts/CompareVI.ps1",
+        "-Base",
+        "${input:baseVi}",
+        "-Head",
+        "${input:headVi}",
+        "-LvCompareArgs",
+        "${input:argSpec}",
+        "-PreviewArgs"
+      ],
+      "options": {
+        "cwd": "${workspaceFolder}",
+        "env": { "LV_PREVIEW": "1" }
+      },
+      "group": {
+        "kind": "test",
+        "isDefault": true
+      },
+      "presentation": {
+        "reveal": "always",
+        "panel": "new"
+      }
+    },
+    {
+      "label": "Run Args Tokenization Tests",
+      "type": "shell",
+      "command": "pwsh",
+      "args": [
+        "-File",
+        "${workspaceFolder}/tools/Run-Pester.ps1",
+        "-Path",
+        "tests/Args.Tokenization.Tests.ps1"
+      ],
+      "group": "test",
+      "presentation": {
+        "reveal": "always",
+        "panel": "new"
+      }
+    }
+  ]
+}
