@@ -1,8 +1,8 @@
 {
   "schema": "fixture-validation-delta-v1",
-  "baselinePath": "C:\\dev\\compare-vi-cli-action\\baseline-fixture-validation.json",
-  "currentPath": "C:\\dev\\compare-vi-cli-action\\current-fixture-validation.json",
-  "generatedAt": "2025-10-03T20:38:44.4752486-07:00",
+  "baselinePath": "/home/runner/work/compare-vi-cli-action/compare-vi-cli-action/baseline-fixture-validation.json",
+  "currentPath": "/home/runner/work/compare-vi-cli-action/compare-vi-cli-action/current-fixture-validation.json",
+  "generatedAt": "2025-10-04T15:34:47.5767600+00:00",
   "baselineOk": true,
   "currentOk": false,
   "deltaCounts": {
