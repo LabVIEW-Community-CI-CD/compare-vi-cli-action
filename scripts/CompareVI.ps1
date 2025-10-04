@@ -1,6 +1,9 @@
 set-strictmode -version latest
 $ErrorActionPreference = 'Stop'
 
+# Import shared tokenization pattern
+Import-Module (Join-Path $PSScriptRoot 'ArgTokenization.psm1') -Force
+
 function Resolve-Cli {
   param(
     [string]$Explicit
@@ -51,8 +54,8 @@ function Convert-ArgTokenList([string[]]$tokens) {
   function Normalize-PathToken([string]$s) {
     if ($null -eq $s) { return $s }
     # Convert Windows-style forward slashes to backslashes for drive-letter and UNC forms
-    if ($s -match '^[A-Za-z]:/') { return ($s -replace '/', '\\') }
-    if ($s -match '^//') { return ($s -replace '/', '\\') }
+    if ($s -match '^[A-Za-z]:/') { return ($s -replace '/', '\') }
+    if ($s -match '^//') { return ($s -replace '/', '\') }
     return $s
   }
   foreach ($t in $tokens) {
@@ -133,7 +136,7 @@ function Invoke-CompareVI {
     $cliArgs = @()
     if ($LvCompareArgs) {
       # Tokenize by comma and/or whitespace while respecting quotes
-      $pattern = '"[^\"]+"|''[^'']+''|[^,\s]+'
+      $pattern = Get-LVCompareArgTokenPattern
       $tokens = [regex]::Matches($LvCompareArgs, $pattern) | ForEach-Object { $_.Value }
       foreach ($t in $tokens) {
         $tok = $t.Trim()
