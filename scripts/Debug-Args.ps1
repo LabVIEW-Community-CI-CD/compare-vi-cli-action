@@ -80,7 +80,10 @@ function Split-ArgSpec([object]$value) {
   return $list
 }
 
-function Convert-ForDisplay([object[]]$arr) { @($arr | ForEach-Object { if ($_ -is [string]) { $_ } else { [string]$_ } }) }
+function Convert-ForDisplay {
+  param([object[]]$arr)
+  return @($arr | ForEach-Object { if ($_ -is [string]) { $_ } else { [string]$_ } })
+}
 
 $raw = $Args
 $tokens = Split-ArgSpec -value $raw
