@@ -101,25 +101,30 @@
 
 ### Monitor CI Runs
 
-- List recent runs for current branch: `./tools/List-BranchRuns.ps1`
-- Specific branch: `./tools/List-BranchRuns.ps1 -Branch chore/branch-rules-and-hygiene-docs -Limit 10`
-- Filter by workflow name or status: `./tools/List-BranchRuns.ps1 -Name 'Pester*' -Status in_progress`
-- Open newest run: `./tools/List-BranchRuns.ps1 -Name 'Pester (self-hosted)' -Open`
+- Preferred (gh CLI): `gh run list -b <branch> -L 10` | `gh run view <run-id> --web`
+- Scripted: `./tools/List-BranchRuns.ps1 -Branch <branch> -Limit 10`
+- Filter: `./tools/List-BranchRuns.ps1 -Name 'Pester*' -Status in_progress`
+- Open newest: `./tools/List-BranchRuns.ps1 -Name 'Pester (self-hosted)' -Open`
 
-Token resolution: prefers `GH_ADMIN_TOKEN`, then `GH_TOKEN`, then legacy `XCLI_PAT`, then `GITHUB_TOKEN`.
+Access policy: verify login with `gh auth status -h github.com`. For scripts, tokens fall back to `GH_ADMIN_TOKEN` or `GITHUB_TOKEN` when needed.
 
 
 ### Issue ↔ PR Link (Auto-close on green)
 
-- Open a tracking issue before authoring the PR:
-  - `./tools/Open-TrackingIssue.ps1 -Title 'Tighten CI docs + composites' -Labels tracking,ci -OutputNumberPath tmp-agg/issue.txt`
-  - Save number: `$issue = Get-Content tmp-agg/issue.txt`
-- Prepare PR body with a closing keyword line:
-  - Example tail: `Closes #$issue`
-  - Create/update PR using a body file: `./scripts/Create-BackmergePR.ps1 -Owner Org -Repo Repo -Base develop -Head feature/branch -Title 'Refactor CI composites' -BodyPath tmp-agg/pr-body.md`
-- Why this auto-closes on green:
-  - Branch protections require required checks to pass before merge. The `Closes #N` line closes the tracking issue on merge, guaranteeing green checks.
-  - If you need pre-merge closure upon check success, open a follow-up issue to add an auto-close workflow; default policy is close-on-merge.
+Autonomous flow (gh CLI preferred):
+
+1) Ensure session has GitHub access: `gh auth status -h github.com`
+2) Create or update PR on current branch:
+   - New PR: `gh pr create -B develop -H <branch> --title '<title>' --body-file tmp-agg/pr-body.md`
+   - Existing PR: `gh pr edit <num> --body-file tmp-agg/pr-body.md`
+3) Open tracking issue and capture number:
+   - `gh issue create -t 'Track: <summary>' -F tmp-agg/issue-body.md -l ci -l documentation`
+   - Or scripted: `./tools/Open-TrackingIssue.ps1 -Title 'Track: <summary>' -BodyPath tmp-agg/issue-body.md -Labels ci,documentation -OutputNumberPath tmp-agg/issue.txt`
+4) Append closing keyword to the PR body and update PR:
+   - Add `Closes #<issueNumber>` to PR body
+   - `gh pr edit <num> --body-file tmp-agg/pr-body.md`
+
+Why this guarantees “green” before close: branch protections require required checks to pass before merge; GitHub auto‑closes the issue on merge when PR body contains `Closes #N`.
 
 ## Policies & Guardrails (Strict)
 
