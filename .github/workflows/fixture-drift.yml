@@ -58,10 +58,21 @@ jobs:
             New-Item -ItemType Directory -Force -Path $outDir | Out-Null
             $path = Join-Path $outDir 'runner-unblock-snapshot.json'
             $snap | ConvertTo-Json -Depth 5 | Out-File -FilePath $path -Encoding utf8
+
+            # Optional cleanup behind env toggle UNBLOCK_GUARD=1
+            $cleanupNote = ''
+            if ($env:UNBLOCK_GUARD -eq '1') {
+              $stoppedLV = 0; $stoppedLVC = 0; $stoppedJobs = 0
+              try { Get-Process -Name 'LabVIEW' -ErrorAction SilentlyContinue | ForEach-Object { try { Stop-Process -Id $_.Id -ErrorAction SilentlyContinue; $stoppedLV++ } catch {} } } catch {}
+              try { Get-Process -Name 'LVCompare' -ErrorAction SilentlyContinue | ForEach-Object { try { Stop-Process -Id $_.Id -ErrorAction SilentlyContinue; $stoppedLVC++ } catch {} } } catch {}
+              try { $gj = @(Get-Job -ErrorAction SilentlyContinue); foreach ($j in $gj) { try { Stop-Job -Job $j -ErrorAction SilentlyContinue; Remove-Job -Job $j -Force -ErrorAction SilentlyContinue; $stoppedJobs++ } catch {} } } catch {}
+              $cleanupNote = ('Cleanup: LabVIEW={0}, LVCompare={1}, Jobs={2}' -f $stoppedLV,$stoppedLVC,$stoppedJobs)
+            }
             $lines = @('### Runner Unblock Guard','')
             $lines += ('- Process count: {0}' -f $procs.Count)
             $lines += ('- Pester job count: {0}' -f $jobs.Count)
             $lines += ''
             $lines += ('Snapshot: {0}' -f $path)
+            if ($cleanupNote) { $lines += ('- ' + $cleanupNote) }
             $lines -join "`n" | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8
           } catch { Write-Host "::warning::Unblock guard failed: $_" }
