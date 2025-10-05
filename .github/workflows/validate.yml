@@ -103,7 +103,7 @@ jobs:
             $pr = '${{ github.event.pull_request.number }}'
             $out = pwsh -NonInteractive -File tools/Lint-IssueAndPRBodies.ps1 -PR $pr -WarnOnly 2>&1 | Out-String
             $lines = @('### PR Body Lint (non-blocking)','```', $out.Trim(), '```')
-            $lines -join "`n" | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8
+            pwsh -NonInteractive -File tools/Write-StepSummary.ps1 -Lines $lines -Append | Out-Null
           } catch {
             Write-Host '::notice::PR body linter skipped or failed (non-blocking).'
           }
@@ -124,7 +124,7 @@ jobs:
               $sugg = "### Suggestions`n- None"
             }
             $lines = @('### Proactive Tracking (non-blocking)', $sugg)
-            $lines -join "`n" | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8
+            pwsh -NonInteractive -File tools/Write-StepSummary.ps1 -Lines $lines -Append | Out-Null
           } catch {
             Write-Host '::notice::Tracking suggestions skipped (non-blocking).'
           }
@@ -159,14 +159,11 @@ jobs:
             '- VI Binary Handling Gate / vi-binary-check',
             '- Validate / lint',
             '- markdownlint / lint'
-          ) -join "`n"
-          $lines | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8
+          )
+          pwsh -NonInteractive -File tools/Write-StepSummary.ps1 -Lines $lines -Append | Out-Null
           $doc = 'docs/BRANCH_RULES.md'
-          if (Test-Path $doc) {
-            "See: ./$doc" | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8
-          } else {
-            'Branch rules guide: docs/BRANCH_RULES.md (coming soon in issue #60)' | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8
-          }
+          $tail = if (Test-Path $doc) { "See: ./$doc" } else { 'Branch rules guide: docs/BRANCH_RULES.md (coming soon in issue #60)' }
+          pwsh -NonInteractive -File tools/Write-StepSummary.ps1 -Text $tail -Append | Out-Null
 
   fixtures:
     runs-on: [self-hosted, Windows, X64]
