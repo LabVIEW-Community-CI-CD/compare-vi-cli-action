@@ -177,7 +177,7 @@ jobs:
         run: |
           $res = Join-Path $env:RUNNER_TEMP 'sessionindex'
           New-Item -ItemType Directory -Force -Path $res | Out-Null
-          ./tools/Quick-DispatcherSmoke.ps1 -ResultsPath $res
+          ./tools/Quick-DispatcherSmoke.ps1 -ResultsPath $res -PreferWorkspace
 
       - name: Validate session index schema (schema-lite)
         shell: pwsh
