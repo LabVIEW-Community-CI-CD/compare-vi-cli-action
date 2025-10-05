@@ -52,6 +52,17 @@ runs:
           }
           return $env:GH_REF_NAME
         }
+        function Get-DocsUrl($repo, $branch) {
+          if ($env:GH_EVENT_NAME -eq 'pull_request') {
+            try {
+              $evt = Get-Content -Raw -LiteralPath $env:GH_EVENT_PATH | ConvertFrom-Json
+              if ($evt.head.ref -and $evt.head.repo.full_name) {
+                return ('https://github.com/{0}/blob/{1}/docs/BRANCH_RULES.md' -f $evt.head.repo.full_name, $evt.head.ref)
+              }
+            } catch {}
+          }
+          return ('https://github.com/{0}/blob/{1}/docs/BRANCH_RULES.md' -f $repo, $branch)
+        }
         $branch = Get-TargetBranch
         $repo = $env:GH_REPOSITORY
         $owner,$name = $repo.Split('/')
@@ -64,20 +75,29 @@ runs:
         } catch {
           $ok = $false
           $msg = $_.Exception.Message
-          Write-Host "::notice::Branch protection check skipped or not accessible (`$repo:$branch): $msg (need admin token in XCLI_PAT)."
+          $docsUrl = Get-DocsUrl -repo $repo -branch $branch
+          $settingsUrl = ('https://github.com/{0}/settings/branches' -f $repo)
+          $lines = @('### Branch Protection Gate (notice-only)','')
+          $lines += "- Repo: $repo  Branch: $branch"
+          $lines += ('- Status: could not read protection via API. Reason: ' + $msg)
+          $lines += ''
+          $lines += '- Expected required checks (see docs for details):'
+          foreach (($env:REQUIRED_CHECKS -split "`r?`n" | Where-Object { $_ -and ($_ -notmatch '^\s*#') })) { $lines += ('  - ' + $_.Trim()) }
+          $lines += ''
+          $lines += ('- Docs: ' + $docsUrl)
+          $lines += ('- Settings: ' + $settingsUrl)
+          $lines += ''
+          $lines += '- To enforce this gate:'
+          $lines += '  1) Add an admin PAT as repository secret `XCLI_PAT`.'
+          $lines += '  2) Ensure branch protection rules include the required checks above.'
+          $lines += '  3) Re-run the workflow.'
+          $lines -join "`n" | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8
         }
         $expected = @()
         $text = $env:REQUIRED_CHECKS -split "`r?`n" | Where-Object { $_ -and ($_ -notmatch '^\s*#') }
         foreach ($ln in $text) { $expected += ($ln.Trim()) }
         if (-not $ok) {
-          # Best effort summary when no API access
-          $lines = @('### Branch Protection Gate (best-effort)','')
-          $lines += "- Repo: $repo  Branch: $branch"
-          $lines += "- Expected checks (from inputs or defaults):"
-          foreach ($e in $expected) { $lines += "  - $e" }
-          $lines += ''
-          $lines += 'Note: Could not read branch protection via API. Provide admin PAT in `XCLI_PAT` to enforce this gate.'
-          $lines -join "`n" | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8
+          # Already wrote a detailed summary above. Nothing more to do.
           exit 0
         }
         # GitHub may return legacy contexts or structured checks; support both
