@@ -108,6 +108,27 @@ jobs:
             Write-Host '::notice::PR body linter skipped or failed (non-blocking).'
           }
 
+      - name: Proactive tracking suggestions (non-blocking)
+        if: ${{ github.event_name == 'pull_request' }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: pwsh
+        continue-on-error: true
+        run: |
+          try {
+            $text = pwsh -NonInteractive -File tools/Monitor-IssuesPRs.ps1 -Limit 50 2>&1 | Out-String
+            $idx  = $text.IndexOf('### Suggestions')
+            if ($idx -ge 0) {
+              $sugg = $text.Substring($idx).Trim()
+            } else {
+              $sugg = "### Suggestions`n- None"
+            }
+            $lines = @('### Proactive Tracking (non-blocking)', $sugg)
+            $lines -join "`n" | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8
+          } catch {
+            Write-Host '::notice::Tracking suggestions skipped (non-blocking).'
+          }
+
       - name: Labels sync summary (config vs live)
         shell: pwsh
         env:
