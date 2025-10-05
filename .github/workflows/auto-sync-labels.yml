@@ -1,0 +1,20 @@
+name: Auto Sync Labels on PR
+
+on:
+  pull_request_target:
+    types: [opened, reopened, synchronize, edited]
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - name: Create or update labels
+        uses: peter-evans/create-or-update-labels@v4
+        with:
+          configuration-path: .github/labels.yml
+          delete-old: false
