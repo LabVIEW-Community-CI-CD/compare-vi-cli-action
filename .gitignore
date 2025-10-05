@@ -9,6 +9,16 @@ tests/results/
 tests/results
 tests/results/**
 !tests/results/.gitkeep
+# Root-level CI artifacts (timestamped at runtime; never commit)
+results/
+# Local temp workdirs created during ad-hoc runs
+.tmp-smoke/
+tmp-*/
+tmp-agg/
+tmp-orch/
+tmp-rc-pester-results/
+tmp-fast-results/
+tmp-int-results/
 # Root-level transient test artifacts (should not be committed)
 testResults.xml
 tests/results/pester-results.xml
