@@ -21,6 +21,25 @@ function Get-InvokerDir { Split-Path -Parent (Get-InvokerStatePath) }
 
 function Write-Json($obj) { ($obj | ConvertTo-Json -Depth 8) + "`n" }
 
+function Get-PhaseDir {
+  param([hashtable]$Args)
+  $phase = [string]$Args.phase
+  if (-not $phase) { $phase = 'phase' }
+  $root = $Args.resultsDir; if (-not $root) { $root = 'tests/results' }
+  $base = Resolve-WorkspacePath $root
+  $dir = Join-Path $base $phase
+  $hand = Join-Path $dir '_handshake'
+  if (-not (Test-Path -LiteralPath $hand)) { New-Item -ItemType Directory -Force -Path $hand | Out-Null }
+  return $hand
+}
+
+function Write-Marker {
+  param([string]$Path, [string]$Name, [hashtable]$Obj)
+  $Obj.ts = (Get-Date).ToUniversalTime().ToString('o')
+  $json = $Obj | ConvertTo-Json -Depth 8
+  Set-Content -LiteralPath (Join-Path $Path $Name) -Value $json -Encoding UTF8
+}
+
 function Handle-StepSummary {
   param([hashtable]$Args)
   $text = $Args.text
@@ -88,6 +107,47 @@ function Handle-RenderReport {
   $exec = $Args.execJsonPath; if ($exec) { $exec = (Resolve-WorkspacePath $exec) }
   & $script -Command $cmd -ExitCode $exit -Diff $diff -CliPath $cli -Base $base -Head $head -OutputPath $out -DurationSeconds $dur -ExecJsonPath $exec | Out-Null
   return @{ ok = $true; code = 0; data = @{ outputPath = $out } }
+}
+
+function Handle-PhaseReset {
+  param([hashtable]$Args)
+  $dir = Get-PhaseDir -Args $Args
+  try { Get-ChildItem -LiteralPath $dir -Force | Remove-Item -Force -Recurse -ErrorAction SilentlyContinue } catch {}
+  Write-Marker -Path $dir -Name 'reset.json' -Obj @{ phase=$Args.phase }
+  return @{ ok=$true; code=0; data=@{ markerDir=$dir } }
+}
+
+function Handle-PhaseStart {
+  param([hashtable]$Args)
+  $dir = Get-PhaseDir -Args $Args
+  $phaseId = [guid]::NewGuid().ToString()
+  Write-Marker -Path $dir -Name 'req.json' -Obj @{ phase=$Args.phase; context=$Args.context }
+  Write-Marker -Path $dir -Name 'ack.json' -Obj @{ phaseId=$phaseId; pid=$PID; pipe='lvci.invoker' }
+  return @{ ok=$true; code=0; data=@{ phaseId=$phaseId; markerDir=$dir } }
+}
+
+function Handle-PhaseWaitReady {
+  param([hashtable]$Args)
+  Initialize-Telemetry
+  $dir = Get-PhaseDir -Args $Args
+  $ok = $true
+  $checks = @{}
+  $canonical = 'C:\\Program Files\\National Instruments\\Shared\\LabVIEW Compare\\LVCompare.exe'
+  $checks.lvcompare = (Test-Path -LiteralPath $canonical -PathType Leaf)
+  $checks.watchers = [bool]$script:telemetryInit
+  $checks.paths = (Test-Path -LiteralPath $dir)
+  $ok = $checks.lvcompare -and $checks.watchers -and $checks.paths
+  Write-Marker -Path $dir -Name 'ready.json' -Obj @{ checks=$checks; ok=$ok }
+  if (-not $ok) { return @{ ok=$false; code=300; message='phase not ready'; data=@{ checks=$checks } } }
+  return @{ ok=$true; code=0; data=@{ checks=$checks } }
+}
+
+function Handle-PhaseDone {
+  param([hashtable]$Args)
+  $dir = Get-PhaseDir -Args $Args
+  $obj = @{ status=($Args.status ?? 'unknown'); exitCode=([int]($Args.exitCode ?? 0)); artifacts=$Args.artifacts; notes=$Args.notes }
+  Write-Marker -Path $dir -Name 'done.json' -Obj $obj
+  return @{ ok=$true; code=0 }
 }
 
 function Initialize-Telemetry {
@@ -177,6 +237,10 @@ function Invoke-Request {
     '^CompareVI$'     { return (Handle-CompareVI -Args $args) }
     '^RenderReport$'  { return (Handle-RenderReport -Args $args) }
     '^TelemetrySummary$' { return (Handle-TelemetrySummary -Args $args) }
+    '^PhaseReset$'    { return (Handle-PhaseReset -Args $args) }
+    '^PhaseStart$'    { return (Handle-PhaseStart -Args $args) }
+    '^PhaseWaitReady$'{ return (Handle-PhaseWaitReady -Args $args) }
+    '^PhaseDone$'     { return (Handle-PhaseDone -Args $args) }
     default { throw "Unknown verb: $verb" }
   }
 }

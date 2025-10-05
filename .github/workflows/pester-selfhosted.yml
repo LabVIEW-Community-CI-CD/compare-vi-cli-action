@@ -135,10 +135,19 @@ jobs:
 
       # Call the dispatcher per category to surface atomic failures
       # This dispatcher assumes Pester v5+ is pre-installed on the self-hosted runner
-            - name: Ensure Runner Invoker
+      - name: Ensure Runner Invoker
         uses: ./.github/actions/ensure-invoker
         with:
-          pipe-name: 'lvci.invoker'- name: Run Pester category
+          pipe-name: 'lvci.invoker'
+
+      - name: Ensure Phase (invoker)
+        uses: ./.github/actions/ensure-phase
+        with:
+          phase: '${{ matrix.category }}'
+          results-dir: 'tests/results/${{ matrix.category }}'
+          timeout-seconds: '15'
+
+      - name: Run Pester category
         uses: ./.github/actions/pester-category-run
         with:
           category: ${{ matrix.category }}

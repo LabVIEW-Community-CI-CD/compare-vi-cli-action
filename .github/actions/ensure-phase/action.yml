@@ -1,0 +1,38 @@
+name: "Ensure Phase"
+description: "Start/reset a phase and wait for READY via invoker"
+inputs:
+  phase:
+    description: "Phase name (e.g., dispatcher, fixtures)"
+    required: true
+  results-dir:
+    description: "Results directory for markers"
+    required: false
+    default: "tests/results"
+  timeout-seconds:
+    description: "Max seconds to wait for READY"
+    required: false
+    default: "15"
+runs:
+  using: "composite"
+  steps:
+    - name: Phase reset
+      shell: pwsh
+      run: |
+        $send = Join-Path $env:GITHUB_WORKSPACE 'tools/RunnerInvoker/Send-RunnerCommand.ps1'
+        & $send -Verb PhaseReset -Args @{ phase = '${{ inputs.phase }}'; resultsDir = '${{ inputs.results-dir }}' } | Out-Null
+    - name: Phase start
+      shell: pwsh
+      run: |
+        $send = Join-Path $env:GITHUB_WORKSPACE 'tools/RunnerInvoker/Send-RunnerCommand.ps1'
+        & $send -Verb PhaseStart -Args @{ phase = '${{ inputs.phase }}'; resultsDir = '${{ inputs.results-dir }}'; context = @{ runId='${{ github.run_id }}'; job='${{ github.job }}' } } | Out-Null
+    - name: Phase wait READY
+      shell: pwsh
+      run: |
+        $ErrorActionPreference='Stop'
+        $send = Join-Path $env:GITHUB_WORKSPACE 'tools/RunnerInvoker/Send-RunnerCommand.ps1'
+        $ok=$false
+        $deadline=(Get-Date).AddSeconds([int]'${{ inputs.timeout-seconds }}')
+        while((Get-Date) -lt $deadline){
+          try { & $send -Verb PhaseWaitReady -Args @{ phase = '${{ inputs.phase }}'; resultsDir = '${{ inputs.results-dir }}' } | Out-Null; $ok=$true; break } catch { Start-Sleep -Milliseconds 300 }
+        }
+        if (-not $ok) { throw "Phase '${{ inputs.phase }}' failed to reach READY in time" }
