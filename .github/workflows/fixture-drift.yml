@@ -96,6 +96,7 @@ jobs:
           upload-artifacts: 'true'
           artifact-name: fixture-drift-ubuntu
           soft-fail: ${{ needs.pre-init.outputs.docs_only }}
+          suppress-summary: 'true'
 
   gate:
     name: Gate (aggregate preflight + ubuntu)
