@@ -32,6 +32,11 @@ Usage (PowerShell)
   [CompareVi.Shared.ArgTokenizer]::Tokenize('"-flag value" -x=1 a b')
   ```
 
+Manual Consumer Test
+- Run the ad-hoc verification workflow in Actions:
+  - .NET Consumer Test (Manual) → provide version (e.g., 0.1.0) or leave blank for latest
+  - Direct link: https://github.com/LabVIEW-Community-CI-CD/compare-vi-cli-action/actions/workflows/dotnet-consumer-test.yml
+
 Roadmap
 - Publish to GitHub Packages; add a PowerShell binary module wrapper for easy import.
 - Gradual adoption in scripts (tokenization, path quoting, process cleanup) via thin adapters.
