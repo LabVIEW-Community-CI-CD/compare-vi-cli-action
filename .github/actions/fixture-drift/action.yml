@@ -60,6 +60,12 @@ outputs:
   summary_path:
     description: Path to drift-summary.json (if present)
     value: ${{ steps.orchestrate.outputs.summary_path }}
+  manifest_written:
+    description: Whether the manifest was auto-refreshed by validator
+    value: ${{ steps.manifest.outputs.written }}
+  manifest_path:
+    description: Path to refreshed manifest when manifest_written is true
+    value: ${{ steps.manifest.outputs.path }}
 
 runs:
   using: composite
