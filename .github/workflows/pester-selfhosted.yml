@@ -86,6 +86,12 @@ jobs:
             Write-Host '::warning::pester-summary.json not found.'
           }
 
+      - name: Ensure session index (fallback)
+        if: always()
+        shell: pwsh
+        run: |
+          pwsh -File tools/Ensure-SessionIndex.ps1 -ResultsDir 'tests/results' -SummaryJson 'pester-summary.json'
+
       - name: Session index post
         if: always()
         uses: ./.github/actions/session-index-post
@@ -94,6 +100,12 @@ jobs:
           validate-schema: true
           upload: true
           artifact-name: session-index
+
+      - name: Append failure inventory
+        if: always()
+        shell: pwsh
+        run: |
+          pwsh -File tools/Write-FailureInventory.ps1 -ResultsDir 'tests/results' -AppendToStepSummary
 
       - name: Upload Pester artifacts
         if: always()
@@ -110,6 +122,7 @@ jobs:
             tests/results/pester-artifacts-trail.json
             tests/results/pester-leak-report.json
             tests/results/session-index.json
+            tests/results/failure-inventory.md
 
       - name: Runner Unblock Guard
         if: always()

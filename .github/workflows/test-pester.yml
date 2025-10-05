@@ -3,8 +3,30 @@ name: Pester tests
 on:
   pull_request:
     branches: [ main ]
+    paths:
+      - '**/*.ps1'
+      - '**/*.psm1'
+      - 'scripts/**'
+      - 'tools/**'
+      - 'module/**'
+      - 'tests/**'
+      - 'action.yml'
+      - 'fixtures.manifest.json'
+      - 'VI*.vi'
+      - 'docs/schemas/**'
   push:
     branches: [ main ]
+    paths:
+      - '**/*.ps1'
+      - '**/*.psm1'
+      - 'scripts/**'
+      - 'tools/**'
+      - 'module/**'
+      - 'tests/**'
+      - 'action.yml'
+      - 'fixtures.manifest.json'
+      - 'VI*.vi'
+      - 'docs/schemas/**'
   workflow_dispatch:
     inputs:
       include_integration:
@@ -40,6 +62,12 @@ jobs:
         shell: pwsh
         run: |
           pwsh -File scripts/Write-PesterSummaryToStepSummary.ps1 -ResultsDir 'tests/results'
+
+      - name: Ensure session index (fallback)
+        if: always()
+        shell: pwsh
+        run: |
+          pwsh -File tools/Ensure-SessionIndex.ps1 -ResultsDir 'tests/results' -SummaryJson 'pester-summary.json'
 
       - name: Session index post
         if: always()
