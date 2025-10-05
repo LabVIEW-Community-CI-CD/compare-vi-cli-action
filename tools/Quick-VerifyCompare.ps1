@@ -29,8 +29,8 @@
 $ErrorActionPreference = 'Stop'
 set-strictmode -version latest
 
-# Load function
-. (Join-Path $PSScriptRoot '..' 'scripts' 'CompareVI.ps1')
+# Load CompareVI module
+Import-Module (Join-Path $PSScriptRoot '..' 'scripts' 'CompareVI.psm1') -Force
 
 $cleanup = @()
 try {

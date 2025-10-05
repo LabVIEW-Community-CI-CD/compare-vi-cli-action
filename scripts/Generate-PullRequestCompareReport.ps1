@@ -31,7 +31,7 @@ foreach ($p in @($baseVi,$headVi)) {
   $len = (Get-Item -LiteralPath $p).Length
   if ($len -lt 1024) { Write-Warning "VI file $p is unusually small ($len bytes) – ensure this is a real LabVIEW .vi binary." }
 }
-. (Join-Path $repoRoot 'scripts' 'CompareVI.ps1')
+Import-Module (Join-Path $repoRoot 'scripts' 'CompareVI.psm1') -Force
 
 New-Item -ItemType Directory -Path $OutputDirectory -Force | Out-Null
 

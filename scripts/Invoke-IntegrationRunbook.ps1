@@ -122,13 +122,10 @@ function Invoke-PhaseViInputs {
 function Invoke-PhaseCompare {
   param($r,$ctx)
   Write-PhaseBanner $r.name
-  $compareScript = Join-Path -Path $PSScriptRoot -ChildPath 'CompareVI.ps1'
-  if (-not (Test-Path $compareScript)) {
-    $alt = Join-Path -Path (Join-Path -Path $PSScriptRoot -ChildPath 'scripts') -ChildPath 'CompareVI.ps1'
-    if (Test-Path $alt) { $compareScript = $alt }
-  }
-  if (-not (Test-Path $compareScript)) { throw "CompareVI.ps1 not found at expected locations (tried: $compareScript)" }
-  . $compareScript
+  $mod = Join-Path $PSScriptRoot 'CompareVI.psm1'
+  if (-not (Test-Path -LiteralPath $mod)) { $mod = Join-Path (Join-Path $PSScriptRoot 'scripts') 'CompareVI.psm1' }
+  if (-not (Test-Path -LiteralPath $mod)) { throw "CompareVI module not found at expected locations." }
+  if (-not (Get-Command -Name Invoke-CompareVI -ErrorAction SilentlyContinue)) { Import-Module $mod -Force }
   try {
     $compare = Invoke-CompareVI -Base $ctx.basePath -Head $ctx.headPath -LvCompareArgs '-nobdcosm -nofppos -noattr' -FailOnDiff:$false
     $ctx.compareResult = $compare
@@ -196,7 +193,7 @@ function Invoke-PhaseDiagnostics {
       try {
         $root = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path
         if (-not (Get-Command -Name Start-ConsoleWatch -ErrorAction SilentlyContinue)) {
-          . (Join-Path $root 'tools' 'ConsoleWatch.ps1')
+          Import-Module (Join-Path $root 'tools' 'ConsoleWatch.psm1') -Force
         }
         $cwId = Start-ConsoleWatch -OutDir (Get-Location).Path
       } catch {}
