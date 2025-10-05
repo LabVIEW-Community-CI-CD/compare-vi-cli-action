@@ -10,7 +10,27 @@ on:
         type: choice
         options: ['true', 'false']
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
 jobs:
+  preflight:
+    runs-on: [self-hosted, Windows, X64]
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v5
+      - name: Verify LVCompare and idle LabVIEW state
+        shell: pwsh
+        run: |
+          $cli = 'C:\\Program Files\\National Instruments\\Shared\\LabVIEW Compare\\LVCompare.exe'
+          if (-not (Test-Path -LiteralPath $cli)) {
+            Write-Host "::error::LVCompare.exe not found at canonical path: $cli"; exit 1
+          }
+          $lv = Get-Process -Name 'LabVIEW' -ErrorAction SilentlyContinue
+          if ($lv) { Write-Host "::error::LabVIEW.exe is running (PID(s): $($lv.Id -join ','))"; exit 1 }
+          Write-Host 'Preflight OK: LVCompare present; LabVIEW not running.'
+
   pester:
     runs-on: [self-hosted, Windows, X64]
     timeout-minutes: 45
@@ -22,6 +42,7 @@ jobs:
       CLEAN_AFTER: '1'
       SCAN_ARTIFACTS: '1'
       UNBLOCK_GUARD: '1'
+      LV_SUPPRESS_UI: '1'
     steps:
       - uses: actions/checkout@v5
 
@@ -96,21 +117,3 @@ jobs:
           snapshot-path: tests/results/runner-unblock-snapshot.json
           cleanup: ${{ env.UNBLOCK_GUARD == '1' }}
           process-names: 'conhost,pwsh,LabVIEW,LVCompare'
-concurrency:
-  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
-  cancel-in-progress: true
-  preflight:
-    runs-on: [self-hosted, Windows, X64]
-    timeout-minutes: 10
-    steps:
-      - uses: actions/checkout@v5
-      - name: Verify LVCompare and idle LabVIEW state
-        shell: pwsh
-        run: |
-          $cli = 'C:\\Program Files\\National Instruments\\Shared\\LabVIEW Compare\\LVCompare.exe'
-          if (-not (Test-Path -LiteralPath $cli)) {
-            Write-Host "::error::LVCompare.exe not found at canonical path: $cli"; exit 1
-          }
-          $lv = Get-Process -Name 'LabVIEW' -ErrorAction SilentlyContinue
-          if ($lv) { Write-Host "::error::LabVIEW.exe is running (PID(s): $($lv.Id -join ','))"; exit 1 }
-          Write-Host 'Preflight OK: LVCompare present; LabVIEW not running.'
