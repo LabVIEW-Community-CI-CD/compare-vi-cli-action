@@ -41,8 +41,19 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  protect:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - name: Branch protection gate (base branch)
+        if: ${{ github.event_name == 'pull_request' }}
+        uses: ./.github/actions/branch-protection-gate
+        with:
+          branch: ${{ github.event.pull_request.base.ref }}
+          strict: 'true'
   pre-init:
     runs-on: ubuntu-latest
+    needs: [protect]
     outputs:
       docs_only: ${{ steps.g.outputs.docs_only }}
       include_integration: ${{ steps.norm.outputs.bool }}
@@ -67,7 +78,7 @@ jobs:
   preflight:
     runs-on: [self-hosted, Windows, X64]
     timeout-minutes: 3
-    needs: pre-init
+    needs: [protect, pre-init]
     if: needs.pre-init.outputs.docs_only != 'true'
     steps:
       - uses: actions/checkout@v5
@@ -85,7 +96,7 @@ jobs:
   pester:
     runs-on: [self-hosted, Windows, X64]
     timeout-minutes: 3
-    needs: [pre-init, preflight]
+    needs: [protect, pre-init, preflight]
     if: needs.pre-init.outputs.docs_only != 'true'
     strategy:
       matrix:

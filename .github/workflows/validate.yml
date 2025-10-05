@@ -13,8 +13,19 @@ on:
         default: 'false'
 
 jobs:
+  protect:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - name: Branch protection gate (main/release only)
+        uses: ./.github/actions/branch-protection-gate
+        with:
+          branch: ${{ github.ref_name }}
+          strict: 'true'
+        if: ${{ github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/heads/release/') }}
   lint:
     runs-on: ubuntu-latest
+    needs: [protect]
     permissions:
       contents: read
       issues: read
@@ -118,6 +129,7 @@ jobs:
 
   fixtures:
     runs-on: [self-hosted, Windows, X64]
+    needs: [protect]
     env:
       FAIL_ON_NEW_STRUCTURAL: 'false' # toggle to 'true' to fail job on new structural fixture issues
       SUMMARY_VERBOSE: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.summary-verbose || 'false' }}
