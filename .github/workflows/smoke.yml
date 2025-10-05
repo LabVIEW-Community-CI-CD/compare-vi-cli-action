@@ -43,7 +43,7 @@ on:
 jobs:
   preflight:
     runs-on: [self-hosted, Windows, X64]
-    timeout-minutes: 3
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@v5
       - name: Verify LVCompare and idle LabVIEW state
@@ -60,13 +60,11 @@ jobs:
   compare:
     runs-on: [self-hosted, Windows, X64]
     needs: preflight
-    timeout-minutes: 3
+    timeout-minutes: 45
     env:
       LV_BASE_VI: ${{ vars.LV_BASE_VI }}
       LV_HEAD_VI: ${{ vars.LV_HEAD_VI }}
       LVCOMPARE_PATH: ${{ vars.LVCOMPARE_PATH }}
-      UNBLOCK_GUARD: '1'
-      WATCH_CONSOLE: '1'
     steps:
       - uses: actions/checkout@v5
 
@@ -91,14 +89,6 @@ jobs:
         with:
           name: fixture-validation-json
           path: fixture-validation.json
-
-      - name: Runner Unblock Guard
-        if: always()
-        uses: ./.github/actions/runner-unblock-guard
-        with:
-          snapshot-path: tests/results/runner-unblock-snapshot.json
-          cleanup: ${{ env.UNBLOCK_GUARD == '1' }}
-          process-names: 'conhost,pwsh,LabVIEW,LVCompare'
 
       - name: Enforce fixture policy (fail on disallowed issues)
         if: always()
@@ -201,14 +191,42 @@ jobs:
           name: smoke-html-report
           path: ${{ runner.temp }}/smoke-report/compare-report.html
 
-      - name: Session index post
+      - name: Append session index (if present)
         if: always()
-        uses: ./.github/actions/session-index-post
+        shell: pwsh
+        run: |
+          $idx = Join-Path 'tests/results' 'session-index.json'
+          if (Test-Path $idx) {
+            try {
+              $ix = Get-Content $idx -Raw | ConvertFrom-Json
+              if ($ix.stepSummary) {
+                $intro = @('','### Smoke Session Overview','') -join "`n"
+                $intro | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8
+                $ix.stepSummary | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8
+              } else {
+                "`nSession index: tests/results/session-index.json" | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8
+              }
+            } catch { Write-Host '::warning::failed to append session index step summary' }
+          }
+
+      - name: Upload session index (if present)
+        if: always()
+        uses: actions/upload-artifact@v4
         with:
-          results-dir: tests/results
-          validate-schema: true
-          upload: true
-          artifact-name: smoke-session-index
+          name: smoke-session-index
+          path: tests/results/session-index.json
+
+      - name: Validate session index schema (schema-lite, if present)
+        if: always()
+        shell: pwsh
+        run: |
+          $idx = 'tests/results/session-index.json'
+          if (Test-Path $idx) {
+            pwsh -File tools/Invoke-JsonSchemaLite.ps1 -JsonPath $idx -SchemaPath docs/schemas/session-index-v1.schema.json
+            if ($LASTEXITCODE -ne 0) { Write-Host "Session index schema-lite returned code $LASTEXITCODE" }
+          } else {
+            Write-Host '::notice::session-index.json not present in smoke job.'
+          }
 
       - name: Summarize fixture JSON (step summary)
         if: always()

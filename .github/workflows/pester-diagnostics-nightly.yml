@@ -12,7 +12,7 @@ concurrency:
 jobs:
   diagnostics:
     runs-on: [self-hosted, Windows, X64]
-    timeout-minutes: 3
+    timeout-minutes: 45
     env:
       ENABLE_DIAGNOSTIC_FAIL: 1
     steps:

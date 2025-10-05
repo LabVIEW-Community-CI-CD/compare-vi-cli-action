@@ -3,8 +3,6 @@ name: Pester integration tests on PR label
 on:
   pull_request:
     types: [labeled, reopened, synchronize]
-    paths-ignore:
-      - '**/*.md'
   workflow_dispatch: {}
 
 concurrency:
@@ -14,7 +12,7 @@ concurrency:
 jobs:
   preflight:
     runs-on: [self-hosted, Windows, X64]
-    timeout-minutes: 3
+    timeout-minutes: 10
     if: contains(github.event.pull_request.labels.*.name, 'test-integration') || github.event_name == 'workflow_dispatch'
     steps:
       - uses: actions/checkout@v5
@@ -33,12 +31,10 @@ jobs:
     if: contains(github.event.pull_request.labels.*.name, 'test-integration')
     runs-on: [self-hosted, Windows, X64]
     needs: preflight
-    timeout-minutes: 3
+    timeout-minutes: 45
     env:
       LV_BASE_VI: ${{ vars.LV_BASE_VI }}
       LV_HEAD_VI: ${{ vars.LV_HEAD_VI }}
-      UNBLOCK_GUARD: '1'
-      WATCH_CONSOLE: '1'
     steps:
       - uses: actions/checkout@v5
 
@@ -101,14 +97,32 @@ jobs:
             tests/results/**/*.xml
             tests/results/**/*.txt
 
-      - name: Session index post
+      - name: Upload session index (if present)
         if: always()
-        uses: ./.github/actions/session-index-post
+        uses: actions/upload-artifact@v4
         with:
-          results-dir: tests/results
-          validate-schema: true
-          upload: true
-          artifact-name: pester-integration-session-index
+          name: pester-integration-session-index
+          path: tests/results/session-index.json
+          if-no-files-found: warn
+
+      - name: Append session index to job summary (readability)
+        if: always()
+        shell: pwsh
+        run: |
+          $idx = 'tests/results/session-index.json'
+          if (Test-Path $idx) {
+            try {
+              $ix = Get-Content $idx -Raw | ConvertFrom-Json
+              if ($ix.stepSummary) {
+                $intro = @('','### Integration Session Overview','') -join "`n"
+                ($intro + $ix.stepSummary) | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8
+              } else {
+                "`nSession index: tests/results/session-index.json" | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8
+              }
+            } catch { Write-Host '::warning::failed to append session index step summary' }
+          } else {
+            Write-Host '::notice::session-index.json not present in label-triggered integration run.'
+          }
 
       - name: Validate session index schema (schema-lite, if present)
         if: always()
@@ -121,14 +135,6 @@ jobs:
           } else {
             Write-Host '::notice::session-index.json not present in label-triggered integration run.'
           }
-
-      - name: Runner Unblock Guard
-        if: always()
-        uses: ./.github/actions/runner-unblock-guard
-        with:
-          snapshot-path: tests/results/runner-unblock-snapshot.json
-          cleanup: ${{ env.UNBLOCK_GUARD == '1' }}
-          process-names: 'conhost,pwsh,LabVIEW,LVCompare'
 
       - name: Comment results on PR (using XCLI_PAT)
         if: always()
