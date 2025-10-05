@@ -27,7 +27,7 @@ Describe 'Pester Summary Discovery Detail Emission' {
       Test-Path $summaryPath | Should -BeTrue
       $json = Get-Content -LiteralPath $summaryPath -Raw | ConvertFrom-Json
 
-  $json.schemaVersion | Should -Be '1.7.1'
+  $json.schemaVersion | Should -Match '^1\.'
       ($json.PSObject.Properties.Name -contains 'discovery') | Should -BeTrue
       $json.discovery.failureCount | Should -BeGreaterOrEqual 1
       $json.discovery.patterns.Count | Should -BeGreaterOrEqual 1

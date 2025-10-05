@@ -40,19 +40,15 @@ jobs:
         shell: pwsh
         run: |
           pwsh -File scripts/Write-PesterSummaryToStepSummary.ps1 -ResultsDir 'tests/results'
-          $idx = Join-Path 'tests/results' 'session-index.json'
-          if (Test-Path $idx) {
-            try {
-              $ix = Get-Content $idx -Raw | ConvertFrom-Json
-              if ($ix.stepSummary) {
-                $intro = @('','### Session Overview','') -join "`n"
-                $intro | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8
-                $ix.stepSummary | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8
-              } else {
-                "`nSession index: tests/results/session-index.json" | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8
-              }
-            } catch { Write-Host '::warning::failed to append session index step summary' }
-          }
+
+      - name: Session index post
+        if: always()
+        uses: ./.github/actions/session-index-post
+        with:
+          results-dir: tests/results
+          validate-schema: true
+          upload: true
+          artifact-name: session-index
 
       - name: Upload Pester artifacts
         if: always()
@@ -68,17 +64,13 @@ jobs:
             tests/results/pester-leak-report.json
             tests/results/session-index.json
 
-      - name: Validate session index schema (schema-lite)
+      - name: Runner Unblock Guard
         if: always()
-        shell: pwsh
-        run: |
-          $idx = 'tests/results/session-index.json'
-          if (Test-Path $idx) {
-            pwsh -File tools/Invoke-JsonSchemaLite.ps1 -JsonPath $idx -SchemaPath docs/schemas/session-index-v1.schema.json
-            if ($LASTEXITCODE -ne 0) { Write-Host "Session index schema-lite returned code $LASTEXITCODE" }
-          } else {
-            Write-Host '::notice::session-index.json not present.'
-          }
+        uses: ./.github/actions/runner-unblock-guard
+        with:
+          snapshot-path: tests/results/runner-unblock-snapshot.json
+          cleanup: ${{ env.UNBLOCK_GUARD == '1' }}
+          process-names: 'conhost,pwsh,LabVIEW,LVCompare'
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true

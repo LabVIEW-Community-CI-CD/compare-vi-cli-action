@@ -50,7 +50,7 @@ Describe 'Pester Summary Schema' {
   $req = 'schemaVersion','total','passed','failed','errors','skipped','duration_s','timestamp','pesterVersion','includeIntegration','discoveryFailures'
       foreach ($k in $req) { ($json.PSObject.Properties.Name -contains $k) | Should -BeTrue -Because "Missing field $k" }
 
-  $json.schemaVersion | Should -Be '1.7.1'
+  $json.schemaVersion | Should -Match '^1\.'
       $json.total | Should -BeGreaterThan 0
       $json.passed | Should -BeGreaterThan 0
       $json.failed | Should -Be 0

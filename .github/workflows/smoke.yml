@@ -91,37 +91,13 @@ jobs:
           name: fixture-validation-json
           path: fixture-validation.json
 
-      - name: Runner Unblock Guard (process/jobs snapshot)
+      - name: Runner Unblock Guard
         if: always()
-        shell: pwsh
-        run: |
-          $ErrorActionPreference = 'Stop'
-          $snap = [ordered]@{}
-          try {
-            $procs = @(Get-Process -ErrorAction SilentlyContinue | Where-Object { $_.ProcessName -in @('conhost','pwsh','LabVIEW','LVCompare') } | Select-Object ProcessName,Id,StartTime)
-            $jobs  = @(Get-Job -ErrorAction SilentlyContinue | Select-Object Id,Name,State,HasMoreData)
-            $snap.processes = $procs
-            $snap.jobs = $jobs
-            $outDir = Get-Location
-            $path = Join-Path $outDir 'runner-unblock-snapshot.json'
-            $snap | ConvertTo-Json -Depth 5 | Out-File -FilePath $path -Encoding utf8
-
-            $cleanupNote = ''
-            if ($env:UNBLOCK_GUARD -eq '1') {
-              $stoppedLV = 0; $stoppedLVC = 0; $stoppedJobs = 0
-              try { Get-Process -Name 'LabVIEW' -ErrorAction SilentlyContinue | ForEach-Object { try { Stop-Process -Id $_.Id -ErrorAction SilentlyContinue; $stoppedLV++ } catch {} } } catch {}
-              try { Get-Process -Name 'LVCompare' -ErrorAction SilentlyContinue | ForEach-Object { try { Stop-Process -Id $_.Id -ErrorAction SilentlyContinue; $stoppedLVC++ } catch {} } } catch {}
-              try { $gj = @(Get-Job -ErrorAction SilentlyContinue); foreach ($j in $gj) { try { Stop-Job -Job $j -ErrorAction SilentlyContinue; Remove-Job -Job $j -Force -ErrorAction SilentlyContinue; $stoppedJobs++ } catch {} } } catch {}
-              $cleanupNote = ('Cleanup: LabVIEW={0}, LVCompare={1}, Jobs={2}' -f $stoppedLV,$stoppedLVC,$stoppedJobs)
-            }
-            $lines = @('### Runner Unblock Guard','')
-            $lines += ('- Process count: {0}' -f $procs.Count)
-            $lines += ('- Pester job count: {0}' -f $jobs.Count)
-            $lines += ''
-            $lines += ('Snapshot: {0}' -f $path)
-            if ($cleanupNote) { $lines += ('- ' + $cleanupNote) }
-            $lines -join "`n" | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8
-          } catch { Write-Host "::warning::Unblock guard failed: $_" }
+        uses: ./.github/actions/runner-unblock-guard
+        with:
+          snapshot-path: tests/results/runner-unblock-snapshot.json
+          cleanup: ${{ env.UNBLOCK_GUARD == '1' }}
+          process-names: 'conhost,pwsh,LabVIEW,LVCompare'
 
       - name: Enforce fixture policy (fail on disallowed issues)
         if: always()
@@ -224,42 +200,14 @@ jobs:
           name: smoke-html-report
           path: ${{ runner.temp }}/smoke-report/compare-report.html
 
-      - name: Append session index (if present)
+      - name: Session index post
         if: always()
-        shell: pwsh
-        run: |
-          $idx = Join-Path 'tests/results' 'session-index.json'
-          if (Test-Path $idx) {
-            try {
-              $ix = Get-Content $idx -Raw | ConvertFrom-Json
-              if ($ix.stepSummary) {
-                $intro = @('','### Smoke Session Overview','') -join "`n"
-                $intro | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8
-                $ix.stepSummary | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8
-              } else {
-                "`nSession index: tests/results/session-index.json" | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8
-              }
-            } catch { Write-Host '::warning::failed to append session index step summary' }
-          }
-
-      - name: Upload session index (if present)
-        if: always()
-        uses: actions/upload-artifact@v4
+        uses: ./.github/actions/session-index-post
         with:
-          name: smoke-session-index
-          path: tests/results/session-index.json
-
-      - name: Validate session index schema (schema-lite, if present)
-        if: always()
-        shell: pwsh
-        run: |
-          $idx = 'tests/results/session-index.json'
-          if (Test-Path $idx) {
-            pwsh -File tools/Invoke-JsonSchemaLite.ps1 -JsonPath $idx -SchemaPath docs/schemas/session-index-v1.schema.json
-            if ($LASTEXITCODE -ne 0) { Write-Host "Session index schema-lite returned code $LASTEXITCODE" }
-          } else {
-            Write-Host '::notice::session-index.json not present in smoke job.'
-          }
+          results-dir: tests/results
+          validate-schema: true
+          upload: true
+          artifact-name: smoke-session-index
 
       - name: Summarize fixture JSON (step summary)
         if: always()

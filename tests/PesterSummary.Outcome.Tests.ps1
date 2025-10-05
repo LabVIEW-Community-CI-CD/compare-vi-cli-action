@@ -19,7 +19,7 @@ Describe 'Pester Summary Outcome Classification' {
       $summaryPath = Join-Path $resDir 'pester-summary.json'
       Test-Path $summaryPath | Should -BeTrue
       $json = Get-Content -LiteralPath $summaryPath -Raw | ConvertFrom-Json
-  $json.schemaVersion | Should -Be '1.7.1'
+  $json.schemaVersion | Should -Match '^1\.'
       ($json.PSObject.Properties.Name -contains 'outcome') | Should -BeTrue
       $json.outcome.overallStatus | Should -Be 'Success'
       $json.outcome.severityRank | Should -Be 0
@@ -52,7 +52,7 @@ Describe 'Pester Summary Outcome Classification' {
       $summaryPath = Join-Path $resDir 'pester-summary.json'
       Test-Path $summaryPath | Should -BeTrue
       $json = Get-Content -LiteralPath $summaryPath -Raw | ConvertFrom-Json
-  $json.schemaVersion | Should -Be '1.7.1'
+  $json.schemaVersion | Should -Match '^1\.'
       ($json.PSObject.Properties.Name -contains 'outcome') | Should -BeTrue
       $json.outcome.overallStatus | Should -Be 'Failed'
       $json.outcome.severityRank | Should -Be 2

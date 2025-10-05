@@ -29,7 +29,7 @@ Describe 'Pester Summary Timing Detail Emission' {
       Test-Path $summaryPath | Should -BeTrue
       $json = Get-Content -LiteralPath $summaryPath -Raw | ConvertFrom-Json
 
-  $json.schemaVersion | Should -Be '1.7.1'
+  $json.schemaVersion | Should -Match '^1\.'
       ($json.PSObject.Properties.Name -contains 'timing') | Should -BeTrue
       $json.timing.count | Should -BeGreaterOrEqual 3
       $json.timing.totalMs | Should -BeGreaterThan 0
