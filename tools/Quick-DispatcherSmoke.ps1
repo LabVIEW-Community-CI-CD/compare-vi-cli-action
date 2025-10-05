@@ -26,7 +26,9 @@
 param(
   [switch]$Raw,
   [switch]$Keep,
-  [string]$ResultsPath
+  [string]$ResultsPath,
+  [string]$TestsRoot,
+  [switch]$PreferWorkspace
 )
 
 Set-StrictMode -Version Latest
@@ -37,7 +39,20 @@ try {
   $dispatcher = Join-Path $root 'Invoke-PesterTests.ps1'
   if (-not (Test-Path -LiteralPath $dispatcher -PathType Leaf)) { throw "Dispatcher not found: $dispatcher" }
 
-  $tmp = Join-Path ([IO.Path]::GetTempPath()) ([guid]::NewGuid().ToString())
+  # Choose a temporary root for the ephemeral tests folder
+  if (-not $TestsRoot -or [string]::IsNullOrWhiteSpace($TestsRoot)) {
+    $tmpBase = $null
+    if ($PreferWorkspace -and $env:GITHUB_WORKSPACE) {
+      $tmpBase = Join-Path $env:GITHUB_WORKSPACE '.tmp-smoke'
+    } elseif ($env:RUNNER_TEMP) {
+      $tmpBase = $env:RUNNER_TEMP
+    } else {
+      $tmpBase = [IO.Path]::GetTempPath()
+    }
+    $tmp = Join-Path $tmpBase ([guid]::NewGuid().ToString())
+  } else {
+    $tmp = $TestsRoot
+  }
   $testsDir = Join-Path $tmp 'tests'
   New-Item -ItemType Directory -Path $testsDir -Force | Out-Null
   $mini = @(
@@ -51,6 +66,7 @@ try {
   # Avoid writing to a GitHub step summary during local runs
   $env:DISABLE_STEP_SUMMARY = '1'
 
+  Write-Host ("[schema-test] Mini test path: {0}" -f $((Resolve-Path -LiteralPath (Join-Path $testsDir 'Mini.Tests.ps1')).Path))
   & $dispatcher -TestsPath $testsDir -ResultsPath $ResultsPath | Out-Null
   Write-Host ('Exit: {0}' -f $LASTEXITCODE)
 
