@@ -18,6 +18,11 @@ jobs:
     if: contains(github.event.pull_request.labels.*.name, 'test-integration') || github.event_name == 'workflow_dispatch'
     steps:
       - uses: actions/checkout@v5
+      - name: Bootstrap admin token (file first)
+        id: admin
+        uses: ./.github/actions/admin-token-bootstrap
+        with:
+          file-path: 'C:\\actions-runner\\GH_ADMIN_TOKEN.txt'
       - name: Verify LVCompare and idle LabVIEW state
         shell: pwsh
         run: |
@@ -131,15 +136,22 @@ jobs:
           cleanup: ${{ env.UNBLOCK_GUARD == '1' }}
           process-names: 'conhost,pwsh,LabVIEW,LVCompare'
 
+      - name: Bootstrap admin token (file first)
+        id: admin2
+        uses: ./.github/actions/admin-token-bootstrap
+        with:
+          file-path: 'C:\\actions-runner\\GH_ADMIN_TOKEN.txt'
+
       - name: Comment results on PR (using GH_ADMIN_TOKEN)
         if: always()
         shell: pwsh
         env:
           GH_REPO: ${{ github.repository }}
           PR_NUMBER: ${{ github.event.pull_request.number }}
-          GH_ADMIN_TOKEN: ${{ secrets.GH_ADMIN_TOKEN }}
+          GH_ADMIN_TOKEN: ${{ steps.admin2.outputs.token || secrets.GH_ADMIN_TOKEN }}
         run: |
-          if (-not $env:GH_ADMIN_TOKEN) { Write-Host 'GH_ADMIN_TOKEN not available; skipping comment.'; exit 0 }
+          $token = if ($env:GH_ADMIN_TOKEN) { $env:GH_ADMIN_TOKEN } else { $env:GITHUB_TOKEN }
+          if (-not $token) { Write-Host 'Admin token not available; skipping comment.'; exit 0 }
           $summaryPath = './tests/results/pester-summary.txt'
           $jsonSummaryPath = Join-Path $env:RUNNER_TEMP 'compare-summary.json'
           $durationSeconds = $null
@@ -190,7 +202,7 @@ jobs:
           if ($timingBlock) { $lines += $timingBlock }
           $lines = $lines -join "`n"
           $payload = @{ body = $lines } | ConvertTo-Json -Compress
-          $headers = @{ Authorization = "Bearer $env:GH_ADMIN_TOKEN"; Accept = 'application/vnd.github+json'; 'User-Agent' = 'xcli-bot' }
+          $headers = @{ Authorization = "Bearer $token"; Accept = 'application/vnd.github+json'; 'User-Agent' = 'xcli-bot' }
           $uri = "https://api.github.com/repos/$env:GH_REPO/issues/$env:PR_NUMBER/comments"
           Invoke-RestMethod -Method POST -Uri $uri -Headers $headers -ContentType 'application/json' -Body $payload
 
