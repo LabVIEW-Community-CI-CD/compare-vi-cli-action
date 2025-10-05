@@ -317,3 +317,20 @@ jobs:
           try { Invoke-RestMethod -Method POST -Uri $uri -Headers $headers -ContentType 'application/json' -Body $payload } catch { Write-Host "::notice::Failed to post help comment: $_" }
 
 
+
+  preflight-hosted:
+    name: Preflight (windows-latest)
+    runs-on: windows-latest
+    needs: [pre-init]
+    if: needs.pre-init.outputs.docs_only != 'true'
+    steps:
+      - uses: actions/checkout@v5
+      - name: Write preflight telemetry
+        shell: pwsh
+        run: |
+          pwsh -NonInteractive -File tools/Write-PreflightTelemetry.ps1 -OutputPath telemetry/preflight-windows.json
+      - name: Upload preflight telemetry
+        uses: actions/upload-artifact@v4
+        with:
+          name: preflight-windows-telemetry
+          path: telemetry/preflight-windows.json
