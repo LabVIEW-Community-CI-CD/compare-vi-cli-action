@@ -2,48 +2,50 @@
 
 ## Project Structure & Module Organization
 
-- `scripts/` orchestration and helper scripts (drift, capture, dispatcher glue).
-- `tools/` developer utilities (validate/update manifest, diff helpers, link checks).
+- `scripts/` orchestration and helpers (compare, drift, runbook, dispatcher glue).
+- `tools/` developer utilities (manifest validate/update, link checks, schema-lite).
 - `tests/` Pester suites (`*.Tests.ps1`) tagged `Unit`/`Integration`.
-- `module/` reusable PowerShell modules (e.g., compare loops).
-- `docs/` guides and JSON schemas; `README.md` is the entry point.
-- Canonical fixtures live at repo root (`VI1.vi`, `VI2.vi`) with `fixtures.manifest.json`.
+- `module/` reusable PowerShell modules (e.g., compare loop).
+- `docs/` guides and JSON schemas. Fixtures: `VI1.vi`, `VI2.vi` + `fixtures.manifest.json`.
+- CI: `.github/workflows/*` and local composites under `.github/actions/*`.
 
 ## Build, Test, and Development Commands
 
-- Run unit tests: `./Invoke-PesterTests.ps1`
+- Unit tests: `./Invoke-PesterTests.ps1`
 - Include integration: `./Invoke-PesterTests.ps1 -IncludeIntegration true`
-- Quick smoke: `./tools/Quick-DispatcherSmoke.ps1`
-- Validate fixtures: `pwsh -File tools/Validate-Fixtures.ps1 -Json`
-- Update manifest: `pwsh -File tools/Update-FixtureManifest.ps1 -Allow`
+- Filter by file pattern(s): `./Invoke-PesterTests.ps1 -IncludePatterns 'CompareVI*Tests.ps1'`
+- Quick smoke (workspace temp): `./tools/Quick-DispatcherSmoke.ps1 -PreferWorkspace`
+- Validate fixtures: `pwsh -NonInteractive -File tools/Validate-Fixtures.ps1 -Json`
+- Orchestrated CI: preflight → pester (per-category, serial) → drift → publish.
 
 ## Coding Style & Naming Conventions
 
-- PowerShell 7+; Pester 5+. Indent with 2 spaces; UTF-8.
-- Functions use PascalCase verbs (PowerShell-approved verbs). Locals are camelCase.
-- Filenames: tests as `Name.Tests.ps1`; helper modules as `Name.Functions.psm1`.
-- Prefer small, composable functions; no global state. Avoid writing outside `tests/results`.
+- PowerShell 7+, Pester 5+. Indent 2 spaces; UTF‑8.
+- Functions PascalCase (approved verbs); locals camelCase; clear names.
+- Keep code non-interactive in CI: use `pwsh -NonInteractive` for nested calls.
+- Avoid writing outside `tests/results/`; prefer per-category subfolders in CI.
 
 ## Testing Guidelines
 
-- Framework: Pester v5. Tag slow/external as `Integration`.
-- Test names are behavior-focused: `Describe/Context/It`.
-- LVCompare path: `C:\\Program Files\\National Instruments\\Shared\\LabVIEW Compare\\LVCompare.exe`.
-- Integration requires `LV_BASE_VI` and `LV_HEAD_VI` set. No LabVIEW.exe orchestration.
+- Categories in CI: dispatcher, fixtures, schema, comparevi, loop, runbook, orchestrator.
+- Each category emits `tests/results/<category>/session-index.json` and artifacts.
+- Dispatcher caps runtime in CI (`-TimeoutSeconds 150`); session-index is always written.
+- LVCompare canonical path: `C:\\Program Files\\National Instruments\\Shared\\LabVIEW Compare\\LVCompare.exe`.
+- Integration needs `LV_BASE_VI` and `LV_HEAD_VI`. Do not orchestrate `LabVIEW.exe`.
 
 ## Commit & Pull Request Guidelines
 
-- Commits: imperative mood, scoped (e.g., "validator: enforce bytes field").
-- PRs must include: summary, risks, validation steps, and linked issues.
-- Do not start tests if `LabVIEW.exe` is running; close it first. Prefer leaving `LVCompare.exe` alone unless explicitly opted in.
-- Attach artifacts from `tests/results/` when relevant (summary/results XML/HTML).
+- Commits: imperative and scoped (e.g., `validator: enforce bytes`).
+- PRs: include summary, risks, validation steps, linked issues; keep markdownlint and actionlint green.
+- Never start tests with `LabVIEW.exe` running; preflight/guard enforces this.
 
 ## Security & Configuration Tips
 
-- LVCompare-only interface; do not launch `LabVIEW.exe` from tools.
-- Manifest uses strict `bytes` and `sha256`; run validator before pushing.
+- LVCompare‑only interface; no `LabVIEW.exe` launches from tools.
+- Manifest enforces exact `bytes` and `sha256`; run validator before pushing.
 - Optional leak/cleanup flags: `DETECT_LEAKS=1`, `CLEAN_AFTER=1`, `CLEAN_LVCOMPARE=1`.
 
-## Agent-Specific Notes
+## Agent Notes
 
-- Use `Invoke-PesterTests.ps1` locally and in CI. The dispatcher hard-gates on running `LabVIEW.exe` to keep runs stable. For docs hygiene, run `tools/Check-DocsLinks.ps1` before PRs.
+- Prefer `Invoke-PesterTests.ps1` locally and in CI. Use `-IncludePatterns` to target files.
+- For docs hygiene, run `tools/Check-DocsLinks.ps1` and keep markdownlint clean before PRs.
