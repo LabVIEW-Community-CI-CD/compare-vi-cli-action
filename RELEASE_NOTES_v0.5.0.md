@@ -18,7 +18,7 @@ Highlights
 
 Upgrade Notes
 
-- If you consume  `fixtures.manifest.json`, migrate parsing from `minBytes` to `bytes` 
+- If you consume  `fixtures.manifest.json`, migrate parsing from `minBytes` to `bytes`
 - No changes to action inputs/outputs; dispatcher JSON artifacts are additive
 
 Validation Checklist
