@@ -46,4 +46,4 @@ runs:
         $lines += ''
         $lines += ('Snapshot: {0}' -f $snapPath)
         if ($cleanupNote) { $lines += ('- ' + $cleanupNote) }
-        $lines -join "`n" | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8
+        pwsh -NonInteractive -File tools/Write-StepSummary.ps1 -Lines $lines -Append | Out-Null

@@ -60,7 +60,8 @@ runs:
       shell: pwsh
       run: |
         $ErrorActionPreference = 'Stop'
-        if ('${{ inputs.render-report }}' -eq 'true' -and $IsWindows -ne $true) { 
+        $render = [System.Convert]::ToBoolean('${{ inputs.render-report }}')
+        if ($render -and $IsWindows -ne $true) { 
           throw 'Report rendering requires Windows runners. Use render-report: false for non-Windows platforms.' 
         }
         $vf = Join-Path "${{ github.workspace }}" 'tools/Validate-Fixtures.ps1'
@@ -74,8 +75,8 @@ runs:
         $ErrorActionPreference = 'Stop'
         $strictPath = Join-Path (Get-Location) 'strict.json'
         $overridePath = Join-Path (Get-Location) 'override.json'
-        pwsh -NoLogo -NoProfile -File "${{ github.workspace }}/tools/Validate-Fixtures.ps1" -Json | Out-File -FilePath $strictPath -Encoding utf8
-        pwsh -NoLogo -NoProfile -File "${{ github.workspace }}/tools/Validate-Fixtures.ps1" -Json -TestAllowFixtureUpdate | Out-File -FilePath $overridePath -Encoding utf8
+        pwsh -NoLogo -NoProfile -NonInteractive -File "${{ github.workspace }}/tools/Validate-Fixtures.ps1" -Json | Out-File -FilePath $strictPath -Encoding utf8
+        pwsh -NoLogo -NoProfile -NonInteractive -File "${{ github.workspace }}/tools/Validate-Fixtures.ps1" -Json -TestAllowFixtureUpdate | Out-File -FilePath $overridePath -Encoding utf8
 
     - name: Orchestrate drift artifacts
       id: orchestrate
@@ -90,7 +91,8 @@ runs:
         $strictPath = Join-Path (Get-Location) 'strict.json'
         $overridePath = Join-Path (Get-Location) 'override.json'
         $args = @('-StrictJson',$strictPath,'-OverrideJson',$overridePath)
-        if ('${{ inputs.render-report }}' -eq 'true') { $args += '-RenderReport' }
+        try { $render = [System.Convert]::ToBoolean('${{ inputs.render-report }}') } catch { $render = $false }
+        if ($render) { $args += '-RenderReport' }
         if ('${{ inputs.base-path }}') { $args += @('-BasePath','${{ inputs.base-path }}') }
         if ('${{ inputs.head-path }}') { $args += @('-HeadPath','${{ inputs.head-path }}') }
         if ('${{ inputs.lv-compare-args }}') { $args += @('-LvCompareArgs','${{ inputs.lv-compare-args }}') }
@@ -245,7 +247,7 @@ runs:
         if (-not (Test-Path $sum)) { return }
         $schemaPath = Join-Path "${{ github.workspace }}" 'docs/schemas/fixture-drift-summary-v1.schema.json'
         if (Test-Path $schemaPath) {
-          pwsh -NoLogo -NoProfile -File "${{ github.workspace }}/tools/Invoke-JsonSchemaLite.ps1" -JsonPath $sum -SchemaPath $schemaPath
+          pwsh -NoLogo -NoProfile -NonInteractive -File "${{ github.workspace }}/tools/Invoke-JsonSchemaLite.ps1" -JsonPath $sum -SchemaPath $schemaPath
           # Do not fail the job here; schema errors will have been printed for diagnosis.
           if ($LASTEXITCODE -ne 0) { Write-Host "Schema-lite validation returned code $LASTEXITCODE" }
         }

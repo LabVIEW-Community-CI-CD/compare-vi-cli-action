@@ -108,6 +108,12 @@ param(
   # Opt-out: prevent writing diagnostics to GitHub Step Summary even if available
   [Parameter(Mandatory = $false)]
   [switch]$DisableStepSummary
+,
+  # Optional: restrict tests by filename patterns (wildcards). Matches against test file leaf names.
+  [Parameter(Mandatory = $false)]
+  [string[]]$IncludePatterns,
+  [Parameter(Mandatory = $false)]
+  [string[]]$ExcludePatterns
 )
 
 Set-StrictMode -Version Latest
@@ -761,6 +767,25 @@ if ($limitToSingle) {
     $removed = $before - $testFiles.Count
     if ($removed -gt 0) { Write-Host "Prefiltered $removed integration test file(s) (file-level exclusion)" -ForegroundColor DarkGray }
   }
+  # Apply filename pattern filters when provided (match against leaf name)
+  if ($IncludePatterns -and $IncludePatterns.Count -gt 0) {
+    $patterns = @($IncludePatterns | ForEach-Object { $_.Trim() } | Where-Object { $_ })
+    if ($patterns.Count -gt 0) {
+      $before = $testFiles.Count
+      $testFiles = @($testFiles | Where-Object { $leaf = $_.Name; foreach($p in $patterns){ if ($leaf -like $p) { return $true } } return $false })
+      $after = $testFiles.Count
+      Write-Host ("IncludePatterns applied: {0} -> {1} file(s)" -f $before,$after) -ForegroundColor DarkGray
+    }
+  }
+  if ($ExcludePatterns -and $ExcludePatterns.Count -gt 0) {
+    $exclude = @($ExcludePatterns | ForEach-Object { $_.Trim() } | Where-Object { $_ })
+    if ($exclude.Count -gt 0) {
+      $before = $testFiles.Count
+      $testFiles = @($testFiles | Where-Object { $leaf = $_.Name; $hit = $false; foreach($p in $exclude){ if ($leaf -like $p) { $hit = $true; break } } -not $hit })
+      $after = $testFiles.Count
+      Write-Host ("ExcludePatterns applied: {0} -> {1} file(s)" -f $before,$after) -ForegroundColor DarkGray
+    }
+  }
   Write-Host "Found $originalTestFileCount test file(s) in tests directory" -ForegroundColor Green
   if ($MaxTestFiles -gt 0 -and $testFiles.Count -gt $MaxTestFiles) {
     Write-Host "Selecting first $MaxTestFiles test file(s) for execution (loop count mode)." -ForegroundColor Yellow
@@ -901,8 +926,8 @@ $conf = New-PesterConfiguration
 
 # Set test path
 if ($limitToSingle) { $conf.Run.Path = $singleTestFile }
-elseif ($MaxTestFiles -gt 0 -and $testFiles.Count -gt 0 -and -not $limitToSingle) {
-  # Build dynamic container for selected files
+elseif (-not $limitToSingle -and $testFiles.Count -gt 0) {
+  # Build dynamic container for selected files (optionally filtered)
   $paths = $testFiles | ForEach-Object { $_.FullName }
   $conf.Run.Path = $paths
 } else { $conf.Run.Path = $testsDir }

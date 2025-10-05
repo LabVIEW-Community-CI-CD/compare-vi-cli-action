@@ -175,7 +175,10 @@ $preClean = $false
 if ($env:LOOP_PRE_CLEAN -match '^(1|true)$') { $preClean = $true }
 if ($preClean) {
   try {
-    . (Join-Path $PSScriptRoot 'Ensure-LVCompareClean.ps1')
+    $cleanMod = Join-Path $PSScriptRoot 'Ensure-LVCompareClean.psm1'
+    if (-not (Get-Command -Name Stop-LVCompareProcesses -ErrorAction SilentlyContinue)) {
+      Import-Module $cleanMod -Force
+    }
     $k1 = Stop-LVCompareProcesses -Quiet
     $k2 = Stop-LabVIEWProcesses -Quiet
     if ($k1 -gt 0 -or $k2 -gt 0) { Write-Host "Pre-cleaned LVCompare=$k1, LabVIEW=$k2 stray process(es)." -ForegroundColor DarkYellow }

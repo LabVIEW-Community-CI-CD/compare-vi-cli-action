@@ -1,0 +1,170 @@
+name: "Pre-Init Gate"
+description: "Determine docs-only changes and expose gating outputs to control heavy jobs"
+inputs:
+  include-globs:
+    description: "Newline-separated glob patterns considered 'docs'"
+    required: false
+    default: |
+      docs/**
+      **/*.md
+  exclude-globs:
+    description: "Newline-separated glob patterns to exclude from docs determination"
+    required: false
+    default: |
+      docs/schemas/**
+  warn-only-on-fork:
+    description: "If true, emit guidance on forks but do not fail the job"
+    required: false
+    default: 'false'
+  fail-on-fork:
+    description: "When true, fail with guidance if running on a fork (owner != expected)."
+    required: false
+    default: 'false'
+  repo-owner-expected:
+    description: "Owner considered 'upstream' (used to detect forks)."
+    required: false
+    default: 'LabVIEW-Community-CI-CD'
+  force-run:
+    description: "When 'true' and event is workflow_dispatch, bypass docs-only fast path"
+    required: false
+    default: 'false'
+outputs:
+  docs_only:
+    description: "'true' when all changed files are docs-only per globs"
+    value: ${{ steps.gate.outputs.docs_only }}
+  changed_files:
+    description: "JSON array of changed files considered in this event"
+    value: ${{ steps.gate.outputs.changed_files }}
+  fork:
+    description: "'true' if the current repository owner differs from expected"
+    value: ${{ steps.gate.outputs.fork }}
+  reason:
+    description: "Classification for this run: docs-only | fork | code"
+    value: ${{ steps.gate.outputs.reason }}
+runs:
+  using: "composite"
+  steps:
+    - id: gate
+      name: Compute docs-only gate
+      shell: pwsh
+      env:
+        GH_REPO: ${{ github.repository }}
+        GH_EVENT_NAME: ${{ github.event_name }}
+        GH_EVENT_PATH: ${{ github.event_path }}
+        GH_TOKEN: ${{ github.token }}
+        INCLUDE_GLOBS: ${{ inputs.include-globs }}
+        EXCLUDE_GLOBS: ${{ inputs.exclude-globs }}
+      run: |
+        $ErrorActionPreference = 'Stop'
+        $includes = ($env:INCLUDE_GLOBS -split "`r?`n").Where({ $_ -and ($_ -notmatch '^\s*#') })
+        $excludes = ($env:EXCLUDE_GLOBS -split "`r?`n").Where({ $_ -and ($_ -notmatch '^\s*#') })
+
+        function Get-ChangedFilesFromEvent {
+          param()
+          if ($env:GH_EVENT_NAME -eq 'pull_request') {
+            $evt = Get-Content -Raw -LiteralPath $env:GH_EVENT_PATH | ConvertFrom-Json
+            $pr = $evt.number
+            $hdr = @{ Authorization = "Bearer $($env:GH_TOKEN)"; Accept = 'application/vnd.github+json' }
+            $files = @()
+            $page = 1; $pageSize = 100; $maxPages = 10
+            while ($true) {
+              $uri = "https://api.github.com/repos/$($env:GH_REPO)/pulls/$pr/files?per_page=$pageSize&page=$page"
+              $res = Invoke-RestMethod -Headers $hdr -Uri $uri -Method GET
+              if (-not $res) { break }
+              $files += @($res | ForEach-Object { $_.filename })
+              if (@($res).Count -lt $pageSize -or $page -ge $maxPages) { break }
+              $page++
+            }
+            return $files
+          } else {
+            # Prefer event before..after, fallback to last commit, else all files
+            try {
+              $evt = Get-Content -Raw -LiteralPath $env:GH_EVENT_PATH | ConvertFrom-Json
+              $before = $evt.before
+              $after  = $evt.after
+            } catch {}
+            try {
+              if ($before -and $after) {
+                $out = (git diff --name-only $before $after) -split "`n" | Where-Object { $_ }
+              } else {
+                $base = (git rev-parse HEAD~1) 2>$null
+                $head = (git rev-parse HEAD)
+                $out  = (git diff --name-only $base $head) -split "`n" | Where-Object { $_ }
+              }
+              return @($out)
+            } catch {
+              $all = git ls-files
+              return @($all)
+            }
+          }
+        }
+
+        function Match-AnyGlob([string]$path, [string[]]$globs) {
+          foreach ($g in $globs) {
+            if ([System.IO.Path]::DirectorySeparatorChar -eq '\\') { $norm = $path -replace '/', '\\' } else { $norm = $path }
+            $rx = [System.Text.RegularExpressions.Regex]::Escape($g)
+            $rx = $rx -replace '\\\*\\\\\*', '.*'
+            $rx = $rx -replace '\\\*', '[^/\\\\]*'
+            $rx = $rx -replace '\\\?', '.'
+            if ($norm -match "^$rx$") { return $true }
+          }
+          return $false
+        }
+
+        $files = Get-ChangedFilesFromEvent
+        $docsOnly = $true
+        foreach ($f in $files) {
+          $isDoc = Match-AnyGlob -path $f -globs $includes
+          $isExcluded = Match-AnyGlob -path $f -globs $excludes
+          if (-not $isDoc -or $isExcluded) { $docsOnly = $false; break }
+        }
+
+        # Bypass docs-only fast path when manually dispatched with force-run
+        $force = '${{ inputs.force-run }}'
+        if ($env:GH_EVENT_NAME -eq 'workflow_dispatch' -and ($force -eq 'true')) { $docsOnly = $false }
+
+        $outFiles = ($files | ConvertTo-Json -Compress)
+        "docs_only=$docsOnly" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+        "changed_files=$outFiles" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+
+        $summary = @(
+          '### Pre-Init Gate',
+          "- Event: $($env:GH_EVENT_NAME)",
+          "- Docs-only: $docsOnly",
+          "- Includes: $($includes -join ', ')",
+          "- Excludes: $($excludes -join ', ')",
+          "- Changed: $($files.Count)"
+        ) -join "`n"
+        $summary | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8
+
+        # Fork detection, classification, and optional guidance
+        $owner = ($env:GH_REPO -split '/')[0]
+        $expected = '${{ inputs.repo-owner-expected }}'
+        $failOnFork = '${{ inputs.fail-on-fork }}'
+        $warnOnlyOnFork = '${{ inputs.warn-only-on-fork }}'
+        $isFork = ($owner -ne $expected)
+        "fork=$isFork" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+        $reason = if ($docsOnly) { 'docs-only' } elseif ($isFork) { 'fork' } else { 'code' }
+        "reason=$reason" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+        if ($isFork -and ($failOnFork -eq 'true' -or $warnOnlyOnFork -eq 'true')) {
+          $hints = @(
+            '### Branch Protection Hints for Forks',
+            "- Configure rulesets on your fork to mirror upstream (owner: $expected).",
+            '- Require checks on protected branches (develop/main):',
+            '  - Pester (self-hosted) / preflight',
+            '  - Pester (self-hosted) / pester (all categories)',
+            '  - Fixture Drift Validation / Fixture Drift (Windows)',
+            '  - VI Binary Handling Gate / vi-binary-check',
+            '  - Validate / lint',
+            '  - markdownlint / lint',
+            '- Keep Windows runner labels consistent: [self-hosted, Windows, X64].',
+            '- Use one Windows variant to avoid drift (no windows-20xx).',
+            '- Set per-category timeouts with repo Variables (PESTER_TIMEOUT_*).',
+            '- See: docs/BRANCH_RULES.md'
+          ) -join "`n"
+          $hints | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8
+          if ($failOnFork -eq 'true') {
+            Write-Host '::error::This appears to be a fork. Apply branch protection and required checks as outlined in the job summary.'
+            exit 20
+          }
+        }

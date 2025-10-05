@@ -1,0 +1,50 @@
+name: "Admin Token Bootstrap"
+description: "Read admin token from a local file on self-hosted runners; validate via API; expose as output if usable"
+inputs:
+  file-path:
+    description: "Absolute path to a text file containing a GitHub admin token"
+    required: false
+    default: 'C:\\actions-runner\\GH_ADMIN_TOKEN.txt'
+outputs:
+  token:
+    description: "Usable admin token read from file (if validated)"
+    value: ${{ steps.load.outputs.token }}
+  source:
+    description: "Source of the token (file|none)"
+    value: ${{ steps.load.outputs.source }}
+runs:
+  using: composite
+  steps:
+    - id: load
+      name: Load admin token from file
+      shell: pwsh
+      env:
+        GH_REPOSITORY: ${{ github.repository }}
+        FILE_PATH: ${{ inputs.file-path }}
+      run: |
+        $ErrorActionPreference = 'Stop'
+        $file = $env:FILE_PATH
+        if (-not $file -or -not (Test-Path -LiteralPath $file)) {
+          "token=" >> $env:GITHUB_OUTPUT
+          "source=none" >> $env:GITHUB_OUTPUT
+          exit 0
+        }
+        $token = (Get-Content -LiteralPath $file -Raw -Encoding UTF8).Trim()
+        if ([string]::IsNullOrWhiteSpace($token)) {
+          "token=" >> $env:GITHUB_OUTPUT
+          "source=none" >> $env:GITHUB_OUTPUT
+          exit 0
+        }
+        # Validate token with a simple repo GET
+        $owner,$name = $env:GH_REPOSITORY.Split('/')
+        $hdr = @{ Authorization = "Bearer $token"; Accept = 'application/vnd.github+json'; 'X-GitHub-Api-Version'='2022-11-28' }
+        try {
+          $resp = Invoke-RestMethod -Method Get -Uri ("https://api.github.com/repos/{0}/{1}" -f $owner,$name) -Headers $hdr -ErrorAction Stop
+          # Token seems usable
+          "token=$token" >> $env:GITHUB_OUTPUT
+          "source=file" >> $env:GITHUB_OUTPUT
+        } catch {
+          # Treat as unusable
+          "token=" >> $env:GITHUB_OUTPUT
+          "source=none" >> $env:GITHUB_OUTPUT
+        }

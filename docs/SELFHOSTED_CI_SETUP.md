@@ -49,7 +49,7 @@ Configure the following variables in your repository settings (Settings → Secr
 
 | Secret Name | Description |
 |-------------|-------------|
-| `XCLI_PAT` | Personal Access Token with `repo` and `actions:write` scopes for workflow dispatch from PR comments |
+| `GH_ADMIN_TOKEN` | Personal Access Token with `repo` and `actions:write` scopes for workflow dispatch from PR comments |
 
 ## Setting Up Test VI Files
 
@@ -257,11 +257,11 @@ $env:LV_HEAD_VI = "C:\TestVIs\Modified.vi"
 
 ### Workflow Dispatch Fails from PR Comments
 
-**Cause:** Missing `XCLI_PAT` secret or insufficient permissions
+**Cause:** Missing `GH_ADMIN_TOKEN` secret or insufficient permissions
 
 **Solution:**
 
-1. Verify `XCLI_PAT` secret is set in repository settings
+1. Verify `GH_ADMIN_TOKEN` secret is set in repository settings
 2. Ensure PAT has `repo` and `actions:write` scopes
 3. Only OWNER, MEMBER, or COLLABORATOR can trigger workflows
 
@@ -353,3 +353,15 @@ For issues or questions:
    - Runner environment details
    - Test output/logs
    - Steps to reproduce
+
+## Runner Invoker (Optional, Recommended)
+
+The invoker is a runner-side service that executes CompareVI/Report/Summary/FailureInventory via a named pipe to stabilize
+execution and centralize telemetry.
+
+- Install: `pwsh -File tools/RunnerInvoker/Install-RunnerInvokerTask.ps1`
+  - Registers a Scheduled Task `RunnerInvoker` at logon under `C:\actions-runner\invoker`
+- Verify: `./tools/RunnerInvoker/Send-RunnerCommand.ps1 -Verb Ping`
+- Use in workflows: add `uses: ./.github/actions/ensure-invoker` and set `INVOKER_REQUIRED=1` in self-hosted jobs.
+- Telemetry: step summaries include an “Invoker Telemetry” block; artifacts include `console-spawns.ndjson`.
+

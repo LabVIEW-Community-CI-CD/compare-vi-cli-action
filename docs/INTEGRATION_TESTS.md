@@ -104,4 +104,5 @@ Exit code `0` = ready, `1` = missing one or more prerequisites (informational).
 - Collect performance timing for compare operations when enabled.
 
 ---
-Maintained with the test dispatcher architecture. See `AGENTS.md` and `PESTER_DISPATCHER_REFINEMENT.md` for broader context.
+Maintained with the test dispatcher architecture. See `AGENTS.md` and `./releases/PESTER_DISPATCHER_REFINEMENT.md` for broader context.
+

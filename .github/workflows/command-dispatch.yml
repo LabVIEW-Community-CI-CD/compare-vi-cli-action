@@ -13,7 +13,8 @@ jobs:
       COMMENT_BODY: ${{ github.event.comment.body }}
       AUTHOR_ASSOC: ${{ github.event.comment.author_association }}
       PR_NUMBER: ${{ github.event.issue.number }}
-      XCLI_PAT: ${{ secrets.XCLI_PAT }}
+      # Transitional: prefer GH_ADMIN_TOKEN; fall back to legacy XCLI_PAT for in-flight PRs
+      XCLI_PAT: ${{ secrets.GH_ADMIN_TOKEN || secrets.XCLI_PAT }}
     steps:
       - name: Validate permissions
         shell: bash
@@ -34,6 +35,26 @@ jobs:
           if echo "$body" | grep -qE '^/run +mock'; then echo "target=mock" >> "$GITHUB_OUTPUT"; fi
           if echo "$body" | grep -qE '^/run +smoke'; then echo "target=smoke" >> "$GITHUB_OUTPUT"; fi
           if echo "$body" | grep -qE '^/run +pester-selfhosted'; then echo "target=pester-selfhosted" >> "$GITHUB_OUTPUT"; fi
+          if echo "$body" | grep -qE '^/label +'; then echo "target=label" >> "$GITHUB_OUTPUT"; fi
+
+      - name: Parse pester-selfhosted options
+        id: parse_pester
+        if: steps.cmd.outputs.target == 'pester-selfhosted'
+        shell: bash
+        env:
+          RAW_BODY: ${{ github.event.comment.body }}
+        run: |
+          # default include_integration=true; allow '/run pester-selfhosted false' to disable
+          tail=$(printf "%s" "$RAW_BODY" | sed -n 's#^/run[[:space:]]\+pester-selfhosted[[:space:]]\?##Ip')
+          set -- $tail
+          first="${1:-}"
+          v=$(echo "$first" | tr '[:upper:]' '[:lower:]')
+          case "$v" in
+            false|no|0|off) inc=false ;;
+            true|yes|1|on)  inc=true  ;;
+            *)              inc=true  ;;
+          esac
+          echo "include_integration=$inc" >> "$GITHUB_OUTPUT"
 
       - name: Resolve target ref (PR head when same-repo, else main)
         id: ref
@@ -93,18 +114,21 @@ jobs:
           curl -s -X POST \
            -H "Authorization: Bearer $XCLI_PAT" \
            -H "Accept: application/vnd.github+json" \
-           "https://api.github.com/repos/$REPO/actions/workflows/test-pester.yml/dispatches" \
+           "https://api.github.com/repos/$REPO/actions/workflows/pester-selfhosted.yml/dispatches" \
            -d '{"ref":"'"${{ steps.ref.outputs.target_ref }}"'","inputs":{"include_integration":"false"}}' | cat
 
-      - name: Dispatch mock tests
+      - name: Comment deprecation for mock tests
         if: steps.cmd.outputs.target == 'mock'
         shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GH_ADMIN_TOKEN || secrets.XCLI_PAT || github.token }}
         run: |
+          body=$'`/run mock` is deprecated. Use `/run pester-selfhosted` or `/run smoke`.'
           curl -s -X POST \
-           -H "Authorization: Bearer $XCLI_PAT" \
+           -H "Authorization: Bearer $GH_TOKEN" \
            -H "Accept: application/vnd.github+json" \
-           "https://api.github.com/repos/$REPO/actions/workflows/test-mock.yml/dispatches" \
-           -d '{"ref":"'"${{ steps.ref.outputs.target_ref }}"'"}' | cat
+           "https://api.github.com/repos/$REPO/issues/$PR_NUMBER/comments" \
+           -d "$(jq -Rn --arg b "$body" '{body:$b}')" | cat
 
       - name: Dispatch smoke tests
         if: steps.cmd.outputs.target == 'smoke'
@@ -132,8 +156,37 @@ jobs:
         if: steps.cmd.outputs.target == 'pester-selfhosted'
         shell: bash
         run: |
+          inc="${{ steps.parse_pester.outputs.include_integration || 'true' }}"
           curl -s -X POST \
            -H "Authorization: Bearer $XCLI_PAT" \
            -H "Accept: application/vnd.github+json" \
            "https://api.github.com/repos/$REPO/actions/workflows/pester-selfhosted.yml/dispatches" \
-           -d '{"ref":"'"${{ steps.ref.outputs.target_ref }}"'","inputs":{"include_integration":"true"}}' | cat
+           -d '{"ref":"'"${{ steps.ref.outputs.target_ref }}"'","inputs":{"include_integration":"'"$inc"'"}}' | cat
+
+      - name: Apply labels via command
+        if: steps.cmd.outputs.target == 'label'
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GH_ADMIN_TOKEN || secrets.XCLI_PAT || github.token }}
+        run: |
+          raw="$COMMENT_BODY"
+          tail=$(printf "%s" "$raw" | sed -n 's#^/label[[:space:]]\+##Ip')
+          labels=$(echo "$tail" | tr ',' ' ' | xargs)
+          # allowed labels from labels.yml (names only)
+          allowed=$(sed -n 's/^\s*-\s*name:\s*\"\{0,1\}\([^\"\r\n]*\)\"\{0,1\}\s*$/\1/p' .github/labels.yml | xargs)
+          filt=""
+          for l in $labels; do
+            for a in $allowed; do
+              if [ "$l" = "$a" ]; then filt="$filt $l"; break; fi
+            done
+          done
+          labels=$(echo "$filt" | xargs)
+          if [ -z "$labels" ]; then echo "No labels specified."; exit 0; fi
+          printf '%s\n' $labels | jq -R -s 'split("\n")|map(select(length>0))' > labels.json
+          payload=$(jq -n --slurpfile arr labels.json '{labels:$arr[0]}')
+          curl -s -X POST \
+            -H "Authorization: Bearer $GH_TOKEN" \
+            -H "Accept: application/vnd.github+json" \
+            "https://api.github.com/repos/$REPO/issues/$PR_NUMBER/labels" \
+            -d "$payload" | cat
+

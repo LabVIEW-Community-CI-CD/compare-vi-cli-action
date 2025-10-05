@@ -1,0 +1,16 @@
+labels:
+  - name: ci
+    color: "0E8A16"
+    description: CI/CD, workflows, and pipeline changes
+  - name: documentation
+    color: "0075CA"
+    description: Documentation, guides, and schemas
+  - name: enhancement
+    color: "A2EEEF"
+    description: Feature work and improvements
+  - name: smoke
+    color: "5319E7"
+    description: Trigger smoke workflow on PRs (label-driven)
+  - name: test-integration
+    color: "FBCA04"
+    description: Trigger self-hosted Pester integration on PRs (label-driven)

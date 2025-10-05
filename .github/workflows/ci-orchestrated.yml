@@ -9,12 +9,60 @@ on:
         default: 'true'
         type: choice
         options: ['true','false']
+      force_run:
+        description: 'Bypass docs-only fast path (manual dispatch)'
+        required: false
+        default: 'false'
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
+  protect:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - name: Branch protection gate (base branch)
+        if: ${{ github.event_name == 'pull_request' && (
+              github.event.pull_request.base.ref == 'main' ||
+              startsWith(github.event.pull_request.base.ref, 'release/') ||
+              (github.event.pull_request.base.ref == 'develop' && vars.ENFORCE_PROTECTION_ON_DEVELOP != '0') ||
+              (vars.ENFORCE_PROTECTION_ON_TOPIC != '0' && (
+                startsWith(github.event.pull_request.base.ref, 'feature/') ||
+                startsWith(github.event.pull_request.base.ref, 'bugfix/') ||
+                startsWith(github.event.pull_request.base.ref, 'hotfix/') ||
+                startsWith(github.event.pull_request.base.ref, 'chore/')
+              ))
+            ) }}
+        uses: ./.github/actions/branch-protection-gate
+        with:
+          branch: ${{ github.event.pull_request.base.ref }}
+          strict: 'true'
+          fail-on-no-access: 'false'
+  pre-init:
+    runs-on: ubuntu-latest
+    needs: [protect]
+    outputs:
+      docs_only: ${{ steps.g.outputs.docs_only }}
+      include_integration: ${{ steps.norm.outputs.bool }}
+    steps:
+      - uses: actions/checkout@v5
+      - name: Normalize include_integration
+        id: norm
+        uses: ./.github/actions/bool-normalize
+        with:
+          value: ${{ inputs.include_integration }}
+          default: 'true'
+      - id: g
+        uses: ./.github/actions/pre-init-gate
+        with:
+          include-globs: |
+            docs/**
+            **/*.md
+          exclude-globs: |
+            docs/schemas/**
+          force-run: ${{ inputs.force_run }}
   lint:
     runs-on: ubuntu-latest
     steps:
@@ -41,6 +89,8 @@ jobs:
   preflight:
     runs-on: [self-hosted, Windows, X64]
     timeout-minutes: 3
+    needs: [protect, pre-init]
+    if: needs.pre-init.outputs.docs_only != 'true'
     steps:
       - uses: actions/checkout@v5
       - name: Verify LVCompare and idle LabVIEW state
@@ -57,7 +107,12 @@ jobs:
   pester:
     runs-on: [self-hosted, Windows, X64]
     timeout-minutes: 3
-    needs: [preflight]
+    needs: [protect, pre-init, preflight]
+    if: needs.pre-init.outputs.docs_only != 'true'
+    strategy:
+      matrix:
+        category: [dispatcher, fixtures, schema, comparevi, loop, runbook, orchestrator]
+      max-parallel: 1
     env:
       LV_BASE_VI: ${{ vars.LV_BASE_VI }}
       LV_HEAD_VI: ${{ vars.LV_HEAD_VI }}
@@ -67,55 +122,64 @@ jobs:
       UNBLOCK_GUARD: '1'
       LV_SUPPRESS_UI: '1'
       WATCH_CONSOLE: '1'
+      # Optional per-category Pester timeouts (seconds). Set repository Variables to override.
+      PESTER_TIMEOUT_DISPATCHER: ${{ vars.PESTER_TIMEOUT_DISPATCHER }}
+      PESTER_TIMEOUT_FIXTURES:   ${{ vars.PESTER_TIMEOUT_FIXTURES }}
+      PESTER_TIMEOUT_SCHEMA:     ${{ vars.PESTER_TIMEOUT_SCHEMA }}
+      PESTER_TIMEOUT_COMPAREVI:  ${{ vars.PESTER_TIMEOUT_COMPAREVI }}
+      PESTER_TIMEOUT_LOOP:       ${{ vars.PESTER_TIMEOUT_LOOP }}
+      PESTER_TIMEOUT_RUNBOOK:    ${{ vars.PESTER_TIMEOUT_RUNBOOK }}
+      PESTER_TIMEOUT_ORCHESTRATOR: ${{ vars.PESTER_TIMEOUT_ORCHESTRATOR }}
     steps:
       - uses: actions/checkout@v5
-      - name: Run Pester tests via local dispatcher
-        shell: pwsh
-        run: |
-          ./Invoke-PesterTests.ps1 -TestsPath tests -IncludeIntegration '${{ inputs.include_integration }}' -ResultsPath tests/results
-
-      - name: Ensure session index (fallback)
-        if: always()
-        shell: pwsh
-        run: pwsh -File tools/Ensure-SessionIndex.ps1 -ResultsDir 'tests/results' -SummaryJson 'pester-summary.json'
+      - name: Run Pester category
+        uses: ./.github/actions/pester-category-run
+        with:
+          category: ${{ matrix.category }}
+          include_integration: ${{ needs.pre-init.outputs.include_integration }}
+          results-dir: tests/results/${{ matrix.category }}
+          tests-path: tests
+          default-timeout-seconds: '150'
 
       - name: Session index post
         if: always()
         uses: ./.github/actions/session-index-post
         with:
-          results-dir: tests/results
+          results-dir: tests/results/${{ matrix.category }}
           validate-schema: true
           upload: true
-          artifact-name: session-index
+          artifact-name: session-index-${{ matrix.category }}
 
       - name: Upload Pester artifacts
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: orchestrated-pester-results
+          name: orchestrated-pester-results-${{ matrix.category }}
           path: |
-            tests/results/**/*.xml
-            tests/results/**/*.txt
-            tests/results/pester-summary.json
-            tests/results/pester-failures.json
-            tests/results/session-index.json
+            tests/results/${{ matrix.category }}/**/*.xml
+            tests/results/${{ matrix.category }}/**/*.txt
+            tests/results/${{ matrix.category }}/pester-summary.json
+            tests/results/${{ matrix.category }}/pester-failures.json
+            tests/results/${{ matrix.category }}/session-index.json
 
       - name: Runner Unblock Guard
         if: always()
         uses: ./.github/actions/runner-unblock-guard
         with:
-          snapshot-path: tests/results/runner-unblock-snapshot.json
+          snapshot-path: tests/results/${{ matrix.category }}/runner-unblock-snapshot.json
           cleanup: ${{ env.UNBLOCK_GUARD == '1' }}
           process-names: 'conhost,pwsh,LabVIEW,LVCompare'
 
   drift:
     runs-on: [self-hosted, Windows, X64]
     timeout-minutes: 3
-    needs: [pester]
+    needs: [pre-init, pester]
+    if: ${{ always() }}
     env:
       UNBLOCK_GUARD: '1'
       LV_SUPPRESS_UI: '1'
       WATCH_CONSOLE: '1'
+      INVOKER_REQUIRED: '1'
     steps:
       - uses: actions/checkout@v5
       - name: Fixture Drift Orchestrator
@@ -159,3 +223,44 @@ jobs:
             '- Drift: ${{ needs.drift.result }}'
           ) -join "`n"
           $lines | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8
+
+  post-gate-help:
+    runs-on: ubuntu-latest
+    needs: [protect]
+    if: ${{ always() && needs.protect.result == 'failure' && github.event_name == 'pull_request' }}
+    steps:
+      - uses: actions/checkout@v5
+      - name: Post help comment for Branch Protection Gate
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ secrets.GH_ADMIN_TOKEN || secrets.XCLI_PAT || github.token }}
+          REPO: ${{ github.repository }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          BASE_REF: ${{ github.event.pull_request.base.ref }}
+          HEAD_REPO: ${{ github.event.pull_request.head.repo.full_name }}
+          HEAD_REF: ${{ github.event.pull_request.head.ref }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $branchDoc = "https://github.com/$env:HEAD_REPO/blob/$env:HEAD_REF/docs/branch-rules/$env:BASE_REF.md"
+          $defaultDoc = "https://github.com/$env:REPO/blob/$env:BASE_REF/docs/BRANCH_RULES.md"
+          $settings = "https://github.com/$env:REPO/settings/branches"
+          $wf = "https://github.com/$env:REPO/actions/workflows/ci-orchestrated.yml"
+          $lines = @(
+            '### Branch Protection Gate: missing access or required checks',
+            '',
+            '- This PR failed the Branch Protection Gate before CI could start.',
+            '- Please ensure an admin token is available (secret `GH_ADMIN_TOKEN`, or self-hosted file bootstrap), and that required checks are configured.',
+            '',
+            "- Branch-specific docs (if present): $branchDoc",
+            "- Default branch rules: $defaultDoc",
+            "- Branch protection settings: $settings",
+            '',
+            'Apply labels to proceed (if needed): `/label smoke, test-integration`',
+            "One-click retry: $wf",
+            '',
+            'Once updated, re-run the workflow.'
+          ) -join "`n"
+          $payload = @{ body = $lines } | ConvertTo-Json -Compress
+          $headers = @{ Authorization = "Bearer $env:GH_TOKEN"; Accept = 'application/vnd.github+json'; 'User-Agent'='gate-help-bot' }
+          $uri = "https://api.github.com/repos/$env:REPO/issues/$env:PR_NUMBER/comments"
+          try { Invoke-RestMethod -Method POST -Uri $uri -Headers $headers -ContentType 'application/json' -Body $payload } catch { Write-Host "::notice::Failed to post help comment: $_" }

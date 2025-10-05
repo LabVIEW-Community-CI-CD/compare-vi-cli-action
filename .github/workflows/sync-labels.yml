@@ -1,0 +1,24 @@
+name: Sync Labels
+
+on:
+  push:
+    branches: ['**']
+  create: {}
+  schedule:
+    - cron: '0 6 * * 1' # Weekly sync Mon 06:00 UTC
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - name: Create or update labels
+        uses: peter-evans/create-or-update-labels@v4
+        with:
+          configuration-path: .github/labels.yml
+          delete-old: false

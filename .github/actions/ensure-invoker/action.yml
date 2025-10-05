@@ -1,0 +1,38 @@
+name: "Ensure Invoker"
+description: "Start/verify runner-side invoker and wait for handshake"
+inputs:
+  pipe-name:
+    description: "Named pipe name"
+    required: false
+    default: "lvci.invoker"
+runs:
+  using: "composite"
+  steps:
+    - name: Start invoker if missing
+      shell: pwsh
+      run: |
+        $ErrorActionPreference = 'Stop'
+        $pipe = '${{ inputs.pipe-name }}'
+        function Test-Pipe {
+          try {
+            $client = New-Object System.IO.Pipes.NamedPipeClientStream('.', $pipe, [IO.Pipes.PipeDirection]::InOut, [IO.Pipes.PipeOptions]::None)
+            $client.Connect(500)
+            $sr = New-Object System.IO.StreamReader($client)
+            $sw = New-Object System.IO.StreamWriter($client)
+            $sw.AutoFlush = $true
+            $req = @{ schema='invoker-cmd/v1'; id=[guid]::NewGuid().ToString(); verb='Ping'; args=@{} }
+            $sw.WriteLine(($req | ConvertTo-Json -Depth 4))
+            $line = $sr.ReadLine(); if ($line) { return $true }
+          } catch { return $false }
+          return $false
+        }
+        if (-not (Test-Pipe)) {
+          $start = Join-Path $env:GITHUB_WORKSPACE 'tools/RunnerInvoker/Start-RunnerInvoker.ps1'
+          if (-not (Test-Path -LiteralPath $start)) { Write-Error "Start-RunnerInvoker.ps1 not found: $start"; exit 1 }
+          Start-Process pwsh -WindowStyle Hidden -ArgumentList @('-NoLogo','-NoProfile','-File', $start, '-PipeName', $pipe) | Out-Null
+          Start-Sleep -Seconds 1
+        }
+        $tries = 0
+        while ($tries -lt 20) { if (Test-Pipe) { break } ; Start-Sleep -Milliseconds 250; $tries++ }
+        if ($tries -ge 20) { Write-Error 'Invoker handshake failed.'; exit 1 }
+

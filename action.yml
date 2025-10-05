@@ -139,7 +139,7 @@ runs:
       run: |
         $ErrorActionPreference = 'Stop'
         $ActionPath = '${{ github.action_path }}'
-        . (Join-Path $ActionPath 'scripts' 'CompareVI.ps1')
+          Import-Module (Join-Path $ActionPath 'scripts' 'CompareVI.psm1') -Force
 
         $loopEnabled = [System.Convert]::ToBoolean('${{ inputs.loop-enabled }}')
         if ($loopEnabled) {

@@ -212,8 +212,8 @@ Install-Module -Name Pester -MinimumVersion 5.0.0 -Force -Scope CurrentUser
 
 ## References
 
-- [Self-Hosted CI/CD Setup Guide](./docs/SELFHOSTED_CI_SETUP.md)
-- [Implementation Status](./IMPLEMENTATION_STATUS.md)
-- [End-to-End Testing Guide](./docs/E2E_TESTING_GUIDE.md)
-- [JSON/NDJSON Schema Helper (Test Shapes)](./docs/SCHEMA_HELPER.md)
+- [Self-Hosted CI/CD Setup Guide](../SELFHOSTED_CI_SETUP.md)
+- [Implementation Status](IMPLEMENTATION_STATUS.md)
+- [End-to-End Testing Guide](../E2E_TESTING_GUIDE.md)
+- [JSON/NDJSON Schema Helper (Test Shapes)](../SCHEMA_HELPER.md)
 - [Open-Source Actions Repository](https://github.com/LabVIEW-Community-CI-CD/open-source)

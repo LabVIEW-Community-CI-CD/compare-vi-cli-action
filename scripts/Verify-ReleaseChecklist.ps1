@@ -152,7 +152,11 @@ try {
   Write-Section 'Helper Files'
   $helpers = 'PR_NOTES.md','TAG_PREP_CHECKLIST.md','POST_RELEASE_FOLLOWUPS.md','ROLLBACK_PLAN.md'
   foreach ($h in $helpers) {
-    if (Test-Path (Join-Path $repoRoot $h)) { $summary.helperFilesPresent += $h } else { $summary.helperFilesMissing += $h }
+    $rootPath = Join-Path $repoRoot $h
+    $relocated = Join-Path $repoRoot (Join-Path 'docs/releases' $h)
+    if (Test-Path $rootPath) { $summary.helperFilesPresent += $h }
+    elseif (Test-Path $relocated) { $summary.helperFilesPresent += (Join-Path 'docs/releases' $h) }
+    else { $summary.helperFilesMissing += $h }
   }
 
   Write-Section 'Markdown Lint'
@@ -167,7 +171,7 @@ try {
   if (-not $SkipTests) {
     Write-Section 'Unit Tests'
     try {
-      & pwsh -File './Invoke-PesterTests.ps1' | Out-Null
+      & (Join-Path $repoRoot 'Invoke-PesterTests.ps1') | Out-Null
       $summary.unitTestExitCode = $LASTEXITCODE
       if ($LASTEXITCODE -ne 0) { $summary.errors += 'unit tests failed' }
     } catch { $summary.unitTestExitCode = -1; $summary.errors += 'unit test invocation failed' }
@@ -187,7 +191,7 @@ try {
     $summary.integrationTestAttempted = $true
     Write-Section 'Integration Tests'
     try {
-      & pwsh -File './Invoke-PesterTests.ps1' -IncludeIntegration true | Out-Null
+      & (Join-Path $repoRoot 'Invoke-PesterTests.ps1') -IncludeIntegration true | Out-Null
       $summary.integrationTestExitCode = $LASTEXITCODE
       if ($LASTEXITCODE -ne 0) { $summary.errors += 'integration tests failed' }
     } catch { $summary.integrationTestExitCode = -1; $summary.errors += 'integration test invocation failed' }
