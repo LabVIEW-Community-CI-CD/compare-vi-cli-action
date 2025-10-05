@@ -106,13 +106,13 @@ jobs:
           set -euo pipefail
           dotnet new console -n consumer -o consumer --force
           cat > consumer/Program.cs <<'CS'
-using System;
-using System.Linq;
-using CompareVi.Shared;
+          using System;
+          using System.Linq;
+          using CompareVi.Shared;
 
-var t = ArgTokenizer.Tokenize("\"-a b\" c");
-Console.WriteLine(string.Join(",", t));
-CS
+          var t = ArgTokenizer.Tokenize("\"-a b\" c");
+          Console.WriteLine(string.Join(",", t));
+          CS
           pushd consumer
           dotnet add package CompareVi.Shared --version "$VER"
           OUT="$(dotnet run -c Release --no-restore)"

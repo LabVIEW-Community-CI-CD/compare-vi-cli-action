@@ -42,11 +42,11 @@ jobs:
           dotnet --info
           dotnet new console -n consumer -o consumer --force
           cat > consumer/Program.cs <<'CS'
-using System;
-using CompareVi.Shared;
-var tokens = ArgTokenizer.Tokenize("\"-a b\" c");
-Console.WriteLine(string.Join(",", tokens));
-CS
+          using System;
+          using CompareVi.Shared;
+          var tokens = ArgTokenizer.Tokenize("\"-a b\" c");
+          Console.WriteLine(string.Join(",", tokens));
+          CS
           if [ -n "$VER" ]; then
             dotnet add consumer/consumer.csproj package CompareVi.Shared --version "$VER"
           else
