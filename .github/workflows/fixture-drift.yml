@@ -15,10 +15,28 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  pre-init:
+    runs-on: ubuntu-latest
+    outputs:
+      docs_only: ${{ steps.g.outputs.docs_only }}
+    steps:
+      - uses: actions/checkout@v4
+      - id: g
+        uses: ./.github/actions/pre-init-gate
+        with:
+          include-globs: |
+            docs/**
+            **/*.md
+          exclude-globs: |
+            docs/schemas/**
+          fail-on-fork: 'true'
+          repo-owner-expected: 'LabVIEW-Community-CI-CD'
   preflight-windows:
     name: Preflight (Windows)
     runs-on: [self-hosted, Windows, X64]
     timeout-minutes: 3
+    needs: pre-init
+    if: needs.pre-init.outputs.docs_only != 'true'
     steps:
       - uses: actions/checkout@v4
       - name: Verify LVCompare and idle LabVIEW state
@@ -56,8 +74,9 @@ jobs:
   validate-windows:
     name: Fixture Drift (Windows)
     runs-on: [self-hosted, Windows, X64]
-    needs: preflight-windows
+    needs: [pre-init, preflight-windows]
     timeout-minutes: 3
+    if: needs.pre-init.outputs.docs_only != 'true'
     env:
       UNBLOCK_GUARD: '1'
       LV_SUPPRESS_UI: '1'

@@ -12,6 +12,14 @@ inputs:
     required: false
     default: |
       docs/schemas/**
+  fail-on-fork:
+    description: "When true, fail with guidance if running on a fork (owner != expected)."
+    required: false
+    default: 'false'
+  repo-owner-expected:
+    description: "Owner considered 'upstream' (used to detect forks)."
+    required: false
+    default: 'LabVIEW-Community-CI-CD'
 outputs:
   docs_only:
     description: "'true' when all changed files are docs-only per globs"
@@ -94,3 +102,27 @@ runs:
           "- Changed: $($files.Count)"
         ) -join "`n"
         $summary | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8
+
+        # Optional fork detection with guidance
+        $owner = ($env:GH_REPO -split '/')[0]
+        $expected = '${{ inputs.repo-owner-expected }}'
+        $failOnFork = '${{ inputs.fail-on-fork }}'
+        if ($failOnFork -eq 'true' -and $owner -ne $expected) {
+          $hints = @(
+            '### Branch Protection Hints for Forks',
+            "- Configure rulesets on your fork to mirror upstream (owner: $expected).",
+            '- Require checks on protected branches (develop/main):',
+            '  - Pester (self-hosted) / preflight',
+            '  - Pester (self-hosted) / pester (all categories)',
+            '  - Fixture Drift Validation / Fixture Drift (Windows)',
+            '  - VI Binary Handling Gate / vi-binary-check',
+            '  - Validate / lint',
+            '  - markdownlint / lint',
+            '- Keep Windows runner labels consistent: [self-hosted, Windows, X64].',
+            '- Use one Windows variant to avoid drift (no windows-20xx).',
+            '- Set per-category timeouts with repo Variables (PESTER_TIMEOUT_*).'
+          ) -join "`n"
+          $hints | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8
+          Write-Host '::error::This appears to be a fork. Apply branch protection and required checks as outlined in the job summary.'
+          exit 20
+        }
