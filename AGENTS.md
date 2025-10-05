@@ -109,22 +109,13 @@
 Access policy: verify login with `gh auth status -h github.com`. For scripts, tokens fall back to `GH_ADMIN_TOKEN` or `GITHUB_TOKEN` when needed.
 
 
-### Issue ↔ PR Link (Auto-close on green)
 
-Autonomous flow (gh CLI preferred):
+### Autonomous PR ↔ Issue (one command)
 
-1) Ensure session has GitHub access: `gh auth status -h github.com`
-2) Create or update PR on current branch:
-   - New PR: `gh pr create -B develop -H <branch> --title '<title>' --body-file tmp-agg/pr-body.md`
-   - Existing PR: `gh pr edit <num> --body-file tmp-agg/pr-body.md`
-3) Open tracking issue and capture number:
-   - `gh issue create -t 'Track: <summary>' -F tmp-agg/issue-body.md -l ci -l documentation`
-   - Or scripted: `./tools/Open-TrackingIssue.ps1 -Title 'Track: <summary>' -BodyPath tmp-agg/issue-body.md -Labels ci,documentation -OutputNumberPath tmp-agg/issue.txt`
-4) Append closing keyword to the PR body and update PR:
-   - Add `Closes #<issueNumber>` to PR body
-   - `gh pr edit <num> --body-file tmp-agg/pr-body.md`
-
-Why this guarantees “green” before close: branch protections require required checks to pass before merge; GitHub auto‑closes the issue on merge when PR body contains `Closes #N`.
+- Use gh CLI powered end-to-end flow:
+  - `./tools/Run-AutonomousPRFlow.ps1 -Base develop -Head <branch> -Title '<title>' -PrBodyPath tmp-agg/pr-body.md -IssueTitle 'Track: <summary>' -IssueBodyPath tmp-agg/issue-body.md -Open`
+- Requires: `gh auth status -h github.com` is logged in.
+- Behavior: creates/updates the PR, opens a tracking issue, appends `Closes #N`, prints links, and lists recent runs.
 
 ## Policies & Guardrails (Strict)
 
@@ -151,6 +142,7 @@ Why this guarantees “green” before close: branch protections require require
 - VI Binary Handling Gate / vi-binary-check
 - Validate / lint
 - markdownlint / lint
+
 
 
 
