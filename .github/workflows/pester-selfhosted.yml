@@ -49,13 +49,14 @@ jobs:
 
       # Call the dispatcher directly (no external action dependency)
       # This dispatcher assumes Pester v5+ is pre-installed on the self-hosted runner
-      - name: Run Pester tests via local dispatcher
+      - name: Run Pester tests via local dispatcher (<= 150s)
         shell: pwsh
         run: |
           ./Invoke-PesterTests.ps1 `
             -TestsPath tests `
             -IncludeIntegration '${{ inputs.include_integration }}' `
-            -ResultsPath tests/results
+            -ResultsPath tests/results `
+            -TimeoutSeconds 150
 
       - name: Append test metrics to job summary
         if: always()
