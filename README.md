@@ -4,7 +4,6 @@
 
 [![Validate](https://github.com/LabVIEW-Community-CI-CD/compare-vi-cli-action/actions/workflows/validate.yml/badge.svg)](https://github.com/LabVIEW-Community-CI-CD/compare-vi-cli-action/actions/workflows/validate.yml)
 [![Smoke test](https://github.com/LabVIEW-Community-CI-CD/compare-vi-cli-action/actions/workflows/smoke.yml/badge.svg)](https://github.com/LabVIEW-Community-CI-CD/compare-vi-cli-action/actions/workflows/smoke.yml)
-[![Test (mock)](https://github.com/LabVIEW-Community-CI-CD/compare-vi-cli-action/actions/workflows/test-mock.yml/badge.svg)](https://github.com/LabVIEW-Community-CI-CD/compare-vi-cli-action/actions/workflows/test-mock.yml)
 [![Repository](https://img.shields.io/badge/GitHub-Repository-blue?logo=github)](https://github.com/LabVIEW-Community-CI-CD/compare-vi-cli-action)
 [![Environment](https://img.shields.io/badge/docs-Environment%20Vars-6A5ACD)](./docs/ENVIRONMENT.md)
 
@@ -198,6 +197,35 @@ See [`docs/action-outputs.md`](./docs/action-outputs.md) for complete output doc
 - **Same filename / different directories**: LVCompare cannot compare two different VIs
   with the *same leaf filename*. The action fails early with an explanatory error instead
   of triggering an IDE dialog.
+
+### Local Pester by Category
+
+Run targeted test categories locally using file patterns and a separate results folder per category:
+
+```powershell
+# Dispatcher-focused tests
+./Invoke-PesterTests.ps1 -IncludePatterns 'Invoke-PesterTests*Tests.ps1','PesterAvailability*Tests.ps1','PesterSummary*Tests.ps1','NestedDispatcher*Tests.ps1','Write-PesterSummaryToStepSummary*Tests.ps1' -ResultsPath tests/results/dispatcher
+
+# Fixtures / validator
+./Invoke-PesterTests.ps1 -IncludePatterns 'Fixtures*Tests.ps1','FixtureValidation*Tests.ps1','FixtureSummary.Tests.ps1','ViBinaryHandling.Tests.ps1' -ResultsPath tests/results/fixtures
+
+# Schema checks
+./Invoke-PesterTests.ps1 -IncludePatterns 'Schema*Tests.ps1','SchemaLite*Tests.ps1' -ResultsPath tests/results/schema
+
+# CompareVI
+./Invoke-PesterTests.ps1 -IncludePatterns 'CompareVI*Tests.ps1' -ResultsPath tests/results/comparevi
+
+# Loop & metrics
+./Invoke-PesterTests.ps1 -IncludePatterns 'Run-AutonomousIntegrationLoop*Tests.ps1','CompareLoop*Tests.ps1','LoopMetrics.Tests.ps1' -ResultsPath tests/results/loop
+
+# Runbook
+./Invoke-PesterTests.ps1 -IncludePatterns 'IntegrationRunbook.Tests.ps1' -ResultsPath tests/results/runbook
+
+# Orchestrator / workflows
+./Invoke-PesterTests.ps1 -IncludePatterns 'On-FixtureValidationFail.Tests.ps1','Workflow*Tests.ps1','Guard*Tests.ps1','AggregationHints*Tests.ps1','ArtifactTracking*Tests.ps1','FunctionShadowing*Tests.ps1','Args.Tokenization.Tests.ps1','Action.CompositeOutputs.Tests.ps1' -ResultsPath tests/results/orchestrator
+```
+
+See the CI version in the orchestrated workflow: `.github/workflows/ci-orchestrated.yml`.
 
 ### (Deprecated heading placeholder removed)
 

@@ -44,6 +44,7 @@ jobs:
   preflight:
     runs-on: [self-hosted, Windows, X64]
     timeout-minutes: 3
+    if: github.event_name == 'workflow_dispatch' || (github.event_name == 'pull_request' && contains(toJson(github.event.pull_request.labels), 'smoke'))
     steps:
       - uses: actions/checkout@v5
       - name: Verify LVCompare and idle LabVIEW state
@@ -61,6 +62,7 @@ jobs:
     runs-on: [self-hosted, Windows, X64]
     needs: preflight
     timeout-minutes: 3
+    if: github.event_name == 'workflow_dispatch' || (github.event_name == 'pull_request' && contains(toJson(github.event.pull_request.labels), 'smoke'))
     env:
       LV_BASE_VI: ${{ vars.LV_BASE_VI }}
       LV_HEAD_VI: ${{ vars.LV_HEAD_VI }}
@@ -169,6 +171,28 @@ jobs:
           if (-not $env:XCLI_PAT) { Write-Host 'XCLI_PAT not available; skipping comment.'; exit 0 }
           $lines = @(
             '### Smoke test results',
+            '',
+            "- diff=${{ steps.compare.outputs.diff }}",
+            "- exitCode=${{ steps.compare.outputs.exitCode }}",
+            "- cliPath=${{ steps.compare.outputs.cliPath }}",
+            "- command=${{ steps.compare.outputs.command }}"
+          ) -join "`n"
+          $payload = @{ body = $lines } | ConvertTo-Json -Compress
+          $headers = @{ Authorization = "Bearer $env:XCLI_PAT"; Accept = 'application/vnd.github+json'; 'User-Agent' = 'xcli-bot' }
+          $uri = "https://api.github.com/repos/$env:GH_REPO/issues/$env:PR_NUMBER/comments"
+          Invoke-RestMethod -Method POST -Uri $uri -Headers $headers -ContentType 'application/json' -Body $payload
+
+      - name: Comment results on PR (label-triggered)
+        if: ${{ github.event_name == 'pull_request' }}
+        shell: pwsh
+        env:
+          GH_REPO: ${{ github.repository }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          XCLI_PAT: ${{ secrets.XCLI_PAT }}
+        run: |
+          if (-not $env:XCLI_PAT) { Write-Host 'XCLI_PAT not available; skipping comment.'; exit 0 }
+          $lines = @(
+            '### Smoke test results (label-triggered)',
             '',
             "- diff=${{ steps.compare.outputs.diff }}",
             "- exitCode=${{ steps.compare.outputs.exitCode }}",
