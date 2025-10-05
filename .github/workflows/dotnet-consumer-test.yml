@@ -1,0 +1,55 @@
+name: .NET Consumer Test (Manual)
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'CompareVi.Shared version (e.g., 0.1.0). Leave empty for latest.'
+        required: false
+        default: ''
+
+permissions:
+  contents: read
+  packages: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  consume:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      OWNER: ${{ github.repository_owner }}
+    steps:
+      - uses: actions/checkout@v5
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+      - name: Create consumer and install package
+        shell: bash
+        env:
+          VER: ${{ inputs.version }}
+        run: |
+          set -euo pipefail
+          dotnet --info
+          dotnet new console -n consumer -o consumer --force
+          cat > consumer/Program.cs <<'CS'
+using System;
+using CompareVi.Shared;
+var tokens = ArgTokenizer.Tokenize("\"-a b\" c");
+Console.WriteLine(string.Join(",", tokens));
+CS
+          if [ -n "$VER" ]; then
+            dotnet add consumer/consumer.csproj package CompareVi.Shared --version "$VER" --source "https://nuget.pkg.github.com/${OWNER}/index.json"
+          else
+            dotnet add consumer/consumer.csproj package CompareVi.Shared --source "https://nuget.pkg.github.com/${OWNER}/index.json"
+          fi
+          pushd consumer
+          OUT="$(dotnet run -c Release --no-restore)"
+          echo "Output: $OUT"
+          [[ "$OUT" == *"c"* ]] || { echo "::error::Unexpected consumer output: $OUT"; exit 1; }
+          popd
+
