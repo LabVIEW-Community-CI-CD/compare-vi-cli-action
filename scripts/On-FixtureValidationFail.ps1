@@ -178,7 +178,7 @@ $ErrorActionPreference = 'Stop'
 
 
 
-function Initialize-Directory([string]$dir) {
+function Initialize-Directory([string]$dir) {
 
 
 
@@ -186,7 +186,37 @@ function Initialize-Directory([string]$dir) {
 
 
 
-}
+}
+
+# Handshake markers -----------------------------------------------------------
+function Write-HandshakeMarker {
+  param(
+    [Parameter(Mandatory=$true)][string]$Name,
+    [hashtable]$Data
+  )
+  try {
+    $payload = [ordered]@{
+      schema = 'handshake-marker/v1'
+      name   = $Name
+      atUtc  = (Get-Date).ToUniversalTime().ToString('o')
+      pid    = $PID
+    }
+    if ($Data) {
+      foreach ($k in $Data.Keys) { $payload[$k] = $Data[$k] }
+    }
+    $fname = ('handshake-{0}.json' -f ($Name.ToLowerInvariant()))
+    ($payload | ConvertTo-Json -Depth 6) | Set-Content -LiteralPath (Join-Path $OutputDir $fname) -Encoding utf8
+  } catch { }
+}
+
+function Reset-HandshakeMarkers {
+  try {
+    Get-ChildItem -LiteralPath $OutputDir -Filter 'handshake-*.json' -ErrorAction SilentlyContinue | ForEach-Object {
+      Remove-Item -LiteralPath $_.FullName -Force -ErrorAction SilentlyContinue
+    }
+  } catch { }
+  Write-HandshakeMarker -Name 'reset' -Data @{ outputDir = $OutputDir }
+}
 
 
 
@@ -302,7 +332,19 @@ if (-not $OutputDir) {
 
 
 
-Initialize-Directory $OutputDir
+Initialize-Directory $OutputDir
+
+# Reset and start handshake markers early for deterministic troubleshooting
+Reset-HandshakeMarkers
+Write-HandshakeMarker -Name 'start' -Data @{
+  strictJson   = $StrictJson
+  overrideJson = $OverrideJson
+  manifestPath = $ManifestPath
+  basePath     = $BasePath
+  headPath     = $HeadPath
+  renderReport = [bool]$RenderReport
+  simulate     = [bool]$SimulateCompare
+}
 
 
 
@@ -452,6 +494,9 @@ if ($strictExit -eq 0 -and $strict.ok) {
 
   ($summary | ConvertTo-Json -Depth 6) | Set-Content -LiteralPath $outPath -Encoding utf8
 
+  # End-of-flow marker for OK path
+  Write-HandshakeMarker -Name 'end' -Data @{ status = 'ok'; exitCode = 0 }
+
   # Best-effort: if simulate mode, ensure compare-exec.json exists for downstream consumers/tests
   if ($SimulateCompare) {
     try {
@@ -478,7 +523,7 @@ if ($strictExit -eq 0 -and $strict.ok) {
 
 
 
-  exit 0
+  exit 0
 
 
 
@@ -530,7 +575,14 @@ if ($strictExit -eq 6) {
 
 
 
-  if (-not $cliExists) { Add-Note 'LVCompare.exe missing at canonical path'; }
+  if (-not $cliExists) { Add-Note 'LVCompare.exe missing at canonical path'; }
+
+  # Phase marker prior to compare/report execution
+  Write-HandshakeMarker -Name 'compare' -Data @{
+    cliExists    = [bool]$cliExists
+    lvCompareCli = $cli
+    renderReport = [bool]$RenderReport
+  }
 
 
 
@@ -603,8 +655,9 @@ if ($RenderReport) {
 
     # Generate HTML fragment via reporter script
     $reporter = Join-Path (Join-Path $PSScriptRoot '') 'Render-CompareReport.ps1'
-    if (Test-Path -LiteralPath $reporter) {
-      $diff = if ($exitCode -eq 1) { 'true' } elseif ($exitCode -eq 0) { 'false' } else { 'false' }
+    if (Test-Path -LiteralPath $reporter) {
+      Write-HandshakeMarker -Name 'report' -Data @{ reporter = $reporter }
+      $diff = if ($exitCode -eq 1) { 'true' } elseif ($exitCode -eq 0) { 'false' } else { 'false' }
       $cmd = if ($command) { $command } else { '"{0}" "{1}" {2}' -f $cli,(Resolve-Path $BasePath).Path,(Resolve-Path $HeadPath).Path }
       pwsh -NoLogo -NoProfile -File $reporter -Command $cmd -ExitCode $exitCode -Diff $diff -CliPath $cli -DurationSeconds $duration -OutputPath (Join-Path $OutputDir 'compare-report.html') -ExecJsonPath (Join-Path $OutputDir 'compare-exec.json') | Out-Null
       Add-Artifact 'compare-report.html'
@@ -617,11 +670,14 @@ if ($RenderReport) {
 
 
 
-  ($summary | ConvertTo-Json -Depth 6) | Set-Content -LiteralPath $outPath -Encoding utf8
+  ($summary | ConvertTo-Json -Depth 6) | Set-Content -LiteralPath $outPath -Encoding utf8
+
+  # End-of-flow marker for drift path
+  Write-HandshakeMarker -Name 'end' -Data @{ status = 'drift'; exitCode = 1 }
 
 
 
-  exit 1
+  exit 1
 
 
 
@@ -685,11 +741,14 @@ else {
 
 
 
-  ($summary | ConvertTo-Json -Depth 6) | Set-Content -LiteralPath $outPath -Encoding utf8
+  ($summary | ConvertTo-Json -Depth 6) | Set-Content -LiteralPath $outPath -Encoding utf8
+
+  # End-of-flow marker for structural failure
+  Write-HandshakeMarker -Name 'end' -Data @{ status = 'fail-structural'; exitCode = 1 }
 
 
 
-  exit 1
+  exit 1
 
 
 
