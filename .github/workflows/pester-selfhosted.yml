@@ -197,7 +197,9 @@ jobs:
         if: always()
         shell: pwsh
         run: |
-          pwsh -NonInteractive -File tools/Write-FailureInventory.ps1 -ResultsDir 'tests/results' -AppendToStepSummary
+          $script = Join-Path $env:GITHUB_WORKSPACE 'tools/Write-FailureInventory.ps1'
+          if (-not (Test-Path -LiteralPath $script)) { Write-Error "FailureInventory script not found: $script"; exit 1 }
+          pwsh -NonInteractive -File $script -ResultsDir 'tests/results' -AppendToStepSummary
 
       - name: Append required checks (branch rules hint)
         if: ${{ always() && matrix.category == 'dispatcher' }}
