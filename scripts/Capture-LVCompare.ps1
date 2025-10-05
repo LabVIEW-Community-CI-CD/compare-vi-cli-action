@@ -117,12 +117,14 @@ $jsonPath   = Join-Path $OutputDir 'lvcompare-capture.json'
 $reportPath = Join-Path $OutputDir 'compare-report.html'
 
 # Build process start info
-$psi = New-Object System.Diagnostics.ProcessStartInfo
-$psi.FileName = $cliPath
-$psi.UseShellExecute = $false
-$psi.RedirectStandardOutput = $true
-$psi.CreateNoWindow = $true
-$psi.RedirectStandardError = $true
+$psi = New-Object System.Diagnostics.ProcessStartInfo
+$psi.FileName = $cliPath
+$psi.UseShellExecute = $false
+$psi.RedirectStandardOutput = $true
+$psi.CreateNoWindow = $true
+$psi.RedirectStandardError = $true
+try { $psi.WindowStyle = [System.Diagnostics.ProcessWindowStyle]::Hidden } catch {}
+try { $psi.ErrorDialog = $false } catch {}
 
 # Argument order: base, head, flags
 $psi.ArgumentList.Clear()
