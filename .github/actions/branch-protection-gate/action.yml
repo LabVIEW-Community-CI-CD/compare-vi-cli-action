@@ -27,6 +27,10 @@ inputs:
     description: "Fail when mismatch is detected (defaults true)"
     required: false
     default: 'true'
+  fail-on-no-access:
+    description: "When true and strict=true, fail if branch protection cannot be read (e.g., missing admin PAT)"
+    required: false
+    default: 'true'
 runs:
   using: composite
   steps:
@@ -39,6 +43,7 @@ runs:
         GH_EVENT_PATH: ${{ github.event_path }}
         INPUT_BRANCH: ${{ inputs.branch }}
         STRICT: ${{ inputs.strict }}
+        FAIL_NO_ACCESS: ${{ inputs['fail-on-no-access'] }}
         REQUIRED_CHECKS: ${{ inputs.required-checks }}
         # Prefer a PAT with admin rights; fallback to GITHUB_TOKEN (may lack admin perms)
         GATE_PAT: ${{ secrets.XCLI_PAT }}
@@ -91,14 +96,22 @@ runs:
           $lines += '  1) Add an admin PAT as repository secret `XCLI_PAT`.'
           $lines += '  2) Ensure branch protection rules include the required checks above.'
           $lines += '  3) Re-run the workflow.'
-          $lines -join "`n" | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8
+          $text = $lines -join "`n"
+          $text | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8
+          # Also print to console for quick visibility
+          Write-Host $text
         }
         $expected = @()
         $text = $env:REQUIRED_CHECKS -split "`r?`n" | Where-Object { $_ -and ($_ -notmatch '^\s*#') }
         foreach ($ln in $text) { $expected += ($ln.Trim()) }
         if (-not $ok) {
-          # Already wrote a detailed summary above. Nothing more to do.
-          exit 0
+          # If strict and fail-on-no-access, fail; otherwise allow CI to proceed with notice-only.
+          if ($env:STRICT -eq 'true' -and $env:FAIL_NO_ACCESS -eq 'true') {
+            Write-Host '::error::Branch protection could not be read. Failing fast per strict gate policy.'
+            exit 21
+          } else {
+            exit 0
+          }
         }
         # GitHub may return legacy contexts or structured checks; support both
         $live = @()
