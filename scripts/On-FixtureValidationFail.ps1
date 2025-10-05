@@ -659,8 +659,26 @@ if ($RenderReport) {
       Write-HandshakeMarker -Name 'report' -Data @{ reporter = $reporter }
       $diff = if ($exitCode -eq 1) { 'true' } elseif ($exitCode -eq 0) { 'false' } else { 'false' }
       $cmd = if ($command) { $command } else { '"{0}" "{1}" {2}' -f $cli,(Resolve-Path $BasePath).Path,(Resolve-Path $HeadPath).Path }
+      # Optional console watch during report generation
+      $cwId = $null
+      if ($env:WATCH_CONSOLE -match '^(?i:1|true|yes|on)$') {
+        try {
+          $root = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path
+          . (Join-Path $root 'tools' 'ConsoleWatch.ps1')
+          $cwId = Start-ConsoleWatch -OutDir $OutputDir
+        } catch {}
+      }
       & $reporter -Command $cmd -ExitCode $exitCode -Diff $diff -CliPath $cli -DurationSeconds $duration -OutputPath (Join-Path $OutputDir 'compare-report.html') -ExecJsonPath (Join-Path $OutputDir 'compare-exec.json') | Out-Null
-      Add-Artifact 'compare-report.html'
+      Add-Artifact 'compare-report.html'
+      if ($cwId) {
+        try {
+          $cwSum = Stop-ConsoleWatch -Id $cwId -OutDir $OutputDir -Phase 'report'
+          if ($cwSum -and $cwSum.counts.Keys.Count -gt 0) {
+            $pairs = @(); foreach ($k in ($cwSum.counts.Keys | Sort-Object)) { $pairs += ("{0}={1}" -f $k, $cwSum.counts[$k]) }
+            Add-Note ("console-spawns: {0}" -f ($pairs -join ','))
+          } else { Add-Note 'console-spawns: none' }
+        } catch { Add-Note 'console-watch stop failed' }
+      }
     } else { Add-Note 'Reporter script not found; skipped HTML report' }
   } catch {
     Add-Note ("LVCompare or report generation failed: {0}" -f $_.Exception.Message)

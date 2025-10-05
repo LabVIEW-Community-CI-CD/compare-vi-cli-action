@@ -190,6 +190,11 @@ function Invoke-PhaseDiagnostics {
   if (-not (Test-Path $cli)) { $r.details.skipped='cli-missing'; $r.status='Skipped'; return }
   if (-not ($ctx.basePath -and $ctx.headPath)) { $r.details.skipped='paths-missing'; $r.status='Skipped'; return }
   try {
+    # Optional console watcher during diagnostics compare
+    $cwId = $null
+    if ($env:WATCH_CONSOLE -match '^(?i:1|true|yes|on)$') {
+      try { . (Join-Path $PSScriptRoot 'ConsoleWatch.ps1'); $cwId = Start-ConsoleWatch -OutDir (Get-Location).Path } catch {}
+    }
     $compareScript = Join-Path -Path $PSScriptRoot -ChildPath 'CompareVI.ps1'
     if (-not (Test-Path $compareScript)) {
       $alt = Join-Path -Path (Join-Path -Path $PSScriptRoot -ChildPath 'scripts') -ChildPath 'CompareVI.ps1'
@@ -204,6 +209,9 @@ function Invoke-PhaseDiagnostics {
     $r.details.exitCode = $res.ExitCode
     $r.details.stdoutLength = 0
     $r.details.stderrLength = 0
+    if ($cwId) {
+      try { $cwSum = Stop-ConsoleWatch -Id $cwId -OutDir (Get-Location).Path -Phase 'diagnostics'; if ($cwSum) { $r.details.consoleSpawns = $cwSum.counts } } catch {}
+    }
     $r.status = 'Passed'
   } catch {
     $r.details.error = $_.Exception.Message
