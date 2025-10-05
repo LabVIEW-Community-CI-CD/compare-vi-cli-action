@@ -28,6 +28,11 @@ jobs:
         uses: actions/setup-dotnet@v4
         with:
           dotnet-version: '8.0.x'
+      - name: Add GitHub Packages source (auth)
+        run: |
+          dotnet nuget add source "https://nuget.pkg.github.com/${{ env.OWNER }}/index.json" \
+            --name github --username ${{ env.OWNER }} --password ${{ secrets.GITHUB_TOKEN }} --store-password-in-clear-text
+          dotnet nuget list source
       - name: Create consumer and install package
         shell: bash
         env:
@@ -43,13 +48,12 @@ var tokens = ArgTokenizer.Tokenize("\"-a b\" c");
 Console.WriteLine(string.Join(",", tokens));
 CS
           if [ -n "$VER" ]; then
-            dotnet add consumer/consumer.csproj package CompareVi.Shared --version "$VER" --source "https://nuget.pkg.github.com/${OWNER}/index.json"
+            dotnet add consumer/consumer.csproj package CompareVi.Shared --version "$VER"
           else
-            dotnet add consumer/consumer.csproj package CompareVi.Shared --source "https://nuget.pkg.github.com/${OWNER}/index.json"
+            dotnet add consumer/consumer.csproj package CompareVi.Shared
           fi
           pushd consumer
           OUT="$(dotnet run -c Release --no-restore)"
           echo "Output: $OUT"
           [[ "$OUT" == *"c"* ]] || { echo "::error::Unexpected consumer output: $OUT"; exit 1; }
           popd
-
