@@ -131,15 +131,15 @@ jobs:
           cleanup: ${{ env.UNBLOCK_GUARD == '1' }}
           process-names: 'conhost,pwsh,LabVIEW,LVCompare'
 
-      - name: Comment results on PR (using XCLI_PAT)
+      - name: Comment results on PR (using GH_ADMIN_TOKEN)
         if: always()
         shell: pwsh
         env:
           GH_REPO: ${{ github.repository }}
           PR_NUMBER: ${{ github.event.pull_request.number }}
-          XCLI_PAT: ${{ secrets.XCLI_PAT }}
+          GH_ADMIN_TOKEN: ${{ secrets.GH_ADMIN_TOKEN }}
         run: |
-          if (-not $env:XCLI_PAT) { Write-Host 'XCLI_PAT not available; skipping comment.'; exit 0 }
+          if (-not $env:GH_ADMIN_TOKEN) { Write-Host 'GH_ADMIN_TOKEN not available; skipping comment.'; exit 0 }
           $summaryPath = './tests/results/pester-summary.txt'
           $jsonSummaryPath = Join-Path $env:RUNNER_TEMP 'compare-summary.json'
           $durationSeconds = $null
@@ -190,6 +190,7 @@ jobs:
           if ($timingBlock) { $lines += $timingBlock }
           $lines = $lines -join "`n"
           $payload = @{ body = $lines } | ConvertTo-Json -Compress
-          $headers = @{ Authorization = "Bearer $env:XCLI_PAT"; Accept = 'application/vnd.github+json'; 'User-Agent' = 'xcli-bot' }
+          $headers = @{ Authorization = "Bearer $env:GH_ADMIN_TOKEN"; Accept = 'application/vnd.github+json'; 'User-Agent' = 'xcli-bot' }
           $uri = "https://api.github.com/repos/$env:GH_REPO/issues/$env:PR_NUMBER/comments"
           Invoke-RestMethod -Method POST -Uri $uri -Headers $headers -ContentType 'application/json' -Body $payload
+
