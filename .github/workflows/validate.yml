@@ -32,6 +32,10 @@ jobs:
         run: |
           pwsh -File tools/Lint-DotSourcing.ps1
 
+      - name: Lint inline-if in format (-f)
+        shell: pwsh
+        run: pwsh -File tools/Lint-InlineIfInFormat.ps1
+
       - name: Install markdownlint-cli
         run: |
           npm install -g markdownlint-cli
