@@ -13,7 +13,7 @@ Before running end-to-end tests, ensure you have completed the setup in [SELFHOS
   - `LV_BASE_VI` - Path to base test VI file
   - `LV_HEAD_VI` - Path to head test VI file (different from base)
 - ✅ Repository secret configured:
-  - `XCLI_PAT` - Personal Access Token with `repo` and `actions:write` scopes
+- `GH_ADMIN_TOKEN` - Personal Access Token with `repo` and `actions:write` scopes
 
 ## Pre-Test Validation
 
@@ -256,7 +256,7 @@ After running all test scenarios, verify:
 - [ ] Environment validation catches missing CLI
 - [ ] Environment validation catches missing environment variables
 - [ ] Test results are uploaded as artifacts
-- [ ] Test results are posted as PR comments (when XCLI_PAT is configured)
+- [ ] Test results are posted as PR comments (when GH_ADMIN_TOKEN is configured)
 - [ ] All Integration tests pass on self-hosted runner
 - [ ] Smoke tests complete successfully
 
@@ -295,11 +295,11 @@ After running all test scenarios, verify:
 
 ### PR Comments Don't Trigger Workflows
 
-**Cause:** Missing XCLI_PAT or insufficient permissions
+**Cause:** Missing GH_ADMIN_TOKEN or insufficient permissions
 
 **Solution:**
 
-1. Verify `XCLI_PAT` secret is set in repository settings
+1. Verify `GH_ADMIN_TOKEN` secret is set in repository settings
 2. Ensure PAT has `repo` and `actions:write` scopes
 3. Verify commenter has OWNER, MEMBER, or COLLABORATOR association
 4. Check command-dispatch workflow logs for errors

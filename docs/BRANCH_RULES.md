@@ -51,9 +51,9 @@ This repository uses a single Windows variant (self‑hosted) and deterministic 
 
 - The Validate and self‑hosted Pester workflows include a Branch Protection Gate that checks required status checks on the target branch before running.
 - When missing checks are detected, CI fails fast with a summary of what’s missing.
-- If no admin PAT is available (secret `XCLI_PAT`), the gate writes a notice‑only summary with:
+- If no admin PAT is available (secret `GH_ADMIN_TOKEN`), the gate writes a notice‑only summary with:
   - Expected checks
   - Links to this doc in the PR head fork (`docs/BRANCH_RULES.md`)
   - The repository Branch protection settings page
-  - Steps to enforce (add `XCLI_PAT`, configure checks, re‑run)
-- Develop toggle: set repo variable `ENFORCE_PROTECTION_ON_DEVELOP=1` to enforce this gate on `develop` as well (default is off).
+- Steps to enforce (add `GH_ADMIN_TOKEN`, configure checks, re‑run)
+- Develop toggle: gate enforcement defaults ON (treats unset as enabled). Set repo variable `ENFORCE_PROTECTION_ON_DEVELOP=0` to disable on `develop`.

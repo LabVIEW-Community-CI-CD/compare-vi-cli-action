@@ -21,7 +21,7 @@ Set-StrictMode -Version Latest
 
 $root = Resolve-Path -LiteralPath $Path
 $md = Get-ChildItem -LiteralPath $root -Recurse -File -Include *.md -ErrorAction SilentlyContinue |
-  Where-Object { $_.FullName -notmatch "\\\.git\\|\\node_modules\\|\\.venv\\|\\dist\\|\\build\\|\\coverage\\" }
+  Where-Object { $_.FullName -notmatch "\\\.git\\|\\node_modules\\|\\.venv\\|\\dist\\|\\build\\|\\coverage\\|\\bin\\" }
 $missing = @(); $badHttp = @()
 
 function Write-Info($msg){ if (-not $Quiet) { Write-Host $msg -ForegroundColor DarkGray } }

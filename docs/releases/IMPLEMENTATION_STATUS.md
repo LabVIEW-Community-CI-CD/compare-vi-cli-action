@@ -153,7 +153,7 @@ This document summarizes the implementation status of self-hosted Windows runner
   - Single-run comparison (VI1.vi vs VI2.vi)
   - Loop mode comparison with latency metrics (25 iterations)
   - HTML reports, JSON summaries, and Markdown snippets
-- Posts results as PR comment (requires XCLI_PAT secret)
+- Posts results as PR comment (requires GH_ADMIN_TOKEN secret)
 - Uploads artifacts for both single and loop mode
 - **Environment validation**: Checks for CLI before running tests
 
