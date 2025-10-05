@@ -68,6 +68,18 @@ runs:
           }
           return ('https://github.com/{0}/blob/{1}/docs/BRANCH_RULES.md' -f $repo, $branch)
         }
+        function Get-BranchSpecificDocsUrl($repo, $branch) {
+          $safeRef = $branch
+          if ($env:GH_EVENT_NAME -eq 'pull_request') {
+            try {
+              $evt = Get-Content -Raw -LiteralPath $env:GH_EVENT_PATH | ConvertFrom-Json
+              if ($evt.head.ref -and $evt.head.repo.full_name) {
+                return ('https://github.com/{0}/blob/{1}/docs/branch-rules/{2}.md' -f $evt.head.repo.full_name, $evt.head.ref, $evt.base.ref)
+              }
+            } catch {}
+          }
+          return ('https://github.com/{0}/blob/{1}/docs/branch-rules/{2}.md' -f $repo, $branch, $branch)
+        }
         $branch = Get-TargetBranch
         $repo = $env:GH_REPOSITORY
         $owner,$name = $repo.Split('/')
@@ -81,6 +93,7 @@ runs:
           $ok = $false
           $msg = $_.Exception.Message
           $docsUrl = Get-DocsUrl -repo $repo -branch $branch
+          $branchDocUrl = Get-BranchSpecificDocsUrl -repo $repo -branch $branch
           $settingsUrl = ('https://github.com/{0}/settings/branches' -f $repo)
           $lines = @('### Branch Protection Gate (notice-only)','')
           $lines += "- Repo: $repo  Branch: $branch"
@@ -89,7 +102,8 @@ runs:
           $lines += '- Expected required checks (see docs for details):'
           foreach (($env:REQUIRED_CHECKS -split "`r?`n" | Where-Object { $_ -and ($_ -notmatch '^\s*#') })) { $lines += ('  - ' + $_.Trim()) }
           $lines += ''
-          $lines += ('- Docs: ' + $docsUrl)
+          $lines += ('- Branch-specific docs (if present): ' + $branchDocUrl)
+          $lines += ('- Default docs: ' + $docsUrl)
           $lines += ('- Settings: ' + $settingsUrl)
           $lines += ''
           $lines += '- To enforce this gate:'

@@ -46,11 +46,22 @@ jobs:
     steps:
       - uses: actions/checkout@v5
       - name: Branch protection gate (base branch)
-        if: ${{ github.event_name == 'pull_request' && (github.event.pull_request.base.ref == 'main' || startsWith(github.event.pull_request.base.ref, 'release/') || (github.event.pull_request.base.ref == 'develop' && vars.ENFORCE_PROTECTION_ON_DEVELOP == '1')) }}
+        if: ${{ github.event_name == 'pull_request' && (
+              github.event.pull_request.base.ref == 'main' ||
+              startsWith(github.event.pull_request.base.ref, 'release/') ||
+              (github.event.pull_request.base.ref == 'develop' && vars.ENFORCE_PROTECTION_ON_DEVELOP == '1') ||
+              (vars.ENFORCE_PROTECTION_ON_TOPIC == '1' && (
+                startsWith(github.event.pull_request.base.ref, 'feature/') ||
+                startsWith(github.event.pull_request.base.ref, 'bugfix/') ||
+                startsWith(github.event.pull_request.base.ref, 'hotfix/') ||
+                startsWith(github.event.pull_request.base.ref, 'chore/')
+              ))
+            ) }}
         uses: ./.github/actions/branch-protection-gate
         with:
           branch: ${{ github.event.pull_request.base.ref }}
           strict: 'true'
+          fail-on-no-access: 'true'
   pre-init:
     runs-on: ubuntu-latest
     needs: [protect]
