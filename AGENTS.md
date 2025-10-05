@@ -98,28 +98,16 @@
 - Workflows overview: see `docs/WORKFLOWS_OVERVIEW.md` for a concise catalog of all workflows, triggers, and gates (useful to spot drift and prune duplicates).
 - Pipeline depth map: see `docs/PIPELINE_GRAPH.md` for a graphical stack of gates and jobs.
 
-## Agent Runbook (Pinned)
 
-- Admin token (generic):
-  - Secret `GH_ADMIN_TOKEN` (repo); self-hosted file bootstrap: `C:\actions-runner\GH_ADMIN_TOKEN.txt` (validated then used); fallback to `GITHUB_TOKEN` where possible. XCLI_PAT is deprecated.
-- Branch Protection Gate:
-  - Validate (main/release/*): strict + fail-on-no-access=true (blocks CI).
-  - Pester (self-hosted) and CI Orchestrated (PRs): strict, but fail-on-no-access=false (posts help comment, then continue).
-  - Toggles (defaults ON):
-    - `ENFORCE_PROTECTION_ON_DEVELOP=0` disables on `develop`.
-    - `ENFORCE_PROTECTION_ON_TOPIC=0` disables on `feature/*|bugfix/*|hotfix/*|chore/*`.
-  - Branch docs: add `docs/branch-rules/<base-branch>.md` (use `docs/branch-rules/TEMPLATE.md`). Gate links there automatically.
-- Labels (drive execution):
-  - Palette in `.github/labels.yml`; auto-synced on PRs and weekly. Drift: Validate fails on `main` when labels missing.
-  - Trigger labels: `smoke`, `test-integration`. Apply via comment: `/label smoke, test-integration` (values whitelisted to labels.yml).
-- PR template (enforced):
-  - Must include required sections and checklist (Verify required checks, Validate, Pester, Drift).
-- If the gate fails:
-  - Read the help comment; fix protections, add admin token (secret or file), update branch docs as needed, and re-run the workflow (workflow_dispatch links provided in comment).
-- Key docs:
-  - Branch rules: `docs/BRANCH_RULES.md` (required checks & toggles)
-  - Branch-specific: `docs/branch-rules/`
-  - Pipeline: `docs/PIPELINE_GRAPH.md`
+### Monitor CI Runs
+
+- List recent runs for current branch: `./tools/List-BranchRuns.ps1`
+- Specific branch: `./tools/List-BranchRuns.ps1 -Branch chore/branch-rules-and-hygiene-docs -Limit 10`
+- Filter by workflow name or status: `./tools/List-BranchRuns.ps1 -Name 'Pester*' -Status in_progress`
+- Open newest run: `./tools/List-BranchRuns.ps1 -Name 'Pester (self-hosted)' -Open`
+
+Token resolution: prefers `GH_ADMIN_TOKEN`, then `GH_TOKEN`, then legacy `XCLI_PAT`, then `GITHUB_TOKEN`.
+
 
 
 
