@@ -9,6 +9,8 @@ Describe 'Fixture manifest enforcement' -Tag 'Unit' {
     $script:manifest = Join-Path $TestDrive 'fixtures.manifest.json'
     Copy-Item -LiteralPath (Join-Path $repoRoot 'fixtures.manifest.json') -Destination $manifest -Force
     $script:vi1 = Join-Path $repoRoot 'VI1.vi'
+    # Capture original manifest content for restoration in tests
+    $script:originalManifest = Get-Content -LiteralPath $script:manifest -Raw
     function Set-ManifestBytesToActual {
       $m = Get-Content -LiteralPath $script:manifest -Raw | ConvertFrom-Json
       foreach ($it in $m.items) {
@@ -30,12 +32,13 @@ Describe 'Fixture manifest enforcement' -Tag 'Unit' {
       Set-ManifestBytesToActual
       $m = Get-Content -LiteralPath $manifest -Raw | ConvertFrom-Json
       # Invalidate hash for VI1.vi
-      ($m.items | Where-Object { $_.path -eq 'VI1.vi' }).sha256 = 'BADHASH'
+      $targets = @($m.items | Where-Object { $_.path -eq 'VI1.vi' })
+      foreach ($t in $targets) { $t.sha256 = 'BADHASH' }
       ($m | ConvertTo-Json -Depth 5) | Set-Content -LiteralPath $manifest -Encoding utf8 -NoNewline
   pwsh -NoLogo -NoProfile -File $validator -DisableToken -ManifestPath $manifest | Out-Null
       $LASTEXITCODE | Should -Be 6
     } finally {
-      $originalManifest | Set-Content -LiteralPath $manifest -Encoding utf8 -NoNewline
+      $script:originalManifest | Set-Content -LiteralPath $manifest -Encoding utf8 -NoNewline
     }
   }
 
@@ -43,12 +46,13 @@ Describe 'Fixture manifest enforcement' -Tag 'Unit' {
     try {
       Set-ManifestBytesToActual
       $m = Get-Content -LiteralPath $manifest -Raw | ConvertFrom-Json
-      ($m.items | Where-Object { $_.path -eq 'VI2.vi' }).sha256 = 'DEADBEEF'
+      $targets = @($m.items | Where-Object { $_.path -eq 'VI2.vi' })
+      foreach ($t in $targets) { $t.sha256 = 'DEADBEEF' }
       ($m | ConvertTo-Json -Depth 5) | Set-Content -LiteralPath $manifest -Encoding utf8 -NoNewline
   pwsh -NoLogo -NoProfile -File $validator -TestAllowFixtureUpdate -DisableToken -ManifestPath $manifest | Out-Null
       $LASTEXITCODE | Should -Be 0
     } finally {
-      $originalManifest | Set-Content -LiteralPath $manifest -Encoding utf8 -NoNewline
+      $script:originalManifest | Set-Content -LiteralPath $manifest -Encoding utf8 -NoNewline
     }
   }
 

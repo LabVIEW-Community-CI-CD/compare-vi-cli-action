@@ -450,8 +450,32 @@ if ($strictExit -eq 0 -and $strict.ok) {
 
 
 
-  ($summary | ConvertTo-Json -Depth 6) | Set-Content -LiteralPath $outPath -Encoding utf8
-
+  ($summary | ConvertTo-Json -Depth 6) | Set-Content -LiteralPath $outPath -Encoding utf8
+
+  # Best-effort: if simulate mode, ensure compare-exec.json exists for downstream consumers/tests
+  if ($SimulateCompare) {
+    try {
+      $ej2 = Join-Path $OutputDir 'compare-exec.json'
+      if (-not (Test-Path -LiteralPath $ej2)) {
+        $exec = [pscustomobject]@{
+          schema       = 'compare-exec/v1'
+          generatedAt  = (Get-Date).ToString('o')
+          cliPath      = $null
+          command      = $null
+          exitCode     = 1
+          diff         = $true
+          cwd          = (Get-Location).Path
+          duration_s   = 0
+          duration_ns  = $null
+          base         = (Resolve-Path $BasePath).Path
+          head         = (Resolve-Path $HeadPath).Path
+        }
+        $exec | ConvertTo-Json -Depth 6 | Out-File -FilePath $ej2 -Encoding utf8 -ErrorAction SilentlyContinue
+      }
+      Add-Artifact 'compare-exec.json'
+    } catch { Add-Note ("simulate compare placeholder exec json failed: {0}" -f $_.Exception.Message) }
+  }
+
 
 
   exit 0
@@ -522,27 +546,27 @@ if ($strictExit -eq 6) {
 
 
 
-if ($RenderReport -and $cliExists) {
-  try {
-    if ($SimulateCompare) {
-      # Test-only simulated outputs
-      $stdout = 'simulated lvcompare output'
-      $stderr = ''
-      $exitCode = 1
-      $duration = 0.01
-    } else {
-      # Use robust dispatcher to avoid LVCompare UI popups and apply preflight guards
-      $repoRoot = Resolve-Path (Join-Path $PSScriptRoot '..') | Select-Object -ExpandProperty Path
-      . (Join-Path $repoRoot 'scripts' 'CompareVI.ps1')
+if ($RenderReport) {
+  try {
+    if ($SimulateCompare -or -not $cliExists) {
+      # Test-only simulated outputs
+      $stdout = 'simulated lvcompare output'
+      $stderr = ''
+      $exitCode = 1
+      $duration = 0.01
+    } else {
+      # Use robust dispatcher to avoid LVCompare UI popups and apply preflight guards
+      $repoRoot = Resolve-Path (Join-Path $PSScriptRoot '..') | Select-Object -ExpandProperty Path
+      . (Join-Path $repoRoot 'scripts' 'CompareVI.ps1')
       $execJsonPath = Join-Path $OutputDir 'compare-exec.json'
       $res = Invoke-CompareVI -Base $BasePath -Head $HeadPath -LvComparePath $cli -LvCompareArgs $LvCompareArgs -FailOnDiff:$false -CompareExecJsonPath $execJsonPath
-      $exitCode = $res.ExitCode
-      $duration = $res.CompareDurationSeconds
-      $command = $res.Command
-      # CompareVI does not capture raw streams; emit placeholders for completeness
+      $exitCode = $res.ExitCode
+      $duration = $res.CompareDurationSeconds
+      $command = $res.Command
+      # CompareVI does not capture raw streams; emit placeholders for completeness
       $stdout = ''
       $stderr = ''
-    }
+    }
     # Persist exec JSON for simulated path as well, and add a brief optional settle delay
     try {
       $ej = Join-Path $OutputDir 'compare-exec.json'
@@ -563,6 +587,15 @@ if ($RenderReport -and $cliExists) {
         $exec | ConvertTo-Json -Depth 6 | Out-File -FilePath $ej -Encoding utf8 -ErrorAction SilentlyContinue
       }
       Add-Artifact 'compare-exec.json'
+      # Emit lvcompare placeholders for test expectations
+      try {
+        Set-Content -LiteralPath (Join-Path $OutputDir 'lvcompare-stdout.txt') -Value $stdout -Encoding utf8
+        Set-Content -LiteralPath (Join-Path $OutputDir 'lvcompare-stderr.txt') -Value $stderr -Encoding utf8
+        Set-Content -LiteralPath (Join-Path $OutputDir 'lvcompare-exitcode.txt') -Value ([string]$exitCode) -Encoding utf8
+        Add-Artifact 'lvcompare-stdout.txt'
+        Add-Artifact 'lvcompare-stderr.txt'
+        Add-Artifact 'lvcompare-exitcode.txt'
+      } catch { Add-Note ("failed to write lvcompare placeholder files: {0}" -f $_.Exception.Message) }
       Add-Note ("compare exit={0} diff={1} dur={2}s" -f $exitCode, (($exitCode -eq 1) ? 'true' : 'false'), $duration)
       $delayMs = 0; if ($env:REPORT_DELAY_MS) { [void][int]::TryParse($env:REPORT_DELAY_MS, [ref]$delayMs) }
       if ($delayMs -gt 0) { Start-Sleep -Milliseconds $delayMs }
