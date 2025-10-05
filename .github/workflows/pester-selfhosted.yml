@@ -135,7 +135,10 @@ jobs:
 
       # Call the dispatcher per category to surface atomic failures
       # This dispatcher assumes Pester v5+ is pre-installed on the self-hosted runner
-      - name: Run Pester category
+            - name: Ensure Runner Invoker
+        uses: ./.github/actions/ensure-invoker
+        with:
+          pipe-name: 'lvci.invoker'- name: Run Pester category
         uses: ./.github/actions/pester-category-run
         with:
           category: ${{ matrix.category }}
@@ -284,3 +287,4 @@ jobs:
           $headers = @{ Authorization = "Bearer $env:GH_TOKEN"; Accept = 'application/vnd.github+json'; 'User-Agent'='gate-help-bot' }
           $uri = "https://api.github.com/repos/$env:REPO/issues/$env:PR_NUMBER/comments"
           try { Invoke-RestMethod -Method POST -Uri $uri -Headers $headers -ContentType 'application/json' -Body $payload } catch { Write-Host "::notice::Failed to post help comment: $_" }
+
