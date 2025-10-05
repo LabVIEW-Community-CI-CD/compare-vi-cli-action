@@ -94,6 +94,9 @@ function Initialize-Telemetry {
   if ($script:telemetryInit) { return }
   $dir = Get-InvokerDir
   $script:telemetryFile = Join-Path $dir 'console-spawns.ndjson'
+  if (-not (Test-Path -LiteralPath $script:telemetryFile)) {
+    try { New-Item -ItemType File -Path $script:telemetryFile -Force | Out-Null } catch {}
+  }
   $names = @('pwsh.exe','conhost.exe','LVCompare.exe','LabVIEW.exe')
   $nameFilter = ($names | ForEach-Object { "TargetInstance.Name='$_'" }) -join ' OR '
   $scope = New-Object System.Management.ManagementScope('\\\.\root\CIMV2')
