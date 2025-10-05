@@ -74,8 +74,8 @@ runs:
         $ErrorActionPreference = 'Stop'
         $strictPath = Join-Path (Get-Location) 'strict.json'
         $overridePath = Join-Path (Get-Location) 'override.json'
-        pwsh -NoLogo -NoProfile -File "${{ github.workspace }}/tools/Validate-Fixtures.ps1" -Json | Out-File -FilePath $strictPath -Encoding utf8
-        pwsh -NoLogo -NoProfile -File "${{ github.workspace }}/tools/Validate-Fixtures.ps1" -Json -TestAllowFixtureUpdate | Out-File -FilePath $overridePath -Encoding utf8
+        pwsh -NoLogo -NoProfile -NonInteractive -File "${{ github.workspace }}/tools/Validate-Fixtures.ps1" -Json | Out-File -FilePath $strictPath -Encoding utf8
+        pwsh -NoLogo -NoProfile -NonInteractive -File "${{ github.workspace }}/tools/Validate-Fixtures.ps1" -Json -TestAllowFixtureUpdate | Out-File -FilePath $overridePath -Encoding utf8
 
     - name: Orchestrate drift artifacts
       id: orchestrate
@@ -245,7 +245,7 @@ runs:
         if (-not (Test-Path $sum)) { return }
         $schemaPath = Join-Path "${{ github.workspace }}" 'docs/schemas/fixture-drift-summary-v1.schema.json'
         if (Test-Path $schemaPath) {
-          pwsh -NoLogo -NoProfile -File "${{ github.workspace }}/tools/Invoke-JsonSchemaLite.ps1" -JsonPath $sum -SchemaPath $schemaPath
+          pwsh -NoLogo -NoProfile -NonInteractive -File "${{ github.workspace }}/tools/Invoke-JsonSchemaLite.ps1" -JsonPath $sum -SchemaPath $schemaPath
           # Do not fail the job here; schema errors will have been printed for diagnosis.
           if ($LASTEXITCODE -ne 0) { Write-Host "Schema-lite validation returned code $LASTEXITCODE" }
         }
