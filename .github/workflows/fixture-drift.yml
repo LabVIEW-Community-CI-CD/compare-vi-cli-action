@@ -30,7 +30,7 @@ jobs:
           exclude-globs: |
             docs/schemas/**
           fail-on-fork: 'true'
-          repo-owner-expected: 'LabVIEW-Community-CI-CD'
+          repo-owner-expected: ${{ vars.EXPECTED_REPO_OWNER || 'LabVIEW-Community-CI-CD' }}
   preflight-windows:
     name: Preflight (Windows)
     runs-on: [self-hosted, Windows, X64]
