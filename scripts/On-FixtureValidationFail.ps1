@@ -607,16 +607,29 @@ if ($RenderReport) {
       $exitCode = 1
       $duration = 0.01
     } else {
-      # Use robust dispatcher to avoid LVCompare UI popups and apply preflight guards
+      # Compare via invoker when required; else direct module call
       $repoRoot = Resolve-Path (Join-Path $PSScriptRoot '..') | Select-Object -ExpandProperty Path
-      if (-not (Get-Command -Name Invoke-CompareVI -ErrorAction SilentlyContinue)) {
-        Import-Module (Join-Path $repoRoot 'scripts' 'CompareVI.psm1') -Force
-      }
       $execJsonPath = Join-Path $OutputDir 'compare-exec.json'
-      $res = Invoke-CompareVI -Base $BasePath -Head $HeadPath -LvComparePath $cli -LvCompareArgs $LvCompareArgs -FailOnDiff:$false -CompareExecJsonPath $execJsonPath
-      $exitCode = $res.ExitCode
-      $duration = $res.CompareDurationSeconds
-      $command = $res.Command
+      if ($env:INVOKER_REQUIRED -match '^(?i:1|true|yes|on)$') {
+        $send = Join-Path $repoRoot 'tools' 'RunnerInvoker' 'Send-RunnerCommand.ps1'
+        if (-not (Test-Path -LiteralPath $send)) { throw "Invoker client not found: $send" }
+        $args = @{ base = $BasePath; head = $HeadPath; lvCompareArgs = $LvCompareArgs; lvComparePath = $cli; resultsDir = $OutputDir; compareExecJsonPath = $execJsonPath }
+        $resp = & $send -Verb CompareVI -Args $args | ConvertFrom-Json
+        if (-not $resp.ok) { throw ("Invoker CompareVI failed ({0}): {1}" -f $resp.code,$resp.message) }
+        $exitCode = [int]$resp.data.exitCode
+        $duration = [double]$resp.data.duration
+        $command = [string]$resp.data.command
+        if ($resp.data.cliPath) { $cli = [string]$resp.data.cliPath }
+        if ($resp.data.execJsonPath) { $execJsonPath = [string]$resp.data.execJsonPath }
+      } else {
+        if (-not (Get-Command -Name Invoke-CompareVI -ErrorAction SilentlyContinue)) {
+          Import-Module (Join-Path $repoRoot 'scripts' 'CompareVI.psm1') -Force
+        }
+        $res = Invoke-CompareVI -Base $BasePath -Head $HeadPath -LvComparePath $cli -LvCompareArgs $LvCompareArgs -FailOnDiff:$false -CompareExecJsonPath $execJsonPath
+        $exitCode = $res.ExitCode
+        $duration = $res.CompareDurationSeconds
+        $command = $res.Command
+      }
       # CompareVI does not capture raw streams; emit placeholders for completeness
       $stdout = ''
       $stderr = ''
@@ -656,11 +669,11 @@ if ($RenderReport) {
     } catch { Add-Note ("failed to persist exec json or delay: {0}" -f $_.Exception.Message) }
 
     # Generate HTML fragment via reporter script
-    $reporter = Join-Path (Join-Path $PSScriptRoot '') 'Render-CompareReport.ps1'
+    $reporter = Join-Path (Join-Path $PSScriptRoot '') 'Render-CompareReport.ps1'
     if (Test-Path -LiteralPath $reporter) {
       Write-HandshakeMarker -Name 'report' -Data @{ reporter = $reporter }
       $diff = if ($exitCode -eq 1) { 'true' } elseif ($exitCode -eq 0) { 'false' } else { 'false' }
-      $cmd = if ($command) { $command } else { '"{0}" "{1}" {2}' -f $cli,(Resolve-Path $BasePath).Path,(Resolve-Path $HeadPath).Path }
+      $cmd = if ($command) { $command } else { '"{0}" "{1}" {2}' -f $cli,(Resolve-Path $BasePath).Path,(Resolve-Path $HeadPath).Path }
       # Optional console watch during report generation
       $cwId = $null
       if ($env:WATCH_CONSOLE -match '^(?i:1|true|yes|on)$') {
@@ -672,7 +685,14 @@ if ($RenderReport) {
           $cwId = Start-ConsoleWatch -OutDir $OutputDir
         } catch {}
       }
-      & $reporter -Command $cmd -ExitCode $exitCode -Diff $diff -CliPath $cli -DurationSeconds $duration -OutputPath (Join-Path $OutputDir 'compare-report.html') -ExecJsonPath (Join-Path $OutputDir 'compare-exec.json') | Out-Null
+      $outReport = Join-Path $OutputDir 'compare-report.html'
+      if ($env:INVOKER_REQUIRED -match '^(?i:1|true|yes|on)$') {
+        $send = Join-Path $repoRoot 'tools' 'RunnerInvoker' 'Send-RunnerCommand.ps1'
+        $rargs = @{ command = $cmd; exitCode = $exitCode; diff = $diff; cliPath = $cli; base = (Resolve-Path $BasePath).Path; head = (Resolve-Path $HeadPath).Path; outputPath = $outReport; durationSeconds = $duration; execJsonPath = (Join-Path $OutputDir 'compare-exec.json') }
+        & $send -Verb RenderReport -Args $rargs | Out-Null
+      } else {
+        & $reporter -Command $cmd -ExitCode $exitCode -Diff $diff -CliPath $cli -DurationSeconds $duration -OutputPath $outReport -ExecJsonPath (Join-Path $OutputDir 'compare-exec.json') | Out-Null
+      }
       Add-Artifact 'compare-report.html'
       if ($cwId) {
         try {
