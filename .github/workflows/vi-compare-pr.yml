@@ -3,6 +3,9 @@ name: PR VI Compare (on label)
 on:
   pull_request:
     types: [labeled, reopened, synchronize]
+    paths-ignore:
+      - '**/*.md'
+      - 'docs/**'
   workflow_dispatch: {}
 
 concurrency:

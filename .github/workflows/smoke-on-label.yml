@@ -5,6 +5,7 @@ on:
     types: [labeled, reopened, synchronize]
     paths-ignore:
       - '**/*.md'
+      - 'docs/**'
   workflow_dispatch: {}
 
 jobs:
