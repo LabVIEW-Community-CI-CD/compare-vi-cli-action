@@ -18,7 +18,7 @@ jobs:
   preflight-windows:
     name: Preflight (Windows)
     runs-on: [self-hosted, Windows, X64]
-    timeout-minutes: 10
+    timeout-minutes: 3
     steps:
       - uses: actions/checkout@v4
       - name: Verify LVCompare and idle LabVIEW state
@@ -36,7 +36,7 @@ jobs:
   validate-ubuntu:
     name: Fixture Drift (Ubuntu)
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 3
     permissions:
       actions: read
       contents: read
@@ -57,7 +57,7 @@ jobs:
     name: Fixture Drift (Windows)
     runs-on: [self-hosted, Windows, X64]
     needs: preflight-windows
-    timeout-minutes: 45
+    timeout-minutes: 3
     env:
       UNBLOCK_GUARD: '1'
       LV_SUPPRESS_UI: '1'

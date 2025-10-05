@@ -17,7 +17,7 @@ concurrency:
 jobs:
   preflight:
     runs-on: [self-hosted, Windows, X64]
-    timeout-minutes: 10
+    timeout-minutes: 3
     steps:
       - uses: actions/checkout@v5
       - name: Verify LVCompare and idle LabVIEW state
@@ -33,7 +33,7 @@ jobs:
 
   pester:
     runs-on: [self-hosted, Windows, X64]
-    timeout-minutes: 45
+    timeout-minutes: 3
     needs: preflight
     env:
       LV_BASE_VI: ${{ vars.LV_BASE_VI }}

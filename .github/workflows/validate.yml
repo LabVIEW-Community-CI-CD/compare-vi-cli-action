@@ -158,7 +158,7 @@ jobs:
         run: Copy-Item -LiteralPath fixture-validation.json -Destination fixture-validation-prev.json -Force
 
   session-index:
-    runs-on: windows-latest
+    runs-on: ubuntu-latest
     needs: [lint]
     steps:
       - uses: actions/checkout@v5

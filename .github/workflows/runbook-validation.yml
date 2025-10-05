@@ -10,8 +10,8 @@ on:
 jobs:
   runbook-check:
     if: ${{ !startsWith(github.ref, 'refs/tags/') }}
-    runs-on: windows-latest
-    timeout-minutes: 20
+    runs-on: [self-hosted, Windows, X64]
+    timeout-minutes: 3
     steps:
       - name: Checkout
         uses: actions/checkout@v4
