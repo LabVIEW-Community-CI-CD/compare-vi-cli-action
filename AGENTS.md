@@ -168,3 +168,14 @@ Access policy: verify login with `gh auth status -h github.com`. For scripts, to
 
 
 
+
+### Runner Invoker (Single Execution Path)
+
+- What: A runner-side named-pipe server that executes CompareVI, RenderReport, StepSummary, and FailureInventory.
+- Why: One choke point → deterministic behavior, no UI popups, centralized logging.
+- How:
+  - Ensure invoker: `uses: ./.github/actions/ensure-invoker` (self-hosted jobs)
+  - One-shot client: `./tools/RunnerInvoker/Send-RunnerCommand.ps1 -Verb StepSummary -Args @{ text='...' }`
+  - Runner-wide (optional): `./tools/RunnerInvoker/Install-RunnerInvokerTask.ps1` (Scheduled Task)
+- Flags: `INVOKER_REQUIRED=1` (enforce), `INVOKER_TELEMETRY=1`, `INVOKER_LOG_LEVEL=warn|info|debug`.
+- Health check: `gh run view` + step summary blocks; or `Send-RunnerCommand.ps1 -Verb Ping`.

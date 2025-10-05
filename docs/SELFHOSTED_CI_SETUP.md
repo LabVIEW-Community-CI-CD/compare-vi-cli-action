@@ -353,3 +353,15 @@ For issues or questions:
    - Runner environment details
    - Test output/logs
    - Steps to reproduce
+
+## Runner Invoker (Optional, Recommended)
+
+The invoker is a runner-side service that executes CompareVI/Report/Summary/FailureInventory via a named pipe to stabilize
+execution and centralize telemetry.
+
+- Install: `pwsh -File tools/RunnerInvoker/Install-RunnerInvokerTask.ps1`
+  - Registers a Scheduled Task `RunnerInvoker` at logon under `C:\actions-runner\invoker`
+- Verify: `./tools/RunnerInvoker/Send-RunnerCommand.ps1 -Verb Ping`
+- Use in workflows: add `uses: ./.github/actions/ensure-invoker` and set `INVOKER_REQUIRED=1` in self-hosted jobs.
+- Telemetry: step summaries include an “Invoker Telemetry” block; artifacts include `console-spawns.ndjson`.
+
