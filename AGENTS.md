@@ -117,6 +117,25 @@ Access policy: verify login with `gh auth status -h github.com`. For scripts, to
 - Requires: `gh auth status -h github.com` is logged in.
 - Behavior: creates/updates the PR, opens a tracking issue, appends `Closes #N`, prints links, and lists recent runs.
 
+### Proactive Tracking & Suggestions
+
+- Build context at session start (no prompts):
+  - `./tools/Monitor-IssuesPRs.ps1 -Limit 50 -StaleDays 14 -OutputPath tmp-agg/monitor.md`
+  - Prints open PRs/issues and a Suggestions section (stale, missing labels, missing `Closes #N`).
+  - Use `-Watch` to re-run every N seconds and keep a rolling view.
+
+### Issue / PR Body Linter
+
+- Lint remote PR/Issue bodies (gh-first):
+  - `./tools/Lint-IssueAndPRBodies.ps1 -PR 61`
+  - `./tools/Lint-IssueAndPRBodies.ps1 -Issue 63`
+- Lint local body draft:
+  - `./tools/Lint-IssueAndPRBodies.ps1 -File tmp-agg/pr-body.md -Kind pr`
+- Rules (default):
+  - PR: headings for Summary, Acceptance, Validation, Risks, Links; presence of `Closes #N`; adequate length; a checklist.
+  - Issue: headings for Scope, Acceptance, References; adequate length; a checklist.
+  - Exit 0 on OK; 3 on errors; `-WarnOnly` to suppress failure.
+
 ## Policies & Guardrails (Strict)
 
 - Single Windows variant: only `[self-hosted, Windows, X64]`. Do not add `windows-20xx` matrices.
