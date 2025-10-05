@@ -45,8 +45,8 @@ runs:
         STRICT: ${{ inputs.strict }}
         FAIL_NO_ACCESS: ${{ inputs['fail-on-no-access'] }}
         REQUIRED_CHECKS: ${{ inputs.required-checks }}
-        # Prefer a PAT with admin rights; fallback to GITHUB_TOKEN (may lack admin perms)
-        GATE_PAT: ${{ secrets.XCLI_PAT }}
+        # Prefer a PAT with admin rights; fall back to XCLI_PAT (legacy) or GITHUB_TOKEN (may lack admin perms)
+        GATE_PAT: ${{ secrets.GH_ADMIN_TOKEN || secrets.XCLI_PAT || github.token }}
         GITHUB_TOKEN: ${{ github.token }}
       run: |
         $ErrorActionPreference = 'Stop'
@@ -107,7 +107,7 @@ runs:
           $lines += ('- Settings: ' + $settingsUrl)
           $lines += ''
           $lines += '- To enforce this gate:'
-          $lines += '  1) Add an admin PAT as repository secret `XCLI_PAT`.'
+          $lines += '  1) Add an admin PAT as repository secret `GH_ADMIN_TOKEN`.'
           $lines += '  2) Ensure branch protection rules include the required checks above.'
           $lines += '  3) Re-run the workflow.'
           $text = $lines -join "`n"
@@ -174,3 +174,4 @@ runs:
           exit 21
         }
         exit 0
+

@@ -13,7 +13,8 @@ jobs:
       COMMENT_BODY: ${{ github.event.comment.body }}
       AUTHOR_ASSOC: ${{ github.event.comment.author_association }}
       PR_NUMBER: ${{ github.event.issue.number }}
-      XCLI_PAT: ${{ secrets.XCLI_PAT }}
+      # Transitional: prefer GH_ADMIN_TOKEN; fall back to legacy XCLI_PAT for in-flight PRs
+      XCLI_PAT: ${{ secrets.GH_ADMIN_TOKEN || secrets.XCLI_PAT }}
     steps:
       - name: Validate permissions
         shell: bash
@@ -120,7 +121,7 @@ jobs:
         if: steps.cmd.outputs.target == 'mock'
         shell: bash
         env:
-          GH_TOKEN: ${{ secrets.XCLI_PAT }}
+          GH_TOKEN: ${{ secrets.GH_ADMIN_TOKEN || secrets.XCLI_PAT || github.token }}
         run: |
           body=$'`/run mock` is deprecated. Use `/run pester-selfhosted` or `/run smoke`.'
           curl -s -X POST \
@@ -166,7 +167,7 @@ jobs:
         if: steps.cmd.outputs.target == 'label'
         shell: bash
         env:
-          GH_TOKEN: ${{ secrets.XCLI_PAT }}
+          GH_TOKEN: ${{ secrets.GH_ADMIN_TOKEN || secrets.XCLI_PAT || github.token }}
         run: |
           raw="$COMMENT_BODY"
           tail=$(printf "%s" "$raw" | sed -n 's#^/label[[:space:]]\+##Ip')

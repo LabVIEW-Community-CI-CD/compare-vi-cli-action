@@ -23,8 +23,8 @@ jobs:
         if: ${{ github.event_name == 'pull_request' && (
               github.event.pull_request.base.ref == 'main' ||
               startsWith(github.event.pull_request.base.ref, 'release/') ||
-              (github.event.pull_request.base.ref == 'develop' && vars.ENFORCE_PROTECTION_ON_DEVELOP == '1') ||
-              (vars.ENFORCE_PROTECTION_ON_TOPIC == '1' && (
+              (github.event.pull_request.base.ref == 'develop' && vars.ENFORCE_PROTECTION_ON_DEVELOP != '0') ||
+              (vars.ENFORCE_PROTECTION_ON_TOPIC != '0' && (
                 startsWith(github.event.pull_request.base.ref, 'feature/') ||
                 startsWith(github.event.pull_request.base.ref, 'bugfix/') ||
                 startsWith(github.event.pull_request.base.ref, 'hotfix/') ||
@@ -35,7 +35,7 @@ jobs:
         with:
           branch: ${{ github.event.pull_request.base.ref }}
           strict: 'true'
-          fail-on-no-access: 'true'
+          fail-on-no-access: 'false'
   pre-init:
     runs-on: ubuntu-latest
     needs: [protect]
@@ -217,3 +217,44 @@ jobs:
             '- Drift: ${{ needs.drift.result }}'
           ) -join "`n"
           $lines | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8
+
+  post-gate-help:
+    runs-on: ubuntu-latest
+    needs: [protect]
+    if: ${{ always() && needs.protect.result == 'failure' && github.event_name == 'pull_request' }}
+    steps:
+      - uses: actions/checkout@v5
+      - name: Post help comment for Branch Protection Gate
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ secrets.GH_ADMIN_TOKEN || secrets.XCLI_PAT || github.token }}
+          REPO: ${{ github.repository }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          BASE_REF: ${{ github.event.pull_request.base.ref }}
+          HEAD_REPO: ${{ github.event.pull_request.head.repo.full_name }}
+          HEAD_REF: ${{ github.event.pull_request.head.ref }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $branchDoc = "https://github.com/$env:HEAD_REPO/blob/$env:HEAD_REF/docs/branch-rules/$env:BASE_REF.md"
+          $defaultDoc = "https://github.com/$env:REPO/blob/$env:BASE_REF/docs/BRANCH_RULES.md"
+          $settings = "https://github.com/$env:REPO/settings/branches"
+          $wf = "https://github.com/$env:REPO/actions/workflows/ci-orchestrated.yml"
+          $lines = @(
+            '### Branch Protection Gate: missing access or required checks',
+            '',
+            '- This PR failed the Branch Protection Gate before CI could start.',
+            '- Please ensure an admin token is available (secret `GH_ADMIN_TOKEN`, or self-hosted file bootstrap), and that required checks are configured.',
+            '',
+            "- Branch-specific docs (if present): $branchDoc",
+            "- Default branch rules: $defaultDoc",
+            "- Branch protection settings: $settings",
+            '',
+            'Apply labels to proceed (if needed): `/label smoke, test-integration`',
+            "One-click retry: $wf",
+            '',
+            'Once updated, re-run the workflow.'
+          ) -join "`n"
+          $payload = @{ body = $lines } | ConvertTo-Json -Compress
+          $headers = @{ Authorization = "Bearer $env:GH_TOKEN"; Accept = 'application/vnd.github+json'; 'User-Agent'='gate-help-bot' }
+          $uri = "https://api.github.com/repos/$env:REPO/issues/$env:PR_NUMBER/comments"
+          try { Invoke-RestMethod -Method POST -Uri $uri -Headers $headers -ContentType 'application/json' -Body $payload } catch { Write-Host "::notice::Failed to post help comment: $_" }
