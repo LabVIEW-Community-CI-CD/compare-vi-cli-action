@@ -93,18 +93,21 @@ jobs:
           curl -s -X POST \
            -H "Authorization: Bearer $XCLI_PAT" \
            -H "Accept: application/vnd.github+json" \
-           "https://api.github.com/repos/$REPO/actions/workflows/test-pester.yml/dispatches" \
+           "https://api.github.com/repos/$REPO/actions/workflows/pester-selfhosted.yml/dispatches" \
            -d '{"ref":"'"${{ steps.ref.outputs.target_ref }}"'","inputs":{"include_integration":"false"}}' | cat
 
-      - name: Dispatch mock tests
+      - name: Comment deprecation for mock tests
         if: steps.cmd.outputs.target == 'mock'
         shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.XCLI_PAT }}
         run: |
+          body=$'`/run mock` is deprecated. Use `/run pester-selfhosted` or `/run smoke`.'
           curl -s -X POST \
-           -H "Authorization: Bearer $XCLI_PAT" \
+           -H "Authorization: Bearer $GH_TOKEN" \
            -H "Accept: application/vnd.github+json" \
-           "https://api.github.com/repos/$REPO/actions/workflows/test-mock.yml/dispatches" \
-           -d '{"ref":"'"${{ steps.ref.outputs.target_ref }}"'"}' | cat
+           "https://api.github.com/repos/$REPO/issues/$PR_NUMBER/comments" \
+           -d "$(jq -Rn --arg b "$body" '{body:$b}')" | cat
 
       - name: Dispatch smoke tests
         if: steps.cmd.outputs.target == 'smoke'
