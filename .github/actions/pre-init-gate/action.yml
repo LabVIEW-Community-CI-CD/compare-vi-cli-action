@@ -1,0 +1,96 @@
+name: "Pre-Init Gate"
+description: "Determine docs-only changes and expose gating outputs to control heavy jobs"
+inputs:
+  include-globs:
+    description: "Newline-separated glob patterns considered 'docs'"
+    required: false
+    default: |
+      docs/**
+      **/*.md
+  exclude-globs:
+    description: "Newline-separated glob patterns to exclude from docs determination"
+    required: false
+    default: |
+      docs/schemas/**
+outputs:
+  docs_only:
+    description: "'true' when all changed files are docs-only per globs"
+    value: ${{ steps.gate.outputs.docs_only }}
+  changed_files:
+    description: "JSON array of changed files considered in this event"
+    value: ${{ steps.gate.outputs.changed_files }}
+runs:
+  using: "composite"
+  steps:
+    - id: gate
+      name: Compute docs-only gate
+      shell: pwsh
+      env:
+        GH_REPO: ${{ github.repository }}
+        GH_EVENT_NAME: ${{ github.event_name }}
+        GH_EVENT_PATH: ${{ github.event_path }}
+        GH_TOKEN: ${{ github.token }}
+        INCLUDE_GLOBS: ${{ inputs.include-globs }}
+        EXCLUDE_GLOBS: ${{ inputs.exclude-globs }}
+      run: |
+        $ErrorActionPreference = 'Stop'
+        $includes = ($env:INCLUDE_GLOBS -split "`r?`n").Where({ $_ -and ($_ -notmatch '^\s*#') })
+        $excludes = ($env:EXCLUDE_GLOBS -split "`r?`n").Where({ $_ -and ($_ -notmatch '^\s*#') })
+
+        function Get-ChangedFilesFromEvent {
+          param()
+          if ($env:GH_EVENT_NAME -eq 'pull_request') {
+            $evt = Get-Content -Raw -LiteralPath $env:GH_EVENT_PATH | ConvertFrom-Json
+            $pr = $evt.number
+            $uri = "https://api.github.com/repos/$($env:GH_REPO)/pulls/$pr/files?per_page=100"
+            $hdr = @{ Authorization = "Bearer $($env:GH_TOKEN)"; Accept = 'application/vnd.github+json' }
+            $res = Invoke-RestMethod -Headers $hdr -Uri $uri -Method GET
+            return @($res | ForEach-Object { $_.filename })
+          } else {
+            # Fallback to last commit diff after checkout
+            try {
+              $base = (git rev-parse HEAD~1) 2>$null
+              $head = (git rev-parse HEAD)
+              $out  = (git diff --name-only $base $head) -split "`n" | Where-Object { $_ }
+              return @($out)
+            } catch {
+              # As a last resort, consider all tracked files changed (conservative)
+              $all = git ls-files
+              return @($all)
+            }
+          }
+        }
+
+        function Match-AnyGlob([string]$path, [string[]]$globs) {
+          foreach ($g in $globs) {
+            if ([System.IO.Path]::DirectorySeparatorChar -eq '\\') { $norm = $path -replace '/', '\\' } else { $norm = $path }
+            $rx = [System.Text.RegularExpressions.Regex]::Escape($g)
+            $rx = $rx -replace '\\\*\\\\\*', '.*'
+            $rx = $rx -replace '\\\*', '[^/\\\\]*'
+            $rx = $rx -replace '\\\?', '.'
+            if ($norm -match "^$rx$") { return $true }
+          }
+          return $false
+        }
+
+        $files = Get-ChangedFilesFromEvent
+        $docsOnly = $true
+        foreach ($f in $files) {
+          $isDoc = Match-AnyGlob -path $f -globs $includes
+          $isExcluded = Match-AnyGlob -path $f -globs $excludes
+          if (-not $isDoc -or $isExcluded) { $docsOnly = $false; break }
+        }
+
+        $outFiles = ($files | ConvertTo-Json -Compress)
+        "docs_only=$docsOnly" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+        "changed_files=$outFiles" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+
+        $summary = @(
+          '### Pre-Init Gate',
+          "- Event: $($env:GH_EVENT_NAME)",
+          "- Docs-only: $docsOnly",
+          "- Includes: $($includes -join ', ')",
+          "- Excludes: $($excludes -join ', ')",
+          "- Changed: $($files.Count)"
+        ) -join "`n"
+        $summary | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8

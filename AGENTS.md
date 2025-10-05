@@ -41,6 +41,11 @@
 - LVCompare canonical path: `C:\\Program Files\\National Instruments\\Shared\\LabVIEW Compare\\LVCompare.exe`.
 - Integration needs `LV_BASE_VI` and `LV_HEAD_VI`. Do not orchestrate `LabVIEW.exe`.
 
+### Pre-Init Gate (Docs-only fast path)
+- A pre-init gate detects docs-only changes (e.g., `docs/**`, `**/*.md`) and skips heavy Windows jobs.
+- Exceptions (still run Windows where needed): `docs/schemas/**`.
+- Workflow: first job `pre-init` computes `docs_only` and gates `preflight`/`pester` via `needs`/`if`.
+
 ## Commit & Pull Request Guidelines
 
 - Commits: imperative and scoped (e.g., `validator: enforce bytes`).
