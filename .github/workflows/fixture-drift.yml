@@ -82,6 +82,8 @@ jobs:
     outputs:
       ubuntu_status: ${{ steps.drift.outputs.status }}
       ubuntu_summary_path: ${{ steps.drift.outputs.summary_path }}
+      ubuntu_manifest_written: ${{ steps.drift.outputs.manifest_written }}
+      ubuntu_manifest_path: ${{ steps.drift.outputs.manifest_path }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -109,6 +111,8 @@ jobs:
       docs_only: ${{ steps.calc.outputs.docs_only }}
       ubuntu_status: ${{ steps.calc.outputs.ubuntu_status }}
       ubuntu_summary_path: ${{ steps.calc.outputs.ubuntu_summary_path }}
+      ubuntu_manifest_written: ${{ steps.calc.outputs.ubuntu_manifest_written }}
+      ubuntu_manifest_path: ${{ steps.calc.outputs.ubuntu_manifest_path }}
     steps:
       - name: Compute gate outputs
         id: calc
@@ -118,11 +122,15 @@ jobs:
           PREFLIGHT_RESULT: ${{ needs.preflight-windows.result }}
           UBUNTU_STATUS: ${{ needs.validate-ubuntu.outputs.ubuntu_status }}
           UBUNTU_SUMMARY: ${{ needs.validate-ubuntu.outputs.ubuntu_summary_path }}
+          UBUNTU_MW: ${{ needs.validate-ubuntu.outputs.ubuntu_manifest_written }}
+          UBUNTU_MP: ${{ needs.validate-ubuntu.outputs.ubuntu_manifest_path }}
         run: |
           $docs = if ($env:DOCS_ONLY) { $env:DOCS_ONLY } else { 'false' }
           $pre  = if ($env:PREFLIGHT_RESULT) { $env:PREFLIGHT_RESULT } else { 'success' }
           $u    = if ($env:UBUNTU_STATUS) { $env:UBUNTU_STATUS } else { 'unknown' }
           $sp   = if ($env:UBUNTU_SUMMARY) { $env:UBUNTU_SUMMARY } else { '' }
+          $mw   = if ($env:UBUNTU_MW) { $env:UBUNTU_MW } else { '' }
+          $mp   = if ($env:UBUNTU_MP) { $env:UBUNTU_MP } else { '' }
           $run  = 'true'; $reason='proceed'
           if ($docs -eq 'true') { $run='false'; $reason='docs_only' }
           elseif ($pre -ne 'success') { $run='false'; $reason='preflight_not_success' }
@@ -132,6 +140,8 @@ jobs:
           "docs_only=$docs"           | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
           "ubuntu_status=$u"          | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
           "ubuntu_summary_path=$sp"   | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+          "ubuntu_manifest_written=$mw" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+          "ubuntu_manifest_path=$mp"    | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
       - name: Append gate summary
         shell: pwsh
         run: |
@@ -141,6 +151,8 @@ jobs:
             $lines += ('- Docs-only: ${{ needs.pre-init.outputs.docs_only }}')
             $lines += ('- Ubuntu status: ${{ needs.validate-ubuntu.outputs.ubuntu_status }}')
             $lines += ('- Ubuntu summary: ${{ needs.validate-ubuntu.outputs.ubuntu_summary_path }}')
+            $lines += ('- Ubuntu manifest written: ${{ needs.validate-ubuntu.outputs.ubuntu_manifest_written }}')
+            $lines += ('- Ubuntu manifest path: ${{ needs.validate-ubuntu.outputs.ubuntu_manifest_path }}')
             $lines += ('- Decision: run_windows=${{ steps.calc.outputs.run_windows }} (reason=${{ steps.calc.outputs.reason }})')
             $lines -join "`n" | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8
           }
@@ -218,6 +230,10 @@ jobs:
           $lines += ('- Ubuntu status: ${{ needs.gate.outputs.ubuntu_status }}')
           $up = '${{ needs.gate.outputs.ubuntu_summary_path }}'
           if ($up) { $lines += ('- Ubuntu summary: ' + $up) }
+          $mw = '${{ needs.gate.outputs.ubuntu_manifest_written }}'
+          $mp = '${{ needs.gate.outputs.ubuntu_manifest_path }}'
+          if ($mw) { $lines += ('- Ubuntu manifest written: ' + $mw) }
+          if ($mp) { $lines += ('- Ubuntu manifest path: ' + $mp) }
           try {
             $apiBase = "https://api.github.com"; $repo='${{ github.repository }}'; $run='${{ github.run_id }}'
             $hdr = @{ Authorization = "Bearer $env:GITHUB_TOKEN"; Accept='application/vnd.github+json'; 'X-GitHub-Api-Version'='2022-11-28' }
