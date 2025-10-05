@@ -109,5 +109,18 @@
 Token resolution: prefers `GH_ADMIN_TOKEN`, then `GH_TOKEN`, then legacy `XCLI_PAT`, then `GITHUB_TOKEN`.
 
 
+### Issue ↔ PR Link (Auto-close on green)
+
+- Open a tracking issue before authoring the PR:
+  - `./tools/Open-TrackingIssue.ps1 -Title 'Tighten CI docs + composites' -Labels tracking,ci -OutputNumberPath tmp-agg/issue.txt`
+  - Save number: `$issue = Get-Content tmp-agg/issue.txt`
+- Prepare PR body with a closing keyword line:
+  - Example tail: `Closes #$issue`
+  - Create/update PR using a body file: `./scripts/Create-BackmergePR.ps1 -Owner Org -Repo Repo -Base develop -Head feature/branch -Title 'Refactor CI composites' -BodyPath tmp-agg/pr-body.md`
+- Why this auto-closes on green:
+  - Branch protections require required checks to pass before merge. The `Closes #N` line closes the tracking issue on merge, guaranteeing green checks.
+  - If you need pre-merge closure upon check success, open a follow-up issue to add an auto-close workflow; default policy is close-on-merge.
+
+
 
 
