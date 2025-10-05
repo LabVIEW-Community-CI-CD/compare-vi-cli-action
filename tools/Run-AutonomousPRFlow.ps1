@@ -34,6 +34,12 @@
   [string] $IssueTitle,
   [string] $IssueBodyPath,
   [string] $IssueLabels = 'ci,documentation',
+  [string] $PrLabels,
+  [string] $Assignees,
+  [string] $Milestone,
+  [switch] $Draft,
+  [switch] $SkipIssue,
+  [switch] $DryRun,
   [switch] $Open
 )
 
@@ -55,7 +61,13 @@ function Ensure-File([string] $path, [string] $name) {
 Ensure-GhAuth
 if (-not $Head) { $Head = Get-CurrentBranch }
 Ensure-File -path $PrBodyPath -name 'PR body'
-Ensure-File -path $IssueBodyPath -name 'Issue body'
+if (-not $SkipIssue) { Ensure-File -path $IssueBodyPath -name 'Issue body' }
+
+if ($DryRun) {
+  Write-Host "[DRY-RUN] Base=$Base Head=$Head Title=$Title Draft=$Draft"
+  Write-Host "[DRY-RUN] PR Body=$PrBodyPath PR Labels=$PrLabels Assignees=$Assignees Milestone=$Milestone"
+  if (-not $SkipIssue) { Write-Host "[DRY-RUN] Issue Title=$IssueTitle Issue Body=$IssueBodyPath Labels=$IssueLabels" }
+}
 
 # Create or update PR
 $prExists = $false
@@ -65,35 +77,59 @@ try {
 } catch {}
 
 if ($prExists) {
-  if ($PrBodyPath) { gh pr edit $prJson.number --body-file $PrBodyPath | Out-Null }
-  if ($Title)      { gh pr edit $prJson.number --title $Title       | Out-Null }
+  if ($DryRun) { Write-Host "[DRY-RUN] Update PR #$($prJson.number)" } else {
+    if ($PrBodyPath) { gh pr edit $prJson.number --body-file $PrBodyPath | Out-Null }
+    if ($Title)      { gh pr edit $prJson.number --title $Title       | Out-Null }
+    if ($PrLabels)   { gh pr edit $prJson.number --add-label $PrLabels | Out-Null }
+    if ($Assignees)  { gh pr edit $prJson.number --add-assignee $Assignees | Out-Null }
+    if ($Milestone)  { gh pr edit $prJson.number --milestone $Milestone | Out-Null }
+  }
   $prUrl = $prJson.url
   $prNum = [int]$prJson.number
 } else {
   if (-not $Title) { throw 'PR Title is required when creating a PR.' }
-  $created = gh pr create -B $Base -H $Head --title $Title --body-file $PrBodyPath 2>&1
-  if ($LASTEXITCODE -ne 0) { throw "Failed to create PR: $created" }
-  $view = gh pr view $Head --json number,url | ConvertFrom-Json
-  $prUrl = $view.url; $prNum = [int]$view.number
+  if ($DryRun) {
+    Write-Host "[DRY-RUN] Create PR -B $Base -H $Head --title '$Title' --body-file $PrBodyPath --draft:$Draft"
+  } else {
+    $args = @('pr','create','-B', $Base, '-H', $Head, '--title', $Title, '--body-file', $PrBodyPath)
+    if ($Draft) { $args += '--draft' }
+    $created = gh @args 2>&1
+    if ($LASTEXITCODE -ne 0) { throw "Failed to create PR: $created" }
+    $view = gh pr view $Head --json number,url | ConvertFrom-Json
+    $prUrl = $view.url; $prNum = [int]$view.number
+    if ($PrLabels)  { gh pr edit $prNum --add-label $PrLabels | Out-Null }
+    if ($Assignees) { gh pr edit $prNum --add-assignee $Assignees | Out-Null }
+    if ($Milestone) { gh pr edit $prNum --milestone $Milestone | Out-Null }
+  }
 }
 
-# Create tracking issue
-$labels = @($IssueLabels.Split(',') | ForEach-Object { $_.Trim() } | Where-Object { $_ })
-$args = @('issue','create','-t', $IssueTitle, '-F', $IssueBodyPath)
-foreach ($l in $labels) { $args += @('-l', $l) }
-$issueOut = gh @args 2>&1
-if ($LASTEXITCODE -ne 0) { throw "Failed to create issue: $issueOut" }
-$issueUrl = ($issueOut | Select-String -Pattern '/issues/\d+' -AllMatches).Matches.Value | Select-Object -Last 1
-if (-not $issueUrl) { throw "Could not parse issue URL from: $issueOut" }
-$issueNum = [int]($issueUrl.Split('/')[-1])
+if (-not $SkipIssue) {
+  # Create tracking issue
+  $labels = @($IssueLabels.Split(',') | ForEach-Object { $_.Trim() } | Where-Object { $_ })
+  $args = @('issue','create','-t', $IssueTitle, '-F', $IssueBodyPath)
+  foreach ($l in $labels) { $args += @('-l', $l) }
+  if ($DryRun) {
+    Write-Host "[DRY-RUN] gh $($args -join ' ')"
+    $issueUrl = ''
+    $issueNum = $null
+  } else {
+    $issueOut = gh @args 2>&1
+    if ($LASTEXITCODE -ne 0) { throw "Failed to create issue: $issueOut" }
+    $issueUrl = ($issueOut | Select-String -Pattern '/issues/\d+' -AllMatches).Matches.Value | Select-Object -Last 1
+    if (-not $issueUrl) { throw "Could not parse issue URL from: $issueOut" }
+    $issueNum = [int]($issueUrl.Split('/')[-1])
+  }
+}
 
 # Append "Closes #N" to PR body and update
-if ($PrBodyPath) {
+if ($PrBodyPath -and -not $SkipIssue -and $issueNum) {
   $body = Get-Content -LiteralPath $PrBodyPath -Raw
   if ($body -notmatch '(?mi)^Closes\s+#\d+') {
     $body = "$body`n`nCloses #$issueNum"
-    Set-Content -LiteralPath $PrBodyPath -Value $body -Encoding UTF8
-    gh pr edit $prNum --body-file $PrBodyPath | Out-Null
+    if ($DryRun) { Write-Host "[DRY-RUN] Append 'Closes #$issueNum' to PR body" } else {
+      Set-Content -LiteralPath $PrBodyPath -Value $body -Encoding UTF8
+      gh pr edit $prNum --body-file $PrBodyPath | Out-Null
+    }
   }
 }
 
@@ -106,4 +142,3 @@ try {
 } catch { Write-Host '::notice::gh run list failed (optional).' }
 
 if ($Open) { try { gh pr view $prNum --web } catch {} }
-
