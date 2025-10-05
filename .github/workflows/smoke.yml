@@ -66,6 +66,7 @@ jobs:
       LV_HEAD_VI: ${{ vars.LV_HEAD_VI }}
       LVCOMPARE_PATH: ${{ vars.LVCOMPARE_PATH }}
       UNBLOCK_GUARD: '1'
+      WATCH_CONSOLE: '1'
     steps:
       - uses: actions/checkout@v5
 

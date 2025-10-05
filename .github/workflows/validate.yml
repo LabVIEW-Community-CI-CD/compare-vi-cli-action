@@ -27,6 +27,11 @@ jobs:
         run: |
           ./bin/actionlint -color
 
+      - name: Lint unanchored dot-sourcing
+        shell: pwsh
+        run: |
+          pwsh -File tools/Lint-DotSourcing.ps1
+
       - name: Install markdownlint-cli
         run: |
           npm install -g markdownlint-cli
