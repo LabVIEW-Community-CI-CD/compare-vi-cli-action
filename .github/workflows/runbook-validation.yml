@@ -22,10 +22,10 @@ jobs:
           python-version: '3.x'
         # (Using setup-python only to ensure UTF-8 locale; PowerShell 7 available by default on windows-latest.)
 
-      - name: Run Runbook Core Phases
+      - name: Run Runbook Core Phases (non-interactive)
         shell: pwsh
         run: |
-          pwsh -File scripts/Invoke-IntegrationRunbook.ps1 -Phases Prereqs,CanonicalCli,ViInputs -JsonReport runbook-ci.json -PassThru | Out-Null
+          pwsh -NoLogo -NoProfile -NonInteractive -File scripts/Invoke-IntegrationRunbook.ps1 -Phases Prereqs,CanonicalCli,ViInputs -JsonReport runbook-ci.json -PassThru | Out-Null
           Get-Content runbook-ci.json
 
       - name: Upload Runbook Artifact
@@ -40,3 +40,11 @@ jobs:
           $json = Get-Content runbook-ci.json -Raw | ConvertFrom-Json
           if ($json.schema -ne 'integration-runbook-v1') { throw 'Schema mismatch' }
           if (-not $json.phases) { throw 'No phases in runbook output' }
+
+      - name: Runner Unblock Guard (post)
+        if: always()
+        uses: ./.github/actions/runner-unblock-guard
+        with:
+          snapshot-path: tests/results/runner-unblock-snapshot.json
+          cleanup: ${{ env.UNBLOCK_GUARD == '1' }}
+          process-names: 'conhost,pwsh,LabVIEW,LVCompare'
