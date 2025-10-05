@@ -74,6 +74,11 @@ jobs:
             Write-Host 'Intra-repo markdown links OK.'
           }
 
+      - name: Repo hygiene (warn-only)
+        shell: pwsh
+        continue-on-error: true
+        run: pwsh -NonInteractive -File tools/Check-RepoHygiene.ps1 -WarnOnly
+
       - name: Append required checks (branch rules hint)
         if: always()
         shell: pwsh

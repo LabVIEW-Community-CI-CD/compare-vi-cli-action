@@ -12,6 +12,10 @@ inputs:
     required: false
     default: |
       docs/schemas/**
+  warn-only-on-fork:
+    description: "If true, emit guidance on forks but do not fail the job"
+    required: false
+    default: 'false'
   fail-on-fork:
     description: "When true, fail with guidance if running on a fork (owner != expected)."
     required: false
@@ -27,6 +31,12 @@ outputs:
   changed_files:
     description: "JSON array of changed files considered in this event"
     value: ${{ steps.gate.outputs.changed_files }}
+  fork:
+    description: "'true' if the current repository owner differs from expected"
+    value: ${{ steps.gate.outputs.fork }}
+  reason:
+    description: "Classification for this run: docs-only | fork | code"
+    value: ${{ steps.gate.outputs.reason }}
 runs:
   using: "composite"
   steps:
@@ -50,19 +60,35 @@ runs:
           if ($env:GH_EVENT_NAME -eq 'pull_request') {
             $evt = Get-Content -Raw -LiteralPath $env:GH_EVENT_PATH | ConvertFrom-Json
             $pr = $evt.number
-            $uri = "https://api.github.com/repos/$($env:GH_REPO)/pulls/$pr/files?per_page=100"
             $hdr = @{ Authorization = "Bearer $($env:GH_TOKEN)"; Accept = 'application/vnd.github+json' }
-            $res = Invoke-RestMethod -Headers $hdr -Uri $uri -Method GET
-            return @($res | ForEach-Object { $_.filename })
+            $files = @()
+            $page = 1; $pageSize = 100; $maxPages = 10
+            while ($true) {
+              $uri = "https://api.github.com/repos/$($env:GH_REPO)/pulls/$pr/files?per_page=$pageSize&page=$page"
+              $res = Invoke-RestMethod -Headers $hdr -Uri $uri -Method GET
+              if (-not $res) { break }
+              $files += @($res | ForEach-Object { $_.filename })
+              if (@($res).Count -lt $pageSize -or $page -ge $maxPages) { break }
+              $page++
+            }
+            return $files
           } else {
-            # Fallback to last commit diff after checkout
+            # Prefer event before..after, fallback to last commit, else all files
             try {
-              $base = (git rev-parse HEAD~1) 2>$null
-              $head = (git rev-parse HEAD)
-              $out  = (git diff --name-only $base $head) -split "`n" | Where-Object { $_ }
+              $evt = Get-Content -Raw -LiteralPath $env:GH_EVENT_PATH | ConvertFrom-Json
+              $before = $evt.before
+              $after  = $evt.after
+            } catch {}
+            try {
+              if ($before -and $after) {
+                $out = (git diff --name-only $before $after) -split "`n" | Where-Object { $_ }
+              } else {
+                $base = (git rev-parse HEAD~1) 2>$null
+                $head = (git rev-parse HEAD)
+                $out  = (git diff --name-only $base $head) -split "`n" | Where-Object { $_ }
+              }
               return @($out)
             } catch {
-              # As a last resort, consider all tracked files changed (conservative)
               $all = git ls-files
               return @($all)
             }
@@ -103,11 +129,16 @@ runs:
         ) -join "`n"
         $summary | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8
 
-        # Optional fork detection with guidance
+        # Fork detection, classification, and optional guidance
         $owner = ($env:GH_REPO -split '/')[0]
         $expected = '${{ inputs.repo-owner-expected }}'
         $failOnFork = '${{ inputs.fail-on-fork }}'
-        if ($failOnFork -eq 'true' -and $owner -ne $expected) {
+        $warnOnlyOnFork = '${{ inputs.warn-only-on-fork }}'
+        $isFork = ($owner -ne $expected)
+        "fork=$isFork" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+        $reason = if ($docsOnly) { 'docs-only' } elseif ($isFork) { 'fork' } else { 'code' }
+        "reason=$reason" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+        if ($isFork -and ($failOnFork -eq 'true' -or $warnOnlyOnFork -eq 'true')) {
           $hints = @(
             '### Branch Protection Hints for Forks',
             "- Configure rulesets on your fork to mirror upstream (owner: $expected).",
@@ -120,9 +151,12 @@ runs:
             '  - markdownlint / lint',
             '- Keep Windows runner labels consistent: [self-hosted, Windows, X64].',
             '- Use one Windows variant to avoid drift (no windows-20xx).',
-            '- Set per-category timeouts with repo Variables (PESTER_TIMEOUT_*).'
+            '- Set per-category timeouts with repo Variables (PESTER_TIMEOUT_*).',
+            '- See: docs/BRANCH_RULES.md'
           ) -join "`n"
           $hints | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8
-          Write-Host '::error::This appears to be a fork. Apply branch protection and required checks as outlined in the job summary.'
-          exit 20
+          if ($failOnFork -eq 'true') {
+            Write-Host '::error::This appears to be a fork. Apply branch protection and required checks as outlined in the job summary.'
+            exit 20
+          }
         }
