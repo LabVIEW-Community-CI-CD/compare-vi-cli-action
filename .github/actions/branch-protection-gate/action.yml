@@ -104,6 +104,30 @@ runs:
         $live = @()
         if ($json.contexts) { foreach ($c in $json.contexts) { $live += [string]$c } }
         if ($json.checks)   { foreach ($c in $json.checks)   { if ($c.context) { $live += [string]$c.context } } }
+        # If empty, try Repository Rulesets API as best-effort fallback
+        if (-not $live -or $live.Count -eq 0) {
+          try {
+            $rulesUrl = "https://api.github.com/repos/$owner/$name/rulesets?target=branch&ref_name=$branch"
+            $rules = Invoke-RestMethod -Method Get -Uri $rulesUrl -Headers $hdr -ErrorAction Stop
+            if ($rules) {
+              foreach ($rs in $rules) {
+                if ($rs.rules) {
+                  foreach ($r in $rs.rules) {
+                    if ($r.type -and ($r.type -match 'required_status_checks')) {
+                      $p = $r.parameters
+                      if ($p) {
+                        # Attempt to read common shapes
+                        if ($p.required_status_checks) { foreach ($ctx in $p.required_status_checks) { if ($ctx.context) { $live += [string]$ctx.context } elseif ($ctx.name) { $live += [string]$ctx.name } elseif ([string]::IsNullOrEmpty($ctx) -eq $false) { $live += [string]$ctx } } }
+                        elseif ($p.checks) { foreach ($ctx in $p.checks) { if ($ctx.context) { $live += [string]$ctx.context } elseif ($ctx.name) { $live += [string]$ctx.name } elseif ([string]::IsNullOrEmpty($ctx) -eq $false) { $live += [string]$ctx } } }
+                        elseif ($p.contexts) { foreach ($ctx in $p.contexts) { if ([string]::IsNullOrEmpty($ctx) -eq $false) { $live += [string]$ctx } } }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          } catch { }
+        }
         $live = $live | Sort-Object -Unique
         $expSet = [System.Collections.Generic.HashSet[string]]::new([StringComparer]::OrdinalIgnoreCase)
         foreach ($e in $expected) { [void]$expSet.Add($e) }

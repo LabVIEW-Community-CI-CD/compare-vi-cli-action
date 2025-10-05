@@ -1,5 +1,6 @@
 param(
-  [string]$ConfigPath = '.github/labels.yml'
+  [string]$ConfigPath = '.github/labels.yml',
+  [switch]$FailOnMissing
 )
 
 $ErrorActionPreference = 'Stop'
@@ -105,5 +106,11 @@ if ($colorDiff.Count -gt 0) {
 } else { $lines += '- Color differences: (none)' }
 
 $lines -join "`n" | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8
-exit 0
 
+# Optionally fail on main when missing labels exist
+$isMain = ($env:GITHUB_REF -eq 'refs/heads/main')
+if ($FailOnMissing -and $isMain -and $missing.Count -gt 0) {
+  Write-Host '::error::Labels missing on main branch. See Labels Sync Summary.'
+  exit 22
+}
+exit 0

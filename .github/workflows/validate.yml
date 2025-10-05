@@ -94,7 +94,11 @@ jobs:
 
       - name: Labels sync summary (config vs live)
         shell: pwsh
-        run: pwsh -NonInteractive -File tools/Write-LabelsSyncSummary.ps1 -ConfigPath '.github/labels.yml'
+        env:
+          FAIL_LABELS_ON_MAIN: ${{ github.ref == 'refs/heads/main' && '1' || '0' }}
+        run: |
+          $fail = $false; if ($env:FAIL_LABELS_ON_MAIN -eq '1') { $fail = $true }
+          pwsh -NonInteractive -File tools/Write-LabelsSyncSummary.ps1 -ConfigPath '.github/labels.yml' -FailOnMissing:$fail
 
       - name: Repo hygiene (warn-only)
         shell: pwsh
