@@ -1,0 +1,57 @@
+name: "Session Index Post"
+description: "Append session index summary, validate schema-lite, and upload artifact"
+inputs:
+  results-dir:
+    description: "Results directory containing session-index.json"
+    required: false
+    default: "tests/results"
+  validate-schema:
+    description: "Validate session-index.json with schema-lite"
+    required: false
+    default: "true"
+  upload:
+    description: "Upload session-index.json as artifact"
+    required: false
+    default: "true"
+  artifact-name:
+    description: "Artifact name"
+    required: false
+    default: "session-index"
+runs:
+  using: "composite"
+  steps:
+    - name: Append session index to summary
+      shell: pwsh
+      run: |
+        $dir = '${{ inputs.results-dir }}'
+        $idx = Join-Path $dir 'session-index.json'
+        if (Test-Path $idx) {
+          try {
+            $j = Get-Content $idx -Raw | ConvertFrom-Json -ErrorAction Stop
+            if ($j.stepSummary) {
+              $j.stepSummary | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8
+            } else {
+              ("Session index available: {0}" -f $idx) | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8
+            }
+          } catch { Write-Host "::warning::Failed to read session index: $_" }
+        } else {
+          Write-Host '::notice::session-index.json not found.'
+        }
+
+    - name: Validate session index (schema-lite)
+      if: ${{ inputs.validate-schema == 'true' }}
+      shell: pwsh
+      run: |
+        $dir = '${{ inputs.results-dir }}'
+        $idx = Join-Path $dir 'session-index.json'
+        if (Test-Path $idx) {
+          pwsh -File tools/Invoke-JsonSchemaLite.ps1 -JsonPath $idx -SchemaPath docs/schemas/session-index-v1.schema.json
+          if ($LASTEXITCODE -ne 0) { Write-Host "::warning::Schema-lite returned $LASTEXITCODE for session index" }
+        } else { Write-Host '::notice::session-index.json not present for validation.' }
+
+    - name: Upload session index artifact
+      if: ${{ inputs.upload == 'true' }}
+      uses: actions/upload-artifact@v4
+      with:
+        name: ${{ inputs.artifact-name }}
+        path: ${{ inputs.results-dir }}/session-index.json
