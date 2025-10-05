@@ -9,8 +9,11 @@ Describe 'Fixture manifest enforcement' -Tag 'Unit' {
     $script:manifest = Join-Path $TestDrive 'fixtures.manifest.json'
     Copy-Item -LiteralPath (Join-Path $repoRoot 'fixtures.manifest.json') -Destination $manifest -Force
     $script:vi1 = Join-Path $repoRoot 'VI1.vi'
+<<<<<<< HEAD
     # Capture original manifest content for restoration in tests
     $script:originalManifest = Get-Content -LiteralPath $script:manifest -Raw
+=======
+>>>>>>> 3d26364 (compare/report sync: persist compare-exec.json, add optional REPORT_DELAY_MS, ensure reporter runs after exec persistence; validator: add -ManifestPath; tests: use temp manifests and parse JSON)
     function Set-ManifestBytesToActual {
       $m = Get-Content -LiteralPath $script:manifest -Raw | ConvertFrom-Json
       foreach ($it in $m.items) {
@@ -75,3 +78,4 @@ Describe 'Fixture manifest enforcement' -Tag 'Unit' {
     }
   }
 }
+
