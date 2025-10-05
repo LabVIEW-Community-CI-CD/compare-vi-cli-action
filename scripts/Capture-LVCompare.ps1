@@ -174,12 +174,12 @@ if ($RenderReport.IsPresent) {
 		$diff = if ($exitCode -eq 1) { 'true' } elseif ($exitCode -eq 0) { 'false' } else { 'unknown' }
 		$sec  = [Math]::Round($sw.Elapsed.TotalSeconds, 6)
 		$reportScript = Join-Path $PSScriptRoot 'Render-CompareReport.ps1'
-		pwsh -NoLogo -NoProfile -File $reportScript `
-			-Command $commandDisplay `
-			-ExitCode $exitCode `
-			-Diff $diff `
-			-CliPath $cliPath `
-			-DurationSeconds $sec `
+        & $reportScript `
+            -Command $commandDisplay `
+            -ExitCode $exitCode `
+            -Diff $diff `
+            -CliPath $cliPath `
+            -DurationSeconds $sec `
 			-Base $basePath `
 			-Head $headPath `
 			-OutputPath $reportPath | Out-Null

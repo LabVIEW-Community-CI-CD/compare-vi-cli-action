@@ -152,10 +152,11 @@ function Invoke-PhaseTests {
   Write-PhaseBanner $r.name
   $inc = $IncludeIntegrationTests.IsPresent
   try {
-    $invokeArgs = @('-File','Invoke-PesterTests.ps1')
-    if ($inc) { $invokeArgs += '-IncludeIntegration'; $invokeArgs += 'true' }
-    $proc = Start-Process -FilePath 'pwsh' -ArgumentList $invokeArgs -NoNewWindow -PassThru -Wait
-    $code = $proc.ExitCode
+    $cmd = @()
+    $cmd += (Join-Path (Get-Location) 'Invoke-PesterTests.ps1')
+    if ($inc) { $cmd += @('-IncludeIntegration','true') }
+    & $cmd[0] @($cmd[1..($cmd.Count-1)])
+    $code = $LASTEXITCODE
     $r.details.exitCode = $code
     $r.details.integrationIncluded = $inc
     if ($code -eq 0) { $r.status='Passed' } else { $r.status='Failed' }
@@ -172,8 +173,8 @@ function Invoke-PhaseLoop {
   if ($LoopIterations -gt 0) { $env:LOOP_MAX_ITERATIONS = $LoopIterations } else { Remove-Item Env:LOOP_MAX_ITERATIONS -ErrorAction SilentlyContinue }
   $env:LOOP_FAIL_ON_DIFF = 'false'
   try {
-    $proc = Start-Process pwsh -ArgumentList '-File','scripts/Run-AutonomousIntegrationLoop.ps1' -NoNewWindow -PassThru -Wait
-    $code = $proc.ExitCode
+    & (Join-Path (Get-Location) 'scripts' 'Run-AutonomousIntegrationLoop.ps1')
+    $code = $LASTEXITCODE
     $r.details.exitCode = $code
     if ($code -eq 0) { $r.status='Passed' } else { $r.status='Failed' }
   } catch {
@@ -189,16 +190,20 @@ function Invoke-PhaseDiagnostics {
   if (-not (Test-Path $cli)) { $r.details.skipped='cli-missing'; $r.status='Skipped'; return }
   if (-not ($ctx.basePath -and $ctx.headPath)) { $r.details.skipped='paths-missing'; $r.status='Skipped'; return }
   try {
-    $command = '"{0}" "{1}" "{2}" -nobdcosm -nofppos -noattr' -f $cli,$ctx.basePath,$ctx.headPath
-    $psi = New-Object System.Diagnostics.ProcessStartInfo -Property @{ FileName='pwsh'; ArgumentList='-NoLogo','-NoProfile','-Command',$command; RedirectStandardError=$true; RedirectStandardOutput=$true; UseShellExecute=$false }
-    $p = [System.Diagnostics.Process]::Start($psi)
-    $stdout = $p.StandardOutput.ReadToEnd(); $stderr = $p.StandardError.ReadToEnd(); $p.WaitForExit()
-    Set-Content runbook-diag-stdout.txt $stdout -Encoding utf8
-    Set-Content runbook-diag-stderr.txt $stderr -Encoding utf8
-    "$($p.ExitCode)" | Set-Content runbook-diag-exitcode.txt
-    $r.details.exitCode = $p.ExitCode
-    $r.details.stdoutLength = $stdout.Length
-    $r.details.stderrLength = $stderr.Length
+    $compareScript = Join-Path -Path $PSScriptRoot -ChildPath 'CompareVI.ps1'
+    if (-not (Test-Path $compareScript)) {
+      $alt = Join-Path -Path (Join-Path -Path $PSScriptRoot -ChildPath 'scripts') -ChildPath 'CompareVI.ps1'
+      if (Test-Path $alt) { $compareScript = $alt }
+    }
+    . $compareScript
+    $res = Invoke-CompareVI -Base $ctx.basePath -Head $ctx.headPath -LvComparePath $cli -LvCompareArgs '-nobdcosm -nofppos -noattr' -FailOnDiff:$false
+    # Write minimal diag artifacts for parity
+    "${res.ExitCode}" | Set-Content runbook-diag-exitcode.txt -Encoding utf8
+    '' | Set-Content runbook-diag-stdout.txt -Encoding utf8
+    '' | Set-Content runbook-diag-stderr.txt -Encoding utf8
+    $r.details.exitCode = $res.ExitCode
+    $r.details.stdoutLength = 0
+    $r.details.stderrLength = 0
     $r.status = 'Passed'
   } catch {
     $r.details.error = $_.Exception.Message
