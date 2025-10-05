@@ -18,7 +18,6 @@ try {
     schemaVersion    = '1.0.0'
     generatedAtUtc   = (Get-Date).ToUniversalTime().ToString('o')
     resultsDir       = $ResultsDir
-    status           = 'unknown'
     files            = [ordered]@{}
   }
   $sumPath = Join-Path $ResultsDir $SummaryJson
@@ -50,4 +49,3 @@ try {
 } catch {
   Write-Host "::warning::Ensure-SessionIndex failed: $_"
 }
-
