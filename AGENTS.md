@@ -42,6 +42,7 @@
 - Integration needs `LV_BASE_VI` and `LV_HEAD_VI`. Do not orchestrate `LabVIEW.exe`.
 
 ### Pre-Init Gate (Docs-only fast path)
+
 - A pre-init gate detects docs-only changes (e.g., `docs/**`, `**/*.md`) and skips heavy Windows jobs.
 - Exceptions (still run Windows where needed): `docs/schemas/**`.
 - Workflow: first job `pre-init` computes `docs_only` and gates `preflight`/`pester` via `needs`/`if`.
@@ -62,3 +63,4 @@
 
 - Prefer `Invoke-PesterTests.ps1` locally and in CI. Use `-IncludePatterns` to target files.
 - For docs hygiene, run `tools/Check-DocsLinks.ps1` and keep markdownlint clean before PRs.
+- Workflows overview: see `docs/WORKFLOWS_OVERVIEW.md` for a concise catalog of all workflows, triggers, and gates (useful to spot drift and prune duplicates).
