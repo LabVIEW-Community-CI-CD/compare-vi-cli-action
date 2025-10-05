@@ -87,41 +87,14 @@ jobs:
 
       # Call the dispatcher per category to surface atomic failures
       # This dispatcher assumes Pester v5+ is pre-installed on the self-hosted runner
-      - name: Run Pester tests via local dispatcher (category timeouts)
-        shell: pwsh
-        run: |
-          $cat = '${{ matrix.category }}'
-          $patterns = @()
-          switch ($cat) {
-            'dispatcher'   { $patterns = @('Invoke-PesterTests.*.Tests.ps1','PesterAvailability.*.Tests.ps1','PesterSummary.*.Tests.ps1','NestedDispatcher.*.Tests.ps1','Write-PesterSummaryToStepSummary*.Tests.ps1') }
-            'fixtures'     { $patterns = @('Fixtures.*.Tests.ps1','FixtureValidation*.Tests.ps1','FixtureSummary.Tests.ps1','ViBinaryHandling.Tests.ps1') }
-            'schema'       { $patterns = @('Schema.*.Tests.ps1','SchemaLite.*.Tests.ps1') }
-            'comparevi'    { $patterns = @('CompareVI*.Tests.ps1') }
-            'loop'         { $patterns = @('Run-AutonomousIntegrationLoop*.Tests.ps1','CompareLoop*.Tests.ps1','LoopMetrics.Tests.ps1') }
-            'runbook'      { $patterns = @('IntegrationRunbook.Tests.ps1') }
-            'orchestrator' { $patterns = @('On-FixtureValidationFail.Tests.ps1','Workflow.*.Tests.ps1','Guard.*.Tests.ps1','AggregationHints.*.Tests.ps1','ArtifactTracking.*.Tests.ps1','FunctionShadowing*.Tests.ps1','Args.Tokenization.Tests.ps1','Action.CompositeOutputs.Tests.ps1') }
-            default        { $patterns = @('*.Tests.ps1') }
-          }
-          $results = Join-Path 'tests/results' $cat
-          # Resolve per-category timeout from env with a 150s default
-          $timeout = 150
-          switch ($cat) {
-            'dispatcher'   { $t = $env:PESTER_TIMEOUT_DISPATCHER }
-            'fixtures'     { $t = $env:PESTER_TIMEOUT_FIXTURES }
-            'schema'       { $t = $env:PESTER_TIMEOUT_SCHEMA }
-            'comparevi'    { $t = $env:PESTER_TIMEOUT_COMPAREVI }
-            'loop'         { $t = $env:PESTER_TIMEOUT_LOOP }
-            'runbook'      { $t = $env:PESTER_TIMEOUT_RUNBOOK }
-            'orchestrator' { $t = $env:PESTER_TIMEOUT_ORCHESTRATOR }
-          }
-          if ($t) { try { $timeout = [int]$t } catch { $timeout = 150 } }
-
-          ./Invoke-PesterTests.ps1 `
-            -TestsPath tests `
-            -IncludeIntegration '${{ inputs.include_integration }}' `
-            -ResultsPath $results `
-            -TimeoutSeconds $timeout `
-            -IncludePatterns $patterns
+      - name: Run Pester category
+        uses: ./.github/actions/pester-category-run
+        with:
+          category: ${{ matrix.category }}
+          include_integration: ${{ inputs.include_integration }}
+          results-dir: tests/results/${{ matrix.category }}
+          tests-path: tests
+          default-timeout-seconds: '150'
 
       - name: Append test metrics to job summary
         if: always()

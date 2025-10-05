@@ -1,0 +1,65 @@
+name: "Pester Category Run"
+description: "Run Pester tests for a single category with per-category timeouts and Ensure-SessionIndex fallback"
+inputs:
+  category:
+    description: "Category name (dispatcher, fixtures, schema, comparevi, loop, runbook, orchestrator)"
+    required: true
+  include_integration:
+    description: "Include Integration-tagged tests ('true'|'false')"
+    required: false
+    default: 'true'
+  results-dir:
+    description: "Results output directory (e.g., tests/results/<category>)"
+    required: true
+  tests-path:
+    description: "Path to tests directory"
+    required: false
+    default: 'tests'
+  default-timeout-seconds:
+    description: "Default timeout in seconds when no per-category override is set"
+    required: false
+    default: '150'
+runs:
+  using: "composite"
+  steps:
+    - name: Run Pester tests via local dispatcher (category timeouts)
+      shell: pwsh
+      run: |
+        $cat = '${{ inputs.category }}'
+        $patterns = @()
+        switch ($cat) {
+          'dispatcher'   { $patterns = @('Invoke-PesterTests*Tests.ps1','PesterAvailability*Tests.ps1','PesterSummary*Tests.ps1','NestedDispatcher*Tests.ps1','Write-PesterSummaryToStepSummary*Tests.ps1') }
+          'fixtures'     { $patterns = @('Fixtures*Tests.ps1','FixtureValidation*Tests.ps1','FixtureSummary.Tests.ps1','ViBinaryHandling.Tests.ps1') }
+          'schema'       { $patterns = @('Schema*Tests.ps1','SchemaLite*Tests.ps1') }
+          'comparevi'    { $patterns = @('CompareVI*Tests.ps1') }
+          'loop'         { $patterns = @('Run-AutonomousIntegrationLoop*Tests.ps1','CompareLoop*Tests.ps1','LoopMetrics.Tests.ps1') }
+          'runbook'      { $patterns = @('IntegrationRunbook.Tests.ps1') }
+          'orchestrator' { $patterns = @('On-FixtureValidationFail.Tests.ps1','Workflow*Tests.ps1','Guard*Tests.ps1','AggregationHints*Tests.ps1','ArtifactTracking*Tests.ps1','FunctionShadowing*Tests.ps1','Args.Tokenization.Tests.ps1','Action.CompositeOutputs.Tests.ps1') }
+          default        { $patterns = @('*.Tests.ps1') }
+        }
+
+        # Resolve per-category timeout from env with a default
+        $timeout = 150
+        try { $timeout = [int]'${{ inputs.default-timeout-seconds }}' } catch { $timeout = 150 }
+        switch ($cat) {
+          'dispatcher'   { $t = $env:PESTER_TIMEOUT_DISPATCHER }
+          'fixtures'     { $t = $env:PESTER_TIMEOUT_FIXTURES }
+          'schema'       { $t = $env:PESTER_TIMEOUT_SCHEMA }
+          'comparevi'    { $t = $env:PESTER_TIMEOUT_COMPAREVI }
+          'loop'         { $t = $env:PESTER_TIMEOUT_LOOP }
+          'runbook'      { $t = $env:PESTER_TIMEOUT_RUNBOOK }
+          'orchestrator' { $t = $env:PESTER_TIMEOUT_ORCHESTRATOR }
+        }
+        if ($t) { try { $timeout = [int]$t } catch { $timeout = $timeout } }
+
+        $tests   = '${{ inputs.tests-path }}'
+        $outDir  = '${{ inputs.results-dir }}'
+        ./Invoke-PesterTests.ps1 -TestsPath $tests -IncludeIntegration '${{ inputs.include_integration }}' -ResultsPath $outDir -IncludePatterns $patterns -TimeoutSeconds $timeout
+
+    - name: Ensure session index (fallback)
+      if: always()
+      shell: pwsh
+      run: |
+        $dir = '${{ inputs.results-dir }}'
+        pwsh -NonInteractive -File tools/Ensure-SessionIndex.ps1 -ResultsDir $dir -SummaryJson 'pester-summary.json'
+
