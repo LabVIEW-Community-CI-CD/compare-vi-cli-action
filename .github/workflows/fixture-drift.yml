@@ -54,6 +54,7 @@ jobs:
   validate-ubuntu:
     name: Fixture Drift (Ubuntu)
     runs-on: ubuntu-latest
+    needs: pre-init
     timeout-minutes: 3
     permissions:
       actions: read
@@ -70,6 +71,7 @@ jobs:
           comment-on-fail: 'true'
           upload-artifacts: 'true'
           artifact-name: fixture-drift-ubuntu
+          soft-fail: ${{ needs.pre-init.outputs.docs_only }}
 
   validate-windows:
     name: Fixture Drift (Windows)
@@ -89,6 +91,19 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Prepare fixture copies (base/head)
+        id: prep
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $tmp = Join-Path $env:RUNNER_TEMP ("fixtures-" + [guid]::NewGuid().ToString())
+          New-Item -ItemType Directory -Force -Path $tmp | Out-Null
+          $base = Join-Path $tmp 'base.vi'
+          $head = Join-Path $tmp 'head.vi'
+          Copy-Item -LiteralPath (Join-Path $env:GITHUB_WORKSPACE 'VI1.vi') -Destination $base -Force
+          Copy-Item -LiteralPath (Join-Path $env:GITHUB_WORKSPACE 'VI2.vi') -Destination $head -Force
+          "base=$base`nhead=$head" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+
       - name: Fixture Drift Orchestrator
         uses: ./.github/actions/fixture-drift
         with:
@@ -96,6 +111,8 @@ jobs:
           comment-on-fail: 'true'
           upload-artifacts: 'true'
           artifact-name: fixture-drift-windows
+          base-path: ${{ steps.prep.outputs.base }}
+          head-path: ${{ steps.prep.outputs.head }}
 
       - name: Session index post (best-effort)
         if: always()
