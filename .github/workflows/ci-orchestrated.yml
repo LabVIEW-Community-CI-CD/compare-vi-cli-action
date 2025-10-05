@@ -102,7 +102,7 @@ jobs:
         uses: ./.github/actions/pester-category-run
         with:
           category: ${{ matrix.category }}
-          include_integration: ${{ inputs.include_integration }}
+          include_integration: ${{ inputs.include_integration != '' && inputs.include_integration || 'true' }}
           results-dir: tests/results/${{ matrix.category }}
           tests-path: tests
           default-timeout-seconds: '150'

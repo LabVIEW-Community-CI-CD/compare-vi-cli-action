@@ -26,6 +26,8 @@ runs:
       shell: pwsh
       run: |
         $cat = '${{ inputs.category }}'
+        $include = '${{ inputs.include_integration }}'
+        if ([string]::IsNullOrWhiteSpace($include)) { $include = 'true' }
         $patterns = @()
         switch ($cat) {
           'dispatcher'   { $patterns = @('Invoke-PesterTests*Tests.ps1','PesterAvailability*Tests.ps1','PesterSummary*Tests.ps1','NestedDispatcher*Tests.ps1','Write-PesterSummaryToStepSummary*Tests.ps1') }
@@ -54,7 +56,7 @@ runs:
 
         $tests   = '${{ inputs.tests-path }}'
         $outDir  = '${{ inputs.results-dir }}'
-        ./Invoke-PesterTests.ps1 -TestsPath $tests -IncludeIntegration '${{ inputs.include_integration }}' -ResultsPath $outDir -IncludePatterns $patterns -TimeoutSeconds $timeout
+        ./Invoke-PesterTests.ps1 -TestsPath $tests -IncludeIntegration $include -ResultsPath $outDir -IncludePatterns $patterns -TimeoutSeconds $timeout
 
     - name: Ensure session index (fallback)
       if: always()
@@ -62,4 +64,3 @@ runs:
       run: |
         $dir = '${{ inputs.results-dir }}'
         pwsh -NonInteractive -File tools/Ensure-SessionIndex.ps1 -ResultsDir $dir -SummaryJson 'pester-summary.json'
-
