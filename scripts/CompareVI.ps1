@@ -242,9 +242,15 @@ function Invoke-CompareVI {
       $code = & $Executor $cli $baseAbs $headAbs ,$cliArgs
     }
     else {
-      & $cli $baseAbs $headAbs @cliArgs
-      # Capture exit code (use 0 as fallback if LASTEXITCODE not yet set in session)
-      $code = if (Get-Variable -Name LASTEXITCODE -ErrorAction SilentlyContinue) { $LASTEXITCODE } else { 0 }
+      if ($env:LV_SUPPRESS_UI -eq '1') {
+        $args = @($baseAbs, $headAbs) + @($cliArgs)
+        $p = Start-Process -FilePath $cli -ArgumentList $args -Wait -PassThru -WindowStyle Hidden
+        $code = [int]$p.ExitCode
+      } else {
+        & $cli $baseAbs $headAbs @cliArgs
+        # Capture exit code (use 0 as fallback if LASTEXITCODE not yet set in session)
+        $code = if (Get-Variable -Name LASTEXITCODE -ErrorAction SilentlyContinue) { $LASTEXITCODE } else { 0 }
+      }
     }
   $sw.Stop()
   $compareDurationSeconds = [math]::Round($sw.Elapsed.TotalSeconds, 3)
