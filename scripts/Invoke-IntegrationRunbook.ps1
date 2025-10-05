@@ -193,14 +193,22 @@ function Invoke-PhaseDiagnostics {
     # Optional console watcher during diagnostics compare
     $cwId = $null
     if ($env:WATCH_CONSOLE -match '^(?i:1|true|yes|on)$') {
-      try { . (Join-Path $PSScriptRoot 'ConsoleWatch.ps1'); $cwId = Start-ConsoleWatch -OutDir (Get-Location).Path } catch {}
+      try {
+        $root = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path
+        if (-not (Get-Command -Name Start-ConsoleWatch -ErrorAction SilentlyContinue)) {
+          . (Join-Path $root 'tools' 'ConsoleWatch.ps1')
+        }
+        $cwId = Start-ConsoleWatch -OutDir (Get-Location).Path
+      } catch {}
     }
     $compareScript = Join-Path -Path $PSScriptRoot -ChildPath 'CompareVI.ps1'
     if (-not (Test-Path $compareScript)) {
       $alt = Join-Path -Path (Join-Path -Path $PSScriptRoot -ChildPath 'scripts') -ChildPath 'CompareVI.ps1'
       if (Test-Path $alt) { $compareScript = $alt }
     }
-    . $compareScript
+    if (-not (Get-Command -Name Invoke-CompareVI -ErrorAction SilentlyContinue)) {
+      . $compareScript
+    }
     $res = Invoke-CompareVI -Base $ctx.basePath -Head $ctx.headPath -LvComparePath $cli -LvCompareArgs '-nobdcosm -nofppos -noattr' -FailOnDiff:$false
     # Write minimal diag artifacts for parity
     "${res.ExitCode}" | Set-Content runbook-diag-exitcode.txt -Encoding utf8
