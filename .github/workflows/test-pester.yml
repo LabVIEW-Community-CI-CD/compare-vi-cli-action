@@ -21,6 +21,12 @@ jobs:
     steps:
       - uses: actions/checkout@v5
 
+      - name: Build shared library (for managed parity tests)
+        shell: pwsh
+        run: |
+          dotnet --version
+          pwsh -File tools/Build-Shared.ps1
+
       - name: Install Pester v5
         shell: pwsh
         run: |
