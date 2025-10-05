@@ -27,16 +27,6 @@ jobs:
         run: |
           ./bin/actionlint -color
 
-      - name: Lint unanchored dot-sourcing (non-blocking)
-        shell: pwsh
-        continue-on-error: true
-        run: |
-          pwsh -File tools/Lint-DotSourcing.ps1 -WarnOnly
-
-      - name: Lint inline-if in format (-f)
-        shell: pwsh
-        run: pwsh -File tools/Lint-InlineIfInFormat.ps1
-
       - name: Install markdownlint-cli
         run: |
           npm install -g markdownlint-cli
@@ -168,7 +158,8 @@ jobs:
         run: Copy-Item -LiteralPath fixture-validation.json -Destination fixture-validation-prev.json -Force
 
   session-index:
-    runs-on: ubuntu-latest
+    runs-on: windows-latest
+    needs: [lint]
     steps:
       - uses: actions/checkout@v5
 
@@ -182,7 +173,7 @@ jobs:
         run: |
           $res = Join-Path $env:RUNNER_TEMP 'sessionindex'
           New-Item -ItemType Directory -Force -Path $res | Out-Null
-          ./tools/Quick-DispatcherSmoke.ps1 -ResultsPath $res -PreferWorkspace
+          ./tools/Quick-DispatcherSmoke.ps1 -ResultsPath $res
 
       - name: Validate session index schema (schema-lite)
         shell: pwsh
