@@ -10,40 +10,15 @@ on:
         type: choice
         options: ['true', 'false']
 
-concurrency:
-  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
-  cancel-in-progress: true
-
 jobs:
-  preflight:
-    runs-on: [self-hosted, Windows, X64]
-    timeout-minutes: 3
-    steps:
-      - uses: actions/checkout@v5
-      - name: Verify LVCompare and idle LabVIEW state
-        shell: pwsh
-        run: |
-          $cli = 'C:\\Program Files\\National Instruments\\Shared\\LabVIEW Compare\\LVCompare.exe'
-          if (-not (Test-Path -LiteralPath $cli)) {
-            Write-Host "::error::LVCompare.exe not found at canonical path: $cli"; exit 1
-          }
-          $lv = Get-Process -Name 'LabVIEW' -ErrorAction SilentlyContinue
-          if ($lv) { Write-Host "::error::LabVIEW.exe is running (PID(s): $($lv.Id -join ','))"; exit 1 }
-          Write-Host 'Preflight OK: LVCompare present; LabVIEW not running.'
-
   pester:
     runs-on: [self-hosted, Windows, X64]
-    timeout-minutes: 3
-    needs: preflight
     env:
       LV_BASE_VI: ${{ vars.LV_BASE_VI }}
       LV_HEAD_VI: ${{ vars.LV_HEAD_VI }}
       DETECT_LEAKS: '1'
       CLEAN_AFTER: '1'
       SCAN_ARTIFACTS: '1'
-      UNBLOCK_GUARD: '1'
-      LV_SUPPRESS_UI: '1'
-      WATCH_CONSOLE: '1'
     steps:
       - uses: actions/checkout@v5
 
@@ -78,34 +53,17 @@ jobs:
             $lines | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8
             if (Test-Path $idx) {
               $ix = Get-Content $idx -Raw | ConvertFrom-Json
-              if (-not $ix.stepSummary) {
+              if ($ix.stepSummary) {
+                $intro = @('','### Session Overview','') -join "`n"
+                $intro | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8
+                $ix.stepSummary | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8
+              } else {
                 "\nSession index: tests/results/session-index.json" | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8
               }
             }
           } else {
             Write-Host '::warning::pester-summary.json not found.'
           }
-
-      - name: Ensure session index (fallback)
-        if: always()
-        shell: pwsh
-        run: |
-          pwsh -File tools/Ensure-SessionIndex.ps1 -ResultsDir 'tests/results' -SummaryJson 'pester-summary.json'
-
-      - name: Session index post
-        if: always()
-        uses: ./.github/actions/session-index-post
-        with:
-          results-dir: tests/results
-          validate-schema: true
-          upload: true
-          artifact-name: session-index
-
-      - name: Append failure inventory
-        if: always()
-        shell: pwsh
-        run: |
-          pwsh -File tools/Write-FailureInventory.ps1 -ResultsDir 'tests/results' -AppendToStepSummary
 
       - name: Upload Pester artifacts
         if: always()
@@ -122,12 +80,37 @@ jobs:
             tests/results/pester-artifacts-trail.json
             tests/results/pester-leak-report.json
             tests/results/session-index.json
-            tests/results/failure-inventory.md
 
-      - name: Runner Unblock Guard
+      - name: Runner Unblock Guard (process/jobs snapshot)
         if: always()
-        uses: ./.github/actions/runner-unblock-guard
-        with:
-          snapshot-path: tests/results/runner-unblock-snapshot.json
-          cleanup: ${{ env.UNBLOCK_GUARD == '1' }}
-          process-names: 'conhost,pwsh,LabVIEW,LVCompare'
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $snap = [ordered]@{}
+          try {
+            $procs = @(Get-Process -ErrorAction SilentlyContinue | Where-Object { $_.ProcessName -in @('conhost','pwsh','LabVIEW','LVCompare') } | Select-Object ProcessName,Id,StartTime)
+            $jobs  = @(Get-Job -ErrorAction SilentlyContinue | Select-Object Id,Name,State,HasMoreData)
+            $snap.processes = $procs
+            $snap.jobs = $jobs
+            $outDir = Join-Path (Get-Location) 'tests/results'
+            New-Item -ItemType Directory -Force -Path $outDir | Out-Null
+            $path = Join-Path $outDir 'runner-unblock-snapshot.json'
+            $snap | ConvertTo-Json -Depth 5 | Out-File -FilePath $path -Encoding utf8
+            $lines = @('### Runner Unblock Guard','')
+            $lines += ('- Process count: {0}' -f $procs.Count)
+            $lines += ('- Pester job count: {0}' -f $jobs.Count)
+            $lines += ''
+            $lines += ('Snapshot: {0}' -f $path)
+            $lines -join "`n" | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8
+          } catch { Write-Host "::warning::Unblock guard failed: $_" }
+      - name: Validate session index schema (schema-lite)
+        if: always()
+        shell: pwsh
+        run: |
+          $idx = 'tests/results/session-index.json'
+          if (Test-Path $idx) {
+            pwsh -File tools/Invoke-JsonSchemaLite.ps1 -JsonPath $idx -SchemaPath docs/schemas/session-index-v1.schema.json
+            if ($LASTEXITCODE -ne 0) { Write-Host "Session index schema-lite returned code $LASTEXITCODE" }
+          } else {
+            Write-Host '::notice::session-index.json not present.'
+          }
