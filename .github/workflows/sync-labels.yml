@@ -4,6 +4,8 @@ on:
   push:
     branches: ['**']
   create: {}
+  schedule:
+    - cron: '0 6 * * 1' # Weekly sync Mon 06:00 UTC
   workflow_dispatch: {}
 
 permissions:

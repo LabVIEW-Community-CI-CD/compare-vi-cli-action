@@ -171,6 +171,15 @@ jobs:
           raw="$COMMENT_BODY"
           tail=$(printf "%s" "$raw" | sed -n 's#^/label[[:space:]]\+##Ip')
           labels=$(echo "$tail" | tr ',' ' ' | xargs)
+          # allowed labels from labels.yml (names only)
+          allowed=$(sed -n 's/^\s*-\s*name:\s*\"\{0,1\}\([^\"\r\n]*\)\"\{0,1\}\s*$/\1/p' .github/labels.yml | xargs)
+          filt=""
+          for l in $labels; do
+            for a in $allowed; do
+              if [ "$l" = "$a" ]; then filt="$filt $l"; break; fi
+            done
+          done
+          labels=$(echo "$filt" | xargs)
           if [ -z "$labels" ]; then echo "No labels specified."; exit 0; fi
           printf '%s\n' $labels | jq -R -s 'split("\n")|map(select(length>0))' > labels.json
           payload=$(jq -n --slurpfile arr labels.json '{labels:$arr[0]}')
