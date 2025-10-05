@@ -609,7 +609,9 @@ if ($RenderReport) {
     } else {
       # Use robust dispatcher to avoid LVCompare UI popups and apply preflight guards
       $repoRoot = Resolve-Path (Join-Path $PSScriptRoot '..') | Select-Object -ExpandProperty Path
-      . (Join-Path $repoRoot 'scripts' 'CompareVI.ps1')
+      if (-not (Get-Command -Name Invoke-CompareVI -ErrorAction SilentlyContinue)) {
+        Import-Module (Join-Path $repoRoot 'scripts' 'CompareVI.psm1') -Force
+      }
       $execJsonPath = Join-Path $OutputDir 'compare-exec.json'
       $res = Invoke-CompareVI -Base $BasePath -Head $HeadPath -LvComparePath $cli -LvCompareArgs $LvCompareArgs -FailOnDiff:$false -CompareExecJsonPath $execJsonPath
       $exitCode = $res.ExitCode
@@ -664,7 +666,9 @@ if ($RenderReport) {
       if ($env:WATCH_CONSOLE -match '^(?i:1|true|yes|on)$') {
         try {
           $root = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path
-          . (Join-Path $root 'tools' 'ConsoleWatch.ps1')
+          if (-not (Get-Command -Name Start-ConsoleWatch -ErrorAction SilentlyContinue)) {
+            Import-Module (Join-Path $root 'tools' 'ConsoleWatch.psm1') -Force
+          }
           $cwId = Start-ConsoleWatch -OutDir $OutputDir
         } catch {}
       }
