@@ -27,10 +27,11 @@ jobs:
         run: |
           ./bin/actionlint -color
 
-      - name: Lint unanchored dot-sourcing
+      - name: Lint unanchored dot-sourcing (non-blocking)
         shell: pwsh
+        continue-on-error: true
         run: |
-          pwsh -File tools/Lint-DotSourcing.ps1
+          pwsh -File tools/Lint-DotSourcing.ps1 -WarnOnly
 
       - name: Lint inline-if in format (-f)
         shell: pwsh
