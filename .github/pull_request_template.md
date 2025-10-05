@@ -1,33 +1,31 @@
-# Summary
+# Pull Request
 
-Briefly describe the changes.
+## Summary
+
+- What problem does this PR solve? Why now?
 
 ## Changes
 
-- [ ] Updated action.yml logic
-- [ ] Updated README/docs
-- [ ] Updated workflows
+- Short, scannable bullets of what changed.
 
-## Testing
+## Risks / Mitigations
 
-- [ ] Unit tests passed (Pester tests workflow)
-- [ ] Ran Test (mock) on windows-latest and it passed
-- [ ] Ran Smoke on self-hosted Windows and recorded exit codes
-- [ ] Verified outputs (`diff`, `exitCode`, `cliPath`, `command`) and step summary
+- Note anything that could impact CI or users, and how it’s minimized.
 
-## Documentation
+## Labels (pick first; agents will sync/create automatically)
 
-- [ ] README updated (usage, args, troubleshooting)
-- [ ] CHANGELOG updated (user-facing changes)
-- [ ] Copilot instructions updated if behavior changed
+- Suggested: `ci`, `documentation`, `enhancement`
+- Workflow triggers (label‑driven): `smoke`, `test-integration`
+- Tip: If labels are missing on a fork/PR, comment: `/label smoke, test-integration`
 
-## Checklist
+## Validation
 
-- [ ] CI green (Validate, Pester tests, Test (mock))
-- [ ] Tag plan prepared (if releasing)
+- Validate workflow (actionlint, markdownlint) passes
+- Pester (self‑hosted) categories pass (or expected failures noted)
+- Fixture Drift (Windows) as needed
 
-## Smoke test (optional guidance)
+## Links
 
-- If you have access to the self-hosted runner with LabVIEW, run `.github/workflows/smoke.yml`.
-- Provide inputs, or ensure repo variables exist:
-  - `LV_BASE_VI` (no-diff), `LV_HEAD_VI` (diff), `LVCOMPARE_PATH`
+- Branch rules and required checks: `docs/BRANCH_RULES.md`
+- Workflows overview: `docs/WORKFLOWS_OVERVIEW.md`
+
