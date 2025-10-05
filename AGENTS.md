@@ -70,6 +70,21 @@
 - For forks without label perms: emit a summary note listing intended labels so maintainers can apply them.
 - Future agents: announce intended labels in the plan, verify presence (via `gh label list`), create/sync if missing, then open the PR with labels attached.
 
+### Labels‑Aware Agent Protocol
+
+- Map labels to workflows and behaviors (leverage them to accomplish the deliverable):
+  - `smoke`: Triggers the Smoke workflow on PRs (label‑driven run in `.github/workflows/smoke.yml`). Use to validate local action wiring quickly.
+  - `test-integration`: Triggers self‑hosted Pester integration on PRs (see `.github/workflows/pester-integration-on-label.yml`). Use when the deliverable must be verified with real LVCompare.
+  - `ci`: Marks CI/hardening changes; helps reviewers and automation triage.
+  - `documentation`: Marks docs‑only changes; pre‑init gate will still enforce schemas under `docs/schemas/**`.
+  - `enhancement`: Feature‑level changes.
+- Before implementation, pick the label set that expresses: scope (docs/feature/ci) and required execution (smoke/integration). Ensure labels exist (sync or `gh label create`).
+- When opening the PR, attach the chosen labels immediately. This will auto‑wire the correct workflows (e.g., `smoke`, `test-integration`).
+- If labels cannot be set (forks):
+  - Add a short "Intended labels" block to the PR body; the pre‑init gate will produce guidance for maintainers.
+  - Optionally include a comment like: `/run pester-selfhosted` if an on‑demand run is required.
+- Keep labels updated during iteration (e.g., add `ci` when switching to workflow changes).
+
 ## Security & Configuration Tips
 
 - LVCompare‑only interface; no `LabVIEW.exe` launches from tools.
