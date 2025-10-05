@@ -41,7 +41,6 @@ jobs:
   preflight:
     runs-on: [self-hosted, Windows, X64]
     timeout-minutes: 3
-    needs: []
     steps:
       - uses: actions/checkout@v5
       - name: Verify LVCompare and idle LabVIEW state
@@ -160,4 +159,3 @@ jobs:
             '- Drift: ${{ needs.drift.result }}'
           ) -join "`n"
           $lines | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8
-
