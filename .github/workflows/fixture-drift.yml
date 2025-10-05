@@ -8,10 +8,15 @@ on:
       - 'scripts/**'
       - 'tools/**'
       - 'docs/schemas/**'
-  workflow_dispatch: {}
+  workflow_dispatch:
+    inputs:
+      sample_id:
+        description: 'Optional sampling id (avoid cancels when running multiple manual samples)'
+        required: false
+        default: ''
 
 concurrency:
-  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.event.inputs.sample_id || github.ref }}
   cancel-in-progress: true
 
 jobs:
