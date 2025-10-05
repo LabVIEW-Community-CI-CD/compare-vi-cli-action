@@ -638,7 +638,9 @@ function Write-SessionIndex {
     try {
       $driftRoot = Join-Path (Get-Location) 'results/fixture-drift'
       if (Test-Path -LiteralPath $driftRoot -PathType Container) {
-        $latest = Get-ChildItem -LiteralPath $driftRoot -Directory | Sort-Object Name -Descending | Select-Object -First 1
+        $dirs = Get-ChildItem -LiteralPath $driftRoot -Directory
+        $tsDirs = @($dirs | Where-Object { $_.Name -match '^[0-9]{8}T[0-9]{6}Z$' })
+        $latest = if ($tsDirs.Count -gt 0) { $tsDirs | Sort-Object Name -Descending | Select-Object -First 1 } else { $dirs | Sort-Object LastWriteTimeUtc -Descending | Select-Object -First 1 }
         if ($latest) {
           $sumPath = Join-Path $latest.FullName 'drift-summary.json'
           $status = $null
