@@ -140,6 +140,13 @@ jobs:
           "fail_on_diff=${{ github.event.inputs.fail_on_diff }}"   >> $env:GITHUB_OUTPUT
           "working_directory=$wd"      >> $env:GITHUB_OUTPUT
 
+      - name: Normalize fail_on_diff
+        id: norm
+        uses: ./.github/actions/bool-normalize
+        with:
+          value: ${{ steps.res.outputs.fail_on_diff }}
+          default: 'true'
+
       - name: Run local action
         id: compare
         uses: ./
@@ -148,7 +155,7 @@ jobs:
           head: ${{ steps.res.outputs.head }}
           lvComparePath: ${{ steps.res.outputs.lvComparePath }}
           lvCompareArgs: ${{ steps.res.outputs.lvCompareArgs }}
-          fail-on-diff: ${{ steps.res.outputs.fail_on_diff }}
+          fail-on-diff: ${{ steps.norm.outputs.bool }}
           working-directory: ${{ steps.res.outputs.working_directory }}
 
       - name: Echo outputs
