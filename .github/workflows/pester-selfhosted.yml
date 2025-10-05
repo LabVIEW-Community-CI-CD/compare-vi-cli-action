@@ -168,6 +168,27 @@ jobs:
         run: |
           pwsh -NonInteractive -File tools/Write-FailureInventory.ps1 -ResultsDir 'tests/results' -AppendToStepSummary
 
+      - name: Append required checks (branch rules hint)
+        if: ${{ always() && matrix.category == 'dispatcher' }}
+        shell: pwsh
+        run: |
+          $lines = @(
+            '### Required checks (copy for branch protections)',
+            '- Pester (self-hosted) / preflight',
+            '- Pester (self-hosted) / pester (dispatcher|fixtures|schema|comparevi|loop|runbook|orchestrator)',
+            '- Fixture Drift Validation / Fixture Drift (Windows)',
+            '- VI Binary Handling Gate / vi-binary-check',
+            '- Validate / lint',
+            '- markdownlint / lint'
+          ) -join "`n"
+          $lines | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8
+          $doc = 'docs/BRANCH_RULES.md'
+          if (Test-Path $doc) {
+            "See: ./$doc" | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8
+          } else {
+            'Branch rules guide: docs/BRANCH_RULES.md (coming soon in issue #60)' | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8
+          }
+
       - name: Upload Pester artifacts
         if: always()
         uses: actions/upload-artifact@v4
