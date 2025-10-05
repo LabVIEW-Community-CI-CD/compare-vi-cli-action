@@ -103,8 +103,10 @@ jobs:
     needs: [pre-init, preflight-windows, validate-ubuntu]
     outputs:
       run_windows: ${{ steps.calc.outputs.run_windows }}
+      reason: ${{ steps.calc.outputs.reason }}
       docs_only: ${{ steps.calc.outputs.docs_only }}
       ubuntu_status: ${{ steps.calc.outputs.ubuntu_status }}
+      ubuntu_summary_path: ${{ steps.calc.outputs.ubuntu_summary_path }}
     steps:
       - name: Compute gate outputs
         id: calc
@@ -113,16 +115,31 @@ jobs:
           DOCS_ONLY: ${{ needs.pre-init.outputs.docs_only }}
           PREFLIGHT_RESULT: ${{ needs.preflight-windows.result }}
           UBUNTU_STATUS: ${{ needs.validate-ubuntu.outputs.ubuntu_status }}
+          UBUNTU_SUMMARY: ${{ needs.validate-ubuntu.outputs.ubuntu_summary_path }}
         run: |
           $docs = if ($env:DOCS_ONLY) { $env:DOCS_ONLY } else { 'false' }
           $pre  = if ($env:PREFLIGHT_RESULT) { $env:PREFLIGHT_RESULT } else { 'success' }
           $u    = if ($env:UBUNTU_STATUS) { $env:UBUNTU_STATUS } else { 'unknown' }
+          $sp   = if ($env:UBUNTU_SUMMARY) { $env:UBUNTU_SUMMARY } else { '' }
           $run  = 'true'
-          if ($docs -eq 'true') { $run = 'false' }
-          if ($pre -ne 'success') { $run = 'false' }
-          "run_windows=$run"     | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
-          "docs_only=$docs"      | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
-          "ubuntu_status=$u"     | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+          $reason = 'proceed'
+          if ($docs -eq 'true') { $run = 'false'; $reason='docs_only' }
+          elseif ($pre -ne 'success') { $run = 'false'; $reason='preflight_not_success' }
+          else {
+            if ([string]::IsNullOrWhiteSpace($u)) { $u = 'unknown' }
+            # Optionally adjust behavior by ubuntu status; keep default to proceed
+            switch ($u) {
+              'fail-structural' { $run = 'true'; $reason='ubuntu_fail_structural' }
+              'drift'           { $run = 'true'; $reason='ubuntu_drift' }
+              'ok'              { $run = 'true'; $reason='ubuntu_ok' }
+              default           { $run = 'true'; $reason='ubuntu_unknown' }
+            }
+          }
+          "run_windows=$run"              | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+          "reason=$reason"                | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+          "docs_only=$docs"               | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+          "ubuntu_status=$u"              | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+          "ubuntu_summary_path=$sp"       | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
       - name: Append gate summary
         shell: pwsh
         run: |
@@ -131,7 +148,8 @@ jobs:
             $lines += ('- Preflight result: ${{ needs.preflight-windows.result }}')
             $lines += ('- Docs-only: ${{ needs.pre-init.outputs.docs_only }}')
             $lines += ('- Ubuntu status: ${{ needs.validate-ubuntu.outputs.ubuntu_status }}')
-            $lines += ('- Run Windows: ${{ steps.calc.outputs.run_windows }}')
+            $lines += ('- Ubuntu summary: ${{ needs.validate-ubuntu.outputs.ubuntu_summary_path }}')
+            $lines += ('- Decision: run_windows=${{ steps.calc.outputs.run_windows }} (reason=${{ steps.calc.outputs.reason }})')
             $lines -join "`n" | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8
           }
 
