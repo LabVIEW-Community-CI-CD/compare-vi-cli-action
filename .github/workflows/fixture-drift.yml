@@ -81,6 +81,7 @@ jobs:
       UNBLOCK_GUARD: '1'
       LV_SUPPRESS_UI: '1'
       WATCH_CONSOLE: '1'
+      INVOKER_REQUIRED: '1'
     permissions:
       actions: read
       contents: read

@@ -152,9 +152,19 @@ function Handle-TelemetrySummary {
   return @{ ok=$true; code=0; data=@{ counts=$counts; telemetryPath=$dst } }
 }
 
+function Validate-Request {
+  param([hashtable]$req)
+  if (-not $req) { throw [System.Exception]::new('invalid schema: null request') }
+  if ($req.schema -ne 'invoker-cmd/v1') { throw [System.Exception]::new('invalid schema') }
+  if (-not $req.id) { throw [System.Exception]::new('missing id') }
+  if (-not $req.verb) { throw [System.Exception]::new('missing verb') }
+  if ($req.args -and -not ($req.args -is [hashtable])) { throw [System.Exception]::new('invalid args') }
+}
+
 function Invoke-Request {
   param([hashtable]$req)
-  $verb = $req.verb
+  Validate-Request -req $req
+  $verb = [string]$req.verb
   $args = @{}
   if ($req.args) { $args = $req.args }
   switch -Regex ($verb) {
@@ -193,7 +203,14 @@ function Start-RunnerInvokerServer {
           $t1 = Get-Date
           $resp = @{ id=$req.id; ok = $out.ok; code = $out.code; message = $out.message; data = $out.data; timings = @{ started=$t0.ToUniversalTime().ToString('o'); ended=$t1.ToUniversalTime().ToString('o') } }
         } catch {
-          $resp = @{ ok = $false; code = 2; message = $_.Exception.Message }
+          $code = 200
+          $msg = $_.Exception.Message
+          if ($msg -match 'invalid schema') { $code = 100 }
+          elseif ($msg -match 'missing id') { $code = 101 }
+          elseif ($msg -match 'missing verb') { $code = 102 }
+          elseif ($msg -match 'invalid args') { $code = 103 }
+          elseif ($msg -match 'Unknown verb') { $code = 104 }
+          $resp = @{ ok = $false; code = $code; message = $msg }
         }
       }
       $sw.Write((Write-Json $resp))
