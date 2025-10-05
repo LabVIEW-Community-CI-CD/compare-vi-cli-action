@@ -47,6 +47,13 @@
 - Exceptions (still run Windows where needed): `docs/schemas/**`.
 - Workflow: first job `pre-init` computes `docs_only` and gates `preflight`/`pester` via `needs`/`if`.
 
+### Hygiene, Branch Rules & Determinism
+
+- Repo hygiene checker: `tools/Check-RepoHygiene.ps1` runs in Validate. It warns on branches; fails on `main` and `release/*`.
+- Keep root minimal; move samples to `docs/samples/` and planning notes to `docs/releases/`.
+- See docs/BRANCH_RULES.md for required checks and protections. Normalize booleans via `./.github/actions/bool-normalize` instead of ad-hoc parsing.
+- Pre-init gate exposes `docs_only`, `fork`, and `reason` outputs for deterministic branching.
+
 ## Commit & Pull Request Guidelines
 
 - Commits: imperative and scoped (e.g., `validator: enforce bytes`).
@@ -64,3 +71,5 @@
 - Prefer `Invoke-PesterTests.ps1` locally and in CI. Use `-IncludePatterns` to target files.
 - For docs hygiene, run `tools/Check-DocsLinks.ps1` and keep markdownlint clean before PRs.
 - Workflows overview: see `docs/WORKFLOWS_OVERVIEW.md` for a concise catalog of all workflows, triggers, and gates (useful to spot drift and prune duplicates).
+
+
