@@ -74,6 +74,10 @@ jobs:
             Write-Host 'Intra-repo markdown links OK.'
           }
 
+      - name: Lint PR template semantics
+        shell: pwsh
+        run: pwsh -NonInteractive -File tools/Lint-PullRequestTemplate.ps1
+
       - name: Repo hygiene (warn-only)
         shell: pwsh
         continue-on-error: true
