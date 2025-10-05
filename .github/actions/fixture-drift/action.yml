@@ -48,6 +48,10 @@ inputs:
     description: Optional settle delay before report generation (ms)
     required: false
     default: '150'
+  suppress-summary:
+    description: Suppress writing to GITHUB_STEP_SUMMARY (use when parent consolidates summary)
+    required: false
+    default: 'false'
 
 outputs:
   status:
@@ -56,6 +60,12 @@ outputs:
   summary_path:
     description: Path to drift-summary.json (if present)
     value: ${{ steps.orchestrate.outputs.summary_path }}
+  manifest_written:
+    description: Whether the manifest was auto-refreshed by validator
+    value: ${{ steps.manifest.outputs.written }}
+  manifest_path:
+    description: Path to refreshed manifest when manifest_written is true
+    value: ${{ steps.manifest.outputs.path }}
 
 runs:
   using: composite
@@ -84,6 +94,8 @@ runs:
     - name: Manifest refresh detection and summary
       id: manifest
       shell: pwsh
+      env:
+        SUPPRESS_SUMMARY: ${{ inputs.suppress-summary }}
       run: |
         $ErrorActionPreference = 'Stop'
         $strictPath = Join-Path (Get-Location) 'strict.json'
@@ -100,7 +112,7 @@ runs:
           }
         } catch {}
         if ($written) {
-          if ($env:GITHUB_STEP_SUMMARY) {
+          if ($env:GITHUB_STEP_SUMMARY -and ($env:SUPPRESS_SUMMARY -ne 'true')) {
             $lines = @('### Fixture Manifest Refresh','')
             $lines += ('- Written: {0}' -f $written)
             if ($reason) { $lines += ('- Reason: {0}' -f $reason) }
@@ -409,7 +421,7 @@ runs:
         }
 
     - name: Finalize job status (soft)
-      if: inputs.soft-fail == 'true'
+      if: inputs.soft-fail == 'true' && inputs.suppress-summary != 'true'
       shell: pwsh
       run: |
         $s = '${{ steps.orchestrate.outputs.status }}'
@@ -422,7 +434,7 @@ runs:
         if ($s -ne 'ok') { Write-Host "Soft-fail enabled: not failing job despite status='$s'." }
 
     - name: Append docs pointers
-      if: always()
+      if: always() && inputs.suppress-summary != 'true'
       shell: pwsh
       run: |
         if ($env:GITHUB_STEP_SUMMARY) {
