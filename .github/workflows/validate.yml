@@ -15,6 +15,9 @@ on:
 jobs:
   lint:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      issues: read
     steps:
       - uses: actions/checkout@v5
 
@@ -77,6 +80,10 @@ jobs:
       - name: Lint PR template semantics
         shell: pwsh
         run: pwsh -NonInteractive -File tools/Lint-PullRequestTemplate.ps1
+
+      - name: Labels sync summary (config vs live)
+        shell: pwsh
+        run: pwsh -NonInteractive -File tools/Write-LabelsSyncSummary.ps1 -ConfigPath '.github/labels.yml'
 
       - name: Repo hygiene (warn-only)
         shell: pwsh
