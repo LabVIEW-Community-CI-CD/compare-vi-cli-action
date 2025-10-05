@@ -134,20 +134,8 @@ function Invoke-CompareVI {
       $sw = [System.Diagnostics.Stopwatch]::StartNew()
       $code = $null
       if ($env:LV_SUPPRESS_UI -eq '1') {
-        # Use ProcessStartInfo to fully suppress any console window
-        $psi = New-Object System.Diagnostics.ProcessStartInfo
-        $psi.FileName = $cli
-        $psi.UseShellExecute = $false
-        $psi.RedirectStandardOutput = $true
-        $psi.RedirectStandardError  = $true
-        try { $psi.CreateNoWindow = $true } catch {}
-        try { $psi.WindowStyle = [System.Diagnostics.ProcessWindowStyle]::Hidden } catch {}
-        $psi.ArgumentList.Clear()
-        $psi.ArgumentList.Add($baseAbs) | Out-Null
-        $psi.ArgumentList.Add($headAbs) | Out-Null
-        foreach ($a in $cliArgs) { if ($a) { $psi.ArgumentList.Add([string]$a) | Out-Null } }
-        $p = [System.Diagnostics.Process]::Start($psi)
-        $p.WaitForExit()
+        $args = @($baseAbs, $headAbs) + @($cliArgs)
+        $p = Start-Process -FilePath $cli -ArgumentList $args -Wait -PassThru -WindowStyle Hidden
         $code = [int]$p.ExitCode
       } else {
         & $cli $baseAbs $headAbs @cliArgs
@@ -244,3 +232,4 @@ function Invoke-CompareVI {
 }
 
 Export-ModuleMember -Function Invoke-CompareVI
+
