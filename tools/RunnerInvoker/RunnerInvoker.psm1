@@ -45,6 +45,49 @@ function Handle-FailureInventory {
   return @{ ok = $true; code = 0 }
 }
 
+function Handle-CompareVI {
+  param([hashtable]$Args)
+  $base = $Args.base; $head = $Args.head
+  if (-not $base -or -not $head) { throw "CompareVI requires 'base' and 'head'" }
+  $mod = Resolve-WorkspacePath 'scripts/CompareVI.psm1'
+  if (-not (Test-Path -LiteralPath $mod)) { throw "CompareVI module not found: $mod" }
+  Import-Module $mod -Force
+  $cj = $Args.compareExecJsonPath
+  if (-not $cj) {
+    $resDir = $Args.resultsDir; if (-not $resDir) { $resDir = 'tests/results/comparevi' }
+    $cj = Join-Path (Resolve-WorkspacePath $resDir) 'compare-exec.json'
+  }
+  $p = @{
+    Base = (Resolve-WorkspacePath $base)
+    Head = (Resolve-WorkspacePath $head)
+    FailOnDiff = ([bool]($Args.failOnDiff ?? $true))
+    LvComparePath = [string]($Args.lvComparePath)
+    LvCompareArgs = [string]($Args.lvCompareArgs)
+    WorkingDirectory = [string]($Args.workingDirectory)
+    CompareExecJsonPath = $cj
+  }
+  $res = Invoke-CompareVI @p
+  return @{ ok = $true; code = 0; data = @{ exitCode = $res.ExitCode; diff = $res.Diff; execJsonPath = $cj; command = $res.Command; cliPath = $res.CliPath; duration = $res.CompareDurationSeconds } }
+}
+
+function Handle-RenderReport {
+  param([hashtable]$Args)
+  $script = Resolve-WorkspacePath 'scripts/Render-CompareReport.ps1'
+  if (-not (Test-Path -LiteralPath $script)) { throw "Render-CompareReport.ps1 not found: $script" }
+  $cmd = [string]$Args.command
+  $exit = [int]($Args.exitCode ?? 0)
+  $diff = [string]($Args.diff ?? 'false')
+  $cli  = [string]$Args.cliPath
+  $out  = $Args.outputPath
+  if ($out) { $out = (Resolve-WorkspacePath $out) }
+  $base = $Args.base; if ($base) { $base = (Resolve-WorkspacePath $base) }
+  $head = $Args.head; if ($head) { $head = (Resolve-WorkspacePath $head) }
+  $dur  = [double]($Args.durationSeconds ?? 0)
+  $exec = $Args.execJsonPath; if ($exec) { $exec = (Resolve-WorkspacePath $exec) }
+  & $script -Command $cmd -ExitCode $exit -Diff $diff -CliPath $cli -Base $base -Head $head -OutputPath $out -DurationSeconds $dur -ExecJsonPath $exec | Out-Null
+  return @{ ok = $true; code = 0; data = @{ outputPath = $out } }
+}
+
 function Invoke-Request {
   param([hashtable]$req)
   $verb = $req.verb
@@ -54,6 +97,8 @@ function Invoke-Request {
     '^Ping$'          { return @{ ok = $true; code = 0; message = 'pong' } }
     '^StepSummary$'   { return (Handle-StepSummary -Args $args) }
     '^FailureInventory$' { return (Handle-FailureInventory -Args $args) }
+    '^CompareVI$'     { return (Handle-CompareVI -Args $args) }
+    '^RenderReport$'  { return (Handle-RenderReport -Args $args) }
     default { throw "Unknown verb: $verb" }
   }
 }
@@ -93,4 +138,3 @@ function Start-RunnerInvokerServer {
 }
 
 Export-ModuleMember -Function Start-RunnerInvokerServer
-

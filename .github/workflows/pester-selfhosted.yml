@@ -147,7 +147,12 @@ jobs:
           tests-path: tests
           default-timeout-seconds: '150'
 
-      - name: Append test metrics to job summary
+      - name: Ensure Runner Invoker
+        uses: ./.github/actions/ensure-invoker
+        with:
+          pipe-name: 'lvci.invoker'
+
+      - name: Append test metrics to job summary (invoker)
         if: always()
         shell: pwsh
         run: |
@@ -167,12 +172,13 @@ jobs:
               "- Duration (s): $($data.duration_s)",
               "- Include Integration: $($data.includeIntegration)"
             )
-            pwsh -NonInteractive -File tools/Write-StepSummary.ps1 -Lines $lines -Append | Out-Null
+            $send = Join-Path $env:GITHUB_WORKSPACE 'tools/RunnerInvoker/Send-RunnerCommand.ps1'
+            & $send -Verb StepSummary -Args @{ lines = $lines; append = $true } | Out-Null
             if (Test-Path $idx) {
               $ix = Get-Content $idx -Raw | ConvertFrom-Json
               if (-not $ix.stepSummary) {
                 $tail = ("`nSession index: {0}" -f (Join-Path $dir 'session-index.json'))
-                pwsh -NonInteractive -File tools/Write-StepSummary.ps1 -Text $tail -Append | Out-Null
+                & $send -Verb StepSummary -Args @{ text = $tail; append = $true } | Out-Null
               }
             }
           } else {
@@ -196,13 +202,12 @@ jobs:
           upload: true
           artifact-name: session-index-${{ matrix.category }}
 
-      - name: Append failure inventory
+      - name: Append failure inventory (invoker)
         if: always()
         shell: pwsh
         run: |
-          $script = Join-Path $env:GITHUB_WORKSPACE 'tools/Write-FailureInventory.ps1'
-          if (-not (Test-Path -LiteralPath $script)) { Write-Error "FailureInventory script not found: $script"; exit 1 }
-          pwsh -NonInteractive -File $script -ResultsDir 'tests/results' -AppendToStepSummary
+          $send = Join-Path $env:GITHUB_WORKSPACE 'tools/RunnerInvoker/Send-RunnerCommand.ps1'
+          & $send -Verb FailureInventory -Args @{ resultsDir = 'tests/results' } | Out-Null
 
       - name: Append required checks (branch rules hint)
         if: ${{ always() && matrix.category == 'dispatcher' }}
@@ -217,10 +222,11 @@ jobs:
             '- Validate / lint',
             '- markdownlint / lint'
           )
-          pwsh -NonInteractive -File tools/Write-StepSummary.ps1 -Lines $lines -Append | Out-Null
+          $send = Join-Path $env:GITHUB_WORKSPACE 'tools/RunnerInvoker/Send-RunnerCommand.ps1'
+          & $send -Verb StepSummary -Args @{ lines = $lines; append = $true } | Out-Null
           $doc = 'docs/BRANCH_RULES.md'
           $tail = if (Test-Path $doc) { "See: ./$doc" } else { 'Branch rules guide: docs/BRANCH_RULES.md (coming soon in issue #60)' }
-          pwsh -NonInteractive -File tools/Write-StepSummary.ps1 -Text $tail -Append | Out-Null
+          & $send -Verb StepSummary -Args @{ text = $tail; append = $true } | Out-Null
 
       - name: Upload Pester artifacts
         if: always()
