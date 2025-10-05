@@ -122,10 +122,13 @@ function Invoke-PhaseViInputs {
 function Invoke-PhaseCompare {
   param($r,$ctx)
   Write-PhaseBanner $r.name
-  $mod = Join-Path $PSScriptRoot 'CompareVI.psm1'
-  if (-not (Test-Path -LiteralPath $mod)) { $mod = Join-Path (Join-Path $PSScriptRoot 'scripts') 'CompareVI.psm1' }
-  if (-not (Test-Path -LiteralPath $mod)) { throw "CompareVI module not found at expected locations." }
-  if (-not (Get-Command -Name Invoke-CompareVI -ErrorAction SilentlyContinue)) { Import-Module $mod -Force }
+  $compareScript = Join-Path -Path $PSScriptRoot -ChildPath 'CompareVI.ps1'
+  if (-not (Test-Path $compareScript)) {
+    $alt = Join-Path -Path (Join-Path -Path $PSScriptRoot -ChildPath 'scripts') -ChildPath 'CompareVI.ps1'
+    if (Test-Path $alt) { $compareScript = $alt }
+  }
+  if (-not (Test-Path $compareScript)) { throw "CompareVI.ps1 not found at expected locations (tried: $compareScript)" }
+  . $compareScript
   try {
     $compare = Invoke-CompareVI -Base $ctx.basePath -Head $ctx.headPath -LvCompareArgs '-nobdcosm -nofppos -noattr' -FailOnDiff:$false
     $ctx.compareResult = $compare
@@ -187,25 +190,12 @@ function Invoke-PhaseDiagnostics {
   if (-not (Test-Path $cli)) { $r.details.skipped='cli-missing'; $r.status='Skipped'; return }
   if (-not ($ctx.basePath -and $ctx.headPath)) { $r.details.skipped='paths-missing'; $r.status='Skipped'; return }
   try {
-    # Optional console watcher during diagnostics compare
-    $cwId = $null
-    if ($env:WATCH_CONSOLE -match '^(?i:1|true|yes|on)$') {
-      try {
-        $root = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path
-        if (-not (Get-Command -Name Start-ConsoleWatch -ErrorAction SilentlyContinue)) {
-          Import-Module (Join-Path $root 'tools' 'ConsoleWatch.psm1') -Force
-        }
-        $cwId = Start-ConsoleWatch -OutDir (Get-Location).Path
-      } catch {}
-    }
     $compareScript = Join-Path -Path $PSScriptRoot -ChildPath 'CompareVI.ps1'
     if (-not (Test-Path $compareScript)) {
       $alt = Join-Path -Path (Join-Path -Path $PSScriptRoot -ChildPath 'scripts') -ChildPath 'CompareVI.ps1'
       if (Test-Path $alt) { $compareScript = $alt }
     }
-    if (-not (Get-Command -Name Invoke-CompareVI -ErrorAction SilentlyContinue)) {
-      . $compareScript
-    }
+    . $compareScript
     $res = Invoke-CompareVI -Base $ctx.basePath -Head $ctx.headPath -LvComparePath $cli -LvCompareArgs '-nobdcosm -nofppos -noattr' -FailOnDiff:$false
     # Write minimal diag artifacts for parity
     "${res.ExitCode}" | Set-Content runbook-diag-exitcode.txt -Encoding utf8
@@ -214,9 +204,6 @@ function Invoke-PhaseDiagnostics {
     $r.details.exitCode = $res.ExitCode
     $r.details.stdoutLength = 0
     $r.details.stderrLength = 0
-    if ($cwId) {
-      try { $cwSum = Stop-ConsoleWatch -Id $cwId -OutDir (Get-Location).Path -Phase 'diagnostics'; if ($cwSum) { $r.details.consoleSpawns = $cwSum.counts } } catch {}
-    }
     $r.status = 'Passed'
   } catch {
     $r.details.error = $_.Exception.Message

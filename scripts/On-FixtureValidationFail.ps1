@@ -659,7 +659,7 @@ if ($RenderReport) {
       Write-HandshakeMarker -Name 'report' -Data @{ reporter = $reporter }
       $diff = if ($exitCode -eq 1) { 'true' } elseif ($exitCode -eq 0) { 'false' } else { 'false' }
       $cmd = if ($command) { $command } else { '"{0}" "{1}" {2}' -f $cli,(Resolve-Path $BasePath).Path,(Resolve-Path $HeadPath).Path }
-      pwsh -NoLogo -NoProfile -File $reporter -Command $cmd -ExitCode $exitCode -Diff $diff -CliPath $cli -DurationSeconds $duration -OutputPath (Join-Path $OutputDir 'compare-report.html') -ExecJsonPath (Join-Path $OutputDir 'compare-exec.json') | Out-Null
+      & $reporter -Command $cmd -ExitCode $exitCode -Diff $diff -CliPath $cli -DurationSeconds $duration -OutputPath (Join-Path $OutputDir 'compare-report.html') -ExecJsonPath (Join-Path $OutputDir 'compare-exec.json') | Out-Null
       Add-Artifact 'compare-report.html'
     } else { Add-Note 'Reporter script not found; skipped HTML report' }
   } catch {
