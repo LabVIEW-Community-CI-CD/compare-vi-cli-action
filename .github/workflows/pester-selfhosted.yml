@@ -1,6 +1,32 @@
-name: Pester (self-hosted, real CLI)
+name: Pester (self-hosted)
 
 on:
+  pull_request:
+    branches: [ develop, main ]
+    paths:
+      - '**/*.ps1'
+      - '**/*.psm1'
+      - 'scripts/**'
+      - 'tools/**'
+      - 'module/**'
+      - 'tests/**'
+      - 'action.yml'
+      - 'fixtures.manifest.json'
+      - 'VI*.vi'
+      - 'docs/schemas/**'
+  push:
+    branches: [ develop, main ]
+    paths:
+      - '**/*.ps1'
+      - '**/*.psm1'
+      - 'scripts/**'
+      - 'tools/**'
+      - 'module/**'
+      - 'tests/**'
+      - 'action.yml'
+      - 'fixtures.manifest.json'
+      - 'VI*.vi'
+      - 'docs/schemas/**'
   workflow_dispatch:
     inputs:
       include_integration:

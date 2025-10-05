@@ -27,6 +27,7 @@
 
 ## Testing Guidelines
 
+- Single Pester workflow (self-hosted Windows): `.github/workflows/pester-selfhosted.yml`.
 - Categories in CI: dispatcher, fixtures, schema, comparevi, loop, runbook, orchestrator.
 - Each category emits `tests/results/<category>/session-index.json` and artifacts.
 - Timeouts are per-category and configurable via repo Variables (seconds):
