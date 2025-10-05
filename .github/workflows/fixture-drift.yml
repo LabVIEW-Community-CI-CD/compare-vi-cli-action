@@ -193,6 +193,7 @@ jobs:
           artifact-name: fixture-drift-windows
           base-path: ${{ steps.prep.outputs.base }}
           head-path: ${{ steps.prep.outputs.head }}
+          suppress-summary: 'true'
 
       - name: Session index post (best-effort)
         if: always()
@@ -210,3 +211,21 @@ jobs:
           snapshot-path: results/fixture-drift/runner-unblock-snapshot.json
           cleanup: ${{ env.UNBLOCK_GUARD == '1' }}
           process-names: 'conhost,pwsh,LabVIEW,LVCompare'
+
+      - name: Append consolidated drift summary
+        if: always()
+        shell: pwsh
+        run: |
+          $runner = "$env:RUNNER_NAME ($env:RUNNER_OS/$env:RUNNER_ARCH)"
+          $lines = @('### Fixture Drift (Consolidated)','')
+          $lines += ('- Runner: ' + $runner)
+          $lines += ('- Docs-only: ${{ needs.gate.outputs.docs_only }}')
+          $lines += ('- Preflight result: ${{ needs.preflight-windows.result }}')
+          $lines += ('- Ubuntu status: ${{ needs.gate.outputs.ubuntu_status }}')
+          $up = '${{ needs.gate.outputs.ubuntu_summary_path }}'
+          if ($up) { $lines += ('- Ubuntu summary: ' + $up) }
+          $lines += ('- Decision: run_windows=${{ needs.gate.outputs.run_windows }} (reason=${{ needs.gate.outputs.reason }})')
+          $lines += ''
+          $lines += ('- Base (temp): ' + "${{ steps.prep.outputs.base }}")
+          $lines += ('- Head (temp): ' + "${{ steps.prep.outputs.head }}")
+          $lines -join "`n" | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8
