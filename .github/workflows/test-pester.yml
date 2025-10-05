@@ -61,7 +61,7 @@ jobs:
         if: always()
         shell: pwsh
         run: |
-          pwsh -File scripts/Write-PesterSummaryToStepSummary.ps1 -ResultsDir 'tests/results'
+          pwsh -NonInteractive -File scripts/Write-PesterSummaryToStepSummary.ps1 -ResultsDir 'tests/results'
 
       - name: Ensure session index (fallback)
         if: always()

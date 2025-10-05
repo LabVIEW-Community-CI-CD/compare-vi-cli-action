@@ -106,7 +106,7 @@ jobs:
         if: always()
         shell: pwsh
         run: |
-          pwsh -File tools/Write-FailureInventory.ps1 -ResultsDir 'tests/results' -AppendToStepSummary
+          pwsh -NonInteractive -File tools/Write-FailureInventory.ps1 -ResultsDir 'tests/results' -AppendToStepSummary
 
       - name: Upload Pester artifacts
         if: always()

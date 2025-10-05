@@ -15,7 +15,7 @@ jobs:
 
       - name: Validate canonical fixtures
         shell: pwsh
-        run: pwsh -File tools/Validate-Fixtures.ps1 -MinBytes 32 -Quiet
+        run: pwsh -NonInteractive -File tools/Validate-Fixtures.ps1 -MinBytes 32 -Quiet
 
       - name: Prepare mock LVCompare
         shell: pwsh
