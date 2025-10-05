@@ -244,6 +244,7 @@ jobs:
             tests/results/${{ matrix.category }}/pester-leak-report.json
             tests/results/${{ matrix.category }}/session-index.json
             tests/results/${{ matrix.category }}/failure-inventory.md
+            tests/results/${{ matrix.category }}/console-spawns.ndjson
 
       - name: Runner Unblock Guard
         if: always()
@@ -252,6 +253,13 @@ jobs:
           snapshot-path: tests/results/runner-unblock-snapshot.json
           cleanup: ${{ env.UNBLOCK_GUARD == '1' }}
           process-names: 'conhost,pwsh,LabVIEW,LVCompare'
+
+      - name: Append invoker telemetry summary (invoker)
+        if: always()
+        shell: pwsh
+        run: |
+          $send = Join-Path $env:GITHUB_WORKSPACE 'tools/RunnerInvoker/Send-RunnerCommand.ps1'
+          & $send -Verb TelemetrySummary -Args @{ resultsDir = "tests/results/${{ matrix.category }}" } | Out-Null
 
   post-gate-help:
     runs-on: ubuntu-latest

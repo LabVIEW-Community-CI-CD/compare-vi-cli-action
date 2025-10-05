@@ -17,6 +17,8 @@ function Get-InvokerStatePath {
   return (Join-Path $dir 'state.json')
 }
 
+function Get-InvokerDir { Split-Path -Parent (Get-InvokerStatePath) }
+
 function Write-Json($obj) { ($obj | ConvertTo-Json -Depth 8) + "`n" }
 
 function Handle-StepSummary {
@@ -88,6 +90,68 @@ function Handle-RenderReport {
   return @{ ok = $true; code = 0; data = @{ outputPath = $out } }
 }
 
+function Initialize-Telemetry {
+  if ($script:telemetryInit) { return }
+  $dir = Get-InvokerDir
+  $script:telemetryFile = Join-Path $dir 'console-spawns.ndjson'
+  $names = @('pwsh.exe','conhost.exe','LVCompare.exe','LabVIEW.exe')
+  $nameFilter = ($names | ForEach-Object { "TargetInstance.Name='$_'" }) -join ' OR '
+  $scope = New-Object System.Management.ManagementScope('\\\.\root\CIMV2')
+  $scope.Connect()
+  $qCreate = New-Object System.Management.WqlEventQuery("SELECT * FROM __InstanceCreationEvent WITHIN 0.5 WHERE TargetInstance ISA 'Win32_Process' AND ($nameFilter)")
+  $qDelete = New-Object System.Management.WqlEventQuery("SELECT * FROM __InstanceDeletionEvent WITHIN 0.5 WHERE TargetInstance ISA 'Win32_Process' AND ($nameFilter)")
+  $watchCreate = New-Object System.Management.ManagementEventWatcher($scope, $qCreate)
+  $watchDelete = New-Object System.Management.ManagementEventWatcher($scope, $qDelete)
+  $handler = {
+    param($sender,$eventArgs)
+    try {
+      $ev = $eventArgs.NewEvent
+      $inst = $ev.TargetInstance
+      $op = if ($ev.__CLASS -like '*Creation*') { 'start' } else { 'stop' }
+      $name = [string]$inst.Name
+      $pid = [int]$inst.ProcessId
+      $ppid = $null; try { $ppid = [int]$inst.ParentProcessId } catch {}
+      $cmd = $null; try { $cmd = [string]$inst.CommandLine } catch {}
+      $row = @{ ts = (Get-Date).ToUniversalTime().ToString('o'); op=$op; name=$name; pid=$pid; ppid=$ppid; cmd=$cmd }
+      $json = ($row | ConvertTo-Json -Compress)
+      Add-Content -LiteralPath $script:telemetryFile -Value $json -Encoding utf8
+    } catch {}
+  }
+  $null = Register-ObjectEvent -InputObject $watchCreate -EventName EventArrived -Action $handler -MessageData 'create'
+  $null = Register-ObjectEvent -InputObject $watchDelete -EventName EventArrived -Action $handler -MessageData 'delete'
+  $watchCreate.Start(); $watchDelete.Start()
+  $script:telemetryInit = $true
+}
+
+function Handle-TelemetrySummary {
+  param([hashtable]$Args)
+  Initialize-Telemetry
+  $outDir = $Args.resultsDir; if (-not $outDir) { $outDir = 'tests/results' }
+  $outAbs = Resolve-WorkspacePath $outDir
+  if (-not (Test-Path -LiteralPath $outAbs)) { New-Item -ItemType Directory -Force -Path $outAbs | Out-Null }
+  $src = $script:telemetryFile
+  $dst = Join-Path $outAbs 'console-spawns.ndjson'
+  try { Copy-Item -LiteralPath $src -Destination $dst -Force -ErrorAction SilentlyContinue } catch {}
+  $counts = @{ pwsh=0; conhost=0; LVCompare=0; LabVIEW=0 }
+  try {
+    if (Test-Path -LiteralPath $src) {
+      Get-Content -LiteralPath $src -Raw | ConvertFrom-Json -AsArray | ForEach-Object {
+        if ($_.op -eq 'start') {
+          switch -Exact ($_.name) { 'pwsh.exe' { $counts.pwsh++ } 'conhost.exe' { $counts.conhost++ } 'LVCompare.exe' { $counts.LVCompare++ } 'LabVIEW.exe' { $counts.LabVIEW++ } }
+        }
+      }
+    }
+  } catch {}
+  $lines = @('### Invoker Telemetry','')
+  $lines += ('- pwsh: {0}' -f $counts.pwsh)
+  $lines += ('- conhost: {0}' -f $counts.conhost)
+  $lines += ('- LVCompare: {0}' -f $counts.LVCompare)
+  $lines += ('- LabVIEW: {0}' -f $counts.LabVIEW)
+  $writer = Resolve-WorkspacePath 'tools/Write-StepSummary.ps1'
+  if (Test-Path -LiteralPath $writer) { & $writer -Lines $lines -Append | Out-Null }
+  return @{ ok=$true; code=0; data=@{ counts=$counts; telemetryPath=$dst } }
+}
+
 function Invoke-Request {
   param([hashtable]$req)
   $verb = $req.verb
@@ -99,6 +163,7 @@ function Invoke-Request {
     '^FailureInventory$' { return (Handle-FailureInventory -Args $args) }
     '^CompareVI$'     { return (Handle-CompareVI -Args $args) }
     '^RenderReport$'  { return (Handle-RenderReport -Args $args) }
+    '^TelemetrySummary$' { return (Handle-TelemetrySummary -Args $args) }
     default { throw "Unknown verb: $verb" }
   }
 }
@@ -110,6 +175,7 @@ function Start-RunnerInvokerServer {
     $me = @{ pid = $PID; started = (Get-Date).ToUniversalTime().ToString('o'); pipe = $PipeName }
     $me | ConvertTo-Json -Depth 4 | Set-Content -LiteralPath $statePath -Encoding UTF8
   } catch {}
+  Initialize-Telemetry
   while ($true) {
     $server = New-Object System.IO.Pipes.NamedPipeServerStream($PipeName, [IO.Pipes.PipeDirection]::InOut, 1, [IO.Pipes.PipeTransmissionMode]::Byte, [IO.Pipes.PipeOptions]::Asynchronous)
     $server.WaitForConnection()
