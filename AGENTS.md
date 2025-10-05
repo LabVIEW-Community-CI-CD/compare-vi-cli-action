@@ -29,7 +29,14 @@
 
 - Categories in CI: dispatcher, fixtures, schema, comparevi, loop, runbook, orchestrator.
 - Each category emits `tests/results/<category>/session-index.json` and artifacts.
-- Dispatcher caps runtime in CI (`-TimeoutSeconds 150`); session-index is always written.
+- Timeouts are per-category and configurable via repo Variables (seconds):
+  `PESTER_TIMEOUT_DISPATCHER`, `PESTER_TIMEOUT_FIXTURES`, `PESTER_TIMEOUT_SCHEMA`,
+  `PESTER_TIMEOUT_COMPAREVI`, `PESTER_TIMEOUT_LOOP`, `PESTER_TIMEOUT_RUNBOOK`,
+  `PESTER_TIMEOUT_ORCHESTRATOR`. Defaults to 150 if unset.
+  Example: set `PESTER_TIMEOUT_FIXTURES=180` in Settings → Variables to extend fixtures.
+  Locally, override with `-TimeoutSeconds`:
+  `./Invoke-PesterTests.ps1 -IncludePatterns 'Fixtures*Tests.ps1' -TimeoutSeconds 180`.
+  Session index is always written.
 - LVCompare canonical path: `C:\\Program Files\\National Instruments\\Shared\\LabVIEW Compare\\LVCompare.exe`.
 - Integration needs `LV_BASE_VI` and `LV_HEAD_VI`. Do not orchestrate `LabVIEW.exe`.
 

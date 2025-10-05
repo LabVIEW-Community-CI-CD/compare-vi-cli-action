@@ -48,12 +48,20 @@ jobs:
       UNBLOCK_GUARD: '1'
       LV_SUPPRESS_UI: '1'
       WATCH_CONSOLE: '1'
+      # Optional per-category Pester timeouts (seconds). Set repository Variables to override.
+      PESTER_TIMEOUT_DISPATCHER: ${{ vars.PESTER_TIMEOUT_DISPATCHER }}
+      PESTER_TIMEOUT_FIXTURES:   ${{ vars.PESTER_TIMEOUT_FIXTURES }}
+      PESTER_TIMEOUT_SCHEMA:     ${{ vars.PESTER_TIMEOUT_SCHEMA }}
+      PESTER_TIMEOUT_COMPAREVI:  ${{ vars.PESTER_TIMEOUT_COMPAREVI }}
+      PESTER_TIMEOUT_LOOP:       ${{ vars.PESTER_TIMEOUT_LOOP }}
+      PESTER_TIMEOUT_RUNBOOK:    ${{ vars.PESTER_TIMEOUT_RUNBOOK }}
+      PESTER_TIMEOUT_ORCHESTRATOR: ${{ vars.PESTER_TIMEOUT_ORCHESTRATOR }}
     steps:
       - uses: actions/checkout@v5
 
       # Call the dispatcher per category to surface atomic failures
       # This dispatcher assumes Pester v5+ is pre-installed on the self-hosted runner
-      - name: Run Pester tests via local dispatcher (<= 150s)
+      - name: Run Pester tests via local dispatcher (category timeouts)
         shell: pwsh
         run: |
           $cat = '${{ matrix.category }}'
@@ -69,11 +77,24 @@ jobs:
             default        { $patterns = @('*.Tests.ps1') }
           }
           $results = Join-Path 'tests/results' $cat
+          # Resolve per-category timeout from env with a 150s default
+          $timeout = 150
+          switch ($cat) {
+            'dispatcher'   { $t = $env:PESTER_TIMEOUT_DISPATCHER }
+            'fixtures'     { $t = $env:PESTER_TIMEOUT_FIXTURES }
+            'schema'       { $t = $env:PESTER_TIMEOUT_SCHEMA }
+            'comparevi'    { $t = $env:PESTER_TIMEOUT_COMPAREVI }
+            'loop'         { $t = $env:PESTER_TIMEOUT_LOOP }
+            'runbook'      { $t = $env:PESTER_TIMEOUT_RUNBOOK }
+            'orchestrator' { $t = $env:PESTER_TIMEOUT_ORCHESTRATOR }
+          }
+          if ($t) { try { $timeout = [int]$t } catch { $timeout = 150 } }
+
           ./Invoke-PesterTests.ps1 `
             -TestsPath tests `
             -IncludeIntegration '${{ inputs.include_integration }}' `
             -ResultsPath $results `
-            -TimeoutSeconds 150 `
+            -TimeoutSeconds $timeout `
             -IncludePatterns $patterns
 
       - name: Append test metrics to job summary
