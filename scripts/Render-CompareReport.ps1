@@ -23,6 +23,7 @@ try {
   } elseif ($ExecJsonPath) {
     $candidatePath = $ExecJsonPath
   }
+  $source = 'params'
   if ($candidatePath -and (Test-Path -LiteralPath $candidatePath)) {
     $execObj = Get-Content -LiteralPath $candidatePath -Raw | ConvertFrom-Json -ErrorAction Stop
     if ($execObj) {
@@ -35,6 +36,7 @@ try {
       if ($execObj.diff -ne $null) {
         $Diff = if ([bool]$execObj.diff) { 'true' } else { 'false' }
       }
+      $source = 'execJson'
     }
   }
 } catch { Write-Host "[report] warn: failed to load exec json: $_" -ForegroundColor DarkYellow }
@@ -107,6 +109,7 @@ $css
   <div class="section">
     <div class="kv">
       <div class="key">Generated</div><div class="value">$now</div>
+      <div class="key">Source</div><div class="value">$source</div>
       <div class="key">Exit code</div><div class="value">$ExitCode ($exitText)</div>
       <div class="key">Diff</div><div class="value">$Diff</div>
   <div class="key">CLI Path</div><div class="value">$CliPath</div>
