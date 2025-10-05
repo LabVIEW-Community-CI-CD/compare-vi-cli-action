@@ -21,6 +21,7 @@ jobs:
       DETECT_LEAKS: '1'
       CLEAN_AFTER: '1'
       SCAN_ARTIFACTS: '1'
+      UNBLOCK_GUARD: '1'
     steps:
       - uses: actions/checkout@v5
 

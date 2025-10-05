@@ -58,6 +58,8 @@ jobs:
     runs-on: [self-hosted, Windows, X64]
     needs: preflight-windows
     timeout-minutes: 45
+    env:
+      UNBLOCK_GUARD: '1'
     permissions:
       actions: read
       contents: read
