@@ -31,6 +31,13 @@ Validated with LabVIEW 2025 Q3 on self-hosted Windows runners. See also:
 [`CHANGELOG.md`](./CHANGELOG.md) and the release workflow at
 `.github/workflows/release.yml`.
 
+## Documentation Map
+
+- Workflows overview: `docs/WORKFLOWS_OVERVIEW.md`
+- Fixtures and Validator: `docs/FIXTURES.md`
+- Self-hosted setup: `docs/SELFHOSTED_CI_SETUP.md`
+- Developer guide: `docs/DEVELOPER_GUIDE.md`
+
 > **Breaking Change (v0.5.0)**: Legacy artifact names `Base.vi` / `Head.vi` are no longer supported. Use `VI1.vi` / `VI2.vi` exclusively. Public action input names (`base`, `head`) and environment variables (`LV_BASE_VI`, `LV_HEAD_VI`) remain unchanged.
 
 ## Requirements
@@ -41,35 +48,9 @@ Validated with LabVIEW 2025 Q3 on self-hosted Windows runners. See also:
 
 ## Fixture Artifacts (VI1.vi / VI2.vi)
 
-Two canonical LabVIEW VI files live at the repository root:
-
-| File | Role |
-|------|------|
-| `VI1.vi` | Canonical base fixture |
-| `VI2.vi` | Canonical head fixture |
-
-Purpose:
-
-- Fallback pair for examples, smoke workflows, and quick local validation.
-- Guard test anchor ensuring legacy `Base.vi` / `Head.vi` names are not reintroduced.
-- Stable targets for loop / latency simulation when no custom inputs provided.
-- External dispatcher compatibility (LabVIEW-hosted tooling can intentionally evolve them in controlled commits).
-
-Phase 1 Policy (enforced by tests & `tools/Validate-Fixtures.ps1`):
-
-- Files MUST exist, be git-tracked, and remain non-trivial in size (manifest records their exact byte length).
-- Do not delete or rename them without a migration plan.
-- Intentional content changes should include a rationale in the commit message (future phases may require a token such as `[fixture-update]`).
-
-Phase 2 adds a hash manifest (`fixtures.manifest.json`) validated by `tools/Validate-Fixtures.ps1`.
-If you intentionally change fixture contents, include `[fixture-update]` in the commit message and
-regenerate the manifest via:
-
-```powershell
-pwsh -File tools/Update-FixtureManifest.ps1 -Allow
-```
-
-Without the token, hash mismatches fail validation (exit code 6). Manifest parse errors exit 7.
+This repository ships two canonical fixtures (`VI1.vi`, `VI2.vi`) and a manifest
+(`fixtures.manifest.json`). For policy, validator exit codes, and update commands,
+see `docs/FIXTURES.md`.
 
 ### Fixture Validator (Refined)
 

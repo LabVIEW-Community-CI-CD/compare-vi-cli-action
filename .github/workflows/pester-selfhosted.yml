@@ -45,8 +45,16 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       docs_only: ${{ steps.g.outputs.docs_only }}
+      include_integration: ${{ steps.norm.outputs.bool }}
     steps:
       - uses: actions/checkout@v5
+
+      - name: Normalize include_integration
+        id: norm
+        uses: ./.github/actions/bool-normalize
+        with:
+          value: ${{ inputs.include_integration }}
+          default: 'true'
       - id: g
         uses: ./.github/actions/pre-init-gate
         with:
@@ -109,7 +117,7 @@ jobs:
         uses: ./.github/actions/pester-category-run
         with:
           category: ${{ matrix.category }}
-          include_integration: ${{ inputs.include_integration != '' && inputs.include_integration || 'true' }}
+          include_integration: ${{ needs.pre-init.outputs.include_integration }}
           results-dir: tests/results/${{ matrix.category }}
           tests-path: tests
           default-timeout-seconds: '150'
