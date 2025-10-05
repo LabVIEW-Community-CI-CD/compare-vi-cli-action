@@ -167,7 +167,7 @@ try {
   if (-not $SkipTests) {
     Write-Section 'Unit Tests'
     try {
-      & pwsh -File './Invoke-PesterTests.ps1' | Out-Null
+      & (Join-Path $repoRoot 'Invoke-PesterTests.ps1') | Out-Null
       $summary.unitTestExitCode = $LASTEXITCODE
       if ($LASTEXITCODE -ne 0) { $summary.errors += 'unit tests failed' }
     } catch { $summary.unitTestExitCode = -1; $summary.errors += 'unit test invocation failed' }
@@ -187,7 +187,7 @@ try {
     $summary.integrationTestAttempted = $true
     Write-Section 'Integration Tests'
     try {
-      & pwsh -File './Invoke-PesterTests.ps1' -IncludeIntegration true | Out-Null
+      & (Join-Path $repoRoot 'Invoke-PesterTests.ps1') -IncludeIntegration true | Out-Null
       $summary.integrationTestExitCode = $LASTEXITCODE
       if ($LASTEXITCODE -ne 0) { $summary.errors += 'integration tests failed' }
     } catch { $summary.integrationTestExitCode = -1; $summary.errors += 'integration test invocation failed' }

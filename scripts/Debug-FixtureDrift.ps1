@@ -78,9 +78,9 @@ if (-not $HeadPath) { $HeadPath = Join-Path (Get-Location) 'VI2.vi' }
 
 # Generate validator JSONs unless provided
 $strictPath = $StrictJson
-if (-not $strictPath) { $strictPath = Join-Path $OutputDir 'strict.json'; pwsh -NoLogo -NoProfile -File $validator -Json | Out-File -FilePath $strictPath -Encoding utf8 }
+if (-not $strictPath) { $strictPath = Join-Path $OutputDir 'strict.json'; & $validator -Json | Out-File -FilePath $strictPath -Encoding utf8 }
 $overridePath = $OverrideJson
-if (-not $overridePath) { $overridePath = Join-Path $OutputDir 'override.json'; pwsh -NoLogo -NoProfile -File $validator -Json -TestAllowFixtureUpdate | Out-File -FilePath $overridePath -Encoding utf8 }
+if (-not $overridePath) { $overridePath = Join-Path $OutputDir 'override.json'; & $validator -Json -TestAllowFixtureUpdate | Out-File -FilePath $overridePath -Encoding utf8 }
 
 Write-Host "Strict JSON:    $strictPath" -ForegroundColor Cyan
 Write-Host "Override JSON:  $overridePath" -ForegroundColor Cyan
@@ -90,7 +90,7 @@ $invokeArgs = @('-StrictJson',$strictPath,'-OverrideJson',$overridePath,'-Output
 if ($RenderReport) { $invokeArgs += '-RenderReport' }
 if ($SimulateCompare) { $invokeArgs += '-SimulateCompare' }
 
-pwsh -NoLogo -NoProfile -File $orchestrator @invokeArgs
+& $orchestrator @invokeArgs
 $orchestratorExit = $LASTEXITCODE
 if ($orchestratorExit -ne 0) { Write-Host "Orchestrator exit != 0 (expected if drift/structural)" -ForegroundColor Yellow }
 
@@ -104,7 +104,7 @@ if (Test-Path $summaryPath) {
   } catch { Write-Host "Failed to parse summary JSON: $($_.Exception.Message)" -ForegroundColor Yellow }
   if (-not $NoSchemaValidation -and (Test-Path $schemaLite) -and (Test-Path $schemaPath)) {
     Write-Host "Validating summary against schema..." -ForegroundColor DarkCyan
-    pwsh -NoLogo -NoProfile -File $schemaLite -JsonPath $summaryPath -SchemaPath $schemaPath
+    & $schemaLite -JsonPath $summaryPath -SchemaPath $schemaPath
     if ($LASTEXITCODE -ne 0) { Write-Host "Schema-lite returned $LASTEXITCODE" -ForegroundColor Yellow }
   }
 } else {
