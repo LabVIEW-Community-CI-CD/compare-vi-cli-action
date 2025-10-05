@@ -20,6 +20,7 @@
 
 ## Validation
 
+- [ ] Verify required checks per `docs/BRANCH_RULES.md`
 - Validate workflow (actionlint, markdownlint) passes
 - Pester (self‑hosted) categories pass (or expected failures noted)
 - Fixture Drift (Windows) as needed
