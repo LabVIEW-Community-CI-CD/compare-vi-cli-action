@@ -46,7 +46,8 @@ jobs:
       - name: Install Pester v5
         shell: pwsh
         run: |
-          Install-Module -Name Pester -RequiredVersion 5.4.0 -Force -SkipPublisherCheck -Scope CurrentUser
+          try { Set-PSRepository -Name 'PSGallery' -InstallationPolicy Trusted -ErrorAction SilentlyContinue } catch {}
+          Install-Module -Name Pester -RequiredVersion 5.4.0 -Force -SkipPublisherCheck -Scope CurrentUser -Confirm:$false
 
       - name: Run unit tests (Pester v5, repo-local)
         shell: pwsh

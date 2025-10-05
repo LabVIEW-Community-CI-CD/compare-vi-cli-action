@@ -96,7 +96,7 @@ jobs:
         shell: pwsh
         run: |
           $dir = Join-Path 'tests/results' '${{ matrix.category }}'
-          pwsh -File tools/Ensure-SessionIndex.ps1 -ResultsDir $dir -SummaryJson 'pester-summary.json'
+          pwsh -NonInteractive -File tools/Ensure-SessionIndex.ps1 -ResultsDir $dir -SummaryJson 'pester-summary.json'
 
       - name: Session index post
         if: always()
