@@ -167,15 +167,15 @@ jobs:
           Write-Host "cliPath   = ${{ steps.compare.outputs.cliPath }}"
           Write-Host "command   = ${{ steps.compare.outputs.command }}"
 
-      - name: Comment results on PR (using XCLI_PAT)
+      - name: Comment results on PR (using GH_ADMIN_TOKEN)
         if: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.pr_number != '' }}
         shell: pwsh
         env:
           GH_REPO: ${{ github.repository }}
           PR_NUMBER: ${{ github.event.inputs.pr_number }}
-          XCLI_PAT: ${{ secrets.XCLI_PAT }}
+          GH_ADMIN_TOKEN: ${{ secrets.GH_ADMIN_TOKEN }}
         run: |
-          if (-not $env:XCLI_PAT) { Write-Host 'XCLI_PAT not available; skipping comment.'; exit 0 }
+          if (-not $env:GH_ADMIN_TOKEN) { Write-Host 'GH_ADMIN_TOKEN not available; skipping comment.'; exit 0 }
           $lines = @(
             '### Smoke test results',
             '',
@@ -185,7 +185,7 @@ jobs:
             "- command=${{ steps.compare.outputs.command }}"
           ) -join "`n"
           $payload = @{ body = $lines } | ConvertTo-Json -Compress
-          $headers = @{ Authorization = "Bearer $env:XCLI_PAT"; Accept = 'application/vnd.github+json'; 'User-Agent' = 'xcli-bot' }
+          $headers = @{ Authorization = "Bearer $env:GH_ADMIN_TOKEN"; Accept = 'application/vnd.github+json'; 'User-Agent' = 'xcli-bot' }
           $uri = "https://api.github.com/repos/$env:GH_REPO/issues/$env:PR_NUMBER/comments"
           Invoke-RestMethod -Method POST -Uri $uri -Headers $headers -ContentType 'application/json' -Body $payload
 
@@ -195,9 +195,9 @@ jobs:
         env:
           GH_REPO: ${{ github.repository }}
           PR_NUMBER: ${{ github.event.pull_request.number }}
-          XCLI_PAT: ${{ secrets.XCLI_PAT }}
+          GH_ADMIN_TOKEN: ${{ secrets.GH_ADMIN_TOKEN }}
         run: |
-          if (-not $env:XCLI_PAT) { Write-Host 'XCLI_PAT not available; skipping comment.'; exit 0 }
+          if (-not $env:GH_ADMIN_TOKEN) { Write-Host 'GH_ADMIN_TOKEN not available; skipping comment.'; exit 0 }
           $lines = @(
             '### Smoke test results (label-triggered)',
             '',
@@ -207,7 +207,7 @@ jobs:
             "- command=${{ steps.compare.outputs.command }}"
           ) -join "`n"
           $payload = @{ body = $lines } | ConvertTo-Json -Compress
-          $headers = @{ Authorization = "Bearer $env:XCLI_PAT"; Accept = 'application/vnd.github+json'; 'User-Agent' = 'xcli-bot' }
+          $headers = @{ Authorization = "Bearer $env:GH_ADMIN_TOKEN"; Accept = 'application/vnd.github+json'; 'User-Agent' = 'xcli-bot' }
           $uri = "https://api.github.com/repos/$env:GH_REPO/issues/$env:PR_NUMBER/comments"
           Invoke-RestMethod -Method POST -Uri $uri -Headers $headers -ContentType 'application/json' -Body $payload
 
@@ -262,3 +262,4 @@ jobs:
 concurrency:
   group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
+
