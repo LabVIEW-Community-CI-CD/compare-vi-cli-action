@@ -166,8 +166,10 @@ runs:
         $lines += ("- Orchestrator exit: {0}" -f $exit)
         $lines += ("- Status: {0}" -f $status)
         $lines += ("- Results root: {0}" -f $root)
-        $lines += ("- Latest dir: {0}" -f (if ($latest) { $latest.Name } else { '<none>' }))
-        $lines += ("- Summary path: {0}" -f (if ($sumPath) { $sumPath } else { '<none>' }))
+        $latestName = if ($latest) { $latest.Name } else { '<none>' }
+        $sumDisp = if ($sumPath) { $sumPath } else { '<none>' }
+        $lines += ("- Latest dir: {0}" -f $latestName)
+        $lines += ("- Summary path: {0}" -f $sumDisp)
         if ($env:REPORT_DELAY_MS) { $lines += ("- Report delay (ms): {0}" -f $env:REPORT_DELAY_MS) }
         $lines -join "`n" | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8
         } catch { Write-Host "[drift-debug] failed to emit debug breadcrumbs: $_" }
