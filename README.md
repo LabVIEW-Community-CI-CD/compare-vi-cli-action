@@ -38,6 +38,15 @@ Validated with LabVIEW 2025 Q3 on self-hosted Windows runners. See also:
 - Self-hosted setup: `docs/SELFHOSTED_CI_SETUP.md`
 - Developer guide: `docs/DEVELOPER_GUIDE.md`
 
+### Quick Local Testing
+
+- Run all unit tests: `./Invoke-PesterTests.ps1`
+- Include Integration (real CLI): `./Invoke-PesterTests.ps1 -IncludeIntegration true`
+- Per‑category examples (writes into per‑category results):
+  - Fixtures: `./Invoke-PesterTests.ps1 -IncludePatterns 'Fixtures*Tests.ps1','FixtureValidation*Tests.ps1' -ResultsPath tests/results/fixtures`
+  - CompareVI: `./Invoke-PesterTests.ps1 -IncludePatterns 'CompareVI*Tests.ps1' -ResultsPath tests/results/comparevi`
+- Monitor CI runs for your branch: `./tools/List-BranchRuns.ps1 -Name 'Pester (self-hosted)'`
+
 > **Breaking Change (v0.5.0)**: Legacy artifact names `Base.vi` / `Head.vi` are no longer supported. Use `VI1.vi` / `VI2.vi` exclusively. Public action input names (`base`, `head`) and environment variables (`LV_BASE_VI`, `LV_HEAD_VI`) remain unchanged.
 
 ## Requirements
