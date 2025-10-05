@@ -74,6 +74,27 @@ jobs:
             Write-Host 'Intra-repo markdown links OK.'
           }
 
+      - name: Append required checks (branch rules hint)
+        if: always()
+        shell: pwsh
+        run: |
+          $lines = @(
+            '### Required checks (copy for branch protections)',
+            '- Pester (self-hosted) / preflight',
+            '- Pester (self-hosted) / pester (dispatcher|fixtures|schema|comparevi|loop|runbook|orchestrator)',
+            '- Fixture Drift Validation / Fixture Drift (Windows)',
+            '- VI Binary Handling Gate / vi-binary-check',
+            '- Validate / lint',
+            '- markdownlint / lint'
+          ) -join "`n"
+          $lines | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8
+          $doc = 'docs/BRANCH_RULES.md'
+          if (Test-Path $doc) {
+            "See: ./$doc" | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8
+          } else {
+            'Branch rules guide: docs/BRANCH_RULES.md (coming soon in issue #60)' | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8
+          }
+
   fixtures:
     runs-on: [self-hosted, Windows, X64]
     env:
@@ -172,10 +193,11 @@ jobs:
     steps:
       - uses: actions/checkout@v5
 
-      - name: Install Pester v5
+      - name: Install Pester v5 (non-interactive)
         shell: pwsh
         run: |
-          Install-Module -Name Pester -MinimumVersion 5.0.0 -Force -Scope CurrentUser
+          try { Set-PSRepository -Name 'PSGallery' -InstallationPolicy Trusted -ErrorAction SilentlyContinue } catch {}
+          Install-Module -Name Pester -MinimumVersion 5.0.0 -Force -Scope CurrentUser -SkipPublisherCheck -Confirm:$false
 
       - name: Run dispatcher smoke to produce session index
         shell: pwsh
