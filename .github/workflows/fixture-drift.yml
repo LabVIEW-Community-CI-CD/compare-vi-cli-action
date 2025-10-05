@@ -9,6 +9,12 @@ on:
       - 'tools/**'
       - 'docs/schemas/**'
   workflow_dispatch: {}
+  workflow_dispatch:
+    inputs:
+      force_run:
+        description: 'Bypass docs-only fast path (manual dispatch)'
+        required: false
+        default: 'false'
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
@@ -31,6 +37,7 @@ jobs:
             docs/schemas/**
           fail-on-fork: 'true'
           repo-owner-expected: ${{ vars.EXPECTED_REPO_OWNER || 'LabVIEW-Community-CI-CD' }}
+          force-run: ${{ inputs.force_run }}
   preflight-windows:
     name: Preflight (Windows)
     runs-on: [self-hosted, Windows, X64]

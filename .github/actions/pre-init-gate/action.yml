@@ -24,6 +24,10 @@ inputs:
     description: "Owner considered 'upstream' (used to detect forks)."
     required: false
     default: 'LabVIEW-Community-CI-CD'
+  force-run:
+    description: "When 'true' and event is workflow_dispatch, bypass docs-only fast path"
+    required: false
+    default: 'false'
 outputs:
   docs_only:
     description: "'true' when all changed files are docs-only per globs"
@@ -114,6 +118,10 @@ runs:
           $isExcluded = Match-AnyGlob -path $f -globs $excludes
           if (-not $isDoc -or $isExcluded) { $docsOnly = $false; break }
         }
+
+        # Bypass docs-only fast path when manually dispatched with force-run
+        $force = '${{ inputs.force-run }}'
+        if ($env:GH_EVENT_NAME -eq 'workflow_dispatch' -and ($force -eq 'true')) { $docsOnly = $false }
 
         $outFiles = ($files | ConvertTo-Json -Compress)
         "docs_only=$docsOnly" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
