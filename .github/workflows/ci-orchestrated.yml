@@ -69,10 +69,10 @@ jobs:
       WATCH_CONSOLE: '1'
     steps:
       - uses: actions/checkout@v5
-      - name: Run Pester tests via local dispatcher
+      - name: Run Pester tests via local dispatcher (<= 150s)
         shell: pwsh
         run: |
-          ./Invoke-PesterTests.ps1 -TestsPath tests -IncludeIntegration '${{ inputs.include_integration }}' -ResultsPath tests/results
+          ./Invoke-PesterTests.ps1 -TestsPath tests -IncludeIntegration '${{ inputs.include_integration }}' -ResultsPath tests/results -TimeoutSeconds 150
 
       - name: Ensure session index (fallback)
         if: always()
@@ -112,6 +112,7 @@ jobs:
     runs-on: [self-hosted, Windows, X64]
     timeout-minutes: 3
     needs: [pester]
+    if: ${{ always() }}
     env:
       UNBLOCK_GUARD: '1'
       LV_SUPPRESS_UI: '1'
