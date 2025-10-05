@@ -2,9 +2,9 @@ name: Validate
 
 on:
   pull_request:
-    branches: [ main ]
+    branches: [ main, 'release/*' ]
   push:
-    branches: [ main ]
+    branches: [ main, 'release/*' ]
   workflow_dispatch:
     inputs:
       summary-verbose:
@@ -78,6 +78,11 @@ jobs:
         shell: pwsh
         continue-on-error: true
         run: pwsh -NonInteractive -File tools/Check-RepoHygiene.ps1 -WarnOnly
+
+      - name: Repo hygiene (strict on protected branches)
+        if: ${{ github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/heads/release/') }}
+        shell: pwsh
+        run: pwsh -NonInteractive -File tools/Check-RepoHygiene.ps1
 
       - name: Append required checks (branch rules hint)
         if: always()

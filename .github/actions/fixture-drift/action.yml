@@ -60,7 +60,8 @@ runs:
       shell: pwsh
       run: |
         $ErrorActionPreference = 'Stop'
-        if ('${{ inputs.render-report }}' -eq 'true' -and $IsWindows -ne $true) { 
+        $render = [System.Convert]::ToBoolean('${{ inputs.render-report }}')
+        if ($render -and $IsWindows -ne $true) { 
           throw 'Report rendering requires Windows runners. Use render-report: false for non-Windows platforms.' 
         }
         $vf = Join-Path "${{ github.workspace }}" 'tools/Validate-Fixtures.ps1'
@@ -90,7 +91,8 @@ runs:
         $strictPath = Join-Path (Get-Location) 'strict.json'
         $overridePath = Join-Path (Get-Location) 'override.json'
         $args = @('-StrictJson',$strictPath,'-OverrideJson',$overridePath)
-        if ('${{ inputs.render-report }}' -eq 'true') { $args += '-RenderReport' }
+        try { $render = [System.Convert]::ToBoolean('${{ inputs.render-report }}') } catch { $render = $false }
+        if ($render) { $args += '-RenderReport' }
         if ('${{ inputs.base-path }}') { $args += @('-BasePath','${{ inputs.base-path }}') }
         if ('${{ inputs.head-path }}') { $args += @('-HeadPath','${{ inputs.head-path }}') }
         if ('${{ inputs.lv-compare-args }}') { $args += @('-LvCompareArgs','${{ inputs.lv-compare-args }}') }
