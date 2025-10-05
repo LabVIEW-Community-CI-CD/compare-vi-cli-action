@@ -121,6 +121,33 @@ Token resolution: prefers `GH_ADMIN_TOKEN`, then `GH_TOKEN`, then legacy `XCLI_P
   - Branch protections require required checks to pass before merge. The `Closes #N` line closes the tracking issue on merge, guaranteeing green checks.
   - If you need pre-merge closure upon check success, open a follow-up issue to add an auto-close workflow; default policy is close-on-merge.
 
+## Policies & Guardrails (Strict)
+
+- Single Windows variant: only `[self-hosted, Windows, X64]`. Do not add `windows-20xx` matrices.
+- Non-interactive PowerShell: always use `pwsh -NonInteractive` for nested calls; avoid `Start-Process pwsh`. Prefer in‑process invocation.
+- LVCompare‑only: never launch `LabVIEW.exe`. Preflight enforces idle LabVIEW; set `LV_SUPPRESS_UI=1` to prevent UI popups.
+- No dot‑sourcing: prefer `Import-Module` for local shims/modules. Validate via `tools/Lint-DotSourcing.ps1`.
+- Session index required: every category must emit `tests/results/<category>/session-index.json` (use `tools/Ensure-SessionIndex.ps1`).
+- Vendor artifacts: do not commit `bin/**`. Link checker ignores it; keep vendor docs out of PRs.
+
+### Toggles & Variables
+
+- Protection toggles (default ON): `ENFORCE_PROTECTION_ON_DEVELOP`, `ENFORCE_PROTECTION_ON_TOPIC` (set to `0` to disable).
+- Pester timeouts (seconds): `PESTER_TIMEOUT_DISPATCHER|FIXTURES|SCHEMA|COMPAREVI|LOOP|RUNBOOK|ORCHESTRATOR`.
+- Guard/diagnostics: `UNBLOCK_GUARD=1`, `WATCH_CONSOLE=1`.
+- Cleanup/leaks: `DETECT_LEAKS=1`, `CLEAN_AFTER=1`, `CLEAN_LVCOMPARE=1`.
+- Reporter settling: `REPORT_DELAY_MS` (use sparingly; prefer event‑based readiness).
+
+### Required Checks (reference)
+
+- Pester (self-hosted) / preflight
+- Pester (self-hosted) / pester (dispatcher|fixtures|schema|comparevi|loop|runbook|orchestrator)
+- Fixture Drift Validation / Fixture Drift (Windows)
+- VI Binary Handling Gate / vi-binary-check
+- Validate / lint
+- markdownlint / lint
+
+
 
 
 
