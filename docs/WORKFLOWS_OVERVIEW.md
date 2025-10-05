@@ -61,6 +61,7 @@ This repository uses a single Windows variant (self-hosted) and gates heavy jobs
 
 ## Prune/Unify Candidates
 
-- Test (mock LVCompare) – DEPRECATED (kept for manual compatibility only).
+- Test (mock LVCompare) – DEPRECATED (moved under docs/releases/) (kept for manual compatibility only).
 - Pester diagnostics nightly – overlap with Pester (self‑hosted) categories; consider consolidation.
 - Smoke workflows – keep one variant if usage duplicates.
+

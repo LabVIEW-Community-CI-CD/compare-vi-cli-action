@@ -152,7 +152,11 @@ try {
   Write-Section 'Helper Files'
   $helpers = 'PR_NOTES.md','TAG_PREP_CHECKLIST.md','POST_RELEASE_FOLLOWUPS.md','ROLLBACK_PLAN.md'
   foreach ($h in $helpers) {
-    if (Test-Path (Join-Path $repoRoot $h)) { $summary.helperFilesPresent += $h } else { $summary.helperFilesMissing += $h }
+    $rootPath = Join-Path $repoRoot $h
+    $relocated = Join-Path $repoRoot (Join-Path 'docs/releases' $h)
+    if (Test-Path $rootPath) { $summary.helperFilesPresent += $h }
+    elseif (Test-Path $relocated) { $summary.helperFilesPresent += (Join-Path 'docs/releases' $h) }
+    else { $summary.helperFilesMissing += $h }
   }
 
   Write-Section 'Markdown Lint'

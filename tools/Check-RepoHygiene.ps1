@@ -14,11 +14,6 @@ $allowFiles = @(
   '.gitignore','.gitattributes','.markdownlint.json','.markdownlint.jsonc','.markdownlint-cli2.jsonc',
   '.markdownlintignore','.markdown-link-check.json','package.json','package-lock.json','tsconfig.json',
   'fixtures.manifest.json','VI1.vi','VI2.vi',
-  'PESTER_DISPATCHER_REFINEMENT.md','PESTER_SELFHOSTED_FIXES.md','INTEGRATION_PLAN.md',
-  'IMPLEMENTATION_STATUS.md','ROLLBACK_PLAN.md','PR_DESCRIPTION.md','PR_ACCEPTANCE_CRITERIA.md',
-  'POST_RELEASE_FOLLOWUPS.md','CI-FIX-SUMMARY.md',
-  # release notes and status variants
-  'RELEASE_NOTES_v0.4.1.md','RELEASE_NOTES_v0.5.0.md','IMPLEMENTATION_STATUS_v0.5.0.md',
   # helper scripts allowed at root (kept minimal)
   'Invoke-PesterTests.ps1','APPLY-CI-FIXES.ps1','set-env-vars.ps1'
 )
@@ -73,4 +68,3 @@ if ($unexpected.Count -gt 0) {
 } else {
   'Repo hygiene OK (no unexpected top-level entries).' | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8
 }
-
