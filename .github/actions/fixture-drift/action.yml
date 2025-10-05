@@ -98,16 +98,7 @@ runs:
         pwsh -NoLogo -NoProfile -File "${{ github.workspace }}/scripts/On-FixtureValidationFail.ps1" @args
         $exit = $LASTEXITCODE
         $root = Join-Path (Get-Location) 'results/fixture-drift'
-        $latest = $null
-        if (Test-Path $root) {
-          $dirs = Get-ChildItem -LiteralPath $root -Directory
-          $tsDirs = @($dirs | Where-Object { $_.Name -match '^[0-9]{8}T[0-9]{6}Z$' })
-          if ($tsDirs.Count -gt 0) {
-            $latest = $tsDirs | Sort-Object Name -Descending | Select-Object -First 1
-          } else {
-            $latest = $dirs | Sort-Object LastWriteTimeUtc -Descending | Select-Object -First 1
-          }
-        }
+        $latest = $null; if (Test-Path $root) { $latest = Get-ChildItem -LiteralPath $root -Directory | Sort-Object Name -Descending | Select-Object -First 1 }
         $sumPath = $null
         $status = 'unknown'
         if ($latest) {
@@ -166,10 +157,8 @@ runs:
         $lines += ("- Orchestrator exit: {0}" -f $exit)
         $lines += ("- Status: {0}" -f $status)
         $lines += ("- Results root: {0}" -f $root)
-        $latestName = if ($latest) { $latest.Name } else { '<none>' }
-        $sumDisp = if ($sumPath) { $sumPath } else { '<none>' }
-        $lines += ("- Latest dir: {0}" -f $latestName)
-        $lines += ("- Summary path: {0}" -f $sumDisp)
+        $lines += ("- Latest dir: {0}" -f (if ($latest) { $latest.Name } else { '<none>' }))
+        $lines += ("- Summary path: {0}" -f (if ($sumPath) { $sumPath } else { '<none>' }))
         if ($env:REPORT_DELAY_MS) { $lines += ("- Report delay (ms): {0}" -f $env:REPORT_DELAY_MS) }
         $lines -join "`n" | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8
         } catch { Write-Host "[drift-debug] failed to emit debug breadcrumbs: $_" }
@@ -260,12 +249,7 @@ runs:
         $marker = '<!-- fixture-drift-comment -->'
         $runUrl = "https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}"
         $root = Join-Path (Get-Location) 'results/fixture-drift'
-        $latest = $null
-        if (Test-Path $root) {
-          $dirs = Get-ChildItem -LiteralPath $root -Directory
-          $tsDirs = @($dirs | Where-Object { $_.Name -match '^[0-9]{8}T[0-9]{6}Z$' })
-          if ($tsDirs.Count -gt 0) { $latest = $tsDirs | Sort-Object Name -Descending | Select-Object -First 1 } else { $latest = $dirs | Sort-Object LastWriteTimeUtc -Descending | Select-Object -First 1 }
-        }
+        $latest = $null; if (Test-Path $root) { $latest = Get-ChildItem -LiteralPath $root -Directory | Sort-Object Name -Descending | Select-Object -First 1 }
         $sum = $null
         if ($latest) { $sum = Join-Path $latest.FullName 'drift-summary.json' }
         $status = 'unknown'; $exitCode = ''

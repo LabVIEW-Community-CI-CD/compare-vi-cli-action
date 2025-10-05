@@ -178,7 +178,7 @@ $ErrorActionPreference = 'Stop'
 
 
 
-function Initialize-Directory([string]$dir) {
+function Initialize-Directory([string]$dir) {
 
 
 
@@ -186,37 +186,7 @@ function Initialize-Directory([string]$dir) {
 
 
 
-}
-
-# Handshake markers -----------------------------------------------------------
-function Write-HandshakeMarker {
-  param(
-    [Parameter(Mandatory=$true)][string]$Name,
-    [hashtable]$Data
-  )
-  try {
-    $payload = [ordered]@{
-      schema = 'handshake-marker/v1'
-      name   = $Name
-      atUtc  = (Get-Date).ToUniversalTime().ToString('o')
-      pid    = $PID
-    }
-    if ($Data) {
-      foreach ($k in $Data.Keys) { $payload[$k] = $Data[$k] }
-    }
-    $fname = ('handshake-{0}.json' -f ($Name.ToLowerInvariant()))
-    ($payload | ConvertTo-Json -Depth 6) | Set-Content -LiteralPath (Join-Path $OutputDir $fname) -Encoding utf8
-  } catch { }
-}
-
-function Reset-HandshakeMarkers {
-  try {
-    Get-ChildItem -LiteralPath $OutputDir -Filter 'handshake-*.json' -ErrorAction SilentlyContinue | ForEach-Object {
-      Remove-Item -LiteralPath $_.FullName -Force -ErrorAction SilentlyContinue
-    }
-  } catch { }
-  Write-HandshakeMarker -Name 'reset' -Data @{ outputDir = $OutputDir }
-}
+}
 
 
 
@@ -332,19 +302,7 @@ if (-not $OutputDir) {
 
 
 
-Initialize-Directory $OutputDir
-
-# Reset and start handshake markers early for deterministic troubleshooting
-Reset-HandshakeMarkers
-Write-HandshakeMarker -Name 'start' -Data @{
-  strictJson   = $StrictJson
-  overrideJson = $OverrideJson
-  manifestPath = $ManifestPath
-  basePath     = $BasePath
-  headPath     = $HeadPath
-  renderReport = [bool]$RenderReport
-  simulate     = [bool]$SimulateCompare
-}
+Initialize-Directory $OutputDir
 
 
 
@@ -492,38 +450,11 @@ if ($strictExit -eq 0 -and $strict.ok) {
 
 
 
-  ($summary | ConvertTo-Json -Depth 6) | Set-Content -LiteralPath $outPath -Encoding utf8
-
-  # End-of-flow marker for OK path
-  Write-HandshakeMarker -Name 'end' -Data @{ status = 'ok'; exitCode = 0 }
-
-  # Best-effort: if simulate mode, ensure compare-exec.json exists for downstream consumers/tests
-  if ($SimulateCompare) {
-    try {
-      $ej2 = Join-Path $OutputDir 'compare-exec.json'
-      if (-not (Test-Path -LiteralPath $ej2)) {
-        $exec = [pscustomobject]@{
-          schema       = 'compare-exec/v1'
-          generatedAt  = (Get-Date).ToString('o')
-          cliPath      = $null
-          command      = $null
-          exitCode     = 1
-          diff         = $true
-          cwd          = (Get-Location).Path
-          duration_s   = 0
-          duration_ns  = $null
-          base         = (Resolve-Path $BasePath).Path
-          head         = (Resolve-Path $HeadPath).Path
-        }
-        $exec | ConvertTo-Json -Depth 6 | Out-File -FilePath $ej2 -Encoding utf8 -ErrorAction SilentlyContinue
-      }
-      Add-Artifact 'compare-exec.json'
-    } catch { Add-Note ("simulate compare placeholder exec json failed: {0}" -f $_.Exception.Message) }
-  }
-
+  ($summary | ConvertTo-Json -Depth 6) | Set-Content -LiteralPath $outPath -Encoding utf8
 
 
-  exit 0
+
+  exit 0
 
 
 
@@ -575,14 +506,7 @@ if ($strictExit -eq 6) {
 
 
 
-  if (-not $cliExists) { Add-Note 'LVCompare.exe missing at canonical path'; }
-
-  # Phase marker prior to compare/report execution
-  Write-HandshakeMarker -Name 'compare' -Data @{
-    cliExists    = [bool]$cliExists
-    lvCompareCli = $cli
-    renderReport = [bool]$RenderReport
-  }
+  if (-not $cliExists) { Add-Note 'LVCompare.exe missing at canonical path'; }
 
 
 
@@ -598,29 +522,27 @@ if ($strictExit -eq 6) {
 
 
 
-if ($RenderReport) {
-  try {
-    if ($SimulateCompare -or -not $cliExists) {
-      # Test-only simulated outputs
-      $stdout = 'simulated lvcompare output'
-      $stderr = ''
-      $exitCode = 1
-      $duration = 0.01
-    } else {
-      # Use robust dispatcher to avoid LVCompare UI popups and apply preflight guards
-      $repoRoot = Resolve-Path (Join-Path $PSScriptRoot '..') | Select-Object -ExpandProperty Path
-      if (-not (Get-Command -Name Invoke-CompareVI -ErrorAction SilentlyContinue)) {
-        Import-Module (Join-Path $repoRoot 'scripts' 'CompareVI.psm1') -Force
-      }
+if ($RenderReport -and $cliExists) {
+  try {
+    if ($SimulateCompare) {
+      # Test-only simulated outputs
+      $stdout = 'simulated lvcompare output'
+      $stderr = ''
+      $exitCode = 1
+      $duration = 0.01
+    } else {
+      # Use robust dispatcher to avoid LVCompare UI popups and apply preflight guards
+      $repoRoot = Resolve-Path (Join-Path $PSScriptRoot '..') | Select-Object -ExpandProperty Path
+      . (Join-Path $repoRoot 'scripts' 'CompareVI.ps1')
       $execJsonPath = Join-Path $OutputDir 'compare-exec.json'
       $res = Invoke-CompareVI -Base $BasePath -Head $HeadPath -LvComparePath $cli -LvCompareArgs $LvCompareArgs -FailOnDiff:$false -CompareExecJsonPath $execJsonPath
-      $exitCode = $res.ExitCode
-      $duration = $res.CompareDurationSeconds
-      $command = $res.Command
-      # CompareVI does not capture raw streams; emit placeholders for completeness
+      $exitCode = $res.ExitCode
+      $duration = $res.CompareDurationSeconds
+      $command = $res.Command
+      # CompareVI does not capture raw streams; emit placeholders for completeness
       $stdout = ''
       $stderr = ''
-    }
+    }
     # Persist exec JSON for simulated path as well, and add a brief optional settle delay
     try {
       $ej = Join-Path $OutputDir 'compare-exec.json'
@@ -641,15 +563,6 @@ if ($RenderReport) {
         $exec | ConvertTo-Json -Depth 6 | Out-File -FilePath $ej -Encoding utf8 -ErrorAction SilentlyContinue
       }
       Add-Artifact 'compare-exec.json'
-      # Emit lvcompare placeholders for test expectations
-      try {
-        Set-Content -LiteralPath (Join-Path $OutputDir 'lvcompare-stdout.txt') -Value $stdout -Encoding utf8
-        Set-Content -LiteralPath (Join-Path $OutputDir 'lvcompare-stderr.txt') -Value $stderr -Encoding utf8
-        Set-Content -LiteralPath (Join-Path $OutputDir 'lvcompare-exitcode.txt') -Value ([string]$exitCode) -Encoding utf8
-        Add-Artifact 'lvcompare-stdout.txt'
-        Add-Artifact 'lvcompare-stderr.txt'
-        Add-Artifact 'lvcompare-exitcode.txt'
-      } catch { Add-Note ("failed to write lvcompare placeholder files: {0}" -f $_.Exception.Message) }
       Add-Note ("compare exit={0} diff={1} dur={2}s" -f $exitCode, (($exitCode -eq 1) ? 'true' : 'false'), $duration)
       $delayMs = 0; if ($env:REPORT_DELAY_MS) { [void][int]::TryParse($env:REPORT_DELAY_MS, [ref]$delayMs) }
       if ($delayMs -gt 0) { Start-Sleep -Milliseconds $delayMs }
@@ -657,32 +570,11 @@ if ($RenderReport) {
 
     # Generate HTML fragment via reporter script
     $reporter = Join-Path (Join-Path $PSScriptRoot '') 'Render-CompareReport.ps1'
-    if (Test-Path -LiteralPath $reporter) {
-      Write-HandshakeMarker -Name 'report' -Data @{ reporter = $reporter }
-      $diff = if ($exitCode -eq 1) { 'true' } elseif ($exitCode -eq 0) { 'false' } else { 'false' }
+    if (Test-Path -LiteralPath $reporter) {
+      $diff = if ($exitCode -eq 1) { 'true' } elseif ($exitCode -eq 0) { 'false' } else { 'false' }
       $cmd = if ($command) { $command } else { '"{0}" "{1}" {2}' -f $cli,(Resolve-Path $BasePath).Path,(Resolve-Path $HeadPath).Path }
-      # Optional console watch during report generation
-      $cwId = $null
-      if ($env:WATCH_CONSOLE -match '^(?i:1|true|yes|on)$') {
-        try {
-          $root = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path
-          if (-not (Get-Command -Name Start-ConsoleWatch -ErrorAction SilentlyContinue)) {
-            Import-Module (Join-Path $root 'tools' 'ConsoleWatch.psm1') -Force
-          }
-          $cwId = Start-ConsoleWatch -OutDir $OutputDir
-        } catch {}
-      }
-      & $reporter -Command $cmd -ExitCode $exitCode -Diff $diff -CliPath $cli -DurationSeconds $duration -OutputPath (Join-Path $OutputDir 'compare-report.html') -ExecJsonPath (Join-Path $OutputDir 'compare-exec.json') | Out-Null
-      Add-Artifact 'compare-report.html'
-      if ($cwId) {
-        try {
-          $cwSum = Stop-ConsoleWatch -Id $cwId -OutDir $OutputDir -Phase 'report'
-          if ($cwSum -and $cwSum.counts.Keys.Count -gt 0) {
-            $pairs = @(); foreach ($k in ($cwSum.counts.Keys | Sort-Object)) { $pairs += ("{0}={1}" -f $k, $cwSum.counts[$k]) }
-            Add-Note ("console-spawns: {0}" -f ($pairs -join ','))
-          } else { Add-Note 'console-spawns: none' }
-        } catch { Add-Note 'console-watch stop failed' }
-      }
+      pwsh -NoLogo -NoProfile -File $reporter -Command $cmd -ExitCode $exitCode -Diff $diff -CliPath $cli -DurationSeconds $duration -OutputPath (Join-Path $OutputDir 'compare-report.html') -ExecJsonPath (Join-Path $OutputDir 'compare-exec.json') | Out-Null
+      Add-Artifact 'compare-report.html'
     } else { Add-Note 'Reporter script not found; skipped HTML report' }
   } catch {
     Add-Note ("LVCompare or report generation failed: {0}" -f $_.Exception.Message)
@@ -692,14 +584,11 @@ if ($RenderReport) {
 
 
 
-  ($summary | ConvertTo-Json -Depth 6) | Set-Content -LiteralPath $outPath -Encoding utf8
-
-  # End-of-flow marker for drift path
-  Write-HandshakeMarker -Name 'end' -Data @{ status = 'drift'; exitCode = 1 }
+  ($summary | ConvertTo-Json -Depth 6) | Set-Content -LiteralPath $outPath -Encoding utf8
 
 
 
-  exit 1
+  exit 1
 
 
 
@@ -763,14 +652,11 @@ else {
 
 
 
-  ($summary | ConvertTo-Json -Depth 6) | Set-Content -LiteralPath $outPath -Encoding utf8
-
-  # End-of-flow marker for structural failure
-  Write-HandshakeMarker -Name 'end' -Data @{ status = 'fail-structural'; exitCode = 1 }
+  ($summary | ConvertTo-Json -Depth 6) | Set-Content -LiteralPath $outPath -Encoding utf8
 
 
 
-  exit 1
+  exit 1
 
 
 
