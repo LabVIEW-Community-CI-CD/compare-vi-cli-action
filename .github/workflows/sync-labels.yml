@@ -1,0 +1,20 @@
+name: Sync Labels
+
+on:
+  push:
+    branches: [ develop, main ]
+    paths:
+      - '.github/labels.yml'
+  workflow_dispatch: {}
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - name: Create or update labels
+        uses: peter-evans/create-or-update-labels@v4
+        with:
+          configuration-path: .github/labels.yml
+          # Do not delete labels not present in config; keep repo-specific labels
+          delete-old: false

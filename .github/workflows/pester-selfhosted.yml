@@ -1,6 +1,32 @@
-name: Pester (self-hosted, real CLI)
+name: Pester (self-hosted)
 
 on:
+  pull_request:
+    branches: [ develop, main ]
+    paths:
+      - '**/*.ps1'
+      - '**/*.psm1'
+      - 'scripts/**'
+      - 'tools/**'
+      - 'module/**'
+      - 'tests/**'
+      - 'action.yml'
+      - 'fixtures.manifest.json'
+      - 'VI*.vi'
+      - 'docs/schemas/**'
+  push:
+    branches: [ develop, main ]
+    paths:
+      - '**/*.ps1'
+      - '**/*.psm1'
+      - 'scripts/**'
+      - 'tools/**'
+      - 'module/**'
+      - 'tests/**'
+      - 'action.yml'
+      - 'fixtures.manifest.json'
+      - 'VI*.vi'
+      - 'docs/schemas/**'
   workflow_dispatch:
     inputs:
       include_integration:
@@ -15,9 +41,34 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  pre-init:
+    runs-on: ubuntu-latest
+    outputs:
+      docs_only: ${{ steps.g.outputs.docs_only }}
+      include_integration: ${{ steps.norm.outputs.bool }}
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Normalize include_integration
+        id: norm
+        uses: ./.github/actions/bool-normalize
+        with:
+          value: ${{ inputs.include_integration }}
+          default: 'true'
+      - id: g
+        uses: ./.github/actions/pre-init-gate
+        with:
+          include-globs: |
+            docs/**
+            **/*.md
+          exclude-globs: |
+            docs/schemas/**
+
   preflight:
     runs-on: [self-hosted, Windows, X64]
     timeout-minutes: 3
+    needs: pre-init
+    if: needs.pre-init.outputs.docs_only != 'true'
     steps:
       - uses: actions/checkout@v5
       - name: Verify LVCompare and idle LabVIEW state
@@ -34,7 +85,12 @@ jobs:
   pester:
     runs-on: [self-hosted, Windows, X64]
     timeout-minutes: 3
-    needs: preflight
+    needs: [pre-init, preflight]
+    if: needs.pre-init.outputs.docs_only != 'true'
+    strategy:
+      matrix:
+        category: [dispatcher, fixtures, schema, comparevi, loop, runbook, orchestrator]
+      max-parallel: 1
     env:
       LV_BASE_VI: ${{ vars.LV_BASE_VI }}
       LV_HEAD_VI: ${{ vars.LV_HEAD_VI }}
@@ -44,29 +100,40 @@ jobs:
       UNBLOCK_GUARD: '1'
       LV_SUPPRESS_UI: '1'
       WATCH_CONSOLE: '1'
+      # Optional per-category Pester timeouts (seconds). Set repository Variables to override.
+      PESTER_TIMEOUT_DISPATCHER: ${{ vars.PESTER_TIMEOUT_DISPATCHER }}
+      PESTER_TIMEOUT_FIXTURES:   ${{ vars.PESTER_TIMEOUT_FIXTURES }}
+      PESTER_TIMEOUT_SCHEMA:     ${{ vars.PESTER_TIMEOUT_SCHEMA }}
+      PESTER_TIMEOUT_COMPAREVI:  ${{ vars.PESTER_TIMEOUT_COMPAREVI }}
+      PESTER_TIMEOUT_LOOP:       ${{ vars.PESTER_TIMEOUT_LOOP }}
+      PESTER_TIMEOUT_RUNBOOK:    ${{ vars.PESTER_TIMEOUT_RUNBOOK }}
+      PESTER_TIMEOUT_ORCHESTRATOR: ${{ vars.PESTER_TIMEOUT_ORCHESTRATOR }}
     steps:
       - uses: actions/checkout@v5
 
-      # Call the dispatcher directly (no external action dependency)
+      # Call the dispatcher per category to surface atomic failures
       # This dispatcher assumes Pester v5+ is pre-installed on the self-hosted runner
-      - name: Run Pester tests via local dispatcher
-        shell: pwsh
-        run: |
-          ./Invoke-PesterTests.ps1 `
-            -TestsPath tests `
-            -IncludeIntegration '${{ inputs.include_integration }}' `
-            -ResultsPath tests/results
+      - name: Run Pester category
+        uses: ./.github/actions/pester-category-run
+        with:
+          category: ${{ matrix.category }}
+          include_integration: ${{ needs.pre-init.outputs.include_integration }}
+          results-dir: tests/results/${{ matrix.category }}
+          tests-path: tests
+          default-timeout-seconds: '150'
 
       - name: Append test metrics to job summary
         if: always()
         shell: pwsh
         run: |
-          $json = Join-Path 'tests/results' 'pester-summary.json'
-          $idx  = Join-Path 'tests/results' 'session-index.json'
+          $cat  = '${{ matrix.category }}'
+          $dir  = Join-Path 'tests/results' $cat
+          $json = Join-Path $dir 'pester-summary.json'
+          $idx  = Join-Path $dir 'session-index.json'
           if (Test-Path $json) {
             $data = Get-Content $json -Raw | ConvertFrom-Json
             $lines = @(
-              '### Pester Test Metrics',
+              "### Pester Test Metrics ($cat)",
               "- Total: $($data.total)",
               "- Passed: $($data.passed)",
               "- Failed: $($data.failed)",
@@ -79,7 +146,7 @@ jobs:
             if (Test-Path $idx) {
               $ix = Get-Content $idx -Raw | ConvertFrom-Json
               if (-not $ix.stepSummary) {
-                "\nSession index: tests/results/session-index.json" | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8
+                ("`nSession index: {0}" -f (Join-Path $dir 'session-index.json')) | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8
               }
             }
           } else {
@@ -90,39 +157,62 @@ jobs:
         if: always()
         shell: pwsh
         run: |
-          pwsh -File tools/Ensure-SessionIndex.ps1 -ResultsDir 'tests/results' -SummaryJson 'pester-summary.json'
+          $cat  = '${{ matrix.category }}'
+          $dir  = Join-Path 'tests/results' $cat
+          pwsh -NonInteractive -File tools/Ensure-SessionIndex.ps1 -ResultsDir $dir -SummaryJson 'pester-summary.json'
 
       - name: Session index post
         if: always()
         uses: ./.github/actions/session-index-post
         with:
-          results-dir: tests/results
+          results-dir: tests/results/${{ matrix.category }}
           validate-schema: true
           upload: true
-          artifact-name: session-index
+          artifact-name: session-index-${{ matrix.category }}
 
       - name: Append failure inventory
         if: always()
         shell: pwsh
         run: |
-          pwsh -File tools/Write-FailureInventory.ps1 -ResultsDir 'tests/results' -AppendToStepSummary
+          pwsh -NonInteractive -File tools/Write-FailureInventory.ps1 -ResultsDir 'tests/results' -AppendToStepSummary
+
+      - name: Append required checks (branch rules hint)
+        if: ${{ always() && matrix.category == 'dispatcher' }}
+        shell: pwsh
+        run: |
+          $lines = @(
+            '### Required checks (copy for branch protections)',
+            '- Pester (self-hosted) / preflight',
+            '- Pester (self-hosted) / pester (dispatcher|fixtures|schema|comparevi|loop|runbook|orchestrator)',
+            '- Fixture Drift Validation / Fixture Drift (Windows)',
+            '- VI Binary Handling Gate / vi-binary-check',
+            '- Validate / lint',
+            '- markdownlint / lint'
+          ) -join "`n"
+          $lines | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8
+          $doc = 'docs/BRANCH_RULES.md'
+          if (Test-Path $doc) {
+            "See: ./$doc" | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8
+          } else {
+            'Branch rules guide: docs/BRANCH_RULES.md (coming soon in issue #60)' | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8
+          }
 
       - name: Upload Pester artifacts
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: pester-selfhosted-results
+          name: pester-selfhosted-results-${{ matrix.category }}
           path: |
-            tests/results/**/*.xml
-            tests/results/**/*.txt
-            tests/results/**/*.html
-            tests/results/pester-summary.json
-            tests/results/pester-failures.json
-            tests/results/pester-artifacts.json
-            tests/results/pester-artifacts-trail.json
-            tests/results/pester-leak-report.json
-            tests/results/session-index.json
-            tests/results/failure-inventory.md
+            tests/results/${{ matrix.category }}/**/*.xml
+            tests/results/${{ matrix.category }}/**/*.txt
+            tests/results/${{ matrix.category }}/**/*.html
+            tests/results/${{ matrix.category }}/pester-summary.json
+            tests/results/${{ matrix.category }}/pester-failures.json
+            tests/results/${{ matrix.category }}/pester-artifacts.json
+            tests/results/${{ matrix.category }}/pester-artifacts-trail.json
+            tests/results/${{ matrix.category }}/pester-leak-report.json
+            tests/results/${{ matrix.category }}/session-index.json
+            tests/results/${{ matrix.category }}/failure-inventory.md
 
       - name: Runner Unblock Guard
         if: always()

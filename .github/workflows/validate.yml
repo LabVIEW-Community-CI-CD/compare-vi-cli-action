@@ -2,9 +2,9 @@ name: Validate
 
 on:
   pull_request:
-    branches: [ main ]
+    branches: [ main, 'release/*' ]
   push:
-    branches: [ main ]
+    branches: [ main, 'release/*' ]
   workflow_dispatch:
     inputs:
       summary-verbose:
@@ -31,11 +31,11 @@ jobs:
         shell: pwsh
         continue-on-error: true
         run: |
-          pwsh -File tools/Lint-DotSourcing.ps1 -WarnOnly
+          pwsh -NonInteractive -File tools/Lint-DotSourcing.ps1 -WarnOnly
 
       - name: Lint inline-if in format (-f)
         shell: pwsh
-        run: pwsh -File tools/Lint-InlineIfInFormat.ps1
+        run: pwsh -NonInteractive -File tools/Lint-InlineIfInFormat.ps1
 
       - name: Install markdownlint-cli
         run: |
@@ -74,6 +74,37 @@ jobs:
             Write-Host 'Intra-repo markdown links OK.'
           }
 
+      - name: Repo hygiene (warn-only)
+        shell: pwsh
+        continue-on-error: true
+        run: pwsh -NonInteractive -File tools/Check-RepoHygiene.ps1 -WarnOnly
+
+      - name: Repo hygiene (strict on protected branches)
+        if: ${{ github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/heads/release/') }}
+        shell: pwsh
+        run: pwsh -NonInteractive -File tools/Check-RepoHygiene.ps1
+
+      - name: Append required checks (branch rules hint)
+        if: always()
+        shell: pwsh
+        run: |
+          $lines = @(
+            '### Required checks (copy for branch protections)',
+            '- Pester (self-hosted) / preflight',
+            '- Pester (self-hosted) / pester (dispatcher|fixtures|schema|comparevi|loop|runbook|orchestrator)',
+            '- Fixture Drift Validation / Fixture Drift (Windows)',
+            '- VI Binary Handling Gate / vi-binary-check',
+            '- Validate / lint',
+            '- markdownlint / lint'
+          ) -join "`n"
+          $lines | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8
+          $doc = 'docs/BRANCH_RULES.md'
+          if (Test-Path $doc) {
+            "See: ./$doc" | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8
+          } else {
+            'Branch rules guide: docs/BRANCH_RULES.md (coming soon in issue #60)' | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8
+          }
+
   fixtures:
     runs-on: [self-hosted, Windows, X64]
     env:
@@ -86,7 +117,7 @@ jobs:
         continue-on-error: true
         run: |
           $ErrorActionPreference = 'Stop'
-          pwsh -File tools/Validate-Fixtures.ps1 -Json -MinBytes 32 > fixture-validation.json
+          pwsh -NonInteractive -File tools/Validate-Fixtures.ps1 -Json -MinBytes 32 > fixture-validation.json
           $exit = $LASTEXITCODE
           if ($exit -ne 0) { Write-Host "::warning::Fixture validator exit code: $exit (non-blocking)" }
           $data = Get-Content fixture-validation.json -Raw | ConvertFrom-Json
@@ -104,7 +135,7 @@ jobs:
         shell: pwsh
         run: |
           Write-Host 'Previous snapshot restored. Computing delta.'
-          pwsh -File tools/Diff-FixtureValidationJson.ps1 -Baseline fixture-validation-prev.json -Current fixture-validation.json -FailOnNewStructuralIssue > fixture-validation-delta.json
+          pwsh -NonInteractive -File tools/Diff-FixtureValidationJson.ps1 -Baseline fixture-validation-prev.json -Current fixture-validation.json -FailOnNewStructuralIssue > fixture-validation-delta.json
           if ($LASTEXITCODE -eq 3) {
             Write-Host 'New structural fixture issues detected (delta willFail=true).'
             if ($env:FAIL_ON_NEW_STRUCTURAL -eq 'true') {
@@ -118,12 +149,12 @@ jobs:
         if: steps.restore_prev_fixture_validation.outputs.cache-hit == 'true' && hashFiles('fixture-validation-delta.json') != ''
         shell: pwsh
         run: |
-          pwsh -File tools/Test-FixtureValidationDeltaSchema.ps1 -DeltaJsonPath fixture-validation-delta.json
+          pwsh -NonInteractive -File tools/Test-FixtureValidationDeltaSchema.ps1 -DeltaJsonPath fixture-validation-delta.json
       - name: Lite schema validate (delta)
         if: steps.restore_prev_fixture_validation.outputs.cache-hit == 'true' && hashFiles('fixture-validation-delta.json') != ''
         shell: pwsh
         run: |
-          pwsh -File tools/Invoke-JsonSchemaLite.ps1 -JsonPath fixture-validation-delta.json -SchemaPath docs/schemas/fixture-validation-delta-v1.schema.json
+          pwsh -NonInteractive -File tools/Invoke-JsonSchemaLite.ps1 -JsonPath fixture-validation-delta.json -SchemaPath docs/schemas/fixture-validation-delta-v1.schema.json
       - name: Upload fixture validation delta JSON
         if: steps.restore_prev_fixture_validation.outputs.cache-hit == 'true' && hashFiles('fixture-validation-delta.json') != ''
         uses: actions/upload-artifact@v4
@@ -141,17 +172,17 @@ jobs:
         run: |
           if (Test-Path fixture-validation.json) {
             try {
-              pwsh -File tools/Invoke-JsonSchemaLite.ps1 -JsonPath fixture-validation.json -SchemaPath docs/schemas/fixture-manifest-v1.schema.json
+              pwsh -NonInteractive -File tools/Invoke-JsonSchemaLite.ps1 -JsonPath fixture-validation.json -SchemaPath docs/schemas/fixture-manifest-v1.schema.json
               if ($LASTEXITCODE -ne 0) { Write-Host "::notice::Snapshot schema-lite returned $LASTEXITCODE (non-blocking)" }
             } catch { Write-Host '::notice::Snapshot schema-lite skipped or failed (non-fatal).' }
           }
       - name: Append fixture summary
         shell: pwsh
-        run: pwsh -File tools/Write-FixtureValidationSummary.ps1 -ValidationJson fixture-validation.json -DeltaJson fixture-validation-delta.json
+        run: pwsh -NonInteractive -File tools/Write-FixtureValidationSummary.ps1 -ValidationJson fixture-validation.json -DeltaJson fixture-validation-delta.json
       - name: Write fixture summary file
         if: always()
         shell: pwsh
-        run: pwsh -File tools/Write-FixtureValidationSummary.ps1 -ValidationJson fixture-validation.json -DeltaJson fixture-validation-delta.json -SummaryPath fixture-summary.md
+        run: pwsh -NonInteractive -File tools/Write-FixtureValidationSummary.ps1 -ValidationJson fixture-validation.json -DeltaJson fixture-validation-delta.json -SummaryPath fixture-summary.md
       - name: Upload fixture summary artifact
         if: always() && hashFiles('fixture-summary.md') != ''
         uses: actions/upload-artifact@v4
@@ -172,10 +203,11 @@ jobs:
     steps:
       - uses: actions/checkout@v5
 
-      - name: Install Pester v5
+      - name: Install Pester v5 (non-interactive)
         shell: pwsh
         run: |
-          Install-Module -Name Pester -MinimumVersion 5.0.0 -Force -Scope CurrentUser
+          try { Set-PSRepository -Name 'PSGallery' -InstallationPolicy Trusted -ErrorAction SilentlyContinue } catch {}
+          Install-Module -Name Pester -MinimumVersion 5.0.0 -Force -Scope CurrentUser -SkipPublisherCheck -Confirm:$false
 
       - name: Run dispatcher smoke to produce session index
         shell: pwsh
@@ -189,7 +221,7 @@ jobs:
         run: |
           $json = Join-Path $env:RUNNER_TEMP 'sessionindex' 'session-index.json'
           if (-not (Test-Path $json)) { Write-Error "session-index.json not found at $json"; exit 2 }
-          pwsh -File tools/Invoke-JsonSchemaLite.ps1 -JsonPath $json -SchemaPath docs/schemas/session-index-v1.schema.json
+          pwsh -NonInteractive -File tools/Invoke-JsonSchemaLite.ps1 -JsonPath $json -SchemaPath docs/schemas/session-index-v1.schema.json
 
       - name: Upload session index artifact
         if: always()

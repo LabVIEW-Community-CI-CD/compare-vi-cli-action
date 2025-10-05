@@ -42,6 +42,7 @@ param(
 
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
+$ConfirmPreference = 'None'
 
 $script:Schema = 'integration-runbook-v1'
 $allPhaseNames = @('Prereqs','CanonicalCli','ViInputs','Compare','Tests','Loop','Diagnostics')
@@ -248,7 +249,8 @@ $final = [pscustomobject]@{
   overallStatus = $( if ($overallFailed) { 'Failed' } else { 'Passed' } )
 }
 
-Write-Host "Overall Status: $($final.overallStatus)" -ForegroundColor $( if ($overallFailed) { 'Red' } else { 'Green' } )
+$fgColor = if ($overallFailed) { 'Red' } else { 'Green' }
+Write-Host "Overall Status: $($final.overallStatus)" -ForegroundColor $fgColor
 
 if ($JsonReport) {
   $json = $final | ConvertTo-Json -Depth 6

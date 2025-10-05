@@ -4,7 +4,6 @@
 
 [![Validate](https://github.com/LabVIEW-Community-CI-CD/compare-vi-cli-action/actions/workflows/validate.yml/badge.svg)](https://github.com/LabVIEW-Community-CI-CD/compare-vi-cli-action/actions/workflows/validate.yml)
 [![Smoke test](https://github.com/LabVIEW-Community-CI-CD/compare-vi-cli-action/actions/workflows/smoke.yml/badge.svg)](https://github.com/LabVIEW-Community-CI-CD/compare-vi-cli-action/actions/workflows/smoke.yml)
-[![Test (mock)](https://github.com/LabVIEW-Community-CI-CD/compare-vi-cli-action/actions/workflows/test-mock.yml/badge.svg)](https://github.com/LabVIEW-Community-CI-CD/compare-vi-cli-action/actions/workflows/test-mock.yml)
 [![Repository](https://img.shields.io/badge/GitHub-Repository-blue?logo=github)](https://github.com/LabVIEW-Community-CI-CD/compare-vi-cli-action)
 [![Environment](https://img.shields.io/badge/docs-Environment%20Vars-6A5ACD)](./docs/ENVIRONMENT.md)
 
@@ -32,6 +31,13 @@ Validated with LabVIEW 2025 Q3 on self-hosted Windows runners. See also:
 [`CHANGELOG.md`](./CHANGELOG.md) and the release workflow at
 `.github/workflows/release.yml`.
 
+## Documentation Map
+
+- Workflows overview: `docs/WORKFLOWS_OVERVIEW.md`
+- Fixtures and Validator: `docs/FIXTURES.md`
+- Self-hosted setup: `docs/SELFHOSTED_CI_SETUP.md`
+- Developer guide: `docs/DEVELOPER_GUIDE.md`
+
 > **Breaking Change (v0.5.0)**: Legacy artifact names `Base.vi` / `Head.vi` are no longer supported. Use `VI1.vi` / `VI2.vi` exclusively. Public action input names (`base`, `head`) and environment variables (`LV_BASE_VI`, `LV_HEAD_VI`) remain unchanged.
 
 ## Requirements
@@ -42,35 +48,9 @@ Validated with LabVIEW 2025 Q3 on self-hosted Windows runners. See also:
 
 ## Fixture Artifacts (VI1.vi / VI2.vi)
 
-Two canonical LabVIEW VI files live at the repository root:
-
-| File | Role |
-|------|------|
-| `VI1.vi` | Canonical base fixture |
-| `VI2.vi` | Canonical head fixture |
-
-Purpose:
-
-- Fallback pair for examples, smoke workflows, and quick local validation.
-- Guard test anchor ensuring legacy `Base.vi` / `Head.vi` names are not reintroduced.
-- Stable targets for loop / latency simulation when no custom inputs provided.
-- External dispatcher compatibility (LabVIEW-hosted tooling can intentionally evolve them in controlled commits).
-
-Phase 1 Policy (enforced by tests & `tools/Validate-Fixtures.ps1`):
-
-- Files MUST exist, be git-tracked, and remain non-trivial in size (manifest records their exact byte length).
-- Do not delete or rename them without a migration plan.
-- Intentional content changes should include a rationale in the commit message (future phases may require a token such as `[fixture-update]`).
-
-Phase 2 adds a hash manifest (`fixtures.manifest.json`) validated by `tools/Validate-Fixtures.ps1`.
-If you intentionally change fixture contents, include `[fixture-update]` in the commit message and
-regenerate the manifest via:
-
-```powershell
-pwsh -File tools/Update-FixtureManifest.ps1 -Allow
-```
-
-Without the token, hash mismatches fail validation (exit code 6). Manifest parse errors exit 7.
+This repository ships two canonical fixtures (`VI1.vi`, `VI2.vi`) and a manifest
+(`fixtures.manifest.json`). For policy, validator exit codes, and update commands,
+see `docs/FIXTURES.md`.
 
 ### Fixture Validator (Refined)
 
@@ -198,6 +178,35 @@ See [`docs/action-outputs.md`](./docs/action-outputs.md) for complete output doc
 - **Same filename / different directories**: LVCompare cannot compare two different VIs
   with the *same leaf filename*. The action fails early with an explanatory error instead
   of triggering an IDE dialog.
+
+### Local Pester by Category
+
+Run targeted test categories locally using file patterns and a separate results folder per category:
+
+```powershell
+# Dispatcher-focused tests
+./Invoke-PesterTests.ps1 -IncludePatterns 'Invoke-PesterTests*Tests.ps1','PesterAvailability*Tests.ps1','PesterSummary*Tests.ps1','NestedDispatcher*Tests.ps1','Write-PesterSummaryToStepSummary*Tests.ps1' -ResultsPath tests/results/dispatcher
+
+# Fixtures / validator
+./Invoke-PesterTests.ps1 -IncludePatterns 'Fixtures*Tests.ps1','FixtureValidation*Tests.ps1','FixtureSummary.Tests.ps1','ViBinaryHandling.Tests.ps1' -ResultsPath tests/results/fixtures
+
+# Schema checks
+./Invoke-PesterTests.ps1 -IncludePatterns 'Schema*Tests.ps1','SchemaLite*Tests.ps1' -ResultsPath tests/results/schema
+
+# CompareVI
+./Invoke-PesterTests.ps1 -IncludePatterns 'CompareVI*Tests.ps1' -ResultsPath tests/results/comparevi
+
+# Loop & metrics
+./Invoke-PesterTests.ps1 -IncludePatterns 'Run-AutonomousIntegrationLoop*Tests.ps1','CompareLoop*Tests.ps1','LoopMetrics.Tests.ps1' -ResultsPath tests/results/loop
+
+# Runbook
+./Invoke-PesterTests.ps1 -IncludePatterns 'IntegrationRunbook.Tests.ps1' -ResultsPath tests/results/runbook
+
+# Orchestrator / workflows
+./Invoke-PesterTests.ps1 -IncludePatterns 'On-FixtureValidationFail.Tests.ps1','Workflow*Tests.ps1','Guard*Tests.ps1','AggregationHints*Tests.ps1','ArtifactTracking*Tests.ps1','FunctionShadowing*Tests.ps1','Args.Tokenization.Tests.ps1','Action.CompositeOutputs.Tests.ps1' -ResultsPath tests/results/orchestrator
+```
+
+See the CI version in the orchestrated workflow: `.github/workflows/ci-orchestrated.yml`.
 
 ### (Deprecated heading placeholder removed)
 

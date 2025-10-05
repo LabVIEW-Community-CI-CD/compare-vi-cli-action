@@ -15,6 +15,27 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  pre-init:
+    runs-on: ubuntu-latest
+    outputs:
+      docs_only: ${{ steps.g.outputs.docs_only }}
+      include_integration: ${{ steps.norm.outputs.bool }}
+    steps:
+      - uses: actions/checkout@v5
+      - name: Normalize include_integration
+        id: norm
+        uses: ./.github/actions/bool-normalize
+        with:
+          value: ${{ inputs.include_integration }}
+          default: 'true'
+      - id: g
+        uses: ./.github/actions/pre-init-gate
+        with:
+          include-globs: |
+            docs/**
+            **/*.md
+          exclude-globs: |
+            docs/schemas/**
   lint:
     runs-on: ubuntu-latest
     steps:
@@ -41,6 +62,8 @@ jobs:
   preflight:
     runs-on: [self-hosted, Windows, X64]
     timeout-minutes: 3
+    needs: pre-init
+    if: needs.pre-init.outputs.docs_only != 'true'
     steps:
       - uses: actions/checkout@v5
       - name: Verify LVCompare and idle LabVIEW state
@@ -57,7 +80,12 @@ jobs:
   pester:
     runs-on: [self-hosted, Windows, X64]
     timeout-minutes: 3
-    needs: [preflight]
+    needs: [pre-init, preflight]
+    if: needs.pre-init.outputs.docs_only != 'true'
+    strategy:
+      matrix:
+        category: [dispatcher, fixtures, schema, comparevi, loop, runbook, orchestrator]
+      max-parallel: 1
     env:
       LV_BASE_VI: ${{ vars.LV_BASE_VI }}
       LV_HEAD_VI: ${{ vars.LV_HEAD_VI }}
@@ -67,51 +95,59 @@ jobs:
       UNBLOCK_GUARD: '1'
       LV_SUPPRESS_UI: '1'
       WATCH_CONSOLE: '1'
+      # Optional per-category Pester timeouts (seconds). Set repository Variables to override.
+      PESTER_TIMEOUT_DISPATCHER: ${{ vars.PESTER_TIMEOUT_DISPATCHER }}
+      PESTER_TIMEOUT_FIXTURES:   ${{ vars.PESTER_TIMEOUT_FIXTURES }}
+      PESTER_TIMEOUT_SCHEMA:     ${{ vars.PESTER_TIMEOUT_SCHEMA }}
+      PESTER_TIMEOUT_COMPAREVI:  ${{ vars.PESTER_TIMEOUT_COMPAREVI }}
+      PESTER_TIMEOUT_LOOP:       ${{ vars.PESTER_TIMEOUT_LOOP }}
+      PESTER_TIMEOUT_RUNBOOK:    ${{ vars.PESTER_TIMEOUT_RUNBOOK }}
+      PESTER_TIMEOUT_ORCHESTRATOR: ${{ vars.PESTER_TIMEOUT_ORCHESTRATOR }}
     steps:
       - uses: actions/checkout@v5
-      - name: Run Pester tests via local dispatcher
-        shell: pwsh
-        run: |
-          ./Invoke-PesterTests.ps1 -TestsPath tests -IncludeIntegration '${{ inputs.include_integration }}' -ResultsPath tests/results
-
-      - name: Ensure session index (fallback)
-        if: always()
-        shell: pwsh
-        run: pwsh -File tools/Ensure-SessionIndex.ps1 -ResultsDir 'tests/results' -SummaryJson 'pester-summary.json'
+      - name: Run Pester category
+        uses: ./.github/actions/pester-category-run
+        with:
+          category: ${{ matrix.category }}
+          include_integration: ${{ needs.pre-init.outputs.include_integration }}
+          results-dir: tests/results/${{ matrix.category }}
+          tests-path: tests
+          default-timeout-seconds: '150'
 
       - name: Session index post
         if: always()
         uses: ./.github/actions/session-index-post
         with:
-          results-dir: tests/results
+          results-dir: tests/results/${{ matrix.category }}
           validate-schema: true
           upload: true
-          artifact-name: session-index
+          artifact-name: session-index-${{ matrix.category }}
 
       - name: Upload Pester artifacts
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: orchestrated-pester-results
+          name: orchestrated-pester-results-${{ matrix.category }}
           path: |
-            tests/results/**/*.xml
-            tests/results/**/*.txt
-            tests/results/pester-summary.json
-            tests/results/pester-failures.json
-            tests/results/session-index.json
+            tests/results/${{ matrix.category }}/**/*.xml
+            tests/results/${{ matrix.category }}/**/*.txt
+            tests/results/${{ matrix.category }}/pester-summary.json
+            tests/results/${{ matrix.category }}/pester-failures.json
+            tests/results/${{ matrix.category }}/session-index.json
 
       - name: Runner Unblock Guard
         if: always()
         uses: ./.github/actions/runner-unblock-guard
         with:
-          snapshot-path: tests/results/runner-unblock-snapshot.json
+          snapshot-path: tests/results/${{ matrix.category }}/runner-unblock-snapshot.json
           cleanup: ${{ env.UNBLOCK_GUARD == '1' }}
           process-names: 'conhost,pwsh,LabVIEW,LVCompare'
 
   drift:
     runs-on: [self-hosted, Windows, X64]
     timeout-minutes: 3
-    needs: [pester]
+    needs: [pre-init, pester]
+    if: ${{ always() }}
     env:
       UNBLOCK_GUARD: '1'
       LV_SUPPRESS_UI: '1'

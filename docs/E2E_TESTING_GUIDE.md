@@ -343,5 +343,6 @@ Once all tests pass:
 For issues or questions:
 
 - Check [SELFHOSTED_CI_SETUP.md](./SELFHOSTED_CI_SETUP.md) for setup details
-- Review [IMPLEMENTATION_STATUS.md](../IMPLEMENTATION_STATUS.md) for feature status
+- Review [IMPLEMENTATION_STATUS.md](./releases/IMPLEMENTATION_STATUS.md) for feature status
 - Create a GitHub issue with test logs and environment details
+

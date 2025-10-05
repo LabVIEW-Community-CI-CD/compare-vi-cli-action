@@ -1,0 +1,10 @@
+labels:
+  - name: ci
+    color: "0E8A16"
+    description: CI/CD, workflows, and pipeline changes
+  - name: documentation
+    color: "0075CA"
+    description: Documentation, guides, and schemas
+  - name: enhancement
+    color: "A2EEEF"
+    description: Feature work and improvements

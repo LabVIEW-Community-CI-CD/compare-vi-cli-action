@@ -41,6 +41,7 @@ tests/results/custom-summary.json
 .DS_Store
 actionlint
 tmp-*.json
+watch-mapping.sample.json
 
 # Test temporary directories and results
 tests/tmp-*/
