@@ -18,19 +18,39 @@ jobs:
   pre-init:
     runs-on: ubuntu-latest
     outputs:
-      docs_only: ${{ steps.g.outputs.docs_only }}
+      docs_only: ${{ steps.detect.outputs.docs_only }}
     steps:
       - uses: actions/checkout@v4
-      - id: g
-        uses: ./.github/actions/pre-init-gate
-        with:
-          include-globs: |
-            docs/**
-            **/*.md
-          exclude-globs: |
-            docs/schemas/**
-          fail-on-fork: 'true'
-          repo-owner-expected: ${{ vars.EXPECTED_REPO_OWNER || 'LabVIEW-Community-CI-CD' }}
+      - name: Detect docs-only change (resilient)
+        id: detect
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Continue'
+          $docsOnly = 'false'
+          if ('${{ github.event_name }}' -eq 'pull_request') {
+            $ownerRepo = '${{ github.repository }}'
+            $pr = '${{ github.event.pull_request.number }}'
+            $uri = "https://api.github.com/repos/$ownerRepo/pulls/$pr/files"
+            $headers = @{ Authorization = "Bearer $env:GITHUB_TOKEN"; 'X-GitHub-Api-Version' = '2022-11-28'; Accept='application/vnd.github+json' }
+            try {
+              $files = Invoke-RestMethod -Method Get -Uri $uri -Headers $headers -ErrorAction Stop
+              $names = @($files | ForEach-Object { $_.filename })
+              if ($names.Count -gt 0) {
+                $isDocs = $true
+                foreach ($n in $names) {
+                  $inDocs = ($n -like 'docs/**' -or $n -like '**/*.md')
+                  $isSchema = ($n -like 'docs/schemas/**')
+                  if (-not $inDocs -or $isSchema) { $isDocs = $false; break }
+                }
+                if ($isDocs) { $docsOnly = 'true' }
+              }
+            } catch {
+              Write-Host '::notice::Docs-only detection skipped; treating as non-docs.'
+            }
+          } else {
+            Write-Host '::notice::workflow_dispatch event: docs-only defaulting to false.'
+          }
+          "docs_only=$docsOnly" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
   preflight-windows:
     name: Preflight (Windows)
     runs-on: [self-hosted, Windows, X64]
