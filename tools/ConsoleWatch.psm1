@@ -15,6 +15,10 @@ function Start-ConsoleWatch {
   $id = 'ConsoleWatch_' + ([guid]::NewGuid().ToString('n'))
   $ndjson = Join-Path $OutDir 'console-spawns.ndjson'
   $targetsLower = @($Targets | ForEach-Object { $_.ToLowerInvariant().Trim() } | Where-Object { $_ })
+  # Ensure the NDJSON file exists even if no events occur (helps consumers and artifacts)
+  try {
+    if (-not (Test-Path -LiteralPath $ndjson -PathType Leaf)) { '' | Out-File -FilePath $ndjson -Encoding utf8 -ErrorAction SilentlyContinue }
+  } catch {}
   try {
     Register-CimIndicationEvent -ClassName Win32_ProcessStartTrace -SourceIdentifier $id -Action {
       param($e)
@@ -81,4 +85,3 @@ function Stop-ConsoleWatch {
 }
 
 Export-ModuleMember -Function Start-ConsoleWatch, Stop-ConsoleWatch
-
