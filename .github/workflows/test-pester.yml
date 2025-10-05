@@ -16,8 +16,8 @@ on:
 
 jobs:
   pester:
-    runs-on: windows-latest
-    timeout-minutes: 30
+    runs-on: [self-hosted, Windows, X64]
+    timeout-minutes: 3
     steps:
       - uses: actions/checkout@v5
 

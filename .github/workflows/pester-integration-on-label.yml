@@ -14,7 +14,7 @@ concurrency:
 jobs:
   preflight:
     runs-on: [self-hosted, Windows, X64]
-    timeout-minutes: 10
+    timeout-minutes: 3
     if: contains(github.event.pull_request.labels.*.name, 'test-integration') || github.event_name == 'workflow_dispatch'
     steps:
       - uses: actions/checkout@v5
@@ -33,7 +33,7 @@ jobs:
     if: contains(github.event.pull_request.labels.*.name, 'test-integration')
     runs-on: [self-hosted, Windows, X64]
     needs: preflight
-    timeout-minutes: 45
+    timeout-minutes: 3
     env:
       LV_BASE_VI: ${{ vars.LV_BASE_VI }}
       LV_HEAD_VI: ${{ vars.LV_HEAD_VI }}
