@@ -60,6 +60,16 @@
 - PRs: include summary, risks, validation steps, linked issues; keep markdownlint and actionlint green.
 - Never start tests with `LabVIEW.exe` running; preflight/guard enforces this.
 
+### PR Labels (Bootstrap First)
+
+- Decide labels before authoring changes. Typical labels: `ci`, `documentation`, `enhancement` (see `.github/labels.yml`).
+- Ensure labels exist up front:
+  - Preferred: edit `.github/labels.yml`, then run the "Sync Labels" workflow (or push to `develop`/`main` to auto‑sync).
+  - Ad‑hoc (fallback): `gh label create <name> -c <hex> -d <desc>` (requires permissions).
+- Apply labels as soon as the PR is opened: `gh pr edit <num> --add-label <label1> --add-label <label2>`.
+- For forks without label perms: emit a summary note listing intended labels so maintainers can apply them.
+- Future agents: announce intended labels in the plan, verify presence (via `gh label list`), create/sync if missing, then open the PR with labels attached.
+
 ## Security & Configuration Tips
 
 - LVCompare‑only interface; no `LabVIEW.exe` launches from tools.
