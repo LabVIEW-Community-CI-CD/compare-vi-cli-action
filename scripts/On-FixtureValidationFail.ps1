@@ -645,6 +645,8 @@ if ($RenderReport) {
       # Use robust dispatcher to avoid LVCompare UI popups and apply preflight guards
       $repoRoot = Resolve-Path (Join-Path $PSScriptRoot '..') | Select-Object -ExpandProperty Path
       $execJsonPath = Join-Path $OutputDir 'compare-exec.json'
+      # Guard: sample LabVIEW/LVCompare presence before compare
+      try { & (Join-Path $repoRoot 'tools' 'Guard-LabVIEWPersistence.ps1') -ResultsDir $OutputDir -Phase 'before-compare' -PollForCloseSeconds 0 } catch {}
       if ($env:INVOKER_REQUIRED -eq '1') {
         try {
           $args = @{ base = $BasePath; head = $HeadPath; lvCompareArgs = $LvCompareArgs; outputDir = $OutputDir }
@@ -669,6 +671,8 @@ if ($RenderReport) {
         $duration = $res.CompareDurationSeconds
         $command = $res.Command
       }
+      # Guard: sample after compare and poll briefly for early close
+      try { & (Join-Path $repoRoot 'tools' 'Guard-LabVIEWPersistence.ps1') -ResultsDir $OutputDir -Phase 'after-compare' -PollForCloseSeconds 2 } catch {}
       # CompareVI does not capture raw streams; emit placeholders for completeness
       $stdout = ''
       $stderr = ''
@@ -738,6 +742,8 @@ if ($RenderReport) {
       } else {
         & $reporter -Command $cmd -ExitCode $exitCode -Diff $diff -CliPath $cli -DurationSeconds $duration -OutputPath $reportOut -ExecJsonPath (Join-Path $OutputDir 'compare-exec.json') | Out-Null
       }
+      # Guard: sample after report (no poll)
+      try { & (Join-Path $repoRoot 'tools' 'Guard-LabVIEWPersistence.ps1') -ResultsDir $OutputDir -Phase 'after-report' -PollForCloseSeconds 0 } catch {}
       Add-Artifact 'compare-report.html'
       if ($cwId) {
         try {

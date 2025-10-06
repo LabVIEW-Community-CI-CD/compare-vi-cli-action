@@ -35,7 +35,24 @@ function Handle-CompareVI([hashtable]$Args, [string]$ResultsDir) {
   $cliArgs = $Args.lvCompareArgs
   $outDir = if ($Args.outputDir) { [string]$Args.outputDir } else { (Join-Path $ResultsDir '_invoker') }
   $execPath = Join-Path $outDir 'compare-exec.json'
+  $persistPath = Join-Path $outDir 'compare-persistence.json'
+  $beforeLV  = @(Get-Process -Name 'LabVIEW' -ErrorAction SilentlyContinue)
+  $beforeLVC = @(Get-Process -Name 'LVCompare' -ErrorAction SilentlyContinue)
   $res = Invoke-CompareVI -Base $base -Head $head -LvCompareArgs $cliArgs -FailOnDiff:$false -CompareExecJsonPath $execPath
+  $afterLV  = @(Get-Process -Name 'LabVIEW' -ErrorAction SilentlyContinue)
+  $afterLVC = @(Get-Process -Name 'LVCompare' -ErrorAction SilentlyContinue)
+  try {
+    $payload = @()
+    if (Test-Path -LiteralPath $persistPath) { try { $payload = Get-Content -LiteralPath $persistPath -Raw | ConvertFrom-Json -Depth 6 } catch { $payload = @() } }
+    if ($payload -isnot [System.Collections.IList]) { $payload = @() }
+    $payload += [pscustomobject]@{
+      schema='compare-persistence/v1'
+      at=(Get-Date).ToUniversalTime().ToString('o')
+      before=[ordered]@{ labview=@($beforeLV | Select-Object -ExpandProperty Id); lvcompare=@($beforeLVC | Select-Object -ExpandProperty Id) }
+      after =[ordered]@{ labview=@($afterLV  | Select-Object -ExpandProperty Id); lvcompare=@($afterLVC  | Select-Object -ExpandProperty Id) }
+    }
+    $payload | ConvertTo-Json -Depth 6 | Out-File -FilePath $persistPath -Encoding utf8
+  } catch {}
   return [pscustomobject]@{
     exitCode = [int]$res.ExitCode
     diff     = [bool]$res.Diff
