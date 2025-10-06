@@ -35,6 +35,12 @@ on:
         default: 'true'
         type: choice
         options: ['true', 'false']
+      force_run:
+        description: 'Force run (bypass docs-only gate)'
+        required: false
+        default: 'false'
+        type: choice
+        options: ['true','false']
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
@@ -44,7 +50,7 @@ jobs:
   pre-init:
     runs-on: ubuntu-latest
     outputs:
-      docs_only: ${{ steps.g.outputs.docs_only }}
+      docs_only: ${{ steps.out.outputs.docs_only }}
       include_integration: ${{ steps.norm.outputs.bool }}
     steps:
       - uses: actions/checkout@v5
@@ -56,6 +62,7 @@ jobs:
           value: ${{ inputs.include_integration }}
           default: 'true'
       - id: g
+        if: ${{ inputs.force_run != 'true' }}
         uses: ./.github/actions/pre-init-gate
         with:
           include-globs: |
@@ -63,6 +70,13 @@ jobs:
             **/*.md
           exclude-globs: |
             docs/schemas/**
+      - name: Compute docs_only (force_run aware)
+        id: out
+        shell: pwsh
+        run: |
+          $force = '${{ inputs.force_run }}'
+          if ($force -ieq 'true') { $val = 'false' } else { $val = '${{ steps.g.outputs.docs_only || 'false' }}' }
+          "docs_only=$val" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
 
   preflight:
     runs-on: windows-latest
@@ -244,3 +258,4 @@ jobs:
           snapshot-path: tests/results/runner-unblock-snapshot.json
           cleanup: ${{ env.UNBLOCK_GUARD == '1' }}
           process-names: 'conhost,pwsh,LabVIEW,LVCompare'
+
