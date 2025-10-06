@@ -33,6 +33,16 @@ jobs:
         run: |
           pwsh -NonInteractive -File tools/Lint-DotSourcing.ps1 -WarnOnly
 
+      - name: Lint param-first (warn-only)
+        shell: pwsh
+        continue-on-error: true
+        run: pwsh -NonInteractive -File tools/Lint-ParamFirst.ps1 -WarnOnly
+
+      - name: Lint param-first (strict on main)
+        if: ${{ github.ref == 'refs/heads/main' }}
+        shell: pwsh
+        run: pwsh -NonInteractive -File tools/Lint-ParamFirst.ps1
+
       - name: Lint inline-if in format (-f)
         shell: pwsh
         run: pwsh -NonInteractive -File tools/Lint-InlineIfInFormat.ps1
