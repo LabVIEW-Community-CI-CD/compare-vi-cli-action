@@ -34,7 +34,7 @@ jobs:
           kill-leaks: 'false'
           leak-grace-seconds: '3'
           clean-labview-before: 'false'
-          clean-after: 'true'
+          clean-after: 'false'
           track-artifacts: 'true'
 
       - name: Run dispatcher with synthetic failure enabled (continue-on-error)

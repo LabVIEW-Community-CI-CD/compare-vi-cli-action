@@ -78,7 +78,7 @@ jobs:
     needs: [pre-init, preflight]
     timeout-minutes: 3
     env:
-      UNBLOCK_GUARD: '1'
+      UNBLOCK_GUARD: '0'
       WATCH_CONSOLE: '1'
     steps:
       - uses: actions/checkout@v5
@@ -107,7 +107,7 @@ jobs:
           kill-leaks: 'false'
           leak-grace-seconds: '3'
           clean-labview-before: 'false'
-          clean-after: 'true'
+          clean-after: 'false'
           track-artifacts: 'true'
 
       - name: Validate environment
