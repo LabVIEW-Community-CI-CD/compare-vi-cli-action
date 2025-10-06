@@ -27,6 +27,14 @@ jobs:
         run: |
           ./bin/actionlint -color
 
+      - name: YAML fixer (dry-run)
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 --version || true
+          python3 tools/workflows/update_workflows.py --check .github/workflows/pester-selfhosted.yml || {
+            echo "::error::Workflow requires ruamel.yaml fixes (run updater locally with --write)"; exit 1; }
+
       - name: Lint unanchored dot-sourcing (non-blocking)
         shell: pwsh
         continue-on-error: true
