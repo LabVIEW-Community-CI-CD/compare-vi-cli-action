@@ -54,13 +54,11 @@ jobs:
       - name: LabVIEW warmup (best-effort)
         shell: pwsh
         run: pwsh -File tools/Warmup-LabVIEW.ps1
-
-      
-          results-dir: results/fixture-drift
       - name: Ensure Invoker (start)
         uses: ./.github/actions/ensure-invoker
         with:
           mode: start
+          results-dir: results/fixture-drift
 
       - name: Detect docs-only change
         id: docs
@@ -110,6 +108,7 @@ jobs:
       UNBLOCK_GUARD: '0'
       LV_SUPPRESS_UI: '0'
       WATCH_CONSOLE: '1'
+      LABVIEW_EXE: 'C:\\Program Files\\National Instruments\\LabVIEW 2025\\LabVIEW.exe'
     permissions:
       actions: read
       contents: read

@@ -66,6 +66,7 @@ jobs:
       UNBLOCK_GUARD: '0'
       LV_SUPPRESS_UI: '0'
       WATCH_CONSOLE: '1'
+      LABVIEW_EXE: 'C:\\Program Files\\National Instruments\\LabVIEW 2025\\LabVIEW.exe'
     steps:
       - uses: actions/checkout@v5
       - name: Prepare fixture copies (base/head)
