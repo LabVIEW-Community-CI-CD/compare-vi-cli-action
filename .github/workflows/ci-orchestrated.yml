@@ -85,13 +85,19 @@ jobs:
       max-parallel: 1
     env:
       DETECT_LEAKS: '1'
-      CLEAN_AFTER: '1'
+      CLEAN_AFTER: '0'
       SCAN_ARTIFACTS: '1'
-      UNBLOCK_GUARD: '1'
+      UNBLOCK_GUARD: '0'
       LV_SUPPRESS_UI: '1'
       WATCH_CONSOLE: '1'
     steps:
       - uses: actions/checkout@v5
+      - name: Ensure Invoker (start)
+        uses: ./.github/actions/ensure-invoker
+        with:
+          mode: start
+          results-dir: tests/results
+          category: ${{ matrix.category }}
       - name: Prepare fixture copies (base/head)
         id: fixtures
         uses: ./.github/actions/prepare-fixtures
@@ -116,7 +122,7 @@ jobs:
           kill-leaks: 'false'
           leak-grace-seconds: '3'
           clean-labview-before: 'false'
-          clean-after: 'true'
+          clean-after: 'false'
           track-artifacts: 'true'
       - name: Define category patterns
         id: cats
@@ -219,7 +225,8 @@ jobs:
     timeout-minutes: 3
     needs: [pester-category]
     env:
-      UNBLOCK_GUARD: '1'
+      INVOKER_REQUIRED: '1'
+      UNBLOCK_GUARD: '0'
       LV_SUPPRESS_UI: '1'
       WATCH_CONSOLE: '1'
     steps:

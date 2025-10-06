@@ -222,9 +222,10 @@ function Invoke-CompareVI {
     }
   }
   finally {
-    if ($env:DISABLE_LABVIEW_CLEANUP -ne '1') {
+    # Policy: do not close LabVIEW by default. Allow opt-in via ENABLE_LABVIEW_CLEANUP=1.
+    $allowCleanup = ($env:ENABLE_LABVIEW_CLEANUP -match '^(?i:1|true|yes|on)$')
+    if ($allowCleanup) {
       try {
-        # Try multiple times to catch delayed LabVIEW spawns post-exit
         $deadline = (Get-Date).AddSeconds(10)
         do {
           $closedAny = $false
@@ -239,9 +240,6 @@ function Invoke-CompareVI {
                 if (-not $proc.HasExited) { Stop-Process -Id $proc.Id -Force -ErrorAction SilentlyContinue }
                 $closedAny = $true
               } catch {}
-            }
-            if ($newOnes.Count -gt 0 -and -not $env:GITHUB_ACTIONS) {
-              Write-Host ("[comparevi] closed LabVIEW instances spawned by compare: {0}" -f ($newOnes | Select-Object -ExpandProperty Id -join ',')) -ForegroundColor DarkGray
             }
           }
           if (-not $closedAny) { break }

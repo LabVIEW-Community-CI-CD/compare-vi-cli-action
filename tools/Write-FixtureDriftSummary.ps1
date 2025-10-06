@@ -41,5 +41,24 @@ if ($json.notes) {
   else { $lines += ('- Note: {0}' -f $n) }
 }
 
-$lines -join "`n" | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8
+# Optional handshake excerpt
+try {
+  $hs = Join-Path $Dir '_handshake'
+  if (Test-Path -LiteralPath $hs) {
+    $ready = Join-Path $hs 'ready.json'
+    $end   = Join-Path $hs 'end.json'
+    $hsLines = @()
+    if (Test-Path -LiteralPath $ready) {
+      $r = Get-Content -LiteralPath $ready -Raw | ConvertFrom-Json -ErrorAction Stop
+      $hsLines += ('- Handshake ready: {0} ({1})' -f ($r.status), ($r.at ?? ''))
+      if ($r.reason) { $hsLines += ('- Reason: {0}' -f $r.reason) }
+    }
+    if (Test-Path -LiteralPath $end) {
+      $e = Get-Content -LiteralPath $end -Raw | ConvertFrom-Json -ErrorAction Stop
+      $hsLines += ('- Handshake end: {0} ({1})' -f ($e.status), ($e.at ?? ''))
+    }
+    if ($hsLines.Count -gt 0) { $lines += ''; $lines += $hsLines }
+  }
+} catch {}
 
+$lines -join "`n" | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8

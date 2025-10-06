@@ -1,27 +1,81 @@
-name: Ensure Invoker (one-shot)
-description: No-op start/stop markers for per-job invoker lifecycle
+name: ensure-invoker
+description: Start/stop a one-shot invoker per job with sentinel/markers
 inputs:
   mode:
-    description: 'start | stop'
+    description: start or stop
+    required: true
+  results-dir:
+    description: Base results directory
     required: false
-    default: 'start'
+    default: tests/results
+  category:
+    description: Optional category subfolder appended to results-dir
+    required: false
+  timeout-seconds:
+    description: Wait time for ready/stop markers
+    required: false
+    default: '20'
+outputs:
+  pipe-name:
+    description: Computed pipe name for this job
+    value: ${{ steps.compute.outputs.pipe_name }}
+  sentinel-path:
+    description: Sentinel path for this job
+    value: ${{ steps.compute.outputs.sentinel }}
 runs:
   using: composite
   steps:
-    - name: Ensure invoker marker
+    - id: compute
       shell: pwsh
       run: |
-        $mode = '${{ inputs.mode }}'
-        $root = (Get-Location).Path
-        $dir  = Join-Path $root 'tests/results/_invoker'
-        if ($mode -eq 'start') {
-          New-Item -ItemType Directory -Force -Path $dir | Out-Null
-          $state = [ordered]@{ schema='invoker-marker/v1'; mode='start'; atUtc=(Get-Date).ToUniversalTime().ToString('o') }
-          $state | ConvertTo-Json -Depth 4 | Out-File -FilePath (Join-Path $dir 'state.json') -Encoding utf8
-          Write-Host 'Invoker (one-shot) start marker written.'
-        } elseif ($mode -eq 'stop') {
-          try { Remove-Item -LiteralPath (Join-Path $dir 'state.json') -Force -ErrorAction SilentlyContinue } catch {}
-          Write-Host 'Invoker (one-shot) stop marker removed.'
-        } else {
-          Write-Host "::notice::Unknown mode: $mode (noop)"
-        }
+        $base = '${{ inputs.results-dir }}'
+        $cat  = '${{ inputs.category }}'
+        if ($cat) { $base = Join-Path $base $cat }
+        $pipe = "lvci.invoker.$env:GITHUB_RUN_ID.$env:GITHUB_JOB.$env:GITHUB_RUN_ATTEMPT"
+        $sent = Join-Path $env:RUNNER_TEMP "invoker/$($env:GITHUB_RUN_ID).$($env:GITHUB_JOB).sentinel"
+        New-Item -ItemType Directory -Path (Split-Path -Parent $sent) -Force | Out-Null
+        "pipe_name=$pipe" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+        "sentinel=$sent"   | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+        "results=$base"    | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+
+    - name: Start invoker (Windows only)
+      if: ${{ inputs.mode == 'start' && runner.os == 'Windows' }}
+      shell: pwsh
+      run: |
+        $results = '${{ steps.compute.outputs.results }}'
+        $pipe    = '${{ steps.compute.outputs.pipe_name }}'
+        $sent    = '${{ steps.compute.outputs.sentinel }}'
+        $ready   = Join-Path $results '_invoker/ready.json'
+        $stopped = Join-Path $results '_invoker/stopped.json'
+        if (Test-Path -LiteralPath $ready) { Remove-Item -LiteralPath $ready -Force -ErrorAction SilentlyContinue }
+        if (Test-Path -LiteralPath $stopped) { Remove-Item -LiteralPath $stopped -Force -ErrorAction SilentlyContinue }
+        # Create sentinel to keep process alive
+        if (-not (Test-Path -LiteralPath $sent)) { New-Item -ItemType File -Path $sent -Force | Out-Null }
+        # Launch hidden pwsh child
+        $args = @('-NoLogo','-NoProfile','-File','tools/RunnerInvoker/Start-RunnerInvoker.ps1','-PipeName',"$pipe",'-SentinelPath',"$sent",'-ResultsDir',"$results")
+        $p = Start-Process -FilePath pwsh -ArgumentList $args -WindowStyle Hidden -PassThru
+        Write-Host "Started invoker pid=$($p.Id) pipe=$pipe"
+        # Wait for ready marker
+        $to = [int]'${{ inputs.timeout-seconds }}'
+        $sw = [Diagnostics.Stopwatch]::StartNew()
+        while ($sw.Elapsed.TotalSeconds -lt $to) { if (Test-Path -LiteralPath $ready) { break }; Start-Sleep -Milliseconds 300 }
+        if (-not (Test-Path -LiteralPath $ready)) { Write-Host "::error::Invoker not ready after $to s"; exit 1 }
+
+    - name: Stop invoker (Windows only)
+      if: ${{ inputs.mode == 'stop' && runner.os == 'Windows' }}
+      shell: pwsh
+      run: |
+        $results = '${{ steps.compute.outputs.results }}'
+        $sent    = '${{ steps.compute.outputs.sentinel }}'
+        $stopped = Join-Path $results '_invoker/stopped.json'
+        if (Test-Path -LiteralPath $sent) { Remove-Item -LiteralPath $sent -Force -ErrorAction SilentlyContinue }
+        $to = [int]'${{ inputs.timeout-seconds }}'
+        $sw = [Diagnostics.Stopwatch]::StartNew()
+        while ($sw.Elapsed.TotalSeconds -lt $to) { if (Test-Path -LiteralPath $stopped) { break }; Start-Sleep -Milliseconds 300 }
+        if (-not (Test-Path -LiteralPath $stopped)) { Write-Host "::warning::Invoker stop marker not observed within $to s (continuing)" }
+
+    - name: No-op on non-Windows
+      if: ${{ runner.os != 'Windows' }}
+      shell: bash
+      run: echo "ensure-invoker: non-Windows runner, skipping"
+

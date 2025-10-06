@@ -51,6 +51,9 @@ jobs:
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
+
+      
+          results-dir: results/fixture-drift
       - name: Ensure Invoker (start)
         uses: ./.github/actions/ensure-invoker
         with:
@@ -100,7 +103,8 @@ jobs:
     needs: preflight-windows
     timeout-minutes: 3
     env:
-      UNBLOCK_GUARD: '1'
+      INVOKER_REQUIRED: '1'
+      UNBLOCK_GUARD: '0'
       LV_SUPPRESS_UI: '1'
       WATCH_CONSOLE: '1'
     permissions:

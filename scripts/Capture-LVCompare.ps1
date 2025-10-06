@@ -194,8 +194,8 @@ if (-not $Quiet) {
 	if ($RenderReport.IsPresent) { Write-Host ("Report: {0} (exists={1})" -f $reportPath, (Test-Path $reportPath)) }
 }
 
-# Cleanup: close only LabVIEW processes that appeared during this run (unless disabled)
-if ($env:DISABLE_LABVIEW_CLEANUP -ne '1') {
+# Cleanup policy: do not close LabVIEW by default. Allow opt-in via ENABLE_LABVIEW_CLEANUP=1.
+if ($env:ENABLE_LABVIEW_CLEANUP -match '^(?i:1|true|yes|on)$') {
   try {
     $lvAfter = @(Get-Process -Name 'LabVIEW' -ErrorAction SilentlyContinue)
     if ($lvAfter) {

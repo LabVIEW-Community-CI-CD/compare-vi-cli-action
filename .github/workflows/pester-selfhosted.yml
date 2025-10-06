@@ -61,9 +61,9 @@ jobs:
     needs: [normalize, preflight]
     env:
       DETECT_LEAKS: '1'
-      CLEAN_AFTER: '1'
+      CLEAN_AFTER: '0'
       SCAN_ARTIFACTS: '1'
-      UNBLOCK_GUARD: '1'
+      UNBLOCK_GUARD: '0'
       LV_SUPPRESS_UI: '1'
       WATCH_CONSOLE: '1'
     steps:
@@ -92,7 +92,7 @@ jobs:
           kill-leaks: 'false'
           leak-grace-seconds: '3'
           clean-labview-before: 'false'
-          clean-after: 'true'
+          clean-after: 'false'
           track-artifacts: 'true'
 
       # Call the dispatcher directly (no external action dependency)
