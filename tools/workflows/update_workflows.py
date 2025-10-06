@@ -217,6 +217,31 @@ def ensure_session_index_post_in_job(doc, job_key: str, results_dir: str, artifa
         changed = True
     return changed
 
+def ensure_runner_unblock_guard(doc, job_key: str, snapshot_path: str) -> bool:
+    changed = False
+    jobs = doc.get('jobs') or {}
+    job = jobs.get(job_key)
+    if not isinstance(job, dict):
+        return changed
+    steps = job.get('steps') or []
+    # Check if guard exists
+    exists = any(isinstance(s, dict) and str(s.get('uses', '')).endswith('runner-unblock-guard') for s in steps)
+    if not exists:
+        step = {
+            'name': 'Runner Unblock Guard',
+            'if': SQS('${{ always() }}'),
+            'uses': './.github/actions/runner-unblock-guard',
+            'with': {
+                'snapshot-path': snapshot_path,
+                'cleanup': SQS('${{ env.UNBLOCK_GUARD == '"' + '1' + '"' + ' }}'),
+                'process-names': 'conhost,pwsh,LabVIEW,LVCompare',
+            },
+        }
+        steps.append(step)
+        job['steps'] = steps
+        changed = True
+    return changed
+
 
 def apply_transforms(path: Path) -> tuple[bool, str]:
     orig = path.read_text(encoding='utf-8')
@@ -240,24 +265,32 @@ def apply_transforms(path: Path) -> tuple[bool, str]:
         # The matrix job may be named 'pester' or 'pester-category'; try both
         c6 = ensure_session_index_post_in_pester_matrix(doc, 'pester')
         c7 = ensure_session_index_post_in_pester_matrix(doc, 'pester-category')
-        changed = changed or c5 or c6 or c7
+        # Guard normalization
+        g1 = ensure_runner_unblock_guard(doc, 'drift', 'results/fixture-drift/runner-unblock-snapshot.json')
+        g2 = ensure_runner_unblock_guard(doc, 'pester', 'tests/results/${{ matrix.category }}/runner-unblock-snapshot.json')
+        g3 = ensure_runner_unblock_guard(doc, 'pester-category', 'tests/results/${{ matrix.category }}/runner-unblock-snapshot.json')
+        changed = changed or c5 or c6 or c7 or g1 or g2 or g3
     # ci-orchestrated-v2.yml: hosted preflight + pester matrix (or single job) session index post
     if path.name == 'ci-orchestrated-v2.yml':
         c8 = ensure_hosted_preflight(doc, 'preflight')
         c9 = ensure_session_index_post_in_pester_matrix(doc, 'pester-category') or ensure_session_index_post_in_pester_matrix(doc, 'pester')
-        changed = changed or c8 or c9
+        g4 = ensure_runner_unblock_guard(doc, 'orchestrated', 'tests/results/runner-unblock-snapshot.json')
+        changed = changed or c8 or c9 or g4
     # pester-integration-on-label.yml: ensure session index post in integration job
     if path.name == 'pester-integration-on-label.yml':
         c10 = ensure_session_index_post_in_job(doc, 'pester-integration', 'tests/results', 'pester-integration-session-index')
-        changed = changed or c10
+        g5 = ensure_runner_unblock_guard(doc, 'pester-integration', 'tests/results/runner-unblock-snapshot.json')
+        changed = changed or c10 or g5
     # smoke.yml: ensure session index post
     if path.name == 'smoke.yml':
         c11 = ensure_session_index_post_in_job(doc, 'compare', 'tests/results', 'smoke-session-index')
-        changed = changed or c11
+        g6 = ensure_runner_unblock_guard(doc, 'compare', 'tests/results/runner-unblock-snapshot.json')
+        changed = changed or c11 or g6
     # compare-artifacts.yml: ensure session index post in publish job
     if path.name == 'compare-artifacts.yml':
         c12 = ensure_session_index_post_in_job(doc, 'publish', 'tests/results', 'compare-session-index')
-        changed = changed or c12
+        g7 = ensure_runner_unblock_guard(doc, 'publish', 'tests/results/runner-unblock-snapshot.json')
+        changed = changed or c12 or g7
     if changed:
         new = dump_yaml(doc, path)
         return True, new
