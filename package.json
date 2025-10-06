@@ -1,17 +1,19 @@
 {
   "name": "compare-vi-cli-action",
   "private": true,
-  "version": "0.0.0",
+  "version": "0.5.0",
   "license": "MIT",
   "type": "module",
   "scripts": {
     "build": "tsc -p tsconfig.json",
-  "generate:outputs": "node dist/generate-action-outputs.js"
+    "generate:outputs": "node dist/generate-action-outputs.js",
+    "lint:md": "markdownlint-cli2 \"**/*.md\" --config .markdownlint.jsonc || exit 1"
   },
   "devDependencies": {
     "@types/js-yaml": "^4.0.9",
     "@types/node": "20.11.30",
     "js-yaml": "4.1.0",
+    "markdownlint-cli2": "0.14.0",
     "typescript": "5.4.5"
   }
 }

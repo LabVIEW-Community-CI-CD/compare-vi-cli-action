@@ -1,0 +1,74 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://labview-ci.example.com/schemas/pester-summary-v1_7.schema.json",
+  "title": "Pester Summary (v1.7)",
+  "type": "object",
+  "required": [
+    "schemaVersion",
+    "total",
+    "passed",
+    "failed",
+    "errors",
+    "skipped",
+    "duration_s",
+    "timestamp",
+    "pesterVersion",
+    "includeIntegration",
+    "discoveryFailures"
+  ],
+  "properties": {
+    "schemaVersion": { "const": "1.7.0" },
+    "total": { "type": "integer", "minimum": 0 },
+    "passed": { "type": "integer", "minimum": 0 },
+    "failed": { "type": "integer", "minimum": 0 },
+    "errors": { "type": "integer", "minimum": 0 },
+    "skipped": { "type": "integer", "minimum": 0 },
+    "duration_s": { "type": "number", "minimum": 0 },
+    "timestamp": { "type": "string", "format": "date-time" },
+    "pesterVersion": { "type": "string" },
+    "includeIntegration": { "type": "boolean" },
+    "meanTest_ms": { "type": ["number", "null"], "minimum": 0 },
+    "p95Test_ms": { "type": ["number", "null"], "minimum": 0 },
+    "maxTest_ms": { "type": ["number", "null"], "minimum": 0 },
+    "timedOut": { "type": "boolean" },
+    "discoveryFailures": { "type": "integer", "minimum": 0 },
+    "environment": { "$ref": "pester-summary-v1_4.schema.json#/properties/environment" },
+    "run": { "$ref": "pester-summary-v1_4.schema.json#/properties/run" },
+    "selection": { "$ref": "pester-summary-v1_4.schema.json#/properties/selection" },
+    "timing": { "$ref": "pester-summary-v1_4.schema.json#/properties/timing" },
+    "stability": { "$ref": "pester-summary-v1_4.schema.json#/properties/stability" },
+    "discovery": { "$ref": "pester-summary-v1_5.schema.json#/properties/discovery" },
+    "outcome": { "$ref": "pester-summary-v1_6.schema.json#/properties/outcome" },
+    "aggregationHints": {
+      "type": "object",
+      "required": ["dominantTags", "fileBucketCounts", "durationBuckets", "suggestions", "strategy"],
+      "properties": {
+        "dominantTags": { "type": "array", "items": { "type": "string" } },
+        "fileBucketCounts": {
+          "type": "object",
+            "required": ["small", "medium", "large"],
+            "properties": {
+              "small": { "type": "integer", "minimum": 0 },
+              "medium": { "type": "integer", "minimum": 0 },
+              "large": { "type": "integer", "minimum": 0 }
+            },
+            "additionalProperties": true
+        },
+        "durationBuckets": {
+          "type": "object",
+          "required": ["subSecond", "oneToFive", "overFive"],
+          "properties": {
+            "subSecond": { "type": "integer", "minimum": 0 },
+            "oneToFive": { "type": "integer", "minimum": 0 },
+            "overFive": { "type": "integer", "minimum": 0 }
+          },
+          "additionalProperties": true
+        },
+        "suggestions": { "type": "array", "items": { "type": "string" } },
+        "strategy": { "type": "string" }
+      },
+      "additionalProperties": true
+    }
+  },
+  "additionalProperties": true
+}

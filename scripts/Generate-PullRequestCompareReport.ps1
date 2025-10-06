@@ -1,8 +1,8 @@
 <#
 .SYNOPSIS
- Generates HTML + Markdown diff summary (PR body snippet) for repository Base.vi vs Head.vi using LVCompare.
+ Generates HTML + Markdown diff summary (PR body snippet) for repository VI1.vi vs VI2.vi using LVCompare.
 .DESCRIPTION
- Runs one real LVCompare invocation (canonical path enforced) against Base.vi & Head.vi in repo root.
+ Runs one real LVCompare invocation (canonical path enforced) against VI1.vi & VI2.vi in repo root.
  Emits:
   - HTML report file (self-contained) via Render-CompareReport.ps1
   - Markdown snippet file with key metadata + link placeholder
@@ -24,14 +24,14 @@ $ErrorActionPreference = 'Stop'
 $canonical = 'C:\Program Files\National Instruments\Shared\LabVIEW Compare\LVCompare.exe'
 if (-not (Test-Path -LiteralPath $canonical -PathType Leaf)) { throw "LVCompare not found at canonical path: $canonical" }
 $repoRoot = Resolve-Path (Join-Path $PSScriptRoot '..')
-$baseVi = (Resolve-Path (Join-Path $repoRoot 'Base.vi')).Path
-$headVi = (Resolve-Path (Join-Path $repoRoot 'Head.vi')).Path
+$baseVi = (Resolve-Path (Join-Path $repoRoot 'VI1.vi')).Path
+$headVi = (Resolve-Path (Join-Path $repoRoot 'VI2.vi')).Path
 foreach ($p in @($baseVi,$headVi)) {
   if (-not (Test-Path -LiteralPath $p -PathType Leaf)) { throw "Required VI file missing: $p" }
   $len = (Get-Item -LiteralPath $p).Length
   if ($len -lt 1024) { Write-Warning "VI file $p is unusually small ($len bytes) – ensure this is a real LabVIEW .vi binary." }
 }
-. (Join-Path $repoRoot 'scripts' 'CompareVI.ps1')
+Import-Module (Join-Path $repoRoot 'scripts' 'CompareVI.psm1') -Force
 
 New-Item -ItemType Directory -Path $OutputDirectory -Force | Out-Null
 

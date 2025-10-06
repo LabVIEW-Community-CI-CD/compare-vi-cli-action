@@ -184,6 +184,10 @@ Loop mode: latency p99 (seconds)
 
 Loop mode: effective quantile strategy used
 
+### shortCircuitedIdentical
+
+true when base and head resolved to the same absolute path and LVCompare invocation was short-circuited
+
 ### streamingWindowCount
 
 Loop mode: sample count retained in streaming reservoir

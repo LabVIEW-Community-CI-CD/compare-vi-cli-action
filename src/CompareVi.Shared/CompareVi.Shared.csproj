@@ -1,0 +1,20 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <GeneratePackageOnBuild>false</GeneratePackageOnBuild>
+    <AssemblyName>CompareVi.Shared</AssemblyName>
+    <RootNamespace>CompareVi.Shared</RootNamespace>
+    <Description>Shared helpers for LVCompare orchestration: arg tokenization, path utilities, and process snapshots.</Description>
+    <PackageId>CompareVi.Shared</PackageId>
+    <Authors>LabVIEW Community CI/CD</Authors>
+    <Company>LabVIEW Community CI/CD</Company>
+    <RepositoryUrl>https://github.com/LabVIEW-Community-CI-CD/compare-vi-cli-action</RepositoryUrl>
+    <RepositoryType>git</RepositoryType>
+    <PackageTags>LabVIEW;LVCompare;Pester;CI</PackageTags>
+    <Version>0.1.0</Version>
+    <PackageVersion>0.1.0</PackageVersion>
+  </PropertyGroup>
+</Project>
+

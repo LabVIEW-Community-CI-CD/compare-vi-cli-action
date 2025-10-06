@@ -1,0 +1,50 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://labview-community-ci-cd.github.io/compare-vi-cli-action/schemas/pester-leak-report-v1.schema.json",
+  "title": "Pester Leak Report",
+  "description": "Schema for pester-leak-report.json emitted by Invoke-PesterTests.ps1 when -DetectLeaks is enabled.",
+  "type": "object",
+  "additionalProperties": true,
+  "properties": {
+    "schema": { "const": "pester-leak-report/v1" },
+    "schemaVersion": { "type": ["string", "null"] },
+    "generatedAt": { "type": "string", "format": "date-time" },
+    "targets": { "type": "array", "items": { "type": "string" } },
+    "graceSeconds": { "type": "number" },
+    "waitedMs": { "type": "integer", "minimum": 0 },
+    "procsBefore": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "name": { "type": "string" },
+          "pid": { "type": "integer" },
+          "startTime": { "type": ["string", "null"], "format": "date-time" }
+        },
+        "required": ["name", "pid"]
+      }
+    },
+    "procsAfter": { "$ref": "#/properties/procsBefore" },
+    "jobsBefore": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "id": { "type": "integer" },
+          "name": { "type": "string" },
+          "state": { "type": "string" },
+          "hasMoreOutput": { "type": ["boolean", "null"] }
+        },
+        "required": ["id", "name", "state"]
+      }
+    },
+    "runningJobs": { "$ref": "#/properties/jobsBefore" },
+    "allJobs": { "$ref": "#/properties/jobsBefore" },
+    "leakDetected": { "type": "boolean" },
+    "actions": { "type": "array", "items": { "type": "string" } },
+    "killedProcs": { "$ref": "#/properties/procsBefore" },
+    "stoppedJobs": { "$ref": "#/properties/jobsBefore" },
+    "notes": { "type": "array", "items": { "type": "string" } }
+  },
+  "required": ["schema", "generatedAt", "leakDetected"]
+}

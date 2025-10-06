@@ -3,12 +3,40 @@ name: PR VI Compare (on label)
 on:
   pull_request:
     types: [labeled, reopened, synchronize]
+    paths-ignore:
+      - '**/*.md'
   workflow_dispatch: {}
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
 jobs:
+  preflight:
+    runs-on: [self-hosted, Windows, X64]
+    timeout-minutes: 10
+    if: github.event_name == 'workflow_dispatch' || contains(github.event.pull_request.labels.*.name, 'vi-compare')
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+      - name: Verify LVCompare and idle LabVIEW state
+        shell: pwsh
+        run: |
+          $cli = 'C:\\Program Files\\National Instruments\\Shared\\LabVIEW Compare\\LVCompare.exe'
+          if (-not (Test-Path -LiteralPath $cli)) {
+            Write-Host "::error::LVCompare.exe not found at canonical path: $cli"; exit 1
+          }
+          $lv = Get-Process -Name 'LabVIEW' -ErrorAction SilentlyContinue
+          if ($lv) { Write-Host "::error::LabVIEW.exe is running (PID(s): $($lv.Id -join ','))"; exit 1 }
+          Write-Host 'Preflight OK: LVCompare present; LabVIEW not running.'
+
   vi-compare:
     if: github.event_name == 'workflow_dispatch' || contains(github.event.pull_request.labels.*.name, 'vi-compare')
     runs-on: [self-hosted, Windows, X64]
+    needs: preflight
+    timeout-minutes: 45
+    env:
+      UNBLOCK_GUARD: '1'
     steps:
       - name: Checkout
         uses: actions/checkout@v5
@@ -36,7 +64,7 @@ jobs:
           Write-Host "Environment validation passed:"
           Write-Host "  - CLI: $cliPath"
 
-      - name: Single compare (Base.vi vs Head.vi)
+      - name: Single compare (VI1.vi vs VI2.vi)
         id: single
         shell: pwsh
         run: |
@@ -57,6 +85,38 @@ jobs:
             compare-artifacts/*
             loop-artifacts/*
           if-no-files-found: warn
+
+      - name: Runner Unblock Guard (process/jobs snapshot)
+        if: always()
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $snap = [ordered]@{}
+          try {
+            $procs = @(Get-Process -ErrorAction SilentlyContinue | Where-Object { $_.ProcessName -in @('conhost','pwsh','LabVIEW','LVCompare') } | Select-Object ProcessName,Id,StartTime)
+            $jobs  = @(Get-Job -ErrorAction SilentlyContinue | Select-Object Id,Name,State,HasMoreData)
+            $snap.processes = $procs
+            $snap.jobs = $jobs
+            $outDir = Get-Location
+            $path = Join-Path $outDir 'runner-unblock-snapshot.json'
+            $snap | ConvertTo-Json -Depth 5 | Out-File -FilePath $path -Encoding utf8
+
+            $cleanupNote = ''
+            if ($env:UNBLOCK_GUARD -eq '1') {
+              $stoppedLV = 0; $stoppedLVC = 0; $stoppedJobs = 0
+              try { Get-Process -Name 'LabVIEW' -ErrorAction SilentlyContinue | ForEach-Object { try { Stop-Process -Id $_.Id -ErrorAction SilentlyContinue; $stoppedLV++ } catch {} } } catch {}
+              try { Get-Process -Name 'LVCompare' -ErrorAction SilentlyContinue | ForEach-Object { try { Stop-Process -Id $_.Id -ErrorAction SilentlyContinue; $stoppedLVC++ } catch {} } } catch {}
+              try { $gj = @(Get-Job -ErrorAction SilentlyContinue); foreach ($j in $gj) { try { Stop-Job -Job $j -ErrorAction SilentlyContinue; Remove-Job -Job $j -Force -ErrorAction SilentlyContinue; $stoppedJobs++ } catch {} } } catch {}
+              $cleanupNote = ('Cleanup: LabVIEW={0}, LVCompare={1}, Jobs={2}' -f $stoppedLV,$stoppedLVC,$stoppedJobs)
+            }
+            $lines = @('### Runner Unblock Guard','')
+            $lines += ('- Process count: {0}' -f $procs.Count)
+            $lines += ('- Pester job count: {0}' -f $jobs.Count)
+            $lines += ''
+            $lines += ('Snapshot: {0}' -f $path)
+            if ($cleanupNote) { $lines += ('- ' + $cleanupNote) }
+            $lines -join "`n" | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8
+          } catch { Write-Host "::warning::Unblock guard failed: $_" }
 
       - name: Append summary
         if: always()
@@ -82,6 +142,10 @@ jobs:
           } else {
             Add-Content $env:GITHUB_STEP_SUMMARY "_Results not available_"
           }
+
+          # Docs pointer
+          Add-Content $env:GITHUB_STEP_SUMMARY "`n### Docs Pointers"
+          Add-Content $env:GITHUB_STEP_SUMMARY "- Fixture Drift: ./docs/FIXTURE_DRIFT.md"
 
       - name: Comment on PR (using XCLI_PAT)
         if: always() && (github.event_name == 'workflow_dispatch' || github.event.pull_request.number)

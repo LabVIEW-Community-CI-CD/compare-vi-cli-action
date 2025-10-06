@@ -3,15 +3,42 @@ name: Pester integration tests on PR label
 on:
   pull_request:
     types: [labeled, reopened, synchronize]
+    paths-ignore:
+      - '**/*.md'
   workflow_dispatch: {}
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
 jobs:
+  preflight:
+    runs-on: [self-hosted, Windows, X64]
+    timeout-minutes: 3
+    if: contains(github.event.pull_request.labels.*.name, 'test-integration') || github.event_name == 'workflow_dispatch'
+    steps:
+      - uses: actions/checkout@v5
+      - name: Verify LVCompare and idle LabVIEW state
+        shell: pwsh
+        run: |
+          $cli = 'C:\\Program Files\\National Instruments\\Shared\\LabVIEW Compare\\LVCompare.exe'
+          if (-not (Test-Path -LiteralPath $cli)) {
+            Write-Host "::error::LVCompare.exe not found at canonical path: $cli"; exit 1
+          }
+          $lv = Get-Process -Name 'LabVIEW' -ErrorAction SilentlyContinue
+          if ($lv) { Write-Host "::error::LabVIEW.exe is running (PID(s): $($lv.Id -join ','))"; exit 1 }
+          Write-Host 'Preflight OK: LVCompare present; LabVIEW not running.'
+
   pester-integration:
     if: contains(github.event.pull_request.labels.*.name, 'test-integration')
     runs-on: [self-hosted, Windows, X64]
+    needs: preflight
+    timeout-minutes: 3
     env:
       LV_BASE_VI: ${{ vars.LV_BASE_VI }}
       LV_HEAD_VI: ${{ vars.LV_HEAD_VI }}
+      UNBLOCK_GUARD: '1'
+      WATCH_CONSOLE: '1'
     steps:
       - uses: actions/checkout@v5
 
@@ -58,7 +85,8 @@ jobs:
       - name: Install Pester v5
         shell: pwsh
         run: |
-          Install-Module -Name Pester -RequiredVersion 5.4.0 -Force -SkipPublisherCheck -Scope CurrentUser
+          try { Set-PSRepository -Name 'PSGallery' -InstallationPolicy Trusted -ErrorAction SilentlyContinue } catch {}
+          Install-Module -Name Pester -RequiredVersion 5.4.0 -Force -SkipPublisherCheck -Scope CurrentUser -Confirm:$false
 
       - name: Run Pester integration tests
         shell: pwsh
@@ -73,6 +101,35 @@ jobs:
           path: |
             tests/results/**/*.xml
             tests/results/**/*.txt
+
+      - name: Session index post
+        if: always()
+        uses: ./.github/actions/session-index-post
+        with:
+          results-dir: tests/results
+          validate-schema: true
+          upload: true
+          artifact-name: pester-integration-session-index
+
+      - name: Validate session index schema (schema-lite, if present)
+        if: always()
+        shell: pwsh
+        run: |
+          $idx = 'tests/results/session-index.json'
+          if (Test-Path $idx) {
+            pwsh -NonInteractive -File tools/Invoke-JsonSchemaLite.ps1 -JsonPath $idx -SchemaPath docs/schemas/session-index-v1.schema.json
+            if ($LASTEXITCODE -ne 0) { Write-Host "Session index schema-lite returned code $LASTEXITCODE" }
+          } else {
+            Write-Host '::notice::session-index.json not present in label-triggered integration run.'
+          }
+
+      - name: Runner Unblock Guard
+        if: always()
+        uses: ./.github/actions/runner-unblock-guard
+        with:
+          snapshot-path: tests/results/runner-unblock-snapshot.json
+          cleanup: ${{ env.UNBLOCK_GUARD == '1' }}
+          process-names: 'conhost,pwsh,LabVIEW,LVCompare'
 
       - name: Comment results on PR (using XCLI_PAT)
         if: always()

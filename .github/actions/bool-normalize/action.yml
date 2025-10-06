@@ -1,0 +1,53 @@
+name: "Boolean Normalize"
+description: "Normalize a truthy/falsey string to 'true' or 'false'"
+inputs:
+  value:
+    description: "Input string to normalize (e.g., true/false/yes/no/1/0)"
+    required: false
+    default: ''
+  default:
+    description: "Default when input is empty or unrecognized (true|false)"
+    required: false
+    default: 'false'
+outputs:
+  bool:
+    description: "Normalized boolean as 'true' or 'false'"
+    value: ${{ steps.n.outputs.bool }}
+  original:
+    description: "Original trimmed input value"
+    value: ${{ steps.n.outputs.original }}
+runs:
+  using: composite
+  steps:
+    - id: n
+      shell: pwsh
+      run: |
+        $raw = '${{ inputs.value }}'
+        $def = '${{ inputs.default }}'
+        $orig = ($raw ?? '')
+        $v = ($raw ?? '').Trim().ToLowerInvariant()
+        function ToBool($s, $fallback) {
+          switch ($s) {
+            'true' { return $true }
+            '1'    { return $true }
+            'yes'  { return $true }
+            'y'    { return $true }
+            'on'   { return $true }
+            'false' { return $false }
+            '0'     { return $false }
+            'no'    { return $false }
+            'n'     { return $false }
+            'off'   { return $false }
+            default {
+              if ([string]::IsNullOrWhiteSpace($s)) {
+                return ([System.Convert]::ToBoolean($fallback))
+              } else {
+                return ([System.Convert]::ToBoolean($fallback))
+              }
+            }
+          }
+        }
+        $b = ToBool $v $def
+        $out = if ($b) { 'true' } else { 'false' }
+        "bool=$out"       >> $env:GITHUB_OUTPUT
+        "original=$orig"  >> $env:GITHUB_OUTPUT

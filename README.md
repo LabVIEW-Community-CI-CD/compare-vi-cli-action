@@ -4,14 +4,20 @@
 
 [![Validate](https://github.com/LabVIEW-Community-CI-CD/compare-vi-cli-action/actions/workflows/validate.yml/badge.svg)](https://github.com/LabVIEW-Community-CI-CD/compare-vi-cli-action/actions/workflows/validate.yml)
 [![Smoke test](https://github.com/LabVIEW-Community-CI-CD/compare-vi-cli-action/actions/workflows/smoke.yml/badge.svg)](https://github.com/LabVIEW-Community-CI-CD/compare-vi-cli-action/actions/workflows/smoke.yml)
-[![Test (mock)](https://github.com/LabVIEW-Community-CI-CD/compare-vi-cli-action/actions/workflows/test-mock.yml/badge.svg)](https://github.com/LabVIEW-Community-CI-CD/compare-vi-cli-action/actions/workflows/test-mock.yml)
-[![Marketplace](https://img.shields.io/badge/GitHub%20Marketplace-Action-blue?logo=github)](https://github.com/marketplace/actions/compare-vi-cli-action)
+[![Repository](https://img.shields.io/badge/GitHub-Repository-blue?logo=github)](https://github.com/LabVIEW-Community-CI-CD/compare-vi-cli-action)
+[![Environment](https://img.shields.io/badge/docs-Environment%20Vars-6A5ACD)](./docs/ENVIRONMENT.md)
 
 ## Purpose
 
-This repository provides a **composite GitHub Action** for comparing two LabVIEW `.vi` files using National Instruments' LVCompare CLI tool. It enables CI/CD workflows to detect differences between LabVIEW virtual instruments, making it easy to integrate LabVIEW code reviews and diff checks into automated GitHub Actions workflows.
+This repository provides a **composite GitHub Action** for comparing two LabVIEW `.vi` files
+using National Instruments' LVCompare CLI tool. It enables CI/CD workflows to detect
+differences between LabVIEW virtual instruments, making it easy to integrate LabVIEW code
+reviews and diff checks into automated GitHub Actions workflows.
 
-The action wraps the LVCompare.exe command-line interface with intelligent path resolution, flexible argument pass-through, and structured output formats suitable for workflow branching and reporting. It supports both single-shot comparisons and experimental loop mode for latency profiling and stability testing.
+The action wraps the `LVCompare.exe` command-line interface with intelligent path
+resolution, flexible argument pass-through, and structured output formats suitable for
+workflow branching and reporting. It supports both single-shot comparisons and
+experimental loop mode for latency profiling and stability testing.
 
 **Key Features:**
 
@@ -21,13 +27,95 @@ The action wraps the LVCompare.exe command-line interface with intelligent path 
 - **CI-Friendly**: Automatic step summaries, JSON artifacts, and configurable fail-on-diff behavior
 - **Loop Mode (Experimental)**: Aggregate metrics, percentile latencies, and histogram generation for performance analysis
 
-Validated with LabVIEW 2025 Q3 on self-hosted Windows runners. See also: [`CHANGELOG.md`](./CHANGELOG.md) and the release workflow at `.github/workflows/release.yml`.
+Validated with LabVIEW 2025 Q3 on self-hosted Windows runners. See also:
+[`CHANGELOG.md`](./CHANGELOG.md) and the release workflow at
+`.github/workflows/release.yml`.
+
+## Documentation Map
+
+- Workflows overview: `docs/WORKFLOWS_OVERVIEW.md`
+- Fixtures and Validator: `docs/FIXTURES.md`
+- Self-hosted setup: `docs/SELFHOSTED_CI_SETUP.md`
+- Developer guide: `docs/DEVELOPER_GUIDE.md`
+
+> **Breaking Change (v0.5.0)**: Legacy artifact names `Base.vi` / `Head.vi` are no longer supported. Use `VI1.vi` / `VI2.vi` exclusively. Public action input names (`base`, `head`) and environment variables (`LV_BASE_VI`, `LV_HEAD_VI`) remain unchanged.
 
 ## Requirements
 
 - Self-hosted Windows runner with LabVIEW 2025 Q3 installed and licensed
 - `LVCompare.exe` installed at the **canonical path**: `C:\Program Files\National Instruments\Shared\LabVIEW Compare\LVCompare.exe`
 - Only the canonical path is supported; paths via `PATH`, `LVCOMPARE_PATH`, or `lvComparePath` must resolve to this exact location
+
+## Fixture Artifacts (VI1.vi / VI2.vi)
+
+This repository ships two canonical fixtures (`VI1.vi`, `VI2.vi`) and a manifest
+(`fixtures.manifest.json`). For policy, validator exit codes, and update commands,
+see `docs/FIXTURES.md`.
+
+### Fixture Validator (Refined)
+
+`tools/Validate-Fixtures.ps1` now supports structured JSON output and stricter manifest governance.
+
+Supported exit codes:
+
+| Code | Meaning |
+|------|---------|
+| 0 | OK (all checks passed) |
+| 2 | Missing fixture |
+| 3 | Untracked fixture (not in git index) |
+| 4 | Size issue (actual bytes differ from manifest or below fallback) |
+| 5 | Multiple issue categories present (aggregation) |
+| 6 | Hash mismatch (no override token / flag) |
+| 7 | Manifest error (parse, schema, or hash computation failure) |
+| 8 | Duplicate manifest entry |
+
+Flags:
+
+```text
+  -MinBytes <n>             Global minimum size fallback when an item lacks recorded bytes
+  -Quiet / -QuietOutput     Suppress non-error console lines
+  -Json                     Emit single JSON object (suppresses human lines)
+  -TestAllowFixtureUpdate   INTERNAL: ignore hash mismatches (used in tests)
+  -DisableToken             INTERNAL: disable commit message token override for tests
+```
+
+JSON output fields:
+
+```json
+{
+  "ok": true|false,
+  "exitCode": <int>,
+  "summary": "text",
+  "issues": [ { type, ... } ],
+  "manifestPresent": true|false,
+  "fixtureCount": 2,
+  "fixtures": ["VI1.vi","VI2.vi"],
+  "checked": ["VI1.vi","VI2.vi"]
+}
+```
+
+Issue objects may include:
+
+- `missing` { fixture }
+- `untracked` { fixture }
+- `tooSmall` { fixture, length, min }
+- `sizeMismatch` { fixture, actual, expected }
+- `hashMismatch` { fixture, actual, expected }
+- `manifestError` { }
+- `duplicate` { path }
+- `schema` { detail }
+
+Update helper enhancements:
+
+`tools/Update-FixtureManifest.ps1` now supports:
+
+```text
+  -Allow              Required (or -Force) to write new manifest
+  -DryRun             Show whether an update is needed without writing
+  -Output <file>      Alternate manifest path (default fixtures.manifest.json)
+```
+
+It records exact per-item `bytes`; rerun after intentional fixture changes.
 
 ## Quick Start
 
@@ -41,10 +129,10 @@ jobs:
       - uses: actions/checkout@v5
       - name: Compare VIs
         id: compare
-        uses: LabVIEW-Community-CI-CD/compare-vi-cli-action@v0.2.0
+  uses: LabVIEW-Community-CI-CD/compare-vi-cli-action@v0.4.1
         with:
-          base: path/to/base.vi
-          head: path/to/head.vi
+          base: path/to/VI1.vi
+          head: path/to/VI2.vi
           fail-on-diff: true
 
       - name: Act on result
@@ -66,200 +154,121 @@ jobs:
 
 ### Action Outputs
 
-- `diff`: `true|false` whether differences were detected (based on exit code mapping 0=no diff, 1=diff)
+- `diff`: `true|false` whether differences were detected (0 = no diff, 1 = diff)
 - `exitCode`: Raw exit code from the CLI
 - `cliPath`: Resolved path to the executable
-- `command`: The exact command line executed (quoted) for auditing
-- `compareDurationSeconds`: Elapsed execution time (float, seconds) for the LVCompare invocation
-- `compareDurationNanoseconds`: High-resolution elapsed time in nanoseconds (useful for profiling very fast comparisons)
-- `compareSummaryPath`: Path to JSON summary file with comparison metadata
+- `command`: Exact command line executed (quoted) for auditing
+- `compareDurationSeconds`: Elapsed execution time (float, seconds)
+- `compareDurationNanoseconds`: High-resolution elapsed time in nanoseconds
+- `compareSummaryPath`: Path to JSON summary file (comparison metadata)
+- `shortCircuitedIdentical`: `true|false` short‑circuit when `base` and `head` resolve identically (no process spawned)
 
-Loop mode outputs (when `loop-enabled: true`): `iterations`, `diffCount`, `errorCount`, `averageSeconds`, `totalSeconds`, `p50`, `p90`, `p99`, `quantileStrategy`, `streamingWindowCount`, `loopResultPath`, `histogramPath`
+Loop mode outputs (when `loop-enabled: true`): `iterations`, `diffCount`, `errorCount`,
+`averageSeconds`, `totalSeconds`, `p50`, `p90`, `p99`, `quantileStrategy`,
+`streamingWindowCount`, `loopResultPath`, `histogramPath`.
 
 See [`docs/action-outputs.md`](./docs/action-outputs.md) for complete output documentation.
 
 ### Exit Codes and Behavior
 
 - **Exit code mapping**: 0 = no diff, 1 = diff detected, any other code = failure
-- **Always-emit outputs**: `diff`, `exitCode`, `cliPath`, `command` are always emitted even when the step fails, to support workflow branching and diagnostics
-- **Step summary**: A structured run report is appended to `$GITHUB_STEP_SUMMARY` with working directory, resolved paths, CLI path, command, exit code, and diff result
+- **Identical path short-circuit**: If `base` and `head` resolve to the exact same absolute
+  path, the action skips invoking LVCompare and emits
+  `shortCircuitedIdentical=true`, `diff=false`, `exitCode=0`.
+- **Same filename / different directories**: LVCompare cannot compare two different VIs
+  with the *same leaf filename*. The action fails early with an explanatory error instead
+  of triggering an IDE dialog.
+
+### Local Pester by Category
+
+Run targeted test categories locally using file patterns and a separate results folder per category:
+
+```powershell
+# Dispatcher-focused tests
+./Invoke-PesterTests.ps1 -IncludePatterns 'Invoke-PesterTests*Tests.ps1','PesterAvailability*Tests.ps1','PesterSummary*Tests.ps1','NestedDispatcher*Tests.ps1','Write-PesterSummaryToStepSummary*Tests.ps1' -ResultsPath tests/results/dispatcher
+
+# Fixtures / validator
+./Invoke-PesterTests.ps1 -IncludePatterns 'Fixtures*Tests.ps1','FixtureValidation*Tests.ps1','FixtureSummary.Tests.ps1','ViBinaryHandling.Tests.ps1' -ResultsPath tests/results/fixtures
+
+# Schema checks
+./Invoke-PesterTests.ps1 -IncludePatterns 'Schema*Tests.ps1','SchemaLite*Tests.ps1' -ResultsPath tests/results/schema
+
+# CompareVI
+./Invoke-PesterTests.ps1 -IncludePatterns 'CompareVI*Tests.ps1' -ResultsPath tests/results/comparevi
+
+# Loop & metrics
+./Invoke-PesterTests.ps1 -IncludePatterns 'Run-AutonomousIntegrationLoop*Tests.ps1','CompareLoop*Tests.ps1','LoopMetrics.Tests.ps1' -ResultsPath tests/results/loop
+
+# Runbook
+./Invoke-PesterTests.ps1 -IncludePatterns 'IntegrationRunbook.Tests.ps1' -ResultsPath tests/results/runbook
+
+# Orchestrator / workflows
+./Invoke-PesterTests.ps1 -IncludePatterns 'On-FixtureValidationFail.Tests.ps1','Workflow*Tests.ps1','Guard*Tests.ps1','AggregationHints*Tests.ps1','ArtifactTracking*Tests.ps1','FunctionShadowing*Tests.ps1','Args.Tokenization.Tests.ps1','Action.CompositeOutputs.Tests.ps1' -ResultsPath tests/results/orchestrator
+```
+
+See the CI version in the orchestrated workflow: `.github/workflows/ci-orchestrated.yml`.
+
+### (Deprecated heading placeholder removed)
+
+```yaml
+  - name: Compare VIs
+    id: compare
+  uses: LabVIEW-Community-CI-CD/compare-vi-cli-action@v0.4.1
+    with:
+  base: VI1.vi
+  head: VI1.vi  # Intentional identical path
+      fail-on-diff: true
+
+  - name: Handle identical-path short-circuit
+    if: steps.compare.outputs.shortCircuitedIdentical == 'true'
+    shell: pwsh
+    run: |
+      Write-Host 'Identical file comparison short-circuited; no diff expected.'
+
+  - name: Handle real diff
+    if: steps.compare.outputs.shortCircuitedIdentical != 'true' && steps.compare.outputs.diff == 'true'
+    shell: pwsh
+    run: |
+      Write-Host 'Real differences detected.'
+```
+
+- **Always-emit outputs**: `diff`, `exitCode`, `cliPath`, `command` are always emitted
+  even when the step fails, to support workflow branching and diagnostics.
+- **Step summary**: A structured run report is appended to `$GITHUB_STEP_SUMMARY` with
+  working directory, resolved paths, CLI path, command, exit code, and diff result.
 
 ## Advanced Configuration
 
-### Working with lvCompareArgs
+For advanced configuration including lvCompareArgs recipes, working-directory usage, path resolution, and HTML report generation, see the **[Usage Guide](./docs/USAGE_GUIDE.md)**.
 
-The `lvCompareArgs` input accepts space-delimited CLI flags with full quote support for paths containing spaces.
+Tip: Environment variables quick reference moved to the **[Environment appendix](./docs/ENVIRONMENT.md)**.
+Note: For CI integration test runs, consider setting CLEAN_AFTER=1, KILL_LEAKS=1, and `LEAK_GRACE_SECONDS`≈1.0 to avoid lingering LabVIEW/LVCompare processes; see Troubleshooting → Leak Detection and the Environment appendix for details.
 
-For comprehensive documentation on LVCompare CLI flags and Git integration, see [`docs/knowledgebase/LVCompare-Git-CLI-Guide_Windows-LabVIEW-2025Q3.md`](./docs/knowledgebase/LVCompare-Git-CLI-Guide_Windows-LabVIEW-2025Q3.md).
+## Loop Mode
 
-**Recommended noise filters** (reduce cosmetic diff churn):
+The action supports an experimental loop mode for performance testing and stability analysis. For complete details on loop mode, percentile strategies, histogram generation, and the autonomous runner script, see the **[Loop Mode Guide](./docs/COMPARE_LOOP_MODULE.md)**.
 
-```yaml
-lvCompareArgs: "-nobdcosm -nofppos -noattr"
-```
-
-- `-nobdcosm` - Ignore block diagram cosmetic changes (position/size/appearance)
-- `-nofppos` - Ignore front panel object position/size changes
-- `-noattr` - Ignore VI attribute changes
-
-**LabVIEW version selection:**
+**Quick example:**
 
 ```yaml
-lvCompareArgs: '-lvpath "C:\\Program Files\\National Instruments\\LabVIEW 2025\\LabVIEW.exe"'
-```
-
-**Other common patterns:**
-
-```yaml
-# Path with spaces
-lvCompareArgs: "--flag \"C:\\Path With Spaces\\out.txt\""
-
-# Multiple flags
-lvCompareArgs: "-nobdcosm -nofppos -noattr -lvpath \"C:\\Program Files\\National Instruments\\LabVIEW 2025\\LabVIEW.exe\""
-
-# Environment-driven values
-lvCompareArgs: "--log \"${{ runner.temp }}\\lvcompare.log\""
-```
-
-### Using working-directory
-
-When your VIs are in a subdirectory, use `working-directory` to avoid repeating path prefixes:
-
-```yaml
-- name: Compare VIs
-  uses: LabVIEW-Community-CI-CD/compare-vi-cli-action@v0.2.0
+- name: Performance test loop
+  uses: LabVIEW-Community-CI-CD/compare-vi-cli-action@v0.4.1
   with:
-    working-directory: my-labview-project
-    base: src/Base.vi
-    head: src/Head.vi
-    lvCompareArgs: "-nobdcosm -nofppos -noattr"
+    base: VI1.vi
+    head: VI2.vi
+    loop-enabled: true
+    loop-max-iterations: 100
+    loop-interval-seconds: 0.1
+    fail-on-diff: false
 ```
 
-### Path Resolution and UNC Paths
+Loop mode outputs include: `iterations`, `diffCount`, `errorCount`, `averageSeconds`, `totalSeconds`, `p50`, `p90`, `p99`, and more.
 
-- The action resolves `base`/`head` to absolute paths before invoking LVCompare
-- Relative paths are resolved from `working-directory` if set, otherwise from the repository root
-- For long-path or UNC issues, consider:
-  - Using shorter workspace-relative paths via `working-directory`
-  - Mapping a drive on self-hosted runners for long UNC prefixes
-  - Ensuring your LabVIEW/Windows environment supports long paths
-
-## HTML Comparison Reports
-
-For CI/CD pipelines and code reviews, you can generate HTML comparison reports using **LabVIEWCLI** (requires LabVIEW 2025 Q3 or later):
+### Autonomous Integration Loop Runner
 
 ```powershell
-# Generate single-file HTML report
-LabVIEWCLI -OperationName CreateComparisonReport `
-  -vi1 "path\to\base.vi" -vi2 "path\to\head.vi" `
-  -reportType HTMLSingleFile -reportPath "CompareReport.html" `
-  -nobdcosm -nofppos -noattr
-```
-
-**Benefits:**
-
-- Self-contained HTML file suitable for artifact upload
-- Visual diff output for code reviews
-- Works with recommended noise filter flags
-- Can be integrated into workflows for automated comparison reporting
-
-See the knowledgebase guide for more details on HTML report generation.
-
-HTML diff iteration summary (module)
-
-The `CompareLoop` module can emit a concise diff iteration summary after a run when at least one diff was observed via the `-DiffSummaryFormat` parameter. Supported formats: `Text`, `Markdown`, `Html`.
-
-When `Html` is selected a minimal fragment (no `<html>` wrapper) is produced:
-
-```html
-<h3>VI Compare Diff Summary</h3>
-<ul>
-  <li><strong>Base:</strong> C:\path\to\Base.vi</li>
-  <li><strong>Head:</strong> C:\path\to\Head.vi</li>
-  <li><strong>Diff Iterations:</strong> 4</li>
-  <li><strong>Total Iterations:</strong> 12</li>
-</ul>
-```
-
-Guarantees & behavior:
-
-- Only created when `DiffCount > 0`; otherwise `DiffSummary` is `$null` and no file is written (even if `-DiffSummaryPath` supplied).
-- All dynamic values (paths, counts) are HTML‑encoded (`&` → `&amp;`, `<` → `&lt;`, `>` → `&gt;`, quotes, apostrophes) to prevent markup breakage.
-- Deterministic ordering of list items for stable parsing.
-- Safe to append directly to `$GITHUB_STEP_SUMMARY` for GitHub Actions job summaries.
-
-Example (synthetic diff loop, embedding in Actions summary):
-
-```powershell
-Import-Module ./module/CompareLoop/CompareLoop.psd1 -Force
-# Simulated executor returning diff (exit code 1)
-$diffExec = { param($c,$b,$h,$a) 1 }
-$r = Invoke-IntegrationCompareLoop -Base Base.vi -Head Head.vi -MaxIterations 5 -IntervalSeconds 0 `
-  -CompareExecutor $diffExec -SkipValidation -PassThroughPaths -BypassCliValidation `
-  -DiffSummaryFormat Html -DiffSummaryPath diff-summary.html -Quiet
-if ($r.DiffSummary) { Add-Content -Path $env:GITHUB_STEP_SUMMARY -Value $r.DiffSummary }
-```
-
-Quick regex extraction of diff count:
-
-```powershell
-if ($r.DiffSummary -match '<li><strong>Diff Iterations:</strong> (\d+)</li>') { [int]$Matches[1] }
-```
-
-See `docs/COMPARE_LOOP_MODULE.md` for deeper details including Markdown/Text formats.
-
-Autonomous integration loop runner
-
-A convenience script `scripts/Run-AutonomousIntegrationLoop.ps1` wraps `Invoke-IntegrationCompareLoop` with environment-driven defaults so you can start a soak / guard loop with zero parameters.
-
-Key env variables (optional unless noted):
-
-| Variable | Purpose | Default |
-|----------|---------|---------|
-| `LV_BASE_VI` | Base VI path (required unless passing -Base) | (none) |
-| `LV_HEAD_VI` | Head VI path (required unless passing -Head) | (none) |
-| `LOOP_MAX_ITERATIONS` | Iteration cap (0 = infinite) | 50 |
-| `LOOP_INTERVAL_SECONDS` | Delay between iterations (fractional ok) | 0 |
-| `LOOP_DIFF_SUMMARY_FORMAT` | `None`\|`Text`\|`Markdown`\|`Html` | None |
-| `LOOP_DIFF_SUMMARY_PATH` | Output path (auto inferred by format if omitted) | diff-summary.ext |
-| `LOOP_CUSTOM_PERCENTILES` | Custom percentile list (e.g. 50,75,90,97.5,99.9) | (none) |
-| `LOOP_SNAPSHOT_EVERY` | Emit snapshot every N iterations | (disabled) |
-| `LOOP_SNAPSHOT_PATH` | NDJSON snapshot file path | loop-snapshots.ndjson |
-| `LOOP_EMIT_RUN_SUMMARY` | When 1/true emit final run summary JSON | off |
-| `LOOP_RUN_SUMMARY_JSON` | Explicit run summary path | loop-run-summary.json |
-| `LOOP_FAIL_ON_DIFF` | 1/true to stop after first diff | true |
-| `LOOP_ADAPTIVE` | 1/true enable adaptive interval | false |
-| `LOOP_HISTOGRAM_BINS` | Histogram bin count (0 disables) | 0 |
-| `LOOP_SIMULATE` | 1/true use internal mock executor | false |
-| `LOOP_SIMULATE_EXIT_CODE` | Exit code for simulated executor | 1 |
-| `LOOP_SIMULATE_DELAY_MS` | Sleep per iteration (ms) during simulation | 5 |
-| `LOOP_LOG_VERBOSITY` | `Quiet`\|`Normal`\|`Verbose` (script log detail) | Normal |
-| `LOOP_JSON_LOG` | Path for NDJSON structured events | (disabled) |
-| `LOOP_NO_STEP_SUMMARY` | 1/true to suppress step summary append | off |
-| `LOOP_NO_CONSOLE_SUMMARY` | 1/true suppress console summary block | off |
-| `LOOP_JSON_LOG_MAX_BYTES` | Rotate JSON log when size exceeds bytes | (disabled) |
-| `LOOP_JSON_LOG_MAX_ROLLS` | Max rolled log files to retain | 5 |
-| `LOOP_DIFF_EXIT_CODE` | Custom process exit code when diffs>0 & no errors | (unset) |
-| `LOOP_JSON_LOG_MAX_AGE_SECONDS` | Rotate JSON log after this age (seconds) | (disabled) |
-| `LOOP_FINAL_STATUS_JSON` | Path to emit final status JSON document | (disabled) |
-
-Additional switches:
-
-- `-DryRun`: Print resolved configuration (including inferred artifact paths) and exit without executing the loop.
-- `-LogVerbosity Quiet|Normal|Verbose`: Override env value for logging detail (DryRun still returns 0 on success).
-- `-NoStepSummary`: Prevent appending diff summary to `$GITHUB_STEP_SUMMARY` even if present.
-- `-NoConsoleSummary`: Suppress printing the human-readable summary block (useful when only JSON logs are desired).
-- `-JsonLogPath <file>`: Write structured NDJSON events (`plan`, `dryRun`, `result`, `stepSummaryAppended`).
-- `-DiffExitCode <int>`: When set and the loop succeeds with one or more diffs, exit using this code instead of 0.
-- Rotation: Set `LOOP_JSON_LOG_MAX_BYTES` and optionally `LOOP_JSON_LOG_MAX_ROLLS` (default 5) for rolling `*.roll` files.
-- Time-based rotation: Set `LOOP_JSON_LOG_MAX_AGE_SECONDS` to force age-based rotation.
-- Final status JSON: Provide `-FinalStatusJsonPath` or env `LOOP_FINAL_STATUS_JSON` to write a `loop-final-status-v1` JSON (separate from run summary JSON inside the loop module).
-
-Quick simulated run (no real LVCompare required):
-
-```powershell
-$env:LV_BASE_VI = 'Base.vi'
-$env:LV_HEAD_VI = 'Head.vi'
+$env:LV_BASE_VI = 'VI1.vi'
+$env:LV_HEAD_VI = 'VI2.vi'
 $env:LOOP_SIMULATE = '1'
 $env:LOOP_DIFF_SUMMARY_FORMAT = 'Html'
 $env:LOOP_MAX_ITERATIONS = '15'
@@ -273,8 +282,8 @@ Excerpt output:
 
 ```text
 === Integration Compare Loop Result ===
-Base: Base.vi
-Head: Head.vi
+VI1: VI1.vi
+VI2: VI2.vi
 Iterations: 15 (Diffs=15 Errors=0)
 Latency p50/p90/p99: 0.005/0.006/0.007 s
 Diff summary fragment emitted.
@@ -317,8 +326,8 @@ Final status example minimal structure:
   "percentiles": { "p50": 0.010, "p90": 0.018, "p99": 0.024 },
   "histogram": [ { "Index":0, "Start":0, "End":1, "Count":40 } ],
   "diffSummaryEmitted": true,
-  "basePath": "Base.vi",
-  "headPath": "Head.vi"
+  "basePath": "VI1.vi",
+  "headPath": "VI2.vi"
 }
 ```
 
@@ -328,8 +337,8 @@ GitHub Actions step example (simulated):
   - name: Autonomous integration loop (simulated)
     shell: pwsh
     run: |
-      $env:LV_BASE_VI = 'Base.vi'
-      $env:LV_HEAD_VI = 'Head.vi'
+  $env:LV_BASE_VI = 'VI1.vi'
+  $env:LV_HEAD_VI = 'VI2.vi'
       $env:LOOP_SIMULATE = '1'
       $env:LOOP_MAX_ITERATIONS = '30'
       $env:LOOP_INTERVAL_SECONDS = '0'
@@ -394,706 +403,315 @@ Smoke test workflow
 
 Marketplace
 
-- Listing: [GitHub Marketplace listing](https://github.com/marketplace/actions/compare-vi-cli-action)
-- After publication, keep the badge/link updated to the final marketplace URL and ensure the README usage references the latest tag.
+- Listing: Pending publication (use the [repository README](https://github.com/LabVIEW-Community-CI-CD/compare-vi-cli-action#readme) for latest instructions).
+- After publication, update the badge/link to the final marketplace URL and ensure the README usage references the latest tag.
 
 Notes
 
-- This action maps `LVCompare.exe` exit codes to a boolean `diff` (0 = no diff, 1 = diff). Any other exit code fails the step.
-- **Canonical path policy**: Only `C:\Program Files\National Instruments\Shared\LabVIEW Compare\LVCompare.exe` is supported
-- Any `lvComparePath` or `LVCOMPARE_PATH` value must resolve to this exact canonical path or the action will fail
-
-Troubleshooting
-
-- Ensure the runner user has the necessary LabVIEW licensing.
-- Verify `LVCompare.exe` is installed at: `C:\Program Files\National Instruments\Shared\LabVIEW Compare\LVCompare.exe`
-- If you set `LVCOMPARE_PATH` or `lvComparePath`, ensure they point to the canonical path
-- Check composite action outputs (`diff`, `exitCode`, `cliPath`, `command`) and the CLI exit code for diagnostics.
-- **For comprehensive CI/CD setup and troubleshooting**, see [Self-Hosted Runner CI/CD Setup Guide](./docs/SELFHOSTED_CI_SETUP.md)
-
-Tests
-
-- Unit tests (no external CLI):
-  - Run: `pwsh -File ./tools/Run-Pester.ps1`
-  - Produces artifacts under `tests/results/` (NUnit XML and summary)
-- Integration tests (requires canonical LVCompare path on self-hosted runner):
-  - Run: `pwsh -File ./tools/Run-Pester.ps1 -IncludeIntegration`
-  - Requires environment variables: `LV_BASE_VI` and `LV_HEAD_VI` pointing to test `.vi` files
-  - See detailed prerequisites & skip behavior: [Integration Tests Guide](./docs/INTEGRATION_TESTS.md)
-- Test design & stability patterns (nested dispatcher, function shadowing vs mocks): [Testing Patterns](./docs/TESTING_PATTERNS.md)
-- JSON/NDJSON schema validation helper (Run Summary, Snapshot v2, Loop Events, Final Status): [Schema Helper](./docs/SCHEMA_HELPER.md)
-- CI workflows:
-  - `.github/workflows/test-pester.yml` - runs unit tests on GitHub-hosted Windows runners
-  - `.github/workflows/pester-selfhosted.yml` - runs integration tests on self-hosted runners with real CLI
-  - `.github/workflows/pester-diagnostics-nightly.yml` - nightly synthetic failure to validate enhanced diagnostics (non-blocking)
-  - Use PR comments to trigger: `/run unit`, `/run mock`, `/run smoke`, `/run pester-selfhosted`
-- **For end-to-end testing**, see [End-to-End Testing Guide](./docs/E2E_TESTING_GUIDE.md)
-
-RunSummary renderer test restoration
-
-- The original renderer tool tests were temporarily quarantined due to a discovery-time PowerShell parameter binding anomaly injecting a null `-Path`.
-- Tests have been restored (`RunSummary.Tool.Restored.Tests.ps1`) using a safe pattern: all `$TestDrive` and dynamic file creation occurs inside `BeforeAll` or individual `It` blocks (never at script top-level during Pester discovery).
-- A minimal reproduction script (`tools/Binding-MinRepro.ps1`) plus diagnostic test (`Binding.MinRepro.Tests.ps1`) are included for future investigations.
-- If adding new renderer-related tests, avoid performing filesystem or `$TestDrive` operations outside of runtime blocks to prevent reintroducing the anomaly.
-
-Continuous local dev loop (watch mode)
-
-For rapid iteration you can run a file watcher that re-executes Pester when source or test files change:
-
-```powershell
-pwsh -File ./tools/Watch-Pester.ps1 -RunAllOnStart
-```
-
-Key options:
-
-- `-Path` (default `.`): Root to watch recursively.
-- `-Filter` (default `*.ps1`): File name filter.
-- `-DebounceMilliseconds` (default 400): Quiet period after last change before a run.
-- `-Tag` / `-ExcludeTag`: Limit test scope using Pester tags.
-- `-TestPath` (default `tests`): Base test directory.
-- `-RunAllOnStart`: Perform an initial full run.
-- `-SingleRun`: Run once (honoring targeting) and exit (useful for scripting).
-- `-Quiet`: Reduce output verbosity (summary only).
-- `-ChangedOnly`: Skip a run if no directly changed or inferred test files were detected.
-- `-InferTestsFromSource`: Attempt to map changed module/script files to corresponding `*.Tests.ps1` by basename.
-- `-BeepOnFail`: Emit an audible console beep when a run has failures.
-- `-DeltaJsonPath <file>`: Write a JSON artifact containing current stats, previous stats, deltas, and classification (`baseline|improved|worsened|unchanged`).
-- `-ShowFailed`: After summary, list failing test names (up to `-MaxFailedList`).
-- `-MaxFailedList <N>`: Cap the number of failing tests printed (default 10).
-- `-DeltaHistoryPath <file>`: Append each delta JSON payload (same schema as `-DeltaJsonPath`) as one line of JSON (JSON Lines / NDJSON). Useful for run history graphs.
-- `-MappingConfig <file>`: JSON file mapping source glob patterns to one or more test files (augmenting `-InferTestsFromSource`).
-- `-OnlyFailed`: If the previous run had failing test files and no direct/inferred changes are detected this run, re-run only those failing test files.
-- `-NotifyScript <file>`: Post-run hook script invoked with named parameters & WATCH_* environment variables (see below).
-- `-RerunFailedAttempts <N>`: Automatically re-run failing test file containers up to N additional attempts (flaky mitigation). Classification becomes `improved` if failures clear on a retry.
-
-Selective runs:
-
-If any changed file path matches `\tests\*.Tests.ps1`, only those test files are executed; otherwise the full suite under `-TestPath` runs.
-
-Exit behavior:
-
-The watcher runs until interrupted (Ctrl+C). It installs Pester automatically if not found (CurrentUser scope).
-
-Delta JSON schema example (`-DeltaJsonPath tests/results/delta.json`):
-
-```jsonc
-{
-  "timestamp": "2025-10-01T15:15:27.123Z",
-  "status": "FAIL",
-  "stats": { "tests": 121, "failed": 6, "skipped": 15 },
-  "previous": { "tests": 121, "failed": 7, "skipped": 15 },
-  "delta": { "tests": 0, "failed": -1, "skipped": 0 },
-  "classification": "improved",
-  "flaky": { "enabled": true, "attempts": 2, "recoveredAfter": 1, "initialFailedFiles": 3 },
-  "runSequence": 5
-}
-```
-
-Field notes:
-
-- `flaky` object is present only when `-RerunFailedAttempts > 0`.
-- `recoveredAfter` is null if retries did not clear all failures.
-- `initialFailedFiles` counts distinct failing *.Tests.ps1 files in the initial (pre-retry) attempt.
-- `classification` is forced to `improved` if failures were cleared by a retry even if prior run comparison would be neutral.
-- `initialFailedFileNames` (when present) lists the leaf filenames of the initially failing test files for quick glance diffing.
-
-History logging (`-DeltaHistoryPath`):
-
-Each completed run appends the exact JSON (single line) written to `-DeltaJsonPath`. Example JSON Lines file after three runs:
-
-```jsonl
-{"timestamp":"2025-10-01T15:15:27.123Z","status":"FAIL","stats":{"tests":121,"failed":6,"skipped":15},"previous":null,"delta":null,"classification":"baseline","flaky":null,"runSequence":1}
-{"timestamp":"2025-10-01T15:16:03.987Z","status":"FAIL","stats":{"tests":121,"failed":5,"skipped":15},"previous":{"tests":121,"failed":6,"skipped":15},"delta":{"tests":0,"failed":-1,"skipped":0},"classification":"improved","flaky":null,"runSequence":2}
-{"timestamp":"2025-10-01T15:17:10.111Z","status":"PASS","stats":{"tests":121,"failed":0,"skipped":15},"previous":{"tests":121,"failed":5,"skipped":15},"delta":{"tests":0,"failed":-5,"skipped":0},"classification":"improved","flaky":{"enabled":true,"attempts":2,"recoveredAfter":1,"initialFailedFiles":2},"runSequence":3}
-```
-
-You can ingest this with tools expecting newline-delimited JSON for generating trend charts (failures over time, recovery streaks, etc.).
-
-Classification logic:
-
-- `baseline`: First run (no previous stats)
-- `improved`: Failed count decreased
-- `worsened`: Failed count increased
-- `unchanged`: Failed count unchanged
-
-Typical usage patterns:
-
-```powershell
-# Full run on start, then only run when tests or inferred sources change
-pwsh -File ./tools/Watch-Pester.ps1 -RunAllOnStart -ChangedOnly -InferTestsFromSource
-
-# Emit delta JSON and audible alert on failures
-pwsh -File ./tools/Watch-Pester.ps1 -DeltaJsonPath tests/results/delta.json -BeepOnFail
-
-# Show top 5 failing tests each run (compact selective runs)
-pwsh -File ./tools/Watch-Pester.ps1 -ShowFailed -MaxFailedList 5 -ChangedOnly
-
-# Maintain a JSON run history & attempt flaky recovery (2 retries)
-pwsh -File ./tools/Watch-Pester.ps1 -RunAllOnStart -DeltaJsonPath tests/results/delta.json -DeltaHistoryPath tests/results/delta-history.jsonl -RerunFailedAttempts 2
-
-# Use mapping config + OnlyFailed fallback between edits
-pwsh -File ./tools/Watch-Pester.ps1 -ChangedOnly -MappingConfig watch-mapping.json -OnlyFailed
-
-# Invoke a desktop/toast notifier script when runs complete
-pwsh -File ./tools/Watch-Pester.ps1 -NotifyScript tools/Notify-Demo.ps1 -ShowFailed -MaxFailedList 3
-```
-
-Heuristic source→test inference:
-
-- A changed file under `module/<Name>/<Name>.psm1` or `scripts/<Name>.ps1` maps to `tests/<Name>.Tests.ps1` if present.
-- If no mapping is found and `-ChangedOnly` is set, the run is skipped (fast no-op feedback).
-- You can still force a full run manually (save a test file or omit `-ChangedOnly`).
-
-Failed test listing (`-ShowFailed`):
-
-- Extracts failing test objects from Pester result and prints up to `-MaxFailedList` entries.
-- Uses trimmed relative path or describe block name (depending on the object metadata available).
-
-Colorized status & sequencing:
-
-- Each run prints a line: `Run #<n> PASS|FAIL in <seconds>s (Tests=<t> Failed=<f>) (Δ Tests=... Failed=... Skipped=...)`.
-- Only appears after execution; delta portion omitted on first (baseline) run.
-
-Notes & limitations:
-
-- Inference is intentionally conservative; contribute mapping expansions if you have alternate naming schemes.
-- The delta JSON overwrites the same file each run (append-mode history could be added later).
-- Use `-DeltaHistoryPath` to enable append-mode history (JSON Lines) without overwriting.
-- `-BeepOnFail` may be suppressed in non-interactive consoles.
-- If Pester changes internal property names, the script falls back through multiple strategies to compute `tests`.
-
-Mapping configuration (`-MappingConfig`):
-
-Supplement the heuristic inference with an explicit JSON array file:
-
-```jsonc
-[
-  {
-    "sourcePattern": "module/CompareLoop/*.psm1",
-    "tests": ["tests/CompareLoop.StreamingQuantiles.Tests.ps1", "tests/CompareLoop.StreamingReconcile.Tests.ps1"]
-  },
-  {
-    "sourcePattern": "scripts/Render-CompareReport.ps1",
-    "tests": ["tests/CompareVI.Tests.ps1"]
-  }
-]
-```
-
-See `watch-mapping.sample.json` in the repository root for a longer example including mapping the watcher script itself to dispatcher tests.
-
-Rules:
-
-- Patterns are simple globs converted to regex (`*` → `.*`, `?` → `.`) and matched against repository-relative normalized paths (`/` separators).
-- When a changed file matches `sourcePattern`, all listed `tests` are added to the targeted test file set (if they exist).
-- Mapping augments (does not replace) heuristic `-InferTestsFromSource` logic.
-
-Only failed re-run mode (`-OnlyFailed`):
-
-- After a failing run the script remembers the set of failing test file containers.
-- If a subsequent change batch has no directly changed or inferred test files and `-OnlyFailed` is set, only those failing files are re-run (fast feedback on fixes without re-running entire suite).
-- A fully passing run clears the stored failing set.
-
-Flaky retry mitigation (`-RerunFailedAttempts`):
-
-- After the initial run, failing test file containers (*.Tests.ps1) are re-run up to N attempts.
-- If failures clear on attempt K, `flaky.recoveredAfter` = K and classification is forced to `improved`.
-- Counts in the delta JSON correspond to the final attempt executed (subset of full suite when retries target a subset).
-
-Notify hook (`-NotifyScript`):
-
-- Invoked after each run with named parameters:
-  - `-Status <PASS|FAIL>`
-  - `-Failed <int>`
-  - `-Tests <int>`
-  - `-Skipped <int>`
-  - `-RunSequence <int>`
-  - `-Classification <baseline|improved|worsened|unchanged>`
-- Environment variables also set for convenience: `WATCH_STATUS`, `WATCH_FAILED`, `WATCH_TESTS`, `WATCH_SKIPPED`, `WATCH_SEQUENCE`, `WATCH_CLASSIFICATION`.
-- Output (stdout) lines from the hook are prefixed with `[notify]` in the watcher console.
-- Use cases: desktop notifications, toast popups, Slack / Teams webhook wrappers, log forwarding.
-
-Example notify script (`tools/Notify-Demo.ps1`):
-
-```powershell
-param(
-  [string]$Status,
-  [int]$Failed,
-  [int]$Tests,
-  [int]$Skipped,
-  [int]$RunSequence,
-  [string]$Classification
-)
-"Notify: Run#$RunSequence Status=$Status Failed=$Failed/$Tests Skipped=$Skipped Class=$Classification (env=$env:WATCH_STATUS)"
-```
-
-Integration compare control loop (developer scaffold)
-
-For rapid, iterative development against two real VIs (e.g. editing a feature branch VI and observing diff stability / timing) a lightweight polling loop script is provided:
-
-```powershell
-pwsh -File ./scripts/Integration-ControlLoop.ps1 `
-  -Base 'C:\repos\main\ControlLoop.vi' `
-  -Head 'C:\repos\feature\ControlLoop.vi' `
-  -LvCompareArgs "-nobdcosm -nofppos -noattr" `
-  -SkipIfUnchanged `
-  -IntervalSeconds 3
-```
-
-Key features:
-
-- Enforces canonical LVCompare path only
-- Polls at a configurable interval (default 5s)
-- Optional skip when neither VI timestamp changed (`-SkipIfUnchanged`)
-- Shows a compact per-iteration table (diff flag, exit code, duration)
-- Records timing metrics and counts (diffs, errors)
-- Optional JSON lines log via `-JsonLog path\loop-log.jsonl`
-- Optional `-FailOnDiff` to terminate on first diff (useful in guard scenarios)
-
-Example JSON log line (one per iteration when `-JsonLog` supplied):
-
-```jsonc
-{
-  "iteration": 4,
-  "timestampUtc": "2025-10-01T12:34:56.789Z",
-  "skipped": false,
-  "diff": true,
-  "exitCode": 1,
-  "status": "OK",
-  "durationSeconds": 0.217,
-  "baseChanged": false,
-  "headChanged": true
-}
-```
-
-Planned extensions (contributions welcome): file system watcher trigger, HTML report generation on diff, latency histogram, automatic re-baselining.
-
-Module reuse
-
-The loop logic is also packaged as a lightweight module for programmatic automation: `module/CompareLoop/CompareLoop.psd1`.
-
-Example:
-
-```powershell
-Import-Module ./module/CompareLoop/CompareLoop.psd1 -Force
-$exec = { param($CliPath,$Base,$Head,$Args) 0 } # always no diff
-Invoke-IntegrationCompareLoop -Base 'C:\repos\main\ControlLoop.vi' -Head 'C:\repos\feature\ControlLoop.vi' -MaxIterations 1 -CompareExecutor $exec -BypassCliValidation -SkipValidation -PassThroughPaths -Quiet
-```
-
-## Composite Action Loop Mode (Experimental)
-
-The composite action now supports an optional **loop mode** (`loop-enabled: true`) that delegates to the `CompareLoop` module to collect multiple LVCompare iterations and export aggregate latency metrics, percentiles, and (optionally) a histogram.
-
-When loop mode is enabled, the action:
-
-1. Executes up to `loop-max-iterations` iterations (or fewer if canceled / job ends).
-2. Uses a simulated executor by default (`loop-simulate: true`) so percentile telemetry can run on GitHub-hosted runners without LabVIEW installed. Set `loop-simulate: false` to run real comparisons (requires canonical CLI path).
-3. Emits additional outputs for downstream workflows (average latency, p50/p90/p99, counts, reservoir window size, etc.).
-4. Writes a `compare-loop-summary.json` (aggregate) and optional histogram JSON file into the runner temp directory.
-
-### Loop Inputs
-
-| Input | Default | Description |
-|-------|---------|-------------|
-| `loop-enabled` | `false` | Enable loop mode branch. |
-| `loop-max-iterations` | `25` | Cap on iterations (0 = run until diff only if `fail-on-diff` is false; otherwise treat as finite). |
-| `loop-interval-seconds` | `0` | Delay between iterations (fractional seconds supported). |
-| `quantile-strategy` | `StreamingReservoir` | `Exact` \| `StreamingReservoir` \| `Hybrid`. |
-| `stream-capacity` | `500` | Reservoir capacity (min 10). |
-| `reconcile-every` | `0` | Reservoir rebuild cadence (0 = disabled). |
-| `hybrid-exact-threshold` | `200` | Exact seed iterations before streaming when `Hybrid` is chosen. |
-| `histogram-bins` | `0` | Number of histogram bins (0 = disabled). |
-| `loop-simulate` | `true` | Use internal mock executor instead of real LVCompare. |
-| `loop-simulate-exit-code` | `1` | Exit code from simulated executor (1=differences, 0=no diff). |
-
-### Loop Outputs
-
-| Output | Meaning |
-|--------|---------|
-| `iterations` | Total iterations executed. |
-| `diffCount` | Number of diff iterations (exit code 1). |
-| `errorCount` | Unexpected error iterations. |
-| `averageSeconds` | Mean duration across non-skipped iterations. |
-| `totalSeconds` | Total elapsed wall clock (s). |
-| `p50` / `p90` / `p99` | Latency percentiles (seconds). Blank if insufficient samples. |
-| `quantileStrategy` | Effective quantile strategy used (alias normalized). |
-| `streamingWindowCount` | Active reservoir sample count (streaming modes). |
-| `loopResultPath` | Path to loop summary JSON (`loop-summary-v1` schema). |
-| `histogramPath` | Path to histogram JSON (if bins > 0, else blank). |
-
-Legacy single-run outputs (`diff`, `exitCode`, `compareDurationSeconds`, etc.) are still populated for compatibility (duration fields represent average loop latency when in loop mode).
-
-### Example: Simulated Loop With Streaming Reservoir
-
-```yaml
-jobs:
-  perf-probe:
-    runs-on: windows-latest
-    steps:
-      - uses: actions/checkout@v5
-      - name: Simulated latency loop
-        id: loop
-        uses: LabVIEW-Community-CI-CD/compare-vi-cli-action@v0.3.0
-        with:
-          base: Base.vi
-          head: Head.vi
-          loop-enabled: true
-          loop-max-iterations: 40
-          loop-interval-seconds: 0
-          quantile-strategy: StreamingReservoir
-          stream-capacity: 400
-          reconcile-every: 0
-          histogram-bins: 5
-          loop-simulate: true
-          loop-simulate-exit-code: 1
-      - name: Print percentiles
-        run: |
-          echo "p50=${{ steps.loop.outputs.p50 }} p90=${{ steps.loop.outputs.p90 }} p99=${{ steps.loop.outputs.p99 }}"
-```
-
-### Example: Hybrid Strategy With Reconciliation (Real CLI)
-
-```yaml
-jobs:
-  soak:
-    runs-on: [self-hosted, Windows]
-    steps:
-      - uses: actions/checkout@v5
-      - name: Hybrid percentile soak
-        id: loop
-        uses: LabVIEW-Community-CI-CD/compare-vi-cli-action@v0.3.0
-        with:
-          base: path/to/base.vi
-          head: path/to/head.vi
-          fail-on-diff: "false"            # keep iterating even if diffs occur
-          loop-enabled: true
-          loop-max-iterations: 2000
-          loop-interval-seconds: 0
-          quantile-strategy: Hybrid
-          hybrid-exact-threshold: 300
-          stream-capacity: 600
-          reconcile-every: 1800
-          histogram-bins: 6
-          loop-simulate: false             # real comparisons
-```
-
-Loop JSON summary schema (`loop-summary-v1`):
-
-```jsonc
-{
-  "iterations": 40,
-  "diffCount": 18,
-  "errorCount": 0,
-  "averageSeconds": 0.012,
-  "totalSeconds": 0.51,
-  "quantileStrategy": "StreamingReservoir",
-  "streamingWindowCount": 400,
-  "percentiles": { "p50": 0.010, "p90": 0.018, "p99": 0.025 },
-  "histogram": [ { "Index":0, "Start":0, "End":1, "Count":15 } ],
-  "schema": "loop-summary-v1",
-  "generatedUtc": "2025-10-01T12:34:56.789Z"
-}
-```
-
-Guidance:
-
-- Use `StreamingReservoir` for long / memory-sensitive runs; adjust `stream-capacity` if p99 unstable.
-- Use `Hybrid` when early exact percentiles are important before switching to bounded memory.
-- Add `reconcile-every` for multi-thousand iteration soaks to minimize drift in non-stationary distributions.
-- Keep `loop-simulate: true` in public CI if LabVIEW licenses aren't available; switch to `false` only on trusted self-hosted runners.
-
-Limitations:
-
-- Histogram is coarse (equal-width); future enhancements may provide adaptive or log-scale bucketing.
-- Percentiles are limited to p50/p90/p99 (custom list planned as a future enhancement).
-- Loop mode intentionally does not expose raw per-iteration records via outputs—consume the JSON file if needed.
-
-## Streaming quantile strategies (timing distribution)
-
-The compare loop module can estimate latency percentiles (p50/p90/p99) with bounded memory.
-
-Supported `-QuantileStrategy` values:
-
-| Strategy | Behavior | Memory | Notes |
-|----------|----------|--------|-------|
-| `Exact` | Collects all non-zero iteration durations then sorts at the end | O(N) | Most accurate; can grow large for long runs |
-| `StreamingReservoir` | Maintains a fixed-size ring buffer (reservoir) of recent samples | O(K) | Formerly named `StreamingP2`; provides rolling approximation |
-| `Hybrid` | Starts as `Exact` for seeding, then switches to `StreamingReservoir` after threshold | O(K)+O(T) initially | Good balance of early accuracy + steady-state bounded memory |
-
-Additional parameters:
-
-- `-StreamCapacity <int>`: Reservoir size (default 500, minimum 10). Larger improves tail stability but increases memory and sort cost per percentile snapshot.
-- `-HybridExactThreshold <int>`: Number of iterations to collect exact samples before switching in `Hybrid`.
-- `-ReconcileEvery <int>`: If > 0 and streaming active, periodically rebuilds the reservoir from all collected durations using a uniform stride subsample. Helps reduce drift in long, highly non-stationary runs. Set to a multiple of `StreamCapacity` (e.g. capacity 500, reconcile every 2000 iterations) for a balance of freshness vs. overhead.
-
-Result object fields (selected):
-
-- `Percentiles.p50|p90|p99`
-- `QuantileStrategy` (reports `StreamingReservoir` even if legacy alias `StreamingP2` was used)
-- `StreamingWindowCount` (current reservoir size; 0 when not streaming yet)
-
-Legacy alias:
-
-- `StreamingP2` is accepted but now maps to `StreamingReservoir` and emits a deprecation warning unless `-Quiet` is specified.
-
-Accuracy guidance:
-
-- For relatively stable latency distributions, `StreamCapacity=300-500` keeps p50/p90 within a few milliseconds (or a few percent relative error) versus exact in typical quick-iteration scenarios.
-- Increase capacity or enable reconciliation if p99 drifts (especially with bimodal or bursty latency patterns).
-- Hybrid mode is helpful when early, small-sample percentiles must be exact for initial diagnostics, but you still want bounded memory for a long soak run.
-
-Example hybrid run with reconciliation:
-
-```powershell
-Import-Module ./module/CompareLoop/CompareLoop.psm1 -Force
-$exec = { param($cli,$b,$h,$args) Start-Sleep -Milliseconds (5 + (Get-Random -Max 10)); 0 }
-$r = Invoke-IntegrationCompareLoop -Base Base.vi -Head Head.vi -MaxIterations 2000 -IntervalSeconds 0 `
-  -CompareExecutor $exec -SkipValidation -PassThroughPaths -BypassCliValidation -Quiet `
-  -QuantileStrategy Hybrid -HybridExactThreshold 400 -StreamCapacity 500 -ReconcileEvery 2000
-$r.Percentiles
-```
-
-If reconciliation is enabled it triggers at the configured cadence only after streaming becomes active (Hybrid post-threshold or StreamingReservoir immediately).
-
-Tuning checklist:
-
-1. Need absolute accuracy and short run? Use `Exact`.
-2. Long run, bounded memory? Use `StreamingReservoir` with suitable `StreamCapacity`.
-3. Want accurate early baseline then bounded? Use `Hybrid` + set `HybridExactThreshold`.
-4. Observing drift over hours? Introduce `-ReconcileEvery` at a multiple of capacity.
-5. Tail (p99) noisy? Increase capacity or reconciliation frequency modestly.
-
-Future considerations (open to contributions): true P² marker implementation, advanced tail percentiles beyond those requested (e.g., p99.99), weighted / stratified sampling strategies.
-
-Switches `-SkipValidation` and `-PassThroughPaths` exist solely for unit-style testing; omit them in real usage.
-
-## Advanced loop parameters (module & delegated script)
-
-The enhanced module (`CompareLoop`) exposes additional tuning/automation parameters beyond the basic scaffold:
-
-| Area | Parameters | Purpose |
-|------|------------|---------|
-| Event-driven triggering | `-UseEventDriven`, `-DebounceMilliseconds` | React to filesystem changes instead of fixed polling. Debounce consolidates bursts. |
-| Adaptive backoff | `-AdaptiveInterval`, `-MinIntervalSeconds`, `-MaxIntervalSeconds`, `-BackoffFactor` | Increase interval during quiet periods; reset on activity. |
-| Diff summaries | ``-DiffSummaryFormat (Text\|Markdown\|Html)``, `-DiffSummaryPath` | Generate a one-shot human-readable summary after at least one diff. |
-| Percentile metrics | (auto) `Percentiles.p50/p90/p99` | Exposed in result object when at least one non-skipped iteration ran. |
-| Histogram | (auto) `Histogram[]` | Coarse distribution of iteration durations (5 bins). |
-| Re-baseline helper | `-RebaselineAfterCleanCount`, `-ApplyRebaseline` | Detect sustained clean streaks and optionally treat head timestamp as new base reference. |
-| Dependency injection | `-CompareExecutor`, `-BypassCliValidation`, `-SkipValidation`, `-PassThroughPaths` | Unit / synthetic testing without real LVCompare. |
-| Diff control | `-FailOnDiff` | Early terminate loop when first diff occurs. |
-
-Example combining several advanced features:
-
-```powershell
-Invoke-IntegrationCompareLoop `
-  -Base 'C:\repos\main\ControlLoop.vi' `
-  -Head 'C:\repos\feature\ControlLoop.vi' `
-  -UseEventDriven -DebounceMilliseconds 400 `
-  -AdaptiveInterval -MinIntervalSeconds 1 -MaxIntervalSeconds 20 -BackoffFactor 1.8 `
-  -RebaselineAfterCleanCount 5 `
-  -DiffSummaryFormat Markdown -DiffSummaryPath .\diff-summary.md `
-  -LvCompareArgs '-nobdcosm -nofppos -noattr' `
-  -FailOnDiff
-```
-
-Result object excerpt:
-
-```powershell
-$r = Invoke-IntegrationCompareLoop -Base ... -Head ... -MaxIterations 3 -UseEventDriven -AdaptiveInterval -SkipIfUnchanged
-$r | Select-Object Iterations,DiffCount,ErrorCount,Mode,AverageSeconds,Percentiles,RebaselineApplied | Format-List
-```
-
-For full schema details see `docs/COMPARE_LOOP_MODULE.md`.
-
-## What's New (Snapshot v2, Dynamic Percentiles & Run Summary JSON)
-
-Recent enhancements introduce richer latency telemetry, flexible percentile analysis, and a final run summary export:
-
-- metrics-snapshot-v2: Snapshot lines now include `percentiles` (dynamic object), `requestedPercentiles` (echo of your list or defaults), and optional `histogram` when `-IncludeSnapshotHistogram` is used.
-- Custom percentile lists: Supply `-CustomPercentiles '50,75,90,97.5,99.9'` (comma/space separated). Values must be >0 and <100; duplicates removed; max 50 entries.
-- Fractional percentile labels: Dots become underscores (e.g. 97.5 -> `p97_5`, 99.9 -> `p99_9`).
-- Backward compatibility: Legacy `p50/p90/p99` still emitted at top-level in snapshots and result objects for existing consumers.
-- Inline snapshot enrichment: Percentiles & histogram computed per-emission without relying on final aggregation logic.
-- Final run summary JSON: Provide `-RunSummaryJsonPath run-summary.json` to emit one consolidated JSON document at loop completion (schema `compare-loop-run-summary-v1`) including aggregate metrics, dynamic percentiles, histogram, and rebaseline metadata.
-
-Quick example (custom list + histogram + snapshots every 5 iterations):
-
-```powershell
-$exec = { param($cli,$b,$h,$args) Start-Sleep -Milliseconds (5 + (Get-Random -Max 20)); 0 }
-Invoke-IntegrationCompareLoop -Base Base.vi -Head Head.vi -MaxIterations 25 -IntervalSeconds 0 -CompareExecutor $exec -SkipValidation -PassThroughPaths -BypassCliValidation -CustomPercentiles '50 75 90 97.5 99.9' -MetricsSnapshotEvery 5 -MetricsSnapshotPath snapshots.ndjson -IncludeSnapshotHistogram -Quiet
-Get-Content snapshots.ndjson | Select-Object -First 2
-```
-
-Parsing dynamic percentiles (robust to optional keys):
-
-```powershell
-$line = Get-Content snapshots.ndjson -First 1 | ConvertFrom-Json
-$pKeys = $line.percentiles | Get-Member -MemberType NoteProperty | Select-Object -ExpandProperty Name
-"Available percentile keys: $($pKeys -join ', ')"
-```
-
-See `docs/COMPARE_LOOP_MODULE.md` for full snapshot v2 schema.
-
-Run summary quick example:
-
-```powershell
-$exec = { param($cli,$b,$h,$args) Start-Sleep -Milliseconds (5 + (Get-Random -Max 20)); 0 }
-Invoke-IntegrationCompareLoop -Base Base.vi -Head Head.vi -MaxIterations 40 -IntervalSeconds 0 -CompareExecutor $exec -SkipValidation -PassThroughPaths -BypassCliValidation -CustomPercentiles '50,75,90,97.5,99.9' -HistogramBins 8 -RunSummaryJsonPath run-summary.json -Quiet
-$summary = Get-Content run-summary.json -Raw | ConvertFrom-Json
-"Final p90: $($summary.percentiles.p90) seconds (schema=$($summary.schema))"
-```
-
-Run summary schema excerpt:
-
-```jsonc
-{
-  "schema": "compare-loop-run-summary-v1",
-  "iterations": 40,
-  "diffCount": 0,
-  "averageSeconds": 0.018,
-  "percentiles": { "p50": 0.017, "p75": 0.020, "p90": 0.024, "p97_5": 0.025, "p99_9": 0.028 }
-}
-```
-
-Dispatcher JSON outputs & customization
-
-The local dispatcher (`Invoke-PesterTests.ps1`) emits:
-
-- `pester-summary.json` (or custom name via `-JsonSummaryPath`) with aggregate metrics
-- `pester-failures.json` only when there are failing tests (array of failed test objects)
-
-`pester-summary.json` schema:
-
-```jsonc
-{
-  "total": 0,
-  "passed": 0,
-  "failed": 0,
-  "errors": 0,
-  "skipped": 0,
-  "duration_s": 0.00,
-  "timestamp": "2025-01-01T00:00:00.0000000Z",
-  "pesterVersion": "5.x.x",
-  "includeIntegration": false
-}
-```
-
-Change the JSON filename (while keeping location) via:
-
-```powershell
-./Invoke-PesterTests.ps1 -JsonSummaryPath custom-summary.json
-```
-
-Failure diagnostics
-
-When failures occur the dispatcher prints:
-
-1. A table-style list of failing tests (name + duration)
-2. Error messages per failed test
-3. Writes `pester-failures.json` for downstream tooling
-
-Nightly diagnostics
-
-The workflow `pester-diagnostics-nightly.yml` sets `ENABLE_DIAGNOSTIC_FAIL=1`, triggering a synthetic failing test (skipped otherwise). This validates the failure reporting path without marking the workflow failed (uses `continue-on-error`). Artifacts include both JSON files for inspection.
-
-Dispatcher artifact manifest
-
-The dispatcher emits a `pester-artifacts.json` manifest listing all generated artifacts with their types and schema versions:
-
-| Artifact | Type | Schema Version | Always Present |
-|----------|------|----------------|----------------|
-| `pester-results.xml` | `nunitXml` | N/A | Yes |
-| `pester-summary.txt` | `textSummary` | N/A | Yes |
-| `pester-summary.json` | `jsonSummary` | `1.0.0` | Yes |
-| `pester-failures.json` | `jsonFailures` | `1.0.0` | Only on failures (or with `-EmitFailuresJsonAlways`) |
-
-Example manifest:
-
-```jsonc
-{
-  "manifestVersion": "1.0.0",
-  "generatedAt": "2025-01-01T00:00:00.0000000Z",
-  "artifacts": [
-    { "file": "pester-results.xml", "type": "nunitXml" },
-    { "file": "pester-summary.txt", "type": "textSummary" },
-    { "file": "pester-summary.json", "type": "jsonSummary", "schemaVersion": "1.0.0" },
-    { "file": "pester-failures.json", "type": "jsonFailures", "schemaVersion": "1.0.0" }
-  ]
-}
-```
-
-### -EmitFailuresJsonAlways flag
-
-By default, `pester-failures.json` is only created when tests fail. To always emit it (as an empty array `[]` on success), use:
-
-```powershell
-./Invoke-PesterTests.ps1 -EmitFailuresJsonAlways
-```
-
-**Rationale:** Downstream tools can unconditionally parse `pester-failures.json` without checking for its existence, simplifying CI/CD pipelines that consume failure data.
-
-Schema version policy
-
-All JSON artifacts include schema versions for forward compatibility:
-
-- **`summaryVersion`**: Schema for `pester-summary.json`
-- **`failuresVersion`**: Schema for `pester-failures.json`
-- **`manifestVersion`**: Schema for `pester-artifacts.json`
-
-Current versions: **1.0.0** for all schemas.
-
-**Versioning rules:**
-
-- **Patch bump** (e.g., 1.0.0 → 1.0.1): Additive fields only; existing parsers unaffected
-- **Minor bump** (e.g., 1.0.0 → 1.1.0): Additive monitored fields that tools should start tracking
-- **Major bump** (e.g., 1.0.0 → 2.0.0): Breaking changes (field removal, rename, type change)
-
-Consumers should check `schemaVersion` and handle unknown major versions gracefully.
-
 ## For Developers
 
-### Testing
+## Fixture Validation Delta (Trending)
 
-This repository includes a comprehensive Pester test suite. To run tests:
+The repository ships a helper script `tools/Diff-FixtureValidationJson.ps1` for **comparing two JSON snapshots** produced by `tools/Validate-Fixtures.ps1 -Json`.
+
+Use cases:
+
+- Detect introduction of new structural issue types (e.g., a first duplicate entry) between two commits.
+- Generate a compact delta artifact for observability dashboards.
+- Gate CI on unexpected structural regressions while allowing benign size/hash churn.
+
+### Invocation
 
 ```powershell
-# Unit tests only (fast, no LabVIEW required)
-./Invoke-PesterTests.ps1
-
-# Integration tests (requires LabVIEW and LVCompare at canonical path)
-$env:LV_BASE_VI='Base.vi'
-$env:LV_HEAD_VI='Head.vi'
-./Invoke-PesterTests.ps1 -IncludeIntegration true
+pwsh -File tools/Validate-Fixtures.ps1 -Json > validate-current.json
+# (Obtain or restore a previous snapshot as validate-prev.json)
+pwsh -File tools/Diff-FixtureValidationJson.ps1 -Baseline validate-prev.json -Current validate-current.json > delta.json
 ```
 
-See [`CONTRIBUTING.md`](./CONTRIBUTING.md) for contribution guidelines and development workflow.
+Fail the build if a new structural issue category appears:
 
-### Building and Generating Documentation
-
-The action documentation is auto-generated from `action.yml`:
-
-```bash
-npm install
-npm run build
-npm run generate:outputs
+```powershell
+pwsh -File tools/Diff-FixtureValidationJson.ps1 -Baseline validate-prev.json -Current validate-current.json -FailOnNewStructuralIssue
+if ($LASTEXITCODE -eq 3) { throw 'New structural fixture issues detected.' }
 ```
 
-This regenerates [`docs/action-outputs.md`](./docs/action-outputs.md) with all inputs and outputs.
+### Exit Codes (Delta Script)
 
-### Release Process
+| Code | Meaning |
+|------|---------|
+| 0 | Success, no disallowed new structural issue categories |
+| 2 | Input / parse error (missing files or invalid JSON) |
+| 3 | New structural issue category detected and `-FailOnNewStructuralIssue` specified |
 
-1. Update [`CHANGELOG.md`](./CHANGELOG.md) with changes for the new version
-2. Create and push a git tag (e.g., `v0.3.0`)
-3. The release workflow automatically creates a GitHub release with changelog content
+Structural issue categories monitored: `missing`, `untracked`, `hashMismatch`, `manifestError`, `duplicate`, `schema` (excludes `tooSmall`).
 
-Tags follow semantic versioning. See [`.github/workflows/release.yml`](./.github/workflows/release.yml) for release automation details.
+### Output JSON (Schemas `fixture-validation-delta-v1` / `fixture-validation-delta-v2`)
+
+Key fields (see schema `docs/schemas/fixture-validation-delta-v1.schema.json`):
+
+Two schema versions are supported:
+
+- `fixture-validation-delta-v1` (default): Original unbounded integer deltas (only non-zero keys emitted in `deltaCounts`).
+- `fixture-validation-delta-v2` (opt-in): Adds **bounded** numeric constraints (each delta in `deltaCounts` and `changes[].delta` must be between `-1000` and `1000`). This guards against pathological explosions in issue growth and surfaces out-of-range spikes early via schema-lite.
+
+Opt-in to v2 emission by setting environment variable `DELTA_SCHEMA_VERSION=v2` or passing `-UseV2Schema` to `tools/Diff-FixtureValidationJson.ps1`.
+
+Example (v1 style):
+
+```jsonc
+{
+  "schema": "fixture-validation-delta-v1",
+  "baselinePath": "validate-prev.json",
+  "currentPath": "validate-current.json",
+  "baselineOk": true,
+  "currentOk": false,
+  "deltaCounts": { "duplicate": 1 },
+  "changes": [ { "category": "duplicate", "baseline": 0, "current": 1, "delta": 1 } ],
+  "newStructuralIssues": [ { "category": "duplicate", "baseline": 0, "current": 1, "delta": 1 } ],
+  "failOnNewStructuralIssue": true,
+  "willFail": true
+}
+```
+
+Example (v2 style identical structure – bounded values enforced by schema):
+
+```jsonc
+{
+  "schema": "fixture-validation-delta-v2",
+  "baselinePath": "validate-prev.json",
+  "currentPath": "validate-current.json",
+  "baselineOk": true,
+  "currentOk": true,
+  "deltaCounts": { "missing": 2 },
+  "changes": [ { "category": "missing", "baseline": 0, "current": 2, "delta": 2 } ],
+  "newStructuralIssues": [ { "category": "missing", "baseline": 0, "current": 2, "delta": 2 } ],
+  "failOnNewStructuralIssue": false,
+  "willFail": false
+}
+```
+
+### Workflow Example (Delta Comparison)
+
+```yaml
+  - name: Validate fixtures (current)
+    shell: pwsh
+    run: pwsh -File tools/Validate-Fixtures.ps1 -Json -DisableToken > validate-current.json
+
+  - name: Restore previous snapshot (cache)
+    uses: actions/cache/restore@v4
+    with:
+      path: validate-prev.json
+      key: fixture-validation-${{ github.sha }}
+      restore-keys: |
+        fixture-validation-
+
+  - name: Diff against previous snapshot
+    if: exists('validate-prev.json')
+    shell: pwsh
+    run: |
+      pwsh -File tools/Diff-FixtureValidationJson.ps1 -Baseline validate-prev.json -Current validate-current.json -FailOnNewStructuralIssue > delta.json
+      if ($LASTEXITCODE -eq 3) { Write-Host 'New structural issues introduced.'; exit 3 }
+
+  - name: Save current snapshot for future runs
+    uses: actions/cache/save@v4
+    with:
+      path: validate-current.json
+      key: fixture-validation-${{ github.sha }}
+
+  - name: Upload delta artifact
+    if: exists('delta.json')
+    uses: actions/upload-artifact@v4
+    with:
+      name: fixture-validation-delta
+      path: delta.json
+```
+
+This pattern allows longitudinal tracking without hard-failing when no prior snapshot exists (first run).
+
+### Fixture Validation Reporting Enhancements
+
+The validate workflow now supports:
+
+- `FAIL_ON_NEW_STRUCTURAL` (env) – set to `true` to fail the job when a new structural issue category first appears (duplicate, hashMismatch, schema, etc.).
+- `SUMMARY_VERBOSE` (env) – set to `true` to expand the job summary with detailed change lists and per‑category structural deltas. (Can also be toggled via manual workflow dispatch input `summary-verbose`.)
+- `DELTA_FORCE_V2` (env) – when set to `true`, the delta script unconditionally emits `fixture-validation-delta-v2` (bounded deltas) without requiring the `-UseV2Schema` switch. Useful once consumers have migrated and v1 is considered deprecated.
+- Recursive schema-lite validation – `tools/Invoke-JsonSchemaLite.ps1` performs a lightweight recursive check of required fields, property types, array item types, `const`, `additionalProperties=false`, plus support for `enum`, `minimum`, and `maximum` (integers / numbers). This is intentionally minimal (no refs, no oneOf/anyOf) to stay dependency‑free.
+
+Example snippet for enabling verbose summary & strict failure:
+
+```yaml
+env:
+  FAIL_ON_NEW_STRUCTURAL: 'true'
+  SUMMARY_VERBOSE: 'true'
+```
+
+### Enum, Range, additionalProperties, and Date-Time Validation (Schema-Lite)
+
+When adding to a JSON schema consumed by `Invoke-JsonSchemaLite.ps1`, you can specify:
+
+```jsonc
+{
+  "type": "object",
+  "properties": {
+    "status": { "type": "string", "enum": ["ok", "warn", "error"] },
+    "retryCount": { "type": "integer", "minimum": 0, "maximum": 5 }
+  },
+  "required": ["status"]
+}
+```
+
+You can now also use **object-form `additionalProperties`** to define a schema for arbitrary extra keys (recursively validated, including nested `enum`, `minimum`, `maximum`). Example:
+
+```jsonc
+{
+  "type": "object",
+  "properties": { "fixed": { "type": "string" } },
+  "additionalProperties": { "type": "integer", "minimum": 0, "maximum": 10 }
+}
+```
+
+Date-time format (`"format": "date-time"`) receives a light validation pass: it accepts either a native PowerShell `DateTime` (after JSON round-trip) or a basic ISO 8601 / RFC3339-style string matching `YYYY-MM-DDTHH:MM:SS`. (Timezone / fractional seconds currently not strictly validated—future extensions may tighten this.)
+
+Violations surface as `[schema-lite] error:` lines and produce exit code `3`.
+
+### Summary Artifact Upload
+
+To retain the rendered summary as an artifact for external dashboards, append:
+
+```yaml
+  - name: Write fixture summary to file
+    if: always()
+    shell: pwsh
+    run: |
+      pwsh -File tools/Write-FixtureValidationSummary.ps1 -ValidationJson fixture-validation.json -DeltaJson fixture-validation-delta.json -SummaryPath fixture-summary.md
+
+  - name: Upload fixture summary
+    if: always() && hashFiles('fixture-summary.md') != ''
+    uses: actions/upload-artifact@v4
+    with:
+      name: fixture-validation-summary
+      path: fixture-summary.md
+```
+
+Set `SUMMARY_VERBOSE: 'true'` (or run the `Validate` workflow manually with the input `summary-verbose: true`) to enrich `fixture-summary.md` with detailed sections.
+
+## Fixture Drift Composite Action (Validation + Artifacts + PR Comment)
+
+This repository includes a local composite action to validate fixture integrity, orchestrate drift artifacts, upload them, write a job summary, and post a sticky PR comment with direct artifact download links.
+
+- Action path: `./.github/actions/fixture-drift`
+- Intended usage: in a Windows runner job on pull requests and manual dispatch.
+- Use alongside branch protection to mark the job “Fixture Drift” as a required check.
+
+Example workflow usage:
+
+```yaml
+name: Fixture Drift Validation
+on:
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  validate:
+    name: Fixture Drift
+    runs-on: windows-latest
+    permissions:
+      actions: read
+      contents: read
+      pull-requests: write
+    steps:
+      - uses: actions/checkout@v4
+      - name: Fixture Drift Orchestrator
+        uses: ./.github/actions/fixture-drift
+        with:
+          render-report: 'true'            # Generate compare-report.html when LVCompare is present
+          comment-on-fail: 'true'          # Sticky PR comment on failure (skips forked PRs)
+          upload-artifacts: 'true'         # Upload results (see only-upload-on-failure)
+          only-upload-on-failure: 'true'   # Upload only when status != ok
+          artifact-name: fixture-drift
+          retention-days: '7'
+```
+
+Outputs (from the composite):
+
+- `status` – `ok | drift | fail-structural | unknown`
+- `summary_path` – absolute path to the `drift-summary.json` if available
+
+To enforce as a required check:
+
+1. Go to repository Settings → Branches → Branch protection rules.
+2. Edit or create the rule for your main branch.
+3. Add “Fixture Drift” to Required status checks.
+
+Notes:
+
+- LVCompare must exist at the canonical path: `C:\Program Files\National Instruments\Shared\LabVIEW Compare\LVCompare.exe`.
+- Direct artifact download URLs use the GitHub REST API and require `actions: read` permission.
+- PR comments are skipped for forked PRs (no write permission).
+
+### Make it a Required Check
+
+To enforce Fixture Drift as a branch protection rule:
+
+1. Open repository Settings → Branches → Branch protection rules.
+2. Edit the rule for your main branch.
+3. Enable “Require status checks to pass before merging”.
+4. Add “Fixture Drift” to Required status checks.
+
+Optional badge (replace workflow path if customized):
+
+`[![Fixture Drift](https://github.com/LabVIEW-Community-CI-CD/compare-vi-cli-action/actions/workflows/fixture-drift.yml/badge.svg)](.github/workflows/fixture-drift.yml)`
+
+
+For information on testing, building, documentation generation, and the release process, see the **[Developer Guide](./docs/DEVELOPER_GUIDE.md)**.
+
+### Quick Links
+
+- **Testing**: [Developer Guide - Testing](./docs/DEVELOPER_GUIDE.md#testing)
+- **Building**: [Developer Guide - Building](./docs/DEVELOPER_GUIDE.md#building-and-documentation-generation)
+- **Contributing**: [CONTRIBUTING.md](./CONTRIBUTING.md)
+
+### Test Dispatcher JSON Summary
+
+The test dispatcher emits a machine-readable JSON summary (schema v1.7.1) for integration with tooling and metrics. For complete documentation on the schema, optional blocks, and consumption guidance, see the [Developer Guide - Test Dispatcher Architecture](./docs/DEVELOPER_GUIDE.md#test-dispatcher-architecture).
+
+The repository ships a PowerShell test dispatcher (`Invoke-PesterTests.ps1`) that emits
+a machine‑readable JSON summary (`pester-summary.json`) for every run. This enables
+downstream tooling (dashboards, PR annotations, quality gates) to consume stable fields
+without scraping console text.
+
+Schema files:
+
+- Baseline (core fields) [`docs/schemas/pester-summary-v1_1.schema.json`](./docs/schemas/pester-summary-v1_1.schema.json)
+- Current (adds optional context blocks) [`docs/schemas/pester-summary-v1_2.schema.json`](./docs/schemas/pester-summary-v1_2.schema.json)
+- Latest (adds optional discovery block) [`docs/schemas/pester-summary-v1_5.schema.json`](./docs/schemas/pester-summary-v1_5.schema.json)
+
+Validation tests:
+
+- Baseline absence of optional blocks: [`tests/PesterSummary.Schema.Tests.ps1`](./tests/PesterSummary.Schema.Tests.ps1)
+- Context emission (when opt-in flag used): [`tests/PesterSummary.Context.Tests.ps1`](./tests/PesterSummary.Context.Tests.ps1)
+
+## Troubleshooting
+
+For common issues including path resolution problems, exit code interpretation, performance tuning, and test environment setup, see the **[Troubleshooting Guide](./docs/TROUBLESHOOTING.md)**.
+
+## Documentation
+
+- **[Usage Guide](./docs/USAGE_GUIDE.md)** - Advanced configuration, lvCompareArgs recipes, path resolution
+- **[Loop Mode Guide](./docs/COMPARE_LOOP_MODULE.md)** - Experimental loop mode for performance testing
+- **[Developer Guide](./docs/DEVELOPER_GUIDE.md)** - Testing, building, and release process
+- **[Troubleshooting Guide](./docs/TROUBLESHOOTING.md)** - Common issues and solutions
+- **[Integration Tests](./docs/INTEGRATION_TESTS.md)** - Running tests with real LabVIEW
+- **[Testing Patterns](./docs/TESTING_PATTERNS.md)** - Advanced test design patterns
+- **[E2E Testing Guide](./docs/E2E_TESTING_GUIDE.md)** - End-to-end testing strategies
+- **[Self-Hosted CI Setup](./docs/SELFHOSTED_CI_SETUP.md)** - Setting up self-hosted runners
 
 ## License
 
-This project is licensed under the BSD 3-Clause License. See the [`LICENSE`](./LICENSE) file for full license text.
+This project is licensed under the MIT License - see the [LICENSE](./LICENSE) file for details.
 
 ## Support and Contributing
 
-- **Issues**: Report bugs or request features via [GitHub Issues](https://github.com/LabVIEW-Community-CI-CD/compare-vi-cli-action/issues)
-- **Discussions**: Ask questions or share ideas in [GitHub Discussions](https://github.com/LabVIEW-Community-CI-CD/compare-vi-cli-action/discussions)
-- **Contributing**: See [`CONTRIBUTING.md`](./CONTRIBUTING.md) for guidelines
-- **Security**: Report security vulnerabilities via [`SECURITY.md`](./SECURITY.md)
+For bug reports and feature requests, please use [GitHub Issues](https://github.com/LabVIEW-Community-CI-CD/compare-vi-cli-action/issues).
+
+For contributions, please read [CONTRIBUTING.md](./CONTRIBUTING.md) for guidelines and development workflow.

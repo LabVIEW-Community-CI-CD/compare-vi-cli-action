@@ -98,8 +98,8 @@ Workflow snippet (single-run mode):
 		id: compare
 		uses: LabVIEW-Community-CI-CD/compare-vi-cli-action@vX.Y.Z
 		with:
-			base: Base.vi
-			head: Head.vi
+			base: VI1.vi
+			head: VI2.vi
 			fail-on-diff: false
 	- name: Capture raw CLI output
 		if: always()
@@ -148,7 +148,7 @@ $exec = {
 	$captures.Add([pscustomobject]@{ ts=[DateTime]::UtcNow; exit=$p.ExitCode; ms=$sw.ElapsedMilliseconds; stderr=$stderr; stdoutLen=$stdout.Length }) | Out-Null
 	return $p.ExitCode
 }
-$r = Invoke-IntegrationCompareLoop -Base Base.vi -Head Head.vi -MaxIterations 5 -IntervalSeconds 0 `
+$r = Invoke-IntegrationCompareLoop -Base VI1.vi -Head VI2.vi -MaxIterations 5 -IntervalSeconds 0 `
 	-CompareExecutor $exec -Quiet -PassThroughPaths -BypassCliValidation -SkipValidation
 $captures | Format-Table -AutoSize
 ```
@@ -162,9 +162,9 @@ Guidelines:
 # Unit tests
 ./Invoke-PesterTests.ps1
 # All tests (integration)
-$env:LV_BASE_VI='Base.vi'; $env:LV_HEAD_VI='Head.vi'; ./Invoke-PesterTests.ps1 -IncludeIntegration true
+$env:LV_BASE_VI='VI1.vi'; $env:LV_HEAD_VI='VI2.vi'; ./Invoke-PesterTests.ps1 -IncludeIntegration true
 # Simulated autonomous loop
-$env:LV_BASE_VI='Base.vi'; $env:LV_HEAD_VI='Head.vi'; $env:LOOP_SIMULATE='1'; pwsh -File scripts/Run-AutonomousIntegrationLoop.ps1
+$env:LV_BASE_VI='VI1.vi'; $env:LV_HEAD_VI='VI2.vi'; $env:LOOP_SIMULATE='1'; pwsh -File scripts/Run-AutonomousIntegrationLoop.ps1
 ```
 
 Questions / gaps? Open an issue or request deeper detail (e.g., percentile internals or snapshot schemas) and update this file with any newly codified invariants.

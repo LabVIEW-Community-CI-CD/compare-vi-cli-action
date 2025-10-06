@@ -4,18 +4,46 @@ on:
   workflow_dispatch:
   push:
     branches: [ main ]
-  pull_request:
-    branches: [ main ]
+    paths-ignore:
+      - '**/*.md'
+      - 'docs/**'
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
 
 jobs:
   publish:
     runs-on: [self-hosted, Windows, X64]
+    timeout-minutes: 45
     env:
       LV_BASE_VI: ${{ vars.LV_BASE_VI }}
       LV_HEAD_VI: ${{ vars.LV_HEAD_VI }}
       LVCOMPARE_PATH: ${{ vars.LVCOMPARE_PATH }}
+      UNBLOCK_GUARD: '1'
     steps:
       - uses: actions/checkout@v5
+
+      - name: Export fixture env defaults (if unset)
+        shell: pwsh
+        run: |
+          if ([string]::IsNullOrWhiteSpace($env:LV_BASE_VI)) {
+            "LV_BASE_VI=$((Join-Path $env:GITHUB_WORKSPACE 'VI1.vi'))" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+          }
+          if ([string]::IsNullOrWhiteSpace($env:LV_HEAD_VI)) {
+            "LV_HEAD_VI=$((Join-Path $env:GITHUB_WORKSPACE 'VI2.vi'))" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+          }
+
+      - name: Preflight
+        shell: pwsh
+        run: |
+          $cli = 'C:\\Program Files\\National Instruments\\Shared\\LabVIEW Compare\\LVCompare.exe'
+          if (-not (Test-Path -LiteralPath $cli)) {
+            Write-Host "::error::LVCompare.exe not found at canonical path: $cli"; exit 1
+          }
+          $lv = Get-Process -Name 'LabVIEW' -ErrorAction SilentlyContinue
+          if ($lv) { Write-Host "::error::LabVIEW.exe is running (PID(s): $($lv.Id -join ','))"; exit 1 }
+          Write-Host 'Preflight OK: LVCompare present; LabVIEW not running.'
 
       - name: Resolve VI inputs (fallback to repo root files)
         id: res
@@ -24,14 +52,14 @@ jobs:
           $base = $env:LV_BASE_VI
           $head = $env:LV_HEAD_VI
           
-          # Fallback to repo root Base.vi and Head.vi for publish validation
+          # Fallback to repo root VI1.vi and VI2.vi for publish validation
           if ([string]::IsNullOrWhiteSpace($base) -or -not (Test-Path -LiteralPath $base)) {
-            $base = Join-Path $env:GITHUB_WORKSPACE 'Base.vi'
-            Write-Host "Using fallback Base.vi from repo root: $base"
+            $base = Join-Path $env:GITHUB_WORKSPACE 'VI1.vi'
+            Write-Host "Using fallback VI1.vi from repo root: $base"
           }
           if ([string]::IsNullOrWhiteSpace($head) -or -not (Test-Path -LiteralPath $head)) {
-            $head = Join-Path $env:GITHUB_WORKSPACE 'Head.vi'
-            Write-Host "Using fallback Head.vi from repo root: $head"
+            $head = Join-Path $env:GITHUB_WORKSPACE 'VI2.vi'
+            Write-Host "Using fallback VI2.vi from repo root: $head"
           }
           
           # Validate files exist
@@ -108,3 +136,35 @@ jobs:
           Write-Host "exitCode=${{ steps.compare.outputs.exitCode }}"
           Write-Host "compareDurationSeconds=${{ steps.compare.outputs.compareDurationSeconds }}"
           Write-Host "compareDurationNanoseconds=${{ steps.compare.outputs.compareDurationNanoseconds }}"
+
+      - name: Runner Unblock Guard (process/jobs snapshot)
+        if: always()
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $snap = [ordered]@{}
+          try {
+            $procs = @(Get-Process -ErrorAction SilentlyContinue | Where-Object { $_.ProcessName -in @('conhost','pwsh','LabVIEW','LVCompare') } | Select-Object ProcessName,Id,StartTime)
+            $jobs  = @(Get-Job -ErrorAction SilentlyContinue | Select-Object Id,Name,State,HasMoreData)
+            $snap.processes = $procs
+            $snap.jobs = $jobs
+            $outDir = Get-Location
+            $path = Join-Path $outDir 'runner-unblock-snapshot.json'
+            $snap | ConvertTo-Json -Depth 5 | Out-File -FilePath $path -Encoding utf8
+
+            $cleanupNote = ''
+            if ($env:UNBLOCK_GUARD -eq '1') {
+              $stoppedLV = 0; $stoppedLVC = 0; $stoppedJobs = 0
+              try { Get-Process -Name 'LabVIEW' -ErrorAction SilentlyContinue | ForEach-Object { try { Stop-Process -Id $_.Id -ErrorAction SilentlyContinue; $stoppedLV++ } catch {} } } catch {}
+              try { Get-Process -Name 'LVCompare' -ErrorAction SilentlyContinue | ForEach-Object { try { Stop-Process -Id $_.Id -ErrorAction SilentlyContinue; $stoppedLVC++ } catch {} } } catch {}
+              try { $gj = @(Get-Job -ErrorAction SilentlyContinue); foreach ($j in $gj) { try { Stop-Job -Job $j -ErrorAction SilentlyContinue; Remove-Job -Job $j -Force -ErrorAction SilentlyContinue; $stoppedJobs++ } catch {} } } catch {}
+              $cleanupNote = ('Cleanup: LabVIEW={0}, LVCompare={1}, Jobs={2}' -f $stoppedLV,$stoppedLVC,$stoppedJobs)
+            }
+            $lines = @('### Runner Unblock Guard','')
+            $lines += ('- Process count: {0}' -f $procs.Count)
+            $lines += ('- Pester job count: {0}' -f $jobs.Count)
+            $lines += ''
+            $lines += ('Snapshot: {0}' -f $path)
+            if ($cleanupNote) { $lines += ('- ' + $cleanupNote) }
+            $lines -join "`n" | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8
+          } catch { Write-Host "::warning::Unblock guard failed: $_" }

@@ -1,0 +1,49 @@
+name: "Runner Unblock Guard"
+description: "Snapshot key processes and jobs; optionally cleanup and append summary"
+inputs:
+  snapshot-path:
+    description: "Path to write the snapshot JSON"
+    required: false
+    default: "tests/results/runner-unblock-snapshot.json"
+  cleanup:
+    description: "Stop LabVIEW/LVCompare and Pester jobs"
+    required: false
+    default: "false"
+  process-names:
+    description: "Comma-separated process names to snapshot/optionally stop"
+    required: false
+    default: "conhost,pwsh,LabVIEW,LVCompare"
+runs:
+  using: "composite"
+  steps:
+    - name: Snapshot and optional cleanup
+      shell: pwsh
+      run: |
+        $ErrorActionPreference = 'Stop'
+        $snapPath = '${{ inputs.snapshot-path }}'
+        $procNames = '${{ inputs.process-names }}'.Split(',') | ForEach-Object { $_.Trim() } | Where-Object { $_ }
+        $doCleanup = ('${{ inputs.cleanup }}' -eq 'true') -or ($env:UNBLOCK_GUARD -eq '1')
+        $procs = @(Get-Process -ErrorAction SilentlyContinue | Where-Object { $_.ProcessName -in $procNames } | Select-Object ProcessName,Id,StartTime)
+        $jobs  = @(Get-Job -ErrorAction SilentlyContinue | Select-Object Id,Name,State,HasMoreData)
+        $snap = [ordered]@{ processes=$procs; jobs=$jobs; cleanupPerformed=$false }
+        $dir = Split-Path -Parent $snapPath
+        if ($dir -and -not (Test-Path -LiteralPath $dir)) { New-Item -ItemType Directory -Force -Path $dir | Out-Null }
+        $snap | ConvertTo-Json -Depth 5 | Out-File -FilePath $snapPath -Encoding utf8
+        $cleanupNote = ''
+        if ($doCleanup) {
+          $stoppedLV = 0; $stoppedLVC = 0; $stoppedJobs = 0
+          try { Get-Process -Name 'LabVIEW' -ErrorAction SilentlyContinue | ForEach-Object { try { Stop-Process -Id $_.Id -Force -ErrorAction SilentlyContinue; $stoppedLV++ } catch {} } } catch {}
+          try { Get-Process -Name 'LVCompare' -ErrorAction SilentlyContinue | ForEach-Object { try { Stop-Process -Id $_.Id -Force -ErrorAction SilentlyContinue; $stoppedLVC++ } catch {} } } catch {}
+          try { $gj = @(Get-Job -ErrorAction SilentlyContinue); foreach ($j in $gj) { try { Stop-Job -Job $j -ErrorAction SilentlyContinue; Remove-Job -Job $j -Force -ErrorAction SilentlyContinue; $stoppedJobs++ } catch {} } } catch {}
+          $snap.cleanupPerformed = $true
+          $snap.cleanup = [ordered]@{ LabVIEW=$stoppedLV; LVCompare=$stoppedLVC; Jobs=$stoppedJobs }
+          $snap | ConvertTo-Json -Depth 6 | Out-File -FilePath $snapPath -Encoding utf8
+          $cleanupNote = ('Cleanup: LabVIEW={0}, LVCompare={1}, Jobs={2}' -f $stoppedLV,$stoppedLVC,$stoppedJobs)
+        }
+        $lines = @('### Runner Unblock Guard','')
+        $lines += ('- Process count: {0}' -f $procs.Count)
+        $lines += ('- Pester job count: {0}' -f $jobs.Count)
+        $lines += ''
+        $lines += ('Snapshot: {0}' -f $snapPath)
+        if ($cleanupNote) { $lines += ('- ' + $cleanupNote) }
+        $lines -join "`n" | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8

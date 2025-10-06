@@ -1,0 +1,83 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://labview-community-ci-cd.github.io/schemas/session-index-v1.schema.json",
+  "title": "Session Index v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema", "schemaVersion", "generatedAtUtc", "resultsDir", "files"],
+  "properties": {
+    "schema": { "const": "session-index/v1" },
+    "schemaVersion": { "type": "string", "pattern": "^\\d+\\.\\d+\\.\\d+$" },
+    "generatedAtUtc": { "type": "string", "format": "date-time" },
+    "resultsDir": { "type": "string" },
+    "includeIntegration": { "type": "boolean" },
+    "status": { "type": "string", "enum": ["ok", "fail"] },
+    "files": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "pesterResultsXml": { "type": "string" },
+        "pesterSummaryTxt": { "type": "string" },
+        "pesterSummaryJson": { "type": "string" },
+        "pesterFailuresJson": { "type": "string" },
+        "artifactManifestJson": { "type": "string" },
+        "artifactTrailJson": { "type": "string" },
+        "leakReportJson": { "type": "string" },
+        "compareReportHtml": { "type": "string" },
+        "resultsIndexHtml": { "type": "string" }
+      }
+    },
+    "summary": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "total": { "type": "integer", "minimum": 0 },
+        "passed": { "type": "integer", "minimum": 0 },
+        "failed": { "type": "integer", "minimum": 0 },
+        "errors": { "type": "integer", "minimum": 0 },
+        "skipped": { "type": "integer", "minimum": 0 },
+        "duration_s": { "type": "number", "minimum": 0 },
+        "meanTest_ms": { "type": ["number", "null"], "minimum": 0 },
+        "p95Test_ms": { "type": ["number", "null"], "minimum": 0 },
+        "maxTest_ms": { "type": ["number", "null"], "minimum": 0 },
+        "schemaVersion": { "type": "string" }
+      }
+    },
+    "drift": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "latestRunDir": { "type": "string" },
+        "latestSummary": { "type": ["string", "null"] },
+        "status": { "type": ["string", "null"] }
+      }
+    },
+    "runContext": {
+      "type": "object",
+      "additionalProperties": true,
+      "properties": {
+        "repository": { "type": ["string", "null"] },
+        "ref": { "type": ["string", "null"] },
+        "commitSha": { "type": ["string", "null"] },
+        "workflow": { "type": ["string", "null"] },
+        "runId": { "type": ["string", "null"] },
+        "runAttempt": { "type": ["string", "null"] },
+        "job": { "type": ["string", "null"] },
+        "runner": { "type": ["string", "null"] },
+        "runnerOS": { "type": ["string", "null"] }
+      }
+    },
+    "urls": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "repository": { "type": "string", "format": "uri" },
+        "run": { "type": ["string", "null"], "format": "uri" },
+        "commit": { "type": ["string", "null"], "format": "uri" },
+        "pullRequest": { "type": ["string", "null"], "format": "uri" }
+      }
+    },
+    "stepSummary": { "type": "string" }
+  }
+}
+

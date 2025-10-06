@@ -126,6 +126,9 @@ outputs:
   histogramPath:
     description: "Loop mode: path to histogram JSON (if bins > 0)"
     value: ${{ steps.run_compare.outputs.histogramPath }}
+  shortCircuitedIdentical:
+    description: "true when base and head resolved to the same absolute path and LVCompare invocation was short-circuited"
+    value: ${{ steps.run_compare.outputs.shortCircuitedIdentical }}
 
 runs:
   using: "composite"
@@ -136,7 +139,7 @@ runs:
       run: |
         $ErrorActionPreference = 'Stop'
         $ActionPath = '${{ github.action_path }}'
-        . (Join-Path $ActionPath 'scripts' 'CompareVI.ps1')
+          Import-Module (Join-Path $ActionPath 'scripts' 'CompareVI.psm1') -Force
 
         $loopEnabled = [System.Convert]::ToBoolean('${{ inputs.loop-enabled }}')
         if ($loopEnabled) {
@@ -179,6 +182,7 @@ runs:
           "command=(loop-mode)" >> $env:GITHUB_OUTPUT
           "compareDurationSeconds=$($loopRes.AverageSeconds)" >> $env:GITHUB_OUTPUT
           "compareDurationNanoseconds=0" >> $env:GITHUB_OUTPUT
+          "shortCircuitedIdentical=false" >> $env:GITHUB_OUTPUT
 
           # Loop specific outputs
           "iterations=$($loopRes.Iterations)" >> $env:GITHUB_OUTPUT
@@ -289,6 +293,8 @@ runs:
         "diff=$diffLower"                 >> $env:GITHUB_OUTPUT
         "compareDurationSeconds=$($result.CompareDurationSeconds)" >> $env:GITHUB_OUTPUT
         "compareDurationNanoseconds=$($result.CompareDurationNanoseconds)" >> $env:GITHUB_OUTPUT
+        $shortCircuitLower = if ($result.ShortCircuitedIdenticalPath -eq $true) { 'true' } else { 'false' }
+        "shortCircuitedIdentical=$shortCircuitLower" >> $env:GITHUB_OUTPUT
         $summaryJsonPath = Join-Path $env:RUNNER_TEMP 'compare-summary.json'
         [pscustomobject]@{
           base = $result.Base
@@ -299,6 +305,7 @@ runs:
           diff = $result.Diff
           compareDurationSeconds = $result.CompareDurationSeconds
           compareDurationNanoseconds = $result.CompareDurationNanoseconds
+          shortCircuitedIdentical = ($result.ShortCircuitedIdenticalPath -eq $true)
           generatedUtc = [DateTime]::UtcNow.ToString('o')
         } | ConvertTo-Json -Depth 4 | Out-File -FilePath $summaryJsonPath -Encoding utf8
         "compareSummaryPath=$summaryJsonPath" >> $env:GITHUB_OUTPUT

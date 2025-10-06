@@ -1,0 +1,237 @@
+name: Fixture Drift Validation
+
+on:
+  pull_request:
+    paths:
+    - 'fixtures.manifest.json'
+    - 'VI*.vi'
+    - 'scripts/**'
+    - 'tools/**'
+    - 'docs/schemas/**'
+  workflow_dispatch: {}
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  pre-init:
+    runs-on: ubuntu-latest
+    outputs:
+      docs_only: ${{ steps.detect.outputs.docs_only }}
+    steps:
+    - uses: actions/checkout@v4
+    - name: Detect docs-only change (resilient)
+      id: detect
+      shell: pwsh
+      run: |
+        $ErrorActionPreference = 'Continue'
+        $docsOnly = 'false'
+        if ('${{ github.event_name }}' -eq 'pull_request') {
+          $ownerRepo = '${{ github.repository }}'
+          $pr = '${{ github.event.pull_request.number }}'
+          $uri = "https://api.github.com/repos/$ownerRepo/pulls/$pr/files"
+          $headers = @{ Authorization = "Bearer $env:GITHUB_TOKEN"; 'X-GitHub-Api-Version' = '2022-11-28'; Accept='application/vnd.github+json' }
+          try {
+            $files = Invoke-RestMethod -Method Get -Uri $uri -Headers $headers -ErrorAction Stop
+            $names = @($files | ForEach-Object { $_.filename })
+            if ($names.Count -gt 0) {
+              $isDocs = $true
+              foreach ($n in $names) {
+                $inDocs = ($n -like 'docs/**' -or $n -like '**/*.md')
+                $isSchema = ($n -like 'docs/schemas/**')
+                if (-not $inDocs -or $isSchema) { $isDocs = $false; break }
+              }
+              if ($isDocs) { $docsOnly = 'true' }
+            }
+          } catch {
+            Write-Host '::notice::Docs-only detection skipped; treating as non-docs.'
+          }
+        } else {
+          Write-Host '::notice::workflow_dispatch event: docs-only defaulting to false.'
+        }
+        "docs_only=$docsOnly" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+  preflight-windows:
+    name: Preflight (Windows)
+    runs-on: windows-latest
+    timeout-minutes: 3
+    needs: pre-init
+    if: needs.pre-init.outputs.docs_only != 'true'
+    steps:
+    - uses: actions/checkout@v4
+    - name: Verify Windows runner and idle LabVIEW (surface LVCompare notice)
+      shell: pwsh
+      run: |-
+        Write-Host "Runner: $([System.Environment]::OSVersion.VersionString)"
+        Write-Host "Pwsh:   $($PSVersionTable.PSVersion)"
+        $cli = 'C:\Program Files\National Instruments\Shared\LabVIEW Compare\LVCompare.exe'
+        if (-not (Test-Path -LiteralPath $cli)) {
+          Write-Host "::notice::LVCompare.exe not found at canonical path: $cli (hosted preflight)"
+        } else { Write-Host "LVCompare present: $cli" }
+        $lv = Get-Process -Name 'LabVIEW' -ErrorAction SilentlyContinue
+        if ($lv) { Write-Host "::error::LabVIEW.exe is running (PID(s): $($lv.Id -join 
+        ))"; exit 1 }
+        Write-Host 'Preflight OK: Windows runner healthy; LabVIEW not running.'
+        if ($env:GITHUB_STEP_SUMMARY) {
+          $note = @('Note:', '- This preflight runs on hosted Windows (windows-latest); LVCompare presence is not required here.', '- Self-hosted Windows steps later in this workflow enforce LVCompare at the canonical path.') -join "`n"
+          $note | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8
+        }
+  validate-ubuntu:
+    name: Fixture Drift (Ubuntu)
+    runs-on: ubuntu-latest
+    needs: pre-init
+    timeout-minutes: 3
+    permissions:
+      actions: read
+      contents: read
+      pull-requests: write
+    outputs:
+      ubuntu_status: ${{ steps.drift.outputs.status }}
+      ubuntu_summary_path: ${{ steps.drift.outputs.summary_path }}
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v4
+
+    - name: Fixture Drift Orchestrator
+      id: drift
+      uses: ./.github/actions/fixture-drift
+      with:
+        render-report: 'false'
+        comment-on-fail: 'true'
+        upload-artifacts: 'true'
+        artifact-name: fixture-drift-ubuntu
+        soft-fail: ${{ needs.pre-init.outputs.docs_only }}
+        suppress-summary: 'true'
+
+  gate:
+    name: Gate (aggregate preflight + ubuntu)
+    runs-on: ubuntu-latest
+    needs: [pre-init, preflight-windows, validate-ubuntu]
+    outputs:
+      run_windows: ${{ steps.calc.outputs.run_windows }}
+      reason: ${{ steps.calc.outputs.reason }}
+      docs_only: ${{ steps.calc.outputs.docs_only }}
+      ubuntu_status: ${{ steps.calc.outputs.ubuntu_status }}
+      ubuntu_summary_path: ${{ steps.calc.outputs.ubuntu_summary_path }}
+    steps:
+    - name: Compute gate outputs
+      id: calc
+      shell: pwsh
+      env:
+        DOCS_ONLY: ${{ needs.pre-init.outputs.docs_only }}
+        PREFLIGHT_RESULT: ${{ needs.preflight-windows.result }}
+        UBUNTU_STATUS: ${{ needs.validate-ubuntu.outputs.ubuntu_status }}
+        UBUNTU_SUMMARY: ${{ needs.validate-ubuntu.outputs.ubuntu_summary_path }}
+      run: |
+        $docs = if ($env:DOCS_ONLY) { $env:DOCS_ONLY } else { 'false' }
+        $pre  = if ($env:PREFLIGHT_RESULT) { $env:PREFLIGHT_RESULT } else { 'success' }
+        $u    = if ($env:UBUNTU_STATUS) { $env:UBUNTU_STATUS } else { 'unknown' }
+        $sp   = if ($env:UBUNTU_SUMMARY) { $env:UBUNTU_SUMMARY } else { '' }
+        $run  = 'true'
+        $reason = 'proceed'
+        if ($docs -eq 'true') { $run = 'false'; $reason='docs_only' }
+        elseif ($pre -ne 'success') { $run = 'false'; $reason='preflight_not_success' }
+        else {
+          if ([string]::IsNullOrWhiteSpace($u)) { $u = 'unknown' }
+          # Optionally adjust behavior by ubuntu status; keep default to proceed
+          switch ($u) {
+            'fail-structural' { $run = 'true'; $reason='ubuntu_fail_structural' }
+            'drift'           { $run = 'true'; $reason='ubuntu_drift' }
+            'ok'              { $run = 'true'; $reason='ubuntu_ok' }
+            default           { $run = 'true'; $reason='ubuntu_unknown' }
+          }
+        }
+        "run_windows=$run"              | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+        "reason=$reason"                | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+        "docs_only=$docs"               | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+        "ubuntu_status=$u"              | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+        "ubuntu_summary_path=$sp"       | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+    - name: Append gate summary
+      shell: pwsh
+      run: |
+        if ($env:GITHUB_STEP_SUMMARY) {
+          $lines = @('### Gate Summary','')
+          $lines += ('- Preflight result: ${{ needs.preflight-windows.result }}')
+          $lines += ('- Docs-only: ${{ needs.pre-init.outputs.docs_only }}')
+          $lines += ('- Ubuntu status: ${{ needs.validate-ubuntu.outputs.ubuntu_status }}')
+          $lines += ('- Ubuntu summary: ${{ needs.validate-ubuntu.outputs.ubuntu_summary_path }}')
+          $lines += ('- Decision: run_windows=${{ steps.calc.outputs.run_windows }} (reason=${{ steps.calc.outputs.reason }})')
+          $lines -join "`n" | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8
+        }
+
+  validate-windows:
+    name: Fixture Drift (Windows)
+    runs-on: [self-hosted, Windows, X64]
+    needs: [pre-init, preflight-windows, validate-ubuntu, gate]
+    timeout-minutes: 3
+    if: needs.gate.outputs.run_windows == 'true'
+    env:
+      UNBLOCK_GUARD: '1'
+      LV_SUPPRESS_UI: '1'
+      WATCH_CONSOLE: '1'
+    permissions:
+      actions: read
+      contents: read
+      pull-requests: write
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v4
+
+    - name: Prepare fixture copies (base/head)
+      id: prep
+      shell: pwsh
+      run: |
+        $ErrorActionPreference = 'Stop'
+        $tmp = Join-Path $env:RUNNER_TEMP ("fixtures-" + [guid]::NewGuid().ToString())
+        New-Item -ItemType Directory -Force -Path $tmp | Out-Null
+        $base = Join-Path $tmp 'base.vi'
+        $head = Join-Path $tmp 'head.vi'
+        Copy-Item -LiteralPath (Join-Path $env:GITHUB_WORKSPACE 'VI1.vi') -Destination $base -Force
+        Copy-Item -LiteralPath (Join-Path $env:GITHUB_WORKSPACE 'VI2.vi') -Destination $head -Force
+        "base=$base`nhead=$head" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+
+    - name: Fixture Drift Orchestrator
+      uses: ./.github/actions/fixture-drift
+      with:
+        render-report: 'true'
+        comment-on-fail: 'true'
+        upload-artifacts: 'true'
+        artifact-name: fixture-drift-windows
+        base-path: ${{ steps.prep.outputs.base }}
+        head-path: ${{ steps.prep.outputs.head }}
+        suppress-summary: 'true'
+
+    - name: Session index post (best-effort)
+      if: always()
+      uses: ./.github/actions/session-index-post
+      with:
+        results-dir: results/fixture-drift
+        validate-schema: true
+        upload: true
+        artifact-name: fixture-drift-session-index
+
+    - name: Runner Unblock Guard
+      if: always()
+      uses: ./.github/actions/runner-unblock-guard
+      with:
+        snapshot-path: results/fixture-drift/runner-unblock-snapshot.json
+        cleanup: ${{ env.UNBLOCK_GUARD == '1' }}
+        process-names: 'conhost,pwsh,LabVIEW,LVCompare'
+
+    - name: Append consolidated drift summary
+      if: always()
+      shell: pwsh
+      run: |
+        $runner = "$env:RUNNER_NAME ($env:RUNNER_OS/$env:RUNNER_ARCH)"
+        $lines = @('### Fixture Drift (Consolidated)','')
+        $lines += ('- Runner: ' + $runner)
+        $lines += ('- Docs-only: ${{ needs.gate.outputs.docs_only }}')
+        $lines += ('- Preflight result: ${{ needs.preflight-windows.result }}')
+        $lines += ('- Ubuntu status: ${{ needs.gate.outputs.ubuntu_status }}')
+        $up = '${{ needs.gate.outputs.ubuntu_summary_path }}'
+        if ($up) { $lines += ('- Ubuntu summary: ' + $up) }
+        $lines += ('- Decision: run_windows=${{ needs.gate.outputs.run_windows }} (reason=${{ needs.gate.outputs.reason }})')
+        $lines += ''
+        $lines += ('- Base (temp): ' + "${{ steps.prep.outputs.base }}")
+        $lines += ('- Head (temp): ' + "${{ steps.prep.outputs.head }}")
+        $lines -join "`n" | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8

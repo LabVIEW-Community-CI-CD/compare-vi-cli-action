@@ -1,0 +1,25 @@
+{
+  "ok": true,
+  "exitCode": 0,
+  "summary": "Fixture validation succeeded",
+  "issues": [],
+  "fixtures": [
+    "VI1.vi",
+    "VI2.vi"
+  ],
+  "checked": [
+    "VI1.vi",
+    "VI2.vi"
+  ],
+  "fixtureCount": 2,
+  "manifestPresent": true,
+  "summaryCounts": {
+    "missing": 0,
+    "untracked": 0,
+    "tooSmall": 0,
+    "hashMismatch": 0,
+    "manifestError": 0,
+    "duplicate": 0,
+    "schema": 0
+  }
+}

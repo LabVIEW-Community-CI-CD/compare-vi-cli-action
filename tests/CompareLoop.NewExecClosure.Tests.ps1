@@ -10,8 +10,8 @@ Describe 'Invoke-IntegrationCompareLoop New-Exec closure behavior' -Tag 'Unit' {
   It 'captures delay value without $delayMs runtime error' {
   # Arrange: use shared helper factory for closure-based executor
   # Use $TestDrive to isolate artifacts
-  $base = Join-Path $TestDrive 'Base.vi'
-  $head = Join-Path $TestDrive 'Head.vi'
+  $base = Join-Path $TestDrive 'VI1.vi'
+  $head = Join-Path $TestDrive 'VI2.vi'
   'a' | Out-File -FilePath $base -Encoding utf8
   'b' | Out-File -FilePath $head -Encoding utf8
 

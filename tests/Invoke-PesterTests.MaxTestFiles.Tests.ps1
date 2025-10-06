@@ -12,7 +12,8 @@ Describe 'Invoke-PesterTests MaxTestFiles selection' -Tag 'Unit' {
 
     $sel = Join-Path $resultsDir 'pester-selected-files.txt'
     Test-Path $sel | Should -BeTrue
-    $lines = Get-Content -LiteralPath $sel
-    $lines.Count | Should -Be 1
+  # Force array context so a single selected file still yields Count=1 (Get-Content may unwrap single line)
+  $lines = @(Get-Content -LiteralPath $sel)
+  $lines.Count | Should -Be 1
   }
 }

@@ -1,0 +1,32 @@
+{
+  "total": 0,
+  "passed": 0,
+  "failed": 0,
+  "errors": 1,
+  "skipped": 0,
+  "duration_s": 1.09,
+  "timestamp": "2025-10-02T12:15:00.8767213-07:00",
+  "pesterVersion": "5.7.1",
+  "includeIntegration": false,
+  "meanTest_ms": null,
+  "p95Test_ms": null,
+  "maxTest_ms": null,
+  "schemaVersion": "1.7.0",
+  "timedOut": false,
+  "discoveryFailures": 1,
+  "aggregationHints": {
+    "dominantTags": [],
+    "fileBucketCounts": {
+      "small": 0,
+      "medium": 0,
+      "large": 0
+    },
+    "durationBuckets": {
+      "subSecond": 0,
+      "oneToFive": 0,
+      "overFive": 0
+    },
+    "suggestions": [],
+    "strategy": "heuristic/v1"
+  }
+}

@@ -41,14 +41,96 @@ on:
         default: ""
 
 jobs:
+  preflight:
+    runs-on: [self-hosted, Windows, X64]
+    timeout-minutes: 3
+    if: github.event_name == 'workflow_dispatch' || (github.event_name == 'pull_request' && contains(toJson(github.event.pull_request.labels), 'smoke'))
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Export fixture env defaults (if unset)
+        shell: pwsh
+        run: |
+          if ([string]::IsNullOrWhiteSpace($env:LV_BASE_VI)) {
+            "LV_BASE_VI=$((Join-Path $env:GITHUB_WORKSPACE 'VI1.vi'))" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+          }
+          if ([string]::IsNullOrWhiteSpace($env:LV_HEAD_VI)) {
+            "LV_HEAD_VI=$((Join-Path $env:GITHUB_WORKSPACE 'VI2.vi'))" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+          }
+      - name: Verify LVCompare and idle LabVIEW state
+        shell: pwsh
+        run: |
+          $cli = 'C:\\Program Files\\National Instruments\\Shared\\LabVIEW Compare\\LVCompare.exe'
+          if (-not (Test-Path -LiteralPath $cli)) {
+            Write-Host "::error::LVCompare.exe not found at canonical path: $cli"; exit 1
+          }
+          $lv = Get-Process -Name 'LabVIEW' -ErrorAction SilentlyContinue
+          if ($lv) { Write-Host "::error::LabVIEW.exe is running (PID(s): $($lv.Id -join ','))"; exit 1 }
+          Write-Host 'Preflight OK: LVCompare present; LabVIEW not running.'
+
   compare:
     runs-on: [self-hosted, Windows, X64]
+    needs: preflight
+    timeout-minutes: 3
+    if: github.event_name == 'workflow_dispatch' || (github.event_name == 'pull_request' && contains(toJson(github.event.pull_request.labels), 'smoke'))
     env:
       LV_BASE_VI: ${{ vars.LV_BASE_VI }}
       LV_HEAD_VI: ${{ vars.LV_HEAD_VI }}
       LVCOMPARE_PATH: ${{ vars.LVCOMPARE_PATH }}
+      UNBLOCK_GUARD: '1'
+      WATCH_CONSOLE: '1'
     steps:
       - uses: actions/checkout@v5
+
+      - name: Validate canonical fixtures
+        shell: pwsh
+        run: pwsh -NonInteractive -File tools/Validate-Fixtures.ps1 -MinBytes 32
+
+      - name: Validate canonical fixtures (JSON)
+        if: always()
+        id: fixtures_json
+        shell: pwsh
+        run: |
+          pwsh -NonInteractive -File tools/Validate-Fixtures.ps1 -Json -MinBytes 32 > fixture-validation.json
+          Write-Host 'Wrote fixture-validation.json'
+          $json = Get-Content fixture-validation.json -Raw | ConvertFrom-Json
+          "exitCode=$($json.exitCode)" >> $env:GITHUB_OUTPUT
+          if (-not $json.ok) { Write-Host 'Fixture validation reported issues (non-blocking for smoke)'; }
+
+      - name: Upload fixture validation JSON
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: fixture-validation-json
+          path: fixture-validation.json
+
+      - name: Runner Unblock Guard
+        if: always()
+        uses: ./.github/actions/runner-unblock-guard
+        with:
+          snapshot-path: tests/results/runner-unblock-snapshot.json
+          cleanup: ${{ env.UNBLOCK_GUARD == '1' }}
+          process-names: 'conhost,pwsh,LabVIEW,LVCompare'
+
+      - name: Enforce fixture policy (fail on disallowed issues)
+        if: always()
+        shell: pwsh
+        run: |
+          if (-not (Test-Path fixture-validation.json)) { Write-Host 'No fixture-validation.json found'; exit 0 }
+          $data = Get-Content fixture-validation.json -Raw | ConvertFrom-Json
+          if (-not $data.ok) {
+            $disallowed = @('missing','untracked','hashMismatch','manifestError','duplicate','schema')
+            $found = @($data.issues | Where-Object { $disallowed -contains $_.type })
+            if ($found.Count -gt 0) {
+              Write-Host 'Disallowed fixture issues detected:'
+              $found | ForEach-Object { Write-Host " - $($_.type)" }
+              Write-Error 'Failing smoke due to disallowed fixture validation issues.'
+            } else {
+              Write-Host 'Only size (tooSmall) issues present; continuing.'
+            }
+          } else {
+            Write-Host 'Fixture validation clean.'
+          }
 
       - name: Resolve inputs from repo variables when empty
         id: res
@@ -68,6 +150,13 @@ jobs:
           "fail_on_diff=${{ github.event.inputs.fail_on_diff }}"   >> $env:GITHUB_OUTPUT
           "working_directory=$wd"      >> $env:GITHUB_OUTPUT
 
+      - name: Normalize fail_on_diff
+        id: norm
+        uses: ./.github/actions/bool-normalize
+        with:
+          value: ${{ steps.res.outputs.fail_on_diff }}
+          default: 'true'
+
       - name: Run local action
         id: compare
         uses: ./
@@ -76,7 +165,7 @@ jobs:
           head: ${{ steps.res.outputs.head }}
           lvComparePath: ${{ steps.res.outputs.lvComparePath }}
           lvCompareArgs: ${{ steps.res.outputs.lvCompareArgs }}
-          fail-on-diff: ${{ steps.res.outputs.fail_on_diff }}
+          fail-on-diff: ${{ steps.norm.outputs.bool }}
           working-directory: ${{ steps.res.outputs.working_directory }}
 
       - name: Echo outputs
@@ -110,6 +199,28 @@ jobs:
           $uri = "https://api.github.com/repos/$env:GH_REPO/issues/$env:PR_NUMBER/comments"
           Invoke-RestMethod -Method POST -Uri $uri -Headers $headers -ContentType 'application/json' -Body $payload
 
+      - name: Comment results on PR (label-triggered)
+        if: ${{ github.event_name == 'pull_request' }}
+        shell: pwsh
+        env:
+          GH_REPO: ${{ github.repository }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          XCLI_PAT: ${{ secrets.XCLI_PAT }}
+        run: |
+          if (-not $env:XCLI_PAT) { Write-Host 'XCLI_PAT not available; skipping comment.'; exit 0 }
+          $lines = @(
+            '### Smoke test results (label-triggered)',
+            '',
+            "- diff=${{ steps.compare.outputs.diff }}",
+            "- exitCode=${{ steps.compare.outputs.exitCode }}",
+            "- cliPath=${{ steps.compare.outputs.cliPath }}",
+            "- command=${{ steps.compare.outputs.command }}"
+          ) -join "`n"
+          $payload = @{ body = $lines } | ConvertTo-Json -Compress
+          $headers = @{ Authorization = "Bearer $env:XCLI_PAT"; Accept = 'application/vnd.github+json'; 'User-Agent' = 'xcli-bot' }
+          $uri = "https://api.github.com/repos/$env:GH_REPO/issues/$env:PR_NUMBER/comments"
+          Invoke-RestMethod -Method POST -Uri $uri -Headers $headers -ContentType 'application/json' -Body $payload
+
       - name: Generate HTML report
         if: always()
         shell: pwsh
@@ -130,3 +241,34 @@ jobs:
         with:
           name: smoke-html-report
           path: ${{ runner.temp }}/smoke-report/compare-report.html
+
+      - name: Session index post
+        if: always()
+        uses: ./.github/actions/session-index-post
+        with:
+          results-dir: tests/results
+          validate-schema: true
+          upload: true
+          artifact-name: smoke-session-index
+
+      - name: Summarize fixture JSON (step summary)
+        if: always()
+        shell: pwsh
+        run: |
+          if (Test-Path fixture-validation.json) {
+            $data = Get-Content fixture-validation.json -Raw | ConvertFrom-Json
+            $lines = @()
+            $lines += '### Fixture Validation (JSON)'
+            $lines += ''
+            $lines += "Exit Code: $($data.exitCode)  OK: $($data.ok)"
+            $lines += ''
+            $lines += 'Counts:'
+            foreach ($k in $data.summaryCounts.PSObject.Properties.Name) { $lines += "- $k: $($data.summaryCounts.$k)" }
+            $lines += ''
+            $lines += 'Issues:'
+            if ($data.issues.Count -eq 0) { $lines += '- (none)' } else { foreach ($i in $data.issues) { $lines += "- $($i.type)" } }
+            $lines -join "`n" | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8
+          }
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true

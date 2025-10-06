@@ -47,9 +47,12 @@ function Invoke-FlakyRecoveryDemo {
         [string]$DeltaJsonPath = 'tests/results/flaky-recovery-delta.json'
     )
     Enable-FlakyDemoOnce
-    $cmd = "pwsh -File ./tools/Watch-Pester.ps1 -SingleRun -Tag FlakyDemo -RerunFailedAttempts $Attempts -DeltaJsonPath `"$DeltaJsonPath`" -ShowFailed"
-    Write-Host "[FlakyDemo] Executing: $cmd" -ForegroundColor Cyan
-    iex $cmd
+    # Resolve watcher script relative to repo root
+    $repoRoot = Resolve-Path (Join-Path $PSScriptRoot '..' '..') | Select-Object -ExpandProperty Path
+    $watch = Join-Path $repoRoot 'tools' 'Watch-Pester.ps1'
+    if (-not (Test-Path -LiteralPath $watch -PathType Leaf)) { throw "Watch-Pester not found: $watch" }
+    Write-Host "[FlakyDemo] Executing Watch-Pester in-process (-RerunFailedAttempts $Attempts)" -ForegroundColor Cyan
+    & $watch -SingleRun -Tag FlakyDemo -RerunFailedAttempts $Attempts -DeltaJsonPath $DeltaJsonPath -ShowFailed
     if (Test-Path -LiteralPath $DeltaJsonPath) {
         try {
             $j = Get-Content -LiteralPath $DeltaJsonPath -Raw | ConvertFrom-Json

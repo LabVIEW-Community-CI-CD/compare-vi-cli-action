@@ -8,8 +8,8 @@ Import-Module $helperModule -Force
 
 Describe 'Invoke-IntegrationCompareLoop custom percentiles' -Tag 'Unit' {
   BeforeAll {
-    $script:base = Join-Path $PSScriptRoot '..' 'Base.vi'
-    $script:head = Join-Path $PSScriptRoot '..' 'Head.vi'
+    $script:base = Join-Path $PSScriptRoot '..' 'VI1.vi'
+    $script:head = Join-Path $PSScriptRoot '..' 'VI2.vi'
     # Ensure placeholder files exist in case prior cleanup removed them
     if (-not (Test-Path -LiteralPath $script:base)) { 'a' | Out-File -FilePath $script:base -Encoding utf8 }
     if (-not (Test-Path -LiteralPath $script:head)) { 'b' | Out-File -FilePath $script:head -Encoding utf8 }

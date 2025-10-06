@@ -1,6 +1,32 @@
-name: Pester (self-hosted, real CLI)
+name: Pester (integration)
 
 on:
+  pull_request:
+    branches: [ develop, main ]
+    paths:
+      - '**/*.ps1'
+      - '**/*.psm1'
+      - 'scripts/**'
+      - 'tools/**'
+      - 'module/**'
+      - 'tests/**'
+      - 'action.yml'
+      - 'fixtures.manifest.json'
+      - 'VI*.vi'
+      - 'docs/schemas/**'
+  push:
+    branches: [ develop, main ]
+    paths:
+      - '**/*.ps1'
+      - '**/*.psm1'
+      - 'scripts/**'
+      - 'tools/**'
+      - 'module/**'
+      - 'tests/**'
+      - 'action.yml'
+      - 'fixtures.manifest.json'
+      - 'VI*.vi'
+      - 'docs/schemas/**'
   workflow_dispatch:
     inputs:
       include_integration:
@@ -9,35 +35,131 @@ on:
         default: 'true'
         type: choice
         options: ['true', 'false']
+      force_run:
+        description: 'Force run (bypass docs-only gate)'
+        required: false
+        default: 'false'
+        type: choice
+        options: ['true','false']
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
 
 jobs:
-  pester:
-    runs-on: [self-hosted, Windows, X64]
-    env:
-      LV_BASE_VI: ${{ vars.LV_BASE_VI }}
-      LV_HEAD_VI: ${{ vars.LV_HEAD_VI }}
+  pre-init:
+    runs-on: ubuntu-latest
+    outputs:
+      docs_only: ${{ steps.out.outputs.docs_only }}
+      include_integration: ${{ steps.norm.outputs.bool }}
     steps:
       - uses: actions/checkout@v5
 
-      # Call the dispatcher directly (no external action dependency)
-      # This dispatcher assumes Pester v5+ is pre-installed on the self-hosted runner
-      - name: Run Pester tests via local dispatcher
+      - name: Normalize include_integration
+        id: norm
+        uses: ./.github/actions/bool-normalize
+        with:
+          value: ${{ inputs.include_integration }}
+          default: 'true'
+      - id: g
+        if: ${{ inputs.force_run != 'true' }}
+        uses: ./.github/actions/pre-init-gate
+        with:
+          include-globs: |
+            docs/**
+            **/*.md
+          exclude-globs: |
+            docs/schemas/**
+      - name: Compute docs_only (force_run aware)
+        id: out
         shell: pwsh
         run: |
-          ./Invoke-PesterTests.ps1 `
-            -TestsPath tests `
-            -IncludeIntegration '${{ inputs.include_integration }}' `
-            -ResultsPath tests/results
+          $force = '${{ inputs.force_run }}'
+          if ($force -ieq 'true') { $val = 'false' } else { $val = '${{ steps.g.outputs.docs_only || 'false' }}' }
+          "docs_only=$val" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+
+  preflight:
+    runs-on: windows-latest
+    timeout-minutes: 3
+    needs: pre-init
+    if: needs.pre-init.outputs.docs_only != 'true'
+    steps:
+      - uses: actions/checkout@v5
+      - name: Verify Windows runner and idle LabVIEW (surface LVCompare notice)
+        shell: pwsh
+        run: |
+          Write-Host "Runner: $([System.Environment]::OSVersion.VersionString)"
+          Write-Host "Pwsh:   $($PSVersionTable.PSVersion)"
+          $cli = 'C:\\Program Files\\National Instruments\\Shared\\LabVIEW Compare\\LVCompare.exe'
+          if (-not (Test-Path -LiteralPath $cli)) {
+            Write-Host "::notice::LVCompare.exe not found at canonical path: $cli (hosted preflight)"
+          } else {
+            Write-Host "LVCompare present: $cli"
+          }
+          $lv = Get-Process -Name 'LabVIEW' -ErrorAction SilentlyContinue
+          if ($lv) { Write-Host "::error::LabVIEW.exe is running (PID(s): $($lv.Id -join ','))"; exit 1 }
+          Write-Host 'Preflight OK: Windows runner healthy; LabVIEW not running.'
+          if ($env:GITHUB_STEP_SUMMARY) {
+            $note = @(
+              'Note:',
+              '- This preflight runs on hosted Windows (windows-latest); LVCompare presence is not required here.',
+              '- Self-hosted Windows steps later in this workflow enforce LVCompare at the canonical path.'
+            ) -join "`n"
+            $note | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8
+          }
+
+  pester:
+    runs-on: [self-hosted, Windows, X64]
+    timeout-minutes: 3
+    needs: [pre-init, preflight]
+    if: needs.pre-init.outputs.docs_only != 'true'
+    strategy:
+      matrix:
+        category: [dispatcher, fixtures, schema, comparevi, loop, runbook, orchestrator]
+      max-parallel: 1
+    env:
+      LV_BASE_VI: ${{ vars.LV_BASE_VI }}
+      LV_HEAD_VI: ${{ vars.LV_HEAD_VI }}
+      DETECT_LEAKS: '1'
+      CLEAN_AFTER: '1'
+      SCAN_ARTIFACTS: '1'
+      UNBLOCK_GUARD: '1'
+      LV_SUPPRESS_UI: '1'
+      WATCH_CONSOLE: '1'
+      # Optional per-category Pester timeouts (seconds). Set repository Variables to override.
+      PESTER_TIMEOUT_DISPATCHER: ${{ vars.PESTER_TIMEOUT_DISPATCHER }}
+      PESTER_TIMEOUT_FIXTURES:   ${{ vars.PESTER_TIMEOUT_FIXTURES }}
+      PESTER_TIMEOUT_SCHEMA:     ${{ vars.PESTER_TIMEOUT_SCHEMA }}
+      PESTER_TIMEOUT_COMPAREVI:  ${{ vars.PESTER_TIMEOUT_COMPAREVI }}
+      PESTER_TIMEOUT_LOOP:       ${{ vars.PESTER_TIMEOUT_LOOP }}
+      PESTER_TIMEOUT_RUNBOOK:    ${{ vars.PESTER_TIMEOUT_RUNBOOK }}
+      PESTER_TIMEOUT_ORCHESTRATOR: ${{ vars.PESTER_TIMEOUT_ORCHESTRATOR }}
+    steps:
+      - uses: actions/checkout@v5
+
+      # Call the dispatcher per category to surface atomic failures
+      # This dispatcher assumes Pester v5+ is pre-installed on the self-hosted runner
+      - name: Run Pester category
+        uses: ./.github/actions/pester-category-run
+        with:
+          category: ${{ matrix.category }}
+          include_integration: ${{ needs.pre-init.outputs.include_integration }}
+          results-dir: tests/results/${{ matrix.category }}
+          tests-path: tests
+          default-timeout-seconds: '0'
 
       - name: Append test metrics to job summary
         if: always()
         shell: pwsh
         run: |
-          $json = Join-Path 'tests/results' 'pester-summary.json'
+          $cat  = '${{ matrix.category }}'
+          $dir  = Join-Path 'tests/results' $cat
+          $json = Join-Path $dir 'pester-summary.json'
+          $idx  = Join-Path $dir 'session-index.json'
           if (Test-Path $json) {
             $data = Get-Content $json -Raw | ConvertFrom-Json
             $lines = @(
-              '### Pester Test Metrics',
+              "### Pester Test Metrics ($cat)",
               "- Total: $($data.total)",
               "- Passed: $($data.passed)",
               "- Failed: $($data.failed)",
@@ -47,19 +169,93 @@ jobs:
               "- Include Integration: $($data.includeIntegration)"
             ) -join [Environment]::NewLine
             $lines | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8
+            if (Test-Path $idx) {
+              $ix = Get-Content $idx -Raw | ConvertFrom-Json
+              if (-not $ix.stepSummary) {
+                ("`nSession index: {0}" -f (Join-Path $dir 'session-index.json')) | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8
+              }
+            }
           } else {
             Write-Host '::warning::pester-summary.json not found.'
+          }
+
+      - name: Export fixture env defaults (if unset)
+        if: always()
+        shell: pwsh
+        run: |
+          if ([string]::IsNullOrWhiteSpace($env:LV_BASE_VI)) {
+            "LV_BASE_VI=$((Join-Path $env:GITHUB_WORKSPACE 'VI1.vi'))" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+          }
+          if ([string]::IsNullOrWhiteSpace($env:LV_HEAD_VI)) {
+            "LV_HEAD_VI=$((Join-Path $env:GITHUB_WORKSPACE 'VI2.vi'))" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+          }
+
+      - name: Ensure session index (fallback)
+        if: always()
+        shell: pwsh
+        run: |
+          $cat  = '${{ matrix.category }}'
+          $dir  = Join-Path 'tests/results' $cat
+          pwsh -NonInteractive -File tools/Ensure-SessionIndex.ps1 -ResultsDir $dir -SummaryJson 'pester-summary.json'
+
+      - name: Session index post
+        if: always()
+        uses: ./.github/actions/session-index-post
+        with:
+          results-dir: tests/results/${{ matrix.category }}
+          validate-schema: true
+          upload: true
+          artifact-name: session-index-${{ matrix.category }}
+
+      - name: Append failure inventory
+        if: always()
+        shell: pwsh
+        run: |
+          pwsh -NonInteractive -File tools/Write-FailureInventory.ps1 -ResultsDir 'tests/results' -AppendToStepSummary
+
+      - name: Append required checks (branch rules hint)
+        if: ${{ always() && matrix.category == 'dispatcher' }}
+        shell: pwsh
+        run: |
+          $lines = @(
+            '### Required checks (copy for branch protections)',
+            '- Pester (self-hosted) / preflight',
+            '- Pester (self-hosted) / pester (dispatcher|fixtures|schema|comparevi|loop|runbook|orchestrator)',
+            '- Fixture Drift Validation / Fixture Drift (Windows)',
+            '- VI Binary Handling Gate / vi-binary-check',
+            '- Validate / lint',
+            '- markdownlint / lint'
+          ) -join "`n"
+          $lines | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8
+          $doc = 'docs/BRANCH_RULES.md'
+          if (Test-Path $doc) {
+            "See: ./$doc" | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8
+          } else {
+            'Branch rules guide: docs/BRANCH_RULES.md (coming soon in issue #60)' | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8
           }
 
       - name: Upload Pester artifacts
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: pester-selfhosted-results
+          name: pester-selfhosted-results-${{ matrix.category }}
           path: |
-            tests/results/**/*.xml
-            tests/results/**/*.txt
-            tests/results/**/*.html
-            tests/results/pester-summary.json
-            tests/results/pester-failures.json
-            tests/results/pester-artifacts.json
+            tests/results/${{ matrix.category }}/**/*.xml
+            tests/results/${{ matrix.category }}/**/*.txt
+            tests/results/${{ matrix.category }}/**/*.html
+            tests/results/${{ matrix.category }}/pester-summary.json
+            tests/results/${{ matrix.category }}/pester-failures.json
+            tests/results/${{ matrix.category }}/pester-artifacts.json
+            tests/results/${{ matrix.category }}/pester-artifacts-trail.json
+            tests/results/${{ matrix.category }}/pester-leak-report.json
+            tests/results/${{ matrix.category }}/session-index.json
+            tests/results/${{ matrix.category }}/failure-inventory.md
+
+      - name: Runner Unblock Guard
+        if: always()
+        uses: ./.github/actions/runner-unblock-guard
+        with:
+          snapshot-path: tests/results/runner-unblock-snapshot.json
+          cleanup: ${{ env.UNBLOCK_GUARD == '1' }}
+          process-names: 'conhost,pwsh,LabVIEW,LVCompare'
+

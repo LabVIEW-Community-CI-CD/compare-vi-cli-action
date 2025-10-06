@@ -6,13 +6,45 @@ coverage/
 
 # Test results
 tests/results/
+tests/results
+tests/results/**
+!tests/results/.gitkeep
+# Root-level CI artifacts (timestamped at runtime; never commit)
+results/
+# Local temp workdirs created during ad-hoc runs
+.tmp-smoke/
+tmp-*/
+tmp-agg/
+tmp-orch/
+tmp-rc-pester-results/
+tmp-fast-results/
+tmp-int-results/
+# Root-level transient test artifacts (should not be committed)
+testResults.xml
+tests/results/pester-results.xml
+tests/results/pester-results*.xml
+pester-results.xml
+final.json
+tests/results/pester-summary.txt
+tests/results/pester-summary.json
+tests/results/pester-failures.json
+tests/results/pester-artifacts.json
+tests/results/pester-selected-files.txt
+tests/results/delta.json
+tests/results/delta-history.jsonl
+tests/results/flaky-delta.json
+tests/results/flaky-demo-state.txt
+tests/results/custom-summary.json
 
 # Temporary files
 *.tmp
 .DS_Store
 actionlint
+tmp-*.json
+watch-mapping.sample.json
 
 # Test temporary directories and results
 tests/tmp-*/
 tests/results-*/
 home/
+delta.json

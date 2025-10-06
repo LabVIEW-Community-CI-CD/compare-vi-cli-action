@@ -1,0 +1,40 @@
+name: .NET Shared Library
+
+on:
+  push:
+    paths:
+      - 'src/**'
+      - '.github/workflows/dotnet-shared.yml'
+  pull_request:
+    paths:
+      - 'src/**'
+      - '.github/workflows/dotnet-shared.yml'
+  workflow_dispatch: {}
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v5
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+      - name: Restore
+        run: dotnet restore src/CompareVi.Shared/CompareVi.Shared.csproj
+      - name: Build
+        run: dotnet build -c Release src/CompareVi.Shared/CompareVi.Shared.csproj --no-restore
+      - name: Pack
+        run: dotnet pack -c Release src/CompareVi.Shared/CompareVi.Shared.csproj -o artifacts --no-build
+      - name: Upload package
+        uses: actions/upload-artifact@v4
+        with:
+          name: comparevi-shared-nuget
+          path: artifacts/*.nupkg
+          if-no-files-found: error
+

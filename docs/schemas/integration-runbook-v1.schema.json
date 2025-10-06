@@ -1,0 +1,36 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Integration Runbook Result",
+  "type": "object",
+  "required": ["schema", "generated", "phases", "overallStatus"],
+  "properties": {
+    "schema": { "const": "integration-runbook-v1" },
+    "generated": { "type": "string", "format": "date-time" },
+    "overallStatus": { "type": "string", "enum": ["Passed", "Failed"] },
+    "phases": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["name", "status", "details"],
+        "properties": {
+          "name": {
+            "type": "string",
+            "enum": [
+              "Prereqs",
+              "CanonicalCli",
+              "ViInputs",
+              "Compare",
+              "Tests",
+              "Loop",
+              "Diagnostics"
+            ]
+          },
+            "status": { "type": "string", "enum": ["Passed", "Failed", "Skipped"] },
+            "details": { "type": "object" }
+        },
+        "additionalProperties": false
+      }
+    }
+  },
+  "additionalProperties": true
+}

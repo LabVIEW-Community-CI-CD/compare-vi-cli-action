@@ -1,0 +1,12 @@
+{
+  "total": 0,
+  "passed": 0,
+  "failed": 0,
+  "errors": 0,
+  "skipped": 0,
+  "duration_s": 0.0,
+  "timestamp": "2025-10-03T16:58:36.5737020-07:00",
+  "pesterVersion": "",
+  "includeIntegration": false,
+  "schemaVersion": "1.7.1"
+}

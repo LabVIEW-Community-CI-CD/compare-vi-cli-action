@@ -1,0 +1,12 @@
+C:\dev\compare-vi-cli-action\src\CompareVi.Shared\bin\Release\net8.0\CompareVi.Shared.deps.json
+C:\dev\compare-vi-cli-action\src\CompareVi.Shared\bin\Release\net8.0\CompareVi.Shared.dll
+C:\dev\compare-vi-cli-action\src\CompareVi.Shared\bin\Release\net8.0\CompareVi.Shared.pdb
+C:\dev\compare-vi-cli-action\src\CompareVi.Shared\obj\Release\net8.0\CompareVi.Shared.GeneratedMSBuildEditorConfig.editorconfig
+C:\dev\compare-vi-cli-action\src\CompareVi.Shared\obj\Release\net8.0\CompareVi.Shared.AssemblyInfoInputs.cache
+C:\dev\compare-vi-cli-action\src\CompareVi.Shared\obj\Release\net8.0\CompareVi.Shared.AssemblyInfo.cs
+C:\dev\compare-vi-cli-action\src\CompareVi.Shared\obj\Release\net8.0\CompareVi.Shared.csproj.CoreCompileInputs.cache
+C:\dev\compare-vi-cli-action\src\CompareVi.Shared\obj\Release\net8.0\CompareVi.Shared.sourcelink.json
+C:\dev\compare-vi-cli-action\src\CompareVi.Shared\obj\Release\net8.0\CompareVi.Shared.dll
+C:\dev\compare-vi-cli-action\src\CompareVi.Shared\obj\Release\net8.0\refint\CompareVi.Shared.dll
+C:\dev\compare-vi-cli-action\src\CompareVi.Shared\obj\Release\net8.0\CompareVi.Shared.pdb
+C:\dev\compare-vi-cli-action\src\CompareVi.Shared\obj\Release\net8.0\ref\CompareVi.Shared.dll

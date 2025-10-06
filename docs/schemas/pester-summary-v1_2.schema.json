@@ -1,0 +1,68 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://labview-ci.example.com/schemas/pester-summary-v1_2.schema.json",
+  "title": "Pester Summary (v1.2)",
+  "type": "object",
+  "required": [
+    "schemaVersion",
+    "total",
+    "passed",
+    "failed",
+    "errors",
+    "skipped",
+    "duration_s",
+    "timestamp",
+    "pesterVersion",
+    "includeIntegration",
+    "discoveryFailures"
+  ],
+  "properties": {
+    "schemaVersion": { "const": "1.2.0" },
+    "total": { "type": "integer", "minimum": 0 },
+    "passed": { "type": "integer", "minimum": 0 },
+    "failed": { "type": "integer", "minimum": 0 },
+    "errors": { "type": "integer", "minimum": 0 },
+    "skipped": { "type": "integer", "minimum": 0 },
+    "duration_s": { "type": "number", "minimum": 0 },
+    "timestamp": { "type": "string", "format": "date-time" },
+    "pesterVersion": { "type": "string" },
+    "includeIntegration": { "type": "boolean" },
+    "meanTest_ms": { "type": ["number", "null"], "minimum": 0 },
+    "p95Test_ms": { "type": ["number", "null"], "minimum": 0 },
+    "maxTest_ms": { "type": ["number", "null"], "minimum": 0 },
+    "timedOut": { "type": "boolean" },
+    "discoveryFailures": { "type": "integer", "minimum": 0 },
+
+    "environment": {
+      "type": "object",
+      "required": ["osPlatform","psVersion","pesterModulePath"],
+      "properties": {
+        "osPlatform": {"type": "string"},
+        "psVersion": {"type": "string"},
+        "pesterModulePath": {"type": "string"}
+      },
+      "additionalProperties": true
+    },
+    "run": {
+      "type": "object",
+      "required": ["startTime","endTime","wallClockSeconds"],
+      "properties": {
+        "startTime": {"type": "string", "format": "date-time"},
+        "endTime": {"type": "string", "format": "date-time"},
+        "wallClockSeconds": {"type": "number", "minimum": 0}
+      },
+      "additionalProperties": true
+    },
+    "selection": {
+      "type": "object",
+      "required": ["totalDiscoveredFileCount","selectedTestFileCount","maxTestFilesApplied"],
+      "properties": {
+        "totalDiscoveredFileCount": {"type": "integer", "minimum": 0},
+        "selectedTestFileCount": {"type": "integer", "minimum": 0},
+        "maxTestFilesApplied": {"type": "boolean"}
+      },
+      "additionalProperties": true
+    }
+  },
+  "additionalProperties": true
+}

@@ -57,7 +57,7 @@ Key capabilities:
 | `HistogramBins` | int | 5 | Number of bins for latency histogram (>=1) |
 | `MetricsSnapshotEvery` | int | 0 | Emit per-iteration metrics snapshot every N iterations (0 disables) |
 | `MetricsSnapshotPath` | string | (none) | Destination file for NDJSON (one JSON object per line) snapshots |
-| `QuantileStrategy` | enum | `Exact` | Allowed: `Exact`, `StreamingP2`, `Hybrid` (streaming variants pending) |
+| `QuantileStrategy` | enum | `Exact` | Allowed: `Exact`, `StreamingP2`, `Hybrid`. See [Quantile Accuracy Guide](QUANTILE_ACCURACY.md) for tuning guidance. |
 | `HybridExactThreshold` | int | 500 | Iteration count threshold where Hybrid would switch to streaming (future) |
 | `CustomPercentiles` | string | (none) | Comma/space list of percentile values (0-100 exclusive) for dynamic metric keys (e.g. `"50,75,90,97.5,99.9"`) |
 | `RunSummaryJsonPath` | string | (none) | If set, writes a final consolidated JSON object (schema `compare-loop-run-summary-v1`) after loop completion |
@@ -216,8 +216,8 @@ When `-DiffSummaryFormat Html` is selected the renderer produces a minimal, safe
 ```html
 <h3>VI Compare Diff Summary</h3>
 <ul>
-  <li><strong>Base:</strong> C:\path\to\Base.vi</li>
-  <li><strong>Head:</strong> C:\path\to\Head.vi</li>
+  <li><strong>Base:</strong> C:\path\to\VI1.vi</li>
+  <li><strong>Head:</strong> C:\path\to\VI2.vi</li>
   <li><strong>Diff Iterations:</strong> 4</li>
   <li><strong>Total Iterations:</strong> 12</li>
 </ul>
@@ -234,7 +234,7 @@ Key characteristics:
 Embedding example (GitHub Actions step) – write the fragment then append to the workflow summary:
 
 ```powershell
-$result = Invoke-IntegrationCompareLoop -Base Base.vi -Head Head.vi -MaxIterations 25 -IntervalSeconds 0.5 `
+$result = Invoke-IntegrationCompareLoop -Base VI1.vi -Head VI2.vi -MaxIterations 25 -IntervalSeconds 0.5 `
   -DiffSummaryFormat Html -DiffSummaryPath diff-summary.html -SkipValidation -PassThroughPaths -Quiet
 if ($result.DiffSummary) { Add-Content -Path $env:GITHUB_STEP_SUMMARY -Value $result.DiffSummary }
 ```
@@ -386,8 +386,8 @@ When `-RunSummaryJsonPath <file>` is specified, the loop emits a single JSON doc
     { "Index": 0, "Start": 0, "End": 1, "Count": 150 }
   ],
   "mode": "Polling",
-  "basePath": "C:/path/Base.vi",
-  "headPath": "C:/path/Head.vi",
+  "basePath": "C:/path/VI1.vi",
+  "headPath": "C:/path/VI2.vi",
   "rebaselineApplied": false,
   "rebaselineCandidate": null
 }
@@ -403,7 +403,7 @@ Notes:
 Example invocation:
 
 ```powershell
-Invoke-IntegrationCompareLoop -Base Base.vi -Head Head.vi -MaxIterations 200 -IntervalSeconds 0 `
+Invoke-IntegrationCompareLoop -Base VI1.vi -Head VI2.vi -MaxIterations 200 -IntervalSeconds 0 `
   -CustomPercentiles '50,75,90,97.5,99.9' -HistogramBins 10 -RunSummaryJsonPath run-summary.json -Quiet
 ```
 

@@ -1,0 +1,54 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://labview-community-ci-cd.github.io/compare-vi-cli-action/schemas/fixture-validation-delta-v1.schema.json",
+  "title": "Fixture Validation Delta",
+  "type": "object",
+  "required": [
+    "schema",
+    "baselinePath",
+    "currentPath",
+    "generatedAt",
+    "baselineOk",
+    "currentOk",
+    "deltaCounts",
+    "changes",
+    "newStructuralIssues",
+    "failOnNewStructuralIssue",
+    "willFail"
+  ],
+  "properties": {
+    "schema": { "const": "fixture-validation-delta-v1" },
+    "baselinePath": { "type": "string", "minLength": 1 },
+    "currentPath": { "type": "string", "minLength": 1 },
+    "generatedAt": { "type": "string", "format": "date-time" },
+    "baselineOk": { "type": "boolean" },
+    "currentOk": { "type": "boolean" },
+    "deltaCounts": {
+      "type": "object",
+      "additionalProperties": { "type": "integer" },
+      "description": "Only categories with non-zero deltas are present"
+    },
+    "changes": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["category", "baseline", "current", "delta"],
+        "properties": {
+          "category": { "type": "string" },
+          "baseline": { "type": "integer", "minimum": 0 },
+            "current": { "type": "integer", "minimum": 0 },
+          "delta": { "type": "integer" }
+        },
+        "additionalProperties": false
+      }
+    },
+    "newStructuralIssues": {
+      "type": "array",
+      "items": { "$ref": "#/properties/changes/items" }
+    },
+    "failOnNewStructuralIssue": { "type": "boolean" },
+    "willFail": { "type": "boolean" }
+  },
+  "additionalProperties": false,
+  "$comment": "Additive changes only (append new properties) for backwards compatibility; do not rename existing keys without version increment."
+}

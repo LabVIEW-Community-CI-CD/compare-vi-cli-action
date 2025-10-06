@@ -1,6 +1,10 @@
 # Function-only module for testing (no parameter block or auto-run)
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
+
+# Import shared tokenization pattern
+Import-Module (Join-Path $PSScriptRoot 'ArgTokenization.psm1') -Force
+
 $canonical = 'C:\Program Files\National Instruments\Shared\LabVIEW Compare\LVCompare.exe'
 function Test-CanonicalCli { if (-not (Test-Path -LiteralPath $canonical -PathType Leaf)) { throw "LVCompare.exe not found at canonical path: $canonical" }; return $canonical }
 function Format-Duration([double]$seconds) { if ($seconds -lt 1) { return ('{0} ms' -f [math]::Round($seconds*1000,1)) }; return ('{0:N3} s' -f $seconds) }
@@ -59,7 +63,7 @@ function Invoke-IntegrationCompareLoop {
     if ($SkipIfUnchanged -and -not ($baseChanged -or $headChanged)) { $skipReason = 'unchanged' }
   $diff=$false; $exitCode=$null; $durationSeconds=0.0; $status='SKIPPED'
     if (-not $skipReason) {
-  $status='OK'; $iterationSw=[System.Diagnostics.Stopwatch]::StartNew(); $argsList=@(); if ($LvCompareArgs) { $pattern='"[^\"]+"|\S+'; $tokens=[regex]::Matches($LvCompareArgs,$pattern)|ForEach-Object{$_.Value}; foreach($t in $tokens){$argsList+=$t.Trim('"')}}; if ($CompareExecutor){$exitCode=& $CompareExecutor -CliPath $cli -Base $baseAbs -Head $headAbs -Args $argsList}else{ & $cli $baseAbs $headAbs @argsList; $exitCode=$LASTEXITCODE }; $iterationSw.Stop(); $durationSeconds=[math]::Round($iterationSw.Elapsed.TotalSeconds,3); $totalSeconds+=$durationSeconds; if ($exitCode -eq 0){} elseif ($exitCode -eq 1){$diff=$true; $diffCount++} else {$status='ERROR'; $errorCount++}
+  $status='OK'; $iterationSw=[System.Diagnostics.Stopwatch]::StartNew(); $argsList=@(); if ($LvCompareArgs) { $pattern=Get-LVCompareArgTokenPattern; $tokens=[regex]::Matches($LvCompareArgs,$pattern)|ForEach-Object{$_.Value}; foreach($t in $tokens){$argsList+=$t.Trim('"')}}; if ($CompareExecutor){$exitCode=& $CompareExecutor -CliPath $cli -Base $baseAbs -Head $headAbs -Args $argsList}else{ & $cli $baseAbs $headAbs @argsList; $exitCode=$LASTEXITCODE }; $iterationSw.Stop(); $durationSeconds=[math]::Round($iterationSw.Elapsed.TotalSeconds,3); $totalSeconds+=$durationSeconds; if ($exitCode -eq 0){} elseif ($exitCode -eq 1){$diff=$true; $diffCount++} else {$status='ERROR'; $errorCount++}
     }
   $record=[pscustomobject]@{ iteration=$iteration; diff=$diff; exitCode=$exitCode; status=$status; durationSeconds=$durationSeconds; skipped=[bool]$skipReason; skipReason=$skipReason; baseChanged=$baseChanged; headChanged=$headChanged }
     $records+=$record

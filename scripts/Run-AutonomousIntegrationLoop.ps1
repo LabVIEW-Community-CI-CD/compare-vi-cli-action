@@ -95,7 +95,7 @@
   pwsh -File scripts/Run-AutonomousIntegrationLoop.ps1
 
   # Simulated diff soak with snapshots
-  $env:LV_BASE_VI='Base.vi'; $env:LV_HEAD_VI='Head.vi'
+  $env:LV_BASE_VI='VI1.vi'; $env:LV_HEAD_VI='VI2.vi'
   $env:LOOP_SIMULATE=1
   $env:LOOP_DIFF_SUMMARY_FORMAT='Html'
   $env:LOOP_MAX_ITERATIONS=25
@@ -112,7 +112,7 @@ param(
   [int]$MaxIterations = ($env:LOOP_MAX_ITERATIONS -as [int]),
   [double]$IntervalSeconds = ($env:LOOP_INTERVAL_SECONDS -as [double]),
   [ValidateSet('None','Text','Markdown','Html')]
-  [string]$DiffSummaryFormat = (if ($env:LOOP_DIFF_SUMMARY_FORMAT) { $env:LOOP_DIFF_SUMMARY_FORMAT } else { 'None' }),
+  [string]$DiffSummaryFormat = $( if ($env:LOOP_DIFF_SUMMARY_FORMAT) { $env:LOOP_DIFF_SUMMARY_FORMAT } else { 'None' } ),
   [string]$DiffSummaryPath = $env:LOOP_DIFF_SUMMARY_PATH,
   [string]$CustomPercentiles = $env:LOOP_CUSTOM_PERCENTILES,
   [string]$RunSummaryJsonPath = $env:LOOP_RUN_SUMMARY_JSON,
@@ -123,7 +123,7 @@ param(
   [int]$HistogramBins = ($env:LOOP_HISTOGRAM_BINS -as [int]),
   [scriptblock]$CustomExecutor
   , [switch]$DryRun
-  , [ValidateSet('Quiet','Normal','Verbose','Debug')][string]$LogVerbosity = (if ($env:LOOP_LOG_VERBOSITY) { $env:LOOP_LOG_VERBOSITY } else { 'Normal' })
+  , [ValidateSet('Quiet','Normal','Verbose','Debug')][string]$LogVerbosity = $( if ($env:LOOP_LOG_VERBOSITY) { $env:LOOP_LOG_VERBOSITY } else { 'Normal' } )
   , [string]$JsonLogPath = $env:LOOP_JSON_LOG
   , [switch]$NoStepSummary
   , [switch]$NoConsoleSummary
@@ -171,6 +171,22 @@ if (-not $RunSummaryJsonPath -and $env:LOOP_EMIT_RUN_SUMMARY -match '^(1|true)$'
 
 Import-Module (Join-Path $PSScriptRoot '../module/CompareLoop/CompareLoop.psd1') -Force
 
+$preClean = $false
+if ($env:LOOP_PRE_CLEAN -match '^(1|true)$') { $preClean = $true }
+if ($preClean) {
+  try {
+    $cleanMod = Join-Path $PSScriptRoot 'Ensure-LVCompareClean.psm1'
+    if (-not (Get-Command -Name Stop-LVCompareProcesses -ErrorAction SilentlyContinue)) {
+      Import-Module $cleanMod -Force
+    }
+    $k1 = Stop-LVCompareProcesses -Quiet
+    $k2 = Stop-LabVIEWProcesses -Quiet
+    if ($k1 -gt 0 -or $k2 -gt 0) { Write-Host "Pre-cleaned LVCompare=$k1, LabVIEW=$k2 stray process(es)." -ForegroundColor DarkYellow }
+  } catch {
+    Write-Host "Pre-clean attempt failed: $($_.Exception.Message)" -ForegroundColor DarkYellow
+  }
+}
+
 $exec = $null
 if ($CustomExecutor) { $exec = $CustomExecutor }
 elseif ($simulate) {
@@ -178,7 +194,10 @@ elseif ($simulate) {
   $exitCode = ($env:LOOP_SIMULATE_EXIT_CODE -as [int])
   if ([string]::IsNullOrWhiteSpace($env:LOOP_SIMULATE_EXIT_CODE)) { $exitCode = 1 }
   $delayMs = ($env:LOOP_SIMULATE_DELAY_MS -as [int]); if (-not $delayMs) { $delayMs = 5 }
-  $exec = { param($CliPath,$Base,$Head,$ExecArgs) Start-Sleep -Milliseconds $using:delayMs; return $using:exitCode }
+  $localDelay = $delayMs; if (-not $localDelay) { $localDelay = 5 }
+  $localExit = $exitCode
+  # Lexical closure: variables from outer scope ($localDelay,$localExit) are captured automatically
+  $exec = { param($CliPath,$Base,$Head,$ExecArgs) Start-Sleep -Milliseconds $localDelay; return $localExit }
 }
 
 $invokeParams = @{

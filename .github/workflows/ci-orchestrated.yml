@@ -1,0 +1,215 @@
+name: CI Orchestrated (deterministic chain)
+
+on:
+  workflow_dispatch:
+    inputs:
+      include_integration:
+        description: 'Include Integration-tagged tests'
+        required: false
+        default: 'true'
+        type: choice
+        options: ['true', 'false']
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  pre-init:
+    runs-on: ubuntu-latest
+    outputs:
+      docs_only: ${{ steps.g.outputs.docs_only }}
+      include_integration: ${{ steps.norm.outputs.bool }}
+    steps:
+    - uses: actions/checkout@v5
+    - name: Normalize include_integration
+      id: norm
+      uses: ./.github/actions/bool-normalize
+      with:
+        value: ${{ inputs.include_integration }}
+        default: 'true'
+    - id: g
+      uses: ./.github/actions/pre-init-gate
+      with:
+        include-globs: |
+          docs/**
+          **/*.md
+        exclude-globs: |
+          docs/schemas/**
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v5
+
+    - name: Install actionlint
+      run: |
+        mkdir -p ./bin
+        curl -sSL https://raw.githubusercontent.com/rhysd/actionlint/main/scripts/download-actionlint.bash | bash -s -- latest ./bin
+
+    - name: Run actionlint
+      run: |
+        ./bin/actionlint -color
+
+    - name: Install markdownlint-cli
+      run: |
+        npm install -g markdownlint-cli
+
+    - name: Run markdownlint (non-blocking)
+      continue-on-error: true
+      run: |
+        markdownlint "**/*.md" --ignore node_modules
+
+  preflight:
+    runs-on: windows-latest
+    timeout-minutes: 3
+    needs: pre-init
+    if: needs.pre-init.outputs.docs_only != 'true'
+    steps:
+    - uses: actions/checkout@v5
+    - name: Verify Windows runner and idle LabVIEW (surface LVCompare notice)
+      shell: pwsh
+      run: |-
+        Write-Host "Runner: $([System.Environment]::OSVersion.VersionString)"
+        Write-Host "Pwsh:   $($PSVersionTable.PSVersion)"
+        $cli = 'C:\Program Files\National Instruments\Shared\LabVIEW Compare\LVCompare.exe'
+        if (-not (Test-Path -LiteralPath $cli)) {
+          Write-Host "::notice::LVCompare.exe not found at canonical path: $cli (hosted preflight)"
+        } else { Write-Host "LVCompare present: $cli" }
+        $lv = Get-Process -Name 'LabVIEW' -ErrorAction SilentlyContinue
+        if ($lv) { Write-Host "::error::LabVIEW.exe is running (PID(s): $($lv.Id -join 
+        ))"; exit 1 }
+        Write-Host 'Preflight OK: Windows runner healthy; LabVIEW not running.'
+        if ($env:GITHUB_STEP_SUMMARY) {
+          $note = @('Note:', '- This preflight runs on hosted Windows (windows-latest); LVCompare presence is not required here.', '- Self-hosted Windows steps later in this workflow enforce LVCompare at the canonical path.') -join "`n"
+          $note | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8
+        }
+
+  pester:
+    runs-on: [self-hosted, Windows, X64]
+    timeout-minutes: 3
+    needs: [pre-init, preflight]
+    if: needs.pre-init.outputs.docs_only != 'true'
+    strategy:
+      matrix:
+        category: [dispatcher, fixtures, schema, comparevi, loop, runbook, orchestrator]
+      max-parallel: 1
+    env:
+      LV_BASE_VI: ${{ vars.LV_BASE_VI }}
+      LV_HEAD_VI: ${{ vars.LV_HEAD_VI }}
+      DETECT_LEAKS: '1'
+      CLEAN_AFTER: '1'
+      SCAN_ARTIFACTS: '1'
+      UNBLOCK_GUARD: '1'
+      LV_SUPPRESS_UI: '1'
+      WATCH_CONSOLE: '1'
+      # Optional per-category Pester timeouts (seconds). Set repository Variables to override.
+      PESTER_TIMEOUT_DISPATCHER: ${{ vars.PESTER_TIMEOUT_DISPATCHER }}
+      PESTER_TIMEOUT_FIXTURES: ${{ vars.PESTER_TIMEOUT_FIXTURES }}
+      PESTER_TIMEOUT_SCHEMA: ${{ vars.PESTER_TIMEOUT_SCHEMA }}
+      PESTER_TIMEOUT_COMPAREVI: ${{ vars.PESTER_TIMEOUT_COMPAREVI }}
+      PESTER_TIMEOUT_LOOP: ${{ vars.PESTER_TIMEOUT_LOOP }}
+      PESTER_TIMEOUT_RUNBOOK: ${{ vars.PESTER_TIMEOUT_RUNBOOK }}
+      PESTER_TIMEOUT_ORCHESTRATOR: ${{ vars.PESTER_TIMEOUT_ORCHESTRATOR }}
+    steps:
+    - uses: actions/checkout@v5
+    - name: Run Pester category
+      uses: ./.github/actions/pester-category-run
+      with:
+        category: ${{ matrix.category }}
+        include_integration: ${{ needs.pre-init.outputs.include_integration }}
+        results-dir: tests/results/${{ matrix.category }}
+        tests-path: tests
+        default-timeout-seconds: '0'
+
+    - name: Session index post
+      if: always()
+      uses: ./.github/actions/session-index-post
+      with:
+        results-dir: tests/results/${{ matrix.category }}
+        validate-schema: true
+        upload: true
+        artifact-name: session-index-${{ matrix.category }}
+
+    - name: Upload Pester artifacts
+      if: always()
+      uses: actions/upload-artifact@v4
+      with:
+        name: orchestrated-pester-results-${{ matrix.category }}
+        path: |
+          tests/results/${{ matrix.category }}/**/*.xml
+          tests/results/${{ matrix.category }}/**/*.txt
+          tests/results/${{ matrix.category }}/pester-summary.json
+          tests/results/${{ matrix.category }}/pester-failures.json
+          tests/results/${{ matrix.category }}/session-index.json
+
+    - name: Runner Unblock Guard
+      if: always()
+      uses: ./.github/actions/runner-unblock-guard
+      with:
+        snapshot-path: tests/results/${{ matrix.category }}/runner-unblock-snapshot.json
+        cleanup: ${{ env.UNBLOCK_GUARD == '1' }}
+        process-names: 'conhost,pwsh,LabVIEW,LVCompare'
+
+    - name: Export fixture env defaults (if unset)
+      if: always()
+      shell: pwsh
+      run: |
+        if ([string]::IsNullOrWhiteSpace($env:LV_BASE_VI)) {
+          "LV_BASE_VI=$((Join-Path $env:GITHUB_WORKSPACE 'VI1.vi'))" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+        }
+        if ([string]::IsNullOrWhiteSpace($env:LV_HEAD_VI)) {
+          "LV_HEAD_VI=$((Join-Path $env:GITHUB_WORKSPACE 'VI2.vi'))" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+        }
+
+  drift:
+    runs-on: [self-hosted, Windows, X64]
+    timeout-minutes: 3
+    needs: [pre-init, pester]
+    if: ${{ always() }}
+    env:
+      UNBLOCK_GUARD: '1'
+      LV_SUPPRESS_UI: '1'
+      WATCH_CONSOLE: '1'
+    steps:
+    - uses: actions/checkout@v5
+    - name: Fixture Drift Orchestrator
+      uses: ./.github/actions/fixture-drift
+      with:
+        render-report: 'true'
+        comment-on-fail: 'true'
+        upload-artifacts: 'true'
+        artifact-name: orchestrated-fixture-drift
+
+    - name: Session index post (best-effort)
+      if: always()
+      uses: ./.github/actions/session-index-post
+      with:
+        results-dir: results/fixture-drift
+        validate-schema: true
+        upload: true
+        artifact-name: fixture-drift-session-index
+
+    - name: Runner Unblock Guard
+      if: always()
+      uses: ./.github/actions/runner-unblock-guard
+      with:
+        snapshot-path: results/fixture-drift/runner-unblock-snapshot.json
+        cleanup: ${{ env.UNBLOCK_GUARD == '1' }}
+        process-names: 'conhost,pwsh,LabVIEW,LVCompare'
+
+  publish:
+    runs-on: ubuntu-latest
+    needs: [lint, pester, drift]
+    if: always()
+    steps:
+    - uses: actions/checkout@v5
+    - name: Summarize orchestrated run
+      shell: pwsh
+      run: |
+        $lines = @(
+          '### CI Orchestrated Summary',
+          '- Lint: ${{ needs.lint.result }}',
+          '- Pester: ${{ needs.pester.result }}',
+          '- Drift: ${{ needs.drift.result }}'
+        ) -join "`n"
+        $lines | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8

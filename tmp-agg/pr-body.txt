@@ -1,0 +1,25 @@
+This backmerge PR brings all fixture drift orchestration improvements from the release branch into develop.
+
+Highlights
+- Composite action: .github/actions/fixture-drift/action.yml orchestrates drift validation, artifact upload, PR comment, step summary, and schema-lite validation.
+- Blocking workflow: .github/workflows/fixture-drift.yml with minimal permissions; designed to be set as Required.
+- Sticky PR comment with direct artifact links, fork-safe and idempotent; updates existing bot comment instead of duplicating.
+- Enriched drift-summary.json with schema (fixture-drift-summary-v1), generatedAtUtc, and per-file timestamps/lengths; deterministic ordering.
+- JSON schema (Draft-07) at docs/schemas/fixture-drift-summary-v1.schema.json; validated in CI via tools/Invoke-JsonSchemaLite.ps1.
+- Manual helper: scripts/Debug-FixtureDrift.ps1 for local end-to-end drift runs, avoiding quoting pitfalls.
+- Docs: README + docs/SCHEMA_HELPER.md updated; usage, outputs, and troubleshooting guidance.
+- Tests: New/extended Pester tests to assert schema fields, HTML diff determinism, and workflow guards.
+
+Additional changes pulled forward
+- Hardened CompareVI and dispatcher logic; new aggregation helpers and schema coverage; expanded troubleshooting docs.
+- New tools: Validate-Fixtures, Update-FixtureManifest, Diff-FixtureValidationJson, Write-FixtureValidationSummary, etc.
+
+Acceptance
+- Unit tests pass locally. Integration tests require LVCompare at canonical path.
+- Non-deterministic ordering avoided; exit code mapping unchanged.
+
+Follow-ups
+- Consider adding composite behavior tests and making the drift job Required in repository settings.
+
+Notes
+- This merges release/v0.4.0-rc.1 → develop to keep branches in sync before finalizing v0.4.1.

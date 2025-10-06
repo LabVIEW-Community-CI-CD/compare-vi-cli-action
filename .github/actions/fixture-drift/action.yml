@@ -1,0 +1,428 @@
+name: Fixture Drift Orchestrator
+description: Validate fixtures, orchestrate drift artifacts, upload, summarize, and comment on PRs (sticky)
+author: LabVIEW-Community-CI-CD
+
+inputs:
+  render-report:
+    description: Generate compare-report.html when LVCompare is available
+    required: false
+    default: 'true'
+  comment-on-fail:
+    description: Post/update a PR comment when drift or structural failure occurs
+    required: false
+    default: 'true'
+  upload-artifacts:
+    description: Upload generated artifacts using actions/upload-artifact
+    required: false
+    default: 'true'
+  only-upload-on-failure:
+    description: Upload artifacts only when status != ok
+    required: false
+    default: 'true'
+  artifact-name:
+    description: Artifact name to use when uploading
+    required: false
+    default: fixture-drift
+  retention-days:
+    description: Retention days for uploaded artifacts (if supported by runner policy)
+    required: false
+    default: ''
+  soft-fail:
+    description: Do not fail the job on non-ok status (e.g., docs-only PRs)
+    required: false
+    default: 'false'
+  output-dir:
+    description: Optional output directory (defaults to results/fixture-drift/<utc>)
+    required: false
+  base-path:
+    description: Optional base VI path to pass to orchestrator
+    required: false
+  head-path:
+    description: Optional head VI path to pass to orchestrator
+    required: false
+  lv-compare-args:
+    description: Additional LVCompare args
+    required: false
+    default: -nobdcosm -nofppos -noattr
+  report-delay-ms:
+    description: Optional settle delay before report generation (ms)
+    required: false
+    default: '150'
+  suppress-summary:
+    description: Suppress writing to GITHUB_STEP_SUMMARY (use when parent consolidates summary)
+    required: false
+    default: 'false'
+
+outputs:
+  status:
+    description: Outcome status from orchestrator (ok | drift | fail-structural | unknown)
+    value: ${{ steps.orchestrate.outputs.status }}
+  summary_path:
+    description: Path to drift-summary.json (if present)
+    value: ${{ steps.orchestrate.outputs.summary_path }}
+
+runs:
+  using: composite
+  steps:
+    - name: Pre-flight checks (paths & OS)
+      shell: pwsh
+      run: |
+        $ErrorActionPreference = 'Stop'
+        $render = [System.Convert]::ToBoolean('${{ inputs.render-report }}')
+        if ($render -and $IsWindows -ne $true) { 
+          throw 'Report rendering requires Windows runners. Use render-report: false for non-Windows platforms.' 
+        }
+        $vf = Join-Path "${{ github.workspace }}" 'tools/Validate-Fixtures.ps1'
+        $of = Join-Path "${{ github.workspace }}" 'scripts/On-FixtureValidationFail.ps1'
+        if (-not (Test-Path -LiteralPath $vf)) { throw "Missing validator script: $vf" }
+        if (-not (Test-Path -LiteralPath $of)) { throw "Missing orchestrator script: $of" }
+
+    - name: Generate validator outputs (strict and override)
+      shell: pwsh
+      run: |
+        $ErrorActionPreference = 'Stop'
+        $strictPath = Join-Path (Get-Location) 'strict.json'
+        $overridePath = Join-Path (Get-Location) 'override.json'
+        pwsh -NoLogo -NoProfile -NonInteractive -File "${{ github.workspace }}/tools/Validate-Fixtures.ps1" -Json | Out-File -FilePath $strictPath -Encoding utf8
+        pwsh -NoLogo -NoProfile -NonInteractive -File "${{ github.workspace }}/tools/Validate-Fixtures.ps1" -Json -TestAllowFixtureUpdate | Out-File -FilePath $overridePath -Encoding utf8
+
+    - name: Manifest refresh detection and summary
+      id: manifest
+      shell: pwsh
+      env:
+        SUPPRESS_SUMMARY: ${{ inputs.suppress-summary }}
+      run: |
+        $ErrorActionPreference = 'Stop'
+        $strictPath = Join-Path (Get-Location) 'strict.json'
+        if (-not (Test-Path -LiteralPath $strictPath)) { exit 0 }
+        try { $j = Get-Content -LiteralPath $strictPath -Raw | ConvertFrom-Json -ErrorAction Stop } catch { exit 0 }
+        $written = $false; $path = ''; $reason = ''
+        try {
+          if ($j.autoManifest) {
+            $written = [bool]$j.autoManifest.written
+            $path    = [string]$j.autoManifest.path
+            $reason  = [string]$j.autoManifest.reason
+          }
+        } catch {}
+        if ($written) {
+          if ($env:GITHUB_STEP_SUMMARY -and ($env:SUPPRESS_SUMMARY -ne 'true')) {
+            $lines = @('### Fixture Manifest Refresh','')
+            $lines += ('- Written: {0}' -f $written)
+            if ($reason) { $lines += ('- Reason: {0}' -f $reason) }
+            if ($path) { $lines += ('- Path: {0}' -f $path) }
+            $lines -join "`n" | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8
+          }
+          "written=true`npath=$path" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+        } else {
+          "written=false" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+        }
+
+    - name: Orchestrate drift artifacts
+      id: orchestrate
+      shell: pwsh
+      run: |
+        $ErrorActionPreference = 'Continue'
+        # Optional settle delay for report rendering
+        if ('${{ inputs.report-delay-ms }}') { $env:REPORT_DELAY_MS = '${{ inputs.report-delay-ms }}' }
+        # Let the orchestrator choose its timestamped subdirectory by default.
+        # Only pass -OutputDir when the caller provided a custom directory.
+        $outDir = '${{ inputs.output-dir }}'
+        $strictPath = Join-Path (Get-Location) 'strict.json'
+        $overridePath = Join-Path (Get-Location) 'override.json'
+        $args = @('-StrictJson',$strictPath,'-OverrideJson',$overridePath)
+        try { $render = [System.Convert]::ToBoolean('${{ inputs.render-report }}') } catch { $render = $false }
+        if ($render) { $args += '-RenderReport' }
+        if ('${{ inputs.base-path }}') { $args += @('-BasePath','${{ inputs.base-path }}') }
+        if ('${{ inputs.head-path }}') { $args += @('-HeadPath','${{ inputs.head-path }}') }
+        if ('${{ inputs.lv-compare-args }}') { $args += @('-LvCompareArgs','${{ inputs.lv-compare-args }}') }
+        if ($outDir) { $args += @('-OutputDir',$outDir) }
+        pwsh -NoLogo -NoProfile -File "${{ github.workspace }}/scripts/On-FixtureValidationFail.ps1" @args
+        $exit = $LASTEXITCODE
+        $root = Join-Path (Get-Location) 'results/fixture-drift'
+        $latest = $null
+        if (Test-Path $root) {
+          $dirs = Get-ChildItem -LiteralPath $root -Directory
+          $tsDirs = @($dirs | Where-Object { $_.Name -match '^[0-9]{8}T[0-9]{6}Z$' })
+          if ($tsDirs.Count -gt 0) {
+            $latest = $tsDirs | Sort-Object Name -Descending | Select-Object -First 1
+          } else {
+            $latest = $dirs | Sort-Object LastWriteTimeUtc -Descending | Select-Object -First 1
+          }
+        }
+        $sumPath = $null
+        $status = 'unknown'
+        if ($latest) {
+          $sumPath = Join-Path $latest.FullName 'drift-summary.json'
+          if (Test-Path $sumPath) {
+            $j = Get-Content -LiteralPath $sumPath -Raw | ConvertFrom-Json
+            if ($j.status) { $status = [string]$j.status }
+          }
+        }
+        # Fallback: handle callers that wrote directly to results/fixture-drift or a custom output directory without a timestamped child
+        if (-not $latest -and -not $sumPath) {
+          $directSum = Join-Path $root 'drift-summary.json'
+          if (Test-Path $directSum) { $sumPath = $directSum }
+        }
+        if (-not $sumPath -and $outDir) {
+          $odSum = Join-Path $outDir 'drift-summary.json'
+          if (Test-Path $odSum) { $sumPath = $odSum }
+        }
+        if (-not $status -or $status -eq 'unknown') {
+          if ($sumPath -and (Test-Path $sumPath)) {
+            try { $j2 = Get-Content -LiteralPath $sumPath -Raw | ConvertFrom-Json; if ($j2.status) { $status = [string]$j2.status } } catch {}
+          }
+        }
+        "status=$status" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+        if ($sumPath) { "summary_path=$sumPath" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8 }
+        # Do not fail here to allow artifact upload and comment; a later step will enforce failure.
+
+        # DEBUG: emit breadcrumbs to console and step summary to aid diagnosis when status is unknown or artifacts are missing
+        try {
+          Write-Host "[drift-debug] orchestrator exit: $exit"
+          Write-Host "[drift-debug] results root: $root"
+          if (Test-Path $root) {
+            $latestName = if ($latest) { $latest.Name } else { '<none>' }
+            Write-Host "[drift-debug] latest dir: $latestName"
+            Write-Host "[drift-debug] summary path: $sumPath"
+            # Shallow list of latest dir
+            if ($latest) {
+              Get-ChildItem -LiteralPath $latest.FullName -Force -ErrorAction SilentlyContinue | ForEach-Object { Write-Host ("  - {0}" -f $_.Name) }
+            }
+          } else {
+            Write-Host "[drift-debug] results root missing: $root"
+          }
+          # If summary exists, echo a compact view and basic fields
+          if ($sumPath -and (Test-Path $sumPath)) {
+            try {
+              $raw = Get-Content -LiteralPath $sumPath -Raw
+              $j2 = $raw | ConvertFrom-Json -ErrorAction Stop
+              $catCnt = if ($j2.categories) { $j2.categories.Count } else { 0 }
+              Write-Host ("[drift-debug] summary: schema={0} status={1} exitCode={2} categories={3}" -f $j2.schema,$j2.status,$j2.exitCode,$catCnt)
+            } catch { Write-Host "[drift-debug] failed to parse drift-summary.json: $_" }
+          } else {
+            Write-Host "[drift-debug] drift-summary.json not found"
+          }
+          # Append to step summary (short block)
+        $lines = @('### Fixture Drift (debug)','')
+        $lines += ("- Orchestrator exit: {0}" -f $exit)
+        $lines += ("- Status: {0}" -f $status)
+        $lines += ("- Results root: {0}" -f $root)
+        $latestName = if ($latest) { $latest.Name } else { '<none>' }
+        $sumDisp = if ($sumPath) { $sumPath } else { '<none>' }
+        $lines += ("- Latest dir: {0}" -f $latestName)
+        $lines += ("- Summary path: {0}" -f $sumDisp)
+        if ($env:REPORT_DELAY_MS) { $lines += ("- Report delay (ms): {0}" -f $env:REPORT_DELAY_MS) }
+        $lines -join "`n" | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8
+        } catch { Write-Host "[drift-debug] failed to emit debug breadcrumbs: $_" }
+
+    - name: Upload drift artifacts (with retention)
+      if: always() && inputs.upload-artifacts == 'true' && (inputs.only-upload-on-failure != 'true' || steps.orchestrate.outputs.status != 'ok') && inputs.retention-days != ''
+      uses: actions/upload-artifact@v4
+      with:
+        name: ${{ inputs.artifact-name }}
+        path: |
+          results/fixture-drift/**
+          strict.json
+          override.json
+        retention-days: ${{ inputs.retention-days }}
+
+    - name: Upload drift artifacts (default retention)
+      if: always() && inputs.upload-artifacts == 'true' && (inputs.only-upload-on-failure != 'true' || steps.orchestrate.outputs.status != 'ok') && inputs.retention-days == ''
+      uses: actions/upload-artifact@v4
+      with:
+        name: ${{ inputs.artifact-name }}
+        path: |
+          results/fixture-drift/**
+          strict.json
+          override.json
+
+    - name: Write step summary
+      if: always()
+      shell: pwsh
+      run: |
+        $root = Join-Path (Get-Location) 'results/fixture-drift'
+        if (Test-Path $root) {
+          $latest = Get-ChildItem -LiteralPath $root -Directory | Sort-Object Name -Descending | Select-Object -First 1
+          if ($latest) { $sum = Join-Path $latest.FullName 'drift-summary.json' } else { $sum = $null }
+        }
+        if ($sum -and (Test-Path $sum)) {
+          $j = Get-Content -LiteralPath $sum -Raw | ConvertFrom-Json
+          $lines = @()
+          $lines += '### Fixture Drift Summary'
+          $lines += ''
+          if ($j.schema) { $lines += "- Schema: $($j.schema)" }
+          if ($j.generatedAtUtc) { $lines += "- GeneratedAtUtc: $($j.generatedAtUtc)" }
+          $lines += "- Status: $($j.status)"
+          $lines += "- ExitCode: $($j.exitCode)"
+          $cat = if ($j.categories) { ($j.categories -join ', ') } else { 'none' }
+          $lines += "- Categories: $cat"
+          $lines += ''
+          if ($j.artifactPaths) {
+            $lines += 'Artifacts:'
+            foreach ($a in $j.artifactPaths) { $lines += "- $a" }
+          }
+          if ($j.files) {
+            $lines += ''
+            $lines += 'Files:'
+            foreach ($f in $j.files) {
+              $p = $f.path; $t = $f.lastWriteTimeUtc; $len = $f.length
+              if ($len -ne $null) { $lines += "- $p — $t ($len bytes)" } else { $lines += "- $p — $t" }
+            }
+          }
+          $lines -join "`n" | Out-File $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8
+        } else {
+          'No drift-summary.json found' | Out-File $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8
+        }
+
+    - name: Validate drift summary schema (schema-lite)
+      if: always()
+      shell: pwsh
+      run: |
+        $root = Join-Path (Get-Location) 'results/fixture-drift'
+        if (-not (Test-Path $root)) { return }
+        $latest = Get-ChildItem -LiteralPath $root -Directory | Sort-Object Name -Descending | Select-Object -First 1
+        if (-not $latest) { return }
+        $sum = Join-Path $latest.FullName 'drift-summary.json'
+        if (-not (Test-Path $sum)) { return }
+        $schemaPath = Join-Path "${{ github.workspace }}" 'docs/schemas/fixture-drift-summary-v1.schema.json'
+        if (Test-Path $schemaPath) {
+          pwsh -NoLogo -NoProfile -NonInteractive -File "${{ github.workspace }}/tools/Invoke-JsonSchemaLite.ps1" -JsonPath $sum -SchemaPath $schemaPath
+          # Do not fail the job here; schema errors will have been printed for diagnosis.
+          if ($LASTEXITCODE -ne 0) { Write-Host "Schema-lite validation returned code $LASTEXITCODE" }
+        }
+
+    - name: Comment on PR with artifact links (sticky)
+      if: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.fork == false && steps.orchestrate.outputs.status != 'ok' && inputs.comment-on-fail == 'true' }}
+      env:
+        GITHUB_TOKEN: ${{ github.token }}
+      shell: pwsh
+      run: |
+        $ErrorActionPreference = 'Stop'
+        $marker = '<!-- fixture-drift-comment -->'
+        $runUrl = "https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+        $root = Join-Path (Get-Location) 'results/fixture-drift'
+        $latest = $null
+        if (Test-Path $root) {
+          $dirs = Get-ChildItem -LiteralPath $root -Directory
+          $tsDirs = @($dirs | Where-Object { $_.Name -match '^[0-9]{8}T[0-9]{6}Z$' })
+          if ($tsDirs.Count -gt 0) { $latest = $tsDirs | Sort-Object Name -Descending | Select-Object -First 1 } else { $latest = $dirs | Sort-Object LastWriteTimeUtc -Descending | Select-Object -First 1 }
+        }
+        $sum = $null
+        if ($latest) { $sum = Join-Path $latest.FullName 'drift-summary.json' }
+        $status = 'unknown'; $exitCode = ''
+        $artifactsList = @()
+        if ($sum -and (Test-Path $sum)) {
+          $j = Get-Content -LiteralPath $sum -Raw | ConvertFrom-Json
+          if ($j.status) { $status = [string]$j.status }
+          if ($j.exitCode) { $exitCode = [string]$j.exitCode }
+          if ($j.artifactPaths) { $artifactsList = @($j.artifactPaths) }
+        }
+        # Query run artifacts for listing (names only; link to run page for downloads)
+        $repoFull = '${{ github.repository }}'
+        $owner,$repo = $repoFull.Split('/')
+        $runId = '${{ github.run_id }}'
+        $apiBase = "https://api.github.com"
+        $headers = @{ Authorization = "Bearer $env:GITHUB_TOKEN"; 'X-GitHub-Api-Version' = '2022-11-28'; Accept='application/vnd.github+json' }
+        $artifactNames = @()
+        try {
+          $page = 1; $pageSize = 100
+          while ($true) {
+            $artifactsEndpoint = "$apiBase/repos/$owner/$repo/actions/runs/$runId/artifacts?per_page=$pageSize&page=$page"
+            $resp = Invoke-RestMethod -Method Get -Uri $artifactsEndpoint -Headers $headers
+            if (-not $resp -or -not $resp.artifacts -or $resp.artifacts.Count -eq 0) { break }
+            foreach ($art in $resp.artifacts) {
+              $name = [string]$art.name
+              $artifactNames += $name
+            }
+            if ($resp.artifacts.Count -lt $pageSize) { break }
+            $page += 1; if ($page -gt 5) { break } # safety cap
+          }
+        } catch {}
+
+        $lines = @()
+        $lines += $marker
+        $lines += 'Fixture Drift validation failed on this PR.'
+        $lines += "Status: $status (exit $exitCode)"
+        $lines += ''
+        $lines += "**Download artifacts**: Visit the [workflow run page]($runUrl) and scroll to the Artifacts section at the bottom."
+        $lines += ''
+        if ($artifactNames.Count -gt 0) {
+          $lines += 'Available artifacts:'
+          foreach ($name in $artifactNames) { $lines += "- $name" }
+          $lines += ''
+        }
+        $lines += 'Environment quick toggles:'
+        $lines += '- DETECT_LEAKS=1 — emit leak report (tests/results/pester-leak-report.json)'
+        $lines += '- CLEAN_AFTER=1 — best-effort stop LabVIEW/LVCompare after run'
+        $lines += '- FAIL_ON_LEAKS=1 — fail when leaks are detected'
+        $lines += ''
+        $lines += 'Full reference: docs/ENVIRONMENT.md'
+        if ($artifactsList.Count -gt 0) {
+          $lines += ''
+          $lines += 'Included artifact files:'
+          foreach ($a in $artifactsList) { $lines += "- $a" }
+        }
+        if ($sum -and (Test-Path $sum)) {
+          try {
+            $jj = Get-Content -LiteralPath $sum -Raw | ConvertFrom-Json
+            if ($jj.files) {
+              $lines += ''
+              $lines += 'Files on disk:'
+              foreach ($f in $jj.files) {
+                $p = $f.path; $t = $f.lastWriteTimeUtc; $len = $f.length
+                if ($len -ne $null) { $lines += "- $p — $t ($len bytes)" } else { $lines += "- $p — $t" }
+              }
+            }
+          } catch {}
+        }
+        $body = ($lines -join "`n")
+        $issueNumber = '${{ github.event.pull_request.number }}'
+        $listUri = "$apiBase/repos/$owner/$repo/issues/$issueNumber/comments?per_page=100"
+        $existingId = $null
+        try {
+          $comments = Invoke-RestMethod -Method Get -Uri $listUri -Headers $headers
+          foreach ($c in $comments) {
+            $login = ''
+            if ($c.user -and $c.user.login) { $login = [string]$c.user.login }
+            $isBot = ($login -eq 'github-actions[bot]')
+            if ($c.body -and ($c.body -like "*fixture-drift-comment*") -and $isBot) { $existingId = $c.id; break }
+          }
+        } catch {}
+        if ($existingId) {
+          $patchUri = "$apiBase/repos/$owner/$repo/issues/comments/$existingId"
+          $payload = @{ body = $body } | ConvertTo-Json
+          Invoke-RestMethod -Method Patch -Uri $patchUri -Headers $headers -Body $payload -ContentType 'application/json'
+        } else {
+          $postUri = "$apiBase/repos/$owner/$repo/issues/$issueNumber/comments"
+          $payload = @{ body = $body } | ConvertTo-Json
+          Invoke-RestMethod -Method Post -Uri $postUri -Headers $headers -Body $payload -ContentType 'application/json'
+        }
+
+    - name: Upload refreshed manifest (if any)
+      if: steps.manifest.outputs.written == 'true' && inputs.upload-artifacts == 'true'
+      uses: actions/upload-artifact@v4
+      with:
+        name: fixture-manifest-refreshed
+        path: ${{ steps.manifest.outputs.path }}
+        if-no-files-found: warn
+
+    - name: Finalize job status (strict)
+      if: inputs.soft-fail != 'true'
+      shell: pwsh
+      run: |
+        if ('${{ steps.orchestrate.outputs.status }}' -ne 'ok') {
+          Write-Error "Fixture drift validation failed (status=${{ steps.orchestrate.outputs.status }})."
+        }
+
+    - name: Finalize job status (soft)
+      if: inputs.soft-fail == 'true' && inputs.suppress-summary != 'true'
+      shell: pwsh
+      run: |
+        $s = '${{ steps.orchestrate.outputs.status }}'
+        if ($env:GITHUB_STEP_SUMMARY) {
+          $lines = @('### Fixture Drift (soft-fail)','')
+          $lines += ("- Status: {0}" -f $s)
+          $lines += '- Reason: docs-only change detected'
+          $lines -join "`n" | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8
+        }
+        if ($s -ne 'ok') { Write-Host "Soft-fail enabled: not failing job despite status='$s'." }

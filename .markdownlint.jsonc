@@ -1,0 +1,15 @@
+{
+  // Baseline markdownlint configuration
+  // Adjust rules incrementally; start with common sensible defaults.
+  "default": true,
+  // Allow inline HTML fragments used in docs (HTML diff summary snippet)
+  "MD033": false,
+  // Disable MD013 (line length) repository-wide due to technical schemas and long code spans
+  "MD013": false,
+  // Permit multiple consecutive blank lines near large tables if needed
+  "MD012": false,
+  // We control heading style manually; mixed ATX okay
+  "MD003": { "style": "consistent" },
+  // Disable line length on tables; wide columns expected
+  "MD014": false
+}

@@ -15,8 +15,8 @@ Describe 'Invoke-IntegrationCompareLoop (DI executor)' -Tag 'Unit' {
   BeforeAll {
     $script:tempDir = Join-Path ([IO.Path]::GetTempPath()) ("loopTest_" + [guid]::NewGuid())
     New-Item -ItemType Directory -Path $script:tempDir -Force | Out-Null
-    $script:base = Join-Path $script:tempDir 'Base.vi'
-    $script:head = Join-Path $script:tempDir 'Head.vi'
+    $script:base = Join-Path $script:tempDir 'VI1.vi'
+    $script:head = Join-Path $script:tempDir 'VI2.vi'
     'base' | Out-File -FilePath $script:base -Encoding utf8
     'head' | Out-File -FilePath $script:head -Encoding utf8
   }

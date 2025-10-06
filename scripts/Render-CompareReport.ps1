@@ -6,15 +6,45 @@ param(
   [string]$Base,
   [string]$Head,
   [string]$OutputPath,
-  [double]$DurationSeconds
+  [double]$DurationSeconds,
+  [string]$ExecJsonPath
 )
 
 $ErrorActionPreference = 'Stop'
 
+# Import shared tokenization pattern
+Import-Module (Join-Path $PSScriptRoot 'ArgTokenization.psm1') -Force
+
+# Prefer compare-exec.json when available to avoid relying on transient process state
+try {
+  $candidatePath = $null
+  if (-not $ExecJsonPath -and $OutputPath) {
+    $candidatePath = Join-Path (Split-Path -Parent $OutputPath) 'compare-exec.json'
+  } elseif ($ExecJsonPath) {
+    $candidatePath = $ExecJsonPath
+  }
+  $source = 'params'
+  if ($candidatePath -and (Test-Path -LiteralPath $candidatePath)) {
+    $execObj = Get-Content -LiteralPath $candidatePath -Raw | ConvertFrom-Json -ErrorAction Stop
+    if ($execObj) {
+      if ($execObj.command) { $Command = [string]$execObj.command }
+      if ($execObj.cliPath) { $CliPath = [string]$execObj.cliPath }
+      if ($execObj.exitCode -ne $null) { $ExitCode = [int]$execObj.exitCode }
+      if ($execObj.duration_s -ne $null) { $DurationSeconds = [double]$execObj.duration_s }
+      if ($execObj.base) { $Base = [string]$execObj.base }
+      if ($execObj.head) { $Head = [string]$execObj.head }
+      if ($execObj.diff -ne $null) {
+        $Diff = if ([bool]$execObj.diff) { 'true' } else { 'false' }
+      }
+      $source = 'execJson'
+    }
+  }
+} catch { Write-Host "[report] warn: failed to load exec json: $_" -ForegroundColor DarkYellow }
+
 function Get-BaseHeadFromCommand([string]$cmd) {
   # Tokenize respecting quotes: match quoted strings (preserving quotes) or non-space sequences
   # This pattern matches: "quoted strings" OR non-whitespace sequences
-  $pattern = '"[^"]+"|\S+'
+  $pattern = Get-LVCompareArgTokenPattern
   $tokens = [regex]::Matches($cmd, $pattern) | ForEach-Object { 
     $val = $_.Value
     # Remove surrounding quotes if present
@@ -79,6 +109,7 @@ $css
   <div class="section">
     <div class="kv">
       <div class="key">Generated</div><div class="value">$now</div>
+      <div class="key">Source</div><div class="value">$source</div>
       <div class="key">Exit code</div><div class="value">$ExitCode ($exitText)</div>
       <div class="key">Diff</div><div class="value">$Diff</div>
   <div class="key">CLI Path</div><div class="value">$CliPath</div>

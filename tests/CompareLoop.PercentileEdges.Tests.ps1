@@ -6,8 +6,8 @@ Import-Module (Join-Path $repoRoot 'module' 'CompareLoop' 'CompareLoop.psd1') -F
 
 Describe 'Invoke-IntegrationCompareLoop percentile edge handling' -Tag 'Unit' {
   BeforeAll {
-    $script:base = Join-Path $TestDrive 'Base.vi'
-    $script:head = Join-Path $TestDrive 'Head.vi'
+    $script:base = Join-Path $TestDrive 'VI1.vi'
+    $script:head = Join-Path $TestDrive 'VI2.vi'
     'a' | Out-File -FilePath $script:base -Encoding utf8
     'b' | Out-File -FilePath $script:head -Encoding utf8
   function Test-Exec { param($cli,$b,$h,$argList) 0 }

@@ -1,0 +1,33 @@
+{
+  "schema": "fixture-drift-summary-v1",
+  "generatedAtUtc": "2025-10-05T01:10:17.8861222Z",
+  "status": "ok",
+  "exitCode": 0,
+  "categories": [],
+  "artifactPaths": [
+    "validator-strict.json"
+  ],
+  "notes": [],
+  "files": [
+    {
+      "path": "VI1.vi",
+      "lastWriteTimeUtc": "2025-10-03T22:58:59.7275476Z",
+      "length": 7659
+    },
+    {
+      "path": "VI2.vi",
+      "lastWriteTimeUtc": "2025-10-03T22:58:59.7295486Z",
+      "length": 10967
+    },
+    {
+      "path": "fixtures.manifest.json",
+      "lastWriteTimeUtc": "2025-10-05T00:59:15.1978325Z",
+      "length": 454
+    },
+    {
+      "path": "strict-ok.json",
+      "lastWriteTimeUtc": "2025-10-05T01:10:17.5302184Z",
+      "length": 62
+    }
+  ]
+}

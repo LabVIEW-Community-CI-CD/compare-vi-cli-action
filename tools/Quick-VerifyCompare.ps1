@@ -29,15 +29,15 @@
 $ErrorActionPreference = 'Stop'
 set-strictmode -version latest
 
-# Load function
-. (Join-Path $PSScriptRoot '..' 'scripts' 'CompareVI.ps1')
+# Load CompareVI module
+Import-Module (Join-Path $PSScriptRoot '..' 'scripts' 'CompareVI.psm1') -Force
 
 $cleanup = @()
 try {
   if (-not $Base) {
     $tempDir = Join-Path ([IO.Path]::GetTempPath()) ("comparevi-base-" + [guid]::NewGuid())
     New-Item -ItemType Directory -Force -Path $tempDir | Out-Null
-    $Base = Join-Path $tempDir 'Base.vi'
+    $Base = Join-Path $tempDir 'VI1.vi'
     New-Item -ItemType File -Force -Path $Base | Out-Null
     $cleanup += $tempDir
   }
@@ -46,7 +46,7 @@ try {
   } elseif (-not $Head) {
     $tempDir2 = Join-Path ([IO.Path]::GetTempPath()) ("comparevi-head-" + [guid]::NewGuid())
     New-Item -ItemType Directory -Force -Path $tempDir2 | Out-Null
-    $Head = Join-Path $tempDir2 'Head.vi'
+    $Head = Join-Path $tempDir2 'VI2.vi'
     New-Item -ItemType File -Force -Path $Head | Out-Null
     $cleanup += $tempDir2
   }

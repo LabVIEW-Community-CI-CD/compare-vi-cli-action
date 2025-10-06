@@ -1,0 +1,17 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<package xmlns="http://schemas.microsoft.com/packaging/2012/06/nuspec.xsd">
+  <metadata>
+    <id>CompareVi.Shared</id>
+    <version>0.1.0</version>
+    <authors>LabVIEW Community CI/CD</authors>
+    <description>Shared helpers for LVCompare orchestration: arg tokenization, path utilities, and process snapshots.</description>
+    <tags>LabVIEW LVCompare Pester CI</tags>
+    <repository type="git" url="https://github.com/LabVIEW-Community-CI-CD/compare-vi-cli-action" commit="9f7120d1c6da7a25a702cae4ed9167ee93092f71" />
+    <dependencies>
+      <group targetFramework="net8.0" />
+    </dependencies>
+  </metadata>
+  <files>
+    <file src="C:\dev\compare-vi-cli-action\src\CompareVi.Shared\bin\Release\net8.0\CompareVi.Shared.dll" target="lib\net8.0\CompareVi.Shared.dll" />
+  </files>
+</package>

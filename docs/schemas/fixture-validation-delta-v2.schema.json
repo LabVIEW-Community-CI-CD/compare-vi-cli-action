@@ -1,0 +1,58 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://labview-community-ci-cd.github.io/compare-vi-cli-action/schemas/fixture-validation-delta-v2.schema.json",
+  "title": "Fixture Validation Delta v2",
+  "type": "object",
+  "required": [
+    "schema",
+    "baselinePath",
+    "currentPath",
+    "generatedAt",
+    "baselineOk",
+    "currentOk",
+    "deltaCounts",
+    "changes",
+    "newStructuralIssues",
+    "failOnNewStructuralIssue",
+    "willFail"
+  ],
+  "properties": {
+    "schema": { "const": "fixture-validation-delta-v2" },
+    "baselinePath": { "type": "string", "minLength": 1 },
+    "currentPath": { "type": "string", "minLength": 1 },
+    "generatedAt": { "type": "string", "format": "date-time" },
+    "baselineOk": { "type": "boolean" },
+    "currentOk": { "type": "boolean" },
+    "deltaCounts": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "integer",
+        "minimum": -1000,
+        "maximum": 1000
+      },
+      "description": "Only categories with non-zero deltas are present; bounded range protects against runaway accumulation."
+    },
+    "changes": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["category", "baseline", "current", "delta"],
+        "properties": {
+          "category": { "type": "string" },
+          "baseline": { "type": "integer", "minimum": 0 },
+          "current": { "type": "integer", "minimum": 0 },
+          "delta": { "type": "integer", "minimum": -1000, "maximum": 1000 }
+        },
+        "additionalProperties": false
+      }
+    },
+    "newStructuralIssues": {
+      "type": "array",
+      "items": { "$ref": "#/properties/changes/items" }
+    },
+    "failOnNewStructuralIssue": { "type": "boolean" },
+    "willFail": { "type": "boolean" }
+  },
+  "additionalProperties": false,
+  "$comment": "Version 2 adds bounded integer constraints to deltaCounts & changes.delta for defensive sanity checking. Additive only beyond this." 
+}

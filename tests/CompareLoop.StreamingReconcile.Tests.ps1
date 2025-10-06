@@ -3,8 +3,8 @@ Import-Module "$PSScriptRoot/../module/CompareLoop/CompareLoop.psm1" -Force
 
 Describe 'Invoke-IntegrationCompareLoop streaming reconciliation' -Tag 'Unit' {
   BeforeAll {
-    $script:basePath = Join-Path $PSScriptRoot '..' 'Base.vi'
-    $script:headPath = Join-Path $PSScriptRoot '..' 'Head.vi'
+    $script:basePath = Join-Path $PSScriptRoot '..' 'VI1.vi'
+    $script:headPath = Join-Path $PSScriptRoot '..' 'VI2.vi'
   }
 
   It 'maintains reservoir at capacity and reports window size' {
