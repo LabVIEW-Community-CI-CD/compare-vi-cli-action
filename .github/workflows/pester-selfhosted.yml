@@ -8,7 +8,7 @@ on:
         required: false
         default: 'false'
         type: choice
-        options: ['false','true']
+        options: ['false', 'true']
       include_integration:
         description: 'Include Integration-tagged tests (real CLI)'
         required: false
@@ -20,6 +20,14 @@ on:
         required: false
         type: string
 
+      force_run:
+        description: Force run (bypass docs-only gate)
+        required: false
+        default: 'false'
+        type: choice
+        options:
+        - 'true'
+        - 'false'
 concurrency:
   group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.event.inputs.sample_id || github.ref }}
   cancel-in-progress: true
@@ -31,28 +39,28 @@ jobs:
     outputs:
       include_integration: ${{ steps.b.outputs.normalized }}
     steps:
-      - uses: actions/checkout@v5
-      - name: Normalize include_integration
-        id: b
-        uses: ./.github/actions/bool-normalize
-        with:
-          value: ${{ inputs.include_integration || 'true' }}
+    - uses: actions/checkout@v5
+    - name: Normalize include_integration
+      id: b
+      uses: ./.github/actions/bool-normalize
+      with:
+        value: ${{ inputs.include_integration || 'true' }}
   preflight:
     if: ${{ inputs.enable_run == 'true' }}
     runs-on: [self-hosted, Windows, X64]
     timeout-minutes: 3
     steps:
-      - uses: actions/checkout@v5
-      - name: Verify LVCompare and idle LabVIEW state
-        shell: pwsh
-        run: |
-          $cli = 'C:\\Program Files\\National Instruments\\Shared\\LabVIEW Compare\\LVCompare.exe'
-          if (-not (Test-Path -LiteralPath $cli)) {
-            Write-Host "::error::LVCompare.exe not found at canonical path: $cli"; exit 1
-          }
-          $lv = Get-Process -Name 'LabVIEW' -ErrorAction SilentlyContinue
-          if ($lv) { Write-Host "::error::LabVIEW.exe is running (PID(s): $($lv.Id -join ','))"; exit 1 }
-          Write-Host 'Preflight OK: LVCompare present; LabVIEW not running.'
+    - uses: actions/checkout@v5
+    - name: Verify LVCompare and idle LabVIEW state
+      shell: pwsh
+      run: |
+        $cli = 'C:\\Program Files\\National Instruments\\Shared\\LabVIEW Compare\\LVCompare.exe'
+        if (-not (Test-Path -LiteralPath $cli)) {
+          Write-Host "::error::LVCompare.exe not found at canonical path: $cli"; exit 1
+        }
+        $lv = Get-Process -Name 'LabVIEW' -ErrorAction SilentlyContinue
+        if ($lv) { Write-Host "::error::LabVIEW.exe is running (PID(s): $($lv.Id -join ','))"; exit 1 }
+        Write-Host 'Preflight OK: LVCompare present; LabVIEW not running.'
 
   pester:
     if: ${{ inputs.enable_run == 'true' }}
@@ -68,143 +76,143 @@ jobs:
       WATCH_CONSOLE: '1'
       LABVIEW_EXE: 'C:\\Program Files\\National Instruments\\LabVIEW 2025\\LabVIEW.exe'
     steps:
-      - uses: actions/checkout@v5
-      - name: Prepare fixture copies (base/head)
-        id: fixtures
-        uses: ./.github/actions/prepare-fixtures
-      - name: Export fixture env for tests
-        shell: pwsh
-        run: |
-          "LV_BASE_VI=${{ steps.fixtures.outputs.base }}" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
-          "LV_HEAD_VI=${{ steps.fixtures.outputs.head }}" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+    - uses: actions/checkout@v5
+    - name: Prepare fixture copies (base/head)
+      id: fixtures
+      uses: ./.github/actions/prepare-fixtures
+    - name: Export fixture env for tests
+      shell: pwsh
+      run: |
+        "LV_BASE_VI=${{ steps.fixtures.outputs.base }}" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+        "LV_HEAD_VI=${{ steps.fixtures.outputs.head }}" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
 
-      - name: Apply determinism profile
-        uses: ./.github/actions/determinism-profile
-        with:
-          strict: 'true'
+    - name: Apply determinism profile
+      uses: ./.github/actions/determinism-profile
+      with:
+        strict: 'true'
 
-      - name: Apply dispatcher profile
-        id: dprofile
-        uses: ./.github/actions/dispatcher-profile
-        with:
-          emit-failures-json-always: 'true'
-          detect-leaks: 'true'
-          fail-on-leaks: 'false'
-          kill-leaks: 'false'
-          leak-grace-seconds: '3'
-          clean-labview-before: 'false'
-          clean-after: 'false'
-          track-artifacts: 'true'
+    - name: Apply dispatcher profile
+      id: dprofile
+      uses: ./.github/actions/dispatcher-profile
+      with:
+        emit-failures-json-always: 'true'
+        detect-leaks: 'true'
+        fail-on-leaks: 'false'
+        kill-leaks: 'false'
+        leak-grace-seconds: '3'
+        clean-labview-before: 'false'
+        clean-after: 'false'
+        track-artifacts: 'true'
 
       # Call the dispatcher directly (no external action dependency)
       # This dispatcher assumes Pester v5+ is pre-installed on the self-hosted runner
-      - name: Run Pester tests via local dispatcher
-        shell: pwsh
-        run: |
-          ./Invoke-PesterTests.ps1 `
-            -TestsPath tests `
-            -IncludeIntegration '${{ needs.normalize.outputs.include_integration }}' `
-            -ResultsPath tests/results `
-            -EmitFailuresJsonAlways
+    - name: Run Pester tests via local dispatcher
+      shell: pwsh
+      run: |
+        ./Invoke-PesterTests.ps1 `
+          -TestsPath tests `
+          -IncludeIntegration '${{ needs.normalize.outputs.include_integration }}' `
+          -ResultsPath tests/results `
+          -EmitFailuresJsonAlways
 
-      - name: Append test metrics to job summary
-        if: always()
-        shell: pwsh
-        run: |
-          $json = Join-Path 'tests/results' 'pester-summary.json'
-          $idx  = Join-Path 'tests/results' 'session-index.json'
-          if (Test-Path $json) {
-            $data = Get-Content $json -Raw | ConvertFrom-Json
-            $lines = @(
-              '### Pester Test Metrics',
-              "- Total: $($data.total)",
-              "- Passed: $($data.passed)",
-              "- Failed: $($data.failed)",
-              "- Errors: $($data.errors)",
-              "- Skipped: $($data.skipped)",
-              "- Duration (s): $($data.duration_s)",
-              "- Include Integration: $($data.includeIntegration)"
-            ) -join [Environment]::NewLine
-            $lines | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8
-            if (Test-Path $idx) {
-              $ix = Get-Content $idx -Raw | ConvertFrom-Json
-              if (-not $ix.stepSummary) {
-                "\nSession index: tests/results/session-index.json" | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8
-              }
+    - name: Append test metrics to job summary
+      if: always()
+      shell: pwsh
+      run: |
+        $json = Join-Path 'tests/results' 'pester-summary.json'
+        $idx  = Join-Path 'tests/results' 'session-index.json'
+        if (Test-Path $json) {
+          $data = Get-Content $json -Raw | ConvertFrom-Json
+          $lines = @(
+            '### Pester Test Metrics',
+            "- Total: $($data.total)",
+            "- Passed: $($data.passed)",
+            "- Failed: $($data.failed)",
+            "- Errors: $($data.errors)",
+            "- Skipped: $($data.skipped)",
+            "- Duration (s): $($data.duration_s)",
+            "- Include Integration: $($data.includeIntegration)"
+          ) -join [Environment]::NewLine
+          $lines | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8
+          if (Test-Path $idx) {
+            $ix = Get-Content $idx -Raw | ConvertFrom-Json
+            if (-not $ix.stepSummary) {
+              "\nSession index: tests/results/session-index.json" | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8
             }
-          } else {
-            Write-Host '::warning::pester-summary.json not found.'
           }
+        } else {
+          Write-Host '::warning::pester-summary.json not found.'
+        }
 
-      - name: Ensure session index (fallback)
-        if: always()
-        shell: pwsh
-        run: |
-          pwsh -File tools/Ensure-SessionIndex.ps1 -ResultsDir 'tests/results' -SummaryJson 'pester-summary.json'
+    - name: Ensure session index (fallback)
+      if: always()
+      shell: pwsh
+      run: |
+        pwsh -File tools/Ensure-SessionIndex.ps1 -ResultsDir 'tests/results' -SummaryJson 'pester-summary.json'
 
-      - name: Session index post
-        if: always()
-        uses: ./.github/actions/session-index-post
-        with:
-          results-dir: tests/results
-          validate-schema: true
-          upload: true
-          artifact-name: session-index
+    - name: Session index post
+      if: always()
+      uses: ./.github/actions/session-index-post
+      with:
+        results-dir: tests/results
+        validate-schema: true
+        upload: true
+        artifact-name: session-index
 
-      - name: Append failure inventory
-        if: always()
-        shell: pwsh
-        run: |
-          pwsh -File tools/Write-FailureInventory.ps1 -ResultsDir 'tests/results' -AppendToStepSummary
+    - name: Append failure inventory
+      if: always()
+      shell: pwsh
+      run: |
+        pwsh -File tools/Write-FailureInventory.ps1 -ResultsDir 'tests/results' -AppendToStepSummary
 
-      - name: Append top failures
-        if: always()
-        shell: pwsh
-        run: pwsh -File tools/Write-PesterTopFailures.ps1 -ResultsDir 'tests/results' -Top 5
+    - name: Append top failures
+      if: always()
+      shell: pwsh
+      run: pwsh -File tools/Write-PesterTopFailures.ps1 -ResultsDir 'tests/results' -Top 5
 
-      - name: Append determinism summary
-        if: always()
-        shell: pwsh
-        run: pwsh -File tools/Write-DeterminismSummary.ps1
+    - name: Append determinism summary
+      if: always()
+      shell: pwsh
+      run: pwsh -File tools/Write-DeterminismSummary.ps1
 
-      - name: Append runner identity
-        if: always()
-        shell: pwsh
-        run: pwsh -File tools/Write-RunnerIdentity.ps1 -SampleId '${{ github.event.inputs.sample_id || '' }}'
+    - name: Append runner identity
+      if: always()
+      shell: pwsh
+      run: pwsh -File tools/Write-RunnerIdentity.ps1 -SampleId '${{ github.event.inputs.sample_id || '' }}'
 
-      - name: Append artifact map
-        if: always()
-        shell: pwsh
-        run: |
-          $paths = @('tests/results/pester-summary.json','tests/results/pester-results.xml','tests/results/pester-failures.json','tests/results/session-index.json')
-          pwsh -File tools/Write-ArtifactMap.ps1 -Paths $paths -Title 'Artifacts'
+    - name: Append artifact map
+      if: always()
+      shell: pwsh
+      run: |
+        $paths = @('tests/results/pester-summary.json','tests/results/pester-results.xml','tests/results/pester-failures.json','tests/results/session-index.json')
+        pwsh -File tools/Write-ArtifactMap.ps1 -Paths $paths -Title 'Artifacts'
 
-      - name: Re-run hint
-        if: always()
-        shell: pwsh
-        run: pwsh -File tools/Write-RerunHint.ps1 -Workflow 'pester-selfhosted.yml' -IncludeIntegration '${{ needs.normalize.outputs.include_integration }}' -SampleId '${{ github.event.inputs.sample_id || '' }}'
+    - name: Re-run hint
+      if: always()
+      shell: pwsh
+      run: pwsh -File tools/Write-RerunHint.ps1 -Workflow 'pester-selfhosted.yml' -IncludeIntegration '${{ needs.normalize.outputs.include_integration }}' -SampleId '${{ github.event.inputs.sample_id || '' }}'
 
-      - name: Upload Pester artifacts
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: pester-selfhosted-results
-          path: |
-            tests/results/**/*.xml
-            tests/results/**/*.txt
-            tests/results/**/*.html
-            tests/results/pester-summary.json
-            tests/results/pester-failures.json
-            tests/results/pester-artifacts.json
-            tests/results/pester-artifacts-trail.json
-            tests/results/pester-leak-report.json
-            tests/results/session-index.json
-            tests/results/failure-inventory.md
+    - name: Upload Pester artifacts
+      if: always()
+      uses: actions/upload-artifact@v4
+      with:
+        name: pester-selfhosted-results
+        path: |
+          tests/results/**/*.xml
+          tests/results/**/*.txt
+          tests/results/**/*.html
+          tests/results/pester-summary.json
+          tests/results/pester-failures.json
+          tests/results/pester-artifacts.json
+          tests/results/pester-artifacts-trail.json
+          tests/results/pester-leak-report.json
+          tests/results/session-index.json
+          tests/results/failure-inventory.md
 
-      - name: Runner Unblock Guard
-        if: always()
-        uses: ./.github/actions/runner-unblock-guard
-        with:
-          snapshot-path: tests/results/runner-unblock-snapshot.json
-          cleanup: ${{ env.UNBLOCK_GUARD == '1' }}
-          process-names: 'conhost,pwsh,LabVIEW,LVCompare'
+    - name: Runner Unblock Guard
+      if: always()
+      uses: ./.github/actions/runner-unblock-guard
+      with:
+        snapshot-path: tests/results/runner-unblock-snapshot.json
+        cleanup: ${{ env.UNBLOCK_GUARD == '1' }}
+        process-names: 'conhost,pwsh,LabVIEW,LVCompare'

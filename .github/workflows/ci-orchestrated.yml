@@ -2,7 +2,7 @@ name: CI Orchestrated (deterministic chain)
 
 on:
   push:
-    branches: [ develop ]
+    branches: [develop]
   workflow_dispatch:
     inputs:
       include_integration:
@@ -10,7 +10,7 @@ on:
         required: false
         default: 'true'
         type: choice
-        options: ['true','false']
+        options: ['true', 'false']
       sample_id:
         description: 'Sampling correlation id (prevents cancels)'
         required: false
@@ -26,54 +26,71 @@ jobs:
     outputs:
       include_integration: ${{ steps.b.outputs.normalized }}
     steps:
-      - uses: actions/checkout@v5
-      - name: Ensure Invoker (start)
-        uses: ./.github/actions/ensure-invoker
-        with:
-          mode: start
-      - name: Normalize include_integration
-        id: b
-        uses: ./.github/actions/bool-normalize
-        with:
-          value: ${{ inputs.include_integration || 'true' }}
+    - uses: actions/checkout@v5
+    - name: Ensure Invoker (start)
+      uses: ./.github/actions/ensure-invoker
+      with:
+        mode: start
+    - name: Normalize include_integration
+      id: b
+      uses: ./.github/actions/bool-normalize
+      with:
+        value: ${{ inputs.include_integration || 'true' }}
   lint:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v5
+    - uses: actions/checkout@v5
 
-      - name: Install actionlint
-        run: |
-          mkdir -p ./bin
-          curl -sSL https://raw.githubusercontent.com/rhysd/actionlint/main/scripts/download-actionlint.bash | bash -s -- latest ./bin
+    - name: Install actionlint
+      run: |
+        mkdir -p ./bin
+        curl -sSL https://raw.githubusercontent.com/rhysd/actionlint/main/scripts/download-actionlint.bash | bash -s -- latest ./bin
 
-      - name: Run actionlint
-        run: |
-          ./bin/actionlint -color
+    - name: Run actionlint
+      run: |
+        ./bin/actionlint -color
 
-      - name: Install markdownlint-cli
-        run: |
-          npm install -g markdownlint-cli
+    - name: Install markdownlint-cli
+      run: |
+        npm install -g markdownlint-cli
 
-      - name: Run markdownlint (non-blocking)
-        continue-on-error: true
-        run: |
-          markdownlint "**/*.md" --ignore node_modules
+    - name: Run markdownlint (non-blocking)
+      continue-on-error: true
+      run: |
+        markdownlint "**/*.md" --ignore node_modules
 
   preflight:
-    runs-on: [self-hosted, Windows, X64]
+    runs-on: windows-latest
     timeout-minutes: 3
     steps:
-      - uses: actions/checkout@v5
-      - name: Verify LVCompare and idle LabVIEW state
-        shell: pwsh
-        run: |
-          $cli = 'C:\\Program Files\\National Instruments\\Shared\\LabVIEW Compare\\LVCompare.exe'
-          if (-not (Test-Path -LiteralPath $cli)) {
-            Write-Host "::error::LVCompare.exe not found at canonical path: $cli"; exit 1
-          }
-          $lv = Get-Process -Name 'LabVIEW' -ErrorAction SilentlyContinue
-          if ($lv) { Write-Host "::error::LabVIEW.exe is running (PID(s): $($lv.Id -join ','))"; exit 1 }
-          Write-Host 'Preflight OK: LVCompare present; LabVIEW not running.'
+    - uses: actions/checkout@v5
+    - name: Verify Windows runner and idle LabVIEW (surface LVCompare notice)
+      shell: pwsh
+      run: |-
+        Write-Host "Runner: $([System.Environment]::OSVersion.VersionString)"
+        Write-Host "Pwsh:   $($PSVersionTable.PSVersion)"
+        $cli = 'C:\Program Files\National Instruments\Shared\LabVIEW Compare\LVCompare.exe'
+        if (-not (Test-Path -LiteralPath $cli)) {
+          Write-Host "::notice::LVCompare.exe not found at canonical path: $cli (hosted preflight)"
+        } else { Write-Host "LVCompare present: $cli" }
+        $lv = Get-Process -Name 'LabVIEW' -ErrorAction SilentlyContinue
+        if ($lv) { Write-Host "::error::LabVIEW.exe is running (PID(s): $($lv.Id -join 
+        ))"; exit 1 }
+        Write-Host 'Preflight OK: Windows runner healthy; LabVIEW not running.'
+        if ($env:GITHUB_STEP_SUMMARY) {
+          $note = @('Note:', '- This preflight runs on hosted Windows (windows-latest); LVCompare presence is not required here.', '- Self-hosted Windows steps later in this workflow enforce LVCompare at the canonical path.') -join "`n"
+          $note | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8
+        }
+    - name: Verify LVCompare and idle LabVIEW state
+      shell: pwsh
+      run: |
+        $cli = 'C:\\Program Files\\National Instruments\\Shared\\LabVIEW Compare\\LVCompare.exe'
+        if (-not (Test-Path -LiteralPath $cli)) {
+          Write-Host "::error::LVCompare.exe not found at canonical path: $cli"; exit 1
+        }
+        $lv = Get-Process -Name 'LabVIEW' -ErrorAction SilentlyContinue
+        if ($lv) { Write-Host "::error::LabVIEW.exe is running (PID(s): $($lv.Id -join ','))"; exit 1 }
+        Write-Host 'Preflight OK: LVCompare present; LabVIEW not running.'
 
   pester-category:
     runs-on: [self-hosted, Windows, X64]
@@ -92,141 +109,141 @@ jobs:
       WATCH_CONSOLE: '1'
       LABVIEW_EXE: 'C:\\Program Files\\National Instruments\\LabVIEW 2025\\LabVIEW.exe'
     steps:
-      - uses: actions/checkout@v5
-      - name: LabVIEW warmup (best-effort)
-        if: runner.os == 'Windows'
-        shell: pwsh
-        run: pwsh -File tools/Warmup-LabVIEW.ps1
-      - name: Append interactivity probe
-        shell: pwsh
-        run: pwsh -File tools/Write-InteractivityProbe.ps1
-      - name: Ensure Invoker (start)
-        uses: ./.github/actions/ensure-invoker
-        with:
-          mode: start
-          results-dir: tests/results
-          category: ${{ matrix.category }}
-      - name: Prepare fixture copies (base/head)
-        id: fixtures
-        uses: ./.github/actions/prepare-fixtures
-      - name: Export fixture env for tests
-        shell: pwsh
-        run: |
-          "LV_BASE_VI=${{ steps.fixtures.outputs.base }}" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
-          "LV_HEAD_VI=${{ steps.fixtures.outputs.head }}" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+    - uses: actions/checkout@v5
+    - name: LabVIEW warmup (best-effort)
+      if: runner.os == 'Windows'
+      shell: pwsh
+      run: pwsh -File tools/Warmup-LabVIEW.ps1
+    - name: Append interactivity probe
+      shell: pwsh
+      run: pwsh -File tools/Write-InteractivityProbe.ps1
+    - name: Ensure Invoker (start)
+      uses: ./.github/actions/ensure-invoker
+      with:
+        mode: start
+        results-dir: tests/results
+        category: ${{ matrix.category }}
+    - name: Prepare fixture copies (base/head)
+      id: fixtures
+      uses: ./.github/actions/prepare-fixtures
+    - name: Export fixture env for tests
+      shell: pwsh
+      run: |
+        "LV_BASE_VI=${{ steps.fixtures.outputs.base }}" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+        "LV_HEAD_VI=${{ steps.fixtures.outputs.head }}" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
 
-      - name: Apply determinism profile
-        uses: ./.github/actions/determinism-profile
-        with:
-          strict: 'true'
+    - name: Apply determinism profile
+      uses: ./.github/actions/determinism-profile
+      with:
+        strict: 'true'
 
-      - name: Apply dispatcher profile
-        id: dprofile
-        uses: ./.github/actions/dispatcher-profile
-        with:
-          emit-failures-json-always: 'true'
-          detect-leaks: 'true'
-          fail-on-leaks: 'false'
-          kill-leaks: 'false'
-          leak-grace-seconds: '3'
-          clean-labview-before: 'false'
-          clean-after: 'false'
-          track-artifacts: 'true'
-      - name: Define category patterns
-        id: cats
-        shell: pwsh
-        run: |
-          $cat='${{ matrix.category }}'
-          switch ($cat) {
-            'dispatcher' { $inc = @('Invoke-PesterTests*.ps1','PesterAvailability.Tests.ps1','NestedDispatcher*.Tests.ps1') }
-            'fixtures'   { $inc = @('Fixtures.*.ps1','FixtureValidation*.ps1','FixtureSummary*.ps1','ViBinaryHandling.Tests.ps1','FixtureValidationDiff.Tests.ps1') }
-            'schema'     { $inc = @('Schema.*.ps1','SchemaLite*.ps1') }
-            'comparevi'  { $inc = @('CompareVI*.ps1','CanonicalCli.Tests.ps1','Args.Tokenization.Tests.ps1') }
-            'loop'       { $inc = @('CompareLoop*.ps1','Run-AutonomousIntegrationLoop*.ps1','LoopMetrics.Tests.ps1','Integration-ControlLoop*.ps1','IntegrationControlLoop*.ps1') }
-            'psummary'   { $inc = @('PesterSummary*.ps1','Write-PesterSummaryToStepSummary*.ps1','AggregationHints*.ps1') }
-            'workflow'   { $inc = @('Workflow*.ps1','On-FixtureValidationFail.Tests.ps1','Watch.FlakyRecovery.Tests.ps1','FunctionShadowing*.ps1','FunctionProxy.Tests.ps1','RunSummary.Tool*.ps1','Action.CompositeOutputs.Tests.ps1','Binding.MinRepro.Tests.ps1','ArtifactTracking*.ps1','Guard.*.Tests.ps1') }
-            default      { $inc = @('*.ps1') }
-          }
-          "include=$($inc -join ',')" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
-      - name: Run Pester tests via local dispatcher (category)
-        shell: pwsh
-        run: |
-          $inc = @()
-          if ('${{ steps.cats.outputs.include }}') { $inc = '${{ steps.cats.outputs.include }}'.Split(',') | Where-Object { $_ } }
-          $resDir = Join-Path 'tests/results' '${{ matrix.category }}'
-          ./Invoke-PesterTests.ps1 `
-            -TestsPath tests `
-            -IncludeIntegration '${{ needs.normalize.outputs.include_integration }}' `
-            -ResultsPath $resDir `
-            -EmitFailuresJsonAlways `
-            -IncludePatterns $inc
+    - name: Apply dispatcher profile
+      id: dprofile
+      uses: ./.github/actions/dispatcher-profile
+      with:
+        emit-failures-json-always: 'true'
+        detect-leaks: 'true'
+        fail-on-leaks: 'false'
+        kill-leaks: 'false'
+        leak-grace-seconds: '3'
+        clean-labview-before: 'false'
+        clean-after: 'false'
+        track-artifacts: 'true'
+    - name: Define category patterns
+      id: cats
+      shell: pwsh
+      run: |
+        $cat='${{ matrix.category }}'
+        switch ($cat) {
+          'dispatcher' { $inc = @('Invoke-PesterTests*.ps1','PesterAvailability.Tests.ps1','NestedDispatcher*.Tests.ps1') }
+          'fixtures'   { $inc = @('Fixtures.*.ps1','FixtureValidation*.ps1','FixtureSummary*.ps1','ViBinaryHandling.Tests.ps1','FixtureValidationDiff.Tests.ps1') }
+          'schema'     { $inc = @('Schema.*.ps1','SchemaLite*.ps1') }
+          'comparevi'  { $inc = @('CompareVI*.ps1','CanonicalCli.Tests.ps1','Args.Tokenization.Tests.ps1') }
+          'loop'       { $inc = @('CompareLoop*.ps1','Run-AutonomousIntegrationLoop*.ps1','LoopMetrics.Tests.ps1','Integration-ControlLoop*.ps1','IntegrationControlLoop*.ps1') }
+          'psummary'   { $inc = @('PesterSummary*.ps1','Write-PesterSummaryToStepSummary*.ps1','AggregationHints*.ps1') }
+          'workflow'   { $inc = @('Workflow*.ps1','On-FixtureValidationFail.Tests.ps1','Watch.FlakyRecovery.Tests.ps1','FunctionShadowing*.ps1','FunctionProxy.Tests.ps1','RunSummary.Tool*.ps1','Action.CompositeOutputs.Tests.ps1','Binding.MinRepro.Tests.ps1','ArtifactTracking*.ps1','Guard.*.Tests.ps1') }
+          default      { $inc = @('*.ps1') }
+        }
+        "include=$($inc -join ',')" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+    - name: Run Pester tests via local dispatcher (category)
+      shell: pwsh
+      run: |
+        $inc = @()
+        if ('${{ steps.cats.outputs.include }}') { $inc = '${{ steps.cats.outputs.include }}'.Split(',') | Where-Object { $_ } }
+        $resDir = Join-Path 'tests/results' '${{ matrix.category }}'
+        ./Invoke-PesterTests.ps1 `
+          -TestsPath tests `
+          -IncludeIntegration '${{ needs.normalize.outputs.include_integration }}' `
+          -ResultsPath $resDir `
+          -EmitFailuresJsonAlways `
+          -IncludePatterns $inc
 
-      - name: Ensure session index (fallback)
-        if: always()
-        shell: pwsh
-        run: pwsh -File tools/Ensure-SessionIndex.ps1 -ResultsDir "tests/results/${{ matrix.category }}" -SummaryJson 'pester-summary.json'
+    - name: Ensure session index (fallback)
+      if: always()
+      shell: pwsh
+      run: pwsh -File tools/Ensure-SessionIndex.ps1 -ResultsDir "tests/results/${{ matrix.category }}" -SummaryJson 'pester-summary.json'
 
-      - name: Session index post
-        if: always()
-        uses: ./.github/actions/session-index-post
-        with:
-          results-dir: tests/results/${{ matrix.category }}
-          validate-schema: true
-          upload: true
-          artifact-name: session-index-${{ matrix.category }}
+    - name: Session index post
+      if: always()
+      uses: ./.github/actions/session-index-post
+      with:
+        results-dir: tests/results/${{ matrix.category }}
+        validate-schema: true
+        upload: true
+        artifact-name: session-index-${{ matrix.category }}
 
-      - name: Upload Pester artifacts
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: orchestrated-pester-results-${{ matrix.category }}
-          path: |
-            tests/results/${{ matrix.category }}/**/*.xml
-            tests/results/${{ matrix.category }}/**/*.txt
-            tests/results/${{ matrix.category }}/pester-summary.json
-            tests/results/${{ matrix.category }}/pester-failures.json
-            tests/results/${{ matrix.category }}/session-index.json
+    - name: Upload Pester artifacts
+      if: always()
+      uses: actions/upload-artifact@v4
+      with:
+        name: orchestrated-pester-results-${{ matrix.category }}
+        path: |
+          tests/results/${{ matrix.category }}/**/*.xml
+          tests/results/${{ matrix.category }}/**/*.txt
+          tests/results/${{ matrix.category }}/pester-summary.json
+          tests/results/${{ matrix.category }}/pester-failures.json
+          tests/results/${{ matrix.category }}/session-index.json
 
-      - name: Runner Unblock Guard
-        if: always()
-        uses: ./.github/actions/runner-unblock-guard
-        with:
-          snapshot-path: tests/results/${{ matrix.category }}/runner-unblock-snapshot.json
-          cleanup: ${{ env.UNBLOCK_GUARD == '1' }}
-          process-names: 'conhost,pwsh,LabVIEW,LVCompare'
+    - name: Runner Unblock Guard
+      if: always()
+      uses: ./.github/actions/runner-unblock-guard
+      with:
+        snapshot-path: tests/results/${{ matrix.category }}/runner-unblock-snapshot.json
+        cleanup: ${{ env.UNBLOCK_GUARD == '1' }}
+        process-names: 'conhost,pwsh,LabVIEW,LVCompare'
 
-      - name: Ensure Invoker (stop)
-        if: always()
-        uses: ./.github/actions/ensure-invoker
-        with:
-          mode: stop
+    - name: Ensure Invoker (stop)
+      if: always()
+      uses: ./.github/actions/ensure-invoker
+      with:
+        mode: stop
 
-      - name: Append determinism summary
-        if: always()
-        shell: pwsh
-        run: pwsh -File tools/Write-DeterminismSummary.ps1
+    - name: Append determinism summary
+      if: always()
+      shell: pwsh
+      run: pwsh -File tools/Write-DeterminismSummary.ps1
 
-      - name: Append runner identity
-        if: always()
-        shell: pwsh
-        run: pwsh -File tools/Write-RunnerIdentity.ps1 -SampleId '${{ github.event.inputs.sample_id || '' }}'
+    - name: Append runner identity
+      if: always()
+      shell: pwsh
+      run: pwsh -File tools/Write-RunnerIdentity.ps1 -SampleId '${{ github.event.inputs.sample_id || '' }}'
 
-      - name: Append artifact map
-        if: always()
-        shell: pwsh
-        run: |
-          $paths = @('tests/results/${{ matrix.category }}/pester-summary.json','tests/results/${{ matrix.category }}/pester-results.xml','tests/results/${{ matrix.category }}/pester-failures.json','tests/results/${{ matrix.category }}/session-index.json')
-          pwsh -File tools/Write-ArtifactMap.ps1 -Paths $paths -Title 'Artifacts'
+    - name: Append artifact map
+      if: always()
+      shell: pwsh
+      run: |
+        $paths = @('tests/results/${{ matrix.category }}/pester-summary.json','tests/results/${{ matrix.category }}/pester-results.xml','tests/results/${{ matrix.category }}/pester-failures.json','tests/results/${{ matrix.category }}/session-index.json')
+        pwsh -File tools/Write-ArtifactMap.ps1 -Paths $paths -Title 'Artifacts'
 
-      - name: Append top failures
-        if: always()
-        shell: pwsh
-        run: pwsh -File tools/Write-PesterTopFailures.ps1 -ResultsDir "tests/results/${{ matrix.category }}" -Top 5
+    - name: Append top failures
+      if: always()
+      shell: pwsh
+      run: pwsh -File tools/Write-PesterTopFailures.ps1 -ResultsDir "tests/results/${{ matrix.category }}" -Top 5
 
-      - name: Re-run hint
-        if: always()
-        shell: pwsh
-        run: pwsh -File tools/Write-RerunHint.ps1 -Workflow 'ci-orchestrated.yml' -IncludeIntegration '${{ needs.normalize.outputs.include_integration }}' -SampleId '${{ github.event.inputs.sample_id || '' }}'
+    - name: Re-run hint
+      if: always()
+      shell: pwsh
+      run: pwsh -File tools/Write-RerunHint.ps1 -Workflow 'ci-orchestrated.yml' -IncludeIntegration '${{ needs.normalize.outputs.include_integration }}' -SampleId '${{ github.event.inputs.sample_id || '' }}'
 
   drift:
     runs-on: [self-hosted, Windows, X64]
@@ -239,123 +256,123 @@ jobs:
       WATCH_CONSOLE: '1'
       LABVIEW_EXE: 'C:\\Program Files\\National Instruments\\LabVIEW 2025\\LabVIEW.exe'
     steps:
-      - uses: actions/checkout@v5
-      - name: LabVIEW warmup (best-effort)
-        if: runner.os == 'Windows'
-        shell: pwsh
-        run: pwsh -File tools/Warmup-LabVIEW.ps1
-      - name: Append interactivity probe
-        shell: pwsh
-        run: pwsh -File tools/Write-InteractivityProbe.ps1
-      - name: Ensure Invoker (start)
-        uses: ./.github/actions/ensure-invoker
-        with:
-          mode: start
-      - name: Fixture Drift Orchestrator
-        uses: ./.github/actions/fixture-drift
-        with:
-          render-report: 'true'
-          comment-on-fail: 'true'
-          upload-artifacts: 'true'
-          artifact-name: orchestrated-fixture-drift
+    - uses: actions/checkout@v5
+    - name: LabVIEW warmup (best-effort)
+      if: runner.os == 'Windows'
+      shell: pwsh
+      run: pwsh -File tools/Warmup-LabVIEW.ps1
+    - name: Append interactivity probe
+      shell: pwsh
+      run: pwsh -File tools/Write-InteractivityProbe.ps1
+    - name: Ensure Invoker (start)
+      uses: ./.github/actions/ensure-invoker
+      with:
+        mode: start
+    - name: Fixture Drift Orchestrator
+      uses: ./.github/actions/fixture-drift
+      with:
+        render-report: 'true'
+        comment-on-fail: 'true'
+        upload-artifacts: 'true'
+        artifact-name: orchestrated-fixture-drift
 
-      - name: Session index post (best-effort)
-        if: always()
-        uses: ./.github/actions/session-index-post
-        with:
-          results-dir: results/fixture-drift
-          validate-schema: true
-          upload: true
-          artifact-name: fixture-drift-session-index
+    - name: Session index post (best-effort)
+      if: always()
+      uses: ./.github/actions/session-index-post
+      with:
+        results-dir: results/fixture-drift
+        validate-schema: true
+        upload: true
+        artifact-name: fixture-drift-session-index
 
-      - name: Runner Unblock Guard
-        if: always()
-        uses: ./.github/actions/runner-unblock-guard
-        with:
-          snapshot-path: results/fixture-drift/runner-unblock-snapshot.json
-          cleanup: ${{ env.UNBLOCK_GUARD == '1' }}
-          process-names: 'conhost,pwsh,LabVIEW,LVCompare'
+    - name: Runner Unblock Guard
+      if: always()
+      uses: ./.github/actions/runner-unblock-guard
+      with:
+        snapshot-path: results/fixture-drift/runner-unblock-snapshot.json
+        cleanup: ${{ env.UNBLOCK_GUARD == '1' }}
+        process-names: 'conhost,pwsh,LabVIEW,LVCompare'
 
-      - name: Ensure Invoker (stop)
-        if: always()
-        uses: ./.github/actions/ensure-invoker
-        with:
-          mode: stop
+    - name: Ensure Invoker (stop)
+      if: always()
+      uses: ./.github/actions/ensure-invoker
+      with:
+        mode: stop
 
   publish:
     runs-on: ubuntu-latest
     needs: [lint, pester-category, drift]
     if: always()
     steps:
-      - uses: actions/checkout@v5
-      - name: Summarize orchestrated run
-        shell: pwsh
-        run: |
-          $lines = @(
-            '### CI Orchestrated Summary',
-            '- Lint: ${{ needs.lint.result }}',
-            '- Pester: ${{ needs.pester-category.result }}',
-            '- Drift: ${{ needs.drift.result }}'
-          ) -join "`n"
-          $lines | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8
+    - uses: actions/checkout@v5
+    - name: Summarize orchestrated run
+      shell: pwsh
+      run: |
+        $lines = @(
+          '### CI Orchestrated Summary',
+          '- Lint: ${{ needs.lint.result }}',
+          '- Pester: ${{ needs.pester-category.result }}',
+          '- Drift: ${{ needs.drift.result }}'
+        ) -join "`n"
+        $lines | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8
 
-      - name: Download Pester category artifacts (dispatcher)
-        if: always()
-        uses: actions/download-artifact@v4
-        with:
-          name: orchestrated-pester-results-dispatcher
-          path: cats/dispatcher
+    - name: Download Pester category artifacts (dispatcher)
+      if: always()
+      uses: actions/download-artifact@v4
+      with:
+        name: orchestrated-pester-results-dispatcher
+        path: cats/dispatcher
 
-      - name: Download Pester category artifacts (fixtures)
-        if: always()
-        uses: actions/download-artifact@v4
-        with:
-          name: orchestrated-pester-results-fixtures
-          path: cats/fixtures
+    - name: Download Pester category artifacts (fixtures)
+      if: always()
+      uses: actions/download-artifact@v4
+      with:
+        name: orchestrated-pester-results-fixtures
+        path: cats/fixtures
 
-      - name: Download Pester category artifacts (schema)
-        if: always()
-        uses: actions/download-artifact@v4
-        with:
-          name: orchestrated-pester-results-schema
-          path: cats/schema
+    - name: Download Pester category artifacts (schema)
+      if: always()
+      uses: actions/download-artifact@v4
+      with:
+        name: orchestrated-pester-results-schema
+        path: cats/schema
 
-      - name: Download Pester category artifacts (comparevi)
-        if: always()
-        uses: actions/download-artifact@v4
-        with:
-          name: orchestrated-pester-results-comparevi
-          path: cats/comparevi
+    - name: Download Pester category artifacts (comparevi)
+      if: always()
+      uses: actions/download-artifact@v4
+      with:
+        name: orchestrated-pester-results-comparevi
+        path: cats/comparevi
 
-      - name: Download Pester category artifacts (loop)
-        if: always()
-        uses: actions/download-artifact@v4
-        with:
-          name: orchestrated-pester-results-loop
-          path: cats/loop
+    - name: Download Pester category artifacts (loop)
+      if: always()
+      uses: actions/download-artifact@v4
+      with:
+        name: orchestrated-pester-results-loop
+        path: cats/loop
 
-      - name: Download Pester category artifacts (psummary)
-        if: always()
-        uses: actions/download-artifact@v4
-        with:
-          name: orchestrated-pester-results-psummary
-          path: cats/psummary
+    - name: Download Pester category artifacts (psummary)
+      if: always()
+      uses: actions/download-artifact@v4
+      with:
+        name: orchestrated-pester-results-psummary
+        path: cats/psummary
 
-      - name: Download Pester category artifacts (workflow)
-        if: always()
-        uses: actions/download-artifact@v4
-        with:
-          name: orchestrated-pester-results-workflow
-          path: cats/workflow
+    - name: Download Pester category artifacts (workflow)
+      if: always()
+      uses: actions/download-artifact@v4
+      with:
+        name: orchestrated-pester-results-workflow
+        path: cats/workflow
 
-      - name: Summarize Pester categories
-        if: always()
-        shell: pwsh
-        run: pwsh -File tools/Summarize-PesterCategories.ps1 -BaseDir 'cats' -Categories @('dispatcher','fixtures','schema','comparevi','loop','psummary','workflow')
+    - name: Summarize Pester categories
+      if: always()
+      shell: pwsh
+      run: pwsh -File tools/Summarize-PesterCategories.ps1 -BaseDir 'cats' -Categories @('dispatcher','fixtures','schema','comparevi','loop','psummary','workflow')
 
-  
 
-  
+
+
 
 
 

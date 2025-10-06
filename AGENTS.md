@@ -37,7 +37,31 @@
 
 ## Agent Notes (Pinned)
 
-- One‑shot invoker per job (ensure‑invoker composite); guard snapshots include `node.exe` to diagnose terminal spikes.
-- Workflows own timeboxing via job `timeout-minutes`; dispatcher has no implicit timeout. Optional `STUCK_GUARD=1` writes heartbeat/partial logs (notice‑only).
-- Self‑hosted Windows is the only Windows variant for LVCompare; use hosted runners only for preflight/lint.
+- One-shot invoker per job (ensure-invoker composite); guard snapshots include `node.exe` to diagnose terminal spikes.
+- Workflows own timeboxing via job `timeout-minutes`; dispatcher has no implicit timeout. Optional `STUCK_GUARD=1` writes heartbeat/partial logs (notice-only).
+- Self-hosted Windows is the only Windows variant for LVCompare; use hosted runners only for preflight/lint.
+
+## Workflow Maintenance (ruamel.yaml updater)
+
+Use the Python-based updater only when you need consistent, mechanical edits across multiple workflows (preserving comments/formatting):
+
+- Appropriate changes:
+  - Add hosted Windows preflight note blocks.
+  - Inject `session-index-post` steps (per job or matrix category).
+  - Normalize Runner Unblock Guard placement/inputs.
+  - Add/adjust pre‑init force_run gate wiring in self‑hosted Pester.
+
+- Avoid it for one-off, semantic edits (e.g., changing job logic, needs graphs). In those cases, edit YAML manually and run `actionlint`.
+
+- Prerequisites:
+  - `python3 -m pip install ruamel.yaml`
+
+- Dry run and apply:
+  - Check: `python tools/workflows/update_workflows.py --check .github/workflows/ci-orchestrated.yml`
+  - Write: `python tools/workflows/update_workflows.py --write .github/workflows/ci-orchestrated.yml`
+  - Always validate after: `./bin/actionlint -color`
+
+- Scope and PR hygiene:
+  - Keep updater changes in small, focused PRs; include a summary of files touched and the transforms applied.
+  - If the updater warns or skips a file, fall back to a manual edit and re-run `actionlint`.
 
