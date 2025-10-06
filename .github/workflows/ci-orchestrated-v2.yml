@@ -1,0 +1,149 @@
+name: CI Orchestrated v2 (single Windows job)
+
+on:
+  workflow_dispatch:
+    inputs:
+      include_integration:
+        description: 'Include Integration-tagged tests'
+        required: false
+        default: 'true'
+        type: choice
+        options: ['true','false']
+      sample_id:
+        description: 'Sampling correlation id (prevents cancels)'
+        required: false
+        type: string
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.event.inputs.sample_id || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  orchestrated:
+    runs-on: [self-hosted, Windows, X64]
+    timeout-minutes: 3
+    env:
+      DETECT_LEAKS: '1'
+      CLEAN_AFTER: '1'
+      SCAN_ARTIFACTS: '1'
+      UNBLOCK_GUARD: '1'
+      LV_SUPPRESS_UI: '1'
+      WATCH_CONSOLE: '1'
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Normalize include_integration
+        id: norm
+        uses: ./.github/actions/bool-normalize
+        with:
+          value: ${{ inputs.include_integration }}
+          default: 'true'
+
+      - name: Append interactivity probe
+        shell: pwsh
+        run: pwsh -File tools/Write-InteractivityProbe.ps1
+
+      - name: LabVIEW warmup (best-effort)
+        shell: pwsh
+        run: pwsh -File tools/Warmup-LabVIEW.ps1
+
+      - name: Ensure Invoker (start)
+        uses: ./.github/actions/ensure-invoker
+        with:
+          mode: start
+          results-dir: tests/results
+
+      - name: Pester (dispatcher)
+        uses: ./.github/actions/pester-category-run
+        with:
+          category: dispatcher
+          include_integration: ${{ steps.norm.outputs.bool }}
+          results-dir: tests/results/dispatcher
+          tests-path: tests
+          default-timeout-seconds: '0'
+
+      - name: Pester (fixtures)
+        uses: ./.github/actions/pester-category-run
+        with:
+          category: fixtures
+          include_integration: ${{ steps.norm.outputs.bool }}
+          results-dir: tests/results/fixtures
+          tests-path: tests
+          default-timeout-seconds: '0'
+
+      - name: Pester (schema)
+        uses: ./.github/actions/pester-category-run
+        with:
+          category: schema
+          include_integration: ${{ steps.norm.outputs.bool }}
+          results-dir: tests/results/schema
+          tests-path: tests
+          default-timeout-seconds: '0'
+
+      - name: Pester (comparevi)
+        uses: ./.github/actions/pester-category-run
+        with:
+          category: comparevi
+          include_integration: ${{ steps.norm.outputs.bool }}
+          results-dir: tests/results/comparevi
+          tests-path: tests
+          default-timeout-seconds: '0'
+
+      - name: Pester (loop)
+        uses: ./.github/actions/pester-category-run
+        with:
+          category: loop
+          include_integration: ${{ steps.norm.outputs.bool }}
+          results-dir: tests/results/loop
+          tests-path: tests
+          default-timeout-seconds: '0'
+
+      - name: Pester (psummary)
+        uses: ./.github/actions/pester-category-run
+        with:
+          category: psummary
+          include_integration: ${{ steps.norm.outputs.bool }}
+          results-dir: tests/results/psummary
+          tests-path: tests
+          default-timeout-seconds: '0'
+
+      - name: Pester (workflow)
+        uses: ./.github/actions/pester-category-run
+        with:
+          category: workflow
+          include_integration: ${{ steps.norm.outputs.bool }}
+          results-dir: tests/results/workflow
+          tests-path: tests
+          default-timeout-seconds: '0'
+
+      - name: Fixture Drift Orchestrator
+        uses: ./.github/actions/fixture-drift
+        with:
+          render-report: 'true'
+          comment-on-fail: 'true'
+          upload-artifacts: 'true'
+          artifact-name: orchestrated-v2-fixture-drift
+
+      - name: Ensure Invoker (stop)
+        if: always()
+        uses: ./.github/actions/ensure-invoker
+        with:
+          mode: stop
+
+      - name: Session index post (best-effort)
+        if: always()
+        uses: ./.github/actions/session-index-post
+        with:
+          results-dir: tests/results
+          validate-schema: true
+          upload: true
+          artifact-name: orchestrated-v2-session-index
+
+      - name: Runner Unblock Guard
+        if: always()
+        uses: ./.github/actions/runner-unblock-guard
+        with:
+          snapshot-path: tests/results/runner-unblock-snapshot.json
+          cleanup: ${{ env.UNBLOCK_GUARD == '1' }}
+          process-names: 'conhost,pwsh,LabVIEW,LVCompare'
+
