@@ -17,7 +17,8 @@ function Read-JsonFile([string]$Path) {
 function Append-Spawns([string]$OutPath) {
   try {
     $stamp = (Get-Date).ToUniversalTime().ToString('o')
-    $names = @('pwsh','conhost','node','LabVIEW','LVCompare')
+    # Temporarily exclude node.exe from tracking to avoid conflating with runner internals
+    $names = @('pwsh','conhost','LabVIEW','LVCompare')
     $entry = [ordered]@{ at=$stamp }
     foreach ($n in $names) {
       try { $ps = @(Get-Process -Name $n -ErrorAction SilentlyContinue) } catch { $ps = @() }
@@ -112,4 +113,3 @@ function Start-InvokerLoop {
 }
 
 Export-ModuleMember -Function Start-InvokerLoop
-

@@ -190,7 +190,7 @@ jobs:
         with:
           snapshot-path: results/fixture-drift/runner-unblock-snapshot.json
           cleanup: ${{ env.UNBLOCK_GUARD == '1' }}
-          process-names: 'conhost,pwsh,node,LabVIEW,LVCompare'
+          process-names: 'conhost,pwsh,LabVIEW,LVCompare'
       - name: Ensure Invoker (stop)
         if: always()
         uses: ./.github/actions/ensure-invoker
