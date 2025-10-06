@@ -1,4 +1,4 @@
-name: Pester (self-hosted)
+name: Pester (integration)
 
 on:
   pull_request:

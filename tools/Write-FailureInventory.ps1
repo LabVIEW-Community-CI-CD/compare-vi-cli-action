@@ -8,7 +8,9 @@ Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
 function Add-Line([string]$text){
-  if ($script:_lines -eq $null) { $script:_lines = [System.Collections.Generic.List[string]]::new() }
+  if (-not (Get-Variable -Name _lines -Scope Script -ErrorAction SilentlyContinue)) {
+    $script:_lines = [System.Collections.Generic.List[string]]::new()
+  }
   $script:_lines.Add($text) | Out-Null
 }
 
