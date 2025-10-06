@@ -27,6 +27,10 @@ inputs:
     description: Retention days for uploaded artifacts (if supported by runner policy)
     required: false
     default: ''
+  soft-fail:
+    description: Do not fail the job on non-ok status (e.g., docs-only PRs)
+    required: false
+    default: 'false'
   output-dir:
     description: Optional output directory (defaults to results/fixture-drift/<utc>)
     required: false
@@ -44,6 +48,10 @@ inputs:
     description: Optional settle delay before report generation (ms)
     required: false
     default: '150'
+  suppress-summary:
+    description: Suppress writing to GITHUB_STEP_SUMMARY (use when parent consolidates summary)
+    required: false
+    default: 'false'
 
 outputs:
   status:
@@ -77,6 +85,37 @@ runs:
         $overridePath = Join-Path (Get-Location) 'override.json'
         pwsh -NoLogo -NoProfile -NonInteractive -File "${{ github.workspace }}/tools/Validate-Fixtures.ps1" -Json | Out-File -FilePath $strictPath -Encoding utf8
         pwsh -NoLogo -NoProfile -NonInteractive -File "${{ github.workspace }}/tools/Validate-Fixtures.ps1" -Json -TestAllowFixtureUpdate | Out-File -FilePath $overridePath -Encoding utf8
+
+    - name: Manifest refresh detection and summary
+      id: manifest
+      shell: pwsh
+      env:
+        SUPPRESS_SUMMARY: ${{ inputs.suppress-summary }}
+      run: |
+        $ErrorActionPreference = 'Stop'
+        $strictPath = Join-Path (Get-Location) 'strict.json'
+        if (-not (Test-Path -LiteralPath $strictPath)) { exit 0 }
+        try { $j = Get-Content -LiteralPath $strictPath -Raw | ConvertFrom-Json -ErrorAction Stop } catch { exit 0 }
+        $written = $false; $path = ''; $reason = ''
+        try {
+          if ($j.autoManifest) {
+            $written = [bool]$j.autoManifest.written
+            $path    = [string]$j.autoManifest.path
+            $reason  = [string]$j.autoManifest.reason
+          }
+        } catch {}
+        if ($written) {
+          if ($env:GITHUB_STEP_SUMMARY -and ($env:SUPPRESS_SUMMARY -ne 'true')) {
+            $lines = @('### Fixture Manifest Refresh','')
+            $lines += ('- Written: {0}' -f $written)
+            if ($reason) { $lines += ('- Reason: {0}' -f $reason) }
+            if ($path) { $lines += ('- Path: {0}' -f $path) }
+            $lines -join "`n" | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8
+          }
+          "written=true`npath=$path" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+        } else {
+          "written=false" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+        }
 
     - name: Orchestrate drift artifacts
       id: orchestrate
@@ -359,9 +398,31 @@ runs:
           Invoke-RestMethod -Method Post -Uri $postUri -Headers $headers -Body $payload -ContentType 'application/json'
         }
 
-    - name: Finalize job status
+    - name: Upload refreshed manifest (if any)
+      if: steps.manifest.outputs.written == 'true' && inputs.upload-artifacts == 'true'
+      uses: actions/upload-artifact@v4
+      with:
+        name: fixture-manifest-refreshed
+        path: ${{ steps.manifest.outputs.path }}
+        if-no-files-found: warn
+
+    - name: Finalize job status (strict)
+      if: inputs.soft-fail != 'true'
       shell: pwsh
       run: |
         if ('${{ steps.orchestrate.outputs.status }}' -ne 'ok') {
           Write-Error "Fixture drift validation failed (status=${{ steps.orchestrate.outputs.status }})."
         }
+
+    - name: Finalize job status (soft)
+      if: inputs.soft-fail == 'true' && inputs.suppress-summary != 'true'
+      shell: pwsh
+      run: |
+        $s = '${{ steps.orchestrate.outputs.status }}'
+        if ($env:GITHUB_STEP_SUMMARY) {
+          $lines = @('### Fixture Drift (soft-fail)','')
+          $lines += ("- Status: {0}" -f $s)
+          $lines += '- Reason: docs-only change detected'
+          $lines -join "`n" | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8
+        }
+        if ($s -ne 'ok') { Write-Host "Soft-fail enabled: not failing job despite status='$s'." }

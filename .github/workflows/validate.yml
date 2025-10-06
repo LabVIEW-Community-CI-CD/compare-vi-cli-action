@@ -105,6 +105,28 @@ jobs:
             'Branch rules guide: docs/BRANCH_RULES.md (coming soon in issue #60)' | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8
           }
 
+      - name: Labels sync (warning, RC)
+        if: startsWith(github.ref, 'refs/heads/release/') || github.ref_name == 'main'
+        shell: pwsh
+        continue-on-error: true
+        run: |
+          $labelsFile = '.github/labels.yml'
+          if (-not (Test-Path -LiteralPath $labelsFile)) { Write-Host '::notice::.github/labels.yml not found'; exit 0 }
+          try {
+            $yaml = Get-Content -LiteralPath $labelsFile -Raw
+            $names = @([regex]::Matches($yaml,'(?m)^\s*-\s*name:\s*(.+?)\s*$') | ForEach-Object { $_.Groups[1].Value.Trim() })
+          } catch { $names = @() }
+          $api = "https://api.github.com/repos/${{ github.repository }}/labels?per_page=100"
+          $hdr = @{ Authorization = "Bearer $env:GITHUB_TOKEN"; Accept='application/vnd.github+json'; 'X-GitHub-Api-Version'='2022-11-28' }
+          $existing = @()
+          try { $resp = Invoke-RestMethod -Method Get -Uri $api -Headers $hdr; $existing = @($resp | ForEach-Object { $_.name }) } catch {}
+          $missing = @($names | Where-Object { $_ -and ($existing -notcontains $_) })
+          if ($missing.Count -gt 0) {
+            foreach ($m in $missing) { Write-Host ("::warning::Missing label: {0}" -f $m) }
+          } else {
+            Write-Host 'Labels OK (RC)'
+          }
+
   fixtures:
     runs-on: [self-hosted, Windows, X64]
     env:

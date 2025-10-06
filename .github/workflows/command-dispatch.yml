@@ -44,7 +44,9 @@ jobs:
         run: |
           # default include_integration=true; allow '/run pester-selfhosted false' to disable
           tail=$(printf "%s" "$RAW_BODY" | sed -n 's#^/run[[:space:]]\+pester-selfhosted[[:space:]]\?##Ip')
-          set -- $tail
+          # Split into positional parameters safely
+          read -r -a arr <<< "$tail"
+          set -- "${arr[@]}"
           first="${1:-}"
           v=$(echo "$first" | tr '[:upper:]' '[:lower:]')
           case "$v" in

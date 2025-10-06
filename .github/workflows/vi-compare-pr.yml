@@ -143,6 +143,10 @@ jobs:
             Add-Content $env:GITHUB_STEP_SUMMARY "_Results not available_"
           }
 
+          # Docs pointer
+          Add-Content $env:GITHUB_STEP_SUMMARY "`n### Docs Pointers"
+          Add-Content $env:GITHUB_STEP_SUMMARY "- Fixture Drift: ./docs/FIXTURE_DRIFT.md"
+
       - name: Comment on PR (using XCLI_PAT)
         if: always() && (github.event_name == 'workflow_dispatch' || github.event.pull_request.number)
         shell: pwsh
