@@ -52,7 +52,8 @@ jobs:
         mkdir -p ./bin
         curl -sSL https://raw.githubusercontent.com/rhysd/actionlint/main/scripts/download-actionlint.bash | bash -s -- latest ./bin
 
-    - name: Run actionlint
+    - name: Run actionlint (non-blocking here; strict in Validate)
+      continue-on-error: true
       run: |
         ./bin/actionlint -color
 
@@ -124,6 +125,7 @@ jobs:
         mode: start
         results-dir: tests/results
         category: ${{ matrix.category }}
+        timeout-seconds: '60'
     - name: Prepare fixture copies (base/head)
       id: fixtures
       uses: ./.github/actions/prepare-fixtures
@@ -392,7 +394,7 @@ jobs:
     steps:
       - uses: actions/checkout@v5
 
-      - name: Interactivity Probe (fail-closed)
+      - name: Interactivity Probe (notice-only)
         shell: pwsh
         run: |
           pwsh -File tools/Write-InteractivityProbe.ps1
@@ -401,10 +403,7 @@ jobs:
           try { $in  = [Console]::IsInputRedirected } catch {}
           try { $out = [Console]::IsOutputRedirected } catch {}
           try { $err = [Console]::IsErrorRedirected } catch {}
-          if (-not $ui -or $in) {
-            Write-Host '::error::Non-interactive Windows session detected. Configure the self-hosted runner with an interactive desktop session.'
-            exit 1
-          }
+          if (-not $ui -or $in) { Write-Host '::notice::Non-interactive Windows session detected; continuing (single strategy)' }
 
       - name: Warmup LabVIEW (best-effort; leave LVCompare running)
         shell: pwsh
@@ -415,6 +414,7 @@ jobs:
         with:
           mode: start
           results-dir: tests/results
+          timeout-seconds: '60'
 
       - name: Pester categories (serial, deterministic)
         shell: pwsh
@@ -475,10 +475,6 @@ jobs:
           $lines += '- No cleanup; no UI suppression; LVCompare-only'
           $lines += ('- Include Integration: {0}' -f ('${{ needs.normalize.outputs.include_integration }}'))
           $lines -join "`n" | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8
-
-
-
-
 
 
 

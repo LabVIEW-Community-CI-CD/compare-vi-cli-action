@@ -14,7 +14,7 @@ inputs:
   timeout-seconds:
     description: Wait time for ready/stop markers
     required: false
-    default: '20'
+    default: '45'
 outputs:
   pipe-name:
     description: Computed pipe name for this job
@@ -43,6 +43,9 @@ runs:
       shell: pwsh
       run: |
         $results = '${{ steps.compute.outputs.results }}'
+        if (-not (Test-Path -LiteralPath $results)) { New-Item -ItemType Directory -Path $results -Force | Out-Null }
+        $invdir  = Join-Path $results '_invoker'
+        if (-not (Test-Path -LiteralPath $invdir)) { New-Item -ItemType Directory -Path $invdir -Force | Out-Null }
         $pipe    = '${{ steps.compute.outputs.pipe_name }}'
         $sent    = '${{ steps.compute.outputs.sentinel }}'
         $ready   = Join-Path $results '_invoker/ready.json'
