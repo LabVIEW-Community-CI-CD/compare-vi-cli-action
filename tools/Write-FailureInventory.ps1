@@ -1,11 +1,11 @@
-Set-StrictMode -Version Latest
-$ErrorActionPreference = 'Stop'
-
 param(
   [string]$ResultsDir = 'tests/results',
   [string]$SummaryPath,
   [switch]$AppendToStepSummary
 )
+
+Set-StrictMode -Version Latest
+$ErrorActionPreference = 'Stop'
 
 function Add-Line([string]$text){
   if ($script:_lines -eq $null) { $script:_lines = [System.Collections.Generic.List[string]]::new() }
@@ -59,6 +59,7 @@ if ($failures.Count -eq 0 -and (Test-Path -LiteralPath $failJson)) {
 Add-Line '### Failure Inventory'
 if ($failures.Count -eq 0) {
   Add-Line '- No failures found (or results missing)'
+  Write-Host ("Failure inventory path: {0}" -f $SummaryPath)
   Flush -path $SummaryPath
   exit 0
 }
@@ -83,5 +84,6 @@ Add-Line ''
 Add-Line 'Top messages:'
 foreach ($m in $byMsg) { Add-Line ("- {0} (x{1})" -f $m.Name, $m.Count) }
 
+Write-Host ("Failure inventory path: {0}" -f $SummaryPath)
 Flush -path $SummaryPath
 
