@@ -24,6 +24,16 @@ jobs:
     steps:
       - uses: actions/checkout@v5
 
+      - name: Export fixture env defaults (if unset)
+        shell: pwsh
+        run: |
+          if ([string]::IsNullOrWhiteSpace($env:LV_BASE_VI)) {
+            "LV_BASE_VI=$((Join-Path $env:GITHUB_WORKSPACE 'VI1.vi'))" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+          }
+          if ([string]::IsNullOrWhiteSpace($env:LV_HEAD_VI)) {
+            "LV_HEAD_VI=$((Join-Path $env:GITHUB_WORKSPACE 'VI2.vi'))" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+          }
+
       - name: Preflight
         shell: pwsh
         run: |
