@@ -32,8 +32,17 @@ jobs:
         run: |
           set -euo pipefail
           python3 --version || true
-          python3 tools/workflows/update_workflows.py --check .github/workflows/pester-selfhosted.yml || {
-            echo "::error::Workflow requires ruamel.yaml fixes (run updater locally with --write)"; exit 1; }
+          python3 -m pip install --user 'ruamel.yaml<0.18' >/dev/null 2>&1 || true
+          # Check all allowlisted workflows (safe no-ops when not applicable)
+          python3 tools/workflows/update_workflows.py --check \
+            .github/workflows/pester-selfhosted.yml \
+            .github/workflows/fixture-drift.yml \
+            .github/workflows/ci-orchestrated.yml \
+            .github/workflows/ci-orchestrated-v2.yml \
+            .github/workflows/pester-integration-on-label.yml \
+            .github/workflows/smoke.yml \
+            .github/workflows/compare-artifacts.yml || {
+            echo "::error::Workflows require ruamel.yaml fixes (run updater locally with --write)"; exit 1; }
 
       - name: Lint unanchored dot-sourcing (non-blocking)
         shell: pwsh

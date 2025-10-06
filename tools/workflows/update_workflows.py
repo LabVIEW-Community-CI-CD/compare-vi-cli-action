@@ -104,6 +104,120 @@ def ensure_preinit_force_run_outputs(doc) -> bool:
     return changed
 
 
+def _mk_hosted_preflight_step() -> dict:
+    lines = [
+        'Write-Host "Runner: $([System.Environment]::OSVersion.VersionString)"',
+        'Write-Host "Pwsh:   $($PSVersionTable.PSVersion)"',
+        "$cli = 'C:\\Program Files\\National Instruments\\Shared\\LabVIEW Compare\\LVCompare.exe'",
+        'if (-not (Test-Path -LiteralPath $cli)) {',
+        '  Write-Host "::notice::LVCompare.exe not found at canonical path: $cli (hosted preflight)"',
+        '} else { Write-Host "LVCompare present: $cli" }',
+        "$lv = Get-Process -Name 'LabVIEW' -ErrorAction SilentlyContinue",
+        'if ($lv) { Write-Host "::error::LabVIEW.exe is running (PID(s): $($lv.Id -join ','))"; exit 1 }',
+        "Write-Host 'Preflight OK: Windows runner healthy; LabVIEW not running.'",
+        'if ($env:GITHUB_STEP_SUMMARY) {',
+        "  $note = @('Note:', '- This preflight runs on hosted Windows (windows-latest); LVCompare presence is not required here.', '- Self-hosted Windows steps later in this workflow enforce LVCompare at the canonical path.') -join \"`n\"",
+        '  $note | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8',
+        '}',
+    ]
+    body = "\n".join(lines)
+    return {
+        'name': 'Verify Windows runner and idle LabVIEW (surface LVCompare notice)',
+        'shell': 'pwsh',
+        'run': LIT(body),
+    }
+
+
+def ensure_hosted_preflight(doc, job_key: str) -> bool:
+    changed = False
+    jobs = doc.get('jobs') or {}
+    job = jobs.get(job_key)
+    if not isinstance(job, dict):
+        return changed
+    # Ensure runs-on windows-latest
+    if job.get('runs-on') != 'windows-latest':
+        job['runs-on'] = 'windows-latest'
+        changed = True
+    steps = job.setdefault('steps', [])
+    # Ensure checkout exists
+    has_checkout = any(isinstance(s, dict) and str(s.get('uses', '')).startswith('actions/checkout@') for s in steps)
+    if not has_checkout:
+        steps.insert(0, {'uses': 'actions/checkout@v5'})
+        changed = True
+    # Ensure verify step exists/updated
+    idx_verify = None
+    for i, st in enumerate(steps):
+        if isinstance(st, dict) and 'Verify Windows runner' in str(st.get('name', '')):
+            idx_verify = i
+            break
+    new_step = _mk_hosted_preflight_step()
+    if idx_verify is None:
+        # Insert after checkout if present
+        insert_at = 1 if has_checkout else 0
+        steps.insert(insert_at, new_step)
+        changed = True
+    else:
+        # Update run body to canonical hosted content
+        if steps[idx_verify].get('run') != new_step['run']:
+            steps[idx_verify]['run'] = new_step['run']
+            steps[idx_verify]['shell'] = 'pwsh'
+            changed = True
+    return changed
+
+
+def ensure_session_index_post_in_pester_matrix(doc, job_key: str) -> bool:
+    changed = False
+    jobs = doc.get('jobs') or {}
+    job = jobs.get(job_key)
+    if not isinstance(job, dict):
+        return changed
+    steps = job.get('steps') or []
+    # Find if session-index-post exists
+    exists = any(isinstance(s, dict) and str(s.get('uses', '')).endswith('session-index-post') for s in steps)
+    if not exists:
+        step = {
+            'name': 'Session index post',
+            'if': SQS('${{ always() }}'),
+            'uses': './.github/actions/session-index-post',
+            'with': {
+                'results-dir': SQS('tests/results/${{ matrix.category }}'),
+                'validate-schema': True,
+                'upload': True,
+                'artifact-name': SQS('session-index-${{ matrix.category }}'),
+            },
+        }
+        steps.append(step)
+        job['steps'] = steps
+        changed = True
+    return changed
+
+
+def ensure_session_index_post_in_job(doc, job_key: str, results_dir: str, artifact_name: str) -> bool:
+    changed = False
+    jobs = doc.get('jobs') or {}
+    job = jobs.get(job_key)
+    if not isinstance(job, dict):
+        return changed
+    steps = job.get('steps') or []
+    exists = any(isinstance(s, dict) and str(s.get('uses', '')).endswith('session-index-post') for s in steps)
+    if not exists:
+        step = {
+            'name': 'Session index post (best-effort)',
+            'if': SQS('${{ always() }}'),
+            'uses': './.github/actions/session-index-post',
+            'with': {
+                'results-dir': results_dir,
+                'validate-schema': True,
+                'upload': True,
+                'artifact-name': artifact_name,
+            },
+        }
+        steps.append(step)
+        job['steps'] = steps
+        changed = True
+    return changed
+
+
 def apply_transforms(path: Path) -> tuple[bool, str]:
     orig = path.read_text(encoding='utf-8')
     doc = load_yaml(path)
@@ -114,6 +228,36 @@ def apply_transforms(path: Path) -> tuple[bool, str]:
         c1 = ensure_force_run_input(doc)
         c2 = ensure_preinit_force_run_outputs(doc)
         changed = c1 or c2
+        # Hosted preflight note for self-hosted preflight lives in separate workflows; skip here.
+    # fixture-drift.yml hosted preflight + session index post in validate-windows
+    if path.name == 'fixture-drift.yml':
+        c3 = ensure_hosted_preflight(doc, 'preflight-windows')
+        c4 = ensure_session_index_post_in_job(doc, 'validate-windows', 'results/fixture-drift', 'fixture-drift-session-index')
+        changed = changed or c3 or c4
+    # ci-orchestrated.yml hosted preflight + pester matrix session index post
+    if path.name == 'ci-orchestrated.yml':
+        c5 = ensure_hosted_preflight(doc, 'preflight')
+        # The matrix job may be named 'pester' or 'pester-category'; try both
+        c6 = ensure_session_index_post_in_pester_matrix(doc, 'pester')
+        c7 = ensure_session_index_post_in_pester_matrix(doc, 'pester-category')
+        changed = changed or c5 or c6 or c7
+    # ci-orchestrated-v2.yml: hosted preflight + pester matrix (or single job) session index post
+    if path.name == 'ci-orchestrated-v2.yml':
+        c8 = ensure_hosted_preflight(doc, 'preflight')
+        c9 = ensure_session_index_post_in_pester_matrix(doc, 'pester-category') or ensure_session_index_post_in_pester_matrix(doc, 'pester')
+        changed = changed or c8 or c9
+    # pester-integration-on-label.yml: ensure session index post in integration job
+    if path.name == 'pester-integration-on-label.yml':
+        c10 = ensure_session_index_post_in_job(doc, 'pester-integration', 'tests/results', 'pester-integration-session-index')
+        changed = changed or c10
+    # smoke.yml: ensure session index post
+    if path.name == 'smoke.yml':
+        c11 = ensure_session_index_post_in_job(doc, 'compare', 'tests/results', 'smoke-session-index')
+        changed = changed or c11
+    # compare-artifacts.yml: ensure session index post in publish job
+    if path.name == 'compare-artifacts.yml':
+        c12 = ensure_session_index_post_in_job(doc, 'publish', 'tests/results', 'compare-session-index')
+        changed = changed or c12
     if changed:
         new = dump_yaml(doc, path)
         return True, new
@@ -150,4 +294,3 @@ def main(argv: List[str]) -> int:
 
 if __name__ == '__main__':
     sys.exit(main(sys.argv[1:]))
-
