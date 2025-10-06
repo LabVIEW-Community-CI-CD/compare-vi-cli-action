@@ -19,6 +19,10 @@ on:
         description: 'Sampling correlation id (prevents cancels)'
         required: false
         type: string
+  pull_request:
+    branches: [ develop ]
+  push:
+    branches: [ feat/ci-orchestrated-v2 ]
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.event.inputs.sample_id || github.ref }}
@@ -113,7 +117,4 @@ jobs:
           $lines += ('- Include Integration: {0}' -f ('${{ inputs.include_integration || 'true' }}'))
           $lines -join "`n" | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8
 
-  pull_request:
-    branches: [ develop ]
-  push:
-    branches: [ feat/ci-orchestrated-v2 ]
+  
