@@ -1,0 +1,79 @@
+name: Auto Close Issues (on green)
+
+on:
+  workflow_run:
+    workflows:
+      - CI Orchestrated (deterministic chain)
+      - Validate
+      - Fixture Drift Validation
+    types: [completed]
+
+permissions:
+  contents: read
+  actions: read
+  issues: write
+
+jobs:
+  close:
+    if: ${{ github.event.workflow_run.conclusion == 'success' }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Resolve label for workflow
+        id: meta
+        shell: bash
+        run: |
+          name="${{ github.event.workflow_run.name }}"
+          label=""
+          case "$name" in
+            "CI Orchestrated (deterministic chain)") label="auto-close:orchestrated" ;;
+            "Validate") label="auto-close:validate" ;;
+            "Fixture Drift Validation") label="auto-close:drift" ;;
+          esac
+          echo "workflow_name=$name" >> "$GITHUB_OUTPUT"
+          echo "label=$label" >> "$GITHUB_OUTPUT"
+      - name: Skip when no label mapping
+        if: ${{ steps.meta.outputs.label == '' }}
+        run: echo "No auto-close mapping for this workflow; skipping."
+      - name: Ensure label exists (idempotent)
+        if: ${{ steps.meta.outputs.label != '' }}
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          lbl="${{ steps.meta.outputs.label }}"
+          # Create label if missing (ignore error if exists)
+          gh label create "$lbl" \
+            --color 0E8A16 \
+            --description "Auto-close when '${{ steps.meta.outputs.workflow_name }}' is green" \
+            --repo "$GITHUB_REPOSITORY" || true
+      - name: Close labeled issues
+        if: ${{ steps.meta.outputs.label != '' }}
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        shell: bash
+        run: |
+          lbl="${{ steps.meta.outputs.label }}"
+          run_url="${{ github.event.workflow_run.html_url }}"
+          head_branch="${{ github.event.workflow_run.head_branch }}"
+          repo="$GITHUB_REPOSITORY"
+          # List open issues with the auto-close label
+          json=$(gh issue list -R "$repo" --state open --label "$lbl" --json number,title,url)
+          count=$(echo "$json" | jq 'length')
+          echo "Found $count issue(s) labeled '$lbl' to close."
+          if [ "$count" -eq 0 ]; then exit 0; fi
+          echo "$json" | jq -c '.[]' | while read -r row; do
+            num=$(echo "$row" | jq -r .number)
+            url=$(echo "$row" | jq -r .url)
+            title=$(echo "$row" | jq -r .title)
+            body=$(cat <<EOF
+Auto-closed after successful '${{ steps.meta.outputs.workflow_name }}' run on branch '$head_branch'.
+
+- Run: $run_url
+- Repo: $repo
+
+If this was premature, please reopen and remove the '$lbl' label.
+EOF
+)
+            echo "Commenting on #$num ($title) and closing..."
+            gh issue comment "$num" -R "$repo" -b "$body"
+            gh issue close "$num" -R "$repo"
+          done

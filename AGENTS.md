@@ -15,6 +15,10 @@
 - Custom paths: `./Invoke-PesterTests.ps1 -TestsPath tests -ResultsPath tests/results`
 - Filter by pattern: `./Invoke-PesterTests.ps1 -IncludePatterns 'CompareVI.*'`
 - Quick smoke: `./tools/Quick-DispatcherSmoke.ps1 -Keep` (writes a minimal suite to a temp dir)
+- Per-category (local): use patterns that mirror CI categories, e.g.
+  - Dispatcher: `-IncludePatterns 'Invoke-PesterTests*.ps1','PesterAvailability.Tests.ps1','NestedDispatcher*.Tests.ps1'`
+  - Fixtures: `-IncludePatterns 'Fixtures.*.ps1','FixtureValidation*.ps1','ViBinaryHandling.Tests.ps1'`
+  - Workflow: `-IncludePatterns 'Workflow*.ps1','On-FixtureValidationFail.Tests.ps1'`
 
 ## Coding Style & Naming
 
