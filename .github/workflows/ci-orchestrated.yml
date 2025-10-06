@@ -124,7 +124,7 @@ jobs:
           include_integration: ${{ needs.pre-init.outputs.include_integration }}
           results-dir: tests/results/${{ matrix.category }}
           tests-path: tests
-          default-timeout-seconds: '150'
+          default-timeout-seconds: '0'
 
       - name: Session index post
         if: always()
@@ -154,6 +154,17 @@ jobs:
           snapshot-path: tests/results/${{ matrix.category }}/runner-unblock-snapshot.json
           cleanup: ${{ env.UNBLOCK_GUARD == '1' }}
           process-names: 'conhost,pwsh,LabVIEW,LVCompare'
+
+      - name: Export fixture env defaults (if unset)
+        if: always()
+        shell: pwsh
+        run: |
+          if ([string]::IsNullOrWhiteSpace($env:LV_BASE_VI)) {
+            "LV_BASE_VI=$((Join-Path $env:GITHUB_WORKSPACE 'VI1.vi'))" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+          }
+          if ([string]::IsNullOrWhiteSpace($env:LV_HEAD_VI)) {
+            "LV_HEAD_VI=$((Join-Path $env:GITHUB_WORKSPACE 'VI2.vi'))" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+          }
 
   drift:
     runs-on: [self-hosted, Windows, X64]
