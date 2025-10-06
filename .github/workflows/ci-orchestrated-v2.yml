@@ -1,0 +1,115 @@
+name: CI Orchestrated v2 (deterministic single Windows)
+
+on:
+  workflow_dispatch:
+    inputs:
+      include_integration:
+        description: 'Include Integration-tagged tests'
+        required: false
+        default: 'true'
+        type: choice
+        options: ['true','false']
+      run_v2:
+        description: 'Enable v2 chain (or set RUN_V2=1 env)'
+        required: false
+        default: 'true'
+        type: choice
+        options: ['true','false']
+      sample_id:
+        description: 'Sampling correlation id (prevents cancels)'
+        required: false
+        type: string
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.event.inputs.sample_id || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  windows-single:
+    if: ${{ inputs.run_v2 == 'true' || env.RUN_V2 == '1' }}
+    runs-on: [self-hosted, Windows, X64]
+    timeout-minutes: 10
+    env:
+      # Deterministic posture: no suppression, no cleanup
+      UNBLOCK_GUARD: '0'
+      LV_SUPPRESS_UI: '0'
+      CLEAN_LABVIEW: '0'
+      CLEAN_AFTER: '0'
+      DETECT_LEAKS: '1'
+      FAIL_ON_LEAKS: '0'
+      KILL_LEAKS: '0'
+      WATCH_CONSOLE: '1'
+      INVOKER_REQUIRED: '1'
+      LABVIEW_EXE: 'C:\\Program Files\\National Instruments\\LabVIEW 2025\\LabVIEW.exe'
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Interactivity Probe (fail-closed)
+        shell: pwsh
+        run: |
+          pwsh -File tools/Write-InteractivityProbe.ps1
+          $ui = [System.Environment]::UserInteractive
+          $in = $false; $out=$false; $err=$false
+          try { $in  = [Console]::IsInputRedirected } catch {}
+          try { $out = [Console]::IsOutputRedirected } catch {}
+          try { $err = [Console]::IsErrorRedirected } catch {}
+          if (-not $ui -or $in) {
+            Write-Host '::error::Non-interactive Windows session detected. Configure the self-hosted runner with an interactive desktop session.'
+            exit 1
+          }
+
+      - name: Warmup LabVIEW (best-effort; leave LVCompare running)
+        shell: pwsh
+        run: pwsh -File tools/Warmup-LabVIEW.ps1
+
+      - name: Ensure Invoker (start)
+        uses: ./.github/actions/ensure-invoker
+        with:
+          mode: start
+          results-dir: tests/results/v2
+
+      - name: Pester categories (serial, deterministic)
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $cats = @(
+            @{ name='dispatcher'; inc=@('Invoke-PesterTests*.ps1','PesterAvailability.Tests.ps1','NestedDispatcher*.Tests.ps1') },
+            @{ name='fixtures';   inc=@('Fixtures.*.ps1','FixtureValidation*.ps1','FixtureSummary*.ps1','ViBinaryHandling.Tests.ps1','FixtureValidationDiff.Tests.ps1') },
+            @{ name='schema';     inc=@('Schema.*.ps1','SchemaLite*.ps1') },
+            @{ name='comparevi';  inc=@('CompareVI*.ps1','CanonicalCli.Tests.ps1','Args.Tokenization.Tests.ps1') },
+            @{ name='loop';       inc=@('CompareLoop*.ps1','Run-AutonomousIntegrationLoop*.ps1','LoopMetrics.Tests.ps1','Integration-ControlLoop*.ps1','IntegrationControlLoop*.ps1') },
+            @{ name='psummary';   inc=@('PesterSummary*.ps1','Write-PesterSummaryToStepSummary*.ps1','AggregationHints*.ps1') },
+            @{ name='workflow';   inc=@('Workflow*.ps1','On-FixtureValidationFail.Tests.ps1','Watch.FlakyRecovery.Tests.ps1','FunctionShadowing*.ps1','FunctionProxy.Tests.ps1','RunSummary.Tool*.ps1','Action.CompositeOutputs.Tests.ps1','Binding.MinRepro.Tests.ps1','ArtifactTracking*.ps1','Guard.*.Tests.ps1') }
+          )
+          foreach ($c in $cats) {
+            $resDir = Join-Path 'tests/results/v2' $c.name
+            $inc = @($c.inc)
+            ./Invoke-PesterTests.ps1 -TestsPath tests -IncludeIntegration '${{ inputs.include_integration || 'true' }}' -ResultsPath $resDir -EmitFailuresJsonAlways -IncludePatterns $inc
+          }
+
+      - name: Drift (invoker; reuse LabVIEW via -lvpath)
+        uses: ./.github/actions/fixture-drift
+        with:
+          render-report: 'true'
+          comment-on-fail: 'false'
+          upload-artifacts: 'true'
+          artifact-name: v2-fixture-drift
+          report-delay-ms: '150'
+
+      - name: Ensure Invoker (stop)
+        if: always()
+        uses: ./.github/actions/ensure-invoker
+        with:
+          mode: stop
+
+      - name: Append final summary (v2)
+        if: always()
+        shell: pwsh
+        run: |
+          $lines = @('### CI Orchestrated v2 Summary','')
+          $lines += '- Deterministic single Windows job'
+          $lines += '- No cleanup; no UI suppression; LVCompare-only'
+          $lines += '- Warmup leaves LVCompare + LabVIEW running'
+          $lines += ('- Include Integration: {0}' -f ('${{ inputs.include_integration || 'true' }}'))
+          $lines -join "`n" | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8
+
