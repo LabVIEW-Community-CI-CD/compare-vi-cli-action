@@ -34,6 +34,7 @@ jobs:
           if echo "$body" | grep -qE '^/run +mock'; then echo "target=mock" >> "$GITHUB_OUTPUT"; fi
           if echo "$body" | grep -qE '^/run +smoke'; then echo "target=smoke" >> "$GITHUB_OUTPUT"; fi
           if echo "$body" | grep -qE '^/run +pester-selfhosted'; then echo "target=pester-selfhosted" >> "$GITHUB_OUTPUT"; fi
+          if echo "$body" | grep -qE '^/run +orchestrated'; then echo "target=orchestrated" >> "$GITHUB_OUTPUT"; fi
 
       - name: Resolve target ref (PR head when same-repo, else main)
         id: ref
@@ -137,3 +138,52 @@ jobs:
            -H "Accept: application/vnd.github+json" \
            "https://api.github.com/repos/$REPO/actions/workflows/pester-selfhosted.yml/dispatches" \
            -d '{"ref":"'"${{ steps.ref.outputs.target_ref }}"'","inputs":{"include_integration":"true"}}' | cat
+
+      - name: Parse orchestrated options from comment
+        id: orch
+        if: steps.cmd.outputs.target == 'orchestrated'
+        shell: bash
+        env:
+          RAW_BODY: ${{ github.event.comment.body }}
+        run: |
+          # Defaults
+          strategy="matrix"
+          integ="true"
+          sample=""
+          tail=$(printf "%s" "$RAW_BODY" | sed -n 's#^/run[[:space:]]\+orchestrated[[:space:]]\?##Ip')
+          read -r -a arr <<< "$tail"
+          for tok in "${arr[@]}"; do
+            case "$tok" in
+              strategy=*) strategy="${tok#strategy=}" ;;
+              single) strategy="single" ;;
+              matrix) strategy="matrix" ;;
+              include_integration=*) integ="${tok#include_integration=}" ;;
+              integration=true|include_integration=true) integ="true" ;;
+              integration=false|include_integration=false) integ="false" ;;
+              sample=*|sample_id=*) sample="${tok#*=}" ;;
+            esac
+          done
+          if [ -z "$sample" ]; then sample="$(date +%Y%m%d-%H%M%S)-oc"; fi
+          {
+            echo "strategy=$strategy"
+            echo "include_integration=$integ"
+            echo "sample_id=$sample"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Dispatch orchestrated workflow
+        if: steps.cmd.outputs.target == 'orchestrated'
+        shell: bash
+        env:
+          TARGET_REF: ${{ steps.ref.outputs.target_ref }}
+          STRATEGY: ${{ steps.orch.outputs.strategy }}
+          INCLUDE: ${{ steps.orch.outputs.include_integration }}
+          SAMPLE: ${{ steps.orch.outputs.sample_id }}
+        run: |
+          printf '{"ref":"%s","inputs":{"include_integration":"%s","strategy":"%s","sample_id":"%s"}}' \
+            "$TARGET_REF" "$INCLUDE" "$STRATEGY" "$SAMPLE" > payload.json
+          cat payload.json
+          curl -s -X POST \
+           -H "Authorization: Bearer $XCLI_PAT" \
+           -H "Accept: application/vnd.github+json" \
+           "https://api.github.com/repos/$REPO/actions/workflows/ci-orchestrated.yml/dispatches" \
+           -d @payload.json | cat
