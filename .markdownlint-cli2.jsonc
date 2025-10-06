@@ -7,6 +7,7 @@
     "**/node_modules/**",
     "**/bin/**",
     "**/docs/knowledgebase/**",
-    ".github/copilot-instructions.md"
+    ".github/copilot-instructions.md",
+    "**/tmp-agg/**"
   ]
 }
