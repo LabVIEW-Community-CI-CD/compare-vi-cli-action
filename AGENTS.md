@@ -78,3 +78,21 @@ Use the Python-based updater only when you need consistent, mechanical edits acr
   - Hosted preflight (windows-latest) is notice-only; strict LVCompare checks occur on self-hosted steps.
   - Keep one Windows variant (self-hosted) for compare/drift; use hosted for preflight/lint only.
 
+## PR Comment Commands (Agent Tooling)
+
+Agents should drive CI by posting PR comments (do not wait for a human to run them). Use these commands to dispatch the unified orchestrated workflow:
+
+- Orchestrated (single):
+  - `/run orchestrated single include_integration=true sample_id=YYYYMMDD-HHMMSS-oc`
+- Orchestrated (matrix):
+  - `/run orchestrated matrix include_integration=true sample_id=YYYYMMDD-HHMMSS-oc`
+
+Notes:
+- The command-dispatch workflow listens on PR comments and will dispatch to `ci-orchestrated.yml`.
+- Authorization: OWNER/MEMBER/COLLABORATOR; the workflow uses `XCLI_PAT` to call the GitHub API.
+- Agents should post the command comment themselves (via `gh pr comment` or REST) and then monitor the run to completion.
+
+Optional local helper (human/dev):
+- `pwsh -File tools/Dispatch-Orchestrated.ps1 -Strategy single -IncludeIntegration true -Ref develop -Open`
+- `pwsh -File tools/Dispatch-Orchestrated.ps1 -Strategy matrix -IncludeIntegration true -Ref develop -Open`
+
