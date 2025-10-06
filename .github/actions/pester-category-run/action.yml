@@ -22,7 +22,7 @@ inputs:
 runs:
   using: "composite"
   steps:
-    - name: Run Pester tests via local dispatcher (category timeouts)
+    - name: Run Pester tests via local dispatcher (no implicit timeout)
       shell: pwsh
       run: |
         $cat = '${{ inputs.category }}'
@@ -40,9 +40,9 @@ runs:
           default        { $patterns = @('*.Tests.ps1') }
         }
 
-        # Resolve per-category timeout from env with a default
-        $timeout = 150
-        try { $timeout = [int]'${{ inputs.default-timeout-seconds }}' } catch { $timeout = 150 }
+        # Resolve per-category timeout from env with a default (0 disables inline timeout)
+        $timeout = 0
+        try { $timeout = [int]'${{ inputs.default-timeout-seconds }}' } catch { $timeout = 0 }
         switch ($cat) {
           'dispatcher'   { $t = $env:PESTER_TIMEOUT_DISPATCHER }
           'fixtures'     { $t = $env:PESTER_TIMEOUT_FIXTURES }
@@ -56,7 +56,8 @@ runs:
 
         $tests   = '${{ inputs.tests-path }}'
         $outDir  = '${{ inputs.results-dir }}'
-        ./Invoke-PesterTests.ps1 -TestsPath $tests -IncludeIntegration $include -ResultsPath $outDir -IncludePatterns $patterns -TimeoutSeconds $timeout
+        $timeoutArgs = @(); if ($timeout -gt 0) { $timeoutArgs = @('-TimeoutSeconds', $timeout) }
+        & ./Invoke-PesterTests.ps1 -TestsPath $tests -IncludeIntegration $include -ResultsPath $outDir -IncludePatterns $patterns @timeoutArgs
 
     - name: Ensure session index (fallback)
       if: always()
