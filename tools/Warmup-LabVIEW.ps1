@@ -25,8 +25,7 @@
 param(
   [string]$BaseVi,
   [string]$HeadVi,
-  [int]$TimeoutSeconds = 15,
-  [int]$KillDelaySeconds = 3
+  [int]$TimeoutSeconds = 15
 )
 
 Set-StrictMode -Version Latest
@@ -62,8 +61,8 @@ if (-not (Test-Path -LiteralPath $cli -PathType Leaf)) {
 if (-not (Test-Path -LiteralPath $BaseVi)) { Write-Host "Warmup: Base VI not found: $BaseVi" -ForegroundColor Yellow; return }
 if (-not (Test-Path -LiteralPath $HeadVi)) { Write-Host "Warmup: Head VI not found: $HeadVi" -ForegroundColor Yellow; return }
 
-Write-Host "Warmup: starting LVCompare to spawn LabVIEW..."
-Write-StepSummaryLine "- Warmup: starting LVCompare to spawn LabVIEW"
+Write-Host "Warmup: starting LVCompare to spawn LabVIEW (will NOT close LVCompare)"
+Write-StepSummaryLine "- Warmup: starting LVCompare to spawn LabVIEW (LVCompare left running)"
 
 # Start LVCompare normally (UI allowed). Do not suppress UI; do not redirect.
 $p = Start-Process -FilePath $cli -ArgumentList @($BaseVi,$HeadVi) -PassThru
@@ -84,14 +83,6 @@ if ($lv.Count -gt 0) {
   Write-StepSummaryLine "- Warmup: LabVIEW did not start within timeout ($TimeoutSeconds s)"
 }
 
-# Give LVCompare a short window then stop only LVCompare (leave LabVIEW)
-if ($KillDelaySeconds -gt 0) { Start-Sleep -Seconds $KillDelaySeconds }
-try {
-  if ($p -and -not $p.HasExited) { Stop-Process -Id $p.Id -Force -ErrorAction SilentlyContinue }
-  else { Get-Process -Name 'LVCompare' -ErrorAction SilentlyContinue | ForEach-Object { try { Stop-Process -Id $_.Id -Force -ErrorAction SilentlyContinue } catch {} } }
-  Write-Host "Warmup: LVCompare stopped; LabVIEW remains running."
-  Write-StepSummaryLine "- Warmup: LVCompare stopped; LabVIEW remains running"
-} catch {
-  Write-Host "Warmup: failed to stop LVCompare (continuing): $($_.Exception.Message)" -ForegroundColor Yellow
-}
-
+# Per request: Do not close LVCompare. Leave it running alongside LabVIEW.
+Write-Host "Warmup: leaving LVCompare running by design."
+Write-StepSummaryLine "- Warmup: LVCompare left running (by design)"
