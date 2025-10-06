@@ -8,10 +8,10 @@ on:
         required: false
         type: string
   push:
-    branches: [ main ]
+    branches: [main]
     paths-ignore:
-      - '**/*.md'
-      - 'docs/**'
+    - '**/*.md'
+    - 'docs/**'
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.event.inputs.sample_id || github.ref }}
@@ -25,133 +25,141 @@ jobs:
       UNBLOCK_GUARD: '1'
       LV_SUPPRESS_UI: '1'
     steps:
-      - uses: actions/checkout@v5
+    - uses: actions/checkout@v5
 
-      - name: Preflight
-        shell: pwsh
-        run: |
-          $cli = 'C:\\Program Files\\National Instruments\\Shared\\LabVIEW Compare\\LVCompare.exe'
-          if (-not (Test-Path -LiteralPath $cli)) {
-            Write-Host "::error::LVCompare.exe not found at canonical path: $cli"; exit 1
+    - name: Preflight
+      shell: pwsh
+      run: |
+        $cli = 'C:\\Program Files\\National Instruments\\Shared\\LabVIEW Compare\\LVCompare.exe'
+        if (-not (Test-Path -LiteralPath $cli)) {
+          Write-Host "::error::LVCompare.exe not found at canonical path: $cli"; exit 1
+        }
+        $lv = Get-Process -Name 'LabVIEW' -ErrorAction SilentlyContinue
+        if ($lv) { Write-Host "::error::LabVIEW.exe is running (PID(s): $($lv.Id -join ','))"; exit 1 }
+        Write-Host 'Preflight OK: LVCompare present; LabVIEW not running.'
+
+    - name: Prepare fixture copies (base/head)
+      id: prep
+      uses: ./.github/actions/prepare-fixtures
+
+    - name: Run compare
+      id: compare
+      uses: ./
+      with:
+        base: ${{ steps.prep.outputs.base }}
+        head: ${{ steps.prep.outputs.head }}
+        fail-on-diff: 'false'
+
+    - name: Generate HTML report
+      id: report
+      if: steps.compare.outcome == 'success'
+      shell: pwsh
+      run: |
+        $outDir = Join-Path $env:RUNNER_TEMP 'compare-artifacts'
+        New-Item -ItemType Directory -Force -Path $outDir | Out-Null
+        $renderer = Join-Path $env:GITHUB_WORKSPACE 'scripts' 'Render-CompareReport.ps1'
+        $dur = '${{ steps.compare.outputs.compareDurationSeconds }}'
+        if (-not [string]::IsNullOrWhiteSpace($dur)) { $dur = [double]$dur } else { $dur = 0 }
+        $reportPath = Join-Path $outDir 'compare-report.html'
+        & $renderer `
+          -Command '${{ steps.compare.outputs.command }}' `
+          -ExitCode ${{ steps.compare.outputs.exitCode }} `
+          -Diff '${{ steps.compare.outputs.diff }}' `
+          -CliPath '${{ steps.compare.outputs.cliPath }}' `
+          -DurationSeconds $dur `
+          -OutputPath $reportPath
+        Write-Host "HTML report generated at: $reportPath"
+        "reportPath=$reportPath" >> $env:GITHUB_OUTPUT
+
+    - name: Upload compare artifacts
+      if: always()
+      uses: actions/upload-artifact@v4
+      with:
+        name: compare-vi-artifacts
+        path: |
+          ${{ steps.compare.outputs.compareSummaryPath }}
+          ${{ steps.report.outputs.reportPath }}
+        if-no-files-found: warn
+
+    - name: Append timing to job summary
+      if: steps.compare.outcome == 'success'
+      shell: pwsh
+      run: |
+        $ns = '${{ steps.compare.outputs.compareDurationNanoseconds }}'
+        $sec = '${{ steps.compare.outputs.compareDurationSeconds }}'
+        $ms = ''
+        if ($sec) { $ms = [math]::Round([double]$sec * 1000,2) }
+        $combined = if ($sec) { "${sec}s (${ms} ms)" } else { 'n/a' }
+        $line = "### Compare VI Timing`n- Seconds: $sec`n- Nanoseconds: $ns`n- Combined: $combined" 
+        $line | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8
+
+    - name: Append determinism summary
+      if: always()
+      shell: pwsh
+      run: pwsh -File tools/Write-DeterminismSummary.ps1
+
+    - name: Append runner identity
+      if: always()
+      shell: pwsh
+      run: pwsh -File tools/Write-RunnerIdentity.ps1 -SampleId '${{ github.event.inputs.sample_id || '' }}'
+
+    - name: Append artifact map
+      if: always()
+      shell: pwsh
+      run: |
+        $paths = @('${{ steps.compare.outputs.compareSummaryPath }}','${{ steps.report.outputs.reportPath }}')
+        pwsh -File tools/Write-ArtifactMap.ps1 -Paths $paths -Title 'Artifacts'
+
+    - name: Re-run hint
+      if: always()
+      shell: pwsh
+      run: pwsh -File tools/Write-RerunHint.ps1 -Workflow 'compare-artifacts.yml' -SampleId '${{ github.event.inputs.sample_id || '' }}'
+
+    - name: Echo outputs
+      if: steps.compare.outcome == 'success'
+      shell: pwsh
+      run: |
+        Write-Host "diff=${{ steps.compare.outputs.diff }}"
+        Write-Host "exitCode=${{ steps.compare.outputs.exitCode }}"
+        Write-Host "compareDurationSeconds=${{ steps.compare.outputs.compareDurationSeconds }}"
+        Write-Host "compareDurationNanoseconds=${{ steps.compare.outputs.compareDurationNanoseconds }}"
+
+    - name: Runner Unblock Guard (process/jobs snapshot)
+      if: always()
+      shell: pwsh
+      run: |
+        $ErrorActionPreference = 'Stop'
+        $snap = [ordered]@{}
+        try {
+          $procs = @(Get-Process -ErrorAction SilentlyContinue | Where-Object { $_.ProcessName -in @('conhost','pwsh','LabVIEW','LVCompare') } | Select-Object ProcessName,Id,StartTime)
+          $jobs  = @(Get-Job -ErrorAction SilentlyContinue | Select-Object Id,Name,State,HasMoreData)
+          $snap.processes = $procs
+          $snap.jobs = $jobs
+          $outDir = Get-Location
+          $path = Join-Path $outDir 'runner-unblock-snapshot.json'
+          $snap | ConvertTo-Json -Depth 5 | Out-File -FilePath $path -Encoding utf8
+
+          $cleanupNote = ''
+          if ($env:UNBLOCK_GUARD -eq '1') {
+            $stoppedLV = 0; $stoppedLVC = 0; $stoppedJobs = 0
+            try { Get-Process -Name 'LabVIEW' -ErrorAction SilentlyContinue | ForEach-Object { try { Stop-Process -Id $_.Id -ErrorAction SilentlyContinue; $stoppedLV++ } catch {} } } catch {}
+            try { Get-Process -Name 'LVCompare' -ErrorAction SilentlyContinue | ForEach-Object { try { Stop-Process -Id $_.Id -ErrorAction SilentlyContinue; $stoppedLVC++ } catch {} } } catch {}
+            try { $gj = @(Get-Job -ErrorAction SilentlyContinue); foreach ($j in $gj) { try { Stop-Job -Job $j -ErrorAction SilentlyContinue; Remove-Job -Job $j -Force -ErrorAction SilentlyContinue; $stoppedJobs++ } catch {} } } catch {}
+            $cleanupNote = ('Cleanup: LabVIEW={0}, LVCompare={1}, Jobs={2}' -f $stoppedLV,$stoppedLVC,$stoppedJobs)
           }
-          $lv = Get-Process -Name 'LabVIEW' -ErrorAction SilentlyContinue
-          if ($lv) { Write-Host "::error::LabVIEW.exe is running (PID(s): $($lv.Id -join ','))"; exit 1 }
-          Write-Host 'Preflight OK: LVCompare present; LabVIEW not running.'
-
-      - name: Prepare fixture copies (base/head)
-        id: prep
-        uses: ./.github/actions/prepare-fixtures
-
-      - name: Run compare
-        id: compare
-        uses: ./
-        with:
-          base: ${{ steps.prep.outputs.base }}
-          head: ${{ steps.prep.outputs.head }}
-          fail-on-diff: 'false'
-
-      - name: Generate HTML report
-        id: report
-        if: steps.compare.outcome == 'success'
-        shell: pwsh
-        run: |
-          $outDir = Join-Path $env:RUNNER_TEMP 'compare-artifacts'
-          New-Item -ItemType Directory -Force -Path $outDir | Out-Null
-          $renderer = Join-Path $env:GITHUB_WORKSPACE 'scripts' 'Render-CompareReport.ps1'
-          $dur = '${{ steps.compare.outputs.compareDurationSeconds }}'
-          if (-not [string]::IsNullOrWhiteSpace($dur)) { $dur = [double]$dur } else { $dur = 0 }
-          $reportPath = Join-Path $outDir 'compare-report.html'
-          & $renderer `
-            -Command '${{ steps.compare.outputs.command }}' `
-            -ExitCode ${{ steps.compare.outputs.exitCode }} `
-            -Diff '${{ steps.compare.outputs.diff }}' `
-            -CliPath '${{ steps.compare.outputs.cliPath }}' `
-            -DurationSeconds $dur `
-            -OutputPath $reportPath
-          Write-Host "HTML report generated at: $reportPath"
-          "reportPath=$reportPath" >> $env:GITHUB_OUTPUT
-
-      - name: Upload compare artifacts
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: compare-vi-artifacts
-          path: |
-            ${{ steps.compare.outputs.compareSummaryPath }}
-            ${{ steps.report.outputs.reportPath }}
-          if-no-files-found: warn
-
-      - name: Append timing to job summary
-        if: steps.compare.outcome == 'success'
-        shell: pwsh
-        run: |
-          $ns = '${{ steps.compare.outputs.compareDurationNanoseconds }}'
-          $sec = '${{ steps.compare.outputs.compareDurationSeconds }}'
-          $ms = ''
-          if ($sec) { $ms = [math]::Round([double]$sec * 1000,2) }
-          $combined = if ($sec) { "${sec}s (${ms} ms)" } else { 'n/a' }
-          $line = "### Compare VI Timing`n- Seconds: $sec`n- Nanoseconds: $ns`n- Combined: $combined" 
-          $line | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8
-
-      - name: Append determinism summary
-        if: always()
-        shell: pwsh
-        run: pwsh -File tools/Write-DeterminismSummary.ps1
-
-      - name: Append runner identity
-        if: always()
-        shell: pwsh
-        run: pwsh -File tools/Write-RunnerIdentity.ps1 -SampleId '${{ github.event.inputs.sample_id || '' }}'
-
-      - name: Append artifact map
-        if: always()
-        shell: pwsh
-        run: |
-          $paths = @('${{ steps.compare.outputs.compareSummaryPath }}','${{ steps.report.outputs.reportPath }}')
-          pwsh -File tools/Write-ArtifactMap.ps1 -Paths $paths -Title 'Artifacts'
-
-      - name: Re-run hint
-        if: always()
-        shell: pwsh
-        run: pwsh -File tools/Write-RerunHint.ps1 -Workflow 'compare-artifacts.yml' -SampleId '${{ github.event.inputs.sample_id || '' }}'
-
-      - name: Echo outputs
-        if: steps.compare.outcome == 'success'
-        shell: pwsh
-        run: |
-          Write-Host "diff=${{ steps.compare.outputs.diff }}"
-          Write-Host "exitCode=${{ steps.compare.outputs.exitCode }}"
-          Write-Host "compareDurationSeconds=${{ steps.compare.outputs.compareDurationSeconds }}"
-          Write-Host "compareDurationNanoseconds=${{ steps.compare.outputs.compareDurationNanoseconds }}"
-
-      - name: Runner Unblock Guard (process/jobs snapshot)
-        if: always()
-        shell: pwsh
-        run: |
-          $ErrorActionPreference = 'Stop'
-          $snap = [ordered]@{}
-          try {
-            $procs = @(Get-Process -ErrorAction SilentlyContinue | Where-Object { $_.ProcessName -in @('conhost','pwsh','LabVIEW','LVCompare') } | Select-Object ProcessName,Id,StartTime)
-            $jobs  = @(Get-Job -ErrorAction SilentlyContinue | Select-Object Id,Name,State,HasMoreData)
-            $snap.processes = $procs
-            $snap.jobs = $jobs
-            $outDir = Get-Location
-            $path = Join-Path $outDir 'runner-unblock-snapshot.json'
-            $snap | ConvertTo-Json -Depth 5 | Out-File -FilePath $path -Encoding utf8
-
-            $cleanupNote = ''
-            if ($env:UNBLOCK_GUARD -eq '1') {
-              $stoppedLV = 0; $stoppedLVC = 0; $stoppedJobs = 0
-              try { Get-Process -Name 'LabVIEW' -ErrorAction SilentlyContinue | ForEach-Object { try { Stop-Process -Id $_.Id -ErrorAction SilentlyContinue; $stoppedLV++ } catch {} } } catch {}
-              try { Get-Process -Name 'LVCompare' -ErrorAction SilentlyContinue | ForEach-Object { try { Stop-Process -Id $_.Id -ErrorAction SilentlyContinue; $stoppedLVC++ } catch {} } } catch {}
-              try { $gj = @(Get-Job -ErrorAction SilentlyContinue); foreach ($j in $gj) { try { Stop-Job -Job $j -ErrorAction SilentlyContinue; Remove-Job -Job $j -Force -ErrorAction SilentlyContinue; $stoppedJobs++ } catch {} } } catch {}
-              $cleanupNote = ('Cleanup: LabVIEW={0}, LVCompare={1}, Jobs={2}' -f $stoppedLV,$stoppedLVC,$stoppedJobs)
-            }
-            $lines = @('### Runner Unblock Guard','')
-            $lines += ('- Process count: {0}' -f $procs.Count)
-            $lines += ('- Pester job count: {0}' -f $jobs.Count)
-            $lines += ''
-            $lines += ('Snapshot: {0}' -f $path)
-            if ($cleanupNote) { $lines += ('- ' + $cleanupNote) }
-            $lines -join "`n" | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8
-          } catch { Write-Host "::warning::Unblock guard failed: $_" }
+          $lines = @('### Runner Unblock Guard','')
+          $lines += ('- Process count: {0}' -f $procs.Count)
+          $lines += ('- Pester job count: {0}' -f $jobs.Count)
+          $lines += ''
+          $lines += ('Snapshot: {0}' -f $path)
+          if ($cleanupNote) { $lines += ('- ' + $cleanupNote) }
+          $lines -join "`n" | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8
+        } catch { Write-Host "::warning::Unblock guard failed: $_" }
+    - name: Session index post (best-effort)
+      if: '${{ always() }}'
+      uses: ./.github/actions/session-index-post
+      with:
+        results-dir: tests/results
+        validate-schema: true
+        upload: true
+        artifact-name: compare-session-index
