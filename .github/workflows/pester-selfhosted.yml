@@ -64,7 +64,7 @@ jobs:
       CLEAN_AFTER: '0'
       SCAN_ARTIFACTS: '1'
       UNBLOCK_GUARD: '0'
-      LV_SUPPRESS_UI: '1'
+      LV_SUPPRESS_UI: '0'
       WATCH_CONSOLE: '1'
     steps:
       - uses: actions/checkout@v5
