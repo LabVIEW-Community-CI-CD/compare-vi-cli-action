@@ -59,11 +59,17 @@ jobs:
     if: needs.pre-init.outputs.docs_only != 'true'
     steps:
       - uses: actions/checkout@v4
-      - name: Verify Windows runner and idle LabVIEW
+      - name: Verify Windows runner and idle LabVIEW (surface LVCompare notice)
         shell: pwsh
         run: |
           Write-Host "Runner: $([System.Environment]::OSVersion.VersionString)"
           Write-Host "Pwsh:   $($PSVersionTable.PSVersion)"
+          $cli = 'C:\\Program Files\\National Instruments\\Shared\\LabVIEW Compare\\LVCompare.exe'
+          if (-not (Test-Path -LiteralPath $cli)) {
+            Write-Host "::notice::LVCompare.exe not found at canonical path: $cli (hosted preflight)"
+          } else {
+            Write-Host "LVCompare present: $cli"
+          }
           $lv = Get-Process -Name 'LabVIEW' -ErrorAction SilentlyContinue
           if ($lv) { Write-Host "::error::LabVIEW.exe is running (PID(s): $($lv.Id -join ','))"; exit 1 }
           Write-Host 'Preflight OK: Windows runner healthy; LabVIEW not running.'
