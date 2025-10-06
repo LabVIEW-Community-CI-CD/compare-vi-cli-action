@@ -26,7 +26,7 @@ concurrency:
 
 jobs:
   windows-single:
-    if: ${{ inputs.run_v2 == 'true' || env.RUN_V2 == '1' }}
+    if: ${{ inputs.run_v2 == 'true' || vars.RUN_V2 == '1' }}
     runs-on: [self-hosted, Windows, X64]
     timeout-minutes: 10
     env:
@@ -113,3 +113,7 @@ jobs:
           $lines += ('- Include Integration: {0}' -f ('${{ inputs.include_integration || 'true' }}'))
           $lines -join "`n" | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8
 
+  pull_request:
+    branches: [ develop ]
+  push:
+    branches: [ feat/ci-orchestrated-v2 ]
