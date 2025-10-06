@@ -56,6 +56,10 @@ runs:
 
         $tests   = '${{ inputs.tests-path }}'
         $outDir  = '${{ inputs.results-dir }}'
+        if ($cat -eq 'comparevi') {
+          $env:PRELOAD_COMPAREVI = '1'
+          $env:CI_ALLOW_FAKE_LVCOMPARE = '1'
+        }
         $timeoutArgs = @(); if ($timeout -gt 0) { $timeoutArgs = @('-TimeoutSeconds', $timeout) }
         & ./Invoke-PesterTests.ps1 -TestsPath $tests -IncludeIntegration $include -ResultsPath $outDir -IncludePatterns $patterns @timeoutArgs
 

@@ -974,6 +974,18 @@ if (-not $includeIntegrationBool) {
   Write-Host "  Including Integration-tagged tests" -ForegroundColor Cyan
 }
 
+# Optional: preload CompareVI module for unit tests in comparevi category
+try {
+  if ($env:PRELOAD_COMPAREVI -eq '1') {
+    $pre = Join-Path (Get-Location) 'scripts'
+    $pre = Join-Path $pre 'CompareVI.ps1'
+    if (Test-Path -LiteralPath $pre) {
+      $conf.Run.PreRunScript = $pre
+      Write-Host "  PreRunScript: $pre" -ForegroundColor Cyan
+    }
+  }
+} catch { Write-Host "(warn) PreRunScript assignment failed: $_" -ForegroundColor DarkYellow }
+
 # Configure output
 $conf.Output.Verbosity = 'Detailed'
 $conf.Run.PassThru = $true
