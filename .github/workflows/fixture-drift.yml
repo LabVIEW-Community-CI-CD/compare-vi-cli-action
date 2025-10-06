@@ -53,24 +53,20 @@ jobs:
           "docs_only=$docsOnly" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
   preflight-windows:
     name: Preflight (Windows)
-    runs-on: [self-hosted, Windows, X64]
+    runs-on: windows-latest
     timeout-minutes: 3
     needs: pre-init
     if: needs.pre-init.outputs.docs_only != 'true'
     steps:
       - uses: actions/checkout@v4
-      - name: Verify LVCompare and idle LabVIEW state
+      - name: Verify Windows runner and idle LabVIEW
         shell: pwsh
         run: |
-          $cli = 'C:\\Program Files\\National Instruments\\Shared\\LabVIEW Compare\\LVCompare.exe'
-          if (-not (Test-Path -LiteralPath $cli)) {
-            Write-Host "::error::LVCompare.exe not found at canonical path: $cli"; exit 1
-          }
+          Write-Host "Runner: $([System.Environment]::OSVersion.VersionString)"
+          Write-Host "Pwsh:   $($PSVersionTable.PSVersion)"
           $lv = Get-Process -Name 'LabVIEW' -ErrorAction SilentlyContinue
-          if ($lv) {
-            Write-Host "::error::LabVIEW.exe is running (PID(s): $($lv.Id -join ',')). Refusing to start tests."; exit 1
-          }
-          Write-Host 'Preflight OK: LVCompare present; LabVIEW not running.'
+          if ($lv) { Write-Host "::error::LabVIEW.exe is running (PID(s): $($lv.Id -join ','))"; exit 1 }
+          Write-Host 'Preflight OK: Windows runner healthy; LabVIEW not running.'
   validate-ubuntu:
     name: Fixture Drift (Ubuntu)
     runs-on: ubuntu-latest

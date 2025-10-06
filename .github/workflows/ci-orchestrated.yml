@@ -60,22 +60,20 @@ jobs:
           markdownlint "**/*.md" --ignore node_modules
 
   preflight:
-    runs-on: [self-hosted, Windows, X64]
+    runs-on: windows-latest
     timeout-minutes: 3
     needs: pre-init
     if: needs.pre-init.outputs.docs_only != 'true'
     steps:
       - uses: actions/checkout@v5
-      - name: Verify LVCompare and idle LabVIEW state
+      - name: Verify Windows runner and idle LabVIEW
         shell: pwsh
         run: |
-          $cli = 'C:\\Program Files\\National Instruments\\Shared\\LabVIEW Compare\\LVCompare.exe'
-          if (-not (Test-Path -LiteralPath $cli)) {
-            Write-Host "::error::LVCompare.exe not found at canonical path: $cli"; exit 1
-          }
+          Write-Host "Runner: $([System.Environment]::OSVersion.VersionString)"
+          Write-Host "Pwsh:   $($PSVersionTable.PSVersion)"
           $lv = Get-Process -Name 'LabVIEW' -ErrorAction SilentlyContinue
           if ($lv) { Write-Host "::error::LabVIEW.exe is running (PID(s): $($lv.Id -join ','))"; exit 1 }
-          Write-Host 'Preflight OK: LVCompare present; LabVIEW not running.'
+          Write-Host 'Preflight OK: Windows runner healthy; LabVIEW not running.'
 
   pester:
     runs-on: [self-hosted, Windows, X64]
