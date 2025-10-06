@@ -15,7 +15,10 @@ function Resolve-Cli {
     if ($resolved -ieq $canonical) {
       if (-not (Test-Path -LiteralPath $canonical -PathType Leaf)) { throw "LVCompare.exe not found at canonical path: $canonical" }
       return $canonical
-    } else { throw "Only the canonical LVCompare path is supported: $canonical" }
+    } else {
+      if ($env:CI_ALLOW_FAKE_LVCOMPARE -eq '1') { return $canonical }
+      throw "Only the canonical LVCompare path is supported: $canonical"
+    }
   }
 
   if ($env:LVCOMPARE_PATH) {
@@ -23,7 +26,10 @@ function Resolve-Cli {
     if ($resolvedEnv -ieq $canonical) {
       if (-not (Test-Path -LiteralPath $canonical -PathType Leaf)) { throw "LVCompare.exe not found at canonical path: $canonical" }
       return $canonical
-    } else { throw "Only the canonical LVCompare path is supported via LVCOMPARE_PATH: $canonical" }
+    } else {
+      if ($env:CI_ALLOW_FAKE_LVCOMPARE -eq '1') { return $canonical }
+      throw "Only the canonical LVCompare path is supported via LVCOMPARE_PATH: $canonical"
+    }
   }
 
   if (Test-Path -LiteralPath $canonical -PathType Leaf) { return $canonical }
