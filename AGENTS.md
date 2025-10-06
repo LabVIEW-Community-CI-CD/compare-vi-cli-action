@@ -65,3 +65,16 @@ Use the Python-based updater only when you need consistent, mechanical edits acr
   - Keep updater changes in small, focused PRs; include a summary of files touched and the transforms applied.
   - If the updater warns or skips a file, fall back to a manual edit and re-run `actionlint`.
 
+## Orchestrated CI (Unified)
+
+- Single workflow: `.github/workflows/ci-orchestrated.yml` supports two strategies via input `strategy`:
+  - `matrix` (default): category matrix → drift → publish summary
+  - `single`: one Windows job (interactivity probe → warmup → serial categories → drift → guard)
+- Trigger examples (GitHub UI): set `include_integration=true`, `strategy`, and `sample_id` (unique) to avoid cancels.
+- Trigger via GH CLI (from your terminal):
+  - Matrix: `gh workflow run ci-orchestrated.yml -r develop -f include_integration=true -f strategy=matrix -f sample_id=$(Get-Date -Format yyyyMMdd-HHmmss)-mx`
+  - Single: `gh workflow run ci-orchestrated.yml -r develop -f include_integration=true -f strategy=single -f sample_id=$(Get-Date -Format yyyyMMdd-HHmmss)-sg`
+- Defaults:
+  - Hosted preflight (windows-latest) is notice-only; strict LVCompare checks occur on self-hosted steps.
+  - Keep one Windows variant (self-hosted) for compare/drift; use hosted for preflight/lint only.
+
