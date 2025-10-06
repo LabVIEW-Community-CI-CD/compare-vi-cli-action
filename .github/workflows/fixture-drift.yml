@@ -51,6 +51,9 @@ jobs:
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
+      - name: LabVIEW warmup (best-effort)
+        shell: pwsh
+        run: pwsh -File tools/Warmup-LabVIEW.ps1
 
       
           results-dir: results/fixture-drift

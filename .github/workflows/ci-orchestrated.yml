@@ -92,6 +92,10 @@ jobs:
       WATCH_CONSOLE: '1'
     steps:
       - uses: actions/checkout@v5
+      - name: LabVIEW warmup (best-effort)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: pwsh -File tools/Warmup-LabVIEW.ps1
       - name: Append interactivity probe
         shell: pwsh
         run: pwsh -File tools/Write-InteractivityProbe.ps1
@@ -234,6 +238,10 @@ jobs:
       WATCH_CONSOLE: '1'
     steps:
       - uses: actions/checkout@v5
+      - name: LabVIEW warmup (best-effort)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: pwsh -File tools/Warmup-LabVIEW.ps1
       - name: Append interactivity probe
         shell: pwsh
         run: pwsh -File tools/Write-InteractivityProbe.ps1
