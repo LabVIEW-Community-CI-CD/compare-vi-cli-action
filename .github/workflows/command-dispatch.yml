@@ -22,7 +22,12 @@ jobs:
             OWNER|MEMBER|COLLABORATOR) echo "Authorized commenter: $AUTHOR_ASSOC" ;;
             *) echo "Not authorized ($AUTHOR_ASSOC). Skipping."; exit 0 ;;
           esac
-          if [ -z "$XCLI_PAT" ]; then echo "XCLI_PAT not set; cannot dispatch."; exit 0; fi
+
+      - name: Select auth token (PAT or GITHUB_TOKEN)
+        id: auth
+        shell: bash
+        run: |
+          if [ -n "$XCLI_PAT" ]; then echo "token=$XCLI_PAT" >> "$GITHUB_OUTPUT"; else echo "token=$GITHUB_TOKEN" >> "$GITHUB_OUTPUT"; fi
 
       - name: Normalize command
         id: cmd
@@ -178,12 +183,13 @@ jobs:
           STRATEGY: ${{ steps.orch.outputs.strategy }}
           INCLUDE: ${{ steps.orch.outputs.include_integration }}
           SAMPLE: ${{ steps.orch.outputs.sample_id }}
+          AUTH: ${{ steps.auth.outputs.token }}
         run: |
           printf '{"ref":"%s","inputs":{"include_integration":"%s","strategy":"%s","sample_id":"%s"}}' \
             "$TARGET_REF" "$INCLUDE" "$STRATEGY" "$SAMPLE" > payload.json
           cat payload.json
           curl -s -X POST \
-           -H "Authorization: Bearer $XCLI_PAT" \
+           -H "Authorization: Bearer $AUTH" \
            -H "Accept: application/vnd.github+json" \
            "https://api.github.com/repos/$REPO/actions/workflows/ci-orchestrated.yml/dispatches" \
            -d @payload.json | cat
