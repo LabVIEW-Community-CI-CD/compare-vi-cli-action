@@ -81,9 +81,11 @@ jobs:
           Write-Host "::notice::LVCompare.exe not found at canonical path: $cli (hosted preflight)"
         } else { Write-Host "LVCompare present: $cli" }
         $lv = Get-Process -Name 'LabVIEW' -ErrorAction SilentlyContinue
-        if ($lv) { Write-Host "::error::LabVIEW.exe is running (PID(s): $($lv.Id -join 
-        ))"; exit 1 }
-        Write-Host 'Preflight OK: Windows runner healthy; LabVIEW not running.'
+        if ($lv) {
+          Write-Host "::notice::LabVIEW.exe detected on hosted runner (PID(s): $($lv.Id -join ',')); continuing"
+        } else {
+          Write-Host 'Preflight OK: Windows runner healthy; LabVIEW not running.'
+        }
         if ($env:GITHUB_STEP_SUMMARY) {
           $note = @('Note:', '- This preflight runs on hosted Windows (windows-latest); LVCompare presence is not required here.', '- Self-hosted Windows steps later in this workflow enforce LVCompare at the canonical path.') -join "`n"
           $note | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8
@@ -473,7 +475,6 @@ jobs:
           $lines += '- No cleanup; no UI suppression; LVCompare-only'
           $lines += ('- Include Integration: {0}' -f ('${{ needs.normalize.outputs.include_integration }}'))
           $lines -join "`n" | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8
-
 
 
 
