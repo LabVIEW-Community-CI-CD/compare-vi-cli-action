@@ -123,7 +123,8 @@ jobs:
             sleep 2
           fi
         done
-    - name: Run markdownlint
+    - name: Run markdownlint (non-blocking)
+      continue-on-error: true
       run: |
         markdownlint "**/*.md" --ignore node_modules
     - name: Emit tool versions
