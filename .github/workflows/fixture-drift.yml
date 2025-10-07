@@ -44,19 +44,15 @@ jobs:
         }
     - name: Verify LVCompare and idle LabVIEW state (notice-only on hosted)
       shell: pwsh
-      run: |
-        $cli = 'C:\\Program Files\\National Instruments\\Shared\\LabVIEW Compare\\LVCompare.exe'
+      run: |-
+        $cli = 'C:\Program Files\National Instruments\Shared\LabVIEW Compare\LVCompare.exe'
         if (-not (Test-Path -LiteralPath $cli)) {
           Write-Host "::notice::LVCompare.exe not found at canonical path: $cli (hosted preflight)"
         } else {
           Write-Host "LVCompare present: $cli"
         }
         $lv = Get-Process -Name 'LabVIEW' -ErrorAction SilentlyContinue
-        if ($lv) {
-          $pids = ($lv | ForEach-Object Id)
-          $msg = '::notice::LabVIEW.exe is running (PID(s): {0}).' -f ([string]::Join(',', $pids))
-          Write-Host $msg
-        } else { Write-Host 'LabVIEW not running.' }
+        if ($lv) { $pids = ($lv | ForEach-Object Id); $msg = '::notice::LabVIEW.exe is running (PID(s): {0}).' -f ([string]::Join(',', $pids)); Write-Host $msg } else { Write-Host 'LabVIEW not running.' }
         Write-Host 'Preflight check complete.'
   validate-ubuntu:
     name: Fixture Drift (Ubuntu)

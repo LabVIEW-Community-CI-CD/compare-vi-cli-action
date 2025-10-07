@@ -128,6 +128,52 @@ def _mk_hosted_preflight_step() -> dict:
     }
 
 
+def _mk_hosted_notice_step() -> dict:
+    # Normalize the hosted Windows notice-only step to avoid -join folding
+    lines = [
+        "$cli = 'C:\\Program Files\\National Instruments\\Shared\\LabVIEW Compare\\LVCompare.exe'",
+        'if (-not (Test-Path -LiteralPath $cli)) {',
+        '  Write-Host "::notice::LVCompare.exe not found at canonical path: $cli (hosted preflight)"',
+        '} else {',
+        '  Write-Host "LVCompare present: $cli"',
+        '}',
+        "$lv = Get-Process -Name 'LabVIEW' -ErrorAction SilentlyContinue",
+        "if ($lv) { $pids = ($lv | ForEach-Object Id); $msg = '::notice::LabVIEW.exe is running (PID(s): {0}).' -f ([string]::Join(',', $pids)); Write-Host $msg } else { Write-Host 'LabVIEW not running.' }",
+        "Write-Host 'Preflight check complete.'",
+    ]
+    body = "\n".join(lines)
+    return {
+        'name': 'Verify LVCompare and idle LabVIEW state (notice-only on hosted)',
+        'shell': 'pwsh',
+        'run': LIT(body),
+    }
+
+
+def ensure_hosted_notice(doc, job_key: str) -> bool:
+    changed = False
+    jobs = doc.get('jobs') or {}
+    job = jobs.get(job_key)
+    if not isinstance(job, dict):
+        return changed
+    steps = job.setdefault('steps', [])
+    idx_notice = None
+    for i, st in enumerate(steps):
+        if isinstance(st, dict) and 'Verify LVCompare and idle LabVIEW state' in str(st.get('name', '')):
+            idx_notice = i
+            break
+    new_step = _mk_hosted_notice_step()
+    if idx_notice is None:
+        steps.append(new_step)
+        job['steps'] = steps
+        return True
+    # Update run body to canonical hosted content
+    if steps[idx_notice].get('run') != new_step['run']:
+        steps[idx_notice]['run'] = new_step['run']
+        steps[idx_notice]['shell'] = 'pwsh'
+        changed = True
+    return changed
+
+
 def _mk_rerun_hint_step(default_strategy: str) -> dict:
     """Create the 'Re-run With Same Inputs' step body for job summaries.
 
@@ -786,9 +832,10 @@ def apply_transforms(path: Path) -> tuple[bool, str]:
     # fixture-drift.yml hosted preflight + session index post in validate-windows
     if path.name == 'fixture-drift.yml':
         c3 = ensure_hosted_preflight(doc, 'preflight-windows')
-        c4 = ensure_session_index_post_in_job(doc, 'validate-windows', 'results/fixture-drift', 'fixture-drift-session-index')
+        c4 = ensure_hosted_notice(doc, 'preflight-windows')
+        c5 = ensure_session_index_post_in_job(doc, 'validate-windows', 'results/fixture-drift', 'fixture-drift-session-index')
         lw = ensure_long_wire_fixture_drift_windows(doc)
-        changed = changed or c3 or c4 or lw
+        changed = changed or c3 or c4 or c5 or lw
     # ci-orchestrated.yml hosted preflight + pester matrix session index post + rerun hints + interactivity probe wiring
     if path.name == 'ci-orchestrated.yml':
         c5 = ensure_hosted_preflight(doc, 'preflight')
