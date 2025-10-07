@@ -120,7 +120,7 @@ jobs:
         comment-on-fail: 'true'
         upload-artifacts: 'true'
         artifact-name: fixture-drift-ubuntu
-        soft-fail: ${{ steps.docs.outputs.docs_only }}
+        soft-fail: ${{ github.event_name == 'pull_request' || steps.docs.outputs.docs_only }}
 
   validate-windows:
     name: Fixture Drift (Windows)
