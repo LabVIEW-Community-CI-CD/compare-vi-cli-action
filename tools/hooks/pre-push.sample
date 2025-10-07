@@ -1,0 +1,14 @@
+#!/usr/bin/env pwsh
+# Sample pre-push hook. Enable by setting:
+#   git config core.hooksPath tools/hooks
+# Then copy or rename this file to 'pre-push' (no extension).
+
+$ErrorActionPreference = 'Stop'
+Write-Host '[pre-push] Running PrePush-Checks.ps1'
+& (Join-Path $PSScriptRoot '..' 'PrePush-Checks.ps1')
+if ($LASTEXITCODE -ne 0) {
+  Write-Error "PrePush checks failed (exit=$LASTEXITCODE). Aborting push."
+  exit $LASTEXITCODE
+}
+Write-Host '[pre-push] OK'
+

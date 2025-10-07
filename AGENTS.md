@@ -45,6 +45,23 @@
 - PRs should explain what/why, list affected workflows, and attach result paths or artifacts.
 - CI must be green (lint + Pester). On Windows, verify no console popups and no lingering processes.
 
+### Local Gates (Pre-push)
+
+- Before pushing, run `tools/PrePush-Checks.ps1` locally. It:
+  - Installs `actionlint` (pinned via `vars.ACTIONLINT_VERSION`, default 1.7.7) if missing.
+  - Runs `actionlint` across `.github/workflows` and fails non-zero on errors.
+  - Optionally round-trips YAML via `ruamel.yaml` if Python is available.
+- Optional hook (developer opt-in):
+  - Enable hooks path: `git config core.hooksPath tools/hooks`
+  - Copy `tools/hooks/pre-push.sample` to `tools/hooks/pre-push`.
+  - The hook calls `tools/PrePush-Checks.ps1` and aborts on failures.
+
+### Required Checks (Develop/Main)
+
+- Make `Validate` a required status on `develop` so broken workflows cannot merge.
+- Suggested (one-time) GH CLI snippet (admin only):
+  - `gh api repos/$REPO/branches/develop/protection -X PUT -f required_status_checks.strict=true -f required_status_checks.contexts[]=Validate -H "Accept: application/vnd.github+json"`
+
 ## Agent Notes (Pinned)
 
 - One-shot invoker per job (ensure-invoker composite); guard snapshots include `node.exe` to diagnose terminal spikes.
@@ -161,4 +178,3 @@ Use the Python-based updater only when you need consistent, mechanical edits acr
 - Scope and PR hygiene:
   - Keep updater changes in small, focused PRs; include a summary of files touched and the transforms applied.
   - If the updater warns or skips a file, fall back to a manual edit and re-run `actionlint`.
-
