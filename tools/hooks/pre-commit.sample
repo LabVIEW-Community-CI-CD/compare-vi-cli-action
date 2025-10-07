@@ -1,0 +1,60 @@
+#!/usr/bin/env pwsh
+# Sample pre-commit hook. Enable hooks with:
+#   git config core.hooksPath tools/hooks
+# Then copy/rename this file to 'pre-commit'.
+
+Set-StrictMode -Version Latest
+$ErrorActionPreference = 'Stop'
+
+function Get-StagedFiles {
+  $psi = New-Object System.Diagnostics.ProcessStartInfo
+  $psi.FileName = 'git'
+  $psi.Arguments = 'diff --cached --name-only --diff-filter=ACM'
+  $psi.UseShellExecute = $false
+  $psi.RedirectStandardOutput = $true
+  $p = [System.Diagnostics.Process]::Start($psi)
+  $out = $p.StandardOutput.ReadToEnd()
+  $null = $p.WaitForExit()
+  return ($out -split "`n" | Where-Object { $_ -and (Test-Path $_) })
+}
+
+function Invoke-PSScriptAnalyzerIfAvailable([string[]]$Paths){
+  try {
+    if (Get-Module -ListAvailable -Name PSScriptAnalyzer) {
+      Write-Host '[pre-commit] Running PSScriptAnalyzer on staged PowerShell files'
+      $res = Invoke-ScriptAnalyzer -Path $Paths -Recurse -Severity Error,Warning -ErrorAction Stop
+      if ($res) {
+        $res | Format-Table -AutoSize | Out-String | Write-Host
+        throw "PSScriptAnalyzer found issues."
+      }
+    }
+  } catch {
+    throw $_
+  }
+}
+
+function Invoke-LocalLinters([string[]]$PsFiles){
+  $root = git rev-parse --show-toplevel
+  Push-Location $root
+  try {
+    if ($PsFiles.Count -gt 0) {
+      Write-Host '[pre-commit] Linting PowerShell patterns (inline-if, dot-sourcing)'
+      try { pwsh -File tools/Lint-InlineIfInFormat.ps1 } catch { throw 'Inline-if lint failed' }
+      try { pwsh -File tools/Lint-DotSourcing.ps1 -WarnOnly } catch { Write-Warning 'Dot-sourcing lint warning' }
+    }
+  } finally { Pop-Location }
+}
+
+Write-Host '[pre-commit] Gathering staged files'
+$files = Get-StagedFiles
+if (-not $files -or $files.Count -eq 0) { exit 0 }
+
+$ps = @($files | Where-Object { $_ -match '\.(ps1|psm1|psd1)$' })
+if ($ps.Count -gt 0) {
+  Invoke-PSScriptAnalyzerIfAvailable -Paths $ps
+  Invoke-LocalLinters -PsFiles $ps
+}
+
+Write-Host '[pre-commit] OK'
+exit 0
+

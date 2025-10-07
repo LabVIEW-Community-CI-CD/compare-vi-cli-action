@@ -56,6 +56,17 @@
   - Copy `tools/hooks/pre-push.sample` to `tools/hooks/pre-push`.
   - The hook calls `tools/PrePush-Checks.ps1` and aborts on failures.
 
+### Optional Hooks (Developer opt-in)
+
+- Pre-commit: `tools/hooks/pre-commit.sample`
+  - Runs PSScriptAnalyzer (if available) on staged PowerShell files.
+  - Runs local linters: inline-if (-f) and dot-sourcing warnings.
+  - Blocks commit if analyzers report errors.
+
+- Commit-msg: `tools/hooks/commit-msg.sample`
+  - Enforces commit subject <= 100 chars and presence of an issue reference (e.g., `(#88)`) unless `WIP`.
+  - Blocks commit on policy violations.
+
 ### Required Checks (Develop/Main)
 
 - Make `Validate` a required status on `develop` so broken workflows cannot merge.

@@ -1,0 +1,30 @@
+#!/usr/bin/env pwsh
+# Sample commit-msg hook. Enable hooks with:
+#   git config core.hooksPath tools/hooks
+# Then copy/rename this file to 'commit-msg'.
+
+param([string]$CommitMsgPath)
+Set-StrictMode -Version Latest
+$ErrorActionPreference = 'Stop'
+
+if (-not (Test-Path -LiteralPath $CommitMsgPath)) { exit 0 }
+$lines = Get-Content -LiteralPath $CommitMsgPath -Encoding utf8
+if (-not $lines) { exit 0 }
+$subject = $lines[0]
+
+# Rules: keep subject <= 100 chars; require issue tag (#NN) unless marked WIP
+$errors = @()
+if ($subject.Length -gt 100) { $errors += "Subject too long ($($subject.Length) > 100)" }
+if ($subject -notmatch '#\d+' -and $subject -notmatch '(?i)\bWIP\b') {
+  $errors += 'Subject should reference an issue (e.g., "(#88)") or include WIP.'
+}
+
+if ($errors.Count -gt 0) {
+  Write-Host '[commit-msg] Commit message does not meet policy:' -ForegroundColor Red
+  foreach ($e in $errors) { Write-Host " - $e" -ForegroundColor Red }
+  Write-Host 'Example: "ci(validate): fix actionlint flow (#88)"'
+  exit 1
+}
+
+exit 0
+
