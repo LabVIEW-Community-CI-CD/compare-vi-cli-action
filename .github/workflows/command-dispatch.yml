@@ -205,7 +205,7 @@ jobs:
           } >> "$GITHUB_OUTPUT"
 
       - name: Dispatch unit tests
-        if: steps.cmd.outputs.target == 'unit'
+        if: steps.cmd.outputs.target == 'unit' && steps.guard.outputs.allowed == 'true'
         shell: bash
         run: |
           curl -s -X POST \
@@ -215,7 +215,7 @@ jobs:
            -d '{"ref":"'"${{ steps.ref.outputs.target_ref }}"'","inputs":{"include_integration":"false"}}' | cat
 
       - name: Dispatch mock tests
-        if: steps.cmd.outputs.target == 'mock'
+        if: steps.cmd.outputs.target == 'mock' && steps.guard.outputs.allowed == 'true'
         shell: bash
         run: |
           curl -s -X POST \
@@ -225,7 +225,7 @@ jobs:
            -d '{"ref":"'"${{ steps.ref.outputs.target_ref }}"'"}' | cat
 
       - name: Dispatch smoke tests
-        if: steps.cmd.outputs.target == 'smoke'
+        if: steps.cmd.outputs.target == 'smoke' && steps.guard.outputs.allowed == 'true'
         shell: bash
         env:
           TARGET_REF: ${{ steps.ref.outputs.target_ref }}
