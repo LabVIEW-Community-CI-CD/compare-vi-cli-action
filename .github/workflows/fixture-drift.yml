@@ -52,7 +52,11 @@ jobs:
           Write-Host "LVCompare present: $cli"
         }
         $lv = Get-Process -Name 'LabVIEW' -ErrorAction SilentlyContinue
-        if ($lv) { Write-Host "::notice::LabVIEW.exe is running (PID(s): $($lv.Id -join ',') )." } else { Write-Host 'LabVIEW not running.' }
+        if ($lv) {
+          $pids = ($lv | ForEach-Object Id)
+          $msg = '::notice::LabVIEW.exe is running (PID(s): {0}).' -f ([string]::Join(',', $pids))
+          Write-Host $msg
+        } else { Write-Host 'LabVIEW not running.' }
         Write-Host 'Preflight check complete.'
   validate-ubuntu:
     name: Fixture Drift (Ubuntu)
