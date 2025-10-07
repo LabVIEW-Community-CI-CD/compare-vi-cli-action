@@ -20,6 +20,14 @@ on:
         required: false
         type: string
 
+      force_run:
+        description: Force run (bypass docs-only gate)
+        required: false
+        default: 'false'
+        type: choice
+        options:
+        - 'true'
+        - 'false'
 jobs:
   pester-selfhosted:
     if: ${{ inputs.enable_run == 'true' }}
