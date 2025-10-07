@@ -116,7 +116,15 @@ jobs:
       shell: bash
       run: |
         set -euo pipefail
-        for i in 1 2 3; do npm install -g markdownlint-cli && break || { npm cache clean --force || true; echo "retry $i"; sleep 2; }; done
+        for i in 1 2 3; do
+          if npm install -g markdownlint-cli; then
+            break
+          else
+            npm cache clean --force || true
+            echo "retry $i"
+            sleep 2
+          fi
+        done
     - name: Emit tool versions
       if: always()
       shell: bash

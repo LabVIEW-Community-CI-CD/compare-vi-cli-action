@@ -467,7 +467,15 @@ def ensure_lint_resiliency(doc, job_name: str, include_node: bool = True, markdo
     # Install markdownlint step
     md_body = (
         "set -euo pipefail\n"
-        "for i in 1 2 3; do npm install -g markdownlint-cli && break || { npm cache clean --force || true; echo \"retry $i\"; sleep 2; }; done\n"
+        "for i in 1 2 3; do\n"
+        "  if npm install -g markdownlint-cli; then\n"
+        "    break\n"
+        "  else\n"
+        "    npm cache clean --force || true\n"
+        "    echo \"retry $i\"\n"
+        "    sleep 2\n"
+        "  fi\n"
+        "done\n"
     )
     md_install_step = {
         'name': 'Install markdownlint-cli (retry)',
