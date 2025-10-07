@@ -493,33 +493,32 @@ def ensure_lint_resiliency(doc, job_name: str, include_node: bool = True, markdo
             changed = True
 
     # Run markdownlint step
-    idx_md_run = _find_step_index(steps, 'Run markdownlint (non-blocking)' if markdown_non_blocking else 'Run markdownlint')
-    name_md = 'Run markdownlint (non-blocking)' if markdown_non_blocking else 'Run markdownlint'
+    name_md_target = 'Run markdownlint (non-blocking)' if markdown_non_blocking else 'Run markdownlint'
+    # Find existing markdownlint step by either name
+    idx_existing = _find_step_index(steps, 'Run markdownlint')
+    if idx_existing is None:
+        idx_existing = _find_step_index(steps, 'Run markdownlint (non-blocking)')
     md_run_step = {
-        'name': name_md,
+        'name': name_md_target,
         'run': LIT('markdownlint "**/*.md" --ignore node_modules\n'),
     }
     if markdown_non_blocking:
         md_run_step['continue-on-error'] = True
-    idx_target = _find_step_index(steps, name_md)
-    if idx_target is None:
+    if idx_existing is None:
         steps.append(md_run_step)
         changed = True
     else:
-        cur = steps[idx_target]
-        need_update = False
-        if cur.get('run') != md_run_step['run']:
-            need_update = True
+        # Normalize in place: rename and adjust semantics
+        cur = steps[idx_existing]
+        cur['name'] = name_md_target
+        cur['run'] = md_run_step['run']
         if markdown_non_blocking:
-            if cur.get('continue-on-error') is not True:
-                need_update = True
+            cur['continue-on-error'] = True
         else:
             if 'continue-on-error' in cur:
                 del cur['continue-on-error']
-                changed = True
-        if need_update:
-            steps[idx_target] = md_run_step
-            changed = True
+        steps[idx_existing] = cur
+        changed = True
 
     job['steps'] = steps
     return changed
