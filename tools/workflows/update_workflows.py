@@ -174,6 +174,37 @@ def ensure_hosted_notice(doc, job_key: str) -> bool:
     return changed
 
 
+def normalize_hosted_preflight_steps(doc) -> bool:
+    """Normalize any hosted Windows preflight/notice steps across all jobs by name.
+    Safe no-op if steps are absent or names differ.
+    """
+    changed = False
+    jobs = doc.get('jobs') or {}
+    if not isinstance(jobs, dict):
+        return False
+    preflight_tmpl = _mk_hosted_preflight_step()
+    notice_tmpl = _mk_hosted_notice_step()
+    for job_name, job in jobs.items():
+        if not isinstance(job, dict):
+            continue
+        steps = job.get('steps') or []
+        for i, st in enumerate(steps):
+            if not isinstance(st, dict):
+                continue
+            nm = str(st.get('name', ''))
+            if nm == preflight_tmpl['name']:
+                if st.get('run') != preflight_tmpl['run'] or st.get('shell') != 'pwsh':
+                    st['run'] = preflight_tmpl['run']
+                    st['shell'] = 'pwsh'
+                    changed = True
+            elif nm == notice_tmpl['name']:
+                if st.get('run') != notice_tmpl['run'] or st.get('shell') != 'pwsh':
+                    st['run'] = notice_tmpl['run']
+                    st['shell'] = 'pwsh'
+                    changed = True
+    return changed
+
+
 def _mk_rerun_hint_step(default_strategy: str) -> dict:
     """Create the 'Re-run With Same Inputs' step body for job summaries.
 
@@ -836,6 +867,9 @@ def apply_transforms(path: Path) -> tuple[bool, str]:
         c5 = ensure_session_index_post_in_job(doc, 'validate-windows', 'results/fixture-drift', 'fixture-drift-session-index')
         lw = ensure_long_wire_fixture_drift_windows(doc)
         changed = changed or c3 or c4 or c5 or lw
+    # Normalize hosted preflight steps across any workflow
+    c_global = normalize_hosted_preflight_steps(doc)
+    changed = changed or c_global
     # ci-orchestrated.yml hosted preflight + pester matrix session index post + rerun hints + interactivity probe wiring
     if path.name == 'ci-orchestrated.yml':
         c5 = ensure_hosted_preflight(doc, 'preflight')

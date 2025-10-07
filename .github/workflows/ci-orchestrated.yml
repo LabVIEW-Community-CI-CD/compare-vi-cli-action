@@ -116,14 +116,7 @@ jobs:
       shell: bash
       run: |
         set -euo pipefail
-        for i in 1 2 3; do
-          if npm install -g markdownlint-cli; then
-            break
-          else
-            npm cache clean --force || true
-            echo "retry $i"; sleep 2
-          fi
-        done
+        for i in 1 2 3; do npm install -g markdownlint-cli && break || { npm cache clean --force || true; echo "retry $i"; sleep 2; }; done
     - name: Emit tool versions
       if: always()
       shell: bash
@@ -159,8 +152,7 @@ jobs:
           Write-Host "::notice::LVCompare.exe not found at canonical path: $cli (hosted preflight)"
         } else { Write-Host "LVCompare present: $cli" }
         $lv = Get-Process -Name 'LabVIEW' -ErrorAction SilentlyContinue
-        if ($lv) { Write-Host "::error::LabVIEW.exe is running (PID(s): $($lv.Id -join 
-        ))"; exit 1 }
+        if ($lv) { $pids = ($lv | ForEach-Object Id); $msg = "::error::LabVIEW.exe is running (PID(s): {0})" -f ([string]::Join(",", $pids)); Write-Host $msg; exit 1 }
         Write-Host 'Preflight OK: Windows runner healthy; LabVIEW not running.'
         if ($env:GITHUB_STEP_SUMMARY) {
           $note = @('Note:', '- This preflight runs on hosted Windows (windows-latest); LVCompare presence is not required here.', '- Self-hosted Windows steps later in this workflow enforce LVCompare at the canonical path.') -join "`n"
