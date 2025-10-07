@@ -954,7 +954,8 @@ def apply_transforms(path: Path) -> tuple[bool, str]:
         except Exception:
             pass
     if path.name == 'validate.yml':
-        lr2 = ensure_lint_resiliency(doc, 'lint', include_node=True, markdown_non_blocking=False)
+        # Make markdownlint non-blocking in Validate to avoid PR noise; Workflows Lint is the required check.
+        lr2 = ensure_lint_resiliency(doc, 'lint', include_node=True, markdown_non_blocking=True)
         changed = changed or lr2
 
 
