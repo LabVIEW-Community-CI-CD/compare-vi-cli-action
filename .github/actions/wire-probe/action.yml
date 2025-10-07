@@ -1,0 +1,51 @@
+name: Wire Probe
+description: Record a lightweight wire probe marker for phase timing/traceability
+inputs:
+  phase:
+    description: Short phase label (e.g., J1, G0, C1)
+    required: true
+  results-dir:
+    description: Results directory to write wire markers under
+    required: false
+    default: results/fixture-drift
+  append-summary:
+    description: Append a small note to the job summary
+    required: false
+    default: 'true'
+runs:
+  using: composite
+  steps:
+  - name: Write wire marker
+    shell: pwsh
+    run: |
+      $ErrorActionPreference = 'Stop'
+      $phase = '${{ inputs.phase }}'
+      $rd = '${{ inputs.results-dir }}'
+      if ([string]::IsNullOrWhiteSpace($rd)) { $rd = 'results/fixture-drift' }
+      $wireDir = Join-Path $rd '_wire'
+      New-Item -ItemType Directory -Force -Path $wireDir | Out-Null
+      $payload = [ordered]@{
+        phase     = $phase
+        timestamp = (Get-Date).ToUniversalTime().ToString('o')
+        runner    = [ordered]@{
+          os   = $env:RUNNER_OS
+          name = $env:RUNNER_NAME
+          arch = $env:PROCESSOR_ARCHITECTURE
+        }
+        github    = [ordered]@{
+          run_id   = $env:GITHUB_RUN_ID
+          job      = $env:GITHUB_JOB
+          ref      = $env:GITHUB_REF
+          sha      = $env:GITHUB_SHA
+          actor    = $env:GITHUB_ACTOR
+          workflow = $env:GITHUB_WORKFLOW
+        }
+      }
+      $outPath = Join-Path $wireDir ("{0}.json" -f $phase)
+      ($payload | ConvertTo-Json -Depth 6) | Out-File -FilePath $outPath -Encoding utf8
+      Write-Host ("wire: wrote {0}" -f $outPath)
+      if ('${{ inputs.append-summary }}' -eq 'true' -and $env:GITHUB_STEP_SUMMARY) {
+        $lines = @("### Wire", "- phase=$phase", "- path=$outPath")
+        ($lines -join "`n") | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8
+      }
+

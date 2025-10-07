@@ -124,6 +124,9 @@ jobs:
   validate-windows:
     name: Fixture Drift (Windows)
     runs-on: [self-hosted, Windows, X64]
+    concurrency:
+      group: lv-fixture-win
+      cancel-in-progress: false
     needs: preflight-windows
     timeout-minutes: 3
     env:
@@ -141,10 +144,20 @@ jobs:
       contents: read
       pull-requests: write
     steps:
+    - name: Wire Probe (J1)
+      uses: ./.github/actions/wire-probe
+      with:
+        phase: J1
+        results-dir: results/fixture-drift
     - name: Checkout
       uses: actions/checkout@v4
       with:
         fetch-depth: 0
+    - name: Wire Probe (J2)
+      uses: ./.github/actions/wire-probe
+      with:
+        phase: J2
+        results-dir: results/fixture-drift
 
     - name: Detect docs-only change
       id: docs
@@ -175,6 +188,24 @@ jobs:
         }
         "docs_only=$docsOnly" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
 
+    - name: LV Guard (pre)
+      uses: ./.github/actions/runner-unblock-guard
+      with:
+        snapshot-path: results/fixture-drift/lv-guard-pre.json
+        cleanup: ${{ env.CLEAN_LVCOMPARE == '1' }}
+        process-names: 'LVCompare,LabVIEW'
+    - name: Wire Guard (pre)
+      uses: ./.github/actions/wire-guard-pre
+      with:
+        results-dir: results/fixture-drift
+    - name: LabVIEW warmup (best-effort)
+      shell: pwsh
+      run: pwsh -File tools/Warmup-LabVIEW.ps1
+    - name: Wire Invoker (start)
+      uses: ./.github/actions/wire-invoker-start
+      with:
+        results-dir: results/fixture-drift
+
     - name: Prepare fixture copies (base/head)
       id: prep
       shell: pwsh
@@ -188,6 +219,11 @@ jobs:
         Copy-Item -LiteralPath (Join-Path $env:GITHUB_WORKSPACE 'VI2.vi') -Destination $head -Force
         "base=$base`nhead=$head" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
 
+    - name: Wire Probe (C1)
+      uses: ./.github/actions/wire-probe
+      with:
+        phase: C1
+        results-dir: results/fixture-drift
     - name: Fixture Drift Orchestrator
       uses: ./.github/actions/fixture-drift
       with:
@@ -198,6 +234,11 @@ jobs:
         soft-fail: ${{ steps.docs.outputs.docs_only }}
         base-path: ${{ steps.prep.outputs.base }}
         head-path: ${{ steps.prep.outputs.head }}
+    - name: Wire Probe (C2)
+      uses: ./.github/actions/wire-probe
+      with:
+        phase: C2
+        results-dir: results/fixture-drift
 
     - name: Verify fixture vs LVCompare (notice-only)
       shell: pwsh
@@ -234,12 +275,27 @@ jobs:
         }
         # Notice-only step, never fail the job here
         exit 0
+    - name: Wire Probe (C3)
+      uses: ./.github/actions/wire-probe
+      with:
+        phase: C3
+        results-dir: results/fixture-drift
+    - name: Wire Probe (V1)
+      uses: ./.github/actions/wire-probe
+      with:
+        phase: V1
+        results-dir: results/fixture-drift
 
     - name: Ensure session index (fallback)
       if: always()
       shell: pwsh
       run: pwsh -File tools/Ensure-SessionIndex.ps1 -ResultsDir 'results/fixture-drift' -SummaryJson 'drift-summary.json'
 
+    - name: Wire Session Index (S1)
+      if: always()
+      uses: ./.github/actions/wire-session-index
+      with:
+        results-dir: results/fixture-drift
     - name: Session index post (best-effort)
       if: always()
       uses: ./.github/actions/session-index-post
@@ -256,12 +312,23 @@ jobs:
         snapshot-path: results/fixture-drift/runner-unblock-snapshot.json
         cleanup: ${{ env.UNBLOCK_GUARD == '1' }}
         process-names: 'conhost,pwsh,LabVIEW,LVCompare'
+    - name: Wire Invoker (stop)
+      if: always()
+      uses: ./.github/actions/wire-invoker-stop
+      with:
+        results-dir: results/fixture-drift
     - name: Ensure Invoker (stop)
       if: always()
       uses: ./.github/actions/ensure-invoker
       with:
         mode: stop
 
+    - name: Wire Probe (P1)
+      if: always()
+      uses: ./.github/actions/wire-probe
+      with:
+        phase: P1
+        results-dir: results/fixture-drift
     - name: Append determinism summary
       if: always()
       shell: pwsh
@@ -304,3 +371,8 @@ jobs:
         snapshot-path: results/fixture-drift/lv-guard-post.json
         cleanup: ${{ env.CLEAN_LVCOMPARE == '1' }}
         process-names: 'LVCompare,LabVIEW'
+    - name: Wire Guard (post)
+      if: always()
+      uses: ./.github/actions/wire-guard-post
+      with:
+        results-dir: results/fixture-drift

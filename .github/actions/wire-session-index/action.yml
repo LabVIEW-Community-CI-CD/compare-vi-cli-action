@@ -1,0 +1,26 @@
+name: Wire Session Index
+description: Wire marker for session index phase
+inputs:
+  results-dir:
+    description: Results directory
+    required: false
+    default: results/fixture-drift
+runs:
+  using: composite
+  steps:
+  - name: Wire S1
+    shell: pwsh
+    run: |
+      $rd = '${{ inputs.results-dir }}'
+      $env:WIRE_PHASE='S1'
+      pwsh -NoLogo -NoProfile -Command @'
+        param($Phase,$Dir)
+        $ErrorActionPreference = "Stop"
+        if ([string]::IsNullOrWhiteSpace($Dir)) { $Dir = 'results/fixture-drift' }
+        $wireDir = Join-Path $Dir '_wire'
+        New-Item -ItemType Directory -Force -Path $wireDir | Out-Null
+        $payload = [ordered]@{ phase=$Phase; timestamp=(Get-Date).ToUniversalTime().ToString('o'); kind='session-index' }
+        $outPath = Join-Path $wireDir ("{0}.json" -f $Phase)
+        ($payload | ConvertTo-Json -Depth 4) | Out-File -FilePath $outPath -Encoding utf8
+      '@ -Args $env:WIRE_PHASE, $rd
+
