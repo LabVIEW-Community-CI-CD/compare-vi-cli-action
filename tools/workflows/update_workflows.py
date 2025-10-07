@@ -113,7 +113,7 @@ def _mk_hosted_preflight_step() -> dict:
         '  Write-Host "::notice::LVCompare.exe not found at canonical path: $cli (hosted preflight)"',
         '} else { Write-Host "LVCompare present: $cli" }',
         "$lv = Get-Process -Name 'LabVIEW' -ErrorAction SilentlyContinue",
-        'if ($lv) { Write-Host "::error::LabVIEW.exe is running (PID(s): $($lv.Id -join ','))"; exit 1 }',
+        "if ($lv) { $pids = ($lv | ForEach-Object Id); $msg = \"::error::LabVIEW.exe is running (PID(s): {0})\" -f ([string]::Join(\",\", $pids)); Write-Host $msg; exit 1 }",
         "Write-Host 'Preflight OK: Windows runner healthy; LabVIEW not running.'",
         'if ($env:GITHUB_STEP_SUMMARY) {',
         "  $note = @('Note:', '- This preflight runs on hosted Windows (windows-latest); LVCompare presence is not required here.', '- Self-hosted Windows steps later in this workflow enforce LVCompare at the canonical path.') -join \"`n\"",
