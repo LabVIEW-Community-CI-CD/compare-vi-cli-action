@@ -42,18 +42,18 @@ jobs:
           $note = @('Note:', '- This preflight runs on hosted Windows (windows-latest); LVCompare presence is not required here.', '- Self-hosted Windows steps later in this workflow enforce LVCompare at the canonical path.') -join "`n"
           $note | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8
         }
-    - name: Verify LVCompare and idle LabVIEW state
+    - name: Verify LVCompare and idle LabVIEW state (notice-only on hosted)
       shell: pwsh
       run: |
         $cli = 'C:\\Program Files\\National Instruments\\Shared\\LabVIEW Compare\\LVCompare.exe'
         if (-not (Test-Path -LiteralPath $cli)) {
-          Write-Host "::error::LVCompare.exe not found at canonical path: $cli"; exit 1
+          Write-Host "::notice::LVCompare.exe not found at canonical path: $cli (hosted preflight)"
+        } else {
+          Write-Host "LVCompare present: $cli"
         }
         $lv = Get-Process -Name 'LabVIEW' -ErrorAction SilentlyContinue
-        if ($lv) {
-          Write-Host "::error::LabVIEW.exe is running (PID(s): $($lv.Id -join ',')). Refusing to start tests."; exit 1
-        }
-        Write-Host 'Preflight OK: LVCompare present; LabVIEW not running.'
+        if ($lv) { Write-Host "::notice::LabVIEW.exe is running (PID(s): $($lv.Id -join ',') )." } else { Write-Host 'LabVIEW not running.' }
+        Write-Host 'Preflight check complete.'
   validate-ubuntu:
     name: Fixture Drift (Ubuntu)
     runs-on: ubuntu-latest
