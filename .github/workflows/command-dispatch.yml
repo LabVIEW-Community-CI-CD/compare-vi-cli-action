@@ -61,6 +61,41 @@ jobs:
             echo "fork=true" >> "$GITHUB_OUTPUT"
           fi
 
+      - name: Guard PR state (open)
+        id: guard
+        if: always()
+        shell: bash
+        env:
+          AUTH: ${{ steps.auth.outputs.token }}
+        run: |
+          pr="$PR_NUMBER"
+          resp=$(curl -s -H "Authorization: Bearer $AUTH" -H "Accept: application/vnd.github+json" \
+                  "https://api.github.com/repos/$REPO/pulls/$pr")
+          python3 - <<'PY' <<EOF
+import json,sys
+j=json.load(sys.stdin)
+state=j.get('state','')
+merged=j.get('merged')
+print(f'state={state}')
+print(f'merged={merged}')
+print(f"allowed={'true' if state=='open' and not merged else 'false'}")
+PY
+EOF
+          allowed=$(tail -n1 <<< "$resp")
+          # Fallback parse when python is not available
+          if [ -z "$allowed" ]; then
+            state=$(echo "$resp" | sed -n 's/.*"state"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' | head -n1)
+            merged=$(echo "$resp" | sed -n 's/.*"merged"[[:space:]]*:[[:space:]]*\(true\|false\).*/\1/p' | head -n1)
+            if [ "$state" = "open" ] && [ "$merged" != "true" ]; then allowed=true; else allowed=false; fi
+          else
+            # Extract value after 'allowed='
+            allowed=$(echo "$allowed" | sed -n 's/^allowed=\(.*\)$/\1/p')
+          fi
+          echo "allowed=$allowed" >> "$GITHUB_OUTPUT"
+          if [ "$allowed" != "true" ]; then
+            echo "::notice::PR #$PR_NUMBER is not open; skipping command dispatch."
+          fi
+
       - name: Parse orchestrated options from comment
         id: orch
         if: steps.cmd.outputs.target == 'orchestrated'
@@ -135,7 +170,7 @@ jobs:
           } >> "$GITHUB_OUTPUT"
 
       - name: Dispatch orchestrated workflow
-        if: steps.cmd.outputs.target == 'orchestrated'
+        if: steps.cmd.outputs.target == 'orchestrated' && steps.guard.outputs.allowed == 'true'
         shell: bash
         env:
           TARGET_REF: ${{ steps.ref.outputs.target_ref }}

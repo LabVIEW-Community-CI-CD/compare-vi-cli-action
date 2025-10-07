@@ -1,0 +1,30 @@
+name: Workflows Lint
+
+on:
+  pull_request:
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    env:
+      ACTIONLINT_VERSION: ${{ vars.ACTIONLINT_VERSION || '1.7.7' }}
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Install actionlint (pinned)
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p ./bin
+          ver="${ACTIONLINT_VERSION:-1.7.7}"
+          for i in 1 2 3; do
+            if curl -fsSL https://raw.githubusercontent.com/rhysd/actionlint/main/scripts/download-actionlint.bash | bash -s -- "$ver" ./bin; then
+              break
+            else
+              echo "retry $i"; sleep 2
+            fi
+          done
+
+      - name: Run actionlint
+        run: ./bin/actionlint -color
+
