@@ -32,7 +32,6 @@ to stream per-file results, enforce timeouts, or let other orchestrators schedul
 
 ## References
 
-- [$reqName](../../requirements/PESTER_SINGLE_INVOKER.md)
 - Requirements: [`docs/requirements/PESTER_SINGLE_INVOKER.md`](../requirements/PESTER_SINGLE_INVOKER.md)
 - System Definition: [`docs/requirements/SINGLE_INVOKER_SYSTEM_DEFINITION.md`](../requirements/SINGLE_INVOKER_SYSTEM_DEFINITION.md)
 - Implementation: `scripts/Pester-Invoker.psm1`, `scripts/Invoke-PesterSingleLoop.ps1`

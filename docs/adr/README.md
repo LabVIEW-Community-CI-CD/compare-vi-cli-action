@@ -7,7 +7,7 @@ documents linked to each ADR.
 | ADR | Title                                   | Status   | Date       | Related Requirements |
 |-----|-----------------------------------------|----------|------------|----------------------|
 | [0003](0003-test-decision.md) | Test Decision | Draft | 2025-10-08 | _TBD_ |
-| [0001](0001-single-invoker-step-module.md) | Adopt Step-Based Pester Invoker Module | Accepted | 2025-10-08 | [`PESTER_SINGLE_INVOKER`](../requirements/PESTER_SINGLE_INVOKER.md), [`SINGLE_INVOKER_SYSTEM_DEFINITION`](../requirements/SINGLE_INVOKER_SYSTEM_DEFINITION.md), [$reqName](../../requirements/PESTER_SINGLE_INVOKER.md) |
+| [0001](0001-single-invoker-step-module.md) | Adopt Step-Based Pester Invoker Module | Accepted | 2025-10-08 | [`PESTER_SINGLE_INVOKER`](../requirements/PESTER_SINGLE_INVOKER.md), [`SINGLE_INVOKER_SYSTEM_DEFINITION`](../requirements/SINGLE_INVOKER_SYSTEM_DEFINITION.md) |
 
 ## Validation
 

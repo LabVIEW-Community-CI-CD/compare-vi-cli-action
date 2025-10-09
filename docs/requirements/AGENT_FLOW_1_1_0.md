@@ -2,6 +2,7 @@
 
 - Version: 1.1.0
 - Issue: #88
+- Architectural Decision Record: [`ADR 0002`](../adr/0002-agent-flow-1-1-0-dx.md)
 
 ## Legend
 
