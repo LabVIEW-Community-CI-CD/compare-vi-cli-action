@@ -1,0 +1,15 @@
+{
+  "timestamp": "2025-10-07T15:55:00Z",
+  "status": "PASS",
+  "classification": "baseline",
+  "stats": { "tests": 20, "failed": 0, "skipped": 0 },
+  "runSequence": 1
+}
+
+{
+  "timestamp": "2025-10-07T16:00:00Z",
+  "status": "FAIL",
+  "classification": "worsened",
+  "stats": { "tests": 20, "failed": 3, "skipped": 0 },
+  "runSequence": 2
+}

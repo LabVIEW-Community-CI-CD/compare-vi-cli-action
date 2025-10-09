@@ -88,10 +88,11 @@ try {
   Invoke-Actionlint -Exe $exe
   $ymls = Get-ChildItem -Path '.github/workflows' -Filter *.yml -Recurse | ForEach-Object { $_.FullName }
   if ($ymls.Count -gt 0) { Invoke-YamlRoundTripCheck -Files $ymls }
+  Write-Host 'Validating ADR links...'
+  pwsh -NoLogo -NoProfile -File (Join-Path (Get-Location).Path 'tools/Validate-AdrLinks.ps1')
   Write-Host 'PrePush checks passed.'
   exit 0
 } catch {
   Write-Error $_
   exit 2
 }
-

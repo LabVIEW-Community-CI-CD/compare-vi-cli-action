@@ -24,7 +24,21 @@ try { $repo = gh repo view --json nameWithOwner -q .nameWithOwner 2>$null } catc
 
 # Env toggles
 $envs = @{}
-foreach($k in @('LV_SUPPRESS_UI','LV_NO_ACTIVATE','LV_CURSOR_RESTORE','LV_IDLE_WAIT_SECONDS','LV_IDLE_MAX_WAIT_SECONDS','CLEAN_LVCOMPARE')){ $envs[$k] = [string]([Environment]::GetEnvironmentVariable($k)) }
+foreach($k in @(
+    'LV_SUPPRESS_UI',
+    'LV_NO_ACTIVATE',
+    'LV_CURSOR_RESTORE',
+    'LV_IDLE_WAIT_SECONDS',
+    'LV_IDLE_MAX_WAIT_SECONDS',
+    'CLEAN_LV_BEFORE',
+    'CLEAN_LV_AFTER',
+    'CLEAN_LV_INCLUDE_COMPARE',
+    'CLEAN_LVCOMPARE',
+    'CLEAN_LABVIEW',
+    'CLEAN_AFTER'
+  )) {
+  $envs[$k] = [string]([Environment]::GetEnvironmentVariable($k))
+}
 
 # Agent wait sessions (latest per id)
 $waitSessions = @()

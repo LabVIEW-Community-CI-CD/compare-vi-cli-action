@@ -1,0 +1,79 @@
+Deterministic Runs Hand-off — Updated 2025-10-09 @ 07:40 UTC
+
+Context Snapshot
+- Branch: `issue/88-dev-dashboard-phase2`
+- Issue/PR: #88 (open), PR #100 (open against develop; blocked by VI Binary Handling Gate)
+- Latest commits on branch:
+  * 5865fca — ci(binary-gate): enable manual dispatch (#88)
+  * eddc4b0 — ci(binary-gate): ensure Pester v5 is installed for self-hosted run (#88)
+  * 80b9b09 — fix(dispatcher): remove Seed parameter to avoid Import-Module metadata error (#88)
+  * 71c6a3b — fix: harden fixture drift notice verification (#88)
+- Recent workflow highlights:
+  * Fixture Drift (Windows) run `18364793531` — SUCCESS (notice gate hardened)
+  * VI Binary Handling Gate `18364792683` — FAILURE (Pester missing) [pre-fix]
+  * VI Binary Handling Gate `18366644622` — FAILURE (watch smoke step before install fix)
+  * VI Binary Handling Gate `18366961863` — FAILURE in Preflight (self-hosted): "Verify LVCompare and idle LabVIEW state"
+
+Top Priorities for Next Agent
+1) Diagnose self-hosted Windows preflight failure in run `18366961863`:
+   - Confirm LVCompare exists at canonical path: `C:\Program Files\National Instruments\Shared\LabVIEW Compare\LVCompare.exe`.
+   - Ensure `LabVIEW.exe` is not running prior to tests.
+   - Re-run the gate after runner fix (manual dispatch now enabled).
+2) Once preflight succeeds, verify Pester v5 is installed (workflow sets `install_pester: true`) and that the Pester job executes the binary-handling tests.
+3) When the VI Binary Handling Gate is green, verify PR #100 has all checks passing and proceed to merge policy for #88.
+4) If additional regressions surface (watch-mode or telemetry), capture logs and update PR/issue with remediation steps.
+
+Environment Preconditions (local & CI)
+- `$env:LV_SUPPRESS_UI = '1'`
+- `$env:LV_NO_ACTIVATE = '1'`
+- `$env:LV_CURSOR_RESTORE = '1'`
+- `$env:LVCI_SINGLE_COMPARE = '1'`
+- `$env:SESSION_LOCK_ENABLED = '1'` and `$env:SESSION_LOCK_STRICT = '1'`
+- Repo vars: `CLEAN_LV_BEFORE=true`, `CLEAN_LV_AFTER=true`, `CLEAN_LV_INCLUDE_COMPARE=true`
+- Optional telemetry: `$env:EMIT_LV_CLOSURE_CRUMBS = '1'`
+
+Recent Changes / What’s Fixed
+- Fixture Drift Windows notice gate hardened; tolerates missing path and falls back to `_lv` directory, surfaces counts in step summary.
+- Dispatcher metadata error resolved by removing the `Seed` parameter from `Invoke-PesterTests.ps1`.
+- VI Binary Handling Gate now installs Pester v5 to ensure `New-PesterConfiguration` is present.
+- Manual dispatch enabled for the VI Binary Handling Gate (`workflow_dispatch`).
+
+Agent Flow 1.1.0 (DX)
+- ADR 0002 accepted (docs/adr/0002-agent-flow-1-1-0-dx.md).
+- Requirements (verifiable) at docs/requirements/AGENT_FLOW_1_1_0.md.
+- Key tenets now active:
+  - Deterministic lock for all heavy Windows jobs (`pester-selfhosted`).
+  - Guard preflight/post with cleanup; fail fast if LabVIEW is running.
+  - Inline heartbeat (no background pwsh processes).
+  - Warmup wrapper normalized (bitness defaulting, safe exit propagation).
+  - LV notice dir fallback with clear strict-mode reason codes.
+  - Consistent re-run hint + provenance + current-state summary.
+
+Open Issues / Pending Work
+- Self-hosted runner failing LVCompare preflight (run `18366961863`): fix runner state or adjust preflight expectations if policy allows.
+- After the runner fix, re-dispatch the gate and ensure the Pester job executes `tests/ViBinaryHandling.Tests.ps1`.
+- When both drift and binary gates are green, finalize PR #100 for merge.
+
+Useful Commands & Scripts
+- Manual gate dispatch: `gh workflow run vi-binary-gate.yml -r issue/88-dev-dashboard-phase2`
+- Track runs: `gh run list --workflow "VI Binary Handling Gate" --json databaseId,status,conclusion,headBranch,url`
+- Inspect job logs: `gh run view <runId> --json jobs` then call the job logs API for details.
+- Local quick checks: `pwsh -File tools/Quick-DispatcherSmoke.ps1 -PreferWorkspace`
+- Validate fixtures: `pwsh -File tools/Validate-Fixtures.ps1 -Json`
+- Lock (deterministic queue): `pwsh -File tools/Session-Lock.ps1 -Action Acquire -Group 'pester-selfhosted' -QueueWaitSeconds 15 -QueueMaxAttempts 40 -StaleSeconds 300 -HeartbeatSeconds 15`
+- Release lock (always): `pwsh -File tools/Session-Lock.ps1 -Action Release -Group 'pester-selfhosted'`
+- Force takeover (stale only): `pwsh -File tools/Session-Lock.ps1 -Action Acquire -Group 'pester-selfhosted' -ForceTakeover`
+- Local fixture harness (TestStand thin wrapper): `pwsh -File tools/TestStand-CompareHarness.ps1 -LabVIEWPath <path> -CloseLabVIEW`
+
+Artifacts & Logs to Review After Runs
+- Gate run summaries and artifacts: `pester-results`, `pester-totals.json`, dev-dashboard (`dashboard.html/.json`).
+- Self-hosted preflight logs for LVCompare presence/idle LabVIEW diagnostics.
+- Fixture Drift results: `results/fixture-drift/**/drift-summary.json`, `fixture-verify-summary.json`.
+
+Reference Docs
+- `docs/LABVIEW_GATING.md`, `docs/requirements/WATCH_AND_QUEUE.md`
+- ADR 0001 and related requirements under `docs/requirements/`
+
+Reminder
+- Keep commits scoped; reference `#88` in commit subjects.
+- Use “brief delay (~90 seconds)” etiquette for propagation waits and record with agent-wait tools.

@@ -9,6 +9,8 @@ tests/results/
 tests/results
 tests/results/**
 !tests/results/.gitkeep
+# Local dashboard output
+tools/dashboard/dashboard.html
 # Root-level CI artifacts (timestamped at runtime; never commit)
 results/
 # Local temp workdirs created during ad-hoc runs

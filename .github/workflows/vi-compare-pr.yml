@@ -126,13 +126,6 @@ jobs:
         run: |
           pwsh -File scripts/Generate-PullRequestCompareReport.ps1 -OutputDirectory compare-artifacts -BasePath "${{ steps.prep.outputs.base }}" -HeadPath "${{ steps.prep.outputs.head }}"
 
-      - name: Loop compare (latency sample)
-        id: loop
-        if: steps.docs.outputs.docs_only != 'true'
-        shell: pwsh
-        run: |
-          pwsh -File scripts/Generate-PullRequestCompareReport.ps1 -OutputDirectory loop-artifacts -LoopMode -LoopIterations 3 -LoopIntervalSeconds 0 -QuantileStrategy Exact -StreamCapacity 300 -HistogramBins 5 -BasePath "${{ steps.prep.outputs.base }}" -HeadPath "${{ steps.prep.outputs.head }}"
-
       - name: Append summary (docs-only)
         if: steps.docs.outputs.docs_only == 'true'
         shell: pwsh
@@ -150,7 +143,6 @@ jobs:
           name: vi-compare-artifacts
           path: |
             compare-artifacts/*
-            loop-artifacts/*
           if-no-files-found: warn
 
       - name: Runner Unblock Guard (process/jobs snapshot)
@@ -190,23 +182,12 @@ jobs:
         shell: pwsh
         run: |
           $singlePath = 'compare-artifacts/pr-diff-snippet.md'
-          $loopPath = 'loop-artifacts/pr-diff-snippet.md'
-          
           if (Test-Path $singlePath) {
             $single = Get-Content $singlePath -Raw
             Add-Content $env:GITHUB_STEP_SUMMARY "### VI Compare (Single Run)"
             Add-Content $env:GITHUB_STEP_SUMMARY $single
           } else {
             Add-Content $env:GITHUB_STEP_SUMMARY "### VI Compare (Single Run)"
-            Add-Content $env:GITHUB_STEP_SUMMARY "_Results not available_"
-          }
-          
-          Add-Content $env:GITHUB_STEP_SUMMARY "`n### VI Compare (Loop Mode)"
-          
-          if (Test-Path $loopPath) {
-            $loop = Get-Content $loopPath -Raw
-            Add-Content $env:GITHUB_STEP_SUMMARY $loop
-          } else {
             Add-Content $env:GITHUB_STEP_SUMMARY "_Results not available_"
           }
 
@@ -237,17 +218,6 @@ jobs:
             $lines += '#### Single Run'
             $lines += '_Results not available_'
             $lines += ''
-          }
-          
-          # Add loop results if available
-          $loopPath = 'loop-artifacts/pr-diff-snippet.md'
-          if (Test-Path $loopPath) {
-            $loop = Get-Content $loopPath -Raw
-            $lines += '#### Loop Mode'
-            $lines += $loop
-          } else {
-            $lines += '#### Loop Mode'
-            $lines += '_Results not available_'
           }
           
           $body = $lines -join "`n"

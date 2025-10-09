@@ -20,30 +20,83 @@ runs:
       shell: pwsh
       run: |
         $ErrorActionPreference = 'Stop'
+        function Test-Truthy($value) {
+          if ([string]::IsNullOrWhiteSpace($value)) { return $false }
+          return ($value.Trim() -match '^(?i:1|true|yes|on)$')
+        }
         $snapPath = '${{ inputs.snapshot-path }}'
         $procNames = '${{ inputs.process-names }}'.Split(',') | ForEach-Object { $_.Trim() } | Where-Object { $_ }
-        $doCleanup = ('${{ inputs.cleanup }}' -eq 'true') -or ($env:UNBLOCK_GUARD -eq '1')
-        $procs = @(Get-Process -ErrorAction SilentlyContinue | Where-Object { $_.ProcessName -in $procNames } | Select-Object ProcessName,Id,StartTime)
+        $doCleanup = ('${{ inputs.cleanup }}' -eq 'true') -or (Test-Truthy $env:UNBLOCK_GUARD) -or (Test-Truthy $env:CLEAN_LV_BEFORE) -or (Test-Truthy $env:CLEAN_LV_AFTER)
+        $includeLVCompare = (Test-Truthy $env:CLEAN_LV_INCLUDE_COMPARE)
+        if (-not $includeLVCompare) { $includeLVCompare = (Test-Truthy $env:CLEAN_LVCOMPARE) }
+        $procs = @(Get-Process -ErrorAction SilentlyContinue | Where-Object { $_.ProcessName -in $procNames } | Select-Object ProcessName,Id,SessionId,StartTime)
         $jobs  = @(Get-Job -ErrorAction SilentlyContinue | Select-Object Id,Name,State,HasMoreData)
         $snap = [ordered]@{ processes=$procs; jobs=$jobs; cleanupPerformed=$false }
         $dir = Split-Path -Parent $snapPath
         if ($dir -and -not (Test-Path -LiteralPath $dir)) { New-Item -ItemType Directory -Force -Path $dir | Out-Null }
         $snap | ConvertTo-Json -Depth 5 | Out-File -FilePath $snapPath -Encoding utf8
         $cleanupNote = ''
+        $cleanupDetails = @()
         if ($doCleanup) {
           $stoppedLV = 0; $stoppedLVC = 0; $stoppedJobs = 0
-          try { Get-Process -Name 'LabVIEW' -ErrorAction SilentlyContinue | ForEach-Object { try { Stop-Process -Id $_.Id -Force -ErrorAction SilentlyContinue; $stoppedLV++ } catch {} } } catch {}
-          try { Get-Process -Name 'LVCompare' -ErrorAction SilentlyContinue | ForEach-Object { try { Stop-Process -Id $_.Id -Force -ErrorAction SilentlyContinue; $stoppedLVC++ } catch {} } } catch {}
-          try { $gj = @(Get-Job -ErrorAction SilentlyContinue); foreach ($j in $gj) { try { Stop-Job -Job $j -ErrorAction SilentlyContinue; Remove-Job -Job $j -Force -ErrorAction SilentlyContinue; $stoppedJobs++ } catch {} } } catch {}
+          $failedStops = @()
+          $namesToStop = @('LabVIEW')
+          if ($includeLVCompare) { $namesToStop += 'LVCompare' }
+          foreach ($name in $namesToStop) {
+            try {
+              Get-Process -Name $name -ErrorAction SilentlyContinue | ForEach-Object {
+                try {
+                  Stop-Process -Id $_.Id -Force -ErrorAction Stop
+                  if ($name -eq 'LabVIEW') { $stoppedLV++ } else { $stoppedLVC++ }
+                } catch {
+                  $failedStops += [ordered]@{ name = $name; id = $_.Id; reason = $_.Exception.Message }
+                }
+              }
+            } catch {}
+          }
+          try {
+            $gj = @(Get-Job -ErrorAction SilentlyContinue)
+            foreach ($j in $gj) {
+              try {
+                Stop-Job -Job $j -ErrorAction SilentlyContinue
+                Remove-Job -Job $j -Force -ErrorAction SilentlyContinue
+                $stoppedJobs++
+              } catch {
+                $failedStops += [ordered]@{ name = 'Job'; id = $j.Id; reason = $_.Exception.Message }
+              }
+            }
+          } catch {}
           $snap.cleanupPerformed = $true
-          $snap.cleanup = [ordered]@{ LabVIEW=$stoppedLV; LVCompare=$stoppedLVC; Jobs=$stoppedJobs }
+          $snap.cleanup = [ordered]@{ LabVIEW=$stoppedLV; LVCompare=$stoppedLVC; Jobs=$stoppedJobs; failures=$failedStops }
           $snap | ConvertTo-Json -Depth 6 | Out-File -FilePath $snapPath -Encoding utf8
           $cleanupNote = ('Cleanup: LabVIEW={0}, LVCompare={1}, Jobs={2}' -f $stoppedLV,$stoppedLVC,$stoppedJobs)
+          if ($failedStops.Count -gt 0) {
+            $messages = $failedStops | ForEach-Object { '{0}(PID={1}): {2}' -f $_.name, $_.id, $_.reason }
+            if ($messages.Count -gt 0) {
+              $cleanupDetails += ('Cleanup failures: {0}' -f ($messages -join '; '))
+            }
+          }
         }
         $lines = @('### Runner Unblock Guard','')
         $lines += ('- Process count: {0}' -f $procs.Count)
         $lines += ('- Pester job count: {0}' -f $jobs.Count)
-        $lines += ''
-        $lines += ('Snapshot: {0}' -f $snapPath)
+        $resolvedSnap = $null
+        try { $resolvedSnap = Resolve-Path -LiteralPath $snapPath -ErrorAction Stop } catch {}
+        if ($resolvedSnap) {
+          $lines += ('- Snapshot: {0}' -f $resolvedSnap)
+        } else {
+          $lines += ('- Snapshot: {0}' -f $snapPath)
+        }
         if ($cleanupNote) { $lines += ('- ' + $cleanupNote) }
+        foreach ($detail in $cleanupDetails) { $lines += ('- ' + $detail) }
+        if ($procs.Count -gt 0) {
+          $sessionGroups = $procs | Group-Object SessionId | ForEach-Object {
+            $entries = $_.Group | ForEach-Object { '{0}(PID={1})' -f $_.ProcessName,$_.Id }
+            'session {0}: {1}' -f $_.Name, ($entries -join ', ')
+          }
+          if ($sessionGroups) {
+            $lines += ''
+            $lines += ('- Sessions: {0}' -f ($sessionGroups -join ' | '))
+          }
+        }
         $lines -join "`n" | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8

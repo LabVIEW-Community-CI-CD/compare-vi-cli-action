@@ -74,6 +74,8 @@ When your VIs are in a subdirectory, use `working-directory` to avoid repeating 
 
 - The action resolves `base`/`head` to absolute paths before invoking LVCompare
 - Relative paths are resolved from `working-directory` if set, otherwise from the repository root
+- UNC tokens passed through `lvCompareArgs` keep their double leading backslashes (e.g. `\\server\share`) and quoted values remain intact, so there is no need to double-escape them.
+- Array-based `lvCompareArgs` inputs preserve each element as a single token—even when the value contains spaces or Unix-style paths—allowing you to mix string and script-block inputs safely.
 - For long-path or UNC issues, consider:
   - Using shorter workspace-relative paths via `working-directory`
   - Mapping a drive on self-hosted runners for long UNC prefixes

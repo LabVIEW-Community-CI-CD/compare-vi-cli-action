@@ -1,0 +1,131 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>Dev Dashboard</title>
+  <style>
+    body { font-family: Segoe UI, Arial, sans-serif; margin: 2rem; background: #f7f7f7; color: #222; }
+    h1 { margin-bottom: 0.5rem; }
+    section { background: #fff; padding: 1.5rem; border-radius: 8px; margin-bottom: 1rem; box-shadow: 0 1px 3px rgba(0,0,0,0.08); }
+    dt { font-weight: 600; }
+    dd { margin-left: 1rem; margin-bottom: 0.5rem; }
+    ul { margin: 0.5rem 0 0 1.5rem; }
+    .meta { display: flex; gap: 1.5rem; flex-wrap: wrap; }
+    .meta div { font-size: 0.95rem; color: #555; }
+    .severity-error { color: #b00020; }
+    .severity-warning { color: #d17f00; }
+    .severity-info { color: #1967d2; }
+    table { width: 100%; border-collapse: collapse; margin-top: 0.5rem; }
+    th, td { border: 1px solid #e0e0e0; padding: 0.4rem 0.6rem; text-align: left; font-size: 0.9rem; }
+    thead { background: #f0f0f0; }
+  </style>
+</head>
+<body>
+  <h1>Dev Dashboard</h1>
+  <div class="meta">
+    <div><strong>Generated</strong>: 2025-10-08 22:30:50Z</div>
+    <div><strong>Group</strong>: pester-selfhosted</div>
+    <div><strong>Branch</strong>: </div>
+    <div><strong>Commit</strong>: </div>
+  </div>
+
+  <section>
+    <h2>Session Lock</h2>
+    <dl>
+      <dt>Status</dt><dd>missing</dd>
+      @(if (@{Group=pester-selfhosted; LockDirectory=C:\actions-runner\_work\compare-vi-cli-action\compare-vi-cli-action\tests\results\_session_lock\pester-selfhosted; LockPath=; StatusPath=; Exists=False; Status=missing; Lock=; SessionName=; StatusPairs=System.Collections.Hashtable; QueueWaitSeconds=; AcquiredAt=; HeartbeatAt=; HeartbeatAgeSeconds=; Takeover=False; TakeoverReason=; Errors=System.Object[]}.SessionName) { "<dt>Session</dt><dd></dd>" })
+      <dt>Queue Wait</dt><dd></dd>
+      <dt>Heartbeat Age</dt><dd></dd>
+      <dt>File</dt><dd></dd>
+    </dl>
+  </section>
+
+  <section>
+    <h2>Pester</h2>
+    <dl>
+      <dt>Total</dt><dd>0</dd>
+      <dt>Passed</dt><dd>0</dd>
+      <dt>Failed</dt><dd>0</dd>
+      <dt>Errors</dt><dd>0</dd>
+    </dl>
+    <h3>Failed Tests</h3>
+    <p>None</p>
+  </section>
+
+  <section>
+    <h2>Agent Wait</h2>
+    <dl>
+      <dt>Reason</dt><dd></dd>
+      <dt>Duration</dt><dd></dd>
+      <dt>Started</dt><dd></dd>
+      <dt>Completed</dt><dd></dd>
+    </dl>
+  </section>
+
+  <section>
+    <h2>Watch Mode</h2>
+    @(if (False) {
+        "<dl>"
+        "<dt>Status</dt><dd>n/a</dd>"
+        "<dt>Trend</dt><dd>n/a</dd>"
+        "<dt>Tests</dt><dd>n/a</dd>"
+        "<dt>Failed</dt><dd>n/a</dd>"
+        "<dt>Updated</dt><dd></dd>"
+        "</dl>"
+      } else {
+        '<p>No telemetry</p>'
+      })
+    @(if (@{LastPath=; LogPath=; Last=; History=System.Object[]; Stalled=False; StalledSeconds=; Errors=System.Object[]}.Stalled -and @{LastPath=; LogPath=; Last=; History=System.Object[]; Stalled=False; StalledSeconds=; Errors=System.Object[]}.StalledSeconds -gt 0) { "<p class='severity-warning'>Stalled: 0 seconds since last update</p>" })
+    @(if (@{LastPath=; LogPath=; Last=; History=System.Object[]; Stalled=False; StalledSeconds=; Errors=System.Object[]}.LogPath) { "<p>Log: </p>" })
+  </section>
+
+  <section>
+    <h2>LabVIEW Snapshot</h2>
+    <dl>
+      <dt>LabVIEW Processes</dt><dd>0</dd>
+      <dt>LVCompare Processes</dt><dd>0</dd>
+      <dt>Snapshot</dt><dd></dd>
+    </dl>
+    @(if ((@{SnapshotPath=; Exists=False; Snapshot=; ProcessCount=0; Processes=System.Object[]; LabVIEW=; LVCompare=; Errors=System.Object[]}.LabVIEW.Count -gt 0) -or (@{SnapshotPath=; Exists=False; Snapshot=; ProcessCount=0; Processes=System.Object[]; LabVIEW=; LVCompare=; Errors=System.Object[]}.LVCompare.Count -gt 0)) {
+        <li class="severity-info"><strong>info</strong> [SessionLock] No session lock data found for group &#39;pester-selfhosted&#39;. Run the workflow or inspect local artifacts under C:\actions-runner\_work\compare-vi-cli-action\compare-vi-cli-action\tests\results\_session_lock\pester-selfhosted.</li> <li class="severity-info"><strong>info</strong> [Pester] No pester-summary.json found. Run ./Invoke-PesterTests.ps1 to populate telemetry.</li> <li class="severity-info"><strong>info</strong> [Stakeholders] Consult DX issue #99 for mitigation steps. https://github.com/LabVIEW-Community-CI-CD/compare-vi-cli-action/issues/99</li> = @()
+         = 
+        foreach ( in (Get-ProcessList -ProcessContainer @{SnapshotPath=; Exists=False; Snapshot=; ProcessCount=0; Processes=System.Object[]; LabVIEW=; LVCompare=; Errors=System.Object[]}.LabVIEW | Select-Object -First 5)) {
+           = Get-PropertyValue -Object  -Property 'pid'
+           = Get-PropertyValue -Object  -Property 'workingSetBytes'
+           = Get-PropertyValue -Object  -Property 'totalCpuSeconds'
+           = Get-PropertyValue -Object  -Property 'startTimeUtc'
+           = if () { [math]::Round(/1kb) } else {  }
+           = if ( -ne ) {  } else { '' }
+          <li class="severity-info"><strong>info</strong> [SessionLock] No session lock data found for group &#39;pester-selfhosted&#39;. Run the workflow or inspect local artifacts under C:\actions-runner\_work\compare-vi-cli-action\compare-vi-cli-action\tests\results\_session_lock\pester-selfhosted.</li> <li class="severity-info"><strong>info</strong> [Pester] No pester-summary.json found. Run ./Invoke-PesterTests.ps1 to populate telemetry.</li> <li class="severity-info"><strong>info</strong> [Stakeholders] Consult DX issue #99 for mitigation steps. https://github.com/LabVIEW-Community-CI-CD/compare-vi-cli-action/issues/99</li> += "<tr><td>LabVIEW</td><td></td><td></td><td></td><td></td></tr>"
+        }
+         = 
+        foreach ( in (Get-ProcessList -ProcessContainer @{SnapshotPath=; Exists=False; Snapshot=; ProcessCount=0; Processes=System.Object[]; LabVIEW=; LVCompare=; Errors=System.Object[]}.LVCompare | Select-Object -First 5)) {
+           = Get-PropertyValue -Object  -Property 'pid'
+           = Get-PropertyValue -Object  -Property 'workingSetBytes'
+           = Get-PropertyValue -Object  -Property 'totalCpuSeconds'
+           = Get-PropertyValue -Object  -Property 'startTimeUtc'
+           = if () { [math]::Round(/1kb) } else {  }
+           = if ( -ne ) {  } else { '' }
+          <li class="severity-info"><strong>info</strong> [SessionLock] No session lock data found for group &#39;pester-selfhosted&#39;. Run the workflow or inspect local artifacts under C:\actions-runner\_work\compare-vi-cli-action\compare-vi-cli-action\tests\results\_session_lock\pester-selfhosted.</li> <li class="severity-info"><strong>info</strong> [Pester] No pester-summary.json found. Run ./Invoke-PesterTests.ps1 to populate telemetry.</li> <li class="severity-info"><strong>info</strong> [Stakeholders] Consult DX issue #99 for mitigation steps. https://github.com/LabVIEW-Community-CI-CD/compare-vi-cli-action/issues/99</li> += "<tr><td>LVCompare</td><td></td><td></td><td></td><td></td></tr>"
+        }
+        "<table><thead><tr><th>Type</th><th>PID</th><th>Working Set (KB)</th><th>CPU (s)</th><th>Started (UTC)</th></tr></thead><tbody><li class="severity-info"><strong>info</strong> [SessionLock] No session lock data found for group &#39;pester-selfhosted&#39;. Run the workflow or inspect local artifacts under C:\actions-runner\_work\compare-vi-cli-action\compare-vi-cli-action\tests\results\_session_lock\pester-selfhosted.</li><li class="severity-info"><strong>info</strong> [Pester] No pester-summary.json found. Run ./Invoke-PesterTests.ps1 to populate telemetry.</li><li class="severity-info"><strong>info</strong> [Stakeholders] Consult DX issue #99 for mitigation steps. https://github.com/LabVIEW-Community-CI-CD/compare-vi-cli-action/issues/99</li></tbody></table>"
+      } else { '<p>No LabVIEW/LVCompare processes recorded.</p>' })
+    @(if (@{SnapshotPath=; Exists=False; Snapshot=; ProcessCount=0; Processes=System.Object[]; LabVIEW=; LVCompare=; Errors=System.Object[]}.Errors -and @{SnapshotPath=; Exists=False; Snapshot=; ProcessCount=0; Processes=System.Object[]; LabVIEW=; LVCompare=; Errors=System.Object[]}.Errors.Count -gt 0) { "<p class='severity-warning'>Errors: </p>" })
+  </section>
+
+  <section>
+    <h2>Stakeholders</h2>
+    <dl>
+      <dt>Primary</dt><dd>svelderrainruiz</dd>
+      <dt>Backup</dt><dd>release-owner</dd>
+      <dt>Channels</dt><dd>slack://#ci-selfhosted</dd>
+      <dt>DX Issue</dt><dd>99</dd>
+    </dl>
+  </section>
+
+  <section>
+    <h2>Action Items</h2>
+    <ul><li class="severity-info"><strong>info</strong> [SessionLock] No session lock data found for group &#39;pester-selfhosted&#39;. Run the workflow or inspect local artifacts under C:\actions-runner\_work\compare-vi-cli-action\compare-vi-cli-action\tests\results\_session_lock\pester-selfhosted.</li><li class="severity-info"><strong>info</strong> [Pester] No pester-summary.json found. Run ./Invoke-PesterTests.ps1 to populate telemetry.</li><li class="severity-info"><strong>info</strong> [Stakeholders] Consult DX issue #99 for mitigation steps. https://github.com/LabVIEW-Community-CI-CD/compare-vi-cli-action/issues/99</li></ul>
+  </section>
+</body>
+</html>

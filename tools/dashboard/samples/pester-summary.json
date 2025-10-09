@@ -1,0 +1,13 @@
+{
+  "schema": "pester-summary/v1",
+  "total": 58,
+  "passed": 57,
+  "failed": 1,
+  "errors": 0,
+  "skipped": 0,
+  "duration_s": 12.34,
+  "tests": [
+    {"name": "Acquires and releases lock", "result": "Passed"},
+    {"name": "Queue timeout", "result": "Failed"}
+  ]
+}

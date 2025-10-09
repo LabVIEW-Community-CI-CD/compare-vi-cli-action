@@ -21,15 +21,25 @@ Describe 'Invoker (basic)' -Tag 'Unit' {
     (Test-Path -LiteralPath $spawn) | Should -BeTrue
 
     # Ping request
-    $resp = pwsh -NoLogo -NoProfile -File (Join-Path $root 'tools/RunnerInvoker/Send-RunnerCommand.ps1') -Verb 'Ping' -ResultsDir $res | ConvertFrom-Json -Depth 5
+    $modulePath = Join-Path $root 'tools/RunnerInvoker/RunnerInvoker.psm1'
+    Import-Module $modulePath -Force
+    $resp = Invoke-RunnerRequest -ResultsDir $res -Verb 'Ping' -CommandArgs @{} -TimeoutSeconds 5
     $resp.ok | Should -BeTrue
 
-    # Stop
-    New-Item -ItemType File -Path $sent -Force | Out-Null
-    Remove-Item -LiteralPath $sent -Force -ErrorAction SilentlyContinue
+    # Request graceful shutdown and ensure downstream markers appear
+    $doneResp = Invoke-RunnerRequest -ResultsDir $res -Verb 'PhaseDone' -TimeoutSeconds 5
+    $doneResp.ok | Should -BeTrue
+    $doneResp.result.done | Should -BeTrue
+
     $deadline2 = (Get-Date).AddSeconds(10)
     do { Start-Sleep -Milliseconds 200 } while (-not (Test-Path -LiteralPath $stopped) -and (Get-Date) -lt $deadline2)
     (Test-Path -LiteralPath $stopped) | Should -BeTrue
+
+    $deadline3 = (Get-Date).AddSeconds(5)
+    while (-not $p.HasExited -and (Get-Date) -lt $deadline3) { Start-Sleep -Milliseconds 100 }
+    $p.HasExited | Should -BeTrue
+
+    (Test-Path -LiteralPath $sent) | Should -BeFalse
   }
 }
 

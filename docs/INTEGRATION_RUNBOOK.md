@@ -77,6 +77,24 @@ Status values: `Passed | Failed | Skipped`.
 
 ---
 
+### Runbook Automation Cheatsheet
+
+| Scenario | Command | Notes |
+|----------|---------|-------|
+| Local quick sanity (prereqs → compare) | `pwsh -File tools/Local-Runbook.ps1` | Uses the `quick` profile (Prereqs, ViInputs, Compare). |
+| Include real loop soak | `pwsh -File tools/Local-Runbook.ps1 -IncludeLoop` | Adds the loop phase with default single iteration. |
+| CI single-run validation | `pwsh -File scripts/Invoke-IntegrationRunbook.ps1 -All -JsonReport tests/results/runbook/runbook.json` | When `GITHUB_STEP_SUMMARY` is present, a markdown summary is appended automatically. |
+| Custom phase list | `pwsh -File scripts/Invoke-IntegrationRunbook.ps1 -Phases Prereqs,Compare -FailOnDiff` | Phases are case-insensitive; `-FailOnDiff` elevates diffs to failures. |
+
+### Outputs & Telemetry
+
+- **Runbook JSON** – Supplying `-JsonReport` writes an `integration-runbook-v1` artifact. The resolved path is linked in the step summary when running inside GitHub Actions.
+- **Compare outcome summary** – The compare phase surfaces exit code, diff state, duration, and report path in both console output and the step summary.
+- **LV closure crumbs** – Set `EMIT_LV_CLOSURE_CRUMBS=1` to append `tests/results/_diagnostics/lv-closure.ndjson`, capturing LabVIEW/LVCompare PIDs before and after invoker shutdown. Orchestrated workflows set this automatically.
+- **Loop artifacts** – Loop phase honours `RUNBOOK_LOOP_ITERATIONS`, `RUNBOOK_LOOP_FAIL_ON_DIFF`, etc., and writes telemetry under `tests/results/_loop`.
+
+---
+
 ## Single Compare (Manual)
 
 ```pwsh

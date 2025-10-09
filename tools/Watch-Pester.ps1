@@ -26,11 +26,36 @@ param(
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
+# Lightweight session naming for observability
+function Get-SessionName {
+  try {
+    if ($env:PS_SESSION_NAME -and $env:PS_SESSION_NAME -ne '') { return $env:PS_SESSION_NAME }
+    if ($env:AGENT_SESSION_NAME -and $env:AGENT_SESSION_NAME -ne '') { return $env:AGENT_SESSION_NAME }
+  } catch {}
+  return ("watch-pester:{0}" -f $PID)
+}
+${script:SessionName} = Get-SessionName
+
+# Default watch telemetry outputs from environment when not explicitly provided
+if (-not $DeltaJsonPath -or -not $DeltaHistoryPath) {
+  $watchDir = $env:WATCH_RESULTS_DIR
+  if (-not $watchDir -or $watchDir -eq '') {
+    try { $watchDir = Join-Path (Resolve-Path '.').Path 'tests/results/_watch' } catch { $watchDir = $null }
+  }
+  if ($watchDir) {
+    if (-not (Test-Path -LiteralPath $watchDir)) { New-Item -ItemType Directory -Force -Path $watchDir | Out-Null }
+    if (-not $DeltaJsonPath -or $DeltaJsonPath -eq '') { $DeltaJsonPath = Join-Path $watchDir 'watch-last.json' }
+    if (-not $DeltaHistoryPath -or $DeltaHistoryPath -eq '') { $DeltaHistoryPath = Join-Path $watchDir 'watch-log.ndjson' }
+  }
+}
+
 function Write-Log {
   param([string]$Msg,[string]$Level='INFO')
   if ($Quiet -and $Level -eq 'INFO') { return }
   $ts = (Get-Date).ToString('HH:mm:ss')
-  Write-Host "[$ts][$Level] $Msg"
+  $prefix = "[$ts][$Level]"
+  if ($script:SessionName) { $prefix = "$prefix[$script:SessionName]" }
+  Write-Host "$prefix $Msg"
 }
 
 ${script:LastRunStats} = $null
@@ -257,12 +282,28 @@ function Invoke-PesterSelective {
         timestamp = (Get-Date).ToString('o')
         status = $status
         stats = [ordered]@{ tests = $testCount; failed = $failedCount; skipped = $skipped }
-        previous = if ($prev) { [ordered]@{ tests=$prev.Tests; failed=$prev.Failed; skipped=$prev.Skipped } } else { $null }
-        delta = if ($prev) { [ordered]@{ tests=$dTests; failed=$dFailed; skipped=$dSkipped } } else { $null }
         classification = $classification
-  flaky = if ($RerunFailedAttempts -gt 0) { [ordered]@{ enabled=$true; attempts=$RerunFailedAttempts; recoveredAfter=$flakyRecoveredAfter; initialFailedFiles=(@($flakyInitialFailedFiles).Count); initialFailedFileNames=($flakyInitialFailedFiles | ForEach-Object { Split-Path $_ -Leaf }); } } else { $null }
         runSequence = $script:RunSequence
       }
+      if ($prev) {
+        $payload['previous'] = [ordered]@{ tests = $prev.Tests; failed = $prev.Failed; skipped = $prev.Skipped }
+        $payload['delta'] = [ordered]@{ tests = $dTests; failed = $dFailed; skipped = $dSkipped }
+      }
+      $flakyInfo = [ordered]@{
+        enabled = ($RerunFailedAttempts -gt 0)
+        attempts = $RerunFailedAttempts
+        recoveredAfter = 0
+        initialFailedFiles = 0
+        initialFailedFileNames = @()
+      }
+      if ($RerunFailedAttempts -gt 0) {
+        if ($flakyRecoveredAfter) { $flakyInfo.recoveredAfter = [int]$flakyRecoveredAfter }
+        if ($flakyInitialFailedFiles -and $flakyInitialFailedFiles.Count -gt 0) {
+          $flakyInfo.initialFailedFiles = @($flakyInitialFailedFiles).Count
+          $flakyInfo.initialFailedFileNames = $flakyInitialFailedFiles | ForEach-Object { Split-Path $_ -Leaf }
+        }
+      }
+      $payload['flaky'] = $flakyInfo
       $json = $payload | ConvertTo-Json -Depth 5
       $outDir = Split-Path -Parent $DeltaJsonPath
       if ($outDir -and -not (Test-Path -LiteralPath $outDir)) { New-Item -ItemType Directory -Path $outDir -Force | Out-Null }
@@ -273,6 +314,7 @@ function Invoke-PesterSelective {
           $histDir = Split-Path -Parent $DeltaHistoryPath
           if ($histDir -and -not (Test-Path -LiteralPath $histDir)) { New-Item -ItemType Directory -Path $histDir -Force | Out-Null }
           $json | Add-Content -LiteralPath $DeltaHistoryPath -Encoding UTF8
+          '' | Add-Content -LiteralPath $DeltaHistoryPath -Encoding UTF8
         } catch { Write-Log "Failed appending delta history: $($_.Exception.Message)" 'WARN' }
       }
     } catch {
@@ -330,11 +372,13 @@ function Invoke-PesterSelective {
 
 if ($SingleRun) {
   Write-Log 'Single run mode' 'INFO'
+  try { Write-Host "::notice::[ps-session:$script:SessionName pid=$PID] Watch-Pester starting (SingleRun)" } catch {}
   if ($ChangedOnly) {
     Write-Log 'ChangedOnly set with no changed files context; skipping test run.' 'INFO'
     exit 0
   }
   Invoke-PesterSelective -ChangedFiles @()
+  try { Write-Host "::notice::[ps-session:$script:SessionName pid=$PID] Watch-Pester completed (SingleRun)" } catch {}
   exit 0
 }
 
@@ -369,6 +413,7 @@ Register-ObjectEvent -InputObject $fsw -EventName Renamed -SourceIdentifier FSWR
 } | Out-Null
 
 Write-Log 'Watcher active. Press Ctrl+C to exit.' 'INFO'
+try { Write-Host "::notice::[ps-session:$script:SessionName pid=$PID] Watcher started" } catch {}
 
 try {
   while ($true) {
@@ -395,4 +440,5 @@ try {
   Unregister-Event -SourceIdentifier FSWRenamed -ErrorAction SilentlyContinue
   $fsw.Dispose()
   Write-Log 'Watcher disposed.' 'INFO'
+  try { Write-Host "::notice::[ps-session:$script:SessionName pid=$PID] Watcher disposed" } catch {}
 }

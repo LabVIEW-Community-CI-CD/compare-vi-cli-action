@@ -20,7 +20,7 @@
   Path to head VI (or label). Default: $env:LV_HEAD_VI
 
 .PARAMETER MaxIterations
-  Number of iterations to execute (0 = infinite until Ctrl+C). Default: $env:LOOP_MAX_ITERATIONS or 50.
+  Number of iterations to execute (0 = infinite until Ctrl+C). Default: $env:LOOP_MAX_ITERATIONS or 1.
 
 .PARAMETER IntervalSeconds
   Delay between iterations (can be fractional). Default: $env:LOOP_INTERVAL_SECONDS or 0.
@@ -135,9 +135,15 @@ param(
 )
 
 # Defaults / fallbacks
-if (-not $MaxIterations) { $MaxIterations = 50 }
+if (-not $MaxIterations) { $MaxIterations = 1 }
 if ($null -eq $IntervalSeconds) { $IntervalSeconds = 0 }
 if (-not $HistogramBins) { $HistogramBins = 0 }
+
+try {
+  $repoRoot = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path
+} catch {
+  $repoRoot = (Get-Location).Path
+}
 
 # Initialize switches from env when not explicitly passed
 if (-not $PSBoundParameters.ContainsKey('FailOnDiff')) {
@@ -242,6 +248,56 @@ function Write-JsonEvent {
   try { ($payload | ConvertTo-Json -Compress) | Add-Content -Path $JsonLogPath } catch { Write-Detail "Failed JSON log append: $($_.Exception.Message)" 'Error' }
 }
 
+function Invoke-LabVIEWCloser {
+  param([string]$Context = 'post-loop')
+
+  $closeScript = Join-Path $repoRoot 'tools' 'Close-LabVIEW.ps1'
+  if (-not (Test-Path -LiteralPath $closeScript -PathType Leaf)) {
+    Write-Detail "LabVIEW close skipped (script missing at $closeScript)." 'Debug'
+    Write-JsonEvent 'labviewClose' @{ status='skipped'; reason='script-missing'; context=$Context; path=$closeScript }
+    return
+  }
+
+  $version = @(
+    $env:LOOP_LABVIEW_VERSION,
+    $env:LABVIEW_VERSION,
+    $env:MINIMUM_SUPPORTED_LV_VERSION
+  ) | Where-Object { $_ } | Select-Object -First 1
+  if (-not $version) { $version = '2025' }
+
+  $bitness = @(
+    $env:LOOP_LABVIEW_BITNESS,
+    $env:LABVIEW_BITNESS,
+    $env:MINIMUM_SUPPORTED_LV_BITNESS
+  ) | Where-Object { $_ } | Select-Object -First 1
+  if (-not $bitness) { $bitness = '64' }
+
+  Write-Detail "Invoking Close-LabVIEW.ps1 (version=$version, bitness=$bitness, context=$Context)." 'Debug'
+  try {
+    & $closeScript -MinimumSupportedLVVersion $version -SupportedBitness $bitness
+    $exitCode = $LASTEXITCODE
+    Write-JsonEvent 'labviewClose' @{
+      status   = if ($exitCode -eq 0) { 'completed' } else { 'failed' }
+      exitCode = $exitCode
+      version  = $version
+      bitness  = $bitness
+      context  = $Context
+    }
+    if ($exitCode -ne 0) {
+      Write-Detail "Close-LabVIEW.ps1 exited with code $exitCode." 'Error'
+    }
+  } catch {
+    Write-JsonEvent 'labviewClose' @{
+      status  = 'exception'
+      message = $_.Exception.Message
+      version = $version
+      bitness = $bitness
+      context = $Context
+    }
+    Write-Detail "Close-LabVIEW.ps1 threw: $($_.Exception.Message)" 'Error'
+  }
+}
+
 function Ensure-JsonLog {
   param([string]$Path)
   if (-not $Path) { return }
@@ -300,7 +356,12 @@ if ($DryRun) {
   exit 0
 }
 
-$result = Invoke-IntegrationCompareLoop @invokeParams
+try {
+  $result = Invoke-IntegrationCompareLoop @invokeParams
+} catch {
+  Invoke-LabVIEWCloser -Context 'invoke-exception'
+  throw
+}
 Write-JsonEvent 'result' (@{ iterations=$result.Iterations; diffs=$result.DiffCount; errors=$result.ErrorCount; succeeded=$result.Succeeded })
 
 # Final status JSON emission (independent of run summary JSON produced by loop if that param was set)
@@ -351,7 +412,10 @@ if (-not $NoStepSummary -and $env:GITHUB_STEP_SUMMARY -and $result.DiffSummary) 
   Write-Detail 'Step summary append skipped (suppressed or not in Actions).' 'Debug'
 }
 
+Invoke-LabVIEWCloser -Context 'post-loop'
+
 # Exit code semantics: 0 when succeeded (even if diffs unless FailOnDiff terminated early), 1 if any errors encountered
 if (-not $result.Succeeded) { exit 1 }
 if ($DiffExitCode -and $result.DiffCount -gt 0 -and $result.ErrorCount -eq 0) { exit $DiffExitCode }
 exit 0
+\

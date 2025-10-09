@@ -40,6 +40,51 @@ Validated with LabVIEW 2025 Q3 on self-hosted Windows runners. See also:
 - `LVCompare.exe` installed at the **canonical path**: `C:\Program Files\National Instruments\Shared\LabVIEW Compare\LVCompare.exe`
 - Only the canonical path is supported; paths via `PATH`, `LVCOMPARE_PATH`, or `lvComparePath` must resolve to this exact location
 
+## Local Telemetry Dashboard
+
+The developer dashboard aggregates recent session-lock, Pester, and Agent-Wait telemetry so you can triage self-hosted runs locally.
+
+```powershell
+pwsh ./tools/Dev-Dashboard.ps1 `
+  -Group pester-selfhosted `
+  -ResultsRoot tests/results `
+  -Html `
+  -Json
+```
+
+- Terminal output is always emitted; add `-Html` (optional `-HtmlPath`) for a prettied report and `-Json` to stream the snapshot object.
+- Use `-Watch <seconds>` to live-refresh the view; `Ctrl+C` stops the loop.
+- Stakeholder metadata lives in `tools/dashboard/stakeholders.json`. Generated HTML is ignored by git (`tools/dashboard/dashboard.html`).
+- Workflow runs call `tools/Invoke-DevDashboard.ps1`, which writes both HTML and JSON under `tests/results/dev-dashboard/` for artifact upload.
+- The dashboard inspects session-lock heartbeat age, queue wait trends (including `_agent/wait-log.ndjson` history), and highlights DX issue links when stakeholders configure them.
+
+### Workflow Run Tracker
+
+Keep an eye on queued or long-running workflows without leaving the terminal:
+
+```powershell
+pwsh ./tools/Track-WorkflowRun.ps1 -RunId 18327092270 -PollSeconds 20 -IncludeCheckRuns -Json
+```
+
+- Automatically resolves the repository from `GITHUB_REPOSITORY` or git remote;
+  override with `-Repo owner/name` if needed.
+- Prints a table of job status/conclusion/duration on each poll; add
+  `-OutputPath` to persist the final snapshot JSON for hand-offs.
+- Helpful when self-hosted runners are saturated and you need visibility into
+  which job is waiting or failing.
+
+To dispatch and monitor in one step:
+
+```powershell
+pwsh ./tools/Watch-RunAndTrack.ps1 `
+  -Workflow validate.yml `
+  -Ref issue/88-dev-dashboard-phase2 `
+  -OutputPath logs/validate-run.json
+```
+
+The helper wraps `gh workflow run` and the tracker so the final snapshot is
+stored automatically for hand-offs.
+
 ## Fixture Artifacts (VI1.vi / VI2.vi)
 
 Two canonical LabVIEW VI files live at the repository root:
@@ -113,6 +158,30 @@ JSON output fields:
   "checked": ["VI1.vi","VI2.vi"]
 }
 ```
+
+### Pair Digest & Expected Outcome (Optional)
+
+To aid deterministic drift checks, the manifest supports an additive `pair` block derived from the first `base`/`head` items. It includes a canonical string and digest, plus optional hints about the expected comparison result:
+
+- Fields: `basePath`, `headPath`, `algorithm=sha256`, `canonical`, `digest`, `expectedOutcome` (`identical|diff|any`), `enforce` (`notice|warn|fail`).
+- Inject/refresh locally:
+
+```powershell
+pwsh -File tools/Update-FixtureManifest.ps1 -Allow -InjectPair `
+  -SetExpectedOutcome diff `
+  -SetEnforce warn
+```
+
+- Validate in CI (strict) with drift evidence:
+
+```powershell
+pwsh -File tools/Validate-Fixtures.ps1 -Json -RequirePair -FailOnExpectedMismatch `
+  -EvidencePath results/fixture-drift/compare-exec.json
+```
+
+When no `-EvidencePath` is provided, the validator searches `results/fixture-drift/compare-exec.json` and the newest `tests/results/**/(compare-exec.json|lvcompare-capture.json)`. LVCompare evidence is mapped as: exitCode 0 → `identical`, 1 → `diff` (or uses a `diff` boolean when available).
+
+Schema reference: `docs/schemas/fixture-pair-v1.schema.json`.
 
 Issue objects may include:
 
@@ -267,6 +336,21 @@ $env:LOOP_SNAPSHOT_EVERY = '5'
 $env:LOOP_JSON_LOG = 'loop-events.ndjson'
 $env:LOOP_EMIT_RUN_SUMMARY = '1'
 pwsh -File scripts/Run-AutonomousIntegrationLoop.ps1
+```
+
+When the loop finishes, `Run-AutonomousIntegrationLoop.ps1` now calls `tools/Close-LabVIEW.ps1` to request a graceful shutdown via `g-cli`. Configure the version/bitness with `LOOP_LABVIEW_VERSION` and `LOOP_LABVIEW_BITNESS` (fallbacks: `LABVIEW_VERSION`, `LABVIEW_BITNESS`, or `MINIMUM_SUPPORTED_*`). When no values are supplied, the helper defaults to LabVIEW 2025 64-bit. The close step is only skipped when the helper script or `g-cli` is absent.
+
+Deterministic warmup & CLI prime:
+
+```powershell
+# LabVIEW runtime warmup (hidden launch, crumbs -> NDJSON)
+pwsh -File tools/Warmup-LabVIEWRuntime.ps1 -TimeoutSeconds 15 -JsonLogPath tests/results/_warmup/labview-runtime.ndjson
+
+# Explicit LabVIEW path, stop after warmup
+pwsh -File tools/Warmup-LabVIEWRuntime.ps1 -LabVIEWPath "C:\\Program Files\\National Instruments\\LabVIEW 2025\\LabVIEW.exe" -StopAfterWarmup
+
+# LVCompare readiness check (sample diff, leak check)
+pwsh -File tools/Prime-LVCompare.ps1 -BaseVi VI1.vi -HeadVi VI2.vi -LeakCheck
 ```
 
 Excerpt output:
@@ -697,6 +781,7 @@ For common issues including path resolution problems, exit code interpretation, 
 - **[Testing Patterns](./docs/TESTING_PATTERNS.md)** - Advanced test design patterns
 - **[E2E Testing Guide](./docs/E2E_TESTING_GUIDE.md)** - End-to-end testing strategies
 - **[Self-Hosted CI Setup](./docs/SELFHOSTED_CI_SETUP.md)** - Setting up self-hosted runners
+- **[LabVIEW Runtime Gating](./docs/LABVIEW_GATING.md)** - Using LabVIEW.exe presence as a warm-up/ownership signal
 
 ## License
 
@@ -724,5 +809,115 @@ Set `STUCK_GUARD=1` when invoking `Invoke-PesterTests.ps1` to record:
 
 The guard is notice-only and never fails the job; rely on job-level timeouts for termination.
 
+### Single-Compare Invoker Autostop
+
+For one-shot invoker loops, set `LVCI_SINGLE_COMPARE=1`. The runner now auto-enables
+`LVCI_SINGLE_COMPARE_AUTOSTOP=1`, so the sentinel is removed and the invoker exits
+as soon as the first compare (preview or run) completes. Example:
+
+```powershell
+$env:LVCI_SINGLE_COMPARE = '1'
+./Invoke-PesterTests.ps1 -IncludePatterns 'RunnerInvoker.*'
+```
+
+### Session Lock Guard
+
+When multiple shells share the same self-hosted runner, enable a cooperative session
+lock so only one dispatcher runs at a time:
+
+```powershell
+$env:SESSION_LOCK_ENABLED = '1'        # optional alias: CLAIM_PESTER_LOCK=1
+$env:SESSION_LOCK_GROUP   = 'pester'   # defaults to pester-selfhosted
+./Invoke-PesterTests.ps1 -IncludePatterns 'RunnerInvoker.*'
+```
+
+If acquisition fails the dispatcher now stops immediately. Set
+`SESSION_LOCK_FORCE=1` to take over the lock (use sparingly).
+
+### Guard Diagnostics
+
+When the results directory guard fires, the dispatcher exits immediately and writes a crumb to `tests/results/_diagnostics/guard.json` (timestamp, resolved path, message). Guard-specific tests assert that the crumb exists and confirm no `_invoker` directory appears when the guard triggers.
+
+### Local Development Helpers
+
+Quick wrappers exist for common local flows that avoid GitHub-only toggles:
+
+```powershell
+# Pester (local defaults, no session lock)
+pwsh -File tools/Local-RunTests.ps1
+pwsh -File tools/Local-RunTests.ps1 -Profile invoker
+pwsh -File tools/Local-RunTests.ps1 -Profile loop -IncludeIntegration
+
+# Full dispatcher (identical to above but include integration)
+pwsh -File tools/Local-RunTests.ps1 -IncludeIntegration
+
+# Runbook sanity (loop defaults to 1 iteration)
+pwsh -File tools/Local-Runbook.ps1            # Prereqs, ViInputs, Compare
+pwsh -File tools/Local-Runbook.ps1 -IncludeLoop
+pwsh -File tools/Local-Runbook.ps1 -Profile loop
+
+# LVCompare close helper (explicit LabVIEW 2025 64-bit path)
+pwsh -File tools/Close-LVCompare.ps1 -TimeoutSeconds 30 -KillOnTimeout
+```
+
+Wrappers clear CI-only env vars (session locks, wire probes) and keep runs deterministic
+without touching GitHub-specific outputs.
+
+See `docs/INTEGRATION_RUNBOOK.md` for a full phase breakdown, telemetry artifacts, and CI-friendly runbook automation tips.
+
+Built-in test profiles:
+
+- `quick` (default): RunnerInvoker, CompareVI argument preview, fixture diff, invoker basics
+- `invoker`: RunnerInvoker + invoker basic coverage
+- `compare`: CompareVI-focused tests
+- `fixtures`: Fixture validation suite
+- `loop`: Compare loop / integration loop coverage
+- `full`: No include filters (entire suite)
+
+Runbook profiles:
+
+- `quick` (default): Prereqs, ViInputs, Compare
+- `compare`: Prereqs + Compare only
+- `loop`: Quick profile plus Loop phase
+- `full`: Equivalent to `-All`
+
+#### Step-Based Pester Invoker (Outer Loop Support)
+
+When another automation loop already controls sequencing, import the lightweight invoker module and call each test file explicitly (no nested dispatcher loop required):
+
+```powershell
+Import-Module ./scripts/Pester-Invoker.psm1 -Force
+
+$session = New-PesterInvokerSession -ResultsRoot 'tests/results' -Isolation soft
+
+$result = Invoke-PesterFile -Session $session -TestsPath 'tests' -File 'tests/CompareVI.Arguments.Tests.ps1' -Category 'Unit' -MaxSeconds 300
+if ($result.Counts.failed -gt 0) { $failedFiles += $result.File }
+
+Complete-PesterInvokerSession -Session $session -FailedFiles $failedFiles -TopSlow @()
+```
+
+- Crumbs append to `tests/results/_diagnostics/pester-invoker.ndjson`.
+- Per-file artifacts live under `tests/results/pester/<slug>/pester-results.xml`.
+- Each call runs in-process (dedicated runspace) and returns immediately to your outer loop.
+
+
+#### Traceability Matrix (Requirements ↔ Tests)
+
+Use the outer-loop helper to generate a coverage matrix that maps tests to requirements (`REQ:`) and ADRs (`ADR:`):
+
+```powershell
+# Run Unit tests and build traceability JSON
+pwsh -File scripts/Invoke-PesterSingleLoop.ps1 -TraceMatrix -IncludeIntegration
+
+# Also render the HTML report (lives under tests/results/_trace/)
+pwsh -File scripts/Invoke-PesterSingleLoop.ps1 -TraceMatrix -RenderTraceMatrixHtml
+```
+
+- Annotate tests via Pester tags (`-Tag 'Unit','REQ:REQ_ONE','ADR:0001'`) or a `# trace:` comment block near the top of the file.
+- JSON output: `tests/results/_trace/trace-matrix.json` (`trace-matrix/v1`).
+- Optional HTML: `tests/results/_trace/trace-matrix.html` with status chips and links to docs/results.
+- See `docs/TRACEABILITY_GUIDE.md` for annotation details and advanced usage.
+
 
 \n
+

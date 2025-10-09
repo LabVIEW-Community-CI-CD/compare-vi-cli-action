@@ -1,0 +1,1145 @@
+pester-category (dispatcher)	Set up job	﻿2025-10-09T00:28:31.7938345Z Current runner version: '2.328.0'
+pester-category (dispatcher)	Set up job	2025-10-09T00:28:31.7951373Z Runner name: 'USAUSLT-Z7DLW6G'
+pester-category (dispatcher)	Set up job	2025-10-09T00:28:31.7951861Z Runner group name: 'Default'
+pester-category (dispatcher)	Set up job	2025-10-09T00:28:31.7952453Z Machine name: 'USAUSLT-Z7DLW6G'
+pester-category (dispatcher)	Set up job	2025-10-09T00:28:31.7956043Z ##[group]GITHUB_TOKEN Permissions
+pester-category (dispatcher)	Set up job	2025-10-09T00:28:31.7958162Z Actions: write
+pester-category (dispatcher)	Set up job	2025-10-09T00:28:31.7958510Z Attestations: write
+pester-category (dispatcher)	Set up job	2025-10-09T00:28:31.7958838Z Checks: write
+pester-category (dispatcher)	Set up job	2025-10-09T00:28:31.7959117Z Contents: write
+pester-category (dispatcher)	Set up job	2025-10-09T00:28:31.7959435Z Deployments: write
+pester-category (dispatcher)	Set up job	2025-10-09T00:28:31.7959716Z Discussions: write
+pester-category (dispatcher)	Set up job	2025-10-09T00:28:31.7960010Z Issues: write
+pester-category (dispatcher)	Set up job	2025-10-09T00:28:31.7960287Z Metadata: read
+pester-category (dispatcher)	Set up job	2025-10-09T00:28:31.7960570Z Models: read
+pester-category (dispatcher)	Set up job	2025-10-09T00:28:31.7960845Z Packages: write
+pester-category (dispatcher)	Set up job	2025-10-09T00:28:31.7961131Z Pages: write
+pester-category (dispatcher)	Set up job	2025-10-09T00:28:31.7961427Z PullRequests: write
+pester-category (dispatcher)	Set up job	2025-10-09T00:28:31.7961720Z RepositoryProjects: write
+pester-category (dispatcher)	Set up job	2025-10-09T00:28:31.7962066Z SecurityEvents: write
+pester-category (dispatcher)	Set up job	2025-10-09T00:28:31.7962357Z Statuses: write
+pester-category (dispatcher)	Set up job	2025-10-09T00:28:31.7962662Z ##[endgroup]
+pester-category (dispatcher)	Set up job	2025-10-09T00:28:31.7965432Z Secret source: Actions
+pester-category (dispatcher)	Set up job	2025-10-09T00:28:31.7966033Z Prepare workflow directory
+pester-category (dispatcher)	Set up job	2025-10-09T00:28:31.8580570Z Prepare all required actions
+pester-category (dispatcher)	Set up job	2025-10-09T00:28:31.8612083Z Getting action download info
+pester-category (dispatcher)	Set up job	2025-10-09T00:28:32.3080564Z Download action repository 'actions/checkout@v5' (SHA:08c6903cd8c0fde910a37f88322edcfb5dd907a8)
+pester-category (dispatcher)	Set up job	2025-10-09T00:28:33.3153185Z Download action repository 'actions/upload-artifact@v4' (SHA:ea165f8d65b6e75b540449e92b4886f43607fa02)
+pester-category (dispatcher)	Set up job	2025-10-09T00:28:35.4168654Z Complete job name: pester-category (dispatcher)
+pester-category (dispatcher)	Run actions/checkout@v5	﻿2025-10-09T00:28:35.7151297Z ##[group]Run actions/checkout@v5
+pester-category (dispatcher)	Run actions/checkout@v5	2025-10-09T00:28:35.7154005Z with:
+pester-category (dispatcher)	Run actions/checkout@v5	2025-10-09T00:28:35.7155141Z   repository: LabVIEW-Community-CI-CD/compare-vi-cli-action
+pester-category (dispatcher)	Run actions/checkout@v5	2025-10-09T00:28:35.7157011Z   token: ***
+pester-category (dispatcher)	Run actions/checkout@v5	2025-10-09T00:28:35.7157753Z   ssh-strict: true
+pester-category (dispatcher)	Run actions/checkout@v5	2025-10-09T00:28:35.7158482Z   ssh-user: git
+pester-category (dispatcher)	Run actions/checkout@v5	2025-10-09T00:28:35.7159223Z   persist-credentials: true
+pester-category (dispatcher)	Run actions/checkout@v5	2025-10-09T00:28:35.7160059Z   clean: true
+pester-category (dispatcher)	Run actions/checkout@v5	2025-10-09T00:28:35.7160924Z   sparse-checkout-cone-mode: true
+pester-category (dispatcher)	Run actions/checkout@v5	2025-10-09T00:28:35.7162260Z   fetch-depth: 1
+pester-category (dispatcher)	Run actions/checkout@v5	2025-10-09T00:28:35.7163067Z   fetch-tags: false
+pester-category (dispatcher)	Run actions/checkout@v5	2025-10-09T00:28:35.7163800Z   show-progress: true
+pester-category (dispatcher)	Run actions/checkout@v5	2025-10-09T00:28:35.7164593Z   lfs: false
+pester-category (dispatcher)	Run actions/checkout@v5	2025-10-09T00:28:35.7165251Z   submodules: false
+pester-category (dispatcher)	Run actions/checkout@v5	2025-10-09T00:28:35.7166016Z   set-safe-directory: true
+pester-category (dispatcher)	Run actions/checkout@v5	2025-10-09T00:28:35.7167839Z env:
+pester-category (dispatcher)	Run actions/checkout@v5	2025-10-09T00:28:35.7168551Z   DETECT_LEAKS: 1
+pester-category (dispatcher)	Run actions/checkout@v5	2025-10-09T00:28:35.7169239Z   CLEAN_AFTER: 0
+pester-category (dispatcher)	Run actions/checkout@v5	2025-10-09T00:28:35.7169937Z   SCAN_ARTIFACTS: 1
+pester-category (dispatcher)	Run actions/checkout@v5	2025-10-09T00:28:35.7170624Z   UNBLOCK_GUARD: 0
+pester-category (dispatcher)	Run actions/checkout@v5	2025-10-09T00:28:35.7171355Z   LV_SUPPRESS_UI: 0
+pester-category (dispatcher)	Run actions/checkout@v5	2025-10-09T00:28:35.7174006Z   WATCH_CONSOLE: 1
+pester-category (dispatcher)	Run actions/checkout@v5	2025-10-09T00:28:35.7174497Z   LABVIEW_EXE: C:\\Program Files\\National Instruments\\LabVIEW 2025\\LabVIEW.exe
+pester-category (dispatcher)	Run actions/checkout@v5	2025-10-09T00:28:35.7174995Z ##[endgroup]
+pester-category (dispatcher)	Run actions/checkout@v5	2025-10-09T00:28:35.8840037Z Syncing repository: LabVIEW-Community-CI-CD/compare-vi-cli-action
+pester-category (dispatcher)	Run actions/checkout@v5	2025-10-09T00:28:35.8846249Z ##[group]Getting Git version info
+pester-category (dispatcher)	Run actions/checkout@v5	2025-10-09T00:28:35.8847805Z Working directory is 'C:\actions-runner\_work\compare-vi-cli-action\compare-vi-cli-action'
+pester-category (dispatcher)	Run actions/checkout@v5	2025-10-09T00:28:35.8857979Z [command]"C:\Program Files\Git\cmd\git.exe" version
+pester-category (dispatcher)	Run actions/checkout@v5	2025-10-09T00:28:35.9465330Z git version 2.51.0.windows.1
+pester-category (dispatcher)	Run actions/checkout@v5	2025-10-09T00:28:35.9508694Z ##[endgroup]
+pester-category (dispatcher)	Run actions/checkout@v5	2025-10-09T00:28:35.9522667Z Copying 'C:\WINDOWS\system32\config\systemprofile\.gitconfig' to 'C:\actions-runner\_work\_temp\70f4de6a-3af8-4849-af9a-30bdccdca55d\.gitconfig'
+pester-category (dispatcher)	Run actions/checkout@v5	2025-10-09T00:28:35.9550245Z Temporarily overriding HOME='C:\actions-runner\_work\_temp\70f4de6a-3af8-4849-af9a-30bdccdca55d' before making global git config changes
+pester-category (dispatcher)	Run actions/checkout@v5	2025-10-09T00:28:35.9551985Z Adding repository directory to the temporary git global config as a safe directory
+pester-category (dispatcher)	Run actions/checkout@v5	2025-10-09T00:28:35.9558581Z [command]"C:\Program Files\Git\cmd\git.exe" config --global --add safe.directory C:\actions-runner\_work\compare-vi-cli-action\compare-vi-cli-action
+pester-category (dispatcher)	Run actions/checkout@v5	2025-10-09T00:28:36.0295998Z [command]"C:\Program Files\Git\cmd\git.exe" config --local --get remote.origin.url
+pester-category (dispatcher)	Run actions/checkout@v5	2025-10-09T00:28:36.0957280Z https://github.com/LabVIEW-Community-CI-CD/compare-vi-cli-action
+pester-category (dispatcher)	Run actions/checkout@v5	2025-10-09T00:28:36.1005002Z ##[group]Removing previously created refs, to avoid conflicts
+pester-category (dispatcher)	Run actions/checkout@v5	2025-10-09T00:28:36.1010117Z [command]"C:\Program Files\Git\cmd\git.exe" rev-parse --symbolic-full-name --verify --quiet HEAD
+pester-category (dispatcher)	Run actions/checkout@v5	2025-10-09T00:28:36.1664940Z HEAD
+pester-category (dispatcher)	Run actions/checkout@v5	2025-10-09T00:28:36.3519058Z ##[endgroup]
+pester-category (dispatcher)	Run actions/checkout@v5	2025-10-09T00:28:36.3527596Z [command]"C:\Program Files\Git\cmd\git.exe" submodule status
+pester-category (dispatcher)	Run actions/checkout@v5	2025-10-09T00:28:37.6800213Z ##[group]Cleaning the repository
+pester-category (dispatcher)	Run actions/checkout@v5	2025-10-09T00:28:37.6806231Z [command]"C:\Program Files\Git\cmd\git.exe" clean -ffdx
+pester-category (dispatcher)	Run actions/checkout@v5	2025-10-09T00:28:37.7524349Z Removing tests/results/
+pester-category (dispatcher)	Run actions/checkout@v5	2025-10-09T00:28:37.7572477Z [command]"C:\Program Files\Git\cmd\git.exe" reset --hard HEAD
+pester-category (dispatcher)	Run actions/checkout@v5	2025-10-09T00:28:37.8550425Z HEAD is now at d7a8add Merge 4d92d99a7a97b85f0d5e310e3d0305c7a14b67a8 into d3fb44decf012548e36a62fd147aa79c77c472f8
+pester-category (dispatcher)	Run actions/checkout@v5	2025-10-09T00:28:37.8605214Z ##[endgroup]
+pester-category (dispatcher)	Run actions/checkout@v5	2025-10-09T00:28:37.8616309Z ##[group]Disabling automatic garbage collection
+pester-category (dispatcher)	Run actions/checkout@v5	2025-10-09T00:28:37.8622566Z [command]"C:\Program Files\Git\cmd\git.exe" config --local gc.auto 0
+pester-category (dispatcher)	Run actions/checkout@v5	2025-10-09T00:28:37.9312601Z ##[endgroup]
+pester-category (dispatcher)	Run actions/checkout@v5	2025-10-09T00:28:37.9313810Z ##[group]Setting up auth
+pester-category (dispatcher)	Run actions/checkout@v5	2025-10-09T00:28:37.9319693Z [command]"C:\Program Files\Git\cmd\git.exe" config --local --name-only --get-regexp core\.sshCommand
+pester-category (dispatcher)	Run actions/checkout@v5	2025-10-09T00:28:37.9946380Z [command]"C:\Program Files\Git\cmd\git.exe" submodule foreach --recursive "sh -c \"git config --local --name-only --get-regexp 'core\.sshCommand' && git config --local --unset-all 'core.sshCommand' || :\""
+pester-category (dispatcher)	Run actions/checkout@v5	2025-10-09T00:28:39.2805194Z [command]"C:\Program Files\Git\cmd\git.exe" config --local --name-only --get-regexp http\.https\:\/\/github\.com\/\.extraheader
+pester-category (dispatcher)	Run actions/checkout@v5	2025-10-09T00:28:39.3546220Z [command]"C:\Program Files\Git\cmd\git.exe" submodule foreach --recursive "sh -c \"git config --local --name-only --get-regexp 'http\.https\:\/\/github\.com\/\.extraheader' && git config --local --unset-all 'http.https://github.com/.extraheader' || :\""
+pester-category (dispatcher)	Run actions/checkout@v5	2025-10-09T00:28:40.6933355Z [command]"C:\Program Files\Git\cmd\git.exe" config --local http.https://github.com/.extraheader "AUTHORIZATION: basic ***"
+pester-category (dispatcher)	Run actions/checkout@v5	2025-10-09T00:28:40.7637924Z ##[endgroup]
+pester-category (dispatcher)	Run actions/checkout@v5	2025-10-09T00:28:40.7639109Z ##[group]Fetching the repository
+pester-category (dispatcher)	Run actions/checkout@v5	2025-10-09T00:28:40.7648751Z [command]"C:\Program Files\Git\cmd\git.exe" -c protocol.version=2 fetch --no-tags --prune --no-recurse-submodules --depth=1 origin +4d92d99a7a97b85f0d5e310e3d0305c7a14b67a8:refs/remotes/origin/issue/88-dev-dashboard-phase2
+pester-category (dispatcher)	Run actions/checkout@v5	2025-10-09T00:28:41.4655790Z ##[endgroup]
+pester-category (dispatcher)	Run actions/checkout@v5	2025-10-09T00:28:41.4657831Z ##[group]Determining the checkout info
+pester-category (dispatcher)	Run actions/checkout@v5	2025-10-09T00:28:41.4658652Z ##[endgroup]
+pester-category (dispatcher)	Run actions/checkout@v5	2025-10-09T00:28:41.4663866Z [command]"C:\Program Files\Git\cmd\git.exe" sparse-checkout disable
+pester-category (dispatcher)	Run actions/checkout@v5	2025-10-09T00:28:41.5433808Z [command]"C:\Program Files\Git\cmd\git.exe" config --local --unset-all extensions.worktreeConfig
+pester-category (dispatcher)	Run actions/checkout@v5	2025-10-09T00:28:41.6060625Z ##[group]Checking out the ref
+pester-category (dispatcher)	Run actions/checkout@v5	2025-10-09T00:28:41.6067689Z [command]"C:\Program Files\Git\cmd\git.exe" checkout --progress --force -B issue/88-dev-dashboard-phase2 refs/remotes/origin/issue/88-dev-dashboard-phase2
+pester-category (dispatcher)	Run actions/checkout@v5	2025-10-09T00:28:41.7370047Z branch 'issue/88-dev-dashboard-phase2' set up to track 'origin/issue/88-dev-dashboard-phase2'.
+pester-category (dispatcher)	Run actions/checkout@v5	2025-10-09T00:28:41.7371699Z Your branch is up to date with 'origin/issue/88-dev-dashboard-phase2'.
+pester-category (dispatcher)	Run actions/checkout@v5	2025-10-09T00:28:41.7372290Z Previous HEAD position was d7a8add Merge 4d92d99a7a97b85f0d5e310e3d0305c7a14b67a8 into d3fb44decf012548e36a62fd147aa79c77c472f8
+pester-category (dispatcher)	Run actions/checkout@v5	2025-10-09T00:28:41.7372675Z Switched to and reset branch 'issue/88-dev-dashboard-phase2'
+pester-category (dispatcher)	Run actions/checkout@v5	2025-10-09T00:28:41.7419253Z ##[endgroup]
+pester-category (dispatcher)	Run actions/checkout@v5	2025-10-09T00:28:41.8127884Z [command]"C:\Program Files\Git\cmd\git.exe" log -1 --format=%H
+pester-category (dispatcher)	Run actions/checkout@v5	2025-10-09T00:28:41.8798833Z 4d92d99a7a97b85f0d5e310e3d0305c7a14b67a8
+pester-category (dispatcher)	Configure Git safe.directory (service)	﻿2025-10-09T00:28:41.9477716Z ##[group]Run git config --global --add safe.directory $env:GITHUB_WORKSPACE
+pester-category (dispatcher)	Configure Git safe.directory (service)	2025-10-09T00:28:41.9479905Z [36;1mgit config --global --add safe.directory $env:GITHUB_WORKSPACE[0m
+pester-category (dispatcher)	Configure Git safe.directory (service)	2025-10-09T00:28:41.9526402Z shell: C:\Program Files\PowerShell\7\pwsh.EXE -command ". '{0}'"
+pester-category (dispatcher)	Configure Git safe.directory (service)	2025-10-09T00:28:41.9527462Z env:
+pester-category (dispatcher)	Configure Git safe.directory (service)	2025-10-09T00:28:41.9527957Z   DETECT_LEAKS: 1
+pester-category (dispatcher)	Configure Git safe.directory (service)	2025-10-09T00:28:41.9528507Z   CLEAN_AFTER: 0
+pester-category (dispatcher)	Configure Git safe.directory (service)	2025-10-09T00:28:41.9529034Z   SCAN_ARTIFACTS: 1
+pester-category (dispatcher)	Configure Git safe.directory (service)	2025-10-09T00:28:41.9529595Z   UNBLOCK_GUARD: 0
+pester-category (dispatcher)	Configure Git safe.directory (service)	2025-10-09T00:28:41.9530191Z   LV_SUPPRESS_UI: 0
+pester-category (dispatcher)	Configure Git safe.directory (service)	2025-10-09T00:28:41.9530804Z   WATCH_CONSOLE: 1
+pester-category (dispatcher)	Configure Git safe.directory (service)	2025-10-09T00:28:41.9531758Z   LABVIEW_EXE: C:\\Program Files\\National Instruments\\LabVIEW 2025\\LabVIEW.exe
+pester-category (dispatcher)	Configure Git safe.directory (service)	2025-10-09T00:28:41.9532895Z ##[endgroup]
+pester-category (dispatcher)	Append interactivity probe	﻿2025-10-09T00:28:42.4628130Z ##[group]Run pwsh -File tools/Write-InteractivityProbe.ps1
+pester-category (dispatcher)	Append interactivity probe	2025-10-09T00:28:42.4628520Z [36;1mpwsh -File tools/Write-InteractivityProbe.ps1[0m
+pester-category (dispatcher)	Append interactivity probe	2025-10-09T00:28:42.4633909Z shell: C:\Program Files\PowerShell\7\pwsh.EXE -command ". '{0}'"
+pester-category (dispatcher)	Append interactivity probe	2025-10-09T00:28:42.4634094Z env:
+pester-category (dispatcher)	Append interactivity probe	2025-10-09T00:28:42.4634193Z   DETECT_LEAKS: 1
+pester-category (dispatcher)	Append interactivity probe	2025-10-09T00:28:42.4634290Z   CLEAN_AFTER: 0
+pester-category (dispatcher)	Append interactivity probe	2025-10-09T00:28:42.4634389Z   SCAN_ARTIFACTS: 1
+pester-category (dispatcher)	Append interactivity probe	2025-10-09T00:28:42.4634495Z   UNBLOCK_GUARD: 0
+pester-category (dispatcher)	Append interactivity probe	2025-10-09T00:28:42.4634611Z   LV_SUPPRESS_UI: 0
+pester-category (dispatcher)	Append interactivity probe	2025-10-09T00:28:42.4634702Z   WATCH_CONSOLE: 1
+pester-category (dispatcher)	Append interactivity probe	2025-10-09T00:28:42.4634873Z   LABVIEW_EXE: C:\\Program Files\\National Instruments\\LabVIEW 2025\\LabVIEW.exe
+pester-category (dispatcher)	Append interactivity probe	2025-10-09T00:28:42.4635062Z ##[endgroup]
+pester-category (dispatcher)	Append interactivity probe	2025-10-09T00:28:43.0417041Z {
+pester-category (dispatcher)	Append interactivity probe	2025-10-09T00:28:43.0419220Z   "schema": "interactivity-probe/v1",
+pester-category (dispatcher)	Append interactivity probe	2025-10-09T00:28:43.0419872Z   "timestamp": "2025-10-09T00:28:43.0136236Z",
+pester-category (dispatcher)	Append interactivity probe	2025-10-09T00:28:43.0420370Z   "os": "Microsoft Windows NT 10.0.22631.0",
+pester-category (dispatcher)	Append interactivity probe	2025-10-09T00:28:43.0420836Z   "userInteractive": false,
+pester-category (dispatcher)	Append interactivity probe	2025-10-09T00:28:43.0421303Z   "sessionId": 0,
+pester-category (dispatcher)	Append interactivity probe	2025-10-09T00:28:43.0421654Z   "isInputRedirected": true,
+pester-category (dispatcher)	Append interactivity probe	2025-10-09T00:28:43.0422059Z   "isOutputRedirected": true,
+pester-category (dispatcher)	Append interactivity probe	2025-10-09T00:28:43.0422463Z   "isErrorRedirected": true,
+pester-category (dispatcher)	Append interactivity probe	2025-10-09T00:28:43.0422845Z   "likelyInteractive": false
+pester-category (dispatcher)	Append interactivity probe	2025-10-09T00:28:43.0423180Z }
+pester-category (dispatcher)	Snapshot processes (pre-invoker)	﻿2025-10-09T00:28:43.3263527Z ##[group]Run $procs = Get-Process | Where-Object { $_.Name -in 'pwsh','LVCompare','LabVIEW' } | Select-Object Name,Id,MainWindowTitle
+pester-category (dispatcher)	Snapshot processes (pre-invoker)	2025-10-09T00:28:43.3264079Z [36;1m$procs = Get-Process | Where-Object { $_.Name -in 'pwsh','LVCompare','LabVIEW' } | Select-Object Name,Id,MainWindowTitle[0m
+pester-category (dispatcher)	Snapshot processes (pre-invoker)	2025-10-09T00:28:43.3264383Z [36;1m$lines = @('### Pre-Invoker Process Snapshot','')[0m
+pester-category (dispatcher)	Snapshot processes (pre-invoker)	2025-10-09T00:28:43.3264634Z [36;1mforeach ($p in $procs) { $lines += ('- {0} (PID {1}) {2}' -f $p.Name,$p.Id,$p.MainWindowTitle) }[0m
+pester-category (dispatcher)	Snapshot processes (pre-invoker)	2025-10-09T00:28:43.3264972Z [36;1mif ($env:GITHUB_STEP_SUMMARY) { $lines -join "`n" | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8 }[0m
+pester-category (dispatcher)	Snapshot processes (pre-invoker)	2025-10-09T00:28:43.3271144Z shell: C:\Program Files\PowerShell\7\pwsh.EXE -command ". '{0}'"
+pester-category (dispatcher)	Snapshot processes (pre-invoker)	2025-10-09T00:28:43.3271336Z env:
+pester-category (dispatcher)	Snapshot processes (pre-invoker)	2025-10-09T00:28:43.3271429Z   DETECT_LEAKS: 1
+pester-category (dispatcher)	Snapshot processes (pre-invoker)	2025-10-09T00:28:43.3271524Z   CLEAN_AFTER: 0
+pester-category (dispatcher)	Snapshot processes (pre-invoker)	2025-10-09T00:28:43.3271651Z   SCAN_ARTIFACTS: 1
+pester-category (dispatcher)	Snapshot processes (pre-invoker)	2025-10-09T00:28:43.3271751Z   UNBLOCK_GUARD: 0
+pester-category (dispatcher)	Snapshot processes (pre-invoker)	2025-10-09T00:28:43.3271890Z   LV_SUPPRESS_UI: 0
+pester-category (dispatcher)	Snapshot processes (pre-invoker)	2025-10-09T00:28:43.3271989Z   WATCH_CONSOLE: 1
+pester-category (dispatcher)	Snapshot processes (pre-invoker)	2025-10-09T00:28:43.3272167Z   LABVIEW_EXE: C:\\Program Files\\National Instruments\\LabVIEW 2025\\LabVIEW.exe
+pester-category (dispatcher)	Snapshot processes (pre-invoker)	2025-10-09T00:28:43.3272367Z ##[endgroup]
+pester-category (dispatcher)	Ensure Invoker (start)	﻿2025-10-09T00:28:43.7805399Z Prepare all required actions
+pester-category (dispatcher)	Ensure Invoker (start)	2025-10-09T00:28:43.7914259Z ##[group]Run ./.github/actions/ensure-invoker
+pester-category (dispatcher)	Ensure Invoker (start)	2025-10-09T00:28:43.7914464Z with:
+pester-category (dispatcher)	Ensure Invoker (start)	2025-10-09T00:28:43.7914578Z   mode: start
+pester-category (dispatcher)	Ensure Invoker (start)	2025-10-09T00:28:43.7914707Z   results-dir: tests/results
+pester-category (dispatcher)	Ensure Invoker (start)	2025-10-09T00:28:43.7914848Z   category: dispatcher
+pester-category (dispatcher)	Ensure Invoker (start)	2025-10-09T00:28:43.7914983Z   timeout-seconds: 60
+pester-category (dispatcher)	Ensure Invoker (start)	2025-10-09T00:28:43.7915113Z   retries: 3
+pester-category (dispatcher)	Ensure Invoker (start)	2025-10-09T00:28:43.7915232Z   retry-delay-seconds: 7
+pester-category (dispatcher)	Ensure Invoker (start)	2025-10-09T00:28:43.7915363Z env:
+pester-category (dispatcher)	Ensure Invoker (start)	2025-10-09T00:28:43.7915468Z   DETECT_LEAKS: 1
+pester-category (dispatcher)	Ensure Invoker (start)	2025-10-09T00:28:43.7915588Z   CLEAN_AFTER: 0
+pester-category (dispatcher)	Ensure Invoker (start)	2025-10-09T00:28:43.7915702Z   SCAN_ARTIFACTS: 1
+pester-category (dispatcher)	Ensure Invoker (start)	2025-10-09T00:28:43.7915823Z   UNBLOCK_GUARD: 0
+pester-category (dispatcher)	Ensure Invoker (start)	2025-10-09T00:28:43.7915943Z   LV_SUPPRESS_UI: 0
+pester-category (dispatcher)	Ensure Invoker (start)	2025-10-09T00:28:43.7916064Z   WATCH_CONSOLE: 1
+pester-category (dispatcher)	Ensure Invoker (start)	2025-10-09T00:28:43.7916273Z   LABVIEW_EXE: C:\\Program Files\\National Instruments\\LabVIEW 2025\\LabVIEW.exe
+pester-category (dispatcher)	Ensure Invoker (start)	2025-10-09T00:28:43.7917198Z ##[endgroup]
+pester-category (dispatcher)	Ensure Invoker (start)	2025-10-09T00:28:43.8309891Z ##[group]Run $base = 'tests/results'
+pester-category (dispatcher)	Ensure Invoker (start)	2025-10-09T00:28:43.8310111Z [36;1m$base = 'tests/results'[0m
+pester-category (dispatcher)	Ensure Invoker (start)	2025-10-09T00:28:43.8310246Z [36;1m$cat  = 'dispatcher'[0m
+pester-category (dispatcher)	Ensure Invoker (start)	2025-10-09T00:28:43.8310396Z [36;1mif ($cat) { $base = Join-Path $base $cat }[0m
+pester-category (dispatcher)	Ensure Invoker (start)	2025-10-09T00:28:43.8310636Z [36;1m$pipe = "lvci.invoker.$env:GITHUB_RUN_ID.$env:GITHUB_JOB.$env:GITHUB_RUN_ATTEMPT"[0m
+pester-category (dispatcher)	Ensure Invoker (start)	2025-10-09T00:28:43.8310951Z [36;1m$sent = Join-Path $env:RUNNER_TEMP "invoker/$($env:GITHUB_RUN_ID).$($env:GITHUB_JOB).sentinel"[0m
+pester-category (dispatcher)	Ensure Invoker (start)	2025-10-09T00:28:43.8311280Z [36;1mNew-Item -ItemType Directory -Path (Split-Path -Parent $sent) -Force | Out-Null[0m
+pester-category (dispatcher)	Ensure Invoker (start)	2025-10-09T00:28:43.8311581Z [36;1m"pipe_name=$pipe" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8[0m
+pester-category (dispatcher)	Ensure Invoker (start)	2025-10-09T00:28:43.8311865Z [36;1m"sentinel=$sent"   | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8[0m
+pester-category (dispatcher)	Ensure Invoker (start)	2025-10-09T00:28:43.8312134Z [36;1m"results=$base"    | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8[0m
+pester-category (dispatcher)	Ensure Invoker (start)	2025-10-09T00:28:43.8317679Z shell: C:\Program Files\PowerShell\7\pwsh.EXE -command ". '{0}'"
+pester-category (dispatcher)	Ensure Invoker (start)	2025-10-09T00:28:43.8317874Z env:
+pester-category (dispatcher)	Ensure Invoker (start)	2025-10-09T00:28:43.8317971Z   DETECT_LEAKS: 1
+pester-category (dispatcher)	Ensure Invoker (start)	2025-10-09T00:28:43.8318072Z   CLEAN_AFTER: 0
+pester-category (dispatcher)	Ensure Invoker (start)	2025-10-09T00:28:43.8318172Z   SCAN_ARTIFACTS: 1
+pester-category (dispatcher)	Ensure Invoker (start)	2025-10-09T00:28:43.8318323Z   UNBLOCK_GUARD: 0
+pester-category (dispatcher)	Ensure Invoker (start)	2025-10-09T00:28:43.8318435Z   LV_SUPPRESS_UI: 0
+pester-category (dispatcher)	Ensure Invoker (start)	2025-10-09T00:28:43.8318535Z   WATCH_CONSOLE: 1
+pester-category (dispatcher)	Ensure Invoker (start)	2025-10-09T00:28:43.8318699Z   LABVIEW_EXE: C:\\Program Files\\National Instruments\\LabVIEW 2025\\LabVIEW.exe
+pester-category (dispatcher)	Ensure Invoker (start)	2025-10-09T00:28:43.8318901Z ##[endgroup]
+pester-category (dispatcher)	Ensure Invoker (start)	2025-10-09T00:28:44.2897773Z ##[group]Run $results = 'tests\results\dispatcher'
+pester-category (dispatcher)	Ensure Invoker (start)	2025-10-09T00:28:44.2898176Z [36;1m$results = 'tests\results\dispatcher'[0m
+pester-category (dispatcher)	Ensure Invoker (start)	2025-10-09T00:28:44.2898562Z [36;1mif (-not (Test-Path -LiteralPath $results)) { New-Item -ItemType Directory -Path $results -Force | Out-Null }[0m
+pester-category (dispatcher)	Ensure Invoker (start)	2025-10-09T00:28:44.2898910Z [36;1m$invdir  = Join-Path $results '_invoker'[0m
+pester-category (dispatcher)	Ensure Invoker (start)	2025-10-09T00:28:44.2899292Z [36;1mif (-not (Test-Path -LiteralPath $invdir)) { New-Item -ItemType Directory -Path $invdir -Force | Out-Null }[0m
+pester-category (dispatcher)	Ensure Invoker (start)	2025-10-09T00:28:44.2899693Z [36;1m$pipe    = 'lvci.invoker.18361669507.pester-category.1'[0m
+pester-category (dispatcher)	Ensure Invoker (start)	2025-10-09T00:28:44.2900005Z [36;1m$sent    = 'C:\actions-runner\_work\_temp\invoker\18361669507.pester-category.sentinel'[0m
+pester-category (dispatcher)	Ensure Invoker (start)	2025-10-09T00:28:44.2900347Z [36;1m$ready   = Join-Path $results '_invoker/ready.json'[0m
+pester-category (dispatcher)	Ensure Invoker (start)	2025-10-09T00:28:44.2900630Z [36;1m$stopped = Join-Path $results '_invoker/stopped.json'[0m
+pester-category (dispatcher)	Ensure Invoker (start)	2025-10-09T00:28:44.2900873Z [36;1m$boot    = Join-Path $results '_invoker/boot.log'[0m
+pester-category (dispatcher)	Ensure Invoker (start)	2025-10-09T00:28:44.2901251Z [36;1mif (Test-Path -LiteralPath $ready) { Remove-Item -LiteralPath $ready -Force -ErrorAction SilentlyContinue }[0m
+pester-category (dispatcher)	Ensure Invoker (start)	2025-10-09T00:28:44.2901708Z [36;1mif (Test-Path -LiteralPath $stopped) { Remove-Item -LiteralPath $stopped -Force -ErrorAction SilentlyContinue }[0m
+pester-category (dispatcher)	Ensure Invoker (start)	2025-10-09T00:28:44.2902160Z [36;1mif (-not (Test-Path -LiteralPath $sent)) { New-Item -ItemType File -Path $sent -Force | Out-Null }[0m
+pester-category (dispatcher)	Ensure Invoker (start)	2025-10-09T00:28:44.2902493Z [36;1m$attempts = [int]'3'[0m
+pester-category (dispatcher)	Ensure Invoker (start)	2025-10-09T00:28:44.2904432Z [36;1m$delay    = [int]'7'[0m
+pester-category (dispatcher)	Ensure Invoker (start)	2025-10-09T00:28:44.2904637Z [36;1m$to       = [int]'60'[0m
+pester-category (dispatcher)	Ensure Invoker (start)	2025-10-09T00:28:44.2904824Z [36;1m$ok = $false; $err=''[0m
+pester-category (dispatcher)	Ensure Invoker (start)	2025-10-09T00:28:44.2905125Z [36;1m# Resolve PowerShell 7 executable explicitly (service context may lack PATH)[0m
+pester-category (dispatcher)	Ensure Invoker (start)	2025-10-09T00:28:44.2905407Z [36;1m$psExe = $null[0m
+pester-category (dispatcher)	Ensure Invoker (start)	2025-10-09T00:28:44.2905743Z [36;1mtry { $cmd = Get-Command pwsh -ErrorAction SilentlyContinue; if ($cmd -and $cmd.Source) { $psExe = $cmd.Source } } catch {}[0m
+pester-category (dispatcher)	Ensure Invoker (start)	2025-10-09T00:28:44.2906169Z [36;1mif (-not $psExe -and $PSHome) { $psExe = Join-Path $PSHome 'pwsh.exe' }[0m
+pester-category (dispatcher)	Ensure Invoker (start)	2025-10-09T00:28:44.2906484Z [36;1mif (-not (Test-Path -LiteralPath $psExe -PathType Leaf)) { $psExe = 'pwsh' }[0m
+pester-category (dispatcher)	Ensure Invoker (start)	2025-10-09T00:28:44.2906775Z [36;1m[0m
+pester-category (dispatcher)	Ensure Invoker (start)	2025-10-09T00:28:44.2906951Z [36;1mfor ($i=1; $i -le $attempts; $i++) {[0m
+pester-category (dispatcher)	Ensure Invoker (start)	2025-10-09T00:28:44.2907436Z [36;1m  $ts = (Get-Date -Format o)[0m
+pester-category (dispatcher)	Ensure Invoker (start)	2025-10-09T00:28:44.2907648Z [36;1m  try {[0m
+pester-category (dispatcher)	Ensure Invoker (start)	2025-10-09T00:28:44.2925216Z [36;1m    $args = @('-ExecutionPolicy','Bypass','-NoLogo','-NoProfile','-File','tools/RunnerInvoker/Start-RunnerInvoker.ps1','-PipeName',"$pipe",'-SentinelPath',"$sent",'-ResultsDir',"$results")[0m
+pester-category (dispatcher)	Ensure Invoker (start)	2025-10-09T00:28:44.2925723Z [36;1m    $envMap = @{}[0m
+pester-category (dispatcher)	Ensure Invoker (start)	2025-10-09T00:28:44.2926027Z [36;1m    foreach ($k in @('LV_NOTICE_DIR','LV_SUPPRESS_UI','LV_NO_ACTIVATE','LV_CURSOR_RESTORE','LV_IDLE_WAIT_SECONDS','LV_IDLE_MAX_WAIT_SECONDS')) {[0m
+pester-category (dispatcher)	Ensure Invoker (start)	2025-10-09T00:28:44.2926336Z [36;1m      $v = [Environment]::GetEnvironmentVariable($k)[0m
+pester-category (dispatcher)	Ensure Invoker (start)	2025-10-09T00:28:44.2927478Z [36;1m      if ($v -and $v -ne '') { $envMap[$k] = $v }[0m
+pester-category (dispatcher)	Ensure Invoker (start)	2025-10-09T00:28:44.2927625Z [36;1m    }[0m
+pester-category (dispatcher)	Ensure Invoker (start)	2025-10-09T00:28:44.2927815Z [36;1m    $wd = if ($env:GITHUB_WORKSPACE) { $env:GITHUB_WORKSPACE } else { (Get-Location).Path }[0m
+pester-category (dispatcher)	Ensure Invoker (start)	2025-10-09T00:28:44.2928202Z [36;1m    $p = Start-Process -FilePath $psExe -ArgumentList $args -WindowStyle Hidden -PassThru -WorkingDirectory $wd -Environment $envMap[0m
+pester-category (dispatcher)	Ensure Invoker (start)	2025-10-09T00:28:44.2928579Z [36;1m    Write-Host "Started invoker attempt #$i pid=$($p.Id) pipe=$pipe"[0m
+pester-category (dispatcher)	Ensure Invoker (start)	2025-10-09T00:28:44.2928885Z [36;1m    "[$ts] attempt#$i spawn pid=$($p.Id) pipe=$pipe" | Out-File -FilePath $boot -Append -Encoding utf8[0m
+pester-category (dispatcher)	Ensure Invoker (start)	2025-10-09T00:28:44.2929115Z [36;1m  } catch {[0m
+pester-category (dispatcher)	Ensure Invoker (start)	2025-10-09T00:28:44.2929249Z [36;1m    $err = $_.Exception.Message[0m
+pester-category (dispatcher)	Ensure Invoker (start)	2025-10-09T00:28:44.2929824Z [36;1m    Write-Host "::warning::Failed to spawn invoker on attempt #$i: $err"[0m
+pester-category (dispatcher)	Ensure Invoker (start)	2025-10-09T00:28:44.2930693Z [36;1m    "[$ts] attempt#$i spawn error: $err" | Out-File -FilePath $boot -Append -Encoding utf8[0m
+pester-category (dispatcher)	Ensure Invoker (start)	2025-10-09T00:28:44.2930911Z [36;1m  }[0m
+pester-category (dispatcher)	Ensure Invoker (start)	2025-10-09T00:28:44.2931038Z [36;1m  $sw = [Diagnostics.Stopwatch]::StartNew()[0m
+pester-category (dispatcher)	Ensure Invoker (start)	2025-10-09T00:28:44.2931369Z [36;1m  while ($sw.Elapsed.TotalSeconds -lt $to) { if (Test-Path -LiteralPath $ready) { $ok = $true; break }; Start-Sleep -Milliseconds 300 }[0m
+pester-category (dispatcher)	Ensure Invoker (start)	2025-10-09T00:28:44.2931807Z [36;1m  if ($ok) { "[$(Get-Date -Format o)] attempt#$i ready observed" | Out-File -FilePath $boot -Append -Encoding utf8; break }[0m
+pester-category (dispatcher)	Ensure Invoker (start)	2025-10-09T00:28:44.2932084Z [36;1m  if ($i -lt $attempts) {[0m
+pester-category (dispatcher)	Ensure Invoker (start)	2025-10-09T00:28:44.2932374Z [36;1m    try { if ($p -and -not $p.HasExited) { $p | Stop-Process -Force -ErrorAction SilentlyContinue } } catch {}[0m
+pester-category (dispatcher)	Ensure Invoker (start)	2025-10-09T00:28:44.2933710Z [36;1m    "[$(Get-Date -Format o)] attempt#$i timed out after $to s; retrying in $delay s" | Out-File -FilePath $boot -Append -Encoding utf8[0m
+pester-category (dispatcher)	Ensure Invoker (start)	2025-10-09T00:28:44.2934007Z [36;1m    Start-Sleep -Seconds $delay[0m
+pester-category (dispatcher)	Ensure Invoker (start)	2025-10-09T00:28:44.2934149Z [36;1m  }[0m
+pester-category (dispatcher)	Ensure Invoker (start)	2025-10-09T00:28:44.2934246Z [36;1m}[0m
+pester-category (dispatcher)	Ensure Invoker (start)	2025-10-09T00:28:44.2934349Z [36;1mif ($ok) {[0m
+pester-category (dispatcher)	Ensure Invoker (start)	2025-10-09T00:28:44.2934543Z [36;1m  "ready=true"  | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8[0m
+pester-category (dispatcher)	Ensure Invoker (start)	2025-10-09T00:28:44.2934835Z [36;1m  "reason=ready"| Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8[0m
+pester-category (dispatcher)	Ensure Invoker (start)	2025-10-09T00:28:44.2935043Z [36;1m} else {[0m
+pester-category (dispatcher)	Ensure Invoker (start)	2025-10-09T00:28:44.2935297Z [36;1m  "[$(Get-Date -Format o)] all attempts exhausted; lastError=$err" | Out-File -FilePath $boot -Append -Encoding utf8[0m
+pester-category (dispatcher)	Ensure Invoker (start)	2025-10-09T00:28:44.2937579Z [36;1m  Write-Host "::error::Invoker not ready after $to s (attempts=$attempts). LastError=$err"[0m
+pester-category (dispatcher)	Ensure Invoker (start)	2025-10-09T00:28:44.2937969Z [36;1m  "ready=false"        | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8[0m
+pester-category (dispatcher)	Ensure Invoker (start)	2025-10-09T00:28:44.2938351Z [36;1m  "reason=timeout"     | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8[0m
+pester-category (dispatcher)	Ensure Invoker (start)	2025-10-09T00:28:44.2938619Z [36;1m  exit 1[0m
+pester-category (dispatcher)	Ensure Invoker (start)	2025-10-09T00:28:44.2938755Z [36;1m}[0m
+pester-category (dispatcher)	Ensure Invoker (start)	2025-10-09T00:28:44.2946177Z shell: C:\Program Files\PowerShell\7\pwsh.EXE -command ". '{0}'"
+pester-category (dispatcher)	Ensure Invoker (start)	2025-10-09T00:28:44.2946395Z env:
+pester-category (dispatcher)	Ensure Invoker (start)	2025-10-09T00:28:44.2946497Z   DETECT_LEAKS: 1
+pester-category (dispatcher)	Ensure Invoker (start)	2025-10-09T00:28:44.2946616Z   CLEAN_AFTER: 0
+pester-category (dispatcher)	Ensure Invoker (start)	2025-10-09T00:28:44.2946729Z   SCAN_ARTIFACTS: 1
+pester-category (dispatcher)	Ensure Invoker (start)	2025-10-09T00:28:44.2947398Z   UNBLOCK_GUARD: 0
+pester-category (dispatcher)	Ensure Invoker (start)	2025-10-09T00:28:44.2947522Z   LV_SUPPRESS_UI: 0
+pester-category (dispatcher)	Ensure Invoker (start)	2025-10-09T00:28:44.2947629Z   WATCH_CONSOLE: 1
+pester-category (dispatcher)	Ensure Invoker (start)	2025-10-09T00:28:44.2947828Z   LABVIEW_EXE: C:\\Program Files\\National Instruments\\LabVIEW 2025\\LabVIEW.exe
+pester-category (dispatcher)	Ensure Invoker (start)	2025-10-09T00:28:44.2948064Z ##[endgroup]
+pester-category (dispatcher)	Ensure Invoker (start)	2025-10-09T00:28:44.6660960Z [31;1mParserError: [0mC:\actions-runner\_work\_temp\a00546d1-2526-430c-9b9f-dc427cba9af8.ps1:39[0m
+pester-category (dispatcher)	Ensure Invoker (start)	2025-10-09T00:28:44.6662381Z [31;1m[0m[36;1mLine |[0m
+pester-category (dispatcher)	Ensure Invoker (start)	2025-10-09T00:28:44.6668404Z [31;1m[0m[36;1m[36;1m  39 | [0m …  Write-Host "::warning::Failed to spawn invoker on attempt #[36;1m$i:[0m $err"[0m
+pester-category (dispatcher)	Ensure Invoker (start)	2025-10-09T00:28:44.6670445Z [31;1m[0m[36;1m[36;1m[0m[36;1m[0m[36;1m     | [31;1m                                                               ~~~[0m
+pester-category (dispatcher)	Ensure Invoker (start)	2025-10-09T00:28:44.6673009Z [31;1m[0m[36;1m[36;1m[0m[36;1m[0m[36;1m[31;1m[31;1m[36;1m     | [31;1mVariable reference is not valid. ':' was not followed by a valid variable name character. Consider using ${} to[0m
+pester-category (dispatcher)	Ensure Invoker (start)	2025-10-09T00:28:44.6675405Z [31;1m[0m[36;1m[36;1m[0m[36;1m[0m[36;1m[31;1m[31;1m[36;1m[31;1m[36;1m     | [31;1mdelimit the name.[0m
+pester-category (dispatcher)	Ensure Invoker (start)	2025-10-09T00:28:44.7996773Z ##[error]Process completed with exit code 1.
+pester-category (dispatcher)	LabVIEW warmup (preflight; leave LVCompare running)	﻿2025-10-09T00:28:44.8701595Z ##[group]Run pwsh -File tools/Warmup-LabVIEW.ps1
+pester-category (dispatcher)	LabVIEW warmup (preflight; leave LVCompare running)	2025-10-09T00:28:44.8701872Z [36;1mpwsh -File tools/Warmup-LabVIEW.ps1[0m
+pester-category (dispatcher)	LabVIEW warmup (preflight; leave LVCompare running)	2025-10-09T00:28:44.8707352Z shell: C:\Program Files\PowerShell\7\pwsh.EXE -command ". '{0}'"
+pester-category (dispatcher)	LabVIEW warmup (preflight; leave LVCompare running)	2025-10-09T00:28:44.8707554Z env:
+pester-category (dispatcher)	LabVIEW warmup (preflight; leave LVCompare running)	2025-10-09T00:28:44.8707661Z   DETECT_LEAKS: 1
+pester-category (dispatcher)	LabVIEW warmup (preflight; leave LVCompare running)	2025-10-09T00:28:44.8707768Z   CLEAN_AFTER: 0
+pester-category (dispatcher)	LabVIEW warmup (preflight; leave LVCompare running)	2025-10-09T00:28:44.8707873Z   SCAN_ARTIFACTS: 1
+pester-category (dispatcher)	LabVIEW warmup (preflight; leave LVCompare running)	2025-10-09T00:28:44.8707977Z   UNBLOCK_GUARD: 0
+pester-category (dispatcher)	LabVIEW warmup (preflight; leave LVCompare running)	2025-10-09T00:28:44.8708083Z   LV_SUPPRESS_UI: 0
+pester-category (dispatcher)	LabVIEW warmup (preflight; leave LVCompare running)	2025-10-09T00:28:44.8708185Z   WATCH_CONSOLE: 1
+pester-category (dispatcher)	LabVIEW warmup (preflight; leave LVCompare running)	2025-10-09T00:28:44.8708371Z   LABVIEW_EXE: C:\\Program Files\\National Instruments\\LabVIEW 2025\\LabVIEW.exe
+pester-category (dispatcher)	LabVIEW warmup (preflight; leave LVCompare running)	2025-10-09T00:28:44.8708583Z   WARMUP_SKIP_ARGS: 1
+pester-category (dispatcher)	LabVIEW warmup (preflight; leave LVCompare running)	2025-10-09T00:28:44.8708696Z ##[endgroup]
+pester-category (dispatcher)	LabVIEW warmup (preflight; leave LVCompare running)	2025-10-09T00:28:45.5435818Z Warmup: starting LVCompare without VI args (preflight).
+pester-category (dispatcher)	LabVIEW warmup (preflight; leave LVCompare running)	2025-10-09T00:29:00.6377093Z Warmup: LabVIEW did not start within timeout (15 s).
+pester-category (dispatcher)	LabVIEW warmup (preflight; leave LVCompare running)	2025-10-09T00:29:00.6519566Z Warmup: stopping LVCompare (PID=18564).
+pester-category (dispatcher)	LabVIEW warmup (preflight; leave LVCompare running)	2025-10-09T00:29:00.6827330Z Warmup: LVCompare still running after stop attempt (PID(s): 18564)
+pester-category (dispatcher)	Snapshot processes (post-invoker)	﻿2025-10-09T00:29:01.0420167Z ##[group]Run $procs = Get-Process | Where-Object { $_.Name -in 'pwsh','LVCompare','LabVIEW' } | Select-Object Name,Id,MainWindowTitle
+pester-category (dispatcher)	Snapshot processes (post-invoker)	2025-10-09T00:29:01.0420722Z [36;1m$procs = Get-Process | Where-Object { $_.Name -in 'pwsh','LVCompare','LabVIEW' } | Select-Object Name,Id,MainWindowTitle[0m
+pester-category (dispatcher)	Snapshot processes (post-invoker)	2025-10-09T00:29:01.0421022Z [36;1m$lines = @('### Post-Invoker Process Snapshot','')[0m
+pester-category (dispatcher)	Snapshot processes (post-invoker)	2025-10-09T00:29:01.0421280Z [36;1mforeach ($p in $procs) { $lines += ('- {0} (PID {1}) {2}' -f $p.Name,$p.Id,$p.MainWindowTitle) }[0m
+pester-category (dispatcher)	Snapshot processes (post-invoker)	2025-10-09T00:29:01.0421638Z [36;1mif ($env:GITHUB_STEP_SUMMARY) { $lines -join "`n" | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8 }[0m
+pester-category (dispatcher)	Snapshot processes (post-invoker)	2025-10-09T00:29:01.0427311Z shell: C:\Program Files\PowerShell\7\pwsh.EXE -command ". '{0}'"
+pester-category (dispatcher)	Snapshot processes (post-invoker)	2025-10-09T00:29:01.0427500Z env:
+pester-category (dispatcher)	Snapshot processes (post-invoker)	2025-10-09T00:29:01.0427600Z   DETECT_LEAKS: 1
+pester-category (dispatcher)	Snapshot processes (post-invoker)	2025-10-09T00:29:01.0427704Z   CLEAN_AFTER: 0
+pester-category (dispatcher)	Snapshot processes (post-invoker)	2025-10-09T00:29:01.0427810Z   SCAN_ARTIFACTS: 1
+pester-category (dispatcher)	Snapshot processes (post-invoker)	2025-10-09T00:29:01.0427916Z   UNBLOCK_GUARD: 0
+pester-category (dispatcher)	Snapshot processes (post-invoker)	2025-10-09T00:29:01.0428048Z   LV_SUPPRESS_UI: 0
+pester-category (dispatcher)	Snapshot processes (post-invoker)	2025-10-09T00:29:01.0428148Z   WATCH_CONSOLE: 1
+pester-category (dispatcher)	Snapshot processes (post-invoker)	2025-10-09T00:29:01.0428317Z   LABVIEW_EXE: C:\\Program Files\\National Instruments\\LabVIEW 2025\\LabVIEW.exe
+pester-category (dispatcher)	Snapshot processes (post-invoker)	2025-10-09T00:29:01.0428516Z ##[endgroup]
+pester-category (dispatcher)	Export fixture env for tests	﻿2025-10-09T00:29:01.5108562Z ##[group]Run "LV_BASE_VI=" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+pester-category (dispatcher)	Export fixture env for tests	2025-10-09T00:29:01.5109062Z [36;1m"LV_BASE_VI=" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8[0m
+pester-category (dispatcher)	Export fixture env for tests	2025-10-09T00:29:01.5109326Z [36;1m"LV_HEAD_VI=" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8[0m
+pester-category (dispatcher)	Export fixture env for tests	2025-10-09T00:29:01.5114437Z shell: C:\Program Files\PowerShell\7\pwsh.EXE -command ". '{0}'"
+pester-category (dispatcher)	Export fixture env for tests	2025-10-09T00:29:01.5114877Z env:
+pester-category (dispatcher)	Export fixture env for tests	2025-10-09T00:29:01.5114972Z   DETECT_LEAKS: 1
+pester-category (dispatcher)	Export fixture env for tests	2025-10-09T00:29:01.5115069Z   CLEAN_AFTER: 0
+pester-category (dispatcher)	Export fixture env for tests	2025-10-09T00:29:01.5115171Z   SCAN_ARTIFACTS: 1
+pester-category (dispatcher)	Export fixture env for tests	2025-10-09T00:29:01.5115270Z   UNBLOCK_GUARD: 0
+pester-category (dispatcher)	Export fixture env for tests	2025-10-09T00:29:01.5115370Z   LV_SUPPRESS_UI: 0
+pester-category (dispatcher)	Export fixture env for tests	2025-10-09T00:29:01.5115461Z   WATCH_CONSOLE: 1
+pester-category (dispatcher)	Export fixture env for tests	2025-10-09T00:29:01.5115624Z   LABVIEW_EXE: C:\\Program Files\\National Instruments\\LabVIEW 2025\\LabVIEW.exe
+pester-category (dispatcher)	Export fixture env for tests	2025-10-09T00:29:01.5115809Z ##[endgroup]
+pester-category (dispatcher)	Apply determinism profile	﻿2025-10-09T00:29:01.9378067Z Prepare all required actions
+pester-category (dispatcher)	Apply determinism profile	2025-10-09T00:29:01.9449218Z ##[group]Run ./.github/actions/determinism-profile
+pester-category (dispatcher)	Apply determinism profile	2025-10-09T00:29:01.9449402Z with:
+pester-category (dispatcher)	Apply determinism profile	2025-10-09T00:29:01.9449503Z   strict: true
+pester-category (dispatcher)	Apply determinism profile	2025-10-09T00:29:01.9449606Z env:
+pester-category (dispatcher)	Apply determinism profile	2025-10-09T00:29:01.9449694Z   DETECT_LEAKS: 1
+pester-category (dispatcher)	Apply determinism profile	2025-10-09T00:29:01.9449801Z   CLEAN_AFTER: 0
+pester-category (dispatcher)	Apply determinism profile	2025-10-09T00:29:01.9449914Z   SCAN_ARTIFACTS: 1
+pester-category (dispatcher)	Apply determinism profile	2025-10-09T00:29:01.9450031Z   UNBLOCK_GUARD: 0
+pester-category (dispatcher)	Apply determinism profile	2025-10-09T00:29:01.9450130Z   LV_SUPPRESS_UI: 0
+pester-category (dispatcher)	Apply determinism profile	2025-10-09T00:29:01.9450232Z   WATCH_CONSOLE: 1
+pester-category (dispatcher)	Apply determinism profile	2025-10-09T00:29:01.9450413Z   LABVIEW_EXE: C:\\Program Files\\National Instruments\\LabVIEW 2025\\LabVIEW.exe
+pester-category (dispatcher)	Apply determinism profile	2025-10-09T00:29:01.9450617Z   LV_BASE_VI: 
+pester-category (dispatcher)	Apply determinism profile	2025-10-09T00:29:01.9450707Z   LV_HEAD_VI: 
+pester-category (dispatcher)	Apply determinism profile	2025-10-09T00:29:01.9450804Z ##[endgroup]
+pester-category (dispatcher)	Apply determinism profile	2025-10-09T00:29:01.9707238Z ##[group]Run $strict = [System.Convert]::ToBoolean('true')
+pester-category (dispatcher)	Apply determinism profile	2025-10-09T00:29:01.9707486Z [36;1m$strict = [System.Convert]::ToBoolean('true')[0m
+pester-category (dispatcher)	Apply determinism profile	2025-10-09T00:29:01.9707654Z [36;1m$iters  = ''[0m
+pester-category (dispatcher)	Apply determinism profile	2025-10-09T00:29:01.9707817Z [36;1mif (-not $iters) { $iters = if ($strict) { '3' } else { '5' } }[0m
+pester-category (dispatcher)	Apply determinism profile	2025-10-09T00:29:01.9708017Z [36;1m[0m
+pester-category (dispatcher)	Apply determinism profile	2025-10-09T00:29:01.9708114Z [36;1m$envs = @{[0m
+pester-category (dispatcher)	Apply determinism profile	2025-10-09T00:29:01.9708228Z [36;1m  'LVCI_DETERMINISTIC'   = '1';[0m
+pester-category (dispatcher)	Apply determinism profile	2025-10-09T00:29:01.9708381Z [36;1m  'LOOP_MAX_ITERATIONS'  = $iters;[0m
+pester-category (dispatcher)	Apply determinism profile	2025-10-09T00:29:01.9708536Z [36;1m  'LOOP_INTERVAL_SECONDS'= '0';[0m
+pester-category (dispatcher)	Apply determinism profile	2025-10-09T00:29:01.9708672Z [36;1m  'LOOP_ADAPTIVE'        = '0';[0m
+pester-category (dispatcher)	Apply determinism profile	2025-10-09T00:29:01.9708810Z [36;1m  'LOOP_HISTOGRAM_BINS'  = '0';[0m
+pester-category (dispatcher)	Apply determinism profile	2025-10-09T00:29:01.9708956Z [36;1m  'LOOP_RECONCILE_EVERY' = '0';[0m
+pester-category (dispatcher)	Apply determinism profile	2025-10-09T00:29:01.9709108Z [36;1m  'LOOP_QUANTILE_STRATEGY' = 'Exact'[0m
+pester-category (dispatcher)	Apply determinism profile	2025-10-09T00:29:01.9709243Z [36;1m}[0m
+pester-category (dispatcher)	Apply determinism profile	2025-10-09T00:29:01.9709467Z [36;1mforeach ($k in $envs.Keys) { "${k}=$($envs[$k])" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8 }[0m
+pester-category (dispatcher)	Apply determinism profile	2025-10-09T00:29:01.9709704Z [36;1m[0m
+pester-category (dispatcher)	Apply determinism profile	2025-10-09T00:29:01.9709883Z [36;1m"iterations=$iters" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8[0m
+pester-category (dispatcher)	Apply determinism profile	2025-10-09T00:29:01.9710185Z [36;1m"strategy=Exact" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8[0m
+pester-category (dispatcher)	Apply determinism profile	2025-10-09T00:29:01.9710381Z [36;1m[0m
+pester-category (dispatcher)	Apply determinism profile	2025-10-09T00:29:01.9710484Z [36;1mif ($env:GITHUB_STEP_SUMMARY) {[0m
+pester-category (dispatcher)	Apply determinism profile	2025-10-09T00:29:01.9710640Z [36;1m  $lines = @('### Determinism Profile','')[0m
+pester-category (dispatcher)	Apply determinism profile	2025-10-09T00:29:01.9710808Z [36;1m  $lines += ('- Strict: {0}' -f $strict)[0m
+pester-category (dispatcher)	Apply determinism profile	2025-10-09T00:29:01.9710976Z [36;1m  $lines += ('- Iterations: {0}' -f $iters)[0m
+pester-category (dispatcher)	Apply determinism profile	2025-10-09T00:29:01.9711140Z [36;1m  $lines += '- IntervalSeconds: 0'[0m
+pester-category (dispatcher)	Apply determinism profile	2025-10-09T00:29:01.9711304Z [36;1m  $lines += '- QuantileStrategy: Exact'[0m
+pester-category (dispatcher)	Apply determinism profile	2025-10-09T00:29:01.9711456Z [36;1m  $lines += '- HistogramBins: 0'[0m
+pester-category (dispatcher)	Apply determinism profile	2025-10-09T00:29:01.9711608Z [36;1m  $lines += '- ReconcileEvery: 0'[0m
+pester-category (dispatcher)	Apply determinism profile	2025-10-09T00:29:01.9711755Z [36;1m  $lines += '- AdaptiveInterval: 0'[0m
+pester-category (dispatcher)	Apply determinism profile	2025-10-09T00:29:01.9711989Z [36;1m  $lines -join "`n" | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8[0m
+pester-category (dispatcher)	Apply determinism profile	2025-10-09T00:29:01.9712205Z [36;1m}[0m
+pester-category (dispatcher)	Apply determinism profile	2025-10-09T00:29:01.9717257Z shell: C:\Program Files\PowerShell\7\pwsh.EXE -command ". '{0}'"
+pester-category (dispatcher)	Apply determinism profile	2025-10-09T00:29:01.9717441Z env:
+pester-category (dispatcher)	Apply determinism profile	2025-10-09T00:29:01.9717539Z   DETECT_LEAKS: 1
+pester-category (dispatcher)	Apply determinism profile	2025-10-09T00:29:01.9717649Z   CLEAN_AFTER: 0
+pester-category (dispatcher)	Apply determinism profile	2025-10-09T00:29:01.9717748Z   SCAN_ARTIFACTS: 1
+pester-category (dispatcher)	Apply determinism profile	2025-10-09T00:29:01.9717856Z   UNBLOCK_GUARD: 0
+pester-category (dispatcher)	Apply determinism profile	2025-10-09T00:29:01.9717957Z   LV_SUPPRESS_UI: 0
+pester-category (dispatcher)	Apply determinism profile	2025-10-09T00:29:01.9718060Z   WATCH_CONSOLE: 1
+pester-category (dispatcher)	Apply determinism profile	2025-10-09T00:29:01.9718229Z   LABVIEW_EXE: C:\\Program Files\\National Instruments\\LabVIEW 2025\\LabVIEW.exe
+pester-category (dispatcher)	Apply determinism profile	2025-10-09T00:29:01.9718682Z   LV_BASE_VI: 
+pester-category (dispatcher)	Apply determinism profile	2025-10-09T00:29:01.9718775Z   LV_HEAD_VI: 
+pester-category (dispatcher)	Apply determinism profile	2025-10-09T00:29:01.9718875Z ##[endgroup]
+pester-category (dispatcher)	Apply dispatcher profile	﻿2025-10-09T00:29:02.4749667Z Prepare all required actions
+pester-category (dispatcher)	Apply dispatcher profile	2025-10-09T00:29:02.4903696Z ##[group]Run ./.github/actions/dispatcher-profile
+pester-category (dispatcher)	Apply dispatcher profile	2025-10-09T00:29:02.4903873Z with:
+pester-category (dispatcher)	Apply dispatcher profile	2025-10-09T00:29:02.4903980Z   emit-failures-json-always: true
+pester-category (dispatcher)	Apply dispatcher profile	2025-10-09T00:29:02.4904123Z   detect-leaks: true
+pester-category (dispatcher)	Apply dispatcher profile	2025-10-09T00:29:02.4904231Z   fail-on-leaks: false
+pester-category (dispatcher)	Apply dispatcher profile	2025-10-09T00:29:02.4904342Z   kill-leaks: false
+pester-category (dispatcher)	Apply dispatcher profile	2025-10-09T00:29:02.4904448Z   leak-grace-seconds: 3
+pester-category (dispatcher)	Apply dispatcher profile	2025-10-09T00:29:02.4904568Z   clean-labview-before: false
+pester-category (dispatcher)	Apply dispatcher profile	2025-10-09T00:29:02.4904687Z   clean-after: false
+pester-category (dispatcher)	Apply dispatcher profile	2025-10-09T00:29:02.4904792Z   track-artifacts: true
+pester-category (dispatcher)	Apply dispatcher profile	2025-10-09T00:29:02.4904897Z   timeout-seconds: 0
+pester-category (dispatcher)	Apply dispatcher profile	2025-10-09T00:29:02.4904995Z env:
+pester-category (dispatcher)	Apply dispatcher profile	2025-10-09T00:29:02.4905079Z   DETECT_LEAKS: 1
+pester-category (dispatcher)	Apply dispatcher profile	2025-10-09T00:29:02.4905179Z   CLEAN_AFTER: 0
+pester-category (dispatcher)	Apply dispatcher profile	2025-10-09T00:29:02.4905275Z   SCAN_ARTIFACTS: 1
+pester-category (dispatcher)	Apply dispatcher profile	2025-10-09T00:29:02.4905381Z   UNBLOCK_GUARD: 0
+pester-category (dispatcher)	Apply dispatcher profile	2025-10-09T00:29:02.4905483Z   LV_SUPPRESS_UI: 0
+pester-category (dispatcher)	Apply dispatcher profile	2025-10-09T00:29:02.4905577Z   WATCH_CONSOLE: 1
+pester-category (dispatcher)	Apply dispatcher profile	2025-10-09T00:29:02.4905747Z   LABVIEW_EXE: C:\\Program Files\\National Instruments\\LabVIEW 2025\\LabVIEW.exe
+pester-category (dispatcher)	Apply dispatcher profile	2025-10-09T00:29:02.4905966Z   LV_BASE_VI: 
+pester-category (dispatcher)	Apply dispatcher profile	2025-10-09T00:29:02.4906060Z   LV_HEAD_VI: 
+pester-category (dispatcher)	Apply dispatcher profile	2025-10-09T00:29:02.4906157Z   LOOP_MAX_ITERATIONS: 3
+pester-category (dispatcher)	Apply dispatcher profile	2025-10-09T00:29:02.4906270Z   LVCI_DETERMINISTIC: 1
+pester-category (dispatcher)	Apply dispatcher profile	2025-10-09T00:29:02.4906382Z   LOOP_QUANTILE_STRATEGY: Exact
+pester-category (dispatcher)	Apply dispatcher profile	2025-10-09T00:29:02.4906502Z   LOOP_ADAPTIVE: 0
+pester-category (dispatcher)	Apply dispatcher profile	2025-10-09T00:29:02.4906601Z   LOOP_INTERVAL_SECONDS: 0
+pester-category (dispatcher)	Apply dispatcher profile	2025-10-09T00:29:02.4906715Z   LOOP_RECONCILE_EVERY: 0
+pester-category (dispatcher)	Apply dispatcher profile	2025-10-09T00:29:02.4906823Z   LOOP_HISTOGRAM_BINS: 0
+pester-category (dispatcher)	Apply dispatcher profile	2025-10-09T00:29:02.4906933Z ##[endgroup]
+pester-category (dispatcher)	Apply dispatcher profile	2025-10-09T00:29:02.5148378Z ##[group]Run $ErrorActionPreference = 'Stop'
+pester-category (dispatcher)	Apply dispatcher profile	2025-10-09T00:29:02.5148680Z [36;1m$ErrorActionPreference = 'Stop'[0m
+pester-category (dispatcher)	Apply dispatcher profile	2025-10-09T00:29:02.5148887Z [36;1m$to = '0'[0m
+pester-category (dispatcher)	Apply dispatcher profile	2025-10-09T00:29:02.5149056Z [36;1m$emit = 'true'[0m
+pester-category (dispatcher)	Apply dispatcher profile	2025-10-09T00:29:02.5149213Z [36;1m$detect = 'true'[0m
+pester-category (dispatcher)	Apply dispatcher profile	2025-10-09T00:29:02.5149379Z [36;1m$fail = 'false'[0m
+pester-category (dispatcher)	Apply dispatcher profile	2025-10-09T00:29:02.5149556Z [36;1m$kill = 'false'[0m
+pester-category (dispatcher)	Apply dispatcher profile	2025-10-09T00:29:02.5149715Z [36;1m$grace = '3'[0m
+pester-category (dispatcher)	Apply dispatcher profile	2025-10-09T00:29:02.5149871Z [36;1m$cleanBefore = 'false'[0m
+pester-category (dispatcher)	Apply dispatcher profile	2025-10-09T00:29:02.5150045Z [36;1m$cleanAfter  = 'false'[0m
+pester-category (dispatcher)	Apply dispatcher profile	2025-10-09T00:29:02.5150217Z [36;1m$track = 'true'[0m
+pester-category (dispatcher)	Apply dispatcher profile	2025-10-09T00:29:02.5150352Z [36;1m[0m
+pester-category (dispatcher)	Apply dispatcher profile	2025-10-09T00:29:02.5150536Z [36;1m# Env bindings consumed by Invoke-PesterTests.ps1[0m
+pester-category (dispatcher)	Apply dispatcher profile	2025-10-09T00:29:02.5150997Z [36;1mif ($cleanBefore -match '^(1|true)$') { "CLEAN_LABVIEW=1" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8 }[0m
+pester-category (dispatcher)	Apply dispatcher profile	2025-10-09T00:29:02.5151577Z [36;1mif ($cleanAfter  -match '^(1|true)$') { "CLEAN_AFTER=1"   | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8 }[0m
+pester-category (dispatcher)	Apply dispatcher profile	2025-10-09T00:29:02.5152071Z [36;1mif ($track      -match '^(1|true)$') { "SCAN_ARTIFACTS=1"| Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8 }[0m
+pester-category (dispatcher)	Apply dispatcher profile	2025-10-09T00:29:02.5152533Z [36;1mif ($detect     -match '^(1|true)$') { "DETECT_LEAKS=1"  | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8 }[0m
+pester-category (dispatcher)	Apply dispatcher profile	2025-10-09T00:29:02.5153009Z [36;1mif ($fail       -match '^(1|true)$') { "FAIL_ON_LEAKS=1" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8 }[0m
+pester-category (dispatcher)	Apply dispatcher profile	2025-10-09T00:29:02.5153604Z [36;1mif ($kill       -match '^(1|true)$') { "KILL_LEAKS=1"    | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8 }[0m
+pester-category (dispatcher)	Apply dispatcher profile	2025-10-09T00:29:02.5154191Z [36;1mif ($grace) { "LEAK_GRACE_SECONDS=$grace" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8 }[0m
+pester-category (dispatcher)	Apply dispatcher profile	2025-10-09T00:29:02.5154597Z [36;1m[0m
+pester-category (dispatcher)	Apply dispatcher profile	2025-10-09T00:29:02.5154775Z [36;1m# Outputs for dispatcher parameters[0m
+pester-category (dispatcher)	Apply dispatcher profile	2025-10-09T00:29:02.5155155Z [36;1m"timeout_seconds=$to" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8[0m
+pester-category (dispatcher)	Apply dispatcher profile	2025-10-09T00:29:02.5155698Z [36;1m"emit_failures_json_always=$emit" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8[0m
+pester-category (dispatcher)	Apply dispatcher profile	2025-10-09T00:29:02.5156527Z [36;1m[0m
+pester-category (dispatcher)	Apply dispatcher profile	2025-10-09T00:29:02.5156685Z [36;1mif ($env:GITHUB_STEP_SUMMARY) {[0m
+pester-category (dispatcher)	Apply dispatcher profile	2025-10-09T00:29:02.5156931Z [36;1m  $lines = @('### Dispatcher Profile','')[0m
+pester-category (dispatcher)	Apply dispatcher profile	2025-10-09T00:29:02.5161247Z [36;1m  $lines += ('- TimeoutSeconds: {0}' -f $to)[0m
+pester-category (dispatcher)	Apply dispatcher profile	2025-10-09T00:29:02.5161544Z [36;1m  $lines += ('- EmitFailuresJsonAlways: {0}' -f $emit)[0m
+pester-category (dispatcher)	Apply dispatcher profile	2025-10-09T00:29:02.5161837Z [36;1m  $lines += ('- DetectLeaks: {0}' -f $detect)[0m
+pester-category (dispatcher)	Apply dispatcher profile	2025-10-09T00:29:02.5162104Z [36;1m  $lines += ('- FailOnLeaks: {0}' -f $fail)[0m
+pester-category (dispatcher)	Apply dispatcher profile	2025-10-09T00:29:02.5162358Z [36;1m  $lines += ('- KillLeaks: {0}' -f $kill)[0m
+pester-category (dispatcher)	Apply dispatcher profile	2025-10-09T00:29:02.5162630Z [36;1m  $lines += ('- LeakGraceSeconds: {0}' -f $grace)[0m
+pester-category (dispatcher)	Apply dispatcher profile	2025-10-09T00:29:02.5162934Z [36;1m  $lines += ('- CleanLabVIEWBefore: {0}' -f $cleanBefore)[0m
+pester-category (dispatcher)	Apply dispatcher profile	2025-10-09T00:29:02.5164189Z [36;1m  $lines += ('- CleanAfter: {0}' -f $cleanAfter)[0m
+pester-category (dispatcher)	Apply dispatcher profile	2025-10-09T00:29:02.5164470Z [36;1m  $lines += ('- TrackArtifacts: {0}' -f $track)[0m
+pester-category (dispatcher)	Apply dispatcher profile	2025-10-09T00:29:02.5164862Z [36;1m  $lines -join "`n" | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8[0m
+pester-category (dispatcher)	Apply dispatcher profile	2025-10-09T00:29:02.5165209Z [36;1m}[0m
+pester-category (dispatcher)	Apply dispatcher profile	2025-10-09T00:29:02.5175882Z shell: C:\Program Files\PowerShell\7\pwsh.EXE -command ". '{0}'"
+pester-category (dispatcher)	Apply dispatcher profile	2025-10-09T00:29:02.5176291Z env:
+pester-category (dispatcher)	Apply dispatcher profile	2025-10-09T00:29:02.5176480Z   DETECT_LEAKS: 1
+pester-category (dispatcher)	Apply dispatcher profile	2025-10-09T00:29:02.5176695Z   CLEAN_AFTER: 0
+pester-category (dispatcher)	Apply dispatcher profile	2025-10-09T00:29:02.5176901Z   SCAN_ARTIFACTS: 1
+pester-category (dispatcher)	Apply dispatcher profile	2025-10-09T00:29:02.5177120Z   UNBLOCK_GUARD: 0
+pester-category (dispatcher)	Apply dispatcher profile	2025-10-09T00:29:02.5177346Z   LV_SUPPRESS_UI: 0
+pester-category (dispatcher)	Apply dispatcher profile	2025-10-09T00:29:02.5177557Z   WATCH_CONSOLE: 1
+pester-category (dispatcher)	Apply dispatcher profile	2025-10-09T00:29:02.5177928Z   LABVIEW_EXE: C:\\Program Files\\National Instruments\\LabVIEW 2025\\LabVIEW.exe
+pester-category (dispatcher)	Apply dispatcher profile	2025-10-09T00:29:02.5178359Z   LV_BASE_VI: 
+pester-category (dispatcher)	Apply dispatcher profile	2025-10-09T00:29:02.5179472Z   LV_HEAD_VI: 
+pester-category (dispatcher)	Apply dispatcher profile	2025-10-09T00:29:02.5179677Z   LOOP_MAX_ITERATIONS: 3
+pester-category (dispatcher)	Apply dispatcher profile	2025-10-09T00:29:02.5179932Z   LVCI_DETERMINISTIC: 1
+pester-category (dispatcher)	Apply dispatcher profile	2025-10-09T00:29:02.5180177Z   LOOP_QUANTILE_STRATEGY: Exact
+pester-category (dispatcher)	Apply dispatcher profile	2025-10-09T00:29:02.5180440Z   LOOP_ADAPTIVE: 0
+pester-category (dispatcher)	Apply dispatcher profile	2025-10-09T00:29:02.5180666Z   LOOP_INTERVAL_SECONDS: 0
+pester-category (dispatcher)	Apply dispatcher profile	2025-10-09T00:29:02.5180913Z   LOOP_RECONCILE_EVERY: 0
+pester-category (dispatcher)	Apply dispatcher profile	2025-10-09T00:29:02.5181155Z   LOOP_HISTOGRAM_BINS: 0
+pester-category (dispatcher)	Apply dispatcher profile	2025-10-09T00:29:02.5181389Z ##[endgroup]
+pester-category (dispatcher)	Define category patterns	﻿2025-10-09T00:29:02.9803630Z ##[group]Run $cat='dispatcher'
+pester-category (dispatcher)	Define category patterns	2025-10-09T00:29:02.9803880Z [36;1m$cat='dispatcher'[0m
+pester-category (dispatcher)	Define category patterns	2025-10-09T00:29:02.9804019Z [36;1mswitch ($cat) {[0m
+pester-category (dispatcher)	Define category patterns	2025-10-09T00:29:02.9804312Z [36;1m  'dispatcher' { $inc = @('Invoke-PesterTests*.ps1','PesterAvailability.Tests.ps1','NestedDispatcher*.Tests.ps1') }[0m
+pester-category (dispatcher)	Define category patterns	2025-10-09T00:29:02.9804837Z [36;1m  'fixtures'   { $inc = @('Fixtures.*.ps1','FixtureValidation*.ps1','FixtureSummary*.ps1','ViBinaryHandling.Tests.ps1','FixtureValidationDiff.Tests.ps1') }[0m
+pester-category (dispatcher)	Define category patterns	2025-10-09T00:29:02.9805235Z [36;1m  'schema'     { $inc = @('Schema.*.ps1','SchemaLite*.ps1') }[0m
+pester-category (dispatcher)	Define category patterns	2025-10-09T00:29:02.9805530Z [36;1m  'comparevi'  { $inc = @('CompareVI*.ps1','CanonicalCli.Tests.ps1','Args.Tokenization.Tests.ps1') }[0m
+pester-category (dispatcher)	Define category patterns	2025-10-09T00:29:02.9806031Z [36;1m  'loop'       { $inc = @('CompareLoop*.ps1','Run-AutonomousIntegrationLoop*.ps1','LoopMetrics.Tests.ps1','Integration-ControlLoop*.ps1','IntegrationControlLoop*.ps1') }[0m
+pester-category (dispatcher)	Define category patterns	2025-10-09T00:29:02.9806565Z [36;1m  'psummary'   { $inc = @('PesterSummary*.ps1','Write-PesterSummaryToStepSummary*.ps1','AggregationHints*.ps1') }[0m
+pester-category (dispatcher)	Define category patterns	2025-10-09T00:29:02.9807355Z [36;1m  'workflow'   { $inc = @('Workflow*.ps1','On-FixtureValidationFail.Tests.ps1','Watch.FlakyRecovery.Tests.ps1','FunctionShadowing*.ps1','FunctionProxy.Tests.ps1','RunSummary.Tool*.ps1','Action.CompositeOutputs.Tests.ps1','Binding.MinRepro.Tests.ps1','ArtifactTracking*.ps1','Guard.*.Tests.ps1') }[0m
+pester-category (dispatcher)	Define category patterns	2025-10-09T00:29:02.9808036Z [36;1m  default      { $inc = @('*.ps1') }[0m
+pester-category (dispatcher)	Define category patterns	2025-10-09T00:29:02.9808184Z [36;1m}[0m
+pester-category (dispatcher)	Define category patterns	2025-10-09T00:29:02.9808385Z [36;1m"include=$($inc -join ',')" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8[0m
+pester-category (dispatcher)	Define category patterns	2025-10-09T00:29:02.9813926Z shell: C:\Program Files\PowerShell\7\pwsh.EXE -command ". '{0}'"
+pester-category (dispatcher)	Define category patterns	2025-10-09T00:29:02.9814816Z env:
+pester-category (dispatcher)	Define category patterns	2025-10-09T00:29:02.9814922Z   DETECT_LEAKS: 1
+pester-category (dispatcher)	Define category patterns	2025-10-09T00:29:02.9815029Z   CLEAN_AFTER: 0
+pester-category (dispatcher)	Define category patterns	2025-10-09T00:29:02.9815136Z   SCAN_ARTIFACTS: 1
+pester-category (dispatcher)	Define category patterns	2025-10-09T00:29:02.9815240Z   UNBLOCK_GUARD: 0
+pester-category (dispatcher)	Define category patterns	2025-10-09T00:29:02.9815354Z   LV_SUPPRESS_UI: 0
+pester-category (dispatcher)	Define category patterns	2025-10-09T00:29:02.9815457Z   WATCH_CONSOLE: 1
+pester-category (dispatcher)	Define category patterns	2025-10-09T00:29:02.9815641Z   LABVIEW_EXE: C:\\Program Files\\National Instruments\\LabVIEW 2025\\LabVIEW.exe
+pester-category (dispatcher)	Define category patterns	2025-10-09T00:29:02.9815855Z   LV_BASE_VI: 
+pester-category (dispatcher)	Define category patterns	2025-10-09T00:29:02.9815950Z   LV_HEAD_VI: 
+pester-category (dispatcher)	Define category patterns	2025-10-09T00:29:02.9816056Z   LOOP_MAX_ITERATIONS: 3
+pester-category (dispatcher)	Define category patterns	2025-10-09T00:29:02.9816180Z   LVCI_DETERMINISTIC: 1
+pester-category (dispatcher)	Define category patterns	2025-10-09T00:29:02.9816307Z   LOOP_QUANTILE_STRATEGY: Exact
+pester-category (dispatcher)	Define category patterns	2025-10-09T00:29:02.9816432Z   LOOP_ADAPTIVE: 0
+pester-category (dispatcher)	Define category patterns	2025-10-09T00:29:02.9816544Z   LOOP_INTERVAL_SECONDS: 0
+pester-category (dispatcher)	Define category patterns	2025-10-09T00:29:02.9816668Z   LOOP_RECONCILE_EVERY: 0
+pester-category (dispatcher)	Define category patterns	2025-10-09T00:29:02.9816789Z   LOOP_HISTOGRAM_BINS: 0
+pester-category (dispatcher)	Define category patterns	2025-10-09T00:29:02.9816903Z   LEAK_GRACE_SECONDS: 3
+pester-category (dispatcher)	Define category patterns	2025-10-09T00:29:02.9817019Z ##[endgroup]
+pester-category (dispatcher)	Wire Probe (T1)	﻿2025-10-09T00:29:03.4281650Z Prepare all required actions
+pester-category (dispatcher)	Wire Probe (T1)	2025-10-09T00:29:03.4343277Z ##[group]Run ./.github/actions/wire-probe
+pester-category (dispatcher)	Wire Probe (T1)	2025-10-09T00:29:03.4343443Z with:
+pester-category (dispatcher)	Wire Probe (T1)	2025-10-09T00:29:03.4343551Z   phase: T1
+pester-category (dispatcher)	Wire Probe (T1)	2025-10-09T00:29:03.4343668Z   results-dir: tests/results/dispatcher
+pester-category (dispatcher)	Wire Probe (T1)	2025-10-09T00:29:03.4343832Z   append-summary: true
+pester-category (dispatcher)	Wire Probe (T1)	2025-10-09T00:29:03.4343942Z env:
+pester-category (dispatcher)	Wire Probe (T1)	2025-10-09T00:29:03.4344043Z   DETECT_LEAKS: 1
+pester-category (dispatcher)	Wire Probe (T1)	2025-10-09T00:29:03.4344150Z   CLEAN_AFTER: 0
+pester-category (dispatcher)	Wire Probe (T1)	2025-10-09T00:29:03.4344261Z   SCAN_ARTIFACTS: 1
+pester-category (dispatcher)	Wire Probe (T1)	2025-10-09T00:29:03.4344372Z   UNBLOCK_GUARD: 0
+pester-category (dispatcher)	Wire Probe (T1)	2025-10-09T00:29:03.4344481Z   LV_SUPPRESS_UI: 0
+pester-category (dispatcher)	Wire Probe (T1)	2025-10-09T00:29:03.4344593Z   WATCH_CONSOLE: 1
+pester-category (dispatcher)	Wire Probe (T1)	2025-10-09T00:29:03.4344780Z   LABVIEW_EXE: C:\\Program Files\\National Instruments\\LabVIEW 2025\\LabVIEW.exe
+pester-category (dispatcher)	Wire Probe (T1)	2025-10-09T00:29:03.4345036Z   LV_BASE_VI: 
+pester-category (dispatcher)	Wire Probe (T1)	2025-10-09T00:29:03.4345180Z   LV_HEAD_VI: 
+pester-category (dispatcher)	Wire Probe (T1)	2025-10-09T00:29:03.4345294Z   LOOP_MAX_ITERATIONS: 3
+pester-category (dispatcher)	Wire Probe (T1)	2025-10-09T00:29:03.4345418Z   LVCI_DETERMINISTIC: 1
+pester-category (dispatcher)	Wire Probe (T1)	2025-10-09T00:29:03.4345548Z   LOOP_QUANTILE_STRATEGY: Exact
+pester-category (dispatcher)	Wire Probe (T1)	2025-10-09T00:29:03.4345710Z   LOOP_ADAPTIVE: 0
+pester-category (dispatcher)	Wire Probe (T1)	2025-10-09T00:29:03.4345828Z   LOOP_INTERVAL_SECONDS: 0
+pester-category (dispatcher)	Wire Probe (T1)	2025-10-09T00:29:03.4345955Z   LOOP_RECONCILE_EVERY: 0
+pester-category (dispatcher)	Wire Probe (T1)	2025-10-09T00:29:03.4346089Z   LOOP_HISTOGRAM_BINS: 0
+pester-category (dispatcher)	Wire Probe (T1)	2025-10-09T00:29:03.4346207Z   LEAK_GRACE_SECONDS: 3
+pester-category (dispatcher)	Wire Probe (T1)	2025-10-09T00:29:03.4346329Z ##[endgroup]
+pester-category (dispatcher)	Wire Probe (T1)	2025-10-09T00:29:03.4598416Z ##[group]Run $ErrorActionPreference = 'Stop'
+pester-category (dispatcher)	Wire Probe (T1)	2025-10-09T00:29:03.4598652Z [36;1m$ErrorActionPreference = 'Stop'[0m
+pester-category (dispatcher)	Wire Probe (T1)	2025-10-09T00:29:03.4598813Z [36;1m$phase = 'T1'[0m
+pester-category (dispatcher)	Wire Probe (T1)	2025-10-09T00:29:03.4598943Z [36;1m$rd = 'tests/results/dispatcher'[0m
+pester-category (dispatcher)	Wire Probe (T1)	2025-10-09T00:29:03.4599179Z [36;1mif ([string]::IsNullOrWhiteSpace($rd)) { $rd = 'results/fixture-drift' }[0m
+pester-category (dispatcher)	Wire Probe (T1)	2025-10-09T00:29:03.4599411Z [36;1m$wireDir = Join-Path $rd '_wire'[0m
+pester-category (dispatcher)	Wire Probe (T1)	2025-10-09T00:29:03.4599634Z [36;1mNew-Item -ItemType Directory -Force -Path $wireDir | Out-Null[0m
+pester-category (dispatcher)	Wire Probe (T1)	2025-10-09T00:29:03.4599848Z [36;1m$payload = [ordered]@{[0m
+pester-category (dispatcher)	Wire Probe (T1)	2025-10-09T00:29:03.4599984Z [36;1m  phase     = $phase[0m
+pester-category (dispatcher)	Wire Probe (T1)	2025-10-09T00:29:03.4600172Z [36;1m  timestamp = (Get-Date).ToUniversalTime().ToString('o')[0m
+pester-category (dispatcher)	Wire Probe (T1)	2025-10-09T00:29:03.4600381Z [36;1m  runner    = [ordered]@{[0m
+pester-category (dispatcher)	Wire Probe (T1)	2025-10-09T00:29:03.4600521Z [36;1m    os   = $env:RUNNER_OS[0m
+pester-category (dispatcher)	Wire Probe (T1)	2025-10-09T00:29:03.4600656Z [36;1m    name = $env:RUNNER_NAME[0m
+pester-category (dispatcher)	Wire Probe (T1)	2025-10-09T00:29:03.4600814Z [36;1m    arch = $env:PROCESSOR_ARCHITECTURE[0m
+pester-category (dispatcher)	Wire Probe (T1)	2025-10-09T00:29:03.4600960Z [36;1m  }[0m
+pester-category (dispatcher)	Wire Probe (T1)	2025-10-09T00:29:03.4601070Z [36;1m  github    = [ordered]@{[0m
+pester-category (dispatcher)	Wire Probe (T1)	2025-10-09T00:29:03.4601217Z [36;1m    run_id   = $env:GITHUB_RUN_ID[0m
+pester-category (dispatcher)	Wire Probe (T1)	2025-10-09T00:29:03.4601365Z [36;1m    job      = $env:GITHUB_JOB[0m
+pester-category (dispatcher)	Wire Probe (T1)	2025-10-09T00:29:03.4601512Z [36;1m    ref      = $env:GITHUB_REF[0m
+pester-category (dispatcher)	Wire Probe (T1)	2025-10-09T00:29:03.4601647Z [36;1m    sha      = $env:GITHUB_SHA[0m
+pester-category (dispatcher)	Wire Probe (T1)	2025-10-09T00:29:03.4601794Z [36;1m    actor    = $env:GITHUB_ACTOR[0m
+pester-category (dispatcher)	Wire Probe (T1)	2025-10-09T00:29:03.4601947Z [36;1m    workflow = $env:GITHUB_WORKFLOW[0m
+pester-category (dispatcher)	Wire Probe (T1)	2025-10-09T00:29:03.4602093Z [36;1m  }[0m
+pester-category (dispatcher)	Wire Probe (T1)	2025-10-09T00:29:03.4602187Z [36;1m}[0m
+pester-category (dispatcher)	Wire Probe (T1)	2025-10-09T00:29:03.4602330Z [36;1m$outPath = Join-Path $wireDir ("{0}.json" -f $phase)[0m
+pester-category (dispatcher)	Wire Probe (T1)	2025-10-09T00:29:03.4602926Z [36;1m($payload | ConvertTo-Json -Depth 6) | Out-File -FilePath $outPath -Encoding utf8[0m
+pester-category (dispatcher)	Wire Probe (T1)	2025-10-09T00:29:03.4603182Z [36;1mWrite-Host ("wire: wrote {0}" -f $outPath)[0m
+pester-category (dispatcher)	Wire Probe (T1)	2025-10-09T00:29:03.4603392Z [36;1mif ('true' -eq 'true' -and $env:GITHUB_STEP_SUMMARY) {[0m
+pester-category (dispatcher)	Wire Probe (T1)	2025-10-09T00:29:03.4603608Z [36;1m  $lines = @("### Wire", "- phase=$phase", "- path=$outPath")[0m
+pester-category (dispatcher)	Wire Probe (T1)	2025-10-09T00:29:03.4603885Z [36;1m  ($lines -join "`n") | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8[0m
+pester-category (dispatcher)	Wire Probe (T1)	2025-10-09T00:29:03.4604112Z [36;1m}[0m
+pester-category (dispatcher)	Wire Probe (T1)	2025-10-09T00:29:03.4609635Z shell: C:\Program Files\PowerShell\7\pwsh.EXE -command ". '{0}'"
+pester-category (dispatcher)	Wire Probe (T1)	2025-10-09T00:29:03.4609831Z env:
+pester-category (dispatcher)	Wire Probe (T1)	2025-10-09T00:29:03.4609940Z   DETECT_LEAKS: 1
+pester-category (dispatcher)	Wire Probe (T1)	2025-10-09T00:29:03.4610046Z   CLEAN_AFTER: 0
+pester-category (dispatcher)	Wire Probe (T1)	2025-10-09T00:29:03.4610161Z   SCAN_ARTIFACTS: 1
+pester-category (dispatcher)	Wire Probe (T1)	2025-10-09T00:29:03.4610275Z   UNBLOCK_GUARD: 0
+pester-category (dispatcher)	Wire Probe (T1)	2025-10-09T00:29:03.4610382Z   LV_SUPPRESS_UI: 0
+pester-category (dispatcher)	Wire Probe (T1)	2025-10-09T00:29:03.4612464Z   WATCH_CONSOLE: 1
+pester-category (dispatcher)	Wire Probe (T1)	2025-10-09T00:29:03.4612649Z   LABVIEW_EXE: C:\\Program Files\\National Instruments\\LabVIEW 2025\\LabVIEW.exe
+pester-category (dispatcher)	Wire Probe (T1)	2025-10-09T00:29:03.4612861Z   LV_BASE_VI: 
+pester-category (dispatcher)	Wire Probe (T1)	2025-10-09T00:29:03.4612960Z   LV_HEAD_VI: 
+pester-category (dispatcher)	Wire Probe (T1)	2025-10-09T00:29:03.4613070Z   LOOP_MAX_ITERATIONS: 3
+pester-category (dispatcher)	Wire Probe (T1)	2025-10-09T00:29:03.4613195Z   LVCI_DETERMINISTIC: 1
+pester-category (dispatcher)	Wire Probe (T1)	2025-10-09T00:29:03.4613324Z   LOOP_QUANTILE_STRATEGY: Exact
+pester-category (dispatcher)	Wire Probe (T1)	2025-10-09T00:29:03.4613458Z   LOOP_ADAPTIVE: 0
+pester-category (dispatcher)	Wire Probe (T1)	2025-10-09T00:29:03.4613566Z   LOOP_INTERVAL_SECONDS: 0
+pester-category (dispatcher)	Wire Probe (T1)	2025-10-09T00:29:03.4613692Z   LOOP_RECONCILE_EVERY: 0
+pester-category (dispatcher)	Wire Probe (T1)	2025-10-09T00:29:03.4613813Z   LOOP_HISTOGRAM_BINS: 0
+pester-category (dispatcher)	Wire Probe (T1)	2025-10-09T00:29:03.4613934Z   LEAK_GRACE_SECONDS: 3
+pester-category (dispatcher)	Wire Probe (T1)	2025-10-09T00:29:03.4614045Z ##[endgroup]
+pester-category (dispatcher)	Wire Probe (T1)	2025-10-09T00:29:03.8193434Z wire: wrote tests\results\dispatcher\_wire\T1.json
+pester-category (dispatcher)	Ensure session index (fallback)	﻿2025-10-09T00:29:03.9687039Z ##[group]Run pwsh -File tools/Ensure-SessionIndex.ps1 -ResultsDir "tests/results/dispatcher" -SummaryJson 'pester-summary.json'
+pester-category (dispatcher)	Ensure session index (fallback)	2025-10-09T00:29:03.9687648Z [36;1mpwsh -File tools/Ensure-SessionIndex.ps1 -ResultsDir "tests/results/dispatcher" -SummaryJson 'pester-summary.json'[0m
+pester-category (dispatcher)	Ensure session index (fallback)	2025-10-09T00:29:03.9693354Z shell: C:\Program Files\PowerShell\7\pwsh.EXE -command ". '{0}'"
+pester-category (dispatcher)	Ensure session index (fallback)	2025-10-09T00:29:03.9694071Z env:
+pester-category (dispatcher)	Ensure session index (fallback)	2025-10-09T00:29:03.9694365Z   DETECT_LEAKS: 1
+pester-category (dispatcher)	Ensure session index (fallback)	2025-10-09T00:29:03.9694538Z   CLEAN_AFTER: 0
+pester-category (dispatcher)	Ensure session index (fallback)	2025-10-09T00:29:03.9694695Z   SCAN_ARTIFACTS: 1
+pester-category (dispatcher)	Ensure session index (fallback)	2025-10-09T00:29:03.9694842Z   UNBLOCK_GUARD: 0
+pester-category (dispatcher)	Ensure session index (fallback)	2025-10-09T00:29:03.9694991Z   LV_SUPPRESS_UI: 0
+pester-category (dispatcher)	Ensure session index (fallback)	2025-10-09T00:29:03.9695203Z   WATCH_CONSOLE: 1
+pester-category (dispatcher)	Ensure session index (fallback)	2025-10-09T00:29:03.9695470Z   LABVIEW_EXE: C:\\Program Files\\National Instruments\\LabVIEW 2025\\LabVIEW.exe
+pester-category (dispatcher)	Ensure session index (fallback)	2025-10-09T00:29:03.9695861Z   LV_BASE_VI: 
+pester-category (dispatcher)	Ensure session index (fallback)	2025-10-09T00:29:03.9696033Z   LV_HEAD_VI: 
+pester-category (dispatcher)	Ensure session index (fallback)	2025-10-09T00:29:03.9696205Z   LOOP_MAX_ITERATIONS: 3
+pester-category (dispatcher)	Ensure session index (fallback)	2025-10-09T00:29:03.9696343Z   LVCI_DETERMINISTIC: 1
+pester-category (dispatcher)	Ensure session index (fallback)	2025-10-09T00:29:03.9696539Z   LOOP_QUANTILE_STRATEGY: Exact
+pester-category (dispatcher)	Ensure session index (fallback)	2025-10-09T00:29:03.9696688Z   LOOP_ADAPTIVE: 0
+pester-category (dispatcher)	Ensure session index (fallback)	2025-10-09T00:29:03.9696849Z   LOOP_INTERVAL_SECONDS: 0
+pester-category (dispatcher)	Ensure session index (fallback)	2025-10-09T00:29:03.9696988Z   LOOP_RECONCILE_EVERY: 0
+pester-category (dispatcher)	Ensure session index (fallback)	2025-10-09T00:29:03.9697114Z   LOOP_HISTOGRAM_BINS: 0
+pester-category (dispatcher)	Ensure session index (fallback)	2025-10-09T00:29:03.9697233Z   LEAK_GRACE_SECONDS: 3
+pester-category (dispatcher)	Ensure session index (fallback)	2025-10-09T00:29:03.9697352Z ##[endgroup]
+pester-category (dispatcher)	Ensure session index (fallback)	2025-10-09T00:29:04.5645120Z Fallback session index created at: tests\results\dispatcher\session-index.json
+pester-category (dispatcher)	Session index post	﻿2025-10-09T00:29:04.8276991Z Prepare all required actions
+pester-category (dispatcher)	Session index post	2025-10-09T00:29:04.8277401Z Getting action download info
+pester-category (dispatcher)	Session index post	2025-10-09T00:29:05.0599803Z ##[group]Run ./.github/actions/session-index-post
+pester-category (dispatcher)	Session index post	2025-10-09T00:29:05.0600720Z with:
+pester-category (dispatcher)	Session index post	2025-10-09T00:29:05.0601298Z   results-dir: tests/results/dispatcher
+pester-category (dispatcher)	Session index post	2025-10-09T00:29:05.0602065Z   validate-schema: true
+pester-category (dispatcher)	Session index post	2025-10-09T00:29:05.0602654Z   upload: true
+pester-category (dispatcher)	Session index post	2025-10-09T00:29:05.0603242Z   artifact-name: session-index-dispatcher
+pester-category (dispatcher)	Session index post	2025-10-09T00:29:05.0604004Z env:
+pester-category (dispatcher)	Session index post	2025-10-09T00:29:05.0604432Z   DETECT_LEAKS: 1
+pester-category (dispatcher)	Session index post	2025-10-09T00:29:05.0604944Z   CLEAN_AFTER: 0
+pester-category (dispatcher)	Session index post	2025-10-09T00:29:05.0605442Z   SCAN_ARTIFACTS: 1
+pester-category (dispatcher)	Session index post	2025-10-09T00:29:05.0605974Z   UNBLOCK_GUARD: 0
+pester-category (dispatcher)	Session index post	2025-10-09T00:29:05.0606486Z   LV_SUPPRESS_UI: 0
+pester-category (dispatcher)	Session index post	2025-10-09T00:29:05.0608339Z   WATCH_CONSOLE: 1
+pester-category (dispatcher)	Session index post	2025-10-09T00:29:05.0609284Z   LABVIEW_EXE: C:\\Program Files\\National Instruments\\LabVIEW 2025\\LabVIEW.exe
+pester-category (dispatcher)	Session index post	2025-10-09T00:29:05.0610420Z   LV_BASE_VI: 
+pester-category (dispatcher)	Session index post	2025-10-09T00:29:05.0610910Z   LV_HEAD_VI: 
+pester-category (dispatcher)	Session index post	2025-10-09T00:29:05.0611408Z   LOOP_MAX_ITERATIONS: 3
+pester-category (dispatcher)	Session index post	2025-10-09T00:29:05.0612150Z   LVCI_DETERMINISTIC: 1
+pester-category (dispatcher)	Session index post	2025-10-09T00:29:05.0612891Z   LOOP_QUANTILE_STRATEGY: Exact
+pester-category (dispatcher)	Session index post	2025-10-09T00:29:05.0613665Z   LOOP_ADAPTIVE: 0
+pester-category (dispatcher)	Session index post	2025-10-09T00:29:05.0614215Z   LOOP_INTERVAL_SECONDS: 0
+pester-category (dispatcher)	Session index post	2025-10-09T00:29:05.0614829Z   LOOP_RECONCILE_EVERY: 0
+pester-category (dispatcher)	Session index post	2025-10-09T00:29:05.0615438Z   LOOP_HISTOGRAM_BINS: 0
+pester-category (dispatcher)	Session index post	2025-10-09T00:29:05.0616029Z   LEAK_GRACE_SECONDS: 3
+pester-category (dispatcher)	Session index post	2025-10-09T00:29:05.0616569Z ##[endgroup]
+pester-category (dispatcher)	Session index post	2025-10-09T00:29:05.1053933Z ##[group]Run $dir = 'tests/results/dispatcher'
+pester-category (dispatcher)	Session index post	2025-10-09T00:29:05.1054164Z [36;1m$dir = 'tests/results/dispatcher'[0m
+pester-category (dispatcher)	Session index post	2025-10-09T00:29:05.1054421Z [36;1m$idx = Join-Path $dir 'session-index.json'[0m
+pester-category (dispatcher)	Session index post	2025-10-09T00:29:05.1054612Z [36;1mif (Test-Path $idx) {[0m
+pester-category (dispatcher)	Session index post	2025-10-09T00:29:05.1054765Z [36;1m  try {[0m
+pester-category (dispatcher)	Session index post	2025-10-09T00:29:05.1054958Z [36;1m    $j = Get-Content $idx -Raw | ConvertFrom-Json -ErrorAction Stop[0m
+pester-category (dispatcher)	Session index post	2025-10-09T00:29:05.1055167Z [36;1m    if ($j.stepSummary) {[0m
+pester-category (dispatcher)	Session index post	2025-10-09T00:29:05.1055413Z [36;1m      $j.stepSummary | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8[0m
+pester-category (dispatcher)	Session index post	2025-10-09T00:29:05.1055660Z [36;1m    } else {[0m
+pester-category (dispatcher)	Session index post	2025-10-09T00:29:05.1055913Z [36;1m      ("Session index available: {0}" -f $idx) | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8[0m
+pester-category (dispatcher)	Session index post	2025-10-09T00:29:05.1056182Z [36;1m    }[0m
+pester-category (dispatcher)	Session index post	2025-10-09T00:29:05.1056349Z [36;1m  } catch { Write-Host "::warning::Failed to read session index: $_" }[0m
+pester-category (dispatcher)	Session index post	2025-10-09T00:29:05.1056547Z [36;1m} else {[0m
+pester-category (dispatcher)	Session index post	2025-10-09T00:29:05.1056711Z [36;1m  Write-Host '::notice::session-index.json not found.'[0m
+pester-category (dispatcher)	Session index post	2025-10-09T00:29:05.1056887Z [36;1m}[0m
+pester-category (dispatcher)	Session index post	2025-10-09T00:29:05.1062544Z shell: C:\Program Files\PowerShell\7\pwsh.EXE -command ". '{0}'"
+pester-category (dispatcher)	Session index post	2025-10-09T00:29:05.1062757Z env:
+pester-category (dispatcher)	Session index post	2025-10-09T00:29:05.1062868Z   DETECT_LEAKS: 1
+pester-category (dispatcher)	Session index post	2025-10-09T00:29:05.1062971Z   CLEAN_AFTER: 0
+pester-category (dispatcher)	Session index post	2025-10-09T00:29:05.1063076Z   SCAN_ARTIFACTS: 1
+pester-category (dispatcher)	Session index post	2025-10-09T00:29:05.1063187Z   UNBLOCK_GUARD: 0
+pester-category (dispatcher)	Session index post	2025-10-09T00:29:05.1072941Z   LV_SUPPRESS_UI: 0
+pester-category (dispatcher)	Session index post	2025-10-09T00:29:05.1073103Z   WATCH_CONSOLE: 1
+pester-category (dispatcher)	Session index post	2025-10-09T00:29:05.1073301Z   LABVIEW_EXE: C:\\Program Files\\National Instruments\\LabVIEW 2025\\LabVIEW.exe
+pester-category (dispatcher)	Session index post	2025-10-09T00:29:05.1073519Z   LV_BASE_VI: 
+pester-category (dispatcher)	Session index post	2025-10-09T00:29:05.1073621Z   LV_HEAD_VI: 
+pester-category (dispatcher)	Session index post	2025-10-09T00:29:05.1073732Z   LOOP_MAX_ITERATIONS: 3
+pester-category (dispatcher)	Session index post	2025-10-09T00:29:05.1073856Z   LVCI_DETERMINISTIC: 1
+pester-category (dispatcher)	Session index post	2025-10-09T00:29:05.1073981Z   LOOP_QUANTILE_STRATEGY: Exact
+pester-category (dispatcher)	Session index post	2025-10-09T00:29:05.1074107Z   LOOP_ADAPTIVE: 0
+pester-category (dispatcher)	Session index post	2025-10-09T00:29:05.1074225Z   LOOP_INTERVAL_SECONDS: 0
+pester-category (dispatcher)	Session index post	2025-10-09T00:29:05.1074350Z   LOOP_RECONCILE_EVERY: 0
+pester-category (dispatcher)	Session index post	2025-10-09T00:29:05.1074468Z   LOOP_HISTOGRAM_BINS: 0
+pester-category (dispatcher)	Session index post	2025-10-09T00:29:05.1074585Z   LEAK_GRACE_SECONDS: 3
+pester-category (dispatcher)	Session index post	2025-10-09T00:29:05.1074694Z ##[endgroup]
+pester-category (dispatcher)	Session index post	2025-10-09T00:29:05.5718041Z ##[group]Run $dir = 'tests/results/dispatcher'
+pester-category (dispatcher)	Session index post	2025-10-09T00:29:05.5718252Z [36;1m$dir = 'tests/results/dispatcher'[0m
+pester-category (dispatcher)	Session index post	2025-10-09T00:29:05.5718426Z [36;1m$idx = Join-Path $dir 'session-index.json'[0m
+pester-category (dispatcher)	Session index post	2025-10-09T00:29:05.5718587Z [36;1mif (Test-Path $idx) {[0m
+pester-category (dispatcher)	Session index post	2025-10-09T00:29:05.5721109Z [36;1m  pwsh -File tools/Invoke-JsonSchemaLite.ps1 -JsonPath $idx -SchemaPath docs/schemas/session-index-v1.schema.json[0m
+pester-category (dispatcher)	Session index post	2025-10-09T00:29:05.5721564Z [36;1m  if ($LASTEXITCODE -ne 0) { Write-Host "::warning::Schema-lite returned $LASTEXITCODE for session index" }[0m
+pester-category (dispatcher)	Session index post	2025-10-09T00:29:05.5722105Z [36;1m} else { Write-Host '::notice::session-index.json not present for validation.' }[0m
+pester-category (dispatcher)	Session index post	2025-10-09T00:29:05.5733434Z shell: C:\Program Files\PowerShell\7\pwsh.EXE -command ". '{0}'"
+pester-category (dispatcher)	Session index post	2025-10-09T00:29:05.5733636Z env:
+pester-category (dispatcher)	Session index post	2025-10-09T00:29:05.5733746Z   DETECT_LEAKS: 1
+pester-category (dispatcher)	Session index post	2025-10-09T00:29:05.5733855Z   CLEAN_AFTER: 0
+pester-category (dispatcher)	Session index post	2025-10-09T00:29:05.5733967Z   SCAN_ARTIFACTS: 1
+pester-category (dispatcher)	Session index post	2025-10-09T00:29:05.5734382Z   UNBLOCK_GUARD: 0
+pester-category (dispatcher)	Session index post	2025-10-09T00:29:05.5734498Z   LV_SUPPRESS_UI: 0
+pester-category (dispatcher)	Session index post	2025-10-09T00:29:05.5734597Z   WATCH_CONSOLE: 1
+pester-category (dispatcher)	Session index post	2025-10-09T00:29:05.5734776Z   LABVIEW_EXE: C:\\Program Files\\National Instruments\\LabVIEW 2025\\LabVIEW.exe
+pester-category (dispatcher)	Session index post	2025-10-09T00:29:05.5734972Z   LV_BASE_VI: 
+pester-category (dispatcher)	Session index post	2025-10-09T00:29:05.5735075Z   LV_HEAD_VI: 
+pester-category (dispatcher)	Session index post	2025-10-09T00:29:05.5735184Z   LOOP_MAX_ITERATIONS: 3
+pester-category (dispatcher)	Session index post	2025-10-09T00:29:05.5735301Z   LVCI_DETERMINISTIC: 1
+pester-category (dispatcher)	Session index post	2025-10-09T00:29:05.5735418Z   LOOP_QUANTILE_STRATEGY: Exact
+pester-category (dispatcher)	Session index post	2025-10-09T00:29:05.5735537Z   LOOP_ADAPTIVE: 0
+pester-category (dispatcher)	Session index post	2025-10-09T00:29:05.5735641Z   LOOP_INTERVAL_SECONDS: 0
+pester-category (dispatcher)	Session index post	2025-10-09T00:29:05.5735755Z   LOOP_RECONCILE_EVERY: 0
+pester-category (dispatcher)	Session index post	2025-10-09T00:29:05.5735877Z   LOOP_HISTOGRAM_BINS: 0
+pester-category (dispatcher)	Session index post	2025-10-09T00:29:05.5735984Z   LEAK_GRACE_SECONDS: 3
+pester-category (dispatcher)	Session index post	2025-10-09T00:29:05.5736100Z ##[endgroup]
+pester-category (dispatcher)	Session index post	2025-10-09T00:29:06.2660905Z Schema-lite validation passed.
+pester-category (dispatcher)	Session index post	2025-10-09T00:29:06.5539382Z ##[group]Run actions/upload-artifact@v4
+pester-category (dispatcher)	Session index post	2025-10-09T00:29:06.5539570Z with:
+pester-category (dispatcher)	Session index post	2025-10-09T00:29:06.5539694Z   name: session-index-dispatcher
+pester-category (dispatcher)	Session index post	2025-10-09T00:29:06.5539886Z   path: tests/results/dispatcher/session-index.json
+pester-category (dispatcher)	Session index post	2025-10-09T00:29:06.5540080Z   if-no-files-found: warn
+pester-category (dispatcher)	Session index post	2025-10-09T00:29:06.5540211Z   compression-level: 6
+pester-category (dispatcher)	Session index post	2025-10-09T00:29:06.5540335Z   overwrite: false
+pester-category (dispatcher)	Session index post	2025-10-09T00:29:06.5540452Z   include-hidden-files: false
+pester-category (dispatcher)	Session index post	2025-10-09T00:29:06.5540592Z env:
+pester-category (dispatcher)	Session index post	2025-10-09T00:29:06.5540685Z   DETECT_LEAKS: 1
+pester-category (dispatcher)	Session index post	2025-10-09T00:29:06.5540798Z   CLEAN_AFTER: 0
+pester-category (dispatcher)	Session index post	2025-10-09T00:29:06.5540907Z   SCAN_ARTIFACTS: 1
+pester-category (dispatcher)	Session index post	2025-10-09T00:29:06.5541012Z   UNBLOCK_GUARD: 0
+pester-category (dispatcher)	Session index post	2025-10-09T00:29:06.5541123Z   LV_SUPPRESS_UI: 0
+pester-category (dispatcher)	Session index post	2025-10-09T00:29:06.5541225Z   WATCH_CONSOLE: 1
+pester-category (dispatcher)	Session index post	2025-10-09T00:29:06.5541413Z   LABVIEW_EXE: C:\\Program Files\\National Instruments\\LabVIEW 2025\\LabVIEW.exe
+pester-category (dispatcher)	Session index post	2025-10-09T00:29:06.5541623Z   LV_BASE_VI: 
+pester-category (dispatcher)	Session index post	2025-10-09T00:29:06.5541731Z   LV_HEAD_VI: 
+pester-category (dispatcher)	Session index post	2025-10-09T00:29:06.5541836Z   LOOP_MAX_ITERATIONS: 3
+pester-category (dispatcher)	Session index post	2025-10-09T00:29:06.5541961Z   LVCI_DETERMINISTIC: 1
+pester-category (dispatcher)	Session index post	2025-10-09T00:29:06.5542081Z   LOOP_QUANTILE_STRATEGY: Exact
+pester-category (dispatcher)	Session index post	2025-10-09T00:29:06.5542216Z   LOOP_ADAPTIVE: 0
+pester-category (dispatcher)	Session index post	2025-10-09T00:29:06.5542327Z   LOOP_INTERVAL_SECONDS: 0
+pester-category (dispatcher)	Session index post	2025-10-09T00:29:06.5542450Z   LOOP_RECONCILE_EVERY: 0
+pester-category (dispatcher)	Session index post	2025-10-09T00:29:06.5542573Z   LOOP_HISTOGRAM_BINS: 0
+pester-category (dispatcher)	Session index post	2025-10-09T00:29:06.5542685Z   LEAK_GRACE_SECONDS: 3
+pester-category (dispatcher)	Session index post	2025-10-09T00:29:06.5542798Z ##[endgroup]
+pester-category (dispatcher)	Session index post	2025-10-09T00:29:06.7766567Z With the provided path, there will be 1 file uploaded
+pester-category (dispatcher)	Session index post	2025-10-09T00:29:06.7768988Z Artifact name is valid!
+pester-category (dispatcher)	Session index post	2025-10-09T00:29:06.7771355Z Root directory input is valid!
+pester-category (dispatcher)	Session index post	2025-10-09T00:29:07.1658383Z Beginning upload of artifact content to blob storage
+pester-category (dispatcher)	Session index post	2025-10-09T00:29:07.5257551Z Uploaded bytes 286
+pester-category (dispatcher)	Session index post	2025-10-09T00:29:07.6112273Z Finished uploading artifact content to blob storage!
+pester-category (dispatcher)	Session index post	2025-10-09T00:29:07.6114056Z SHA256 digest of uploaded artifact zip is 302a75df3cf8c0f12f3a9be0836682e8fcb46e159b36f35f69a427883ba2554c
+pester-category (dispatcher)	Session index post	2025-10-09T00:29:07.6115593Z Finalizing artifact upload
+pester-category (dispatcher)	Session index post	2025-10-09T00:29:07.8000491Z Artifact session-index-dispatcher.zip successfully finalized. Artifact ID 4221284564
+pester-category (dispatcher)	Session index post	2025-10-09T00:29:07.8001393Z Artifact session-index-dispatcher has been successfully uploaded! Final size is 286 bytes. Artifact ID is 4221284564
+pester-category (dispatcher)	Session index post	2025-10-09T00:29:07.8021312Z Artifact download URL: https://github.com/LabVIEW-Community-CI-CD/compare-vi-cli-action/actions/runs/18361669507/artifacts/4221284564
+pester-category (dispatcher)	Upload Pester artifacts	﻿2025-10-09T00:29:07.8424965Z ##[group]Run actions/upload-artifact@v4
+pester-category (dispatcher)	Upload Pester artifacts	2025-10-09T00:29:07.8425225Z with:
+pester-category (dispatcher)	Upload Pester artifacts	2025-10-09T00:29:07.8425377Z   name: orchestrated-pester-results-dispatcher
+pester-category (dispatcher)	Upload Pester artifacts	2025-10-09T00:29:07.8425944Z   path: tests/results/dispatcher/**/*.xml
+pester-category (dispatcher)	Upload Pester artifacts	tests/results/dispatcher/**/*.txt
+pester-category (dispatcher)	Upload Pester artifacts	tests/results/dispatcher/pester-summary.json
+pester-category (dispatcher)	Upload Pester artifacts	tests/results/dispatcher/pester-failures.json
+pester-category (dispatcher)	Upload Pester artifacts	tests/results/dispatcher/session-index.json
+pester-category (dispatcher)	Upload Pester artifacts	
+pester-category (dispatcher)	Upload Pester artifacts	2025-10-09T00:29:07.8426433Z   if-no-files-found: warn
+pester-category (dispatcher)	Upload Pester artifacts	2025-10-09T00:29:07.8426563Z   compression-level: 6
+pester-category (dispatcher)	Upload Pester artifacts	2025-10-09T00:29:07.8426689Z   overwrite: false
+pester-category (dispatcher)	Upload Pester artifacts	2025-10-09T00:29:07.8426810Z   include-hidden-files: false
+pester-category (dispatcher)	Upload Pester artifacts	2025-10-09T00:29:07.8426947Z env:
+pester-category (dispatcher)	Upload Pester artifacts	2025-10-09T00:29:07.8427418Z   DETECT_LEAKS: 1
+pester-category (dispatcher)	Upload Pester artifacts	2025-10-09T00:29:07.8427520Z   CLEAN_AFTER: 0
+pester-category (dispatcher)	Upload Pester artifacts	2025-10-09T00:29:07.8427627Z   SCAN_ARTIFACTS: 1
+pester-category (dispatcher)	Upload Pester artifacts	2025-10-09T00:29:07.8427733Z   UNBLOCK_GUARD: 0
+pester-category (dispatcher)	Upload Pester artifacts	2025-10-09T00:29:07.8427836Z   LV_SUPPRESS_UI: 0
+pester-category (dispatcher)	Upload Pester artifacts	2025-10-09T00:29:07.8427941Z   WATCH_CONSOLE: 1
+pester-category (dispatcher)	Upload Pester artifacts	2025-10-09T00:29:07.8428122Z   LABVIEW_EXE: C:\\Program Files\\National Instruments\\LabVIEW 2025\\LabVIEW.exe
+pester-category (dispatcher)	Upload Pester artifacts	2025-10-09T00:29:07.8428354Z   LV_BASE_VI: 
+pester-category (dispatcher)	Upload Pester artifacts	2025-10-09T00:29:07.8428455Z   LV_HEAD_VI: 
+pester-category (dispatcher)	Upload Pester artifacts	2025-10-09T00:29:07.8428561Z   LOOP_MAX_ITERATIONS: 3
+pester-category (dispatcher)	Upload Pester artifacts	2025-10-09T00:29:07.8428677Z   LVCI_DETERMINISTIC: 1
+pester-category (dispatcher)	Upload Pester artifacts	2025-10-09T00:29:07.8428798Z   LOOP_QUANTILE_STRATEGY: Exact
+pester-category (dispatcher)	Upload Pester artifacts	2025-10-09T00:29:07.8428924Z   LOOP_ADAPTIVE: 0
+pester-category (dispatcher)	Upload Pester artifacts	2025-10-09T00:29:07.8429031Z   LOOP_INTERVAL_SECONDS: 0
+pester-category (dispatcher)	Upload Pester artifacts	2025-10-09T00:29:07.8429156Z   LOOP_RECONCILE_EVERY: 0
+pester-category (dispatcher)	Upload Pester artifacts	2025-10-09T00:29:07.8429275Z   LOOP_HISTOGRAM_BINS: 0
+pester-category (dispatcher)	Upload Pester artifacts	2025-10-09T00:29:07.8429385Z   LEAK_GRACE_SECONDS: 3
+pester-category (dispatcher)	Upload Pester artifacts	2025-10-09T00:29:07.8429497Z ##[endgroup]
+pester-category (dispatcher)	Upload Pester artifacts	2025-10-09T00:29:08.0544756Z With the provided path, there will be 1 file uploaded
+pester-category (dispatcher)	Upload Pester artifacts	2025-10-09T00:29:08.0548964Z Artifact name is valid!
+pester-category (dispatcher)	Upload Pester artifacts	2025-10-09T00:29:08.0549926Z Root directory input is valid!
+pester-category (dispatcher)	Upload Pester artifacts	2025-10-09T00:29:08.3972510Z Beginning upload of artifact content to blob storage
+pester-category (dispatcher)	Upload Pester artifacts	2025-10-09T00:29:08.7602424Z Uploaded bytes 286
+pester-category (dispatcher)	Upload Pester artifacts	2025-10-09T00:29:08.8560553Z Finished uploading artifact content to blob storage!
+pester-category (dispatcher)	Upload Pester artifacts	2025-10-09T00:29:08.8563021Z SHA256 digest of uploaded artifact zip is 302a75df3cf8c0f12f3a9be0836682e8fcb46e159b36f35f69a427883ba2554c
+pester-category (dispatcher)	Upload Pester artifacts	2025-10-09T00:29:08.8563403Z Finalizing artifact upload
+pester-category (dispatcher)	Upload Pester artifacts	2025-10-09T00:29:09.0244816Z Artifact orchestrated-pester-results-dispatcher.zip successfully finalized. Artifact ID 4221284689
+pester-category (dispatcher)	Upload Pester artifacts	2025-10-09T00:29:09.0245480Z Artifact orchestrated-pester-results-dispatcher has been successfully uploaded! Final size is 286 bytes. Artifact ID is 4221284689
+pester-category (dispatcher)	Upload Pester artifacts	2025-10-09T00:29:09.0271918Z Artifact download URL: https://github.com/LabVIEW-Community-CI-CD/compare-vi-cli-action/actions/runs/18361669507/artifacts/4221284689
+pester-category (dispatcher)	Runner Unblock Guard	﻿2025-10-09T00:29:09.2018725Z Prepare all required actions
+pester-category (dispatcher)	Runner Unblock Guard	2025-10-09T00:29:09.2258974Z ##[group]Run ./.github/actions/runner-unblock-guard
+pester-category (dispatcher)	Runner Unblock Guard	2025-10-09T00:29:09.2259566Z with:
+pester-category (dispatcher)	Runner Unblock Guard	2025-10-09T00:29:09.2260135Z   snapshot-path: tests/results/dispatcher/runner-unblock-snapshot.json
+pester-category (dispatcher)	Runner Unblock Guard	2025-10-09T00:29:09.2260797Z   cleanup: false
+pester-category (dispatcher)	Runner Unblock Guard	2025-10-09T00:29:09.2261234Z   process-names: conhost,pwsh,LabVIEW,LVCompare
+pester-category (dispatcher)	Runner Unblock Guard	2025-10-09T00:29:09.2261722Z env:
+pester-category (dispatcher)	Runner Unblock Guard	2025-10-09T00:29:09.2262017Z   DETECT_LEAKS: 1
+pester-category (dispatcher)	Runner Unblock Guard	2025-10-09T00:29:09.2262343Z   CLEAN_AFTER: 0
+pester-category (dispatcher)	Runner Unblock Guard	2025-10-09T00:29:09.2262661Z   SCAN_ARTIFACTS: 1
+pester-category (dispatcher)	Runner Unblock Guard	2025-10-09T00:29:09.2262986Z   UNBLOCK_GUARD: 0
+pester-category (dispatcher)	Runner Unblock Guard	2025-10-09T00:29:09.2263310Z   LV_SUPPRESS_UI: 0
+pester-category (dispatcher)	Runner Unblock Guard	2025-10-09T00:29:09.2263619Z   WATCH_CONSOLE: 1
+pester-category (dispatcher)	Runner Unblock Guard	2025-10-09T00:29:09.2264176Z   LABVIEW_EXE: C:\\Program Files\\National Instruments\\LabVIEW 2025\\LabVIEW.exe
+pester-category (dispatcher)	Runner Unblock Guard	2025-10-09T00:29:09.2264814Z   LV_BASE_VI: 
+pester-category (dispatcher)	Runner Unblock Guard	2025-10-09T00:29:09.2265121Z   LV_HEAD_VI: 
+pester-category (dispatcher)	Runner Unblock Guard	2025-10-09T00:29:09.2265449Z   LOOP_MAX_ITERATIONS: 3
+pester-category (dispatcher)	Runner Unblock Guard	2025-10-09T00:29:09.2265830Z   LVCI_DETERMINISTIC: 1
+pester-category (dispatcher)	Runner Unblock Guard	2025-10-09T00:29:09.2266293Z   LOOP_QUANTILE_STRATEGY: Exact
+pester-category (dispatcher)	Runner Unblock Guard	2025-10-09T00:29:09.2266687Z   LOOP_ADAPTIVE: 0
+pester-category (dispatcher)	Runner Unblock Guard	2025-10-09T00:29:09.2267021Z   LOOP_INTERVAL_SECONDS: 0
+pester-category (dispatcher)	Runner Unblock Guard	2025-10-09T00:29:09.2267403Z   LOOP_RECONCILE_EVERY: 0
+pester-category (dispatcher)	Runner Unblock Guard	2025-10-09T00:29:09.2267777Z   LOOP_HISTOGRAM_BINS: 0
+pester-category (dispatcher)	Runner Unblock Guard	2025-10-09T00:29:09.2268139Z   LEAK_GRACE_SECONDS: 3
+pester-category (dispatcher)	Runner Unblock Guard	2025-10-09T00:29:09.2268500Z ##[endgroup]
+pester-category (dispatcher)	Runner Unblock Guard	2025-10-09T00:29:09.2665773Z ##[group]Run $ErrorActionPreference = 'Stop'
+pester-category (dispatcher)	Runner Unblock Guard	2025-10-09T00:29:09.2666015Z [36;1m$ErrorActionPreference = 'Stop'[0m
+pester-category (dispatcher)	Runner Unblock Guard	2025-10-09T00:29:09.2666264Z [36;1m$snapPath = 'tests/results/dispatcher/runner-unblock-snapshot.json'[0m
+pester-category (dispatcher)	Runner Unblock Guard	2025-10-09T00:29:09.2666640Z [36;1m$procNames = 'conhost,pwsh,LabVIEW,LVCompare'.Split(',') | ForEach-Object { $_.Trim() } | Where-Object { $_ }[0m
+pester-category (dispatcher)	Runner Unblock Guard	2025-10-09T00:29:09.2666991Z [36;1m$doCleanup = ('false' -eq 'true') -or ($env:UNBLOCK_GUARD -eq '1')[0m
+pester-category (dispatcher)	Runner Unblock Guard	2025-10-09T00:29:09.2667415Z [36;1m$procs = @(Get-Process -ErrorAction SilentlyContinue | Where-Object { $_.ProcessName -in $procNames } | Select-Object ProcessName,Id,StartTime)[0m
+pester-category (dispatcher)	Runner Unblock Guard	2025-10-09T00:29:09.2668174Z [36;1m$jobs  = @(Get-Job -ErrorAction SilentlyContinue | Select-Object Id,Name,State,HasMoreData)[0m
+pester-category (dispatcher)	Runner Unblock Guard	2025-10-09T00:29:09.2668508Z [36;1m$snap = [ordered]@{ processes=$procs; jobs=$jobs; cleanupPerformed=$false }[0m
+pester-category (dispatcher)	Runner Unblock Guard	2025-10-09T00:29:09.2668756Z [36;1m$dir = Split-Path -Parent $snapPath[0m
+pester-category (dispatcher)	Runner Unblock Guard	2025-10-09T00:29:09.2669068Z [36;1mif ($dir -and -not (Test-Path -LiteralPath $dir)) { New-Item -ItemType Directory -Force -Path $dir | Out-Null }[0m
+pester-category (dispatcher)	Runner Unblock Guard	2025-10-09T00:29:09.2669436Z [36;1m$snap | ConvertTo-Json -Depth 5 | Out-File -FilePath $snapPath -Encoding utf8[0m
+pester-category (dispatcher)	Runner Unblock Guard	2025-10-09T00:29:09.2669670Z [36;1m$cleanupNote = ''[0m
+pester-category (dispatcher)	Runner Unblock Guard	2025-10-09T00:29:09.2669814Z [36;1mif ($doCleanup) {[0m
+pester-category (dispatcher)	Runner Unblock Guard	2025-10-09T00:29:09.2669985Z [36;1m  $stoppedLV = 0; $stoppedLVC = 0; $stoppedJobs = 0[0m
+pester-category (dispatcher)	Runner Unblock Guard	2025-10-09T00:29:09.2670464Z [36;1m  try { Get-Process -Name 'LabVIEW' -ErrorAction SilentlyContinue | ForEach-Object { try { Stop-Process -Id $_.Id -Force -ErrorAction SilentlyContinue; $stoppedLV++ } catch {} } } catch {}[0m
+pester-category (dispatcher)	Runner Unblock Guard	2025-10-09T00:29:09.2671204Z [36;1m  try { Get-Process -Name 'LVCompare' -ErrorAction SilentlyContinue | ForEach-Object { try { Stop-Process -Id $_.Id -Force -ErrorAction SilentlyContinue; $stoppedLVC++ } catch {} } } catch {}[0m
+pester-category (dispatcher)	Runner Unblock Guard	2025-10-09T00:29:09.2672024Z [36;1m  try { $gj = @(Get-Job -ErrorAction SilentlyContinue); foreach ($j in $gj) { try { Stop-Job -Job $j -ErrorAction SilentlyContinue; Remove-Job -Job $j -Force -ErrorAction SilentlyContinue; $stoppedJobs++ } catch {} } } catch {}[0m
+pester-category (dispatcher)	Runner Unblock Guard	2025-10-09T00:29:09.2672560Z [36;1m  $snap.cleanupPerformed = $true[0m
+pester-category (dispatcher)	Runner Unblock Guard	2025-10-09T00:29:09.2672848Z [36;1m  $snap.cleanup = [ordered]@{ LabVIEW=$stoppedLV; LVCompare=$stoppedLVC; Jobs=$stoppedJobs }[0m
+pester-category (dispatcher)	Runner Unblock Guard	2025-10-09T00:29:09.2673187Z [36;1m  $snap | ConvertTo-Json -Depth 6 | Out-File -FilePath $snapPath -Encoding utf8[0m
+pester-category (dispatcher)	Runner Unblock Guard	2025-10-09T00:29:09.2673542Z [36;1m  $cleanupNote = ('Cleanup: LabVIEW={0}, LVCompare={1}, Jobs={2}' -f $stoppedLV,$stoppedLVC,$stoppedJobs)[0m
+pester-category (dispatcher)	Runner Unblock Guard	2025-10-09T00:29:09.2675571Z [36;1m}[0m
+pester-category (dispatcher)	Runner Unblock Guard	2025-10-09T00:29:09.2675716Z [36;1m$lines = @('### Runner Unblock Guard','')[0m
+pester-category (dispatcher)	Runner Unblock Guard	2025-10-09T00:29:09.2675924Z [36;1m$lines += ('- Process count: {0}' -f $procs.Count)[0m
+pester-category (dispatcher)	Runner Unblock Guard	2025-10-09T00:29:09.2676140Z [36;1m$lines += ('- Pester job count: {0}' -f $jobs.Count)[0m
+pester-category (dispatcher)	Runner Unblock Guard	2025-10-09T00:29:09.2676323Z [36;1m$lines += ''[0m
+pester-category (dispatcher)	Runner Unblock Guard	2025-10-09T00:29:09.2676466Z [36;1m$lines += ('Snapshot: {0}' -f $snapPath)[0m
+pester-category (dispatcher)	Runner Unblock Guard	2025-10-09T00:29:09.2676676Z [36;1mif ($cleanupNote) { $lines += ('- ' + $cleanupNote) }[0m
+pester-category (dispatcher)	Runner Unblock Guard	2025-10-09T00:29:09.2676967Z [36;1m$lines -join "`n" | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8[0m
+pester-category (dispatcher)	Runner Unblock Guard	2025-10-09T00:29:09.2682569Z shell: C:\Program Files\PowerShell\7\pwsh.EXE -command ". '{0}'"
+pester-category (dispatcher)	Runner Unblock Guard	2025-10-09T00:29:09.2682776Z env:
+pester-category (dispatcher)	Runner Unblock Guard	2025-10-09T00:29:09.2682884Z   DETECT_LEAKS: 1
+pester-category (dispatcher)	Runner Unblock Guard	2025-10-09T00:29:09.2682998Z   CLEAN_AFTER: 0
+pester-category (dispatcher)	Runner Unblock Guard	2025-10-09T00:29:09.2683112Z   SCAN_ARTIFACTS: 1
+pester-category (dispatcher)	Runner Unblock Guard	2025-10-09T00:29:09.2683230Z   UNBLOCK_GUARD: 0
+pester-category (dispatcher)	Runner Unblock Guard	2025-10-09T00:29:09.2683360Z   LV_SUPPRESS_UI: 0
+pester-category (dispatcher)	Runner Unblock Guard	2025-10-09T00:29:09.2683475Z   WATCH_CONSOLE: 1
+pester-category (dispatcher)	Runner Unblock Guard	2025-10-09T00:29:09.2683666Z   LABVIEW_EXE: C:\\Program Files\\National Instruments\\LabVIEW 2025\\LabVIEW.exe
+pester-category (dispatcher)	Runner Unblock Guard	2025-10-09T00:29:09.2683878Z   LV_BASE_VI: 
+pester-category (dispatcher)	Runner Unblock Guard	2025-10-09T00:29:09.2683987Z   LV_HEAD_VI: 
+pester-category (dispatcher)	Runner Unblock Guard	2025-10-09T00:29:09.2684118Z   LOOP_MAX_ITERATIONS: 3
+pester-category (dispatcher)	Runner Unblock Guard	2025-10-09T00:29:09.2684250Z   LVCI_DETERMINISTIC: 1
+pester-category (dispatcher)	Runner Unblock Guard	2025-10-09T00:29:09.2684382Z   LOOP_QUANTILE_STRATEGY: Exact
+pester-category (dispatcher)	Runner Unblock Guard	2025-10-09T00:29:09.2684522Z   LOOP_ADAPTIVE: 0
+pester-category (dispatcher)	Runner Unblock Guard	2025-10-09T00:29:09.2684637Z   LOOP_INTERVAL_SECONDS: 0
+pester-category (dispatcher)	Runner Unblock Guard	2025-10-09T00:29:09.2684777Z   LOOP_RECONCILE_EVERY: 0
+pester-category (dispatcher)	Runner Unblock Guard	2025-10-09T00:29:09.2684908Z   LOOP_HISTOGRAM_BINS: 0
+pester-category (dispatcher)	Runner Unblock Guard	2025-10-09T00:29:09.2685034Z   LEAK_GRACE_SECONDS: 3
+pester-category (dispatcher)	Runner Unblock Guard	2025-10-09T00:29:09.2685154Z ##[endgroup]
+pester-category (dispatcher)	Ensure Invoker (stop)	﻿2025-10-09T00:29:09.7697482Z Prepare all required actions
+pester-category (dispatcher)	Ensure Invoker (stop)	2025-10-09T00:29:09.7845507Z ##[group]Run ./.github/actions/ensure-invoker
+pester-category (dispatcher)	Ensure Invoker (stop)	2025-10-09T00:29:09.7845720Z with:
+pester-category (dispatcher)	Ensure Invoker (stop)	2025-10-09T00:29:09.7845839Z   mode: stop
+pester-category (dispatcher)	Ensure Invoker (stop)	2025-10-09T00:29:09.7845973Z   results-dir: tests/results
+pester-category (dispatcher)	Ensure Invoker (stop)	2025-10-09T00:29:09.7846428Z   timeout-seconds: 60
+pester-category (dispatcher)	Ensure Invoker (stop)	2025-10-09T00:29:09.7846563Z   retries: 3
+pester-category (dispatcher)	Ensure Invoker (stop)	2025-10-09T00:29:09.7846690Z   retry-delay-seconds: 7
+pester-category (dispatcher)	Ensure Invoker (stop)	2025-10-09T00:29:09.7846826Z env:
+pester-category (dispatcher)	Ensure Invoker (stop)	2025-10-09T00:29:09.7846939Z   DETECT_LEAKS: 1
+pester-category (dispatcher)	Ensure Invoker (stop)	2025-10-09T00:29:09.7847059Z   CLEAN_AFTER: 0
+pester-category (dispatcher)	Ensure Invoker (stop)	2025-10-09T00:29:09.7847188Z   SCAN_ARTIFACTS: 1
+pester-category (dispatcher)	Ensure Invoker (stop)	2025-10-09T00:29:09.7847309Z   UNBLOCK_GUARD: 0
+pester-category (dispatcher)	Ensure Invoker (stop)	2025-10-09T00:29:09.7847435Z   LV_SUPPRESS_UI: 0
+pester-category (dispatcher)	Ensure Invoker (stop)	2025-10-09T00:29:09.7847557Z   WATCH_CONSOLE: 1
+pester-category (dispatcher)	Ensure Invoker (stop)	2025-10-09T00:29:09.7847769Z   LABVIEW_EXE: C:\\Program Files\\National Instruments\\LabVIEW 2025\\LabVIEW.exe
+pester-category (dispatcher)	Ensure Invoker (stop)	2025-10-09T00:29:09.7848005Z   LV_BASE_VI: 
+pester-category (dispatcher)	Ensure Invoker (stop)	2025-10-09T00:29:09.7848122Z   LV_HEAD_VI: 
+pester-category (dispatcher)	Ensure Invoker (stop)	2025-10-09T00:29:09.7848245Z   LOOP_MAX_ITERATIONS: 3
+pester-category (dispatcher)	Ensure Invoker (stop)	2025-10-09T00:29:09.7848386Z   LVCI_DETERMINISTIC: 1
+pester-category (dispatcher)	Ensure Invoker (stop)	2025-10-09T00:29:09.7848559Z   LOOP_QUANTILE_STRATEGY: Exact
+pester-category (dispatcher)	Ensure Invoker (stop)	2025-10-09T00:29:09.7848711Z   LOOP_ADAPTIVE: 0
+pester-category (dispatcher)	Ensure Invoker (stop)	2025-10-09T00:29:09.7848839Z   LOOP_INTERVAL_SECONDS: 0
+pester-category (dispatcher)	Ensure Invoker (stop)	2025-10-09T00:29:09.7848988Z   LOOP_RECONCILE_EVERY: 0
+pester-category (dispatcher)	Ensure Invoker (stop)	2025-10-09T00:29:09.7849135Z   LOOP_HISTOGRAM_BINS: 0
+pester-category (dispatcher)	Ensure Invoker (stop)	2025-10-09T00:29:09.7849272Z   LEAK_GRACE_SECONDS: 3
+pester-category (dispatcher)	Ensure Invoker (stop)	2025-10-09T00:29:09.7849396Z ##[endgroup]
+pester-category (dispatcher)	Ensure Invoker (stop)	2025-10-09T00:29:09.8134905Z ##[group]Run $base = 'tests/results'
+pester-category (dispatcher)	Ensure Invoker (stop)	2025-10-09T00:29:09.8135458Z [36;1m$base = 'tests/results'[0m
+pester-category (dispatcher)	Ensure Invoker (stop)	2025-10-09T00:29:09.8135879Z [36;1m$cat  = ''[0m
+pester-category (dispatcher)	Ensure Invoker (stop)	2025-10-09T00:29:09.8136309Z [36;1mif ($cat) { $base = Join-Path $base $cat }[0m
+pester-category (dispatcher)	Ensure Invoker (stop)	2025-10-09T00:29:09.8137090Z [36;1m$pipe = "lvci.invoker.$env:GITHUB_RUN_ID.$env:GITHUB_JOB.$env:GITHUB_RUN_ATTEMPT"[0m
+pester-category (dispatcher)	Ensure Invoker (stop)	2025-10-09T00:29:09.8138116Z [36;1m$sent = Join-Path $env:RUNNER_TEMP "invoker/$($env:GITHUB_RUN_ID).$($env:GITHUB_JOB).sentinel"[0m
+pester-category (dispatcher)	Ensure Invoker (stop)	2025-10-09T00:29:09.8139183Z [36;1mNew-Item -ItemType Directory -Path (Split-Path -Parent $sent) -Force | Out-Null[0m
+pester-category (dispatcher)	Ensure Invoker (stop)	2025-10-09T00:29:09.8140205Z [36;1m"pipe_name=$pipe" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8[0m
+pester-category (dispatcher)	Ensure Invoker (stop)	2025-10-09T00:29:09.8141486Z [36;1m"sentinel=$sent"   | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8[0m
+pester-category (dispatcher)	Ensure Invoker (stop)	2025-10-09T00:29:09.8142407Z [36;1m"results=$base"    | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8[0m
+pester-category (dispatcher)	Ensure Invoker (stop)	2025-10-09T00:29:09.8158184Z shell: C:\Program Files\PowerShell\7\pwsh.EXE -command ". '{0}'"
+pester-category (dispatcher)	Ensure Invoker (stop)	2025-10-09T00:29:09.8158809Z env:
+pester-category (dispatcher)	Ensure Invoker (stop)	2025-10-09T00:29:09.8159116Z   DETECT_LEAKS: 1
+pester-category (dispatcher)	Ensure Invoker (stop)	2025-10-09T00:29:09.8159470Z   CLEAN_AFTER: 0
+pester-category (dispatcher)	Ensure Invoker (stop)	2025-10-09T00:29:09.8159798Z   SCAN_ARTIFACTS: 1
+pester-category (dispatcher)	Ensure Invoker (stop)	2025-10-09T00:29:09.8160135Z   UNBLOCK_GUARD: 0
+pester-category (dispatcher)	Ensure Invoker (stop)	2025-10-09T00:29:09.8160769Z   LV_SUPPRESS_UI: 0
+pester-category (dispatcher)	Ensure Invoker (stop)	2025-10-09T00:29:09.8161133Z   WATCH_CONSOLE: 1
+pester-category (dispatcher)	Ensure Invoker (stop)	2025-10-09T00:29:09.8161735Z   LABVIEW_EXE: C:\\Program Files\\National Instruments\\LabVIEW 2025\\LabVIEW.exe
+pester-category (dispatcher)	Ensure Invoker (stop)	2025-10-09T00:29:09.8162374Z   LV_BASE_VI: 
+pester-category (dispatcher)	Ensure Invoker (stop)	2025-10-09T00:29:09.8162672Z   LV_HEAD_VI: 
+pester-category (dispatcher)	Ensure Invoker (stop)	2025-10-09T00:29:09.8163006Z   LOOP_MAX_ITERATIONS: 3
+pester-category (dispatcher)	Ensure Invoker (stop)	2025-10-09T00:29:09.8163383Z   LVCI_DETERMINISTIC: 1
+pester-category (dispatcher)	Ensure Invoker (stop)	2025-10-09T00:29:09.8163762Z   LOOP_QUANTILE_STRATEGY: Exact
+pester-category (dispatcher)	Ensure Invoker (stop)	2025-10-09T00:29:09.8164157Z   LOOP_ADAPTIVE: 0
+pester-category (dispatcher)	Ensure Invoker (stop)	2025-10-09T00:29:09.8164500Z   LOOP_INTERVAL_SECONDS: 0
+pester-category (dispatcher)	Ensure Invoker (stop)	2025-10-09T00:29:09.8164889Z   LOOP_RECONCILE_EVERY: 0
+pester-category (dispatcher)	Ensure Invoker (stop)	2025-10-09T00:29:09.8165266Z   LOOP_HISTOGRAM_BINS: 0
+pester-category (dispatcher)	Ensure Invoker (stop)	2025-10-09T00:29:09.8165622Z   LEAK_GRACE_SECONDS: 3
+pester-category (dispatcher)	Ensure Invoker (stop)	2025-10-09T00:29:09.8165967Z ##[endgroup]
+pester-category (dispatcher)	Ensure Invoker (stop)	2025-10-09T00:29:10.2706973Z ##[group]Run $results = 'tests/results'
+pester-category (dispatcher)	Ensure Invoker (stop)	2025-10-09T00:29:10.2707227Z [36;1m$results = 'tests/results'[0m
+pester-category (dispatcher)	Ensure Invoker (stop)	2025-10-09T00:29:10.2707525Z [36;1m$sent    = 'C:\actions-runner\_work\_temp\invoker\18361669507.pester-category.sentinel'[0m
+pester-category (dispatcher)	Ensure Invoker (stop)	2025-10-09T00:29:10.2707859Z [36;1m$stopped = Join-Path $results '_invoker/stopped.json'[0m
+pester-category (dispatcher)	Ensure Invoker (stop)	2025-10-09T00:29:10.2708255Z [36;1mif (Test-Path -LiteralPath $sent) { Remove-Item -LiteralPath $sent -Force -ErrorAction SilentlyContinue }[0m
+pester-category (dispatcher)	Ensure Invoker (stop)	2025-10-09T00:29:10.2708587Z [36;1m$to = [int]'60'[0m
+pester-category (dispatcher)	Ensure Invoker (stop)	2025-10-09T00:29:10.2710939Z [36;1m$sw = [Diagnostics.Stopwatch]::StartNew()[0m
+pester-category (dispatcher)	Ensure Invoker (stop)	2025-10-09T00:29:10.2711343Z [36;1mwhile ($sw.Elapsed.TotalSeconds -lt $to) { if (Test-Path -LiteralPath $stopped) { break }; Start-Sleep -Milliseconds 300 }[0m
+pester-category (dispatcher)	Ensure Invoker (stop)	2025-10-09T00:29:10.2712213Z [36;1mif (-not (Test-Path -LiteralPath $stopped)) { Write-Host "::warning::Invoker stop marker not observed within $to s (continuing)" }[0m
+pester-category (dispatcher)	Ensure Invoker (stop)	2025-10-09T00:29:10.2718619Z shell: C:\Program Files\PowerShell\7\pwsh.EXE -command ". '{0}'"
+pester-category (dispatcher)	Ensure Invoker (stop)	2025-10-09T00:29:10.2718853Z env:
+pester-category (dispatcher)	Ensure Invoker (stop)	2025-10-09T00:29:10.2718975Z   DETECT_LEAKS: 1
+pester-category (dispatcher)	Ensure Invoker (stop)	2025-10-09T00:29:10.2719107Z   CLEAN_AFTER: 0
+pester-category (dispatcher)	Ensure Invoker (stop)	2025-10-09T00:29:10.2719848Z   SCAN_ARTIFACTS: 1
+pester-category (dispatcher)	Ensure Invoker (stop)	2025-10-09T00:29:10.2719991Z   UNBLOCK_GUARD: 0
+pester-category (dispatcher)	Ensure Invoker (stop)	2025-10-09T00:29:10.2720128Z   LV_SUPPRESS_UI: 0
+pester-category (dispatcher)	Ensure Invoker (stop)	2025-10-09T00:29:10.2720263Z   WATCH_CONSOLE: 1
+pester-category (dispatcher)	Ensure Invoker (stop)	2025-10-09T00:29:10.2720482Z   LABVIEW_EXE: C:\\Program Files\\National Instruments\\LabVIEW 2025\\LabVIEW.exe
+pester-category (dispatcher)	Ensure Invoker (stop)	2025-10-09T00:29:10.2720753Z   LV_BASE_VI: 
+pester-category (dispatcher)	Ensure Invoker (stop)	2025-10-09T00:29:10.2720887Z   LV_HEAD_VI: 
+pester-category (dispatcher)	Ensure Invoker (stop)	2025-10-09T00:29:10.2721018Z   LOOP_MAX_ITERATIONS: 3
+pester-category (dispatcher)	Ensure Invoker (stop)	2025-10-09T00:29:10.2721168Z   LVCI_DETERMINISTIC: 1
+pester-category (dispatcher)	Ensure Invoker (stop)	2025-10-09T00:29:10.2721316Z   LOOP_QUANTILE_STRATEGY: Exact
+pester-category (dispatcher)	Ensure Invoker (stop)	2025-10-09T00:29:10.2721477Z   LOOP_ADAPTIVE: 0
+pester-category (dispatcher)	Ensure Invoker (stop)	2025-10-09T00:29:10.2721611Z   LOOP_INTERVAL_SECONDS: 0
+pester-category (dispatcher)	Ensure Invoker (stop)	2025-10-09T00:29:10.2721767Z   LOOP_RECONCILE_EVERY: 0
+pester-category (dispatcher)	Ensure Invoker (stop)	2025-10-09T00:29:10.2721915Z   LOOP_HISTOGRAM_BINS: 0
+pester-category (dispatcher)	Ensure Invoker (stop)	2025-10-09T00:29:10.2722065Z   LEAK_GRACE_SECONDS: 3
+pester-category (dispatcher)	Ensure Invoker (stop)	2025-10-09T00:29:10.2722208Z ##[endgroup]
+pester-category (dispatcher)	Ensure Invoker (stop)	2025-10-09T00:30:10.7678097Z ##[warning]Invoker stop marker not observed within 60 s (continuing)
+pester-category (dispatcher)	Append determinism summary	﻿2025-10-09T00:30:10.8394344Z ##[group]Run pwsh -File tools/Write-DeterminismSummary.ps1
+pester-category (dispatcher)	Append determinism summary	2025-10-09T00:30:10.8394723Z [36;1mpwsh -File tools/Write-DeterminismSummary.ps1[0m
+pester-category (dispatcher)	Append determinism summary	2025-10-09T00:30:10.8400264Z shell: C:\Program Files\PowerShell\7\pwsh.EXE -command ". '{0}'"
+pester-category (dispatcher)	Append determinism summary	2025-10-09T00:30:10.8400529Z env:
+pester-category (dispatcher)	Append determinism summary	2025-10-09T00:30:10.8400657Z   DETECT_LEAKS: 1
+pester-category (dispatcher)	Append determinism summary	2025-10-09T00:30:10.8400790Z   CLEAN_AFTER: 0
+pester-category (dispatcher)	Append determinism summary	2025-10-09T00:30:10.8400920Z   SCAN_ARTIFACTS: 1
+pester-category (dispatcher)	Append determinism summary	2025-10-09T00:30:10.8401049Z   UNBLOCK_GUARD: 0
+pester-category (dispatcher)	Append determinism summary	2025-10-09T00:30:10.8401166Z   LV_SUPPRESS_UI: 0
+pester-category (dispatcher)	Append determinism summary	2025-10-09T00:30:10.8401295Z   WATCH_CONSOLE: 1
+pester-category (dispatcher)	Append determinism summary	2025-10-09T00:30:10.8401507Z   LABVIEW_EXE: C:\\Program Files\\National Instruments\\LabVIEW 2025\\LabVIEW.exe
+pester-category (dispatcher)	Append determinism summary	2025-10-09T00:30:10.8401763Z   LV_BASE_VI: 
+pester-category (dispatcher)	Append determinism summary	2025-10-09T00:30:10.8401886Z   LV_HEAD_VI: 
+pester-category (dispatcher)	Append determinism summary	2025-10-09T00:30:10.8402014Z   LOOP_MAX_ITERATIONS: 3
+pester-category (dispatcher)	Append determinism summary	2025-10-09T00:30:10.8402158Z   LVCI_DETERMINISTIC: 1
+pester-category (dispatcher)	Append determinism summary	2025-10-09T00:30:10.8402306Z   LOOP_QUANTILE_STRATEGY: Exact
+pester-category (dispatcher)	Append determinism summary	2025-10-09T00:30:10.8402458Z   LOOP_ADAPTIVE: 0
+pester-category (dispatcher)	Append determinism summary	2025-10-09T00:30:10.8402593Z   LOOP_INTERVAL_SECONDS: 0
+pester-category (dispatcher)	Append determinism summary	2025-10-09T00:30:10.8402773Z   LOOP_RECONCILE_EVERY: 0
+pester-category (dispatcher)	Append determinism summary	2025-10-09T00:30:10.8402921Z   LOOP_HISTOGRAM_BINS: 0
+pester-category (dispatcher)	Append determinism summary	2025-10-09T00:30:10.8403067Z   LEAK_GRACE_SECONDS: 3
+pester-category (dispatcher)	Append determinism summary	2025-10-09T00:30:10.8403208Z ##[endgroup]
+pester-category (dispatcher)	Append runner identity	﻿2025-10-09T00:30:11.6311202Z ##[group]Run pwsh -File tools/Write-RunnerIdentity.ps1 -SampleId 'ts-20251008-172425-mvdy'
+pester-category (dispatcher)	Append runner identity	2025-10-09T00:30:11.6311746Z [36;1mpwsh -File tools/Write-RunnerIdentity.ps1 -SampleId 'ts-20251008-172425-mvdy'[0m
+pester-category (dispatcher)	Append runner identity	2025-10-09T00:30:11.6317596Z shell: C:\Program Files\PowerShell\7\pwsh.EXE -command ". '{0}'"
+pester-category (dispatcher)	Append runner identity	2025-10-09T00:30:11.6317833Z env:
+pester-category (dispatcher)	Append runner identity	2025-10-09T00:30:11.6317958Z   DETECT_LEAKS: 1
+pester-category (dispatcher)	Append runner identity	2025-10-09T00:30:11.6318083Z   CLEAN_AFTER: 0
+pester-category (dispatcher)	Append runner identity	2025-10-09T00:30:11.6318203Z   SCAN_ARTIFACTS: 1
+pester-category (dispatcher)	Append runner identity	2025-10-09T00:30:11.6318321Z   UNBLOCK_GUARD: 0
+pester-category (dispatcher)	Append runner identity	2025-10-09T00:30:11.6318442Z   LV_SUPPRESS_UI: 0
+pester-category (dispatcher)	Append runner identity	2025-10-09T00:30:11.6318562Z   WATCH_CONSOLE: 1
+pester-category (dispatcher)	Append runner identity	2025-10-09T00:30:11.6318777Z   LABVIEW_EXE: C:\\Program Files\\National Instruments\\LabVIEW 2025\\LabVIEW.exe
+pester-category (dispatcher)	Append runner identity	2025-10-09T00:30:11.6319024Z   LV_BASE_VI: 
+pester-category (dispatcher)	Append runner identity	2025-10-09T00:30:11.6319134Z   LV_HEAD_VI: 
+pester-category (dispatcher)	Append runner identity	2025-10-09T00:30:11.6319249Z   LOOP_MAX_ITERATIONS: 3
+pester-category (dispatcher)	Append runner identity	2025-10-09T00:30:11.6319393Z   LVCI_DETERMINISTIC: 1
+pester-category (dispatcher)	Append runner identity	2025-10-09T00:30:11.6319535Z   LOOP_QUANTILE_STRATEGY: Exact
+pester-category (dispatcher)	Append runner identity	2025-10-09T00:30:11.6319713Z   LOOP_ADAPTIVE: 0
+pester-category (dispatcher)	Append runner identity	2025-10-09T00:30:11.6319839Z   LOOP_INTERVAL_SECONDS: 0
+pester-category (dispatcher)	Append runner identity	2025-10-09T00:30:11.6319983Z   LOOP_RECONCILE_EVERY: 0
+pester-category (dispatcher)	Append runner identity	2025-10-09T00:30:11.6320125Z   LOOP_HISTOGRAM_BINS: 0
+pester-category (dispatcher)	Append runner identity	2025-10-09T00:30:11.6320261Z   LEAK_GRACE_SECONDS: 3
+pester-category (dispatcher)	Append runner identity	2025-10-09T00:30:11.6320393Z ##[endgroup]
+pester-category (dispatcher)	Append artifact map	﻿2025-10-09T00:30:12.4437214Z ##[group]Run $paths = @('tests/results/dispatcher/pester-summary.json','tests/results/dispatcher/pester-results.xml','tests/results/dispatcher/pester-failures.json','tests/results/dispatcher/session-index.json')
+pester-category (dispatcher)	Append artifact map	2025-10-09T00:30:12.4438935Z [36;1m$paths = @('tests/results/dispatcher/pester-summary.json','tests/results/dispatcher/pester-results.xml','tests/results/dispatcher/pester-failures.json','tests/results/dispatcher/session-index.json')[0m
+pester-category (dispatcher)	Append artifact map	2025-10-09T00:30:12.4439530Z [36;1mpwsh -File tools/Write-ArtifactMap.ps1 -Paths $paths -Title 'Artifacts'[0m
+pester-category (dispatcher)	Append artifact map	2025-10-09T00:30:12.4446180Z shell: C:\Program Files\PowerShell\7\pwsh.EXE -command ". '{0}'"
+pester-category (dispatcher)	Append artifact map	2025-10-09T00:30:12.4446409Z env:
+pester-category (dispatcher)	Append artifact map	2025-10-09T00:30:12.4446525Z   DETECT_LEAKS: 1
+pester-category (dispatcher)	Append artifact map	2025-10-09T00:30:12.4446659Z   CLEAN_AFTER: 0
+pester-category (dispatcher)	Append artifact map	2025-10-09T00:30:12.4446789Z   SCAN_ARTIFACTS: 1
+pester-category (dispatcher)	Append artifact map	2025-10-09T00:30:12.4446959Z   UNBLOCK_GUARD: 0
+pester-category (dispatcher)	Append artifact map	2025-10-09T00:30:12.4447077Z   LV_SUPPRESS_UI: 0
+pester-category (dispatcher)	Append artifact map	2025-10-09T00:30:12.4447188Z   WATCH_CONSOLE: 1
+pester-category (dispatcher)	Append artifact map	2025-10-09T00:30:12.4447390Z   LABVIEW_EXE: C:\\Program Files\\National Instruments\\LabVIEW 2025\\LabVIEW.exe
+pester-category (dispatcher)	Append artifact map	2025-10-09T00:30:12.4447652Z   LV_BASE_VI: 
+pester-category (dispatcher)	Append artifact map	2025-10-09T00:30:12.4447835Z   LV_HEAD_VI: 
+pester-category (dispatcher)	Append artifact map	2025-10-09T00:30:12.4447960Z   LOOP_MAX_ITERATIONS: 3
+pester-category (dispatcher)	Append artifact map	2025-10-09T00:30:12.4448104Z   LVCI_DETERMINISTIC: 1
+pester-category (dispatcher)	Append artifact map	2025-10-09T00:30:12.4448252Z   LOOP_QUANTILE_STRATEGY: Exact
+pester-category (dispatcher)	Append artifact map	2025-10-09T00:30:12.4448405Z   LOOP_ADAPTIVE: 0
+pester-category (dispatcher)	Append artifact map	2025-10-09T00:30:12.4448537Z   LOOP_INTERVAL_SECONDS: 0
+pester-category (dispatcher)	Append artifact map	2025-10-09T00:30:12.4448678Z   LOOP_RECONCILE_EVERY: 0
+pester-category (dispatcher)	Append artifact map	2025-10-09T00:30:12.4448866Z   LOOP_HISTOGRAM_BINS: 0
+pester-category (dispatcher)	Append artifact map	2025-10-09T00:30:12.4448998Z   LEAK_GRACE_SECONDS: 3
+pester-category (dispatcher)	Append artifact map	2025-10-09T00:30:12.4449129Z ##[endgroup]
+pester-category (dispatcher)	Append artifact map	2025-10-09T00:30:14.0052742Z [31;1mWrite-ArtifactMap.ps1: [31;1mA positional parameter cannot be found that accepts argument 'tests/results/dispatcher/pester-failures.json'.[0m
+pester-category (dispatcher)	Append artifact map	2025-10-09T00:30:14.2517634Z ##[error]Process completed with exit code 1.
+pester-category (dispatcher)	Append top failures	﻿2025-10-09T00:30:14.2807138Z ##[group]Run pwsh -File tools/Write-PesterTopFailures.ps1 -ResultsDir "tests/results/dispatcher" -Top 5
+pester-category (dispatcher)	Append top failures	2025-10-09T00:30:14.2807669Z [36;1mpwsh -File tools/Write-PesterTopFailures.ps1 -ResultsDir "tests/results/dispatcher" -Top 5[0m
+pester-category (dispatcher)	Append top failures	2025-10-09T00:30:14.2812837Z shell: C:\Program Files\PowerShell\7\pwsh.EXE -command ". '{0}'"
+pester-category (dispatcher)	Append top failures	2025-10-09T00:30:14.2813041Z env:
+pester-category (dispatcher)	Append top failures	2025-10-09T00:30:14.2813148Z   DETECT_LEAKS: 1
+pester-category (dispatcher)	Append top failures	2025-10-09T00:30:14.2813262Z   CLEAN_AFTER: 0
+pester-category (dispatcher)	Append top failures	2025-10-09T00:30:14.2813366Z   SCAN_ARTIFACTS: 1
+pester-category (dispatcher)	Append top failures	2025-10-09T00:30:14.2813478Z   UNBLOCK_GUARD: 0
+pester-category (dispatcher)	Append top failures	2025-10-09T00:30:14.2813589Z   LV_SUPPRESS_UI: 0
+pester-category (dispatcher)	Append top failures	2025-10-09T00:30:14.2813699Z   WATCH_CONSOLE: 1
+pester-category (dispatcher)	Append top failures	2025-10-09T00:30:14.2813884Z   LABVIEW_EXE: C:\\Program Files\\National Instruments\\LabVIEW 2025\\LabVIEW.exe
+pester-category (dispatcher)	Append top failures	2025-10-09T00:30:14.2814089Z   LV_BASE_VI: 
+pester-category (dispatcher)	Append top failures	2025-10-09T00:30:14.2814189Z   LV_HEAD_VI: 
+pester-category (dispatcher)	Append top failures	2025-10-09T00:30:14.2814457Z   LOOP_MAX_ITERATIONS: 3
+pester-category (dispatcher)	Append top failures	2025-10-09T00:30:14.2814591Z   LVCI_DETERMINISTIC: 1
+pester-category (dispatcher)	Append top failures	2025-10-09T00:30:14.2814717Z   LOOP_QUANTILE_STRATEGY: Exact
+pester-category (dispatcher)	Append top failures	2025-10-09T00:30:14.2814885Z   LOOP_ADAPTIVE: 0
+pester-category (dispatcher)	Append top failures	2025-10-09T00:30:14.2814995Z   LOOP_INTERVAL_SECONDS: 0
+pester-category (dispatcher)	Append top failures	2025-10-09T00:30:14.2815130Z   LOOP_RECONCILE_EVERY: 0
+pester-category (dispatcher)	Append top failures	2025-10-09T00:30:14.2815257Z   LOOP_HISTOGRAM_BINS: 0
+pester-category (dispatcher)	Append top failures	2025-10-09T00:30:14.2815382Z   LEAK_GRACE_SECONDS: 3
+pester-category (dispatcher)	Append top failures	2025-10-09T00:30:14.2815502Z ##[endgroup]
+pester-category (dispatcher)	Generate dev dashboard (matrix)	﻿2025-10-09T00:30:15.1452422Z ##[group]Run pwsh -File tools/Invoke-DevDashboard.ps1 -Group 'pester-selfhosted' -ResultsRoot "tests/results/dispatcher" -OutputRoot "tests/results/dispatcher/dev-dashboard"
+pester-category (dispatcher)	Generate dev dashboard (matrix)	2025-10-09T00:30:15.1453224Z [36;1mpwsh -File tools/Invoke-DevDashboard.ps1 -Group 'pester-selfhosted' -ResultsRoot "tests/results/dispatcher" -OutputRoot "tests/results/dispatcher/dev-dashboard"[0m
+pester-category (dispatcher)	Generate dev dashboard (matrix)	2025-10-09T00:30:15.1459176Z shell: C:\Program Files\PowerShell\7\pwsh.EXE -command ". '{0}'"
+pester-category (dispatcher)	Generate dev dashboard (matrix)	2025-10-09T00:30:15.1459394Z env:
+pester-category (dispatcher)	Generate dev dashboard (matrix)	2025-10-09T00:30:15.1459500Z   DETECT_LEAKS: 1
+pester-category (dispatcher)	Generate dev dashboard (matrix)	2025-10-09T00:30:15.1459625Z   CLEAN_AFTER: 0
+pester-category (dispatcher)	Generate dev dashboard (matrix)	2025-10-09T00:30:15.1459738Z   SCAN_ARTIFACTS: 1
+pester-category (dispatcher)	Generate dev dashboard (matrix)	2025-10-09T00:30:15.1459858Z   UNBLOCK_GUARD: 0
+pester-category (dispatcher)	Generate dev dashboard (matrix)	2025-10-09T00:30:15.1459972Z   LV_SUPPRESS_UI: 0
+pester-category (dispatcher)	Generate dev dashboard (matrix)	2025-10-09T00:30:15.1460077Z   WATCH_CONSOLE: 1
+pester-category (dispatcher)	Generate dev dashboard (matrix)	2025-10-09T00:30:15.1460559Z   LABVIEW_EXE: C:\\Program Files\\National Instruments\\LabVIEW 2025\\LabVIEW.exe
+pester-category (dispatcher)	Generate dev dashboard (matrix)	2025-10-09T00:30:15.1460785Z   LV_BASE_VI: 
+pester-category (dispatcher)	Generate dev dashboard (matrix)	2025-10-09T00:30:15.1460893Z   LV_HEAD_VI: 
+pester-category (dispatcher)	Generate dev dashboard (matrix)	2025-10-09T00:30:15.1461031Z   LOOP_MAX_ITERATIONS: 3
+pester-category (dispatcher)	Generate dev dashboard (matrix)	2025-10-09T00:30:15.1461163Z   LVCI_DETERMINISTIC: 1
+pester-category (dispatcher)	Generate dev dashboard (matrix)	2025-10-09T00:30:15.1461295Z   LOOP_QUANTILE_STRATEGY: Exact
+pester-category (dispatcher)	Generate dev dashboard (matrix)	2025-10-09T00:30:15.1461437Z   LOOP_ADAPTIVE: 0
+pester-category (dispatcher)	Generate dev dashboard (matrix)	2025-10-09T00:30:15.1461561Z   LOOP_INTERVAL_SECONDS: 0
+pester-category (dispatcher)	Generate dev dashboard (matrix)	2025-10-09T00:30:15.1461695Z   LOOP_RECONCILE_EVERY: 0
+pester-category (dispatcher)	Generate dev dashboard (matrix)	2025-10-09T00:30:15.1461831Z   LOOP_HISTOGRAM_BINS: 0
+pester-category (dispatcher)	Generate dev dashboard (matrix)	2025-10-09T00:30:15.1461953Z   LEAK_GRACE_SECONDS: 3
+pester-category (dispatcher)	Generate dev dashboard (matrix)	2025-10-09T00:30:15.1462078Z ##[endgroup]
+pester-category (dispatcher)	Generate dev dashboard (matrix)	2025-10-09T00:30:16.1343503Z Dashboard HTML saved to tests\results\dispatcher\dev-dashboard\dashboard.html
+pester-category (dispatcher)	Generate dev dashboard (matrix)	2025-10-09T00:30:16.1362861Z Dashboard JSON saved to tests\results\dispatcher\dev-dashboard\dashboard.json
+pester-category (dispatcher)	Upload dev dashboard (matrix)	﻿2025-10-09T00:30:16.4276790Z ##[group]Run actions/upload-artifact@v4
+pester-category (dispatcher)	Upload dev dashboard (matrix)	2025-10-09T00:30:16.4277022Z with:
+pester-category (dispatcher)	Upload dev dashboard (matrix)	2025-10-09T00:30:16.4277158Z   name: dev-dashboard-dispatcher
+pester-category (dispatcher)	Upload dev dashboard (matrix)	2025-10-09T00:30:16.4277474Z   path: tests/results/dispatcher/dev-dashboard/dashboard.html
+pester-category (dispatcher)	Upload dev dashboard (matrix)	tests/results/dispatcher/dev-dashboard/dashboard.json
+pester-category (dispatcher)	Upload dev dashboard (matrix)	
+pester-category (dispatcher)	Upload dev dashboard (matrix)	2025-10-09T00:30:16.4277789Z   if-no-files-found: warn
+pester-category (dispatcher)	Upload dev dashboard (matrix)	2025-10-09T00:30:16.4277920Z   compression-level: 6
+pester-category (dispatcher)	Upload dev dashboard (matrix)	2025-10-09T00:30:16.4278040Z   overwrite: false
+pester-category (dispatcher)	Upload dev dashboard (matrix)	2025-10-09T00:30:16.4278153Z   include-hidden-files: false
+pester-category (dispatcher)	Upload dev dashboard (matrix)	2025-10-09T00:30:16.4278300Z env:
+pester-category (dispatcher)	Upload dev dashboard (matrix)	2025-10-09T00:30:16.4278396Z   DETECT_LEAKS: 1
+pester-category (dispatcher)	Upload dev dashboard (matrix)	2025-10-09T00:30:16.4278503Z   CLEAN_AFTER: 0
+pester-category (dispatcher)	Upload dev dashboard (matrix)	2025-10-09T00:30:16.4278608Z   SCAN_ARTIFACTS: 1
+pester-category (dispatcher)	Upload dev dashboard (matrix)	2025-10-09T00:30:16.4278709Z   UNBLOCK_GUARD: 0
+pester-category (dispatcher)	Upload dev dashboard (matrix)	2025-10-09T00:30:16.4278817Z   LV_SUPPRESS_UI: 0
+pester-category (dispatcher)	Upload dev dashboard (matrix)	2025-10-09T00:30:16.4278924Z   WATCH_CONSOLE: 1
+pester-category (dispatcher)	Upload dev dashboard (matrix)	2025-10-09T00:30:16.4279103Z   LABVIEW_EXE: C:\\Program Files\\National Instruments\\LabVIEW 2025\\LabVIEW.exe
+pester-category (dispatcher)	Upload dev dashboard (matrix)	2025-10-09T00:30:16.4279310Z   LV_BASE_VI: 
+pester-category (dispatcher)	Upload dev dashboard (matrix)	2025-10-09T00:30:16.4279418Z   LV_HEAD_VI: 
+pester-category (dispatcher)	Upload dev dashboard (matrix)	2025-10-09T00:30:16.4279554Z   LOOP_MAX_ITERATIONS: 3
+pester-category (dispatcher)	Upload dev dashboard (matrix)	2025-10-09T00:30:16.4279682Z   LVCI_DETERMINISTIC: 1
+pester-category (dispatcher)	Upload dev dashboard (matrix)	2025-10-09T00:30:16.4279803Z   LOOP_QUANTILE_STRATEGY: Exact
+pester-category (dispatcher)	Upload dev dashboard (matrix)	2025-10-09T00:30:16.4279930Z   LOOP_ADAPTIVE: 0
+pester-category (dispatcher)	Upload dev dashboard (matrix)	2025-10-09T00:30:16.4280039Z   LOOP_INTERVAL_SECONDS: 0
+pester-category (dispatcher)	Upload dev dashboard (matrix)	2025-10-09T00:30:16.4280160Z   LOOP_RECONCILE_EVERY: 0
+pester-category (dispatcher)	Upload dev dashboard (matrix)	2025-10-09T00:30:16.4280279Z   LOOP_HISTOGRAM_BINS: 0
+pester-category (dispatcher)	Upload dev dashboard (matrix)	2025-10-09T00:30:16.4280396Z   LEAK_GRACE_SECONDS: 3
+pester-category (dispatcher)	Upload dev dashboard (matrix)	2025-10-09T00:30:16.4280508Z ##[endgroup]
+pester-category (dispatcher)	Upload dev dashboard (matrix)	2025-10-09T00:30:16.6438008Z Multiple search paths detected. Calculating the least common ancestor of all paths
+pester-category (dispatcher)	Upload dev dashboard (matrix)	2025-10-09T00:30:16.6443290Z The least common ancestor is C:\actions-runner\_work\compare-vi-cli-action\compare-vi-cli-action\tests\results\dispatcher\dev-dashboard. This will be the root directory of the artifact
+pester-category (dispatcher)	Upload dev dashboard (matrix)	2025-10-09T00:30:16.6444762Z With the provided path, there will be 2 files uploaded
+pester-category (dispatcher)	Upload dev dashboard (matrix)	2025-10-09T00:30:16.6446476Z Artifact name is valid!
+pester-category (dispatcher)	Upload dev dashboard (matrix)	2025-10-09T00:30:16.6450866Z Root directory input is valid!
+pester-category (dispatcher)	Upload dev dashboard (matrix)	2025-10-09T00:30:17.0467994Z Beginning upload of artifact content to blob storage
+pester-category (dispatcher)	Upload dev dashboard (matrix)	2025-10-09T00:30:17.4239623Z Uploaded bytes 3250
+pester-category (dispatcher)	Upload dev dashboard (matrix)	2025-10-09T00:30:17.5146897Z Finished uploading artifact content to blob storage!
+pester-category (dispatcher)	Upload dev dashboard (matrix)	2025-10-09T00:30:17.5148901Z SHA256 digest of uploaded artifact zip is 78d64e2059268517b503b50709fbdd967bd05f783e189b038423bc8f852f94e0
+pester-category (dispatcher)	Upload dev dashboard (matrix)	2025-10-09T00:30:17.5150449Z Finalizing artifact upload
+pester-category (dispatcher)	Upload dev dashboard (matrix)	2025-10-09T00:30:17.6907054Z Artifact dev-dashboard-dispatcher.zip successfully finalized. Artifact ID 4221291893
+pester-category (dispatcher)	Upload dev dashboard (matrix)	2025-10-09T00:30:17.6908394Z Artifact dev-dashboard-dispatcher has been successfully uploaded! Final size is 3250 bytes. Artifact ID is 4221291893
+pester-category (dispatcher)	Upload dev dashboard (matrix)	2025-10-09T00:30:17.6930732Z Artifact download URL: https://github.com/LabVIEW-Community-CI-CD/compare-vi-cli-action/actions/runs/18361669507/artifacts/4221291893
+pester-category (dispatcher)	Append dev dashboard summary (matrix)	﻿2025-10-09T00:30:17.7317485Z ##[group]Run $html = Join-Path "tests/results/dispatcher/dev-dashboard" 'dashboard.html'
+pester-category (dispatcher)	Append dev dashboard summary (matrix)	2025-10-09T00:30:17.7317942Z [36;1m$html = Join-Path "tests/results/dispatcher/dev-dashboard" 'dashboard.html'[0m
+pester-category (dispatcher)	Append dev dashboard summary (matrix)	2025-10-09T00:30:17.7318645Z [36;1m$json = Join-Path "tests/results/dispatcher/dev-dashboard" 'dashboard.json'[0m
+pester-category (dispatcher)	Append dev dashboard summary (matrix)	2025-10-09T00:30:17.7318928Z [36;1mif ($env:GITHUB_STEP_SUMMARY -and (Test-Path $html)) {[0m
+pester-category (dispatcher)	Append dev dashboard summary (matrix)	2025-10-09T00:30:17.7319132Z [36;1m  $lines = @([0m
+pester-category (dispatcher)	Append dev dashboard summary (matrix)	2025-10-09T00:30:17.7319289Z [36;1m    "### Dev Dashboard (dispatcher)",[0m
+pester-category (dispatcher)	Append dev dashboard summary (matrix)	2025-10-09T00:30:17.7319456Z [36;1m    '',[0m
+pester-category (dispatcher)	Append dev dashboard summary (matrix)	2025-10-09T00:30:17.7319600Z [36;1m    "- HTML: $(Resolve-Path $html)",[0m
+pester-category (dispatcher)	Append dev dashboard summary (matrix)	2025-10-09T00:30:17.7319778Z [36;1m    "- JSON: $(Resolve-Path $json)"[0m
+pester-category (dispatcher)	Append dev dashboard summary (matrix)	2025-10-09T00:30:17.7319933Z [36;1m  )[0m
+pester-category (dispatcher)	Append dev dashboard summary (matrix)	2025-10-09T00:30:17.7320155Z [36;1m  $lines -join "`n" | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8[0m
+pester-category (dispatcher)	Append dev dashboard summary (matrix)	2025-10-09T00:30:17.7320394Z [36;1m}[0m
+pester-category (dispatcher)	Append dev dashboard summary (matrix)	2025-10-09T00:30:17.7325936Z shell: C:\Program Files\PowerShell\7\pwsh.EXE -command ". '{0}'"
+pester-category (dispatcher)	Append dev dashboard summary (matrix)	2025-10-09T00:30:17.7326179Z env:
+pester-category (dispatcher)	Append dev dashboard summary (matrix)	2025-10-09T00:30:17.7326291Z   DETECT_LEAKS: 1
+pester-category (dispatcher)	Append dev dashboard summary (matrix)	2025-10-09T00:30:17.7326412Z   CLEAN_AFTER: 0
+pester-category (dispatcher)	Append dev dashboard summary (matrix)	2025-10-09T00:30:17.7326530Z   SCAN_ARTIFACTS: 1
+pester-category (dispatcher)	Append dev dashboard summary (matrix)	2025-10-09T00:30:17.7326658Z   UNBLOCK_GUARD: 0
+pester-category (dispatcher)	Append dev dashboard summary (matrix)	2025-10-09T00:30:17.7326773Z   LV_SUPPRESS_UI: 0
+pester-category (dispatcher)	Append dev dashboard summary (matrix)	2025-10-09T00:30:17.7326886Z   WATCH_CONSOLE: 1
+pester-category (dispatcher)	Append dev dashboard summary (matrix)	2025-10-09T00:30:17.7327081Z   LABVIEW_EXE: C:\\Program Files\\National Instruments\\LabVIEW 2025\\LabVIEW.exe
+pester-category (dispatcher)	Append dev dashboard summary (matrix)	2025-10-09T00:30:17.7327305Z   LV_BASE_VI: 
+pester-category (dispatcher)	Append dev dashboard summary (matrix)	2025-10-09T00:30:17.7327414Z   LV_HEAD_VI: 
+pester-category (dispatcher)	Append dev dashboard summary (matrix)	2025-10-09T00:30:17.7327524Z   LOOP_MAX_ITERATIONS: 3
+pester-category (dispatcher)	Append dev dashboard summary (matrix)	2025-10-09T00:30:17.7327657Z   LVCI_DETERMINISTIC: 1
+pester-category (dispatcher)	Append dev dashboard summary (matrix)	2025-10-09T00:30:17.7327793Z   LOOP_QUANTILE_STRATEGY: Exact
+pester-category (dispatcher)	Append dev dashboard summary (matrix)	2025-10-09T00:30:17.7327939Z   LOOP_ADAPTIVE: 0
+pester-category (dispatcher)	Append dev dashboard summary (matrix)	2025-10-09T00:30:17.7328059Z   LOOP_INTERVAL_SECONDS: 0
+pester-category (dispatcher)	Append dev dashboard summary (matrix)	2025-10-09T00:30:17.7328196Z   LOOP_RECONCILE_EVERY: 0
+pester-category (dispatcher)	Append dev dashboard summary (matrix)	2025-10-09T00:30:17.7328331Z   LOOP_HISTOGRAM_BINS: 0
+pester-category (dispatcher)	Append dev dashboard summary (matrix)	2025-10-09T00:30:17.7328460Z   LEAK_GRACE_SECONDS: 3
+pester-category (dispatcher)	Append dev dashboard summary (matrix)	2025-10-09T00:30:17.7328594Z ##[endgroup]
+pester-category (dispatcher)	Re-run hint	﻿2025-10-09T00:30:18.1727184Z ##[group]Run pwsh -File tools/Write-RerunHint.ps1 -Workflow 'ci-orchestrated.yml' -IncludeIntegration 'true' -SampleId 'ts-20251008-172425-mvdy'
+pester-category (dispatcher)	Re-run hint	2025-10-09T00:30:18.1727867Z [36;1mpwsh -File tools/Write-RerunHint.ps1 -Workflow 'ci-orchestrated.yml' -IncludeIntegration 'true' -SampleId 'ts-20251008-172425-mvdy'[0m
+pester-category (dispatcher)	Re-run hint	2025-10-09T00:30:18.1733522Z shell: C:\Program Files\PowerShell\7\pwsh.EXE -command ". '{0}'"
+pester-category (dispatcher)	Re-run hint	2025-10-09T00:30:18.1733739Z env:
+pester-category (dispatcher)	Re-run hint	2025-10-09T00:30:18.1733853Z   DETECT_LEAKS: 1
+pester-category (dispatcher)	Re-run hint	2025-10-09T00:30:18.1733978Z   CLEAN_AFTER: 0
+pester-category (dispatcher)	Re-run hint	2025-10-09T00:30:18.1734101Z   SCAN_ARTIFACTS: 1
+pester-category (dispatcher)	Re-run hint	2025-10-09T00:30:18.1734228Z   UNBLOCK_GUARD: 0
+pester-category (dispatcher)	Re-run hint	2025-10-09T00:30:18.1734346Z   LV_SUPPRESS_UI: 0
+pester-category (dispatcher)	Re-run hint	2025-10-09T00:30:18.1734466Z   WATCH_CONSOLE: 1
+pester-category (dispatcher)	Re-run hint	2025-10-09T00:30:18.1734668Z   LABVIEW_EXE: C:\\Program Files\\National Instruments\\LabVIEW 2025\\LabVIEW.exe
+pester-category (dispatcher)	Re-run hint	2025-10-09T00:30:18.1734896Z   LV_BASE_VI: 
+pester-category (dispatcher)	Re-run hint	2025-10-09T00:30:18.1735011Z   LV_HEAD_VI: 
+pester-category (dispatcher)	Re-run hint	2025-10-09T00:30:18.1735132Z   LOOP_MAX_ITERATIONS: 3
+pester-category (dispatcher)	Re-run hint	2025-10-09T00:30:18.1735302Z   LVCI_DETERMINISTIC: 1
+pester-category (dispatcher)	Re-run hint	2025-10-09T00:30:18.1735439Z   LOOP_QUANTILE_STRATEGY: Exact
+pester-category (dispatcher)	Re-run hint	2025-10-09T00:30:18.1735598Z   LOOP_ADAPTIVE: 0
+pester-category (dispatcher)	Re-run hint	2025-10-09T00:30:18.1735724Z   LOOP_INTERVAL_SECONDS: 0
+pester-category (dispatcher)	Re-run hint	2025-10-09T00:30:18.1735861Z   LOOP_RECONCILE_EVERY: 0
+pester-category (dispatcher)	Re-run hint	2025-10-09T00:30:18.1735998Z   LOOP_HISTOGRAM_BINS: 0
+pester-category (dispatcher)	Re-run hint	2025-10-09T00:30:18.1736129Z   LEAK_GRACE_SECONDS: 3
+pester-category (dispatcher)	Re-run hint	2025-10-09T00:30:18.1736255Z ##[endgroup]
+pester-category (dispatcher)	Post Run actions/checkout@v5	﻿2025-10-09T00:30:18.9715107Z Post job cleanup.
+pester-category (dispatcher)	Post Run actions/checkout@v5	2025-10-09T00:30:19.0969626Z [command]"C:\Program Files\Git\cmd\git.exe" version
+pester-category (dispatcher)	Post Run actions/checkout@v5	2025-10-09T00:30:19.1673243Z git version 2.51.0.windows.1
+pester-category (dispatcher)	Post Run actions/checkout@v5	2025-10-09T00:30:19.1738764Z Copying 'C:\WINDOWS\system32\config\systemprofile\.gitconfig' to 'C:\actions-runner\_work\_temp\edd03f73-772a-4069-8c74-71ce23c77930\.gitconfig'
+pester-category (dispatcher)	Post Run actions/checkout@v5	2025-10-09T00:30:19.1777387Z Temporarily overriding HOME='C:\actions-runner\_work\_temp\edd03f73-772a-4069-8c74-71ce23c77930' before making global git config changes
+pester-category (dispatcher)	Post Run actions/checkout@v5	2025-10-09T00:30:19.1779181Z Adding repository directory to the temporary git global config as a safe directory
+pester-category (dispatcher)	Post Run actions/checkout@v5	2025-10-09T00:30:19.1789276Z [command]"C:\Program Files\Git\cmd\git.exe" config --global --add safe.directory C:\actions-runner\_work\compare-vi-cli-action\compare-vi-cli-action
+pester-category (dispatcher)	Post Run actions/checkout@v5	2025-10-09T00:30:19.2458337Z [command]"C:\Program Files\Git\cmd\git.exe" config --local --name-only --get-regexp core\.sshCommand
+pester-category (dispatcher)	Post Run actions/checkout@v5	2025-10-09T00:30:19.3084900Z [command]"C:\Program Files\Git\cmd\git.exe" submodule foreach --recursive "sh -c \"git config --local --name-only --get-regexp 'core\.sshCommand' && git config --local --unset-all 'core.sshCommand' || :\""
+pester-category (dispatcher)	Post Run actions/checkout@v5	2025-10-09T00:30:20.7114560Z [command]"C:\Program Files\Git\cmd\git.exe" config --local --name-only --get-regexp http\.https\:\/\/github\.com\/\.extraheader
+pester-category (dispatcher)	Post Run actions/checkout@v5	2025-10-09T00:30:20.7757878Z http.https://github.com/.extraheader
+pester-category (dispatcher)	Post Run actions/checkout@v5	2025-10-09T00:30:20.7805659Z [command]"C:\Program Files\Git\cmd\git.exe" config --local --unset-all http.https://github.com/.extraheader
+pester-category (dispatcher)	Post Run actions/checkout@v5	2025-10-09T00:30:20.8449080Z [command]"C:\Program Files\Git\cmd\git.exe" submodule foreach --recursive "sh -c \"git config --local --name-only --get-regexp 'http\.https\:\/\/github\.com\/\.extraheader' && git config --local --unset-all 'http.https://github.com/.extraheader' || :\""
+pester-category (dispatcher)	Complete job	﻿2025-10-09T00:30:22.2029136Z Cleaning up orphan processes

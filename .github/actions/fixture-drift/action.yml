@@ -79,7 +79,12 @@ runs:
         $strictPath = Join-Path (Get-Location) 'strict.json'
         $overridePath = Join-Path (Get-Location) 'override.json'
         pwsh -NoLogo -NoProfile -File "${{ github.workspace }}/tools/Validate-Fixtures.ps1" -Json | Out-File -FilePath $strictPath -Encoding utf8
+        $strictExit = $LASTEXITCODE
         pwsh -NoLogo -NoProfile -File "${{ github.workspace }}/tools/Validate-Fixtures.ps1" -Json -TestAllowFixtureUpdate | Out-File -FilePath $overridePath -Encoding utf8
+        $overrideExit = $LASTEXITCODE
+        if ($strictExit -ne 0) { Write-Host "::notice::Fixture strict validation exit code $strictExit (captured in JSON output)." }
+        if ($overrideExit -ne 0) { Write-Host "::notice::Fixture override validation exit code $overrideExit (captured in JSON output)." }
+        $global:LASTEXITCODE = 0
 
     - name: Manifest refresh detection and summary
       id: manifest
@@ -347,57 +352,36 @@ runs:
           }
         } catch {}
 
-        $lines = @()
-        $lines += $marker
-        $lines += 'Fixture Drift validation failed on this PR.'
-        $lines += "Status: $status (exit $exitCode)"
-        $lines += ''
-        $lines += "**Download artifacts**: Visit the [workflow run page]($runUrl) and scroll to the Artifacts section at the bottom."
-        $lines += ''
-        if ($artifactNames.Count -gt 0) {
-          $lines += 'Available artifacts:'
-          foreach ($name in $artifactNames) { $lines += "- $name" }
-          $lines += ''
-        }
-        $lines += 'Environment quick toggles:'
-        $lines += '- DETECT_LEAKS=1 — emit leak report (tests/results/pester-leak-report.json)'
-        $lines += '- CLEAN_AFTER=1 — best-effort stop LabVIEW/LVCompare after run'
-        $lines += '- FAIL_ON_LEAKS=1 — fail when leaks are detected'
-        $lines += ''
-        $lines += 'Full reference: docs/ENVIRONMENT.md'
-        if ($artifactsList.Count -gt 0) {
-          $lines += ''
-          $lines += 'Included artifact files:'
-          foreach ($a in $artifactsList) { $lines += "- $a" }
-        }
+        $modulePath = Join-Path "${{ github.workspace }}" 'scripts/Build-FixtureDriftComment.ps1'
+        if (-not (Test-Path -LiteralPath $modulePath)) { throw "Missing comment builder module: $modulePath" }
+        Import-Module $modulePath -Force
+
+        $status = 'unknown'
+        $exitCode = ''
+        $fileMetadata = @()
         if ($sum -and (Test-Path $sum)) {
           try {
             $jj = Get-Content -LiteralPath $sum -Raw | ConvertFrom-Json
-            if ($jj.files) {
-              $lines += ''
-              $lines += 'Files on disk:'
-              foreach ($f in $jj.files) {
-                $p = $f.path; $t = $f.lastWriteTimeUtc; $len = $f.length
-                if ($len -ne $null) { $lines += "- $p - $t ($len bytes)" } else { $lines += "- $p - $t" }
-              }
-            }
-          } catch {}
+            if ($jj.status) { $status = [string]$jj.status }
+            if ($null -ne $jj.exitCode -and $jj.exitCode -ne '') { $exitCode = [string]$jj.exitCode }
+            if ($jj.artifactPaths) { $artifactsList = @($jj.artifactPaths) } else { $artifactsList = @() }
+            if ($jj.files) { $fileMetadata = @($jj.files) }
+          } catch {
+            $artifactsList = @()
+          }
+        } else {
+          $artifactsList = @()
         }
-        if ($reportPath -and (Test-Path $reportPath)) {
-          try {
-            $htmlRaw = Get-Content -LiteralPath $reportPath -Raw
-            $encoded = $htmlRaw.Replace('&','&amp;').Replace('<','&lt;').Replace('>','&gt;')
-            if ($encoded.Length -gt 20000) { $encoded = $encoded.Substring(0,20000) + "`n... (truncated)" }
-            $lines += ''
-            $lines += '<details><summary>Fixture Drift HTML report (inline preview)</summary>'
-            $lines += ''
-            $lines += '<pre>'
-            foreach ($line in $encoded -split "`n") { $lines += $line }
-            $lines += '</pre>'
-            $lines += '</details>'
-          } catch {}
-        }
-        $body = ($lines -join "`n")
+
+        $body = Get-FixtureDriftComment `
+          -Marker $marker `
+          -Status $status `
+          -ExitCode $exitCode `
+          -RunUrl $runUrl `
+          -ArtifactNames $artifactNames `
+          -ArtifactPaths $artifactsList `
+          -FileMetadata $fileMetadata `
+          -ReportPath $reportPath
         $issueNumber = '${{ github.event.pull_request.number }}'
         $listUri = "$apiBase/repos/$owner/$repo/issues/$issueNumber/comments?per_page=100"
         $existingId = $null

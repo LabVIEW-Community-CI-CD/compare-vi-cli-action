@@ -49,5 +49,32 @@ For intentional fixture updates (outside auto‑refresh):
 
 - The manifest uses `bytes` (exact size) and `sha256` for integrity.
 
-- CI retains the non‑zero exit to keep drift visible; the summary and artifact help reviewers confirm expectations.
+- CI retains the non-zero exit to keep drift visible; the summary and artifact help reviewers confirm expectations.
+
+## Pair Digest & Expected Outcome (Optional)
+
+The manifest can include a deterministic `pair` block (schema `fixture-pair/v1`) derived from the first `base` and `head` items. It helps detect stale manifests and verify that drift runs match the intended result.
+
+- Fields: `basePath`, `headPath`, `algorithm=sha256`, `canonical`, `digest`, optional `expectedOutcome` (`identical|diff|any`), `enforce` (`notice|warn|fail`).
+- Inject/refresh locally:
+
+```powershell
+pwsh -File tools/Update-FixtureManifest.ps1 -Allow -InjectPair `
+  -SetExpectedOutcome diff `
+  -SetEnforce warn
+```
+
+- Validate in CI with drift evidence:
+
+```powershell
+pwsh -File tools/Validate-Fixtures.ps1 -Json -RequirePair -FailOnExpectedMismatch `
+  -EvidencePath results/fixture-drift/compare-exec.json
+```
+
+Evidence resolution order (if `-EvidencePath` is omitted):
+
+1. `results/fixture-drift/compare-exec.json`
+2. Newest `tests/results/**/(compare-exec.json|lvcompare-capture.json)`
+
+Outcome mapping: LVCompare exitCode `0 → identical`, `1 → diff`; otherwise `unknown` (or use the `diff` boolean when present).
 

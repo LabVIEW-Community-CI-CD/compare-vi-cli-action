@@ -2,6 +2,7 @@ param(
 	[Parameter(Mandatory=$true)][string]$Base,
 	[Parameter(Mandatory=$true)][string]$Head,
 	[Parameter()][object]$LvArgs,
+	[Parameter()][string]$LvComparePath,
 	[Parameter()][switch]$RenderReport,
 	[Parameter()][string]$OutputDir = 'tests/results',
 	[Parameter()][switch]$Quiet
@@ -11,10 +12,26 @@ $ErrorActionPreference = 'Stop'
 
 # Import shared tokenization module
 Import-Module (Join-Path $PSScriptRoot 'ArgTokenization.psm1') -Force
+# Reuse CompareVI normalization logic
+$script:CompareModule = Import-Module (Join-Path $PSScriptRoot 'CompareVI.psm1') -Force -PassThru
 
 function Resolve-CanonicalCliPath {
+	param([string]$Override)
+	if ($Override) {
+		if (-not (Test-Path -LiteralPath $Override -PathType Leaf)) {
+			throw "LVCompare.exe override not found at: $Override"
+		}
+		try { return (Resolve-Path -LiteralPath $Override).Path } catch { return $Override }
+	}
+	$envOverride = @($env:LVCOMPARE_PATH, $env:LV_COMPARE_PATH) | Where-Object { $_ } | Select-Object -First 1
+	if ($envOverride) {
+		if (-not (Test-Path -LiteralPath $envOverride -PathType Leaf)) {
+			throw "LVCompare.exe not found at LVCOMPARE_PATH: $envOverride"
+		}
+		try { return (Resolve-Path -LiteralPath $envOverride).Path } catch { return $envOverride }
+	}
 	$cli = 'C:\Program Files\National Instruments\Shared\LabVIEW Compare\LVCompare.exe'
-	if (-not (Test-Path -LiteralPath $cli)) {
+	if (-not (Test-Path -LiteralPath $cli -PathType Leaf)) {
 		throw "LVCompare.exe not found at canonical path: $cli"
 	}
 	return $cli
@@ -50,24 +67,8 @@ function ConvertTo-ArgList([object]$value) {
 }
 
 function Convert-ArgTokensNormalized([string[]]$tokens) {
-	$out = @()
-	foreach ($t in $tokens) {
-		if ($null -eq $t) { continue }
-		$s = $t.Trim()
-		if ($s -match '^-' -and $s -match '\s+') {
-			# Split first whitespace into flag + value (preserve inner spaces of value)
-			$firstSpace = $s.IndexOf(' ')
-			if ($firstSpace -gt 0) {
-				$flag = $s.Substring(0,$firstSpace)
-				$val  = $s.Substring($firstSpace+1)
-				if ($flag) { $out += $flag }
-				if ($val)  { $out += $val }
-				continue
-			}
-		}
-		$out += $s
-	}
-	return $out
+	if (-not $tokens) { return @() }
+	& $script:CompareModule { param($innerTokens) Convert-ArgTokenList -tokens $innerTokens } $tokens
 }
 
 function Test-ArgTokensValid([string[]]$tokens) {
@@ -110,7 +111,7 @@ if ($baseLeaf -ieq $headLeaf -and $basePath -ne $headPath) { throw "LVCompare li
 $argsList = ConvertTo-ArgList -value $LvArgs
 $argsList = Convert-ArgTokensNormalized -tokens $argsList
 Test-ArgTokensValid -tokens $argsList | Out-Null
-$cliPath = Resolve-CanonicalCliPath
+$cliPath = Resolve-CanonicalCliPath -Override $LvComparePath
 
 # Prepare output paths
 New-DirectoryIfMissing -path $OutputDir

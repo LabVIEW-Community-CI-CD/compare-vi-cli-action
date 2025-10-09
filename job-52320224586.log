@@ -1,0 +1,1243 @@
+﻿2025-10-09T05:30:18.9695438Z Current runner version: '2.328.0'
+2025-10-09T05:30:18.9706058Z Runner name: 'USAUSLT-Z7DLW6G'
+2025-10-09T05:30:18.9706882Z Runner group name: 'Default'
+2025-10-09T05:30:18.9707871Z Machine name: 'USAUSLT-Z7DLW6G'
+2025-10-09T05:30:18.9713557Z ##[group]GITHUB_TOKEN Permissions
+2025-10-09T05:30:18.9716485Z Actions: write
+2025-10-09T05:30:18.9716999Z Attestations: write
+2025-10-09T05:30:18.9717450Z Checks: write
+2025-10-09T05:30:18.9718034Z Contents: write
+2025-10-09T05:30:18.9718840Z Deployments: write
+2025-10-09T05:30:18.9780146Z Discussions: write
+2025-10-09T05:30:18.9780550Z Issues: write
+2025-10-09T05:30:18.9780847Z Metadata: read
+2025-10-09T05:30:18.9781137Z Models: read
+2025-10-09T05:30:18.9781428Z Packages: write
+2025-10-09T05:30:18.9781716Z Pages: write
+2025-10-09T05:30:18.9782009Z PullRequests: write
+2025-10-09T05:30:18.9782341Z RepositoryProjects: write
+2025-10-09T05:30:18.9782699Z SecurityEvents: write
+2025-10-09T05:30:18.9783163Z Statuses: write
+2025-10-09T05:30:18.9784064Z ##[endgroup]
+2025-10-09T05:30:18.9786514Z Secret source: Actions
+2025-10-09T05:30:18.9786950Z Prepare workflow directory
+2025-10-09T05:30:19.0663759Z Prepare all required actions
+2025-10-09T05:30:19.0695484Z Getting action download info
+2025-10-09T05:30:19.5372773Z Download action repository 'actions/checkout@v5' (SHA:08c6903cd8c0fde910a37f88322edcfb5dd907a8)
+2025-10-09T05:30:20.5133160Z Download action repository 'actions/upload-artifact@v4' (SHA:ea165f8d65b6e75b540449e92b4886f43607fa02)
+2025-10-09T05:30:23.2171222Z Uses: LabVIEW-Community-CI-CD/compare-vi-cli-action/.github/workflows/pester-reusable.yml@refs/pull/100/merge (3d4d51d013cf6a331801145f140d6112948bd20d)
+2025-10-09T05:30:23.2186342Z ##[group] Inputs
+2025-10-09T05:30:23.2187508Z   include_integration: false
+2025-10-09T05:30:23.2188615Z   install_pester: false
+2025-10-09T05:30:23.2189766Z   include_patterns: tests/ViBinaryHandling.Tests.ps1
+2025-10-09T05:30:23.2191080Z   diagnostic_fail: false
+2025-10-09T05:30:23.2192181Z   continue_on_error: false
+2025-10-09T05:30:23.2193222Z   skip_run: false
+2025-10-09T05:30:23.2194122Z   sample_id: 
+2025-10-09T05:30:23.2195021Z ##[endgroup]
+2025-10-09T05:30:23.2196156Z Complete job name: vi-binary-check / Pester (self-hosted)
+2025-10-09T05:30:23.4704629Z ##[group]Run actions/checkout@v5
+2025-10-09T05:30:23.4707289Z with:
+2025-10-09T05:30:23.4708539Z   repository: LabVIEW-Community-CI-CD/compare-vi-cli-action
+2025-10-09T05:30:23.4710502Z   token: ***
+2025-10-09T05:30:23.4711354Z   ssh-strict: true
+2025-10-09T05:30:23.4712228Z   ssh-user: git
+2025-10-09T05:30:23.4713119Z   persist-credentials: true
+2025-10-09T05:30:23.4714085Z   clean: true
+2025-10-09T05:30:23.4714998Z   sparse-checkout-cone-mode: true
+2025-10-09T05:30:23.4716034Z   fetch-depth: 1
+2025-10-09T05:30:23.4716868Z   fetch-tags: false
+2025-10-09T05:30:23.4717748Z   show-progress: true
+2025-10-09T05:30:23.4718613Z   lfs: false
+2025-10-09T05:30:23.4719429Z   submodules: false
+2025-10-09T05:30:23.4720335Z   set-safe-directory: true
+2025-10-09T05:30:23.4722140Z env:
+2025-10-09T05:30:23.4722935Z   LV_SUPPRESS_UI: 1
+2025-10-09T05:30:23.4723814Z   LV_NO_ACTIVATE: 1
+2025-10-09T05:30:23.4724709Z   LV_CURSOR_RESTORE: 1
+2025-10-09T05:30:23.4725716Z   LV_IDLE_WAIT_SECONDS: 2
+2025-10-09T05:30:23.4726674Z   LV_IDLE_MAX_WAIT_SECONDS: 5
+2025-10-09T05:30:23.4727598Z   STUCK_GUARD: 1
+2025-10-09T05:30:23.4728380Z ##[endgroup]
+2025-10-09T05:30:23.6356207Z Syncing repository: LabVIEW-Community-CI-CD/compare-vi-cli-action
+2025-10-09T05:30:23.6359257Z ##[group]Getting Git version info
+2025-10-09T05:30:23.6360280Z Working directory is 'C:\actions-runner\_work\compare-vi-cli-action\compare-vi-cli-action'
+2025-10-09T05:30:23.6473638Z [command]"C:\Program Files\Git\cmd\git.exe" version
+2025-10-09T05:30:23.7129780Z git version 2.51.0.windows.1
+2025-10-09T05:30:23.7174061Z ##[endgroup]
+2025-10-09T05:30:23.7187115Z Copying 'C:\WINDOWS\system32\config\systemprofile\.gitconfig' to 'C:\actions-runner\_work\_temp\9061b68c-75c5-4f1a-9b68-2ff62bb972f0\.gitconfig'
+2025-10-09T05:30:23.7229666Z Temporarily overriding HOME='C:\actions-runner\_work\_temp\9061b68c-75c5-4f1a-9b68-2ff62bb972f0' before making global git config changes
+2025-10-09T05:30:23.7231807Z Adding repository directory to the temporary git global config as a safe directory
+2025-10-09T05:30:23.7239759Z [command]"C:\Program Files\Git\cmd\git.exe" config --global --add safe.directory C:\actions-runner\_work\compare-vi-cli-action\compare-vi-cli-action
+2025-10-09T05:30:23.8086118Z [command]"C:\Program Files\Git\cmd\git.exe" config --local --get remote.origin.url
+2025-10-09T05:30:23.8872447Z https://github.com/LabVIEW-Community-CI-CD/compare-vi-cli-action
+2025-10-09T05:30:23.8926179Z ##[group]Removing previously created refs, to avoid conflicts
+2025-10-09T05:30:23.8932393Z [command]"C:\Program Files\Git\cmd\git.exe" rev-parse --symbolic-full-name --verify --quiet HEAD
+2025-10-09T05:30:23.9661070Z HEAD
+2025-10-09T05:30:24.0610589Z ##[endgroup]
+2025-10-09T05:30:24.0620834Z [command]"C:\Program Files\Git\cmd\git.exe" submodule status
+2025-10-09T05:30:25.5302616Z ##[group]Cleaning the repository
+2025-10-09T05:30:25.5307020Z [command]"C:\Program Files\Git\cmd\git.exe" clean -ffdx
+2025-10-09T05:30:25.6179577Z Removing results/
+2025-10-09T05:30:25.6180424Z Removing tests/results/
+2025-10-09T05:30:25.6232079Z [command]"C:\Program Files\Git\cmd\git.exe" reset --hard HEAD
+2025-10-09T05:30:25.7343247Z HEAD is now at 0f7bf6b Merge 80b9b0983574b832cd8caad2c6d0fa45a024cecf into d3fb44decf012548e36a62fd147aa79c77c472f8
+2025-10-09T05:30:25.7394432Z ##[endgroup]
+2025-10-09T05:30:25.7497441Z ##[group]Disabling automatic garbage collection
+2025-10-09T05:30:25.7504451Z [command]"C:\Program Files\Git\cmd\git.exe" config --local gc.auto 0
+2025-10-09T05:30:25.8333773Z ##[endgroup]
+2025-10-09T05:30:25.8335355Z ##[group]Setting up auth
+2025-10-09T05:30:25.8351441Z [command]"C:\Program Files\Git\cmd\git.exe" config --local --name-only --get-regexp core\.sshCommand
+2025-10-09T05:30:25.9110099Z [command]"C:\Program Files\Git\cmd\git.exe" submodule foreach --recursive "sh -c \"git config --local --name-only --get-regexp 'core\.sshCommand' && git config --local --unset-all 'core.sshCommand' || :\""
+2025-10-09T05:30:27.3862916Z [command]"C:\Program Files\Git\cmd\git.exe" config --local --name-only --get-regexp http\.https\:\/\/github\.com\/\.extraheader
+2025-10-09T05:30:27.4623306Z [command]"C:\Program Files\Git\cmd\git.exe" submodule foreach --recursive "sh -c \"git config --local --name-only --get-regexp 'http\.https\:\/\/github\.com\/\.extraheader' && git config --local --unset-all 'http.https://github.com/.extraheader' || :\""
+2025-10-09T05:30:28.9596781Z [command]"C:\Program Files\Git\cmd\git.exe" config --local http.https://github.com/.extraheader "AUTHORIZATION: basic ***"
+2025-10-09T05:30:29.0343669Z ##[endgroup]
+2025-10-09T05:30:29.0345666Z ##[group]Fetching the repository
+2025-10-09T05:30:29.0355575Z [command]"C:\Program Files\Git\cmd\git.exe" -c protocol.version=2 fetch --no-tags --prune --no-recurse-submodules --depth=1 origin +3d4d51d013cf6a331801145f140d6112948bd20d:refs/remotes/pull/100/merge
+2025-10-09T05:30:29.7931520Z From https://github.com/LabVIEW-Community-CI-CD/compare-vi-cli-action
+2025-10-09T05:30:29.7932685Z  + 0f7bf6b...3d4d51d 3d4d51d013cf6a331801145f140d6112948bd20d -> pull/100/merge  (forced update)
+2025-10-09T05:30:29.8385816Z ##[endgroup]
+2025-10-09T05:30:29.8386258Z ##[group]Determining the checkout info
+2025-10-09T05:30:29.8387676Z ##[endgroup]
+2025-10-09T05:30:29.8396277Z [command]"C:\Program Files\Git\cmd\git.exe" sparse-checkout disable
+2025-10-09T05:30:29.9362311Z [command]"C:\Program Files\Git\cmd\git.exe" config --local --unset-all extensions.worktreeConfig
+2025-10-09T05:30:30.0210770Z ##[group]Checking out the ref
+2025-10-09T05:30:30.0222036Z [command]"C:\Program Files\Git\cmd\git.exe" checkout --progress --force refs/remotes/pull/100/merge
+2025-10-09T05:30:30.1692059Z Warning: you are leaving 1 commit behind, not connected to
+2025-10-09T05:30:30.1692720Z any of your branches:
+2025-10-09T05:30:30.1695441Z 
+2025-10-09T05:30:30.1695772Z   0f7bf6b Merge 80b9b0983574b832cd8caad2c6d0fa45a024cecf into d3fb44decf012548e36a62fd147aa79c77c472f8
+2025-10-09T05:30:30.1696004Z 
+2025-10-09T05:30:30.1696178Z If you want to keep it by creating a new branch, this may be a good time
+2025-10-09T05:30:30.1696401Z to do so with:
+2025-10-09T05:30:30.1696491Z 
+2025-10-09T05:30:30.1696709Z  git branch <new-branch-name> 0f7bf6b
+2025-10-09T05:30:30.1697016Z 
+2025-10-09T05:30:30.1697595Z HEAD is now at 3d4d51d Merge 71c6a3b68f30257b9210b3a416ef2b641fe77021 into d3fb44decf012548e36a62fd147aa79c77c472f8
+2025-10-09T05:30:30.1731005Z ##[endgroup]
+2025-10-09T05:30:30.2526100Z [command]"C:\Program Files\Git\cmd\git.exe" log -1 --format=%H
+2025-10-09T05:30:30.3247011Z 3d4d51d013cf6a331801145f140d6112948bd20d
+2025-10-09T05:30:30.3837153Z ##[group]Run pwsh -NoLogo -NoProfile -File tools/Session-Lock.ps1 -Action Acquire -Group 'pester-selfhosted' -QueueWaitSeconds 15 -QueueMaxAttempts 40 -StaleSeconds 300 -HeartbeatSeconds 15
+2025-10-09T05:30:30.3837995Z [36;1mpwsh -NoLogo -NoProfile -File tools/Session-Lock.ps1 -Action Acquire -Group 'pester-selfhosted' -QueueWaitSeconds 15 -QueueMaxAttempts 40 -StaleSeconds 300 -HeartbeatSeconds 15[0m
+2025-10-09T05:30:30.3846930Z shell: C:\Program Files\PowerShell\7\pwsh.EXE -command ". '{0}'"
+2025-10-09T05:30:30.3847150Z env:
+2025-10-09T05:30:30.3847294Z   LV_SUPPRESS_UI: 1
+2025-10-09T05:30:30.3847415Z   LV_NO_ACTIVATE: 1
+2025-10-09T05:30:30.3847525Z   LV_CURSOR_RESTORE: 1
+2025-10-09T05:30:30.3847641Z   LV_IDLE_WAIT_SECONDS: 2
+2025-10-09T05:30:30.3847760Z   LV_IDLE_MAX_WAIT_SECONDS: 5
+2025-10-09T05:30:30.3847890Z   STUCK_GUARD: 1
+2025-10-09T05:30:30.3848009Z ##[endgroup]
+2025-10-09T05:30:31.0931269Z ##[notice][ps-session:session-lock:28928 pid=28928 action=Acquire group=pester-selfhosted]
+2025-10-09T05:30:31.1731852Z C:\actions-runner\_work\compare-vi-cli-action\compare-vi-cli-action\tests\results\_session_lock\pester-selfhosted\lock.json
+2025-10-09T05:30:31.5474254Z Prepare all required actions
+2025-10-09T05:30:31.5659183Z ##[group]Run ./.github/actions/runner-unblock-guard
+2025-10-09T05:30:31.5659344Z with:
+2025-10-09T05:30:31.5659484Z   snapshot-path: tests/results/lv-guard-pre.json
+2025-10-09T05:30:31.5659638Z   cleanup: false
+2025-10-09T05:30:31.5659747Z   process-names: LVCompare,LabVIEW
+2025-10-09T05:30:31.5659876Z env:
+2025-10-09T05:30:31.5659965Z   LV_SUPPRESS_UI: 1
+2025-10-09T05:30:31.5660068Z   LV_NO_ACTIVATE: 1
+2025-10-09T05:30:31.5660166Z   LV_CURSOR_RESTORE: 1
+2025-10-09T05:30:31.5660277Z   LV_IDLE_WAIT_SECONDS: 2
+2025-10-09T05:30:31.5660386Z   LV_IDLE_MAX_WAIT_SECONDS: 5
+2025-10-09T05:30:31.5660523Z   STUCK_GUARD: 1
+2025-10-09T05:30:31.5660656Z   SESSION_LOCK_ID: 15bb5443-736f-4dd4-bda3-d0c745148531
+2025-10-09T05:30:31.5660831Z   SESSION_LOCK_GROUP: pester-selfhosted
+2025-10-09T05:30:31.5661200Z   SESSION_LOCK_PATH: C:\actions-runner\_work\compare-vi-cli-action\compare-vi-cli-action\tests\results\_session_lock\pester-selfhosted\lock.json
+2025-10-09T05:30:31.5661530Z   SESSION_HEARTBEAT_SECONDS: 15
+2025-10-09T05:30:31.5661657Z ##[endgroup]
+2025-10-09T05:30:31.5974171Z ##[group]Run $ErrorActionPreference = 'Stop'
+2025-10-09T05:30:31.5974388Z [36;1m$ErrorActionPreference = 'Stop'[0m
+2025-10-09T05:30:31.5974579Z [36;1m$snapPath = 'tests/results/lv-guard-pre.json'[0m
+2025-10-09T05:30:31.5974852Z [36;1m$procNames = 'LVCompare,LabVIEW'.Split(',') | ForEach-Object { $_.Trim() } | Where-Object { $_ }[0m
+2025-10-09T05:30:31.5975132Z [36;1m$doCleanup = ('false' -eq 'true') -or ($env:UNBLOCK_GUARD -eq '1')[0m
+2025-10-09T05:30:31.5975510Z [36;1m$procs = @(Get-Process -ErrorAction SilentlyContinue | Where-Object { $_.ProcessName -in $procNames } | Select-Object ProcessName,Id,StartTime)[0m
+2025-10-09T05:30:31.5975924Z [36;1m$jobs  = @(Get-Job -ErrorAction SilentlyContinue | Select-Object Id,Name,State,HasMoreData)[0m
+2025-10-09T05:30:31.5976230Z [36;1m$snap = [ordered]@{ processes=$procs; jobs=$jobs; cleanupPerformed=$false }[0m
+2025-10-09T05:30:31.5976753Z [36;1m$dir = Split-Path -Parent $snapPath[0m
+2025-10-09T05:30:31.5977024Z [36;1mif ($dir -and -not (Test-Path -LiteralPath $dir)) { New-Item -ItemType Directory -Force -Path $dir | Out-Null }[0m
+2025-10-09T05:30:31.5977430Z [36;1m$snap | ConvertTo-Json -Depth 5 | Out-File -FilePath $snapPath -Encoding utf8[0m
+2025-10-09T05:30:31.5977702Z [36;1m$cleanupNote = ''[0m
+2025-10-09T05:30:31.5977827Z [36;1mif ($doCleanup) {[0m
+2025-10-09T05:30:31.5977988Z [36;1m  $stoppedLV = 0; $stoppedLVC = 0; $stoppedJobs = 0[0m
+2025-10-09T05:30:31.5978434Z [36;1m  try { Get-Process -Name 'LabVIEW' -ErrorAction SilentlyContinue | ForEach-Object { try { Stop-Process -Id $_.Id -Force -ErrorAction SilentlyContinue; $stoppedLV++ } catch {} } } catch {}[0m
+2025-10-09T05:30:31.5979126Z [36;1m  try { Get-Process -Name 'LVCompare' -ErrorAction SilentlyContinue | ForEach-Object { try { Stop-Process -Id $_.Id -Force -ErrorAction SilentlyContinue; $stoppedLVC++ } catch {} } } catch {}[0m
+2025-10-09T05:30:31.5979843Z [36;1m  try { $gj = @(Get-Job -ErrorAction SilentlyContinue); foreach ($j in $gj) { try { Stop-Job -Job $j -ErrorAction SilentlyContinue; Remove-Job -Job $j -Force -ErrorAction SilentlyContinue; $stoppedJobs++ } catch {} } } catch {}[0m
+2025-10-09T05:30:31.5980327Z [36;1m  $snap.cleanupPerformed = $true[0m
+2025-10-09T05:30:31.5980570Z [36;1m  $snap.cleanup = [ordered]@{ LabVIEW=$stoppedLV; LVCompare=$stoppedLVC; Jobs=$stoppedJobs }[0m
+2025-10-09T05:30:31.5980862Z [36;1m  $snap | ConvertTo-Json -Depth 6 | Out-File -FilePath $snapPath -Encoding utf8[0m
+2025-10-09T05:30:31.5981164Z [36;1m  $cleanupNote = ('Cleanup: LabVIEW={0}, LVCompare={1}, Jobs={2}' -f $stoppedLV,$stoppedLVC,$stoppedJobs)[0m
+2025-10-09T05:30:31.5981419Z [36;1m}[0m
+2025-10-09T05:30:31.5981537Z [36;1m$lines = @('### Runner Unblock Guard','')[0m
+2025-10-09T05:30:31.5981707Z [36;1m$lines += ('- Process count: {0}' -f $procs.Count)[0m
+2025-10-09T05:30:31.5983701Z [36;1m$lines += ('- Pester job count: {0}' -f $jobs.Count)[0m
+2025-10-09T05:30:31.5983908Z [36;1m$lines += ''[0m
+2025-10-09T05:30:31.5984033Z [36;1m$lines += ('Snapshot: {0}' -f $snapPath)[0m
+2025-10-09T05:30:31.5984213Z [36;1mif ($cleanupNote) { $lines += ('- ' + $cleanupNote) }[0m
+2025-10-09T05:30:31.5984507Z [36;1m$lines -join "`n" | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8[0m
+2025-10-09T05:30:31.5990203Z shell: C:\Program Files\PowerShell\7\pwsh.EXE -command ". '{0}'"
+2025-10-09T05:30:31.5990380Z env:
+2025-10-09T05:30:31.5990474Z   LV_SUPPRESS_UI: 1
+2025-10-09T05:30:31.5990580Z   LV_NO_ACTIVATE: 1
+2025-10-09T05:30:31.5990734Z   LV_CURSOR_RESTORE: 1
+2025-10-09T05:30:31.5990850Z   LV_IDLE_WAIT_SECONDS: 2
+2025-10-09T05:30:31.5990965Z   LV_IDLE_MAX_WAIT_SECONDS: 5
+2025-10-09T05:30:31.5991078Z   STUCK_GUARD: 1
+2025-10-09T05:30:31.5991211Z   SESSION_LOCK_ID: 15bb5443-736f-4dd4-bda3-d0c745148531
+2025-10-09T05:30:31.5991377Z   SESSION_LOCK_GROUP: pester-selfhosted
+2025-10-09T05:30:31.5991717Z   SESSION_LOCK_PATH: C:\actions-runner\_work\compare-vi-cli-action\compare-vi-cli-action\tests\results\_session_lock\pester-selfhosted\lock.json
+2025-10-09T05:30:31.5992025Z   SESSION_HEARTBEAT_SECONDS: 15
+2025-10-09T05:30:31.5992140Z ##[endgroup]
+2025-10-09T05:30:32.1656226Z Prepare all required actions
+2025-10-09T05:30:32.1738848Z ##[group]Run ./.github/actions/dispatcher-profile
+2025-10-09T05:30:32.1739019Z with:
+2025-10-09T05:30:32.1739121Z   timeout-seconds: 0
+2025-10-09T05:30:32.1739251Z   emit-failures-json-always: true
+2025-10-09T05:30:32.1739387Z   detect-leaks: true
+2025-10-09T05:30:32.1739498Z   fail-on-leaks: false
+2025-10-09T05:30:32.1739605Z   kill-leaks: false
+2025-10-09T05:30:32.1739719Z   leak-grace-seconds: 3
+2025-10-09T05:30:32.1739840Z   clean-labview-before: false
+2025-10-09T05:30:32.1739971Z   clean-after: false
+2025-10-09T05:30:32.1740082Z   track-artifacts: true
+2025-10-09T05:30:32.1740184Z env:
+2025-10-09T05:30:32.1740288Z   LV_SUPPRESS_UI: 1
+2025-10-09T05:30:32.1740716Z   LV_NO_ACTIVATE: 1
+2025-10-09T05:30:32.1740902Z   LV_CURSOR_RESTORE: 1
+2025-10-09T05:30:32.1741070Z   LV_IDLE_WAIT_SECONDS: 2
+2025-10-09T05:30:32.1741330Z   LV_IDLE_MAX_WAIT_SECONDS: 5
+2025-10-09T05:30:32.1741506Z   STUCK_GUARD: 1
+2025-10-09T05:30:32.1741786Z   SESSION_LOCK_ID: 15bb5443-736f-4dd4-bda3-d0c745148531
+2025-10-09T05:30:32.1742003Z   SESSION_LOCK_GROUP: pester-selfhosted
+2025-10-09T05:30:32.1742415Z   SESSION_LOCK_PATH: C:\actions-runner\_work\compare-vi-cli-action\compare-vi-cli-action\tests\results\_session_lock\pester-selfhosted\lock.json
+2025-10-09T05:30:32.1742782Z   SESSION_HEARTBEAT_SECONDS: 15
+2025-10-09T05:30:32.1742977Z ##[endgroup]
+2025-10-09T05:30:32.2126795Z ##[group]Run $ErrorActionPreference = 'Stop'
+2025-10-09T05:30:32.2127114Z [36;1m$ErrorActionPreference = 'Stop'[0m
+2025-10-09T05:30:32.2127267Z [36;1m$to = '0'[0m
+2025-10-09T05:30:32.2127380Z [36;1m$emit = 'true'[0m
+2025-10-09T05:30:32.2127504Z [36;1m$detect = 'true'[0m
+2025-10-09T05:30:32.2127649Z [36;1m$fail = 'false'[0m
+2025-10-09T05:30:32.2127772Z [36;1m$kill = 'false'[0m
+2025-10-09T05:30:32.2127878Z [36;1m$grace = '3'[0m
+2025-10-09T05:30:32.2127998Z [36;1m$cleanBefore = 'false'[0m
+2025-10-09T05:30:32.2128144Z [36;1m$cleanAfter  = 'false'[0m
+2025-10-09T05:30:32.2128276Z [36;1m$track = 'true'[0m
+2025-10-09T05:30:32.2128392Z [36;1m[0m
+2025-10-09T05:30:32.2128549Z [36;1m# Env bindings consumed by Invoke-PesterTests.ps1[0m
+2025-10-09T05:30:32.2128864Z [36;1mif ($cleanBefore -match '^(1|true)$') { "CLEAN_LABVIEW=1" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8 }[0m
+2025-10-09T05:30:32.2129252Z [36;1mif ($cleanAfter  -match '^(1|true)$') { "CLEAN_AFTER=1"   | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8 }[0m
+2025-10-09T05:30:32.2130101Z [36;1mif ($track      -match '^(1|true)$') { "SCAN_ARTIFACTS=1"| Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8 }[0m
+2025-10-09T05:30:32.2130465Z [36;1mif ($detect     -match '^(1|true)$') { "DETECT_LEAKS=1"  | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8 }[0m
+2025-10-09T05:30:32.2130816Z [36;1mif ($fail       -match '^(1|true)$') { "FAIL_ON_LEAKS=1" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8 }[0m
+2025-10-09T05:30:32.2131512Z [36;1mif ($kill       -match '^(1|true)$') { "KILL_LEAKS=1"    | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8 }[0m
+2025-10-09T05:30:32.2131867Z [36;1mif ($grace) { "LEAK_GRACE_SECONDS=$grace" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8 }[0m
+2025-10-09T05:30:32.2132094Z [36;1m[0m
+2025-10-09T05:30:32.2132217Z [36;1m# Outputs for dispatcher parameters[0m
+2025-10-09T05:30:32.2132445Z [36;1m"timeout_seconds=$to" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8[0m
+2025-10-09T05:30:32.2132909Z [36;1m"emit_failures_json_always=$emit" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8[0m
+2025-10-09T05:30:32.2133155Z [36;1m[0m
+2025-10-09T05:30:32.2133270Z [36;1mif ($env:GITHUB_STEP_SUMMARY) {[0m
+2025-10-09T05:30:32.2133444Z [36;1m  $lines = @('### Dispatcher Profile','')[0m
+2025-10-09T05:30:32.2133619Z [36;1m  $lines += ('- TimeoutSeconds: {0}' -f $to)[0m
+2025-10-09T05:30:32.2135672Z [36;1m  $lines += ('- EmitFailuresJsonAlways: {0}' -f $emit)[0m
+2025-10-09T05:30:32.2135903Z [36;1m  $lines += ('- DetectLeaks: {0}' -f $detect)[0m
+2025-10-09T05:30:32.2136069Z [36;1m  $lines += ('- FailOnLeaks: {0}' -f $fail)[0m
+2025-10-09T05:30:32.2136224Z [36;1m  $lines += ('- KillLeaks: {0}' -f $kill)[0m
+2025-10-09T05:30:32.2136392Z [36;1m  $lines += ('- LeakGraceSeconds: {0}' -f $grace)[0m
+2025-10-09T05:30:32.2136579Z [36;1m  $lines += ('- CleanLabVIEWBefore: {0}' -f $cleanBefore)[0m
+2025-10-09T05:30:32.2136761Z [36;1m  $lines += ('- CleanAfter: {0}' -f $cleanAfter)[0m
+2025-10-09T05:30:32.2136932Z [36;1m  $lines += ('- TrackArtifacts: {0}' -f $track)[0m
+2025-10-09T05:30:32.2137161Z [36;1m  $lines -join "`n" | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8[0m
+2025-10-09T05:30:32.2137935Z [36;1m}[0m
+2025-10-09T05:30:32.2144128Z shell: C:\Program Files\PowerShell\7\pwsh.EXE -command ". '{0}'"
+2025-10-09T05:30:32.2144311Z env:
+2025-10-09T05:30:32.2144407Z   LV_SUPPRESS_UI: 1
+2025-10-09T05:30:32.2144561Z   LV_NO_ACTIVATE: 1
+2025-10-09T05:30:32.2144670Z   LV_CURSOR_RESTORE: 1
+2025-10-09T05:30:32.2144778Z   LV_IDLE_WAIT_SECONDS: 2
+2025-10-09T05:30:32.2144895Z   LV_IDLE_MAX_WAIT_SECONDS: 5
+2025-10-09T05:30:32.2145112Z   STUCK_GUARD: 1
+2025-10-09T05:30:32.2145508Z   SESSION_LOCK_ID: 15bb5443-736f-4dd4-bda3-d0c745148531
+2025-10-09T05:30:32.2145693Z   SESSION_LOCK_GROUP: pester-selfhosted
+2025-10-09T05:30:32.2146045Z   SESSION_LOCK_PATH: C:\actions-runner\_work\compare-vi-cli-action\compare-vi-cli-action\tests\results\_session_lock\pester-selfhosted\lock.json
+2025-10-09T05:30:32.2146379Z   SESSION_HEARTBEAT_SECONDS: 15
+2025-10-09T05:30:32.2146552Z ##[endgroup]
+2025-10-09T05:30:32.6889593Z ##[group]Run $logPath = 'tests/results/pester-dispatcher.log'
+2025-10-09T05:30:32.6889991Z [36;1m$logPath = 'tests/results/pester-dispatcher.log'[0m
+2025-10-09T05:30:32.6890193Z [36;1m$logDir = Split-Path -Parent $logPath[0m
+2025-10-09T05:30:32.6891408Z [36;1mif (-not (Test-Path $logDir)) { New-Item -ItemType Directory -Force -Path $logDir | Out-Null }[0m
+2025-10-09T05:30:32.6891761Z [36;1mif (Test-Path -LiteralPath $logPath) { Remove-Item -LiteralPath $logPath -Force }[0m
+2025-10-09T05:30:32.6892043Z [36;1mImport-Module ./Invoke-PesterTests.ps1 -Force[0m
+2025-10-09T05:30:32.6892290Z [36;1m$cmd = Get-Command Invoke-PesterTests.ps1 -ErrorAction Stop[0m
+2025-10-09T05:30:32.6892549Z [36;1m$lockScript = Join-Path (Get-Location) 'tools/Session-Lock.ps1'[0m
+2025-10-09T05:30:32.6892765Z [36;1m$bound = [ordered]@{}[0m
+2025-10-09T05:30:32.6892914Z [36;1m$bound.TestsPath = 'tests'[0m
+2025-10-09T05:30:32.6893075Z [36;1m$bound.IncludeIntegration = 'false'[0m
+2025-10-09T05:30:32.6893283Z [36;1m$bound.ResultsPath = 'tests/results'[0m
+2025-10-09T05:30:32.6894434Z [36;1mif ('true' -eq 'true') { $bound.EmitFailuresJsonAlways = $true }[0m
+2025-10-09T05:30:32.6894677Z [36;1mif ('tests/ViBinaryHandling.Tests.ps1' -ne '') {[0m
+2025-10-09T05:30:32.6894904Z [36;1m  $patternInput = 'tests/ViBinaryHandling.Tests.ps1'[0m
+2025-10-09T05:30:32.6895127Z [36;1m  $pattern = (Split-Path -Leaf $patternInput)[0m
+2025-10-09T05:30:32.6895314Z [36;1m  $bound.IncludePatterns = $pattern[0m
+2025-10-09T05:30:32.6895470Z [36;1m}[0m
+2025-10-09T05:30:32.6895582Z [36;1m$timeoutSeconds = '0'[0m
+2025-10-09T05:30:32.6895787Z [36;1mif ($timeoutSeconds -and $timeoutSeconds -match '^-?\d+(\.\d+)?$') {[0m
+2025-10-09T05:30:32.6895997Z [36;1m  try {[0m
+2025-10-09T05:30:32.6896145Z [36;1m    $bound.TimeoutSeconds = [double]$timeoutSeconds[0m
+2025-10-09T05:30:32.6896323Z [36;1m  } catch {[0m
+2025-10-09T05:30:32.6897469Z [36;1m    Write-Host "::warning::Unable to parse timeout_seconds ('$timeoutSeconds') as double."[0m
+2025-10-09T05:30:32.6898204Z [36;1m  }[0m
+2025-10-09T05:30:32.6898327Z [36;1m}[0m
+2025-10-09T05:30:32.6898529Z [36;1m$boundString = ($bound.Keys | ForEach-Object { "$_=$($bound[$_])" }) -join ', '[0m
+2025-10-09T05:30:32.6898819Z [36;1mWrite-Host "::debug::Dispatcher parameters: $boundString"[0m
+2025-10-09T05:30:32.6899020Z [36;1m$heartbeatSeconds = 15[0m
+2025-10-09T05:30:32.6899292Z [36;1mif ($env:SESSION_HEARTBEAT_SECONDS -and [int]::TryParse($env:SESSION_HEARTBEAT_SECONDS, [ref]([int]0))) {[0m
+2025-10-09T05:30:32.6900534Z [36;1m  $heartbeatSeconds = [int]$env:SESSION_HEARTBEAT_SECONDS[0m
+2025-10-09T05:30:32.6900717Z [36;1m}[0m
+2025-10-09T05:30:32.6900829Z [36;1m$heartbeatJob = $null[0m
+2025-10-09T05:30:32.6900973Z [36;1mif ($heartbeatSeconds -gt 0) {[0m
+2025-10-09T05:30:32.6901162Z [36;1m  $heartbeatJob = Start-ThreadJob -ScriptBlock {[0m
+2025-10-09T05:30:32.6901354Z [36;1m    param($scriptPath,$seconds)[0m
+2025-10-09T05:30:32.6901510Z [36;1m    while ($true) {[0m
+2025-10-09T05:30:32.6901724Z [36;1m      pwsh -NoLogo -NoProfile -File $scriptPath -Action Heartbeat | Out-Null[0m
+2025-10-09T05:30:32.6902401Z [36;1m      Start-Sleep -Seconds $seconds[0m
+2025-10-09T05:30:32.6903083Z [36;1m    }[0m
+2025-10-09T05:30:32.6903623Z [36;1m  } -ArgumentList $lockScript, $heartbeatSeconds[0m
+2025-10-09T05:30:32.6903796Z [36;1m}[0m
+2025-10-09T05:30:32.6903900Z [36;1m$exitCode = 0[0m
+2025-10-09T05:30:32.6904025Z [36;1mtry {[0m
+2025-10-09T05:30:32.6904172Z [36;1m  & $cmd @bound 2>&1 | Tee-Object -FilePath $logPath[0m
+2025-10-09T05:30:32.6904982Z [36;1m  $exitCode = $LASTEXITCODE[0m
+2025-10-09T05:30:32.6905259Z [36;1m} finally {[0m
+2025-10-09T05:30:32.6905482Z [36;1m  if ($heartbeatJob) {[0m
+2025-10-09T05:30:32.6905807Z [36;1m    Stop-Job -Id $heartbeatJob.Id -Force | Out-Null[0m
+2025-10-09T05:30:32.6906204Z [36;1m    Remove-Job -Id $heartbeatJob.Id -Force | Out-Null[0m
+2025-10-09T05:30:32.6910179Z [36;1m  }[0m
+2025-10-09T05:30:32.6910589Z [36;1m  pwsh -NoLogo -NoProfile -File $lockScript -Action Heartbeat | Out-Null[0m
+2025-10-09T05:30:32.6911028Z [36;1m}[0m
+2025-10-09T05:30:32.6911397Z [36;1m"exit_code=$exitCode" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8[0m
+2025-10-09T05:30:32.6911864Z [36;1mif ($exitCode -ne 0) {[0m
+2025-10-09T05:30:32.6912248Z [36;1m  Write-Host "::error::Pester dispatcher exited with code $exitCode"[0m
+2025-10-09T05:30:32.6912630Z [36;1m}[0m
+2025-10-09T05:30:32.6923291Z shell: C:\Program Files\PowerShell\7\pwsh.EXE -command ". '{0}'"
+2025-10-09T05:30:32.6923513Z env:
+2025-10-09T05:30:32.6923637Z   LV_SUPPRESS_UI: 1
+2025-10-09T05:30:32.6923762Z   LV_NO_ACTIVATE: 1
+2025-10-09T05:30:32.6924301Z   LV_CURSOR_RESTORE: 1
+2025-10-09T05:30:32.6924931Z   LV_IDLE_WAIT_SECONDS: 2
+2025-10-09T05:30:32.6925071Z   LV_IDLE_MAX_WAIT_SECONDS: 5
+2025-10-09T05:30:32.6925205Z   STUCK_GUARD: 1
+2025-10-09T05:30:32.6925376Z   SESSION_LOCK_ID: 15bb5443-736f-4dd4-bda3-d0c745148531
+2025-10-09T05:30:32.6925579Z   SESSION_LOCK_GROUP: pester-selfhosted
+2025-10-09T05:30:32.6926682Z   SESSION_LOCK_PATH: C:\actions-runner\_work\compare-vi-cli-action\compare-vi-cli-action\tests\results\_session_lock\pester-selfhosted\lock.json
+2025-10-09T05:30:32.6927328Z   SESSION_HEARTBEAT_SECONDS: 15
+2025-10-09T05:30:32.6927575Z   SCAN_ARTIFACTS: 1
+2025-10-09T05:30:32.6927749Z   DETECT_LEAKS: 1
+2025-10-09T05:30:32.6927926Z   LEAK_GRACE_SECONDS: 3
+2025-10-09T05:30:32.6928122Z ##[endgroup]
+2025-10-09T05:30:33.5054052Z [31;1mMetadataError: [0mC:\actions-runner\_work\_temp\656a6be9-000b-4ef8-8023-84848cbcb6a4.ps1:6[0m
+2025-10-09T05:30:33.5054785Z [31;1m[0m[36;1mLine |[0m
+2025-10-09T05:30:33.5058139Z [31;1m[0m[36;1m[36;1m   6 | [0m [36;1mImport-Module ./Invoke-PesterTests.ps1 -Force[0m
+2025-10-09T05:30:33.5058802Z [31;1m[0m[36;1m[36;1m[0m[36;1m[0m[36;1m     | [31;1m ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~[0m
+2025-10-09T05:30:33.5059679Z [31;1m[0m[36;1m[36;1m[0m[36;1m[0m[36;1m[31;1m[31;1m[36;1m     | [31;1mThe attribute cannot be added because variable Seed with value  would no longer be valid.[0m
+2025-10-09T05:30:33.6391709Z ##[error]Process completed with exit code 1.
+2025-10-09T05:30:33.6698538Z ##[group]Run pwsh -NoLogo -NoProfile -File tools/Session-Lock.ps1 -Action Release
+2025-10-09T05:30:33.6698941Z [36;1mpwsh -NoLogo -NoProfile -File tools/Session-Lock.ps1 -Action Release[0m
+2025-10-09T05:30:33.6704692Z shell: C:\Program Files\PowerShell\7\pwsh.EXE -command ". '{0}'"
+2025-10-09T05:30:33.6704891Z env:
+2025-10-09T05:30:33.6704999Z   LV_SUPPRESS_UI: 1
+2025-10-09T05:30:33.6705108Z   LV_NO_ACTIVATE: 1
+2025-10-09T05:30:33.6705211Z   LV_CURSOR_RESTORE: 1
+2025-10-09T05:30:33.6705323Z   LV_IDLE_WAIT_SECONDS: 2
+2025-10-09T05:30:33.6705451Z   LV_IDLE_MAX_WAIT_SECONDS: 5
+2025-10-09T05:30:33.6705570Z   STUCK_GUARD: 1
+2025-10-09T05:30:33.6705715Z   SESSION_LOCK_ID: 15bb5443-736f-4dd4-bda3-d0c745148531
+2025-10-09T05:30:33.6705900Z   SESSION_LOCK_GROUP: pester-selfhosted
+2025-10-09T05:30:33.6706254Z   SESSION_LOCK_PATH: C:\actions-runner\_work\compare-vi-cli-action\compare-vi-cli-action\tests\results\_session_lock\pester-selfhosted\lock.json
+2025-10-09T05:30:33.6706926Z   SESSION_HEARTBEAT_SECONDS: 15
+2025-10-09T05:30:33.6707062Z   SCAN_ARTIFACTS: 1
+2025-10-09T05:30:33.6707171Z   DETECT_LEAKS: 1
+2025-10-09T05:30:33.6707279Z   LEAK_GRACE_SECONDS: 3
+2025-10-09T05:30:33.6707398Z ##[endgroup]
+2025-10-09T05:30:34.3906260Z ##[notice][ps-session:session-lock:15684 pid=15684 action=Release group=pester-selfhosted]
+2025-10-09T05:30:34.7583987Z ##[group]Run pwsh -File scripts/Write-PesterSummaryToStepSummary.ps1 -ResultsDir 'tests/results'
+2025-10-09T05:30:34.7584517Z [36;1mpwsh -File scripts/Write-PesterSummaryToStepSummary.ps1 -ResultsDir 'tests/results'[0m
+2025-10-09T05:30:34.7590566Z shell: C:\Program Files\PowerShell\7\pwsh.EXE -command ". '{0}'"
+2025-10-09T05:30:34.7590754Z env:
+2025-10-09T05:30:34.7590860Z   LV_SUPPRESS_UI: 1
+2025-10-09T05:30:34.7590974Z   LV_NO_ACTIVATE: 1
+2025-10-09T05:30:34.7603332Z   LV_CURSOR_RESTORE: 1
+2025-10-09T05:30:34.7603494Z   LV_IDLE_WAIT_SECONDS: 2
+2025-10-09T05:30:34.7603629Z   LV_IDLE_MAX_WAIT_SECONDS: 5
+2025-10-09T05:30:34.7603757Z   STUCK_GUARD: 1
+2025-10-09T05:30:34.7603897Z   SESSION_LOCK_ID: 15bb5443-736f-4dd4-bda3-d0c745148531
+2025-10-09T05:30:34.7604087Z   SESSION_LOCK_GROUP: pester-selfhosted
+2025-10-09T05:30:34.7604491Z   SESSION_LOCK_PATH: C:\actions-runner\_work\compare-vi-cli-action\compare-vi-cli-action\tests\results\_session_lock\pester-selfhosted\lock.json
+2025-10-09T05:30:34.7604841Z   SESSION_HEARTBEAT_SECONDS: 15
+2025-10-09T05:30:34.7604978Z   SCAN_ARTIFACTS: 1
+2025-10-09T05:30:34.7605091Z   DETECT_LEAKS: 1
+2025-10-09T05:30:34.7605200Z   LEAK_GRACE_SECONDS: 3
+2025-10-09T05:30:34.7605315Z ##[endgroup]
+2025-10-09T05:30:35.6988617Z ##[group]Run $json = Join-Path 'tests/results' 'pester-summary.json'
+2025-10-09T05:30:35.6989004Z [36;1m$json = Join-Path 'tests/results' 'pester-summary.json'[0m
+2025-10-09T05:30:35.6989202Z [36;1mif (Test-Path $json) {[0m
+2025-10-09T05:30:35.6989355Z [36;1m  $schemas = @([0m
+2025-10-09T05:30:35.6989521Z [36;1m    'docs/schemas/pester-summary-v1_7_1.schema.json',[0m
+2025-10-09T05:30:35.6989733Z [36;1m    'docs/schemas/pester-summary-v1_7.schema.json',[0m
+2025-10-09T05:30:35.6989932Z [36;1m    'docs/schemas/pester-summary-v1_6.schema.json',[0m
+2025-10-09T05:30:35.6990122Z [36;1m    'docs/schemas/pester-summary-v1_5.schema.json',[0m
+2025-10-09T05:30:35.6990306Z [36;1m    'docs/schemas/pester-summary-v1_4.schema.json',[0m
+2025-10-09T05:30:35.6990490Z [36;1m    'docs/schemas/pester-summary-v1_3.schema.json',[0m
+2025-10-09T05:30:35.6990672Z [36;1m    'docs/schemas/pester-summary-v1_2.schema.json',[0m
+2025-10-09T05:30:35.6990885Z [36;1m    'docs/schemas/pester-summary-v1_1.schema.json'[0m
+2025-10-09T05:30:35.6991042Z [36;1m  )[0m
+2025-10-09T05:30:35.6991148Z [36;1m  $ok = $false[0m
+2025-10-09T05:30:35.6991269Z [36;1m  foreach($s in $schemas){[0m
+2025-10-09T05:30:35.6991422Z [36;1m    if (Test-Path $s) {[0m
+2025-10-09T05:30:35.6991656Z [36;1m      pwsh -File tools/Invoke-JsonSchemaLite.ps1 -JsonPath $json -SchemaPath $s[0m
+2025-10-09T05:30:35.6991901Z [36;1m      if ($LASTEXITCODE -eq 0) { $ok=$true; break }[0m
+2025-10-09T05:30:35.6992054Z [36;1m    }[0m
+2025-10-09T05:30:35.6992151Z [36;1m  }[0m
+2025-10-09T05:30:35.6992276Z [36;1m  $status = if ($ok) { 'ok' } else { 'fail' }[0m
+2025-10-09T05:30:35.6992443Z [36;1m  if ($env:GITHUB_STEP_SUMMARY) {[0m
+2025-10-09T05:30:35.6992655Z [36;1m    $lines = @('### Pester Summary Schema','',"- Status: $status","- File: $json")[0m
+2025-10-09T05:30:35.6992945Z [36;1m    $lines -join "`n" | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8[0m
+2025-10-09T05:30:35.6993160Z [36;1m  }[0m
+2025-10-09T05:30:35.6993259Z [36;1m} else {[0m
+2025-10-09T05:30:35.6993556Z [36;1m  if ($env:GITHUB_STEP_SUMMARY) { "### Pester Summary Schema`n- File: (missing) $json" | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8 }[0m
+2025-10-09T05:30:35.6994242Z [36;1m}[0m
+2025-10-09T05:30:35.6999979Z shell: C:\Program Files\PowerShell\7\pwsh.EXE -command ". '{0}'"
+2025-10-09T05:30:35.7000174Z env:
+2025-10-09T05:30:35.7000272Z   LV_SUPPRESS_UI: 1
+2025-10-09T05:30:35.7000387Z   LV_NO_ACTIVATE: 1
+2025-10-09T05:30:35.7000486Z   LV_CURSOR_RESTORE: 1
+2025-10-09T05:30:35.7000604Z   LV_IDLE_WAIT_SECONDS: 2
+2025-10-09T05:30:35.7000722Z   LV_IDLE_MAX_WAIT_SECONDS: 5
+2025-10-09T05:30:35.7000848Z   STUCK_GUARD: 1
+2025-10-09T05:30:35.7000989Z   SESSION_LOCK_ID: 15bb5443-736f-4dd4-bda3-d0c745148531
+2025-10-09T05:30:35.7001166Z   SESSION_LOCK_GROUP: pester-selfhosted
+2025-10-09T05:30:35.7001524Z   SESSION_LOCK_PATH: C:\actions-runner\_work\compare-vi-cli-action\compare-vi-cli-action\tests\results\_session_lock\pester-selfhosted\lock.json
+2025-10-09T05:30:35.7001857Z   SESSION_HEARTBEAT_SECONDS: 15
+2025-10-09T05:30:35.7001991Z   SCAN_ARTIFACTS: 1
+2025-10-09T05:30:35.7002093Z   DETECT_LEAKS: 1
+2025-10-09T05:30:35.7002202Z   LEAK_GRACE_SECONDS: 3
+2025-10-09T05:30:35.7002328Z ##[endgroup]
+2025-10-09T05:30:36.1798966Z ##[group]Run pwsh -File tools/Ensure-SessionIndex.ps1 -ResultsDir 'tests/results' -SummaryJson 'pester-summary.json'
+2025-10-09T05:30:36.1799515Z [36;1mpwsh -File tools/Ensure-SessionIndex.ps1 -ResultsDir 'tests/results' -SummaryJson 'pester-summary.json'[0m
+2025-10-09T05:30:36.1806468Z shell: C:\Program Files\PowerShell\7\pwsh.EXE -command ". '{0}'"
+2025-10-09T05:30:36.1806645Z env:
+2025-10-09T05:30:36.1806747Z   LV_SUPPRESS_UI: 1
+2025-10-09T05:30:36.1806852Z   LV_NO_ACTIVATE: 1
+2025-10-09T05:30:36.1806953Z   LV_CURSOR_RESTORE: 1
+2025-10-09T05:30:36.1807088Z   LV_IDLE_WAIT_SECONDS: 2
+2025-10-09T05:30:36.1807229Z   LV_IDLE_MAX_WAIT_SECONDS: 5
+2025-10-09T05:30:36.1807368Z   STUCK_GUARD: 1
+2025-10-09T05:30:36.1807523Z   SESSION_LOCK_ID: 15bb5443-736f-4dd4-bda3-d0c745148531
+2025-10-09T05:30:36.1807728Z   SESSION_LOCK_GROUP: pester-selfhosted
+2025-10-09T05:30:36.1808154Z   SESSION_LOCK_PATH: C:\actions-runner\_work\compare-vi-cli-action\compare-vi-cli-action\tests\results\_session_lock\pester-selfhosted\lock.json
+2025-10-09T05:30:36.1808537Z   SESSION_HEARTBEAT_SECONDS: 15
+2025-10-09T05:30:36.1808684Z   SCAN_ARTIFACTS: 1
+2025-10-09T05:30:36.1808793Z   DETECT_LEAKS: 1
+2025-10-09T05:30:36.1808915Z   LEAK_GRACE_SECONDS: 3
+2025-10-09T05:30:36.1809043Z ##[endgroup]
+2025-10-09T05:30:36.8100429Z Fallback session index created at: tests\results\session-index.json
+2025-10-09T05:30:37.0868770Z Prepare all required actions
+2025-10-09T05:30:37.0996665Z ##[group]Run ./.github/actions/wire-probe
+2025-10-09T05:30:37.0996817Z with:
+2025-10-09T05:30:37.0996912Z   phase: S1
+2025-10-09T05:30:37.0997018Z   results-dir: tests/results
+2025-10-09T05:30:37.0997139Z   append-summary: true
+2025-10-09T05:30:37.0997245Z env:
+2025-10-09T05:30:37.0997333Z   LV_SUPPRESS_UI: 1
+2025-10-09T05:30:37.0997433Z   LV_NO_ACTIVATE: 1
+2025-10-09T05:30:37.0997527Z   LV_CURSOR_RESTORE: 1
+2025-10-09T05:30:37.0997634Z   LV_IDLE_WAIT_SECONDS: 2
+2025-10-09T05:30:37.0997759Z   LV_IDLE_MAX_WAIT_SECONDS: 5
+2025-10-09T05:30:37.0997878Z   STUCK_GUARD: 1
+2025-10-09T05:30:37.0998011Z   SESSION_LOCK_ID: 15bb5443-736f-4dd4-bda3-d0c745148531
+2025-10-09T05:30:37.0998178Z   SESSION_LOCK_GROUP: pester-selfhosted
+2025-10-09T05:30:37.0998511Z   SESSION_LOCK_PATH: C:\actions-runner\_work\compare-vi-cli-action\compare-vi-cli-action\tests\results\_session_lock\pester-selfhosted\lock.json
+2025-10-09T05:30:37.0998854Z   SESSION_HEARTBEAT_SECONDS: 15
+2025-10-09T05:30:37.0998975Z   SCAN_ARTIFACTS: 1
+2025-10-09T05:30:37.0999100Z   DETECT_LEAKS: 1
+2025-10-09T05:30:37.0999198Z   LEAK_GRACE_SECONDS: 3
+2025-10-09T05:30:37.0999305Z ##[endgroup]
+2025-10-09T05:30:37.1241457Z ##[group]Run $ErrorActionPreference = 'Stop'
+2025-10-09T05:30:37.1241660Z [36;1m$ErrorActionPreference = 'Stop'[0m
+2025-10-09T05:30:37.1241809Z [36;1m$phase = 'S1'[0m
+2025-10-09T05:30:37.1241921Z [36;1m$rd = 'tests/results'[0m
+2025-10-09T05:30:37.1242116Z [36;1mif ([string]::IsNullOrWhiteSpace($rd)) { $rd = 'results/fixture-drift' }[0m
+2025-10-09T05:30:37.1243856Z [36;1m$wireDir = Join-Path $rd '_wire'[0m
+2025-10-09T05:30:37.1244054Z [36;1mNew-Item -ItemType Directory -Force -Path $wireDir | Out-Null[0m
+2025-10-09T05:30:37.1244249Z [36;1m$payload = [ordered]@{[0m
+2025-10-09T05:30:37.1244375Z [36;1m  phase     = $phase[0m
+2025-10-09T05:30:37.1244539Z [36;1m  timestamp = (Get-Date).ToUniversalTime().ToString('o')[0m
+2025-10-09T05:30:37.1244720Z [36;1m  runner    = [ordered]@{[0m
+2025-10-09T05:30:37.1244855Z [36;1m    os   = $env:RUNNER_OS[0m
+2025-10-09T05:30:37.1244980Z [36;1m    name = $env:RUNNER_NAME[0m
+2025-10-09T05:30:37.1245120Z [36;1m    arch = $env:PROCESSOR_ARCHITECTURE[0m
+2025-10-09T05:30:37.1245848Z [36;1m  }[0m
+2025-10-09T05:30:37.1246289Z [36;1m  github    = [ordered]@{[0m
+2025-10-09T05:30:37.1246428Z [36;1m    run_id   = $env:GITHUB_RUN_ID[0m
+2025-10-09T05:30:37.1246562Z [36;1m    job      = $env:GITHUB_JOB[0m
+2025-10-09T05:30:37.1246698Z [36;1m    ref      = $env:GITHUB_REF[0m
+2025-10-09T05:30:37.1246830Z [36;1m    sha      = $env:GITHUB_SHA[0m
+2025-10-09T05:30:37.1246963Z [36;1m    actor    = $env:GITHUB_ACTOR[0m
+2025-10-09T05:30:37.1247109Z [36;1m    workflow = $env:GITHUB_WORKFLOW[0m
+2025-10-09T05:30:37.1247237Z [36;1m  }[0m
+2025-10-09T05:30:37.1247329Z [36;1m}[0m
+2025-10-09T05:30:37.1247458Z [36;1m$outPath = Join-Path $wireDir ("{0}.json" -f $phase)[0m
+2025-10-09T05:30:37.1247704Z [36;1m($payload | ConvertTo-Json -Depth 6) | Out-File -FilePath $outPath -Encoding utf8[0m
+2025-10-09T05:30:37.1247933Z [36;1mWrite-Host ("wire: wrote {0}" -f $outPath)[0m
+2025-10-09T05:30:37.1248126Z [36;1mif ('true' -eq 'true' -and $env:GITHUB_STEP_SUMMARY) {[0m
+2025-10-09T05:30:37.1249152Z [36;1m  $lines = @("### Wire", "- phase=$phase", "- path=$outPath")[0m
+2025-10-09T05:30:37.1249511Z [36;1m  ($lines -join "`n") | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8[0m
+2025-10-09T05:30:37.1249719Z [36;1m}[0m
+2025-10-09T05:30:37.1255025Z shell: C:\Program Files\PowerShell\7\pwsh.EXE -command ". '{0}'"
+2025-10-09T05:30:37.1255258Z env:
+2025-10-09T05:30:37.1255380Z   LV_SUPPRESS_UI: 1
+2025-10-09T05:30:37.1255512Z   LV_NO_ACTIVATE: 1
+2025-10-09T05:30:37.1255633Z   LV_CURSOR_RESTORE: 1
+2025-10-09T05:30:37.1255770Z   LV_IDLE_WAIT_SECONDS: 2
+2025-10-09T05:30:37.1255911Z   LV_IDLE_MAX_WAIT_SECONDS: 5
+2025-10-09T05:30:37.1256060Z   STUCK_GUARD: 1
+2025-10-09T05:30:37.1258082Z   SESSION_LOCK_ID: 15bb5443-736f-4dd4-bda3-d0c745148531
+2025-10-09T05:30:37.1258351Z   SESSION_LOCK_GROUP: pester-selfhosted
+2025-10-09T05:30:37.1258774Z   SESSION_LOCK_PATH: C:\actions-runner\_work\compare-vi-cli-action\compare-vi-cli-action\tests\results\_session_lock\pester-selfhosted\lock.json
+2025-10-09T05:30:37.1259168Z   SESSION_HEARTBEAT_SECONDS: 15
+2025-10-09T05:30:37.1259325Z   SCAN_ARTIFACTS: 1
+2025-10-09T05:30:37.1259440Z   DETECT_LEAKS: 1
+2025-10-09T05:30:37.1259569Z   LEAK_GRACE_SECONDS: 3
+2025-10-09T05:30:37.1259714Z ##[endgroup]
+2025-10-09T05:30:37.4587864Z wire: wrote tests\results\_wire\S1.json
+2025-10-09T05:30:37.6719644Z ##[group]Run $sum = Join-Path 'tests/results' 'pester-summary.json'
+2025-10-09T05:30:37.6720146Z [36;1m$sum = Join-Path 'tests/results' 'pester-summary.json'[0m
+2025-10-09T05:30:37.6720378Z [36;1mif (Test-Path $sum) {[0m
+2025-10-09T05:30:37.6720589Z [36;1m  $js = Get-Content $sum -Raw | ConvertFrom-Json[0m
+2025-10-09T05:30:37.6720905Z [36;1m  "total=$($js.total)"        | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8[0m
+2025-10-09T05:30:37.6721267Z [36;1m  "passed=$($js.passed)"      | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8[0m
+2025-10-09T05:30:37.6721624Z [36;1m  "failed=$($js.failed)"      | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8[0m
+2025-10-09T05:30:37.6721969Z [36;1m  "errors=$($js.errors)"      | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8[0m
+2025-10-09T05:30:37.6722337Z [36;1m  "duration_s=$($js.duration_s)" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8[0m
+2025-10-09T05:30:37.6723532Z [36;1m} else {[0m
+2025-10-09T05:30:37.6723770Z [36;1m  Write-Host '::notice::pester-summary.json not found; outputs omitted.'[0m
+2025-10-09T05:30:37.6724023Z [36;1m}[0m
+2025-10-09T05:30:37.6731331Z shell: C:\Program Files\PowerShell\7\pwsh.EXE -command ". '{0}'"
+2025-10-09T05:30:37.6731562Z env:
+2025-10-09T05:30:37.6731692Z   LV_SUPPRESS_UI: 1
+2025-10-09T05:30:37.6731831Z   LV_NO_ACTIVATE: 1
+2025-10-09T05:30:37.6731958Z   LV_CURSOR_RESTORE: 1
+2025-10-09T05:30:37.6732097Z   LV_IDLE_WAIT_SECONDS: 2
+2025-10-09T05:30:37.6732243Z   LV_IDLE_MAX_WAIT_SECONDS: 5
+2025-10-09T05:30:37.6732399Z   STUCK_GUARD: 1
+2025-10-09T05:30:37.6732566Z   SESSION_LOCK_ID: 15bb5443-736f-4dd4-bda3-d0c745148531
+2025-10-09T05:30:37.6732789Z   SESSION_LOCK_GROUP: pester-selfhosted
+2025-10-09T05:30:37.6733214Z   SESSION_LOCK_PATH: C:\actions-runner\_work\compare-vi-cli-action\compare-vi-cli-action\tests\results\_session_lock\pester-selfhosted\lock.json
+2025-10-09T05:30:37.6733646Z   SESSION_HEARTBEAT_SECONDS: 15
+2025-10-09T05:30:37.6733810Z   SCAN_ARTIFACTS: 1
+2025-10-09T05:30:37.6733938Z   DETECT_LEAKS: 1
+2025-10-09T05:30:37.6734071Z   LEAK_GRACE_SECONDS: 3
+2025-10-09T05:30:37.6734206Z ##[endgroup]
+2025-10-09T05:30:38.3192989Z ##[notice]pester-summary.json not found; outputs omitted.
+2025-10-09T05:30:38.5454835Z Prepare all required actions
+2025-10-09T05:30:38.5455246Z Getting action download info
+2025-10-09T05:30:38.7879713Z ##[group]Run ./.github/actions/session-index-post
+2025-10-09T05:30:38.7880094Z with:
+2025-10-09T05:30:38.7880332Z   results-dir: tests/results
+2025-10-09T05:30:38.7880616Z   validate-schema: true
+2025-10-09T05:30:38.7880876Z   upload: true
+2025-10-09T05:30:38.7881117Z   artifact-name: session-index
+2025-10-09T05:30:38.7881404Z env:
+2025-10-09T05:30:38.7881605Z   LV_SUPPRESS_UI: 1
+2025-10-09T05:30:38.7881848Z   LV_NO_ACTIVATE: 1
+2025-10-09T05:30:38.7882087Z   LV_CURSOR_RESTORE: 1
+2025-10-09T05:30:38.7882398Z   LV_IDLE_WAIT_SECONDS: 2
+2025-10-09T05:30:38.7882688Z   LV_IDLE_MAX_WAIT_SECONDS: 5
+2025-10-09T05:30:38.7882977Z   STUCK_GUARD: 1
+2025-10-09T05:30:38.7883277Z   SESSION_LOCK_ID: 15bb5443-736f-4dd4-bda3-d0c745148531
+2025-10-09T05:30:38.7883691Z   SESSION_LOCK_GROUP: pester-selfhosted
+2025-10-09T05:30:38.7884599Z   SESSION_LOCK_PATH: C:\actions-runner\_work\compare-vi-cli-action\compare-vi-cli-action\tests\results\_session_lock\pester-selfhosted\lock.json
+2025-10-09T05:30:38.7885459Z   SESSION_HEARTBEAT_SECONDS: 15
+2025-10-09T05:30:38.7885747Z   SCAN_ARTIFACTS: 1
+2025-10-09T05:30:38.7885972Z   DETECT_LEAKS: 1
+2025-10-09T05:30:38.7886206Z   LEAK_GRACE_SECONDS: 3
+2025-10-09T05:30:38.7886454Z ##[endgroup]
+2025-10-09T05:30:38.8370894Z ##[group]Run $dir = 'tests/results'
+2025-10-09T05:30:38.8371187Z [36;1m$dir = 'tests/results'[0m
+2025-10-09T05:30:38.8371385Z [36;1m$idx = Join-Path $dir 'session-index.json'[0m
+2025-10-09T05:30:38.8371618Z [36;1mif (Test-Path $idx) {[0m
+2025-10-09T05:30:38.8371827Z [36;1m  try {[0m
+2025-10-09T05:30:38.8372044Z [36;1m    $j = Get-Content $idx -Raw | ConvertFrom-Json -ErrorAction Stop[0m
+2025-10-09T05:30:38.8372296Z [36;1m    if ($j.stepSummary) {[0m
+2025-10-09T05:30:38.8372588Z [36;1m      $j.stepSummary | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8[0m
+2025-10-09T05:30:38.8372893Z [36;1m    } else {[0m
+2025-10-09T05:30:38.8373198Z [36;1m      ("Session index available: {0}" -f $idx) | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8[0m
+2025-10-09T05:30:38.8373516Z [36;1m    }[0m
+2025-10-09T05:30:38.8373721Z [36;1m  } catch { Write-Host "::warning::Failed to read session index: $_" }[0m
+2025-10-09T05:30:38.8373974Z [36;1m} else {[0m
+2025-10-09T05:30:38.8374164Z [36;1m  Write-Host '::notice::session-index.json not found.'[0m
+2025-10-09T05:30:38.8374371Z [36;1m}[0m
+2025-10-09T05:30:38.8382271Z shell: C:\Program Files\PowerShell\7\pwsh.EXE -command ". '{0}'"
+2025-10-09T05:30:38.8383203Z env:
+2025-10-09T05:30:38.8383332Z   LV_SUPPRESS_UI: 1
+2025-10-09T05:30:38.8383464Z   LV_NO_ACTIVATE: 1
+2025-10-09T05:30:38.8383594Z   LV_CURSOR_RESTORE: 1
+2025-10-09T05:30:38.8383735Z   LV_IDLE_WAIT_SECONDS: 2
+2025-10-09T05:30:38.8383891Z   LV_IDLE_MAX_WAIT_SECONDS: 5
+2025-10-09T05:30:38.8384046Z   STUCK_GUARD: 1
+2025-10-09T05:30:38.8384223Z   SESSION_LOCK_ID: 15bb5443-736f-4dd4-bda3-d0c745148531
+2025-10-09T05:30:38.8384449Z   SESSION_LOCK_GROUP: pester-selfhosted
+2025-10-09T05:30:38.8384880Z   SESSION_LOCK_PATH: C:\actions-runner\_work\compare-vi-cli-action\compare-vi-cli-action\tests\results\_session_lock\pester-selfhosted\lock.json
+2025-10-09T05:30:38.8385295Z   SESSION_HEARTBEAT_SECONDS: 15
+2025-10-09T05:30:38.8385451Z   SCAN_ARTIFACTS: 1
+2025-10-09T05:30:38.8385592Z   DETECT_LEAKS: 1
+2025-10-09T05:30:38.8385739Z   LEAK_GRACE_SECONDS: 3
+2025-10-09T05:30:38.8385892Z ##[endgroup]
+2025-10-09T05:30:39.3855615Z ##[group]Run $dir = 'tests/results'
+2025-10-09T05:30:39.3855865Z [36;1m$dir = 'tests/results'[0m
+2025-10-09T05:30:39.3856082Z [36;1m$idx = Join-Path $dir 'session-index.json'[0m
+2025-10-09T05:30:39.3856301Z [36;1mif (Test-Path $idx) {[0m
+2025-10-09T05:30:39.3856705Z [36;1m  pwsh -File tools/Invoke-JsonSchemaLite.ps1 -JsonPath $idx -SchemaPath docs/schemas/session-index-v1.schema.json[0m
+2025-10-09T05:30:39.3859611Z [36;1m  if ($LASTEXITCODE -ne 0) { Write-Host "::warning::Schema-lite returned $LASTEXITCODE for session index" }[0m
+2025-10-09T05:30:39.3860210Z [36;1m} else { Write-Host '::notice::session-index.json not present for validation.' }[0m
+2025-10-09T05:30:39.3869174Z shell: C:\Program Files\PowerShell\7\pwsh.EXE -command ". '{0}'"
+2025-10-09T05:30:39.3869477Z env:
+2025-10-09T05:30:39.3869614Z   LV_SUPPRESS_UI: 1
+2025-10-09T05:30:39.3869762Z   LV_NO_ACTIVATE: 1
+2025-10-09T05:30:39.3869900Z   LV_CURSOR_RESTORE: 1
+2025-10-09T05:30:39.3870046Z   LV_IDLE_WAIT_SECONDS: 2
+2025-10-09T05:30:39.3870205Z   LV_IDLE_MAX_WAIT_SECONDS: 5
+2025-10-09T05:30:39.3870376Z   STUCK_GUARD: 1
+2025-10-09T05:30:39.3870565Z   SESSION_LOCK_ID: 15bb5443-736f-4dd4-bda3-d0c745148531
+2025-10-09T05:30:39.3870796Z   SESSION_LOCK_GROUP: pester-selfhosted
+2025-10-09T05:30:39.3871248Z   SESSION_LOCK_PATH: C:\actions-runner\_work\compare-vi-cli-action\compare-vi-cli-action\tests\results\_session_lock\pester-selfhosted\lock.json
+2025-10-09T05:30:39.3871680Z   SESSION_HEARTBEAT_SECONDS: 15
+2025-10-09T05:30:39.3871852Z   SCAN_ARTIFACTS: 1
+2025-10-09T05:30:39.3871988Z   DETECT_LEAKS: 1
+2025-10-09T05:30:39.3872124Z   LEAK_GRACE_SECONDS: 3
+2025-10-09T05:30:39.3872320Z ##[endgroup]
+2025-10-09T05:30:40.1640094Z Schema-lite validation passed.
+2025-10-09T05:30:40.6362914Z ##[group]Run actions/upload-artifact@v4
+2025-10-09T05:30:40.6363115Z with:
+2025-10-09T05:30:40.6363250Z   name: session-index
+2025-10-09T05:30:40.6363404Z   path: tests/results/session-index.json
+2025-10-09T05:30:40.6363589Z   if-no-files-found: warn
+2025-10-09T05:30:40.6363739Z   compression-level: 6
+2025-10-09T05:30:40.6363887Z   overwrite: false
+2025-10-09T05:30:40.6364026Z   include-hidden-files: false
+2025-10-09T05:30:40.6364169Z env:
+2025-10-09T05:30:40.6364279Z   LV_SUPPRESS_UI: 1
+2025-10-09T05:30:40.6364401Z   LV_NO_ACTIVATE: 1
+2025-10-09T05:30:40.6364523Z   LV_CURSOR_RESTORE: 1
+2025-10-09T05:30:40.6364649Z   LV_IDLE_WAIT_SECONDS: 2
+2025-10-09T05:30:40.6364795Z   LV_IDLE_MAX_WAIT_SECONDS: 5
+2025-10-09T05:30:40.6364931Z   STUCK_GUARD: 1
+2025-10-09T05:30:40.6365096Z   SESSION_LOCK_ID: 15bb5443-736f-4dd4-bda3-d0c745148531
+2025-10-09T05:30:40.6365311Z   SESSION_LOCK_GROUP: pester-selfhosted
+2025-10-09T05:30:40.6365717Z   SESSION_LOCK_PATH: C:\actions-runner\_work\compare-vi-cli-action\compare-vi-cli-action\tests\results\_session_lock\pester-selfhosted\lock.json
+2025-10-09T05:30:40.6366113Z   SESSION_HEARTBEAT_SECONDS: 15
+2025-10-09T05:30:40.6366261Z   SCAN_ARTIFACTS: 1
+2025-10-09T05:30:40.6366385Z   DETECT_LEAKS: 1
+2025-10-09T05:30:40.6366505Z   LEAK_GRACE_SECONDS: 3
+2025-10-09T05:30:40.6367586Z ##[endgroup]
+2025-10-09T05:30:40.9467420Z With the provided path, there will be 1 file uploaded
+2025-10-09T05:30:40.9471560Z Artifact name is valid!
+2025-10-09T05:30:40.9474988Z Root directory input is valid!
+2025-10-09T05:30:41.3842492Z Beginning upload of artifact content to blob storage
+2025-10-09T05:30:41.7712903Z Uploaded bytes 278
+2025-10-09T05:30:41.8638945Z Finished uploading artifact content to blob storage!
+2025-10-09T05:30:41.8639934Z SHA256 digest of uploaded artifact zip is a2e967c7b9ee645ab93187a817d5c1e0d0688834d880d263b165faa57b73175a
+2025-10-09T05:30:41.8641544Z Finalizing artifact upload
+2025-10-09T05:30:42.0434846Z Artifact session-index.zip successfully finalized. Artifact ID 4222826707
+2025-10-09T05:30:42.0436276Z Artifact session-index has been successfully uploaded! Final size is 278 bytes. Artifact ID is 4222826707
+2025-10-09T05:30:42.0455539Z Artifact download URL: https://github.com/LabVIEW-Community-CI-CD/compare-vi-cli-action/actions/runs/18364792683/artifacts/4222826707
+2025-10-09T05:30:42.0914652Z ##[group]Run pwsh -File tools/Write-SessionIndexSummary.ps1 -ResultsDir 'tests/results'
+2025-10-09T05:30:42.0915074Z [36;1mpwsh -File tools/Write-SessionIndexSummary.ps1 -ResultsDir 'tests/results'[0m
+2025-10-09T05:30:42.0920216Z shell: C:\Program Files\PowerShell\7\pwsh.EXE -command ". '{0}'"
+2025-10-09T05:30:42.0920402Z env:
+2025-10-09T05:30:42.0920508Z   LV_SUPPRESS_UI: 1
+2025-10-09T05:30:42.0920613Z   LV_NO_ACTIVATE: 1
+2025-10-09T05:30:42.0920715Z   LV_CURSOR_RESTORE: 1
+2025-10-09T05:30:42.0920831Z   LV_IDLE_WAIT_SECONDS: 2
+2025-10-09T05:30:42.0920948Z   LV_IDLE_MAX_WAIT_SECONDS: 5
+2025-10-09T05:30:42.0921061Z   STUCK_GUARD: 1
+2025-10-09T05:30:42.0921198Z   SESSION_LOCK_ID: 15bb5443-736f-4dd4-bda3-d0c745148531
+2025-10-09T05:30:42.0921372Z   SESSION_LOCK_GROUP: pester-selfhosted
+2025-10-09T05:30:42.0921696Z   SESSION_LOCK_PATH: C:\actions-runner\_work\compare-vi-cli-action\compare-vi-cli-action\tests\results\_session_lock\pester-selfhosted\lock.json
+2025-10-09T05:30:42.0922044Z   SESSION_HEARTBEAT_SECONDS: 15
+2025-10-09T05:30:42.0922588Z   SCAN_ARTIFACTS: 1
+2025-10-09T05:30:42.0923217Z   DETECT_LEAKS: 1
+2025-10-09T05:30:42.0923320Z   LEAK_GRACE_SECONDS: 3
+2025-10-09T05:30:42.0923430Z ##[endgroup]
+2025-10-09T05:30:43.1622563Z ##[group]Run pwsh -File tools/Write-PesterTopFailures.ps1 -ResultsDir 'tests/results' -Top 10
+2025-10-09T05:30:43.1623092Z [36;1mpwsh -File tools/Write-PesterTopFailures.ps1 -ResultsDir 'tests/results' -Top 10[0m
+2025-10-09T05:30:43.1631338Z shell: C:\Program Files\PowerShell\7\pwsh.EXE -command ". '{0}'"
+2025-10-09T05:30:43.1631540Z env:
+2025-10-09T05:30:43.1631649Z   LV_SUPPRESS_UI: 1
+2025-10-09T05:30:43.1631759Z   LV_NO_ACTIVATE: 1
+2025-10-09T05:30:43.1631872Z   LV_CURSOR_RESTORE: 1
+2025-10-09T05:30:43.1631993Z   LV_IDLE_WAIT_SECONDS: 2
+2025-10-09T05:30:43.1632113Z   LV_IDLE_MAX_WAIT_SECONDS: 5
+2025-10-09T05:30:43.1632245Z   STUCK_GUARD: 1
+2025-10-09T05:30:43.1632391Z   SESSION_LOCK_ID: 15bb5443-736f-4dd4-bda3-d0c745148531
+2025-10-09T05:30:43.1632579Z   SESSION_LOCK_GROUP: pester-selfhosted
+2025-10-09T05:30:43.1632932Z   SESSION_LOCK_PATH: C:\actions-runner\_work\compare-vi-cli-action\compare-vi-cli-action\tests\results\_session_lock\pester-selfhosted\lock.json
+2025-10-09T05:30:43.1633294Z   SESSION_HEARTBEAT_SECONDS: 15
+2025-10-09T05:30:43.1633425Z   SCAN_ARTIFACTS: 1
+2025-10-09T05:30:43.1633535Z   DETECT_LEAKS: 1
+2025-10-09T05:30:43.1633644Z   LEAK_GRACE_SECONDS: 3
+2025-10-09T05:30:43.1633755Z ##[endgroup]
+2025-10-09T05:30:44.1700480Z ##[group]Run actions/upload-artifact@v4
+2025-10-09T05:30:44.1700763Z with:
+2025-10-09T05:30:44.1700872Z   name: pester-results
+2025-10-09T05:30:44.1701696Z   path: tests/results/pester-results.xml
+tests/results/pester-summary.txt
+tests/results/pester-summary.json
+tests/results/pester-failures.json
+tests/results/pester-artifacts.json
+tests/results/pester-artifacts-trail.json
+tests/results/pester-leak-report.json
+tests/results/pester-heartbeat.ndjson
+tests/results/session-index.json
+tests/results/pester-dispatcher.log
+
+2025-10-09T05:30:44.1702912Z   if-no-files-found: warn
+2025-10-09T05:30:44.1703066Z   compression-level: 6
+2025-10-09T05:30:44.1703186Z   overwrite: false
+2025-10-09T05:30:44.1703313Z   include-hidden-files: false
+2025-10-09T05:30:44.1703454Z env:
+2025-10-09T05:30:44.1703549Z   LV_SUPPRESS_UI: 1
+2025-10-09T05:30:44.1703650Z   LV_NO_ACTIVATE: 1
+2025-10-09T05:30:44.1703751Z   LV_CURSOR_RESTORE: 1
+2025-10-09T05:30:44.1703859Z   LV_IDLE_WAIT_SECONDS: 2
+2025-10-09T05:30:44.1703998Z   LV_IDLE_MAX_WAIT_SECONDS: 5
+2025-10-09T05:30:44.1704112Z   STUCK_GUARD: 1
+2025-10-09T05:30:44.1704249Z   SESSION_LOCK_ID: 15bb5443-736f-4dd4-bda3-d0c745148531
+2025-10-09T05:30:44.1704426Z   SESSION_LOCK_GROUP: pester-selfhosted
+2025-10-09T05:30:44.1704760Z   SESSION_LOCK_PATH: C:\actions-runner\_work\compare-vi-cli-action\compare-vi-cli-action\tests\results\_session_lock\pester-selfhosted\lock.json
+2025-10-09T05:30:44.1705070Z   SESSION_HEARTBEAT_SECONDS: 15
+2025-10-09T05:30:44.1705203Z   SCAN_ARTIFACTS: 1
+2025-10-09T05:30:44.1705309Z   DETECT_LEAKS: 1
+2025-10-09T05:30:44.1705409Z   LEAK_GRACE_SECONDS: 3
+2025-10-09T05:30:44.1705524Z ##[endgroup]
+2025-10-09T05:30:44.4226335Z Multiple search paths detected. Calculating the least common ancestor of all paths
+2025-10-09T05:30:44.4235415Z The least common ancestor is C:\actions-runner\_work\compare-vi-cli-action\compare-vi-cli-action\tests\results. This will be the root directory of the artifact
+2025-10-09T05:30:44.4237715Z With the provided path, there will be 1 file uploaded
+2025-10-09T05:30:44.4239080Z Artifact name is valid!
+2025-10-09T05:30:44.4260671Z Root directory input is valid!
+2025-10-09T05:30:44.7683730Z Beginning upload of artifact content to blob storage
+2025-10-09T05:30:45.1397285Z Uploaded bytes 278
+2025-10-09T05:30:45.2375296Z Finished uploading artifact content to blob storage!
+2025-10-09T05:30:45.2377292Z SHA256 digest of uploaded artifact zip is a2e967c7b9ee645ab93187a817d5c1e0d0688834d880d263b165faa57b73175a
+2025-10-09T05:30:45.2379036Z Finalizing artifact upload
+2025-10-09T05:30:45.4030654Z Artifact pester-results.zip successfully finalized. Artifact ID 4222827027
+2025-10-09T05:30:45.4031732Z Artifact pester-results has been successfully uploaded! Final size is 278 bytes. Artifact ID is 4222827027
+2025-10-09T05:30:45.4054050Z Artifact download URL: https://github.com/LabVIEW-Community-CI-CD/compare-vi-cli-action/actions/runs/18364792683/artifacts/4222827027
+2025-10-09T05:30:45.4466206Z ##[group]Run $outDir = 'tests/results'
+2025-10-09T05:30:45.4466508Z [36;1m$outDir = 'tests/results'[0m
+2025-10-09T05:30:45.4466768Z [36;1mif (-not (Test-Path $outDir)) { New-Item -ItemType Directory -Force -Path $outDir | Out-Null }[0m
+2025-10-09T05:30:45.4467041Z [36;1m$sum = Join-Path $outDir 'pester-summary.json'[0m
+2025-10-09T05:30:45.4467211Z [36;1m$obj = [ordered]@{}[0m
+2025-10-09T05:30:45.4467352Z [36;1m$obj.schema = 'pester-totals/v1'[0m
+2025-10-09T05:30:45.4467517Z [36;1m$obj.includeIntegration = 'false'[0m
+2025-10-09T05:30:45.4467691Z [36;1mif (Test-Path $sum) {[0m
+2025-10-09T05:30:45.4467819Z [36;1m  try {[0m
+2025-10-09T05:30:45.4467985Z [36;1m    $js = Get-Content $sum -Raw | ConvertFrom-Json -ErrorAction Stop[0m
+2025-10-09T05:30:45.4468182Z [36;1m    $obj.total = $js.total[0m
+2025-10-09T05:30:45.4468324Z [36;1m    $obj.passed = $js.passed[0m
+2025-10-09T05:30:45.4468464Z [36;1m    $obj.failed = $js.failed[0m
+2025-10-09T05:30:45.4468623Z [36;1m    $obj.errors = $js.errors[0m
+2025-10-09T05:30:45.4468772Z [36;1m    $obj.duration_s = $js.duration_s[0m
+2025-10-09T05:30:45.4468969Z [36;1m    $obj.status = if (($js.failed + $js.errors) -gt 0) { 'fail' } else { 'ok' }[0m
+2025-10-09T05:30:45.4469157Z [36;1m  } catch {[0m
+2025-10-09T05:30:45.4469272Z [36;1m    $obj.status = 'unknown'[0m
+2025-10-09T05:30:45.4469397Z [36;1m  }[0m
+2025-10-09T05:30:45.4469498Z [36;1m} else {[0m
+2025-10-09T05:30:45.4469617Z [36;1m  $obj.status = 'missing-summary'[0m
+2025-10-09T05:30:45.4470153Z [36;1m}[0m
+2025-10-09T05:30:45.4470377Z [36;1m$totalsPath = Join-Path $outDir 'pester-totals.json'[0m
+2025-10-09T05:30:45.4470823Z [36;1m$obj | ConvertTo-Json -Depth 5 | Out-File -FilePath $totalsPath -Encoding utf8[0m
+2025-10-09T05:30:45.4479161Z shell: C:\Program Files\PowerShell\7\pwsh.EXE -command ". '{0}'"
+2025-10-09T05:30:45.4479460Z env:
+2025-10-09T05:30:45.4479631Z   LV_SUPPRESS_UI: 1
+2025-10-09T05:30:45.4479800Z   LV_NO_ACTIVATE: 1
+2025-10-09T05:30:45.4479969Z   LV_CURSOR_RESTORE: 1
+2025-10-09T05:30:45.4480903Z   LV_IDLE_WAIT_SECONDS: 2
+2025-10-09T05:30:45.4481302Z   LV_IDLE_MAX_WAIT_SECONDS: 5
+2025-10-09T05:30:45.4481497Z   STUCK_GUARD: 1
+2025-10-09T05:30:45.4481715Z   SESSION_LOCK_ID: 15bb5443-736f-4dd4-bda3-d0c745148531
+2025-10-09T05:30:45.4481994Z   SESSION_LOCK_GROUP: pester-selfhosted
+2025-10-09T05:30:45.4482551Z   SESSION_LOCK_PATH: C:\actions-runner\_work\compare-vi-cli-action\compare-vi-cli-action\tests\results\_session_lock\pester-selfhosted\lock.json
+2025-10-09T05:30:45.4484179Z   SESSION_HEARTBEAT_SECONDS: 15
+2025-10-09T05:30:45.4484392Z   SCAN_ARTIFACTS: 1
+2025-10-09T05:30:45.4484560Z   DETECT_LEAKS: 1
+2025-10-09T05:30:45.4484734Z   LEAK_GRACE_SECONDS: 3
+2025-10-09T05:30:45.4484915Z ##[endgroup]
+2025-10-09T05:30:45.9458174Z ##[group]Run $rd = 'tests/results'
+2025-10-09T05:30:45.9458435Z [36;1m$rd = 'tests/results'[0m
+2025-10-09T05:30:45.9458597Z [36;1m$log = Join-Path $rd 'pester-dispatcher.log'[0m
+2025-10-09T05:30:45.9458764Z [36;1m$classification = 'unknown'[0m
+2025-10-09T05:30:45.9458896Z [36;1m$hints = @()[0m
+2025-10-09T05:30:45.9459020Z [36;1mif (Test-Path -LiteralPath $log) {[0m
+2025-10-09T05:30:45.9459179Z [36;1m  $text = Get-Content -LiteralPath $log -Raw[0m
+2025-10-09T05:30:45.9459495Z [36;1m  if ($text -match 'Pester execution exceeded timeout') { $classification = 'timeout_guard'; $hints += 'Dispatcher timeout guard fired' }[0m
+2025-10-09T05:30:45.9459887Z [36;1m  elseif ($text -match '(?i)Failed Tests \(detailed\)') { $classification = 'test_failures' }[0m
+2025-10-09T05:30:45.9460215Z [36;1m  elseif ($text -match '(?i)Selected test file list written to') { $hints += 'Discovery succeeded' }[0m
+2025-10-09T05:30:45.9460442Z [36;1m}[0m
+2025-10-09T05:30:45.9460700Z [36;1m$obj = [ordered]@{ schema='pester-dispatcher-outcome/v1'; classification=$classification; hints=$hints }[0m
+2025-10-09T05:30:45.9461000Z [36;1m$out = Join-Path $rd 'pester-dispatcher-outcome.json'[0m
+2025-10-09T05:30:45.9461243Z [36;1m$obj | ConvertTo-Json -Depth 4 | Out-File -FilePath $out -Encoding utf8[0m
+2025-10-09T05:30:45.9461446Z [36;1mif ($env:GITHUB_STEP_SUMMARY) {[0m
+2025-10-09T05:30:45.9461639Z [36;1m  $lines = @('### Dispatcher Outcome','',"- classification: $classification")[0m
+2025-10-09T05:30:45.9461856Z [36;1m  foreach ($h in $hints) { $lines += ("- hint: $h") }[0m
+2025-10-09T05:30:45.9462090Z [36;1m  $lines -join "`n" | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8[0m
+2025-10-09T05:30:45.9462289Z [36;1m}[0m
+2025-10-09T05:30:45.9467414Z shell: C:\Program Files\PowerShell\7\pwsh.EXE -command ". '{0}'"
+2025-10-09T05:30:45.9467595Z env:
+2025-10-09T05:30:45.9467695Z   LV_SUPPRESS_UI: 1
+2025-10-09T05:30:45.9467802Z   LV_NO_ACTIVATE: 1
+2025-10-09T05:30:45.9467909Z   LV_CURSOR_RESTORE: 1
+2025-10-09T05:30:45.9468020Z   LV_IDLE_WAIT_SECONDS: 2
+2025-10-09T05:30:45.9468131Z   LV_IDLE_MAX_WAIT_SECONDS: 5
+2025-10-09T05:30:45.9468249Z   STUCK_GUARD: 1
+2025-10-09T05:30:45.9468381Z   SESSION_LOCK_ID: 15bb5443-736f-4dd4-bda3-d0c745148531
+2025-10-09T05:30:45.9468545Z   SESSION_LOCK_GROUP: pester-selfhosted
+2025-10-09T05:30:45.9468858Z   SESSION_LOCK_PATH: C:\actions-runner\_work\compare-vi-cli-action\compare-vi-cli-action\tests\results\_session_lock\pester-selfhosted\lock.json
+2025-10-09T05:30:45.9469156Z   SESSION_HEARTBEAT_SECONDS: 15
+2025-10-09T05:30:45.9469278Z   SCAN_ARTIFACTS: 1
+2025-10-09T05:30:45.9469373Z   DETECT_LEAKS: 1
+2025-10-09T05:30:45.9469474Z   LEAK_GRACE_SECONDS: 3
+2025-10-09T05:30:45.9469854Z ##[endgroup]
+2025-10-09T05:30:46.4489971Z ##[group]Run if (-not (Test-Path $env:WATCH_RESULTS_DIR)) { New-Item -ItemType Directory -Force -Path $env:WATCH_RESULTS_DIR | Out-Null }
+2025-10-09T05:30:46.4490644Z [36;1mif (-not (Test-Path $env:WATCH_RESULTS_DIR)) { New-Item -ItemType Directory -Force -Path $env:WATCH_RESULTS_DIR | Out-Null }[0m
+2025-10-09T05:30:46.4491182Z [36;1mpwsh -File tools/Watch-Pester.ps1 -SingleRun -RunAllOnStart -TestPath tests/WatchSmoke.Tests.ps1 -Tag WatchSmoke -Quiet[0m
+2025-10-09T05:30:46.4497507Z shell: C:\Program Files\PowerShell\7\pwsh.EXE -command ". '{0}'"
+2025-10-09T05:30:46.4497731Z env:
+2025-10-09T05:30:46.4497863Z   LV_SUPPRESS_UI: 1
+2025-10-09T05:30:46.4497999Z   LV_NO_ACTIVATE: 1
+2025-10-09T05:30:46.4498126Z   LV_CURSOR_RESTORE: 1
+2025-10-09T05:30:46.4498260Z   LV_IDLE_WAIT_SECONDS: 2
+2025-10-09T05:30:46.4498404Z   LV_IDLE_MAX_WAIT_SECONDS: 5
+2025-10-09T05:30:46.4498547Z   STUCK_GUARD: 1
+2025-10-09T05:30:46.4498753Z   SESSION_LOCK_ID: 15bb5443-736f-4dd4-bda3-d0c745148531
+2025-10-09T05:30:46.4498970Z   SESSION_LOCK_GROUP: pester-selfhosted
+2025-10-09T05:30:46.4499366Z   SESSION_LOCK_PATH: C:\actions-runner\_work\compare-vi-cli-action\compare-vi-cli-action\tests\results\_session_lock\pester-selfhosted\lock.json
+2025-10-09T05:30:46.4499744Z   SESSION_HEARTBEAT_SECONDS: 15
+2025-10-09T05:30:46.4499897Z   SCAN_ARTIFACTS: 1
+2025-10-09T05:30:46.4500020Z   DETECT_LEAKS: 1
+2025-10-09T05:30:46.4500146Z   LEAK_GRACE_SECONDS: 3
+2025-10-09T05:30:46.4500296Z   WATCH_RESULTS_DIR: tests/results/_watch
+2025-10-09T05:30:46.4500459Z ##[endgroup]
+2025-10-09T05:30:47.1889335Z ##[notice][ps-session:watch-pester:27032 pid=27032] Watch-Pester starting (SingleRun)
+2025-10-09T05:30:47.2214520Z [22:30:47][DEBUG][watch-pester:27032] DEBUG Enter Invoke-PesterSelective; ChangedFiles count=0
+2025-10-09T05:30:48.7481982Z [31;1mWatch-Pester.ps1: [31;1mThe term 'New-PesterConfiguration' is not recognized as a name of a cmdlet, function, script file, or executable program.[0m
+2025-10-09T05:30:48.7483861Z [31;1m[31;1mCheck the spelling of the name, or if a path was included, verify that the path is correct and try again.[0m
+2025-10-09T05:30:49.1360533Z ##[error]Process completed with exit code 1.
+2025-10-09T05:30:49.1644128Z ##[group]Run function Invoke-Validate($json,$schema){
+2025-10-09T05:30:49.1644473Z [36;1mfunction Invoke-Validate($json,$schema){[0m
+2025-10-09T05:30:49.1644677Z [36;1m  if (Test-Path -LiteralPath $json) {[0m
+2025-10-09T05:30:49.1644843Z [36;1m    try {[0m
+2025-10-09T05:30:49.1645076Z [36;1m      pwsh -File tools/Invoke-JsonSchemaLite.ps1 -JsonPath $json -SchemaPath $schema[0m
+2025-10-09T05:30:49.1645531Z [36;1m      if ($LASTEXITCODE -ne 0) { Write-Host "::notice::Schema validation FAIL for $json (schema=$schema)" } else { Write-Host "::notice::Schema validation OK for $json" }[0m
+2025-10-09T05:30:49.1645991Z [36;1m    } catch { Write-Host ("::notice::Schema validation EXC for {0}: {1}" -f $json, $_.Exception.Message) }[0m
+2025-10-09T05:30:49.1646339Z [36;1m  } else { Write-Host "::notice::Schema validation skipped (missing): $json" }[0m
+2025-10-09T05:30:49.1646550Z [36;1m}[0m
+2025-10-09T05:30:49.1646826Z [36;1mInvoke-Validate 'tests/results/_watch/watch-last.json' 'docs/schemas/watch-last-v1.schema.json'[0m
+2025-10-09T05:30:49.1647237Z [36;1mInvoke-Validate 'tests/results/_agent/wait-last.json' 'docs/schemas/agent-wait-last-v1.schema.json'[0m
+2025-10-09T05:30:49.1647538Z [36;1m$log = 'tests/results/_agent/wait-log.ndjson'[0m
+2025-10-09T05:30:49.1647724Z [36;1mif (Test-Path -LiteralPath $log) {[0m
+2025-10-09T05:30:49.1647878Z [36;1m  $buf = ''[0m
+2025-10-09T05:30:49.1648035Z [36;1m  Get-Content -LiteralPath $log | ForEach-Object {[0m
+2025-10-09T05:30:49.1648235Z [36;1m    if ([string]::IsNullOrWhiteSpace($_)) {[0m
+2025-10-09T05:30:49.1648398Z [36;1m      if ($buf) {[0m
+2025-10-09T05:30:49.1648542Z [36;1m        $tmp = New-TemporaryFile[0m
+2025-10-09T05:30:49.1648741Z [36;1m        $buf | Set-Content -LiteralPath $tmp -Encoding UTF8[0m
+2025-10-09T05:30:49.1649472Z [36;1m        pwsh -File tools/Invoke-JsonSchemaLite.ps1 -JsonPath $tmp -SchemaPath 'docs/schemas/agent-wait-log-item-v1.schema.json'[0m
+2025-10-09T05:30:49.1649812Z [36;1m        Remove-Item $tmp -Force[0m
+2025-10-09T05:30:49.1649968Z [36;1m        $buf = ''[0m
+2025-10-09T05:30:49.1650092Z [36;1m      }[0m
+2025-10-09T05:30:49.1650205Z [36;1m    } else {[0m
+2025-10-09T05:30:49.1650328Z [36;1m      $buf += ("$_`n")[0m
+2025-10-09T05:30:49.1650459Z [36;1m    }[0m
+2025-10-09T05:30:49.1650560Z [36;1m  }[0m
+2025-10-09T05:30:49.1650679Z [36;1m  if ($buf) {[0m
+2025-10-09T05:30:49.1650809Z [36;1m    $tmp = New-TemporaryFile[0m
+2025-10-09T05:30:49.1650996Z [36;1m    $buf | Set-Content -LiteralPath $tmp -Encoding UTF8[0m
+2025-10-09T05:30:49.1651358Z [36;1m    pwsh -File tools/Invoke-JsonSchemaLite.ps1 -JsonPath $tmp -SchemaPath 'docs/schemas/agent-wait-log-item-v1.schema.json'[0m
+2025-10-09T05:30:49.1651679Z [36;1m    Remove-Item $tmp -Force[0m
+2025-10-09T05:30:49.1657877Z [36;1m  }[0m
+2025-10-09T05:30:49.1658069Z [36;1m} else {[0m
+2025-10-09T05:30:49.1658271Z [36;1m  Write-Host "::notice::Schema validation skipped (missing): $log"[0m
+2025-10-09T05:30:49.1658491Z [36;1m}[0m
+2025-10-09T05:30:49.1664327Z shell: C:\Program Files\PowerShell\7\pwsh.EXE -command ". '{0}'"
+2025-10-09T05:30:49.1664533Z env:
+2025-10-09T05:30:49.1664646Z   LV_SUPPRESS_UI: 1
+2025-10-09T05:30:49.1664758Z   LV_NO_ACTIVATE: 1
+2025-10-09T05:30:49.1664871Z   LV_CURSOR_RESTORE: 1
+2025-10-09T05:30:49.1664999Z   LV_IDLE_WAIT_SECONDS: 2
+2025-10-09T05:30:49.1665128Z   LV_IDLE_MAX_WAIT_SECONDS: 5
+2025-10-09T05:30:49.1665265Z   STUCK_GUARD: 1
+2025-10-09T05:30:49.1665414Z   SESSION_LOCK_ID: 15bb5443-736f-4dd4-bda3-d0c745148531
+2025-10-09T05:30:49.1665598Z   SESSION_LOCK_GROUP: pester-selfhosted
+2025-10-09T05:30:49.1665960Z   SESSION_LOCK_PATH: C:\actions-runner\_work\compare-vi-cli-action\compare-vi-cli-action\tests\results\_session_lock\pester-selfhosted\lock.json
+2025-10-09T05:30:49.1666309Z   SESSION_HEARTBEAT_SECONDS: 15
+2025-10-09T05:30:49.1666447Z   SCAN_ARTIFACTS: 1
+2025-10-09T05:30:49.1666562Z   DETECT_LEAKS: 1
+2025-10-09T05:30:49.1668479Z   LEAK_GRACE_SECONDS: 3
+2025-10-09T05:30:49.1668656Z ##[endgroup]
+2025-10-09T05:30:49.4788744Z ##[notice]Schema validation skipped (missing): tests/results/_watch/watch-last.json
+2025-10-09T05:30:49.4813967Z ##[notice]Schema validation skipped (missing): tests/results/_agent/wait-last.json
+2025-10-09T05:30:49.4826059Z ##[notice]Schema validation skipped (missing): tests/results/_agent/wait-log.ndjson
+2025-10-09T05:30:49.6241489Z ##[group]Run pwsh -File tools/Invoke-DevDashboard.ps1 -Group 'pester-selfhosted' -ResultsRoot 'tests/results'
+2025-10-09T05:30:49.6241991Z [36;1mpwsh -File tools/Invoke-DevDashboard.ps1 -Group 'pester-selfhosted' -ResultsRoot 'tests/results'[0m
+2025-10-09T05:30:49.6247263Z shell: C:\Program Files\PowerShell\7\pwsh.EXE -command ". '{0}'"
+2025-10-09T05:30:49.6247470Z env:
+2025-10-09T05:30:49.6247583Z   LV_SUPPRESS_UI: 1
+2025-10-09T05:30:49.6247698Z   LV_NO_ACTIVATE: 1
+2025-10-09T05:30:49.6247811Z   LV_CURSOR_RESTORE: 1
+2025-10-09T05:30:49.6247956Z   LV_IDLE_WAIT_SECONDS: 2
+2025-10-09T05:30:49.6248088Z   LV_IDLE_MAX_WAIT_SECONDS: 5
+2025-10-09T05:30:49.6248216Z   STUCK_GUARD: 1
+2025-10-09T05:30:49.6248364Z   SESSION_LOCK_ID: 15bb5443-736f-4dd4-bda3-d0c745148531
+2025-10-09T05:30:49.6248551Z   SESSION_LOCK_GROUP: pester-selfhosted
+2025-10-09T05:30:49.6248941Z   SESSION_LOCK_PATH: C:\actions-runner\_work\compare-vi-cli-action\compare-vi-cli-action\tests\results\_session_lock\pester-selfhosted\lock.json
+2025-10-09T05:30:49.6249282Z   SESSION_HEARTBEAT_SECONDS: 15
+2025-10-09T05:30:49.6249417Z   SCAN_ARTIFACTS: 1
+2025-10-09T05:30:49.6249530Z   DETECT_LEAKS: 1
+2025-10-09T05:30:49.6249642Z   LEAK_GRACE_SECONDS: 3
+2025-10-09T05:30:49.6249763Z ##[endgroup]
+2025-10-09T05:30:50.9324758Z Dashboard HTML saved to C:\actions-runner\_work\compare-vi-cli-action\compare-vi-cli-action\tests\results\dev-dashboard\dashboard.html
+2025-10-09T05:30:50.9337310Z Dashboard JSON saved to C:\actions-runner\_work\compare-vi-cli-action\compare-vi-cli-action\tests\results\dev-dashboard\dashboard.json
+2025-10-09T05:30:51.2908211Z ##[group]Run actions/upload-artifact@v4
+2025-10-09T05:30:51.2908539Z with:
+2025-10-09T05:30:51.2908683Z   name: dev-dashboard
+2025-10-09T05:30:51.2908998Z   path: tests/results/dev-dashboard/dashboard.html
+tests/results/dev-dashboard/dashboard.json
+
+2025-10-09T05:30:51.2909321Z   if-no-files-found: warn
+2025-10-09T05:30:51.2909489Z   compression-level: 6
+2025-10-09T05:30:51.2909639Z   overwrite: false
+2025-10-09T05:30:51.2909790Z   include-hidden-files: false
+2025-10-09T05:30:51.2909954Z env:
+2025-10-09T05:30:51.2910076Z   LV_SUPPRESS_UI: 1
+2025-10-09T05:30:51.2910215Z   LV_NO_ACTIVATE: 1
+2025-10-09T05:30:51.2910349Z   LV_CURSOR_RESTORE: 1
+2025-10-09T05:30:51.2910491Z   LV_IDLE_WAIT_SECONDS: 2
+2025-10-09T05:30:51.2910648Z   LV_IDLE_MAX_WAIT_SECONDS: 5
+2025-10-09T05:30:51.2910827Z   STUCK_GUARD: 1
+2025-10-09T05:30:51.2911005Z   SESSION_LOCK_ID: 15bb5443-736f-4dd4-bda3-d0c745148531
+2025-10-09T05:30:51.2911233Z   SESSION_LOCK_GROUP: pester-selfhosted
+2025-10-09T05:30:51.2911709Z   SESSION_LOCK_PATH: C:\actions-runner\_work\compare-vi-cli-action\compare-vi-cli-action\tests\results\_session_lock\pester-selfhosted\lock.json
+2025-10-09T05:30:51.2912144Z   SESSION_HEARTBEAT_SECONDS: 15
+2025-10-09T05:30:51.2912311Z   SCAN_ARTIFACTS: 1
+2025-10-09T05:30:51.2912449Z   DETECT_LEAKS: 1
+2025-10-09T05:30:51.2912591Z   LEAK_GRACE_SECONDS: 3
+2025-10-09T05:30:51.2912740Z ##[endgroup]
+2025-10-09T05:30:51.6005136Z Multiple search paths detected. Calculating the least common ancestor of all paths
+2025-10-09T05:30:51.6010119Z The least common ancestor is C:\actions-runner\_work\compare-vi-cli-action\compare-vi-cli-action\tests\results\dev-dashboard. This will be the root directory of the artifact
+2025-10-09T05:30:51.6011159Z With the provided path, there will be 2 files uploaded
+2025-10-09T05:30:51.6016737Z Artifact name is valid!
+2025-10-09T05:30:51.6020916Z Root directory input is valid!
+2025-10-09T05:30:51.9830793Z Beginning upload of artifact content to blob storage
+2025-10-09T05:30:52.3861274Z Uploaded bytes 3120
+2025-10-09T05:30:52.4874590Z Finished uploading artifact content to blob storage!
+2025-10-09T05:30:52.4876492Z SHA256 digest of uploaded artifact zip is 55fc4c14f355c13d376e06c29d251180754013e5ab3a7d3b8d7cb4af50037d03
+2025-10-09T05:30:52.4878060Z Finalizing artifact upload
+2025-10-09T05:30:52.6682986Z Artifact dev-dashboard.zip successfully finalized. Artifact ID 4222827657
+2025-10-09T05:30:52.6684108Z Artifact dev-dashboard has been successfully uploaded! Final size is 3120 bytes. Artifact ID is 4222827657
+2025-10-09T05:30:52.6705279Z Artifact download URL: https://github.com/LabVIEW-Community-CI-CD/compare-vi-cli-action/actions/runs/18364792683/artifacts/4222827657
+2025-10-09T05:30:52.7131090Z ##[group]Run $html = Join-Path 'tests/results/dev-dashboard' 'dashboard.html'
+2025-10-09T05:30:52.7131558Z [36;1m$html = Join-Path 'tests/results/dev-dashboard' 'dashboard.html'[0m
+2025-10-09T05:30:52.7131829Z [36;1m$json = Join-Path 'tests/results/dev-dashboard' 'dashboard.json'[0m
+2025-10-09T05:30:52.7132081Z [36;1mif ($env:GITHUB_STEP_SUMMARY -and (Test-Path $html)) {[0m
+2025-10-09T05:30:52.7132280Z [36;1m  $lines = @([0m
+2025-10-09T05:30:52.7132426Z [36;1m    '### Dev Dashboard',[0m
+2025-10-09T05:30:52.7132587Z [36;1m    '',[0m
+2025-10-09T05:30:52.7132728Z [36;1m    "- HTML: $(Resolve-Path $html)",[0m
+2025-10-09T05:30:52.7132903Z [36;1m    "- JSON: $(Resolve-Path $json)"[0m
+2025-10-09T05:30:52.7133059Z [36;1m  )[0m
+2025-10-09T05:30:52.7133277Z [36;1m  $lines -join "`n" | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8[0m
+2025-10-09T05:30:52.7133514Z [36;1m}[0m
+2025-10-09T05:30:52.7139185Z shell: C:\Program Files\PowerShell\7\pwsh.EXE -command ". '{0}'"
+2025-10-09T05:30:52.7139393Z env:
+2025-10-09T05:30:52.7139913Z   LV_SUPPRESS_UI: 1
+2025-10-09T05:30:52.7140047Z   LV_NO_ACTIVATE: 1
+2025-10-09T05:30:52.7140161Z   LV_CURSOR_RESTORE: 1
+2025-10-09T05:30:52.7140287Z   LV_IDLE_WAIT_SECONDS: 2
+2025-10-09T05:30:52.7140419Z   LV_IDLE_MAX_WAIT_SECONDS: 5
+2025-10-09T05:30:52.7140556Z   STUCK_GUARD: 1
+2025-10-09T05:30:52.7140703Z   SESSION_LOCK_ID: 15bb5443-736f-4dd4-bda3-d0c745148531
+2025-10-09T05:30:52.7140896Z   SESSION_LOCK_GROUP: pester-selfhosted
+2025-10-09T05:30:52.7141266Z   SESSION_LOCK_PATH: C:\actions-runner\_work\compare-vi-cli-action\compare-vi-cli-action\tests\results\_session_lock\pester-selfhosted\lock.json
+2025-10-09T05:30:52.7141609Z   SESSION_HEARTBEAT_SECONDS: 15
+2025-10-09T05:30:52.7141749Z   SCAN_ARTIFACTS: 1
+2025-10-09T05:30:52.7141859Z   DETECT_LEAKS: 1
+2025-10-09T05:30:52.7141975Z   LEAK_GRACE_SECONDS: 3
+2025-10-09T05:30:52.7142103Z ##[endgroup]
+2025-10-09T05:30:53.2138410Z ##[group]Run actions/upload-artifact@v4
+2025-10-09T05:30:53.2138721Z with:
+2025-10-09T05:30:53.2138890Z   name: pester-totals
+2025-10-09T05:30:53.2139053Z   path: tests/results/pester-totals.json
+2025-10-09T05:30:53.2139219Z   if-no-files-found: warn
+2025-10-09T05:30:53.2139354Z   compression-level: 6
+2025-10-09T05:30:53.2139479Z   overwrite: false
+2025-10-09T05:30:53.2139602Z   include-hidden-files: false
+2025-10-09T05:30:53.2139742Z env:
+2025-10-09T05:30:53.2139846Z   LV_SUPPRESS_UI: 1
+2025-10-09T05:30:53.2139961Z   LV_NO_ACTIVATE: 1
+2025-10-09T05:30:53.2140075Z   LV_CURSOR_RESTORE: 1
+2025-10-09T05:30:53.2140202Z   LV_IDLE_WAIT_SECONDS: 2
+2025-10-09T05:30:53.2140334Z   LV_IDLE_MAX_WAIT_SECONDS: 5
+2025-10-09T05:30:53.2140467Z   STUCK_GUARD: 1
+2025-10-09T05:30:53.2140623Z   SESSION_LOCK_ID: 15bb5443-736f-4dd4-bda3-d0c745148531
+2025-10-09T05:30:53.2140827Z   SESSION_LOCK_GROUP: pester-selfhosted
+2025-10-09T05:30:53.2141213Z   SESSION_LOCK_PATH: C:\actions-runner\_work\compare-vi-cli-action\compare-vi-cli-action\tests\results\_session_lock\pester-selfhosted\lock.json
+2025-10-09T05:30:53.2141594Z   SESSION_HEARTBEAT_SECONDS: 15
+2025-10-09T05:30:53.2141749Z   SCAN_ARTIFACTS: 1
+2025-10-09T05:30:53.2141872Z   DETECT_LEAKS: 1
+2025-10-09T05:30:53.2142003Z   LEAK_GRACE_SECONDS: 3
+2025-10-09T05:30:53.2142139Z ##[endgroup]
+2025-10-09T05:30:53.4666763Z With the provided path, there will be 1 file uploaded
+2025-10-09T05:30:53.4671155Z Artifact name is valid!
+2025-10-09T05:30:53.4674133Z Root directory input is valid!
+2025-10-09T05:30:53.8145687Z Beginning upload of artifact content to blob storage
+2025-10-09T05:30:54.1691104Z Uploaded bytes 240
+2025-10-09T05:30:54.2616569Z Finished uploading artifact content to blob storage!
+2025-10-09T05:30:54.2617557Z SHA256 digest of uploaded artifact zip is b92beb7a1d2c186aa533d1469b9ec1ed79e36d96fcb03278647b6a417c7ac4f9
+2025-10-09T05:30:54.2618741Z Finalizing artifact upload
+2025-10-09T05:30:54.4285899Z Artifact pester-totals.zip successfully finalized. Artifact ID 4222827806
+2025-10-09T05:30:54.4287780Z Artifact pester-totals has been successfully uploaded! Final size is 240 bytes. Artifact ID is 4222827806
+2025-10-09T05:30:54.4306494Z Artifact download URL: https://github.com/LabVIEW-Community-CI-CD/compare-vi-cli-action/actions/runs/18364792683/artifacts/4222827806
+2025-10-09T05:30:54.4964390Z Prepare all required actions
+2025-10-09T05:30:54.5029941Z ##[group]Run ./.github/actions/runner-unblock-guard
+2025-10-09T05:30:54.5030137Z with:
+2025-10-09T05:30:54.5030310Z   snapshot-path: tests/results/runner-unblock-snapshot.json
+2025-10-09T05:30:54.5030512Z   cleanup: false
+2025-10-09T05:30:54.5030670Z   process-names: conhost,pwsh,LabVIEW,LVCompare
+2025-10-09T05:30:54.5030850Z env:
+2025-10-09T05:30:54.5030960Z   LV_SUPPRESS_UI: 1
+2025-10-09T05:30:54.5031080Z   LV_NO_ACTIVATE: 1
+2025-10-09T05:30:54.5031202Z   LV_CURSOR_RESTORE: 1
+2025-10-09T05:30:54.5031328Z   LV_IDLE_WAIT_SECONDS: 2
+2025-10-09T05:30:54.5031472Z   LV_IDLE_MAX_WAIT_SECONDS: 5
+2025-10-09T05:30:54.5031615Z   STUCK_GUARD: 1
+2025-10-09T05:30:54.5031773Z   SESSION_LOCK_ID: 15bb5443-736f-4dd4-bda3-d0c745148531
+2025-10-09T05:30:54.5032278Z   SESSION_LOCK_GROUP: pester-selfhosted
+2025-10-09T05:30:54.5032680Z   SESSION_LOCK_PATH: C:\actions-runner\_work\compare-vi-cli-action\compare-vi-cli-action\tests\results\_session_lock\pester-selfhosted\lock.json
+2025-10-09T05:30:54.5033035Z   SESSION_HEARTBEAT_SECONDS: 15
+2025-10-09T05:30:54.5033179Z   SCAN_ARTIFACTS: 1
+2025-10-09T05:30:54.5033303Z   DETECT_LEAKS: 1
+2025-10-09T05:30:54.5033423Z   LEAK_GRACE_SECONDS: 3
+2025-10-09T05:30:54.5033549Z ##[endgroup]
+2025-10-09T05:30:54.5298765Z ##[group]Run $ErrorActionPreference = 'Stop'
+2025-10-09T05:30:54.5298999Z [36;1m$ErrorActionPreference = 'Stop'[0m
+2025-10-09T05:30:54.5299224Z [36;1m$snapPath = 'tests/results/runner-unblock-snapshot.json'[0m
+2025-10-09T05:30:54.5299576Z [36;1m$procNames = 'conhost,pwsh,LabVIEW,LVCompare'.Split(',') | ForEach-Object { $_.Trim() } | Where-Object { $_ }[0m
+2025-10-09T05:30:54.5299923Z [36;1m$doCleanup = ('false' -eq 'true') -or ($env:UNBLOCK_GUARD -eq '1')[0m
+2025-10-09T05:30:54.5300348Z [36;1m$procs = @(Get-Process -ErrorAction SilentlyContinue | Where-Object { $_.ProcessName -in $procNames } | Select-Object ProcessName,Id,StartTime)[0m
+2025-10-09T05:30:54.5300816Z [36;1m$jobs  = @(Get-Job -ErrorAction SilentlyContinue | Select-Object Id,Name,State,HasMoreData)[0m
+2025-10-09T05:30:54.5301148Z [36;1m$snap = [ordered]@{ processes=$procs; jobs=$jobs; cleanupPerformed=$false }[0m
+2025-10-09T05:30:54.5301391Z [36;1m$dir = Split-Path -Parent $snapPath[0m
+2025-10-09T05:30:54.5301697Z [36;1mif ($dir -and -not (Test-Path -LiteralPath $dir)) { New-Item -ItemType Directory -Force -Path $dir | Out-Null }[0m
+2025-10-09T05:30:54.5302052Z [36;1m$snap | ConvertTo-Json -Depth 5 | Out-File -FilePath $snapPath -Encoding utf8[0m
+2025-10-09T05:30:54.5302283Z [36;1m$cleanupNote = ''[0m
+2025-10-09T05:30:54.5302426Z [36;1mif ($doCleanup) {[0m
+2025-10-09T05:30:54.5302602Z [36;1m  $stoppedLV = 0; $stoppedLVC = 0; $stoppedJobs = 0[0m
+2025-10-09T05:30:54.5303072Z [36;1m  try { Get-Process -Name 'LabVIEW' -ErrorAction SilentlyContinue | ForEach-Object { try { Stop-Process -Id $_.Id -Force -ErrorAction SilentlyContinue; $stoppedLV++ } catch {} } } catch {}[0m
+2025-10-09T05:30:54.5303890Z [36;1m  try { Get-Process -Name 'LVCompare' -ErrorAction SilentlyContinue | ForEach-Object { try { Stop-Process -Id $_.Id -Force -ErrorAction SilentlyContinue; $stoppedLVC++ } catch {} } } catch {}[0m
+2025-10-09T05:30:54.5304703Z [36;1m  try { $gj = @(Get-Job -ErrorAction SilentlyContinue); foreach ($j in $gj) { try { Stop-Job -Job $j -ErrorAction SilentlyContinue; Remove-Job -Job $j -Force -ErrorAction SilentlyContinue; $stoppedJobs++ } catch {} } } catch {}[0m
+2025-10-09T05:30:54.5305197Z [36;1m  $snap.cleanupPerformed = $true[0m
+2025-10-09T05:30:54.5305473Z [36;1m  $snap.cleanup = [ordered]@{ LabVIEW=$stoppedLV; LVCompare=$stoppedLVC; Jobs=$stoppedJobs }[0m
+2025-10-09T05:30:54.5305822Z [36;1m  $snap | ConvertTo-Json -Depth 6 | Out-File -FilePath $snapPath -Encoding utf8[0m
+2025-10-09T05:30:54.5306173Z [36;1m  $cleanupNote = ('Cleanup: LabVIEW={0}, LVCompare={1}, Jobs={2}' -f $stoppedLV,$stoppedLVC,$stoppedJobs)[0m
+2025-10-09T05:30:54.5306432Z [36;1m}[0m
+2025-10-09T05:30:54.5308673Z [36;1m$lines = @('### Runner Unblock Guard','')[0m
+2025-10-09T05:30:54.5308997Z [36;1m$lines += ('- Process count: {0}' -f $procs.Count)[0m
+2025-10-09T05:30:54.5309225Z [36;1m$lines += ('- Pester job count: {0}' -f $jobs.Count)[0m
+2025-10-09T05:30:54.5309409Z [36;1m$lines += ''[0m
+2025-10-09T05:30:54.5309560Z [36;1m$lines += ('Snapshot: {0}' -f $snapPath)[0m
+2025-10-09T05:30:54.5309774Z [36;1mif ($cleanupNote) { $lines += ('- ' + $cleanupNote) }[0m
+2025-10-09T05:30:54.5310058Z [36;1m$lines -join "`n" | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8[0m
+2025-10-09T05:30:54.5315673Z shell: C:\Program Files\PowerShell\7\pwsh.EXE -command ". '{0}'"
+2025-10-09T05:30:54.5315876Z env:
+2025-10-09T05:30:54.5315988Z   LV_SUPPRESS_UI: 1
+2025-10-09T05:30:54.5316388Z   LV_NO_ACTIVATE: 1
+2025-10-09T05:30:54.5316510Z   LV_CURSOR_RESTORE: 1
+2025-10-09T05:30:54.5316638Z   LV_IDLE_WAIT_SECONDS: 2
+2025-10-09T05:30:54.5316776Z   LV_IDLE_MAX_WAIT_SECONDS: 5
+2025-10-09T05:30:54.5316920Z   STUCK_GUARD: 1
+2025-10-09T05:30:54.5317074Z   SESSION_LOCK_ID: 15bb5443-736f-4dd4-bda3-d0c745148531
+2025-10-09T05:30:54.5317265Z   SESSION_LOCK_GROUP: pester-selfhosted
+2025-10-09T05:30:54.5317629Z   SESSION_LOCK_PATH: C:\actions-runner\_work\compare-vi-cli-action\compare-vi-cli-action\tests\results\_session_lock\pester-selfhosted\lock.json
+2025-10-09T05:30:54.5317975Z   SESSION_HEARTBEAT_SECONDS: 15
+2025-10-09T05:30:54.5318123Z   SCAN_ARTIFACTS: 1
+2025-10-09T05:30:54.5318240Z   DETECT_LEAKS: 1
+2025-10-09T05:30:54.5318358Z   LEAK_GRACE_SECONDS: 3
+2025-10-09T05:30:54.5318485Z ##[endgroup]
+2025-10-09T05:30:55.0640243Z Prepare all required actions
+2025-10-09T05:30:55.0640507Z Getting action download info
+2025-10-09T05:30:55.3103587Z ##[group]Run ./.github/actions/agent-wait-post
+2025-10-09T05:30:55.3104212Z with:
+2025-10-09T05:30:55.3104572Z   results-dir: tests/results
+2025-10-09T05:30:55.3105009Z   fail-on-outside: false
+2025-10-09T05:30:55.3105413Z   upload-artifact: false
+2025-10-09T05:30:55.3105800Z   artifact-name: agent-wait
+2025-10-09T05:30:55.3106196Z env:
+2025-10-09T05:30:55.3106501Z   LV_SUPPRESS_UI: 1
+2025-10-09T05:30:55.3106841Z   LV_NO_ACTIVATE: 1
+2025-10-09T05:30:55.3107233Z   LV_CURSOR_RESTORE: 1
+2025-10-09T05:30:55.3107616Z   LV_IDLE_WAIT_SECONDS: 2
+2025-10-09T05:30:55.3108054Z   LV_IDLE_MAX_WAIT_SECONDS: 5
+2025-10-09T05:30:55.3108486Z   STUCK_GUARD: 1
+2025-10-09T05:30:55.3109034Z   SESSION_LOCK_ID: 15bb5443-736f-4dd4-bda3-d0c745148531
+2025-10-09T05:30:55.3109667Z   SESSION_LOCK_GROUP: pester-selfhosted
+2025-10-09T05:30:55.3110840Z   SESSION_LOCK_PATH: C:\actions-runner\_work\compare-vi-cli-action\compare-vi-cli-action\tests\results\_session_lock\pester-selfhosted\lock.json
+2025-10-09T05:30:55.3111898Z   SESSION_HEARTBEAT_SECONDS: 15
+2025-10-09T05:30:55.3112376Z   SCAN_ARTIFACTS: 1
+2025-10-09T05:30:55.3112729Z   DETECT_LEAKS: 1
+2025-10-09T05:30:55.3113073Z   LEAK_GRACE_SECONDS: 3
+2025-10-09T05:30:55.3113436Z ##[endgroup]
+2025-10-09T05:30:55.3612343Z ##[group]Run $ErrorActionPreference = 'Stop'
+2025-10-09T05:30:55.3612622Z [36;1m$ErrorActionPreference = 'Stop'[0m
+2025-10-09T05:30:55.3612816Z [36;1m$root = 'tests/results'[0m
+2025-10-09T05:30:55.3613022Z [36;1m$last = Join-Path $root '_agent' 'wait-last.json'[0m
+2025-10-09T05:30:55.3613391Z [36;1mif (-not (Test-Path $last)) { Write-Host "::notice::No agent wait last result at $last"; exit 0 }[0m
+2025-10-09T05:30:55.3613710Z [36;1m$j = Get-Content $last -Raw | ConvertFrom-Json[0m
+2025-10-09T05:30:55.3613931Z [36;1m$lines = @('### Agent Wait Summary','')[0m
+2025-10-09T05:30:55.3614162Z [36;1m$lines += ('- Reason: {0}' -f $j.reason)[0m
+2025-10-09T05:30:55.3614388Z [36;1m$lines += ('- Elapsed: {0}s' -f $j.elapsedSeconds)[0m
+2025-10-09T05:30:55.3614657Z [36;1m$lines += ('- Expected: {0}s' -f $j.expectedSeconds)[0m
+2025-10-09T05:30:55.3615021Z [36;1mif ($j.PSObject.Properties['toleranceSeconds']) { $lines += ('- Tolerance: {0}s' -f $j.toleranceSeconds) }[0m
+2025-10-09T05:30:55.3615486Z [36;1mif ($j.PSObject.Properties['differenceSeconds']) { $lines += ('- Difference: {0}s' -f $j.differenceSeconds) }[0m
+2025-10-09T05:30:55.3615957Z [36;1mif ($j.PSObject.Properties['withinMargin']) { $lines += ('- Within Margin: ' + $j.withinMargin) }[0m
+2025-10-09T05:30:55.3616387Z [36;1mif ($env:GITHUB_STEP_SUMMARY) { $lines -join "`n" | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8 }[0m
+2025-10-09T05:30:55.3616826Z [36;1mif ('false' -eq 'true' -and $j.PSObject.Properties['withinMargin'] -and -not [bool]$j.withinMargin) {[0m
+2025-10-09T05:30:55.3617208Z [36;1m  Write-Error 'Agent wait outside tolerance margin (fail-on-outside=true)'[0m
+2025-10-09T05:30:55.3617476Z [36;1m  exit 2[0m
+2025-10-09T05:30:55.3617592Z [36;1m}[0m
+2025-10-09T05:30:55.3625594Z shell: C:\Program Files\PowerShell\7\pwsh.EXE -command ". '{0}'"
+2025-10-09T05:30:55.3625830Z env:
+2025-10-09T05:30:55.3625960Z   LV_SUPPRESS_UI: 1
+2025-10-09T05:30:55.3626093Z   LV_NO_ACTIVATE: 1
+2025-10-09T05:30:55.3626215Z   LV_CURSOR_RESTORE: 1
+2025-10-09T05:30:55.3626345Z   LV_IDLE_WAIT_SECONDS: 2
+2025-10-09T05:30:55.3626488Z   LV_IDLE_MAX_WAIT_SECONDS: 5
+2025-10-09T05:30:55.3626630Z   STUCK_GUARD: 1
+2025-10-09T05:30:55.3626793Z   SESSION_LOCK_ID: 15bb5443-736f-4dd4-bda3-d0c745148531
+2025-10-09T05:30:55.3626991Z   SESSION_LOCK_GROUP: pester-selfhosted
+2025-10-09T05:30:55.3627359Z   SESSION_LOCK_PATH: C:\actions-runner\_work\compare-vi-cli-action\compare-vi-cli-action\tests\results\_session_lock\pester-selfhosted\lock.json
+2025-10-09T05:30:55.3627707Z   SESSION_HEARTBEAT_SECONDS: 15
+2025-10-09T05:30:55.3629925Z   SCAN_ARTIFACTS: 1
+2025-10-09T05:30:55.3630154Z   DETECT_LEAKS: 1
+2025-10-09T05:30:55.3630278Z   LEAK_GRACE_SECONDS: 3
+2025-10-09T05:30:55.3630412Z ##[endgroup]
+2025-10-09T05:30:55.7125197Z ##[notice]No agent wait last result at tests\results\_agent\wait-last.json
+2025-10-09T05:30:55.8933554Z ##[group]Run $last = Join-Path 'tests/results' '_agent' 'wait-last.json'
+2025-10-09T05:30:55.8934243Z [36;1m$last = Join-Path 'tests/results' '_agent' 'wait-last.json'[0m
+2025-10-09T05:30:55.8935903Z [36;1mif (Test-Path $last) {[0m
+2025-10-09T05:30:55.8936598Z [36;1m  if (Test-Path 'docs/schemas/agent-wait-result-v1.schema.json') {[0m
+2025-10-09T05:30:55.8937614Z [36;1m    pwsh -File tools/Invoke-JsonSchemaLite.ps1 -JsonPath $last -SchemaPath docs/schemas/agent-wait-result-v1.schema.json[0m
+2025-10-09T05:30:55.8939070Z [36;1m    if ($LASTEXITCODE -ne 0) { Write-Host "::notice::Agent wait schema-lite returned $LASTEXITCODE (non-blocking)" }[0m
+2025-10-09T05:30:55.8940026Z [36;1m  } else { Write-Host '::notice::Agent wait schema not found (skipping)' }[0m
+2025-10-09T05:30:55.8941088Z [36;1m}[0m
+2025-10-09T05:30:55.8958368Z shell: C:\Program Files\PowerShell\7\pwsh.EXE -command ". '{0}'"
+2025-10-09T05:30:55.8958867Z env:
+2025-10-09T05:30:55.8959090Z   LV_SUPPRESS_UI: 1
+2025-10-09T05:30:55.8959637Z   LV_NO_ACTIVATE: 1
+2025-10-09T05:30:55.8959902Z   LV_CURSOR_RESTORE: 1
+2025-10-09T05:30:55.8960130Z   LV_IDLE_WAIT_SECONDS: 2
+2025-10-09T05:30:55.8960385Z   LV_IDLE_MAX_WAIT_SECONDS: 5
+2025-10-09T05:30:55.8960665Z   STUCK_GUARD: 1
+2025-10-09T05:30:55.8960967Z   SESSION_LOCK_ID: 15bb5443-736f-4dd4-bda3-d0c745148531
+2025-10-09T05:30:55.8961349Z   SESSION_LOCK_GROUP: pester-selfhosted
+2025-10-09T05:30:55.8963033Z   SESSION_LOCK_PATH: C:\actions-runner\_work\compare-vi-cli-action\compare-vi-cli-action\tests\results\_session_lock\pester-selfhosted\lock.json
+2025-10-09T05:30:55.8964988Z   SESSION_HEARTBEAT_SECONDS: 15
+2025-10-09T05:30:55.8965679Z   SCAN_ARTIFACTS: 1
+2025-10-09T05:30:55.8966338Z   DETECT_LEAKS: 1
+2025-10-09T05:30:55.8966917Z   LEAK_GRACE_SECONDS: 3
+2025-10-09T05:30:55.8967545Z ##[endgroup]
+2025-10-09T05:30:56.4698042Z Prepare all required actions
+2025-10-09T05:30:56.4793199Z ##[group]Run ./.github/actions/runner-unblock-guard
+2025-10-09T05:30:56.4793431Z with:
+2025-10-09T05:30:56.4793666Z   snapshot-path: tests/results/lv-guard-post.json
+2025-10-09T05:30:56.4793857Z   cleanup: false
+2025-10-09T05:30:56.4794108Z   process-names: LVCompare,LabVIEW
+2025-10-09T05:30:56.4794281Z env:
+2025-10-09T05:30:56.4794402Z   LV_SUPPRESS_UI: 1
+2025-10-09T05:30:56.4794538Z   LV_NO_ACTIVATE: 1
+2025-10-09T05:30:56.4794673Z   LV_CURSOR_RESTORE: 1
+2025-10-09T05:30:56.4794816Z   LV_IDLE_WAIT_SECONDS: 2
+2025-10-09T05:30:56.4794969Z   LV_IDLE_MAX_WAIT_SECONDS: 5
+2025-10-09T05:30:56.4795131Z   STUCK_GUARD: 1
+2025-10-09T05:30:56.4795352Z   SESSION_LOCK_ID: 15bb5443-736f-4dd4-bda3-d0c745148531
+2025-10-09T05:30:56.4795556Z   SESSION_LOCK_GROUP: pester-selfhosted
+2025-10-09T05:30:56.4796005Z   SESSION_LOCK_PATH: C:\actions-runner\_work\compare-vi-cli-action\compare-vi-cli-action\tests\results\_session_lock\pester-selfhosted\lock.json
+2025-10-09T05:30:56.4796394Z   SESSION_HEARTBEAT_SECONDS: 15
+2025-10-09T05:30:56.4797265Z   SCAN_ARTIFACTS: 1
+2025-10-09T05:30:56.4797406Z   DETECT_LEAKS: 1
+2025-10-09T05:30:56.4797542Z   LEAK_GRACE_SECONDS: 3
+2025-10-09T05:30:56.4797675Z ##[endgroup]
+2025-10-09T05:30:56.5092499Z ##[group]Run $ErrorActionPreference = 'Stop'
+2025-10-09T05:30:56.5092764Z [36;1m$ErrorActionPreference = 'Stop'[0m
+2025-10-09T05:30:56.5092985Z [36;1m$snapPath = 'tests/results/lv-guard-post.json'[0m
+2025-10-09T05:30:56.5093361Z [36;1m$procNames = 'LVCompare,LabVIEW'.Split(',') | ForEach-Object { $_.Trim() } | Where-Object { $_ }[0m
+2025-10-09T05:30:56.5093719Z [36;1m$doCleanup = ('false' -eq 'true') -or ($env:UNBLOCK_GUARD -eq '1')[0m
+2025-10-09T05:30:56.5094180Z [36;1m$procs = @(Get-Process -ErrorAction SilentlyContinue | Where-Object { $_.ProcessName -in $procNames } | Select-Object ProcessName,Id,StartTime)[0m
+2025-10-09T05:30:56.5094722Z [36;1m$jobs  = @(Get-Job -ErrorAction SilentlyContinue | Select-Object Id,Name,State,HasMoreData)[0m
+2025-10-09T05:30:56.5095620Z [36;1m$snap = [ordered]@{ processes=$procs; jobs=$jobs; cleanupPerformed=$false }[0m
+2025-10-09T05:30:56.5096098Z [36;1m$dir = Split-Path -Parent $snapPath[0m
+2025-10-09T05:30:56.5096456Z [36;1mif ($dir -and -not (Test-Path -LiteralPath $dir)) { New-Item -ItemType Directory -Force -Path $dir | Out-Null }[0m
+2025-10-09T05:30:56.5096882Z [36;1m$snap | ConvertTo-Json -Depth 5 | Out-File -FilePath $snapPath -Encoding utf8[0m
+2025-10-09T05:30:56.5097153Z [36;1m$cleanupNote = ''[0m
+2025-10-09T05:30:56.5097364Z [36;1mif ($doCleanup) {[0m
+2025-10-09T05:30:56.5097589Z [36;1m  $stoppedLV = 0; $stoppedLVC = 0; $stoppedJobs = 0[0m
+2025-10-09T05:30:56.5098160Z [36;1m  try { Get-Process -Name 'LabVIEW' -ErrorAction SilentlyContinue | ForEach-Object { try { Stop-Process -Id $_.Id -Force -ErrorAction SilentlyContinue; $stoppedLV++ } catch {} } } catch {}[0m
+2025-10-09T05:30:56.5098997Z [36;1m  try { Get-Process -Name 'LVCompare' -ErrorAction SilentlyContinue | ForEach-Object { try { Stop-Process -Id $_.Id -Force -ErrorAction SilentlyContinue; $stoppedLVC++ } catch {} } } catch {}[0m
+2025-10-09T05:30:56.5099858Z [36;1m  try { $gj = @(Get-Job -ErrorAction SilentlyContinue); foreach ($j in $gj) { try { Stop-Job -Job $j -ErrorAction SilentlyContinue; Remove-Job -Job $j -Force -ErrorAction SilentlyContinue; $stoppedJobs++ } catch {} } } catch {}[0m
+2025-10-09T05:30:56.5100418Z [36;1m  $snap.cleanupPerformed = $true[0m
+2025-10-09T05:30:56.5114827Z [36;1m  $snap.cleanup = [ordered]@{ LabVIEW=$stoppedLV; LVCompare=$stoppedLVC; Jobs=$stoppedJobs }[0m
+2025-10-09T05:30:56.5115360Z [36;1m  $snap | ConvertTo-Json -Depth 6 | Out-File -FilePath $snapPath -Encoding utf8[0m
+2025-10-09T05:30:56.5115783Z [36;1m  $cleanupNote = ('Cleanup: LabVIEW={0}, LVCompare={1}, Jobs={2}' -f $stoppedLV,$stoppedLVC,$stoppedJobs)[0m
+2025-10-09T05:30:56.5116216Z [36;1m}[0m
+2025-10-09T05:30:56.5120786Z [36;1m$lines = @('### Runner Unblock Guard','')[0m
+2025-10-09T05:30:56.5121174Z [36;1m$lines += ('- Process count: {0}' -f $procs.Count)[0m
+2025-10-09T05:30:56.5121498Z [36;1m$lines += ('- Pester job count: {0}' -f $jobs.Count)[0m
+2025-10-09T05:30:56.5121708Z [36;1m$lines += ''[0m
+2025-10-09T05:30:56.5121907Z [36;1m$lines += ('Snapshot: {0}' -f $snapPath)[0m
+2025-10-09T05:30:56.5122216Z [36;1mif ($cleanupNote) { $lines += ('- ' + $cleanupNote) }[0m
+2025-10-09T05:30:56.5122555Z [36;1m$lines -join "`n" | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8[0m
+2025-10-09T05:30:56.5130628Z shell: C:\Program Files\PowerShell\7\pwsh.EXE -command ". '{0}'"
+2025-10-09T05:30:56.5130854Z env:
+2025-10-09T05:30:56.5130985Z   LV_SUPPRESS_UI: 1
+2025-10-09T05:30:56.5131118Z   LV_NO_ACTIVATE: 1
+2025-10-09T05:30:56.5131256Z   LV_CURSOR_RESTORE: 1
+2025-10-09T05:30:56.5131398Z   LV_IDLE_WAIT_SECONDS: 2
+2025-10-09T05:30:56.5131549Z   LV_IDLE_MAX_WAIT_SECONDS: 5
+2025-10-09T05:30:56.5131703Z   STUCK_GUARD: 1
+2025-10-09T05:30:56.5131887Z   SESSION_LOCK_ID: 15bb5443-736f-4dd4-bda3-d0c745148531
+2025-10-09T05:30:56.5132430Z   SESSION_LOCK_GROUP: pester-selfhosted
+2025-10-09T05:30:56.5132833Z   SESSION_LOCK_PATH: C:\actions-runner\_work\compare-vi-cli-action\compare-vi-cli-action\tests\results\_session_lock\pester-selfhosted\lock.json
+2025-10-09T05:30:56.5133221Z   SESSION_HEARTBEAT_SECONDS: 15
+2025-10-09T05:30:56.5133384Z   SCAN_ARTIFACTS: 1
+2025-10-09T05:30:56.5133511Z   DETECT_LEAKS: 1
+2025-10-09T05:30:56.5133643Z   LEAK_GRACE_SECONDS: 3
+2025-10-09T05:30:56.5133783Z ##[endgroup]
+2025-10-09T05:30:57.1110487Z Post job cleanup.
+2025-10-09T05:30:57.2293839Z [command]"C:\Program Files\Git\cmd\git.exe" version
+2025-10-09T05:30:57.2920875Z git version 2.51.0.windows.1
+2025-10-09T05:30:57.3069518Z Copying 'C:\WINDOWS\system32\config\systemprofile\.gitconfig' to 'C:\actions-runner\_work\_temp\cc9948aa-f8b5-49dc-be58-ac51622703d3\.gitconfig'
+2025-10-09T05:30:57.3100030Z Temporarily overriding HOME='C:\actions-runner\_work\_temp\cc9948aa-f8b5-49dc-be58-ac51622703d3' before making global git config changes
+2025-10-09T05:30:57.3101189Z Adding repository directory to the temporary git global config as a safe directory
+2025-10-09T05:30:57.3113873Z [command]"C:\Program Files\Git\cmd\git.exe" config --global --add safe.directory C:\actions-runner\_work\compare-vi-cli-action\compare-vi-cli-action
+2025-10-09T05:30:57.3871815Z [command]"C:\Program Files\Git\cmd\git.exe" config --local --name-only --get-regexp core\.sshCommand
+2025-10-09T05:30:57.4570608Z [command]"C:\Program Files\Git\cmd\git.exe" submodule foreach --recursive "sh -c \"git config --local --name-only --get-regexp 'core\.sshCommand' && git config --local --unset-all 'core.sshCommand' || :\""
+2025-10-09T05:30:58.8352738Z [command]"C:\Program Files\Git\cmd\git.exe" config --local --name-only --get-regexp http\.https\:\/\/github\.com\/\.extraheader
+2025-10-09T05:30:58.9275651Z http.https://github.com/.extraheader
+2025-10-09T05:30:58.9330353Z [command]"C:\Program Files\Git\cmd\git.exe" config --local --unset-all http.https://github.com/.extraheader
+2025-10-09T05:30:59.0200406Z [command]"C:\Program Files\Git\cmd\git.exe" submodule foreach --recursive "sh -c \"git config --local --name-only --get-regexp 'http\.https\:\/\/github\.com\/\.extraheader' && git config --local --unset-all 'http.https://github.com/.extraheader' || :\""
+2025-10-09T05:31:00.4847342Z Evaluate and set job outputs
+2025-10-09T05:31:00.4851649Z Cleaning up orphan processes

@@ -1,0 +1,31 @@
+{
+  "schema": "schema-lite/v1",
+  "type": "object",
+  "required": ["timestamp", "status", "classification", "stats"],
+  "additionalProperties": true,
+  "properties": {
+    "timestamp": { "type": "string", "format": "date-time" },
+    "status": { "type": "string", "enum": ["PASS", "FAIL"] },
+    "classification": { "type": "string", "enum": ["baseline", "improved", "worsened", "unchanged"] },
+    "runSequence": { "type": "integer", "minimum": 0 },
+    "stats": {
+      "type": "object",
+      "required": ["tests", "failed"],
+      "additionalProperties": true,
+      "properties": {
+        "tests": { "type": "integer", "minimum": 0 },
+        "failed": { "type": "integer", "minimum": 0 },
+        "skipped": { "type": "integer", "minimum": 0 }
+      }
+    },
+    "flaky": {
+      "type": "object",
+      "additionalProperties": true,
+      "properties": {
+        "enabled": { "type": "boolean" },
+        "attempts": { "type": "integer", "minimum": 0 },
+        "recoveredAfter": { "type": "integer", "minimum": 0 }
+      }
+    }
+  }
+}

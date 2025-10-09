@@ -1,0 +1,40 @@
+name: Prime LVCompare (Preflight)
+
+on:
+  workflow_dispatch: {}
+
+jobs:
+  preflight:
+    runs-on: windows-latest
+    name: Prime LVCompare (stubbed)
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Prepare stub LVCompare and test VIs
+        shell: pwsh
+        run: |
+          Set-StrictMode -Version Latest
+          $ErrorActionPreference = 'Stop'
+          Set-Content -LiteralPath VI1.vi -Encoding ascii -Value ''
+          Set-Content -LiteralPath VI2.vi -Encoding ascii -Value ''
+          $stub = Join-Path (Get-Location) 'LVCompare.cmd'
+          # echo args and return 1 (diff) to simulate a successful compare-with-diff
+          Set-Content -LiteralPath $stub -Encoding ascii -Value "@echo off`nsetlocal enabledelayedexpansion`nexit /b 1"
+
+      - name: Run Prime-LVCompare (stubbed)
+        shell: pwsh
+        run: |
+          pwsh -NoLogo -NoProfile -File tools/Prime-LVCompare.ps1 `
+            -LVCompareExePath ./LVCompare.cmd `
+            -BaseVi ./VI1.vi -HeadVi ./VI2.vi `
+            -JsonLogPath tests/results/_warmup/prime-lvcompare.ndjson -LeakCheck
+
+      - name: Upload prime artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: prime-lvcompare-preflight
+          path: |
+            tests/results/_warmup/prime-lvcompare.ndjson
+          if-no-files-found: warn

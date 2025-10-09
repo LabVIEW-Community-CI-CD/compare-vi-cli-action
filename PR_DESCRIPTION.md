@@ -61,4 +61,4 @@
 
 ### Dispatcher Gating (Added)
 
-- Do not start tests if `LabVIEW.exe` is running. The dispatcher attempts a best-effort stop, waits briefly, and aborts fast if still present. This prevents hangs and surfaces a clear signal to the operator to close LabVIEW. Opt-in post-run cleanup for `LVCompare.exe` via `CLEAN_LVCOMPARE=1`.
+- Do not start tests if `LabVIEW.exe` is running. The dispatcher attempts a best-effort stop, waits briefly, and aborts fast if still present. This prevents hangs and surfaces a clear signal to the operator to close LabVIEW. Cleanup is controlled via `CLEAN_LV_BEFORE`/`CLEAN_LV_AFTER`; include LVCompare with `CLEAN_LV_INCLUDE_COMPARE` (legacy: `CLEAN_LVCOMPARE=1`).

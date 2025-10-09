@@ -16,6 +16,8 @@ $ErrorActionPreference = 'Stop'
  $manifestAvailable = $false
  $baseItem = $null
  $headItem = $null
+ $manifestBaseItem = $null
+ $manifestHeadItem = $null
  if ($ExecJsonPath) {
    if (-not (Test-Path -LiteralPath $ExecJsonPath)) { throw "Exec JSON not found: $ExecJsonPath" }
  } else {
@@ -24,7 +26,24 @@ $ErrorActionPreference = 'Stop'
  if (Test-Path -LiteralPath $ManifestPath) {
    try {
      $manifest = Get-Content -LiteralPath $ManifestPath -Raw | ConvertFrom-Json -ErrorAction Stop
-     if ($manifest -and $manifest.items) { $manifestAvailable = $true }
+     if ($manifest -and $manifest.items) {
+       $manifestAvailable = $true
+       try {
+         $items = @($manifest.items)
+         if ($manifest.pair) {
+           $pairBasePath = if ($manifest.pair.basePath) { [string]$manifest.pair.basePath } else { $null }
+           $pairHeadPath = if ($manifest.pair.headPath) { [string]$manifest.pair.headPath } else { $null }
+           if ($pairBasePath) { $manifestBaseItem = ($items | Where-Object { $_.path -eq $pairBasePath })[0] }
+           if ($pairHeadPath) { $manifestHeadItem = ($items | Where-Object { $_.path -eq $pairHeadPath })[0] }
+         }
+         if (-not $manifestBaseItem) { $manifestBaseItem = ($items | Where-Object { $_.role -eq 'base' })[0] }
+         if (-not $manifestHeadItem) { $manifestHeadItem = ($items | Where-Object { $_.role -eq 'head' })[0] }
+         if (-not $manifestBaseItem -and $items.Count -gt 0) { $manifestBaseItem = $items[0] }
+         if (-not $manifestHeadItem -and $items.Count -gt 0) {
+           $manifestHeadItem = if ($items.Count -gt 1) { $items[1] } else { $items[0] }
+         }
+       } catch {}
+     }
    } catch {}
  }
 
@@ -43,6 +62,11 @@ $ErrorActionPreference = 'Stop'
    Copy-Item -LiteralPath $BasePath -Destination $base -Force
    Copy-Item -LiteralPath $HeadPath -Destination $head -Force
  } else {
+   if (-not $manifestAvailable -or -not $manifestBaseItem -or -not $manifestHeadItem) {
+     throw 'Unable to resolve base/head from manifest. Provide -ExecJsonPath or -BasePath/-HeadPath.'
+   }
+   $baseItem = $manifestBaseItem
+   $headItem = $manifestHeadItem
    Copy-Item -LiteralPath (Join-Path $root $baseItem.path) -Destination $base -Force
    Copy-Item -LiteralPath (Join-Path $root $headItem.path) -Destination $head -Force
  }
@@ -54,7 +78,9 @@ $execPath = Join-Path $rd 'compare-exec-verify.json'
 Import-Module (Join-Path $root 'scripts/CompareVI.psm1') -Force
 if ($ExecJsonPath) {
   # Do not re-run compare; use existing exec JSON (copy when different path)
-  if ((Resolve-Path -LiteralPath $ExecJsonPath).Path -ne (Resolve-Path -LiteralPath $execPath -ErrorAction SilentlyContinue).Path) {
+  $resolvedExecSrc = Resolve-Path -LiteralPath $ExecJsonPath
+  $resolvedExecDest = Resolve-Path -LiteralPath $execPath -ErrorAction SilentlyContinue
+  if (-not $resolvedExecDest -or $resolvedExecSrc.Path -ne $resolvedExecDest.Path) {
     Copy-Item -LiteralPath $ExecJsonPath -Destination $execPath -Force
   }
 } else {
@@ -70,10 +96,14 @@ $shaHead = (Get-FileHash -Algorithm SHA256 -LiteralPath $head).Hash.ToUpperInvar
 # Optionally resolve matching manifest items by content hash when available
 if ($manifestAvailable) {
   try {
-    $baseItem = ($manifest.items | Where-Object { $_.sha256 -eq $shaBase })[-1]
-    $headItem = ($manifest.items | Where-Object { $_.sha256 -eq $shaHead })[-1]
+    $matchedBase = ($manifest.items | Where-Object { $_.sha256 -eq $shaBase })[-1]
+    $matchedHead = ($manifest.items | Where-Object { $_.sha256 -eq $shaHead })[-1]
+    if ($matchedBase) { $baseItem = $matchedBase }
+    if ($matchedHead) { $headItem = $matchedHead }
   } catch {}
 }
+$baseItemForSummary = if ($baseItem) { $baseItem } elseif ($manifestBaseItem) { $manifestBaseItem } else { $null }
+$headItemForSummary = if ($headItem) { $headItem } elseif ($manifestHeadItem) { $manifestHeadItem } else { $null }
 
 $expectDiff = ($bytesBase -ne $bytesHead) -or ($shaBase -ne $shaHead)
 $cliDiff    = [bool]$exec.diff
@@ -87,10 +117,10 @@ else { $ok = $true; $reason = 'no-diff (agree: cli & manifest)' }
 $summary = [ordered]@{
   schema = 'fixture-verify-summary/v1'
   generatedAt = (Get-Date).ToString('o')
-  base = if ($baseItem) { $baseItem.path } else { Split-Path -Leaf $base }
-  head = if ($headItem) { $headItem.path } else { Split-Path -Leaf $head }
+  base = if ($baseItemForSummary) { $baseItemForSummary.path } else { Split-Path -Leaf $base }
+  head = if ($headItemForSummary) { $headItemForSummary.path } else { Split-Path -Leaf $head }
   source = $source
-  manifest = if ($manifestAvailable -and $baseItem -and $headItem) { [ordered]@{ baseBytes = $baseItem.bytes; headBytes=$headItem.bytes; baseSha=$baseItem.sha256; headSha=$headItem.sha256 } } else { $null }
+  manifest = if ($manifestAvailable -and $baseItemForSummary -and $headItemForSummary) { [ordered]@{ baseBytes = $baseItemForSummary.bytes; headBytes=$headItemForSummary.bytes; baseSha=$baseItemForSummary.sha256; headSha=$headItemForSummary.sha256 } } else { $null }
   computed = [ordered]@{ baseBytes = $bytesBase; headBytes=$bytesHead; baseSha=$shaBase; headSha=$shaHead }
   cli = [ordered]@{ exitCode = $exec.exitCode; diff = $cliDiff; duration_s = $exec.duration_s; command = $exec.command }
   expectDiff = $expectDiff

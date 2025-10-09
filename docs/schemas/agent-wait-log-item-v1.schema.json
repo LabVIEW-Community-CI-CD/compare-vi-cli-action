@@ -1,0 +1,15 @@
+{
+  "schema": "schema-lite/v1",
+  "type": "object",
+  "required": ["reason", "expectedSeconds", "elapsedSeconds"],
+  "additionalProperties": true,
+  "properties": {
+    "reason": { "type": "string" },
+    "expectedSeconds": { "type": "number", "minimum": 0 },
+    "elapsedSeconds": { "type": "number", "minimum": 0 },
+    "differenceSeconds": { "type": "number" },
+    "withinMargin": { "type": "boolean" },
+    "startedUtc": { "type": "string", "format": "date-time" },
+    "endedUtc": { "type": "string", "format": "date-time" }
+  }
+}

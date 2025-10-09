@@ -11,7 +11,8 @@ $ErrorActionPreference = 'Stop'
 
 function New-ParentDir {
   param([string]$Path)
-  $dir = Split-Path -Parent -LiteralPath $Path
+  if (-not $Path) { return }
+  $dir = [System.IO.Path]::GetDirectoryName($Path)
   if ($dir -and -not (Test-Path -LiteralPath $dir)) { New-Item -ItemType Directory -Path $dir -Force | Out-Null }
 }
 
@@ -19,6 +20,11 @@ if (-not $PipeName) { $PipeName = "lvci.invoker.$([Environment]::GetEnvironmentV
 if (-not $ReadyFile)   { $ReadyFile   = Join-Path $ResultsDir "_invoker/ready.json" }
 if (-not $StoppedFile) { $StoppedFile = Join-Path $ResultsDir "_invoker/stopped.json" }
 if (-not $PidFile)     { $PidFile     = Join-Path $ResultsDir "_invoker/pid.txt" }
+
+# Default single-compare sessions to enable autostop unless explicitly disabled
+if ($env:LVCI_SINGLE_COMPARE -and -not $env:LVCI_SINGLE_COMPARE_AUTOSTOP) {
+  $env:LVCI_SINGLE_COMPARE_AUTOSTOP = '1'
+}
 
 New-Item -ItemType Directory -Path (Join-Path $ResultsDir '_invoker') -Force | Out-Null
 if ($SentinelPath) { New-ParentDir -Path $SentinelPath; if (-not (Test-Path -LiteralPath $SentinelPath)) { New-Item -ItemType File -Path $SentinelPath -Force | Out-Null } }

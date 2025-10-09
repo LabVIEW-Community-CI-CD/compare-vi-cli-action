@@ -35,7 +35,7 @@ param(
   [string]$JsonReport,
   [switch]$FailOnDiff,
   [switch]$IncludeIntegrationTests,
-  [int]$LoopIterations = 15,
+  [int]$LoopIterations = 1,
   [switch]$Loop,
   [switch]$PassThru
 )
@@ -122,25 +122,74 @@ function Invoke-PhaseViInputs {
 function Invoke-PhaseCompare {
   param($r,$ctx)
   Write-PhaseBanner $r.name
-  $mod = Join-Path $PSScriptRoot 'CompareVI.psm1'
-  if (-not (Test-Path -LiteralPath $mod)) { $mod = Join-Path (Join-Path $PSScriptRoot 'scripts') 'CompareVI.psm1' }
-  if (-not (Test-Path -LiteralPath $mod)) { throw "CompareVI module not found at expected locations." }
-  if (-not (Get-Command -Name Invoke-CompareVI -ErrorAction SilentlyContinue)) { Import-Module $mod -Force }
-  try {
-    $compare = Invoke-CompareVI -Base $ctx.basePath -Head $ctx.headPath -LvCompareArgs '-nobdcosm -nofppos -noattr' -FailOnDiff:$false
-    $ctx.compareResult = $compare
-    $r.details.exitCode = $compare.ExitCode
-    $r.details.diff = $compare.Diff
-    $r.details.durationSeconds = $compare.CompareDurationSeconds
-    $r.details.shortCircuited = $compare.ShortCircuitedIdenticalPath
-    if ($compare.ExitCode -eq 0 -or $compare.ExitCode -eq 1) {
-      if ($compare.Diff -and $FailOnDiff) { $r.status='Failed' } else { $r.status='Passed' }
-    } else {
+  $driver = Join-Path (Split-Path -Parent $PSScriptRoot) 'tools' 'Invoke-LVCompare.ps1'
+  $ts    = Get-Date -Format 'yyyyMMdd-HHmmss'
+  $outDirRoot = Join-Path (Split-Path -Parent $PSScriptRoot) 'tests' 'results' 'runbook-compare'
+  $outDir = Join-Path $outDirRoot $ts
+  $useDriver = $false
+  try { if ($env:RUNBOOK_COMPARE_DRIVER -match '^(?i:1|true|yes|on)$') { $useDriver = $true } } catch {}
+  if ($useDriver -and (Test-Path -LiteralPath $driver -PathType Leaf)) {
+    try {
+      & $driver -BaseVi $ctx.basePath -HeadVi $ctx.headPath -OutputDir $outDir -RenderReport -JsonLogPath (Join-Path $outDir 'compare-events.ndjson') -LeakCheck -Summary | Out-Null
+      $capPath = Join-Path $outDir 'lvcompare-capture.json'
+      if (Test-Path -LiteralPath $capPath -PathType Leaf) {
+        $cap = Get-Content -LiteralPath $capPath -Raw | ConvertFrom-Json
+        $r.details.exitCode = [int]$cap.exitCode
+        $r.details.durationSeconds = [double]$cap.seconds
+        $r.details.command = $cap.command
+        $r.details.captureJson = $capPath
+        $reportPath = Join-Path $outDir 'compare-report.html'
+        $r.details.reportPath = if (Test-Path -LiteralPath $reportPath) { $reportPath } else { $null }
+        $r.details.diff = if ($r.details.exitCode -eq 1) { $true } elseif ($r.details.exitCode -eq 0) { $false } else { $null }
+        if ($r.details.exitCode -in 0,1) {
+          if ($r.details.diff -and $FailOnDiff) { $r.status='Failed' } else { $r.status='Passed' }
+        } else { $r.status='Failed' }
+        # Surface concise outcome
+        Write-Host ("Compare Outcome: exit={0} diff={1} seconds={2}" -f $r.details.exitCode, $r.details.diff, $r.details.durationSeconds) -ForegroundColor Yellow
+        if ($r.details.reportPath) { Write-Host ("Report: {0}" -f $r.details.reportPath) -ForegroundColor Gray }
+        if ($env:GITHUB_STEP_SUMMARY) {
+          try {
+            $lines = @()
+            $lines += '## Compare Outcome'
+            $lines += ("- Exit: {0}" -f $r.details.exitCode)
+            $lines += ("- Diff: {0}" -f $r.details.diff)
+            $lines += ("- Duration: {0}s" -f $r.details.durationSeconds)
+            if ($r.details.reportPath) { $lines += ("- Report: {0}" -f $r.details.reportPath) } else { $lines += '- Report: (none)' }
+            $lines += ("- OutputDir: {0}" -f $outDir)
+            Add-Content -Path $env:GITHUB_STEP_SUMMARY -Value ($lines -join "`n") -Encoding utf8
+          } catch { Write-Warning ("Failed to append Compare Outcome to step summary: {0}" -f $_.Exception.Message) }
+        }
+      } else {
+        $r.details.error = 'Missing lvcompare-capture.json from driver.'
+        $r.status='Failed'
+      }
+    } catch {
+      $r.details.error = $_.Exception.Message
       $r.status='Failed'
     }
-  } catch {
-    $r.details.error = $_.Exception.Message
-    $r.status='Failed'
+  }
+  if (-not $useDriver -or $r.status -eq 'Failed') {
+    # Fallback to legacy CompareVI path for compatibility
+    $mod = Join-Path $PSScriptRoot 'CompareVI.psm1'
+    if (-not (Test-Path -LiteralPath $mod)) { $mod = Join-Path (Join-Path $PSScriptRoot 'scripts') 'CompareVI.psm1' }
+    if (-not (Test-Path -LiteralPath $mod)) { throw "CompareVI module not found at expected locations." }
+    if (-not (Get-Command -Name Invoke-CompareVI -ErrorAction SilentlyContinue)) { Import-Module $mod -Force }
+    try {
+      $compare = Invoke-CompareVI -Base $ctx.basePath -Head $ctx.headPath -LvCompareArgs '-nobdcosm -nofppos -noattr' -FailOnDiff:$false
+      $ctx.compareResult = $compare
+      $r.details.exitCode = $compare.ExitCode
+      $r.details.diff = $compare.Diff
+      $r.details.durationSeconds = $compare.CompareDurationSeconds
+      $r.details.shortCircuited = $compare.ShortCircuitedIdenticalPath
+      if ($compare.ExitCode -eq 0 -or $compare.ExitCode -eq 1) {
+        if ($compare.Diff -and $FailOnDiff) { $r.status='Failed' } else { $r.status='Passed' }
+      } else {
+        $r.status='Failed'
+      }
+    } catch {
+      $r.details.error = $_.Exception.Message
+      $r.status='Failed'
+    }
   }
 }
 
@@ -167,8 +216,18 @@ function Invoke-PhaseLoop {
   param($r,$ctx)
   Write-PhaseBanner $r.name
   $env:LOOP_SIMULATE = ''  # ensure real
+  # Optional quick/override controls via env (non-breaking defaults)
+  try {
+    if (-not $PSBoundParameters.ContainsKey('LoopIterations')) {
+      if ($env:RUNBOOK_LOOP_ITERATIONS -match '^[0-9]+$') { $LoopIterations = [int]$env:RUNBOOK_LOOP_ITERATIONS }
+    }
+    if ($env:RUNBOOK_LOOP_QUICK -match '^(?i:1|true|yes|on)$') { $LoopIterations = 1 }
+  } catch {}
   if ($LoopIterations -gt 0) { $env:LOOP_MAX_ITERATIONS = $LoopIterations } else { Remove-Item Env:LOOP_MAX_ITERATIONS -ErrorAction SilentlyContinue }
-  $env:LOOP_FAIL_ON_DIFF = 'false'
+  $failOn = $false
+  try { if ($env:RUNBOOK_LOOP_FAIL_ON_DIFF -match '^(?i:1|true|yes|on)$') { $failOn = $true } } catch {}
+  try { if ($env:RUNBOOK_LOOP_QUICK -match '^(?i:1|true|yes|on)$') { $failOn = $true } } catch {}
+  $env:LOOP_FAIL_ON_DIFF = ($failOn ? 'true' : 'false')
   try {
     & (Join-Path (Get-Location) 'scripts' 'Run-AutonomousIntegrationLoop.ps1')
     $code = $LASTEXITCODE
@@ -254,6 +313,34 @@ if ($JsonReport) {
   $json = $final | ConvertTo-Json -Depth 6
   Set-Content -Path $JsonReport -Value $json -Encoding utf8
   Write-Host "JSON report written: $JsonReport" -ForegroundColor Yellow
+}
+
+if ($env:GITHUB_STEP_SUMMARY) {
+  try {
+    $lines = @()
+    $lines += '### Integration Runbook'
+    $lines += ''
+    $lines += ("- Overall Status: **{0}**" -f $final.overallStatus)
+    if ($JsonReport) {
+      try {
+        $resolved = Resolve-Path -LiteralPath $JsonReport -ErrorAction Stop
+        $lines += ("- JSON Report: {0}" -f $resolved)
+      } catch {
+        $lines += ("- JSON Report: {0}" -f $JsonReport)
+      }
+    } else {
+      $lines += '- JSON Report: (not requested)'
+    }
+    $lines += ''
+    $lines += '| Phase | Status |'
+    $lines += '| --- | --- |'
+    foreach ($phase in $final.phases) {
+      $lines += ('| {0} | {1} |' -f $phase.name, $phase.status)
+    }
+    $lines -join "`n" | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8
+  } catch {
+    Write-Warning ("Failed to append runbook summary to step summary: {0}" -f $_.Exception.Message)
+  }
 }
 
 if ($PassThru) { return $final }

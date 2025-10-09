@@ -115,17 +115,53 @@ param(
   # Opt-out: prevent writing diagnostics to GitHub Step Summary even if available
   [Parameter(Mandatory = $false)]
   [switch]$DisableStepSummary
+,
+  [Parameter(Mandatory = $false)]
+  [switch]$SingleInvoker
+,
+  [Parameter(Mandatory = $false)]
+  [ValidateSet('soft','strict')]
+  [string]$Isolation = 'soft'
+,
+  [Parameter(Mandatory = $false)]
+  [switch]$DryRun
+,
+  [Parameter(Mandatory = $false)]
+  [int]$TopSlow = 0
+,
+  [Parameter(Mandatory = $false)]
+  [int]$MaxFileSeconds = 0
+,
+  [Parameter(Mandatory = $false)]
+  [switch]$ContinueOnTimeout
+,
+  [Parameter(Mandatory = $false)]
+  [switch]$EmitIts
 )
 
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
+function Test-EnvTruthy {
+  param([string]$Value)
+  if ([string]::IsNullOrWhiteSpace($Value)) { return $false }
+  return ($Value.Trim() -match '^(?i:1|true|yes|on)$')
+}
+
 # Env toggle support: CLEAN_LABVIEW=1 and/or CLEAN_AFTER=1 act as implicit switches
-if (-not $CleanLabVIEW) { $CleanLabVIEW = ($env:CLEAN_LABVIEW -eq '1') }
-if (-not $CleanAfter)   { $CleanAfter   = ($env:CLEAN_AFTER   -eq '1') }
+if (-not $CleanLabVIEW) {
+  $CleanLabVIEW = Test-EnvTruthy $env:CLEAN_LV_BEFORE
+  if (-not $CleanLabVIEW) { $CleanLabVIEW = Test-EnvTruthy $env:CLEAN_LABVIEW }
+}
+if (-not $CleanAfter)   {
+  $CleanAfter = Test-EnvTruthy $env:CLEAN_LV_AFTER
+  if (-not $CleanAfter) { $CleanAfter = Test-EnvTruthy $env:CLEAN_AFTER }
+}
 if (-not $TrackArtifacts) { $TrackArtifacts = ($env:SCAN_ARTIFACTS -eq '1') }
 if (-not $ArtifactGlobs -and $env:ARTIFACT_GLOBS) { $ArtifactGlobs = ($env:ARTIFACT_GLOBS -split ';|,') }
 if (-not $DetectLeaks) { $DetectLeaks = ($env:DETECT_LEAKS -eq '1') }
+
+[string]$__SingleInvokerRequested = if ($SingleInvoker) { '1' } elseif ($env:SINGLE_INVOKER -eq '1') { '1' } else { '0' }
 if (-not $FailOnLeaks) { $FailOnLeaks = ($env:FAIL_ON_LEAKS -eq '1') }
 if (-not $LeakProcessPatterns -and $env:LEAK_PROCESS_PATTERNS) { $LeakProcessPatterns = ($env:LEAK_PROCESS_PATTERNS -split ';|,') }
 if ($env:LEAK_GRACE_SECONDS) {
@@ -133,17 +169,51 @@ if ($env:LEAK_GRACE_SECONDS) {
 }
 if (-not $KillLeaks) { $KillLeaks = ($env:KILL_LEAKS -eq '1') }
 
-# Optional: allow explicit opt-in to clean LVCompare alongside LabVIEW during post-run cleanup
-$script:CleanLVCompare = ($env:CLEAN_LVCOMPARE -eq '1')
+# Optional: allow explicit opt-in to clean LVCompare alongside LabVIEW during cleanup
+$includeLVCompare = Test-EnvTruthy $env:CLEAN_LV_INCLUDE_COMPARE
+if (-not $includeLVCompare) { $includeLVCompare = Test-EnvTruthy $env:CLEAN_LVCOMPARE }
+$script:CleanLVCompare = $includeLVCompare
 # Helper to interpret truthy env toggles (1/true/yes/on)
 function _IsTruthyEnv {
   param([string]$Value)
-  if ([string]::IsNullOrWhiteSpace($Value)) { return $false }
-  $v = $Value.Trim()
-  return ($v -match '^(?i:1|true|yes|on)$')
+  return (Test-EnvTruthy $Value)
 }
 if (-not $EmitResultShapeDiagnostics) { $EmitResultShapeDiagnostics = (_IsTruthyEnv $env:EMIT_RESULT_SHAPES) }
 if (-not $DisableStepSummary) { $DisableStepSummary = (_IsTruthyEnv $env:DISABLE_STEP_SUMMARY) }
+
+# Session lock support (optional)
+$sessionLockEnabled = $false
+try { if ($env:SESSION_LOCK_ENABLED -match '^(?i:1|true|yes|on)$') { $sessionLockEnabled = $true } } catch {}
+if (-not $sessionLockEnabled) { try { if ($env:CLAIM_PESTER_LOCK -match '^(?i:1|true|yes|on)$') { $sessionLockEnabled = $true } } catch {} }
+$lockGroup = 'pester-selfhosted'
+if ($sessionLockEnabled -and $env:SESSION_LOCK_GROUP) { $lockGroup = $env:SESSION_LOCK_GROUP }
+$lockAcquired = $false
+$lockForce = $false
+try { if ($env:SESSION_LOCK_FORCE -match '^(?i:1|true|yes|on)$') { $lockForce = $true } } catch {}
+$sessionLockStrict = $false
+try {
+  if ($env:SESSION_LOCK_STRICT) {
+    $sessionLockStrict = (_IsTruthyEnv $env:SESSION_LOCK_STRICT)
+  } elseif ($env:GITHUB_ACTIONS -eq 'true') {
+    $sessionLockStrict = $true
+  }
+} catch {}
+$localDispatcherMode = (_IsTruthyEnv $env:LOCAL_DISPATCHER)
+
+function Invoke-SessionLock {
+  param([string]$Action,[string]$Group,[switch]$Force)
+  $scriptPath = Join-Path (Get-Location) 'tools/Session-Lock.ps1'
+  if (-not (Test-Path -LiteralPath $scriptPath)) { return $false }
+  $invokeArgs = @('-Action', $Action, '-Group', $Group)
+  if ($Force) { $invokeArgs += '-ForceTakeover' }
+  try {
+    & $scriptPath @invokeArgs | Out-Null
+    return ($LASTEXITCODE -eq 0)
+  } catch {
+    Write-Warning "Session lock $Action failed: $($_.Exception.Message)"
+    return $false
+  }
+}
 
 # Derive effective timeout seconds (seconds param takes precedence if >0)
 $effectiveTimeoutSeconds = 0
@@ -156,6 +226,24 @@ $SchemaFailuresVersion = '1.0.0'
 $SchemaManifestVersion = '1.0.0'
 ${SchemaLeakReportVersion} = '1.0.0'
 ${SchemaDiagnosticsVersion} = '1.1.0'
+
+if ($localDispatcherMode) {
+  Write-Host "::notice::Local dispatcher mode (reduced verbosity, soft session lock)" -ForegroundColor DarkGray
+}
+
+if ($sessionLockEnabled) {
+  Write-Host "::notice::Attempting to acquire session lock '$lockGroup'" -ForegroundColor DarkGray
+  if ($lockForce) { Write-Host "::notice::Session lock force takeover enabled" -ForegroundColor DarkGray }
+  $lockAcquired = Invoke-SessionLock -Action 'Acquire' -Group $lockGroup -Force:$lockForce
+  if (-not $lockAcquired) {
+    if ($sessionLockStrict) {
+      throw "Failed to acquire session lock '$lockGroup'. Set SESSION_LOCK_FORCE=1 to allow takeover or unset SESSION_LOCK_ENABLED."
+    } else {
+      Write-Warning "Session lock acquire failed; continuing without lock (SESSION_LOCK_STRICT disabled, LOCAL_DISPATCHER=$localDispatcherMode)."
+      $sessionLockEnabled = $false
+    }
+  }
+}
 
 function Ensure-FailuresJson {
   param(
@@ -179,9 +267,41 @@ function Ensure-FailuresJson {
           '[]' | Out-File -FilePath $path -Encoding utf8 -Force
           if (-not $Quiet) { Write-Host 'Normalized zero-byte failures JSON to []' -ForegroundColor Gray }
         }
-      } catch { Write-Warning "Failed to normalize failures JSON: $_" }
+      } catch {
+        Write-Warning "Failed to normalize failures JSON: $_"
+      }
     }
-  } catch { Write-Warning "Ensure-FailuresJson encountered an error: $_" }
+  } catch {
+    Write-Warning "Ensure-FailuresJson encountered an error: $_"
+  }
+}
+
+function Test-ResultsDirectoryWritable {
+  param(
+    [Parameter(Mandatory)][string]$Path
+  )
+  try {
+    $item = $null
+    if (Test-Path -LiteralPath $Path) {
+      $item = Get-Item -LiteralPath $Path -ErrorAction Stop
+      if (-not $item.PSIsContainer) {
+        throw [InvalidOperationException]::new("Results path points to a file: $Path")
+      }
+    } else {
+      $item = New-Item -ItemType Directory -Path $Path -Force -ErrorAction Stop
+    }
+
+    $probe = Join-Path $Path ('write-check-' + ([guid]::NewGuid().ToString('N')) + '.tmp')
+    try {
+      Set-Content -LiteralPath $probe -Value 'probe' -Encoding UTF8 -ErrorAction Stop
+    } catch {
+      throw [InvalidOperationException]::new("Results directory is not writable: $Path. $($_.Exception.Message)")
+    } finally {
+      try { Remove-Item -LiteralPath $probe -Force -ErrorAction SilentlyContinue } catch {}
+    }
+  } catch {
+    throw $_
+  }
 }
 
 function Write-ArtifactManifest {
@@ -404,6 +524,25 @@ if ($DetectLeaks) {
 }
 Write-Host ""
 
+if ($__SingleInvokerRequested -eq '1') {
+  try {
+    $modPath = Join-Path $PSScriptRoot 'scripts/Pester-Invoker.psm1'
+    if (-not (Test-Path -LiteralPath $modPath -PathType Leaf)) { $modPath = Join-Path $PSScriptRoot 'Pester-Invoker.psm1' }
+    if (-not (Test-Path -LiteralPath $modPath -PathType Leaf)) { throw "Pester-Invoker.psm1 not found" }
+    Import-Module $modPath -Force
+  } catch {
+    Write-Error ("Single-invoker requested but module import failed: {0}" -f $_.Exception.Message)
+    exit 1
+  }
+  $script:UseSingleInvoker = $true
+  Write-Host "Single-invoker mode: step-based outer loop will run via scripts/Pester-Invoker.psm1" -ForegroundColor Yellow
+}
+if (-not (Test-Path Variable:\script:UseSingleInvoker)) {
+  $script:UseSingleInvoker = $false
+} elseif (-not $script:UseSingleInvoker) {
+  $script:UseSingleInvoker = $false
+}
+
 # Debug instrumentation (opt-in via COMPARISON_ACTION_DEBUG=1)
 if ($env:COMPARISON_ACTION_DEBUG -eq '1') {
   Write-Host '[debug] Bound parameters:' -ForegroundColor DarkCyan
@@ -441,6 +580,27 @@ if ([System.IO.Path]::IsPathRooted($ResultsPath)) {
   $resultsDir = $ResultsPath
 } else {
   $resultsDir = Join-Path $root $ResultsPath
+}
+
+try {
+  Test-ResultsDirectoryWritable -Path $resultsDir
+} catch {
+  $guardMsg = $_.Exception.Message
+  try {
+    $diagDir = Join-Path $root 'tests/results/_diagnostics'
+    if (-not (Test-Path -LiteralPath $diagDir -PathType Container)) {
+      New-Item -ItemType Directory -Force -Path $diagDir | Out-Null
+    }
+    $crumb = [pscustomobject]@{
+      schema = 'dispatcher-results-guard/v1'
+      at     = (Get-Date).ToString('o')
+      path   = $resultsDir
+      message= $guardMsg
+    }
+    $crumb | ConvertTo-Json -Depth 4 | Out-File -FilePath (Join-Path $diagDir 'guard.json') -Encoding utf8
+  } catch {}
+  Write-Error ($guardMsg + ' (guard crumb: tests/results/_diagnostics/guard.json)')
+  exit 1
 }
 
 Write-Host "Resolved Paths:" -ForegroundColor Yellow
@@ -897,34 +1057,17 @@ $script:stuckGuardEnabled = ($env:STUCK_GUARD -eq '1')
 $script:hbSec = 15
 try { if ($env:LVCI_HEARTBEAT_SEC) { $script:hbSec = [int]$env:LVCI_HEARTBEAT_SEC } } catch { $script:hbSec = 15 }
 $script:hbPath = Join-Path $resultsDir 'pester-heartbeat.ndjson'
-$script:hbJob = $null
-function _Append-HbLine { param([string]$type)
+function _Write-HeartbeatLine {
+  param([string]$Type)
+  if (-not $script:stuckGuardEnabled) { return }
   try {
-    if (-not (Test-Path -LiteralPath (Split-Path -Parent $script:hbPath))) { New-Item -ItemType Directory -Force -Path (Split-Path -Parent $script:hbPath) | Out-Null }
-    $line = @{ tsUtc = (Get-Date).ToUniversalTime().ToString('o'); type = $type } | ConvertTo-Json -Compress
+    $dir = Split-Path -Parent $script:hbPath
+    if ($dir -and -not (Test-Path -LiteralPath $dir)) {
+      New-Item -ItemType Directory -Force -Path $dir | Out-Null
+    }
+    $line = @{ tsUtc = (Get-Date).ToUniversalTime().ToString('o'); type = $Type } | ConvertTo-Json -Compress
     Add-Content -Path $script:hbPath -Value $line -Encoding UTF8
   } catch {}
-}
-function _Start-HeartbeatJob {
-  param([int]$Sec)
-  try {
-    _Append-HbLine 'start'
-    return (Start-Job -ScriptBlock {
-      param($path,$sec)
-      $ErrorActionPreference='SilentlyContinue'
-      while ($true) {
-        try {
-          $line = @{ tsUtc = (Get-Date).ToUniversalTime().ToString('o'); type = 'beat' } | ConvertTo-Json -Compress
-          Add-Content -Path $path -Value $line -Encoding UTF8
-        } catch {}
-        Start-Sleep -Seconds $sec
-      }
-    } -ArgumentList @($script:hbPath,$Sec))
-  } catch { return $null }
-}
-function _Stop-HeartbeatJob {
-  try { if ($script:hbJob) { Stop-Job -Job $script:hbJob -ErrorAction SilentlyContinue; Remove-Job -Job $script:hbJob -Force -ErrorAction SilentlyContinue } } catch {}
-  _Append-HbLine 'stop'
 }
 
 # Early (idempotent) failures JSON emission when always requested. This guarantees existence
@@ -1015,7 +1158,11 @@ if (-not $includeIntegrationBool) {
 }
 
 # Configure output
-$conf.Output.Verbosity = 'Detailed'
+if ($localDispatcherMode) {
+  $conf.Output.Verbosity = 'Normal'
+} else {
+  $conf.Output.Verbosity = 'Detailed'
+}
 $conf.Run.PassThru = $true
 
 # Configure test results
@@ -1052,83 +1199,218 @@ $capturedOutputLines = @()  # Will hold textual console lines for discovery fail
 $partialLogPath = $null     # Set when timeout job path uses partial logging
 $result = $null              # Initialize result object holder to satisfy StrictMode before first conditional access
 try {
-if ($script:stuckGuardEnabled) { $script:hbJob = _Start-HeartbeatJob -Sec $script:hbSec }
-if ($effectiveTimeoutSeconds -gt 0) {
-  Write-Host "Executing with timeout guard: $effectiveTimeoutSeconds second(s)" -ForegroundColor Yellow
-  $job = Start-Job -ScriptBlock { param($c) Invoke-Pester -Configuration $c } -ArgumentList ($conf)
-  $partialLogPath = Join-Path $resultsDir 'pester-partial.log'
-  $lastWriteLen = 0
-  while ($true) {
-    if ($job.State -eq 'Completed') { break }
-    if ($job.State -eq 'Failed') { break }
-    $elapsed = (Get-Date) - $testStartTime
-    # Periodically capture partial output (stdout) for diagnostics
-    try {
-      $stream = Receive-Job -Job $job -Keep -ErrorAction SilentlyContinue
-      if ($null -ne $stream) {
-        $text = ($stream | Out-String)
-        if (-not [string]::IsNullOrEmpty($text)) {
-          # Append only new content heuristic (simple length diff)
-          $delta = $text.Substring([Math]::Min($lastWriteLen, $text.Length))
-          if ($delta.Trim()) { Add-Content -Path $partialLogPath -Value $delta -Encoding UTF8 }
-          $lastWriteLen = $text.Length
+if (-not $script:UseSingleInvoker) {
+  if ($script:stuckGuardEnabled) { _Write-HeartbeatLine 'start' }
+  if ($effectiveTimeoutSeconds -gt 0) {
+    Write-Host "Executing with timeout guard: $effectiveTimeoutSeconds second(s)" -ForegroundColor Yellow
+    $job = Start-Job -ScriptBlock { param($c) Invoke-Pester -Configuration $c } -ArgumentList ($conf)
+    $partialLogPath = Join-Path $resultsDir 'pester-partial.log'
+    $lastWriteLen = 0
+    $lastHeartbeat = Get-Date
+    while ($true) {
+      if ($job.State -eq 'Completed') { break }
+      if ($job.State -eq 'Failed') { break }
+      $elapsed = (Get-Date) - $testStartTime
+      # Periodically capture partial output (stdout) for diagnostics
+      try {
+        $stream = Receive-Job -Job $job -Keep -ErrorAction SilentlyContinue
+        if ($null -ne $stream) {
+          $text = ($stream | Out-String)
+          if (-not [string]::IsNullOrEmpty($text)) {
+            # Append only new content heuristic (simple length diff)
+            $delta = $text.Substring([Math]::Min($lastWriteLen, $text.Length))
+            if ($delta.Trim()) { Add-Content -Path $partialLogPath -Value $delta -Encoding UTF8 }
+            $lastWriteLen = $text.Length
+          }
+        }
+      } catch { }
+      if ($script:stuckGuardEnabled) {
+        $now = Get-Date
+        if ((($now - $lastHeartbeat).TotalSeconds) -ge $script:hbSec) {
+          _Write-HeartbeatLine 'beat'
+          $lastHeartbeat = $now
         }
       }
-    } catch { }
-    if ($elapsed.TotalSeconds -ge $effectiveTimeoutSeconds) {
-      Write-Warning "Pester execution exceeded timeout of $effectiveTimeoutSeconds second(s); stopping job." 
-      try { Stop-Job -Job $job -ErrorAction SilentlyContinue } catch {}
-      $script:timedOut = $true
-      break
+      if ($elapsed.TotalSeconds -ge $effectiveTimeoutSeconds) {
+        Write-Warning "Pester execution exceeded timeout of $effectiveTimeoutSeconds second(s); stopping job." 
+        try { Stop-Job -Job $job -ErrorAction SilentlyContinue } catch {}
+        $script:timedOut = $true
+        break
+      }
+      Start-Sleep -Seconds 5
     }
-    Start-Sleep -Seconds 5
-  }
-  if (-not $timedOut) {
-    try { $result = Receive-Job -Job $job -ErrorAction Stop } catch { Write-Error "Failed to retrieve Pester job result: $_" }
-  }
-  Remove-Job -Job $job -Force -ErrorAction SilentlyContinue | Out-Null
-  $testEndTime = Get-Date
-  $testDuration = $testEndTime - $testStartTime
-} else {
-  try {
-    # Capture output; Pester may emit both rich objects and strings. We keep ordering for detection.
-    # Capture all streams (Information/Verbose/Warning/Error) to ensure discovery failure host messages are collected
-    $rawOutput = & {
-      $InformationPreference = 'Continue'
-      Invoke-Pester -Configuration $conf *>&1
+    if (-not $timedOut) {
+      try { $result = Receive-Job -Job $job -ErrorAction Stop } catch { Write-Error "Failed to retrieve Pester job result: $_" }
     }
+    Remove-Job -Job $job -Force -ErrorAction SilentlyContinue | Out-Null
     $testEndTime = Get-Date
     $testDuration = $testEndTime - $testStartTime
-    foreach ($entry in $rawOutput) {
-      if ($entry -is [string]) {
-        $capturedOutputLines += $entry
-      } elseif ($null -ne $entry -and ($entry.PSObject.Properties.Name -contains 'Tests') -and -not $result) {
-        $result = $entry
-      } elseif ($entry -isnot [string]) {
-        # Non-string, non-primary result objects (e.g., progress records) -> stringify
-        $capturedOutputLines += ($entry | Out-String)
+    if ($script:stuckGuardEnabled) {
+      if ($timedOut) {
+        _Write-HeartbeatLine 'timeout'
+      } else {
+        _Write-HeartbeatLine 'stop'
       }
     }
-    # If PassThru did not surface a result object earlier, attempt to assign from last object
-    if (-not $result) {
-      $maybe = $rawOutput | Where-Object { $_ -isnot [string] -and ($_.PSObject.Properties.Name -contains 'Tests') }
-      if ($maybe) { $result = $maybe[-1] }
-    }
-  } catch {
-    Write-Error "Pester execution failed: $_"
+  } else {
     try {
-      if (-not (Test-Path -LiteralPath $resultsDir -PathType Container)) { New-Item -ItemType Directory -Force -Path $resultsDir | Out-Null }
-      $placeholder = @(
-        '<?xml version="1.0" encoding="utf-8"?>',
-        '<test-results name="placeholder" total="0" errors="1" failures="0" not-run="0" inconclusive="0" ignored="0" skipped="0" invalid="0">',
-        '  <environment nunit-version="3.0" />',
-        '  <culture-info />',
-        '</test-results>'
-      ) -join [Environment]::NewLine
-      Set-Content -LiteralPath $absoluteResultPath -Value $placeholder -Encoding UTF8
-    } catch { Write-Warning "Failed to write placeholder XML: $_" }
+      # Capture output; Pester may emit both rich objects and strings. We keep ordering for detection.
+      # Capture all streams (Information/Verbose/Warning/Error) to ensure discovery failure host messages are collected
+      $rawOutput = & {
+        $InformationPreference = 'Continue'
+        Invoke-Pester -Configuration $conf *>&1
+      }
+      $testEndTime = Get-Date
+      $testDuration = $testEndTime - $testStartTime
+      foreach ($entry in $rawOutput) {
+        if ($entry -is [string]) {
+          $capturedOutputLines += $entry
+        } elseif ($null -ne $entry -and ($entry.PSObject.Properties.Name -contains 'Tests') -and -not $result) {
+          $result = $entry
+        } elseif ($entry -isnot [string]) {
+          # Non-string, non-primary result objects (e.g., progress records) -> stringify
+          $capturedOutputLines += ($entry | Out-String)
+        }
+      }
+      # If PassThru did not surface a result object earlier, attempt to assign from last object
+      if (-not $result) {
+        $maybe = $rawOutput | Where-Object { $_ -isnot [string] -and ($_.PSObject.Properties.Name -contains 'Tests') }
+        if ($maybe) { $result = $maybe[-1] }
+      }
+    } catch {
+      if ($script:stuckGuardEnabled) {
+        _Write-HeartbeatLine 'error'
+        _Write-HeartbeatLine 'stop'
+      }
+      Write-Error "Pester execution failed: $_"
+      try {
+        if (-not (Test-Path -LiteralPath $resultsDir -PathType Container)) { New-Item -ItemType Directory -Force -Path $resultsDir | Out-Null }
+        $placeholder = @(
+          '<?xml version="1.0" encoding="utf-8"?>',
+          '<test-results name="placeholder" total="0" errors="1" failures="0" not-run="0" inconclusive="0" ignored="0" skipped="0" invalid="0">',
+          '  <environment nunit-version="3.0" />',
+          '  <culture-info />',
+          '</test-results>'
+        ) -join [Environment]::NewLine
+        Set-Content -LiteralPath $absoluteResultPath -Value $placeholder -Encoding UTF8
+      } catch { Write-Warning "Failed to write placeholder XML: $_" }
+      exit 1
+    }
+    if ($script:stuckGuardEnabled) { _Write-HeartbeatLine 'stop' }
+  }
+} else {
+  # Single-invoker outer loop path
+  Write-Host "[single-invoker] Running step-based outer loop..." -ForegroundColor Yellow
+  $testStartTime = Get-Date
+  if ($script:stuckGuardEnabled) { _Write-HeartbeatLine 'start' }
+
+  function _Is-IntegrationFile {
+    param([System.IO.FileInfo]$File)
+    try {
+      $content = Get-Content -LiteralPath $File.FullName -TotalCount 200 -ErrorAction Stop | Out-String
+      return ($content -match '-Tag\s*''Integration''|"Integration"')
+    } catch { return $false }
+  }
+
+  $invSession = New-PesterInvokerSession -ResultsRoot $resultsDir -Isolation $Isolation
+  $unitFiles = @()
+  $integrationFiles = @()
+  foreach ($f in $testFiles) {
+    if (_Is-IntegrationFile -File $f) { $integrationFiles += $f } else { $unitFiles += $f }
+  }
+
+  $failedFilesList = New-Object System.Collections.Generic.List[string]
+  $allResults = New-Object System.Collections.Generic.List[psobject]
+  $aggregate = [ordered]@{ passed=0; failed=0; skipped=0; errors=0 }
+
+  function _Run-Files {
+    param([System.IO.FileInfo[]]$Files,[string]$Category)
+    $localFails = 0
+    foreach ($file in $Files) {
+      $res = Invoke-PesterFile -Session $invSession -File $file.FullName -Category $Category -EmitIts:$EmitIts -MaxSeconds $MaxFileSeconds
+      $allResults.Add($res) | Out-Null
+      $aggregate.passed  += [int]$res.Counts.passed
+      $aggregate.failed  += [int]$res.Counts.failed
+      $aggregate.skipped += [int]$res.Counts.skipped
+      $aggregate.errors  += [int]$res.Counts.errors
+      if ($res.TimedOut -or $res.Counts.failed -gt 0 -or $res.Counts.errors -gt 0) {
+        $failedFilesList.Add($file.FullName) | Out-Null
+        $localFails++
+      }
+    }
+    return $localFails
+  }
+
+  $unitFailCount = _Run-Files -Files $unitFiles -Category 'Unit'
+  $intFailCount  = 0
+  if ($includeIntegrationBool -and $unitFailCount -eq 0 -and $integrationFiles.Count -gt 0) {
+    $intFailCount = _Run-Files -Files $integrationFiles -Category 'Integration'
+  } elseif ($includeIntegrationBool -and $unitFailCount -gt 0) {
+    Write-Host "[single-invoker] Skipping Integration due to Unit failures." -ForegroundColor Yellow
+  }
+
+  $sorted = @($allResults | Sort-Object -Property DurationMs -Descending)
+  $topSlowList = if ($sorted.Count -gt 5) { $sorted[0..4] } else { $sorted }
+  Complete-PesterInvokerSession -Session $invSession -FailedFiles $failedFilesList -TopSlow $topSlowList | Out-Null
+
+  # Emit a minimal NUnit XML root with aggregated totals for downstream parsers
+  try {
+    if (-not (Test-Path -LiteralPath $resultsDir -PathType Container)) { New-Item -ItemType Directory -Force -Path $resultsDir | Out-Null }
+    $totalAgg = [int]($aggregate.passed + $aggregate.failed + $aggregate.errors + $aggregate.skipped)
+    $xmlAgg = @(
+      '<?xml version="1.0" encoding="utf-8"?>',
+      ('<test-results name="single-invoker" total="{0}" errors="{1}" failures="{2}" not-run="{3}" inconclusive="0" ignored="0" skipped="{3}" invalid="0">' -f $totalAgg,$aggregate.errors,$aggregate.failed,$aggregate.skipped),
+      '  <environment nunit-version="3.0" />',
+      '  <culture-info />',
+      '</test-results>'
+    ) -join [Environment]::NewLine
+    $xmlOutPath = Join-Path $resultsDir 'pester-results.xml'
+    Set-Content -LiteralPath $xmlOutPath -Value $xmlAgg -Encoding UTF8
+  } catch { Write-Warning "[single-invoker] Failed to write aggregated NUnit XML: $_" }
+
+  $testEndTime = Get-Date
+  $testDuration = $testEndTime - $testStartTime
+  if ($script:stuckGuardEnabled) { _Write-HeartbeatLine 'stop' }
+  
+  # Emit minimal JSON summary so downstream artifact/indices have data without running the classic path
+  try {
+    $jsonSummaryPath = Join-Path $resultsDir $JsonSummaryPath
+    $loadedPester = Get-Module Pester -ListAvailable | Sort-Object Version -Descending | Select-Object -First 1
+    $jsonObj = [PSCustomObject]@{
+      total              = [int]($aggregate.passed + $aggregate.failed + $aggregate.errors + $aggregate.skipped)
+      passed             = [int]$aggregate.passed
+      failed             = [int]$aggregate.failed
+      errors             = [int]$aggregate.errors
+      skipped            = [int]$aggregate.skipped
+      duration_s         = [math]::Round($testDuration.TotalSeconds, 6)
+      timestamp          = (Get-Date).ToString('o')
+      pesterVersion      = $loadedPester.Version.ToString()
+      includeIntegration = [bool]$includeIntegrationBool
+      schemaVersion      = $SchemaSummaryVersion
+      timedOut           = $false
+      discoveryFailures  = 0
+    }
+    if (-not (Test-Path -LiteralPath $resultsDir -PathType Container)) { New-Item -ItemType Directory -Force -Path $resultsDir | Out-Null }
+    $jsonObj | ConvertTo-Json -Depth 4 | Out-File -FilePath $jsonSummaryPath -Encoding utf8 -ErrorAction Stop
+  } catch { Write-Warning "[single-invoker] Failed to write JSON summary: $_" }
+
+  # Write artifact manifest and session index for parity
+  try { Write-ArtifactManifest -Directory $resultsDir -SummaryJsonPath $jsonSummaryPath -ManifestVersion $SchemaManifestVersion } catch {}
+  try { Write-SessionIndex -ResultsDirectory $resultsDir -SummaryJsonPath $jsonSummaryPath } catch {}
+
+  # Print concise outcome and exit early to avoid re-entering the classic path
+  $failTotal = [int]($aggregate.failed + $aggregate.errors)
+  if ($failTotal -gt 0) {
+    Write-Host ("? Tests failed: failures={0} errors={1}" -f $aggregate.failed,$aggregate.errors) -ForegroundColor Red
+    # Optional cleanup per policy
+    if ($CleanAfter) { _Stop-ProcsSafely -Names @('LabVIEW'); if ($script:CleanLVCompare) { _Stop-ProcsSafely -Names @('LVCompare') } }
+    if ($sessionLockEnabled -and $lockAcquired) { try { Invoke-SessionLock -Action 'Release' -Group $lockGroup | Out-Null } catch {} }
     exit 1
   }
+  Write-Host "? All tests passed!" -ForegroundColor Green
+  if ($CleanAfter) { _Stop-ProcsSafely -Names @('LabVIEW'); if ($script:CleanLVCompare) { _Stop-ProcsSafely -Names @('LVCompare') } }
+  if ($sessionLockEnabled -and $lockAcquired) { try { Invoke-SessionLock -Action 'Release' -Group $lockGroup | Out-Null } catch {} }
+  exit 0
 }
 
 if ($timedOut) {
@@ -1316,8 +1598,6 @@ try {
 } catch { Write-Warning "Failed to compute timing metrics: $_" }
 
 # Stop heartbeat (if enabled) before rendering summaries
-try { if ($script:stuckGuardEnabled) { _Stop-HeartbeatJob } } catch {}
-
 # Generate summary
 $summary = @(
   "=== Pester Test Summary ===",
@@ -2013,3 +2293,10 @@ if ($EmitFailuresJsonAlways) { Ensure-FailuresJson -Directory $resultsDir -Norma
   } catch { Write-Warning "Failed to emit final sweep leak report: $_" }
 }
 exit 0
+finally {
+  if ($sessionLockEnabled -and $lockAcquired) {
+    Write-Host "::notice::Releasing session lock '$lockGroup'" -ForegroundColor DarkGray
+    $released = Invoke-SessionLock -Action 'Release' -Group $lockGroup
+    if (-not $released) { Write-Warning "Failed to release session lock '$lockGroup'" }
+  }
+}

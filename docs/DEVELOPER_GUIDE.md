@@ -264,6 +264,8 @@ Enable with `-EmitAggregationHints`:
 For rapid iteration, use the file watcher to re-execute tests when files change:
 
 ```powershell
+$env:WATCH_RESULTS_DIR = 'tests/results/_watch'
+
 # Basic watch mode
 pwsh -File ./tools/Watch-Pester.ps1 -RunAllOnStart
 
@@ -271,8 +273,10 @@ pwsh -File ./tools/Watch-Pester.ps1 -RunAllOnStart
 pwsh -File ./tools/Watch-Pester.ps1 -RunAllOnStart -ChangedOnly -InferTestsFromSource
 
 # With delta tracking and flaky recovery
-pwsh -File ./tools/Watch-Pester.ps1 -RunAllOnStart -DeltaJsonPath tests/results/delta.json -RerunFailedAttempts 2
+pwsh -File ./tools/Watch-Pester.ps1 -RunAllOnStart -RerunFailedAttempts 2
 ```
+
+> When `WATCH_RESULTS_DIR` (or `-DeltaJsonPath` / `-DeltaHistoryPath`) is set, watch-mode writes `watch-last.json` and `watch-log.ndjson`, which the Dev Dashboard surfaces.
 
 ### Key Watch Options
 

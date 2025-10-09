@@ -58,6 +58,10 @@ jobs:
     name: Fixture Drift (Ubuntu)
     runs-on: ubuntu-latest
     timeout-minutes: 3
+    env:
+      CLEAN_LV_BEFORE: ${{ vars.CLEAN_LV_BEFORE || 'true' }}
+      CLEAN_LV_AFTER: ${{ vars.CLEAN_LV_AFTER || 'true' }}
+      CLEAN_LV_INCLUDE_COMPARE: ${{ vars.CLEAN_LV_INCLUDE_COMPARE || vars.CLEAN_LVCOMPARE || 'true' }}
     permissions:
       actions: read
       contents: read
@@ -72,7 +76,7 @@ jobs:
       uses: ./.github/actions/runner-unblock-guard
       with:
         snapshot-path: results/fixture-drift/lv-guard-pre.json
-        cleanup: ${{ env.CLEAN_LVCOMPARE == '1' }}
+        cleanup: ${{ env.CLEAN_LV_BEFORE == 'true' }}
         process-names: 'LVCompare,LabVIEW'
     - name: LabVIEW warmup (best-effort)
       shell: pwsh
@@ -132,9 +136,14 @@ jobs:
     env:
       INVOKER_REQUIRED: '1'
       UNBLOCK_GUARD: '0'
-      LV_SUPPRESS_UI: '0'
+      LV_SUPPRESS_UI: ${{ vars.LV_SUPPRESS_UI || '1' }}
+      CLEAN_LV_BEFORE: ${{ vars.CLEAN_LV_BEFORE || 'true' }}
+      CLEAN_LV_AFTER: ${{ vars.CLEAN_LV_AFTER || 'true' }}
+      CLEAN_LV_INCLUDE_COMPARE: ${{ vars.CLEAN_LV_INCLUDE_COMPARE || vars.CLEAN_LVCOMPARE || 'true' }}
+      LVCI_SINGLE_COMPARE: '1'
       WATCH_CONSOLE: '1'
       LABVIEW_EXE: 'C:\\Program Files\\National Instruments\\LabVIEW 2025\\LabVIEW.exe'
+      LV_NOTICE_DIR: 'results/fixture-drift/_lv'
       LV_NO_ACTIVATE: ${{ vars.LV_NO_ACTIVATE || '1' }}
       LV_CURSOR_RESTORE: ${{ vars.LV_CURSOR_RESTORE || '1' }}
       LV_IDLE_WAIT_SECONDS: ${{ vars.LV_IDLE_WAIT_SECONDS || '2' }}
@@ -192,7 +201,7 @@ jobs:
       uses: ./.github/actions/runner-unblock-guard
       with:
         snapshot-path: results/fixture-drift/lv-guard-pre.json
-        cleanup: ${{ env.CLEAN_LVCOMPARE == '1' }}
+        cleanup: ${{ env.CLEAN_LV_BEFORE == 'true' }}
         process-names: 'LVCompare,LabVIEW'
     - name: Wire Guard (pre)
       uses: ./.github/actions/wire-guard-pre
@@ -275,6 +284,68 @@ jobs:
         }
         # Notice-only step, never fail the job here
         exit 0
+
+    - name: Assert single LVCompare launch
+      if: always()
+      shell: pwsh
+      run: |
+        $originalDir = $env:LV_NOTICE_DIR
+        if (-not $originalDir) {
+          Write-Host '::error::LV notice directory environment variable (LV_NOTICE_DIR) not set.'; exit 1
+        }
+        $noticeDir = $originalDir
+        if (-not (Test-Path -LiteralPath $noticeDir)) {
+          $searchRoot = 'results/fixture-drift'
+          $fallbackDirs = @()
+          if (Test-Path -LiteralPath $searchRoot) {
+            $fallbackDirs = Get-ChildItem -LiteralPath $searchRoot -Directory -Recurse -ErrorAction SilentlyContinue | Where-Object { $_.Name -eq '_lv' }
+          }
+          if ($fallbackDirs -and $fallbackDirs.Count -gt 0) {
+            $noticeDir = $fallbackDirs[0].FullName
+            Write-Host ("::notice::LV notice directory fallback → {0} (original={1})" -f $noticeDir,$originalDir)
+          } else {
+            Write-Host ("::error::LV notice directory not found: {0}" -f $originalDir); exit 1
+          }
+        }
+        $files = @(Get-ChildItem -LiteralPath $noticeDir -Filter 'notice-*.json' -File -ErrorAction SilentlyContinue | Sort-Object FullName)
+        $postStarts = 0
+        $legacyWithoutPath = 0
+        $pathsObserved = New-Object System.Collections.Generic.List[string]
+        foreach ($f in $files) {
+          try {
+            $j = Get-Content -LiteralPath $f.FullName -Raw | ConvertFrom-Json -ErrorAction Stop
+          } catch {
+            continue
+          }
+          if ($j.phase -eq 'post-start') {
+            $candidatePath = $null
+            if ($j.PSObject.Properties['path'] -and -not [string]::IsNullOrWhiteSpace([string]$j.path)) {
+              $candidatePath = [string]$j.path
+            } elseif ($j.PSObject.Properties['cli'] -and -not [string]::IsNullOrWhiteSpace([string]$j.cli)) {
+              $candidatePath = [string]$j.cli
+              $legacyWithoutPath++
+            } else {
+              $legacyWithoutPath++
+            }
+            if ($candidatePath) { $null = $pathsObserved.Add($candidatePath) }
+            $postStarts++
+          }
+        }
+        if ($env:GITHUB_STEP_SUMMARY) {
+          $lines = @('### LVCompare Launch Check','',"- Notice dir: $noticeDir", "- Notices: $($files.Count)", "- post-start: $postStarts")
+          if ($legacyWithoutPath -gt 0) {
+            $lines += ("- post-start without path metadata: {0}" -f $legacyWithoutPath)
+          }
+          if ($pathsObserved.Count -gt 0) {
+            $uniquePaths = ($pathsObserved | Sort-Object -Unique)
+            $lines += ("- paths observed: {0}" -f ([string]::Join(', ', $uniquePaths)))
+          }
+          $lines -join "`n" | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8
+        }
+        if ($postStarts -ne 1) {
+          Write-Host ("::error::Expected exactly one LVCompare launch (post-start={0})" -f $postStarts); exit 1
+        }
+        Write-Host "Single LVCompare launch verified (post-start=1)"
     - name: Wire Probe (C3)
       uses: ./.github/actions/wire-probe
       with:
@@ -304,6 +375,21 @@ jobs:
         validate-schema: true
         upload: true
         artifact-name: fixture-drift-session-index
+
+    - name: Generate dev dashboard (fixture drift)
+      if: always()
+      shell: pwsh
+      run: pwsh -File tools/Invoke-DevDashboard.ps1 -Group 'fixture-drift' -ResultsRoot 'results/fixture-drift' -OutputRoot 'results/fixture-drift/dev-dashboard'
+
+    - name: Upload dev dashboard (fixture drift)
+      if: always()
+      uses: actions/upload-artifact@v4
+      with:
+        name: fixture-drift-dev-dashboard
+        path: |
+          results/fixture-drift/dev-dashboard/dashboard.html
+          results/fixture-drift/dev-dashboard/dashboard.json
+        if-no-files-found: warn
 
     - name: Runner Unblock Guard
       if: always()
@@ -339,6 +425,22 @@ jobs:
       shell: pwsh
       run: pwsh -File tools/Write-RunnerIdentity.ps1 -SampleId '${{ github.event.inputs.sample_id || '' }}'
 
+    - name: Append dev dashboard summary (fixture drift)
+      if: always()
+      shell: pwsh
+      run: |
+        $html = Join-Path 'results/fixture-drift/dev-dashboard' 'dashboard.html'
+        $json = Join-Path 'results/fixture-drift/dev-dashboard' 'dashboard.json'
+        if ($env:GITHUB_STEP_SUMMARY -and (Test-Path $html)) {
+          $lines = @(
+            '### Fixture Drift Dev Dashboard',
+            '',
+            "- HTML: $(Resolve-Path $html)",
+            "- JSON: $(Resolve-Path $json)"
+          )
+          $lines -join "`n" | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8
+        }
+
     - name: Append fixture drift summary
       if: always()
       shell: pwsh
@@ -369,7 +471,7 @@ jobs:
       uses: ./.github/actions/runner-unblock-guard
       with:
         snapshot-path: results/fixture-drift/lv-guard-post.json
-        cleanup: ${{ env.CLEAN_LVCOMPARE == '1' }}
+        cleanup: ${{ env.CLEAN_LV_AFTER == 'true' }}
         process-names: 'LVCompare,LabVIEW'
     - name: Wire Guard (post)
       if: always()

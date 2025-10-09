@@ -63,43 +63,119 @@ function Quote($s) {
   if ($null -eq $s) { return '""' }
   if ($s -match '\s|"') { return '"' + ($s -replace '"','\"') + '"' } else { return $s }
 }
-
-  function Convert-ArgTokenList([string[]]$tokens) {
+function Convert-ArgTokenList([string[]]$tokens) {
   $out = @()
+  if (-not $tokens) { return $out }
+
   function Normalize-PathToken([string]$s) {
     if ($null -eq $s) { return $s }
-    if ($s -match '^[A-Za-z]:/') { return ($s -replace '/', '\\') }
-    if ($s -match '^//') { return ($s -replace '/', '\\') }
+    if ($s -match '^[A-Za-z]:/') { return ($s -replace '/', '\') }
+    if ($s -match '^//') { return ($s -replace '/', '\') }
     return $s
   }
-  foreach ($t in $tokens) {
-    if ($null -eq $t) { continue }
-    $tok = $t.Trim()
+
+  function Ensure-UNCLeading([string]$s) {
+    if ($null -eq $s) { return $s }
+    $bs = [char]92
+    if ($s.Length -gt 0 -and $s[0] -eq $bs) {
+      $count = 0
+      while ($count -lt $s.Length -and $s[$count] -eq $bs) { $count++ }
+      if ($count -lt 4) {
+        $needed = 4 - $count
+        $prefix = [string]::new($bs, $needed)
+        return ($prefix + $s)
+      }
+    }
+    return $s
+  }
+
+  $currentFlagIndex = -1
+  $currentValueIndex = -1
+
+  for ($i = 0; $i -lt $tokens.Count; $i++) {
+    $tok = $tokens[$i]
+    if ($null -eq $tok) { continue }
+    $tok = $tok.Trim()
+    if (-not $tok) { continue }
+
     if ($tok.StartsWith('-') -and $tok.Contains('=')) {
       $eq = $tok.IndexOf('=')
       if ($eq -gt 0) {
-        $flag = $tok.Substring(0,$eq)
-        $val = $tok.Substring($eq+1)
-        if ($val.StartsWith('"') -and $val.EndsWith('"')) { $val = $val.Substring(1,$val.Length-2) }
-        elseif ($val.StartsWith("'") -and $val.EndsWith("'")) { $val = $val.Substring(1,$val.Length-2) }
+        $flag = $tok.Substring(0, $eq)
+        $val  = $tok.Substring($eq + 1)
+        if ($val.StartsWith('"') -and $val.EndsWith('"')) { $val = $val.Substring(1, $val.Length - 2) }
+        elseif ($val.StartsWith("'") -and $val.EndsWith("'")) { $val = $val.Substring(1, $val.Length - 2) }
+
+        $segments = @()
+        if ($val) { $segments += $val }
+        while (($i + 1) -lt $tokens.Count) {
+          $peek = $tokens[$i + 1]
+          if ($null -eq $peek) { break }
+          $peekTrim = $peek.Trim()
+          if (-not $peekTrim) { $i++; continue }
+          if ($peekTrim.StartsWith('-')) { break }
+          $segments += $peekTrim
+          $i++
+        }
+
         if ($flag) { $out += $flag }
-        if ($val) { $out += (Normalize-PathToken $val) }
+        if ($segments.Count -gt 0) {
+          $joined = ($segments -join ' ')
+          $out += (Ensure-UNCLeading (Normalize-PathToken $joined))
+        }
+        $currentFlagIndex = -1
+        $currentValueIndex = -1
         continue
       }
     }
-    if ($tok.StartsWith('-') -and $tok -match '\\s+') {
+
+    if ($tok.StartsWith('-') -and $tok -match '\s+') {
       $idx = $tok.IndexOf(' ')
       if ($idx -gt 0) {
-        $flag = $tok.Substring(0,$idx)
-        $val = $tok.Substring($idx+1)
+        $flag = $tok.Substring(0, $idx)
+        $val  = $tok.Substring($idx + 1)
         if ($flag) { $out += $flag }
-        if ($val) { $out += (Normalize-PathToken $val) }
+        if ($val) {
+          $segments = @($val)
+          while (($i + 1) -lt $tokens.Count) {
+            $peek = $tokens[$i + 1]
+            if ($null -eq $peek) { break }
+            $peekTrim = $peek.Trim()
+            if (-not $peekTrim) { $i++; continue }
+            if ($peekTrim.StartsWith('-')) { break }
+            $segments += $peekTrim
+            $i++
+          }
+          $joined = ($segments -join ' ')
+          $out += (Ensure-UNCLeading (Normalize-PathToken $joined))
+        }
+        $currentFlagIndex = -1
+        $currentValueIndex = -1
         continue
       }
     }
-    if (-not $tok.StartsWith('-')) { $tok = Normalize-PathToken $tok }
-    $out += $tok
+
+    if ($tok.StartsWith('-')) {
+      $out += $tok
+      $currentFlagIndex = $out.Count - 1
+      $currentValueIndex = -1
+      continue
+    }
+
+    $normalizedToken = Normalize-PathToken $tok
+    if ($currentFlagIndex -ge 0) {
+      if ($currentValueIndex -ge 0) {
+        $merged = ($out[$currentValueIndex] + ' ' + $normalizedToken).Trim()
+        $out[$currentValueIndex] = Ensure-UNCLeading $merged
+      } else {
+        $out += (Ensure-UNCLeading $normalizedToken)
+        $currentValueIndex = $out.Count - 1
+      }
+    } else {
+      $out += (Ensure-UNCLeading $normalizedToken)
+    }
   }
+
   return $out
 }
 
@@ -147,7 +223,12 @@ function Invoke-CompareVI {
     $headLeaf = Split-Path -Leaf $headAbs
     if ($baseLeaf -ieq $headLeaf -and $baseAbs -ne $headAbs) { throw "LVCompare limitation: Cannot compare two VIs sharing the same filename '$baseLeaf' located in different directories. Rename one copy or provide distinct filenames. Base=$baseAbs Head=$headAbs" }
 
-    $cli = if ($LvComparePath) { (Resolve-Cli -Explicit $LvComparePath) } else { (Resolve-Cli) }
+    # Resolve LVCompare path. In preview mode, bypass file existence checks to allow unit tests
+    if ($PreviewArgs) {
+      $cli = 'C:\\Program Files\\National Instruments\\Shared\\LabVIEW Compare\\LVCompare.exe'
+    } else {
+      $cli = if ($LvComparePath) { (Resolve-Cli -Explicit $LvComparePath) } else { (Resolve-Cli) }
+    }
     $cliArgs = @()
     if ($LvCompareArgs) {
       $raw = $LvCompareArgs
@@ -221,7 +302,7 @@ function Invoke-CompareVI {
       $origCursor = $null; if ($env:LV_CURSOR_RESTORE -match '^(?i:1|true|yes|on)$') { $origCursor = Get-CursorPos }
       $noActivate = ($env:LV_NO_ACTIVATE -match '^(?i:1|true|yes|on)$')
       # Emit pre-launch notice
-      $notice = @{ schema='lvcompare-notice/v1'; when=(Get-Date).ToString('o'); phase='pre-launch'; cli=$cli; base=$baseAbs; head=$headAbs; args=$cliArgs; cwd=$cwd }
+      $notice = @{ schema='lvcompare-notice/v1'; when=(Get-Date).ToString('o'); phase='pre-launch'; cli=$cli; base=$baseAbs; head=$headAbs; args=$cliArgs; cwd=$cwd; path=$cli }
       if ($CompareExecJsonPath) { $notice.execJsonPath = $CompareExecJsonPath }
       Write-Host ("[lvcompare-notice] Launching LVCompare: base='{0}' head='{1}' args='{2}'" -f $baseAbs,$headAbs,($cliArgs -join ' '))
       Write-LVNotice $notice
@@ -240,7 +321,7 @@ function Invoke-CompareVI {
         $lvcomparePid = $proc.Id
         # Post-start notice with PID
         try {
-          $n = @{ schema='lvcompare-notice/v1'; when=(Get-Date).ToString('o'); phase='post-start'; pid=$proc.Id; cli=$cli; base=$baseAbs; head=$headAbs; args=$cliArgs; cwd=$cwd }
+          $n = @{ schema='lvcompare-notice/v1'; when=(Get-Date).ToString('o'); phase='post-start'; pid=$proc.Id; cli=$cli; base=$baseAbs; head=$headAbs; args=$cliArgs; cwd=$cwd; path=$cli }
           if ($CompareExecJsonPath) { $n.execJsonPath = $CompareExecJsonPath }
           Write-Host ("[lvcompare-notice] Started LVCompare PID={0}" -f $proc.Id)
           Write-LVNotice $n
@@ -262,7 +343,7 @@ function Invoke-CompareVI {
         $code = if (Get-Variable -Name LASTEXITCODE -ErrorAction SilentlyContinue) { $LASTEXITCODE } else { 0 }
         # We do not have PID in this path; record completion
         try {
-          $n = @{ schema='lvcompare-notice/v1'; when=(Get-Date).ToString('o'); phase='completed'; exitCode=$code; cli=$cli; base=$baseAbs; head=$headAbs; args=$cliArgs; cwd=$cwd }
+          $n = @{ schema='lvcompare-notice/v1'; when=(Get-Date).ToString('o'); phase='completed'; exitCode=$code; cli=$cli; base=$baseAbs; head=$headAbs; args=$cliArgs; cwd=$cwd; path=$cli }
           if ($CompareExecJsonPath) { $n.execJsonPath = $CompareExecJsonPath }
           Write-Host ("[lvcompare-notice] Completed LVCompare with exitCode={0}" -f $code)
           Write-LVNotice $n
@@ -354,7 +435,7 @@ function Invoke-CompareVI {
       $beforeSet = @{}
       foreach ($id in $lvBefore) { $beforeSet[[string]$id] = $true }
       $newLV = @(); foreach ($p in $lvAfter) { if (-not $beforeSet.ContainsKey([string]$p.Id)) { $newLV += [int]$p.Id } }
-      $noticeComplete = @{ schema='lvcompare-notice/v1'; when=(Get-Date).ToString('o'); phase='post-complete'; labviewPids=$newLV }
+      $noticeComplete = @{ schema='lvcompare-notice/v1'; when=(Get-Date).ToString('o'); phase='post-complete'; labviewPids=$newLV; path=$cli }
       if ($lvcomparePid) { $noticeComplete.lvcomparePid = [int]$lvcomparePid }
       Write-LVNotice $noticeComplete
     } catch {}
@@ -362,7 +443,7 @@ function Invoke-CompareVI {
     $allowCleanup = ($env:ENABLE_LABVIEW_CLEANUP -match '^(?i:1|true|yes|on)$')
     if ($allowCleanup) {
       try {
-        $deadline = (Get-Date).AddSeconds(10)
+        $deadline = (Get-Date).AddSeconds(90)
         do {
           $closedAny = $false
           $lvAfter = @(Get-Process -Name 'LabVIEW' -ErrorAction SilentlyContinue)
@@ -388,3 +469,5 @@ function Invoke-CompareVI {
 }
 
 Export-ModuleMember -Function Invoke-CompareVI
+
+

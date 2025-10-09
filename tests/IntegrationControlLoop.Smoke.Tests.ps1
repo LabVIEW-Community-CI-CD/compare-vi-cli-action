@@ -65,4 +65,102 @@ function Stop-LabVIEWProcesses  { param([switch]`$Quiet) '{"labview":1}'   | Add
       $content | Should -Match 'labview'
     }
   }
+
+  Context 'Loop completion cleanup' {
+    It 'invokes Close-LabVIEW helper after the loop finishes' {
+      $repoRoot = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path
+      $runnerSrc = Join-Path $repoRoot 'scripts' 'Run-AutonomousIntegrationLoop.ps1'
+      Test-Path $runnerSrc | Should -BeTrue
+
+      $testRepo = Join-Path $TestDrive 'repo'
+      $scriptsDir = Join-Path $testRepo 'scripts'
+      $moduleDir = Join-Path $testRepo 'module' 'CompareLoop'
+      $toolsDir = Join-Path $testRepo 'tools'
+      New-Item -ItemType Directory -Path $scriptsDir -Force | Out-Null
+      New-Item -ItemType Directory -Path $moduleDir -Force | Out-Null
+      New-Item -ItemType Directory -Path $toolsDir -Force | Out-Null
+
+      $runnerDst = Join-Path $scriptsDir 'Run-AutonomousIntegrationLoop.ps1'
+      Copy-Item -LiteralPath $runnerSrc -Destination $runnerDst -Force
+
+      $marker = Join-Path $testRepo 'close-marker.txt'
+      $closeStub = @"
+param(
+  [string]`$MinimumSupportedLVVersion,
+  [string]`$SupportedBitness
+)
+"version=`$MinimumSupportedLVVersion;bitness=`$SupportedBitness" | Set-Content -LiteralPath '$marker' -Encoding utf8
+exit 0
+"@
+      Set-Content -LiteralPath (Join-Path $toolsDir 'Close-LabVIEW.ps1') -Value $closeStub -Encoding UTF8
+
+      $moduleStub = @"
+function Invoke-IntegrationCompareLoop {
+  param(
+    [string]`$Base,
+    [string]`$Head,
+    [int]`$MaxIterations,
+    [double]`$IntervalSeconds,
+    [string]`$DiffSummaryFormat,
+    [string]`$DiffSummaryPath,
+    [switch]`$FailOnDiff,
+    [int]`$HistogramBins,
+    [switch]`$Quiet,
+    [scriptblock]`$CompareExecutor,
+    [switch]`$SkipValidation,
+    [switch]`$PassThroughPaths,
+    [switch]`$BypassCliValidation
+  )
+  if (`$CompareExecutor) { & `$CompareExecutor 'stub-cli' `$Base `$Head @() | Out-Null }
+  return [pscustomobject]@{
+    Iterations    = 1
+    DiffCount     = 0
+    ErrorCount    = 0
+    Succeeded     = `$true
+    Percentiles   = [pscustomobject]@{ p50 = 0; p90 = 0; p99 = 0 }
+    DiffSummary   = $null
+    BasePath      = `$Base
+    HeadPath      = `$Head
+    AverageSeconds= 0.01
+    TotalSeconds  = 0.01
+    Histogram     = @()
+  }
+}
+Export-ModuleMember -Function Invoke-IntegrationCompareLoop
+"@
+      Set-Content -LiteralPath (Join-Path $moduleDir 'CompareLoop.psm1') -Value $moduleStub -Encoding UTF8
+
+      $manifest = @"
+@{
+  RootModule        = 'CompareLoop.psm1'
+  ModuleVersion     = '0.0.1'
+  GUID              = '00000000-0000-0000-0000-000000000201'
+  FunctionsToExport = @('Invoke-IntegrationCompareLoop')
+  AliasesToExport   = @()
+}
+"@
+      Set-Content -LiteralPath (Join-Path $moduleDir 'CompareLoop.psd1') -Value $manifest -Encoding UTF8
+
+      $base = Join-Path $testRepo 'LoopBase.vi'
+      $head = Join-Path $testRepo 'LoopHead.vi'
+      Set-Content -LiteralPath $base -Value '' -Encoding utf8
+      Set-Content -LiteralPath $head -Value '' -Encoding utf8
+
+      Push-Location $testRepo
+      try {
+        $env:LOOP_SIMULATE = '1'
+        $env:LOOP_LABVIEW_VERSION = '2025'
+        $env:LOOP_LABVIEW_BITNESS = '64'
+        & pwsh -NoLogo -NoProfile -File $runnerDst -Base $base -Head $head -MaxIterations 1 -IntervalSeconds 0 | Out-Null
+      } finally {
+        Pop-Location
+        Remove-Item Env:LOOP_SIMULATE -ErrorAction SilentlyContinue
+        Remove-Item Env:LOOP_LABVIEW_VERSION -ErrorAction SilentlyContinue
+        Remove-Item Env:LOOP_LABVIEW_BITNESS -ErrorAction SilentlyContinue
+      }
+
+      Test-Path -LiteralPath $marker | Should -BeTrue
+      (Get-Content -LiteralPath $marker -Raw) | Should -Match 'version=2025;bitness=64'
+    }
+  }
 }

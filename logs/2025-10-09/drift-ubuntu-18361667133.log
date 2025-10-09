@@ -1,0 +1,542 @@
+Fixture Drift (Ubuntu)	Set up job	﻿2025-10-09T00:24:24.4501968Z Current runner version: '2.328.0'
+Fixture Drift (Ubuntu)	Set up job	2025-10-09T00:24:24.4526936Z ##[group]Runner Image Provisioner
+Fixture Drift (Ubuntu)	Set up job	2025-10-09T00:24:24.4527769Z Hosted Compute Agent
+Fixture Drift (Ubuntu)	Set up job	2025-10-09T00:24:24.4528274Z Version: 20250912.392
+Fixture Drift (Ubuntu)	Set up job	2025-10-09T00:24:24.4528984Z Commit: d921fda672a98b64f4f82364647e2f10b2267d0b
+Fixture Drift (Ubuntu)	Set up job	2025-10-09T00:24:24.4529643Z Build Date: 2025-09-12T15:23:14Z
+Fixture Drift (Ubuntu)	Set up job	2025-10-09T00:24:24.4530222Z ##[endgroup]
+Fixture Drift (Ubuntu)	Set up job	2025-10-09T00:24:24.4530830Z ##[group]Operating System
+Fixture Drift (Ubuntu)	Set up job	2025-10-09T00:24:24.4531407Z Ubuntu
+Fixture Drift (Ubuntu)	Set up job	2025-10-09T00:24:24.4531868Z 24.04.3
+Fixture Drift (Ubuntu)	Set up job	2025-10-09T00:24:24.4532403Z LTS
+Fixture Drift (Ubuntu)	Set up job	2025-10-09T00:24:24.4532881Z ##[endgroup]
+Fixture Drift (Ubuntu)	Set up job	2025-10-09T00:24:24.4533347Z ##[group]Runner Image
+Fixture Drift (Ubuntu)	Set up job	2025-10-09T00:24:24.4534051Z Image: ubuntu-24.04
+Fixture Drift (Ubuntu)	Set up job	2025-10-09T00:24:24.4534531Z Version: 20250929.60.1
+Fixture Drift (Ubuntu)	Set up job	2025-10-09T00:24:24.4535882Z Included Software: https://github.com/actions/runner-images/blob/ubuntu24/20250929.60/images/ubuntu/Ubuntu2404-Readme.md
+Fixture Drift (Ubuntu)	Set up job	2025-10-09T00:24:24.4537282Z Image Release: https://github.com/actions/runner-images/releases/tag/ubuntu24%2F20250929.60
+Fixture Drift (Ubuntu)	Set up job	2025-10-09T00:24:24.4538438Z ##[endgroup]
+Fixture Drift (Ubuntu)	Set up job	2025-10-09T00:24:24.4539679Z ##[group]GITHUB_TOKEN Permissions
+Fixture Drift (Ubuntu)	Set up job	2025-10-09T00:24:24.4541510Z Actions: read
+Fixture Drift (Ubuntu)	Set up job	2025-10-09T00:24:24.4542154Z Contents: read
+Fixture Drift (Ubuntu)	Set up job	2025-10-09T00:24:24.4542648Z Metadata: read
+Fixture Drift (Ubuntu)	Set up job	2025-10-09T00:24:24.4543162Z PullRequests: write
+Fixture Drift (Ubuntu)	Set up job	2025-10-09T00:24:24.4543797Z ##[endgroup]
+Fixture Drift (Ubuntu)	Set up job	2025-10-09T00:24:24.4546450Z Secret source: Actions
+Fixture Drift (Ubuntu)	Set up job	2025-10-09T00:24:24.4547430Z Prepare workflow directory
+Fixture Drift (Ubuntu)	Set up job	2025-10-09T00:24:24.4877197Z Prepare all required actions
+Fixture Drift (Ubuntu)	Set up job	2025-10-09T00:24:24.4915105Z Getting action download info
+Fixture Drift (Ubuntu)	Set up job	2025-10-09T00:24:24.7817068Z Download action repository 'actions/checkout@v4' (SHA:08eba0b27e820071cde6df949e0beb9ba4906955)
+Fixture Drift (Ubuntu)	Set up job	2025-10-09T00:24:24.9252655Z Complete job name: Fixture Drift (Ubuntu)
+Fixture Drift (Ubuntu)	Checkout	﻿2025-10-09T00:24:24.9950726Z ##[group]Run actions/checkout@v4
+Fixture Drift (Ubuntu)	Checkout	2025-10-09T00:24:24.9951628Z with:
+Fixture Drift (Ubuntu)	Checkout	2025-10-09T00:24:24.9952015Z   fetch-depth: 0
+Fixture Drift (Ubuntu)	Checkout	2025-10-09T00:24:24.9952541Z   repository: LabVIEW-Community-CI-CD/compare-vi-cli-action
+Fixture Drift (Ubuntu)	Checkout	2025-10-09T00:24:24.9953306Z   token: ***
+Fixture Drift (Ubuntu)	Checkout	2025-10-09T00:24:24.9953696Z   ssh-strict: true
+Fixture Drift (Ubuntu)	Checkout	2025-10-09T00:24:24.9954086Z   ssh-user: git
+Fixture Drift (Ubuntu)	Checkout	2025-10-09T00:24:24.9954485Z   persist-credentials: true
+Fixture Drift (Ubuntu)	Checkout	2025-10-09T00:24:24.9954926Z   clean: true
+Fixture Drift (Ubuntu)	Checkout	2025-10-09T00:24:24.9955490Z   sparse-checkout-cone-mode: true
+Fixture Drift (Ubuntu)	Checkout	2025-10-09T00:24:24.9955988Z   fetch-tags: false
+Fixture Drift (Ubuntu)	Checkout	2025-10-09T00:24:24.9956389Z   show-progress: true
+Fixture Drift (Ubuntu)	Checkout	2025-10-09T00:24:24.9956980Z   lfs: false
+Fixture Drift (Ubuntu)	Checkout	2025-10-09T00:24:24.9957523Z   submodules: false
+Fixture Drift (Ubuntu)	Checkout	2025-10-09T00:24:24.9958029Z   set-safe-directory: true
+Fixture Drift (Ubuntu)	Checkout	2025-10-09T00:24:24.9959032Z ##[endgroup]
+Fixture Drift (Ubuntu)	Checkout	2025-10-09T00:24:25.1033940Z Syncing repository: LabVIEW-Community-CI-CD/compare-vi-cli-action
+Fixture Drift (Ubuntu)	Checkout	2025-10-09T00:24:25.1036082Z ##[group]Getting Git version info
+Fixture Drift (Ubuntu)	Checkout	2025-10-09T00:24:25.1036961Z Working directory is '/home/runner/work/compare-vi-cli-action/compare-vi-cli-action'
+Fixture Drift (Ubuntu)	Checkout	2025-10-09T00:24:25.1038122Z [command]/usr/bin/git version
+Fixture Drift (Ubuntu)	Checkout	2025-10-09T00:24:25.1084084Z git version 2.51.0
+Fixture Drift (Ubuntu)	Checkout	2025-10-09T00:24:25.1110513Z ##[endgroup]
+Fixture Drift (Ubuntu)	Checkout	2025-10-09T00:24:25.1126493Z Temporarily overriding HOME='/home/runner/work/_temp/a1368732-3d21-4e65-a358-c3cd34828d03' before making global git config changes
+Fixture Drift (Ubuntu)	Checkout	2025-10-09T00:24:25.1128874Z Adding repository directory to the temporary git global config as a safe directory
+Fixture Drift (Ubuntu)	Checkout	2025-10-09T00:24:25.1133665Z [command]/usr/bin/git config --global --add safe.directory /home/runner/work/compare-vi-cli-action/compare-vi-cli-action
+Fixture Drift (Ubuntu)	Checkout	2025-10-09T00:24:25.1169092Z Deleting the contents of '/home/runner/work/compare-vi-cli-action/compare-vi-cli-action'
+Fixture Drift (Ubuntu)	Checkout	2025-10-09T00:24:25.1172613Z ##[group]Initializing the repository
+Fixture Drift (Ubuntu)	Checkout	2025-10-09T00:24:25.1177802Z [command]/usr/bin/git init /home/runner/work/compare-vi-cli-action/compare-vi-cli-action
+Fixture Drift (Ubuntu)	Checkout	2025-10-09T00:24:25.1250641Z hint: Using 'master' as the name for the initial branch. This default branch name
+Fixture Drift (Ubuntu)	Checkout	2025-10-09T00:24:25.1252136Z hint: is subject to change. To configure the initial branch name to use in all
+Fixture Drift (Ubuntu)	Checkout	2025-10-09T00:24:25.1253707Z hint: of your new repositories, which will suppress this warning, call:
+Fixture Drift (Ubuntu)	Checkout	2025-10-09T00:24:25.1254405Z hint:
+Fixture Drift (Ubuntu)	Checkout	2025-10-09T00:24:25.1256041Z hint: 	git config --global init.defaultBranch <name>
+Fixture Drift (Ubuntu)	Checkout	2025-10-09T00:24:25.1257076Z hint:
+Fixture Drift (Ubuntu)	Checkout	2025-10-09T00:24:25.1258031Z hint: Names commonly chosen instead of 'master' are 'main', 'trunk' and
+Fixture Drift (Ubuntu)	Checkout	2025-10-09T00:24:25.1259612Z hint: 'development'. The just-created branch can be renamed via this command:
+Fixture Drift (Ubuntu)	Checkout	2025-10-09T00:24:25.1260885Z hint:
+Fixture Drift (Ubuntu)	Checkout	2025-10-09T00:24:25.1261573Z hint: 	git branch -m <name>
+Fixture Drift (Ubuntu)	Checkout	2025-10-09T00:24:25.1262283Z hint:
+Fixture Drift (Ubuntu)	Checkout	2025-10-09T00:24:25.1263249Z hint: Disable this message with "git config set advice.defaultBranchName false"
+Fixture Drift (Ubuntu)	Checkout	2025-10-09T00:24:25.1265459Z Initialized empty Git repository in /home/runner/work/compare-vi-cli-action/compare-vi-cli-action/.git/
+Fixture Drift (Ubuntu)	Checkout	2025-10-09T00:24:25.1268792Z [command]/usr/bin/git remote add origin https://github.com/LabVIEW-Community-CI-CD/compare-vi-cli-action
+Fixture Drift (Ubuntu)	Checkout	2025-10-09T00:24:25.1301986Z ##[endgroup]
+Fixture Drift (Ubuntu)	Checkout	2025-10-09T00:24:25.1303159Z ##[group]Disabling automatic garbage collection
+Fixture Drift (Ubuntu)	Checkout	2025-10-09T00:24:25.1307117Z [command]/usr/bin/git config --local gc.auto 0
+Fixture Drift (Ubuntu)	Checkout	2025-10-09T00:24:25.1336037Z ##[endgroup]
+Fixture Drift (Ubuntu)	Checkout	2025-10-09T00:24:25.1337208Z ##[group]Setting up auth
+Fixture Drift (Ubuntu)	Checkout	2025-10-09T00:24:25.1343687Z [command]/usr/bin/git config --local --name-only --get-regexp core\.sshCommand
+Fixture Drift (Ubuntu)	Checkout	2025-10-09T00:24:25.1374681Z [command]/usr/bin/git submodule foreach --recursive sh -c "git config --local --name-only --get-regexp 'core\.sshCommand' && git config --local --unset-all 'core.sshCommand' || :"
+Fixture Drift (Ubuntu)	Checkout	2025-10-09T00:24:25.1651901Z [command]/usr/bin/git config --local --name-only --get-regexp http\.https\:\/\/github\.com\/\.extraheader
+Fixture Drift (Ubuntu)	Checkout	2025-10-09T00:24:25.1682542Z [command]/usr/bin/git submodule foreach --recursive sh -c "git config --local --name-only --get-regexp 'http\.https\:\/\/github\.com\/\.extraheader' && git config --local --unset-all 'http.https://github.com/.extraheader' || :"
+Fixture Drift (Ubuntu)	Checkout	2025-10-09T00:24:25.1916819Z [command]/usr/bin/git config --local http.https://github.com/.extraheader AUTHORIZATION: basic ***
+Fixture Drift (Ubuntu)	Checkout	2025-10-09T00:24:25.1952391Z ##[endgroup]
+Fixture Drift (Ubuntu)	Checkout	2025-10-09T00:24:25.1953472Z ##[group]Fetching the repository
+Fixture Drift (Ubuntu)	Checkout	2025-10-09T00:24:25.1961855Z [command]/usr/bin/git -c protocol.version=2 fetch --prune --no-recurse-submodules origin +refs/heads/*:refs/remotes/origin/* +refs/tags/*:refs/tags/* +d7a8addb1370b5d9cdf55bd51224141e77e9a70e:refs/remotes/pull/100/merge
+Fixture Drift (Ubuntu)	Checkout	2025-10-09T00:24:25.9496780Z From https://github.com/LabVIEW-Community-CI-CD/compare-vi-cli-action
+Fixture Drift (Ubuntu)	Checkout	2025-10-09T00:24:25.9499902Z  * [new branch]      chore/add-orchestrated-v2                -> origin/chore/add-orchestrated-v2
+Fixture Drift (Ubuntu)	Checkout	2025-10-09T00:24:25.9505607Z  * [new branch]      chore/agent-wait-post                    -> origin/chore/agent-wait-post
+Fixture Drift (Ubuntu)	Checkout	2025-10-09T00:24:25.9510433Z  * [new branch]      chore/branch-rules-and-hygiene-docs      -> origin/chore/branch-rules-and-hygiene-docs
+Fixture Drift (Ubuntu)	Checkout	2025-10-09T00:24:25.9513749Z  * [new branch]      chore/dispatch-orchestrated-on-develop   -> origin/chore/dispatch-orchestrated-on-develop
+Fixture Drift (Ubuntu)	Checkout	2025-10-09T00:24:25.9517338Z  * [new branch]      chore/labels-sync-enforce-main           -> origin/chore/labels-sync-enforce-main
+Fixture Drift (Ubuntu)	Checkout	2025-10-09T00:24:25.9520499Z  * [new branch]      chore/pester-reusable-rollup             -> origin/chore/pester-reusable-rollup
+Fixture Drift (Ubuntu)	Checkout	2025-10-09T00:24:25.9523793Z  * [new branch]      chore/ruamel-updater-phase1              -> origin/chore/ruamel-updater-phase1
+Fixture Drift (Ubuntu)	Checkout	2025-10-09T00:24:25.9527416Z  * [new branch]      chore/ruamel-updater-phase2              -> origin/chore/ruamel-updater-phase2
+Fixture Drift (Ubuntu)	Checkout	2025-10-09T00:24:25.9530748Z  * [new branch]      chore/unify-orchestrated                 -> origin/chore/unify-orchestrated
+Fixture Drift (Ubuntu)	Checkout	2025-10-09T00:24:25.9534882Z  * [new branch]      copilot/fix-0fd52b2f-76e0-4783-9bd8-65c8e6709252 -> origin/copilot/fix-0fd52b2f-76e0-4783-9bd8-65c8e6709252
+Fixture Drift (Ubuntu)	Checkout	2025-10-09T00:24:25.9540335Z  * [new branch]      copilot/fix-1663c584-2dda-4658-ac65-820199ca5432 -> origin/copilot/fix-1663c584-2dda-4658-ac65-820199ca5432
+Fixture Drift (Ubuntu)	Checkout	2025-10-09T00:24:25.9545937Z  * [new branch]      copilot/fix-1df3176f-97a9-4596-a6a2-7774fc55fc10 -> origin/copilot/fix-1df3176f-97a9-4596-a6a2-7774fc55fc10
+Fixture Drift (Ubuntu)	Checkout	2025-10-09T00:24:25.9549947Z  * [new branch]      copilot/fix-21ec8673-8fdd-4f72-a71a-2c2d0582a86d -> origin/copilot/fix-21ec8673-8fdd-4f72-a71a-2c2d0582a86d
+Fixture Drift (Ubuntu)	Checkout	2025-10-09T00:24:25.9554053Z  * [new branch]      copilot/fix-23c86a62-544c-4289-92c0-62a3e22f5c2f -> origin/copilot/fix-23c86a62-544c-4289-92c0-62a3e22f5c2f
+Fixture Drift (Ubuntu)	Checkout	2025-10-09T00:24:25.9558097Z  * [new branch]      copilot/fix-2ef4a296-4b0d-4653-a7f7-dcf25b90c30d -> origin/copilot/fix-2ef4a296-4b0d-4653-a7f7-dcf25b90c30d
+Fixture Drift (Ubuntu)	Checkout	2025-10-09T00:24:25.9561776Z  * [new branch]      copilot/fix-579f0894-53f3-4f4c-b751-8631477df93c -> origin/copilot/fix-579f0894-53f3-4f4c-b751-8631477df93c
+Fixture Drift (Ubuntu)	Checkout	2025-10-09T00:24:25.9565637Z  * [new branch]      copilot/fix-87e8f471-1a75-433a-b950-b038c3c0fd94 -> origin/copilot/fix-87e8f471-1a75-433a-b950-b038c3c0fd94
+Fixture Drift (Ubuntu)	Checkout	2025-10-09T00:24:25.9568752Z  * [new branch]      copilot/vscode1759440432520              -> origin/copilot/vscode1759440432520
+Fixture Drift (Ubuntu)	Checkout	2025-10-09T00:24:25.9571367Z  * [new branch]      copilot/vscode1759478155402              -> origin/copilot/vscode1759478155402
+Fixture Drift (Ubuntu)	Checkout	2025-10-09T00:24:25.9573981Z  * [new branch]      copilot/vscode1759508765353              -> origin/copilot/vscode1759508765353
+Fixture Drift (Ubuntu)	Checkout	2025-10-09T00:24:25.9576679Z  * [new branch]      copilot/vscode1759524178776              -> origin/copilot/vscode1759524178776
+Fixture Drift (Ubuntu)	Checkout	2025-10-09T00:24:25.9579188Z  * [new branch]      copilot/vscode1759591275344              -> origin/copilot/vscode1759591275344
+Fixture Drift (Ubuntu)	Checkout	2025-10-09T00:24:25.9581677Z  * [new branch]      copilot/vscode1759602108510              -> origin/copilot/vscode1759602108510
+Fixture Drift (Ubuntu)	Checkout	2025-10-09T00:24:25.9584149Z  * [new branch]      copilot/vscode1759609048843              -> origin/copilot/vscode1759609048843
+Fixture Drift (Ubuntu)	Checkout	2025-10-09T00:24:25.9587142Z  * [new branch]      dependabot/github_actions/actions/checkout-5 -> origin/dependabot/github_actions/actions/checkout-5
+Fixture Drift (Ubuntu)	Checkout	2025-10-09T00:24:25.9591130Z  * [new branch]      dependabot/github_actions/actions/download-artifact-5 -> origin/dependabot/github_actions/actions/download-artifact-5
+Fixture Drift (Ubuntu)	Checkout	2025-10-09T00:24:25.9595430Z  * [new branch]      dependabot/github_actions/actions/setup-dotnet-5 -> origin/dependabot/github_actions/actions/setup-dotnet-5
+Fixture Drift (Ubuntu)	Checkout	2025-10-09T00:24:25.9600531Z  * [new branch]      dependabot/github_actions/actions/setup-python-6 -> origin/dependabot/github_actions/actions/setup-python-6
+Fixture Drift (Ubuntu)	Checkout	2025-10-09T00:24:25.9603750Z  * [new branch]      develop                                  -> origin/develop
+Fixture Drift (Ubuntu)	Checkout	2025-10-09T00:24:25.9606128Z  * [new branch]      docs/add-agents-md                       -> origin/docs/add-agents-md
+Fixture Drift (Ubuntu)	Checkout	2025-10-09T00:24:25.9608827Z  * [new branch]      docs/env-appendix                        -> origin/docs/env-appendix
+Fixture Drift (Ubuntu)	Checkout	2025-10-09T00:24:25.9611293Z  * [new branch]      feat/adopt-shared-argtok                 -> origin/feat/adopt-shared-argtok
+Fixture Drift (Ubuntu)	Checkout	2025-10-09T00:24:25.9613898Z  * [new branch]      feat/ci-orchestrated-v2                  -> origin/feat/ci-orchestrated-v2
+Fixture Drift (Ubuntu)	Checkout	2025-10-09T00:24:25.9617322Z  * [new branch]      feat/compare-sequence-and-html-hardening -> origin/feat/compare-sequence-and-html-hardening
+Fixture Drift (Ubuntu)	Checkout	2025-10-09T00:24:25.9620589Z  * [new branch]      feat/drift-gate-consolidated-develop     -> origin/feat/drift-gate-consolidated-develop
+Fixture Drift (Ubuntu)	Checkout	2025-10-09T00:24:25.9623996Z  * [new branch]      feat/manifest-bytes-and-lvcompare-preflight -> origin/feat/manifest-bytes-and-lvcompare-preflight
+Fixture Drift (Ubuntu)	Checkout	2025-10-09T00:24:25.9627059Z  * [new branch]      feat/shared-lib                          -> origin/feat/shared-lib
+Fixture Drift (Ubuntu)	Checkout	2025-10-09T00:24:25.9629506Z  * [new branch]      fix/orchestrated-yml-dedupe              -> origin/fix/orchestrated-yml-dedupe
+Fixture Drift (Ubuntu)	Checkout	2025-10-09T00:24:25.9632114Z  * [new branch]      issue/88-arg-token-parser                -> origin/issue/88-arg-token-parser
+Fixture Drift (Ubuntu)	Checkout	2025-10-09T00:24:25.9634758Z  * [new branch]      issue/88-dev-dashboard-phase2            -> origin/issue/88-dev-dashboard-phase2
+Fixture Drift (Ubuntu)	Checkout	2025-10-09T00:24:25.9637636Z  * [new branch]      issue/88-html-embedding                  -> origin/issue/88-html-embedding
+Fixture Drift (Ubuntu)	Checkout	2025-10-09T00:24:25.9640134Z  * [new branch]      issue/88-long-wire-v2-phase1             -> origin/issue/88-long-wire-v2-phase1
+Fixture Drift (Ubuntu)	Checkout	2025-10-09T00:24:25.9642800Z  * [new branch]      issue/88-rerun-hint-updater              -> origin/issue/88-rerun-hint-updater
+Fixture Drift (Ubuntu)	Checkout	2025-10-09T00:24:25.9645667Z  * [new branch]      main                                     -> origin/main
+Fixture Drift (Ubuntu)	Checkout	2025-10-09T00:24:25.9647634Z  * [new branch]      release/v0.4.0                           -> origin/release/v0.4.0
+Fixture Drift (Ubuntu)	Checkout	2025-10-09T00:24:25.9649976Z  * [new branch]      release/v0.4.0-rc.1                      -> origin/release/v0.4.0-rc.1
+Fixture Drift (Ubuntu)	Checkout	2025-10-09T00:24:25.9652141Z  * [new branch]      release/v0.5.0-rc.1                      -> origin/release/v0.5.0-rc.1
+Fixture Drift (Ubuntu)	Checkout	2025-10-09T00:24:25.9654351Z  * [new tag]         baseline                                 -> baseline
+Fixture Drift (Ubuntu)	Checkout	2025-10-09T00:24:25.9656370Z  * [new tag]         shared-v0.1.0                            -> shared-v0.1.0
+Fixture Drift (Ubuntu)	Checkout	2025-10-09T00:24:25.9658126Z  * [new tag]         v0.2.0                                   -> v0.2.0
+Fixture Drift (Ubuntu)	Checkout	2025-10-09T00:24:25.9659746Z  * [new tag]         v0.3.0                                   -> v0.3.0
+Fixture Drift (Ubuntu)	Checkout	2025-10-09T00:24:25.9661357Z  * [new tag]         v0.4.0                                   -> v0.4.0
+Fixture Drift (Ubuntu)	Checkout	2025-10-09T00:24:25.9662963Z  * [new tag]         v0.4.0-rc.1                              -> v0.4.0-rc.1
+Fixture Drift (Ubuntu)	Checkout	2025-10-09T00:24:25.9664557Z  * [new tag]         v0.4.1                                   -> v0.4.1
+Fixture Drift (Ubuntu)	Checkout	2025-10-09T00:24:25.9666511Z  * [new ref]         d7a8addb1370b5d9cdf55bd51224141e77e9a70e -> pull/100/merge
+Fixture Drift (Ubuntu)	Checkout	2025-10-09T00:24:25.9670462Z ##[endgroup]
+Fixture Drift (Ubuntu)	Checkout	2025-10-09T00:24:25.9671981Z ##[group]Determining the checkout info
+Fixture Drift (Ubuntu)	Checkout	2025-10-09T00:24:25.9673706Z ##[endgroup]
+Fixture Drift (Ubuntu)	Checkout	2025-10-09T00:24:25.9674793Z [command]/usr/bin/git sparse-checkout disable
+Fixture Drift (Ubuntu)	Checkout	2025-10-09T00:24:25.9677984Z [command]/usr/bin/git config --local --unset-all extensions.worktreeConfig
+Fixture Drift (Ubuntu)	Checkout	2025-10-09T00:24:25.9681969Z ##[group]Checking out the ref
+Fixture Drift (Ubuntu)	Checkout	2025-10-09T00:24:25.9686127Z [command]/usr/bin/git checkout --progress --force refs/remotes/pull/100/merge
+Fixture Drift (Ubuntu)	Checkout	2025-10-09T00:24:25.9986658Z Note: switching to 'refs/remotes/pull/100/merge'.
+Fixture Drift (Ubuntu)	Checkout	2025-10-09T00:24:25.9989248Z 
+Fixture Drift (Ubuntu)	Checkout	2025-10-09T00:24:25.9990677Z You are in 'detached HEAD' state. You can look around, make experimental
+Fixture Drift (Ubuntu)	Checkout	2025-10-09T00:24:25.9993483Z changes and commit them, and you can discard any commits you make in this
+Fixture Drift (Ubuntu)	Checkout	2025-10-09T00:24:25.9995773Z state without impacting any branches by switching back to a branch.
+Fixture Drift (Ubuntu)	Checkout	2025-10-09T00:24:25.9997222Z 
+Fixture Drift (Ubuntu)	Checkout	2025-10-09T00:24:25.9998254Z If you want to create a new branch to retain commits you create, you may
+Fixture Drift (Ubuntu)	Checkout	2025-10-09T00:24:26.0000096Z do so (now or later) by using -c with the switch command. Example:
+Fixture Drift (Ubuntu)	Checkout	2025-10-09T00:24:26.0001155Z 
+Fixture Drift (Ubuntu)	Checkout	2025-10-09T00:24:26.0001629Z   git switch -c <new-branch-name>
+Fixture Drift (Ubuntu)	Checkout	2025-10-09T00:24:26.0002443Z 
+Fixture Drift (Ubuntu)	Checkout	2025-10-09T00:24:26.0002952Z Or undo this operation with:
+Fixture Drift (Ubuntu)	Checkout	2025-10-09T00:24:26.0003654Z 
+Fixture Drift (Ubuntu)	Checkout	2025-10-09T00:24:26.0004029Z   git switch -
+Fixture Drift (Ubuntu)	Checkout	2025-10-09T00:24:26.0004530Z 
+Fixture Drift (Ubuntu)	Checkout	2025-10-09T00:24:26.0005638Z Turn off this advice by setting config variable advice.detachedHead to false
+Fixture Drift (Ubuntu)	Checkout	2025-10-09T00:24:26.0006913Z 
+Fixture Drift (Ubuntu)	Checkout	2025-10-09T00:24:26.0008353Z HEAD is now at d7a8add Merge 4d92d99a7a97b85f0d5e310e3d0305c7a14b67a8 into d3fb44decf012548e36a62fd147aa79c77c472f8
+Fixture Drift (Ubuntu)	Checkout	2025-10-09T00:24:26.0012572Z ##[endgroup]
+Fixture Drift (Ubuntu)	Checkout	2025-10-09T00:24:26.0039132Z [command]/usr/bin/git log -1 --format=%H
+Fixture Drift (Ubuntu)	Checkout	2025-10-09T00:24:26.0062482Z d7a8addb1370b5d9cdf55bd51224141e77e9a70e
+Fixture Drift (Ubuntu)	LV Guard (pre)	﻿2025-10-09T00:24:26.0391208Z Prepare all required actions
+Fixture Drift (Ubuntu)	LV Guard (pre)	2025-10-09T00:24:26.0596139Z ##[group]Run ./.github/actions/runner-unblock-guard
+Fixture Drift (Ubuntu)	LV Guard (pre)	2025-10-09T00:24:26.0597368Z with:
+Fixture Drift (Ubuntu)	LV Guard (pre)	2025-10-09T00:24:26.0598305Z   snapshot-path: results/fixture-drift/lv-guard-pre.json
+Fixture Drift (Ubuntu)	LV Guard (pre)	2025-10-09T00:24:26.0599509Z   cleanup: false
+Fixture Drift (Ubuntu)	LV Guard (pre)	2025-10-09T00:24:26.0600338Z   process-names: LVCompare,LabVIEW
+Fixture Drift (Ubuntu)	LV Guard (pre)	2025-10-09T00:24:26.0601308Z ##[endgroup]
+Fixture Drift (Ubuntu)	LV Guard (pre)	2025-10-09T00:24:26.0725532Z ##[group]Run $ErrorActionPreference = 'Stop'
+Fixture Drift (Ubuntu)	LV Guard (pre)	2025-10-09T00:24:26.0726942Z [36;1m$ErrorActionPreference = 'Stop'[0m
+Fixture Drift (Ubuntu)	LV Guard (pre)	2025-10-09T00:24:26.0728315Z [36;1m$snapPath = 'results/fixture-drift/lv-guard-pre.json'[0m
+Fixture Drift (Ubuntu)	LV Guard (pre)	2025-10-09T00:24:26.0730257Z [36;1m$procNames = 'LVCompare,LabVIEW'.Split(',') | ForEach-Object { $_.Trim() } | Where-Object { $_ }[0m
+Fixture Drift (Ubuntu)	LV Guard (pre)	2025-10-09T00:24:26.0732278Z [36;1m$doCleanup = ('false' -eq 'true') -or ($env:UNBLOCK_GUARD -eq '1')[0m
+Fixture Drift (Ubuntu)	LV Guard (pre)	2025-10-09T00:24:26.0735281Z [36;1m$procs = @(Get-Process -ErrorAction SilentlyContinue | Where-Object { $_.ProcessName -in $procNames } | Select-Object ProcessName,Id,StartTime)[0m
+Fixture Drift (Ubuntu)	LV Guard (pre)	2025-10-09T00:24:26.0738322Z [36;1m$jobs  = @(Get-Job -ErrorAction SilentlyContinue | Select-Object Id,Name,State,HasMoreData)[0m
+Fixture Drift (Ubuntu)	LV Guard (pre)	2025-10-09T00:24:26.0740469Z [36;1m$snap = [ordered]@{ processes=$procs; jobs=$jobs; cleanupPerformed=$false }[0m
+Fixture Drift (Ubuntu)	LV Guard (pre)	2025-10-09T00:24:26.0742064Z [36;1m$dir = Split-Path -Parent $snapPath[0m
+Fixture Drift (Ubuntu)	LV Guard (pre)	2025-10-09T00:24:26.0743989Z [36;1mif ($dir -and -not (Test-Path -LiteralPath $dir)) { New-Item -ItemType Directory -Force -Path $dir | Out-Null }[0m
+Fixture Drift (Ubuntu)	LV Guard (pre)	2025-10-09T00:24:26.0746460Z [36;1m$snap | ConvertTo-Json -Depth 5 | Out-File -FilePath $snapPath -Encoding utf8[0m
+Fixture Drift (Ubuntu)	LV Guard (pre)	2025-10-09T00:24:26.0748003Z [36;1m$cleanupNote = ''[0m
+Fixture Drift (Ubuntu)	LV Guard (pre)	2025-10-09T00:24:26.0748931Z [36;1mif ($doCleanup) {[0m
+Fixture Drift (Ubuntu)	LV Guard (pre)	2025-10-09T00:24:26.0750030Z [36;1m  $stoppedLV = 0; $stoppedLVC = 0; $stoppedJobs = 0[0m
+Fixture Drift (Ubuntu)	LV Guard (pre)	2025-10-09T00:24:26.0752988Z [36;1m  try { Get-Process -Name 'LabVIEW' -ErrorAction SilentlyContinue | ForEach-Object { try { Stop-Process -Id $_.Id -Force -ErrorAction SilentlyContinue; $stoppedLV++ } catch {} } } catch {}[0m
+Fixture Drift (Ubuntu)	LV Guard (pre)	2025-10-09T00:24:26.0757674Z [36;1m  try { Get-Process -Name 'LVCompare' -ErrorAction SilentlyContinue | ForEach-Object { try { Stop-Process -Id $_.Id -Force -ErrorAction SilentlyContinue; $stoppedLVC++ } catch {} } } catch {}[0m
+Fixture Drift (Ubuntu)	LV Guard (pre)	2025-10-09T00:24:26.0762479Z [36;1m  try { $gj = @(Get-Job -ErrorAction SilentlyContinue); foreach ($j in $gj) { try { Stop-Job -Job $j -ErrorAction SilentlyContinue; Remove-Job -Job $j -Force -ErrorAction SilentlyContinue; $stoppedJobs++ } catch {} } } catch {}[0m
+Fixture Drift (Ubuntu)	LV Guard (pre)	2025-10-09T00:24:26.0765668Z [36;1m  $snap.cleanupPerformed = $true[0m
+Fixture Drift (Ubuntu)	LV Guard (pre)	2025-10-09T00:24:26.0767331Z [36;1m  $snap.cleanup = [ordered]@{ LabVIEW=$stoppedLV; LVCompare=$stoppedLVC; Jobs=$stoppedJobs }[0m
+Fixture Drift (Ubuntu)	LV Guard (pre)	2025-10-09T00:24:26.0769416Z [36;1m  $snap | ConvertTo-Json -Depth 6 | Out-File -FilePath $snapPath -Encoding utf8[0m
+Fixture Drift (Ubuntu)	LV Guard (pre)	2025-10-09T00:24:26.0771584Z [36;1m  $cleanupNote = ('Cleanup: LabVIEW={0}, LVCompare={1}, Jobs={2}' -f $stoppedLV,$stoppedLVC,$stoppedJobs)[0m
+Fixture Drift (Ubuntu)	LV Guard (pre)	2025-10-09T00:24:26.0773276Z [36;1m}[0m
+Fixture Drift (Ubuntu)	LV Guard (pre)	2025-10-09T00:24:26.0774118Z [36;1m$lines = @('### Runner Unblock Guard','')[0m
+Fixture Drift (Ubuntu)	LV Guard (pre)	2025-10-09T00:24:26.0775485Z [36;1m$lines += ('- Process count: {0}' -f $procs.Count)[0m
+Fixture Drift (Ubuntu)	LV Guard (pre)	2025-10-09T00:24:26.0776831Z [36;1m$lines += ('- Pester job count: {0}' -f $jobs.Count)[0m
+Fixture Drift (Ubuntu)	LV Guard (pre)	2025-10-09T00:24:26.0778001Z [36;1m$lines += ''[0m
+Fixture Drift (Ubuntu)	LV Guard (pre)	2025-10-09T00:24:26.0778938Z [36;1m$lines += ('Snapshot: {0}' -f $snapPath)[0m
+Fixture Drift (Ubuntu)	LV Guard (pre)	2025-10-09T00:24:26.0780246Z [36;1mif ($cleanupNote) { $lines += ('- ' + $cleanupNote) }[0m
+Fixture Drift (Ubuntu)	LV Guard (pre)	2025-10-09T00:24:26.0782000Z [36;1m$lines -join "`n" | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8[0m
+Fixture Drift (Ubuntu)	LV Guard (pre)	2025-10-09T00:24:26.0952110Z shell: /usr/bin/pwsh -command ". '{0}'"
+Fixture Drift (Ubuntu)	LV Guard (pre)	2025-10-09T00:24:26.0953563Z ##[endgroup]
+Fixture Drift (Ubuntu)	LabVIEW warmup (best-effort)	﻿2025-10-09T00:24:32.2131867Z ##[group]Run pwsh -File tools/Warmup-LabVIEW.ps1
+Fixture Drift (Ubuntu)	LabVIEW warmup (best-effort)	2025-10-09T00:24:32.2132353Z [36;1mpwsh -File tools/Warmup-LabVIEW.ps1[0m
+Fixture Drift (Ubuntu)	LabVIEW warmup (best-effort)	2025-10-09T00:24:32.2169444Z shell: /usr/bin/pwsh -command ". '{0}'"
+Fixture Drift (Ubuntu)	LabVIEW warmup (best-effort)	2025-10-09T00:24:32.2169758Z ##[endgroup]
+Fixture Drift (Ubuntu)	Ensure Invoker (start)	﻿2025-10-09T00:24:33.2447582Z Prepare all required actions
+Fixture Drift (Ubuntu)	Ensure Invoker (start)	2025-10-09T00:24:33.2617290Z ##[group]Run ./.github/actions/ensure-invoker
+Fixture Drift (Ubuntu)	Ensure Invoker (start)	2025-10-09T00:24:33.2617580Z with:
+Fixture Drift (Ubuntu)	Ensure Invoker (start)	2025-10-09T00:24:33.2617748Z   mode: start
+Fixture Drift (Ubuntu)	Ensure Invoker (start)	2025-10-09T00:24:33.2617937Z   results-dir: results/fixture-drift
+Fixture Drift (Ubuntu)	Ensure Invoker (start)	2025-10-09T00:24:33.2618169Z   timeout-seconds: 60
+Fixture Drift (Ubuntu)	Ensure Invoker (start)	2025-10-09T00:24:33.2618357Z   retries: 3
+Fixture Drift (Ubuntu)	Ensure Invoker (start)	2025-10-09T00:24:33.2618526Z   retry-delay-seconds: 7
+Fixture Drift (Ubuntu)	Ensure Invoker (start)	2025-10-09T00:24:33.2618720Z ##[endgroup]
+Fixture Drift (Ubuntu)	Ensure Invoker (start)	2025-10-09T00:24:33.2636739Z ##[group]Run $base = 'results/fixture-drift'
+Fixture Drift (Ubuntu)	Ensure Invoker (start)	2025-10-09T00:24:33.2637078Z [36;1m$base = 'results/fixture-drift'[0m
+Fixture Drift (Ubuntu)	Ensure Invoker (start)	2025-10-09T00:24:33.2637334Z [36;1m$cat  = ''[0m
+Fixture Drift (Ubuntu)	Ensure Invoker (start)	2025-10-09T00:24:33.2637568Z [36;1mif ($cat) { $base = Join-Path $base $cat }[0m
+Fixture Drift (Ubuntu)	Ensure Invoker (start)	2025-10-09T00:24:33.2637972Z [36;1m$pipe = "lvci.invoker.$env:GITHUB_RUN_ID.$env:GITHUB_JOB.$env:GITHUB_RUN_ATTEMPT"[0m
+Fixture Drift (Ubuntu)	Ensure Invoker (start)	2025-10-09T00:24:33.2638696Z [36;1m$sent = Join-Path $env:RUNNER_TEMP "invoker/$($env:GITHUB_RUN_ID).$($env:GITHUB_JOB).sentinel"[0m
+Fixture Drift (Ubuntu)	Ensure Invoker (start)	2025-10-09T00:24:33.2639256Z [36;1mNew-Item -ItemType Directory -Path (Split-Path -Parent $sent) -Force | Out-Null[0m
+Fixture Drift (Ubuntu)	Ensure Invoker (start)	2025-10-09T00:24:33.2639831Z [36;1m"pipe_name=$pipe" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8[0m
+Fixture Drift (Ubuntu)	Ensure Invoker (start)	2025-10-09T00:24:33.2640313Z [36;1m"sentinel=$sent"   | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8[0m
+Fixture Drift (Ubuntu)	Ensure Invoker (start)	2025-10-09T00:24:33.2640779Z [36;1m"results=$base"    | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8[0m
+Fixture Drift (Ubuntu)	Ensure Invoker (start)	2025-10-09T00:24:33.2676203Z shell: /usr/bin/pwsh -command ". '{0}'"
+Fixture Drift (Ubuntu)	Ensure Invoker (start)	2025-10-09T00:24:33.2676482Z ##[endgroup]
+Fixture Drift (Ubuntu)	Ensure Invoker (start)	2025-10-09T00:24:34.0035872Z ##[group]Run echo ensure-invoker non-Windows runner, skipping
+Fixture Drift (Ubuntu)	Ensure Invoker (start)	2025-10-09T00:24:34.0036296Z [36;1mecho ensure-invoker non-Windows runner, skipping[0m
+Fixture Drift (Ubuntu)	Ensure Invoker (start)	2025-10-09T00:24:34.0068619Z shell: /usr/bin/bash --noprofile --norc -e -o pipefail {0}
+Fixture Drift (Ubuntu)	Ensure Invoker (start)	2025-10-09T00:24:34.0068962Z ##[endgroup]
+Fixture Drift (Ubuntu)	Ensure Invoker (start)	2025-10-09T00:24:34.0119182Z ensure-invoker non-Windows runner, skipping
+Fixture Drift (Ubuntu)	Detect docs-only change	﻿2025-10-09T00:24:34.0165554Z ##[group]Run $ErrorActionPreference = 'Continue'
+Fixture Drift (Ubuntu)	Detect docs-only change	2025-10-09T00:24:34.0165969Z [36;1m$ErrorActionPreference = 'Continue'[0m
+Fixture Drift (Ubuntu)	Detect docs-only change	2025-10-09T00:24:34.0166238Z [36;1m$docsOnly = 'false'[0m
+Fixture Drift (Ubuntu)	Detect docs-only change	2025-10-09T00:24:34.0166499Z [36;1mif ('pull_request' -eq 'pull_request') {[0m
+Fixture Drift (Ubuntu)	Detect docs-only change	2025-10-09T00:24:34.0166872Z [36;1m  $ownerRepo = 'LabVIEW-Community-CI-CD/compare-vi-cli-action'[0m
+Fixture Drift (Ubuntu)	Detect docs-only change	2025-10-09T00:24:34.0167190Z [36;1m  $pr = '100'[0m
+Fixture Drift (Ubuntu)	Detect docs-only change	2025-10-09T00:24:34.0167499Z [36;1m  $uri = "https://api.github.com/repos/$ownerRepo/pulls/$pr/files"[0m
+Fixture Drift (Ubuntu)	Detect docs-only change	2025-10-09T00:24:34.0168288Z [36;1m  $headers = @{ Authorization = "***"; 'X-GitHub-Api-Version' = '2022-11-28'; Accept='application/vnd.github+json' }[0m
+Fixture Drift (Ubuntu)	Detect docs-only change	2025-10-09T00:24:34.0168719Z [36;1m  try {[0m
+Fixture Drift (Ubuntu)	Detect docs-only change	2025-10-09T00:24:34.0169054Z [36;1m    $files = Invoke-RestMethod -Method Get -Uri $uri -Headers $headers -ErrorAction Stop[0m
+Fixture Drift (Ubuntu)	Detect docs-only change	2025-10-09T00:24:34.0169489Z [36;1m    $names = @($files | ForEach-Object { $_.filename })[0m
+Fixture Drift (Ubuntu)	Detect docs-only change	2025-10-09T00:24:34.0169775Z [36;1m    if ($names.Count -gt 0) {[0m
+Fixture Drift (Ubuntu)	Detect docs-only change	2025-10-09T00:24:34.0170037Z [36;1m      $isDocs = $true[0m
+Fixture Drift (Ubuntu)	Detect docs-only change	2025-10-09T00:24:34.0170259Z [36;1m      foreach ($n in $names) {[0m
+Fixture Drift (Ubuntu)	Detect docs-only change	2025-10-09T00:24:34.0170534Z [36;1m        $inDocs = ($n -like 'docs/**' -or $n -like '**/*.md')[0m
+Fixture Drift (Ubuntu)	Detect docs-only change	2025-10-09T00:24:34.0170847Z [36;1m        $isSchema = ($n -like 'docs/schemas/**')[0m
+Fixture Drift (Ubuntu)	Detect docs-only change	2025-10-09T00:24:34.0171172Z [36;1m        if (-not $inDocs -or $isSchema) { $isDocs = $false; break }[0m
+Fixture Drift (Ubuntu)	Detect docs-only change	2025-10-09T00:24:34.0171450Z [36;1m      }[0m
+Fixture Drift (Ubuntu)	Detect docs-only change	2025-10-09T00:24:34.0171647Z [36;1m      if ($isDocs) { $docsOnly = 'true' }[0m
+Fixture Drift (Ubuntu)	Detect docs-only change	2025-10-09T00:24:34.0171886Z [36;1m    }[0m
+Fixture Drift (Ubuntu)	Detect docs-only change	2025-10-09T00:24:34.0172060Z [36;1m  } catch {[0m
+Fixture Drift (Ubuntu)	Detect docs-only change	2025-10-09T00:24:34.0172449Z [36;1m    Write-Host '::notice::Docs-only detection skipped (unable to query PR files). Treating as non-docs.'[0m
+Fixture Drift (Ubuntu)	Detect docs-only change	2025-10-09T00:24:34.0172878Z [36;1m  }[0m
+Fixture Drift (Ubuntu)	Detect docs-only change	2025-10-09T00:24:34.0173045Z [36;1m}[0m
+Fixture Drift (Ubuntu)	Detect docs-only change	2025-10-09T00:24:34.0173348Z [36;1m"docs_only=$docsOnly" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8[0m
+Fixture Drift (Ubuntu)	Detect docs-only change	2025-10-09T00:24:34.0207083Z shell: /usr/bin/pwsh -command ". '{0}'"
+Fixture Drift (Ubuntu)	Detect docs-only change	2025-10-09T00:24:34.0207350Z ##[endgroup]
+Fixture Drift (Ubuntu)	Detect docs-only change	2025-10-09T00:24:35.4158397Z ##[notice]Docs-only detection skipped (unable to query PR files). Treating as non-docs.
+Fixture Drift (Ubuntu)	Fixture Drift Orchestrator	﻿2025-10-09T00:24:35.5088865Z Prepare all required actions
+Fixture Drift (Ubuntu)	Fixture Drift Orchestrator	2025-10-09T00:24:35.5089209Z Getting action download info
+Fixture Drift (Ubuntu)	Fixture Drift Orchestrator	2025-10-09T00:24:35.6475924Z Download action repository 'actions/upload-artifact@v4' (SHA:ea165f8d65b6e75b540449e92b4886f43607fa02)
+Fixture Drift (Ubuntu)	Fixture Drift Orchestrator	2025-10-09T00:24:35.8306618Z ##[group]Run ./.github/actions/fixture-drift
+Fixture Drift (Ubuntu)	Fixture Drift Orchestrator	2025-10-09T00:24:35.8306875Z with:
+Fixture Drift (Ubuntu)	Fixture Drift Orchestrator	2025-10-09T00:24:35.8307048Z   render-report: false
+Fixture Drift (Ubuntu)	Fixture Drift Orchestrator	2025-10-09T00:24:35.8307240Z   comment-on-fail: true
+Fixture Drift (Ubuntu)	Fixture Drift Orchestrator	2025-10-09T00:24:35.8307441Z   upload-artifacts: true
+Fixture Drift (Ubuntu)	Fixture Drift Orchestrator	2025-10-09T00:24:35.8307653Z   artifact-name: fixture-drift-ubuntu
+Fixture Drift (Ubuntu)	Fixture Drift Orchestrator	2025-10-09T00:24:35.8307883Z   soft-fail: true
+Fixture Drift (Ubuntu)	Fixture Drift Orchestrator	2025-10-09T00:24:35.8308240Z   only-upload-on-failure: true
+Fixture Drift (Ubuntu)	Fixture Drift Orchestrator	2025-10-09T00:24:35.8308518Z   lv-compare-args: -nobdcosm -nofppos -noattr
+Fixture Drift (Ubuntu)	Fixture Drift Orchestrator	2025-10-09T00:24:35.8308772Z   report-delay-ms: 150
+Fixture Drift (Ubuntu)	Fixture Drift Orchestrator	2025-10-09T00:24:35.8308949Z ##[endgroup]
+Fixture Drift (Ubuntu)	Fixture Drift Orchestrator	2025-10-09T00:24:35.8328765Z ##[group]Run $ErrorActionPreference = 'Stop'
+Fixture Drift (Ubuntu)	Fixture Drift Orchestrator	2025-10-09T00:24:35.8329082Z [36;1m$ErrorActionPreference = 'Stop'[0m
+Fixture Drift (Ubuntu)	Fixture Drift Orchestrator	2025-10-09T00:24:35.8329391Z [36;1mif ('false' -eq 'true' -and $IsWindows -ne $true) { [0m
+Fixture Drift (Ubuntu)	Fixture Drift Orchestrator	2025-10-09T00:24:35.8329951Z [36;1m  throw 'Report rendering requires Windows runners. Use render-report: false for non-Windows platforms.' [0m
+Fixture Drift (Ubuntu)	Fixture Drift Orchestrator	2025-10-09T00:24:35.8330408Z [36;1m}[0m
+Fixture Drift (Ubuntu)	Fixture Drift Orchestrator	2025-10-09T00:24:35.8330832Z [36;1m$vf = Join-Path "/home/runner/work/compare-vi-cli-action/compare-vi-cli-action" 'tools/Validate-Fixtures.ps1'[0m
+Fixture Drift (Ubuntu)	Fixture Drift Orchestrator	2025-10-09T00:24:35.8331578Z [36;1m$of = Join-Path "/home/runner/work/compare-vi-cli-action/compare-vi-cli-action" 'scripts/On-FixtureValidationFail.ps1'[0m
+Fixture Drift (Ubuntu)	Fixture Drift Orchestrator	2025-10-09T00:24:35.8332207Z [36;1mif (-not (Test-Path -LiteralPath $vf)) { throw "Missing validator script: $vf" }[0m
+Fixture Drift (Ubuntu)	Fixture Drift Orchestrator	2025-10-09T00:24:35.8332707Z [36;1mif (-not (Test-Path -LiteralPath $of)) { throw "Missing orchestrator script: $of" }[0m
+Fixture Drift (Ubuntu)	Fixture Drift Orchestrator	2025-10-09T00:24:35.8367213Z shell: /usr/bin/pwsh -command ". '{0}'"
+Fixture Drift (Ubuntu)	Fixture Drift Orchestrator	2025-10-09T00:24:35.8367462Z ##[endgroup]
+Fixture Drift (Ubuntu)	Fixture Drift Orchestrator	2025-10-09T00:24:36.5223420Z ##[group]Run $ErrorActionPreference = 'Stop'
+Fixture Drift (Ubuntu)	Fixture Drift Orchestrator	2025-10-09T00:24:36.5223766Z [36;1m$ErrorActionPreference = 'Stop'[0m
+Fixture Drift (Ubuntu)	Fixture Drift Orchestrator	2025-10-09T00:24:36.5224097Z [36;1m$strictPath = Join-Path (Get-Location) 'strict.json'[0m
+Fixture Drift (Ubuntu)	Fixture Drift Orchestrator	2025-10-09T00:24:36.5224472Z [36;1m$overridePath = Join-Path (Get-Location) 'override.json'[0m
+Fixture Drift (Ubuntu)	Fixture Drift Orchestrator	2025-10-09T00:24:36.5225535Z [36;1mpwsh -NoLogo -NoProfile -File "/home/runner/work/compare-vi-cli-action/compare-vi-cli-action/tools/Validate-Fixtures.ps1" -Json | Out-File -FilePath $strictPath -Encoding utf8[0m
+Fixture Drift (Ubuntu)	Fixture Drift Orchestrator	2025-10-09T00:24:36.5226268Z [36;1m$strictExit = $LASTEXITCODE[0m
+Fixture Drift (Ubuntu)	Fixture Drift Orchestrator	2025-10-09T00:24:36.5227055Z [36;1mpwsh -NoLogo -NoProfile -File "/home/runner/work/compare-vi-cli-action/compare-vi-cli-action/tools/Validate-Fixtures.ps1" -Json -TestAllowFixtureUpdate | Out-File -FilePath $overridePath -Encoding utf8[0m
+Fixture Drift (Ubuntu)	Fixture Drift Orchestrator	2025-10-09T00:24:36.5227878Z [36;1m$overrideExit = $LASTEXITCODE[0m
+Fixture Drift (Ubuntu)	Fixture Drift Orchestrator	2025-10-09T00:24:36.5228377Z [36;1mif ($strictExit -ne 0) { Write-Host "::notice::Fixture strict validation exit code $strictExit (captured in JSON output)." }[0m
+Fixture Drift (Ubuntu)	Fixture Drift Orchestrator	2025-10-09T00:24:36.5229138Z [36;1mif ($overrideExit -ne 0) { Write-Host "::notice::Fixture override validation exit code $overrideExit (captured in JSON output)." }[0m
+Fixture Drift (Ubuntu)	Fixture Drift Orchestrator	2025-10-09T00:24:36.5229663Z [36;1m$global:LASTEXITCODE = 0[0m
+Fixture Drift (Ubuntu)	Fixture Drift Orchestrator	2025-10-09T00:24:36.5265306Z shell: /usr/bin/pwsh -command ". '{0}'"
+Fixture Drift (Ubuntu)	Fixture Drift Orchestrator	2025-10-09T00:24:36.5265572Z ##[endgroup]
+Fixture Drift (Ubuntu)	Fixture Drift Orchestrator	2025-10-09T00:24:39.1488141Z ##[notice]Fixture strict validation exit code 8 (captured in JSON output).
+Fixture Drift (Ubuntu)	Fixture Drift Orchestrator	2025-10-09T00:24:39.1489813Z ##[notice]Fixture override validation exit code 8 (captured in JSON output).
+Fixture Drift (Ubuntu)	Fixture Drift Orchestrator	2025-10-09T00:24:39.1934743Z ##[group]Run $ErrorActionPreference = 'Stop'
+Fixture Drift (Ubuntu)	Fixture Drift Orchestrator	2025-10-09T00:24:39.1935566Z [36;1m$ErrorActionPreference = 'Stop'[0m
+Fixture Drift (Ubuntu)	Fixture Drift Orchestrator	2025-10-09T00:24:39.1936124Z [36;1m$strictPath = Join-Path (Get-Location) 'strict.json'[0m
+Fixture Drift (Ubuntu)	Fixture Drift Orchestrator	2025-10-09T00:24:39.1936789Z [36;1mif (-not (Test-Path -LiteralPath $strictPath)) { exit 0 }[0m
+Fixture Drift (Ubuntu)	Fixture Drift Orchestrator	2025-10-09T00:24:39.1937328Z [36;1mtry {[0m
+Fixture Drift (Ubuntu)	Fixture Drift Orchestrator	2025-10-09T00:24:39.1937903Z [36;1m  $j = Get-Content -LiteralPath $strictPath -Raw | ConvertFrom-Json -ErrorAction Stop[0m
+Fixture Drift (Ubuntu)	Fixture Drift Orchestrator	2025-10-09T00:24:39.1938968Z [36;1m} catch { exit 0 }[0m
+Fixture Drift (Ubuntu)	Fixture Drift Orchestrator	2025-10-09T00:24:39.1939385Z [36;1m$written = $false; $path = ''; $reason = ''[0m
+Fixture Drift (Ubuntu)	Fixture Drift Orchestrator	2025-10-09T00:24:39.1939840Z [36;1mtry {[0m
+Fixture Drift (Ubuntu)	Fixture Drift Orchestrator	2025-10-09T00:24:39.1940153Z [36;1m  if ($j.autoManifest) {[0m
+Fixture Drift (Ubuntu)	Fixture Drift Orchestrator	2025-10-09T00:24:39.1940616Z [36;1m    $written = [bool]$j.autoManifest.written[0m
+Fixture Drift (Ubuntu)	Fixture Drift Orchestrator	2025-10-09T00:24:39.1941135Z [36;1m    $path    = [string]$j.autoManifest.path[0m
+Fixture Drift (Ubuntu)	Fixture Drift Orchestrator	2025-10-09T00:24:39.1941647Z [36;1m    $reason  = [string]$j.autoManifest.reason[0m
+Fixture Drift (Ubuntu)	Fixture Drift Orchestrator	2025-10-09T00:24:39.1942077Z [36;1m  }[0m
+Fixture Drift (Ubuntu)	Fixture Drift Orchestrator	2025-10-09T00:24:39.1942374Z [36;1m} catch {}[0m
+Fixture Drift (Ubuntu)	Fixture Drift Orchestrator	2025-10-09T00:24:39.1943021Z [36;1mif ($written) {[0m
+Fixture Drift (Ubuntu)	Fixture Drift Orchestrator	2025-10-09T00:24:39.1943391Z [36;1m  if ($env:GITHUB_STEP_SUMMARY) {[0m
+Fixture Drift (Ubuntu)	Fixture Drift Orchestrator	2025-10-09T00:24:39.1943878Z [36;1m    $lines = @('### Fixture Manifest Refresh','')[0m
+Fixture Drift (Ubuntu)	Fixture Drift Orchestrator	2025-10-09T00:24:39.1944379Z [36;1m    $lines += ('- Written: {0}' -f $written)[0m
+Fixture Drift (Ubuntu)	Fixture Drift Orchestrator	2025-10-09T00:24:39.1944910Z [36;1m    if ($reason) { $lines += ('- Reason: {0}' -f $reason) }[0m
+Fixture Drift (Ubuntu)	Fixture Drift Orchestrator	2025-10-09T00:24:39.1945717Z [36;1m    if ($path) { $lines += ('- Path: {0}' -f $path) }[0m
+Fixture Drift (Ubuntu)	Fixture Drift Orchestrator	2025-10-09T00:24:39.1946460Z [36;1m    $lines -join "`n" | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8[0m
+Fixture Drift (Ubuntu)	Fixture Drift Orchestrator	2025-10-09T00:24:39.1947123Z [36;1m  }[0m
+Fixture Drift (Ubuntu)	Fixture Drift Orchestrator	2025-10-09T00:24:39.1947692Z [36;1m  "written=true`npath=$path" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8[0m
+Fixture Drift (Ubuntu)	Fixture Drift Orchestrator	2025-10-09T00:24:39.1948363Z [36;1m} else {[0m
+Fixture Drift (Ubuntu)	Fixture Drift Orchestrator	2025-10-09T00:24:39.1948895Z [36;1m  "written=false" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8[0m
+Fixture Drift (Ubuntu)	Fixture Drift Orchestrator	2025-10-09T00:24:39.1949521Z [36;1m}[0m
+Fixture Drift (Ubuntu)	Fixture Drift Orchestrator	2025-10-09T00:24:39.1990847Z shell: /usr/bin/pwsh -command ". '{0}'"
+Fixture Drift (Ubuntu)	Fixture Drift Orchestrator	2025-10-09T00:24:39.1991289Z ##[endgroup]
+Fixture Drift (Ubuntu)	Fixture Drift Orchestrator	2025-10-09T00:24:39.9416348Z ##[group]Run $ErrorActionPreference = 'Continue'
+Fixture Drift (Ubuntu)	Fixture Drift Orchestrator	2025-10-09T00:24:39.9416763Z [36;1m$ErrorActionPreference = 'Continue'[0m
+Fixture Drift (Ubuntu)	Fixture Drift Orchestrator	2025-10-09T00:24:39.9417050Z [36;1m# Optional settle delay for report rendering[0m
+Fixture Drift (Ubuntu)	Fixture Drift Orchestrator	2025-10-09T00:24:39.9417366Z [36;1mif ('150') { $env:REPORT_DELAY_MS = '150' }[0m
+Fixture Drift (Ubuntu)	Fixture Drift Orchestrator	2025-10-09T00:24:39.9417746Z [36;1m# Let the orchestrator choose its timestamped subdirectory by default.[0m
+Fixture Drift (Ubuntu)	Fixture Drift Orchestrator	2025-10-09T00:24:39.9418193Z [36;1m# Only pass -OutputDir when the caller provided a custom directory.[0m
+Fixture Drift (Ubuntu)	Fixture Drift Orchestrator	2025-10-09T00:24:39.9418527Z [36;1m$outDir = ''[0m
+Fixture Drift (Ubuntu)	Fixture Drift Orchestrator	2025-10-09T00:24:39.9418774Z [36;1m$strictPath = Join-Path (Get-Location) 'strict.json'[0m
+Fixture Drift (Ubuntu)	Fixture Drift Orchestrator	2025-10-09T00:24:39.9419136Z [36;1m$overridePath = Join-Path (Get-Location) 'override.json'[0m
+Fixture Drift (Ubuntu)	Fixture Drift Orchestrator	2025-10-09T00:24:39.9419516Z [36;1m$args = @('-StrictJson',$strictPath,'-OverrideJson',$overridePath)[0m
+Fixture Drift (Ubuntu)	Fixture Drift Orchestrator	2025-10-09T00:24:39.9419898Z [36;1mif ('false' -eq 'true') { $args += '-RenderReport' }[0m
+Fixture Drift (Ubuntu)	Fixture Drift Orchestrator	2025-10-09T00:24:39.9420208Z [36;1mif ('') { $args += @('-BasePath','') }[0m
+Fixture Drift (Ubuntu)	Fixture Drift Orchestrator	2025-10-09T00:24:39.9420465Z [36;1mif ('') { $args += @('-HeadPath','') }[0m
+Fixture Drift (Ubuntu)	Fixture Drift Orchestrator	2025-10-09T00:24:39.9420884Z [36;1mif ('-nobdcosm -nofppos -noattr') { $args += @('-LvCompareArgs','-nobdcosm -nofppos -noattr') }[0m
+Fixture Drift (Ubuntu)	Fixture Drift Orchestrator	2025-10-09T00:24:39.9421329Z [36;1mif ($outDir) { $args += @('-OutputDir',$outDir) }[0m
+Fixture Drift (Ubuntu)	Fixture Drift Orchestrator	2025-10-09T00:24:39.9421981Z [36;1mpwsh -NoLogo -NoProfile -File "/home/runner/work/compare-vi-cli-action/compare-vi-cli-action/scripts/On-FixtureValidationFail.ps1" @args[0m
+Fixture Drift (Ubuntu)	Fixture Drift Orchestrator	2025-10-09T00:24:39.9422578Z [36;1m$exit = $LASTEXITCODE[0m
+Fixture Drift (Ubuntu)	Fixture Drift Orchestrator	2025-10-09T00:24:39.9422861Z [36;1m$root = Join-Path (Get-Location) 'results/fixture-drift'[0m
+Fixture Drift (Ubuntu)	Fixture Drift Orchestrator	2025-10-09T00:24:39.9423161Z [36;1m$latest = $null[0m
+Fixture Drift (Ubuntu)	Fixture Drift Orchestrator	2025-10-09T00:24:39.9423368Z [36;1mif (Test-Path $root) {[0m
+Fixture Drift (Ubuntu)	Fixture Drift Orchestrator	2025-10-09T00:24:39.9423653Z [36;1m  $dirs = Get-ChildItem -LiteralPath $root -Directory[0m
+Fixture Drift (Ubuntu)	Fixture Drift Orchestrator	2025-10-09T00:24:39.9424044Z [36;1m  $tsDirs = @($dirs | Where-Object { $_.Name -match '^[0-9]{8}T[0-9]{6}Z$' })[0m
+Fixture Drift (Ubuntu)	Fixture Drift Orchestrator	2025-10-09T00:24:39.9424390Z [36;1m  if ($tsDirs.Count -gt 0) {[0m
+Fixture Drift (Ubuntu)	Fixture Drift Orchestrator	2025-10-09T00:24:39.9424736Z [36;1m    $latest = $tsDirs | Sort-Object Name -Descending | Select-Object -First 1[0m
+Fixture Drift (Ubuntu)	Fixture Drift Orchestrator	2025-10-09T00:24:39.9425070Z [36;1m  } else {[0m
+Fixture Drift (Ubuntu)	Fixture Drift Orchestrator	2025-10-09T00:24:39.9425642Z [36;1m    $latest = $dirs | Sort-Object LastWriteTimeUtc -Descending | Select-Object -First 1[0m
+Fixture Drift (Ubuntu)	Fixture Drift Orchestrator	2025-10-09T00:24:39.9426203Z [36;1m  }[0m
+Fixture Drift (Ubuntu)	Fixture Drift Orchestrator	2025-10-09T00:24:39.9426365Z [36;1m}[0m
+Fixture Drift (Ubuntu)	Fixture Drift Orchestrator	2025-10-09T00:24:39.9426526Z [36;1m$sumPath = $null[0m
+Fixture Drift (Ubuntu)	Fixture Drift Orchestrator	2025-10-09T00:24:39.9426732Z [36;1m$status = 'unknown'[0m
+Fixture Drift (Ubuntu)	Fixture Drift Orchestrator	2025-10-09T00:24:39.9426936Z [36;1mif ($latest) {[0m
+Fixture Drift (Ubuntu)	Fixture Drift Orchestrator	2025-10-09T00:24:39.9427207Z [36;1m  $sumPath = Join-Path $latest.FullName 'drift-summary.json'[0m
+Fixture Drift (Ubuntu)	Fixture Drift Orchestrator	2025-10-09T00:24:39.9427535Z [36;1m  if (Test-Path $sumPath) {[0m
+Fixture Drift (Ubuntu)	Fixture Drift Orchestrator	2025-10-09T00:24:39.9427851Z [36;1m    $j = Get-Content -LiteralPath $sumPath -Raw | ConvertFrom-Json[0m
+Fixture Drift (Ubuntu)	Fixture Drift Orchestrator	2025-10-09T00:24:39.9428215Z [36;1m    if ($j.status) { $status = [string]$j.status }[0m
+Fixture Drift (Ubuntu)	Fixture Drift Orchestrator	2025-10-09T00:24:39.9428601Z [36;1m  }[0m
+Fixture Drift (Ubuntu)	Fixture Drift Orchestrator	2025-10-09T00:24:39.9428759Z [36;1m}[0m
+Fixture Drift (Ubuntu)	Fixture Drift Orchestrator	2025-10-09T00:24:39.9429210Z [36;1m# Fallback: handle callers that wrote directly to results/fixture-drift or a custom output directory without a timestamped child[0m
+Fixture Drift (Ubuntu)	Fixture Drift Orchestrator	2025-10-09T00:24:39.9429745Z [36;1mif (-not $latest -and -not $sumPath) {[0m
+Fixture Drift (Ubuntu)	Fixture Drift Orchestrator	2025-10-09T00:24:39.9430054Z [36;1m  $directSum = Join-Path $root 'drift-summary.json'[0m
+Fixture Drift (Ubuntu)	Fixture Drift Orchestrator	2025-10-09T00:24:39.9430391Z [36;1m  if (Test-Path $directSum) { $sumPath = $directSum }[0m
+Fixture Drift (Ubuntu)	Fixture Drift Orchestrator	2025-10-09T00:24:39.9430661Z [36;1m}[0m
+Fixture Drift (Ubuntu)	Fixture Drift Orchestrator	2025-10-09T00:24:39.9430835Z [36;1mif (-not $sumPath -and $outDir) {[0m
+Fixture Drift (Ubuntu)	Fixture Drift Orchestrator	2025-10-09T00:24:39.9431118Z [36;1m  $odSum = Join-Path $outDir 'drift-summary.json'[0m
+Fixture Drift (Ubuntu)	Fixture Drift Orchestrator	2025-10-09T00:24:39.9431426Z [36;1m  if (Test-Path $odSum) { $sumPath = $odSum }[0m
+Fixture Drift (Ubuntu)	Fixture Drift Orchestrator	2025-10-09T00:24:39.9431668Z [36;1m}[0m
+Fixture Drift (Ubuntu)	Fixture Drift Orchestrator	2025-10-09T00:24:39.9431867Z [36;1mif (-not $status -or $status -eq 'unknown') {[0m
+Fixture Drift (Ubuntu)	Fixture Drift Orchestrator	2025-10-09T00:24:39.9432159Z [36;1m  if ($sumPath -and (Test-Path $sumPath)) {[0m
+Fixture Drift (Ubuntu)	Fixture Drift Orchestrator	2025-10-09T00:24:39.9432675Z [36;1m    try { $j2 = Get-Content -LiteralPath $sumPath -Raw | ConvertFrom-Json; if ($j2.status) { $status = [string]$j2.status } } catch {}[0m
+Fixture Drift (Ubuntu)	Fixture Drift Orchestrator	2025-10-09T00:24:39.9433148Z [36;1m  }[0m
+Fixture Drift (Ubuntu)	Fixture Drift Orchestrator	2025-10-09T00:24:39.9433302Z [36;1m}[0m
+Fixture Drift (Ubuntu)	Fixture Drift Orchestrator	2025-10-09T00:24:39.9433590Z [36;1m"status=$status" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8[0m
+Fixture Drift (Ubuntu)	Fixture Drift Orchestrator	2025-10-09T00:24:39.9434147Z [36;1mif ($sumPath) { "summary_path=$sumPath" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8 }[0m
+Fixture Drift (Ubuntu)	Fixture Drift Orchestrator	2025-10-09T00:24:39.9434728Z [36;1m# Do not fail here to allow artifact upload and comment; a later step will enforce failure.[0m
+Fixture Drift (Ubuntu)	Fixture Drift Orchestrator	2025-10-09T00:24:39.9435099Z [36;1m[0m
+Fixture Drift (Ubuntu)	Fixture Drift Orchestrator	2025-10-09T00:24:39.9435699Z [36;1m# DEBUG: emit breadcrumbs to console and step summary to aid diagnosis when status is unknown or artifacts are missing[0m
+Fixture Drift (Ubuntu)	Fixture Drift Orchestrator	2025-10-09T00:24:39.9436162Z [36;1mtry {[0m
+Fixture Drift (Ubuntu)	Fixture Drift Orchestrator	2025-10-09T00:24:39.9436395Z [36;1m  Write-Host "[drift-debug] orchestrator exit: $exit"[0m
+Fixture Drift (Ubuntu)	Fixture Drift Orchestrator	2025-10-09T00:24:39.9436727Z [36;1m  Write-Host "[drift-debug] results root: $root"[0m
+Fixture Drift (Ubuntu)	Fixture Drift Orchestrator	2025-10-09T00:24:39.9437000Z [36;1m  if (Test-Path $root) {[0m
+Fixture Drift (Ubuntu)	Fixture Drift Orchestrator	2025-10-09T00:24:39.9437298Z [36;1m    $latestName = if ($latest) { $latest.Name } else { '<none>' }[0m
+Fixture Drift (Ubuntu)	Fixture Drift Orchestrator	2025-10-09T00:24:39.9437659Z [36;1m    Write-Host "[drift-debug] latest dir: $latestName"[0m
+Fixture Drift (Ubuntu)	Fixture Drift Orchestrator	2025-10-09T00:24:39.9437990Z [36;1m    Write-Host "[drift-debug] summary path: $sumPath"[0m
+Fixture Drift (Ubuntu)	Fixture Drift Orchestrator	2025-10-09T00:24:39.9438289Z [36;1m    # Shallow list of latest dir[0m
+Fixture Drift (Ubuntu)	Fixture Drift Orchestrator	2025-10-09T00:24:39.9438527Z [36;1m    if ($latest) {[0m
+Fixture Drift (Ubuntu)	Fixture Drift Orchestrator	2025-10-09T00:24:39.9439067Z [36;1m      Get-ChildItem -LiteralPath $latest.FullName -Force -ErrorAction SilentlyContinue | ForEach-Object { Write-Host ("  - {0}" -f $_.Name) }[0m
+Fixture Drift (Ubuntu)	Fixture Drift Orchestrator	2025-10-09T00:24:39.9439628Z [36;1m    }[0m
+Fixture Drift (Ubuntu)	Fixture Drift Orchestrator	2025-10-09T00:24:39.9439797Z [36;1m  } else {[0m
+Fixture Drift (Ubuntu)	Fixture Drift Orchestrator	2025-10-09T00:24:39.9440047Z [36;1m    Write-Host "[drift-debug] results root missing: $root"[0m
+Fixture Drift (Ubuntu)	Fixture Drift Orchestrator	2025-10-09T00:24:39.9440327Z [36;1m  }[0m
+Fixture Drift (Ubuntu)	Fixture Drift Orchestrator	2025-10-09T00:24:39.9440570Z [36;1m  # If summary exists, echo a compact view and basic fields[0m
+Fixture Drift (Ubuntu)	Fixture Drift Orchestrator	2025-10-09T00:24:39.9440896Z [36;1m  if ($sumPath -and (Test-Path $sumPath)) {[0m
+Fixture Drift (Ubuntu)	Fixture Drift Orchestrator	2025-10-09T00:24:39.9441155Z [36;1m    try {[0m
+Fixture Drift (Ubuntu)	Fixture Drift Orchestrator	2025-10-09T00:24:39.9441375Z [36;1m      $raw = Get-Content -LiteralPath $sumPath -Raw[0m
+Fixture Drift (Ubuntu)	Fixture Drift Orchestrator	2025-10-09T00:24:39.9441684Z [36;1m      $j2 = $raw | ConvertFrom-Json -ErrorAction Stop[0m
+Fixture Drift (Ubuntu)	Fixture Drift Orchestrator	2025-10-09T00:24:39.9442198Z [36;1m      $catCnt = if ($j2.categories) { $j2.categories.Count } else { 0 }[0m
+Fixture Drift (Ubuntu)	Fixture Drift Orchestrator	2025-10-09T00:24:39.9442771Z [36;1m      Write-Host ("[drift-debug] summary: schema={0} status={1} exitCode={2} categories={3}" -f $j2.schema,$j2.status,$j2.exitCode,$catCnt)[0m
+Fixture Drift (Ubuntu)	Fixture Drift Orchestrator	2025-10-09T00:24:39.9443384Z [36;1m    } catch { Write-Host "[drift-debug] failed to parse drift-summary.json: $_" }[0m
+Fixture Drift (Ubuntu)	Fixture Drift Orchestrator	2025-10-09T00:24:39.9443731Z [36;1m  } else {[0m
+Fixture Drift (Ubuntu)	Fixture Drift Orchestrator	2025-10-09T00:24:39.9443986Z [36;1m    Write-Host "[drift-debug] drift-summary.json not found"[0m
+Fixture Drift (Ubuntu)	Fixture Drift Orchestrator	2025-10-09T00:24:39.9444389Z [36;1m  }[0m
+Fixture Drift (Ubuntu)	Fixture Drift Orchestrator	2025-10-09T00:24:39.9444579Z [36;1m  # Append to step summary (short block)[0m
+Fixture Drift (Ubuntu)	Fixture Drift Orchestrator	2025-10-09T00:24:39.9444860Z [36;1m$lines = @('### Fixture Drift (debug)','')[0m
+Fixture Drift (Ubuntu)	Fixture Drift Orchestrator	2025-10-09T00:24:39.9445313Z [36;1m$lines += ("- Orchestrator exit: {0}" -f $exit)[0m
+Fixture Drift (Ubuntu)	Fixture Drift Orchestrator	2025-10-09T00:24:39.9445699Z [36;1m$lines += ("- Status: {0}" -f $status)[0m
+Fixture Drift (Ubuntu)	Fixture Drift Orchestrator	2025-10-09T00:24:39.9445963Z [36;1m$lines += ("- Results root: {0}" -f $root)[0m
+Fixture Drift (Ubuntu)	Fixture Drift Orchestrator	2025-10-09T00:24:39.9446292Z [36;1m$latestName = if ($latest) { $latest.Name } else { '<none>' }[0m
+Fixture Drift (Ubuntu)	Fixture Drift Orchestrator	2025-10-09T00:24:39.9446683Z [36;1m$sumDisp = if ($sumPath) { $sumPath } else { '<none>' }[0m
+Fixture Drift (Ubuntu)	Fixture Drift Orchestrator	2025-10-09T00:24:39.9446998Z [36;1m$lines += ("- Latest dir: {0}" -f $latestName)[0m
+Fixture Drift (Ubuntu)	Fixture Drift Orchestrator	2025-10-09T00:24:39.9447296Z [36;1m$lines += ("- Summary path: {0}" -f $sumDisp)[0m
+Fixture Drift (Ubuntu)	Fixture Drift Orchestrator	2025-10-09T00:24:39.9447696Z [36;1mif ($env:REPORT_DELAY_MS) { $lines += ("- Report delay (ms): {0}" -f $env:REPORT_DELAY_MS) }[0m
+Fixture Drift (Ubuntu)	Fixture Drift Orchestrator	2025-10-09T00:24:39.9448207Z [36;1m$lines -join "`n" | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8[0m
+Fixture Drift (Ubuntu)	Fixture Drift Orchestrator	2025-10-09T00:24:39.9448694Z [36;1m} catch { Write-Host "[drift-debug] failed to emit debug breadcrumbs: $_" }[0m
+Fixture Drift (Ubuntu)	Fixture Drift Orchestrator	2025-10-09T00:24:39.9483647Z shell: /usr/bin/pwsh -command ". '{0}'"
+Fixture Drift (Ubuntu)	Fixture Drift Orchestrator	2025-10-09T00:24:39.9483905Z ##[endgroup]
+Fixture Drift (Ubuntu)	Fixture Drift Orchestrator	2025-10-09T00:24:41.6257342Z [drift-debug] orchestrator exit: 1
+Fixture Drift (Ubuntu)	Fixture Drift Orchestrator	2025-10-09T00:24:41.6259327Z [drift-debug] results root: /home/runner/work/compare-vi-cli-action/compare-vi-cli-action/results/fixture-drift
+Fixture Drift (Ubuntu)	Fixture Drift Orchestrator	2025-10-09T00:24:41.6269776Z [drift-debug] latest dir: 20251009T002441Z
+Fixture Drift (Ubuntu)	Fixture Drift Orchestrator	2025-10-09T00:24:41.6272484Z [drift-debug] summary path: /home/runner/work/compare-vi-cli-action/compare-vi-cli-action/results/fixture-drift/20251009T002441Z/drift-summary.json
+Fixture Drift (Ubuntu)	Fixture Drift Orchestrator	2025-10-09T00:24:41.6327296Z   - drift-summary.json
+Fixture Drift (Ubuntu)	Fixture Drift Orchestrator	2025-10-09T00:24:41.6330909Z   - fixtures.manifest.json
+Fixture Drift (Ubuntu)	Fixture Drift Orchestrator	2025-10-09T00:24:41.6333819Z   - handshake-end.json
+Fixture Drift (Ubuntu)	Fixture Drift Orchestrator	2025-10-09T00:24:41.6337043Z   - handshake-ready.json
+Fixture Drift (Ubuntu)	Fixture Drift Orchestrator	2025-10-09T00:24:41.6340203Z   - handshake-reset.json
+Fixture Drift (Ubuntu)	Fixture Drift Orchestrator	2025-10-09T00:24:41.6343420Z   - handshake-start.json
+Fixture Drift (Ubuntu)	Fixture Drift Orchestrator	2025-10-09T00:24:41.6346725Z   - hints.txt
+Fixture Drift (Ubuntu)	Fixture Drift Orchestrator	2025-10-09T00:24:41.6349770Z   - validator-override.json
+Fixture Drift (Ubuntu)	Fixture Drift Orchestrator	2025-10-09T00:24:41.6353107Z   - validator-strict.json
+Fixture Drift (Ubuntu)	Fixture Drift Orchestrator	2025-10-09T00:24:41.6408112Z [drift-debug] summary: schema=fixture-drift-summary-v1 status=fail-structural exitCode=8 categories=1
+Fixture Drift (Ubuntu)	Fixture Drift Orchestrator	2025-10-09T00:24:41.6865951Z ##[error]Process completed with exit code 1.
+Fixture Drift (Ubuntu)	Fixture Drift Orchestrator	2025-10-09T00:24:41.6921614Z ##[group]Run actions/upload-artifact@v4
+Fixture Drift (Ubuntu)	Fixture Drift Orchestrator	2025-10-09T00:24:41.6921892Z with:
+Fixture Drift (Ubuntu)	Fixture Drift Orchestrator	2025-10-09T00:24:41.6922066Z   name: fixture-drift-ubuntu
+Fixture Drift (Ubuntu)	Fixture Drift Orchestrator	2025-10-09T00:24:41.6922343Z   path: results/fixture-drift/**
+Fixture Drift (Ubuntu)	Fixture Drift Orchestrator	strict.json
+Fixture Drift (Ubuntu)	Fixture Drift Orchestrator	override.json
+Fixture Drift (Ubuntu)	Fixture Drift Orchestrator	
+Fixture Drift (Ubuntu)	Fixture Drift Orchestrator	2025-10-09T00:24:41.6922638Z   if-no-files-found: warn
+Fixture Drift (Ubuntu)	Fixture Drift Orchestrator	2025-10-09T00:24:41.6922842Z   compression-level: 6
+Fixture Drift (Ubuntu)	Fixture Drift Orchestrator	2025-10-09T00:24:41.6923027Z   overwrite: false
+Fixture Drift (Ubuntu)	Fixture Drift Orchestrator	2025-10-09T00:24:41.6923221Z   include-hidden-files: false
+Fixture Drift (Ubuntu)	Fixture Drift Orchestrator	2025-10-09T00:24:41.6923421Z ##[endgroup]
+Fixture Drift (Ubuntu)	Fixture Drift Orchestrator	2025-10-09T00:24:41.9137941Z Multiple search paths detected. Calculating the least common ancestor of all paths
+Fixture Drift (Ubuntu)	Fixture Drift Orchestrator	2025-10-09T00:24:41.9139765Z The least common ancestor is /home/runner/work/compare-vi-cli-action/compare-vi-cli-action. This will be the root directory of the artifact
+Fixture Drift (Ubuntu)	Fixture Drift Orchestrator	2025-10-09T00:24:41.9140409Z With the provided path, there will be 12 files uploaded
+Fixture Drift (Ubuntu)	Fixture Drift Orchestrator	2025-10-09T00:24:41.9140865Z Artifact name is valid!
+Fixture Drift (Ubuntu)	Fixture Drift Orchestrator	2025-10-09T00:24:41.9141075Z Root directory input is valid!
+Fixture Drift (Ubuntu)	Fixture Drift Orchestrator	2025-10-09T00:24:42.0080663Z Beginning upload of artifact content to blob storage
+Fixture Drift (Ubuntu)	Fixture Drift Orchestrator	2025-10-09T00:24:42.0961212Z Uploaded bytes 4908
+Fixture Drift (Ubuntu)	Fixture Drift Orchestrator	2025-10-09T00:24:42.1177031Z Finished uploading artifact content to blob storage!
+Fixture Drift (Ubuntu)	Fixture Drift Orchestrator	2025-10-09T00:24:42.1180437Z SHA256 digest of uploaded artifact zip is b0b5450cc74ae00f92a384987db286fcdd77d25dce7a9fceb01825d50bc463ce
+Fixture Drift (Ubuntu)	Fixture Drift Orchestrator	2025-10-09T00:24:42.1182195Z Finalizing artifact upload
+Fixture Drift (Ubuntu)	Fixture Drift Orchestrator	2025-10-09T00:24:42.2003241Z Artifact fixture-drift-ubuntu.zip successfully finalized. Artifact ID 4221258358
+Fixture Drift (Ubuntu)	Fixture Drift Orchestrator	2025-10-09T00:24:42.2004335Z Artifact fixture-drift-ubuntu has been successfully uploaded! Final size is 4908 bytes. Artifact ID is 4221258358
+Fixture Drift (Ubuntu)	Fixture Drift Orchestrator	2025-10-09T00:24:42.2010881Z Artifact download URL: https://github.com/LabVIEW-Community-CI-CD/compare-vi-cli-action/actions/runs/18361667133/artifacts/4221258358
+Fixture Drift (Ubuntu)	Fixture Drift Orchestrator	2025-10-09T00:24:42.2104415Z ##[group]Run $root = Join-Path (Get-Location) 'results/fixture-drift'
+Fixture Drift (Ubuntu)	Fixture Drift Orchestrator	2025-10-09T00:24:42.2104875Z [36;1m$root = Join-Path (Get-Location) 'results/fixture-drift'[0m
+Fixture Drift (Ubuntu)	Fixture Drift Orchestrator	2025-10-09T00:24:42.2105420Z [36;1mif (Test-Path $root) {[0m
+Fixture Drift (Ubuntu)	Fixture Drift Orchestrator	2025-10-09T00:24:42.2105908Z [36;1m  $latest = Get-ChildItem -LiteralPath $root -Directory | Sort-Object Name -Descending | Select-Object -First 1[0m
+Fixture Drift (Ubuntu)	Fixture Drift Orchestrator	2025-10-09T00:24:42.2106565Z [36;1m  if ($latest) { $sum = Join-Path $latest.FullName 'drift-summary.json' } else { $sum = $null }[0m
+Fixture Drift (Ubuntu)	Fixture Drift Orchestrator	2025-10-09T00:24:42.2106951Z [36;1m}[0m
+Fixture Drift (Ubuntu)	Fixture Drift Orchestrator	2025-10-09T00:24:42.2107135Z [36;1mif ($sum -and (Test-Path $sum)) {[0m
+Fixture Drift (Ubuntu)	Fixture Drift Orchestrator	2025-10-09T00:24:42.2107464Z [36;1m  $j = Get-Content -LiteralPath $sum -Raw | ConvertFrom-Json[0m
+Fixture Drift (Ubuntu)	Fixture Drift Orchestrator	2025-10-09T00:24:42.2107774Z [36;1m  $lines = @()[0m
+Fixture Drift (Ubuntu)	Fixture Drift Orchestrator	2025-10-09T00:24:42.2107988Z [36;1m  $lines += '### Fixture Drift Summary'[0m
+Fixture Drift (Ubuntu)	Fixture Drift Orchestrator	2025-10-09T00:24:42.2108246Z [36;1m  $lines += ''[0m
+Fixture Drift (Ubuntu)	Fixture Drift Orchestrator	2025-10-09T00:24:42.2108495Z [36;1m  if ($j.schema) { $lines += "- Schema: $($j.schema)" }[0m
+Fixture Drift (Ubuntu)	Fixture Drift Orchestrator	2025-10-09T00:24:42.2108899Z [36;1m  if ($j.generatedAtUtc) { $lines += "- GeneratedAtUtc: $($j.generatedAtUtc)" }[0m
+Fixture Drift (Ubuntu)	Fixture Drift Orchestrator	2025-10-09T00:24:42.2109273Z [36;1m  $lines += "- Status: $($j.status)"[0m
+Fixture Drift (Ubuntu)	Fixture Drift Orchestrator	2025-10-09T00:24:42.2109555Z [36;1m  $lines += "- ExitCode: $($j.exitCode)"[0m
+Fixture Drift (Ubuntu)	Fixture Drift Orchestrator	2025-10-09T00:24:42.2109914Z [36;1m  $cat = if ($j.categories) { ($j.categories -join ', ') } else { 'none' }[0m
+Fixture Drift (Ubuntu)	Fixture Drift Orchestrator	2025-10-09T00:24:42.2110246Z [36;1m  $lines += "- Categories: $cat"[0m
+Fixture Drift (Ubuntu)	Fixture Drift Orchestrator	2025-10-09T00:24:42.2110485Z [36;1m  $lines += ''[0m
+Fixture Drift (Ubuntu)	Fixture Drift Orchestrator	2025-10-09T00:24:42.2110692Z [36;1m  if ($j.artifactPaths) {[0m
+Fixture Drift (Ubuntu)	Fixture Drift Orchestrator	2025-10-09T00:24:42.2110926Z [36;1m    $lines += 'Artifacts:'[0m
+Fixture Drift (Ubuntu)	Fixture Drift Orchestrator	2025-10-09T00:24:42.2111206Z [36;1m    foreach ($a in $j.artifactPaths) { $lines += "- $a" }[0m
+Fixture Drift (Ubuntu)	Fixture Drift Orchestrator	2025-10-09T00:24:42.2111491Z [36;1m  }[0m
+Fixture Drift (Ubuntu)	Fixture Drift Orchestrator	2025-10-09T00:24:42.2111667Z [36;1m  if ($j.files) {[0m
+Fixture Drift (Ubuntu)	Fixture Drift Orchestrator	2025-10-09T00:24:42.2111868Z [36;1m    $lines += ''[0m
+Fixture Drift (Ubuntu)	Fixture Drift Orchestrator	2025-10-09T00:24:42.2112069Z [36;1m    $lines += 'Files:'[0m
+Fixture Drift (Ubuntu)	Fixture Drift Orchestrator	2025-10-09T00:24:42.2112293Z [36;1m    foreach ($f in $j.files) {[0m
+Fixture Drift (Ubuntu)	Fixture Drift Orchestrator	2025-10-09T00:24:42.2112579Z [36;1m      $p = $f.path; $t = $f.lastWriteTimeUtc; $len = $f.length[0m
+Fixture Drift (Ubuntu)	Fixture Drift Orchestrator	2025-10-09T00:24:42.2112991Z [36;1m      if ($len -ne $null) { $lines += "- $p — $t ($len bytes)" } else { $lines += "- $p — $t" }[0m
+Fixture Drift (Ubuntu)	Fixture Drift Orchestrator	2025-10-09T00:24:42.2113340Z [36;1m    }[0m
+Fixture Drift (Ubuntu)	Fixture Drift Orchestrator	2025-10-09T00:24:42.2113512Z [36;1m  }[0m
+Fixture Drift (Ubuntu)	Fixture Drift Orchestrator	2025-10-09T00:24:42.2113795Z [36;1m  $lines -join "`n" | Out-File $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8[0m
+Fixture Drift (Ubuntu)	Fixture Drift Orchestrator	2025-10-09T00:24:42.2114143Z [36;1m} else {[0m
+Fixture Drift (Ubuntu)	Fixture Drift Orchestrator	2025-10-09T00:24:42.2114479Z [36;1m  'No drift-summary.json found' | Out-File $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8[0m
+Fixture Drift (Ubuntu)	Fixture Drift Orchestrator	2025-10-09T00:24:42.2114852Z [36;1m}[0m
+Fixture Drift (Ubuntu)	Fixture Drift Orchestrator	2025-10-09T00:24:42.2150647Z shell: /usr/bin/pwsh -command ". '{0}'"
+Fixture Drift (Ubuntu)	Fixture Drift Orchestrator	2025-10-09T00:24:42.2150912Z ##[endgroup]
+Fixture Drift (Ubuntu)	Fixture Drift Orchestrator	2025-10-09T00:24:42.9687288Z ##[group]Run $root = Join-Path (Get-Location) 'results/fixture-drift'
+Fixture Drift (Ubuntu)	Fixture Drift Orchestrator	2025-10-09T00:24:42.9687855Z [36;1m$root = Join-Path (Get-Location) 'results/fixture-drift'[0m
+Fixture Drift (Ubuntu)	Fixture Drift Orchestrator	2025-10-09T00:24:42.9688368Z [36;1mif (-not (Test-Path $root)) { return }[0m
+Fixture Drift (Ubuntu)	Fixture Drift Orchestrator	2025-10-09T00:24:42.9688936Z [36;1m$latest = Get-ChildItem -LiteralPath $root -Directory | Sort-Object Name -Descending | Select-Object -First 1[0m
+Fixture Drift (Ubuntu)	Fixture Drift Orchestrator	2025-10-09T00:24:42.9689516Z [36;1mif (-not $latest) { return }[0m
+Fixture Drift (Ubuntu)	Fixture Drift Orchestrator	2025-10-09T00:24:42.9690218Z [36;1m$sum = Join-Path $latest.FullName 'drift-summary.json'[0m
+Fixture Drift (Ubuntu)	Fixture Drift Orchestrator	2025-10-09T00:24:42.9690638Z [36;1mif (-not (Test-Path $sum)) { return }[0m
+Fixture Drift (Ubuntu)	Fixture Drift Orchestrator	2025-10-09T00:24:42.9691302Z [36;1m$schemaPath = Join-Path "/home/runner/work/compare-vi-cli-action/compare-vi-cli-action" 'docs/schemas/fixture-drift-summary-v1.schema.json'[0m
+Fixture Drift (Ubuntu)	Fixture Drift Orchestrator	2025-10-09T00:24:42.9692065Z [36;1mif (Test-Path $schemaPath) {[0m
+Fixture Drift (Ubuntu)	Fixture Drift Orchestrator	2025-10-09T00:24:42.9692871Z [36;1m  pwsh -NoLogo -NoProfile -File "/home/runner/work/compare-vi-cli-action/compare-vi-cli-action/tools/Invoke-JsonSchemaLite.ps1" -JsonPath $sum -SchemaPath $schemaPath[0m
+Fixture Drift (Ubuntu)	Fixture Drift Orchestrator	2025-10-09T00:24:42.9693969Z [36;1m  # Do not fail the job here; schema errors will have been printed for diagnosis.[0m
+Fixture Drift (Ubuntu)	Fixture Drift Orchestrator	2025-10-09T00:24:42.9694617Z [36;1m  if ($LASTEXITCODE -ne 0) { Write-Host "Schema-lite validation returned code $LASTEXITCODE" }[0m
+Fixture Drift (Ubuntu)	Fixture Drift Orchestrator	2025-10-09T00:24:42.9695061Z [36;1m}[0m
+Fixture Drift (Ubuntu)	Fixture Drift Orchestrator	2025-10-09T00:24:42.9730970Z shell: /usr/bin/pwsh -command ". '{0}'"
+Fixture Drift (Ubuntu)	Fixture Drift Orchestrator	2025-10-09T00:24:42.9731349Z ##[endgroup]
+Fixture Drift (Ubuntu)	Fixture Drift Orchestrator	2025-10-09T00:24:44.4987161Z Schema-lite validation passed.
+Fixture Drift (Ubuntu)	Fixture Drift Orchestrator	2025-10-09T00:24:44.5979293Z ##[group]Run if ($env:GITHUB_STEP_SUMMARY) {
+Fixture Drift (Ubuntu)	Fixture Drift Orchestrator	2025-10-09T00:24:44.5979811Z [36;1mif ($env:GITHUB_STEP_SUMMARY) {[0m
+Fixture Drift (Ubuntu)	Fixture Drift Orchestrator	2025-10-09T00:24:44.5980185Z [36;1m  $lines = @('### Docs Pointers','')[0m
+Fixture Drift (Ubuntu)	Fixture Drift Orchestrator	2025-10-09T00:24:44.5980556Z [36;1m  $lines += '- Fixture Drift: ./docs/FIXTURE_DRIFT.md'[0m
+Fixture Drift (Ubuntu)	Fixture Drift Orchestrator	2025-10-09T00:24:44.5981134Z [36;1m  $lines -join "`n" | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8[0m
+Fixture Drift (Ubuntu)	Fixture Drift Orchestrator	2025-10-09T00:24:44.5981608Z [36;1m}[0m
+Fixture Drift (Ubuntu)	Fixture Drift Orchestrator	2025-10-09T00:24:44.6016919Z shell: /usr/bin/pwsh -command ". '{0}'"
+Fixture Drift (Ubuntu)	Fixture Drift Orchestrator	2025-10-09T00:24:44.6017287Z ##[endgroup]
+Fixture Drift (Ubuntu)	Post Checkout	﻿2025-10-09T00:24:45.3493919Z Post job cleanup.
+Fixture Drift (Ubuntu)	Post Checkout	2025-10-09T00:24:45.4417154Z [command]/usr/bin/git version
+Fixture Drift (Ubuntu)	Post Checkout	2025-10-09T00:24:45.4459591Z git version 2.51.0
+Fixture Drift (Ubuntu)	Post Checkout	2025-10-09T00:24:45.4503086Z Temporarily overriding HOME='/home/runner/work/_temp/32bf3f40-bacd-4442-b4c2-2e0e96c76835' before making global git config changes
+Fixture Drift (Ubuntu)	Post Checkout	2025-10-09T00:24:45.4504358Z Adding repository directory to the temporary git global config as a safe directory
+Fixture Drift (Ubuntu)	Post Checkout	2025-10-09T00:24:45.4509851Z [command]/usr/bin/git config --global --add safe.directory /home/runner/work/compare-vi-cli-action/compare-vi-cli-action
+Fixture Drift (Ubuntu)	Post Checkout	2025-10-09T00:24:45.4543255Z [command]/usr/bin/git config --local --name-only --get-regexp core\.sshCommand
+Fixture Drift (Ubuntu)	Post Checkout	2025-10-09T00:24:45.4575057Z [command]/usr/bin/git submodule foreach --recursive sh -c "git config --local --name-only --get-regexp 'core\.sshCommand' && git config --local --unset-all 'core.sshCommand' || :"
+Fixture Drift (Ubuntu)	Post Checkout	2025-10-09T00:24:45.4797417Z [command]/usr/bin/git config --local --name-only --get-regexp http\.https\:\/\/github\.com\/\.extraheader
+Fixture Drift (Ubuntu)	Post Checkout	2025-10-09T00:24:45.4818438Z http.https://github.com/.extraheader
+Fixture Drift (Ubuntu)	Post Checkout	2025-10-09T00:24:45.4830988Z [command]/usr/bin/git config --local --unset-all http.https://github.com/.extraheader
+Fixture Drift (Ubuntu)	Post Checkout	2025-10-09T00:24:45.4860208Z [command]/usr/bin/git submodule foreach --recursive sh -c "git config --local --name-only --get-regexp 'http\.https\:\/\/github\.com\/\.extraheader' && git config --local --unset-all 'http.https://github.com/.extraheader' || :"
+Fixture Drift (Ubuntu)	Complete job	﻿2025-10-09T00:24:45.5180279Z Cleaning up orphan processes

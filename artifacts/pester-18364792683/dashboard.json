@@ -1,0 +1,109 @@
+{
+  "GeneratedAt": "2025-10-08T22:30:50.8254646-07:00",
+  "Group": "pester-selfhosted",
+  "ResultsRoot": "C:\\actions-runner\\_work\\compare-vi-cli-action\\compare-vi-cli-action\\tests\\results",
+  "Branch": null,
+  "Commit": null,
+  "SessionLock": {
+    "Group": "pester-selfhosted",
+    "LockDirectory": "C:\\actions-runner\\_work\\compare-vi-cli-action\\compare-vi-cli-action\\tests\\results\\_session_lock\\pester-selfhosted",
+    "LockPath": null,
+    "StatusPath": null,
+    "Exists": false,
+    "Status": "missing",
+    "Lock": null,
+    "SessionName": null,
+    "StatusPairs": {},
+    "QueueWaitSeconds": null,
+    "AcquiredAt": null,
+    "HeartbeatAt": null,
+    "HeartbeatAgeSeconds": null,
+    "Takeover": false,
+    "TakeoverReason": null,
+    "Errors": []
+  },
+  "PesterTelemetry": {
+    "SummaryPath": null,
+    "ResultsPath": null,
+    "DispatcherLogPath": null,
+    "Totals": {
+      "Total": 0,
+      "Passed": 0,
+      "Failed": 0,
+      "Errors": 0,
+      "Skipped": 0,
+      "Duration": null
+    },
+    "FailedTests": [],
+    "DispatcherErrors": [],
+    "DispatcherWarnings": [],
+    "Errors": []
+  },
+  "AgentWait": {
+    "WaitPath": null,
+    "WaitLogPath": null,
+    "Exists": false,
+    "Reason": null,
+    "StartedAt": null,
+    "CompletedAt": null,
+    "DurationSeconds": null,
+    "Raw": null,
+    "History": [],
+    "Longest": null,
+    "Errors": []
+  },
+  "Stakeholders": {
+    "ConfigPath": "C:\\actions-runner\\_work\\compare-vi-cli-action\\compare-vi-cli-action\\tools\\dashboard\\stakeholders.json",
+    "Found": true,
+    "Group": "pester-selfhosted",
+    "PrimaryOwner": "svelderrainruiz",
+    "Backup": "release-owner",
+    "Channels": [
+      "slack://#ci-selfhosted"
+    ],
+    "DxIssue": 99,
+    "Errors": []
+  },
+  "WatchTelemetry": {
+    "LastPath": null,
+    "LogPath": null,
+    "Last": null,
+    "History": [],
+    "Stalled": false,
+    "StalledSeconds": null,
+    "Errors": []
+  },
+  "LabVIEWSnapshot": {
+    "SnapshotPath": null,
+    "Exists": false,
+    "Snapshot": null,
+    "ProcessCount": 0,
+    "Processes": [],
+    "LabVIEW": {
+      "Count": 0,
+      "Processes": []
+    },
+    "LVCompare": {
+      "Count": 0,
+      "Processes": []
+    },
+    "Errors": []
+  },
+  "ActionItems": [
+    {
+      "Category": "SessionLock",
+      "Severity": "info",
+      "Message": "No session lock data found for group 'pester-selfhosted'. Run the workflow or inspect local artifacts under C:\\actions-runner\\_work\\compare-vi-cli-action\\compare-vi-cli-action\\tests\\results\\_session_lock\\pester-selfhosted."
+    },
+    {
+      "Category": "Pester",
+      "Severity": "info",
+      "Message": "No pester-summary.json found. Run ./Invoke-PesterTests.ps1 to populate telemetry."
+    },
+    {
+      "Category": "Stakeholders",
+      "Severity": "info",
+      "Message": "Consult DX issue #99 for mitigation steps. https://github.com/LabVIEW-Community-CI-CD/compare-vi-cli-action/issues/99"
+    }
+  ]
+}

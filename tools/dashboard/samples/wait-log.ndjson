@@ -1,0 +1,23 @@
+{
+  "schema": "agent-wait-result/v1",
+  "reason": "session-lock",
+  "expectedSeconds": 60,
+  "startedUtc": "2025-10-07T15:30:00Z",
+  "endedUtc": "2025-10-07T15:30:45Z",
+  "elapsedSeconds": 45,
+  "toleranceSeconds": 5,
+  "differenceSeconds": 15,
+  "withinMargin": true
+}
+
+{
+  "schema": "agent-wait-result/v1",
+  "reason": "session-lock (follow-up)",
+  "expectedSeconds": 60,
+  "startedUtc": "2025-10-07T15:35:00Z",
+  "endedUtc": "2025-10-07T15:41:30Z",
+  "elapsedSeconds": 390,
+  "toleranceSeconds": 5,
+  "differenceSeconds": 330,
+  "withinMargin": false
+}

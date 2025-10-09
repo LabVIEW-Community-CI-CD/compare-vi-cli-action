@@ -1,0 +1,12 @@
+{
+  "schema": "schema-lite/v1",
+  "type": "object",
+  "required": ["Reason", "WaitSeconds", "StartedAt", "CompletedAt"],
+  "additionalProperties": true,
+  "properties": {
+    "Reason": { "type": "string" },
+    "WaitSeconds": { "type": "number", "minimum": 0 },
+    "StartedAt": { "type": "string", "format": "date-time" },
+    "CompletedAt": { "type": "string", "format": "date-time" }
+  }
+}

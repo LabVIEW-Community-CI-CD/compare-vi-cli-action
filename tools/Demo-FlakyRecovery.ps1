@@ -26,7 +26,12 @@ if (Test-Path $state) { Remove-Item -LiteralPath $state -Force }
 
 $env:ENABLE_FLAKY_DEMO = '1'
 
-$cmd = "& '$watch' -SingleRun -RerunFailedAttempts $RerunFailedAttempts -DeltaJsonPath '$DeltaJsonPath' -Tag FlakyDemo"
+$watchDir = Split-Path -Parent $DeltaJsonPath
+if (-not $watchDir -or $watchDir -eq '') { $watchDir = Join-Path (Resolve-Path '.').Path 'tests/results/_watch' }
+if (-not (Test-Path -LiteralPath $watchDir)) { New-Item -ItemType Directory -Force -Path $watchDir | Out-Null }
+$env:WATCH_RESULTS_DIR = $watchDir
+$historyPath = Join-Path $watchDir 'watch-log.ndjson'
+$cmd = "& '$watch' -SingleRun -RerunFailedAttempts $RerunFailedAttempts -DeltaJsonPath '$DeltaJsonPath' -DeltaHistoryPath '$historyPath' -Tag FlakyDemo"
 if ($Quiet) { $cmd += ' -Quiet' }
 Write-Host "Invoking: $cmd" -ForegroundColor Cyan
 Invoke-Expression $cmd

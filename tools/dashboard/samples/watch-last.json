@@ -1,0 +1,15 @@
+{
+  "timestamp": "2025-10-07T16:00:00Z",
+  "status": "FAIL",
+  "stats": { "tests": 20, "failed": 3, "skipped": 0 },
+  "previous": { "tests": 18, "failed": 2, "skipped": 0 },
+  "delta": { "tests": 2, "failed": 1, "skipped": 0 },
+  "classification": "worsened",
+  "flaky": {
+    "enabled": true,
+    "attempts": 2,
+    "recoveredAfter": 0,
+    "initialFailedFiles": 0,
+    "initialFailedFileNames": []
+  }
+}

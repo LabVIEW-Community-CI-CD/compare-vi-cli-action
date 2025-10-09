@@ -35,5 +35,28 @@ Describe 'Summarize-PesterCategories' -Tag 'Unit' {
     $content | Should -Match 'dispatcher: status=ok, total=3'
     $content | Should -Match 'fixtures: status=ok, total=3'
   }
-}
 
+  It 'reads session-index from a downloaded artifact layout' {
+    Remove-Item -LiteralPath $script:summaryPath -ErrorAction SilentlyContinue
+    $catRoot = Join-Path $script:base 'downloaded'
+    New-Item -ItemType Directory -Force -Path $catRoot | Out-Null
+    $si = [ordered]@{
+      schema = 'session-index/v1'
+      status = 'ok'
+      total = 5
+      passed = 5
+      failed = 0
+      errors = 0
+      skipped = 0
+      duration_s = 1.23
+    } | ConvertTo-Json
+    Set-Content -LiteralPath (Join-Path $catRoot 'session-index.json') -Value $si -Encoding UTF8
+
+    $root = (Get-Location).Path
+    & (Join-Path $root 'tools/Summarize-PesterCategories.ps1') -BaseDir $script:base -Categories @('downloaded')
+
+    Test-Path -LiteralPath $script:summaryPath | Should -BeTrue
+    $content = Get-Content -LiteralPath $script:summaryPath -Raw
+    $content | Should -Match 'downloaded: status=ok, total=5'
+  }
+}

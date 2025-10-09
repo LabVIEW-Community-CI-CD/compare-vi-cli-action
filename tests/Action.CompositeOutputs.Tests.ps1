@@ -2,6 +2,10 @@
 # Pester tests validating composite action script-level behavior via direct function invocation
 # (We cannot invoke the composite action YAML directly in-process, but we can emulate what it does.)
 
+BeforeDiscovery {
+  $script:SkipResolveTests = -not (Get-Command Resolve-Cli -ErrorAction SilentlyContinue)
+}
+
 BeforeAll {
   $here = Split-Path -Parent $PSCommandPath
   $root = Resolve-Path (Join-Path $here '..')
@@ -9,7 +13,7 @@ BeforeAll {
 }
 
 Describe 'Composite action output shape (emulated)' -Tag 'Unit' {
-  It 'produces all expected duration-related outputs' {
+  It 'produces all expected duration-related outputs' -Skip:$script:SkipResolveTests {
     # Arrange: create two temp files to act as .vi placeholders
     $vis = Join-Path $TestDrive 'vis'
     New-Item -ItemType Directory -Path $vis -Force | Out-Null
@@ -34,7 +38,7 @@ Describe 'Composite action output shape (emulated)' -Tag 'Unit' {
     $res.Diff | Should -BeTrue
   }
 
-  It 'writes both duration outputs to a mock GITHUB_OUTPUT file' {
+  It 'writes both duration outputs to a mock GITHUB_OUTPUT file' -Skip:$script:SkipResolveTests {
     $vis = Join-Path $TestDrive 'vis'
     New-Item -ItemType Directory -Path $vis -Force | Out-Null
     $a = Join-Path $vis 'a.vi'
@@ -58,7 +62,7 @@ Describe 'Composite action output shape (emulated)' -Tag 'Unit' {
     (Get-Content $sumPath -Raw) | Should -Match 'Duration \(ns\):'
   }
 
-  It 'short-circuits identical path and marks output object flag' {
+  It 'short-circuits identical path and marks output object flag' -Skip:$script:SkipResolveTests {
     $vis = Join-Path $TestDrive 'vis'
     New-Item -ItemType Directory -Path $vis -Force | Out-Null
     $a = Join-Path $vis 'same.vi'
@@ -70,7 +74,7 @@ Describe 'Composite action output shape (emulated)' -Tag 'Unit' {
     $res.ExitCode | Should -Be 0
   }
 
-  It 'emits shortCircuitedIdentical output line when identical and using GitHubOutputPath' {
+  It 'emits shortCircuitedIdentical output line when identical and using GitHubOutputPath' -Skip:$script:SkipResolveTests {
     $vis = Join-Path $TestDrive 'vis'
     New-Item -ItemType Directory -Path $vis -Force | Out-Null
     $a = Join-Path $vis 'same2.vi'

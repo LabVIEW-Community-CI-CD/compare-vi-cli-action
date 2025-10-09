@@ -1,0 +1,49 @@
+{
+  "schema": "labview-process-snapshot/v1",
+  "generatedAt": "2025-10-07T18:45:00Z",
+  "machine": "WARMUP-NODE",
+  "user": "labviewsvc",
+  "processCount": 1,
+  "processes": [
+    {
+      "pid": 4242,
+      "processName": "LabVIEW",
+      "startTimeUtc": "2025-10-07T18:30:00Z",
+      "responding": true,
+      "workingSetBytes": 123456789,
+      "privateMemoryBytes": 98765432,
+      "totalCpuSeconds": 12.34,
+      "userName": null
+    }
+  ],
+  "labview": {
+    "count": 1,
+    "processes": [
+      {
+        "pid": 4242,
+        "processName": "LabVIEW",
+        "startTimeUtc": "2025-10-07T18:30:00Z",
+        "responding": true,
+        "workingSetBytes": 123456789,
+        "privateMemoryBytes": 98765432,
+        "totalCpuSeconds": 12.34,
+        "userName": null
+      }
+    ]
+  },
+  "lvcompare": {
+    "count": 1,
+    "processes": [
+      {
+        "pid": 5151,
+        "processName": "LVCompare",
+        "startTimeUtc": "2025-10-07T18:41:00Z",
+        "responding": true,
+        "workingSetBytes": 6543210,
+        "privateMemoryBytes": 4567890,
+        "totalCpuSeconds": 1.23,
+        "userName": null
+      }
+    ]
+  }
+}

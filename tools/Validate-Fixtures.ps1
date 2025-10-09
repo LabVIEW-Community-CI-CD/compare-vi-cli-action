@@ -9,17 +9,24 @@ $EmitJson = $false
 $TestAllowFixtureUpdate = $false
 $DisableToken = $false
 $ManifestPath = ''
+# Pair validation flags
+$RequirePair = $false
+$FailOnExpectedMismatch = $false
+$EvidencePath = ''
 for ($i=0; $i -lt $args.Length; $i++) {
   switch -Regex ($args[$i]) {
     '^-MinBytes$' { if ($i + 1 -lt $args.Length) { $i++; [int]$MinBytes = $args[$i] }; continue }
     '^-Quiet(Output)?$' { $QuietOutput = $true; continue }
     '^-Json$' { $EmitJson = $true; continue }
-  '^-TestAllowFixtureUpdate$' { $TestAllowFixtureUpdate = $true; continue }
-  '^-DisableToken$' { $DisableToken = $true; continue }
-  '^-ManifestPath$' {
+    '^-TestAllowFixtureUpdate$' { $TestAllowFixtureUpdate = $true; continue }
+    '^-DisableToken$' { $DisableToken = $true; continue }
+    '^-ManifestPath$' {
       if ($i + 1 -lt $args.Length) { $i++; $ManifestPath = [string]$args[$i] }
       continue
     }
+    '^-RequirePair$' { $RequirePair = $true; continue }
+    '^-FailOnExpectedMismatch$' { $FailOnExpectedMismatch = $true; continue }
+    '^-EvidencePath$' { if ($i + 1 -lt $args.Length) { $i++; $EvidencePath = [string]$args[$i] }; continue }
   }
 }
 
@@ -83,6 +90,72 @@ if ($manifest -and $manifest.items) {
   }
   if ($duplicateEntries) { foreach ($d in $duplicateEntries) { Emit error ("Manifest duplicate path entry: {0}" -f $d) 8 } }
 }
+
+# Pair digest verification (when both roles exist)
+$pairIssues = @()
+$pairMismatch = $false
+$expectedOutcomeMismatch = $false
+$actualOutcome = 'unknown'
+try {
+  if ($manifest -and $manifest.items) {
+    $base = $manifest.items | Where-Object { $_.role -eq 'base' } | Select-Object -First 1
+    $head = $manifest.items | Where-Object { $_.role -eq 'head' } | Select-Object -First 1
+    if ($base -and $head) {
+      $bSha = ([string]$base.sha256).ToUpperInvariant()
+      $hSha = ([string]$head.sha256).ToUpperInvariant()
+      $bLen = [int64]$base.bytes
+      $hLen = [int64]$head.bytes
+      $canonical = 'sha256:{0}|bytes:{1}|sha256:{2}|bytes:{3}' -f $bSha,$bLen,$hSha,$hLen
+      $sha = [System.Security.Cryptography.SHA256]::Create()
+      $calc = ($sha.ComputeHash([Text.Encoding]::UTF8.GetBytes($canonical)) | ForEach-Object { $_.ToString('X2') }) -join ''
+      if (-not $manifest.pair -and $RequirePair) { Emit error 'Manifest missing pair block while roles are present' 7 }
+      if ($manifest.pair) {
+        if ($manifest.pair.canonical -and ([string]$manifest.pair.canonical) -ne $canonical) {
+          $pairIssues += 'pair.canonical mismatch'
+          $pairMismatch = $true
+        }
+        if ($manifest.pair.digest -and ([string]$manifest.pair.digest).ToUpperInvariant() -ne $calc) {
+          $pairIssues += 'pair.digest mismatch (stale)'
+          $pairMismatch = $true
+        }
+        # Outcome validation
+        $expected = if ($manifest.pair.expectedOutcome) { ([string]$manifest.pair.expectedOutcome).ToLowerInvariant() } else { '' }
+        if ($expected -and $expected -ne 'any') {
+          function Get-OutcomeFromEvidence([string]$p) {
+            if (-not (Test-Path -LiteralPath $p)) { return 'unknown' }
+            try { $o = Get-Content -LiteralPath $p -Raw | ConvertFrom-Json } catch { return 'unknown' }
+            if ($o.PSObject.Properties.Name -contains 'diff') { return ((if ($o.diff) { 'diff' } else { 'identical' })) }
+            if ($o.PSObject.Properties.Name -contains 'exitCode') {
+              try {
+                switch ([int]$o.exitCode) { 0 { 'identical' } 1 { 'diff' } default { 'unknown' } }
+              } catch { 'unknown' }
+            } else { 'unknown' }
+          }
+          # Resolve evidence path
+          $actualOutcome = 'unknown'
+          if ($EvidencePath) { $actualOutcome = Get-OutcomeFromEvidence $EvidencePath }
+          if ($actualOutcome -eq 'unknown') {
+            $defaultEvidence = @(
+              (Join-Path $repoRoot 'results/fixture-drift/compare-exec.json')
+            )
+            foreach ($p in $defaultEvidence) { if ($actualOutcome -eq 'unknown' -and (Test-Path -LiteralPath $p)) { $actualOutcome = Get-OutcomeFromEvidence $p } }
+            if ($actualOutcome -eq 'unknown') {
+              $cands = Get-ChildItem -Path (Join-Path $repoRoot 'tests/results') -Recurse -File -Filter 'compare-exec.json','lvcompare-capture.json' -ErrorAction SilentlyContinue | Sort-Object LastWriteTime -Descending
+              foreach ($f in $cands) { $actualOutcome = Get-OutcomeFromEvidence $f.FullName; if ($actualOutcome -ne 'unknown') { break } }
+            }
+          }
+          if ($actualOutcome -eq 'unknown') {
+            Emit info 'No evidence found to verify pair.expectedOutcome' 0
+          } elseif ($actualOutcome -ne $expected) {
+            $expectedOutcomeMismatch = $true
+            $lvl = if ($FailOnExpectedMismatch) { 'error' } elseif ($manifest.pair.enforce -and ([string]$manifest.pair.enforce).ToLowerInvariant() -eq 'fail') { 'error' } elseif ($manifest.pair.enforce -and ([string]$manifest.pair.enforce).ToLowerInvariant() -eq 'warn') { 'warn' } else { 'info' }
+            Emit $lvl ("pair.expectedOutcome={0} actual={1}" -f $expected,$actualOutcome) 0
+          }
+        }
+      }
+    }
+  }
+} catch { Emit error ("Pair validation failed: {0}" -f $_.Exception.Message) 7; $manifestError = $true }
 
 foreach ($f in $fixtures) {
   if (-not (Test-Path -LiteralPath $f.Path)) { $missing += $f; continue }
@@ -150,7 +223,7 @@ if (($allowOverride -or $TestAllowFixtureUpdate) -and $hashMismatch) {
   $hashMismatch = @() # neutralize
 }
 
-if (-not $missing -and -not $untracked -and -not $tooSmall -and -not $sizeMismatch -and -not $manifestError -and -not $hashMismatch -and -not $duplicateEntries) {
+if (-not $missing -and -not $untracked -and -not $tooSmall -and -not $sizeMismatch -and -not $manifestError -and -not $hashMismatch -and -not $duplicateEntries -and -not $pairMismatch -and -not $expectedOutcomeMismatch) {
   if ($EmitJson) {
     $names = @($fixtures | ForEach-Object { $_.Name })
     $okObj = [ordered]@{ 
@@ -180,6 +253,8 @@ if ($EmitJson) {
   foreach ($h in $hashMismatch) { $issues += [ordered]@{ type='hashMismatch'; fixture=$h.Name; actual=$h.Actual; expected=$h.Expected } }
   if ($manifestError) { $issues += [ordered]@{ type='manifestError' } }
   foreach ($d in $duplicateEntries) { $issues += [ordered]@{ type='duplicate'; path=$d } }
+  if ($pairMismatch) { $issues += [ordered]@{ type='pairMismatch' } }
+  if ($expectedOutcomeMismatch) { $issues += [ordered]@{ type='expectedOutcomeMismatch'; expected=[string]$manifest.pair.expectedOutcome; actual=$actualOutcome } }
   foreach ($si in $schemaIssues) { $issues += [ordered]@{ type='schema'; detail=$si } }
   $obj = [ordered]@{
     ok = ($exit -eq 0)
@@ -198,6 +273,8 @@ if ($EmitJson) {
       manifestError = [int]($manifestError)
       duplicate = ($duplicateEntries).Count
       schema = ($schemaIssues).Count
+      pairMismatch = [int]$pairMismatch
+      expectedOutcomeMismatch = [int]$expectedOutcomeMismatch
     }
     autoManifest = [ordered]@{
       written = [bool]$autoManifestWritten

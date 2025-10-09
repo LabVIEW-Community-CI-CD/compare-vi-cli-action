@@ -20,13 +20,26 @@ try { $j = Get-Content -LiteralPath $path -Raw | ConvertFrom-Json -ErrorAction S
 
 $lines = @('### Session','')
 if ($j) {
-  if ($j.status) { $lines += ('- Status: {0}' -f $j.status) }
-  if ($j.total -ne $null) { $lines += ('- Total: {0}' -f $j.total) }
-  if ($j.passed -ne $null) { $lines += ('- Passed: {0}' -f $j.passed) }
-  if ($j.failed -ne $null) { $lines += ('- Failed: {0}' -f $j.failed) }
-  if ($j.errors -ne $null) { $lines += ('- Errors: {0}' -f $j.errors) }
-  if ($j.skipped -ne $null) { $lines += ('- Skipped: {0}' -f $j.skipped) }
-  if ($j.duration_s -ne $null) { $lines += ('- Duration (s): {0}' -f $j.duration_s) }
+  function Add-LineIfPresent {
+    param(
+      [Parameter(Mandatory)][pscustomobject]$Object,
+      [Parameter(Mandatory)][string]$Property,
+      [Parameter(Mandatory)][string]$Label,
+      [Parameter(Mandatory)][ref]$Target
+    )
+    $prop = $Object.PSObject.Properties[$Property]
+    if ($prop -and $prop.Value -ne $null) {
+      $Target.Value += ('- {0}: {1}' -f $Label, $prop.Value)
+    }
+  }
+
+  Add-LineIfPresent -Object $j -Property 'status' -Label 'Status' -Target ([ref]$lines)
+  Add-LineIfPresent -Object $j -Property 'total' -Label 'Total' -Target ([ref]$lines)
+  Add-LineIfPresent -Object $j -Property 'passed' -Label 'Passed' -Target ([ref]$lines)
+  Add-LineIfPresent -Object $j -Property 'failed' -Label 'Failed' -Target ([ref]$lines)
+  Add-LineIfPresent -Object $j -Property 'errors' -Label 'Errors' -Target ([ref]$lines)
+  Add-LineIfPresent -Object $j -Property 'skipped' -Label 'Skipped' -Target ([ref]$lines)
+  Add-LineIfPresent -Object $j -Property 'duration_s' -Label 'Duration (s)' -Target ([ref]$lines)
   $lines += ('- File: {0}' -f $path)
 } else {
   $lines += ('- File: failed to parse: {0}' -f $path)

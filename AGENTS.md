@@ -134,7 +134,7 @@
   - Adds a summary and JSON (live vs noticed PIDs). Use `-FailOnRogue` to break on leaks.
 
 - CI guards (self‑hosted Windows)
-  - Pester (reusable) and Fixture Drift (Windows) include LV Guard pre/post snapshots; set `CLEAN_LVCOMPARE=1` to auto‑clean.
+- Pester (reusable) and Fixture Drift (Windows) include LV Guard pre/post snapshots; set `CLEAN_LV_BEFORE=true`, `CLEAN_LV_AFTER=true`, and `CLEAN_LV_INCLUDE_COMPARE=true` (repo defaults) to auto-clean LabVIEW/LVCompare.
   - Defaults for CompareVI from repo vars (override as needed): `LV_NO_ACTIVATE=1`, `LV_CURSOR_RESTORE=1`, `LV_IDLE_WAIT_SECONDS=2`, `LV_IDLE_MAX_WAIT_SECONDS=5`.
 
 - Tests

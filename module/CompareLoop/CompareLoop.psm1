@@ -7,6 +7,7 @@ $script:CanonicalLVCompare = 'C:\Program Files\National Instruments\Shared\LabVI
 $moduleDir = Split-Path -Parent $PSCommandPath
 $repoRoot = Split-Path -Parent $moduleDir | Split-Path -Parent
 Import-Module (Join-Path $repoRoot 'scripts' 'ArgTokenization.psm1') -Force
+Import-Module (Join-Path $repoRoot 'scripts' 'CompareVI.psm1') -Force
 
 function Test-CanonicalCli {
   if (-not (Test-Path -LiteralPath $script:CanonicalLVCompare -PathType Leaf)) {
@@ -401,30 +402,49 @@ function Invoke-IntegrationCompareLoop {
         }
         $argsList = $norm
       }
+      $resultDiff = $null
+      $compareResult = $null
       if ($CompareExecutor) {
         # Invoke executor positionally to avoid parameter name coupling.
         $exitCode = & $CompareExecutor $cli $baseAbs $headAbs $argsList
       } else {
         try {
-          & $cli $baseAbs $headAbs @argsList 2>$null
+          $compareParams = @{
+            Base = $baseAbs
+            Head = $headAbs
+            FailOnDiff = $false
+          }
+          if ($LvCompareArgs) { $compareParams.LvCompareArgs = $LvCompareArgs }
+          $compareResult = Invoke-CompareVI @compareParams
+          $exitCode = [int]$compareResult.ExitCode
+          $resultDiff = [bool]$compareResult.Diff
         } catch {
-          if (-not $Quiet) { Write-Verbose "Invocation failed: $_" }
-        }
-        if (Get-Variable -Name LASTEXITCODE -Scope Global -ErrorAction SilentlyContinue) {
-          $exitCode = $global:LASTEXITCODE
-        } elseif (Get-Variable -Name LASTEXITCODE -ErrorAction SilentlyContinue) {
-          $exitCode = $LASTEXITCODE
-        } else {
-          # Fallback sentinel when process did not launch under strict mode
+          if (-not $Quiet) { Write-Verbose ("Invoke-CompareVI failed: {0}" -f $_) }
           $exitCode = -999
+          try {
+            $msg = $_.Exception.Message
+            if ($msg -match 'exit code\s+(-?\d+)') { $exitCode = [int]$Matches[1] }
+          } catch {}
+          $status = 'ERROR'
         }
       }
       $iterationSw.Stop()
-      $durationSeconds = [math]::Round($iterationSw.Elapsed.TotalSeconds,3)
+      if ($compareResult -and $compareResult.CompareDurationSeconds -gt 0) {
+        $durationSeconds = [math]::Round([double]$compareResult.CompareDurationSeconds,3)
+      } else {
+        $durationSeconds = [math]::Round($iterationSw.Elapsed.TotalSeconds,3)
+      }
       $totalSeconds += $durationSeconds
       switch ($exitCode) {
-        0 { }
-        1 { $diff = $true; $diffCount++ }
+        0 { $diff = $false }
+        1 {
+          $diff = if ($null -ne $resultDiff) { $resultDiff } else { $true }
+          if ($diff) { $diffCount++ }
+          else {
+            $status = 'ERROR'
+            $errorCount++
+          }
+        }
         default { $status = 'ERROR'; $errorCount++ }
       }
       if ($durationSeconds -gt 0) {

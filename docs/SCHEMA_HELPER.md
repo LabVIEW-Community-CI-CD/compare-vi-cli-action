@@ -284,6 +284,7 @@ narrow the predicate (document any tightening in CHANGELOG along with spec adjus
 - `Run-AutonomousIntegrationLoop.LogRotation.Tests.ps1` (LoopEvent + rotation example)
 - `CompareLoop.SnapshotEnrichment.Tests.ps1` (SnapshotV2 NDJSON example)
 - `CompareLoop.RunSummary.Tests.ps1` (RunSummary example)
+- `docs/schemas/fixture-pair-v1.schema.json` (fixture pair digest & expected outcome schema)
 
 ---
 Questions or adjustments? Open an issue with the failing JSON sample and the spec name.

@@ -336,6 +336,25 @@ $anomalyClass = if ($anomalyText -eq 'None') { 'badge-muted' } else { 'badge-war
 $liveCount = (($liveLVCompare | Measure-Object).Count + ($liveLabVIEW | Measure-Object).Count)
 $liveText = if ($liveCount -gt 0) { "Live: $liveCount proc(s)" } else { 'Live: none' }
 $liveClass = if ($liveCount -gt 0) { 'badge-warn' } else { 'badge-muted' }
+
+# Optional single-run diff details
+$headChanges = $null; $baseChanges = $null
+try {
+  $detailsDir = $null
+  if ($OutputPath) { try { $detailsDir = (Split-Path -Parent -LiteralPath $OutputPath) } catch {} }
+  if (-not $detailsDir -and $ExecJsonPath) { try { $detailsDir = (Split-Path -Parent -LiteralPath $ExecJsonPath) } catch {} }
+  if ($detailsDir) {
+    $dd = Join-Path $detailsDir 'diff-details.json'
+    if (Test-Path -LiteralPath $dd -PathType Leaf) {
+      $dj = Get-Content -LiteralPath $dd -Raw | ConvertFrom-Json -ErrorAction Stop
+      if ($dj) {
+        if ($dj.PSObject.Properties.Name -contains 'headChanges') { try { $headChanges = [int]$dj.headChanges } catch {} }
+        if ($dj.PSObject.Properties.Name -contains 'baseChanges') { try { $baseChanges = [int]$dj.baseChanges } catch {} }
+      }
+    }
+  }
+} catch { Write-Host "[report] warn: failed to load diff-details.json: $_" -ForegroundColor DarkYellow }
+
 $statusBadgesHtml = ('<div class="badges"><span class="badge {0}">{1}</span><span class="badge {2}">{3}</span><span class="badge {4}">{5}</span><span class="badge {6}">{7}</span></div>' -f $cliClass,$cliText,$contentClass,$contentText,$anomalyClass,$anomalyText,$liveClass,$liveText)
 
 # Top navigation
@@ -393,6 +412,8 @@ function copyText(id){
       <div class="key">Source</div><div class="value">$source</div>
       <div class="key">Exit code</div><div class="value">$ExitCode ($exitText)</div>
       <div class="key">Diff</div><div class="value">$Diff</div>
+      $(if ($headChanges -ne $null) { '<div class="key">Head Changes</div><div class="value">' + $headChanges + '</div>' } else { '' })
+      $(if ($baseChanges -ne $null) { '<div class="key">Base Changes</div><div class="value">' + $baseChanges + '</div>' } else { '' })
   <div class="key">CLI Path</div><div class="value"><span id="clip_cli">$CliPath</span> <button class="btn" onclick="copyText('clip_cli')">Copy</button></div>
   <div class="key">Duration (s)</div><div class="value">$([string]::Format('{0:F3}', $DurationSeconds))</div>
       <div class="key">Base</div><div class="value"><span id="clip_base">$Base</span> <button class="btn" onclick="copyText('clip_base')">Copy</button></div>
@@ -425,6 +446,4 @@ if (-not $OutputPath) {
 
 $html | Out-File -FilePath $OutputPath -Encoding utf8
 Write-Host ("Report written: {0}" -f (Resolve-Path $OutputPath).Path)
-
-
 

@@ -1,0 +1,14 @@
+{
+  "lockId": "test-lock-id",
+  "group": "pester-selfhosted",
+  "queueWaitSeconds": 30,
+  "workflow": "Test Workflow",
+  "job": "pester",
+  "runId": "123456789",
+  "runAttempt": "1",
+  "actor": "dev-user",
+  "machine": "DESKTOP",
+  "processId": 12345,
+  "acquiredAt": "2025-10-07T15:30:00Z",
+  "heartbeatAt": "2025-10-07T15:30:45Z"
+}

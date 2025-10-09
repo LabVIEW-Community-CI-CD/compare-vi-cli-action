@@ -1,0 +1,3 @@
+2025-10-07T15:32:29Z ##[group]Run ./Invoke-PesterTests.ps1 -TestsPath tests
+2025-10-07T15:32:29Z ##[error]Cannot process argument transformation on parameter ''TimeoutMinutes''. Cannot convert value "-ResultsPath" to type "System.Double". Error: "The input string '-ResultsPath' was not in a correct format."
+2025-10-07T15:32:29Z ##[endgroup]

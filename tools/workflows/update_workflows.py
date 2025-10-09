@@ -989,7 +989,7 @@ def _mk_lv_guard_pre_step() -> dict:
         'uses': './.github/actions/runner-unblock-guard',
         'with': {
             'snapshot-path': 'results/fixture-drift/lv-guard-pre.json',
-            'cleanup': DQS("${{ env.CLEAN_LVCOMPARE == '1' }}"),
+            'cleanup': DQS("${{ env.CLEAN_LV_BEFORE == 'true' }}"),
             'process-names': 'LVCompare,LabVIEW',
         },
     }
@@ -1019,7 +1019,7 @@ def _mk_warmup_step() -> dict:
     return {
         'name': 'LabVIEW warmup (best-effort)',
         'shell': 'pwsh',
-        'run': LIT('pwsh -File tools/Warmup-LabVIEW.ps1\n'),
+        'run': LIT('pwsh -File tools/Warmup-LabVIEWRuntime.ps1\n'),
     }
 
 
@@ -1238,7 +1238,7 @@ def apply_transforms(path: Path) -> tuple[bool, str]:
         c12 = ensure_session_index_post_in_job(doc, 'publish', 'tests/results', 'compare-session-index')
         g7 = ensure_runner_unblock_guard(doc, 'publish', 'tests/results/runner-unblock-snapshot.json')
         changed = changed or c12 or g7
-    # pester-reusable.yml: add a Runner Unblock Guard to preflight with CLEAN_LVCOMPARE cleanup gating
+    # pester-reusable.yml: add a Runner Unblock Guard to preflight with cleanup gating
     if path.name == 'pester-reusable.yml':
         try:
             jobs = doc.get('jobs') or {}
@@ -1253,7 +1253,7 @@ def apply_transforms(path: Path) -> tuple[bool, str]:
                         'uses': './.github/actions/runner-unblock-guard',
                         'with': {
                             'snapshot-path': 'tests/results/runner-unblock-snapshot.json',
-                            'cleanup': DQS("${{ env.CLEAN_LVCOMPARE == '1' }}"),
+                            'cleanup': DQS("${{ env.CLEAN_LV_BEFORE == 'true' }}"),
                             'process-names': 'LabVIEW,LVCompare',
                         },
                     }

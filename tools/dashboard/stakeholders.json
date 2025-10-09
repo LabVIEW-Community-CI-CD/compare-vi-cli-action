@@ -1,0 +1,14 @@
+{
+  "pester-selfhosted": {
+    "primaryOwner": "svelderrainruiz",
+    "backup": "release-owner",
+    "channels": ["slack://#ci-selfhosted"],
+    "dxIssue": 99
+  },
+  "fixture-drift-windows": {
+    "primaryOwner": "fixtures-team",
+    "backup": "release-owner",
+    "channels": ["slack://#fixture-drift"],
+    "dxIssue": null
+  }
+}
