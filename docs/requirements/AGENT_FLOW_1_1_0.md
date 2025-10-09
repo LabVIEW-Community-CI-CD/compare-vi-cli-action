@@ -65,10 +65,40 @@
 
 ---
 
+## R11 — No Overlap (MUST)
+
+- At most one heavy Windows job (Pester/Drift/Orchestrated) is active on the self-hosted runner at any time.
+- VERIFY (CI): `gh run list --status in_progress` shows at most one Windows heavy job; additional runs wait until the lock is released.
+
+## R12 — Merge Readiness (SHOULD)
+
+- All required checks green for PRs tying to this flow; summaries include re-run links and artifacts; repo ready for merge queue enablement after stable cycles.
+- VERIFY (CI): PR reports green; summaries show rerun and artifact links; optional merge queue configured for `develop`.
+
+---
+
+## Traceability Matrix
+
+| Req | Implementation | Verification Evidence |
+|-----|----------------|-----------------------|
+| R1  | `.github/workflows/pester-reusable.yml` (Acquire/Release session lock); `tools/Session-Lock.ps1` | status.md present/cleared; lock steps in logs |
+| R2  | Preflight steps in `.github/workflows/pester-reusable.yml`; `.github/actions/runner-unblock-guard/action.yml` | preflight summary shows idle LV OK or PIDs/sessions |
+| R3  | Cleanup env + guard cleanup gating across workflows | guard snapshot shows cleanup counts; env dump lists vars |
+| R4  | `Invoke-PesterTests.ps1` inline heartbeat (no Start-Job) | `pester-heartbeat.ndjson`; no orphan pwsh across cancels |
+| R5  | `tools/Warmup-LabVIEW.ps1` → runtime; bitness default; exit guard | warmup logs show path/bitness; no ValidateSet/LASTEXITCODE errors |
+| R6  | Notice dir fallback in `.github/workflows/fixture-drift.yml` | fallback message or strict reason code present |
+| R7  | Re-run hint + provenance in Pester/Drift/Orchestrated | summaries contain rerun command + provenance fields |
+| R8  | Summary bullets via guard + workflow steps | bullets present (runner/lock/LVCompare/idle/notice/heartbeat) |
+| R9  | LV_* defaults in Pester/Drift/Orchestrated env | env dump shows toggles; idle gates applied |
+| R10 | Actionable error messaging in preflight/warmup/notice checks | annotations + summaries show fix hints |
+| R11 | Lock + concurrency group enforce single active job | `gh run list` shows single in_progress heavy job |
+| R12 | Required checks + artifacts + rerun hint; merge queue ready | PR status green; summaries link artifacts/rerun |
+
+---
+
 ## Verification Hints (Local)
 
 - Lock: `pwsh -File tools/Session-Lock.ps1 -Action Acquire -Group 'pester-selfhosted'` then `... -Action Release`.
 - Rogue scan: `pwsh -File tools/Detect-RogueLV.ps1 -ResultsDir tests/results -LookBackSeconds 900`.
 - Warmup: `pwsh -File tools/Warmup-LabVIEW.ps1 -MinimumSupportedLVVersion 2025` (optionally set `LABVIEW_PATH`).
 - Dispatcher heartbeat: run a small Pester selection and confirm `tests/results/pester-heartbeat.ndjson`.
-

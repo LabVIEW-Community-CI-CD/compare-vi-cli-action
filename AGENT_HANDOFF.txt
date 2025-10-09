@@ -1,4 +1,4 @@
-Deterministic Runs Hand-off — Updated 2025-10-09 @ 06:00 UTC
+Deterministic Runs Hand-off — Updated 2025-10-09 @ 07:40 UTC
 
 Context Snapshot
 - Branch: `issue/88-dev-dashboard-phase2`
@@ -38,6 +38,17 @@ Recent Changes / What’s Fixed
 - VI Binary Handling Gate now installs Pester v5 to ensure `New-PesterConfiguration` is present.
 - Manual dispatch enabled for the VI Binary Handling Gate (`workflow_dispatch`).
 
+Agent Flow 1.1.0 (DX)
+- ADR 0002 accepted (docs/adr/0002-agent-flow-1-1-0-dx.md).
+- Requirements (verifiable) at docs/requirements/AGENT_FLOW_1_1_0.md.
+- Key tenets now active:
+  - Deterministic lock for all heavy Windows jobs (`pester-selfhosted`).
+  - Guard preflight/post with cleanup; fail fast if LabVIEW is running.
+  - Inline heartbeat (no background pwsh processes).
+  - Warmup wrapper normalized (bitness defaulting, safe exit propagation).
+  - LV notice dir fallback with clear strict-mode reason codes.
+  - Consistent re-run hint + provenance + current-state summary.
+
 Open Issues / Pending Work
 - Self-hosted runner failing LVCompare preflight (run `18366961863`): fix runner state or adjust preflight expectations if policy allows.
 - After the runner fix, re-dispatch the gate and ensure the Pester job executes `tests/ViBinaryHandling.Tests.ps1`.
@@ -49,6 +60,9 @@ Useful Commands & Scripts
 - Inspect job logs: `gh run view <runId> --json jobs` then call the job logs API for details.
 - Local quick checks: `pwsh -File tools/Quick-DispatcherSmoke.ps1 -PreferWorkspace`
 - Validate fixtures: `pwsh -File tools/Validate-Fixtures.ps1 -Json`
+- Lock (deterministic queue): `pwsh -File tools/Session-Lock.ps1 -Action Acquire -Group 'pester-selfhosted' -QueueWaitSeconds 15 -QueueMaxAttempts 40 -StaleSeconds 300 -HeartbeatSeconds 15`
+- Release lock (always): `pwsh -File tools/Session-Lock.ps1 -Action Release -Group 'pester-selfhosted'`
+- Force takeover (stale only): `pwsh -File tools/Session-Lock.ps1 -Action Acquire -Group 'pester-selfhosted' -ForceTakeover`
 - Local fixture harness (TestStand thin wrapper): `pwsh -File tools/TestStand-CompareHarness.ps1 -LabVIEWPath <path> -CloseLabVIEW`
 
 Artifacts & Logs to Review After Runs
