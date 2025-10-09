@@ -11,4 +11,4 @@ outputs:
     description: Detected target (unit|mock|smoke|pester-selfhosted|orchestrated)
 runs:
   using: node20
-  main: dist/actions/normalize-command.js
+  main: ../../dist/actions/normalize-command.js

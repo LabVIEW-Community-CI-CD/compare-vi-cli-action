@@ -13,4 +13,4 @@ outputs:
     description: Sampling correlation id
 runs:
   using: node20
-  main: dist/actions/parse-orchestrated.js
+  main: ../../dist/actions/parse-orchestrated.js
