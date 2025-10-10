@@ -30,6 +30,8 @@
     "@types/argparse": "^2.0.17",
     "@types/js-yaml": "^4.0.9",
     "@types/node": "20.11.30",
+    "ajv-cli": "^5.0.0",
+    "ajv-formats": "^3.0.1",
     "js-yaml": "4.1.0",
     "markdownlint-cli2": "0.14.0",
     "typescript": "5.4.5"

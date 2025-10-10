@@ -102,21 +102,25 @@ function Invoke-WatcherTelemetrySchemaCheck {
     return
   }
   Write-Host 'Validating watcher telemetry JSON against schema (ajv-cli)...'
-  $npxPath = $npx.Path
+  $toolPath = $npx.Path
+  $arguments = @('-y','ajv-cli@5','validate','-c','ajv-formats','--spec=draft2020','--strict=false','-s',$SchemaPath,'-d',$DataPath)
   try {
     if ($IsWindows) {
-      $cmdShim = Join-Path (Split-Path -Parent $npxPath) 'npx.cmd'
-      if (Test-Path -LiteralPath $cmdShim -PathType Leaf) { $npxPath = $cmdShim }
+      $cmdShim = Join-Path (Split-Path -Parent $toolPath) 'npx.cmd'
+      if (Test-Path -LiteralPath $cmdShim -PathType Leaf) { $toolPath = $cmdShim }
     }
   } catch {}
   $psi = New-Object System.Diagnostics.ProcessStartInfo
-  if ($npxPath -like '*.ps1') {
+  if ($toolPath -like '*.ps1') {
     $psi.FileName = 'pwsh'
-    $psi.Arguments = "-NoLogo -NoProfile -File `"$npxPath`" -y ajv-cli@5 validate -s `"$SchemaPath`" -d `"$DataPath`" --spec=draft2020"
+    [void]$psi.ArgumentList.Add('-NoLogo')
+    [void]$psi.ArgumentList.Add('-NoProfile')
+    [void]$psi.ArgumentList.Add('-File')
+    [void]$psi.ArgumentList.Add($toolPath)
   } else {
-    $psi.FileName = $npxPath
-    $psi.Arguments = "-y ajv-cli@5 validate -s `"$SchemaPath`" -d `"$DataPath`" --spec=draft2020"
+    $psi.FileName = $toolPath
   }
+  foreach ($arg in $arguments) { [void]$psi.ArgumentList.Add($arg) }
   $psi.UseShellExecute = $false
   $psi.RedirectStandardOutput = $true
   $psi.RedirectStandardError = $true
@@ -126,10 +130,7 @@ function Invoke-WatcherTelemetrySchemaCheck {
   $null = $p.WaitForExit()
   if ($out) { Write-Host $out }
   if ($err) { Write-Host $err }
-  if ($p.ExitCode -ne 0) {
-    Write-Warning "Watcher telemetry schema validation failed (exit=$($p.ExitCode)); treating as notice-only."
-    return
-  }
+  if ($p.ExitCode -ne 0) { throw "Watcher telemetry schema validation failed (exit=$($p.ExitCode))" }
 }
 
 # Main
