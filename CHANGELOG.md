@@ -9,6 +9,8 @@ The format is based on Keep a Changelog, and this project adheres to Semantic Ve
 
 ### Added
 
+- TestStand harness CLI (`npm run teststand:compare`) and smoke coverage via `tools/Smoke-TestStandHarness.ps1`.
+
 - Fixture manifest pair block (schema `fixture-pair/v1`) — additive top-level `pair` object derived from first `base`/`head` items:
   - Fields: `basePath`, `headPath`, `algorithm=sha256`, `canonical`, `digest`, optional `expectedOutcome` (`identical|diff|any`), `enforce` (`notice|warn|fail`).
   - Updater flags: `tools/Update-FixtureManifest.ps1 -Allow -InjectPair [-SetExpectedOutcome diff|identical|any] [-SetEnforce notice|warn|fail]` (idempotent; preserves hints unless overridden).

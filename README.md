@@ -83,8 +83,18 @@ DX reminders. Workflows call `tools/Invoke-DevDashboard.ps1` to publish HTML/JSO
 - `tools/Print-AgentHandoff.ps1 -AutoTrim` (prints summary and trims automatically when
   `needsTrim=true`).
 
-Status JSON contains `state`, heartbeat freshness, and byte counters – ideal for hand-offs or
+Status JSON contains `state`, heartbeat freshness, and byte counters - ideal for hand-offs or
 CI summaries.
+
+### TestStand harness
+
+- `npm run teststand:compare -- --base fixtures/VI1.vi --head fixtures/VI2.vi`
+  - Invokes `tools/TestStand-CompareHarness.ps1` via the Node wrapper.
+  - Artifacts (warmup log, compare log, capture JSON, optional report) land under
+    `tests/results/teststand-session/` with a `session-index.json`
+    (`teststand-compare-session/v1`).
+  - Optional flags: `--labview`, `--lvcompare`, `--render-report`, `--close-labview`,
+    `--close-lvcompare`, and `--repo-root` for alternate harness roots (smoke tests).
 
 ## Bundled workflows
 

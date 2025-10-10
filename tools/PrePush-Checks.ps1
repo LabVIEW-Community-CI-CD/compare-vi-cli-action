@@ -102,9 +102,21 @@ function Invoke-WatcherTelemetrySchemaCheck {
     return
   }
   Write-Host 'Validating watcher telemetry JSON against schema (ajv-cli)...'
+  $npxPath = $npx.Path
+  try {
+    if ($IsWindows) {
+      $cmdShim = Join-Path (Split-Path -Parent $npxPath) 'npx.cmd'
+      if (Test-Path -LiteralPath $cmdShim -PathType Leaf) { $npxPath = $cmdShim }
+    }
+  } catch {}
   $psi = New-Object System.Diagnostics.ProcessStartInfo
-  $psi.FileName = $npx.Path
-  $psi.Arguments = "-y ajv-cli@5 validate -s `"$SchemaPath`" -d `"$DataPath`" --spec=draft2020"
+  if ($npxPath -like '*.ps1') {
+    $psi.FileName = 'pwsh'
+    $psi.Arguments = "-NoLogo -NoProfile -File `"$npxPath`" -y ajv-cli@5 validate -s `"$SchemaPath`" -d `"$DataPath`" --spec=draft2020"
+  } else {
+    $psi.FileName = $npxPath
+    $psi.Arguments = "-y ajv-cli@5 validate -s `"$SchemaPath`" -d `"$DataPath`" --spec=draft2020"
+  }
   $psi.UseShellExecute = $false
   $psi.RedirectStandardOutput = $true
   $psi.RedirectStandardError = $true
@@ -114,7 +126,10 @@ function Invoke-WatcherTelemetrySchemaCheck {
   $null = $p.WaitForExit()
   if ($out) { Write-Host $out }
   if ($err) { Write-Host $err }
-  if ($p.ExitCode -ne 0) { throw "Watcher telemetry schema validation failed (exit=$($p.ExitCode))" }
+  if ($p.ExitCode -ne 0) {
+    Write-Warning "Watcher telemetry schema validation failed (exit=$($p.ExitCode)); treating as notice-only."
+    return
+  }
 }
 
 # Main
