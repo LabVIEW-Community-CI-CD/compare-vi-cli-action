@@ -408,6 +408,7 @@ jobs:
       uses: ./.github/actions/ensure-invoker
       with:
         mode: stop
+        results-dir: results/fixture-drift
 
     - name: Wire Probe (P1)
       if: always()
