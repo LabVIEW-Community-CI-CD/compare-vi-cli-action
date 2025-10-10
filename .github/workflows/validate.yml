@@ -112,6 +112,11 @@ jobs:
       run: |
         ./bin/actionlint -color
 
+    - name: PrePush local gates (includes watcher schema validation)
+      shell: pwsh
+      run: |
+        pwsh -File tools/PrePush-Checks.ps1
+
     - name: Lint unanchored dot-sourcing (non-blocking)
       shell: pwsh
       continue-on-error: true
