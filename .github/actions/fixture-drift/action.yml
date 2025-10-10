@@ -180,8 +180,23 @@ runs:
           Write-Host "[drift-debug] orchestrator exit: $exit"
           Write-Host "[drift-debug] results root: $root"
           if (Test-Path $root) {
-            $latestName = if ($latest) { $latest.Name } else { '<none>' }
-            Write-Host "[drift-debug] latest dir: $latestName"
+            $latestDisplay = '<none>'
+            if ($latest) {
+              try {
+                $resolved = Resolve-Path -LiteralPath $latest.FullName -ErrorAction Stop
+                $latestPath = $resolved.Path
+              } catch {
+                $latestPath = $latest.FullName
+              }
+              $lastWrite = $null
+              try { $lastWrite = $latest.LastWriteTimeUtc.ToString('o') } catch {}
+              if ($lastWrite) {
+                $latestDisplay = "{0} (LastWriteUtc={1})" -f $latestPath,$lastWrite
+              } else {
+                $latestDisplay = $latestPath
+              }
+            }
+            Write-Host "[drift-debug] latest dir: $latestDisplay"
             Write-Host "[drift-debug] summary path: $sumPath"
             # Shallow list of latest dir
             if ($latest) {
@@ -206,9 +221,24 @@ runs:
         $lines += ("- Orchestrator exit: {0}" -f $exit)
         $lines += ("- Status: {0}" -f $status)
         $lines += ("- Results root: {0}" -f $root)
-        $latestName = if ($latest) { $latest.Name } else { '<none>' }
+        $latestDisplay = '<none>'
+        if ($latest) {
+          try {
+            $resolved = Resolve-Path -LiteralPath $latest.FullName -ErrorAction Stop
+            $latestPath = $resolved.Path
+          } catch {
+            $latestPath = $latest.FullName
+          }
+          $lastWrite = $null
+          try { $lastWrite = $latest.LastWriteTimeUtc.ToString('o') } catch {}
+          if ($lastWrite) {
+            $latestDisplay = "{0} (LastWriteUtc={1})" -f $latestPath,$lastWrite
+          } else {
+            $latestDisplay = $latestPath
+          }
+        }
         $sumDisp = if ($sumPath) { $sumPath } else { '<none>' }
-        $lines += ("- Latest dir: {0}" -f $latestName)
+        $lines += ("- Latest dir: {0}" -f $latestDisplay)
         $lines += ("- Summary path: {0}" -f $sumDisp)
         if ($env:REPORT_DELAY_MS) { $lines += ("- Report delay (ms): {0}" -f $env:REPORT_DELAY_MS) }
         $lines -join "`n" | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8
