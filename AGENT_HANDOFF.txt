@@ -17,12 +17,12 @@
    - `npm run lint:md:changed` now targets PR deltas and CI uses it for blocking checks; full sweeps stay notice-only.
    - Legacy docs still trip MD013/MD012/MD041 (line length + blank lines). Capture backlog in follow-up issue or staged fixes.
 3. **Automation**
-   - Agent hand-off process should emit `npm run dev:watcher:status` output (or embed summary fields) so heartbeat freshness and trim hints are visible without extra commands.
-   - Consider scheduling periodic trims or prompting `npm run dev:watcher:trim` automatically when `needsTrim=true`.
+   - Use `tools/Print-AgentHandoff.ps1 -ApplyToggles` to surface watcher telemetry automatically during hand-offs. It prints a concise summary and writes `tests/results/_agent/handoff/watcher-telemetry.json`.
+   - Add `-AutoTrim` (or set `HANDOFF_AUTOTRIM=1`) to trim oversized watcher logs when `needsTrim=true` and cooldown permits.
 
 ## Suggested Next Actions
-1. Wire `dev:watcher:status` JSON (including `heartbeatFresh`, `heartbeatReason`, `needsTrim`) into automation / hand-off responses to surface telemetry immediately.
-2. Evaluate auto-trim cadence (scheduled trim, size gate, or documentation guidance) now that `dev:watcher:trim` exists.
+1. Standardize on `tools/Print-AgentHandoff.ps1 -ApplyToggles (-AutoTrim)` in automation to surface `heartbeatFresh`, `heartbeatReason`, and `needsTrim` without extra commands.
+2. Keep auto-trim event-driven (only when `needsTrim=true`) with a 900s cooldown; revisit thresholds after telemetry review.
 3. Triage markdown backlog: capture MD013/MD012 hot spots, decide whether to patch docs or stage suppression for generated blocks.
 4. After code changes, rerun:
    ```powershell

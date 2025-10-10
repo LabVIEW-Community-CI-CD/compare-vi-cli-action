@@ -135,8 +135,12 @@ Use `tools/workflows/update_workflows.py` for mechanical updates (comment-preser
   5. Honour pause etiquette (“brief delay (~90 seconds)”) and log waits.
   6. Execute “First Actions for the Next Agent” from `AGENT_HANDOFF.txt`.
 - Convenience helpers:
-  - `pwsh -File tools/Print-AgentHandoff.ps1`
-  - `pwsh -File tools/Print-AgentHandoff.ps1 -AutoTrim`
+  - `pwsh -File tools/Print-AgentHandoff.ps1 -ApplyToggles`
+  - `pwsh -File tools/Print-AgentHandoff.ps1 -ApplyToggles -AutoTrim`
+    - Prints a concise watcher summary (state, heartbeatFresh, needsTrim) and
+      emits a compact JSON block to `tests/results/_agent/handoff/watcher-telemetry.json`.
+    - When `-AutoTrim` (or `HANDOFF_AUTOTRIM=1`) is set, trims oversized watcher logs if eligible
+      and appends notes to the GitHub Step Summary when available.
 
 ## Fast path for issue #88
 

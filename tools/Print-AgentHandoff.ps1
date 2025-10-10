@@ -66,21 +66,37 @@ function Write-WatcherStatusSummary {
   $autoTrimOutput = @()
 
   if ($autoTrimRequested) {
-    try {
-      # Capture both success and information streams
-      $autoTrimOutput = & $watcherCli -AutoTrim -ResultsDir $ResultsRoot 6>&1
-      if ($autoTrimOutput -match 'Trimmed watcher logs') { $autoTrimExecuted = $true }
-    } catch {
-      Write-Warning ("Auto-trim failed: {0}" -f $_.Exception.Message)
-    }
-    try {
-      $statusJson = & $watcherCli -Status -ResultsDir $ResultsRoot 6>&1
-      if (-not $statusJson) {
-        $statusJson = & pwsh -NoLogo -NoProfile -File $watcherCli -Status -ResultsDir $ResultsRoot
+    $shouldTrim = $true
+    if ($status) {
+      if ($status.PSObject.Properties['needsTrim']) {
+        $shouldTrim = [bool]$status.needsTrim
+      } elseif ($status.PSObject.Properties['autoTrim'] -and $status.autoTrim) {
+        # If eligibility is known, honor it
+        if ($status.autoTrim.PSObject.Properties['eligible']) {
+          $shouldTrim = [bool]$status.autoTrim.eligible
+        }
       }
-      if ($statusJson) { $status = $statusJson | ConvertFrom-Json -ErrorAction Stop }
-    } catch {
-      Write-Warning ("Failed to refresh watcher status after auto-trim: {0}" -f $_.Exception.Message)
+    }
+    if ($shouldTrim) {
+      try {
+        # Capture both success and information streams
+        $autoTrimOutput = & $watcherCli -AutoTrim -ResultsDir $ResultsRoot 6>&1
+        if ($autoTrimOutput -match 'Trimmed watcher logs') { $autoTrimExecuted = $true }
+      } catch {
+        Write-Warning ("Auto-trim failed: {0}" -f $_.Exception.Message)
+      }
+      try {
+        $statusJson = & $watcherCli -Status -ResultsDir $ResultsRoot 6>&1
+        if (-not $statusJson) {
+          $statusJson = & pwsh -NoLogo -NoProfile -File $watcherCli -Status -ResultsDir $ResultsRoot
+        }
+        if ($statusJson) { $status = $statusJson | ConvertFrom-Json -ErrorAction Stop }
+      } catch {
+        Write-Warning ("Failed to refresh watcher status after auto-trim: {0}" -f $_.Exception.Message)
+      }
+    } else {
+      $autoTrimExecuted = $false
+      $autoTrimOutput = @('Auto-trim skipped (not needed).')
     }
   }
 
