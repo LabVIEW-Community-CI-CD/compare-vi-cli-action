@@ -511,6 +511,8 @@ jobs:
       uses: ./.github/actions/ensure-invoker
       with:
         mode: stop
+        results-dir: tests/results
+        category: ${{ matrix.category }}
     - name: Emit LV closure telemetry (category post-stop)
       if: always()
       shell: pwsh
@@ -1173,4 +1175,3 @@ jobs:
         $cmd = "/run orchestrated strategy={0} include_integration={1} sample_id={2}" -f $strategy,$include,$sid
         $lines = @('### Re-run With Same Inputs','',"$ $cmd")
         if ($env:GITHUB_STEP_SUMMARY) { $lines -join "`n" | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8 }
-
