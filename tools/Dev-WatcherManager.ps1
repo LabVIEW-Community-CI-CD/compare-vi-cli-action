@@ -9,7 +9,8 @@ param(
   [int]$HangSeconds = 120,
   [int]$PollMs = 2000,
   [int]$NoProgressSeconds = 90,
-  [string]$ProgressRegex = '^(?:\s*\[[-+\*]\]|\s*It\s)'
+  [string]$ProgressRegex = '^(?:\s*\[[-+\*]\]|\s*It\s)',
+  [int]$AutoTrimCooldownSeconds = 900
 )
 
 Set-StrictMode -Version Latest
@@ -32,6 +33,7 @@ function Get-WatcherPaths {
     ErrFile  = Join-Path $watchDir 'watch.err'
     StatusFile = Join-Path $watchDir 'watcher-status.json'
     HeartbeatFile = Join-Path $watchDir 'watcher-self.json'
+    TrimMetadataFile = Join-Path $watchDir 'watcher-trim.json'
   }
 }
 
@@ -98,13 +100,123 @@ function Test-WatcherProcess {
   [pscustomobject]@{ IsValid = $true; Reason = '' }
 }
 
+function Initialize-TrimMetadata {
+  param([int]$CooldownSeconds)
+  [ordered]@{
+    schema = 'dev-watcher/trim-meta-v1'
+    cooldownSeconds = $CooldownSeconds
+    trimCount = 0
+    autoTrimCount = 0
+    manualTrimCount = 0
+    lastTrimAt = $null
+    lastAutoTrimAt = $null
+    lastManualTrimAt = $null
+    lastTrimKind = $null
+    lastTrimBytes = $null
+  }
+}
+
+function Get-TrimMetadata {
+  param(
+    [pscustomobject]$Paths,
+    [int]$CooldownSeconds
+  )
+  $meta = Initialize-TrimMetadata -CooldownSeconds $CooldownSeconds
+  $metaPath = $Paths.TrimMetadataFile
+  if (Test-Path -LiteralPath $metaPath) {
+    try {
+      $raw = Get-Content -LiteralPath $metaPath -Raw
+      if ($raw) {
+        $data = $raw | ConvertFrom-Json -ErrorAction Stop
+        if ($data) {
+          foreach ($prop in $data.PSObject.Properties) {
+            $meta[$prop.Name] = $prop.Value
+          }
+        }
+      }
+    } catch {
+      Write-Warning ("[watcher] Failed to read trim metadata {0}: {1}" -f $metaPath, $_.Exception.Message)
+    }
+  }
+  $meta['cooldownSeconds'] = $CooldownSeconds
+  return $meta
+}
+
+function Set-TrimMetadata {
+  param(
+    [pscustomobject]$Paths,
+    [System.Collections.IDictionary]$Metadata
+  )
+  $metaPath = $Paths.TrimMetadataFile
+  try {
+    if (-not (Test-Path -LiteralPath $Paths.Dir)) {
+      New-Item -ItemType Directory -Force -Path $Paths.Dir | Out-Null
+    }
+    ($Metadata | ConvertTo-Json -Depth 4) | Out-File -FilePath $metaPath -Encoding utf8
+  } catch {
+    Write-Warning ("[watcher] Failed to persist trim metadata {0}: {1}" -f $metaPath, $_.Exception.Message)
+  }
+}
+
+function Parse-TimestampUtc {
+  param([string]$Value)
+  if ([string]::IsNullOrWhiteSpace($Value)) { return $null }
+  try {
+    $culture = [System.Globalization.CultureInfo]::InvariantCulture
+    $styles = [System.Globalization.DateTimeStyles]::AssumeUniversal -bor [System.Globalization.DateTimeStyles]::AdjustToUniversal
+    return [datetime]::Parse($Value, $culture, $styles)
+  } catch {
+    return $null
+  }
+}
+
+function Normalize-JsonString {
+  param($Value)
+  if ($null -eq $Value) { return '' }
+  if ($Value -is [string]) { return $Value }
+  if ($Value -is [System.Array]) { return [string]::Join([Environment]::NewLine, $Value) }
+  return [string]$Value
+}
+
 function Trim-LogFile {
   param([string]$Path)
-  if (-not (Test-Path -LiteralPath $Path)) { return $false }
+  if (-not (Test-Path -LiteralPath $Path)) {
+    return [pscustomobject]@{
+      Trimmed = $false
+      Path = $Path
+      Reason = 'missing'
+      OriginalBytes = 0
+      ResultBytes = 0
+      RemovedBytes = 0
+      TailLines = 0
+    }
+  }
   $info = Get-Item -LiteralPath $Path -ErrorAction SilentlyContinue
-  if (-not $info) { return $false }
-  if ($info.Length -le $MaxLogBytes) { return $false }
+  if (-not $info) {
+    return [pscustomobject]@{
+      Trimmed = $false
+      Path = $Path
+      Reason = 'stat-failed'
+      OriginalBytes = 0
+      ResultBytes = 0
+      RemovedBytes = 0
+      TailLines = 0
+    }
+  }
+  $originalBytes = $info.Length
+  if ($originalBytes -le $MaxLogBytes) {
+    return [pscustomobject]@{
+      Trimmed = $false
+      Path = $Path
+      Reason = 'below-threshold'
+      OriginalBytes = $originalBytes
+      ResultBytes = $originalBytes
+      RemovedBytes = 0
+      TailLines = 0
+    }
+  }
   $lines = Get-Content -LiteralPath $Path -Tail $MaxLogLines
+  $tailCount = if ($lines) { ($lines | Measure-Object).Count } else { 0 }
   $temp = [System.IO.Path]::GetTempFileName()
   try {
     $lines | Set-Content -LiteralPath $temp -Encoding utf8
@@ -113,8 +225,136 @@ function Trim-LogFile {
     try { Remove-Item -LiteralPath $temp -Force -ErrorAction SilentlyContinue } catch {}
     throw
   }
-  return $true
+  $resultInfo = Get-Item -LiteralPath $Path -ErrorAction SilentlyContinue
+  $resultBytes = if ($resultInfo) { $resultInfo.Length } else { 0 }
+  $removedBytes = [math]::Max(0, $originalBytes - $resultBytes)
+  return [pscustomobject]@{
+    Trimmed = $true
+    Path = $Path
+    Reason = 'trimmed'
+    OriginalBytes = $originalBytes
+    ResultBytes = $resultBytes
+    RemovedBytes = $removedBytes
+    TailLines = $tailCount
+  }
 }
+
+function Test-LogsNeedTrim {
+  param([pscustomobject]$Paths)
+  foreach ($logPath in @($Paths.OutFile, $Paths.ErrFile)) {
+    if (Test-Path -LiteralPath $logPath) {
+      try {
+        $item = Get-Item -LiteralPath $logPath -ErrorAction Stop
+        if ($item.Length -gt $MaxLogBytes) { return $true }
+      } catch {}
+    }
+  }
+  return $false
+}
+
+function Invoke-WatcherTrim {
+  param(
+    [pscustomobject]$Paths,
+    [pscustomobject]$Status,
+    [string]$Reason,
+    [int]$CooldownSeconds,
+    [switch]$RespectCooldown
+  )
+
+  $nowUtc = (Get-Date).ToUniversalTime()
+  $metadata = Get-TrimMetadata -Paths $Paths -CooldownSeconds $CooldownSeconds
+  $cooldownSeconds = [int]($metadata['cooldownSeconds'])
+  if ($cooldownSeconds -le 0) { $cooldownSeconds = $CooldownSeconds }
+
+  $needsTrim = $false
+  if ($Status -and $Status.PSObject.Properties['needsTrim']) {
+    $needsTrim = [bool]$Status.PSObject.Properties['needsTrim'].Value
+  } else {
+    $needsTrim = Test-LogsNeedTrim -Paths $Paths
+  }
+
+  if (-not $needsTrim) {
+    return [pscustomobject]@{
+      Trimmed = $false
+      RemovedBytes = 0
+      Reason = 'no-needs-trim'
+      CooldownSeconds = $cooldownSeconds
+      CooldownRemainingSeconds = $null
+      Results = @()
+      Metadata = $metadata
+    }
+  }
+
+  $lastTrimAt = Parse-TimestampUtc ($metadata['lastTrimAt'])
+  $cooldownRemaining = $null
+  if ($RespectCooldown -and $lastTrimAt) {
+    $elapsedSeconds = ($nowUtc - $lastTrimAt).TotalSeconds
+    if ($elapsedSeconds -lt $cooldownSeconds) {
+      $cooldownRemaining = [int][math]::Ceiling($cooldownSeconds - $elapsedSeconds)
+      return [pscustomobject]@{
+        Trimmed = $false
+        RemovedBytes = 0
+        Reason = 'cooldown'
+        CooldownSeconds = $cooldownSeconds
+        CooldownRemainingSeconds = $cooldownRemaining
+        Results = @()
+        Metadata = $metadata
+      }
+    }
+  }
+
+  $results = @()
+  foreach ($logPath in @($Paths.OutFile, $Paths.ErrFile)) {
+    try {
+      $results += ,(Trim-LogFile -Path $logPath)
+    } catch {
+      Write-Warning ("[watcher] Failed to trim log {0}: {1}" -f $logPath, $_.Exception.Message)
+      $results += ,[pscustomobject]@{
+        Trimmed = $false
+        Path = $logPath
+        Reason = 'error'
+        OriginalBytes = $null
+        ResultBytes = $null
+        RemovedBytes = 0
+        TailLines = 0
+      }
+    }
+  }
+
+  $trimmedRecords = @($results | Where-Object { $_.Trimmed })
+  $totalRemoved = ($trimmedRecords | Measure-Object -Property RemovedBytes -Sum).Sum
+  if (-not $totalRemoved) { $totalRemoved = 0 }
+
+  if ($trimmedRecords.Count -gt 0) {
+    $metadata['cooldownSeconds'] = $cooldownSeconds
+    $metadata['trimCount'] = [int]($metadata['trimCount']) + 1
+    if ($Reason -eq 'auto') {
+      $metadata['autoTrimCount'] = [int]($metadata['autoTrimCount']) + 1
+      $metadata['lastAutoTrimAt'] = $nowUtc.ToString('o')
+    } else {
+      $metadata['manualTrimCount'] = [int]($metadata['manualTrimCount']) + 1
+      $metadata['lastManualTrimAt'] = $nowUtc.ToString('o')
+    }
+    $metadata['lastTrimAt'] = $nowUtc.ToString('o')
+    $metadata['lastTrimKind'] = $Reason
+    $metadata['lastTrimBytes'] = $totalRemoved
+    Set-TrimMetadata -Paths $Paths -Metadata $metadata
+  } else {
+    $metadata['cooldownSeconds'] = $cooldownSeconds
+    Set-TrimMetadata -Paths $Paths -Metadata $metadata
+  }
+
+  return [pscustomobject]@{
+    Trimmed = ($trimmedRecords.Count -gt 0)
+    RemovedBytes = $totalRemoved
+    Reason = if ($trimmedRecords.Count -gt 0) { 'trimmed' } else { 'already-trimmed' }
+    CooldownSeconds = $cooldownSeconds
+    CooldownRemainingSeconds = $cooldownRemaining
+    Results = $results
+    Metadata = $metadata
+  }
+}
+
 
 function Get-LogSnapshot {
   param([string]$Path)
@@ -133,18 +373,20 @@ function Get-LogSnapshot {
 function Get-PropValue {
   param($Object, [string]$Name)
   if ($null -eq $Object) { return $null }
-  try {
-    return $Object | Select-Object -ExpandProperty $Name -ErrorAction Stop
-  } catch {
+  if ($Object -is [System.Collections.IDictionary]) {
+    if ($Object.Contains($Name)) { return $Object[$Name] }
     return $null
   }
+  $prop = $Object.PSObject.Properties[$Name]
+  if ($prop) { return $prop.Value }
+  return $null
 }
 
 function Start-DevWatcher {
   param([string]$ResultsDir,[int]$WarnSeconds,[int]$HangSeconds,[int]$PollMs,[int]$NoProgressSeconds,[string]$ProgressRegex,[switch]$IncludeProgressRegex)
   $paths = Get-WatcherPaths -ResultsDir $ResultsDir
   foreach ($logPath in @($paths.OutFile, $paths.ErrFile)) {
-    try { Trim-LogFile -Path $logPath | Out-Null } catch { Write-Warning ([string]::Format('[watcher] Failed to trim log {0}: {1}', $logPath, $_.Exception.Message)) }
+    try { [void](Trim-LogFile -Path $logPath) } catch { Write-Warning ([string]::Format('[watcher] Failed to trim log {0}: {1}', $logPath, $_.Exception.Message)) }
   }
   $node = Get-Command node -ErrorAction SilentlyContinue
   if (-not $node) { throw 'Node.js not found on PATH (required for watcher).' }
@@ -230,8 +472,10 @@ function Get-DevWatcherStatus {
     }
   }
 
-  $statusData = Read-JsonFile -Path $paths.StatusFile
-  $heartbeatData = Read-JsonFile -Path $paths.HeartbeatFile
+  $statusFileExists = Test-Path -LiteralPath $paths.StatusFile
+  $heartbeatFileExists = Test-Path -LiteralPath $paths.HeartbeatFile
+  $statusData = if ($statusFileExists) { Read-JsonFile -Path $paths.StatusFile } else { $null }
+  $heartbeatData = if ($heartbeatFileExists) { Read-JsonFile -Path $paths.HeartbeatFile } else { $null }
   $heartbeatTimestamp = Get-PropValue $heartbeatData 'timestamp'
   $stateFromStatus = Get-PropValue $statusData 'state'
   $state = if ($stateFromStatus) { $stateFromStatus } elseif ($alive) { 'ok' } else { 'stopped' }
@@ -285,6 +529,39 @@ function Get-DevWatcherStatus {
   $errInfo = Get-LogSnapshot -Path $paths.ErrFile
   $needsTrim = ($outInfo.exists -and $outInfo.sizeBytes -gt $MaxLogBytes) -or ($errInfo.exists -and $errInfo.sizeBytes -gt $MaxLogBytes)
 
+  $trimMetadata = Get-TrimMetadata -Paths $paths -CooldownSeconds $AutoTrimCooldownSeconds
+  $lastTrimAtRaw = $trimMetadata['lastTrimAt']
+  $lastTrimKind = $trimMetadata['lastTrimKind']
+  $lastTrimBytes = $trimMetadata['lastTrimBytes']
+  $lastAutoTrimAt = $trimMetadata['lastAutoTrimAt']
+  $lastManualTrimAt = $trimMetadata['lastManualTrimAt']
+  $trimCount = $trimMetadata['trimCount']
+  $autoTrimCount = $trimMetadata['autoTrimCount']
+  $manualTrimCount = $trimMetadata['manualTrimCount']
+  $trimCooldownSeconds = [int]$trimMetadata['cooldownSeconds']
+  if ($trimCooldownSeconds -le 0) { $trimCooldownSeconds = $AutoTrimCooldownSeconds }
+  $lastTrimMoment = Parse-TimestampUtc $lastTrimAtRaw
+  $autoTrimEligible = $false
+  $autoTrimCooldownRemaining = $null
+  $nextEligibleAt = $null
+  if ($needsTrim) {
+    if ($lastTrimMoment) {
+      $elapsedSinceTrim = ([datetime]::UtcNow) - $lastTrimMoment
+      if ($elapsedSinceTrim.TotalSeconds -ge $trimCooldownSeconds) {
+        $autoTrimEligible = $true
+      } else {
+        $autoTrimEligible = $false
+        $autoTrimCooldownRemaining = [int][math]::Ceiling([math]::Max($trimCooldownSeconds - $elapsedSinceTrim.TotalSeconds, 0))
+        $nextEligibleAt = $lastTrimMoment.AddSeconds($trimCooldownSeconds).ToString('o')
+      }
+    } else {
+      $autoTrimEligible = $true
+    }
+  }
+  if (-not $needsTrim -and $lastTrimMoment -and $trimCooldownSeconds -gt 0) {
+    $nextEligibleAt = $lastTrimMoment.AddSeconds($trimCooldownSeconds).ToString('o')
+  }
+
   $processVerified = if ($validation) { $validation.IsValid } else { $false }
   $verificationReason = if ($validation) { $validation.Reason } else { $null }
   if ($processVerified -and -not $heartbeatFresh) {
@@ -320,16 +597,20 @@ function Get-DevWatcherStatus {
     thresholds = $thresholds
     files = @{ 
       pid = @{ path = $paths.PidFile }
-      status = @{ path = $paths.StatusFile; exists = [bool]$statusData }
+      status = @{ path = $paths.StatusFile; exists = $statusFileExists }
       heartbeat = @{
         path = $paths.HeartbeatFile
-        exists = [bool]$heartbeatData
+        exists = $heartbeatFileExists
         timestamp = $heartbeatTimestamp
         ageSeconds = $heartbeatAgeSeconds
         schema = Get-PropValue $heartbeatData 'schema'
       }
       out = $outInfo
       err = $errInfo
+      trim = @{
+        path = $paths.TrimMetadataFile
+        exists = (Test-Path -LiteralPath $paths.TrimMetadataFile)
+      }
     }
     process = @{
       commandLine = Get-PropValue $procInfo 'CommandLine'
@@ -337,6 +618,20 @@ function Get-DevWatcherStatus {
       verified = $processVerified
     }
     needsTrim = $needsTrim
+    autoTrim = @{
+      cooldownSeconds = $trimCooldownSeconds
+      eligible = $autoTrimEligible
+      cooldownRemainingSeconds = $autoTrimCooldownRemaining
+      nextEligibleAt = $nextEligibleAt
+      lastTrimAt = $lastTrimAtRaw
+      lastTrimKind = $lastTrimKind
+      lastTrimBytes = $lastTrimBytes
+      lastAutoTrimAt = $lastAutoTrimAt
+      lastManualTrimAt = $lastManualTrimAt
+      trimCount = $trimCount
+      autoTrimCount = $autoTrimCount
+      manualTrimCount = $manualTrimCount
+    }
   }
   return ($obj | ConvertTo-Json -Depth 6)
 }
@@ -395,6 +690,17 @@ if ($Ensure) {
   } else {
     Write-Host ("Dev watcher already running (PID {0})." -f $pidObj.pid)
   }
+  $statusJsonEnsureFinal = Normalize-JsonString (Get-DevWatcherStatus -ResultsDir $ResultsDir)
+  $statusEnsureFinal = $null
+  try { $statusEnsureFinal = $statusJsonEnsureFinal | ConvertFrom-Json -ErrorAction Stop } catch {}
+  if ($statusEnsureFinal) {
+    $trimOutcome = Invoke-WatcherTrim -Paths $paths -Status $statusEnsureFinal -Reason 'auto' -CooldownSeconds $AutoTrimCooldownSeconds -RespectCooldown
+    if ($trimOutcome.Trimmed) {
+      Write-Host ("[watcher] Auto-trimmed logs (~{0} bytes removed)." -f $trimOutcome.RemovedBytes)
+    } elseif ($trimOutcome.Reason -eq 'cooldown' -and $trimOutcome.CooldownRemainingSeconds -ne $null) {
+      Write-Host ("[watcher] Auto-trim cooldown active (~{0}s remaining)." -f $trimOutcome.CooldownRemainingSeconds)
+    }
+  }
 }
 elseif ($Stop) {
   Stop-DevWatcher -ResultsDir $ResultsDir
@@ -404,33 +710,34 @@ elseif ($Status) {
 }
 elseif ($Trim) {
   $paths = Get-WatcherPaths -ResultsDir $ResultsDir
-  $trimmed = $false
-  foreach ($logPath in @($paths.OutFile, $paths.ErrFile)) {
-    try {
-      if (Trim-LogFile -Path $logPath) { $trimmed = $true }
-    } catch {
-      Write-Warning ("[watcher] Failed to trim log {0}: {1}" -f $logPath, $_.Exception.Message)
-    }
+  $statusJsonManual = Normalize-JsonString (Get-DevWatcherStatus -ResultsDir $ResultsDir)
+  $statusManual = $null
+  try { $statusManual = $statusJsonManual | ConvertFrom-Json -ErrorAction Stop } catch {}
+  $trimOutcome = Invoke-WatcherTrim -Paths $paths -Status $statusManual -Reason 'manual' -CooldownSeconds $AutoTrimCooldownSeconds
+  if ($trimOutcome.Trimmed) {
+    Write-Host ("Trimmed watcher logs (~{0} bytes removed)." -f $trimOutcome.RemovedBytes)
+  } elseif ($trimOutcome.Reason -eq 'no-needs-trim') {
+    Write-Host 'No trimming needed.'
+  } else {
+    Write-Host ("No trimming performed ({0})." -f $trimOutcome.Reason)
   }
-  if ($trimmed) { Write-Host 'Trimmed watcher logs.' } else { Write-Host 'No trimming needed.' }
 }
 elseif ($AutoTrim) {
-  $statusJson = Get-DevWatcherStatus -ResultsDir $ResultsDir
+  $statusJson = Normalize-JsonString (Get-DevWatcherStatus -ResultsDir $ResultsDir)
   $status = $null
-  try { $status = $statusJson | ConvertFrom-Json -ErrorAction Stop } catch {}
-  if ($status -and $status.needsTrim) {
-    $paths = Get-WatcherPaths -ResultsDir $ResultsDir
-    $trimmed = $false
-    foreach ($logPath in @($paths.OutFile, $paths.ErrFile)) {
-      try {
-        if (Trim-LogFile -Path $logPath) { $trimmed = $true }
-      } catch {
-        Write-Warning ("[watcher] Failed to trim log {0}: {1}" -f $logPath, $_.Exception.Message)
-      }
-    }
-    if ($trimmed) { Write-Host 'Trimmed watcher logs.' } else { Write-Host 'No trimming needed.' }
-  } else {
+  try { $status = $statusJson | ConvertFrom-Json -ErrorAction Stop } catch {
+    Write-Warning ("[watcher] Failed to gather watcher status: {0}" -f $_.Exception.Message)
+  }
+  $paths = Get-WatcherPaths -ResultsDir $ResultsDir
+  $trimOutcome = Invoke-WatcherTrim -Paths $paths -Status $status -Reason 'auto' -CooldownSeconds $AutoTrimCooldownSeconds -RespectCooldown
+  if ($trimOutcome.Trimmed) {
+    Write-Host ("Trimmed watcher logs (~{0} bytes removed)." -f $trimOutcome.RemovedBytes)
+  } elseif ($trimOutcome.Reason -eq 'cooldown' -and $trimOutcome.CooldownRemainingSeconds -ne $null) {
+    Write-Host ("Auto-trim cooldown active (~{0}s remaining)." -f $trimOutcome.CooldownRemainingSeconds)
+  } elseif ($trimOutcome.Reason -eq 'no-needs-trim') {
     Write-Host 'No trimming needed.'
+  } else {
+    Write-Host ("Auto-trim skipped ({0})." -f $trimOutcome.Reason)
   }
 }
 else {
@@ -441,6 +748,3 @@ else {
   Write-Host '  Trim logs:       pwsh -File tools/Dev-WatcherManager.ps1 -Trim'
   Write-Host '  Auto-trim if needed: pwsh -File tools/Dev-WatcherManager.ps1 -AutoTrim'
 }
-
-
-
