@@ -59,7 +59,8 @@ jobs:
   `C:\Program Files\National Instruments\Shared\LabVIEW Compare\LVCompare.exe`.
 - The repository checkout includes or generates the `.vi` files to compare.
 
-## Monitoring & telemetry
+## Test dispatcher tips\n\n- \\./Invoke-PesterTests.ps1 -LiveOutput\\ streams Describe/It progress while preserving the log files under \\	ests/results\\. Leave the switch off in CI to keep logs quiet.\n- Single-invoker runs now create per-run state files (\\	ests/results/_invoker/single-compare-state-<runId>.json\\) along with a pointer at \\single-compare-state.json\\. Set \\LVCI_DISABLE_RUNID_STATE=1\\ to revert to the legacy naming if a consumer still expects the old path.\n- Artifact schemas are generated with \\
+pm run schemas:generate\\ and land under \\docs/schema/generated/\\. Regenerate before committing when you adjust artifact shapes.\n\n## Monitoring & telemetry
 
 ### Dev dashboard
 
@@ -83,8 +84,19 @@ DX reminders. Workflows call `tools/Invoke-DevDashboard.ps1` to publish HTML/JSO
 - `tools/Print-AgentHandoff.ps1 -AutoTrim` (prints summary and trims automatically when
   `needsTrim=true`).
 
-Status JSON contains `state`, heartbeat freshness, and byte counters – ideal for hand-offs or
+Status JSON contains `state`, heartbeat freshness, and byte counters - ideal for hand-offs or
 CI summaries.
+
+### TestStand harness
+
+- `npm run teststand:compare -- --base fixtures/VI1.vi --head fixtures/VI2.vi`
+  - Wraps `tools/TestStand-CompareHarness.ps1` to warm up the LabVIEW runtime, run LVCompare, and
+    optionally render `compare-report.html`.
+  - Artifacts (warm-up log, compare log, capture JSON, report) land under
+    `tests/results/teststand-session/` along with `session-index.json`
+    (`teststand-compare-session/v1`).
+  - Pass `--labview`, `--lvcompare`, `--render-report`, `--close-labview`, `--close-lvcompare` to
+    match harness switches.
 
 ## Bundled workflows
 
@@ -117,7 +129,8 @@ npm run lint:md:changed
 | Loop mode | `docs/COMPARE_LOOP_MODULE.md` |
 | Integration runbook | `docs/INTEGRATION_RUNBOOK.md` |
 | Troubleshooting | `docs/TROUBLESHOOTING.md` |
-| Traceability (requirements ↔ tests) | `docs/TRACEABILITY_GUIDE.md` |
+| Traceability (requirements → tests) | docs/TRACEABILITY_GUIDE.md |
+| TS schemas & invoker plan | docs/TS_SCHEMAS_AND_INVOKER.md |
 
 ## Contributing
 
@@ -134,3 +147,5 @@ should note affected jobs and link to supporting ADRs.
 - File issues: <https://github.com/LabVIEW-Community-CI-CD/compare-vi-cli-action/issues>
 - Contact NI for LabVIEW licensing questions.
 - For agent coordination, follow the steps in `AGENT_HANDOFF.txt`.
+
+

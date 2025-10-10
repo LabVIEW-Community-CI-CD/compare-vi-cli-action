@@ -1,0 +1,95 @@
+{
+  "$ref": "#/definitions/teststand-compare-session",
+  "definitions": {
+    "teststand-compare-session": {
+      "type": "object",
+      "properties": {
+        "schema": {
+          "type": "string",
+          "const": "teststand-compare-session/v1"
+        },
+        "at": {
+          "type": "string",
+          "minLength": 1
+        },
+        "warmup": {
+          "type": "object",
+          "properties": {
+            "events": {
+              "type": "string",
+              "minLength": 1
+            }
+          },
+          "required": [
+            "events"
+          ],
+          "additionalProperties": false
+        },
+        "compare": {
+          "type": "object",
+          "properties": {
+            "events": {
+              "type": "string",
+              "minLength": 1
+            },
+            "capture": {
+              "type": "string",
+              "minLength": 1
+            },
+            "report": {
+              "type": "boolean"
+            }
+          },
+          "required": [
+            "events",
+            "capture",
+            "report"
+          ],
+          "additionalProperties": false
+        },
+        "outcome": {
+          "anyOf": [
+            {
+              "type": "object",
+              "properties": {
+                "exitCode": {
+                  "type": "number"
+                },
+                "seconds": {
+                  "type": "number"
+                },
+                "command": {
+                  "type": "string"
+                },
+                "diff": {
+                  "type": "boolean"
+                }
+              },
+              "required": [
+                "exitCode"
+              ],
+              "additionalProperties": false
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "error": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "schema",
+        "at",
+        "warmup",
+        "compare",
+        "outcome"
+      ],
+      "additionalProperties": false
+    }
+  },
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "description": "Session index emitted by tools/TestStand-CompareHarness.ps1.",
+  "$id": "urn:compare-vi-cli-action:schema:teststand-compare-session"
+}

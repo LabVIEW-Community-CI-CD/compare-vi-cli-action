@@ -9,11 +9,18 @@ The format is based on Keep a Changelog, and this project adheres to Semantic Ve
 
 ### Added
 
-- Fixture manifest pair block (schema `fixture-pair/v1`) — additive top-level `pair` object derived from first `base`/`head` items:
+- Fixture manifest pair block (schema `fixture-pair/v1`) - additive top-level `pair` object derived from first `base`/`head` items:
   - Fields: `basePath`, `headPath`, `algorithm=sha256`, `canonical`, `digest`, optional `expectedOutcome` (`identical|diff|any`), `enforce` (`notice|warn|fail`).
   - Updater flags: `tools/Update-FixtureManifest.ps1 -Allow -InjectPair [-SetExpectedOutcome diff|identical|any] [-SetEnforce notice|warn|fail]` (idempotent; preserves hints unless overridden).
   - Validator flags: `tools/Validate-Fixtures.ps1 -Json -RequirePair -FailOnExpectedMismatch [-EvidencePath results/fixture-drift/compare-exec.json]`.
   - Evidence mapping: LVCompare exitCode `0→identical`, `1→diff` (or `diff` boolean when available). Validator searches default evidence locations when `-EvidencePath` is omitted.
+- `Invoke-PesterTests.ps1 -LiveOutput` streams Describe/It progress for local runs while retaining captured logs in `tests/results/`.
+- TypeScript schema generator (`npm run schemas:generate`) produces JSON Schemas under `docs/schema/generated/` for key artifacts (agent-wait, compare-exec, pester summary, invoker events, etc.).
+- TestStand compare harness integration: `npm run teststand:compare -- --base <vi> --head <vi>` wraps `tools/TestStand-CompareHarness.ps1`, and schema `teststand-compare-session/v1` is published under `docs/schema/generated/`.
+
+### Changed
+
+- Runner invoker now assigns a per-run identifier (`single-compare-state-<runId>.json`) and clears stale request/response/state files on startup. Set `LVCI_DISABLE_RUNID_STATE=1` to revert to the legacy single-state file name.
 
 ## [v0.5.0] - 2025-10-05
 

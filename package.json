@@ -22,10 +22,12 @@
     "dev:watcher:stop": "pwsh -NoLogo -NoProfile -File tools/Dev-WatcherManager.ps1 -Stop",
     "dev:watcher:trim": "pwsh -NoLogo -NoProfile -File tools/Dev-WatcherManager.ps1 -Trim",
     "dev:watcher:autotrim": "pwsh -NoLogo -NoProfile -File tools/Dev-WatcherManager.ps1 -AutoTrim",
+    "teststand:compare": "tsc -p tsconfig.json && node dist/teststand/run-harness.js",
     "ci:status": "pwsh -NoLogo -NoProfile -File tools/Follow-OrchestratedRun.ps1",
     "ci:watch": "pwsh -NoLogo -NoProfile -File tools/Follow-OrchestratedRun.ps1 -Watch"
   },
   "devDependencies": {
+    "@types/argparse": "^2.0.17",
     "@types/js-yaml": "^4.0.9",
     "@types/node": "20.11.30",
     "js-yaml": "4.1.0",
