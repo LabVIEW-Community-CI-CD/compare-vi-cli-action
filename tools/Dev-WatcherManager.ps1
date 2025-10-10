@@ -706,7 +706,8 @@ elseif ($Stop) {
   Stop-DevWatcher -ResultsDir $ResultsDir
 }
 elseif ($Status) {
-  Get-DevWatcherStatus -ResultsDir $ResultsDir | Write-Host
+  # Emit status JSON to the success stream so callers can capture output without spawning nested pwsh
+  Get-DevWatcherStatus -ResultsDir $ResultsDir | Write-Output
 }
 elseif ($Trim) {
   $paths = Get-WatcherPaths -ResultsDir $ResultsDir

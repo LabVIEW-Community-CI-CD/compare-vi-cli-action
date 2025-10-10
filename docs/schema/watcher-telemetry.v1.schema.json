@@ -1,0 +1,54 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "watcher-telemetry.v1.schema.json",
+  "title": "Agent Handoff Watcher Telemetry v1",
+  "type": "object",
+  "required": [
+    "schema",
+    "timestamp",
+    "resultsDir",
+    "state",
+    "alive",
+    "verifiedProcess",
+    "heartbeatFresh",
+    "needsTrim"
+  ],
+  "properties": {
+    "schema": { "const": "agent-handoff/watcher-telemetry-v1" },
+    "timestamp": { "type": "string", "format": "date-time" },
+    "resultsDir": { "type": "string" },
+    "state": { "type": "string" },
+    "alive": { "type": "boolean" },
+    "verifiedProcess": { "type": "boolean" },
+    "heartbeatFresh": { "type": "boolean" },
+    "heartbeatReason": { "type": ["string", "null"] },
+    "lastHeartbeatAt": { "type": ["string", "null"], "format": "date-time" },
+    "heartbeatAgeSeconds": { "type": ["integer", "null"], "minimum": 0 },
+    "needsTrim": { "type": "boolean" },
+    "autoTrimExecuted": { "type": "boolean" },
+    "outPath": { "type": ["string", "null"] },
+    "errPath": { "type": ["string", "null"] },
+    "autoTrim": {
+      "type": ["object", "null"],
+      "required": [
+        "eligible",
+        "cooldownSeconds",
+        "trimCount",
+        "autoTrimCount",
+        "manualTrimCount"
+      ],
+      "properties": {
+        "eligible": { "type": "boolean" },
+        "cooldownSeconds": { "type": "integer", "minimum": 0 },
+        "cooldownRemainingSeconds": { "type": ["integer", "null"], "minimum": 0 },
+        "nextEligibleAt": { "type": ["string", "null"], "format": "date-time" },
+        "lastTrimAt": { "type": ["string", "null"], "format": "date-time" },
+        "lastTrimKind": { "type": ["string", "null"] },
+        "lastTrimBytes": { "type": ["integer", "null"], "minimum": 0 },
+        "trimCount": { "type": "integer", "minimum": 0 },
+        "autoTrimCount": { "type": "integer", "minimum": 0 },
+        "manualTrimCount": { "type": "integer", "minimum": 0 }
+      }
+    }
+  }
+}

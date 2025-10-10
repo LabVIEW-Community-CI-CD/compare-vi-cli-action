@@ -64,6 +64,7 @@ pwsh -File tools/Print-AgentHandoff.ps1 -ApplyToggles -AutoTrim
 - Auto-trim policy: if `needsTrim=true`, watcher logs are trimmed to the last ~4000 lines when either
   `-AutoTrim` is passed or `HANDOFF_AUTOTRIM=1` is set. Dev watcher also trims on start.
 - Trim thresholds: ~5MB per log file; only oversized logs are trimmed.
+- See [`WATCHER_TELEMETRY_DX.md`](./WATCHER_TELEMETRY_DX.md) for automation response expectations.
 
 ## Quick verification
 

@@ -38,7 +38,12 @@ function Write-WatcherStatusSummary {
   }
 
   try {
-    $statusJson = & pwsh -NoLogo -NoProfile -File $watcherCli -Status -ResultsDir $ResultsRoot
+    # Prefer in-process invocation to avoid nested pwsh; capture information stream just in case
+    $statusJson = & $watcherCli -Status -ResultsDir $ResultsRoot 6>&1
+    if (-not $statusJson) {
+      # Fallback to spawning pwsh to capture host output if needed
+      $statusJson = & pwsh -NoLogo -NoProfile -File $watcherCli -Status -ResultsDir $ResultsRoot
+    }
   } catch {
     Write-Warning ("Failed to gather watcher status: {0}" -f $_.Exception.Message)
     return
@@ -62,18 +67,18 @@ function Write-WatcherStatusSummary {
 
   if ($autoTrimRequested) {
     try {
-      $autoTrimOutput = & pwsh -NoLogo -NoProfile -File $watcherCli -AutoTrim -ResultsDir $ResultsRoot
-      if ($autoTrimOutput -match 'Trimmed watcher logs') {
-        $autoTrimExecuted = $true
-      }
+      # Capture both success and information streams
+      $autoTrimOutput = & $watcherCli -AutoTrim -ResultsDir $ResultsRoot 6>&1
+      if ($autoTrimOutput -match 'Trimmed watcher logs') { $autoTrimExecuted = $true }
     } catch {
       Write-Warning ("Auto-trim failed: {0}" -f $_.Exception.Message)
     }
     try {
-      $statusJson = & pwsh -NoLogo -NoProfile -File $watcherCli -Status -ResultsDir $ResultsRoot
-      if ($statusJson) {
-        $status = $statusJson | ConvertFrom-Json -ErrorAction Stop
+      $statusJson = & $watcherCli -Status -ResultsDir $ResultsRoot 6>&1
+      if (-not $statusJson) {
+        $statusJson = & pwsh -NoLogo -NoProfile -File $watcherCli -Status -ResultsDir $ResultsRoot
       }
+      if ($statusJson) { $status = $statusJson | ConvertFrom-Json -ErrorAction Stop }
     } catch {
       Write-Warning ("Failed to refresh watcher status after auto-trim: {0}" -f $_.Exception.Message)
     }
@@ -102,6 +107,14 @@ function Write-WatcherStatusSummary {
   Write-Host ("  heartbeatAgeSec : {0}" -f $heartbeatAgeLabel)
   Write-Host ("  lastActivityAt  : {0}" -f (Format-NullableValue $status.lastActivityAt))
   Write-Host ("  lastProgressAt  : {0}" -f (Format-NullableValue $status.lastProgressAt))
+  if ($status.files -and $status.files.status) {
+    $statusExists = if ($status.files.status.exists) { 'present' } else { 'missing' }
+    Write-Host ("  status.json     : {0}" -f $statusExists)
+  }
+  if ($status.files -and $status.files.heartbeat) {
+    $hbExists = if ($status.files.heartbeat.exists) { 'present' } else { 'missing' }
+    Write-Host ("  heartbeat.json  : {0}" -f $hbExists)
+  }
   if ($autoTrim) {
     Write-Host ("  autoTrim.eligible           : {0}" -f (Format-BoolLabel $autoTrim.eligible))
     Write-Host ("  autoTrim.cooldownSeconds    : {0}" -f (Format-NullableValue $autoTrim.cooldownSeconds))
