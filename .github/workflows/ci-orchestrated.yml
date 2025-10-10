@@ -499,7 +499,7 @@ jobs:
       with:
         snapshot-path: tests/results/${{ matrix.category }}/runner-unblock-snapshot.json
         cleanup: ${{ env.UNBLOCK_GUARD == '1' }}
-        process-names: conhost,pwsh,LabVIEW,LVCompare
+        process-names: LabVIEW,LVCompare
 
     - name: Wire Guard (post)
       if: ${{ vars.WIRE_PROBES != '0' }}
@@ -721,7 +721,7 @@ jobs:
       with:
         snapshot-path: results/fixture-drift/runner-unblock-snapshot.json
         cleanup: ${{ env.UNBLOCK_GUARD == '1' }}
-        process-names: conhost,pwsh,LabVIEW,LVCompare
+        process-names: LabVIEW,LVCompare
 
     - name: Wire Guard (post)
       if: ${{ vars.WIRE_PROBES != '0' }}
