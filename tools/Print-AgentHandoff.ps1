@@ -141,7 +141,17 @@ function Write-WatcherStatusSummary {
   if ($autoTrimRequested) {
     $autoTrimStatusLabel = if ($autoTrimExecuted) { 'executed' } else { 'not executed' }
     Write-Host ("  auto-trim       : {0}" -f $autoTrimStatusLabel)
-    foreach ($line in ($autoTrimOutput | Where-Object { $_ -and $_.Trim().Length -gt 0 })) {
+    # Normalize output records (InformationRecord vs string) and print non-empty lines
+    $lines = @()
+    foreach ($rec in $autoTrimOutput) {
+      if ($null -eq $rec) { continue }
+      if ($rec -is [System.Management.Automation.InformationRecord]) {
+        $lines += [string]$rec.MessageData
+      } else {
+        $lines += [string]$rec
+      }
+    }
+    foreach ($line in ($lines | Where-Object { $_ -and $_.Trim().Length -gt 0 })) {
       Write-Host ("    > {0}" -f $line.Trim())
     }
   }
