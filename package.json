@@ -7,6 +7,8 @@
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "generate:outputs": "node dist/generate-action-outputs.js",
+    "schemas:generate": "tsc -p tsconfig.json && node dist/schemas/generate-schemas.js",
+    "tests:discover": "tsc -p tsconfig.json && node dist/test-discovery.js --tests tests --out tests/results/_agent/test-manifest.json",
     "lint:md": "pwsh -NoLogo -NoProfile -File tools/Lint-Markdown.ps1 -All",
     "lint:md:changed": "pwsh -NoLogo -NoProfile -File tools/Lint-Markdown.ps1",
     "watch:pester": "node tools/follow-pester-artifacts.mjs --results tests/results",
@@ -38,8 +40,8 @@
   },
   "dependencies": {
     "argparse": "^2.0.1",
-    "chokidar": "^3.6.0",
     "braces": "^3.0.3",
+    "chokidar": "^3.6.0",
     "entities": "^4.5.0",
     "fast-glob": "^3.3.3",
     "fastq": "^1.19.1",
@@ -69,7 +71,9 @@
     "to-regex-range": "^5.0.1",
     "uc.micro": "^2.1.0",
     "undici-types": "^5.26.5",
-    "unicorn-magic": "^0.1.0"
+    "unicorn-magic": "^0.1.0",
+    "zod": "^3.25.76",
+    "zod-to-json-schema": "^3.24.6"
   },
   "repository": {
     "type": "git",
@@ -82,4 +86,3 @@
   },
   "homepage": "https://github.com/LabVIEW-Community-CI-CD/compare-vi-cli-action#readme"
 }
-

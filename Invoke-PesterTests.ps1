@@ -42,6 +42,10 @@ param(
 
   [Parameter(Mandatory = $false)]
   [switch]$EmitFailuresJsonAlways,
+  # Use a Node/TypeScript-backed discovery manifest (falls back to PS scan);
+  # when Integration is excluded, pre-filters files marked with Integration tags
+  [Parameter(Mandatory = $false)]
+  [switch]$UseDiscoveryManifest,
 
   [Parameter(Mandatory = $false)]
   [double]$TimeoutMinutes = 0,
@@ -72,6 +76,9 @@ param(
 ,
   [Parameter(Mandatory = $false)]
   [switch]$EmitOutcome,
+  # Stream Pester output to console while still capturing
+  [Parameter(Mandatory = $false)]
+  [switch]$LiveOutput,
   # Optional: emit aggregationHints block (schema v1.7.1+ with timing metric)
   [switch]$EmitAggregationHints,
 
@@ -928,6 +935,75 @@ if ($limitToSingle) {
     $removed = $before - $testFiles.Count
     if ($removed -gt 0) { Write-Host "Prefiltered $removed integration test file(s) (file-level exclusion)" -ForegroundColor DarkGray }
   }
+
+  # Optional: Derive test manifest (TypeScript) and pre-exclude Integration-tagged files
+  $manifestPath = Join-Path $resultsDir '_agent/test-manifest.json'
+  $usedNodeDiscovery = $false
+  if ($UseDiscoveryManifest) {
+    try {
+      $npm = Get-Command npm -ErrorAction SilentlyContinue
+      if ($npm) {
+        Write-Host 'Deriving test manifest via TypeScript (npm run tests:discover)...' -ForegroundColor DarkGray
+        & $npm.Path run tests:discover --silent | Write-Host
+        $usedNodeDiscovery = $true
+      } else {
+        Write-Host 'npm CLI not found; falling back to PowerShell discovery scan.' -ForegroundColor DarkYellow
+      }
+    } catch {
+      Write-Warning "TypeScript discovery failed or unavailable: $_"
+    }
+  }
+  # PowerShell fallback manifest writer (only if Node discovery not used)
+  if (-not $usedNodeDiscovery -and $UseDiscoveryManifest) {
+    try {
+      $entries = @()
+      foreach ($f in $testFiles) {
+        $text = try { Get-Content -LiteralPath $f.FullName -Raw -ErrorAction Stop } catch { '' }
+        $isInt = if ($text) { ($text -match '(?im)-Tag\s*(?:''Integration''|"Integration"|Integration\b)') } else { $false }
+        $entries += [pscustomobject]@{
+          path = ($f.FullName.Substring(((Get-Location).Path).Length)).TrimStart('\\','/')
+          fullPath = $f.FullName
+          tags = @($isInt ? 'Integration' : @())
+        }
+      }
+      $manifest = [pscustomobject]@{
+        schema = 'pester-test-manifest/v1'
+        generatedAt = (Get-Date).ToString('o')
+        root = (Get-Location).Path
+        testsDir = (Resolve-Path -LiteralPath $testsDir).Path
+        counts = [pscustomobject]@{
+          total = $entries.Count
+          integration = @($entries | Where-Object { $_.tags -contains 'Integration' }).Count
+          unit = @($entries | Where-Object { $_.tags.Count -eq 0 }).Count
+        }
+        files = $entries
+      }
+      $outDir = Split-Path -Parent $manifestPath
+      if ($outDir -and -not (Test-Path -LiteralPath $outDir)) { New-Item -ItemType Directory -Force -Path $outDir | Out-Null }
+      $manifest | ConvertTo-Json -Depth 5 | Out-File -FilePath $manifestPath -Encoding utf8
+      Write-Host ("PowerShell discovery wrote manifest: {0}" -f $manifestPath) -ForegroundColor DarkGray
+    } catch {
+      Write-Warning "Failed to write fallback discovery manifest: $_"
+    }
+  }
+
+  # If manifest exists and integration disabled, pre-exclude files with Integration tag
+  if (-not $IncludeIntegration -and (Test-Path -LiteralPath $manifestPath -PathType Leaf)) {
+    try {
+      $m = Get-Content -LiteralPath $manifestPath -Raw | ConvertFrom-Json -ErrorAction Stop
+      $intPaths = @($m.files | Where-Object { $_.tags -and ($_.tags -contains 'Integration') } | ForEach-Object { $_.fullPath })
+      if ($intPaths.Count -gt 0) {
+        $set = New-Object System.Collections.Generic.HashSet[string]
+        foreach($p in $intPaths){ [void]$set.Add(($p.ToLowerInvariant())) }
+        $before = $testFiles.Count
+        $testFiles = @($testFiles | Where-Object { -not $set.Contains($_.FullName.ToLowerInvariant()) })
+        $removed = $before - $testFiles.Count
+        if ($removed -gt 0) { Write-Host ("Manifest pre-excluded {0} Integration file(s)." -f $removed) -ForegroundColor Cyan }
+      }
+    } catch {
+      Write-Warning "Failed to apply manifest-based pre-exclusion: $_"
+    }
+  }
   # Apply IncludePatterns/ExcludePatterns if provided
   function _Match-AnyPattern([IO.FileInfo]$file,[string[]]$patterns){
     if (-not $patterns -or $patterns.Count -eq 0) { return $false }
@@ -1177,7 +1253,10 @@ try {
   $conf.TestResult.OutputPath = 'pester-results.xml'
 }
 
-Write-Host "  Output Verbosity: Detailed" -ForegroundColor Cyan
+try {
+  $verbosity = $conf.Output.Verbosity
+} catch { $verbosity = 'Detailed' }
+Write-Host ("  Output Verbosity: {0}" -f $verbosity) -ForegroundColor Cyan
 Write-Host "  Result Format: NUnitXml" -ForegroundColor Cyan
 Write-Host ""
 
@@ -1214,15 +1293,18 @@ if (-not $script:UseSingleInvoker) {
       # Periodically capture partial output (stdout) for diagnostics
       try {
         $stream = Receive-Job -Job $job -Keep -ErrorAction SilentlyContinue
-        if ($null -ne $stream) {
-          $text = ($stream | Out-String)
-          if (-not [string]::IsNullOrEmpty($text)) {
-            # Append only new content heuristic (simple length diff)
-            $delta = $text.Substring([Math]::Min($lastWriteLen, $text.Length))
-            if ($delta.Trim()) { Add-Content -Path $partialLogPath -Value $delta -Encoding UTF8 }
-            $lastWriteLen = $text.Length
-          }
-        }
+         if ($null -ne $stream) {
+           $text = ($stream | Out-String)
+           if (-not [string]::IsNullOrEmpty($text)) {
+             # Append only new content heuristic (simple length diff)
+             $delta = $text.Substring([Math]::Min($lastWriteLen, $text.Length))
+             if ($delta.Trim()) {
+               Add-Content -Path $partialLogPath -Value $delta -Encoding UTF8
+               if ($LiveOutput) { Write-Host $delta }
+             }
+             $lastWriteLen = $text.Length
+           }
+         }
       } catch { }
       if ($script:stuckGuardEnabled) {
         $now = Get-Date
@@ -1265,11 +1347,14 @@ if (-not $script:UseSingleInvoker) {
       foreach ($entry in $rawOutput) {
         if ($entry -is [string]) {
           $capturedOutputLines += $entry
+          if ($LiveOutput) { Write-Host $entry }
         } elseif ($null -ne $entry -and ($entry.PSObject.Properties.Name -contains 'Tests') -and -not $result) {
           $result = $entry
         } elseif ($entry -isnot [string]) {
           # Non-string, non-primary result objects (e.g., progress records) -> stringify
-          $capturedOutputLines += ($entry | Out-String)
+          $textEntry = ($entry | Out-String)
+          $capturedOutputLines += $textEntry
+          if ($LiveOutput -and $textEntry) { Write-Host $textEntry }
         }
       }
       # If PassThru did not surface a result object earlier, attempt to assign from last object
@@ -1308,7 +1393,9 @@ if (-not $script:UseSingleInvoker) {
     param([System.IO.FileInfo]$File)
     try {
       $content = Get-Content -LiteralPath $File.FullName -TotalCount 200 -ErrorAction Stop | Out-String
-      return ($content -match '-Tag\s*''Integration''|"Integration"')
+      # Detect explicit Integration tag usage on Describe/Context lines only (case-insensitive)
+      $pattern = '(?im)^\s*(Describe|Context)\b.*-Tag\s*(?:''Integration''|"Integration"|Integration\b)'
+      return ([regex]::IsMatch($content, $pattern))
     } catch { return $false }
   }
 
