@@ -82,12 +82,48 @@ print('ok')
   }
 }
 
+function Invoke-WatcherTelemetrySchemaCheck {
+  param(
+    [string]$SchemaPath = (Join-Path (Get-Location).Path 'docs/schema/watcher-telemetry.v1.schema.json'),
+    [string]$DataPath = (Join-Path (Get-Location).Path 'tests/results/_agent/handoff/watcher-telemetry.json')
+  )
+  if (-not (Test-Path -LiteralPath $DataPath)) {
+    Write-Host 'Watcher telemetry JSON not found; skipping schema validation.'
+    return
+  }
+  if (-not (Test-Path -LiteralPath $SchemaPath)) {
+    Write-Warning "Schema not found at $SchemaPath; skipping watcher schema validation."
+    return
+  }
+  $node = Get-Command node -ErrorAction SilentlyContinue
+  $npx = Get-Command npx -ErrorAction SilentlyContinue
+  if (-not $node -or -not $npx) {
+    Write-Host 'Node.js or npx not available; skipping watcher schema validation.'
+    return
+  }
+  Write-Host 'Validating watcher telemetry JSON against schema (ajv-cli)...'
+  $psi = New-Object System.Diagnostics.ProcessStartInfo
+  $psi.FileName = $npx.Path
+  $psi.Arguments = "-y ajv-cli@5 validate -s `"$SchemaPath`" -d `"$DataPath`" --spec=draft2020"
+  $psi.UseShellExecute = $false
+  $psi.RedirectStandardOutput = $true
+  $psi.RedirectStandardError = $true
+  $p = [System.Diagnostics.Process]::Start($psi)
+  $out = $p.StandardOutput.ReadToEnd()
+  $err = $p.StandardError.ReadToEnd()
+  $null = $p.WaitForExit()
+  if ($out) { Write-Host $out }
+  if ($err) { Write-Host $err }
+  if ($p.ExitCode -ne 0) { throw "Watcher telemetry schema validation failed (exit=$($p.ExitCode))" }
+}
+
 # Main
 try {
   $exe = Ensure-Actionlint
   Invoke-Actionlint -Exe $exe
   $ymls = Get-ChildItem -Path '.github/workflows' -Filter *.yml -Recurse | ForEach-Object { $_.FullName }
   if ($ymls.Count -gt 0) { Invoke-YamlRoundTripCheck -Files $ymls }
+  Invoke-WatcherTelemetrySchemaCheck
   Write-Host 'Validating ADR links...'
   pwsh -NoLogo -NoProfile -File (Join-Path (Get-Location).Path 'tools/Validate-AdrLinks.ps1')
   Write-Host 'PrePush checks passed.'
