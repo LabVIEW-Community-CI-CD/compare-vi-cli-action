@@ -1,0 +1,107 @@
+{
+  "$ref": "#/definitions/agent-wait-result",
+  "definitions": {
+    "agent-wait-result": {
+      "type": "object",
+      "properties": {
+        "schema": {
+          "type": "string",
+          "const": "agent-wait-result/v1"
+        },
+        "id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "reason": {
+          "type": "string",
+          "minLength": 1
+        },
+        "expectedSeconds": {
+          "type": "number"
+        },
+        "startedUtc": {
+          "type": "string",
+          "minLength": 1
+        },
+        "endedUtc": {
+          "$ref": "#/definitions/agent-wait-result/properties/startedUtc"
+        },
+        "elapsedSeconds": {
+          "type": "number"
+        },
+        "toleranceSeconds": {
+          "type": "number"
+        },
+        "differenceSeconds": {
+          "type": "number"
+        },
+        "withinMargin": {
+          "type": "boolean"
+        },
+        "markerPath": {
+          "type": "string",
+          "minLength": 1
+        },
+        "sketch": {
+          "type": "string",
+          "minLength": 1
+        },
+        "runContext": {
+          "type": "object",
+          "properties": {
+            "sha": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "ref": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "workflow": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "job": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "actor": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
+          "additionalProperties": true
+        }
+      },
+      "required": [
+        "schema",
+        "id",
+        "reason",
+        "expectedSeconds",
+        "startedUtc",
+        "endedUtc",
+        "elapsedSeconds",
+        "toleranceSeconds",
+        "differenceSeconds",
+        "withinMargin",
+        "markerPath",
+        "sketch",
+        "runContext"
+      ],
+      "additionalProperties": false
+    }
+  },
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "description": "Result emitted when an Agent wait window closes.",
+  "$id": "urn:compare-vi-cli-action:schema:agent-wait-result"
+}

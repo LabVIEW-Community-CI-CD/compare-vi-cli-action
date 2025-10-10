@@ -1,0 +1,90 @@
+{
+  "$ref": "#/definitions/compare-exec",
+  "definitions": {
+    "compare-exec": {
+      "type": "object",
+      "properties": {
+        "schema": {
+          "type": "string",
+          "const": "compare-exec/v1"
+        },
+        "generatedAt": {
+          "type": "string",
+          "minLength": 1
+        },
+        "cliPath": {
+          "type": "string",
+          "minLength": 1
+        },
+        "command": {
+          "type": "string",
+          "minLength": 1
+        },
+        "args": {
+          "type": "array",
+          "items": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "number"
+              },
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "object",
+                "additionalProperties": {}
+              },
+              {
+                "type": "array"
+              }
+            ]
+          }
+        },
+        "exitCode": {
+          "type": "number"
+        },
+        "diff": {
+          "type": "boolean"
+        },
+        "cwd": {
+          "type": "string",
+          "minLength": 1
+        },
+        "duration_s": {
+          "type": "number"
+        },
+        "duration_ns": {
+          "type": "number"
+        },
+        "base": {
+          "type": "string",
+          "minLength": 1
+        },
+        "head": {
+          "type": "string",
+          "minLength": 1
+        }
+      },
+      "required": [
+        "schema",
+        "generatedAt",
+        "cliPath",
+        "command",
+        "exitCode",
+        "diff",
+        "cwd",
+        "duration_s",
+        "duration_ns",
+        "base",
+        "head"
+      ],
+      "additionalProperties": false
+    }
+  },
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "description": "Execution metadata captured for a single LVCompare invocation.",
+  "$id": "urn:compare-vi-cli-action:schema:compare-exec"
+}

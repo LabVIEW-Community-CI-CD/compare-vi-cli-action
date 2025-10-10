@@ -1,0 +1,37 @@
+{
+  "$ref": "#/definitions/single-compare-state",
+  "definitions": {
+    "single-compare-state": {
+      "type": "object",
+      "properties": {
+        "schema": {
+          "type": "string",
+          "const": "single-compare-state/v1"
+        },
+        "handled": {
+          "type": "boolean"
+        },
+        "since": {
+          "type": "string",
+          "minLength": 1
+        },
+        "metadata": {
+          "type": "object",
+          "additionalProperties": {}
+        },
+        "runId": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "schema",
+        "handled",
+        "since"
+      ],
+      "additionalProperties": false
+    }
+  },
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "description": "State file used to gate single compare invocations.",
+  "$id": "urn:compare-vi-cli-action:schema:single-compare-state"
+}

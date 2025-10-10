@@ -1,0 +1,95 @@
+{
+  "$ref": "#/definitions/agent-wait-marker",
+  "definitions": {
+    "agent-wait-marker": {
+      "type": "object",
+      "properties": {
+        "schema": {
+          "type": "string",
+          "const": "agent-wait/v1"
+        },
+        "id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "reason": {
+          "type": "string",
+          "minLength": 1
+        },
+        "expectedSeconds": {
+          "type": "number"
+        },
+        "toleranceSeconds": {
+          "type": "number"
+        },
+        "startedUtc": {
+          "type": "string",
+          "minLength": 1
+        },
+        "startedUnixSeconds": {
+          "type": "number"
+        },
+        "workspace": {
+          "type": "string",
+          "minLength": 1
+        },
+        "sketch": {
+          "type": "string",
+          "minLength": 1
+        },
+        "runContext": {
+          "type": "object",
+          "properties": {
+            "sha": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "ref": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "workflow": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "job": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "actor": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
+          "additionalProperties": true
+        }
+      },
+      "required": [
+        "schema",
+        "id",
+        "reason",
+        "expectedSeconds",
+        "toleranceSeconds",
+        "startedUtc",
+        "startedUnixSeconds",
+        "workspace",
+        "sketch",
+        "runContext"
+      ],
+      "additionalProperties": false
+    }
+  },
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "description": "Marker emitted when an Agent wait window starts.",
+  "$id": "urn:compare-vi-cli-action:schema:agent-wait-marker"
+}
