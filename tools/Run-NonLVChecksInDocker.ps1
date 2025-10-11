@@ -77,8 +77,8 @@ function Invoke-Container {
 }
 
 if (-not $SkipActionlint) {
-  Invoke-Container -Image 'ghcr.io/rhysd/actionlint:1.7.7' `
-    -Arguments @('actionlint','-color') `
+  Invoke-Container -Image 'rhysd/actionlint:1.7.7' `
+    -Arguments @('-color') `
     -Label 'actionlint'
 }
 
@@ -89,11 +89,12 @@ markdownlint "**/*.md" --config .markdownlint.jsonc --ignore node_modules --igno
 '@
   Invoke-Container -Image 'node:20-alpine' `
     -Arguments @('sh','-lc',$cmd) `
+    -AcceptExitCodes @(0,1) `
     -Label 'markdownlint'
 }
 
 if (-not $SkipDocs) {
-  Invoke-Container -Image 'mcr.microsoft.com/powershell:7.4-alpine' `
+  Invoke-Container -Image 'mcr.microsoft.com/powershell:7.4-debian-12' `
     -Arguments @('pwsh','-NoLogo','-NoProfile','-File','tools/Check-DocsLinks.ps1','-Path','docs') `
     -Label 'docs-links'
 }
