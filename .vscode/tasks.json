@@ -2,6 +2,58 @@
   "version": "2.0.0",
   "tasks": [
     {
+      "label": "Watch Orchestrated Run (Docker, prompt)",
+      "type": "shell",
+      "command": "pwsh",
+      "args": [
+        "-NoLogo",
+        "-NoProfile",
+        "-File",
+        "./tools/Watch-InDocker.ps1",
+        "-RunId",
+        "${input:watchRunId}",
+        "-Repo",
+        "${input:watchRepo}"
+      ],
+      "options": {
+        "cwd": "${workspaceFolder}"
+      },
+      "problemMatcher": [],
+      "presentation": {
+        "reveal": "always",
+        "panel": "dedicated",
+        "clear": true
+      }
+    },
+    {
+      "label": "Watch Orchestrated Run (Docker via Non-LV checks)",
+      "type": "shell",
+      "command": "pwsh",
+      "args": [
+        "-NoLogo",
+        "-NoProfile",
+        "-File",
+        "./tools/Run-NonLVChecksInDocker.ps1",
+        "-SkipActionlint",
+        "-SkipMarkdown",
+        "-SkipDocs",
+        "-SkipWorkflow",
+        "-WatchRunId",
+        "${input:watchRunId}",
+        "-WatchRepo",
+        "${input:watchRepo}"
+      ],
+      "options": {
+        "cwd": "${workspaceFolder}"
+      },
+      "problemMatcher": [],
+      "presentation": {
+        "reveal": "always",
+        "panel": "dedicated",
+        "clear": true
+      }
+    },
+    {
       "label": "Validate: Prechecks (container)",
       "type": "shell",
       "command": "pwsh",
@@ -1486,6 +1538,18 @@
     }
   ],
   "inputs": [
+    {
+      "id": "watchRunId",
+      "type": "promptString",
+      "description": "Orchestrated workflow run id (Actions URL databaseId)",
+      "default": ""
+    },
+    {
+      "id": "watchRepo",
+      "type": "promptString",
+      "description": "owner/repo for REST fallback (leave default for this repo)",
+      "default": "LabVIEW-Community-CI-CD/compare-vi-cli-action"
+    },
     {
       "id": "teststandBase",
       "type": "promptString",

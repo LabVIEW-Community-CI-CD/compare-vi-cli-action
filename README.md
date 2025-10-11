@@ -86,6 +86,19 @@ DX reminders. Workflows call `tools/Invoke-DevDashboard.ps1` to publish HTML/JSO
 Status JSON contains `state`, heartbeat freshness, and byte counters – ideal for hand-offs or
 CI summaries.
 
+#### Watch orchestrated run (Docker)
+
+Use the token/REST-capable watcher to inspect the orchestrated run’s dispatcher logs and
+artifacts without opening the web UI:
+
+```
+pwsh -File tools/Watch-InDocker.ps1 -RunId <id> -Repo LabVIEW-Community-CI-CD/compare-vi-cli-action
+```
+
+Tips:
+- Set `GH_TOKEN` or `GITHUB_TOKEN` in your environment (admin token recommended).
+- VS Code: use the “Watch Orchestrated Run (Docker, prompt)” task under Run Task and paste the run id.
+
 ## Bundled workflows
 
 - **Validate** – end-to-end self-hosted validation (fixtures, LVCompare, Pester suites).
