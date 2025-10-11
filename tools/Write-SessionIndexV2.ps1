@@ -60,6 +60,16 @@ try {
     throw "session-index CLI exited with code $LASTEXITCODE"
   }
 
+  $checkPath = Join-Path $repoRoot 'dist' 'src' 'session-index' 'check.js'
+  if (Test-Path -LiteralPath $checkPath -PathType Leaf) {
+    & $NodePath $checkPath --file $outPath --base $repoRoot
+    if ($LASTEXITCODE -ne 0) {
+      throw "session-index requirement check failed with exit code $LASTEXITCODE"
+    }
+  } else {
+    Write-Warning "session-index check script not found at $checkPath"
+  }
+
   Write-Host "session-index v2 written to $outPath"
   return $outPath
 } finally {
