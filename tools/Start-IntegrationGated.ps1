@@ -49,7 +49,7 @@ function Get-Policy {
   try {
     return (Get-Content -LiteralPath $path -Raw | ConvertFrom-Json -ErrorAction Stop)
   } catch {
-    throw "Invalid policy JSON at $path: $($_.Exception.Message)"
+    throw "Invalid policy JSON at ${path}: $($_.Exception.Message)"
   }
 }
 

@@ -17,7 +17,7 @@
         "-IncludeIntegration",
         "${input:integrationInclude}",
         "-Ref",
-        "${input:integrationRef}",
+        "${input:integrationRef:resolved}",
         "-Watch"
       ],
       "options": { "cwd": "${workspaceFolder}" },
@@ -1572,6 +1572,24 @@
         { "label": "current branch", "value": "${branch}" }
       ],
       "default": "develop"
+    },
+    {
+      "id": "integrationRef:resolved",
+      "type": "command",
+      "command": "pwsh",
+      "args": [
+        "-NoLogo",
+        "-NoProfile",
+        "-Command",
+        "param([string]$choice) if ($choice -eq 'develop') { 'develop' } elseif ($choice -eq '${branch}') { git rev-parse --abbrev-ref HEAD } else { $choice }"
+      ],
+      "options": {
+        "cwd": "${workspaceFolder}"
+      },
+      "presentation": {
+        "reveal": "never"
+      },
+      "problemMatcher": []
     },
     {
       "id": "watchRunId",
