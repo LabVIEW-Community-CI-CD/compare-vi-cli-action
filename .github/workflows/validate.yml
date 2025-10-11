@@ -460,7 +460,8 @@ jobs:
           'Validate / fixtures'
           'Validate / session-index'
         )
-        pwsh -File tools/Update-SessionIndexBranchProtection.ps1 `
+        $bpScript = Join-Path (Get-Location) 'tools/Update-SessionIndexBranchProtection.ps1'
+        & $bpScript `
           -ResultsDir $res `
           -PolicyPath 'tools/policy/branch-required-checks.json' `
           -Branch '${{ github.ref_name }}' `
