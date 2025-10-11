@@ -26,6 +26,28 @@
       }
     },
     {
+      "label": "Start Integration (Gated → Orchestrated)",
+      "type": "shell",
+      "command": "pwsh",
+      "args": [
+        "-NoLogo",
+        "-NoProfile",
+        "-File",
+        "./tools/Start-IntegrationGated.ps1",
+        "-Issue",
+        "${input:integrationIssue}",
+        "-Strategy",
+        "${input:integrationStrategy}",
+        "-IncludeIntegration",
+        "${input:integrationInclude}",
+        "-Ref",
+        "${input:integrationRef}"
+      ],
+      "options": { "cwd": "${workspaceFolder}" },
+      "problemMatcher": [],
+      "presentation": { "reveal": "always", "panel": "dedicated", "clear": true }
+    },
+    {
       "label": "Watch Orchestrated Run (Docker via Non-LV checks)",
       "type": "shell",
       "command": "pwsh",
@@ -1538,6 +1560,46 @@
     }
   ],
   "inputs": [
+    {
+      "id": "integrationIssue",
+      "type": "pickString",
+      "description": "Select a pre-approved issue to gate integration",
+      "options": [
+        { "label": "#88 – Orchestrated DX/Invoker stability", "value": "88" },
+        { "label": "#118 – Branch protection contract", "value": "118" }
+      ],
+      "default": "88"
+    },
+    {
+      "id": "integrationStrategy",
+      "type": "pickString",
+      "description": "Select orchestrated strategy",
+      "options": [
+        { "label": "single", "value": "single" },
+        { "label": "matrix", "value": "matrix" }
+      ],
+      "default": "single"
+    },
+    {
+      "id": "integrationInclude",
+      "type": "pickString",
+      "description": "Include integration tests?",
+      "options": [
+        { "label": "true", "value": "true" },
+        { "label": "false", "value": "false" }
+      ],
+      "default": "true"
+    },
+    {
+      "id": "integrationRef",
+      "type": "pickString",
+      "description": "Target ref for dispatch",
+      "options": [
+        { "label": "develop", "value": "develop" },
+        { "label": "current branch", "value": "${branch}" }
+      ],
+      "default": "develop"
+    },
     {
       "id": "watchRunId",
       "type": "promptString",

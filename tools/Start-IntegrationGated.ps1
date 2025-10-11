@@ -1,0 +1,129 @@
+#Requires -Version 7.0
+<#
+.SYNOPSIS
+  Gate starting an orchestrated integration by requiring an allowed Issue selection.
+
+.DESCRIPTION
+  This script serves as a deterministic gate: it requires the caller to select a pre-defined
+  GitHub issue number (from a local policy file) before dispatching the orchestrated workflow.
+  It uses GH CLI when available or falls back to the GitHub REST API with GH_TOKEN/GITHUB_TOKEN.
+
+.PARAMETER Issue
+  Required issue number (e.g., 88). Must be present in tools/policy/allowed-integration-issues.json.
+
+.PARAMETER Strategy
+  Orchestrated strategy to use: 'single' or 'matrix'. Default: single.
+
+.PARAMETER IncludeIntegration
+  Pass 'true' or 'false' to the workflow input include_integration.
+
+.PARAMETER Ref
+  Branch/ref to run against. Default: 'develop' (fast path for #88).
+
+.PARAMETER Repo
+  Optional owner/repo slug override. Auto-detected from gh or git when omitted.
+
+.PARAMETER Token
+  Optional token (admin recommended). If omitted, GH_TOKEN or GITHUB_TOKEN is used.
+
+.EXAMPLE
+  pwsh -File tools/Start-IntegrationGated.ps1 -Issue 88 -Strategy single -IncludeIntegration true
+#>
+[CmdletBinding()]
+param(
+  [Parameter(Mandatory=$true)][int]$Issue,
+  [ValidateSet('single','matrix')][string]$Strategy = 'single',
+  [ValidateSet('true','false')][string]$IncludeIntegration = 'true',
+  [string]$Ref = 'develop',
+  [string]$Repo,
+  [string]$Token
+)
+
+Set-StrictMode -Version Latest
+$ErrorActionPreference = 'Stop'
+
+function Get-Policy {
+  $path = Join-Path $PSScriptRoot 'policy/allowed-integration-issues.json'
+  if (-not (Test-Path -LiteralPath $path)) { throw "Policy file not found: $path" }
+  try {
+    return (Get-Content -LiteralPath $path -Raw | ConvertFrom-Json -ErrorAction Stop)
+  } catch {
+    throw "Invalid policy JSON at $path: $($_.Exception.Message)"
+  }
+}
+
+function Get-RepoSlug {
+  param([string]$RepoParam)
+  if ($RepoParam) { return $RepoParam }
+  try { $r = (gh repo view --json nameWithOwner --jq .nameWithOwner 2>$null); if ($r) { return $r.Trim() } } catch {}
+  if ($env:GITHUB_REPOSITORY) { return $env:GITHUB_REPOSITORY }
+  try {
+    $url = (& git config --get remote.origin.url 2>$null)
+    if ($url -match 'github\.com[:/]([^/]+/[^/.]+)(?:\.git)?$') { return $Matches[1] }
+  } catch {}
+  throw "Unable to determine repository slug. Pass -Repo 'owner/repo' or login gh."
+}
+
+function Get-AuthHeaders {
+  param([string]$Tok)
+  if (-not $Tok) { throw "An auth token is required. Provide -Token or set GH_TOKEN/GITHUB_TOKEN." }
+  return @{ Authorization = "Bearer $Tok"; 'X-GitHub-Api-Version' = '2022-11-28'; Accept = 'application/vnd.github+json' }
+}
+
+function Invoke-GitHubApiJson {
+  param([string]$Method='GET',[string]$Uri,[hashtable]$Headers,[object]$Body)
+  if ($Body) { return Invoke-RestMethod -Method $Method -Uri $Uri -Headers $Headers -Body ($Body | ConvertTo-Json -Depth 5) -ContentType 'application/json' }
+  return Invoke-RestMethod -Method $Method -Uri $Uri -Headers $Headers
+}
+
+function New-SampleId {
+  $dt = Get-Date -Format 'yyyyMMdd-HHmmss'
+  $rand = -join ((48..57 + 97..122) | Get-Random -Count 3 | ForEach-Object {[char]$_})
+  return "ts-$dt-$rand"
+}
+
+$policy = Get-Policy
+if (-not $policy.issues -or ($Issue -notin $policy.issues)) {
+  throw "Issue #$Issue is not allowed by policy. Allowed: $($policy.issues -join ', ')"
+}
+
+$repoSlug = Get-RepoSlug -RepoParam $Repo
+$useGh = $false
+if (Get-Command gh -ErrorAction SilentlyContinue) { $useGh = $true }
+$tok = if ($Token) { $Token } elseif ($env:GH_TOKEN) { $env:GH_TOKEN } elseif ($env:GITHUB_TOKEN) { $env:GITHUB_TOKEN } else { $null }
+if (-not $tok -and -not $useGh) { throw 'No GH CLI and no token found. Set GH_TOKEN or install gh.' }
+
+# Lookup issue title (for logging) – best-effort
+$issueTitle = "#${Issue}"
+try {
+  if ($useGh) {
+    $issueTitle = (gh issue view $Issue -R $repoSlug --json title --jq .title)
+  } elseif ($tok) {
+    $h = Get-AuthHeaders -Tok $tok
+    $d = Invoke-GitHubApiJson -Uri ("https://api.github.com/repos/{0}/issues/{1}" -f $repoSlug,$Issue) -Headers $h
+    if ($d.title) { $issueTitle = $d.title }
+  }
+} catch {}
+
+Write-Host ("Gated integration start for issue #{0}: {1}" -f $Issue, $issueTitle) -ForegroundColor Cyan
+
+$workflowKey = 'ci-orchestrated.yml'
+$sampleId = New-SampleId
+
+if ($useGh) {
+  if ($tok) { $env:GH_TOKEN = $tok }
+  $cmd = @('workflow','run',$workflowKey,'-R',$repoSlug,'-r',$Ref,'-f',"sample_id=$sampleId",'-f',"include_integration=$IncludeIntegration",'-f',"strategy=$Strategy")
+  Write-Host ("Dispatching orchestrated via gh: gh {0}" -f ($cmd -join ' ')) -ForegroundColor Green
+  gh @cmd | Out-Null
+} else {
+  $h = Get-AuthHeaders -Tok $tok
+  $uri = "https://api.github.com/repos/$repoSlug/actions/workflows/$workflowKey/dispatches"
+  $body = @{ ref = $Ref; inputs = @{ sample_id = $sampleId; include_integration = $IncludeIntegration; strategy = $Strategy } }
+  Write-Host ("Dispatching orchestrated via REST: {0} (ref={1})" -f $workflowKey,$Ref) -ForegroundColor Green
+  Invoke-GitHubApiJson -Method 'POST' -Uri $uri -Headers $h -Body $body | Out-Null
+}
+
+Write-Host ("Dispatched: sample_id={0}, strategy={1}, include_integration={2}" -f $sampleId,$Strategy,$IncludeIntegration)
+Write-Host 'Copy/paste to watch this run (Docker):' -ForegroundColor Yellow
+Write-Host '  pwsh -File tools/Watch-InDocker.ps1 -RunId <id> -Repo <owner/repo>'
+
