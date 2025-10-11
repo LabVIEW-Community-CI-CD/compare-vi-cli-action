@@ -1,40 +1,77 @@
-import { ArgumentParser } from 'argparse';
 import process from 'node:process';
 import { resolveToggleManifest, getAvailableToggleProfiles } from './toggles.js';
 
 type OutputFormat = 'values' | 'env' | 'psd1';
 
-const parser = new ArgumentParser({
-  description: 'Agent toggle manifest CLI'
-});
-
-parser.add_argument('--profile', {
-  action: 'append',
-  dest: 'profiles',
-  help: 'Toggle profile to apply (can be specified multiple times). Defaults to ci-orchestrated.'
-});
-
-parser.add_argument('--format', {
-  choices: ['values', 'env', 'psd1'],
-  default: 'values',
-  help: 'Output format. Defaults to values (JSON).'
-});
-
-parser.add_argument('--pretty', {
-  action: 'store_true',
-  help: 'Pretty-print JSON output (values format only).'
-});
-
-parser.add_argument('--list-profiles', {
-  action: 'store_true',
-  help: 'List available profiles and exit.'
-});
-
-interface CliArgs {
-  profiles?: string[];
+interface ParsedArgs {
+  profiles: string[];
   format: OutputFormat;
-  pretty?: boolean;
-  list_profiles?: boolean;
+  pretty: boolean;
+  listProfiles: boolean;
+}
+
+const FLAG_ALIAS: Record<string, keyof ParsedArgs | 'pushProfile'> = {
+  '--profile': 'pushProfile',
+  '-p': 'pushProfile',
+  '--format': 'format',
+  '-f': 'format',
+  '--pretty': 'pretty',
+  '--list-profiles': 'listProfiles'
+};
+
+const FORMAT_VALUES = new Set<OutputFormat>(['values', 'env', 'psd1']);
+
+function parseArgs(argv: string[]): ParsedArgs {
+  const result: ParsedArgs = {
+    profiles: [],
+    format: 'values',
+    pretty: false,
+    listProfiles: false
+  };
+
+  for (let i = 0; i < argv.length; i += 1) {
+    const token = argv[i];
+    const flag = FLAG_ALIAS[token];
+
+    if (!flag) {
+      throw new Error(`Unknown argument: ${token}`);
+    }
+
+    if (flag === 'pushProfile') {
+      const value = argv[i + 1];
+      if (!value || value.startsWith('-')) {
+        throw new Error(`Missing profile value after ${token}`);
+      }
+      result.profiles.push(value);
+      i += 1;
+      continue;
+    }
+
+    if (flag === 'format') {
+      const value = argv[i + 1];
+      if (!value || value.startsWith('-')) {
+        throw new Error(`Missing format value after ${token}`);
+      }
+      if (!FORMAT_VALUES.has(value as OutputFormat)) {
+        const options = Array.from(FORMAT_VALUES).join(', ');
+        throw new Error(`Unsupported format: ${value}. Valid options: ${options}`);
+      }
+      result.format = value as OutputFormat;
+      i += 1;
+      continue;
+    }
+
+    if (flag === 'pretty') {
+      result.pretty = true;
+      continue;
+    }
+
+    if (flag === 'listProfiles') {
+      result.listProfiles = true;
+    }
+  }
+
+  return result;
 }
 
 function listProfiles(): void {
@@ -101,9 +138,9 @@ function emitPsd1(profiles: string[] | undefined): void {
 }
 
 function run(): void {
-  const args = parser.parse_args() as CliArgs;
+  const args = parseArgs(process.argv.slice(2));
 
-  if (args.list_profiles) {
+  if (args.listProfiles) {
     listProfiles();
     return;
   }
@@ -111,13 +148,13 @@ function run(): void {
   try {
     switch (args.format) {
       case 'values':
-        emitValues(args.profiles, args.pretty);
+        emitValues(args.profiles.length > 0 ? args.profiles : undefined, args.pretty);
         break;
       case 'env':
-        emitEnv(args.profiles);
+        emitEnv(args.profiles.length > 0 ? args.profiles : undefined);
         break;
       case 'psd1':
-        emitPsd1(args.profiles);
+        emitPsd1(args.profiles.length > 0 ? args.profiles : undefined);
         break;
       default:
         throw new Error(`Unsupported format: ${args.format}`);
@@ -130,4 +167,3 @@ function run(): void {
 }
 
 run();
-
