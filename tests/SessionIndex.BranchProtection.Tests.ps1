@@ -179,4 +179,19 @@ Describe 'Update-SessionIndexBranchProtection' -Tag 'Unit' {
     $bp.actual.status | Should -Be 'error'
     $bp.notes | Should -Contain 'Live branch protection context query failed.'
   }
+
+  It 'merges additional notes when provided' {
+    $resultsDir = & $script:newSessionIndexFixture 'results-notes'
+
+    & $script:updateScript `
+      -ResultsDir $resultsDir `
+      -PolicyPath $script:policyPath `
+      -Branch 'develop' `
+      -ProducedContexts $script:developExpected `
+      -AdditionalNotes @('API 404: branch protection contexts not accessible')
+
+    $idx = Get-Content -LiteralPath (Join-Path $resultsDir 'session-index.json') -Raw | ConvertFrom-Json
+    $bp = $idx.branchProtection
+    $bp.notes | Should -Contain 'API 404: branch protection contexts not accessible'
+  }
 }

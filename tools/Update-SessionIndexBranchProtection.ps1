@@ -41,7 +41,8 @@ param(
   [switch]$Strict,
   [string[]]$ActualContexts,
   [ValidateSet('available','unavailable','error')]
-  [string]$ActualStatus
+  [string]$ActualStatus,
+  [string[]]$AdditionalNotes
 )
 
 Set-StrictMode -Version Latest
@@ -207,6 +208,10 @@ $bpObject = [ordered]@{
   tags     = @('bp-verify','issue:118','contract:v1')
 }
 $notesCount = @($notes).Count
+if ($AdditionalNotes) {
+  $notes += ($AdditionalNotes | Where-Object { $_ })
+  $notesCount = @($notes).Count
+}
 if ($notesCount -gt 0) {
   $bpObject.notes = $notes
 }
