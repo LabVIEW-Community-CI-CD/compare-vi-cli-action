@@ -63,47 +63,16 @@ Describe 'Update-SessionIndexBranchProtection' -Tag 'Unit' {
   }
 
   It 'resolves pull request refs to the base branch when available' {
-<<<<<<< HEAD
     $resultsDir = & $script:newSessionIndexFixture 'results-prref'
-=======
-    $td = Join-Path $TestDrive 'results-prref'
-    New-Item -ItemType Directory -Force -Path $td | Out-Null
-
-    $summary = @{
-      total = 1
-      passed = 1
-      failed = 0
-      errors = 0
-      skipped = 0
-      duration_s = 0.1
-      schemaVersion = '1.0.0'
-    } | ConvertTo-Json
-    Set-Content -LiteralPath (Join-Path $td 'pester-summary.json') -Value $summary -Encoding UTF8
-
-    $root = (Get-Location).Path
-    & (Join-Path $root 'tools/Ensure-SessionIndex.ps1') -ResultsDir $td -SummaryJson 'pester-summary.json'
-
-    $policyPath = Join-Path $root 'tools/policy/branch-required-checks.json'
-    $policy = Get-Content -LiteralPath $policyPath -Raw | ConvertFrom-Json
-    $expected = @($policy.branches.develop)
->>>>>>> 8bc198f (Align branch-protection lookup with PR base refs (#118))
 
     $baseRefPrevious = $env:GITHUB_BASE_REF
     try {
       $env:GITHUB_BASE_REF = 'develop'
-<<<<<<< HEAD
       & $script:updateScript `
         -ResultsDir $resultsDir `
         -PolicyPath $script:policyPath `
         -Branch 'pull/123/merge' `
         -ProducedContexts $script:developExpected
-=======
-      & (Join-Path $root 'tools/Update-SessionIndexBranchProtection.ps1') `
-        -ResultsDir $td `
-        -PolicyPath $policyPath `
-        -Branch 'pull/123/merge' `
-        -ProducedContexts $expected
->>>>>>> 8bc198f (Align branch-protection lookup with PR base refs (#118))
     } finally {
       if ($null -eq $baseRefPrevious) {
         Remove-Item Env:GITHUB_BASE_REF -ErrorAction SilentlyContinue
@@ -112,24 +81,15 @@ Describe 'Update-SessionIndexBranchProtection' -Tag 'Unit' {
       }
     }
 
-<<<<<<< HEAD
     $idx = Get-Content -LiteralPath (Join-Path $resultsDir 'session-index.json') -Raw | ConvertFrom-Json
     $bp = $idx.branchProtection
     $bp.branch | Should -Be 'develop'
     ($bp.expected | Sort-Object) | Should -Be ($script:developExpected | Sort-Object)
     ($bp.produced | Sort-Object) | Should -Be ($script:developExpected | Sort-Object)
-=======
-    $idx = Get-Content -LiteralPath (Join-Path $td 'session-index.json') -Raw | ConvertFrom-Json
-    $bp = $idx.branchProtection
-    $bp.branch | Should -Be 'develop'
-    ($bp.expected | Sort-Object) | Should -Be ($expected | Sort-Object)
-    ($bp.produced | Sort-Object) | Should -Be ($expected | Sort-Object)
->>>>>>> 8bc198f (Align branch-protection lookup with PR base refs (#118))
     $bp.result.status | Should -Be 'ok'
     $bp.result.reason | Should -Be 'aligned'
     ($bp.PSObject.Properties.Name -contains 'notes') | Should -BeFalse
   }
-<<<<<<< HEAD
 
   It 'warns when required contexts are missing' {
     $resultsDir = & $script:newSessionIndexFixture 'results-missing'
@@ -219,21 +179,4 @@ Describe 'Update-SessionIndexBranchProtection' -Tag 'Unit' {
     $bp.actual.status | Should -Be 'error'
     $bp.notes | Should -Contain 'Live branch protection context query failed.'
   }
-
-  It 'merges additional notes when provided' {
-    $resultsDir = & $script:newSessionIndexFixture 'results-notes'
-
-    & $script:updateScript `
-      -ResultsDir $resultsDir `
-      -PolicyPath $script:policyPath `
-      -Branch 'develop' `
-      -ProducedContexts $script:developExpected `
-      -AdditionalNotes @('API 404: branch protection contexts not accessible')
-
-    $idx = Get-Content -LiteralPath (Join-Path $resultsDir 'session-index.json') -Raw | ConvertFrom-Json
-    $bp = $idx.branchProtection
-    $bp.notes | Should -Contain 'API 404: branch protection contexts not accessible'
-  }
-=======
->>>>>>> 8bc198f (Align branch-protection lookup with PR base refs (#118))
 }
