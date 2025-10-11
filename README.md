@@ -99,6 +99,18 @@ Tips:
 - Set `GH_TOKEN` or `GITHUB_TOKEN` in your environment (admin token recommended).
 - VS Code: use the “Watch Orchestrated Run (Docker, prompt)” task under Run Task and paste the run id.
 
+#### Start integration (gated)
+
+Use the “Start Integration (Gated → Orchestrated)” VS Code task to deterministically start an orchestrated run only after selecting an allowed GitHub issue. The allowed list lives in `tools/policy/allowed-integration-issues.json` and defaults to `#88` and `#118`.
+
+The task prompts for:
+- Issue: must be in the allowed list.
+- Strategy: `single` or `matrix`.
+- Include integration: `true`/`false`.
+- Ref: `develop` (default) or current branch.
+
+The script dispatches the `ci-orchestrated.yml` workflow via GitHub CLI (or REST with `GH_TOKEN`/`GITHUB_TOKEN`).
+
 ## Bundled workflows
 
 - **Validate** – end-to-end self-hosted validation (fixtures, LVCompare, Pester suites).
