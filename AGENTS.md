@@ -16,9 +16,10 @@ This document summarizes the expectations for automation agents working in the
   - Keep workflows deterministic and green.
   - Reference `#88` in commit and PR descriptions.
 - First actions in a session:
-  1. Pull #88 details (tasks, acceptance, linked PRs).
-  2. Create or sync a working branch (`issue/88-<slug>`), push minimal changes, dispatch CI.
-  3. Open or update the PR, apply required labels, monitor to green, merge when acceptance is met.
+  1. Run `pwsh -File tools/Sync-Develop.ps1` to fetch/fast-forward `develop` (set `SKIP_SYNC_DEVELOP=1` or pass `-NoFastForward` to opt out when a frozen snapshot is required).
+  2. Pull #88 details (tasks, acceptance, linked PRs).
+  3. Create or sync a working branch (`issue/88-<slug>`), push minimal changes, dispatch CI.
+  4. Open or update the PR, apply required labels, monitor to green, merge when acceptance is met.
 
 ## Repository layout
 
