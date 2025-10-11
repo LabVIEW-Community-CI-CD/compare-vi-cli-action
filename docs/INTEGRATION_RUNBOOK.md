@@ -8,15 +8,25 @@ CLI and the repository scripts.
 
 | Phase | Goal | Entry point |
 | ----- | ---- | ----------- |
-| 0 – Preconditions | PowerShell 7+, repo access | manual checks |
-| 1 – Canonical CLI | Ensure LVCompare at default path | `scripts/Test-IntegrationEnvironment.ps1` |
-| 2 – VI inputs | Verify `LV_BASE_VI` / `LV_HEAD_VI` exist and differ | inline |
-| 3 – Single compare | Run one diff and capture metrics | `scripts/CompareVI.ps1` |
-| 4 – Integration tests | Execute Pester with `-IncludeIntegration` | `Invoke-PesterTests.ps1` |
-| 5 – Loop soak | Multi-iteration latency / diff loop | `scripts/Run-AutonomousIntegrationLoop.ps1` |
-| 6 – Diagnostics | Optional raw CLI capture | inline |
+| Prereqs | PowerShell 7+, repo access, baseline env | `Invoke-PhasePrereqs` |
+| CanonicalCli | Ensure LVCompare canonical path is reachable | `Invoke-PhaseCanonicalCli` |
+| ViInputs | Validate `LV_BASE_VI` / `LV_HEAD_VI` exist and differ | `Invoke-PhaseViInputs` |
+| Compare | Run one LVCompare diff and capture metrics | `Invoke-PhaseCompare` |
+| Tests | Execute dispatcher tests (unit + optional integration component) | `Invoke-PhaseTests` |
+| Loop | Multi-iteration latency / diff loop (autonomous harness) | `Invoke-PhaseLoop` |
+| Diagnostics | Optional raw CLI capture & console watcher | `Invoke-PhaseDiagnostics` |
 
-`Invoke-IntegrationRunbook.ps1` orchestrates all phases with logging and artefact capture.
+`Invoke-IntegrationRunbook.ps1` orchestrates all phases with logging and artefact capture. The Tests
+phase now emits a per-component breakdown:
+
+- **Unit** always runs unless explicitly excluded and surfaces its own result folder
+  (`tests/results/runbook-tests-*/unit`). The runbook JSON captures test totals, failures, and example paths.
+- **Integration** runs only when `-IncludeIntegrationTests` (or `RUNBOOK` env toggles) are set. When no files
+  are discovered the component is explicitly skipped with a reason, so dashboards/agents know whether the
+  omission was intentional.
+- Each component records summary insight (exit code, duration, flags), discovery samples from the manifest,
+  and the first few failures when present. The runbook step summary renders a table with this metadata to
+  aid triage without digging through artifacts.
 
 ## Canonical LVCompare path
 
