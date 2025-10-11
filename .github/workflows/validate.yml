@@ -479,6 +479,20 @@ jobs:
         if ($bpResult.notes) { $updateArgs['AdditionalNotes'] = @($bpResult.notes) }
         & $bpScript @updateArgs
 
+    - name: Write session index v2
+      shell: pwsh
+      run: |
+        $res = Join-Path $env:RUNNER_TEMP 'sessionindex'
+        pwsh -File tools/Write-SessionIndexV2.ps1 -ResultsDir $res -OutFileName 'session-index.v2.json'
+
+    - name: Upload session index v2 artifact
+      if: always()
+      uses: actions/upload-artifact@v4
+      with:
+        name: validate-session-index-v2
+        path: ${{ runner.temp }}/sessionindex/session-index.v2.json
+        if-no-files-found: warn
+
     - name: Validate session index schema (schema-lite)
       shell: pwsh
       run: |

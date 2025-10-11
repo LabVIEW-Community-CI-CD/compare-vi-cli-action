@@ -389,6 +389,18 @@ jobs:
       uses: ./.github/actions/wire-session-index
       with:
         results-dir: tests/results/${{ matrix.category }}
+    - name: Write session index v2 (category)
+      if: always()
+      shell: pwsh
+      run: pwsh -File tools/Write-SessionIndexV2.ps1 -ResultsDir "tests/results/${{ matrix.category }}" -OutFileName 'session-index.v2.json'
+
+    - name: Upload session index v2 (category)
+      if: always()
+      uses: actions/upload-artifact@v4
+      with:
+        name: session-index-v2-${{ matrix.category }}
+        path: tests/results/${{ matrix.category }}/session-index.v2.json
+        if-no-files-found: warn
     - name: Session index post
       if: always()
       uses: ./.github/actions/session-index-post
@@ -1058,6 +1070,18 @@ jobs:
       uses: ./.github/actions/wire-session-index
       with:
         results-dir: tests/results
+    - name: Write session index v2 (single)
+      if: always()
+      shell: pwsh
+      run: pwsh -File tools/Write-SessionIndexV2.ps1 -ResultsDir 'tests/results' -OutFileName 'session-index.v2.json'
+
+    - name: Upload session index v2 (single)
+      if: always()
+      uses: actions/upload-artifact@v4
+      with:
+        name: session-index-v2-single
+        path: tests/results/session-index.v2.json
+        if-no-files-found: warn
     - name: Session index post (single)
       if: always()
       uses: ./.github/actions/session-index-post
