@@ -51,6 +51,14 @@ try {
     '--from-v1', $sessionIndexV1,
     '--out', $outPath
   )
+
+  if ($env:AGENT_TOGGLE_PROFILES) {
+    $profiles = $env:AGENT_TOGGLE_PROFILES -split '[,;\s]' | Where-Object { $_ } | ForEach-Object { $_.Trim() } | Where-Object { $_ }
+    foreach ($profile in $profiles) {
+      $cliArgs += @('--toggle-profile', $profile)
+    }
+  }
+
   if ($env:GITHUB_WORKFLOW) { $cliArgs += @('--workflow', $env:GITHUB_WORKFLOW) }
   if ($env:GITHUB_JOB) { $cliArgs += @('--job', $env:GITHUB_JOB) }
   if ($casesPath) { $cliArgs += @('--cases', $casesPath) }

@@ -44,6 +44,15 @@ export class SessionIndexBuilder {
     return this;
   }
 
+  public setEnvironmentToggles(
+    toggles: NonNullable<NonNullable<SessionIndexV2['environment']>['toggles']>
+  ): this {
+    const environment = this.index.environment ?? {};
+    environment.toggles = toggles;
+    this.index.environment = environment;
+    return this;
+  }
+
   public setBranchProtection(bp: SessionIndexV2['branchProtection'] | undefined): this {
     if (!bp) {
       this.index.branchProtection = undefined;

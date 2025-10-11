@@ -1,5 +1,6 @@
 import { ArgumentParser } from 'argparse';
 import { readFileSync, writeFileSync } from 'node:fs';
+import { buildToggleValuesPayload } from '../config/toggles.js';
 import { createSessionIndexBuilder } from './builder.js';
 import type { SessionIndexTestCase, SessionIndexV2 } from './schema.js';
 
@@ -10,6 +11,17 @@ type BranchReason = NonNullable<
 type BranchActual = NonNullable<
   SessionIndexV2['branchProtection']
 >['actual'];
+
+function normalizeProfiles(input: string | string[] | undefined): string[] {
+  if (!input) {
+    return [];
+  }
+  const values = Array.isArray(input) ? input : [input];
+  return values
+    .flatMap((entry) => entry.split(/[,\s]+/))
+    .map((entry) => entry.trim())
+    .filter((entry) => entry.length > 0);
+}
 
 const parser = new ArgumentParser({
   description: 'Session Index v2 helper'
@@ -43,9 +55,33 @@ parser.add_argument('--cases', {
   action: 'append'
 });
 
+parser.add_argument('--toggle-profile', {
+  help: 'Toggle profile(s) to apply (repeatable)',
+  action: 'append',
+  dest: 'toggle_profiles'
+});
+
 const args = parser.parse_args();
 
 const builder = createSessionIndexBuilder();
+
+const argProfiles = normalizeProfiles(
+  (args.toggle_profiles as string[] | undefined) ?? undefined
+);
+const envProfiles = normalizeProfiles(process.env.AGENT_TOGGLE_PROFILES);
+const defaultProfiles =
+  process.env.GITHUB_ACTIONS && process.env.GITHUB_ACTIONS.toLowerCase() === 'true'
+    ? ['ci-orchestrated']
+    : ['dev-workstation'];
+const toggleProfiles =
+  argProfiles.length > 0
+    ? argProfiles
+    : envProfiles.length > 0
+    ? envProfiles
+    : defaultProfiles;
+const togglePayload = buildToggleValuesPayload({
+  profiles: toggleProfiles
+});
 
 if (args.sample) {
   builder
@@ -263,6 +299,8 @@ if (args.sample) {
     }
   });
 }
+
+builder.setEnvironmentToggles(togglePayload);
 
 const index = builder.build();
 const json = JSON.stringify(index, null, 2);
