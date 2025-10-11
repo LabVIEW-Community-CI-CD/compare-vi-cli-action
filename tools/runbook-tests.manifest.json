@@ -1,0 +1,25 @@
+{
+  "schema": "runbook-tests-manifest/v1",
+  "version": 1,
+  "components": [
+    {
+      "name": "Unit",
+      "includePatterns": [
+        "Runbook.Unit.Smoke.Tests.ps1"
+      ],
+      "expectedTests": 2,
+      "timeoutSeconds": 60,
+      "perTestSeconds": 10
+    },
+    {
+      "name": "Integration",
+      "includePatterns": [
+        "Runbook.Integration.Smoke.Tests.ps1"
+      ],
+      "expectedTests": 2,
+      "requiresIntegration": true,
+      "timeoutSeconds": 60,
+      "perTestSeconds": 15
+    }
+  ]
+}

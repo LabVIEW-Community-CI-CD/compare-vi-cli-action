@@ -193,22 +193,370 @@ function Invoke-PhaseCompare {
   }
 }
 
+function Resolve-RunbookIncludePatterns {
+  param(
+    [string[]]$Patterns,
+    [string]$TestsDir
+  )
+  $resolved = [System.Collections.Generic.List[string]]::new()
+  if (-not $Patterns -or $Patterns.Count -eq 0) { return $resolved }
+  $allTests = Get-ChildItem -Path $TestsDir -Recurse -Filter '*.Tests.ps1' -File -ErrorAction SilentlyContinue
+  foreach ($pattern in $Patterns) {
+    $trim = ($pattern ?? '').Trim()
+    if (-not $trim) { continue }
+    if ($trim -match '^[a-zA-Z]:') {
+      if (Test-Path -LiteralPath $trim -PathType Leaf) {
+        $resolved.Add((Resolve-Path -LiteralPath $trim -ErrorAction SilentlyContinue).ProviderPath)
+      }
+      continue
+    }
+    $normalized = $trim -replace '/', '\'
+    foreach ($file in $allTests) {
+      $relative = $file.FullName.Substring($TestsDir.Length).TrimStart('\')
+      if ($file.Name -like $normalized -or $relative -like $normalized -or $relative -ieq $normalized) {
+        $resolved.Add($file.FullName)
+      }
+    }
+  }
+  return ($resolved | Select-Object -Unique)
+}
+
+function Get-RunbookTestEntries {
+  param(
+    [Parameter(Mandatory)][string]$TestsDir,
+    [Parameter(Mandatory)][string]$RepoRoot
+  )
+  $manifestPath = Join-Path $RepoRoot 'tools' 'runbook-tests.manifest.json'
+  $components = [System.Collections.Generic.List[object]]::new()
+  if (Test-Path -LiteralPath $manifestPath -PathType Leaf) {
+    try {
+      $manifest = Get-Content -LiteralPath $manifestPath -Raw | ConvertFrom-Json -Depth 6
+      foreach ($entry in @($manifest.components)) {
+        if (-not $entry) { continue }
+        $requiresIntegration = $false
+        if ($entry.PSObject.Properties['requiresIntegration']) {
+          $requiresIntegration = [bool]$entry.requiresIntegration
+        }
+        $expected = $null
+        if ($entry.PSObject.Properties['expectedTests']) {
+          $expected = [int]$entry.expectedTests
+        }
+        $timeoutSeconds = $null
+        if ($entry.PSObject.Properties['timeoutSeconds']) {
+          try { $timeoutSeconds = [double]$entry.timeoutSeconds } catch {}
+        }
+        $perTestSeconds = $null
+        if ($entry.PSObject.Properties['perTestSeconds']) {
+          try { $perTestSeconds = [double]$entry.perTestSeconds } catch {}
+        }
+        $components.Add([pscustomobject]@{
+          name                = if ($entry.name) { [string]$entry.name } else { 'Unit' }
+          includePatterns     = @($entry.includePatterns)
+          expectedTests       = $expected
+          requiresIntegration = $requiresIntegration
+          timeoutSeconds      = $timeoutSeconds
+          perTestSeconds      = $perTestSeconds
+          resolvedFiles       = @()
+        })
+      }
+    } catch {
+      Write-Warning ("Failed to parse runbook test manifest at {0}: {1}" -f $manifestPath, $_.Exception.Message)
+    }
+  }
+  if (-not ($components | Where-Object { $_.name -ieq 'Unit' })) {
+    $components.Add([pscustomobject]@{
+      name='Unit'; includePatterns=@(); expectedTests=$null; requiresIntegration=$false; timeoutSeconds=$null; perTestSeconds=$null; resolvedFiles=@()
+    })
+  }
+  if (-not ($components | Where-Object { $_.name -ieq 'Integration' })) {
+    $components.Add([pscustomobject]@{
+      name='Integration'; includePatterns=@(); expectedTests=$null; requiresIntegration=$true; timeoutSeconds=$null; perTestSeconds=$null; resolvedFiles=@()
+    })
+  }
+  foreach ($comp in $components) {
+    if (-not $comp.includePatterns) { $comp.includePatterns = @() }
+    $comp.resolvedFiles = Resolve-RunbookIncludePatterns -Patterns $comp.includePatterns -TestsDir $TestsDir
+    if (-not $comp.expectedTests -and $comp.resolvedFiles) {
+      $comp.expectedTests = $comp.resolvedFiles.Count
+    }
+    if ((-not $comp.timeoutSeconds) -and $comp.perTestSeconds -and $comp.expectedTests) {
+      $comp.timeoutSeconds = [double]$comp.perTestSeconds * [double]$comp.expectedTests
+    }
+  }
+  $catalog = [ordered]@{
+    total = ($components | Where-Object { $_.expectedTests } | Measure-Object -Property expectedTests -Sum).Sum
+    unit = ($components | Where-Object { (-not $_.requiresIntegration) -and $_.expectedTests } | Measure-Object -Property expectedTests -Sum).Sum
+    integration = ($components | Where-Object { $_.requiresIntegration -and $_.expectedTests } | Measure-Object -Property expectedTests -Sum).Sum
+  }
+  foreach ($key in @('total','unit','integration')) {
+    if (-not $catalog[$key]) { $catalog[$key] = 0 }
+  }
+  return [pscustomobject]@{
+    manifestPath = $(if (Test-Path -LiteralPath $manifestPath -PathType Leaf) { $manifestPath } else { $null })
+    catalog = $catalog
+    components = $components
+  }
+}
+
+function Invoke-RunbookTestComponent {
+  param(
+    [Parameter(Mandatory)][string]$ComponentName,
+    [Parameter(Mandatory)][string]$RepoRoot,
+    [Parameter(Mandatory)][string]$ResultsRoot,
+    [Parameter(Mandatory)][bool]$RunEnabled,
+    [Parameter(Mandatory)][bool]$IncludeIntegrationSwitch,
+    [string[]]$IncludePatterns,
+    [hashtable]$CountsHint,
+    [string[]]$ResolvedFiles
+  )
+  $component = [ordered]@{
+    name        = $ComponentName
+    included    = $RunEnabled
+    status      = 'Skipped'
+    exitCode    = $null
+    resultsPath = $null
+    summary     = $null
+    discovery   = $null
+    failures    = @()
+    reason      = $null
+  }
+  if ($CountsHint -and $CountsHint.ContainsKey('expected')) {
+    $component.expectedTests = $CountsHint['expected']
+  }
+  $timeoutSeconds = $null
+  if ($CountsHint -and $CountsHint.ContainsKey('timeoutSeconds') -and $CountsHint['timeoutSeconds']) {
+    try { $timeoutSeconds = [double]$CountsHint['timeoutSeconds'] } catch {}
+  }
+  $perTestSeconds = $null
+  if ($CountsHint -and $CountsHint.ContainsKey('perTestSeconds') -and $CountsHint['perTestSeconds']) {
+    try { $perTestSeconds = [double]$CountsHint['perTestSeconds'] } catch {}
+  }
+  if ((-not $timeoutSeconds) -and $perTestSeconds -and $component.PSObject.Properties['expectedTests'] -and $component.expectedTests) {
+    $timeoutSeconds = [double]$perTestSeconds * [double]$component.expectedTests
+  }
+  if ($timeoutSeconds -and $timeoutSeconds -gt 0) {
+    $component.timeoutSeconds = [double]$timeoutSeconds
+  }
+  if ($perTestSeconds -and $perTestSeconds -gt 0) {
+    $component.perTestSeconds = [double]$perTestSeconds
+  }
+  if (-not $RunEnabled) {
+    if ($CountsHint -and $CountsHint.ContainsKey('reason')) {
+      $component.reason = $CountsHint['reason']
+    }
+    return [pscustomobject]$component
+  }
+  $componentDir = Join-Path $ResultsRoot ($ComponentName.ToLowerInvariant())
+  if (Test-Path -LiteralPath $componentDir) {
+    Remove-Item -LiteralPath $componentDir -Recurse -Force -ErrorAction SilentlyContinue
+  }
+  New-Item -ItemType Directory -Force -Path $componentDir | Out-Null
+
+  $invokeParams = @{
+    ResultsPath          = $componentDir
+    JsonSummaryPath      = 'pester-summary.json'
+    UseDiscoveryManifest = $true
+    EmitOutcome          = $true
+    EmitContext          = $true
+    EmitTimingDetail     = $true
+    EmitDiscoveryDetail  = $true
+    EmitAggregationHints = $true
+    IncludeIntegration   = $(if ($IncludeIntegrationSwitch) { 'true' } else { 'false' })
+  }
+  if ($timeoutSeconds -and $timeoutSeconds -gt 0) {
+    $invokeParams['TimeoutSeconds'] = [double]$timeoutSeconds
+  }
+  if ($IncludePatterns -and $IncludePatterns.Count -gt 0) {
+    $invokeParams['IncludePatterns'] = $IncludePatterns
+    $component.selection = [ordered]@{ includePatterns = $IncludePatterns }
+  }
+  elseif ($ResolvedFiles -and $ResolvedFiles.Count -gt 0) {
+    $invokeParams['IncludePatterns'] = $ResolvedFiles
+    $component.selection = [ordered]@{ includePatterns = $ResolvedFiles }
+  }
+  if ($ResolvedFiles -and $ResolvedFiles.Count -gt 0) {
+    $component.resolvedFiles = $ResolvedFiles
+    $invokeParams['MaxTestFiles'] = [math]::Max(1, $ResolvedFiles.Count)
+  }
+  elseif ($IncludePatterns -and $IncludePatterns.Count -gt 0) {
+    $invokeParams['MaxTestFiles'] = [math]::Max(1, $IncludePatterns.Count)
+  }
+
+  $integrationBoolSeed = $IncludeIntegrationSwitch
+  Set-Variable -Name 'includeIntegrationBool' -Scope Script -Value ($integrationBoolSeed) -Force
+
+  $scriptPath = Join-Path (Get-Location) 'Invoke-PesterTests.ps1'
+  if (-not (Test-Path -LiteralPath $scriptPath)) {
+    $component.status = 'Failed'
+    $component.reason = 'invoke-script-missing'
+    return $component
+  }
+
+  try {
+    & $scriptPath @invokeParams
+    $exitCode = $LASTEXITCODE
+  } catch {
+    $component.status = 'Failed'
+    $component.exitCode = $LASTEXITCODE
+    $component.error = $_.Exception.Message
+    return $component
+  }
+
+  $component.exitCode = $exitCode
+  $component.resultsPath = $componentDir
+
+  $summaryPath = Join-Path $componentDir 'pester-summary.json'
+  if (Test-Path -LiteralPath $summaryPath -PathType Leaf) {
+    try {
+      $component.summary = Get-Content -LiteralPath $summaryPath -Raw | ConvertFrom-Json -Depth 6
+    } catch {
+      $component.summaryError = $_.Exception.Message
+    }
+  }
+
+  $failuresPath = Join-Path $componentDir 'pester-failures.json'
+  if (Test-Path -LiteralPath $failuresPath -PathType Leaf) {
+    try {
+      $failures = Get-Content -LiteralPath $failuresPath -Raw | ConvertFrom-Json -Depth 6
+      if ($failures) {
+        $component.failureCount = @($failures).Count
+        $component.failures = @($failures | Select-Object -First 5)
+      }
+    } catch {
+      $component.failuresError = $_.Exception.Message
+    }
+  }
+
+  $manifestPath = Join-Path $componentDir '_agent/test-manifest.json'
+  if (Test-Path -LiteralPath $manifestPath -PathType Leaf) {
+    try {
+      $component.discovery = Get-Content -LiteralPath $manifestPath -Raw | ConvertFrom-Json -Depth 6
+    } catch {
+      $component.discoveryError = $_.Exception.Message
+    }
+  }
+
+  $summaryTotal = $null
+  if ($component.summary -and $component.summary.PSObject.Properties['total']) {
+    $summaryTotal = [int]$component.summary.total
+  }
+
+  if ($exitCode -eq 0) {
+    if ($summaryTotal -eq 0) {
+      $component.status = 'Skipped'
+      if (-not $component.reason) { $component.reason = 'no-tests-executed' }
+    } else {
+      $component.status = 'Passed'
+    }
+  } else {
+    $component.status = 'Failed'
+  }
+
+  return [pscustomobject]$component
+}
+
 function Invoke-PhaseTests {
   param($r)
   Write-PhaseBanner $r.name
-  $inc = $IncludeIntegrationTests.IsPresent
-  try {
-    $cmd = @()
-    $cmd += (Join-Path (Get-Location) 'Invoke-PesterTests.ps1')
-    if ($inc) { $cmd += @('-IncludeIntegration','true') }
-    & $cmd[0] @($cmd[1..($cmd.Count-1)])
-    $code = $LASTEXITCODE
-    $r.details.exitCode = $code
-    $r.details.integrationIncluded = $inc
-    if ($code -eq 0) { $r.status='Passed' } else { $r.status='Failed' }
-  } catch {
-    $r.details.error = $_.Exception.Message
-    $r.status='Failed'
+  $repoRoot = (Get-Location).Path
+  $testsDir = Join-Path $repoRoot 'tests'
+  $resultsRoot = Join-Path $repoRoot 'tests/results'
+  $timestamp = Get-Date -Format 'yyyyMMdd-HHmmss'
+  $runRoot = Join-Path $resultsRoot ("runbook-tests-{0}" -f $timestamp)
+  New-Item -ItemType Directory -Force -Path $runRoot | Out-Null
+
+  $entries = Get-RunbookTestEntries -TestsDir $testsDir -RepoRoot $repoRoot
+  $components = @()
+
+  $unitEntry = $entries.components | Where-Object { $_.name -ieq 'Unit' } | Select-Object -First 1
+  if (-not $unitEntry) {
+    $unitEntry = [pscustomobject]@{ name='Unit'; includePatterns=@(); expectedTests=$null; requiresIntegration=$false }
+  }
+  $unitComponent = Invoke-RunbookTestComponent -ComponentName 'Unit' -RepoRoot $repoRoot -ResultsRoot $runRoot -RunEnabled:$true -IncludeIntegrationSwitch:$false -IncludePatterns $unitEntry.includePatterns -CountsHint (@{
+      expected        = $unitEntry.expectedTests
+      timeoutSeconds  = $unitEntry.timeoutSeconds
+      perTestSeconds  = $unitEntry.perTestSeconds
+    }) -ResolvedFiles $unitEntry.resolvedFiles
+  $components += $unitComponent
+
+  $integrationRequested = $IncludeIntegrationTests.IsPresent
+  $integrationEntry = $entries.components | Where-Object { $_.name -ieq 'Integration' } | Select-Object -First 1
+  if (-not $integrationEntry) {
+    $integrationEntry = [pscustomobject]@{ name='Integration'; includePatterns=@(); expectedTests=$null; requiresIntegration=$true }
+  }
+
+  if ($integrationRequested) {
+    $integrationComponent = Invoke-RunbookTestComponent -ComponentName 'Integration' -RepoRoot $repoRoot -ResultsRoot $runRoot -RunEnabled:$true -IncludeIntegrationSwitch:$true -IncludePatterns $integrationEntry.includePatterns -CountsHint (@{
+        expected        = $integrationEntry.expectedTests
+        timeoutSeconds  = $integrationEntry.timeoutSeconds
+        perTestSeconds  = $integrationEntry.perTestSeconds
+      }) -ResolvedFiles $integrationEntry.resolvedFiles
+    $components += $integrationComponent
+  } else {
+    $components += Invoke-RunbookTestComponent -ComponentName 'Integration' -RepoRoot $repoRoot -ResultsRoot $runRoot -RunEnabled:$false -IncludeIntegrationSwitch:$false -IncludePatterns $integrationEntry.includePatterns -CountsHint (@{
+        reason          = 'integration-not-requested'
+        expected        = $integrationEntry.expectedTests
+        timeoutSeconds  = $integrationEntry.timeoutSeconds
+        perTestSeconds  = $integrationEntry.perTestSeconds
+      }) -ResolvedFiles $integrationEntry.resolvedFiles
+  }
+
+  $failedComponents = $components | Where-Object { $_.status -eq 'Failed' }
+
+  $integrationComponentState = $components | Where-Object { $_.name -ieq 'Integration' } | Select-Object -First 1
+  $integrationIncludedValue = $false
+  if ($integrationComponentState -is [hashtable] -and $integrationComponentState.ContainsKey('included')) {
+    $integrationIncludedValue = [bool]$integrationComponentState['included']
+  } elseif ($integrationComponentState -and $integrationComponentState.PSObject.Properties['included']) {
+    $integrationIncludedValue = [bool]$integrationComponentState.included
+  }
+
+  $r.details = [ordered]@{
+    integrationRequested = [bool]$integrationRequested
+    integrationIncluded  = $integrationIncludedValue
+    catalog              = $entries.catalog
+    resultsRoot          = $runRoot
+    components           = $components
+    componentExitCodes   = @(
+      foreach ($component in $components) {
+        [ordered]@{
+          name     = $component.name
+          exitCode = $component.exitCode
+          status   = $component.status
+        }
+      }
+    )
+  }
+
+  if ($failedComponents) {
+    $r.status = 'Failed'
+  } else {
+    $r.status = 'Passed'
+  }
+
+  if ($env:GITHUB_STEP_SUMMARY) {
+    try {
+      $lines = @()
+      $lines += '#### Tests - Components'
+      $lines += ''
+      $lines += '| Component | Status | Tests | Failed | Duration (s) | Notes |'
+      $lines += '| --- | --- | --- | --- | --- | --- |'
+      foreach ($component in $components) {
+        $testCount = if ($component.summary -and $component.summary.PSObject.Properties['total']) { $component.summary.total } elseif ($component.PSObject.Properties['expectedTests']) { $component.expectedTests } else { 'n/a' }
+        $failedCount = if ($component.summary -and $component.summary.PSObject.Properties['failed']) { $component.summary.failed } else { 'n/a' }
+        $duration = if ($component.summary -and $component.summary.PSObject.Properties['duration_s'] -and $component.summary.duration_s -ne $null) { '{0:N2}' -f $component.summary.duration_s } else { 'n/a' }
+        $notesParts = @()
+        if ($component.PSObject.Properties['reason'] -and $component.reason) { $notesParts += $component.reason }
+        if ($component.summary -and $component.summary.PSObject.Properties['flags'] -and $component.summary.flags) {
+          $notesParts += ($component.summary.flags -join ',')
+        }
+        $notes = if ($notesParts) { $notesParts -join '; ' } else { '' }
+        $lines += ('| {0} | {1} | {2} | {3} | {4} | {5} |' -f $component.name, $component.status, $testCount, $failedCount, $duration, $notes)
+      }
+      Add-Content -Path $env:GITHUB_STEP_SUMMARY -Value ($lines -join "`n") -Encoding utf8
+    } catch {
+      Write-Warning ("Failed to append Tests component table to step summary: {0}" -f $_.Exception.Message)
+    }
   }
 }
 

@@ -27,6 +27,11 @@ phase now emits a per-component breakdown:
 - Each component records summary insight (exit code, duration, flags), discovery samples from the manifest,
   and the first few failures when present. The runbook step summary renders a table with this metadata to
   aid triage without digging through artifacts.
+- The smoke suites pulled in by default live in `tools/runbook-tests.manifest.json`, pairing
+  `Runbook.Unit.Smoke.Tests.ps1` with an optional integration companion. Override the manifest or supply
+  `RUNBOOK_*` toggles when you need a broader slice. The manifest also supports coarse `timeoutSeconds`
+  and `perTestSeconds` hints which the runbook converts into `TimeoutSeconds` when invoking the dispatcher,
+  keeping quick samples from stalling.
 
 ## Canonical LVCompare path
 

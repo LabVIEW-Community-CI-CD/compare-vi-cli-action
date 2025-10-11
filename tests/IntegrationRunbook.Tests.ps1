@@ -94,6 +94,58 @@ Describe 'IntegrationRunbook - Phase Selection & JSON' -Tag 'Unit' {
   }
 }
 
+Describe 'IntegrationRunbook - Tests Phase Metadata' -Tag 'Unit' {
+  BeforeAll {
+    $global:runRoot = Resolve-Path (Join-Path $PSScriptRoot '..')
+    $global:runScript = Resolve-Path (Join-Path $PSScriptRoot '..' 'scripts' 'Invoke-IntegrationRunbook.ps1')
+  }
+
+  It 'captures unit component metadata and skips integration when not requested' {
+    $tmp = Join-Path $runRoot 'tmp-runbook-tests.json'
+    if (Test-Path $tmp) { Remove-Item $tmp -Force }
+    & $runScript -Phases 'Tests' -JsonReport $tmp | Out-Null
+    $proc = [pscustomobject]@{ ExitCode = $LASTEXITCODE }
+    $proc.ExitCode | Should -Be 0
+    Test-Path $tmp | Should -BeTrue
+    $json = Get-Content $tmp -Raw | ConvertFrom-Json
+    $testsPhase = $json.phases | Where-Object { $_.name -eq 'Tests' }
+    $testsPhase | Should -Not -BeNullOrEmpty
+    $testsPhase.details.resultsRoot | Should -Match 'runbook-tests-'
+    $components = @($testsPhase.details.components)
+    $components.Count | Should -BeGreaterThan 0
+    $unit = $components | Where-Object { $_.name -eq 'Unit' } | Select-Object -First 1
+    $unit | Should -Not -BeNullOrEmpty
+    $unit.status | Should -Be 'Passed'
+    $unit.summary.total | Should -BeGreaterThan 0
+    $unit.timeoutSeconds | Should -BeGreaterThan 0
+    $integration = $components | Where-Object { $_.name -eq 'Integration' } | Select-Object -First 1
+    $integration.included | Should -BeFalse
+    $integration.status | Should -Be 'Skipped'
+    $testsPhase.details.integrationRequested | Should -BeFalse
+    $testsPhase.details.integrationIncluded | Should -BeFalse
+  }
+
+  It 'includes integration component when requested' {
+    $tmp = Join-Path $runRoot 'tmp-runbook-tests-int.json'
+    if (Test-Path $tmp) { Remove-Item $tmp -Force }
+    & $runScript -Phases 'Tests' -JsonReport $tmp -IncludeIntegrationTests | Out-Null
+    $proc = [pscustomobject]@{ ExitCode = $LASTEXITCODE }
+    $proc.ExitCode | Should -Be 0
+    Test-Path $tmp | Should -BeTrue
+    $json = Get-Content $tmp -Raw | ConvertFrom-Json
+    $testsPhase = $json.phases | Where-Object { $_.name -eq 'Tests' }
+    $components = @($testsPhase.details.components)
+    $integration = $components | Where-Object { $_.name -eq 'Integration' } | Select-Object -First 1
+    $integration | Should -Not -BeNullOrEmpty
+    $integration.included | Should -BeTrue
+    $integration.status | Should -Be 'Passed'
+    $integration.summary.total | Should -BeGreaterThan 0
+    $integration.timeoutSeconds | Should -BeGreaterThan 0
+    $testsPhase.details.integrationRequested | Should -BeTrue
+    $testsPhase.details.integrationIncluded | Should -BeTrue
+  }
+}
+
 Describe 'IntegrationRunbook - Schema Shape Minimal Validation' -Tag 'Unit' {
   It 'schema file exists and contains expected keys' {
     $schemaPath = Resolve-Path (Join-Path (Join-Path (Join-Path (Join-Path $PSScriptRoot '..') 'docs') 'schemas') 'integration-runbook-v1.schema.json')
