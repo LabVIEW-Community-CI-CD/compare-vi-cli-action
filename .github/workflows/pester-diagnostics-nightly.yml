@@ -29,6 +29,8 @@ jobs:
     if: always()
     runs-on: ubuntu-latest
     steps:
+      - name: Apply agent toggles
+        uses: ./.github/actions/apply-agent-toggles
       - name: Download Pester artifacts
         uses: actions/download-artifact@v4
         with:

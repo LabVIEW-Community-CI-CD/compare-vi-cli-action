@@ -1,6 +1,7 @@
 import { ArgumentParser } from 'argparse';
 import { writeFileSync } from 'node:fs';
 import { createSessionIndexBuilder } from './builder.js';
+import { resolveToggleManifest } from '../config/toggles.js';
 
 const parser = new ArgumentParser({
   description: 'Session Index v2 helper'
@@ -27,9 +28,38 @@ parser.add_argument('--job', {
 
 const args = parser.parse_args();
 
+function getToggleManifest() {
+  try {
+    const rawProfiles = (process.env.AGENT_TOGGLE_PROFILES ?? '')
+      .split(',')
+      .map((value) => value.trim())
+      .filter((value) => value.length > 0);
+    const manifest = resolveToggleManifest({
+      profiles: rawProfiles.length > 0 ? rawProfiles : undefined
+    });
+    const digest = process.env.AGENT_TOGGLE_MANIFEST_DIGEST?.trim();
+    const values: Record<string, string> = {};
+    for (const [key, value] of Object.entries(manifest.toggles)) {
+      const envValue = process.env[key];
+      values[key] = envValue ?? value;
+    }
+    return {
+      manifestDigest: digest && digest.length > 0 ? digest : manifest.manifestDigest,
+      profiles: manifest.profiles,
+      resolvedProfiles: manifest.resolvedProfiles,
+      values,
+      hashAlgorithm: manifest.metadata?.hashAlgorithm
+    };
+  } catch {
+    return undefined;
+  }
+}
+
 const builder = createSessionIndexBuilder();
+const toggleManifest = getToggleManifest();
 
 if (args.sample) {
+  const sampleManifest = resolveToggleManifest({ profiles: ['ci-orchestrated'] });
   builder
     .setRun({
       workflow: args.workflow,
@@ -45,7 +75,14 @@ if (args.sample) {
     .setEnvironment({
       runner: 'ubuntu-24.04',
       node: process.version,
-      pwsh: '7.5.3'
+      pwsh: '7.5.3',
+      toggles: {
+        manifestDigest: sampleManifest.manifestDigest,
+        profiles: sampleManifest.profiles,
+        resolvedProfiles: sampleManifest.resolvedProfiles,
+        values: sampleManifest.toggles,
+        hashAlgorithm: sampleManifest.metadata?.hashAlgorithm
+      }
     })
     .setBranchProtection({
       status: 'warn',
@@ -102,6 +139,12 @@ if (args.sample) {
       kind: process.env.GITHUB_EVENT_NAME
     }
   });
+
+  if (toggleManifest) {
+    builder.setEnvironment({
+      toggles: toggleManifest
+    });
+  }
 }
 
 const index = builder.build();

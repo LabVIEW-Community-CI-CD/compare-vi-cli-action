@@ -16,6 +16,8 @@ jobs:
     if: ${{ vars.ORCH_TWO_GREENS == '1' && github.event.workflow_run.head_branch == 'develop' && github.event.workflow_run.conclusion == 'success' }}
     runs-on: ubuntu-latest
     steps:
+      - name: Apply agent toggles
+        uses: ./.github/actions/apply-agent-toggles
       - name: Check last two orchestrated runs on develop (paged)
         id: check
         shell: bash

@@ -25,6 +25,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
     - uses: actions/checkout@v5
+    - name: Apply agent toggles
+      uses: ./.github/actions/apply-agent-toggles
     - name: Wire Probe (J1)
       if: '${{ vars.WIRE_PROBES != ''0'' }}'
       uses: ./.github/actions/wire-probe
@@ -321,6 +323,8 @@ jobs:
       SUMMARY_VERBOSE: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.summary-verbose || 'false' }}
     steps:
     - uses: actions/checkout@v5
+    - name: Apply agent toggles
+      uses: ./.github/actions/apply-agent-toggles
     - name: Wire Probe (J1)
       if: '${{ vars.WIRE_PROBES != ''0'' }}'
       uses: ./.github/actions/wire-probe
@@ -431,6 +435,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
     - uses: actions/checkout@v5
+    - name: Apply agent toggles
+      uses: ./.github/actions/apply-agent-toggles
 
     - name: Wire Probe (J1)
       if: '${{ vars.WIRE_PROBES != ''0'' }}'

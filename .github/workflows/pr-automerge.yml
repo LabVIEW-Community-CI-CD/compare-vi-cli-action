@@ -13,10 +13,11 @@ jobs:
     if: contains(github.event.pull_request.labels.*.name, 'automerge')
     runs-on: ubuntu-latest
     steps:
+      - name: Apply agent toggles
+        uses: ./.github/actions/apply-agent-toggles
       - name: Enable auto-merge (merge method)
         uses: peter-evans/enable-pull-request-automerge@v3
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
           pull-request-number: ${{ github.event.pull_request.number }}
           merge-method: MERGE
-

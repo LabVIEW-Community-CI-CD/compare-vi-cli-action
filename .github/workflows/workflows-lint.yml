@@ -10,6 +10,8 @@ jobs:
       ACTIONLINT_VERSION: ${{ vars.ACTIONLINT_VERSION || '1.7.7' }}
     steps:
       - uses: actions/checkout@v5
+      - name: Apply agent toggles
+        uses: ./.github/actions/apply-agent-toggles
 
       - name: Install actionlint (pinned)
         shell: bash

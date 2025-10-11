@@ -26,6 +26,8 @@ jobs:
       LV_SUPPRESS_UI: '1'
     steps:
     - uses: actions/checkout@v5
+    - name: Apply agent toggles
+      uses: ./.github/actions/apply-agent-toggles
 
     - name: Preflight
       shell: pwsh

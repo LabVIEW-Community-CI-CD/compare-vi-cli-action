@@ -11,6 +11,8 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v5
+      - name: Apply agent toggles
+        uses: ./.github/actions/apply-agent-toggles
       - name: Lint changed Markdown (PR)
         if: github.event_name == 'pull_request'
         shell: pwsh

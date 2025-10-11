@@ -61,6 +61,51 @@ function Get-PropertyValue {
   return $Object.$Property
 }
 
+function Get-SessionIndexInfo {
+  param(
+    [string]$ResultsDir
+  )
+
+  $candidate = $null
+  if ($ResultsDir) {
+    $candidate = Join-Path $ResultsDir 'session-index.json'
+  } else {
+    $candidate = Join-Path (Join-Path $script:repoRoot 'tests') 'results/session-index.json'
+  }
+
+  $info = Read-JsonFile -Path $candidate
+  $toggle = $null
+  if ($info.Data -and ($info.Data.PSObject.Properties.Name -contains 'environment')) {
+    $environment = $info.Data.environment
+    if ($environment -and ($environment.PSObject.Properties.Name -contains 'toggles')) {
+      $manifest = $environment.toggles
+      if ($manifest) {
+        $values = [ordered]@{}
+        if ($manifest.PSObject.Properties.Name -contains 'values' -and $manifest.values) {
+          foreach ($prop in $manifest.values.PSObject.Properties) {
+            $values[$prop.Name] = [string]$prop.Value
+          }
+        }
+        $toggle = [pscustomobject]@{
+          ManifestDigest   = $manifest.manifestDigest
+          HashAlgorithm    = if ($manifest.PSObject.Properties.Name -contains 'hashAlgorithm') { $manifest.hashAlgorithm } else { $null }
+          Profiles         = if ($manifest.PSObject.Properties.Name -contains 'profiles') { @($manifest.profiles) } else { @() }
+          ResolvedProfiles = if ($manifest.PSObject.Properties.Name -contains 'resolvedProfiles') { @($manifest.resolvedProfiles) } else { @() }
+          Values           = $values
+        }
+      }
+    }
+  }
+
+  return [pscustomobject]@{
+    Exists        = $info.Exists
+    Path          = $info.Path
+    Error         = $info.Error
+    Schema        = if ($info.Data) { $info.Data.schema } else { $null }
+    ToggleManifest = $toggle
+  }
+}
+
 function Get-DashboardSnapshot {
   param(
     [string]$GroupName,
@@ -85,6 +130,8 @@ function Get-DashboardSnapshot {
   }
   $labview = Get-LabVIEWSnapshot -SnapshotPath $labviewSnapshotPath
   $actions = Get-ActionItems -SessionLock $session -PesterTelemetry $pester -AgentWait $agentWait -Stakeholder $stakeholders -WatchTelemetry $watch -LabVIEWSnapshot $labview
+  $sessionIndex = Get-SessionIndexInfo -ResultsDir $ResultsDir
+  $toggleManifest = $sessionIndex.ToggleManifest
 
   $branch = Invoke-Git -Arguments @('rev-parse', '--abbrev-ref', 'HEAD')
   $commit = Invoke-Git -Arguments @('rev-parse', 'HEAD')
@@ -108,6 +155,8 @@ function Get-DashboardSnapshot {
     WatchTelemetry   = $watch
     LabVIEWSnapshot  = $labview
     ActionItems      = $actions
+    SessionIndex     = $sessionIndex
+    ToggleManifest   = $toggleManifest
   }
 }
 
@@ -123,7 +172,7 @@ function Write-TerminalReport {
   param($Snapshot)
 
   $timestamp = $Snapshot.GeneratedAt.ToString('u')
-  Write-Host "Dev Dashboard — $timestamp"
+  Write-Host "Dev Dashboard - $timestamp"
   Write-Host "Group : $($Snapshot.Group)"
   if ($Snapshot.Branch) { Write-Host "Branch: $($Snapshot.Branch)" }
   if ($Snapshot.Commit) {
@@ -132,6 +181,19 @@ function Write-TerminalReport {
   }
   if ($Snapshot.ResultsRoot) { Write-Host "Results: $($Snapshot.ResultsRoot)" }
   Write-Host ''
+
+  $toggle = $Snapshot.ToggleManifest
+  if ($toggle) {
+    Write-Host 'Toggle Manifest'
+    Write-Host ("  Digest  : {0}" -f $toggle.ManifestDigest)
+    if ($toggle.HashAlgorithm) {
+      Write-Host ("  Hash    : {0}" -f $toggle.HashAlgorithm)
+    }
+    if ($toggle.Profiles -and $toggle.Profiles.Count -gt 0) {
+      Write-Host ("  Profiles: {0}" -f (($toggle.Profiles | Where-Object { $_ }) -join ', '))
+    }
+    Write-Host ''
+  }
 
   $session = $Snapshot.SessionLock
   Write-Host "Session Lock"
@@ -342,6 +404,7 @@ function ConvertTo-HtmlReport {
   $stakeChannelsDisplay = [string]::Join(', ', $stakeChannels)
   $labview = $Snapshot.LabVIEWSnapshot
   $items = $Snapshot.ActionItems
+  $toggle = $Snapshot.ToggleManifest
   $shortCommit = ''
   if ($Snapshot.Commit) {
     $shortCommit = $Snapshot.Commit.Substring(0, [Math]::Min(7, $Snapshot.Commit.Length))
@@ -386,6 +449,29 @@ function ConvertTo-HtmlReport {
     "<ul>$([string]::Join('', $rows))</ul>"
   } else { '<p>None</p>' }
 
+  $toggleHtml = '<p>No toggle manifest recorded.</p>'
+  if ($toggle) {
+    $profilesDisplay = ($toggle.Profiles | Where-Object { $_ -and $_ -ne '' })
+    $profilesValue = if ($profilesDisplay.Count -gt 0) { $profilesDisplay -join ', ' } else { 'n/a' }
+    $resolvedDisplay = ($toggle.ResolvedProfiles | Where-Object { $_ -and $_ -ne '' })
+    $resolvedValue = if ($resolvedDisplay.Count -gt 0) { $resolvedDisplay -join ', ' } else { 'n/a' }
+    $hashValue = if ($toggle.HashAlgorithm) { $toggle.HashAlgorithm } else { 'sha256' }
+    $valueItems = @()
+    if ($toggle.Values) {
+      foreach ($entry in ($toggle.Values.GetEnumerator() | Sort-Object Key)) {
+        $valueItems += "<li>$(& $encode $entry.Key) = $(& $encode $entry.Value)</li>"
+      }
+    }
+    $valueList = if ($valueItems.Count -gt 0) { "<ul>$([string]::Join('', $valueItems))</ul>" } else { '<p>No toggle values recorded.</p>' }
+    $toggleHtml = @"
+<p><strong>Digest:</strong> $(& $encode $toggle.ManifestDigest)</p>
+<p><strong>Hash:</strong> $(& $encode $hashValue)</p>
+<p><strong>Profiles:</strong> $(& $encode $profilesValue)</p>
+<p><strong>Resolved Profiles:</strong> $(& $encode $resolvedValue)</p>
+$valueList
+"@
+  }
+
   return @"
 <!DOCTYPE html>
 <html lang="en">
@@ -417,6 +503,11 @@ function ConvertTo-HtmlReport {
     <div><strong>Branch</strong>: $(& $encode $Snapshot.Branch)</div>
     <div><strong>Commit</strong>: $(& $encode $shortCommit)</div>
   </div>
+
+  <section>
+    <h2>Toggle Manifest</h2>
+    $toggleHtml
+  </section>
 
   <section>
     <h2>Session Lock</h2>

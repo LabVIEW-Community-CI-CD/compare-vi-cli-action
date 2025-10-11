@@ -21,6 +21,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
+      - name: Apply agent toggles
+        uses: ./.github/actions/apply-agent-toggles
 
       - name: Validate canonical fixtures
         shell: pwsh

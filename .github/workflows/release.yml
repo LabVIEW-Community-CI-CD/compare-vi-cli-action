@@ -12,6 +12,8 @@ jobs:
       contents: write
     steps:
       - uses: actions/checkout@v5
+      - name: Apply agent toggles
+        uses: ./.github/actions/apply-agent-toggles
 
       - name: Build release notes from CHANGELOG
         id: notes

@@ -1,17 +1,15 @@
 import { z } from 'zod';
-
 export const triggerSchema = z
-  .object({
+    .object({
     kind: z.string().optional(),
     number: z.number().optional(),
     author: z.string().optional(),
     commentId: z.union([z.number(), z.string()]).optional(),
     commentUrl: z.string().optional()
-  })
-  .strict();
-
+})
+    .strict();
 export const runSchema = z
-  .object({
+    .object({
     id: z.string().optional(),
     attempt: z.number().int().nonnegative().optional(),
     workflow: z.string(),
@@ -20,11 +18,10 @@ export const runSchema = z
     commit: z.string().optional(),
     repository: z.string().optional(),
     trigger: triggerSchema.optional()
-  })
-  .strict();
-
+})
+    .strict();
 export const environmentSchema = z
-  .object({
+    .object({
     runner: z.string().optional(),
     runnerImage: z.string().optional(),
     os: z.string().optional(),
@@ -32,24 +29,23 @@ export const environmentSchema = z
     pwsh: z.string().optional(),
     git: z.string().optional(),
     toggles: z
-      .object({
+        .object({
         manifestDigest: z.string(),
         profiles: z.array(z.string()),
         resolvedProfiles: z.array(z.string()).optional(),
         values: z.record(z.string()),
         hashAlgorithm: z.string().optional()
-      })
-      .strict()
-      .optional(),
+    })
+        .strict()
+        .optional(),
     custom: z.record(z.string()).optional()
-  })
-  .strict();
-
+})
+    .strict();
 export const branchProtectionSchema = z
-  .object({
+    .object({
     status: z.enum(['ok', 'warn', 'error']),
     reason: z
-      .enum([
+        .enum([
         'aligned',
         'missing_required',
         'extra_required',
@@ -58,22 +54,21 @@ export const branchProtectionSchema = z
         'api_unavailable',
         'api_error',
         'api_forbidden'
-      ])
-      .optional(),
+    ])
+        .optional(),
     expected: z.array(z.string()).optional(),
     actual: z.array(z.string()).optional(),
     mapping: z
-      .object({
+        .object({
         path: z.string(),
         digest: z.string()
-      })
-      .optional(),
+    })
+        .optional(),
     notes: z.array(z.string()).optional()
-  })
-  .strict();
-
+})
+    .strict();
 export const testCaseSchema = z
-  .object({
+    .object({
     id: z.string(),
     category: z.string().optional(),
     requirement: z.string().optional(),
@@ -85,46 +80,43 @@ export const testCaseSchema = z
     artifacts: z.array(z.string()).optional(),
     tags: z.array(z.string()).optional(),
     diagnostics: z.array(z.string()).optional()
-  })
-  .strict();
-
+})
+    .strict();
 export const testsSchema = z
-  .object({
+    .object({
     summary: z
-      .object({
+        .object({
         total: z.number().int().nonnegative(),
         passed: z.number().int().nonnegative(),
         failed: z.number().int().nonnegative(),
         errors: z.number().int().nonnegative(),
         skipped: z.number().int().nonnegative(),
         durationSeconds: z.number().nonnegative().optional()
-      })
-      .strict()
-      .optional(),
+    })
+        .strict()
+        .optional(),
     cases: z.array(testCaseSchema).optional()
-  })
-  .strict();
-
+})
+    .strict();
 export const artifactSchema = z
-  .object({
+    .object({
     name: z.string(),
     path: z.string(),
     kind: z
-      .enum(['summary', 'report', 'log', 'artifact', 'traceability', 'custom'])
-      .optional(),
+        .enum(['summary', 'report', 'log', 'artifact', 'traceability', 'custom'])
+        .optional(),
     mimeType: z.string().optional(),
     sizeBytes: z.number().int().nonnegative().optional(),
     checksum: z
-      .object({
+        .object({
         algorithm: z.string(),
         value: z.string()
-      })
-      .optional()
-  })
-  .strict();
-
+    })
+        .optional()
+})
+    .strict();
 export const sessionIndexSchema = z
-  .object({
+    .object({
     schema: z.literal('session-index/v2'),
     schemaVersion: z.string().regex(/^\d+\.\d+\.\d+$/),
     generatedAtUtc: z.string(),
@@ -135,9 +127,5 @@ export const sessionIndexSchema = z
     artifacts: z.array(artifactSchema).optional(),
     notes: z.array(z.string()).optional(),
     extra: z.record(z.unknown()).optional()
-  })
-  .strict();
-
-export type SessionIndexV2 = z.infer<typeof sessionIndexSchema>;
-export type SessionIndexTestCase = z.infer<typeof testCaseSchema>;
-export type SessionIndexArtifact = z.infer<typeof artifactSchema>;
+})
+    .strict();

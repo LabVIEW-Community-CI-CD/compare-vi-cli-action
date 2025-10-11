@@ -50,6 +50,8 @@ jobs:
     timeout-minutes: 3
     steps:
       - uses: actions/checkout@v5
+      - name: Apply agent toggles
+        uses: ./.github/actions/apply-agent-toggles
       - name: Verify LVCompare and idle LabVIEW state
         shell: pwsh
         run: |
@@ -71,6 +73,8 @@ jobs:
       LV_SUPPRESS_UI: '1'
     steps:
       - uses: actions/checkout@v5
+      - name: Apply agent toggles
+        uses: ./.github/actions/apply-agent-toggles
 
       - name: Validate canonical fixtures
         shell: pwsh

@@ -58,6 +58,8 @@ jobs:
       include_integration: ${{ steps.b.outputs.normalized }}
     steps:
       - uses: actions/checkout@v5
+      - name: Apply agent toggles
+        uses: ./.github/actions/apply-agent-toggles
       - name: Apply determinism profile
         uses: ./.github/actions/determinism-profile
         with:
@@ -85,6 +87,8 @@ jobs:
       LV_IDLE_MAX_WAIT_SECONDS: ${{ vars.LV_IDLE_MAX_WAIT_SECONDS || '5' }}
     steps:
       - uses: actions/checkout@v5
+      - name: Apply agent toggles
+        uses: ./.github/actions/apply-agent-toggles
       - name: Rogue LV scan (notice-only)
         shell: pwsh
         run: pwsh -File tools/Detect-RogueLV.ps1 -ResultsDir tests/results -LookBackSeconds 900
@@ -154,6 +158,8 @@ jobs:
       duration_s: ${{ steps.export.outputs.duration_s }}
     steps:
       - uses: actions/checkout@v5
+      - name: Apply agent toggles
+        uses: ./.github/actions/apply-agent-toggles
 
       - name: Acquire session lock
         id: session_lock

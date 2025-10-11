@@ -14,6 +14,7 @@ Briefly describe the changes.
 - [ ] Ran Test (mock) on windows-latest and it passed
 - [ ] Ran Smoke on self-hosted Windows and recorded exit codes
 - [ ] Verified outputs (`diff`, `exitCode`, `cliPath`, `command`) and step summary
+- [ ] Checked toggle manifest digest (`session-index.v2.json` / dashboard) matches expected profiles
 
 ## Documentation
 

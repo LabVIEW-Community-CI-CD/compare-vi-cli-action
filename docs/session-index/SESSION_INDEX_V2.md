@@ -40,7 +40,20 @@
   "environment": {
     "runner": "ubuntu-24.04",
     "node": "20.11.1",
-    "pwsh": "7.5.3"
+    "pwsh": "7.5.3",
+    "toggles": {
+      "manifestDigest": "29515b71eabf20af100b6928d397bd2ad813037b7ed9e181de98f19148fcfa3b",
+      "hashAlgorithm": "sha256",
+      "profiles": ["ci-orchestrated"],
+      "resolvedProfiles": ["base", "ci-orchestrated"],
+      "values": {
+        "LV_CURSOR_RESTORE": "1",
+        "LV_IDLE_MAX_WAIT_SECONDS": "5",
+        "LV_IDLE_WAIT_SECONDS": "2",
+        "LV_NO_ACTIVATE": "1",
+        "LV_SUPPRESS_UI": "1"
+      }
+    }
   },
   "branchProtection": {
     "status": "error",

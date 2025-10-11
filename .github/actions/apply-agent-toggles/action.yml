@@ -1,0 +1,70 @@
+name: Apply Agent Toggles
+description: Resolve agent toggle manifest, export env values, and assert determinism.
+inputs:
+  profiles:
+    description: "Comma-separated toggle profiles to apply (default: ci-orchestrated)."
+    required: false
+    default: ci-orchestrated
+  allow-overrides:
+    description: "When true, log detected overrides instead of failing."
+    required: false
+    default: 'false'
+runs:
+  using: composite
+  steps:
+    - name: Resolve toggle manifest
+      shell: pwsh
+      run: |
+        $profilesRaw = '${{ inputs.profiles }}'
+        $profiles = @()
+        foreach ($item in ($profilesRaw -split ',')) {
+          $trimmed = $item.Trim()
+          if ($trimmed.Length -gt 0) { $profiles += $trimmed }
+        }
+        if ($profiles.Count -eq 0) { $profiles = @('ci-orchestrated') }
+
+        $cli = Join-Path $env:GITHUB_WORKSPACE 'dist/src/config/toggles-cli.js'
+        if (-not (Test-Path -LiteralPath $cli -PathType Leaf)) {
+          throw "Toggle CLI not found at $cli"
+        }
+
+        $args = @('--format','env')
+        foreach ($profile in $profiles) {
+          $args += '--profile'
+          $args += $profile
+        }
+
+        $output = & node $cli @args 2>&1
+        $code = $LASTEXITCODE
+        if ($code -ne 0) {
+          $joined = if ($output) { ($output | Out-String).Trim() } else { '' }
+          throw "Toggle CLI failed (exit=$code): $joined"
+        }
+
+        $output | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+
+    - name: Assert toggle determinism
+      shell: pwsh
+      run: |
+        $profilesRaw = '${{ inputs.profiles }}'
+        $profiles = @()
+        foreach ($item in ($profilesRaw -split ',')) {
+          $trimmed = $item.Trim()
+          if ($trimmed.Length -gt 0) { $profiles += $trimmed }
+        }
+
+        $scriptPath = Join-Path $env:GITHUB_WORKSPACE 'tools/Assert-AgentToggleDeterminism.ps1'
+        if (-not (Test-Path -LiteralPath $scriptPath -PathType Leaf)) {
+          throw "Assert-AgentToggleDeterminism script not found at $scriptPath"
+        }
+
+        $arguments = @()
+        if ($profiles.Count -gt 0) {
+          $arguments += '-Profiles'
+          $arguments += ($profiles -join ',')
+        }
+        if ('${{ inputs.allow-overrides }}'.ToLowerInvariant() -eq 'true') {
+          $arguments += '-AllowEnvironmentOverrides'
+        }
+
+        & $scriptPath @arguments

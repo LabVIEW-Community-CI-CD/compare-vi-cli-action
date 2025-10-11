@@ -23,6 +23,8 @@ jobs:
       docs_only: ${{ steps.d.outputs.normalized }}
     steps:
     - uses: actions/checkout@v5
+    - name: Apply agent toggles
+      uses: ./.github/actions/apply-agent-toggles
     - name: Detect docs-only change
       id: detect
       shell: pwsh

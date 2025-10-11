@@ -53,6 +53,8 @@ jobs:
       include_integration: ${{ steps.b.outputs.normalized }}
     steps:
     - uses: actions/checkout@v5
+    - name: Apply agent toggles
+      uses: ./.github/actions/apply-agent-toggles
     - name: Wire Probe (J1)
       if: '${{ vars.WIRE_PROBES != ''0'' }}'
       uses: ./.github/actions/wire-probe
@@ -108,6 +110,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
     - uses: actions/checkout@v5
+    - name: Apply agent toggles
+      uses: ./.github/actions/apply-agent-toggles
     - name: Wire Probe (J1)
       if: '${{ vars.WIRE_PROBES != ''0'' }}'
       uses: ./.github/actions/wire-probe
@@ -138,6 +142,8 @@ jobs:
     # Run preflight for both strategies
     steps:
     - uses: actions/checkout@v5
+    - name: Apply agent toggles
+      uses: ./.github/actions/apply-agent-toggles
     - name: Wire Probe (J1)
       if: '${{ vars.WIRE_PROBES != ''0'' }}'
       uses: ./.github/actions/wire-probe
@@ -185,6 +191,8 @@ jobs:
       ok: ${{ steps.out.outputs.ok }}
     steps:
     - uses: actions/checkout@v5
+    - name: Apply agent toggles
+      uses: ./.github/actions/apply-agent-toggles
     - name: Wire Probe (J1)
       if: '${{ vars.WIRE_PROBES != ''0'' }}'
       uses: ./.github/actions/wire-probe
@@ -234,6 +242,8 @@ jobs:
       EMIT_LV_CLOSURE_CRUMBS: '1'
     steps:
     - uses: actions/checkout@v5
+    - name: Apply agent toggles
+      uses: ./.github/actions/apply-agent-toggles
     - name: Wire Probe (J1)
       if: '${{ vars.WIRE_PROBES != ''0'' }}'
       uses: ./.github/actions/wire-probe
@@ -530,6 +540,8 @@ jobs:
       EMIT_LV_CLOSURE_CRUMBS: '1'
     steps:
     - uses: actions/checkout@v5
+    - name: Apply agent toggles
+      uses: ./.github/actions/apply-agent-toggles
     - name: Wire Probe (J1)
       if: '${{ vars.WIRE_PROBES != ''0'' }}'
       uses: ./.github/actions/wire-probe
@@ -679,6 +691,8 @@ jobs:
     needs: [lint, pester-category, drift]
     steps:
     - uses: actions/checkout@v5
+    - name: Apply agent toggles
+      uses: ./.github/actions/apply-agent-toggles
     - name: Wire Probe (J1)
       if: '${{ vars.WIRE_PROBES != ''0'' }}'
       uses: ./.github/actions/wire-probe
@@ -917,6 +931,8 @@ jobs:
       TRACE_MATRIX_HTML: '1'
     steps:
     - uses: actions/checkout@v5
+    - name: Apply agent toggles
+      uses: ./.github/actions/apply-agent-toggles
     - name: Wire Probe (J1)
       if: '${{ vars.WIRE_PROBES != ''0'' }}'
       uses: ./.github/actions/wire-probe

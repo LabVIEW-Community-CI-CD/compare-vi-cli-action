@@ -23,6 +23,8 @@ jobs:
   deprecated:
     runs-on: ubuntu-latest
     steps:
+    - name: Apply agent toggles
+      uses: ./.github/actions/apply-agent-toggles
     - name: Deprecation notice
       shell: bash
       run: |

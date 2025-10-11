@@ -31,7 +31,8 @@ jobs:
 
       - name: Checkout
         uses: actions/checkout@v5
-
+      - name: Apply agent toggles
+        uses: ./.github/actions/apply-agent-toggles
       - name: Runner health (notice-only)
         if: ${{ vars.RUNNER_HEALTH != '0' }}
         shell: pwsh

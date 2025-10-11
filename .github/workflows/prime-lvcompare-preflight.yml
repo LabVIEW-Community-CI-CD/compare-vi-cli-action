@@ -10,7 +10,8 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v5
-
+      - name: Apply agent toggles
+        uses: ./.github/actions/apply-agent-toggles
       - name: Prepare stub LVCompare and test VIs
         shell: pwsh
         run: |
