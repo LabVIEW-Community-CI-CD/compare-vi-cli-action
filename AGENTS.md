@@ -103,6 +103,20 @@ This document summarizes the expectations for automation agents working in the
     -H "Accept: application/vnd.github+json"
   ```
 
+## Branch protection contract (#118)
+
+- Canonical required-status mapping lives in `tools/policy/branch-required-checks.json` (hash = contract digest).
+- `tools/Update-SessionIndexBranchProtection.ps1` injects the verification block into `session-index.json` and emits a step-summary entry.
+- When running smoke tests locally:
+  ```powershell
+  pwsh -File tools/Quick-DispatcherSmoke.ps1 -PreferWorkspace -ResultsPath .tmp/sessionindex
+  pwsh -File tools/Update-SessionIndexBranchProtection.ps1 -ResultsDir .tmp/sessionindex `
+    -PolicyPath tools/policy/branch-required-checks.json `
+    -Branch (git branch --show-current)
+  ```
+- Confirm `session-index.json` contains `branchProtection.result.status = "ok"`; mismatches should be logged in `branchProtection.notes`.
+- If CI reports `warn`/`fail`, inspect the Step Summary and the session index artifact from that job. Update branch protection or the mapping file as needed to realign.
+
 ## Workflow maintenance
 
 Use `tools/workflows/update_workflows.py` for mechanical updates (comment-preserving).
