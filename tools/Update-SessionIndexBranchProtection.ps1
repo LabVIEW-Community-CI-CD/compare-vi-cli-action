@@ -73,10 +73,26 @@ function To-Ordered {
   return $ordered
 }
 
-if ([string]::IsNullOrWhiteSpace($Branch)) {
+$rawBranch = $Branch
+if ([string]::IsNullOrWhiteSpace($rawBranch)) {
   $Branch = 'unknown'
 } else {
-  $Branch = $Branch.Trim()
+  $Branch = $rawBranch.Trim()
+}
+
+$refsHeadsPrefix = 'refs/heads/'
+if ($Branch.StartsWith($refsHeadsPrefix, [System.StringComparison]::OrdinalIgnoreCase)) {
+  $Branch = $Branch.Substring($refsHeadsPrefix.Length)
+}
+
+if ($Branch -match '^(?:refs/)?pull/\d+/(?:merge|head)$') {
+  $baseRef = $env:GITHUB_BASE_REF
+  if (-not [string]::IsNullOrWhiteSpace($baseRef)) {
+    $Branch = $baseRef.Trim()
+    if ($Branch.StartsWith($refsHeadsPrefix, [System.StringComparison]::OrdinalIgnoreCase)) {
+      $Branch = $Branch.Substring($refsHeadsPrefix.Length)
+    }
+  }
 }
 
 $idxPath = Join-Path $ResultsDir 'session-index.json'
