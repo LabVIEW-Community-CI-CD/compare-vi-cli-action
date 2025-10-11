@@ -16,6 +16,8 @@ Describe 'Dev Dashboard CLI' -Tag 'Unit' {
     $json.Group | Should -Be 'pester-selfhosted'
     $json.SessionLock.QueueWaitSeconds | Should -Be 30
     $json.PesterTelemetry.Totals.Failed | Should -Be 1
+    $json.PesterTelemetry.Cases.Count | Should -BeGreaterThan 0
+    ($json.PesterTelemetry.Cases | Where-Object { $_.Name -eq 'Queue timeout' }).Outcome | Should -Be 'failed'
     $json.Stakeholders.Channels | Should -Contain 'slack://#ci-selfhosted'
     $json.WatchTelemetry.Last.status | Should -Be 'FAIL'
     $json.WatchTelemetry.History.Count | Should -Be 2
@@ -33,5 +35,6 @@ Describe 'Dev Dashboard CLI' -Tag 'Unit' {
     $content | Should -Match 'Session Lock'
     $content | Should -Match 'Watch Mode'
     $content | Should -Match 'LabVIEW Snapshot'
+    $content | Should -Match 'Test Cases'
   }
 }

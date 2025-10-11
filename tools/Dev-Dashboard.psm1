@@ -259,9 +259,11 @@ function Get-PesterTelemetry {
   $summaryPath = Join-Path $ResultsRoot 'pester-summary.json'
   $resultsPath = Join-Path $ResultsRoot 'pester-results.xml'
   $dispatcherPath = Join-Path $ResultsRoot 'pester-dispatcher.log'
+  $sessionIndexV2Path = Join-Path $ResultsRoot 'session-index.v2.json'
 
   $summaryInfo = Read-JsonFile -Path $summaryPath
   $dispatcherInfo = Read-FileLines -Path $dispatcherPath
+  $sessionInfo = Read-JsonFile -Path $sessionIndexV2Path
 
   $totals = [ordered]@{
     Total    = 0
@@ -273,25 +275,102 @@ function Get-PesterTelemetry {
   }
 
   $failedTests = @()
-  if ($summaryInfo.Data) {
-    $model = $summaryInfo.Data
-    foreach ($name in @('total','passed','failed','errors','skipped')) {
-      if ($model.PSObject.Properties.Name -contains $name) {
-        $totals[$name.Substring(0,1).ToUpper() + $name.Substring(1)] = [int]$model.$name
-      }
-    }
-    if ($model.PSObject.Properties.Name -contains 'duration_s') {
-      $totals.Duration = [double]$model.duration_s
-    }
-    if ($model.PSObject.Properties.Name -contains 'tests') {
-      foreach ($test in $model.tests) {
-        if ($test.result -and $test.result -ne 'Passed') {
-          $failedTests += [pscustomobject]@{
-            Name   = $test.name
-            Result = $test.result
-          }
+  $cases = @()
+
+  if ($sessionInfo.Data -and ($sessionInfo.Data.PSObject.Properties.Name -contains 'tests')) {
+    $testsNode = $sessionInfo.Data.tests
+    if ($testsNode -and ($testsNode.PSObject.Properties.Name -contains 'summary')) {
+      $summary = $testsNode.summary
+      foreach ($name in @('total','passed','failed','errors','skipped')) {
+        if ($summary.PSObject.Properties.Name -contains $name) {
+          $totals[$name.Substring(0,1).ToUpper() + $name.Substring(1)] = [int]$summary.$name
         }
       }
+      if ($summary.PSObject.Properties.Name -contains 'durationSeconds') {
+        $totals.Duration = [double]$summary.durationSeconds
+      }
+    }
+    if ($testsNode -and ($testsNode.PSObject.Properties.Name -contains 'cases') -and $testsNode.cases) {
+      foreach ($case in $testsNode.cases) {
+        $name = if ($case.PSObject.Properties.Name -contains 'description' -and $case.description) {
+          [string]$case.description
+        } elseif ($case.PSObject.Properties.Name -contains 'id' -and $case.id) {
+          [string]$case.id
+        } else {
+          [string]$case.category
+        }
+        $outcome = if ($case.PSObject.Properties.Name -contains 'outcome' -and $case.outcome) {
+          [string]$case.outcome
+        } else {
+          'unknown'
+        }
+        $durationMs = $null
+        if ($case.PSObject.Properties.Name -contains 'durationMs' -and $case.durationMs -ne $null) {
+          try { $durationMs = [double]$case.durationMs } catch {}
+        }
+        $caseObject = [pscustomobject]@{
+          Id             = if ($case.PSObject.Properties.Name -contains 'id') { [string]$case.id } else { $name }
+          Name           = $name
+          Description    = if ($case.PSObject.Properties.Name -contains 'description') { [string]$case.description } else { $null }
+          Category       = if ($case.PSObject.Properties.Name -contains 'category') { [string]$case.category } else { $null }
+          Outcome        = $outcome
+          Result         = switch ($outcome) {
+            'passed' { 'Passed' }
+            'failed' { 'Failed' }
+            'error'  { 'Error' }
+            'skipped' { 'Skipped' }
+            default { $outcome }
+          }
+          DurationMs     = $durationMs
+          Requirement    = if ($case.PSObject.Properties.Name -contains 'requirement') { [string]$case.requirement } else { $null }
+          Rationale      = if ($case.PSObject.Properties.Name -contains 'rationale') { [string]$case.rationale } else { $null }
+          ExpectedResult = if ($case.PSObject.Properties.Name -contains 'expectedResult') { [string]$case.expectedResult } else { $null }
+          Tags           = if ($case.PSObject.Properties.Name -contains 'tags') { @($case.tags | Where-Object { $_ }) } else { @() }
+          Artifacts      = if ($case.PSObject.Properties.Name -contains 'artifacts') { @($case.artifacts | Where-Object { $_ }) } else { @() }
+          Diagnostics    = if ($case.PSObject.Properties.Name -contains 'diagnostics') { @($case.diagnostics | Where-Object { $_ }) } else { @() }
+        }
+        $cases += $caseObject
+      }
+    }
+  }
+
+  if ($summaryInfo.Data) {
+    $model = $summaryInfo.Data
+    if ($totals.Total -eq 0) {
+      foreach ($name in @('total','passed','failed','errors','skipped')) {
+        if ($model.PSObject.Properties.Name -contains $name) {
+          $totals[$name.Substring(0,1).ToUpper() + $name.Substring(1)] = [int]$model.$name
+        }
+      }
+    }
+    if (-not $totals.Duration -and $model.PSObject.Properties.Name -contains 'duration_s') {
+      $totals.Duration = [double]$model.duration_s
+    }
+    if ($cases.Count -eq 0 -and $model.PSObject.Properties.Name -contains 'tests') {
+      foreach ($test in $model.tests) {
+        $failedTests += [pscustomobject]@{
+          Name   = $test.name
+          Result = $test.result
+        }
+      }
+    }
+  }
+
+  if ($cases.Count -gt 0) {
+    if ($totals.Total -eq 0) {
+      $totals.Total = $cases.Count
+      $totals.Passed = @($cases | Where-Object { $_.Outcome -eq 'passed' }).Count
+      $totals.Failed = @($cases | Where-Object { $_.Outcome -eq 'failed' }).Count
+      $totals.Errors = @($cases | Where-Object { $_.Outcome -eq 'error' }).Count
+      $totals.Skipped = @($cases | Where-Object { $_.Outcome -eq 'skipped' }).Count
+    }
+    if (-not $totals.Duration -or $totals.Duration -eq 0) {
+      $durationMs = ($cases | Where-Object { $_.DurationMs -ne $null } | Measure-Object -Property DurationMs -Sum).Sum
+      if ($durationMs) { $totals.Duration = [double]($durationMs / 1000) }
+    }
+    $failedTests = @($cases | Where-Object { $_.Outcome -ne 'passed' -and $_.Outcome -ne 'unknown' })
+    if ($failedTests.Count -eq 0) {
+      $failedTests = @($cases | Where-Object { $_.Outcome -ne 'passed' })
     }
   }
 
@@ -310,15 +389,18 @@ function Get-PesterTelemetry {
   $errors = @()
   if ($summaryInfo.Error) { $errors += "pester-summary.json: $($summaryInfo.Error)" }
   if ($dispatcherInfo.Error) { $errors += "pester-dispatcher.log: $($dispatcherInfo.Error)" }
+  if ($sessionInfo.Error) { $errors += "session-index.v2.json: $($sessionInfo.Error)" }
 
   return [pscustomobject][ordered]@{
     SummaryPath        = $summaryInfo.Path
     ResultsPath        = Resolve-PathSafe -Path $resultsPath
     DispatcherLogPath  = $dispatcherInfo.Path
+    SessionIndexV2Path = $sessionInfo.Path
     Totals             = $totals
     FailedTests        = $failedTests
     DispatcherErrors   = $dispatcherErrors
     DispatcherWarnings = $dispatcherWarnings
+    Cases              = $cases
     Errors             = $errors
   }
 }
