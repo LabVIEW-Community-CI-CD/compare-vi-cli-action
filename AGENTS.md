@@ -136,20 +136,34 @@ Use `tools/workflows/update_workflows.py` for mechanical updates (comment-preser
   ./bin/actionlint -color
   ```
 
+## Agent toggle catalog
+
+- Toggle definitions live in `src/config/toggles.ts`; build artifacts land under `dist/src/config/`.
+- Generate machine-readable output via `node dist/src/config/toggles-cli.js`:
+  - `node dist/src/config/toggles-cli.js --format values --profile ci-orchestrated --pretty`
+  - `node dist/src/config/toggles-cli.js --format env --profile dev-workstation`
+  - `node dist/src/config/toggles-cli.js --format psd1 --profile labview-diagnostics`
+- PowerShell helpers: `Import-Module tools/AgentToggles.psm1` then call `Get-AgentToggleValue` / `Get-AgentToggleValues`.
+- Profiles apply in order; variants can target Describe/It names or tags for fine-grained overrides.
+- Environment values still win: set `SKIP_SYNC_DEVELOP`, `HANDOFF_AUTOTRIM`, etc., before resolving to force overrides.
+- Reference implementation: `tests/AgentToggles.Tests.ps1`.
+
 ## Agent hand-off & telemetry
 
 - Keyword **handoff**:
   1. Read `AGENT_HANDOFF.txt`, confirm plan.
-  2. Set safe env toggles:
-     - `LV_SUPPRESS_UI=1`
-     - `LV_NO_ACTIVATE=1`
-     - `LV_CURSOR_RESTORE=1`
-     - `LV_IDLE_WAIT_SECONDS=2`
-     - `LV_IDLE_MAX_WAIT_SECONDS=5`
+  2. Preferred: `node dist/src/config/toggles-cli.js --format env --profile ci-orchestrated` (pipe into your shell's export or `$GITHUB_ENV`).
+     - PowerShell option: `Import-Module tools/AgentToggles.psm1; Get-AgentToggleValues -Profiles 'ci-orchestrated'`.
+     - Manual fallback (when compiled assets unavailable):
+       - `LV_SUPPRESS_UI=1`
+       - `LV_NO_ACTIVATE=1`
+       - `LV_CURSOR_RESTORE=1`
+       - `LV_IDLE_WAIT_SECONDS=2`
+       - `LV_IDLE_MAX_WAIT_SECONDS=5`
   3. Rogue scan: `pwsh -File tools/Detect-RogueLV.ps1 -ResultsDir tests/results -LookBackSeconds 900 -AppendToStepSummary`
   4. Sweep LVCompare (only) if rogues found and human approves.
-  5. Honour pause etiquette (“brief delay (~90 seconds)”) and log waits.
-  6. Execute “First Actions for the Next Agent” from `AGENT_HANDOFF.txt`.
+  5. Honour pause etiquette ("brief delay (~90 seconds)") and log waits.
+  6. Execute "First Actions for the Next Agent" from `AGENT_HANDOFF.txt`.
 - Convenience helpers:
   - `pwsh -File tools/Print-AgentHandoff.ps1 -ApplyToggles`
   - `pwsh -File tools/Print-AgentHandoff.ps1 -ApplyToggles -AutoTrim`

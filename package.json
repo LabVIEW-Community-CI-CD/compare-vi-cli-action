@@ -27,7 +27,8 @@
     "ci:status": "pwsh -NoLogo -NoProfile -File tools/Follow-OrchestratedRun.ps1",
     "ci:watch": "pwsh -NoLogo -NoProfile -File tools/Follow-OrchestratedRun.ps1 -Watch",
     "session-index:sample": "tsc -p tsconfig.json && node dist/src/session-index/cli.js --sample",
-    "session-index:check": "tsc -p tsconfig.json && node dist/src/session-index/check.js --file tests/results/session-index.v2.json"
+    "session-index:check": "tsc -p tsconfig.json && node dist/src/session-index/check.js --file tests/results/session-index.v2.json",
+    "toggles:values": "tsc -p tsconfig.json && node dist/src/config/toggles-cli.js --format values --pretty"
   },
   "devDependencies": {
     "@types/argparse": "^2.0.16",
