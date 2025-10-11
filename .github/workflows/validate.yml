@@ -451,6 +451,9 @@ jobs:
 
     - name: Run dispatcher smoke to produce session index
       shell: pwsh
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       run: |
         $res = Join-Path $env:RUNNER_TEMP 'sessionindex'
         New-Item -ItemType Directory -Force -Path $res | Out-Null
@@ -461,12 +464,20 @@ jobs:
           'Validate / session-index'
         )
         $bpScript = Join-Path (Get-Location) 'tools/Update-SessionIndexBranchProtection.ps1'
+        $bpApiScript = Join-Path (Get-Location) 'tools/Get-BranchProtectionRequiredChecks.ps1'
         $branchName = '${{ github.base_ref || github.ref_name }}'
-        & $bpScript `
-          -ResultsDir $res `
-          -PolicyPath 'tools/policy/branch-required-checks.json' `
-          -Branch $branchName `
-          -ProducedContexts $contexts
+        $repoParts = '${{ github.repository }}'.Split('/')
+        $bpResult = & $bpApiScript -Owner $repoParts[0] -Repository $repoParts[1] -Branch $branchName -Token $env:GITHUB_TOKEN
+        $updateArgs = @{
+          ResultsDir        = $res
+          PolicyPath        = 'tools/policy/branch-required-checks.json'
+          Branch            = $branchName
+          ProducedContexts  = $contexts
+        }
+        if ($bpResult.status) { $updateArgs['ActualStatus'] = $bpResult.status }
+        if ($bpResult.contexts) { $updateArgs['ActualContexts'] = @($bpResult.contexts) }
+        if ($bpResult.notes) { $updateArgs['AdditionalNotes'] = @($bpResult.notes) }
+        & $bpScript @updateArgs
 
     - name: Validate session index schema (schema-lite)
       shell: pwsh
