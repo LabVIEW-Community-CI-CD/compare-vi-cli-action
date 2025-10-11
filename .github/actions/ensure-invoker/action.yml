@@ -94,7 +94,7 @@ runs:
             "[$ts] attempt#$i spawn pid=$($p.Id) pipe=$pipe" | Out-File -FilePath $boot -Append -Encoding utf8
           } catch {
             $err = $_.Exception.Message
-            Write-Host "::warning::Failed to spawn invoker on attempt #$i: ${err}"
+            Write-Host "::warning::Failed to spawn invoker on attempt #${i}: ${err}"
             "[$ts] attempt#$i spawn error: $err" | Out-File -FilePath $boot -Append -Encoding utf8
           }
           $sw = [Diagnostics.Stopwatch]::StartNew()
@@ -147,4 +147,3 @@ runs:
       if: ${{ runner.os != 'Windows' }}
       shell: bash
       run: echo ensure-invoker non-Windows runner, skipping
-
