@@ -58,13 +58,16 @@ runs:
           throw "Assert-AgentToggleDeterminism script not found at $scriptPath"
         }
 
-        $arguments = @()
+        $arguments = @{}
         if ($profiles.Count -gt 0) {
-          $arguments += '-Profiles'
-          $arguments += ($profiles -join ',')
+          $arguments['Profiles'] = $profiles
         }
         if ('${{ inputs.allow-overrides }}'.ToLowerInvariant() -eq 'true') {
-          $arguments += '-AllowEnvironmentOverrides'
+          $arguments['AllowEnvironmentOverrides'] = $true
         }
 
-        & $scriptPath @arguments
+        if ($arguments.Count -eq 0) {
+          & $scriptPath
+        } else {
+          & $scriptPath @arguments
+        }
