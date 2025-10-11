@@ -1,0 +1,16 @@
+{
+  "schema": "branch-required-checks/v1",
+  "schemaVersion": "1.0.0",
+  "branches": {
+    "develop": [
+      "Validate / lint",
+      "Validate / fixtures",
+      "Validate / session-index"
+    ],
+    "main": [
+      "Validate / lint",
+      "Validate / fixtures",
+      "Validate / session-index"
+    ]
+  }
+}

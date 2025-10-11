@@ -77,7 +77,74 @@
         "pullRequest": { "type": ["string", "null"], "format": "uri" }
       }
     },
-    "stepSummary": { "type": "string" }
+    "stepSummary": { "type": "string" },
+    "branchProtection": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["contract", "branch", "expected", "produced", "actual", "result", "tags"],
+      "properties": {
+        "contract": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["id", "version", "issue", "mappingPath", "mappingDigest"],
+          "properties": {
+            "id": { "type": "string" },
+            "version": { "type": "string" },
+            "issue": { "type": "integer", "minimum": 1 },
+            "mappingPath": { "type": "string" },
+            "mappingDigest": { "type": "string" }
+          }
+        },
+        "branch": { "type": "string" },
+        "expected": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "produced": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "actual": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["status"],
+          "properties": {
+            "status": { "type": "string", "enum": ["available", "unavailable", "error"] },
+            "contexts": {
+              "type": "array",
+              "items": { "type": "string" }
+            }
+          }
+        },
+        "result": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["status", "reason"],
+          "properties": {
+            "status": { "type": "string", "enum": ["ok", "warn", "fail"] },
+            "reason": {
+              "type": "string",
+              "enum": [
+                "aligned",
+                "missing_required",
+                "extra_required",
+                "mismatch",
+                "mapping_missing",
+                "api_unavailable",
+                "api_error"
+              ]
+            }
+          }
+        },
+        "notes": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "tags": {
+          "type": "array",
+          "items": { "type": "string" }
+        }
+      }
+    }
   }
 }
-

@@ -455,6 +455,16 @@ jobs:
         $res = Join-Path $env:RUNNER_TEMP 'sessionindex'
         New-Item -ItemType Directory -Force -Path $res | Out-Null
         ./tools/Quick-DispatcherSmoke.ps1 -ResultsPath $res -PreferWorkspace
+        $contexts = @(
+          'Validate / lint'
+          'Validate / fixtures'
+          'Validate / session-index'
+        )
+        pwsh -File tools/Update-SessionIndexBranchProtection.ps1 `
+          -ResultsDir $res `
+          -PolicyPath 'tools/policy/branch-required-checks.json' `
+          -Branch '${{ github.ref_name }}' `
+          -ProducedContexts $contexts
 
     - name: Validate session index schema (schema-lite)
       shell: pwsh
