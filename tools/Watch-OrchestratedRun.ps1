@@ -19,7 +19,9 @@
 [CmdletBinding()]
 param(
   [string]$RunId,
-  [int]$PollSeconds = 15
+  [int]$PollSeconds = 15,
+  [string]$Token,
+  [string]$Repo
 )
 
 Set-StrictMode -Version Latest
@@ -31,6 +33,7 @@ function Invoke-GhJson {
     throw "Invoke-GhJson called without arguments."
   }
   Write-Verbose ("[gh] {0}" -f ($GhArgs -join ' '))
+  if ($script:__GhToken) { $env:GH_TOKEN = $script:__GhToken }
   $out = & gh @GhArgs
   if ($LASTEXITCODE -ne 0) {
     throw "gh command failed: gh $($GhArgs -join ' ')"
@@ -43,19 +46,73 @@ function Invoke-GhJson {
   }
 }
 
-function Get-LatestRunId {
-  param([string]$Branch)
-  $runs = Invoke-GhJson @('run','list','--limit','25','--workflow','CI Orchestrated (deterministic chain)','--json','databaseId,headBranch,status,conclusion,url')
-  $match = $runs | Where-Object { $_.headBranch -eq $Branch } | Select-Object -First 1
-  if (-not $match) {
-    throw "Could not find a recent orchestrated run for branch '$Branch'."
-  }
-  Write-Host ("Latest orchestrated run for branch '{0}' is {1}" -f $Branch, $match.databaseId) -ForegroundColor Cyan
-  return [string]$match.databaseId
+function Get-AuthHeaders {
+  param([string]$Tok)
+  if (-not $Tok) { throw "An auth token is required for REST fallback. Provide -Token or set GH_TOKEN/GITHUB_TOKEN." }
+  return @{ Authorization = "Bearer $Tok"; 'X-GitHub-Api-Version' = '2022-11-28'; Accept = 'application/vnd.github+json' }
 }
 
-if (-not (Get-Command gh -ErrorAction SilentlyContinue)) {
-  throw "GitHub CLI (gh) is required."
+function Get-RepoSlug {
+  param([string]$RepoParam)
+  if ($RepoParam) { return $RepoParam }
+  if ($env:GITHUB_REPOSITORY) { return $env:GITHUB_REPOSITORY }
+  try {
+    $url = (& git config --get remote.origin.url).Trim()
+    if ($url -match '[:/]([^/]+/[^/.]+)(?:\.git)?$') { return $Matches[1] }
+  } catch {}
+  throw "Unable to determine repository slug. Pass -Repo 'owner/repo' or set GITHUB_REPOSITORY."
+}
+
+function Invoke-GitHubApiJson {
+  param(
+    [string]$Method = 'GET',
+    [string]$Uri,
+    [hashtable]$Headers
+  )
+  $resp = Invoke-RestMethod -Method $Method -Uri $Uri -Headers $Headers -ErrorAction Stop
+  return $resp
+}
+
+function Get-WorkflowIdByName {
+  param([string]$RepoSlug,[string]$Name,[hashtable]$Headers)
+  $wf = Invoke-GitHubApiJson -Uri "https://api.github.com/repos/$RepoSlug/actions/workflows" -Headers $Headers
+  ($wf.workflows | Where-Object { $_.name -eq $Name } | Select-Object -First 1).id
+}
+
+function Get-LatestRunId {
+  param([string]$Branch)
+  if ($script:__UseGh) {
+    $runs = Invoke-GhJson @('run','list','--limit','25','--workflow','CI Orchestrated (deterministic chain)','--json','databaseId,headBranch,status,conclusion,url')
+    $match = $runs | Where-Object { $_.headBranch -eq $Branch } | Select-Object -First 1
+    if (-not $match) { throw "Could not find a recent orchestrated run for branch '$Branch'." }
+    Write-Host ("Latest orchestrated run for branch '{0}' is {1}" -f $Branch, $match.databaseId) -ForegroundColor Cyan
+    return [string]$match.databaseId
+  }
+  $repoSlug = Get-RepoSlug -RepoParam $script:__RepoSlug
+  $wfId = Get-WorkflowIdByName -RepoSlug $repoSlug -Name 'CI Orchestrated (deterministic chain)' -Headers $script:__Headers
+  if (-not $wfId) { throw "Unable to locate orchestrated workflow id in $repoSlug." }
+  $runs = Invoke-GitHubApiJson -Uri ("https://api.github.com/repos/{0}/actions/workflows/{1}/runs?per_page=25&branch={2}" -f $repoSlug,$wfId,$Branch) -Headers $script:__Headers
+  $match = $runs.workflow_runs | Select-Object -First 1
+  if (-not $match) { throw "Could not find a recent orchestrated run for branch '$Branch'." }
+  Write-Host ("Latest orchestrated run for branch '{0}' is {1}" -f $Branch, $match.id) -ForegroundColor Cyan
+  return [string]$match.id
+}
+
+# Resolve auth/tooling
+$script:__GhToken = $null
+$script:__UseGh = $false
+$script:__RepoSlug = $Repo
+if ($Token) { $script:__GhToken = $Token }
+elseif ($env:GH_TOKEN) { $script:__GhToken = $env:GH_TOKEN }
+elseif ($env:GITHUB_TOKEN) { $script:__GhToken = $env:GITHUB_TOKEN }
+
+if (Get-Command gh -ErrorAction SilentlyContinue) {
+  # Prefer gh when available
+  $script:__UseGh = $true
+} else {
+  # REST fallback requires Repo + Token
+  $script:__RepoSlug = Get-RepoSlug -RepoParam $Repo
+  $script:__Headers = Get-AuthHeaders -Tok $script:__GhToken
 }
 
 if (-not $RunId) {
@@ -70,8 +127,16 @@ Write-Host ("Inspecting orchestrated run {0}" -f $RunId) -ForegroundColor Green
 
 $runInfo = $null
 while ($true) {
-  $runInfo = Invoke-GhJson @('run','view',$RunId,'--json','status,conclusion,jobs,url,headBranch')
-  $dispatcher = $runInfo.jobs | Where-Object { $_.name -eq 'pester-category (dispatcher)' } | Select-Object -First 1
+  if ($script:__UseGh) {
+    $runInfo = Invoke-GhJson @('run','view',$RunId,'--json','status,conclusion,jobs,url,headBranch')
+    $dispatcher = $runInfo.jobs | Where-Object { $_.name -eq 'pester-category (dispatcher)' } | Select-Object -First 1
+  } else {
+    $repoSlug = $script:__RepoSlug
+    $r = Invoke-GitHubApiJson -Uri ("https://api.github.com/repos/{0}/actions/runs/{1}" -f $repoSlug,$RunId) -Headers $script:__Headers
+    $jobs = Invoke-GitHubApiJson -Uri ("https://api.github.com/repos/{0}/actions/runs/{1}/jobs?per_page=100" -f $repoSlug,$RunId) -Headers $script:__Headers
+    $runInfo = [pscustomobject]@{ status=$r.status; conclusion=$r.conclusion; url=$r.html_url; headBranch=$r.head_branch; jobs=$jobs.jobs }
+    $dispatcher = $jobs.jobs | Where-Object { $_.name -eq 'pester-category (dispatcher)' } | Select-Object -First 1
+  }
   if (-not $dispatcher) {
     Write-Host "Dispatcher job not yet scheduled. Waiting..." -ForegroundColor Yellow
   } elseif ($dispatcher.status -eq 'completed' -and $runInfo.status -eq 'completed') {
@@ -91,44 +156,72 @@ $logPath = Join-Path $scratch "dispatcher.log"
 
 Write-Host ("Fetching job log into {0}" -f $logPath) -ForegroundColor Cyan
 $logFetched = $false
-for ($attempt = 1; $attempt -le 40; $attempt++) {
-  $logOut = & gh run view $RunId --job $dispatcher.databaseId --log 2>&1
-  if ($LASTEXITCODE -eq 0 -and $logOut -and ($logOut -notmatch 'logs will be available when it is complete')) {
-    $logOut | Out-File -FilePath $logPath -Encoding utf8
+if ($script:__UseGh) {
+  for ($attempt = 1; $attempt -le 40; $attempt++) {
+    if ($script:__GhToken) { $env:GH_TOKEN = $script:__GhToken }
+    $logOut = & gh run view $RunId --job $dispatcher.databaseId --log 2>&1
+    if ($LASTEXITCODE -eq 0 -and $logOut -and ($logOut -notmatch 'logs will be available when it is complete')) {
+      $logOut | Out-File -FilePath $logPath -Encoding utf8
+      $logFetched = $true
+      break
+    }
+    if ($dispatcher.conclusion -in @('success','failure','cancelled','skipped') -and $logOut -match 'logs will be available') {
+      Start-Sleep -Seconds 5
+    } elseif ($LASTEXITCODE -ne 0) {
+      Write-Warning ("Failed to fetch log (attempt #{0}): {1}" -f $attempt, ($logOut | Select-Object -First 1))
+      Start-Sleep -Seconds 5
+    } else {
+      Start-Sleep -Seconds 5
+    }
+  }
+} else {
+  try {
+    $repoSlug = $script:__RepoSlug
+    $jobId = $dispatcher.id
+    $uri = "https://api.github.com/repos/$repoSlug/actions/jobs/$jobId/logs"
+    $logRaw = Invoke-WebRequest -Uri $uri -Headers $script:__Headers -ErrorAction Stop
+    $content = $logRaw.Content
+    if ([string]::IsNullOrWhiteSpace($content)) { throw "empty log content" }
+    $content | Out-File -FilePath $logPath -Encoding utf8
     $logFetched = $true
-    break
-  }
-  if ($dispatcher.conclusion -in @('success','failure','cancelled','skipped') -and $logOut -match 'logs will be available') {
-    Start-Sleep -Seconds 5
-  } elseif ($LASTEXITCODE -ne 0) {
-    Write-Warning ("Failed to fetch log (attempt #{0}): {1}" -f $attempt, ($logOut | Select-Object -First 1))
-    Start-Sleep -Seconds 5
-  } else {
-    Start-Sleep -Seconds 5
+  } catch {
+    Write-Warning ("Failed to fetch dispatcher job log via REST: {0}" -f $_.Exception.Message)
   }
 }
-if (-not $logFetched) {
-  Write-Warning "Dispatcher log not yet available; continuing without direct job log."
-}
+if (-not $logFetched) { Write-Warning "Dispatcher log not yet available; continuing without direct job log." }
 
 $artifactDir = Join-Path $scratch "artifacts"
 Write-Host ("Downloading dispatcher artifacts to {0}" -f $artifactDir) -ForegroundColor Cyan
 $artifactFetched = $false
-for ($attempt = 1; $attempt -le 20 -and -not $artifactFetched; $attempt++) {
-  try {
-    & gh run download $RunId --name 'orchestrated-pester-results-dispatcher' --dir $artifactDir *>$null
-    $artifactFetched = $true
-  } catch {
-    if ($dispatcher.conclusion -in @('success','failure','cancelled','skipped')) {
-      Start-Sleep -Seconds 5
-    } else {
-      break
+if ($script:__UseGh) {
+  for ($attempt = 1; $attempt -le 20 -and -not $artifactFetched; $attempt++) {
+    try {
+      if ($script:__GhToken) { $env:GH_TOKEN = $script:__GhToken }
+      & gh run download $RunId --name 'orchestrated-pester-results-dispatcher' --dir $artifactDir *>$null
+      $artifactFetched = $true
+    } catch {
+      if ($dispatcher.conclusion -in @('success','failure','cancelled','skipped')) { Start-Sleep -Seconds 5 } else { break }
     }
   }
+} else {
+  try {
+    $repoSlug = $script:__RepoSlug
+    $arts = Invoke-GitHubApiJson -Uri ("https://api.github.com/repos/{0}/actions/runs/{1}/artifacts" -f $repoSlug,$RunId) -Headers $script:__Headers
+    $disp = $arts.artifacts | Where-Object { $_.name -eq 'orchestrated-pester-results-dispatcher' } | Select-Object -First 1
+    if ($disp) {
+      New-Item -ItemType Directory -Force -Path $artifactDir | Out-Null
+      $zipPath = Join-Path $artifactDir 'dispatcher.zip'
+      $zipUri = ("https://api.github.com/repos/{0}/actions/artifacts/{1}/zip" -f $repoSlug,$disp.id)
+      Invoke-WebRequest -Uri $zipUri -Headers $script:__Headers -OutFile $zipPath -ErrorAction Stop
+      Expand-Archive -Path $zipPath -DestinationPath $artifactDir -Force
+      Remove-Item -LiteralPath $zipPath -Force -ErrorAction SilentlyContinue
+      $artifactFetched = $true
+    }
+  } catch {
+    Write-Warning ("Failed to fetch dispatcher artifacts via REST: {0}" -f $_.Exception.Message)
+  }
 }
-if (-not $artifactFetched) {
-  Write-Warning "Dispatcher artifacts not yet available."
-}
+if (-not $artifactFetched) { Write-Warning "Dispatcher artifacts not yet available." }
 
 Write-Host "`n=== Invoker ping log excerpt ===" -ForegroundColor Magenta
 $patterns = @('Invoker ping attempt','# ping failed','Invoker ping failed after','Failed to spawn invoker')

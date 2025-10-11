@@ -37,6 +37,7 @@ This document summarizes the expectations for automation agents working in the
 - Pattern filter: `./Invoke-PesterTests.ps1 -IncludePatterns 'CompareVI.*'`
 - Quick smoke: `./tools/Quick-DispatcherSmoke.ps1 -Keep`
 - Containerized non-LV checks: `pwsh -File tools/Run-NonLVChecksInDocker.ps1`
+- Orchestrated gate: Run Task → `Start Integration (Gated → Orchestrated)` (requires selecting an allowed issue from `tools/policy/allowed-integration-issues.json`). The script dispatches `ci-orchestrated.yml` and prints the detected run id plus a watcher command.
 
 ## Coding style
 
