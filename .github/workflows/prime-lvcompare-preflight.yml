@@ -9,7 +9,7 @@ jobs:
     name: Prime LVCompare (stubbed)
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Prepare stub LVCompare and test VIs
         shell: pwsh

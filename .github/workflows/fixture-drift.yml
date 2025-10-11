@@ -25,7 +25,7 @@ jobs:
     runs-on: windows-latest
     timeout-minutes: 3
     steps:
-    - uses: actions/checkout@v4
+    - uses: actions/checkout@v5
     - name: Verify Windows runner and idle LabVIEW (surface LVCompare notice)
       shell: pwsh
       run: |-
@@ -68,7 +68,7 @@ jobs:
       pull-requests: write
     steps:
     - name: Checkout
-      uses: actions/checkout@v4
+      uses: actions/checkout@v5
       with:
         fetch-depth: 0
 
@@ -159,7 +159,7 @@ jobs:
         phase: J1
         results-dir: results/fixture-drift
     - name: Checkout
-      uses: actions/checkout@v4
+      uses: actions/checkout@v5
       with:
         fetch-depth: 0
     - name: Wire Probe (J2)

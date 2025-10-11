@@ -23,7 +23,7 @@ jobs:
     timeout-minutes: 3
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Setup PowerShell Core
         uses: actions/setup-python@v6
