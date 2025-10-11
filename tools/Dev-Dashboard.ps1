@@ -349,10 +349,27 @@ function ConvertTo-HtmlReport {
 
   $failedTestsHtml = if ($pester.FailedTests.Count -gt 0) {
     $rows = foreach ($test in $pester.FailedTests) {
-      "<li>$(& $encode $test.Name) — $(& $encode $test.Result)</li>"
-  }
-  "<ul>$([string]::Join('', $rows))</ul>"
+      "<li>$(& $encode $test.Name) - $(& $encode $test.Result)</li>"
+    }
+    "<ul>$([string]::Join('', $rows))</ul>"
   } else { '<p>None</p>' }
+
+  $casesArray = @()
+  if ($pester.Cases) {
+    $casesArray = @($pester.Cases | Where-Object { $_ })
+  }
+  $casesHtml = if ($casesArray.Count -gt 0) {
+    $rows = foreach ($case in ($casesArray | Select-Object -First 50)) {
+      $durationDisplay = if ($case.DurationMs -ne $null) { "{0:N1} ms" -f $case.DurationMs } else { '' }
+      $tagArray = @()
+      if ($case.Tags) { $tagArray = @($case.Tags | Where-Object { $_ }) }
+      $tagsDisplay = if ($tagArray.Count -gt 0) { [string]::Join(', ', $tagArray) } else { '' }
+      "<tr><td>$(& $encode $case.Name)</td><td>$(& $encode $case.Category)</td><td>$(& $encode $case.Outcome)</td><td>$(& $encode $durationDisplay)</td><td>$(& $encode $case.Requirement)</td><td>$(& $encode $tagsDisplay)</td></tr>"
+    }
+    "<table><thead><tr><th>Test</th><th>Category</th><th>Outcome</th><th>Duration</th><th>Requirement</th><th>Tags</th></tr></thead><tbody>$([string]::Join('', $rows))</tbody></table>"
+  } else {
+    '<p>No detailed test cases collected.</p>'
+  }
 
   $watchHasLast = ($watch -and $watch.Last)
   $watchStatusValue = $null
@@ -439,6 +456,8 @@ function ConvertTo-HtmlReport {
     </dl>
     <h3>Failed Tests</h3>
     $failedTestsHtml
+    <h3>Test Cases</h3>
+    $casesHtml
   </section>
 
   <section>

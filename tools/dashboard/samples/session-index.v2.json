@@ -1,0 +1,39 @@
+{
+  "schema": "session-index/v2",
+  "schemaVersion": "2.0.0",
+  "generatedAtUtc": "2025-10-09T00:00:00Z",
+  "run": {
+    "workflow": "Sample",
+    "job": "pester",
+    "branch": "feature/sample",
+    "commit": "0123456789abcdef0123456789abcdef01234567"
+  },
+  "tests": {
+    "summary": {
+      "total": 58,
+      "passed": 57,
+      "failed": 1,
+      "errors": 0,
+      "skipped": 0,
+      "durationSeconds": 12.34
+    },
+    "cases": [
+      {
+        "id": "Acquires and releases lock",
+        "description": "Acquires and releases lock",
+        "category": "SessionLock.Tests.ps1",
+        "outcome": "passed",
+        "durationMs": 120.5,
+        "tags": ["session-lock"]
+      },
+      {
+        "id": "Queue timeout",
+        "description": "Queue timeout",
+        "category": "SessionLock.Tests.ps1",
+        "outcome": "failed",
+        "durationMs": 2045.7,
+        "tags": ["session-lock", "queue"]
+      }
+    ]
+  }
+}
