@@ -31,8 +31,8 @@ Describe 'Update-SessionIndexBranchProtection' -Tag 'Unit' {
     $bp = $idx.branchProtection
     $bp | Should -Not -BeNullOrEmpty
     $bp.branch | Should -Be 'develop'
-    $bp.expected | Should -Be $expected
-    $bp.produced | Should -Be $expected
+    ($bp.expected | Sort-Object) | Should -Be ($expected | Sort-Object)
+    ($bp.produced | Sort-Object) | Should -Be ($expected | Sort-Object)
     $bp.result.status | Should -Be 'ok'
     $bp.result.reason | Should -Be 'aligned'
     $bp.notes | Should -BeNullOrEmpty

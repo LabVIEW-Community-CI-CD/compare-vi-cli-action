@@ -73,7 +73,11 @@ function To-Ordered {
   return $ordered
 }
 
-if (-not $Branch) { $Branch = 'unknown' }
+if ([string]::IsNullOrWhiteSpace($Branch)) {
+  $Branch = 'unknown'
+} else {
+  $Branch = $Branch.Trim()
+}
 
 $idxPath = Join-Path $ResultsDir 'session-index.json'
 if (-not (Test-Path -LiteralPath $idxPath -PathType Leaf)) {
@@ -99,51 +103,57 @@ if (-not $branches) {
   throw "Policy file '$PolicyPath' does not contain a 'branches' object."
 }
 
-$expected = @()
-if ($branches.PSObject.Properties.Name -contains $Branch) {
-  $expected = @($branches.$Branch)
-} elseif ($branches.PSObject.Properties.Name -contains 'default') {
-  $expected = @($branches.default)
+$expectedRaw = @()
+foreach ($prop in $branches.PSObject.Properties) {
+  if ($prop.Name -eq $Branch) {
+    $expectedRaw = @($prop.Value)
+    break
+  }
 }
-$expected = $expected | Where-Object { $_ } | Select-Object -Unique
+if ($expectedRaw.Count -eq 0) {
+  foreach ($prop in $branches.PSObject.Properties) {
+    if ($prop.Name -eq 'default') {
+      $expectedRaw = @($prop.Value)
+      break
+    }
+  }
+}
+$expected = @($expectedRaw | Where-Object { $_ } | Sort-Object -Unique)
 
-$produced = if ($PSBoundParameters.ContainsKey('ProducedContexts')) {
+$producedRaw = if ($PSBoundParameters.ContainsKey('ProducedContexts')) {
   $ProducedContexts
 } else {
   $expected
 }
-$produced = $produced | Where-Object { $_ } | Select-Object -Unique
+$produced = @($producedRaw | Where-Object { $_ } | Sort-Object -Unique)
+$missing = @($expected | Where-Object { $produced -notcontains $_ } | Sort-Object -Unique)
+$extra   = @($produced | Where-Object { $expected -notcontains $_ } | Sort-Object -Unique)
 
-$missing = @()
-$extra = @()
-if ($expected) {
-  $missing = $expected | Where-Object { $produced -notcontains $_ }
-}
-if ($produced) {
-  $extra = $produced | Where-Object { $expected -notcontains $_ }
-}
+$expectedCount = @($expected).Count
+$missingCount  = @($missing).Count
+$extraCount    = @($extra).Count
 
 $resultStatus = 'ok'
 $resultReason = 'aligned'
 $notes = @()
 
-if (-not $expected -or $expected.Count -eq 0) {
+if ($expectedCount -eq 0) {
   $resultStatus = 'warn'
   $resultReason = 'mapping_missing'
   $notes += "No canonical required status checks defined for branch '$Branch'."
-} elseif (($missing.Count -gt 0) -or ($extra.Count -gt 0)) {
-  if ($missing.Count -gt 0 -and $extra.Count -gt 0) {
+} elseif (($missingCount -gt 0) -or ($extraCount -gt 0)) {
+  if ($missingCount -gt 0 -and $extraCount -gt 0) {
     $resultReason = 'mismatch'
-  } elseif ($missing.Count -gt 0) {
+  } elseif ($missingCount -gt 0) {
     $resultReason = 'missing_required'
   } else {
     $resultReason = 'extra_required'
   }
   $resultStatus = if ($Strict) { 'fail' } else { 'warn' }
-  if ($missing.Count -gt 0) {
+  if ($missingCount -gt 0) {
     $notes += ("Missing contexts: {0}" -f ($missing -join ', '))
   }
-  if ($extra.Count -gt 0) {
+  if ($extraCount -gt 0) {
     $notes += ("Unexpected contexts: {0}" -f ($extra -join ', '))
   }
 }
@@ -180,7 +190,8 @@ $bpObject = [ordered]@{
   }
   tags     = @('bp-verify','issue:118','contract:v1')
 }
-if ($notes.Count -gt 0) {
+$notesCount = @($notes).Count
+if ($notesCount -gt 0) {
   $bpObject.notes = $notes
 }
 
@@ -194,10 +205,10 @@ if ($env:GITHUB_STEP_SUMMARY) {
   $summaryLines += ('- Branch: {0}' -f $Branch)
   $summaryLines += ('- Status: {0}' -f $resultStatus)
   $summaryLines += ('- Reason: {0}' -f $resultReason)
-  if ($missing.Count -gt 0) {
+  if ($missingCount -gt 0) {
     $summaryLines += ('- Missing: {0}' -f ($missing -join ', '))
   }
-  if ($extra.Count -gt 0) {
+  if ($extraCount -gt 0) {
     $summaryLines += ('- Extra: {0}' -f ($extra -join ', '))
   }
   $summaryLines += ('- Mapping digest: {0}' -f $mappingDigest)
