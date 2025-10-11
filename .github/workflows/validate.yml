@@ -461,10 +461,11 @@ jobs:
           'Validate / session-index'
         )
         $bpScript = Join-Path (Get-Location) 'tools/Update-SessionIndexBranchProtection.ps1'
+        $branchName = '${{ github.base_ref || github.ref_name }}'
         & $bpScript `
           -ResultsDir $res `
           -PolicyPath 'tools/policy/branch-required-checks.json' `
-          -Branch '${{ github.ref_name }}' `
+          -Branch $branchName `
           -ProducedContexts $contexts
 
     - name: Validate session index schema (schema-lite)
