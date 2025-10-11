@@ -1,6 +1,10 @@
 import { ArgumentParser } from 'argparse';
-import type { ToggleManifest, ToggleResolution, ToggleResolutionContext, ToggleValue } from './toggles.js';
-import { createToggleManifest, resolveToggleValues } from './toggles.js';
+import type { ToggleResolutionContext, ToggleValue, ToggleValuesPayload } from './toggles.js';
+import {
+  buildToggleValuesPayload,
+  computeToggleManifestDigest,
+  createToggleManifest
+} from './toggles.js';
 
 type OutputFormat = 'json' | 'values' | 'env' | 'psd1';
 
@@ -8,19 +12,6 @@ interface CliOptions extends ToggleResolutionContext {
   format: OutputFormat;
   pretty?: boolean;
   includeMetadata?: boolean;
-}
-
-interface ValuesPayload {
-  schema: 'agent-toggle-values/v1';
-  schemaVersion: string;
-  generatedAtUtc: string;
-  profiles: string[];
-  context: {
-    describe?: string;
-    it?: string;
-    tags?: string[];
-  };
-  values: Record<string, ToggleResolution>;
 }
 
 function formatJson(value: unknown, pretty: boolean | undefined): string {
@@ -34,30 +25,13 @@ function toEnvString(value: ToggleValue): string {
   return String(value);
 }
 
-function buildValuesPayload(manifest: ToggleManifest, context: ToggleResolutionContext): ValuesPayload {
-  const resolved = resolveToggleValues(manifest, context);
-  const values: Record<string, ToggleResolution> = {};
-  for (const [key, resolution] of resolved.entries()) {
-    values[key] = resolution;
-  }
-  return {
-    schema: 'agent-toggle-values/v1',
-    schemaVersion: manifest.schemaVersion,
-    generatedAtUtc: manifest.generatedAtUtc,
-    profiles: context.profiles ?? [],
-    context: {
-      describe: context.describe,
-      it: context.it,
-      tags: context.tags && context.tags.length > 0 ? context.tags : undefined
-    },
-    values
-  };
-}
-
-function formatEnv(manifest: ToggleManifest, context: ToggleResolutionContext): string {
-  const resolved = resolveToggleValues(manifest, context);
+function formatEnv(payload: ToggleValuesPayload): string {
   const lines: string[] = [];
-  for (const [key, resolution] of resolved.entries()) {
+  lines.push(`AGENT_TOGGLE_MANIFEST_DIGEST=${payload.manifestDigest}`);
+  if (payload.profiles.length > 0) {
+    lines.push(`AGENT_TOGGLE_PROFILES=${payload.profiles.join(',')}`);
+  }
+  for (const [key, resolution] of Object.entries(payload.values)) {
     lines.push(`${key}=${toEnvString(resolution.value)}`);
   }
   return `${lines.join('\n')}\n`;
@@ -104,8 +78,7 @@ function stringifyPsd1(value: unknown, depth = 0): string {
   return "'unknown'";
 }
 
-function formatPsd1(manifest: ToggleManifest, context: ToggleResolutionContext): string {
-  const payload = buildValuesPayload(manifest, context);
+function formatPsd1(payload: ToggleValuesPayload): string {
   return `${stringifyPsd1(payload)}\n`;
 }
 
@@ -142,33 +115,39 @@ function run(): void {
 
   const args = parser.parse_args() as CliOptions;
 
-  const manifest = createToggleManifest();
-
   const context: ToggleResolutionContext = {
     profiles: args.profiles ?? [],
     describe: args.describe,
     it: args.it,
-    tags: args.tags
+    tags: args.tags ?? []
   };
 
   let output = '';
 
   switch (args.format) {
     case 'json': {
-      output = formatJson(manifest, args.pretty);
+      const manifest = createToggleManifest();
+      const digest = computeToggleManifestDigest(manifest);
+      const manifestOutput = {
+        ...manifest,
+        manifestDigest: digest
+      };
+      output = formatJson(manifestOutput, args.pretty ?? true);
       break;
     }
     case 'values': {
-      const payload = buildValuesPayload(manifest, context);
+      const payload = buildToggleValuesPayload(context);
       output = formatJson(payload, args.pretty ?? true);
       break;
     }
     case 'env': {
-      output = formatEnv(manifest, context);
+      const payload = buildToggleValuesPayload(context);
+      output = formatEnv(payload);
       break;
     }
     case 'psd1': {
-      output = formatPsd1(manifest, context);
+      const payload = buildToggleValuesPayload(context);
+      output = formatPsd1(payload);
       break;
     }
     default: {

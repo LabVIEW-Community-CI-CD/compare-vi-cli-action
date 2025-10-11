@@ -33,6 +33,7 @@
 
 ## Useful Commands
 - Export toggle defaults: `node dist/src/config/toggles-cli.js --format env --profile ci-orchestrated`
+- Determinism guard: `pwsh -NoLogo -NoProfile -Command "Import-Module tools/AgentToggles.psm1; Assert-AgentToggleDeterminism"`
 - Start persistent watcher: `npm run dev:watcher:ensure`
 - Check status JSON: `npm run dev:watcher:status`
 - Stop watcher/clear status: `npm run dev:watcher:stop`

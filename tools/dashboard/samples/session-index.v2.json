@@ -8,6 +8,37 @@
     "branch": "feature/sample",
     "commit": "0123456789abcdef0123456789abcdef01234567"
   },
+  "environment": {
+    "runner": "ubuntu-24.04",
+    "node": "20.11.1",
+    "pwsh": "7.5.3",
+    "toggles": {
+      "schema": "agent-toggle-values/v1",
+      "schemaVersion": "1.0.0",
+      "generatedAtUtc": "2025-10-09T00:00:00Z",
+      "manifestDigest": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+      "manifestGeneratedAtUtc": "2025-10-09T00:00:00Z",
+      "profiles": [
+        "ci-orchestrated"
+      ],
+      "values": {
+        "SKIP_SYNC_DEVELOP": {
+          "value": false,
+          "valueType": "boolean",
+          "source": "profile",
+          "profile": "ci-orchestrated",
+          "description": "Skip automatic develop branch sync during bootstrap (set to 1/true only when a frozen snapshot is required)."
+        },
+        "HANDOFF_AUTOTRIM": {
+          "value": true,
+          "valueType": "boolean",
+          "source": "profile",
+          "profile": "ci-orchestrated",
+          "description": "Automatically trim watcher logs during agent hand-off when telemetry indicates oversize and cooldown permits."
+        }
+      }
+    }
+  },
   "branchProtection": {
     "status": "warn",
     "reason": "mapping_missing",

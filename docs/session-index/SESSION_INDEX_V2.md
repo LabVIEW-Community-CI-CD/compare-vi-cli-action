@@ -40,7 +40,31 @@
   "environment": {
     "runner": "ubuntu-24.04",
     "node": "20.11.1",
-    "pwsh": "7.5.3"
+    "pwsh": "7.5.3",
+    "toggles": {
+      "schema": "agent-toggle-values/v1",
+      "schemaVersion": "1.0.0",
+      "generatedAtUtc": "2025-10-11T18:52:28Z",
+      "manifestDigest": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+      "manifestGeneratedAtUtc": "2025-10-11T18:52:28Z",
+      "profiles": ["ci-orchestrated"],
+      "values": {
+        "SKIP_SYNC_DEVELOP": {
+          "value": false,
+          "valueType": "boolean",
+          "source": "profile",
+          "profile": "ci-orchestrated",
+          "description": "Skip automatic develop branch sync during bootstrap (set to 1/true only when a frozen snapshot is required)."
+        },
+        "HANDOFF_AUTOTRIM": {
+          "value": true,
+          "valueType": "boolean",
+          "source": "profile",
+          "profile": "ci-orchestrated",
+          "description": "Automatically trim watcher logs during agent hand-off when telemetry indicates oversize and cooldown permits."
+        }
+      }
+    }
   },
   "branchProtection": {
     "status": "error",
@@ -112,6 +136,8 @@ Key differences from v1:
   workflow produced (`produced`), and the live API snapshot (`actual.status` +
   `actual.contexts`) alongside diagnostic notes (allowing us to log 403s / 404s
   without losing alignment).
+* `environment.toggles` records the manifest digest, active profiles, and the
+  resolved toggle values that shaped the run (enabling deterministic auditing).
 * `artifacts` become first-class, linking to dashboards, compare reports, and
   trace matrices.
 * `notes` is a free-form area for session-wide diagnostics.

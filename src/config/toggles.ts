@@ -1,3 +1,5 @@
+import { createHash } from 'node:crypto';
+
 export type ToggleValue = string | number | boolean;
 
 export type ToggleValueType = 'string' | 'number' | 'boolean';
@@ -60,7 +62,7 @@ export interface ToggleManifest {
   profiles: ToggleProfile[];
 }
 
-export type ToggleResolutionSource = 'default' | 'profile' | 'variant';
+export type ToggleResolutionSource = 'default' | 'profile' | 'variant' | 'environment';
 
 export interface ToggleResolution {
   key: string;
@@ -90,6 +92,21 @@ export interface ToggleResolutionContext {
   describe?: string;
   it?: string;
   tags?: string[];
+}
+
+export interface ToggleValuesPayload {
+  schema: 'agent-toggle-values/v1';
+  schemaVersion: string;
+  generatedAtUtc: string;
+  manifestDigest: string;
+  manifestGeneratedAtUtc: string;
+  profiles: string[];
+  context: {
+    describe?: string;
+    it?: string;
+    tags?: string[];
+  };
+  values: Record<string, ToggleResolution>;
 }
 
 const DEFAULT_SCHEMA_VERSION = '1.0.0';
@@ -397,4 +414,48 @@ export function resolveToggleValues(
   }
 
   return values;
+}
+
+function createCanonicalManifest(manifest: ToggleManifest): ToggleManifest {
+  const clone = JSON.parse(JSON.stringify(manifest)) as ToggleManifest;
+  clone.generatedAtUtc = '1970-01-01T00:00:00.000Z';
+  return clone;
+}
+
+export function computeToggleManifestDigest(manifest?: ToggleManifest): string {
+  const base = manifest ?? createToggleManifest(new Date(0));
+  const canonical = createCanonicalManifest(base);
+  const serialized = JSON.stringify(canonical);
+  return createHash('sha256').update(serialized).digest('hex');
+}
+
+export function buildToggleValuesPayload(
+  context: ToggleResolutionContext = {}
+): ToggleValuesPayload {
+  const manifest = createToggleManifest();
+  const digest = computeToggleManifestDigest(manifest);
+  const resolved = resolveToggleValues(manifest, context);
+  const values: Record<string, ToggleResolution> = {};
+  const profiles = context.profiles ? [...context.profiles] : [];
+  const tags =
+    context.tags && context.tags.length > 0 ? [...context.tags] : undefined;
+
+  for (const [key, resolution] of resolved.entries()) {
+    values[key] = resolution;
+  }
+
+  return {
+    schema: 'agent-toggle-values/v1',
+    schemaVersion: manifest.schemaVersion,
+    generatedAtUtc: manifest.generatedAtUtc,
+    manifestDigest: digest,
+    manifestGeneratedAtUtc: manifest.generatedAtUtc,
+    profiles,
+    context: {
+      describe: context.describe,
+      it: context.it,
+      tags
+    },
+    values
+  };
 }

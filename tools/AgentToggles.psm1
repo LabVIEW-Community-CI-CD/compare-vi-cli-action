@@ -197,4 +197,27 @@ function Get-AgentToggleValue {
   return $value
 }
 
-Export-ModuleMember -Function Get-AgentToggleManifest, Get-AgentToggleValues, Get-AgentToggleValue
+function Assert-AgentToggleDeterminism {
+  param(
+    [string[]]$Profiles,
+    [string]$Describe,
+    [string]$It,
+    [string[]]$Tags,
+    [switch]$AllowEnvironmentOverrides
+  )
+
+  $payload = Get-AgentToggleValues -Profiles $Profiles -Describe $Describe -It $It -Tags $Tags
+  $overrides = @(
+    $payload.values.PSObject.Properties | Where-Object { $_.Value.source -eq 'environment' }
+  )
+
+  if ($overrides.Count -gt 0 -and -not $AllowEnvironmentOverrides) {
+    $names = $overrides | ForEach-Object { $_.Name }
+    $list = [string]::Join(', ', $names)
+    throw "Environment overrides detected for toggles: $list"
+  }
+
+  return $payload
+}
+
+Export-ModuleMember -Function Get-AgentToggleManifest, Get-AgentToggleValues, Get-AgentToggleValue, Assert-AgentToggleDeterminism

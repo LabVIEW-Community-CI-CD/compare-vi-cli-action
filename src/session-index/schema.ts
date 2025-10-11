@@ -23,6 +23,39 @@ export const runSchema = z
   })
   .strict();
 
+const toggleValueEntrySchema = z
+  .object({
+    value: z.union([z.string(), z.number(), z.boolean()]),
+    valueType: z.enum(['string', 'number', 'boolean']),
+    source: z.enum(['default', 'profile', 'variant', 'environment']),
+    key: z.string().optional(),
+    profile: z.string().optional(),
+    variant: z.string().optional(),
+    description: z.string().optional()
+  })
+  .strict();
+
+const toggleContextSchema = z
+  .object({
+    describe: z.string().optional(),
+    it: z.string().optional(),
+    tags: z.array(z.string()).optional()
+  })
+  .strict();
+
+const toggleValuesSchema = z
+  .object({
+    schema: z.literal('agent-toggle-values/v1'),
+    schemaVersion: z.string(),
+    generatedAtUtc: z.string(),
+    manifestDigest: z.string(),
+    manifestGeneratedAtUtc: z.string(),
+    profiles: z.array(z.string()),
+    context: toggleContextSchema.optional(),
+    values: z.record(toggleValueEntrySchema)
+  })
+  .strict();
+
 export const environmentSchema = z
   .object({
     runner: z.string().optional(),
@@ -31,6 +64,7 @@ export const environmentSchema = z
     node: z.string().optional(),
     pwsh: z.string().optional(),
     git: z.string().optional(),
+    toggles: toggleValuesSchema.optional(),
     custom: z.record(z.string()).optional()
   })
   .strict();
