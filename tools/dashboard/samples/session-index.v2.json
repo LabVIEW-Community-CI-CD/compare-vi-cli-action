@@ -8,6 +8,25 @@
     "branch": "feature/sample",
     "commit": "0123456789abcdef0123456789abcdef01234567"
   },
+  "branchProtection": {
+    "status": "warn",
+    "reason": "mapping_missing",
+    "expected": [
+      "Validate / lint",
+      "Validate / fixtures",
+      "Validate / session-index"
+    ],
+    "produced": [
+      "Validate / lint",
+      "Validate / session-index"
+    ],
+    "actual": {
+      "status": "unavailable"
+    },
+    "notes": [
+      "Sample session index for dashboard fixtures – actual contexts unavailable."
+    ]
+  },
   "tests": {
     "summary": {
       "total": 58,
@@ -24,6 +43,7 @@
         "category": "SessionLock.Tests.ps1",
         "outcome": "passed",
         "durationMs": 120.5,
+        "requirement": "REQ-LOCK-1",
         "tags": ["session-lock"]
       },
       {
@@ -32,6 +52,7 @@
         "category": "SessionLock.Tests.ps1",
         "outcome": "failed",
         "durationMs": 2045.7,
+        "requirement": "REQ-LOCK-2",
         "tags": ["session-lock", "queue"]
       }
     ]
