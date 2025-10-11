@@ -51,7 +51,13 @@ export const branchProtectionSchema = z
       ])
       .optional(),
     expected: z.array(z.string()).optional(),
-    actual: z.array(z.string()).optional(),
+    produced: z.array(z.string()).optional(),
+    actual: z
+      .object({
+        status: z.enum(['available', 'unavailable', 'error']),
+        contexts: z.array(z.string()).optional()
+      })
+      .optional(),
     mapping: z
       .object({
         path: z.string(),
@@ -65,6 +71,7 @@ export const branchProtectionSchema = z
 export const testCaseSchema = z
   .object({
     id: z.string(),
+    description: z.string().optional(),
     category: z.string().optional(),
     requirement: z.string().optional(),
     rationale: z.string().optional(),
