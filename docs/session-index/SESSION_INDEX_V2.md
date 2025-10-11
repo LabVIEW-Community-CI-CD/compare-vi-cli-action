@@ -46,7 +46,11 @@
     "status": "error",
     "reason": "api_forbidden",
     "expected": ["Validate / lint", "Validate / fixtures", "Validate / session-index"],
-    "actual": ["Validate", "Workflows Lint"],
+    "produced": ["Validate / lint", "Validate / session-index"],
+    "actual": {
+      "status": "available",
+      "contexts": ["Validate", "Workflows Lint"]
+    },
     "notes": [
       "Branch protection query failed: Response status code does not indicate success: 403 (Forbidden)."
     ],
@@ -104,8 +108,10 @@ Key differences from v1:
 * `run` replaces the bare `runContext` block, with explicit trigger metadata.
 * `tests.cases` stores per-test metadata that we can hydrate via pre/post
   callbacks inside the Pester harness.
-* `branchProtection` contains both canonical and live contexts plus diagnostic
-  notes (allowing us to log 403s / 404s without losing alignment).
+* `branchProtection` contains canonical contexts (`expected`), the contexts the
+  workflow produced (`produced`), and the live API snapshot (`actual.status` +
+  `actual.contexts`) alongside diagnostic notes (allowing us to log 403s / 404s
+  without losing alignment).
 * `artifacts` become first-class, linking to dashboards, compare reports, and
   trace matrices.
 * `notes` is a free-form area for session-wide diagnostics.
