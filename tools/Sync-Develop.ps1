@@ -9,12 +9,34 @@ param(
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
-if ($env:SKIP_SYNC_DEVELOP -and $env:SKIP_SYNC_DEVELOP -notin @('0', 'false', 'False')) {
-  Write-Host "SKIP_SYNC_DEVELOP is set; skipping fetch for $Remote/$Branch." -ForegroundColor Yellow
+$repoRoot = Split-Path -Parent $PSCommandPath
+$toggleModule = Join-Path $repoRoot 'AgentToggles.psm1'
+
+$skipSync = $false
+$skipReason = $null
+if (Test-Path -LiteralPath $toggleModule -PathType Leaf) {
+  try {
+    Import-Module $toggleModule -Force -ErrorAction Stop
+    $skipSync = Get-AgentToggleValue -Key 'SKIP_SYNC_DEVELOP' -AsBoolean
+    if ($skipSync) {
+      $skipReason = 'toggle manifest'
+    }
+  } catch {
+    Write-Verbose "Toggle module failed to resolve SKIP_SYNC_DEVELOP: $_"
+  }
+}
+
+if (-not $skipSync -and $env:SKIP_SYNC_DEVELOP -and $env:SKIP_SYNC_DEVELOP -notin @('0', 'false', 'False')) {
+  $skipSync = $true
+  $skipReason = 'environment override'
+}
+
+if ($skipSync) {
+  $reasonText = if ($skipReason) { " ($skipReason)" } else { '' }
+  Write-Host "Skipping develop sync$reasonText; fetch suppressed for $Remote/$Branch." -ForegroundColor Yellow
   return
 }
 
-$repoRoot = Split-Path -Parent $PSCommandPath
 $git = Get-Command git -ErrorAction Stop
 
 Push-Location $repoRoot
