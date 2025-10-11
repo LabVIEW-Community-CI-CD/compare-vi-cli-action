@@ -88,6 +88,9 @@ if (-not $policy.issues -or ($Issue -notin $policy.issues)) {
 }
 
 $repoSlug = Get-RepoSlug -RepoParam $Repo
+$detectedRef = $null
+try { $detectedRef = (& git rev-parse --abbrev-ref HEAD 2>$null).Trim() } catch {}
+if ($Ref -eq '${branch}' -or $Ref -eq 'current') { if ($detectedRef) { $Ref = $detectedRef } }
 $useGh = $false
 if (Get-Command gh -ErrorAction SilentlyContinue) { $useGh = $true }
 $tok = if ($Token) { $Token } elseif ($env:GH_TOKEN) { $env:GH_TOKEN } elseif ($env:GITHUB_TOKEN) { $env:GITHUB_TOKEN } else { $null }
@@ -108,7 +111,9 @@ try {
 Write-Host ("Gated integration start for issue #{0}: {1}" -f $Issue, $issueTitle) -ForegroundColor Cyan
 
 $workflowKey = 'ci-orchestrated.yml'
+$workflowName = 'CI Orchestrated (deterministic chain)'
 $sampleId = New-SampleId
+$dispatchStamp = Get-Date
 
 if ($useGh) {
   if ($tok) { $env:GH_TOKEN = $tok }
@@ -124,6 +129,50 @@ if ($useGh) {
 }
 
 Write-Host ("Dispatched: sample_id={0}, strategy={1}, include_integration={2}" -f $sampleId,$Strategy,$IncludeIntegration)
-Write-Host 'Copy/paste to watch this run (Docker):' -ForegroundColor Yellow
-Write-Host '  pwsh -File tools/Watch-InDocker.ps1 -RunId <id> -Repo <owner/repo>'
 
+$runEnvelope = $null
+$runId = $null
+$runUrl = $null
+try {
+  Start-Sleep -Seconds 6
+  if ($useGh) {
+    $listJson = gh run list --workflow $workflowName --json databaseId,createdAt,headBranch,status,conclusion,url --limit 20 2>$null
+    if ($listJson) {
+      $runs = $listJson | ConvertFrom-Json
+      if ($runs) {
+        $runEnvelope = $runs | Where-Object {
+            $_.headBranch -eq $Ref -and $_.createdAt -and ([datetime]$_.createdAt) -ge $dispatchStamp.AddMinutes(-5)
+        } |
+          Sort-Object { [datetime]$_.createdAt } -Descending |
+          Select-Object -First 1
+      }
+    }
+  } else {
+    $h = Get-AuthHeaders -Tok $tok
+    $runsResponse = Invoke-GitHubApiJson -Uri ("https://api.github.com/repos/{0}/actions/workflows/{1}/runs?per_page=20" -f $repoSlug,$workflowKey) -Headers $h
+    if ($runsResponse.workflow_runs) {
+      $runEnvelope = $runsResponse.workflow_runs |
+        Where-Object {
+            $_.head_branch -eq $Ref -and $_.created_at -and ([datetime]$_.created_at) -ge $dispatchStamp.AddMinutes(-5)
+        } |
+        Sort-Object { [datetime]$_.created_at } -Descending |
+        Select-Object -First 1
+    }
+  }
+  if ($runEnvelope) {
+    $runId = if ($runEnvelope.databaseId) { [string]$runEnvelope.databaseId } elseif ($runEnvelope.id) { [string]$runEnvelope.id } else { $null }
+    $runUrl = if ($runEnvelope.url) { $runEnvelope.url } elseif ($runEnvelope.html_url) { $runEnvelope.html_url } else { $null }
+  }
+} catch {
+  Write-Verbose ("Failed to detect run id: {0}" -f $_.Exception.Message)
+}
+
+if ($runId) {
+  Write-Host ("Detected orchestrated run id: {0}" -f $runId) -ForegroundColor Green
+  if ($runUrl) { Write-Host ("Run URL: {0}" -f $runUrl) -ForegroundColor Cyan }
+  Write-Host 'Copy/paste to watch this run (Docker):' -ForegroundColor Yellow
+  Write-Host ("  pwsh -File tools/Watch-InDocker.ps1 -RunId {0} -Repo {1}" -f $runId,$repoSlug)
+  Write-Host 'VS Code task: Run → Run Task → "Watch Orchestrated Run (Docker, prompt)"' -ForegroundColor Yellow
+} else {
+  Write-Warning 'Could not automatically determine run id yet. Use gh run list or GitHub UI to locate it, then run tools/Watch-InDocker.ps1.'
+}
