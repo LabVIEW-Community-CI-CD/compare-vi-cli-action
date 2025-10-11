@@ -36,7 +36,8 @@ param(
   [ValidateSet('true','false')][string]$IncludeIntegration = 'true',
   [string]$Ref = 'develop',
   [string]$Repo,
-  [string]$Token
+  [string]$Token,
+  [switch]$Watch
 )
 
 Set-StrictMode -Version Latest
@@ -170,9 +171,31 @@ try {
 if ($runId) {
   Write-Host ("Detected orchestrated run id: {0}" -f $runId) -ForegroundColor Green
   if ($runUrl) { Write-Host ("Run URL: {0}" -f $runUrl) -ForegroundColor Cyan }
-  Write-Host 'Copy/paste to watch this run (Docker):' -ForegroundColor Yellow
-  Write-Host ("  pwsh -File tools/Watch-InDocker.ps1 -RunId {0} -Repo {1}" -f $runId,$repoSlug)
-  Write-Host 'VS Code task: Run → Run Task → "Watch Orchestrated Run (Docker, prompt)"' -ForegroundColor Yellow
+  if (-not $Watch) {
+    Write-Host 'Copy/paste to watch this run (Docker):' -ForegroundColor Yellow
+    Write-Host ("  pwsh -File tools/Watch-InDocker.ps1 -RunId {0} -Repo {1}" -f $runId,$repoSlug)
+    Write-Host 'VS Code task: Run → Run Task → "Integration (#88): Watch existing run (Docker)"' -ForegroundColor Yellow
+  }
 } else {
   Write-Warning 'Could not automatically determine run id yet. Use gh run list or GitHub UI to locate it, then run tools/Watch-InDocker.ps1.'
+}
+
+if ($Watch) {
+  if ($runId) {
+    $watchScript = Join-Path $PSScriptRoot 'Watch-InDocker.ps1'
+    if (-not (Test-Path -LiteralPath $watchScript)) {
+      Write-Warning "Watcher script not found at $watchScript"
+    } else {
+      Write-Host 'Launching Docker watcher (blocking until dispatcher completes)...' -ForegroundColor Cyan
+      $watchArgs = @('-NoLogo','-NoProfile','-File', $watchScript,'-RunId',"$runId",'-Repo',"$repoSlug")
+      if ($tok) { $watchArgs += @('-Token', $tok) }
+      & pwsh @watchArgs
+      $watchExit = $LASTEXITCODE
+      if ($watchExit -ne 0) {
+        Write-Warning ("Watcher exited with code {0}. Inspect output above for details." -f $watchExit)
+      }
+    }
+  } else {
+    Write-Warning 'Watcher not started because the run id could not be determined.'
+  }
 }

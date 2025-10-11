@@ -2,31 +2,7 @@
   "version": "2.0.0",
   "tasks": [
     {
-      "label": "Watch Orchestrated Run (Docker, prompt)",
-      "type": "shell",
-      "command": "pwsh",
-      "args": [
-        "-NoLogo",
-        "-NoProfile",
-        "-File",
-        "./tools/Watch-InDocker.ps1",
-        "-RunId",
-        "${input:watchRunId}",
-        "-Repo",
-        "${input:watchRepo}"
-      ],
-      "options": {
-        "cwd": "${workspaceFolder}"
-      },
-      "problemMatcher": [],
-      "presentation": {
-        "reveal": "always",
-        "panel": "dedicated",
-        "clear": true
-      }
-    },
-    {
-      "label": "Start Integration (Gated → Orchestrated)",
+      "label": "Integration (#88): Start + Watch (Docker)",
       "type": "shell",
       "command": "pwsh",
       "args": [
@@ -41,28 +17,25 @@
         "-IncludeIntegration",
         "${input:integrationInclude}",
         "-Ref",
-        "${input:integrationRef}"
+        "${input:integrationRef}",
+        "-Watch"
       ],
       "options": { "cwd": "${workspaceFolder}" },
       "problemMatcher": [],
       "presentation": { "reveal": "always", "panel": "dedicated", "clear": true }
     },
     {
-      "label": "Watch Orchestrated Run (Docker via Non-LV checks)",
+      "label": "Integration (#88): Watch existing run (Docker)",
       "type": "shell",
       "command": "pwsh",
       "args": [
         "-NoLogo",
         "-NoProfile",
         "-File",
-        "./tools/Run-NonLVChecksInDocker.ps1",
-        "-SkipActionlint",
-        "-SkipMarkdown",
-        "-SkipDocs",
-        "-SkipWorkflow",
-        "-WatchRunId",
+        "./tools/Watch-InDocker.ps1",
+        "-RunId",
         "${input:watchRunId}",
-        "-WatchRepo",
+        "-Repo",
         "${input:watchRepo}"
       ],
       "options": {
