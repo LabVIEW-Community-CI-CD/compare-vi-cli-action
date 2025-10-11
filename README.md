@@ -97,11 +97,11 @@ pwsh -File tools/Watch-InDocker.ps1 -RunId <id> -Repo LabVIEW-Community-CI-CD/co
 
 Tips:
 - Set `GH_TOKEN` or `GITHUB_TOKEN` in your environment (admin token recommended).
-- VS Code: use the “Watch Orchestrated Run (Docker, prompt)” task under Run Task and paste the run id.
+- VS Code: use “Integration (#88): Watch existing run (Docker)” under Run Task and paste the run id.
 
 #### Start integration (gated)
 
-Use the “Start Integration (Gated → Orchestrated)” VS Code task to deterministically start an orchestrated run only after selecting an allowed GitHub issue. The allowed list lives in `tools/policy/allowed-integration-issues.json` and defaults to `#88` and `#118`.
+Use “Integration (#88): Start + Watch (Docker)” under Run Task to deterministically start an orchestrated run only after selecting an allowed GitHub issue. The allowed list lives in `tools/policy/allowed-integration-issues.json` and defaults to `#88` and `#118`.
 
 The task prompts for:
 - Issue: must be in the allowed list.
@@ -109,7 +109,7 @@ The task prompts for:
 - Include integration: `true`/`false`.
 - Ref: `develop` (default) or current branch.
 
-The script dispatches the `ci-orchestrated.yml` workflow via GitHub CLI (or REST with `GH_TOKEN`/`GITHUB_TOKEN`).
+The task dispatches `ci-orchestrated.yml` via GitHub CLI (or REST with `GH_TOKEN`/`GITHUB_TOKEN`) and automatically launches the Docker watcher when the run id is detected.
 
 ## Bundled workflows
 
