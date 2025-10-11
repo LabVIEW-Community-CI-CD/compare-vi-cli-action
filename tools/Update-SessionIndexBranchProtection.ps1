@@ -153,6 +153,7 @@ $extraCount    = @($extra).Count
 $resultStatus = 'ok'
 $resultReason = 'aligned'
 $notes = @()
+$derivedNotes = @()
 
 if ($expectedCount -eq 0) {
   $resultStatus = 'warn'
@@ -187,6 +188,25 @@ if ($ActualContexts) {
   }
 }
 
+# Compare live contexts to expected mapping when available
+if ($actualBlock.status -eq 'available' -and $actualBlock.contexts) {
+  $actualSorted = @($actualBlock.contexts | Sort-Object -Unique)
+  $actualMissing = @($expected | Where-Object { $actualSorted -notcontains $_ } | Sort-Object -Unique)
+  $actualExtra = @($actualSorted | Where-Object { $expected -notcontains $_ } | Sort-Object -Unique)
+  if ($actualMissing.Count -gt 0) {
+    $derivedNotes += ("Live branch protection missing contexts: {0}" -f ($actualMissing -join ', '))
+    $resultReason = 'missing_required'
+    $resultStatus = if ($Strict) { 'fail' } elseif ($resultStatus -eq 'ok') { 'warn' } else { $resultStatus }
+  }
+  if ($actualExtra.Count -gt 0) {
+    $derivedNotes += ("Live branch protection has unexpected contexts: {0}" -f ($actualExtra -join ', '))
+    if ($resultReason -eq 'aligned') {
+      $resultReason = 'extra_required'
+    }
+    $resultStatus = if ($Strict) { 'fail' } elseif ($resultStatus -eq 'ok') { 'warn' } else { $resultStatus }
+  }
+}
+
 $contract = [ordered]@{
   id           = 'bp-verify'
   version      = '1'
@@ -207,13 +227,12 @@ $bpObject = [ordered]@{
   }
   tags     = @('bp-verify','issue:118','contract:v1')
 }
-$notesCount = @($notes).Count
+$allNotes = @($notes + $derivedNotes | Where-Object { $_ })
 if ($AdditionalNotes) {
-  $notes += ($AdditionalNotes | Where-Object { $_ })
-  $notesCount = @($notes).Count
+  $allNotes += ($AdditionalNotes | Where-Object { $_ })
 }
-if ($notesCount -gt 0) {
-  $bpObject.notes = $notes
+if ($allNotes.Count -gt 0) {
+  $bpObject.notes = $allNotes
 }
 
 $idx['branchProtection'] = $bpObject

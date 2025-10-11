@@ -1,0 +1,145 @@
+# Session Index v2 – proposal
+
+> Heroic goal: Turn the session index into the single source of truth for CI
+> telemetry – rich enough to capture live branch protection state, per–test
+> metadata, requirement traceability, and downstream artefact links.
+
+## Objectives
+
+1. **Typed service layer** – Generate session-index.json via a TypeScript module
+   instead of direct PowerShell JSON manipulation.
+2. **Extensible schema** – Expand beyond run summaries to include per-test
+   metadata (requirements, rationale, expected results), artefact catalogues,
+   live branch-protection snapshots, and diagnostic notes.
+3. **Callback-friendly orchestration** – Provide pre/post hooks so Pester (or
+   any harness) can emit structured test events that the writer consumes.
+4. **Backwards compatibility** – Keep the existing v1 schema during migration.
+   Producers opt into v2, consumers can reference both until the transition is
+   complete.
+
+## Proposed shape
+
+```jsonc
+{
+  "schema": "session-index/v2",
+  "schemaVersion": "2.0.0",
+  "generatedAtUtc": "2025-10-11T18:52:28Z",
+  "run": {
+    "id": "github-actions/18433434521",
+    "attempt": 1,
+    "workflow": "Validate",
+    "job": "session-index",
+    "branch": "develop",
+    "commit": "64df3a765246d562f4051515bc90f8dac656574f",
+    "trigger": {
+      "kind": "pull_request",
+      "number": 119,
+      "author": "svelderrainruiz"
+    }
+  },
+  "environment": {
+    "runner": "ubuntu-24.04",
+    "node": "20.11.1",
+    "pwsh": "7.5.3"
+  },
+  "branchProtection": {
+    "status": "error",
+    "reason": "api_forbidden",
+    "expected": ["Validate / lint", "Validate / fixtures", "Validate / session-index"],
+    "actual": ["Validate", "Workflows Lint"],
+    "notes": [
+      "Branch protection query failed: Response status code does not indicate success: 403 (Forbidden)."
+    ],
+    "mapping": {
+      "path": "tools/policy/branch-required-checks.json",
+      "digest": "9121da2e7b43a122c02db5adf6148f42de443d89159995fce7d035ae66745772"
+    }
+  },
+  "tests": {
+    "summary": {
+      "total": 7,
+      "passed": 7,
+      "failed": 0,
+      "errors": 0,
+      "skipped": 0,
+      "durationSeconds": 14.75
+    },
+    "cases": [
+      {
+        "id": "Invoke-Pester::Watcher.BusyLoop.Tests::When the watcher hangs it exits",
+        "category": "Watcher.BusyLoop.Tests.ps1",
+        "requirement": "REQ-1234",
+        "rationale": "Busy loop detection must terminate the watcher within 120s.",
+        "expectedResult": "Watcher exits with code 2 and writes hang telemetry.",
+        "outcome": "passed",
+        "durationMs": 1739,
+        "artifacts": [
+          "tests/results/watcher-busyloop/pester-results.xml"
+        ],
+        "tags": ["busy-loop", "watcher"]
+      }
+    ]
+  },
+  "artifacts": [
+    {
+      "name": "pester-summary",
+      "path": "tests/results/pester-summary.json",
+      "kind": "summary"
+    },
+    {
+      "name": "compare-report",
+      "path": "tests/results/compare-report.html",
+      "kind": "report"
+    }
+  ],
+  "notes": [
+    "LVCompare-only mode enforced (no LabVIEW.exe discovered).",
+    "Watcher telemetry trimmed automatically."
+  ]
+}
+```
+
+Key differences from v1:
+
+* `run` replaces the bare `runContext` block, with explicit trigger metadata.
+* `tests.cases` stores per-test metadata that we can hydrate via pre/post
+  callbacks inside the Pester harness.
+* `branchProtection` contains both canonical and live contexts plus diagnostic
+  notes (allowing us to log 403s / 404s without losing alignment).
+* `artifacts` become first-class, linking to dashboards, compare reports, and
+  trace matrices.
+* `notes` is a free-form area for session-wide diagnostics.
+
+## Implementation plan
+
+1. **TypeScript builder (this PR)**  
+   Introduce a typed builder that writes v2 objects, along with a CLI to emit
+   sample indices. This keeps structure and validation in one place.
+
+2. **PowerShell integration (follow-up)**  
+   - Update existing scripts (e.g., Quick-DispatcherSmoke, Update-SessionIndexBranchProtection) to call the TypeScript CLI.
+   - Provide thin PS wrappers so existing jobs don’t need to learn Node APIs.
+
+3. **Per-test callbacks**  
+   - Add a Pester shim that captures test metadata and streams it to the builder.
+   - Populate `tests.cases` incrementally; fall back to summaries when callbacks
+     are unavailable.
+
+4. **Consumer migration**  
+   - Update dashboards, trace matrices, and tooling to read v2.
+   - Keep emitting v1 in parallel until all consumers understand v2.
+
+5. **Deprecate v1**  
+   - Once all jobs and dashboards read v2, freeze v1 generation and archive the
+     old schema documentation.
+
+## Open questions
+
+* How much requirement metadata do we already track (e.g., via tags)?  
+  We may need an annotation mechanism (`It '...' -TestMeta @{ Requirement =
+  'REQ-1234' }`) to capture this cleanly.
+* Do we need per-artifact checksums / sizes to help latency-sensitive tooling?
+* Should branch-protection snapshots also include the raw API payload for
+  auditability?
+
+Feedback welcome before we harden the schema.

@@ -25,9 +25,11 @@
     "dev:watcher:trim": "pwsh -NoLogo -NoProfile -File tools/Dev-WatcherManager.ps1 -Trim",
     "dev:watcher:autotrim": "pwsh -NoLogo -NoProfile -File tools/Dev-WatcherManager.ps1 -AutoTrim",
     "ci:status": "pwsh -NoLogo -NoProfile -File tools/Follow-OrchestratedRun.ps1",
-    "ci:watch": "pwsh -NoLogo -NoProfile -File tools/Follow-OrchestratedRun.ps1 -Watch"
+    "ci:watch": "pwsh -NoLogo -NoProfile -File tools/Follow-OrchestratedRun.ps1 -Watch",
+    "session-index:sample": "tsc -p tsconfig.json && node dist/src/session-index/cli.js --sample"
   },
   "devDependencies": {
+    "@types/argparse": "^2.0.16",
     "@types/js-yaml": "^4.0.9",
     "@types/node": "20.11.30",
     "ajv": "8.16.0",
