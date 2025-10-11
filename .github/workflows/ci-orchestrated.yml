@@ -215,7 +215,7 @@ jobs:
         "ok=$ok" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
 
   pester-category:
-    if: ${{ inputs.strategy == 'matrix' || vars.ORCH_STRATEGY == 'matrix' || (inputs.strategy == '' && vars.ORCH_STRATEGY == '') || (inputs.strategy == 'single' && needs.probe.outputs.ok == 'false') }}
+    if: ${{ inputs.strategy == 'matrix' || vars.ORCH_STRATEGY == 'matrix' || ((inputs.strategy == '' || inputs.strategy == 'single') && needs.probe.outputs.ok == 'true') }}
     runs-on: [self-hosted, Windows, X64]
     timeout-minutes: 3
     needs: [normalize, preflight, probe]
@@ -873,6 +873,120 @@ jobs:
         }
         if ($env:GITHUB_STEP_SUMMARY) {
           $lines = @('### Session Index Schema (categories)','',"- ok: $ok","- fail: $fail","- missing: $miss")
+          $lines -join "`n" | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8
+        }
+
+  pester-headless:
+    if: ${{ (inputs.strategy == '' || inputs.strategy == 'single') && needs.probe.outputs.ok != 'true' && vars.ORCH_STRATEGY != 'matrix' }}
+    runs-on: [self-hosted, Windows, X64]
+    timeout-minutes: 3
+    needs: [normalize, preflight, probe]
+    strategy:
+      matrix:
+        category: [schema, psummary, workflow]
+      max-parallel: 1
+    env:
+      HEADLESS_MODE: '1'
+      INVOKER_REQUIRED: '0'
+      DETECT_LEAKS: '0'
+      CLEAN_AFTER: '0'
+      SCAN_ARTIFACTS: '1'
+      LV_SUPPRESS_UI: '1'
+      WATCH_CONSOLE: '1'
+      LABVIEW_EXE: C:\\Program Files\\National Instruments\\LabVIEW 2025\\LabVIEW.exe
+      EMIT_LV_CLOSURE_CRUMBS: '0'
+    steps:
+    - uses: actions/checkout@v5
+    - name: Configure Git safe.directory (service)
+      shell: pwsh
+      run: git config --global --add safe.directory $env:GITHUB_WORKSPACE
+
+    - name: Headless fallback notice
+      shell: pwsh
+      run: |
+        $lines = @(
+          '### Headless Fallback',
+          '',
+          '- Interactivity probe reported `false`; skipping LabVIEW/Invoker-dependent suites.',
+          '- Executing CLI-only categories to retain coverage in headless mode.'
+        )
+        if ($env:GITHUB_STEP_SUMMARY) {
+          $lines -join "`n" | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8
+        }
+
+    - name: Define headless category patterns
+      id: headless_cats
+      shell: pwsh
+      run: |
+        $cat='${{ matrix.category }}'
+        switch ($cat) {
+          'schema'   { $inc = @('Schema.*.ps1','SchemaLite*.ps1') }
+          'psummary' { $inc = @('PesterSummary*.ps1','Write-PesterSummaryToStepSummary*.ps1','AggregationHints*.ps1') }
+          'workflow' { $inc = @('Workflow*.ps1','On-FixtureValidationFail.Tests.ps1','Watch.FlakyRecovery.Tests.ps1','FunctionShadowing*.ps1','FunctionProxy.Tests.ps1','RunSummary.Tool*.ps1','Action.CompositeOutputs.Tests.ps1','Binding.MinRepro.Tests.ps1','ArtifactTracking*.ps1','Guard.*.Tests.ps1') }
+          default    { $inc = @('*.ps1') }
+        }
+        "include=$($inc -join ',')" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+
+    - name: Run headless Pester tests (category)
+      shell: pwsh
+      run: |
+        $inc = @()
+        if ('${{ steps.headless_cats.outputs.include }}') { $inc = '${{ steps.headless_cats.outputs.include }}'.Split(',') | Where-Object { $_ } }
+        $resDir = Join-Path 'tests/results' '${{ matrix.category }}'
+        ./Invoke-PesterTests.ps1 `
+          -TestsPath tests `
+          -IncludeIntegration '${{ needs.normalize.outputs.include_integration }}' `
+          -ResultsPath $resDir `
+          -EmitFailuresJsonAlways `
+          -IncludePatterns $inc
+
+    - name: Summarize headless results (job-level)
+      shell: pwsh
+      run: |
+        $category = '${{ matrix.category }}'
+        $resDir = Join-Path 'tests/results' $category
+        $sumPath = Join-Path $resDir 'pester-summary.json'
+        if (Test-Path -LiteralPath $sumPath) {
+          $s = Get-Content -LiteralPath $sumPath -Raw | ConvertFrom-Json -ErrorAction Stop
+          $tot = $s.totals
+          $lines = @(
+            "### Pester Status ($category — headless)",
+            "- Result: $($s.result)",
+            "- Tests: $($tot.tests)  Passed: $($tot.passed)  Failed: $($tot.failed)",
+            "- Mode: headless (no invoker READY)"
+          ) | Where-Object { $_ }
+          ($lines -join "`n") | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8
+        } else {
+          "No pester-summary.json found for category '${{ matrix.category }}' (headless mode)" | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8
+        }
+
+    - name: Ensure session index (headless)
+      shell: pwsh
+      run: pwsh -File tools/Ensure-SessionIndex.ps1 -ResultsDir "tests/results/${{ matrix.category }}" -SummaryJson 'pester-summary.json'
+
+    - name: Upload headless artifacts
+      if: always()
+      uses: actions/upload-artifact@v4
+      with:
+        name: headless-pester-results-${{ matrix.category }}
+        path: |
+          tests/results/${{ matrix.category }}/**/*.xml
+          tests/results/${{ matrix.category }}/**/*.txt
+          tests/results/${{ matrix.category }}/pester-summary.json
+          tests/results/${{ matrix.category }}/pester-failures.json
+          tests/results/${{ matrix.category }}/session-index.json
+
+    - name: Append headless rerun hint
+      if: ${{ always() }}
+      shell: pwsh
+      run: |
+        $cmd = "/run orchestrated strategy=single include_integration=${{ needs.normalize.outputs.include_integration }} sample_id=${{ inputs.sample_id || '<id>' }}"
+        $lines = @(
+          '### Headless Rerun Hint',
+          '',
+          "$ $cmd"
+        )
+        if ($env:GITHUB_STEP_SUMMARY) {
           $lines -join "`n" | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8
         }
 
