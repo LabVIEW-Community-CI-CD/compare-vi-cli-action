@@ -96,7 +96,7 @@ function Invoke-GitPushWithToken {
   $pushArgs = @('push','--set-upstream',$authUrl,"HEAD:refs/heads/$Branch")
   & git @pushArgs | Out-Null
   if ($LASTEXITCODE -ne 0) {
-    throw "git push failed for $RepoSlug:$Branch (exit $LASTEXITCODE)"
+    throw "git push failed for ${RepoSlug}:${Branch} (exit $LASTEXITCODE)"
   }
 }
 
