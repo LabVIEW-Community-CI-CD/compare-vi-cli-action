@@ -3,10 +3,10 @@
   Deterministic LabVIEW runtime warmup for self-hosted Windows runners.
 
 .DESCRIPTION
-  Ensures a LabVIEW.exe process is running (or can be started) before downstream
-  orchestration begins. Launches LabVIEW via ProcessStartInfo with UI-suppression
-  toggles, waits for readiness, emits NDJSON breadcrumbs, and optionally stops
-  LabVIEW when warmup completes. Designed to run outside of GitHub-hosted agents.
+  Primes the LabVIEW runtime without launching LabVIEW.exe directly. Uses
+  LVCompare (via tools/Prime-LVCompare.ps1) to warm shared components, emits
+  NDJSON breadcrumbs, and optionally stops any pre-existing LabVIEW processes.
+  Designed to run outside of GitHub-hosted agents.
 
 .PARAMETER LabVIEWPath
   Explicit path to LabVIEW.exe. When omitted, derived from LABVIEW_PATH,
@@ -27,11 +27,12 @@
   Additional idle gate after LabVIEW starts. Default 2 seconds.
 
 .PARAMETER KeepLabVIEW
-  Leave LabVIEW running after warmup (default behaviour). When omitted with
-  -StopAfterWarmup, LabVIEW is stopped before exit.
+  Retained for backwards compatibility; with the LVCompare strategy this flag
+  currently has no effect because LabVIEW is not started directly.
 
 .PARAMETER StopAfterWarmup
-  Request that LabVIEW be stopped once warmup completes.
+  When pre-existing LabVIEW processes are detected, request that they be stopped
+  once warmup completes. Has no effect when no LabVIEW process exists.
 
 .PARAMETER JsonLogPath
   NDJSON event log path (schema warmup-labview-v1). Defaults to
@@ -45,7 +46,7 @@
   Skip process snapshot emission.
 
 .PARAMETER DryRun
-  Compute the warmup plan and emit events without launching LabVIEW.
+  Compute the warmup plan and emit events without invoking LVCompare.
 
 .PARAMETER KillOnTimeout
   If LabVIEW is still running when StopAfterWarmup is requested, terminate it forcibly.
@@ -156,6 +157,7 @@ Write-JsonEvent 'plan' @{
   bitness    = $SupportedBitness
   version    = $MinimumSupportedLVVersion
   dryRun     = $DryRun.IsPresent
+  strategy   = 'lvcompare-prime'
 }
 
 if (-not $LabVIEWPath) {
@@ -191,69 +193,68 @@ if ($existing.Count -gt 0) {
   return
 }
 
+if ($KeepLabVIEW) {
+  Write-JsonEvent 'notice' @{ message = 'KeepLabVIEW flag ignored; LVCompare prime does not start LabVIEW.' }
+}
+
+if ($StopAfterWarmup) {
+  Write-JsonEvent 'notice' @{ message = 'StopAfterWarmup has no effect; LVCompare prime does not leave LabVIEW running.' }
+}
+
 if ($DryRun) {
-  Write-Host "Warmup: dry run; LabVIEW would be launched via $LabVIEWPath." -ForegroundColor DarkGray
+  Write-Host "Warmup: dry run; LVCompare prime would execute via Prime-LVCompare.ps1." -ForegroundColor DarkGray
+  Write-JsonEvent 'skip' @{ reason = 'dry-run'; strategy = 'lvcompare-prime' }
   return
 }
 
-$psi = [System.Diagnostics.ProcessStartInfo]::new()
-$psi.FileName = $LabVIEWPath
-$psi.Arguments = ''
-$psi.UseShellExecute = $false
-$psi.CreateNoWindow = $true
-$psi.WindowStyle = [System.Diagnostics.ProcessWindowStyle]::Hidden
+$primeScript = if ($env:WARMUP_PRIME_SCRIPT -and (Test-Path -LiteralPath $env:WARMUP_PRIME_SCRIPT -PathType Leaf)) {
+  $env:WARMUP_PRIME_SCRIPT
+} else {
+  Join-Path (Split-Path -Parent $PSCommandPath) 'Prime-LVCompare.ps1'
+}
+if (-not (Test-Path -LiteralPath $primeScript -PathType Leaf)) {
+  Write-Warning "Warmup-LabVIEWRuntime: Prime-LVCompare.ps1 not found at $primeScript."
+  Write-JsonEvent 'skip' @{ reason = 'prime-script-missing'; path = $primeScript }
+  return
+}
 
-try { $psi.EnvironmentVariables['LV_NO_ACTIVATE'] = '1' } catch {}
-try { $psi.EnvironmentVariables['LV_SUPPRESS_UI'] = '1' } catch {}
-try { $psi.EnvironmentVariables['LV_CURSOR_RESTORE'] = '1' } catch {}
-try { $psi.EnvironmentVariables['LV_IDLE_WAIT_SECONDS'] = [string]$IdleWaitSeconds } catch {}
-try { $psi.EnvironmentVariables['LV_IDLE_MAX_WAIT_SECONDS'] = '5' } catch {}
+$repoRoot = (Resolve-Path '.').Path
+$baseVi = if ($env:LV_BASE_VI) { $env:LV_BASE_VI } else { Join-Path $repoRoot 'VI1.vi' }
+$headVi = if ($env:LV_HEAD_VI) { $env:LV_HEAD_VI } else { Join-Path $repoRoot 'VI2.vi' }
 
-Write-Host ("Warmup: launching LabVIEW (hidden) via {0}" -f $LabVIEWPath) -ForegroundColor Gray
-Write-StepSummaryLine "- Warmup: launching LabVIEW (hidden)"
-Write-JsonEvent 'spawn' @{ exe = $LabVIEWPath }
+if (-not (Test-Path -LiteralPath $baseVi -PathType Leaf)) {
+  Write-Warning "Warmup-LabVIEWRuntime: Base VI not found at $baseVi."
+  Write-JsonEvent 'skip' @{ reason = 'base-vi-missing'; path = $baseVi }
+  return
+}
+if (-not (Test-Path -LiteralPath $headVi -PathType Leaf)) {
+  Write-Warning "Warmup-LabVIEWRuntime: Head VI not found at $headVi; falling back to base VI."
+  $headVi = $baseVi
+}
 
-$proc = $null
+Write-Host "Warmup: running LVCompare prime to warm LabVIEW runtime (no direct LabVIEW launch)." -ForegroundColor Gray
+Write-StepSummaryLine "- Warmup: running LVCompare prime"
+Write-JsonEvent 'prime-start' @{
+  script = $primeScript
+  baseVi = $baseVi
+  headVi = $headVi
+}
+
+$primeArgs = @('-BaseVi', $baseVi, '-HeadVi', $headVi, '-ExpectNoDiff', '-LeakCheck')
+if ($LabVIEWPath) { $primeArgs += @('-LabVIEWExePath', $LabVIEWPath) }
+if ($KillOnTimeout) { $primeArgs += '-KillOnTimeout' }
+
 try {
-  $proc = [System.Diagnostics.Process]::Start($psi)
+  & $primeScript @primeArgs | Out-Null
+  $primeExit = $LASTEXITCODE
+  Write-JsonEvent 'prime-exit' @{ exitCode = $primeExit }
+  if ($primeExit -ne 0) {
+    throw "Prime-LVCompare exited with code $primeExit"
+  }
 } catch {
-  Write-JsonEvent 'error' @{ stage = 'start'; message = $_.Exception.Message }
+  Write-JsonEvent 'error' @{ stage = 'prime'; message = $_.Exception.Message }
   throw
 }
 
-$deadline = (Get-Date).AddSeconds([Math]::Max(1,$TimeoutSeconds))
-do {
-  Start-Sleep -Milliseconds 200
-  try { $existing = @(Get-Process -Name 'LabVIEW' -ErrorAction SilentlyContinue) } catch { $existing = @() }
-  if ($existing.Count -gt 0) { break }
-} while ((Get-Date) -lt $deadline)
-
-if ($existing.Count -eq 0) {
-  Write-Warning "Warmup: LabVIEW did not appear within $TimeoutSeconds second(s)."
-  Write-JsonEvent 'timeout' @{ stage = 'spawn'; seconds = $TimeoutSeconds }
-  if ($KillOnTimeout -and $proc -and -not $proc.HasExited) {
-    try { $proc.Kill($true) } catch {}
-  }
-  return
-}
-
-Write-Host ("Warmup: LabVIEW started (PID(s): {0})" -f ($existing.Id -join ',')) -ForegroundColor Green
-Write-StepSummaryLine ("- Warmup: LabVIEW running (PID(s): {0})" -f ($existing.Id -join ','))
-Write-JsonEvent 'labview-detected' @{ pids = ($existing.Id -join ',') }
-
-if ($IdleWaitSeconds -gt 0) {
-  Start-Sleep -Seconds $IdleWaitSeconds
-  Write-JsonEvent 'idle-gate' @{ seconds = $IdleWaitSeconds }
-}
-
 Write-Snapshot -Path $SnapshotPath
-
-if ($StopAfterWarmup -and -not $KeepLabVIEW) {
-  Write-Host "Warmup: stopping LabVIEW per StopAfterWarmup request." -ForegroundColor Gray
-  foreach ($proc in $existing) {
-    try { Stop-Process -Id $proc.Id -Force -ErrorAction Stop } catch { Write-Warning "Warmup: failed to stop LabVIEW PID $($proc.Id): $($_.Exception.Message)" }
-  }
-  Write-JsonEvent 'labview-stopped' @{ reason = 'warmup-complete' }
-} else {
-  Write-JsonEvent 'warmup-complete' @{ kept = $true }
-}
+Write-JsonEvent 'warmup-complete' @{ kept = $false; strategy = 'lvcompare-prime' }
