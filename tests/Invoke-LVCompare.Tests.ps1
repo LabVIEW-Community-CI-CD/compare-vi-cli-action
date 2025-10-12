@@ -22,7 +22,8 @@ param(
   [string]`$LvComparePath,
   [switch]`$RenderReport,
   [string]`$OutputDir,
-  [switch]`$Quiet
+  [switch]`$Quiet,
+  [string]`$ReportStagingDir
 )
 if (-not (Test-Path `$OutputDir)) { New-Item -ItemType Directory -Path `$OutputDir -Force | Out-Null }
 if (`$LvArgs -is [System.Array]) { `$args = @(`$LvArgs) } elseif (`$LvArgs) { `$args = @([string]`$LvArgs) } else { `$args = @() }
@@ -69,6 +70,10 @@ if (-not `$lvPathValue) { `$lvPathValue = 'C:\Program Files\National Instruments
 `$cap | ConvertTo-Json -Depth 4 | Set-Content -LiteralPath (Join-Path `$OutputDir 'lvcompare-capture.json') -Encoding utf8
 if (`$LvComparePath) { `$resolved = try { (Resolve-Path -LiteralPath `$LvComparePath).Path } catch { `$LvComparePath } } else { `$resolved = '' }
 Set-Content -LiteralPath (Join-Path `$OutputDir 'lvcompare-path.txt') -Value `$resolved -Encoding utf8
+if (`$ReportStagingDir) {
+  if (-not (Test-Path `$ReportStagingDir)) { New-Item -ItemType Directory -Path `$ReportStagingDir -Force | Out-Null }
+  Set-Content -LiteralPath (Join-Path `$ReportStagingDir 'compare-report.html') -Value 'stub-report' -Encoding utf8
+}
 exit 1
 "@
       Set-Content -LiteralPath $captureStub -Value $stub -Encoding UTF8
@@ -110,6 +115,8 @@ exit 1
       Test-Path -LiteralPath $pathRecord | Should -BeTrue
       $recorded = (Get-Content -LiteralPath $pathRecord -Raw).Trim()
       $recorded | Should -Be ((Resolve-Path -LiteralPath $lvcompareExe).Path)
+      $stagingReport = Join-Path (Join-Path (Join-Path $outDir '_staging') 'compare') 'compare-report.html'
+      Test-Path -LiteralPath $stagingReport | Should -BeTrue
     }
     finally { Pop-Location }
   }
@@ -128,7 +135,8 @@ param(
   [string]`$LvComparePath,
   [switch]`$RenderReport,
   [string]`$OutputDir,
-  [switch]`$Quiet
+  [switch]`$Quiet,
+  [string]`$ReportStagingDir
 )
 if (-not (Test-Path `$OutputDir)) { New-Item -ItemType Directory -Path `$OutputDir -Force | Out-Null }
 if (`$LvArgs -is [System.Array]) { `$args = @(`$LvArgs) } elseif (`$LvArgs) { `$args = @([string]`$LvArgs) } else { `$args = @() }
@@ -167,6 +175,10 @@ if (-not `$lvPathValue) { `$lvPathValue = 'C:\Program Files\National Instruments
   diffDetected = `$false
 }
 `$cap | ConvertTo-Json -Depth 4 | Set-Content -LiteralPath (Join-Path `$OutputDir 'lvcompare-capture.json') -Encoding utf8
+if (`$ReportStagingDir) {
+  if (-not (Test-Path `$ReportStagingDir)) { New-Item -ItemType Directory -Path `$ReportStagingDir -Force | Out-Null }
+  Set-Content -LiteralPath (Join-Path `$ReportStagingDir 'compare-report.html') -Value 'stub-report' -Encoding utf8
+}
 exit 0
 "@
       Set-Content -LiteralPath $captureStub -Value $stub -Encoding UTF8
@@ -193,6 +205,8 @@ exit 0
       ($cap.flags -contains 'baz') | Should -BeFalse
       $cap.lvPath | Should -Be ((Resolve-Path -LiteralPath $labviewExe).Path)
       $cap.diffDetected | Should -BeFalse
+      $stagingReport = Join-Path (Join-Path (Join-Path $outDir '_staging') 'compare') 'compare-report.html'
+      Test-Path -LiteralPath $stagingReport | Should -BeTrue
     }
     finally { Pop-Location }
   }

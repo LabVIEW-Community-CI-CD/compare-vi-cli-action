@@ -92,3 +92,14 @@ if ($code -ne 0) {
   exit $code
 }
 Write-Host '[pre-push] actionlint OK' -ForegroundColor Green
+
+$manifestScript = Join-Path $root 'tools' 'Validate-CompareReportManifest.ps1'
+if (Test-Path -LiteralPath $manifestScript) {
+  try {
+    & $manifestScript -ResultsDir (Join-Path $root 'tests/results')
+    Write-Host '[pre-push] compare-report manifest OK' -ForegroundColor Green
+  } catch {
+    Write-Error "compare-report manifest validation failed: $($_.Exception.Message)"
+    exit 1
+  }
+}

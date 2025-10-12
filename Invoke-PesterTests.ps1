@@ -2100,26 +2100,101 @@ try {
   $destReport = Join-Path $resultsDir 'compare-report.html'
   $candidates = @()
   $fixedCandidates = @(
+    (Join-Path $root 'tests' 'results' '_staging' 'compare' 'compare-report.html'),
     (Join-Path $root 'tests' 'results' 'integration-compare-report.html'),
     (Join-Path $root 'tests' 'results' 'compare-report.html'),
     (Join-Path $root 'tests' 'results-single' 'pr-body-compare-report.html')
   )
   foreach ($p in $fixedCandidates) { if (Test-Path -LiteralPath $p -PathType Leaf) { try { $candidates += (Get-Item -LiteralPath $p -ErrorAction SilentlyContinue) } catch {} } }
+  $canonicalResolved = $null
+  if (Test-Path -LiteralPath $destReport) {
+    try { $canonicalResolved = (Resolve-Path -LiteralPath $destReport).Path } catch {}
+  }
   try {
     $dynamic = Get-ChildItem -LiteralPath (Join-Path $root 'tests' 'results') -Filter '*compare-report*.html' -Recurse -File -ErrorAction SilentlyContinue
-    if ($dynamic) { $candidates += $dynamic }
+    if ($dynamic) {
+      foreach ($item in $dynamic) {
+        $full = (Resolve-Path -LiteralPath $item.FullName).Path
+        if ($canonicalResolved -and $full -eq $canonicalResolved) {
+          $candidates += $item
+          continue
+        }
+        if ($full -match '\\_staging\\compare\\') {
+          $candidates += $item
+        }
+      }
+    }
   } catch {}
   if ($candidates.Count -gt 0) {
     $latest = $candidates | Sort-Object LastWriteTimeUtc -Descending | Select-Object -First 1
-    # Copy the latest to the canonical filename
-    try { Copy-Item -LiteralPath $latest.FullName -Destination $destReport -Force; Write-Host ("Compare report copied to: {0}" -f $destReport) -ForegroundColor Gray } catch { Write-Warning "Failed to copy compare report: $_" }
+    # Copy the latest to the canonical filename (skip when already identical path)
+    try {
+      $sourcePath = (Resolve-Path -LiteralPath $latest.FullName).Path
+      $destResolved = $null
+      if (-not $destResolved -and $canonicalResolved) { $destResolved = $canonicalResolved }
+      if ($destResolved -and $destResolved.Equals($sourcePath, [System.StringComparison]::OrdinalIgnoreCase)) {
+        Write-Host ("Compare report already present at: {0}" -f $destReport) -ForegroundColor DarkGray
+      } else {
+        Copy-Item -LiteralPath $sourcePath -Destination $destReport -Force
+        Write-Host ("Compare report copied to: {0}" -f $destReport) -ForegroundColor Gray
+      }
+    } catch { Write-Warning "Failed to copy compare report: $_" }
     # Also copy all candidates preserving their base filenames to the results directory
     foreach ($cand in ($candidates | Sort-Object LastWriteTimeUtc)) {
       try {
         $destName = (Split-Path -Leaf $cand.FullName)
         $destFull = Join-Path $resultsDir $destName
-        Copy-Item -LiteralPath $cand.FullName -Destination $destFull -Force -ErrorAction SilentlyContinue
+        $srcResolved = (Resolve-Path -LiteralPath $cand.FullName).Path
+        $destResolved = $null
+        if (Test-Path -LiteralPath $destFull) {
+          try { $destResolved = (Resolve-Path -LiteralPath $destFull).Path } catch {}
+        }
+        if ($destResolved -and $destResolved.Equals($srcResolved, [System.StringComparison]::OrdinalIgnoreCase)) { continue }
+        Copy-Item -LiteralPath $srcResolved -Destination $destFull -Force -ErrorAction SilentlyContinue
       } catch { Write-Host "(warn) failed to copy extra report '$($cand.FullName)': $_" -ForegroundColor DarkYellow }
+    }
+    # Write manifest describing sources and canonical target
+    try {
+      $manifestPath = Join-Path $resultsDir 'compare-report.manifest.json'
+      $manifest = [ordered]@{
+        schema      = 'compare-report-manifest/v1'
+        generatedAt = (Get-Date).ToString('o')
+        canonical   = if (Test-Path -LiteralPath $destReport) { (Resolve-Path -LiteralPath $destReport).Path } else { $destReport }
+        sources     = @()
+      }
+      foreach ($cand in ($candidates | Sort-Object LastWriteTimeUtc -Descending)) {
+        try {
+          $resolved = (Resolve-Path -LiteralPath $cand.FullName).Path
+          $hash = (Get-FileHash -LiteralPath $resolved -Algorithm SHA256 -ErrorAction Stop).Hash
+          $type = if ($resolved -eq $canonicalResolved) { 'canonical' } elseif ($resolved -match '\\_staging\\compare\\') { 'staging' } else { 'legacy' }
+          $manifest.sources += [ordered]@{
+            path             = $resolved
+            lastWriteTimeUtc = $cand.LastWriteTimeUtc.ToString('o')
+            length           = $cand.Length
+            sha256           = $hash
+            sourceType       = $type
+          }
+        } catch {
+          Write-Host "(warn) failed to hash compare report '$($cand.FullName)': $_" -ForegroundColor DarkYellow
+        }
+      }
+      $manifest | ConvertTo-Json -Depth 6 | Set-Content -LiteralPath $manifestPath -Encoding utf8
+      if ($env:GITHUB_STEP_SUMMARY) {
+        try {
+          $summaryLines = @('### Compare Report Manifest')
+          $summaryLines += ('- Manifest: `{0}`' -f $manifestPath)
+          $summaryLines += ('- Canonical: `{0}`' -f $manifest.canonical)
+          if ($manifest.sources.Count -gt 0) {
+            $summaryLines += ('- Sources:')
+            foreach ($src in $manifest.sources) {
+              $summaryLines += ('  - `{0}` (type={1}, sha256={2})' -f $src.path, $src.sourceType, $src.sha256)
+            }
+          }
+          Add-Content -Path $env:GITHUB_STEP_SUMMARY -Value ($summaryLines -join "`n") -Encoding utf8
+        } catch { Write-Warning ("Failed to append compare report manifest summary: {0}" -f $_.Exception.Message) }
+      }
+    } catch {
+      Write-Warning "Failed to write compare report manifest: $_"
     }
     # Generate a small deterministic index HTML linking to all report variants
     try {

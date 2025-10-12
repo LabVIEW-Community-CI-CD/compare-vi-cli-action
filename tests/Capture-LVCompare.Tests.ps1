@@ -62,7 +62,7 @@ public static class LVStubSuccess {
     $env:LVCOMPARE_PATH = $stubPath
     $lvArgs = @('-lvpath',$fakeLabVIEW,'-nobdcosm','-nofppos','-noattr')
 
-    & $script:CaptureScript -Base $baseVi -Head $headVi -OutputDir $outputDir -TimeoutSeconds 10 -KillOnTimeout -LvArgs $lvArgs | Out-Null
+    & $script:CaptureScript -Base $baseVi -Head $headVi -OutputDir $outputDir -TimeoutSeconds 10 -KillOnTimeout -LvArgs $lvArgs -RenderReport | Out-Null
 
     $capturePath = Join-Path $outputDir 'lvcompare-capture.json'
     Test-Path -LiteralPath $capturePath | Should -BeTrue
@@ -77,6 +77,9 @@ public static class LVStubSuccess {
 
     $stdoutPath = Join-Path $outputDir 'lvcompare-stdout.txt'
     (Get-Content -LiteralPath $stdoutPath -Raw).Trim() | Should -Be 'stub-run'
+
+    $stagingReport = Join-Path (Join-Path (Join-Path $outputDir '_staging') 'compare') 'compare-report.html'
+    Test-Path -LiteralPath $stagingReport | Should -BeTrue
   }
 
   It 'marks timedOut when process exceeds timeout' {
@@ -128,7 +131,7 @@ public static class LVStubTimeout {
     $env:LVCOMPARE_PATH = $stubPath
     $lvArgs = @('-lvpath',$fakeLabVIEW,'-nobdcosm','-nofppos','-noattr','--sleep','5')
 
-    & $script:CaptureScript -Base $baseVi -Head $headVi -OutputDir $outputDir -TimeoutSeconds 1 -KillOnTimeout -LvArgs $lvArgs | Out-Null
+    & $script:CaptureScript -Base $baseVi -Head $headVi -OutputDir $outputDir -TimeoutSeconds 1 -KillOnTimeout -LvArgs $lvArgs -RenderReport | Out-Null
 
     $capturePath = Join-Path $outputDir 'lvcompare-capture.json'
     Test-Path -LiteralPath $capturePath | Should -BeTrue
@@ -138,5 +141,8 @@ public static class LVStubTimeout {
     $cap.flags | Should -Contain '-nobdcosm'
     $cap.diffDetected | Should -BeNullOrEmpty
     $cap.args | Should -Contain '--sleep'
+
+    $stagingReport = Join-Path (Join-Path (Join-Path $outputDir '_staging') 'compare') 'compare-report.html'
+    Test-Path -LiteralPath $stagingReport | Should -BeTrue
   }
 }

@@ -8,7 +8,8 @@ param(
 	[Parameter()][switch]$Quiet,
 	[Parameter()][int]$TimeoutSeconds = 60,
 	[Parameter()][switch]$KillOnTimeout,
-	[Parameter()][switch]$CloseOnComplete
+	[Parameter()][switch]$CloseOnComplete,
+	[Parameter()][string]$ReportStagingDir
 )
 
 $ErrorActionPreference = 'Stop'
@@ -128,7 +129,8 @@ $stdoutPath = Join-Path $OutputDir 'lvcompare-stdout.txt'
 $stderrPath = Join-Path $OutputDir 'lvcompare-stderr.txt'
 $exitPath   = Join-Path $OutputDir 'lvcompare-exitcode.txt'
 $jsonPath   = Join-Path $OutputDir 'lvcompare-capture.json'
-$reportPath = Join-Path $OutputDir 'compare-report.html'
+$stagingRoot = if ($ReportStagingDir) { $ReportStagingDir } else { Join-Path $OutputDir (Join-Path '_staging' 'compare') }
+$reportPathStaging = Join-Path $stagingRoot 'compare-report.html'
 
 # Build process start info
 $psi = New-Object System.Diagnostics.ProcessStartInfo
@@ -232,6 +234,7 @@ if ($RenderReport.IsPresent) {
 		$diff = if ($exitCode -eq 1) { 'true' } elseif ($exitCode -eq 0) { 'false' } else { 'unknown' }
 		$sec  = [Math]::Round($sw.Elapsed.TotalSeconds, 6)
 		$reportScript = Join-Path $PSScriptRoot 'Render-CompareReport.ps1'
+        New-DirectoryIfMissing -path $stagingRoot
         & $reportScript `
             -Command $commandDisplay `
             -ExitCode $exitCode `
@@ -240,7 +243,7 @@ if ($RenderReport.IsPresent) {
             -DurationSeconds $sec `
 			-Base $basePath `
 			-Head $headPath `
-			-OutputPath $reportPath | Out-Null
+			-OutputPath $reportPathStaging | Out-Null
 	} catch {
 		if (-not $Quiet) { Write-Warning ("Failed to render compare report: {0}" -f $_.Exception.Message) }
 	}
@@ -249,7 +252,9 @@ if ($RenderReport.IsPresent) {
 if (-not $Quiet) {
 	Write-Host ("LVCompare exit code: {0}" -f $exitCode)
 	Write-Host ("Capture JSON: {0}" -f $jsonPath)
-	if ($RenderReport.IsPresent) { Write-Host ("Report: {0} (exists={1})" -f $reportPath, (Test-Path $reportPath)) }
+	if ($RenderReport.IsPresent) {
+    Write-Host ("Report (staging): {0} (exists={1})" -f $reportPathStaging, (Test-Path $reportPathStaging))
+  }
 }
 
 # Cleanup policy: close LabVIEW spawned during run when requested

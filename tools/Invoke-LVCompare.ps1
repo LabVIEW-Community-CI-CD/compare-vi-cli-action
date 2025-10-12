@@ -160,6 +160,7 @@ try {
     RenderReport = $RenderReport.IsPresent
     OutputDir    = $OutputDir
     Quiet        = $Quiet.IsPresent
+    ReportStagingDir = (Join-Path $OutputDir (Join-Path '_staging' 'compare'))
   }
   # Derive CI-aware defaults when not explicitly provided
   $isCI = ($env:GITHUB_ACTIONS -eq 'true' -or $env:CI -eq 'true')
@@ -187,8 +188,8 @@ if (-not $cap) { Write-JsonEvent 'error' @{ stage='post'; message='unable to par
 
 $exitCode = [int]$cap.exitCode
 $duration = [double]$cap.seconds
-$reportPath = Join-Path $OutputDir 'compare-report.html'
-Write-JsonEvent 'result' @{ exitCode=$exitCode; seconds=$duration; command=$cap.command; report=(Test-Path $reportPath) }
+$reportPathStaging = Join-Path $OutputDir (Join-Path '_staging' 'compare' 'compare-report.html')
+Write-JsonEvent 'result' @{ exitCode=$exitCode; seconds=$duration; command=$cap.command; reportStaging=(Test-Path $reportPathStaging) }
 
 if ($LeakCheck) {
   if (-not $LeakJsonPath) { $LeakJsonPath = Join-Path $OutputDir 'compare-leak.json' }
@@ -217,7 +218,7 @@ if ($Summary) {
       $lines += ("- Diff: {0}" -f ([bool]($exitCode -eq 1)))
       $lines += ("- Duration: {0}s" -f $duration)
       $lines += ("- Capture: {0}" -f $capPath)
-      $lines += ("- Report: {0}" -f (Test-Path $reportPath))
+      $lines += ("- Report (staging): {0}" -f (Test-Path $reportPathStaging))
       Add-Content -Path $env:GITHUB_STEP_SUMMARY -Value ($lines -join "`n") -Encoding utf8
     } catch { Write-Warning ("Invoke-LVCompare: failed step summary append: {0}" -f $_.Exception.Message) }
   }

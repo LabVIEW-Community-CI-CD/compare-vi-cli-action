@@ -25,7 +25,8 @@ pwsh -NoLogo -NoProfile -File tools/TestStand-CompareHarness.ps1 `
 This produces:
 
 - `_warmup/labview-runtime.ndjson`
-- `compare/lvcompare-capture.json`, `compare/compare-events.ndjson`, `compare-report.html`
+- `compare/lvcompare-capture.json`, `compare/compare-events.ndjson`,
+  `compare/_staging/compare/compare-report.html`
 - `session-index.json` summarising the run
 
 > **Note**: `-CloseLabVIEW` / `-CloseLVCompare` now queue post-run cleanup requests. The helpers do not invoke the close scripts inline; instead `tools/Post-Run-Cleanup.ps1` consumes the requests after `Invoke-PesterTests.ps1` completes, guaranteeing a single g-cli invocation per job.

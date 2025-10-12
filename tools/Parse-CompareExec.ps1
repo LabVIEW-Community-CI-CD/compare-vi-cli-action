@@ -50,7 +50,12 @@ if ($capturePath -and (Test-Path -LiteralPath $capturePath)) {
     $stderrCandidate = Join-Path $capDir 'lvcompare-stderr.txt'
     if (Test-Path -LiteralPath $stderrCandidate) { $payload.stderrPath = $stderrCandidate }
     $reportCandidate = Join-Path $capDir 'compare-report.html'
-    if (Test-Path -LiteralPath $reportCandidate) { $payload.reportPath = $reportCandidate }
+    $stagingCandidate = Join-Path $capDir '_staging/compare/compare-report.html'
+    if (Test-Path -LiteralPath $stagingCandidate) {
+      $payload.reportPath = $stagingCandidate
+    } elseif (Test-Path -LiteralPath $reportCandidate) {
+      $payload.reportPath = $reportCandidate
+    }
   } catch {
     $payload.capture.status = 'error'
     $payload.capture.reason = $_.Exception.Message

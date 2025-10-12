@@ -263,7 +263,10 @@ if ($Suite -eq 'TestStand') {
   try {
     $rep = $null
     if ($session -and $session.compare -and $session.compare.reportPath) { $rep = $session.compare.reportPath }
-    if (-not $rep -and $OutputRoot) { $rep = Join-Path (Join-Path $OutputRoot 'compare') 'compare-report.html' }
+    if (-not $rep -and $OutputRoot) {
+      $stagingDir = Join-Path (Join-Path $OutputRoot 'compare') '_staging'
+      $rep = Join-Path (Join-Path $stagingDir 'compare') 'compare-report.html'
+    }
     if ($rep -and (Test-Path -LiteralPath $rep -PathType Leaf)) {
       Write-DxLine ("report path={0}" -f $rep)
       # Open report automatically when running locally via task

@@ -45,7 +45,7 @@ try {
   if ($Render.IsPresent) {
     $execPath = Join-Path $outDir 'compare-exec.json'
     if (-not (Test-Path -LiteralPath $execPath)) { throw 'compare-exec.json missing for Render' }
-    $report = Join-Path $outDir 'compare-report.html'
+    $report = Join-Path (Join-Path $outDir (Join-Path '_staging' 'compare')) 'compare-report.html'
     Write-Host "[seq:$SeqId] Render -> $report"
     pwsh -NoLogo -NoProfile -File (Join-Path $root 'scripts' 'Render-CompareReport.ps1') -ExecJsonPath $execPath -OutputPath $report | Out-Null
   }
@@ -62,4 +62,3 @@ finally {
 }
 
 Write-Host "[seq:$SeqId] Done -> $outDir"
-

@@ -138,7 +138,7 @@ function Invoke-PhaseCompare {
         $r.details.durationSeconds = [double]$cap.seconds
         $r.details.command = $cap.command
         $r.details.captureJson = $capPath
-        $reportPath = Join-Path $outDir 'compare-report.html'
+        $reportPath = Join-Path (Join-Path $outDir '_staging/compare') 'compare-report.html'
         $r.details.reportPath = if (Test-Path -LiteralPath $reportPath) { $reportPath } else { $null }
         $r.details.diff = if ($r.details.exitCode -eq 1) { $true } elseif ($r.details.exitCode -eq 0) { $false } else { $null }
         if ($r.details.exitCode -in 0,1) {

@@ -75,7 +75,7 @@ pwsh -File scripts/Render-CompareReport.ps1 `
   -Diff $env:COMPARE_DIFF `
   -CliPath $env:COMPARE_CLI_PATH `
   -DurationSeconds $env:COMPARE_DURATION_SECONDS `
-  -OutputPath compare-report.html
+  -OutputPath _staging/compare/compare-report.html
 ```
 
 ## Workflow branching

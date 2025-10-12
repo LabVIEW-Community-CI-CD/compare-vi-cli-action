@@ -40,7 +40,8 @@ param(
   [string]$LVComparePath,
   [string]$OutputDir,
   [switch]$RenderReport,
-  [string]$JsonLogPath
+  [string]$JsonLogPath,
+  [string]$ReportStagingDir
 )
 if (-not (Test-Path $OutputDir)) { New-Item -ItemType Directory -Path $OutputDir -Force | Out-Null }
 if ($JsonLogPath) {
@@ -75,7 +76,12 @@ $cap = [ordered]@{
   diffDetected = $true
 }
 $cap | ConvertTo-Json -Depth 3 | Set-Content -LiteralPath (Join-Path $OutputDir 'lvcompare-capture.json') -Encoding utf8
-'report' | Set-Content -LiteralPath (Join-Path $OutputDir 'compare-report.html') -Encoding utf8
+if (-not $ReportStagingDir) { $ReportStagingDir = Join-Path $OutputDir (Join-Path '_staging' 'compare') }
+if (-not $ReportStagingDir) { $ReportStagingDir = Join-Path $OutputDir (Join-Path '_staging' 'compare') }
+if ($ReportStagingDir) {
+  if (-not (Test-Path $ReportStagingDir)) { New-Item -ItemType Directory -Path $ReportStagingDir -Force | Out-Null }
+  'report' | Set-Content -LiteralPath (Join-Path $ReportStagingDir 'compare-report.html') -Encoding utf8
+}
 exit 1
 '@
       Set-Content -LiteralPath 'tools/Invoke-LVCompare.ps1' -Value $driverStub -Encoding UTF8
@@ -102,7 +108,8 @@ exit 1
       $index.schema | Should -Be 'teststand-compare-session/v1'
       $index.warmup.events | Should -Match 'labview-runtime.ndjson'
       $index.compare.capture | Should -Match 'lvcompare-capture.json'
-      $index.compare.report | Should -Not -BeNullOrEmpty
+      $index.compare.report | Should -Match '[\\/]_staging[\\/]compare[\\/]compare-report\.html$'
+      $index.compare.reportExists | Should -BeTrue
       $index.outcome | Should -Not -BeNullOrEmpty
       $capPath = Join-Path $root 'tests/results/teststand-session/compare/lvcompare-capture.json'
       Test-Path -LiteralPath $capPath | Should -BeTrue
@@ -116,6 +123,8 @@ exit 1
       $ts = $cap.timestamp
       if ($ts -isnot [string]) { $ts = $ts.ToString('o') }
       [regex]::IsMatch($ts, '^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{7}Z$') | Should -BeTrue
+      $stagingReport = Join-Path (Join-Path (Join-Path (Join-Path $root 'tests/results/teststand-session/compare') '_staging') 'compare') 'compare-report.html'
+      Test-Path -LiteralPath $stagingReport | Should -BeTrue
     }
     finally {
       Pop-Location
