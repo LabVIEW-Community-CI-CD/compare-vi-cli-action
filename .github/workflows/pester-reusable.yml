@@ -129,6 +129,10 @@ jobs:
             $lines -join "`n" | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8
           }
 
+      - name: LVCompare preflight validator (policy)
+        shell: pwsh
+        run: pwsh -File tools/Validate-LVComparePreflight.ps1 -AppendStepSummary -MinVersion '2025.0.0.0'
+
   pester:
     name: Pester (self-hosted)
     if: ${{ inputs.skip_run != 'true' }}
