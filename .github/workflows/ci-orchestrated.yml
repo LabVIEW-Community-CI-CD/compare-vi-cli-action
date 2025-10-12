@@ -224,6 +224,7 @@ jobs:
         category: [dispatcher, fixtures, schema, comparevi, loop, psummary, workflow]
       max-parallel: 1
     env:
+      DETERMINISTIC: '1'
       DETECT_LEAKS: '1'
       CLEAN_AFTER: '0'
       SCAN_ARTIFACTS: '1'
