@@ -165,15 +165,22 @@ Write-JsonEvent 'plan' @{
 
 $psi = [System.Diagnostics.ProcessStartInfo]::new()
 $psi.FileName = $LVCompareExePath
-$args = @($BaseVi,$HeadVi)
-if ($LabVIEWExePath) { $args += @('-lvpath', $LabVIEWExePath) }
-if ($DiffArguments) { $args += $DiffArguments }
-$psi.Arguments = ($args | ForEach-Object { if ($_ -match '\s') { '"' + $_ + '"' } else { $_ } }) -join ' '
+$argumentList = @($BaseVi,$HeadVi)
+if ($LabVIEWExePath) { $argumentList += @('-lvpath', $LabVIEWExePath) }
+if ($DiffArguments) { $argumentList += $DiffArguments }
+$quotedArgs = $argumentList | ForEach-Object { if ($_ -match '\s') { '"' + $_ + '"' } else { $_ } }
+$psi.Arguments = $quotedArgs -join ' '
 $psi.UseShellExecute = $false
 $psi.CreateNoWindow = $true
 $psi.WindowStyle = [System.Diagnostics.ProcessWindowStyle]::Hidden
 
-Write-JsonEvent 'spawn' @{ args = $psi.Arguments }
+Write-JsonEvent 'spawn' @{ args = $psi.Arguments; argv = $argumentList }
+Write-Host "Prime-LVCompare: command line" -ForegroundColor DarkGray
+Write-Host ("  exe : {0}" -f $LVCompareExePath) -ForegroundColor DarkGray
+Write-Host "  argv:" -ForegroundColor DarkGray
+foreach ($item in $argumentList) {
+  Write-Host ("    {0}" -f $item) -ForegroundColor DarkGray
+}
 Write-Host ("Prime-LVCompare: running `{0}` {1}" -f $LVCompareExePath, $psi.Arguments) -ForegroundColor Gray
 
 $proc = $null
