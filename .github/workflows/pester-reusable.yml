@@ -603,10 +603,9 @@ jobs:
           $lines = @('### Re-run With Same Inputs','',"- Command: `$command`")
           if (-not $sampleId) { $lines = $lines + '- sample_id omitted; workflow will auto-generate if supported.' }
           if ($workflowPath) {
-            $workflowUrl = "https://github.com/$repo/actions/workflows/$workflowPath"
-            $lines = $lines + ("- Workflow: $workflowUrl")
+            $lines = $lines + ('- Workflow: https://github.com/{0}/actions/workflows/{1}' -f $repo, $workflowPath)
           }
-          $lines -join "`n" | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8
+          ($lines -join [Environment]::NewLine) | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8
 
       - name: Print agent hand-off summary (auto-trim)
         if: always()
