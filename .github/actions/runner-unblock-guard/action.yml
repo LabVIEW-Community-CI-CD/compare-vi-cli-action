@@ -27,6 +27,7 @@ runs:
         $snapPath = '${{ inputs.snapshot-path }}'
         $procNames = '${{ inputs.process-names }}'.Split(',') | ForEach-Object { $_.Trim() } | Where-Object { $_ }
         $doCleanup = ('${{ inputs.cleanup }}' -eq 'true') -or (Test-Truthy $env:UNBLOCK_GUARD) -or (Test-Truthy $env:CLEAN_LV_BEFORE) -or (Test-Truthy $env:CLEAN_LV_AFTER)
+        if ($env:DETERMINISTIC -eq '1') { $doCleanup = $false }
         $includeLVCompare = (Test-Truthy $env:CLEAN_LV_INCLUDE_COMPARE)
         if (-not $includeLVCompare) { $includeLVCompare = (Test-Truthy $env:CLEAN_LVCOMPARE) }
         $procs = @(Get-Process -ErrorAction SilentlyContinue | Where-Object { $_.ProcessName -in $procNames } | Select-Object ProcessName,Id,SessionId,StartTime)
