@@ -179,4 +179,11 @@ if ($AppendStepSummary -and $env:GITHUB_STEP_SUMMARY) {
   $lines -join "`n" | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8
 }
 
+foreach ($n in $notes) {
+  Write-Host ('::notice::{0}' -f $n)
+}
+foreach ($e in $errors) {
+  Write-Error $e
+}
+
 if (-not $ok) { exit 1 } else { exit 0 }
