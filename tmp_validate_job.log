@@ -1,0 +1,296 @@
+session-index	Set up job	﻿2025-10-12T04:42:30.3050637Z Current runner version: '2.328.0'
+session-index	Set up job	2025-10-12T04:42:30.3086802Z ##[group]Runner Image Provisioner
+session-index	Set up job	2025-10-12T04:42:30.3087930Z Hosted Compute Agent
+session-index	Set up job	2025-10-12T04:42:30.3088832Z Version: 20250912.392
+session-index	Set up job	2025-10-12T04:42:30.3089940Z Commit: d921fda672a98b64f4f82364647e2f10b2267d0b
+session-index	Set up job	2025-10-12T04:42:30.3091077Z Build Date: 2025-09-12T15:23:14Z
+session-index	Set up job	2025-10-12T04:42:30.3092080Z ##[endgroup]
+session-index	Set up job	2025-10-12T04:42:30.3093052Z ##[group]Operating System
+session-index	Set up job	2025-10-12T04:42:30.3094238Z Ubuntu
+session-index	Set up job	2025-10-12T04:42:30.3094914Z 24.04.3
+session-index	Set up job	2025-10-12T04:42:30.3095672Z LTS
+session-index	Set up job	2025-10-12T04:42:30.3096380Z ##[endgroup]
+session-index	Set up job	2025-10-12T04:42:30.3097246Z ##[group]Runner Image
+session-index	Set up job	2025-10-12T04:42:30.3098308Z Image: ubuntu-24.04
+session-index	Set up job	2025-10-12T04:42:30.3099245Z Version: 20250929.60.1
+session-index	Set up job	2025-10-12T04:42:30.3101005Z Included Software: https://github.com/actions/runner-images/blob/ubuntu24/20250929.60/images/ubuntu/Ubuntu2404-Readme.md
+session-index	Set up job	2025-10-12T04:42:30.3103737Z Image Release: https://github.com/actions/runner-images/releases/tag/ubuntu24%2F20250929.60
+session-index	Set up job	2025-10-12T04:42:30.3105827Z ##[endgroup]
+session-index	Set up job	2025-10-12T04:42:30.3110085Z ##[group]GITHUB_TOKEN Permissions
+session-index	Set up job	2025-10-12T04:42:30.3113080Z Actions: write
+session-index	Set up job	2025-10-12T04:42:30.3114601Z Attestations: write
+session-index	Set up job	2025-10-12T04:42:30.3115436Z Checks: write
+session-index	Set up job	2025-10-12T04:42:30.3116156Z Contents: write
+session-index	Set up job	2025-10-12T04:42:30.3117063Z Deployments: write
+session-index	Set up job	2025-10-12T04:42:30.3117896Z Discussions: write
+session-index	Set up job	2025-10-12T04:42:30.3118814Z Issues: write
+session-index	Set up job	2025-10-12T04:42:30.3119672Z Metadata: read
+session-index	Set up job	2025-10-12T04:42:30.3120512Z Models: read
+session-index	Set up job	2025-10-12T04:42:30.3121286Z Packages: write
+session-index	Set up job	2025-10-12T04:42:30.3122196Z Pages: write
+session-index	Set up job	2025-10-12T04:42:30.3123027Z PullRequests: write
+session-index	Set up job	2025-10-12T04:42:30.3124301Z RepositoryProjects: write
+session-index	Set up job	2025-10-12T04:42:30.3125460Z SecurityEvents: write
+session-index	Set up job	2025-10-12T04:42:30.3126492Z Statuses: write
+session-index	Set up job	2025-10-12T04:42:30.3127346Z ##[endgroup]
+session-index	Set up job	2025-10-12T04:42:30.3130645Z Secret source: Actions
+session-index	Set up job	2025-10-12T04:42:30.3131762Z Prepare workflow directory
+session-index	Set up job	2025-10-12T04:42:30.3579181Z Prepare all required actions
+session-index	Set up job	2025-10-12T04:42:30.3634271Z Getting action download info
+session-index	Set up job	2025-10-12T04:42:30.6790823Z Download action repository 'actions/checkout@v5' (SHA:08c6903cd8c0fde910a37f88322edcfb5dd907a8)
+session-index	Set up job	2025-10-12T04:42:30.8688781Z Download action repository 'actions/upload-artifact@v4' (SHA:ea165f8d65b6e75b540449e92b4886f43607fa02)
+session-index	Set up job	2025-10-12T04:42:31.0591327Z Complete job name: session-index
+session-index	Run actions/checkout@v5	﻿2025-10-12T04:42:31.1261860Z ##[group]Run actions/checkout@v5
+session-index	Run actions/checkout@v5	2025-10-12T04:42:31.1262685Z with:
+session-index	Run actions/checkout@v5	2025-10-12T04:42:31.1263360Z   repository: LabVIEW-Community-CI-CD/compare-vi-cli-action
+session-index	Run actions/checkout@v5	2025-10-12T04:42:31.1264184Z   token: ***
+session-index	Run actions/checkout@v5	2025-10-12T04:42:31.1264550Z   ssh-strict: true
+session-index	Run actions/checkout@v5	2025-10-12T04:42:31.1264930Z   ssh-user: git
+session-index	Run actions/checkout@v5	2025-10-12T04:42:31.1265308Z   persist-credentials: true
+session-index	Run actions/checkout@v5	2025-10-12T04:42:31.1265738Z   clean: true
+session-index	Run actions/checkout@v5	2025-10-12T04:42:31.1266116Z   sparse-checkout-cone-mode: true
+session-index	Run actions/checkout@v5	2025-10-12T04:42:31.1266583Z   fetch-depth: 1
+session-index	Run actions/checkout@v5	2025-10-12T04:42:31.1266939Z   fetch-tags: false
+session-index	Run actions/checkout@v5	2025-10-12T04:42:31.1267321Z   show-progress: true
+session-index	Run actions/checkout@v5	2025-10-12T04:42:31.1267712Z   lfs: false
+session-index	Run actions/checkout@v5	2025-10-12T04:42:31.1268081Z   submodules: false
+session-index	Run actions/checkout@v5	2025-10-12T04:42:31.1268457Z   set-safe-directory: true
+session-index	Run actions/checkout@v5	2025-10-12T04:42:31.1269124Z ##[endgroup]
+session-index	Run actions/checkout@v5	2025-10-12T04:42:31.2194844Z Syncing repository: LabVIEW-Community-CI-CD/compare-vi-cli-action
+session-index	Run actions/checkout@v5	2025-10-12T04:42:31.2196816Z ##[group]Getting Git version info
+session-index	Run actions/checkout@v5	2025-10-12T04:42:31.2197692Z Working directory is '/home/runner/work/compare-vi-cli-action/compare-vi-cli-action'
+session-index	Run actions/checkout@v5	2025-10-12T04:42:31.2198898Z [command]/usr/bin/git version
+session-index	Run actions/checkout@v5	2025-10-12T04:42:31.2256765Z git version 2.51.0
+session-index	Run actions/checkout@v5	2025-10-12T04:42:31.2277244Z ##[endgroup]
+session-index	Run actions/checkout@v5	2025-10-12T04:42:31.2290468Z Temporarily overriding HOME='/home/runner/work/_temp/39be14c9-dbd4-40e3-b6f0-1d94ad7d8286' before making global git config changes
+session-index	Run actions/checkout@v5	2025-10-12T04:42:31.2292308Z Adding repository directory to the temporary git global config as a safe directory
+session-index	Run actions/checkout@v5	2025-10-12T04:42:31.2296070Z [command]/usr/bin/git config --global --add safe.directory /home/runner/work/compare-vi-cli-action/compare-vi-cli-action
+session-index	Run actions/checkout@v5	2025-10-12T04:42:31.2331007Z Deleting the contents of '/home/runner/work/compare-vi-cli-action/compare-vi-cli-action'
+session-index	Run actions/checkout@v5	2025-10-12T04:42:31.2334234Z ##[group]Initializing the repository
+session-index	Run actions/checkout@v5	2025-10-12T04:42:31.2338536Z [command]/usr/bin/git init /home/runner/work/compare-vi-cli-action/compare-vi-cli-action
+session-index	Run actions/checkout@v5	2025-10-12T04:42:31.2447205Z hint: Using 'master' as the name for the initial branch. This default branch name
+session-index	Run actions/checkout@v5	2025-10-12T04:42:31.2448246Z hint: is subject to change. To configure the initial branch name to use in all
+session-index	Run actions/checkout@v5	2025-10-12T04:42:31.2449155Z hint: of your new repositories, which will suppress this warning, call:
+session-index	Run actions/checkout@v5	2025-10-12T04:42:31.2449791Z hint:
+session-index	Run actions/checkout@v5	2025-10-12T04:42:31.2450246Z hint: 	git config --global init.defaultBranch <name>
+session-index	Run actions/checkout@v5	2025-10-12T04:42:31.2451138Z hint:
+session-index	Run actions/checkout@v5	2025-10-12T04:42:31.2451809Z hint: Names commonly chosen instead of 'master' are 'main', 'trunk' and
+session-index	Run actions/checkout@v5	2025-10-12T04:42:31.2452676Z hint: 'development'. The just-created branch can be renamed via this command:
+session-index	Run actions/checkout@v5	2025-10-12T04:42:31.2453605Z hint:
+session-index	Run actions/checkout@v5	2025-10-12T04:42:31.2453981Z hint: 	git branch -m <name>
+session-index	Run actions/checkout@v5	2025-10-12T04:42:31.2454424Z hint:
+session-index	Run actions/checkout@v5	2025-10-12T04:42:31.2455210Z hint: Disable this message with "git config set advice.defaultBranchName false"
+session-index	Run actions/checkout@v5	2025-10-12T04:42:31.2457050Z Initialized empty Git repository in /home/runner/work/compare-vi-cli-action/compare-vi-cli-action/.git/
+session-index	Run actions/checkout@v5	2025-10-12T04:42:31.2461893Z [command]/usr/bin/git remote add origin https://github.com/LabVIEW-Community-CI-CD/compare-vi-cli-action
+session-index	Run actions/checkout@v5	2025-10-12T04:42:31.2498217Z ##[endgroup]
+session-index	Run actions/checkout@v5	2025-10-12T04:42:31.2498915Z ##[group]Disabling automatic garbage collection
+session-index	Run actions/checkout@v5	2025-10-12T04:42:31.2501699Z [command]/usr/bin/git config --local gc.auto 0
+session-index	Run actions/checkout@v5	2025-10-12T04:42:31.2527910Z ##[endgroup]
+session-index	Run actions/checkout@v5	2025-10-12T04:42:31.2528585Z ##[group]Setting up auth
+session-index	Run actions/checkout@v5	2025-10-12T04:42:31.2534259Z [command]/usr/bin/git config --local --name-only --get-regexp core\.sshCommand
+session-index	Run actions/checkout@v5	2025-10-12T04:42:31.2563925Z [command]/usr/bin/git submodule foreach --recursive sh -c "git config --local --name-only --get-regexp 'core\.sshCommand' && git config --local --unset-all 'core.sshCommand' || :"
+session-index	Run actions/checkout@v5	2025-10-12T04:42:31.2923307Z [command]/usr/bin/git config --local --name-only --get-regexp http\.https\:\/\/github\.com\/\.extraheader
+session-index	Run actions/checkout@v5	2025-10-12T04:42:31.2955871Z [command]/usr/bin/git submodule foreach --recursive sh -c "git config --local --name-only --get-regexp 'http\.https\:\/\/github\.com\/\.extraheader' && git config --local --unset-all 'http.https://github.com/.extraheader' || :"
+session-index	Run actions/checkout@v5	2025-10-12T04:42:31.3191106Z [command]/usr/bin/git config --local http.https://github.com/.extraheader AUTHORIZATION: basic ***
+session-index	Run actions/checkout@v5	2025-10-12T04:42:31.3230560Z ##[endgroup]
+session-index	Run actions/checkout@v5	2025-10-12T04:42:31.3231298Z ##[group]Fetching the repository
+session-index	Run actions/checkout@v5	2025-10-12T04:42:31.3243830Z [command]/usr/bin/git -c protocol.version=2 fetch --no-tags --prune --no-recurse-submodules --depth=1 origin +9027da048e5ec87bd03d4a12b65067c9c7803199:refs/remotes/origin/issue/88-session-index-v2-autogen
+session-index	Run actions/checkout@v5	2025-10-12T04:42:31.6506414Z From https://github.com/LabVIEW-Community-CI-CD/compare-vi-cli-action
+session-index	Run actions/checkout@v5	2025-10-12T04:42:31.6508777Z  * [new ref]         9027da048e5ec87bd03d4a12b65067c9c7803199 -> origin/issue/88-session-index-v2-autogen
+session-index	Run actions/checkout@v5	2025-10-12T04:42:31.6539604Z ##[endgroup]
+session-index	Run actions/checkout@v5	2025-10-12T04:42:31.6540869Z ##[group]Determining the checkout info
+session-index	Run actions/checkout@v5	2025-10-12T04:42:31.6544379Z ##[endgroup]
+session-index	Run actions/checkout@v5	2025-10-12T04:42:31.6547995Z [command]/usr/bin/git sparse-checkout disable
+session-index	Run actions/checkout@v5	2025-10-12T04:42:31.6588174Z [command]/usr/bin/git config --local --unset-all extensions.worktreeConfig
+session-index	Run actions/checkout@v5	2025-10-12T04:42:31.6616598Z ##[group]Checking out the ref
+session-index	Run actions/checkout@v5	2025-10-12T04:42:31.6621046Z [command]/usr/bin/git checkout --progress --force -B issue/88-session-index-v2-autogen refs/remotes/origin/issue/88-session-index-v2-autogen
+session-index	Run actions/checkout@v5	2025-10-12T04:42:31.7020656Z Switched to a new branch 'issue/88-session-index-v2-autogen'
+session-index	Run actions/checkout@v5	2025-10-12T04:42:31.7023428Z branch 'issue/88-session-index-v2-autogen' set up to track 'origin/issue/88-session-index-v2-autogen'.
+session-index	Run actions/checkout@v5	2025-10-12T04:42:31.7030198Z ##[endgroup]
+session-index	Run actions/checkout@v5	2025-10-12T04:42:31.7066653Z [command]/usr/bin/git log -1 --format=%H
+session-index	Run actions/checkout@v5	2025-10-12T04:42:31.7087996Z 9027da048e5ec87bd03d4a12b65067c9c7803199
+session-index	Install Pester v5	﻿2025-10-12T04:42:36.7311644Z ##[group]Run Install-Module -Name Pester -MinimumVersion 5.0.0 -Force -Scope CurrentUser
+session-index	Install Pester v5	2025-10-12T04:42:36.7312388Z [36;1mInstall-Module -Name Pester -MinimumVersion 5.0.0 -Force -Scope CurrentUser[0m
+session-index	Install Pester v5	2025-10-12T04:42:36.7619707Z shell: /usr/bin/pwsh -command ". '{0}'"
+session-index	Install Pester v5	2025-10-12T04:42:36.7620145Z ##[endgroup]
+session-index	Install Pester v5	2025-10-12T04:42:47.1698143Z [33;1mWARNING: The version '5.7.1' of module 'Pester' is currently in use. Retry the operation after closing the applications.[0m
+session-index	Run dispatcher smoke to produce session index	﻿2025-10-12T04:42:47.2627790Z ##[group]Run $res = Join-Path $env:RUNNER_TEMP 'sessionindex'
+session-index	Run dispatcher smoke to produce session index	2025-10-12T04:42:47.2628336Z [36;1m$res = Join-Path $env:RUNNER_TEMP 'sessionindex'[0m
+session-index	Run dispatcher smoke to produce session index	2025-10-12T04:42:47.2628744Z [36;1mNew-Item -ItemType Directory -Force -Path $res | Out-Null[0m
+session-index	Run dispatcher smoke to produce session index	2025-10-12T04:42:47.2629225Z [36;1m./tools/Quick-DispatcherSmoke.ps1 -ResultsPath $res -PreferWorkspace[0m
+session-index	Run dispatcher smoke to produce session index	2025-10-12T04:42:47.2629633Z [36;1m$contexts = @([0m
+session-index	Run dispatcher smoke to produce session index	2025-10-12T04:42:47.2629849Z [36;1m  'Validate / lint'[0m
+session-index	Run dispatcher smoke to produce session index	2025-10-12T04:42:47.2630100Z [36;1m  'Validate / fixtures'[0m
+session-index	Run dispatcher smoke to produce session index	2025-10-12T04:42:47.2630351Z [36;1m  'Validate / session-index'[0m
+session-index	Run dispatcher smoke to produce session index	2025-10-12T04:42:47.2630591Z [36;1m)[0m
+session-index	Run dispatcher smoke to produce session index	2025-10-12T04:42:47.2630944Z [36;1m$bpScript = Join-Path (Get-Location) 'tools/Update-SessionIndexBranchProtection.ps1'[0m
+session-index	Run dispatcher smoke to produce session index	2025-10-12T04:42:47.2631553Z [36;1m$bpApiScript = Join-Path (Get-Location) 'tools/Get-BranchProtectionRequiredChecks.ps1'[0m
+session-index	Run dispatcher smoke to produce session index	2025-10-12T04:42:47.2632059Z [36;1m$branchName = 'issue/88-session-index-v2-autogen'[0m
+session-index	Run dispatcher smoke to produce session index	2025-10-12T04:42:47.2632481Z [36;1m$repoParts = 'LabVIEW-Community-CI-CD/compare-vi-cli-action'.Split('/')[0m
+session-index	Run dispatcher smoke to produce session index	2025-10-12T04:42:47.2633330Z [36;1m$bpResult = & $bpApiScript -Owner $repoParts[0] -Repository $repoParts[1] -Branch $branchName -Token $env:GITHUB_TOKEN[0m
+session-index	Run dispatcher smoke to produce session index	2025-10-12T04:42:47.2633946Z [36;1m$updateArgs = @{[0m
+session-index	Run dispatcher smoke to produce session index	2025-10-12T04:42:47.2634180Z [36;1m  ResultsDir        = $res[0m
+session-index	Run dispatcher smoke to produce session index	2025-10-12T04:42:47.2634509Z [36;1m  PolicyPath        = 'tools/policy/branch-required-checks.json'[0m
+session-index	Run dispatcher smoke to produce session index	2025-10-12T04:42:47.2634889Z [36;1m  Branch            = $branchName[0m
+session-index	Run dispatcher smoke to produce session index	2025-10-12T04:42:47.2635164Z [36;1m  ProducedContexts  = $contexts[0m
+session-index	Run dispatcher smoke to produce session index	2025-10-12T04:42:47.2635414Z [36;1m}[0m
+session-index	Run dispatcher smoke to produce session index	2025-10-12T04:42:47.2635704Z [36;1mif ($bpResult.status) { $updateArgs['ActualStatus'] = $bpResult.status }[0m
+session-index	Run dispatcher smoke to produce session index	2025-10-12T04:42:47.2636212Z [36;1mif ($bpResult.contexts) { $updateArgs['ActualContexts'] = @($bpResult.contexts) }[0m
+session-index	Run dispatcher smoke to produce session index	2025-10-12T04:42:47.2636731Z [36;1mif ($bpResult.notes) { $updateArgs['AdditionalNotes'] = @($bpResult.notes) }[0m
+session-index	Run dispatcher smoke to produce session index	2025-10-12T04:42:47.2637114Z [36;1m& $bpScript @updateArgs[0m
+session-index	Run dispatcher smoke to produce session index	2025-10-12T04:42:47.2674672Z shell: /usr/bin/pwsh -command ". '{0}'"
+session-index	Run dispatcher smoke to produce session index	2025-10-12T04:42:47.2674960Z env:
+session-index	Run dispatcher smoke to produce session index	2025-10-12T04:42:47.2675446Z   GITHUB_TOKEN: ***
+session-index	Run dispatcher smoke to produce session index	2025-10-12T04:42:47.2675740Z   GH_TOKEN: ***
+session-index	Run dispatcher smoke to produce session index	2025-10-12T04:42:47.2675932Z ##[endgroup]
+session-index	Run dispatcher smoke to produce session index	2025-10-12T04:42:48.0041003Z [schema-test] Mini test path: /home/runner/work/compare-vi-cli-action/compare-vi-cli-action/.tmp-smoke/19342f6e-3c56-479e-a78d-8b7fadfaf000/tests/Mini.Tests.ps1
+session-index	Run dispatcher smoke to produce session index	2025-10-12T04:42:48.0956583Z === Pester Test Dispatcher ===
+session-index	Run dispatcher smoke to produce session index	2025-10-12T04:42:48.0957242Z Script Version: 1.0.0
+session-index	Run dispatcher smoke to produce session index	2025-10-12T04:42:48.0979135Z PowerShell Version: 7.4.12
+session-index	Run dispatcher smoke to produce session index	2025-10-12T04:42:48.0979689Z 
+session-index	Run dispatcher smoke to produce session index	2025-10-12T04:42:48.0981227Z Configuration:
+session-index	Run dispatcher smoke to produce session index	2025-10-12T04:42:48.0986404Z   Tests Path: /home/runner/work/compare-vi-cli-action/compare-vi-cli-action/.tmp-smoke/19342f6e-3c56-479e-a78d-8b7fadfaf000/tests
+session-index	Run dispatcher smoke to produce session index	2025-10-12T04:42:48.0987344Z   Include Integration: false
+session-index	Run dispatcher smoke to produce session index	2025-10-12T04:42:48.0988154Z   Results Path: /home/runner/work/_temp/sessionindex
+session-index	Run dispatcher smoke to produce session index	2025-10-12T04:42:48.0989120Z   JSON Summary File: pester-summary.json
+session-index	Run dispatcher smoke to produce session index	2025-10-12T04:42:48.0994254Z   Emit Failures JSON Always: False
+session-index	Run dispatcher smoke to produce session index	2025-10-12T04:42:48.1012726Z   Timeout Minutes: 0
+session-index	Run dispatcher smoke to produce session index	2025-10-12T04:42:48.1014218Z   Timeout Seconds: 0
+session-index	Run dispatcher smoke to produce session index	2025-10-12T04:42:48.1019025Z   Max Test Files: 0
+session-index	Run dispatcher smoke to produce session index	2025-10-12T04:42:48.1020028Z   Clean LabVIEW before: False
+session-index	Run dispatcher smoke to produce session index	2025-10-12T04:42:48.1021174Z   Clean after run: False
+session-index	Run dispatcher smoke to produce session index	2025-10-12T04:42:48.1022109Z   Track Artifacts: False
+session-index	Run dispatcher smoke to produce session index	2025-10-12T04:42:48.1023438Z   Detect Leaks: False
+session-index	Run dispatcher smoke to produce session index	2025-10-12T04:42:48.1024459Z   Fail On Leaks: False
+session-index	Run dispatcher smoke to produce session index	2025-10-12T04:42:48.1025282Z 
+session-index	Run dispatcher smoke to produce session index	2025-10-12T04:42:48.1179543Z Resolved Paths:
+session-index	Run dispatcher smoke to produce session index	2025-10-12T04:42:48.1180676Z   Script Root: /home/runner/work/compare-vi-cli-action/compare-vi-cli-action
+session-index	Run dispatcher smoke to produce session index	2025-10-12T04:42:48.1182225Z   Tests Directory: /home/runner/work/compare-vi-cli-action/compare-vi-cli-action/.tmp-smoke/19342f6e-3c56-479e-a78d-8b7fadfaf000/tests
+session-index	Run dispatcher smoke to produce session index	2025-10-12T04:42:48.1183715Z   Results Directory: /home/runner/work/_temp/sessionindex
+session-index	Run dispatcher smoke to produce session index	2025-10-12T04:42:48.1184164Z 
+session-index	Run dispatcher smoke to produce session index	2025-10-12T04:42:48.1872430Z Found 1 test file(s) in tests directory
+session-index	Run dispatcher smoke to produce session index	2025-10-12T04:42:48.1934472Z Selected test file list written to: /home/runner/work/_temp/sessionindex/pester-selected-files.txt
+session-index	Run dispatcher smoke to produce session index	2025-10-12T04:42:48.1940057Z Results directory ready: /home/runner/work/_temp/sessionindex
+session-index	Run dispatcher smoke to produce session index	2025-10-12T04:42:48.1943651Z 
+session-index	Run dispatcher smoke to produce session index	2025-10-12T04:42:48.1945090Z Checking for Pester availability...
+session-index	Run dispatcher smoke to produce session index	2025-10-12T04:42:48.3387737Z Pester module found: v5.7.1
+session-index	Run dispatcher smoke to produce session index	2025-10-12T04:42:48.7022372Z Using Pester v5.7.1
+session-index	Run dispatcher smoke to produce session index	2025-10-12T04:42:48.7022795Z 
+session-index	Run dispatcher smoke to produce session index	2025-10-12T04:42:48.7023073Z Configuring Pester...
+session-index	Run dispatcher smoke to produce session index	2025-10-12T04:42:48.7079769Z   Excluding Integration-tagged tests
+session-index	Run dispatcher smoke to produce session index	2025-10-12T04:42:48.7159133Z   Output Verbosity: The verbosity of output, options are None, Normal, Detailed and Diagnostic. (Detailed, default: Normal)
+session-index	Run dispatcher smoke to produce session index	2025-10-12T04:42:48.7160294Z   Result Format: NUnitXml
+session-index	Run dispatcher smoke to produce session index	2025-10-12T04:42:48.7160584Z 
+session-index	Run dispatcher smoke to produce session index	2025-10-12T04:42:48.7161490Z Executing Pester tests...
+session-index	Run dispatcher smoke to produce session index	2025-10-12T04:42:48.7162559Z ----------------------------------------
+session-index	Run dispatcher smoke to produce session index	2025-10-12T04:42:49.6873667Z ----------------------------------------
+session-index	Run dispatcher smoke to produce session index	2025-10-12T04:42:49.6874205Z 
+session-index	Run dispatcher smoke to produce session index	2025-10-12T04:42:49.6899805Z Test execution completed in 0.94 seconds
+session-index	Run dispatcher smoke to produce session index	2025-10-12T04:42:49.6901102Z 
+session-index	Run dispatcher smoke to produce session index	2025-10-12T04:42:49.6976459Z Parsing test results...
+session-index	Run dispatcher smoke to produce session index	2025-10-12T04:42:49.7352221Z 
+session-index	Run dispatcher smoke to produce session index	2025-10-12T04:42:49.7353754Z === Pester Test Summary ===
+session-index	Run dispatcher smoke to produce session index	2025-10-12T04:42:49.7354175Z Total Tests: 1
+session-index	Run dispatcher smoke to produce session index	2025-10-12T04:42:49.7354473Z Passed: 1
+session-index	Run dispatcher smoke to produce session index	2025-10-12T04:42:49.7354732Z Failed: 0
+session-index	Run dispatcher smoke to produce session index	2025-10-12T04:42:49.7354981Z Errors: 0
+session-index	Run dispatcher smoke to produce session index	2025-10-12T04:42:49.7355277Z Skipped: 0
+session-index	Run dispatcher smoke to produce session index	2025-10-12T04:42:49.7355546Z Duration: 0.94s
+session-index	Run dispatcher smoke to produce session index	2025-10-12T04:42:49.7355889Z  (mean=126.37ms p95=126.37ms max=126.37ms)
+session-index	Run dispatcher smoke to produce session index	2025-10-12T04:42:49.7356183Z 
+session-index	Run dispatcher smoke to produce session index	2025-10-12T04:42:49.7356221Z 
+session-index	Run dispatcher smoke to produce session index	2025-10-12T04:42:49.7364558Z Summary written to: /home/runner/work/_temp/sessionindex/pester-summary.txt
+session-index	Run dispatcher smoke to produce session index	2025-10-12T04:42:49.7883426Z JSON summary written to: /home/runner/work/_temp/sessionindex/pester-summary.json
+session-index	Run dispatcher smoke to produce session index	2025-10-12T04:42:49.7884481Z Results written to: /home/runner/work/_temp/sessionindex/pester-results.xml
+session-index	Run dispatcher smoke to produce session index	2025-10-12T04:42:49.7885084Z 
+session-index	Run dispatcher smoke to produce session index	2025-10-12T04:42:49.7906791Z ✅ All tests passed!
+session-index	Run dispatcher smoke to produce session index	2025-10-12T04:42:49.8131410Z Artifact manifest written to: /home/runner/work/_temp/sessionindex/pester-artifacts.json
+session-index	Run dispatcher smoke to produce session index	2025-10-12T04:42:50.0024179Z Session index written to: /home/runner/work/_temp/sessionindex/session-index.json
+session-index	Run dispatcher smoke to produce session index	2025-10-12T04:42:50.0279818Z Artifact manifest written to: /home/runner/work/_temp/sessionindex/pester-artifacts.json
+session-index	Run dispatcher smoke to produce session index	2025-10-12T04:42:50.0282704Z Exit: 0
+session-index	Run dispatcher smoke to produce session index	2025-10-12T04:42:50.0324343Z 
+session-index	Run dispatcher smoke to produce session index	2025-10-12T04:42:50.0328814Z [32;1mschemaVersion : [0m1.7.1
+session-index	Run dispatcher smoke to produce session index	2025-10-12T04:42:50.0329322Z [32;1mtotal         : [0m1
+session-index	Run dispatcher smoke to produce session index	2025-10-12T04:42:50.0329751Z [32;1mpassed        : [0m1
+session-index	Run dispatcher smoke to produce session index	2025-10-12T04:42:50.0330198Z [32;1mfailed        : [0m0
+session-index	Run dispatcher smoke to produce session index	2025-10-12T04:42:50.0330621Z [32;1merrors        : [0m0
+session-index	Run dispatcher smoke to produce session index	2025-10-12T04:42:50.0331065Z [32;1mskipped       : [0m0
+session-index	Run dispatcher smoke to produce session index	2025-10-12T04:42:50.0331495Z [32;1mduration_s    : [0m0.937255
+session-index	Run dispatcher smoke to produce session index	2025-10-12T04:42:50.0331774Z 
+session-index	Run dispatcher smoke to produce session index	2025-10-12T04:42:50.5122642Z branchProtection written to /home/runner/work/_temp/sessionindex/session-index.json (status: warn, reason: mapping_missing)
+session-index	Write session index v2	﻿2025-10-12T04:42:50.5717520Z ##[group]Run $res = Join-Path $env:RUNNER_TEMP 'sessionindex'
+session-index	Write session index v2	2025-10-12T04:42:50.5717964Z [36;1m$res = Join-Path $env:RUNNER_TEMP 'sessionindex'[0m
+session-index	Write session index v2	2025-10-12T04:42:50.5718495Z [36;1mpwsh -File tools/Write-SessionIndexV2.ps1 -ResultsDir $res -OutFileName 'session-index.v2.json' -EmitEnv[0m
+session-index	Write session index v2	2025-10-12T04:42:50.5719260Z [36;1m$branchSummary = Get-Content -Path $env:GITHUB_ENV | Where-Object { $_ -like 'SESSION_INDEX_BRANCH_SUMMARY=*' } | Select-Object -First 1[0m
+session-index	Write session index v2	2025-10-12T04:42:50.5780617Z [36;1mif ($branchSummary -and $env:GITHUB_STEP_SUMMARY) {[0m
+session-index	Write session index v2	2025-10-12T04:42:50.5781225Z [36;1m  $branchValue = $branchSummary.Split('=')[1][0m
+session-index	Write session index v2	2025-10-12T04:42:50.5782294Z [36;1m  $digestLine = Get-Content -Path $env:GITHUB_ENV | Where-Object { $_ -like 'SESSION_INDEX_TOGGLE_MANIFEST_DIGEST=*' } | Select-Object -First 1[0m
+session-index	Write session index v2	2025-10-12T04:42:50.5783905Z [36;1m  $profilesLine = Get-Content -Path $env:GITHUB_ENV | Where-Object { $_ -like 'SESSION_INDEX_TOGGLE_PROFILES=*' } | Select-Object -First 1[0m
+session-index	Write session index v2	2025-10-12T04:42:50.5784883Z [36;1m  $summaryLines = @([0m
+session-index	Write session index v2	2025-10-12T04:42:50.5785345Z [36;1m    '### Session Index Snapshot',[0m
+session-index	Write session index v2	2025-10-12T04:42:50.5785770Z [36;1m    "- Branch: $branchValue"[0m
+session-index	Write session index v2	2025-10-12T04:42:50.5786149Z [36;1m  )[0m
+session-index	Write session index v2	2025-10-12T04:42:50.5786439Z [36;1m  if ($digestLine) {[0m
+session-index	Write session index v2	2025-10-12T04:42:50.5786971Z [36;1m    $summaryLines += "- Manifest digest: $($digestLine.Split('=')[1])"[0m
+session-index	Write session index v2	2025-10-12T04:42:50.5787564Z [36;1m  }[0m
+session-index	Write session index v2	2025-10-12T04:42:50.5787870Z [36;1m  if ($profilesLine) {[0m
+session-index	Write session index v2	2025-10-12T04:42:50.5788418Z [36;1m    $summaryLines += "- Toggle profiles: $($profilesLine.Split('=')[1])"[0m
+session-index	Write session index v2	2025-10-12T04:42:50.5788994Z [36;1m  }[0m
+session-index	Write session index v2	2025-10-12T04:42:50.5789572Z [36;1m  $summaryLines -join "`n" | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8[0m
+session-index	Write session index v2	2025-10-12T04:42:50.5790238Z [36;1m}[0m
+session-index	Write session index v2	2025-10-12T04:42:50.5828179Z shell: /usr/bin/pwsh -command ". '{0}'"
+session-index	Write session index v2	2025-10-12T04:42:50.5828446Z ##[endgroup]
+session-index	Write session index v2	2025-10-12T04:42:51.9126703Z Installing Node dependencies for session-index v2...
+session-index	Write session index v2	2025-10-12T04:42:54.9702170Z Running TypeScript build for session-index v2...
+session-index	Write session index v2	2025-10-12T04:42:58.2531270Z ERROR: [session-index.v2.branchProtection.expected] Path 'branchProtection.expected' must be a non-empty array – Record the canonical branch-protection contexts for the evaluated branch.
+session-index	Write session index v2	2025-10-12T04:42:58.2535338Z session-index: Session index requirements failed.
+session-index	Write session index v2	2025-10-12T04:42:58.3775661Z [31;1mException: [0m/home/runner/work/compare-vi-cli-action/compare-vi-cli-action/tools/Write-SessionIndexV2.ps1:78[0m
+session-index	Write session index v2	2025-10-12T04:42:58.3776592Z [31;1m[0m[36;1mLine |[0m
+session-index	Write session index v2	2025-10-12T04:42:58.3777465Z [31;1m[0m[36;1m[36;1m  78 | [0m     [36;1mthrow "session-index CLI exited with code $LASTEXITCODE"[0m
+session-index	Write session index v2	2025-10-12T04:42:58.3778394Z [31;1m[0m[36;1m[36;1m[0m[36;1m[0m[36;1m     | [31;1m     ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~[0m
+session-index	Write session index v2	2025-10-12T04:42:58.3779283Z [31;1m[0m[36;1m[36;1m[0m[36;1m[0m[36;1m[31;1m[31;1m[36;1m     | [31;1msession-index CLI exited with code 1[0m
+session-index	Write session index v2	2025-10-12T04:42:58.4984925Z ##[error]Process completed with exit code 1.
+session-index	Upload session index v2 artifact	﻿2025-10-12T04:42:58.5056387Z ##[group]Run actions/upload-artifact@v4
+session-index	Upload session index v2 artifact	2025-10-12T04:42:58.5056687Z with:
+session-index	Upload session index v2 artifact	2025-10-12T04:42:58.5056868Z   name: validate-session-index-v2
+session-index	Upload session index v2 artifact	2025-10-12T04:42:58.5057203Z   path: /home/runner/work/_temp/sessionindex/session-index.v2.json
+session-index	Upload session index v2 artifact	2025-10-12T04:42:58.5057529Z   if-no-files-found: warn
+session-index	Upload session index v2 artifact	2025-10-12T04:42:58.5057754Z   compression-level: 6
+session-index	Upload session index v2 artifact	2025-10-12T04:42:58.5057935Z   overwrite: false
+session-index	Upload session index v2 artifact	2025-10-12T04:42:58.5058120Z   include-hidden-files: false
+session-index	Upload session index v2 artifact	2025-10-12T04:42:58.5058323Z ##[endgroup]
+session-index	Upload session index v2 artifact	2025-10-12T04:42:58.7170650Z ##[warning]No files were found with the provided path: /home/runner/work/_temp/sessionindex/session-index.v2.json. No artifacts will be uploaded.
+session-index	Upload session index artifact	﻿2025-10-12T04:42:58.7288899Z ##[group]Run actions/upload-artifact@v4
+session-index	Upload session index artifact	2025-10-12T04:42:58.7289168Z with:
+session-index	Upload session index artifact	2025-10-12T04:42:58.7289344Z   name: validate-session-index
+session-index	Upload session index artifact	2025-10-12T04:42:58.7289632Z   path: /home/runner/work/_temp/sessionindex/session-index.json
+session-index	Upload session index artifact	2025-10-12T04:42:58.7289949Z   if-no-files-found: warn
+session-index	Upload session index artifact	2025-10-12T04:42:58.7290142Z   compression-level: 6
+session-index	Upload session index artifact	2025-10-12T04:42:58.7290327Z   overwrite: false
+session-index	Upload session index artifact	2025-10-12T04:42:58.7290512Z   include-hidden-files: false
+session-index	Upload session index artifact	2025-10-12T04:42:58.7290710Z ##[endgroup]
+session-index	Upload session index artifact	2025-10-12T04:42:58.9393323Z With the provided path, there will be 1 file uploaded
+session-index	Upload session index artifact	2025-10-12T04:42:58.9398747Z Artifact name is valid!
+session-index	Upload session index artifact	2025-10-12T04:42:58.9400094Z Root directory input is valid!
+session-index	Upload session index artifact	2025-10-12T04:42:59.0243437Z Beginning upload of artifact content to blob storage
+session-index	Upload session index artifact	2025-10-12T04:42:59.0837078Z Uploaded bytes 985
+session-index	Upload session index artifact	2025-10-12T04:42:59.0966813Z Finished uploading artifact content to blob storage!
+session-index	Upload session index artifact	2025-10-12T04:42:59.0970503Z SHA256 digest of uploaded artifact zip is abfa5ae412c3776898acc4041f1375eaa04eddb0998296dad4026b92695e671a
+session-index	Upload session index artifact	2025-10-12T04:42:59.0972246Z Finalizing artifact upload
+session-index	Upload session index artifact	2025-10-12T04:42:59.1673451Z Artifact validate-session-index.zip successfully finalized. Artifact ID 4246968470
+session-index	Upload session index artifact	2025-10-12T04:42:59.1675651Z Artifact validate-session-index has been successfully uploaded! Final size is 985 bytes. Artifact ID is 4246968470
+session-index	Upload session index artifact	2025-10-12T04:42:59.1681037Z Artifact download URL: https://github.com/LabVIEW-Community-CI-CD/compare-vi-cli-action/actions/runs/18439273815/artifacts/4246968470
+session-index	Post Run actions/checkout@v5	﻿2025-10-12T04:42:59.1840294Z Post job cleanup.
+session-index	Post Run actions/checkout@v5	2025-10-12T04:42:59.2581606Z [command]/usr/bin/git version
+session-index	Post Run actions/checkout@v5	2025-10-12T04:42:59.2616395Z git version 2.51.0
+session-index	Post Run actions/checkout@v5	2025-10-12T04:42:59.2651810Z Temporarily overriding HOME='/home/runner/work/_temp/599ac828-8070-41d8-8cda-2b92a429acb2' before making global git config changes
+session-index	Post Run actions/checkout@v5	2025-10-12T04:42:59.2652721Z Adding repository directory to the temporary git global config as a safe directory
+session-index	Post Run actions/checkout@v5	2025-10-12T04:42:59.2657438Z [command]/usr/bin/git config --global --add safe.directory /home/runner/work/compare-vi-cli-action/compare-vi-cli-action
+session-index	Post Run actions/checkout@v5	2025-10-12T04:42:59.2693542Z [command]/usr/bin/git config --local --name-only --get-regexp core\.sshCommand
+session-index	Post Run actions/checkout@v5	2025-10-12T04:42:59.2725014Z [command]/usr/bin/git submodule foreach --recursive sh -c "git config --local --name-only --get-regexp 'core\.sshCommand' && git config --local --unset-all 'core.sshCommand' || :"
+session-index	Post Run actions/checkout@v5	2025-10-12T04:42:59.2947063Z [command]/usr/bin/git config --local --name-only --get-regexp http\.https\:\/\/github\.com\/\.extraheader
+session-index	Post Run actions/checkout@v5	2025-10-12T04:42:59.2968087Z http.https://github.com/.extraheader
+session-index	Post Run actions/checkout@v5	2025-10-12T04:42:59.2978210Z [command]/usr/bin/git config --local --unset-all http.https://github.com/.extraheader
+session-index	Post Run actions/checkout@v5	2025-10-12T04:42:59.3007820Z [command]/usr/bin/git submodule foreach --recursive sh -c "git config --local --name-only --get-regexp 'http\.https\:\/\/github\.com\/\.extraheader' && git config --local --unset-all 'http.https://github.com/.extraheader' || :"
+session-index	Complete job	﻿2025-10-12T04:42:59.3327472Z Cleaning up orphan processes
+

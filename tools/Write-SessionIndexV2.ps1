@@ -64,6 +64,8 @@ try {
           $expected = @($branches.$branchName)
         } elseif ($branches.PSObject.Properties.Name -contains 'default') {
           $expected = @($branches.default)
+        } elseif ($branches.PSObject.Properties.Name -contains 'develop') {
+          $expected = @($branches.develop)
         }
       }
       $expected = @($expected | Where-Object { $_ })
