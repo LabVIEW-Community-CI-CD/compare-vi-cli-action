@@ -17,6 +17,37 @@ if (-not (Test-Path -LiteralPath $sessionIndexV1 -PathType Leaf)) {
   throw "session-index.json not found at $sessionIndexV1"
 }
 
+$toggleModule = Join-Path $repoRoot 'tools' 'AgentToggles.psm1'
+$toggleContract = $null
+$toggleProfiles = @()
+if (Test-Path -LiteralPath $toggleModule -PathType Leaf) {
+  try {
+    Import-Module $toggleModule -Force -ErrorAction Stop
+    $toggleContract = Get-AgentToggleContract
+    $toggleValues = Get-AgentToggleValues
+    if ($toggleValues.profiles) {
+      $toggleProfiles = @($toggleValues.profiles | Where-Object { $_ })
+    }
+    if ($toggleContract) {
+      Write-Host ''
+      Write-Host '[Toggle Contract]' -ForegroundColor Cyan
+      Write-Host ("  schema        : {0}" -f $toggleContract.schema)
+      Write-Host ("  schemaVersion : {0}" -f $toggleContract.schemaVersion)
+      Write-Host ("  generatedAt   : {0}" -f $toggleContract.generatedAtUtc)
+      Write-Host ("  manifestDigest: {0}" -f $toggleContract.manifestDigest)
+      if ($toggleProfiles.Count -gt 0) {
+        Write-Host ("  profiles      : {0}" -f ($toggleProfiles -join ', '))
+      } else {
+        Write-Host '  profiles      : (none)'
+      }
+    }
+  } catch {
+    Write-Warning ("Toggle contract unavailable: {0}" -f $_.Exception.Message)
+    $toggleContract = $null
+    $toggleProfiles = @()
+  }
+}
+
 $outPath = if ([System.IO.Path]::IsPathRooted($OutFileName)) {
   $OutFileName
 } else {
@@ -88,9 +119,19 @@ try {
     '--from-v1', $sessionIndexV1
   )
 
-  if ($env:AGENT_TOGGLE_PROFILES) {
-    $profiles = $env:AGENT_TOGGLE_PROFILES -split '[,;\s]' | Where-Object { $_ } | ForEach-Object { $_.Trim() } | Where-Object { $_ }
-    foreach ($profile in $profiles) {
+  $profilesForCli = @()
+  if ($toggleProfiles.Count -gt 0) {
+    $profilesForCli = $toggleProfiles
+  } elseif ($env:AGENT_TOGGLE_PROFILES) {
+    $profilesForCli = @(
+      $env:AGENT_TOGGLE_PROFILES -split '[,;\s]' |
+        Where-Object { $_ } |
+        ForEach-Object { $_.Trim() } |
+        Where-Object { $_ }
+    )
+  }
+  if ($profilesForCli.Count -gt 0) {
+    foreach ($profile in $profilesForCli) {
       $baseArgs += @('--toggle-profile', $profile)
     }
   }

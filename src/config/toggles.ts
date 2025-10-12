@@ -1,115 +1,21 @@
 import { createHash } from 'node:crypto';
-
-export type ToggleValue = string | number | boolean;
-
-export type ToggleValueType = 'string' | 'number' | 'boolean';
-
-export interface ToggleMatch {
-  describe?: string;
-  it?: string;
-  tags?: string[];
-}
-
-export interface ToggleVariant {
-  /**
-   * Optional identifier for referencing the variant in telemetry or consumers.
-   */
-  id?: string;
-  /**
-   * Human-readable note describing why this variant exists.
-   */
-  description?: string;
-  /**
-   * Matching metadata that activates the variant when all criteria are satisfied.
-   */
-  match?: ToggleMatch;
-  /**
-   * Optional documentation anchors.
-   */
-  docs?: string[];
-  /**
-   * Value to apply when the variant matches.
-   */
-  value: ToggleValue;
-}
-
-export interface ToggleMetadata {
-  key: string;
-  description: string;
-  type: ToggleValueType;
-  defaultValue: ToggleValue;
-  scopes?: string[];
-  tags?: string[];
-  docs?: string[];
-  deprecated?: boolean;
-  variants?: ToggleVariant[];
-}
-
-export interface ToggleProfile {
-  id: string;
-  description: string;
-  inherits?: string[];
-  values: Record<string, ToggleValue>;
-  docs?: string[];
-  tags?: string[];
-}
-
-export interface ToggleManifest {
-  schema: 'agent-toggles/v1';
-  schemaVersion: string;
-  generatedAtUtc: string;
-  toggles: ToggleMetadata[];
-  profiles: ToggleProfile[];
-}
-
-export type ToggleResolutionSource = 'default' | 'profile' | 'variant' | 'environment';
-
-export interface ToggleResolution {
-  key: string;
-  value: ToggleValue;
-  valueType: ToggleValueType;
-  /**
-   * Indicates whether the resolved value originates from the default definition,
-   * a profile overlay, or a variant match.
-   */
-  source: ToggleResolutionSource;
-  /**
-   * For profile-sourced values we expose the first profile that applied the override.
-   */
-  profile?: string;
-  /**
-   * Identifier of the variant that applied, when applicable.
-   */
-  variant?: string;
-  /**
-   * Optional description echo for downstream consumers.
-   */
-  description?: string;
-}
-
-export interface ToggleResolutionContext {
-  profiles?: string[];
-  describe?: string;
-  it?: string;
-  tags?: string[];
-}
-
-export interface ToggleValuesPayload {
-  schema: 'agent-toggle-values/v1';
-  schemaVersion: string;
-  generatedAtUtc: string;
-  manifestDigest: string;
-  manifestGeneratedAtUtc: string;
-  profiles: string[];
-  context: {
-    describe?: string;
-    it?: string;
-    tags?: string[];
-  };
-  values: Record<string, ToggleResolution>;
-}
-
-const DEFAULT_SCHEMA_VERSION = '1.0.0';
+import {
+  AGENT_TOGGLE_VALUES_SCHEMA_ID,
+  AGENT_TOGGLES_SCHEMA_ID,
+  AGENT_TOGGLES_SCHEMA_VERSION,
+  ToggleManifest,
+  ToggleMatch,
+  ToggleMetadata,
+  ToggleProfile,
+  ToggleContractBundle,
+  ToggleResolution,
+  ToggleResolutionContext,
+  ToggleResolutionSource,
+  ToggleValue,
+  ToggleValueType,
+  ToggleValuesPayload,
+  ToggleVariant
+} from '../types/agent-toggles.js';
 
 function escapeForRegex(value: string): string {
   return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
@@ -160,8 +66,8 @@ function matchesContext(match: ToggleMatch | undefined, context: ToggleResolutio
 
 export function createToggleManifest(now: Date = new Date()): ToggleManifest {
   const manifest: ToggleManifest = {
-    schema: 'agent-toggles/v1',
-    schemaVersion: DEFAULT_SCHEMA_VERSION,
+    schema: AGENT_TOGGLES_SCHEMA_ID,
+    schemaVersion: AGENT_TOGGLES_SCHEMA_VERSION,
     generatedAtUtc: now.toISOString(),
     toggles: [
       {
@@ -443,11 +349,22 @@ export function computeToggleManifestDigest(manifest?: ToggleManifest): string {
   return createHash('sha256').update(serialized).digest('hex');
 }
 
+export function createToggleContract(now: Date = new Date()): ToggleContractBundle {
+  const manifest = createToggleManifest(now);
+  const manifestDigest = computeToggleManifestDigest(manifest);
+  return {
+    manifest,
+    manifestDigest
+  };
+}
+
 export function buildToggleValuesPayload(
-  context: ToggleResolutionContext = {}
+  context: ToggleResolutionContext = {},
+  contract?: ToggleContractBundle
 ): ToggleValuesPayload {
-  const manifest = createToggleManifest();
-  const digest = computeToggleManifestDigest(manifest);
+  const bundle = contract ?? createToggleContract();
+  const manifest = bundle.manifest;
+  const digest = bundle.manifestDigest;
   const resolved = resolveToggleValues(manifest, context);
   const values: Record<string, ToggleResolution> = {};
   const profiles = context.profiles
@@ -464,7 +381,7 @@ export function buildToggleValuesPayload(
   }
 
   return {
-    schema: 'agent-toggle-values/v1',
+    schema: AGENT_TOGGLE_VALUES_SCHEMA_ID,
     schemaVersion: manifest.schemaVersion,
     generatedAtUtc: manifest.generatedAtUtc,
     manifestDigest: digest,
@@ -478,3 +395,24 @@ export function buildToggleValuesPayload(
     values
   };
 }
+
+export {
+  AGENT_TOGGLE_VALUES_SCHEMA_ID,
+  AGENT_TOGGLES_SCHEMA_ID,
+  AGENT_TOGGLES_SCHEMA_VERSION
+} from '../types/agent-toggles.js';
+
+export type {
+  ToggleContractBundle,
+  ToggleManifest,
+  ToggleMatch,
+  ToggleMetadata,
+  ToggleProfile,
+  ToggleResolution,
+  ToggleResolutionContext,
+  ToggleResolutionSource,
+  ToggleValue,
+  ToggleValueType,
+  ToggleValuesPayload,
+  ToggleVariant
+} from '../types/agent-toggles.js';

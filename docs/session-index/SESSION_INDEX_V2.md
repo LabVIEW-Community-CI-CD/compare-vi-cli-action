@@ -151,8 +151,9 @@ Key differences from v1:
   workflow produced (`produced`), and the live API snapshot (`actual.status` +
   `actual.contexts`) alongside diagnostic notes (allowing us to log 403s / 404s
   without losing alignment).
-* `environment.toggles` records the manifest digest, active profiles, and the
-  resolved toggle values that shaped the run (enabling deterministic auditing).
+* `environment.toggles` records the schema id/version, manifest digest, generated-at timestamp,
+  active profiles, and the resolved toggle values that shaped the run (enabling deterministic
+  auditing).
 * `artifacts` become first-class, linking to dashboards, compare reports, and
   trace matrices.
 * `notes` is a free-form area for session-wide diagnostics.

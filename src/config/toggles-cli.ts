@@ -1,10 +1,6 @@
 import { ArgumentParser } from 'argparse';
 import type { ToggleResolutionContext, ToggleValue, ToggleValuesPayload } from './toggles.js';
-import {
-  buildToggleValuesPayload,
-  computeToggleManifestDigest,
-  createToggleManifest
-} from './toggles.js';
+import { buildToggleValuesPayload, createToggleContract } from './toggles.js';
 
 type OutputFormat = 'json' | 'values' | 'env' | 'psd1';
 
@@ -123,30 +119,37 @@ function run(): void {
   };
 
   let output = '';
+  let contract: ReturnType<typeof createToggleContract> | undefined;
+
+  const ensureContract = (): ReturnType<typeof createToggleContract> => {
+    if (!contract) {
+      contract = createToggleContract();
+    }
+    return contract;
+  };
 
   switch (args.format) {
     case 'json': {
-      const manifest = createToggleManifest();
-      const digest = computeToggleManifestDigest(manifest);
+      const { manifest, manifestDigest } = ensureContract();
       const manifestOutput = {
         ...manifest,
-        manifestDigest: digest
+        manifestDigest
       };
       output = formatJson(manifestOutput, args.pretty ?? true);
       break;
     }
     case 'values': {
-      const payload = buildToggleValuesPayload(context);
+      const payload = buildToggleValuesPayload(context, ensureContract());
       output = formatJson(payload, args.pretty ?? true);
       break;
     }
     case 'env': {
-      const payload = buildToggleValuesPayload(context);
+      const payload = buildToggleValuesPayload(context, ensureContract());
       output = formatEnv(payload);
       break;
     }
     case 'psd1': {
-      const payload = buildToggleValuesPayload(context);
+      const payload = buildToggleValuesPayload(context, ensureContract());
       output = formatPsd1(payload);
       break;
     }

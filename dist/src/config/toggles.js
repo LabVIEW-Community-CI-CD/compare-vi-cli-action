@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto';
-const DEFAULT_SCHEMA_VERSION = '1.0.0';
+import { AGENT_TOGGLE_VALUES_SCHEMA_ID, AGENT_TOGGLES_SCHEMA_ID, AGENT_TOGGLES_SCHEMA_VERSION } from '../types/agent-toggles.js';
 function escapeForRegex(value) {
     return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
@@ -43,8 +43,8 @@ function matchesContext(match, context) {
 }
 export function createToggleManifest(now = new Date()) {
     const manifest = {
-        schema: 'agent-toggles/v1',
-        schemaVersion: DEFAULT_SCHEMA_VERSION,
+        schema: AGENT_TOGGLES_SCHEMA_ID,
+        schemaVersion: AGENT_TOGGLES_SCHEMA_VERSION,
         generatedAtUtc: now.toISOString(),
         toggles: [
             {
@@ -306,9 +306,18 @@ export function computeToggleManifestDigest(manifest) {
     const serialized = JSON.stringify(canonical);
     return createHash('sha256').update(serialized).digest('hex');
 }
-export function buildToggleValuesPayload(context = {}) {
-    const manifest = createToggleManifest();
-    const digest = computeToggleManifestDigest(manifest);
+export function createToggleContract(now = new Date()) {
+    const manifest = createToggleManifest(now);
+    const manifestDigest = computeToggleManifestDigest(manifest);
+    return {
+        manifest,
+        manifestDigest
+    };
+}
+export function buildToggleValuesPayload(context = {}, contract) {
+    const bundle = contract ?? createToggleContract();
+    const manifest = bundle.manifest;
+    const digest = bundle.manifestDigest;
     const resolved = resolveToggleValues(manifest, context);
     const values = {};
     const profiles = context.profiles
@@ -322,7 +331,7 @@ export function buildToggleValuesPayload(context = {}) {
         values[key] = { ...resolution };
     }
     return {
-        schema: 'agent-toggle-values/v1',
+        schema: AGENT_TOGGLE_VALUES_SCHEMA_ID,
         schemaVersion: manifest.schemaVersion,
         generatedAtUtc: manifest.generatedAtUtc,
         manifestDigest: digest,
@@ -336,3 +345,4 @@ export function buildToggleValuesPayload(context = {}) {
         values
     };
 }
+export { AGENT_TOGGLE_VALUES_SCHEMA_ID, AGENT_TOGGLES_SCHEMA_ID, AGENT_TOGGLES_SCHEMA_VERSION } from '../types/agent-toggles.js';

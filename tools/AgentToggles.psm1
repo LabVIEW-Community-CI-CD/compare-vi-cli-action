@@ -5,7 +5,8 @@ $script:toolsRoot = Split-Path -Parent $PSCommandPath
 $script:repoRoot = Split-Path -Parent $script:toolsRoot
 $script:cliPath = Join-Path $script:repoRoot 'dist' 'src' 'config' 'toggles-cli.js'
 $script:valuesCache = @{}
-$script:manifestCache = $null
+$script:contractCache = $null
+$script:jsonDepth = 16
 
 function Get-NodeCommandPath {
   $node = Get-Command node -ErrorAction Stop
@@ -110,14 +111,36 @@ function Apply-EnvironmentOverrides {
   }
 }
 
-function Get-AgentToggleManifest {
-  if ($script:manifestCache) {
-    return $script:manifestCache
+function Get-AgentToggleContract {
+  if ($script:contractCache) {
+    return $script:contractCache
   }
+
   $output = Invoke-ToggleCli -Arguments @('--format','json','--pretty')
-  $manifest = $output | ConvertFrom-Json -Depth 6
-  $script:manifestCache = $manifest
-  return $manifest
+  $manifest = $output | ConvertFrom-Json -Depth $script:jsonDepth
+
+  if (-not $manifest) {
+    throw 'Toggle CLI returned empty manifest.'
+  }
+  if (-not ($manifest.PSObject.Properties.Name -contains 'manifestDigest')) {
+    throw 'Toggle manifest payload missing manifestDigest.'
+  }
+
+  $contract = [pscustomobject]@{
+    manifest        = $manifest
+    manifestDigest  = $manifest.manifestDigest
+    schema          = $manifest.schema
+    schemaVersion   = $manifest.schemaVersion
+    generatedAtUtc  = $manifest.generatedAtUtc
+  }
+
+  $script:contractCache = $contract
+  return $contract
+}
+
+function Get-AgentToggleManifest {
+  $contract = Get-AgentToggleContract
+  return $contract.manifest
 }
 
 function Get-AgentToggleValues {
@@ -157,7 +180,19 @@ function Get-AgentToggleValues {
     $script:valuesCache[$cacheKey] = $output
   }
 
-  $payload = $output | ConvertFrom-Json -Depth 6
+  $payload = $output | ConvertFrom-Json -Depth $script:jsonDepth
+  $contract = Get-AgentToggleContract
+
+  if (-not $payload) {
+    throw 'Toggle values payload missing.'
+  }
+  if (-not ($payload.PSObject.Properties.Name -contains 'manifestDigest')) {
+    throw 'Toggle values payload missing manifestDigest.'
+  }
+  if ($payload.manifestDigest -ne $contract.manifestDigest) {
+    throw "Toggle manifest digest mismatch (contract $($contract.manifestDigest) vs payload $($payload.manifestDigest))."
+  }
+
   Apply-EnvironmentOverrides -Payload $payload
   return $payload
 }
@@ -220,4 +255,4 @@ function Assert-AgentToggleDeterminism {
   return $payload
 }
 
-Export-ModuleMember -Function Get-AgentToggleManifest, Get-AgentToggleValues, Get-AgentToggleValue, Assert-AgentToggleDeterminism
+Export-ModuleMember -Function Get-AgentToggleContract, Get-AgentToggleManifest, Get-AgentToggleValues, Get-AgentToggleValue, Assert-AgentToggleDeterminism

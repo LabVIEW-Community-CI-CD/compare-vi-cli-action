@@ -2181,6 +2181,16 @@ try {
           Write-Host "(warn) failed to hash compare report '$($cand.FullName)': $_" -ForegroundColor DarkYellow
         }
       }
+      if ($manifest.sources.Count -gt 0) {
+        $unique = @()
+        $seen = New-Object System.Collections.Generic.HashSet[string]
+        foreach ($entry in $manifest.sources) {
+          if ($seen.Add($entry.path)) {
+            $unique += $entry
+          }
+        }
+        $manifest.sources = $unique
+      }
       if ($canonicalResolved -and (Test-Path -LiteralPath $canonicalResolved -PathType Leaf)) {
         $existingCanonical = @($manifest.sources | Where-Object { $_.path -eq $canonicalResolved })
         if ($existingCanonical.Count -gt 0) {

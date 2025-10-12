@@ -40,6 +40,28 @@ foreach($k in @(
   $envs[$k] = [string]([Environment]::GetEnvironmentVariable($k))
 }
 
+$toggleContractInfo = $null
+$toggleProfiles = @()
+$toggleModulePath = Join-Path (Split-Path -Parent $PSCommandPath) 'AgentToggles.psm1'
+if (Test-Path -LiteralPath $toggleModulePath -PathType Leaf) {
+  try {
+    Import-Module $toggleModulePath -Force -ErrorAction Stop
+    $contract = Get-AgentToggleContract
+    $valuesPayload = Get-AgentToggleValues
+    $toggleProfiles = if ($valuesPayload) { To-Arr($valuesPayload.profiles) } else { @() }
+    $toggleContractInfo = [ordered]@{
+      schema = $contract.schema
+      schemaVersion = $contract.schemaVersion
+      generatedAtUtc = $contract.generatedAtUtc
+      manifestDigest = $contract.manifestDigest
+      profiles = $toggleProfiles
+    }
+  } catch {
+    $toggleContractInfo = $null
+    $toggleProfiles = @()
+  }
+}
+
 # Agent wait sessions (latest per id)
 $waitSessions = @()
 try {
@@ -75,6 +97,7 @@ $ctx = [ordered]@{
   branch = $branch
   headSha = $headSha
   env = $envs
+  toggle = $toggleContractInfo
   handoffPath = (Test-Path -LiteralPath $handoffPath)
   waitSessions = $waitSessions
   notices = $noticeItems
@@ -99,6 +122,22 @@ $md += "- Handoff present: $((Test-Path -LiteralPath $handoffPath))"
 $md += ''
 $md += '#### Env'
 foreach($k in $envs.Keys){ $md += ('- {0} = {1}' -f $k,$envs[$k]) }
+$md += ''
+$md += '#### Toggle Contract'
+if ($toggleContractInfo) {
+  $schemaLine = $toggleContractInfo.schema
+  if ($toggleContractInfo.schemaVersion) {
+    $schemaLine = "{0} (v{1})" -f $schemaLine, $toggleContractInfo.schemaVersion
+  }
+  $profilesCount = ($toggleProfiles | Measure-Object).Count
+  $profilesLabel = if ($profilesCount -gt 0) { [string]::Join(', ', $toggleProfiles) } else { '(none)' }
+  $md += ('- Schema: {0}' -f $schemaLine)
+  $md += ('- Generated At: {0}' -f $toggleContractInfo.generatedAtUtc)
+  $md += ('- Manifest Digest: {0}' -f $toggleContractInfo.manifestDigest)
+  $md += ('- Profiles: {0}' -f $profilesLabel)
+} else {
+  $md += '- (unavailable)'
+}
 $md += ''
 $md += '#### Wait Sessions'
 if ($waitSessions.Count -gt 0) { foreach($s in $waitSessions){ $md += ('- {0}: {1}/{2}s within={3} ended={4}' -f $s.id,$s.elapsed,$s.expected,$s.within,$s.ended) } } else { $md += '- (none)' }

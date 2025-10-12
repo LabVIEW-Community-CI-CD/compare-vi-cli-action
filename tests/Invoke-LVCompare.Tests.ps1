@@ -121,6 +121,91 @@ exit 1
     finally { Pop-Location }
   }
 
+  It 'merges additional flags (e.g. -nobdpos) with defaults' {
+    $work = Join-Path $TestDrive 'driver-with-extra-flag'
+    New-Item -ItemType Directory -Path $work | Out-Null
+    Push-Location $work
+    try {
+      $captureStub = Join-Path $work 'CaptureStub.ps1'
+      $stub = @"
+param(
+  [string]`$Base,
+  [string]`$Head,
+  [object]`$LvArgs,
+  [string]`$LvComparePath,
+  [switch]`$RenderReport,
+  [string]`$OutputDir,
+  [switch]`$Quiet,
+  [string]`$ReportStagingDir
+)
+if (-not (Test-Path `$OutputDir)) { New-Item -ItemType Directory -Path `$OutputDir -Force | Out-Null }
+if (`$LvArgs -is [System.Array]) { `$args = @(`$LvArgs) } elseif (`$LvArgs) { `$args = @([string]`$LvArgs) } else { `$args = @() }
+`$timestamp = (Get-Date).ToUniversalTime().ToString('o')
+`$basePath = (Resolve-Path -LiteralPath `$Base).Path
+`$headPath = (Resolve-Path -LiteralPath `$Head).Path
+if (`$LvComparePath) {
+  `$cliPath = try { (Resolve-Path -LiteralPath `$LvComparePath).Path } catch { `$LvComparePath }
+} else {
+  `$cliPath = 'C:\Program Files\National Instruments\Shared\LabVIEW Compare\LVCompare.exe'
+}
+`$lvPathValue = `$null
+`$flagsOnly = @()
+for (`$i = 0; `$i -lt `$args.Count; `$i++) {
+  `$tok = `$args[`$i]
+  if (`$null -eq `$tok) { continue }
+  if (`$tok -ieq '-lvpath' -and (`$i + 1) -lt `$args.Count) {
+    `$lvPathValue = `$args[`$i + 1]
+    `$i++
+    continue
+  }
+  if (`$tok.StartsWith('-')) { `$flagsOnly += `$tok }
+}
+if (-not `$lvPathValue) { `$lvPathValue = 'C:\Program Files\National Instruments\LabVIEW 2025\LabVIEW.exe' }
+`$cap = [ordered]@{
+  schema    = 'lvcompare-capture-v1'
+  timestamp = `$timestamp
+  base      = `$basePath
+  head      = `$headPath
+  cliPath   = `$cliPath
+  args      = @(`$args)
+  lvPath    = `$lvPathValue
+  flags     = @(`$flagsOnly)
+  exitCode  = 0
+  seconds   = 0.25
+  stdoutLen = 0
+  stderrLen = 0
+  command   = 'stub lvcompare'
+  stdout    = `$null
+  stderr    = `$null
+  diffDetected = `$false
+}
+`$cap | ConvertTo-Json -Depth 4 | Set-Content -LiteralPath (Join-Path `$OutputDir 'lvcompare-capture.json') -Encoding utf8
+exit 0
+"@
+      Set-Content -LiteralPath $captureStub -Value $stub -Encoding UTF8
+
+      $labviewExe = Join-Path $work 'LabVIEW.exe'; Set-Content -LiteralPath $labviewExe -Encoding ascii -Value ''
+      $base = Join-Path $work 'Base.vi'; Set-Content -LiteralPath $base -Encoding ascii -Value ''
+      $head = Join-Path $work 'Head.vi'; Set-Content -LiteralPath $head -Encoding ascii -Value ''
+      $outDir = Join-Path $work 'out'
+
+      & pwsh -NoLogo -NoProfile -File $script:driverPath `
+        -BaseVi $base -HeadVi $head `
+        -LabVIEWExePath $labviewExe `
+        -OutputDir $outDir `
+        -Flags @('-nobdpos') `
+        -CaptureScriptPath $captureStub *> $null
+
+      $LASTEXITCODE | Should -Be 0
+      $cap = Get-Content -LiteralPath (Join-Path $outDir 'lvcompare-capture.json') -Raw | ConvertFrom-Json
+      foreach ($expected in @('-nobdcosm','-nofppos','-noattr','-nobdpos')) {
+        $cap.args | Should -Contain $expected
+        $cap.flags | Should -Contain $expected
+      }
+    }
+    finally { Pop-Location }
+  }
+
   It 'supports ReplaceFlags to override defaults' {
     $work = Join-Path $TestDrive 'driver-custom'
     New-Item -ItemType Directory -Path $work | Out-Null

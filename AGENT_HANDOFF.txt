@@ -19,6 +19,7 @@
 3. **Automation**
    - Use `tools/Print-AgentHandoff.ps1 -ApplyToggles` to surface watcher telemetry automatically during hand-offs. It prints a concise summary and writes `tests/results/_agent/handoff/watcher-telemetry.json`.
    - Add `-AutoTrim` (or set `HANDOFF_AUTOTRIM=1`) to trim oversized watcher logs when `needsTrim=true` and cooldown permits.
+   - `tools/Write-AgentContext.ps1` and `tools/Write-SessionIndexSummary.ps1` automatically append the toggle contract (schema id, version, generated timestamp, digest, profiles) to their outputs—no manual logging needed.
 
 ## Suggested Next Actions
 1. Standardize on `tools/Print-AgentHandoff.ps1 -ApplyToggles (-AutoTrim)` in automation to surface `heartbeatFresh`, `heartbeatReason`, and `needsTrim` without extra commands.

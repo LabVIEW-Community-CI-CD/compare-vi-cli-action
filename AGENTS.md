@@ -161,6 +161,7 @@ Use `tools/workflows/update_workflows.py` for mechanical updates (comment-preser
 ## Agent toggle catalog
 
 - Toggle definitions live in `src/config/toggles.ts`; build artifacts land under `dist/src/config/`.
+- The contract types (manifest, values payload, schema identifiers) live in `src/types/agent-toggles.ts`; update the Node tests in `src/config/__tests__/toggles-contract.test.ts` whenever the schema changes so the manifest digest stays deterministic.
 - Generate machine-readable output via `node dist/src/config/toggles-cli.js`:
   - `node dist/src/config/toggles-cli.js --format values --profile ci-orchestrated --pretty`
   - `node dist/src/config/toggles-cli.js --format env --profile dev-workstation`
@@ -169,6 +170,8 @@ Use `tools/workflows/update_workflows.py` for mechanical updates (comment-preser
   per-toggle values; surface them in logs to prove configuration lineage.
 - PowerShell helpers: `Import-Module tools/AgentToggles.psm1` then call `Get-AgentToggleValue` /
   `Get-AgentToggleValues`.
+- Need the manifest metadata? Call `Get-AgentToggleContract` to retrieve the schema id, generated
+  timestamp, and canonical digest in one shot—the hand-off flow and session-index tooling depend on it.
 - Determinism guard: `Assert-AgentToggleDeterminism` throws when unexpected environment overrides
   are detected (pass `-AllowEnvironmentOverrides` only when intentionally deviating).
 - Profiles apply in order; variants can target Describe/It names or tags for fine-grained
@@ -194,6 +197,9 @@ Use `tools/workflows/update_workflows.py` for mechanical updates (comment-preser
        - `LV_CURSOR_RESTORE=1`
        - `LV_IDLE_WAIT_SECONDS=2`
        - `LV_IDLE_MAX_WAIT_SECONDS=5`
+     - `tools/Write-SessionIndexSummary.ps1` and `tools/Write-AgentContext.ps1` automatically capture the toggle
+       contract (schema id, version, generated timestamp, digest, profiles) in the step summary and agent context
+       artifacts, so you always have lineage for the active manifest.
   3. Rogue scan:
 
      ```powershell

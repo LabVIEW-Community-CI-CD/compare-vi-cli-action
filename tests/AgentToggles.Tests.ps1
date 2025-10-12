@@ -30,6 +30,19 @@ Describe 'Agent toggle manifest' -Tag 'Unit' {
     $payload.manifestDigest | Should -Match '^[a-f0-9]{64}$'
   }
 
+  It 'exposes manifest contract with matching digest' {
+    $contract = Get-AgentToggleContract
+    $contract.schema | Should -Be 'agent-toggles/v1'
+    $contract.manifestDigest | Should -Match '^[a-f0-9]{64}$'
+
+    $manifest = Get-AgentToggleManifest
+    $manifest.schema | Should -Be $contract.schema
+    $manifest.manifestDigest | Should -Be $contract.manifestDigest
+
+    $payload = Get-AgentToggleValues
+    $payload.manifestDigest | Should -Be $contract.manifestDigest
+  }
+
   It 'prefers environment overrides' {
     $previous = [Environment]::GetEnvironmentVariable('LV_SUPPRESS_UI')
     try {

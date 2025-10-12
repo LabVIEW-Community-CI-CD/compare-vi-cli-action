@@ -1,6 +1,6 @@
 import { ArgumentParser } from 'argparse';
 import { readFileSync, writeFileSync } from 'node:fs';
-import { buildToggleValuesPayload } from '../config/toggles.js';
+import { buildToggleValuesPayload, createToggleContract } from '../config/toggles.js';
 import { collectBranchState } from './branch-state.js';
 import { createSessionIndexBuilder } from './builder.js';
 import {
@@ -87,6 +87,9 @@ function formatEnvOutput(index: SessionIndexV2): string {
 
   const toggles = index.environment?.toggles;
   if (toggles) {
+    lines.push(`SESSION_INDEX_TOGGLE_SCHEMA=${toggles.schema}`);
+    lines.push(`SESSION_INDEX_TOGGLE_SCHEMA_VERSION=${toggles.schemaVersion}`);
+    lines.push(`SESSION_INDEX_TOGGLE_GENERATED_AT=${toggles.generatedAtUtc}`);
     lines.push(`SESSION_INDEX_TOGGLE_MANIFEST_DIGEST=${toggles.manifestDigest}`);
     lines.push(
       `SESSION_INDEX_TOGGLE_MANIFEST_GENERATED_AT=${toggles.manifestGeneratedAtUtc}`
@@ -102,6 +105,9 @@ function formatEnvOutput(index: SessionIndexV2): string {
 function createValuesOutput(index: SessionIndexV2): Record<string, unknown> {
   const toggleManifest = index.environment?.toggles
     ? {
+        schema: index.environment.toggles.schema,
+        schemaVersion: index.environment.toggles.schemaVersion,
+        generatedAtUtc: index.environment.toggles.generatedAtUtc,
         manifestDigest: index.environment.toggles.manifestDigest,
         manifestGeneratedAtUtc: index.environment.toggles.manifestGeneratedAtUtc,
         profiles: index.environment.toggles.profiles
@@ -301,9 +307,13 @@ try {
       : envProfiles.length > 0
       ? envProfiles
       : defaultProfiles;
-  const togglePayload = buildToggleValuesPayload({
-    profiles: toggleProfiles
-  });
+  const toggleContract = createToggleContract();
+  const togglePayload = buildToggleValuesPayload(
+    {
+      profiles: toggleProfiles
+    },
+    toggleContract
+  );
 
   const detectedBranchState =
     format === 'sample' ? undefined : collectBranchState(process.cwd());

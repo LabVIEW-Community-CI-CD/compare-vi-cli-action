@@ -392,6 +392,9 @@ function Get-PesterTelemetry {
   if ($sessionInfo.Error) { $errors += "session-index.v2.json: $($sessionInfo.Error)" }
 
   $branchSummary = $env:SESSION_INDEX_BRANCH_SUMMARY
+  $toggleSchema = $env:SESSION_INDEX_TOGGLE_SCHEMA
+  $toggleSchemaVersion = $env:SESSION_INDEX_TOGGLE_SCHEMA_VERSION
+  $toggleGeneratedAt = $env:SESSION_INDEX_TOGGLE_GENERATED_AT
   $manifestDigest = $env:SESSION_INDEX_TOGGLE_MANIFEST_DIGEST
   $profilesEnv = $env:SESSION_INDEX_TOGGLE_PROFILES
   $toggleProfiles = @()
@@ -408,6 +411,15 @@ function Get-PesterTelemetry {
     if ($sessionInfo.Data.PSObject.Properties.Name -contains 'environment') {
       $toggleNode = $sessionInfo.Data.environment.toggles
       if ($toggleNode) {
+        if (-not $toggleSchema -and $toggleNode.PSObject.Properties.Name -contains 'schema') {
+          $toggleSchema = $toggleNode.schema
+        }
+        if (-not $toggleSchemaVersion -and $toggleNode.PSObject.Properties.Name -contains 'schemaVersion') {
+          $toggleSchemaVersion = $toggleNode.schemaVersion
+        }
+        if (-not $toggleGeneratedAt -and $toggleNode.PSObject.Properties.Name -contains 'generatedAtUtc') {
+          $toggleGeneratedAt = $toggleNode.generatedAtUtc
+        }
         if (-not $manifestDigest -and $toggleNode.PSObject.Properties.Name -contains 'manifestDigest') {
           $manifestDigest = $toggleNode.manifestDigest
         }
@@ -430,6 +442,9 @@ function Get-PesterTelemetry {
     Cases              = $cases
     Errors             = $errors
     BranchSummary      = $branchSummary
+    ToggleSchema       = $toggleSchema
+    ToggleSchemaVersion = $toggleSchemaVersion
+    ToggleGeneratedAt  = $toggleGeneratedAt
     ToggleManifestDigest = $manifestDigest
     ToggleProfiles     = $toggleProfiles
   }

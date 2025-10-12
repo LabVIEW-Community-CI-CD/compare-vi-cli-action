@@ -175,6 +175,25 @@ function Write-TerminalReport {
       Write-Host "  Warning  : $msg"
     }
   }
+  $toggleSchemaLabel = $null
+  if ($pester.ToggleSchema) {
+    $toggleSchemaLabel = $pester.ToggleSchema
+    if ($pester.ToggleSchemaVersion) {
+      $toggleSchemaLabel = "$toggleSchemaLabel (v$($pester.ToggleSchemaVersion))"
+    }
+  }
+  if (-not $toggleSchemaLabel) { $toggleSchemaLabel = 'n/a' }
+  $toggleManifest = if ($pester.ToggleManifestDigest) { $pester.ToggleManifestDigest } else { 'n/a' }
+  $toggleGenerated = if ($pester.ToggleGeneratedAt) { $pester.ToggleGeneratedAt } else { 'n/a' }
+  $toggleProfiles = if ($pester.ToggleProfiles -and $pester.ToggleProfiles.Count -gt 0) {
+    [string]::Join(', ', $pester.ToggleProfiles)
+  } else {
+    '(none)'
+  }
+  Write-Host "  Toggle schema    : $toggleSchemaLabel"
+  Write-Host "  Toggle manifest  : $toggleManifest"
+  Write-Host "  Toggle generated : $toggleGenerated"
+  Write-Host "  Toggle profiles  : $toggleProfiles"
   $failedTests = @($pester.FailedTests)
   if ($failedTests.Length -gt 0) {
     Write-Host "  FailedTests:"
@@ -389,6 +408,22 @@ function ConvertTo-HtmlReport {
     if ($props -contains 'timestamp') { $watchUpdatedValue = $watch.Last.timestamp }
   }
 
+  $toggleSchemaDisplay = $null
+  if ($pester.ToggleSchema) {
+    $toggleSchemaDisplay = $pester.ToggleSchema
+    if ($pester.ToggleSchemaVersion) {
+      $toggleSchemaDisplay = "$toggleSchemaDisplay (v$($pester.ToggleSchemaVersion))"
+    }
+  }
+  if (-not $toggleSchemaDisplay) { $toggleSchemaDisplay = 'n/a' }
+  $toggleManifestDisplay = if ($pester.ToggleManifestDigest) { $pester.ToggleManifestDigest } else { 'n/a' }
+  $toggleGeneratedDisplay = if ($pester.ToggleGeneratedAt) { $pester.ToggleGeneratedAt } else { 'n/a' }
+  $toggleProfilesDisplay = if ($pester.ToggleProfiles -and $pester.ToggleProfiles.Count -gt 0) {
+    [string]::Join(', ', $pester.ToggleProfiles)
+  } else {
+    '(none)'
+  }
+
   $actionItemsHtml = if ($items.Count -gt 0) {
     $rows = foreach ($item in $items) {
       $severity = if ($item.Severity) { $item.Severity.ToLowerInvariant() } else { 'info' }
@@ -453,6 +488,10 @@ function ConvertTo-HtmlReport {
       <dt>Passed</dt><dd>$(& $encode $pester.Totals.Passed)</dd>
       <dt>Failed</dt><dd>$(& $encode $pester.Totals.Failed)</dd>
       <dt>Errors</dt><dd>$(& $encode $pester.Totals.Errors)</dd>
+      <dt>Toggle Schema</dt><dd>$(& $encode $toggleSchemaDisplay)</dd>
+      <dt>Toggle Manifest</dt><dd>$(& $encode $toggleManifestDisplay)</dd>
+      <dt>Toggle Generated</dt><dd>$(& $encode $toggleGeneratedDisplay)</dd>
+      <dt>Toggle Profiles</dt><dd>$(& $encode $toggleProfilesDisplay)</dd>
     </dl>
     <h3>Failed Tests</h3>
     $failedTestsHtml

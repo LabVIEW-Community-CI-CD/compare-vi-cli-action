@@ -130,6 +130,9 @@ describe('SessionIndexBuilder', () => {
     const index = builder.build();
 
     const toggles = select(index.environment?.toggles);
+    assert.equal(toggles.schema, 'agent-toggle-values/v1');
+    assert.equal(toggles.schemaVersion, '1.0.0');
+    assert.equal(toggles.generatedAtUtc, '2025-01-01T00:00:00Z');
     assert.deepStrictEqual(toggles.profiles, ['ci-orchestrated', 'dev-workstation']);
     assert.deepStrictEqual(toggles.context?.tags, ['alpha', 'zeta']);
     assert.deepStrictEqual(Object.keys(toggles.values), ['A_TOGGLE', 'Z_TOGGLE']);

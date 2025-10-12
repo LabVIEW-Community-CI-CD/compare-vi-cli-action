@@ -244,7 +244,7 @@ function Invoke-CompareVI {
     } catch {}
 
     # Validate LVCompare args early to prevent UI popups and provide clear errors
-    $allowedFlags = @('-lvpath','-noattr','-nofp','-nofppos','-nobd','-nobdcosm')
+    $allowedFlags = @('-lvpath','-noattr','-nofp','-nofppos','-nobd','-nobdcosm','-nobdpos')
     $argsArr = @($cliArgs)
     if ($argsArr -and $argsArr.Count -gt 0) {
       for ($i = 0; $i -lt $argsArr.Count; $i++) {
@@ -469,5 +469,4 @@ function Invoke-CompareVI {
 }
 
 Export-ModuleMember -Function Invoke-CompareVI
-
 

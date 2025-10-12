@@ -24,6 +24,70 @@ function Format-BoolLabel {
   return 'unknown'
 }
 
+function Get-AgentTogglesModulePath {
+  $repoRoot = (Resolve-Path '.').Path
+  return Join-Path $repoRoot 'tools' 'AgentToggles.psm1'
+}
+
+function Get-ActiveToggleProfiles {
+  $profilesEnv = $env:AGENT_TOGGLE_PROFILES
+  if (-not $profilesEnv) {
+    return @()
+  }
+  return @($profilesEnv -split '[,;\s]' | Where-Object { $_ -and $_.Trim().Length -gt 0 })
+}
+
+function Write-ToggleContractSummary {
+  param(
+    [string[]]$Profiles
+  )
+
+  $modulePath = Get-AgentTogglesModulePath
+  if (-not (Test-Path -LiteralPath $modulePath -PathType Leaf)) {
+    Write-Warning "AgentToggles module not found at: $modulePath"
+    return
+  }
+
+  try {
+    Import-Module $modulePath -Force -ErrorAction Stop
+    $contract = Get-AgentToggleContract
+    $values = Get-AgentToggleValues -Profiles $Profiles
+  } catch {
+    Write-Warning ("Unable to resolve toggle contract: {0}" -f $_.Exception.Message)
+    return
+  }
+
+  $profilesText = if ($values.profiles -and $values.profiles.Count -gt 0) {
+    $values.profiles -join ', '
+  } elseif ($Profiles -and $Profiles.Count -gt 0) {
+    $Profiles -join ', '
+  } else {
+    '(none)'
+  }
+  $manifestDigest = $contract.manifestDigest
+  $schemaId = $contract.schema
+  $schemaVersion = $contract.schemaVersion
+  $generatedAtUtc = $contract.generatedAtUtc
+
+  Write-Host ''
+  Write-Host '[Toggle Contract]' -ForegroundColor Cyan
+  Write-Host ("  schema        : {0}" -f $schemaId)
+  Write-Host ("  schemaVersion : {0}" -f $schemaVersion)
+  Write-Host ("  generatedAt   : {0}" -f $generatedAtUtc)
+  Write-Host ("  manifestDigest: {0}" -f $manifestDigest)
+  Write-Host ("  profiles      : {0}" -f $profilesText)
+
+  if ($env:GITHUB_STEP_SUMMARY) {
+    $lines = @()
+    $lines += '### Handoff - Toggle Contract'
+    $lines += "- Schema: $schemaId (v$schemaVersion)"
+    $lines += "- Generated At (UTC): $generatedAtUtc"
+    $lines += "- Manifest Digest: $manifestDigest"
+    $lines += "- Profiles: $profilesText"
+    ($lines -join "`n") | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8
+  }
+}
+
 function Write-WatcherStatusSummary {
   param(
     [string]$ResultsRoot,
@@ -261,6 +325,7 @@ if ($ApplyToggles) {
 }
 
 Get-Content -LiteralPath $handoff
+Write-ToggleContractSummary -Profiles (Get-ActiveToggleProfiles)
 Write-WatcherStatusSummary -ResultsRoot $ResultsRoot -RequestAutoTrim:$AutoTrim
 
 if ($OpenDashboard) {
