@@ -103,7 +103,7 @@ function Write-JsonFile {
     if ($dir -and -not (Test-Path $dir)) { New-Item -Type Directory -Path $dir | Out-Null }
     $Object | ConvertTo-Json -Depth 6 | Out-File -FilePath $Path -Encoding utf8
   } catch {
-    Write-Warning "Prime-LVCompare: failed to write $Path: $($_.Exception.Message)"
+    Write-Warning ("Prime-LVCompare: failed to write {0}: {1}" -f $Path,$_.Exception.Message)
   }
 }
 
