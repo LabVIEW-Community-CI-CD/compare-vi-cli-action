@@ -163,6 +163,24 @@ Set-Content -LiteralPath $stdoutPath -Value $stdout -Encoding utf8
 Set-Content -LiteralPath $stderrPath -Value $stderr -Encoding utf8
 Set-Content -LiteralPath $exitPath   -Value ($exitCode.ToString()) -Encoding utf8
 
+$flagsOnly = @()
+$lvPathValue = $null
+for ($i = 0; $i -lt $argsList.Count; $i++) {
+  $token = $argsList[$i]
+  if ($token -ieq '-lvpath' -and ($i + 1) -lt $argsList.Count) {
+    $lvPathValue = $argsList[$i + 1]
+    $i++
+    continue
+  }
+  $flagsOnly += $token
+}
+
+$diffDetected = switch ($exitCode) {
+  1 { $true }
+  0 { $false }
+  default { $null }
+}
+
 $capture = [pscustomobject]@{
 	schema    = 'lvcompare-capture-v1'
 	timestamp = ([DateTime]::UtcNow.ToString('o'))
@@ -170,11 +188,14 @@ $capture = [pscustomobject]@{
 	head      = $headPath
 	cliPath   = $cliPath
 	args      = @($argsList)
+	lvPath    = $lvPathValue
+	flags     = @($flagsOnly)
 	exitCode  = $exitCode
 	seconds   = [Math]::Round($sw.Elapsed.TotalSeconds, 6)
 	stdoutLen = $stdout.Length
 	stderrLen = $stderr.Length
 	command   = $commandDisplay
+	diffDetected = $diffDetected
 	stdout    = $null
 	stderr    = $null
 }

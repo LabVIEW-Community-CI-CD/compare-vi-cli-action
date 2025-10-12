@@ -30,6 +30,18 @@
             "type": "string"
           }
         },
+        "lvPath": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "flags": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
         "exitCode": {
           "type": "number"
         },
@@ -55,6 +67,12 @@
         "stderr": {
           "type": [
             "string",
+            "null"
+          ]
+        },
+        "diffDetected": {
+          "type": [
+            "boolean",
             "null"
           ]
         }
