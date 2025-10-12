@@ -91,7 +91,8 @@ if (-not $policy.issues -or ($Issue -notin $policy.issues)) {
 $repoSlug = Get-RepoSlug -RepoParam $Repo
 $detectedRef = $null
 try { $detectedRef = (& git rev-parse --abbrev-ref HEAD 2>$null).Trim() } catch {}
-if ($Ref -eq '${branch}' -or $Ref -eq 'current') { if ($detectedRef) { $Ref = $detectedRef } }
+if ($Ref -eq '__CURRENT_BRANCH__') { if ($detectedRef) { $Ref = $detectedRef } else { throw 'Unable to resolve current branch name for -Ref.' } }
+$Ref = $Ref.Trim()
 $useGh = $false
 if (Get-Command gh -ErrorAction SilentlyContinue) { $useGh = $true }
 $tok = if ($Token) { $Token } elseif ($env:GH_TOKEN) { $env:GH_TOKEN } elseif ($env:GITHUB_TOKEN) { $env:GITHUB_TOKEN } else { $null }

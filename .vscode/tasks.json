@@ -17,7 +17,7 @@
         "-IncludeIntegration",
         "${input:integrationInclude}",
         "-Ref",
-        "${input:integrationRef:resolved}",
+        "${input:integrationRef}",
         "-Watch"
       ],
       "options": { "cwd": "${workspaceFolder}" },
@@ -1569,23 +1569,9 @@
       "description": "Target ref for dispatch",
       "options": [
         { "label": "develop", "value": "develop" },
-        { "label": "current branch", "value": "${branch}" }
+        { "label": "current branch", "value": "__CURRENT_BRANCH__" }
       ],
       "default": "develop"
-    },
-    {
-      "id": "integrationRef:resolved",
-      "type": "command",
-      "command": "python",
-      "args": [
-        "-c",
-        "import subprocess, sys; choice=sys.argv[1];\nif choice=='develop':\n    sys.stdout.write('develop')\nelif choice=='${branch}':\n    result=subprocess.run(['git','rev-parse','--abbrev-ref','HEAD'],cwd='${workspaceFolder}',stdout=subprocess.PIPE,stderr=subprocess.PIPE,text=True,check=True);\n    sys.stdout.write(result.stdout.strip())\nelse:\n    sys.stdout.write(choice)",
-        "${input:integrationRef}"
-      ],
-      "presentation": {
-        "reveal": "never"
-      },
-      "problemMatcher": []
     },
     {
       "id": "watchRunId",
