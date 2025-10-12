@@ -391,6 +391,33 @@ function Get-PesterTelemetry {
   if ($dispatcherInfo.Error) { $errors += "pester-dispatcher.log: $($dispatcherInfo.Error)" }
   if ($sessionInfo.Error) { $errors += "session-index.v2.json: $($sessionInfo.Error)" }
 
+  $branchSummary = $env:SESSION_INDEX_BRANCH_SUMMARY
+  $manifestDigest = $env:SESSION_INDEX_TOGGLE_MANIFEST_DIGEST
+  $profilesEnv = $env:SESSION_INDEX_TOGGLE_PROFILES
+  $toggleProfiles = @()
+  if ($profilesEnv) {
+    $toggleProfiles = @($profilesEnv -split '[,;\s]' | Where-Object { $_ })
+  }
+  if ($sessionInfo.Data) {
+    if (-not $branchSummary -and $sessionInfo.Data.PSObject.Properties.Name -contains 'run') {
+      $runNode = $sessionInfo.Data.run
+      if ($runNode -and $runNode.PSObject.Properties.Name -contains 'branchState') {
+        $branchSummary = $runNode.branchState.summary
+      }
+    }
+    if ($sessionInfo.Data.PSObject.Properties.Name -contains 'environment') {
+      $toggleNode = $sessionInfo.Data.environment.toggles
+      if ($toggleNode) {
+        if (-not $manifestDigest -and $toggleNode.PSObject.Properties.Name -contains 'manifestDigest') {
+          $manifestDigest = $toggleNode.manifestDigest
+        }
+        if ($toggleProfiles.Count -eq 0 -and $toggleNode.PSObject.Properties.Name -contains 'profiles') {
+          $toggleProfiles = @($toggleNode.profiles | Where-Object { $_ })
+        }
+      }
+    }
+  }
+
   return [pscustomobject][ordered]@{
     SummaryPath        = $summaryInfo.Path
     ResultsPath        = Resolve-PathSafe -Path $resultsPath
@@ -402,6 +429,9 @@ function Get-PesterTelemetry {
     DispatcherWarnings = $dispatcherWarnings
     Cases              = $cases
     Errors             = $errors
+    BranchSummary      = $branchSummary
+    ToggleManifestDigest = $manifestDigest
+    ToggleProfiles     = $toggleProfiles
   }
 }
 

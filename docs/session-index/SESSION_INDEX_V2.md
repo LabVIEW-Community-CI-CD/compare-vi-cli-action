@@ -37,6 +37,17 @@
       "kind": "pull_request",
       "number": 119,
       "author": "svelderrainruiz"
+    },
+    "branchState": {
+      "branch": "develop",
+      "upstream": "origin/develop",
+      "summary": "Branch develop: up-to-date with origin/develop; dirty (includes untracked files)",
+      "ahead": 0,
+      "behind": 0,
+      "hasUpstream": true,
+      "isClean": false,
+      "hasUntracked": true,
+      "timestampUtc": "2025-10-11T18:52:20Z"
     }
   },
   "environment": {
@@ -132,6 +143,8 @@
 Key differences from v1:
 
 * `run` replaces the bare `runContext` block, with explicit trigger metadata.
+* `run.branchState` captures the branch/upstream relationship (ahead/behind, cleanliness, summary)
+  so CLI consumers can surface deterministic branch status without re-running git.
 * `tests.cases` stores per-test metadata that we can hydrate via pre/post
   callbacks inside the Pester harness.
 * `branchProtection` contains canonical contexts (`expected`), the contexts the
@@ -167,6 +180,15 @@ Key differences from v1:
 5. **Deprecate v1**  
    * Once all jobs and dashboards read v2, freeze v1 generation and archive the
      old schema documentation.
+
+## CLI helpers
+
+- `node dist/src/session-index/cli.js --format json` writes the full session index (default).
+- `--format values` emits a trimmed summary with branch state and toggle manifest metadata.
+- `--format env` prints `SESSION_INDEX_*` environment assignments suitable for `pwsh`/`bash` export.
+- `--format sample` mirrors the legacy `--sample` flag while exercising the same code paths.
+- Pass `--no-check` to bypass the ADR requirements validation when intentionally experimenting;
+  otherwise the CLI fails on any `error` severity violation before writing output.
 
 ## Open questions
 

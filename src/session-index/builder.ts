@@ -1,6 +1,7 @@
 import { sessionIndexSchema } from './schema.js';
 import type {
   SessionIndexArtifact,
+  SessionIndexBranchState,
   SessionIndexBranchProtection,
   SessionIndexEnvironment,
   SessionIndexRun,
@@ -86,7 +87,21 @@ function normalizeTestCases(
   if (!cases || cases.length === 0) {
     return undefined;
   }
-  const cloned = cases.map((testCase) => ({ ...testCase }));
+  const cloned = cases.map((testCase) => {
+    const normalized: SessionIndexTestCase = { ...testCase };
+    if (normalized.id !== undefined) {
+      normalized.id = String(normalized.id);
+    }
+    const requirementValue = normalized.requirement;
+    if (requirementValue === undefined || requirementValue === null || String(requirementValue).trim().length === 0) {
+      if (normalized.id && normalized.id.trim().length > 0) {
+        normalized.requirement = normalized.id;
+      }
+    } else {
+      normalized.requirement = String(requirementValue);
+    }
+    return normalized;
+  });
   cloned.sort((a, b) => a.id.localeCompare(b.id));
   return cloned;
 }
@@ -103,6 +118,76 @@ function normalizeTests(tests: SessionIndexTests | undefined): SessionIndexTests
 
 function normalizeNotes(notes: string[] | undefined): string[] | undefined {
   return sortUnique(notes);
+}
+
+function normalizeBranchState(
+  state: SessionIndexBranchState | undefined
+): SessionIndexBranchState | undefined {
+  if (!state) {
+    return undefined;
+  }
+
+  const trim = (value: string | undefined): string | undefined => {
+    if (typeof value !== 'string') {
+      return undefined;
+    }
+    const trimmed = value.trim();
+    return trimmed.length > 0 ? trimmed : undefined;
+  };
+
+  const summary = trim(state.summary);
+  const timestamp = trim(state.timestampUtc);
+  if (!summary || !timestamp) {
+    return undefined;
+  }
+
+  const normalizeNumber = (value: number | undefined): number | undefined =>
+    typeof value === 'number' && Number.isFinite(value) ? value : undefined;
+
+  const normalizeBoolean = (value: boolean | undefined): boolean | undefined =>
+    typeof value === 'boolean' ? value : undefined;
+
+  const normalized: SessionIndexBranchState = {
+    summary,
+    timestampUtc: timestamp
+  };
+
+  const optionalBranch = trim(state.branch);
+  if (optionalBranch) {
+    normalized.branch = optionalBranch;
+  }
+
+  const optionalUpstream = trim(state.upstream);
+  if (optionalUpstream) {
+    normalized.upstream = optionalUpstream;
+  }
+
+  const ahead = normalizeNumber(state.ahead);
+  if (ahead !== undefined) {
+    normalized.ahead = ahead;
+  }
+
+  const behind = normalizeNumber(state.behind);
+  if (behind !== undefined) {
+    normalized.behind = behind;
+  }
+
+  const hasUpstream = normalizeBoolean(state.hasUpstream);
+  if (hasUpstream !== undefined) {
+    normalized.hasUpstream = hasUpstream;
+  }
+
+  const isClean = normalizeBoolean(state.isClean);
+  if (isClean !== undefined) {
+    normalized.isClean = isClean;
+  }
+
+  const hasUntracked = normalizeBoolean(state.hasUntracked);
+  if (hasUntracked !== undefined) {
+    normalized.hasUntracked = hasUntracked;
+  }
+
+  return normalized;
 }
 
 function normalizeStringRecord(
@@ -157,7 +242,17 @@ export class SessionIndexBuilder {
   }
 
   public setRun(run: SessionIndexRun): this {
-    this.index.run = { ...this.index.run, ...run };
+    const next: SessionIndexRun = { ...this.index.run, ...run };
+    next.branchState = normalizeBranchState(run.branchState ?? this.index.run.branchState);
+    this.index.run = next;
+    return this;
+  }
+
+  public setBranchState(state: SessionIndexBranchState | undefined): this {
+    this.index.run = {
+      ...this.index.run,
+      branchState: normalizeBranchState(state)
+    };
     return this;
   }
 
@@ -255,6 +350,10 @@ export class SessionIndexBuilder {
   public toJSON(): SessionIndexV2 {
     return {
       ...this.index,
+      run: {
+        ...this.index.run,
+        branchState: normalizeBranchState(this.index.run.branchState)
+      },
       artifacts: normalizeArtifacts(this.index.artifacts),
       branchProtection: this.index.branchProtection
         ? normalizeBranchProtection(this.index.branchProtection)
@@ -277,6 +376,7 @@ export class SessionIndexBuilder {
   public build(): SessionIndexV2 {
     const normalized = this.toJSON();
     Object.assign(this.index, normalized);
+    this.index.run = normalized.run;
     this.index.artifacts = normalized.artifacts;
     this.index.branchProtection = normalized.branchProtection;
     this.index.environment = normalized.environment;

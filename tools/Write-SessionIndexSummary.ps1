@@ -19,6 +19,12 @@ if (-not (Test-Path -LiteralPath $path)) {
 try { $j = Get-Content -LiteralPath $path -Raw | ConvertFrom-Json -ErrorAction Stop } catch { $j = $null }
 
 $lines = @('### Session','')
+$branchSummaryEnv = $env:SESSION_INDEX_BRANCH_SUMMARY
+$manifestDigestEnv = $env:SESSION_INDEX_TOGGLE_MANIFEST_DIGEST
+$profilesEnv = $env:SESSION_INDEX_TOGGLE_PROFILES
+if ($branchSummaryEnv) { $lines += ("- Branch: {0}" -f $branchSummaryEnv) }
+if ($manifestDigestEnv) { $lines += ("- Toggle manifest digest: {0}" -f $manifestDigestEnv) }
+if ($profilesEnv) { $lines += ("- Toggle profiles: {0}" -f $profilesEnv) }
 if ($j) {
   function Add-LineIfPresent {
     param(
@@ -46,4 +52,3 @@ if ($j) {
 }
 
 $lines -join "`n" | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8
-

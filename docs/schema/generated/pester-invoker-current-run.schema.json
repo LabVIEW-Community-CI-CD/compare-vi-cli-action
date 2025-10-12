@@ -1,0 +1,31 @@
+{
+  "$ref": "#/definitions/pester-invoker-current-run",
+  "definitions": {
+    "pester-invoker-current-run": {
+      "type": "object",
+      "properties": {
+        "schema": {
+          "type": "string",
+          "const": "pester-invoker-current-run/v1"
+        },
+        "runId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "startedAt": {
+          "type": "string",
+          "minLength": 1
+        }
+      },
+      "required": [
+        "schema",
+        "runId",
+        "startedAt"
+      ],
+      "additionalProperties": false
+    }
+  },
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "description": "Metadata describing the active RunnerInvoker execution context.",
+  "$id": "urn:compare-vi-cli-action:schema:pester-invoker-current-run"
+}

@@ -6,7 +6,18 @@
     "workflow": "Sample",
     "job": "pester",
     "branch": "feature/sample",
-    "commit": "0123456789abcdef0123456789abcdef01234567"
+    "commit": "0123456789abcdef0123456789abcdef01234567",
+    "branchState": {
+      "branch": "feature/sample",
+      "upstream": "origin/develop",
+      "summary": "Branch feature/sample: ahead 1 of origin/develop; dirty (includes untracked files)",
+      "ahead": 1,
+      "behind": 0,
+      "hasUpstream": true,
+      "isClean": false,
+      "hasUntracked": true,
+      "timestampUtc": "2025-10-09T00:00:00Z"
+    }
   },
   "environment": {
     "runner": "ubuntu-24.04",

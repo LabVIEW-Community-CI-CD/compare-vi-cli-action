@@ -227,17 +227,21 @@
                   },
                   "snippet": {
                     "type": "string"
+                  },
+                  "file": {
+                    "type": "string"
+                  },
+                  "reason": {
+                    "type": "string"
                   }
                 },
                 "required": [
                   "index",
-                  "snippet"
+                  "snippet",
+                  "file"
                 ],
                 "additionalProperties": false
               }
-            },
-            "truncated": {
-              "type": "boolean"
             }
           },
           "required": [
@@ -248,7 +252,29 @@
           ],
           "additionalProperties": false
         },
-        "outcome": {
+        "manifest": {
+          "type": "object",
+          "properties": {
+            "discovered": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "selected": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            }
+          },
+          "required": [
+            "discovered",
+            "selected"
+          ],
+          "additionalProperties": false
+        },
+        "summary": {
           "type": "object",
           "properties": {
             "overallStatus": {

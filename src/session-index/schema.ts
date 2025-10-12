@@ -1,5 +1,19 @@
 import { z } from 'zod';
 
+export const branchStateSchema = z
+  .object({
+    branch: z.string().optional(),
+    upstream: z.string().optional(),
+    summary: z.string(),
+    ahead: z.number().int().nonnegative().optional(),
+    behind: z.number().int().nonnegative().optional(),
+    hasUpstream: z.boolean().optional(),
+    isClean: z.boolean().optional(),
+    hasUntracked: z.boolean().optional(),
+    timestampUtc: z.string()
+  })
+  .strict();
+
 export const triggerSchema = z
   .object({
     kind: z.string().optional(),
@@ -19,7 +33,8 @@ export const runSchema = z
     branch: z.string().optional(),
     commit: z.string().optional(),
     repository: z.string().optional(),
-    trigger: triggerSchema.optional()
+    trigger: triggerSchema.optional(),
+    branchState: branchStateSchema.optional()
   })
   .strict();
 
@@ -171,6 +186,7 @@ export const sessionIndexSchema = z
 
 export type SessionIndexTrigger = z.infer<typeof triggerSchema>;
 export type SessionIndexRun = z.infer<typeof runSchema>;
+export type SessionIndexBranchState = z.infer<typeof branchStateSchema>;
 export type SessionIndexToggleValueEntry = z.infer<typeof toggleValueEntrySchema>;
 export type SessionIndexToggleContext = z.infer<typeof toggleContextSchema>;
 export type SessionIndexToggleValues = z.infer<typeof toggleValuesSchema>;

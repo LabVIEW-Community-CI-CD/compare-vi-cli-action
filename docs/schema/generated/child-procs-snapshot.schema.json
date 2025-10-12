@@ -1,0 +1,96 @@
+{
+  "$ref": "#/definitions/child-procs-snapshot",
+  "definitions": {
+    "child-procs-snapshot": {
+      "type": "object",
+      "properties": {
+        "schema": {
+          "type": "string",
+          "const": "child-procs-snapshot/v1"
+        },
+        "at": {
+          "type": "string",
+          "minLength": 1
+        },
+        "groups": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "object",
+            "properties": {
+              "count": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "memory": {
+                "type": "object",
+                "properties": {
+                  "ws": {
+                    "$ref": "#/definitions/child-procs-snapshot/properties/groups/additionalProperties/properties/count"
+                  },
+                  "pm": {
+                    "$ref": "#/definitions/child-procs-snapshot/properties/groups/additionalProperties/properties/count"
+                  }
+                },
+                "required": [
+                  "ws",
+                  "pm"
+                ],
+                "additionalProperties": false
+              },
+              "items": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "pid": {
+                      "$ref": "#/definitions/child-procs-snapshot/properties/groups/additionalProperties/properties/count"
+                    },
+                    "ws": {
+                      "$ref": "#/definitions/child-procs-snapshot/properties/groups/additionalProperties/properties/count"
+                    },
+                    "pm": {
+                      "$ref": "#/definitions/child-procs-snapshot/properties/groups/additionalProperties/properties/count"
+                    },
+                    "title": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "cmd": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "pid",
+                    "ws",
+                    "pm"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            },
+            "required": [
+              "count",
+              "memory",
+              "items"
+            ],
+            "additionalProperties": false
+          }
+        }
+      },
+      "required": [
+        "schema",
+        "at",
+        "groups"
+      ],
+      "additionalProperties": false
+    }
+  },
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "description": "Snapshot of target processes and memory usage.",
+  "$id": "urn:compare-vi-cli-action:schema:child-procs-snapshot"
+}

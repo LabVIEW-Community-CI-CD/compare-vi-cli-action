@@ -61,7 +61,22 @@ function normalizeTestCases(cases) {
     if (!cases || cases.length === 0) {
         return undefined;
     }
-    const cloned = cases.map((testCase) => ({ ...testCase }));
+    const cloned = cases.map((testCase) => {
+        const normalized = { ...testCase };
+        if (normalized.id !== undefined) {
+            normalized.id = String(normalized.id);
+        }
+        const requirementValue = normalized.requirement;
+        if (requirementValue === undefined || requirementValue === null || String(requirementValue).trim().length === 0) {
+            if (normalized.id && normalized.id.trim().length > 0) {
+                normalized.requirement = normalized.id;
+            }
+        }
+        else {
+            normalized.requirement = String(requirementValue);
+        }
+        return normalized;
+    });
     cloned.sort((a, b) => a.id.localeCompare(b.id));
     return cloned;
 }
@@ -76,6 +91,58 @@ function normalizeTests(tests) {
 }
 function normalizeNotes(notes) {
     return sortUnique(notes);
+}
+function normalizeBranchState(state) {
+    if (!state) {
+        return undefined;
+    }
+    const trim = (value) => {
+        if (typeof value !== 'string') {
+            return undefined;
+        }
+        const trimmed = value.trim();
+        return trimmed.length > 0 ? trimmed : undefined;
+    };
+    const summary = trim(state.summary);
+    const timestamp = trim(state.timestampUtc);
+    if (!summary || !timestamp) {
+        return undefined;
+    }
+    const normalizeNumber = (value) => typeof value === 'number' && Number.isFinite(value) ? value : undefined;
+    const normalizeBoolean = (value) => typeof value === 'boolean' ? value : undefined;
+    const normalized = {
+        summary,
+        timestampUtc: timestamp
+    };
+    const optionalBranch = trim(state.branch);
+    if (optionalBranch) {
+        normalized.branch = optionalBranch;
+    }
+    const optionalUpstream = trim(state.upstream);
+    if (optionalUpstream) {
+        normalized.upstream = optionalUpstream;
+    }
+    const ahead = normalizeNumber(state.ahead);
+    if (ahead !== undefined) {
+        normalized.ahead = ahead;
+    }
+    const behind = normalizeNumber(state.behind);
+    if (behind !== undefined) {
+        normalized.behind = behind;
+    }
+    const hasUpstream = normalizeBoolean(state.hasUpstream);
+    if (hasUpstream !== undefined) {
+        normalized.hasUpstream = hasUpstream;
+    }
+    const isClean = normalizeBoolean(state.isClean);
+    if (isClean !== undefined) {
+        normalized.isClean = isClean;
+    }
+    const hasUntracked = normalizeBoolean(state.hasUntracked);
+    if (hasUntracked !== undefined) {
+        normalized.hasUntracked = hasUntracked;
+    }
+    return normalized;
 }
 function normalizeStringRecord(record) {
     if (!record) {
@@ -118,7 +185,16 @@ export class SessionIndexBuilder {
         return this;
     }
     setRun(run) {
-        this.index.run = { ...this.index.run, ...run };
+        const next = { ...this.index.run, ...run };
+        next.branchState = normalizeBranchState(run.branchState ?? this.index.run.branchState);
+        this.index.run = next;
+        return this;
+    }
+    setBranchState(state) {
+        this.index.run = {
+            ...this.index.run,
+            branchState: normalizeBranchState(state)
+        };
         return this;
     }
     setEnvironment(env) {
@@ -203,6 +279,10 @@ export class SessionIndexBuilder {
     toJSON() {
         return {
             ...this.index,
+            run: {
+                ...this.index.run,
+                branchState: normalizeBranchState(this.index.run.branchState)
+            },
             artifacts: normalizeArtifacts(this.index.artifacts),
             branchProtection: this.index.branchProtection
                 ? normalizeBranchProtection(this.index.branchProtection)
@@ -224,6 +304,7 @@ export class SessionIndexBuilder {
     build() {
         const normalized = this.toJSON();
         Object.assign(this.index, normalized);
+        this.index.run = normalized.run;
         this.index.artifacts = normalized.artifacts;
         this.index.branchProtection = normalized.branchProtection;
         this.index.environment = normalized.environment;

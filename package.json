@@ -9,7 +9,7 @@
     "derive:env": "node dist/src/env/derive-env.js --json",
     "schema:watcher:validate": "ajv validate -s docs/schema/watcher-telemetry.v1.schema.json -d tests/results/_agent/handoff/watcher-telemetry.json --spec=draft2020 -c ajv-formats",
     "generate:outputs": "node dist/generate-action-outputs.js",
-    "schemas:generate": "tsc -p tsconfig.json && node dist/schemas/generate-schemas.js",
+    "schemas:generate": "tsc -p tsconfig.json && node dist/tools/schemas/generate-schemas.js",
     "tests:discover": "tsc -p tsconfig.json && node dist/test-discovery.js --tests tests --out tests/results/_agent/test-manifest.json",
     "lint:md": "pwsh -NoLogo -NoProfile -File tools/Lint-Markdown.ps1 -All",
     "lint:md:changed": "pwsh -NoLogo -NoProfile -File tools/Lint-Markdown.ps1",
@@ -28,6 +28,7 @@
     "ci:watch": "pwsh -NoLogo -NoProfile -File tools/Follow-OrchestratedRun.ps1 -Watch",
     "session-index:sample": "tsc -p tsconfig.json && node dist/src/session-index/cli.js --sample",
     "session-index:check": "tsc -p tsconfig.json && node dist/src/session-index/check.js --file tests/results/session-index.v2.json",
+    "test:session-index": "tsc -p tsconfig.json && node --test \"./dist/src/session-index/__tests__/**/*.js\"",
     "toggles:values": "tsc -p tsconfig.json && node dist/src/config/toggles-cli.js --format values --pretty"
   },
   "devDependencies": {

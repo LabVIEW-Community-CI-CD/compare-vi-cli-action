@@ -60,6 +60,7 @@ foreach ($node in $caseNodes) {
     category = $category
     outcome = $outcome
     durationMs = [Math]::Round($durationSeconds * 1000, 2)
+    requirement = if ($name) { [string]$name } else { 'auto-generated-requirement' }
   }
 }
 
