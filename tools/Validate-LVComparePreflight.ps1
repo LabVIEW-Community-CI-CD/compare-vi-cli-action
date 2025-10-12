@@ -55,6 +55,16 @@ if (-not $IsWindows) {
   $ok = $false
 } else {
   $canonical = Resolve-LVComparePath
+  # Allow x64 override when explicitly requested
+  $onlyX64 = $false
+  if ($env:LVCI_ONLY_X64) { try { $onlyX64 = ($env:LVCI_ONLY_X64.Trim() -match '^(?i:1|true|yes|on)$') } catch { $onlyX64 = $false } }
+  if ($env:LVCOMPARE_PATH -and (Test-Path -LiteralPath $env:LVCOMPARE_PATH -PathType Leaf)) {
+    try { $ovrPath = (Resolve-Path -LiteralPath $env:LVCOMPARE_PATH -ErrorAction Stop).Path } catch { $ovrPath = $env:LVCOMPARE_PATH }
+    if ($onlyX64 -and $ovrPath) {
+      try { $ovrBits = Get-ExeBitness -Path $ovrPath } catch { $ovrBits = $null }
+      if ($ovrBits -eq 'x64' -and $ovrPath -ne $canonical) { $canonical = $ovrPath }
+    }
+  }
   if (-not $canonical) {
     $errors += 'LVCompare.exe not found at canonical path under Program Files.'
     $ok = $false
@@ -123,9 +133,20 @@ if (-not $IsWindows) {
     if ($env:LVCOMPARE_PATH -and (Resolve-Path -LiteralPath $env:LVCOMPARE_PATH -ErrorAction SilentlyContinue)) {
       $ovr = (Resolve-Path -LiteralPath $env:LVCOMPARE_PATH).Path
       if ($ovr -ne $canonical) {
-        $errors += ('Non-canonical LVCompare override in LVCOMPARE_PATH: {0}' -f $ovr)
-        $errors += ('Expected canonical: {0}' -f $canonical)
-        $ok = $false
+        if ($onlyX64) {
+          try { $ovrBits2 = Get-ExeBitness -Path $ovr } catch { $ovrBits2 = $null }
+          if ($ovrBits2 -eq 'x64' -and $bits -eq 'x64') {
+            $notes += ('LVCompare override accepted (x64): {0}' -f $ovr)
+          } else {
+            $errors += ('LVCompare override rejected (bitness mismatch): {0}' -f $ovr)
+            $errors += ('Expected x64 canonical: {0}' -f $canonical)
+            $ok = $false
+          }
+        } else {
+          $errors += ('Non-canonical LVCompare override in LVCOMPARE_PATH: {0}' -f $ovr)
+          $errors += ('Expected canonical: {0}' -f $canonical)
+          $ok = $false
+        }
       }
     }
   }
