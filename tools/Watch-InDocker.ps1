@@ -60,13 +60,13 @@ $restoreGt = $env:GITHUB_TOKEN
 try {
   function Resolve-TokenValue {
     param([string]$Explicit,[string]$EnvGh,[string]$EnvGithub,[string]$FilePath = 'C:\github_token.txt')
-    if ($Explicit) { return $Explicit }
-    if ($EnvGh) { return $EnvGh }
-    if ($EnvGithub) { return $EnvGithub }
+    if ($Explicit) { return [pscustomobject]@{ Value = $Explicit; Source = 'param' } }
+    if ($EnvGh) { return [pscustomobject]@{ Value = $EnvGh; Source = 'env:GH_TOKEN' } }
+    if ($EnvGithub) { return [pscustomobject]@{ Value = $EnvGithub; Source = 'env:GITHUB_TOKEN' } }
     if ($FilePath -and (Test-Path -LiteralPath $FilePath)) {
       try {
         $val = (Get-Content -LiteralPath $FilePath -Raw -ErrorAction Stop).Trim()
-        if ($val) { return $val }
+        if ($val) { return [pscustomobject]@{ Value = $val; Source = "file:$FilePath" } }
       } catch {
         Write-Verbose ("Failed to read token file {0}: {1}" -f $FilePath, $_.Exception.Message)
       }
@@ -74,7 +74,8 @@ try {
     return $null
   }
 
-  $resolvedToken = Resolve-TokenValue -Explicit $Token -EnvGh $env:GH_TOKEN -EnvGithub $env:GITHUB_TOKEN
+  $tokenInfo = Resolve-TokenValue -Explicit $Token -EnvGh $env:GH_TOKEN -EnvGithub $env:GITHUB_TOKEN
+  $resolvedToken = if ($tokenInfo) { $tokenInfo.Value } else { $null }
   if ($resolvedToken -and -not $env:GH_TOKEN) { $env:GH_TOKEN = $resolvedToken }
 
   $envArgs = @()
