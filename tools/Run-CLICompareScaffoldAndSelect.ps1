@@ -18,8 +18,22 @@ $ErrorActionPreference = 'Stop'
 $QUEUE_SCHEMA   = 'cli-compare-queue/v1'
 $SUMMARY_SCHEMA = 'cli-compare-queue-summary/v1'
 
+$RepoRoot = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path
+
+if (-not [System.IO.Path]::IsPathRooted($DefaultBase)) {
+  $DefaultBase = Join-Path $RepoRoot $DefaultBase
+}
+if (-not [System.IO.Path]::IsPathRooted($DefaultHead)) {
+  $DefaultHead = Join-Path $RepoRoot $DefaultHead
+}
+
 function New-Dir([string]$Path){ if (-not (Test-Path -LiteralPath $Path)) { New-Item -ItemType Directory -Path $Path -Force | Out-Null } }
 function Resolve-PathSafe([string]$Path){ try { return (Resolve-Path -LiteralPath $Path -ErrorAction Stop).Path } catch { return $Path } }
+function Resolve-CasePath([string]$Path){
+  if ([string]::IsNullOrWhiteSpace($Path)) { return $Path }
+  if ([System.IO.Path]::IsPathRooted($Path)) { return $Path }
+  return (Join-Path $RepoRoot $Path)
+}
 function Sanitize-Token([string]$Value){ if (-not $Value) { return 'case' } return ($Value -replace '[^A-Za-z0-9_-]','-') }
 
 function New-Queue {
@@ -187,20 +201,23 @@ function Add-CasesInteractive([ref]$Queue,[string]$CasesPath,[string]$DefaultBas
   Write-Host ("Scaffold CLI compare cases (Enter defaults or type 'done' to finish).") -ForegroundColor Cyan
   $added = @()
   while ($true) {
-    $baseInput = Read-Host ("Base VI path [Enter=$DefaultBase, 'done' to finish]")
+    $basePromptDefault = Resolve-CasePath $DefaultBase
+    $headPromptDefault = Resolve-CasePath $DefaultHead
+
+    $baseInput = Read-Host ("Base VI path [Enter=$basePromptDefault, 'done' to finish]")
     if ([string]::IsNullOrWhiteSpace($baseInput)) {
-      $base = $DefaultBase
+      $base = $basePromptDefault
     } elseif ($baseInput.Trim().ToLowerInvariant() -eq 'done') {
       break
     } else {
-      $base = $baseInput.Trim()
+      $base = Resolve-CasePath $baseInput.Trim()
     }
 
-    $headInput = Read-Host ("Head VI path [Enter=$DefaultHead]")
+    $headInput = Read-Host ("Head VI path [Enter=$headPromptDefault]")
     if ([string]::IsNullOrWhiteSpace($headInput)) {
-      $head = $DefaultHead
+      $head = $headPromptDefault
     } else {
-      $head = $headInput.Trim()
+      $head = Resolve-CasePath $headInput.Trim()
     }
 
     if ([string]::IsNullOrWhiteSpace($head)) {
