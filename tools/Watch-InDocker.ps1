@@ -58,7 +58,25 @@ $volumeSpec = "${hostPath}:/work"
 $restoreGh = $env:GH_TOKEN
 $restoreGt = $env:GITHUB_TOKEN
 try {
-  if ($Token -and -not $env:GH_TOKEN) { $env:GH_TOKEN = $Token }
+  function Resolve-TokenValue {
+    param([string]$Explicit,[string]$EnvGh,[string]$EnvGithub,[string]$FilePath = 'C:\github_token.txt')
+    if ($Explicit) { return $Explicit }
+    if ($EnvGh) { return $EnvGh }
+    if ($EnvGithub) { return $EnvGithub }
+    if ($FilePath -and (Test-Path -LiteralPath $FilePath)) {
+      try {
+        $val = (Get-Content -LiteralPath $FilePath -Raw -ErrorAction Stop).Trim()
+        if ($val) { return $val }
+      } catch {
+        Write-Verbose ("Failed to read token file {0}: {1}" -f $FilePath, $_.Exception.Message)
+      }
+    }
+    return $null
+  }
+
+  $resolvedToken = Resolve-TokenValue -Explicit $Token -EnvGh $env:GH_TOKEN -EnvGithub $env:GITHUB_TOKEN
+  if ($resolvedToken -and -not $env:GH_TOKEN) { $env:GH_TOKEN = $resolvedToken }
+
   $envArgs = @()
   if ($env:GH_TOKEN) { $envArgs += @('-e','GH_TOKEN') }
   if ($env:GITHUB_TOKEN) { $envArgs += @('-e','GITHUB_TOKEN') }
@@ -66,6 +84,7 @@ try {
   $watchArgs = @('pwsh','-NoLogo','-NoProfile','-File','tools/Watch-OrchestratedRun.ps1','-RunId',"$RunId")
   if ($Repo) { $watchArgs += @('-Repo',"$Repo") }
   if ($PollSeconds -ne 15) { $watchArgs += @('-PollSeconds',"$PollSeconds") }
+  if ($resolvedToken) { $watchArgs += @('-Token',$resolvedToken) }
 
   $cmd = @('docker','run','--rm','-v', $volumeSpec,'-w','/work') + $envArgs + @('mcr.microsoft.com/powershell:7.4-debian-12') + $watchArgs
   Write-Host ("[docker] watch-orchestrated`n`t{0}" -f ($cmd -join ' ')) -ForegroundColor Cyan

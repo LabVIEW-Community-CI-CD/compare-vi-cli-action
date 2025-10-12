@@ -53,6 +53,22 @@ function Get-Policy {
   }
 }
 
+function Resolve-TokenValue {
+  param([string]$Explicit, [string]$EnvGh, [string]$EnvGithub, [string]$FilePath = 'C:\github_token.txt')
+  if ($Explicit) { return $Explicit }
+  if ($EnvGh) { return $EnvGh }
+  if ($EnvGithub) { return $EnvGithub }
+  if ($FilePath -and (Test-Path -LiteralPath $FilePath)) {
+    try {
+      $val = (Get-Content -LiteralPath $FilePath -Raw -ErrorAction Stop).Trim()
+      if ($val) { return $val }
+    } catch {
+      Write-Verbose ("Failed to read token file {0}: {1}" -f $FilePath, $_.Exception.Message)
+    }
+  }
+  return $null
+}
+
 function Get-RepoSlug {
   param([string]$RepoParam)
   if ($RepoParam) { return $RepoParam }
@@ -95,8 +111,9 @@ if ($Ref -eq '__CURRENT_BRANCH__') { if ($detectedRef) { $Ref = $detectedRef } e
 $Ref = $Ref.Trim()
 $useGh = $false
 if (Get-Command gh -ErrorAction SilentlyContinue) { $useGh = $true }
-$tok = if ($Token) { $Token } elseif ($env:GH_TOKEN) { $env:GH_TOKEN } elseif ($env:GITHUB_TOKEN) { $env:GITHUB_TOKEN } else { $null }
+$tok = Resolve-TokenValue -Explicit $Token -EnvGh $env:GH_TOKEN -EnvGithub $env:GITHUB_TOKEN
 if (-not $tok -and -not $useGh) { throw 'No GH CLI and no token found. Set GH_TOKEN or install gh.' }
+if ($tok -and -not $env:GH_TOKEN) { $env:GH_TOKEN = $tok }
 
 # Lookup issue title (for logging) – best-effort
 $issueTitle = "#${Issue}"
