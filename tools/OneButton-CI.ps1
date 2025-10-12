@@ -208,6 +208,12 @@ function Write-LocalSummary {
 Assert-Tool gh
 try { Assert-Tool git } catch {}
 
+try {
+  & (Join-Path $PSScriptRoot 'Get-BranchState.ps1') | Out-Null
+} catch {
+  Write-Warning ("[branch-state] Unable to determine branch status: {0}" -f $_.Exception.Message)
+}
+
 $containerLog = $null
 $repo = Get-RepoName
 $branch = Get-DefaultRef

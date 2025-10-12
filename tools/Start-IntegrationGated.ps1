@@ -128,6 +128,12 @@ if (-not $AllowDirty -and $statusOutput -and ($statusOutput.Trim().Length -gt 0)
   throw "Working tree has unstaged changes. Commit/stash before dispatch or pass -AllowDirty to override."
 }
 
+try {
+  & (Join-Path $PSScriptRoot 'Get-BranchState.ps1') | Out-Null
+} catch {
+  Write-Warning ("[branch-state] Unable to determine branch status: {0}" -f $_.Exception.Message)
+}
+
 $repoSlug = Get-RepoSlug -RepoParam $Repo
 $detectedRef = $null
 try { $detectedRef = (& git rev-parse --abbrev-ref HEAD 2>$null).Trim() } catch {}

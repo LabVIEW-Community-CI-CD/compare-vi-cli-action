@@ -89,6 +89,7 @@ This document summarizes the expectations for automation agents working in the
 
 ## Local gates (pre-push)
 
+- `tools/Get-BranchState.ps1` – prints branch/upstream divergence and working tree cleanliness.
 - Run `tools/PrePush-Checks.ps1` before pushing:
   - Installs `actionlint` (`vars.ACTIONLINT_VERSION`, default 1.7.7) if missing.
   - Runs `actionlint` across `.github/workflows`.
