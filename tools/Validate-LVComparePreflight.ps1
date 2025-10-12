@@ -20,7 +20,9 @@
 [CmdletBinding()]
 param(
   [switch]$RequireInputs,
-  [switch]$AppendStepSummary
+  [switch]$AppendStepSummary,
+  [switch]$RequireX64 = $true,
+  [string]$MinVersion
 )
 
 Set-StrictMode -Version Latest
@@ -63,6 +65,24 @@ if (-not $IsWindows) {
     $notes += ('Path: {0}' -f $canonical)
     $notes += ('Version: {0}' -f ($ver.FileVersion ?? 'unknown'))
     $notes += ('Bitness: {0} (OS: {1})' -f $bits, $osBits)
+
+    if ($RequireX64 -and $osBits -eq 'x64' -and $bits -ne 'x64') {
+      $errors += 'LVCompare bitness mismatch: x86 CLI on x64 OS is not allowed by policy.'
+      $ok = $false
+    }
+
+    if ($MinVersion) {
+      try {
+        $cliVer = [version]($ver.FileVersion)
+        $minVer = [version]$MinVersion
+        if ($cliVer -lt $minVer) {
+          $errors += ('LVCompare version {0} is older than required minimum {1}.' -f $cliVer, $minVer)
+          $ok = $false
+        }
+      } catch {
+        $notes += ('Version check skipped (unable to parse version: {0})' -f ($ver.FileVersion ?? 'n/a'))
+      }
+    }
     if ($env:LVCOMPARE_PATH -and (Resolve-Path -LiteralPath $env:LVCOMPARE_PATH -ErrorAction SilentlyContinue)) {
       $ovr = (Resolve-Path -LiteralPath $env:LVCOMPARE_PATH).Path
       if ($ovr -ne $canonical) {
@@ -106,4 +126,3 @@ if ($AppendStepSummary -and $env:GITHUB_STEP_SUMMARY) {
 }
 
 if (-not $ok) { exit 1 } else { exit 0 }
-

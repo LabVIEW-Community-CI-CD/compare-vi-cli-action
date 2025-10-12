@@ -152,11 +152,12 @@ vars (compatible with `DETERMINISTIC=1`). Add switches such as `-SkipDocs`/`-Ski
 
 ## Bundled workflows
 
-- **Validate** – end-to-end self-hosted validation (fixtures, LVCompare, Pester suites).
-- **Smoke** – minimal regression guard for documentation-only changes.
-- **Fixture Drift** – verifies fixture manifests and retains comparison evidence.
-- **VI Binary Gate** – ensures LabVIEW binaries remain normalized.
-- **Markdownlint** – runs `npm run lint:md:changed` with the trimmed configuration below.
+- **Validate** - end-to-end self-hosted validation (fixtures, LVCompare, Pester suites).
+- **Smoke** - minimal regression guard for documentation-only changes.
+- **Fixture Drift** - verifies fixture manifests and retains comparison evidence.
+- **VI Binary Gate** - ensures LabVIEW binaries remain normalized.
+- **Markdownlint** - runs `npm run lint:md:changed` with the trimmed configuration below.
+- **UI/Dispatcher Smoke** - non-required quick pass of dispatcher/UI paths without invoking LVCompare (label `ui-smoke` or manual dispatch).
 
 Explore `.github/workflows` for matrices, inputs, and dispatch helpers.
 
@@ -179,6 +180,7 @@ npm run lint:md:changed
 | Action usage | `docs/USAGE_GUIDE.md` |
 | Fixture drift | `docs/FIXTURE_DRIFT.md` |
 | Loop mode | `docs/COMPARE_LOOP_MODULE.md` |
+| Preflight validator & UI smoke | See README (this section) and `.github/workflows/ui-smoke.yml` |
 | Integration runbook | `docs/INTEGRATION_RUNBOOK.md` |
 | Troubleshooting | `docs/TROUBLESHOOTING.md` |
 | Traceability (requirements ↔ tests) | `docs/TRACEABILITY_GUIDE.md` |
