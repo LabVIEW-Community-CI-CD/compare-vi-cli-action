@@ -335,17 +335,6 @@ function Invoke-CompareVIUsingLabVIEWCLI {
     [string] $CompareExecJsonPath
   )
 
-  if ($env:LVCI_COMPARE_MODE -and [string]::Equals($env:LVCI_COMPARE_MODE, 'labview-cli', [System.StringComparison]::OrdinalIgnoreCase)) {
-    return Invoke-CompareVIUsingLabVIEWCLI @PSBoundParameters
-  }
-  if ($env:LVCI_GCLI_MODE -and (
-        [string]::Equals($env:LVCI_GCLI_MODE, 'compare', [System.StringComparison]::OrdinalIgnoreCase) -or
-        [string]::Equals($env:LVCI_GCLI_MODE, 'on', [System.StringComparison]::OrdinalIgnoreCase) -or
-        [string]::Equals($env:LVCI_GCLI_MODE, 'g-cli', [System.StringComparison]::OrdinalIgnoreCase)
-      )) {
-    return Invoke-CompareVIUsingGCLI @PSBoundParameters
-  }
-
   $pushed = $false
   if ($WorkingDirectory) {
     if (-not (Test-Path -LiteralPath $WorkingDirectory)) { throw "working-directory not found: $WorkingDirectory" }
@@ -620,6 +609,17 @@ function Invoke-CompareVI {
     [switch] $PreviewArgs,
     [string] $CompareExecJsonPath
   )
+
+  if ($env:LVCI_COMPARE_MODE -and [string]::Equals($env:LVCI_COMPARE_MODE, 'labview-cli', [System.StringComparison]::OrdinalIgnoreCase)) {
+    return Invoke-CompareVIUsingLabVIEWCLI @PSBoundParameters
+  }
+  if ($env:LVCI_GCLI_MODE -and (
+        [string]::Equals($env:LVCI_GCLI_MODE, 'compare', [System.StringComparison]::OrdinalIgnoreCase) -or
+        [string]::Equals($env:LVCI_GCLI_MODE, 'on', [System.StringComparison]::OrdinalIgnoreCase) -or
+        [string]::Equals($env:LVCI_GCLI_MODE, 'g-cli', [System.StringComparison]::OrdinalIgnoreCase)
+      )) {
+    return Invoke-CompareVIUsingGCLI @PSBoundParameters
+  }
 
   $pushed = $false
   if ($WorkingDirectory) {
