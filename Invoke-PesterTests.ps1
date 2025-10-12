@@ -2137,6 +2137,9 @@ try {
       } else {
         Copy-Item -LiteralPath $sourcePath -Destination $destReport -Force
         Write-Host ("Compare report copied to: {0}" -f $destReport) -ForegroundColor Gray
+        if (-not $canonicalResolved) {
+          try { $canonicalResolved = (Resolve-Path -LiteralPath $destReport).Path } catch {}
+        }
       }
     } catch { Write-Warning "Failed to copy compare report: $_" }
     # Also copy all candidates preserving their base filenames to the results directory
@@ -2176,6 +2179,26 @@ try {
           }
         } catch {
           Write-Host "(warn) failed to hash compare report '$($cand.FullName)': $_" -ForegroundColor DarkYellow
+        }
+      }
+      if ($canonicalResolved -and (Test-Path -LiteralPath $canonicalResolved -PathType Leaf)) {
+        $existingCanonical = @($manifest.sources | Where-Object { $_.path -eq $canonicalResolved })
+        if ($existingCanonical.Count -gt 0) {
+          foreach ($entry in $existingCanonical) { $entry.sourceType = 'canonical' }
+        } else {
+          try {
+            $canonicalItem = Get-Item -LiteralPath $canonicalResolved -ErrorAction Stop
+            $canonicalHash = (Get-FileHash -LiteralPath $canonicalResolved -Algorithm SHA256 -ErrorAction Stop).Hash
+            $manifest.sources = @([ordered]@{
+              path             = $canonicalResolved
+              lastWriteTimeUtc = $canonicalItem.LastWriteTimeUtc.ToString('o')
+              length           = $canonicalItem.Length
+              sha256           = $canonicalHash
+              sourceType       = 'canonical'
+            }) + $manifest.sources
+          } catch {
+            Write-Warning ("Failed to record canonical compare report in manifest: {0}" -f $_.Exception.Message)
+          }
         }
       }
       $manifest | ConvertTo-Json -Depth 6 | Set-Content -LiteralPath $manifestPath -Encoding utf8
