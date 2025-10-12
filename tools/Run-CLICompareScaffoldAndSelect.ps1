@@ -108,7 +108,13 @@ function Normalize-QueueCase {
   if ($overridesOrdered.Keys.Count -gt 0) { $ordered.overrides = $overridesOrdered }
 
   $ordered.notes = if ($Case.notes) { [string]$Case.notes } else { '' }
-  $ordered.disabled = [bool]$Case.disabled
+  $disabledVal = $false
+  if ($Case -is [hashtable]) {
+    if ($Case.ContainsKey('disabled')) { $disabledVal = [bool]$Case['disabled'] }
+  } elseif ($Case.PSObject -and ($Case.PSObject.Properties.Name -contains 'disabled')) {
+    $disabledVal = [bool]$Case.disabled
+  }
+  $ordered.disabled = $disabledVal
 
   return $ordered
 }
