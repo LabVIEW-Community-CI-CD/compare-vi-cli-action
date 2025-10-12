@@ -13,6 +13,7 @@ All values are strings; use `1` / `0` for boolean-style flags.
 | `LVCI_GCLI_MODE` | `off` (default) or `compare` to route through g-cli |
 | `LABVIEW_CLI_PATH` | Optional explicit path to `LabVIEWCLI.exe` when using CLI mode |
 | `GCLI_PATH` | Optional explicit path to `g-cli` executable |
+| `GCLI_ARGS` | Optional argument string for a one-off g-cli action in CI (e.g., `--version` or a custom LabVIEW-close command) |
 | `LVCI_CLI_FORMAT` | LabVIEW CLI report format (`XML`, `HTML`, `TXT`, `DOCX`; default `XML`) |
 | `LVCI_CLI_EXTRA_ARGS` | Additional flags appended to `CreateComparisonReport` (e.g. `--noDependencies`) |
 | `LVCI_CLI_TIMEOUT_SECONDS` | Timeout for LabVIEW CLI invocation (default `120`) |

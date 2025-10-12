@@ -592,6 +592,11 @@ jobs:
           cleanup: ${{ env.CLEAN_LV_AFTER == 'true' }}
           process-names: 'LVCompare,LabVIEW'
 
+      - name: g-cli custom action (optional)
+        if: ${{ always() && env.GCLI_ARGS != '' }}
+        shell: pwsh
+        run: pwsh -File tools/Invoke-GCli.ps1 -Args "$env:GCLI_ARGS" -AppendStepSummary
+
       - name: Append re-run hint
         if: always()
         shell: pwsh
