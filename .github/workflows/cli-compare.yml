@@ -13,6 +13,7 @@ jobs:
     runs-on: [self-hosted, Windows, X64]
     timeout-minutes: 10
     env:
+      LVCI_ONLY_X64: 1
       LVCI_COMPARE_MODE: labview-cli
       LVCI_CLI_FORMAT: XML
       LV_SUPPRESS_UI: 1

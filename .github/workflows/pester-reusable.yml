@@ -74,6 +74,7 @@ jobs:
     runs-on: [self-hosted, Windows, X64]
     timeout-minutes: 3
     env:
+      LVCI_ONLY_X64: '1'
       CLEAN_LV_BEFORE: ${{ vars.CLEAN_LV_BEFORE || 'true' }}
       CLEAN_LV_AFTER: ${{ vars.CLEAN_LV_AFTER || 'true' }}
       CLEAN_LV_INCLUDE_COMPARE: ${{ vars.CLEAN_LV_INCLUDE_COMPARE || vars.CLEAN_LVCOMPARE || 'true' }}
@@ -101,7 +102,9 @@ jobs:
           $x86Cli     = 'C:\Program Files (x86)\National Instruments\Shared\LabVIEW Compare\LVCompare.exe'
           $candidates = @()
           if ($env:LVCOMPARE_PATH) { $candidates += $env:LVCOMPARE_PATH }
-          $candidates += @($defaultCli, $x86Cli)
+          $onlyX64 = $false
+          if ($env:LVCI_ONLY_X64) { try { $onlyX64 = ($env:LVCI_ONLY_X64.Trim() -match '^(?i:1|true|yes|on)$') } catch { $onlyX64 = $false } }
+          if ($onlyX64) { $candidates += @($defaultCli) } else { $candidates += @($defaultCli, $x86Cli) }
           $cli = $null
           foreach ($p in $candidates) {
             if ($p -and (Test-Path -LiteralPath $p)) { $cli = $p; break }
@@ -140,6 +143,7 @@ jobs:
     # No job-level timeout; rely on probes/guards for determinism
     needs: [normalize, preflight]
     env:
+      LVCI_ONLY_X64: '1'
       LV_SUPPRESS_UI: ${{ vars.LV_SUPPRESS_UI || '1' }}
       LV_NO_ACTIVATE: ${{ vars.LV_NO_ACTIVATE || '1' }}
       LV_CURSOR_RESTORE: ${{ vars.LV_CURSOR_RESTORE || '1' }}

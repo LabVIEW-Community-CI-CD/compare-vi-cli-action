@@ -67,10 +67,21 @@ function Get-MarkdownlintCli2Version {
 
 function Resolve-LVComparePath {
   if (-not $IsWindows) { return $null }
-  $candidates = @(
-    "$env:ProgramFiles\National Instruments\Shared\LabVIEW Compare\LVCompare.exe",
-    "$env:ProgramFiles(x86)\National Instruments\Shared\LabVIEW Compare\LVCompare.exe"
-  )
+
+  $onlyX64 = $false
+  if ($env:LVCI_ONLY_X64) {
+    try { $onlyX64 = ($env:LVCI_ONLY_X64.Trim() -match '^(?i:1|true|yes|on)$') } catch { $onlyX64 = $false }
+  }
+
+  $candidates = @()
+  $pf64 = $env:ProgramFiles
+  if ($pf64) { $candidates += (Join-Path $pf64 'National Instruments\Shared\LabVIEW Compare\LVCompare.exe') }
+
+  if (-not $onlyX64) {
+    $pf86 = ${env:ProgramFiles(x86)}
+    if ($pf86) { $candidates += (Join-Path $pf86 'National Instruments\Shared\LabVIEW Compare\LVCompare.exe') }
+  }
+
   foreach ($c in $candidates) { if ($c -and (Test-Path -LiteralPath $c -PathType Leaf)) { return $c } }
   return $null
 }
