@@ -96,12 +96,12 @@ pwsh -File tools/Watch-InDocker.ps1 -RunId <id> -Repo LabVIEW-Community-CI-CD/co
 ```
 
 Tips:
-- Set `GH_TOKEN` or `GITHUB_TOKEN` in your environment (admin token recommended).
+- Set `GH_TOKEN` or `GITHUB_TOKEN` in your environment (admin token recommended). The watcher also falls back to `C:\github_token.txt` when the env vars are unset.
 - VS Code: use “Integration (#88): Watch existing run (Docker)” under Run Task and paste the run id.
 
 #### Start integration (gated)
 
-Use “Integration (#88): Start + Watch (Docker)” under Run Task to deterministically start an orchestrated run only after selecting an allowed GitHub issue. The allowed list lives in `tools/policy/allowed-integration-issues.json` and defaults to `#88` and `#118`.
+Use “Integration (#88): Start + Watch (Docker)” under Run Task to deterministically start an orchestrated run only after selecting an allowed GitHub issue. The allowed list lives in `tools/policy/allowed-integration-issues.json` and defaults to `#88` and `#118`. The task automatically reads an admin token from `C:\github_token.txt` if `GH_TOKEN`/`GITHUB_TOKEN` are not set.
 
 The task prompts for:
 - Issue: must be in the allowed list.

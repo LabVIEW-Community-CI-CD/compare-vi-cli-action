@@ -37,7 +37,7 @@ This document summarizes the expectations for automation agents working in the
 - Pattern filter: `./Invoke-PesterTests.ps1 -IncludePatterns 'CompareVI.*'`
 - Quick smoke: `./tools/Quick-DispatcherSmoke.ps1 -Keep`
 - Containerized non-LV checks: `pwsh -File tools/Run-NonLVChecksInDocker.ps1`
-- Orchestrated gate: Run Task → `Integration (#88): Start + Watch (Docker)` (requires selecting an allowed issue from `tools/policy/allowed-integration-issues.json`). The task dispatches `ci-orchestrated.yml`, auto-detects the run id, and launches the Docker watcher.
+- Orchestrated gate: Run Task → `Integration (#88): Start + Watch (Docker)` (requires selecting an allowed issue from `tools/policy/allowed-integration-issues.json`). The task dispatches `ci-orchestrated.yml`, auto-detects the run id, and launches the Docker watcher. If `GH_TOKEN`/`GITHUB_TOKEN` are unset, both dispatcher and watcher fall back to `C:\github_token.txt` for the admin token.
 
 ## Coding style
 
