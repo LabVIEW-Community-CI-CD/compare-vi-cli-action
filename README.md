@@ -59,6 +59,15 @@ jobs:
   `C:\Program Files\National Instruments\Shared\LabVIEW Compare\LVCompare.exe`.
 - The repository checkout includes or generates the `.vi` files to compare.
 
+### Optional: LabVIEW CLI compare mode
+
+Set `LVCI_COMPARE_MODE=labview-cli` (and `LABVIEW_CLI_PATH` if the CLI isn’t on the canonical path) to invoke
+`LabVIEWCLI.exe CreateComparisonReport` instead of the standalone LVCompare executable. The action keeps the
+LVCompare path as the required comparator; the CLI path is delivered via the new non-required
+`cli-compare.yml` workflow for experimental runs. The CLI wrapper accepts `LVCI_CLI_FORMAT` (XML/HTML/TXT/DOCX),
+`LVCI_CLI_EXTRA_ARGS` for additional flags (for example `--noDependencies`), and honors
+`LVCI_CLI_TIMEOUT_SECONDS` (default 120).
+
 ## Monitoring & telemetry
 
 ### Dev dashboard
@@ -158,6 +167,7 @@ vars (compatible with `DETERMINISTIC=1`). Add switches such as `-SkipDocs`/`-Ski
 - **VI Binary Gate** - ensures LabVIEW binaries remain normalized.
 - **Markdownlint** - runs `npm run lint:md:changed` with the trimmed configuration below.
 - **UI/Dispatcher Smoke** - non-required quick pass of dispatcher/UI paths without invoking LVCompare (label `ui-smoke` or manual dispatch).
+- **LabVIEW CLI Compare** - non-required experiment that invokes LabVIEW CLI `CreateComparisonReport` with canonical fixtures (requires LabVIEW 2025+).
 
 Explore `.github/workflows` for matrices, inputs, and dispatch helpers.
 

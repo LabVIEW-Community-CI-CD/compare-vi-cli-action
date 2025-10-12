@@ -9,6 +9,11 @@ All values are strings; use `1` / `0` for boolean-style flags.
 | Variable | Purpose |
 | -------- | ------- |
 | `LV_BASE_VI`, `LV_HEAD_VI` | Paths to base/head VIs for integration tests |
+| `LVCI_COMPARE_MODE` | `lvcompare` (default) or `labview-cli` to route through LabVIEW CLI |
+| `LABVIEW_CLI_PATH` | Optional explicit path to `LabVIEWCLI.exe` when using CLI mode |
+| `LVCI_CLI_FORMAT` | LabVIEW CLI report format (`XML`, `HTML`, `TXT`, `DOCX`; default `XML`) |
+| `LVCI_CLI_EXTRA_ARGS` | Additional flags appended to `CreateComparisonReport` (e.g. `--noDependencies`) |
+| `LVCI_CLI_TIMEOUT_SECONDS` | Timeout for LabVIEW CLI invocation (default `120`) |
 | `LVCOMPARE_PATH` | Optional override for LVCompare.exe (must resolve to canonical path) |
 | `WORKING_DIRECTORY` | Process CWD when invoking LVCompare |
 

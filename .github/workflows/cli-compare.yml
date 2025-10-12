@@ -1,0 +1,80 @@
+name: LabVIEW CLI Compare (non-required)
+
+on:
+  workflow_dispatch:
+    inputs:
+      sample_id:
+        description: 'Optional sample identifier for provenance'
+        required: false
+        default: ''
+
+jobs:
+  cli-compare:
+    runs-on: [self-hosted, Windows, X64]
+    timeout-minutes: 10
+    env:
+      LVCI_COMPARE_MODE: labview-cli
+      LVCI_CLI_FORMAT: XML
+      LV_SUPPRESS_UI: 1
+      LV_NO_ACTIVATE: 1
+      LV_CURSOR_RESTORE: 1
+      LV_IDLE_WAIT_SECONDS: 2
+      LV_IDLE_MAX_WAIT_SECONDS: 5
+      STUCK_GUARD: 1
+      CLEAN_LV_BEFORE: true
+      CLEAN_LV_AFTER: true
+      CLEAN_LV_INCLUDE_COMPARE: true
+      DETECT_LEAKS: 1
+      LEAK_GRACE_SECONDS: 3
+      SCAN_ARTIFACTS: 1
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: LVCompare / LabVIEW policy preflight
+        shell: pwsh
+        run: pwsh -File tools/Validate-LVComparePreflight.ps1 -AppendStepSummary -MinVersion '2025.0.0.0'
+
+      - name: Prepare fixture copies (base/head)
+        id: fixtures
+        uses: ./.github/actions/prepare-fixtures
+
+      - name: Export fixture env for CLI compare
+        shell: pwsh
+        run: |
+          if ('${{ steps.fixtures.outputs.base }}' -and '${{ steps.fixtures.outputs.head }}') {
+            "LV_BASE_VI=${{ steps.fixtures.outputs.base }}" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+            "LV_HEAD_VI=${{ steps.fixtures.outputs.head }}" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+          } else {
+            Write-Error 'Fixture outputs missing; cannot continue.'
+          }
+
+      - name: Run LabVIEW CLI compare
+        id: compare
+        shell: pwsh
+        env:
+          GITHUB_STEP_SUMMARY: ${{ env.GITHUB_STEP_SUMMARY }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          . ./scripts/CompareVI.ps1
+          Invoke-CompareVI -Base $env:LV_BASE_VI -Head $env:LV_HEAD_VI -FailOnDiff:$false -CompareExecJsonPath 'tests/results/compare-cli/compare-exec.json'
+
+      - name: Upload CLI compare artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: cli-compare-artifacts
+          path: |
+            tests/results/compare-cli/**
+            tests/results/compare-exec.json
+          if-no-files-found: warn
+
+      - name: Append re-run hint
+        if: always()
+        shell: pwsh
+        env:
+          WORKFLOW_NAME: ${{ github.workflow }}
+          REF_NAME: ${{ github.ref_name }}
+          SAMPLE_ID: ${{ github.event.inputs.sample_id }}
+          WORKFLOW_REF: ${{ github.workflow_ref }}
+          REPOSITORY: ${{ github.repository }}
+        run: pwsh -File tools/Append-ReRunHint.ps1

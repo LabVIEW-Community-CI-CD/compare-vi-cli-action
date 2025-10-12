@@ -151,6 +151,23 @@ if ($RequireInputs) {
     }
   }
 }
+=if ($env:LVCI_COMPARE_MODE -and [string]::Equals($env:LVCI_COMPARE_MODE, 'labview-cli', [System.StringComparison]::OrdinalIgnoreCase)) {
+  if ($env:LABVIEW_CLI_PATH) {
+    if (Test-Path -LiteralPath $env:LABVIEW_CLI_PATH -PathType Leaf) {
+      try {
+        $resolvedCli = (Resolve-Path -LiteralPath $env:LABVIEW_CLI_PATH -ErrorAction Stop).Path
+        $notes += ('LabVIEW CLI Path: {0}' -f $resolvedCli)
+      } catch {
+        $notes += ('LabVIEW CLI Path: {0}' -f $env:LABVIEW_CLI_PATH)
+      }
+    } else {
+      $errors += ('LabVIEW CLI not found at LABVIEW_CLI_PATH: {0}' -f $env:LABVIEW_CLI_PATH)
+      $ok = $false
+    }
+  } else {
+    $notes += 'LABVIEW_CLI_PATH not set; falling back to default LabVIEWCLI.exe discovery.'
+  }
+}
 
 if ($AppendStepSummary -and $env:GITHUB_STEP_SUMMARY) {
   $lines = @('### LVCompare Preflight','')

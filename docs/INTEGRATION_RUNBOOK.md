@@ -59,6 +59,7 @@ Artifacts land under `tests/results/` (compare evidence, loop JSON, Pester resul
 - `tools/Invoke-DevDashboard.ps1` - publishes dashboard with loop/lock telemetry.
 - `tools/Download-RunLogs.ps1` - pulls a workflow run's job logs (unzipped) into a tidy folder and emits a manifest.
 - `tools/Validate-LVComparePreflight.ps1` - validates canonical LVCompare path, bitness policy (x64 on x64 OS), and optionally checks VI inputs.
+- `scripts/CompareVI.LabVIEWCLI.ps1` (auto-invoked when `LVCI_COMPARE_MODE=labview-cli`) - wraps `LabVIEWCLI.exe CreateComparisonReport` to generate XML/HTML/TXT/DOCX compare artifacts without switching the required LVCompare gate.
 
 ## Troubleshooting quick wins
 
@@ -73,6 +74,7 @@ Artifacts land under `tests/results/` (compare evidence, loop JSON, Pester resul
 
 - Keep deterministic gates required per `tools/policy/branch-required-checks.json`.
 - UI/Dispatcher Smoke (`.github/workflows/ui-smoke.yml`) is non-required by design; do not add it to required status checks. Use it for fast feedback without invoking LVCompare.
+- LabVIEW CLI Compare (`.github/workflows/cli-compare.yml`) remains non-required; use it to vet `CreateComparisonReport` runs while the canonical LVCompare path stays required.
 
 ## References
 
