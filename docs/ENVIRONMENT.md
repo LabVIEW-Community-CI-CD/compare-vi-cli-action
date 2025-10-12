@@ -45,6 +45,9 @@ Artefacts: `tests/results/pester-leak-report.json`, `tests/results/pester-artifa
 | `LOOP_EMIT_RUN_SUMMARY` | Emit JSON summary |
 | `LOOP_JSON_LOG`, `LOOP_HISTOGRAM_BINS` | NDJSON log and histogram options |
 | `LOOP_LABVIEW_VERSION`, `LOOP_LABVIEW_BITNESS`, `LOOP_LABVIEW_PATH` | Control post-loop closer |
+| `CLOSE_MODE` | `auto` (default), `labview-cli`, or `g-cli` to select the close strategy |
+| `CLOSE_TIMEOUT_SECONDS` | Timeout for Close-LabVIEW.ps1 graceful attempt (default 30) |
+| `CLOSE_FORCEKILL_SECONDS` | Optional delay before best-effort kill if graceful close times out (default 0 = disabled) |
 
 ## Invoker controls
 
