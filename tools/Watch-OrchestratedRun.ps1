@@ -21,11 +21,48 @@ param(
   [string]$RunId,
   [int]$PollSeconds = 15,
   [string]$Token,
-  [string]$Repo
+  [string]$Repo,
+  [int]$StallMinutes = 10,
+  [int]$KeepHistory = 5
 )
 
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
+$stallMinutes = [Math]::Max(1,$StallMinutes)
+$stallWindow = [TimeSpan]::FromMinutes($stallMinutes)
+
+function Get-Sha256String {
+  param([string]$Input)
+  $sha = [System.Security.Cryptography.SHA256]::Create()
+  try {
+    $bytes = [System.Text.Encoding]::UTF8.GetBytes($Input)
+    ($sha.ComputeHash($bytes) | ForEach-Object { $_.ToString('x2') }) -join ''
+  } finally {
+    $sha.Dispose()
+  }
+}
+
+function Get-Sha256File {
+  param([string]$FilePath)
+  if (-not (Test-Path -LiteralPath $FilePath -PathType Leaf)) { return $null }
+  $sha = [System.Security.Cryptography.SHA256]::Create()
+  try {
+    $bytes = [System.IO.File]::ReadAllBytes($FilePath)
+    ($sha.ComputeHash($bytes) | ForEach-Object { $_.ToString('x2') }) -join ''
+  } finally {
+    $sha.Dispose()
+  }
+}
+
+function Prune-WatchHistory {
+  param([string]$Root,[int]$Keep)
+  if (-not (Test-Path -LiteralPath $Root -PathType Container)) { return }
+  $dirs = Get-ChildItem -LiteralPath $Root -Directory | Sort-Object LastWriteTime -Descending
+  $excess = $dirs | Select-Object -Skip $Keep
+  foreach ($dir in $excess) {
+    try { Remove-Item -LiteralPath $dir.FullName -Recurse -Force -ErrorAction Stop } catch {}
+  }
+}
 
 function Invoke-GhJson {
   param([string[]]$GhArgs)
@@ -125,7 +162,12 @@ if (-not $RunId) {
 
 Write-Host ("Inspecting orchestrated run {0}" -f $RunId) -ForegroundColor Green
 
+$historyRoot = Join-Path (Get-Location).Path '.tmp\watch-run'
+Prune-WatchHistory -Root $historyRoot -Keep ([Math]::Max(1,$KeepHistory))
+
 $runInfo = $null
+$lastSignature = $null
+$lastSignatureChange = Get-Date
 while ($true) {
   if ($script:__UseGh) {
     $runInfo = Invoke-GhJson @('run','view',$RunId,'--json','status,conclusion,jobs,url,headBranch')
@@ -143,6 +185,16 @@ while ($true) {
     break
   } else {
     Write-Host ("Run status: {0} | Dispatcher status: {1} (conclusion={2}) - polling again in {3}s" -f $runInfo.status, $dispatcher.status, $dispatcher.conclusion, $PollSeconds) -ForegroundColor Yellow
+  }
+  $signature = "{0}|{1}|{2}" -f $runInfo.status, ($dispatcher.status ?? 'pending'), ($dispatcher.conclusion ?? '')
+  if ($signature -ne $lastSignature) {
+    $lastSignature = $signature
+    $lastSignatureChange = Get-Date
+  } else {
+    if ((Get-Date) - $lastSignatureChange -ge $stallWindow) {
+      Write-Warning ("No status change detected for {0} minute(s) (run={1}, dispatcher={2}). Possible stall." -f $stallMinutes,$runInfo.status,($dispatcher.status ?? 'pending'))
+      $lastSignatureChange = Get-Date
+    }
   }
   Start-Sleep -Seconds ([math]::Max(5,$PollSeconds))
 }
@@ -222,6 +274,20 @@ if ($script:__UseGh) {
   }
 }
 if (-not $artifactFetched) { Write-Warning "Dispatcher artifacts not yet available." }
+
+if ($logFetched -and (Test-Path -LiteralPath $logPath -PathType Leaf)) {
+  $digest = Get-Sha256File -FilePath $logPath
+  if ($digest) {
+    $digestRecord = Join-Path $historyRoot 'last-dispatcher.sha256'
+    if (Test-Path -LiteralPath $digestRecord -PathType Leaf) {
+      $prevDigest = Get-Content -LiteralPath $digestRecord -Raw -ErrorAction SilentlyContinue
+      if ($prevDigest -and $prevDigest.Trim() -eq $digest) {
+        Write-Warning "Dispatcher log digest matches previous run (possible repeated failure)."
+      }
+    }
+    $digest | Out-File -FilePath $digestRecord -Encoding ascii
+  }
+}
 
 Write-Host "`n=== Invoker ping log excerpt ===" -ForegroundColor Magenta
 $patterns = @('Invoker ping attempt','# ping failed','Invoker ping failed after','Failed to spawn invoker')

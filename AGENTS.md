@@ -40,6 +40,7 @@ This document summarizes the expectations for automation agents working in the
 - Orchestrated gate: Run Task → `Integration (#88): Auto Push + Start + Watch`. The task pushes the current branch with the admin token (env or `C:\github_token.txt`), dispatches `ci-orchestrated.yml`, and streams the run via Docker watcher. Allowed issues live in `tools/policy/allowed-integration-issues.json`.
 - Phase vars manifest: produced by `tools/Write-PhaseVars.ps1` in `tests/results/_phase/vars.json`; consumers run `tools/Validate-PhaseVars.ps1` + `tools/Export-PhaseVars.ps1` prior to unit/integration phases.
 - Docker rebuilds & retests: rerun `tools/Run-NonLVChecksInDocker.ps1` (add `-Skip*` switches as needed) to refresh actionlint/markdownlint/docs/workflow checks. After image or workflow updates, trigger `Integration (#88): Auto Push + Start + Watch` to retest the deterministic pipeline end-to-end.
+- Watcher hygiene: `tools/Watch-OrchestratedRun.ps1` trims old `.tmp/watch-run` folders, warns on stalled run/dispatcher status, and flags digest-identical dispatcher logs (possible repeated failures).
 
 ## Coding style
 

@@ -98,6 +98,7 @@ pwsh -File tools/Watch-InDocker.ps1 -RunId <id> -Repo LabVIEW-Community-CI-CD/co
 Tips:
 - Set `GH_TOKEN` or `GITHUB_TOKEN` in your environment (admin token recommended). The watcher also falls back to `C:\github_token.txt` when the env vars are unset.
 - VS Code: use “Integration (#88): Auto Push + Start + Watch” under Run Task to push, dispatch, and stream in one step.
+- The watcher prunes old run directories (`.tmp/watch-run`) automatically and warns if run/dispatcher status stalls longer than the configured window (default 10 minutes). When consecutive dispatcher logs hash to the same digest, it flags a possible repeated failure.
 
 #### Start integration (gated)
 
