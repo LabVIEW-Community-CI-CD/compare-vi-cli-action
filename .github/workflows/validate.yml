@@ -466,6 +466,11 @@ jobs:
         $bpScript = Join-Path (Get-Location) 'tools/Update-SessionIndexBranchProtection.ps1'
         $bpApiScript = Join-Path (Get-Location) 'tools/Get-BranchProtectionRequiredChecks.ps1'
         $branchName = '${{ github.base_ref || github.ref_name }}'
+        $mappedBranches = @('develop','main')
+        if ($mappedBranches -notcontains $branchName) {
+          Write-Host "Fallback branch protection lookup: '$branchName' not mapped, using 'develop'."
+          $branchName = 'develop'
+        }
         $repoParts = '${{ github.repository }}'.Split('/')
         $bpResult = & $bpApiScript -Owner $repoParts[0] -Repository $repoParts[1] -Branch $branchName -Token $env:GITHUB_TOKEN
         $updateArgs = @{
