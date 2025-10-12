@@ -226,9 +226,17 @@ function Add-CasesInteractive([ref]$Queue,[string]$CasesPath,[string]$DefaultBas
     }
 
     $nextIndex = $Queue.Value.cases.Count + $added.Count + 1
-    $autoId = [string]::Format('case-{0:D3}',$nextIndex)
+    $baseLeaf = [System.IO.Path]::GetFileNameWithoutExtension($base)
+    $headLeaf = [System.IO.Path]::GetFileNameWithoutExtension($head)
+    $slugCandidate = $null
+    if ($baseLeaf -or $headLeaf) {
+      $slugCandidate = Sanitize-Token ("{0}-{1}" -f ($baseLeaf ?? 'base'), ($headLeaf ?? 'head'))
+      if ([string]::IsNullOrWhiteSpace($slugCandidate) -or $slugCandidate -eq 'case') { $slugCandidate = $null }
+    }
+    if (-not $slugCandidate) { $slugCandidate = [string]::Format('case-{0:D3}',$nextIndex) }
+    $autoId = $slugCandidate.ToLowerInvariant()
     $idInput = Read-Host "Case id [$autoId]"
-    $candidateId = if ([string]::IsNullOrWhiteSpace($idInput)) { $autoId } else { $idInput.Trim() }
+    $candidateId = if ([string]::IsNullOrWhiteSpace($idInput)) { $autoId } else { Sanitize-Token $idInput.Trim().ToLowerInvariant() }
 
     $existingIds = @()
     foreach ($existing in $Queue.Value.cases) {
