@@ -36,8 +36,10 @@ This document summarizes the expectations for automation agents working in the
 - Custom paths: `./Invoke-PesterTests.ps1 -TestsPath tests -ResultsPath tests/results`
 - Pattern filter: `./Invoke-PesterTests.ps1 -IncludePatterns 'CompareVI.*'`
 - Quick smoke: `./tools/Quick-DispatcherSmoke.ps1 -Keep`
-- Containerized non-LV checks: `pwsh -File tools/Run-NonLVChecksInDocker.ps1`
-- Orchestrated gate: Run Task → `Integration (#88): Start + Watch (Docker)` (requires selecting an allowed issue from `tools/policy/allowed-integration-issues.json`). The task dispatches `ci-orchestrated.yml`, auto-detects the run id, and launches the Docker watcher. If `GH_TOKEN`/`GITHUB_TOKEN` are unset, both dispatcher and watcher fall back to `C:\github_token.txt` for the admin token.
+- Containerized non-LV checks: `pwsh -File tools/Run-NonLVChecksInDocker.ps1` (pulls pinned images, honours `DETERMINISTIC=1`).
+- Orchestrated gate: Run Task → `Integration (#88): Auto Push + Start + Watch`. The task pushes the current branch with the admin token (env or `C:\github_token.txt`), dispatches `ci-orchestrated.yml`, and streams the run via Docker watcher. Allowed issues live in `tools/policy/allowed-integration-issues.json`.
+- Phase vars manifest: produced by `tools/Write-PhaseVars.ps1` in `tests/results/_phase/vars.json`; consumers run `tools/Validate-PhaseVars.ps1` + `tools/Export-PhaseVars.ps1` prior to unit/integration phases.
+- Docker rebuilds & retests: rerun `tools/Run-NonLVChecksInDocker.ps1` (add `-Skip*` switches as needed) to refresh actionlint/markdownlint/docs/workflow checks. After image or workflow updates, trigger `Integration (#88): Auto Push + Start + Watch` to retest the deterministic pipeline end-to-end.
 
 ## Coding style
 
