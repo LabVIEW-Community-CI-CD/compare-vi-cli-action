@@ -55,7 +55,7 @@ jobs:
 
 ### Prerequisites
 
-- LabVIEW (and LVCompare) installed on the runner. Default path:
+- LabVIEW (and LVCompare) installed on the runner (LabVIEW 2025 or later recommended). Default path:
   `C:\Program Files\National Instruments\Shared\LabVIEW Compare\LVCompare.exe`.
 - The repository checkout includes or generates the `.vi` files to compare.
 

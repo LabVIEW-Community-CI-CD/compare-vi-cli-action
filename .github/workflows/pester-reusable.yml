@@ -187,7 +187,7 @@ jobs:
       - name: Validate LVCompare inputs (integration)
         if: ${{ needs.normalize.outputs.include_integration == 'true' }}
         shell: pwsh
-        run: pwsh -File tools/Validate-LVComparePreflight.ps1 -RequireInputs -AppendStepSummary
+        run: pwsh -File tools/Validate-LVComparePreflight.ps1 -RequireInputs -AppendStepSummary -MinVersion '2025.0.0.0'
 
       - name: Apply dispatcher profile
         id: dprofile

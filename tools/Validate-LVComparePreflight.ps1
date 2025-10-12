@@ -63,7 +63,7 @@ if (-not $IsWindows) {
     $bits = Get-ExeBitness -Path $canonical
     $osBits = if ([Environment]::Is64BitOperatingSystem) { 'x64' } else { 'x86' }
     $notes += ('Path: {0}' -f $canonical)
-    $notes += ('Version: {0}' -f ($ver.FileVersion ?? 'unknown'))
+    $notes += ('LVCompare Version: {0}' -f ($ver.FileVersion ?? 'unknown'))
     $notes += ('Bitness: {0} (OS: {1})' -f $bits, $osBits)
 
     if ($RequireX64 -and $osBits -eq 'x64' -and $bits -ne 'x64') {
@@ -72,15 +72,51 @@ if (-not $IsWindows) {
     }
 
     if ($MinVersion) {
-      try {
-        $cliVer = [version]($ver.FileVersion)
-        $minVer = [version]$MinVersion
-        if ($cliVer -lt $minVer) {
-          $errors += ('LVCompare version {0} is older than required minimum {1}.' -f $cliVer, $minVer)
-          $ok = $false
+      $minVer = $null
+      try { $minVer = [version]$MinVersion } catch { $minVer = $null }
+      if ($minVer) {
+        $cliVer = $null
+        try { $cliVer = [version]($ver.FileVersion) } catch { $cliVer = $null }
+
+        if ($cliVer) {
+          if ($cliVer -lt $minVer) {
+            $errors += ('LVCompare version {0} is older than required minimum {1}.' -f $cliVer, $minVer)
+            $ok = $false
+          }
+        } else {
+          # Fallback to LabVIEW.exe version when LVCompare version is unavailable
+          $lvExe = $env:LABVIEW_EXE
+          if (-not ($lvExe) -or -not (Test-Path -LiteralPath $lvExe -PathType Leaf)) {
+            $searchRoots = @()
+            if ($env:ProgramFiles) { $searchRoots += (Join-Path $env:ProgramFiles 'National Instruments') }
+            if ($env:ProgramFiles(x86)) { $searchRoots += (Join-Path $env:ProgramFiles(x86) 'National Instruments') }
+            $cands = @()
+            foreach ($root in $searchRoots) {
+              try { $cands += (Get-ChildItem -Path $root -Filter 'LabVIEW.exe' -File -Recurse -ErrorAction SilentlyContinue) } catch {}
+            }
+            if ($cands.Count -gt 0) {
+              $lvExe = ($cands | Sort-Object {[version]$_.VersionInfo.FileVersion} -Descending | Select-Object -First 1).FullName
+            }
+          }
+          if ($lvExe -and (Test-Path -LiteralPath $lvExe -PathType Leaf)) {
+            $lvInfo = [System.Diagnostics.FileVersionInfo]::GetVersionInfo($lvExe)
+            $notes += ('LabVIEW Path: {0}' -f $lvExe)
+            $notes += ('LabVIEW Version: {0}' -f ($lvInfo.FileVersion ?? 'unknown'))
+            try {
+              $lvVer = [version]($lvInfo.FileVersion)
+              if ($lvVer -lt $minVer) {
+                $errors += ('LabVIEW version {0} is older than required minimum {1}.' -f $lvVer, $minVer)
+                $ok = $false
+              }
+            } catch {
+              $notes += 'Version check skipped (unable to parse LabVIEW version).'
+            }
+          } else {
+            $notes += 'Version check skipped (LabVIEW.exe not found and LVCompare version unavailable).'
+          }
         }
-      } catch {
-        $notes += ('Version check skipped (unable to parse version: {0})' -f ($ver.FileVersion ?? 'n/a'))
+      } else {
+        $notes += ('MinVersion parameter not a valid version: {0}' -f $MinVersion)
       }
     }
     if ($env:LVCOMPARE_PATH -and (Resolve-Path -LiteralPath $env:LVCOMPARE_PATH -ErrorAction SilentlyContinue)) {
