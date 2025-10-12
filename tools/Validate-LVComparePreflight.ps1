@@ -89,7 +89,8 @@ if (-not $IsWindows) {
           if (-not ($lvExe) -or -not (Test-Path -LiteralPath $lvExe -PathType Leaf)) {
             $searchRoots = @()
             if ($env:ProgramFiles) { $searchRoots += (Join-Path $env:ProgramFiles 'National Instruments') }
-            if ($env:ProgramFiles(x86)) { $searchRoots += (Join-Path $env:ProgramFiles(x86) 'National Instruments') }
+            $pf86 = ${env:ProgramFiles(x86)}
+            if ($pf86) { $searchRoots += (Join-Path $pf86 'National Instruments') }
             $cands = @()
             foreach ($root in $searchRoots) {
               try { $cands += (Get-ChildItem -Path $root -Filter 'LabVIEW.exe' -File -Recurse -ErrorAction SilentlyContinue) } catch {}
@@ -151,7 +152,7 @@ if ($RequireInputs) {
     }
   }
 }
-=if ($env:LVCI_COMPARE_MODE -and [string]::Equals($env:LVCI_COMPARE_MODE, 'labview-cli', [System.StringComparison]::OrdinalIgnoreCase)) {
+if ($env:LVCI_COMPARE_MODE -and [string]::Equals($env:LVCI_COMPARE_MODE, 'labview-cli', [System.StringComparison]::OrdinalIgnoreCase)) {
   if ($env:LABVIEW_CLI_PATH) {
     if (Test-Path -LiteralPath $env:LABVIEW_CLI_PATH -PathType Leaf) {
       try {
