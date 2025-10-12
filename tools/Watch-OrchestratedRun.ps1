@@ -171,13 +171,33 @@ $lastSignatureChange = Get-Date
 while ($true) {
   if ($script:__UseGh) {
     $runInfo = Invoke-GhJson @('run','view',$RunId,'--json','status,conclusion,jobs,url,headBranch')
-    $dispatcher = $runInfo.jobs | Where-Object { $_.name -eq 'pester-category (dispatcher)' } | Select-Object -First 1
   } else {
     $repoSlug = $script:__RepoSlug
     $r = Invoke-GitHubApiJson -Uri ("https://api.github.com/repos/{0}/actions/runs/{1}" -f $repoSlug,$RunId) -Headers $script:__Headers
     $jobs = Invoke-GitHubApiJson -Uri ("https://api.github.com/repos/{0}/actions/runs/{1}/jobs?per_page=100" -f $repoSlug,$RunId) -Headers $script:__Headers
     $runInfo = [pscustomobject]@{ status=$r.status; conclusion=$r.conclusion; url=$r.html_url; headBranch=$r.head_branch; jobs=$jobs.jobs }
-    $dispatcher = $jobs.jobs | Where-Object { $_.name -eq 'pester-category (dispatcher)' } | Select-Object -First 1
+  }
+  if ($runInfo -is [string]) {
+    try { $runInfo = $runInfo | ConvertFrom-Json } catch {}
+  }
+  if ($runInfo -is [System.Array]) { $runInfo = $runInfo | Select-Object -First 1 }
+  if ($runInfo -is [System.Collections.IDictionary]) {
+    $runInfo = [pscustomobject]@{
+      status      = $runInfo['status']
+      conclusion  = $runInfo['conclusion']
+      url         = $runInfo['url']
+      headBranch  = $runInfo['headBranch']
+      jobs        = $runInfo['jobs']
+    }
+  }
+  if (-not $runInfo -or -not ($runInfo.PSObject.Properties['status'])) {
+    Write-Warning "Run detail response missing status; retrying shortly."
+    Start-Sleep -Seconds ([math]::Max(5,$PollSeconds))
+    continue
+  }
+  $dispatcher = $null
+  if ($runInfo.jobs) {
+    $dispatcher = $runInfo.jobs | Where-Object { $_.name -eq 'pester-category (dispatcher)' } | Select-Object -First 1
   }
   if (-not $dispatcher) {
     Write-Host "Dispatcher job not yet scheduled. Waiting..." -ForegroundColor Yellow
@@ -186,13 +206,15 @@ while ($true) {
   } else {
     Write-Host ("Run status: {0} | Dispatcher status: {1} (conclusion={2}) - polling again in {3}s" -f $runInfo.status, $dispatcher.status, $dispatcher.conclusion, $PollSeconds) -ForegroundColor Yellow
   }
-  $signature = "{0}|{1}|{2}" -f $runInfo.status, ($dispatcher.status ?? 'pending'), ($dispatcher.conclusion ?? '')
+  $dispStatus = if ($dispatcher) { $dispatcher.status } else { 'pending' }
+  $dispConclusion = if ($dispatcher) { $dispatcher.conclusion } else { '' }
+  $signature = "{0}|{1}|{2}" -f $runInfo.status, ($dispStatus ?? 'pending'), ($dispConclusion ?? '')
   if ($signature -ne $lastSignature) {
     $lastSignature = $signature
     $lastSignatureChange = Get-Date
   } else {
     if ((Get-Date) - $lastSignatureChange -ge $stallWindow) {
-      Write-Warning ("No status change detected for {0} minute(s) (run={1}, dispatcher={2}). Possible stall." -f $stallMinutes,$runInfo.status,($dispatcher.status ?? 'pending'))
+      Write-Warning ("No status change detected for {0} minute(s) (run={1}, dispatcher={2}). Possible stall." -f $stallMinutes,$runInfo.status,$dispStatus)
       $lastSignatureChange = Get-Date
     }
   }
