@@ -73,6 +73,20 @@ function Resolve-LVComparePath {
     try { $onlyX64 = ($env:LVCI_ONLY_X64.Trim() -match '^(?i:1|true|yes|on)$') } catch { $onlyX64 = $false }
   }
 
+  function __GetExeBitness([string]$Path){
+    try {
+      $fs = [System.IO.File]::Open($Path,[System.IO.FileMode]::Open,[System.IO.FileAccess]::Read,[System.IO.FileShare]::ReadWrite)
+      try {
+        $br = New-Object System.IO.BinaryReader($fs)
+        $fs.Seek(0x3C,[System.IO.SeekOrigin]::Begin) | Out-Null
+        $e_lfanew = $br.ReadInt32()
+        $fs.Seek($e_lfanew + 4,[System.IO.SeekOrigin]::Begin) | Out-Null
+        $machine = $br.ReadUInt16()
+        switch ($machine) { 0x014c { 'x86' }; 0x8664 { 'x64' }; default { 'other' } }
+      } finally { $fs.Dispose() }
+    } catch { return $null }
+  }
+
   $candidates = @()
   $pf64 = $env:ProgramFiles
   if ($pf64) { $candidates += (Join-Path $pf64 'National Instruments\Shared\LabVIEW Compare\LVCompare.exe') }
@@ -82,7 +96,29 @@ function Resolve-LVComparePath {
     if ($pf86) { $candidates += (Join-Path $pf86 'National Instruments\Shared\LabVIEW Compare\LVCompare.exe') }
   }
 
-  foreach ($c in $candidates) { if ($c -and (Test-Path -LiteralPath $c -PathType Leaf)) { return $c } }
+  foreach ($c in $candidates) {
+    if ($c -and (Test-Path -LiteralPath $c -PathType Leaf)) {
+      if ($onlyX64) {
+        $bit = __GetExeBitness -Path $c
+        if ($bit -eq 'x64') { return $c } else { continue }
+      } else {
+        return $c
+      }
+    }
+  }
+
+  if ($onlyX64 -and $pf64) {
+    try {
+      $root = Join-Path $pf64 'National Instruments'
+      if (Test-Path -LiteralPath $root) {
+        $found = @(Get-ChildItem -Path $root -Filter 'LVCompare.exe' -File -Recurse -ErrorAction SilentlyContinue)
+        foreach ($f in $found) {
+          $bit = __GetExeBitness -Path $f.FullName
+          if ($bit -eq 'x64') { return $f.FullName }
+        }
+      }
+    } catch {}
+  }
   return $null
 }
 
