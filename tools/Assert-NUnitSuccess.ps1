@@ -40,7 +40,7 @@ if ($failed -gt 0 -or ($result -and ($acceptableResults -notcontains $result))) 
     $details = $failedCases | ForEach-Object {
       $name = $_.name
       $msg = $_.failure.message
-      if ($msg) { "$name: $msg" } else { $name }
+      if ($msg) { ("{0}: {1}" -f $name, $msg) } else { $name }
     }
     $message += " Failed cases: " + ($details -join '; ')
   }
