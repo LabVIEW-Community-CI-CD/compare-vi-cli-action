@@ -26,6 +26,32 @@
       "presentation": { "reveal": "always", "panel": "dedicated", "clear": true }
     },
     {
+      "label": "CLI Compare: Scaffold + Select + Run (DX)",
+      "type": "shell",
+      "command": "pwsh",
+      "args": [
+        "-NoLogo",
+        "-NoProfile",
+        "-File",
+        "./tools/Run-CLICompareScaffoldAndSelect.ps1"
+      ],
+      "options": {
+        "cwd": "${workspaceFolder}",
+        "env": {
+          "DX_CONSOLE_LEVEL": "concise",
+          "DX_CONSOLE_PREFERRED": "1",
+          "LV_SUPPRESS_UI": "1",
+          "LV_NO_ACTIVATE": "1",
+          "LV_CURSOR_RESTORE": "1",
+          "LV_IDLE_WAIT_SECONDS": "2",
+          "LV_IDLE_MAX_WAIT_SECONDS": "5"
+        }
+      },
+      "group": "test",
+      "presentation": { "reveal": "always", "panel": "dedicated", "clear": true },
+      "problemMatcher": []
+    },
+    {
       "label": "Integration (#88): Watch existing run (Docker)",
       "type": "shell",
       "command": "pwsh",
@@ -269,6 +295,49 @@
         "-OutputRoot",
         "${input:teststandOutput}",
         "-RenderReport",
+        "-OpenReport"
+      ],
+      "options": {
+        "cwd": "${workspaceFolder}",
+        "env": {
+          "DX_CONSOLE_LEVEL": "concise",
+          "DX_CONSOLE_PREFERRED": "1",
+          "LV_SUPPRESS_UI": "1",
+          "LV_NO_ACTIVATE": "1",
+          "LV_CURSOR_RESTORE": "1",
+          "LV_IDLE_WAIT_SECONDS": "2",
+          "LV_IDLE_MAX_WAIT_SECONDS": "5"
+        }
+      },
+      "group": "test",
+      "problemMatcher": []
+    },
+    {
+      "label": "Run TestStand Session (DX, Pinned)",
+      "type": "shell",
+      "command": "pwsh",
+      "args": [
+        "-NoLogo",
+        "-NoProfile",
+        "-File",
+        "./tools/Run-DX.ps1",
+        "-Suite",
+        "TestStand",
+        "-ResultsPath",
+        "tests/results",
+        "-BaseVi",
+        "${workspaceFolder}/VI1.vi",
+        "-HeadVi",
+        "${workspaceFolder}/VI2.vi",
+        "-OutputRoot",
+        "tests/results/teststand-session",
+        "-LabVIEWExePath",
+        "${input:teststandLabVIEWExe}",
+        "-LVComparePath",
+        "${input:teststandLVCompareExe}",
+        "-RenderReport",
+        "-CloseLabVIEW",
+        "-CloseLVCompare",
         "-OpenReport"
       ],
       "options": {
@@ -1603,6 +1672,19 @@
       "type": "promptString",
       "description": "Output root directory",
       "default": "tests/results/teststand-session"
+    }
+    ,
+    {
+      "id": "teststandLabVIEWExe",
+      "type": "promptString",
+      "description": "Full path to LabVIEW.exe (64-bit)",
+      "default": "C:/Program Files/National Instruments/LabVIEW 2025/LabVIEW.exe"
+    },
+    {
+      "id": "teststandLVCompareExe",
+      "type": "promptString",
+      "description": "Full path to LVCompare.exe (64-bit)",
+      "default": "C:/Program Files/National Instruments/Shared/LabVIEW Compare/LVCompare.exe"
     }
   ]
 }
