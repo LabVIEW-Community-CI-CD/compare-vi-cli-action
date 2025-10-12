@@ -69,7 +69,8 @@ function Invoke-Container {
   $envArgs = @()
   if ($EnvNames) {
     foreach ($n in $EnvNames) {
-      if ($env:$n) { $envArgs += @('-e', $n) }
+      $val = [Environment]::GetEnvironmentVariable($n)
+      if ($val -and $val -ne '') { $envArgs += @('-e', $n) }
     }
   }
   $cmd = @('docker','run') + $commonArgs + $envArgs + @($Image) + $Arguments
