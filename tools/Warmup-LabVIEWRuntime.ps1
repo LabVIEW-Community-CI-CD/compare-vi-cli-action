@@ -244,6 +244,9 @@ $primeArgs = @('-BaseVi', $baseVi, '-HeadVi', $headVi, '-ExpectNoDiff', '-LeakCh
 if ($LabVIEWPath) { $primeArgs += @('-LabVIEWExePath', $LabVIEWPath) }
 if ($KillOnTimeout) { $primeArgs += '-KillOnTimeout' }
 
+Write-Host ("Warmup: prime args -> {0}" -f ($primeArgs -join ' ')) -ForegroundColor DarkGray
+Write-JsonEvent 'prime-args' @{ args = ($primeArgs -join ' ') }
+
 try {
   & $primeScript @primeArgs | Out-Null
   $primeExit = $LASTEXITCODE
