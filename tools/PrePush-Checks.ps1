@@ -103,3 +103,34 @@ if (Test-Path -LiteralPath $manifestScript) {
     exit 1
   }
 }
+
+$reRunScript = Join-Path $root 'tools' 'Append-ReRunHint.ps1'
+if (Test-Path -LiteralPath $reRunScript) {
+  $summaryPath = Join-Path ([IO.Path]::GetTempPath()) ("prepush-re-run-summary-{0}.md" -f ([Guid]::NewGuid()))
+  $repoSlug = if ($env:GITHUB_REPOSITORY) { $env:GITHUB_REPOSITORY } else { "local/$((Split-Path -Leaf $root))" }
+  try {
+    & $reRunScript -WorkflowName 'pre-push-smoke' `
+                   -RefName 'HEAD' `
+                   -SampleId '' `
+                   -WorkflowRef "$repoSlug/.github/workflows/pester-reusable.yml@refs/heads/pre-push" `
+                   -Repository $repoSlug `
+                   -StepSummaryPath $summaryPath
+    Write-Host '[pre-push] re-run hint helper OK' -ForegroundColor Green
+  } catch {
+    Write-Error "Append-ReRunHint smoke failed: $($_.Exception.Message)"
+    exit 1
+  } finally {
+    Remove-Item -LiteralPath $summaryPath -ErrorAction SilentlyContinue
+  }
+}
+
+# Optional: mini dispatcher smoke (fast path). Enable via PREPUSH_SMOKE=1.
+if ($env:PREPUSH_SMOKE -eq '1') {
+  try {
+    & (Join-Path $root 'tools' 'Quick-DispatcherSmoke.ps1') | Out-Null
+    Write-Host '[pre-push] quick dispatcher smoke OK' -ForegroundColor Green
+  } catch {
+    Write-Error "Quick-DispatcherSmoke failed: $($_.Exception.Message)"
+    exit 1
+  }
+}

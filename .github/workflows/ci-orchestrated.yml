@@ -197,6 +197,8 @@ jobs:
       DETECT_LEAKS: '1'
       LABVIEW_EXE: C:\Program Files\National Instruments\LabVIEW 2025\LabVIEW.exe
       EMIT_LV_CLOSURE_CRUMBS: '1'
+      LV_BASE_VI: ${{ github.workspace }}/VI1.vi
+      LV_HEAD_VI: ${{ github.workspace }}/VI2.vi
     steps:
       - uses: actions/checkout@v5
       - name: Configure Git safe.directory
