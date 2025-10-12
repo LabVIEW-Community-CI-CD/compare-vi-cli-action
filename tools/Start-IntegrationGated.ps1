@@ -38,7 +38,8 @@ param(
   [string]$Repo,
   [string]$Token,
   [switch]$Watch,
-  [switch]$AllowDirty
+  [switch]$AllowDirty,
+  [switch]$AutoPush
 )
 
 Set-StrictMode -Version Latest
@@ -82,6 +83,21 @@ function Get-RepoSlug {
     if ($url -match 'github\.com[:/]([^/]+/[^/.]+)(?:\.git)?$') { return $Matches[1] }
   } catch {}
   throw "Unable to determine repository slug. Pass -Repo 'owner/repo' or login gh."
+}
+
+function Invoke-GitPushWithToken {
+  param([string]$RepoSlug,[string]$Branch,[string]$Tok)
+  if (-not $RepoSlug) { throw 'Invoke-GitPushWithToken: missing RepoSlug' }
+  if (-not $Branch)   { throw 'Invoke-GitPushWithToken: missing Branch' }
+  if (-not $Tok)      { throw 'Invoke-GitPushWithToken: missing Token' }
+  $remoteUrl = "https://github.com/$RepoSlug.git"
+  $authUrl   = "https://x-access-token:$Tok@github.com/$RepoSlug.git"
+  Write-Host ("Pushing branch '{0}' to origin with token (masked)" -f $Branch) -ForegroundColor Green
+  $pushArgs = @('push','--set-upstream',$authUrl,"HEAD:refs/heads/$Branch")
+  & git @pushArgs | Out-Null
+  if ($LASTEXITCODE -ne 0) {
+    throw "git push failed for $RepoSlug:$Branch (exit $LASTEXITCODE)"
+  }
 }
 
 function Get-AuthHeaders {
@@ -143,6 +159,17 @@ $workflowKey = 'ci-orchestrated.yml'
 $workflowName = 'CI Orchestrated (deterministic chain)'
 $sampleId = New-SampleId
 $dispatchStamp = Get-Date
+
+# Optionally auto-push current branch prior to dispatch
+if ($AutoPush) {
+  try {
+    $branch = $Ref
+    if ($Ref -eq '__CURRENT_BRANCH__' -and $detectedRef) { $branch = $detectedRef }
+    Invoke-GitPushWithToken -RepoSlug $repoSlug -Branch $branch -Tok $tok
+  } catch {
+    throw "Auto-push failed: $($_.Exception.Message)"
+  }
+}
 
 if ($useGh) {
   if ($tok) { $env:GH_TOKEN = $tok }
