@@ -54,7 +54,7 @@ jobs:
   normalize:
     runs-on: ubuntu-latest
     outputs:
-      include_integration: ${{ steps.normalize.outputs.include_integration }}
+      include_integration: ${{ steps.normalize.outputs.normalized }}
     steps:
       - uses: actions/checkout@v5
       - name: Normalize include_integration
@@ -315,7 +315,19 @@ jobs:
       - name: Define category patterns
         id: integration_cats
         shell: pwsh
-        run: ${{ steps.unit_cats.run }}
+        run: |
+          $cat='${{ matrix.category }}'
+          switch ($cat) {
+            'dispatcher' { $inc = @('Invoke-PesterTests*.ps1','PesterAvailability.Tests.ps1','NestedDispatcher*.Tests.ps1') }
+            'fixtures'   { $inc = @('Fixtures.*.ps1','FixtureValidation*.ps1','FixtureSummary*.ps1','ViBinaryHandling.Tests.ps1','FixtureValidationDiff.Tests.ps1') }
+            'schema'     { $inc = @('Schema.*.ps1','SchemaLite*.ps1') }
+            'comparevi'  { $inc = @('CompareVI*.ps1','CanonicalCli.Tests.ps1','Args.Tokenization.Tests.ps1') }
+            'loop'       { $inc = @('CompareLoop*.ps1','Run-AutonomousIntegrationLoop*.ps1','LoopMetrics.Tests.ps1','Integration-ControlLoop*.ps1','IntegrationControlLoop*.ps1') }
+            'psummary'   { $inc = @('PesterSummary*.ps1','Write-PesterSummaryToStepSummary*.ps1','AggregationHints*.ps1') }
+            'workflow'   { $inc = @('Workflow*.ps1','On-FixtureValidationFail.Tests.ps1','Watch.FlakyRecovery.Tests.ps1','FunctionShadowing*.ps1','FunctionProxy.Tests.ps1','RunSummary.Tool*.ps1','Action.CompositeOutputs.Tests.ps1','Binding.MinRepro.Tests.ps1','ArtifactTracking*.ps1','Guard.*.Tests.ps1') }
+            default      { $inc = @('*.ps1') }
+          }
+          "include=$($inc -join ',')" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
       - name: Run Pester (integration only)
         if: ${{ steps.inv_integration.outputs.ready == 'true' }}
         shell: pwsh

@@ -16,7 +16,8 @@ This document summarizes the expectations for automation agents working in the
   - Keep workflows deterministic and green.
   - Reference `#88` in commit and PR descriptions.
 - First actions in a session:
-  1. Run `pwsh -File tools/Sync-Develop.ps1` to fetch/fast-forward `develop` (set `SKIP_SYNC_DEVELOP=1` or pass `-NoFastForward` to opt out when a frozen snapshot is required).
+  1. Run `pwsh -File tools/Sync-Develop.ps1` to fetch/fast-forward `develop`.
+     Set `SKIP_SYNC_DEVELOP=1` or pass `-NoFastForward` when a frozen snapshot is required.
   2. Pull #88 details (tasks, acceptance, linked PRs).
   3. Create or sync a working branch (`issue/88-<slug>`), push minimal changes, dispatch CI.
   4. Open or update the PR, apply required labels, monitor to green, merge when acceptance is met.
@@ -36,11 +37,22 @@ This document summarizes the expectations for automation agents working in the
 - Custom paths: `./Invoke-PesterTests.ps1 -TestsPath tests -ResultsPath tests/results`
 - Pattern filter: `./Invoke-PesterTests.ps1 -IncludePatterns 'CompareVI.*'`
 - Quick smoke: `./tools/Quick-DispatcherSmoke.ps1 -Keep`
-- Containerized non-LV checks: `pwsh -File tools/Run-NonLVChecksInDocker.ps1` (pulls pinned images, honours `DETERMINISTIC=1`).
-- Orchestrated gate: Run Task → `Integration (#88): Auto Push + Start + Watch`. The task pushes the current branch with the admin token (env or `C:\github_token.txt`), dispatches `ci-orchestrated.yml`, and streams the run via Docker watcher. Allowed issues live in `tools/policy/allowed-integration-issues.json`.
-- Phase vars manifest: produced by `tools/Write-PhaseVars.ps1` in `tests/results/_phase/vars.json`; consumers run `tools/Validate-PhaseVars.ps1` + `tools/Export-PhaseVars.ps1` prior to unit/integration phases.
-- Docker rebuilds & retests: rerun `tools/Run-NonLVChecksInDocker.ps1` (add `-Skip*` switches as needed) to refresh actionlint/markdownlint/docs/workflow checks. After image or workflow updates, trigger `Integration (#88): Auto Push + Start + Watch` to retest the deterministic pipeline end-to-end.
-- Watcher hygiene: `tools/Watch-OrchestratedRun.ps1` trims old `.tmp/watch-run` folders, warns on stalled run/dispatcher status, and flags digest-identical dispatcher logs (possible repeated failures).
+- Containerized non-LV checks: `pwsh -File tools/Run-NonLVChecksInDocker.ps1` (pulls pinned
+  images, honours `DETERMINISTIC=1`).
+- Orchestrated gate: Run Task → `Integration (#88): Auto Push + Start + Watch`. The task pushes
+  the current branch with the admin token (env or `C:\github_token.txt`), dispatches
+  `ci-orchestrated.yml`, and streams the run via Docker watcher. Allowed issues live in
+  `tools/policy/allowed-integration-issues.json`.
+- Phase vars manifest: produced by `tools/Write-PhaseVars.ps1` in `tests/results/_phase/vars.json`;
+  consumers run `tools/Validate-PhaseVars.ps1` + `tools/Export-PhaseVars.ps1` prior to
+  unit/integration phases.
+- Docker rebuilds & retests: rerun `tools/Run-NonLVChecksInDocker.ps1` (add `-Skip*` switches as
+  needed) to refresh actionlint/markdownlint/docs/workflow checks. After image or workflow updates,
+  trigger `Integration (#88): Auto Push + Start + Watch` to retest the deterministic pipeline
+  end-to-end.
+- Watcher hygiene: `tools/Watch-OrchestratedRun.ps1` trims old `.tmp/watch-run` folders, warns on
+  stalled run/dispatcher status, and flags digest-identical dispatcher logs (possible repeated
+  failures).
 
 ## Coding style
 
@@ -111,16 +123,21 @@ This document summarizes the expectations for automation agents working in the
 ## Branch protection contract (#118)
 
 - Canonical required-status mapping lives in `tools/policy/branch-required-checks.json` (hash = contract digest).
-- `tools/Update-SessionIndexBranchProtection.ps1` injects the verification block into `session-index.json` and emits a step-summary entry.
+- `tools/Update-SessionIndexBranchProtection.ps1` injects the verification block into
+  `session-index.json` and emits a step-summary entry.
 - When running smoke tests locally:
+
   ```powershell
   pwsh -File tools/Quick-DispatcherSmoke.ps1 -PreferWorkspace -ResultsPath .tmp/sessionindex
   pwsh -File tools/Update-SessionIndexBranchProtection.ps1 -ResultsDir .tmp/sessionindex `
     -PolicyPath tools/policy/branch-required-checks.json `
     -Branch (git branch --show-current)
   ```
-- Confirm `session-index.json` contains `branchProtection.result.status = "ok"`; mismatches should be logged in `branchProtection.notes`.
-- If CI reports `warn`/`fail`, inspect the Step Summary and the session index artifact from that job. Update branch protection or the mapping file as needed to realign.
+
+- Confirm `session-index.json` contains `branchProtection.result.status = "ok"`; mismatches should be
+  logged in `branchProtection.notes`.
+- If CI reports `warn`/`fail`, inspect the Step Summary and the session index artifact from that
+  job. Update branch protection or the mapping file as needed to realign.
 
 ## Workflow maintenance
 
@@ -147,28 +164,42 @@ Use `tools/workflows/update_workflows.py` for mechanical updates (comment-preser
   - `node dist/src/config/toggles-cli.js --format values --profile ci-orchestrated --pretty`
   - `node dist/src/config/toggles-cli.js --format env --profile dev-workstation`
   - `node dist/src/config/toggles-cli.js --format psd1 --profile labview-diagnostics`
-- `--format env` emits `AGENT_TOGGLE_MANIFEST_DIGEST` and `AGENT_TOGGLE_PROFILES` alongside per-toggle values; surface them in logs to prove configuration lineage.
-- PowerShell helpers: `Import-Module tools/AgentToggles.psm1` then call `Get-AgentToggleValue` / `Get-AgentToggleValues`.
-- Determinism guard: `Assert-AgentToggleDeterminism` throws when unexpected environment overrides are detected (pass `-AllowEnvironmentOverrides` only when intentionally deviating).
-- Profiles apply in order; variants can target Describe/It names or tags for fine-grained overrides.
-- Environment values still win: set `SKIP_SYNC_DEVELOP`, `HANDOFF_AUTOTRIM`, etc., before resolving to force overrides.
-- Session index v2 records the resolved payload under `environment.toggles`; dashboards rely on the manifest digest to correlate runs.
+- `--format env` emits `AGENT_TOGGLE_MANIFEST_DIGEST` and `AGENT_TOGGLE_PROFILES` alongside
+  per-toggle values; surface them in logs to prove configuration lineage.
+- PowerShell helpers: `Import-Module tools/AgentToggles.psm1` then call `Get-AgentToggleValue` /
+  `Get-AgentToggleValues`.
+- Determinism guard: `Assert-AgentToggleDeterminism` throws when unexpected environment overrides
+  are detected (pass `-AllowEnvironmentOverrides` only when intentionally deviating).
+- Profiles apply in order; variants can target Describe/It names or tags for fine-grained
+  overrides.
+- Environment values still win: set `SKIP_SYNC_DEVELOP`, `HANDOFF_AUTOTRIM`, etc., before resolving
+  to force overrides.
+- Session index v2 records the resolved payload under `environment.toggles`; dashboards rely on the
+  manifest digest to correlate runs.
 - Reference implementation: `tests/AgentToggles.Tests.ps1`.
 
 ## Agent hand-off & telemetry
 
 - Keyword **handoff**:
   1. Read `AGENT_HANDOFF.txt`, confirm plan.
-  2. Preferred: `node dist/src/config/toggles-cli.js --format env --profile ci-orchestrated` (pipe into your shell's export or `$GITHUB_ENV`).
+  2. Preferred: `node dist/src/config/toggles-cli.js --format env --profile ci-orchestrated`
+     (pipe into your shell's export or `$GITHUB_ENV`).
      - PowerShell option: `Import-Module tools/AgentToggles.psm1; Get-AgentToggleValues -Profiles 'ci-orchestrated'`.
-     - Guardrail: `Assert-AgentToggleDeterminism` to ensure no unexpected environment overrides slipped in before continuing.
+     - Guardrail: `Assert-AgentToggleDeterminism` to ensure no unexpected environment overrides
+       slipped in before continuing.
      - Manual fallback (when compiled assets unavailable):
        - `LV_SUPPRESS_UI=1`
        - `LV_NO_ACTIVATE=1`
        - `LV_CURSOR_RESTORE=1`
        - `LV_IDLE_WAIT_SECONDS=2`
        - `LV_IDLE_MAX_WAIT_SECONDS=5`
-  3. Rogue scan: `pwsh -File tools/Detect-RogueLV.ps1 -ResultsDir tests/results -LookBackSeconds 900 -AppendToStepSummary`
+  3. Rogue scan:
+
+     ```powershell
+     pwsh -File tools/Detect-RogueLV.ps1 -ResultsDir tests/results `
+       -LookBackSeconds 900 -AppendToStepSummary
+     ```
+
   4. Sweep LVCompare (only) if rogues found and human approves.
   5. Honour pause etiquette ("brief delay (~90 seconds)") and log waits.
   6. Execute "First Actions for the Next Agent" from `AGENT_HANDOFF.txt`.

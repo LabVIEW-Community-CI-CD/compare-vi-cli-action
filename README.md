@@ -91,18 +91,25 @@ CI summaries.
 Use the token/REST-capable watcher to inspect the orchestrated run’s dispatcher logs and
 artifacts without opening the web UI:
 
-```
+```powershell
 pwsh -File tools/Watch-InDocker.ps1 -RunId <id> -Repo LabVIEW-Community-CI-CD/compare-vi-cli-action
 ```
 
 Tips:
-- Set `GH_TOKEN` or `GITHUB_TOKEN` in your environment (admin token recommended). The watcher also falls back to `C:\github_token.txt` when the env vars are unset.
-- VS Code: use “Integration (#88): Auto Push + Start + Watch” under Run Task to push, dispatch, and stream in one step.
-- The watcher prunes old run directories (`.tmp/watch-run`) automatically and warns if run/dispatcher status stalls longer than the configured window (default 10 minutes). When consecutive dispatcher logs hash to the same digest, it flags a possible repeated failure.
+
+- Set `GH_TOKEN` or `GITHUB_TOKEN` in your environment (admin token recommended). The watcher also
+  falls back to `C:\github_token.txt` when the env vars are unset.
+- VS Code: use “Integration (#88): Auto Push + Start + Watch” under Run Task to push, dispatch, and
+  stream in one step.
+- The watcher prunes old run directories (`.tmp/watch-run`) automatically and warns if
+  run/dispatcher status stalls longer than the configured window (default 10 minutes). When
+  consecutive dispatcher logs hash to the same digest, it flags a possible repeated failure.
 
 #### Start integration (gated)
 
-The one-button task “Integration (#88): Auto Push + Start + Watch” deterministically starts an orchestrated run only after selecting an allowed GitHub issue. The allow-list lives in `tools/policy/allowed-integration-issues.json` (default: `#88`, `#118`). The task:
+The one-button task “Integration (#88): Auto Push + Start + Watch” deterministically starts an
+orchestrated run only after selecting an allowed GitHub issue. The allow-list lives in
+`tools/policy/allowed-integration-issues.json` (default: `#88`, `#118`). The task:
 
 1. Auto-detects an admin token (`GH_TOKEN`, `GITHUB_TOKEN`, or `C:\github_token.txt`).
 2. Pushes the current branch using that token (no manual git needed).
@@ -110,6 +117,7 @@ The one-button task “Integration (#88): Auto Push + Start + Watch” determini
 4. Launches the Docker watcher so the run is streamed immediately in the terminal.
 
 Prompts:
+
 - Issue: allowed issue number.
 - Strategy: `single` or `matrix`.
 - Include integration: `true`/`false`.
@@ -119,11 +127,16 @@ Prompts:
 
 `ci-orchestrated.yml` executes as a deterministic two-phase flow:
 
-1. `phase-vars` (self-hosted Windows) writes `tests/results/_phase/vars.json` with a digest (`tools/Write-PhaseVars.ps1`).
-2. `pester-unit` consumes the manifest and runs Unit-only tests with `DETERMINISTIC=1` (no retries or cleanup).
-3. `pester-integration` runs Integration-only tests (gated on unit success and the include flag) using `-OnlyIntegration`.
+1. `phase-vars` (self-hosted Windows) writes `tests/results/_phase/vars.json` with a digest
+   (`tools/Write-PhaseVars.ps1`).
+2. `pester-unit` consumes the manifest and runs Unit-only tests with `DETERMINISTIC=1` (no retries
+   or cleanup).
+3. `pester-integration` runs Integration-only tests (gated on unit success and the include flag)
+   using `-OnlyIntegration`.
 
-The manifest is validated with `tools/Validate-PhaseVars.ps1` and exported through `tools/Export-PhaseVars.ps1`. Each phase uploads dedicated artifacts (`pester-unit-*`, `pester-integration-*`, `invoker-boot-*`).
+The manifest is validated with `tools/Validate-PhaseVars.ps1` and exported through
+`tools/Export-PhaseVars.ps1`. Each phase uploads dedicated artifacts (`pester-unit-*`,
+`pester-integration-*`, `invoker-boot-*`).
 
 #### Docker-based lint/validation
 
@@ -133,7 +146,9 @@ Use `tools/Run-NonLVChecksInDocker.ps1` to rebuild container tooling and re-run 
 pwsh -File tools/Run-NonLVChecksInDocker.ps1
 ```
 
-The script pulls pinned images (actionlint, node, PowerShell, python) and forwards only approved env vars (compatible with `DETERMINISTIC=1`). Add switches such as `-SkipDocs`/`-SkipWorkflow`/`-SkipMarkdown` to focus on specific checks, then rerun the VS Code task to verify fixes.
+The script pulls pinned images (actionlint, node, PowerShell, python) and forwards only approved env
+vars (compatible with `DETERMINISTIC=1`). Add switches such as `-SkipDocs`/`-SkipWorkflow`/
+`-SkipMarkdown` to focus on specific checks, then rerun the VS Code task to verify fixes.
 
 ## Bundled workflows
 

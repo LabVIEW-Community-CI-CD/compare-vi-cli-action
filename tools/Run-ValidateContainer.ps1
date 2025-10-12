@@ -54,6 +54,7 @@ if ($env:GITHUB_TOKEN) {
 }
 
 $dockerArgs += $Image
+$dockerArgs += @('-NoLogo','-NoProfile','-File','./tools/Run-OneButtonValidate.ps1')
 
 Write-Host ("[validate-container] docker {0}" -f ($dockerArgs -join ' '))
 

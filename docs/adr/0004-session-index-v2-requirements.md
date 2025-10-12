@@ -1,4 +1,5 @@
 ---
+---
 adr: 0004
 title: Session Index v2 Requirements for Local CI
 status: proposed
@@ -40,8 +41,11 @@ requirements:
     rule: everyCaseHas
     field: requirement
     severity: warning
+
 ---
 
+<!-- markdownlint-disable MD007 MD032 MD041 -->
+<!-- markdownlint-disable-next-line MD025 -->
 # ADR 0004 – Session Index v2 Requirements for Local CI
 
 ## Status
@@ -51,14 +55,17 @@ Proposed – open for feedback as we finish migrating dashboards and local tooli
 ## Context
 
 - Session-index v1 was sufficient for simple dashboards but lacked branch-protection and per-test metadata.
-- Our TypeScript builder and workflows now emit `session-index.v2.json` containing branch protection, per-test details, and richer run context.
-- We want local CI (developers running scripts from VS Code or the command line) to enforce a baseline set of fields so dashboards and automation stay healthy.
+- Our TypeScript builder and workflows now emit `session-index.v2.json` containing branch
+  protection, per-test details, and richer run context.
+- We want local CI (developers running scripts from VS Code or the command line) to enforce a
+  baseline set of fields so dashboards and automation stay healthy.
 
 ## Decision
 
 - Normalize the requirements for session-index v2 in a single machine-readable location (this ADR front matter).
 - Provide a TypeScript helper that parses these requirements and validates `session-index.v2.json`.
-- Wire the validation into `tools/Write-SessionIndexV2.ps1` so the local/CI flow fails fast when required data is missing.
+- Wire the validation into `tools/Write-SessionIndexV2.ps1` so the local/CI flow fails fast when
+  required data is missing.
 
 ## Consequences
 
@@ -66,4 +73,5 @@ Proposed – open for feedback as we finish migrating dashboards and local tooli
 - Dashboards can rely on per-test cases and branch-protection data without needing defensive fallbacks.
 - Documentation and enforcement stay in sync: updating the ADR updates the validation rules.
 
-Future work: extend the requirement set as we add additional metadata (e.g., traceability IDs, expected results, rationale) and consider generating the schema documentation from the same source.
+Future work: extend the requirement set as we add additional metadata (e.g., traceability IDs,
+expected results, rationale) and consider generating the schema documentation from the same source.

@@ -1,3 +1,5 @@
+<!-- markdownlint-disable-file MD041 -->
+
 # Session Index v2 – proposal
 
 > Heroic goal: Turn the session index into the single source of truth for CI
@@ -149,20 +151,21 @@ Key differences from v1:
    sample indices. This keeps structure and validation in one place.
 
 2. **PowerShell integration (follow-up)**  
-   - Update existing scripts (e.g., Quick-DispatcherSmoke, Update-SessionIndexBranchProtection) to call the TypeScript CLI.
-   - Provide thin PS wrappers so existing jobs don’t need to learn Node APIs.
+   * Update existing scripts (e.g., Quick-DispatcherSmoke, Update-SessionIndexBranchProtection) to
+     call the TypeScript CLI.
+   * Provide thin PS wrappers so existing jobs don’t need to learn Node APIs.
 
 3. **Per-test callbacks**  
-   - Add a Pester shim that captures test metadata and streams it to the builder.
-   - Populate `tests.cases` incrementally; fall back to summaries when callbacks
+   * Add a Pester shim that captures test metadata and streams it to the builder.
+   * Populate `tests.cases` incrementally; fall back to summaries when callbacks
      are unavailable.
 
 4. **Consumer migration**  
-   - Update dashboards, trace matrices, and tooling to read v2.
-   - Keep emitting v1 in parallel until all consumers understand v2.
+   * Update dashboards, trace matrices, and tooling to read v2.
+   * Keep emitting v1 in parallel until all consumers understand v2.
 
 5. **Deprecate v1**  
-   - Once all jobs and dashboards read v2, freeze v1 generation and archive the
+   * Once all jobs and dashboards read v2, freeze v1 generation and archive the
      old schema documentation.
 
 ## Open questions
