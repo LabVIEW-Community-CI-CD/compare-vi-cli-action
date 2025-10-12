@@ -184,6 +184,11 @@ jobs:
             Write-Host '::warning::prepare-fixtures did not emit expected outputs; proceeding without LV_* env.'
           }
 
+      - name: Validate LVCompare inputs (integration)
+        if: ${{ needs.normalize.outputs.include_integration == 'true' }}
+        shell: pwsh
+        run: pwsh -File tools/Validate-LVComparePreflight.ps1 -RequireInputs -AppendStepSummary
+
       - name: Apply dispatcher profile
         id: dprofile
         uses: ./.github/actions/dispatcher-profile
@@ -586,26 +591,13 @@ jobs:
       - name: Append re-run hint
         if: always()
         shell: pwsh
-        run: |
-          if (-not $env:GITHUB_STEP_SUMMARY) { return }
-          $workflowName = '${{ github.workflow }}'
-          $refName = '${{ github.ref_name }}'
-          $sampleId = '${{ inputs.sample_id }}'
-          $cmdParts = @("gh workflow run `"$workflowName`"", "-r `"$refName`"")
-          if ($sampleId) { $cmdParts += "-f sample_id=$sampleId" }
-          $command = $cmdParts -join ' '
-          $workflowRef = '${{ github.workflow_ref }}'
-          $workflowPath = ''
-          if ($workflowRef -match '\.github/workflows/(?<path>[^@]+)@') {
-            $workflowPath = $Matches['path']
-          }
-          $repo = '${{ github.repository }}'
-          $lines = @('### Re-run With Same Inputs','',"- Command: `$command`")
-          if (-not $sampleId) { $lines = $lines + '- sample_id omitted; workflow will auto-generate if supported.' }
-          if ($workflowPath) {
-            $lines = $lines + ('- Workflow: https://github.com/{0}/actions/workflows/{1}' -f $repo, $workflowPath)
-          }
-          ($lines -join [Environment]::NewLine) | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8
+        env:
+          WORKFLOW_NAME: ${{ github.workflow }}
+          REF_NAME: ${{ github.ref_name }}
+          SAMPLE_ID: ${{ inputs.sample_id }}
+          WORKFLOW_REF: ${{ github.workflow_ref }}
+          REPOSITORY: ${{ github.repository }}
+        run: pwsh -File tools/Append-ReRunHint.ps1
 
       - name: Print agent hand-off summary (auto-trim)
         if: always()
