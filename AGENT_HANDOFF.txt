@@ -4,6 +4,8 @@ LVCompare Required - LVCompare remains the required comparator. The LabVIEW CLI 
 opt-in via LVCI_COMPARE_MODE. The non-required cli-compare.yml deploys reports under
 tests/results/compare-cli. Close-LabVIEW is now the shared entry point and auto-selects between
 g-cli and labview-cli.
+VI Binary Gate Retired - The VI Binary Handling Gate workflow is manual-only; CLI NUnit gating now
+covers LabVIEW CLI compare success criteria for automation.
 
 Optional Utilities
 
