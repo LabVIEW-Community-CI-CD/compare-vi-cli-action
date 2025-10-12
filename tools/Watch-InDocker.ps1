@@ -43,7 +43,9 @@ function Get-DockerHostPath {
   $resolved = (Resolve-Path -LiteralPath $Path).Path
   if ($IsWindows) {
     $drive = $resolved.Substring(0,1).ToLowerInvariant()
-    $rest = $resolved.Substring(2).Replace('\\','/')
+    $rest = $resolved.Substring(2)
+    $rest = $rest.TrimStart('\')
+    $rest = $rest -replace '\\','/'
     return "/$drive/$rest"
   }
   return $resolved
@@ -75,4 +77,3 @@ try {
 }
 
 Write-Host 'Watcher run (in Docker) completed.' -ForegroundColor Green
-
