@@ -37,11 +37,14 @@ param(
   [string]$Ref = 'develop',
   [string]$Repo,
   [string]$Token,
-  [switch]$Watch
+  [switch]$Watch,
+  [switch]$AllowDirty
 )
 
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
+
+$tokenFileDefault = 'C:\github_token.txt'
 
 function Get-Policy {
   $path = Join-Path $PSScriptRoot 'policy/allowed-integration-issues.json'
@@ -54,14 +57,14 @@ function Get-Policy {
 }
 
 function Resolve-TokenValue {
-  param([string]$Explicit, [string]$EnvGh, [string]$EnvGithub, [string]$FilePath = 'C:\github_token.txt')
-  if ($Explicit) { return $Explicit }
-  if ($EnvGh) { return $EnvGh }
-  if ($EnvGithub) { return $EnvGithub }
+  param([string]$Explicit, [string]$EnvGh, [string]$EnvGithub, [string]$FilePath)
+  if ($Explicit) { return [pscustomobject]@{ Value = $Explicit; Source = 'param' } }
+  if ($EnvGh) { return [pscustomobject]@{ Value = $EnvGh; Source = 'env:GH_TOKEN' } }
+  if ($EnvGithub) { return [pscustomobject]@{ Value = $EnvGithub; Source = 'env:GITHUB_TOKEN' } }
   if ($FilePath -and (Test-Path -LiteralPath $FilePath)) {
     try {
       $val = (Get-Content -LiteralPath $FilePath -Raw -ErrorAction Stop).Trim()
-      if ($val) { return $val }
+      if ($val) { return [pscustomobject]@{ Value = $val; Source = "file:$FilePath" } }
     } catch {
       Write-Verbose ("Failed to read token file {0}: {1}" -f $FilePath, $_.Exception.Message)
     }
@@ -104,6 +107,11 @@ if (-not $policy.issues -or ($Issue -notin $policy.issues)) {
   throw "Issue #$Issue is not allowed by policy. Allowed: $($policy.issues -join ', ')"
 }
 
+$statusOutput = (& git status --porcelain 2>$null)
+if (-not $AllowDirty -and $statusOutput -and ($statusOutput.Trim().Length -gt 0)) {
+  throw "Working tree has unstaged changes. Commit/stash before dispatch or pass -AllowDirty to override."
+}
+
 $repoSlug = Get-RepoSlug -RepoParam $Repo
 $detectedRef = $null
 try { $detectedRef = (& git rev-parse --abbrev-ref HEAD 2>$null).Trim() } catch {}
@@ -111,7 +119,9 @@ if ($Ref -eq '__CURRENT_BRANCH__') { if ($detectedRef) { $Ref = $detectedRef } e
 $Ref = $Ref.Trim()
 $useGh = $false
 if (Get-Command gh -ErrorAction SilentlyContinue) { $useGh = $true }
-$tok = Resolve-TokenValue -Explicit $Token -EnvGh $env:GH_TOKEN -EnvGithub $env:GITHUB_TOKEN
+$tokenInfo = Resolve-TokenValue -Explicit $Token -EnvGh $env:GH_TOKEN -EnvGithub $env:GITHUB_TOKEN -FilePath $tokenFileDefault
+$tok = if ($tokenInfo) { $tokenInfo.Value } else { $null }
+$tokenSource = if ($tokenInfo) { $tokenInfo.Source } else { 'none' }
 if (-not $tok -and -not $useGh) { throw 'No GH CLI and no token found. Set GH_TOKEN or install gh.' }
 if ($tok -and -not $env:GH_TOKEN) { $env:GH_TOKEN = $tok }
 
@@ -196,6 +206,32 @@ if ($runId) {
   }
 } else {
   Write-Warning 'Could not automatically determine run id yet. Use gh run list or GitHub UI to locate it, then run tools/Watch-InDocker.ps1.'
+}
+
+if ($runId) {
+  try {
+    $workspace = (Get-Location).Path
+    $scratch = Join-Path $workspace (".tmp/watch-run/{0}" -f $runId)
+    New-Item -ItemType Directory -Force -Path $scratch | Out-Null
+    $meta = [ordered]@{
+      issue          = $Issue
+      strategy       = $Strategy
+      includeIntegration = $IncludeIntegration
+      ref            = $Ref
+      repo           = $repoSlug
+      sampleId       = $sampleId
+      runId          = $runId
+      runUrl         = $runUrl
+      dispatchedAt   = $dispatchStamp.ToString('o')
+      tokenSource    = $tokenSource
+      allowDirty     = [bool]$AllowDirty
+      workingTreeClean = -not ($statusOutput -and ($statusOutput.Trim().Length -gt 0))
+    }
+    $metaPath = Join-Path $scratch 'dispatch.json'
+    $meta | ConvertTo-Json -Depth 4 | Out-File -FilePath $metaPath -Encoding utf8
+  } catch {
+    Write-Warning ("Failed to write dispatch metadata: {0}" -f $_.Exception.Message)
+  }
 }
 
 if ($Watch) {
