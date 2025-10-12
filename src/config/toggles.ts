@@ -120,6 +120,12 @@ function patternToRegex(pattern: string): RegExp {
   return new RegExp(`^${escaped}$`, 'i');
 }
 
+function sortStrings(values: readonly string[]): string[] {
+  const next = Array.from(values);
+  next.sort((a, b) => a.localeCompare(b));
+  return next;
+}
+
 function matchesPattern(pattern: string | undefined, value: string | undefined): boolean {
   if (!pattern) {
     return true;
@@ -358,7 +364,13 @@ export function resolveToggleValues(
     orderedProfiles.push(...expandProfileOrder(manifest, profileId, seenProfiles, []));
   }
 
+  const appliedProfiles = new Set<string>();
+
   for (const profileId of orderedProfiles) {
+    if (appliedProfiles.has(profileId)) {
+      continue;
+    }
+    appliedProfiles.add(profileId);
     const profile = manifest.profiles.find((item) => item.id === profileId);
     if (!profile) {
       continue;
@@ -366,26 +378,28 @@ export function resolveToggleValues(
     for (const [key, value] of Object.entries(profile.values)) {
       const toggle = ensureToggleExists(manifest, key);
       const resolution = values.get(key);
-    if (!resolution) {
-      continue;
+      if (!resolution) {
+        continue;
+      }
+      if (typeof value !== toggle.type) {
+        if (!(toggle.type === 'number' && typeof value === 'number')) {
+          throw new Error(`Profile '${profileId}' provides invalid type for '${key}'.`);
+        }
+      }
+      values.set(key, {
+        key,
+        value,
+        valueType: toggle.type,
+        source: 'profile',
+        profile: profileId,
+        description: toggle.description
+      });
     }
-    if (typeof value !== toggle.type && !(toggle.type === 'number' && typeof value === 'number')) {
-      throw new Error(`Profile '${profileId}' provides invalid type for '${key}'.`);
-    }
-    values.set(key, {
-      key,
-      value,
-      valueType: toggle.type,
-      source: 'profile',
-      profile: profileId,
-      description: toggle.description
-    });
-  }
   }
 
   const ctx: ToggleResolutionContext = {
     ...context,
-    tags: context.tags ?? []
+    tags: context.tags ? sortStrings(Array.from(new Set(context.tags))) : []
   };
 
   for (const toggle of manifest.toggles) {
@@ -436,12 +450,17 @@ export function buildToggleValuesPayload(
   const digest = computeToggleManifestDigest(manifest);
   const resolved = resolveToggleValues(manifest, context);
   const values: Record<string, ToggleResolution> = {};
-  const profiles = context.profiles ? [...context.profiles] : [];
+  const profiles = context.profiles
+    ? sortStrings(Array.from(new Set(context.profiles)))
+    : [];
   const tags =
-    context.tags && context.tags.length > 0 ? [...context.tags] : undefined;
+    context.tags && context.tags.length > 0
+      ? sortStrings(Array.from(new Set(context.tags)))
+      : undefined;
 
-  for (const [key, resolution] of resolved.entries()) {
-    values[key] = resolution;
+  const sortedEntries = Array.from(resolved.entries()).sort(([a], [b]) => a.localeCompare(b));
+  for (const [key, resolution] of sortedEntries) {
+    values[key] = { ...resolution };
   }
 
   return {

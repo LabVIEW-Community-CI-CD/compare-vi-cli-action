@@ -2,25 +2,27 @@ import { ArgumentParser } from 'argparse';
 import { readFileSync, writeFileSync } from 'node:fs';
 import { buildToggleValuesPayload } from '../config/toggles.js';
 import { createSessionIndexBuilder } from './builder.js';
-import type { SessionIndexTestCase, SessionIndexV2 } from './schema.js';
+import type {
+  SessionIndexBranchProtection,
+  SessionIndexTestCase
+} from './schema.js';
 
-type BranchStatus = NonNullable<SessionIndexV2['branchProtection']>['status'];
-type BranchReason = NonNullable<
-  SessionIndexV2['branchProtection']
->['reason'];
-type BranchActual = NonNullable<
-  SessionIndexV2['branchProtection']
->['actual'];
+type BranchStatus = SessionIndexBranchProtection['status'];
+type BranchReason = SessionIndexBranchProtection['reason'];
+type BranchActual = NonNullable<SessionIndexBranchProtection['actual']>;
 
 function normalizeProfiles(input: string | string[] | undefined): string[] {
   if (!input) {
     return [];
   }
   const values = Array.isArray(input) ? input : [input];
-  return values
+  const flattened = values
     .flatMap((entry) => entry.split(/[,\s]+/))
     .map((entry) => entry.trim())
     .filter((entry) => entry.length > 0);
+  const unique = Array.from(new Set(flattened));
+  unique.sort((a, b) => a.localeCompare(b));
+  return unique;
 }
 
 const parser = new ArgumentParser({
@@ -238,11 +240,17 @@ if (args.sample) {
   if (raw.branchProtection && typeof raw.branchProtection === 'object') {
     const bp = raw.branchProtection as Record<string, unknown>;
     const result = (bp.result ?? {}) as Record<string, unknown>;
-    const status: BranchStatus =
-      typeof result.status === 'string' &&
-      ['ok', 'warn', 'fail'].includes(result.status)
-        ? (result.status as BranchStatus)
-        : 'ok';
+    const rawStatus = typeof result.status === 'string' ? result.status.toLowerCase() : undefined;
+    let status: BranchStatus = 'ok';
+    if (rawStatus === 'warn') {
+      status = 'warn';
+    } else if (rawStatus === 'error') {
+      status = 'error';
+    } else if (rawStatus === 'fail') {
+      status = 'error';
+    } else if (rawStatus === 'ok') {
+      status = 'ok';
+    }
     builder.setBranchProtection({
       status,
       reason: result.reason as BranchReason,
