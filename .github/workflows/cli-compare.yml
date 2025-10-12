@@ -88,3 +88,7 @@ jobs:
           WORKFLOW_REF: ${{ github.workflow_ref }}
           REPOSITORY: ${{ github.repository }}
         run: pwsh -File tools/Append-ReRunHint.ps1
+
+      - name: Validate CLI compare NUnit results
+        shell: pwsh
+        run: pwsh -File tools/Assert-NUnitSuccess.ps1 -ResultsPath 'tests/results/compare-cli/results-nunit.xml' -Context 'CLI Compare'
