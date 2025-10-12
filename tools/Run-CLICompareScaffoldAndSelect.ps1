@@ -230,7 +230,13 @@ function Add-CasesInteractive([ref]$Queue,[string]$CasesPath,[string]$DefaultBas
     $idInput = Read-Host "Case id [$autoId]"
     $candidateId = if ([string]::IsNullOrWhiteSpace($idInput)) { $autoId } else { $idInput.Trim() }
 
-    $existingIds = @($Queue.Value.cases.id) + (@($added | ForEach-Object { $_.id }))
+    $existingIds = @()
+    foreach ($existing in $Queue.Value.cases) {
+      if ($existing -and $existing.id) { $existingIds += [string]$existing.id }
+    }
+    foreach ($existing in $added) {
+      if ($existing -and $existing.id) { $existingIds += [string]$existing.id }
+    }
     $uniqueId = $candidateId
     $suffix = 1
     while ($existingIds -contains $uniqueId) {
