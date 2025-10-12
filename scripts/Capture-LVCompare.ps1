@@ -188,12 +188,15 @@ $flagsOnly = @()
 $lvPathValue = $null
 for ($i = 0; $i -lt $argsList.Count; $i++) {
   $token = $argsList[$i]
+  if ($null -eq $token) { continue }
   if ($token -ieq '-lvpath' -and ($i + 1) -lt $argsList.Count) {
     $lvPathValue = $argsList[$i + 1]
     $i++
     continue
   }
-  $flagsOnly += $token
+  if ($token.StartsWith('-')) {
+    $flagsOnly += $token
+  }
 }
 
 $diffDetected = switch ($exitCode) {

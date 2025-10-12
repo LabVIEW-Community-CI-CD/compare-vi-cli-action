@@ -30,7 +30,7 @@ exit 0
 '@
       Set-Content -LiteralPath 'tools/Warmup-LabVIEWRuntime.ps1' -Value $warmupStub -Encoding UTF8
 
-      $driverStub = @'
+$driverStub = @'
 param(
   [string]$BaseVi,
   [string]$HeadVi,
@@ -48,11 +48,31 @@ if ($JsonLogPath) {
   if ($dir -and -not (Test-Path $dir)) { New-Item -ItemType Directory -Path $dir -Force | Out-Null }
   '{"type":"compare","schema":"stub"}' | Set-Content -LiteralPath $JsonLogPath -Encoding utf8
 }
+if ($LabVIEWExePath) {
+  $resolvedLV = try { (Resolve-Path -LiteralPath $LabVIEWExePath).Path } catch { $LabVIEWExePath }
+} else {
+  $resolvedLV = 'C:\Program Files\National Instruments\LabVIEW 2025\LabVIEW.exe'
+}
+$args = @('-lvpath', $resolvedLV, '-nobdcosm', '-nofppos', '-noattr')
+$flags = @('-nobdcosm', '-nofppos', '-noattr')
+$stdout = 'stub-run'
 $cap = [ordered]@{
-  schema   = 'lvcompare-capture-v1'
-  exitCode = 1
-  seconds  = 0.42
-  command  = 'stub lvcompare'
+  schema    = 'lvcompare-capture-v1'
+  timestamp = (Get-Date).ToUniversalTime().ToString('o')
+  base      = (Resolve-Path -LiteralPath $BaseVi).Path
+  head      = (Resolve-Path -LiteralPath $HeadVi).Path
+  cliPath   = if ($LVComparePath) { try { (Resolve-Path -LiteralPath $LVComparePath).Path } catch { $LVComparePath } } else { 'C:\Program Files\National Instruments\Shared\LabVIEW Compare\LVCompare.exe' }
+  args      = @($args)
+  lvPath    = $resolvedLV
+  flags     = @($flags)
+  exitCode  = 1
+  seconds   = 0.42
+  stdoutLen = $stdout.Length
+  stderrLen = 0
+  command   = 'stub lvcompare'
+  stdout    = $stdout
+  stderr    = $null
+  diffDetected = $true
 }
 $cap | ConvertTo-Json -Depth 3 | Set-Content -LiteralPath (Join-Path $OutputDir 'lvcompare-capture.json') -Encoding utf8
 'report' | Set-Content -LiteralPath (Join-Path $OutputDir 'compare-report.html') -Encoding utf8
@@ -84,6 +104,18 @@ exit 1
       $index.compare.capture | Should -Match 'lvcompare-capture.json'
       $index.compare.report | Should -Not -BeNullOrEmpty
       $index.outcome | Should -Not -BeNullOrEmpty
+      $capPath = Join-Path $root 'tests/results/teststand-session/compare/lvcompare-capture.json'
+      Test-Path -LiteralPath $capPath | Should -BeTrue
+      $cap = Get-Content -LiteralPath $capPath -Raw | ConvertFrom-Json
+      $cap.flags | Should -Contain '-nobdcosm'
+      $cap.flags | Should -Contain '-nofppos'
+      $cap.flags | Should -Contain '-noattr'
+      ($cap.flags -contains '-lvpath') | Should -BeFalse
+      $cap.lvPath | Should -Be ((Resolve-Path -LiteralPath (Join-Path $root 'LabVIEW.exe')).Path)
+      $cap.diffDetected | Should -BeTrue
+      $ts = $cap.timestamp
+      if ($ts -isnot [string]) { $ts = $ts.ToString('o') }
+      [regex]::IsMatch($ts, '^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{7}Z$') | Should -BeTrue
     }
     finally {
       Pop-Location

@@ -11,28 +11,30 @@
         "timestamp": {
           "type": "string",
           "minLength": 1,
-          "format": "date-time"
+          "format": "date-time",
+          "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}\\.\\d{7}Z$"
         },
         "base": {
           "type": "string",
           "minLength": 1,
-          "pattern": ".*\\.vi$"
+          "pattern": "^.*\\.[Vv][Ii]$"
         },
         "head": {
           "type": "string",
           "minLength": 1,
-          "pattern": ".*\\.vi$"
+          "pattern": "^.*\\.[Vv][Ii]$"
         },
         "cliPath": {
           "type": "string",
           "minLength": 1,
-          "pattern": "LVCompare\\.exe$"
+          "pattern": "[Ll][Vv][Cc][Oo][Mm][Pp][Aa][Rr][Ee]\\.[eE][xX][eE]$"
         },
         "args": {
           "type": "array",
           "minItems": 1,
           "items": {
-            "type": "string"
+            "type": "string",
+            "minLength": 1
           }
         },
         "lvPath": {
@@ -40,12 +42,13 @@
             "string",
             "null"
           ],
-          "pattern": "LabVIEW\\.exe$"
+          "pattern": "[Ll][Aa][Bb][Vv][Ii][Ee][Ww]\\.[eE][xX][eE]$"
         },
         "flags": {
           "type": "array",
           "items": {
             "type": "string",
+            "minLength": 1,
             "pattern": "^-"
           }
         },
@@ -100,11 +103,14 @@
         "head",
         "cliPath",
         "args",
+        "lvPath",
+        "flags",
         "exitCode",
         "seconds",
         "stdoutLen",
         "stderrLen",
-        "command"
+        "command",
+        "diffDetected"
       ],
       "additionalProperties": false
     }
