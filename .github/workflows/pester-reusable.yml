@@ -584,13 +584,11 @@ jobs:
           fail-on-outside: 'false'
           upload-artifact: 'false'
 
-      - name: LV Guard (post)
-        if: always()
-        uses: ./.github/actions/runner-unblock-guard
-        with:
-          snapshot-path: tests/results/lv-guard-post.json
-          cleanup: ${{ env.CLEAN_LV_AFTER == 'true' }}
-          process-names: 'LVCompare,LabVIEW'
+      - name: Close LabVIEW (entrypoint)
+        if: always() && env.CLEAN_LV_AFTER == 'true'
+        shell: pwsh
+        continue-on-error: true
+        run: pwsh -File tools/Close-LabVIEW.ps1
 
       - name: g-cli custom action (optional)
         if: ${{ always() && env.GCLI_ARGS != '' }}
