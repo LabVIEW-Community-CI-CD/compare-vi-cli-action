@@ -240,21 +240,30 @@ Write-JsonEvent 'prime-start' @{
   headVi = $headVi
 }
 
-$primeArgs = @(
-  '-BaseVi', $baseVi,
-  '-HeadVi', $headVi,
-  '-LabVIEWBitness', $SupportedBitness,
-  '-ExpectNoDiff',
-  '-LeakCheck'
-)
-if ($LabVIEWPath) { $primeArgs += @('-LabVIEWExePath', $LabVIEWPath) }
-if ($KillOnTimeout) { $primeArgs += '-KillOnTimeout' }
+$primeParams = [ordered]@{
+  BaseVi        = $baseVi
+  HeadVi        = $headVi
+  LabVIEWBitness = $SupportedBitness
+  ExpectNoDiff  = $true
+  LeakCheck     = $true
+}
+if ($LabVIEWPath) { $primeParams['LabVIEWExePath'] = $LabVIEWPath }
+if ($KillOnTimeout) { $primeParams['KillOnTimeout'] = $true }
 
-Write-Host ("Warmup: prime args -> {0}" -f ($primeArgs -join ' ')) -ForegroundColor DarkGray
-Write-JsonEvent 'prime-args' @{ args = ($primeArgs -join ' ') }
+$primeArgsForLog = @()
+foreach ($entry in $primeParams.GetEnumerator()) {
+  if ($entry.Value -is [bool]) {
+    if ($entry.Value) { $primeArgsForLog += "-$($entry.Key)" }
+  } else {
+    $primeArgsForLog += "-$($entry.Key)"
+    $primeArgsForLog += $entry.Value
+  }
+}
+Write-Host ("Warmup: prime args -> {0}" -f ($primeArgsForLog -join ' ')) -ForegroundColor DarkGray
+Write-JsonEvent 'prime-args' @{ args = ($primeArgsForLog -join ' ') }
 
 try {
-  & $primeScript @primeArgs | Out-Null
+  & $primeScript @primeParams | Out-Null
   $primeExit = $LASTEXITCODE
   Write-JsonEvent 'prime-exit' @{ exitCode = $primeExit }
   if ($primeExit -ne 0) {

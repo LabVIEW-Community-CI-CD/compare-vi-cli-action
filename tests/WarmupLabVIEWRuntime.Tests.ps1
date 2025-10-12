@@ -45,15 +45,29 @@ Describe 'Warmup-LabVIEWRuntime.ps1' {
 
     $primeLog = Join-Path $TestDrive 'prime-log.json'
     $stubPrime = Join-Path $TestDrive 'Prime-LVCompare.ps1'
-    $stubContent = @"
-`$logPath = '$primeLog'
-`$payload = [ordered]@{
-  args = `$args
-  pid  = `$PID
+    $stubContent = @'
+param(
+  [string]$BaseVi,
+  [string]$HeadVi,
+  [string]$LabVIEWExePath,
+  [string]$LabVIEWBitness,
+  [switch]$ExpectNoDiff,
+  [switch]$LeakCheck,
+  [switch]$KillOnTimeout
+)
+$logPath = Join-Path $PSScriptRoot 'prime-log.json'
+$payload = [ordered]@{
+  baseVi        = $BaseVi
+  headVi        = $HeadVi
+  labviewExe    = $LabVIEWExePath
+  bitness       = $LabVIEWBitness
+  expectNoDiff  = $ExpectNoDiff.IsPresent
+  leakCheck     = $LeakCheck.IsPresent
+  killOnTimeout = $KillOnTimeout.IsPresent
 }
-`$payload | ConvertTo-Json -Depth 4 | Set-Content -LiteralPath `$logPath -Encoding utf8
+$payload | ConvertTo-Json -Depth 4 | Set-Content -LiteralPath $logPath -Encoding utf8
 exit 0
-"@
+'@
     Set-Content -LiteralPath $stubPrime -Encoding utf8 -Value $stubContent
     $env:WARMUP_PRIME_SCRIPT = $stubPrime
 
@@ -67,20 +81,12 @@ exit 0
 
     Test-Path $primeLog | Should -BeTrue
     $record = Get-Content -LiteralPath $primeLog -Raw | ConvertFrom-Json
-    $record.args | Should -Contain '-BaseVi'
-    $baseIndex = [Array]::IndexOf($record.args, '-BaseVi')
-    $record.args[$baseIndex + 1] | Should -Be $baseVi
-    $record.args | Should -Contain '-HeadVi'
-    $headIndex = [Array]::IndexOf($record.args, '-HeadVi')
-    $record.args[$headIndex + 1] | Should -Be $headVi
-    $record.args | Should -Contain '-ExpectNoDiff'
-    $record.args | Should -Contain '-LeakCheck'
-    $record.args | Should -Contain '-LabVIEWExePath'
-    $lvIndex = [Array]::IndexOf($record.args, '-LabVIEWExePath')
-    $record.args[$lvIndex + 1] | Should -Be $labviewExe
-    $record.args | Should -Contain '-LabVIEWBitness'
-    $bitIndex = [Array]::IndexOf($record.args, '-LabVIEWBitness')
-    $record.args[$bitIndex + 1] | Should -Be '64'
+    $record.baseVi | Should -Be $baseVi
+    $record.headVi | Should -Be $headVi
+    $record.labviewExe | Should -Be $labviewExe
+    $record.bitness | Should -Be '64'
+    $record.expectNoDiff | Should -BeTrue
+    $record.leakCheck | Should -BeTrue
 
     $events = Get-Content -LiteralPath $jsonLog
     ($events | Select-String -SimpleMatch '"prime-start"') | Should -Not -BeNullOrEmpty
