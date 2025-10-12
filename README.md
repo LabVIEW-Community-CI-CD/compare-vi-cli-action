@@ -97,19 +97,42 @@ pwsh -File tools/Watch-InDocker.ps1 -RunId <id> -Repo LabVIEW-Community-CI-CD/co
 
 Tips:
 - Set `GH_TOKEN` or `GITHUB_TOKEN` in your environment (admin token recommended). The watcher also falls back to `C:\github_token.txt` when the env vars are unset.
-- VS Code: use “Integration (#88): Watch existing run (Docker)” under Run Task and paste the run id.
+- VS Code: use “Integration (#88): Auto Push + Start + Watch” under Run Task to push, dispatch, and stream in one step.
 
 #### Start integration (gated)
 
-Use “Integration (#88): Start + Watch (Docker)” under Run Task to deterministically start an orchestrated run only after selecting an allowed GitHub issue. The allowed list lives in `tools/policy/allowed-integration-issues.json` and defaults to `#88` and `#118`. The task automatically reads an admin token from `C:\github_token.txt` if `GH_TOKEN`/`GITHUB_TOKEN` are not set.
+The one-button task “Integration (#88): Auto Push + Start + Watch” deterministically starts an orchestrated run only after selecting an allowed GitHub issue. The allow-list lives in `tools/policy/allowed-integration-issues.json` (default: `#88`, `#118`). The task:
 
-The task prompts for:
-- Issue: must be in the allowed list.
+1. Auto-detects an admin token (`GH_TOKEN`, `GITHUB_TOKEN`, or `C:\github_token.txt`).
+2. Pushes the current branch using that token (no manual git needed).
+3. Dispatches `ci-orchestrated.yml` via GitHub CLI/REST.
+4. Launches the Docker watcher so the run is streamed immediately in the terminal.
+
+Prompts:
+- Issue: allowed issue number.
 - Strategy: `single` or `matrix`.
 - Include integration: `true`/`false`.
 - Ref: `develop` (default) or current branch.
 
-The task dispatches `ci-orchestrated.yml` via GitHub CLI (or REST with `GH_TOKEN`/`GITHUB_TOKEN`) and automatically launches the Docker watcher when the run id is detected.
+#### Deterministic two-phase pipeline
+
+`ci-orchestrated.yml` executes as a deterministic two-phase flow:
+
+1. `phase-vars` (self-hosted Windows) writes `tests/results/_phase/vars.json` with a digest (`tools/Write-PhaseVars.ps1`).
+2. `pester-unit` consumes the manifest and runs Unit-only tests with `DETERMINISTIC=1` (no retries or cleanup).
+3. `pester-integration` runs Integration-only tests (gated on unit success and the include flag) using `-OnlyIntegration`.
+
+The manifest is validated with `tools/Validate-PhaseVars.ps1` and exported through `tools/Export-PhaseVars.ps1`. Each phase uploads dedicated artifacts (`pester-unit-*`, `pester-integration-*`, `invoker-boot-*`).
+
+#### Docker-based lint/validation
+
+Use `tools/Run-NonLVChecksInDocker.ps1` to rebuild container tooling and re-run lint/docs/workflow checks:
+
+```powershell
+pwsh -File tools/Run-NonLVChecksInDocker.ps1
+```
+
+The script pulls pinned images (actionlint, node, PowerShell, python) and forwards only approved env vars (compatible with `DETERMINISTIC=1`). Add switches such as `-SkipDocs`/`-SkipWorkflow`/`-SkipMarkdown` to focus on specific checks, then rerun the VS Code task to verify fixes.
 
 ## Bundled workflows
 
