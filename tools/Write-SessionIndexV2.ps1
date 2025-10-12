@@ -41,6 +41,40 @@ try {
     throw "CLI not found at $cliPath. Ensure the TypeScript build succeeded."
   }
 
+  # Pre-conversion: ensure v1 has branchProtection.expected populated
+  try {
+    $v1Raw = Get-Content -LiteralPath $sessionIndexV1 -Raw -ErrorAction Stop
+    $v1 = $v1Raw | ConvertFrom-Json -ErrorAction Stop
+    $hasExpected = $false
+    if ($v1 -and $v1.branchProtection) {
+      $bpNode = $v1.branchProtection
+      if ($bpNode.PSObject.Properties.Name -contains 'expected') {
+        $arr = @($bpNode.expected | Where-Object { $_ })
+        if ($arr.Count -gt 0) { $hasExpected = $true }
+      }
+    }
+    if (-not $hasExpected) {
+      $policyPath = Join-Path $repoRoot 'tools' 'policy' 'branch-required-checks.json'
+      $branchName = if ($env:GITHUB_BASE_REF) { $env:GITHUB_BASE_REF } elseif ($env:GITHUB_REF_NAME) { $env:GITHUB_REF_NAME } else { 'develop' }
+      $policy = Get-Content -LiteralPath $policyPath -Raw | ConvertFrom-Json -ErrorAction Stop
+      $branches = $policy.branches
+      $expected = @()
+      if ($branches) {
+        if ($branches.PSObject.Properties.Name -contains $branchName) {
+          $expected = @($branches.$branchName)
+        } elseif ($branches.PSObject.Properties.Name -contains 'default') {
+          $expected = @($branches.default)
+        }
+      }
+      $expected = @($expected | Where-Object { $_ })
+      if ($expected.Count -gt 0) {
+        & (Join-Path $repoRoot 'tools' 'Update-SessionIndexBranchProtection.ps1') -ResultsDir $ResultsDir -PolicyPath $policyPath -Branch $branchName -ProducedContexts $expected | Out-Null
+      }
+    }
+  } catch {
+    Write-Warning "Pre-conversion branch-protection hydrate failed or skipped: $_"
+  }
+
   $casesPath = $null
   try {
     $casesPath = pwsh -File (Join-Path $repoRoot 'tools' 'Write-SessionIndexV2Cases.ps1') -ResultsDir $ResultsDir
