@@ -78,6 +78,9 @@ exit 0
     $record.args | Should -Contain '-LabVIEWExePath'
     $lvIndex = [Array]::IndexOf($record.args, '-LabVIEWExePath')
     $record.args[$lvIndex + 1] | Should -Be $labviewExe
+    $record.args | Should -Contain '-LabVIEWBitness'
+    $bitIndex = [Array]::IndexOf($record.args, '-LabVIEWBitness')
+    $record.args[$bitIndex + 1] | Should -Be '64'
 
     $events = Get-Content -LiteralPath $jsonLog
     ($events | Select-String -SimpleMatch '"prime-start"') | Should -Not -BeNullOrEmpty

@@ -240,7 +240,13 @@ Write-JsonEvent 'prime-start' @{
   headVi = $headVi
 }
 
-$primeArgs = @('-BaseVi', $baseVi, '-HeadVi', $headVi, '-ExpectNoDiff', '-LeakCheck')
+$primeArgs = @(
+  '-BaseVi', $baseVi,
+  '-HeadVi', $headVi,
+  '-LabVIEWBitness', $SupportedBitness,
+  '-ExpectNoDiff',
+  '-LeakCheck'
+)
 if ($LabVIEWPath) { $primeArgs += @('-LabVIEWExePath', $LabVIEWPath) }
 if ($KillOnTimeout) { $primeArgs += '-KillOnTimeout' }
 
