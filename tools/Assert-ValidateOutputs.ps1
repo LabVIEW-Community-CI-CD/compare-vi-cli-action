@@ -104,17 +104,39 @@ if ($fixtureValidation) {
   if ($fixtureValidation.PSObject.Properties['schema']) {
     $schemaValue = [string]$fixtureValidation.schema
   }
-  if ($schemaValue) {
-    $items = $fixtureValidation.items
-    if (-not $items -or @($items).Count -eq 0) {
-      Add-Issue "Fixture validation JSON contains no items (fixture-validation.json)"
+  switch ($schemaValue) {
+    'fixture-manifest-v1' {
+      $items = $fixtureValidation.items
+      if (-not $items -or @($items).Count -eq 0) {
+        Add-Issue "Fixture validation JSON contains no items (fixture-validation.json)"
+      }
     }
-  } elseif ($fixtureValidation.PSObject.Properties['ok']) {
-    if (-not $fixtureValidation.ok) {
-      Add-Issue "Fixture validation summary reported failure (fixture-validation.json)"
+    'fixture-validation-summary-v1' {
+      if (-not $fixtureValidation.ok) {
+        Add-Issue "Fixture validation summary reported failure (fixture-validation.json)"
+      }
+      if (-not $fixtureValidation.summaryCounts) {
+        Add-Issue "Fixture validation summary missing counts (fixture-validation.json)"
+      }
+      $checkedCount = 0
+      if ($fixtureValidation.PSObject.Properties['checked']) {
+        $checkedCount = @($fixtureValidation.checked).Count
+      }
+      if ($fixtureValidation.fixtureCount -ne $checkedCount) {
+        Add-Issue "Fixture validation summary count mismatch (fixtureCount=$($fixtureValidation.fixtureCount) checked=$checkedCount)"
+      }
     }
-  } else {
-    Add-Issue "Fixture validation JSON missing expected structure (fixture-validation.json)"
+    { $_ -eq $null -and $fixtureValidation.PSObject.Properties['ok'] } {
+      if (-not $fixtureValidation.ok) {
+        Add-Issue "Fixture validation summary reported failure (fixture-validation.json)"
+      }
+    }
+    { $_ -eq $null } {
+      Add-Issue "Fixture validation JSON missing expected structure (fixture-validation.json)"
+    }
+    default {
+      Add-Issue "Fixture validation JSON reported unexpected schema '$schemaValue' (fixture-validation.json)"
+    }
   }
 }
 

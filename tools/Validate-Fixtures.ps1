@@ -223,17 +223,48 @@ if (($allowOverride -or $TestAllowFixtureUpdate) -and $hashMismatch) {
   $hashMismatch = @() # neutralize
 }
 
+$schemaId = 'fixture-validation-summary-v1'
+$timestamp = [DateTimeOffset]::UtcNow.ToString('o')
+$fixtureNames = @($fixtures | ForEach-Object { $_.Name })
+$summaryCounts = [ordered]@{
+  missing = ($missing).Count
+  untracked = ($untracked).Count
+  tooSmall = ($tooSmall).Count
+  sizeMismatch = ($sizeMismatch).Count
+  hashMismatch = ($hashMismatch).Count
+  manifestError = [int]($manifestError)
+  duplicate = ($duplicateEntries).Count
+  schema = ($schemaIssues).Count
+  pairMismatch = [int]$pairMismatch
+  expectedOutcomeMismatch = [int]$expectedOutcomeMismatch
+}
+
 if (-not $missing -and -not $untracked -and -not $tooSmall -and -not $sizeMismatch -and -not $manifestError -and -not $hashMismatch -and -not $duplicateEntries -and -not $pairMismatch -and -not $expectedOutcomeMismatch) {
   if ($EmitJson) {
-    $names = @($fixtures | ForEach-Object { $_.Name })
-    $okObj = [ordered]@{ 
-      ok=$true; exitCode=0; summary='Fixture validation succeeded'; issues=@(); fixtures=$names; checked=$names; fixtureCount=$names.Count; manifestPresent=[bool]$manifest; 
-      summaryCounts = [ordered]@{ missing=0; untracked=0; tooSmall=0; sizeMismatch=0; hashMismatch=0; manifestError=0; duplicate=0; schema=0 }
+    $okObj = [ordered]@{
+      schema = $schemaId
+      generatedAt = $timestamp
+      ok = $true
+      exitCode = 0
+      summary = 'Fixture validation succeeded'
+      issues = @()
+      fixtures = $fixtureNames
+      checked = $fixtureNames
+      fixtureCount = $fixtureNames.Count
+      manifestPresent = [bool]$manifest
+      summaryCounts = $summaryCounts
+      autoManifest = [ordered]@{
+        written = [bool]$autoManifestWritten
+        reason  = [string]$autoManifestReason
+        path    = [string]$autoManifestTarget
+      }
     }
-    $okObj | ConvertTo-Json -Depth 6
+    $okObj | ConvertTo-Json -Depth 8
     exit 0
   }
-  Emit info 'Fixture validation succeeded' 0; exit 0 }
+  Emit info 'Fixture validation succeeded' 0
+  exit 0
+}
 
 $exit = 0
 if ($missing) { $exit = 2; foreach ($m in $missing) { Emit error ("Missing canonical fixture {0}" -f $m.Name) 2 } }
@@ -257,29 +288,21 @@ if ($EmitJson) {
   if ($expectedOutcomeMismatch) { $issues += [ordered]@{ type='expectedOutcomeMismatch'; expected=[string]$manifest.pair.expectedOutcome; actual=$actualOutcome } }
   foreach ($si in $schemaIssues) { $issues += [ordered]@{ type='schema'; detail=$si } }
   $obj = [ordered]@{
+    schema = $schemaId
+    generatedAt = $timestamp
     ok = ($exit -eq 0)
     exitCode = $exit
     summary = if ($exit -eq 0) { 'Fixture validation succeeded' } else { 'Fixture validation failed' }
     issues = $issues
+    fixtures = $fixtureNames
     manifestPresent = [bool]$manifest
     fixtureCount = $fixtures.Count
     checked = @($fixtures | ForEach-Object { $_.Name })
-    summaryCounts = [ordered]@{
-      missing = ($missing).Count
-      untracked = ($untracked).Count
-      tooSmall = ($tooSmall).Count
-      sizeMismatch = ($sizeMismatch).Count
-      hashMismatch = ($hashMismatch).Count
-      manifestError = [int]($manifestError)
-      duplicate = ($duplicateEntries).Count
-      schema = ($schemaIssues).Count
-      pairMismatch = [int]$pairMismatch
-      expectedOutcomeMismatch = [int]$expectedOutcomeMismatch
-    }
+    summaryCounts = $summaryCounts
     autoManifest = [ordered]@{
       written = [bool]$autoManifestWritten
-      reason  = $autoManifestReason
-      path    = $autoManifestTarget
+      reason  = [string]$autoManifestReason
+      path    = [string]$autoManifestTarget
     }
   }
   $obj | ConvertTo-Json -Depth 8
