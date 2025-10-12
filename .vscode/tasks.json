@@ -2,7 +2,7 @@
   "version": "2.0.0",
   "tasks": [
     {
-      "label": "Integration (#88): Start + Watch (Docker)",
+      "label": "Integration (#88): Auto Push + Start + Watch",
       "type": "shell",
       "command": "pwsh",
       "args": [
@@ -18,7 +18,8 @@
         "${input:integrationInclude}",
         "-Ref",
         "${input:integrationRef}",
-        "-Watch"
+        "-Watch",
+        "-AutoPush"
       ],
       "options": { "cwd": "${workspaceFolder}" },
       "problemMatcher": [],
