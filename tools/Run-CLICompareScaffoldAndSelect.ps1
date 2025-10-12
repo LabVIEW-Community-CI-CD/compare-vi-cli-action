@@ -7,7 +7,9 @@ param(
   [switch]$PromptScaffold,
   [switch]$OpenReport,
   [switch]$AllowDiff,
-  [string]$Filter
+  [string]$Filter,
+  [string]$DefaultBase = 'VI1.vi',
+  [string]$DefaultHead = 'VI2.vi'
 )
 
 Set-StrictMode -Version Latest
@@ -181,14 +183,30 @@ function Prompt-ExitCodes([string]$Default){
   return $Default
 }
 
-function Add-CasesInteractive([ref]$Queue,[string]$CasesPath){
-  Write-Host 'Scaffold CLI compare cases (leave Base blank to finish).' -ForegroundColor Cyan
+function Add-CasesInteractive([ref]$Queue,[string]$CasesPath,[string]$DefaultBase,[string]$DefaultHead){
+  Write-Host ("Scaffold CLI compare cases (Enter defaults or type 'done' to finish).") -ForegroundColor Cyan
   $added = @()
   while ($true) {
-    $base = Read-Host 'Base VI path'
-    if ([string]::IsNullOrWhiteSpace($base)) { break }
-    $head = Read-Host 'Head VI path'
-    if ([string]::IsNullOrWhiteSpace($head)) { Write-Host 'Head required; skipping entry.' -ForegroundColor Yellow; continue }
+    $baseInput = Read-Host ("Base VI path [Enter=$DefaultBase, 'done' to finish]")
+    if ([string]::IsNullOrWhiteSpace($baseInput)) {
+      $base = $DefaultBase
+    } elseif ($baseInput.Trim().ToLowerInvariant() -eq 'done') {
+      break
+    } else {
+      $base = $baseInput.Trim()
+    }
+
+    $headInput = Read-Host ("Head VI path [Enter=$DefaultHead]")
+    if ([string]::IsNullOrWhiteSpace($headInput)) {
+      $head = $DefaultHead
+    } else {
+      $head = $headInput.Trim()
+    }
+
+    if ([string]::IsNullOrWhiteSpace($head)) {
+      Write-Host 'Head required; skipping entry.' -ForegroundColor Yellow
+      continue
+    }
 
     $nextIndex = $Queue.Value.cases.Count + $added.Count + 1
     $autoId = [string]::Format('case-{0:D3}',$nextIndex)
@@ -354,7 +372,7 @@ New-Dir $ResultsRoot
 $queue = Load-Queue -Path $CasesPath
 if ($PromptScaffold -or $queue.cases.Count -eq 0) {
   $queueRef = [ref]$queue
-  Add-CasesInteractive -Queue $queueRef -CasesPath $CasesPath
+  Add-CasesInteractive -Queue $queueRef -CasesPath $CasesPath -DefaultBase $DefaultBase -DefaultHead $DefaultHead
   $queue = $queueRef.Value
 }
 
