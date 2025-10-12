@@ -1,0 +1,139 @@
+import { ArgumentParser } from 'argparse';
+import { buildToggleValuesPayload, computeToggleManifestDigest, createToggleManifest } from './toggles.js';
+function formatJson(value, pretty) {
+    return `${JSON.stringify(value, null, pretty ? 2 : undefined)}\n`;
+}
+function toEnvString(value) {
+    if (typeof value === 'boolean') {
+        return value ? '1' : '0';
+    }
+    return String(value);
+}
+function formatEnv(payload) {
+    const lines = [];
+    lines.push(`AGENT_TOGGLE_MANIFEST_DIGEST=${payload.manifestDigest}`);
+    if (payload.profiles.length > 0) {
+        lines.push(`AGENT_TOGGLE_PROFILES=${payload.profiles.join(',')}`);
+    }
+    for (const [key, resolution] of Object.entries(payload.values)) {
+        lines.push(`${key}=${toEnvString(resolution.value)}`);
+    }
+    return `${lines.join('\n')}\n`;
+}
+function indent(text, spaces) {
+    const indentString = ' '.repeat(spaces);
+    return text
+        .split('\n')
+        .map((line) => (line.length > 0 ? indentString + line : line))
+        .join('\n');
+}
+function stringifyPsd1(value, depth = 0) {
+    if (value === null || value === undefined) {
+        return '$null';
+    }
+    if (typeof value === 'boolean') {
+        return value ? '$true' : '$false';
+    }
+    if (typeof value === 'number') {
+        return Number.isFinite(value) ? String(value) : '0';
+    }
+    if (typeof value === 'string') {
+        return `'${value.replace(/'/g, "''")}'`;
+    }
+    if (Array.isArray(value)) {
+        if (value.length === 0) {
+            return '@()';
+        }
+        const items = value.map((item) => stringifyPsd1(item, depth + 2));
+        return "@(\n" + indent(items.join(",\n"), depth + 2) + "\n" + ' '.repeat(depth) + ')';
+    }
+    if (typeof value === 'object') {
+        const entries = Object.entries(value);
+        if (entries.length === 0) {
+            return '@{}';
+        }
+        const lines = entries.map(([key, val]) => `'${key.replace(/'/g, "''")}' = ${stringifyPsd1(val, depth + 2)}`);
+        return "@{\n" + indent(lines.join("\n"), depth + 2) + "\n" + ' '.repeat(depth) + '}';
+    }
+    return "'unknown'";
+}
+function formatPsd1(payload) {
+    return `${stringifyPsd1(payload)}\n`;
+}
+function run() {
+    const parser = new ArgumentParser({
+        description: 'Agent toggle manifest utility'
+    });
+    parser.add_argument('--format', {
+        help: 'Output format',
+        choices: ['json', 'values', 'env', 'psd1'],
+        default: 'json'
+    });
+    parser.add_argument('--profile', {
+        help: 'Profile(s) to apply (can be provided multiple times)',
+        action: 'append',
+        dest: 'profiles'
+    });
+    parser.add_argument('--describe', {
+        help: 'Match context: Describe block name for variant resolution'
+    });
+    parser.add_argument('--it', {
+        help: 'Match context: It block name for variant resolution'
+    });
+    parser.add_argument('--tag', {
+        help: 'Match context: Tag to include when resolving variants (repeatable)',
+        action: 'append',
+        dest: 'tags'
+    });
+    parser.add_argument('--pretty', {
+        help: 'Pretty-print JSON output',
+        action: 'store_true'
+    });
+    const args = parser.parse_args();
+    const context = {
+        profiles: args.profiles ?? [],
+        describe: args.describe,
+        it: args.it,
+        tags: args.tags ?? []
+    };
+    let output = '';
+    switch (args.format) {
+        case 'json': {
+            const manifest = createToggleManifest();
+            const digest = computeToggleManifestDigest(manifest);
+            const manifestOutput = {
+                ...manifest,
+                manifestDigest: digest
+            };
+            output = formatJson(manifestOutput, args.pretty ?? true);
+            break;
+        }
+        case 'values': {
+            const payload = buildToggleValuesPayload(context);
+            output = formatJson(payload, args.pretty ?? true);
+            break;
+        }
+        case 'env': {
+            const payload = buildToggleValuesPayload(context);
+            output = formatEnv(payload);
+            break;
+        }
+        case 'psd1': {
+            const payload = buildToggleValuesPayload(context);
+            output = formatPsd1(payload);
+            break;
+        }
+        default: {
+            throw new Error(`Unsupported format '${args.format}'.`);
+        }
+    }
+    process.stdout.write(output);
+}
+try {
+    run();
+}
+catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    console.error(`toggle-cli: ${message}`);
+    process.exit(1);
+}
