@@ -5,7 +5,10 @@ param(
 	[Parameter()][string]$LvComparePath,
 	[Parameter()][switch]$RenderReport,
 	[Parameter()][string]$OutputDir = 'tests/results',
-	[Parameter()][switch]$Quiet
+	[Parameter()][switch]$Quiet,
+	[Parameter()][int]$TimeoutSeconds = 60,
+	[Parameter()][switch]$KillOnTimeout,
+	[Parameter()][switch]$CloseOnComplete
 )
 
 $ErrorActionPreference = 'Stop'
@@ -152,11 +155,29 @@ $lvBefore = @()
 try { $lvBefore = @(Get-Process -Name 'LabVIEW' -ErrorAction SilentlyContinue | Select-Object -ExpandProperty Id) } catch { $lvBefore = @() }
 $sw = [System.Diagnostics.Stopwatch]::StartNew()
 $p = [System.Diagnostics.Process]::Start($psi)
-$stdout = $p.StandardOutput.ReadToEnd()
-$stderr = $p.StandardError.ReadToEnd()
-$p.WaitForExit()
+$timedOut = $false
+$completed = $p.WaitForExit([Math]::Max(1, $TimeoutSeconds) * 1000)
+if (-not $completed) {
+	$timedOut = $true
+	if ($KillOnTimeout.IsPresent) {
+		try { $p.Kill($true) } catch {}
+		# Best-effort wait after kill
+		try { [void]$p.WaitForExit(5000) } catch {}
+	}
+}
+
+# Only read streams once the process has exited (either naturally or after kill)
+if ($p.HasExited) {
+	$stdout = $p.StandardOutput.ReadToEnd()
+	$stderr = $p.StandardError.ReadToEnd()
+} else {
+	# Avoid blocking on streams if the process is still alive
+	$stdout = ''
+	$stderr = ''
+}
+
 $sw.Stop()
-$exitCode = [int]$p.ExitCode
+$exitCode = if ($p.HasExited) { [int]$p.ExitCode } else { if ($timedOut) { 124 } else { -1 } }
 
 # Write artifacts
 Set-Content -LiteralPath $stdoutPath -Value $stdout -Encoding utf8
@@ -199,6 +220,8 @@ $capture = [pscustomobject]@{
 	stdout    = $null
 	stderr    = $null
 }
+# annotate timeout condition when it occurs
+if ($timedOut) { $capture | Add-Member -NotePropertyName 'timedOut' -NotePropertyValue $true -Force }
 $capture | ConvertTo-Json -Depth 5 | Set-Content -LiteralPath $jsonPath -Encoding utf8
 
 if ($RenderReport.IsPresent) {
@@ -226,8 +249,16 @@ if (-not $Quiet) {
 	if ($RenderReport.IsPresent) { Write-Host ("Report: {0} (exists={1})" -f $reportPath, (Test-Path $reportPath)) }
 }
 
-# Cleanup policy: do not close LabVIEW by default. Allow opt-in via ENABLE_LABVIEW_CLEANUP=1.
-if ($env:ENABLE_LABVIEW_CLEANUP -match '^(?i:1|true|yes|on)$') {
+# Cleanup policy: close LabVIEW spawned during run when requested
+$shouldClose = $CloseOnComplete.IsPresent
+if (-not $shouldClose) {
+  if ($env:ENABLE_LABVIEW_CLEANUP -match '^(?i:1|true|yes|on)$') { $shouldClose = $true }
+  elseif (($env:GITHUB_ACTIONS -eq 'true' -or $env:CI -eq 'true') -and -not ($env:ENABLE_LABVIEW_CLEANUP -match '^(?i:0|false|no|off)$')) {
+    $shouldClose = $true
+  }
+}
+
+if ($shouldClose) {
   try {
     $lvAfter = @(Get-Process -Name 'LabVIEW' -ErrorAction SilentlyContinue)
     if ($lvAfter) {

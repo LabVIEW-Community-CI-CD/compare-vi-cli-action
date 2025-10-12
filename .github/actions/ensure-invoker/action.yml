@@ -148,6 +148,20 @@ runs:
           Write-Host "::notice::Deterministic mode enabled: skipping invoker stop wait."
         }
 
+        # Post-stop sweep: detect and optionally close LVCompare/LabVIEW in CI
+        try {
+          pwsh -File tools/Detect-RogueLV.ps1 -ResultsDir tests/results -LookBackSeconds 900 -AppendToStepSummary | Out-Null
+        } catch {}
+        $isCI = ($env:GITHUB_ACTIONS -eq 'true' -or $env:CI -eq 'true')
+        $cleanupDisabled = ($env:ENABLE_LABVIEW_CLEANUP -match '^(?i:0|false|no|off)$')
+        if ($isCI -and -not $cleanupDisabled) {
+          try {
+            pwsh -File tools/Close-LVCompare.ps1 -TimeoutSeconds 10 -KillOnTimeout | Out-Null
+          } catch {
+            Write-Host ("::notice::Close-LVCompare best-effort failed: {0}" -f $_.Exception.Message)
+          }
+        }
+
     - name: No-op on non-Windows
       if: ${{ runner.os != 'Windows' }}
       shell: bash

@@ -67,17 +67,20 @@ param(
   [ValidateSet('32','64')][string]$LabVIEWBitness = '64',
   [Alias('LVCompareExePath')]
   [string]$LVComparePath,
-  [string[]]$Flags,
-  [switch]$ReplaceFlags,
-  [string]$OutputDir = 'tests/results/single-compare',
-  [switch]$RenderReport,
-  [string]$JsonLogPath,
-  [switch]$Quiet,
-  [switch]$LeakCheck,
-  [string]$LeakJsonPath,
-  [string]$CaptureScriptPath,
-  [switch]$Summary,
-  [double]$LeakGraceSeconds = 0.5
+[string[]]$Flags,
+[switch]$ReplaceFlags,
+[string]$OutputDir = 'tests/results/single-compare',
+[switch]$RenderReport,
+[string]$JsonLogPath,
+[switch]$Quiet,
+[switch]$LeakCheck,
+[string]$LeakJsonPath,
+[string]$CaptureScriptPath,
+[switch]$Summary,
+[double]$LeakGraceSeconds = 0.5,
+[int]$TimeoutSeconds = 60,
+[switch]$KillOnTimeout,
+[switch]$CloseOnComplete
 )
 
 Set-StrictMode -Version Latest
@@ -158,6 +161,14 @@ try {
     OutputDir    = $OutputDir
     Quiet        = $Quiet.IsPresent
   }
+  # Derive CI-aware defaults when not explicitly provided
+  $isCI = ($env:GITHUB_ACTIONS -eq 'true' -or $env:CI -eq 'true')
+  $effectiveTimeout = $TimeoutSeconds
+  $effectiveKill    = if ($PSBoundParameters.ContainsKey('KillOnTimeout')) { $KillOnTimeout.IsPresent } else { $isCI }
+  $effectiveClose   = if ($PSBoundParameters.ContainsKey('CloseOnComplete')) { $CloseOnComplete.IsPresent } else { $isCI }
+  $captureParams.TimeoutSeconds = [int]$effectiveTimeout
+  if ($effectiveKill)    { $captureParams.KillOnTimeout   = $true }
+  if ($effectiveClose)   { $captureParams.CloseOnComplete = $true }
   if (-not $LVComparePath) {
     try { $LVComparePath = Resolve-LVComparePath } catch {}
   }

@@ -1,0 +1,1 @@
+LVCompare lifecycle hardening: timeout+kill, CI cleanup defaults, ensure-invoker post-stop sweep (#88)
