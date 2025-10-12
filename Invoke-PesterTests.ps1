@@ -10,6 +10,8 @@
     Path to the directory containing test scripts (default: tests)
 .PARAMETER IncludeIntegration
     Include Integration-tagged tests (default: false). Accepts 'true'/'false' string or boolean.
+.PARAMETER OnlyIntegration
+    Run only Integration-tagged tests (implies IncludeIntegration=true).
 .PARAMETER ResultsPath
     Path to directory where results should be written (default: tests/results)
 .PARAMETER JsonSummaryPath
@@ -31,6 +33,9 @@ param(
   [Parameter(Mandatory = $false)]
   [ValidateNotNullOrEmpty()]
   [string]$IncludeIntegration = 'false',
+
+  [Parameter(Mandatory = $false)]
+  [switch]$OnlyIntegration,
 
   [Parameter(Mandatory = $false)]
   [ValidateNotNullOrEmpty()]
@@ -2404,4 +2409,3 @@ finally {
     if (-not $released) { Write-Warning "Failed to release session lock '$lockGroup'" }
   }
 }
-
