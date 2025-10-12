@@ -257,6 +257,68 @@ function Test-LabVIEWCLIReportDiff {
   }
 }
 
+function Write-CLICompareNUnitXml {
+  param(
+    [Parameter(Mandatory)] [string]$Path,
+    [Parameter(Mandatory)] [string]$BasePath,
+    [Parameter(Mandatory)] [string]$HeadPath,
+    [Parameter(Mandatory)] [bool]$Diff,
+    [bool]$DiffUnknown = $false,
+    [string]$ReportPath,
+    [double]$DurationSeconds = 0,
+    [int]$ExitCode = 0,
+    [string]$Reason
+  )
+  try {
+    $dir = Split-Path -Parent $Path
+    if ($dir -and -not (Test-Path -LiteralPath $dir)) { New-Item -ItemType Directory -Force -Path $dir | Out-Null }
+  } catch {}
+
+  $ts = (Get-Date).ToString('o')
+  $passed = -not ($Diff -or $DiffUnknown -or ($ExitCode -ge 2))
+  $resultAttr = if ($passed) { 'Passed' } else { 'Failed' }
+  $total = 1; $passedCount = if ($passed) { 1 } else { 0 }; $failedCount = if ($passed) { 0 } else { 1 }
+  $durationStr = [string]::Format('{0:0.000}', [double]$DurationSeconds)
+  $testName = "CLI Compare: $(Split-Path -Leaf $BasePath) vs $(Split-Path -Leaf $HeadPath)"
+
+  $props = @()
+  if ($ReportPath) { $props += "      <property name=\"reportPath\" value=\"$([System.Security.SecurityElement]::Escape($ReportPath))\" />" }
+  $props += "      <property name=\"mode\" value=\"labview-cli\" />"
+  $props += "      <property name=\"exitCode\" value=\"$ExitCode\" />"
+  $props += "      <property name=\"diffUnknown\" value=\"$DiffUnknown\" />"
+  $props += "      <property name=\"durationSeconds\" value=\"$durationStr\" />"
+
+  $failure = ''
+  if (-not $passed) {
+    $msg = if ($DiffUnknown) { 'Diff status unknown' } elseif ($Diff) { 'Differences detected' } elseif ($ExitCode -ge 2) { "CLI failed (exit $ExitCode)" } else { 'Failed' }
+    if ($Reason) { $msg = "$msg ($Reason)" }
+    $escaped = [System.Security.SecurityElement]::Escape($msg)
+    $failure = @(
+      '    <failure>',
+      "      <message>$escaped</message>",
+      '    </failure>'
+    ) -join "`n"
+  }
+
+  $xml = @(
+    '<?xml version="1.0" encoding="utf-8"?>',
+    "<test-run id=\"1\" name=\"LabVIEW CLI Compare\" testcasecount=\"1\" result=\"$resultAttr\" total=\"$total\" passed=\"$passedCount\" failed=\"$failedCount\" start-time=\"$ts\">",
+    '  <test-suite type="TestSuite" name="LabVIEW CLI Compare" executed="True" result="' + $resultAttr + '">',
+    '    <results>',
+    '      <test-case name="' + ([System.Security.SecurityElement]::Escape($testName)) + '" executed="True" result="' + $resultAttr + '" duration="' + $durationStr + '">',
+    '        <properties>',
+    ($props -join "`n"),
+    '        </properties>',
+    ($failure),
+    '      </test-case>',
+    '    </results>',
+    '  </test-suite>',
+    '</test-run>'
+  ) -join "`n"
+
+  $xml | Out-File -FilePath $Path -Encoding utf8
+}
+
 function Invoke-CompareVIUsingLabVIEWCLI {
   [CmdletBinding()]
   param(
@@ -417,6 +479,12 @@ function Invoke-CompareVIUsingLabVIEWCLI {
         $exec | ConvertTo-Json -Depth 6 | Out-File -FilePath $CompareExecJsonPath -Encoding utf8
       } catch { Write-Host "[comparevi] warn: failed to write CLI exec json: $_" -ForegroundColor DarkYellow }
     }
+
+    # Optionally emit NUnit XML for publishing in CI
+    try {
+      $nunitOut = if ($env:LVCI_CLI_NUNIT_PATH) { $env:LVCI_CLI_NUNIT_PATH } else { Join-Path (Join-Path (Get-Location) 'tests/results/compare-cli') 'results-nunit.xml' }
+      Write-CLICompareNUnitXml -Path $nunitOut -BasePath $baseAbs -HeadPath $headAbs -Diff $diff -DiffUnknown:$diffUnknown -ReportPath $reportPath -DurationSeconds $durationSeconds -ExitCode $exitCode -Reason $reportEval.Reason
+    } catch { Write-Host "[comparevi] warn: failed to write NUnit XML: $_" -ForegroundColor DarkYellow }
 
     if ($GitHubStepSummaryPath) {
       $diffSummary = if ($diffUnknown) { 'unknown' } elseif ($diff) { 'true' } else { 'false' }

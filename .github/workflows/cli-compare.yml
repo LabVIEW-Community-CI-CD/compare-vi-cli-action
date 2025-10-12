@@ -14,6 +14,7 @@ jobs:
     timeout-minutes: 10
     env:
       LVCI_ONLY_X64: 1
+      LVCI_CLI_NUNIT_PATH: tests/results/compare-cli/results-nunit.xml
       LVCI_COMPARE_MODE: labview-cli
       LVCI_CLI_FORMAT: XML
       LV_SUPPRESS_UI: 1
@@ -58,6 +59,14 @@ jobs:
           $ErrorActionPreference = 'Stop'
           . ./scripts/CompareVI.ps1
           Invoke-CompareVI -Base $env:LV_BASE_VI -Head $env:LV_HEAD_VI -FailOnDiff:$false -CompareExecJsonPath 'tests/results/compare-cli/compare-exec.json'
+
+      - name: Publish CLI compare NUnit results
+        if: always()
+        uses: EnricoMi/publish-unit-test-result-action@v2
+        with:
+          files: |
+            tests/results/compare-cli/*.xml
+          check_name: CLI Compare Results
 
       - name: Upload CLI compare artifacts
         if: always()
