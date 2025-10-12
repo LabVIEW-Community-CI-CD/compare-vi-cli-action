@@ -933,8 +933,24 @@ if ($limitToSingle) {
 } else {
   $testFiles = @(Get-ChildItem -Path $testsDir -Filter '*.Tests.ps1' -Recurse -File | Sort-Object FullName)
   $originalTestFileCount = $testFiles.Count
-  # Pre-filter integration files entirely (stronger than tag exclusion) when integration disabled, unless explicitly overridden.
-  if (-not $IncludeIntegration -and ($env:DISABLE_INTEGRATION_FILE_PREFILTER -ne '1')) {
+  # Pre-filter files by Integration classification
+  if ($OnlyIntegration) {
+    $before = $testFiles.Count
+    $kept = New-Object System.Collections.Generic.List[object]
+    foreach ($f in $testFiles) {
+      $nameIsIntegration = ($f.Name -match '\\.Integration\\.Tests\\.ps1$')
+      if ($nameIsIntegration) { [void]$kept.Add($f); continue }
+      $text = try { Get-Content -LiteralPath $f.FullName -Raw -ErrorAction Stop } catch { '' }
+      $hasTag = $false
+      if ($text) { $hasTag = ($text -match '(?im)-Tag\s*(?:''Integration''|\"Integration\"|Integration\b)') }
+      if ($hasTag) { [void]$kept.Add($f) }
+    }
+    $testFiles = @($kept.ToArray())
+    $removed = $before - $testFiles.Count
+    Write-Host ("OnlyIntegration prefilter reduced files by {0}" -f $removed) -ForegroundColor DarkGray
+  }
+  # Strong exclusion when integration disabled, unless explicitly overridden.
+  if (-not $IncludeIntegration -and -not $OnlyIntegration -and ($env:DISABLE_INTEGRATION_FILE_PREFILTER -ne '1')) {
     $before = $testFiles.Count
     $testFiles = @($testFiles | Where-Object { $_.Name -notmatch '\.Integration\.Tests\.ps1$' })
     $removed = $before - $testFiles.Count
@@ -1248,7 +1264,11 @@ if ($IncludeIntegration -is [string]) {
 
 # Marker: string equality normalization for IncludeIntegration occurs above (see verbose normalization logic)
 
-if (-not $includeIntegrationBool) {
+if ($OnlyIntegration) {
+  $includeIntegrationBool = $true
+  Write-Host "  OnlyIntegration: including Integration-tagged tests only" -ForegroundColor Cyan
+  $conf.Filter.IncludeTag = @('Integration')
+} elseif (-not $includeIntegrationBool) {
   Write-Host "  Excluding Integration-tagged tests" -ForegroundColor Cyan
   $conf.Filter.ExcludeTag = @('Integration')
 } else {
