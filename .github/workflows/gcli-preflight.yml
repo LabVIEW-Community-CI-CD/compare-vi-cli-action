@@ -1,0 +1,29 @@
+name: g-cli Preflight (non-required)
+
+on:
+  workflow_dispatch:
+    inputs:
+      sample_id:
+        description: 'Optional sample identifier for provenance'
+        required: false
+        default: ''
+
+jobs:
+  gcli-preflight:
+    runs-on: [self-hosted, Windows, X64]
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v5
+      - name: Validate g-cli availability
+        shell: pwsh
+        run: pwsh -File tools/Validate-GCli.ps1 -AppendStepSummary
+      - name: Append re-run hint
+        if: always()
+        shell: pwsh
+        env:
+          WORKFLOW_NAME: ${{ github.workflow }}
+          REF_NAME: ${{ github.ref_name }}
+          SAMPLE_ID: ${{ github.event.inputs.sample_id }}
+          WORKFLOW_REF: ${{ github.workflow_ref }}
+          REPOSITORY: ${{ github.repository }}
+        run: pwsh -File tools/Append-ReRunHint.ps1

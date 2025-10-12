@@ -10,7 +10,9 @@ All values are strings; use `1` / `0` for boolean-style flags.
 | -------- | ------- |
 | `LV_BASE_VI`, `LV_HEAD_VI` | Paths to base/head VIs for integration tests |
 | `LVCI_COMPARE_MODE` | `lvcompare` (default) or `labview-cli` to route through LabVIEW CLI |
+| `LVCI_GCLI_MODE` | `off` (default) or `compare` to route through g-cli |
 | `LABVIEW_CLI_PATH` | Optional explicit path to `LabVIEWCLI.exe` when using CLI mode |
+| `GCLI_PATH` | Optional explicit path to `g-cli` executable |
 | `LVCI_CLI_FORMAT` | LabVIEW CLI report format (`XML`, `HTML`, `TXT`, `DOCX`; default `XML`) |
 | `LVCI_CLI_EXTRA_ARGS` | Additional flags appended to `CreateComparisonReport` (e.g. `--noDependencies`) |
 | `LVCI_CLI_TIMEOUT_SECONDS` | Timeout for LabVIEW CLI invocation (default `120`) |

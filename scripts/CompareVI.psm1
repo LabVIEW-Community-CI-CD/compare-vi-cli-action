@@ -276,6 +276,13 @@ function Invoke-CompareVIUsingLabVIEWCLI {
   if ($env:LVCI_COMPARE_MODE -and [string]::Equals($env:LVCI_COMPARE_MODE, 'labview-cli', [System.StringComparison]::OrdinalIgnoreCase)) {
     return Invoke-CompareVIUsingLabVIEWCLI @PSBoundParameters
   }
+  if ($env:LVCI_GCLI_MODE -and (
+        [string]::Equals($env:LVCI_GCLI_MODE, 'compare', [System.StringComparison]::OrdinalIgnoreCase) -or
+        [string]::Equals($env:LVCI_GCLI_MODE, 'on', [System.StringComparison]::OrdinalIgnoreCase) -or
+        [string]::Equals($env:LVCI_GCLI_MODE, 'g-cli', [System.StringComparison]::OrdinalIgnoreCase)
+      )) {
+    return Invoke-CompareVIUsingGCLI @PSBoundParameters
+  }
 
   $pushed = $false
   if ($WorkingDirectory) {
@@ -446,6 +453,84 @@ function Invoke-CompareVIUsingLabVIEWCLI {
       Mode                         = 'labview-cli'
       DiffUnknown                  = $diffUnknown
     }
+  }
+  finally {
+    if ($pushed) { Pop-Location }
+  }
+}
+
+function Resolve-GCliPath {
+  [CmdletBinding()]
+  param([string]$Explicit)
+  if ($Explicit) {
+    if (Test-Path -LiteralPath $Explicit -PathType Leaf) { return (Resolve-Path -LiteralPath $Explicit).Path }
+  }
+  if ($env:GCLI_PATH -and (Test-Path -LiteralPath $env:GCLI_PATH -PathType Leaf)) { return (Resolve-Path -LiteralPath $env:GCLI_PATH).Path }
+  $cmds = @('g-cli','gcli','g-cli.exe','gcli.exe')
+  foreach ($c in $cmds) {
+    $gc = Get-Command $c -ErrorAction SilentlyContinue
+    if ($gc -and $gc.Source) { return $gc.Source }
+  }
+  throw 'g-cli executable not found. Set GCLI_PATH or install g-cli in PATH.'
+}
+
+function Invoke-CompareVIUsingGCLI {
+  [CmdletBinding()]
+  param(
+    [Parameter(Mandatory)] [string] $Base,
+    [Parameter(Mandatory)] [string] $Head,
+    [string] $LvComparePath,
+    [string] $LvCompareArgs = '',
+    [string] $WorkingDirectory = '',
+    [bool] $FailOnDiff = $true,
+    [string] $GitHubOutputPath,
+    [string] $GitHubStepSummaryPath,
+    [ScriptBlock] $Executor,
+    [switch] $PreviewArgs,
+    [string] $CompareExecJsonPath
+  )
+
+  $pushed = $false
+  if ($WorkingDirectory) {
+    if (-not (Test-Path -LiteralPath $WorkingDirectory)) { throw "working-directory not found: $WorkingDirectory" }
+    Push-Location -LiteralPath $WorkingDirectory; $pushed = $true
+  }
+  try {
+    if (-not (Test-Path -LiteralPath $Base -PathType Leaf)) { throw "Base path not found: $Base" }
+    if (-not (Test-Path -LiteralPath $Head -PathType Leaf)) { throw "Head path not found: $Head" }
+
+    $baseAbs = (Resolve-Path -LiteralPath $Base).Path
+    $headAbs = (Resolve-Path -LiteralPath $Head).Path
+
+    $gcli = Resolve-GCliPath -Explicit $null
+    # Minimal implementation: probe version and fail with clear message until compare contract is finalized
+    $psi = New-Object System.Diagnostics.ProcessStartInfo
+    $psi.FileName = $gcli
+    $psi.ArgumentList.Add('--version')
+    $psi.RedirectStandardOutput = $true
+    $psi.RedirectStandardError  = $true
+    $psi.UseShellExecute = $false
+    $psi.CreateNoWindow = $true
+    $proc = New-Object System.Diagnostics.Process
+    $proc.StartInfo = $psi
+    $null = $proc.Start()
+    $null = $proc.WaitForExit(15000)
+    $ver = $proc.StandardOutput.ReadToEnd().Trim()
+
+    $message = 'g-cli compare path scaffolded; implement command wiring once contract is finalized.'
+    if ($GitHubStepSummaryPath) {
+      $lines = @(
+        '### Compare VI (g-cli, scaffold)',
+        "- g-cli: $gcli",
+        if ($ver) { "- Version: $ver" },
+        "- Base: $baseAbs",
+        "- Head: $headAbs",
+        "- Status: not-implemented"
+      ) | Where-Object { $_ }
+      $lines -join "`n" | Out-File -FilePath $GitHubStepSummaryPath -Append -Encoding utf8
+    }
+
+    throw $message
   }
   finally {
     if ($pushed) { Pop-Location }
