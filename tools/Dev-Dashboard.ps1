@@ -175,6 +175,25 @@ function Write-TerminalReport {
       Write-Host "  Warning  : $msg"
     }
   }
+  $toggleSchemaLabel = $null
+  if ($pester.ToggleSchema) {
+    $toggleSchemaLabel = $pester.ToggleSchema
+    if ($pester.ToggleSchemaVersion) {
+      $toggleSchemaLabel = "$toggleSchemaLabel (v$($pester.ToggleSchemaVersion))"
+    }
+  }
+  if (-not $toggleSchemaLabel) { $toggleSchemaLabel = 'n/a' }
+  $toggleManifest = if ($pester.ToggleManifestDigest) { $pester.ToggleManifestDigest } else { 'n/a' }
+  $toggleGenerated = if ($pester.ToggleGeneratedAt) { $pester.ToggleGeneratedAt } else { 'n/a' }
+  $toggleProfiles = if ($pester.ToggleProfiles -and $pester.ToggleProfiles.Count -gt 0) {
+    [string]::Join(', ', $pester.ToggleProfiles)
+  } else {
+    '(none)'
+  }
+  Write-Host "  Toggle schema    : $toggleSchemaLabel"
+  Write-Host "  Toggle manifest  : $toggleManifest"
+  Write-Host "  Toggle generated : $toggleGenerated"
+  Write-Host "  Toggle profiles  : $toggleProfiles"
   $failedTests = @($pester.FailedTests)
   if ($failedTests.Length -gt 0) {
     Write-Host "  FailedTests:"
@@ -349,10 +368,27 @@ function ConvertTo-HtmlReport {
 
   $failedTestsHtml = if ($pester.FailedTests.Count -gt 0) {
     $rows = foreach ($test in $pester.FailedTests) {
-      "<li>$(& $encode $test.Name) — $(& $encode $test.Result)</li>"
-  }
-  "<ul>$([string]::Join('', $rows))</ul>"
+      "<li>$(& $encode $test.Name) - $(& $encode $test.Result)</li>"
+    }
+    "<ul>$([string]::Join('', $rows))</ul>"
   } else { '<p>None</p>' }
+
+  $casesArray = @()
+  if ($pester.Cases) {
+    $casesArray = @($pester.Cases | Where-Object { $_ })
+  }
+  $casesHtml = if ($casesArray.Count -gt 0) {
+    $rows = foreach ($case in ($casesArray | Select-Object -First 50)) {
+      $durationDisplay = if ($case.DurationMs -ne $null) { "{0:N1} ms" -f $case.DurationMs } else { '' }
+      $tagArray = @()
+      if ($case.Tags) { $tagArray = @($case.Tags | Where-Object { $_ }) }
+      $tagsDisplay = if ($tagArray.Count -gt 0) { [string]::Join(', ', $tagArray) } else { '' }
+      "<tr><td>$(& $encode $case.Name)</td><td>$(& $encode $case.Category)</td><td>$(& $encode $case.Outcome)</td><td>$(& $encode $durationDisplay)</td><td>$(& $encode $case.Requirement)</td><td>$(& $encode $tagsDisplay)</td></tr>"
+    }
+    "<table><thead><tr><th>Test</th><th>Category</th><th>Outcome</th><th>Duration</th><th>Requirement</th><th>Tags</th></tr></thead><tbody>$([string]::Join('', $rows))</tbody></table>"
+  } else {
+    '<p>No detailed test cases collected.</p>'
+  }
 
   $watchHasLast = ($watch -and $watch.Last)
   $watchStatusValue = $null
@@ -370,6 +406,22 @@ function ConvertTo-HtmlReport {
       if ($statProps -contains 'failed') { $watchFailedValue = $watch.Last.stats.failed }
     }
     if ($props -contains 'timestamp') { $watchUpdatedValue = $watch.Last.timestamp }
+  }
+
+  $toggleSchemaDisplay = $null
+  if ($pester.ToggleSchema) {
+    $toggleSchemaDisplay = $pester.ToggleSchema
+    if ($pester.ToggleSchemaVersion) {
+      $toggleSchemaDisplay = "$toggleSchemaDisplay (v$($pester.ToggleSchemaVersion))"
+    }
+  }
+  if (-not $toggleSchemaDisplay) { $toggleSchemaDisplay = 'n/a' }
+  $toggleManifestDisplay = if ($pester.ToggleManifestDigest) { $pester.ToggleManifestDigest } else { 'n/a' }
+  $toggleGeneratedDisplay = if ($pester.ToggleGeneratedAt) { $pester.ToggleGeneratedAt } else { 'n/a' }
+  $toggleProfilesDisplay = if ($pester.ToggleProfiles -and $pester.ToggleProfiles.Count -gt 0) {
+    [string]::Join(', ', $pester.ToggleProfiles)
+  } else {
+    '(none)'
   }
 
   $actionItemsHtml = if ($items.Count -gt 0) {
@@ -436,9 +488,15 @@ function ConvertTo-HtmlReport {
       <dt>Passed</dt><dd>$(& $encode $pester.Totals.Passed)</dd>
       <dt>Failed</dt><dd>$(& $encode $pester.Totals.Failed)</dd>
       <dt>Errors</dt><dd>$(& $encode $pester.Totals.Errors)</dd>
+      <dt>Toggle Schema</dt><dd>$(& $encode $toggleSchemaDisplay)</dd>
+      <dt>Toggle Manifest</dt><dd>$(& $encode $toggleManifestDisplay)</dd>
+      <dt>Toggle Generated</dt><dd>$(& $encode $toggleGeneratedDisplay)</dd>
+      <dt>Toggle Profiles</dt><dd>$(& $encode $toggleProfilesDisplay)</dd>
     </dl>
     <h3>Failed Tests</h3>
     $failedTestsHtml
+    <h3>Test Cases</h3>
+    $casesHtml
   </section>
 
   <section>

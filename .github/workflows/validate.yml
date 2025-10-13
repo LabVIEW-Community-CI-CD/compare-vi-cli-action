@@ -466,6 +466,11 @@ jobs:
         $bpScript = Join-Path (Get-Location) 'tools/Update-SessionIndexBranchProtection.ps1'
         $bpApiScript = Join-Path (Get-Location) 'tools/Get-BranchProtectionRequiredChecks.ps1'
         $branchName = '${{ github.base_ref || github.ref_name }}'
+        $mappedBranches = @('develop','main')
+        if ($mappedBranches -notcontains $branchName) {
+          Write-Host "Fallback branch protection lookup: '$branchName' not mapped, using 'develop'."
+          $branchName = 'develop'
+        }
         $repoParts = '${{ github.repository }}'.Split('/')
         $bpResult = & $bpApiScript -Owner $repoParts[0] -Repository $repoParts[1] -Branch $branchName -Token $env:GITHUB_TOKEN
         $updateArgs = @{
@@ -478,6 +483,37 @@ jobs:
         if ($bpResult.contexts) { $updateArgs['ActualContexts'] = @($bpResult.contexts) }
         if ($bpResult.notes) { $updateArgs['AdditionalNotes'] = @($bpResult.notes) }
         & $bpScript @updateArgs
+
+    - name: Write session index v2
+      shell: pwsh
+      run: |
+        $res = Join-Path $env:RUNNER_TEMP 'sessionindex'
+        pwsh -File tools/Write-SessionIndexV2.ps1 -ResultsDir $res -OutFileName 'session-index.v2.json' -EmitEnv
+        $branchSummary = Get-Content -Path $env:GITHUB_ENV | Where-Object { $_ -like 'SESSION_INDEX_BRANCH_SUMMARY=*' } | Select-Object -First 1
+        if ($branchSummary -and $env:GITHUB_STEP_SUMMARY) {
+          $branchValue = $branchSummary.Split('=')[1]
+          $digestLine = Get-Content -Path $env:GITHUB_ENV | Where-Object { $_ -like 'SESSION_INDEX_TOGGLE_MANIFEST_DIGEST=*' } | Select-Object -First 1
+          $profilesLine = Get-Content -Path $env:GITHUB_ENV | Where-Object { $_ -like 'SESSION_INDEX_TOGGLE_PROFILES=*' } | Select-Object -First 1
+          $summaryLines = @(
+            '### Session Index Snapshot',
+            "- Branch: $branchValue"
+          )
+          if ($digestLine) {
+            $summaryLines += "- Manifest digest: $($digestLine.Split('=')[1])"
+          }
+          if ($profilesLine) {
+            $summaryLines += "- Toggle profiles: $($profilesLine.Split('=')[1])"
+          }
+          $summaryLines -join "`n" | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8
+        }
+
+    - name: Upload session index v2 artifact
+      if: always()
+      uses: actions/upload-artifact@v4
+      with:
+        name: validate-session-index-v2
+        path: ${{ runner.temp }}/sessionindex/session-index.v2.json
+        if-no-files-found: warn
 
     - name: Validate session index schema (schema-lite)
       shell: pwsh
@@ -493,3 +529,55 @@ jobs:
         name: validate-session-index
         path: ${{ runner.temp }}/sessionindex/session-index.json
         if-no-files-found: warn
+  cli-smoke:
+    needs: lint
+    runs-on: [self-hosted, Windows, X64]
+    timeout-minutes: 10
+    env:
+      LVCI_COMPARE_MODE: labview-cli
+      LVCI_COMPARE_POLICY: cli-first
+      LVCI_CLI_FORMAT: XML
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: LVCompare preflight
+        shell: pwsh
+        run: pwsh -File tools/Validate-LVComparePreflight.ps1 -AppendStepSummary -RequireX64:$false
+
+      - name: Run CLI compare smoke
+        shell: pwsh
+        run: pwsh -File tools/Run-CLICompareScaffoldAndSelect.ps1 -Filter 'tag:smoke'
+
+      - name: Setup .NET 8 for CLI smoke (optional)
+        if: ${{ vars.NET_CLI == '1' }}
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+
+      - name: Build .NET CLI (optional)
+        if: ${{ vars.NET_CLI == '1' }}
+        run: dotnet build src/CompareVi.Tools.Cli -c Release -nologo
+
+      - name: Parse CLI smoke outcome (.NET CLI)
+        if: ${{ vars.NET_CLI == '1' }}
+        shell: pwsh
+        run: dotnet run --project src/CompareVi.Tools.Cli -- compare parse --search tests/results/compare-cli --out tests/results/compare-cli/compare-outcome.json
+
+      - name: Parse CLI smoke outcome (PowerShell)
+        if: ${{ vars.NET_CLI != '1' }}
+        shell: pwsh
+        run: pwsh -File tools/Parse-CompareExec.ps1 -SearchDir 'tests/results/compare-cli' -OutJson 'tests/results/compare-cli/compare-outcome.json'
+        continue-on-error: true
+
+      - name: Validate CLI smoke NUnit results
+        if: ${{ hashFiles('tests/results/compare-cli/results-nunit-1-vi1-vi2-xml.xml') != '' }}
+        shell: pwsh
+        run: pwsh -File tools/Assert-NUnitSuccess.ps1 -ResultsPath 'tests/results/compare-cli/results-nunit-1-vi1-vi2-xml.xml' -Context 'CLI Smoke'
+
+      - name: Upload CLI smoke artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: cli-smoke-artifacts
+          path: |
+            tests/results/compare-cli/**

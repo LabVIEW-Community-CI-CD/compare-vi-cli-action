@@ -39,18 +39,15 @@ Describe 'RunnerInvoker single-compare gating and request log' -Tag 'Unit' {
     Set-Content -LiteralPath $head -Value 'B'
 
     $argMap = @{ base=$base; head=$head; preview=$true }
-    $resp1 = Invoke-RunnerRequest -ResultsDir $resultsDir -Verb 'CompareVI' -CommandArgs $argMap -TimeoutSeconds 10
-    $resp1.ok | Should -BeTrue
+    $resp1 = Invoke-RunnerRequest -ResultsDir $resultsDir -Verb 'CompareVI' -CommandArgs $argMap $resp1.ok | Should -BeTrue
     Test-Path -LiteralPath $resp1.result.execJsonPath | Should -BeTrue
 
     # Second request should be rejected
-    $resp2 = Invoke-RunnerRequest -ResultsDir $resultsDir -Verb 'CompareVI' -CommandArgs $argMap -TimeoutSeconds 10
-    $resp2.ok | Should -BeFalse
+    $resp2 = Invoke-RunnerRequest -ResultsDir $resultsDir -Verb 'CompareVI' -CommandArgs $argMap $resp2.ok | Should -BeFalse
     [string]$resp2.error | Should -Match 'compare_already_handled'
 
     # Signal phase completion so the invoker loop exits on its own
-    $phaseResp = Invoke-RunnerRequest -ResultsDir $resultsDir -Verb 'PhaseDone' -TimeoutSeconds 5
-    $phaseResp.ok | Should -BeTrue
+    $phaseResp = Invoke-RunnerRequest -ResultsDir $resultsDir -Verb 'PhaseDone' $phaseResp.ok | Should -BeTrue
     $phaseResp.result.done | Should -BeTrue
 
     # Allow the invoker to remove the sentinel file (downstream trigger)

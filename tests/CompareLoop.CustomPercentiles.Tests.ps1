@@ -37,10 +37,10 @@ Describe 'Invoke-IntegrationCompareLoop custom percentiles' -Tag 'Unit' {
   }
 
   It 'rejects invalid percentiles with clear error' {
-    { Invoke-IntegrationCompareLoop -Base X -Head Y -MaxIterations 1 -IntervalSeconds 0 -CompareExecutor { 0 } -BypassCliValidation -SkipValidation -PassThroughPaths -Quiet -CustomPercentiles '0,50,101' } | Should -Throw '*out of range*'
+  { Invoke-IntegrationCompareLoop -Base X -Head Y -MaxIterations 1 -IntervalSeconds 0 -CompareExecutor { 0 } -BypassCliValidation -SkipValidation -PassThroughPaths -Quiet -CustomPercentiles '0,50,101' } | Should -Throw '*out of range*'
   }
 
   It 'rejects non-numeric tokens' {
-    { Invoke-IntegrationCompareLoop -Base X -Head Y -MaxIterations 1 -IntervalSeconds 0 -CompareExecutor { 0 } -BypassCliValidation -SkipValidation -PassThroughPaths -Quiet -CustomPercentiles '50,abc,90' } | Should -Throw '*Invalid percentile value*'
+  { Invoke-IntegrationCompareLoop -Base X -Head Y -MaxIterations 1 -IntervalSeconds 0 -CompareExecutor { 0 } -BypassCliValidation -SkipValidation -PassThroughPaths -Quiet -CustomPercentiles '50,abc,90' } | Should -Throw '*Invalid percentile value*'
   }
 }

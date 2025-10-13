@@ -70,8 +70,9 @@
     command, exitCode, duration). Required; script fails if missing.
   - `lvcompare-stdout.txt`, `lvcompare-stderr.txt`,
     `lvcompare-exitcode.txt` (from capture pipeline).
-  - `compare-report.html` when `-RenderReport` is used and LVCompare
-    produces output.
+  - `_staging/compare/compare-report.html` when `-RenderReport` is used and LVCompare
+    produces output (collectors promote the newest staging report to
+    `tests/results/compare-report.html`).
   - Optional NDJSON log (plan, spawn, result, leak-check).
   - Optional leak summary JSON (`compare-leak.json`).
   - Exit code equals the LVCompare exit code (0/1/other). With `-Summary`,

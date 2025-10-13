@@ -1,45 +1,52 @@
-# Agent Handoff – Compare VI CLI Action
+Current Standing Priority
 
-## Context Snapshot
-- Branch: `issue/88-dev-dashboard-phase2` (tracking #88 and PR #100)
-- Primary focus: live watcher tooling, busy-loop detection, lint strategy hardening
-- Latest changes (not yet committed in this session):
-  - Docs refreshed (`README.md`, `docs/DEV_DASHBOARD_PLAN.md`) with watcher heartbeat/trim notes plus lint roadmap.
-  - `tools/Dev-WatcherManager.ps1` + `tools/follow-pester-artifacts.mjs` now emit both status and heartbeat JSON (`watcher-self.json`) with freshness checks; unit suites exist (`tests/Watcher.Live.Tests.ps1`, `tests/Watcher.BusyLoop.Tests.ps1`, `tests/DevWatcherManager.Tests.ps1`).
-  - Markdown lint tooling staged (`.markdownlint.jsonc`, `.markdownlintignore`, `tools/Lint-Markdown.ps1`, npm scripts) alongside workflow updates; lint script is wired into `npm run lint:md(:changed)`.
+- Issue: [[CURRENT_PRIORITY]]
+- Title: [[CURRENT_PRIORITY_TITLE]]
+- URL: [[CURRENT_PRIORITY_URL]]
 
-## Status & Known Gaps
-1. **Watcher behaviour**
-   - Initial status often reports `busy-watch` / `busy-suspect` until Pester emits `[It ...]` lines (documented).
-   - Heartbeat now writes `watcher-self.json` with timestamps/metrics; `verifiedProcess` degrades when the heartbeat goes stale. Manual trim via `npm run dev:watcher:trim` is available but not automated yet.
-   - `npm run dev:watcher:stop` clears PID/status/heartbeat files; status + heartbeat JSON now surface `heartbeatFresh`, `heartbeatReason`, and `needsTrim` hints.
-2. **Lint backlog**
-   - `npm run lint:md:changed` now targets PR deltas and CI uses it for blocking checks; full sweeps stay notice-only.
-   - Legacy docs still trip MD013/MD012/MD041 (line length + blank lines). Capture backlog in follow-up issue or staged fixes.
-3. **Automation**
-   - Use `tools/Print-AgentHandoff.ps1 -ApplyToggles` to surface watcher telemetry automatically during hand-offs. It prints a concise summary and writes `tests/results/_agent/handoff/watcher-telemetry.json`.
-   - Add `-AutoTrim` (or set `HANDOFF_AUTOTRIM=1`) to trim oversized watcher logs when `needsTrim=true` and cooldown permits.
+Current Status
 
-## Suggested Next Actions
-1. Standardize on `tools/Print-AgentHandoff.ps1 -ApplyToggles (-AutoTrim)` in automation to surface `heartbeatFresh`, `heartbeatReason`, and `needsTrim` without extra commands.
-2. Keep auto-trim event-driven (only when `needsTrim=true`) with a 900s cooldown; revisit thresholds after telemetry review.
-3. Triage markdown backlog: capture MD013/MD012 hot spots, decide whether to patch docs or stage suppression for generated blocks.
-4. After code changes, rerun:
-   ```powershell
-   Import-Module Pester
-   Invoke-Pester tests/Watcher.Live.Tests.ps1, tests/Watcher.BusyLoop.Tests.ps1, tests/DevWatcherManager.Tests.ps1
-   npm run lint:md:changed
-   ```
+LVCompare Required - LVCompare remains the required comparator. The LabVIEW CLI compare path is
+opt-in via LVCI_COMPARE_MODE. The non-required cli-compare.yml deploys reports under
+tests/results/compare-cli. Close-LabVIEW is now the shared entry point and auto-selects between
+g-cli and labview-cli.
+VI Binary Gate Retired - The VI Binary Handling Gate workflow is manual-only; CLI NUnit gating now
+covers LabVIEW CLI compare success criteria for automation.
 
-## Useful Commands
-- Start persistent watcher: `npm run dev:watcher:ensure`
-- Check status JSON: `npm run dev:watcher:status`
-- Stop watcher/clear status: `npm run dev:watcher:stop`
-- Trim watcher logs: `npm run dev:watcher:trim`
-- Auto-trim and print summary: `pwsh -File tools/Print-AgentHandoff.ps1 -AutoTrim`
-- Fail-fast during repro: `npm run watch:pester:fast:exit` (hang & busy detection)
+Optional Utilities
 
-## Notes for Next Agent
-- If the watcher status reads `busy-suspect` immediately after ensure, that's expected warm-up; re-check once tests are running.
-- `dev:watcher:status` now reports `needsTrim`; run `npm run dev:watcher:trim` or rely on `Print-AgentHandoff.ps1 -AutoTrim` when set to keep logs manageable.
-- When documenting future changes, keep README's "Known gaps" section in sync.
+g-cli Availability - gcli-preflight.yml checks runner readiness for g-cli.
+Bespoke g-cli - tools/Invoke-GCli.ps1 can run any targeted g-cli command when needed.
+LVCompare x64-only - Set LVCI_ONLY_X64=1 to ignore any x86 LVCompare paths; workflows updated to export this for preflight and CLI compare.
+CLI NUnit Gate - tools/Assert-NUnitSuccess.ps1 enforces that tests/results/compare-cli/results-nunit.xml exists and reports a passing run; the CLI workflow now fails if the NUnit report shows failures or is missing.
+Compare Policy Toggle - Use LVCI_COMPARE_POLICY (`lv-first`, `cli-first`, `cli-only`, `lv-only`) to control which path is treated as required. CI defaults to `cli-first` with LVCompare fallback on recoverable CLI failures.
+
+LVCompare Launcher Bitness Tip - The canonical `LVCompare.exe` path can operate as a launcher. To
+ensure 64-bit comparisons on x64 runners, point `-lvpath` to the 64-bit `LabVIEW.exe` or set
+`LABVIEW_EXE` (the harness auto-injects `-lvpath` when present). This guarantees the compare runs
+under 64-bit LabVIEW even if the stub binary itself is not.
+
+Test Queue (Local CLI Compare)
+
+- Queue file: `tests/cli-compare/cases.json` (schema `cli-compare-queue/v1`) holds cases with rich metadata: `id`, `name`, `base`, `head`, `tags`, `expected` (`diff`, `exitCodes`), optional `cli` overrides (`format`, `extraArgs`), `overrides.labviewCliPath`, `notes`, and `disabled`.
+- Scaffolding: run the task “CLI Compare: Scaffold + Select + Run (DX)” (or `pwsh -File tools/Run-CLICompareScaffoldAndSelect.ps1 -PromptScaffold`) to add cases interactively. Hitting Enter auto-fills repo-resolved `VI1.vi` → `VI2.vi`; IDs default to a slug derived from the VI filenames (e.g., `VI1-VI2`) with uniqueness guarded automatically. Type `done` to exit. The script normalises fields, prompts for expected diff/exit codes, and persists the queue with timestamps.
+- Selection filters: the runner accepts indices/ranges plus filters like `tag:smoke`, `name:typedef`, `id:case-002`, and exclusions `!tag:skip`. Use `-Filter 'tag:smoke'` to skip the prompt and preselect.
+- Execution: selected cases invoke `Invoke-CompareVI` in LabVIEW CLI mode. Per case outputs land under `tests/results/compare-cli/` as `results-nunit-<index>-<id>.xml` and `compare-exec-<index>-<id>.json`, validated via `tools/Assert-NUnitSuccess.ps1` against the stored expectations.
+- Summary: each run writes `tests/results/compare-cli/queue-summary.json` (schema `cli-compare-queue-summary/v1`) capturing status, exit codes, diff/diffUnknown flags, validator results, and a notes field per case. Share this path plus any failing NUnit/exec files when reporting results.
+- Overrides: set `overrides.labviewCliPath` per case or pass `-LabVIEWCliPath` to the runner to pin a specific `LabVIEWCLI.exe`. `cli.format` and `cli.extraArgs` exercise report variants or additional flags.
+- Human-in-the-loop loop: when issues arise we will queue specific cases (with notes/tags), request you run the task with the indicated filters/indices, and use the printed summary + failing artifact paths to confirm or refine troubleshooting hypotheses.
+
+Heads-Up
+
+Scaffolded Diff Detection - If cli-compare.yml has not been run since the latest changes, it may
+still be using the scaffolded diff detection (diffUnknown). Run cli-compare.yml to refresh and
+verify expected report formats and fields.
+
+Next-Agent Plan (LabVIEW CLI compare artifacts)
+
+Inventory Outputs – Run cli-compare.yml locally/on the self-hosted runner to confirm current LabVIEW CLI report files (tests/results/compare-cli/*, compare-exec.json). Capture sample artifacts for reference.
+Schema Alignment – Extend compare-exec/v1 contract (if needed) to record reportPath, mode, and diffUnknown. Update schema docs/tests so LVCompare & LabVIEW CLI paths emit consistent fields.
+Report Parsing – Implement parsers for XML/HTML/TXT/DOCX (start with XML) to surface diff metadata (e.g., files, nodes) in compare-exec.json or a new compare-report.json. Provide fail-safe reason codes when parsing fails.
+Step Summary/Artifacts – Add a summary block in cli-compare.yml and the action composite step highlighting report format, path, and diff status. Upload the raw report (and optional JSON summary) via Upload CLI compare artifacts.
+Docs & Usage – Update README/USAGE_GUIDE with how to access CLI reports, describe LVCI_CLI_FORMAT, and mention new artifact names. Add troubleshooting notes (e.g., missing report, diffUnknown).
+CI Validation – Enhance cli-compare.yml to fail when the report is missing or unparseable (unless explicitly allowed). Consider label-gated PR check using CLI compare to keep it optional but visible.

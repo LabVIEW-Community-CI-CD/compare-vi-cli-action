@@ -8,7 +8,7 @@ Describe 'Schema Helper Strict Mode' -Tag 'Unit' {
   It 'fails when unexpected property present in Strict mode' {
     $tmp = Join-Path $TestDrive 'strict-final.json'
     '{"schema":"loop-final-status-v1","timestamp":"2025-10-01T00:00:00Z","iterations":0,"diffs":0,"errors":0,"succeeded":true,"unexpected":123}' | Set-Content -Path $tmp -Encoding UTF8
-    { Assert-JsonShape -Path $tmp -Spec 'FinalStatus' -Strict } | Should -Throw -ErrorId *
+  { Assert-JsonShape -Path $tmp -Spec 'FinalStatus' -Strict } | Should -Throw -ErrorId *
   }
   It 'passes when same file validated non-strict' {
     $tmp = Join-Path $TestDrive 'non-strict-final.json'

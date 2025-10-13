@@ -1,0 +1,75 @@
+{
+  "generatedAt": "2025-10-13T02:26:26.343Z",
+  "schemas": [
+    {
+      "id": "agent-wait-marker",
+      "fileName": "agent-wait-marker.schema.json",
+      "hash": "9eb07d02d37d4b99418b33c0763cd07d18fa327b2de364efc562e3b6abb6a036"
+    },
+    {
+      "id": "agent-wait-result",
+      "fileName": "agent-wait-result.schema.json",
+      "hash": "0e78f01d032695113ae527e13a11649eec79d261c005243369b273fc5202839f"
+    },
+    {
+      "id": "compare-exec",
+      "fileName": "compare-exec.schema.json",
+      "hash": "042d0232dbd2b06f522ada5f37e5a00af7c5a4a7c342e9c53001827a33ef723c"
+    },
+    {
+      "id": "lvcompare-capture",
+      "fileName": "lvcompare-capture.schema.json",
+      "hash": "8e2770c3bd70a4aa5d537e0b9036369c749a43ad6ae50034b6c314d4cf0f3faa"
+    },
+    {
+      "id": "child-procs-snapshot",
+      "fileName": "child-procs-snapshot.schema.json",
+      "hash": "180d1b8e162da769f9e1a205f094c680f20f62bae76ba67471d827adcf8274af"
+    },
+    {
+      "id": "pester-summary",
+      "fileName": "pester-summary.schema.json",
+      "hash": "51546dedf1bfc87ca99c8f00eb9e9239ce7fddec9cd47378124e4a173e24453e"
+    },
+    {
+      "id": "pester-leak-report",
+      "fileName": "pester-leak-report.schema.json",
+      "hash": "e94a3b3eab0bac6a51b36fa9757341b5c3b43fb6812ab36ee30fba1772092fb1"
+    },
+    {
+      "id": "single-compare-state",
+      "fileName": "single-compare-state.schema.json",
+      "hash": "ab517c2e05d1e95b4c7cc6794b1aa221f0ca046132cdf11fe07066844085a11e"
+    },
+    {
+      "id": "teststand-compare-session",
+      "fileName": "teststand-compare-session.schema.json",
+      "hash": "e29d01d0a3e72f5d2e87da7a868ced73cd217dd2e8efd60314285121d49729a6"
+    },
+    {
+      "id": "pester-invoker-event",
+      "fileName": "pester-invoker-event.schema.json",
+      "hash": "0420f3e43ae4c3ada36d4f4c79bab0b59cbd94e37404c3711eb1c9c8562b94fe"
+    },
+    {
+      "id": "pester-invoker-current-run",
+      "fileName": "pester-invoker-current-run.schema.json",
+      "hash": "e57501c26e943b4b154743fdef79614a3966811886c8e97d7895d82ec4b2d6a1"
+    },
+    {
+      "id": "cli-compare-queue",
+      "fileName": "cli-compare-queue.schema.json",
+      "hash": "347064386c16c5239160524bef941d491f3b4cfc9b52052dcb7a209f87880068"
+    },
+    {
+      "id": "cli-compare-queue-summary",
+      "fileName": "cli-compare-queue-summary.schema.json",
+      "hash": "11cc9dd81f5099e351088bc79ddc7bac47c475d1f96798931d17bfec15ad6a46"
+    },
+    {
+      "id": "session-index-v2",
+      "fileName": "session-index-v2.schema.json",
+      "hash": "b990b6a110234bafa8f373bc9b3d4527a4e2d3129aa61165d6fe5c86acbd7c71"
+    }
+  ]
+}

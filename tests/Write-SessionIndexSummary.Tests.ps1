@@ -49,7 +49,7 @@ Describe 'Write-SessionIndexSummary' -Tag 'Unit' {
     } | ConvertTo-Json
     Set-Content -LiteralPath (Join-Path $script:resultsDir 'session-index.json') -Value $json -Encoding utf8
 
-    { & $script:toolPath -ResultsDir $script:resultsDir } | Should -Not -Throw
+   { & $script:toolPath -ResultsDir $script:resultsDir } | Should -Not -Throw
 
     $content = Get-Content -LiteralPath $script:summaryPath -Raw
     $content | Should -Match '### Session'

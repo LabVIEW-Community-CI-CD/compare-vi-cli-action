@@ -1,7 +1,7 @@
 #Requires -Version 7.0
 <#
 .SYNOPSIS
-  One-button end-to-end CI trigger and artifact post-processing for #88.
+  One-button end-to-end CI trigger and artifact post-processing for the standing priority issue.
 
 .DESCRIPTION
   - Dispatches Validate and CI Orchestrated (strategy=single, include_integration=true)
@@ -208,6 +208,12 @@ function Write-LocalSummary {
 Assert-Tool gh
 try { Assert-Tool git } catch {}
 
+try {
+  & (Join-Path $PSScriptRoot 'Get-BranchState.ps1') | Out-Null
+} catch {
+  Write-Warning ("[branch-state] Unable to determine branch status: {0}" -f $_.Exception.Message)
+}
+
 $containerLog = $null
 $repo = Get-RepoName
 $branch = Get-DefaultRef
@@ -281,3 +287,4 @@ if ($val.conclusion -ne 'success' -or $orch.conclusion -ne 'success') {
 
 Write-Host '[onebutton] All green.'
 exit 0
+

@@ -124,7 +124,7 @@ npm run lint:md:changed
 1. Branch from `develop`, run `npm ci`.
 2. Execute tests (`./Invoke-PesterTests.ps1` or watcher-assisted workflows).
 3. Lint (`npm run lint:md:changed`, `tools/Check-ClangFormat.ps1` if relevant).
-4. Submit a PR referencing **#88** and include rationale plus artifacts.
+4. Submit a PR referencing the standing-priority issue and include rationale plus artifacts.
 
 Follow `AGENTS.md` for coding etiquette and keep CI deterministic. Large workflow updates
 should note affected jobs and link to supporting ADRs.
@@ -134,4 +134,5 @@ should note affected jobs and link to supporting ADRs.
 - File issues: <https://github.com/LabVIEW-Community-CI-CD/compare-vi-cli-action/issues>
 - Contact NI for LabVIEW licensing questions.
 - For agent coordination, follow the steps in `AGENT_HANDOFF.txt`.
+
 

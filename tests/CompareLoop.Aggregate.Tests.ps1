@@ -6,7 +6,7 @@ $repoRoot = Resolve-Path (Join-Path $scriptRoot '..') | Select-Object -ExpandPro
 Import-Module (Join-Path $repoRoot 'module' 'CompareLoop' 'CompareLoop.psd1') -Force
 
 Describe 'Invoke-IntegrationCompareLoop aggregate metrics' -Tag 'Unit' {
-  It 'produces stable percentile ordering and total histogram count equals iterations' -TimeoutSeconds 15 {
+  It 'produces stable percentile ordering and total histogram count equals iterations' {
     $tempDir = Join-Path ([IO.Path]::GetTempPath()) ("aggregate_" + [guid]::NewGuid())
     New-Item -ItemType Directory -Path $tempDir -Force | Out-Null
     $base = Join-Path $tempDir 'VI1.vi'

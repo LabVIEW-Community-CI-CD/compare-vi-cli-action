@@ -14,8 +14,8 @@ Describe 'Invoke-IntegrationCompareLoop percentile edge handling' -Tag 'Unit' {
   }
 
   It 'rejects out-of-range values (0 and 100)' {
-    { Invoke-IntegrationCompareLoop -Base $script:base -Head $script:head -MaxIterations 1 -IntervalSeconds 0 -CompareExecutor { 0 } -BypassCliValidation -SkipValidation -PassThroughPaths -Quiet -CustomPercentiles '0,50,99' } | Should -Throw '*out of range*'
-    { Invoke-IntegrationCompareLoop -Base $script:base -Head $script:head -MaxIterations 1 -IntervalSeconds 0 -CompareExecutor { 0 } -BypassCliValidation -SkipValidation -PassThroughPaths -Quiet -CustomPercentiles '50,100' } | Should -Throw '*out of range*'
+  { Invoke-IntegrationCompareLoop -Base $script:base -Head $script:head -MaxIterations 1 -IntervalSeconds 0 -CompareExecutor { 0 } -BypassCliValidation -SkipValidation -PassThroughPaths -Quiet -CustomPercentiles '0,50,99' } | Should -Throw '*out of range*'
+  { Invoke-IntegrationCompareLoop -Base $script:base -Head $script:head -MaxIterations 1 -IntervalSeconds 0 -CompareExecutor { 0 } -BypassCliValidation -SkipValidation -PassThroughPaths -Quiet -CustomPercentiles '50,100' } | Should -Throw '*out of range*'
   }
 
   It 'collapses duplicate percentile values' {
@@ -27,7 +27,7 @@ Describe 'Invoke-IntegrationCompareLoop percentile edge handling' -Tag 'Unit' {
 
   It 'enforces maximum list length' {
     $values = (1..51) -join ','
-    { Invoke-IntegrationCompareLoop -Base $script:base -Head $script:head -MaxIterations 1 -IntervalSeconds 0 -CompareExecutor { 0 } -BypassCliValidation -SkipValidation -PassThroughPaths -Quiet -CustomPercentiles $values } | Should -Throw '*Too many percentile values*'
+  { Invoke-IntegrationCompareLoop -Base $script:base -Head $script:head -MaxIterations 1 -IntervalSeconds 0 -CompareExecutor { 0 } -BypassCliValidation -SkipValidation -PassThroughPaths -Quiet -CustomPercentiles $values } | Should -Throw '*Too many percentile values*'
   }
 
   It 'accepts fractional values and underscores label' {

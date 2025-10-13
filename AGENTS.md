@@ -7,18 +7,22 @@ This document summarizes the expectations for automation agents working in the
 
 ## Primary directive
 
-- Issue **#88** is the standing priority. Treat progress on #88 as the top objective for edits,
-  CI runs, and PRs.
+- The standing priority is the open issue labelled `standing-priority`. View it with
+  `pwsh -File tools/Get-StandingPriority.ps1 -Plain` and treat that issue as the top objective for
+  edits, CI runs, and PRs.
 - The human operator is signed in with an admin GitHub token; assume privileged operations
   (labels, reruns, merges) are allowed when safe.
 - Default behaviour:
   - Operate inside this repository unless the human asks otherwise.
   - Keep workflows deterministic and green.
-  - Reference `#88` in commit and PR descriptions.
+  - Reference the standing priority issue in commit subjects and PR descriptions (for example
+    `(#123)` when the helper reports `#123`).
 - First actions in a session:
-  1. Pull #88 details (tasks, acceptance, linked PRs).
-  2. Create or sync a working branch (`issue/88-<slug>`), push minimal changes, dispatch CI.
-  3. Open or update the PR, apply required labels, monitor to green, merge when acceptance is met.
+  1. Run `pwsh -File tools/Sync-Develop.ps1` to fetch/fast-forward `develop`.
+     Set `SKIP_SYNC_DEVELOP=1` or pass `-NoFastForward` when a frozen snapshot is required.
+  2. Review the standing priority issue (tasks, acceptance, linked PRs).
+  3. Create or sync a working branch (`issue/<priority>-<slug>`), push minimal changes, dispatch CI.
+  4. Open or update the PR, apply required labels, monitor to green, merge when acceptance is met.
 
 ## Repository layout
 
@@ -35,7 +39,22 @@ This document summarizes the expectations for automation agents working in the
 - Custom paths: `./Invoke-PesterTests.ps1 -TestsPath tests -ResultsPath tests/results`
 - Pattern filter: `./Invoke-PesterTests.ps1 -IncludePatterns 'CompareVI.*'`
 - Quick smoke: `./tools/Quick-DispatcherSmoke.ps1 -Keep`
-- Containerized non-LV checks: `pwsh -File tools/Run-NonLVChecksInDocker.ps1`
+- Containerized non-LV checks: `pwsh -File tools/Run-NonLVChecksInDocker.ps1` (pulls pinned
+  images, honours `DETERMINISTIC=1`).
+- Orchestrated gate: Run Task → `Integration (Standing Priority): Auto Push + Start + Watch`. The task pushes
+  the current branch with the admin token (env or `C:\github_token.txt`), dispatches
+  `ci-orchestrated.yml`, and streams the run via Docker watcher. Allowed issues live in
+  `tools/policy/allowed-integration-issues.json`.
+- Phase vars manifest: produced by `tools/Write-PhaseVars.ps1` in `tests/results/_phase/vars.json`;
+  consumers run `tools/Validate-PhaseVars.ps1` + `tools/Export-PhaseVars.ps1` prior to
+  unit/integration phases.
+- Docker rebuilds & retests: rerun `tools/Run-NonLVChecksInDocker.ps1` (add `-Skip*` switches as
+  needed) to refresh actionlint/markdownlint/docs/workflow checks. After image or workflow updates,
+  trigger `Integration (Standing Priority): Auto Push + Start + Watch` to retest the deterministic pipeline
+  end-to-end.
+- Watcher hygiene: `tools/Watch-OrchestratedRun.ps1` trims old `.tmp/watch-run` folders, warns on
+  stalled run/dispatcher status, and flags digest-identical dispatcher logs (possible repeated
+  failures).
 
 ## Coding style
 
@@ -66,12 +85,13 @@ This document summarizes the expectations for automation agents working in the
 
 ## Commits & PRs
 
-- Keep commits focused; include `#88` in subjects.
+- Keep commits focused; include the standing priority issue in subjects.
 - PRs should describe rationale, list affected workflows, and link to artifacts.
 - Ensure CI is green (lint + Pester). Verify no lingering processes on self-hosted runners.
 
 ## Local gates (pre-push)
 
+- `tools/Get-BranchState.ps1` – prints branch/upstream divergence and working tree cleanliness.
 - Run `tools/PrePush-Checks.ps1` before pushing:
   - Installs `actionlint` (`vars.ACTIONLINT_VERSION`, default 1.7.7) if missing.
   - Runs `actionlint` across `.github/workflows`.
@@ -88,7 +108,7 @@ This document summarizes the expectations for automation agents working in the
   - Warns on inline `-f` and dot-sourcing.
   - Blocks on analyzer errors.
 - `tools/hooks/commit-msg.sample`
-  - Enforces subject ≤100 characters and issue reference (e.g., `(#88)`) unless `WIP`.
+  - Enforces subject ≤100 characters and issue reference (e.g., `(#123)`) unless `WIP`.
 
 ## Required checks (develop/main)
 
@@ -106,16 +126,21 @@ This document summarizes the expectations for automation agents working in the
 ## Branch protection contract (#118)
 
 - Canonical required-status mapping lives in `tools/policy/branch-required-checks.json` (hash = contract digest).
-- `tools/Update-SessionIndexBranchProtection.ps1` injects the verification block into `session-index.json` and emits a step-summary entry.
+- `tools/Update-SessionIndexBranchProtection.ps1` injects the verification block into
+  `session-index.json` and emits a step-summary entry.
 - When running smoke tests locally:
+
   ```powershell
   pwsh -File tools/Quick-DispatcherSmoke.ps1 -PreferWorkspace -ResultsPath .tmp/sessionindex
   pwsh -File tools/Update-SessionIndexBranchProtection.ps1 -ResultsDir .tmp/sessionindex `
     -PolicyPath tools/policy/branch-required-checks.json `
     -Branch (git branch --show-current)
   ```
-- Confirm `session-index.json` contains `branchProtection.result.status = "ok"`; mismatches should be logged in `branchProtection.notes`.
-- If CI reports `warn`/`fail`, inspect the Step Summary and the session index artifact from that job. Update branch protection or the mapping file as needed to realign.
+
+- Confirm `session-index.json` contains `branchProtection.result.status = "ok"`; mismatches should be
+  logged in `branchProtection.notes`.
+- If CI reports `warn`/`fail`, inspect the Step Summary and the session index artifact from that
+  job. Update branch protection or the mapping file as needed to realign.
 
 ## Workflow maintenance
 
@@ -135,20 +160,58 @@ Use `tools/workflows/update_workflows.py` for mechanical updates (comment-preser
   ./bin/actionlint -color
   ```
 
+## Agent toggle catalog
+
+- Toggle definitions live in `src/config/toggles.ts`; build artifacts land under `dist/src/config/`.
+- The contract types (manifest, values payload, schema identifiers) live in `src/types/agent-toggles.ts`; update the Node tests in `src/config/__tests__/toggles-contract.test.ts` whenever the schema changes so the manifest digest stays deterministic.
+- Generate machine-readable output via `node dist/src/config/toggles-cli.js`:
+  - `node dist/src/config/toggles-cli.js --format values --profile ci-orchestrated --pretty`
+  - `node dist/src/config/toggles-cli.js --format env --profile dev-workstation`
+  - `node dist/src/config/toggles-cli.js --format psd1 --profile labview-diagnostics`
+- `--format env` emits `AGENT_TOGGLE_MANIFEST_DIGEST` and `AGENT_TOGGLE_PROFILES` alongside
+  per-toggle values; surface them in logs to prove configuration lineage.
+- PowerShell helpers: `Import-Module tools/AgentToggles.psm1` then call `Get-AgentToggleValue` /
+  `Get-AgentToggleValues`.
+- Need the manifest metadata? Call `Get-AgentToggleContract` to retrieve the schema id, generated
+  timestamp, and canonical digest in one shot—the hand-off flow and session-index tooling depend on it.
+- Determinism guard: `Assert-AgentToggleDeterminism` throws when unexpected environment overrides
+  are detected (pass `-AllowEnvironmentOverrides` only when intentionally deviating).
+- Profiles apply in order; variants can target Describe/It names or tags for fine-grained
+  overrides.
+- Environment values still win: set `SKIP_SYNC_DEVELOP`, `HANDOFF_AUTOTRIM`, etc., before resolving
+  to force overrides.
+- Session index v2 records the resolved payload under `environment.toggles`; dashboards rely on the
+  manifest digest to correlate runs.
+- Reference implementation: `tests/AgentToggles.Tests.ps1`.
+
 ## Agent hand-off & telemetry
 
 - Keyword **handoff**:
   1. Read `AGENT_HANDOFF.txt`, confirm plan.
-  2. Set safe env toggles:
-     - `LV_SUPPRESS_UI=1`
-     - `LV_NO_ACTIVATE=1`
-     - `LV_CURSOR_RESTORE=1`
-     - `LV_IDLE_WAIT_SECONDS=2`
-     - `LV_IDLE_MAX_WAIT_SECONDS=5`
-  3. Rogue scan: `pwsh -File tools/Detect-RogueLV.ps1 -ResultsDir tests/results -LookBackSeconds 900 -AppendToStepSummary`
+  2. Preferred: `node dist/src/config/toggles-cli.js --format env --profile ci-orchestrated`
+     (pipe into your shell's export or `$GITHUB_ENV`).
+     - PowerShell option: `Import-Module tools/AgentToggles.psm1; Get-AgentToggleValues -Profiles 'ci-orchestrated'`.
+     - Guardrail: `Assert-AgentToggleDeterminism` to ensure no unexpected environment overrides
+       slipped in before continuing.
+     - Manual fallback (when compiled assets unavailable):
+       - `LV_SUPPRESS_UI=1`
+       - `LV_NO_ACTIVATE=1`
+       - `LV_CURSOR_RESTORE=1`
+       - `LV_IDLE_WAIT_SECONDS=2`
+       - `LV_IDLE_MAX_WAIT_SECONDS=5`
+     - `tools/Write-SessionIndexSummary.ps1` and `tools/Write-AgentContext.ps1` automatically capture the toggle
+       contract (schema id, version, generated timestamp, digest, profiles) in the step summary and agent context
+       artifacts, so you always have lineage for the active manifest.
+  3. Rogue scan:
+
+     ```powershell
+     pwsh -File tools/Detect-RogueLV.ps1 -ResultsDir tests/results `
+       -LookBackSeconds 900 -AppendToStepSummary
+     ```
+
   4. Sweep LVCompare (only) if rogues found and human approves.
-  5. Honour pause etiquette (“brief delay (~90 seconds)”) and log waits.
-  6. Execute “First Actions for the Next Agent” from `AGENT_HANDOFF.txt`.
+  5. Honour pause etiquette ("brief delay (~90 seconds)") and log waits.
+  6. Execute "First Actions for the Next Agent" from `AGENT_HANDOFF.txt`.
 - Convenience helpers:
   - `pwsh -File tools/Print-AgentHandoff.ps1 -ApplyToggles`
   - `pwsh -File tools/Print-AgentHandoff.ps1 -ApplyToggles -AutoTrim`
@@ -157,7 +220,7 @@ Use `tools/workflows/update_workflows.py` for mechanical updates (comment-preser
     - When `-AutoTrim` (or `HANDOFF_AUTOTRIM=1`) is set, trims oversized watcher logs if eligible
       and appends notes to the GitHub Step Summary when available.
 
-## Fast path for issue #88
+## Fast path for standing priority issue
 
 - PR comment dispatch: `/run orchestrated single include_integration=true sample_id=<id>`
 - CLI dispatch: `pwsh -File tools/Dispatch-WithSample.ps1 ci-orchestrated.yml -Ref develop -IncludeIntegration true`
@@ -238,3 +301,6 @@ Guidance:
 - For markdownlint, try `Resolve-MarkdownlintCli2Path`; only fall back to `npx --no-install` when necessary.
 - For LVCompare, continue to enforce the canonical path; pass `-lvpath` to LVCompare and never launch `LabVIEW.exe`.
 - Do not lint or link-check vendor documentation under `bin/`; scope link checks to `docs/` or ignore `bin/**`.
+
+
+

@@ -9,8 +9,21 @@ All values are strings; use `1` / `0` for boolean-style flags.
 | Variable | Purpose |
 | -------- | ------- |
 | `LV_BASE_VI`, `LV_HEAD_VI` | Paths to base/head VIs for integration tests |
-| `LVCOMPARE_PATH` | Optional override for LVCompare.exe (must resolve to canonical path) |
+| `LVCI_COMPARE_MODE` | `lvcompare` (default) or `labview-cli` to route through LabVIEW CLI |
+| `LVCI_COMPARE_POLICY` | Compare policy: `lv-first` (default), `cli-first`, `cli-only`, `lv-only`; controls fallback between LVCompare and LabVIEW CLI |
+| `LVCI_GCLI_MODE` | `off` (default) or `compare` to route through g-cli |
+| `LABVIEW_CLI_PATH` | Optional explicit path to `LabVIEWCLI.exe` when using CLI mode |
+| `LABVIEW_EXE` | Optional path to `LabVIEW.exe`. When set, the harness injects `-lvpath` for LVCompare so the comparison runs under that LabVIEW instance (use the 64-bit path on x64 runners). |
+| `GCLI_PATH` | Optional explicit path to `g-cli` executable |
+| `GCLI_ARGS` | Optional argument string for a one-off g-cli action in CI (e.g., `--version` or a custom LabVIEW-close command) |
+| `LVCI_CLI_FORMAT` | LabVIEW CLI report format (`XML`, `HTML`, `TXT`, `DOCX`; default `XML`) |
+| `LVCI_CLI_EXTRA_ARGS` | Additional flags appended to `CreateComparisonReport` (e.g. `--noDependencies`) |
+| `LVCI_CLI_TIMEOUT_SECONDS` | Timeout for LabVIEW CLI invocation (default `120`) |
+| `LVCOMPARE_PATH` | Optional override for LVCompare.exe (must resolve to canonical path). Note: the canonical LVCompare path can operate as a launcher; prefer setting `LABVIEW_EXE` to the 64-bit LabVIEW when you must ensure x64 execution. |
+| `AGENT_PRIORITY_OVERRIDE` | Optional override for the standing-priority issue when offline. Accepts `123`, `123|Title|Url`, or a JSON object `{ "number": 123, "title": "..." }`. |
 | `WORKING_DIRECTORY` | Process CWD when invoking LVCompare |
+| `NET_CLI` (repo var) | When `1`, workflows build and use the .NET CLI (`CompareVi.Tools.Cli`) to parse compare outcomes and emit artifacts. |
+| `TESTSTAND_HARNESS` (repo var) | When `1` on `develop`, orchestrated workflow runs a TestStand compare harness job on Windows (VI1 vs VI2) and publishes artifacts. |
 
 ## Dispatcher guards (leak detection / cleanup)
 
@@ -37,6 +50,9 @@ Artefacts: `tests/results/pester-leak-report.json`, `tests/results/pester-artifa
 | `LOOP_EMIT_RUN_SUMMARY` | Emit JSON summary |
 | `LOOP_JSON_LOG`, `LOOP_HISTOGRAM_BINS` | NDJSON log and histogram options |
 | `LOOP_LABVIEW_VERSION`, `LOOP_LABVIEW_BITNESS`, `LOOP_LABVIEW_PATH` | Control post-loop closer |
+| `CLOSE_MODE` | `auto` (default), `labview-cli`, or `g-cli` to select the close strategy |
+| `CLOSE_TIMEOUT_SECONDS` | Timeout for Close-LabVIEW.ps1 graceful attempt (default 30) |
+| `CLOSE_FORCEKILL_SECONDS` | Optional delay before best-effort kill if graceful close times out (default 0 = disabled) |
 
 ## Invoker controls
 

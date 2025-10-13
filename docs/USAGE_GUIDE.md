@@ -11,18 +11,99 @@ Quotes and spaces are preserved.
 Common noise filters:
 
 ```yaml
-lvCompareArgs: "-nobdcosm -nofppos -noattr"
+lvCompareArgs: "-nobdcosm -nobdpos -nofppos -noattr"
 ```
 
-- `-nobdcosm` – ignore block diagram cosmetic changes.
-- `-nofppos` – ignore front panel position/size changes.
-- `-noattr` – ignore VI attribute changes.
+- `-nobdcosm` - ignore block diagram cosmetic changes.
+- `-nobdpos` - ignore block diagram object position/size changes (layout noise).
+- `-nofppos` - ignore front panel position/size changes.
+- `-noattr` - ignore VI attribute changes.
+
+The action still defaults to `-nobdcosm -nofppos -noattr`; add `-nobdpos` whenever layout churn would otherwise dominate the diff.
+
+### Noise filter guidance
+
+| Flag | Suppresses | Use when | Notes |
+| --- | --- | --- | --- |
+| `-nobdcosm` | Block diagram cosmetic noise (font, color, label tweaks) | Cosmetic-only changes clutter diffs | Position/size changes still appear; pair with `-nobdpos` for layout churn |
+| `-nobdpos` | Block diagram layout (object position/size) | Nodes or wires were dragged without logic changes | Layout noise is hidden, but logical diagram edits still show up |
+| `-nofppos` | Front panel layout | Controls/indicators move without behavior changes | Combine with `-nofp` if the entire front panel can be ignored |
+| `-noattr` | VI metadata (history, window placement, fonts) | Build/recompile steps touch VI metadata | Safe to combine with other filters for minimal churn |
+| `-nobd` | Entire block diagram | Only front panel output matters (e.g. UI-only comparisons) | Makes block-diagram-specific flags like `-nobdcosm/-nobdpos` redundant |
+
+
+### Block diagram position filter (`-nobdpos`)
+
+Use `-nobdpos` when layout churn would otherwise drown out functional differences. It hides block diagram object
+position/size changes but still surfaces logical edits.
+
+- **Suppresses:** node/control repositioning, structure resize operations, wire reroutes caused by layout tweaks.
+- **Still shows:** added/removed nodes, connection changes, constant/value updates, and any front panel adjustments.
+- **Pairings:** combine with `-nobdcosm` to blanket diagram cosmetic + layout noise; add `-nofppos` (and optionally `-nofp`)
+  when front panel alignment sweeps happen in the same commit; keep `-noattr` for metadata churn.
+- **Redundancy guard:** `-nobd` hides the entire diagram; leave `-nobdpos` out when that flag is present.
+
+Examples:
+
+```yaml
+# Layout + cosmetic + panel + metadata suppression
+lvCompareArgs: "-nobdcosm -nobdpos -nofppos -noattr"
+```
+
+```yaml
+# Array form keeps individual tokens intact
+lvCompareArgs:
+  - -nobdcosm
+  - -nobdpos
+  - -nofppos
+  - -noattr
+```
+
+```yaml
+# Windows example with explicit LabVIEW version (forces 64‑bit when pointing to a 64‑bit LabVIEW.exe)
+lvCompareArgs: "-nobdcosm -nobdpos -nofppos -noattr -lvpath \"C:\\Program Files\\National Instruments\\LabVIEW 2025\\LabVIEW.exe\""
+```
 
 Specify a LabVIEW path:
 
 ```yaml
 lvCompareArgs: '-lvpath "C:\\Program Files\\National Instruments\\LabVIEW 2025\\LabVIEW.exe"'
+
 ```
+Alternatively, set `LABVIEW_EXE` in the environment and the harness will auto-inject `-lvpath`:
+
+```powershell
+$env:LABVIEW_EXE = 'C:\Program Files\National Instruments\LabVIEW 2025\LabVIEW.exe'
+```
+
+This ensures the comparison runs under 64-bit LabVIEW even when calling the canonical
+`LVCompare.exe` launcher path.
+Set `LVCI_COMPARE_POLICY` to steer automation fallback (`lv-first` default, `cli-first`,
+`cli-only`, or `lv-only`).
+
+### .NET CLI helpers
+
+The repository ships a cross-platform .NET CLI (`CompareVi.Tools.Cli`) that mirrors the PowerShell
+helpers used in CI. Use `dotnet run` from the repo root:
+
+- Merge compare artefacts into `compare-outcome.json`:
+
+  ```bash
+  dotnet run --project src/CompareVi.Tools.Cli -- compare parse \
+    --search tests/results/compare-cli \
+    --out tests/results/compare-cli/compare-outcome.json
+  ```
+
+- Emit the NUnit XML report consumed by publish steps:
+
+  ```bash
+  dotnet run --project src/CompareVi.Tools.Cli -- compare nunit \
+    --base C:\repo\VI1.vi \
+    --head C:\repo\VI2.vi \
+    --exit-code 0 \
+    --duration-seconds 2.34 \
+    --out tests/results/compare-cli/results-nunit.xml
+  ```
 
 Log to a temporary path:
 
@@ -75,7 +156,7 @@ pwsh -File scripts/Render-CompareReport.ps1 `
   -Diff $env:COMPARE_DIFF `
   -CliPath $env:COMPARE_CLI_PATH `
   -DurationSeconds $env:COMPARE_DURATION_SECONDS `
-  -OutputPath compare-report.html
+  -OutputPath _staging/compare/compare-report.html
 ```
 
 ## Workflow branching
@@ -125,3 +206,4 @@ Short-circuit detection (`base == head`):
 - [`TROUBLESHOOTING.md`](./TROUBLESHOOTING.md) – leak detection, recovery, environment setup.
 - [`DEVELOPER_GUIDE.md`](./DEVELOPER_GUIDE.md) – local testing and build commands.
 - [`ENVIRONMENT.md`](./ENVIRONMENT.md) – environment variables for loop mode, leaks, fixtures.
+

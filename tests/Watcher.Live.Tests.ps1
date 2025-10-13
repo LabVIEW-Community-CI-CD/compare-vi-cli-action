@@ -7,7 +7,7 @@ Describe 'Pester Watcher Live Feed' -Tag 'Unit' {
     $script:NodePath = $nodeCmd.Source
   }
 
-  It 'streams log and summary updates while the dispatcher runs' -TimeoutSeconds 20 {
+  It 'streams log and summary updates while the dispatcher runs' {
     $resultsDir = Join-Path $TestDrive 'results'
     New-Item -ItemType Directory -Path $resultsDir -Force | Out-Null
     $logPath = Join-Path $resultsDir 'pester-dispatcher.log'
@@ -48,7 +48,7 @@ Describe 'Pester Watcher Live Feed' -Tag 'Unit' {
     $stderr | Should -BeNullOrEmpty
   }
 
-  It 'exits with code 2 when fail-fast hang detection triggers' -TimeoutSeconds 20 {
+  It 'exits with code 2 when fail-fast hang detection triggers' {
     $resultsDir = Join-Path $TestDrive 'results-hang'
     New-Item -ItemType Directory -Path $resultsDir -Force | Out-Null
     $logPath = Join-Path $resultsDir 'pester-dispatcher.log'

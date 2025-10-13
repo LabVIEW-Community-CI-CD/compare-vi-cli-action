@@ -7,7 +7,7 @@ Describe 'Pester Watcher Busy Loop Detection' -Tag 'Unit' {
     $script:NodePath = $nodeCmd.Source
   }
 
-  It 'exits with code 3 when log grows without progress' -TimeoutSeconds 20 {
+  It 'exits with code 3 when log grows without progress' {
     $resultsDir = Join-Path $TestDrive 'busy-results'
     New-Item -ItemType Directory -Path $resultsDir -Force | Out-Null
     $logPath = Join-Path $resultsDir 'pester-dispatcher.log'
@@ -50,7 +50,7 @@ Describe 'Pester Watcher Busy Loop Detection' -Tag 'Unit' {
     }
   }
 
-  It 'continues when progress markers are present' -TimeoutSeconds 20 {
+  It 'continues when progress markers are present' {
     $resultsDir = Join-Path $TestDrive 'progress-results'
     New-Item -ItemType Directory -Path $resultsDir -Force | Out-Null
     $logPath = Join-Path $resultsDir 'pester-dispatcher.log'

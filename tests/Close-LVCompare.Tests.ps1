@@ -34,7 +34,7 @@ exit /b 0
       -LabVIEWExePath $labviewExe `
       -BaseVi $base `
       -HeadVi $head `
-      -TimeoutSeconds 5 *> $null
+      *> $null
 
     $LASTEXITCODE | Should -Be 0
     Test-Path -LiteralPath $capture | Should -BeTrue
@@ -65,7 +65,7 @@ exit /b 0
       -LabVIEWExePath $missingLabVIEW `
       -BaseVi $base `
       -HeadVi $head `
-      -TimeoutSeconds 5 *> $null
+      *> $null
 
     $LASTEXITCODE | Should -Not -Be 0
   }

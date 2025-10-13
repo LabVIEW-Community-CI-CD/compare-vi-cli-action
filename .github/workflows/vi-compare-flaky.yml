@@ -1,0 +1,76 @@
+name: VI Compare (Flaky Inputs)
+
+on:
+  workflow_dispatch:
+    inputs:
+      base_vi:
+        description: 'Full path to base VI (flaky repro)'
+        required: true
+        type: string
+      head_vi:
+        description: 'Full path to head VI (flaky repro)'
+        required: true
+        type: string
+      sample_id:
+        description: 'Optional run sample identifier for provenance'
+        required: false
+        default: ''
+        type: string
+
+jobs:
+  compare-flaky:
+    runs-on: [self-hosted, Windows, X64]
+    timeout-minutes: 10
+    env:
+      LV_NO_ACTIVATE: '1'
+      LV_SUPPRESS_UI: '1'
+      LV_CURSOR_RESTORE: '1'
+      LV_IDLE_WAIT_SECONDS: '2'
+      LV_IDLE_MAX_WAIT_SECONDS: '5'
+      CLEAN_LV_BEFORE: 'true'
+      CLEAN_LV_AFTER: 'true'
+      CLEAN_LV_INCLUDE_COMPARE: 'true'
+      STUCK_GUARD: '1'
+      SCAN_ARTIFACTS: '1'
+      DETECT_LEAKS: '1'
+      LEAK_GRACE_SECONDS: '3'
+    steps:
+      - uses: actions/checkout@v5
+      - name: Configure Git safe.directory
+        shell: pwsh
+        run: git config --global --add safe.directory $env:GITHUB_WORKSPACE
+      - name: Prime LVCompare (path + warmup)
+        shell: pwsh
+        env:
+          LV_BASE_VI: ${{ inputs.base_vi }}
+          LV_HEAD_VI: ${{ inputs.head_vi }}
+        run: pwsh -File tools/Prime-LVCompare.ps1 -NoRun
+      - name: Run single compare (flaky repro)
+        id: compare
+        shell: pwsh
+        env:
+          LV_BASE_VI: ${{ inputs.base_vi }}
+          LV_HEAD_VI: ${{ inputs.head_vi }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          pwsh -File scripts/CompareVI.ps1 -Base $env:LV_BASE_VI -Head $env:LV_HEAD_VI -SkipReport
+      - name: Upload compare artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: flaky-compare-artifacts
+          path: |
+            tests/results/**
+            !tests/results/_agent/**
+            !tests/results/_wire/**
+            !tests/results/_phase/**
+      - name: Append re-run hint
+        if: always()
+        shell: pwsh
+        env:
+          WORKFLOW_NAME: ${{ github.workflow }}
+          REF_NAME: ${{ github.ref_name }}
+          SAMPLE_ID: ${{ inputs.sample_id }}
+          WORKFLOW_REF: ${{ github.workflow_ref }}
+          REPOSITORY: ${{ github.repository }}
+        run: pwsh -File tools/Append-ReRunHint.ps1

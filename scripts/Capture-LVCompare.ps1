@@ -5,7 +5,11 @@ param(
 	[Parameter()][string]$LvComparePath,
 	[Parameter()][switch]$RenderReport,
 	[Parameter()][string]$OutputDir = 'tests/results',
-	[Parameter()][switch]$Quiet
+	[Parameter()][switch]$Quiet,
+	[Parameter()][int]$TimeoutSeconds = 60,
+	[Parameter()][switch]$KillOnTimeout,
+	[Parameter()][switch]$CloseOnComplete,
+	[Parameter()][string]$ReportStagingDir
 )
 
 $ErrorActionPreference = 'Stop'
@@ -125,7 +129,8 @@ $stdoutPath = Join-Path $OutputDir 'lvcompare-stdout.txt'
 $stderrPath = Join-Path $OutputDir 'lvcompare-stderr.txt'
 $exitPath   = Join-Path $OutputDir 'lvcompare-exitcode.txt'
 $jsonPath   = Join-Path $OutputDir 'lvcompare-capture.json'
-$reportPath = Join-Path $OutputDir 'compare-report.html'
+$stagingRoot = if ($ReportStagingDir) { $ReportStagingDir } else { Join-Path $OutputDir (Join-Path '_staging' 'compare') }
+$reportPathStaging = Join-Path $stagingRoot 'compare-report.html'
 
 # Build process start info
 $psi = New-Object System.Diagnostics.ProcessStartInfo
@@ -152,16 +157,55 @@ $lvBefore = @()
 try { $lvBefore = @(Get-Process -Name 'LabVIEW' -ErrorAction SilentlyContinue | Select-Object -ExpandProperty Id) } catch { $lvBefore = @() }
 $sw = [System.Diagnostics.Stopwatch]::StartNew()
 $p = [System.Diagnostics.Process]::Start($psi)
-$stdout = $p.StandardOutput.ReadToEnd()
-$stderr = $p.StandardError.ReadToEnd()
-$p.WaitForExit()
+$timedOut = $false
+$completed = $p.WaitForExit([Math]::Max(1, $TimeoutSeconds) * 1000)
+if (-not $completed) {
+	$timedOut = $true
+	if ($KillOnTimeout.IsPresent) {
+		try { $p.Kill($true) } catch {}
+		# Best-effort wait after kill
+		try { [void]$p.WaitForExit(5000) } catch {}
+	}
+}
+
+# Only read streams once the process has exited (either naturally or after kill)
+if ($p.HasExited) {
+	$stdout = $p.StandardOutput.ReadToEnd()
+	$stderr = $p.StandardError.ReadToEnd()
+} else {
+	# Avoid blocking on streams if the process is still alive
+	$stdout = ''
+	$stderr = ''
+}
+
 $sw.Stop()
-$exitCode = [int]$p.ExitCode
+$exitCode = if ($p.HasExited) { [int]$p.ExitCode } else { if ($timedOut) { 124 } else { -1 } }
 
 # Write artifacts
 Set-Content -LiteralPath $stdoutPath -Value $stdout -Encoding utf8
 Set-Content -LiteralPath $stderrPath -Value $stderr -Encoding utf8
 Set-Content -LiteralPath $exitPath   -Value ($exitCode.ToString()) -Encoding utf8
+
+$flagsOnly = @()
+$lvPathValue = $null
+for ($i = 0; $i -lt $argsList.Count; $i++) {
+  $token = $argsList[$i]
+  if ($null -eq $token) { continue }
+  if ($token -ieq '-lvpath' -and ($i + 1) -lt $argsList.Count) {
+    $lvPathValue = $argsList[$i + 1]
+    $i++
+    continue
+  }
+  if ($token.StartsWith('-')) {
+    $flagsOnly += $token
+  }
+}
+
+$diffDetected = switch ($exitCode) {
+  1 { $true }
+  0 { $false }
+  default { $null }
+}
 
 $capture = [pscustomobject]@{
 	schema    = 'lvcompare-capture-v1'
@@ -170,14 +214,19 @@ $capture = [pscustomobject]@{
 	head      = $headPath
 	cliPath   = $cliPath
 	args      = @($argsList)
+	lvPath    = $lvPathValue
+	flags     = @($flagsOnly)
 	exitCode  = $exitCode
 	seconds   = [Math]::Round($sw.Elapsed.TotalSeconds, 6)
 	stdoutLen = $stdout.Length
 	stderrLen = $stderr.Length
 	command   = $commandDisplay
+	diffDetected = $diffDetected
 	stdout    = $null
 	stderr    = $null
 }
+# annotate timeout condition when it occurs
+if ($timedOut) { $capture | Add-Member -NotePropertyName 'timedOut' -NotePropertyValue $true -Force }
 $capture | ConvertTo-Json -Depth 5 | Set-Content -LiteralPath $jsonPath -Encoding utf8
 
 if ($RenderReport.IsPresent) {
@@ -185,6 +234,7 @@ if ($RenderReport.IsPresent) {
 		$diff = if ($exitCode -eq 1) { 'true' } elseif ($exitCode -eq 0) { 'false' } else { 'unknown' }
 		$sec  = [Math]::Round($sw.Elapsed.TotalSeconds, 6)
 		$reportScript = Join-Path $PSScriptRoot 'Render-CompareReport.ps1'
+        New-DirectoryIfMissing -path $stagingRoot
         & $reportScript `
             -Command $commandDisplay `
             -ExitCode $exitCode `
@@ -193,7 +243,7 @@ if ($RenderReport.IsPresent) {
             -DurationSeconds $sec `
 			-Base $basePath `
 			-Head $headPath `
-			-OutputPath $reportPath | Out-Null
+			-OutputPath $reportPathStaging | Out-Null
 	} catch {
 		if (-not $Quiet) { Write-Warning ("Failed to render compare report: {0}" -f $_.Exception.Message) }
 	}
@@ -202,11 +252,21 @@ if ($RenderReport.IsPresent) {
 if (-not $Quiet) {
 	Write-Host ("LVCompare exit code: {0}" -f $exitCode)
 	Write-Host ("Capture JSON: {0}" -f $jsonPath)
-	if ($RenderReport.IsPresent) { Write-Host ("Report: {0} (exists={1})" -f $reportPath, (Test-Path $reportPath)) }
+	if ($RenderReport.IsPresent) {
+    Write-Host ("Report (staging): {0} (exists={1})" -f $reportPathStaging, (Test-Path $reportPathStaging))
+  }
 }
 
-# Cleanup policy: do not close LabVIEW by default. Allow opt-in via ENABLE_LABVIEW_CLEANUP=1.
-if ($env:ENABLE_LABVIEW_CLEANUP -match '^(?i:1|true|yes|on)$') {
+# Cleanup policy: close LabVIEW spawned during run when requested
+$shouldClose = $CloseOnComplete.IsPresent
+if (-not $shouldClose) {
+  if ($env:ENABLE_LABVIEW_CLEANUP -match '^(?i:1|true|yes|on)$') { $shouldClose = $true }
+  elseif (($env:GITHUB_ACTIONS -eq 'true' -or $env:CI -eq 'true') -and -not ($env:ENABLE_LABVIEW_CLEANUP -match '^(?i:0|false|no|off)$')) {
+    $shouldClose = $true
+  }
+}
+
+if ($shouldClose) {
   try {
     $lvAfter = @(Get-Process -Name 'LabVIEW' -ErrorAction SilentlyContinue)
     if ($lvAfter) {

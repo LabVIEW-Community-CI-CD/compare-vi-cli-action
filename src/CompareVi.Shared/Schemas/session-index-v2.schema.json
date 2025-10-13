@@ -1,0 +1,520 @@
+{
+  "$ref": "#/definitions/session-index-v2",
+  "definitions": {
+    "session-index-v2": {
+      "type": "object",
+      "properties": {
+        "schema": {
+          "type": "string",
+          "const": "session-index/v2"
+        },
+        "schemaVersion": {
+          "type": "string",
+          "pattern": "^\\d+\\.\\d+\\.\\d+$"
+        },
+        "generatedAtUtc": {
+          "type": "string"
+        },
+        "run": {
+          "type": "object",
+          "properties": {
+            "id": {
+              "type": "string"
+            },
+            "attempt": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "workflow": {
+              "type": "string"
+            },
+            "job": {
+              "type": "string"
+            },
+            "branch": {
+              "type": "string"
+            },
+            "commit": {
+              "type": "string"
+            },
+            "repository": {
+              "type": "string"
+            },
+            "trigger": {
+              "type": "object",
+              "properties": {
+                "kind": {
+                  "type": "string"
+                },
+                "number": {
+                  "type": "number"
+                },
+                "author": {
+                  "type": "string"
+                },
+                "commentId": {
+                  "type": [
+                    "number",
+                    "string"
+                  ]
+                },
+                "commentUrl": {
+                  "type": "string"
+                }
+              },
+              "additionalProperties": false
+            },
+            "branchState": {
+              "type": "object",
+              "properties": {
+                "branch": {
+                  "type": "string"
+                },
+                "upstream": {
+                  "type": "string"
+                },
+                "summary": {
+                  "type": "string"
+                },
+                "ahead": {
+                  "type": "integer",
+                  "minimum": 0
+                },
+                "behind": {
+                  "type": "integer",
+                  "minimum": 0
+                },
+                "hasUpstream": {
+                  "type": "boolean"
+                },
+                "isClean": {
+                  "type": "boolean"
+                },
+                "hasUntracked": {
+                  "type": "boolean"
+                },
+                "timestampUtc": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "summary",
+                "timestampUtc"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "required": [
+            "workflow"
+          ],
+          "additionalProperties": false
+        },
+        "environment": {
+          "type": "object",
+          "properties": {
+            "runner": {
+              "type": "string"
+            },
+            "runnerImage": {
+              "type": "string"
+            },
+            "os": {
+              "type": "string"
+            },
+            "node": {
+              "type": "string"
+            },
+            "pwsh": {
+              "type": "string"
+            },
+            "git": {
+              "type": "string"
+            },
+            "toggles": {
+              "type": "object",
+              "properties": {
+                "schema": {
+                  "type": "string",
+                  "const": "agent-toggle-values/v1"
+                },
+                "schemaVersion": {
+                  "type": "string"
+                },
+                "generatedAtUtc": {
+                  "type": "string"
+                },
+                "manifestDigest": {
+                  "type": "string"
+                },
+                "manifestGeneratedAtUtc": {
+                  "type": "string"
+                },
+                "profiles": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                },
+                "context": {
+                  "type": "object",
+                  "properties": {
+                    "describe": {
+                      "type": "string"
+                    },
+                    "it": {
+                      "type": "string"
+                    },
+                    "tags": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    }
+                  },
+                  "additionalProperties": false
+                },
+                "values": {
+                  "type": "object",
+                  "additionalProperties": {
+                    "type": "object",
+                    "properties": {
+                      "value": {
+                        "type": [
+                          "string",
+                          "number",
+                          "boolean"
+                        ]
+                      },
+                      "valueType": {
+                        "type": "string",
+                        "enum": [
+                          "string",
+                          "number",
+                          "boolean"
+                        ]
+                      },
+                      "source": {
+                        "type": "string",
+                        "enum": [
+                          "default",
+                          "profile",
+                          "variant",
+                          "environment"
+                        ]
+                      },
+                      "key": {
+                        "type": "string"
+                      },
+                      "profile": {
+                        "type": "string"
+                      },
+                      "variant": {
+                        "type": "string"
+                      },
+                      "description": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "value",
+                      "valueType",
+                      "source"
+                    ],
+                    "additionalProperties": false
+                  }
+                }
+              },
+              "required": [
+                "schema",
+                "schemaVersion",
+                "generatedAtUtc",
+                "manifestDigest",
+                "manifestGeneratedAtUtc",
+                "profiles",
+                "values"
+              ],
+              "additionalProperties": false
+            },
+            "custom": {
+              "type": "object",
+              "additionalProperties": {
+                "type": "string"
+              }
+            }
+          },
+          "additionalProperties": false
+        },
+        "branchProtection": {
+          "type": "object",
+          "properties": {
+            "status": {
+              "type": "string",
+              "enum": [
+                "ok",
+                "warn",
+                "error"
+              ]
+            },
+            "reason": {
+              "type": "string",
+              "enum": [
+                "aligned",
+                "missing_required",
+                "extra_required",
+                "mismatch",
+                "mapping_missing",
+                "api_unavailable",
+                "api_error",
+                "api_forbidden"
+              ]
+            },
+            "expected": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "produced": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "actual": {
+              "type": "object",
+              "properties": {
+                "status": {
+                  "type": "string",
+                  "enum": [
+                    "available",
+                    "unavailable",
+                    "error"
+                  ]
+                },
+                "contexts": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                }
+              },
+              "required": [
+                "status"
+              ],
+              "additionalProperties": false
+            },
+            "mapping": {
+              "type": "object",
+              "properties": {
+                "path": {
+                  "type": "string"
+                },
+                "digest": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "path",
+                "digest"
+              ],
+              "additionalProperties": false
+            },
+            "notes": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            }
+          },
+          "required": [
+            "status"
+          ],
+          "additionalProperties": false
+        },
+        "tests": {
+          "type": "object",
+          "properties": {
+            "summary": {
+              "type": "object",
+              "properties": {
+                "total": {
+                  "type": "integer",
+                  "minimum": 0
+                },
+                "passed": {
+                  "type": "integer",
+                  "minimum": 0
+                },
+                "failed": {
+                  "type": "integer",
+                  "minimum": 0
+                },
+                "errors": {
+                  "type": "integer",
+                  "minimum": 0
+                },
+                "skipped": {
+                  "type": "integer",
+                  "minimum": 0
+                },
+                "durationSeconds": {
+                  "type": "number",
+                  "minimum": 0
+                }
+              },
+              "required": [
+                "total",
+                "passed",
+                "failed",
+                "errors",
+                "skipped"
+              ],
+              "additionalProperties": false
+            },
+            "cases": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "id": {
+                    "type": "string"
+                  },
+                  "description": {
+                    "type": "string"
+                  },
+                  "category": {
+                    "type": "string"
+                  },
+                  "requirement": {
+                    "type": "string"
+                  },
+                  "rationale": {
+                    "type": "string"
+                  },
+                  "expectedResult": {
+                    "type": "string"
+                  },
+                  "outcome": {
+                    "type": "string",
+                    "enum": [
+                      "passed",
+                      "failed",
+                      "skipped",
+                      "error",
+                      "unknown"
+                    ]
+                  },
+                  "durationMs": {
+                    "type": "number",
+                    "minimum": 0
+                  },
+                  "retry": {
+                    "type": "integer",
+                    "minimum": 0
+                  },
+                  "artifacts": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  },
+                  "tags": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  },
+                  "diagnostics": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  }
+                },
+                "required": [
+                  "id",
+                  "outcome"
+                ],
+                "additionalProperties": false
+              }
+            }
+          },
+          "additionalProperties": false
+        },
+        "artifacts": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "name": {
+                "type": "string"
+              },
+              "path": {
+                "type": "string"
+              },
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "summary",
+                  "report",
+                  "log",
+                  "artifact",
+                  "traceability",
+                  "custom"
+                ]
+              },
+              "mimeType": {
+                "type": "string"
+              },
+              "sizeBytes": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "checksum": {
+                "type": "object",
+                "properties": {
+                  "algorithm": {
+                    "type": "string"
+                  },
+                  "value": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "algorithm",
+                  "value"
+                ],
+                "additionalProperties": false
+              }
+            },
+            "required": [
+              "name",
+              "path"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "notes": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "extra": {
+          "type": "object",
+          "additionalProperties": {}
+        }
+      },
+      "required": [
+        "schema",
+        "schemaVersion",
+        "generatedAtUtc",
+        "run"
+      ],
+      "additionalProperties": false
+    }
+  },
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "description": "Session index v2 document emitted by the session-index CLI.",
+  "$id": "urn:compare-vi-cli-action:schema:session-index-v2"
+}

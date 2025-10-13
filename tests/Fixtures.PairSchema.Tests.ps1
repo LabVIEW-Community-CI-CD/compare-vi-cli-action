@@ -30,7 +30,7 @@ Describe 'Fixture pair block schema and digest' -Tag 'Unit' {
     ([string]$pair.digest) | Should -Match '^[A-F0-9]{64}$'
 
     if ($pair.expectedOutcome) { ([string]$pair.expectedOutcome) | Should -Match '^(identical|diff|any)$' }
-    if ($pair.enforce)         { ([string]$pair.enforce)         | Should -Match '^(notice|warn|fail)$' }
+    if ($pair.enforce)       { ([string]$pair.enforce)         | Should -Match '^(notice|warn|fail)$' }
 
     # Deterministic recompute
     $bSha = ([string]$base.sha256).ToUpperInvariant()

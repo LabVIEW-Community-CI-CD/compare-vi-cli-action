@@ -67,7 +67,8 @@ New-Dir $paths.compareDir
 $warmupLog = Join-Path $paths.warmupDir 'labview-runtime.ndjson'
 $compareLog = Join-Path $paths.compareDir 'compare-events.ndjson'
 $capPath = Join-Path $paths.compareDir 'lvcompare-capture.json'
-$reportPath = Join-Path $paths.compareDir 'compare-report.html'
+$reportStagingDir = Join-Path $paths.compareDir (Join-Path '_staging' 'compare')
+$reportStagingPath = Join-Path $reportStagingDir 'compare-report.html'
 $cap = $null
 $err = $null
 
@@ -90,6 +91,7 @@ try {
     OutputDir   = $paths.compareDir
     JsonLogPath = $compareLog
     RenderReport= $RenderReport.IsPresent
+    ReportStagingDir = $reportStagingDir
   }
   if ($LabVIEWExePath) { $invokeParams.LabVIEWExePath = $LabVIEWExePath }
   if ($LVComparePath) { $invokeParams.LVComparePath = $LVComparePath }
@@ -112,7 +114,12 @@ $index = [ordered]@{
   schema = 'teststand-compare-session/v1'
   at     = (Get-Date).ToString('o')
   warmup = @{ events = $warmupLog }
-  compare= @{ events = $compareLog; capture = $capPath; report = (Test-Path $reportPath) }
+  compare= @{
+    events        = $compareLog
+    capture       = $capPath
+    report        = $reportStagingPath
+    reportExists  = (Test-Path -LiteralPath $reportStagingPath)
+  }
   outcome= if ($cap) {
     @{ exitCode=[int]$cap.exitCode; seconds=[double]$cap.seconds; command=$cap.command; diff=([bool]($cap.exitCode -eq 1)) }
   } else { $null }

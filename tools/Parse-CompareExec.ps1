@@ -35,6 +35,7 @@ if ($capturePath -and (Test-Path -LiteralPath $capturePath)) {
   try {
     $cap = Get-Content -LiteralPath $capturePath -Raw | ConvertFrom-Json -Depth 6
     $payload.capture.status = 'ok'
+    $payload.capture.reason = $null
     $payload.source = 'capture'
     $payload.file = $capturePath
     if ($cap.exitCode -ne $null) { $payload.exitCode = [int]$cap.exitCode }
@@ -50,10 +51,16 @@ if ($capturePath -and (Test-Path -LiteralPath $capturePath)) {
     $stderrCandidate = Join-Path $capDir 'lvcompare-stderr.txt'
     if (Test-Path -LiteralPath $stderrCandidate) { $payload.stderrPath = $stderrCandidate }
     $reportCandidate = Join-Path $capDir 'compare-report.html'
-    if (Test-Path -LiteralPath $reportCandidate) { $payload.reportPath = $reportCandidate }
+    $stagingCandidate = Join-Path $capDir '_staging/compare/compare-report.html'
+    if (Test-Path -LiteralPath $stagingCandidate) {
+      $payload.reportPath = $stagingCandidate
+    } elseif (Test-Path -LiteralPath $reportCandidate) {
+      $payload.reportPath = $reportCandidate
+    }
   } catch {
     $payload.capture.status = 'error'
-    $payload.capture.reason = $_.Exception.Message
+    $payload.capture.reason = 'parse_error'
+    $payload.capture.error = $_.Exception.Message
   }
 }
 
@@ -62,6 +69,7 @@ if ($execPath -and (Test-Path -LiteralPath $execPath)) {
     $exec = Get-Content -LiteralPath $execPath -Raw | ConvertFrom-Json -Depth 6
     $payload.compareExec.status = 'ok'
     $payload.compareExec.path = $execPath
+    $payload.compareExec.reason = $null
     if ($exec.exitCode -ne $null) { $payload.compareExec.exitCode = [int]$exec.exitCode }
     if ($exec.diff -ne $null) { $payload.compareExec.diff = [bool]$exec.diff }
     if ($payload.source -eq 'compare-exec') {
@@ -95,13 +103,25 @@ if ($execPath -and (Test-Path -LiteralPath $execPath)) {
     }
   } catch {
     $payload.compareExec.status = 'error'
-    $payload.compareExec.reason = $_.Exception.Message
+    $payload.compareExec.reason = 'parse_error'
+    $payload.compareExec.error = $_.Exception.Message
   }
 }
 
 if ($payload.source -eq 'missing' -and -not $capturePath -and -not $execPath) {
   $summaryLines += ('- No compare artifacts found under: {0}' -f $resolvedDir)
 } else {
+  $reportExists = $false
+  if ($payload.reportPath) {
+    try {
+      $reportExists = Test-Path -LiteralPath $payload.reportPath -PathType Leaf
+    } catch {
+      $reportExists = $false
+    }
+    if (-not $reportExists -and -not $payload.compareExec.reason) {
+      $payload.compareExec.reason = 'missing_report'
+    }
+  }
   if ($payload.file) { $summaryLines += ('- File: {0}' -f $payload.file) }
   if ($payload.diff -ne $null) { $summaryLines += ('- diff: {0}' -f $payload.diff) }
   if ($payload.exitCode -ne $null) { $summaryLines += ('- exitCode: {0}' -f $payload.exitCode) }
@@ -115,3 +135,13 @@ $payload | ConvertTo-Json -Depth 8 | Out-File -FilePath $OutJson -Encoding utf8
 if ($env:GITHUB_STEP_SUMMARY) {
   $summaryLines -join "`n" | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8
 }
+
+$hardFailReasons = @('no_exec_json','parse_error','missing_report')
+$shouldFail = $false
+
+if ($payload.source -eq 'missing') { $shouldFail = $true }
+if ($payload.compareExec.status -eq 'missing' -or $payload.compareExec.status -eq 'error') { $shouldFail = $true }
+if ($payload.compareExec.reason -and ($hardFailReasons -contains $payload.compareExec.reason)) { $shouldFail = $true }
+if ($payload.capture.status -eq 'error' -and $payload.capture.reason -eq 'parse_error') { $shouldFail = $true }
+
+if ($shouldFail) { exit 1 } else { exit 0 }

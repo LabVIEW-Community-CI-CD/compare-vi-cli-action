@@ -25,6 +25,8 @@ Describe 'Dev Dashboard loaders' -Tag 'Unit' {
     $telemetry.Totals.Failed | Should -Be 1
     $telemetry.DispatcherErrors.Count | Should -BeGreaterThan 0
     $telemetry.FailedTests.Name | Should -Contain 'Queue timeout'
+    $telemetry.Cases.Count | Should -Be 2
+    ($telemetry.Cases | Where-Object { $_.Name -eq 'Queue timeout' }).Outcome | Should -Be 'failed'
   }
 
   It 'loads Agent-Wait telemetry' {

@@ -1,0 +1,4 @@
+{
+  "issues": [88, 118, 123],
+  "notes": "List of issue numbers that are permitted to start orchestrated integrations via the gated task."
+}

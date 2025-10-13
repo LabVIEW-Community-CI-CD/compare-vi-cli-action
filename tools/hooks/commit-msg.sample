@@ -16,15 +16,14 @@ $subject = $lines[0]
 $errors = @()
 if ($subject.Length -gt 100) { $errors += "Subject too long ($($subject.Length) > 100)" }
 if ($subject -notmatch '#\d+' -and $subject -notmatch '(?i)\bWIP\b') {
-  $errors += 'Subject should reference an issue (e.g., "(#88)") or include WIP.'
+  $errors += 'Subject should reference an issue (e.g., "(#123)") or include WIP.'
 }
 
 if ($errors.Count -gt 0) {
   Write-Host '[commit-msg] Commit message does not meet policy:' -ForegroundColor Red
   foreach ($e in $errors) { Write-Host " - $e" -ForegroundColor Red }
-  Write-Host 'Example: "ci(validate): fix actionlint flow (#88)"'
+  Write-Host 'Example: "ci(validate): fix actionlint flow (#123)"'
   exit 1
 }
 
 exit 0
-

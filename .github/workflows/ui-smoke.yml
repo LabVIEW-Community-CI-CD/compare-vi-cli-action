@@ -1,0 +1,36 @@
+name: UI/Dispatcher Smoke (no LVCompare)
+
+on:
+  pull_request:
+    types: [labeled, reopened, synchronize]
+  workflow_dispatch:
+    inputs:
+      sample_id:
+        description: 'Sampling correlation id (prevents cancels)'
+        required: false
+        type: string
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.event.inputs.sample_id || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  ui-smoke:
+    if: ${{ github.event_name == 'workflow_dispatch' || contains(toJson(github.event.pull_request.labels), 'ui-smoke') }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v5
+      - name: Run Quick Dispatcher Smoke
+        shell: pwsh
+        run: pwsh -File tools/Quick-DispatcherSmoke.ps1 -PreferWorkspace
+      - name: Upload smoke artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ui-smoke-artifacts
+          path: |
+            **/pester-summary.json
+            **/pester-results.xml
+            **/compare-report.html
+          if-no-files-found: warn

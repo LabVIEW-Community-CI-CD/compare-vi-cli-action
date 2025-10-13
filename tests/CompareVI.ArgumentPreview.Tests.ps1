@@ -39,6 +39,6 @@ Describe 'CompareVI argument preview' -Tag 'Unit' {
     Set-Content -LiteralPath $base -Value 'x'
     Set-Content -LiteralPath $head -Value 'y'
 
-    { Invoke-CompareVI -Base $base -Head $head -LvCompareArgs '-badflag' -PreviewArgs } | Should -Throw
+  { Invoke-CompareVI -Base $base -Head $head -LvCompareArgs '-badflag' -PreviewArgs } | Should -Throw
   }
 }

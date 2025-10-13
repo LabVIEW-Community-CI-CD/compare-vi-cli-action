@@ -40,7 +40,7 @@ Describe 'Integration Control Loop smoke' -Tag 'Unit' {
       $stub = @"
 Set-StrictMode -Version Latest
 function Stop-LVCompareProcesses { param([switch]`$Quiet) '{"lvcompare":1}' | Set-Content -LiteralPath '$marker' -Encoding utf8; return 1 }
-function Stop-LabVIEWProcesses  { param([switch]`$Quiet) '{"labview":1}'   | Add-Content -LiteralPath '$marker' -Encoding utf8; return 1 }
+function Stop-LabVIEWProcesses { param([switch]`$Quiet) '{"labview":1}'   | Add-Content -LiteralPath '$marker' -Encoding utf8; return 1 }
 "@
       Set-Content -LiteralPath (Join-Path $shimScripts 'Ensure-LVCompareClean.ps1') -Value $stub -Encoding UTF8
 

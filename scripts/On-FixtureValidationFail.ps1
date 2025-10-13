@@ -1291,7 +1291,9 @@ if ($RenderReport) {
           $cwId = Start-ConsoleWatch -OutDir $OutputDir
         } catch {}
       }
-      $reportOut = (Join-Path $OutputDir 'compare-report.html')
+      $reportStagingDir = Join-Path $OutputDir '_staging/compare'
+      if (-not (Test-Path -LiteralPath $reportStagingDir)) { New-Item -ItemType Directory -Path $reportStagingDir -Force | Out-Null }
+      $reportOut = (Join-Path $reportStagingDir 'compare-report.html')
       if ($env:INVOKER_REQUIRED -eq '1') {
         try {
           $repoRoot = Resolve-Path (Join-Path $PSScriptRoot '..') | Select-Object -ExpandProperty Path
@@ -1311,7 +1313,7 @@ if ($RenderReport) {
       }
       # Guard: sample after report (no poll)
       try { & (Join-Path $repoRoot 'tools' 'Guard-LabVIEWPersistence.ps1') -ResultsDir $OutputDir -Phase 'after-report' -PollForCloseSeconds 0 } catch {}
-      Add-Artifact 'compare-report.html'
+      Add-Artifact '_staging/compare/compare-report.html'
       if ($cwId) {
         try {
           $cwSum = Stop-ConsoleWatch -Id $cwId -OutDir $OutputDir -Phase 'report'

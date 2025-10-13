@@ -27,10 +27,10 @@ Describe 'Invoke-CompareVI input and output validation (no CLI)' {
   }
 
   It 'validates required inputs and file existence' {
-    { Invoke-CompareVI -Base '' -Head $a -Executor { 0 } } | Should -Throw
-    { Invoke-CompareVI -Base $a -Head '' -Executor { 0 } } | Should -Throw
-    { Invoke-CompareVI -Base 'missing.vi' -Head $a -Executor { 0 } } | Should -Throw
-    { Invoke-CompareVI -Base $a -Head 'missing.vi' -Executor { 0 } } | Should -Throw
+  { Invoke-CompareVI -Base '' -Head $a -Executor { 0 } } | Should -Throw
+  { Invoke-CompareVI -Base $a -Head '' -Executor { 0 } } | Should -Throw
+  { Invoke-CompareVI -Base 'missing.vi' -Head $a -Executor { 0 } } | Should -Throw
+  { Invoke-CompareVI -Base $a -Head 'missing.vi' -Executor { 0 } } | Should -Throw
   }
 
   It 'resolves relative paths from working-directory' {
@@ -41,7 +41,7 @@ Describe 'Invoke-CompareVI input and output validation (no CLI)' {
   }
 
   It 'throws when working-directory does not exist' {
-    { Invoke-CompareVI -Base $a -Head $b -WorkingDirectory (Join-Path $TestDrive 'missing-dir') -Executor { 0 } } | Should -Throw
+  { Invoke-CompareVI -Base $a -Head $b -WorkingDirectory (Join-Path $TestDrive 'missing-dir') -Executor { 0 } } | Should -Throw
   }
 
   It 'parses quoted lvCompareArgs and includes them in the reconstructed command' {
@@ -92,7 +92,7 @@ Describe 'Invoke-CompareVI input and output validation (no CLI)' {
   It 'writes outputs then throws for unknown exit code (diff=false)' {
     $out = Join-Path $TestDrive 'out.txt'
     $sum = Join-Path $TestDrive 'sum.md'
-    { Invoke-CompareVI -Base $a -Head $b -GitHubOutputPath $out -GitHubStepSummaryPath $sum -Executor { 2 } } | Should -Throw
+  { Invoke-CompareVI -Base $a -Head $b -GitHubOutputPath $out -GitHubStepSummaryPath $sum -Executor { 2 } } | Should -Throw
     (Get-Content $out -Raw) | Should -Match 'exitCode=2'
     (Get-Content $out -Raw) | Should -Match 'diff=false'
     (Get-Content $sum -Raw) | Should -Match 'Exit code: 2'
@@ -100,7 +100,7 @@ Describe 'Invoke-CompareVI input and output validation (no CLI)' {
 
   It 'throws when fail-on-diff is true with exit code 1, but writes outputs' {
     $out = Join-Path $TestDrive 'out.txt'
-    { Invoke-CompareVI -Base $a -Head $b -GitHubOutputPath $out -FailOnDiff:$true -Executor { 1 } } | Should -Throw
+  { Invoke-CompareVI -Base $a -Head $b -GitHubOutputPath $out -FailOnDiff:$true -Executor { 1 } } | Should -Throw
     (Get-Content $out -Raw) | Should -Match 'exitCode=1'
     (Get-Content $out -Raw) | Should -Match 'diff=true'
   }

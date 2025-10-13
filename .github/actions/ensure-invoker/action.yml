@@ -72,6 +72,7 @@ runs:
         $attempts = [int]'${{ inputs.retries }}'
         $delay    = [int]'${{ inputs.retry-delay-seconds }}'
         $to       = [int]'${{ inputs.timeout-seconds }}'
+        if ($env:DETERMINISTIC -eq '1') { $attempts = 1; $delay = 0 }
         $ok = $false; $err=''
         # Resolve PowerShell 7 executable explicitly (service context may lack PATH)
         $psExe = $null
@@ -90,11 +91,11 @@ runs:
             }
             $wd = if ($env:GITHUB_WORKSPACE) { $env:GITHUB_WORKSPACE } else { (Get-Location).Path }
             $p = Start-Process -FilePath $psExe -ArgumentList $args -WindowStyle Hidden -PassThru -WorkingDirectory $wd -Environment $envMap
-            Write-Host "Started invoker attempt #$i pid=$($p.Id) pipe=$pipe"
+            Write-Host "Started invoker attempt #${i} pid=$($p.Id) pipe=$pipe"
             "[$ts] attempt#$i spawn pid=$($p.Id) pipe=$pipe" | Out-File -FilePath $boot -Append -Encoding utf8
           } catch {
             $err = $_.Exception.Message
-            Write-Host "::warning::Failed to spawn invoker on attempt #$i: ${err}"
+            Write-Host ("::warning::Failed to spawn invoker on attempt #{0}: {1}" -f $i, $err)
             "[$ts] attempt#$i spawn error: $err" | Out-File -FilePath $boot -Append -Encoding utf8
           }
           $sw = [Diagnostics.Stopwatch]::StartNew()
@@ -111,14 +112,14 @@ runs:
           "reason=ready"| Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
         } else {
           "[$(Get-Date -Format o)] all attempts exhausted; lastError=$err" | Out-File -FilePath $boot -Append -Encoding utf8
-          Write-Host "::error::Invoker not ready after ${to} s (attempts=$attempts). LastError=${err}"
+          Write-Host ("::error::Invoker not ready after {0} s (attempts={1}). LastError={2}" -f $to, $attempts, $err)
           "ready=false"        | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
           "reason=timeout"     | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
           exit 1
         }
 
     - name: Invoker ping (Windows only)
-      if: ${{ inputs.mode == 'start' && runner.os == 'Windows' && steps.start.outputs.ready == 'true' }}
+      if: ${{ inputs.mode == 'start' && runner.os == 'Windows' && steps.start.outputs.ready == 'true' && env.DETERMINISTIC != '1' }}
       shell: pwsh
       run: |
         $args = @(
@@ -139,12 +140,29 @@ runs:
         $stopped = Join-Path $results '_invoker/stopped.json'
         if (Test-Path -LiteralPath $sent) { Remove-Item -LiteralPath $sent -Force -ErrorAction SilentlyContinue }
         $to = [int]'${{ inputs.timeout-seconds }}'
-        $sw = [Diagnostics.Stopwatch]::StartNew()
-        while ($sw.Elapsed.TotalSeconds -lt $to) { if (Test-Path -LiteralPath $stopped) { break }; Start-Sleep -Milliseconds 300 }
-        if (-not (Test-Path -LiteralPath $stopped)) { Write-Host "::warning::Invoker stop marker not observed within ${to} s (continuing)" }
+        if ($env:DETERMINISTIC -ne '1') {
+          $sw = [Diagnostics.Stopwatch]::StartNew()
+          while ($sw.Elapsed.TotalSeconds -lt $to) { if (Test-Path -LiteralPath $stopped) { break }; Start-Sleep -Milliseconds 300 }
+          if (-not (Test-Path -LiteralPath $stopped)) { Write-Host "::warning::Invoker stop marker not observed within ${to} s (continuing)" }
+        } else {
+          Write-Host "::notice::Deterministic mode enabled: skipping invoker stop wait."
+        }
+
+        # Post-stop sweep: detect and optionally close LVCompare/LabVIEW in CI
+        try {
+          pwsh -File tools/Detect-RogueLV.ps1 -ResultsDir tests/results -LookBackSeconds 900 -AppendToStepSummary | Out-Null
+        } catch {}
+        $isCI = ($env:GITHUB_ACTIONS -eq 'true' -or $env:CI -eq 'true')
+        $cleanupDisabled = ($env:ENABLE_LABVIEW_CLEANUP -match '^(?i:0|false|no|off)$')
+        if ($isCI -and -not $cleanupDisabled) {
+          try {
+            pwsh -File tools/Close-LVCompare.ps1 -TimeoutSeconds 10 -KillOnTimeout | Out-Null
+          } catch {
+            Write-Host ("::notice::Close-LVCompare best-effort failed: {0}" -f $_.Exception.Message)
+          }
+        }
 
     - name: No-op on non-Windows
       if: ${{ runner.os != 'Windows' }}
       shell: bash
       run: echo ensure-invoker non-Windows runner, skipping
-
