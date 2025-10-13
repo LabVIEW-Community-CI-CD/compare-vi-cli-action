@@ -28,7 +28,7 @@ Describe 'commit-msg hook contract' -Tag 'Unit' {
   }
 
   It 'passes when subject contains issue reference and is within length guard' {
-    $result = & $script:RunHook -Message "ci(watcher): trim noisy logs (#88)"
+    $result = & $script:RunHook -Message "ci(watcher): trim noisy logs (#123)"
     $result.ExitCode | Should -Be 0
     $result.Output.Trim() | Should -Be ''
   }
@@ -40,7 +40,7 @@ Describe 'commit-msg hook contract' -Tag 'Unit' {
   }
 
   It 'fails when subject exceeds 100 characters' {
-    $subject = ('ci: ' + ('a' * 99) + ' (#88)')
+    $subject = ('ci: ' + ('a' * 99) + ' (#123)')
     $subject.Length | Should -BeGreaterThan 100
     $result = & $script:RunHook -Message $subject
     $result.ExitCode | Should -Be 1

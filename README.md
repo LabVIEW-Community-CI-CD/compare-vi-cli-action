@@ -57,16 +57,28 @@ jobs:
 
 - LabVIEW (and LVCompare) installed on the runner (LabVIEW 2025 or later recommended). Default path:
   `C:\Program Files\National Instruments\Shared\LabVIEW Compare\LVCompare.exe`.
+  Bitness note: this canonical LVCompare path can operate as a launcher. To guarantee 64‑bit
+  comparisons on x64 runners, provide a 64‑bit LabVIEW path using `-lvpath` or set
+  `LABVIEW_EXE` to `C:\Program Files\National Instruments\LabVIEW 20xx\LabVIEW.exe`.
+  The harness auto‑injects `-lvpath` when `LABVIEW_EXE` is set, so the compare executes in the
+  64‑bit LabVIEW environment even if the LVCompare stub itself is only a launcher.
 - The repository checkout includes or generates the `.vi` files to compare.
 
 ### Optional: LabVIEW CLI compare mode
 
-Set `LVCI_COMPARE_MODE=labview-cli` (and `LABVIEW_CLI_PATH` if the CLI isn’t on the canonical path) to invoke
+Set `LVCI_COMPARE_MODE=labview-cli` (and `LABVIEW_CLI_PATH` if the CLI isn't on the canonical path) to invoke
 `LabVIEWCLI.exe CreateComparisonReport` instead of the standalone LVCompare executable. The action keeps the
 LVCompare path as the required comparator; the CLI path is delivered via the new non-required
 `cli-compare.yml` workflow for experimental runs. The CLI wrapper accepts `LVCI_CLI_FORMAT` (XML/HTML/TXT/DOCX),
 `LVCI_CLI_EXTRA_ARGS` for additional flags (for example `--noDependencies`), and honors
 `LVCI_CLI_TIMEOUT_SECONDS` (default 120).
+
+Use `LVCI_COMPARE_POLICY` to direct how automation chooses between LVCompare and LabVIEW CLI:
+
+- `lv-first` (default) – legacy behavior; only run CLI when explicitly requested via `LVCI_COMPARE_MODE`.
+- `cli-first` – attempt CLI first, fall back to LVCompare on recoverable CLI failures (missing report, parse errors).
+- `cli-only` – require CLI success; do not fall back.
+- `lv-only` – enforce LVCompare only.
 
 ## Monitoring & telemetry
 
@@ -106,9 +118,11 @@ pwsh -File tools/Watch-InDocker.ps1 -RunId <id> -Repo LabVIEW-Community-CI-CD/co
 
 Tips:
 
+- Run `pwsh -File tools/Get-StandingPriority.ps1 -Plain` to display the current standing-priority
+  issue number and title.
 - Set `GH_TOKEN` or `GITHUB_TOKEN` in your environment (admin token recommended). The watcher also
   falls back to `C:\github_token.txt` when the env vars are unset.
-- VS Code: use “Integration (#88): Auto Push + Start + Watch” under Run Task to push, dispatch, and
+- VS Code: use "Integration (Standing Priority): Auto Push + Start + Watch" under Run Task to push, dispatch, and
   stream in one step.
 - The watcher prunes old run directories (`.tmp/watch-run`) automatically and warns if
   run/dispatcher status stalls longer than the configured window (default 10 minutes). When
@@ -116,9 +130,9 @@ Tips:
 
 #### Start integration (gated)
 
-The one-button task “Integration (#88): Auto Push + Start + Watch” deterministically starts an
+The one-button task "Integration (Standing Priority): Auto Push + Start + Watch" deterministically starts an
 orchestrated run only after selecting an allowed GitHub issue. The allow-list lives in
-`tools/policy/allowed-integration-issues.json` (default: `#88`, `#118`). The task:
+`tools/policy/allowed-integration-issues.json` (seeded with the standing-priority issue and `#118`). The task:
 
 1. Auto-detects an admin token (`GH_TOKEN`, `GITHUB_TOKEN`, or `C:\github_token.txt`).
 2. Pushes the current branch using that token (no manual git needed).
@@ -200,7 +214,7 @@ npm run lint:md:changed
 1. Branch from `develop`, run `npm ci`.
 2. Execute tests (`./Invoke-PesterTests.ps1` or watcher-assisted workflows).
 3. Lint (`npm run lint:md:changed`, `tools/Check-ClangFormat.ps1` if relevant).
-4. Submit a PR referencing **#88** and include rationale plus artifacts.
+4. Submit a PR referencing the standing-priority issue and include rationale plus artifacts.
 
 Follow `AGENTS.md` for coding etiquette and keep CI deterministic. Large workflow updates
 should note affected jobs and link to supporting ADRs.

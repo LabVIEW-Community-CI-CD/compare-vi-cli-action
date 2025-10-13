@@ -60,7 +60,7 @@ lvCompareArgs:
 ```
 
 ```yaml
-# Windows example with explicit LabVIEW version
+# Windows example with explicit LabVIEW version (forces 64‑bit when pointing to a 64‑bit LabVIEW.exe)
 lvCompareArgs: "-nobdcosm -nobdpos -nofppos -noattr -lvpath \"C:\\Program Files\\National Instruments\\LabVIEW 2025\\LabVIEW.exe\""
 ```
 
@@ -68,7 +68,18 @@ Specify a LabVIEW path:
 
 ```yaml
 lvCompareArgs: '-lvpath "C:\\Program Files\\National Instruments\\LabVIEW 2025\\LabVIEW.exe"'
+
 ```
+Alternatively, set `LABVIEW_EXE` in the environment and the harness will auto-inject `-lvpath`:
+
+```powershell
+$env:LABVIEW_EXE = 'C:\Program Files\National Instruments\LabVIEW 2025\LabVIEW.exe'
+```
+
+This ensures the comparison runs under 64-bit LabVIEW even when calling the canonical
+`LVCompare.exe` launcher path.
+Set `LVCI_COMPARE_POLICY` to steer automation fallback (`lv-first` default, `cli-first`,
+`cli-only`, or `lv-only`).
 
 Log to a temporary path:
 
@@ -171,3 +182,4 @@ Short-circuit detection (`base == head`):
 - [`TROUBLESHOOTING.md`](./TROUBLESHOOTING.md) – leak detection, recovery, environment setup.
 - [`DEVELOPER_GUIDE.md`](./DEVELOPER_GUIDE.md) – local testing and build commands.
 - [`ENVIRONMENT.md`](./ENVIRONMENT.md) – environment variables for loop mode, leaks, fixtures.
+

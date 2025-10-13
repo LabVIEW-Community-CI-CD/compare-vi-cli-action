@@ -62,7 +62,7 @@ Describe 'Agent toggle manifest' -Tag 'Unit' {
     $previous = [Environment]::GetEnvironmentVariable('SKIP_SYNC_DEVELOP')
     try {
       [Environment]::SetEnvironmentVariable('SKIP_SYNC_DEVELOP', '1')
-      { Assert-AgentToggleDeterminism } | Should -Throw
+    { Assert-AgentToggleDeterminism } | Should -Throw
     } finally {
       if ($null -eq $previous) {
         [Environment]::SetEnvironmentVariable('SKIP_SYNC_DEVELOP', $null)

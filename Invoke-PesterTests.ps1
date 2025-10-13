@@ -151,6 +151,8 @@ param(
   [switch]$EmitIts
 )
 
+$includeIntegrationBool = $false
+
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 

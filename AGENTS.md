@@ -7,19 +7,21 @@ This document summarizes the expectations for automation agents working in the
 
 ## Primary directive
 
-- Issue **#88** is the standing priority. Treat progress on #88 as the top objective for edits,
-  CI runs, and PRs.
+- The standing priority is the open issue labelled `standing-priority`. View it with
+  `pwsh -File tools/Get-StandingPriority.ps1 -Plain` and treat that issue as the top objective for
+  edits, CI runs, and PRs.
 - The human operator is signed in with an admin GitHub token; assume privileged operations
   (labels, reruns, merges) are allowed when safe.
 - Default behaviour:
   - Operate inside this repository unless the human asks otherwise.
   - Keep workflows deterministic and green.
-  - Reference `#88` in commit and PR descriptions.
+  - Reference the standing priority issue in commit subjects and PR descriptions (for example
+    `(#123)` when the helper reports `#123`).
 - First actions in a session:
   1. Run `pwsh -File tools/Sync-Develop.ps1` to fetch/fast-forward `develop`.
      Set `SKIP_SYNC_DEVELOP=1` or pass `-NoFastForward` when a frozen snapshot is required.
-  2. Pull #88 details (tasks, acceptance, linked PRs).
-  3. Create or sync a working branch (`issue/88-<slug>`), push minimal changes, dispatch CI.
+  2. Review the standing priority issue (tasks, acceptance, linked PRs).
+  3. Create or sync a working branch (`issue/<priority>-<slug>`), push minimal changes, dispatch CI.
   4. Open or update the PR, apply required labels, monitor to green, merge when acceptance is met.
 
 ## Repository layout
@@ -39,7 +41,7 @@ This document summarizes the expectations for automation agents working in the
 - Quick smoke: `./tools/Quick-DispatcherSmoke.ps1 -Keep`
 - Containerized non-LV checks: `pwsh -File tools/Run-NonLVChecksInDocker.ps1` (pulls pinned
   images, honours `DETERMINISTIC=1`).
-- Orchestrated gate: Run Task → `Integration (#88): Auto Push + Start + Watch`. The task pushes
+- Orchestrated gate: Run Task → `Integration (Standing Priority): Auto Push + Start + Watch`. The task pushes
   the current branch with the admin token (env or `C:\github_token.txt`), dispatches
   `ci-orchestrated.yml`, and streams the run via Docker watcher. Allowed issues live in
   `tools/policy/allowed-integration-issues.json`.
@@ -48,7 +50,7 @@ This document summarizes the expectations for automation agents working in the
   unit/integration phases.
 - Docker rebuilds & retests: rerun `tools/Run-NonLVChecksInDocker.ps1` (add `-Skip*` switches as
   needed) to refresh actionlint/markdownlint/docs/workflow checks. After image or workflow updates,
-  trigger `Integration (#88): Auto Push + Start + Watch` to retest the deterministic pipeline
+  trigger `Integration (Standing Priority): Auto Push + Start + Watch` to retest the deterministic pipeline
   end-to-end.
 - Watcher hygiene: `tools/Watch-OrchestratedRun.ps1` trims old `.tmp/watch-run` folders, warns on
   stalled run/dispatcher status, and flags digest-identical dispatcher logs (possible repeated
@@ -83,7 +85,7 @@ This document summarizes the expectations for automation agents working in the
 
 ## Commits & PRs
 
-- Keep commits focused; include `#88` in subjects.
+- Keep commits focused; include the standing priority issue in subjects.
 - PRs should describe rationale, list affected workflows, and link to artifacts.
 - Ensure CI is green (lint + Pester). Verify no lingering processes on self-hosted runners.
 
@@ -106,7 +108,7 @@ This document summarizes the expectations for automation agents working in the
   - Warns on inline `-f` and dot-sourcing.
   - Blocks on analyzer errors.
 - `tools/hooks/commit-msg.sample`
-  - Enforces subject ≤100 characters and issue reference (e.g., `(#88)`) unless `WIP`.
+  - Enforces subject ≤100 characters and issue reference (e.g., `(#123)`) unless `WIP`.
 
 ## Required checks (develop/main)
 
@@ -218,7 +220,7 @@ Use `tools/workflows/update_workflows.py` for mechanical updates (comment-preser
     - When `-AutoTrim` (or `HANDOFF_AUTOTRIM=1`) is set, trims oversized watcher logs if eligible
       and appends notes to the GitHub Step Summary when available.
 
-## Fast path for issue #88
+## Fast path for standing priority issue
 
 - PR comment dispatch: `/run orchestrated single include_integration=true sample_id=<id>`
 - CLI dispatch: `pwsh -File tools/Dispatch-WithSample.ps1 ci-orchestrated.yml -Ref develop -IncludeIntegration true`
@@ -299,3 +301,6 @@ Guidance:
 - For markdownlint, try `Resolve-MarkdownlintCli2Path`; only fall back to `npx --no-install` when necessary.
 - For LVCompare, continue to enforce the canonical path; pass `-lvpath` to LVCompare and never launch `LabVIEW.exe`.
 - Do not lint or link-check vendor documentation under `bin/`; scope link checks to `docs/` or ignore `bin/**`.
+
+
+

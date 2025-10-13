@@ -25,7 +25,7 @@ Describe 'Prime-LVCompare.ps1' -Tag 'Unit' {
       -BaseVi $base `
       -HeadVi $head `
       -LabVIEWExePath (Join-Path $workDir 'LabVIEW.exe') `
-      -TimeoutSeconds 5 *> $null
+      *> $null
 
     $LASTEXITCODE | Should -Be 1
   }
@@ -47,7 +47,7 @@ Describe 'Prime-LVCompare.ps1' -Tag 'Unit' {
       -BaseVi $base `
       -HeadVi $head `
       -ExpectNoDiff `
-      -TimeoutSeconds 5 *> $null
+      *> $null
 
     $LASTEXITCODE | Should -Not -Be 0
   }

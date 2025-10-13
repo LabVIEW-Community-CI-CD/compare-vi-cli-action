@@ -43,16 +43,21 @@ const agentWaitResultSchema = z.object({
 const compareExecSchema = z.object({
     schema: z.literal('compare-exec/v1'),
     generatedAt: isoString,
+    mode: z.string().min(1),
     cliPath: z.string().min(1),
     command: z.string().min(1),
     args: z.array(z.union([z.string(), z.number(), z.boolean(), z.record(z.any()), z.array(z.any())])).optional(),
     exitCode: z.number(),
     diff: z.boolean(),
+    diffUnknown: z.boolean(),
     cwd: z.string().min(1),
     duration_s: z.number(),
     duration_ns: z.number(),
     base: z.string().min(1),
     head: z.string().min(1),
+    reportPath: z.string().min(1).optional(),
+    stdout: z.string().optional(),
+    stderr: z.string().optional(),
 });
 const lvCompareCaptureSchema = z
     .object({

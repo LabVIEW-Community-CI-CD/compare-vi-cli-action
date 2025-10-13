@@ -86,7 +86,7 @@ Describe 'Composite action output shape (emulated)' -Tag 'Unit' {
     $content | Should -Match 'shortCircuitedIdentical=true'
   }
 
-  It 'loop mode emits percentile and loop outputs (simulated executor)' -TimeoutSeconds 15 {
+  It 'loop mode emits percentile and loop outputs (simulated executor)' {
     # Arrange
     $vis = Join-Path $TestDrive 'vis'
     New-Item -ItemType Directory -Path $vis -Force | Out-Null

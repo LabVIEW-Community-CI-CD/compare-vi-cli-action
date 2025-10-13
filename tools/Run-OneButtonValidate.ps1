@@ -14,6 +14,25 @@ $workspace = (Get-Location).Path
 $summary = @()
 $summaryPath = Join-Path $workspace 'tests/results/_agent/onebutton-summary.md'
 
+function Resolve-StandingPriority {
+  param([string]$RepoRoot)
+  $scriptPath = Join-Path $RepoRoot 'tools' 'Get-StandingPriority.ps1'
+  if (-not (Test-Path -LiteralPath $scriptPath -PathType Leaf)) { return $null }
+  try {
+    $json = pwsh -NoLogo -NoProfile -File $scriptPath 2>$null
+    if ($LASTEXITCODE -ne 0 -or -not $json) { return $null }
+    return $json | ConvertFrom-Json -ErrorAction Stop
+  } catch {
+    return $null
+  }
+}
+
+$standingPriority = Resolve-StandingPriority -RepoRoot $workspace
+$standingIssueNumber = if ($standingPriority -and $standingPriority.number) { [int]$standingPriority.number } else { $null }
+$standingIssueRef = if ($standingIssueNumber) { "(#$standingIssueNumber)" } else { '(standing priority)' }
+$standingIssueLabel = if ($standingIssueNumber) { "#$standingIssueNumber" } else { 'standing priority issue' }
+$standingIssueTitle = if ($standingPriority -and $standingPriority.title) { $standingPriority.title } else { 'standing priority issue' }
+
 function Add-Summary {
   param([string]$Step,[string]$Status,[TimeSpan]$Duration,[string]$Message)
   $script:summary += [pscustomobject]@{ Step = $Step; Status = $Status; Duration = $Duration; Message = $Message }
@@ -93,7 +112,10 @@ if ($Stage -or $Commit -or $Push -or $CreatePR) {
 }
 
 if ($Commit) {
-  Invoke-Step -Name 'Workflow drift commit' -Action { Invoke-CommandWithExit -Command 'pwsh' -Arguments @('-NoLogo','-NoProfile','-File','./tools/Check-WorkflowDrift.ps1','-AutoFix','-Stage','-CommitMessage','Normalize: ci-orchestrated via ruamel (#88)') -FailureMessage 'Workflow drift commit failed.' }
+Invoke-Step -Name 'Workflow drift commit' -Action {
+  $commitMessage = "Normalize: ci-orchestrated via ruamel $standingIssueRef"
+  Invoke-CommandWithExit -Command 'pwsh' -Arguments @('-NoLogo','-NoProfile','-File','./tools/Check-WorkflowDrift.ps1','-AutoFix','-Stage','-CommitMessage',$commitMessage) -FailureMessage 'Workflow drift commit failed.'
+}
 }
 
 if ($Stage -or $Commit) {
@@ -124,7 +146,8 @@ if ($Push) {
 }
 
 if ($CreatePR) {
-  Invoke-Step -Name 'Create/Update PR (#88)' -Action {
+  $prStepName = if ($standingIssueNumber) { "Create/Update PR (#$standingIssueNumber)" } else { 'Create/Update PR (Standing Priority)' }
+  Invoke-Step -Name $prStepName -Action {
     $branch = git rev-parse --abbrev-ref HEAD
     $gh = Get-Command gh -ErrorAction SilentlyContinue
     if (-not $gh) {
@@ -136,8 +159,8 @@ if ($CreatePR) {
       Write-Host '::notice::gh not authenticated; skipping PR step.'
       return
     }
-    $title = 'Normalize workflows and local Validate mirrors (#88)'
-    $body = 'Automated workflow normalization and Validate task updates for #88.'
+    $title = "Normalize workflows and local Validate mirrors $standingIssueRef"
+    $body = "Automated workflow normalization and Validate task updates for $standingIssueLabel."
     $existingJson = gh pr view --json number --head $branch 2>$null
     if ($LASTEXITCODE -eq 0 -and $existingJson) {
       $pr = $existingJson | ConvertFrom-Json

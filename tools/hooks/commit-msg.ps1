@@ -22,7 +22,7 @@ if ($subject.Length -gt 100) {
 }
 
 if ($subject -notmatch '\(#\d+\)') {
-  Write-Error "commit-msg: subject must include issue reference e.g. '(#88)'"
+  Write-Error "commit-msg: subject must include issue reference e.g. '(#123)'"
   exit 1
 }
 

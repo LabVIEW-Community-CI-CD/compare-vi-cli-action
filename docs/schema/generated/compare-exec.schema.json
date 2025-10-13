@@ -12,6 +12,10 @@
           "type": "string",
           "minLength": 1
         },
+        "mode": {
+          "type": "string",
+          "minLength": 1
+        },
         "cliPath": {
           "type": "string",
           "minLength": 1
@@ -49,6 +53,9 @@
         "diff": {
           "type": "boolean"
         },
+        "diffUnknown": {
+          "type": "boolean"
+        },
         "cwd": {
           "type": "string",
           "minLength": 1
@@ -66,15 +73,27 @@
         "head": {
           "type": "string",
           "minLength": 1
+        },
+        "reportPath": {
+          "type": "string",
+          "minLength": 1
+        },
+        "stdout": {
+          "type": "string"
+        },
+        "stderr": {
+          "type": "string"
         }
       },
       "required": [
         "schema",
         "generatedAt",
+        "mode",
         "cliPath",
         "command",
         "exitCode",
         "diff",
+        "diffUnknown",
         "cwd",
         "duration_s",
         "duration_ns",

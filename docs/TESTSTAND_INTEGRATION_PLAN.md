@@ -87,7 +87,7 @@ Before enabling the harness end-to-end, codify the updated acceptance criteria i
 
 - Create a quick-start doc (`docs/TESTSTAND_QUICKSTART.md`) derived from the steps above.
 - Update `AGENT_HANDOFF.txt` guidance to mention the harness mode and how to toggle it.
-- Track remaining tasks in issue **#88** (or a linked issue) for visibility: wiring unit tests, user documentation, workflow feature flag toggles.
+- Track remaining tasks in the standing-priority issue (or a linked issue) for visibility: wiring unit tests, user documentation, workflow feature flag toggles.
 
 ## 4. Open questions
 
@@ -96,3 +96,4 @@ Before enabling the harness end-to-end, codify the updated acceptance criteria i
 - How do we best surface LabVIEW/LVCompare errors (e.g., via GitHub annotations)?
 
 Addressing these items will give us a consistent TestStand-driven workflow that works locally and in CI without compromising the deterministic guarantees we rely on today.
+

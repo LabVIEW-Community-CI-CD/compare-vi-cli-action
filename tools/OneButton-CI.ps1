@@ -1,7 +1,7 @@
 #Requires -Version 7.0
 <#
 .SYNOPSIS
-  One-button end-to-end CI trigger and artifact post-processing for #88.
+  One-button end-to-end CI trigger and artifact post-processing for the standing priority issue.
 
 .DESCRIPTION
   - Dispatches Validate and CI Orchestrated (strategy=single, include_integration=true)
@@ -287,3 +287,4 @@ if ($val.conclusion -ne 'success' -or $orch.conclusion -ne 'success') {
 
 Write-Host '[onebutton] All green.'
 exit 0
+

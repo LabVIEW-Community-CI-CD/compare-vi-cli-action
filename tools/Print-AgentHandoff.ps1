@@ -24,6 +24,19 @@ function Format-BoolLabel {
   return 'unknown'
 }
 
+function Resolve-StandingPriority {
+  $repoRoot = (Resolve-Path '.').Path
+  $scriptPath = Join-Path $repoRoot 'tools' 'Get-StandingPriority.ps1'
+  if (-not (Test-Path -LiteralPath $scriptPath -PathType Leaf)) { return $null }
+  try {
+    $json = pwsh -NoLogo -NoProfile -File $scriptPath 2>$null
+    if ($LASTEXITCODE -ne 0 -or -not $json) { return $null }
+    return $json | ConvertFrom-Json -ErrorAction Stop
+  } catch {
+    return $null
+  }
+}
+
 function Get-AgentTogglesModulePath {
   $repoRoot = (Resolve-Path '.').Path
   return Join-Path $repoRoot 'tools' 'AgentToggles.psm1'
@@ -312,6 +325,55 @@ function Write-WatcherStatusSummary {
 
 $handoff = Join-Path (Resolve-Path '.').Path 'AGENT_HANDOFF.txt'
 if (-not (Test-Path -LiteralPath $handoff)) { throw "Handoff file not found: $handoff" }
+
+$priorityInfo = Resolve-StandingPriority
+$priorityNumber = 'unassigned'
+$priorityTitle = 'Standing priority not set'
+$priorityUrl = 'n/a'
+$prioritySource = 'unavailable'
+
+if ($priorityInfo) {
+  if ($priorityInfo.number) { $priorityNumber = "#{0}" -f $priorityInfo.number }
+  if ($priorityInfo.title) { $priorityTitle = $priorityInfo.title }
+  if ($priorityInfo.url) { $priorityUrl = $priorityInfo.url }
+  if ($priorityInfo.source) { $prioritySource = $priorityInfo.source }
+} else {
+  Write-Warning 'Standing priority could not be resolved (label `standing-priority` or override missing).'
+}
+
+$priorityFull = if ($priorityInfo -and $priorityInfo.number) {
+  $titleText = if ($priorityInfo.title) { $priorityInfo.title } else { '(no title)' }
+  "#{0} — {1}" -f $priorityInfo.number, $titleText
+} else {
+  'Standing priority not set'
+}
+
+Write-Host ''
+Write-Host '[Standing Priority]' -ForegroundColor Cyan
+Write-Host ("  issue : {0}" -f $priorityNumber)
+Write-Host ("  title : {0}" -f $priorityTitle)
+Write-Host ("  url   : {0}" -f $priorityUrl)
+Write-Host ("  source: {0}" -f $prioritySource)
+
+if ($env:GITHUB_STEP_SUMMARY) {
+  $summary = @(
+    '### Handoff - Standing Priority',
+    "- Issue : $priorityNumber",
+    "- Title : $priorityTitle",
+    "- URL   : $priorityUrl",
+    "- Source: $prioritySource"
+  )
+  ($summary -join "`n") | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8
+}
+
+$handoffRaw = Get-Content -LiteralPath $handoff -Raw
+$handoffRaw = $handoffRaw.Replace('[[CURRENT_PRIORITY_FULL]]', $priorityFull)
+$handoffRaw = $handoffRaw.Replace('[[CURRENT_PRIORITY]]', $priorityNumber)
+$handoffRaw = $handoffRaw.Replace('[[CURRENT_PRIORITY_TITLE]]', $priorityTitle)
+$handoffRaw = $handoffRaw.Replace('[[CURRENT_PRIORITY_URL]]', $priorityUrl)
+
+$handoffLines = $handoffRaw -split "`n"
+foreach ($line in $handoffLines) { Write-Host $line }
 
 if ($ApplyToggles) {
   $env:LV_SUPPRESS_UI = '1'

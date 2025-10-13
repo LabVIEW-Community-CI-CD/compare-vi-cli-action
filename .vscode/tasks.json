@@ -2,7 +2,7 @@
   "version": "2.0.0",
   "tasks": [
     {
-      "label": "Integration (#88): Auto Push + Start + Watch",
+      "label": "Integration (Standing Priority): Auto Push + Start + Watch",
       "type": "shell",
       "command": "pwsh",
       "args": [
@@ -33,7 +33,9 @@
         "-NoLogo",
         "-NoProfile",
         "-File",
-        "./tools/Run-CLICompareScaffoldAndSelect.ps1"
+        "./tools/Run-CLICompareScaffoldAndSelect.ps1",
+        "-Filter",
+        "tag:smoke"
       ],
       "options": {
         "cwd": "${workspaceFolder}",
@@ -52,7 +54,36 @@
       "problemMatcher": []
     },
     {
-      "label": "Integration (#88): Watch existing run (Docker)",
+      "label": "CLI Compare: Dry-Run (DX)",
+      "type": "shell",
+      "command": "pwsh",
+      "args": [
+        "-NoLogo",
+        "-NoProfile",
+        "-File",
+        "./tools/Run-CLICompareScaffoldAndSelect.ps1",
+        "-Filter",
+        "tag:smoke",
+        "-DryRun"
+      ],
+      "options": {
+        "cwd": "${workspaceFolder}",
+        "env": {
+          "DX_CONSOLE_LEVEL": "concise",
+          "DX_CONSOLE_PREFERRED": "1",
+          "LV_SUPPRESS_UI": "1",
+          "LV_NO_ACTIVATE": "1",
+          "LV_CURSOR_RESTORE": "1",
+          "LV_IDLE_WAIT_SECONDS": "2",
+          "LV_IDLE_MAX_WAIT_SECONDS": "5"
+        }
+      },
+      "group": "test",
+      "presentation": { "reveal": "always", "panel": "dedicated", "clear": true },
+      "problemMatcher": []
+    },
+    {
+      "label": "Integration (Standing Priority): Watch existing run (Docker)",
       "type": "shell",
       "command": "pwsh",
       "args": [
@@ -141,7 +172,7 @@
       }
     },
     {
-      "label": "Run: One Button (#88)",
+      "label": "Run: One Button (Standing Priority)",
       "type": "shell",
       "command": "pwsh",
       "args": [
@@ -900,7 +931,7 @@
       }
     },
     {
-      "label": "Validate: Workflow Drift (apply + commit #88)",
+      "label": "Validate: Workflow Drift (apply + commit standing-priority)",
       "type": "shell",
       "command": "pwsh",
       "args": [
@@ -911,7 +942,7 @@
         "-AutoFix",
         "-Stage",
         "-CommitMessage",
-        "Normalize: ci-orchestrated via ruamel (#88)"
+        "Normalize: ci-orchestrated via ruamel (Standing Priority)"
       ],
       "options": {
         "cwd": "${workspaceFolder}"
@@ -1494,7 +1525,7 @@
       }
     },
     {
-      "label": "OneButton: Setup Branch (#88)",
+      "label": "OneButton: Setup Branch (Standing Priority)",
       "type": "shell",
       "command": "pwsh",
       "args": [
@@ -1534,14 +1565,14 @@
       }
     },
     {
-      "label": "OneButton: Create/Update PR (#88)",
+      "label": "OneButton: Create/Update PR (Standing Priority)",
       "type": "shell",
       "command": "pwsh",
       "args": [
         "-NoLogo",
         "-NoProfile",
         "-Command",
-        "& { $ErrorActionPreference='Stop'; $branch = git rev-parse --abbrev-ref HEAD; $gh = Get-Command gh -ErrorAction SilentlyContinue; if (-not $gh) { Write-Host '::notice::gh CLI not available; skipping PR step.'; exit 0 }; gh auth status 2>$null; if ($LASTEXITCODE -ne 0) { Write-Host '::notice::gh not authenticated; skipping PR step.'; exit 0 }; $title = 'Normalize workflows and local Validate mirrors (#88)'; $body = 'Automated workflow normalization and Validate task updates for #88.'; $existingJson = gh pr view --json number --head $branch 2>$null; if ($LASTEXITCODE -eq 0 -and $existingJson) { $pr = $existingJson | ConvertFrom-Json; gh pr edit $pr.number --title $title --body $body | Out-Host } else { gh pr create --base develop --head $branch --title $title --body $body | Out-Host } }"
+        "& { $ErrorActionPreference='Stop'; $branch = git rev-parse --abbrev-ref HEAD; $gh = Get-Command gh -ErrorAction SilentlyContinue; if (-not $gh) { Write-Host '::notice::gh CLI not available; skipping PR step.'; exit 0 }; gh auth status 2>$null; if ($LASTEXITCODE -ne 0) { Write-Host '::notice::gh not authenticated; skipping PR step.'; exit 0 }; $title = 'Normalize workflows and local Validate mirrors (Standing Priority)'; $body = 'Automated workflow normalization and Validate task updates for standing-priority.'; $existingJson = gh pr view --json number --head $branch 2>$null; if ($LASTEXITCODE -eq 0 -and $existingJson) { $pr = $existingJson | ConvertFrom-Json; gh pr edit $pr.number --title $title --body $body | Out-Host } else { gh pr create --base develop --head $branch --title $title --body $body | Out-Host } }"
       ],
       "options": {
         "cwd": "${workspaceFolder}",
@@ -1557,7 +1588,7 @@
       }
     },
     {
-      "label": "OneButton: Validate + Stage (#88)",
+      "label": "OneButton: Validate + Stage (Standing Priority)",
       "type": "shell",
       "command": "pwsh",
       "args": [
@@ -1578,7 +1609,7 @@
       }
     },
     {
-      "label": "OneButton: Validate + Commit + Push + PR (#88)",
+      "label": "OneButton: Validate + Commit + Push + PR (Standing Priority)",
       "type": "shell",
       "command": "pwsh",
       "args": [
@@ -1608,7 +1639,7 @@
       "type": "pickString",
       "description": "Select a pre-approved issue to gate integration",
       "options": [
-        { "label": "#88 – Orchestrated DX/Invoker stability", "value": "88" },
+        { "label": "standing-priority – Orchestrated DX/Invoker stability", "value": "88" },
         { "label": "#118 – Branch protection contract", "value": "118" }
       ],
       "default": "88"
@@ -1688,3 +1719,4 @@
     }
   ]
 }
+

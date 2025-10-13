@@ -7,6 +7,7 @@ param(
   [switch]$PromptScaffold,
   [switch]$OpenReport,
   [switch]$AllowDiff,
+  [switch]$DryRun,
   [string]$Filter,
   [string]$DefaultBase = 'VI1.vi',
   [string]$DefaultHead = 'VI2.vi'
@@ -35,6 +36,17 @@ function Resolve-CasePath([string]$Path){
   return (Join-Path $RepoRoot $Path)
 }
 function Sanitize-Token([string]$Value){ if (-not $Value) { return 'case' } return ($Value -replace '[^A-Za-z0-9_-]','-') }
+
+function Get-OptionalPropertyValue {
+  param(
+    $Object,
+    [string]$Name
+  )
+  if ($null -eq $Object -or -not $Name) { return $null }
+  if ($Object -is [System.Collections.IDictionary] -and $Object.Contains($Name)) { return $Object[$Name] }
+  if ($Object.PSObject -and $Object.PSObject.Properties[$Name]) { return $Object.PSObject.Properties[$Name].Value }
+  return $null
+}
 
 function Get-CaseArray($Cases){
   return @($Cases)
@@ -479,6 +491,10 @@ if (-not $selectedIdxs -or (@($selectedIdxs)).Length -eq 0) { throw 'Nothing sel
 
 $selectedIdxs = $selectedIdxs | Sort-Object
 
+if ($DryRun) {
+  Write-Host 'Dry-run mode: skipping LabVIEW CLI execution; emitting selection summary only.' -ForegroundColor Yellow
+}
+
 . (Join-Path $PSScriptRoot '..' 'scripts' 'CompareVI.ps1')
 
 $failures = $false
@@ -516,6 +532,20 @@ foreach ($idx in $selectedIdxs) {
   $entry.nunit = $nunitPath
   $entry.exec  = $execPath
 
+  $caseCli = Get-OptionalPropertyValue -Object $case -Name 'cli'
+  $caseOverrides = Get-OptionalPropertyValue -Object $case -Name 'overrides'
+  $cliFormat = Get-OptionalPropertyValue -Object $caseCli -Name 'format'
+  $cliExtraArgs = Get-OptionalPropertyValue -Object $caseCli -Name 'extraArgs'
+  $overrideLabViewCli = Get-OptionalPropertyValue -Object $caseOverrides -Name 'labviewCliPath'
+
+  if ($DryRun) {
+    $entry.validator = 'skipped'
+    $entry.notes = 'dry-run (execution skipped)'
+    $summaryEntries += $entry
+    Write-Host ("Dry-run: case {0} ({1}) queued without execution." -f $case.id, $case.name) -ForegroundColor DarkYellow
+    continue
+  }
+
   $prevEnv = @{
     FORMAT = $env:LVCI_CLI_FORMAT
     EXTRA  = $env:LVCI_CLI_EXTRA_ARGS
@@ -523,19 +553,31 @@ foreach ($idx in $selectedIdxs) {
   }
 
   try {
-    $format = if ($case.cli.format) { $case.cli.format } elseif ($env:LVCI_CLI_FORMAT) { $env:LVCI_CLI_FORMAT } else { 'XML' }
+    $format = if ($cliFormat) { [string]$cliFormat } elseif ($env:LVCI_CLI_FORMAT) { $env:LVCI_CLI_FORMAT } else { 'XML' }
     $env:LVCI_CLI_FORMAT = $format
 
-    if ($case.cli.extraArgs) {
-      $env:LVCI_CLI_EXTRA_ARGS = ($case.cli.extraArgs -join ' ')
+    if ($cliExtraArgs) {
+      $extraVector = @()
+      if ($cliExtraArgs -is [string]) {
+        $extraVector = @($cliExtraArgs.Split(' ', [System.StringSplitOptions]::RemoveEmptyEntries))
+      } elseif ($cliExtraArgs -is [System.Collections.IEnumerable]) {
+        $extraVector = @($cliExtraArgs | ForEach-Object { [string]$_ })
+      }
+      if ($extraVector) {
+        $env:LVCI_CLI_EXTRA_ARGS = ($extraVector -join ' ')
+      } elseif ($prevEnv.EXTRA) {
+        $env:LVCI_CLI_EXTRA_ARGS = $prevEnv.EXTRA
+      } else {
+        Remove-Item Env:LVCI_CLI_EXTRA_ARGS -ErrorAction SilentlyContinue
+      }
     } elseif ($prevEnv.EXTRA) {
       $env:LVCI_CLI_EXTRA_ARGS = $prevEnv.EXTRA
     } else {
       Remove-Item Env:LVCI_CLI_EXTRA_ARGS -ErrorAction SilentlyContinue
     }
 
-    if ($case.overrides.labviewCliPath) {
-      $env:LABVIEW_CLI_PATH = Resolve-PathSafe $case.overrides.labviewCliPath
+    if ($overrideLabViewCli) {
+      $env:LABVIEW_CLI_PATH = Resolve-PathSafe $overrideLabViewCli
     } elseif ($LabVIEWCliPath) {
       $env:LABVIEW_CLI_PATH = Resolve-PathSafe $LabVIEWCliPath
     } elseif ($prevEnv.CLI) {
@@ -647,7 +689,13 @@ foreach ($idx in $selectedIdxs) {
 Write-Host ''
 Write-Host 'CLI Compare run summary:' -ForegroundColor Cyan
 foreach ($row in $summaryEntries) {
-  Write-Host ("- case={0} id={1} status={2} exit={3} diff={4} nunit={5}" -f $row.index, $row.id, $row.status, ($row.exitCode ?? '-'), ($row.diff ?? '-'), $row.nunit)
+  $indexVal = Get-OptionalPropertyValue -Object $row -Name 'index'
+  $idVal = Get-OptionalPropertyValue -Object $row -Name 'id'
+  $statusVal = Get-OptionalPropertyValue -Object $row -Name 'status'
+  $exitVal = Get-OptionalPropertyValue -Object $row -Name 'exitCode'
+  $diffVal = Get-OptionalPropertyValue -Object $row -Name 'diff'
+  $nunitVal = Get-OptionalPropertyValue -Object $row -Name 'nunit'
+  Write-Host ("- case={0} id={1} status={2} exit={3} diff={4} nunit={5}" -f $indexVal, $idVal, $statusVal, ($exitVal ?? '-'), ($diffVal ?? '-'), ($nunitVal ?? '-'))
 }
 
 Write-SummaryFile -Entries $summaryEntries -Selected $selectedIdxs -Queue $queue -ResultsRoot $ResultsRoot -HadFailure $failures -CasesPath $CasesPath -Filter $Filter

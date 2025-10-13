@@ -23,7 +23,7 @@ Describe 'LVCompare flags (negative cases)' -Tag 'Unit' {
     $paths = New-TestVis
     $script:called = $false
     $exec = { param($cli,$b,$h,$argv) $script:called = $true; return 0 }
-    { Invoke-CompareVI -Base $paths.base -Head $paths.head -LvCompareArgs '--bogusflag' -FailOnDiff:$false -Executor $exec } | Should -Throw -ExpectedMessage '*Invalid LVCompare flag*'
+  { Invoke-CompareVI -Base $paths.base -Head $paths.head -LvCompareArgs '--bogusflag' -FailOnDiff:$false -Executor $exec } | Should -Throw -ExpectedMessage '*Invalid LVCompare flag*'
     $script:called | Should -BeFalse
   }
 
@@ -31,10 +31,10 @@ Describe 'LVCompare flags (negative cases)' -Tag 'Unit' {
     $paths = New-TestVis
     $script:called2 = $false
     $exec = { param($cli,$b,$h,$argv) $script:called2 = $true; return 0 }
-    { Invoke-CompareVI -Base $paths.base -Head $paths.head -LvCompareArgs '-lvpath' -FailOnDiff:$false -Executor $exec } | Should -Throw -ExpectedMessage '*-lvpath requires a following path value*'
+  { Invoke-CompareVI -Base $paths.base -Head $paths.head -LvCompareArgs '-lvpath' -FailOnDiff:$false -Executor $exec } | Should -Throw -ExpectedMessage '*-lvpath requires a following path value*'
     $script:called2 | Should -BeFalse
     $script:called2 = $false
-    { Invoke-CompareVI -Base $paths.base -Head $paths.head -LvCompareArgs '-lvpath -noattr' -FailOnDiff:$false -Executor $exec } | Should -Throw -ExpectedMessage '*-lvpath must be followed by a path value*'
+  { Invoke-CompareVI -Base $paths.base -Head $paths.head -LvCompareArgs '-lvpath -noattr' -FailOnDiff:$false -Executor $exec } | Should -Throw -ExpectedMessage '*-lvpath must be followed by a path value*'
     $script:called2 | Should -BeFalse
   }
 }

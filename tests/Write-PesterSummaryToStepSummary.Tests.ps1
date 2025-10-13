@@ -66,6 +66,6 @@ Describe 'Write-PesterSummaryToStepSummary script' -Tag 'Unit' {
     $alt = Join-Path $TestDrive 'alt-results'
     New-Item -ItemType Directory -Path $alt | Out-Null
     Set-Content -Path (Join-Path $alt 'pester-summary.json') -Value '{"total":0,"passed":0,"failed":0}' -Encoding UTF8
-  { & $scriptPath -ResultsDir $alt } | Should -Not -Throw
+ { & $scriptPath -ResultsDir $alt } | Should -Not -Throw
   }
 }

@@ -9,7 +9,8 @@
   It uses GH CLI when available or falls back to the GitHub REST API with GH_TOKEN/GITHUB_TOKEN.
 
 .PARAMETER Issue
-  Required issue number (e.g., 88). Must be present in tools/policy/allowed-integration-issues.json.
+  Optional issue number (e.g., 123). If omitted, the standing-priority issue is queried and used.
+  The final value must be present in tools/policy/allowed-integration-issues.json.
 
 .PARAMETER Strategy
   Orchestrated strategy to use: 'single' or 'matrix'. Default: single.
@@ -18,7 +19,7 @@
   Pass 'true' or 'false' to the workflow input include_integration.
 
 .PARAMETER Ref
-  Branch/ref to run against. Default: 'develop' (fast path for #88).
+  Branch/ref to run against. Default: 'develop' (fast path for the standing-priority issue).
 
 .PARAMETER Repo
   Optional owner/repo slug override. Auto-detected from gh or git when omitted.
@@ -27,11 +28,11 @@
   Optional token (admin recommended). If omitted, GH_TOKEN or GITHUB_TOKEN is used.
 
 .EXAMPLE
-  pwsh -File tools/Start-IntegrationGated.ps1 -Issue 88 -Strategy single -IncludeIntegration true
+  pwsh -File tools/Start-IntegrationGated.ps1 -Strategy single -IncludeIntegration true
 #>
 [CmdletBinding()]
 param(
-  [Parameter(Mandatory=$true)][int]$Issue,
+  [int]$Issue,
   [ValidateSet('single','matrix')][string]$Strategy = 'single',
   [ValidateSet('true','false')][string]$IncludeIntegration = 'true',
   [string]$Ref = 'develop',
@@ -46,6 +47,19 @@ Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
 $tokenFileDefault = 'C:\github_token.txt'
+
+function Resolve-StandingPriorityIssue {
+  param([string]$RepoRoot)
+  $scriptPath = Join-Path $RepoRoot 'tools' 'Get-StandingPriority.ps1'
+  if (-not (Test-Path -LiteralPath $scriptPath -PathType Leaf)) { return $null }
+  try {
+    $json = pwsh -NoLogo -NoProfile -File $scriptPath 2>$null
+    if ($LASTEXITCODE -ne 0 -or -not $json) { return $null }
+    $obj = $json | ConvertFrom-Json -ErrorAction Stop
+    if ($obj -and $obj.number) { return [int]$obj.number }
+  } catch {}
+  return $null
+}
 
 function Get-Policy {
   $path = Join-Path $PSScriptRoot 'policy/allowed-integration-issues.json'
@@ -71,6 +85,15 @@ function Resolve-TokenValue {
     }
   }
   return $null
+}
+
+$repoRoot = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path
+if (-not $Issue -or $Issue -le 0) {
+  $autoIssue = Resolve-StandingPriorityIssue -RepoRoot $repoRoot
+  if ($autoIssue) { $Issue = $autoIssue }
+}
+if (-not $Issue -or $Issue -le 0) {
+  throw 'Issue parameter not provided and standing priority could not be resolved. Supply -Issue or ensure the standing-priority label is set.'
 }
 
 function Get-RepoSlug {
@@ -235,7 +258,7 @@ if ($runId) {
   if (-not $Watch) {
     Write-Host 'Copy/paste to watch this run (Docker):' -ForegroundColor Yellow
     Write-Host ("  pwsh -File tools/Watch-InDocker.ps1 -RunId {0} -Repo {1}" -f $runId,$repoSlug)
-    Write-Host 'VS Code task: Run → Run Task → "Integration (#88): Watch existing run (Docker)"' -ForegroundColor Yellow
+    Write-Host 'VS Code task: Run → Run Task → "Integration (Standing Priority): Watch existing run (Docker)"' -ForegroundColor Yellow
   }
 } else {
   Write-Warning 'Could not automatically determine run id yet. Use gh run list or GitHub UI to locate it, then run tools/Watch-InDocker.ps1.'
@@ -286,3 +309,4 @@ if ($Watch) {
     Write-Warning 'Watcher not started because the run id could not be determined.'
   }
 }
+

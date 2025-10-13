@@ -1,5 +1,5 @@
 <!-- markdownlint-disable-next-line MD041 -->
-# Markdown Lint Backlog Plan (relates to #88)
+# Markdown Lint Backlog Plan (standing priority)
 
 This plan documents how we will clear the existing Markdown lint backlog while keeping PRs green and
 developer experience smooth.
@@ -30,11 +30,12 @@ developer experience smooth.
      - Add the path to `.markdownlintignore` with rationale in a comment.
 4. Validate
    - Re-run `npm run lint:md` and ensure the error count steadily declines.
-   - Land fixes in small, focused commits referencing `#88`.
+   - Land fixes in small, focused commits referencing `standing-priority issue`.
 
 ## Acceptance
 
 - Backlog reduced to zero `MD012` across the repo.
 - All actively maintained docs free of `MD013`; remaining violations limited to justified exceptions.
 - CI continues to use `lint:md:changed` as a required check; full sweeps report but do not block.
+
 

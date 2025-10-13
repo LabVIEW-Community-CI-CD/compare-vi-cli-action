@@ -1,6 +1,6 @@
 <#
 .SYNOPSIS
-  One-stop warm-up command to prep local agent context for #88 (watch telemetry + session lock).
+  One-stop warm-up command to prep local agent context for the standing priority issue (watch telemetry + session lock).
 
 .DESCRIPTION
   - Sets the LV_* focus-protection toggles and WATCH_RESULTS_DIR.
@@ -350,3 +350,4 @@ if ($GenerateDashboard) {
 }
 
 Write-Info "Agent warm-up completed successfully."
+

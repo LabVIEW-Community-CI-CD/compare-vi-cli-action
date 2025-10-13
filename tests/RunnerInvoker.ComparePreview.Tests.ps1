@@ -44,8 +44,7 @@ Describe 'RunnerInvoker CompareVI preview path' -Tag 'Unit' {
       Set-Content -LiteralPath $head -Value 'B'
 
       $payload = @{ base = $base; head = $head; preview = $true }
-      $resp = Invoke-RunnerRequest -ResultsDir $resultsDir -Verb 'CompareVI' -CommandArgs $payload -TimeoutSeconds 8
-      $resp.ok | Should -BeTrue
+      $resp = Invoke-RunnerRequest -ResultsDir $resultsDir -Verb 'CompareVI' -CommandArgs $payload $resp.ok | Should -BeTrue
       $resp.result.execJsonPath | Should -Not -BeNullOrEmpty
       Test-Path -LiteralPath $resp.result.execJsonPath | Should -BeTrue
       $exec = Get-Content -LiteralPath $resp.result.execJsonPath -Raw | ConvertFrom-Json -Depth 6
@@ -61,8 +60,7 @@ Describe 'RunnerInvoker CompareVI preview path' -Tag 'Unit' {
       [Environment]::SetEnvironmentVariable('LVCI_SINGLE_COMPARE','1','Process')
       [Environment]::SetEnvironmentVariable('LVCI_SINGLE_COMPARE_AUTOSTOP','1','Process')
       try {
-        $resp2 = Invoke-RunnerRequest -ResultsDir $resultsDir -Verb 'CompareVI' -CommandArgs $payload -TimeoutSeconds 8
-        $resp2.ok | Should -BeFalse
+        $resp2 = Invoke-RunnerRequest -ResultsDir $resultsDir -Verb 'CompareVI' -CommandArgs $payload $resp2.ok | Should -BeFalse
         [string]$resp2.error | Should -Match 'compare_already_handled'
         $entries2 = Get-Content -LiteralPath $requestLog | ForEach-Object { $_ | ConvertFrom-Json }
         ($entries2 | Where-Object stage -eq 'failed') | Should -Not -BeNullOrEmpty
@@ -72,8 +70,7 @@ Describe 'RunnerInvoker CompareVI preview path' -Tag 'Unit' {
       }
     }
     finally {
-      $phaseDone = Invoke-RunnerRequest -ResultsDir $resultsDir -Verb 'PhaseDone' -TimeoutSeconds 5
-      $phaseDone.ok | Should -BeTrue
+      $phaseDone = Invoke-RunnerRequest -ResultsDir $resultsDir -Verb 'PhaseDone' $phaseDone.ok | Should -BeTrue
       $phaseDone.result.done | Should -BeTrue
 
       $deadline = (Get-Date).AddSeconds(5)

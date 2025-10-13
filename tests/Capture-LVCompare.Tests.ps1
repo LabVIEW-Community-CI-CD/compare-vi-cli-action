@@ -62,7 +62,7 @@ public static class LVStubSuccess {
     $env:LVCOMPARE_PATH = $stubPath
     $lvArgs = @('-lvpath',$fakeLabVIEW,'-nobdcosm','-nofppos','-noattr')
 
-    & $script:CaptureScript -Base $baseVi -Head $headVi -OutputDir $outputDir -TimeoutSeconds 10 -KillOnTimeout -LvArgs $lvArgs -RenderReport | Out-Null
+    & $script:CaptureScript -Base $baseVi -Head $headVi -OutputDir $outputDir -KillOnTimeout -LvArgs $lvArgs -RenderReport | Out-Null
 
     $capturePath = Join-Path $outputDir 'lvcompare-capture.json'
     Test-Path -LiteralPath $capturePath | Should -BeTrue
@@ -131,7 +131,7 @@ public static class LVStubTimeout {
     $env:LVCOMPARE_PATH = $stubPath
     $lvArgs = @('-lvpath',$fakeLabVIEW,'-nobdcosm','-nofppos','-noattr','--sleep','5')
 
-    & $script:CaptureScript -Base $baseVi -Head $headVi -OutputDir $outputDir -TimeoutSeconds 1 -KillOnTimeout -LvArgs $lvArgs -RenderReport | Out-Null
+    & $script:CaptureScript -Base $baseVi -Head $headVi -OutputDir $outputDir -KillOnTimeout -LvArgs $lvArgs -RenderReport | Out-Null
 
     $capturePath = Join-Path $outputDir 'lvcompare-capture.json'
     Test-Path -LiteralPath $capturePath | Should -BeTrue

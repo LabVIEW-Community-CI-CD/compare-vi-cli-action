@@ -10,14 +10,17 @@ All values are strings; use `1` / `0` for boolean-style flags.
 | -------- | ------- |
 | `LV_BASE_VI`, `LV_HEAD_VI` | Paths to base/head VIs for integration tests |
 | `LVCI_COMPARE_MODE` | `lvcompare` (default) or `labview-cli` to route through LabVIEW CLI |
+| `LVCI_COMPARE_POLICY` | Compare policy: `lv-first` (default), `cli-first`, `cli-only`, `lv-only`; controls fallback between LVCompare and LabVIEW CLI |
 | `LVCI_GCLI_MODE` | `off` (default) or `compare` to route through g-cli |
 | `LABVIEW_CLI_PATH` | Optional explicit path to `LabVIEWCLI.exe` when using CLI mode |
+| `LABVIEW_EXE` | Optional path to `LabVIEW.exe`. When set, the harness injects `-lvpath` for LVCompare so the comparison runs under that LabVIEW instance (use the 64-bit path on x64 runners). |
 | `GCLI_PATH` | Optional explicit path to `g-cli` executable |
 | `GCLI_ARGS` | Optional argument string for a one-off g-cli action in CI (e.g., `--version` or a custom LabVIEW-close command) |
 | `LVCI_CLI_FORMAT` | LabVIEW CLI report format (`XML`, `HTML`, `TXT`, `DOCX`; default `XML`) |
 | `LVCI_CLI_EXTRA_ARGS` | Additional flags appended to `CreateComparisonReport` (e.g. `--noDependencies`) |
 | `LVCI_CLI_TIMEOUT_SECONDS` | Timeout for LabVIEW CLI invocation (default `120`) |
-| `LVCOMPARE_PATH` | Optional override for LVCompare.exe (must resolve to canonical path) |
+| `LVCOMPARE_PATH` | Optional override for LVCompare.exe (must resolve to canonical path). Note: the canonical LVCompare path can operate as a launcher; prefer setting `LABVIEW_EXE` to the 64-bit LabVIEW when you must ensure x64 execution. |
+| `AGENT_PRIORITY_OVERRIDE` | Optional override for the standing-priority issue when offline. Accepts `123`, `123|Title|Url`, or a JSON object `{ "number": 123, "title": "..." }`. |
 | `WORKING_DIRECTORY` | Process CWD when invoking LVCompare |
 
 ## Dispatcher guards (leak detection / cleanup)

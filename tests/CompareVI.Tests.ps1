@@ -57,7 +57,7 @@ Describe 'Invoke-CompareVI core behavior' -Tag 'Unit' {
 
   It 'throws when fail-on-diff is true but still writes outputs' {
     $out = Join-Path $TestDrive 'out.txt'
-    { Invoke-CompareVI -Base $a -Head $b -GitHubOutputPath $out -FailOnDiff:$true -Executor $mockExecutor } | Should -Throw
+  { Invoke-CompareVI -Base $a -Head $b -GitHubOutputPath $out -FailOnDiff:$true -Executor $mockExecutor } | Should -Throw
     $outContent = Get-Content $out -Raw
     $outContent | Should -Match 'exitCode=1'
   }
@@ -75,14 +75,14 @@ Describe 'Invoke-CompareVI core behavior' -Tag 'Unit' {
   It 'handles unknown exit code by throwing but keeps outputs (diff=false)' {
     $out = Join-Path $TestDrive 'out.txt'
     $env:FORCE_EXIT = '2'
-    { Invoke-CompareVI -Base $a -Head $b -GitHubOutputPath $out -FailOnDiff:$false -Executor $mockExecutor } | Should -Throw
+  { Invoke-CompareVI -Base $a -Head $b -GitHubOutputPath $out -FailOnDiff:$false -Executor $mockExecutor } | Should -Throw
     Remove-Item Env:FORCE_EXIT -ErrorAction SilentlyContinue
     $outContent = Get-Content $out -Raw
     $outContent | Should -Match 'diff=false'
   }
 
   It 'parses quoted args and reconstructs the command' {
-    $res = Invoke-CompareVI -Base $a -Head $b -LvCompareArgs '--flag "C:\\Temp\\Spaced Path\\x"' -FailOnDiff:$false -Executor $mockExecutor
+    $res = Invoke-CompareVI -Base $a -Head $b -LvCompareArgs '-nofppos "C:\\Temp\\Spaced Path\\x"' -FailOnDiff:$false -Executor $mockExecutor
     # The command will contain the quoted argument with escaped backslashes
     $res.Command | Should -BeLike '*"C:\\Temp\\Spaced Path\\x"*'
   }
@@ -94,8 +94,8 @@ Describe 'Invoke-CompareVI core behavior' -Tag 'Unit' {
   }
 
   It 'throws when base or head not found' {
-    { Invoke-CompareVI -Base 'missing.vi' -Head $a -Executor $mockExecutor } | Should -Throw
-    { Invoke-CompareVI -Base $a -Head 'missing.vi' -Executor $mockExecutor } | Should -Throw
+  { Invoke-CompareVI -Base 'missing.vi' -Head $a -Executor $mockExecutor } | Should -Throw
+  { Invoke-CompareVI -Base $a -Head 'missing.vi' -Executor $mockExecutor } | Should -Throw
   }
 }
 
@@ -124,7 +124,7 @@ Describe 'Resolve-Cli canonical path enforcement' -Tag 'Unit' {
   It 'rejects explicit lvComparePath when non-canonical' {
     $fakePath = Join-Path $TestDrive 'LVCompare.exe'
     New-Item -ItemType File -Path $fakePath -Force | Out-Null
-    { Invoke-CompareVI -Base $a -Head $b -LvComparePath $fakePath -FailOnDiff:$false -Executor $mockExecutor } | Should -Throw -ExpectedMessage '*canonical*'
+  { Invoke-CompareVI -Base $a -Head $b -LvComparePath $fakePath -FailOnDiff:$false -Executor $mockExecutor } | Should -Throw -ExpectedMessage '*canonical*'
   }
 
   It 'rejects LVCOMPARE_PATH when non-canonical' {
@@ -133,7 +133,7 @@ Describe 'Resolve-Cli canonical path enforcement' -Tag 'Unit' {
     $old = $env:LVCOMPARE_PATH
     try {
       $env:LVCOMPARE_PATH = $fakePath
-      { Invoke-CompareVI -Base $a -Head $b -FailOnDiff:$false -Executor $mockExecutor } | Should -Throw -ExpectedMessage '*canonical*'
+    { Invoke-CompareVI -Base $a -Head $b -FailOnDiff:$false -Executor $mockExecutor } | Should -Throw -ExpectedMessage '*canonical*'
     } finally { $env:LVCOMPARE_PATH = $old }
   }
 
@@ -165,4 +165,3 @@ Describe 'Resolve-Cli canonical path enforcement' -Tag 'Unit' {
     }
   }
 }
-

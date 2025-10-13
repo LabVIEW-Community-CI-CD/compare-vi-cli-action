@@ -25,7 +25,7 @@ Describe 'Invoke-IntegrationCompareLoop (DI executor)' -Tag 'Unit' {
     if (Test-Path -LiteralPath $script:tempDir) { Remove-Item -LiteralPath $script:tempDir -Recurse -Force }
   }
 
-  It 'runs zero-diff single iteration with executor exit code 0' -TimeoutSeconds 20 {
+  It 'runs zero-diff single iteration with executor exit code 0' {
     $exec = {
       param($CliPath,$Base,$Head,$CompareArgs)
       return 0
@@ -38,7 +38,7 @@ Describe 'Invoke-IntegrationCompareLoop (DI executor)' -Tag 'Unit' {
     $r.Records[0].diff | Should -BeFalse
   }
 
-  It 'counts a diff when executor returns 1' -TimeoutSeconds 20 {
+  It 'counts a diff when executor returns 1' {
   $exec = { param($CliPath,$Base,$Head,$CompareArgs) return 1 }
   $r = Invoke-IntegrationCompareLoop -Base $script:base -Head $script:head -MaxIterations 2 -IntervalSeconds 0 -CompareExecutor $exec -BypassCliValidation -SkipValidation -PassThroughPaths -Quiet
     $r.DiffCount | Should -BeGreaterThan 0
@@ -46,7 +46,7 @@ Describe 'Invoke-IntegrationCompareLoop (DI executor)' -Tag 'Unit' {
     ($r.Records | Where-Object diff).Count | Should -Be $r.DiffCount
   }
 
-  It 'records an error for unexpected exit code' -TimeoutSeconds 20 {
+  It 'records an error for unexpected exit code' {
     $script:sequence = 0
     $exec = {
       param($CliPath,$Base,$Head,$CompareArgs)
@@ -59,14 +59,14 @@ Describe 'Invoke-IntegrationCompareLoop (DI executor)' -Tag 'Unit' {
     ($r.Records | Where-Object status -eq 'ERROR').Count | Should -Be 1
   }
 
-  It 'respects -FailOnDiff (terminates after first diff)' -TimeoutSeconds 20 {
+  It 'respects -FailOnDiff (terminates after first diff)' {
   $exec = { param($CliPath,$Base,$Head,$CompareArgs) return 1 }
   $r = Invoke-IntegrationCompareLoop -Base $script:base -Head $script:head -MaxIterations 5 -IntervalSeconds 0 -CompareExecutor $exec -BypassCliValidation -SkipValidation -PassThroughPaths -Quiet -FailOnDiff
     $r.Iterations | Should -Be 1
     $r.DiffCount | Should -Be 1
   }
 
-  It 'emits percentile metrics and histogram with correct ordering and bin counts' -TimeoutSeconds 20 {
+  It 'emits percentile metrics and histogram with correct ordering and bin counts' {
     $script:seq = 0
     $exec = {
       param($CliPath,$Base,$Head,$CompareArgs)
@@ -91,7 +91,7 @@ Describe 'Invoke-IntegrationCompareLoop (DI executor)' -Tag 'Unit' {
     foreach ($bin in $r.Histogram) { ($bin.Count -ge 0) | Should -BeTrue }
   }
 
-  It 'supports fractional interval sleeps (sub-second) without error' -TimeoutSeconds 20 {
+  It 'supports fractional interval sleeps (sub-second) without error' {
     $exec = { param($CliPath,$Base,$Head,$CompareArgs) Start-Sleep -Milliseconds 15; return 0 }
     $start = Get-Date
   $r = Invoke-IntegrationCompareLoop -Base $script:base -Head $script:head -MaxIterations 2 -IntervalSeconds 0.05 -CompareExecutor $exec -BypassCliValidation -SkipValidation -PassThroughPaths -Quiet
@@ -101,7 +101,7 @@ Describe 'Invoke-IntegrationCompareLoop (DI executor)' -Tag 'Unit' {
     $elapsed.TotalMilliseconds | Should -BeGreaterThan 60
   }
 
-  It 'respects custom histogram bin count' -TimeoutSeconds 20 {
+  It 'respects custom histogram bin count' {
     $script:seq = 0
     $exec = { param($CliPath,$Base,$Head,$CompareArgs) $script:seq++; Start-Sleep -Milliseconds (10 + ($script:seq*5)); return 0 }
   $r = Invoke-IntegrationCompareLoop -Base $script:base -Head $script:head -MaxIterations 4 -IntervalSeconds 0 -HistogramBins 3 -CompareExecutor $exec -BypassCliValidation -SkipValidation -PassThroughPaths -Quiet
@@ -109,7 +109,7 @@ Describe 'Invoke-IntegrationCompareLoop (DI executor)' -Tag 'Unit' {
     (($r.Histogram | Measure-Object -Property Count -Sum).Sum) | Should -Be 4
   }
 
-  It 'emits metrics snapshot file at configured cadence' -TimeoutSeconds 20 {
+  It 'emits metrics snapshot file at configured cadence' {
   $snap = Join-Path $script:tempDir 'snapshots.jsonl'
     if (Test-Path -LiteralPath $snap) { Remove-Item -LiteralPath $snap -Force }
   $exec = { param($CliPath,$Base,$Head,$CompareArgs) Start-Sleep -Milliseconds 5; return 0 }

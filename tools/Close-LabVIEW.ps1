@@ -82,7 +82,7 @@ function Resolve-LabVIEWCliPath {
   if ($env:LABVIEW_CLI_PATH -and (Test-Path -LiteralPath $env:LABVIEW_CLI_PATH -PathType Leaf)) { return (Resolve-Path -LiteralPath $env:LABVIEW_CLI_PATH).Path }
   $roots = @()
   if ($env:ProgramFiles)    { $roots += (Join-Path $env:ProgramFiles 'National Instruments') }
-  if ($env:ProgramFiles(x86)) { $roots += (Join-Path $env:ProgramFiles(x86) 'National Instruments') }
+  if (${env:ProgramFiles(x86)}) { $roots += (Join-Path ${env:ProgramFiles(x86)} 'National Instruments') }
   foreach ($r in $roots) {
     try {
       $dirs = Get-ChildItem -LiteralPath $r -Directory -ErrorAction SilentlyContinue | Where-Object { $_.Name -like 'LabVIEW*' }

@@ -33,11 +33,28 @@ function Get-UserIdleSeconds {
 function Get-CursorPos { try { $pt = New-Object POINT; [void][User32]::GetCursorPos([ref]$pt); return $pt } catch { $null } }
 function Set-CursorPosXY([int]$x,[int]$y) { try { [void][User32]::SetCursorPos($x,$y) } catch {} }
 
+function Get-ComparePolicy {
+  $raw = $env:LVCI_COMPARE_POLICY
+  if ([string]::IsNullOrWhiteSpace($raw)) { return 'lv-first' }
+  try {
+    $policy = $raw.Trim().ToLowerInvariant()
+  } catch {
+    return 'lv-first'
+  }
+  switch ($policy) {
+    'lv-only'  { return 'lv-only' }
+    'cli-first' { return 'cli-first' }
+    'cli-only' { return 'cli-only' }
+    'lv-first' { return 'lv-first' }
+    default    { return 'lv-first' }
+  }
+}
+
 function Resolve-Cli {
   param(
     [string]$Explicit
   )
-  $canonical = 'C:\\Program Files\\National Instruments\\Shared\\LabVIEW Compare\\LVCompare.exe'
+  $canonical = 'C:\Program Files\National Instruments\Shared\LabVIEW Compare\LVCompare.exe'
 
   if ($Explicit) {
     $resolved = try { (Resolve-Path -LiteralPath $Explicit -ErrorAction Stop).Path } catch { $Explicit }
@@ -189,7 +206,7 @@ function Resolve-LabVIEWCliPath {
 
   $defaultRoots = @()
   if ($env:ProgramFiles) { $defaultRoots += (Join-Path $env:ProgramFiles 'National Instruments') }
-  if ($env:ProgramFiles(x86)) { $defaultRoots += (Join-Path $env:ProgramFiles(x86) 'National Instruments') }
+  if (${env:ProgramFiles(x86)}) { $defaultRoots += (Join-Path ${env:ProgramFiles(x86)} 'National Instruments') }
 
   foreach ($root in $defaultRoots) {
     if (-not (Test-Path -LiteralPath $root -PathType Container)) { continue }
@@ -282,11 +299,14 @@ function Write-CLICompareNUnitXml {
   $testName = "CLI Compare: $(Split-Path -Leaf $BasePath) vs $(Split-Path -Leaf $HeadPath)"
 
   $props = @()
-  if ($ReportPath) { $props += "      <property name=\"reportPath\" value=\"$([System.Security.SecurityElement]::Escape($ReportPath))\" />" }
-  $props += "      <property name=\"mode\" value=\"labview-cli\" />"
-  $props += "      <property name=\"exitCode\" value=\"$ExitCode\" />"
-  $props += "      <property name=\"diffUnknown\" value=\"$DiffUnknown\" />"
-  $props += "      <property name=\"durationSeconds\" value=\"$durationStr\" />"
+  if ($ReportPath) {
+    $escapedReportPath = [System.Security.SecurityElement]::Escape($ReportPath)
+    $props += ('      <property name="reportPath" value="{0}" />' -f $escapedReportPath)
+  }
+  $props += '      <property name="mode" value="labview-cli" />'
+  $props += ('      <property name="exitCode" value="{0}" />' -f $ExitCode)
+  $props += ('      <property name="diffUnknown" value="{0}" />' -f $DiffUnknown)
+  $props += ('      <property name="durationSeconds" value="{0}" />' -f $durationStr)
 
   $failure = ''
   if (-not $passed) {
@@ -302,7 +322,7 @@ function Write-CLICompareNUnitXml {
 
   $xml = @(
     '<?xml version="1.0" encoding="utf-8"?>',
-    "<test-run id=\"1\" name=\"LabVIEW CLI Compare\" testcasecount=\"1\" result=\"$resultAttr\" total=\"$total\" passed=\"$passedCount\" failed=\"$failedCount\" start-time=\"$ts\">",
+    "<test-run id=""1"" name=""LabVIEW CLI Compare"" testcasecount=""1"" result=""$resultAttr"" total=""$total"" passed=""$passedCount"" failed=""$failedCount"" start-time=""$ts"">",
     '  <test-suite type="TestSuite" name="LabVIEW CLI Compare" executed="True" result="' + $resultAttr + '">',
     '    <results>',
     '      <test-case name="' + ([System.Security.SecurityElement]::Escape($testName)) + '" executed="True" result="' + $resultAttr + '" duration="' + $durationStr + '">',
@@ -579,7 +599,7 @@ function Invoke-CompareVIUsingGCLI {
       $lines = @(
         '### Compare VI (g-cli, scaffold)',
         "- g-cli: $gcli",
-        if ($ver) { "- Version: $ver" },
+        $(if ($ver) { "- Version: $ver" }),
         "- Base: $baseAbs",
         "- Head: $headAbs",
         "- Status: not-implemented"
@@ -610,10 +630,39 @@ function Invoke-CompareVI {
     [string] $CompareExecJsonPath
   )
 
-  if ($env:LVCI_COMPARE_MODE -and [string]::Equals($env:LVCI_COMPARE_MODE, 'labview-cli', [System.StringComparison]::OrdinalIgnoreCase)) {
-    return Invoke-CompareVIUsingLabVIEWCLI @PSBoundParameters
+  $policy = Get-ComparePolicy
+  $forceLvOnly = ($policy -eq 'lv-only')
+  $forceCliOnly = ($policy -eq 'cli-only')
+  $preferCliFirst = ($policy -eq 'cli-first')
+  $explicitCliMode = $env:LVCI_COMPARE_MODE -and [string]::Equals($env:LVCI_COMPARE_MODE, 'labview-cli', [System.StringComparison]::OrdinalIgnoreCase)
+
+  $tryCli = (-not $forceLvOnly) -and ($forceCliOnly -or $preferCliFirst -or $explicitCliMode)
+  $cliFallbackEnabled = ($preferCliFirst -and -not $forceCliOnly)
+
+  if ($forceLvOnly) {
+    $forceCliOnly = $false
+    $preferCliFirst = $false
+    $tryCli = $false
+    $cliFallbackEnabled = $false
   }
-  if ($env:LVCI_GCLI_MODE -and (
+
+  $cliError = $null; $cliAttempted = $false
+  if ($tryCli) {
+    try {
+      return Invoke-CompareVIUsingLabVIEWCLI @PSBoundParameters
+    } catch {
+      $cliAttempted = $true
+      $cliError = $_
+      if ($forceCliOnly -or ($explicitCliMode -and -not $cliFallbackEnabled)) { throw }
+      if ($cliFallbackEnabled) {
+        Write-Warning ("[comparevi] CLI compare failed ({0}); falling back to LVCompare." -f $_.Exception.Message)
+      } else {
+        throw
+      }
+    }
+  }
+
+  if (-not $forceLvOnly -and -not $forceCliOnly -and $env:LVCI_GCLI_MODE -and (
         [string]::Equals($env:LVCI_GCLI_MODE, 'compare', [System.StringComparison]::OrdinalIgnoreCase) -or
         [string]::Equals($env:LVCI_GCLI_MODE, 'on', [System.StringComparison]::OrdinalIgnoreCase) -or
         [string]::Equals($env:LVCI_GCLI_MODE, 'g-cli', [System.StringComparison]::OrdinalIgnoreCase)
@@ -894,4 +943,4 @@ function Invoke-CompareVI {
   }
 }
 
-Export-ModuleMember -Function Invoke-CompareVI
+Export-ModuleMember -Function Invoke-CompareVI, Resolve-Cli

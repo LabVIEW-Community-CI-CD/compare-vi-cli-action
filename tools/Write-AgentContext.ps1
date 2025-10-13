@@ -11,8 +11,22 @@ $ErrorActionPreference = 'Stop'
 function Read-JsonFile($p) { if (Test-Path -LiteralPath $p -PathType Leaf) { try { Get-Content $p -Raw | ConvertFrom-Json -ErrorAction Stop } catch { $null } } else { $null } }
 function To-Arr($x) { if ($null -eq $x) { @() } elseif ($x -is [System.Array]) { @($x) } else { ,$x } }
 
+function Resolve-StandingPriority {
+  param([string]$RepoRoot)
+  $scriptPath = Join-Path $RepoRoot 'tools' 'Get-StandingPriority.ps1'
+  if (-not (Test-Path -LiteralPath $scriptPath -PathType Leaf)) { return $null }
+  try {
+    $json = pwsh -NoLogo -NoProfile -File $scriptPath 2>$null
+    if ($LASTEXITCODE -ne 0 -or -not $json) { return $null }
+    return $json | ConvertFrom-Json -ErrorAction Stop
+  } catch {
+    return $null
+  }
+}
+
 $root = Get-Location
 $handoffPath = Join-Path $root 'AGENT_HANDOFF.txt'
+$priorityInfo = Resolve-StandingPriority -RepoRoot $root.Path
 
 # Repo context
 $branch = ''
@@ -96,6 +110,7 @@ $ctx = [ordered]@{
   repo = $repo
   branch = $branch
   headSha = $headSha
+  standingPriority = $priorityInfo
   env = $envs
   toggle = $toggleContractInfo
   handoffPath = (Test-Path -LiteralPath $handoffPath)

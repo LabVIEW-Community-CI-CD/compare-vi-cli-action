@@ -23,12 +23,10 @@ Describe 'Invoker (basic)' -Tag 'Unit' {
     # Ping request
     $modulePath = Join-Path $root 'tools/RunnerInvoker/RunnerInvoker.psm1'
     Import-Module $modulePath -Force
-    $resp = Invoke-RunnerRequest -ResultsDir $res -Verb 'Ping' -CommandArgs @{} -TimeoutSeconds 5
-    $resp.ok | Should -BeTrue
+    $resp = Invoke-RunnerRequest -ResultsDir $res -Verb 'Ping' -CommandArgs @{} $resp.ok | Should -BeTrue
 
     # Request graceful shutdown and ensure downstream markers appear
-    $doneResp = Invoke-RunnerRequest -ResultsDir $res -Verb 'PhaseDone' -TimeoutSeconds 5
-    $doneResp.ok | Should -BeTrue
+    $doneResp = Invoke-RunnerRequest -ResultsDir $res -Verb 'PhaseDone' $doneResp.ok | Should -BeTrue
     $doneResp.result.done | Should -BeTrue
 
     $deadline2 = (Get-Date).AddSeconds(10)

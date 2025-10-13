@@ -78,6 +78,7 @@ if (-not $IsWindows) {
 
     if ($RequireX64 -and $osBits -eq 'x64' -and $bits -ne 'x64') {
       $errors += 'LVCompare bitness mismatch: x86 CLI on x64 OS is not allowed by policy.'
+      $notes  += 'Hint: the canonical LVCompare path can act as a launcher; set LABVIEW_EXE to a 64-bit LabVIEW.exe or pass -lvpath so the compare runs under 64-bit LabVIEW.'
       $ok = $false
     }
 
