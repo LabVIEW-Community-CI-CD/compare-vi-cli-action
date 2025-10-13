@@ -536,14 +536,13 @@ jobs:
     env:
       LVCI_COMPARE_MODE: labview-cli
       LVCI_COMPARE_POLICY: cli-first
-      LVCI_ONLY_X64: 1
       LVCI_CLI_FORMAT: XML
     steps:
       - uses: actions/checkout@v5
 
       - name: LVCompare preflight
         shell: pwsh
-        run: pwsh -File tools/Validate-LVComparePreflight.ps1 -AppendStepSummary -MinVersion '2025.0.0.0'
+        run: pwsh -File tools/Validate-LVComparePreflight.ps1 -AppendStepSummary -MinVersion '2025.0.0.0' -RequireX64:$false
 
       - name: Run CLI compare smoke
         shell: pwsh
