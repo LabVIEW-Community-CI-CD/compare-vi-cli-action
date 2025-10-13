@@ -46,7 +46,7 @@ function New-Queue {
 }
 
 function Normalize-QueueCase {
-  param([hashtable]$Case,[int]$Index)
+  param($Case,[int]$Index)
 
   $ordered = [ordered]@{}
   $ordered.id   = if ($Case.id) { [string]$Case.id } else { [string]::Format('case-{0:D3}',$Index) }
@@ -66,16 +66,30 @@ function Normalize-QueueCase {
   }
   $ordered.tags = ($tags | ForEach-Object { $_.Trim() } | Where-Object { $_ } | Select-Object -Unique)
 
+  $expectedNode = $null
+  if ($Case -is [hashtable]) {
+    if ($Case.ContainsKey('expected')) { $expectedNode = $Case['expected'] }
+  } elseif ($Case.PSObject -and ($Case.PSObject.Properties.Name -contains 'expected')) {
+    $expectedNode = $Case.expected
+  }
+
   $expected = [ordered]@{}
   $diffRaw = $null
-  if ($Case.expected) { $diffRaw = $Case.expected.diff }
+  if ($expectedNode) { $diffRaw = $expectedNode.diff }
   if ($diffRaw -is [bool]) { $diffRaw = if ($diffRaw) { 'true' } else { 'false' } }
   elseif ($diffRaw) { $diffRaw = $diffRaw.ToString().ToLowerInvariant() }
   if ($diffRaw -notin @('true','false','unknown')) { $diffRaw = 'false' }
   $expected.diff = $diffRaw
 
   $exitCodes = @()
-  $exitRaw = $Case.expected.exitCodes
+  $exitRaw = $null
+  if ($expectedNode) {
+    if ($expectedNode -is [hashtable]) {
+      if ($expectedNode.ContainsKey('exitCodes')) { $exitRaw = $expectedNode['exitCodes'] }
+    } elseif ($expectedNode.PSObject -and ($expectedNode.PSObject.Properties.Name -contains 'exitCodes')) {
+      $exitRaw = $expectedNode.exitCodes
+    }
+  }
   if ($exitRaw -is [System.Collections.IEnumerable] -and -not ($exitRaw -is [string])) {
     $exitCodes = @($exitRaw | ForEach-Object { try { [int]$_ } catch { } })
   } elseif ($exitRaw -is [string]) {
