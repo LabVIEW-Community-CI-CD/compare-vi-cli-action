@@ -2,5 +2,16 @@
   "number": 127,
   "title": "Standing priority: consolidate CLI tooling and traceability roadmap",
   "url": "https://github.com/LabVIEW-Community-CI-CD/compare-vi-cli-action/issues/127",
-  "cachedAtUtc": "2025-10-13T16:11:40.9117638Z"
+  "cachedAtUtc": "2025-10-13T16:11:40.9117638Z",
+  "sequence": [127, 125, 123],
+  "next": [
+    {
+      "number": 125,
+      "url": "https://github.com/LabVIEW-Community-CI-CD/compare-vi-cli-action/issues/125"
+    },
+    {
+      "number": 123,
+      "url": "https://github.com/LabVIEW-Community-CI-CD/compare-vi-cli-action/issues/123"
+    }
+  ]
 }
