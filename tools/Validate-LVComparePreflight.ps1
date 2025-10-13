@@ -55,6 +55,7 @@ if (-not $IsWindows) {
   $ok = $false
 } else {
   $canonical = Resolve-LVComparePath
+  $pf64 = $env:ProgramFiles
   # Allow x64 override when explicitly requested
   $onlyX64 = $false
   if ($env:LVCI_ONLY_X64) { try { $onlyX64 = ($env:LVCI_ONLY_X64.Trim() -match '^(?i:1|true|yes|on)$') } catch { $onlyX64 = $false } }
@@ -67,6 +68,25 @@ if (-not $IsWindows) {
   }
   if (-not $canonical) {
     $errors += 'LVCompare.exe not found at canonical path under Program Files.'
+    $probeRoots = @()
+    if ($pf64) { $probeRoots += (Join-Path $pf64 'National Instruments') }
+    if ($pf86 = ${env:ProgramFiles(x86)}) { $probeRoots += (Join-Path $pf86 'National Instruments') }
+    $candidates = @()
+    foreach ($root in $probeRoots) {
+      if (-not (Test-Path -LiteralPath $root -PathType Container)) { continue }
+      try {
+        $candidates += Get-ChildItem -Path $root -Filter 'LVCompare.exe' -File -Recurse -ErrorAction SilentlyContinue
+      } catch {}
+    }
+    if ($candidates.Count -gt 0) {
+      foreach ($cand in $candidates | Sort-Object FullName) {
+        $bitProbe = $null
+        try { $bitProbe = Get-ExeBitness -Path $cand.FullName } catch { $bitProbe = $null }
+        $notes += ('Discovered LVCompare candidate ({0}): {1}' -f ($bitProbe ?? 'unknown'), $cand.FullName)
+      }
+    } else {
+      $notes += 'No LVCompare.exe discovered under Program Files roots (x64/x86).'
+    }
     $ok = $false
   } else {
     $ver = [System.Diagnostics.FileVersionInfo]::GetVersionInfo($canonical)
