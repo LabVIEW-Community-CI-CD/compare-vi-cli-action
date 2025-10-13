@@ -549,8 +549,23 @@ jobs:
         shell: pwsh
         run: pwsh -File tools/Run-CLICompareScaffoldAndSelect.ps1 -Filter 'tag:smoke'
 
-      - name: Parse CLI smoke outcome
-        if: always()
+      - name: Setup .NET 8 for CLI smoke (optional)
+        if: ${{ vars.NET_CLI == '1' }}
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+
+      - name: Build .NET CLI (optional)
+        if: ${{ vars.NET_CLI == '1' }}
+        run: dotnet build src/CompareVi.Tools.Cli -c Release -nologo
+
+      - name: Parse CLI smoke outcome (.NET CLI)
+        if: ${{ vars.NET_CLI == '1' }}
+        shell: pwsh
+        run: dotnet run --project src/CompareVi.Tools.Cli -- compare parse --search tests/results/compare-cli --out tests/results/compare-cli/compare-outcome.json
+
+      - name: Parse CLI smoke outcome (PowerShell)
+        if: ${{ vars.NET_CLI != '1' }}
         shell: pwsh
         run: pwsh -File tools/Parse-CompareExec.ps1 -SearchDir 'tests/results/compare-cli' -OutJson 'tests/results/compare-cli/compare-outcome.json'
 

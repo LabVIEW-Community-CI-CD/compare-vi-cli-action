@@ -34,6 +34,12 @@ pwsh -File scripts/Invoke-PesterSingleLoop.ps1 -TraceMatrix
 pwsh -File scripts/Invoke-PesterSingleLoop.ps1 -TraceMatrix -RenderTraceMatrixHtml
 ```
 
+Cross-platform option (no PowerShell dependency):
+
+```bash
+dotnet run --project src/CompareVi.Tools.Cli -- trace build --tests tests --results tests/results --out-dir tests/results/_trace --html
+```
+
 Environment shortcuts:
 
 - `TRACE_MATRIX=1` → JSON

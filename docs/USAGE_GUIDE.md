@@ -81,6 +81,30 @@ This ensures the comparison runs under 64-bit LabVIEW even when calling the cano
 Set `LVCI_COMPARE_POLICY` to steer automation fallback (`lv-first` default, `cli-first`,
 `cli-only`, or `lv-only`).
 
+### .NET CLI helpers
+
+The repository ships a cross-platform .NET CLI (`CompareVi.Tools.Cli`) that mirrors the PowerShell
+helpers used in CI. Use `dotnet run` from the repo root:
+
+- Merge compare artefacts into `compare-outcome.json`:
+
+  ```bash
+  dotnet run --project src/CompareVi.Tools.Cli -- compare parse \
+    --search tests/results/compare-cli \
+    --out tests/results/compare-cli/compare-outcome.json
+  ```
+
+- Emit the NUnit XML report consumed by publish steps:
+
+  ```bash
+  dotnet run --project src/CompareVi.Tools.Cli -- compare nunit \
+    --base C:\repo\VI1.vi \
+    --head C:\repo\VI2.vi \
+    --exit-code 0 \
+    --duration-seconds 2.34 \
+    --out tests/results/compare-cli/results-nunit.xml
+  ```
+
 Log to a temporary path:
 
 ```yaml

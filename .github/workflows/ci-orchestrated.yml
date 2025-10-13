@@ -380,11 +380,20 @@ jobs:
             '- Integration: ${{ needs.pester-integration.result || 'skipped' }}'
           )
           $lines -join "`n" | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8
-      - name: Generate traceability matrix (JSON + optional HTML)
-        if: ${{ vars.TRACE_MATRIX != '0' }}
+      - name: Setup .NET 8 for trace matrix (optional)
+        if: ${{ vars.TRACE_MATRIX != '0' && vars.NET_CLI == '1' }}
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+
+      - name: Generate traceability matrix (.NET CLI)
+        if: ${{ vars.TRACE_MATRIX != '0' && vars.NET_CLI == '1' }}
+        run: dotnet run --project src/CompareVi.Tools.Cli -- trace build --tests tests --results tests/results --out-dir tests/results/_trace --html
+
+      - name: Generate traceability matrix (PowerShell fallback)
+        if: ${{ vars.TRACE_MATRIX != '0' && vars.NET_CLI != '1' }}
         shell: pwsh
-        run: |
-          pwsh -File tools/Traceability-Matrix.ps1 -TestsPath 'tests' -ResultsRoot 'tests/results' -RenderHtml
+        run: pwsh -File tools/Traceability-Matrix.ps1 -TestsPath 'tests' -ResultsRoot 'tests/results' -RenderHtml
       - name: Upload traceability artifacts
         if: ${{ vars.TRACE_MATRIX != '0' }}
         uses: actions/upload-artifact@v4
