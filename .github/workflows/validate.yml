@@ -529,40 +529,40 @@ jobs:
         name: validate-session-index
         path: ${{ runner.temp }}/sessionindex/session-index.json
         if-no-files-found: warn
-cli-smoke:
-  needs: lint
-  runs-on: [self-hosted, Windows, X64]
-  timeout-minutes: 10
-  env:
-    LVCI_COMPARE_MODE: labview-cli
-    LVCI_COMPARE_POLICY: cli-first
-    LVCI_ONLY_X64: 1
-    LVCI_CLI_FORMAT: XML
-  steps:
-  - uses: actions/checkout@v5
+  cli-smoke:
+    needs: lint
+    runs-on: [self-hosted, Windows, X64]
+    timeout-minutes: 10
+    env:
+      LVCI_COMPARE_MODE: labview-cli
+      LVCI_COMPARE_POLICY: cli-first
+      LVCI_ONLY_X64: 1
+      LVCI_CLI_FORMAT: XML
+    steps:
+      - uses: actions/checkout@v5
 
-  - name: LVCompare preflight
-    shell: pwsh
-    run: pwsh -File tools/Validate-LVComparePreflight.ps1 -AppendStepSummary -MinVersion '2025.0.0.0'
+      - name: LVCompare preflight
+        shell: pwsh
+        run: pwsh -File tools/Validate-LVComparePreflight.ps1 -AppendStepSummary -MinVersion '2025.0.0.0'
 
-  - name: Run CLI compare smoke
-    shell: pwsh
-    run: pwsh -File tools/Run-CLICompareScaffoldAndSelect.ps1 -Filter 'tag:smoke'
+      - name: Run CLI compare smoke
+        shell: pwsh
+        run: pwsh -File tools/Run-CLICompareScaffoldAndSelect.ps1 -Filter 'tag:smoke'
 
-  - name: Parse CLI smoke outcome
-    if: always()
-    shell: pwsh
-    run: pwsh -File tools/Parse-CompareExec.ps1 -SearchDir 'tests/results/compare-cli' -OutJson 'tests/results/compare-cli/compare-outcome.json'
+      - name: Parse CLI smoke outcome
+        if: always()
+        shell: pwsh
+        run: pwsh -File tools/Parse-CompareExec.ps1 -SearchDir 'tests/results/compare-cli' -OutJson 'tests/results/compare-cli/compare-outcome.json'
 
-  - name: Validate CLI smoke NUnit results
-    if: always()
-    shell: pwsh
-    run: pwsh -File tools/Assert-NUnitSuccess.ps1 -ResultsPath 'tests/results/compare-cli/results-nunit-1-vi1-vi2-xml.xml' -Context 'CLI Smoke'
+      - name: Validate CLI smoke NUnit results
+        if: always()
+        shell: pwsh
+        run: pwsh -File tools/Assert-NUnitSuccess.ps1 -ResultsPath 'tests/results/compare-cli/results-nunit-1-vi1-vi2-xml.xml' -Context 'CLI Smoke'
 
-  - name: Upload CLI smoke artifacts
-    if: always()
-    uses: actions/upload-artifact@v4
-    with:
-      name: cli-smoke-artifacts
-      path: |
-        tests/results/compare-cli/**
+      - name: Upload CLI smoke artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: cli-smoke-artifacts
+          path: |
+            tests/results/compare-cli/**

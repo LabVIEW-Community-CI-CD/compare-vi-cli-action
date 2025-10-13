@@ -100,7 +100,7 @@ jobs:
         run: pwsh -File tools/Assert-NUnitSuccess.ps1 -ResultsPath 'tests/results/compare-cli/results-nunit.xml' -Context 'CLI Compare'
 
   cli-parity:
-    if: ${{ env.PARITY == '1' }}
+    if: ${{ vars.PARITY == '1' }}
     needs: cli-compare
     runs-on: [self-hosted, Windows, X64]
     env:
