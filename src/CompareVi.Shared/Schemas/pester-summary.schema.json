@@ -1,0 +1,359 @@
+{
+  "$ref": "#/definitions/pester-summary",
+  "definitions": {
+    "pester-summary": {
+      "type": "object",
+      "properties": {
+        "total": {
+          "type": "number"
+        },
+        "passed": {
+          "type": "number"
+        },
+        "failed": {
+          "type": "number"
+        },
+        "errors": {
+          "type": "number"
+        },
+        "skipped": {
+          "type": "number"
+        },
+        "duration_s": {
+          "type": "number"
+        },
+        "timestamp": {
+          "type": "string",
+          "minLength": 1
+        },
+        "pesterVersion": {
+          "type": "string",
+          "minLength": 1
+        },
+        "includeIntegration": {
+          "type": "boolean"
+        },
+        "meanTest_ms": {
+          "type": "number"
+        },
+        "p95Test_ms": {
+          "type": "number"
+        },
+        "maxTest_ms": {
+          "type": "number"
+        },
+        "schemaVersion": {
+          "type": "string",
+          "minLength": 1
+        },
+        "timedOut": {
+          "type": "boolean"
+        },
+        "discoveryFailures": {
+          "type": "number"
+        },
+        "environment": {
+          "type": "object",
+          "properties": {
+            "osPlatform": {
+              "type": "string"
+            },
+            "psVersion": {
+              "type": "string"
+            },
+            "pesterModulePath": {
+              "type": "string"
+            }
+          },
+          "additionalProperties": false
+        },
+        "run": {
+          "type": "object",
+          "properties": {
+            "startTime": {
+              "$ref": "#/definitions/pester-summary/properties/timestamp"
+            },
+            "endTime": {
+              "$ref": "#/definitions/pester-summary/properties/timestamp"
+            },
+            "wallClockSeconds": {
+              "type": "number"
+            }
+          },
+          "additionalProperties": false
+        },
+        "selection": {
+          "type": "object",
+          "properties": {
+            "totalDiscoveredFileCount": {
+              "type": "number"
+            },
+            "selectedTestFileCount": {
+              "type": "number"
+            },
+            "maxTestFilesApplied": {
+              "type": "boolean"
+            }
+          },
+          "additionalProperties": false
+        },
+        "timing": {
+          "type": "object",
+          "properties": {
+            "count": {
+              "type": "number"
+            },
+            "totalMs": {
+              "type": "number"
+            },
+            "minMs": {
+              "type": [
+                "number",
+                "null"
+              ]
+            },
+            "maxMs": {
+              "type": [
+                "number",
+                "null"
+              ]
+            },
+            "meanMs": {
+              "type": [
+                "number",
+                "null"
+              ]
+            },
+            "medianMs": {
+              "type": [
+                "number",
+                "null"
+              ]
+            },
+            "stdDevMs": {
+              "type": [
+                "number",
+                "null"
+              ]
+            },
+            "p50Ms": {
+              "type": [
+                "number",
+                "null"
+              ]
+            },
+            "p75Ms": {
+              "type": [
+                "number",
+                "null"
+              ]
+            },
+            "p90Ms": {
+              "type": [
+                "number",
+                "null"
+              ]
+            },
+            "p95Ms": {
+              "type": [
+                "number",
+                "null"
+              ]
+            },
+            "p99Ms": {
+              "type": [
+                "number",
+                "null"
+              ]
+            }
+          },
+          "additionalProperties": false
+        },
+        "stability": {
+          "type": "object",
+          "properties": {
+            "supportsRetries": {
+              "type": "boolean"
+            },
+            "retryAttempts": {
+              "type": "number"
+            },
+            "initialFailed": {
+              "type": "number"
+            },
+            "finalFailed": {
+              "type": "number"
+            },
+            "recovered": {
+              "type": "boolean"
+            },
+            "flakySuspects": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "retriedTestFiles": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            }
+          },
+          "additionalProperties": false
+        },
+        "discovery": {
+          "type": "object",
+          "properties": {
+            "failureCount": {
+              "type": "number"
+            },
+            "patterns": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "sampleLimit": {
+              "type": "number"
+            },
+            "samples": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "index": {
+                    "type": "number"
+                  },
+                  "snippet": {
+                    "type": "string"
+                  },
+                  "file": {
+                    "type": "string"
+                  },
+                  "reason": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "index",
+                  "snippet",
+                  "file"
+                ],
+                "additionalProperties": false
+              }
+            }
+          },
+          "required": [
+            "failureCount",
+            "patterns",
+            "sampleLimit",
+            "samples"
+          ],
+          "additionalProperties": false
+        },
+        "manifest": {
+          "type": "object",
+          "properties": {
+            "discovered": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "selected": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            }
+          },
+          "required": [
+            "discovered",
+            "selected"
+          ],
+          "additionalProperties": false
+        },
+        "summary": {
+          "type": "object",
+          "properties": {
+            "overallStatus": {
+              "type": "string",
+              "enum": [
+                "Success",
+                "Failed",
+                "Timeout",
+                "DiscoveryFailure",
+                "Partial"
+              ]
+            },
+            "severityRank": {
+              "type": "number"
+            },
+            "flags": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "counts": {
+              "type": "object",
+              "properties": {
+                "total": {
+                  "type": "number"
+                },
+                "passed": {
+                  "type": "number"
+                },
+                "failed": {
+                  "type": "number"
+                },
+                "errors": {
+                  "type": "number"
+                },
+                "skipped": {
+                  "type": "number"
+                },
+                "discoveryFailures": {
+                  "type": "number"
+                }
+              },
+              "required": [
+                "total",
+                "passed",
+                "failed",
+                "errors",
+                "skipped"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "required": [
+            "overallStatus",
+            "severityRank",
+            "flags",
+            "counts"
+          ],
+          "additionalProperties": false
+        }
+      },
+      "required": [
+        "total",
+        "passed",
+        "failed",
+        "errors",
+        "skipped",
+        "duration_s",
+        "timestamp",
+        "pesterVersion",
+        "includeIntegration",
+        "schemaVersion",
+        "timedOut"
+      ],
+      "additionalProperties": false
+    }
+  },
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "description": "Summary produced by Invoke-PesterTests.ps1 for a test run.",
+  "$id": "urn:compare-vi-cli-action:schema:pester-summary"
+}

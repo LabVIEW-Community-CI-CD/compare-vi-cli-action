@@ -1,0 +1,128 @@
+{
+  "$ref": "#/definitions/cli-compare-queue",
+  "definitions": {
+    "cli-compare-queue": {
+      "type": "object",
+      "properties": {
+        "schema": {
+          "type": "string",
+          "const": "cli-compare-queue/v1"
+        },
+        "generatedAt": {
+          "type": "string",
+          "minLength": 1
+        },
+        "updatedAt": {
+          "$ref": "#/definitions/cli-compare-queue/properties/generatedAt"
+        },
+        "cases": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string",
+                "minLength": 1
+              },
+              "name": {
+                "type": "string",
+                "minLength": 1
+              },
+              "base": {
+                "type": "string",
+                "minLength": 1
+              },
+              "head": {
+                "type": "string",
+                "minLength": 1
+              },
+              "tags": {
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "minLength": 1
+                }
+              },
+              "expected": {
+                "type": "object",
+                "properties": {
+                  "diff": {
+                    "type": "string",
+                    "enum": [
+                      "true",
+                      "false",
+                      "unknown"
+                    ]
+                  },
+                  "exitCodes": {
+                    "type": "array",
+                    "items": {
+                      "type": "integer"
+                    }
+                  }
+                },
+                "required": [
+                  "diff"
+                ],
+                "additionalProperties": false
+              },
+              "cli": {
+                "type": "object",
+                "properties": {
+                  "format": {
+                    "type": "string",
+                    "enum": [
+                      "XML",
+                      "HTML",
+                      "TXT",
+                      "DOCX"
+                    ]
+                  },
+                  "extraArgs": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  }
+                },
+                "additionalProperties": false
+              },
+              "overrides": {
+                "type": "object",
+                "properties": {
+                  "labviewCliPath": {
+                    "type": "string",
+                    "minLength": 1
+                  }
+                },
+                "additionalProperties": false
+              },
+              "notes": {
+                "type": "string"
+              },
+              "disabled": {
+                "type": "boolean"
+              }
+            },
+            "required": [
+              "id",
+              "name",
+              "base",
+              "head",
+              "expected"
+            ],
+            "additionalProperties": true
+          }
+        }
+      },
+      "required": [
+        "schema",
+        "cases"
+      ],
+      "additionalProperties": true
+    }
+  },
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "description": "CLI compare queue describing cases to execute in local and automated runs.",
+  "$id": "urn:compare-vi-cli-action:schema:cli-compare-queue"
+}
