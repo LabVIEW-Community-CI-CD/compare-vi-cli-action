@@ -95,7 +95,7 @@ runs:
             "[$ts] attempt#$i spawn pid=$($p.Id) pipe=$pipe" | Out-File -FilePath $boot -Append -Encoding utf8
           } catch {
             $err = $_.Exception.Message
-            Write-Host "::warning::Failed to spawn invoker on attempt #${i}: ${err}"
+            Write-Host ("::warning::Failed to spawn invoker on attempt #{0}: {1}" -f $i, $err)
             "[$ts] attempt#$i spawn error: $err" | Out-File -FilePath $boot -Append -Encoding utf8
           }
           $sw = [Diagnostics.Stopwatch]::StartNew()
@@ -112,7 +112,7 @@ runs:
           "reason=ready"| Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
         } else {
           "[$(Get-Date -Format o)] all attempts exhausted; lastError=$err" | Out-File -FilePath $boot -Append -Encoding utf8
-          Write-Host "::error::Invoker not ready after ${to} s (attempts=$attempts). LastError=${err}"
+          Write-Host ("::error::Invoker not ready after {0} s (attempts={1}). LastError={2}" -f $to, $attempts, $err)
           "ready=false"        | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
           "reason=timeout"     | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
           exit 1
