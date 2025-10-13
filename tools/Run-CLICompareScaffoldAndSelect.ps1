@@ -36,6 +36,10 @@ function Resolve-CasePath([string]$Path){
 }
 function Sanitize-Token([string]$Value){ if (-not $Value) { return 'case' } return ($Value -replace '[^A-Za-z0-9_-]','-') }
 
+function Get-CaseArray($Cases){
+  return @($Cases)
+}
+
 function New-Queue {
   [ordered]@{
     schema      = $QUEUE_SCHEMA
@@ -60,7 +64,7 @@ function Normalize-QueueCase {
   if ($Case.tags) {
     if ($Case.tags -is [string]) {
       $tags = $Case.tags.Split(',', [System.StringSplitOptions]::RemoveEmptyEntries)
-    } else {
+    } elseif ($Case.tags -is [System.Collections.IEnumerable]) {
       $tags = @($Case.tags | ForEach-Object { [string]$_ })
     }
   }
@@ -102,24 +106,47 @@ function Normalize-QueueCase {
   $ordered.expected = $expected
 
   $cliOrdered = [ordered]@{}
-  $cli = $Case.cli
+  $cli = $null
+  if ($Case -is [hashtable] -and $Case.ContainsKey('cli')) { $cli = $Case['cli'] }
+  elseif ($Case.PSObject -and ($Case.PSObject.Properties.Name -contains 'cli')) { $cli = $Case.cli }
+
   if ($cli) {
-    if ($cli.format) { $cliOrdered.format = [string]$cli.format }
-    if ($cli.extraArgs) {
-      if ($cli.extraArgs -is [string]) {
-        $cliOrdered.extraArgs = @($cli.extraArgs.Split(' ',[System.StringSplitOptions]::RemoveEmptyEntries))
-      } else {
-        $cliOrdered.extraArgs = @($cli.extraArgs | ForEach-Object { [string]$_ })
+    $formatValue = $null
+    $extraArgsValue = $null
+    if ($cli -is [hashtable]) {
+      if ($cli.ContainsKey('format')) { $formatValue = $cli['format'] }
+      if ($cli.ContainsKey('extraArgs')) { $extraArgsValue = $cli['extraArgs'] }
+    } elseif ($cli.PSObject) {
+      if ($cli.PSObject.Properties['format']) { $formatValue = $cli.format }
+      if ($cli.PSObject.Properties['extraArgs']) { $extraArgsValue = $cli.extraArgs }
+    }
+
+    if ($formatValue) { $cliOrdered.format = [string]$formatValue }
+    if ($extraArgsValue) {
+      if ($extraArgsValue -is [string]) {
+        $cliOrdered.extraArgs = @($extraArgsValue.Split(' ', [System.StringSplitOptions]::RemoveEmptyEntries))
+      } elseif ($extraArgsValue -is [System.Collections.IEnumerable]) {
+        $cliOrdered.extraArgs = @($extraArgsValue | ForEach-Object { [string]$_ })
       }
     }
   }
-  if ($cliOrdered.Keys.Count -gt 0) { $ordered.cli = $cliOrdered }
+  if ((@($cliOrdered.Keys)).Length -gt 0) { $ordered.cli = $cliOrdered }
 
   $overridesOrdered = [ordered]@{}
-  if ($Case.overrides -and $Case.overrides.labviewCliPath) {
-    $overridesOrdered.labviewCliPath = [string]$Case.overrides.labviewCliPath
+  $overridesNode = $null
+  if ($Case -is [hashtable] -and $Case.ContainsKey('overrides')) { $overridesNode = $Case['overrides'] }
+  elseif ($Case.PSObject -and ($Case.PSObject.Properties.Name -contains 'overrides')) { $overridesNode = $Case.overrides }
+
+  if ($overridesNode) {
+    $cliPathValue = $null
+    if ($overridesNode -is [hashtable]) {
+      if ($overridesNode.ContainsKey('labviewCliPath')) { $cliPathValue = $overridesNode['labviewCliPath'] }
+    } elseif ($overridesNode.PSObject -and $overridesNode.PSObject.Properties['labviewCliPath']) {
+      $cliPathValue = $overridesNode.labviewCliPath
+    }
+    if ($cliPathValue) { $overridesOrdered.labviewCliPath = [string]$cliPathValue }
   }
-  if ($overridesOrdered.Keys.Count -gt 0) { $ordered.overrides = $overridesOrdered }
+  if ((@($overridesOrdered.Keys)).Length -gt 0) { $ordered.overrides = $overridesOrdered }
 
   $ordered.notes = if ($Case.notes) { [string]$Case.notes } else { '' }
   $disabledVal = $false
@@ -157,8 +184,9 @@ function Normalize-Queue {
 
   $seen = New-Object System.Collections.Generic.HashSet[string]
   $casesOut = @()
-  for ($idx = 0; $idx -lt $rawCases.Count; $idx++) {
-    $c = Normalize-QueueCase -Case $rawCases[$idx] -Index ($idx + 1)
+  $rawArray = @($rawCases)
+  for ($idx = 0; $idx -lt $rawArray.Length; $idx++) {
+    $c = Normalize-QueueCase -Case $rawArray[$idx] -Index ($idx + 1)
     $baseId = $c.id
     $uniqueId = $baseId
     $suffix = 1
@@ -213,7 +241,7 @@ function Prompt-ExitCodes([string]$Default){
       $codes += [int]$part.Trim()
     }
   }
-  if ($codes.Count -gt 0) { return ($codes -join ',') }
+  if ((@($codes)).Length -gt 0) { return ($codes -join ',') }
   return $Default
 }
 
@@ -245,7 +273,7 @@ function Add-CasesInteractive([ref]$Queue,[string]$CasesPath,[string]$DefaultBas
       continue
     }
 
-    $nextIndex = $Queue.Value.cases.Count + $added.Count + 1
+    $nextIndex = (@($Queue.Value.cases)).Length + (@($added)).Length + 1
     $baseLeaf = [System.IO.Path]::GetFileNameWithoutExtension($base)
     $headLeaf = [System.IO.Path]::GetFileNameWithoutExtension($head)
     $slugCandidate = $null
@@ -311,7 +339,7 @@ function Add-CasesInteractive([ref]$Queue,[string]$CasesPath,[string]$DefaultBas
     $added += (Normalize-QueueCase -Case $raw -Index $nextIndex)
   }
 
-  if ($added.Count -eq 0) { Write-Host 'No cases added.' -ForegroundColor Yellow; return }
+  if ((@($added)).Length -eq 0) { Write-Host 'No cases added.' -ForegroundColor Yellow; return }
 
   foreach ($case in $added) { $Queue.Value.cases += $case }
   $Queue.Value = Normalize-Queue -Queue $Queue.Value
@@ -321,9 +349,10 @@ function Add-CasesInteractive([ref]$Queue,[string]$CasesPath,[string]$DefaultBas
 function Show-Cases([array]$Cases){
   Write-Host ''
   Write-Host 'Queued CLI compare cases:' -ForegroundColor Cyan
-  for ($i = 0; $i -lt $Cases.Count; $i++) {
-    $case = $Cases[$i]
-    $tagStr = if ($case.tags -and $case.tags.Count -gt 0) { $case.tags -join ',' } else { '-' }
+  $list = Get-CaseArray $Cases
+  for ($i = 0; $i -lt $list.Length; $i++) {
+    $case = $list[$i]
+    $tagStr = if ($case.tags -and (@($case.tags)).Length -gt 0) { $case.tags -join ',' } else { '-' }
     $expectedDiff = $case.expected.diff
     $disabled = if ($case.disabled) { ' (disabled)' } else { '' }
     Write-Host ("[{0}] id={1} name={2} diff={3} tags={4}{5}" -f ($i+1), $case.id, $case.name, $expectedDiff, $tagStr, $disabled)
@@ -334,7 +363,8 @@ function Show-Cases([array]$Cases){
 function Get-IndicesForToken([string]$Token,[array]$Cases){
   $token = $Token.Trim()
   if (-not $token) { return @() }
-  $max = $Cases.Count
+  $list = Get-CaseArray $Cases
+  $max = $list.Length
 
   if ($token -match '^(\d+)-(\d+)$') {
     $start = [int]$Matches[1]; $end = [int]$Matches[2]
@@ -352,30 +382,31 @@ function Get-IndicesForToken([string]$Token,[array]$Cases){
 
   if ($token -like 'id:*') {
     $idTerm = $token.Substring(3)
-    return @(for ($i=0; $i -lt $Cases.Count; $i++) {
-      if ([string]::Equals($Cases[$i].id, $idTerm, [System.StringComparison]::OrdinalIgnoreCase)) { $i+1 }
+    return @(for ($i=0; $i -lt $list.Length; $i++) {
+      if ([string]::Equals($list[$i].id, $idTerm, [System.StringComparison]::OrdinalIgnoreCase)) { $i+1 }
     })
   }
   if ($token -like 'name:*') {
     $nameTerm = $token.Substring(5)
-    return @(for ($i=0; $i -lt $Cases.Count; $i++) {
-      if ($Cases[$i].name -and $Cases[$i].name.ToLowerInvariant().Contains($nameTerm.ToLowerInvariant())) { $i+1 }
+    return @(for ($i=0; $i -lt $list.Length; $i++) {
+      if ($list[$i].name -and $list[$i].name.ToLowerInvariant().Contains($nameTerm.ToLowerInvariant())) { $i+1 }
     })
   }
   if ($token -like 'tag:*') {
     $tagTerm = $token.Substring(4)
-    return @(for ($i=0; $i -lt $Cases.Count; $i++) {
-      if ($Cases[$i].tags | Where-Object { $_.ToLowerInvariant() -eq $tagTerm.ToLowerInvariant() }) { $i+1 }
+    return @(for ($i=0; $i -lt $list.Length; $i++) {
+      if ($list[$i].tags | Where-Object { $_.ToLowerInvariant() -eq $tagTerm.ToLowerInvariant() }) { $i+1 }
     })
   }
 
-  return @(for ($i=0; $i -lt $Cases.Count; $i++) {
-    if ($Cases[$i].id -and $Cases[$i].id.ToLowerInvariant() -eq $token.ToLowerInvariant()) { $i+1 }
+  return @(for ($i=0; $i -lt $list.Length; $i++) {
+    if ($list[$i].id -and $list[$i].id.ToLowerInvariant() -eq $token.ToLowerInvariant()) { $i+1 }
   })
 }
 
 function Parse-Selection([string]$Selection,[array]$Cases){
   if ([string]::IsNullOrWhiteSpace($Selection)) { return @() }
+  $list = Get-CaseArray $Cases
   $parts = $Selection.Split(',', [System.StringSplitOptions]::RemoveEmptyEntries)
   $includeSets = @()
   $excludeSets = @()
@@ -389,8 +420,8 @@ function Parse-Selection([string]$Selection,[array]$Cases){
   }
 
   $resultSet = New-Object System.Collections.Generic.HashSet[int]
-  if ($includeSets.Count -eq 0) {
-    foreach ($i in 1..$Cases.Count) { $resultSet.Add($i) | Out-Null }
+  if ((@($includeSets)).Length -eq 0) {
+    foreach ($i in 1..$list.Length) { $resultSet.Add($i) | Out-Null }
   } else {
     foreach ($set in $includeSets) { foreach ($i in $set) { $resultSet.Add($i) | Out-Null } }
   }
@@ -421,26 +452,29 @@ New-Dir (Split-Path -Parent $CasesPath)
 New-Dir $ResultsRoot
 
 $queue = Load-Queue -Path $CasesPath
-if ($PromptScaffold -or $queue.cases.Count -eq 0) {
+$existingCases = Get-CaseArray $queue.cases
+if ($PromptScaffold -or (@($existingCases)).Length -eq 0) {
   $queueRef = [ref]$queue
   Add-CasesInteractive -Queue $queueRef -CasesPath $CasesPath -DefaultBase $DefaultBase -DefaultHead $DefaultHead
   $queue = $queueRef.Value
 }
 
-if (-not $queue.cases -or $queue.cases.Count -eq 0) { throw 'The CLI compare queue is empty.' }
+$queue.cases = Get-CaseArray $queue.cases
+
+if (-not $queue.cases -or (Get-CaseArray $queue.cases).Length -eq 0) { throw 'The CLI compare queue is empty.' }
 
 Show-Cases -Cases $queue.cases
 
 $selectedIdxs = @()
 if ($Filter) {
   $selectedIdxs = Parse-Selection -Selection $Filter -Cases $queue.cases
-  if (-not $selectedIdxs -or $selectedIdxs.Count -eq 0) { throw "Filter '$Filter' matched no cases." }
+if (-not $selectedIdxs -or (@($selectedIdxs)).Length -eq 0) { throw "Filter '$Filter' matched no cases." }
   Write-Host ("Filter '{0}' resolved to cases {1}" -f $Filter, ($selectedIdxs -join ',')) -ForegroundColor Cyan
 } else {
   Write-Host 'Select cases (supports indexes, ranges, tag:<name>, name:<term>, id:<value>, !tag:<name> to exclude). Example: 1,3-4,tag:smoke' -ForegroundColor DarkGray
   $selectionInput = Read-Host 'Selection'
   $selectedIdxs = Parse-Selection -Selection $selectionInput -Cases $queue.cases
-  if (-not $selectedIdxs -or $selectedIdxs.Count -eq 0) { throw 'Nothing selected.' }
+if (-not $selectedIdxs -or (@($selectedIdxs)).Length -eq 0) { throw 'Nothing selected.' }
 }
 
 $selectedIdxs = $selectedIdxs | Sort-Object
@@ -584,7 +618,7 @@ foreach ($idx in $selectedIdxs) {
       $notes += 'diff status unknown'
     }
 
-    if ($case.expected.exitCodes -and $case.expected.exitCodes.Count -gt 0) {
+    if ($case.expected.exitCodes -and (@($case.expected.exitCodes)).Length -gt 0) {
       if (-not ($case.expected.exitCodes -contains $exitCode)) {
         $casePass = $false
         $notes += "exit code $exitCode not in expected set [$($case.expected.exitCodes -join ',')]"
@@ -596,7 +630,7 @@ foreach ($idx in $selectedIdxs) {
     }
 
     $entry.status = if ($casePass) { 'passed' } else { 'failed' }
-    if ($notes.Count -gt 0) { $entry.notes = ($notes -join '; ') }
+    if ((@($notes)).Length -gt 0) { $entry.notes = ($notes -join '; ') }
 
     if (-not $casePass) { $failures = $true }
 
