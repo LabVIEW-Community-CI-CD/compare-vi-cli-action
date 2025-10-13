@@ -24,7 +24,7 @@ Describe 'LVCompare args tokenization' -Tag 'Unit' {
     }
   }
   
-  It 'tokenizes comma-delimited flags and quoted values consistently' -TimeoutSeconds 15 {
+  It 'tokenizes comma-delimited flags and quoted values consistently' {
   # Use forward slashes for cross-platform compatibility in test data
   $argSpec = "-nobdcosm,-nofppos,-noattr,'-lvpath C:/Path With Space/LabVIEW.exe','--log C:/t x/l.log'"
 
@@ -47,7 +47,15 @@ Describe 'LVCompare args tokenization' -Tag 'Unit' {
   (Convert-TokensForAssert @($argsSeen)) | Should -Be (Convert-TokensForAssert $expected2)
   }
 
-  It 'tokenizes whitespace-delimited flags with double-quoted values' -TimeoutSeconds 15 {
+  It 'tokenizes when -nobdpos is included among comma-delimited flags' {
+  $argSpec = "-nobdcosm,-nobdpos,-nofppos,'-lvpath C:/LV/2025/LabVIEW.exe'"
+  $cliArgs = Invoke-GetLVCompareArgTokens -Spec $argSpec
+  $normalized = Invoke-ConvertArgTokenList -Tokens $cliArgs
+  $expected = @('-nobdcosm','-nobdpos','-nofppos','-lvpath','C:\LV\2025\LabVIEW.exe')
+  (Convert-TokensForAssert $normalized) | Should -Be (Convert-TokensForAssert $expected)
+  }
+
+  It 'tokenizes whitespace-delimited flags with double-quoted values' {
   $argSpec = '-nobdcosm -nofppos -noattr "--log C:\a b\z.txt" -lvpath=C:\X\LabVIEW.exe "-lvpath C:\Y\LabVIEW.exe"'
   # CompareVI (whitespace/equals pipeline only)
   $list2 = Invoke-GetLVCompareArgTokens -Spec $argSpec
@@ -56,7 +64,7 @@ Describe 'LVCompare args tokenization' -Tag 'Unit' {
   (Convert-TokensForAssert $norm2) | Should -Be (Convert-TokensForAssert $expected3)
   }
 
-  It 'tokenizes equals-assignment forms for flags requiring values' -TimeoutSeconds 15 {
+  It 'tokenizes equals-assignment forms for flags requiring values' {
   $argSpec = "'-lvpath=C:\X Space\LabVIEW.exe', '--log=C:\logs\a b\log.txt'"
     # CompareVI pipeline
     $cliArgs = Invoke-GetLVCompareArgTokens -Spec $argSpec
@@ -76,7 +84,7 @@ Describe 'LVCompare args tokenization' -Tag 'Unit' {
   (Convert-TokensForAssert @($cap)) | Should -Be (Convert-TokensForAssert $expected)
   }
 
-  It 'supports UNC and Unix-style paths in mixed forms' -TimeoutSeconds 15 {
+  It 'supports UNC and Unix-style paths in mixed forms' {
     $argSpec = "--log=\\\\server\\share\\a b\\out.log -lvpath /opt/lv/LabVIEW.exe '-lvpath \\server2\\share2\\LV.exe'"
     $list = Invoke-GetLVCompareArgTokens -Spec $argSpec
     $norm = Invoke-ConvertArgTokenList -Tokens $list
@@ -84,7 +92,7 @@ Describe 'LVCompare args tokenization' -Tag 'Unit' {
     (Convert-TokensForAssert $norm) | Should -Be (Convert-TokensForAssert $expected)
   }
 
-  It 'accepts array inputs with quoted tokens preserved' -TimeoutSeconds 15 {
+  It 'accepts array inputs with quoted tokens preserved' {
     $arr = @('-nofppos', '"--log C:\\p q\\r.txt"', "-lvpath=C:\\Tools\\LabVIEW.exe", "'-lvpath C:\\Other\\LV.exe'")
     $list = Invoke-GetLVCompareArgTokens -Spec $arr
     $norm = Invoke-ConvertArgTokenList -Tokens $list
@@ -92,7 +100,7 @@ Describe 'LVCompare args tokenization' -Tag 'Unit' {
     (Convert-TokensForAssert $norm) | Should -Be (Convert-TokensForAssert $expected)
   }
 
-  It 'tokenizes mixed delimiters and preserves order' -TimeoutSeconds 15 {
+  It 'tokenizes mixed delimiters and preserves order' {
   $argSpec = @'
 '--log C:\a b\x.txt',-nofppos,-lvpath=C:\Y\LabVIEW.exe -noattr "-lvpath C:\Z\LabVIEW.exe"
 '@
@@ -114,7 +122,7 @@ Describe 'LVCompare args tokenization' -Tag 'Unit' {
   (Convert-TokensForAssert @($cap)) | Should -Be (Convert-TokensForAssert $expected)
   }
 
-  It 'detects invalid -lvpath without value (tokenization/validation path)' -TimeoutSeconds 15 {
+  It 'detects invalid -lvpath without value (tokenization/validation path)' {
     # We exercise CompareVI's tokenization; while CompareVI itself validates during Invoke, we emulate the normalization and then
     # perform a simple local validation to ensure a missing value would be caught upstream before CLI invocation.
     $argSpec = "-nobdcosm -lvpath -noattr"

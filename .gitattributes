@@ -10,9 +10,8 @@
 *.md   text eol=lf
 
 # Preserve binary files
-*.vi   -text
+*.vi   binary
 *.zip  -text
 *.png  -text
 *.jpg  -text
 *.gif  -text
-

@@ -67,17 +67,21 @@ param(
   [ValidateSet('32','64')][string]$LabVIEWBitness = '64',
   [Alias('LVCompareExePath')]
   [string]$LVComparePath,
-  [string[]]$Flags,
-  [switch]$ReplaceFlags,
-  [string]$OutputDir = 'tests/results/single-compare',
-  [switch]$RenderReport,
+[string[]]$Flags,
+[switch]$ReplaceFlags,
+[string]$OutputDir = 'tests/results/single-compare',
+[switch]$RenderReport,
   [string]$JsonLogPath,
   [switch]$Quiet,
   [switch]$LeakCheck,
   [string]$LeakJsonPath,
   [string]$CaptureScriptPath,
-  [switch]$Summary,
-  [double]$LeakGraceSeconds = 0.5
+  [string]$ReportStagingDir,
+[switch]$Summary,
+[double]$LeakGraceSeconds = 0.5,
+[int]$TimeoutSeconds = 60,
+[switch]$KillOnTimeout,
+[switch]$CloseOnComplete
 )
 
 Set-StrictMode -Version Latest
@@ -157,7 +161,16 @@ try {
     RenderReport = $RenderReport.IsPresent
     OutputDir    = $OutputDir
     Quiet        = $Quiet.IsPresent
+    ReportStagingDir = (Join-Path $OutputDir (Join-Path '_staging' 'compare'))
   }
+  # Derive CI-aware defaults when not explicitly provided
+  $isCI = ($env:GITHUB_ACTIONS -eq 'true' -or $env:CI -eq 'true')
+  $effectiveTimeout = $TimeoutSeconds
+  $effectiveKill    = if ($PSBoundParameters.ContainsKey('KillOnTimeout')) { $KillOnTimeout.IsPresent } else { $isCI }
+  $effectiveClose   = if ($PSBoundParameters.ContainsKey('CloseOnComplete')) { $CloseOnComplete.IsPresent } else { $isCI }
+  $captureParams.TimeoutSeconds = [int]$effectiveTimeout
+  if ($effectiveKill)    { $captureParams.KillOnTimeout   = $true }
+  if ($effectiveClose)   { $captureParams.CloseOnComplete = $true }
   if (-not $LVComparePath) {
     try { $LVComparePath = Resolve-LVComparePath } catch {}
   }
@@ -176,8 +189,8 @@ if (-not $cap) { Write-JsonEvent 'error' @{ stage='post'; message='unable to par
 
 $exitCode = [int]$cap.exitCode
 $duration = [double]$cap.seconds
-$reportPath = Join-Path $OutputDir 'compare-report.html'
-Write-JsonEvent 'result' @{ exitCode=$exitCode; seconds=$duration; command=$cap.command; report=(Test-Path $reportPath) }
+$reportPathStaging = Join-Path $OutputDir (Join-Path '_staging' 'compare' 'compare-report.html')
+Write-JsonEvent 'result' @{ exitCode=$exitCode; seconds=$duration; command=$cap.command; reportStaging=(Test-Path $reportPathStaging) }
 
 if ($LeakCheck) {
   if (-not $LeakJsonPath) { $LeakJsonPath = Join-Path $OutputDir 'compare-leak.json' }
@@ -206,7 +219,7 @@ if ($Summary) {
       $lines += ("- Diff: {0}" -f ([bool]($exitCode -eq 1)))
       $lines += ("- Duration: {0}s" -f $duration)
       $lines += ("- Capture: {0}" -f $capPath)
-      $lines += ("- Report: {0}" -f (Test-Path $reportPath))
+      $lines += ("- Report (staging): {0}" -f (Test-Path $reportPathStaging))
       Add-Content -Path $env:GITHUB_STEP_SUMMARY -Value ($lines -join "`n") -Encoding utf8
     } catch { Write-Warning ("Invoke-LVCompare: failed step summary append: {0}" -f $_.Exception.Message) }
   }

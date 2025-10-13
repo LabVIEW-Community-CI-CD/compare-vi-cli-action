@@ -11,12 +11,58 @@ Quotes and spaces are preserved.
 Common noise filters:
 
 ```yaml
-lvCompareArgs: "-nobdcosm -nofppos -noattr"
+lvCompareArgs: "-nobdcosm -nobdpos -nofppos -noattr"
 ```
 
-- `-nobdcosm` – ignore block diagram cosmetic changes.
-- `-nofppos` – ignore front panel position/size changes.
-- `-noattr` – ignore VI attribute changes.
+- `-nobdcosm` - ignore block diagram cosmetic changes.
+- `-nobdpos` - ignore block diagram object position/size changes (layout noise).
+- `-nofppos` - ignore front panel position/size changes.
+- `-noattr` - ignore VI attribute changes.
+
+The action still defaults to `-nobdcosm -nofppos -noattr`; add `-nobdpos` whenever layout churn would otherwise dominate the diff.
+
+### Noise filter guidance
+
+| Flag | Suppresses | Use when | Notes |
+| --- | --- | --- | --- |
+| `-nobdcosm` | Block diagram cosmetic noise (font, color, label tweaks) | Cosmetic-only changes clutter diffs | Position/size changes still appear; pair with `-nobdpos` for layout churn |
+| `-nobdpos` | Block diagram layout (object position/size) | Nodes or wires were dragged without logic changes | Layout noise is hidden, but logical diagram edits still show up |
+| `-nofppos` | Front panel layout | Controls/indicators move without behavior changes | Combine with `-nofp` if the entire front panel can be ignored |
+| `-noattr` | VI metadata (history, window placement, fonts) | Build/recompile steps touch VI metadata | Safe to combine with other filters for minimal churn |
+| `-nobd` | Entire block diagram | Only front panel output matters (e.g. UI-only comparisons) | Makes block-diagram-specific flags like `-nobdcosm/-nobdpos` redundant |
+
+
+### Block diagram position filter (`-nobdpos`)
+
+Use `-nobdpos` when layout churn would otherwise drown out functional differences. It hides block diagram object
+position/size changes but still surfaces logical edits.
+
+- **Suppresses:** node/control repositioning, structure resize operations, wire reroutes caused by layout tweaks.
+- **Still shows:** added/removed nodes, connection changes, constant/value updates, and any front panel adjustments.
+- **Pairings:** combine with `-nobdcosm` to blanket diagram cosmetic + layout noise; add `-nofppos` (and optionally `-nofp`)
+  when front panel alignment sweeps happen in the same commit; keep `-noattr` for metadata churn.
+- **Redundancy guard:** `-nobd` hides the entire diagram; leave `-nobdpos` out when that flag is present.
+
+Examples:
+
+```yaml
+# Layout + cosmetic + panel + metadata suppression
+lvCompareArgs: "-nobdcosm -nobdpos -nofppos -noattr"
+```
+
+```yaml
+# Array form keeps individual tokens intact
+lvCompareArgs:
+  - -nobdcosm
+  - -nobdpos
+  - -nofppos
+  - -noattr
+```
+
+```yaml
+# Windows example with explicit LabVIEW version
+lvCompareArgs: "-nobdcosm -nobdpos -nofppos -noattr -lvpath \"C:\\Program Files\\National Instruments\\LabVIEW 2025\\LabVIEW.exe\""
+```
 
 Specify a LabVIEW path:
 
@@ -75,7 +121,7 @@ pwsh -File scripts/Render-CompareReport.ps1 `
   -Diff $env:COMPARE_DIFF `
   -CliPath $env:COMPARE_CLI_PATH `
   -DurationSeconds $env:COMPARE_DURATION_SECONDS `
-  -OutputPath compare-report.html
+  -OutputPath _staging/compare/compare-report.html
 ```
 
 ## Workflow branching

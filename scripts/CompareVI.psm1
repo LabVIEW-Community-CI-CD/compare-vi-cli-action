@@ -179,6 +179,421 @@ function Convert-ArgTokenList([string[]]$tokens) {
   return $out
 }
 
+function Resolve-LabVIEWCliPath {
+  [CmdletBinding()]
+  param([string]$Explicit)
+
+  $candidates = New-Object System.Collections.Generic.HashSet[string]([System.StringComparer]::OrdinalIgnoreCase)
+  if ($Explicit) { [void]$candidates.Add($Explicit) }
+  if ($env:LABVIEW_CLI_PATH) { [void]$candidates.Add($env:LABVIEW_CLI_PATH) }
+
+  $defaultRoots = @()
+  if ($env:ProgramFiles) { $defaultRoots += (Join-Path $env:ProgramFiles 'National Instruments') }
+  if ($env:ProgramFiles(x86)) { $defaultRoots += (Join-Path $env:ProgramFiles(x86) 'National Instruments') }
+
+  foreach ($root in $defaultRoots) {
+    if (-not (Test-Path -LiteralPath $root -PathType Container)) { continue }
+    try {
+      $labviewDirs = Get-ChildItem -LiteralPath $root -Directory -ErrorAction SilentlyContinue | Where-Object { $_.Name -like 'LabVIEW*' -or $_.Name -like 'LabVIEW CLI*' }
+      foreach ($dir in $labviewDirs) {
+        $candidatePath = Join-Path $dir.FullName 'LabVIEWCLI.exe'
+        [void]$candidates.Add($candidatePath)
+      }
+    } catch {}
+    $sharedCli = Join-Path $root 'LabVIEW CLI\LabVIEWCLI.exe'
+    [void]$candidates.Add($sharedCli)
+  }
+
+  foreach ($candidate in $candidates) {
+    if ([string]::IsNullOrWhiteSpace($candidate)) { continue }
+    if (Test-Path -LiteralPath $candidate -PathType Leaf) {
+      try { return (Resolve-Path -LiteralPath $candidate -ErrorAction Stop).Path } catch { return $candidate }
+    }
+  }
+
+  throw 'LabVIEW CLI executable not found. Set LABVIEW_CLI_PATH to the LabVIEWCLI.exe path.'
+}
+
+function Get-LabVIEWCLIReportExtension {
+  param([string]$Format)
+  $fmt = if ($Format) { $Format.ToUpperInvariant() } else { 'XML' }
+  switch ($fmt) {
+    'XML' { '.xml' }
+    'HTML' { '.html' }
+    'HTM' { '.htm' }
+    'WORD' { '.docx' }
+    'DOC' { '.doc' }
+    'DOCX' { '.docx' }
+    'TXT' { '.txt' }
+    'TEXT' { '.txt' }
+    default { '.xml' }
+  }
+}
+
+function Test-LabVIEWCLIReportDiff {
+  param([string]$Path,[string]$Format)
+  if (-not (Test-Path -LiteralPath $Path -PathType Leaf)) { return @{ Diff = $null; Reason = 'missing' } }
+  $fmt = if ($Format) { $Format.ToUpperInvariant() } else { 'XML' }
+  if ($fmt -eq 'XML') {
+    try {
+      $xml = [xml](Get-Content -LiteralPath $Path -Raw -ErrorAction Stop)
+      $diffNodes = $null
+      if ($xml) {
+        $diffNodes = $xml.SelectNodes('//*[contains(translate(name(),"ABCDEFGHIJKLMNOPQRSTUVWXYZ","abcdefghijklmnopqrstuvwxyz"),"difference")]')
+      }
+      if ($diffNodes -and $diffNodes.Count -gt 0) { return @{ Diff = $true } }
+      return @{ Diff = $false }
+    } catch {
+      return @{ Diff = $null; Reason = 'xml_parse_error'; Message = $_.Exception.Message }
+    }
+  }
+  try {
+    $text = Get-Content -LiteralPath $Path -Raw -Encoding UTF8
+    if ($text -match '(?i)no differences') { return @{ Diff = $false } }
+    if ($text -match '(?i)difference') { return @{ Diff = $true } }
+    return @{ Diff = $null; Reason = 'undetermined' }
+  } catch {
+    return @{ Diff = $null; Reason = 'read_error'; Message = $_.Exception.Message }
+  }
+}
+
+function Write-CLICompareNUnitXml {
+  param(
+    [Parameter(Mandatory)] [string]$Path,
+    [Parameter(Mandatory)] [string]$BasePath,
+    [Parameter(Mandatory)] [string]$HeadPath,
+    [Parameter(Mandatory)] [bool]$Diff,
+    [bool]$DiffUnknown = $false,
+    [string]$ReportPath,
+    [double]$DurationSeconds = 0,
+    [int]$ExitCode = 0,
+    [string]$Reason
+  )
+  try {
+    $dir = Split-Path -Parent $Path
+    if ($dir -and -not (Test-Path -LiteralPath $dir)) { New-Item -ItemType Directory -Force -Path $dir | Out-Null }
+  } catch {}
+
+  $ts = (Get-Date).ToString('o')
+  $passed = -not ($Diff -or $DiffUnknown -or ($ExitCode -ge 2))
+  $resultAttr = if ($passed) { 'Passed' } else { 'Failed' }
+  $total = 1; $passedCount = if ($passed) { 1 } else { 0 }; $failedCount = if ($passed) { 0 } else { 1 }
+  $durationStr = [string]::Format('{0:0.000}', [double]$DurationSeconds)
+  $testName = "CLI Compare: $(Split-Path -Leaf $BasePath) vs $(Split-Path -Leaf $HeadPath)"
+
+  $props = @()
+  if ($ReportPath) { $props += "      <property name=\"reportPath\" value=\"$([System.Security.SecurityElement]::Escape($ReportPath))\" />" }
+  $props += "      <property name=\"mode\" value=\"labview-cli\" />"
+  $props += "      <property name=\"exitCode\" value=\"$ExitCode\" />"
+  $props += "      <property name=\"diffUnknown\" value=\"$DiffUnknown\" />"
+  $props += "      <property name=\"durationSeconds\" value=\"$durationStr\" />"
+
+  $failure = ''
+  if (-not $passed) {
+    $msg = if ($DiffUnknown) { 'Diff status unknown' } elseif ($Diff) { 'Differences detected' } elseif ($ExitCode -ge 2) { "CLI failed (exit $ExitCode)" } else { 'Failed' }
+    if ($Reason) { $msg = "$msg ($Reason)" }
+    $escaped = [System.Security.SecurityElement]::Escape($msg)
+    $failure = @(
+      '    <failure>',
+      "      <message>$escaped</message>",
+      '    </failure>'
+    ) -join "`n"
+  }
+
+  $xml = @(
+    '<?xml version="1.0" encoding="utf-8"?>',
+    "<test-run id=\"1\" name=\"LabVIEW CLI Compare\" testcasecount=\"1\" result=\"$resultAttr\" total=\"$total\" passed=\"$passedCount\" failed=\"$failedCount\" start-time=\"$ts\">",
+    '  <test-suite type="TestSuite" name="LabVIEW CLI Compare" executed="True" result="' + $resultAttr + '">',
+    '    <results>',
+    '      <test-case name="' + ([System.Security.SecurityElement]::Escape($testName)) + '" executed="True" result="' + $resultAttr + '" duration="' + $durationStr + '">',
+    '        <properties>',
+    ($props -join "`n"),
+    '        </properties>',
+    ($failure),
+    '      </test-case>',
+    '    </results>',
+    '  </test-suite>',
+    '</test-run>'
+  ) -join "`n"
+
+  $xml | Out-File -FilePath $Path -Encoding utf8
+}
+
+function Invoke-CompareVIUsingLabVIEWCLI {
+  [CmdletBinding()]
+  param(
+    [Parameter(Mandatory)] [string] $Base,
+    [Parameter(Mandatory)] [string] $Head,
+    [string] $LvComparePath,
+    [string] $LvCompareArgs = '',
+    [string] $WorkingDirectory = '',
+    [bool] $FailOnDiff = $true,
+    [string] $GitHubOutputPath,
+    [string] $GitHubStepSummaryPath,
+    [ScriptBlock] $Executor,
+    [switch] $PreviewArgs,
+    [string] $CompareExecJsonPath
+  )
+
+  $pushed = $false
+  if ($WorkingDirectory) {
+    if (-not (Test-Path -LiteralPath $WorkingDirectory)) { throw "working-directory not found: $WorkingDirectory" }
+    Push-Location -LiteralPath $WorkingDirectory; $pushed = $true
+  }
+
+  try {
+    if ([string]::IsNullOrWhiteSpace($Base)) { throw "Input 'base' is required and cannot be empty" }
+    if ([string]::IsNullOrWhiteSpace($Head)) { throw "Input 'head' is required and cannot be empty" }
+    if (-not (Test-Path -LiteralPath $Base -PathType Any)) { throw "Base path not found: $Base" }
+    if (-not (Test-Path -LiteralPath $Head -PathType Any)) { throw "Head path not found: $Head" }
+
+    $baseItem = Get-Item -LiteralPath $Base -ErrorAction Stop
+    $headItem = Get-Item -LiteralPath $Head -ErrorAction Stop
+    if ($baseItem.PSIsContainer) { throw "Base path refers to a directory, expected a VI file: $($baseItem.FullName)" }
+    if ($headItem.PSIsContainer) { throw "Head path refers to a directory, expected a VI file: $($headItem.FullName)" }
+
+    $baseAbs = (Resolve-Path -LiteralPath $baseItem.FullName).Path
+    $headAbs = (Resolve-Path -LiteralPath $headItem.FullName).Path
+
+    $cliPath = Resolve-LabVIEWCliPath -Explicit $null
+
+    $format = if ($env:LVCI_CLI_FORMAT) { $env:LVCI_CLI_FORMAT } else { 'XML' }
+    $reportExt = Get-LabVIEWCLIReportExtension $format
+    $resultsDir = Join-Path (Get-Location) 'tests/results/compare-cli'
+    if (-not (Test-Path -LiteralPath $resultsDir)) { New-Item -ItemType Directory -Force -Path $resultsDir | Out-Null }
+    $reportPath = Join-Path $resultsDir ('comparison-report' + $reportExt)
+
+    $argsBuilder = New-Object System.Collections.Generic.List[string]
+    [void]$argsBuilder.Add('CreateComparisonReport')
+    [void]$argsBuilder.Add('--base')
+    [void]$argsBuilder.Add($baseAbs)
+    [void]$argsBuilder.Add('--head')
+    [void]$argsBuilder.Add($headAbs)
+    [void]$argsBuilder.Add('--format')
+    [void]$argsBuilder.Add($format.ToUpperInvariant())
+    [void]$argsBuilder.Add('--output')
+    [void]$argsBuilder.Add($reportPath)
+
+    if ($env:LVCI_CLI_EXTRA_ARGS) {
+      foreach ($extra in (Get-LVCompareArgTokens -Spec $env:LVCI_CLI_EXTRA_ARGS)) {
+        if (-not [string]::IsNullOrWhiteSpace($extra)) { [void]$argsBuilder.Add($extra) }
+      }
+    }
+
+    $commandArgs = $argsBuilder.ToArray()
+    $commandLine = ($commandArgs | ForEach-Object { Quote $_ }) -join ' '
+
+    $psi = New-Object System.Diagnostics.ProcessStartInfo
+    $psi.FileName = $cliPath
+    foreach ($arg in $commandArgs) { $psi.ArgumentList.Add($arg) }
+    $psi.RedirectStandardOutput = $true
+    $psi.RedirectStandardError  = $true
+    $psi.UseShellExecute = $false
+    $psi.CreateNoWindow = $true
+
+    $proc = New-Object System.Diagnostics.Process
+    $proc.StartInfo = $psi
+    $null = $proc.Start()
+
+    $timeoutSeconds = 120
+    if ($env:LVCI_CLI_TIMEOUT_SECONDS) {
+      $parsed = 0
+      if ([int]::TryParse($env:LVCI_CLI_TIMEOUT_SECONDS, [ref]$parsed) -and $parsed -gt 0) { $timeoutSeconds = $parsed }
+    }
+
+    $sw = [System.Diagnostics.Stopwatch]::StartNew()
+    if (-not $proc.WaitForExit($timeoutSeconds * 1000)) {
+      try { $proc.Kill() } catch {}
+      throw "LabVIEW CLI compare timed out after $timeoutSeconds seconds."
+    }
+    $sw.Stop()
+
+    $stdout = $proc.StandardOutput.ReadToEnd()
+    $stderr = $proc.StandardError.ReadToEnd()
+    $exitCode = $proc.ExitCode
+    $durationSeconds = [math]::Round($sw.Elapsed.TotalSeconds, 6)
+    $durationNanoseconds = [long]([math]::Round($sw.Elapsed.Ticks * (1e9 / [double][System.Diagnostics.Stopwatch]::Frequency)))
+
+    $diff = $null
+    if ($exitCode -eq 0) { $diff = $false }
+    elseif ($exitCode -eq 1) { $diff = $true }
+
+    $reportEval = Test-LabVIEWCLIReportDiff -Path $reportPath -Format $format
+    if ($reportEval.Diff -ne $null) { $diff = $reportEval.Diff }
+
+    $diffUnknown = $false
+    if ($diff -eq $null) { $diffUnknown = $true; $diff = $false }
+
+    $pendingError = $null
+    if ($exitCode -ge 2) { $pendingError = "LabVIEW CLI compare failed with exit code $exitCode" }
+    if ($FailOnDiff -and $diff) { $pendingError = "LabVIEW CLI comparison reported differences (exit code $exitCode)" }
+    if (-not (Test-Path -LiteralPath $reportPath -PathType Leaf)) { $pendingError = $pendingError ?? "LabVIEW CLI did not produce a report at $reportPath" }
+
+    if ($GitHubOutputPath) {
+      "exitCode=$exitCode" | Out-File -FilePath $GitHubOutputPath -Append -Encoding utf8
+      "cliPath=$cliPath"   | Out-File -FilePath $GitHubOutputPath -Append -Encoding utf8
+      "command=$commandLine" | Out-File -FilePath $GitHubOutputPath -Append -Encoding utf8
+      $diffValue = if ($diffUnknown) { 'unknown' } elseif ($diff) { 'true' } else { 'false' }
+      "diff=$diffValue" | Out-File -FilePath $GitHubOutputPath -Append -Encoding utf8
+      "diffUnknown=$diffUnknown" | Out-File -FilePath $GitHubOutputPath -Append -Encoding utf8
+      "shortCircuitedIdentical=false" | Out-File -FilePath $GitHubOutputPath -Append -Encoding utf8
+      "compareDurationSeconds=$durationSeconds" | Out-File -FilePath $GitHubOutputPath -Append -Encoding utf8
+      "compareDurationNanoseconds=$durationNanoseconds" | Out-File -FilePath $GitHubOutputPath -Append -Encoding utf8
+      if (Test-Path -LiteralPath $reportPath) { "reportPath=$reportPath" | Out-File -FilePath $GitHubOutputPath -Append -Encoding utf8 }
+    }
+
+    if ($CompareExecJsonPath) {
+      try {
+        $exec = [pscustomobject]@{
+          schema       = 'compare-exec/v1'
+          generatedAt  = (Get-Date).ToString('o')
+          mode         = 'labview-cli'
+          cliPath      = $cliPath
+          command      = $commandLine
+          args         = @($commandArgs)
+          exitCode     = $exitCode
+          diff         = $diff
+          diffUnknown  = $diffUnknown
+          cwd          = (Get-Location).Path
+          duration_s   = $durationSeconds
+          duration_ns  = $durationNanoseconds
+          base         = $baseAbs
+          head         = $headAbs
+          reportPath   = (Test-Path -LiteralPath $reportPath) ? (Resolve-Path -LiteralPath $reportPath).Path : $reportPath
+          stdout       = $stdout
+          stderr       = $stderr
+        }
+        $dir = Split-Path -Parent $CompareExecJsonPath
+        if ($dir -and -not (Test-Path -LiteralPath $dir)) { New-Item -ItemType Directory -Force -Path $dir | Out-Null }
+        $exec | ConvertTo-Json -Depth 6 | Out-File -FilePath $CompareExecJsonPath -Encoding utf8
+      } catch { Write-Host "[comparevi] warn: failed to write CLI exec json: $_" -ForegroundColor DarkYellow }
+    }
+
+    # Optionally emit NUnit XML for publishing in CI
+    try {
+      $nunitOut = if ($env:LVCI_CLI_NUNIT_PATH) { $env:LVCI_CLI_NUNIT_PATH } else { Join-Path (Join-Path (Get-Location) 'tests/results/compare-cli') 'results-nunit.xml' }
+      Write-CLICompareNUnitXml -Path $nunitOut -BasePath $baseAbs -HeadPath $headAbs -Diff $diff -DiffUnknown:$diffUnknown -ReportPath $reportPath -DurationSeconds $durationSeconds -ExitCode $exitCode -Reason $reportEval.Reason
+    } catch { Write-Host "[comparevi] warn: failed to write NUnit XML: $_" -ForegroundColor DarkYellow }
+
+    if ($GitHubStepSummaryPath) {
+      $diffSummary = if ($diffUnknown) { 'unknown' } elseif ($diff) { 'true' } else { 'false' }
+      $summary = @(
+        '### Compare VI (LabVIEW CLI)',
+        "- Working directory: $((Get-Location).Path)",
+        "- Base: $baseAbs",
+        "- Head: $headAbs",
+        "- CLI: $cliPath",
+        "- Command: $commandLine",
+        "- Exit code: $exitCode",
+        "- Diff: $diffSummary",
+        "- Duration (s): $durationSeconds"
+      )
+      if (Test-Path -LiteralPath $reportPath) { $summary += "- Report: $reportPath" } else { $summary += "- Report: (missing) $reportPath" }
+      if ($reportEval.Reason) { $summary += "- Note: $($reportEval.Reason)" }
+      $summary -join "`n" | Out-File -FilePath $GitHubStepSummaryPath -Append -Encoding utf8
+    }
+
+    if ($pendingError) { throw $pendingError }
+
+    [pscustomobject]@{
+      Base                         = $baseAbs
+      Head                         = $headAbs
+      Cwd                          = (Get-Location).Path
+      CliPath                      = $cliPath
+      Command                      = $commandLine
+      ExitCode                     = $exitCode
+      Diff                         = $diff
+      CompareDurationSeconds       = $durationSeconds
+      CompareDurationNanoseconds   = $durationNanoseconds
+      ShortCircuitedIdenticalPath  = $false
+      ReportPath                   = $reportPath
+      Mode                         = 'labview-cli'
+      DiffUnknown                  = $diffUnknown
+    }
+  }
+  finally {
+    if ($pushed) { Pop-Location }
+  }
+}
+
+function Resolve-GCliPath {
+  [CmdletBinding()]
+  param([string]$Explicit)
+  if ($Explicit) {
+    if (Test-Path -LiteralPath $Explicit -PathType Leaf) { return (Resolve-Path -LiteralPath $Explicit).Path }
+  }
+  if ($env:GCLI_PATH -and (Test-Path -LiteralPath $env:GCLI_PATH -PathType Leaf)) { return (Resolve-Path -LiteralPath $env:GCLI_PATH).Path }
+  $cmds = @('g-cli','gcli','g-cli.exe','gcli.exe')
+  foreach ($c in $cmds) {
+    $gc = Get-Command $c -ErrorAction SilentlyContinue
+    if ($gc -and $gc.Source) { return $gc.Source }
+  }
+  throw 'g-cli executable not found. Set GCLI_PATH or install g-cli in PATH.'
+}
+
+function Invoke-CompareVIUsingGCLI {
+  [CmdletBinding()]
+  param(
+    [Parameter(Mandatory)] [string] $Base,
+    [Parameter(Mandatory)] [string] $Head,
+    [string] $LvComparePath,
+    [string] $LvCompareArgs = '',
+    [string] $WorkingDirectory = '',
+    [bool] $FailOnDiff = $true,
+    [string] $GitHubOutputPath,
+    [string] $GitHubStepSummaryPath,
+    [ScriptBlock] $Executor,
+    [switch] $PreviewArgs,
+    [string] $CompareExecJsonPath
+  )
+
+  $pushed = $false
+  if ($WorkingDirectory) {
+    if (-not (Test-Path -LiteralPath $WorkingDirectory)) { throw "working-directory not found: $WorkingDirectory" }
+    Push-Location -LiteralPath $WorkingDirectory; $pushed = $true
+  }
+  try {
+    if (-not (Test-Path -LiteralPath $Base -PathType Leaf)) { throw "Base path not found: $Base" }
+    if (-not (Test-Path -LiteralPath $Head -PathType Leaf)) { throw "Head path not found: $Head" }
+
+    $baseAbs = (Resolve-Path -LiteralPath $Base).Path
+    $headAbs = (Resolve-Path -LiteralPath $Head).Path
+
+    $gcli = Resolve-GCliPath -Explicit $null
+    # Minimal implementation: probe version and fail with clear message until compare contract is finalized
+    $psi = New-Object System.Diagnostics.ProcessStartInfo
+    $psi.FileName = $gcli
+    $psi.ArgumentList.Add('--version')
+    $psi.RedirectStandardOutput = $true
+    $psi.RedirectStandardError  = $true
+    $psi.UseShellExecute = $false
+    $psi.CreateNoWindow = $true
+    $proc = New-Object System.Diagnostics.Process
+    $proc.StartInfo = $psi
+    $null = $proc.Start()
+    $null = $proc.WaitForExit(15000)
+    $ver = $proc.StandardOutput.ReadToEnd().Trim()
+
+    $message = 'g-cli compare path scaffolded; implement command wiring once contract is finalized.'
+    if ($GitHubStepSummaryPath) {
+      $lines = @(
+        '### Compare VI (g-cli, scaffold)',
+        "- g-cli: $gcli",
+        if ($ver) { "- Version: $ver" },
+        "- Base: $baseAbs",
+        "- Head: $headAbs",
+        "- Status: not-implemented"
+      ) | Where-Object { $_ }
+      $lines -join "`n" | Out-File -FilePath $GitHubStepSummaryPath -Append -Encoding utf8
+    }
+
+    throw $message
+  }
+  finally {
+    if ($pushed) { Pop-Location }
+  }
+}
+
 function Invoke-CompareVI {
   [CmdletBinding()]
   param(
@@ -194,6 +609,17 @@ function Invoke-CompareVI {
     [switch] $PreviewArgs,
     [string] $CompareExecJsonPath
   )
+
+  if ($env:LVCI_COMPARE_MODE -and [string]::Equals($env:LVCI_COMPARE_MODE, 'labview-cli', [System.StringComparison]::OrdinalIgnoreCase)) {
+    return Invoke-CompareVIUsingLabVIEWCLI @PSBoundParameters
+  }
+  if ($env:LVCI_GCLI_MODE -and (
+        [string]::Equals($env:LVCI_GCLI_MODE, 'compare', [System.StringComparison]::OrdinalIgnoreCase) -or
+        [string]::Equals($env:LVCI_GCLI_MODE, 'on', [System.StringComparison]::OrdinalIgnoreCase) -or
+        [string]::Equals($env:LVCI_GCLI_MODE, 'g-cli', [System.StringComparison]::OrdinalIgnoreCase)
+      )) {
+    return Invoke-CompareVIUsingGCLI @PSBoundParameters
+  }
 
   $pushed = $false
   if ($WorkingDirectory) {
@@ -244,7 +670,7 @@ function Invoke-CompareVI {
     } catch {}
 
     # Validate LVCompare args early to prevent UI popups and provide clear errors
-    $allowedFlags = @('-lvpath','-noattr','-nofp','-nofppos','-nobd','-nobdcosm')
+    $allowedFlags = @('-lvpath','-noattr','-nofp','-nofppos','-nobd','-nobdcosm','-nobdpos')
     $argsArr = @($cliArgs)
     if ($argsArr -and $argsArr.Count -gt 0) {
       for ($i = 0; $i -lt $argsArr.Count; $i++) {
@@ -469,5 +895,3 @@ function Invoke-CompareVI {
 }
 
 Export-ModuleMember -Function Invoke-CompareVI
-
-

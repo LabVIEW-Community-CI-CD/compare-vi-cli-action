@@ -1,0 +1,541 @@
+{
+  "jobs": [
+    {
+      "completedAt": "2025-10-12T04:49:19Z",
+      "conclusion": "success",
+      "databaseId": 52537611656,
+      "name": "fixtures",
+      "startedAt": "2025-10-12T04:48:47Z",
+      "status": "completed",
+      "steps": [
+        {
+          "completedAt": "2025-10-12T04:48:54Z",
+          "conclusion": "success",
+          "name": "Set up job",
+          "number": 1,
+          "startedAt": "2025-10-12T04:48:48Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2025-10-12T04:49:02Z",
+          "conclusion": "success",
+          "name": "Run actions/checkout@v5",
+          "number": 2,
+          "startedAt": "2025-10-12T04:48:54Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2025-10-12T04:49:02Z",
+          "conclusion": "skipped",
+          "name": "Wire Probe (J1)",
+          "number": 3,
+          "startedAt": "2025-10-12T04:49:02Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2025-10-12T04:49:02Z",
+          "conclusion": "skipped",
+          "name": "Wire Probe (J2)",
+          "number": 4,
+          "startedAt": "2025-10-12T04:49:02Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2025-10-12T04:49:03Z",
+          "conclusion": "success",
+          "name": "Run fixture validator (JSON)",
+          "number": 5,
+          "startedAt": "2025-10-12T04:49:02Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2025-10-12T04:49:04Z",
+          "conclusion": "success",
+          "name": "Restore previous fixture validation snapshot (cache)",
+          "number": 6,
+          "startedAt": "2025-10-12T04:49:03Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2025-10-12T04:49:04Z",
+          "conclusion": "skipped",
+          "name": "Compute delta vs previous snapshot",
+          "number": 7,
+          "startedAt": "2025-10-12T04:49:04Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2025-10-12T04:49:04Z",
+          "conclusion": "skipped",
+          "name": "Validate delta JSON schema (basic)",
+          "number": 8,
+          "startedAt": "2025-10-12T04:49:04Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2025-10-12T04:49:04Z",
+          "conclusion": "skipped",
+          "name": "Lite schema validate (delta)",
+          "number": 9,
+          "startedAt": "2025-10-12T04:49:04Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2025-10-12T04:49:04Z",
+          "conclusion": "skipped",
+          "name": "Upload fixture validation delta JSON",
+          "number": 10,
+          "startedAt": "2025-10-12T04:49:04Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2025-10-12T04:49:05Z",
+          "conclusion": "success",
+          "name": "Upload fixture validation JSON",
+          "number": 11,
+          "startedAt": "2025-10-12T04:49:04Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2025-10-12T04:49:06Z",
+          "conclusion": "success",
+          "name": "Lite schema validate (snapshot)",
+          "number": 12,
+          "startedAt": "2025-10-12T04:49:05Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2025-10-12T04:49:07Z",
+          "conclusion": "success",
+          "name": "Append fixture summary",
+          "number": 13,
+          "startedAt": "2025-10-12T04:49:06Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2025-10-12T04:49:09Z",
+          "conclusion": "success",
+          "name": "Write fixture summary file",
+          "number": 14,
+          "startedAt": "2025-10-12T04:49:07Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2025-10-12T04:49:10Z",
+          "conclusion": "success",
+          "name": "Upload fixture summary artifact",
+          "number": 15,
+          "startedAt": "2025-10-12T04:49:09Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2025-10-12T04:49:11Z",
+          "conclusion": "success",
+          "name": "Save current snapshot to cache",
+          "number": 16,
+          "startedAt": "2025-10-12T04:49:10Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2025-10-12T04:49:12Z",
+          "conclusion": "success",
+          "name": "Copy snapshot for next run reference",
+          "number": 17,
+          "startedAt": "2025-10-12T04:49:11Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2025-10-12T04:49:13Z",
+          "conclusion": "success",
+          "name": "Agent wait summary (notice-only)",
+          "number": 18,
+          "startedAt": "2025-10-12T04:49:12Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2025-10-12T04:49:17Z",
+          "conclusion": "success",
+          "name": "Post Run actions/checkout@v5",
+          "number": 36,
+          "startedAt": "2025-10-12T04:49:13Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2025-10-12T04:49:17Z",
+          "conclusion": "success",
+          "name": "Complete job",
+          "number": 37,
+          "startedAt": "2025-10-12T04:49:17Z",
+          "status": "completed"
+        }
+      ],
+      "url": "https://github.com/LabVIEW-Community-CI-CD/compare-vi-cli-action/actions/runs/18439330181/job/52537611656"
+    },
+    {
+      "completedAt": "2025-10-12T04:48:55Z",
+      "conclusion": "success",
+      "databaseId": 52537611660,
+      "name": "lint",
+      "startedAt": "2025-10-12T04:48:23Z",
+      "status": "completed",
+      "steps": [
+        {
+          "completedAt": "2025-10-12T04:48:25Z",
+          "conclusion": "success",
+          "name": "Set up job",
+          "number": 1,
+          "startedAt": "2025-10-12T04:48:24Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2025-10-12T04:48:26Z",
+          "conclusion": "success",
+          "name": "Run actions/checkout@v5",
+          "number": 2,
+          "startedAt": "2025-10-12T04:48:25Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2025-10-12T04:48:26Z",
+          "conclusion": "skipped",
+          "name": "Wire Probe (J1)",
+          "number": 3,
+          "startedAt": "2025-10-12T04:48:26Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2025-10-12T04:48:26Z",
+          "conclusion": "skipped",
+          "name": "Wire Probe (J2)",
+          "number": 4,
+          "startedAt": "2025-10-12T04:48:26Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2025-10-12T04:48:28Z",
+          "conclusion": "success",
+          "name": "Setup Node with cache",
+          "number": 5,
+          "startedAt": "2025-10-12T04:48:26Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2025-10-12T04:48:28Z",
+          "conclusion": "skipped",
+          "name": "CLI lints (notice on develop)",
+          "number": 6,
+          "startedAt": "2025-10-12T04:48:28Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2025-10-12T04:48:28Z",
+          "conclusion": "skipped",
+          "name": "CLI lints (enforced on main)",
+          "number": 7,
+          "startedAt": "2025-10-12T04:48:28Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2025-10-12T04:48:34Z",
+          "conclusion": "success",
+          "name": "Guard tracked build artifacts (enforced)",
+          "number": 8,
+          "startedAt": "2025-10-12T04:48:28Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2025-10-12T04:48:35Z",
+          "conclusion": "success",
+          "name": "Surface build artifacts allowlist (if any)",
+          "number": 9,
+          "startedAt": "2025-10-12T04:48:34Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2025-10-12T04:48:35Z",
+          "conclusion": "success",
+          "name": "Build artifacts guard — ad-hoc allowlist usage",
+          "number": 10,
+          "startedAt": "2025-10-12T04:48:35Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2025-10-12T04:48:36Z",
+          "conclusion": "success",
+          "name": "Install actionlint (retry)",
+          "number": 11,
+          "startedAt": "2025-10-12T04:48:35Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2025-10-12T04:48:37Z",
+          "conclusion": "success",
+          "name": "Run actionlint",
+          "number": 12,
+          "startedAt": "2025-10-12T04:48:36Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2025-10-12T04:48:37Z",
+          "conclusion": "success",
+          "name": "Derive environment snapshot",
+          "number": 13,
+          "startedAt": "2025-10-12T04:48:37Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2025-10-12T04:48:39Z",
+          "conclusion": "success",
+          "name": "PrePush local gates (includes watcher schema validation)",
+          "number": 14,
+          "startedAt": "2025-10-12T04:48:37Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2025-10-12T04:48:40Z",
+          "conclusion": "success",
+          "name": "Lint unanchored dot-sourcing (non-blocking)",
+          "number": 15,
+          "startedAt": "2025-10-12T04:48:39Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2025-10-12T04:48:42Z",
+          "conclusion": "success",
+          "name": "Lint inline-if in format (-f)",
+          "number": 16,
+          "startedAt": "2025-10-12T04:48:40Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2025-10-12T04:48:46Z",
+          "conclusion": "success",
+          "name": "Install markdownlint-cli (retry)",
+          "number": 17,
+          "startedAt": "2025-10-12T04:48:42Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2025-10-12T04:48:47Z",
+          "conclusion": "success",
+          "name": "Run markdownlint (non-blocking)",
+          "number": 18,
+          "startedAt": "2025-10-12T04:48:46Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2025-10-12T04:48:47Z",
+          "conclusion": "success",
+          "name": "Emit tool versions",
+          "number": 19,
+          "startedAt": "2025-10-12T04:48:47Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2025-10-12T04:48:47Z",
+          "conclusion": "skipped",
+          "name": "Workflow drift check (ruamel updater — notice on develop)",
+          "number": 20,
+          "startedAt": "2025-10-12T04:48:47Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2025-10-12T04:48:47Z",
+          "conclusion": "skipped",
+          "name": "Workflow drift check (ruamel updater — enforced on main)",
+          "number": 21,
+          "startedAt": "2025-10-12T04:48:47Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2025-10-12T04:48:49Z",
+          "conclusion": "success",
+          "name": "Lint loop determinism (notice only on non-main)",
+          "number": 22,
+          "startedAt": "2025-10-12T04:48:47Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2025-10-12T04:48:49Z",
+          "conclusion": "skipped",
+          "name": "Lint loop determinism (enforced on main)",
+          "number": 23,
+          "startedAt": "2025-10-12T04:48:49Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2025-10-12T04:48:50Z",
+          "conclusion": "success",
+          "name": "Local markdown link check (intra-repo)",
+          "number": 24,
+          "startedAt": "2025-10-12T04:48:49Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2025-10-12T04:48:51Z",
+          "conclusion": "success",
+          "name": "Append docs pointers",
+          "number": 25,
+          "startedAt": "2025-10-12T04:48:50Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2025-10-12T04:48:51Z",
+          "conclusion": "skipped",
+          "name": "Labels sync summary (develop only)",
+          "number": 26,
+          "startedAt": "2025-10-12T04:48:51Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2025-10-12T04:48:51Z",
+          "conclusion": "skipped",
+          "name": "Labels sync enforcement (main)",
+          "number": 27,
+          "startedAt": "2025-10-12T04:48:51Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2025-10-12T04:48:51Z",
+          "conclusion": "success",
+          "name": "Run markdownlint (non-blocking)",
+          "number": 28,
+          "startedAt": "2025-10-12T04:48:51Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2025-10-12T04:48:52Z",
+          "conclusion": "success",
+          "name": "Post Setup Node with cache",
+          "number": 55,
+          "startedAt": "2025-10-12T04:48:51Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2025-10-12T04:48:52Z",
+          "conclusion": "success",
+          "name": "Post Run actions/checkout@v5",
+          "number": 56,
+          "startedAt": "2025-10-12T04:48:52Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2025-10-12T04:48:52Z",
+          "conclusion": "success",
+          "name": "Complete job",
+          "number": 57,
+          "startedAt": "2025-10-12T04:48:52Z",
+          "status": "completed"
+        }
+      ],
+      "url": "https://github.com/LabVIEW-Community-CI-CD/compare-vi-cli-action/actions/runs/18439330181/job/52537611660"
+    },
+    {
+      "completedAt": "2025-10-12T04:49:02Z",
+      "conclusion": "failure",
+      "databaseId": 52537611661,
+      "name": "session-index",
+      "startedAt": "2025-10-12T04:48:23Z",
+      "status": "completed",
+      "steps": [
+        {
+          "completedAt": "2025-10-12T04:48:25Z",
+          "conclusion": "success",
+          "name": "Set up job",
+          "number": 1,
+          "startedAt": "2025-10-12T04:48:24Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2025-10-12T04:48:26Z",
+          "conclusion": "success",
+          "name": "Run actions/checkout@v5",
+          "number": 2,
+          "startedAt": "2025-10-12T04:48:25Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2025-10-12T04:48:26Z",
+          "conclusion": "skipped",
+          "name": "Wire Probe (J1)",
+          "number": 3,
+          "startedAt": "2025-10-12T04:48:26Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2025-10-12T04:48:26Z",
+          "conclusion": "skipped",
+          "name": "Wire Probe (J2)",
+          "number": 4,
+          "startedAt": "2025-10-12T04:48:26Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2025-10-12T04:48:42Z",
+          "conclusion": "success",
+          "name": "Install Pester v5",
+          "number": 5,
+          "startedAt": "2025-10-12T04:48:26Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2025-10-12T04:48:46Z",
+          "conclusion": "success",
+          "name": "Run dispatcher smoke to produce session index",
+          "number": 6,
+          "startedAt": "2025-10-12T04:48:42Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2025-10-12T04:48:58Z",
+          "conclusion": "failure",
+          "name": "Write session index v2",
+          "number": 7,
+          "startedAt": "2025-10-12T04:48:46Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2025-10-12T04:48:58Z",
+          "conclusion": "success",
+          "name": "Upload session index v2 artifact",
+          "number": 8,
+          "startedAt": "2025-10-12T04:48:58Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2025-10-12T04:48:58Z",
+          "conclusion": "skipped",
+          "name": "Validate session index schema (schema-lite)",
+          "number": 9,
+          "startedAt": "2025-10-12T04:48:58Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2025-10-12T04:48:59Z",
+          "conclusion": "success",
+          "name": "Upload session index artifact",
+          "number": 10,
+          "startedAt": "2025-10-12T04:48:58Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2025-10-12T04:49:00Z",
+          "conclusion": "success",
+          "name": "Post Run actions/checkout@v5",
+          "number": 20,
+          "startedAt": "2025-10-12T04:48:59Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2025-10-12T04:49:00Z",
+          "conclusion": "success",
+          "name": "Complete job",
+          "number": 21,
+          "startedAt": "2025-10-12T04:49:00Z",
+          "status": "completed"
+        }
+      ],
+      "url": "https://github.com/LabVIEW-Community-CI-CD/compare-vi-cli-action/actions/runs/18439330181/job/52537611661"
+    }
+  ]
+}

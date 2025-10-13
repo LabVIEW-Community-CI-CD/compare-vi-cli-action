@@ -1,0 +1,52 @@
+{
+  "schema": "cli-compare-queue/v1",
+  "generatedAt": "",
+  "updatedAt": "",
+  "cases": [
+    {
+      "id": "vi1-vi2-xml",
+      "name": "Baseline VI1 vs VI2 (XML)",
+      "base": "VI1.vi",
+      "head": "VI2.vi",
+      "tags": ["smoke","xml"],
+      "expected": { "diff": "unknown" },
+      "cli": { "format": "XML" },
+      "notes": "Seed case; treats diff as unknown until behavior is confirmed.",
+      "disabled": false
+    },
+    {
+      "id": "vi1-vi2-html",
+      "name": "Baseline VI1 vs VI2 (HTML)",
+      "base": "VI1.vi",
+      "head": "VI2.vi",
+      "tags": ["format","html"],
+      "expected": { "diff": "unknown" },
+      "cli": { "format": "HTML" },
+      "notes": "Check HTML report path is emitted and parse tolerance maintained.",
+      "disabled": false
+    },
+    {
+      "id": "vi1-vi2-txt",
+      "name": "Baseline VI1 vs VI2 (TXT)",
+      "base": "VI1.vi",
+      "head": "VI2.vi",
+      "tags": ["format","txt"],
+      "expected": { "diff": "unknown" },
+      "cli": { "format": "TXT" },
+      "notes": "Check text report generation for quick inspection.",
+      "disabled": false
+    },
+    {
+      "id": "vi1-vi2-docx",
+      "name": "Baseline VI1 vs VI2 (DOCX)",
+      "base": "VI1.vi",
+      "head": "VI2.vi",
+      "tags": ["format","docx"],
+      "expected": { "diff": "unknown" },
+      "cli": { "format": "DOCX" },
+      "notes": "Ensure DOCX export path and durability.",
+      "disabled": false
+    }
+  ]
+}
+

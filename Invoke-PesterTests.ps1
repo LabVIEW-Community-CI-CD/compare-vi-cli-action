@@ -10,6 +10,8 @@
     Path to the directory containing test scripts (default: tests)
 .PARAMETER IncludeIntegration
     Include Integration-tagged tests (default: false). Accepts 'true'/'false' string or boolean.
+.PARAMETER OnlyIntegration
+    Run only Integration-tagged tests (implies IncludeIntegration=true).
 .PARAMETER ResultsPath
     Path to directory where results should be written (default: tests/results)
 .PARAMETER JsonSummaryPath
@@ -31,6 +33,9 @@ param(
   [Parameter(Mandatory = $false)]
   [ValidateNotNullOrEmpty()]
   [string]$IncludeIntegration = 'false',
+
+  [Parameter(Mandatory = $false)]
+  [switch]$OnlyIntegration,
 
   [Parameter(Mandatory = $false)]
   [ValidateNotNullOrEmpty()]
@@ -928,8 +933,24 @@ if ($limitToSingle) {
 } else {
   $testFiles = @(Get-ChildItem -Path $testsDir -Filter '*.Tests.ps1' -Recurse -File | Sort-Object FullName)
   $originalTestFileCount = $testFiles.Count
-  # Pre-filter integration files entirely (stronger than tag exclusion) when integration disabled, unless explicitly overridden.
-  if (-not $IncludeIntegration -and ($env:DISABLE_INTEGRATION_FILE_PREFILTER -ne '1')) {
+  # Pre-filter files by Integration classification
+  if ($OnlyIntegration) {
+    $before = $testFiles.Count
+    $kept = New-Object System.Collections.Generic.List[object]
+    foreach ($f in $testFiles) {
+      $nameIsIntegration = ($f.Name -match '\\.Integration\\.Tests\\.ps1$')
+      if ($nameIsIntegration) { [void]$kept.Add($f); continue }
+      $text = try { Get-Content -LiteralPath $f.FullName -Raw -ErrorAction Stop } catch { '' }
+      $hasTag = $false
+      if ($text) { $hasTag = ($text -match '(?im)-Tag\s*(?:''Integration''|\"Integration\"|Integration\b)') }
+      if ($hasTag) { [void]$kept.Add($f) }
+    }
+    $testFiles = @($kept.ToArray())
+    $removed = $before - $testFiles.Count
+    Write-Host ("OnlyIntegration prefilter reduced files by {0}" -f $removed) -ForegroundColor DarkGray
+  }
+  # Strong exclusion when integration disabled, unless explicitly overridden.
+  if (-not $IncludeIntegration -and -not $OnlyIntegration -and ($env:DISABLE_INTEGRATION_FILE_PREFILTER -ne '1')) {
     $before = $testFiles.Count
     $testFiles = @($testFiles | Where-Object { $_.Name -notmatch '\.Integration\.Tests\.ps1$' })
     $removed = $before - $testFiles.Count
@@ -1243,7 +1264,11 @@ if ($IncludeIntegration -is [string]) {
 
 # Marker: string equality normalization for IncludeIntegration occurs above (see verbose normalization logic)
 
-if (-not $includeIntegrationBool) {
+if ($OnlyIntegration) {
+  $includeIntegrationBool = $true
+  Write-Host "  OnlyIntegration: including Integration-tagged tests only" -ForegroundColor Cyan
+  $conf.Filter.IncludeTag = @('Integration')
+} elseif (-not $includeIntegrationBool) {
   Write-Host "  Excluding Integration-tagged tests" -ForegroundColor Cyan
   $conf.Filter.ExcludeTag = @('Integration')
 } else {
@@ -2075,26 +2100,134 @@ try {
   $destReport = Join-Path $resultsDir 'compare-report.html'
   $candidates = @()
   $fixedCandidates = @(
+    (Join-Path $root 'tests' 'results' '_staging' 'compare' 'compare-report.html'),
     (Join-Path $root 'tests' 'results' 'integration-compare-report.html'),
     (Join-Path $root 'tests' 'results' 'compare-report.html'),
     (Join-Path $root 'tests' 'results-single' 'pr-body-compare-report.html')
   )
   foreach ($p in $fixedCandidates) { if (Test-Path -LiteralPath $p -PathType Leaf) { try { $candidates += (Get-Item -LiteralPath $p -ErrorAction SilentlyContinue) } catch {} } }
+  $canonicalResolved = $null
+  if (Test-Path -LiteralPath $destReport) {
+    try { $canonicalResolved = (Resolve-Path -LiteralPath $destReport).Path } catch {}
+  }
   try {
     $dynamic = Get-ChildItem -LiteralPath (Join-Path $root 'tests' 'results') -Filter '*compare-report*.html' -Recurse -File -ErrorAction SilentlyContinue
-    if ($dynamic) { $candidates += $dynamic }
+    if ($dynamic) {
+      foreach ($item in $dynamic) {
+        $full = (Resolve-Path -LiteralPath $item.FullName).Path
+        if ($canonicalResolved -and $full -eq $canonicalResolved) {
+          $candidates += $item
+          continue
+        }
+        if ($full -match '\\_staging\\compare\\') {
+          $candidates += $item
+        }
+      }
+    }
   } catch {}
   if ($candidates.Count -gt 0) {
     $latest = $candidates | Sort-Object LastWriteTimeUtc -Descending | Select-Object -First 1
-    # Copy the latest to the canonical filename
-    try { Copy-Item -LiteralPath $latest.FullName -Destination $destReport -Force; Write-Host ("Compare report copied to: {0}" -f $destReport) -ForegroundColor Gray } catch { Write-Warning "Failed to copy compare report: $_" }
+    # Copy the latest to the canonical filename (skip when already identical path)
+    try {
+      $sourcePath = (Resolve-Path -LiteralPath $latest.FullName).Path
+      $destResolved = $null
+      if (-not $destResolved -and $canonicalResolved) { $destResolved = $canonicalResolved }
+      if ($destResolved -and $destResolved.Equals($sourcePath, [System.StringComparison]::OrdinalIgnoreCase)) {
+        Write-Host ("Compare report already present at: {0}" -f $destReport) -ForegroundColor DarkGray
+      } else {
+        Copy-Item -LiteralPath $sourcePath -Destination $destReport -Force
+        Write-Host ("Compare report copied to: {0}" -f $destReport) -ForegroundColor Gray
+        if (-not $canonicalResolved) {
+          try { $canonicalResolved = (Resolve-Path -LiteralPath $destReport).Path } catch {}
+        }
+      }
+    } catch { Write-Warning "Failed to copy compare report: $_" }
     # Also copy all candidates preserving their base filenames to the results directory
     foreach ($cand in ($candidates | Sort-Object LastWriteTimeUtc)) {
       try {
         $destName = (Split-Path -Leaf $cand.FullName)
         $destFull = Join-Path $resultsDir $destName
-        Copy-Item -LiteralPath $cand.FullName -Destination $destFull -Force -ErrorAction SilentlyContinue
+        $srcResolved = (Resolve-Path -LiteralPath $cand.FullName).Path
+        $destResolved = $null
+        if (Test-Path -LiteralPath $destFull) {
+          try { $destResolved = (Resolve-Path -LiteralPath $destFull).Path } catch {}
+        }
+        if ($destResolved -and $destResolved.Equals($srcResolved, [System.StringComparison]::OrdinalIgnoreCase)) { continue }
+        Copy-Item -LiteralPath $srcResolved -Destination $destFull -Force -ErrorAction SilentlyContinue
       } catch { Write-Host "(warn) failed to copy extra report '$($cand.FullName)': $_" -ForegroundColor DarkYellow }
+    }
+    # Write manifest describing sources and canonical target
+    try {
+      $manifestPath = Join-Path $resultsDir 'compare-report.manifest.json'
+      $manifest = [ordered]@{
+        schema      = 'compare-report-manifest/v1'
+        generatedAt = (Get-Date).ToString('o')
+        canonical   = if (Test-Path -LiteralPath $destReport) { (Resolve-Path -LiteralPath $destReport).Path } else { $destReport }
+        sources     = @()
+      }
+      foreach ($cand in ($candidates | Sort-Object LastWriteTimeUtc -Descending)) {
+        try {
+          $resolved = (Resolve-Path -LiteralPath $cand.FullName).Path
+          $hash = (Get-FileHash -LiteralPath $resolved -Algorithm SHA256 -ErrorAction Stop).Hash
+          $type = if ($resolved -eq $canonicalResolved) { 'canonical' } elseif ($resolved -match '\\_staging\\compare\\') { 'staging' } else { 'legacy' }
+          $manifest.sources += [ordered]@{
+            path             = $resolved
+            lastWriteTimeUtc = $cand.LastWriteTimeUtc.ToString('o')
+            length           = $cand.Length
+            sha256           = $hash
+            sourceType       = $type
+          }
+        } catch {
+          Write-Host "(warn) failed to hash compare report '$($cand.FullName)': $_" -ForegroundColor DarkYellow
+        }
+      }
+      if ($manifest.sources.Count -gt 0) {
+        $unique = @()
+        $seen = New-Object System.Collections.Generic.HashSet[string]
+        foreach ($entry in $manifest.sources) {
+          if ($seen.Add($entry.path)) {
+            $unique += $entry
+          }
+        }
+        $manifest.sources = $unique
+      }
+      if ($canonicalResolved -and (Test-Path -LiteralPath $canonicalResolved -PathType Leaf)) {
+        $existingCanonical = @($manifest.sources | Where-Object { $_.path -eq $canonicalResolved })
+        if ($existingCanonical.Count -gt 0) {
+          foreach ($entry in $existingCanonical) { $entry.sourceType = 'canonical' }
+        } else {
+          try {
+            $canonicalItem = Get-Item -LiteralPath $canonicalResolved -ErrorAction Stop
+            $canonicalHash = (Get-FileHash -LiteralPath $canonicalResolved -Algorithm SHA256 -ErrorAction Stop).Hash
+            $manifest.sources = @([ordered]@{
+              path             = $canonicalResolved
+              lastWriteTimeUtc = $canonicalItem.LastWriteTimeUtc.ToString('o')
+              length           = $canonicalItem.Length
+              sha256           = $canonicalHash
+              sourceType       = 'canonical'
+            }) + $manifest.sources
+          } catch {
+            Write-Warning ("Failed to record canonical compare report in manifest: {0}" -f $_.Exception.Message)
+          }
+        }
+      }
+      $manifest | ConvertTo-Json -Depth 6 | Set-Content -LiteralPath $manifestPath -Encoding utf8
+      if ($env:GITHUB_STEP_SUMMARY) {
+        try {
+          $summaryLines = @('### Compare Report Manifest')
+          $summaryLines += ('- Manifest: `{0}`' -f $manifestPath)
+          $summaryLines += ('- Canonical: `{0}`' -f $manifest.canonical)
+          if ($manifest.sources.Count -gt 0) {
+            $summaryLines += ('- Sources:')
+            foreach ($src in $manifest.sources) {
+              $summaryLines += ('  - `{0}` (type={1}, sha256={2})' -f $src.path, $src.sourceType, $src.sha256)
+            }
+          }
+          Add-Content -Path $env:GITHUB_STEP_SUMMARY -Value ($summaryLines -join "`n") -Encoding utf8
+        } catch { Write-Warning ("Failed to append compare report manifest summary: {0}" -f $_.Exception.Message) }
+      }
+    } catch {
+      Write-Warning "Failed to write compare report manifest: $_"
     }
     # Generate a small deterministic index HTML linking to all report variants
     try {
@@ -2404,4 +2537,3 @@ finally {
     if (-not $released) { Write-Warning "Failed to release session lock '$lockGroup'" }
   }
 }
-

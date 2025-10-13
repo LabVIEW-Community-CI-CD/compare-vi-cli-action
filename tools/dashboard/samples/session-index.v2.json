@@ -1,0 +1,102 @@
+{
+  "schema": "session-index/v2",
+  "schemaVersion": "2.0.0",
+  "generatedAtUtc": "2025-10-09T00:00:00Z",
+  "run": {
+    "workflow": "Sample",
+    "job": "pester",
+    "branch": "feature/sample",
+    "commit": "0123456789abcdef0123456789abcdef01234567",
+    "branchState": {
+      "branch": "feature/sample",
+      "upstream": "origin/develop",
+      "summary": "Branch feature/sample: ahead 1 of origin/develop; dirty (includes untracked files)",
+      "ahead": 1,
+      "behind": 0,
+      "hasUpstream": true,
+      "isClean": false,
+      "hasUntracked": true,
+      "timestampUtc": "2025-10-09T00:00:00Z"
+    }
+  },
+  "environment": {
+    "runner": "ubuntu-24.04",
+    "node": "20.11.1",
+    "pwsh": "7.5.3",
+    "toggles": {
+      "schema": "agent-toggle-values/v1",
+      "schemaVersion": "1.0.0",
+      "generatedAtUtc": "2025-10-09T00:00:00Z",
+      "manifestDigest": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+      "manifestGeneratedAtUtc": "2025-10-09T00:00:00Z",
+      "profiles": [
+        "ci-orchestrated"
+      ],
+      "values": {
+        "SKIP_SYNC_DEVELOP": {
+          "value": false,
+          "valueType": "boolean",
+          "source": "profile",
+          "profile": "ci-orchestrated",
+          "description": "Skip automatic develop branch sync during bootstrap (set to 1/true only when a frozen snapshot is required)."
+        },
+        "HANDOFF_AUTOTRIM": {
+          "value": true,
+          "valueType": "boolean",
+          "source": "profile",
+          "profile": "ci-orchestrated",
+          "description": "Automatically trim watcher logs during agent hand-off when telemetry indicates oversize and cooldown permits."
+        }
+      }
+    }
+  },
+  "branchProtection": {
+    "status": "warn",
+    "reason": "mapping_missing",
+    "expected": [
+      "Validate / lint",
+      "Validate / fixtures",
+      "Validate / session-index"
+    ],
+    "produced": [
+      "Validate / lint",
+      "Validate / session-index"
+    ],
+    "actual": {
+      "status": "unavailable"
+    },
+    "notes": [
+      "Sample session index for dashboard fixtures – actual contexts unavailable."
+    ]
+  },
+  "tests": {
+    "summary": {
+      "total": 58,
+      "passed": 57,
+      "failed": 1,
+      "errors": 0,
+      "skipped": 0,
+      "durationSeconds": 12.34
+    },
+    "cases": [
+      {
+        "id": "Acquires and releases lock",
+        "description": "Acquires and releases lock",
+        "category": "SessionLock.Tests.ps1",
+        "outcome": "passed",
+        "durationMs": 120.5,
+        "requirement": "REQ-LOCK-1",
+        "tags": ["session-lock"]
+      },
+      {
+        "id": "Queue timeout",
+        "description": "Queue timeout",
+        "category": "SessionLock.Tests.ps1",
+        "outcome": "failed",
+        "durationMs": 2045.7,
+        "requirement": "REQ-LOCK-2",
+        "tags": ["session-lock", "queue"]
+      }
+    ]
+  }
+}

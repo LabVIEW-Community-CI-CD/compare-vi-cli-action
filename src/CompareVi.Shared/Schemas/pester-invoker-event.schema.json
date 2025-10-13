@@ -1,0 +1,64 @@
+{
+  "$ref": "#/definitions/pester-invoker-event",
+  "definitions": {
+    "pester-invoker-event": {
+      "type": "object",
+      "properties": {
+        "timestamp": {
+          "type": "string",
+          "minLength": 1
+        },
+        "schema": {
+          "type": "string",
+          "const": "pester-invoker/v1"
+        },
+        "type": {
+          "type": "string",
+          "minLength": 1
+        },
+        "runId": {
+          "type": "string"
+        },
+        "file": {
+          "type": "string"
+        },
+        "slug": {
+          "type": "string"
+        },
+        "category": {
+          "type": "string"
+        },
+        "durationMs": {
+          "type": "number"
+        },
+        "counts": {
+          "type": "object",
+          "properties": {
+            "passed": {
+              "type": "number"
+            },
+            "failed": {
+              "type": "number"
+            },
+            "skipped": {
+              "type": "number"
+            },
+            "errors": {
+              "type": "number"
+            }
+          },
+          "additionalProperties": false
+        }
+      },
+      "required": [
+        "timestamp",
+        "schema",
+        "type"
+      ],
+      "additionalProperties": false
+    }
+  },
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "description": "Event crumb written by the TypeScript/PowerShell invoker loop.",
+  "$id": "urn:compare-vi-cli-action:schema:pester-invoker-event"
+}

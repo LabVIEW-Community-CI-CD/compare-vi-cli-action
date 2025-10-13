@@ -74,6 +74,7 @@ jobs:
     runs-on: [self-hosted, Windows, X64]
     timeout-minutes: 3
     env:
+      LVCI_ONLY_X64: '1'
       CLEAN_LV_BEFORE: ${{ vars.CLEAN_LV_BEFORE || 'true' }}
       CLEAN_LV_AFTER: ${{ vars.CLEAN_LV_AFTER || 'true' }}
       CLEAN_LV_INCLUDE_COMPARE: ${{ vars.CLEAN_LV_INCLUDE_COMPARE || vars.CLEAN_LVCOMPARE || 'true' }}
@@ -101,7 +102,9 @@ jobs:
           $x86Cli     = 'C:\Program Files (x86)\National Instruments\Shared\LabVIEW Compare\LVCompare.exe'
           $candidates = @()
           if ($env:LVCOMPARE_PATH) { $candidates += $env:LVCOMPARE_PATH }
-          $candidates += @($defaultCli, $x86Cli)
+          $onlyX64 = $false
+          if ($env:LVCI_ONLY_X64) { try { $onlyX64 = ($env:LVCI_ONLY_X64.Trim() -match '^(?i:1|true|yes|on)$') } catch { $onlyX64 = $false } }
+          if ($onlyX64) { $candidates += @($defaultCli) } else { $candidates += @($defaultCli, $x86Cli) }
           $cli = $null
           foreach ($p in $candidates) {
             if ($p -and (Test-Path -LiteralPath $p)) { $cli = $p; break }
@@ -129,6 +132,10 @@ jobs:
             $lines -join "`n" | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8
           }
 
+      - name: LVCompare preflight validator (policy)
+        shell: pwsh
+        run: pwsh -File tools/Validate-LVComparePreflight.ps1 -AppendStepSummary -MinVersion '2025.0.0.0'
+
   pester:
     name: Pester (self-hosted)
     if: ${{ inputs.skip_run != 'true' }}
@@ -136,6 +143,7 @@ jobs:
     # No job-level timeout; rely on probes/guards for determinism
     needs: [normalize, preflight]
     env:
+      LVCI_ONLY_X64: '1'
       LV_SUPPRESS_UI: ${{ vars.LV_SUPPRESS_UI || '1' }}
       LV_NO_ACTIVATE: ${{ vars.LV_NO_ACTIVATE || '1' }}
       LV_CURSOR_RESTORE: ${{ vars.LV_CURSOR_RESTORE || '1' }}
@@ -183,6 +191,11 @@ jobs:
           } else {
             Write-Host '::warning::prepare-fixtures did not emit expected outputs; proceeding without LV_* env.'
           }
+
+      - name: Validate LVCompare inputs (integration)
+        if: ${{ needs.normalize.outputs.include_integration == 'true' }}
+        shell: pwsh
+        run: pwsh -File tools/Validate-LVComparePreflight.ps1 -RequireInputs -AppendStepSummary -MinVersion '2025.0.0.0'
 
       - name: Apply dispatcher profile
         id: dprofile
@@ -575,37 +588,27 @@ jobs:
           fail-on-outside: 'false'
           upload-artifact: 'false'
 
-      - name: LV Guard (post)
-        if: always()
-        uses: ./.github/actions/runner-unblock-guard
-        with:
-          snapshot-path: tests/results/lv-guard-post.json
-          cleanup: ${{ env.CLEAN_LV_AFTER == 'true' }}
-          process-names: 'LVCompare,LabVIEW'
+      - name: Close LabVIEW (entrypoint)
+        if: always() && env.CLEAN_LV_AFTER == 'true'
+        shell: pwsh
+        continue-on-error: true
+        run: pwsh -File tools/Close-LabVIEW.ps1
+
+      - name: g-cli custom action (optional)
+        if: ${{ always() && env.GCLI_ARGS != '' }}
+        shell: pwsh
+        run: pwsh -File tools/Invoke-GCli.ps1 -Args "$env:GCLI_ARGS" -AppendStepSummary
 
       - name: Append re-run hint
         if: always()
         shell: pwsh
-        run: |
-          if (-not $env:GITHUB_STEP_SUMMARY) { return }
-          $workflowName = '${{ github.workflow }}'
-          $refName = '${{ github.ref_name }}'
-          $sampleId = '${{ inputs.sample_id }}'
-          $cmdParts = @("gh workflow run `"$workflowName`"", "-r `"$refName`"")
-          if ($sampleId) { $cmdParts += "-f sample_id=$sampleId" }
-          $command = $cmdParts -join ' '
-          $workflowRef = '${{ github.workflow_ref }}'
-          $workflowPath = ''
-          if ($workflowRef -match '\.github/workflows/(?<path>[^@]+)@') {
-            $workflowPath = $Matches['path']
-          }
-          $repo = '${{ github.repository }}'
-          $lines = @('### Re-run With Same Inputs','',"- Command: `$command`")
-          if (-not $sampleId) { $lines += '- sample_id omitted; workflow will auto-generate if supported.' }
-          if ($workflowPath) {
-            $lines += ("- Workflow: https://github.com/{0}/actions/workflows/{1}" -f $repo, $workflowPath)
-          }
-          $lines -join "`n" | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8
+        env:
+          WORKFLOW_NAME: ${{ github.workflow }}
+          REF_NAME: ${{ github.ref_name }}
+          SAMPLE_ID: ${{ inputs.sample_id }}
+          WORKFLOW_REF: ${{ github.workflow_ref }}
+          REPOSITORY: ${{ github.repository }}
+        run: pwsh -File tools/Append-ReRunHint.ps1
 
       - name: Print agent hand-off summary (auto-trim)
         if: always()

@@ -1,0 +1,31 @@
+{
+  "schema": "cli-compare-queue-summary/v1",
+  "generatedAt": "2025-10-12T00:00:00.000Z",
+  "casesPath": "tests/cli-compare/cases.json",
+  "resultsRoot": "tests/results/compare-cli",
+  "selection": {
+    "filter": "all",
+    "indexes": [1, 2, 3, 4]
+  },
+  "cases": [
+    {
+      "index": 1,
+      "id": "vi1-vi2-xml",
+      "name": "Baseline VI1 vs VI2 (XML)",
+      "tags": ["smoke", "xml"],
+      "base": "VI1.vi",
+      "head": "VI2.vi",
+      "expectedDiff": "unknown",
+      "expectedExitCodes": [],
+      "status": "passed",
+      "notes": "",
+      "nunit": "tests/results/compare-cli/results-nunit-1-vi1-vi2-xml.xml",
+      "exec": "tests/results/compare-cli/compare-exec-1-vi1-vi2-xml.json",
+      "exitCode": 0,
+      "diff": false,
+      "diffUnknown": false,
+      "validator": "passed"
+    }
+  ],
+  "success": true
+}

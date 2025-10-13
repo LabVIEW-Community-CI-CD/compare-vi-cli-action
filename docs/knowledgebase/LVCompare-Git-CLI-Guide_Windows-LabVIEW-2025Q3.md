@@ -31,8 +31,9 @@ Open **Command Prompt** and run (edit the two VI paths first):
 If LVCompare launches and shows the diff, you’re good.
 
 **What the flags do (noise filters):**
-- `-nobdcosm` — ignore cosmetic changes on the block diagram (position/size/appearance)
-- `-nofppos` — ignore object position/size changes on the front panel
+- `-nobdcosm` – ignore cosmetic changes on the block diagram (colors, fonts, labels)
+- `-nobdpos` – ignore block diagram object position/size changes (layout noise)
+- `-nofppos` – ignore object position/size changes on the front panel
 - `-noattr` — ignore VI attribute changes
 
 ---

@@ -1,5 +1,19 @@
 import { z } from 'zod';
 
+export const branchStateSchema = z
+  .object({
+    branch: z.string().optional(),
+    upstream: z.string().optional(),
+    summary: z.string(),
+    ahead: z.number().int().nonnegative().optional(),
+    behind: z.number().int().nonnegative().optional(),
+    hasUpstream: z.boolean().optional(),
+    isClean: z.boolean().optional(),
+    hasUntracked: z.boolean().optional(),
+    timestampUtc: z.string()
+  })
+  .strict();
+
 export const triggerSchema = z
   .object({
     kind: z.string().optional(),
@@ -19,7 +33,41 @@ export const runSchema = z
     branch: z.string().optional(),
     commit: z.string().optional(),
     repository: z.string().optional(),
-    trigger: triggerSchema.optional()
+    trigger: triggerSchema.optional(),
+    branchState: branchStateSchema.optional()
+  })
+  .strict();
+
+const toggleValueEntrySchema = z
+  .object({
+    value: z.union([z.string(), z.number(), z.boolean()]),
+    valueType: z.enum(['string', 'number', 'boolean']),
+    source: z.enum(['default', 'profile', 'variant', 'environment']),
+    key: z.string().optional(),
+    profile: z.string().optional(),
+    variant: z.string().optional(),
+    description: z.string().optional()
+  })
+  .strict();
+
+const toggleContextSchema = z
+  .object({
+    describe: z.string().optional(),
+    it: z.string().optional(),
+    tags: z.array(z.string()).optional()
+  })
+  .strict();
+
+const toggleValuesSchema = z
+  .object({
+    schema: z.literal('agent-toggle-values/v1'),
+    schemaVersion: z.string(),
+    generatedAtUtc: z.string(),
+    manifestDigest: z.string(),
+    manifestGeneratedAtUtc: z.string(),
+    profiles: z.array(z.string()),
+    context: toggleContextSchema.optional(),
+    values: z.record(toggleValueEntrySchema)
   })
   .strict();
 
@@ -31,6 +79,7 @@ export const environmentSchema = z
     node: z.string().optional(),
     pwsh: z.string().optional(),
     git: z.string().optional(),
+    toggles: toggleValuesSchema.optional(),
     custom: z.record(z.string()).optional()
   })
   .strict();
@@ -51,7 +100,13 @@ export const branchProtectionSchema = z
       ])
       .optional(),
     expected: z.array(z.string()).optional(),
-    actual: z.array(z.string()).optional(),
+    produced: z.array(z.string()).optional(),
+    actual: z
+      .object({
+        status: z.enum(['available', 'unavailable', 'error']),
+        contexts: z.array(z.string()).optional()
+      })
+      .optional(),
     mapping: z
       .object({
         path: z.string(),
@@ -65,6 +120,7 @@ export const branchProtectionSchema = z
 export const testCaseSchema = z
   .object({
     id: z.string(),
+    description: z.string().optional(),
     category: z.string().optional(),
     requirement: z.string().optional(),
     rationale: z.string().optional(),
@@ -128,6 +184,15 @@ export const sessionIndexSchema = z
   })
   .strict();
 
-export type SessionIndexV2 = z.infer<typeof sessionIndexSchema>;
+export type SessionIndexTrigger = z.infer<typeof triggerSchema>;
+export type SessionIndexRun = z.infer<typeof runSchema>;
+export type SessionIndexBranchState = z.infer<typeof branchStateSchema>;
+export type SessionIndexToggleValueEntry = z.infer<typeof toggleValueEntrySchema>;
+export type SessionIndexToggleContext = z.infer<typeof toggleContextSchema>;
+export type SessionIndexToggleValues = z.infer<typeof toggleValuesSchema>;
+export type SessionIndexEnvironment = z.infer<typeof environmentSchema>;
+export type SessionIndexBranchProtection = z.infer<typeof branchProtectionSchema>;
 export type SessionIndexTestCase = z.infer<typeof testCaseSchema>;
+export type SessionIndexTests = z.infer<typeof testsSchema>;
 export type SessionIndexArtifact = z.infer<typeof artifactSchema>;
+export type SessionIndexV2 = z.infer<typeof sessionIndexSchema>;

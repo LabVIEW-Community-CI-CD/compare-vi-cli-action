@@ -65,9 +65,9 @@ Describe 'On-FixtureValidationFail Orchestration' -Tag 'Unit' {
     # Report generation is optional if reporter missing; assert presence only if script exists
     $reporter = Join-Path $repoRoot 'scripts' 'Render-CompareReport.ps1'
     if (Test-Path $reporter) {
-      $reportPath = Join-Path $outDir 'compare-report.html'
+      $reportPath = Join-Path (Join-Path $outDir '_staging/compare') 'compare-report.html'
       $ok = (Test-Path $reportPath) -or (Test-Path $execJson)
-      if (-not $ok) { Write-Warning 'Reporter present, but no compare-report.html or compare-exec.json emitted (non-fatal in simulated mode).' }
+      if (-not $ok) { Write-Warning 'Reporter present, but no _staging/compare/compare-report.html or compare-exec.json emitted (non-fatal in simulated mode).' }
     }
   }
 

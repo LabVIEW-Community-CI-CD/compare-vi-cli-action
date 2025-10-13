@@ -4,3 +4,4 @@
 # src/Legacy/**/obj/**
 # tools/**/TestResults/**
 
+docs/schema/generated/*.schema.json

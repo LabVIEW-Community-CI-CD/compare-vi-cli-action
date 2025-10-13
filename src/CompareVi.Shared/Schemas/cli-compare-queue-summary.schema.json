@@ -1,0 +1,175 @@
+{
+  "$ref": "#/definitions/cli-compare-queue-summary",
+  "definitions": {
+    "cli-compare-queue-summary": {
+      "type": "object",
+      "properties": {
+        "schema": {
+          "type": "string",
+          "const": "cli-compare-queue-summary/v1"
+        },
+        "generatedAt": {
+          "type": "string",
+          "minLength": 1
+        },
+        "casesPath": {
+          "type": "string",
+          "minLength": 1
+        },
+        "resultsRoot": {
+          "type": "string",
+          "minLength": 1
+        },
+        "selection": {
+          "type": "object",
+          "properties": {
+            "filter": {
+              "anyOf": [
+                {
+                  "anyOf": [
+                    {
+                      "not": {}
+                    },
+                    {
+                      "type": "string"
+                    }
+                  ]
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "indexes": {
+              "type": "array",
+              "items": {
+                "type": "integer",
+                "minimum": 1
+              }
+            }
+          },
+          "required": [
+            "indexes"
+          ],
+          "additionalProperties": false
+        },
+        "cases": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "index": {
+                "type": "integer",
+                "minimum": 1
+              },
+              "id": {
+                "type": "string",
+                "minLength": 1
+              },
+              "name": {
+                "type": "string",
+                "minLength": 1
+              },
+              "tags": {
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "minLength": 1
+                }
+              },
+              "base": {
+                "type": "string",
+                "minLength": 1
+              },
+              "head": {
+                "type": "string",
+                "minLength": 1
+              },
+              "expectedDiff": {
+                "type": "string",
+                "enum": [
+                  "true",
+                  "false",
+                  "unknown"
+                ]
+              },
+              "expectedExitCodes": {
+                "type": "array",
+                "items": {
+                  "type": "integer"
+                }
+              },
+              "status": {
+                "type": "string",
+                "enum": [
+                  "pending",
+                  "passed",
+                  "failed",
+                  "error"
+                ]
+              },
+              "notes": {
+                "type": "string"
+              },
+              "nunit": {
+                "type": "string"
+              },
+              "exec": {
+                "type": "string"
+              },
+              "exitCode": {
+                "type": "number"
+              },
+              "diff": {
+                "type": "boolean"
+              },
+              "diffUnknown": {
+                "type": "boolean"
+              },
+              "validator": {
+                "type": "string",
+                "enum": [
+                  "skipped",
+                  "passed",
+                  "failed"
+                ]
+              },
+              "validatorMessage": {
+                "type": "string"
+              },
+              "report": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "index",
+              "id",
+              "name",
+              "base",
+              "head",
+              "expectedDiff",
+              "status"
+            ],
+            "additionalProperties": true
+          }
+        },
+        "success": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "schema",
+        "generatedAt",
+        "casesPath",
+        "resultsRoot",
+        "selection",
+        "cases",
+        "success"
+      ],
+      "additionalProperties": true
+    }
+  },
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "description": "Execution summary emitted after running CLI compare queue selections.",
+  "$id": "urn:compare-vi-cli-action:schema:cli-compare-queue-summary"
+}

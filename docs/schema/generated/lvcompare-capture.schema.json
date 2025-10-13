@@ -1,0 +1,81 @@
+{
+  "$ref": "#/definitions/lvcompare-capture",
+  "definitions": {
+    "lvcompare-capture": {
+      "type": "object",
+      "properties": {
+        "schema": {
+          "type": "string",
+          "const": "lvcompare-capture-v1"
+        },
+        "timestamp": {
+          "type": "string",
+          "minLength": 1
+        },
+        "base": {
+          "type": "string",
+          "minLength": 1
+        },
+        "head": {
+          "type": "string",
+          "minLength": 1
+        },
+        "cliPath": {
+          "type": "string",
+          "minLength": 1
+        },
+        "args": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "exitCode": {
+          "type": "number"
+        },
+        "seconds": {
+          "type": "number"
+        },
+        "stdoutLen": {
+          "type": "number"
+        },
+        "stderrLen": {
+          "type": "number"
+        },
+        "command": {
+          "type": "string",
+          "minLength": 1
+        },
+        "stdout": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "stderr": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "schema",
+        "timestamp",
+        "base",
+        "head",
+        "cliPath",
+        "args",
+        "exitCode",
+        "seconds",
+        "stdoutLen",
+        "stderrLen",
+        "command"
+      ],
+      "additionalProperties": true
+    }
+  },
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "description": "Result capture emitted by the LVCompare driver.",
+  "$id": "urn:compare-vi-cli-action:schema:lvcompare-capture"
+}

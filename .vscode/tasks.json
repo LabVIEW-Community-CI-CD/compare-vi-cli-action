@@ -2,6 +2,80 @@
   "version": "2.0.0",
   "tasks": [
     {
+      "label": "Integration (#88): Auto Push + Start + Watch",
+      "type": "shell",
+      "command": "pwsh",
+      "args": [
+        "-NoLogo",
+        "-NoProfile",
+        "-File",
+        "./tools/Start-IntegrationGated.ps1",
+        "-Issue",
+        "${input:integrationIssue}",
+        "-Strategy",
+        "${input:integrationStrategy}",
+        "-IncludeIntegration",
+        "${input:integrationInclude}",
+        "-Ref",
+        "${input:integrationRef}",
+        "-Watch",
+        "-AutoPush"
+      ],
+      "options": { "cwd": "${workspaceFolder}" },
+      "problemMatcher": [],
+      "presentation": { "reveal": "always", "panel": "dedicated", "clear": true }
+    },
+    {
+      "label": "CLI Compare: Scaffold + Select + Run (DX)",
+      "type": "shell",
+      "command": "pwsh",
+      "args": [
+        "-NoLogo",
+        "-NoProfile",
+        "-File",
+        "./tools/Run-CLICompareScaffoldAndSelect.ps1"
+      ],
+      "options": {
+        "cwd": "${workspaceFolder}",
+        "env": {
+          "DX_CONSOLE_LEVEL": "concise",
+          "DX_CONSOLE_PREFERRED": "1",
+          "LV_SUPPRESS_UI": "1",
+          "LV_NO_ACTIVATE": "1",
+          "LV_CURSOR_RESTORE": "1",
+          "LV_IDLE_WAIT_SECONDS": "2",
+          "LV_IDLE_MAX_WAIT_SECONDS": "5"
+        }
+      },
+      "group": "test",
+      "presentation": { "reveal": "always", "panel": "dedicated", "clear": true },
+      "problemMatcher": []
+    },
+    {
+      "label": "Integration (#88): Watch existing run (Docker)",
+      "type": "shell",
+      "command": "pwsh",
+      "args": [
+        "-NoLogo",
+        "-NoProfile",
+        "-File",
+        "./tools/Watch-InDocker.ps1",
+        "-RunId",
+        "${input:watchRunId}",
+        "-Repo",
+        "${input:watchRepo}"
+      ],
+      "options": {
+        "cwd": "${workspaceFolder}"
+      },
+      "problemMatcher": [],
+      "presentation": {
+        "reveal": "always",
+        "panel": "dedicated",
+        "clear": true
+      }
+    },
+    {
       "label": "Validate: Prechecks (container)",
       "type": "shell",
       "command": "pwsh",
@@ -221,6 +295,49 @@
         "-OutputRoot",
         "${input:teststandOutput}",
         "-RenderReport",
+        "-OpenReport"
+      ],
+      "options": {
+        "cwd": "${workspaceFolder}",
+        "env": {
+          "DX_CONSOLE_LEVEL": "concise",
+          "DX_CONSOLE_PREFERRED": "1",
+          "LV_SUPPRESS_UI": "1",
+          "LV_NO_ACTIVATE": "1",
+          "LV_CURSOR_RESTORE": "1",
+          "LV_IDLE_WAIT_SECONDS": "2",
+          "LV_IDLE_MAX_WAIT_SECONDS": "5"
+        }
+      },
+      "group": "test",
+      "problemMatcher": []
+    },
+    {
+      "label": "Run TestStand Session (DX, Pinned)",
+      "type": "shell",
+      "command": "pwsh",
+      "args": [
+        "-NoLogo",
+        "-NoProfile",
+        "-File",
+        "./tools/Run-DX.ps1",
+        "-Suite",
+        "TestStand",
+        "-ResultsPath",
+        "tests/results",
+        "-BaseVi",
+        "${workspaceFolder}/VI1.vi",
+        "-HeadVi",
+        "${workspaceFolder}/VI2.vi",
+        "-OutputRoot",
+        "tests/results/teststand-session",
+        "-LabVIEWExePath",
+        "${input:teststandLabVIEWExe}",
+        "-LVComparePath",
+        "${input:teststandLVCompareExe}",
+        "-RenderReport",
+        "-CloseLabVIEW",
+        "-CloseLVCompare",
         "-OpenReport"
       ],
       "options": {
@@ -1487,6 +1604,58 @@
   ],
   "inputs": [
     {
+      "id": "integrationIssue",
+      "type": "pickString",
+      "description": "Select a pre-approved issue to gate integration",
+      "options": [
+        { "label": "#88 – Orchestrated DX/Invoker stability", "value": "88" },
+        { "label": "#118 – Branch protection contract", "value": "118" }
+      ],
+      "default": "88"
+    },
+    {
+      "id": "integrationStrategy",
+      "type": "pickString",
+      "description": "Select orchestrated strategy",
+      "options": [
+        { "label": "single", "value": "single" },
+        { "label": "matrix", "value": "matrix" }
+      ],
+      "default": "single"
+    },
+    {
+      "id": "integrationInclude",
+      "type": "pickString",
+      "description": "Include integration tests?",
+      "options": [
+        { "label": "true", "value": "true" },
+        { "label": "false", "value": "false" }
+      ],
+      "default": "true"
+    },
+    {
+      "id": "integrationRef",
+      "type": "pickString",
+      "description": "Target ref for dispatch",
+      "options": [
+        { "label": "develop", "value": "develop" },
+        { "label": "current branch", "value": "__CURRENT_BRANCH__" }
+      ],
+      "default": "develop"
+    },
+    {
+      "id": "watchRunId",
+      "type": "promptString",
+      "description": "Orchestrated workflow run id (Actions URL databaseId)",
+      "default": ""
+    },
+    {
+      "id": "watchRepo",
+      "type": "promptString",
+      "description": "owner/repo for REST fallback (leave default for this repo)",
+      "default": "LabVIEW-Community-CI-CD/compare-vi-cli-action"
+    },
+    {
       "id": "teststandBase",
       "type": "promptString",
       "description": "Base VI path",
@@ -1503,6 +1672,19 @@
       "type": "promptString",
       "description": "Output root directory",
       "default": "tests/results/teststand-session"
+    }
+    ,
+    {
+      "id": "teststandLabVIEWExe",
+      "type": "promptString",
+      "description": "Full path to LabVIEW.exe (64-bit)",
+      "default": "C:/Program Files/National Instruments/LabVIEW 2025/LabVIEW.exe"
+    },
+    {
+      "id": "teststandLVCompareExe",
+      "type": "promptString",
+      "description": "Full path to LVCompare.exe (64-bit)",
+      "default": "C:/Program Files/National Instruments/Shared/LabVIEW Compare/LVCompare.exe"
     }
   ]
 }

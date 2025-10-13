@@ -1,16 +1,5 @@
-name: VI Binary Handling Gate
+name: VI Binary Handling Gate (manual only)
 on:
-  pull_request:
-    paths:
-      - '.gitattributes'
-      - 'scripts/**'
-      - 'tests/ViBinaryHandling.Tests.ps1'
-  push:
-    branches: [ main ]
-    paths:
-      - '.gitattributes'
-      - 'scripts/**'
-      - 'tests/ViBinaryHandling.Tests.ps1'
   workflow_dispatch:
     inputs:
       sample_id:

@@ -1,7 +1,10 @@
 {
   "config": {
     "default": true,
-    "MD013": false
+    "MD013": false,
+    "frontMatter": [
+      "---"
+    ]
   },
   "ignores": [
     "**/node_modules/**",
@@ -12,6 +15,7 @@
     "results/**",
     "tmp-agg/**",
     "issues-drafts/**",
-    "issue_88*.md"
+    "issue_88*.md",
+    "docs/adr/0004-session-index-v2-requirements.md"
   ]
 }

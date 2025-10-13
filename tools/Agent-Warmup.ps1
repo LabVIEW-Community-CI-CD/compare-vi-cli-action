@@ -86,6 +86,29 @@ function Resolve-RepoPath {
   }
 }
 
+function Get-ToggleContractSnapshot {
+  $modulePath = Join-Path $script:RepoRoot 'tools' 'AgentToggles.psm1'
+  if (-not (Test-Path -LiteralPath $modulePath -PathType Leaf)) {
+    return $null
+  }
+  try {
+    Import-Module $modulePath -Force -ErrorAction Stop
+    $contract = Get-AgentToggleContract
+    $valuesPayload = Get-AgentToggleValues
+    $profiles = if ($valuesPayload -and $valuesPayload.profiles) { @($valuesPayload.profiles) } else { @() }
+    return [pscustomobject]@{
+      schema = $contract.schema
+      schemaVersion = $contract.schemaVersion
+      generatedAtUtc = $contract.generatedAtUtc
+      manifestDigest = $contract.manifestDigest
+      profiles = $profiles
+    }
+  } catch {
+    Write-Info ("Toggle contract unavailable: {0}" -f $_.Exception.Message)
+    return $null
+  }
+}
+
 function Invoke-WatchSmoke {
   param(
     [string]$TestPath,
@@ -282,6 +305,15 @@ function Invoke-DashboardSnapshot {
 }
 
 Write-Info "Starting agent warm-up."
+
+$toggleSnapshot = Get-ToggleContractSnapshot
+if ($toggleSnapshot) {
+  $profilesCount = ($toggleSnapshot.profiles | Measure-Object).Count
+  $profilesLabel = if ($profilesCount -gt 0) { [string]::Join(', ', $toggleSnapshot.profiles) } else { '(none)' }
+  Write-Info ("Toggle contract: {0} (v{1}), digest={2}, generated={3}, profiles={4}" -f $toggleSnapshot.schema, $toggleSnapshot.schemaVersion, $toggleSnapshot.manifestDigest, $toggleSnapshot.generatedAtUtc, $profilesLabel)
+} else {
+  Write-Info "Toggle contract unavailable; run 'npm run build' if TypeScript assets are stale."
+}
 
 Set-EnvToggle -Name 'LV_SUPPRESS_UI' -Value '1'
 Set-EnvToggle -Name 'LV_NO_ACTIVATE' -Value '1'

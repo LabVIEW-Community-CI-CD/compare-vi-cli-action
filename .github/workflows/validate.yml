@@ -466,6 +466,11 @@ jobs:
         $bpScript = Join-Path (Get-Location) 'tools/Update-SessionIndexBranchProtection.ps1'
         $bpApiScript = Join-Path (Get-Location) 'tools/Get-BranchProtectionRequiredChecks.ps1'
         $branchName = '${{ github.base_ref || github.ref_name }}'
+        $mappedBranches = @('develop','main')
+        if ($mappedBranches -notcontains $branchName) {
+          Write-Host "Fallback branch protection lookup: '$branchName' not mapped, using 'develop'."
+          $branchName = 'develop'
+        }
         $repoParts = '${{ github.repository }}'.Split('/')
         $bpResult = & $bpApiScript -Owner $repoParts[0] -Repository $repoParts[1] -Branch $branchName -Token $env:GITHUB_TOKEN
         $updateArgs = @{
@@ -478,6 +483,37 @@ jobs:
         if ($bpResult.contexts) { $updateArgs['ActualContexts'] = @($bpResult.contexts) }
         if ($bpResult.notes) { $updateArgs['AdditionalNotes'] = @($bpResult.notes) }
         & $bpScript @updateArgs
+
+    - name: Write session index v2
+      shell: pwsh
+      run: |
+        $res = Join-Path $env:RUNNER_TEMP 'sessionindex'
+        pwsh -File tools/Write-SessionIndexV2.ps1 -ResultsDir $res -OutFileName 'session-index.v2.json' -EmitEnv
+        $branchSummary = Get-Content -Path $env:GITHUB_ENV | Where-Object { $_ -like 'SESSION_INDEX_BRANCH_SUMMARY=*' } | Select-Object -First 1
+        if ($branchSummary -and $env:GITHUB_STEP_SUMMARY) {
+          $branchValue = $branchSummary.Split('=')[1]
+          $digestLine = Get-Content -Path $env:GITHUB_ENV | Where-Object { $_ -like 'SESSION_INDEX_TOGGLE_MANIFEST_DIGEST=*' } | Select-Object -First 1
+          $profilesLine = Get-Content -Path $env:GITHUB_ENV | Where-Object { $_ -like 'SESSION_INDEX_TOGGLE_PROFILES=*' } | Select-Object -First 1
+          $summaryLines = @(
+            '### Session Index Snapshot',
+            "- Branch: $branchValue"
+          )
+          if ($digestLine) {
+            $summaryLines += "- Manifest digest: $($digestLine.Split('=')[1])"
+          }
+          if ($profilesLine) {
+            $summaryLines += "- Toggle profiles: $($profilesLine.Split('=')[1])"
+          }
+          $summaryLines -join "`n" | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8
+        }
+
+    - name: Upload session index v2 artifact
+      if: always()
+      uses: actions/upload-artifact@v4
+      with:
+        name: validate-session-index-v2
+        path: ${{ runner.temp }}/sessionindex/session-index.v2.json
+        if-no-files-found: warn
 
     - name: Validate session index schema (schema-lite)
       shell: pwsh

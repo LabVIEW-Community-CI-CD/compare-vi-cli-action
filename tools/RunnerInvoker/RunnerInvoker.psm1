@@ -132,7 +132,12 @@ function Handle-CompareVI([hashtable]$Args, [string]$ResultsDir) {
 
 function Handle-RenderReport([hashtable]$Args, [string]$ResultsDir) {
   $renderer = Join-Path (Join-Path $PSScriptRoot '..' '..') 'scripts/Render-CompareReport.ps1'
-  $outPath = if ($Args.outputPath) { [string]$Args.outputPath } else { (Join-Path $ResultsDir 'compare-report.html') }
+  if (-not $Args.outputPath) {
+    $Args.outputPath = Join-Path (Join-Path $ResultsDir '_staging/compare') 'compare-report.html'
+  }
+  $outPath = [string]$Args.outputPath
+  $outDir = Split-Path -Parent $outPath
+  if ($outDir -and -not (Test-Path -LiteralPath $outDir)) { New-Item -ItemType Directory -Path $outDir -Force | Out-Null }
   $cmd     = [string]$Args.command
   $code    = [int]$Args.exitCode
   $diff    = [bool]$Args.diff

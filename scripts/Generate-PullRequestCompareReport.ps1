@@ -73,7 +73,9 @@ if ($LoopMode) {
   $res = Invoke-CompareVI -Base $baseVi -Head $headVi -LvComparePath $canonical -FailOnDiff:$false
 }
 
-$htmlPath = Join-Path $OutputDirectory 'compare-report.html'
+$reportDir = Join-Path $OutputDirectory '_staging/compare'
+if (-not (Test-Path -LiteralPath $reportDir)) { New-Item -ItemType Directory -Path $reportDir -Force | Out-Null }
+$htmlPath = Join-Path $reportDir 'compare-report.html'
 $renderer = Join-Path $repoRoot 'scripts' 'Render-CompareReport.ps1'
 & $renderer -Command $res.Command -ExitCode $res.ExitCode -Diff ($res.Diff.ToString().ToLower()) -CliPath $res.CliPath -OutputPath $htmlPath -DurationSeconds $res.CompareDurationSeconds
 
@@ -124,7 +126,7 @@ if ($LoopMode -and $loop.Percentiles) {
   if ($loop.Histogram) { $md += "| Histogram Bins | $($loop.Histogram.Count) |" }
 }
 $md += ''
-$md += '_Attach `compare-report.html` as an artifact or render inline if your review tooling supports raw HTML._'
+$md += '_Attach `_staging/compare/compare-report.html` as an artifact or render inline if your review tooling supports raw HTML._'
 $md -join "`n" | Out-File -FilePath $mdPath -Encoding utf8
 
 Write-Host "Artifacts generated:" -ForegroundColor Green

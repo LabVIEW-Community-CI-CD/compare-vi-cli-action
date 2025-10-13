@@ -38,6 +38,7 @@ try {
   $root = (Resolve-Path -LiteralPath (Join-Path $PSScriptRoot '..')).Path
   $dispatcher = Join-Path $root 'Invoke-PesterTests.ps1'
   if (-not (Test-Path -LiteralPath $dispatcher -PathType Leaf)) { throw "Dispatcher not found: $dispatcher" }
+  $repoSlug = if ($env:GITHUB_REPOSITORY) { $env:GITHUB_REPOSITORY } else { "local/$((Split-Path -Leaf $root))" }
 
   # Choose a temporary root for the ephemeral tests folder
   if (-not $TestsRoot -or [string]::IsNullOrWhiteSpace($TestsRoot)) {
@@ -83,6 +84,18 @@ try {
     if (Test-Path -LiteralPath $ResultsPath) {
       Get-ChildItem -Force $ResultsPath -ErrorAction SilentlyContinue | Format-List | Out-String | Write-Host
     }
+  }
+
+  $reRunScript = Join-Path $root 'tools' 'Append-ReRunHint.ps1'
+  if (Test-Path -LiteralPath $reRunScript) {
+    $localSummary = Join-Path $tmp 're-run-hint-summary.md'
+    & $reRunScript -WorkflowName 'quick-dispatcher-smoke' `
+                   -RefName 'local-smoke' `
+                   -SampleId '' `
+                   -WorkflowRef "$repoSlug/.github/workflows/pester-reusable.yml@quick-dispatcher-smoke" `
+                   -Repository $repoSlug `
+                   -StepSummaryPath $localSummary
+    Write-Host ("[schema-test] Re-run hint summary written to {0}" -f $localSummary)
   }
 
   if (-not $Keep) { Remove-Item -Recurse -Force $tmp -ErrorAction SilentlyContinue }

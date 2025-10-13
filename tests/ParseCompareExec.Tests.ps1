@@ -17,24 +17,30 @@ Describe 'Parse-CompareExec.ps1' -Tag 'Unit' {
     $captureDir = Join-Path $results 'compare'
     New-Item -ItemType Directory -Path $captureDir | Out-Null
 
+    $stdoutContent = "diff detected`nline2"
     $capture = [ordered]@{
       schema    = 'lvcompare-capture-v1'
-      timestamp = '2025-01-02T03:04:05Z'
+      timestamp = '2025-01-02T03:04:05.0000000Z'
       base      = 'C:\base.vi'
       head      = 'C:\head.vi'
       cliPath   = 'C:\Program Files\NI\LVCompare.exe'
       args      = @('-foo','-bar')
+      lvPath    = 'C:\Program Files\NI\LabVIEW.exe'
+      flags     = @('-foo','-bar')
       exitCode  = 1
       seconds   = 0.42
-      stdoutLen = 18
+      stdoutLen = $stdoutContent.Length
       stderrLen = 0
       command   = 'LVCompare.exe "C:\base.vi" "C:\head.vi" -foo -bar'
+      stdout    = $stdoutContent
+      stderr    = $null
+      diffDetected = $true
     }
     $capturePath = Join-Path $captureDir 'lvcompare-capture.json'
     $capture | ConvertTo-Json -Depth 4 | Set-Content -LiteralPath $capturePath -Encoding utf8
 
     $stdoutPath = Join-Path $captureDir 'lvcompare-stdout.txt'
-    "diff detected`nline2" | Set-Content -LiteralPath $stdoutPath -Encoding utf8
+    $stdoutContent | Set-Content -LiteralPath $stdoutPath -Encoding utf8
     $stderrPath = Join-Path $captureDir 'lvcompare-stderr.txt'
     Set-Content -LiteralPath $stderrPath -Value '' -Encoding utf8
     $reportPath = Join-Path $captureDir 'compare-report.html'

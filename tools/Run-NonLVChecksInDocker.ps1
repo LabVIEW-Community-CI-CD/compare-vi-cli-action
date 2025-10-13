@@ -27,7 +27,11 @@ param(
   [switch]$SkipMarkdown,
   [switch]$SkipDocs,
   [switch]$SkipWorkflow,
-  [switch]$FailOnWorkflowDrift
+  [switch]$FailOnWorkflowDrift,
+  [switch]$SkipWatch,
+  [string]$WatchRunId,
+  [string]$WatchRepo,
+  [int]$WatchPollSeconds = 15
 )
 
 Set-StrictMode -Version Latest
@@ -57,13 +61,21 @@ function Invoke-Container {
     [string]$Image,
     [string[]]$Arguments,
     [int[]]$AcceptExitCodes = @(0),
-    [string]$Label
+    [string]$Label,
+    [string[]]$EnvNames
   )
   $labelText = if ($Label) { $Label } else { $Image }
   Write-Host ("[docker] {0}" -f $labelText) -ForegroundColor Cyan
-  $cmd = @('docker','run') + $commonArgs + @($Image) + $Arguments
+  $envArgs = @()
+  if ($EnvNames) {
+    foreach ($n in $EnvNames) {
+      $val = [Environment]::GetEnvironmentVariable($n)
+      if ($val -and $val -ne '') { $envArgs += @('-e', $n) }
+    }
+  }
+  $cmd = @('docker','run') + $commonArgs + $envArgs + @($Image) + $Arguments
   Write-Host ("`t" + ($cmd -join ' ')) -ForegroundColor DarkGray
-  & docker run @commonArgs $Image @Arguments
+  & docker run @commonArgs @envArgs $Image @Arguments
   $code = $LASTEXITCODE
   if ($AcceptExitCodes -notcontains $code) {
     throw "Container '$labelText' exited with code $code."
@@ -112,6 +124,20 @@ python tools/workflows/update_workflows.py --check .github/workflows/pester-self
     Write-Host 'Workflow drift detected (enforced).' -ForegroundColor Red
     exit 3
   }
+}
+
+if (-not $SkipWatch -and $WatchRunId) {
+  $envNames = @()
+  if ($env:GH_TOKEN) { $envNames += 'GH_TOKEN' }
+  elseif ($env:GITHUB_TOKEN) { $envNames += 'GITHUB_TOKEN' }
+  else { Write-Warning 'No GH_TOKEN/GITHUB_TOKEN set; watcher may not be able to access job logs/artifacts.' }
+  $watchArgs = @('pwsh','-NoLogo','-NoProfile','-File','tools/Watch-OrchestratedRun.ps1','-RunId',"$WatchRunId")
+  if ($WatchRepo) { $watchArgs += @('-Repo',"$WatchRepo") }
+  if ($WatchPollSeconds -ne 15) { $watchArgs += @('-PollSeconds',"$WatchPollSeconds") }
+  Invoke-Container -Image 'mcr.microsoft.com/powershell:7.4-debian-12' `
+    -Arguments $watchArgs `
+    -EnvNames $envNames `
+    -Label 'watch-orchestrated'
 }
 
 Write-Host 'Non-LabVIEW container checks completed.' -ForegroundColor Green

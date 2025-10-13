@@ -26,6 +26,17 @@ jobs:
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v5
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - name: Install Node dependencies
+        run: npm ci
+      - name: Generate schemas
+        run: npm run schemas:generate
+      - name: Ensure schema artifacts are in sync
+        run: |
+          git diff --name-only --exit-code docs/schema/generated src/CompareVi.Shared/Schemas || (git diff docs/schema/generated src/CompareVi.Shared/Schemas && exit 1)
       - name: Setup .NET
         uses: actions/setup-dotnet@v5
         with:
@@ -34,6 +45,8 @@ jobs:
         run: dotnet restore src/CompareVi.Shared/CompareVi.Shared.csproj
       - name: Build
         run: dotnet build -c Release src/CompareVi.Shared/CompareVi.Shared.csproj --no-restore
+      - name: Test
+        run: dotnet test -c Release src/CompareVi.Shared.Tests/CompareVi.Shared.Tests.csproj --no-build
       - name: Pack
         run: dotnet pack -c Release src/CompareVi.Shared/CompareVi.Shared.csproj -o artifacts --no-build
       - name: Upload package
@@ -42,4 +55,3 @@ jobs:
           name: comparevi-shared-nuget
           path: artifacts/*.nupkg
           if-no-files-found: error
-

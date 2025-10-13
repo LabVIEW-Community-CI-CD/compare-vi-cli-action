@@ -1,4 +1,6 @@
 import { z } from 'zod';
+import { sessionIndexSchema } from '../../src/session-index/schema.js';
+import { cliCompareQueueSchema, cliCompareQueueSummarySchema } from '../../src/schema/cli-compare.js';
 
 const isoString = z.string().min(1);
 const optionalIsoString = isoString.optional();
@@ -348,5 +350,23 @@ export const schemas = [
     fileName: 'pester-invoker-current-run.schema.json',
     description: 'Metadata describing the active RunnerInvoker execution context.',
     schema: invokerCurrentRunSchema,
+  },
+  {
+    id: 'cli-compare-queue',
+    fileName: 'cli-compare-queue.schema.json',
+    description: 'CLI compare queue describing cases to execute in local and automated runs.',
+    schema: cliCompareQueueSchema,
+  },
+  {
+    id: 'cli-compare-queue-summary',
+    fileName: 'cli-compare-queue-summary.schema.json',
+    description: 'Execution summary emitted after running CLI compare queue selections.',
+    schema: cliCompareQueueSummarySchema,
+  },
+  {
+    id: 'session-index-v2',
+    fileName: 'session-index-v2.schema.json',
+    description: 'Session index v2 document emitted by the session-index CLI.',
+    schema: sessionIndexSchema,
   },
 ];

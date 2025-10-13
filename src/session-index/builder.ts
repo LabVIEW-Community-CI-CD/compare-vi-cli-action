@@ -1,9 +1,216 @@
 import { sessionIndexSchema } from './schema.js';
 import type {
   SessionIndexArtifact,
+  SessionIndexBranchState,
+  SessionIndexBranchProtection,
+  SessionIndexEnvironment,
+  SessionIndexRun,
   SessionIndexTestCase,
+  SessionIndexTests,
+  SessionIndexToggleValues,
   SessionIndexV2
 } from './schema.js';
+
+function sortUnique(values: string[] | undefined): string[] | undefined {
+  if (!values || values.length === 0) {
+    return undefined;
+  }
+  const unique = Array.from(new Set(values.filter((entry) => entry && entry.length > 0)));
+  unique.sort((a, b) => a.localeCompare(b));
+  return unique;
+}
+
+function normalizeToggleValues(
+  toggles: SessionIndexToggleValues
+): SessionIndexToggleValues {
+  const profiles = [...toggles.profiles].sort((a, b) => a.localeCompare(b));
+  const context = toggles.context
+    ? {
+        ...toggles.context,
+        tags: sortUnique(toggles.context.tags)
+      }
+    : undefined;
+
+  const entries = Object.keys(toggles.values)
+    .sort((a, b) => a.localeCompare(b))
+    .map<[string, SessionIndexToggleValues['values'][string]]>((key) => [
+      key,
+      { ...toggles.values[key] }
+    ]);
+
+  return {
+    ...toggles,
+    profiles,
+    context,
+    values: Object.fromEntries(entries)
+  };
+}
+
+function normalizeBranchProtection(
+  branchProtection: SessionIndexBranchProtection
+): SessionIndexBranchProtection {
+  const actual = branchProtection.actual
+    ? {
+        ...branchProtection.actual,
+        contexts: sortUnique(branchProtection.actual.contexts)
+      }
+    : undefined;
+  return {
+    ...branchProtection,
+    expected: sortUnique(branchProtection.expected),
+    produced: sortUnique(branchProtection.produced),
+    notes: sortUnique(branchProtection.notes),
+    actual
+  };
+}
+
+function normalizeArtifacts(
+  artifacts: SessionIndexArtifact[] | undefined
+): SessionIndexArtifact[] | undefined {
+  if (!artifacts || artifacts.length === 0) {
+    return undefined;
+  }
+  const next = artifacts.map((artifact) => ({ ...artifact }));
+  next.sort((a, b) => {
+    const nameCompare = a.name.localeCompare(b.name);
+    if (nameCompare !== 0) {
+      return nameCompare;
+    }
+    return (a.path ?? '').localeCompare(b.path ?? '');
+  });
+  return next;
+}
+
+function normalizeTestCases(
+  cases: SessionIndexTestCase[] | undefined
+): SessionIndexTestCase[] | undefined {
+  if (!cases || cases.length === 0) {
+    return undefined;
+  }
+  const cloned = cases.map((testCase) => {
+    const normalized: SessionIndexTestCase = { ...testCase };
+    if (normalized.id !== undefined) {
+      normalized.id = String(normalized.id);
+    }
+    const requirementValue = normalized.requirement;
+    if (requirementValue === undefined || requirementValue === null || String(requirementValue).trim().length === 0) {
+      if (normalized.id && normalized.id.trim().length > 0) {
+        normalized.requirement = normalized.id;
+      }
+    } else {
+      normalized.requirement = String(requirementValue);
+    }
+    return normalized;
+  });
+  cloned.sort((a, b) => a.id.localeCompare(b.id));
+  return cloned;
+}
+
+function normalizeTests(tests: SessionIndexTests | undefined): SessionIndexTests | undefined {
+  if (!tests) {
+    return undefined;
+  }
+  return {
+    ...tests,
+    cases: normalizeTestCases(tests.cases)
+  };
+}
+
+function normalizeNotes(notes: string[] | undefined): string[] | undefined {
+  return sortUnique(notes);
+}
+
+function normalizeBranchState(
+  state: SessionIndexBranchState | undefined
+): SessionIndexBranchState | undefined {
+  if (!state) {
+    return undefined;
+  }
+
+  const trim = (value: string | undefined): string | undefined => {
+    if (typeof value !== 'string') {
+      return undefined;
+    }
+    const trimmed = value.trim();
+    return trimmed.length > 0 ? trimmed : undefined;
+  };
+
+  const summary = trim(state.summary);
+  const timestamp = trim(state.timestampUtc);
+  if (!summary || !timestamp) {
+    return undefined;
+  }
+
+  const normalizeNumber = (value: number | undefined): number | undefined =>
+    typeof value === 'number' && Number.isFinite(value) ? value : undefined;
+
+  const normalizeBoolean = (value: boolean | undefined): boolean | undefined =>
+    typeof value === 'boolean' ? value : undefined;
+
+  const normalized: SessionIndexBranchState = {
+    summary,
+    timestampUtc: timestamp
+  };
+
+  const optionalBranch = trim(state.branch);
+  if (optionalBranch) {
+    normalized.branch = optionalBranch;
+  }
+
+  const optionalUpstream = trim(state.upstream);
+  if (optionalUpstream) {
+    normalized.upstream = optionalUpstream;
+  }
+
+  const ahead = normalizeNumber(state.ahead);
+  if (ahead !== undefined) {
+    normalized.ahead = ahead;
+  }
+
+  const behind = normalizeNumber(state.behind);
+  if (behind !== undefined) {
+    normalized.behind = behind;
+  }
+
+  const hasUpstream = normalizeBoolean(state.hasUpstream);
+  if (hasUpstream !== undefined) {
+    normalized.hasUpstream = hasUpstream;
+  }
+
+  const isClean = normalizeBoolean(state.isClean);
+  if (isClean !== undefined) {
+    normalized.isClean = isClean;
+  }
+
+  const hasUntracked = normalizeBoolean(state.hasUntracked);
+  if (hasUntracked !== undefined) {
+    normalized.hasUntracked = hasUntracked;
+  }
+
+  return normalized;
+}
+
+function normalizeStringRecord(
+  record: Record<string, string> | undefined
+): Record<string, string> | undefined {
+  if (!record) {
+    return undefined;
+  }
+  const entries = Object.entries(record)
+    .filter(([_, value]) => typeof value === 'string')
+    .sort(([a], [b]) => a.localeCompare(b));
+  return Object.fromEntries(entries) as Record<string, string>;
+}
+
+function normalizeExtra(
+  extra: Record<string, unknown> | undefined
+): Record<string, unknown> | undefined {
+  if (!extra) {
+    return undefined;
+  }
+  const entries = Object.entries(extra).sort(([a], [b]) => a.localeCompare(b));
+  return Object.fromEntries(entries);
+}
 
 export class SessionIndexBuilder {
   private readonly index: SessionIndexV2;
@@ -34,25 +241,58 @@ export class SessionIndexBuilder {
     return this;
   }
 
-  public setRun(run: SessionIndexV2['run']): this {
-    this.index.run = { ...this.index.run, ...run };
+  public setRun(run: SessionIndexRun): this {
+    const next: SessionIndexRun = { ...this.index.run, ...run };
+    next.branchState = normalizeBranchState(run.branchState ?? this.index.run.branchState);
+    this.index.run = next;
     return this;
   }
 
-  public setEnvironment(env: SessionIndexV2['environment']): this {
-    this.index.environment = { ...(this.index.environment ?? {}), ...env };
+  public setBranchState(state: SessionIndexBranchState | undefined): this {
+    this.index.run = {
+      ...this.index.run,
+      branchState: normalizeBranchState(state)
+    };
     return this;
   }
 
-  public setBranchProtection(bp: SessionIndexV2['branchProtection'] | undefined): this {
+  public setEnvironment(env: SessionIndexEnvironment | undefined): this {
+    const merged: SessionIndexEnvironment = {
+      ...(this.index.environment ?? {}),
+      ...(env ?? {})
+    };
+    if (merged.toggles) {
+      merged.toggles = normalizeToggleValues(merged.toggles);
+    }
+    merged.custom = normalizeStringRecord(merged.custom);
+    this.index.environment = merged;
+    return this;
+  }
+
+  public setEnvironmentToggles(
+    toggles: SessionIndexToggleValues
+  ): this {
+    const environment: SessionIndexEnvironment = this.index.environment ?? {};
+    environment.toggles = normalizeToggleValues(toggles);
+    environment.custom = normalizeStringRecord(environment.custom);
+    this.index.environment = environment;
+    return this;
+  }
+
+  public setBranchProtection(
+    bp: SessionIndexBranchProtection | undefined
+  ): this {
     if (!bp) {
       this.index.branchProtection = undefined;
       return this;
     }
     if (this.index.branchProtection) {
-      this.index.branchProtection = { ...this.index.branchProtection, ...bp };
+      this.index.branchProtection = normalizeBranchProtection({
+        ...this.index.branchProtection,
+        ...bp
+      });
     } else {
-      this.index.branchProtection = { ...bp };
+      this.index.branchProtection = normalizeBranchProtection({ ...bp });
     }
     return this;
   }
@@ -65,30 +305,31 @@ export class SessionIndexBuilder {
       };
     }
     const existing = this.index.branchProtection.notes ?? [];
-    this.index.branchProtection.notes = [
+    this.index.branchProtection.notes = normalizeNotes([
       ...existing,
       ...notes.filter(Boolean)
-    ];
+    ]);
     return this;
   }
 
-  public setTestsSummary(summary: NonNullable<SessionIndexV2['tests']>['summary']): this {
-    const tests = this.index.tests ?? {};
-    this.index.tests = { ...tests, summary };
+  public setTestsSummary(summary: NonNullable<SessionIndexTests>['summary']): this {
+    const tests: SessionIndexTests = { ...(this.index.tests ?? {}) };
+    tests.summary = summary;
+    this.index.tests = normalizeTests(tests);
     return this;
   }
 
   public addTestCase(testCase: SessionIndexTestCase): this {
-    const tests = this.index.tests ?? {};
-    const cases = tests.cases ?? [];
-    tests.cases = [...cases, testCase];
-    this.index.tests = tests;
+    const tests: SessionIndexTests = { ...(this.index.tests ?? {}) };
+    const existingCases = tests.cases ?? [];
+    tests.cases = normalizeTestCases([...existingCases, testCase]);
+    this.index.tests = normalizeTests(tests);
     return this;
   }
 
   public addArtifact(artifact: SessionIndexArtifact): this {
     const artifacts = this.index.artifacts ?? [];
-    this.index.artifacts = [...artifacts, artifact];
+    this.index.artifacts = normalizeArtifacts([...artifacts, artifact]);
     return this;
   }
 
@@ -97,21 +338,52 @@ export class SessionIndexBuilder {
       return this;
     }
     const notes = this.index.notes ?? [];
-    this.index.notes = [...notes, note];
+    this.index.notes = normalizeNotes([...notes, note]);
     return this;
   }
 
   public setExtra(key: string, value: unknown): this {
-    this.index.extra = { ...(this.index.extra ?? {}), [key]: value };
+    this.index.extra = normalizeExtra({ ...(this.index.extra ?? {}), [key]: value });
     return this;
   }
 
   public toJSON(): SessionIndexV2 {
-    return { ...this.index };
+    return {
+      ...this.index,
+      run: {
+        ...this.index.run,
+        branchState: normalizeBranchState(this.index.run.branchState)
+      },
+      artifacts: normalizeArtifacts(this.index.artifacts),
+      branchProtection: this.index.branchProtection
+        ? normalizeBranchProtection(this.index.branchProtection)
+        : undefined,
+      environment: this.index.environment
+        ? {
+            ...this.index.environment,
+            toggles: this.index.environment.toggles
+              ? normalizeToggleValues(this.index.environment.toggles)
+              : undefined,
+            custom: normalizeStringRecord(this.index.environment.custom)
+          }
+        : undefined,
+      notes: normalizeNotes(this.index.notes),
+      tests: normalizeTests(this.index.tests),
+      extra: normalizeExtra(this.index.extra)
+    };
   }
 
   public build(): SessionIndexV2 {
-    return sessionIndexSchema.parse(this.index);
+    const normalized = this.toJSON();
+    Object.assign(this.index, normalized);
+    this.index.run = normalized.run;
+    this.index.artifacts = normalized.artifacts;
+    this.index.branchProtection = normalized.branchProtection;
+    this.index.environment = normalized.environment;
+    this.index.notes = normalized.notes;
+    this.index.tests = normalized.tests;
+    this.index.extra = normalized.extra;
+    return sessionIndexSchema.parse(normalized);
   }
 }
 

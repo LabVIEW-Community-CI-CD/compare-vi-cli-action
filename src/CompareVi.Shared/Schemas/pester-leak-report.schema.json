@@ -1,0 +1,91 @@
+{
+  "$ref": "#/definitions/pester-leak-report",
+  "definitions": {
+    "pester-leak-report": {
+      "type": "object",
+      "properties": {
+        "schema": {
+          "type": "string",
+          "const": "pester-leak-report/v1"
+        },
+        "schemaVersion": {
+          "type": "string",
+          "minLength": 1
+        },
+        "generatedAt": {
+          "type": "string",
+          "minLength": 1
+        },
+        "targets": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "graceSeconds": {
+          "type": "number"
+        },
+        "waitedMs": {
+          "type": "number"
+        },
+        "procsBefore": {
+          "type": "array"
+        },
+        "procsAfter": {
+          "type": "array"
+        },
+        "runningJobs": {
+          "type": "array"
+        },
+        "allJobs": {
+          "type": "array"
+        },
+        "jobsBefore": {
+          "type": "array"
+        },
+        "leakDetected": {
+          "type": "boolean"
+        },
+        "actions": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "killedProcs": {
+          "type": "array"
+        },
+        "stoppedJobs": {
+          "type": "array"
+        },
+        "notes": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      },
+      "required": [
+        "schema",
+        "schemaVersion",
+        "generatedAt",
+        "targets",
+        "graceSeconds",
+        "waitedMs",
+        "procsBefore",
+        "procsAfter",
+        "runningJobs",
+        "allJobs",
+        "jobsBefore",
+        "leakDetected",
+        "actions",
+        "killedProcs",
+        "stoppedJobs"
+      ],
+      "additionalProperties": false
+    }
+  },
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "description": "Leak detection report emitted after Invoke-PesterTests.ps1 completes.",
+  "$id": "urn:compare-vi-cli-action:schema:pester-leak-report"
+}

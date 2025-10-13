@@ -2,6 +2,7 @@
   // Markdownlint configuration for this repository.
   // Keep the default rule set, then tune specific rules for DX backlog work.
   "default": true,
+  "frontMatter": ["---"],
   "ignores": [
     "cats/**",
     "docs/knowledgebase/**",

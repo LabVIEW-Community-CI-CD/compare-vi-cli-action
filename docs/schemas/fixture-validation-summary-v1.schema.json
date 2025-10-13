@@ -1,0 +1,106 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://labview-community-ci-cd.github.io/compare-vi-cli-action/schemas/fixture-validation-summary-v1.schema.json",
+  "title": "Fixture Validation Summary v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema",
+    "generatedAt",
+    "ok",
+    "exitCode",
+    "summary",
+    "issues",
+    "fixtures",
+    "checked",
+    "fixtureCount",
+    "manifestPresent",
+    "summaryCounts",
+    "autoManifest"
+  ],
+  "properties": {
+    "schema": { "const": "fixture-validation-summary-v1" },
+    "generatedAt": { "type": "string", "format": "date-time" },
+    "ok": { "type": "boolean" },
+    "exitCode": { "type": "integer", "minimum": 0 },
+    "summary": { "type": "string" },
+    "issues": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["type"],
+        "additionalProperties": true,
+        "properties": {
+          "type": {
+            "type": "string",
+            "enum": [
+              "missing",
+              "untracked",
+              "tooSmall",
+              "sizeMismatch",
+              "hashMismatch",
+              "manifestError",
+              "duplicate",
+              "pairMismatch",
+              "expectedOutcomeMismatch",
+              "schema"
+            ]
+          },
+          "fixture": { "type": "string", "pattern": "^VI[0-9]+\\.vi$" },
+          "path": { "type": "string" },
+          "length": { "type": "integer", "minimum": 0 },
+          "min": { "type": "integer", "minimum": 0 },
+          "detail": { "type": "string" }
+        }
+      }
+    },
+    "fixtures": {
+      "type": "array",
+      "items": { "type": "string", "pattern": "^VI[0-9]+\\.vi$" }
+    },
+    "checked": {
+      "type": "array",
+      "items": { "type": "string", "pattern": "^VI[0-9]+\\.vi$" }
+    },
+    "fixtureCount": { "type": "integer", "minimum": 0 },
+    "manifestPresent": { "type": "boolean" },
+    "summaryCounts": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "missing",
+        "untracked",
+        "tooSmall",
+        "sizeMismatch",
+        "hashMismatch",
+        "manifestError",
+        "duplicate",
+        "schema",
+        "pairMismatch",
+        "expectedOutcomeMismatch"
+      ],
+      "properties": {
+        "missing": { "type": "integer", "minimum": 0 },
+        "untracked": { "type": "integer", "minimum": 0 },
+        "tooSmall": { "type": "integer", "minimum": 0 },
+        "sizeMismatch": { "type": "integer", "minimum": 0 },
+        "hashMismatch": { "type": "integer", "minimum": 0 },
+        "manifestError": { "type": "integer", "minimum": 0 },
+        "duplicate": { "type": "integer", "minimum": 0 },
+        "schema": { "type": "integer", "minimum": 0 },
+        "pairMismatch": { "type": "integer", "minimum": 0 },
+        "expectedOutcomeMismatch": { "type": "integer", "minimum": 0 }
+      }
+    },
+    "autoManifest": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["written", "reason", "path"],
+      "properties": {
+        "written": { "type": "boolean" },
+        "reason": { "type": "string" },
+        "path": { "type": "string" }
+      }
+    }
+  }
+}

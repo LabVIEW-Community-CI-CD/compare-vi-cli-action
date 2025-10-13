@@ -48,7 +48,7 @@ if (-not (Test-Path -LiteralPath $validationPath)) {
 }
 
 try {
-  & pwsh -NoLogo -NoProfile -File ./tools/Invoke-JsonSchemaLite.ps1 -JsonPath $validationPath -SchemaPath 'docs/schemas/fixture-manifest-v1.schema.json'
+  & pwsh -NoLogo -NoProfile -File ./tools/Invoke-JsonSchemaLite.ps1 -JsonPath $validationPath -SchemaPath 'docs/schemas/fixture-validation-summary-v1.schema.json'
 } catch {
   Write-Host '::notice::Snapshot schema-lite failed (non-blocking).'
 }
