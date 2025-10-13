@@ -62,9 +62,24 @@ jobs:
           Invoke-CompareVI -Base $env:LV_BASE_VI -Head $env:LV_HEAD_VI -FailOnDiff:$false -CompareExecJsonPath 'tests/results/compare-cli/compare-exec.json'
 
       - name: Parse compare outcome
-        if: always()
+        if: ${{ always() && vars.NET_CLI != '1' }}
         shell: pwsh
         run: pwsh -File tools/Parse-CompareExec.ps1 -SearchDir 'tests/results/compare-cli' -OutJson 'tests/results/compare-cli/compare-outcome.json'
+
+      - name: Setup .NET 8 (optional)
+        if: ${{ vars.NET_CLI == '1' }}
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+
+      - name: Build .NET CLI (optional)
+        if: ${{ vars.NET_CLI == '1' }}
+        run: dotnet build src/CompareVi.Tools.Cli -c Release -nologo
+
+      - name: Parse compare outcome (.NET CLI)
+        if: ${{ vars.NET_CLI == '1' }}
+        shell: pwsh
+        run: dotnet run --project src/CompareVi.Tools.Cli -- compare parse --search tests/results/compare-cli --out tests/results/compare-cli/compare-outcome.json
 
       - name: Publish CLI compare NUnit results
         if: always()

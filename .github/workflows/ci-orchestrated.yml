@@ -393,3 +393,48 @@ jobs:
           path: |
             tests/results/_trace/trace-matrix.json
             tests/results/_trace/trace-matrix.html
+
+  teststand-harness:
+    if: ${{ github.ref_name == 'develop' && vars.TESTSTAND_HARNESS == '1' }}
+    runs-on: [self-hosted, Windows, X64]
+    needs: [normalize, preflight]
+    env:
+      LV_SUPPRESS_UI: 1
+      LV_NO_ACTIVATE: 1
+      LV_CURSOR_RESTORE: 1
+      LV_IDLE_WAIT_SECONDS: 2
+      LV_IDLE_MAX_WAIT_SECONDS: 5
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: LVCompare preflight
+        shell: pwsh
+        run: pwsh -File tools/Validate-LVComparePreflight.ps1 -AppendStepSummary -MinVersion '2025.0.0.0'
+
+      - name: Run TestStand compare harness (VI1 vs VI2)
+        shell: pwsh
+        run: pwsh -File tools/TestStand-CompareHarness.ps1 -BaseVi (Resolve-Path './VI1.vi') -HeadVi (Resolve-Path './VI2.vi') -OutputRoot 'tests/results/teststand-session' -RenderReport -CloseLabVIEW -CloseLVCompare
+
+      - name: Setup .NET 8 (optional)
+        if: ${{ vars.NET_CLI == '1' }}
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+
+      - name: Parse harness compare outcome (.NET CLI)
+        if: ${{ vars.NET_CLI == '1' }}
+        shell: pwsh
+        run: dotnet run --project src/CompareVi.Tools.Cli -- compare parse --search tests/results/teststand-session --out tests/results/teststand-session/compare-outcome.json
+
+      - name: Parse harness compare outcome (PowerShell fallback)
+        if: ${{ vars.NET_CLI != '1' }}
+        shell: pwsh
+        run: pwsh -File tools/Parse-CompareExec.ps1 -SearchDir 'tests/results/teststand-session' -OutJson 'tests/results/teststand-session/compare-outcome.json'
+
+      - name: Upload TestStand harness artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: teststand-harness-artifacts
+          path: |
+            tests/results/teststand-session/**

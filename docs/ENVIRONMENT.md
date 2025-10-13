@@ -22,6 +22,8 @@ All values are strings; use `1` / `0` for boolean-style flags.
 | `LVCOMPARE_PATH` | Optional override for LVCompare.exe (must resolve to canonical path). Note: the canonical LVCompare path can operate as a launcher; prefer setting `LABVIEW_EXE` to the 64-bit LabVIEW when you must ensure x64 execution. |
 | `AGENT_PRIORITY_OVERRIDE` | Optional override for the standing-priority issue when offline. Accepts `123`, `123|Title|Url`, or a JSON object `{ "number": 123, "title": "..." }`. |
 | `WORKING_DIRECTORY` | Process CWD when invoking LVCompare |
+| `NET_CLI` (repo var) | When `1`, workflows build and use the .NET CLI (`CompareVi.Tools.Cli`) to parse compare outcomes and emit artifacts. |
+| `TESTSTAND_HARNESS` (repo var) | When `1` on `develop`, orchestrated workflow runs a TestStand compare harness job on Windows (VI1 vs VI2) and publishes artifacts. |
 
 ## Dispatcher guards (leak detection / cleanup)
 
