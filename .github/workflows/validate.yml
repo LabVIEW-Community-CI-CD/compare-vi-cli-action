@@ -542,7 +542,7 @@ jobs:
 
       - name: LVCompare preflight
         shell: pwsh
-        run: pwsh -File tools/Validate-LVComparePreflight.ps1 -AppendStepSummary -MinVersion '2025.0.0.0' -RequireX64:$false
+        run: pwsh -File tools/Validate-LVComparePreflight.ps1 -AppendStepSummary -RequireX64:$false
 
       - name: Run CLI compare smoke
         shell: pwsh
