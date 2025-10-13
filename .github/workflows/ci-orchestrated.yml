@@ -386,7 +386,7 @@ jobs:
         run: |
           pwsh -File tools/Traceability-Matrix.ps1 -TestsPath 'tests' -ResultsRoot 'tests/results' -RenderHtml
       - name: Upload traceability artifacts
-        if: always() && ${{ vars.TRACE_MATRIX != '0' }}
+        if: ${{ vars.TRACE_MATRIX != '0' }}
         uses: actions/upload-artifact@v4
         with:
           name: orchestrated-traceability
