@@ -380,3 +380,16 @@ jobs:
             '- Integration: ${{ needs.pester-integration.result || 'skipped' }}'
           )
           $lines -join "`n" | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8
+      - name: Generate traceability matrix (JSON + optional HTML)
+        if: ${{ vars.TRACE_MATRIX != '0' }}
+        shell: pwsh
+        run: |
+          pwsh -File tools/Traceability-Matrix.ps1 -TestsPath 'tests' -ResultsRoot 'tests/results' -RenderHtml
+      - name: Upload traceability artifacts
+        if: always() && ${{ vars.TRACE_MATRIX != '0' }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: orchestrated-traceability
+          path: |
+            tests/results/_trace/trace-matrix.json
+            tests/results/_trace/trace-matrix.html
