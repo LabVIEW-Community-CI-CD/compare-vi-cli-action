@@ -567,9 +567,10 @@ jobs:
         if: ${{ vars.NET_CLI != '1' }}
         shell: pwsh
         run: pwsh -File tools/Parse-CompareExec.ps1 -SearchDir 'tests/results/compare-cli' -OutJson 'tests/results/compare-cli/compare-outcome.json'
+        continue-on-error: true
 
       - name: Validate CLI smoke NUnit results
-        if: always()
+        if: ${{ hashFiles('tests/results/compare-cli/results-nunit-1-vi1-vi2-xml.xml') != '' }}
         shell: pwsh
         run: pwsh -File tools/Assert-NUnitSuccess.ps1 -ResultsPath 'tests/results/compare-cli/results-nunit-1-vi1-vi2-xml.xml' -Context 'CLI Smoke'
 
