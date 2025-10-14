@@ -213,7 +213,7 @@ jobs:
         name: comparevi-cli-${{ runner.os }}
         path: dist/comparevi-cli/**/*
     - name: Setup Node with cache
-      uses: actions/setup-node@v4
+      uses: actions/setup-node@v5
       with:
         node-version: "20"
         cache: "npm"
@@ -826,7 +826,7 @@ jobs:
 
     - name: Setup Node.js (derive env)
       if: always()
-      uses: actions/setup-node@v4
+      uses: actions/setup-node@v5
       with:
         node-version: '20'
 

@@ -38,7 +38,7 @@ jobs:
         phase: J2
         results-dir: tests/results
     - name: Setup Node with cache
-      uses: actions/setup-node@v4
+      uses: actions/setup-node@v5
       with:
         node-version: '20'
         cache: 'npm'
@@ -434,7 +434,7 @@ jobs:
     steps:
     - uses: actions/checkout@v5
 
-    - uses: actions/setup-node@v4
+    - uses: actions/setup-node@v5
       with:
         node-version: '20'
 
@@ -496,7 +496,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v5
         with:
           node-version: '20'
       - name: Install dependencies (no scripts)
@@ -509,7 +509,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v5
         with:
           node-version: '20'
       - name: Sync standing-priority snapshot
