@@ -48,7 +48,7 @@ jobs:
 
       - name: Open PR to remove ci-orchestrated-v2.yml
         if: ${{ steps.check.outputs.two_green == 'true' && hashFiles('.github/workflows/ci-orchestrated-v2.yml') != '' }}
-        uses: peter-evans/create-pull-request@v6
+        uses: peter-evans/create-pull-request@v7
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
           branch: chore/remove-orchestrated-v2
