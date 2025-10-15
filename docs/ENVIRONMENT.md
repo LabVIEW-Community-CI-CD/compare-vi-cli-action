@@ -52,12 +52,18 @@ Artefacts: `tests/results/pester-leak-report.json`, `tests/results/pester-artifa
 | `LVCI_COMPARE_MODE` | Select compare mechanism: `labview-cli` or `lvcompare` |
 | `LVCI_COMPARE_POLICY` | Mode policy: `lv-first` (default), `cli-first`, `cli-only`, `lv-only` |
 | `LABVIEW_CLI_PATH` | Optional override for `LabVIEWCLI.exe` (defaults below) |
+| `GCLI_PATH` | Optional override for `g-cli` binary discovery |
+| `LVCLI_PROVIDER` | Force provider selection (`gcli`, `labviewcli`, or `auto`) |
 
 Notes:
 
 - On 64-bit Windows hosts, automation defaults the CLI path to:
   `C:\Program Files (x86)\National Instruments\Shared\LabVIEW CLI\LabVIEWCLI.exe` when
   no CLI path overrides are set.
+- When g-cli is installed, the abstraction checks `GCLI_PATH`, the system `PATH`, and canonical
+  install directories (for example `C:\Program Files\G-CLI\bin\g-cli.exe` or
+  `/usr/local/bin/g-cli`). Set `LVCLI_PROVIDER=gcli` to lock selection to g-cli or
+  `LVCLI_PROVIDER=labviewcli` to prefer NI's LabVIEW CLI even when both are present.
 - With `LVCI_COMPARE_POLICY=cli-only` (or `LVCI_COMPARE_MODE=labview-cli` and not `lv-only`), both
   the wrapper and the TestStand harness invoke the LabVIEW CLI directly to generate an HTML report
   and enrich `lvcompare-capture.json` with an `environment.cli` metadata block (path, version,

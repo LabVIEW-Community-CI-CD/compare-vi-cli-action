@@ -9,6 +9,8 @@ This document defines the supported pattern for creating LabVIEW CLI shims that 
 ## Responsibilities
 
 - Import `tools/LabVIEWCli.psm1` and rely on its provider resolution, parameter normalisation, and environment guards.
+- Provider selection now includes both NI LabVIEW CLI (`labviewcli`) and g-cli (`gcli`). The abstraction chooses the first
+  provider with a resolvable binary unless `LVCLI_PROVIDER` forces a specific implementation.
 - Map legacy or convenience parameters to the canonical LabVIEW CLI operation schema rather than duplicating validation logic.
 - Optionally override `LABVIEWCLI_PATH` for the duration of the call, restoring the original value afterwards.
 - Invoke the appropriate exported function (`Invoke-LVOperation` or one of the typed helpers such as `Invoke-LVCreateComparisonReport`) and return its result.

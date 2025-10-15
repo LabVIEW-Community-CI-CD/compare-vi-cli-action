@@ -90,6 +90,11 @@ CLI-only quick start (64-bit Windows):
 - On self-hosted runners with LabVIEW CLI installed, automation defaults the CLI path to
   `C:\Program Files (x86)\National Instruments\Shared\LabVIEW CLI\LabVIEWCLI.exe` when no
   overrides are set.
+- When [g-cli](https://github.com/ni/g-cli) is installed, the shared CLI abstraction registers it as
+  provider `gcli`. The resolver checks `GCLI_PATH`, the system `PATH`, and canonical install
+  directories (for example `C:\Program Files\G-CLI\bin\g-cli.exe` or `/usr/local/bin/g-cli`). Use
+  `LVCLI_PROVIDER=gcli` to force g-cli selection or `LVCLI_PROVIDER=labviewcli` to prefer the NI
+  LabVIEW CLI implementation.
 - To force CLI-only compare end-to-end (no LVCompare invocation):
   - Set `LVCI_COMPARE_MODE=labview-cli` and `LVCI_COMPARE_POLICY=cli-only`.
   - Run either wrapper:
