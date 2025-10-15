@@ -328,6 +328,9 @@ function Invoke-LabVIEWCLICompare {
 
   $cliPath = $cliResult.cliPath
   $cliInfoOrdered = [ordered]@{ path = $cliPath }
+  if ($cliResult.provider -and -not [string]::IsNullOrWhiteSpace($cliResult.provider)) {
+    $cliInfoOrdered.provider = $cliResult.provider
+  }
   $cliVer = Get-FileProductVersion -Path $cliPath
   if ($cliVer) { $cliInfoOrdered.version = $cliVer }
   if ($reportPath) { $cliInfoOrdered.reportPath = $reportPath }
@@ -336,6 +339,12 @@ function Invoke-LabVIEWCLICompare {
   }
   if ($cliResult.normalizedParams -and $cliResult.normalizedParams.PSObject.Properties.Name -contains 'reportType' -and $cliResult.normalizedParams.reportType) {
     $cliInfoOrdered.reportType = $cliResult.normalizedParams.reportType
+  }
+  if ($cliResult.normalizedParams -and $cliResult.normalizedParams.PSObject.Properties.Name -contains 'provider') {
+    $providerValue = $cliResult.normalizedParams.provider
+    if ($providerValue -is [string] -and -not [string]::IsNullOrWhiteSpace($providerValue)) {
+      $cliInfoOrdered.provider = $providerValue
+    }
   }
 
   $cliMeta = Get-LabVIEWCliOutputMetadata -StdOut $cliResult.stdout -StdErr $cliResult.stderr

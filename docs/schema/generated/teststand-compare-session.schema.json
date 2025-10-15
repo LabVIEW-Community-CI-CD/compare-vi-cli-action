@@ -64,7 +64,100 @@
               "minLength": 1
             },
             "cli": {
-              "type": "object"
+              "type": "object",
+              "properties": {
+                "path": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "version": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "reportPath": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "reportType": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "status": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "message": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "provider": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "artifacts": {
+                  "type": "object",
+                  "properties": {
+                    "reportSizeBytes": {
+                      "type": "integer",
+                      "minimum": 0
+                    },
+                    "imageCount": {
+                      "type": "integer",
+                      "minimum": 0
+                    },
+                    "exportDir": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "images": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "index": {
+                            "type": "integer",
+                            "minimum": 0
+                          },
+                          "dataLength": {
+                            "type": "integer",
+                            "minimum": 0
+                          },
+                          "mimeType": {
+                            "type": "string",
+                            "minLength": 1
+                          },
+                          "source": {
+                            "type": "string",
+                            "minLength": 1
+                          },
+                          "byteLength": {
+                            "type": "integer",
+                            "minimum": 0
+                          },
+                          "savedPath": {
+                            "type": "string",
+                            "minLength": 1
+                          },
+                          "decodeError": {
+                            "type": "string",
+                            "minLength": 1
+                          }
+                        },
+                        "required": [
+                          "index",
+                          "dataLength"
+                        ],
+                        "additionalProperties": false
+                      }
+                    }
+                  },
+                  "additionalProperties": false
+                }
+              },
+              "required": [
+                "path"
+              ],
+              "additionalProperties": false
             },
             "policy": {
               "type": "string",
@@ -78,6 +171,16 @@
             "mode": {
               "type": "string",
               "minLength": 1
+            },
+            "autoCli": {
+              "type": "boolean"
+            },
+            "sameName": {
+              "type": "boolean"
+            },
+            "timeoutSeconds": {
+              "type": "integer",
+              "minimum": 0
             }
           },
           "required": [
@@ -116,13 +219,9 @@
           ]
         },
         "error": {
-          "anyOf": [
-            {
-              "type": "string"
-            },
-            {
-              "type": "null"
-            }
+          "type": [
+            "string",
+            "null"
           ]
         }
       },

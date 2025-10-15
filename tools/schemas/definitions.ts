@@ -296,18 +296,64 @@ const dispatcherResultsGuardSchema = z
   })
   .passthrough();
 
+const testStandCliReportImageSchema = z
+  .object({
+    index: z.number().int().nonnegative(),
+    dataLength: z.number().int().nonnegative(),
+    mimeType: z.string().min(1).optional(),
+    source: z.string().min(1).optional(),
+    byteLength: z.number().int().nonnegative().optional(),
+    savedPath: z.string().min(1).optional(),
+    decodeError: z.string().min(1).optional(),
+  })
+  .strict();
+
+const testStandCliArtifactsSchema = z
+  .object({
+    reportSizeBytes: z.number().int().nonnegative().optional(),
+    imageCount: z.number().int().nonnegative().optional(),
+    exportDir: z.string().min(1).optional(),
+    images: z.array(testStandCliReportImageSchema).optional(),
+  })
+  .strict();
+
+const testStandCliInfoSchema = z
+  .object({
+    path: z.string().min(1),
+    version: z.string().min(1).optional(),
+    reportPath: z.string().min(1).optional(),
+    reportType: z.string().min(1).optional(),
+    status: z.string().min(1).optional(),
+    message: z.string().min(1).optional(),
+    provider: z.string().min(1).optional(),
+    artifacts: testStandCliArtifactsSchema.optional(),
+  })
+  .strict();
+
 const testStandCompareSessionSchema = z.object({
   schema: z.literal('teststand-compare-session/v1'),
   at: isoString,
-  warmup: z.object({
-    events: z.string().min(1),
-  }),
-  compare: z.object({
-    events: z.string().min(1),
-    capture: z.string().min(1),
-    report: z.boolean(),
-    cliPath: z.string().min(1).optional(),
-  }),
+  warmup: z
+    .object({
+      mode: z.enum(['detect', 'spawn', 'skip']),
+      events: z.union([z.string().min(1), z.null()]),
+    })
+    .strict(),
+  compare: z
+    .object({
+      events: z.string().min(1),
+      capture: z.string().min(1),
+      report: z.boolean(),
+      command: z.string().min(1).optional(),
+      cliPath: z.string().min(1).optional(),
+      cli: testStandCliInfoSchema.optional(),
+      policy: z.enum(['lv-first', 'cli-first', 'cli-only', 'lv-only']).optional(),
+      mode: z.string().min(1).optional(),
+      autoCli: z.boolean().optional(),
+      sameName: z.boolean().optional(),
+      timeoutSeconds: z.number().int().nonnegative().optional(),
+    })
+    .strict(),
   outcome: z
     .object({
       exitCode: z.number(),
@@ -315,8 +361,9 @@ const testStandCompareSessionSchema = z.object({
       command: z.string().optional(),
       diff: z.boolean().optional(),
     })
+    .strict()
     .nullable(),
-  error: z.string().optional(),
+  error: z.union([z.string(), z.null()]).optional(),
 });
 
 const invokerEventSchema = z.object({
