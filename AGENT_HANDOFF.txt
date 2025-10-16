@@ -3,7 +3,7 @@
 ## Context Snapshot
 - Ran `node tools/npm/run-script.mjs priority:sync` at session start; the helper again fell back to the
   cached metadata for standing issue #134 because GitHub CLI is still missing and unauthenticated REST
-  calls fail. The cache timestamp now reflects this session (`cachedAtUtc` ≈ 2025-10-16T18:45:41Z).
+  calls fail. The cache timestamp now reflects this session (`cachedAtUtc` ≈ 2025-10-16T18:49:17Z).
 - Confirmed `gh` remains absent on this image (`which gh` yields no path), so we cannot reauthenticate
   or pull fresh issue data until the binary is installed or a `GH_TOKEN` is supplied.
 - `pwsh` is likewise unavailable (`pwsh --version` exits with `command not found`), preventing any
@@ -51,12 +51,12 @@
 
 ## Notes for Next Agent
 - `node tools/npm/run-script.mjs priority:sync` continues to fail without GitHub CLI or credentials; the
-  cached metadata was last refreshed at 2025-10-16T18:45:41Z with the "gh CLI not found" error.
+  cached metadata was last refreshed at 2025-10-16T18:49:17Z with the "gh CLI not found" error.
 - `tests/results/_agent/handoff/test-summary.json` still reflects the 2025-10-16T15:48Z
   `priority:handoff-tests` run; no follow-up validation was executed.
 - Watcher telemetry remains unchanged; `_agent/handoff/` contains no new watcher artifacts for this
   session.
-- `.agent_priority_cache.json` records the latest failure reason (`gh CLI not found`) and has not been
-  manually edited.
+- `.agent_priority_cache.json` records the latest failure reason (`gh CLI not found`) from the
+  2025-10-16T18:49:17Z sync and has not been manually edited.
 - The container still lacks LabVIEW/LVCompare, so genuine Compare VI outputs must be harvested from a
   Windows host with those tools available.
