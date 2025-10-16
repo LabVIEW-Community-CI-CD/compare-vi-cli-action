@@ -160,4 +160,4 @@ function Invoke-DispatcherSafe {
   }
 }
 
-Export-ModuleMember -Function Invoke-DispatcherSafe
+Export-ModuleMember -Function Get-PwshExePath, Invoke-DispatcherSafe
