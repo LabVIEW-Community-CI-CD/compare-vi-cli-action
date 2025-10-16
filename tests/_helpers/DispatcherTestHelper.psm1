@@ -38,6 +38,8 @@ function Invoke-DispatcherSafe {
     Max seconds to allow child to run before forced kill.
   .PARAMETER AdditionalArgs
     Extra arguments passed through to the dispatcher.
+  .PARAMETER TestsPath
+    Tests root passed to the dispatcher (defaults to the repository tests directory).
   .OUTPUTS
     PSCustomObject with ExitCode, TimedOut, StdOut, StdErr
   #>
@@ -47,11 +49,12 @@ function Invoke-DispatcherSafe {
     [Parameter(Mandatory)][string]$ResultsPath,
     [string]$IncludePatterns,
     [int]$TimeoutSeconds = 30,
-    [string[]]$AdditionalArgs
+    [string[]]$AdditionalArgs,
+    [string]$TestsPath = 'tests'
   )
 
   $pwsh = Get-PwshExePath
-  $args = @('-NoLogo','-NoProfile','-File', $DispatcherPath, '-TestsPath', 'tests', '-ResultsPath', $ResultsPath)
+  $args = @('-NoLogo','-NoProfile','-File', $DispatcherPath, '-TestsPath', $TestsPath, '-ResultsPath', $ResultsPath)
   if ($IncludePatterns) { $args += @('-IncludePatterns', $IncludePatterns) }
   if ($AdditionalArgs -and $AdditionalArgs.Count -gt 0) { $args += $AdditionalArgs }
 

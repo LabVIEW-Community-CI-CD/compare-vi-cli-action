@@ -1,9 +1,14 @@
+Set-StrictMode -Version Latest
+$ErrorActionPreference = 'Stop'
+
 Describe 'Invoke-PesterTests Include/Exclude patterns' -Tag 'Unit' {
   BeforeAll {
     $repoRoot = Resolve-Path (Join-Path $PSScriptRoot '..')
     $script:dispatcher = Join-Path $repoRoot 'Invoke-PesterTests.ps1'
     $script:fixtureTestsRoot = Join-Path $TestDrive 'fixture-tests'
     New-Item -ItemType Directory -Force -Path $script:fixtureTestsRoot | Out-Null
+
+    Import-Module (Join-Path $repoRoot 'tests' '_helpers' 'DispatcherTestHelper.psm1') -Force
 
     $testTemplate = @'
 Describe "{0}" {
@@ -21,8 +26,10 @@ Describe "{0}" {
 
   It 'honors IncludePatterns for a single file' {
     $resultsDir = Join-Path $TestDrive 'results-inc'
-    $inc = @('Alpha*.ps1')
-    pwsh -File $script:dispatcher -TestsPath $script:fixtureTestsRoot -ResultsPath $resultsDir -IncludePatterns $inc -IntegrationMode exclude | Out-Null
+    $inc = 'Alpha*.ps1'
+    $res = Invoke-DispatcherSafe -DispatcherPath $script:dispatcher -ResultsPath $resultsDir -IncludePatterns $inc -TestsPath $script:fixtureTestsRoot -AdditionalArgs @('-IntegrationMode', 'exclude')
+    $res.TimedOut | Should -BeFalse
+    $res.ExitCode | Should -Be 0
     $sel = Join-Path $resultsDir 'pester-selected-files.txt'
     Test-Path $sel | Should -BeTrue
     $lines = @(Get-Content -LiteralPath $sel)
@@ -32,8 +39,10 @@ Describe "{0}" {
 
   It 'honors ExcludePatterns to remove files' {
     $resultsDir = Join-Path $TestDrive 'results-exc'
-    $exc = @('*Helper.ps1')
-    pwsh -File $script:dispatcher -TestsPath $script:fixtureTestsRoot -ResultsPath $resultsDir -ExcludePatterns $exc -IntegrationMode exclude | Out-Null
+    $exc = '*Helper.ps1'
+    $res = Invoke-DispatcherSafe -DispatcherPath $script:dispatcher -ResultsPath $resultsDir -TestsPath $script:fixtureTestsRoot -AdditionalArgs @('-ExcludePatterns', $exc, '-IntegrationMode', 'exclude')
+    $res.TimedOut | Should -BeFalse
+    $res.ExitCode | Should -Be 0
     $sel = Join-Path $resultsDir 'pester-selected-files.txt'
     Test-Path $sel | Should -BeTrue
     $lines = @(Get-Content -LiteralPath $sel)
