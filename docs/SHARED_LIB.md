@@ -22,7 +22,7 @@ Import-Module ./scripts/CompareVI.Shared.psm1 -Force
 ## Packaging notes
 
 - Modules target PowerShell 7.
-- Run `npm run build` to rebuild TypeScript utilities that produce shared outputs.
+- Run `./tools/npm/bin/npm run build` to rebuild TypeScript utilities that produce shared outputs.
 - Keep exported functions documented via comment-based help for discoverability.
 
 Related docs: [`docs/DEVELOPER_GUIDE.md`](./DEVELOPER_GUIDE.md), [`docs/USAGE_GUIDE.md`](./USAGE_GUIDE.md).

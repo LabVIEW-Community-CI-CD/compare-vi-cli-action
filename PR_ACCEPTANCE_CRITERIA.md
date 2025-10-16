@@ -295,7 +295,7 @@ $env:DISABLE_STEP_SUMMARY = '1'
 
 - [ ] CI/CD pipeline passes on develop branch (verify after merge)
 - [x] No regression in existing test pass rate (local `Invoke-PesterTests.ps1 -IntegrationMode include` -> 193/193 green)
-- [x] Documentation builds without errors (`npm run lint:md`)
+- [x] Documentation builds without errors (`./tools/npm/bin/npm run lint:md`)
 
 ### Short-Term (1 week)
 

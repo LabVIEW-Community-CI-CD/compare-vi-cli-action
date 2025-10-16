@@ -8,7 +8,9 @@ $workspace = (Get-Location).Path
 $outputPath = Join-Path $workspace 'derived-env.json'
 
 Write-Host 'Deriving environment snapshot...'
-$derive = & npm run --silent derive:env 2>&1
+$npmWrapperDir = Join-Path $workspace 'tools/npm/bin'
+$npmWrapper = if ($IsWindows) { Join-Path $npmWrapperDir 'npm.cmd' } else { Join-Path $npmWrapperDir 'npm' }
+$derive = & $npmWrapper run --silent derive:env 2>&1
 if ($LASTEXITCODE -ne 0) {
   $derive | ForEach-Object { Write-Host $_ }
   Write-Error "npm run derive:env failed with exit code $LASTEXITCODE"

@@ -8,11 +8,11 @@ $ErrorActionPreference = 'Stop'
 function Invoke-NpmCommand {
   param(
     [Parameter(Mandatory=$true)][string]$Script,
-    [Parameter(Mandatory=$true)][string]$NpmPath
+    [Parameter(Mandatory=$true)][string]$WrapperPath
   )
 
   $psi = New-Object System.Diagnostics.ProcessStartInfo
-  $psi.FileName = $NpmPath
+  $psi.FileName = $WrapperPath
   $psi.ArgumentList.Add('run')
   $psi.ArgumentList.Add($Script)
   $psi.WorkingDirectory = (Resolve-Path '.').Path
@@ -28,7 +28,7 @@ function Invoke-NpmCommand {
   $endTime = Get-Date
 
   return [pscustomobject]@{
-    command     = "npm run $Script"
+    command     = "./tools/npm/bin/npm run $Script"
     exitCode    = $proc.ExitCode
     stdout      = $stdout.TrimEnd()
     stderr      = $stderr.TrimEnd()
@@ -36,38 +36,25 @@ function Invoke-NpmCommand {
     completedAt = $endTime.ToString('o')
     durationMs  = [int][Math]::Round((New-TimeSpan -Start $startTime -End $endTime).TotalMilliseconds)
   }
-}
+$wrapperDir = Join-Path (Resolve-Path '.').Path 'tools/npm/bin'
+$wrapperPath = if ($IsWindows) { Join-Path $wrapperDir 'npm.cmd' } else { Join-Path $wrapperDir 'npm' }
 
-$npmPath = $null
-if ($IsWindows) {
-  $npmPath = (Get-Command npm.cmd -ErrorAction SilentlyContinue)?.Source
-}
-if (-not $npmPath) {
-  $npmPath = (Get-Command npm -ErrorAction SilentlyContinue)?.Source
-}
-if ($IsWindows -and $npmPath -and ([System.IO.Path]::GetExtension($npmPath) -eq '.ps1')) {
-  $cmdSibling = [System.IO.Path]::ChangeExtension($npmPath, '.cmd')
-  if ($cmdSibling -and (Test-Path -LiteralPath $cmdSibling -PathType Leaf)) {
-    $npmPath = $cmdSibling
-  }
-}
-
-if (-not $npmPath) {
-  Write-Warning '[handoff-tests] npm not found; writing error summary.'
+if (-not (Test-Path -LiteralPath $wrapperPath -PathType Leaf)) {
+  Write-Warning '[handoff-tests] npm wrapper not found; writing error summary.'
 }
 
 $results = @()
 $notes = @()
 
-if ($npmPath) {
+if (Test-Path -LiteralPath $wrapperPath -PathType Leaf) {
   $scripts = @('priority:test','hooks:test','semver:check')
   foreach ($script in $scripts) {
     try {
-      $results += Invoke-NpmCommand -Script $script -NpmPath $npmPath
+      $results += Invoke-NpmCommand -Script $script -WrapperPath $wrapperPath
     } catch {
-      $notes += ("Invocation for npm run {0} failed: {1}" -f $script, $_.Exception.Message)
+      $notes += ("Invocation for ./tools/npm/bin/npm run {0} failed: {1}" -f $script, $_.Exception.Message)
       $results += [pscustomobject]@{
-        command     = "npm run $script"
+        command     = "./tools/npm/bin/npm run $script"
         exitCode    = -1
         stdout      = ''
         stderr      = ("Invocation failed: {0}" -f $_.Exception.Message)
@@ -86,7 +73,7 @@ $summaryPath = Join-Path $handoffDir 'test-summary.json'
 
 $failureEntries = @($results | Where-Object { $_.exitCode -ne 0 })
 $failureCount = $failureEntries.Count
-$status = if (-not $npmPath) {
+$status = if (-not (Test-Path -LiteralPath $wrapperPath -PathType Leaf)) {
   'error'
 } elseif ($results.Count -eq 0) {
   'skipped'
@@ -113,8 +100,8 @@ $summary = [ordered]@{
   }
 }
 
-if (-not $npmPath) {
-  $notes += 'npm executable not found in PATH'
+if (-not (Test-Path -LiteralPath $wrapperPath -PathType Leaf)) {
+  $notes += 'npm wrapper missing under tools/npm/bin'
 }
 
 $notes = @($notes | Where-Object { $_ })
@@ -126,6 +113,6 @@ if ($notes.Count -gt 0) {
 
 Write-Host ("[handoff-tests] status={0} total={1} failures={2} -> {3}" -f $status, $summary.total, $failureCount, $summaryPath) -ForegroundColor Cyan
 
-if (-not $npmPath -or $failureCount -gt 0) {
+if (-not (Test-Path -LiteralPath $wrapperPath -PathType Leaf) -or $failureCount -gt 0) {
   exit 1
 }

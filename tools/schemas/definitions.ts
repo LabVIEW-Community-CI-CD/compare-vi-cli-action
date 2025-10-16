@@ -382,6 +382,8 @@ export const cliQuoteSchema = z.object({
 export const cliProcsSchema = z.object({
   labviewPids: z.array(nonNegativeInteger),
   lvcomparePids: z.array(nonNegativeInteger),
+  labviewCliPids: z.array(nonNegativeInteger),
+  gcliPids: z.array(nonNegativeInteger),
 });
 
 const cliOperationsDefaultValue = z.union([z.string(), z.number(), z.boolean(), z.null()]);

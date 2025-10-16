@@ -105,6 +105,8 @@ internal static class Program
         {
             ["labviewPids"] = snap.LabViewPids,
             ["lvcomparePids"] = snap.LvComparePids,
+            ["labviewCliPids"] = snap.LabViewCliPids,
+            ["gcliPids"] = snap.GcliPids,
         };
         Console.WriteLine(JsonSerializer.Serialize(obj, new JsonSerializerOptions { WriteIndented = true }));
         return 0;

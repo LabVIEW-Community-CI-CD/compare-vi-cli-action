@@ -22,9 +22,9 @@ Artifacts land in `tests/results/` (JSON summaries, XML, loop logs).
 
 ```powershell
 npm ci
-npm run build
-npm run generate:outputs
-npm run lint            # markdownlint + custom checks
+./tools/npm/bin/npm run build
+./tools/npm/bin/npm run generate:outputs
+./tools/npm/bin/npm run lint            # markdownlint + custom checks
 ./tools/PrePush-Checks.ps1  # actionlint, optional YAML round-trip
 ```
 

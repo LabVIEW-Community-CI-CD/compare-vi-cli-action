@@ -76,10 +76,10 @@ DX reminders. Workflows call `tools/Invoke-DevDashboard.ps1` to publish HTML/JSO
 
 ### Live watcher
 
-- `npm run watch:pester` (warn 90 s, hang 180 s).
-- `npm run watch:pester:fast:exit` (warn 60 s, hang 120 s, exits on hang).
-- `npm run dev:watcher:ensure` / `status` / `stop` (persistent watcher lifecycle).
-- `npm run dev:watcher:trim` (rotates `watch.out` / `watch.err` when >5 MB or ~4,000 lines).
+- `./tools/npm/bin/npm run watch:pester` (warn 90 s, hang 180 s).
+- `./tools/npm/bin/npm run watch:pester:fast:exit` (warn 60 s, hang 120 s, exits on hang).
+- `./tools/npm/bin/npm run dev:watcher:ensure` / `status` / `stop` (persistent watcher lifecycle).
+- `./tools/npm/bin/npm run dev:watcher:trim` (rotates `watch.out` / `watch.err` when >5 MB or ~4,000 lines).
 - `tools/Print-AgentHandoff.ps1 -AutoTrim` (prints summary and trims automatically when
   `needsTrim=true`).
 
@@ -92,7 +92,7 @@ CI summaries.
 - **Smoke** – minimal regression guard for documentation-only changes.
 - **Fixture Drift** – verifies fixture manifests and retains comparison evidence.
 - **VI Binary Gate** – ensures LabVIEW binaries remain normalized.
-- **Markdownlint** – runs `npm run lint:md:changed` with the trimmed configuration below.
+- **Markdownlint** – runs `./tools/npm/bin/npm run lint:md:changed` with the trimmed configuration below.
 
 Explore `.github/workflows` for matrices, inputs, and dispatch helpers.
 
@@ -105,7 +105,7 @@ ignored via `.markdownlintignore`.
 Lint changed files locally:
 
 ```powershell
-npm run lint:md:changed
+./tools/npm/bin/npm run lint:md:changed
 ```
 
 ## Documentation map
@@ -123,7 +123,7 @@ npm run lint:md:changed
 
 1. Branch from `develop`, run `npm ci`.
 2. Execute tests (`./Invoke-PesterTests.ps1` or watcher-assisted workflows).
-3. Lint (`npm run lint:md:changed`, `tools/Check-ClangFormat.ps1` if relevant).
+3. Lint (`./tools/npm/bin/npm run lint:md:changed`, `tools/Check-ClangFormat.ps1` if relevant).
 4. Submit a PR referencing **#88** and include rationale plus artifacts.
 
 Follow `AGENTS.md` for coding etiquette and keep CI deterministic. Large workflow updates

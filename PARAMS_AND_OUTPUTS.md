@@ -94,7 +94,7 @@
   capture file is missing).
 - **Artifacts**: under `OutputRoot` the harness writes `_warmup/...`,
   `compare/...`, and `session-index.json` summarizing the run.
-- **Validation**: run `npm run session:teststand:validate` to assert the
+- **Validation**: run `./tools/npm/bin/npm run session:teststand:validate` to assert the
   harness output stays aligned with
   `docs/schema/generated/teststand-compare-session.schema.json` whenever
   parameters or warmup behaviour change.

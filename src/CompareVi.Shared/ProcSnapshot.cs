@@ -9,21 +9,62 @@ namespace CompareVi.Shared
     {
         public IReadOnlyList<int> LabViewPids { get; }
         public IReadOnlyList<int> LvComparePids { get; }
+        public IReadOnlyList<int> LabViewCliPids { get; }
+        public IReadOnlyList<int> GcliPids { get; }
 
-        public ProcSnapshot(IEnumerable<int> lvPids, IEnumerable<int> lvcPids)
+        public ProcSnapshot(IEnumerable<int>? lvPids, IEnumerable<int>? lvcPids)
+            : this(lvPids, lvcPids, null, null)
         {
-            LabViewPids = lvPids?.Distinct().OrderBy(x => x).ToArray() ?? Array.Empty<int>();
-            LvComparePids = lvcPids?.Distinct().OrderBy(x => x).ToArray() ?? Array.Empty<int>();
+        }
+
+        public ProcSnapshot(
+            IEnumerable<int>? lvPids,
+            IEnumerable<int>? lvcPids,
+            IEnumerable<int>? labViewCliPids,
+            IEnumerable<int>? gcliPids)
+        {
+            LabViewPids = Normalize(lvPids);
+            LvComparePids = Normalize(lvcPids);
+            LabViewCliPids = Normalize(labViewCliPids);
+            GcliPids = Normalize(gcliPids);
+        }
+
+        private static IReadOnlyList<int> Normalize(IEnumerable<int>? pids)
+        {
+            return pids?.Distinct().OrderBy(x => x).ToArray() ?? Array.Empty<int>();
         }
 
         public static ProcSnapshot Capture()
         {
-            IEnumerable<int> get(string name)
+            IEnumerable<int> get(params string[] names)
             {
-                try { return Process.GetProcessesByName(name).Select(p => p.Id); }
-                catch { return Array.Empty<int>(); }
+                var results = new HashSet<int>();
+                foreach (var name in names)
+                {
+                    if (string.IsNullOrWhiteSpace(name))
+                    {
+                        continue;
+                    }
+                    try
+                    {
+                        foreach (var process in Process.GetProcessesByName(name))
+                        {
+                            results.Add(process.Id);
+                        }
+                    }
+                    catch
+                    {
+                        // ignored
+                    }
+                }
+                return results;
             }
-            return new ProcSnapshot(get("LabVIEW"), get("LVCompare"));
+
+            return new ProcSnapshot(
+                get("LabVIEW"),
+                get("LVCompare"),
+                get("LabVIEWCLI", "labviewcli"),
+                get("g-cli", "gcli"));
         }
 
         public IReadOnlyList<int> NewLabViewSince(ProcSnapshot before)

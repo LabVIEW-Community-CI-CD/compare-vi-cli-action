@@ -16,11 +16,25 @@
           "items": {
             "$ref": "#/definitions/cli-procs/properties/labviewPids/items"
           }
+        },
+        "labviewCliPids": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/cli-procs/properties/labviewPids/items"
+          }
+        },
+        "gcliPids": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/cli-procs/properties/labviewPids/items"
+          }
         }
       },
       "required": [
         "labviewPids",
-        "lvcomparePids"
+        "lvcomparePids",
+        "labviewCliPids",
+        "gcliPids"
       ],
       "additionalProperties": false
     }

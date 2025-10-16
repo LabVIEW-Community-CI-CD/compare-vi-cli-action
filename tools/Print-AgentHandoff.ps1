@@ -46,7 +46,7 @@ function Get-StandingPriorityContext {
 
   $cachePath = Join-Path $RepoRoot '.agent_priority_cache.json'
   if (-not (Test-Path -LiteralPath $cachePath -PathType Leaf)) {
-    throw "Standing priority cache not found at $cachePath. Run 'npm run priority:sync'."
+    throw "Standing priority cache not found at $cachePath. Run './tools/npm/bin/npm run priority:sync'."
   }
 
   try {
@@ -57,7 +57,7 @@ function Get-StandingPriorityContext {
 
   $issueDir = Join-Path $RepoRoot 'tests/results/_agent/issue'
   if (-not (Test-Path -LiteralPath $issueDir -PathType Container)) {
-    throw "Standing priority snapshots missing under $issueDir. Run 'npm run priority:sync'."
+    throw "Standing priority snapshots missing under $issueDir. Run './tools/npm/bin/npm run priority:sync'."
   }
 
   $latestIssue = Get-ChildItem -LiteralPath $issueDir -Filter '*.json' -ErrorAction SilentlyContinue |
@@ -66,7 +66,7 @@ function Get-StandingPriorityContext {
     Select-Object -First 1
 
   if (-not $latestIssue) {
-    throw "Standing priority snapshot not found in $issueDir. Run 'npm run priority:sync'."
+    throw "Standing priority snapshot not found in $issueDir. Run './tools/npm/bin/npm run priority:sync'."
   }
 
   try {
@@ -76,21 +76,21 @@ function Get-StandingPriorityContext {
   }
 
   if ($null -eq $snapshot.number) {
-    throw "Standing priority snapshot missing issue number. Run 'npm run priority:sync'."
+    throw "Standing priority snapshot missing issue number. Run './tools/npm/bin/npm run priority:sync'."
   }
 
   $cacheNumber = $cacheJson.PSObject.Properties['number'] ? $cacheJson.number : $null
   if ($cacheNumber -ne $snapshot.number) {
-    throw ("Standing priority mismatch: cache #{0} vs snapshot #{1}. Run 'npm run priority:sync'." -f $cacheNumber, $snapshot.number)
+    throw ("Standing priority mismatch: cache #{0} vs snapshot #{1}. Run './tools/npm/bin/npm run priority:sync'." -f $cacheNumber, $snapshot.number)
   }
 
   $cacheDigest = $cacheJson.PSObject.Properties['issueDigest'] ? $cacheJson.issueDigest : $null
   $snapshotDigest = $snapshot.PSObject.Properties['digest'] ? $snapshot.digest : $null
   if ([string]::IsNullOrWhiteSpace($cacheDigest) -or [string]::IsNullOrWhiteSpace($snapshotDigest)) {
-    throw "Standing priority digest missing. Run 'npm run priority:sync'."
+    throw "Standing priority digest missing. Run './tools/npm/bin/npm run priority:sync'."
   }
   if ($cacheDigest -ne $snapshotDigest) {
-    throw ("Standing priority digest mismatch for issue #{0}. Run 'npm run priority:sync'." -f $snapshot.number)
+    throw ("Standing priority digest mismatch for issue #{0}. Run './tools/npm/bin/npm run priority:sync'." -f $snapshot.number)
   }
 
   $routerPath = Join-Path $issueDir 'router.json'
@@ -549,7 +549,7 @@ function Write-WatcherStatusSummary {
   }
   Write-Host ("  needsTrim       : {0}" -f (Format-BoolLabel $status.needsTrim))
   if ($status.needsTrim) {
-    Write-Host '    hint          : npm run dev:watcher:trim' -ForegroundColor Yellow
+    Write-Host '    hint          : ./tools/npm/bin/npm run dev:watcher:trim' -ForegroundColor Yellow
     if ($status.files -and $status.files.out -and $status.files.out.path) {
       Write-Host ("    out           : {0}" -f $status.files.out.path)
     }

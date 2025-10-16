@@ -12,8 +12,10 @@ $discoveryScript = Join-Path $workspace 'dist/tools/test-discovery.js'
 
 if (-not (Test-Path -LiteralPath $discoveryScript)) {
   Write-Host '::notice::TypeScript build artifacts missing; running npm run build...'
+  $wrapperDir = Join-Path $workspace 'tools/npm/bin'
+  $npmWrapper = if ($IsWindows) { Join-Path $wrapperDir 'npm.cmd' } else { Join-Path $wrapperDir 'npm' }
   try {
-    npm run build | Out-Host
+    & $npmWrapper run build | Out-Host
   } catch {
     Write-Error "npm run build failed: $_"
     exit 2

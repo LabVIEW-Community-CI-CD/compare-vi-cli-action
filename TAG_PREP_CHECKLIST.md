@@ -6,7 +6,7 @@ Helper reference for maintainers prior to cutting the final `v0.4.0` tag. Delete
 
 - [ ] On release branch: `release/v0.4.0-rc.1` (or updated RC) fully merged with latest `develop` changes intended for release.
 - [ ] CI green (unit + integration as applicable) on the RC branch.
-- [ ] Markdown lint passes (run `npm run lint:md`).
+- [ ] Markdown lint passes (run `./tools/npm/bin/npm run lint:md`).
 - [ ] (Optional) Workflow lint (actionlint) passes if tool available.
 - [ ] No uncommitted changes: `git status` clean.
 
@@ -16,7 +16,7 @@ Helper reference for maintainers prior to cutting the final `v0.4.0` tag. Delete
 - [ ] No remaining references to `-rc` in README examples or docs referencing the version tag (other than historical sections).
 - [ ] `package.json` version matches `0.4.0` (if version tracking used for tooling—update only if intentionally coupled).
 - [ ] `action.yml` does not contain stale output/input names (compare to `docs/action-outputs.md`).
-- [ ] `docs/action-outputs.md` regenerated if any last-minute output changes: `npm run generate:outputs`.
+- [ ] `docs/action-outputs.md` regenerated if any last-minute output changes: `./tools/npm/bin/npm run generate:outputs`.
 
 ## 3. Functional Sanity Pass
 

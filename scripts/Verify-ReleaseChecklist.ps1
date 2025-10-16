@@ -9,7 +9,7 @@
     * CHANGELOG presence of target version & date format
     * action.yml outputs vs docs/action-outputs.md synchronization
     * Presence of migration helper files (PR_NOTES.md, TAG_PREP_CHECKLIST.md, etc.)
-    * Markdown lint (npm run lint:md) status
+    * Markdown lint (`./tools/npm/bin/npm run lint:md`) status
     * Unit test dispatcher run (always) + optional integration run if canonical LVCompare + VI assets detected or -ForceIntegration specified
     * Verification of shortCircuitedIdentical output key
   Emits structured JSON summary and human readable console output.
@@ -93,6 +93,8 @@ $summary = [ordered]@{
 
 $repoRoot = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path
 Push-Location $repoRoot
+$npmWrapperDir = Join-Path $repoRoot 'tools/npm/bin'
+$npmWrapper = if ($IsWindows) { Join-Path $npmWrapperDir 'npm.cmd' } else { Join-Path $npmWrapperDir 'npm' }
 try {
   Write-Section 'Branch'
   $branch = Get-GitOutput 'rev-parse --abbrev-ref HEAD' | Select-Object -First 1
@@ -158,8 +160,8 @@ try {
   Write-Section 'Markdown Lint'
   $lintExit = $null
   try {
-  & npm run lint:md 2>$null | Out-String | Out-Null
-  $lintExit = $LASTEXITCODE
+    & $npmWrapper run lint:md 2>$null | Out-String | Out-Null
+    $lintExit = $LASTEXITCODE
   } catch { $lintExit = -1; $summary.errors += 'markdown lint invocation failed' }
   $summary.markdownLintExitCode = $lintExit
   if ($lintExit -ne 0) { $summary.errors += 'markdown lint failed' }
