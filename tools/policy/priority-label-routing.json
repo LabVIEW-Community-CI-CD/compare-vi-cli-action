@@ -4,19 +4,19 @@
     {
       "name": "documentation",
       "actions": [
-        { "key": "docs:lint", "priority": 20, "scripts": ["npm run lint:md:changed"] }
+        { "key": "docs:lint", "priority": 20, "scripts": ["node tools/npm/run-script.mjs lint:md:changed"] }
       ]
     },
     {
       "name": "docs",
       "actions": [
-        { "key": "docs:lint", "priority": 20, "scripts": ["npm run lint:md:changed"] }
+        { "key": "docs:lint", "priority": 20, "scripts": ["node tools/npm/run-script.mjs lint:md:changed"] }
       ]
     },
     {
       "name": "ci",
       "actions": [
-        { "key": "ci:parity", "priority": 30, "scripts": ["npm run hooks:multi", "npm run hooks:schema"] }
+        { "key": "ci:parity", "priority": 30, "scripts": ["node tools/npm/run-script.mjs hooks:multi", "node tools/npm/run-script.mjs hooks:schema"] }
       ]
     },
     {

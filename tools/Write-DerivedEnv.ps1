@@ -8,10 +8,10 @@ $workspace = (Get-Location).Path
 $outputPath = Join-Path $workspace 'derived-env.json'
 
 Write-Host 'Deriving environment snapshot...'
-$derive = & npm run --silent derive:env 2>&1
+$derive = & node tools/npm/run-script.mjs --silent derive:env 2>&1
 if ($LASTEXITCODE -ne 0) {
   $derive | ForEach-Object { Write-Host $_ }
-  Write-Error "npm run derive:env failed with exit code $LASTEXITCODE"
+  Write-Error "node tools/npm/run-script.mjs derive:env failed with exit code $LASTEXITCODE"
   exit $LASTEXITCODE
 }
 

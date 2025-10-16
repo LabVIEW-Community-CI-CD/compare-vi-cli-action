@@ -30,11 +30,11 @@ This produces:
 - `session-index.json` summarising the run (warmup mode, compare policy/mode, CLI metadata, decoded artefact summary)
 
 The repository includes a reference capture at `fixtures/teststand-session/session-index.json` so schema validation stays
-available even when fresh harness artefacts are not present. `npm run session:teststand:validate` now checks both the sample
+available even when fresh harness artefacts are not present. `node tools/npm/run-script.mjs session:teststand:validate` now checks both the sample
 and any `tests/results/teststand-session/session-index.json` produced locally, allowing agents to verify shape changes without
 rerunning LabVIEW.
 
-Validate the session index with `npm run session:teststand:validate` so schema regressions surface immediately when the harness
+Validate the session index with `node tools/npm/run-script.mjs session:teststand:validate` so schema regressions surface immediately when the harness
 outputs change.
 
 > **Note**: `-CloseLabVIEW` / `-CloseLVCompare` now queue post-run cleanup requests. The helpers do not invoke the close scripts inline; instead `tools/Post-Run-Cleanup.ps1` consumes the requests after `Invoke-PesterTests.ps1` completes, guaranteeing a single LabVIEWCLI invocation per job.
@@ -55,7 +55,7 @@ outputs change.
 
 | Command | Purpose |
 | --- | --- |
-| `npm run tests:discover` | Ensure the TypeScript manifest is current before mapping tests to harness inputs. |
+| `node tools/npm/run-script.mjs tests:discover` | Ensure the TypeScript manifest is current before mapping tests to harness inputs. |
 | `pwsh -File tools/TestStand-CompareHarness.ps1 ...` | Baseline manual smoke. |
 | `pwsh -File Invoke-PesterTests.ps1 -IntegrationMode exclude -UseTestStandHarness -UseDiscoveryManifest` | End-to-end local run that mirrors CI. |
 | `pwsh -File tools/Quick-DispatcherSmoke.ps1 -Keep` | Verify workflow helpers accept the harness outputs. |

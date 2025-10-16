@@ -42,8 +42,8 @@ Set `fail-on-diff: false` to treat code 1 as notice-only.
 
 - `[hang-watch]` / `[hang-suspect]` → idle for extended periods.
 - `[busy-watch]` / `[busy-suspect]` → log growing without progress markers.
-- Use `npm run dev:watcher:status` to inspect heartbeat freshness; run
-  `npm run dev:watcher:trim` if `needsTrim=true`.
+- Use `node tools/npm/run-script.mjs dev:watcher:status` to inspect heartbeat freshness; run
+  `node tools/npm/run-script.mjs dev:watcher:trim` if `needsTrim=true`.
 
 ## Loop mode hiccups
 

@@ -8,18 +8,7 @@ const __dirname = path.dirname(__filename);
 const repoRoot = path.resolve(__dirname, '..', '..');
 
 const nodeExecPath = process.env.npm_node_execpath || process.execPath;
-const npmCliPath = process.env.npm_execpath;
-const fallbackNpm = process.platform === 'win32' ? 'npm.cmd' : 'npm';
-let npmCommand;
-let npmArgsPrefix;
-
-if (npmCliPath) {
-  npmCommand = nodeExecPath;
-  npmArgsPrefix = [npmCliPath, 'run'];
-} else {
-  npmCommand = fallbackNpm;
-  npmArgsPrefix = ['run'];
-}
+const wrapperPath = path.join(repoRoot, 'tools', 'npm', 'run-script.mjs');
 
 function runCommand(command, args) {
   return new Promise((resolve) => {
@@ -81,49 +70,33 @@ function runCommand(command, args) {
   });
 }
 
-async function ensureNpmAvailable() {
-  if (npmCliPath) {
+async function ensureWrapperAvailable() {
+  try {
+    await fs.access(wrapperPath);
     return { available: true };
-  }
-
-  const check = await runCommand(npmCommand, ['--version']);
-  if (check.error && check.error.code === 'ENOENT') {
+  } catch (error) {
     return {
       available: false,
-      message: 'npm executable not found in PATH',
-      error: check.error
+      message: 'npm wrapper missing under tools/npm/run-script.mjs',
+      error
     };
   }
-
-  if (check.exitCode !== 0) {
-    const parts = [`npm --version exited with code ${check.exitCode}`];
-    if (check.stderr) {
-      parts.push(`stderr: ${check.stderr}`);
-    }
-    return {
-      available: false,
-      message: parts.join('; '),
-      error: check.error
-    };
-  }
-
-  return { available: true };
 }
 
 async function run() {
-  const { available, message: availabilityMessage } = await ensureNpmAvailable();
+  const { available, message: availabilityMessage } = await ensureWrapperAvailable();
   const results = [];
   const notes = [];
 
   if (!available) {
-    notes.push(availabilityMessage || 'npm executable check failed');
+    notes.push(availabilityMessage || 'npm wrapper check failed');
   } else {
     const scripts = ['priority:test', 'hooks:test', 'semver:check'];
     for (const script of scripts) {
-      const args = [...npmArgsPrefix, script];
-      const { exitCode, stdout, stderr, startedAt, completedAt, durationMs, error } = await runCommand(npmCommand, args);
+      const args = [wrapperPath, script];
+      const { exitCode, stdout, stderr, startedAt, completedAt, durationMs, error } = await runCommand(nodeExecPath, args);
       results.push({
-        command: `npm run ${script}`,
+        command: `node tools/npm/run-script.mjs ${script}`,
         exitCode,
         stdout,
         stderr,
@@ -133,7 +106,7 @@ async function run() {
       });
 
       if (error) {
-        notes.push(`Invocation for npm run ${script} failed: ${error.message}`);
+        notes.push(`Invocation for node tools/npm/run-script.mjs ${script} failed: ${error.message}`);
         break;
       }
     }

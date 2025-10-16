@@ -9,7 +9,7 @@
     * CHANGELOG presence of target version & date format
     * action.yml outputs vs docs/action-outputs.md synchronization
     * Presence of migration helper files (PR_NOTES.md, TAG_PREP_CHECKLIST.md, etc.)
-    * Markdown lint (npm run lint:md) status
+    * Markdown lint (`node tools/npm/run-script.mjs lint:md`) status
     * Unit test dispatcher run (always) + optional integration run if canonical LVCompare + VI assets detected or -ForceIntegration specified
     * Verification of shortCircuitedIdentical output key
   Emits structured JSON summary and human readable console output.
@@ -158,7 +158,7 @@ try {
   Write-Section 'Markdown Lint'
   $lintExit = $null
   try {
-  & npm run lint:md 2>$null | Out-String | Out-Null
+  & node tools/npm/run-script.mjs lint:md 2>$null | Out-String | Out-Null
   $lintExit = $LASTEXITCODE
   } catch { $lintExit = -1; $summary.errors += 'markdown lint invocation failed' }
   $summary.markdownLintExitCode = $lintExit

@@ -171,7 +171,7 @@ jobs:
         '
     - name: Validate comparevi-cli outputs
       if: ${{ hashFiles('dist/comparevi-cli/comparevi-cli.dll') != '' }}
-      run: npm run cli:validate
+      run: node tools/npm/run-script.mjs cli:validate
     - name: Watch run (REST sanity)
       if: ${{ hashFiles('dist/tools/watchers/orchestrated-watch.js') != '' }}
       run: node dist/tools/watchers/orchestrated-watch.js --run-id ${{ github.run_id }} --poll-ms 1000 --out "${{ env.RESULTS_DIR }}/watcher-rest.json"
@@ -835,7 +835,7 @@ jobs:
       shell: bash
       run: |
         set -euo pipefail
-        npm run --silent derive:env > derived-env.json
+        node tools/npm/run-script.mjs --silent derive:env > derived-env.json
         mkdir -p tests/results/_agent
         cp derived-env.json tests/results/_agent/derived-env.json
         if [ -n "${GITHUB_STEP_SUMMARY:-}" ]; then
