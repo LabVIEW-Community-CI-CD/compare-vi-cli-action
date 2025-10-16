@@ -278,6 +278,8 @@ export const cliTokenizeSchema = z.object({
 export const cliProcsSchema = z.object({
     labviewPids: z.array(nonNegativeInteger),
     lvcomparePids: z.array(nonNegativeInteger),
+    labviewCliPids: z.array(nonNegativeInteger),
+    gcliPids: z.array(nonNegativeInteger),
 });
 const cliArtifactFileSchema = z.object({
     path: z.string().min(1),

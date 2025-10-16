@@ -12,8 +12,12 @@ namespace CompareVi.Shared.Tests
             var snap = ProcSnapshot.Capture();
             Assert.NotNull(snap.LabViewPids);
             Assert.NotNull(snap.LvComparePids);
+            Assert.NotNull(snap.LabViewCliPids);
+            Assert.NotNull(snap.GcliPids);
             Assert.Equal(snap.LabViewPids.Distinct().Count(), snap.LabViewPids.Count);
             Assert.Equal(snap.LvComparePids.Distinct().Count(), snap.LvComparePids.Count);
+            Assert.Equal(snap.LabViewCliPids.Distinct().Count(), snap.LabViewCliPids.Count);
+            Assert.Equal(snap.GcliPids.Distinct().Count(), snap.GcliPids.Count);
         }
 
         [Fact]
