@@ -29,6 +29,21 @@ namespace CompareVi.Shared.Tests
             Assert.Single(delta);
             Assert.Equal(4, delta[0]);
         }
+
+        [Fact]
+        public void Constructor_NormalizesAllPidSets()
+        {
+            var snapshot = new ProcSnapshot(
+                new[] { 3, 2, 3, 1 },
+                new[] { 10, 10, 9 },
+                new[] { 7, 8, 7 },
+                new[] { 5, 6, 5 });
+
+            Assert.Equal(new[] { 1, 2, 3 }, snapshot.LabViewPids);
+            Assert.Equal(new[] { 9, 10 }, snapshot.LvComparePids);
+            Assert.Equal(new[] { 7, 8 }, snapshot.LabViewCliPids);
+            Assert.Equal(new[] { 5, 6 }, snapshot.GcliPids);
+        }
     }
 }
 

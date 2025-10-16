@@ -12,11 +12,16 @@ namespace CompareVi.Shared
         public IReadOnlyList<int> LabViewCliPids { get; }
         public IReadOnlyList<int> GcliPids { get; }
 
+        public ProcSnapshot(IEnumerable<int>? lvPids, IEnumerable<int>? lvcPids)
+            : this(lvPids, lvcPids, null, null)
+        {
+        }
+
         public ProcSnapshot(
             IEnumerable<int>? lvPids,
             IEnumerable<int>? lvcPids,
-            IEnumerable<int>? labViewCliPids = null,
-            IEnumerable<int>? gcliPids = null)
+            IEnumerable<int>? labViewCliPids,
+            IEnumerable<int>? gcliPids)
         {
             LabViewPids = Normalize(lvPids);
             LvComparePids = Normalize(lvcPids);
