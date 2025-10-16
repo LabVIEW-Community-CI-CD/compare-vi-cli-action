@@ -137,8 +137,8 @@ export function buildRouter(issue, policy) {
     }
   };
 
-  addAction({ key: 'hooks:pre-commit', priority: 10, scripts: ['node tools/npm/run-script.mjs hooks:pre-commit'], rationale: 'baseline hook gate' });
-  addAction({ key: 'hooks:multi', priority: 11, scripts: ['node tools/npm/run-script.mjs hooks:multi', 'node tools/npm/run-script.mjs hooks:schema'], rationale: 'ensure parity across planes' });
+  addAction({ key: 'hooks:pre-commit', priority: 10, scripts: ['./tools/npm/bin/npm run hooks:pre-commit'], rationale: 'baseline hook gate' });
+  addAction({ key: 'hooks:multi', priority: 11, scripts: ['./tools/npm/bin/npm run hooks:multi', './tools/npm/bin/npm run hooks:schema'], rationale: 'ensure parity across planes' });
 
   const labelSet = new Set((issue.labels || []).map((l) => (l || '').toLowerCase()));
   const policyEntries = Array.isArray(policy?.labels) ? policy.labels : [];
@@ -154,10 +154,10 @@ export function buildRouter(issue, policy) {
 
   if (policyHits === 0) {
     if (labelSet.has('docs') || labelSet.has('documentation')) {
-      addAction({ key: 'docs:lint', priority: 20, scripts: ['node tools/npm/run-script.mjs lint:md:changed'], rationale: 'docs label present' });
+      addAction({ key: 'docs:lint', priority: 20, scripts: ['./tools/npm/bin/npm run lint:md:changed'], rationale: 'docs label present' });
     }
     if (labelSet.has('ci')) {
-      addAction({ key: 'ci:parity', priority: 30, scripts: ['node tools/npm/run-script.mjs hooks:multi', 'node tools/npm/run-script.mjs hooks:schema'], rationale: 'ci label present' });
+      addAction({ key: 'ci:parity', priority: 30, scripts: ['./tools/npm/bin/npm run hooks:multi', './tools/npm/bin/npm run hooks:schema'], rationale: 'ci label present' });
     }
     if (labelSet.has('release')) {
       addAction({ key: 'release:prep', priority: 40, scripts: ['pwsh -File tools/Branch-Orchestrator.ps1 -DryRun'], rationale: 'release label present' });

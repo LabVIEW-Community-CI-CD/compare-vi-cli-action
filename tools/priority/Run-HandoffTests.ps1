@@ -8,13 +8,12 @@ $ErrorActionPreference = 'Stop'
 function Invoke-NpmCommand {
   param(
     [Parameter(Mandatory=$true)][string]$Script,
-    [Parameter(Mandatory=$true)][string]$NodePath,
     [Parameter(Mandatory=$true)][string]$WrapperPath
   )
 
   $psi = New-Object System.Diagnostics.ProcessStartInfo
-  $psi.FileName = $NodePath
-  $psi.ArgumentList.Add($WrapperPath)
+  $psi.FileName = $WrapperPath
+  $psi.ArgumentList.Add('run')
   $psi.ArgumentList.Add($Script)
   $psi.WorkingDirectory = (Resolve-Path '.').Path
   $psi.UseShellExecute = $false
@@ -29,7 +28,7 @@ function Invoke-NpmCommand {
   $endTime = Get-Date
 
   return [pscustomobject]@{
-    command     = "node tools/npm/run-script.mjs $Script"
+    command     = "./tools/npm/bin/npm run $Script"
     exitCode    = $proc.ExitCode
     stdout      = $stdout.TrimEnd()
     stderr      = $stderr.TrimEnd()
@@ -37,25 +36,25 @@ function Invoke-NpmCommand {
     completedAt = $endTime.ToString('o')
     durationMs  = [int][Math]::Round((New-TimeSpan -Start $startTime -End $endTime).TotalMilliseconds)
   }
-$nodePath = (Get-Command node -ErrorAction SilentlyContinue)?.Source
-$wrapperPath = Join-Path (Resolve-Path '.').Path 'tools/npm/run-script.mjs'
+$wrapperDir = Join-Path (Resolve-Path '.').Path 'tools/npm/bin'
+$wrapperPath = if ($IsWindows) { Join-Path $wrapperDir 'npm.cmd' } else { Join-Path $wrapperDir 'npm' }
 
-if (-not $nodePath -or -not (Test-Path -LiteralPath $wrapperPath -PathType Leaf)) {
-  Write-Warning '[handoff-tests] node or npm wrapper not found; writing error summary.'
+if (-not (Test-Path -LiteralPath $wrapperPath -PathType Leaf)) {
+  Write-Warning '[handoff-tests] npm wrapper not found; writing error summary.'
 }
 
 $results = @()
 $notes = @()
 
-if ($nodePath -and (Test-Path -LiteralPath $wrapperPath -PathType Leaf)) {
+if (Test-Path -LiteralPath $wrapperPath -PathType Leaf) {
   $scripts = @('priority:test','hooks:test','semver:check')
   foreach ($script in $scripts) {
     try {
-      $results += Invoke-NpmCommand -Script $script -NodePath $nodePath -WrapperPath $wrapperPath
+      $results += Invoke-NpmCommand -Script $script -WrapperPath $wrapperPath
     } catch {
-      $notes += ("Invocation for node tools/npm/run-script.mjs {0} failed: {1}" -f $script, $_.Exception.Message)
+      $notes += ("Invocation for ./tools/npm/bin/npm run {0} failed: {1}" -f $script, $_.Exception.Message)
       $results += [pscustomobject]@{
-        command     = "node tools/npm/run-script.mjs $script"
+        command     = "./tools/npm/bin/npm run $script"
         exitCode    = -1
         stdout      = ''
         stderr      = ("Invocation failed: {0}" -f $_.Exception.Message)
@@ -74,7 +73,7 @@ $summaryPath = Join-Path $handoffDir 'test-summary.json'
 
 $failureEntries = @($results | Where-Object { $_.exitCode -ne 0 })
 $failureCount = $failureEntries.Count
-$status = if (-not $nodePath -or -not (Test-Path -LiteralPath $wrapperPath -PathType Leaf)) {
+$status = if (-not (Test-Path -LiteralPath $wrapperPath -PathType Leaf)) {
   'error'
 } elseif ($results.Count -eq 0) {
   'skipped'
@@ -101,11 +100,8 @@ $summary = [ordered]@{
   }
 }
 
-if (-not $nodePath) {
-  $notes += 'node executable not found in PATH'
-}
 if (-not (Test-Path -LiteralPath $wrapperPath -PathType Leaf)) {
-  $notes += 'npm wrapper missing under tools/npm/run-script.mjs'
+  $notes += 'npm wrapper missing under tools/npm/bin'
 }
 
 $notes = @($notes | Where-Object { $_ })
@@ -117,6 +113,6 @@ if ($notes.Count -gt 0) {
 
 Write-Host ("[handoff-tests] status={0} total={1} failures={2} -> {3}" -f $status, $summary.total, $failureCount, $summaryPath) -ForegroundColor Cyan
 
-if (-not $nodePath -or -not (Test-Path -LiteralPath $wrapperPath -PathType Leaf) -or $failureCount -gt 0) {
+if (-not (Test-Path -LiteralPath $wrapperPath -PathType Leaf) -or $failureCount -gt 0) {
   exit 1
 }

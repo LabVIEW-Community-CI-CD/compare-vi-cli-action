@@ -1,7 +1,7 @@
 # Agent Handoff - Compare VI CLI Action
 
 ## Context Snapshot
-- Standing priority refreshed via `node tools/npm/run-script.mjs priority:sync`; cache still points to
+- Standing priority refreshed via `./tools/npm/bin/npm run priority:sync`; cache still points to
   issue #134
   (`Standing priority: evolve CompareVI helper into N-provider CLI companion`). The sync now uses the
   installed GitHub CLI but still falls back to cached metadata because the workspace lacks
@@ -14,7 +14,7 @@
   cached standing-issue metadata because `gh` is unauthenticated).
 - Ran `tools/Detect-RogueLV.ps1 -ResultsDir tests/results -LookBackSeconds 900 -AppendToStepSummary`;
   no rogue LabVIEW or LVCompare processes detected.
-- `node tools/npm/run-script.mjs priority:handoff-tests` (Node shim) re-ran and refreshed
+- `./tools/npm/bin/npm run priority:handoff-tests` (Node shim) re-ran and refreshed
   `tests/results/_agent/handoff/test-summary.json` (captured 2025-10-16T02:58Z).
 - Schema validation re-run with the placeholder TestStand session data via `node
   dist/tools/schemas/validate-json.js --schema
@@ -38,7 +38,7 @@
 
 ## Suggested Next Actions
 1. Authenticate GitHub CLI (e.g., `gh auth login` or export `GH_TOKEN`) and rerun
-   `node tools/npm/run-script.mjs priority:sync` so the standing-priority cache reflects the live issue
+   `./tools/npm/bin/npm run priority:sync` so the standing-priority cache reflects the live issue
    metadata.
 2. Generate or copy fresh CLI-only and TestStand session artifacts on a LabVIEW-capable host;
    replace the placeholder data under `tests/results/teststand-session/` and populate the missing
@@ -57,7 +57,7 @@
 
 ## First Actions for the Next Agent
 1. Authenticate GitHub CLI (`gh auth login` or export `GH_TOKEN`) and rerun
-   `node tools/npm/run-script.mjs priority:sync` so the standing-priority cache reflects the live issue
+   `./tools/npm/bin/npm run priority:sync` so the standing-priority cache reflects the live issue
    metadata.
 2. Fetch or regenerate the missing `tests/results/teststand-session/` and `tests/results/cli-only/`
    directories so schema validation and documentation review can resume; replace the current
@@ -72,7 +72,7 @@
 
 ## Notes for Next Agent
 - Added a Node-based shim at `tools/priority/run-handoff-tests.mjs` so
-  `node tools/npm/run-script.mjs priority:handoff-tests` no longer requires PowerShell.
+  `./tools/npm/bin/npm run priority:handoff-tests` no longer requires PowerShell.
 - `tests/results/_agent/handoff/test-summary.json` now records the refreshed Node-driven run
   (captured 2025-10-16T02:58Z) alongside earlier schema validation attempts.
 - No watcher telemetry exists for this session; container still lacks `_agent/handoff/` watcher

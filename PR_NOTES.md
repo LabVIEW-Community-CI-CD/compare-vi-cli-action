@@ -103,7 +103,7 @@ Release v0.4.0 centers on:
 ## 9. Tag Preparation Checklist (Draft)
 
 1. Confirm version refs (`package.json`, action docs) reflect v0.4.0.
-2. Regenerate outputs docs (if any change) via `node tools/npm/run-script.mjs generate:outputs` (already in sync for this PR).
+2. Regenerate outputs docs (if any change) via `./tools/npm/bin/npm run generate:outputs` (already in sync for this PR).
 3. Run full test dispatcher (unit + integration if canonical LVCompare present).
 4. Run markdown lint & (optional) actionlint over workflows.
 5. Inspect CHANGELOG: ensure v0.4.0 section finalized; remove "Unreleased" placeholders referencing these changes.

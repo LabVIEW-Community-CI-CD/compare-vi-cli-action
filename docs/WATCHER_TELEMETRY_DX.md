@@ -14,7 +14,7 @@ Design notes describing how automation (agents, scripts, CI summaries) should su
 
 ## Telemetry Sources
 
-- Command: `node tools/npm/run-script.mjs dev:watcher:status` (PowerShell wrapper around
+- Command: `./tools/npm/bin/npm run dev:watcher:status` (PowerShell wrapper around
   `tools/Dev-WatcherManager.ps1 -Status`).
 - JSON schema: `dev-watcher/status-v2` (written to STDOUT, optional file output).
 - Artefact paths (when present):
@@ -68,9 +68,9 @@ Optional additions:
      `LV_IDLE_WAIT_SECONDS=2`, `LV_IDLE_MAX_WAIT_SECONDS=5`.
 2. Run `tools/Detect-RogueLV.ps1` and report any rogue LabVIEW/LVCompare PIDs before taking
    action.
-3. Execute `node tools/npm/run-script.mjs dev:watcher:status` (or call `tools/Dev-WatcherManager.ps1 -Status` in-process), capturing output.
+3. Execute `./tools/npm/bin/npm run dev:watcher:status` (or call `tools/Dev-WatcherManager.ps1 -Status` in-process), capturing output.
 4. Summarise the required fields in the reply (or step summary) using the template above.
-5. If `needsTrim=true`, call `node tools/npm/run-script.mjs dev:watcher:trim` (or `Print-AgentHandoff.ps1 -AutoTrim`) and
+5. If `needsTrim=true`, call `./tools/npm/bin/npm run dev:watcher:trim` (or `Print-AgentHandoff.ps1 -AutoTrim`) and
    mention the trim result; otherwise note that no trim was necessary.
 6. Record anomalies: missing artefacts, schema mismatches, stale timestamps, or command failures.
 
@@ -78,8 +78,8 @@ Optional additions:
 
 - **Watcher not running**: Report `state=stopped`, `alive=false`, `heartbeatFresh=false`, and confirm
   the absence of heartbeat files.
-- **Heartbeat stale**: Include the stale age and recommend running `node tools/npm/run-script.mjs dev:watcher:trim` or
-  restarting via `node tools/npm/run-script.mjs dev:watcher:ensure`.
+- **Heartbeat stale**: Include the stale age and recommend running `./tools/npm/bin/npm run dev:watcher:trim` or
+  restarting via `./tools/npm/bin/npm run dev:watcher:ensure`.
 - **Schema drift**: If the status command emits an unexpected schema version, attach the raw JSON
   path for follow-up and avoid parsing assumptions.
 - **Command failure**: Surface the non-zero exit code and stderr snippet; retry once before asking

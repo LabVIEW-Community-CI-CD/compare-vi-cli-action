@@ -6,7 +6,7 @@
   "failureCount": 0,
   "results": [
     {
-      "command": "node tools/npm/run-script.mjs priority:test",
+      "command": "./tools/npm/bin/npm run priority:test",
       "exitCode": 0,
       "stdout": "priority tests ok",
       "stderr": "",
@@ -15,7 +15,7 @@
       "durationMs": 30000
     },
     {
-      "command": "node tools/npm/run-script.mjs hooks:test",
+      "command": "./tools/npm/bin/npm run hooks:test",
       "exitCode": 0,
       "stdout": "hooks tests ok",
       "stderr": "",
@@ -24,7 +24,7 @@
       "durationMs": 20000
     },
     {
-      "command": "node tools/npm/run-script.mjs semver:check",
+      "command": "./tools/npm/bin/npm run semver:check",
       "exitCode": 0,
       "stdout": "{\"version\":\"0.5.0\",\"valid\":true}",
       "stderr": "",

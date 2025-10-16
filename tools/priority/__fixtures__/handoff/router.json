@@ -6,25 +6,25 @@
     {
       "key": "hooks:pre-commit",
       "priority": 10,
-      "scripts": ["node tools/npm/run-script.mjs hooks:pre-commit"],
+      "scripts": ["./tools/npm/bin/npm run hooks:pre-commit"],
       "rationale": "baseline hook gate"
     },
     {
       "key": "hooks:multi",
       "priority": 11,
-      "scripts": ["node tools/npm/run-script.mjs hooks:multi", "node tools/npm/run-script.mjs hooks:schema"],
+      "scripts": ["./tools/npm/bin/npm run hooks:multi", "./tools/npm/bin/npm run hooks:schema"],
       "rationale": "ensure parity across planes"
     },
     {
       "key": "docs:lint",
       "priority": 20,
-      "scripts": ["node tools/npm/run-script.mjs lint:md:changed"],
+      "scripts": ["./tools/npm/bin/npm run lint:md:changed"],
       "rationale": "docs label present"
     },
     {
       "key": "ci:parity",
       "priority": 30,
-      "scripts": ["node tools/npm/run-script.mjs hooks:multi"],
+      "scripts": ["./tools/npm/bin/npm run hooks:multi"],
       "rationale": "ci label present"
     }
   ]

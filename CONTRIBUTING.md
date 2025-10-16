@@ -98,13 +98,13 @@ $env:LV_HEAD_VI = 'VI2.vi'
 
 ## Standing priority workflow
 
-- `node tools/npm/run-script.mjs priority:bootstrap` — detect the current plane, run hook preflight (and parity when `-- -VerboseHooks` is supplied), and refresh the standing-priority snapshot/router.
-- `node tools/npm/run-script.mjs priority:handoff` — ingest the latest handoff artifacts (`issue-summary.json`, `issue-router.json`, hook and watcher summaries) into the session, hydrating `$StandingPrioritySnapshot`, `$StandingPriorityRouter`, etc.
-- `node tools/npm/run-script.mjs priority:handoff-tests` — run the priority/hooks/semver checks and persist results to `tests/results/_agent/handoff/test-summary.json` for downstream agents.
-- `node tools/npm/run-script.mjs priority:release` — simulate the release actions described by the router; pass `-- -Execute` to run `Branch-Orchestrator.ps1 -Execute` instead of the default dry-run.
-- `node tools/npm/run-script.mjs handoff:schema` — validate the hook handoff summary (`tests/results/_agent/handoff/hook-summary.json`) against `docs/schemas/handoff-hook-summary-v1.schema.json`.
-- `node tools/npm/run-script.mjs handoff:release-schema` — validate the release summary (`tests/results/_agent/handoff/release-summary.json`) against `docs/schemas/handoff-release-v1.schema.json`.
-- `node tools/npm/run-script.mjs semver:check` — assert the current `package.json` version complies with SemVer 2.0 via `tools/priority/validate-semver.mjs`.
+- `./tools/npm/bin/npm run priority:bootstrap` — detect the current plane, run hook preflight (and parity when `-- -VerboseHooks` is supplied), and refresh the standing-priority snapshot/router.
+- `./tools/npm/bin/npm run priority:handoff` — ingest the latest handoff artifacts (`issue-summary.json`, `issue-router.json`, hook and watcher summaries) into the session, hydrating `$StandingPrioritySnapshot`, `$StandingPriorityRouter`, etc.
+- `./tools/npm/bin/npm run priority:handoff-tests` — run the priority/hooks/semver checks and persist results to `tests/results/_agent/handoff/test-summary.json` for downstream agents.
+- `./tools/npm/bin/npm run priority:release` — simulate the release actions described by the router; pass `-- -Execute` to run `Branch-Orchestrator.ps1 -Execute` instead of the default dry-run.
+- `./tools/npm/bin/npm run handoff:schema` — validate the hook handoff summary (`tests/results/_agent/handoff/hook-summary.json`) against `docs/schemas/handoff-hook-summary-v1.schema.json`.
+- `./tools/npm/bin/npm run handoff:release-schema` — validate the release summary (`tests/results/_agent/handoff/release-summary.json`) against `docs/schemas/handoff-release-v1.schema.json`.
+- `./tools/npm/bin/npm run semver:check` — assert the current `package.json` version complies with SemVer 2.0 via `tools/priority/validate-semver.mjs`.
 
 These helpers make the sandbox feel pseudo-persistent: each agent self-injects the previous session’s state before starting work and leaves updated artifacts when finishing.
 
@@ -113,8 +113,8 @@ These helpers make the sandbox feel pseudo-persistent: each agent self-injects t
 - Run hook logic manually before committing/pushing:
 
   ```bash
-  node tools/npm/run-script.mjs hooks:pre-commit
-  node tools/npm/run-script.mjs hooks:pre-push
+  ./tools/npm/bin/npm run hooks:pre-commit
+  ./tools/npm/bin/npm run hooks:pre-push
   ```
 
   Passing `HOOKS_PWSH=/path/to/pwsh` or `HOOKS_NODE=/path/to/node` overrides discovery if needed.
@@ -122,10 +122,10 @@ These helpers make the sandbox feel pseudo-persistent: each agent self-injects t
 - Additional helpers:
 
   ```bash
-  node tools/npm/run-script.mjs hooks:plane     # show detected plane + enforcement mode
-  node tools/npm/run-script.mjs hooks:preflight # verify dependencies for the current plane
-  node tools/npm/run-script.mjs hooks:multi     # run shell + PowerShell wrappers and diff JSON
-  node tools/npm/run-script.mjs hooks:schema    # validate summaries against the v1 schema
+  ./tools/npm/bin/npm run hooks:plane     # show detected plane + enforcement mode
+  ./tools/npm/bin/npm run hooks:preflight # verify dependencies for the current plane
+  ./tools/npm/bin/npm run hooks:multi     # run shell + PowerShell wrappers and diff JSON
+  ./tools/npm/bin/npm run hooks:schema    # validate summaries against the v1 schema
   ```
 
 - Control behaviour via `HOOKS_ENFORCE=fail|warn|off` (default: `fail` in CI, `warn` locally). Failures become warnings when enforcement is `warn`, and are suppressed entirely when set to `off`.

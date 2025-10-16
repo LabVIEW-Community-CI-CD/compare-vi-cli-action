@@ -116,7 +116,7 @@ jobs:
       shell: bash
       run: |
         set -euo pipefail
-        node tools/npm/run-script.mjs --silent derive:env > derived-env.json
+        ./tools/npm/bin/npm run --silent derive:env > derived-env.json
         mkdir -p tests/results/_agent
         cp derived-env.json tests/results/_agent/derived-env.json
         if [ -n "${GITHUB_STEP_SUMMARY:-}" ]; then
@@ -466,16 +466,16 @@ jobs:
       run: ./tools/PrePush-Checks.ps1
 
     - name: Hooks plane info
-      run: node tools/npm/run-script.mjs hooks:plane
+      run: ./tools/npm/bin/npm run hooks:plane
 
     - name: Hooks preflight
-      run: node tools/npm/run-script.mjs hooks:preflight
+      run: ./tools/npm/bin/npm run hooks:preflight
 
     - name: Run multi-plane hook diff
-      run: node tools/npm/run-script.mjs hooks:multi
+      run: ./tools/npm/bin/npm run hooks:multi
 
     - name: Validate hook summary schema
-      run: node tools/npm/run-script.mjs hooks:schema
+      run: ./tools/npm/bin/npm run hooks:schema
 
     - name: Upload hook parity summaries
       if: always()
@@ -502,7 +502,7 @@ jobs:
       - name: Install dependencies (no scripts)
         run: npm ci --ignore-scripts
       - name: SemVer check
-        run: node tools/npm/run-script.mjs semver:check
+        run: ./tools/npm/bin/npm run semver:check
 
   issue-snapshot:
     needs: lint
@@ -516,11 +516,11 @@ jobs:
         env:
           GITHUB_REPOSITORY: ${{ github.repository }}
         run: |
-          node tools/npm/run-script.mjs priority:sync || true
+          ./tools/npm/bin/npm run priority:sync || true
       - name: Validate snapshot schema (best-effort)
         continue-on-error: true
         run: |
-          node tools/npm/run-script.mjs priority:schema
+          ./tools/npm/bin/npm run priority:schema
       - name: Upload issue snapshot artifacts
         if: always()
         uses: actions/upload-artifact@v4

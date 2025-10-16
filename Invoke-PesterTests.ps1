@@ -1207,7 +1207,7 @@ if ($limitToSingle) {
     try {
       $npm = Get-Command npm -ErrorAction SilentlyContinue
       if ($npm) {
-        Write-Host 'Deriving test manifest via TypeScript (node tools/npm/run-script.mjs tests:discover)...' -ForegroundColor DarkGray
+        Write-Host 'Deriving test manifest via TypeScript (./tools/npm/bin/npm run tests:discover)...' -ForegroundColor DarkGray
         & $npm.Path run tests:discover --silent | Write-Host
         $usedNodeDiscovery = $true
       } else {

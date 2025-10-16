@@ -7,10 +7,11 @@ This document summarizes the expectations for automation agents working in the
 
 ## Primary directive
 
-- The standing priority is whichever issue carries the `standing-priority` label. Use the sanitized
-  wrapper `node tools/npm/run-script.mjs <script>` instead of raw `npm run` (the container exports
-  `npm_config_http_proxy`, which triggers warnings in recent npm builds). Run
-  `node tools/npm/run-script.mjs priority:sync` at session start so `.agent_priority_cache.json` and
+- The standing priority is whichever issue carries the `standing-priority` label. Add the sanitized
+  wrapper directory to `PATH` (`source tools/env/activate-npm-proxy.sh` or
+  `pwsh -File tools/env/Activate-NpmProxy.ps1`) so plain `npm` uses the proxy-safe shim. When in doubt,
+  invoke `./tools/npm/bin/npm run <script>` directly. Run `./tools/npm/bin/npm run priority:sync` at session
+  start so `.agent_priority_cache.json` and
   `tests/results/_agent/issue/` reflect the latest snapshot; treat that issue as the top objective for
   edits, CI runs, and PRs.
 - The human operator is signed in with an admin GitHub token; assume privileged operations
@@ -20,7 +21,7 @@ This document summarizes the expectations for automation agents working in the
   - Keep workflows deterministic and green.
   - Reference `#127` in commit and PR descriptions.
 - First actions in a session:
-  1. `node tools/npm/run-script.mjs priority:sync` to refresh the standing-priority snapshot and router
+  1. `./tools/npm/bin/npm run priority:sync` to refresh the standing-priority snapshot and router
      artifacts.
   2. Review `.agent_priority_cache.json` / `tests/results/_agent/issue/` for tasks, acceptance, and
      linked PRs on the standing issue.
@@ -178,7 +179,7 @@ Use `tools/workflows/update_workflows.py` for mechanical updates (comment-preser
       and appends notes to the GitHub Step Summary when available.
     - Each invocation also drops a session capsule under `tests/results/_agent/sessions/`
       (schema `agent-handoff/session@v1`) capturing branch/head/status snapshots for determinism.
-- Capture quick regression coverage with `node tools/npm/run-script.mjs priority:handoff-tests`; the
+- Capture quick regression coverage with `./tools/npm/bin/npm run priority:handoff-tests`; the
   script runs
   `priority:test`, `hooks:test`, and `semver:check`, then writes `tests/results/_agent/handoff/test-summary.json`
   so subsequent agents (or CI summaries) can replay the outcomes.
@@ -204,7 +205,7 @@ Use `tools/workflows/update_workflows.py` for mechanical updates (comment-preser
 ## Watching orchestrated runs
 
 - Prefer the REST watcher when monitoring workflows:
-  `node tools/npm/run-script.mjs ci:watch:rest -- --run-id <id>` streams job status and exits non-zero
+  `./tools/npm/bin/npm run ci:watch:rest -- --run-id <id>` streams job status and exits non-zero
   if
   the run fails. Passing `--branch <name>` auto-selects the latest run. The VS Code task “CI Watch (REST)” prompts for a run id.
 - The watcher now aborts with `conclusion: watcher-error` after repeated 404s or other API failures (90s / 120s grace by default), still

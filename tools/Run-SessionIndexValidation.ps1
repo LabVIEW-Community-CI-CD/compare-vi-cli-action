@@ -11,15 +11,17 @@ $workspace = (Get-Location).Path
 $discoveryScript = Join-Path $workspace 'dist/tools/test-discovery.js'
 
 if (-not (Test-Path -LiteralPath $discoveryScript)) {
-  Write-Host '::notice::TypeScript build artifacts missing; running node tools/npm/run-script.mjs build...'
+  Write-Host '::notice::TypeScript build artifacts missing; running npm run build...'
+  $wrapperDir = Join-Path $workspace 'tools/npm/bin'
+  $npmWrapper = if ($IsWindows) { Join-Path $wrapperDir 'npm.cmd' } else { Join-Path $wrapperDir 'npm' }
   try {
-    node tools/npm/run-script.mjs build | Out-Host
+    & $npmWrapper run build | Out-Host
   } catch {
-    Write-Error "node tools/npm/run-script.mjs build failed: $_"
+    Write-Error "npm run build failed: $_"
     exit 2
   }
   if (-not (Test-Path -LiteralPath $discoveryScript)) {
-    Write-Error "test-discovery.js not found at $discoveryScript after node tools/npm/run-script.mjs build"
+    Write-Error "test-discovery.js not found at $discoveryScript after npm run build"
     exit 2
   }
 }

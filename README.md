@@ -123,10 +123,13 @@ DX reminders. Workflows call `tools/Invoke-DevDashboard.ps1` to publish HTML/JSO
 
 ### Live watcher
 
-- `node tools/npm/run-script.mjs watch:pester` (warn 90 s, hang 180 s).
-- `node tools/npm/run-script.mjs watch:pester:fast:exit` (warn 60 s, hang 120 s, exits on hang).
-- `node tools/npm/run-script.mjs dev:watcher:ensure` / `status` / `stop` (persistent watcher lifecycle).
-- `node tools/npm/run-script.mjs dev:watcher:trim` (rotates `watch.out` / `watch.err` when >5 MB or ~4,000 lines).
+- `./tools/npm/bin/npm run watch:pester` (warn 90 s, hang 180 s).
+- `./tools/npm/bin/npm run watch:pester:fast:exit` (warn 60 s, hang 120 s, exits on hang).
+- `./tools/npm/bin/npm run dev:watcher:ensure` / `status` / `stop` (persistent watcher lifecycle).
+- `./tools/npm/bin/npm run dev:watcher:trim` (rotates `watch.out` / `watch.err` when >5 MB or ~4,000 lines).
+- `source tools/env/activate-npm-proxy.sh` (bash) or `pwsh -File tools/env/Activate-NpmProxy.ps1` to prepend the proxy-safe
+  shim to `PATH` so plain `npm` commands avoid the `http-proxy` warning. Running `./tools/npm/bin/npm` directly always uses the
+  shim if you prefer not to modify `PATH`.
 - `tools/Print-AgentHandoff.ps1 -AutoTrim` (prints summary and trims automatically when
   `needsTrim=true`; also writes a session capsule under
   `tests/results/_agent/sessions/` for the current workspace state).
@@ -157,7 +160,7 @@ Tips:
   - `Run Non-LV Checks (Docker)` shells into `tools/Run-NonLVChecksInDocker.ps1` for actionlint/markdownlint/docs drift.
   - Recommended extensions (PowerShell, C#, GitHub Actions, markdownlint, Docker) are declared in `.vscode/extensions.json`.
   - Local validation matrix (see below) keeps local runs aligned with CI stages.
-- Prefer the REST watcher for GitHub status: `node tools/npm/run-script.mjs ci:watch:rest -- --run-id <id>` streams job conclusions without relying on the
+- Prefer the REST watcher for GitHub status: `./tools/npm/bin/npm run ci:watch:rest -- --run-id <id>` streams job conclusions without relying on the
   `gh` CLI. Passing `--branch <name>` auto-selects the latest run. A VS Code task named “CI Watch (REST)” prompts for the run id.
 - Repeated 404s or other API errors cause the watcher to exit with `conclusion: watcher-error` after the built-in grace window
   (90s for “run not found”, 120s for other failures) while still writing `watcher-rest.json` to keep telemetry flowing.
@@ -232,7 +235,7 @@ vars (compatible with `DETERMINISTIC=1`). Add switches such as `-SkipDocs`/`-Ski
 - **Smoke** - minimal regression guard for documentation-only changes.
 - **Fixture Drift** - verifies fixture manifests and retains comparison evidence.
 - **VI Binary Gate** - ensures LabVIEW binaries remain normalized.
-- **Markdownlint** - runs `node tools/npm/run-script.mjs lint:md:changed` with the trimmed configuration below.
+- **Markdownlint** - runs `./tools/npm/bin/npm run lint:md:changed` with the trimmed configuration below.
 - **UI/Dispatcher Smoke** - non-required quick pass of dispatcher/UI paths without invoking LVCompare (label `ui-smoke` or manual dispatch).
 - **LabVIEW CLI Compare** - non-required experiment that invokes LabVIEW CLI `CreateComparisonReport` with canonical fixtures (requires LabVIEW 2025+).
 
@@ -247,7 +250,7 @@ ignored via `.markdownlintignore`.
 Lint changed files locally:
 
 ```powershell
-node tools/npm/run-script.mjs lint:md:changed
+./tools/npm/bin/npm run lint:md:changed
 ```
 
 ## Documentation map
@@ -266,7 +269,7 @@ node tools/npm/run-script.mjs lint:md:changed
 
 1. Branch from `develop`, run `npm ci`.
 2. Execute tests (`./Invoke-PesterTests.ps1` or watcher-assisted workflows).
-3. Lint (`node tools/npm/run-script.mjs lint:md:changed`, `tools/Check-ClangFormat.ps1` if relevant).
+3. Lint (`./tools/npm/bin/npm run lint:md:changed`, `tools/Check-ClangFormat.ps1` if relevant).
 4. Submit a PR referencing the standing-priority issue and include rationale plus artifacts.
 
 Follow `AGENTS.md` for coding etiquette and keep CI deterministic. Large workflow updates
@@ -291,20 +294,20 @@ Keeping these green locally prevents surprises when Validate or the orchestrated
 
 #### Standing priority helpers
 
-- `node tools/npm/run-script.mjs priority:bootstrap` — run hook preflight/parity (optional via `-- -VerboseHooks`) and refresh the standing-priority snapshot/router.
-- `node tools/npm/run-script.mjs priority:handoff` — import the latest handoff summaries into the current PowerShell session (globals such as `$StandingPrioritySnapshot` and `$StandingPriorityRouter`).
-- `node tools/npm/run-script.mjs priority:handoff-tests` — execute the priority/hooks/semver checks and write `tests/results/_agent/handoff/test-summary.json` for later review.
-- `node tools/npm/run-script.mjs priority:release` — simulate the release path from the router; add `-- -Execute` to run `Branch-Orchestrator.ps1 -Execute` instead of the default dry-run.
-- `node tools/npm/run-script.mjs handoff:schema` - validate the stored hook handoff summary against `docs/schemas/handoff-hook-summary-v1.schema.json`.
-- `node tools/npm/run-script.mjs handoff:release-schema` - validate the release summary (`tests/results/_agent/handoff/release-summary.json`) against `docs/schemas/handoff-release-v1.schema.json`.
-- `node tools/npm/run-script.mjs handoff:session-schema` - validate stored session capsules (`tests/results/_agent/sessions/*.json`) against `docs/schemas/handoff-session-v1.schema.json`.
-- `node tools/npm/run-script.mjs semver:check` — run the SemVer validator (`tools/priority/validate-semver.mjs`) against the current package version.
+- `./tools/npm/bin/npm run priority:bootstrap` — run hook preflight/parity (optional via `-- -VerboseHooks`) and refresh the standing-priority snapshot/router.
+- `./tools/npm/bin/npm run priority:handoff` — import the latest handoff summaries into the current PowerShell session (globals such as `$StandingPrioritySnapshot` and `$StandingPriorityRouter`).
+- `./tools/npm/bin/npm run priority:handoff-tests` — execute the priority/hooks/semver checks and write `tests/results/_agent/handoff/test-summary.json` for later review.
+- `./tools/npm/bin/npm run priority:release` — simulate the release path from the router; add `-- -Execute` to run `Branch-Orchestrator.ps1 -Execute` instead of the default dry-run.
+- `./tools/npm/bin/npm run handoff:schema` - validate the stored hook handoff summary against `docs/schemas/handoff-hook-summary-v1.schema.json`.
+- `./tools/npm/bin/npm run handoff:release-schema` - validate the release summary (`tests/results/_agent/handoff/release-summary.json`) against `docs/schemas/handoff-release-v1.schema.json`.
+- `./tools/npm/bin/npm run handoff:session-schema` - validate stored session capsules (`tests/results/_agent/sessions/*.json`) against `docs/schemas/handoff-session-v1.schema.json`.
+- `./tools/npm/bin/npm run semver:check` — run the SemVer validator (`tools/priority/validate-semver.mjs`) against the current package version.
 
 
-- `node tools/npm/run-script.mjs hooks:plane` — prints the detected plane (for example `windows-pwsh`, `linux-wsl`, `github-ubuntu`) and the active enforcement mode.
-- `node tools/npm/run-script.mjs hooks:preflight` — verifies Node/PowerShell availability for the current plane and warns if a dependency is missing.
-- `node tools/npm/run-script.mjs hooks:multi` — runs both the shell and PowerShell wrappers, publishes labelled summaries (`tests/results/_hooks/pre-commit.shell.json`, etc.), and fails when the JSON differs.
-- `node tools/npm/run-script.mjs hooks:schema` — validates all hook summaries against `docs/schemas/hooks-summary-v1.schema.json`.
+- `./tools/npm/bin/npm run hooks:plane` — prints the detected plane (for example `windows-pwsh`, `linux-wsl`, `github-ubuntu`) and the active enforcement mode.
+- `./tools/npm/bin/npm run hooks:preflight` — verifies Node/PowerShell availability for the current plane and warns if a dependency is missing.
+- `./tools/npm/bin/npm run hooks:multi` — runs both the shell and PowerShell wrappers, publishes labelled summaries (`tests/results/_hooks/pre-commit.shell.json`, etc.), and fails when the JSON differs.
+- `./tools/npm/bin/npm run hooks:schema` — validates all hook summaries against `docs/schemas/hooks-summary-v1.schema.json`.
 
 Tune behaviour with `HOOKS_ENFORCE=fail|warn|off` (default: `fail` in CI, `warn` locally). Use `HOOKS_PWSH` or `HOOKS_NODE` to point at custom executables when bouncing between planes.
 
@@ -328,12 +331,12 @@ Key features:
 For local development:
 1. Run `npm install` inside `vscode/comparevi-helper`.
 2. From VS Code, run **Debug: Start Debugging** on the extension to launch a dev host.
-3. `node tools/npm/run-script.mjs test:unit` and `node tools/npm/run-script.mjs test:ext` validate provider registry behaviour, telemetry, multi-root flows, and UI wiring.
+3. `./tools/npm/bin/npm run test:unit` and `./tools/npm/bin/npm run test:ext` validate provider registry behaviour, telemetry, multi-root flows, and UI wiring.
 
 Packaging notes:
 
 1. Development: run `npm install` then press `F5` (Debug: Start Debugging) from VS Code to side-load the extension.
-2. Optional VSIX: install `vsce` locally and run `node tools/npm/run-script.mjs --prefix vscode/comparevi-helper package`; install the resulting VSIX via “Extensions: Install from VSIX...” if you prefer a self-contained bundle instead of running the debug host.
+2. Optional VSIX: install `vsce` locally and run `./tools/npm/bin/npm run --prefix vscode/comparevi-helper package`; install the resulting VSIX via “Extensions: Install from VSIX...” if you prefer a self-contained bundle instead of running the debug host.
 
 
 ## Documentation Manifest
@@ -341,7 +344,7 @@ Packaging notes:
 - Canonical manifest: `docs/documentation-manifest.json`
   - Groups every tracked Markdown file into authoritative, draft, reference, or generated sets.
   - Patterns are evaluated relative to the repository root.
-- Validate updates before committing: `node tools/npm/run-script.mjs docs:manifest:validate`
+- Validate updates before committing: `./tools/npm/bin/npm run docs:manifest:validate`
 - Promote drafts by migrating files from `issues-drafts/` into the `docs/` tree and updating the manifest entry status.
 
 
@@ -351,7 +354,7 @@ The repository ships a cross-platform CLI (comparevi-cli) used by workflows and 
 publish helper to build per-RID archives and checksums for distribution.
 
 - Build artifacts
-  - `node tools/npm/run-script.mjs publish:cli` (or `pwsh -File tools/Publish-Cli.ps1`)
+  - `./tools/npm/bin/npm run publish:cli` (or `pwsh -File tools/Publish-Cli.ps1`)
   - Produces framework-dependent and self-contained archives under `artifacts/cli/`:
     - Windows: `.zip` files
     - Linux/macOS: `.tar.gz` files

@@ -14,13 +14,14 @@ function Invoke-Npm {
   if (-not $nodeCmd) {
     throw 'node not found; cannot launch npm wrapper.'
   }
-  $wrapperPath = Join-Path (Resolve-Path '.').Path 'tools/npm/run-script.mjs'
+$wrapperDir = Join-Path (Resolve-Path '.').Path 'tools/npm/bin'
+$wrapperPath = if ($IsWindows) { Join-Path $wrapperDir 'npm.cmd' } else { Join-Path $wrapperDir 'npm' }
   if (-not (Test-Path -LiteralPath $wrapperPath -PathType Leaf)) {
     throw "npm wrapper not found at $wrapperPath"
   }
   $psi = New-Object System.Diagnostics.ProcessStartInfo
-  $psi.FileName = $nodeCmd.Source
-  $psi.ArgumentList.Add($wrapperPath)
+  $psi.FileName = $wrapperPath
+  $psi.ArgumentList.Add('run')
   $psi.ArgumentList.Add($Script)
   $psi.WorkingDirectory = (Resolve-Path '.').Path
   $psi.UseShellExecute = $false
@@ -33,7 +34,7 @@ function Invoke-Npm {
   if ($stdout) { Write-Host $stdout.TrimEnd() }
   if ($stderr) { Write-Warning $stderr.TrimEnd() }
   if ($proc.ExitCode -ne 0) {
-    throw "node tools/npm/run-script.mjs $Script exited with code $($proc.ExitCode)"
+    throw "./tools/npm/bin/npm run $Script exited with code $($proc.ExitCode)"
   }
 }
 

@@ -334,6 +334,9 @@
     "mocha": "^10.2.0",
     "vitest": "^1.1.0"
   },
+  "overrides": {
+    "glob": "^10.3.10"
+  },
   "dependencies": {
     "compare-vi-cli-action": "file:../.."
   }

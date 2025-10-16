@@ -7,8 +7,10 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const repoRoot = path.resolve(__dirname, '..', '..');
 
-const nodeExecPath = process.env.npm_node_execpath || process.execPath;
-const wrapperPath = path.join(repoRoot, 'tools', 'npm', 'run-script.mjs');
+const wrapperDir = path.join(repoRoot, 'tools', 'npm', 'bin');
+const wrapperPath = process.platform === 'win32'
+  ? path.join(wrapperDir, 'npm.cmd')
+  : path.join(wrapperDir, 'npm');
 
 function runCommand(command, args) {
   return new Promise((resolve) => {
@@ -77,7 +79,7 @@ async function ensureWrapperAvailable() {
   } catch (error) {
     return {
       available: false,
-      message: 'npm wrapper missing under tools/npm/run-script.mjs',
+      message: 'npm wrapper missing under tools/npm/bin',
       error
     };
   }
@@ -93,10 +95,10 @@ async function run() {
   } else {
     const scripts = ['priority:test', 'hooks:test', 'semver:check'];
     for (const script of scripts) {
-      const args = [wrapperPath, script];
-      const { exitCode, stdout, stderr, startedAt, completedAt, durationMs, error } = await runCommand(nodeExecPath, args);
+      const args = ['run', script];
+      const { exitCode, stdout, stderr, startedAt, completedAt, durationMs, error } = await runCommand(wrapperPath, args);
       results.push({
-        command: `node tools/npm/run-script.mjs ${script}`,
+        command: `./tools/npm/bin/npm run ${script}`,
         exitCode,
         stdout,
         stderr,
@@ -106,7 +108,7 @@ async function run() {
       });
 
       if (error) {
-        notes.push(`Invocation for node tools/npm/run-script.mjs ${script} failed: ${error.message}`);
+        notes.push(`Invocation for ./tools/npm/bin/npm run ${script} failed: ${error.message}`);
         break;
       }
     }
