@@ -99,7 +99,7 @@ function Invoke-DispatcherSafe {
     [pscustomobject]@{ ExitCode=$code; TimedOut=$timedOut; StdOut=$stdout; StdErr=$stderr }
   } finally {
     try { if ($proc) { $proc.Dispose() } } catch {}
-    # Narrow cleanup scope: recursively terminate pwsh descendants of the launched process only
+    $childCleanupSucceeded = $false
     try {
       if ($proc -and $proc.Id) {
         # Snapshot all processes with parent linkage in one go
@@ -133,10 +133,17 @@ function Invoke-DispatcherSafe {
           foreach ($pid in ($killList | Sort-Object -Unique)) {
             try { Stop-Process -Id $pid -Force -ErrorAction SilentlyContinue } catch {}
           }
+          $childCleanupSucceeded = $true
         }
       }
-    } catch {}
-    # Do NOT blanket kill new pwsh processes anymore; we intentionally avoid the broad baseline sweep.
+    } catch {
+      $childCleanupSucceeded = $false
+    }
+
+    if (-not $childCleanupSucceeded) {
+      try { Stop-NewPwshProcesses -Baseline $baseline -NotBefore $startedAt } catch {}
+    }
+    # Do NOT blanket kill new pwsh processes anymore; we intentionally avoid the broad baseline sweep unless fallback executes.
   }
 }
 

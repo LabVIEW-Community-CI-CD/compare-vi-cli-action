@@ -8,6 +8,15 @@ Describe 'Invoke-PesterTests Include/Exclude patterns' -Tag 'Unit' {
     $script:fixtureTestsRoot = Join-Path $TestDrive 'fixture-tests'
     New-Item -ItemType Directory -Force -Path $script:fixtureTestsRoot | Out-Null
 
+    try {
+      $null = Get-Command -Name 'pwsh' -ErrorAction Stop
+      $script:pwshAvailable = $true
+      $script:skipReason = $null
+    } catch {
+      $script:pwshAvailable = $false
+      $script:skipReason = 'pwsh executable not available on PATH'
+    }
+
     Import-Module (Join-Path $repoRoot 'tests' '_helpers' 'DispatcherTestHelper.psm1') -Force
 
     $testTemplate = @'
@@ -25,6 +34,11 @@ Describe "{0}" {{
   }
 
   It 'honors IncludePatterns for a single file' {
+    if (-not $script:pwshAvailable) {
+      Set-ItResult -Skipped -Because $script:skipReason
+      return
+    }
+
     $resultsDir = Join-Path $TestDrive 'results-inc'
     $inc = 'Alpha*.ps1'
     $res = Invoke-DispatcherSafe -DispatcherPath $script:dispatcher -ResultsPath $resultsDir -IncludePatterns $inc -TestsPath $script:fixtureTestsRoot -AdditionalArgs @('-IntegrationMode', 'exclude')
@@ -41,6 +55,11 @@ Describe "{0}" {{
   }
 
   It 'honors ExcludePatterns to remove files' {
+    if (-not $script:pwshAvailable) {
+      Set-ItResult -Skipped -Because $script:skipReason
+      return
+    }
+
     $resultsDir = Join-Path $TestDrive 'results-exc'
     $exc = '*Helper.ps1'
     $res = Invoke-DispatcherSafe -DispatcherPath $script:dispatcher -ResultsPath $resultsDir -TestsPath $script:fixtureTestsRoot -AdditionalArgs @('-ExcludePatterns', $exc, '-IntegrationMode', 'exclude')
