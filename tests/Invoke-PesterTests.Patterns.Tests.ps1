@@ -11,11 +11,11 @@ Describe 'Invoke-PesterTests Include/Exclude patterns' -Tag 'Unit' {
     Import-Module (Join-Path $repoRoot 'tests' '_helpers' 'DispatcherTestHelper.psm1') -Force
 
     $testTemplate = @'
-Describe "{0}" {
-  It "passes" {
+Describe "{0}" {{
+  It "passes" {{
     1 | Should -Be 1
-  }
-}
+  }}
+}}
 '@
 
     foreach ($name in @('Alpha.Unit.Tests.ps1', 'Beta.Unit.Tests.ps1', 'Gamma.Helper.ps1')) {
@@ -48,7 +48,7 @@ Describe "{0}" {
     $lines = @(Get-Content -LiteralPath $sel)
     $lines.Count | Should -Be 2
     $leafs = $lines | ForEach-Object { Split-Path -Leaf $_ }
-    $leafs | Should -NotContain 'Gamma.Helper.ps1'
+    $leafs | Should -Not -Contain 'Gamma.Helper.ps1'
     $leafs | Should -Contain 'Alpha.Unit.Tests.ps1'
     $leafs | Should -Contain 'Beta.Unit.Tests.ps1'
   }
