@@ -3,16 +3,21 @@
 ## Context Snapshot
 - Ran `node tools/npm/run-script.mjs priority:sync` at session start; the helper again fell back to the
   cached metadata for standing issue #134 because GitHub CLI is still missing and unauthenticated REST
-  calls fail. The cache timestamp now reflects this session (`cachedAtUtc` ≈ 2025-10-16T18:49:17Z).
+  calls fail. The cache timestamp now reflects this session (`cachedAtUtc` ≈ 2025-10-16T18:53:50Z).
 - Confirmed `gh` remains absent on this image (`which gh` yields no path), so we cannot reauthenticate
   or pull fresh issue data until the binary is installed or a `GH_TOKEN` is supplied.
-- `pwsh` is likewise unavailable (`pwsh --version` exits with `command not found`), preventing any
-  dispatcher or guard automation from running inside the container.
+- `gh auth status` is still blocked because the executable is unavailable; unauthenticated REST calls
+  continue to fail with `fetch failed`.
+- PowerShell (`pwsh`) remains missing (`pwsh --version` exits with `command not found`). A prior
+  `apt-get install powershell` attempt on this image also failed because the package is not published in
+  the default Ubuntu repositories, so dispatcher and guard automation are still offline pending a
+  Microsoft feed or manual install path.
 - Working tree remains on branch `work`; no topic branch (for example `issue/134-cli-companion`) exists
-  locally, and no new commits were created during this session.
-- No orchestrated dispatcher, guard, or watcher tooling was executed, so `tests/results/_agent/` still
-  only contains the previously published telemetry.
-- Placeholder CLI-only and TestStand artifacts are unchanged; nothing new was captured from a
+  locally, and no new commits were created during this session beyond cache refresh updates.
+- No orchestrated dispatcher, guard, or watcher tooling ran, so `tests/results/_agent/` still only
+  contains the previously published telemetry. The earlier `tests/results/_diagnostics/guard.json`
+  artifact is still absent.
+- Placeholder CLI-only and TestStand artifacts remain unchanged; nothing new was captured from a
   LabVIEW-capable host.
 
 ## Status & Known Gaps
@@ -51,12 +56,12 @@
 
 ## Notes for Next Agent
 - `node tools/npm/run-script.mjs priority:sync` continues to fail without GitHub CLI or credentials; the
-  cached metadata was last refreshed at 2025-10-16T18:49:17Z with the "gh CLI not found" error.
+  cached metadata was last refreshed at 2025-10-16T18:53:50Z with the "gh CLI not found" error.
 - `tests/results/_agent/handoff/test-summary.json` still reflects the 2025-10-16T15:48Z
   `priority:handoff-tests` run; no follow-up validation was executed.
 - Watcher telemetry remains unchanged; `_agent/handoff/` contains no new watcher artifacts for this
   session.
 - `.agent_priority_cache.json` records the latest failure reason (`gh CLI not found`) from the
-  2025-10-16T18:49:17Z sync and has not been manually edited.
+  2025-10-16T18:53:50Z sync and has not been manually edited.
 - The container still lacks LabVIEW/LVCompare, so genuine Compare VI outputs must be harvested from a
   Windows host with those tools available.
