@@ -1,71 +1,65 @@
 # Agent Handoff - Compare VI CLI Action
 
 ## Context Snapshot
-- Ran `node tools/npm/run-script.mjs priority:sync`; the script still falls back to cached metadata
-  for standing issue #134 because no GitHub credentials are configured (see
+- Ran `node tools/npm/run-script.mjs priority:sync`; the helper still falls back to the cached
+  metadata for standing issue #134 because neither GitHub CLI nor credentials are available (see
   `.agent_priority_cache.json`).
-- Installed GitHub CLI (`apt-get install -y gh`), but authentication has not been configured yet;
-  `gh auth status` reports no logged-in hosts and `priority:sync` continues to fail without a
-  `GH_TOKEN` or `gh auth login`.
-- Attempted to install PowerShell (`pwsh`) with `apt-get install powershell`, but the package is not
-  available in the default Ubuntu repositories configured here, so dispatcher and guard scripts
-  remain blocked pending a manual installation path.
-- Working tree remains on branch `work`; no topic branch (for example `issue/134-cli-companion`) is
-  present locally.
-- No dispatcher reruns happened this session. The previously referenced
-  `tests/results/_diagnostics/guard.json` file is absent, so the prior guard-loop diagnostics are no
-  longer available in-tree.
-- `tests/results/_agent/handoff/test-summary.json` still reflects the
-  2025-10-16T15:48Z `priority:handoff-tests` execution; no new validation commands were run here.
-- Placeholder TestStand and CLI-only artifacts remain under `tests/results/`, matching the state
-  described in issue #134.
+- Confirmed that `gh` is not installed on this image (`which gh` returns no path), so the CLI
+  installation noted previously is no longer present and the sync script reports "gh CLI not found".
+- PowerShell (`pwsh`) remains unavailable through the default apt repositories, so dispatcher and
+  guard automation continue to be blocked until an alternative install path is configured.
+- Working tree is still on branch `work`; no issue-focused topic branch (for example
+  `issue/134-cli-companion`) exists locally.
+- No dispatcher or guard executions ran this session, and there are no watcher artifacts or new
+  entries under `tests/results/_agent/` beyond the previously captured data.
+- Placeholder CLI-only and TestStand session artifacts remain under `tests/results/`, matching the
+  prior handoff description.
 
 ## Status & Known Gaps
-1. GitHub CLI is now installed, but authentication is still missing. Standing-priority syncs cannot
-   reach GitHub until credentials are configured (`gh auth login` or `GH_TOKEN`).
-2. PowerShell 7+ (with Pester) remains absent because the Ubuntu repositories in this container do
-   not offer the `powershell` package; dispatcher executions and guard sweeps remain blocked.
-3. Dispatcher coverage is still outstanding. No recent runs exist and the last guard diagnostics are
-   gone, so the failure mode needs to be recreated before we can debug it.
-4. TestStand session artifacts (`tests/results/teststand-session/`) and `tests/results/cli-only/`
-   still contain placeholder data; real LabVIEW runs remain required.
-5. Issue/PR #134 lacks refreshed notes summarizing CLI auth state, dispatcher attempts, and artifact
-   provenance.
+1. GitHub CLI is missing entirely. Standing-priority syncs cannot reach GitHub until `gh` is
+   installed and authenticated (or a `GH_TOKEN` is provided).
+2. PowerShell 7+ (with Pester) is still absent; dispatcher and guard tooling remain unusable until it
+   is installed from the Microsoft feed or a manual package.
+3. Dispatcher coverage is still outstanding. No recent runs exist and the guard diagnostics that were
+   referenced previously are still unavailable, so the prior failure mode has not been reproduced.
+4. TestStand session and CLI-only artifacts remain placeholders; genuine LabVIEW outputs still need to
+   be captured on a capable host and validated against the published schemas.
+5. Issue/PR #134 has not been updated with refreshed notes summarizing CLI installation state,
+   dispatcher attempts, or artifact provenance.
 
 ## Suggested Next Actions
-1. Authenticate GitHub CLI (`gh auth login` or set `GH_TOKEN`) and rerun
-   `node tools/npm/run-script.mjs priority:sync` to refresh `.agent_priority_cache.json` with live
+1. Install GitHub CLI (`gh`) and authenticate (`gh auth login` or provide `GH_TOKEN`), then rerun
+   `node tools/npm/run-script.mjs priority:sync` so `.agent_priority_cache.json` reflects live
    metadata.
-2. Restore PowerShell 7 (plus Pester) using the Microsoft package feed or manual install so
-   dispatcher/guard tooling is available again.
-3. Recreate the dispatcher guard failure by running `pwsh -File Invoke-PesterTests.ps1 -IntegrationMode
-   exclude`; capture any new guard artifacts (such as `_diagnostics/guard.json`) for analysis and clear
-   blockers so a full run can complete.
-4. Produce genuine CLI-only and TestStand session artifacts on a LabVIEW-capable host, then validate
-   them via the JSON schema tooling.
-5. Update issue/PR #134 with notes covering toolchain setup, dispatcher outcomes, and artifact
-   provenance.
+2. Install PowerShell 7 + Pester using the Microsoft package feed or a manual download so dispatcher
+   and guard tooling can run again.
+3. Rerun the dispatcher with guard diagnostics enabled (for example,
+   `pwsh -File Invoke-PesterTests.ps1 -IntegrationMode exclude`) to recreate the previous guard loop
+   and capture fresh artifacts.
+4. Produce genuine CLI-only and TestStand session artifacts on a LabVIEW-capable host and validate
+   them with the schema tooling.
+5. Update issue/PR #134 with notes covering the restored toolchain, dispatcher outcomes, and artifact
+   provenance once the above steps are addressed.
 
 ## First Actions for the Next Agent
-1. Authenticate GitHub CLI (`gh auth login` or provide `GH_TOKEN`) and rerun
-   `node tools/npm/run-script.mjs priority:sync` so the standing-priority cache reflects live metadata.
-2. Reinstall PowerShell 7 + Pester (or confirm availability via Microsoft feed) and rerun the dispatcher with guard
-   diagnostics enabled to reproduce the prior loop and gather artifacts.
+1. Install and authenticate GitHub CLI (`gh auth login` or configure `GH_TOKEN`), then rerun
+   `node tools/npm/run-script.mjs priority:sync` to refresh the standing-priority cache.
+2. Restore PowerShell 7 + Pester availability and rerun the dispatcher with guard diagnostics enabled
+   to gather reproducible failure details.
 3. Replace the placeholder `tests/results/teststand-session/` and `tests/results/cli-only/` payloads
    with real outputs from a LabVIEW-capable host, validating them against the published schemas.
-4. Record the new dispatcher and schema outcomes in the handoff telemetry, then update issue/PR #134
+4. Record the new dispatcher and schema outcomes in the handoff telemetry and update issue/PR #134
    with the refreshed context.
 
 ## Notes for Next Agent
-- GitHub CLI is now available, but no credentials are configured. Authenticate before attempting
-  dispatcher or guard commands that require API access.
-- PowerShell is still missing; the default Ubuntu feeds here do not expose the `powershell` package so
-  manual installation (Microsoft feed or direct package) is required.
-- `tests/results/_agent/handoff/test-summary.json` records the 2025-10-16T15:48Z
-  `priority:handoff-tests` run; nothing newer exists.
+- GitHub CLI is absent; install and authenticate it before attempting API-dependent tooling.
+- PowerShell is still missing from the container; use the Microsoft feed or manual packages to enable
+  dispatcher workflows.
+- `tests/results/_agent/handoff/test-summary.json` still reflects the 2025-10-16T15:48Z
+  `priority:handoff-tests` run; no newer validation has been executed.
 - No watcher telemetry exists for this session; `_agent/handoff/` watcher assets remain empty.
-- `.agent_priority_cache.json` mirrors the cached metadata for issue #134 until GitHub CLI is
-   authenticated.
+- `.agent_priority_cache.json` currently records the cached metadata for issue #134 and the latest
+  fetch failure reason (missing GitHub CLI).
 - The container still lacks LabVIEW/LVCompare; genuine artifacts must come from a Windows host with
   those tools available.
 - Schema validation will continue to rely on placeholder TestStand data until real outputs are
