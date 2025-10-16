@@ -1,66 +1,62 @@
 # Agent Handoff - Compare VI CLI Action
 
 ## Context Snapshot
-- Ran `node tools/npm/run-script.mjs priority:sync`; the helper still falls back to the cached
-  metadata for standing issue #134 because neither GitHub CLI nor credentials are available (see
-  `.agent_priority_cache.json`).
-- Confirmed that `gh` is not installed on this image (`which gh` returns no path), so the CLI
-  installation noted previously is no longer present and the sync script reports "gh CLI not found".
-- PowerShell (`pwsh`) remains unavailable through the default apt repositories, so dispatcher and
-  guard automation continue to be blocked until an alternative install path is configured.
-- Working tree is still on branch `work`; no issue-focused topic branch (for example
-  `issue/134-cli-companion`) exists locally.
-- No dispatcher or guard executions ran this session, and there are no watcher artifacts or new
-  entries under `tests/results/_agent/` beyond the previously captured data.
-- Placeholder CLI-only and TestStand session artifacts remain under `tests/results/`, matching the
-  prior handoff description.
+- Ran `node tools/npm/run-script.mjs priority:sync` at session start; the helper again fell back to the
+  cached metadata for standing issue #134 because GitHub CLI is still missing and unauthenticated REST
+  calls fail. The cache timestamp now reflects this session (`cachedAtUtc` ≈ 2025-10-16T18:45:41Z).
+- Confirmed `gh` remains absent on this image (`which gh` yields no path), so we cannot reauthenticate
+  or pull fresh issue data until the binary is installed or a `GH_TOKEN` is supplied.
+- `pwsh` is likewise unavailable (`pwsh --version` exits with `command not found`), preventing any
+  dispatcher or guard automation from running inside the container.
+- Working tree remains on branch `work`; no topic branch (for example `issue/134-cli-companion`) exists
+  locally, and no new commits were created during this session.
+- No orchestrated dispatcher, guard, or watcher tooling was executed, so `tests/results/_agent/` still
+  only contains the previously published telemetry.
+- Placeholder CLI-only and TestStand artifacts are unchanged; nothing new was captured from a
+  LabVIEW-capable host.
 
 ## Status & Known Gaps
-1. GitHub CLI is missing entirely. Standing-priority syncs cannot reach GitHub until `gh` is
-   installed and authenticated (or a `GH_TOKEN` is provided).
-2. PowerShell 7+ (with Pester) is still absent; dispatcher and guard tooling remain unusable until it
-   is installed from the Microsoft feed or a manual package.
-3. Dispatcher coverage is still outstanding. No recent runs exist and the guard diagnostics that were
-   referenced previously are still unavailable, so the prior failure mode has not been reproduced.
-4. TestStand session and CLI-only artifacts remain placeholders; genuine LabVIEW outputs still need to
-   be captured on a capable host and validated against the published schemas.
-5. Issue/PR #134 has not been updated with refreshed notes summarizing CLI installation state,
-   dispatcher attempts, or artifact provenance.
+1. GitHub CLI is absent. Priority syncs cannot reach GitHub until `gh` is installed and authenticated
+   or an equivalent token-backed REST workflow is configured.
+2. PowerShell 7 + Pester are still missing, so dispatcher and guard diagnostics remain blocked.
+3. Dispatcher coverage has not been rerun since before the CLI removal; the prior guard failure
+   scenario is still unverified with current bits.
+4. TestStand and CLI-only session payloads are still placeholders rather than validated LabVIEW
+   outputs produced on real hardware.
+5. Issue/PR #134 has not been refreshed with notes covering the missing toolchain, dispatcher status,
+   or artifact provenance from recent sessions.
 
 ## Suggested Next Actions
-1. Install GitHub CLI (`gh`) and authenticate (`gh auth login` or provide `GH_TOKEN`), then rerun
-   `node tools/npm/run-script.mjs priority:sync` so `.agent_priority_cache.json` reflects live
-   metadata.
-2. Install PowerShell 7 + Pester using the Microsoft package feed or a manual download so dispatcher
-   and guard tooling can run again.
-3. Rerun the dispatcher with guard diagnostics enabled (for example,
-   `pwsh -File Invoke-PesterTests.ps1 -IntegrationMode exclude`) to recreate the previous guard loop
-   and capture fresh artifacts.
-4. Produce genuine CLI-only and TestStand session artifacts on a LabVIEW-capable host and validate
-   them with the schema tooling.
-5. Update issue/PR #134 with notes covering the restored toolchain, dispatcher outcomes, and artifact
-   provenance once the above steps are addressed.
+1. Install GitHub CLI and authenticate (`gh auth login` or provide `GH_TOKEN`), then rerun
+   `node tools/npm/run-script.mjs priority:sync` so `.agent_priority_cache.json` carries live metadata.
+2. Install PowerShell 7 + Pester from the Microsoft feed or an offline package so dispatcher and guard
+   automation can resume.
+3. Once PowerShell is available, rerun the dispatcher with guard diagnostics enabled (for example,
+   `pwsh -File Invoke-PesterTests.ps1 -IntegrationMode exclude`) to recreate the previous loop and
+   capture fresh artifacts.
+4. Produce real CLI-only and TestStand session artifacts on a LabVIEW-capable Windows host and validate
+   them with the schema tooling before checking them in.
+5. Update issue/PR #134 after restoring the toolchain to document the new dispatcher runs, schema
+   outcomes, and remaining gaps.
 
 ## First Actions for the Next Agent
-1. Install and authenticate GitHub CLI (`gh auth login` or configure `GH_TOKEN`), then rerun
-   `node tools/npm/run-script.mjs priority:sync` to refresh the standing-priority cache.
-2. Restore PowerShell 7 + Pester availability and rerun the dispatcher with guard diagnostics enabled
-   to gather reproducible failure details.
-3. Replace the placeholder `tests/results/teststand-session/` and `tests/results/cli-only/` payloads
-   with real outputs from a LabVIEW-capable host, validating them against the published schemas.
-4. Record the new dispatcher and schema outcomes in the handoff telemetry and update issue/PR #134
-   with the refreshed context.
+1. Restore GitHub CLI access (install + authenticate) and rerun the standing-priority sync to refresh
+   cached metadata.
+2. Enable PowerShell 7 + Pester and validate dispatcher/guard workflows so we can continue debugging the
+   standing issue.
+3. Replace the placeholder CLI/TestStand payloads with validated outputs from a LabVIEW-capable host and
+   document the provenance.
+4. Record any new dispatcher, schema, or watcher telemetry in this handoff log and update issue/PR #134
+   accordingly.
 
 ## Notes for Next Agent
-- GitHub CLI is absent; install and authenticate it before attempting API-dependent tooling.
-- PowerShell is still missing from the container; use the Microsoft feed or manual packages to enable
-  dispatcher workflows.
+- `node tools/npm/run-script.mjs priority:sync` continues to fail without GitHub CLI or credentials; the
+  cached metadata was last refreshed at 2025-10-16T18:45:41Z with the "gh CLI not found" error.
 - `tests/results/_agent/handoff/test-summary.json` still reflects the 2025-10-16T15:48Z
-  `priority:handoff-tests` run; no newer validation has been executed.
-- No watcher telemetry exists for this session; `_agent/handoff/` watcher assets remain empty.
-- `.agent_priority_cache.json` currently records the cached metadata for issue #134 and the latest
-  fetch failure reason (missing GitHub CLI).
-- The container still lacks LabVIEW/LVCompare; genuine artifacts must come from a Windows host with
-  those tools available.
-- Schema validation will continue to rely on placeholder TestStand data until real outputs are
-  imported.
+  `priority:handoff-tests` run; no follow-up validation was executed.
+- Watcher telemetry remains unchanged; `_agent/handoff/` contains no new watcher artifacts for this
+  session.
+- `.agent_priority_cache.json` records the latest failure reason (`gh CLI not found`) and has not been
+  manually edited.
+- The container still lacks LabVIEW/LVCompare, so genuine Compare VI outputs must be harvested from a
+  Windows host with those tools available.
