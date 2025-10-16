@@ -2,30 +2,45 @@ Describe 'Invoke-PesterTests Include/Exclude patterns' -Tag 'Unit' {
   BeforeAll {
     $repoRoot = Resolve-Path (Join-Path $PSScriptRoot '..')
     $script:dispatcher = Join-Path $repoRoot 'Invoke-PesterTests.ps1'
+    $script:fixtureTestsRoot = Join-Path $TestDrive 'fixture-tests'
+    New-Item -ItemType Directory -Force -Path $script:fixtureTestsRoot | Out-Null
+
+    $testTemplate = @'
+Describe "{0}" {
+  It "passes" {
+    1 | Should -Be 1
+  }
+}
+'@
+
+    foreach ($name in @('Alpha.Unit.Tests.ps1', 'Beta.Unit.Tests.ps1', 'Gamma.Helper.ps1')) {
+      $content = [string]::Format($testTemplate, $name)
+      Set-Content -LiteralPath (Join-Path $script:fixtureTestsRoot $name) -Value $content -Encoding utf8
+    }
   }
 
   It 'honors IncludePatterns for a single file' {
     $resultsDir = Join-Path $TestDrive 'results-inc'
-    $inc = @('Invoke-PesterTests.*.ps1')
-    pwsh -File $script:dispatcher -TestsPath (Join-Path $repoRoot 'tests') -ResultsPath $resultsDir -IncludePatterns $inc -IntegrationMode exclude | Out-Null
+    $inc = @('Alpha*.ps1')
+    pwsh -File $script:dispatcher -TestsPath $script:fixtureTestsRoot -ResultsPath $resultsDir -IncludePatterns $inc -IntegrationMode exclude | Out-Null
     $sel = Join-Path $resultsDir 'pester-selected-files.txt'
     Test-Path $sel | Should -BeTrue
     $lines = @(Get-Content -LiteralPath $sel)
-    ($lines.Count -ge 1) | Should -BeTrue
-    $allMatch = $true
-    foreach ($l in $lines) { if (-not ($l -like '*Invoke-PesterTests.*.ps1')) { $allMatch = $false; break } }
-    $allMatch | Should -BeTrue
+    $lines.Count | Should -Be 1
+    ($lines | ForEach-Object { Split-Path -Leaf $_ }) | Should -Be @('Alpha.Unit.Tests.ps1')
   }
 
   It 'honors ExcludePatterns to remove files' {
     $resultsDir = Join-Path $TestDrive 'results-exc'
-    $exc = @('PesterSummary.*.ps1')
-    pwsh -File $script:dispatcher -TestsPath (Join-Path $repoRoot 'tests') -ResultsPath $resultsDir -ExcludePatterns $exc -IntegrationMode exclude | Out-Null
+    $exc = @('*Helper.ps1')
+    pwsh -File $script:dispatcher -TestsPath $script:fixtureTestsRoot -ResultsPath $resultsDir -ExcludePatterns $exc -IntegrationMode exclude | Out-Null
     $sel = Join-Path $resultsDir 'pester-selected-files.txt'
     Test-Path $sel | Should -BeTrue
     $lines = @(Get-Content -LiteralPath $sel)
-    $noneExcluded = $true
-    foreach ($l in $lines) { if ($l -like '*PesterSummary.*.ps1') { $noneExcluded = $false; break } }
-    $noneExcluded | Should -BeTrue
+    $lines.Count | Should -Be 2
+    $leafs = $lines | ForEach-Object { Split-Path -Leaf $_ }
+    $leafs | Should -NotContain 'Gamma.Helper.ps1'
+    $leafs | Should -Contain 'Alpha.Unit.Tests.ps1'
+    $leafs | Should -Contain 'Beta.Unit.Tests.ps1'
   }
 }
