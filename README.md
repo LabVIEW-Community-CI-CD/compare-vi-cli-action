@@ -371,6 +371,8 @@ publish helper to build per-RID archives and checksums for distribution.
 
 - Quick smoke
   - `./comparevi-cli version`
-  - `./comparevi-cli tokenize --input 'foo -x=1 "bar baz"'`
-  - `./comparevi-cli procs`
+- `./comparevi-cli tokenize --input 'foo -x=1 "bar baz"'`
+- `./comparevi-cli quote --path 'C:/Program Files/National Instruments/LabVIEW 2025/LabVIEW.exe'`
+- `./comparevi-cli procs`
+- `./comparevi-cli operations`
 

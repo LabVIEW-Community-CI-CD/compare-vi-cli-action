@@ -49,8 +49,15 @@
               "minLength": 1
             },
             "capture": {
-              "type": "string",
-              "minLength": 1
+              "anyOf": [
+                {
+                  "type": "string",
+                  "minLength": 1
+                },
+                {
+                  "type": "null"
+                }
+              ]
             },
             "report": {
               "type": "boolean"

@@ -1,0 +1,14 @@
+# git status --short (2025-10-16T01:46:49Z)
+ M tests/results/_agent/handoff/local-diff.txt
+ M tests/results/_agent/handoff/local-status.txt
+ M tests/results/teststand-session/compare/compare-events.ndjson
+ D tests/results/teststand-session/compare/lvcompare-capture.json
+ M tests/results/teststand-session/session-index.json
+
+# git diff --stat
+ tests/results/_agent/handoff/local-diff.txt                    | 18 ++++++++----------
+ tests/results/_agent/handoff/local-status.txt                  |  3 +--
+ tests/results/teststand-session/compare/compare-events.ndjson  |  2 +-
+ tests/results/teststand-session/compare/lvcompare-capture.json | 30 ------------------------------
+ tests/results/teststand-session/session-index.json             | 15 ++-------------
+ 5 files changed, 12 insertions(+), 56 deletions(-)

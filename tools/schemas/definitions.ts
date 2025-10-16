@@ -312,7 +312,7 @@ const testStandCompareSessionSchema = z.object({
   }),
   compare: z.object({
     events: z.string().min(1),
-    capture: z.string().min(1),
+    capture: z.union([z.string().min(1), z.null()]),
     report: z.boolean(),
     command: z.string().min(1).optional(),
     cliPath: z.string().min(1).optional(),
@@ -374,10 +374,52 @@ export const cliTokenizeSchema = z.object({
   normalized: z.array(z.string()),
 });
 
+export const cliQuoteSchema = z.object({
+  input: z.string().nullable(),
+  quoted: z.string(),
+});
+
 export const cliProcsSchema = z.object({
   labviewPids: z.array(nonNegativeInteger),
   lvcomparePids: z.array(nonNegativeInteger),
 });
+
+const cliOperationsDefaultValue = z.union([z.string(), z.number(), z.boolean(), z.null()]);
+
+export const cliOperationsParameterSchema = z
+  .object({
+    id: z.string().min(1),
+    type: z.string().min(1).optional(),
+    required: z.boolean().optional(),
+    env: z.array(z.string().min(1)).optional(),
+    default: cliOperationsDefaultValue.optional(),
+    description: z.string().optional(),
+  })
+  .passthrough();
+
+export const cliOperationsSchema = z
+  .object({
+    schema: z.literal('comparevi-cli/operations@v1'),
+    operationCount: nonNegativeInteger,
+    operations: z
+      .array(
+        z
+          .object({
+            name: z.string().min(1),
+            parameters: z.array(cliOperationsParameterSchema).optional(),
+          })
+          .passthrough(),
+      )
+      .min(1),
+  })
+  .superRefine((value, ctx) => {
+    if (value.operationCount !== value.operations.length) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: 'operationCount must equal operations.length',
+      });
+    }
+  });
 
 const cliArtifactFileSchema = z.object({
   path: z.string().min(1),
@@ -488,10 +530,22 @@ export const schemas = [
     schema: cliTokenizeSchema,
   },
   {
+    id: 'cli-quote',
+    fileName: 'cli-quote.schema.json',
+    description: 'Output emitted by comparevi-cli quote.',
+    schema: cliQuoteSchema,
+  },
+  {
     id: 'cli-procs',
     fileName: 'cli-procs.schema.json',
     description: 'Output emitted by comparevi-cli procs.',
     schema: cliProcsSchema,
+  },
+  {
+    id: 'cli-operations',
+    fileName: 'cli-operations.schema.json',
+    description: 'Operations catalog exposed by comparevi-cli operations.',
+    schema: cliOperationsSchema,
   },
   {
     id: 'cli-artifact-meta',

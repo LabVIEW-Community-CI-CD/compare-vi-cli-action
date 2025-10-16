@@ -1,56 +1,82 @@
 # Agent Handoff - Compare VI CLI Action
 
 ## Context Snapshot
-- Standing priority: `npm run priority:sync` → `.agent_priority_cache.json` (standing issue snapshot)
-- Current branch: `issue/127-cli-metadata-html` (tracking `origin/issue/127-cli-metadata-html`)
-- Local telemetry captured under `tests/results/_agent/handoff/`:
-  - `local-status.txt`, `local-diff.txt`, `branch.txt`, `head-sha.txt`
-- Latest work:
-  - `tools/Invoke-LVCompare.ps1` now auto-resolves `LabVIEWCLI.exe`, blocks `cli-only` mode when the binary is missing, and emits CLI metadata for TestStand consumers.
-  - `tools/TestStand-CompareHarness.ps1` / `tools/Run-DX.ps1` record warmup mode, compare policy/mode, flag overrides, and CLI details in `session-index.json`; harness exposes `-Warmup detect|spawn|skip` plus LVCompare flag passthrough.
-  - `tools/LabVIEWCli.psm1` surfaces provider names in verbose output, applies consistent headless toggles, and falls back to registered providers when given a string.
-  - `docs/LabVIEWCliShimPattern.md` (new) documents Shim Pattern v1.0; README, ENVIRONMENT, and TestStand plan docs reference the pattern and new warmup guidance.
-  - Added guard-crumb unit coverage in `tests/Invoke-PesterTests.Tests.ps1`; updated `docs/schema/generated/teststand-compare-session.schema.json` for the richer session index.
-- Quick smoke: `npm run priority:handoff-tests` (passed; includes session capsule schema coverage). Latest CLI-only compare via `tools/Invoke-LVCompare.ps1` (diff=True, exit=1) with report artifacts in `tests/results/cli-only/`. TestStand harness run (`tools/TestStand-CompareHarness.ps1 -Warmup detect -RenderReport -CloseLabVIEW`) succeeded (exit=0, diff=False) and wrote `tests/results/teststand-session/session-index.json` with the new CLI metadata.
+- Standing priority refreshed via `npm run priority:sync`; cache still points to issue #134
+  (`Standing priority: evolve CompareVI helper into N-provider CLI companion`). The sync now uses the
+  installed GitHub CLI but still falls back to cached metadata because the workspace lacks
+  authentication (`gh auth login` or `GH_TOKEN`).
+- Working tree currently on branch `work`; `issue/134-cli-companion` is not present locally.
+- LabVIEW safety toggles exported in this shell (`LV_SUPPRESS_UI=1`, `LV_NO_ACTIVATE=1`,
+  `LV_CURSOR_RESTORE=1`, `LV_IDLE_WAIT_SECONDS=2`, `LV_IDLE_MAX_WAIT_SECONDS=5`).
+- Restored package manager access and installed PowerShell 7.5.3 via the Microsoft APT repository.
+  `tools/Print-AgentHandoff.ps1 -ApplyToggles -AutoTrim` now launches successfully (still reporting
+  cached standing-issue metadata because `gh` is unauthenticated).
+- Ran `tools/Detect-RogueLV.ps1 -ResultsDir tests/results -LookBackSeconds 900 -AppendToStepSummary`;
+  no rogue LabVIEW or LVCompare processes detected.
+- `npm run priority:handoff-tests` (Node shim) re-ran and refreshed
+  `tests/results/_agent/handoff/test-summary.json` (captured 2025-10-16T02:58Z).
+- Schema validation re-run with the placeholder TestStand session data via `node
+  dist/tools/schemas/validate-json.js --schema
+  docs/schema/generated/teststand-compare-session.schema.json --data
+  tests/results/teststand-session/session-index.json`; command succeeds (latest run timestamped
+  2025-10-16T02:58Z).
+- Updated handoff telemetry recorded in `tests/results/_agent/handoff/test-summary.json`
+  (`agent-handoff/test-results@v1`) capturing the new shim execution. The rogue scan produced a clean
+  report (no additional artifacts created).
 
 ## Status & Known Gaps
-1) Rogue LabVIEW process detected (`tools/Detect-RogueLV.ps1` -> PID 30776). Needs manual close or re-run detection until cleared before any LVCompare work.
-2) Test coverage still outstanding:
-   a. Full dispatcher sweep (`Invoke-PesterTests.ps1 -IntegrationMode exclude`) — previous attempt aborted early.
-   b. Additional harness permutations (`-Warmup skip`, custom flags) and schema validation (`node dist/tools/schemas/validate-json.js --schema docs/schema/generated/teststand-compare-session.schema.json --data tests/results/teststand-session/session-index.json`).
-   c. Optional: rerun targeted Pester modules (`tests/TestStand-CompareHarness.Tests.ps1` if authored).
-3) PR hygiene: refresh #127 description/screenshots with CLI metadata, session capsule context, and harness artifacts; confirm `Validate` remains required on `develop`.
+1. GitHub CLI is installed but unauthenticated, so standing-priority syncs still fall back to the
+   cached metadata. Supply `GH_TOKEN` or run `gh auth login` to refresh directly from GitHub.
+2. TestStand session artifacts (`tests/results/teststand-session/session-index.json`) and CLI-only
+   outputs remain placeholders; schema validation and documentation still depend on real runs from a
+   LabVIEW-capable environment.
+3. Dispatcher sweep (`Invoke-PesterTests.ps1 -IntegrationMode exclude`) and targeted TestStand
+   harness coverage have not run yet in this refreshed container.
+4. Issue/PR context for #134 still needs updated notes once genuine artifacts and test coverage are
+   produced (include CLI metadata, session capsules, validation status).
 
 ## Suggested Next Actions
-1) No rogue LabVIEW processes detected (last scan clean). Keep running `tools/Detect-RogueLV.ps1 -ResultsDir tests/results -LookBackSeconds 900 -AppendToStepSummary` before long compare/test sessions.
-2) Validate `tests/results/teststand-session/session-index.json` against the updated schema:
-   - `node dist/tools/schemas/validate-json.js --schema docs/schema/generated/teststand-compare-session.schema.json --data tests/results/teststand-session/session-index.json`
-   - Optional: rerun harness with `-Warmup skip -Flags '--ignore-case' --ignore-whitespace` to capture LVCompare fallback.
-3) Run the dispatcher sweep:
+1. Authenticate GitHub CLI (e.g., `gh auth login` or export `GH_TOKEN`) and rerun
+   `npm run priority:sync` so the standing-priority cache reflects the live issue metadata.
+2. Generate or copy fresh CLI-only and TestStand session artifacts on a LabVIEW-capable host;
+   replace the placeholder data under `tests/results/teststand-session/` and populate the missing
+   `tests/results/cli-only/` directory locally.
+3. Re-run the schema validator once real artifacts exist:
+   ```
+   node dist/tools/schemas/validate-json.js \
+     --schema docs/schema/generated/teststand-compare-session.schema.json \
+     --data tests/results/teststand-session/session-index.json
+   ```
+4. Execute dispatcher coverage now that PowerShell is installed:
    - `pwsh -File Invoke-PesterTests.ps1 -IntegrationMode exclude`
-   - Triage output artifacts (`tests/results/pester-summary.json`, `pester-results.xml`) and update `tests/results/_agent/handoff/test-summary.json` as needed.
-4) Execute outstanding targeted coverage if time permits:
-   - `Invoke-Pester tests/Invoke-LVCompare.Tests.ps1`
-   - `Invoke-Pester tests/TestStand-CompareHarness.Tests.ps1` (if authored)
-5) Update #127 PR/issue notes with:
-   - CLI-only capture summary (`tests/results/cli-only/`)
-   - TestStand harness session index screenshot/JSON snippet
-   - Session capsule introduction
-   - Confirmation of pending tests (dispatcher, additional harness permutations)
+   - Optionally `pwsh -File Invoke-PesterTests.ps1 -TestsPath tests/TestStand-CompareHarness.Tests.ps1`
+5. Update issue/PR #134 with regenerated artifact notes, schema validation outcomes (highlight when
+   placeholder data is replaced), and refreshed handoff/test summaries.
 
 ## First Actions for the Next Agent
-1. Review the snapshots in `tests/results/_agent/handoff/` (branch/head/status/diff) and fetch/pull `origin/issue/127-cli-metadata-html`.
-2. Validate `tests/results/teststand-session/session-index.json` with the schema command above (record output in `tests/results/_agent/handoff/test-summary.json` if rerun).
-3. Run `pwsh -File Invoke-PesterTests.ps1 -IntegrationMode exclude`; capture summary artifacts and update the handoff telemetry.
-4. Review CLI artifacts (`tests/results/cli-only/`, `tests/results/teststand-session/`) and attach highlights/screenshots to the #127 PR update.
-5. Commit and push the outstanding changes (see `tests/results/_agent/handoff/local-status.txt`) referencing `#127`; ensure session capsules remain for future context.
+1. Authenticate GitHub CLI (`gh auth login` or export `GH_TOKEN`) and rerun `npm run priority:sync`
+   so the standing-priority cache reflects the live issue metadata.
+2. Fetch or regenerate the missing `tests/results/teststand-session/` and `tests/results/cli-only/`
+   directories so schema validation and documentation review can resume; replace the current
+   placeholder TestStand session copy with genuine output.
+3. Re-run `node dist/tools/schemas/validate-json.js ...` after swapping in real session data and
+   capture the outcome in `tests/results/_agent/handoff/test-summary.json`.
+4. Kick off `pwsh -File Invoke-PesterTests.ps1 -IntegrationMode exclude` (and targeted TestStand
+   harness coverage) now that PowerShell is available; archive the resulting summaries for PR
+   context.
+5. Update issue/PR #134 with refreshed artifact notes, schema validation outcomes, and standing-prior
+   ity cache status once the above steps complete.
 
 ## Notes for Next Agent
-- Watcher telemetry (`tests/results/_agent/handoff/watcher-telemetry.json`) shows `stopped`; no trim required.
-- Session capsules accumulate under `tests/results/_agent/sessions/`; latest is `session-20251014T210508271Z-9a3ee054e211.json`.
-- CLI-only artifacts: `tests/results/cli-only/lvcompare-capture.json`, `events.ndjson`, `cli-report.html`.
-- TestStand harness artifacts: `tests/results/teststand-session/session-index.json`, warmup NDJSON, CLI report/images.
-- Pending git changes listed in `tests/results/_agent/handoff/local-status.txt` (ensure staging/commits reference `#127`).
-
-
-
+- Added a Node-based shim at `tools/priority/run-handoff-tests.mjs` so
+  `npm run priority:handoff-tests` no longer requires PowerShell.
+- `tests/results/_agent/handoff/test-summary.json` now records the refreshed Node-driven run
+  (captured 2025-10-16T02:58Z) alongside earlier schema validation attempts.
+- No watcher telemetry exists for this session; container still lacks `_agent/handoff/` watcher
+  assets.
+- `.agent_priority_cache.json` currently reflects cached metadata for issue #134 because the GitHub
+  CLI is unauthenticated.
+- Container image does not ship LabVIEW or LabVIEW CLI; expect to run compare/harness workflows on a
+  Windows host with the required tooling.
+- Schema validation still references the placeholder TestStand session data; replace once genuine
+  artifacts are available.

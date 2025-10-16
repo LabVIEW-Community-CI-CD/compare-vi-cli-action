@@ -1,6 +1,8 @@
 using System;
 using System.Collections.Generic;
+using System.IO;
 using System.Text.Json;
+using System.Text.Json.Nodes;
 using CompareVi.Shared;
 
 internal static class Program
@@ -26,6 +28,8 @@ internal static class Program
                     return CmdProcs();
                 case "quote":
                     return CmdQuote(args);
+                case "operations":
+                    return CmdOperations();
                 default:
                     Console.Error.WriteLine($"Unknown command: {cmd}");
                     PrintHelp();
@@ -50,6 +54,7 @@ internal static class Program
         Console.WriteLine("  comparevi-cli tokenize --input \"arg string\"");
         Console.WriteLine("  comparevi-cli procs");
         Console.WriteLine("  comparevi-cli quote --path <path>");
+        Console.WriteLine("  comparevi-cli operations");
     }
 
     private static int CmdVersion()
@@ -124,5 +129,23 @@ internal static class Program
         };
         Console.WriteLine(JsonSerializer.Serialize(obj, new JsonSerializerOptions { WriteIndented = true }));
         return 0;
+    }
+
+    private static int CmdOperations()
+    {
+        var root = OperationCatalog.LoadRaw();
+        if (root.TryGetPropertyValue("operations", out var operationsNode) && operationsNode is JsonArray operationsArray)
+        {
+            var payload = new JsonObject
+            {
+                ["schema"] = "comparevi-cli/operations@v1",
+                ["operationCount"] = operationsArray.Count,
+                ["operations"] = operationsArray.DeepClone()
+            };
+            Console.WriteLine(payload.ToJsonString(new JsonSerializerOptions { WriteIndented = true }));
+            return 0;
+        }
+
+        throw new InvalidDataException("Embedded operations spec is missing an operations array.");
     }
 }

@@ -1,0 +1,27 @@
+{
+  "$ref": "#/definitions/cli-quote",
+  "definitions": {
+    "cli-quote": {
+      "type": "object",
+      "properties": {
+        "input": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "quoted": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "input",
+        "quoted"
+      ],
+      "additionalProperties": false
+    }
+  },
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "description": "Output emitted by comparevi-cli quote.",
+  "$id": "urn:compare-vi-cli-action:schema:cli-quote"
+}

@@ -15,6 +15,10 @@
     <PackageTags>LabVIEW;LVCompare;Pester;CI</PackageTags>
     <Version>0.1.0</Version>
     <PackageVersion>0.1.0</PackageVersion>
-  </PropertyGroup>
+</PropertyGroup>
+
+  <ItemGroup>
+    <EmbeddedResource Include="..\..\tools\providers\spec\operations.json" Link="Operations\operations.json" />
+  </ItemGroup>
 </Project>
 

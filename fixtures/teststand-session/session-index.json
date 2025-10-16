@@ -1,0 +1,58 @@
+{
+  "schema": "teststand-compare-session/v1",
+  "at": "2025-10-15T22:48:30.123Z",
+  "warmup": {
+    "mode": "detect",
+    "events": "_warmup/labview-runtime.ndjson"
+  },
+  "compare": {
+    "events": "compare/compare-events.ndjson",
+    "capture": "compare/lvcompare-capture.json",
+    "report": true,
+    "command": "lvcompare --diff --nobdcosm --nofppos --noattr --out compare-report.html VI1.vi VI2.vi",
+    "cliPath": "C:/Program Files/National Instruments/Shared/LabVIEW CLI/LabVIEWCLI.exe",
+    "cli": {
+      "path": "C:/Program Files/National Instruments/Shared/LabVIEW CLI/LabVIEWCLI.exe",
+      "version": "25.0.0f0",
+      "reportType": "html",
+      "reportPath": "compare-report.html",
+      "status": "ok",
+      "message": "compare completed",
+      "artifacts": {
+        "reportSizeBytes": 187654,
+        "imageCount": 2,
+        "exportDir": "compare/images",
+        "images": [
+          {
+            "index": 0,
+            "mimeType": "image/png",
+            "dataLength": 1024,
+            "byteLength": 2048,
+            "savedPath": "compare/images/diff-0.png",
+            "source": "lvcompare"
+          },
+          {
+            "index": 1,
+            "mimeType": "image/png",
+            "dataLength": 2048,
+            "byteLength": 4096,
+            "savedPath": "compare/images/diff-1.png",
+            "source": "lvcompare"
+          }
+        ]
+      }
+    },
+    "policy": "cli-only",
+    "mode": "lvcompare",
+    "autoCli": true,
+    "sameName": false,
+    "timeoutSeconds": 120
+  },
+  "outcome": {
+    "exitCode": 0,
+    "seconds": 12.345,
+    "command": "lvcompare --diff --nobdcosm --nofppos --noattr --out compare-report.html VI1.vi VI2.vi",
+    "diff": false
+  },
+  "error": null
+}

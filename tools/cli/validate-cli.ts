@@ -8,6 +8,8 @@ import { zodToJsonSchema } from 'zod-to-json-schema';
 
 import {
   cliArtifactMetaSchema,
+  cliOperationsSchema,
+  cliQuoteSchema,
   cliProcsSchema,
   cliTokenizeSchema,
   cliVersionSchema,
@@ -93,9 +95,19 @@ function main() {
     zodToJsonSchema(cliTokenizeSchema, { target: 'jsonSchema7', name: 'cli-tokenize' }) as Record<string, unknown>,
   );
 
+  const quoteValidator = compileValidator(
+    'cli-quote',
+    zodToJsonSchema(cliQuoteSchema, { target: 'jsonSchema7', name: 'cli-quote' }) as Record<string, unknown>,
+  );
+
   const procsValidator = compileValidator(
     'cli-procs',
     zodToJsonSchema(cliProcsSchema, { target: 'jsonSchema7', name: 'cli-procs' }) as Record<string, unknown>,
+  );
+
+  const operationsValidator = compileValidator(
+    'cli-operations',
+    zodToJsonSchema(cliOperationsSchema, { target: 'jsonSchema7', name: 'cli-operations' }) as Record<string, unknown>,
   );
 
   const versionData = runCli(dll, ['version']);
@@ -104,8 +116,14 @@ function main() {
   const tokenizeData = runCli(dll, ['tokenize', '--input', 'foo -x=1 "bar baz"']);
   validate('comparevi-cli tokenize', tokenizeData, tokenizeValidator);
 
+  const quoteData = runCli(dll, ['quote', '--path', 'C:/Program Files/National Instruments/LabVIEW 2025/LabVIEW.exe']);
+  validate('comparevi-cli quote', quoteData, quoteValidator);
+
   const procsData = runCli(dll, ['procs']);
   validate('comparevi-cli procs', procsData, procsValidator);
+
+  const operationsData = runCli(dll, ['operations']);
+  validate('comparevi-cli operations', operationsData, operationsValidator);
 
   const metaData = readArtifactMeta();
   if (metaData) {

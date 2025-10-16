@@ -1,0 +1,20 @@
+{
+  "schema": "teststand-compare-session/v1",
+  "at": "2025-10-17T19:22:40.250Z",
+  "warmup": {
+    "mode": "skip",
+    "events": null
+  },
+  "compare": {
+    "events": "C:/workspace/compare-vi-cli-action/tests/results/teststand-session/compare/compare-events.ndjson",
+    "capture": null,
+    "report": false,
+    "policy": "cli-only",
+    "mode": "labview-cli",
+    "autoCli": false,
+    "sameName": false,
+    "timeoutSeconds": 600
+  },
+  "outcome": null,
+  "error": "No registered provider can execute operation 'CreateComparisonReport'. Checked: labviewcli"
+}

@@ -9,11 +9,17 @@ artifacts/vsix/
 tests/results/
 tests/results
 tests/results/**
+!tests/results
+!tests/results/
 !tests/results/.gitkeep
+!tests/results/cli-only/
+!tests/results/cli-only/README.md
+!tests/results/teststand-session/
+!tests/results/teststand-session/session-index.json
 # Local dashboard output
 tools/dashboard/dashboard.html
 # Root-level CI artifacts (timestamped at runtime; never commit)
-results/
+/results/
 # Local temp workdirs created during ad-hoc runs
 .tmp-smoke/
 tmp-*/
