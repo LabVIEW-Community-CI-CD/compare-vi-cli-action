@@ -30,11 +30,14 @@ Describe "{0}" {{
     $res = Invoke-DispatcherSafe -DispatcherPath $script:dispatcher -ResultsPath $resultsDir -IncludePatterns $inc -TestsPath $script:fixtureTestsRoot -AdditionalArgs @('-IntegrationMode', 'exclude')
     $res.TimedOut | Should -BeFalse
     $res.ExitCode | Should -Be 0
+    $res.StdErr.Trim() | Should -BeNullOrEmpty
     $sel = Join-Path $resultsDir 'pester-selected-files.txt'
     Test-Path $sel | Should -BeTrue
     $lines = @(Get-Content -LiteralPath $sel)
     $lines.Count | Should -Be 1
-    ($lines | ForEach-Object { Split-Path -Leaf $_ }) | Should -Be @('Alpha.Unit.Tests.ps1')
+    $leafs = $lines | ForEach-Object { Split-Path -Leaf $_ }
+    $leafs | Should -Be @('Alpha.Unit.Tests.ps1')
+    $res.StdOut | Should -Match ([regex]::Escape($script:fixtureTestsRoot))
   }
 
   It 'honors ExcludePatterns to remove files' {
@@ -43,13 +46,14 @@ Describe "{0}" {{
     $res = Invoke-DispatcherSafe -DispatcherPath $script:dispatcher -ResultsPath $resultsDir -TestsPath $script:fixtureTestsRoot -AdditionalArgs @('-ExcludePatterns', $exc, '-IntegrationMode', 'exclude')
     $res.TimedOut | Should -BeFalse
     $res.ExitCode | Should -Be 0
+    $res.StdErr.Trim() | Should -BeNullOrEmpty
     $sel = Join-Path $resultsDir 'pester-selected-files.txt'
     Test-Path $sel | Should -BeTrue
     $lines = @(Get-Content -LiteralPath $sel)
     $lines.Count | Should -Be 2
     $leafs = $lines | ForEach-Object { Split-Path -Leaf $_ }
     $leafs | Should -Not -Contain 'Gamma.Helper.ps1'
-    $leafs | Should -Contain 'Alpha.Unit.Tests.ps1'
-    $leafs | Should -Contain 'Beta.Unit.Tests.ps1'
+    ($leafs | Sort-Object) | Should -Be @('Alpha.Unit.Tests.ps1', 'Beta.Unit.Tests.ps1')
+    $res.StdOut | Should -Match ([regex]::Escape($script:fixtureTestsRoot))
   }
 }
