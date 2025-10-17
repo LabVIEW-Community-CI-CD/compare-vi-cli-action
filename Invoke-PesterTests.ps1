@@ -160,6 +160,19 @@ if (Test-Path -LiteralPath $dispatcherSelectionModule) {
   Import-Module $dispatcherSelectionModule -Force
 }
 
+$labviewPidTrackerModule = Join-Path $PSScriptRoot 'tools' 'LabVIEWPidTracker.psm1'
+$labviewPidTrackerLoaded = $false
+if (Test-Path -LiteralPath $labviewPidTrackerModule -PathType Leaf) {
+  try {
+    Import-Module $labviewPidTrackerModule -Force
+    $labviewPidTrackerLoaded = $true
+  } catch {
+    Write-Warning ("Failed to import LabVIEWPidTracker module: {0}" -f $_.Exception.Message)
+  }
+}
+$script:labviewPidTrackerState = $null
+$script:labviewPidTrackerPath = $null
+
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
@@ -823,6 +836,46 @@ try {
   } catch {}
   Write-Error ($guardMsg + ' (guard crumb: tests/results/_diagnostics/guard.json)')
   exit 1
+}
+
+if ($labviewPidTrackerLoaded) {
+  $trackerPath = Join-Path $resultsDir '_agent' 'labview-pid.json'
+  $script:labviewPidTrackerPath = $trackerPath
+  try {
+    $script:labviewPidTrackerState = Initialize-LabVIEWPidTracker -TrackerPath $trackerPath -Source 'dispatcher:init'
+    if ($script:labviewPidTrackerState) {
+      if ($script:labviewPidTrackerState.Pid) {
+        $modeText = if ($script:labviewPidTrackerState.Reused) { 'Reusing existing' } else { 'Tracking detected' }
+        Write-Host ("[labview-pid] {0} LabVIEW.exe PID {1}." -f $modeText, $script:labviewPidTrackerState.Pid) -ForegroundColor DarkGray
+      } else {
+        Write-Host '[labview-pid] LabVIEW.exe not running at tracker initialization.' -ForegroundColor DarkGray
+      }
+    }
+  } catch {
+    Write-Warning ("LabVIEW PID tracker initialization failed: {0}" -f $_.Exception.Message)
+  }
+  try {
+    if (-not (Get-Variable -Name labviewPidTrackerFinalizer -Scope Script -ErrorAction SilentlyContinue)) {
+      $script:labviewPidTrackerFinalizer = Register-EngineEvent -SourceIdentifier ([System.Management.Automation.PSEngineEvent]::Exiting) -Action {
+        if ($script:labviewPidTrackerPath) {
+          try {
+            $finalTracker = Finalize-LabVIEWPidTracker -TrackerPath $script:labviewPidTrackerPath -Source 'dispatcher:final'
+            if ($finalTracker -and $finalTracker.Pid) {
+              if ($finalTracker.Running) {
+                Write-Host ("[labview-pid] LabVIEW.exe PID {0} still running at dispatcher exit." -f $finalTracker.Pid) -ForegroundColor DarkGray
+              } else {
+                Write-Host ("[labview-pid] LabVIEW.exe PID {0} not running at dispatcher exit." -f $finalTracker.Pid) -ForegroundColor DarkGray
+              }
+            }
+          } catch {
+            Write-Warning ("LabVIEW PID tracker finalization failed: {0}" -f $_.Exception.Message)
+          }
+        }
+      }
+    }
+  } catch {
+    Write-Warning ("Failed to register LabVIEW PID tracker finalizer: {0}" -f $_.Exception.Message)
+  }
 }
 
 Write-Host "Resolved Paths:" -ForegroundColor Yellow
