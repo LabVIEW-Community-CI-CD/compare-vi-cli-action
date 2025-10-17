@@ -160,7 +160,8 @@ Tips:
 - Prefer the REST watcher for GitHub status: `node tools/npm/run-script.mjs ci:watch:rest -- --run-id <id>` streams job conclusions without relying on the
   `gh` CLI. Passing `--branch <name>` auto-selects the latest run. A VS Code task named “CI Watch (REST)” prompts for the run id.
 - Repeated 404s or other API errors cause the watcher to exit with `conclusion: watcher-error` after the built-in grace window
-  (90s for “run not found”, 120s for other failures) while still writing `watcher-rest.json` to keep telemetry flowing.
+  (90s for “run not found”, 120s for other failures) while still writing `watcher-rest.json` to keep telemetry flowing. Direct
+  rate-limit responses abort immediately with guidance to authenticate via `GH_TOKEN`/`GITHUB_TOKEN` or wait for the reset window.
 - The REST watcher writes `watcher-rest.json` into the job’s results directory; `tools/Update-SessionIndexWatcher.ps1` merges the data
   into `session-index.json` so CI telemetry reflects the final GitHub status alongside Pester results.
 - The watcher prunes old run directories (`.tmp/watch-run`) automatically and warns if

@@ -60,6 +60,16 @@ class WatcherAbort extends Error {
   }
 }
 
+class GitHubRateLimitError extends Error {
+  public readonly resetAt?: Date;
+
+  constructor(message: string, resetAt?: Date) {
+    super(message);
+    this.name = 'GitHubRateLimitError';
+    this.resetAt = resetAt;
+  }
+}
+
 function normaliseError(error: unknown): string {
   if (error instanceof Error) {
     return error.message ?? String(error);
@@ -122,6 +132,52 @@ function resolveRepo(): string {
   }
 }
 
+function parseRateLimitReset(headers: Headers): Date | undefined {
+  const resetHeader = headers.get('x-ratelimit-reset');
+  if (!resetHeader) {
+    return undefined;
+  }
+
+  const resetEpoch = Number(resetHeader);
+  if (!Number.isFinite(resetEpoch) || resetEpoch <= 0) {
+    return undefined;
+  }
+
+  return new Date(resetEpoch * 1000);
+}
+
+function buildRateLimitMessage(params: {
+  bodyMessage: string;
+  documentationUrl?: string;
+  resetAt?: Date;
+  tokenProvided: boolean;
+}): string {
+  const { bodyMessage, documentationUrl, resetAt, tokenProvided } = params;
+  const parts = [bodyMessage.trim()];
+
+  if (resetAt) {
+    const deltaMs = resetAt.getTime() - Date.now();
+    if (Number.isFinite(deltaMs) && deltaMs > 0) {
+      const minutes = Math.ceil(deltaMs / 60_000);
+      parts.push(`Limit resets in ~${minutes} minute${minutes === 1 ? '' : 's'} (${resetAt.toISOString()}).`);
+    } else {
+      parts.push(`Limit reset timestamp: ${resetAt.toISOString()}.`);
+    }
+  }
+
+  if (tokenProvided) {
+    parts.push('Wait for the rate limit to reset before retrying.');
+  } else {
+    parts.push('Provide GH_TOKEN or GITHUB_TOKEN to authenticate and raise the rate limit.');
+  }
+
+  if (documentationUrl) {
+    parts.push(`Docs: ${documentationUrl}`);
+  }
+
+  return parts.join(' ');
+}
+
 async function fetchJson<T>(url: string, token?: string): Promise<T> {
   const headers: Record<string, string> = {
     Accept: 'application/vnd.github+json',
@@ -132,15 +188,48 @@ async function fetchJson<T>(url: string, token?: string): Promise<T> {
 
   const res = await fetch(url, { headers });
   const text = await res.text();
-  if (!res.ok) {
-    throw new Error(`GitHub request failed (${res.status} ${res.statusText}): ${text}`);
+  let parsed: unknown;
+
+  if (text) {
+    try {
+      parsed = JSON.parse(text);
+    } catch {}
   }
 
-  try {
-    return JSON.parse(text) as T;
-  } catch (err) {
-    throw new Error(`Failed to parse JSON from GitHub (${url}): ${(err as Error).message}\nResponse:\n${text}`);
+  if (!res.ok) {
+    const bodyMessage = typeof (parsed as { message?: string })?.message === 'string'
+      ? String((parsed as { message?: string }).message)
+      : res.statusText;
+    if (res.status === 403 && bodyMessage.toLowerCase().includes('rate limit')) {
+      const documentationUrl = typeof (parsed as { documentation_url?: string })?.documentation_url === 'string'
+        ? String((parsed as { documentation_url?: string }).documentation_url)
+        : undefined;
+      const resetAt = parseRateLimitReset(res.headers);
+      throw new GitHubRateLimitError(
+        buildRateLimitMessage({
+          bodyMessage,
+          documentationUrl,
+          resetAt,
+          tokenProvided: Boolean(token),
+        }),
+        resetAt,
+      );
+    }
+
+    const detail = text ? text.trim() : '';
+    const suffix = detail ? `: ${detail}` : '';
+    throw new Error(`GitHub request failed (${res.status} ${res.statusText})${suffix}`);
   }
+
+  if (parsed === undefined) {
+    try {
+      parsed = JSON.parse(text) as T;
+    } catch (err) {
+      throw new Error(`Failed to parse JSON from GitHub (${url}): ${(err as Error).message}\nResponse:\n${text}`);
+    }
+  }
+
+  return parsed as T;
 }
 
 async function findLatestRun(repo: string, workflow: string, branch: string, token?: string): Promise<WorkflowRun | undefined> {
@@ -239,6 +328,17 @@ async function watchRun(
     } catch (err) {
       // eslint-disable-next-line no-console
       console.error(`[watcher] ${((err as Error).message).trim()}`);
+      if (err instanceof GitHubRateLimitError) {
+        const summary = buildSummary({
+          repo,
+          runId,
+          run: latestRun,
+          jobs: latestJobs,
+          status: 'rate_limited',
+          conclusion: 'watcher-error',
+        });
+        throw new WatcherAbort(err.message, summary);
+      }
       if (!runDataLoaded && isNotFoundError(err)) {
         if (!notFoundStart) {
           notFoundStart = Date.now();
