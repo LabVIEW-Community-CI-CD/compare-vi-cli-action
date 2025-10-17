@@ -5,9 +5,11 @@
   symlinked `/usr/bin/pwsh`.
 - Installed Pester 5.5.0 into `~/.local/share/powershell/Modules/Pester/5.5.0`; `Get-Module Pester` now
   reports 5.5.0.
-- Downloaded GitHub CLI 2.45.0 to `/usr/local/bin/gh` (still unauthenticated).
-- `node tools/npm/run-script.mjs priority:sync` still falls back to cached #134 metadata because the REST
-  fallback returns HTTP 401 without credentials.
+- Downloaded GitHub CLI 2.45.0 to `/usr/local/bin/gh` (still unauthenticated). Added the
+  `LabVIEW-Community-CI-CD/compare-vi-cli-action` remote so `gh` can detect the repository, but
+  authentication is still required for API calls.
+- `node tools/npm/run-script.mjs priority:sync` now fails with HTTP 401 due to missing GitHub
+  credentials. The cached standing-priority record reflects that response and suggests `gh auth login`.
 - `pwsh -File tools/Detect-RogueLV.ps1 -ResultsDir tests/results -LookBackSeconds 900 -AppendToStepSummary`
   reported no rogue LVCompare/LabVIEW processes and refreshed
   `tests/results/_lvcompare_notice/notice-*.json`.
@@ -15,8 +17,9 @@
   ~8 minutes the dispatcher spawned a runaway `pwsh` chain inside the IncludePatterns tests
   (`Invoke-PesterTests.Patterns.Tests.ps1` kept relaunching the dispatcher). Terminated PID 5349 to stop the
   recursion.
-- The guard dropped `tests/results/_diagnostics/guard.json` pointing to a temporary
-  `/tmp/.../blocked-results.txt` during the recursion attempt.
+- The guard previously dropped `tests/results/_diagnostics/guard.json` pointing to a temporary
+  `/tmp/.../blocked-results.txt` during the recursion attempt, but that crumb was cleaned up in this
+  snapshot so future lookups will not find it.
 - Working tree remains on branch `work`; no commits created yet.
 
 ## Status & Known Gaps
@@ -24,8 +27,9 @@
 2. Dispatcher run (`Invoke-PesterTests.ps1 -IntegrationMode exclude`) still has no clean completion because
    the IncludePatterns test recursively spawns new dispatcher instances. `pester-summary.json`/NUnit output
    were not produced.
-3. `/tmp/pester.log` plus `tests/results/_diagnostics/guard.json` document the recursion/guard failure and
-   should be cleared or relocated before the next dispatcher attempt.
+3. `/tmp/pester.log` documents the recursion/guard failure. The old
+   `tests/results/_diagnostics/guard.json` crumb has been removed to avoid stale breadcrumbs; capture new
+   guard output if the issue reproduces.
 4. Issue/PR #134 still needs an update summarising the restored toolchain, rogue sweep, and the
    dispatcher recursion findings.
 5. Release readiness status remains uncertain; see `docs/RELEASE_READINESS_v0.5.0.md` for a consolidated
@@ -61,7 +65,7 @@
 - Latest `priority:sync` ended with `Failed to fetch issue #134 via gh CLI (HTTP 401: Bad credentials
   (https://api.github.com/graphql)...)`.
 - `Invoke-PesterTests.ps1 -IntegrationMode exclude` currently spins up nested `pwsh` processes via the
-  IncludePatterns tests; see `/tmp/pester.log` and `ps -ef --forest` for context. Guard crumb at
-  `tests/results/_diagnostics/guard.json` captures the failure path.
+  IncludePatterns tests; see `/tmp/pester.log` and `ps -ef --forest` for context. Generate a fresh guard
+  crumb if you re-run the dispatcher and it fails again.
 - Rogue sweep ran at `2025-10-16T20:17:16Z`; notices live under `tests/results/_lvcompare_notice/` and no
   rogue processes were detected.
