@@ -6,7 +6,8 @@ Concise procedure to revert or mitigate the v0.4.0 release if a blocking regress
 
 Rollback may be considered if any of the following are observed shortly after release:
 
-- Critical users unable to run compares due to naming migration logic (warnings unexpectedly escalate or fallback failure).
+- Critical users unable to run compares due to naming migration logic (warnings unexpectedly escalate or fallback
+  failure).
 - Repeated unexpected non 0/1 exit codes attributable to new preflight or bitness guard logic.
 - Widespread discovery failure anomalies traced to soft classification masking deeper issues.
 - Loop auto-close / force-kill feature causing deadlocks or data corruption.
@@ -14,7 +15,8 @@ Rollback may be considered if any of the following are observed shortly after re
 ## 2. Immediate Containment
 
 1. Open a high-priority issue summarizing the regression (include logs, environment details).
-2. If impact is severe, mark release as potentially unstable in README and pin prior stable tag (e.g., add advisory banner).
+2. If impact is severe, mark release as potentially unstable in README and pin prior stable tag (e.g., add advisory
+   banner).
 3. Notify stakeholders/community channel with brief status.
 
 ## 3. Technical Revert Options
@@ -23,7 +25,8 @@ Rollback may be considered if any of the following are observed shortly after re
 
 - Branch from tag `v0.4.0` → `hotfix/v0.4.1`.
 - Revert or adjust minimal offending commits:
-  - Naming fallback: ensure legacy `Base.vi` / `Head.vi` resolution intact (already present) or relax warning gating if noise causing failures.
+  - Naming fallback: ensure legacy `Base.vi` / `Head.vi` resolution intact (already present) or relax warning gating if
+    noise causing failures.
   - Bitness guard: temporarily allow 32-bit with warning by wrapping throw in feature flag (env `ALLOW_32BIT_TEMP=1`).
   - Discovery classification: allow enabling strict mode by default if soft mode hides real failures or vice versa.
 - Add CHANGELOG entry under `v0.4.1` summarizing corrective actions.
@@ -31,7 +34,8 @@ Rollback may be considered if any of the following are observed shortly after re
 
 ### Option B: Full Rollback
 
-- If multiple intertwined changes failing, create new tag `v0.3.1` from last v0.3.0 commit (or cherry-pick essential non-risk fixes).
+- If multiple intertwined changes failing, create new tag `v0.3.1` from last v0.3.0 commit (or cherry-pick essential
+  non-risk fixes).
 - Update GitHub release notes pointing users toward `v0.3.1` pending a re-work.
 
 ## 4. Data & Diagnostics Collection
@@ -78,6 +82,4 @@ Rollback considered complete when:
 - Root cause documented & merged tests cover it.
 - Stakeholders acknowledged resolution.
 
----
-Generated: 2025-10-03
-(Keep until v0.5.0 or integrate into central operations handbook.)
+--- Generated: 2025-10-03 (Keep until v0.5.0 or integrate into central operations handbook.)

@@ -1,10 +1,14 @@
 # Release Notes: v0.4.1 (2025-10-03)
 
-> Patch follow-up to preserve existing remote `v0.4.0` while publishing finalized migration scaffolding, runbook schema, and verification tooling additions. No history rewrite performed.
+> Patch follow-up to preserve existing remote `v0.4.0` while publishing finalized migration scaffolding, runbook schema,
+> and verification tooling additions. No history rewrite performed.
 
 ## 📌 Summary
 
-v0.4.1 finalizes the artifact naming migration groundwork (`VI1.vi` / `VI2.vi`), introduces an integration runbook schema + orchestration helper, and adds a structured pre-tag verification script plus a contract test for the identical-path short-circuit. This release intentionally bumps to a patch version (rather than force-retagging `v0.4.0`) to avoid rewriting already-published history while still delivering the planned reliability and process tooling.
+v0.4.1 finalizes the artifact naming migration groundwork (`VI1.vi` / `VI2.vi`), introduces an integration runbook
+schema + orchestration helper, and adds a structured pre-tag verification script plus a contract test for the identical-
+path short-circuit. This release intentionally bumps to a patch version (rather than force-retagging `v0.4.0`) to avoid
+rewriting already-published history while still delivering the planned reliability and process tooling.
 
 ## 🚀 Highlights
 
@@ -35,7 +39,9 @@ v0.4.1 finalizes the artifact naming migration groundwork (`VI1.vi` / `VI2.vi`),
 
 ## ⚠️ Migration / Deprecation
 
-Legacy names `Base.vi` / `Head.vi` remain deprecated and still resolve via fallback for this release. Preferred names: `VI1.vi` / `VI2.vi`. Removal of legacy fallback and expansion of guard tests to scripts + docs targeted for **v0.5.0**. Begin updating workflows now to avoid disruption.
+Legacy names `Base.vi` / `Head.vi` remain deprecated and still resolve via fallback for this release. Preferred names:
+`VI1.vi` / `VI2.vi`. Removal of legacy fallback and expansion of guard tests to scripts + docs targeted for **v0.5.0**.
+Begin updating workflows now to avoid disruption.
 
 ## 📐 Verification Steps (Recommended for Consumers Upgrading)
 
@@ -69,8 +75,7 @@ Legacy names `Base.vi` / `Head.vi` remain deprecated and still resolve via fallb
 
 ## 📄 Source Reference
 
-Tag: `v0.4.1`
-Previous published tag retained: `v0.4.0` (earlier snapshot without runbook & verifier assets)
+Tag: `v0.4.1` Previous published tag retained: `v0.4.0` (earlier snapshot without runbook & verifier assets)
 
 ## ✅ Integrity Notes
 
@@ -89,7 +94,7 @@ pwsh -File scripts/CompareVI.ps1 -Base VI1.vi -Head VI1.vi -FailOnDiff:$false
 
 ## 🙌 Acknowledgements
 
-Thanks to contributors driving the migration readiness, safety guards, and documentation rigor that made a clean patch bump feasible without history rewrite.
+Thanks to contributors driving the migration readiness, safety guards, and documentation rigor that made a clean patch
+bump feasible without history rewrite.
 
----
-For questions or feedback open an issue with label `release:v0.4.1`.
+--- For questions or feedback open an issue with label `release:v0.4.1`.

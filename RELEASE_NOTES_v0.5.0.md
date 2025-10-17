@@ -8,14 +8,16 @@ Highlights
   - Post-run guard (opt-in) to snapshot/cleanup and append summary
 - Tooling hardening for non-LV checks
   - Centralized vendor resolvers (`tools/VendorTools.psm1`) used by actionlint, markdownlint, and LVCompare helpers
-  - New VS Code task + script (`tools/Run-NonLVChecksInDocker.ps1`) to run actionlint/markdownlint/docs/workflow drift inside Docker
+  - New VS Code task + script (`tools/Run-NonLVChecksInDocker.ps1`) to run actionlint/markdownlint/docs/workflow drift
+    inside Docker
   - Docs link checker auto-skips vendor bundles under `bin/`, `vendor/`, and `node_modules/`
 - Stable session visibility
   - Dispatcher emits `tests/results/session-index.json` with pointers and a ready-to-append `stepSummary`
   - All relevant workflows validate session-index schema (lite) and upload artifact
 - Fixture policy and drift/report hardening
   - Manifest now records exact `bytes` instead of `minBytes`; validator enforces `sizeMismatch`
-  - Drift orchestrator routes compare via robust `CompareVI` preflight; reporter prefers `compare-exec.json` (Source: execJson)
+  - Drift orchestrator routes compare via robust `CompareVI` preflight; reporter prefers `compare-exec.json` (Source:
+    execJson)
 - YAML hygiene & docs
   - actionlint runs before markdownlint in Validate (always executes)
   - Added AGENTS.md and docs link checker; fixed workflow YAML issues

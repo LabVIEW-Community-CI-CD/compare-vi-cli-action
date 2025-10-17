@@ -5,13 +5,16 @@ Thank you for contributing to `compare-vi-cli-action`!
 ## Prerequisites
 
 - Self-hosted Windows runner with LabVIEW 2025 Q3 installed and licensed
-- LVCompare must be installed at the canonical path: `C:\Program Files\National Instruments\Shared\LabVIEW Compare\LVCompare.exe`; `LVCOMPARE_PATH` or `lvComparePath` may be used only if they resolve to this canonical location (no alternative install paths supported)
+- LVCompare must be installed at the canonical path: `C:\Program Files\National Instruments\Shared\LabVIEW
+  Compare\LVCompare.exe`; `LVCOMPARE_PATH` or `lvComparePath` may be used only if they resolve to this canonical
+  location (no alternative install paths supported)
 
 ## Getting Started
 
 - Fork and clone the repo
 - Create a feature branch
-- Use the smoke test workflow (`.github/workflows/smoke.yml`) to validate changes against sample `.vi` files on your self-hosted runner
+- Use the smoke test workflow (`.github/workflows/smoke.yml`) to validate changes against sample `.vi` files on your
+  self-hosted runner
 
 ## Action Development Tips
 
@@ -98,18 +101,29 @@ $env:LV_HEAD_VI = 'VI2.vi'
 
 ## Standing priority workflow
 
-- `node tools/npm/run-script.mjs priority:bootstrap` — detect the current plane, run hook preflight (and parity when `-- -VerboseHooks` is supplied), and refresh the standing-priority snapshot/router.
-- `node tools/npm/run-script.mjs priority:handoff` — ingest the latest handoff artifacts (`issue-summary.json`, `issue-router.json`, hook and watcher summaries) into the session, hydrating `$StandingPrioritySnapshot`, `$StandingPriorityRouter`, etc.
-- `node tools/npm/run-script.mjs priority:handoff-tests` — run the priority/hooks/semver checks and persist results to `tests/results/_agent/handoff/test-summary.json` for downstream agents.
-- `node tools/npm/run-script.mjs priority:release` — simulate the release actions described by the router; pass `-- -Execute` to run `Branch-Orchestrator.ps1 -Execute` instead of the default dry-run.
-- `node tools/npm/run-script.mjs handoff:schema` — validate the hook handoff summary (`tests/results/_agent/handoff/hook-summary.json`) against `docs/schemas/handoff-hook-summary-v1.schema.json`.
-- `node tools/npm/run-script.mjs handoff:release-schema` — validate the release summary (`tests/results/_agent/handoff/release-summary.json`) against `docs/schemas/handoff-release-v1.schema.json`.
-- `node tools/npm/run-script.mjs semver:check` — assert the current `package.json` version complies with SemVer 2.0 via `tools/priority/validate-semver.mjs`.
+- `node tools/npm/run-script.mjs priority:bootstrap` — detect the current plane, run hook preflight (and parity when `--
+  -VerboseHooks` is supplied), and refresh the standing-priority snapshot/router.
+- `node tools/npm/run-script.mjs priority:handoff` — ingest the latest handoff artifacts (`issue-summary.json`, `issue-
+  router.json`, hook and watcher summaries) into the session, hydrating `$StandingPrioritySnapshot`,
+  `$StandingPriorityRouter`, etc.
+- `node tools/npm/run-script.mjs priority:handoff-tests` — run the priority/hooks/semver checks and persist results to
+  `tests/results/_agent/handoff/test-summary.json` for downstream agents.
+- `node tools/npm/run-script.mjs priority:release` — simulate the release actions described by the router; pass `--
+  -Execute` to run `Branch-Orchestrator.ps1 -Execute` instead of the default dry-run.
+- `node tools/npm/run-script.mjs handoff:schema` — validate the hook handoff summary
+  (`tests/results/_agent/handoff/hook-summary.json`) against `docs/schemas/handoff-hook-summary-v1.schema.json`.
+- `node tools/npm/run-script.mjs handoff:release-schema` — validate the release summary
+  (`tests/results/_agent/handoff/release-summary.json`) against `docs/schemas/handoff-release-v1.schema.json`.
+- `node tools/npm/run-script.mjs semver:check` — assert the current `package.json` version complies with SemVer 2.0 via
+  `tools/priority/validate-semver.mjs`.
 
-These helpers make the sandbox feel pseudo-persistent: each agent self-injects the previous session’s state before starting work and leaves updated artifacts when finishing.
+These helpers make the sandbox feel pseudo-persistent: each agent self-injects the previous session’s state before
+starting work and leaves updated artifacts when finishing.
 
-- The repository pins `core.hooksPath=tools/hooks`. Hooks are implemented as a Node core (`tools/hooks/core/*.mjs`) with thin shell/PowerShell shims so Linux, Windows, and CI all execute the same logic.
-- Hook summaries are written to `tests/results/_hooks/<hook>.json` and include exit codes, truncated stdout/stderr, and notes (e.g., when PowerShell is unavailable on Linux).
+- The repository pins `core.hooksPath=tools/hooks`. Hooks are implemented as a Node core (`tools/hooks/core/*.mjs`) with
+  thin shell/PowerShell shims so Linux, Windows, and CI all execute the same logic.
+- Hook summaries are written to `tests/results/_hooks/<hook>.json` and include exit codes, truncated stdout/stderr, and
+  notes (e.g., when PowerShell is unavailable on Linux).
 - Run hook logic manually before committing/pushing:
 
   ```bash
@@ -128,23 +142,26 @@ These helpers make the sandbox feel pseudo-persistent: each agent self-injects t
   node tools/npm/run-script.mjs hooks:schema    # validate summaries against the v1 schema
   ```
 
-- Control behaviour via `HOOKS_ENFORCE=fail|warn|off` (default: `fail` in CI, `warn` locally). Failures become warnings when enforcement is `warn`, and are suppressed entirely when set to `off`.
+- Control behaviour via `HOOKS_ENFORCE=fail|warn|off` (default: `fail` in CI, `warn` locally). Failures become warnings
+  when enforcement is `warn`, and are suppressed entirely when set to `off`.
 
-- PowerShell-specific lint (inline-if, dot-sourcing, PSScriptAnalyzer) only runs when `pwsh` is available; otherwise the hook marks those steps as `skipped` and records a note in the summary.
+- PowerShell-specific lint (inline-if, dot-sourcing, PSScriptAnalyzer) only runs when `pwsh` is available; otherwise the
+  hook marks those steps as `skipped` and records a note in the summary.
 
 - The CI parity job ensures Windows and Linux shims stay in sync—if hook outputs drift, the workflow fails with a diff.
 
 ## Documentation Style
 
-Markdown lint configuration intentionally disables the MD013 (line length) rule globally.
-Rationale:
+Markdown lint configuration intentionally disables the MD013 (line length) rule globally. Rationale:
 
-- Technical tables, JSON fragments, and schema / command examples often exceed 160 chars and wrapping them reduces readability.
+- Technical tables, JSON fragments, and schema / command examples often exceed 160 chars and wrapping them reduces
+  readability.
 - Large refactor risk: historical sections (dispatcher notes, loop mode tuning) rely on long inline code spans.
 
 Guidelines:
 
-- Prefer wrapping narrative paragraphs to a reasonable width (~120–160) for new content, but do not hard-wrap within embedded JSON, PowerShell code fences, or tables.
+- Prefer wrapping narrative paragraphs to a reasonable width (~120–160) for new content, but do not hard-wrap within
+  embedded JSON, PowerShell code fences, or tables.
 - Break up extremely long explanatory list items (>220 chars) unless doing so fragments a schema or command.
 - Use concise language; remove redundant qualifiers (e.g., "in order to" → "to").
 - Keep bullet introductions on their own line before long wrapped sub-lines for scanability.

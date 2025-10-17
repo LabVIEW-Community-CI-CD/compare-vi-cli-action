@@ -1,21 +1,19 @@
 <!-- markdownlint-disable-next-line MD041 -->
 # Agent Handbook
 
-This document summarizes the expectations for automation agents working in the
-`compare-vi-cli-action` repository. The style mirrors the reflowed `README.md` so
-`markdownlint` remains quiet (120-column guideline, explicit headings, blank-line buffers).
+This document summarizes the expectations for automation agents working in the `compare-vi-cli-action` repository. The
+style mirrors the reflowed `README.md` so `markdownlint` remains quiet (120-column guideline, explicit headings, blank-
+line buffers).
 
 ## Primary directive
 
-- The standing priority is whichever issue carries the `standing-priority` label. Use the sanitized
-  wrappers (`node tools/npm/cli.mjs <command>` / `node tools/npm/run-script.mjs <script>`) instead of
-  raw `npm` invocations (the container exports `npm_config_http_proxy`, which triggers warnings in
-  recent npm builds). Run
-  `node tools/npm/run-script.mjs priority:sync` at session start so `.agent_priority_cache.json` and
-  `tests/results/_agent/issue/` reflect the latest snapshot; treat that issue as the top objective for
-  edits, CI runs, and PRs.
-- The human operator is signed in with an admin GitHub token; assume privileged operations
-  (labels, reruns, merges) are allowed when safe.
+- The standing priority is whichever issue carries the `standing-priority` label. Use the sanitized wrappers (`node
+  tools/npm/cli.mjs <command>` / `node tools/npm/run-script.mjs <script>`) instead of raw `npm` invocations (the
+  container exports `npm_config_http_proxy`, which triggers warnings in recent npm builds). Run `node tools/npm/run-
+  script.mjs priority:sync` at session start so `.agent_priority_cache.json` and `tests/results/_agent/issue/` reflect
+  the latest snapshot; treat that issue as the top objective for edits, CI runs, and PRs.
+- The human operator is signed in with an admin GitHub token; assume privileged operations (labels, reruns, merges) are
+  allowed when safe.
 - Default behaviour:
   - Operate inside this repository unless the human asks otherwise.
   - Keep workflows deterministic and green.
@@ -31,13 +29,13 @@ This document summarizes the expectations for automation agents working in the
 
 ## Streaming guardrails
 
-- Heavy log archives and binary fixtures previously pushed this workspace over Codex streaming limits. We
-  trimmed the checked-in payloads (`logs/2025-10-09`, `job-*.log`, `tmp-win-drift.log`, `tmp_predefined.html`,
-  drift artifact zips) so future agents start below the ceiling.
-- Keep bulky diagnostics out of source. When capturing long logs, prefer short repro snippets or attach
-  artifacts to issues instead of committing them.
-- `.openai-ignore` enumerates directories/files Codex should skip to stay under streaming limits. Update that
-  list if new large assets appear (and remove the assets from git when possible).
+- Heavy log archives and binary fixtures previously pushed this workspace over Codex streaming limits. We trimmed the
+  checked-in payloads (`logs/2025-10-09`, `job-*.log`, `tmp-win-drift.log`, `tmp_predefined.html`, drift artifact zips)
+  so future agents start below the ceiling.
+- Keep bulky diagnostics out of source. When capturing long logs, prefer short repro snippets or attach artifacts to
+  issues instead of committing them.
+- `.openai-ignore` enumerates directories/files Codex should skip to stay under streaming limits. Update that list if
+  new large assets appear (and remove the assets from git when possible).
 
 ## Repository layout
 
@@ -127,16 +125,21 @@ This document summarizes the expectations for automation agents working in the
 ## Branch protection contract (#118)
 
 - Canonical required-status mapping lives in `tools/policy/branch-required-checks.json` (hash = contract digest).
-- `tools/Update-SessionIndexBranchProtection.ps1` injects the verification block into `session-index.json` and emits a step-summary entry.
+- `tools/Update-SessionIndexBranchProtection.ps1` injects the verification block into `session-index.json` and emits a
+  step-summary entry.
 - When running smoke tests locally:
+
   ```powershell
   pwsh -File tools/Quick-DispatcherSmoke.ps1 -PreferWorkspace -ResultsPath .tmp/sessionindex
   pwsh -File tools/Update-SessionIndexBranchProtection.ps1 -ResultsDir .tmp/sessionindex `
     -PolicyPath tools/policy/branch-required-checks.json `
     -Branch (git branch --show-current)
   ```
-- Confirm `session-index.json` contains `branchProtection.result.status = "ok"`; mismatches should be logged in `branchProtection.notes`.
-- If CI reports `warn`/`fail`, inspect the Step Summary and the session index artifact from that job. Update branch protection or the mapping file as needed to realign.
+
+- Confirm `session-index.json` contains `branchProtection.result.status = "ok"`; mismatches should be logged in
+  `branchProtection.notes`.
+- If CI reports `warn`/`fail`, inspect the Step Summary and the session index artifact from that job. Update branch
+  protection or the mapping file as needed to realign.
 
 ## Workflow maintenance
 
@@ -166,7 +169,8 @@ Use `tools/workflows/update_workflows.py` for mechanical updates (comment-preser
      - `LV_CURSOR_RESTORE=1`
      - `LV_IDLE_WAIT_SECONDS=2`
      - `LV_IDLE_MAX_WAIT_SECONDS=5`
-  3. Rogue scan: `pwsh -File tools/Detect-RogueLV.ps1 -ResultsDir tests/results -LookBackSeconds 900 -AppendToStepSummary`
+  3. Rogue scan: `pwsh -File tools/Detect-RogueLV.ps1 -ResultsDir tests/results -LookBackSeconds 900
+     -AppendToStepSummary`
   4. Sweep LVCompare (only) if rogues found and human approves.
   5. Honour pause etiquette (“brief delay (~90 seconds)”) and log waits.
   6. Execute “First Actions for the Next Agent” from `AGENT_HANDOFF.txt`.
@@ -179,10 +183,9 @@ Use `tools/workflows/update_workflows.py` for mechanical updates (comment-preser
       and appends notes to the GitHub Step Summary when available.
     - Each invocation also drops a session capsule under `tests/results/_agent/sessions/`
       (schema `agent-handoff/session@v1`) capturing branch/head/status snapshots for determinism.
-- Capture quick regression coverage with `node tools/npm/run-script.mjs priority:handoff-tests`; the
-  script runs
-  `priority:test`, `hooks:test`, and `semver:check`, then writes `tests/results/_agent/handoff/test-summary.json`
-  so subsequent agents (or CI summaries) can replay the outcomes.
+- Capture quick regression coverage with `node tools/npm/run-script.mjs priority:handoff-tests`; the script runs
+  `priority:test`, `hooks:test`, and `semver:check`, then writes `tests/results/_agent/handoff/test-summary.json` so
+  subsequent agents (or CI summaries) can replay the outcomes.
 
 ## Fast path for issue #127
 
@@ -204,23 +207,24 @@ Use `tools/workflows/update_workflows.py` for mechanical updates (comment-preser
 
 ## Watching orchestrated runs
 
-- Prefer the REST watcher when monitoring workflows:
-  `node tools/npm/run-script.mjs ci:watch:rest -- --run-id <id>` streams job status and exits non-zero
-  if
-  the run fails. Passing `--branch <name>` auto-selects the latest run. The VS Code task “CI Watch (REST)” prompts for a run id.
-- The watcher now aborts with `conclusion: watcher-error` after repeated 404s or other API failures (90s / 120s grace by default), still
-  writing `watcher-rest.json` so session-index telemetry isn’t lost. Explicit rate-limit responses short-circuit with instructions to
-  supply `GH_TOKEN`/`GITHUB_TOKEN` (or wait for the reset) instead of waiting out the error window.
-- Use the Docker watcher (`tools/Watch-InDocker.ps1`) when you need dispatcher logs or artifact download mirrors. Both watchers honor
-  `GH_TOKEN`/`GITHUB_TOKEN` and fall back to `C:\github_token.txt` on Windows.
+- Prefer the REST watcher when monitoring workflows: `node tools/npm/run-script.mjs ci:watch:rest -- --run-id <id>`
+  streams job status and exits non-zero if the run fails. Passing `--branch <name>` auto-selects the latest run. The VS
+  Code task “CI Watch (REST)” prompts for a run id.
+- The watcher now aborts with `conclusion: watcher-error` after repeated 404s or other API failures (90s / 120s grace by
+  default), still writing `watcher-rest.json` so session-index telemetry isn’t lost. Explicit rate-limit responses
+  short-circuit with instructions to supply `GH_TOKEN`/`GITHUB_TOKEN` (or wait for the reset) instead of waiting out the
+  error window.
+- Use the Docker watcher (`tools/Watch-InDocker.ps1`) when you need dispatcher logs or artifact download mirrors. Both
+  watchers honor `GH_TOKEN`/`GITHUB_TOKEN` and fall back to `C:\github_token.txt` on Windows.
 - Keep watcher summaries in `tests/results/_agent/` up to date so downstream agents inherit telemetry context.
-- `tools/Update-SessionIndexWatcher.ps1` merges `watcher-rest.json` into `session-index.json`, exposing the REST watcher status under
-  the `watchers.rest` node. Run it after the watcher step if you update the workflow or run the watcher manually.
+- `tools/Update-SessionIndexWatcher.ps1` merges `watcher-rest.json` into `session-index.json`, exposing the REST watcher
+  status under the `watchers.rest` node. Run it after the watcher step if you update the workflow or run the watcher
+  manually.
 
 ## LVCompare observability
 
-- Notices are written to `tests/results/_lvcompare_notice/notice-*.json` (phases: pre-launch,
-  post-start, completed, post-complete).
+- Notices are written to `tests/results/_lvcompare_notice/notice-*.json` (phases: pre-launch, post-start, completed,
+  post-complete).
 - `tools/Detect-RogueLV.ps1` checks for untracked LVCompare/LabVIEW processes.
 - Environment safeguards: `LV_NO_ACTIVATE=1`, `LV_CURSOR_RESTORE=1`, `LV_IDLE_WAIT_SECONDS=2`,
   `LV_IDLE_MAX_WAIT_SECONDS=5`.
@@ -248,8 +252,8 @@ Use `tools/workflows/update_workflows.py` for mechanical updates (comment-preser
 
 ## Vendor tool resolvers
 
-Use the shared resolver module to locate vendor CLIs consistently across OSes and self-hosted runners. This avoids
-PATH drift and issues like picking a non-Windows binary on Windows.
+Use the shared resolver module to locate vendor CLIs consistently across OSes and self-hosted runners. This avoids PATH
+drift and issues like picking a non-Windows binary on Windows.
 
 - Module: `tools/VendorTools.psm1`
 - Functions:

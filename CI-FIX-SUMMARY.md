@@ -133,7 +133,8 @@ To apply these fixes to PR #41:
 
 ## Commit Hash
 
-**Fix commit:** `f00653f` - "fix(tests): stabilize CI tests - update schema version, performance thresholds, and cross-platform path matching"
+**Fix commit:** `f00653f` - "fix(tests): stabilize CI tests - update schema version, performance thresholds, and cross-
+platform path matching"
 
 ## Branch Location
 

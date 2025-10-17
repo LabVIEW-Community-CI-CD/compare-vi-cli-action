@@ -1,10 +1,12 @@
 # v0.4.0 Tag Preparation Checklist
 
-Helper reference for maintainers prior to cutting the final `v0.4.0` tag. Delete or archive after release if redundant with PR notes.
+Helper reference for maintainers prior to cutting the final `v0.4.0` tag. Delete or archive after release if redundant
+with PR notes.
 
 ## 1. Pre-flight Verification
 
-- [ ] On release branch: `release/v0.4.0-rc.1` (or updated RC) fully merged with latest `develop` changes intended for release.
+- [ ] On release branch: `release/v0.4.0-rc.1` (or updated RC) fully merged with latest `develop` changes intended for
+  release.
 - [ ] CI green (unit + integration as applicable) on the RC branch.
 - [ ] Markdown lint passes (run `node tools/npm/run-script.mjs lint:md`).
 - [ ] (Optional) Workflow lint (actionlint) passes if tool available.
@@ -13,10 +15,13 @@ Helper reference for maintainers prior to cutting the final `v0.4.0` tag. Delete
 ## 2. Version & Metadata Consistency
 
 - [ ] `CHANGELOG.md` has finalized `## [v0.4.0] - YYYY-MM-DD` section (date updated to actual release day).
-- [ ] No remaining references to `-rc` in README examples or docs referencing the version tag (other than historical sections).
-- [ ] `package.json` version matches `0.4.0` (if version tracking used for tooling—update only if intentionally coupled).
+- [ ] No remaining references to `-rc` in README examples or docs referencing the version tag (other than historical
+  sections).
+- [ ] `package.json` version matches `0.4.0` (if version tracking used for tooling—update only if intentionally
+  coupled).
 - [ ] `action.yml` does not contain stale output/input names (compare to `docs/action-outputs.md`).
-- [ ] `docs/action-outputs.md` regenerated if any last-minute output changes: `node tools/npm/run-script.mjs generate:outputs`.
+- [ ] `docs/action-outputs.md` regenerated if any last-minute output changes: `node tools/npm/run-script.mjs
+  generate:outputs`.
 
 ## 3. Functional Sanity Pass
 
@@ -80,7 +85,5 @@ Include sections:
 - [ ] Announce release in internal channel / community notes (emphasize upcoming fallback removal in v0.5.0).
 - [ ] Encourage users to rename artifacts promptly to suppress warning.
 
----
-Generated: 2025-10-03
-(Helper file; adjust or remove post-release.)
+--- Generated: 2025-10-03 (Helper file; adjust or remove post-release.)
 
