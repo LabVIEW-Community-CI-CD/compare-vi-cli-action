@@ -46,7 +46,7 @@ $files = Get-ChildItem -LiteralPath $repoRoot -Recurse -File -Include $searchPat
 $violations = New-Object System.Collections.Generic.List[object]
 
 foreach ($file in $files) {
-  $lines = Get-Content -LiteralPath $file.FullName
+  $lines = @(Get-Content -LiteralPath $file.FullName)
   for ($index = 0; $index -lt $lines.Count; $index++) {
     $lineText = $lines[$index]
     $trimmed = $lineText.Trim()
