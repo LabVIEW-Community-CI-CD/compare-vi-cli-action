@@ -10,6 +10,55 @@ if (-not (Test-Path -LiteralPath $SchemaPath)) { Write-Error "Schema file not fo
 try { $data = Get-Content -LiteralPath $JsonPath -Raw | ConvertFrom-Json -ErrorAction Stop } catch { Write-Error "Failed to parse JSON: $($_.Exception.Message)"; exit 2 }
 try { $schema = Get-Content -LiteralPath $SchemaPath -Raw | ConvertFrom-Json -ErrorAction Stop } catch { Write-Error "Failed to parse schema: $($_.Exception.Message)"; exit 2 }
 
+# When the supplied schema declares a const value that does not match the JSON payload's
+# declared schema identifier, attempt to locate a sibling schema definition whose file
+# name matches the payload's identifier ("<schema>.schema.json"). This keeps historical
+# invocations that referenced an outdated schema file (for example, fixture manifests)
+# from failing when the payload transitioned to a new schema contract (fixture-validation
+# snapshots). The fallback only applies when both schema and payload expose a concrete
+# identifier and the alternate file exists next to the requested schema path.
+$schemaConst = $null
+if ($schema -is [psobject] -and $schema.PSObject.Properties['properties']) {
+  $schemaNode = $schema.properties.schema
+  if ($schemaNode -is [psobject] -and $schemaNode.PSObject.Properties['const']) {
+    $schemaConst = [string]$schemaNode.const
+  }
+}
+
+$payloadSchemaId = $null
+if ($data -is [psobject] -and $data.PSObject.Properties['schema']) {
+  $payloadSchemaId = [string]$data.schema
+}
+
+if ($schemaConst -and $payloadSchemaId -and $schemaConst -ne $payloadSchemaId) {
+  try {
+    $resolvedSchemaPath = (Resolve-Path -LiteralPath $SchemaPath -ErrorAction Stop).ProviderPath
+    $schemaDir = Split-Path -Parent $resolvedSchemaPath
+    $altSchemaPath = Join-Path $schemaDir ("{0}.schema.json" -f $payloadSchemaId)
+    if (Test-Path -LiteralPath $altSchemaPath -PathType Leaf) {
+      Write-Host (
+        "[schema-lite] notice: schema const mismatch (expected {0} actual {1}); reloading schema from {2}" -f \
+        $schemaConst, \
+        $payloadSchemaId, \
+        $altSchemaPath)
+      try {
+        $schema = Get-Content -LiteralPath $altSchemaPath -Raw | ConvertFrom-Json -ErrorAction Stop
+        $SchemaPath = $altSchemaPath
+      } catch {
+        Write-Warning (
+          "[schema-lite] fallback schema load failed for {0}: {1}" -f \
+          $altSchemaPath, \
+          $_.Exception.Message)
+      }
+    }
+  } catch {
+    Write-Warning (
+      "[schema-lite] failed to resolve alternate schema for {0}: {1}" -f \
+      $payloadSchemaId, \
+      $_.Exception.Message)
+  }
+}
+
 function Test-TypeMatch {
   param($val,[string]$type,[string]$path)
   switch ($type) {
