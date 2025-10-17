@@ -43,20 +43,10 @@ jobs:
         node-version: '20'
         cache: 'npm'
 
-    - name: CLI lints (notice on develop)
-      if: github.ref_name == 'develop' || github.base_ref == 'develop'
+    - name: CLI lints
       uses: ./.github/actions/cli-lints
       with:
-        enforce: 'false'
-        linkcheck: 'true'
-        actionlint-version: '1.7.7'
-        relaxed-path: 'docs/releases/**/*.md'
-
-    - name: CLI lints (enforced on main)
-      if: github.ref_name == 'main' || github.base_ref == 'main'
-      uses: ./.github/actions/cli-lints
-      with:
-        enforce: 'true'
+        enforce: ${{ github.ref_name == 'main' || github.base_ref == 'main' }}
         linkcheck: 'true'
         actionlint-version: '1.7.7'
         relaxed-path: 'docs/releases/**/*.md'
@@ -95,23 +85,6 @@ jobs:
           $msg | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8
         }
 
-    - name: Install actionlint (retry)
-      shell: bash
-      run: |
-        set -euo pipefail
-        mkdir -p ./bin
-        ver="${ACTIONLINT_VERSION:-1.7.7}"
-        for i in 1 2 3; do
-          if curl -fsSL https://raw.githubusercontent.com/rhysd/actionlint/main/scripts/download-actionlint.bash | bash -s -- "$ver" ./bin; then
-            break
-          else
-            echo "retry $i"; sleep 2
-          fi
-        done
-    - name: Run actionlint
-      run: |
-        ./bin/actionlint -color
-
     - name: Derive environment snapshot
       shell: bash
       run: |
@@ -143,23 +116,6 @@ jobs:
       shell: pwsh
       run: pwsh -File tools/Lint-InlineIfInFormat.ps1
 
-    - name: Install markdownlint-cli (retry)
-      shell: bash
-      run: |
-        set -euo pipefail
-        for i in 1 2 3; do
-          if npm install -g markdownlint-cli; then
-            break
-          else
-            npm cache clean --force || true
-            echo "retry $i"
-            sleep 2
-          fi
-        done
-    - name: Run markdownlint (non-blocking)
-      continue-on-error: true
-      run: |
-        markdownlint "**/*.md" --ignore node_modules
     - name: Emit tool versions
       if: always()
       shell: bash
