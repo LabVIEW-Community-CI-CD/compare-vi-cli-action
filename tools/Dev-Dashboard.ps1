@@ -200,6 +200,26 @@ function Format-Seconds {
   return "$minutes min"
 }
 
+function Get-CompareCliImageSummary {
+  param(
+    [Nullable[int]]$ImageCount,
+    [string]$ExportDir,
+    [string]$ReportPath
+  )
+
+  if ($ImageCount -ne $null) {
+    $summary = '{0}' -f $ImageCount
+    if ($ExportDir) { return '{0} (export: {1})' -f $ImageCount, $ExportDir }
+    if ($ReportPath) { return '{0} (report: {1})' -f $ImageCount, $ReportPath }
+    return $summary
+  }
+
+  if ($ExportDir) { return 'export: ' + $ExportDir }
+  if ($ReportPath) { return 'report: ' + $ReportPath }
+
+  return $null
+}
+
 function Write-TerminalReport {
   param($Snapshot)
 
@@ -312,24 +332,28 @@ function Write-TerminalReport {
     if ($compare.ReportPath) { Write-Host "  Report   : $($compare.ReportPath)" }
     if ($compare.CliArtifacts) {
       $cliArtifacts = $compare.CliArtifacts
-      if ($cliArtifacts.PSObject.Properties.Name -contains 'reportSizeBytes' -and $cliArtifacts.reportSizeBytes -ne $null) {
-        Write-Host "  CLI Report Size : $($cliArtifacts.reportSizeBytes) bytes"
+      $reportSizeBytes = $null
+      $imageCount = $null
+      $exportDir = $null
+      if ($cliArtifacts -is [System.Collections.IDictionary]) {
+        if ($cliArtifacts.Contains('reportSizeBytes')) { $reportSizeBytes = $cliArtifacts['reportSizeBytes'] }
+        if ($cliArtifacts.Contains('imageCount')) { $imageCount = $cliArtifacts['imageCount'] }
+        if ($cliArtifacts.Contains('exportDir')) { $exportDir = $cliArtifacts['exportDir'] }
+      } else {
+        if ($cliArtifacts.PSObject.Properties.Name -contains 'reportSizeBytes') { $reportSizeBytes = $cliArtifacts.reportSizeBytes }
+        if ($cliArtifacts.PSObject.Properties.Name -contains 'imageCount') { $imageCount = $cliArtifacts.imageCount }
+        if ($cliArtifacts.PSObject.Properties.Name -contains 'exportDir') { $exportDir = $cliArtifacts.exportDir }
       }
-      $imgLine = $null
-      $hasExportDir = ($cliArtifacts.PSObject.Properties.Name -contains 'exportDir' -and $cliArtifacts.exportDir)
-      if ($cliArtifacts.PSObject.Properties.Name -contains 'imageCount' -and $cliArtifacts.imageCount -ne $null) {
-        $imgLine = "  CLI Images      : $($cliArtifacts.imageCount)"
-        if ($hasExportDir) {
-          $imgLine += " (export: $($cliArtifacts.exportDir))"
-        } elseif ($compare.ReportPath) {
-          $imgLine += " (report: $($compare.ReportPath))"
-        }
-      } elseif ($hasExportDir) {
-        $imgLine = "  CLI Images      : export: $($cliArtifacts.exportDir)"
-      } elseif ($compare.ReportPath) {
-        $imgLine = "  CLI Images      : report: $($compare.ReportPath)"
+      if ($reportSizeBytes -ne $null) {
+        Write-Host "  CLI Report Size : $reportSizeBytes bytes"
       }
-      if ($imgLine) { Write-Host $imgLine }
+      $imgSummary = Get-CompareCliImageSummary `
+        -ImageCount $imageCount `
+        -ExportDir $exportDir `
+        -ReportPath $compare.ReportPath
+      if ($imgSummary) {
+        Write-Host "  CLI Images      : $imgSummary"
+      }
     }
   } else {
     Write-Host "  Status   : no compare telemetry"
@@ -716,18 +740,12 @@ function ConvertTo-HtmlReport {
         if ($compareReportPathValue) { $rows += "<dt>Report</dt><dd>$(& $encode $compareReportPathValue)</dd>" }
         elseif ($compareCapturePathValue) { $rows += "<dt>Capture</dt><dd>$(& $encode $compareCapturePathValue)</dd>" }
         if ($artifactsReportSize -ne $null) { $rows += "<dt>CLI Report Size</dt><dd>$(& $encode $artifactsReportSize) bytes</dd>" }
-        if ($artifactsImageCount -ne $null) {
-          $imgSummary = '{0}' -f $artifactsImageCount
-          if ($artifactsExportDir) {
-            $imgSummary = '{0} (export: {1})' -f $artifactsImageCount, $artifactsExportDir
-          } elseif ($compareReportPathValue) {
-            $imgSummary = '{0} (report: {1})' -f $artifactsImageCount, $compareReportPathValue
-          }
-          $rows += "<dt>CLI Images</dt><dd>$(& $encode $imgSummary)</dd>"
-        } elseif ($artifactsExportDir) {
-          $rows += "<dt>CLI Images</dt><dd>$(& $encode ('export: ' + $artifactsExportDir))</dd>"
-        } elseif ($compareReportPathValue) {
-          $rows += "<dt>CLI Images</dt><dd>$(& $encode ('report: ' + $compareReportPathValue))</dd>"
+        $cliImagesSummary = Get-CompareCliImageSummary `
+          -ImageCount $artifactsImageCount `
+          -ExportDir $artifactsExportDir `
+          -ReportPath $compareReportPathValue
+        if ($cliImagesSummary) {
+          $rows += "<dt>CLI Images</dt><dd>$(& $encode $cliImagesSummary)</dd>"
         }
         if ($compareJsonPathValue) { $rows += "<dt>Outcome JSON</dt><dd>$(& $encode $compareJsonPathValue)</dd>" }
         if ($rows.Count -eq 0) { $rows += '<dt>Status</dt><dd>Available</dd>' }
