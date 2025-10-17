@@ -36,6 +36,31 @@ Describe 'IntegrationRunbook - Phase Selection & JSON' -Tag 'Unit' {
     $json.overallStatus | Should -Match 'Passed|Failed'
   }
 
+  It 'falls back to repository fixtures when VI environment variables are unset' {
+    $tmp = Join-Path $runRoot 'tmp-runbook-fallback.json'
+    if (Test-Path $tmp) { Remove-Item $tmp -Force }
+    Test-Path (Join-Path $runRoot 'VI1.vi') | Should -BeTrue
+    Test-Path (Join-Path $runRoot 'VI2.vi') | Should -BeTrue
+    $oldBase = $env:LV_BASE_VI
+    $oldHead = $env:LV_HEAD_VI
+    try {
+      Remove-Item Env:LV_BASE_VI -ErrorAction SilentlyContinue
+      Remove-Item Env:LV_HEAD_VI -ErrorAction SilentlyContinue
+      & $runScript -Phases 'Prereqs,ViInputs' -JsonReport $tmp | Out-Null
+      $proc = [pscustomobject]@{ ExitCode = $LASTEXITCODE }
+    } finally {
+      if ($null -ne $oldBase) { $env:LV_BASE_VI = $oldBase } else { Remove-Item Env:LV_BASE_VI -ErrorAction SilentlyContinue }
+      if ($null -ne $oldHead) { $env:LV_HEAD_VI = $oldHead } else { Remove-Item Env:LV_HEAD_VI -ErrorAction SilentlyContinue }
+    }
+    $proc.ExitCode | Should -Be 0
+    Test-Path $tmp | Should -BeTrue
+    $json = Get-Content $tmp -Raw | ConvertFrom-Json
+    $phase = $json.phases | Where-Object name -eq 'ViInputs'
+    $phase.status | Should -Be 'Passed'
+    $phase.details.baseSource | Should -Be 'RepositoryFixture'
+    $phase.details.headSource | Should -Be 'RepositoryFixture'
+  }
+
   It 'fails with unknown phase name' {
     & $runScript -Phases 'BogusPhase' *>$null
     $proc = [pscustomobject]@{ ExitCode = $LASTEXITCODE }

@@ -45,6 +45,34 @@ $ErrorActionPreference = 'Stop'
 
 $script:Schema = 'integration-runbook-v1'
 $allPhaseNames = @('Prereqs','CanonicalCli','ViInputs','Compare','Tests','Loop','Diagnostics')
+$repoRoot = Split-Path -Parent $PSScriptRoot
+
+function Resolve-ViInputPath {
+  param(
+    [string]$EnvValue,
+    [string]$FallbackName
+  )
+
+  $info = [pscustomobject]@{
+    Path = $null
+    Source = $null
+    EnvValue = $EnvValue
+    FallbackPath = Join-Path $repoRoot $FallbackName
+  }
+
+  if (-not [string]::IsNullOrWhiteSpace($EnvValue)) {
+    $info.Path = $EnvValue
+    $info.Source = 'Environment'
+    return $info
+  }
+
+  if (Test-Path -LiteralPath $info.FallbackPath -PathType Leaf) {
+    $info.Path = $info.FallbackPath
+    $info.Source = 'RepositoryFixture'
+  }
+
+  return $info
+}
 
 function Write-PhaseBanner([string]$name) {
   Write-Host ('=' * 70) -ForegroundColor DarkGray
@@ -77,7 +105,17 @@ $ordered = $allPhaseNames | Where-Object { $_ -in $selected }
 
 # Result container
 $results = [System.Collections.Generic.List[object]]::new()
-$ctx = [pscustomobject]@{ basePath=$env:LV_BASE_VI; headPath=$env:LV_HEAD_VI; compareResult=$null }
+$baseInfo = Resolve-ViInputPath -EnvValue $env:LV_BASE_VI -FallbackName 'VI1.vi'
+$headInfo = Resolve-ViInputPath -EnvValue $env:LV_HEAD_VI -FallbackName 'VI2.vi'
+$ctx = [pscustomobject]@{
+  basePath       = $baseInfo.Path
+  baseSource     = $baseInfo.Source
+  baseFallback   = $baseInfo.FallbackPath
+  headPath       = $headInfo.Path
+  headSource     = $headInfo.Source
+  headFallback   = $headInfo.FallbackPath
+  compareResult  = $null
+}
 $overallFailed = $false
 
 #region Phase Implementations
@@ -107,11 +145,13 @@ function Invoke-PhaseViInputs {
   Write-PhaseBanner $r.name
   $base = $ctx.basePath; $head = $ctx.headPath
   $r.details.base=$base; $r.details.head=$head
+  $r.details.baseSource=$ctx.baseSource; $r.details.headSource=$ctx.headSource
+  $r.details.baseFallback=$ctx.baseFallback; $r.details.headFallback=$ctx.headFallback
   $missing = @()
-  if (-not $base) { $missing += 'LV_BASE_VI' }
-  if (-not $head) { $missing += 'LV_HEAD_VI' }
+  if ([string]::IsNullOrWhiteSpace($base)) { $missing += 'LV_BASE_VI' }
+  if ([string]::IsNullOrWhiteSpace($head)) { $missing += 'LV_HEAD_VI' }
   if ($missing) { $r.details.missing = $missing; $r.status='Failed'; return }
-  $bExists = Test-Path $base; $hExists = Test-Path $head
+  $bExists = Test-Path -LiteralPath $base -PathType Leaf; $hExists = Test-Path -LiteralPath $head -PathType Leaf
   $r.details.baseExists=$bExists; $r.details.headExists=$hExists
   if (-not ($bExists -and $hExists)) { $r.status='Failed'; return }
   $same = (Resolve-Path $base).ProviderPath -eq (Resolve-Path $head).ProviderPath

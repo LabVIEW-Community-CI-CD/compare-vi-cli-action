@@ -15,6 +15,11 @@ The format is based on Keep a Changelog, and this project adheres to Semantic Ve
   - Validator flags: `tools/Validate-Fixtures.ps1 -Json -RequirePair -FailOnExpectedMismatch [-EvidencePath results/fixture-drift/compare-exec.json]`.
   - Evidence mapping: LVCompare exitCode `0→identical`, `1→diff` (or `diff` boolean when available). Validator searches default evidence locations when `-EvidencePath` is omitted.
 
+### Fixed
+
+- Integration runbook now falls back to the repository fixtures (`VI1.vi` / `VI2.vi`) when `LV_BASE_VI` / `LV_HEAD_VI` are unset,
+  ensuring the ViInputs phase succeeds in default environments.
+
 ## [v0.5.0] - 2025-10-05
 
 ### Breaking Changes

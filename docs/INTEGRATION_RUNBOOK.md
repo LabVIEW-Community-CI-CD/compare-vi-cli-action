@@ -41,6 +41,10 @@ Test-Path 'C:\Program Files\National Instruments\Shared\LabVIEW Compare\LVCompar
 | `CLEAN_LV_BEFORE`, `CLEAN_LV_AFTER`, `CLEAN_LV_INCLUDE_COMPARE` | Runner unblock guard defaults |
 | `LOOP_ITERATIONS`, `LOOP_TIMEOUT_SECONDS` | Control autonomous loop runs |
 
+`Invoke-IntegrationRunbook.ps1` automatically falls back to the repository fixtures (`VI1.vi` / `VI2.vi`) when
+these environment variables are unset. Runners should still configure canonical locations for their preferred
+validation VIs, but the fallback keeps the runbook usable out of the box.
+
 ## Quick sequence
 
 ```powershell
