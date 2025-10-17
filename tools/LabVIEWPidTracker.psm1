@@ -1,7 +1,7 @@
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
-function Initialize-LabVIEWPidTracker {
+function Start-LabVIEWPidTracker {
   [CmdletBinding()]
   param(
     [Parameter(Mandatory)][string]$TrackerPath,
@@ -126,7 +126,7 @@ function Initialize-LabVIEWPidTracker {
   }
 }
 
-function Finalize-LabVIEWPidTracker {
+function Stop-LabVIEWPidTracker {
   [CmdletBinding()]
   param(
     [Parameter(Mandatory)][string]$TrackerPath,
@@ -218,4 +218,4 @@ function Finalize-LabVIEWPidTracker {
   }
 }
 
-Export-ModuleMember -Function Initialize-LabVIEWPidTracker,Finalize-LabVIEWPidTracker
+Export-ModuleMember -Function Start-LabVIEWPidTracker,Stop-LabVIEWPidTracker

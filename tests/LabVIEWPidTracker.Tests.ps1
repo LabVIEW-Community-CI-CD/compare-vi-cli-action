@@ -12,7 +12,7 @@ Describe 'LabVIEWPidTracker module' -Tag 'Unit' {
     Mock -CommandName Get-Process -ParameterFilter { $Name -eq 'LabVIEW' } -MockWith { @() }
     Mock -CommandName Get-Process -ParameterFilter { $Id } -MockWith { throw "process not found" }
 
-    $result = Initialize-LabVIEWPidTracker -TrackerPath $tracker -Source 'test:init'
+    $result = Start-LabVIEWPidTracker -TrackerPath $tracker -Source 'test:init'
 
     Test-Path -LiteralPath $tracker | Should -BeTrue
     $result.Pid | Should -BeNullOrEmpty
@@ -42,7 +42,7 @@ Describe 'LabVIEWPidTracker module' -Tag 'Unit' {
     Mock -CommandName Get-Process -ParameterFilter { $Name -eq 'LabVIEW' } -MockWith { @($procObj) }
     Mock -CommandName Get-Process -ParameterFilter { $Id -eq 4242 } -MockWith { $procObj }
 
-    $result = Initialize-LabVIEWPidTracker -TrackerPath $tracker -Source 'test:init'
+    $result = Start-LabVIEWPidTracker -TrackerPath $tracker -Source 'test:init'
 
     $result.Pid | Should -Be 4242
     $result.Reused | Should -BeTrue
@@ -67,7 +67,7 @@ Describe 'LabVIEWPidTracker module' -Tag 'Unit' {
     Mock -CommandName Get-Process -ParameterFilter { $Id -eq 100 } -MockWith { throw "process missing" }
     Mock -CommandName Get-Process -ParameterFilter { $Id -eq 5555 } -MockWith { $candidate }
 
-    $result = Initialize-LabVIEWPidTracker -TrackerPath $tracker -Source 'test:init'
+    $result = Start-LabVIEWPidTracker -TrackerPath $tracker -Source 'test:init'
 
     $result.Pid | Should -Be 5555
     $result.Reused | Should -BeFalse
@@ -81,10 +81,10 @@ Describe 'LabVIEWPidTracker module' -Tag 'Unit' {
     Mock -CommandName Get-Process -ParameterFilter { $Name -eq 'LabVIEW' } -MockWith { @($proc) }
     Mock -CommandName Get-Process -ParameterFilter { $Id -eq 3210 } -MockWith { $proc }
 
-    $init = Initialize-LabVIEWPidTracker -TrackerPath $tracker -Source 'test:init'
+    $init = Start-LabVIEWPidTracker -TrackerPath $tracker -Source 'test:init'
     $init.Pid | Should -Be 3210
 
-    $final = Finalize-LabVIEWPidTracker -TrackerPath $tracker -Pid $init.Pid -Source 'test:final'
+    $final = Stop-LabVIEWPidTracker -TrackerPath $tracker -Pid $init.Pid -Source 'test:final'
     $final.Pid | Should -Be 3210
     $final.Running | Should -BeTrue
 

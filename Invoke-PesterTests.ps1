@@ -842,7 +842,7 @@ if ($labviewPidTrackerLoaded) {
   $trackerPath = Join-Path $resultsDir '_agent' 'labview-pid.json'
   $script:labviewPidTrackerPath = $trackerPath
   try {
-    $script:labviewPidTrackerState = Initialize-LabVIEWPidTracker -TrackerPath $trackerPath -Source 'dispatcher:init'
+    $script:labviewPidTrackerState = Start-LabVIEWPidTracker -TrackerPath $trackerPath -Source 'dispatcher:init'
     if ($script:labviewPidTrackerState) {
       if ($script:labviewPidTrackerState.Pid) {
         $modeText = if ($script:labviewPidTrackerState.Reused) { 'Reusing existing' } else { 'Tracking detected' }
@@ -859,7 +859,7 @@ if ($labviewPidTrackerLoaded) {
       $script:labviewPidTrackerFinalizer = Register-EngineEvent -SourceIdentifier ([System.Management.Automation.PSEngineEvent]::Exiting) -Action {
         if ($script:labviewPidTrackerPath) {
           try {
-            $finalTracker = Finalize-LabVIEWPidTracker -TrackerPath $script:labviewPidTrackerPath -Source 'dispatcher:final'
+            $finalTracker = Stop-LabVIEWPidTracker -TrackerPath $script:labviewPidTrackerPath -Source 'dispatcher:final'
             if ($finalTracker -and $finalTracker.Pid) {
               if ($finalTracker.Running) {
                 Write-Host ("[labview-pid] LabVIEW.exe PID {0} still running at dispatcher exit." -f $finalTracker.Pid) -ForegroundColor DarkGray
