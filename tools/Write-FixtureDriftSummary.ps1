@@ -71,6 +71,15 @@ if ($json.PSObject.Properties['labviewPidTracker']) {
     if ($final.PSObject.Properties['context'] -and $final.context -and $final.context.PSObject.Properties['status']) {
       $lines += ('  - Final Status: {0}' -f $final.context.status)
     }
+    if ($final.PSObject.Properties['context'] -and $final.context -and $final.context.PSObject.Properties['trackerExists']) {
+      $lines += ('  - Tracker Exists: {0}' -f ([bool]$final.context.trackerExists))
+    }
+    if ($final.PSObject.Properties['context'] -and $final.context -and $final.context.PSObject.Properties['trackerLastWriteTimeUtc'] -and $final.context.trackerLastWriteTimeUtc) {
+      $lines += ('  - Tracker Last Write: {0}' -f $final.context.trackerLastWriteTimeUtc)
+    }
+    if ($final.PSObject.Properties['context'] -and $final.context -and $final.context.PSObject.Properties['trackerLength'] -and $null -ne $final.context.trackerLength) {
+      $lines += ('  - Tracker Length: {0}' -f $final.context.trackerLength)
+    }
     if ($final.PSObject.Properties['contextSource'] -and $final.contextSource) {
       $detail = if ($final.PSObject.Properties['contextSourceDetail'] -and $final.contextSourceDetail -and $final.contextSourceDetail -ne $final.contextSource) { ' (detail: ' + $final.contextSourceDetail + ')' } else { '' }
       $lines += ('  - Context Source: {0}{1}' -f $final.contextSource,$detail)

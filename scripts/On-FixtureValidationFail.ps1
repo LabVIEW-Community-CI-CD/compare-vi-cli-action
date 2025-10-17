@@ -461,6 +461,31 @@ function New-LabVIEWPidSummaryContext {
   if ($summary -and $summary.artifactPaths) { $artifactCount = @($summary.artifactPaths | Where-Object { $_ -ne $null }).Count }
   $ctx['artifactCount'] = [int]$artifactCount
 
+  $ctx['trackerEnabled'] = [bool]$labviewPidTrackerLoaded
+  if ($labviewPidTrackerRelativePath) { $ctx['trackerRelativePath'] = $labviewPidTrackerRelativePath }
+
+  $trackerStamp = $null
+  $trackerExists = $null
+  if ($labviewPidTrackerPath) {
+    $ctx['trackerPath'] = $labviewPidTrackerPath
+    try { $trackerExists = Test-Path -LiteralPath $labviewPidTrackerPath -PathType Leaf } catch { $trackerExists = $false }
+    if ($null -ne $trackerExists) { $ctx['trackerExists'] = [bool]$trackerExists }
+    if ($trackerExists) {
+      try { $trackerStamp = Get-FileStamp $labviewPidTrackerPath } catch { $trackerStamp = $null }
+    }
+  } elseif ($labviewPidTrackerLoaded) {
+    $ctx['trackerExists'] = $false
+  }
+
+  if ($trackerStamp) {
+    if ($trackerStamp.PSObject.Properties['lastWriteTimeUtc'] -and $trackerStamp.lastWriteTimeUtc) {
+      $ctx['trackerLastWriteTimeUtc'] = [string]$trackerStamp.lastWriteTimeUtc
+    }
+    if ($trackerStamp.PSObject.Properties['length']) {
+      try { $ctx['trackerLength'] = [int]$trackerStamp.length } catch { }
+    }
+  }
+
   return $ctx
 }
 
