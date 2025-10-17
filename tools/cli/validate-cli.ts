@@ -3,8 +3,9 @@ import { spawnSync } from 'node:child_process';
 import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 
-import Ajv from 'ajv';
-import addFormats from 'ajv-formats';
+import { Ajv, type ErrorObject, type ValidateFunction } from 'ajv';
+import addFormatsPlugin from 'ajv-formats';
+import type { FormatsPlugin } from 'ajv-formats';
 import { zodToJsonSchema } from 'zod-to-json-schema';
 
 import {
@@ -61,6 +62,8 @@ function runCli(dllPath: string, args: string[]): JsonValue {
   }
 }
 
+const addFormats = addFormatsPlugin as unknown as FormatsPlugin;
+
 function compileValidator(schemaId: string, jsonSchema: Record<string, unknown>) {
   const ajv = new Ajv({
     allErrors: true,
@@ -70,10 +73,20 @@ function compileValidator(schemaId: string, jsonSchema: Record<string, unknown>)
   return ajv.compile<JsonValue>(jsonSchema);
 }
 
-function validate(name: string, data: JsonValue, validateFn: ReturnType<typeof compileValidator>) {
+function formatErrors(errors: readonly ErrorObject[] | null | undefined): string {
+  if (!errors || errors.length === 0) {
+    return 'Unknown validation error';
+  }
+
+  return errors
+    .map((error) => `${error.instancePath} ${error.message ?? ''}`.trim() || error.keyword)
+    .join('\n');
+}
+
+function validate(name: string, data: JsonValue, validateFn: ValidateFunction<JsonValue>) {
   const ok = validateFn(data);
   if (!ok) {
-    const errors = validateFn.errors?.map((e) => `${e.instancePath} ${e.message ?? ''}`.trim()).join('\n') ?? 'Unknown validation error';
+    const errors = formatErrors(validateFn.errors);
     throw new Error(`Validation failed for ${name}:\n${errors}`);
   }
 }
