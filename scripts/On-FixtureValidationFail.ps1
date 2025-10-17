@@ -420,6 +420,7 @@ $labviewPidTrackerFinalizedSource = $null
 $labviewPidTrackerFinalContext = $null
 $labviewPidTrackerFinalContextSource = $null
 $labviewPidTrackerFinalContextDetail = $null
+$labviewPidTrackerRelativePath = $null
 
 if (Test-Path -LiteralPath $labviewPidTrackerModule -PathType Leaf) {
   $trackerModule = Import-Module $labviewPidTrackerModule -Force -PassThru -ErrorAction SilentlyContinue
@@ -465,6 +466,12 @@ function New-LabVIEWPidSummaryContext {
 
 function Add-LabVIEWPidTrackerSummary {
   if (-not $summary) { return }
+
+  if ($summary.PSObject.Properties['artifactPaths'] -and $labviewPidTrackerRelativePath) {
+    if (-not ($summary.artifactPaths -contains $labviewPidTrackerRelativePath)) {
+      $summary.artifactPaths += $labviewPidTrackerRelativePath
+    }
+  }
 
   $payload = [ordered]@{ enabled = [bool]$labviewPidTrackerLoaded }
   if ($labviewPidTrackerPath) { $payload['path'] = $labviewPidTrackerPath }
@@ -822,11 +829,13 @@ if ($labviewPidTrackerLoaded) {
     Initialize-Directory $agentDir
     $labviewPidTrackerPath = Join-Path $agentDir 'labview-pid.json'
     $labviewPidTrackerState = Start-LabVIEWPidTracker -TrackerPath $labviewPidTrackerPath -Source 'orchestrator:init'
+    $labviewPidTrackerRelativePath = '_agent/labview-pid.json'
   } catch {
     Add-HandshakeNote ("LabVIEW PID tracker initialization failed: {0}" -f $_.Exception.Message)
     $labviewPidTrackerLoaded = $false
     $labviewPidTrackerPath = $null
     $labviewPidTrackerState = $null
+    $labviewPidTrackerRelativePath = $null
   }
 }
 
@@ -985,6 +994,21 @@ foreach ($p in @($BasePath, $HeadPath, $ManifestPath, $StrictJson, $OverrideJson
 
 
 }
+
+if ($labviewPidTrackerPath) {
+  $trackerStamp = Get-FileStamp $labviewPidTrackerPath
+  if ($trackerStamp) {
+    if ($labviewPidTrackerRelativePath) {
+      $trackerStamp = [pscustomobject]@{
+        path            = $labviewPidTrackerRelativePath
+        lastWriteTimeUtc = $trackerStamp.lastWriteTimeUtc
+        length          = $trackerStamp.length
+      }
+    }
+    $fileInfos.Add($trackerStamp) | Out-Null
+  }
+}
+
 
 
 

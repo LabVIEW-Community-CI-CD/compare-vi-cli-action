@@ -38,6 +38,8 @@ Describe 'On-FixtureValidationFail Orchestration' -Tag 'Unit' {
     $j.files | Should -Not -BeNullOrEmpty
     # each file entry should have path and lastWriteTimeUtc
     foreach ($f in $j.files) { $f.path | Should -Not -BeNullOrEmpty; $f.lastWriteTimeUtc | Should -Not -BeNullOrEmpty }
+    ($j.artifactPaths -contains '_agent/labview-pid.json') | Should -BeTrue
+    (($j.files | Where-Object { $_.path -eq '_agent/labview-pid.json' }).Count) | Should -BeGreaterThan 0
     $trackerFile = Join-Path $outDir '_agent' 'labview-pid.json'
     Test-Path -LiteralPath $trackerFile | Should -BeTrue
     ($j.PSObject.Properties.Name -contains 'labviewPidTracker') | Should -BeTrue
@@ -66,6 +68,8 @@ Describe 'On-FixtureValidationFail Orchestration' -Tag 'Unit' {
     Test-Path (Join-Path $outDir 'validator-strict.json') | Should -BeTrue
     $trackerFile = Join-Path $outDir '_agent' 'labview-pid.json'
     Test-Path -LiteralPath $trackerFile | Should -BeTrue
+    ($j.artifactPaths -contains '_agent/labview-pid.json') | Should -BeTrue
+    (($j.files | Where-Object { $_.path -eq '_agent/labview-pid.json' }).Count) | Should -BeGreaterThan 0
     $j.labviewPidTracker.final.context.stage | Should -Be 'fixture-drift:summary'
     $j.labviewPidTracker.final.context.status | Should -Be 'drift'
     $j.labviewPidTracker.final.context.exitCode | Should -Be 6
@@ -91,6 +95,8 @@ Describe 'On-FixtureValidationFail Orchestration' -Tag 'Unit' {
       if (-not $ok) { Write-Warning 'Reporter present, but no compare-report.html or compare-exec.json emitted (non-fatal in simulated mode).' }
     }
     $j = Get-Content -LiteralPath (Join-Path $outDir 'drift-summary.json') -Raw | ConvertFrom-Json
+    ($j.artifactPaths -contains '_agent/labview-pid.json') | Should -BeTrue
+    (($j.files | Where-Object { $_.path -eq '_agent/labview-pid.json' }).Count) | Should -BeGreaterThan 0
     $j.labviewPidTracker.final.context.stage | Should -Be 'fixture-drift:summary'
     $j.labviewPidTracker.final.context.status | Should -Be 'drift'
     $j.labviewPidTracker.final.context.exitCode | Should -Be 6
@@ -109,6 +115,8 @@ Describe 'On-FixtureValidationFail Orchestration' -Tag 'Unit' {
     $LASTEXITCODE | Should -Be 1
     Test-Path (Join-Path $outDir 'hints.txt') | Should -BeTrue
     $j = Get-Content -LiteralPath (Join-Path $outDir 'drift-summary.json') -Raw | ConvertFrom-Json
+    ($j.artifactPaths -contains '_agent/labview-pid.json') | Should -BeTrue
+    (($j.files | Where-Object { $_.path -eq '_agent/labview-pid.json' }).Count) | Should -BeGreaterThan 0
     $j.labviewPidTracker.final.context.stage | Should -Be 'fixture-drift:summary'
     $j.labviewPidTracker.final.context.status | Should -Be 'fail-structural'
     $j.labviewPidTracker.final.context.exitCode | Should -Be 4
