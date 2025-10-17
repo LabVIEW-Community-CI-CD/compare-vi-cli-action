@@ -1,8 +1,17 @@
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
+Set-Variable -Name skipSelfTest -Scope Script -Value $false -Force
+Set-Variable -Name skipReason -Scope Script -Value 'Pattern self-test suppressed in nested dispatcher context' -Force
+
 Describe 'Invoke-PesterTests Include/Exclude patterns' -Tag 'Unit' {
   BeforeAll {
+    if ($env:SUPPRESS_PATTERN_SELFTEST -eq '1') {
+      $script:skipSelfTest = $true
+      $script:skipReason = 'Pattern self-test suppressed in nested dispatcher context'
+      return
+    }
+
     $repoRoot = Resolve-Path (Join-Path $PSScriptRoot '..')
     $script:dispatcher = Join-Path $repoRoot 'Invoke-PesterTests.ps1'
     $fixtureTestsRootPs = Join-Path $TestDrive 'fixture-tests'
@@ -39,8 +48,20 @@ Describe "{0}" {{
   }
 
   It 'honors IncludePatterns for a single file' {
+    $skipFlag = $false
+    $skipVar = Get-Variable -Name skipSelfTest -Scope Script -ErrorAction SilentlyContinue
+    if ($skipVar) { $skipFlag = [bool]$skipVar.Value }
+    if ($skipFlag) {
+      $reasonVar = Get-Variable -Name skipReason -Scope Script -ErrorAction SilentlyContinue
+      $reason = if ($reasonVar) { [string]$reasonVar.Value } else { 'Pattern self-test suppressed in nested dispatcher context' }
+      Set-ItResult -Skipped -Because $reason
+      return
+    }
+
     if (-not $script:pwshAvailable) {
-      Set-ItResult -Skipped -Because $script:skipReason
+      $reasonVar = Get-Variable -Name skipReason -Scope Script -ErrorAction SilentlyContinue
+      $reason = if ($reasonVar) { [string]$reasonVar.Value } else { 'pwsh executable not available on PATH' }
+      Set-ItResult -Skipped -Because $reason
       return
     }
 
@@ -75,8 +96,20 @@ Describe "{0}" {{
   }
 
   It 'honors ExcludePatterns to remove files' {
+    $skipFlag = $false
+    $skipVar = Get-Variable -Name skipSelfTest -Scope Script -ErrorAction SilentlyContinue
+    if ($skipVar) { $skipFlag = [bool]$skipVar.Value }
+    if ($skipFlag) {
+      $reasonVar = Get-Variable -Name skipReason -Scope Script -ErrorAction SilentlyContinue
+      $reason = if ($reasonVar) { [string]$reasonVar.Value } else { 'Pattern self-test suppressed in nested dispatcher context' }
+      Set-ItResult -Skipped -Because $reason
+      return
+    }
+
     if (-not $script:pwshAvailable) {
-      Set-ItResult -Skipped -Because $script:skipReason
+      $reasonVar = Get-Variable -Name skipReason -Scope Script -ErrorAction SilentlyContinue
+      $reason = if ($reasonVar) { [string]$reasonVar.Value } else { 'pwsh executable not available on PATH' }
+      Set-ItResult -Skipped -Because $reason
       return
     }
 

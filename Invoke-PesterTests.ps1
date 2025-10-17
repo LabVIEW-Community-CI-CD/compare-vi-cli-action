@@ -1351,6 +1351,10 @@ if ($limitToSingle) {
   $maxTestFilesApplied = ($MaxTestFiles -gt 0 -and $originalTestFileCount -gt $selectedTestFileCount)
 }
 
+if (-not (Get-Variable -Name maxTestFilesApplied -ErrorAction SilentlyContinue)) {
+  $maxTestFilesApplied = $false
+}
+
 if (-not (Get-Variable -Name originalTestFileCount -Scope Script -ErrorAction SilentlyContinue)) {
   $originalTestFileCount = $testFiles.Count
 }
