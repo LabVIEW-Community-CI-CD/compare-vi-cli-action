@@ -2,8 +2,8 @@ import '../shims/punycode-userland.js';
 import { spawnSync } from 'node:child_process';
 import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import Ajv from 'ajv';
-import addFormats from 'ajv-formats';
+import { Ajv } from 'ajv';
+import addFormatsPlugin from 'ajv-formats';
 import { zodToJsonSchema } from 'zod-to-json-schema';
 import { cliArtifactMetaSchema, cliOperationNamesSchema, cliOperationsSchema, cliProviderNamesSchema, cliProviderSchema, cliProvidersSchema, cliQuoteSchema, cliProcsSchema, cliTokenizeSchema, cliVersionSchema, } from '../schemas/definitions.js';
 function resolveCliDll() {
@@ -39,6 +39,7 @@ function runCli(dllPath, args) {
         throw new Error(`Failed to parse JSON from comparevi-cli ${args.join(' ')}: ${err.message}\nOutput:\n${stdout}`);
     }
 }
+const addFormats = addFormatsPlugin;
 function compileValidator(schemaId, jsonSchema) {
     const ajv = new Ajv({
         allErrors: true,
@@ -47,10 +48,18 @@ function compileValidator(schemaId, jsonSchema) {
     addFormats(ajv);
     return ajv.compile(jsonSchema);
 }
+function formatErrors(errors) {
+    if (!errors || errors.length === 0) {
+        return 'Unknown validation error';
+    }
+    return errors
+        .map((error) => `${error.instancePath} ${error.message ?? ''}`.trim() || error.keyword)
+        .join('\n');
+}
 function validate(name, data, validateFn) {
     const ok = validateFn(data);
     if (!ok) {
-        const errors = validateFn.errors?.map((e) => `${e.instancePath} ${e.message ?? ''}`.trim()).join('\n') ?? 'Unknown validation error';
+        const errors = formatErrors(validateFn.errors);
         throw new Error(`Validation failed for ${name}:\n${errors}`);
     }
 }

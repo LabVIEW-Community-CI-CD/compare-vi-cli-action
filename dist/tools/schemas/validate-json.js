@@ -3,9 +3,9 @@ import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { ArgumentParser } from 'argparse';
 import fg from 'fast-glob';
-import Ajv from 'ajv';
-import Ajv2020 from 'ajv/dist/2020.js';
-import addFormats from 'ajv-formats';
+import { Ajv } from 'ajv';
+import { Ajv2020 } from 'ajv/dist/2020.js';
+import addFormatsPlugin from 'ajv-formats';
 function readJson(path) {
     try {
         const raw = readFileSync(path, 'utf8');
@@ -15,6 +15,15 @@ function readJson(path) {
         throw new Error(`Failed to parse JSON from ${path}: ${err.message}`);
     }
 }
+const addFormats = addFormatsPlugin;
+function formatIssues(errors) {
+    if (!errors || errors.length === 0) {
+        return 'Unknown validation error';
+    }
+    return errors
+        .map((error) => `${error.instancePath || '/'} ${error.message ?? ''}`.trim() || error.keyword)
+        .join('\n');
+}
 function main() {
     const parser = new ArgumentParser({
         description: 'Validate JSON documents against a schema using Ajv 2020.',
@@ -23,6 +32,7 @@ function main() {
     parser.add_argument('--data', {
         required: true,
         action: 'append',
+        nargs: '+',
         help: 'Data file glob(s) to validate. Can be specified multiple times.',
     });
     parser.add_argument('--optional', {
@@ -45,7 +55,8 @@ function main() {
         absolute: true,
         onlyFiles: true,
     };
-    for (const pattern of args.data) {
+    const dataGlobs = args.data.flat();
+    for (const pattern of dataGlobs) {
         const files = fg.sync(pattern, globOptions);
         if (files.length === 0) {
             if (!args.optional) {
@@ -59,8 +70,8 @@ function main() {
             const data = readJson(file);
             const ok = validate(data);
             if (!ok) {
-                const issues = (validate.errors ?? []).map((err) => `${err.instancePath || '/'} ${err.message ?? ''}`.trim());
-                throw new Error(`Validation failed for ${file}:\n${issues.join('\n')}`);
+                const issues = formatIssues(validate.errors);
+                throw new Error(`Validation failed for ${file}:\n${issues}`);
             }
         }
     }

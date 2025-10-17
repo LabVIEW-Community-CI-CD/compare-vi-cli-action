@@ -10,7 +10,7 @@ import type { FormatsPlugin } from 'ajv-formats';
 
 interface Args {
   schema: string;
-  data: string[];
+  data: string[][];
   optional?: boolean;
 }
 
@@ -43,6 +43,7 @@ function main(): void {
   parser.add_argument('--data', {
     required: true,
     action: 'append',
+    nargs: '+',
     help: 'Data file glob(s) to validate. Can be specified multiple times.',
   });
   parser.add_argument('--optional', {
@@ -72,7 +73,9 @@ function main(): void {
     onlyFiles: true,
   };
 
-  for (const pattern of args.data) {
+  const dataGlobs = args.data.flat();
+
+  for (const pattern of dataGlobs) {
     const files = fg.sync(pattern, globOptions);
     if (files.length === 0) {
       if (!args.optional) {
