@@ -1,3 +1,4 @@
+<!-- markdownlint-disable-next-line MD041 -->
 # v0.4.0 Tag Preparation Checklist
 
 Helper reference for maintainers prior to cutting the final `v0.4.0` tag. Delete or archive after release if redundant

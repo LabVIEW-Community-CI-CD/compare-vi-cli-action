@@ -1,6 +1,8 @@
+<!-- markdownlint-disable-next-line MD041 -->
 # Release v0.4.0 – PR Notes Helper (Do Not Ship With Final Tag)
 
-This helper file summarizes the key points for PR #41 (release/v0.4.0-rc.1) and can be used to refine the PR description prior to merge/tag. Remove or exclude from packaged artifacts if not desired long-term.
+This helper file summarizes the key points for PR #41 (release/v0.4.0-rc.1) and can be used to refine the
+PR description prior to merge/tag. Remove or exclude from packaged artifacts if not desired long-term.
 
 ## 1. Summary
 
@@ -85,12 +87,14 @@ Release v0.4.0 centers on:
 
 ## 7. Risks & Mitigations
 
+<!-- markdownlint-disable MD013 -->
 | Risk | Impact | Mitigation |
 |------|--------|-----------|
 | Users ignore migration warning | Delayed adoption; future break at v0.5.0 | Clear warning + CHANGELOG + README migration note |
 | Soft discovery mode hides genuine structural errors | Latent test misconfiguration | Metrics/log counts retained; optional strict env toggle |
 | Force kill masks LabVIEW/runtime anomalies | Harder RCA on modal issues | Optional flag; events record `forceKill` and `forceKillSuccess` |
 | Name fallback removal backlash | Upgrade friction | Advance notice + staged guard expansion |
+<!-- markdownlint-enable MD013 -->
 
 ## 8. Follow-Up Issues To Open Post-Merge
 
@@ -103,7 +107,8 @@ Release v0.4.0 centers on:
 ## 9. Tag Preparation Checklist (Draft)
 
 1. Confirm version refs (`package.json`, action docs) reflect v0.4.0.
-2. Regenerate outputs docs (if any change) via `node tools/npm/run-script.mjs generate:outputs` (already in sync for this PR).
+2. Regenerate outputs docs (if any change) via
+   `node tools/npm/run-script.mjs generate:outputs` (already in sync for this PR).
 3. Run full test dispatcher (unit + integration if canonical LVCompare present).
 4. Run markdown lint & (optional) actionlint over workflows.
 5. Inspect CHANGELOG: ensure v0.4.0 section finalized; remove "Unreleased" placeholders referencing these changes.

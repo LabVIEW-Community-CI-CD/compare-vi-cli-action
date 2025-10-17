@@ -1,3 +1,4 @@
+<!-- markdownlint-disable-next-line MD041 -->
 # Release v0.5.0 - PR Checklist
 
 ## Scope
@@ -22,5 +23,3 @@
 - [ ] Tag v0.5.0 on main
 - [ ] Monitor release workflows/artifacts
 - [ ] Open follow-ups: composites consolidation; managed tokenizer adoption
-
-

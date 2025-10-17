@@ -1,4 +1,6 @@
+<!-- markdownlint-disable-next-line MD041 -->
 # TestStand Wrapper Integration Plan
+<!-- markdownlint-disable MD013 -->
 
 This document captures the path for making the existing `tools/TestStand-CompareHarness.ps1` a first-class execution option both locally and inside CI. The harness already orchestrates LabVIEW warmup, runs LVCompare deterministically, and emits an index describing the session. The work below focuses on productizing that flow so it mirrors the behaviour of `Invoke-PesterTests.ps1`.
 
@@ -106,3 +108,5 @@ Before enabling the harness end-to-end, codify the updated acceptance criteria i
 
 Addressing these items will give us a consistent TestStand-driven workflow that works locally and in CI without compromising the deterministic guarantees we rely on today.
 
+
+<!-- markdownlint-enable MD013 -->

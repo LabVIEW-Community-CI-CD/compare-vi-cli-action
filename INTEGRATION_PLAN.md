@@ -1,14 +1,18 @@
+<!-- markdownlint-disable-next-line MD041 -->
 # Integration Plan: Canonical CLI Path Policy
 
 ## Problem Analysis
 
-The action requires a strict canonical-only path policy for the LabVIEW Compare CLI to ensure consistency across all self-hosted Windows runners.
+The action requires a strict canonical-only path policy for the LabVIEW Compare CLI to ensure consistency
+across all self-hosted Windows runners.
 
 ### Root Cause
 
 **File:** `scripts/CompareVI.ps1`, function `Resolve-Cli`
 
-**Issue:** The function previously accepted any valid executable path, which could lead to inconsistencies in self-hosted runner environments where different installations or versions might exist in non-standard locations.
+**Issue:** The function previously accepted any valid executable path, which could lead to inconsistencies in
+self-hosted runner environments where different installations or versions might exist in non-standard
+locations.
 
 ## Solution
 

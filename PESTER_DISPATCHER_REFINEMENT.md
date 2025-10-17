@@ -1,8 +1,10 @@
+<!-- markdownlint-disable-next-line MD041 -->
 # Pester Test Dispatcher Architecture
 
 ## Overview
 
-This document describes the Pester test execution architecture, featuring a dual-dispatcher pattern for running tests on both GitHub-hosted and self-hosted runners.
+This document describes the Pester test execution architecture, featuring a dual-dispatcher pattern for
+running tests on both GitHub-hosted and self-hosted runners.
 
 ## Changes Made
 
@@ -217,5 +219,3 @@ Install-Module -Name Pester -MinimumVersion 5.0.0 -Force -Scope CurrentUser
 - [End-to-End Testing Guide](./docs/E2E_TESTING_GUIDE.md)
 - [JSON/NDJSON Schema Helper (Test Shapes)](./docs/SCHEMA_HELPER.md)
 - [Open-Source Actions Repository](https://github.com/LabVIEW-Community-CI-CD/open-source)
-
-

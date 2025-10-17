@@ -1,3 +1,4 @@
+<!-- markdownlint-disable-next-line MD041 -->
 # CI Orchestration Redesign Plan
 
 > Objective: restore deterministic workflows while paving the way toward the > cross-platform .NET CLI runner that

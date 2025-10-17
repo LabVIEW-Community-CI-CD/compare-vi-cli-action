@@ -1,3 +1,4 @@
+<!-- markdownlint-disable-next-line MD041 -->
 # Contributing
 
 Thank you for contributing to `compare-vi-cli-action`!

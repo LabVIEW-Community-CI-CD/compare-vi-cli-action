@@ -1,3 +1,4 @@
+<!-- markdownlint-disable-next-line MD041 -->
 # ROLLBACK_PLAN.md (v0.4.0)
 
 Concise procedure to revert or mitigate the v0.4.0 release if a blocking regression is reported.

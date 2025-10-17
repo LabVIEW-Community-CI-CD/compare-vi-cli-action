@@ -1,3 +1,4 @@
+<!-- markdownlint-disable-next-line MD041 -->
 # Release v0.5.0
 
 Highlights

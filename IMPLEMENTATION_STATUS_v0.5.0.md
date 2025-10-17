@@ -1,3 +1,4 @@
+<!-- markdownlint-disable-next-line MD041 -->
 # Implementation Status: Follow-up Issues 01-10 (v0.5.0)
 
 This document summarizes the implementation status of the ten follow-up issues drafted after v0.4.1 release.
@@ -78,7 +79,9 @@ This document summarizes the implementation status of the ten follow-up issues d
 
 ## Deferred Issues
 
-The following issues require more substantial code changes to module internals and scripts, which are beyond the minimal-change scope appropriate for this implementation phase. They are documented in the issues-drafts directory and can be addressed in future PRs.
+The following issues require more substantial code changes to module internals and scripts, which are beyond
+the minimal-change scope appropriate for this implementation phase. They are documented in the issues-drafts
+directory and can be addressed in future PRs.
 
 ### ⏸️ Issue 02: Outcome Classification Enrichment
 
@@ -190,7 +193,8 @@ For future PRs implementing deferred issues:
 
 ## Conclusion
 
-This implementation successfully completes **4 of 10 follow-up issues** (Issues 01, 04, 07, 08) with minimal code changes, comprehensive testing, and clean documentation.
+This implementation successfully completes **4 of 10 follow-up issues** (Issues 01, 04, 07, 08) with minimal
+code changes, comprehensive testing, and clean documentation.
 
 ### Completed (4 issues)
 
@@ -201,7 +205,9 @@ This implementation successfully completes **4 of 10 follow-up issues** (Issues 
 
 ### Deferred (6 issues)
 
-Issues 02, 03, 05, 06, 09, 10 require more substantial changes to dispatcher, module internals, or schema design. They are well-documented in `issues-drafts/` and can be addressed in future PRs without blocking the v0.5.0 release.
+Issues 02, 03, 05, 06, 09, 10 require more substantial changes to dispatcher, module internals, or schema
+design. They are well-documented in `issues-drafts/` and can be addressed in future PRs without blocking the
+v0.5.0 release.
 
 ### Impact
 

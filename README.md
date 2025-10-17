@@ -1,17 +1,16 @@
 <!-- markdownlint-disable-next-line MD041 -->
 # Compare VI GitHub Action
 
-[![Validate][badge-validate]][workflow-validate] [![Smoke][badge-smoke]][workflow-smoke] [![Mock Tests][badge-
-mock]][workflow-test-mock] [![Docs][badge-docs]][environment-docs]
+[![Validate][badge-validate]][workflow-validate] [![Smoke][badge-smoke]][workflow-smoke]
+[![Mock Tests][badge-mock]][workflow-test-mock] [![Docs][badge-docs]][environment-docs]
 
-[badge-validate]: https://img.shields.io/github/actions/workflow/status/LabVIEW-Community-CI-CD/compare-vi-cli-
-action/validate.yml?label=Validate [workflow-validate]: https://github.com/LabVIEW-Community-CI-CD/compare-vi-cli-
-action/actions/workflows/validate.yml [badge-smoke]: https://img.shields.io/github/actions/workflow/status/LabVIEW-
-Community-CI-CD/compare-vi-cli-action/smoke.yml?label=Smoke [workflow-smoke]: https://github.com/LabVIEW-Community-CI-
-CD/compare-vi-cli-action/actions/workflows/smoke.yml [badge-mock]:
-https://img.shields.io/github/actions/workflow/status/LabVIEW-Community-CI-CD/compare-vi-cli-action/test-
-mock.yml?label=Mock%20Tests [workflow-test-mock]: https://github.com/LabVIEW-Community-CI-CD/compare-vi-cli-
-action/actions/workflows/test-mock.yml [badge-docs]: https://img.shields.io/badge/docs-Environment%20Vars-6A5ACD
+[badge-validate]: https://img.shields.io/github/actions/workflow/status/LabVIEW-Community-CI-CD/compare-vi-cli-action/validate.yml?label=Validate
+[workflow-validate]: https://github.com/LabVIEW-Community-CI-CD/compare-vi-cli-action/actions/workflows/validate.yml
+[badge-smoke]: https://img.shields.io/github/actions/workflow/status/LabVIEW-Community-CI-CD/compare-vi-cli-action/smoke.yml?label=Smoke
+[workflow-smoke]: https://github.com/LabVIEW-Community-CI-CD/compare-vi-cli-action/actions/workflows/smoke.yml
+[badge-mock]: https://img.shields.io/github/actions/workflow/status/LabVIEW-Community-CI-CD/compare-vi-cli-action/test-mock.yml?label=Mock%20Tests
+[workflow-test-mock]: https://github.com/LabVIEW-Community-CI-CD/compare-vi-cli-action/actions/workflows/test-mock.yml
+[badge-docs]: https://img.shields.io/badge/docs-Environment%20Vars-6A5ACD
 [environment-docs]: ./docs/ENVIRONMENT.md
 
 ## Overview

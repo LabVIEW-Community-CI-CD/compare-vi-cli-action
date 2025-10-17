@@ -1,3 +1,4 @@
+<!-- markdownlint-disable-next-line MD041 -->
 # Security Policy
 
 Supported versions

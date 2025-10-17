@@ -1,109 +1,80 @@
+<!-- markdownlint-disable-next-line MD041 -->
 # Post-Release Follow-Up Items (v0.4.0 → v0.5.0 Planning)
 
-**Status**: 4 of 10 issues completed and integrated into v0.5.0. Remaining 6 issues deferred to future releases.
+**Status**: 4 of 10 issues completed and integrated into v0.5.0. Remaining six items are documented below for
+future releases.
 
 ## Completed Issues (Implemented in v0.5.0)
 
-### ✅ 1. Remove Artifact Fallback & Expand Guard
+### ✅ Issue 1 – Remove artifact fallback and expand guard
 
-- Title: Remove Base.vi/Head.vi fallback & expand guard scope
-- Description: Drop legacy name resolution in compare scripts/tests; extend guard tests to scripts and key docs. Provide migration grace messaging in release notes.
-- Labels: migration, breaking-change-warning, v0.5.0
-- **Status**: Fully implemented with guard test (`tests/Guard.LegacyArtifactNames.Tests.ps1`)
+- Drop legacy `Base.vi`/`Head.vi` name resolution from compare scripts and tests.
+- Extend guard coverage across scripts and key docs with migration messaging in the release notes.
+- Guard test: `tests/Guard.LegacyArtifactNames.Tests.ps1`.
 
-### ✅ 4. Documentation Pruning & Consolidation
+### ✅ Issue 4 – Documentation pruning and consolidation
 
-- Title: Prune outdated examples and consolidate migration notes post-fallback removal
-- Description: Remove legacy references; collapse duplicate guidance across README and runbook docs.
-- Labels: docs, cleanup
-- **Status**: Completed; documentation is clean and consolidated
+- Remove legacy references across README and runbook documentation.
+- Collapse duplicate guidance and ensure the migration note reflects the v0.5.0 breaking change.
 
-### ✅ 7. HTML Diff Fragment Hardening
+### ✅ Issue 7 – HTML diff fragment hardening
 
-- Title: Add regression test for deterministic HTML list ordering & encoding
-- Description: Introduce fixture test comparing two runs with controlled diffs to assert identical fragment bytes.
-- Labels: tests, reliability
-- **Status**: Fully implemented (`tests/CompareLoop.HtmlDiffDeterminism.Tests.ps1`, 5 tests passing)
+- Add regression coverage for deterministic HTML list ordering and encoding.
+- Fixture test: `tests/CompareLoop.HtmlDiffDeterminism.Tests.ps1` (five tests passing).
 
-### ✅ 8. Percentile Strategy Documentation Deep Dive
+### ✅ Issue 8 – Percentile strategy documentation deep dive
 
-- Title: Expand Streaming/Hybrid quantile accuracy docs with examples & tuning guidance
-- Description: Provide empirical error bounds with sample sizes; clarify reconciliation tradeoffs.
-- Labels: docs, performance
-- **Status**: Fully implemented (`docs/QUANTILE_ACCURACY.md`, 160 lines, linked from README)
+- Expand streaming/hybrid quantile accuracy docs with examples and tuning guidance.
+- Published in `docs/QUANTILE_ACCURACY.md` (linked from the README).
 
 ## Deferred Issues (Future Releases)
 
-These issues are well-documented in `issues-drafts/` and can be implemented in subsequent releases without blocking v0.5.0.
+The remaining items live in `issues-drafts/` and can be implemented without blocking v0.5.0.
 
-### ⏸️ 2. Outcome Classification Enhancements
+### ⏸️ Issue 2 – Outcome classification enhancements
 
-- Title: Enrich outcome block with detailed discovery vs execution vs infrastructure breakdown
-- Description: Add sub-fields clarifying classification sources; evaluate severity rank refinement; maintain additive schema rules.
-- Labels: telemetry, schema, enhancement
+- Enrich the outcome block with discovery vs. execution vs. infrastructure breakdowns.
+- Evaluate severity rank refinements while keeping schema rules additive.
 
-### ⏸️ 3. Coverage Integration (Optional)
+### ⏸️ Issue 3 – Coverage integration (optional)
 
-- Title: Add optional code coverage support for Integration-tagged tests
-- Description: Investigate lightweight PS-based coverage or external tooling; ensure opt-in to avoid overhead.
-- Labels: testing, enhancement
+- Explore lightweight PowerShell-based coverage or alternative tooling for Integration-tagged tests.
+- Keep the feature opt-in to avoid unnecessary overhead.
 
-## 4. Documentation Pruning & Consolidation
+### ⏸️ Issue 5 – Discovery strict mode re-evaluation
 
-- Title: Prune outdated examples and consolidate migration notes post-fallback removal
-- Description: Remove legacy references; collapse duplicate guidance across README and runbook docs.
-- Labels: docs, cleanup
+- Reassess the default strictness once false positives trend toward zero in v0.4.x telemetry.
+- Maintain an escape hatch via environment configuration.
 
-### ⏸️ 5. Discovery Strict Mode Re-evaluation
+### ⏸️ Issue 6 – Additional loop telemetry
 
-- Title: Reassess default for discovery failure strictness
-- Description: If false positives trend to zero in early v0.4.x usage, consider enabling strict mode by default (retain env escape hatch).
-- Labels: testing, stability
+- Capture exit code distribution summaries and error pattern counts in the loop summary.
+- Preserve deterministic JSON ordering when aggregating telemetry.
 
-### ⏸️ 6. Additional Loop Telemetry
+### ⏸️ Issue 9 – Runbook automation hooks
 
-- Title: Add exit code distribution summary & error pattern counts to loop summary
-- Description: Aggregate per-iteration exit codes; optional histogram; maintain deterministic JSON ordering.
-- Labels: telemetry, enhancement
+- Auto-upload raw CLI artifacts in the runbook script when running under GitHub Actions.
+- Emit step-summary guidance to help operators share artifacts quickly.
 
-## 7. HTML Diff Fragment Hardening
+### ⏸️ Issue 10 – CI diagnostics synthesis
 
-- Title: Add regression test for deterministic HTML list ordering & encoding
-- Description: Introduce fixture test comparing two runs with controlled diffs to assert identical fragment bytes.
-- Labels: tests, reliability
-
-## 8. Percentile Strategy Documentation Deep Dive
-
-- Title: Expand Streaming/Hybrid quantile accuracy docs with examples & tuning guidance
-- Description: Provide empirical error bounds with sample sizes; clarify reconciliation tradeoffs.
-- Labels: docs, performance
-
-### ⏸️ 9. Runbook Automation Hooks
-
-- Title: Auto-upload raw CLI artifacts in runbook script when under GitHub Actions
-- Description: Detect `GITHUB_ACTIONS` and optionally emit artifact upload step summary guidance.
-- Labels: automation, enhancement
-
-### ⏸️ 10. CI Diagnostics Synthesis
-
-- Title: Consolidate discovery, outcome, and aggregation hints into a single diagnostics report artifact
-- Description: Compose structured JSON combining key signals for external dashboards.
-- Labels: telemetry, enhancement
+- Consolidate discovery, outcome, and aggregation hints into a single diagnostics report artifact.
+- Compose structured JSON for external dashboards once Issue 6 data is available.
 
 ---
 
 ## Summary
 
-- **Completed**: 4 issues (01, 04, 07, 08) - Implemented in v0.5.0
-- **Deferred**: 6 issues (02, 03, 05, 06, 09, 10) - Documented for future releases
-- **Last updated**: 2025-10-03
-- **Implementation tracking**: See `IMPLEMENTATION_STATUS_v0.5.0.md` for detailed status
+- **Completed**: Issues 01, 04, 07, 08 implemented in v0.5.0.
+- **Deferred**: Issues 02, 03, 05, 06, 09, 10 queued for future releases.
+- **Last updated**: 2025-10-03.
+- **Implementation tracking**: See `IMPLEMENTATION_STATUS_v0.5.0.md` for detailed status.
 
 ### Recommended Implementation Order for Deferred Issues
 
-1. **Issue 06** (Loop telemetry) - Additive schema changes, high value
-2. **Issue 10** (Diagnostics synthesis) - Builds on Issue 06, complementary
-3. **Issue 02** (Outcome classification) - Independent, moderate complexity
-4. **Issue 09** (Runbook automation) - Independent, low risk
-5. **Issue 05** (Discovery strict mode) - Requires production data analysis
-6. **Issue 03** (Coverage support) - Requires tool selection decision
+1. **Issue 06** – Additional loop telemetry (additive schema, high value).
+2. **Issue 10** – Diagnostics synthesis (builds on Issue 06).
+3. **Issue 02** – Outcome classification (independent, moderate complexity).
+4. **Issue 09** – Runbook automation (independent, low risk).
+5. **Issue 05** – Discovery strict mode (requires production data review).
+6. **Issue 03** – Coverage support (requires tool selection).

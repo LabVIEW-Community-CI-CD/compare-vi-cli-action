@@ -1,3 +1,4 @@
+<!-- markdownlint-disable-next-line MD041 -->
 # PR Acceptance Criteria: feat/dispatcher-diagnostics-and-schema-fix → develop
 
 ## Overview
@@ -326,6 +327,4 @@ This PR is ready to merge when:
 3. Announce new diagnostic features to team
 4. Monitor for issues in first week
 5. Schedule follow-up items (v0.5.0 scope)
-
-
 

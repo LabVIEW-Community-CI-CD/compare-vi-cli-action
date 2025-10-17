@@ -1,3 +1,4 @@
+<!-- markdownlint-disable-next-line MD041 -->
 # Release Notes: v0.4.1 (2025-10-03)
 
 > Patch follow-up to preserve existing remote `v0.4.0` while publishing finalized migration scaffolding, runbook schema,

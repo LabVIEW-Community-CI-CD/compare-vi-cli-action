@@ -1,3 +1,4 @@
+<!-- markdownlint-disable-next-line MD041 -->
 # N-CLI Companion (Local Dev Extension)
 
 The N-CLI companion hosts CompareVI and future CLI providers in one panel so you can swap tooling without reinstalling

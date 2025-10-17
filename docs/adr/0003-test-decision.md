@@ -1,3 +1,4 @@
+<!-- markdownlint-disable-next-line MD041 -->
 # ADR 0003: Test Decision
 
 ## Status
