@@ -827,6 +827,43 @@ def ensure_lint_resiliency(doc, job_name: str, include_node: bool = True, markdo
     return changed
 
 
+def ensure_orchestrated_drift_gate_defaults(doc) -> bool:
+    """Ensure the orchestrated lint job gates drift checks on the repository default branch."""
+    jobs = doc.get('jobs') or {}
+    lint = jobs.get('lint')
+    if not isinstance(lint, dict):
+        return False
+    steps: List[dict] = lint.get('steps') or []
+    target = None
+    for st in steps:
+        if isinstance(st, dict) and st.get('name') == 'Non-LabVIEW checks (Docker)':
+            target = st
+            break
+    if target is None:
+        return False
+    expected_body = (
+        "$params = @()\n"
+        "$defaultBranch = '${{ github.event.repository.default_branch || github.repository_default_branch }}'\n"
+        "if ('${{ github.ref_name }}' -eq $defaultBranch -or '${{ github.base_ref }}' -eq $defaultBranch) {\n"
+        "  $params += '-FailOnWorkflowDrift'\n"
+        "}\n"
+        "$params += '-SkipDotnetCliBuild'\n"
+        "# Skip linting this workflow while it is executing to avoid orchestration deadlocks.\n"
+        "$params += '-ExcludeWorkflowPaths'\n"
+        "$params += '.github/workflows/ci-orchestrated.yml'\n"
+        "pwsh -File ./tools/Run-NonLVChecksInDocker.ps1 @params\n"
+    )
+    changed = False
+    if target.get('shell') != 'pwsh':
+        target['shell'] = 'pwsh'
+        changed = True
+    current_run = target.get('run')
+    if not isinstance(current_run, LIT) or str(current_run) != expected_body:
+        target['run'] = LIT(expected_body)
+        changed = True
+    return changed
+
+
 def ensure_hosted_preflight(doc, job_key: str) -> bool:
     changed = False
     # Ensure jobs map exists
@@ -1205,6 +1242,7 @@ def apply_transforms(path: Path) -> tuple[bool, str]:
         pc1 = _set_job_if(doc, 'pester-category', pc_if)
         pc2 = _ensure_job_needs(doc, 'pester-category', 'probe')
         lr1 = ensure_lint_resiliency(doc, 'lint', include_node=True, markdown_non_blocking=True)
+        dg = ensure_orchestrated_drift_gate_defaults(doc)
         wp = ensure_wire_probes_all_jobs(doc, 'tests/results')
         s1 = ensure_wire_S1_before_session_index(doc)
         t1 = ensure_wire_T1_for_tests(doc)
@@ -1212,7 +1250,7 @@ def apply_transforms(path: Path) -> tuple[bool, str]:
         i12 = ensure_wire_I1I2_invoker(doc)
         gg = ensure_wire_G0G1_guard(doc)
         p1f = ensure_wire_P1_after_final(doc)
-        changed = changed or c5 or c6 or c7 or g1 or g2 or g3 or r1 or r2 or r3 or p1 or w1 or w2 or pc1 or pc2 or lr1 or wp or s1 or t1 or cdrift or i12 or gg or p1f
+        changed = changed or c5 or c6 or c7 or g1 or g2 or g3 or r1 or r2 or r3 or p1 or w1 or w2 or pc1 or pc2 or lr1 or dg or wp or s1 or t1 or cdrift or i12 or gg or p1f
     # Skip transforms for deprecated ci-orchestrated-v2.yml (kept as a stub/manual only)
     if path.name == 'ci-orchestrated-v2.yml':
         pass
@@ -1272,6 +1310,8 @@ def apply_transforms(path: Path) -> tuple[bool, str]:
 
     if changed:
         new = dump_yaml(doc, path)
+        if new == orig:
+            return False, orig
         return True, new
     return False, orig
 

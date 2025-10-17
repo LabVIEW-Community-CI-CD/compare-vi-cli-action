@@ -152,7 +152,7 @@ jobs:
       shell: pwsh
       run: |
         $params = @()
-        $defaultBranch = '${{ github.event.repository.default_branch }}'
+        $defaultBranch = '${{ github.event.repository.default_branch || github.repository_default_branch }}'
         if ('${{ github.ref_name }}' -eq $defaultBranch -or '${{ github.base_ref }}' -eq $defaultBranch) {
           $params += '-FailOnWorkflowDrift'
         }
