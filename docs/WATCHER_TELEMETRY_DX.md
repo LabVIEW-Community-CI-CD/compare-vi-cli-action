@@ -68,7 +68,8 @@ Optional additions:
      `LV_IDLE_WAIT_SECONDS=2`, `LV_IDLE_MAX_WAIT_SECONDS=5`.
 2. Run `tools/Detect-RogueLV.ps1` and report any rogue LabVIEW/LVCompare PIDs before taking
    action.
-3. Execute `node tools/npm/run-script.mjs dev:watcher:status` (or call `tools/Dev-WatcherManager.ps1 -Status` in-process), capturing output.
+3. Execute `node tools/npm/run-script.mjs dev:watcher:status` (or call `tools/Dev-WatcherManager.ps1 -Status`
+   in-process) and capture the output.
 4. Summarise the required fields in the reply (or step summary) using the template above.
 5. If `needsTrim=true`, call `node tools/npm/run-script.mjs dev:watcher:trim` (or `Print-AgentHandoff.ps1 -AutoTrim`) and
    mention the trim result; otherwise note that no trim was necessary.
