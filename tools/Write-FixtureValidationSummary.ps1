@@ -100,7 +100,9 @@ if ($delta) {
   }
   $newIssues = Get-JsonArrayValue -Object $delta -PropertyName 'newStructuralIssues'
   $lines += ('- **New Structural Issues:** {0}' -f $newIssues.Count)
-  $willFail = Get-JsonBooleanValue -Object $delta -PropertyName 'willFail'
+  $failOnNewIssues = Get-JsonBooleanValue -Object $delta -PropertyName 'failOnNewStructuralIssue'
+  $willFailDefault = ($failOnNewIssues -and $newIssues.Count -gt 0)
+  $willFail = Get-JsonBooleanValue -Object $delta -PropertyName 'willFail' -Default $willFailDefault
   $lines += ('- **Will Fail:** {0}' -f $willFail)
   if ($verbose -and $newIssues.Count -gt 0) {
     $lines += ''
