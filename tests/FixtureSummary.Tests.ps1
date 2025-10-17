@@ -172,6 +172,49 @@ Describe 'Fixture summary script' -Tag 'Unit' {
     $out | Should -Match '\*\*Will Fail:\*\* True'
   }
 
+  It 'infers new structural issues when the array property is null' {
+    $repoRoot = Resolve-Path (Join-Path $PSScriptRoot '..') | Select-Object -ExpandProperty Path
+    $summary = Join-Path $repoRoot 'tools' 'Write-FixtureValidationSummary.ps1'
+
+    $validationPath = Join-Path $TestDrive 'validation.json'
+    $validation = @{
+      ok = $true
+      summaryCounts = @{
+        missing = 0
+        untracked = 0
+        tooSmall = 0
+        sizeMismatch = 0
+        hashMismatch = 0
+        manifestError = 0
+        duplicate = 0
+        schema = 0
+      }
+    } | ConvertTo-Json -Depth 3
+    Set-Content -LiteralPath $validationPath -Value $validation -Encoding utf8
+
+    $deltaPath = Join-Path $TestDrive 'delta.json'
+    $delta = @{
+      schema = 'fixture-validation-delta-v1'
+      baselinePath = 'baseline.json'
+      currentPath = 'current.json'
+      generatedAt = '2025-10-17T00:00:00Z'
+      baselineOk = $true
+      currentOk = $true
+      deltaCounts = @{ duplicate = 1 }
+      changes = @(
+        @{ category = 'duplicate'; baseline = 0; current = 1; delta = 1 }
+      )
+      newStructuralIssues = $null
+      failOnNewStructuralIssue = $true
+    } | ConvertTo-Json -Depth 4
+    Set-Content -LiteralPath $deltaPath -Value $delta -Encoding utf8
+
+    Remove-Item Env:SUMMARY_VERBOSE -ErrorAction SilentlyContinue
+    $out = (pwsh -NoLogo -NoProfile -File $summary -ValidationJson $validationPath -DeltaJson $deltaPath -SummaryPath '' | Out-String)
+    $out | Should -Match '\*\*New Structural Issues:\*\* 1'
+    $out | Should -Match '\*\*Will Fail:\*\* True'
+  }
+
   It 'ignores size-only categories when deriving structural issues' {
     $repoRoot = Resolve-Path (Join-Path $PSScriptRoot '..') | Select-Object -ExpandProperty Path
     $summary = Join-Path $repoRoot 'tools' 'Write-FixtureValidationSummary.ps1'
