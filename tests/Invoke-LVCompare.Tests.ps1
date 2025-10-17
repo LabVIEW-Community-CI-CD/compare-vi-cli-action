@@ -55,6 +55,14 @@ exit 1
       $cap.args | Should -Contain '-nobdcosm'
       $cap.args | Should -Contain '-nofppos'
       $cap.args | Should -Contain '-noattr'
+
+      $trackerPath = Join-Path $outDir '_agent' 'labview-pid.json'
+      Test-Path -LiteralPath $trackerPath | Should -BeTrue
+      $tracker = Get-Content -LiteralPath $trackerPath -Raw | ConvertFrom-Json
+      $tracker.context.stage | Should -Be 'lvcompare:summary'
+      $tracker.context.status | Should -Be 'diff'
+      $tracker.context.compareExitCode | Should -Be 1
+      $tracker.context.reportGenerated | Should -BeFalse
     }
     finally { Pop-Location }
   }
@@ -109,6 +117,13 @@ $head = Join-Path $work 'Head.vi'; Set-Content -LiteralPath $head -Encoding asci
       $cap.args | Should -Contain 'alpha'
       $cap.args | Should -Contain 'beta'
       $cap.args | Should -Contain 'gamma'
+
+      $trackerPath = Join-Path $outDir '_agent' 'labview-pid.json'
+      Test-Path -LiteralPath $trackerPath | Should -BeTrue
+      $tracker = Get-Content -LiteralPath $trackerPath -Raw | ConvertFrom-Json
+      $tracker.context.stage | Should -Be 'lvcompare:summary'
+      $tracker.context.status | Should -Be 'ok'
+      $tracker.context.compareExitCode | Should -Be 0
     }
     finally { Pop-Location }
   }
