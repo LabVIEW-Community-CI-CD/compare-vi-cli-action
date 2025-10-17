@@ -41,6 +41,42 @@ if ($json.notes) {
   else { $lines += ('- Note: {0}' -f $n) }
 }
 
+if ($json.PSObject.Properties['labviewPidTracker']) {
+  $tracker = $json.labviewPidTracker
+  $lines += ''
+  $lines += '- LabVIEW PID Tracker:'
+  $lines += ('  - Enabled: {0}' -f ([bool]$tracker.enabled))
+  if ($tracker.PSObject.Properties['path'] -and $tracker.path) {
+    $lines += ('  - Path: {0}' -f $tracker.path)
+  }
+  if ($tracker.PSObject.Properties['initial'] -and $tracker.initial) {
+    $initial = $tracker.initial
+    $ip = if ($initial.PSObject.Properties['pid'] -and $null -ne $initial.pid) { $initial.pid } else { 'none' }
+    $ir = if ($initial.PSObject.Properties['running']) { [bool]$initial.running } else { $false }
+    $ireused = if ($initial.PSObject.Properties['reused']) { [bool]$initial.reused } else { $false }
+    $lines += ('  - Initial: pid={0}, running={1}, reused={2}' -f $ip,$ir,$ireused)
+  }
+  if ($tracker.PSObject.Properties['final'] -and $tracker.final) {
+    $final = $tracker.final
+    $fp = if ($final.PSObject.Properties['pid'] -and $null -ne $final.pid) { $final.pid } else { 'none' }
+    $frun = if ($final.PSObject.Properties['running']) { [bool]$final.running } else { $false }
+    $freused = if ($final.PSObject.Properties['reused'] -and $null -ne $final.reused) { [bool]$final.reused } else { $false }
+    $lines += ('  - Final: pid={0}, running={1}, reused={2}' -f $fp,$frun,$freused)
+    if ($final.PSObject.Properties['context'] -and $final.context -and $final.context.PSObject.Properties['stage']) {
+      $lines += ('  - Final Stage: {0}' -f $final.context.stage)
+    }
+    if ($final.PSObject.Properties['context'] -and $final.context -and $final.context.PSObject.Properties['status']) {
+      $lines += ('  - Final Status: {0}' -f $final.context.status)
+    }
+    if ($final.PSObject.Properties['contextSource'] -and $final.contextSource) {
+      $detail = if ($final.PSObject.Properties['contextSourceDetail'] -and $final.contextSourceDetail -and $final.contextSourceDetail -ne $final.contextSource) { ' (detail: ' + $final.contextSourceDetail + ')' } else { '' }
+      $lines += ('  - Context Source: {0}{1}' -f $final.contextSource,$detail)
+    } elseif ($final.PSObject.Properties['contextSourceDetail'] -and $final.contextSourceDetail) {
+      $lines += ('  - Context Source Detail: {0}' -f $final.contextSourceDetail)
+    }
+  }
+}
+
 # Optional handshake excerpt
 try {
   $hs = Join-Path $Dir '_handshake'
