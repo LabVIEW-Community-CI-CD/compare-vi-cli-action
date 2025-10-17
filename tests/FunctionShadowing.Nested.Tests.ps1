@@ -36,6 +36,12 @@ Describe "Inner Smoke" {
 
     $dispatcherCopy = Join-Path $workspace 'Invoke-PesterTests.ps1'
     Copy-Item -Path (Join-Path (Split-Path $PSScriptRoot -Parent) 'Invoke-PesterTests.ps1') -Destination $dispatcherCopy
+    $toolsDir = Join-Path $workspace 'tools'
+    $trackerModule = Join-Path (Split-Path $PSScriptRoot -Parent) 'tools' 'LabVIEWPidTracker.psm1'
+    if (Test-Path -LiteralPath $trackerModule -PathType Leaf) {
+      New-Item -ItemType Directory -Path $toolsDir -Force | Out-Null
+      Copy-Item -Path $trackerModule -Destination $toolsDir -Force
+    }
 
     Push-Location $workspace
     try {
