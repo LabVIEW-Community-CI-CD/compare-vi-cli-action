@@ -88,10 +88,12 @@ Describe 'LabVIEWPidTracker module' -Tag 'Unit' {
     $final.Pid | Should -Be 3210
     $final.Running | Should -BeTrue
     $final.Reused | Should -BeFalse
+    $final.Observation.reused | Should -BeFalse
 
     $json = Get-Content -LiteralPath $tracker -Raw | ConvertFrom-Json -Depth 6
     $json.running | Should -BeTrue
     ($json.observations | Measure-Object).Count | Should -BeGreaterThan 0
+    $json.observations[-1].reused | Should -BeFalse
   }
 
   It 'persists context data when provided during finalization' {
@@ -115,6 +117,26 @@ Describe 'LabVIEWPidTracker module' -Tag 'Unit' {
     $json.observations[-1].context.failed | Should -Be 1
   }
 
+  It 'normalizes dictionary context blocks in deterministic order' {
+    $tracker = Join-Path $TestDrive 'labview.json'
+    $proc = [pscustomobject]@{ Id = 889; ProcessName = 'LabVIEW'; StartTime = (Get-Date).AddMinutes(-6) }
+
+    Mock -CommandName Get-Process -ParameterFilter { $Name -eq 'LabVIEW' } -MockWith { @($proc) }
+    Mock -CommandName Get-Process -ParameterFilter { $Id -eq 889 } -MockWith { $proc }
+
+    $init = Start-LabVIEWPidTracker -TrackerPath $tracker -Source 'test:init'
+    $context = @{ zeta = 3; alpha = 1; beta = 2 }
+
+    $final = Stop-LabVIEWPidTracker -TrackerPath $tracker -Pid $init.Pid -Source 'test:dict' -Context $context
+    $final.Context.PSObject.Properties.Name | Should -Be @('alpha','beta','zeta')
+    $final.Context.alpha | Should -Be 1
+
+    $json = Get-Content -LiteralPath $tracker -Raw | ConvertFrom-Json -Depth 6
+    $json.context.PSObject.Properties.Name | Should -Be @('alpha','beta','zeta')
+    $json.context.alpha | Should -Be 1
+    $json.observations[-1].context.beta | Should -Be 2
+  }
+
   It 'normalizes PSCustomObject context blocks' {
     $tracker = Join-Path $TestDrive 'labview.json'
     $proc = [pscustomobject]@{ Id = 888; ProcessName = 'LabVIEW'; StartTime = (Get-Date).AddMinutes(-4) }
@@ -132,5 +154,13 @@ Describe 'LabVIEWPidTracker module' -Tag 'Unit' {
     $json = Get-Content -LiteralPath $tracker -Raw | ConvertFrom-Json -Depth 6
     $json.context.stage | Should -Be 'psco'
     $json.observations[-1].context.detail | Should -Be 'example'
+  }
+
+  It 'exposes Resolve-LabVIEWPidContext for callers needing manual normalization' {
+    $command = Get-Command -Name Resolve-LabVIEWPidContext -ErrorAction Stop
+    $command.CommandType | Should -Be 'Function'
+
+    $ordered = Resolve-LabVIEWPidContext -Input @{ bravo = 2; alpha = 1 }
+    $ordered.PSObject.Properties.Name | Should -Be @('alpha','bravo')
   }
 }

@@ -213,6 +213,11 @@ function Stop-LabVIEWPidTracker {
     'no-tracked-pid'
   }
 
+  $reused = $false
+  if ($state -and $state.PSObject.Properties['reused']) {
+    try { $reused = [bool]$state.reused } catch { $reused = $false }
+  }
+
   $contextBlock = $null
   if ($PSBoundParameters.ContainsKey('Context')) {
     $contextBlock = Resolve-LabVIEWPidContext -Input $Context
@@ -223,6 +228,7 @@ function Stop-LabVIEWPidTracker {
     action  = 'finalize'
     pid     = if ($trackedPid) { [int]$trackedPid } else { $null }
     running = $running
+    reused  = $reused
     source  = $Source
     note    = $note
   }
@@ -236,11 +242,6 @@ function Stop-LabVIEWPidTracker {
   }
   $obsList += [pscustomobject]$observation
   $obsList = @($obsList | Select-Object -Last 25)
-
-  $reused = $false
-  if ($state -and $state.PSObject.Properties['reused']) {
-    try { $reused = [bool]$state.reused } catch { $reused = $false }
-  }
 
   $record = [ordered]@{
     schema       = 'labview-pid-tracker/v1'
@@ -272,4 +273,4 @@ function Stop-LabVIEWPidTracker {
   }
 }
 
-Export-ModuleMember -Function Start-LabVIEWPidTracker,Stop-LabVIEWPidTracker
+Export-ModuleMember -Function Resolve-LabVIEWPidContext,Start-LabVIEWPidTracker,Stop-LabVIEWPidTracker

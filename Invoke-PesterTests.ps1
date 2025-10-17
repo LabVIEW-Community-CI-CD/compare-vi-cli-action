@@ -162,10 +162,16 @@ if (Test-Path -LiteralPath $dispatcherSelectionModule) {
 
 $labviewPidTrackerModule = Join-Path $PSScriptRoot 'tools' 'LabVIEWPidTracker.psm1'
 $labviewPidTrackerLoaded = $false
+$script:labviewPidContextResolver = $null
 if (Test-Path -LiteralPath $labviewPidTrackerModule -PathType Leaf) {
   try {
     Import-Module $labviewPidTrackerModule -Force
     $labviewPidTrackerLoaded = $true
+    try {
+      $script:labviewPidContextResolver = Get-Command -Name Resolve-LabVIEWPidContext -ErrorAction Stop
+    } catch {
+      $script:labviewPidContextResolver = $null
+    }
   } catch {
     Write-Warning ("Failed to import LabVIEWPidTracker module: {0}" -f $_.Exception.Message)
   }
@@ -176,6 +182,59 @@ $script:labviewPidTrackerFinalState = $null
 $script:labviewPidTrackerFinalized = $false
 $script:labviewPidTrackerFinalizedSource = $null
 $script:labviewPidTrackerFinalizedContext = $null
+
+function _Normalize-LabVIEWPidContext {
+  param([object]$Value)
+
+  if ($null -eq $Value) { return $null }
+
+  $resolver = $script:labviewPidContextResolver
+  if (-not $resolver -and $labviewPidTrackerLoaded) {
+    try {
+      $resolver = Get-Command -Name Resolve-LabVIEWPidContext -ErrorAction Stop
+      $script:labviewPidContextResolver = $resolver
+    } catch {
+      $resolver = $null
+    }
+  }
+
+  if ($resolver) {
+    try {
+      $resolved = & $resolver -Input $Value
+      if ($resolved) { return $resolved }
+      return $resolved
+    } catch {}
+  }
+
+  if ($Value -is [System.Collections.IDictionary]) {
+    $pairs = @()
+    foreach ($key in $Value.Keys) {
+      if ($null -eq $key) { continue }
+      try {
+        $name = [string]$key
+      } catch {
+        continue
+      }
+      $pairs += [pscustomobject]@{ Name = $name; Value = $Value[$key] }
+    }
+
+    $ordered = [ordered]@{}
+    $orderedPairs = $pairs |
+      Where-Object { $_ -and $_.Name } |
+      Sort-Object -Property Name -CaseSensitive
+
+    foreach ($pair in $orderedPairs) {
+      if ($ordered.Contains($pair.Name)) { continue }
+      $ordered[$pair.Name] = $pair.Value
+    }
+
+    if ($ordered.Count -gt 0) { return [pscustomobject]$ordered }
+    return $null
+  }
+
+  if ($Value -is [pscustomobject]) { return $Value }
+  return $Value
+}
 
 function _Finalize-LabVIEWPidTracker {
   param(
@@ -204,24 +263,9 @@ function _Finalize-LabVIEWPidTracker {
     $script:labviewPidTrackerFinalized = $true
     $script:labviewPidTrackerFinalizedSource = $Source
     if ($final -and $final.PSObject.Properties['Context'] -and $final.Context) {
-      $script:labviewPidTrackerFinalizedContext = $final.Context
+      $script:labviewPidTrackerFinalizedContext = _Normalize-LabVIEWPidContext -Value $final.Context
     } elseif ($PSBoundParameters.ContainsKey('Context') -and $null -ne $Context) {
-      if ($Context -is [System.Collections.IDictionary]) {
-        $ctxOrdered = [ordered]@{}
-        $ctxEntries = $Context.GetEnumerator() |
-          Where-Object { $_ -and $_.Key -ne $null } |
-          Sort-Object -Property Key -CaseSensitive
-
-        foreach ($entry in $ctxEntries) {
-          $name = $entry.Key.ToString()
-          if (-not $ctxOrdered.Contains($name)) {
-            $ctxOrdered[$name] = $entry.Value
-          }
-        }
-        $script:labviewPidTrackerFinalizedContext = if ($ctxOrdered.Count -gt 0) { [pscustomobject]$ctxOrdered } else { $null }
-      } else {
-        $script:labviewPidTrackerFinalizedContext = $Context
-      }
+      $script:labviewPidTrackerFinalizedContext = _Normalize-LabVIEWPidContext -Value $Context
     } else {
       $script:labviewPidTrackerFinalizedContext = $null
     }
@@ -2480,11 +2524,14 @@ try {
           observation = $script:labviewPidTrackerFinalState.Observation
         }
         if ($script:labviewPidTrackerFinalizedSource) { $finalBlock['finalizedSource'] = $script:labviewPidTrackerFinalizedSource }
-        if ($script:labviewPidTrackerFinalState.PSObject.Properties['Context'] -and $script:labviewPidTrackerFinalState.Context) {
-          $finalBlock['context'] = $script:labviewPidTrackerFinalState.Context
+        $finalContext = $null
+        if ($script:labviewPidTrackerFinalState.PSObject.Properties['Context'] -and $script:labviewPidTrackerFinalState.Context)
+ {
+          $finalContext = _Normalize-LabVIEWPidContext -Value $script:labviewPidTrackerFinalState.Context
         } elseif ($script:labviewPidTrackerFinalizedContext) {
-          $finalBlock['context'] = [pscustomobject]$script:labviewPidTrackerFinalizedContext
+          $finalContext = _Normalize-LabVIEWPidContext -Value $script:labviewPidTrackerFinalizedContext
         }
+        if ($finalContext) { $finalBlock['context'] = $finalContext }
         $trackerPayload['final'] = [pscustomobject]$finalBlock
       }
       Add-Member -InputObject $jsonObj -Name labviewPidTracker -MemberType NoteProperty -Value ([pscustomobject]$trackerPayload)
