@@ -66,6 +66,12 @@ Describe "{0}" {{
     $leafs | Should -Be @('Alpha.Unit.Tests.ps1')
     $res.StdOut | Should -Not -Match 'Single-invoker mode'
     $res.StdOut | Should -Match ([regex]::Escape($script:fixtureTestsRoot))
+    $xmlPath = Join-Path $resultsDir 'pester-results.xml'
+    Test-Path $xmlPath | Should -BeTrue
+    $xmlText = Get-Content -LiteralPath $xmlPath -Raw
+    $xmlText | Should -Match 'Alpha\.Unit\.Tests\.ps1'
+    $xmlText | Should -Not -Match 'Beta\.Unit\.Tests\.ps1'
+    $xmlText | Should -Not -Match 'Gamma\.Helper\.ps1'
   }
 
   It 'honors ExcludePatterns to remove files' {
@@ -98,5 +104,11 @@ Describe "{0}" {{
     ($leafs | Sort-Object) | Should -Be @('Alpha.Unit.Tests.ps1', 'Beta.Unit.Tests.ps1')
     $res.StdOut | Should -Not -Match 'Single-invoker mode'
     $res.StdOut | Should -Match ([regex]::Escape($script:fixtureTestsRoot))
+    $xmlPath = Join-Path $resultsDir 'pester-results.xml'
+    Test-Path $xmlPath | Should -BeTrue
+    $xmlText = Get-Content -LiteralPath $xmlPath -Raw
+    $xmlText | Should -Match 'Alpha\.Unit\.Tests\.ps1'
+    $xmlText | Should -Match 'Beta\.Unit\.Tests\.ps1'
+    $xmlText | Should -Not -Match 'Gamma\.Helper\.ps1'
   }
 }

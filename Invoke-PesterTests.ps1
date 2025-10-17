@@ -1351,6 +1351,16 @@ if ($limitToSingle) {
   $maxTestFilesApplied = ($MaxTestFiles -gt 0 -and $originalTestFileCount -gt $selectedTestFileCount)
 }
 
+if (-not (Get-Variable -Name originalTestFileCount -Scope Script -ErrorAction SilentlyContinue)) {
+  $originalTestFileCount = $testFiles.Count
+}
+$selectedTestPaths = @($testFiles | ForEach-Object { $_.FullName })
+$selectionReasons = New-Object System.Collections.Generic.List[string]
+if ($IncludePatterns -and $IncludePatterns.Count -gt 0) { [void]$selectionReasons.Add('IncludePatterns') }
+if ($ExcludePatterns -and $ExcludePatterns.Count -gt 0) { [void]$selectionReasons.Add('ExcludePatterns') }
+if ($maxTestFilesApplied) { [void]$selectionReasons.Add('MaxTestFiles') }
+if ($selectedTestPaths.Count -lt $originalTestFileCount) { [void]$selectionReasons.Add('SelectionReduced') }
+
 # Early exit path when zero tests discovered: emit minimal artifacts for stable downstream handling
 if ($testFiles.Count -eq 0) {
   try { New-Item -ItemType Directory -Force -Path $resultsDir | Out-Null } catch {}
@@ -1516,12 +1526,17 @@ Write-Host "Configuring Pester..." -ForegroundColor Yellow
 $conf = New-PesterConfiguration
 
 # Set test path
-if ($limitToSingle) { $conf.Run.Path = $singleTestFile }
-elseif ($MaxTestFiles -gt 0 -and $testFiles.Count -gt 0 -and -not $limitToSingle) {
-  # Build dynamic container for selected files
-  $paths = $testFiles | ForEach-Object { $_.FullName }
-  $conf.Run.Path = $paths
-} else { $conf.Run.Path = $testsDir }
+if ($limitToSingle) {
+  $conf.Run.Path = $singleTestFile
+}
+elseif (-not $limitToSingle -and $selectedTestPaths.Count -gt 0 -and $selectionReasons.Count -gt 0) {
+  # Use explicit file list when selection differs from the baseline directory scan
+  $conf.Run.Path = $selectedTestPaths
+  Write-Host ("  Using explicit test file list ({0})" -f ($selectionReasons -join ', ')) -ForegroundColor Cyan
+}
+else {
+  $conf.Run.Path = $testsDir
+}
 
 # Apply integration-tag filtering based on resolved mode
 if (-not $includeIntegrationBool) {
