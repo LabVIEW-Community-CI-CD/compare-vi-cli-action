@@ -172,6 +172,32 @@ if (Test-Path -LiteralPath $labviewPidTrackerModule -PathType Leaf) {
 }
 $script:labviewPidTrackerState = $null
 $script:labviewPidTrackerPath = $null
+$script:labviewPidTrackerFinalState = $null
+$script:labviewPidTrackerFinalReason = $null
+$script:labviewPidTrackerFinalLogged = $false
+
+function Invoke-LabVIEWPidTrackerFinalization {
+  param(
+    [string]$Reason = 'dispatcher:final'
+  )
+
+  if (-not $labviewPidTrackerLoaded) { return $null }
+  if (-not $script:labviewPidTrackerPath) { return $null }
+  if ($script:labviewPidTrackerFinalState) { return $script:labviewPidTrackerFinalState }
+
+  $args = @{
+    TrackerPath = $script:labviewPidTrackerPath
+    Source      = $Reason
+  }
+  if ($script:labviewPidTrackerState -and $script:labviewPidTrackerState.PSObject.Properties['Pid'] -and $script:labviewPidTrackerState.Pid) {
+    $args['Pid'] = $script:labviewPidTrackerState.Pid
+  }
+
+  $finalState = Stop-LabVIEWPidTracker @args
+  $script:labviewPidTrackerFinalState = $finalState
+  $script:labviewPidTrackerFinalReason = $Reason
+  return $finalState
+}
 
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
@@ -580,6 +606,10 @@ function Write-ArtifactManifest {
     if (Test-Path -LiteralPath $leakPath) {
       $artifacts += [PSCustomObject]@{ file = 'pester-leak-report.json'; type = 'jsonLeaks'; schemaVersion = $SchemaLeakReportVersion }
     }
+    $pidTrackerPath = Join-Path $Directory '_agent' 'labview-pid.json'
+    if (Test-Path -LiteralPath $pidTrackerPath) {
+      $artifacts += [PSCustomObject]@{ file = '_agent/labview-pid.json'; type = 'jsonLabVIEWPid'; schemaVersion = 'labview-pid-tracker/v1' }
+    }
     # Optional diagnostics files (result shapes)
     $diagTxt = Join-Path $Directory 'result-shapes.txt'
     if (Test-Path -LiteralPath $diagTxt) {
@@ -859,13 +889,18 @@ if ($labviewPidTrackerLoaded) {
       $script:labviewPidTrackerFinalizer = Register-EngineEvent -SourceIdentifier ([System.Management.Automation.PSEngineEvent]::Exiting) -Action {
         if ($script:labviewPidTrackerPath) {
           try {
-            $finalTracker = Stop-LabVIEWPidTracker -TrackerPath $script:labviewPidTrackerPath -Source 'dispatcher:final'
-            if ($finalTracker -and $finalTracker.Pid) {
-              if ($finalTracker.Running) {
-                Write-Host ("[labview-pid] LabVIEW.exe PID {0} still running at dispatcher exit." -f $finalTracker.Pid) -ForegroundColor DarkGray
+            $finalTracker = Invoke-LabVIEWPidTrackerFinalization -Reason 'dispatcher:final'
+            if ($null -ne $finalTracker -and -not $script:labviewPidTrackerFinalLogged) {
+              if ($finalTracker.PSObject.Properties['Pid'] -and $finalTracker.Pid) {
+                if ($finalTracker.Running) {
+                  Write-Host ("[labview-pid] LabVIEW.exe PID {0} still running at dispatcher exit." -f $finalTracker.Pid) -ForegroundColor DarkGray
+                } else {
+                  Write-Host ("[labview-pid] LabVIEW.exe PID {0} not running at dispatcher exit." -f $finalTracker.Pid) -ForegroundColor DarkGray
+                }
               } else {
-                Write-Host ("[labview-pid] LabVIEW.exe PID {0} not running at dispatcher exit." -f $finalTracker.Pid) -ForegroundColor DarkGray
+                Write-Host '[labview-pid] LabVIEW.exe not running at dispatcher exit.' -ForegroundColor DarkGray
               }
+              $script:labviewPidTrackerFinalLogged = $true
             }
           } catch {
             Write-Warning ("LabVIEW PID tracker finalization failed: {0}" -f $_.Exception.Message)
@@ -2145,6 +2180,10 @@ Write-Host $summary -ForegroundColor $(if ($failed -eq 0 -and $errors -eq 0) { '
 Write-Host ""
 
 # Emit high-level selection summary to GitHub Step Summary (if available)
+if ($labviewPidTrackerLoaded -and $script:labviewPidTrackerPath) {
+  try { Invoke-LabVIEWPidTrackerFinalization -Reason 'dispatcher:complete' | Out-Null } catch { Write-Warning ("LabVIEW PID tracker finalization failed: {0}" -f $_.Exception.Message) }
+}
+
 if ($env:GITHUB_STEP_SUMMARY -and -not $DisableStepSummary) {
   try {
     $selectedNames = @()
@@ -2193,6 +2232,27 @@ if ($env:GITHUB_STEP_SUMMARY -and -not $DisableStepSummary) {
     $stepSummaryLines += '### Re-run (gh)'
     $stepSummaryLines += ''
     $stepSummaryLines += ("- {0}" -f $ghCommand)
+    if ($labviewPidTrackerLoaded -and $script:labviewPidTrackerPath) {
+      $trackerSummary = $script:labviewPidTrackerFinalState
+      $stepSummaryLines += ''
+      $stepSummaryLines += '### LabVIEW PID Tracker'
+      $stepSummaryLines += ''
+      if ($trackerSummary) {
+        $pidValue = if ($trackerSummary.PSObject.Properties['Pid'] -and $trackerSummary.Pid) { $trackerSummary.Pid } else { '(none)' }
+        $runningValue = if ($trackerSummary.Running) { 'running' } else { 'not running' }
+        $noteValue = $null
+        if ($trackerSummary.PSObject.Properties['Observation'] -and $trackerSummary.Observation -and $trackerSummary.Observation.PSObject.Properties['note']) {
+          $noteValue = $trackerSummary.Observation.note
+        }
+        $stepSummaryLines += ("- PID: {0}" -f $pidValue)
+        $stepSummaryLines += ("- Running: {0}" -f $runningValue)
+        if ($noteValue) { $stepSummaryLines += ("- Note: {0}" -f $noteValue) }
+        $sourceText = if ($script:labviewPidTrackerFinalReason) { $script:labviewPidTrackerFinalReason } else { 'n/a' }
+        $stepSummaryLines += ("- Source: {0}" -f $sourceText)
+      } else {
+        $stepSummaryLines += '- Tracker unavailable'
+      }
+    }
     Add-Content -Path $env:GITHUB_STEP_SUMMARY -Value ($stepSummaryLines -join [Environment]::NewLine) -Encoding utf8
   } catch {
     $errMsg = $_.Exception.Message
