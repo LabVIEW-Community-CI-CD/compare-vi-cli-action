@@ -648,6 +648,31 @@ function ConvertTo-HtmlReport {
     "<ul>$([string]::Join('', $rows))</ul>"
   } else { '<p>None</p>' }
 
+  $compareSectionHtml = if ($compare) {
+    $rows = [System.Collections.Generic.List[string]]::new()
+    if ($compareExitValue -ne $null) { $null = $rows.Add("<dt>Exit Code</dt><dd>$(& $encode $compareExitValue)</dd>") }
+    if ($compareDiffValue -ne $null) { $null = $rows.Add("<dt>Diff</dt><dd>$(& $encode $compareDiffValue)</dd>") }
+    if ($compareDurationValue -ne $null) { $null = $rows.Add("<dt>Duration</dt><dd>$(& $encode ([math]::Round($compareDurationValue,1))) ms</dd>") }
+    if ($compareCliPathValue) { $null = $rows.Add("<dt>CLI Path</dt><dd>$(& $encode $compareCliPathValue)</dd>") }
+    if ($compareCommandValue) { $null = $rows.Add("<dt>Command</dt><dd>$(& $encode $compareCommandValue)</dd>") }
+    if ($compareReportPathValue) {
+      $null = $rows.Add("<dt>Report</dt><dd>$(& $encode $compareReportPathValue)</dd>")
+    } elseif ($compareCapturePathValue) {
+      $null = $rows.Add("<dt>Capture</dt><dd>$(& $encode $compareCapturePathValue)</dd>")
+    }
+    if ($artifactsReportSize -ne $null) { $null = $rows.Add("<dt>CLI Report Size</dt><dd>$(& $encode $artifactsReportSize) bytes</dd>") }
+    $cliSummary = Get-CompareCliImageSummary `
+      -ImageCount $artifactsImageCount `
+      -ExportDir $artifactsExportDir `
+      -ReportPath $compareReportPathValue
+    if ($cliSummary) { $null = $rows.Add("<dt>CLI Images</dt><dd>$(& $encode $cliSummary)</dd>") }
+    if ($compareJsonPathValue) { $null = $rows.Add("<dt>Outcome JSON</dt><dd>$(& $encode $compareJsonPathValue)</dd>") }
+    if ($rows.Count -eq 0) { $null = $rows.Add('<dt>Status</dt><dd>Available</dd>') }
+    "<dl>$([string]::Join('', $rows))</dl>"
+  } else {
+    '<p>No compare artifacts.</p>'
+  }
+
   return @"
 <!DOCTYPE html>
 <html lang="en">
@@ -730,30 +755,7 @@ function ConvertTo-HtmlReport {
 
   <section>
     <h2>Compare Outcome</h2>
-    $rows = @()
-    $cliImagesSummary = $null
-    @(if ($compare) {
-        if ($compareExitValue -ne $null) { $rows += "<dt>Exit Code</dt><dd>$(& $encode $compareExitValue)</dd>" }
-        if ($compareDiffValue -ne $null) { $rows += "<dt>Diff</dt><dd>$(& $encode $compareDiffValue)</dd>" }
-        if ($compareDurationValue -ne $null) { $rows += "<dt>Duration</dt><dd>$(& $encode ([math]::Round($compareDurationValue,1))) ms</dd>" }
-        if ($compareCliPathValue) { $rows += "<dt>CLI Path</dt><dd>$(& $encode $compareCliPathValue)</dd>" }
-        if ($compareCommandValue) { $rows += "<dt>Command</dt><dd>$(& $encode $compareCommandValue)</dd>" }
-        if ($compareReportPathValue) { $rows += "<dt>Report</dt><dd>$(& $encode $compareReportPathValue)</dd>" }
-        elseif ($compareCapturePathValue) { $rows += "<dt>Capture</dt><dd>$(& $encode $compareCapturePathValue)</dd>" }
-        if ($artifactsReportSize -ne $null) { $rows += "<dt>CLI Report Size</dt><dd>$(& $encode $artifactsReportSize) bytes</dd>" }
-        $cliImagesSummary = Get-CompareCliImageSummary `
-          -ImageCount $artifactsImageCount `
-          -ExportDir $artifactsExportDir `
-          -ReportPath $compareReportPathValue
-        if ($cliImagesSummary) {
-          $rows += "<dt>CLI Images</dt><dd>$(& $encode $cliImagesSummary)</dd>"
-        }
-        if ($compareJsonPathValue) { $rows += "<dt>Outcome JSON</dt><dd>$(& $encode $compareJsonPathValue)</dd>" }
-        if ($rows.Count -eq 0) { $rows += '<dt>Status</dt><dd>Available</dd>' }
-        "<dl>$([string]::Join('', $rows))</dl>"
-      } else {
-        '<p>No compare artifacts.</p>'
-      })
+    $compareSectionHtml
   </section>
 
   <section>
