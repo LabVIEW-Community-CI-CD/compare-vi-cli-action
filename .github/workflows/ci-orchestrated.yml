@@ -150,9 +150,11 @@ jobs:
 
     - name: Non-LabVIEW checks (Docker)
       shell: pwsh
+      env:
+        DEFAULT_BRANCH: ${{ github.event.repository.default_branch || github.event.pull_request.base.repo.default_branch || github.event.workflow_run.repository.default_branch || '' }}
       run: |
         $params = @()
-        $defaultBranch = '${{ github.event.repository.default_branch || github.repository_default_branch }}'
+        $defaultBranch = $env:DEFAULT_BRANCH
         if ('${{ github.ref_name }}' -eq $defaultBranch -or '${{ github.base_ref }}' -eq $defaultBranch) {
           $params += '-FailOnWorkflowDrift'
         }

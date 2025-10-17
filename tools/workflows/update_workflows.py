@@ -841,9 +841,16 @@ def ensure_orchestrated_drift_gate_defaults(doc) -> bool:
             break
     if target is None:
         return False
+    default_branch_expr = (
+        "${{ github.event.repository.default_branch || github.event.pull_request.base.repo.default_branch || "
+        "github.event.workflow_run.repository.default_branch || '' }}"
+    )
+    expected_env = {
+        'DEFAULT_BRANCH': default_branch_expr,
+    }
     expected_body = (
         "$params = @()\n"
-        "$defaultBranch = '${{ github.event.repository.default_branch || github.repository_default_branch }}'\n"
+        "$defaultBranch = $env:DEFAULT_BRANCH\n"
         "if ('${{ github.ref_name }}' -eq $defaultBranch -or '${{ github.base_ref }}' -eq $defaultBranch) {\n"
         "  $params += '-FailOnWorkflowDrift'\n"
         "}\n"
@@ -856,6 +863,10 @@ def ensure_orchestrated_drift_gate_defaults(doc) -> bool:
     changed = False
     if target.get('shell') != 'pwsh':
         target['shell'] = 'pwsh'
+        changed = True
+    cur_env = target.get('env') or {}
+    if dict(cur_env) != expected_env:
+        target['env'] = expected_env
         changed = True
     current_run = target.get('run')
     if not isinstance(current_run, LIT) or str(current_run) != expected_body:
