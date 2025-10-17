@@ -1,4 +1,6 @@
 {
+  "schema": "fixture-validation-v1",
+  "generatedAt": "2025-10-17T00:00:00Z",
   "ok": true,
   "exitCode": 0,
   "summary": "Fixture validation succeeded",
@@ -17,9 +19,17 @@
     "missing": 0,
     "untracked": 0,
     "tooSmall": 0,
+    "sizeMismatch": 0,
     "hashMismatch": 0,
     "manifestError": 0,
     "duplicate": 0,
-    "schema": 0
+    "schema": 0,
+    "pairMismatch": 0,
+    "expectedOutcomeMismatch": 0
+  },
+  "autoManifest": {
+    "written": false,
+    "reason": "",
+    "path": "fixtures.manifest.json"
   }
 }

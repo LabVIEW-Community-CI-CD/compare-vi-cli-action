@@ -1,0 +1,89 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://labview-community-ci-cd.github.io/compare-vi-cli-action/schemas/fixture-validation-v1.schema.json",
+  "title": "Fixture Validation Snapshot",
+  "type": "object",
+  "required": [
+    "schema",
+    "generatedAt",
+    "ok",
+    "exitCode",
+    "summary",
+    "issues",
+    "fixtures",
+    "checked",
+    "fixtureCount",
+    "manifestPresent",
+    "summaryCounts",
+    "autoManifest"
+  ],
+  "properties": {
+    "schema": { "const": "fixture-validation-v1" },
+    "generatedAt": { "type": "string", "format": "date-time" },
+    "ok": { "type": "boolean" },
+    "exitCode": { "type": "integer" },
+    "summary": { "type": "string" },
+    "issues": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["type"],
+        "properties": {
+          "type": { "type": "string" }
+        }
+      }
+    },
+    "fixtures": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "type": "string" }
+    },
+    "checked": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "type": "string" }
+    },
+    "fixtureCount": { "type": "integer", "minimum": 0 },
+    "manifestPresent": { "type": "boolean" },
+    "summaryCounts": {
+      "type": "object",
+      "required": [
+        "missing",
+        "untracked",
+        "tooSmall",
+        "sizeMismatch",
+        "hashMismatch",
+        "manifestError",
+        "duplicate",
+        "schema",
+        "pairMismatch",
+        "expectedOutcomeMismatch"
+      ],
+      "properties": {
+        "missing": { "type": "integer", "minimum": 0 },
+        "untracked": { "type": "integer", "minimum": 0 },
+        "tooSmall": { "type": "integer", "minimum": 0 },
+        "sizeMismatch": { "type": "integer", "minimum": 0 },
+        "hashMismatch": { "type": "integer", "minimum": 0 },
+        "manifestError": { "type": "integer", "minimum": 0 },
+        "duplicate": { "type": "integer", "minimum": 0 },
+        "schema": { "type": "integer", "minimum": 0 },
+        "pairMismatch": { "type": "integer", "minimum": 0 },
+        "expectedOutcomeMismatch": { "type": "integer", "minimum": 0 }
+      },
+      "additionalProperties": false
+    },
+    "autoManifest": {
+      "type": "object",
+      "required": ["written", "reason", "path"],
+      "properties": {
+        "written": { "type": "boolean" },
+        "reason": { "type": "string" },
+        "path": { "type": "string" }
+      },
+      "additionalProperties": false
+    }
+  },
+  "additionalProperties": false,
+  "$comment": "Extend by adding new optional properties; do not repurpose or remove existing fields without versioning."
+}
