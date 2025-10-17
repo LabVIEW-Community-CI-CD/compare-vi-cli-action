@@ -23,6 +23,8 @@
   Skip the workflow drift check.
 .PARAMETER SkipDotnetCliBuild
   Skip building the CompareVI .NET CLI inside the dotnet SDK container (outputs to dist/comparevi-cli by default).
+.PARAMETER ExcludeWorkflowPaths
+  Paths to omit from the workflow drift check (subset of the default targets).
 #>
 param(
   [switch]$SkipActionlint,
@@ -32,7 +34,8 @@ param(
   [switch]$FailOnWorkflowDrift,
   [switch]$SkipDotnetCliBuild,
   [string]$ToolsImageTag,
-  [switch]$UseToolsImage
+  [switch]$UseToolsImage,
+  [string[]]$ExcludeWorkflowPaths
 )
 
 Set-StrictMode -Version Latest
@@ -69,6 +72,20 @@ $workflowTargets = @(
   '.github/workflows/smoke.yml',
   '.github/workflows/compare-artifacts.yml'
 )
+
+if ($ExcludeWorkflowPaths) {
+  $workflowTargets = $workflowTargets | Where-Object { $_ -notin $ExcludeWorkflowPaths }
+}
+
+if (-not $workflowTargets) {
+  $SkipWorkflow = $true
+}
+
+function ConvertTo-SingleQuotedList {
+  param([string[]]$Values)
+  if (-not $Values) { return '' }
+  return ($Values | ForEach-Object { "'$_'" }) -join ' '
+}
 
 function Test-WorkflowDriftPending {
   param([string[]]$Paths)
@@ -144,7 +161,8 @@ if ($UseToolsImage -and $ToolsImageTag) {
     Invoke-Container -Image $ToolsImageTag -Arguments @('pwsh','-NoLogo','-NoProfile','-File','tools/Check-DocsLinks.ps1','-Path','docs') -Label 'docs-links (tools)'
   }
   if (-not $SkipWorkflow) {
-    $checkCmd = 'python tools/workflows/update_workflows.py --check .github/workflows/pester-selfhosted.yml .github/workflows/fixture-drift.yml .github/workflows/ci-orchestrated.yml .github/workflows/pester-integration-on-label.yml .github/workflows/smoke.yml .github/workflows/compare-artifacts.yml'
+    $targetsText = ConvertTo-SingleQuotedList -Values $workflowTargets
+    $checkCmd = "python tools/workflows/update_workflows.py --check $targetsText"
     $wfCode = Invoke-Container -Image $ToolsImageTag -Arguments @('bash','-lc',$checkCmd) -AcceptExitCodes @(0,3) -Label 'workflow-drift (tools)'
     if ($wfCode -eq 3 -and -not (Test-WorkflowDriftPending -Paths $workflowTargets)) {
       Write-Host '[docker] workflow-drift (tools) reported drift but no files changed; treating as clean.' -ForegroundColor Yellow
@@ -170,10 +188,11 @@ markdownlint "**/*.md" --config .markdownlint.jsonc --ignore node_modules --igno
     Invoke-Container -Image 'mcr.microsoft.com/powershell:7.4-debian-12' -Arguments @('pwsh','-NoLogo','-NoProfile','-File','tools/Check-DocsLinks.ps1','-Path','docs') -Label 'docs-links'
   }
   if (-not $SkipWorkflow) {
-    $checkCmd = @'
+    $targetsText = ConvertTo-SingleQuotedList -Values $workflowTargets
+    $checkCmd = @"
 pip install -q ruamel.yaml && \
-python tools/workflows/update_workflows.py --check .github/workflows/pester-selfhosted.yml .github/workflows/fixture-drift.yml .github/workflows/ci-orchestrated.yml .github/workflows/pester-integration-on-label.yml .github/workflows/smoke.yml .github/workflows/compare-artifacts.yml
-'@
+python tools/workflows/update_workflows.py --check $targetsText
+"@
     $wfCode = Invoke-Container -Image 'python:3.12-alpine' -Arguments @('sh','-lc',$checkCmd) -AcceptExitCodes @(0,3) -Label 'workflow-drift'
     if ($wfCode -eq 3 -and -not (Test-WorkflowDriftPending -Paths $workflowTargets)) {
       Write-Host '[docker] workflow-drift (fallback) reported drift but no files changed; treating as clean.' -ForegroundColor Yellow

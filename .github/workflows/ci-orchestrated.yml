@@ -156,6 +156,9 @@ jobs:
           $params += '-FailOnWorkflowDrift'
         }
         $params += '-SkipDotnetCliBuild'
+        # Skip linting this workflow while it is executing to avoid orchestration deadlocks.
+        $params += '-ExcludeWorkflowPaths'
+        $params += '.github/workflows/ci-orchestrated.yml'
         pwsh -File ./tools/Run-NonLVChecksInDocker.ps1 @params
     - name: Publish comparevi-cli (SDK container)
       if: ${{ hashFiles('src/CompareVi.Tools.Cli/CompareVi.Tools.Cli.csproj') != '' }}
