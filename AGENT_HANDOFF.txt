@@ -28,6 +28,8 @@
    should be cleared or relocated before the next dispatcher attempt.
 4. Issue/PR #134 still needs an update summarising the restored toolchain, rogue sweep, and the
    dispatcher recursion findings.
+5. Release readiness status remains uncertain; see `docs/RELEASE_READINESS_v0.5.0.md` for a consolidated
+   view of failing/blocked gates (dispatcher failures, CLI provider errors, unchecked Validate items).
 
 ## Suggested Next Actions
 1. Authenticate GitHub CLI (`gh auth login` or export `GH_TOKEN`) and rerun `priority:sync` so the standing
@@ -41,6 +43,8 @@
    dispatcher recursion investigation.
 5. Continue the rogue LVCompare sweep cadence with `tools/Detect-RogueLV.ps1` now that PowerShell/Pester are
    available locally.
+6. Work through the follow-ups captured in `docs/RELEASE_READINESS_v0.5.0.md` once the dispatcher recursion
+   is resolved to bring the release checklist back to green.
 
 ## First Actions for the Next Agent
 1. Provide GitHub credentials and ensure `node tools/npm/run-script.mjs priority:sync` succeeds against live
