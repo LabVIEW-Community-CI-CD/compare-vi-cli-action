@@ -36,21 +36,31 @@ if ($schemaConst -and $payloadSchemaId -and $schemaConst -ne $payloadSchemaId) {
     $schemaDir = Split-Path -Parent $resolvedSchemaPath
     $altSchemaPath = Join-Path $schemaDir ("{0}.schema.json" -f $payloadSchemaId)
     if (Test-Path -LiteralPath $altSchemaPath -PathType Leaf) {
-      $noticeArgs = @($schemaConst, $payloadSchemaId, $altSchemaPath)
-      $notice = "[schema-lite] notice: schema const mismatch (expected {0} actual {1}); reloading schema from {2}" -f $noticeArgs
+      $notice = [string]::Format(
+        '[schema-lite] notice: schema const mismatch (expected {0} actual {1}); reloading schema from {2}',
+        $schemaConst,
+        $payloadSchemaId,
+        $altSchemaPath
+      )
       Write-Host $notice
       try {
         $schema = Get-Content -LiteralPath $altSchemaPath -Raw | ConvertFrom-Json -ErrorAction Stop
         $SchemaPath = $altSchemaPath
       } catch {
-        $warningArgs = @($altSchemaPath, $_.Exception.Message)
-        $warning = "[schema-lite] fallback schema load failed for {0}: {1}" -f $warningArgs
+        $warning = [string]::Format(
+          '[schema-lite] fallback schema load failed for {0}: {1}',
+          $altSchemaPath,
+          $_.Exception.Message
+        )
         Write-Warning $warning
       }
     }
   } catch {
-    $warningArgs = @($payloadSchemaId, $_.Exception.Message)
-    $warning = "[schema-lite] failed to resolve alternate schema for {0}: {1}" -f $warningArgs
+    $warning = [string]::Format(
+      '[schema-lite] failed to resolve alternate schema for {0}: {1}',
+      $payloadSchemaId,
+      $_.Exception.Message
+    )
     Write-Warning $warning
   }
 }
