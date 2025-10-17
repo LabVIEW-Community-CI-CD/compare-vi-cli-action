@@ -219,16 +219,16 @@ jobs:
         node-version: "20"
         cache: "npm"
     - name: Install CLI validation deps
-      run: npm ci
+      run: node tools/npm/cli.mjs ci
     - name: Install markdownlint-cli (retry)
       shell: bash
       run: |
         set -euo pipefail
         for i in 1 2 3; do
-          if npm install -g markdownlint-cli; then
+          if node tools/npm/cli.mjs install -g markdownlint-cli; then
             break
           else
-            npm cache clean --force || true
+            node tools/npm/cli.mjs cache clean --force || true
             echo "retry $i"
             sleep 2
           fi

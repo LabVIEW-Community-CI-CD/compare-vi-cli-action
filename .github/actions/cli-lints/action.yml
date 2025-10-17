@@ -51,7 +51,7 @@ runs:
 
     - name: Install markdownlint-cli
       shell: bash
-      run: npm install -g markdownlint-cli
+      run: node tools/npm/cli.mjs install -g markdownlint-cli
 
     - name: Run markdownlint (strict)
       shell: bash
