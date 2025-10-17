@@ -58,6 +58,7 @@ outputs change.
 | `node tools/npm/run-script.mjs tests:discover` | Ensure the TypeScript manifest is current before mapping tests to harness inputs. |
 | `pwsh -File tools/TestStand-CompareHarness.ps1 ...` | Baseline manual smoke. |
 | `pwsh -File Invoke-PesterTests.ps1 -IntegrationMode exclude -UseTestStandHarness -UseDiscoveryManifest` | End-to-end local run that mirrors CI. |
+| `pwsh -File scripts/Run-AutonomousIntegrationLoop.ps1 -UseTestStandHarness -TestStandHarnessPath ./tools/TestStand-CompareHarness.ps1 -TestStandOutputRoot tests/results/teststand-loop` | Start a continuous integration loop that reuses the TestStand harness for each iteration (producing per-iteration session folders and loop telemetry). |
 | `pwsh -File tools/Quick-DispatcherSmoke.ps1 -Keep` | Verify workflow helpers accept the harness outputs. |
 
 ### 1.5 Acceptance delta guardrails

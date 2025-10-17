@@ -133,6 +133,18 @@ param(
   , [int]$JsonLogMaxAgeSeconds = ($env:LOOP_JSON_LOG_MAX_AGE_SECONDS -as [int])
   , [string]$FinalStatusJsonPath = $env:LOOP_FINAL_STATUS_JSON
   , [switch]$RenderReport
+  , [switch]$UseTestStandHarness
+  , [string]$TestStandHarnessPath = $env:LOOP_TESTSTAND_HARNESS_PATH
+  , [string]$TestStandOutputRoot = $env:LOOP_TESTSTAND_OUTPUT_ROOT
+  , [ValidateSet('detect','spawn','skip')][string]$TestStandWarmup = $( if ($env:LOOP_TESTSTAND_WARMUP) { $env:LOOP_TESTSTAND_WARMUP } else { 'skip' } )
+  , [switch]$TestStandRenderReport
+  , [switch]$TestStandCloseLabVIEW
+  , [switch]$TestStandCloseLVCompare
+  , [int]$TestStandTimeoutSeconds = ($env:LOOP_TESTSTAND_TIMEOUT_SECONDS -as [int])
+  , [switch]$TestStandDisableTimeout
+  , [string]$TestStandLabVIEWPath = $env:LOOP_TESTSTAND_LABVIEW_PATH
+  , [string]$TestStandLVComparePath = $env:LOOP_TESTSTAND_LVCOMPARE_PATH
+  , [switch]$TestStandReplaceFlags
 )
 
 # Defaults / fallbacks
@@ -176,6 +188,13 @@ if ($MetricsSnapshotEvery -gt 0 -and -not $MetricsSnapshotPath) { $MetricsSnapsh
 # Infer run summary path if env flag set
 if (-not $RunSummaryJsonPath -and $env:LOOP_EMIT_RUN_SUMMARY -match '^(1|true)$') { $RunSummaryJsonPath = 'loop-run-summary.json' }
 if (-not $PSBoundParameters.ContainsKey('RenderReport') -and $DiffSummaryFormat -ne 'None') { $RenderReport = $true }
+if (-not $PSBoundParameters.ContainsKey('UseTestStandHarness') -and $env:LOOP_USE_TESTSTAND_HARNESS -match '^(1|true)$') { $UseTestStandHarness = $true }
+if (-not $PSBoundParameters.ContainsKey('TestStandRenderReport') -and $env:LOOP_TESTSTAND_RENDER_REPORT -match '^(1|true)$') { $TestStandRenderReport = $true }
+if (-not $PSBoundParameters.ContainsKey('TestStandCloseLabVIEW') -and $env:LOOP_TESTSTAND_CLOSE_LABVIEW -match '^(1|true)$') { $TestStandCloseLabVIEW = $true }
+if (-not $PSBoundParameters.ContainsKey('TestStandCloseLVCompare') -and $env:LOOP_TESTSTAND_CLOSE_LVCOMPARE -match '^(1|true)$') { $TestStandCloseLVCompare = $true }
+if (-not $PSBoundParameters.ContainsKey('TestStandDisableTimeout') -and $env:LOOP_TESTSTAND_DISABLE_TIMEOUT -match '^(1|true)$') { $TestStandDisableTimeout = $true }
+if (-not $PSBoundParameters.ContainsKey('TestStandReplaceFlags') -and $env:LOOP_TESTSTAND_REPLACE_FLAGS -match '^(1|true)$') { $TestStandReplaceFlags = $true }
+if ($UseTestStandHarness -and $RenderReport -and -not $PSBoundParameters.ContainsKey('TestStandRenderReport') -and -not ($env:LOOP_TESTSTAND_RENDER_REPORT -match '^(1|true)$')) { $TestStandRenderReport = $true }
 
 Import-Module (Join-Path $PSScriptRoot '../module/CompareLoop/CompareLoop.psd1') -Force
 
@@ -192,9 +211,23 @@ if ($preClean) {
   }
 }
 
-$exec = $null
-if ($CustomExecutor) { $exec = $CustomExecutor }
-elseif ($simulate) {
+if ($UseTestStandHarness -and $CustomExecutor) {
+  throw 'Cannot combine -UseTestStandHarness with -CustomExecutor.'
+}
+if ($UseTestStandHarness -and $simulate) { $simulate = $false }
+
+$executor = $null
+$skipValidation = $false
+$passThroughPaths = $false
+$bypassCliValidation = $false
+$harnessPlan = $null
+
+if ($CustomExecutor) {
+  $executor = $CustomExecutor
+  $skipValidation = $true
+  $passThroughPaths = $true
+  $bypassCliValidation = $true
+} elseif ($simulate) {
   # Allow explicit simulation of exit code 0 (previous logic treated 0 as unset due to -not test)
   $exitCode = ($env:LOOP_SIMULATE_EXIT_CODE -as [int])
   if ([string]::IsNullOrWhiteSpace($env:LOOP_SIMULATE_EXIT_CODE)) { $exitCode = 1 }
@@ -202,7 +235,86 @@ elseif ($simulate) {
   $localDelay = $delayMs; if (-not $localDelay) { $localDelay = 5 }
   $localExit = $exitCode
   # Lexical closure: variables from outer scope ($localDelay,$localExit) are captured automatically
-  $exec = { param($CliPath,$Base,$Head,$ExecArgs) Start-Sleep -Milliseconds $localDelay; return $localExit }
+  $executor = { param($CliPath,$Base,$Head,$ExecArgs) Start-Sleep -Milliseconds $localDelay; return $localExit }
+  $skipValidation = $true
+  $passThroughPaths = $true
+  $bypassCliValidation = $true
+}
+
+if ($UseTestStandHarness) {
+  if (-not $TestStandHarnessPath) { $TestStandHarnessPath = Join-Path $repoRoot 'tools' 'TestStand-CompareHarness.ps1' }
+  if (-not (Test-Path -LiteralPath $TestStandHarnessPath -PathType Leaf)) {
+    throw "TestStand harness not found at $TestStandHarnessPath"
+  }
+  if (-not $TestStandOutputRoot) { $TestStandOutputRoot = 'tests/results/teststand-loop' }
+  if (-not [System.IO.Path]::IsPathRooted($TestStandOutputRoot)) {
+    $TestStandOutputRoot = Join-Path $repoRoot $TestStandOutputRoot
+  }
+  if (-not (Test-Path -LiteralPath $TestStandOutputRoot)) {
+    New-Item -ItemType Directory -Path $TestStandOutputRoot -Force | Out-Null
+  }
+  $resolvedHarness = (Resolve-Path -LiteralPath $TestStandHarnessPath -ErrorAction Stop).Path
+  $resolvedOutputRoot = (Resolve-Path -LiteralPath $TestStandOutputRoot -ErrorAction Stop).Path
+  $warmupMode = $TestStandWarmup
+  $renderReport = [bool]$TestStandRenderReport
+  $closeLabVIEW = [bool]$TestStandCloseLabVIEW
+  $closeLVCompare = [bool]$TestStandCloseLVCompare
+  $disableTimeout = [bool]$TestStandDisableTimeout
+  $timeoutValue = if ($PSBoundParameters.ContainsKey('TestStandTimeoutSeconds') -or $env:LOOP_TESTSTAND_TIMEOUT_SECONDS) { $TestStandTimeoutSeconds } else { $null }
+  $labviewPath = $TestStandLabVIEWPath
+  $lvcomparePath = $TestStandLVComparePath
+  $replaceFlags = [bool]$TestStandReplaceFlags
+  $harnessIteration = 0
+
+  $executor = {
+    param($CliPath,$BasePath,$HeadPath,$ArgsList)
+    $null = $CliPath
+    $harnessIteration++
+    $iterationLabel = ('iteration-{0:D4}' -f $harnessIteration)
+    $iterationRoot = Join-Path $resolvedOutputRoot $iterationLabel
+    try { if (Test-Path -LiteralPath $iterationRoot) { Remove-Item -LiteralPath $iterationRoot -Recurse -Force -ErrorAction SilentlyContinue } } catch {}
+    New-Item -ItemType Directory -Path $iterationRoot -Force | Out-Null
+
+    $harnessParams = [ordered]@{
+      BaseVi     = $BasePath
+      HeadVi     = $HeadPath
+      OutputRoot = $iterationRoot
+      Warmup     = $warmupMode
+    }
+    if ($labviewPath) { $harnessParams.LabVIEWExePath = $labviewPath }
+    if ($lvcomparePath) { $harnessParams.LVComparePath = $lvcomparePath }
+    if ($renderReport) { $harnessParams.RenderReport = $true }
+    if ($closeLabVIEW) { $harnessParams.CloseLabVIEW = $true }
+    if ($closeLVCompare) { $harnessParams.CloseLVCompare = $true }
+    if ($disableTimeout) { $harnessParams.DisableTimeout = $true }
+    if ($timeoutValue -and $timeoutValue -gt 0) { $harnessParams.TimeoutSeconds = $timeoutValue }
+    if ($ArgsList -and $ArgsList.Count -gt 0) { $harnessParams.Flags = $ArgsList }
+    if ($replaceFlags) { $harnessParams.ReplaceFlags = $true }
+
+    Write-JsonEvent 'harnessInvoke' @{ iteration=$harnessIteration; output=$iterationRoot; status='start' }
+    try {
+      & $resolvedHarness @harnessParams | Out-Null
+      $exitCode = $LASTEXITCODE
+    } catch {
+      Write-JsonEvent 'harnessResult' @{ iteration=$harnessIteration; status='exception'; message=$_.Exception.Message }
+      throw
+    }
+    Write-JsonEvent 'harnessResult' @{ iteration=$harnessIteration; exitCode=$exitCode }
+    return $exitCode
+  }
+  $skipValidation = $false
+  $passThroughPaths = $false
+  $bypassCliValidation = $true
+  $harnessPlan = [ordered]@{
+    path = $resolvedHarness
+    output = $resolvedOutputRoot
+    warmup = $warmupMode
+    renderReport = $renderReport
+    closeLabVIEW = $closeLabVIEW
+    closeLVCompare = $closeLVCompare
+    disableTimeout = $disableTimeout
+    timeout = $timeoutValue
+  }
 }
 
 $invokeParams = @{
@@ -223,7 +335,12 @@ if ($MetricsSnapshotEvery -gt 0) {
 }
 if ($RunSummaryJsonPath) { $invokeParams.RunSummaryJsonPath = $RunSummaryJsonPath }
 if ($AdaptiveInterval) { $invokeParams.AdaptiveInterval = $true }
-if ($exec) { $invokeParams.CompareExecutor = $exec; $invokeParams.SkipValidation = $true; $invokeParams.PassThroughPaths = $true; $invokeParams.BypassCliValidation = $true }
+if ($executor) {
+  $invokeParams.CompareExecutor = $executor
+  if ($skipValidation) { $invokeParams.SkipValidation = $true }
+  if ($passThroughPaths) { $invokeParams.PassThroughPaths = $true }
+  if ($bypassCliValidation) { $invokeParams.BypassCliValidation = $true }
+}
 if ($RenderReport) { $invokeParams.RenderReport = $true }
 
 function Write-Detail {
@@ -345,9 +462,28 @@ function Rotate-JsonLog {
 }
 
 Write-Detail ("Resolved LogVerbosity=$LogVerbosity DryRun=$($DryRun.IsPresent) Simulate=$simulate") 'Debug'
-Write-Detail ("Invocation parameters (pre-run):" )
-Write-Detail (($invokeParams.Keys | Sort-Object | ForEach-Object { "  $_ = $($invokeParams[$_])" }) -join [Environment]::NewLine) 'Debug'
-Write-JsonEvent 'plan' (@{ simulate=$simulate; dryRun=$DryRun.IsPresent; maxIterations=$MaxIterations; interval=$IntervalSeconds; diffSummaryFormat=$DiffSummaryFormat })
+  Write-Detail ("Invocation parameters (pre-run):" )
+  Write-Detail (($invokeParams.Keys | Sort-Object | ForEach-Object { "  $_ = $($invokeParams[$_])" }) -join [Environment]::NewLine) 'Debug'
+  if ($UseTestStandHarness -and $harnessPlan) {
+  Write-Detail ("TestStand harness path: $($harnessPlan.path)")
+  Write-Detail ("TestStand output root: $($harnessPlan.output)") 'Debug'
+  Write-Detail ("TestStand warmup mode: $($harnessPlan.warmup) renderReport=$($harnessPlan.renderReport) closeLabVIEW=$($harnessPlan.closeLabVIEW) closeLVCompare=$($harnessPlan.closeLVCompare) disableTimeout=$($harnessPlan.disableTimeout) timeout=$($harnessPlan.timeout)") 'Debug'
+}
+$planPayload = [ordered]@{
+  simulate = $simulate
+  dryRun = $DryRun.IsPresent
+  maxIterations = $MaxIterations
+  interval = $IntervalSeconds
+  diffSummaryFormat = $DiffSummaryFormat
+  harness = $UseTestStandHarness
+}
+if ($UseTestStandHarness -and $harnessPlan) {
+  $planPayload.harnessPath = $harnessPlan.path
+  $planPayload.harnessOutput = $harnessPlan.output
+  $planPayload.harnessWarmup = $harnessPlan.warmup
+  $planPayload.harnessRenderReport = $harnessPlan.renderReport
+}
+Write-JsonEvent 'plan' $planPayload
 
 if ($DryRun) {
   Write-Detail 'Dry run requested; skipping Invoke-IntegrationCompareLoop execution.'
@@ -355,7 +491,15 @@ if ($DryRun) {
   if ($DiffSummaryPath) { Write-Detail "Would write diff summary to: $DiffSummaryPath" }
   if ($MetricsSnapshotEvery -gt 0) { Write-Detail "Would emit snapshots to: $MetricsSnapshotPath every $MetricsSnapshotEvery iteration(s)" }
   if ($RunSummaryJsonPath) { Write-Detail "Would write run summary JSON to: $RunSummaryJsonPath" }
-  Write-JsonEvent 'dryRun' @{ diffSummaryPath=$DiffSummaryPath; snapshots=$MetricsSnapshotPath; runSummary=$RunSummaryJsonPath }
+  if ($UseTestStandHarness -and $harnessPlan) {
+    Write-Detail ("Would invoke TestStand harness at $($harnessPlan.path) with output root $($harnessPlan.output)")
+  }
+  $dryRunPayload = @{ diffSummaryPath=$DiffSummaryPath; snapshots=$MetricsSnapshotPath; runSummary=$RunSummaryJsonPath; harness=$UseTestStandHarness }
+  if ($UseTestStandHarness -and $harnessPlan) {
+    $dryRunPayload.harnessPath = $harnessPlan.path
+    $dryRunPayload.harnessOutput = $harnessPlan.output
+  }
+  Write-JsonEvent 'dryRun' $dryRunPayload
   exit 0
 }
 
@@ -401,6 +545,7 @@ $summaryLines = @()
 $summaryLines += '=== Integration Compare Loop Result ==='
 $summaryLines += "Base: $($result.BasePath)"
 $summaryLines += "Head: $($result.HeadPath)"
+$summaryLines += "Harness: $(if ($UseTestStandHarness -and $harnessPlan) { 'TestStand (' + $harnessPlan.path + ')' } else { 'LVCompare CLI' })"
 $summaryLines += "Iterations: $($result.Iterations) (Diffs=$($result.DiffCount) Errors=$($result.ErrorCount))"
 if ($result.Percentiles) { $summaryLines += "Latency p50/p90/p99: $($result.Percentiles.p50)/$($result.Percentiles.p90)/$($result.Percentiles.p99) s" }
 if ($result.DiffSummary) { $summaryLines += 'Diff summary fragment emitted.' }
