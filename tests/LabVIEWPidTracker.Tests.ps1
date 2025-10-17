@@ -1,0 +1,95 @@
+Set-StrictMode -Version Latest
+$ErrorActionPreference = 'Stop'
+
+Describe 'LabVIEWPidTracker module' -Tag 'Unit' {
+  BeforeAll {
+    $modulePath = Join-Path $PSScriptRoot '..' 'tools' 'LabVIEWPidTracker.psm1'
+    Import-Module $modulePath -Force
+  }
+
+  It 'writes tracker with null pid when no LabVIEW process is present' {
+    $tracker = Join-Path $TestDrive 'labview.json'
+    Mock -CommandName Get-Process -ParameterFilter { $Name -eq 'LabVIEW' } -MockWith { @() }
+    Mock -CommandName Get-Process -ParameterFilter { $Id } -MockWith { throw "process not found" }
+
+    $result = Initialize-LabVIEWPidTracker -TrackerPath $tracker -Source 'test:init'
+
+    Test-Path -LiteralPath $tracker | Should -BeTrue
+    $result.Pid | Should -BeNullOrEmpty
+    $result.Running | Should -BeFalse
+    $result.Reused | Should -BeFalse
+
+    $json = Get-Content -LiteralPath $tracker -Raw | ConvertFrom-Json -Depth 6
+    $json.schema | Should -Be 'labview-pid-tracker/v1'
+    $json.pid | Should -BeNullOrEmpty
+    $json.running | Should -BeFalse
+  }
+
+  It 'reuses existing pid when tracker file references a running LabVIEW.exe' {
+    $tracker = Join-Path $TestDrive 'labview.json'
+    $existing = [ordered]@{
+      schema       = 'labview-pid-tracker/v1'
+      updatedAt    = (Get-Date).ToString('o')
+      pid          = 4242
+      running      = $true
+      reused       = $false
+      source       = 'seed'
+      observations = @()
+    }
+    $existing | ConvertTo-Json -Depth 4 | Out-File -FilePath $tracker -Encoding utf8
+
+    $procObj = [pscustomobject]@{ Id = 4242; ProcessName = 'LabVIEW'; StartTime = (Get-Date).AddMinutes(-5) }
+    Mock -CommandName Get-Process -ParameterFilter { $Name -eq 'LabVIEW' } -MockWith { @($procObj) }
+    Mock -CommandName Get-Process -ParameterFilter { $Id -eq 4242 } -MockWith { $procObj }
+
+    $result = Initialize-LabVIEWPidTracker -TrackerPath $tracker -Source 'test:init'
+
+    $result.Pid | Should -Be 4242
+    $result.Reused | Should -BeTrue
+    $result.Running | Should -BeTrue
+  }
+
+  It 'selects a new pid when existing tracker entry is stale' {
+    $tracker = Join-Path $TestDrive 'labview.json'
+    $stale = [ordered]@{
+      schema       = 'labview-pid-tracker/v1'
+      updatedAt    = (Get-Date).ToString('o')
+      pid          = 100
+      running      = $false
+      reused       = $false
+      source       = 'seed'
+      observations = @()
+    }
+    $stale | ConvertTo-Json -Depth 4 | Out-File -FilePath $tracker -Encoding utf8
+
+    $candidate = [pscustomobject]@{ Id = 5555; ProcessName = 'LabVIEW'; StartTime = (Get-Date).AddMinutes(-1) }
+    Mock -CommandName Get-Process -ParameterFilter { $Name -eq 'LabVIEW' } -MockWith { @($candidate) }
+    Mock -CommandName Get-Process -ParameterFilter { $Id -eq 100 } -MockWith { throw "process missing" }
+    Mock -CommandName Get-Process -ParameterFilter { $Id -eq 5555 } -MockWith { $candidate }
+
+    $result = Initialize-LabVIEWPidTracker -TrackerPath $tracker -Source 'test:init'
+
+    $result.Pid | Should -Be 5555
+    $result.Reused | Should -BeFalse
+    $result.Running | Should -BeTrue
+  }
+
+  It 'finalizes tracker and records running state' {
+    $tracker = Join-Path $TestDrive 'labview.json'
+    $proc = [pscustomobject]@{ Id = 3210; ProcessName = 'LabVIEW'; StartTime = (Get-Date).AddMinutes(-2) }
+
+    Mock -CommandName Get-Process -ParameterFilter { $Name -eq 'LabVIEW' } -MockWith { @($proc) }
+    Mock -CommandName Get-Process -ParameterFilter { $Id -eq 3210 } -MockWith { $proc }
+
+    $init = Initialize-LabVIEWPidTracker -TrackerPath $tracker -Source 'test:init'
+    $init.Pid | Should -Be 3210
+
+    $final = Finalize-LabVIEWPidTracker -TrackerPath $tracker -Pid $init.Pid -Source 'test:final'
+    $final.Pid | Should -Be 3210
+    $final.Running | Should -BeTrue
+
+    $json = Get-Content -LiteralPath $tracker -Raw | ConvertFrom-Json -Depth 6
+    $json.running | Should -BeTrue
+    ($json.observations | Measure-Object).Count | Should -BeGreaterThan 0
+  }
+}

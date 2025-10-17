@@ -160,6 +160,82 @@ if (Test-Path -LiteralPath $dispatcherSelectionModule) {
   Import-Module $dispatcherSelectionModule -Force
 }
 
+$labviewPidTrackerModule = Join-Path $PSScriptRoot 'tools' 'LabVIEWPidTracker.psm1'
+$labviewPidTrackerLoaded = $false
+if (Test-Path -LiteralPath $labviewPidTrackerModule -PathType Leaf) {
+  try {
+    Import-Module $labviewPidTrackerModule -Force
+    $labviewPidTrackerLoaded = $true
+  } catch {
+    Write-Warning ("Failed to import LabVIEWPidTracker module: {0}" -f $_.Exception.Message)
+  }
+}
+$script:labviewPidTrackerState = $null
+$script:labviewPidTrackerPath = $null
+$script:labviewPidTrackerFinalized = $false
+$script:labviewPidTrackerFinalizeSourceHint = $null
+
+function Invoke-LabVIEWPidTrackerFinalize {
+  [CmdletBinding()]
+  param(
+    [string]$Source = 'dispatcher:final'
+  )
+
+  if (-not $labviewPidTrackerLoaded) { return }
+  if (-not $script:labviewPidTrackerPath) { return }
+  if ($script:labviewPidTrackerFinalized) { return }
+
+  $script:labviewPidTrackerFinalized = $true
+
+  $contextTag = if ($Source) { $Source } else { 'dispatcher:final' }
+  $contextHint = ($contextTag -replace '^dispatcher:', '')
+  if ([string]::IsNullOrWhiteSpace($contextHint)) { $contextHint = 'final' }
+
+  $pidForFinalize = $null
+  try {
+    if ($script:labviewPidTrackerState -and $script:labviewPidTrackerState.PSObject.Properties['Pid']) {
+      $pidForFinalize = [int]$script:labviewPidTrackerState.Pid
+    }
+  } catch { $pidForFinalize = $null }
+
+  try {
+    $finalTracker = Finalize-LabVIEWPidTracker -TrackerPath $script:labviewPidTrackerPath -Pid $pidForFinalize -Source $Source
+    if ($finalTracker) {
+      if ($finalTracker.Pid) {
+        if ($finalTracker.Running) {
+          Write-Host ("[labview-pid] LabVIEW.exe PID {0} still running at dispatcher finalization ({1})." -f $finalTracker.Pid, $contextHint) -ForegroundColor DarkGray
+        } else {
+          Write-Host ("[labview-pid] LabVIEW.exe PID {0} not running at dispatcher finalization ({1})." -f $finalTracker.Pid, $contextHint) -ForegroundColor DarkGray
+        }
+      } else {
+        Write-Host ("[labview-pid] LabVIEW.exe not running at dispatcher finalization ({0})." -f $contextHint) -ForegroundColor DarkGray
+      }
+    }
+  } catch {
+    Write-Warning ("LabVIEW PID tracker finalization failed: {0}" -f $_.Exception.Message)
+  }
+}
+
+function Invoke-DispatcherExit {
+  [CmdletBinding()]
+  param(
+    [Parameter(Mandatory)][int]$Code,
+    [string]$Reason
+  )
+
+  $sourceTag = if ($Reason) {
+    if ($Reason -match '^dispatcher:') { $Reason } else { "dispatcher:$Reason" }
+  } else {
+    'dispatcher:exit'
+  }
+
+  if (-not $script:labviewPidTrackerFinalizeSourceHint) {
+    $script:labviewPidTrackerFinalizeSourceHint = $sourceTag
+  }
+  try { Invoke-LabVIEWPidTrackerFinalize -Source $sourceTag } catch {}
+  exit $Code
+}
+
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
@@ -731,7 +807,7 @@ elseif ($__SingleInvokerRequested -eq '1') {
     Import-Module $modPath -Force
   } catch {
     Write-Error ("Single-invoker requested but module import failed: {0}" -f $_.Exception.Message)
-    exit 1
+    Invoke-DispatcherExit -Code 1 -Reason 'single-invoker-import'
   }
   $script:UseSingleInvoker = $true
   Write-Host "Single-invoker mode: step-based outer loop will run via scripts/Pester-Invoker.psm1" -ForegroundColor Yellow
@@ -770,7 +846,7 @@ if ($env:COMPARISON_ACTION_DEBUG -eq '1') {
 $root = $PSScriptRoot
 if (-not $root) {
   Write-Error "Unable to determine script root directory"
-  exit 1
+  Invoke-DispatcherExit -Code 1 -Reason 'no-root'
 }
 
 # Handle TestsPath - use absolute path if provided, otherwise resolve relative to root
@@ -801,7 +877,7 @@ Clear-DispatcherGuardCrumb -Root $root
 
 if ($GuardResetOnly) {
   Write-Host '[guard] Guard reset only mode requested; exiting before dispatcher startup.' -ForegroundColor DarkGray
-  exit 0
+  Invoke-DispatcherExit -Code 0 -Reason 'guard-reset'
 }
 
 try {
@@ -822,7 +898,25 @@ try {
     $crumb | ConvertTo-Json -Depth 4 | Out-File -FilePath (Join-Path $diagDir 'guard.json') -Encoding utf8
   } catch {}
   Write-Error ($guardMsg + ' (guard crumb: tests/results/_diagnostics/guard.json)')
-  exit 1
+  Invoke-DispatcherExit -Code 1 -Reason 'results-guard'
+}
+
+if ($labviewPidTrackerLoaded) {
+  $trackerPath = Join-Path $resultsDir '_agent' 'labview-pid.json'
+  $script:labviewPidTrackerPath = $trackerPath
+  try {
+    $script:labviewPidTrackerState = Initialize-LabVIEWPidTracker -TrackerPath $trackerPath -Source 'dispatcher:init'
+    if ($script:labviewPidTrackerState) {
+      if ($script:labviewPidTrackerState.Pid) {
+        $modeText = if ($script:labviewPidTrackerState.Reused) { 'Reusing existing' } else { 'Tracking detected' }
+        Write-Host ("[labview-pid] {0} LabVIEW.exe PID {1}." -f $modeText, $script:labviewPidTrackerState.Pid) -ForegroundColor DarkGray
+      } else {
+        Write-Host '[labview-pid] LabVIEW.exe not running at tracker initialization.' -ForegroundColor DarkGray
+      }
+    }
+  } catch {
+    Write-Warning ("LabVIEW PID tracker initialization failed: {0}" -f $_.Exception.Message)
+  }
 }
 
 Write-Host "Resolved Paths:" -ForegroundColor Yellow
@@ -835,7 +929,7 @@ Write-Host ""
 if (-not (Test-Path -LiteralPath $testsDir -PathType Container)) {
   Write-Error "Tests directory not found: $testsDir"
   Write-Host "Please ensure the tests directory exists and contains test files." -ForegroundColor Red
-  exit 1
+  Invoke-DispatcherExit -Code 1 -Reason 'missing-tests'
 }
 
 # Lightweight helpers to close LVCompare/LabVIEW (Windows-only). Best-effort; never throw.
@@ -942,7 +1036,7 @@ if ($labviewOpen.Count -gt 0) {
   } while ($labviewOpen.Count -gt 0 -and ((Get-Date) - $t0).TotalSeconds -lt $deadlinesec)
   if ($labviewOpen.Count -gt 0) {
     Write-Error 'LabVIEW.exe is still running after best-effort stop; aborting to avoid unstable run.'
-    exit 1
+    Invoke-DispatcherExit -Code 1 -Reason 'labview-still-running'
   }
 }
 
@@ -1478,13 +1572,16 @@ if ($testFiles.Count -eq 0) {
       }
       $leakPathOut = Join-Path $resultsDir 'pester-leak-report.json'
       $leakReport | ConvertTo-Json -Depth 6 | Out-File -FilePath $leakPathOut -Encoding utf8 -ErrorAction SilentlyContinue
-      if ($leakDetected -and $FailOnLeaks) { Write-Error 'Failing run due to detected leaks (processes/jobs)'; exit 1 }
+      if ($leakDetected -and $FailOnLeaks) {
+        Write-Error 'Failing run due to detected leaks (processes/jobs)'
+        Invoke-DispatcherExit -Code 1 -Reason 'leak-early'
+      }
     } catch { Write-Warning "Leak detection (early-exit) failed: $_" }
   }
   Write-ArtifactManifest -Directory $resultsDir -SummaryJsonPath $jsonSummaryEarly -ManifestVersion $SchemaManifestVersion
   Write-SessionIndex -ResultsDirectory $resultsDir -SummaryJsonPath $jsonSummaryEarly
   Write-Host 'No test files found. Placeholder artifacts emitted.' -ForegroundColor Yellow
-  exit 0
+  Invoke-DispatcherExit -Code 0 -Reason 'no-tests'
 }
 
 # Emit selected test file list (for diagnostics / gating)
@@ -1501,7 +1598,7 @@ try {
   Write-Host "Results directory ready: $resultsDir" -ForegroundColor Green
 } catch {
   Write-Error "Failed to create results directory: $resultsDir. Error: $_"
-  exit 1
+  Invoke-DispatcherExit -Code 1 -Reason 'results-dir-create'
 }
 
 # Optional notice-only guard (off by default)
@@ -1538,7 +1635,7 @@ if (-not $pesterModule) {
   Write-Host "Please install Pester on the self-hosted runner:" -ForegroundColor Yellow
   Write-Host "  Install-Module -Name Pester -MinimumVersion 5.0.0 -Force -Scope CurrentUser" -ForegroundColor Cyan
   Write-Host ""
-  exit 1
+  Invoke-DispatcherExit -Code 1 -Reason 'pester-missing'
 }
 
 Write-Host "Pester module found: v$($pesterModule.Version)" -ForegroundColor Green
@@ -1550,7 +1647,7 @@ try {
   Write-Host "Using Pester v$($loadedPester.Version)" -ForegroundColor Green
 } catch {
   Write-Error "Failed to import Pester module: $_"
-  exit 1
+  Invoke-DispatcherExit -Code 1 -Reason 'pester-import'
 }
 
 Write-Host ""
@@ -1667,7 +1764,7 @@ if (-not $script:UseSingleInvoker) {
           ) -join [Environment]::NewLine
           Set-Content -LiteralPath $absoluteResultPath -Value $placeholder -Encoding UTF8
         } catch { Write-Warning "Failed to write placeholder XML: $_" }
-        exit 1
+        Invoke-DispatcherExit -Code 1 -Reason 'pester-inline'
       }
     } else {
       Write-Host "Executing with timeout guard: $effectiveTimeoutSeconds second(s)" -ForegroundColor Yellow
@@ -1770,7 +1867,7 @@ if (-not $script:UseSingleInvoker) {
         ) -join [Environment]::NewLine
         Set-Content -LiteralPath $absoluteResultPath -Value $placeholder -Encoding UTF8
       } catch { Write-Warning "Failed to write placeholder XML: $_" }
-      exit 1
+      Invoke-DispatcherExit -Code 1 -Reason 'pester-run'
     }
     if ($script:stuckGuardEnabled) { _Write-HeartbeatLine 'stop' }
   }
@@ -1883,12 +1980,12 @@ if (-not $script:UseSingleInvoker) {
     # Optional cleanup per policy
     if ($CleanAfter) { _Stop-ProcsSafely -Names @('LabVIEW'); if ($script:CleanLVCompare) { _Stop-ProcsSafely -Names @('LVCompare') } }
     if ($sessionLockEnabled -and $lockAcquired) { try { Invoke-SessionLock -Action 'Release' -Group $lockGroup | Out-Null } catch {} }
-    exit 1
+    Invoke-DispatcherExit -Code 1 -Reason 'single-invoker-fail'
   }
   Write-Host "? All tests passed!" -ForegroundColor Green
   if ($CleanAfter) { _Stop-ProcsSafely -Names @('LabVIEW'); if ($script:CleanLVCompare) { _Stop-ProcsSafely -Names @('LVCompare') } }
   if ($sessionLockEnabled -and $lockAcquired) { try { Invoke-SessionLock -Action 'Release' -Group $lockGroup | Out-Null } catch {} }
-  exit 0
+  Invoke-DispatcherExit -Code 0 -Reason 'single-invoker-success'
 }
 
 if ($script:timedOut) {
@@ -2023,7 +2120,7 @@ if (-not (Test-Path -LiteralPath $xmlPath -PathType Leaf)) {
     Set-Content -LiteralPath $xmlPath -Value $placeholder -Encoding UTF8
   } catch {
     Write-Error "Failed to create placeholder XML: $_"
-    exit 1
+    Invoke-DispatcherExit -Code 1 -Reason 'placeholder-xml'
   }
 }
 
@@ -2035,7 +2132,7 @@ try {
   
   if (-not $rootNode) {
     Write-Error "Invalid NUnit XML format in results file"
-    exit 1
+    Invoke-DispatcherExit -Code 1 -Reason 'invalid-results-xml'
   }
   
   [int]$total = $rootNode.total
@@ -2056,7 +2153,7 @@ try {
   
 } catch {
   Write-Error "Failed to parse test results: $_"
-  exit 1
+  Invoke-DispatcherExit -Code 1 -Reason 'parse-results'
 }
 
 # Derive per-test timing metrics if detailed result available (legacy root fields)
@@ -2721,7 +2818,7 @@ if ($DetectLeaks) {
       Write-Warning "Leak detected: see $leakPathOut"
       if ($FailOnLeaks) {
         Write-Error "Failing run due to detected leaks (processes/jobs)"
-        exit 1
+        Invoke-DispatcherExit -Code 1 -Reason 'leak-detected'
       }
     }
   } catch { Write-Warning "Leak detection failed: $_" }
@@ -2753,7 +2850,7 @@ if ($failed -gt 0 -or $errors -gt 0) {
   if ($discoveryFailureCount -gt 0) { $failureLine += " (includes $discoveryFailureCount discovery failure(s))" }
   Write-Host $failureLine -ForegroundColor Red
   Write-Error "Test execution completed with failures"
-  exit 1
+  Invoke-DispatcherExit -Code 1 -Reason 'test-failures'
 }
 
 Write-Host "✅ All tests passed!" -ForegroundColor Green
@@ -2769,11 +2866,12 @@ if ($discoveryFailureCount -gt 0) {
     }
   } catch { Write-Warning "Failed to adjust JSON summary for discovery failures: $_" }
   Write-Error "Test execution completed with discovery failures"
-  exit 1
+  Invoke-DispatcherExit -Code 1 -Reason 'discovery-failures'
 }
 if ($EmitFailuresJsonAlways) { Ensure-FailuresJson -Directory $resultsDir -Normalize -Quiet }
   Write-ArtifactManifest -Directory $resultsDir -SummaryJsonPath $jsonSummaryPath -ManifestVersion $SchemaManifestVersion
   Write-SessionIndex -ResultsDirectory $resultsDir -SummaryJsonPath $jsonSummaryPath
+  if (-not $script:labviewPidTrackerFinalizeSourceHint) { $script:labviewPidTrackerFinalizeSourceHint = 'dispatcher:success' }
   } finally {
   # Ensure any background Pester job is stopped/removed to avoid lingering runs across sessions
   try {
@@ -2826,8 +2924,10 @@ if ($EmitFailuresJsonAlways) { Ensure-FailuresJson -Directory $resultsDir -Norma
       }
     }
   } catch { Write-Warning "Failed to emit final sweep leak report: $_" }
+  $finalizeSource = if ($script:labviewPidTrackerFinalizeSourceHint) { $script:labviewPidTrackerFinalizeSourceHint } else { 'dispatcher:final' }
+  Invoke-LabVIEWPidTrackerFinalize -Source $finalizeSource
 }
-exit 0
+Invoke-DispatcherExit -Code 0 -Reason 'success'
 finally {
   if ($script:fastModeTemporarilySet) {
     Remove-Item Env:FAST_PESTER -ErrorAction SilentlyContinue
@@ -2837,6 +2937,7 @@ finally {
     $released = Invoke-SessionLock -Action 'Release' -Group $lockGroup
     if (-not $released) { Write-Warning "Failed to release session lock '$lockGroup'" }
   }
+  Invoke-LabVIEWPidTrackerFinalize -Source 'dispatcher:finally'
 }
 
 
