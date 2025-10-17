@@ -410,6 +410,182 @@ function Add-HandshakeNote([string]$Note) {
   if ($null -ne $Note -and $Note -ne '') { $script:HandshakeNoteBuffer += $Note }
 }
 
+$labviewPidTrackerModule = Join-Path (Split-Path $PSScriptRoot -Parent) 'tools' 'LabVIEWPidTracker.psm1'
+$labviewPidTrackerLoaded = $false
+$labviewPidTrackerPath = $null
+$labviewPidTrackerState = $null
+$labviewPidTrackerFinalState = $null
+$labviewPidTrackerFinalized = $false
+$labviewPidTrackerFinalizedSource = $null
+$labviewPidTrackerFinalContext = $null
+$labviewPidTrackerFinalContextSource = $null
+$labviewPidTrackerFinalContextDetail = $null
+
+if (Test-Path -LiteralPath $labviewPidTrackerModule -PathType Leaf) {
+  $trackerModule = Import-Module $labviewPidTrackerModule -Force -PassThru -ErrorAction SilentlyContinue
+  if ($trackerModule) { $labviewPidTrackerLoaded = $true }
+}
+
+$script:fixtureDriftCliExists = $null
+$script:fixtureDriftCompareExitCode = $null
+$script:fixtureDriftReportGenerated = $false
+$script:fixtureDriftProcessExitCode = $null
+
+function New-LabVIEWPidSummaryContext {
+  param([string]$Stage = 'fixture-drift:summary')
+
+  $ctx = [ordered]@{ stage = $Stage }
+
+  if ($summary -and $summary.PSObject.Properties['status']) { $ctx['status'] = [string]$summary.status }
+  if ($summary -and $summary.PSObject.Properties['exitCode']) { $ctx['exitCode'] = [int]$summary.exitCode }
+
+  if ($null -ne $script:fixtureDriftProcessExitCode) { $ctx['processExitCode'] = [int]$script:fixtureDriftProcessExitCode }
+
+  if ($readyStatus) { $ctx['readyStatus'] = $readyStatus }
+  if ($readyReason) { $ctx['readyReason'] = $readyReason }
+
+  $ctx['renderReport'] = [bool]$RenderReport
+  $ctx['simulateCompare'] = [bool]$SimulateCompare
+
+  if ($null -ne $script:fixtureDriftCliExists) { $ctx['cliExists'] = [bool]$script:fixtureDriftCliExists }
+  if ($null -ne $script:fixtureDriftCompareExitCode) { $ctx['compareExitCode'] = [int]$script:fixtureDriftCompareExitCode }
+
+  $ctx['reportGenerated'] = [bool]$script:fixtureDriftReportGenerated
+
+  $noteCount = 0
+  if ($summary -and $summary.notes) { $noteCount = @($summary.notes | Where-Object { $_ -ne $null }).Count }
+  $ctx['notesCount'] = [int]$noteCount
+
+  $artifactCount = 0
+  if ($summary -and $summary.artifactPaths) { $artifactCount = @($summary.artifactPaths | Where-Object { $_ -ne $null }).Count }
+  $ctx['artifactCount'] = [int]$artifactCount
+
+  return $ctx
+}
+
+function Add-LabVIEWPidTrackerSummary {
+  if (-not $summary) { return }
+
+  $payload = [ordered]@{ enabled = [bool]$labviewPidTrackerLoaded }
+  if ($labviewPidTrackerPath) { $payload['path'] = $labviewPidTrackerPath }
+
+  if ($labviewPidTrackerState) {
+    $initialBlock = [ordered]@{
+      pid         = if ($labviewPidTrackerState.PSObject.Properties['Pid'] -and $labviewPidTrackerState.Pid) { [int]$labviewPidTrackerState.Pid } else { $null }
+      running     = [bool]$labviewPidTrackerState.Running
+      reused      = [bool]$labviewPidTrackerState.Reused
+      candidates  = @($labviewPidTrackerState.Candidates | Where-Object { $_ -ne $null })
+      observation = $labviewPidTrackerState.Observation
+    }
+    $payload['initial'] = [pscustomobject]$initialBlock
+  }
+
+  $finalBlock = [ordered]@{}
+  if ($labviewPidTrackerFinalState) {
+    $finalBlock['pid'] = if ($labviewPidTrackerFinalState.PSObject.Properties['Pid'] -and $labviewPidTrackerFinalState.Pid) { [int]$labviewPidTrackerFinalState.Pid } else { $null }
+    $finalBlock['running'] = [bool]$labviewPidTrackerFinalState.Running
+    $reusedValue = $null
+    if ($labviewPidTrackerFinalState.PSObject.Properties['Reused']) { $reusedValue = [bool]$labviewPidTrackerFinalState.Reused }
+    elseif ($labviewPidTrackerState -and $labviewPidTrackerState.PSObject.Properties['Reused']) { $reusedValue = [bool]$labviewPidTrackerState.Reused }
+    $finalBlock['reused'] = $reusedValue
+    $finalBlock['observation'] = $labviewPidTrackerFinalState.Observation
+    if ($labviewPidTrackerFinalizedSource) { $finalBlock['finalizedSource'] = $labviewPidTrackerFinalizedSource }
+    if ($labviewPidTrackerFinalState.PSObject.Properties['Context'] -and $labviewPidTrackerFinalState.Context) {
+      $finalBlock['context'] = $labviewPidTrackerFinalState.Context
+    }
+    if ($labviewPidTrackerFinalState.PSObject.Properties['ContextSource'] -and $labviewPidTrackerFinalState.ContextSource) {
+      $finalBlock['contextSource'] = [string]$labviewPidTrackerFinalState.ContextSource
+    }
+    if ($labviewPidTrackerFinalState.PSObject.Properties['ContextSourceDetail'] -and $labviewPidTrackerFinalState.ContextSourceDetail) {
+      $finalBlock['contextSourceDetail'] = [string]$labviewPidTrackerFinalState.ContextSourceDetail
+    }
+  }
+
+  if ($labviewPidTrackerFinalContext) {
+    $finalBlock['context'] = $labviewPidTrackerFinalContext
+    if ($labviewPidTrackerFinalContextSource) { $finalBlock['contextSource'] = $labviewPidTrackerFinalContextSource }
+    if ($labviewPidTrackerFinalContextDetail) { $finalBlock['contextSourceDetail'] = $labviewPidTrackerFinalContextDetail }
+  }
+
+  if ($finalBlock.Count -gt 0) { $payload['final'] = [pscustomobject]$finalBlock }
+
+  if ($summary.PSObject.Properties['labviewPidTracker']) {
+    $summary.labviewPidTracker = [pscustomobject]$payload
+  } else {
+    Add-Member -InputObject $summary -Name labviewPidTracker -MemberType NoteProperty -Value ([pscustomobject]$payload)
+  }
+}
+
+function Finalize-LabVIEWPidTrackerSummary {
+  param([string]$Stage = 'fixture-drift:summary')
+
+  if ($labviewPidTrackerFinalized) {
+    Add-LabVIEWPidTrackerSummary
+    return
+  }
+
+  $context = $null
+  try { $context = New-LabVIEWPidSummaryContext -Stage $Stage } catch { $context = $null }
+
+  if ($labviewPidTrackerLoaded -and $labviewPidTrackerPath) {
+    $args = @{ TrackerPath = $labviewPidTrackerPath; Source = 'orchestrator:summary' }
+    if ($labviewPidTrackerState -and $labviewPidTrackerState.PSObject.Properties['Pid'] -and $labviewPidTrackerState.Pid) {
+      $args['Pid'] = $labviewPidTrackerState.Pid
+    }
+    if ($context) { $args['Context'] = $context }
+
+    try {
+      $finalState = Stop-LabVIEWPidTracker @args
+      $labviewPidTrackerFinalState = $finalState
+      $labviewPidTrackerFinalized = $true
+      $labviewPidTrackerFinalizedSource = 'orchestrator:summary'
+      if ($finalState -and $finalState.PSObject.Properties['Context'] -and $finalState.Context) {
+        try {
+          $labviewPidTrackerFinalContext = Resolve-LabVIEWPidContext -Input $finalState.Context
+        } catch { $labviewPidTrackerFinalContext = $finalState.Context }
+        if ($finalState.PSObject.Properties['ContextSource'] -and $finalState.ContextSource) {
+          $labviewPidTrackerFinalContextSource = [string]$finalState.ContextSource
+        }
+        if ($finalState.PSObject.Properties['ContextSourceDetail'] -and $finalState.ContextSourceDetail) {
+          $labviewPidTrackerFinalContextDetail = [string]$finalState.ContextSourceDetail
+        }
+        if (-not $labviewPidTrackerFinalContextDetail) { $labviewPidTrackerFinalContextDetail = 'orchestrator:summary' }
+      } elseif ($context) {
+        try {
+          $labviewPidTrackerFinalContext = Resolve-LabVIEWPidContext -Input $context
+        } catch { $labviewPidTrackerFinalContext = $context }
+        $labviewPidTrackerFinalContextSource = 'orchestrator:summary'
+        $labviewPidTrackerFinalContextDetail = 'orchestrator:summary'
+      }
+    } catch {
+      Add-HandshakeNote ("LabVIEW PID tracker finalization failed: {0}" -f $_.Exception.Message)
+      if ($context -and -not $labviewPidTrackerFinalContext) {
+        try {
+          $labviewPidTrackerFinalContext = Resolve-LabVIEWPidContext -Input $context
+        } catch { $labviewPidTrackerFinalContext = $context }
+        $labviewPidTrackerFinalContextSource = 'orchestrator:summary'
+        if (-not $labviewPidTrackerFinalContextDetail) { $labviewPidTrackerFinalContextDetail = 'orchestrator:summary' }
+      }
+      if (-not $labviewPidTrackerFinalizedSource) { $labviewPidTrackerFinalizedSource = 'orchestrator:summary' }
+      $labviewPidTrackerFinalized = $true
+    }
+  } else {
+    $labviewPidTrackerFinalized = $true
+  }
+
+  if (-not $labviewPidTrackerFinalContext -and $context) {
+    try {
+      $labviewPidTrackerFinalContext = Resolve-LabVIEWPidContext -Input $context
+    } catch { $labviewPidTrackerFinalContext = $context }
+    $labviewPidTrackerFinalContextSource = 'orchestrator:summary'
+    if (-not $labviewPidTrackerFinalContextDetail) { $labviewPidTrackerFinalContextDetail = 'orchestrator:summary' }
+  }
+
+  if (-not $labviewPidTrackerFinalizedSource) { $labviewPidTrackerFinalizedSource = 'orchestrator:summary' }
+
+  Add-LabVIEWPidTrackerSummary
+}
+
 
 
 
@@ -639,6 +815,20 @@ if (-not $OutputDir) {
 
 
 Initialize-Directory $OutputDir
+
+if ($labviewPidTrackerLoaded) {
+  try {
+    $agentDir = Join-Path $OutputDir '_agent'
+    Initialize-Directory $agentDir
+    $labviewPidTrackerPath = Join-Path $agentDir 'labview-pid.json'
+    $labviewPidTrackerState = Start-LabVIEWPidTracker -TrackerPath $labviewPidTrackerPath -Source 'orchestrator:init'
+  } catch {
+    Add-HandshakeNote ("LabVIEW PID tracker initialization failed: {0}" -f $_.Exception.Message)
+    $labviewPidTrackerLoaded = $false
+    $labviewPidTrackerPath = $null
+    $labviewPidTrackerState = $null
+  }
+}
 
 # Reset and start handshake markers early for deterministic troubleshooting
 Reset-HandshakeMarkers
@@ -968,6 +1158,10 @@ if ($strictExit -eq 0 -and $strict.ok) {
 
   if ($OverrideJson) { Add-Artifact 'validator-override.json' }
 
+  $script:fixtureDriftProcessExitCode = 0
+  Finalize-LabVIEWPidTrackerSummary
+
+
 
 
 
@@ -1135,6 +1329,7 @@ if ($strictExit -eq 6) {
 
 
   $cliExists = if ($SimulateCompare) { $true } else { Test-Path -LiteralPath $cli }
+  $script:fixtureDriftCliExists = [bool]$cliExists
   $repoRoot = $null
   try { $repoRoot = Resolve-Path (Join-Path $PSScriptRoot '..') | Select-Object -ExpandProperty Path } catch {}
 
@@ -1312,6 +1507,7 @@ if ($RenderReport) {
       # Guard: sample after report (no poll)
       try { & (Join-Path $repoRoot 'tools' 'Guard-LabVIEWPersistence.ps1') -ResultsDir $OutputDir -Phase 'after-report' -PollForCloseSeconds 0 } catch {}
       Add-Artifact 'compare-report.html'
+      $script:fixtureDriftReportGenerated = $true
       if ($cwId) {
         try {
           $cwSum = Stop-ConsoleWatch -Id $cwId -OutDir $OutputDir -Phase 'report'
@@ -1331,7 +1527,13 @@ if ($RenderReport) {
 
 }
 
+  $script:fixtureDriftCompareExitCode = if ($null -ne $exitCode) { [int]$exitCode } else { $null }
+
   Write-DiffDetailsIfSample -RepoRoot $repoRoot -HeadPath $HeadPath -OutputDir $OutputDir
+
+  $script:fixtureDriftProcessExitCode = 1
+  Finalize-LabVIEWPidTrackerSummary
+
 
   $outPath = Join-Path $OutputDir 'drift-summary.json'
 
@@ -1471,6 +1673,10 @@ else {
 
 
 
+
+
+  $script:fixtureDriftProcessExitCode = 1
+  Finalize-LabVIEWPidTrackerSummary
 
   $outPath = Join-Path $OutputDir 'drift-summary.json'
 
