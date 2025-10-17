@@ -105,7 +105,7 @@ if ($delta) {
   }
   $newIssues = Get-JsonArrayValue -Object $delta -PropertyName 'newStructuralIssues'
   if (-not $hasNewStructuralProp -and $changeEntries.Count -gt 0) {
-    $structuralCategories = 'missing','untracked','hashMismatch','manifestError','duplicate','schema'
+    $structuralCategories = 'missing','untracked','tooSmall','sizeMismatch','hashMismatch','manifestError','duplicate','schema'
     $newIssues = @($changeEntries | Where-Object {
         $_.category -in $structuralCategories -and
         ([int]$_.baseline -eq 0) -and

@@ -157,9 +157,9 @@ Describe 'Fixture summary script' -Tag 'Unit' {
       generatedAt = '2025-10-17T00:00:00Z'
       baselineOk = $true
       currentOk = $true
-      deltaCounts = @{ missing = 1 }
+      deltaCounts = @{ tooSmall = 1 }
       changes = @(
-        @{ category = 'missing'; baseline = 0; current = 1; delta = 1 }
+        @{ category = 'tooSmall'; baseline = 0; current = 1; delta = 1 }
       )
       failOnNewStructuralIssue = $true
       # Intentionally omit newStructuralIssues to confirm the summary derives them from changes.
