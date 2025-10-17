@@ -731,6 +731,7 @@ function ConvertTo-HtmlReport {
   <section>
     <h2>Compare Outcome</h2>
     $rows = @()
+    $cliImagesSummary = $null
     @(if ($compare) {
         if ($compareExitValue -ne $null) { $rows += "<dt>Exit Code</dt><dd>$(& $encode $compareExitValue)</dd>" }
         if ($compareDiffValue -ne $null) { $rows += "<dt>Diff</dt><dd>$(& $encode $compareDiffValue)</dd>" }
