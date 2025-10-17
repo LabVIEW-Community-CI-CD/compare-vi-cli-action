@@ -87,9 +87,147 @@ Describe 'LabVIEWPidTracker module' -Tag 'Unit' {
     $final = Stop-LabVIEWPidTracker -TrackerPath $tracker -Pid $init.Pid -Source 'test:final'
     $final.Pid | Should -Be 3210
     $final.Running | Should -BeTrue
+    $final.Reused | Should -BeFalse
+    $final.Observation.reused | Should -BeFalse
 
     $json = Get-Content -LiteralPath $tracker -Raw | ConvertFrom-Json -Depth 6
     $json.running | Should -BeTrue
     ($json.observations | Measure-Object).Count | Should -BeGreaterThan 0
+    $json.observations[-1].reused | Should -BeFalse
+  }
+
+  It 'persists context data when provided during finalization' {
+    $tracker = Join-Path $TestDrive 'labview.json'
+    $proc = [pscustomobject]@{ Id = 777; ProcessName = 'LabVIEW'; StartTime = (Get-Date).AddMinutes(-3) }
+
+    Mock -CommandName Get-Process -ParameterFilter { $Name -eq 'LabVIEW' } -MockWith { @($proc) }
+    Mock -CommandName Get-Process -ParameterFilter { $Id -eq 777 } -MockWith { $proc }
+
+    $init = Start-LabVIEWPidTracker -TrackerPath $tracker -Source 'test:init'
+    $context = [ordered]@{ stage = 'unit-test'; total = 5; failed = 1; timedOut = $false }
+
+    $final = Stop-LabVIEWPidTracker -TrackerPath $tracker -Pid $init.Pid -Source 'test:context' -Context $context
+    $final.Pid | Should -Be 777
+    $final.Observation.context.stage | Should -Be 'unit-test'
+    $final.Observation.context.total | Should -Be 5
+    $final.Observation.contextSource | Should -Be 'test:context'
+    $final.Observation.contextSourceDetail | Should -Be 'test:context'
+    $final.Context.stage | Should -Be 'unit-test'
+    $final.ContextSource | Should -Be 'test:context'
+    $final.ContextSourceDetail | Should -Be 'test:context'
+
+    $json = Get-Content -LiteralPath $tracker -Raw | ConvertFrom-Json -Depth 6
+    $json.context.stage | Should -Be 'unit-test'
+    $json.observations[-1].context.failed | Should -Be 1
+    $json.contextSource | Should -Be 'test:context'
+    $json.contextSourceDetail | Should -Be 'test:context'
+    $json.observations[-1].contextSourceDetail | Should -Be 'test:context'
+  }
+
+  It 'allows overriding context source detail' {
+    $tracker = Join-Path $TestDrive 'labview.json'
+    $proc = [pscustomobject]@{ Id = 901; ProcessName = 'LabVIEW'; StartTime = (Get-Date).AddMinutes(-3) }
+
+    Mock -CommandName Get-Process -ParameterFilter { $Name -eq 'LabVIEW' } -MockWith { @($proc) }
+    Mock -CommandName Get-Process -ParameterFilter { $Id -eq 901 } -MockWith { $proc }
+
+    $init = Start-LabVIEWPidTracker -TrackerPath $tracker -Source 'test:init'
+    $context = [ordered]@{ stage = 'detail-test'; info = 'custom' }
+
+    $final = Stop-LabVIEWPidTracker -TrackerPath $tracker -Pid $init.Pid -Source 'test:context' -Context $context -ContextSourceDetail 'detail:custom'
+    $final.ContextSource | Should -Be 'test:context'
+    $final.ContextSourceDetail | Should -Be 'detail:custom'
+    $final.Observation.contextSourceDetail | Should -Be 'detail:custom'
+
+    $json = Get-Content -LiteralPath $tracker -Raw | ConvertFrom-Json -Depth 6
+    $json.contextSourceDetail | Should -Be 'detail:custom'
+    $json.observations[-1].contextSourceDetail | Should -Be 'detail:custom'
+  }
+
+  It 'normalizes dictionary context blocks in deterministic order' {
+    $tracker = Join-Path $TestDrive 'labview.json'
+    $proc = [pscustomobject]@{ Id = 889; ProcessName = 'LabVIEW'; StartTime = (Get-Date).AddMinutes(-6) }
+
+    Mock -CommandName Get-Process -ParameterFilter { $Name -eq 'LabVIEW' } -MockWith { @($proc) }
+    Mock -CommandName Get-Process -ParameterFilter { $Id -eq 889 } -MockWith { $proc }
+
+    $init = Start-LabVIEWPidTracker -TrackerPath $tracker -Source 'test:init'
+    $context = @{ zeta = 3; alpha = 1; beta = 2 }
+
+    $final = Stop-LabVIEWPidTracker -TrackerPath $tracker -Pid $init.Pid -Source 'test:dict' -Context $context
+    $final.Context.PSObject.Properties.Name | Should -Be @('alpha','beta','zeta')
+    $final.Context.alpha | Should -Be 1
+
+    $json = Get-Content -LiteralPath $tracker -Raw | ConvertFrom-Json -Depth 6
+    $json.context.PSObject.Properties.Name | Should -Be @('alpha','beta','zeta')
+    $json.context.alpha | Should -Be 1
+    $json.observations[-1].context.beta | Should -Be 2
+  }
+
+  It 'normalizes PSCustomObject context blocks' {
+    $tracker = Join-Path $TestDrive 'labview.json'
+    $proc = [pscustomobject]@{ Id = 888; ProcessName = 'LabVIEW'; StartTime = (Get-Date).AddMinutes(-4) }
+
+    Mock -CommandName Get-Process -ParameterFilter { $Name -eq 'LabVIEW' } -MockWith { @($proc) }
+    Mock -CommandName Get-Process -ParameterFilter { $Id -eq 888 } -MockWith { $proc }
+
+    $init = Start-LabVIEWPidTracker -TrackerPath $tracker -Source 'test:init'
+    $context = [pscustomobject]@{ stage = 'psco'; detail = 'example' }
+
+    $final = Stop-LabVIEWPidTracker -TrackerPath $tracker -Pid $init.Pid -Source 'test:psco' -Context $context
+    $final.Context.stage | Should -Be 'psco'
+    $final.Context.detail | Should -Be 'example'
+
+    $json = Get-Content -LiteralPath $tracker -Raw | ConvertFrom-Json -Depth 6
+    $json.context.stage | Should -Be 'psco'
+    $json.observations[-1].context.detail | Should -Be 'example'
+  }
+
+  It 'recursively normalizes nested context values including arrays' {
+    $tracker = Join-Path $TestDrive 'labview.json'
+    $proc = [pscustomobject]@{ Id = 4321; ProcessName = 'LabVIEW'; StartTime = (Get-Date).AddMinutes(-7) }
+
+    Mock -CommandName Get-Process -ParameterFilter { $Name -eq 'LabVIEW' } -MockWith { @($proc) }
+    Mock -CommandName Get-Process -ParameterFilter { $Id -eq 4321 } -MockWith { $proc }
+
+    $init = Start-LabVIEWPidTracker -TrackerPath $tracker -Source 'test:init'
+    $context = @{ 
+      stage = 'nested'
+      summary = @{
+        failed = 1
+        passed = 4
+        details = @{ later = 'value'; earlier = 'first' }
+      }
+      buckets = @(
+        @{ zulu = 26; alpha = 1 },
+        [pscustomobject]@{ name = 'inner'; metrics = @{ delta = 4; beta = 2 } }
+      )
+    }
+
+    $final = Stop-LabVIEWPidTracker -TrackerPath $tracker -Pid $init.Pid -Source 'test:nested' -Context $context
+
+    $final.Context.stage | Should -Be 'nested'
+    $final.Context.summary.PSObject.Properties.Name | Should -Be @('details','failed','passed')
+    $final.Context.summary.details.PSObject.Properties.Name | Should -Be @('earlier','later')
+    $final.Context.buckets.Count | Should -Be 2
+    $final.Context.buckets[0].PSObject.Properties.Name | Should -Be @('alpha','zulu')
+    $final.Context.buckets[1].metrics.PSObject.Properties.Name | Should -Be @('beta','delta')
+
+    $resolved = Resolve-LabVIEWPidContext -Input $context
+    $resolved.summary.details.PSObject.Properties.Name | Should -Be @('earlier','later')
+    $resolved.buckets[1].metrics.delta | Should -Be 4
+
+    $json = Get-Content -LiteralPath $tracker -Raw | ConvertFrom-Json -Depth 6
+    $json.context.summary.details.earlier | Should -Be 'first'
+    $json.context.buckets[0].alpha | Should -Be 1
+    $json.contextSource | Should -Be 'test:nested'
+  }
+
+  It 'exposes Resolve-LabVIEWPidContext for callers needing manual normalization' {
+    $command = Get-Command -Name Resolve-LabVIEWPidContext -ErrorAction Stop
+    $command.CommandType | Should -Be 'Function'
+
+    $ordered = Resolve-LabVIEWPidContext -Input @{ bravo = 2; alpha = 1 }
+    $ordered.PSObject.Properties.Name | Should -Be @('alpha','bravo')
   }
 }
