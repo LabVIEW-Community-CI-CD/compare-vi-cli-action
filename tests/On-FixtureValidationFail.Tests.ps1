@@ -45,6 +45,7 @@ Describe 'On-FixtureValidationFail Orchestration' -Tag 'Unit' {
     ($j.PSObject.Properties.Name -contains 'labviewPidTracker') | Should -BeTrue
     $j.labviewPidTracker.enabled | Should -BeTrue
     $j.labviewPidTracker.path | Should -Match 'labview-pid.json$'
+    $j.labviewPidTracker.relativePath | Should -Be '_agent/labview-pid.json'
     ($j.labviewPidTracker.final.PSObject.Properties.Name -contains 'context') | Should -BeTrue
     $j.labviewPidTracker.final.context.stage | Should -Be 'fixture-drift:summary'
     $j.labviewPidTracker.final.context.status | Should -Be 'ok'
@@ -70,6 +71,7 @@ Describe 'On-FixtureValidationFail Orchestration' -Tag 'Unit' {
     Test-Path -LiteralPath $trackerFile | Should -BeTrue
     ($j.artifactPaths -contains '_agent/labview-pid.json') | Should -BeTrue
     (($j.files | Where-Object { $_.path -eq '_agent/labview-pid.json' }).Count) | Should -BeGreaterThan 0
+    $j.labviewPidTracker.relativePath | Should -Be '_agent/labview-pid.json'
     $j.labviewPidTracker.final.context.stage | Should -Be 'fixture-drift:summary'
     $j.labviewPidTracker.final.context.status | Should -Be 'drift'
     $j.labviewPidTracker.final.context.exitCode | Should -Be 6
@@ -97,6 +99,7 @@ Describe 'On-FixtureValidationFail Orchestration' -Tag 'Unit' {
     $j = Get-Content -LiteralPath (Join-Path $outDir 'drift-summary.json') -Raw | ConvertFrom-Json
     ($j.artifactPaths -contains '_agent/labview-pid.json') | Should -BeTrue
     (($j.files | Where-Object { $_.path -eq '_agent/labview-pid.json' }).Count) | Should -BeGreaterThan 0
+    $j.labviewPidTracker.relativePath | Should -Be '_agent/labview-pid.json'
     $j.labviewPidTracker.final.context.stage | Should -Be 'fixture-drift:summary'
     $j.labviewPidTracker.final.context.status | Should -Be 'drift'
     $j.labviewPidTracker.final.context.exitCode | Should -Be 6
@@ -117,6 +120,7 @@ Describe 'On-FixtureValidationFail Orchestration' -Tag 'Unit' {
     $j = Get-Content -LiteralPath (Join-Path $outDir 'drift-summary.json') -Raw | ConvertFrom-Json
     ($j.artifactPaths -contains '_agent/labview-pid.json') | Should -BeTrue
     (($j.files | Where-Object { $_.path -eq '_agent/labview-pid.json' }).Count) | Should -BeGreaterThan 0
+    $j.labviewPidTracker.relativePath | Should -Be '_agent/labview-pid.json'
     $j.labviewPidTracker.final.context.stage | Should -Be 'fixture-drift:summary'
     $j.labviewPidTracker.final.context.status | Should -Be 'fail-structural'
     $j.labviewPidTracker.final.context.exitCode | Should -Be 4

@@ -475,6 +475,7 @@ function Add-LabVIEWPidTrackerSummary {
 
   $payload = [ordered]@{ enabled = [bool]$labviewPidTrackerLoaded }
   if ($labviewPidTrackerPath) { $payload['path'] = $labviewPidTrackerPath }
+  if ($labviewPidTrackerRelativePath) { $payload['relativePath'] = $labviewPidTrackerRelativePath }
 
   if ($labviewPidTrackerState) {
     $initialBlock = [ordered]@{

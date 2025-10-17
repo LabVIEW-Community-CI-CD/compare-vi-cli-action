@@ -74,6 +74,9 @@
         "path": {
           "type": "string"
         },
+        "relativePath": {
+          "type": "string"
+        },
         "initial": {
           "type": "object",
           "additionalProperties": false,

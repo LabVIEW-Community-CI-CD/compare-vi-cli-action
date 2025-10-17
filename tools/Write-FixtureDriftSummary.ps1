@@ -49,6 +49,9 @@ if ($json.PSObject.Properties['labviewPidTracker']) {
   if ($tracker.PSObject.Properties['path'] -and $tracker.path) {
     $lines += ('  - Path: {0}' -f $tracker.path)
   }
+  if ($tracker.PSObject.Properties['relativePath'] -and $tracker.relativePath) {
+    $lines += ('  - Relative Path: {0}' -f $tracker.relativePath)
+  }
   if ($tracker.PSObject.Properties['initial'] -and $tracker.initial) {
     $initial = $tracker.initial
     $ip = if ($initial.PSObject.Properties['pid'] -and $null -ne $initial.pid) { $initial.pid } else { 'none' }
