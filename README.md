@@ -156,7 +156,7 @@ Tips:
   - `Integration (Standing Priority): Watch existing run` attaches the Docker watcher when a run is already in flight.
   - `Run Non-LV Checks (Docker)` shells into `tools/Run-NonLVChecksInDocker.ps1` for actionlint/markdownlint/docs drift.
   - Recommended extensions (PowerShell, C#, GitHub Actions, markdownlint, Docker) are declared in `.vscode/extensions.json`.
-  - Local validation matrix (see below) keeps local runs aligned with CI stages.
+  - Local validation quick reference (see below) keeps local runs aligned with CI stages.
 - Prefer the REST watcher for GitHub status: `node tools/npm/run-script.mjs ci:watch:rest -- --run-id <id>` streams job conclusions without relying on the
   `gh` CLI. Passing `--branch <name>` auto-selects the latest run. A VS Code task named “CI Watch (REST)” prompts for the run id.
 - Repeated 404s or other API errors cause the watcher to exit with `conclusion: watcher-error` after the built-in grace window
@@ -168,7 +168,7 @@ Tips:
   run/dispatcher status stalls longer than the configured window (default 10 minutes). When
   consecutive dispatcher logs hash to the same digest, it flags a possible repeated failure.
 
-#### Local validation matrix
+#### Local validation quick reference
 
 | Command / Run Task | Script invoked | Mirrors CI job(s) |
 | --- | --- | --- |
@@ -273,7 +273,7 @@ node tools/npm/run-script.mjs lint:md:changed
 Follow `AGENTS.md` for coding etiquette and keep CI deterministic. Large workflow updates
 should note affected jobs and link to supporting ADRs.
 
-### Local validation matrix
+### Local validation matrix (pre-push checklist)
 
 Run the commands below (or invoke the matching VS Code task) before pushing. Each entry calls the same automation that our workflows execute, so local runs mirror CI behaviour.
 
@@ -315,7 +315,7 @@ Tune behaviour with `HOOKS_ENFORCE=fail|warn|off` (default: `fail` in CI, `warn`
 - Contact NI for LabVIEW licensing questions.
 - For agent coordination, follow the steps in `AGENT_HANDOFF.txt`.
 
-#### VS Code extension (experimental)
+### VS Code extension (experimental)
 
 The N-CLI companion (under `vscode/comparevi-helper`) centralises CompareVI and other CLI helpers in VS Code. The CompareVI provider mirrors the CLI workflows from this repository—manual compares, commit compares, preset CRUD, artifact thumbnails—while adding health checks and telemetry. A stub g-cli provider exercises the provider registry and warns when g-cli is not installed yet.
 
@@ -327,6 +327,7 @@ Key features:
 - Local NDJSON telemetry written to `tests/results/telemetry/` when `comparevi.telemetryEnabled` is enabled.
 
 For local development:
+
 1. Run `npm install` inside `vscode/comparevi-helper`.
 2. From VS Code, run **Debug: Start Debugging** on the extension to launch a dev host.
 3. `node tools/npm/run-script.mjs test:unit` and `node tools/npm/run-script.mjs test:ext` validate provider registry behaviour, telemetry, multi-root flows, and UI wiring.
