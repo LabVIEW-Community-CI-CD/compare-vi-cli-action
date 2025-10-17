@@ -716,7 +716,7 @@ function ConvertTo-HtmlReport {
         if ($compareReportPathValue) { $rows += "<dt>Report</dt><dd>$(& $encode $compareReportPathValue)</dd>" }
         elseif ($compareCapturePathValue) { $rows += "<dt>Capture</dt><dd>$(& $encode $compareCapturePathValue)</dd>" }
         if ($artifactsReportSize -ne $null) { $rows += "<dt>CLI Report Size</dt><dd>$(& $encode $artifactsReportSize) bytes</dd>" }
-        $imgLine = $null
+        [string]$imgLine = $null
         if ($artifactsImageCount -ne $null) {
           $imgLine = "$artifactsImageCount"
           if ($artifactsExportDir) {
