@@ -99,21 +99,18 @@ if ($delta) {
     $lines += '- **Changed Categories:** _(none)_'
   }
   $changeEntries = Get-JsonArrayValue -Object $delta -PropertyName 'changes'
-  $newStructuralProp = $null
-  $newStructuralValue = $null
-  if ($null -ne $delta) {
-    $newStructuralProp = $delta.PSObject.Properties['newStructuralIssues']
-    if ($null -ne $newStructuralProp) { $newStructuralValue = $newStructuralProp.Value }
-  }
   $newIssues = Get-JsonArrayValue -Object $delta -PropertyName 'newStructuralIssues'
-  $shouldInferFromChanges = ($null -eq $newStructuralProp) -or ($null -eq $newStructuralValue)
-  if ($shouldInferFromChanges -and $changeEntries.Count -gt 0) {
+  $derivedStructural = @()
+  if ($changeEntries.Count -gt 0) {
     $structuralCategories = 'missing','untracked','hashMismatch','manifestError','duplicate','schema'
-    $newIssues = @($changeEntries | Where-Object {
+    $derivedStructural = @($changeEntries | Where-Object {
         $_.category -in $structuralCategories -and
         ([int]$_.baseline -eq 0) -and
         ([int]$_.current -gt 0)
       })
+  }
+  if ($newIssues.Count -eq 0 -and $derivedStructural.Count -gt 0) {
+    $newIssues = $derivedStructural
   }
   $lines += ('- **New Structural Issues:** {0}' -f $newIssues.Count)
   $failOnNewIssues = Get-JsonBooleanValue -Object $delta -PropertyName 'failOnNewStructuralIssue'
