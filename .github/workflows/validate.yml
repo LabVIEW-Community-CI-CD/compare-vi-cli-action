@@ -219,7 +219,11 @@ jobs:
       run: |
         # Simple intra-repo link checker: scans markdown for (./...) links and verifies files exist.
         $ErrorActionPreference = 'Stop'
-        $mdFiles = Get-ChildItem -Path . -Recurse -Include *.md
+        $mdFiles = Get-ChildItem -Path . -Recurse -Include *.md -File |
+          Where-Object {
+            $path = $_.FullName -replace '\\','/'
+            return $path -notmatch '/node_modules/'
+          }
         $errors = @()
         foreach ($file in $mdFiles) {
           $text = Get-Content -LiteralPath $file.FullName -Raw
