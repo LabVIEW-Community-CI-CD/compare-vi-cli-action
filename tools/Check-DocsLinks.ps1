@@ -25,7 +25,7 @@ param(
   [string]$Path = '.',
   [switch]$External,
   [switch]$Http,
-  [int]$HttpTimeoutSec = 5,
+  [object]$HttpTimeoutSec = 5,
   [string[]]$Ignore,
   [string]$AllowListPath = '.ci/link-allowlist.txt',
   [string]$OutputJson,
@@ -33,6 +33,25 @@ param(
 )
 $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version Latest
+
+$httpTimeoutInput = $HttpTimeoutSec
+if ($httpTimeoutInput -is [System.Array] -and $httpTimeoutInput.Length -gt 0) {
+  # Accept first value when callers accidentally pass multiple entries (e.g., via native command arg flattening)
+  $httpTimeoutInput = $httpTimeoutInput[0]
+}
+
+if ($null -eq $httpTimeoutInput -or ($httpTimeoutInput -is [string] -and [string]::IsNullOrWhiteSpace($httpTimeoutInput))) {
+  $HttpTimeoutSec = 5
+} elseif ($httpTimeoutInput -is [int]) {
+  $HttpTimeoutSec = $httpTimeoutInput
+} else {
+  $timeoutText = $httpTimeoutInput.ToString().Trim()
+  $parsedTimeout = 0
+  if (-not [int]::TryParse($timeoutText, [ref]$parsedTimeout)) {
+    throw "HttpTimeoutSec expects an integer number of seconds. Received '$timeoutText'."
+  }
+  $HttpTimeoutSec = $parsedTimeout
+}
 
 function Match-Any($value,[string[]]$patterns){
   if (-not $patterns -or $patterns.Count -eq 0) { return $false }

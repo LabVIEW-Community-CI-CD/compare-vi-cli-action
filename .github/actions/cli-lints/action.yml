@@ -72,7 +72,16 @@ runs:
       shell: pwsh
       continue-on-error: ${{ inputs.enforce != 'true' }}
       run: |
-        pwsh -File tools/Check-DocsLinks.ps1 -Ignore @('node_modules/**','bin/**','vendor/**') -AllowListPath '.ci/link-allowlist.txt' -OutputJson 'tests/results/lint/docs-links.json'
+        $repoRoot = (Get-Location).Path
+        $toolsDir = Join-Path $repoRoot 'tools'
+        $scriptPath = Join-Path $toolsDir 'Check-DocsLinks.ps1'
+        $arguments = @{
+          Path = 'docs'
+          Ignore = @('node_modules/**','bin/**','vendor/**')
+          AllowListPath = '.ci/link-allowlist.txt'
+          OutputJson = 'tests/results/lint/docs-links.json'
+        }
+        & $scriptPath @arguments
 
     - name: Append lint summary
       shell: pwsh

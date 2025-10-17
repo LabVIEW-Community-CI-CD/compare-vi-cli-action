@@ -11,5 +11,13 @@ Describe 'Docs links schema' -Tag 'Unit' {
     & (Join-Path $root 'tools/Invoke-JsonSchemaLite.ps1') -JsonPath $out -SchemaPath (Join-Path $root 'docs/schemas/docs-links-v1.schema.json')
     $LASTEXITCODE | Should -Be 0
   }
+
+  It 'accepts HttpTimeoutSec values provided as strings' {
+    $td = Join-Path $TestDrive 'docs'
+    New-Item -ItemType Directory -Force -Path $td | Out-Null
+    Set-Content -LiteralPath (Join-Path $td 'Demo.md') -Value '# Sample' -Encoding UTF8
+    $root = (Get-Location).Path
+    { & (Join-Path $root 'tools/Check-DocsLinks.ps1') -Path $td -HttpTimeoutSec '15' -Quiet } | Should -NotThrow
+  }
 }
 
