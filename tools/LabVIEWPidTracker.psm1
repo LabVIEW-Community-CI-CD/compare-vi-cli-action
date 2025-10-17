@@ -131,7 +131,8 @@ function Stop-LabVIEWPidTracker {
   param(
     [Parameter(Mandatory)][string]$TrackerPath,
     [Nullable[int]]$Pid,
-    [string]$Source = 'dispatcher'
+    [string]$Source = 'dispatcher',
+    [object]$Context
   )
 
   $now = (Get-Date).ToUniversalTime()
@@ -172,6 +173,22 @@ function Stop-LabVIEWPidTracker {
     'no-tracked-pid'
   }
 
+  $contextBlock = $null
+  if ($PSBoundParameters.ContainsKey('Context') -and $null -ne $Context) {
+    try {
+      $ctxProps = @($Context.PSObject.Properties)
+    } catch { $ctxProps = @() }
+    if ($ctxProps.Count -gt 0) {
+      $ctxOrdered = [ordered]@{}
+      foreach ($prop in ($ctxProps | Sort-Object Name)) {
+        $ctxOrdered[$prop.Name] = $prop.Value
+      }
+      if ($ctxOrdered.Count -gt 0) {
+        $contextBlock = [pscustomobject]$ctxOrdered
+      }
+    }
+  }
+
   $observation = [ordered]@{
     at      = $now.ToString('o')
     action  = 'finalize'
@@ -179,6 +196,9 @@ function Stop-LabVIEWPidTracker {
     running = $running
     source  = $Source
     note    = $note
+  }
+  if ($contextBlock) {
+    $observation['context'] = $contextBlock
   }
 
   $obsList = @()
@@ -201,6 +221,9 @@ function Stop-LabVIEWPidTracker {
     reused       = $reused
     source       = $Source
     observations = $obsList
+  }
+  if ($contextBlock) {
+    $record['context'] = $contextBlock
   }
 
   $dir = Split-Path -Parent $TrackerPath

@@ -92,4 +92,24 @@ Describe 'LabVIEWPidTracker module' -Tag 'Unit' {
     $json.running | Should -BeTrue
     ($json.observations | Measure-Object).Count | Should -BeGreaterThan 0
   }
+
+  It 'persists context data when provided during finalization' {
+    $tracker = Join-Path $TestDrive 'labview.json'
+    $proc = [pscustomobject]@{ Id = 777; ProcessName = 'LabVIEW'; StartTime = (Get-Date).AddMinutes(-3) }
+
+    Mock -CommandName Get-Process -ParameterFilter { $Name -eq 'LabVIEW' } -MockWith { @($proc) }
+    Mock -CommandName Get-Process -ParameterFilter { $Id -eq 777 } -MockWith { $proc }
+
+    $init = Start-LabVIEWPidTracker -TrackerPath $tracker -Source 'test:init'
+    $context = [ordered]@{ stage = 'unit-test'; total = 5; failed = 1; timedOut = $false }
+
+    $final = Stop-LabVIEWPidTracker -TrackerPath $tracker -Pid $init.Pid -Source 'test:context' -Context $context
+    $final.Pid | Should -Be 777
+    $final.Observation.context.stage | Should -Be 'unit-test'
+    $final.Observation.context.total | Should -Be 5
+
+    $json = Get-Content -LiteralPath $tracker -Raw | ConvertFrom-Json -Depth 6
+    $json.context.stage | Should -Be 'unit-test'
+    $json.observations[-1].context.failed | Should -Be 1
+  }
 }

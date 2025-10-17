@@ -60,7 +60,12 @@ Describe 'Pester Summary Schema' {
       [DateTime]::Parse($json.timestamp) | Out-Null
       $json.pesterVersion | Should -Match '^5\.'
       $json.includeIntegration | Should -BeFalse
-  $json.discoveryFailures | Should -BeGreaterOrEqual 0
+      $json.discoveryFailures | Should -BeGreaterOrEqual 0
+  ($json.PSObject.Properties.Name -contains 'labviewPidTracker') | Should -BeTrue
+  $json.labviewPidTracker.enabled | Should -BeTrue
+  $json.labviewPidTracker.path | Should -Match 'labview-pid.json$'
+  $json.labviewPidTracker.final.observation.action | Should -Be 'finalize'
+  $json.labviewPidTracker.final.context.stage | Should -Be 'post-summary'
   # Context blocks should be absent by default (no -EmitContext)
   ($json.PSObject.Properties.Name -contains 'environment') | Should -BeFalse
   ($json.PSObject.Properties.Name -contains 'run') | Should -BeFalse

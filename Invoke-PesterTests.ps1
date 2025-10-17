@@ -172,6 +172,44 @@ if (Test-Path -LiteralPath $labviewPidTrackerModule -PathType Leaf) {
 }
 $script:labviewPidTrackerState = $null
 $script:labviewPidTrackerPath = $null
+$script:labviewPidTrackerFinalState = $null
+$script:labviewPidTrackerFinalized = $false
+$script:labviewPidTrackerFinalizedSource = $null
+$script:labviewPidTrackerFinalizedContext = $null
+
+function _Finalize-LabVIEWPidTracker {
+  param(
+    [System.Collections.IDictionary]$Context,
+    [string]$Source = 'dispatcher:final'
+  )
+
+  if (-not $labviewPidTrackerLoaded) { return $null }
+  if (-not $script:labviewPidTrackerPath) { return $null }
+  if ($script:labviewPidTrackerFinalized) { return $script:labviewPidTrackerFinalState }
+
+  try {
+    $args = @{
+      TrackerPath = $script:labviewPidTrackerPath
+      Source      = $Source
+    }
+    $pidForFinal = $null
+    if ($script:labviewPidTrackerState -and $script:labviewPidTrackerState.PSObject.Properties['Pid']) {
+      $pidForFinal = $script:labviewPidTrackerState.Pid
+    }
+    if ($pidForFinal) { $args['Pid'] = $pidForFinal }
+    if ($Context -and $Context.Count -gt 0) { $args['Context'] = $Context }
+
+    $final = Stop-LabVIEWPidTracker @args
+    $script:labviewPidTrackerFinalState = $final
+    $script:labviewPidTrackerFinalized = $true
+    $script:labviewPidTrackerFinalizedSource = $Source
+    if ($Context) { $script:labviewPidTrackerFinalizedContext = $Context }
+    return $final
+  } catch {
+    Write-Warning ("LabVIEW PID tracker finalization failed: {0}" -f $_.Exception.Message)
+    return $null
+  }
+}
 
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
@@ -841,6 +879,10 @@ try {
 if ($labviewPidTrackerLoaded) {
   $trackerPath = Join-Path $resultsDir '_agent' 'labview-pid.json'
   $script:labviewPidTrackerPath = $trackerPath
+  $script:labviewPidTrackerFinalState = $null
+  $script:labviewPidTrackerFinalized = $false
+  $script:labviewPidTrackerFinalizedSource = $null
+  $script:labviewPidTrackerFinalizedContext = $null
   try {
     $script:labviewPidTrackerState = Start-LabVIEWPidTracker -TrackerPath $trackerPath -Source 'dispatcher:init'
     if ($script:labviewPidTrackerState) {
@@ -857,18 +899,15 @@ if ($labviewPidTrackerLoaded) {
   try {
     if (-not (Get-Variable -Name labviewPidTrackerFinalizer -Scope Script -ErrorAction SilentlyContinue)) {
       $script:labviewPidTrackerFinalizer = Register-EngineEvent -SourceIdentifier ([System.Management.Automation.PSEngineEvent]::Exiting) -Action {
-        if ($script:labviewPidTrackerPath) {
-          try {
-            $finalTracker = Stop-LabVIEWPidTracker -TrackerPath $script:labviewPidTrackerPath -Source 'dispatcher:final'
-            if ($finalTracker -and $finalTracker.Pid) {
-              if ($finalTracker.Running) {
-                Write-Host ("[labview-pid] LabVIEW.exe PID {0} still running at dispatcher exit." -f $finalTracker.Pid) -ForegroundColor DarkGray
-              } else {
-                Write-Host ("[labview-pid] LabVIEW.exe PID {0} not running at dispatcher exit." -f $finalTracker.Pid) -ForegroundColor DarkGray
-              }
+        $context = [ordered]@{ stage = 'engine-exit'; reason = 'engine-event' }
+        $finalTracker = _Finalize-LabVIEWPidTracker -Context $context -Source 'dispatcher:engine-exit'
+        if ($finalTracker -and $script:labviewPidTrackerFinalizedSource -eq 'dispatcher:engine-exit') {
+          if ($finalTracker.Pid) {
+            if ($finalTracker.Running) {
+              Write-Host ("[labview-pid] LabVIEW.exe PID {0} still running at dispatcher exit." -f $finalTracker.Pid) -ForegroundColor DarkGray
+            } else {
+              Write-Host ("[labview-pid] LabVIEW.exe PID {0} not running at dispatcher exit." -f $finalTracker.Pid) -ForegroundColor DarkGray
             }
-          } catch {
-            Write-Warning ("LabVIEW PID tracker finalization failed: {0}" -f $_.Exception.Message)
           }
         }
       }
@@ -2128,9 +2167,38 @@ try {
   }
 } catch { Write-Warning "Failed to compute timing metrics: $_" }
 
+# Record LabVIEW PID tracker state with Pester totals
+if ($labviewPidTrackerLoaded -and $script:labviewPidTrackerPath) {
+  try {
+    $context = [ordered]@{
+      stage             = 'post-summary'
+      total             = $total
+      failed            = $failed
+      errors            = $errors
+      skipped           = $skipped
+      discoveryFailures = $discoveryFailureCount
+      timedOut          = [bool]$script:timedOut
+    }
+    if ($script:labviewPidTrackerState -and $script:labviewPidTrackerState.PSObject.Properties['Pid'] -and $script:labviewPidTrackerState.Pid) {
+      $context['pid'] = $script:labviewPidTrackerState.Pid
+    }
+    $trackerState = _Finalize-LabVIEWPidTracker -Context $context -Source 'dispatcher:summary'
+    if ($trackerState -and $script:labviewPidTrackerFinalizedSource -eq 'dispatcher:summary') {
+      if ($trackerState.Pid) {
+        $status = if ($trackerState.Running) { 'still running' } else { 'not running' }
+        Write-Host ("[labview-pid] LabVIEW.exe PID {0} {1} after Pester summary." -f $trackerState.Pid,$status) -ForegroundColor DarkGray
+      } else {
+        Write-Host '[labview-pid] LabVIEW.exe not running at Pester summary finalization.' -ForegroundColor DarkGray
+      }
+    }
+  } catch {
+    Write-Warning ("LabVIEW PID tracker summary finalization failed: {0}" -f $_.Exception.Message)
+  }
+}
+
 # Stop heartbeat (if enabled) before rendering summaries
 # Generate summary
-$summary = @(
+$summaryLines = @(
   "=== Pester Test Summary ===",
   "Total Tests: $total",
   "Passed: $passed",
@@ -2138,7 +2206,21 @@ $summary = @(
   "Errors: $errors",
   "Skipped: $skipped",
   "Duration: $($testDuration.TotalSeconds.ToString('F2'))s" + $(if ($meanMs) { " (mean=${meanMs}ms p95=${p95Ms}ms max=${maxMs}ms)" } else { '' }) + $(if ($script:timedOut) { ' (TIMED OUT)' } else { '' })
-) -join [Environment]::NewLine
+)
+if ($labviewPidTrackerLoaded) {
+  $trackerSummaryLine = $null
+  $final = if ($script:labviewPidTrackerFinalState) { $script:labviewPidTrackerFinalState } else { $script:labviewPidTrackerState }
+  if ($script:labviewPidTrackerFinalState -and $script:labviewPidTrackerFinalState.Pid) {
+    $stateLabel = if ($script:labviewPidTrackerFinalState.Running) { 'running' } else { 'not running' }
+    $trackerSummaryLine = "LabVIEW PID Tracker: PID $($script:labviewPidTrackerFinalState.Pid) ($stateLabel)"
+  } elseif ($final -and $final.PSObject.Properties['Pid'] -and $final.Pid) {
+    $trackerSummaryLine = "LabVIEW PID Tracker: PID $($final.Pid) (state unavailable)"
+  } else {
+    $trackerSummaryLine = 'LabVIEW PID Tracker: no LabVIEW.exe detected'
+  }
+  if ($trackerSummaryLine) { $summaryLines += $trackerSummaryLine }
+}
+$summary = $summaryLines -join [Environment]::NewLine
 
 Write-Host ""
 Write-Host $summary -ForegroundColor $(if ($failed -eq 0 -and $errors -eq 0) { 'Green' } else { 'Red' })
@@ -2351,6 +2433,38 @@ try {
     schemaVersion      = $SchemaSummaryVersion
     timedOut           = $script:timedOut
     discoveryFailures  = $discoveryFailureCount
+  }
+
+  if ($labviewPidTrackerLoaded) {
+    try {
+      $trackerPayload = [ordered]@{
+        enabled = $true
+        path    = $script:labviewPidTrackerPath
+      }
+      if ($script:labviewPidTrackerState) {
+        $initialBlock = [ordered]@{
+          pid         = if ($script:labviewPidTrackerState.Pid) { [int]$script:labviewPidTrackerState.Pid } else { $null }
+          running     = [bool]$script:labviewPidTrackerState.Running
+          reused      = [bool]$script:labviewPidTrackerState.Reused
+          candidates  = @($script:labviewPidTrackerState.Candidates | Where-Object { $_ -ne $null })
+          observation = $script:labviewPidTrackerState.Observation
+        }
+        $trackerPayload['initial'] = [pscustomobject]$initialBlock
+      }
+      if ($script:labviewPidTrackerFinalState) {
+        $finalBlock = [ordered]@{
+          pid         = if ($script:labviewPidTrackerFinalState.Pid) { [int]$script:labviewPidTrackerFinalState.Pid } else { $null }
+          running     = [bool]$script:labviewPidTrackerFinalState.Running
+          observation = $script:labviewPidTrackerFinalState.Observation
+        }
+        if ($script:labviewPidTrackerFinalizedSource) { $finalBlock['finalizedSource'] = $script:labviewPidTrackerFinalizedSource }
+        if ($script:labviewPidTrackerFinalizedContext) { $finalBlock['context'] = [pscustomobject]$script:labviewPidTrackerFinalizedContext }
+        $trackerPayload['final'] = [pscustomobject]$finalBlock
+      }
+      Add-Member -InputObject $jsonObj -Name labviewPidTracker -MemberType NoteProperty -Value ([pscustomobject]$trackerPayload)
+    } catch {
+      Write-Warning ("Failed to append LabVIEW PID tracker summary block: {0}" -f $_.Exception.Message)
+    }
   }
 
   # Optional context enrichment (schema v1.2.0+)
