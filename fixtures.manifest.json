@@ -13,12 +13,6 @@
       "sha256": "7E2D82432A9A961DC777310B817CB63DBD3C8C3B452E9059486E4B39009FF33D",
       "bytes": 17147,
       "role": "head"
-    },
-    {
-      "path": "VI1.vi",
-      "sha256": "277D6C9065DB7604BF462AD94B0063329EACC0E2D921F374ABD71DED847A2C58",
-      "bytes": 13183,
-      "role": "base"
     }
   ],
   "pair": {
