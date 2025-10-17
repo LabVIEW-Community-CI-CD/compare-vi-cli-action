@@ -13,6 +13,27 @@ function Get-JsonContent($p) {
 $validation = Get-JsonContent $ValidationJson
 $delta = Get-JsonContent $DeltaJson
 
+function Get-JsonArrayValue {
+  param(
+    [object]$Object,
+    [string]$PropertyName
+  )
+
+  if ($null -eq $Object) { return @() }
+  $prop = $Object.PSObject.Properties[$PropertyName]
+  if ($null -eq $prop) { return @() }
+
+  $value = $prop.Value
+  if ($null -eq $value) { return @() }
+  if ($value -is [System.Array]) { return $value }
+  if ($value -is [System.Collections.IEnumerable] -and -not ($value -is [string])) {
+    $buffer = @()
+    foreach ($item in $value) { $buffer += ,$item }
+    return $buffer
+  }
+  return @($value)
+}
+
 if (-not $SummaryPath) { Write-Host 'No GITHUB_STEP_SUMMARY set; printing summary instead.' }
 
 $verbose = ($env:SUMMARY_VERBOSE -eq 'true')
@@ -54,19 +75,21 @@ if ($delta) {
   } else {
     $lines += '- **Changed Categories:** _(none)_'
   }
-  $lines += ('- **New Structural Issues:** {0}' -f $delta.newStructuralIssues.Count)
+  $newIssues = Get-JsonArrayValue -Object $delta -PropertyName 'newStructuralIssues'
+  $lines += ('- **New Structural Issues:** {0}' -f $newIssues.Count)
   $lines += ('- **Will Fail:** {0}' -f $delta.willFail)
-  if ($verbose -and $delta.newStructuralIssues.Count -gt 0) {
+  if ($verbose -and $newIssues.Count -gt 0) {
     $lines += ''
     $lines += '### New Structural Issues Detail'
-    foreach ($i in $delta.newStructuralIssues) {
+    foreach ($i in $newIssues) {
       $lines += ('- {0}: baseline={1} current={2} delta={3}' -f $i.category,$i.baseline,$i.current,$i.delta)
     }
   }
-  if ($verbose -and $delta.changes.Count -gt 0) {
+  $changes = Get-JsonArrayValue -Object $delta -PropertyName 'changes'
+  if ($verbose -and $changes.Count -gt 0) {
     $lines += ''
     $lines += '### All Changes'
-    foreach ($c in $delta.changes) {
+    foreach ($c in $changes) {
       $lines += ('- {0}: {1} -> {2} (Δ {3})' -f $c.category,$c.baseline,$c.current,$c.delta)
     }
   }
