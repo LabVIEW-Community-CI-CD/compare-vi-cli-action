@@ -1351,6 +1351,42 @@ if ($limitToSingle) {
   $maxTestFilesApplied = ($MaxTestFiles -gt 0 -and $originalTestFileCount -gt $selectedTestFileCount)
 }
 
+$patternSelfTestSuppressed = $false
+$suppressPatternSelfTest = Test-EnvTruthy $env:SUPPRESS_PATTERN_SELFTEST
+if ($suppressPatternSelfTest)
+{
+  $patternSelfTestLeaf = 'Invoke-PesterTests.Patterns.Tests.ps1'
+  if (-not (Get-Variable -Name originalTestFileCount -Scope Script -ErrorAction SilentlyContinue))
+  {
+    $originalTestFileCount = $testFiles.Count
+  }
+
+  $beforeSuppressCount = $testFiles.Count
+  $testFiles = @(
+    $testFiles |
+      Where-Object { $_.Name -ne $patternSelfTestLeaf -and -not ($_.FullName -like "*${patternSelfTestLeaf}") }
+  )
+  $removedBySuppress = $beforeSuppressCount - $testFiles.Count
+  if ($removedBySuppress -gt 0)
+  {
+    $patternSelfTestSuppressed = $true
+    Write-Host (
+      "[patterns] SUPPRESS_PATTERN_SELFTEST=1 removed {0} pattern self-test file(s) from execution." -f $removedBySuppress
+    ) -ForegroundColor DarkGray
+
+    if ($limitToSingle -and $singleTestFile)
+    {
+      $singleLeaf = Split-Path -Leaf $singleTestFile
+      if ($singleLeaf -eq $patternSelfTestLeaf)
+      {
+        Write-Host '[patterns] Clearing single-test selection for pattern self-test (suppressed).' -ForegroundColor DarkGray
+        $limitToSingle = $false
+        $singleTestFile = $null
+      }
+    }
+  }
+}
+
 if (-not (Get-Variable -Name maxTestFilesApplied -ErrorAction SilentlyContinue)) {
   $maxTestFilesApplied = $false
 }
@@ -1364,6 +1400,7 @@ if ($IncludePatterns -and $IncludePatterns.Count -gt 0) { [void]$selectionReason
 if ($ExcludePatterns -and $ExcludePatterns.Count -gt 0) { [void]$selectionReasons.Add('ExcludePatterns') }
 if ($maxTestFilesApplied) { [void]$selectionReasons.Add('MaxTestFiles') }
 if ($selectedTestPaths.Count -lt $originalTestFileCount) { [void]$selectionReasons.Add('SelectionReduced') }
+if ($patternSelfTestSuppressed) { [void]$selectionReasons.Add('SuppressPatternSelfTest') }
 
 # Early exit path when zero tests discovered: emit minimal artifacts for stable downstream handling
 if ($testFiles.Count -eq 0) {

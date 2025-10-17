@@ -14,6 +14,7 @@ Describe 'Invoke-PesterTests Include/Exclude patterns' -Tag 'Unit' {
 
     $repoRoot = Resolve-Path (Join-Path $PSScriptRoot '..')
     $script:dispatcher = Join-Path $repoRoot 'Invoke-PesterTests.ps1'
+    $script:repoTestsDir = Join-Path $repoRoot 'tests'
     $fixtureTestsRootPs = Join-Path $TestDrive 'fixture-tests'
     New-Item -ItemType Directory -Force -Path $fixtureTestsRootPs | Out-Null
     $script:fixtureTestsRoot = (Resolve-Path -LiteralPath $fixtureTestsRootPs).Path
@@ -143,5 +144,41 @@ Describe "{0}" {{
     $xmlText | Should -Match 'Alpha\.Unit\.Tests\.ps1'
     $xmlText | Should -Match 'Beta\.Unit\.Tests\.ps1'
     $xmlText | Should -Not -Match 'Gamma\.Helper\.ps1'
+  }
+
+  It 'suppresses the self-test when SUPPRESS_PATTERN_SELFTEST=1 in repo context' {
+    $skipFlag = $false
+    $skipVar = Get-Variable -Name skipSelfTest -Scope Script -ErrorAction SilentlyContinue
+    if ($skipVar) { $skipFlag = [bool]$skipVar.Value }
+    if ($skipFlag) {
+      $reasonVar = Get-Variable -Name skipReason -Scope Script -ErrorAction SilentlyContinue
+      $reason = if ($reasonVar) { [string]$reasonVar.Value } else { 'Pattern self-test suppressed in nested dispatcher context' }
+      Set-ItResult -Skipped -Because $reason
+      return
+    }
+
+    if (-not $script:pwshAvailable) {
+      $reasonVar = Get-Variable -Name skipReason -Scope Script -ErrorAction SilentlyContinue
+      $reason = if ($reasonVar) { [string]$reasonVar.Value } else { 'pwsh executable not available on PATH' }
+      Set-ItResult -Skipped -Because $reason
+      return
+    }
+
+    $resultsDir = Join-Path $script:testDriveRoot 'results-suppress'
+    if (Test-Path -LiteralPath $resultsDir) {
+      Remove-Item -LiteralPath $resultsDir -Recurse -Force
+    }
+    New-Item -ItemType Directory -Force -Path $resultsDir | Out-Null
+
+    $res = Invoke-DispatcherSafe -DispatcherPath $script:dispatcher -ResultsPath $resultsDir -TestsPath $script:repoTestsDir -AdditionalArgs @('-IncludePatterns', 'Invoke-PesterTests.Patterns.Tests.ps1', '-IntegrationMode', 'exclude')
+    $res.TimedOut | Should -BeFalse
+    $res.ExitCode | Should -Be 0
+    $res.StdErr.Trim() | Should -BeNullOrEmpty
+    $res.StdOut | Should -Match 'No test files found'
+
+    $xmlPath = Join-Path $resultsDir 'pester-results.xml'
+    Test-Path $xmlPath | Should -BeTrue
+    $xmlText = Get-Content -LiteralPath $xmlPath -Raw
+    $xmlText | Should -Match 'total="0"'
   }
 }
