@@ -410,6 +410,42 @@ async function main() {
     runId = latest.id;
   }
 
+  const currentRunIdRaw = process.env.GITHUB_RUN_ID;
+  const currentRunId = currentRunIdRaw ? Number(currentRunIdRaw) : undefined;
+  const isCurrentRun = Number.isFinite(currentRunId) && currentRunId === runId;
+
+  if (isCurrentRun) {
+    // eslint-disable-next-line no-console
+    console.log(`[watcher] Run ${runId} matches current workflow; skipping self-watch to avoid deadlock.`);
+    const branch =
+      process.env.GITHUB_REF_NAME ?? process.env.GITHUB_HEAD_REF ?? process.env.GITHUB_REF ?? undefined;
+    const sha = process.env.GITHUB_SHA ?? undefined;
+    const serverUrl = process.env.GITHUB_SERVER_URL ?? 'https://github.com';
+    const htmlUrl = `${serverUrl.replace(/\/$/, '')}/${repo}/actions/runs/${runId}`;
+    const summary = buildSummary({
+      repo,
+      runId,
+      run: {
+        id: runId,
+        head_branch: branch,
+        head_sha: sha,
+        html_url: htmlUrl,
+        display_title: process.env.GITHUB_WORKFLOW ?? undefined,
+      },
+      jobs: [],
+      status: 'skipped',
+      conclusion: 'success',
+    });
+
+    if (args.out) {
+      const outPath = resolve(process.cwd(), args.out as string);
+      mkdirSync(dirname(outPath), { recursive: true });
+      writeFileSync(outPath, `${JSON.stringify(summary, null, 2)}\n`, 'utf8');
+    }
+
+    return;
+  }
+
   try {
     const summary = await watchRun(
       repo,
