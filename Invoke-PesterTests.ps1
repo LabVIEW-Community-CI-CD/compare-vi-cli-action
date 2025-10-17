@@ -183,6 +183,7 @@ $script:labviewPidTrackerFinalized = $false
 $script:labviewPidTrackerFinalizedSource = $null
 $script:labviewPidTrackerFinalizedContext = $null
 $script:labviewPidTrackerFinalizedContextSource = $null
+$script:labviewPidTrackerFinalizedContextDetail = $null
 
 function _Normalize-LabVIEWPidContext {
   param([object]$Value)
@@ -207,17 +208,36 @@ function _Normalize-LabVIEWPidContext {
     } catch {}
   }
 
-  if ($Value -is [System.Collections.IDictionary]) {
+  $normalizeDictionary = $null
+  $normalizeValue = $null
+
+  $normalizeDictionary = {
+    param([object]$InputValue)
+
     $pairs = @()
-    foreach ($key in $Value.Keys) {
-      if ($null -eq $key) { continue }
-      try {
-        $name = [string]$key
-      } catch {
-        continue
+    if ($InputValue -is [System.Collections.IDictionary]) {
+      foreach ($key in $InputValue.Keys) {
+        if ($null -eq $key) { continue }
+        try {
+          $name = [string]$key
+        } catch {
+          continue
+        }
+        $pairs += [pscustomobject]@{ Name = $name; Value = $InputValue[$key] }
       }
-      $pairs += [pscustomobject]@{ Name = $name; Value = $Value[$key] }
+    } else {
+      try {
+        $pairs = @($InputValue.PSObject.Properties | ForEach-Object {
+            if ($null -ne $_) {
+              [pscustomobject]@{ Name = $_.Name; Value = $_.Value }
+            }
+          })
+      } catch {
+        $pairs = @()
+      }
     }
+
+    if (-not $pairs -or $pairs.Count -eq 0) { return $null }
 
     $ordered = [ordered]@{}
     $orderedPairs = $pairs |
@@ -226,15 +246,37 @@ function _Normalize-LabVIEWPidContext {
 
     foreach ($pair in $orderedPairs) {
       if ($ordered.Contains($pair.Name)) { continue }
-      $ordered[$pair.Name] = $pair.Value
+      $ordered[$pair.Name] = & $normalizeValue $pair.Value
     }
 
-    if ($ordered.Count -gt 0) { return [pscustomobject]$ordered }
-    return $null
+    if ($ordered.Count -eq 0) { return $null }
+    return [pscustomobject]$ordered
   }
 
-  if ($Value -is [pscustomobject]) { return $Value }
-  return $Value
+  $normalizeValue = {
+    param([object]$InputValue)
+
+    if ($null -eq $InputValue) { return $null }
+    if ($InputValue -is [System.Collections.IDictionary]) { return & $normalizeDictionary $InputValue }
+    if ($InputValue -is [pscustomobject]) { return & $normalizeDictionary $InputValue }
+
+    $isEnumerable = $false
+    if ($InputValue -is [System.Collections.IEnumerable] -and -not ($InputValue -is [string])) {
+      if (-not ($InputValue -is [System.Collections.IDictionary])) { $isEnumerable = $true }
+    }
+
+    if ($isEnumerable) {
+      $items = @()
+      foreach ($item in $InputValue) {
+        $items += ,(& $normalizeValue $item)
+      }
+      return @($items)
+    }
+
+    return $InputValue
+  }
+
+  return & $normalizeValue $Value
 }
 
 function _Finalize-LabVIEWPidTracker {
@@ -266,12 +308,19 @@ function _Finalize-LabVIEWPidTracker {
     if ($final -and $final.PSObject.Properties['Context'] -and $final.Context) {
       $script:labviewPidTrackerFinalizedContext = _Normalize-LabVIEWPidContext -Value $final.Context
       $script:labviewPidTrackerFinalizedContextSource = 'tracker'
+      if ($final.PSObject.Properties['ContextSource'] -and $final.ContextSource) {
+        $script:labviewPidTrackerFinalizedContextDetail = [string]$final.ContextSource
+      } else {
+        $script:labviewPidTrackerFinalizedContextDetail = $Source
+      }
     } elseif ($PSBoundParameters.ContainsKey('Context') -and $null -ne $Context) {
       $script:labviewPidTrackerFinalizedContext = _Normalize-LabVIEWPidContext -Value $Context
       $script:labviewPidTrackerFinalizedContextSource = $Source
+      $script:labviewPidTrackerFinalizedContextDetail = $Source
     } else {
       $script:labviewPidTrackerFinalizedContext = $null
       $script:labviewPidTrackerFinalizedContextSource = $null
+      $script:labviewPidTrackerFinalizedContextDetail = $null
     }
     return $final
   } catch {
@@ -953,6 +1002,7 @@ if ($labviewPidTrackerLoaded) {
   $script:labviewPidTrackerFinalizedSource = $null
   $script:labviewPidTrackerFinalizedContext = $null
   $script:labviewPidTrackerFinalizedContextSource = $null
+  $script:labviewPidTrackerFinalizedContextDetail = $null
   try {
     $script:labviewPidTrackerState = Start-LabVIEWPidTracker -TrackerPath $trackerPath -Source 'dispatcher:init'
     if ($script:labviewPidTrackerState) {
@@ -2393,6 +2443,11 @@ if ($env:GITHUB_STEP_SUMMARY -and -not $DisableStepSummary) {
       if ($script:labviewPidTrackerFinalState -and $script:labviewPidTrackerFinalState.PSObject.Properties['Context'] -and $script:labviewPidTrackerFinalState.Context) {
         $finalContext = _Normalize-LabVIEWPidContext -Value $script:labviewPidTrackerFinalState.Context
         $contextSource = 'tracker'
+        if ($script:labviewPidTrackerFinalState.PSObject.Properties['ContextSource'] -and $script:labviewPidTrackerFinalState.ContextSource) {
+          $contextDetail = [string]$script:labviewPidTrackerFinalState.ContextSource
+        } else {
+          $contextDetail = 'tracker'
+        }
       } elseif ($script:labviewPidTrackerFinalizedContext) {
         $finalContext = _Normalize-LabVIEWPidContext -Value $script:labviewPidTrackerFinalizedContext
         if ($script:labviewPidTrackerFinalizedContextSource) {
@@ -2400,18 +2455,34 @@ if ($env:GITHUB_STEP_SUMMARY -and -not $DisableStepSummary) {
         } else {
           $contextSource = 'cached'
         }
+        if ($script:labviewPidTrackerFinalizedContextDetail) {
+          $contextDetail = $script:labviewPidTrackerFinalizedContextDetail
+        }
       }
-      $sourceSuffix = if ($contextSource) { " ($contextSource)" } else { '' }
+      $contextLabel = $null
+      if ($contextSource -and $contextDetail -and $contextSource -ne $contextDetail) {
+        $contextLabel = " ($contextSource via $contextDetail)"
+      } elseif ($contextSource) {
+        $contextLabel = " ($contextSource)"
+      } elseif ($contextDetail) {
+        $contextLabel = " ($contextDetail)"
+      } else {
+        $contextLabel = ''
+      }
       if ($finalContext -and $finalContext.PSObject.Properties['stage']) {
         $stageValue = $finalContext.stage
-        $stepSummaryLines += ("- Final Context Stage{0}: {1}" -f $sourceSuffix,$stageValue)
+        $stepSummaryLines += ("- Final Context Stage{0}: {1}" -f $contextLabel,$stageValue)
       } elseif ($finalContext) {
         $ctxKeys = @($finalContext.PSObject.Properties.Name)
         if ($ctxKeys.Count -gt 0) {
-          $stepSummaryLines += ("- Final Context Keys{0}: {1}" -f $sourceSuffix,($ctxKeys -join ', '))
+          $stepSummaryLines += ("- Final Context Keys{0}: {1}" -f $contextLabel,($ctxKeys -join ', '))
         }
       } elseif ($contextSource) {
-        $stepSummaryLines += ("- Final Context Source: {0}" -f $contextSource)
+        if ($contextDetail -and $contextDetail -ne $contextSource) {
+          $stepSummaryLines += ("- Final Context Source: {0} (via {1})" -f $contextSource,$contextDetail)
+        } else {
+          $stepSummaryLines += ("- Final Context Source: {0}" -f $contextSource)
+        }
       }
     }
     $stepSummaryLines += ''
@@ -2604,9 +2675,15 @@ try {
         if ($script:labviewPidTrackerFinalizedSource) { $finalBlock['finalizedSource'] = $script:labviewPidTrackerFinalizedSource }
         $finalContext = $null
         $contextSource = $null
+        $contextDetail = $null
         if ($script:labviewPidTrackerFinalState.PSObject.Properties['Context'] -and $script:labviewPidTrackerFinalState.Context) {
           $finalContext = _Normalize-LabVIEWPidContext -Value $script:labviewPidTrackerFinalState.Context
           $contextSource = 'tracker'
+          if ($script:labviewPidTrackerFinalState.PSObject.Properties['ContextSource'] -and $script:labviewPidTrackerFinalState.ContextSource) {
+            $contextDetail = [string]$script:labviewPidTrackerFinalState.ContextSource
+          } else {
+            $contextDetail = 'tracker'
+          }
         } elseif ($script:labviewPidTrackerFinalizedContext) {
           $finalContext = _Normalize-LabVIEWPidContext -Value $script:labviewPidTrackerFinalizedContext
           if ($script:labviewPidTrackerFinalizedContextSource) {
@@ -2614,9 +2691,13 @@ try {
           } else {
             $contextSource = 'cached'
           }
+          if ($script:labviewPidTrackerFinalizedContextDetail) {
+            $contextDetail = $script:labviewPidTrackerFinalizedContextDetail
+          }
         }
         if ($finalContext) { $finalBlock['context'] = $finalContext }
         if ($contextSource) { $finalBlock['contextSource'] = $contextSource }
+        if ($contextDetail) { $finalBlock['contextSourceDetail'] = $contextDetail }
         $trackerPayload['final'] = [pscustomobject]$finalBlock
       }
       Add-Member -InputObject $jsonObj -Name labviewPidTracker -MemberType NoteProperty -Value ([pscustomobject]$trackerPayload)

@@ -7,38 +7,70 @@ function Resolve-LabVIEWPidContext {
   if (-not $PSBoundParameters.ContainsKey('Input')) { return $null }
   if ($null -eq $Input) { return $null }
 
-  $pairs = @()
-  if ($Input -is [System.Collections.IDictionary]) {
-    foreach ($key in $Input.Keys) {
-      if ($null -eq $key) { continue }
-      $pairs += [pscustomobject]@{ Name = [string]$key; Value = $Input[$key] }
+  $normalizeDictionary = $null
+  $normalizeValue = $null
+
+  $normalizeDictionary = {
+    param([object]$Value)
+
+    $pairs = @()
+    if ($Value -is [System.Collections.IDictionary]) {
+      foreach ($key in $Value.Keys) {
+        if ($null -eq $key) { continue }
+        $pairs += [pscustomobject]@{ Name = [string]$key; Value = $Value[$key] }
+      }
+    } else {
+      try {
+        $pairs = @($Value.PSObject.Properties | ForEach-Object {
+            if ($null -ne $_) {
+              [pscustomobject]@{ Name = $_.Name; Value = $_.Value }
+            }
+          })
+      } catch {
+        $pairs = @()
+      }
     }
-  } else {
-    try {
-      $pairs = @($Input.PSObject.Properties | ForEach-Object {
-          if ($null -ne $_) {
-            [pscustomobject]@{ Name = $_.Name; Value = $_.Value }
-          }
-        })
-    } catch {
-      $pairs = @()
+
+    if (-not $pairs -or $pairs.Count -eq 0) { return $null }
+
+    $ordered = [ordered]@{}
+    $orderedPairs = $pairs |
+      Where-Object { $_ -and $_.Name } |
+      Sort-Object -Property Name -CaseSensitive
+
+    foreach ($pair in $orderedPairs) {
+      if ($ordered.Contains($pair.Name)) { continue }
+      $ordered[$pair.Name] = & $normalizeValue $pair.Value
     }
+
+    if ($ordered.Count -eq 0) { return $null }
+    return [pscustomobject]$ordered
   }
 
-  if (-not $pairs -or $pairs.Count -eq 0) { return $null }
+  $normalizeValue = {
+    param([object]$Value)
 
-  $ordered = [ordered]@{}
-  $orderedPairs = $pairs |
-    Where-Object { $_ -and $_.Name } |
-    Sort-Object -Property Name -CaseSensitive
+    if ($null -eq $Value) { return $null }
+    if ($Value -is [System.Collections.IDictionary]) { return & $normalizeDictionary $Value }
+    if ($Value -is [pscustomobject]) { return & $normalizeDictionary $Value }
 
-  foreach ($pair in $orderedPairs) {
-    if ($ordered.Contains($pair.Name)) { continue }
-    $ordered[$pair.Name] = $pair.Value
+    $isEnumerable = $false
+    if ($Value -is [System.Collections.IEnumerable] -and -not ($Value -is [string])) {
+      if (-not ($Value -is [System.Collections.IDictionary])) { $isEnumerable = $true }
+    }
+
+    if ($isEnumerable) {
+      $items = @()
+      foreach ($item in $Value) {
+        $items += ,(& $normalizeValue $item)
+      }
+      return @($items)
+    }
+
+    return $Value
   }
 
-  if ($ordered.Count -eq 0) { return $null }
-  return [pscustomobject]$ordered
+  return & $normalizeValue $Input
 }
 
 function Start-LabVIEWPidTracker {
@@ -219,8 +251,10 @@ function Stop-LabVIEWPidTracker {
   }
 
   $contextBlock = $null
+  $contextSourceValue = $null
   if ($PSBoundParameters.ContainsKey('Context')) {
     $contextBlock = Resolve-LabVIEWPidContext -Input $Context
+    if ($contextBlock) { $contextSourceValue = $Source }
   }
 
   $observation = [ordered]@{
@@ -234,6 +268,7 @@ function Stop-LabVIEWPidTracker {
   }
   if ($contextBlock) {
     $observation['context'] = $contextBlock
+    $observation['contextSource'] = $contextSourceValue
   }
 
   $obsList = @()
@@ -254,6 +289,7 @@ function Stop-LabVIEWPidTracker {
   }
   if ($contextBlock) {
     $record['context'] = $contextBlock
+    $record['contextSource'] = $contextSourceValue
   }
 
   $dir = Split-Path -Parent $TrackerPath
@@ -268,8 +304,9 @@ function Stop-LabVIEWPidTracker {
     Pid         = $record.pid
     Running     = $running
     Reused      = $reused
-    Observation = $observation
-    Context     = $contextBlock
+    Observation  = $observation
+    Context      = $contextBlock
+    ContextSource = $contextSourceValue
   }
 }
 
