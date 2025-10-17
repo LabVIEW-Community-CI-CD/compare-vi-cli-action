@@ -48,6 +48,93 @@ function Get-AllMarkdownFiles {
   return ((& git ls-files '*.md' 2>$null) | Where-Object { $_ } | Sort-Object -Unique)
 }
 
+
+function Convert-GlobToRegex {
+  param([string]$Pattern)
+
+  if (-not $Pattern) { return $null }
+
+  $normalized = $Pattern.Replace('\', '/').Trim()
+  if (-not $normalized) { return $null }
+
+  while ($normalized.StartsWith('./')) { $normalized = $normalized.Substring(2) }
+  if ($normalized.StartsWith('/')) { $normalized = $normalized.Substring(1) }
+
+  if ($normalized.EndsWith('/')) {
+    $normalized = $normalized.TrimEnd('/')
+    if (-not $normalized) { return $null }
+    $normalized = "${normalized}/**"
+  }
+
+  $escaped = [regex]::Escape($normalized)
+  $escaped = $escaped -replace '\\*\\*', '.*'
+  $escaped = $escaped -replace '\\*', '[^/]*'
+  $escaped = $escaped -replace '\\?', '[^/]'
+
+  $regexPattern = "^${escaped}$"
+  return [System.Text.RegularExpressions.Regex]::new($regexPattern, [System.Text.RegularExpressions.RegexOptions]::IgnoreCase)
+}
+
+function Get-MarkdownlintIgnorePatterns {
+  param([string]$RepoRoot)
+
+  $patterns = New-Object System.Collections.Generic.List[string]
+
+  $ignorePath = Join-Path $RepoRoot '.markdownlintignore'
+  if (Test-Path -LiteralPath $ignorePath -PathType Leaf) {
+    foreach ($line in Get-Content -LiteralPath $ignorePath) {
+      $trimmed = $line.Trim()
+      if (-not $trimmed -or $trimmed.StartsWith('#')) { continue }
+      $patterns.Add($trimmed) | Out-Null
+    }
+  }
+
+  $configPath = Join-Path $RepoRoot '.markdownlint.jsonc'
+  if (Test-Path -LiteralPath $configPath -PathType Leaf) {
+    try {
+      $raw = Get-Content -LiteralPath $configPath -Raw
+      $match = [System.Text.RegularExpressions.Regex]::Match($raw, '\"ignores\"\s*:\s*\[(?<values>[^\]]*)\]', [System.Text.RegularExpressions.RegexOptions]::Singleline)
+      if ($match.Success) {
+        foreach ($valueMatch in [System.Text.RegularExpressions.Regex]::Matches($match.Groups['values'].Value, '\"(?<item>(?:\\.|[^\"])*)\"')) {
+          $item = $valueMatch.Groups['item'].Value
+          if ($item) { $patterns.Add($item) | Out-Null }
+        }
+      }
+    } catch {
+      Write-Warning ("Failed to parse .markdownlint.jsonc ignores: {0}" -f $_.Exception.Message)
+    }
+  }
+
+  return $patterns
+}
+
+function Get-MarkdownlintIgnoreMatchers {
+  param([string]$RepoRoot)
+
+  $patterns = Get-MarkdownlintIgnorePatterns -RepoRoot $RepoRoot
+  $matchers = @()
+  foreach ($pattern in $patterns) {
+    $regex = Convert-GlobToRegex -Pattern $pattern
+    if ($regex) { $matchers += $regex }
+  }
+  return $matchers
+}
+
+function Test-MarkdownlintIgnored {
+  param(
+    [string]$Path,
+    [System.Text.RegularExpressions.Regex[]]$Matchers
+  )
+
+  if (-not $Matchers -or $Matchers.Count -eq 0) { return $false }
+
+  $relative = $Path.Replace('\', '/')
+  foreach ($matcher in $Matchers) {
+    if ($matcher.IsMatch($relative)) { return $true }
+  }
+  return $false
+}
+
 function Invoke-Markdownlint {
   param([string[]]$Files)
   $output = @()
@@ -100,6 +187,7 @@ function Invoke-Markdownlint {
 $repoRoot = Resolve-GitRoot
 Push-Location $repoRoot
 try {
+  $ignoreMatchers = Get-MarkdownlintIgnoreMatchers -RepoRoot $repoRoot
   $candidateRefs = @()
   if ($BaseRef) { $candidateRefs += $BaseRef }
   if ($env:GITHUB_BASE_SHA) { $candidateRefs += $env:GITHUB_BASE_SHA }
@@ -117,6 +205,10 @@ try {
       Get-ChangedMarkdownFiles -Base $mergeBase
     }
   )
+
+  if ($markdownFiles) {
+    $markdownFiles = $markdownFiles | Where-Object { -not (Test-MarkdownlintIgnored -Path $_ -Matchers $ignoreMatchers) }
+  }
 
   if (-not $markdownFiles -or $markdownFiles.Count -eq 0) {
     Write-Host 'No Markdown files to lint.'
