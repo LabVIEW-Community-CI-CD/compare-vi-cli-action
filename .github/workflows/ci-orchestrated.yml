@@ -152,7 +152,8 @@ jobs:
       shell: pwsh
       run: |
         $params = @()
-        if ('${{ github.ref_name }}' -eq 'main' -or '${{ github.base_ref }}' -eq 'main') {
+        $defaultBranch = '${{ github.event.repository.default_branch }}'
+        if ('${{ github.ref_name }}' -eq $defaultBranch -or '${{ github.base_ref }}' -eq $defaultBranch) {
           $params += '-FailOnWorkflowDrift'
         }
         $params += '-SkipDotnetCliBuild'

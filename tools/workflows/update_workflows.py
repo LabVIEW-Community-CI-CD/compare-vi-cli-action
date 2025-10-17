@@ -770,10 +770,10 @@ def ensure_lint_resiliency(doc, job_name: str, include_node: bool = True, markdo
     md_body = (
         "set -euo pipefail\n"
         "for i in 1 2 3; do\n"
-        "  if npm install -g markdownlint-cli; then\n"
+        "  if node tools/npm/cli.mjs install -g markdownlint-cli; then\n"
         "    break\n"
         "  else\n"
-        "    npm cache clean --force || true\n"
+        "    node tools/npm/cli.mjs cache clean --force || true\n"
         "    echo \"retry $i\"\n"
         "    sleep 2\n"
         "  fi\n"
