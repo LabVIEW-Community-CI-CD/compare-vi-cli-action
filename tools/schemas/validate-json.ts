@@ -3,9 +3,10 @@ import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { ArgumentParser } from 'argparse';
 import fg from 'fast-glob';
-import Ajv from 'ajv';
-import Ajv2020 from 'ajv/dist/2020.js';
-import addFormats from 'ajv-formats';
+import { Ajv, type ErrorObject, type ValidateFunction } from 'ajv';
+import { Ajv2020 } from 'ajv/dist/2020.js';
+import addFormatsPlugin from 'ajv-formats';
+import type { FormatsPlugin } from 'ajv-formats';
 
 interface Args {
   schema: string;
@@ -20,6 +21,18 @@ function readJson(path: string): unknown {
   } catch (err) {
     throw new Error(`Failed to parse JSON from ${path}: ${(err as Error).message}`);
   }
+}
+
+const addFormats = addFormatsPlugin as unknown as FormatsPlugin;
+
+function formatIssues(errors: readonly ErrorObject[] | null | undefined): string {
+  if (!errors || errors.length === 0) {
+    return 'Unknown validation error';
+  }
+
+  return errors
+    .map((error) => `${error.instancePath || '/'} ${error.message ?? ''}`.trim() || error.keyword)
+    .join('\n');
 }
 
 function main(): void {
@@ -50,7 +63,7 @@ function main(): void {
     : new Ajv({ allErrors: true, strict: false, allowUnionTypes: true });
   addFormats(ajv);
 
-  const validate = ajv.compile(schema as any);
+  const validate: ValidateFunction = ajv.compile(schema as Record<string, unknown>);
 
   let matched = 0;
   const globOptions: fg.Options = {
@@ -73,8 +86,8 @@ function main(): void {
       const data = readJson(file);
       const ok = validate(data);
       if (!ok) {
-        const issues = (validate.errors ?? []).map((err) => `${err.instancePath || '/'} ${err.message ?? ''}`.trim());
-        throw new Error(`Validation failed for ${file}:\n${issues.join('\n')}`);
+        const issues = formatIssues(validate.errors);
+        throw new Error(`Validation failed for ${file}:\n${issues}`);
       }
     }
   }

@@ -401,44 +401,71 @@ export const cliOperationsParameterSchema = z
   })
   .passthrough();
 
-export const cliOperationsSchema = z
-  .object({
-    schema: z.literal('comparevi-cli/operations@v1'),
-    operationCount: nonNegativeInteger,
-    operations: z
-      .array(
-        z
-          .object({
-            name: z.string().min(1),
-            parameters: z.array(cliOperationsParameterSchema).optional(),
-          })
-          .passthrough(),
-      )
-      .min(1),
-  })
-  .superRefine((value, ctx) => {
-    if (value.operationCount !== value.operations.length) {
+const ensureCountMatches = <
+  TObject extends Record<TCountKey, number> & Record<TArrayKey, readonly unknown[]>,
+  TCountKey extends keyof TObject,
+  TArrayKey extends keyof TObject
+>(
+  countKey: TCountKey,
+  arrayKey: TArrayKey,
+  message: string,
+): z.SuperRefinement<TObject> => {
+  return (value, ctx) => {
+    if (value[countKey] !== value[arrayKey].length) {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
-        message: 'operationCount must equal operations.length',
+        message,
       });
     }
-  });
+  };
+};
 
-export const cliOperationNamesSchema = z
-  .object({
-    schema: z.literal('comparevi-cli/operation-names@v1'),
-    operationCount: nonNegativeInteger,
-    names: z.array(z.string().min(1)).min(1),
-  })
-  .superRefine((value, ctx) => {
-    if (value.operationCount !== value.names.length) {
-      ctx.addIssue({
-        code: z.ZodIssueCode.custom,
-        message: 'operationCount must equal names.length',
-      });
-    }
-  });
+const cliOperationsBaseSchema = z.object({
+  schema: z.literal('comparevi-cli/operations@v1'),
+  operationCount: nonNegativeInteger,
+  operations: z
+    .array(
+      z
+        .object({
+          name: z.string().min(1),
+          parameters: z.array(cliOperationsParameterSchema).optional(),
+        })
+        .passthrough(),
+    )
+    .min(1),
+});
+
+const ensureCliOperationCountMatches = ensureCountMatches<
+  z.infer<typeof cliOperationsBaseSchema>,
+  'operationCount',
+  'operations'
+>(
+  'operationCount',
+  'operations',
+  'operationCount must equal operations.length',
+);
+
+export const cliOperationsSchema = cliOperationsBaseSchema.superRefine(ensureCliOperationCountMatches);
+
+const cliOperationNamesBaseSchema = z.object({
+  schema: z.literal('comparevi-cli/operation-names@v1'),
+  operationCount: nonNegativeInteger,
+  names: z.array(z.string().min(1)).min(1),
+});
+
+const ensureCliOperationNameCountMatches = ensureCountMatches<
+  z.infer<typeof cliOperationNamesBaseSchema>,
+  'operationCount',
+  'names'
+>(
+  'operationCount',
+  'names',
+  'operationCount must equal names.length',
+);
+
+export const cliOperationNamesSchema = cliOperationNamesBaseSchema.superRefine(
+  ensureCliOperationNameCountMatches,
+);
 
 const cliProviderBinarySchema = z
   .object({
@@ -456,50 +483,60 @@ const cliProviderSpecSchema = z
   })
   .passthrough();
 
-export const cliProvidersSchema = z
-  .object({
-    schema: z.literal('comparevi-cli/providers@v1'),
-    providerCount: nonNegativeInteger,
-    providers: z.array(cliProviderSpecSchema).min(1),
-  })
-  .superRefine((value, ctx) => {
-    if (value.providerCount !== value.providers.length) {
-      ctx.addIssue({
-        code: z.ZodIssueCode.custom,
-        message: 'providerCount must equal providers.length',
-      });
-    }
-  });
+const cliProvidersBaseSchema = z.object({
+  schema: z.literal('comparevi-cli/providers@v1'),
+  providerCount: nonNegativeInteger,
+  providers: z.array(cliProviderSpecSchema).min(1),
+});
 
-export const cliProviderSchema = z
-  .object({
-    schema: z.literal('comparevi-cli/provider@v1'),
-    providerId: z.string().min(1),
-    provider: cliProviderSpecSchema,
-  })
-  .superRefine((value, ctx) => {
-    if (value.providerId.localeCompare(value.provider.id, undefined, { sensitivity: 'accent' }) !== 0) {
-      ctx.addIssue({
-        code: z.ZodIssueCode.custom,
-        message: 'providerId must match provider.id (case-insensitive)',
-      });
-    }
-  });
+const ensureCliProviderCountMatches = ensureCountMatches<
+  z.infer<typeof cliProvidersBaseSchema>,
+  'providerCount',
+  'providers'
+>(
+  'providerCount',
+  'providers',
+  'providerCount must equal providers.length',
+);
 
-export const cliProviderNamesSchema = z
-  .object({
-    schema: z.literal('comparevi-cli/provider-names@v1'),
-    providerCount: nonNegativeInteger,
-    names: z.array(z.string().min(1)).min(1),
-  })
-  .superRefine((value, ctx) => {
-    if (value.providerCount !== value.names.length) {
-      ctx.addIssue({
-        code: z.ZodIssueCode.custom,
-        message: 'providerCount must equal names.length',
-      });
-    }
-  });
+export const cliProvidersSchema = cliProvidersBaseSchema.superRefine(ensureCliProviderCountMatches);
+
+const cliProviderBaseSchema = z.object({
+  schema: z.literal('comparevi-cli/provider@v1'),
+  providerId: z.string().min(1),
+  provider: cliProviderSpecSchema,
+});
+
+const ensureCliProviderIdMatches = ((value, ctx) => {
+  if (value.providerId.localeCompare(value.provider.id, undefined, { sensitivity: 'accent' }) !== 0) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: 'providerId must match provider.id (case-insensitive)',
+    });
+  }
+}) satisfies z.SuperRefinement<z.infer<typeof cliProviderBaseSchema>>;
+
+export const cliProviderSchema = cliProviderBaseSchema.superRefine(ensureCliProviderIdMatches);
+
+const cliProviderNamesBaseSchema = z.object({
+  schema: z.literal('comparevi-cli/provider-names@v1'),
+  providerCount: nonNegativeInteger,
+  names: z.array(z.string().min(1)).min(1),
+});
+
+const ensureCliProviderNameCountMatches = ensureCountMatches<
+  z.infer<typeof cliProviderNamesBaseSchema>,
+  'providerCount',
+  'names'
+>(
+  'providerCount',
+  'names',
+  'providerCount must equal names.length',
+);
+
+export const cliProviderNamesSchema = cliProviderNamesBaseSchema.superRefine(
+  ensureCliProviderNameCountMatches,
+);
 
 const cliArtifactFileSchema = z.object({
   path: z.string().min(1),
