@@ -1,6 +1,1 @@
 ## work
- M tests/results/_agent/handoff/local-diff.txt
- M tests/results/_agent/handoff/local-status.txt
- M tests/results/teststand-session/compare/compare-events.ndjson
- D tests/results/teststand-session/compare/lvcompare-capture.json
- M tests/results/teststand-session/session-index.json
