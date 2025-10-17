@@ -68,6 +68,8 @@ Describe 'Pester Summary Schema' {
   $json.labviewPidTracker.final.observation.reused | Should -BeOfType [bool]
   $json.labviewPidTracker.final.context.stage | Should -Be 'post-summary'
   $json.labviewPidTracker.final.reused | Should -BeOfType [bool]
+  ($json.labviewPidTracker.final.PSObject.Properties.Name -contains 'contextSource') | Should -BeTrue
+  $json.labviewPidTracker.final.contextSource | Should -Match '^(tracker|cached|dispatcher(:.+)?)$'
   # Context blocks should be absent by default (no -EmitContext)
   ($json.PSObject.Properties.Name -contains 'environment') | Should -BeFalse
   ($json.PSObject.Properties.Name -contains 'run') | Should -BeFalse
