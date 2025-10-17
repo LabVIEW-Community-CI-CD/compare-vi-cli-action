@@ -717,13 +717,13 @@ function ConvertTo-HtmlReport {
         elseif ($compareCapturePathValue) { $rows += "<dt>Capture</dt><dd>$(& $encode $compareCapturePathValue)</dd>" }
         if ($artifactsReportSize -ne $null) { $rows += "<dt>CLI Report Size</dt><dd>$(& $encode $artifactsReportSize) bytes</dd>" }
         if ($artifactsImageCount -ne $null) {
-          $imgSummary = "$artifactsImageCount"
-          if ($artifactsExportDir) {
-            $imgSummary = "$artifactsImageCount (export: $artifactsExportDir)"
+          $rows += "<dt>CLI Images</dt><dd>$(& $encode (if ($artifactsExportDir) {
+            '{0} (export: {1})' -f $artifactsImageCount, $artifactsExportDir
           } elseif ($compareReportPathValue) {
-            $imgSummary = "$artifactsImageCount (report: $compareReportPathValue)"
-          }
-          $rows += "<dt>CLI Images</dt><dd>$(& $encode $imgSummary)</dd>"
+            '{0} (report: {1})' -f $artifactsImageCount, $compareReportPathValue
+          } else {
+            '{0}' -f $artifactsImageCount
+          }))</dd>"
         } elseif ($artifactsExportDir) {
           $rows += "<dt>CLI Images</dt><dd>$(& $encode ('export: ' + $artifactsExportDir))</dd>"
         } elseif ($compareReportPathValue) {
