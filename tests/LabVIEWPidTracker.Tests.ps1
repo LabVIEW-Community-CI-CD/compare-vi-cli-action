@@ -87,6 +87,7 @@ Describe 'LabVIEWPidTracker module' -Tag 'Unit' {
     $final = Stop-LabVIEWPidTracker -TrackerPath $tracker -Pid $init.Pid -Source 'test:final'
     $final.Pid | Should -Be 3210
     $final.Running | Should -BeTrue
+    $final.Reused | Should -BeFalse
 
     $json = Get-Content -LiteralPath $tracker -Raw | ConvertFrom-Json -Depth 6
     $json.running | Should -BeTrue
@@ -107,9 +108,29 @@ Describe 'LabVIEWPidTracker module' -Tag 'Unit' {
     $final.Pid | Should -Be 777
     $final.Observation.context.stage | Should -Be 'unit-test'
     $final.Observation.context.total | Should -Be 5
+    $final.Context.stage | Should -Be 'unit-test'
 
     $json = Get-Content -LiteralPath $tracker -Raw | ConvertFrom-Json -Depth 6
     $json.context.stage | Should -Be 'unit-test'
     $json.observations[-1].context.failed | Should -Be 1
+  }
+
+  It 'normalizes PSCustomObject context blocks' {
+    $tracker = Join-Path $TestDrive 'labview.json'
+    $proc = [pscustomobject]@{ Id = 888; ProcessName = 'LabVIEW'; StartTime = (Get-Date).AddMinutes(-4) }
+
+    Mock -CommandName Get-Process -ParameterFilter { $Name -eq 'LabVIEW' } -MockWith { @($proc) }
+    Mock -CommandName Get-Process -ParameterFilter { $Id -eq 888 } -MockWith { $proc }
+
+    $init = Start-LabVIEWPidTracker -TrackerPath $tracker -Source 'test:init'
+    $context = [pscustomobject]@{ stage = 'psco'; detail = 'example' }
+
+    $final = Stop-LabVIEWPidTracker -TrackerPath $tracker -Pid $init.Pid -Source 'test:psco' -Context $context
+    $final.Context.stage | Should -Be 'psco'
+    $final.Context.detail | Should -Be 'example'
+
+    $json = Get-Content -LiteralPath $tracker -Raw | ConvertFrom-Json -Depth 6
+    $json.context.stage | Should -Be 'psco'
+    $json.observations[-1].context.detail | Should -Be 'example'
   }
 }

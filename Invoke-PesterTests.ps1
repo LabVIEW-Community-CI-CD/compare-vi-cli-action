@@ -179,7 +179,7 @@ $script:labviewPidTrackerFinalizedContext = $null
 
 function _Finalize-LabVIEWPidTracker {
   param(
-    [System.Collections.IDictionary]$Context,
+    [object]$Context,
     [string]$Source = 'dispatcher:final'
   )
 
@@ -197,13 +197,34 @@ function _Finalize-LabVIEWPidTracker {
       $pidForFinal = $script:labviewPidTrackerState.Pid
     }
     if ($pidForFinal) { $args['Pid'] = $pidForFinal }
-    if ($Context -and $Context.Count -gt 0) { $args['Context'] = $Context }
+    if ($PSBoundParameters.ContainsKey('Context') -and $null -ne $Context) { $args['Context'] = $Context }
 
     $final = Stop-LabVIEWPidTracker @args
     $script:labviewPidTrackerFinalState = $final
     $script:labviewPidTrackerFinalized = $true
     $script:labviewPidTrackerFinalizedSource = $Source
-    if ($Context) { $script:labviewPidTrackerFinalizedContext = $Context }
+    if ($final -and $final.PSObject.Properties['Context'] -and $final.Context) {
+      $script:labviewPidTrackerFinalizedContext = $final.Context
+    } elseif ($PSBoundParameters.ContainsKey('Context') -and $null -ne $Context) {
+      if ($Context -is [System.Collections.IDictionary]) {
+        $ctxOrdered = [ordered]@{}
+        $ctxEntries = $Context.GetEnumerator() |
+          Where-Object { $_ -and $_.Key -ne $null } |
+          Sort-Object -Property Key -CaseSensitive
+
+        foreach ($entry in $ctxEntries) {
+          $name = $entry.Key.ToString()
+          if (-not $ctxOrdered.Contains($name)) {
+            $ctxOrdered[$name] = $entry.Value
+          }
+        }
+        $script:labviewPidTrackerFinalizedContext = if ($ctxOrdered.Count -gt 0) { [pscustomobject]$ctxOrdered } else { $null }
+      } else {
+        $script:labviewPidTrackerFinalizedContext = $Context
+      }
+    } else {
+      $script:labviewPidTrackerFinalizedContext = $null
+    }
     return $final
   } catch {
     Write-Warning ("LabVIEW PID tracker finalization failed: {0}" -f $_.Exception.Message)
@@ -2455,10 +2476,15 @@ try {
         $finalBlock = [ordered]@{
           pid         = if ($script:labviewPidTrackerFinalState.Pid) { [int]$script:labviewPidTrackerFinalState.Pid } else { $null }
           running     = [bool]$script:labviewPidTrackerFinalState.Running
+          reused      = if ($script:labviewPidTrackerFinalState.PSObject.Properties['Reused']) { [bool]$script:labviewPidTrackerFinalState.Reused } elseif ($script:labviewPidTrackerState -and $script:labviewPidTrackerState.PSObject.Properties['Reused']) { [bool]$script:labviewPidTrackerState.Reused } else { $null }
           observation = $script:labviewPidTrackerFinalState.Observation
         }
         if ($script:labviewPidTrackerFinalizedSource) { $finalBlock['finalizedSource'] = $script:labviewPidTrackerFinalizedSource }
-        if ($script:labviewPidTrackerFinalizedContext) { $finalBlock['context'] = [pscustomobject]$script:labviewPidTrackerFinalizedContext }
+        if ($script:labviewPidTrackerFinalState.PSObject.Properties['Context'] -and $script:labviewPidTrackerFinalState.Context) {
+          $finalBlock['context'] = $script:labviewPidTrackerFinalState.Context
+        } elseif ($script:labviewPidTrackerFinalizedContext) {
+          $finalBlock['context'] = [pscustomobject]$script:labviewPidTrackerFinalizedContext
+        }
         $trackerPayload['final'] = [pscustomobject]$finalBlock
       }
       Add-Member -InputObject $jsonObj -Name labviewPidTracker -MemberType NoteProperty -Value ([pscustomobject]$trackerPayload)

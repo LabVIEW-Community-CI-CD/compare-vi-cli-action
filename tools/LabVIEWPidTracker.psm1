@@ -1,6 +1,46 @@
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
+function Resolve-LabVIEWPidContext {
+  param([object]$Input)
+
+  if (-not $PSBoundParameters.ContainsKey('Input')) { return $null }
+  if ($null -eq $Input) { return $null }
+
+  $pairs = @()
+  if ($Input -is [System.Collections.IDictionary]) {
+    foreach ($key in $Input.Keys) {
+      if ($null -eq $key) { continue }
+      $pairs += [pscustomobject]@{ Name = [string]$key; Value = $Input[$key] }
+    }
+  } else {
+    try {
+      $pairs = @($Input.PSObject.Properties | ForEach-Object {
+          if ($null -ne $_) {
+            [pscustomobject]@{ Name = $_.Name; Value = $_.Value }
+          }
+        })
+    } catch {
+      $pairs = @()
+    }
+  }
+
+  if (-not $pairs -or $pairs.Count -eq 0) { return $null }
+
+  $ordered = [ordered]@{}
+  $orderedPairs = $pairs |
+    Where-Object { $_ -and $_.Name } |
+    Sort-Object -Property Name -CaseSensitive
+
+  foreach ($pair in $orderedPairs) {
+    if ($ordered.Contains($pair.Name)) { continue }
+    $ordered[$pair.Name] = $pair.Value
+  }
+
+  if ($ordered.Count -eq 0) { return $null }
+  return [pscustomobject]$ordered
+}
+
 function Start-LabVIEWPidTracker {
   [CmdletBinding()]
   param(
@@ -174,19 +214,8 @@ function Stop-LabVIEWPidTracker {
   }
 
   $contextBlock = $null
-  if ($PSBoundParameters.ContainsKey('Context') -and $null -ne $Context) {
-    try {
-      $ctxProps = @($Context.PSObject.Properties)
-    } catch { $ctxProps = @() }
-    if ($ctxProps.Count -gt 0) {
-      $ctxOrdered = [ordered]@{}
-      foreach ($prop in ($ctxProps | Sort-Object Name)) {
-        $ctxOrdered[$prop.Name] = $prop.Value
-      }
-      if ($ctxOrdered.Count -gt 0) {
-        $contextBlock = [pscustomobject]$ctxOrdered
-      }
-    }
+  if ($PSBoundParameters.ContainsKey('Context')) {
+    $contextBlock = Resolve-LabVIEWPidContext -Input $Context
   }
 
   $observation = [ordered]@{
@@ -237,7 +266,9 @@ function Stop-LabVIEWPidTracker {
     Path        = $TrackerPath
     Pid         = $record.pid
     Running     = $running
+    Reused      = $reused
     Observation = $observation
+    Context     = $contextBlock
   }
 }
 
