@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+import '../../shims/punycode-userland.mjs';
 import * as fs from 'node:fs';
 import path from 'node:path';
 import Ajv from 'ajv';

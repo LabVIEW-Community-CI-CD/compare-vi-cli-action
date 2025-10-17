@@ -1,3 +1,4 @@
+import '../shims/punycode-userland.js';
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { ArgumentParser } from 'argparse';
