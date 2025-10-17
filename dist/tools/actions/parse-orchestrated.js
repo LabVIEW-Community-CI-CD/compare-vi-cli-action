@@ -1,3 +1,4 @@
+import '../bootstrap/node-deprecations.js';
 function getEnv(name) {
     return process.env[name];
 }
@@ -139,4 +140,3 @@ catch (err) {
     process.stderr.write(`parse-orchestrated error: ${msg}\n`);
     process.exit(1);
 }
-export {};

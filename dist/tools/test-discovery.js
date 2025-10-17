@@ -4,6 +4,7 @@
   - Marks a file as Integration if it contains -Tag 'Integration' (loose match)
   - Emits a manifest JSON used by the dispatcher to pre-exclude Integration tests
 */
+import './bootstrap/node-deprecations.js';
 import fs from 'fs';
 import path from 'path';
 function walk(dir, acc = []) {

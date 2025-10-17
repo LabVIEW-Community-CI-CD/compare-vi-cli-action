@@ -1,3 +1,5 @@
+import '../../tools/bootstrap/node-deprecations.js';
+
 import { randomUUID } from 'node:crypto';
 import process from 'node:process';
 import { pathToFileURL } from 'node:url';

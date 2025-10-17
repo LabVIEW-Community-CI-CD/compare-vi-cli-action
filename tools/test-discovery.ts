@@ -5,6 +5,8 @@
   - Emits a manifest JSON used by the dispatcher to pre-exclude Integration tests
 */
 
+import './bootstrap/node-deprecations.js';
+
 import fs from 'fs';
 import path from 'path';
 

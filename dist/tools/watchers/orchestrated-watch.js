@@ -1,3 +1,4 @@
+import '../bootstrap/node-deprecations.js';
 import { execSync } from 'node:child_process';
 import { ArgumentParser } from 'argparse';
 import { setTimeout as sleep } from 'node:timers/promises';

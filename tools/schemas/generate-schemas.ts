@@ -1,3 +1,5 @@
+import '../bootstrap/node-deprecations.js';
+
 import { mkdir, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { zodToJsonSchema } from 'zod-to-json-schema';

@@ -1,3 +1,5 @@
+import '../bootstrap/node-deprecations.js';
+
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { ArgumentParser } from 'argparse';

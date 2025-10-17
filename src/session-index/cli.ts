@@ -1,3 +1,5 @@
+import '../../tools/bootstrap/node-deprecations.js';
+
 import { ArgumentParser } from 'argparse';
 import { writeFileSync } from 'node:fs';
 import { createSessionIndexBuilder } from './builder.js';

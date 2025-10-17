@@ -1,3 +1,5 @@
+import '../bootstrap/node-deprecations.js';
+
 export {}
 
 function getEnv(name: string): string | undefined {

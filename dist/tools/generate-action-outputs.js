@@ -1,3 +1,4 @@
+import './bootstrap/node-deprecations.js';
 import { readFileSync, mkdirSync, writeFileSync } from 'fs';
 import { dirname, join } from 'path';
 import yaml from 'js-yaml';
