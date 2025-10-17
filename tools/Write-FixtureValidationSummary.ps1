@@ -98,7 +98,20 @@ if ($delta) {
   } else {
     $lines += '- **Changed Categories:** _(none)_'
   }
+  $changeEntries = Get-JsonArrayValue -Object $delta -PropertyName 'changes'
+  $hasNewStructuralProp = $false
+  if ($null -ne $delta) {
+    $hasNewStructuralProp = $null -ne $delta.PSObject.Properties['newStructuralIssues']
+  }
   $newIssues = Get-JsonArrayValue -Object $delta -PropertyName 'newStructuralIssues'
+  if (-not $hasNewStructuralProp -and $changeEntries.Count -gt 0) {
+    $structuralCategories = 'missing','untracked','hashMismatch','manifestError','duplicate','schema'
+    $newIssues = @($changeEntries | Where-Object {
+        $_.category -in $structuralCategories -and
+        ([int]$_.baseline -eq 0) -and
+        ([int]$_.current -gt 0)
+      })
+  }
   $lines += ('- **New Structural Issues:** {0}' -f $newIssues.Count)
   $failOnNewIssues = Get-JsonBooleanValue -Object $delta -PropertyName 'failOnNewStructuralIssue'
   $willFailDefault = ($failOnNewIssues -and $newIssues.Count -gt 0)
@@ -111,11 +124,10 @@ if ($delta) {
       $lines += ('- {0}: baseline={1} current={2} delta={3}' -f $i.category,$i.baseline,$i.current,$i.delta)
     }
   }
-  $changes = Get-JsonArrayValue -Object $delta -PropertyName 'changes'
-  if ($verbose -and $changes.Count -gt 0) {
+  if ($verbose -and $changeEntries.Count -gt 0) {
     $lines += ''
     $lines += '### All Changes'
-    foreach ($c in $changes) {
+    foreach ($c in $changeEntries) {
       $lines += ('- {0}: {1} -> {2} (Δ {3})' -f $c.category,$c.baseline,$c.current,$c.delta)
     }
   }
