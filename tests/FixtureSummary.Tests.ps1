@@ -64,6 +64,8 @@ Describe 'Fixture summary script' -Tag 'Unit' {
     Set-Content -LiteralPath $validationPath -Value $validation -Encoding utf8
 
     $deltaPath = Join-Path $TestDrive 'delta.json'
+    # Intentionally omit `newStructuralIssues` and `changes` so the summary materializes them as empty arrays,
+    # and leave out `willFail` to confirm it defaults to $false when not present in the delta payload.
     $delta = @{
       schema = 'fixture-validation-delta-v1'
       baselinePath = 'baseline.json'
@@ -72,7 +74,6 @@ Describe 'Fixture summary script' -Tag 'Unit' {
       baselineOk = $true
       currentOk = $true
       deltaCounts = @{}
-      willFail = $false
     } | ConvertTo-Json -Depth 3
     Set-Content -LiteralPath $deltaPath -Value $delta -Encoding utf8
 

@@ -34,6 +34,29 @@ function Get-JsonArrayValue {
   return @($value)
 }
 
+function Get-JsonBooleanValue {
+  param(
+    [object]$Object,
+    [string]$PropertyName,
+    [bool]$Default = $false
+  )
+
+  if ($null -eq $Object) { return $Default }
+  $prop = $Object.PSObject.Properties[$PropertyName]
+  if ($null -eq $prop) { return $Default }
+
+  $value = $prop.Value
+  if ($null -eq $value) { return $Default }
+  if ($value -is [bool]) { return $value }
+
+  try {
+    return [System.Convert]::ToBoolean($value)
+  }
+  catch {
+    return $Default
+  }
+}
+
 if (-not $SummaryPath) { Write-Host 'No GITHUB_STEP_SUMMARY set; printing summary instead.' }
 
 $verbose = ($env:SUMMARY_VERBOSE -eq 'true')
@@ -77,7 +100,8 @@ if ($delta) {
   }
   $newIssues = Get-JsonArrayValue -Object $delta -PropertyName 'newStructuralIssues'
   $lines += ('- **New Structural Issues:** {0}' -f $newIssues.Count)
-  $lines += ('- **Will Fail:** {0}' -f $delta.willFail)
+  $willFail = Get-JsonBooleanValue -Object $delta -PropertyName 'willFail'
+  $lines += ('- **Will Fail:** {0}' -f $willFail)
   if ($verbose -and $newIssues.Count -gt 0) {
     $lines += ''
     $lines += '### New Structural Issues Detail'
