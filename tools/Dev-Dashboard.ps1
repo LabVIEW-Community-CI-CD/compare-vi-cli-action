@@ -716,21 +716,18 @@ function ConvertTo-HtmlReport {
         if ($compareReportPathValue) { $rows += "<dt>Report</dt><dd>$(& $encode $compareReportPathValue)</dd>" }
         elseif ($compareCapturePathValue) { $rows += "<dt>Capture</dt><dd>$(& $encode $compareCapturePathValue)</dd>" }
         if ($artifactsReportSize -ne $null) { $rows += "<dt>CLI Report Size</dt><dd>$(& $encode $artifactsReportSize) bytes</dd>" }
-        [string]$imgLine = $null
         if ($artifactsImageCount -ne $null) {
-          $imgLine = "$artifactsImageCount"
+          $imgSummary = "$artifactsImageCount"
           if ($artifactsExportDir) {
-            $imgLine = "$artifactsImageCount (export: $artifactsExportDir)"
+            $imgSummary = "$artifactsImageCount (export: $artifactsExportDir)"
           } elseif ($compareReportPathValue) {
-            $imgLine = "$artifactsImageCount (report: $compareReportPathValue)"
+            $imgSummary = "$artifactsImageCount (report: $compareReportPathValue)"
           }
+          $rows += "<dt>CLI Images</dt><dd>$(& $encode $imgSummary)</dd>"
         } elseif ($artifactsExportDir) {
-          $imgLine = "export: $artifactsExportDir"
+          $rows += "<dt>CLI Images</dt><dd>$(& $encode ('export: ' + $artifactsExportDir))</dd>"
         } elseif ($compareReportPathValue) {
-          $imgLine = "report: $compareReportPathValue"
-        }
-        if ($imgLine) {
-          $rows += "<dt>CLI Images</dt><dd>$(& $encode $imgLine)</dd>"
+          $rows += "<dt>CLI Images</dt><dd>$(& $encode ('report: ' + $compareReportPathValue))</dd>"
         }
         if ($compareJsonPathValue) { $rows += "<dt>Outcome JSON</dt><dd>$(& $encode $compareJsonPathValue)</dd>" }
         if ($rows.Count -eq 0) { $rows += '<dt>Status</dt><dd>Available</dd>' }
