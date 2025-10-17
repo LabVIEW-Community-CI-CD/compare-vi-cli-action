@@ -19,6 +19,8 @@ shims by following this contract so behaviour remains consistent across reposito
 - Invoke the appropriate exported function (`Invoke-LVOperation` or one of the typed helpers such as
   `Invoke-LVCreateComparisonReport`) and return its result.
 - Surface warnings and errors emitted by the abstraction without rewriting diagnostic text.
+- Call `Get-LabVIEWCliPidTracker` when downstream tooling needs the current tracker payload outside of
+  the operation result (for example, to enrich step summaries or additional JSON artifacts).
 
 ## Reference Implementation
 
