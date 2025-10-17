@@ -115,16 +115,56 @@ function buildSummary(params: {
   };
 }
 
+function parseGitRemoteUrl(remoteUrl: string | null | undefined): string | null {
+  if (!remoteUrl) {
+    return null;
+  }
+
+  const trimmed = remoteUrl.trim();
+  if (!trimmed) {
+    return null;
+  }
+
+  const sanitized = trimmed.replace(/^git\+/i, '');
+  const stripGitSuffix = (slug: string) => slug.replace(/\.git$/i, '');
+
+  const sshMatch = sanitized.match(/^git@[^:]+:(.+)$/i);
+  if (sshMatch) {
+    return stripGitSuffix(sshMatch[1]);
+  }
+
+  try {
+    const parsed = new URL(sanitized);
+    if (parsed.hostname && parsed.pathname) {
+      const slug = parsed.pathname.replace(/^\/+/, '');
+      if (slug) {
+        return stripGitSuffix(slug);
+      }
+    }
+  } catch {
+    // Ignore invalid URLs and fall back to heuristic handling below.
+  }
+
+  if (/^[^/]+\/[\w.-]+$/i.test(trimmed)) {
+    return stripGitSuffix(trimmed);
+  }
+
+  return null;
+}
+
 function resolveRepo(): string {
   const fromEnv = process.env.GITHUB_REPOSITORY;
   if (fromEnv) {
-    return fromEnv;
+    const cleaned = fromEnv.trim();
+    if (cleaned) {
+      return cleaned;
+    }
   }
   try {
     const remote = execSync('git config --get remote.origin.url', { encoding: 'utf8' }).trim();
-    if (remote.endsWith('.git')) {
-      const clean = remote.slice(0, -4);
-      return clean.split(':').pop()?.split('/github.com/').pop() ?? clean;
+    const parsed = parseGitRemoteUrl(remote);
+    if (parsed) {
+      return parsed;
     }
     return remote.split(':').pop() ?? remote;
   } catch (err) {
@@ -233,8 +273,10 @@ async function fetchJson<T>(url: string, token?: string): Promise<T> {
 }
 
 async function findLatestRun(repo: string, workflow: string, branch: string, token?: string): Promise<WorkflowRun | undefined> {
-  const url = `https://api.github.com/repos/${repo}/actions/workflows/${encodeURIComponent(workflow)}/runs?branch=${encodeURIComponent(branch)}&per_page=5`;
-  const data = await fetchJson<{ workflow_runs: WorkflowRun[] }>(url, token);
+  const url = new URL(`https://api.github.com/repos/${repo}/actions/workflows/${encodeURIComponent(workflow)}/runs`);
+  url.searchParams.set('branch', branch);
+  url.searchParams.set('per_page', '5');
+  const data = await fetchJson<{ workflow_runs: WorkflowRun[] }>(url.toString(), token);
   return data.workflow_runs?.[0];
 }
 
@@ -264,8 +306,8 @@ async function watchRun(
 
   while (true) {
     try {
-      const runUrl = `https://api.github.com/repos/${repo}/actions/runs/${runId}`;
-      latestRun = await fetchJson<WorkflowRun>(runUrl, token);
+      const runUrl = new URL(`https://api.github.com/repos/${repo}/actions/runs/${runId}`);
+      latestRun = await fetchJson<WorkflowRun>(runUrl.toString(), token);
 
       const title = latestRun.display_title ?? `Run ${latestRun.id}`;
       const status = latestRun.status ?? 'unknown';
@@ -286,8 +328,9 @@ async function watchRun(
     console.log(`URL: ${latestRun.html_url}`);
       }
 
-      const jobsUrl = `https://api.github.com/repos/${repo}/actions/runs/${runId}/jobs?per_page=100`;
-      const jobsResp = await fetchJson<WorkflowJobsResponse>(jobsUrl, token);
+      const jobsUrl = new URL(`https://api.github.com/repos/${repo}/actions/runs/${runId}/jobs`);
+      jobsUrl.searchParams.set('per_page', '100');
+      const jobsResp = await fetchJson<WorkflowJobsResponse>(jobsUrl.toString(), token);
       latestJobs = jobsResp.jobs ?? [];
       if (latestJobs.length) {
         // eslint-disable-next-line no-console
@@ -421,7 +464,8 @@ async function main() {
       process.env.GITHUB_REF_NAME ?? process.env.GITHUB_HEAD_REF ?? process.env.GITHUB_REF ?? undefined;
     const sha = process.env.GITHUB_SHA ?? undefined;
     const serverUrl = process.env.GITHUB_SERVER_URL ?? 'https://github.com';
-    const htmlUrl = `${serverUrl.replace(/\/$/, '')}/${repo}/actions/runs/${runId}`;
+    const baseUrl = serverUrl.endsWith('/') ? serverUrl : `${serverUrl}/`;
+    const htmlUrl = new URL(`${repo}/actions/runs/${runId}`, baseUrl).toString();
     const summary = buildSummary({
       repo,
       runId,
