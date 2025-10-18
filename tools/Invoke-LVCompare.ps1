@@ -376,7 +376,8 @@ function Invoke-LabVIEWCLICompare {
     [Parameter(Mandatory)][string]$Base,
     [Parameter(Mandatory)][string]$Head,
     [Parameter(Mandatory)][string]$OutDir,
-    [switch]$RenderReport
+    [switch]$RenderReport,
+    [string[]]$Flags
   )
 
   New-DirIfMissing -Path $OutDir
@@ -396,6 +397,10 @@ function Invoke-LabVIEWCLICompare {
   if ($reportPath) {
     $invokeParams.ReportPath = $reportPath
     $invokeParams.ReportType = 'HTMLSingleFile'
+  }
+
+  if ($Flags) {
+    $invokeParams.Flags = @($Flags)
   }
 
   $cliResult = Invoke-LVCreateComparisonReport @invokeParams
@@ -538,7 +543,7 @@ Write-JsonEvent 'plan' @{
  $didCli = $false
  if (($policy -eq 'cli-only') -or $autoCli -or ($mode -eq 'labview-cli' -and $policy -ne 'lv-only')) {
    try {
-     $cliRes = Invoke-LabVIEWCLICompare -Base $BaseVi -Head $HeadVi -OutDir $OutputDir -RenderReport:$RenderReport.IsPresent
+     $cliRes = Invoke-LabVIEWCLICompare -Base $BaseVi -Head $HeadVi -OutDir $OutputDir -RenderReport:$RenderReport.IsPresent -Flags $effectiveFlags
      Write-JsonEvent 'result' @{ exitCode=$cliRes.ExitCode; seconds=$cliRes.Seconds; command=$cliRes.Command; report=(Test-Path $cliRes.ReportPath) }
      $didCli = $true
    } catch {

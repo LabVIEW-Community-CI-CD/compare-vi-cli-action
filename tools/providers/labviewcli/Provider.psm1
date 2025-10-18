@@ -83,6 +83,13 @@ function Get-LabVIEWCliArgs {
       if ($Params.ContainsKey('reportType') -and $Params.reportType) {
         $args += @('-reportType', $Params.reportType)
       }
+      if ($Params.ContainsKey('flags') -and $Params.flags) {
+        foreach ($flag in $Params.flags) {
+          if (-not [string]::IsNullOrWhiteSpace([string]$flag)) {
+            $args += [string]$flag
+          }
+        }
+      }
       return $args
     }
     'RunVI' {

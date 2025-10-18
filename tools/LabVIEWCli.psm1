@@ -754,6 +754,7 @@ function Invoke-LVCreateComparisonReport {
     [string]$ReportPath,
     [ValidateSet('HTMLSingleFile','HTML','XML','Text','Word')]
     [string]$ReportType,
+    [string[]]$Flags,
     [string]$Provider = 'auto',
     [switch]$Preview
   )
@@ -767,6 +768,9 @@ function Invoke-LVCreateComparisonReport {
   }
   if ($PSBoundParameters.ContainsKey('ReportType') -and $ReportType) {
     $params.reportType = $ReportType
+  }
+  if ($PSBoundParameters.ContainsKey('Flags') -and $Flags) {
+    $params.flags = @($Flags)
   }
   Invoke-LVOperation -Operation 'CreateComparisonReport' -Params $params -Provider $Provider -Preview:$Preview
 }

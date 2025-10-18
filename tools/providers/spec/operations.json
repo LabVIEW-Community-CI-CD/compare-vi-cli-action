@@ -85,6 +85,12 @@
           "type": "path",
           "required": false,
           "description": "Destination path for the comparison report."
+        },
+        {
+          "id": "flags",
+          "type": "array",
+          "required": false,
+          "description": "Additional LVCompare flags appended to the operation."
         }
       ]
     },
