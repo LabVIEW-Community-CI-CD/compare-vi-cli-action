@@ -9,8 +9,8 @@ Describe 'LabVIEWPidTracker module' -Tag 'Unit' {
 
   It 'writes tracker with null pid when no LabVIEW process is present' {
     $tracker = Join-Path $TestDrive 'labview.json'
-    Mock -CommandName Get-Process -ParameterFilter { $Name -eq 'LabVIEW' } -MockWith { @() }
-    Mock -CommandName Get-Process -ParameterFilter { $Id } -MockWith { throw "process not found" }
+    Mock -CommandName Get-Process -ModuleName LabVIEWPidTracker -ParameterFilter { $Name -eq 'LabVIEW' } -MockWith { @() }
+    Mock -CommandName Get-Process -ModuleName LabVIEWPidTracker -ParameterFilter { $Id } -MockWith { throw "process not found" }
 
     $result = Start-LabVIEWPidTracker -TrackerPath $tracker -Source 'test:init'
 
@@ -19,7 +19,7 @@ Describe 'LabVIEWPidTracker module' -Tag 'Unit' {
     $result.Running | Should -BeFalse
     $result.Reused | Should -BeFalse
 
-    $json = Get-Content -LiteralPath $tracker -Raw | ConvertFrom-Json -Depth 6
+    $json = Get-Content -LiteralPath $tracker -Raw | ConvertFrom-Json -Depth 12
     $json.schema | Should -Be 'labview-pid-tracker/v1'
     $json.pid | Should -BeNullOrEmpty
     $json.running | Should -BeFalse
@@ -39,8 +39,8 @@ Describe 'LabVIEWPidTracker module' -Tag 'Unit' {
     $existing | ConvertTo-Json -Depth 4 | Out-File -FilePath $tracker -Encoding utf8
 
     $procObj = [pscustomobject]@{ Id = 4242; ProcessName = 'LabVIEW'; StartTime = (Get-Date).AddMinutes(-5) }
-    Mock -CommandName Get-Process -ParameterFilter { $Name -eq 'LabVIEW' } -MockWith { @($procObj) }
-    Mock -CommandName Get-Process -ParameterFilter { $Id -eq 4242 } -MockWith { $procObj }
+    Mock -CommandName Get-Process -ModuleName LabVIEWPidTracker -ParameterFilter { $Name -eq 'LabVIEW' } -MockWith { @($procObj) }
+    Mock -CommandName Get-Process -ModuleName LabVIEWPidTracker -ParameterFilter { $Id -eq 4242 } -MockWith { $procObj }
 
     $result = Start-LabVIEWPidTracker -TrackerPath $tracker -Source 'test:init'
 
@@ -63,9 +63,9 @@ Describe 'LabVIEWPidTracker module' -Tag 'Unit' {
     $stale | ConvertTo-Json -Depth 4 | Out-File -FilePath $tracker -Encoding utf8
 
     $candidate = [pscustomobject]@{ Id = 5555; ProcessName = 'LabVIEW'; StartTime = (Get-Date).AddMinutes(-1) }
-    Mock -CommandName Get-Process -ParameterFilter { $Name -eq 'LabVIEW' } -MockWith { @($candidate) }
-    Mock -CommandName Get-Process -ParameterFilter { $Id -eq 100 } -MockWith { throw "process missing" }
-    Mock -CommandName Get-Process -ParameterFilter { $Id -eq 5555 } -MockWith { $candidate }
+    Mock -CommandName Get-Process -ModuleName LabVIEWPidTracker -ParameterFilter { $Name -eq 'LabVIEW' } -MockWith { @($candidate) }
+    Mock -CommandName Get-Process -ModuleName LabVIEWPidTracker -ParameterFilter { $Id -eq 100 } -MockWith { throw "process missing" }
+    Mock -CommandName Get-Process -ModuleName LabVIEWPidTracker -ParameterFilter { $Id -eq 5555 } -MockWith { $candidate }
 
     $result = Start-LabVIEWPidTracker -TrackerPath $tracker -Source 'test:init'
 
@@ -78,8 +78,8 @@ Describe 'LabVIEWPidTracker module' -Tag 'Unit' {
     $tracker = Join-Path $TestDrive 'labview.json'
     $proc = [pscustomobject]@{ Id = 3210; ProcessName = 'LabVIEW'; StartTime = (Get-Date).AddMinutes(-2) }
 
-    Mock -CommandName Get-Process -ParameterFilter { $Name -eq 'LabVIEW' } -MockWith { @($proc) }
-    Mock -CommandName Get-Process -ParameterFilter { $Id -eq 3210 } -MockWith { $proc }
+    Mock -CommandName Get-Process -ModuleName LabVIEWPidTracker -ParameterFilter { $Name -eq 'LabVIEW' } -MockWith { @($proc) }
+    Mock -CommandName Get-Process -ModuleName LabVIEWPidTracker -ParameterFilter { $Id -eq 3210 } -MockWith { $proc }
 
     $init = Start-LabVIEWPidTracker -TrackerPath $tracker -Source 'test:init'
     $init.Pid | Should -Be 3210
@@ -90,7 +90,7 @@ Describe 'LabVIEWPidTracker module' -Tag 'Unit' {
     $final.Reused | Should -BeFalse
     $final.Observation.reused | Should -BeFalse
 
-    $json = Get-Content -LiteralPath $tracker -Raw | ConvertFrom-Json -Depth 6
+    $json = Get-Content -LiteralPath $tracker -Raw | ConvertFrom-Json -Depth 12
     $json.running | Should -BeTrue
     ($json.observations | Measure-Object).Count | Should -BeGreaterThan 0
     $json.observations[-1].reused | Should -BeFalse
@@ -100,8 +100,8 @@ Describe 'LabVIEWPidTracker module' -Tag 'Unit' {
     $tracker = Join-Path $TestDrive 'labview.json'
     $proc = [pscustomobject]@{ Id = 777; ProcessName = 'LabVIEW'; StartTime = (Get-Date).AddMinutes(-3) }
 
-    Mock -CommandName Get-Process -ParameterFilter { $Name -eq 'LabVIEW' } -MockWith { @($proc) }
-    Mock -CommandName Get-Process -ParameterFilter { $Id -eq 777 } -MockWith { $proc }
+    Mock -CommandName Get-Process -ModuleName LabVIEWPidTracker -ParameterFilter { $Name -eq 'LabVIEW' } -MockWith { @($proc) }
+    Mock -CommandName Get-Process -ModuleName LabVIEWPidTracker -ParameterFilter { $Id -eq 777 } -MockWith { $proc }
 
     $init = Start-LabVIEWPidTracker -TrackerPath $tracker -Source 'test:init'
     $context = [ordered]@{ stage = 'unit-test'; total = 5; failed = 1; timedOut = $false }
@@ -114,7 +114,7 @@ Describe 'LabVIEWPidTracker module' -Tag 'Unit' {
     $final.Context.stage | Should -Be 'unit-test'
     $final.ContextSource | Should -Be 'test:context'
 
-    $json = Get-Content -LiteralPath $tracker -Raw | ConvertFrom-Json -Depth 6
+    $json = Get-Content -LiteralPath $tracker -Raw | ConvertFrom-Json -Depth 12
     $json.context.stage | Should -Be 'unit-test'
     $json.observations[-1].context.failed | Should -Be 1
     $json.contextSource | Should -Be 'test:context'
@@ -124,8 +124,8 @@ Describe 'LabVIEWPidTracker module' -Tag 'Unit' {
     $tracker = Join-Path $TestDrive 'labview.json'
     $proc = [pscustomobject]@{ Id = 889; ProcessName = 'LabVIEW'; StartTime = (Get-Date).AddMinutes(-6) }
 
-    Mock -CommandName Get-Process -ParameterFilter { $Name -eq 'LabVIEW' } -MockWith { @($proc) }
-    Mock -CommandName Get-Process -ParameterFilter { $Id -eq 889 } -MockWith { $proc }
+    Mock -CommandName Get-Process -ModuleName LabVIEWPidTracker -ParameterFilter { $Name -eq 'LabVIEW' } -MockWith { @($proc) }
+    Mock -CommandName Get-Process -ModuleName LabVIEWPidTracker -ParameterFilter { $Id -eq 889 } -MockWith { $proc }
 
     $init = Start-LabVIEWPidTracker -TrackerPath $tracker -Source 'test:init'
     $context = @{ zeta = 3; alpha = 1; beta = 2 }
@@ -134,7 +134,7 @@ Describe 'LabVIEWPidTracker module' -Tag 'Unit' {
     $final.Context.PSObject.Properties.Name | Should -Be @('alpha','beta','zeta')
     $final.Context.alpha | Should -Be 1
 
-    $json = Get-Content -LiteralPath $tracker -Raw | ConvertFrom-Json -Depth 6
+    $json = Get-Content -LiteralPath $tracker -Raw | ConvertFrom-Json -Depth 12
     $json.context.PSObject.Properties.Name | Should -Be @('alpha','beta','zeta')
     $json.context.alpha | Should -Be 1
     $json.observations[-1].context.beta | Should -Be 2
@@ -144,8 +144,8 @@ Describe 'LabVIEWPidTracker module' -Tag 'Unit' {
     $tracker = Join-Path $TestDrive 'labview.json'
     $proc = [pscustomobject]@{ Id = 888; ProcessName = 'LabVIEW'; StartTime = (Get-Date).AddMinutes(-4) }
 
-    Mock -CommandName Get-Process -ParameterFilter { $Name -eq 'LabVIEW' } -MockWith { @($proc) }
-    Mock -CommandName Get-Process -ParameterFilter { $Id -eq 888 } -MockWith { $proc }
+    Mock -CommandName Get-Process -ModuleName LabVIEWPidTracker -ParameterFilter { $Name -eq 'LabVIEW' } -MockWith { @($proc) }
+    Mock -CommandName Get-Process -ModuleName LabVIEWPidTracker -ParameterFilter { $Id -eq 888 } -MockWith { $proc }
 
     $init = Start-LabVIEWPidTracker -TrackerPath $tracker -Source 'test:init'
     $context = [pscustomobject]@{ stage = 'psco'; detail = 'example' }
@@ -154,7 +154,7 @@ Describe 'LabVIEWPidTracker module' -Tag 'Unit' {
     $final.Context.stage | Should -Be 'psco'
     $final.Context.detail | Should -Be 'example'
 
-    $json = Get-Content -LiteralPath $tracker -Raw | ConvertFrom-Json -Depth 6
+    $json = Get-Content -LiteralPath $tracker -Raw | ConvertFrom-Json -Depth 12
     $json.context.stage | Should -Be 'psco'
     $json.observations[-1].context.detail | Should -Be 'example'
   }
@@ -163,8 +163,8 @@ Describe 'LabVIEWPidTracker module' -Tag 'Unit' {
     $tracker = Join-Path $TestDrive 'labview.json'
     $proc = [pscustomobject]@{ Id = 4321; ProcessName = 'LabVIEW'; StartTime = (Get-Date).AddMinutes(-7) }
 
-    Mock -CommandName Get-Process -ParameterFilter { $Name -eq 'LabVIEW' } -MockWith { @($proc) }
-    Mock -CommandName Get-Process -ParameterFilter { $Id -eq 4321 } -MockWith { $proc }
+    Mock -CommandName Get-Process -ModuleName LabVIEWPidTracker -ParameterFilter { $Name -eq 'LabVIEW' } -MockWith { @($proc) }
+    Mock -CommandName Get-Process -ModuleName LabVIEWPidTracker -ParameterFilter { $Id -eq 4321 } -MockWith { $proc }
 
     $init = Start-LabVIEWPidTracker -TrackerPath $tracker -Source 'test:init'
     $context = @{ 
@@ -189,11 +189,11 @@ Describe 'LabVIEWPidTracker module' -Tag 'Unit' {
     $final.Context.buckets[0].PSObject.Properties.Name | Should -Be @('alpha','zulu')
     $final.Context.buckets[1].metrics.PSObject.Properties.Name | Should -Be @('beta','delta')
 
-    $resolved = Resolve-LabVIEWPidContext -Input $context
+    $resolved = Resolve-LabVIEWPidContext -Context $context
     $resolved.summary.details.PSObject.Properties.Name | Should -Be @('earlier','later')
     $resolved.buckets[1].metrics.delta | Should -Be 4
 
-    $json = Get-Content -LiteralPath $tracker -Raw | ConvertFrom-Json -Depth 6
+    $json = Get-Content -LiteralPath $tracker -Raw | ConvertFrom-Json -Depth 12
     $json.context.summary.details.earlier | Should -Be 'first'
     $json.context.buckets[0].alpha | Should -Be 1
     $json.contextSource | Should -Be 'test:nested'
@@ -203,7 +203,7 @@ Describe 'LabVIEWPidTracker module' -Tag 'Unit' {
     $command = Get-Command -Name Resolve-LabVIEWPidContext -ErrorAction Stop
     $command.CommandType | Should -Be 'Function'
 
-    $ordered = Resolve-LabVIEWPidContext -Input @{ bravo = 2; alpha = 1 }
+    $ordered = Resolve-LabVIEWPidContext -Context @{ bravo = 2; alpha = 1 }
     $ordered.PSObject.Properties.Name | Should -Be @('alpha','bravo')
   }
 }

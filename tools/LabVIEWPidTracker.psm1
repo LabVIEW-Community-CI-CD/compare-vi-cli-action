@@ -2,75 +2,38 @@ Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
 function Resolve-LabVIEWPidContext {
-  param([object]$Input)
+  param([object]$Context)
 
-  if (-not $PSBoundParameters.ContainsKey('Input')) { return $null }
-  if ($null -eq $Input) { return $null }
+  if (-not $PSBoundParameters.ContainsKey('Context')) { return $null }
+  if ($null -eq $Context) { return $null }
 
-  $normalizeDictionary = $null
-  $normalizeValue = $null
-
-  $normalizeDictionary = {
-    param([object]$Value)
-
-    $pairs = @()
-    if ($Value -is [System.Collections.IDictionary]) {
-      foreach ($key in $Value.Keys) {
-        if ($null -eq $key) { continue }
-        $pairs += [pscustomobject]@{ Name = [string]$key; Value = $Value[$key] }
-      }
-    } else {
-      try {
-        $pairs = @($Value.PSObject.Properties | ForEach-Object {
-            if ($null -ne $_) {
-              [pscustomobject]@{ Name = $_.Name; Value = $_.Value }
-            }
-          })
-      } catch {
-        $pairs = @()
-      }
-    }
-
-    if (-not $pairs -or $pairs.Count -eq 0) { return $null }
-
+  if ($Context -is [System.Collections.IDictionary]) {
     $ordered = [ordered]@{}
-    $orderedPairs = $pairs |
-      Where-Object { $_ -and $_.Name } |
-      Sort-Object -Property Name -CaseSensitive
-
-    foreach ($pair in $orderedPairs) {
-      if ($ordered.Contains($pair.Name)) { continue }
-      $ordered[$pair.Name] = & $normalizeValue $pair.Value
+    foreach ($key in ($Context.Keys | Where-Object { $_ -ne $null } | Sort-Object -CaseSensitive)) {
+      $ordered[[string]$key] = Resolve-LabVIEWPidContext -Context $Context[$key]
     }
-
-    if ($ordered.Count -eq 0) { return $null }
-    return [pscustomobject]$ordered
+    if ($ordered.Count -gt 0) { return [pscustomobject]$ordered }
+    return $null
   }
 
-  $normalizeValue = {
-    param([object]$Value)
-
-    if ($null -eq $Value) { return $null }
-    if ($Value -is [System.Collections.IDictionary]) { return & $normalizeDictionary $Value }
-    if ($Value -is [pscustomobject]) { return & $normalizeDictionary $Value }
-
-    $isEnumerable = $false
-    if ($Value -is [System.Collections.IEnumerable] -and -not ($Value -is [string])) {
-      if (-not ($Value -is [System.Collections.IDictionary])) { $isEnumerable = $true }
+  if ($Context -is [pscustomobject]) {
+    $ordered = [ordered]@{}
+    foreach ($prop in ($Context.PSObject.Properties | Where-Object { $_ -ne $null } | Sort-Object -Property Name -CaseSensitive)) {
+      $ordered[$prop.Name] = Resolve-LabVIEWPidContext -Context $prop.Value
     }
-
-    if ($isEnumerable) {
-      $items = @()
-      foreach ($item in $Value) {
-        $items += ,(& $normalizeValue $item)
-      }
-      return @($items)
-    }
-
-    return $Value
+    if ($ordered.Count -gt 0) { return [pscustomobject]$ordered }
+    return $null
   }
 
-  return & $normalizeValue $Input
+  if ($Context -is [System.Collections.IEnumerable] -and -not ($Context -is [string])) {
+    $list = @()
+    foreach ($item in $Context) {
+      $list += ,(Resolve-LabVIEWPidContext -Context $item)
+    }
+    return ,$list
+  }
+
+  return $Context
 }
 
 function Start-LabVIEWPidTracker {
@@ -86,7 +49,7 @@ function Start-LabVIEWPidTracker {
 
   if (Test-Path -LiteralPath $TrackerPath -PathType Leaf) {
     try {
-      $existingState = Get-Content -LiteralPath $TrackerPath -Raw | ConvertFrom-Json -Depth 6
+      $existingState = Get-Content -LiteralPath $TrackerPath -Raw | ConvertFrom-Json -Depth 12
       if ($existingState -and $existingState.PSObject.Properties['observations']) {
         $existingObservations = @($existingState.observations | Where-Object { $_ -ne $null })
       }
@@ -105,44 +68,94 @@ function Start-LabVIEWPidTracker {
 
   $trackedPid = $null
   $reused = $false
-
-  if ($existingState -and $existingState.PSObject.Properties['pid']) {
-    $candidatePid = $null
-    try { $candidatePid = [int]$existingState.pid } catch { $candidatePid = $null }
-    if ($candidatePid -and $candidatePid -gt 0) {
-      try {
-        $proc = Get-Process -Id $candidatePid -ErrorAction Stop
-        if ($proc -and $proc.ProcessName -and $proc.ProcessName -eq 'LabVIEW') {
-          $trackedPid = [int]$proc.Id
-          $reused = $true
-        }
-      } catch {}
-    }
-  }
-
-  if (-not $trackedPid -and $candidateProcesses.Count -gt 0) {
-    $selected = $null
-    try {
-      $selected = $candidateProcesses | Sort-Object StartTime | Select-Object -First 1
-    } catch {
-      if ($candidateProcesses.Count -gt 0) { $selected = $candidateProcesses[0] }
-    }
-    if ($selected) {
-      try { $trackedPid = [int]$selected.Id } catch { $trackedPid = $null }
-    }
-  }
-
   $running = $false
-  if ($trackedPid -and $trackedPid -gt 0) {
+  $processCandidates = @()
+  $candidateMap = @{}
+
+  $existingPid = $null
+  $existingRunning = $false
+  if ($existingState -and $existingState.PSObject.Properties['pid']) {
+    try { $existingPid = [int]$existingState.pid } catch { $existingPid = $null }
+  }
+  if ($existingState -and $existingState.PSObject.Properties['running']) {
+    try { $existingRunning = [bool]$existingState.running } catch { $existingRunning = $false }
+  }
+
+  if ($existingPid -and $existingPid -gt 0 -and $existingRunning) {
     try {
-      $procCheck = Get-Process -Id $trackedPid -ErrorAction Stop
-      if ($procCheck -and $procCheck.ProcessName) { $running = $true }
-    } catch { $running = $false }
+      $existingProcess = Get-Process -Id $existingPid -ErrorAction Stop
+      if ($existingProcess -and $existingProcess.ProcessName -eq 'LabVIEW') {
+        $processCandidates += ,([pscustomobject]@{
+            Process = $existingProcess
+            Reused  = $true
+          })
+        $candidateMap["$existingPid"] = $true
+      }
+    } catch {
+      $existingPid = $null
+    }
   }
 
   $candidateIds = @()
   foreach ($proc in $candidateProcesses) {
     try { $candidateIds += [int]$proc.Id } catch {}
+
+    if ($null -eq $proc) { continue }
+    $candidateId = $null
+    try { $candidateId = [int]$proc.Id } catch { $candidateId = $null }
+    if (-not $candidateId -or $candidateId -le 0) { continue }
+    if ($candidateMap.ContainsKey("$candidateId")) { continue }
+
+    $candidateEntry = [pscustomobject]@{
+      Process = $proc
+      Reused  = $false
+    }
+    $processCandidates += ,$candidateEntry
+    $candidateMap["$candidateId"] = $true
+  }
+
+  if ($processCandidates.Count -gt 0) {
+    $reusePref = @()
+    $freshPref = @()
+    foreach ($entry in $processCandidates) {
+      if ($entry.Reused) {
+        $reusePref += ,$entry
+      } else {
+        $freshPref += ,$entry
+      }
+    }
+
+    if ($freshPref.Count -gt 1) {
+      try {
+        $freshPref = @(
+          $freshPref | Sort-Object -Property @{ Expression = { $_.Process.StartTime } }
+        )
+      } catch {
+        $freshPref = @($freshPref)
+      }
+    }
+
+    $processCandidates = @($reusePref + $freshPref)
+  }
+
+  foreach ($candidate in $processCandidates) {
+    if (-not $candidate -or -not $candidate.Process) { continue }
+
+    $candidatePid = $null
+    try { $candidatePid = [int]$candidate.Process.Id } catch { $candidatePid = $null }
+    if (-not $candidatePid -or $candidatePid -le 0) { continue }
+
+    try {
+      $procCheck = Get-Process -Id $candidatePid -ErrorAction Stop
+      if ($procCheck -and $procCheck.ProcessName -eq 'LabVIEW') {
+        $trackedPid = $candidatePid
+        $running = $true
+        $reused = [bool]$candidate.Reused
+        break
+      }
+    } catch {
+      continue
+    }
   }
 
   $note = if ($trackedPid) {
@@ -186,7 +199,7 @@ function Start-LabVIEWPidTracker {
     observations = $obsList
   }
 
-  $record | ConvertTo-Json -Depth 6 | Out-File -FilePath $TrackerPath -Encoding utf8
+  $record | ConvertTo-Json -Depth 12 | Out-File -FilePath $TrackerPath -Encoding utf8
 
   return [pscustomobject]@{
     Path        = $TrackerPath
@@ -213,7 +226,7 @@ function Stop-LabVIEWPidTracker {
 
   if (Test-Path -LiteralPath $TrackerPath -PathType Leaf) {
     try {
-      $state = Get-Content -LiteralPath $TrackerPath -Raw | ConvertFrom-Json -Depth 6
+      $state = Get-Content -LiteralPath $TrackerPath -Raw | ConvertFrom-Json -Depth 12
       if ($state -and $state.PSObject.Properties['observations']) {
         $existingObservations = @($state.observations | Where-Object { $_ -ne $null })
       }
@@ -232,11 +245,22 @@ function Stop-LabVIEWPidTracker {
   }
 
   $running = $false
+  $reused = $false
+  if ($state -and $state.PSObject.Properties['reused']) {
+    try { $reused = [bool]$state.reused } catch { $reused = $false }
+  }
+
   if ($trackedPid -and $trackedPid -gt 0) {
     try {
       $procCheck = Get-Process -Id $trackedPid -ErrorAction Stop
       if ($procCheck -and $procCheck.ProcessName) { $running = $true }
-    } catch { $running = $false }
+    } catch {
+      $running = $false
+      if ($reused) {
+        $trackedPid = $null
+        $reused = $false
+      }
+    }
   }
 
   $note = if ($trackedPid) {
@@ -245,15 +269,10 @@ function Stop-LabVIEWPidTracker {
     'no-tracked-pid'
   }
 
-  $reused = $false
-  if ($state -and $state.PSObject.Properties['reused']) {
-    try { $reused = [bool]$state.reused } catch { $reused = $false }
-  }
-
   $contextBlock = $null
   $contextSourceValue = $null
   if ($PSBoundParameters.ContainsKey('Context')) {
-    $contextBlock = Resolve-LabVIEWPidContext -Input $Context
+    $contextBlock = Resolve-LabVIEWPidContext -Context $Context
     if ($contextBlock) { $contextSourceValue = $Source }
   }
 
@@ -297,7 +316,7 @@ function Stop-LabVIEWPidTracker {
     New-Item -ItemType Directory -Force -Path $dir | Out-Null
   }
 
-  $record | ConvertTo-Json -Depth 6 | Out-File -FilePath $TrackerPath -Encoding utf8
+  $record | ConvertTo-Json -Depth 12 | Out-File -FilePath $TrackerPath -Encoding utf8
 
   return [pscustomobject]@{
     Path        = $TrackerPath
