@@ -3,6 +3,8 @@ import assert from 'node:assert/strict';
 
 import { resolveProxyUrl, shouldBypassProxy } from '../sync-standing-priority.mjs';
 
+const EMPTY = process.platform === 'win32' ? undefined : '';
+
 async function withEnv(overrides, fn) {
   const keys = Object.keys(overrides);
   const previous = new Map();
@@ -37,14 +39,14 @@ async function withEnv(overrides, fn) {
 test('resolveProxyUrl selects HTTPS proxy when available', async () => {
   await withEnv(
     {
+      https_proxy: EMPTY,
       HTTPS_PROXY: 'http://proxy.example:8443',
-      https_proxy: '',
+      http_proxy: EMPTY,
       HTTP_PROXY: '',
-      http_proxy: '',
+      all_proxy: EMPTY,
       ALL_PROXY: '',
-      all_proxy: '',
-      NO_PROXY: '',
-      no_proxy: ''
+      no_proxy: EMPTY,
+      NO_PROXY: ''
     },
     () => {
       assert.equal(resolveProxyUrl('https://api.github.com'), 'http://proxy.example:8443');
@@ -56,14 +58,14 @@ test('resolveProxyUrl selects HTTPS proxy when available', async () => {
 test('resolveProxyUrl falls back to HTTP proxy for HTTPS when needed', async () => {
   await withEnv(
     {
+      https_proxy: EMPTY,
       HTTPS_PROXY: '',
-      https_proxy: '',
+      http_proxy: EMPTY,
       HTTP_PROXY: 'http://proxy.example:8080',
-      http_proxy: '',
+      all_proxy: EMPTY,
       ALL_PROXY: '',
-      all_proxy: '',
-      NO_PROXY: '',
-      no_proxy: ''
+      no_proxy: EMPTY,
+      NO_PROXY: ''
     },
     () => {
       assert.equal(resolveProxyUrl('https://api.github.com'), 'http://proxy.example:8080');
@@ -75,12 +77,12 @@ test('resolveProxyUrl falls back to HTTP proxy for HTTPS when needed', async () 
 test('resolveProxyUrl respects NO_PROXY patterns and wildcards', async () => {
   await withEnv(
     {
+      https_proxy: EMPTY,
       HTTPS_PROXY: 'http://proxy.example:8443',
-      https_proxy: '',
+      http_proxy: EMPTY,
       HTTP_PROXY: '',
-      http_proxy: '',
-      NO_PROXY: '.github.com,localhost',
-      no_proxy: ''
+      no_proxy: EMPTY,
+      NO_PROXY: '.github.com,localhost'
     },
     () => {
       assert.equal(resolveProxyUrl('https://api.github.com'), null);
@@ -90,6 +92,7 @@ test('resolveProxyUrl respects NO_PROXY patterns and wildcards', async () => {
 
   await withEnv(
     {
+      no_proxy: EMPTY,
       HTTPS_PROXY: 'http://proxy.example:8443',
       NO_PROXY: '*'
     },
