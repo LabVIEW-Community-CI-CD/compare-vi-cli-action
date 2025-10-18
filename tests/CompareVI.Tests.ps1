@@ -38,7 +38,7 @@ Describe 'Invoke-CompareVI core behavior' -Tag 'Unit' {
     }
 
     # Mock Resolve-Cli to return canonical path without checking if it exists
-    Mock -CommandName Resolve-Cli -MockWith { param($Explicit) return $script:canonical }
+    Mock -CommandName Resolve-Cli -MockWith { param($Explicit,$PreferredBitness) return $script:canonical }
 
     $script:a = $a; $script:b = $b; $script:vis = $vis; $script:mockExecutor = $mockExecutor
   }
@@ -129,6 +129,42 @@ Describe 'Resolve-Cli canonical path enforcement' -Tag 'Unit' {
     $fakePath = Join-Path $TestDrive 'LVCompare.exe'
     New-Item -ItemType File -Path $fakePath -Force | Out-Null
     { Invoke-CompareVI -Base $a -Head $b -LvComparePath $fakePath -FailOnDiff:$false -Executor $mockExecutor } | Should -Throw -ExpectedMessage '*canonical*'
+  }
+
+  It 'prefers x86 candidate when LVCOMPARE_BITNESS requests 32-bit' {
+    $x64Path = Join-Path $TestDrive 'Program Files\National Instruments\Shared\LabVIEW Compare\LVCompare.exe'
+    $x86Path = Join-Path $TestDrive 'Program Files (x86)\National Instruments\Shared\LabVIEW Compare\LVCompare.exe'
+    [System.IO.Directory]::CreateDirectory((Split-Path $x64Path)) | Out-Null
+    [System.IO.Directory]::CreateDirectory((Split-Path $x86Path)) | Out-Null
+    New-Item -ItemType File -Path $x64Path -Force | Out-Null
+    New-Item -ItemType File -Path $x86Path -Force | Out-Null
+    Mock -CommandName Get-CanonicalCliCandidates -MockWith { @($x64Path, $x86Path) }
+    $oldPref = $env:LVCOMPARE_BITNESS
+    try {
+      $env:LVCOMPARE_BITNESS = 'x86'
+      $resolved = Resolve-Cli
+      $resolved | Should -Be ([System.IO.Path]::GetFullPath($x86Path))
+    } finally {
+      if ($null -eq $oldPref) { Remove-Item Env:LVCOMPARE_BITNESS -ErrorAction SilentlyContinue } else { $env:LVCOMPARE_BITNESS = $oldPref }
+    }
+  }
+
+  It 'allows PreferredBitness parameter to override environment selection' {
+    $x64Path = Join-Path $TestDrive 'Program Files\National Instruments\Shared\LabVIEW Compare\LVCompare.exe'
+    $x86Path = Join-Path $TestDrive 'Program Files (x86)\National Instruments\Shared\LabVIEW Compare\LVCompare.exe'
+    [System.IO.Directory]::CreateDirectory((Split-Path $x64Path)) | Out-Null
+    [System.IO.Directory]::CreateDirectory((Split-Path $x86Path)) | Out-Null
+    New-Item -ItemType File -Path $x64Path -Force | Out-Null
+    New-Item -ItemType File -Path $x86Path -Force | Out-Null
+    Mock -CommandName Get-CanonicalCliCandidates -MockWith { @($x86Path, $x64Path) }
+    $oldPref = $env:LVCOMPARE_BITNESS
+    try {
+      $env:LVCOMPARE_BITNESS = 'x86'
+      $resolved = Resolve-Cli -PreferredBitness 'x64'
+      $resolved | Should -Be ([System.IO.Path]::GetFullPath($x64Path))
+    } finally {
+      if ($null -eq $oldPref) { Remove-Item Env:LVCOMPARE_BITNESS -ErrorAction SilentlyContinue } else { $env:LVCOMPARE_BITNESS = $oldPref }
+    }
   }
 
   It 'rejects LVCOMPARE_PATH when non-canonical' {

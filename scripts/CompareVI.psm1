@@ -53,13 +53,42 @@ function Get-CanonicalCliCandidates {
 
 function Resolve-Cli {
   param(
-    [string]$Explicit
+    [string]$Explicit,
+    [ValidateSet('Auto','x64','x86')] [string]$PreferredBitness = 'Auto'
   )
+  $preference = $PreferredBitness
+  if ($preference -eq 'Auto' -and $env:LVCOMPARE_BITNESS) {
+    $envPref = $env:LVCOMPARE_BITNESS.Trim()
+    if ($envPref) {
+      switch -Regex ($envPref) {
+        '^(?i:(x86|32))$' { $preference = 'x86'; break }
+        '^(?i:(x64|64))$' { $preference = 'x64'; break }
+      }
+    }
+  }
   $candidates = Get-CanonicalCliCandidates
 
   function Normalize-Path([string]$PathValue) {
     if ([string]::IsNullOrWhiteSpace($PathValue)) { return $PathValue }
     try { return (Resolve-Path -LiteralPath $PathValue -ErrorAction Stop).Path } catch { return $PathValue }
+  }
+
+  $isX86Path = {
+    param($path)
+    if ([string]::IsNullOrWhiteSpace($path)) { return $false }
+    return ($path -match '(?i)\\Program Files \(x86\)\\')
+  }
+
+  if ($preference -eq 'x86') {
+    $preferred = @($candidates | Where-Object { & $isX86Path $_ })
+    $fallback = @($candidates | Where-Object { -not (& $isX86Path $_) })
+    $combined = @($preferred + $fallback)
+    $candidates = @($combined | Select-Object -Unique)
+  } elseif ($preference -eq 'x64') {
+    $preferred = @($candidates | Where-Object { -not (& $isX86Path $_) })
+    $fallback = @($candidates | Where-Object { & $isX86Path $_ })
+    $combined = @($preferred + $fallback)
+    $candidates = @($combined | Select-Object -Unique)
   }
 
   $formattedList = [string]::Join(', ', $candidates)
@@ -219,6 +248,7 @@ function Invoke-CompareVI {
     [Parameter(Mandatory)] [string] $Base,
     [Parameter(Mandatory)] [string] $Head,
     [string] $LvComparePath,
+    [ValidateSet('Auto','x64','x86')] [string] $LvCompareBitness = 'Auto',
     [string] $LvCompareArgs = '',
     [string] $WorkingDirectory = '',
     [bool] $FailOnDiff = $true,
@@ -230,6 +260,7 @@ function Invoke-CompareVI {
   )
 
   $pushed = $false
+  $bitnessPreference = $LvCompareBitness
   if ($WorkingDirectory) {
     if (-not (Test-Path -LiteralPath $WorkingDirectory)) { throw "working-directory not found: $WorkingDirectory" }
     Push-Location -LiteralPath $WorkingDirectory; $pushed = $true
@@ -303,7 +334,7 @@ function Invoke-CompareVI {
     if ($PreviewArgs) {
       $cli = 'C:\Program Files\National Instruments\Shared\LabVIEW Compare\LVCompare.exe'
     } else {
-      $cli = if ($LvComparePath) { (Resolve-Cli -Explicit $LvComparePath) } else { (Resolve-Cli) }
+      $cli = if ($LvComparePath) { (Resolve-Cli -Explicit $LvComparePath -PreferredBitness $bitnessPreference) } else { (Resolve-Cli -PreferredBitness $bitnessPreference) }
     }
     $cliArgs = @()
     if ($LvCompareArgs) {

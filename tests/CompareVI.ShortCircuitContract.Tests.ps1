@@ -12,7 +12,7 @@ Describe 'Invoke-CompareVI result contract' -Tag 'Unit' {
     
     # Mock Resolve-Cli to avoid dependency on actual LVCompare installation
     $script:canonical = 'C:\Program Files\National Instruments\Shared\LabVIEW Compare\LVCompare.exe'
-    Mock -CommandName Resolve-Cli -MockWith { $script:canonical }
+    Mock -CommandName Resolve-Cli -MockWith { param($Explicit,$PreferredBitness) $script:canonical }
   }
   Context 'Non short-circuit path (different files)' {
     # Use the provided VI1.vi and VI2.vi in repo root (they should differ)

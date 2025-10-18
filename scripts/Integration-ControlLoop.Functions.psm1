@@ -4,9 +4,15 @@ $ErrorActionPreference = 'Stop'
 
 # Import shared tokenization pattern
 Import-Module (Join-Path $PSScriptRoot 'ArgTokenization.psm1') -Force
+Import-Module (Join-Path $PSScriptRoot 'CompareVI.psm1') -Force
 
 $canonical = 'C:\Program Files\National Instruments\Shared\LabVIEW Compare\LVCompare.exe'
-function Test-CanonicalCli { if (-not (Test-Path -LiteralPath $canonical -PathType Leaf)) { throw "LVCompare.exe not found at canonical path: $canonical" }; return $canonical }
+function Test-CanonicalCli {
+  param(
+    [ValidateSet('Auto','x64','x86')] [string]$PreferredBitness = 'Auto'
+  )
+  return Resolve-Cli -PreferredBitness $PreferredBitness
+}
 function Format-Duration([double]$seconds) { if ($seconds -lt 1) { return ('{0} ms' -f [math]::Round($seconds*1000,1)) }; return ('{0:N3} s' -f $seconds) }
 function Invoke-IntegrationCompareLoop {
   [CmdletBinding()]param(
@@ -17,6 +23,7 @@ function Invoke-IntegrationCompareLoop {
     [switch]$SkipIfUnchanged,
     [string]$JsonLog,
     [string]$LvCompareArgs = '-nobdcosm -nofppos -noattr',
+    [ValidateSet('Auto','x64','x86')][string]$LvCompareBitness = 'Auto',
     [switch]$FailOnDiff,
     [switch]$Quiet,
     [scriptblock]$CompareExecutor,
@@ -37,7 +44,7 @@ function Invoke-IntegrationCompareLoop {
     if ($Base) { try { $baseAbs = (Resolve-Path -LiteralPath $Base -ErrorAction Stop).Path } catch { $baseAbs = $Base } } else { $baseAbs = $Base }
     if ($Head) { try { $headAbs = (Resolve-Path -LiteralPath $Head -ErrorAction Stop).Path } catch { $headAbs = $Head } } else { $headAbs = $Head }
   }
-  $cli = if ($BypassCliValidation) { $canonical } else { Test-CanonicalCli }
+  $cli = if ($BypassCliValidation) { $canonical } else { Test-CanonicalCli -PreferredBitness $LvCompareBitness }
   if ($SkipValidation -and $PassThroughPaths) {
     $prevBaseTime = (Get-Date).ToUniversalTime()
     $prevHeadTime = $prevBaseTime

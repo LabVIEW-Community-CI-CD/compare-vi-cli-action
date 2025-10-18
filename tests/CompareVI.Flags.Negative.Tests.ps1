@@ -6,7 +6,7 @@ Describe 'LVCompare flags (negative cases)' -Tag 'Unit' {
     $here = Split-Path -Parent $PSCommandPath
     $root = Resolve-Path (Join-Path $here '..')
     Import-Module (Join-Path $root 'scripts' 'CompareVI.psm1') -Force
-    Mock -CommandName Resolve-Cli -ModuleName CompareVI -MockWith { param($Explicit) 'C:\\Program Files\\National Instruments\\Shared\\LabVIEW Compare\\LVCompare.exe' }
+    Mock -CommandName Resolve-Cli -ModuleName CompareVI -MockWith { param($Explicit,$PreferredBitness) 'C:\\Program Files\\National Instruments\\Shared\\LabVIEW Compare\\LVCompare.exe' }
 
     function New-TestVis {
       $vis = Join-Path $TestDrive ('vis-' + [guid]::NewGuid().ToString('N'))
@@ -38,4 +38,3 @@ Describe 'LVCompare flags (negative cases)' -Tag 'Unit' {
     $script:called2 | Should -BeFalse
   }
 }
-

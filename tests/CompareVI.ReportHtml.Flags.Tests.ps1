@@ -9,7 +9,7 @@ Describe 'Report HTML embeds LVCompare flags' -Tag 'Unit' {
     $script:render = (Join-Path $root 'scripts' 'Render-CompareReport.ps1')
 
     # Avoid filesystem checks for Resolve-Cli
-    Mock -CommandName Resolve-Cli -ModuleName CompareVI -MockWith { param($Explicit) 'C:\\Program Files\\National Instruments\\Shared\\LabVIEW Compare\\LVCompare.exe' }
+    Mock -CommandName Resolve-Cli -ModuleName CompareVI -MockWith { param($Explicit,$PreferredBitness) 'C:\\Program Files\\National Instruments\\Shared\\LabVIEW Compare\\LVCompare.exe' }
 
     $script:execZero = { param($cli,$b,$h,$argv) return 0 }
 

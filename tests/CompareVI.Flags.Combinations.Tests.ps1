@@ -8,7 +8,7 @@ Describe 'LVCompare flags (knowledgebase combinations)' -Tag 'Unit' {
     Import-Module (Join-Path $root 'scripts' 'CompareVI.psm1') -Force
 
     # Always mock Resolve-Cli to avoid environment coupling
-    Mock -CommandName Resolve-Cli -ModuleName CompareVI -MockWith { 'C:\\Program Files\\National Instruments\\Shared\\LabVIEW Compare\\LVCompare.exe' }
+    Mock -CommandName Resolve-Cli -ModuleName CompareVI -MockWith { param($Explicit,$PreferredBitness) 'C:\\Program Files\\National Instruments\\Shared\\LabVIEW Compare\\LVCompare.exe' }
 
     function New-ExecWithArgs([string]$argSpec) {
       $work = Join-Path $TestDrive ('flags-' + [guid]::NewGuid().ToString('N'))

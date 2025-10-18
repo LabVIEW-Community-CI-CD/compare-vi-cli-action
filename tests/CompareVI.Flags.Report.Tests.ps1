@@ -14,7 +14,7 @@ Describe 'LVCompare flags (report verifications)' -Tag 'Unit' {
     $script:verifyScript = (Join-Path $root 'tools' 'Verify-FixtureCompare.ps1')
 
     # Mock Resolve-Cli inside CompareVI module to avoid canonical path existence checks
-    Mock -CommandName Resolve-Cli -ModuleName CompareVI -MockWith { param($Explicit) 'C:\\Program Files\\National Instruments\\Shared\\LabVIEW Compare\\LVCompare.exe' }
+    Mock -CommandName Resolve-Cli -ModuleName CompareVI -MockWith { param($Explicit,$PreferredBitness) 'C:\\Program Files\\National Instruments\\Shared\\LabVIEW Compare\\LVCompare.exe' }
 
     # Simple executor that avoids launching LVCompare
     $script:execZero = { param($cli,$b,$h,$argv) return 0 }

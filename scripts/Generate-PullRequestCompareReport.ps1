@@ -18,6 +18,7 @@
   [ValidateSet('Exact','StreamingReservoir','Hybrid')] [string]$QuantileStrategy = 'StreamingReservoir',
   [int]$StreamCapacity = 300,
   [int]$HistogramBins = 0,
+  [ValidateSet('Auto','x64','x86')] [string]$LvCompareBitness = 'Auto',
   [string]$BasePath,
   [string]$HeadPath
 )
@@ -25,7 +26,7 @@ Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 $repoRoot = Resolve-Path (Join-Path $PSScriptRoot '..')
 Import-Module (Join-Path $repoRoot 'scripts' 'CompareVI.psm1') -Force
-$canonical = Resolve-Cli
+$canonical = Resolve-Cli -PreferredBitness $LvCompareBitness
 
 # Resolve base/head input paths if provided, else default to repo-root VI1/VI2
 if ($BasePath) {
@@ -68,7 +69,7 @@ if ($LoopMode) {
   }
 } else {
   Write-Host "Invoking LVCompare on:`n Base=$baseVi`n Head=$headVi" -ForegroundColor Cyan
-  $res = Invoke-CompareVI -Base $baseVi -Head $headVi -LvComparePath $canonical -FailOnDiff:$false
+  $res = Invoke-CompareVI -Base $baseVi -Head $headVi -LvComparePath $canonical -LvCompareBitness $LvCompareBitness -FailOnDiff:$false
 }
 
 $htmlPath = Join-Path $OutputDirectory 'compare-report.html'

@@ -24,7 +24,7 @@ Describe 'Composite action output shape (emulated)' -Tag 'Unit' {
 
     # Mock Resolve-Cli so we don't depend on real installation
     $canonical = 'C:\\Program Files\\National Instruments\\Shared\\LabVIEW Compare\\LVCompare.exe'
-    Mock -CommandName Resolve-Cli -MockWith { $canonical }
+    Mock -CommandName Resolve-Cli -MockWith { param($Explicit,$PreferredBitness) $canonical }
 
     # Act
     $res = Invoke-CompareVI -Base $a -Head $b -FailOnDiff:$false -Executor { 1 }
@@ -47,7 +47,7 @@ Describe 'Composite action output shape (emulated)' -Tag 'Unit' {
     New-Item -ItemType File -Path $b -Force | Out-Null
 
     $canonical = 'C:\\Program Files\\National Instruments\\Shared\\LabVIEW Compare\\LVCompare.exe'
-    Mock -CommandName Resolve-Cli -MockWith { $canonical }
+    Mock -CommandName Resolve-Cli -MockWith { param($Explicit,$PreferredBitness) $canonical }
 
     $outPath = Join-Path $TestDrive 'gout.txt'
     $sumPath = Join-Path $TestDrive 'summary.md'
@@ -67,7 +67,7 @@ Describe 'Composite action output shape (emulated)' -Tag 'Unit' {
     New-Item -ItemType Directory -Path $vis -Force | Out-Null
     $a = Join-Path $vis 'same.vi'
     New-Item -ItemType File -Path $a -Force | Out-Null
-    Mock -CommandName Resolve-Cli -MockWith { 'C:\\Program Files\\National Instruments\\Shared\\LabVIEW Compare\\LVCompare.exe' }
+    Mock -CommandName Resolve-Cli -MockWith { param($Explicit,$PreferredBitness) 'C:\\Program Files\\National Instruments\\Shared\\LabVIEW Compare\\LVCompare.exe' }
     $res = Invoke-CompareVI -Base $a -Head $a -FailOnDiff:$false -Executor { 0 }
     $res.ShortCircuitedIdenticalPath | Should -BeTrue
     $res.Diff | Should -BeFalse
@@ -79,7 +79,7 @@ Describe 'Composite action output shape (emulated)' -Tag 'Unit' {
     New-Item -ItemType Directory -Path $vis -Force | Out-Null
     $a = Join-Path $vis 'same2.vi'
     New-Item -ItemType File -Path $a -Force | Out-Null
-    Mock -CommandName Resolve-Cli -MockWith { 'C:\\Program Files\\National Instruments\\Shared\\LabVIEW Compare\\LVCompare.exe' }
+    Mock -CommandName Resolve-Cli -MockWith { param($Explicit,$PreferredBitness) 'C:\\Program Files\\National Instruments\\Shared\\LabVIEW Compare\\LVCompare.exe' }
     $outPath = Join-Path $TestDrive 'gout_identical.txt'
     Invoke-CompareVI -Base $a -Head $a -GitHubOutputPath $outPath -FailOnDiff:$false -Executor { 0 } | Out-Null
     $content = Get-Content -LiteralPath $outPath -Raw

@@ -59,6 +59,7 @@ param(
   [switch]$SkipIfUnchanged,
   [string]$JsonLog,
   [string]$LvCompareArgs = '-nobdcosm -nofppos -noattr',
+  [ValidateSet('Auto','x64','x86')][string]$LvCompareBitness = 'Auto',
   [switch]$FailOnDiff,
   [switch]$Quiet,
   [scriptblock]$CompareExecutor,
@@ -79,13 +80,13 @@ param(
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
-$canonical = 'C:\\Program Files\\National Instruments\\Shared\\LabVIEW Compare\\LVCompare.exe'
+Import-Module (Join-Path $PSScriptRoot 'CompareVI.psm1') -Force
 
 function Test-CanonicalCli {
-  if (-not (Test-Path -LiteralPath $canonical -PathType Leaf)) {
-    throw "LVCompare.exe not found at canonical path: $canonical"
-  }
-  return $canonical
+  param(
+    [ValidateSet('Auto','x64','x86')] [string]$PreferredBitness = 'Auto'
+  )
+  return Resolve-Cli -PreferredBitness $PreferredBitness
 }
 
 function Format-Duration([double]$seconds) {
@@ -102,6 +103,7 @@ function Invoke-ControlLoopScript {
     [switch]$SkipIfUnchanged,
     [string]$JsonLog,
     [string]$LvCompareArgs = '-nobdcosm -nofppos -noattr',
+    [ValidateSet('Auto','x64','x86')][string]$LvCompareBitness = 'Auto',
     [switch]$FailOnDiff,
     [switch]$Quiet,
     [scriptblock]$CompareExecutor,
@@ -128,7 +130,7 @@ function Invoke-ControlLoopScript {
     throw 'CompareLoop module not available; cannot execute loop.'
   }
   $invokeParams = @{}
-  foreach ($k in @('Base','Head','IntervalSeconds','MaxIterations','SkipIfUnchanged','JsonLog','LvCompareArgs','FailOnDiff','Quiet','CompareExecutor','BypassCliValidation','UseEventDriven','DebounceMilliseconds','DiffSummaryFormat','DiffSummaryPath','AdaptiveInterval','MinIntervalSeconds','MaxIntervalSeconds','BackoffFactor','RebaselineAfterCleanCount','ApplyRebaseline','CustomPercentiles')) {
+  foreach ($k in @('Base','Head','IntervalSeconds','MaxIterations','SkipIfUnchanged','JsonLog','LvCompareArgs','LvCompareBitness','FailOnDiff','Quiet','CompareExecutor','BypassCliValidation','UseEventDriven','DebounceMilliseconds','DiffSummaryFormat','DiffSummaryPath','AdaptiveInterval','MinIntervalSeconds','MaxIntervalSeconds','BackoffFactor','RebaselineAfterCleanCount','ApplyRebaseline','CustomPercentiles')) {
     if ($PSBoundParameters.ContainsKey($k)) { $invokeParams[$k] = $PSBoundParameters[$k] }
   }
   return & Invoke-IntegrationCompareLoop @invokeParams

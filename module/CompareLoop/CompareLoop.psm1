@@ -11,31 +11,27 @@ Import-Module (Join-Path $repoRoot 'scripts' 'CompareVI.psm1') -Force
 Import-Module (Join-Path $repoRoot 'tools' 'VendorTools.psm1') -Force
 
 function Test-CanonicalCli {
-  $candidates = New-Object System.Collections.Generic.List[string]
-  if ($script:CanonicalLVCompare) { $null = $candidates.Add($script:CanonicalLVCompare) }
+  param(
+    [ValidateSet('Auto','x64','x86')] [string]$PreferredBitness = 'Auto'
+  )
+  function Get-PathBitness([string]$PathValue) {
+    if ([string]::IsNullOrWhiteSpace($PathValue)) { return 'Auto' }
+    if ($PathValue -match '(?i)\(x86\)') { return 'x86' }
+    return 'x64'
+  }
+  if ($script:CanonicalLVCompare -and (Test-Path -LiteralPath $script:CanonicalLVCompare -PathType Leaf)) {
+    $canonicalBitness = Get-PathBitness $script:CanonicalLVCompare
+    if ($PreferredBitness -eq 'Auto' -or $canonicalBitness -eq $PreferredBitness) {
+      return $script:CanonicalLVCompare
+    }
+  }
   try {
-    $resolved = Resolve-LVComparePath
-    if ($resolved) {
-      if (-not ($candidates | Where-Object { $_ -eq $resolved })) {
-        $null = $candidates.Insert(0, $resolved)
-      }
-    }
-  } catch {}
-  $fallback = 'C:\Program Files (x86)\National Instruments\Shared\LabVIEW Compare\LVCompare.exe'
-  if ($fallback -and -not ($candidates | Where-Object { $_ -eq $fallback })) {
-    $null = $candidates.Add($fallback)
+    $resolved = Resolve-Cli -PreferredBitness $PreferredBitness
+    $script:CanonicalLVCompare = $resolved
+    return $resolved
+  } catch {
+    throw $_
   }
-  foreach ($path in $candidates) {
-    if ($path -and (Test-Path -LiteralPath $path -PathType Leaf)) {
-      $script:CanonicalLVCompare = $path
-      return $path
-    }
-  }
-  $unique = @($candidates | Where-Object { $_ } | Select-Object -Unique)
-  if (-not $unique -or $unique.Count -eq 0) {
-    $unique = @('C:\Program Files\National Instruments\Shared\LabVIEW Compare\LVCompare.exe')
-  }
-  throw "LVCompare.exe not found at canonical path(s): $([string]::Join(', ', $unique))"
 }
 
 function Format-LoopDuration([double]$Seconds) {
@@ -85,6 +81,7 @@ function Invoke-IntegrationCompareLoop {
     [switch]$SkipIfUnchanged,
     [string]$JsonLog,
     [string]$LvCompareArgs = '-nobdcosm -nofppos -noattr',
+    [ValidateSet('Auto','x64','x86')] [string]$LvCompareBitness = 'Auto',
     [switch]$FailOnDiff,
     [switch]$Quiet,
     [switch]$PreviewArgs,
@@ -130,7 +127,7 @@ function Invoke-IntegrationCompareLoop {
     if ($Head) { try { $headAbs = (Resolve-Path -LiteralPath $Head -ErrorAction Stop).Path } catch { $headAbs = $Head } } else { $headAbs = $Head }
   }
 
-  $cli = if ($BypassCliValidation) { $script:CanonicalLVCompare } else { Test-CanonicalCli }
+  $cli = if ($BypassCliValidation) { $script:CanonicalLVCompare } else { Test-CanonicalCli -PreferredBitness $LvCompareBitness }
 
   function Get-ReportPathFromCommand {
     param(
@@ -514,6 +511,7 @@ function Invoke-IntegrationCompareLoop {
             FailOnDiff = $false
           }
           if ($LvCompareArgs) { $compareParams.LvCompareArgs = $LvCompareArgs }
+          $compareParams.LvCompareBitness = $LvCompareBitness
           $compareResult = Invoke-CompareVI @compareParams
           $exitCode = [int]$compareResult.ExitCode
           $resultDiff = [bool]$compareResult.Diff

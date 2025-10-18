@@ -21,7 +21,7 @@ Describe 'Invoke-CompareVI input and output validation (no CLI)' {
     # Always mock Resolve-Cli to avoid any dependency on real installations
     # Return the canonical path
     $canonical = 'C:\Program Files\National Instruments\Shared\LabVIEW Compare\LVCompare.exe'
-    Mock -CommandName Resolve-Cli -ModuleName $script:CompareModuleName -MockWith { $canonical } -Verifiable
+    Mock -CommandName Resolve-Cli -ModuleName $script:CompareModuleName -MockWith { param($Explicit,$PreferredBitness) $canonical } -Verifiable
 
     $script:a = $a; $script:b = $b; $script:vis = $vis; $script:canonical = $canonical
   }
