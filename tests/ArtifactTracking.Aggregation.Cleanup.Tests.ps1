@@ -23,11 +23,10 @@ Describe 'Aggregation cleanup (artifact tracking)' -Tag 'Unit' {
     $miniAgg = @(
       "Describe 'MiniAgg' {",
       '  BeforeAll {',
-      '    $repoRoot = (Get-Location).Path',
-      "    . (Join-Path $repoRoot 'scripts' 'AggregationHints.Internal.ps1')",
+      "    . (Join-Path (Get-Location).Path 'scripts' 'AggregationHints.Internal.ps1')",
       '  }',
       "  It 'aggregates quickly' {",
-      '    $tests = @()'
+      '    $tests = @()',
       '    1..100 | ForEach-Object { $tests += [pscustomobject]@{ Result="Passed"; Path="f$_"; Duration = [TimeSpan]::FromMilliseconds(1) } }',
       '    $null = Get-AggregationHintsBlock -Tests $tests',
       '    $true | Should -BeTrue',
@@ -62,4 +61,3 @@ Describe 'Aggregation cleanup (artifact tracking)' -Tag 'Unit' {
     }
   }
 }
-

@@ -118,11 +118,15 @@ function End-AgentWait {
     $start = Get-Content $markerPath -Raw | ConvertFrom-Json
     $started = [DateTimeOffset]::Parse($start.startedUtc)
     $now = [DateTimeOffset]::UtcNow
-    $elapsedSec = [int][Math]::Round(($now - $started).TotalSeconds)
+    $elapsedExact = ($now - $started).TotalSeconds
+    $elapsedSec = [int][Math]::Round($elapsedExact)
     # derive tolerance: prefer explicit param, fallback to marker
-    $tol = if ($PSBoundParameters.ContainsKey('ToleranceSeconds')) { $ToleranceSeconds } elseif ($start.PSObject.Properties['toleranceSeconds']) { [int]$start.toleranceSeconds } else { 5 }
-    $diff = [int][Math]::Abs($elapsedSec - [int]$start.expectedSeconds)
-    $withinMargin = ($diff -le $tol)
+    $tol = if ($PSBoundParameters.ContainsKey('ToleranceSeconds')) { [double]$ToleranceSeconds } elseif ($start.PSObject.Properties['toleranceSeconds']) { [double][int]$start.toleranceSeconds } else { 5.0 }
+    $expectedSec = [double][int]$start.expectedSeconds
+    $diffExact = [Math]::Abs($elapsedExact - $expectedSec)
+    $diffRounded = [int][Math]::Round($diffExact)
+    if ($diffExact -gt 0 -and $diffRounded -eq 0) { $diffRounded = 1 }
+    $withinMargin = ($diffExact -le $tol)
     $sketch = 'brief-' + [string]$start.expectedSeconds
     $result = [ordered]@{
         schema = 'agent-wait-result/v1'
@@ -132,8 +136,8 @@ function End-AgentWait {
         startedUtc = $start.startedUtc
         endedUtc = $now.ToString('o')
         elapsedSeconds = $elapsedSec
-        toleranceSeconds = $tol
-        differenceSeconds = $diff
+        toleranceSeconds = [int][Math]::Round($tol)
+        differenceSeconds = $diffRounded
         withinMargin = $withinMargin
         markerPath = $markerPath
         sketch = $sketch
@@ -149,8 +153,8 @@ function End-AgentWait {
         "- Reason: $($result.reason)",
         "- Elapsed: ${elapsedSec}s",
         "- Expected: $($result.expectedSeconds)s",
-        "- Tolerance: ${tol}s",
-        "- Difference: ${diff}s",
+        "- Tolerance: $($result.toleranceSeconds)s",
+        "- Difference: ${diffRounded}s",
         "- Within Margin: $withinMargin"
     ) -join "`n"
     Write-Host $summary

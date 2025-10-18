@@ -395,6 +395,24 @@ try {
       }
     }
   }
+  if ($headChanges -eq $null -or $baseChanges -eq $null) {
+    $detailCandidates = @()
+    if ($detailsDir) { $detailCandidates += (Join-Path $detailsDir 'diff-details.json') }
+    if ($ExecJsonPath) {
+      try { $detailCandidates += (Join-Path (Split-Path -Parent $ExecJsonPath) 'diff-details.json') } catch {}
+    }
+    foreach ($candidate in ($detailCandidates | Where-Object { $_ } | Select-Object -Unique)) {
+      if (-not (Test-Path -LiteralPath $candidate -PathType Leaf)) { continue }
+      try {
+        $candidateObj = Get-Content -LiteralPath $candidate -Raw | ConvertFrom-Json -ErrorAction Stop
+        if ($candidateObj) {
+          if ($headChanges -eq $null -and $candidateObj.PSObject.Properties.Name -contains 'headChanges') { try { $headChanges = [int]$candidateObj.headChanges } catch {} }
+          if ($baseChanges -eq $null -and $candidateObj.PSObject.Properties.Name -contains 'baseChanges') { try { $baseChanges = [int]$candidateObj.baseChanges } catch {} }
+        }
+      } catch {}
+      if ($headChanges -ne $null -and $baseChanges -ne $null) { break }
+    }
+  }
 } catch { Write-Host "[report] warn: failed to load diff-details.json: $_" -ForegroundColor DarkYellow }
 
 $statusBadgesHtml = ('<div class="badges"><span class="badge {0}">{1}</span><span class="badge {2}">{3}</span><span class="badge {4}">{5}</span><span class="badge {6}">{7}</span></div>' -f $cliClass,$cliText,$contentClass,$contentText,$anomalyClass,$anomalyText,$liveClass,$liveText)

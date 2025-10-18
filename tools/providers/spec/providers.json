@@ -1,6 +1,19 @@
 {
   "providers": [
     {
+      "id": "lvcompare",
+      "displayName": "LVCompare",
+      "description": "Invokes LVCompare.exe directly for VI comparisons.",
+      "binary": {
+        "env": [
+          "LVCOMPARE_PATH"
+        ]
+      },
+      "operations": [
+        "CreateComparisonReport"
+      ]
+    },
+    {
       "id": "labviewcli",
       "displayName": "LabVIEW CLI",
       "description": "Executes LabVIEW command-line operations via the LabVIEWCLI.exe companion.",
@@ -9,6 +22,25 @@
           "LABVIEWCLI_PATH",
           "LABVIEW_CLI_PATH",
           "LABVIEW_CLI"
+        ]
+      },
+      "operations": [
+        "CloseLabVIEW",
+        "CreateComparisonReport",
+        "ExecuteBuildSpec",
+        "MassCompile",
+        "RunUnitTests",
+        "RunVI",
+        "RunVIAnalyzer"
+      ]
+    },
+    {
+      "id": "mock",
+      "displayName": "Mock Provider",
+      "description": "Test provider that returns deterministic plans without executing native tooling.",
+      "binary": {
+        "env": [
+          "MOCK_PROVIDER_BINARY"
         ]
       },
       "operations": [

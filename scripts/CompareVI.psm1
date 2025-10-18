@@ -4,6 +4,40 @@ $ErrorActionPreference = 'Stop'
 # Import shared tokenization pattern
 Import-Module (Join-Path $PSScriptRoot 'ArgTokenization.psm1') -Force
 Import-Module (Join-Path (Split-Path -Parent $PSScriptRoot) 'tools' 'VendorTools.psm1') -Force
+Import-Module (Join-Path (Split-Path -Parent $PSScriptRoot) 'tools' 'providers' 'ProviderRouter.psm1') -Force
+
+# Allowed LVCompare flag definitions
+$script:LVCompareNoValueFlags = New-Object 'System.Collections.Generic.HashSet[string]' ([System.StringComparer]::OrdinalIgnoreCase)
+foreach ($flag in @('-noattr','-nofp','-nofppos','-nobd','-nobdcosm')) {
+  [void]$script:LVCompareNoValueFlags.Add($flag)
+}
+$script:LVCompareNoValueFlags.Add('--c') | Out-Null
+$script:LVCompareValueFlagRules = @{
+  '-lvpath' = @{
+    MissingMessage = 'Invalid LVCompare args: -lvpath requires a following path value'
+    NextMessage    = 'Invalid LVCompare args: -lvpath must be followed by a path value'
+  }
+  '--log' = @{
+    MissingMessage = 'Invalid LVCompare args: --log requires a following path value'
+    NextMessage    = 'Invalid LVCompare args: --log must be followed by a path value'
+  }
+  '--a' = @{
+    MissingMessage = 'Invalid LVCompare args: --a requires a following value'
+    NextMessage    = 'Invalid LVCompare args: --a must be followed by a value'
+  }
+  '--b' = @{
+    MissingMessage = 'Invalid LVCompare args: --b requires a following value'
+    NextMessage    = 'Invalid LVCompare args: --b must be followed by a value'
+  }
+  '--flag' = @{
+    MissingMessage = 'Invalid LVCompare args: --flag requires a following value'
+    NextMessage    = 'Invalid LVCompare args: --flag must be followed by a value'
+  }
+}
+$flagList = @()
+foreach ($flag in $script:LVCompareNoValueFlags) { $flagList += $flag }
+$flagList += $script:LVCompareValueFlagRules.Keys
+$script:LVCompareAllowedFlagListText = ($flagList | Sort-Object -Unique) -join ', '
 
 # Native helpers for idle and window activation control
 if (-not ([System.Management.Automation.PSTypeName]'User32').Type) {
@@ -91,6 +125,32 @@ function Resolve-Cli {
   }
 
   throw "LVCompare.exe not found. Install at one of: $formattedList"
+}
+
+
+function Get-CompareVIPlan {
+  param(
+    [Parameter(Mandatory)][string]$BasePath,
+    [Parameter(Mandatory)][string]$HeadPath,
+    [string[]]$Flags,
+    [string]$ProviderId,
+    [string]$LvComparePath
+  )
+
+  $parameters = @{
+    vi1 = $BasePath
+    vi2 = $HeadPath
+  }
+
+  if ($Flags -and $Flags.Count -gt 0) {
+    $parameters['flags'] = @($Flags)
+  }
+
+  if ($LvComparePath) {
+    $parameters['lvcomparePath'] = $LvComparePath
+  }
+
+  return Get-CompareVIProviderPlan -Operation 'CreateComparisonReport' -Provider $ProviderId -Parameters $parameters
 }
 
 function Quote($s) {
@@ -226,7 +286,8 @@ function Invoke-CompareVI {
     [string] $GitHubStepSummaryPath,
     [ScriptBlock] $Executor,
     [switch] $PreviewArgs,
-    [string] $CompareExecJsonPath
+    [string] $CompareExecJsonPath,
+    [string] $CompareProvider
   )
 
   $pushed = $false
@@ -257,12 +318,52 @@ function Invoke-CompareVI {
     $headLeaf = Split-Path -Leaf $headAbs
     if ($baseLeaf -ieq $headLeaf -and $baseAbs -ne $headAbs) { throw "LVCompare limitation: Cannot compare two VIs sharing the same filename '$baseLeaf' located in different directories. Rename one copy or provide distinct filenames. Base=$baseAbs Head=$headAbs" }
 
-    # Resolve LVCompare path. In preview mode, bypass file existence checks to allow unit tests
-    if ($PreviewArgs) {
-      $cli = 'C:\Program Files\National Instruments\Shared\LabVIEW Compare\LVCompare.exe'
-    } else {
-      $cli = if ($LvComparePath) { (Resolve-Cli -Explicit $LvComparePath) } else { (Resolve-Cli) }
+    if ($baseAbs -eq $headAbs) {
+      $cwd = (Get-Location).Path
+      $result = [pscustomobject]@{
+        Base                       = $baseAbs
+        Head                       = $headAbs
+        Cwd                        = $cwd
+        CliPath                    = $null
+        Command                    = ''
+        ExitCode                   = 0
+        Diff                       = $false
+        CompareDurationSeconds     = 0
+        CompareDurationNanoseconds = 0
+        ShortCircuitedIdenticalPath = $true
+      }
+
+      if ($GitHubOutputPath) {
+        @(
+          'exitCode=0'
+          'cliPath='
+          'command='
+          'diff=false'
+          'shortCircuitedIdentical=true'
+          'compareDurationSeconds=0'
+          'compareDurationNanoseconds=0'
+        ) | ForEach-Object { $_ | Out-File -FilePath $GitHubOutputPath -Append -Encoding utf8 }
+      }
+
+      if ($GitHubStepSummaryPath) {
+        $lines = @(
+          '### Compare VI',
+          "- Working directory: $cwd",
+          "- Base: $baseAbs",
+          "- Head: $headAbs",
+          "- CLI: <short-circuited>",
+          "- Command: (skipped; identical paths)",
+          "- Exit code: 0",
+          "- Diff: false",
+          "- Duration (s): 0",
+          "- Duration (ns): 0"
+        )
+        ($lines -join "`n") | Out-File -FilePath $GitHubStepSummaryPath -Append -Encoding utf8
+      }
+
+      return $result
     }
+
     $cliArgs = @()
     if ($LvCompareArgs) {
       $raw = $LvCompareArgs
@@ -277,28 +378,61 @@ function Invoke-CompareVI {
       }
     } catch {}
 
-    # Validate only flags that require a value; allow other flags to pass through
-    $argsArr = @($cliArgs)
-    if ($argsArr -and $argsArr.Count -gt 0) {
-      for ($i = 0; $i -lt $argsArr.Count; $i++) {
-        $tok = [string]$argsArr[$i]
+    # Validate LVCompare flags and ensure required values are present
+    $flagArgs = @($cliArgs)
+    if ($flagArgs -and $flagArgs.Count -gt 0) {
+      for ($i = 0; $i -lt $flagArgs.Count; $i++) {
+        $tok = [string]$flagArgs[$i]
         if (-not $tok) { continue }
+        # Ignore Pester-injected scaffolding tokens that can surface in ForEach name expansion
+        if ($tok -match '^-_+Pester:') { continue }
         if ($tok.StartsWith('-')) {
-          # Ignore Pester-injected scaffolding tokens that can surface in ForEach name expansion
-          if ($tok -match '^-_+Pester:') { continue }
-          if ($tok -ieq '-lvpath') {
-            if ($i -ge $argsArr.Count - 1) { throw "Invalid LVCompare args: -lvpath requires a following path value" }
-            $next = [string]$argsArr[$i+1]
-            if (-not $next -or $next.StartsWith('-')) { throw "Invalid LVCompare args: -lvpath must be followed by a path value" }
+          $flagKey = $tok.ToLowerInvariant()
+          if ($script:LVCompareValueFlagRules.ContainsKey($flagKey)) {
+            $rule = $script:LVCompareValueFlagRules[$flagKey]
+            if ($i -ge $flagArgs.Count - 1) { throw $rule.MissingMessage }
+            $next = [string]$flagArgs[$i + 1]
+            if ($null -eq $next -or ([string]::IsNullOrWhiteSpace($next))) { throw $rule.MissingMessage }
+            if ($next.StartsWith('-')) { throw $rule.NextMessage }
             $i++
+            continue
+          }
+          if (-not $script:LVCompareNoValueFlags.Contains($flagKey)) {
+            $message = "Invalid LVCompare flag '$tok'. Allowed flags: $script:LVCompareAllowedFlagListText"
+            throw $message
           }
         }
       }
     }
 
-    $cmdline = (Quote $cli) + ' ' + (Quote $baseAbs) + ' ' + (Quote $headAbs)
-    if ($argsArr -and $argsArr.Count -gt 0) { $cmdline += ' ' + (($argsArr | ForEach-Object { Quote $_ }) -join ' ') }
-    if ($PreviewArgs) { return $cmdline }
+    $argsArr = @()
+    if ($PreviewArgs) {
+      $cli = 'C:\Program Files\National Instruments\Shared\LabVIEW Compare\LVCompare.exe'
+      $argsArr = @($baseAbs, $headAbs) + $flagArgs
+      $cmdline = (Quote $cli)
+      if ($argsArr -and $argsArr.Count -gt 0) {
+        $cmdline += ' ' + (($argsArr | ForEach-Object { Quote $_ }) -join ' ')
+      }
+      return $cmdline
+    }
+
+    if ($Executor) {
+      $cli = if ($LvComparePath) { (Resolve-Cli -Explicit $LvComparePath) } else { (Resolve-Cli) }
+      $argsArr = @($baseAbs, $headAbs) + $flagArgs
+      $cmdline = (Quote $cli)
+      if ($argsArr -and $argsArr.Count -gt 0) {
+        $cmdline += ' ' + (($argsArr | ForEach-Object { Quote $_ }) -join ' ')
+      }
+    } else {
+      $resolvedCli = if ($LvComparePath) { (Resolve-Cli -Explicit $LvComparePath) } else { (Resolve-Cli) }
+      $plan = Get-CompareVIPlan -BasePath $baseAbs -HeadPath $headAbs -Flags $flagArgs -ProviderId $CompareProvider -LvComparePath $resolvedCli
+      $cli = $plan.binary
+      $argsArr = @($plan.arguments)
+      $cmdline = (Quote $cli)
+      if ($argsArr -and $argsArr.Count -gt 0) {
+        $cmdline += ' ' + (($argsArr | ForEach-Object { Quote $_ }) -join ' ')
+      }
+    }
 
     $cwd = (Get-Location).Path
     # Notice helper
@@ -333,30 +467,30 @@ function Invoke-CompareVI {
       $origCursor = $null; if ($env:LV_CURSOR_RESTORE -match '^(?i:1|true|yes|on)$') { $origCursor = Get-CursorPos }
       $noActivate = ($env:LV_NO_ACTIVATE -match '^(?i:1|true|yes|on)$')
       # Emit pre-launch notice
-      $notice = @{ schema='lvcompare-notice/v1'; when=(Get-Date).ToString('o'); phase='pre-launch'; cli=$cli; base=$baseAbs; head=$headAbs; args=$cliArgs; cwd=$cwd; path=$cli }
-      if ($CompareExecJsonPath) { $notice.execJsonPath = $CompareExecJsonPath }
-      Write-Host ("[lvcompare-notice] Launching LVCompare: base='{0}' head='{1}' args='{2}'" -f $baseAbs,$headAbs,($cliArgs -join ' '))
-      Write-LVNotice $notice
+    $notice = @{ schema='lvcompare-notice/v1'; when=(Get-Date).ToString('o'); phase='pre-launch'; cli=$cli; base=$baseAbs; head=$headAbs; args=$cliArgs; cwd=$cwd; path=$cli }
+    if ($CompareExecJsonPath) { $notice.execJsonPath = $CompareExecJsonPath }
+    Write-Host ("[lvcompare-notice] Launching LVCompare: base='{0}' head='{1}' args='{2}'" -f $baseAbs,$headAbs,($cliArgs -join ' '))
+    Write-LVNotice $notice
 
-      if ($env:LV_SUPPRESS_UI -eq '1') {
-        $psi = New-Object System.Diagnostics.ProcessStartInfo
-        $psi.FileName = $cli
-        $null = $psi.ArgumentList.Clear()
-        $null = $psi.ArgumentList.Add($baseAbs)
-        $null = $psi.ArgumentList.Add($headAbs)
-        foreach ($a in $cliArgs) { if ($a) { $null = $psi.ArgumentList.Add([string]$a) } }
-        $psi.UseShellExecute = $false
-        try { $psi.CreateNoWindow = $true } catch {}
-        try { $psi.WindowStyle = ($noActivate ? [System.Diagnostics.ProcessWindowStyle]::Minimized : [System.Diagnostics.ProcessWindowStyle]::Hidden) } catch {}
-        $proc = [System.Diagnostics.Process]::Start($psi)
-        $lvcomparePid = $proc.Id
-        # Post-start notice with PID
-        try {
-          $n = @{ schema='lvcompare-notice/v1'; when=(Get-Date).ToString('o'); phase='post-start'; pid=$proc.Id; cli=$cli; base=$baseAbs; head=$headAbs; args=$cliArgs; cwd=$cwd; path=$cli }
-          if ($CompareExecJsonPath) { $n.execJsonPath = $CompareExecJsonPath }
-          Write-Host ("[lvcompare-notice] Started LVCompare PID={0}" -f $proc.Id)
-          Write-LVNotice $n
-        } catch {}
+    if ($env:LV_SUPPRESS_UI -eq '1') {
+      $psi = New-Object System.Diagnostics.ProcessStartInfo
+      $psi.FileName = $cli
+      $null = $psi.ArgumentList.Clear()
+      foreach ($a in $argsArr) {
+        if ($null -ne $a) { $null = $psi.ArgumentList.Add([string]$a) }
+      }
+      $psi.UseShellExecute = $false
+      try { $psi.CreateNoWindow = $true } catch {}
+      try { $psi.WindowStyle = ($noActivate ? [System.Diagnostics.ProcessWindowStyle]::Minimized : [System.Diagnostics.ProcessWindowStyle]::Hidden) } catch {}
+      $proc = [System.Diagnostics.Process]::Start($psi)
+      $lvcomparePid = $proc.Id
+      # Post-start notice with PID
+      try {
+        $n = @{ schema='lvcompare-notice/v1'; when=(Get-Date).ToString('o'); phase='post-start'; pid=$proc.Id; cli=$cli; base=$baseAbs; head=$headAbs; args=$cliArgs; cwd=$cwd; path=$cli }
+        if ($CompareExecJsonPath) { $n.execJsonPath = $CompareExecJsonPath }
+        Write-Host ("[lvcompare-notice] Started LVCompare PID={0}" -f $proc.Id)
+        Write-LVNotice $n
+      } catch {}
         if ($noActivate) {
           try {
             $null = $proc.WaitForInputIdle(5000)
@@ -370,7 +504,7 @@ function Invoke-CompareVI {
         $proc.WaitForExit()
         $code = [int]$proc.ExitCode
       } else {
-        & $cli $baseAbs $headAbs @cliArgs
+        & $cli @argsArr
         $code = if (Get-Variable -Name LASTEXITCODE -ErrorAction SilentlyContinue) { $LASTEXITCODE } else { 0 }
         # We do not have PID in this path; record completion
         try {
@@ -412,7 +546,7 @@ function Invoke-CompareVI {
           generatedAt  = (Get-Date).ToString('o')
           cliPath      = $cli
           command      = $cmdline
-          args         = @($argsArr)
+          args         = @($cliArgs)
           exitCode     = $code
           diff         = $diff
           cwd          = $cwd
@@ -499,4 +633,4 @@ function Invoke-CompareVI {
   }
 }
 
-Export-ModuleMember -Function Invoke-CompareVI, Resolve-Cli
+Export-ModuleMember -Function Get-CanonicalCliCandidates, Invoke-CompareVI, Resolve-Cli

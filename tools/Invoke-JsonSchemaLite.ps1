@@ -19,9 +19,12 @@ try { $schema = Get-Content -LiteralPath $SchemaPath -Raw | ConvertFrom-Json -Er
 # identifier and the alternate file exists next to the requested schema path.
 $schemaConst = $null
 if ($schema -is [psobject] -and $schema.PSObject.Properties['properties']) {
-  $schemaNode = $schema.properties.schema
-  if ($schemaNode -is [psobject] -and $schemaNode.PSObject.Properties['const']) {
-    $schemaConst = [string]$schemaNode.const
+  $schemaProps = $schema.properties
+  if ($schemaProps -is [psobject] -and $schemaProps.PSObject.Properties['schema']) {
+    $schemaNode = $schemaProps.PSObject.Properties['schema'].Value
+    if ($schemaNode -is [psobject] -and $schemaNode.PSObject.Properties['const']) {
+      $schemaConst = [string]$schemaNode.const
+    }
   }
 }
 
@@ -36,6 +39,7 @@ if ($schemaConst -and $payloadSchemaId -and $schemaConst -ne $payloadSchemaId) {
     $schemaDir = Split-Path -Parent $resolvedSchemaPath
     $altSchemaPath = Join-Path $schemaDir ("{0}.schema.json" -f $payloadSchemaId)
     if (Test-Path -LiteralPath $altSchemaPath -PathType Leaf) {
+      Write-Host '[schema-lite] notice: schema const mismatch'
       $notice = [string]::Format(
         '[schema-lite] notice: schema const mismatch (expected {0} actual {1}); reloading schema from {2}',
         $schemaConst,
@@ -43,6 +47,7 @@ if ($schemaConst -and $payloadSchemaId -and $schemaConst -ne $payloadSchemaId) {
         $altSchemaPath
       )
       Write-Host $notice
+      Write-Host (Split-Path -Leaf $altSchemaPath)
       try {
         $schema = Get-Content -LiteralPath $altSchemaPath -Raw | ConvertFrom-Json -ErrorAction Stop
         $SchemaPath = $altSchemaPath

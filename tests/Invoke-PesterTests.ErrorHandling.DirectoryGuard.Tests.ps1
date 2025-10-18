@@ -1,8 +1,17 @@
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
+Set-Variable -Name skipGuardSelfTest -Scope Script -Value $false -Force
+Set-Variable -Name skipReason -Scope Script -Value 'Dispatcher guard self-test suppressed in nested dispatcher context' -Force
+
 Describe 'Dispatcher results path guard (read-only directory)' -Tag 'Unit' {
   BeforeAll {
+    if ($env:SUPPRESS_GUARD_SELFTEST -eq '1') {
+      $script:skipGuardSelfTest = $true
+      $script:skipReason = 'Dispatcher guard self-test suppressed in nested dispatcher context'
+      return
+    }
+
     $here = Split-Path -Parent $PSCommandPath
     $root = Resolve-Path (Join-Path $here '..')
     $script:repoRoot = $root
@@ -21,6 +30,16 @@ Describe 'Dispatcher results path guard (read-only directory)' -Tag 'Unit' {
   }
 
   It 'fails and emits a guard crumb when ResultsPath is a read-only directory' {
+    $skipFlag = $false
+    $skipVar = Get-Variable -Name skipGuardSelfTest -Scope Script -ErrorAction SilentlyContinue
+    if ($skipVar) { $skipFlag = [bool]$skipVar.Value }
+    if ($skipFlag) {
+      $reasonVar = Get-Variable -Name skipReason -Scope Script -ErrorAction SilentlyContinue
+      $reason = if ($reasonVar) { [string]$reasonVar.Value } else { 'Dispatcher guard self-test suppressed in nested dispatcher context' }
+      Set-ItResult -Skipped -Because $reason
+      return
+    }
+
     if (-not $script:pwshAvailable) {
       Set-ItResult -Skipped -Because $script:skipReason
       return

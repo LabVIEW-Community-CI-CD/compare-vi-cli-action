@@ -6,11 +6,34 @@ Import-Module (Join-Path $toolsRoot 'VendorTools.psm1') -Force
 
 $script:boolTrue  = 'true'
 $script:boolFalse = 'false'
+$script:providerId = 'labviewcli'
 
 function Convert-ToBoolString {
   param([bool]$Value)
   if ($Value) { return $script:boolTrue }
   return $script:boolFalse
+}
+
+function Get-RequiredParameterValue {
+  param(
+    [Parameter(Mandatory)][string]$Operation,
+    [Parameter()][hashtable]$Params,
+    [Parameter(Mandatory)][string]$Key
+  )
+  if (-not $Params) {
+    throw "Operation '$Operation' requires parameter '$Key'."
+  }
+  if (-not $Params.ContainsKey($Key)) {
+    throw "Operation '$Operation' requires parameter '$Key'."
+  }
+  $value = $Params[$Key]
+  if ($null -eq $value) {
+    throw "Operation '$Operation' requires parameter '$Key'."
+  }
+  if ($value -is [string] -and [string]::IsNullOrWhiteSpace($value)) {
+    throw "Operation '$Operation' requires parameter '$Key'."
+  }
+  return $value
 }
 
 function Resolve-LabVIEWCliBinaryPath {
@@ -62,6 +85,7 @@ function Get-LabVIEWCliArgs {
     [Parameter(Mandatory)][string]$Operation,
     [Parameter()][hashtable]$Params
   )
+  if (-not $Params) { $Params = @{} }
   switch ($Operation) {
     'CloseLabVIEW' {
       $args = @('-OperationName','CloseLabVIEW')
@@ -72,10 +96,12 @@ function Get-LabVIEWCliArgs {
       return $args
     }
     'CreateComparisonReport' {
+      $vi1 = Get-RequiredParameterValue -Operation $Operation -Params $Params -Key 'vi1'
+      $vi2 = Get-RequiredParameterValue -Operation $Operation -Params $Params -Key 'vi2'
       $args = @(
         '-OperationName','CreateComparisonReport',
-        '-vi1', $Params.vi1,
-        '-vi2', $Params.vi2
+        '-vi1', $vi1,
+        '-vi2', $vi2
       )
       if ($Params.ContainsKey('reportPath') -and $Params.reportPath) {
         $args += @('-reportPath', $Params.reportPath)
@@ -93,9 +119,10 @@ function Get-LabVIEWCliArgs {
       return $args
     }
     'RunVI' {
+      $viPath = Get-RequiredParameterValue -Operation $Operation -Params $Params -Key 'viPath'
       $args = @(
         '-OperationName','RunVI',
-        '-VIPath', $Params.viPath
+        '-VIPath', $viPath
       )
       if ($Params.ContainsKey('showFP')) {
         $args += @('-ShowFrontPanel', (Convert-ToBoolString $Params.showFP))
@@ -109,10 +136,12 @@ function Get-LabVIEWCliArgs {
       return $args
     }
     'RunVIAnalyzer' {
+      $configPath = Get-RequiredParameterValue -Operation $Operation -Params $Params -Key 'configPath'
+      $reportPath = Get-RequiredParameterValue -Operation $Operation -Params $Params -Key 'reportPath'
       $args = @(
         '-OperationName','RunVIAnalyzer',
-        '-ConfigPath', $Params.configPath,
-        '-ReportPath', $Params.reportPath
+        '-ConfigPath', $configPath,
+        '-ReportPath', $reportPath
       )
       if ($Params.ContainsKey('reportSaveType') -and $Params.reportSaveType) {
         $args += @('-ReportSaveType', $Params.reportSaveType)
@@ -123,17 +152,20 @@ function Get-LabVIEWCliArgs {
       return $args
     }
     'RunUnitTests' {
+      $projectPath = Get-RequiredParameterValue -Operation $Operation -Params $Params -Key 'projectPath'
+      $junitReportPath = Get-RequiredParameterValue -Operation $Operation -Params $Params -Key 'junitReportPath'
       $args = @(
         '-OperationName','RunUnitTests',
-        '-ProjectPath', $Params.projectPath,
-        '-JUnitReportPath', $Params.junitReportPath
+        '-ProjectPath', $projectPath,
+        '-JUnitReportPath', $junitReportPath
       )
       return $args
     }
     'MassCompile' {
+      $directoryToCompile = Get-RequiredParameterValue -Operation $Operation -Params $Params -Key 'directoryToCompile'
       $args = @(
         '-OperationName','MassCompile',
-        '-DirectoryToCompile', $Params.directoryToCompile
+        '-DirectoryToCompile', $directoryToCompile
       )
       if ($Params.ContainsKey('massCompileLogFile') -and $Params.massCompileLogFile) {
         $args += @('-MassCompileLogFile', $Params.massCompileLogFile)
@@ -154,9 +186,10 @@ function Get-LabVIEWCliArgs {
       if (-not $buildSpecName -and $Params.ContainsKey('buildSpec')) {
         $buildSpecName = $Params.buildSpec
       }
+      $projectPath = Get-RequiredParameterValue -Operation $Operation -Params $Params -Key 'projectPath'
       $args = @(
         '-OperationName','ExecuteBuildSpec',
-        '-ProjectPath', $Params.projectPath
+        '-ProjectPath', $projectPath
       )
       if ($Params.ContainsKey('targetName') -and $Params.targetName) {
         $args += @('-TargetName', $Params.targetName)
@@ -172,19 +205,48 @@ function Get-LabVIEWCliArgs {
   }
 }
 
-function New-LVProvider {
-  $provider = New-Object PSObject
-  $provider | Add-Member ScriptMethod Name { 'labviewcli' }
-  $provider | Add-Member ScriptMethod ResolveBinaryPath { Resolve-LabVIEWCliBinaryPath }
-  $provider | Add-Member ScriptMethod Supports {
-    param($Operation)
-    return @('CloseLabVIEW','CreateComparisonReport','RunVI','RunVIAnalyzer','RunUnitTests','MassCompile','ExecuteBuildSpec') -contains $Operation
+function New-LabVIEWCliInvocationPlan {
+  param(
+    [Parameter(Mandatory)][string]$Operation,
+    [Parameter()][hashtable]$Params
+  )
+  $binaryPath = Resolve-LabVIEWCliBinaryPath
+  if (-not $binaryPath) {
+    throw 'Unable to resolve LabVIEWCLI executable path.'
   }
-  $provider | Add-Member ScriptMethod BuildArgs {
+  $arguments = Get-LabVIEWCliArgs -Operation $Operation -Params $Params
+  return [pscustomobject]@{
+    BinaryPath = $binaryPath
+    Arguments  = $arguments
+  }
+}
+
+function New-CompareVIProvider {
+  $supportedOperations = @(
+    'CloseLabVIEW',
+    'CreateComparisonReport',
+    'RunVI',
+    'RunVIAnalyzer',
+    'RunUnitTests',
+    'MassCompile',
+    'ExecuteBuildSpec'
+  )
+  $provider = [pscustomobject]@{
+    Id                  = $script:providerId
+    SupportedOperations = $supportedOperations
+  }
+  $null = $provider | Add-Member -MemberType ScriptMethod -Name SupportsOperation -Value {
+    param($Operation)
+    return $this.SupportedOperations -contains $Operation
+  }
+  $null = $provider | Add-Member -MemberType ScriptMethod -Name ResolveBinaryPath -Value {
+    Resolve-LabVIEWCliBinaryPath
+  }
+  $null = $provider | Add-Member -MemberType ScriptMethod -Name GetInvocationPlan -Value {
     param($Operation,$Params)
-    return (Get-LabVIEWCliArgs -Operation $Operation -Params $Params)
+    return New-LabVIEWCliInvocationPlan -Operation $Operation -Params $Params
   }
   return $provider
 }
 
-Export-ModuleMember -Function New-LVProvider
+Export-ModuleMember -Function New-CompareVIProvider

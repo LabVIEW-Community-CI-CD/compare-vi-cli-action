@@ -3,8 +3,9 @@
 
 BeforeAll {
   $here = Split-Path -Parent $PSCommandPath
-  $root = Resolve-Path (Join-Path $here '..')
-  . (Join-Path $root 'scripts' 'CompareVI.ps1')
+   $root = Resolve-Path (Join-Path $here  '..')
+   $modulePath = Join-Path $root  'scripts' 'CompareVI.psm1'
+  Import-Module  $modulePath -Force | Out-Null 
 
   # Canonical path candidates
   $script:canonicalCandidates = Get-CanonicalCliCandidates
@@ -171,4 +172,5 @@ Describe 'Resolve-Cli canonical path enforcement' -Tag 'Unit' {
     }
   }
 }
+
 
