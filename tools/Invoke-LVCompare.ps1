@@ -85,6 +85,88 @@ $ErrorActionPreference = 'Stop'
 try { Import-Module (Join-Path (Split-Path -Parent $PSScriptRoot) 'tools' 'VendorTools.psm1') -Force } catch {}
 try { Import-Module (Join-Path (Split-Path -Parent $PSScriptRoot) 'tools' 'LabVIEWCli.psm1') -Force } catch {}
 
+$labviewPidTrackerModule = Join-Path (Split-Path -Parent $PSScriptRoot) 'tools' 'LabVIEWPidTracker.psm1'
+$labviewPidTrackerLoaded = $false
+$labviewPidTrackerPath = $null
+$labviewPidTrackerState = $null
+$labviewPidTrackerFinalized = $false
+$labviewPidTrackerFinalState = $null
+
+if (Test-Path -LiteralPath $labviewPidTrackerModule -PathType Leaf) {
+  try {
+    Import-Module $labviewPidTrackerModule -Force
+    $labviewPidTrackerLoaded = $true
+  } catch {
+    Write-Warning ("Invoke-LVCompare: failed to import LabVIEW PID tracker module: {0}" -f $_.Exception.Message)
+  }
+}
+
+function Initialize-LabVIEWPidTracker {
+  if (-not $script:labviewPidTrackerLoaded -or $script:labviewPidTrackerState) { return }
+  $script:labviewPidTrackerPath = Join-Path $OutputDir '_agent' 'labview-pid.json'
+  try {
+    $script:labviewPidTrackerState = Start-LabVIEWPidTracker -TrackerPath $script:labviewPidTrackerPath -Source 'invoke-lvcompare:init'
+    if ($script:labviewPidTrackerState -and $script:labviewPidTrackerState.PSObject.Properties['Pid'] -and $script:labviewPidTrackerState.Pid) {
+      $modeText = if ($script:labviewPidTrackerState.Reused) { 'Reusing existing' } else { 'Tracking detected' }
+      Write-Host ("[labview-pid] {0} LabVIEW.exe PID {1}." -f $modeText, $script:labviewPidTrackerState.Pid) -ForegroundColor DarkGray
+    }
+  } catch {
+    Write-Warning ("Invoke-LVCompare: failed to start LabVIEW PID tracker: {0}" -f $_.Exception.Message)
+    $script:labviewPidTrackerLoaded = $false
+    $script:labviewPidTrackerPath = $null
+    $script:labviewPidTrackerState = $null
+  }
+}
+
+function Finalize-LabVIEWPidTracker {
+  param(
+    [string]$Status,
+    [Nullable[int]]$ExitCode,
+    [Nullable[int]]$CompareExitCode,
+    [Nullable[int]]$ProcessExitCode,
+    [string]$Command,
+    [string]$CapturePath,
+    [Nullable[bool]]$ReportGenerated,
+    [Nullable[bool]]$DiffDetected,
+    [string]$Message,
+    [string]$Mode,
+    [string]$Policy,
+    [Nullable[bool]]$AutoCli,
+    [Nullable[bool]]$DidCli
+  )
+
+  if (-not $script:labviewPidTrackerLoaded -or -not $script:labviewPidTrackerPath -or $script:labviewPidTrackerFinalized) { return }
+
+  $context = [ordered]@{ stage = 'lvcompare:summary' }
+  if ($Status) { $context.status = $Status } else { $context.status = 'unknown' }
+  if ($PSBoundParameters.ContainsKey('ExitCode') -and $ExitCode -ne $null) { $context.exitCode = [int]$ExitCode }
+  if ($PSBoundParameters.ContainsKey('CompareExitCode') -and $CompareExitCode -ne $null) { $context.compareExitCode = [int]$CompareExitCode }
+  if ($PSBoundParameters.ContainsKey('ProcessExitCode') -and $ProcessExitCode -ne $null) { $context.processExitCode = [int]$ProcessExitCode }
+  if ($PSBoundParameters.ContainsKey('Command') -and $Command) { $context.command = $Command }
+  if ($PSBoundParameters.ContainsKey('CapturePath') -and $CapturePath) { $context.capturePath = $CapturePath }
+  if ($PSBoundParameters.ContainsKey('ReportGenerated')) { $context.reportGenerated = [bool]$ReportGenerated }
+  if ($PSBoundParameters.ContainsKey('DiffDetected')) { $context.diffDetected = [bool]$DiffDetected }
+  if ($PSBoundParameters.ContainsKey('Mode') -and $Mode) { $context.mode = $Mode }
+  if ($PSBoundParameters.ContainsKey('Policy') -and $Policy) { $context.policy = $Policy }
+  if ($PSBoundParameters.ContainsKey('AutoCli')) { $context.autoCli = [bool]$AutoCli }
+  if ($PSBoundParameters.ContainsKey('DidCli')) { $context.didCli = [bool]$DidCli }
+  if ($PSBoundParameters.ContainsKey('Message') -and $Message) { $context.message = $Message }
+
+  $args = @{ TrackerPath = $script:labviewPidTrackerPath; Source = 'invoke-lvcompare:summary' }
+  if ($script:labviewPidTrackerState -and $script:labviewPidTrackerState.PSObject.Properties['Pid'] -and $script:labviewPidTrackerState.Pid) {
+    $args.Pid = $script:labviewPidTrackerState.Pid
+  }
+  if ($context) { $args.Context = [pscustomobject]$context }
+
+  try {
+    $script:labviewPidTrackerFinalState = Stop-LabVIEWPidTracker @args
+  } catch {
+    Write-Warning ("Invoke-LVCompare: failed to finalize LabVIEW PID tracker: {0}" -f $_.Exception.Message)
+  } finally {
+    $script:labviewPidTrackerFinalized = $true
+  }
+}
+
 function Set-DefaultLabVIEWCliPath {
   param([switch]$ThrowOnMissing)
 
@@ -393,6 +475,7 @@ function Invoke-LabVIEWCLICompare {
 
 $repoRoot = (Resolve-Path '.').Path
 New-DirIfMissing -Path $OutputDir
+Initialize-LabVIEWPidTracker
 Set-DefaultLabVIEWCliPath
 
 # Resolve LabVIEW path (prefer explicit/env LABVIEW_PATH; fallback to 2025 canonical by bitness)
@@ -406,7 +489,9 @@ if (-not $LabVIEWExePath) {
 if (-not $LabVIEWExePath -or -not (Test-Path -LiteralPath $LabVIEWExePath -PathType Leaf)) {
   $expectedParent = if ($LabVIEWBitness -eq '32') { ${env:ProgramFiles(x86)} } else { ${env:ProgramFiles} }
   $expected = if ($expectedParent) { Join-Path $expectedParent 'National Instruments\LabVIEW 2025\LabVIEW.exe' } else { '(unknown ProgramFiles)' }
-  Write-Error ("Invoke-LVCompare: LabVIEWExePath could not be resolved. Set LABVIEW_PATH or pass -LabVIEWExePath. Expected canonical for bitness {0}: {1}" -f $LabVIEWBitness, $expected)
+  $labviewPathMessage = "Invoke-LVCompare: LabVIEWExePath could not be resolved. Set LABVIEW_PATH or pass -LabVIEWExePath. Expected canonical for bitness {0}: {1}" -f $LabVIEWBitness, $expected
+  Write-Error $labviewPathMessage
+  Finalize-LabVIEWPidTracker -Status 'error' -ExitCode 2 -ProcessExitCode 2 -Message $labviewPathMessage
   exit 2
 }
 
@@ -458,7 +543,10 @@ Write-JsonEvent 'plan' @{
      $didCli = $true
    } catch {
      Write-JsonEvent 'error' @{ stage='cli-capture'; message=$_.Exception.Message }
-     if ($policy -eq 'cli-only') { throw }
+     if ($policy -eq 'cli-only') {
+       Finalize-LabVIEWPidTracker -Status 'error' -ExitCode 2 -ProcessExitCode 2 -Message $_.Exception.Message -Mode $mode -Policy $policy -AutoCli $autoCli -DidCli $true
+       throw
+     }
    }
  }
 
@@ -478,7 +566,7 @@ Write-JsonEvent 'plan' @{
   if (-not $LVComparePath) { try { $LVComparePath = Resolve-LVComparePath } catch {} }
   if ($LVComparePath) { $captureParams.LvComparePath = $LVComparePath }
   & $captureScript @captureParams
- } catch {
+  } catch {
    $message = $_.Exception.Message
    if ($_.Exception -is [System.Management.Automation.PropertyNotFoundException] -and $message -match "property 'Count'") {
      $hint = Get-SourceControlBootstrapHint
@@ -487,9 +575,10 @@ Write-JsonEvent 'plan' @{
    Write-JsonEvent 'error' @{ stage='capture'; message=$message }
    Write-Warning ("Invoke-LVCompare: capture failure -> {0}" -f $message)
    if ($_.InvocationInfo) { Write-Warning $_.InvocationInfo.PositionMessage }
+   Finalize-LabVIEWPidTracker -Status 'error' -ExitCode 2 -ProcessExitCode 2 -Message $message -Mode $mode -Policy $policy -AutoCli $autoCli -DidCli $didCli
    throw (New-Object System.Management.Automation.RuntimeException($message, $_.Exception))
   }
- }
+}
 
 # Read capture JSON to surface exit code and command
 $capPath = Join-Path $OutputDir 'lvcompare-capture.json'
@@ -498,6 +587,7 @@ if (-not (Test-Path -LiteralPath $capPath -PathType Leaf)) {
   $hint = Get-SourceControlBootstrapHint
   if ($missingMessage -notmatch 'SCC_ConnSrv') { $missingMessage = "$missingMessage; $hint" }
   Write-JsonEvent 'error' @{ stage='post'; message=$missingMessage }
+  Finalize-LabVIEWPidTracker -Status 'error' -ExitCode 2 -ProcessExitCode 2 -Message $missingMessage -Mode $mode -Policy $policy -AutoCli $autoCli -DidCli $didCli
   Write-Error $missingMessage
   exit 2
 }
@@ -507,6 +597,7 @@ if (-not $cap) {
   $hint = Get-SourceControlBootstrapHint
   if ($parseMessage -notmatch 'SCC_ConnSrv') { $parseMessage = "$parseMessage; $hint" }
   Write-JsonEvent 'error' @{ stage='post'; message=$parseMessage }
+  Finalize-LabVIEWPidTracker -Status 'error' -ExitCode 2 -ProcessExitCode 2 -Message $parseMessage -Mode $mode -Policy $policy -AutoCli $autoCli -DidCli $didCli
   Write-Error $parseMessage
   exit 2
 }
@@ -514,7 +605,15 @@ if (-not $cap) {
 $exitCode = [int]$cap.exitCode
 $duration = [double]$cap.seconds
 $reportPath = Join-Path $OutputDir 'compare-report.html'
-Write-JsonEvent 'result' @{ exitCode=$exitCode; seconds=$duration; command=$cap.command; report=(Test-Path $reportPath) }
+$reportExists = Test-Path -LiteralPath $reportPath -PathType Leaf
+Write-JsonEvent 'result' @{ exitCode=$exitCode; seconds=$duration; command=$cap.command; report=$reportExists }
+
+$trackerStatus = switch ($exitCode) {
+  1 { 'diff' }
+  0 { 'ok' }
+  default { 'error' }
+}
+Finalize-LabVIEWPidTracker -Status $trackerStatus -ExitCode $exitCode -CompareExitCode $exitCode -ProcessExitCode $exitCode -Command $cap.command -CapturePath $capPath -ReportGenerated $reportExists -DiffDetected ($exitCode -eq 1) -Mode $mode -Policy $policy -AutoCli $autoCli -DidCli $didCli
 
 if ($LeakCheck) {
   if (-not $LeakJsonPath) { $LeakJsonPath = Join-Path $OutputDir 'compare-leak.json' }
@@ -536,6 +635,9 @@ if ($LeakCheck) {
 if ($Summary) {
   $line = "Compare Outcome: exit=$exitCode diff=$([bool]($exitCode -eq 1)) seconds=$duration"
   Write-Host $line -ForegroundColor Yellow
+  if ($labviewPidTrackerPath) {
+    Write-Host ("LabVIEW PID Tracker recorded at {0}" -f $labviewPidTrackerPath) -ForegroundColor DarkGray
+  }
   if ($env:GITHUB_STEP_SUMMARY) {
     try {
       $lines = @('## Compare Outcome')
@@ -543,7 +645,19 @@ if ($Summary) {
       $lines += ("- Diff: {0}" -f ([bool]($exitCode -eq 1)))
       $lines += ("- Duration: {0}s" -f $duration)
       $lines += ("- Capture: {0}" -f $capPath)
-      $lines += ("- Report: {0}" -f (Test-Path $reportPath))
+      $lines += ("- Report: {0}" -f $reportExists)
+      if ($labviewPidTrackerPath) {
+        $lines += ("- LabVIEW PID Tracker: {0}" -f $labviewPidTrackerPath)
+        if ($labviewPidTrackerFinalState -and $labviewPidTrackerFinalState.PSObject.Properties['Context'] -and $labviewPidTrackerFinalState.Context) {
+          $trackerContext = $labviewPidTrackerFinalState.Context
+          if ($trackerContext.PSObject.Properties['status'] -and $trackerContext.status) {
+            $lines += ("  - Status: {0}" -f $trackerContext.status)
+          }
+          if ($trackerContext.PSObject.Properties['compareExitCode'] -and $trackerContext.compareExitCode -ne $null) {
+            $lines += ("  - Compare Exit Code: {0}" -f $trackerContext.compareExitCode)
+          }
+        }
+      }
       Add-Content -Path $env:GITHUB_STEP_SUMMARY -Value ($lines -join "`n") -Encoding utf8
     } catch { Write-Warning ("Invoke-LVCompare: failed step summary append: {0}" -f $_.Exception.Message) }
   }

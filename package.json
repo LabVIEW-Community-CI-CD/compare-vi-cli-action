@@ -38,7 +38,7 @@
     "hooks:multi": "node tools/hooks/core/run-multi.mjs",
     "hooks:schema": "node tools/hooks/core/validate-summaries.mjs",
     "priority:sync": "node tools/priority/sync-standing-priority.mjs",
-    "priority:schema": "npm run schema:validate -- --schema docs/schemas/standing-priority-issue-v1.schema.json --data tests/results/_agent/issue/*.json --optional",
+    "priority:schema": "npm run schema:validate -- --schema docs/schemas/standing-priority-issue-v1.schema.json --data tests/results/_agent/issue/[0-9]*.json --optional",
     "priority:show": "node -e \"console.log(require('fs').readFileSync('tests/results/_agent/issue/router.json','utf8'))\"",
     "priority:test": "node --test \"tools/priority/__tests__/*.mjs\"",
     "priority:bootstrap": "pwsh -NoLogo -NoProfile -File tools/priority/bootstrap.ps1",

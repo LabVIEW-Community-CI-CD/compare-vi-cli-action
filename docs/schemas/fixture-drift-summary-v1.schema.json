@@ -5,21 +5,41 @@
   "type": "object",
   "additionalProperties": false,
   "properties": {
-    "schema": { "const": "fixture-drift-summary-v1" },
-    "generatedAtUtc": { "type": "string" },
-    "status": { "type": "string", "enum": ["ok", "drift", "fail-structural", ""] },
-    "exitCode": { "type": "integer" },
+    "schema": {
+      "const": "fixture-drift-summary-v1"
+    },
+    "generatedAtUtc": {
+      "type": "string"
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "ok",
+        "drift",
+        "fail-structural",
+        ""
+      ]
+    },
+    "exitCode": {
+      "type": "integer"
+    },
     "categories": {
       "type": "array",
-      "items": { "type": "string" }
+      "items": {
+        "type": "string"
+      }
     },
     "artifactPaths": {
       "type": "array",
-      "items": { "type": "string" }
+      "items": {
+        "type": "string"
+      }
     },
     "notes": {
       "type": "array",
-      "items": { "type": "string" }
+      "items": {
+        "type": "string"
+      }
     },
     "files": {
       "type": "array",
@@ -27,13 +47,113 @@
         "type": "object",
         "additionalProperties": false,
         "properties": {
-          "path": { "type": "string" },
-          "lastWriteTimeUtc": { "type": "string" },
-          "length": { "type": "integer", "minimum": 0 }
+          "path": {
+            "type": "string"
+          },
+          "lastWriteTimeUtc": {
+            "type": "string"
+          },
+          "length": {
+            "type": "integer",
+            "minimum": 0
+          }
         },
-        "required": ["path", "lastWriteTimeUtc"]
+        "required": [
+          "path",
+          "lastWriteTimeUtc"
+        ]
+      }
+    },
+    "labviewPidTracker": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "enabled": {
+          "type": "boolean"
+        },
+        "path": {
+          "type": "string"
+        },
+        "relativePath": {
+          "type": "string"
+        },
+        "initial": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "pid": {
+              "type": [
+                "integer",
+                "null"
+              ]
+            },
+            "running": {
+              "type": "boolean"
+            },
+            "reused": {
+              "type": "boolean"
+            },
+            "candidates": {
+              "type": "array",
+              "items": {
+                "type": "integer"
+              }
+            },
+            "observation": {
+              "type": "object"
+            }
+          }
+        },
+        "final": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "pid": {
+              "type": [
+                "integer",
+                "null"
+              ]
+            },
+            "running": {
+              "type": "boolean"
+            },
+            "reused": {
+              "type": [
+                "boolean",
+                "null"
+              ]
+            },
+            "observation": {
+              "type": "object"
+            },
+            "finalizedSource": {
+              "type": "string"
+            },
+            "context": {
+              "type": [
+                "object",
+                "null"
+              ]
+            },
+            "contextSource": {
+              "type": "string"
+            },
+            "contextSourceDetail": {
+              "type": "string"
+            }
+          }
+        }
       }
     }
   },
-  "required": ["schema", "generatedAtUtc", "status", "exitCode", "categories", "artifactPaths", "notes", "files"]
+  "required": [
+    "schema",
+    "generatedAtUtc",
+    "status",
+    "exitCode",
+    "categories",
+    "artifactPaths",
+    "notes",
+    "files"
+  ]
 }
