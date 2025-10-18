@@ -24,7 +24,7 @@ Describe 'Aggregation cleanup (artifact tracking)' -Tag 'Unit' {
       "Describe 'MiniAgg' {",
       '  BeforeAll {',
       '    $repoRoot = (Get-Location).Path',
-      "    . (Join-Path $repoRoot 'scripts' 'AggregationHints.Internal.ps1')",
+      "    . (Join-Path `$repoRoot 'scripts' 'AggregationHints.Internal.ps1')",
       '  }',
       "  It 'aggregates quickly' {",
       '    $tests = @()'

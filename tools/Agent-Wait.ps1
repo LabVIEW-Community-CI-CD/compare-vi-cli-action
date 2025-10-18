@@ -118,7 +118,8 @@ function End-AgentWait {
     $start = Get-Content $markerPath -Raw | ConvertFrom-Json
     $started = [DateTimeOffset]::Parse($start.startedUtc)
     $now = [DateTimeOffset]::UtcNow
-    $elapsedSec = [int][Math]::Round(($now - $started).TotalSeconds)
+    # Use ceiling to treat any non-zero elapsed time as at least 1s for strict zero-tolerance checks
+    $elapsedSec = [int][Math]::Ceiling(($now - $started).TotalSeconds)
     # derive tolerance: prefer explicit param, fallback to marker
     $tol = if ($PSBoundParameters.ContainsKey('ToleranceSeconds')) { $ToleranceSeconds } elseif ($start.PSObject.Properties['toleranceSeconds']) { [int]$start.toleranceSeconds } else { 5 }
     $diff = [int][Math]::Abs($elapsedSec - [int]$start.expectedSeconds)

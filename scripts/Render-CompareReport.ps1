@@ -380,19 +380,67 @@ $liveText = if ($liveCount -gt 0) { "Live: $liveCount proc(s)" } else { 'Live: n
 $liveClass = if ($liveCount -gt 0) { 'badge-warn' } else { 'badge-muted' }
 
 # Optional single-run diff details
-$headChanges = $null; $baseChanges = $null
+$headChanges = $null; $baseChanges = $null; $diffDetailsChecked = $false; $diffDetailsFound = $false
 try {
-  $detailsDir = $null
-  if ($OutputPath) { try { $detailsDir = (Split-Path -Parent -LiteralPath $OutputPath) } catch {} }
-  if (-not $detailsDir -and $ExecJsonPath) { try { $detailsDir = (Split-Path -Parent -LiteralPath $ExecJsonPath) } catch {} }
-  if ($detailsDir) {
-    $dd = Join-Path $detailsDir 'diff-details.json'
-    if (Test-Path -LiteralPath $dd -PathType Leaf) {
-      $dj = Get-Content -LiteralPath $dd -Raw | ConvertFrom-Json -ErrorAction Stop
-      if ($dj) {
-        if ($dj.PSObject.Properties.Name -contains 'headChanges') { try { $headChanges = [int]$dj.headChanges } catch {} }
-        if ($dj.PSObject.Properties.Name -contains 'baseChanges') { try { $baseChanges = [int]$dj.baseChanges } catch {} }
+  $candidateDirs = New-Object System.Collections.Generic.List[string]
+  function Add-CandidateDir {
+    param([string]$Dir)
+    if ($Dir -and -not ($candidateDirs -contains $Dir)) {
+      $null = $candidateDirs.Add($Dir)
+    }
+  }
+  function Get-ParentDirectory {
+    param([string]$PathValue)
+    if ($null -eq $PathValue -or $PathValue -eq '') { return $null }
+    try { return Split-Path -Path $PathValue -Parent } catch { return [System.IO.Path]::GetDirectoryName($PathValue) }
+  }
+  if ($OutputPath) { Add-CandidateDir (Get-ParentDirectory $OutputPath) }
+  if ($ExecJsonPath) { Add-CandidateDir (Get-ParentDirectory $ExecJsonPath) }
+
+  function Try-LoadDiffDetails {
+    param(
+      [string]$Dir,
+      [ref]$HeadOut,
+      [ref]$BaseOut,
+      [ref]$FoundOut
+    )
+    if (-not $Dir) { return }
+    $path = Join-Path $Dir 'diff-details.json'
+    if (Test-Path -LiteralPath $path -PathType Leaf) {
+      $data = Get-Content -LiteralPath $path -Raw | ConvertFrom-Json -ErrorAction Stop
+      if ($data) {
+        if ($data.PSObject.Properties.Name -contains 'headChanges') { try { $HeadOut.Value = [int]$data.headChanges } catch {} }
+        if ($data.PSObject.Properties.Name -contains 'baseChanges') { try { $BaseOut.Value = [int]$data.baseChanges } catch {} }
+        $FoundOut.Value = $true
       }
+    }
+  }
+
+  foreach ($dir in $candidateDirs) {
+    $diffDetailsChecked = $true
+    Try-LoadDiffDetails -Dir $dir -HeadOut ([ref]$headChanges) -BaseOut ([ref]$baseChanges) -FoundOut ([ref]$diffDetailsFound)
+    if ($diffDetailsFound) { break }
+  }
+
+  if (-not $diffDetailsFound) {
+    $fallbackDirs = New-Object System.Collections.Generic.List[string]
+    foreach ($dir in $candidateDirs) {
+      try {
+        $parent = if ($dir) { Get-ParentDirectory $dir } else { $null }
+        if ($parent) {
+          $outDirs = @(Get-ChildItem -LiteralPath $parent -Directory -Filter 'out' -ErrorAction SilentlyContinue)
+          foreach ($entry in $outDirs) {
+            if ($entry -and $entry.FullName -and -not ($candidateDirs | Where-Object { $_ -ieq $entry.FullName }) -and -not ($fallbackDirs | Where-Object { $_ -ieq $entry.FullName })) {
+              $null = $fallbackDirs.Add($entry.FullName)
+            }
+          }
+        }
+      } catch {}
+    }
+    foreach ($dir in $fallbackDirs) {
+      $diffDetailsChecked = $true
+      Try-LoadDiffDetails -Dir $dir -HeadOut ([ref]$headChanges) -BaseOut ([ref]$baseChanges) -FoundOut ([ref]$diffDetailsFound)
+      if ($diffDetailsFound) { break }
     }
   }
 } catch { Write-Host "[report] warn: failed to load diff-details.json: $_" -ForegroundColor DarkYellow }
@@ -489,6 +537,9 @@ $summaryKvRows += ('<div class="key">Exit code</div><div class="value">{0}</div>
 $summaryKvRows += ('<div class="key">Diff</div><div class="value">{0}</div>' -f (HtmlEncode($Diff)))
 if ($headChanges -ne $null) { $summaryKvRows += ('<div class="key">Head Changes</div><div class="value">{0}</div>' -f (HtmlEncode($headChanges))) }
 if ($baseChanges -ne $null) { $summaryKvRows += ('<div class="key">Base Changes</div><div class="value">{0}</div>' -f (HtmlEncode($baseChanges))) }
+if ($diffBool -and -not $diffDetailsFound -and $diffDetailsChecked) {
+  $summaryKvRows += '<div class="key">Diff details</div><div class="value">Not available</div>'
+}
 $summaryKvRows += ('<div class="key">Duration (s)</div><div class="value">{0}</div>' -f (HtmlEncode(([string]::Format('{0:F3}', $DurationSeconds)))))
 if ($cliSummaryLines.Count -gt 0) { $summaryKvRows += $cliSummaryLines }
 $summaryKvRows += ('<div class="key">Base</div><div class="value"><span id="clip_base" data-base-path="{0}">{0}</span> <button class="btn" onclick="copyText(''clip_base'')">Copy</button></div>' -f (HtmlEncode($Base)))

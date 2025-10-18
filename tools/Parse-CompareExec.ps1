@@ -54,8 +54,11 @@ if ($capturePath -and (Test-Path -LiteralPath $capturePath)) {
     $reportCandidate = Join-Path $capDir 'compare-report.html'
     if (Test-Path -LiteralPath $reportCandidate) { $payload.reportPath = $reportCandidate }
     $cliArtifacts = $null
-    if ($cap.environment -and $cap.environment.cli -and $cap.environment.cli.PSObject.Properties.Name -contains 'artifacts') {
-      $cliArtifacts = $cap.environment.cli.artifacts
+    $capEnv = $null
+    if ($cap.PSObject.Properties['environment']) { $capEnv = $cap.environment }
+    if ($capEnv -and $capEnv.PSObject.Properties['cli']) {
+      $capCli = $capEnv.cli
+      if ($capCli -and $capCli.PSObject.Properties['artifacts']) { $cliArtifacts = $capCli.artifacts }
     }
     if ($cliArtifacts) {
       $artifactSummary = [ordered]@{}

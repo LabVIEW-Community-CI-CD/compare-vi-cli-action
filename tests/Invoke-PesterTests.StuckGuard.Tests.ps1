@@ -16,7 +16,11 @@ Describe 'Invoke-PesterTests STUCK_GUARD (notice-only)' -Tag 'Unit' {
 
     $results = Join-Path $troot 'results'
     $env:STUCK_GUARD = '1'
-    pwsh -File $script:dispatcher -TestsPath $troot -ResultsPath $results -IntegrationMode exclude | Out-Null
+    try {
+      pwsh -File $script:dispatcher -TestsPath $troot -ResultsPath $results -IntegrationMode exclude | Out-Null
+    } finally {
+      Remove-Item Env:\STUCK_GUARD -ErrorAction SilentlyContinue
+    }
 
     $hb = Join-Path $results 'pester-heartbeat.ndjson'
     Test-Path $hb | Should -BeTrue

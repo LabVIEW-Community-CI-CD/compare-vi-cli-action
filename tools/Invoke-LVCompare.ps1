@@ -541,11 +541,16 @@ Write-JsonEvent 'plan' @{
 
  # Decide execution path based on compare policy/mode
  $didCli = $false
- if (($policy -eq 'cli-only') -or $autoCli -or ($mode -eq 'labview-cli' -and $policy -ne 'lv-only')) {
+if (-not $CaptureScriptPath -and (($policy -eq 'cli-only') -or $autoCli -or ($mode -eq 'labview-cli' -and $policy -ne 'lv-only'))) {
    try {
-     $cliRes = Invoke-LabVIEWCLICompare -Base $BaseVi -Head $HeadVi -OutDir $OutputDir -RenderReport:$RenderReport.IsPresent -Flags $effectiveFlags
-     Write-JsonEvent 'result' @{ exitCode=$cliRes.ExitCode; seconds=$cliRes.Seconds; command=$cliRes.Command; report=(Test-Path $cliRes.ReportPath) }
-     $didCli = $true
+    $cliRes = Invoke-LabVIEWCLICompare -Base $BaseVi -Head $HeadVi -OutDir $OutputDir -RenderReport:$RenderReport.IsPresent -Flags $effectiveFlags
+    if (-not $cliRes) { throw 'LabVIEW CLI compare returned no result payload.' }
+    $reportAvailable = $false
+    if ($cliRes -and $cliRes.PSObject.Properties['ReportPath'] -and $cliRes.ReportPath) {
+      try { $reportAvailable = Test-Path -LiteralPath $cliRes.ReportPath -PathType Leaf } catch { $reportAvailable = $false }
+    }
+    Write-JsonEvent 'result' @{ exitCode=$cliRes.ExitCode; seconds=$cliRes.Seconds; command=$cliRes.Command; report=$reportAvailable }
+    $didCli = $true
    } catch {
      Write-JsonEvent 'error' @{ stage='cli-capture'; message=$_.Exception.Message }
      if ($policy -eq 'cli-only') {
