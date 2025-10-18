@@ -31,6 +31,29 @@ param(
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
+function Get-SummaryValue {
+  param(
+    $InputObject,
+    [string[]]$PropertyNames
+  )
+
+  if (-not $InputObject) { return $null }
+
+  foreach ($name in $PropertyNames) {
+    if (-not $name) { continue }
+
+    if ($InputObject -is [hashtable]) {
+      if ($InputObject.ContainsKey($name)) { return $InputObject[$name] }
+      continue
+    }
+
+    $prop = $InputObject.PSObject.Properties[$name]
+    if ($prop) { return $prop.Value }
+  }
+
+  return $null
+}
+
 if (-not $env:GITHUB_STEP_SUMMARY -and -not $CommentPath) {
   Write-Warning 'GITHUB_STEP_SUMMARY not set and no -CommentPath provided; skipping summary emission.'
   return
@@ -77,8 +100,8 @@ Add-Line '## Pester Test Summary'
 
 # Optional badge line for quick copy into PR comments
 if ($EmitFailureBadge -or $Compact) {
-  $failedCount = ($totals.Failed ?? $totals.failed)
-  $totalCount = ($totals.Total ?? $totals.total)
+  $failedCount = Get-SummaryValue -InputObject $totals -PropertyNames @('Failed','failed')
+  $totalCount = Get-SummaryValue -InputObject $totals -PropertyNames @('Total','total')
   $badge = if ($failedCount -gt 0) {
     "**❌ Tests Failed:** $failedCount of $totalCount"
   } else {
@@ -87,10 +110,10 @@ if ($EmitFailureBadge -or $Compact) {
   Add-Line ''
   Add-Line $badge
   if ($BadgeJsonPath) {
-    $passedCount = ($totals.Passed ?? $totals.passed)
-    $errorsCount = ($totals.Errors ?? $totals.errors)
-    $skippedCount = ($totals.Skipped ?? $totals.skipped)
-    $duration = ($totals.Duration ?? $totals.duration)
+    $passedCount = Get-SummaryValue -InputObject $totals -PropertyNames @('Passed','passed')
+    $errorsCount = Get-SummaryValue -InputObject $totals -PropertyNames @('Errors','errors')
+    $skippedCount = Get-SummaryValue -InputObject $totals -PropertyNames @('Skipped','skipped')
+    $duration = Get-SummaryValue -InputObject $totals -PropertyNames @('Duration','duration')
     $status = if ($failedCount -gt 0) { 'failed' } else { 'passed' }
     $failJsonFile = Join-Path $ResultsDir 'pester-failures.json'
     $failedNames = @()
@@ -131,12 +154,12 @@ if (-not $totals) {
 
 # Compact mode: single concise block, no tables
 if ($Compact) {
-  $failedCount = ($totals.Failed ?? $totals.failed)
-  $passedCount = ($totals.Passed ?? $totals.passed)
-  $skippedCount = ($totals.Skipped ?? $totals.skipped)
-  $errorsCount = ($totals.Errors ?? $totals.errors)
-  $duration = ($totals.Duration ?? $totals.duration)
-  $totalCount = ($totals.Total ?? $totals.total)
+  $failedCount = Get-SummaryValue -InputObject $totals -PropertyNames @('Failed','failed')
+  $passedCount = Get-SummaryValue -InputObject $totals -PropertyNames @('Passed','passed')
+  $skippedCount = Get-SummaryValue -InputObject $totals -PropertyNames @('Skipped','skipped')
+  $errorsCount = Get-SummaryValue -InputObject $totals -PropertyNames @('Errors','errors')
+  $duration = Get-SummaryValue -InputObject $totals -PropertyNames @('Duration','duration')
+  $totalCount = Get-SummaryValue -InputObject $totals -PropertyNames @('Total','total')
   $pieces = @()
   $pieces += "$totalCount total"
   $pieces += "$passedCount passed"
@@ -167,12 +190,15 @@ if ($Compact) {
 Add-Line ''
 Add-Line '| Metric | Value |'
 Add-Line '|--------|-------|'
-Add-Line ("| Total | {0} |" -f ($totals.Total ?? $totals.total ?? $totals.Tests))
-Add-Line ("| Passed | {0} |" -f ($totals.Passed ?? $totals.passed))
-Add-Line ("| Failed | {0} |" -f ($totals.Failed ?? $totals.failed))
-if ($totals.Errors -ne $null -or $totals.errors -ne $null) { Add-Line ("| Errors | {0} |" -f ($totals.Errors ?? $totals.errors)) }
-if ($totals.Skipped -ne $null -or $totals.skipped -ne $null) { Add-Line ("| Skipped | {0} |" -f ($totals.Skipped ?? $totals.skipped)) }
-if ($totals.Duration -ne $null -or $totals.duration -ne $null) { Add-Line ("| Duration (s) | {0} |" -f ($totals.Duration ?? $totals.duration)) }
+Add-Line ("| Total | {0} |" -f (Get-SummaryValue -InputObject $totals -PropertyNames @('Total','total','Tests')))
+Add-Line ("| Passed | {0} |" -f (Get-SummaryValue -InputObject $totals -PropertyNames @('Passed','passed')))
+Add-Line ("| Failed | {0} |" -f (Get-SummaryValue -InputObject $totals -PropertyNames @('Failed','failed')))
+$errorsValue = Get-SummaryValue -InputObject $totals -PropertyNames @('Errors','errors')
+if ($errorsValue -ne $null) { Add-Line ("| Errors | {0} |" -f $errorsValue) }
+$skippedValue = Get-SummaryValue -InputObject $totals -PropertyNames @('Skipped','skipped')
+if ($skippedValue -ne $null) { Add-Line ("| Skipped | {0} |" -f $skippedValue) }
+$durationValue = Get-SummaryValue -InputObject $totals -PropertyNames @('Duration','duration')
+if ($durationValue -ne $null) { Add-Line ("| Duration (s) | {0} |" -f $durationValue) }
 
 # Optional failed test details from failures JSON if present
 $failJson = Join-Path $ResultsDir 'pester-failures.json'
