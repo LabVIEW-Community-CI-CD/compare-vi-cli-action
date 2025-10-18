@@ -157,6 +157,14 @@ jobs:
       - name: Install Node dependencies
         shell: pwsh
         run: node tools/npm/cli.mjs ci
+      - name: Export workflow token for priority sync
+        shell: pwsh
+        env:
+          WORKFLOW_TOKEN: ${{ github.token }}
+        run: |
+          if (-not $env:WORKFLOW_TOKEN) { throw 'github.token is empty' }
+          "GH_TOKEN=$env:WORKFLOW_TOKEN" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+          "GITHUB_TOKEN=$env:WORKFLOW_TOKEN" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
 
       - name: Acquire session lock
         id: session_lock
