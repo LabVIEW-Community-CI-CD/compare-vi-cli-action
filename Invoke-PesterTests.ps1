@@ -163,6 +163,7 @@ if (Test-Path -LiteralPath $dispatcherSelectionModule) {
 $labviewPidTrackerModule = Join-Path $PSScriptRoot 'tools' 'LabVIEWPidTracker.psm1'
 $labviewPidTrackerLoaded = $false
 $script:labviewPidContextResolver = $null
+$script:labviewPidTrackerStopCommand = $null
 if (Test-Path -LiteralPath $labviewPidTrackerModule -PathType Leaf) {
   try {
     Import-Module $labviewPidTrackerModule -Force
@@ -171,6 +172,11 @@ if (Test-Path -LiteralPath $labviewPidTrackerModule -PathType Leaf) {
       $script:labviewPidContextResolver = Get-Command -Name Resolve-LabVIEWPidContext -ErrorAction Stop
     } catch {
       $script:labviewPidContextResolver = $null
+    }
+    try {
+      $script:labviewPidTrackerStopCommand = Get-Command -Name Stop-LabVIEWPidTracker -ErrorAction Stop
+    } catch {
+      $script:labviewPidTrackerStopCommand = $null
     }
   } catch {
     Write-Warning ("Failed to import LabVIEWPidTracker module: {0}" -f $_.Exception.Message)
@@ -289,6 +295,31 @@ function _Finalize-LabVIEWPidTracker {
   if (-not $script:labviewPidTrackerPath) { return $null }
   if ($script:labviewPidTrackerFinalized) { return $script:labviewPidTrackerFinalState }
 
+  $stopCommand = $script:labviewPidTrackerStopCommand
+  if (-not $stopCommand) {
+    if ($labviewPidTrackerLoaded) {
+      try {
+        $stopCommand = Get-Command -Name Stop-LabVIEWPidTracker -ErrorAction Stop
+        $script:labviewPidTrackerStopCommand = $stopCommand
+      } catch {
+        $stopCommand = $null
+      }
+    }
+    if (-not $stopCommand -and (Test-Path -LiteralPath $labviewPidTrackerModule -PathType Leaf)) {
+      try {
+        Import-Module $labviewPidTrackerModule -Force | Out-Null
+        $stopCommand = Get-Command -Name Stop-LabVIEWPidTracker -ErrorAction Stop
+        $script:labviewPidTrackerStopCommand = $stopCommand
+      } catch {
+        $stopCommand = $null
+      }
+    }
+    if (-not $stopCommand) {
+      Write-Warning 'LabVIEW PID tracker finalization skipped: Stop-LabVIEWPidTracker unavailable'
+      return $null
+    }
+  }
+
   try {
     $args = @{
       TrackerPath = $script:labviewPidTrackerPath
@@ -301,7 +332,7 @@ function _Finalize-LabVIEWPidTracker {
     if ($pidForFinal) { $args['Pid'] = $pidForFinal }
     if ($PSBoundParameters.ContainsKey('Context') -and $null -ne $Context) { $args['Context'] = $Context }
 
-    $final = Stop-LabVIEWPidTracker @args
+    $final = & $stopCommand @args
     $script:labviewPidTrackerFinalState = $final
     $script:labviewPidTrackerFinalized = $true
     $script:labviewPidTrackerFinalizedSource = $Source
