@@ -158,12 +158,185 @@ runs:
       run: |
         $results = '${{ steps.compute.outputs.results }}'
         $sent    = '${{ steps.compute.outputs.sentinel }}'
+        $ready   = Join-Path $results '_invoker/ready.json'
         $stopped = Join-Path $results '_invoker/stopped.json'
         if (Test-Path -LiteralPath $sent) { Remove-Item -LiteralPath $sent -Force -ErrorAction SilentlyContinue }
         $to = [int]'${{ inputs.timeout-seconds }}'
-        $sw = [Diagnostics.Stopwatch]::StartNew()
-        while ($sw.Elapsed.TotalSeconds -lt $to) { if (Test-Path -LiteralPath $stopped) { break }; Start-Sleep -Milliseconds 300 }
-        if (-not (Test-Path -LiteralPath $stopped)) { Write-Host "::warning::Invoker stop marker not observed within ${to} s (continuing)" }
+        $deadline = (Get-Date).AddSeconds([math]::Max(1,$to))
+        while ((Get-Date) -lt $deadline) {
+          if (Test-Path -LiteralPath $stopped) { break }
+          Start-Sleep -Milliseconds 300
+        }
+
+        $stopPayload = $null
+        $fallbackReason = $null
+        if (Test-Path -LiteralPath $stopped) {
+          try {
+            $stopPayload = Get-Content -LiteralPath $stopped -Raw -Encoding UTF8 | ConvertFrom-Json -Depth 8
+          } catch {
+            $fallbackReason = 'stop-payload-parse-error: ' + $_.Exception.Message
+            $stopPayload = $null
+          }
+        } else {
+          $fallbackReason = 'stop-marker-missing'
+        }
+
+        $summaryLines = @('### Invoker stop status','',('- Sentinel path: `{0}`' -f $sent))
+        $fallbackUsed = $false
+        $trackerFinal = $null
+        $trackerError = $null
+        $trackerBlock = $null
+        $trackerNotice = $null
+
+        if (-not $stopPayload) {
+          $fallbackUsed = $true
+          $reasonText = if ($fallbackReason) { $fallbackReason } else { 'stop-payload-unavailable' }
+          Write-Host ("::warning::Invoker stop payload unavailable ({0}); attempting tracker fallback." -f $reasonText)
+          $summaryLines += ('- Fallback invoked (`{0}`).' -f $reasonText)
+
+          $readyPayload = $null
+          if (Test-Path -LiteralPath $ready) {
+            try { $readyPayload = Get-Content -LiteralPath $ready -Raw -Encoding UTF8 | ConvertFrom-Json -Depth 8 } catch {}
+          }
+
+          if ($readyPayload -and $readyPayload.PSObject.Properties['labviewPidTracker']) {
+            $trackerBlock = $readyPayload.labviewPidTracker
+          } elseif (Test-Path -LiteralPath (Join-Path $results '_invoker/labview-pid.json')) {
+            $trackerBlock = [pscustomobject]@{ path = (Join-Path $results '_invoker/labview-pid.json') }
+          }
+
+          $trackerPath = $null
+          if ($trackerBlock -and $trackerBlock.PSObject.Properties['path']) {
+            try { $trackerPath = [string]$trackerBlock.path } catch { $trackerPath = $null }
+          }
+
+          $trackerContextPath = $null
+          if ($trackerBlock -and $trackerBlock.PSObject.Properties['contextPath']) {
+            try { $trackerContextPath = [string]$trackerBlock.contextPath } catch { $trackerContextPath = $null }
+          }
+
+          $contextObject = $null
+          if ($trackerContextPath -and (Test-Path -LiteralPath $trackerContextPath -PathType Leaf)) {
+            try { $contextObject = Get-Content -LiteralPath $trackerContextPath -Raw -Encoding UTF8 | ConvertFrom-Json -Depth 8 } catch { $contextObject = $null }
+          }
+          if (-not $contextObject) {
+            $contextObject = [ordered]@{
+              stage        = 'ensure-invoker:stop-fallback'
+              sentinelPath = $sent
+              reason       = $reasonText
+            }
+          }
+
+          if ($trackerPath -and (Test-Path -LiteralPath $trackerPath -PathType Leaf)) {
+            $modulePath = Join-Path (Get-Location).Path 'tools/LabVIEWPidTracker.psm1'
+            if (Test-Path -LiteralPath $modulePath -PathType Leaf) {
+              try {
+                Import-Module $modulePath -Force -ErrorAction Stop | Out-Null
+                $stopArgs = @{ TrackerPath = $trackerPath; Source = 'ensure-invoker:stop' }
+                if ($trackerBlock -and $trackerBlock.PSObject.Properties['initial'] -and $trackerBlock.initial -and $trackerBlock.initial.PSObject.Properties['Pid']) {
+                  try { $stopArgs['Pid'] = [int]$trackerBlock.initial.Pid } catch {}
+                }
+                $stopArgs['Context'] = $contextObject
+                try {
+                  $trackerFinal = Stop-LabVIEWPidTracker @stopArgs
+                } catch {
+                  $trackerError = $_.Exception.Message
+                  $trackerFinal = $null
+                }
+              } catch {
+                $trackerError = $_.Exception.Message
+              }
+            } else {
+              $trackerError = "LabVIEWPidTracker module not found at $modulePath"
+            }
+          } else {
+            if (-not $trackerError) { $trackerNotice = 'Tracker path unavailable for fallback' }
+          }
+
+          $stopPayload = [ordered]@{
+            schema   = 'invoker-stopped/v1'
+            at       = (Get-Date).ToUniversalTime().ToString('o')
+            fallback = $true
+          }
+          $pidValue = $null
+          if ($readyPayload -and $readyPayload.PSObject.Properties['pid']) {
+            try { $pidValue = [int]$readyPayload.pid } catch { $pidValue = $null }
+          }
+          if ($pidValue) { $stopPayload['pid'] = $pidValue }
+          if ($sent) { $stopPayload['sentinelPath'] = $sent }
+
+          if ($trackerBlock -or $trackerFinal) {
+            $trackerPayload = [ordered]@{ enabled = $true }
+            if ($trackerBlock -and $trackerBlock.PSObject.Properties['path']) { $trackerPayload['path'] = $trackerPath }
+            if ($trackerBlock -and $trackerBlock.PSObject.Properties['contextPath']) { $trackerPayload['contextPath'] = $trackerContextPath }
+            if ($trackerBlock -and $trackerBlock.PSObject.Properties['initial']) { $trackerPayload['initial'] = $trackerBlock.initial }
+            if ($trackerFinal) { $trackerPayload['final'] = $trackerFinal }
+            if ($trackerError) { $trackerPayload['error'] = $trackerError }
+            $stopPayload['labviewPidTracker'] = [pscustomobject]$trackerPayload
+          } elseif ($trackerError) {
+            $stopPayload['labviewPidTrackerError'] = $trackerError
+          }
+
+          try {
+            $stopDir = Split-Path -Parent $stopped
+            if ($stopDir -and -not (Test-Path -LiteralPath $stopDir -PathType Container)) {
+              New-Item -ItemType Directory -Path $stopDir -Force | Out-Null
+            }
+            [pscustomobject]$stopPayload | ConvertTo-Json -Depth 8 | Set-Content -LiteralPath $stopped -Encoding UTF8
+          } catch {
+            Write-Host ("::warning::Failed to persist fallback invoker stop payload: {0}" -f $_.Exception.Message)
+          }
+
+          $stopPayload = [pscustomobject]$stopPayload
+        } else {
+          $summaryLines += '- Stop payload observed without fallback.'
+        }
+
+        if (-not $stopPayload) {
+          Write-Host '::warning::Invoker stop payload still unavailable after fallback.'
+          $summaryLines += '- Stop payload unavailable after fallback.'
+        } else {
+          if ($stopPayload.PSObject.Properties['labviewPidTracker']) {
+            $trackerBlock = $stopPayload.labviewPidTracker
+            if ($trackerBlock -and $trackerBlock.PSObject.Properties['final']) {
+              $final = $trackerBlock.final
+              $stage = $null
+              if ($final.PSObject.Properties['Context'] -and $final.Context -and $final.Context.PSObject.Properties['stage']) {
+                try { $stage = [string]$final.Context.stage } catch { $stage = $null }
+              }
+              if (-not $stage -and $final.PSObject.Properties['context'] -and $final.context -and $final.context.PSObject.Properties['stage']) {
+                try { $stage = [string]$final.context.stage } catch { $stage = $null }
+              }
+              if ($stage) {
+                Write-Host ("Invoker LabVIEW PID tracker finalized with stage '{0}'." -f $stage)
+                $summaryLines += ('- Tracker stage: `{0}`' -f $stage)
+              }
+              if ($final.PSObject.Properties['Running']) {
+                try {
+                  if ([bool]$final.Running) {
+                    Write-Host '::warning::LabVIEW PID tracker reports LabVIEW.exe still running after invoker stop.'
+                    $summaryLines += '- Tracker reports LabVIEW.exe still running.'
+                  }
+                } catch {}
+              }
+            }
+            if ($trackerBlock -and $trackerBlock.PSObject.Properties['error']) {
+              $summaryLines += ('- Tracker error: {0}' -f $trackerBlock.error)
+            }
+          } elseif ($trackerError) {
+            Write-Host ("::warning::LabVIEW PID tracker fallback error: {0}" -f $trackerError)
+            $summaryLines += ('- Tracker fallback error: {0}' -f $trackerError)
+          } elseif ($trackerNotice) {
+            Write-Host ("LabVIEW PID tracker fallback notice: {0}" -f $trackerNotice)
+            $summaryLines += ('- Tracker fallback notice: {0}' -f $trackerNotice)
+          }
+        }
+
+        if ($env:GITHUB_STEP_SUMMARY -and $summaryLines.Count -gt 0) {
+          try {
+            ($summaryLines -join "`n") | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8
+          } catch {}
+        }
 
     - name: No-op on non-Windows
       if: ${{ runner.os != 'Windows' }}

@@ -20,6 +20,9 @@ Describe 'Prime-LVCompare.ps1' -Tag 'Unit' {
     Set-Content -LiteralPath $base -Encoding ascii -Value ''
     Set-Content -LiteralPath $head -Encoding ascii -Value ''
 
+    $trackerPath = Join-Path $repoRoot 'tests/results/_warmup/_agent/labview-pid.json'
+    if (Test-Path -LiteralPath $trackerPath) { Remove-Item -LiteralPath $trackerPath -Force }
+
     & pwsh -NoLogo -NoProfile -File $script:primePath `
       -LVCompareExePath $stub `
       -BaseVi $base `
@@ -28,6 +31,12 @@ Describe 'Prime-LVCompare.ps1' -Tag 'Unit' {
       -TimeoutSeconds 5 *> $null
 
     $LASTEXITCODE | Should -Be 1
+
+    Test-Path -LiteralPath $trackerPath | Should -BeTrue
+    $tracker = Get-Content -LiteralPath $trackerPath -Raw | ConvertFrom-Json
+    $tracker.context.stage | Should -Be 'prime-lvcompare:summary'
+    $tracker.context.status | Should -Be 'diff'
+    $tracker.context.diffDetected | Should -BeTrue
   }
 
   It 'fails when ExpectNoDiff is violated' {
@@ -42,6 +51,9 @@ Describe 'Prime-LVCompare.ps1' -Tag 'Unit' {
     Set-Content -LiteralPath $base -Encoding ascii -Value ''
     Set-Content -LiteralPath $head -Encoding ascii -Value ''
 
+    $trackerPath = Join-Path $repoRoot 'tests/results/_warmup/_agent/labview-pid.json'
+    if (Test-Path -LiteralPath $trackerPath) { Remove-Item -LiteralPath $trackerPath -Force }
+
     & pwsh -NoLogo -NoProfile -File $script:primePath `
       -LVCompareExePath $stub `
       -BaseVi $base `
@@ -50,5 +62,10 @@ Describe 'Prime-LVCompare.ps1' -Tag 'Unit' {
       -TimeoutSeconds 5 *> $null
 
     $LASTEXITCODE | Should -Not -Be 0
+
+    Test-Path -LiteralPath $trackerPath | Should -BeTrue
+    $tracker = Get-Content -LiteralPath $trackerPath -Raw | ConvertFrom-Json
+    $tracker.context.stage | Should -Be 'prime-lvcompare:summary'
+    $tracker.context.status | Should -Be 'assertion-failed'
   }
 }

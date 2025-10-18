@@ -78,6 +78,29 @@ function Import-LVProviderModules {
 
 Import-LVProviderModules
 
+$script:LabVIEWPidTrackerModule = Join-Path (Split-Path -Parent $PSScriptRoot) 'tools' 'LabVIEWPidTracker.psm1'
+$script:LabVIEWPidTrackerLoaded = $false
+$script:LabVIEWPidTrackerPath = $null
+$script:LabVIEWPidTrackerRelativePath = $null
+$script:LabVIEWPidTrackerState = $null
+$script:LabVIEWPidTrackerInitialState = $null
+$script:LabVIEWPidTrackerFinalized = $false
+$script:LabVIEWPidTrackerFinalState = $null
+$script:LabVIEWPidTrackerFinalizedSource = $null
+$script:LabVIEWPidTrackerFinalContext = $null
+$script:LabVIEWPidTrackerFinalContextSource = $null
+$script:LabVIEWPidTrackerFinalContextDetail = $null
+
+if (Test-Path -LiteralPath $script:LabVIEWPidTrackerModule -PathType Leaf) {
+  try {
+    Import-Module $script:LabVIEWPidTrackerModule -Force -ErrorAction Stop
+    $script:LabVIEWPidTrackerLoaded = $true
+  } catch {
+    Write-Warning ("LabVIEW CLI: failed to import LabVIEW PID tracker module: {0}" -f $_.Exception.Message)
+    $script:LabVIEWPidTrackerLoaded = $false
+  }
+}
+
 function Convert-ToAbsolutePath {
   param([string]$PathValue)
   if ([string]::IsNullOrWhiteSpace($PathValue)) { return $PathValue }
@@ -261,6 +284,298 @@ function Write-LVOperationEvent {
   }
 }
 
+function Initialize-LabVIEWCliPidTracker {
+  if (-not $script:LabVIEWPidTrackerLoaded) { return }
+  if ($script:LabVIEWPidTrackerState) { return }
+
+  $resultsDir = Join-Path $script:RepoRoot 'tests/results'
+  $cliDir = Join-Path $resultsDir '_cli'
+  $agentDir = Join-Path $cliDir '_agent'
+
+  try {
+    if (-not (Test-Path -LiteralPath $agentDir -PathType Container)) {
+      New-Item -ItemType Directory -Path $agentDir -Force | Out-Null
+    }
+  } catch {
+    Write-Warning ("LabVIEW CLI: failed to prepare LabVIEW PID tracker directory: {0}" -f $_.Exception.Message)
+    $script:LabVIEWPidTrackerLoaded = $false
+    $script:LabVIEWPidTrackerPath = $null
+    $script:LabVIEWPidTrackerRelativePath = $null
+    return
+  }
+
+  $trackerPath = Join-Path $agentDir 'labview-pid.json'
+
+  $script:LabVIEWPidTrackerState = $null
+  $script:LabVIEWPidTrackerInitialState = $null
+  $script:LabVIEWPidTrackerFinalState = $null
+  $script:LabVIEWPidTrackerFinalized = $false
+  $script:LabVIEWPidTrackerFinalizedSource = $null
+  $script:LabVIEWPidTrackerFinalContext = $null
+  $script:LabVIEWPidTrackerFinalContextSource = $null
+  $script:LabVIEWPidTrackerFinalContextDetail = $null
+
+  try {
+    $state = Start-LabVIEWPidTracker -TrackerPath $trackerPath -Source 'labview-cli:init'
+    $script:LabVIEWPidTrackerState = $state
+    $script:LabVIEWPidTrackerInitialState = $state
+    $script:LabVIEWPidTrackerPath = $trackerPath
+    $script:LabVIEWPidTrackerRelativePath = 'tests/results/_cli/_agent/labview-pid.json'
+    if ($state -and $state.PSObject.Properties['Pid'] -and $state.Pid) {
+      $modeText = if ($state.Reused) { 'Reusing existing' } else { 'Tracking detected' }
+      Write-Host ("[labview-pid] {0} LabVIEW.exe PID {1}." -f $modeText, $state.Pid) -ForegroundColor DarkGray
+    }
+  } catch {
+    Write-Warning ("LabVIEW CLI: failed to start LabVIEW PID tracker: {0}" -f $_.Exception.Message)
+    $script:LabVIEWPidTrackerLoaded = $false
+    $script:LabVIEWPidTrackerPath = $null
+    $script:LabVIEWPidTrackerRelativePath = $null
+    $script:LabVIEWPidTrackerState = $null
+    $script:LabVIEWPidTrackerInitialState = $null
+  }
+}
+
+function Finalize-LabVIEWCliPidTracker {
+  param(
+    [string]$Source,
+    [string]$Operation,
+    [string]$Provider,
+    [Nullable[int]]$ExitCode,
+    [Nullable[bool]]$TimedOut,
+    [string[]]$Args,
+    [Nullable[double]]$ElapsedSeconds,
+    [string]$Binary,
+    [string]$ErrorMessage
+  )
+
+  if (-not $script:LabVIEWPidTrackerLoaded) { return }
+  if (-not $script:LabVIEWPidTrackerPath) { return }
+  if ($script:LabVIEWPidTrackerFinalized) { return }
+
+  $context = [ordered]@{ stage = if ($Source) { $Source } else { 'labview-cli:summary' } }
+  if ($Operation) { $context.operation = $Operation }
+  if ($Provider) { $context.provider = $Provider }
+  if ($PSBoundParameters.ContainsKey('ExitCode') -and $ExitCode -ne $null) {
+    $context.exitCode = [int]$ExitCode
+  }
+  if ($PSBoundParameters.ContainsKey('TimedOut')) { $context.timedOut = [bool]$TimedOut }
+  if ($Args) { $context.args = @($Args) }
+  if ($PSBoundParameters.ContainsKey('ElapsedSeconds') -and $ElapsedSeconds -ne $null) {
+    $context.elapsedSeconds = [double]$ElapsedSeconds
+  }
+  if ($PSBoundParameters.ContainsKey('Binary') -and $Binary) { $context.binary = $Binary }
+  if ($PSBoundParameters.ContainsKey('ErrorMessage') -and $ErrorMessage) { $context.error = $ErrorMessage }
+
+  $stopArgs = @{ TrackerPath = $script:LabVIEWPidTrackerPath; Source = $context.stage }
+  if (
+    $script:LabVIEWPidTrackerState -and
+    $script:LabVIEWPidTrackerState.PSObject.Properties['Pid'] -and
+    $script:LabVIEWPidTrackerState.Pid
+  ) {
+    $stopArgs.Pid = $script:LabVIEWPidTrackerState.Pid
+  }
+  if ($context.Count -gt 0) { $stopArgs.Context = [pscustomobject]$context }
+
+  try {
+    $finalState = Stop-LabVIEWPidTracker @stopArgs
+    $script:LabVIEWPidTrackerFinalState = $finalState
+    $script:LabVIEWPidTrackerFinalizedSource = $context.stage
+    if ($finalState -and $finalState.PSObject.Properties['Context'] -and $finalState.Context) {
+      $script:LabVIEWPidTrackerFinalContext = $finalState.Context
+      if ($finalState.PSObject.Properties['ContextSource'] -and $finalState.ContextSource) {
+        $script:LabVIEWPidTrackerFinalContextSource = [string]$finalState.ContextSource
+        $script:LabVIEWPidTrackerFinalContextDetail = [string]$finalState.ContextSource
+      }
+    }
+    } catch {
+      Write-Warning (
+        "LabVIEW CLI: failed to finalize LabVIEW PID tracker: {0}" -f $_.Exception.Message
+      )
+      if ($context) {
+        try {
+          $script:LabVIEWPidTrackerFinalContext = Resolve-LabVIEWPidContext -Input $context
+        } catch {
+          $script:LabVIEWPidTrackerFinalContext = $context
+        }
+        $script:LabVIEWPidTrackerFinalContextSource = $context.stage
+        $script:LabVIEWPidTrackerFinalContextDetail = $context.stage
+      }
+    } finally {
+      if ($context -and -not $script:LabVIEWPidTrackerFinalContext) {
+        try {
+          $script:LabVIEWPidTrackerFinalContext = Resolve-LabVIEWPidContext -Input $context
+        } catch {
+          $script:LabVIEWPidTrackerFinalContext = $context
+        }
+        if (-not $script:LabVIEWPidTrackerFinalContextSource) {
+          $script:LabVIEWPidTrackerFinalContextSource = $context.stage
+        }
+        if (-not $script:LabVIEWPidTrackerFinalContextDetail) {
+          $script:LabVIEWPidTrackerFinalContextDetail = $context.stage
+        }
+      }
+      if (-not $script:LabVIEWPidTrackerFinalizedSource) { $script:LabVIEWPidTrackerFinalizedSource = $context.stage }
+      if (-not $script:LabVIEWPidTrackerFinalContextDetail -and $script:LabVIEWPidTrackerFinalContextSource) {
+        $script:LabVIEWPidTrackerFinalContextDetail = $script:LabVIEWPidTrackerFinalContextSource
+      }
+      $script:LabVIEWPidTrackerFinalized = $true
+      $script:LabVIEWPidTrackerState = $null
+    }
+
+  return $script:LabVIEWPidTrackerFinalState
+}
+
+function Resolve-LabVIEWCliPidTrackerPayload {
+  $payload = [ordered]@{ enabled = [bool]$script:LabVIEWPidTrackerLoaded }
+
+  if ($script:LabVIEWPidTrackerPath) {
+    $payload['path'] = $script:LabVIEWPidTrackerPath
+    try {
+      $fileInfo = Get-Item -LiteralPath $script:LabVIEWPidTrackerPath -ErrorAction Stop
+      if ($fileInfo) {
+        $payload['pathExists'] = $true
+        try { $payload['length'] = [long]$fileInfo.Length } catch { $payload['length'] = $null }
+        try { $payload['lastWriteTimeUtc'] = $fileInfo.LastWriteTimeUtc.ToString('o') } catch { $payload['lastWriteTimeUtc'] = $null }
+      } else {
+        $payload['pathExists'] = $false
+      }
+    } catch {
+      $payload['pathExists'] = $false
+    }
+  } else {
+    $payload['pathExists'] = $false
+  }
+
+  if ($script:LabVIEWPidTrackerRelativePath) {
+    $payload['relativePath'] = $script:LabVIEWPidTrackerRelativePath
+  }
+
+  $payload['finalized'] = [bool]$script:LabVIEWPidTrackerFinalized
+
+  if ($script:LabVIEWPidTrackerInitialState) {
+    $initial = [ordered]@{}
+    if (
+      $script:LabVIEWPidTrackerInitialState.PSObject.Properties['Pid'] -and
+      $script:LabVIEWPidTrackerInitialState.Pid
+    ) {
+      try { $initial['pid'] = [int]$script:LabVIEWPidTrackerInitialState.Pid } catch { $initial['pid'] = $null }
+    } else {
+      $initial['pid'] = $null
+    }
+    if ($script:LabVIEWPidTrackerInitialState.PSObject.Properties['Running']) {
+      try { $initial['running'] = [bool]$script:LabVIEWPidTrackerInitialState.Running } catch { $initial['running'] = $null }
+    }
+    if ($script:LabVIEWPidTrackerInitialState.PSObject.Properties['Reused']) {
+      try { $initial['reused'] = [bool]$script:LabVIEWPidTrackerInitialState.Reused } catch { $initial['reused'] = $null }
+    }
+    if ($script:LabVIEWPidTrackerInitialState.PSObject.Properties['Candidates']) {
+      $initial['candidates'] = @(
+        $script:LabVIEWPidTrackerInitialState.Candidates | Where-Object { $_ -ne $null }
+      )
+    }
+    if (
+      $script:LabVIEWPidTrackerInitialState.PSObject.Properties['Observation'] -and
+      $script:LabVIEWPidTrackerInitialState.Observation
+    ) {
+      $initial['observation'] = $script:LabVIEWPidTrackerInitialState.Observation
+    }
+    if ($initial.Count -gt 0) { $payload['initial'] = [pscustomobject]$initial }
+  }
+
+  if ($script:LabVIEWPidTrackerFinalized) {
+    $final = [ordered]@{}
+    if (
+      $script:LabVIEWPidTrackerFinalState -and
+      $script:LabVIEWPidTrackerFinalState.PSObject.Properties['Pid'] -and
+      $script:LabVIEWPidTrackerFinalState.Pid
+    ) {
+      try { $final['pid'] = [int]$script:LabVIEWPidTrackerFinalState.Pid } catch { $final['pid'] = $null }
+    } elseif (
+      $script:LabVIEWPidTrackerInitialState -and
+      $script:LabVIEWPidTrackerInitialState.PSObject.Properties['Pid'] -and
+      $script:LabVIEWPidTrackerInitialState.Pid
+    ) {
+      try { $final['pid'] = [int]$script:LabVIEWPidTrackerInitialState.Pid } catch { $final['pid'] = $null }
+    } else {
+      $final['pid'] = $null
+    }
+    if (
+      $script:LabVIEWPidTrackerFinalState -and
+      $script:LabVIEWPidTrackerFinalState.PSObject.Properties['Running']
+    ) {
+      try { $final['running'] = [bool]$script:LabVIEWPidTrackerFinalState.Running } catch { $final['running'] = $null }
+    }
+    if (
+      $script:LabVIEWPidTrackerFinalState -and
+      $script:LabVIEWPidTrackerFinalState.PSObject.Properties['Reused']
+    ) {
+      try { $final['reused'] = [bool]$script:LabVIEWPidTrackerFinalState.Reused } catch { $final['reused'] = $null }
+    } elseif (
+      $script:LabVIEWPidTrackerInitialState -and
+      $script:LabVIEWPidTrackerInitialState.PSObject.Properties['Reused']
+    ) {
+      try { $final['reused'] = [bool]$script:LabVIEWPidTrackerInitialState.Reused } catch { $final['reused'] = $null }
+    }
+    if (
+      $script:LabVIEWPidTrackerFinalState -and
+      $script:LabVIEWPidTrackerFinalState.PSObject.Properties['Observation'] -and
+      $script:LabVIEWPidTrackerFinalState.Observation
+    ) {
+      $final['observation'] = $script:LabVIEWPidTrackerFinalState.Observation
+    }
+    if ($script:LabVIEWPidTrackerFinalizedSource) {
+      $final['finalizedSource'] = $script:LabVIEWPidTrackerFinalizedSource
+    }
+    if (
+      $script:LabVIEWPidTrackerFinalState -and
+      $script:LabVIEWPidTrackerFinalState.PSObject.Properties['Context'] -and
+      $script:LabVIEWPidTrackerFinalState.Context
+    ) {
+      $final['context'] = $script:LabVIEWPidTrackerFinalState.Context
+    }
+    if (
+      $script:LabVIEWPidTrackerFinalState -and
+      $script:LabVIEWPidTrackerFinalState.PSObject.Properties['ContextSource'] -and
+      $script:LabVIEWPidTrackerFinalState.ContextSource
+    ) {
+      $final['contextSource'] = [string]$script:LabVIEWPidTrackerFinalState.ContextSource
+    }
+    if ($script:LabVIEWPidTrackerFinalContext) {
+      $final['context'] = $script:LabVIEWPidTrackerFinalContext
+    }
+    if ($script:LabVIEWPidTrackerFinalContextSource) {
+      $final['contextSource'] = $script:LabVIEWPidTrackerFinalContextSource
+    }
+    if ($script:LabVIEWPidTrackerFinalContextDetail) {
+      $final['contextSourceDetail'] = $script:LabVIEWPidTrackerFinalContextDetail
+    }
+    if ($final.Count -gt 0) { $payload['final'] = [pscustomobject]$final }
+  }
+
+  return $payload
+}
+
+function Get-LabVIEWCliPidTracker {
+  $payload = Resolve-LabVIEWCliPidTrackerPayload
+  if (-not $payload) { return $null }
+  return [pscustomobject]$payload
+}
+
+function Add-LabVIEWCliPidTrackerToResult {
+  param([pscustomobject]$Result)
+  if (-not $Result) { return }
+
+  $payload = Resolve-LabVIEWCliPidTrackerPayload
+  if (-not $payload) { return }
+  $payloadObject = [pscustomobject]$payload
+
+  if ($Result.PSObject.Properties['labviewPidTracker']) {
+    $Result.labviewPidTracker = $payloadObject
+  } else {
+    Add-Member -InputObject $Result -Name labviewPidTracker -MemberType NoteProperty -Value $payloadObject
+  }
+}
+
 function Invoke-LVOperation {
   [CmdletBinding()]
   param(
@@ -320,7 +635,8 @@ function Invoke-LVOperation {
   }
   if ($Preview) { return [pscustomobject]$result }
 
-  $guard = Set-LVHeadlessEnv
+  Initialize-LabVIEWCliPidTracker
+
   $psi = New-Object System.Diagnostics.ProcessStartInfo
   $psi.FileName = $binary
   foreach ($arg in $arguments) { $psi.ArgumentList.Add($arg) }
@@ -328,29 +644,90 @@ function Invoke-LVOperation {
   $psi.RedirectStandardError = $true
   $psi.CreateNoWindow = $true
   $psi.UseShellExecute = $false
+
+  $guard = $null
   $process = $null
   $stdout = ''
   $stderr = ''
-  $sw = [System.Diagnostics.Stopwatch]::StartNew()
+  $sw = $null
   $timedOut = $false
+  $exitCode = $null
+  $elapsedSeconds = $null
+  $finalizeSource = 'labview-cli:operation'
+  $errorMessage = $null
+  $trackerElapsed = $null
+
   try {
-    $process = [System.Diagnostics.Process]::Start($psi)
-    if (-not $process) { throw "Failed to start process '$binary'." }
-    if (-not $process.WaitForExit([Math]::Max(1,$TimeoutSeconds) * 1000)) {
-      $timedOut = $true
-      try { $process.Kill($true) } catch {}
-      throw "Operation '$Operation' timed out after $TimeoutSeconds second(s)."
+    $guard = Set-LVHeadlessEnv
+    $sw = [System.Diagnostics.Stopwatch]::StartNew()
+    try {
+      $process = [System.Diagnostics.Process]::Start($psi)
+      if (-not $process) { throw "Failed to start process '$binary'." }
+      if (-not $process.WaitForExit([Math]::Max(1,$TimeoutSeconds) * 1000)) {
+        $timedOut = $true
+        try { $process.Kill($true) } catch {}
+        throw "Operation '$Operation' timed out after $TimeoutSeconds second(s)."
+      }
+      $stdout = $process.StandardOutput.ReadToEnd()
+      $stderr = $process.StandardError.ReadToEnd()
+      $exitCode = $process.ExitCode
+      if ($sw) { $elapsedSeconds = [Math]::Round($sw.Elapsed.TotalSeconds,3) }
+    } catch {
+      $errorMessage = $_.Exception.Message
+      $finalizeSource = 'labview-cli:error'
+      throw
+    } finally {
+      if ($sw) {
+        try { $sw.Stop() } catch {}
+      }
+      if (-not $elapsedSeconds -and $sw) {
+        try { $elapsedSeconds = [Math]::Round($sw.Elapsed.TotalSeconds,3) } catch { $elapsedSeconds = $null }
+      }
+      if (-not $trackerElapsed -and $elapsedSeconds) { $trackerElapsed = $elapsedSeconds }
+      if (-not $trackerElapsed -and $sw) {
+        try { $trackerElapsed = [Math]::Round($sw.Elapsed.TotalSeconds,3) } catch { $trackerElapsed = $null }
+      }
+      if ($process) { $process.Dispose() }
+      if ($guard) { Restore-LVHeadlessEnv -Guard $guard }
     }
-    $stdout = $process.StandardOutput.ReadToEnd()
-    $stderr = $process.StandardError.ReadToEnd()
-    $exitCode = $process.ExitCode
+  } catch {
+    if (-not $errorMessage -and $_ -and $_.Exception) {
+      $errorMessage = $_.Exception.Message
+    }
+    if (-not $finalizeSource -or $finalizeSource -eq 'labview-cli:operation') {
+      $finalizeSource = 'labview-cli:error'
+    }
+    throw
   } finally {
-    $sw.Stop()
-    if ($process) { $process.Dispose() }
-    Restore-LVHeadlessEnv -Guard $guard
+    if (-not $trackerElapsed) {
+      if ($elapsedSeconds) {
+        $trackerElapsed = $elapsedSeconds
+      } elseif ($sw) {
+        try { $trackerElapsed = [Math]::Round($sw.Elapsed.TotalSeconds,3) } catch { $trackerElapsed = $null }
+      }
+    }
+    if ($script:LabVIEWPidTrackerLoaded -and $script:LabVIEWPidTrackerPath) {
+      $finalizeParams = @{
+        Source    = $finalizeSource
+        Operation = $Operation
+      }
+      if ($result.provider) { $finalizeParams['Provider'] = $result.provider }
+      if ($result.args) { $finalizeParams['Args'] = $result.args }
+      if ($binary) { $finalizeParams['Binary'] = $binary }
+      if ($null -ne $exitCode) { $finalizeParams['ExitCode'] = $exitCode }
+      if ($null -ne $timedOut) { $finalizeParams['TimedOut'] = [bool]$timedOut }
+      if ($trackerElapsed) { $finalizeParams['ElapsedSeconds'] = $trackerElapsed }
+      if ($errorMessage) { $finalizeParams['ErrorMessage'] = $errorMessage }
+      try {
+        Finalize-LabVIEWCliPidTracker @finalizeParams | Out-Null
+      } catch {
+        Write-Verbose ("LabVIEW CLI: tracker finalization failed: {0}" -f $_.Exception.Message)
+      }
+    }
   }
+
   $result.exitCode = $exitCode
-  $result.elapsedSeconds = [Math]::Round($sw.Elapsed.TotalSeconds,3)
+  $result.elapsedSeconds = $elapsedSeconds
   $result.stdout = $stdout
   $result.stderr = $stderr
   $result.ok = (-not $timedOut -and $exitCode -eq 0)
@@ -363,6 +740,8 @@ function Invoke-LVOperation {
     args = $result.args
     timedOut = $timedOut
   }
+
+  Add-LabVIEWCliPidTrackerToResult $result
 
   return [pscustomobject]$result
 }
@@ -497,6 +876,7 @@ Export-ModuleMember -Function `
   Invoke-LVMassCompile, `
   Invoke-LVExecuteBuildSpec, `
   Invoke-LVOperation, `
+  Get-LabVIEWCliPidTracker, `
   Get-LVOperationNames, `
   Get-LVOperationSpec, `
   Register-LVProvider, `

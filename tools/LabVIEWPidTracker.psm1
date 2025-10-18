@@ -1,6 +1,78 @@
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
+function Resolve-LabVIEWPidContext {
+  param([object]$Input)
+
+  if (-not $PSBoundParameters.ContainsKey('Input')) { return $null }
+  if ($null -eq $Input) { return $null }
+
+  $normalizeDictionary = $null
+  $normalizeValue = $null
+
+  $normalizeDictionary = {
+    param([object]$Value)
+
+    $pairs = @()
+    if ($Value -is [System.Collections.IDictionary]) {
+      foreach ($key in $Value.Keys) {
+        if ($null -eq $key) { continue }
+        $pairs += [pscustomobject]@{ Name = [string]$key; Value = $Value[$key] }
+      }
+    } else {
+      try {
+        $pairs = @($Value.PSObject.Properties | ForEach-Object {
+            if ($null -ne $_) {
+              [pscustomobject]@{ Name = $_.Name; Value = $_.Value }
+            }
+          })
+      } catch {
+        $pairs = @()
+      }
+    }
+
+    if (-not $pairs -or $pairs.Count -eq 0) { return $null }
+
+    $ordered = [ordered]@{}
+    $orderedPairs = $pairs |
+      Where-Object { $_ -and $_.Name } |
+      Sort-Object -Property Name -CaseSensitive
+
+    foreach ($pair in $orderedPairs) {
+      if ($ordered.Contains($pair.Name)) { continue }
+      $ordered[$pair.Name] = & $normalizeValue $pair.Value
+    }
+
+    if ($ordered.Count -eq 0) { return $null }
+    return [pscustomobject]$ordered
+  }
+
+  $normalizeValue = {
+    param([object]$Value)
+
+    if ($null -eq $Value) { return $null }
+    if ($Value -is [System.Collections.IDictionary]) { return & $normalizeDictionary $Value }
+    if ($Value -is [pscustomobject]) { return & $normalizeDictionary $Value }
+
+    $isEnumerable = $false
+    if ($Value -is [System.Collections.IEnumerable] -and -not ($Value -is [string])) {
+      if (-not ($Value -is [System.Collections.IDictionary])) { $isEnumerable = $true }
+    }
+
+    if ($isEnumerable) {
+      $items = @()
+      foreach ($item in $Value) {
+        $items += ,(& $normalizeValue $item)
+      }
+      return @($items)
+    }
+
+    return $Value
+  }
+
+  return & $normalizeValue $Input
+}
+
 function Start-LabVIEWPidTracker {
   [CmdletBinding()]
   param(
@@ -131,7 +203,8 @@ function Stop-LabVIEWPidTracker {
   param(
     [Parameter(Mandatory)][string]$TrackerPath,
     [Nullable[int]]$Pid,
-    [string]$Source = 'dispatcher'
+    [string]$Source = 'dispatcher',
+    [object]$Context
   )
 
   $now = (Get-Date).ToUniversalTime()
@@ -172,13 +245,30 @@ function Stop-LabVIEWPidTracker {
     'no-tracked-pid'
   }
 
+  $reused = $false
+  if ($state -and $state.PSObject.Properties['reused']) {
+    try { $reused = [bool]$state.reused } catch { $reused = $false }
+  }
+
+  $contextBlock = $null
+  $contextSourceValue = $null
+  if ($PSBoundParameters.ContainsKey('Context')) {
+    $contextBlock = Resolve-LabVIEWPidContext -Input $Context
+    if ($contextBlock) { $contextSourceValue = $Source }
+  }
+
   $observation = [ordered]@{
     at      = $now.ToString('o')
     action  = 'finalize'
     pid     = if ($trackedPid) { [int]$trackedPid } else { $null }
     running = $running
+    reused  = $reused
     source  = $Source
     note    = $note
+  }
+  if ($contextBlock) {
+    $observation['context'] = $contextBlock
+    $observation['contextSource'] = $contextSourceValue
   }
 
   $obsList = @()
@@ -188,11 +278,6 @@ function Stop-LabVIEWPidTracker {
   $obsList += [pscustomobject]$observation
   $obsList = @($obsList | Select-Object -Last 25)
 
-  $reused = $false
-  if ($state -and $state.PSObject.Properties['reused']) {
-    try { $reused = [bool]$state.reused } catch { $reused = $false }
-  }
-
   $record = [ordered]@{
     schema       = 'labview-pid-tracker/v1'
     updatedAt    = $now.ToString('o')
@@ -201,6 +286,10 @@ function Stop-LabVIEWPidTracker {
     reused       = $reused
     source       = $Source
     observations = $obsList
+  }
+  if ($contextBlock) {
+    $record['context'] = $contextBlock
+    $record['contextSource'] = $contextSourceValue
   }
 
   $dir = Split-Path -Parent $TrackerPath
@@ -214,8 +303,11 @@ function Stop-LabVIEWPidTracker {
     Path        = $TrackerPath
     Pid         = $record.pid
     Running     = $running
-    Observation = $observation
+    Reused      = $reused
+    Observation  = $observation
+    Context      = $contextBlock
+    ContextSource = $contextSourceValue
   }
 }
 
-Export-ModuleMember -Function Start-LabVIEWPidTracker,Stop-LabVIEWPidTracker
+Export-ModuleMember -Function Resolve-LabVIEWPidContext,Start-LabVIEWPidTracker,Stop-LabVIEWPidTracker
