@@ -154,6 +154,9 @@ jobs:
       duration_s: ${{ steps.export.outputs.duration_s }}
     steps:
       - uses: actions/checkout@v5
+      - name: Install Node dependencies
+        shell: pwsh
+        run: node tools/npm/cli.mjs ci
 
       - name: Acquire session lock
         id: session_lock
