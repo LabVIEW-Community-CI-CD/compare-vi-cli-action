@@ -296,8 +296,8 @@ runs:
 
           try {
             $stopDir = Split-Path -Parent $stopped
-            if ($stopDir -and -not (Test-Path -LiteralPath $stopDir -PathType Container)) {
-              New-Item -ItemType Directory -Path $stopDir -Force | Out-Null
+            if ($stopDir) {
+              [System.IO.Directory]::CreateDirectory($stopDir) | Out-Null
             }
             [pscustomobject]$stopPayload | ConvertTo-Json -Depth 8 | Set-Content -LiteralPath $stopped -Encoding UTF8
           } catch {
