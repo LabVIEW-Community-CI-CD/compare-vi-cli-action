@@ -112,6 +112,84 @@ function Write-Snapshot {
   }
 }
 
+function Normalize-WarmupLabVIEWPath {
+  param([string]$Path)
+  if ([string]::IsNullOrWhiteSpace($Path)) { return $null }
+  try {
+    return [System.IO.Path]::GetFullPath($Path)
+  } catch {
+    return $Path
+  }
+}
+
+function Get-WarmupLabVIEWProcessState {
+  param([string]$ExpectedPath)
+  $state = [ordered]@{
+    Raw        = @()
+    Matching   = @()
+    NonMatching = @()
+  }
+  try {
+    $state.Raw = @(Get-Process -Name 'LabVIEW' -ErrorAction SilentlyContinue)
+  } catch {
+    $state.Raw = @()
+  }
+
+  foreach ($proc in $state.Raw) {
+    $procPath = $null
+    try {
+      $procPath = $proc.Path
+    } catch {
+      try { $procPath = $proc.MainModule.FileName } catch { $procPath = $null }
+    }
+
+    $info = [pscustomobject]@{
+      Id   = $proc.Id
+      Path = $procPath
+    }
+
+    if ($ExpectedPath -and $procPath) {
+      $normalizedProc = Normalize-WarmupLabVIEWPath -Path $procPath
+      if ($normalizedProc -and [StringComparer]::OrdinalIgnoreCase.Equals($normalizedProc, $ExpectedPath)) {
+        $state.Matching += $proc
+        continue
+      }
+    }
+
+    $state.NonMatching += $info
+  }
+
+  return $state
+}
+
+function Report-WarmupProcessMismatch {
+  param(
+    [array]$Processes,
+    [string]$ExpectedPath,
+    [string]$Context
+  )
+
+  if (-not $Processes -or $Processes.Count -eq 0) { return }
+
+  $details = foreach ($proc in $Processes) {
+    $path = if ($proc.Path) { $proc.Path } else { '<unknown>' }
+    "PID=$($proc.Id) path=$path"
+  }
+
+  $joinedDetails = [string]::Join('; ', $details)
+  $contextLabel = if ($Context) { $Context } else { 'unknown' }
+  $message = "Warmup: ignoring LabVIEW instance(s) with unexpected path(s) [$contextLabel]: $joinedDetails"
+
+  Write-Warning $message
+  Write-StepSummaryLine "- $message"
+  Write-JsonEvent 'labview-mismatch' @{
+    context  = $contextLabel
+    expected = $ExpectedPath
+    pids     = ($Processes | ForEach-Object { $_.Id }) -join ','
+    paths    = ($Processes | ForEach-Object { if ($_.Path) { $_.Path } else { '<unknown>' } }) -join ','
+  }
+}
+
 if ($IsWindows -ne $true) { return }
 
 if (-not $JsonLogPath -and -not ($env:WARMUP_NO_JSON -eq '1')) {
@@ -170,25 +248,32 @@ if (-not (Test-Path -LiteralPath $LabVIEWPath -PathType Leaf)) {
   return
 }
 
-try {
-  $existing = @(Get-Process -Name 'LabVIEW' -ErrorAction SilentlyContinue)
-} catch {
-  $existing = @()
-}
+$normalizedLabVIEWPath = Normalize-WarmupLabVIEWPath -Path $LabVIEWPath
+$existingState = Get-WarmupLabVIEWProcessState -ExpectedPath $normalizedLabVIEWPath
 
-if ($existing.Count -gt 0) {
-  Write-Host ("Warmup: LabVIEW already running (PID(s): {0})" -f ($existing.Id -join ',')) -ForegroundColor Gray
-  Write-StepSummaryLine ("- Warmup: LabVIEW already running (PID(s): {0})" -f ($existing.Id -join ','))
-  Write-JsonEvent 'labview-present' @{ pids = ($existing.Id -join ','); alreadyRunning = $true }
+if ($existingState.Matching.Count -gt 0) {
+  $matchingIds = ($existingState.Matching | ForEach-Object { $_.Id })
+  Write-Host ("Warmup: LabVIEW already running (PID(s): {0})" -f ($matchingIds -join ',')) -ForegroundColor Gray
+  Write-StepSummaryLine ("- Warmup: LabVIEW already running (PID(s): {0})" -f ($matchingIds -join ','))
+  Write-JsonEvent 'labview-present' @{ pids = ($matchingIds -join ','); alreadyRunning = $true; path = $normalizedLabVIEWPath }
+
+  if ($existingState.NonMatching.Count -gt 0) {
+    Report-WarmupProcessMismatch -Processes $existingState.NonMatching -ExpectedPath $normalizedLabVIEWPath -Context 'pre-launch'
+  }
+
   if ($StopAfterWarmup) {
     Write-Host "Warmup: StopAfterWarmup requested; stopping existing LabVIEW instance(s)." -ForegroundColor Gray
-    foreach ($proc in $existing) {
+    foreach ($proc in $existingState.Matching) {
       try { Stop-Process -Id $proc.Id -Force -ErrorAction Stop } catch { Write-Warning "Warmup: failed to stop LabVIEW PID $($proc.Id): $($_.Exception.Message)" }
     }
-    Write-JsonEvent 'labview-stopped' @{ pids = ($existing.Id -join ','); reason = 'pre-existing' }
+    Write-JsonEvent 'labview-stopped' @{ pids = ($matchingIds -join ','); reason = 'pre-existing' }
   }
   Write-Snapshot -Path $SnapshotPath
   return
+}
+
+if ($existingState.Raw.Count -gt 0) {
+  Report-WarmupProcessMismatch -Processes $existingState.NonMatching -ExpectedPath $normalizedLabVIEWPath -Context 'pre-launch'
 }
 
 if ($DryRun) {
@@ -224,11 +309,11 @@ try {
 $deadline = (Get-Date).AddSeconds([Math]::Max(1,$TimeoutSeconds))
 do {
   Start-Sleep -Milliseconds 200
-  try { $existing = @(Get-Process -Name 'LabVIEW' -ErrorAction SilentlyContinue) } catch { $existing = @() }
-  if ($existing.Count -gt 0) { break }
+  $existingState = Get-WarmupLabVIEWProcessState -ExpectedPath $normalizedLabVIEWPath
+  if ($existingState.Matching.Count -gt 0) { break }
 } while ((Get-Date) -lt $deadline)
 
-if ($existing.Count -eq 0) {
+if ($existingState.Matching.Count -eq 0) {
   Write-Warning "Warmup: LabVIEW did not appear within $TimeoutSeconds second(s)."
   Write-JsonEvent 'timeout' @{ stage = 'spawn'; seconds = $TimeoutSeconds }
   if ($KillOnTimeout -and $proc -and -not $proc.HasExited) {
@@ -237,9 +322,14 @@ if ($existing.Count -eq 0) {
   return
 }
 
-Write-Host ("Warmup: LabVIEW started (PID(s): {0})" -f ($existing.Id -join ',')) -ForegroundColor Green
-Write-StepSummaryLine ("- Warmup: LabVIEW running (PID(s): {0})" -f ($existing.Id -join ','))
-Write-JsonEvent 'labview-detected' @{ pids = ($existing.Id -join ',') }
+$matchingIds = ($existingState.Matching | ForEach-Object { $_.Id })
+Write-Host ("Warmup: LabVIEW started (PID(s): {0})" -f ($matchingIds -join ',')) -ForegroundColor Green
+Write-StepSummaryLine ("- Warmup: LabVIEW running (PID(s): {0})" -f ($matchingIds -join ','))
+Write-JsonEvent 'labview-detected' @{ pids = ($matchingIds -join ','); path = $normalizedLabVIEWPath }
+
+if ($existingState.NonMatching.Count -gt 0) {
+  Report-WarmupProcessMismatch -Processes $existingState.NonMatching -ExpectedPath $normalizedLabVIEWPath -Context 'post-launch'
+}
 
 if ($IdleWaitSeconds -gt 0) {
   Start-Sleep -Seconds $IdleWaitSeconds
@@ -250,10 +340,10 @@ Write-Snapshot -Path $SnapshotPath
 
 if ($StopAfterWarmup -and -not $KeepLabVIEW) {
   Write-Host "Warmup: stopping LabVIEW per StopAfterWarmup request." -ForegroundColor Gray
-  foreach ($proc in $existing) {
+  foreach ($proc in $existingState.Matching) {
     try { Stop-Process -Id $proc.Id -Force -ErrorAction Stop } catch { Write-Warning "Warmup: failed to stop LabVIEW PID $($proc.Id): $($_.Exception.Message)" }
   }
-  Write-JsonEvent 'labview-stopped' @{ reason = 'warmup-complete' }
+  Write-JsonEvent 'labview-stopped' @{ reason = 'warmup-complete'; pids = ($matchingIds -join ',') }
 } else {
   Write-JsonEvent 'warmup-complete' @{ kept = $true }
 }

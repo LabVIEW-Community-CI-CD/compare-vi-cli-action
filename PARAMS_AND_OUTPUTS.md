@@ -23,7 +23,9 @@
 - **Outputs**: writes NDJSON events at `JsonLogPath` (default
   `tests/results/_warmup/labview-runtime.ndjson`), optional snapshot JSON,
   and a console summary. Leaves LabVIEW running unless `-StopAfterWarmup`
-  is passed.
+  is passed. The warmup only reuses an existing LabVIEW instance when its
+  executable path matches the resolved canonical path; mismatches are
+  reported in the NDJSON log and step summary but ignored for readiness.
 
 ## tools/Prime-LVCompare.ps1
 
