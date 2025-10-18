@@ -499,4 +499,4 @@ function Invoke-CompareVI {
   }
 }
 
-Export-ModuleMember -Function Invoke-CompareVI, Resolve-Cli
+Export-ModuleMember -Function Invoke-CompareVI, Resolve-Cli, Get-CanonicalCliCandidates

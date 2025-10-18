@@ -1,19 +1,21 @@
 # Requires -Version 5.1
 # Pester v5 tests
 
-BeforeAll {
-  $here = Split-Path -Parent $PSCommandPath
-  $root = Resolve-Path (Join-Path $here '..')
-  . (Join-Path $root 'scripts' 'CompareVI.ps1')
+$here = Split-Path -Parent $PSCommandPath
+$root = Resolve-Path (Join-Path $here '..')
+. (Join-Path $root 'scripts' 'CompareVI.ps1')
 
-  # Canonical path candidates
-  $script:canonicalCandidates = Get-CanonicalCliCandidates
-  if (-not $script:canonicalCandidates -or $script:canonicalCandidates.Count -eq 0) {
-    $script:canonicalCandidates = @('C:\Program Files\National Instruments\Shared\LabVIEW Compare\LVCompare.exe', 'C:\Program Files (x86)\National Instruments\Shared\LabVIEW Compare\LVCompare.exe')
-  }
-  $script:canonical = $script:canonicalCandidates[0]
-  $script:existingCanonicalPath = $script:canonicalCandidates | Where-Object { Test-Path -LiteralPath $_ -PathType Leaf } | Select-Object -First 1
+# Canonical path candidates
+Set-Variable -Name canonicalCandidates -Scope Script -Value @() -Force
+Set-Variable -Name canonical -Scope Script -Value $null -Force
+Set-Variable -Name existingCanonicalPath -Scope Script -Value $null -Force
+
+$script:canonicalCandidates = Get-CanonicalCliCandidates
+if (-not $script:canonicalCandidates -or $script:canonicalCandidates.Count -eq 0) {
+  $script:canonicalCandidates = @('C:\Program Files\National Instruments\Shared\LabVIEW Compare\LVCompare.exe', 'C:\Program Files (x86)\National Instruments\Shared\LabVIEW Compare\LVCompare.exe')
 }
+$script:canonical = $script:canonicalCandidates[0]
+$script:existingCanonicalPath = $script:canonicalCandidates | Where-Object { Test-Path -LiteralPath $_ -PathType Leaf } | Select-Object -First 1
 
 Describe 'Invoke-CompareVI core behavior' -Tag 'Unit' {
   BeforeEach {
@@ -120,9 +122,6 @@ Describe 'Resolve-Cli canonical path enforcement' -Tag 'Unit' {
       return 0
     }
 
-    # Reference the canonical path from BeforeAll
-    $canonical = $script:canonical
-
     $script:a = $a; $script:b = $b; $script:vis = $vis; $script:mockExecutor = $mockExecutor
   }
 
@@ -142,29 +141,46 @@ Describe 'Resolve-Cli canonical path enforcement' -Tag 'Unit' {
     } finally { $env:LVCOMPARE_PATH = $old }
   }
 
-  It 'accepts explicit lvComparePath when canonical and exists' -Skip:(-not $script:existingCanonicalPath) {
-    $path = $script:existingCanonicalPath
+  It 'accepts explicit lvComparePath when canonical and exists' {
+    $existingVar = Get-Variable -Name existingCanonicalPath -Scope Script -ErrorAction SilentlyContinue
+    $path = if ($existingVar) { $existingVar.Value } else { $null }
+    if (-not $path) {
+      Set-ItResult -Skipped -Because 'Canonical LVCompare path not available on this host'
+      return
+    }
     $res = Invoke-CompareVI -Base $a -Head $b -LvComparePath $path -FailOnDiff:$false -Executor $mockExecutor
     $res.CliPath | Should -Be (Resolve-Path $path).Path
   }
 
-  It 'accepts LVCOMPARE_PATH when canonical and exists' -Skip:(-not $script:existingCanonicalPath) {
+  It 'accepts LVCOMPARE_PATH when canonical and exists' {
+    $existingVar = Get-Variable -Name existingCanonicalPath -Scope Script -ErrorAction SilentlyContinue
+    $path = if ($existingVar) { $existingVar.Value } else { $null }
+    if (-not $path) {
+      Set-ItResult -Skipped -Because 'Canonical LVCompare path not available on this host'
+      return
+    }
     $old = $env:LVCOMPARE_PATH
     try {
-      $env:LVCOMPARE_PATH = $script:existingCanonicalPath
+      $env:LVCOMPARE_PATH = $path
       $res = Invoke-CompareVI -Base $a -Head $b -FailOnDiff:$false -Executor $mockExecutor
-      $res.CliPath | Should -Be (Resolve-Path $script:existingCanonicalPath).Path
+      $res.CliPath | Should -Be (Resolve-Path $path).Path
     } finally { $env:LVCOMPARE_PATH = $old }
   }
 
-  It 'falls back to canonical install path when present' -Skip:(-not $script:existingCanonicalPath) {
+  It 'falls back to canonical install path when present' {
+    $existingVar = Get-Variable -Name existingCanonicalPath -Scope Script -ErrorAction SilentlyContinue
+    $path = if ($existingVar) { $existingVar.Value } else { $null }
+    if (-not $path) {
+      Set-ItResult -Skipped -Because 'Canonical LVCompare path not available on this host'
+      return
+    }
     $old = $env:LVCOMPARE_PATH
     $oldPath = $env:PATH
     try {
       $env:LVCOMPARE_PATH = $null
       # PATH may still contain LVCompare, but canonical should win if PATH doesn't resolve
       $res = Invoke-CompareVI -Base $a -Head $b -FailOnDiff:$false -Executor $mockExecutor
-      $res.CliPath | Should -Be (Resolve-Path $script:existingCanonicalPath).Path
+      $res.CliPath | Should -Be (Resolve-Path $path).Path
     } finally {
       $env:LVCOMPARE_PATH = $old
       $env:PATH = $oldPath

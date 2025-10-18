@@ -432,13 +432,39 @@ $script:fixtureDriftCompareExitCode = $null
 $script:fixtureDriftReportGenerated = $false
 $script:fixtureDriftProcessExitCode = $null
 
+function Test-ObjectHasMember {
+  param($InputObject,[string]$Name)
+
+  if ($null -eq $InputObject -or [string]::IsNullOrEmpty($Name)) { return $false }
+  if ($InputObject -is [System.Collections.IDictionary]) {
+    if ($InputObject.Contains($Name)) { return $true }
+  }
+  return $null -ne $InputObject.PSObject.Properties[$Name]
+}
+
+function Get-ObjectMemberValue {
+  param($InputObject,[string]$Name,$Default=$null)
+
+  if (-not (Test-ObjectHasMember $InputObject $Name)) { return $Default }
+  if ($InputObject -is [System.Collections.IDictionary] -and $InputObject.Contains($Name)) { return $InputObject[$Name] }
+  return ($InputObject.PSObject.Properties[$Name]).Value
+}
+
 function New-LabVIEWPidSummaryContext {
   param([string]$Stage = 'fixture-drift:summary')
 
   $ctx = [ordered]@{ stage = $Stage }
 
-  if ($summary -and $summary.PSObject.Properties['status']) { $ctx['status'] = [string]$summary.status }
-  if ($summary -and $summary.PSObject.Properties['exitCode']) { $ctx['exitCode'] = [int]$summary.exitCode }
+  if (Test-ObjectHasMember $summary 'status') {
+    $statusValue = Get-ObjectMemberValue $summary 'status'
+    if ($null -ne $statusValue -and $statusValue -ne '') { $ctx['status'] = [string]$statusValue }
+  }
+  if (Test-ObjectHasMember $summary 'exitCode') {
+    $exitValue = Get-ObjectMemberValue $summary 'exitCode'
+    if ($null -ne $exitValue) {
+      try { $ctx['exitCode'] = [int]$exitValue } catch { $ctx['exitCode'] = $exitValue }
+    }
+  }
 
   if ($null -ne $script:fixtureDriftProcessExitCode) { $ctx['processExitCode'] = [int]$script:fixtureDriftProcessExitCode }
 
@@ -461,13 +487,13 @@ function New-LabVIEWPidSummaryContext {
   if ($summary -and $summary.artifactPaths) { $artifactCount = @($summary.artifactPaths | Where-Object { $_ -ne $null }).Count }
   $ctx['artifactCount'] = [int]$artifactCount
 
-  $ctx['trackerEnabled'] = [bool]$labviewPidTrackerLoaded
-  if ($labviewPidTrackerRelativePath) { $ctx['trackerRelativePath'] = $labviewPidTrackerRelativePath }
+$ctx['trackerEnabled'] = [bool]$labviewPidTrackerLoaded
+if ($labviewPidTrackerRelativePath) { $ctx['trackerRelativePath'] = $labviewPidTrackerRelativePath }
 
-  $trackerStamp = $null
-  $trackerExists = $null
+$trackerStamp = $null
+$trackerExists = $null
   if ($labviewPidTrackerPath) {
-    $ctx['trackerPath'] = $labviewPidTrackerPath
+    $ctx['trackerPath'] = [string]$labviewPidTrackerPath
     try { $trackerExists = Test-Path -LiteralPath $labviewPidTrackerPath -PathType Leaf } catch { $trackerExists = $false }
     if ($null -ne $trackerExists) { $ctx['trackerExists'] = [bool]$trackerExists }
     if ($trackerExists) {
@@ -489,17 +515,94 @@ function New-LabVIEWPidSummaryContext {
   return $ctx
 }
 
+function Ensure-LabVIEWPidTrackerArtifact {
+  $currentSummary = $script:summary
+  $relativePath = $script:labviewPidTrackerRelativePath
+  if (-not $currentSummary) { return }
+  if (-not $relativePath) { return }
+
+  $pathsProp = $currentSummary.PSObject.Properties['artifactPaths']
+  if (-not $pathsProp) {
+    Add-Member -InputObject $currentSummary -Name artifactPaths -MemberType NoteProperty -Value @()
+  }
+  if ($null -eq $currentSummary.artifactPaths) {
+    $currentSummary.artifactPaths = @()
+  }
+  if (-not ($currentSummary.artifactPaths -contains $relativePath)) {
+    $currentSummary.artifactPaths += $relativePath
+  }
+}
+
+function Ensure-LabVIEWPidContextSourceMetadata {
+  $currentSummary = $script:summary
+  if (-not $currentSummary) { return }
+  if (-not (Test-ObjectHasMember $currentSummary 'labviewPidTracker')) { return }
+  $trackerSummary = Get-ObjectMemberValue $currentSummary 'labviewPidTracker'
+  if (-not $trackerSummary) { return }
+  if (-not (Test-ObjectHasMember $trackerSummary 'final')) { return }
+  $finalSummary = Get-ObjectMemberValue $trackerSummary 'final'
+  if (-not $finalSummary) { return }
+
+  $sourceValue = if (Test-ObjectHasMember $finalSummary 'contextSource') {
+    Get-ObjectMemberValue $finalSummary 'contextSource'
+  } elseif ($labviewPidTrackerFinalContextSource) {
+    $labviewPidTrackerFinalContextSource
+  } else {
+    'orchestrator:summary'
+  }
+
+  $detailValue = if (Test-ObjectHasMember $finalSummary 'contextSourceDetail') {
+    Get-ObjectMemberValue $finalSummary 'contextSourceDetail'
+  } elseif ($labviewPidTrackerFinalContextDetail) {
+    $labviewPidTrackerFinalContextDetail
+  } else {
+    'orchestrator:summary'
+  }
+
+  $finalSummary | Add-Member -Name contextSource -MemberType NoteProperty -Value ([string]$sourceValue) -Force
+  $finalSummary | Add-Member -Name contextSourceDetail -MemberType NoteProperty -Value ([string]$detailValue) -Force
+}
+
+function Update-LabVIEWPidContextSummaryFields {
+  param([string]$Stage = 'fixture-drift:summary')
+  $currentSummary = $script:summary
+  if (-not $currentSummary) { return }
+
+  $ctx = $null
+  try { $ctx = New-LabVIEWPidSummaryContext -Stage $Stage } catch { $ctx = $null }
+  if (-not $ctx) { return }
+
+  $contextObject = [pscustomobject]$ctx
+  if (Test-ObjectHasMember $currentSummary 'status') {
+    $statusValue = Get-ObjectMemberValue $currentSummary 'status'
+    if ($null -ne $statusValue -and $statusValue -ne '') {
+      $contextObject | Add-Member -Name status -MemberType NoteProperty -Value ([string]$statusValue) -Force
+    }
+  }
+  if (Test-ObjectHasMember $currentSummary 'exitCode') {
+    $exitValue = Get-ObjectMemberValue $currentSummary 'exitCode'
+    if ($null -ne $exitValue) {
+      try {
+        $contextObject | Add-Member -Name exitCode -MemberType NoteProperty -Value ([int]$exitValue) -Force
+      } catch {
+        $contextObject | Add-Member -Name exitCode -MemberType NoteProperty -Value $exitValue -Force
+      }
+    }
+  }
+  $script:labviewPidTrackerFinalContext = $contextObject
+
+  if ($script:labviewPidTrackerFinalState -and $script:labviewPidTrackerFinalState.PSObject.Properties['Context']) {
+    $script:labviewPidTrackerFinalState.Context = $contextObject
+  }
+}
+
 function Add-LabVIEWPidTrackerSummary {
   if (-not $summary) { return }
 
-  if ($summary.PSObject.Properties['artifactPaths'] -and $labviewPidTrackerRelativePath) {
-    if (-not ($summary.artifactPaths -contains $labviewPidTrackerRelativePath)) {
-      $summary.artifactPaths += $labviewPidTrackerRelativePath
-    }
-  }
+  Ensure-LabVIEWPidTrackerArtifact
 
   $payload = [ordered]@{ enabled = [bool]$labviewPidTrackerLoaded }
-  if ($labviewPidTrackerPath) { $payload['path'] = $labviewPidTrackerPath }
+  if ($labviewPidTrackerPath) { $payload['path'] = [string]$labviewPidTrackerPath }
   if ($labviewPidTrackerRelativePath) { $payload['relativePath'] = $labviewPidTrackerRelativePath }
 
   if ($labviewPidTrackerState) {
@@ -542,7 +645,7 @@ function Add-LabVIEWPidTrackerSummary {
 
   if ($finalBlock.Count -gt 0) { $payload['final'] = [pscustomobject]$finalBlock }
 
-  if ($summary.PSObject.Properties['labviewPidTracker']) {
+  if (Test-ObjectHasMember $summary 'labviewPidTracker') {
     $summary.labviewPidTracker = [pscustomobject]$payload
   } else {
     Add-Member -InputObject $summary -Name labviewPidTracker -MemberType NoteProperty -Value ([pscustomobject]$payload)
@@ -553,7 +656,9 @@ function Finalize-LabVIEWPidTrackerSummary {
   param([string]$Stage = 'fixture-drift:summary')
 
   if ($labviewPidTrackerFinalized) {
+    Update-LabVIEWPidContextSummaryFields -Stage $Stage
     Add-LabVIEWPidTrackerSummary
+    Ensure-LabVIEWPidTrackerArtifact
     return
   }
 
@@ -616,7 +721,9 @@ function Finalize-LabVIEWPidTrackerSummary {
 
   if (-not $labviewPidTrackerFinalizedSource) { $labviewPidTrackerFinalizedSource = 'orchestrator:summary' }
 
+  Update-LabVIEWPidContextSummaryFields -Stage $Stage
   Add-LabVIEWPidTrackerSummary
+  Ensure-LabVIEWPidTrackerArtifact
 }
 
 
@@ -1210,6 +1317,45 @@ if ($strictExit -eq 0 -and $strict.ok) {
 
   $script:fixtureDriftProcessExitCode = 0
   Finalize-LabVIEWPidTrackerSummary
+  $ctxNew = $null
+  try { $ctxNew = New-LabVIEWPidSummaryContext -Stage 'fixture-drift:summary' } catch { $ctxNew = $null }
+  if ($ctxNew) {
+    $ctxObject = [pscustomobject]$ctxNew
+    if (Test-ObjectHasMember $summary 'status') {
+      $statusValue = Get-ObjectMemberValue $summary 'status'
+      if ($null -ne $statusValue -and $statusValue -ne '') {
+        $ctxObject | Add-Member -Name status -MemberType NoteProperty -Value ([string]$statusValue) -Force
+      }
+    }
+    if (Test-ObjectHasMember $summary 'exitCode') {
+      $exitValue = Get-ObjectMemberValue $summary 'exitCode'
+      if ($null -ne $exitValue) {
+        try { $ctxObject | Add-Member -Name exitCode -MemberType NoteProperty -Value ([int]$exitValue) -Force }
+        catch { $ctxObject | Add-Member -Name exitCode -MemberType NoteProperty -Value $exitValue -Force }
+      }
+    }
+    if (Test-ObjectHasMember $summary 'labviewPidTracker') {
+      $trackerSummary = Get-ObjectMemberValue $summary 'labviewPidTracker'
+      if (Test-ObjectHasMember $trackerSummary 'final') {
+        $finalSummary = Get-ObjectMemberValue $trackerSummary 'final'
+        if (-not (Test-ObjectHasMember $finalSummary 'context')) {
+          Add-Member -InputObject $finalSummary -Name context -MemberType NoteProperty -Value $ctxObject
+        } else {
+          $finalSummary.context = $ctxObject
+        }
+        $finalSummary | Add-Member -Name contextSource -MemberType NoteProperty -Value 'orchestrator:summary' -Force
+        $detailValue = if ($labviewPidTrackerFinalContextDetail) { [string]$labviewPidTrackerFinalContextDetail } else { 'orchestrator:summary' }
+        $finalSummary | Add-Member -Name contextSourceDetail -MemberType NoteProperty -Value $detailValue -Force
+      }
+    }
+    if ($labviewPidTrackerFinalState -and $labviewPidTrackerFinalState.PSObject.Properties['Context']) {
+      $labviewPidTrackerFinalState.Context = $ctxObject
+    }
+    if ($ctxObject) { $script:labviewPidTrackerFinalContext = $ctxObject }
+    if (-not $labviewPidTrackerFinalContextSource) { $script:labviewPidTrackerFinalContextSource = 'orchestrator:summary' }
+    if (-not $labviewPidTrackerFinalContextDetail) { $script:labviewPidTrackerFinalContextDetail = 'orchestrator:summary' }
+    Ensure-LabVIEWPidContextSourceMetadata
+  }
 
 
 
@@ -1389,7 +1535,13 @@ if ($strictExit -eq 6) {
 
 
 
-  if (-not $RenderReport) { Add-Note 'RenderReport disabled; skipping LVCompare'; }
+  if (-not $RenderReport) {
+    Add-Note 'RenderReport disabled; skipping LVCompare'
+    if ($SimulateCompare) {
+      $script:fixtureDriftCompareExitCode = 1
+      $script:fixtureDriftReportGenerated = $true
+    }
+  }
 
 
 
@@ -1577,12 +1729,53 @@ if ($RenderReport) {
 
 }
 
-  $script:fixtureDriftCompareExitCode = if ($null -ne $exitCode) { [int]$exitCode } else { $null }
+  if ($null -ne $exitCode) {
+    try { $script:fixtureDriftCompareExitCode = [int]$exitCode } catch { $script:fixtureDriftCompareExitCode = $exitCode }
+  }
 
   Write-DiffDetailsIfSample -RepoRoot $repoRoot -HeadPath $HeadPath -OutputDir $OutputDir
 
   $script:fixtureDriftProcessExitCode = 1
   Finalize-LabVIEWPidTrackerSummary
+  $ctxNew = $null
+  try { $ctxNew = New-LabVIEWPidSummaryContext -Stage 'fixture-drift:summary' } catch { $ctxNew = $null }
+  if ($ctxNew) {
+    $ctxObject = [pscustomobject]$ctxNew
+    if (Test-ObjectHasMember $summary 'status') {
+      $statusValue = Get-ObjectMemberValue $summary 'status'
+      if ($null -ne $statusValue -and $statusValue -ne '') {
+        $ctxObject | Add-Member -Name status -MemberType NoteProperty -Value ([string]$statusValue) -Force
+      }
+    }
+    if (Test-ObjectHasMember $summary 'exitCode') {
+      $exitValue = Get-ObjectMemberValue $summary 'exitCode'
+      if ($null -ne $exitValue) {
+        try { $ctxObject | Add-Member -Name exitCode -MemberType NoteProperty -Value ([int]$exitValue) -Force }
+        catch { $ctxObject | Add-Member -Name exitCode -MemberType NoteProperty -Value $exitValue -Force }
+      }
+    }
+    if (Test-ObjectHasMember $summary 'labviewPidTracker') {
+      $trackerSummary = Get-ObjectMemberValue $summary 'labviewPidTracker'
+      if (Test-ObjectHasMember $trackerSummary 'final') {
+        $finalSummary = Get-ObjectMemberValue $trackerSummary 'final'
+        if (-not (Test-ObjectHasMember $finalSummary 'context')) {
+          Add-Member -InputObject $finalSummary -Name context -MemberType NoteProperty -Value $ctxObject
+        } else {
+          $finalSummary.context = $ctxObject
+        }
+        $finalSummary | Add-Member -Name contextSource -MemberType NoteProperty -Value 'orchestrator:summary' -Force
+        $detailValue = if ($labviewPidTrackerFinalContextDetail) { [string]$labviewPidTrackerFinalContextDetail } else { 'orchestrator:summary' }
+        $finalSummary | Add-Member -Name contextSourceDetail -MemberType NoteProperty -Value $detailValue -Force
+      }
+    }
+    if ($labviewPidTrackerFinalState -and $labviewPidTrackerFinalState.PSObject.Properties['Context']) {
+      $labviewPidTrackerFinalState.Context = $ctxObject
+    }
+    if ($ctxObject) { $script:labviewPidTrackerFinalContext = $ctxObject }
+    if (-not $labviewPidTrackerFinalContextSource) { $script:labviewPidTrackerFinalContextSource = 'orchestrator:summary' }
+    if (-not $labviewPidTrackerFinalContextDetail) { $script:labviewPidTrackerFinalContextDetail = 'orchestrator:summary' }
+    Ensure-LabVIEWPidContextSourceMetadata
+  }
 
 
   $outPath = Join-Path $OutputDir 'drift-summary.json'
@@ -1727,6 +1920,40 @@ else {
 
   $script:fixtureDriftProcessExitCode = 1
   Finalize-LabVIEWPidTrackerSummary
+  if (Test-ObjectHasMember $summary 'labviewPidTracker') {
+    $trackerSummary = Get-ObjectMemberValue $summary 'labviewPidTracker'
+    if (Test-ObjectHasMember $trackerSummary 'final') {
+      $finalSummary = Get-ObjectMemberValue $trackerSummary 'final'
+      if (Test-ObjectHasMember $finalSummary 'context') {
+        $ctxExisting = Get-ObjectMemberValue $finalSummary 'context'
+        if ($ctxExisting) {
+          $ctxData = [ordered]@{}
+          foreach ($prop in $ctxExisting.PSObject.Properties) { $ctxData[$prop.Name] = $prop.Value }
+          if (Test-ObjectHasMember $summary 'status') {
+            $statusValue = Get-ObjectMemberValue $summary 'status'
+            if ($null -ne $statusValue -and $statusValue -ne '') { $ctxData['status'] = [string]$statusValue }
+          }
+          if (Test-ObjectHasMember $summary 'exitCode') {
+            $exitValue = Get-ObjectMemberValue $summary 'exitCode'
+            if ($null -ne $exitValue) {
+              try { $ctxData['exitCode'] = [int]$exitValue } catch { $ctxData['exitCode'] = $exitValue }
+            }
+          }
+          $finalSummary.context = [pscustomobject]$ctxData
+          if ($finalSummary.context) { $script:labviewPidTrackerFinalContext = $finalSummary.context }
+          $finalSummary | Add-Member -Name contextSource -MemberType NoteProperty -Value 'orchestrator:summary' -Force
+          $detailValue = if ($labviewPidTrackerFinalContextDetail) { [string]$labviewPidTrackerFinalContextDetail } else { 'orchestrator:summary' }
+          $finalSummary | Add-Member -Name contextSourceDetail -MemberType NoteProperty -Value $detailValue -Force
+          if ($labviewPidTrackerFinalState -and $labviewPidTrackerFinalState.PSObject.Properties['Context']) {
+            $labviewPidTrackerFinalState.Context = $finalSummary.context
+          }
+          if (-not $labviewPidTrackerFinalContextSource) { $script:labviewPidTrackerFinalContextSource = 'orchestrator:summary' }
+          if (-not $labviewPidTrackerFinalContextDetail) { $script:labviewPidTrackerFinalContextDetail = 'orchestrator:summary' }
+          Ensure-LabVIEWPidContextSourceMetadata
+        }
+      }
+    }
+  }
 
   $outPath = Join-Path $OutputDir 'drift-summary.json'
 

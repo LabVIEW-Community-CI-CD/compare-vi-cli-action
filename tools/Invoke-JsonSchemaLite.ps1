@@ -18,10 +18,18 @@ try { $schema = Get-Content -LiteralPath $SchemaPath -Raw | ConvertFrom-Json -Er
 # snapshots). The fallback only applies when both schema and payload expose a concrete
 # identifier and the alternate file exists next to the requested schema path.
 $schemaConst = $null
-if ($schema -is [psobject] -and $schema.PSObject.Properties['properties']) {
-  $schemaNode = $schema.properties.schema
-  if ($schemaNode -is [psobject] -and $schemaNode.PSObject.Properties['const']) {
-    $schemaConst = [string]$schemaNode.const
+if ($schema -is [psobject]) {
+  $schemaPropertiesProp = $schema.PSObject.Properties['properties']
+  if ($schemaPropertiesProp -and $schemaPropertiesProp.Value -is [psobject]) {
+    $schemaProperties = $schemaPropertiesProp.Value
+    $schemaNodeProp = $schemaProperties.PSObject.Properties['schema']
+    if ($schemaNodeProp -and $schemaNodeProp.Value -is [psobject]) {
+      $schemaNode = $schemaNodeProp.Value
+      $schemaConstProp = $schemaNode.PSObject.Properties['const']
+      if ($schemaConstProp) {
+        $schemaConst = [string]$schemaConstProp.Value
+      }
+    }
   }
 }
 

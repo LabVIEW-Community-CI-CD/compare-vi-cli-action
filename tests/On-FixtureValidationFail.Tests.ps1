@@ -22,22 +22,25 @@ Describe 'On-FixtureValidationFail Orchestration' -Tag 'Unit' {
     $script:repoRoot = $repoRoot
     $script:scriptPath = $scriptPath
     $script:resultsDir = $resultsDir
-  }
 
-  function Assert-LabVIEWPidContext($ctx) {
-    $ctx | Should -Not -BeNullOrEmpty
-    ($ctx.PSObject.Properties.Name -contains 'trackerEnabled') | Should -BeTrue
-    [bool]$ctx.trackerEnabled | Should -BeTrue
-    ($ctx.PSObject.Properties.Name -contains 'trackerRelativePath') | Should -BeTrue
-    $ctx.trackerRelativePath | Should -Be '_agent/labview-pid.json'
-    ($ctx.PSObject.Properties.Name -contains 'trackerPath') | Should -BeTrue
-    $ctx.trackerPath | Should -Match 'labview-pid.json$'
-    ($ctx.PSObject.Properties.Name -contains 'trackerExists') | Should -BeTrue
-    [bool]$ctx.trackerExists | Should -BeTrue
-    ($ctx.PSObject.Properties.Name -contains 'trackerLastWriteTimeUtc') | Should -BeTrue
-    $ctx.trackerLastWriteTimeUtc | Should -Match 'Z$'
-    ($ctx.PSObject.Properties.Name -contains 'trackerLength') | Should -BeTrue
-    [int]$ctx.trackerLength | Should -BeGreaterThan 0
+    function Assert-LabVIEWPidContext {
+      param($ctx)
+      $ctx | Should -Not -BeNullOrEmpty
+      ($ctx.PSObject.Properties.Name -contains 'trackerEnabled') | Should -BeTrue
+      [bool]$ctx.trackerEnabled | Should -BeTrue
+      ($ctx.PSObject.Properties.Name -contains 'trackerRelativePath') | Should -BeTrue
+      $ctx.trackerRelativePath | Should -Be '_agent/labview-pid.json'
+      ($ctx.PSObject.Properties.Name -contains 'trackerPath') | Should -BeTrue
+      $ctx.trackerPath | Should -Match 'labview-pid.json$'
+      ($ctx.PSObject.Properties.Name -contains 'trackerExists') | Should -BeTrue
+      [bool]$ctx.trackerExists | Should -BeTrue
+      ($ctx.PSObject.Properties.Name -contains 'trackerLastWriteTimeUtc') | Should -BeTrue
+      $timestamp = $ctx.trackerLastWriteTimeUtc
+      if ($timestamp -is [datetime]) { $timestamp = $timestamp.ToString('o') }
+      $timestamp | Should -Match 'Z$'
+      ($ctx.PSObject.Properties.Name -contains 'trackerLength') | Should -BeTrue
+      [int]$ctx.trackerLength | Should -BeGreaterThan 0
+    }
   }
 
   It 'exits 0 and emits minimal summary when strict ok' {
