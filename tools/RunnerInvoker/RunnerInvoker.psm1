@@ -181,24 +181,51 @@ function Invoke-RunnerRequest {
   throw "invoker response timeout for verb '$Verb' id '$id'"
 }
 
-function Start-InvokerLoop {
-  [CmdletBinding()]
-  param(
-    [Parameter(Mandatory)][string]$PipeName,
-    [Parameter()][string]$SentinelPath,
-    [Parameter()][string]$ResultsDir = 'tests/results/_invoker',
-    [int]$PollIntervalMs = 200
-  )
+  function Start-InvokerLoop {
+    [CmdletBinding()]
+    param(
+      [Parameter(Mandatory)][string]$PipeName,
+      [Parameter()][string]$SentinelPath,
+      [Parameter()][string]$ResultsDir = 'tests/results/_invoker',
+      [int]$PollIntervalMs = 200,
+      [string]$TrackerContextPath,
+      [string]$TrackerContextSource = 'invoker:loop',
+      [bool]$TrackerEnabled = $false
+    )
 
   $baseDir = Join-Path $ResultsDir '_invoker'
   $reqDir = Join-Path $baseDir 'requests'
   $rspDir = Join-Path $baseDir 'responses'
-  foreach ($d in @($baseDir,$reqDir,$rspDir)) { if (-not (Test-Path -LiteralPath $d)) { New-Item -ItemType Directory -Path $d -Force | Out-Null } }
-  $spawns = Join-Path $baseDir 'console-spawns.ndjson'
-  if (-not (Test-Path -LiteralPath $spawns)) { New-Item -ItemType File -Path $spawns -Force | Out-Null }
-  $reqLog = Join-Path $baseDir 'requests-log.ndjson'
-  if (-not (Test-Path -LiteralPath $reqLog)) { New-Item -ItemType File -Path $reqLog -Force | Out-Null }
-  $singleStatePath = Join-Path $baseDir 'single-compare-state.json'
+    foreach ($d in @($baseDir,$reqDir,$rspDir)) { if (-not (Test-Path -LiteralPath $d)) { New-Item -ItemType Directory -Path $d -Force | Out-Null } }
+    $spawns = Join-Path $baseDir 'console-spawns.ndjson'
+    if (-not (Test-Path -LiteralPath $spawns)) { New-Item -ItemType File -Path $spawns -Force | Out-Null }
+    $reqLog = Join-Path $baseDir 'requests-log.ndjson'
+    if (-not (Test-Path -LiteralPath $reqLog)) { New-Item -ItemType File -Path $reqLog -Force | Out-Null }
+    $singleStatePath = Join-Path $baseDir 'single-compare-state.json'
+
+    $writeTrackerContext = $null
+    if ($TrackerEnabled -and $TrackerContextPath) {
+      $writeTrackerContext = {
+        param(
+          [string]$Stage,
+          [hashtable]$Details
+        )
+        $record = [ordered]@{
+          stage = $Stage
+          at    = (Get-Date).ToUniversalTime().ToString('o')
+        }
+        if ($TrackerContextSource) { $record['source'] = $TrackerContextSource }
+        if ($Details) {
+          foreach ($key in $Details.Keys) { $record[$key] = $Details[$key] }
+        }
+        try {
+          $dir = Split-Path -Parent $TrackerContextPath
+          if ($dir -and -not (Test-Path -LiteralPath $dir)) { New-Item -ItemType Directory -Path $dir -Force | Out-Null }
+          [pscustomobject]$record | ConvertTo-Json -Depth 8 | Set-Content -LiteralPath $TrackerContextPath -Encoding UTF8
+        } catch {}
+      }.GetNewClosure()
+      try { & $writeTrackerContext 'invoker:init' ([ordered]@{ pipe = $PipeName }) } catch {}
+    }
 
   $stopwatch = [Diagnostics.Stopwatch]::StartNew()
   $lastSpawn = 0
@@ -233,12 +260,13 @@ function Start-InvokerLoop {
           'Ping' {
             $result = [pscustomobject]@{ pong = $PipeName; at=(Get-Date).ToUniversalTime().ToString('o') }
           }
-          'CompareVI' {
-            $hashtableArgs = $reqArgs -is [hashtable]
-            $previewRequested = $false
-            if ($hashtableArgs -and $reqArgs.ContainsKey('preview')) {
-              try { $previewRequested = [bool]$reqArgs['preview'] } catch { $previewRequested = $false }
-            }
+            'CompareVI' {
+              $hashtableArgs = $reqArgs -is [hashtable]
+              $previewRequested = $false
+              $autoStopped = $false
+              if ($hashtableArgs -and $reqArgs.ContainsKey('preview')) {
+                try { $previewRequested = [bool]$reqArgs['preview'] } catch { $previewRequested = $false }
+              }
             $outDir = if ($hashtableArgs -and $reqArgs.ContainsKey('outputDir') -and $reqArgs['outputDir']) { [string]$reqArgs['outputDir'] } else { (Join-Path $ResultsDir '_invoker') }
             $gateEnabled = Get-SingleCompareGateEnabled
             $autoStopEnabled = Get-SingleCompareAutoStopEnabled
@@ -349,21 +377,35 @@ function Start-InvokerLoop {
                 $completedPreview = @{ at=(Get-Date).ToUniversalTime().ToString('o'); verb=$verb; ok=$true; stage='completed' } | ConvertTo-Json -Compress
                 Add-Content -LiteralPath $reqLog -Value $completedPreview -Encoding UTF8
               } catch {}
-              if ($gateEnabled -and $autoStopEnabled -and $SentinelPath) {
-                try {
-                  $autoNote = @{ at=(Get-Date).ToUniversalTime().ToString('o'); verb=$verb; stage='auto_stop'; reason='single_compare_complete'; preview=$true } | ConvertTo-Json -Compress
-                  Add-Content -LiteralPath $reqLog -Value $autoNote -Encoding UTF8
-                } catch {}
-                try { Remove-Item -LiteralPath $SentinelPath -Force } catch {}
-                try {
-                  $autoFile = Join-Path $baseDir 'single-compare-autostop.json'
-                  $autoObj = [pscustomobject]@{ schema='invoker-autostop/v1'; preview=$true; at=(Get-Date).ToUniversalTime().ToString('o') }
-                  $autoObj | ConvertTo-Json -Depth 4 | Out-File -FilePath $autoFile -Encoding utf8
-                } catch {}
+                if ($gateEnabled -and $autoStopEnabled -and $SentinelPath) {
+                  try {
+                    $autoNote = @{ at=(Get-Date).ToUniversalTime().ToString('o'); verb=$verb; stage='auto_stop'; reason='single_compare_complete'; preview=$true } | ConvertTo-Json -Compress
+                    Add-Content -LiteralPath $reqLog -Value $autoNote -Encoding UTF8
+                  } catch {}
+                  $autoStopped = $true
+                  try { Remove-Item -LiteralPath $SentinelPath -Force } catch {}
+                  try {
+                    $autoFile = Join-Path $baseDir 'single-compare-autostop.json'
+                    $autoObj = [pscustomobject]@{ schema='invoker-autostop/v1'; preview=$true; at=(Get-Date).ToUniversalTime().ToString('o') }
+                    $autoObj | ConvertTo-Json -Depth 4 | Out-File -FilePath $autoFile -Encoding utf8
+                  } catch {}
+                }
+                if ($writeTrackerContext) {
+                  $ctx = [ordered]@{
+                    verb        = 'CompareVI'
+                    preview     = $true
+                    exitCode    = if ($result.PSObject.Properties['exitCode']) { [int]$result.exitCode } else { $null }
+                    diff        = if ($result.PSObject.Properties['diff']) { [bool]$result.diff } else { $null }
+                    command     = if ($result.PSObject.Properties['command']) { [string]$result.command } else { $null }
+                    execJsonPath= $execPath
+                    outputDir   = $outDir
+                    autoStopped = $autoStopped
+                  }
+                  try { & $writeTrackerContext 'invoker:comparevi' $ctx } catch {}
+                }
+                $handled = $true
+                continue
               }
-              $handled = $true
-              continue
-            }
             if ($gateEnabled -and -not $existingState -and (Test-Path -LiteralPath $execPath)) {
               try {
                 $gateEntryPending = @{
@@ -411,25 +453,58 @@ function Start-InvokerLoop {
               $completedRun = @{ at=(Get-Date).ToUniversalTime().ToString('o'); verb=$verb; ok=$true; stage='completed' } | ConvertTo-Json -Compress
               Add-Content -LiteralPath $reqLog -Value $completedRun -Encoding UTF8
             } catch {}
-            if ($gateEnabled -and $autoStopEnabled -and $SentinelPath) {
-              try {
-                $autoNote2 = @{ at=(Get-Date).ToUniversalTime().ToString('o'); verb=$verb; stage='auto_stop'; reason='single_compare_complete'; preview=$false } | ConvertTo-Json -Compress
-                Add-Content -LiteralPath $reqLog -Value $autoNote2 -Encoding UTF8
-              } catch {}
-              try { Remove-Item -LiteralPath $SentinelPath -Force } catch {}
-              try {
-                $autoFile2 = Join-Path $baseDir 'single-compare-autostop.json'
-                $autoObj2 = [pscustomobject]@{ schema='invoker-autostop/v1'; preview=$false; at=(Get-Date).ToUniversalTime().ToString('o') }
-                $autoObj2 | ConvertTo-Json -Depth 4 | Out-File -FilePath $autoFile2 -Encoding utf8
-              } catch {}
+              if ($gateEnabled -and $autoStopEnabled -and $SentinelPath) {
+                try {
+                  $autoNote2 = @{ at=(Get-Date).ToUniversalTime().ToString('o'); verb=$verb; stage='auto_stop'; reason='single_compare_complete'; preview=$false } | ConvertTo-Json -Compress
+                  Add-Content -LiteralPath $reqLog -Value $autoNote2 -Encoding UTF8
+                } catch {}
+                $autoStopped = $true
+                try { Remove-Item -LiteralPath $SentinelPath -Force } catch {}
+                try {
+                  $autoFile2 = Join-Path $baseDir 'single-compare-autostop.json'
+                  $autoObj2 = [pscustomobject]@{ schema='invoker-autostop/v1'; preview=$false; at=(Get-Date).ToUniversalTime().ToString('o') }
+                  $autoObj2 | ConvertTo-Json -Depth 4 | Out-File -FilePath $autoFile2 -Encoding utf8
+                } catch {}
+              }
+              if ($writeTrackerContext) {
+                $ctxRun = [ordered]@{
+                  verb        = 'CompareVI'
+                  preview     = $false
+                  exitCode    = if ($result.PSObject.Properties['exitCode']) { [int]$result.exitCode } else { $null }
+                  diff        = if ($result.PSObject.Properties['diff']) { [bool]$result.diff } else { $null }
+                  command     = if ($result.PSObject.Properties['command']) { [string]$result.command } else { $null }
+                  execJsonPath= if ($result.PSObject.Properties['execJsonPath']) { [string]$result.execJsonPath } else { $execPath }
+                  outputDir   = $outDir
+                  autoStopped = $autoStopped
+                }
+                if ($result.PSObject.Properties['duration_s']) { $ctxRun['duration_s'] = [double]$result.duration_s }
+                if ($result.PSObject.Properties['duration_ns']) { $ctxRun['duration_ns'] = [long]$result.duration_ns }
+                try { & $writeTrackerContext 'invoker:comparevi' $ctxRun } catch {}
+              }
+              $handled = $true
             }
-            $handled = $true
-          }
-          'RenderReport'  { $result = Handle-RenderReport -Args $reqArgs -ResultsDir $ResultsDir }
-          'PhaseDone'     {
-            $result = [pscustomobject]@{ done = $true }
-            if ($SentinelPath) { try { Remove-Item -LiteralPath $SentinelPath -Force } catch {} }
-          }
+            'RenderReport'  {
+              $result = Handle-RenderReport -Args $reqArgs -ResultsDir $ResultsDir
+              if ($writeTrackerContext) {
+                $renderCtx = [ordered]@{
+                  verb       = 'RenderReport'
+                  outputPath = if ($result.PSObject.Properties['outputPath']) { [string]$result.outputPath } else { $null }
+                }
+                try { & $writeTrackerContext 'invoker:render-report' $renderCtx } catch {}
+              }
+            }
+            'PhaseDone'     {
+              $result = [pscustomobject]@{ done = $true }
+              if ($SentinelPath) { try { Remove-Item -LiteralPath $SentinelPath -Force } catch {} }
+              if ($writeTrackerContext) {
+                $phaseCtx = [ordered]@{
+                  verb   = 'PhaseDone'
+                  done   = $true
+                }
+                if ($SentinelPath) { $phaseCtx['sentinelPath'] = $SentinelPath }
+                try { & $writeTrackerContext 'invoker:phase-done' $phaseCtx } catch {}
+              }
+            }
           default { throw "unknown verb: $verb" }
         }
         if ($handled) { continue }
@@ -442,16 +517,23 @@ function Start-InvokerLoop {
           $completedEntry = @{ at=(Get-Date).ToUniversalTime().ToString('o'); verb=$verb; ok=$true; stage='completed' } | ConvertTo-Json -Compress
           Add-Content -LiteralPath $reqLog -Value $completedEntry -Encoding UTF8
         } catch {}
-      } catch {
-        Write-JsonFile -Path $rspPath -Obj @{ ok=$false; id=$id; verb=$verb; error=($_.ToString()) }
-        try {
-          $failedEntry = @{ at=(Get-Date).ToUniversalTime().ToString('o'); verb=$verb; ok=$false; stage='failed'; error=$_.ToString() } | ConvertTo-Json -Compress
-          Add-Content -LiteralPath $reqLog -Value $failedEntry -Encoding UTF8
-        } catch {}
-      } finally {
-        try { Remove-Item -LiteralPath $reqPath -Force } catch {}
+        } catch {
+          Write-JsonFile -Path $rspPath -Obj @{ ok=$false; id=$id; verb=$verb; error=($_.ToString()) }
+          try {
+            $failedEntry = @{ at=(Get-Date).ToUniversalTime().ToString('o'); verb=$verb; ok=$false; stage='failed'; error=$_.ToString() } | ConvertTo-Json -Compress
+            Add-Content -LiteralPath $reqLog -Value $failedEntry -Encoding UTF8
+          } catch {}
+          if ($writeTrackerContext) {
+            $errorCtx = [ordered]@{
+              verb  = $verb
+              error = $_.ToString()
+            }
+            try { & $writeTrackerContext 'invoker:error' $errorCtx } catch {}
+          }
+        } finally {
+          try { Remove-Item -LiteralPath $reqPath -Force } catch {}
+        }
       }
-    }
     Start-Sleep -Milliseconds $PollIntervalMs
   }
 }

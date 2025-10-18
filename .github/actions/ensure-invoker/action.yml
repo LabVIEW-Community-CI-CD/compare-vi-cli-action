@@ -163,7 +163,36 @@ runs:
         $to = [int]'${{ inputs.timeout-seconds }}'
         $sw = [Diagnostics.Stopwatch]::StartNew()
         while ($sw.Elapsed.TotalSeconds -lt $to) { if (Test-Path -LiteralPath $stopped) { break }; Start-Sleep -Milliseconds 300 }
-        if (-not (Test-Path -LiteralPath $stopped)) { Write-Host "::warning::Invoker stop marker not observed within ${to} s (continuing)" }
+        if (-not (Test-Path -LiteralPath $stopped)) {
+          Write-Host "::warning::Invoker stop marker not observed within ${to} s (continuing)"
+        } else {
+          try {
+            $stopPayload = Get-Content -LiteralPath $stopped -Raw -Encoding UTF8 | ConvertFrom-Json -Depth 8
+            if ($stopPayload -and $stopPayload.PSObject.Properties['labviewPidTracker']) {
+              $tracker = $stopPayload.labviewPidTracker
+              if ($tracker -and $tracker.PSObject.Properties['final']) {
+                $final = $tracker.final
+                $stage = $null
+                if ($final.PSObject.Properties['Context'] -and $final.Context -and $final.Context.PSObject.Properties['stage']) {
+                  try { $stage = [string]$final.Context.stage } catch { $stage = $null }
+                }
+                if (-not $stage -and $final.PSObject.Properties['context'] -and $final.context -and $final.context.PSObject.Properties['stage']) {
+                  try { $stage = [string]$final.context.stage } catch { $stage = $null }
+                }
+                if ($stage) { Write-Host ("Invoker LabVIEW PID tracker finalized with stage '{0}'." -f $stage) }
+                if ($final.PSObject.Properties['Running']) {
+                  try {
+                    if ([bool]$final.Running) {
+                      Write-Host "::warning::LabVIEW PID tracker reports LabVIEW.exe still running after invoker stop."
+                    }
+                  } catch {}
+                }
+              }
+            }
+          } catch {
+            Write-Host ("::warning::Failed to inspect invoker stop payload: {0}" -f $_.Exception.Message)
+          }
+        }
 
     - name: No-op on non-Windows
       if: ${{ runner.os != 'Windows' }}
