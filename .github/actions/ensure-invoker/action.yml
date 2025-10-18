@@ -186,6 +186,7 @@ runs:
         $trackerFinal = $null
         $trackerError = $null
         $trackerBlock = $null
+        $trackerNotice = $null
 
         if (-not $stopPayload) {
           $fallbackUsed = $true
@@ -249,7 +250,7 @@ runs:
               $trackerError = "LabVIEWPidTracker module not found at $modulePath"
             }
           } else {
-            if (-not $trackerError) { $trackerError = 'Tracker path unavailable for fallback' }
+            if (-not $trackerError) { $trackerNotice = 'Tracker path unavailable for fallback' }
           }
 
           $stopPayload = [ordered]@{
@@ -277,6 +278,10 @@ runs:
           }
 
           try {
+            $stopDir = Split-Path -Parent $stopped
+            if ($stopDir -and -not (Test-Path -LiteralPath $stopDir -PathType Container)) {
+              New-Item -ItemType Directory -Path $stopDir -Force | Out-Null
+            }
             [pscustomobject]$stopPayload | ConvertTo-Json -Depth 8 | Set-Content -LiteralPath $stopped -Encoding UTF8
           } catch {
             Write-Host ("::warning::Failed to persist fallback invoker stop payload: {0}" -f $_.Exception.Message)
@@ -321,6 +326,9 @@ runs:
           } elseif ($trackerError) {
             Write-Host ("::warning::LabVIEW PID tracker fallback error: {0}" -f $trackerError)
             $summaryLines += ('- Tracker fallback error: {0}' -f $trackerError)
+          } elseif ($trackerNotice) {
+            Write-Host ("LabVIEW PID tracker fallback notice: {0}" -f $trackerNotice)
+            $summaryLines += ('- Tracker fallback notice: {0}' -f $trackerNotice)
           }
         }
 
