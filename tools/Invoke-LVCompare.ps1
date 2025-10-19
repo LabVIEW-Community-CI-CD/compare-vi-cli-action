@@ -400,7 +400,18 @@ function Invoke-LabVIEWCLICompare {
   }
 
   if ($Flags) {
-    $invokeParams.Flags = @($Flags)
+    $filteredFlags = @()
+    for ($i = 0; $i -lt $Flags.Count; $i++) {
+      $flagValue = [string]$Flags[$i]
+      if ($flagValue -and ($flagValue.Equals('-lvpath', 'InvariantCultureIgnoreCase') -or $flagValue.Equals('-labviewpath', 'InvariantCultureIgnoreCase'))) {
+        $i++
+        continue
+      }
+      $filteredFlags += $flagValue
+    }
+    if ($filteredFlags.Count -gt 0) {
+      $invokeParams.Flags = @($filteredFlags)
+    }
   }
 
   $cliResult = Invoke-LVCreateComparisonReport @invokeParams

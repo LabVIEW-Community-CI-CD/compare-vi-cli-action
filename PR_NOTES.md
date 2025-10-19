@@ -1,137 +1,97 @@
 <!-- markdownlint-disable-next-line MD041 -->
-# Release v0.4.0 – PR Notes Helper (Do Not Ship With Final Tag)
+# Release v0.5.1 – PR Notes Helper (Do Not Ship With Final Tag)
 
-This helper file summarizes the key points for PR #41 (release/v0.4.0-rc.1) and can be used to refine the
-PR description prior to merge/tag. Remove or exclude from packaged artifacts if not desired long-term.
+Reference sheet for refining the v0.5.1 release PR/description. Summarizes the major themes, validation
+expectations, and follow-ups captured in #134.
 
 ## 1. Summary
 
-Release v0.4.0 centers on:
+Release v0.5.1 focuses on four pillars:
 
-- Naming migration (Base.vi/Head.vi → VI1.vi/VI2.vi) with runtime warnings & soft fallback.
-- Loop resiliency features (graceful auto-close, force kill fallback, stray 32‑bit LVCompare cleanup).
-- Bitness & safety guards (PE header check; identical path & same-name preflight guards).
-- Expanded dispatcher schemas v1.3.0–v1.7.1 (timing, stability, discovery, outcome, aggregationHints, build timing metric).
-- Discovery failure soft classification (non-fatal by default; strict mode opt-in via `DISCOVERY_FAILURES_STRICT=1`).
-- Enhanced metrics & outputs (percentiles, histogram, streaming/hybrid quantile strategies, `shortCircuitedIdentical`).
+- Deterministic self-hosted Windows CI: per-ref concurrency + cancel-in-progress, guard preflight, and post-run
+  cleanup enforcement so orchestrated runs finish without manual intervention.
+- Session index everywhere: every dispatcher run writes `tests/results/session-index.json`, uploads it, and appends the
+  `stepSummary` snippet for easy triage.
+- Fixture policy modernization: `fixtures.manifest.json` now records exact `bytes`, drift workflows consume the new
+  shape, and the validator produces actionable size mismatch diagnostics.
+- Drift/report hardening & tooling hygiene: LVCompare exec JSON becomes the primary drift report source, docs linting
+  runs in Validate, and the repository ships a vendor tool resolver plus Docker helper to keep non-LV checks consistent.
 
-## 2. Key Changes
+## 2. Deterministic CI & Guard Highlights
 
-### Naming Migration
+- Orchestrated workflows use concurrency groups with cancel-on-new-ref to prevent queue buildup.
+- Guard preflight blocks dispatcher launches when `LabVIEW.exe` is already running; post-run guard summarizes cleanup.
+- Validate now runs actionlint *before* markdownlint so YAML issues fail fast.
+- Published tools image (`ghcr.io/labview-community-ci-cd/comparevi-tools`) powers priority sync and non-LV checks.
 
-- Preferred artifacts: `VI1.vi` / `VI2.vi` (legacy `Base.vi` / `Head.vi` still accepted this release).
-- Guard test (module scope) prevents legacy names from creeping back into module code.
-- Runtime `[NamingMigrationWarning]` when legacy names are used.
-- Future (v0.5.0): Remove fallback & expand guard to scripts + docs.
+## 3. Session Index & Telemetry
 
-### Reliability & Safety
+- Dispatcher emits `session-index.json` containing run status, artifact paths, timing metrics, and a ready-to-append
+  summary block.
+- `tools/Update-SessionIndexBranchProtection.ps1` maintains the contract between `session-index.json` and required
+  checks (`tools/policy/branch-required-checks.json`).
+- Watchers ingest the session index (REST watcher writes `watcher-rest.json`; helper merges into the session index).
+- New docs (`docs/CI_ORCHESTRATION_REDESIGN.md`, `docs/WATCHER_TELEMETRY_DX.md`) explain how the telemetry pieces fit.
 
-- Auto-close loop with optional force kill (`LOOP_CLOSE_LABVIEW_FORCE=1`).
-- Stray 32‑bit LVCompare detection & termination (`lvcompareStrayKill` event).
-- PE header bitness validation rejects 32-bit `LVCompare.exe` at canonical path.
-- Preflight diff guards: identical absolute path short-circuit + same-filename rejection.
+## 4. Fixture & Drift Updates
 
-### Telemetry & Metrics
+- `fixtures.manifest.json` adopts `bytes` (exact size) and supports the additive `pair` block (`fixture-pair/v1`).
+- Drift jobs trust the LVCompare exec JSON (`compare-exec.json`) for summaries and publish deterministic artifacts.
+- Validator CLI (`tools/Validate-Fixtures.ps1`) learned `-RequirePair` / `-FailOnExpectedMismatch` to enforce policy.
+- README + integration docs call out the new fixture expectations and still reference the canonical `VI1.vi` / `VI2.vi`.
 
-- Loop metrics: average latency, exact & streaming/hybrid percentile strategies, optional histogram.
-- JSON NDJSON events: `labviewCloseAttempt`, `lvcompareStrayKill`, `finalStatusEmitted`, `stepSummaryAppended`, etc.
-- Action output `shortCircuitedIdentical` surfaces identical-path short-circuit state.
+## 5. Tooling & Developer Experience
 
-### Dispatcher / Schema Enhancements
+- `tools/VendorTools.psm1` resolves actionlint, markdownlint, and LVCompare paths consistently.
+- `tools/Run-NonLVChecksInDocker.ps1` provides a containerized fallback for Validate linting.
+- Priority router + handoff helpers (`tools/priority/*`) power the new standing-priority automation (cache, schema,
+  semver check, release simulation).
+- VS Code extension scaffolding (comparevi) ships as an experimental companion.
 
-- Additive schema versions: v1.3.0–v1.7.1.
-  - v1.3.0: timing block.
-  - v1.4.0: stability block scaffold.
-  - v1.5.0: discovery detail block.
-  - v1.6.0: outcome classification block.
-  - v1.7.0: aggregationHints block.
-  - v1.7.1: `aggregatorBuildMs` timing metric (conditional).
-- All schema changes additive; baseline payload unchanged unless switches used.
+## 6. Upgrade Notes & Compatibility
 
-### Discovery Failures Soft Mode
+- Consumers must update any manifest tooling to read `bytes` instead of `minBytes`.
+- Session index is additive; action inputs/outputs remain unchanged.
+- No breaking changes to CompareVI CLI invocation—LVCompare/LabVIEW guard is stricter but bypassable via env toggles
+  documented in `docs/ENVIRONMENT.md`.
 
-- Matches no longer auto-fail run unless strict mode enabled.
-- Counts & snippets preserved for observability.
-- Env opts: `DISCOVERY_FAILURES_STRICT=1` for pre-migration strict parity.
+## 7. Validation Snapshot (goal = all checked before merge/tag)
 
-## 3. Migration & Deprecation
+- [ ] Validate workflow (actionlint, markdownlint, docs links) – rerun until clean.
+- [ ] `./Invoke-PesterTests.ps1` (non-integration) – expect PASS, session index uploaded.
+- [ ] Self-hosted integration run (`./Invoke-PesterTests.ps1 -IntegrationMode include`) – ensure guard/integration path
+      exits cleanly.
+- [ ] Fixture drift jobs (Windows + Ubuntu) – confirm size/bytes alignment.
+- [ ] LabVIEW CLI provider smoke: `tools/TestStand-CompareHarness.ps1` should complete without `CreateComparisonReport`
+      errors.
+- [ ] `node tools/npm/run-script.mjs priority:release` succeeds, writing `tests/results/_agent/handoff/release-summary.json`.
 
-| Aspect | Current (v0.4.0) | Future (v0.5.0) |
-|--------|------------------|------------------|
-| Artifact Names | `VI1.vi` / `VI2.vi` preferred; `Base.vi` / `Head.vi` fallback w/ warning | Remove fallback; fail or block legacy names |
-| Guard Scope | Module only | Expand to scripts + docs |
-| Runtime Warning | Emitted for legacy usage | Removed after full removal (warning not needed) |
-| Schema Keys | `basePath` / `headPath` unchanged | Unchanged |
-
-## 4. Backward Compatibility
-
-- No removed outputs or schema keys.
-- Fallback ensures existing workflows remain functional during transition.
-- Legacy streaming strategy alias (`StreamingP2`) retained with warning.
-
-## 5. Rollback Plan (If Blocking Issue Found)
-
-1. Create hotfix branch from last stable commit pre-v0.4.0.
-2. Revert migration warning block + module guard test (if root cause) and any offending changes.
-3. Re-publish as v0.4.1 or retract v0.4.0 (if discovered immediately and minimally adopted).
-4. Document rollback rationale in CHANGELOG under Unreleased.
-5. Open issue capturing lessons & follow-up mitigation.
-
-## 6. Testing & Validation
-
-- Unit + non-integration suites: PASS (130 tests) with discovery failures soft mode observed but non-fatal.
-- Markdown lint: PASS (0 errors).
-- Action outputs vs `docs/action-outputs.md`: Synced (includes `shortCircuitedIdentical`).
-- Guard test enforcing absence of legacy names in module: PASS.
-- Loop single iteration real CLI test prepared (requires canonical path & VI assets).
-
-## 7. Risks & Mitigations
+## 8. Risks & Mitigations
 
 <!-- markdownlint-disable MD013 -->
 | Risk | Impact | Mitigation |
-|------|--------|-----------|
-| Users ignore migration warning | Delayed adoption; future break at v0.5.0 | Clear warning + CHANGELOG + README migration note |
-| Soft discovery mode hides genuine structural errors | Latent test misconfiguration | Metrics/log counts retained; optional strict env toggle |
-| Force kill masks LabVIEW/runtime anomalies | Harder RCA on modal issues | Optional flag; events record `forceKill` and `forceKillSuccess` |
-| Name fallback removal backlash | Upgrade friction | Advance notice + staged guard expansion |
+|------|--------|------------|
+| Guard still reports rogue LabVIEW.exe | Dispatcher blocks post-merge | Keep `tools/Detect-RogueLV.ps1` in the release branch CI; ensure guard summaries stay green |
+| Fixture manifest consumers ignore `bytes` | Downstream size checks fail | Highlight in CHANGELOG/README; keep `minBytes` compatibility shim only where necessary |
+| Session index not appended in forks | Reduced telemetry | Document fallback in README + watcher docs; keep branch protection script aligned |
+| Dockerized non-LV checks lack GH token | priority:sync/drift fails | Ship guidance to set `GH_TOKEN`/`GITHUB_TOKEN` (added to docs/ENVIRONMENT.md) |
 <!-- markdownlint-enable MD013 -->
 
-## 8. Follow-Up Issues To Open Post-Merge
+## 9. Follow-Up Work After v0.5.1
 
-1. Remove artifact fallback & expand guard (scripts/docs) for v0.5.0.
-2. Add outcome sub-classification enhancements (e.g., distinguishing discovery vs execution failure weights further).
-3. Optional coverage integration for Integration-tagged tests.
-4. Documentation pruning & consolidation after migration finalization.
-5. Evaluate enabling strict discovery classification by default after stability window.
+1. Composite action consolidation and managed tokenizer adoption (tracked in standing issue #134).
+2. Extend session index watcher integration to additional workflows (rest + artifact merger).
+3. Evaluate defaulting discovery strictness once telemetry shows stability.
+4. Continue VS Code extension hardening (command palette + compare orchestration).
 
-## 9. Tag Preparation Checklist (Draft)
+## 10. Reviewer Notes
 
-1. Confirm version refs (`package.json`, action docs) reflect v0.4.0.
-2. Regenerate outputs docs (if any change) via
-   `node tools/npm/run-script.mjs generate:outputs` (already in sync for this PR).
-3. Run full test dispatcher (unit + integration if canonical LVCompare present).
-4. Run markdown lint & (optional) actionlint over workflows.
-5. Inspect CHANGELOG: ensure v0.4.0 section finalized; remove "Unreleased" placeholders referencing these changes.
-6. Create annotated tag: `git tag -a v0.4.0 -m "v0.4.0: naming migration + resiliency"`.
-7. Push tag: `git push origin v0.4.0`.
-8. Draft GitHub Release referencing PR + migration/deprecation notes + rollback summary.
-
-## 10. Acceptance Criteria Summary
-
-- [x] Legacy names produce warning (not failure).
-- [x] Action outputs include `shortCircuitedIdentical` when applicable.
-- [x] No schema breaking changes.
-- [x] Guard test prevents reintroduction of legacy names in module.
-- [x] Markdown hygiene clean.
-- [x] Tests green (unit path) & loop logic stable.
-
-## 11. Notes for Reviewers
-
-- Focus on correctness of fallback warning messaging & future timeline clarity.
-- Validate no unintended side-effects on exit codes (0 vs 1 mapping preserved).
-- Confirm deterministic ordering in HTML/JSON diff & loop summaries unchanged.
+- Focus reviews on CI determinism (concurrency wiring, guard steps), session index payload shape, fixture validator
+  behaviour, and docs/tooling alignment.
+- Double-check that `docs/action-outputs.md`, `action.yml`, and README tables match.
+- Ensure release artifacts (`RELEASE_NOTES_v0.5.0.md`, changelog section) remain consistent with changes landed after
+  the standing-priority sync.
 
 ---
 
-Generated: 2025-10-03
-(Keep or adapt; delete before publishing final release if redundant.)
+Updated: 2025-10-19 (aligns with the v0.5.1 release candidate).

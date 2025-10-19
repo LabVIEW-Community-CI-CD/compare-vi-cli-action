@@ -119,8 +119,8 @@ Open a new terminal afterwards.
 If you have **LabVIEWCLI** installed, you can generate a single‑file HTML report (great for CI/code reviews):
 ```bat
 LabVIEWCLI -OperationName CreateComparisonReport ^
-  -vi1 "C:\path\to\old.vi" -vi2 "C:\path\to\new.vi" ^
-  -reportType HTMLSingleFile -reportPath "C:\path\to\CompareReport.html" ^
+    -VI1 "C:\path\to\old.vi" -VI2 "C:\path\to\new.vi" ^
+    -ReportType HTMLSingleFile -ReportPath "C:\path\to\CompareReport.html" ^
   -nobdcosm -nofppos -noattr
 ```
 

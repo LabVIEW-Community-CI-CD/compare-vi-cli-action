@@ -59,8 +59,8 @@ Generate a standalone HTML diff via LabVIEWCLI (LabVIEW 2025 Q3+):
 
 ```powershell
 LabVIEWCLI -OperationName CreateComparisonReport `
-  -vi1 "C:\path\VI1.vi" -vi2 "C:\path\VI2.vi" `
-  -reportType HTMLSingleFile -reportPath "CompareReport.html" `
+    -VI1 "C:\path\VI1.vi" -VI2 "C:\path\VI2.vi" `
+    -ReportType HTMLSingleFile -ReportPath "CompareReport.html" `
   -nobdcosm -nofppos -noattr
 ```
 

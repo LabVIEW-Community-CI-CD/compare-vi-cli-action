@@ -1,90 +1,99 @@
 <!-- markdownlint-disable-next-line MD041 -->
-# v0.4.0 Tag Preparation Checklist
+# v0.5.1 Tag Preparation Checklist
 
-Helper reference for maintainers prior to cutting the final `v0.4.0` tag. Delete or archive after release if redundant
-with PR notes.
+Helper reference for cutting the `v0.5.1` tag. Aligns with the release notes (`RELEASE_NOTES_v0.5.1.md`) and the
+standing priority issue (#134). Update or archive once the tag is live.
 
 ## 1. Pre-flight Verification
 
-- [ ] On release branch: `release/v0.4.0-rc.1` (or updated RC) fully merged with latest `develop` changes intended for
-  release.
-- [ ] CI green (unit + integration as applicable) on the RC branch.
-- [ ] Markdown lint passes (run `node tools/npm/run-script.mjs lint:md`).
-- [ ] (Optional) Workflow lint (actionlint) passes if tool available.
-- [ ] No uncommitted changes: `git status` clean.
+- [ ] Work from the release branch (`release/v0.5.1-rc.1`, or latest RC) and ensure it is rebased/merged with
+      `develop` for all changes targeted at 0.5.1.
+- [ ] CI is green on the RC branch (Validate, fixtures, session-index, and any integration workflows).
+- [ ] `node tools/npm/run-script.mjs lint` completes without errors (markdownlint + docs checks) on the RC branch.
+- [ ] Optional: run `pwsh -File tools/PrePush-Checks.ps1` locally for early actionlint / YAML parity.
+- [ ] Verify a clean working tree (`git status`).
 
 ## 2. Version & Metadata Consistency
 
-- [ ] `CHANGELOG.md` has finalized `## [v0.4.0] - YYYY-MM-DD` section (date updated to actual release day).
-- [ ] No remaining references to `-rc` in README examples or docs referencing the version tag (other than historical
-  sections).
-- [ ] `package.json` version matches `0.4.0` (if version tracking used for tooling—update only if intentionally
-  coupled).
-- [ ] `action.yml` does not contain stale output/input names (compare to `docs/action-outputs.md`).
-- [ ] `docs/action-outputs.md` regenerated if any last-minute output changes: `node tools/npm/run-script.mjs
-  generate:outputs`.
+- [ ] `CHANGELOG.md` contains a finalized `## [v0.5.1] - YYYY-MM-DD` section with the correct release date.
+- [ ] All README / docs usage examples reference `@v0.5.1` (no lingering `-rc` or earlier tags outside of history
+      callouts).
+- [ ] `package.json` version is `0.5.1` and matches the release notes.
+- [ ] Regenerate `docs/action-outputs.md` if outputs changed (`node tools/npm/run-script.mjs generate:outputs`) and
+      confirm `action.yml` matches the documented inputs/outputs.
+- [ ] Update `docs/documentation-manifest.json` if new documents were added as part of the release.
 
-## 3. Functional Sanity Pass
+## 3. Dispatcher & Session Index Validation
 
-- [ ] Run dispatcher (unit only): `./Invoke-PesterTests.ps1` (expect PASS).
-- [ ] (If canonical LVCompare present) run full suite: `./Invoke-PesterTests.ps1 -IntegrationMode include`.
-- [ ] Manual single compare smoke (identical path short-circuit) if convenient.
-- [ ] Manual legacy name usage triggers `[NamingMigrationWarning]` exactly once.
+- [ ] `./Invoke-PesterTests.ps1` (unit surface) passes and emits `tests/results/session-index.json` with `status: ok`.
+- [ ] Self-hosted run with `./Invoke-PesterTests.ps1 -IntegrationMode include` (or CI equivalent) completes without
+      recursion or guard failures; capture the session index artifact.
+- [ ] Confirm the session index `stepSummary` appends cleanly in Validate / orchestrated workflows (check CI logs).
+- [ ] Ensure `tools/Update-SessionIndexBranchProtection.ps1` reflects the current required checks (compare with
+      `tools/policy/branch-required-checks.json`).
 
-## 4. Diff / Schema Integrity
+## 4. Fixture & Drift Integrity
 
-- [ ] No breaking schema key removals (review `docs/schemas/` git diff vs prior tag).
-- [ ] Added schema versions follow additive rule (older test fixtures still valid).
-- [ ] HTML diff summary deterministic ordering spot-check (two runs produce identical fragment when diff occurs).
+- [ ] Regenerate or verify `fixtures.manifest.json` so `bytes` replaces `minBytes` and (if used) the `pair` block
+      matches the latest schema (`fixture-pair/v1`).
+- [ ] Run `pwsh -File tools/Validate-Fixtures.ps1 -Json -RequirePair` (with `-EvidencePath` when drift jobs produced
+      compare evidence) to confirm no size mismatches.
+- [ ] Validate current vs baseline fixture reports (`current-fixture-validation.json`,
+      `baseline-fixture-validation.json`) for parity.
+- [ ] Drift workflows (`Validate / fixtures`) are green and reference `Source: execJson` inside the report.
 
-## 5. Release Artifacts Review
+## 5. Release Materials Review
 
-- [ ] Ensure `PR_NOTES.md` does not include secrets or non-public paths.
-- [ ] Consider pruning helper files (keep or remove): `PR_NOTES.md`, `TAG_PREP_CHECKLIST.md`, planned follow-up docs.
-- [ ] Validate `shortCircuitedIdentical` output appears for identical-file simulation (if test executed).
+- [ ] `PR_NOTES.md` summarizes the 0.5.1 release (deterministic CI, session index, fixture policy, drift/report hardening).
+- [ ] `PR_RELEASE_DESCRIPTION_v0.5.1.md`, `PR_RELEASE_CHECKLIST_v0.5.1.md`, and `RELEASE_NOTES_v0.5.1.md` are updated and
+      consistent with each other.
+- [ ] `ROLLBACK_PLAN.md` still applies (update if new rollback considerations emerged).
+- [ ] Helper docs (`AGENTS.md`, `docs/ENVIRONMENT.md`, `docs/CI_ORCHESTRATION_REDESIGN.md`, etc.) reference the
+      finalized flow and published tools image.
 
 ## 6. Tag Creation
 
-- [ ] Update date in `CHANGELOG.md` if not current.
-- [ ] Commit any final doc/test tweaks.
-- [ ] Create annotated tag:
+- [ ] Update the release date in `CHANGELOG.md` if needed and commit final documentation/test updates.
+- [ ] Create an annotated tag:
 
 ```pwsh
-git tag -a v0.4.0 -m "v0.4.0: naming migration + resiliency + dispatcher schema expansions"
+git tag -a v0.5.1 -m "v0.5.1: deterministic CI + session index + fixture policy hardening"
 ```
 
-- [ ] Push tag:
+- [ ] Push the tag:
 
 ```pwsh
-git push origin v0.4.0
+git push origin v0.5.1
 ```
 
 ## 7. GitHub Release Draft
 
-Include sections:
+Suggested outline:
 
-1. Summary (migration + resiliency + schema versions + discovery soft mode).
-2. Migration Notice (VI1.vi / VI2.vi now preferred; Base.vi/Head.vi deprecated; removal in v0.5.0).
-3. Added / Changed / Fixed highlights (mirror concise CHANGELOG form).
-4. Deprecations & Next Steps (guard expansion, fallback removal timeline).
-5. Rollback Instructions (copy from `ROLLBACK_PLAN.md`).
+1. Summary: deterministic self-hosted CI, session index artifacts, fixture manifest policy, drift/report improvements.
+2. Upgrade notes: `fixtures.manifest.json` now uses `bytes`; session index artifacts are emitted everywhere.
+3. Validation snapshot: mention required checks and guard outcomes.
+4. Known issues / follow-ups: composites consolidation, managed tokenizer adoption (see standing issue).
+5. Rollback: link to `ROLLBACK_PLAN.md`.
 
 ## 8. Post-Tag Actions
 
-- [ ] Merge release branch back to `develop` (fast-forward or standard merge depending on workflow) to sync CHANGELOG.
-- [ ] Open follow-up issues (see `POST_RELEASE_FOLLOWUPS.md`).
-- [ ] Monitor early adopters for migration warnings volume or unexpected discovery failure counts.
+- [ ] Merge the release branch back to `develop` (keep CHANGELOG/readme updates in sync).
+- [ ] Update `POST_RELEASE_FOLLOWUPS.md` with completed vs pending items for the 0.5.1 roadmap.
+- [ ] Dispatch the orchestrated watcher or `node tools/npm/run-script.mjs ci:watch:rest --branch main` to monitor first
+      runs on the tagged commit.
 
 ## 9. Validation After Publish
 
-- [ ] Install action via `@v0.4.0` in a sample workflow and run a quick compare with `VI1.vi` and `VI2.vi`.
-- [ ] Repeat using legacy names to confirm warning (no failure) still intact.
-- [ ] Observe outputs in GitHub Action logs for deterministic ordering.
+- [ ] Install the action via `@v0.5.1` in a sample workflow and confirm a compare using the canonical fixtures succeeds.
+- [ ] Repeat with the LabVIEW CLI wrapper (if applicable) to verify the provider path resolves correctly.
+- [ ] Check the uploaded session index and drift artifacts for deterministic ordering and schema compliance.
 
 ## 10. Communication
 
-- [ ] Announce release in internal channel / community notes (emphasize upcoming fallback removal in v0.5.0).
-- [ ] Encourage users to rename artifacts promptly to suppress warning.
+- [ ] Announce the release (internal channel/community notes) calling out deterministic CI, session index artifacts, and
+      fixture policy changes.
+- [ ] Remind consumers of the fixture byte-field change and the plan for upcoming composites/tokenizer work.
 
---- Generated: 2025-10-03 (Helper file; adjust or remove post-release.)
+--- Updated: 2025-10-19 (revamped for the v0.5.1 release cycle).
 

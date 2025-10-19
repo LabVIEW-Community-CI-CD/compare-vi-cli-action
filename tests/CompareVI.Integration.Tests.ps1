@@ -256,10 +256,10 @@ Describe 'LabVIEWCLI HTML Comparison Report Generation' -Tag Integration {
     # Execute LabVIEWCLI with CreateComparisonReport operation
   $cliArgs = @(
       '-OperationName', 'CreateComparisonReport',
-      '-vi1', $BaseVi,
-      '-vi2', $HeadVi,
-      '-reportType', 'HTMLSingleFile',
-      '-reportPath', $reportPath
+      '-VI1', $BaseVi,
+      '-VI2', $HeadVi,
+      '-ReportType', 'HTMLSingleFile',
+      '-ReportPath', $reportPath
     )
     
   & $LabVIEWCLI @cliArgs
@@ -284,10 +284,10 @@ Describe 'LabVIEWCLI HTML Comparison Report Generation' -Tag Integration {
     # Execute LabVIEWCLI with recommended noise filter flags
   $cliArgs = @(
       '-OperationName', 'CreateComparisonReport',
-      '-vi1', $BaseVi,
-      '-vi2', $HeadVi,
-      '-reportType', 'HTMLSingleFile',
-      '-reportPath', $reportPath,
+      '-VI1', $BaseVi,
+      '-VI2', $HeadVi,
+      '-ReportType', 'HTMLSingleFile',
+      '-ReportPath', $reportPath,
       '-nobdcosm',  # Ignore block diagram cosmetic changes
       '-nofppos',   # Ignore front panel position changes
       '-noattr'     # Ignore VI attribute changes
@@ -313,10 +313,10 @@ Describe 'LabVIEWCLI HTML Comparison Report Generation' -Tag Integration {
     # Compare VI with itself
   $cliArgs = @(
       '-OperationName', 'CreateComparisonReport',
-      '-vi1', $BaseVi,
-      '-vi2', $BaseVi,
-      '-reportType', 'HTMLSingleFile',
-      '-reportPath', $reportPath
+      '-VI1', $BaseVi,
+      '-VI2', $BaseVi,
+      '-ReportType', 'HTMLSingleFile',
+      '-ReportPath', $reportPath
     )
     
   & $LabVIEWCLI @cliArgs
@@ -339,10 +339,10 @@ Describe 'LabVIEWCLI HTML Comparison Report Generation' -Tag Integration {
     
   $cliArgs = @(
       '-OperationName', 'CreateComparisonReport',
-      '-vi1', $BaseVi,
-      '-vi2', $HeadVi,
-      '-reportType', 'HTMLSingleFile',
-      '-reportPath', $reportPath
+      '-VI1', $BaseVi,
+      '-VI2', $HeadVi,
+      '-ReportType', 'HTMLSingleFile',
+      '-ReportPath', $reportPath
     )
     
   & $LabVIEWCLI @cliArgs

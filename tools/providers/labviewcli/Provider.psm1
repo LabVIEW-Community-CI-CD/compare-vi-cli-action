@@ -74,14 +74,14 @@ function Get-LabVIEWCliArgs {
     'CreateComparisonReport' {
       $args = @(
         '-OperationName','CreateComparisonReport',
-        '-vi1', $Params.vi1,
-        '-vi2', $Params.vi2
+        '-VI1', $Params.vi1,
+        '-VI2', $Params.vi2
       )
       if ($Params.ContainsKey('reportPath') -and $Params.reportPath) {
-        $args += @('-reportPath', $Params.reportPath)
+        $args += @('-ReportPath', $Params.reportPath)
       }
       if ($Params.ContainsKey('reportType') -and $Params.reportType) {
-        $args += @('-reportType', $Params.reportType)
+        $args += @('-ReportType', $Params.reportType)
       }
       if ($Params.ContainsKey('flags') -and $Params.flags) {
         foreach ($flag in $Params.flags) {

@@ -47,7 +47,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Run LVCompare
-        uses: LabVIEW-Community-CI-CD/compare-vi-cli-action@v0.5.0
+        uses: LabVIEW-Community-CI-CD/compare-vi-cli-action@v0.5.1
         with:
           base: fixtures/VI1.vi
           head: fixtures/VI2.vi

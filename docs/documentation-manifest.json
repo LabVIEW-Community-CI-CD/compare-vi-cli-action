@@ -2,7 +2,7 @@
   "$schema": "./schemas/documentation-manifest-v1.schema.json",
   "schema": "documentation-manifest-v1",
   "version": "1.0.0",
-  "updated": "2025-02-15T12:00:00Z",
+  "updated": "2025-10-19T22:12:00Z",
   "entries": [
     {
       "name": "Root Playbooks",
@@ -28,9 +28,12 @@
         "PR_NOTES.md",
         "PR_RELEASE_CHECKLIST_v0.5.0.md",
         "PR_RELEASE_DESCRIPTION_v0.5.0.md",
+        "PR_RELEASE_CHECKLIST_v0.5.1.md",
+        "PR_RELEASE_DESCRIPTION_v0.5.1.md",
         "README.md",
         "RELEASE_NOTES_v0.4.1.md",
         "RELEASE_NOTES_v0.5.0.md",
+        "RELEASE_NOTES_v0.5.1.md",
         "ROLLBACK_PLAN.md",
         "SECURITY.md",
         "TAG_PREP_CHECKLIST.md"

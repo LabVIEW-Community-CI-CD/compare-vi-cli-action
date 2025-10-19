@@ -1,20 +1,348 @@
 {
   "schema": "teststand-compare-session/v1",
-  "at": "2025-10-17T19:22:40.250Z",
+  "at": "2025-10-19T15:07:43.1608356-07:00",
   "warmup": {
     "mode": "skip",
     "events": null
   },
   "compare": {
-    "events": "C:/workspace/compare-vi-cli-action/tests/results/teststand-session/compare/compare-events.ndjson",
-    "capture": null,
+    "events": "C:\\codex\\home\\runner\\work\\compare-vi-cli-action\\tests\\results\\teststand-session\\compare\\compare-events.ndjson",
+    "capture": "C:\\codex\\home\\runner\\work\\compare-vi-cli-action\\tests\\results\\teststand-session\\compare\\lvcompare-capture.json",
     "report": false,
-    "policy": "cli-only",
-    "mode": "labview-cli",
+    "command": "C:\\Program Files (x86)\\National Instruments\\Shared\\LabVIEW CLI\\LabVIEWCLI.exe -OperationName CreateComparisonReport -VI1 C:\\codex\\home\\runner\\work\\compare-vi-cli-action\\VI1.vi -VI2 C:\\codex\\home\\runner\\work\\compare-vi-cli-action\\VI2.vi -ReportPath C:\\codex\\home\\runner\\work\\compare-vi-cli-action\\tests\\results\\teststand-session\\compare\\cli-report.html -ReportType HTMLSingleFile -nobdcosm -nofppos -noattr",
+    "cliPath": "C:\\Program Files (x86)\\National Instruments\\Shared\\LabVIEW CLI\\LabVIEWCLI.exe",
+    "cli": {
+      "path": "C:\\Program Files (x86)\\National Instruments\\Shared\\LabVIEW CLI\\LabVIEWCLI.exe",
+      "version": "25.3.0f365",
+      "reportPath": "C:\\codex\\home\\runner\\work\\compare-vi-cli-action\\tests\\results\\teststand-session\\compare\\cli-report.html",
+      "message": "Connection established with LabVIEW at port number 3363.",
+      "artifacts": {
+        "reportSizeBytes": 190756,
+        "imageCount": 44,
+        "images": [
+          {
+            "index": 0,
+            "dataLength": 615,
+            "mimeType": "image/png",
+            "byteLength": 444,
+            "savedPath": "C:\\codex\\home\\runner\\work\\compare-vi-cli-action\\tests\\results\\teststand-session\\compare\\cli-images\\cli-image-00.png"
+          },
+          {
+            "index": 1,
+            "dataLength": 2223,
+            "mimeType": "image/png",
+            "byteLength": 1649,
+            "savedPath": "C:\\codex\\home\\runner\\work\\compare-vi-cli-action\\tests\\results\\teststand-session\\compare\\cli-images\\cli-image-01.png"
+          },
+          {
+            "index": 2,
+            "dataLength": 2239,
+            "mimeType": "image/png",
+            "byteLength": 1662,
+            "savedPath": "C:\\codex\\home\\runner\\work\\compare-vi-cli-action\\tests\\results\\teststand-session\\compare\\cli-images\\cli-image-02.png"
+          },
+          {
+            "index": 3,
+            "dataLength": 2179,
+            "mimeType": "image/png",
+            "byteLength": 1616,
+            "savedPath": "C:\\codex\\home\\runner\\work\\compare-vi-cli-action\\tests\\results\\teststand-session\\compare\\cli-images\\cli-image-03.png"
+          },
+          {
+            "index": 4,
+            "dataLength": 615,
+            "mimeType": "image/png",
+            "byteLength": 444,
+            "savedPath": "C:\\codex\\home\\runner\\work\\compare-vi-cli-action\\tests\\results\\teststand-session\\compare\\cli-images\\cli-image-04.png"
+          },
+          {
+            "index": 5,
+            "dataLength": 3151,
+            "mimeType": "image/png",
+            "byteLength": 2346,
+            "savedPath": "C:\\codex\\home\\runner\\work\\compare-vi-cli-action\\tests\\results\\teststand-session\\compare\\cli-images\\cli-image-05.png"
+          },
+          {
+            "index": 6,
+            "dataLength": 615,
+            "mimeType": "image/png",
+            "byteLength": 444,
+            "savedPath": "C:\\codex\\home\\runner\\work\\compare-vi-cli-action\\tests\\results\\teststand-session\\compare\\cli-images\\cli-image-06.png"
+          },
+          {
+            "index": 7,
+            "dataLength": 2483,
+            "mimeType": "image/png",
+            "byteLength": 1845,
+            "savedPath": "C:\\codex\\home\\runner\\work\\compare-vi-cli-action\\tests\\results\\teststand-session\\compare\\cli-images\\cli-image-07.png"
+          },
+          {
+            "index": 8,
+            "dataLength": 615,
+            "mimeType": "image/png",
+            "byteLength": 444,
+            "savedPath": "C:\\codex\\home\\runner\\work\\compare-vi-cli-action\\tests\\results\\teststand-session\\compare\\cli-images\\cli-image-08.png"
+          },
+          {
+            "index": 9,
+            "dataLength": 1811,
+            "mimeType": "image/png",
+            "byteLength": 1340,
+            "savedPath": "C:\\codex\\home\\runner\\work\\compare-vi-cli-action\\tests\\results\\teststand-session\\compare\\cli-images\\cli-image-09.png"
+          },
+          {
+            "index": 10,
+            "dataLength": 615,
+            "mimeType": "image/png",
+            "byteLength": 444,
+            "savedPath": "C:\\codex\\home\\runner\\work\\compare-vi-cli-action\\tests\\results\\teststand-session\\compare\\cli-images\\cli-image-10.png"
+          },
+          {
+            "index": 11,
+            "dataLength": 1963,
+            "mimeType": "image/png",
+            "byteLength": 1453,
+            "savedPath": "C:\\codex\\home\\runner\\work\\compare-vi-cli-action\\tests\\results\\teststand-session\\compare\\cli-images\\cli-image-11.png"
+          },
+          {
+            "index": 12,
+            "dataLength": 615,
+            "mimeType": "image/png",
+            "byteLength": 444,
+            "savedPath": "C:\\codex\\home\\runner\\work\\compare-vi-cli-action\\tests\\results\\teststand-session\\compare\\cli-images\\cli-image-12.png"
+          },
+          {
+            "index": 13,
+            "dataLength": 2995,
+            "mimeType": "image/png",
+            "byteLength": 2228,
+            "savedPath": "C:\\codex\\home\\runner\\work\\compare-vi-cli-action\\tests\\results\\teststand-session\\compare\\cli-images\\cli-image-13.png"
+          },
+          {
+            "index": 14,
+            "dataLength": 615,
+            "mimeType": "image/png",
+            "byteLength": 444,
+            "savedPath": "C:\\codex\\home\\runner\\work\\compare-vi-cli-action\\tests\\results\\teststand-session\\compare\\cli-images\\cli-image-14.png"
+          },
+          {
+            "index": 15,
+            "dataLength": 2535,
+            "mimeType": "image/png",
+            "byteLength": 1882,
+            "savedPath": "C:\\codex\\home\\runner\\work\\compare-vi-cli-action\\tests\\results\\teststand-session\\compare\\cli-images\\cli-image-15.png"
+          },
+          {
+            "index": 16,
+            "dataLength": 2955,
+            "mimeType": "image/png",
+            "byteLength": 2199,
+            "savedPath": "C:\\codex\\home\\runner\\work\\compare-vi-cli-action\\tests\\results\\teststand-session\\compare\\cli-images\\cli-image-16.png"
+          },
+          {
+            "index": 17,
+            "dataLength": 2959,
+            "mimeType": "image/png",
+            "byteLength": 2200,
+            "savedPath": "C:\\codex\\home\\runner\\work\\compare-vi-cli-action\\tests\\results\\teststand-session\\compare\\cli-images\\cli-image-17.png"
+          },
+          {
+            "index": 18,
+            "dataLength": 951,
+            "mimeType": "image/png",
+            "byteLength": 696,
+            "savedPath": "C:\\codex\\home\\runner\\work\\compare-vi-cli-action\\tests\\results\\teststand-session\\compare\\cli-images\\cli-image-18.png"
+          },
+          {
+            "index": 19,
+            "dataLength": 2243,
+            "mimeType": "image/png",
+            "byteLength": 1664,
+            "savedPath": "C:\\codex\\home\\runner\\work\\compare-vi-cli-action\\tests\\results\\teststand-session\\compare\\cli-images\\cli-image-19.png"
+          },
+          {
+            "index": 20,
+            "dataLength": 1791,
+            "mimeType": "image/png",
+            "byteLength": 1325,
+            "savedPath": "C:\\codex\\home\\runner\\work\\compare-vi-cli-action\\tests\\results\\teststand-session\\compare\\cli-images\\cli-image-20.png"
+          },
+          {
+            "index": 21,
+            "dataLength": 2323,
+            "mimeType": "image/png",
+            "byteLength": 1724,
+            "savedPath": "C:\\codex\\home\\runner\\work\\compare-vi-cli-action\\tests\\results\\teststand-session\\compare\\cli-images\\cli-image-21.png"
+          },
+          {
+            "index": 22,
+            "dataLength": 3247,
+            "mimeType": "image/png",
+            "byteLength": 2417,
+            "savedPath": "C:\\codex\\home\\runner\\work\\compare-vi-cli-action\\tests\\results\\teststand-session\\compare\\cli-images\\cli-image-22.png"
+          },
+          {
+            "index": 23,
+            "dataLength": 3711,
+            "mimeType": "image/png",
+            "byteLength": 2764,
+            "savedPath": "C:\\codex\\home\\runner\\work\\compare-vi-cli-action\\tests\\results\\teststand-session\\compare\\cli-images\\cli-image-23.png"
+          },
+          {
+            "index": 24,
+            "dataLength": 4475,
+            "mimeType": "image/png",
+            "byteLength": 3339,
+            "savedPath": "C:\\codex\\home\\runner\\work\\compare-vi-cli-action\\tests\\results\\teststand-session\\compare\\cli-images\\cli-image-24.png"
+          },
+          {
+            "index": 25,
+            "dataLength": 5515,
+            "mimeType": "image/png",
+            "byteLength": 4117,
+            "savedPath": "C:\\codex\\home\\runner\\work\\compare-vi-cli-action\\tests\\results\\teststand-session\\compare\\cli-images\\cli-image-25.png"
+          },
+          {
+            "index": 26,
+            "dataLength": 3415,
+            "mimeType": "image/png",
+            "byteLength": 2544,
+            "savedPath": "C:\\codex\\home\\runner\\work\\compare-vi-cli-action\\tests\\results\\teststand-session\\compare\\cli-images\\cli-image-26.png"
+          },
+          {
+            "index": 27,
+            "dataLength": 4927,
+            "mimeType": "image/png",
+            "byteLength": 3678,
+            "savedPath": "C:\\codex\\home\\runner\\work\\compare-vi-cli-action\\tests\\results\\teststand-session\\compare\\cli-images\\cli-image-27.png"
+          },
+          {
+            "index": 28,
+            "dataLength": 3455,
+            "mimeType": "image/png",
+            "byteLength": 2574,
+            "savedPath": "C:\\codex\\home\\runner\\work\\compare-vi-cli-action\\tests\\results\\teststand-session\\compare\\cli-images\\cli-image-28.png"
+          },
+          {
+            "index": 29,
+            "dataLength": 3371,
+            "mimeType": "image/png",
+            "byteLength": 2510,
+            "savedPath": "C:\\codex\\home\\runner\\work\\compare-vi-cli-action\\tests\\results\\teststand-session\\compare\\cli-images\\cli-image-29.png"
+          },
+          {
+            "index": 30,
+            "dataLength": 3603,
+            "mimeType": "image/png",
+            "byteLength": 2683,
+            "savedPath": "C:\\codex\\home\\runner\\work\\compare-vi-cli-action\\tests\\results\\teststand-session\\compare\\cli-images\\cli-image-30.png"
+          },
+          {
+            "index": 31,
+            "dataLength": 4275,
+            "mimeType": "image/png",
+            "byteLength": 3188,
+            "savedPath": "C:\\codex\\home\\runner\\work\\compare-vi-cli-action\\tests\\results\\teststand-session\\compare\\cli-images\\cli-image-31.png"
+          },
+          {
+            "index": 32,
+            "dataLength": 26043,
+            "mimeType": "image/png",
+            "byteLength": 19513,
+            "savedPath": "C:\\codex\\home\\runner\\work\\compare-vi-cli-action\\tests\\results\\teststand-session\\compare\\cli-images\\cli-image-32.png"
+          },
+          {
+            "index": 33,
+            "dataLength": 735,
+            "mimeType": "image/png",
+            "byteLength": 534,
+            "savedPath": "C:\\codex\\home\\runner\\work\\compare-vi-cli-action\\tests\\results\\teststand-session\\compare\\cli-images\\cli-image-33.png"
+          },
+          {
+            "index": 34,
+            "dataLength": 3399,
+            "mimeType": "image/png",
+            "byteLength": 2530,
+            "savedPath": "C:\\codex\\home\\runner\\work\\compare-vi-cli-action\\tests\\results\\teststand-session\\compare\\cli-images\\cli-image-34.png"
+          },
+          {
+            "index": 35,
+            "dataLength": 13859,
+            "mimeType": "image/png",
+            "byteLength": 10377,
+            "savedPath": "C:\\codex\\home\\runner\\work\\compare-vi-cli-action\\tests\\results\\teststand-session\\compare\\cli-images\\cli-image-35.png"
+          },
+          {
+            "index": 36,
+            "dataLength": 3399,
+            "mimeType": "image/png",
+            "byteLength": 2530,
+            "savedPath": "C:\\codex\\home\\runner\\work\\compare-vi-cli-action\\tests\\results\\teststand-session\\compare\\cli-images\\cli-image-36.png"
+          },
+          {
+            "index": 37,
+            "dataLength": 5811,
+            "mimeType": "image/png",
+            "byteLength": 4341,
+            "savedPath": "C:\\codex\\home\\runner\\work\\compare-vi-cli-action\\tests\\results\\teststand-session\\compare\\cli-images\\cli-image-37.png"
+          },
+          {
+            "index": 38,
+            "dataLength": 3399,
+            "mimeType": "image/png",
+            "byteLength": 2530,
+            "savedPath": "C:\\codex\\home\\runner\\work\\compare-vi-cli-action\\tests\\results\\teststand-session\\compare\\cli-images\\cli-image-38.png"
+          },
+          {
+            "index": 39,
+            "dataLength": 19603,
+            "mimeType": "image/png",
+            "byteLength": 14683,
+            "savedPath": "C:\\codex\\home\\runner\\work\\compare-vi-cli-action\\tests\\results\\teststand-session\\compare\\cli-images\\cli-image-39.png"
+          },
+          {
+            "index": 40,
+            "dataLength": 3399,
+            "mimeType": "image/png",
+            "byteLength": 2530,
+            "savedPath": "C:\\codex\\home\\runner\\work\\compare-vi-cli-action\\tests\\results\\teststand-session\\compare\\cli-images\\cli-image-40.png"
+          },
+          {
+            "index": 41,
+            "dataLength": 2567,
+            "mimeType": "image/png",
+            "byteLength": 1906,
+            "savedPath": "C:\\codex\\home\\runner\\work\\compare-vi-cli-action\\tests\\results\\teststand-session\\compare\\cli-images\\cli-image-41.png"
+          },
+          {
+            "index": 42,
+            "dataLength": 3399,
+            "mimeType": "image/png",
+            "byteLength": 2530,
+            "savedPath": "C:\\codex\\home\\runner\\work\\compare-vi-cli-action\\tests\\results\\teststand-session\\compare\\cli-images\\cli-image-42.png"
+          },
+          {
+            "index": 43,
+            "dataLength": 1851,
+            "mimeType": "image/png",
+            "byteLength": 1371,
+            "savedPath": "C:\\codex\\home\\runner\\work\\compare-vi-cli-action\\tests\\results\\teststand-session\\compare\\cli-images\\cli-image-43.png"
+          }
+        ],
+        "exportDir": "C:\\codex\\home\\runner\\work\\compare-vi-cli-action\\tests\\results\\teststand-session\\compare\\cli-images"
+      }
+    },
     "autoCli": false,
     "sameName": false,
-    "timeoutSeconds": 600
+    "timeoutSeconds": 600,
+    "policy": "cli-only",
+    "mode": "labview-cli"
   },
-  "outcome": null,
-  "error": "No registered provider can execute operation 'CreateComparisonReport'. Checked: labviewcli"
+  "outcome": {
+    "diff": true,
+    "seconds": 3.492,
+    "command": "C:\\Program Files (x86)\\National Instruments\\Shared\\LabVIEW CLI\\LabVIEWCLI.exe -OperationName CreateComparisonReport -VI1 C:\\codex\\home\\runner\\work\\compare-vi-cli-action\\VI1.vi -VI2 C:\\codex\\home\\runner\\work\\compare-vi-cli-action\\VI2.vi -ReportPath C:\\codex\\home\\runner\\work\\compare-vi-cli-action\\tests\\results\\teststand-session\\compare\\cli-report.html -ReportType HTMLSingleFile -nobdcosm -nofppos -noattr",
+    "exitCode": 1
+  },
+  "error": null
 }

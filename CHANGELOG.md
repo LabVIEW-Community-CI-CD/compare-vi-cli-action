@@ -7,6 +7,10 @@ The format is based on Keep a Changelog, and this project adheres to Semantic Ve
 
 ## [Unreleased]
 
+_No unreleased changes yet._
+
+## [v0.5.1] - 2025-10-19
+
 ### Added
 
 - Fixture manifest pair block (schema `fixture-pair/v1`) — additive top-level `pair` object derived from first `base`/`head` items:
@@ -47,7 +51,7 @@ The format is based on Keep a Changelog, and this project adheres to Semantic Ve
 
 - If you ingest `fixtures.manifest.json`, migrate to `bytes` (exact size). Repo scripts/validators are updated. No changes to action inputs/outputs.
 
-## [Unreleased] (Post v0.5.0)
+## [Unreleased] (Post v0.5.1)
 
 ### Added
 
