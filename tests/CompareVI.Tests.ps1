@@ -137,12 +137,16 @@ Describe 'Resolve-Cli canonical path enforcement' -Tag 'Unit' {
     New-Item -ItemType File -Path $x86Path -Force | Out-Null
     Mock -CommandName Get-CanonicalCliCandidates -ModuleName CompareVI -MockWith { @($x64Path, $x86Path) }
     $oldPref = $env:LVCOMPARE_BITNESS
+    $oldLvPath = $env:LVCOMPARE_PATH
     try {
       $env:LVCOMPARE_BITNESS = 'x86'
+      # Ensure LVCOMPARE_PATH does not interfere (canonical-only policy)
+      Remove-Item Env:LVCOMPARE_PATH -ErrorAction SilentlyContinue
       $resolved = Resolve-Cli
       $resolved | Should -Be ([System.IO.Path]::GetFullPath($x86Path))
     } finally {
       if ($null -eq $oldPref) { Remove-Item Env:LVCOMPARE_BITNESS -ErrorAction SilentlyContinue } else { $env:LVCOMPARE_BITNESS = $oldPref }
+      if ($null -eq $oldLvPath) { Remove-Item Env:LVCOMPARE_PATH -ErrorAction SilentlyContinue } else { $env:LVCOMPARE_PATH = $oldLvPath }
     }
   }
 
@@ -155,12 +159,15 @@ Describe 'Resolve-Cli canonical path enforcement' -Tag 'Unit' {
     New-Item -ItemType File -Path $x86Path -Force | Out-Null
     Mock -CommandName Get-CanonicalCliCandidates -ModuleName CompareVI -MockWith { @($x86Path, $x64Path) }
     $oldPref = $env:LVCOMPARE_BITNESS
+    $oldLvPath = $env:LVCOMPARE_PATH
     try {
       $env:LVCOMPARE_BITNESS = 'x86'
+      Remove-Item Env:LVCOMPARE_PATH -ErrorAction SilentlyContinue
       $resolved = Resolve-Cli -PreferredBitness 'x64'
       $resolved | Should -Be ([System.IO.Path]::GetFullPath($x64Path))
     } finally {
       if ($null -eq $oldPref) { Remove-Item Env:LVCOMPARE_BITNESS -ErrorAction SilentlyContinue } else { $env:LVCOMPARE_BITNESS = $oldPref }
+      if ($null -eq $oldLvPath) { Remove-Item Env:LVCOMPARE_PATH -ErrorAction SilentlyContinue } else { $env:LVCOMPARE_PATH = $oldLvPath }
     }
   }
 
