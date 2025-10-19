@@ -3160,6 +3160,16 @@ try {
       }
 
       if ($shouldCopyLatest) {
+        $destDir = Split-Path -LiteralPath $destReport -Parent
+        if ($destDir -and $latest.DirectoryName) {
+          if ([string]::Equals($latest.DirectoryName, $destDir, [System.StringComparison]::OrdinalIgnoreCase) -and
+              [string]::Equals($latest.Name, 'compare-report.html', [System.StringComparison]::OrdinalIgnoreCase)) {
+            $shouldCopyLatest = $false
+          }
+        }
+      }
+
+      if ($shouldCopyLatest) {
         try {
           Copy-Item -LiteralPath $latest.FullName -Destination $destReport -Force -ErrorAction Stop
           Write-Host ("Compare report copied to: {0}" -f $destReport) -ForegroundColor Gray
@@ -3182,6 +3192,13 @@ try {
         $shouldCopyCandidate = $true
         if ($destFullPath -and $candFullPath) {
           if ([string]::Equals($destFullPath, $candFullPath, [System.StringComparison]::OrdinalIgnoreCase)) {
+            $shouldCopyCandidate = $false
+          }
+        }
+
+        if ($shouldCopyCandidate) {
+          if ([string]::Equals($cand.DirectoryName, $resultsDir, [System.StringComparison]::OrdinalIgnoreCase) -and
+              [string]::Equals($cand.Name, $destName, [System.StringComparison]::OrdinalIgnoreCase)) {
             $shouldCopyCandidate = $false
           }
         }
