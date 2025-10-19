@@ -23,6 +23,8 @@ tools/dashboard/dashboard.html
 # Local temp workdirs created during ad-hoc runs
 .tmp-smoke/
 tmp-*/
+tmp-*.yml
+tmp-*.py
 tmp-agg/
 tmp-orch/
 tmp-rc-pester-results/
@@ -53,6 +55,8 @@ tmp-*.json
 
 # Test temporary directories and results
 tests/tmp-*/
+tests/tmp/
+tests/tmp-*.yml
 tests/results-*/
 home/
 delta.json
@@ -93,6 +97,10 @@ src/**/bin/
 /tools/vscode/comparevi-extension/dist/
 
 tools/vscode/comparevi-extension/.vscode-test/
+
+# Python bytecode caches
+**/__pycache__/
+*.pyc
 
 # Allow committed fixtures under the VS Code helper
 !vscode/comparevi-helper/test/fixtures/workspace/tmp-commit-236ffab/
