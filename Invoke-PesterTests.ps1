@@ -1592,6 +1592,22 @@ if ($limitToSingle) {
     }
   }
   $testFiles = @($patternFilters.Files)
+  
+  # Nested-invocation hardening: when running as a child dispatcher (LOCAL_DISPATCHER=1),
+  # suppress execution of dispatcher self-tests (Invoke-PesterTests.*.ps1) to prevent
+  # recursive relaunch cascades from within those tests.
+  try {
+    $isNestedDispatcher = (_IsTruthyEnv $env:LOCAL_DISPATCHER)
+  } catch { $isNestedDispatcher = ($env:LOCAL_DISPATCHER -eq '1') }
+  if ($isNestedDispatcher -and $testFiles.Count -gt 0) {
+    $beforeNested = $testFiles.Count
+    $filteredNested = @($testFiles | Where-Object { $_.Name -notlike 'Invoke-PesterTests.*.ps1' })
+    $removedNested = $beforeNested - $filteredNested.Count
+    if ($removedNested -gt 0) {
+      Write-Host ("[nested] Suppressed {0} dispatcher self-test file(s) (Invoke-PesterTests.*.ps1)" -f $removedNested) -ForegroundColor DarkGray
+      $testFiles = @($filteredNested)
+    }
+  }
   if ($patternFilters.Include.Applied) {
     $includePatternsText = if ($patternFilters.Include.Patterns) { ($patternFilters.Include.Patterns -join ', ') } else { '' }
     Write-Host (
