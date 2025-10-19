@@ -125,7 +125,7 @@ param(
 )
 if (-not (Test-Path `$OutputDir)) { New-Item -ItemType Directory -Path `$OutputDir -Force | Out-Null }
 if (`$JsonLogPath) { '{}' | Set-Content -LiteralPath `$JsonLogPath -Encoding utf8 }
-$capture = @{ exitCode = 0; seconds = 0.5; command = 'stub-cli' } | ConvertTo-Json
+`$capture = @{ exitCode = 0; seconds = 0.5; command = 'stub-cli' } | ConvertTo-Json
 Set-Content -LiteralPath (Join-Path `$OutputDir 'lvcompare-capture.json') -Value `$capture -Encoding utf8
 if (`$RenderReport) { Set-Content -LiteralPath (Join-Path `$OutputDir 'compare-report.html') -Value '<html/>' -Encoding utf8 }
 exit 0

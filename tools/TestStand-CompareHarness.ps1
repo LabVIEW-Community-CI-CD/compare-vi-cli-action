@@ -200,9 +200,14 @@ $compareNode = [ordered]@{
   report  = $reportExists
 }
 if ($cap) {
-  if ($cap.command)   { $compareNode.command = $cap.command }
-  if ($cap.cliPath)   { $compareNode.cliPath = $cap.cliPath }
-  if ($cap.environment -and $cap.environment.cli) { $compareNode.cli = $cap.environment.cli }
+  if ($cap.PSObject.Properties['command'])   { $compareNode.command = $cap.command }
+  if ($cap.PSObject.Properties['cliPath'])   { $compareNode.cliPath = $cap.cliPath }
+  if ($cap.PSObject.Properties['environment']) {
+    $envNode = $cap.environment
+    if ($envNode -and $envNode.PSObject.Properties['cli']) {
+      $compareNode.cli = $envNode.cli
+    }
+  }
 }
 $compareNode.autoCli = $autoCli
 $compareNode.sameName = $sameName

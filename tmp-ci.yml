@@ -1,0 +1,31 @@
+name: CI Orchestrated (deterministic chain)
+on: { workflow_dispatch: {} }
+jobs:
+  pester-category:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v5
+    - name: Run Pester tests via local dispatcher (category)
+      run: echo run
+    - name: Session index post
+      uses: ./.github/actions/session-index-post
+  drift:
+    runs-on: [self-hosted, Windows, X64]
+    steps:
+    - uses: actions/checkout@v5
+    - name: Runner Unblock Guard
+      uses: ./.github/actions/runner-unblock-guard
+    - name: Drift (fixture)
+      uses: ./.github/actions/fixture-drift
+    - name: Ensure Invoker (start)
+      uses: ./.github/actions/ensure-invoker
+      with: { mode: start }
+    - name: Ensure Invoker (stop)
+      uses: ./.github/actions/ensure-invoker
+      with: { mode: stop }
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v5
+    - name: Summarize orchestrated run
+      run: echo sum

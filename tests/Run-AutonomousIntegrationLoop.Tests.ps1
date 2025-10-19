@@ -83,7 +83,7 @@ Describe 'Run-AutonomousIntegrationLoop TestStand harness mode' -Tag 'Unit' {
     $harnessStub = Join-Path $outDir 'TestStand-CompareHarness.ps1'
     $logPath = Join-Path $outDir 'harness-log.ndjson'
     $outputRoot = Join-Path $outDir 'outputs'
-    $stubContent = @"
+$stubContent = @"
 param(
   [string]`$BaseVi,
   [string]`$HeadVi,
@@ -99,16 +99,16 @@ param(
   [switch]`$DisableTimeout,
   [switch]`$ReplaceFlags
 )
-$log = `$env:HARNESS_LOG
-if (-not $log) { $log = Join-Path (Split-Path `$OutputRoot -Parent) 'harness-log.ndjson' }
-$logDir = Split-Path -Parent $log
-if ($logDir -and -not (Test-Path $logDir)) { New-Item -ItemType Directory -Path $logDir -Force | Out-Null }
-$payload = [ordered]@{
+`$log = `$env:HARNESS_LOG
+if (-not `$log) { `$log = Join-Path (Split-Path `$OutputRoot -Parent) 'harness-log.ndjson' }
+`$logDir = Split-Path -Parent `$log
+if (`$logDir -and -not (Test-Path `$logDir)) { New-Item -ItemType Directory -Path `$logDir -Force | Out-Null }
+`$payload = [ordered]@{
   base = `$BaseVi
   head = `$HeadVi
   output = `$OutputRoot
   warmup = `$Warmup
-  flags = @($Flags)
+  flags = @(`$Flags)
   renderReport = `$RenderReport.IsPresent
   closeLabVIEW = `$CloseLabVIEW.IsPresent
   closeLVCompare = `$CloseLVCompare.IsPresent
@@ -116,8 +116,8 @@ $payload = [ordered]@{
   disableTimeout = `$DisableTimeout.IsPresent
   replaceFlags = `$ReplaceFlags.IsPresent
 }
-($payload | ConvertTo-Json -Compress) | Add-Content -Path $log
-if ($env:HARNESS_EXIT_CODE) { exit [int]$env:HARNESS_EXIT_CODE }
+(`$payload | ConvertTo-Json -Compress) | Add-Content -Path `$log
+if (`$env:HARNESS_EXIT_CODE) { exit [int]`$env:HARNESS_EXIT_CODE }
 exit 0
 "@
     Set-Content -LiteralPath $harnessStub -Encoding UTF8 -Value $stubContent

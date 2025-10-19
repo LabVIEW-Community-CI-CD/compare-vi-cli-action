@@ -174,7 +174,7 @@ function Write-JsonFile {
     if ($dir -and -not (Test-Path $dir)) { New-Item -Type Directory -Path $dir | Out-Null }
     $Object | ConvertTo-Json -Depth 6 | Out-File -FilePath $Path -Encoding utf8
   } catch {
-    Write-Warning "Prime-LVCompare: failed to write $Path: $($_.Exception.Message)"
+    Write-Warning ("Prime-LVCompare: failed to write {0}: {1}" -f $Path, $_.Exception.Message)
   }
 }
 
@@ -187,7 +187,7 @@ if (-not $JsonLogPath -and -not ($env:WARMUP_NO_JSON -eq '1')) {
   $JsonLogPath = 'tests/results/_warmup/prime-lvcompare.ndjson'
 }
 
-$repoRoot = (Resolve-Path '.').Path
+$repoRoot = (Resolve-Path (Split-Path -Parent $PSScriptRoot)).Path
 
 $trackerBaseDir = $null
 if ($JsonLogPath) {

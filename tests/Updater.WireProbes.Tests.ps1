@@ -47,29 +47,46 @@ jobs:
     # Apply updater
     $null = & python $script:upd --write $p
     $doc = Get-Content -LiteralPath $p -Raw | ConvertFrom-Yaml
+    $getName = {
+      param($step)
+      if ($null -eq $step) { return $null }
+      if ($step -is [System.Collections.IDictionary]) {
+        if ($step.Contains('name')) { return [string]$step['name'] }
+        return $null
+      }
+      $prop = $step.PSObject.Properties['name']
+      if ($prop) { return [string]$prop.Value }
+      return $null
+    }
     $pc = $doc.jobs.'pester-category'.steps
-    $pcNames = @($pc | ForEach-Object { $_.name })
+    $pcNames = @($pc | ForEach-Object { & $getName $_ }) | Where-Object { $_ }
     $pcNames | Should -Contain 'Wire Probe (J1)'
     $pcNames | Should -Contain 'Wire Probe (J2)'
     $pcNames | Should -Contain 'Wire Probe (T1)'
     # S1 before session index
     $pcNames | Should -Contain 'Wire Session Index (S1)'
     # Results dir on matrix
-    $s1 = $pc | Where-Object { $_.name -eq 'Wire Session Index (S1)' } | Select-Object -First 1
-    $s1.with.'results-dir' | Should -Be 'tests/results/${{ matrix.category }}'
+    $s1 = $null
+    foreach ($step in $pc) {
+      if ((& $getName $step) -eq 'Wire Session Index (S1)') { $s1 = $step; break }
+    }
+    $s1 | Should -Not -BeNullOrEmpty
+    $withBlock = if ($s1 -is [System.Collections.IDictionary]) { $s1['with'] } else { $s1.with }
+    $withBlock.'results-dir' | Should -Be 'tests/results/${{ matrix.category }}'
 
     # Drift job C1/C2 and guard/invoker
     $dr = $doc.jobs.drift.steps
-    @($dr | % { $_.name }) | Should -Contain 'Wire Probe (C1)'
-    @($dr | % { $_.name }) | Should -Contain 'Wire Probe (C2)'
-    @($dr | % { $_.name }) | Should -Contain 'Wire Guard (pre)'
-    @($dr | % { $_.name }) | Should -Contain 'Wire Guard (post)'
-    @($dr | % { $_.name }) | Should -Contain 'Wire Invoker (start)'
-    @($dr | % { $_.name }) | Should -Contain 'Wire Invoker (stop)'
+    $drNames = @($dr | ForEach-Object { & $getName $_ }) | Where-Object { $_ }
+    $drNames | Should -Contain 'Wire Probe (C1)'
+    $drNames | Should -Contain 'Wire Probe (C2)'
+    $drNames | Should -Contain 'Wire Guard (pre)'
+    $drNames | Should -Contain 'Wire Guard (post)'
+    $drNames | Should -Contain 'Wire Invoker (start)'
+    $drNames | Should -Contain 'Wire Invoker (stop)'
 
     # Publish P1
     $pub = $doc.jobs.publish.steps
-    @($pub | % { $_.name }) | Should -Contain 'Wire Probe (P1)'
+    @($pub | ForEach-Object { & $getName $_ }) | Where-Object { $_ } | Should -Contain 'Wire Probe (P1)'
   }
 
   It 'injects J1/J2 and S1 in validate.yml and is idempotent' {
@@ -90,11 +107,21 @@ jobs:
     $null = & python $script:upd --write $p
     $null = & python $script:upd --write $p
     $doc = Get-Content -LiteralPath $p -Raw | ConvertFrom-Yaml
+    $getName = {
+      param($step)
+      if ($null -eq $step) { return $null }
+      if ($step -is [System.Collections.IDictionary]) {
+        if ($step.Contains('name')) { return [string]$step['name'] }
+        return $null
+      }
+      $prop = $step.PSObject.Properties['name']
+      if ($prop) { return [string]$prop.Value }
+      return $null
+    }
     $steps = $doc.jobs.lint.steps
-    $names = @($steps | % { $_.name })
-    ($names | Where-Object { $_ -eq 'Wire Probe (J1)' }).Count | Should -Be 1
-    ($names | Where-Object { $_ -eq 'Wire Probe (J2)' }).Count | Should -Be 1
-    ($names | Where-Object { $_ -eq 'Wire Session Index (S1)' }).Count | Should -Be 1
+    $names = @($steps | ForEach-Object { & $getName $_ }) | Where-Object { $_ }
+    (@($names | Where-Object { $_ -eq 'Wire Probe (J1)' })).Count | Should -Be 1
+    (@($names | Where-Object { $_ -eq 'Wire Probe (J2)' })).Count | Should -Be 1
+    (@($names | Where-Object { $_ -eq 'Wire Session Index (S1)' })).Count | Should -Be 1
   }
 }
-

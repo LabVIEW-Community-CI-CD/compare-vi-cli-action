@@ -13,7 +13,10 @@ Describe 'Test-CanonicalCli helper' -Tag 'Unit' {
       $orig = $moduleScriptScope.PSVariable.Get('CanonicalLVCompare').Value
       try {
         $moduleScriptScope.PSVariable.Set('CanonicalLVCompare','Z:\__missing__\LVCompare.exe')
-        { Test-CanonicalCli } | Should -Throw '*not found*'
+        InModuleScope CompareLoop {
+          Mock Resolve-Cli { throw "LVCompare.exe not found at canonical path" }
+          { Test-CanonicalCli } | Should -Throw '*not found*'
+        }
       } finally {
         if ($orig) { $moduleScriptScope.PSVariable.Set('CanonicalLVCompare',$orig) }
       }

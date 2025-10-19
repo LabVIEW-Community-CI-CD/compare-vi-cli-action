@@ -2,7 +2,8 @@ Describe 'Expected environment variables (policy)' -Tag 'Unit' {
   BeforeAll {
     $script:saved = @{}
     foreach($n in 'DETECT_LEAKS','CLEAN_AFTER','UNBLOCK_GUARD','LV_SUPPRESS_UI','WATCH_CONSOLE','INVOKER_REQUIRED','LABVIEW_EXE'){
-      $script:saved[$n] = (Get-Item -Path Env:$n -ErrorAction SilentlyContinue).Value
+      $item = Get-Item -Path Env:$n -ErrorAction SilentlyContinue
+      $script:saved[$n] = if ($item) { $item.Value } else { $null }
       Remove-Item Env:$n -ErrorAction SilentlyContinue
     }
   }

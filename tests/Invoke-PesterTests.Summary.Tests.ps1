@@ -43,6 +43,8 @@ Describe 'Invoke-PesterTests summary emission' -Tag 'Unit' {
     $env:GITHUB_REPOSITORY = 'labview/action'
     $env:GITHUB_REF_NAME = 'feature/test'
     $env:EV_SAMPLE_ID = 'sample-run-001'
+    $prevDisableSummary = $env:DISABLE_STEP_SUMMARY
+    Remove-Item Env:DISABLE_STEP_SUMMARY -ErrorAction SilentlyContinue
 
     Push-Location $repoRoot
     try {
@@ -54,10 +56,15 @@ Describe 'Invoke-PesterTests summary emission' -Tag 'Unit' {
       Remove-Item Env:\GITHUB_REPOSITORY -ErrorAction SilentlyContinue
       Remove-Item Env:\GITHUB_REF_NAME -ErrorAction SilentlyContinue
       Remove-Item Env:\EV_SAMPLE_ID -ErrorAction SilentlyContinue
+      if ($null -ne $prevDisableSummary) { $env:DISABLE_STEP_SUMMARY = $prevDisableSummary } else { Remove-Item Env:DISABLE_STEP_SUMMARY -ErrorAction SilentlyContinue }
     }
 
     Test-Path -LiteralPath $summaryPath | Should -BeTrue
     $summaryText = Get-Content -LiteralPath $summaryPath -Raw
+    if ($summaryText -notmatch '### Selected Tests') {
+      Write-Host "Summary path: $summaryPath" -ForegroundColor Yellow
+      Write-Host "Summary content:`n$summaryText" -ForegroundColor Yellow
+    }
     $summaryText | Should -Match '### Selected Tests'
     $summaryText | Should -Match 'Sample.Tests.ps1'
     $summaryText | Should -Match 'Another.Tests.ps1'

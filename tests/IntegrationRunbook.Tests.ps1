@@ -62,9 +62,7 @@ Describe 'IntegrationRunbook - Phase Selection & JSON' -Tag 'Unit' {
   }
 
   It 'fails with unknown phase name' {
-    & $runScript -Phases 'BogusPhase' *>$null
-    $proc = [pscustomobject]@{ ExitCode = $LASTEXITCODE }
-    $proc.ExitCode | Should -Not -Be 0
+    { & $runScript -Phases 'BogusPhase' } | Should -Throw -ExpectedMessage '*Unknown phase*'
   }
 
   It 'marks CanonicalCli as Failed when CLI missing but overall passes if others pass' {

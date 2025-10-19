@@ -110,7 +110,9 @@ Describe 'Invoke-CompareVI (real CLI on self-hosted)' -Tag Integration {
     $res = Invoke-CompareVI -Base $BaseVi -Head $BaseVi -LvComparePath $Canonical -FailOnDiff:$false
     $res.ExitCode | Should -Be 0
     $res.Diff | Should -BeFalse
-    $res.CliPath | Should -Be (Resolve-Path $Canonical).Path
+    $res.ShortCircuitedIdenticalPath | Should -BeTrue
+    $res.CliPath | Should -Be ''
+    $res.Command | Should -Be ''
   }
 
   It 'exit 1 => diff=true when base!=head' -Skip:(-not $script:CompareVIPrereqsAvailable) {
@@ -190,7 +192,11 @@ Describe 'Invoke-CompareVI (real CLI on self-hosted)' -Tag Integration {
     # The actual LabVIEW path may not exist on the test runner
     $lvPath = 'C:\Program Files\National Instruments\LabVIEW 2025\LabVIEW.exe'
     $cliArgs = "-lvpath `"$lvPath`""
-    $res = Invoke-CompareVI -Base $BaseVi -Head $BaseVi -LvComparePath $Canonical -LvCompareArgs $cliArgs -FailOnDiff:$false
+    $res = Invoke-CompareVI -Base $BaseVi -Head $HeadVi -LvComparePath $Canonical -LvCompareArgs $cliArgs -FailOnDiff:$false
+    if ($res.ShortCircuitedIdenticalPath) {
+      Set-ItResult -Skipped -Because 'Invocation short-circuited identical paths; unable to validate args'
+      return
+    }
     Write-Host "[LVPathDiag] Command=$($res.Command)" -ForegroundColor DarkGray
     $res.Command | Should -Match '-lvpath'
     # Relaxed pattern: ensure path string appears (case-insensitive) to avoid over-escaping edge cases
@@ -203,7 +209,11 @@ Describe 'Invoke-CompareVI (real CLI on self-hosted)' -Tag Integration {
     $lvPath = 'C:\Program Files\National Instruments\LabVIEW 2025\LabVIEW.exe'
   $cliArgs = "-lvpath `"$lvPath`" -nobdcosm -nofppos -noattr"
     
-  $res = Invoke-CompareVI -Base $BaseVi -Head $BaseVi -LvComparePath $Canonical -LvCompareArgs $cliArgs -FailOnDiff:$false
+  $res = Invoke-CompareVI -Base $BaseVi -Head $HeadVi -LvComparePath $Canonical -LvCompareArgs $cliArgs -FailOnDiff:$false
+    if ($res.ShortCircuitedIdenticalPath) {
+      Set-ItResult -Skipped -Because 'Invocation short-circuited identical paths; unable to validate args'
+      return
+    }
     
     # Verify all flags are in the command
     $res.Command | Should -Match '-lvpath'
@@ -345,4 +355,3 @@ Describe 'LabVIEWCLI HTML Comparison Report Generation' -Tag Integration {
     Test-Path -LiteralPath $reportPath | Should -BeTrue
   }
 }
-

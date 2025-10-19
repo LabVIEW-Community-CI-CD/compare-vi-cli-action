@@ -97,7 +97,7 @@ function Resolve-Cli {
     $resolvedExplicit = Normalize-Path $Explicit
     $match = $candidates | Where-Object { $_ -ieq $resolvedExplicit }
     if ($match) {
-      $target = $match[0]
+      $target = @($match)[0]
       if (-not (Test-Path -LiteralPath $target -PathType Leaf)) { throw "LVCompare.exe not found at canonical path: $target" }
       return $target
     }
@@ -108,7 +108,7 @@ function Resolve-Cli {
     $resolvedEnv = Normalize-Path $env:LVCOMPARE_PATH
     $matchEnv = $candidates | Where-Object { $_ -ieq $resolvedEnv }
     if ($matchEnv) {
-      $targetEnv = $matchEnv[0]
+      $targetEnv = @($matchEnv)[0]
       if (-not (Test-Path -LiteralPath $targetEnv -PathType Leaf)) { throw "LVCompare.exe not found at canonical path: $targetEnv" }
       return $targetEnv
     }

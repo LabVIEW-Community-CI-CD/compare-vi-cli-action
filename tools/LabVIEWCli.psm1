@@ -213,18 +213,36 @@ function Select-LVProvider {
       $providers = Get-LVProviders
     }
   }
+  $explicitRequest = ($RequestedProvider -and $RequestedProvider -ne 'auto')
   if (-not $providers -or $providers.Count -eq 0) {
     throw "No LabVIEW CLI providers registered."
   }
   foreach ($provider in $providers) {
     try {
       $binary = $provider.ResolveBinaryPath()
-      if ([string]::IsNullOrWhiteSpace($binary) -or -not (Test-Path -LiteralPath $binary -PathType Leaf)) { continue }
+      if ([string]::IsNullOrWhiteSpace($binary)) { continue }
+      $binaryExists = $false
+      $binaryResolved = $binary
+      try {
+        $binaryResolved = (Resolve-Path -LiteralPath $binary -ErrorAction Stop).Path
+        $binaryExists = $true
+      } catch {
+        try {
+          if ([System.IO.Path]::IsPathRooted($binary)) {
+            $binaryResolved = [System.IO.Path]::GetFullPath($binary)
+          } else {
+            $binaryResolved = [System.IO.Path]::GetFullPath((Join-Path (Get-Location).Path $binary))
+          }
+        } catch {
+          $binaryResolved = $binary
+        }
+      }
+      if (-not $binaryExists -and -not $explicitRequest) { continue }
       if (-not ($provider.Supports($Operation))) { continue }
         return [pscustomobject]@{
           Provider     = $provider
           ProviderName = $provider.Name()
-          Binary       = (Resolve-Path -LiteralPath $binary).Path
+          Binary       = $binaryResolved
         }
     } catch {
       Write-Verbose ("Provider {0} selection failed: {1}" -f $provider.Name(), $_.Exception.Message)
@@ -342,7 +360,7 @@ function Finalize-LabVIEWCliPidTracker {
     [string]$Provider,
     [Nullable[int]]$ExitCode,
     [Nullable[bool]]$TimedOut,
-    [string[]]$Args,
+    [string[]]$CliArgs,
     [Nullable[double]]$ElapsedSeconds,
     [string]$Binary,
     [string]$ErrorMessage
@@ -359,7 +377,7 @@ function Finalize-LabVIEWCliPidTracker {
     $context.exitCode = [int]$ExitCode
   }
   if ($PSBoundParameters.ContainsKey('TimedOut')) { $context.timedOut = [bool]$TimedOut }
-  if ($Args) { $context.args = @($Args) }
+  if ($PSBoundParameters.ContainsKey('CliArgs') -and $CliArgs) { $context.args = @($CliArgs) }
   if ($PSBoundParameters.ContainsKey('ElapsedSeconds') -and $ElapsedSeconds -ne $null) {
     $context.elapsedSeconds = [double]$ElapsedSeconds
   }
@@ -569,6 +587,11 @@ function Add-LabVIEWCliPidTrackerToResult {
   if (-not $payload) { return }
   $payloadObject = [pscustomobject]$payload
 
+  if ($Result -is [System.Collections.IDictionary]) {
+    $Result['labviewPidTracker'] = $payloadObject
+    return
+  }
+
   if ($Result.PSObject.Properties['labviewPidTracker']) {
     $Result.labviewPidTracker = $payloadObject
   } else {
@@ -712,7 +735,7 @@ function Invoke-LVOperation {
         Operation = $Operation
       }
       if ($result.provider) { $finalizeParams['Provider'] = $result.provider }
-      if ($result.args) { $finalizeParams['Args'] = $result.args }
+      if ($result.args) { $finalizeParams['CliArgs'] = $result.args }
       if ($binary) { $finalizeParams['Binary'] = $binary }
       if ($null -ne $exitCode) { $finalizeParams['ExitCode'] = $exitCode }
       if ($null -ne $timedOut) { $finalizeParams['TimedOut'] = [bool]$timedOut }

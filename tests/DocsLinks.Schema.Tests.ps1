@@ -17,7 +17,6 @@ Describe 'Docs links schema' -Tag 'Unit' {
     New-Item -ItemType Directory -Force -Path $td | Out-Null
     Set-Content -LiteralPath (Join-Path $td 'Demo.md') -Value '# Sample' -Encoding UTF8
     $root = (Get-Location).Path
-    { & (Join-Path $root 'tools/Check-DocsLinks.ps1') -Path $td -HttpTimeoutSec '15' -Quiet } | Should -NotThrow
+    { & (Join-Path $root 'tools/Check-DocsLinks.ps1') -Path $td -HttpTimeoutSec '15' -Quiet } | Should -Not -Throw
   }
 }
-

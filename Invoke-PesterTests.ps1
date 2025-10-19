@@ -190,6 +190,7 @@ $script:labviewPidTrackerFinalizedSource = $null
 $script:labviewPidTrackerFinalizedContext = $null
 $script:labviewPidTrackerFinalizedContextSource = $null
 $script:labviewPidTrackerFinalizedContextDetail = $null
+$script:labviewPidTrackerSummaryContext = $null
 
 function _Normalize-LabVIEWPidContext {
   param([object]$Value)
@@ -1567,10 +1568,29 @@ if ($limitToSingle) {
     if ($removedTag -gt 0) { Write-Host ("Content pre-excluded {0} Integration-tagged file(s)." -f $removedTag) -ForegroundColor Cyan }
   }
   # Apply IncludePatterns/ExcludePatterns if provided using shared selector logic
-  $patternFilters = Invoke-DispatcherIncludeExcludeFilter `
-    -Files $testFiles `
-    -IncludePatterns $IncludePatterns `
-    -ExcludePatterns $ExcludePatterns
+  if ($testFiles.Count -gt 0) {
+    $patternFilters = Invoke-DispatcherIncludeExcludeFilter `
+      -Files $testFiles `
+      -IncludePatterns $IncludePatterns `
+      -ExcludePatterns $ExcludePatterns
+  } else {
+    $patternFilters = [pscustomobject]@{
+      Files   = @()
+      Include = [pscustomobject]@{
+        Applied  = $false
+        Patterns = $IncludePatterns
+        Before   = 0
+        After    = 0
+      }
+      Exclude = [pscustomobject]@{
+        Applied  = $false
+        Patterns = $ExcludePatterns
+        Before   = 0
+        After    = 0
+        Removed  = 0
+      }
+    }
+  }
   $testFiles = @($patternFilters.Files)
   if ($patternFilters.Include.Applied) {
     $includePatternsText = if ($patternFilters.Include.Patterns) { ($patternFilters.Include.Patterns -join ', ') } else { '' }
@@ -1765,6 +1785,22 @@ function _Write-HeartbeatLine {
   } catch {}
 }
 
+$script:partialLogPath = $null
+if ($script:stuckGuardEnabled) {
+  try {
+    if (-not (Test-Path -LiteralPath $resultsDir -PathType Container)) {
+      New-Item -ItemType Directory -Force -Path $resultsDir | Out-Null
+    }
+    $script:partialLogPath = Join-Path $resultsDir 'pester-partial.log'
+    if (-not (Test-Path -LiteralPath $script:partialLogPath -PathType Leaf)) {
+      New-Item -ItemType File -Path $script:partialLogPath -Force | Out-Null
+    }
+  } catch {
+    Write-Warning ("Failed to initialize partial log path: {0}" -f $_)
+    $script:partialLogPath = $null
+  }
+}
+
 # Early (idempotent) failures JSON emission when always requested. This guarantees existence
 # regardless of later Pester execution branches or discovery failures. Overwritten later if real failures occur.
 if ($EmitFailuresJsonAlways) { Ensure-FailuresJson -Directory $resultsDir -Force -Quiet }
@@ -1916,7 +1952,7 @@ if (-not $script:UseSingleInvoker) {
       Write-Host "Executing with timeout guard: $effectiveTimeoutSeconds second(s)" -ForegroundColor Yellow
       if ($localDispatcherMode) { Write-Host "::warning::Local dispatcher unexpected: entering Start-Job path" -ForegroundColor Yellow }
       $job = Start-Job -ScriptBlock { param($c) Invoke-Pester -Configuration $c } -ArgumentList ($conf)
-      $partialLogPath = Join-Path $resultsDir 'pester-partial.log'
+      $partialLogPath = if ($script:partialLogPath) { $script:partialLogPath } else { Join-Path $resultsDir 'pester-partial.log' }
       $lastWriteLen = 0
       $lastHeartbeat = Get-Date
       while ($true) {
@@ -2147,7 +2183,13 @@ if ($script:timedOut) {
     ) -join [Environment]::NewLine
     Set-Content -LiteralPath $absoluteResultPath -Value $placeholder -Encoding UTF8
     # Ensure partial log exists even if no content captured
-  if (-not $partialLogPath) { $partialLogPath = Join-Path $resultsDir 'pester-partial.log' }
+  if (-not $partialLogPath) {
+    if ($script:partialLogPath) {
+      $partialLogPath = $script:partialLogPath
+    } else {
+      $partialLogPath = Join-Path $resultsDir 'pester-partial.log'
+    }
+  }
     if (-not (Test-Path -LiteralPath $partialLogPath)) { '[timeout] No partial output captured before timeout.' | Out-File -FilePath $partialLogPath -Encoding utf8 }
   } catch { Write-Warning "Failed to write timeout placeholder XML: $_" }
 }
@@ -2333,6 +2375,7 @@ if ($labviewPidTrackerLoaded -and $script:labviewPidTrackerPath) {
     if ($script:labviewPidTrackerState -and $script:labviewPidTrackerState.PSObject.Properties['Pid'] -and $script:labviewPidTrackerState.Pid) {
       $context['pid'] = $script:labviewPidTrackerState.Pid
     }
+    $script:labviewPidTrackerSummaryContext = $context
     $trackerState = _Finalize-LabVIEWPidTracker -Context $context -Source 'dispatcher:summary'
     if ($trackerState -and $script:labviewPidTrackerFinalizedSource -eq 'dispatcher:summary') {
       if ($trackerState.Pid) {
@@ -2490,6 +2533,43 @@ if ($env:GITHUB_STEP_SUMMARY -and -not $DisableStepSummary) {
           $contextDetail = $script:labviewPidTrackerFinalizedContextDetail
         }
       }
+      if (-not $finalContext -and $script:labviewPidTrackerFinalState -and $script:labviewPidTrackerFinalState.PSObject.Properties['Observation'] -and $script:labviewPidTrackerFinalState.Observation) {
+        try {
+          $obs = $script:labviewPidTrackerFinalState.Observation
+          if ($obs -and $obs.PSObject.Properties['context'] -and $obs.context) {
+            $finalContext = _Normalize-LabVIEWPidContext -Value $obs.context
+            if (-not $contextSource) {
+              $contextSource = if ($obs.PSObject.Properties['contextSource'] -and $obs.contextSource) { [string]$obs.contextSource } else { 'tracker' }
+            }
+            if (-not $contextDetail) { $contextDetail = $contextSource }
+          }
+        } catch {}
+      }
+      if (-not $finalContext -and $script:labviewPidTrackerSummaryContext) {
+        try {
+          $finalContext = _Normalize-LabVIEWPidContext -Value $script:labviewPidTrackerSummaryContext
+          if (-not $contextSource -and $script:labviewPidTrackerSummaryContext.PSObject.Properties['stage']) {
+            $contextSource = $script:labviewPidTrackerSummaryContext.stage
+          }
+          if (-not $contextDetail) { $contextDetail = $contextSource }
+        } catch {}
+      }
+      if (-not $finalContext) {
+        $finalContext = [pscustomobject]@{
+          stage             = 'post-summary'
+          total             = $total
+          failed            = $failed
+          errors            = $errors
+          skipped           = $skipped
+          discoveryFailures = $discoveryFailureCount
+          timedOut          = [bool]$script:timedOut
+        }
+        if ($script:labviewPidTrackerState -and $script:labviewPidTrackerState.PSObject.Properties['Pid'] -and $script:labviewPidTrackerState.Pid) {
+          $finalContext.pid = $script:labviewPidTrackerState.Pid
+        }
+        if (-not $contextSource) { $contextSource = 'dispatcher:summary' }
+        if (-not $contextDetail) { $contextDetail = $contextSource }
+      }
       $contextLabel = $null
       if ($contextSource -and $contextDetail -and $contextSource -ne $contextDetail) {
         $contextLabel = " ($contextSource via $contextDetail)"
@@ -2520,7 +2600,23 @@ if ($env:GITHUB_STEP_SUMMARY -and -not $DisableStepSummary) {
     $stepSummaryLines += '### Re-run (gh)'
     $stepSummaryLines += ''
     $stepSummaryLines += ("- {0}" -f $ghCommand)
-    Add-Content -Path $env:GITHUB_STEP_SUMMARY -Value ($stepSummaryLines -join [Environment]::NewLine) -Encoding utf8
+    $summaryFile = $env:GITHUB_STEP_SUMMARY
+    if ($summaryFile) {
+      try {
+        $summaryDir = Split-Path -Parent $summaryFile
+        if ($summaryDir -and -not (Test-Path -LiteralPath $summaryDir)) {
+          New-Item -ItemType Directory -Force -Path $summaryDir | Out-Null
+        }
+        $summaryText = ($stepSummaryLines -join [Environment]::NewLine) + [Environment]::NewLine
+        $encoding = New-Object System.Text.UTF8Encoding($false)
+        [System.IO.File]::WriteAllText($summaryFile, $summaryText, $encoding)
+      } catch {
+        $errMsg = $_.Exception.Message
+        Write-Host ("Step summary append failed: {0}" -f $errMsg) -ForegroundColor DarkYellow
+      }
+    } else {
+      Write-Host 'Step summary append skipped: GITHUB_STEP_SUMMARY not set.' -ForegroundColor DarkYellow
+    }
   } catch {
     $errMsg = $_.Exception.Message
     $warnLine = [string]::Concat('Step summary append failed: ', $errMsg)
@@ -2722,10 +2818,47 @@ try {
           } else {
             $contextSource = 'cached'
           }
-          if ($script:labviewPidTrackerFinalizedContextDetail) {
-            $contextDetail = $script:labviewPidTrackerFinalizedContextDetail
-          }
+        if ($script:labviewPidTrackerFinalizedContextDetail) {
+          $contextDetail = $script:labviewPidTrackerFinalizedContextDetail
         }
+      }
+      if (-not $finalContext -and $script:labviewPidTrackerFinalState -and $script:labviewPidTrackerFinalState.PSObject.Properties['Observation']) {
+        try {
+          $obs = $script:labviewPidTrackerFinalState.Observation
+          if ($obs -and $obs.PSObject.Properties['context'] -and $obs.context) {
+            $finalContext = _Normalize-LabVIEWPidContext -Value $obs.context
+            if (-not $contextSource) {
+              $contextSource = if ($obs.PSObject.Properties['contextSource'] -and $obs.contextSource) { [string]$obs.contextSource } else { 'tracker' }
+            }
+            if (-not $contextDetail) { $contextDetail = $contextSource }
+          }
+        } catch {}
+      }
+      if (-not $finalContext -and $script:labviewPidTrackerSummaryContext) {
+        try {
+          $finalContext = _Normalize-LabVIEWPidContext -Value $script:labviewPidTrackerSummaryContext
+          if (-not $contextSource -and $script:labviewPidTrackerSummaryContext.PSObject.Properties['stage']) {
+            $contextSource = $script:labviewPidTrackerSummaryContext.stage
+          }
+          if (-not $contextDetail) { $contextDetail = $contextSource }
+        } catch {}
+      }
+      if (-not $finalContext) {
+        $finalContext = [pscustomobject]@{
+          stage             = 'post-summary'
+          total             = $total
+          failed            = $failed
+          errors            = $errors
+          skipped           = $skipped
+          discoveryFailures = $discoveryFailureCount
+          timedOut          = [bool]$script:timedOut
+        }
+        if ($script:labviewPidTrackerState -and $script:labviewPidTrackerState.PSObject.Properties['Pid'] -and $script:labviewPidTrackerState.Pid) {
+          $finalContext.pid = $script:labviewPidTrackerState.Pid
+        }
+        if (-not $contextSource) { $contextSource = 'dispatcher:summary' }
+        if (-not $contextDetail) { $contextDetail = $contextSource }
+      }
         if ($finalContext) { $finalBlock['context'] = $finalContext }
         if ($contextSource) { $finalBlock['contextSource'] = $contextSource }
         if ($contextDetail) { $finalBlock['contextSourceDetail'] = $contextDetail }
@@ -3073,7 +3206,13 @@ try {
       $md += ("| Has Path | {0} | {1} |" -f $hasPath,$pPath)
       $md += ("| Has Tags | {0} | {1} |" -f $hasTags,$pTags)
       $mdText = ($md -join "`n") + "`n"
-      try { $dir = Split-Path -Parent $stepSummary; if ($dir) { New-Item -ItemType Directory -Force -Path $dir -ErrorAction SilentlyContinue | Out-Null } } catch {}
+      try {
+        $dir = Split-Path -Parent $stepSummary
+        if ($dir) { New-Item -ItemType Directory -Force -Path $dir -ErrorAction SilentlyContinue | Out-Null }
+        if (-not (Test-Path -LiteralPath $stepSummary -PathType Leaf)) {
+          New-Item -ItemType File -Path $stepSummary -Force | Out-Null
+        }
+      } catch {}
       Add-Content -LiteralPath $stepSummary -Value $mdText -Encoding utf8
       Write-Host ("Step summary updated: {0}" -f $stepSummary) -ForegroundColor Gray
     }

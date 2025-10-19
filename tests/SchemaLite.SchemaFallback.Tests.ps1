@@ -6,8 +6,8 @@ Describe 'Invoke-JsonSchemaLite schema fallback' {
 
     $output = & pwsh -NoLogo -NoProfile -File $script -JsonPath $jsonPath -SchemaPath $manifestSchema 2>&1
     $LASTEXITCODE | Should -Be 0
-    $output | Should -Contain '[schema-lite] notice: schema const mismatch'
-    $output | Should -Contain 'fixture-validation-v1.schema.json'
+    ($output -join [Environment]::NewLine) | Should -Match '\[schema-lite\] notice: schema const mismatch'
+    ($output -join [Environment]::NewLine) | Should -Match 'fixture-validation-v1\.schema\.json'
     $output | Should -Contain 'Schema-lite validation passed.'
   }
 }

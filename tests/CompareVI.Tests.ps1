@@ -37,9 +37,6 @@ Describe 'Invoke-CompareVI core behavior' -Tag 'Unit' {
       if ($baseResolved -eq $headResolved) { return 0 } else { return 1 }
     }
 
-    # Mock Resolve-Cli to return canonical path without checking if it exists
-    Mock -CommandName Resolve-Cli -MockWith { param($Explicit,$PreferredBitness) return $script:canonical }
-
     $script:a = $a; $script:b = $b; $script:vis = $vis; $script:mockExecutor = $mockExecutor
   }
 
@@ -138,7 +135,7 @@ Describe 'Resolve-Cli canonical path enforcement' -Tag 'Unit' {
     [System.IO.Directory]::CreateDirectory((Split-Path $x86Path)) | Out-Null
     New-Item -ItemType File -Path $x64Path -Force | Out-Null
     New-Item -ItemType File -Path $x86Path -Force | Out-Null
-    Mock -CommandName Get-CanonicalCliCandidates -MockWith { @($x64Path, $x86Path) }
+    Mock -CommandName Get-CanonicalCliCandidates -ModuleName CompareVI -MockWith { @($x64Path, $x86Path) }
     $oldPref = $env:LVCOMPARE_BITNESS
     try {
       $env:LVCOMPARE_BITNESS = 'x86'
@@ -156,7 +153,7 @@ Describe 'Resolve-Cli canonical path enforcement' -Tag 'Unit' {
     [System.IO.Directory]::CreateDirectory((Split-Path $x86Path)) | Out-Null
     New-Item -ItemType File -Path $x64Path -Force | Out-Null
     New-Item -ItemType File -Path $x86Path -Force | Out-Null
-    Mock -CommandName Get-CanonicalCliCandidates -MockWith { @($x86Path, $x64Path) }
+    Mock -CommandName Get-CanonicalCliCandidates -ModuleName CompareVI -MockWith { @($x86Path, $x64Path) }
     $oldPref = $env:LVCOMPARE_BITNESS
     try {
       $env:LVCOMPARE_BITNESS = 'x86'

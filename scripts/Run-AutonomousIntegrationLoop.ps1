@@ -114,6 +114,7 @@ param(
   [ValidateSet('None','Text','Markdown','Html')]
   [string]$DiffSummaryFormat = $( if ($env:LOOP_DIFF_SUMMARY_FORMAT) { $env:LOOP_DIFF_SUMMARY_FORMAT } else { 'None' } ),
   [string]$DiffSummaryPath = $env:LOOP_DIFF_SUMMARY_PATH,
+  [string]$LvCompareArgs,
   [string]$CustomPercentiles = $env:LOOP_CUSTOM_PERCENTILES,
   [string]$RunSummaryJsonPath = $env:LOOP_RUN_SUMMARY_JSON,
   [int]$MetricsSnapshotEvery = ($env:LOOP_SNAPSHOT_EVERY -as [int]),
@@ -143,9 +144,15 @@ param(
   , [int]$TestStandTimeoutSeconds = ($env:LOOP_TESTSTAND_TIMEOUT_SECONDS -as [int])
   , [switch]$TestStandDisableTimeout
   , [string]$TestStandLabVIEWPath = $env:LOOP_TESTSTAND_LABVIEW_PATH
-  , [string]$TestStandLVComparePath = $env:LOOP_TESTSTAND_LVCOMPARE_PATH
-  , [switch]$TestStandReplaceFlags
+, [string]$TestStandLVComparePath = $env:LOOP_TESTSTAND_LVCOMPARE_PATH
+, [switch]$TestStandReplaceFlags
 )
+
+function Set-LoopExit {
+  param([int]$Code)
+  $global:LASTEXITCODE = $Code
+  exit $Code
+}
 
 # Defaults / fallbacks
 if (-not $MaxIterations) { $MaxIterations = 1 }
@@ -174,7 +181,7 @@ if (-not $PSBoundParameters.ContainsKey('NoConsoleSummary') -and $env:LOOP_NO_CO
 $simulate = $false
 if ($env:LOOP_SIMULATE -match '^(1|true)$') { $simulate = $true }
 
-if (-not $Base -or -not $Head) { Write-Error 'Base/Head not provided (set LV_BASE_VI & LV_HEAD_VI or pass -Base/-Head).'; exit 1 }
+if (-not $Base -or -not $Head) { Write-Error 'Base/Head not provided (set LV_BASE_VI & LV_HEAD_VI or pass -Base/-Head).'; Set-LoopExit 1 }
 
 # Infer summary path if format chosen and no path provided
 if (-not $DiffSummaryPath -and $DiffSummaryFormat -ne 'None') {
@@ -195,6 +202,14 @@ if (-not $PSBoundParameters.ContainsKey('TestStandCloseLVCompare') -and $env:LOO
 if (-not $PSBoundParameters.ContainsKey('TestStandDisableTimeout') -and $env:LOOP_TESTSTAND_DISABLE_TIMEOUT -match '^(1|true)$') { $TestStandDisableTimeout = $true }
 if (-not $PSBoundParameters.ContainsKey('TestStandReplaceFlags') -and $env:LOOP_TESTSTAND_REPLACE_FLAGS -match '^(1|true)$') { $TestStandReplaceFlags = $true }
 if ($UseTestStandHarness -and $RenderReport -and -not $PSBoundParameters.ContainsKey('TestStandRenderReport') -and -not ($env:LOOP_TESTSTAND_RENDER_REPORT -match '^(1|true)$')) { $TestStandRenderReport = $true }
+
+$explicitLvCompareArgs = $false
+if ($PSBoundParameters.ContainsKey('LvCompareArgs')) {
+  $explicitLvCompareArgs = $true
+} elseif (-not [string]::IsNullOrWhiteSpace($env:LOOP_LVCOMPARE_ARGS)) {
+  $LvCompareArgs = $env:LOOP_LVCOMPARE_ARGS
+  $explicitLvCompareArgs = $true
+}
 
 Import-Module (Join-Path $PSScriptRoot '../module/CompareLoop/CompareLoop.psd1') -Force
 
@@ -264,13 +279,14 @@ if ($UseTestStandHarness) {
   $labviewPath = $TestStandLabVIEWPath
   $lvcomparePath = $TestStandLVComparePath
   $replaceFlags = [bool]$TestStandReplaceFlags
-  $harnessIteration = 0
+  $harnessIteration = [ref]0
 
   $executor = {
     param($CliPath,$BasePath,$HeadPath,$ArgsList)
     $null = $CliPath
-    $harnessIteration++
-    $iterationLabel = ('iteration-{0:D4}' -f $harnessIteration)
+    $currentIteration = $harnessIteration.Value + 1
+    $harnessIteration.Value = $currentIteration
+    $iterationLabel = ('iteration-{0:D4}' -f $currentIteration)
     $iterationRoot = Join-Path $resolvedOutputRoot $iterationLabel
     try { if (Test-Path -LiteralPath $iterationRoot) { Remove-Item -LiteralPath $iterationRoot -Recurse -Force -ErrorAction SilentlyContinue } } catch {}
     New-Item -ItemType Directory -Path $iterationRoot -Force | Out-Null
@@ -291,15 +307,34 @@ if ($UseTestStandHarness) {
     if ($ArgsList -and $ArgsList.Count -gt 0) { $harnessParams.Flags = $ArgsList }
     if ($replaceFlags) { $harnessParams.ReplaceFlags = $true }
 
-    Write-JsonEvent 'harnessInvoke' @{ iteration=$harnessIteration; output=$iterationRoot; status='start' }
+    $originalHarnessLog = $env:HARNESS_LOG
+    $restoreHarnessLog = $false
+    if ([string]::IsNullOrWhiteSpace($originalHarnessLog)) {
+      $env:HARNESS_LOG = Join-Path (Split-Path -Parent $iterationRoot) 'harness-log.ndjson'
+      $restoreHarnessLog = $true
+    }
+    $activeHarnessLog = $env:HARNESS_LOG
+    if ($activeHarnessLog) {
+      $logDir = Split-Path -Parent $activeHarnessLog
+      if ($logDir -and -not (Test-Path -LiteralPath $logDir)) { New-Item -ItemType Directory -Path $logDir -Force | Out-Null }
+    }
+
+    $exitCode = 0
+    Write-JsonEvent 'harnessInvoke' @{ iteration=$currentIteration; output=$iterationRoot; status='start' }
     try {
       & $resolvedHarness @harnessParams | Out-Null
       $exitCode = $LASTEXITCODE
     } catch {
-      Write-JsonEvent 'harnessResult' @{ iteration=$harnessIteration; status='exception'; message=$_.Exception.Message }
+      Write-JsonEvent 'harnessResult' @{ iteration=$currentIteration; status='exception'; message=$_.Exception.Message }
       throw
+    } finally {
+      if ($restoreHarnessLog) {
+        Remove-Item Env:HARNESS_LOG -ErrorAction SilentlyContinue
+      } else {
+        $env:HARNESS_LOG = $originalHarnessLog
+      }
     }
-    Write-JsonEvent 'harnessResult' @{ iteration=$harnessIteration; exitCode=$exitCode }
+    Write-JsonEvent 'harnessResult' @{ iteration=$currentIteration; exitCode=$exitCode }
     return $exitCode
   }
   $skipValidation = $false
@@ -328,6 +363,7 @@ $invokeParams = @{
   HistogramBins = $HistogramBins
   Quiet = $true
 }
+if ($explicitLvCompareArgs) { $invokeParams.LvCompareArgs = $LvCompareArgs }
 if ($CustomPercentiles) { $invokeParams.CustomPercentiles = $CustomPercentiles }
 if ($MetricsSnapshotEvery -gt 0) {
   $invokeParams.MetricsSnapshotEvery = $MetricsSnapshotEvery
@@ -360,7 +396,6 @@ function Write-JsonEvent {
   $payload = [ordered]@{
     timestamp = (Get-Date).ToString('o')
     type = $Type
-    level = 'info'
     schema = $schemaVersion
   }
   if ($Data) { foreach ($k in $Data.Keys) { $payload[$k] = $Data[$k] } }
@@ -500,7 +535,7 @@ if ($DryRun) {
     $dryRunPayload.harnessOutput = $harnessPlan.output
   }
   Write-JsonEvent 'dryRun' $dryRunPayload
-  exit 0
+  Set-LoopExit 0
 }
 
 try {
@@ -563,7 +598,7 @@ if (-not $NoStepSummary -and $env:GITHUB_STEP_SUMMARY -and $result.DiffSummary) 
 Invoke-LabVIEWCloser -Context 'post-loop'
 
 # Exit code semantics: 0 when succeeded (even if diffs unless FailOnDiff terminated early), 1 if any errors encountered
-if (-not $result.Succeeded) { exit 1 }
-if ($DiffExitCode -and $result.DiffCount -gt 0 -and $result.ErrorCount -eq 0) { exit $DiffExitCode }
-exit 0
+if (-not $result.Succeeded) { Set-LoopExit 1 }
+if ($DiffExitCode -and $result.DiffCount -gt 0 -and $result.ErrorCount -eq 0) { Set-LoopExit $DiffExitCode }
+Set-LoopExit 0
 \

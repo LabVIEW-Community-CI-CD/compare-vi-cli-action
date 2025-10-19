@@ -37,21 +37,40 @@ jobs:
     & python $script:Updater --write $tempPath | Out-Null
     & python $script:Updater --write $tempPath | Out-Null
     $doc = Get-Content -LiteralPath $tempPath -Raw | ConvertFrom-Yaml
+    $getName = {
+      param($step)
+      if ($null -eq $step) { return $null }
+      if ($step -is [System.Collections.IDictionary]) {
+        if ($step.Contains('name')) { return [string]$step['name'] }
+        return $null
+      }
+      $prop = $step.PSObject.Properties['name']
+      if ($prop) { return [string]$prop.Value }
+      return $null
+    }
     $steps = $doc.jobs.'windows-single'.steps
-    $names = @($steps | ForEach-Object { $_.name })
-    ($names | Where-Object { $_ -eq 'Wire Probe (J1)' }).Count | Should -Be 1
-    ($names | Where-Object { $_ -eq 'Wire Probe (J2)' }).Count | Should -Be 1
-    ($names | Where-Object { $_ -eq 'Wire Session Index (S1)' }).Count | Should -Be 1
-    ($names | Where-Object { $_ -eq 'Wire Invoker (start)' }).Count | Should -Be 1
-    ($names | Where-Object { $_ -eq 'Wire Invoker (stop)' }).Count | Should -Be 1
-    ($names | Where-Object { $_ -eq 'Wire Guard (pre)' }).Count | Should -Be 1
-    ($names | Where-Object { $_ -eq 'Wire Guard (post)' }).Count | Should -Be 1
-    ($names | Where-Object { $_ -eq 'Wire Probe (P1)' }).Count | Should -Be 1
-    $j1 = $steps | Where-Object { $_.name -eq 'Wire Probe (J1)' } | Select-Object -First 1
-    $j2 = $steps | Where-Object { $_.name -eq 'Wire Probe (J2)' } | Select-Object -First 1
-    $j1.if | Should -Not -BeNullOrEmpty
-    $j2.if | Should -Not -BeNullOrEmpty
-    $j1.if | Should -Match 'WIRE_PROBES'
-    $j2.if | Should -Match 'WIRE_PROBES'
+    $names = @($steps | ForEach-Object { & $getName $_ }) | Where-Object { $_ }
+    (@($names | Where-Object { $_ -eq 'Wire Probe (J1)' })).Count | Should -Be 1
+    (@($names | Where-Object { $_ -eq 'Wire Probe (J2)' })).Count | Should -Be 1
+    (@($names | Where-Object { $_ -eq 'Wire Session Index (S1)' })).Count | Should -Be 1
+    (@($names | Where-Object { $_ -eq 'Wire Invoker (start)' })).Count | Should -Be 1
+    (@($names | Where-Object { $_ -eq 'Wire Invoker (stop)' })).Count | Should -Be 1
+    (@($names | Where-Object { $_ -eq 'Wire Guard (pre)' })).Count | Should -Be 1
+    (@($names | Where-Object { $_ -eq 'Wire Guard (post)' })).Count | Should -Be 1
+    (@($names | Where-Object { $_ -eq 'Wire Probe (P1)' })).Count | Should -Be 1
+    $j1 = $null; $j2 = $null
+    foreach ($step in $steps) {
+      $name = & $getName $step
+      if ($name -eq 'Wire Probe (J1)') { $j1 = $step }
+      elseif ($name -eq 'Wire Probe (J2)') { $j2 = $step }
+    }
+    $j1 | Should -Not -BeNullOrEmpty
+    $j2 | Should -Not -BeNullOrEmpty
+    $j1If = if ($j1 -is [System.Collections.IDictionary]) { $j1['if'] } else { $j1.if }
+    $j2If = if ($j2 -is [System.Collections.IDictionary]) { $j2['if'] } else { $j2.if }
+    $j1If | Should -Not -BeNullOrEmpty
+    $j2If | Should -Not -BeNullOrEmpty
+    $j1If | Should -Match 'WIRE_PROBES'
+    $j2If | Should -Match 'WIRE_PROBES'
   }
 }
