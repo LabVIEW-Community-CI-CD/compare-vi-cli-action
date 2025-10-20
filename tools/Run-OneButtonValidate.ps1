@@ -3,6 +3,7 @@ param(
   [switch]$Stage,
   [switch]$Commit,
   [switch]$Push,
+  [string]$PushTarget = 'standing',
   [switch]$CreatePR,
   [switch]$OpenResults
 )
@@ -102,6 +103,18 @@ if ($Stage -or $Commit) {
 
 if ($Push) {
   Invoke-Step -Name 'Push branch' -Action {
+    $helperPreArgs = @(
+      '-NoLogo', '-NoProfile',
+      '-File', (Join-Path $workspace 'tools' 'Ensure-AgentPushTarget.ps1'),
+      '-RepositoryRoot', $workspace,
+      '-SkipTrackingCheck'
+    )
+    if ($PushTarget) {
+      $helperPreArgs += '-Target'
+      $helperPreArgs += $PushTarget
+    }
+    Invoke-CommandWithExit -Command 'pwsh' -Arguments $helperPreArgs -FailureMessage 'Push target contract failed (pre-push).'
+
     $branch = git rev-parse --abbrev-ref HEAD
     $remoteUrl = git config --get remote.origin.url 2>$null
     if (-not $remoteUrl) {
@@ -120,11 +133,33 @@ if ($Push) {
       git push --set-upstream origin $branch
     }
     if ($LASTEXITCODE -ne 0) { throw "git push exited $LASTEXITCODE" }
+
+    $helperPostArgs = @(
+      '-NoLogo', '-NoProfile',
+      '-File', (Join-Path $workspace 'tools' 'Ensure-AgentPushTarget.ps1'),
+      '-RepositoryRoot', $workspace
+    )
+    if ($PushTarget) {
+      $helperPostArgs += '-Target'
+      $helperPostArgs += $PushTarget
+    }
+    Invoke-CommandWithExit -Command 'pwsh' -Arguments $helperPostArgs -FailureMessage 'Push target contract failed (post-push).'
   }
 }
 
   if ($CreatePR) {
     Invoke-Step -Name 'Create/Update PR (#127)' -Action {
+    $helperArgs = @(
+      '-NoLogo', '-NoProfile',
+      '-File', (Join-Path $workspace 'tools' 'Ensure-AgentPushTarget.ps1'),
+      '-RepositoryRoot', $workspace
+    )
+    if ($PushTarget) {
+      $helperArgs += '-Target'
+      $helperArgs += $PushTarget
+    }
+    Invoke-CommandWithExit -Command 'pwsh' -Arguments $helperArgs -FailureMessage 'Push target contract failed (pre-PR).'
+
     $branch = git rev-parse --abbrev-ref HEAD
     $gh = Get-Command gh -ErrorAction SilentlyContinue
     if (-not $gh) {

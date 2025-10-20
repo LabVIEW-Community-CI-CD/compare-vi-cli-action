@@ -1,1 +1,487 @@
-seed
+<!-- markdownlint-disable-next-line MD041 -->
+# Compare VI GitHub Action
+
+[![Validate][badge-validate]][workflow-validate] [![Smoke][badge-smoke]][workflow-smoke]
+[![Mock Tests][badge-mock]][workflow-test-mock] [![Docs][badge-docs]][environment-docs]
+[![Tools Image][badge-tools-image]][package-tools-image]
+
+[badge-validate]: https://img.shields.io/github/actions/workflow/status/LabVIEW-Community-CI-CD/compare-vi-cli-action/validate.yml?label=Validate
+[workflow-validate]: https://github.com/LabVIEW-Community-CI-CD/compare-vi-cli-action/actions/workflows/validate.yml
+[badge-smoke]: https://img.shields.io/github/actions/workflow/status/LabVIEW-Community-CI-CD/compare-vi-cli-action/smoke.yml?label=Smoke
+[workflow-smoke]: https://github.com/LabVIEW-Community-CI-CD/compare-vi-cli-action/actions/workflows/smoke.yml
+[badge-mock]: https://img.shields.io/github/actions/workflow/status/LabVIEW-Community-CI-CD/compare-vi-cli-action/test-mock.yml?label=Mock%20Tests
+[workflow-test-mock]: https://github.com/LabVIEW-Community-CI-CD/compare-vi-cli-action/actions/workflows/test-mock.yml
+[badge-docs]: https://img.shields.io/badge/docs-Environment%20Vars-6A5ACD
+[environment-docs]: ./docs/ENVIRONMENT.md
+[badge-tools-image]: https://img.shields.io/badge/tools%20image-ghcr.io%2Flabview--community--ci--cd%2Fcomparevi--tools-6A5ACD
+[package-tools-image]: https://github.com/LabVIEW-Community-CI-CD/compare-vi-cli-action/pkgs/container/comparevi-tools
+
+## Overview
+
+This composite action runs NI **LVCompare** to diff two LabVIEW virtual instruments (`.vi`). It supports PR checks,
+scheduled verification, and loop-style benchmarking while emitting structured JSON artifacts and step summaries. The
+action is validated against **LabVIEW 2025 Q3** on self-hosted Windows runners.
+
+> **Breaking change (v0.5.0)** ΓÇô canonical fixtures are now `VI1.vi` / `VI2.vi`. Legacy names > `Base.vi` / `Head.vi`
+> are no longer published.
+
+### Key capabilities
+
+- Works on any self-hosted Windows runner with LVCompare installed.
+- Exposes all LVCompare switches via the `lvCompareArgs` input.
+- Produces machine-readable outputs (`compare-exec.json`, summaries, optional HTML).
+- Bundles a watcher/telemetry toolkit to flag hangs, busy loops, and rogue processes.
+- Includes an experimental loop mode for latency profiling.
+
+## Quick start
+
+```yaml
+name: Compare LabVIEW VIs
+on:
+  pull_request:
+    paths: ['**/*.vi']
+
+jobs:
+  compare:
+    runs-on: [self-hosted, Windows, X64]
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run LVCompare
+        uses: LabVIEW-Community-CI-CD/compare-vi-cli-action@v0.5.1
+        with:
+          base: fixtures/VI1.vi
+          head: fixtures/VI2.vi
+```
+
+### Prerequisites
+
+- LabVIEW (and LVCompare) installed on the runner (LabVIEW 2025 or later recommended). Default path: `C:\Program
+  Files\National Instruments\Shared\LabVIEW Compare\LVCompare.exe`. Bitness note: this canonical LVCompare path can
+  operate as a launcher. To guarantee 64ΓÇæbit comparisons on x64 runners, provide a 64ΓÇæbit LabVIEW path using `-lvpath`
+  or set `LABVIEW_EXE` to `C:\Program Files\National Instruments\LabVIEW 20xx\LabVIEW.exe`. The harness autoΓÇæinjects
+  `-lvpath` when `LABVIEW_EXE` is set, so the compare executes in the 64ΓÇæbit LabVIEW environment even if the LVCompare
+  stub itself is only a launcher.
+- The repository checkout includes or generates the `.vi` files to compare.
+
+### Optional: LabVIEW CLI compare mode
+
+Note (scope): The composite action always invokes LVCompare directly and does not honor `LVCI_COMPARE_MODE` or
+`LVCI_COMPARE_POLICY`. The LabVIEW CLI path and policy selection apply to the harness/workflow helpers (for example,
+`cli-compare.yml`, TestStand/dispatcher wrappers), not to the composite action itself.
+
+Set `LVCI_COMPARE_MODE=labview-cli` (and `LABVIEW_CLI_PATH` if the CLI isn't on the canonical path) to invoke
+`LabVIEWCLI.exe CreateComparisonReport` instead of the standalone LVCompare executable. The action keeps the LVCompare
+path as the required comparator; the CLI path is delivered via the new non-required `cli-compare.yml` workflow for
+experimental runs. The CLI wrapper accepts `LVCI_CLI_FORMAT` (XML/HTML/TXT/DOCX), `LVCI_CLI_EXTRA_ARGS` for additional
+flags (for example `--noDependencies`), and honors `LVCI_CLI_TIMEOUT_SECONDS` (default 120).
+
+Use `LVCI_COMPARE_POLICY` to direct how the harness chooses between LVCompare and LabVIEW CLI. When using harness flows,
+the default is `cli-only` so compares remain headless. Set the variable explicitly if you need a different behaviour.
+
+- `cli-only` (default) ΓÇô run via LabVIEW CLI and fail if CLI capture fails.
+- `cli-first` ΓÇô attempt CLI first, fall back to LVCompare on recoverable CLI failures (missing report, parse errors).
+- `lv-first` ΓÇô prefer LVCompare; only run CLI when explicitly requested via `LVCI_COMPARE_MODE`.
+- `lv-only` ΓÇô enforce LVCompare only.
+
+When the base and head VIs share the same filename (typical commit-to-commit compares), use the CLI-based harness
+flows. The composite action does not support comparing two different files that share the same filename; LVCompare will
+reject that case.
+
+### VI history comparisons
+
+`tools/Compare-VIHistory.ps1` walks the git log for a VI, compares each adjacent commit pair with
+`Compare-RefsToTemp.ps1` in detailed mode, and emits a consolidated history summary. The manual workflow
+`.github/workflows/vi-history-compare.yml` wraps the script for self-serve dispatch.
+
+- Always-on artifacts: every pair produces `lvcompare-capture.json`, `compare-exec.json`, stdout/stderr, and an HTML
+  report (no suppression, even for identical VIs).
+- Aggregated metadata: `tests/results/ref-compare-history/history-summary.json` (`schema: vi-history-compare/v1`)
+  captures LVCompare exit codes, highlights (for example, block-diagram vs. attribute-only changes), skip reasons, and
+  report locations. Missing commit stretches are grouped into a compact summary.
+- Step summary table: the workflow appends a Markdown grid showing each pair, diff status (with a Γ¡É marker on the first
+  detected diff), exit code, and links to the generated reports.
+
+Workflow inputs mirror the script:
+
+- `vi_name` ΓÇô target VI (default `VI1.vi`)
+- `branch` ΓÇô branch/ref to analyse (`HEAD` by default)
+- `max_pairs` ΓÇô adjacent commit pairs to evaluate (latest first)
+- LVCompare flags (`-nobdcosm`, `-nofppos`, `-noattr`) plus optional `additional_flags`
+- `fail_on_diff` ΓÇô optionally fail the job when LVCompare detects a difference
+- `missing_strategy` ΓÇô `skip` (default) ignores commits where the VI is absent; `abort` fails when the file disappears
+
+> Tip: leave `fail_on_diff` set to `false` for the first pass, review the history summary, and rerun with `true` once
+> you are ready to gate on differences.
+
+CLI-only quick start (64-bit Windows):
+
+- On self-hosted runners with LabVIEW CLI installed, automation defaults the CLI path to `C:\Program Files
+  (x86)\National Instruments\Shared\LabVIEW CLI\LabVIEWCLI.exe` when no overrides are set.
+- To force CLI-only compare end-to-end (no LVCompare invocation):
+  - Set `LVCI_COMPARE_MODE=labview-cli` and `LVCI_COMPARE_POLICY=cli-only`.
+  - Run either wrapper:
+    - Harness:
+
+      ```powershell
+      pwsh -File tools/TestStand-CompareHarness.ps1 -BaseVi VI1.vi -HeadVi VI2.vi -Warmup detect -RenderReport
+      ```
+
+      Use `-Warmup skip` to reuse an existing LabVIEW instance.
+    - Wrapper:
+
+      ```powershell
+      pwsh -File tools/Invoke-LVCompare.ps1 -BaseVi VI1.vi -HeadVi VI2.vi -RenderReport
+      ```
+
+  - The capture (`lvcompare-capture.json`) includes an `environment.cli` block detailing the CLI path, version, parsed
+  report type/path, status, and the final CLI message, alongside the command and arguments used for the
+  `CreateComparisonReport` operation. When `-RenderReport` is set, the single-file HTML report is written alongside the
+  capture.
+
+Shim authors should follow the versioned pattern documented in
+[`docs/LabVIEWCliShimPattern.md`](./docs/LabVIEWCliShimPattern.md) (`Close-LabVIEW.ps1` implements pattern v1.0). The
+TestStand session index (`session-index.json`) now records the warmup mode, compare policy/mode, the resolved CLI
+command, and the `environment.cli` metadata surfaced by the capture for downstream telemetry tools.
+
+## Monitoring & telemetry
+
+### Dev dashboard
+
+```powershell
+pwsh ./tools/Dev-Dashboard.ps1 `
+  -Group pester-selfhosted `
+  -ResultsRoot tests/results `
+  -Html `
+  -Json
+```
+
+This command renders a local snapshot of session-lock heartbeat age, queue wait trends, and DX reminders. Workflows call
+`tools/Invoke-DevDashboard.ps1` to publish HTML/JSON artifacts.
+
+### Live watcher
+
+- `node tools/npm/run-script.mjs watch:pester` (warn 90 s, hang 180 s).
+- `node tools/npm/run-script.mjs watch:pester:fast:exit` (warn 60 s, hang 120 s, exits on hang).
+- `node tools/npm/run-script.mjs dev:watcher:ensure` / `status` / `stop` (persistent watcher lifecycle).
+- `node tools/npm/run-script.mjs dev:watcher:trim` (rotates `watch.out` / `watch.err` when >5 MB or ~4,000 lines).
+- `tools/Print-AgentHandoff.ps1 -AutoTrim` (prints summary and trims automatically when `needsTrim=true`; also writes a
+  session capsule under `tests/results/_agent/sessions/` for the current workspace state).
+
+Status JSON contains `state`, heartbeat freshness, and byte counters ΓÇô ideal for hand-offs or CI summaries.
+
+#### Watch orchestrated run (Docker)
+
+Use the token/REST-capable watcher to inspect the orchestrated runΓÇÖs dispatcher logs and artifacts without opening the
+web UI:
+
+```powershell
+pwsh -File tools/Watch-InDocker.ps1 -RunId <id> -Repo LabVIEW-Community-CI-CD/compare-vi-cli-action
+```
+
+Tips:
+
+- Run `pwsh -File tools/Get-StandingPriority.ps1 -Plain` to display the current standing-priority issue number and
+  title.
+- Set `GH_TOKEN` or `GITHUB_TOKEN` in your environment (admin token recommended). The watcher also falls back to
+  `C:\github_token.txt` when the env vars are unset.
+- VS Code: use "Integration (Standing Priority): Auto Push + Start + Watch" under Run Task to push, dispatch, and stream
+  in one step. Additional one-click tasks now ship in `.vscode/tasks.json`:
+  - `Build CompareVI CLI (Release)` compiles `src/CompareVi.Tools.Cli` in Release before any parsing work.
+  - `Parse CLI Compare Outcome (.NET)` depends on the build task and writes `tests/results/compare-cli/compare-
+    outcome.json`.
+  - `Integration (Standing Priority): Watch existing run` attaches the Docker watcher when a run is already in flight.
+  - `Run Non-LV Checks (Docker)` shells into `tools/Run-NonLVChecksInDocker.ps1` for actionlint/markdownlint/docs drift.
+  - Recommended extensions (PowerShell, C#, GitHub Actions, markdownlint, Docker) are declared in
+    `.vscode/extensions.json`.
+  - Local validation quick reference (see below) keeps local runs aligned with CI stages.
+- Prefer the REST watcher for GitHub status: `node tools/npm/run-script.mjs ci:watch:rest -- --run-id <id>` streams job
+  conclusions without relying on the `gh` CLI. Passing `--branch <name>` auto-selects the latest run. A VS Code task
+  named ΓÇ£CI Watch (REST)ΓÇ¥ prompts for the run id.
+- Repeated 404s or other API errors cause the watcher to exit with `conclusion: watcher-error` after the built-in grace
+  window (90s for ΓÇ£run not foundΓÇ¥, 120s for other failures) while still writing `watcher-rest.json` to keep telemetry
+  flowing. Direct rate-limit responses abort immediately with guidance to authenticate via `GH_TOKEN`/`GITHUB_TOKEN` or
+  wait for the reset window.
+- The REST watcher writes `watcher-rest.json` into the jobΓÇÖs results directory; `tools/Update-SessionIndexWatcher.ps1`
+  merges the data into `session-index.json` so CI telemetry reflects the final GitHub status alongside Pester results.
+- The watcher prunes old run directories (`.tmp/watch-run`) automatically and warns if run/dispatcher status stalls
+  longer than the configured window (default 10 minutes). When consecutive dispatcher logs hash to the same digest, it
+  flags a possible repeated failure.
+
+#### Local validation quick reference
+
+- **Run PrePush Checks** (`pwsh -File tools/PrePush-Checks.ps1` / ΓÇ£Run PrePush
+- **Prepare Standing Commit** (`pwsh -File tools/Prepare-StandingCommit.ps1`) auto-creates/switches the standing branch, stages tracked files meant for the next commit, and writes `tests/results/_agent/commit-plan.json` for hand-offs.
+  ChecksΓÇ¥): mirrors the Validate job (lint, compare-report manifest, rerun hint
+  helper).
+- **Run Pester Tests (Unit)** (`pwsh ./Invoke-PesterTests.ps1` / ΓÇ£Run Pester
+  Tests (Unit)ΓÇ¥): executes the Validate unit suites.
+- **Run Pester Tests (Integration)** (`pwsh ./Invoke-PesterTests.ps1 -IntegrationMode
+  include` / ΓÇ£Run Pester Tests (Integration)ΓÇ¥): runs integration coverage prior
+  to orchestrated dispatch.
+- **Build Tools Image (Docker)**: `tools/Build-ToolsImage.ps1 -Tag
+  comparevi-tools:local` prepares a unified container with dotnet, Node,
+  Python, PowerShell, and actionlint.
+- **Run Non-LV Checks (Tools Image)**: `tools/Run-NonLVChecksInDocker.ps1
+  -ToolsImageTag comparevi-tools:local -UseToolsImage` runs actionlint,
+  markdownlint, docs drift detection, and builds the CLI (output
+  `dist/comparevi-cli`) inside the tools container.
+- **Run Non-LV Checks (Docker)**: `tools/Run-NonLVChecksInDocker.ps1` executes
+  the same checks via per-tool images (fallback path).
+- **Integration (Standing Priority): Auto Push + Start + Watch**:
+  `tools/Start-IntegrationGated.ps1 -AutoPush -Start -Watch` aligns with the
+  `ci-orchestrated` standing-priority dispatcher + watcher flow.
+
+These entry points exercise the same scripts CI relies on. Run them locally before pushing so Validate and ci-
+orchestrated stay green.
+
+#### Start integration (gated)
+
+The one-button task "Integration (Standing Priority): Auto Push + Start + Watch" deterministically starts an
+orchestrated run only after selecting an allowed GitHub issue. The allow-list lives in `tools/policy/allowed-
+integration-issues.json` (seeded with the standing-priority issue and `#118`). The task:
+
+1. Auto-detects an admin token (`GH_TOKEN`, `GITHUB_TOKEN`, or `C:\github_token.txt`).
+2. Pushes the current branch using that token (no manual git needed).
+3. Dispatches `ci-orchestrated.yml` via GitHub CLI/REST.
+4. Launches the Docker watcher so the run is streamed immediately in the terminal.
+
+Prompts:
+
+- Issue: allowed issue number.
+- Strategy: `single` or `matrix`.
+- Include integration: `true`/`false`.
+- Ref: `develop` (default) or current branch.
+
+#### Orchestrated pipeline (current)
+
+`ci-orchestrated.yml` runs a deterministic chain with guarded branches:
+
+1. `normalize` (ubuntu) ΓÇô normalizes inputs (e.g., `include_integration`) and writes run provenance.
+2. `lint` (ubuntu) ΓÇô actionlint, docs lint, nonΓÇæLV checks in Docker; builds/validates the CLI when present; emits
+   watcher sanity and checksums.
+3. `preflight` (windowsΓÇælatest) ΓÇô hosted Windows health/notice gate; LVCompare presence is informational here.
+4. `probe` (selfΓÇæhosted Windows) ΓÇô interactivity probe to decide single vs. matrix fallback.
+5. `pester-category` (selfΓÇæhosted Windows, matrix) ΓÇô runs category suites with leak/artifact tracking and merges
+   watcher/session index summaries.
+6. `windows-single` (selfΓÇæhosted Windows, conditional) ΓÇô interactive singleΓÇæjob path that warms up LabVIEW, runs the
+   categories serially, generates a traceability matrix, executes fixture drift, and posts session index/closure
+   crumbs.
+
+Explore `.github/workflows/ci-orchestrated.yml` for full details and parameters.
+
+#### Docker-based lint/validation
+
+Use `tools/Run-NonLVChecksInDocker.ps1` to rebuild container tooling and re-run lint/docs/workflow checks:
+
+```powershell
+pwsh -File tools/Run-NonLVChecksInDocker.ps1
+```
+
+The script pulls pinned images (actionlint, node, PowerShell, python) and forwards only approved env vars (compatible
+with `DETERMINISTIC=1`). Add switches such as `-SkipDocs`/`-SkipWorkflow`/ `-SkipMarkdown` to focus on specific checks,
+then rerun the VS Code task to verify fixes.
+
+## Bundled workflows
+
+- **Validate** - end-to-end self-hosted validation (fixtures, LVCompare, Pester suites).
+- **Smoke** - minimal regression guard for documentation-only changes.
+- **Fixture Drift** - verifies fixture manifests and retains comparison evidence.
+- **VI Binary Gate** - ensures LabVIEW binaries remain normalized.
+- **Markdownlint** - runs `node tools/npm/run-script.mjs lint:md:changed` with the trimmed configuration below.
+- **Smoke (label)** - quick PR-label-triggered compare using canonical fixtures; see `.github/workflows/smoke-on-label.yml`.
+- **LabVIEW CLI Compare** - manually triggered experiment that invokes LabVIEW CLI `CreateComparisonReport` with
+  canonical fixtures (requires LabVIEW 2025+); see `.github/workflows/labview-cli-compare.yml`.
+
+Explore `.github/workflows` for matrices, inputs, and dispatch helpers.
+
+## Markdown lint
+
+`markdownlint` is configured to allow up to 120 columns (tables, code fences, headings excluded) and to downgrade MD041
+while legacy docs are cleaned. Generated artifacts are ignored via `.markdownlintignore`.
+
+Lint changed files locally:
+
+```powershell
+node tools/npm/run-script.mjs lint:md:changed
+```
+
+## Documentation map
+
+| Topic | Location |
+| ----- | -------- |
+| Action usage | `docs/USAGE_GUIDE.md` |
+| Fixture drift | `docs/FIXTURE_DRIFT.md` |
+| Loop mode | `docs/COMPARE_LOOP_MODULE.md` |
+| Preflight validator & smoke | See README (this section) and `.github/workflows/smoke-on-label.yml` |
+| Integration runbook | `docs/INTEGRATION_RUNBOOK.md` |
+| Troubleshooting | `docs/TROUBLESHOOTING.md` |
+| Traceability (requirements Γåö tests) | `docs/TRACEABILITY_GUIDE.md` |
+
+## Contributing
+
+1. Branch from `develop`, run `node tools/npm/cli.mjs ci`.
+2. Execute tests (`./Invoke-PesterTests.ps1` or watcher-assisted workflows).
+3. Lint (`node tools/npm/run-script.mjs lint:md:changed`, `tools/Check-ClangFormat.ps1` if relevant).
+4. Submit a PR referencing the standing-priority issue and include rationale plus artifacts.
+
+Follow `AGENTS.md` for coding etiquette and keep CI deterministic. Large workflow updates should note affected jobs and
+link to supporting ADRs.
+
+### Local validation matrix (pre-push checklist)
+
+Run the commands below (or invoke the matching VS Code task) before pushing. Each entry calls the same automation that
+our workflows execute, so local runs mirror CI behaviour.
+
+- **Run PrePush Checks** (`pwsh -File tools/PrePush-Checks.ps1` / ΓÇ£Run PrePush
+- **Prepare Standing Commit** (`pwsh -File tools/Prepare-StandingCommit.ps1`) auto-creates/switches the standing branch, stages tracked files meant for the next commit, and writes `tests/results/_agent/commit-plan.json` for hand-offs.
+  ChecksΓÇ¥): mirrors `validate.yml ΓÇ║ lint` and runs actionlint, markdownlint,
+  the tracked-artifact guard, rerun-hint helper, and watcher schema validation.
+- **Run Pester Tests (Unit)** (`pwsh ./Invoke-PesterTests.ps1` / ΓÇ£Run Pester
+  Tests (Unit)ΓÇ¥): mirrors the unit consumers in `validate.yml` for fast
+  feedback before orchestrated dispatch.
+- **Run Pester Tests (Integration)** (`pwsh ./Invoke-PesterTests.ps1
+  -IntegrationMode include` / ΓÇ£Run Pester Tests (Integration)ΓÇ¥): mirrors the
+  integration phase in `ci-orchestrated.yml` and smoke stages in
+  `validate.yml`; requires LVCompare.
+- **Run Non-LV Checks (Tools Image)**:
+  `tools/Run-NonLVChecksInDocker.ps1 -ToolsImageTag comparevi-tools:local
+  -UseToolsImage` mirrors `validate.yml ΓÇ║ cli-smoke` using the consolidated
+  tools image so actionlint/markdownlint/docs drift checks match the smoke
+  environment while building the CLI artifact.
+- **Run Non-LV Checks (Docker)**: `tools/Run-NonLVChecksInDocker.ps1` mirrors
+  the same job using per-tool containers when the unified image is unavailable.
+- **Run Priority Sync (Tools Image)**: `node tools/npm/run-script.mjs
+  priority:sync:docker` executes the standing-priority sync inside the tools
+  container (for planes without Node). Build the tools image first
+  (`tools/Build-ToolsImage.ps1`) so gh CLI is available; the helper falls back
+  to `node:20` automatically if the image is missing. Ensure a token is
+  available via `GH_TOKEN`/`GITHUB_TOKEN` or `GH_TOKEN_FILE` (default
+  `C:\github_token.txt`); the helper forwards it to the container without
+  logging. Include this when prepping offline runs so
+  `.agent_priority_cache.json` stays fresh without host dependencies.
+  Set `COMPAREVI_TOOLS_IMAGE=ghcr.io/labview-community-ci-cd/comparevi-tools:latest`
+  to use the published image instead of building locally.
+- **Integration (Standing Priority): Auto Push + Start + Watch**:
+  `tools/Start-IntegrationGated.ps1 -AutoPush -Start -Watch` mirrors the
+  `ci-orchestrated` standing-priority dispatcher + watcher; it pushes with the
+  admin token, resolves the current standing-priority issue,
+  dispatches, then streams logs via the Docker watcher.
+
+Keeping these green locally prevents surprises when Validate or the orchestrated pipeline runs in CI.
+
+#### Multi-plane hook helpers
+
+#### Standing priority helpers
+
+- `node tools/npm/run-script.mjs priority:bootstrap` ΓÇö run hook preflight/parity (optional via `-- -VerboseHooks`) and
+  refresh the standing-priority snapshot/router.
+- `node tools/npm/run-script.mjs priority:handoff` ΓÇö import the latest handoff summaries into the current PowerShell
+  session (globals such as `$StandingPrioritySnapshot` and `$StandingPriorityRouter`).
+- `node tools/npm/run-script.mjs priority:handoff-tests` ΓÇö execute the priority/hooks/semver checks and write
+  `tests/results/_agent/handoff/test-summary.json` for later review.
+- `node tools/npm/run-script.mjs priority:release` ΓÇö simulate the release path from the router; add `-- -Execute` to run
+  `Branch-Orchestrator.ps1 -Execute` instead of the default dry-run.
+- `node tools/npm/run-script.mjs handoff:schema` - validate the stored hook handoff summary against
+  `docs/schemas/handoff-hook-summary-v1.schema.json`.
+- `node tools/npm/run-script.mjs handoff:release-schema` - validate the release summary
+  (`tests/results/_agent/handoff/release-summary.json`) against `docs/schemas/handoff-release-v1.schema.json`.
+- `node tools/npm/run-script.mjs handoff:session-schema` - validate stored session capsules
+  (`tests/results/_agent/sessions/*.json`) against `docs/schemas/handoff-session-v1.schema.json`.
+- `node tools/npm/run-script.mjs semver:check` ΓÇö run the SemVer validator (`tools/priority/validate-semver.mjs`) against
+  the current package version.
+
+
+- `node tools/npm/run-script.mjs hooks:plane` ΓÇö prints the detected plane (for example `windows-pwsh`, `linux-wsl`,
+  `github-ubuntu`) and the active enforcement mode.
+- `node tools/npm/run-script.mjs hooks:preflight` ΓÇö verifies Node/PowerShell availability for the current plane and
+  warns if a dependency is missing.
+- `node tools/npm/run-script.mjs hooks:multi` ΓÇö runs both the shell and PowerShell wrappers, publishes labelled
+  summaries (`tests/results/_hooks/pre-commit.shell.json`, etc.), and fails when the JSON differs.
+- `node tools/npm/run-script.mjs hooks:schema` ΓÇö validates all hook summaries against `docs/schemas/hooks-
+  summary-v1.schema.json`.
+
+Tune behaviour with `HOOKS_ENFORCE=fail|warn|off` (default: `fail` in CI, `warn` locally). Use `HOOKS_PWSH` or
+`HOOKS_NODE` to point at custom executables when bouncing between planes.
+
+## Support & feedback
+
+- File issues: <https://github.com/LabVIEW-Community-CI-CD/compare-vi-cli-action/issues>
+- Contact NI for LabVIEW licensing questions.
+- For agent coordination, follow the steps in `AGENT_HANDOFF.txt`.
+
+### VS Code extension (experimental)
+
+The N-CLI companion (under `vscode/comparevi-helper`) centralises CompareVI and other CLI helpers in VS Code. The
+CompareVI provider mirrors the CLI workflows from this repositoryΓÇömanual compares, commit compares, preset CRUD,
+artifact thumbnailsΓÇöwhile adding health checks and telemetry. A stub g-cli provider exercises the provider registry and
+warns when g-cli is not installed yet.
+
+Key features:
+
+- Provider switcher with metadata (docs links, health status, disabled reason).
+- LabVIEW health checks (LabVIEW.exe + LabVIEW.ini snapshotting) and g-cli executable detection.
+- CLI preview commands (copy/current/last, open in terminal) and quick controls for commit ref swaps, presets, and
+  artifact thumbnails.
+- Local NDJSON telemetry written to `tests/results/telemetry/` when `comparevi.telemetryEnabled` is enabled.
+
+For local development:
+
+1. Inside this repository, prefer the sanitized wrapper to install dependencies: `node tools/npm/cli.mjs install` (or
+   `node tools/npm/cli.mjs --prefix vscode/comparevi-helper install`). This avoids proxy warnings from
+   `npm_config_http_proxy`. If you are working outside this repo, `npm install` is fine.
+2. From VS Code, run **Debug: Start Debugging** on the extension to launch a dev host.
+3. `node tools/npm/run-script.mjs test:unit` and `node tools/npm/run-script.mjs test:ext` validate provider registry
+   behaviour, telemetry, multi-root flows, and UI wiring.
+
+Packaging notes:
+
+1. Development: use `node tools/npm/cli.mjs install` (or `--prefix vscode/comparevi-helper`) then press `F5`
+   (Debug: Start Debugging) from VS Code to sideΓÇæload the extension.
+2. Optional VSIX: install `vsce` locally and run `node tools/npm/run-script.mjs --prefix vscode/comparevi-helper
+   package`; install the resulting VSIX via ΓÇ£Extensions: Install from VSIX...ΓÇ¥ if you prefer a self-contained bundle
+   instead of running the debug host.
+
+
+## Documentation Manifest
+
+- Canonical manifest: `docs/documentation-manifest.json`
+  - Groups every tracked Markdown file into authoritative, draft, reference, or generated sets.
+  - Patterns are evaluated relative to the repository root.
+- Validate updates before committing: `node tools/npm/run-script.mjs docs:manifest:validate`
+- Promote drafts by migrating files from `issues-drafts/` into the `docs/` tree and updating the manifest entry status.
+
+
+## CLI Distribution
+
+The repository ships a cross-platform CLI (comparevi-cli) used by workflows and local tools. Use the publish helper to
+build per-RID archives and checksums for distribution.
+
+- Build artifacts
+  - `node tools/npm/run-script.mjs publish:cli` (or `pwsh -File tools/Publish-Cli.ps1`)
+  - Produces framework-dependent and self-contained archives under `artifacts/cli/`:
+    - Windows: `.zip` files
+    - Linux/macOS: `.tar.gz` files
+  - A consolidated `SHA256SUMS.txt` is emitted alongside the archives.
+
+- Verify checksums
+  - PowerShell: `Get-FileHash -Algorithm SHA256 artifacts/cli/<file> | Format-List`
+  - Bash: `sha256sum artifacts/cli/<file>`
+
+- Extract and run
+  - Windows: unzip and run `comparevi-cli.exe`
+  - Linux/macOS: `tar -xzf <file>.tar.gz`; then run `./comparevi-cli`
+    - Note: when archives are created on Windows runners, execute bits may not be preserved in tarballs. If the binary
+      isn't executable after extract, run `chmod +x ./comparevi-cli`.
+
+- Quick smoke
+  - `./comparevi-cli version`
+- `./comparevi-cli tokenize --input 'foo -x=1 "bar baz"'`
+- `./comparevi-cli quote --path 'C:/Program Files/National Instruments/LabVIEW 2025/LabVIEW.exe'`
+- `./comparevi-cli procs`
+- `./comparevi-cli operations`
+- `./comparevi-cli operations --names-only`
+- `./comparevi-cli providers`
+- `./comparevi-cli providers --names-only`
+- `./comparevi-cli providers --name labviewcli`
+
+

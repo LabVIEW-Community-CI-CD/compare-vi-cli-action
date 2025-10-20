@@ -14,6 +14,7 @@ param(
   [switch]$SkipPester,
   [switch]$UseLocalRunTests,
   [switch]$SkipPrePushChecks,
+  [string]$PushTarget = 'standing',
   [switch]$RunWatcherUpdate,
   [string]$WatcherJson,
   [string]$WatcherResultsDir = 'tests/results',
@@ -149,6 +150,19 @@ try {
   }
 
   if (-not $SkipPrePushChecks) {
+    Invoke-BackboneStep -Name 'Ensure push target (contract)' -Action {
+      $args = @(
+        '-NoLogo', '-NoProfile',
+        '-File', (Join-Path $repoRoot 'tools' 'Ensure-AgentPushTarget.ps1'),
+        '-RepositoryRoot', $repoRoot,
+        '-SkipTrackingCheck'
+      )
+      if ($PushTarget) {
+        $args += '-Target'
+        $args += $PushTarget
+      }
+      & pwsh @args
+    }
     Invoke-BackboneStep -Name 'PrePush-Checks.ps1' -Action {
       & pwsh '-NoLogo' '-NoProfile' '-File' (Join-Path $repoRoot 'tools' 'PrePush-Checks.ps1')
     }

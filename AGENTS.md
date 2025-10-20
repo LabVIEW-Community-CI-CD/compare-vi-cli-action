@@ -33,6 +33,15 @@ line buffers).
   3. Create or sync a working branch (`issue/<standing-number>-<slug>`), push minimal changes,
      dispatch CI, update the PR (reference `#<standing-number>`), monitor to green, merge when
      acceptance is met.
+  4. Run `pwsh -File tools/Prepare-StandingCommit.ps1 -RepositoryRoot . -NoSummary` whenever the
+     working tree changes. The helper auto-creates the standing branch (if needed), stages tracked
+     files that belong in the commit, and leaves telemetry under
+     `tests/results/_agent/commit-plan.json`. Pass `-AutoCommit -CommitMessage "<subject>"` when you
+     want it to produce the commit on your behalf.
+  5. Validate the push-target contract before you push: `pwsh -File tools/Ensure-AgentPushTarget.ps1
+     -SkipTrackingCheck` confirms the workspace is on the `origin` standing-priority branch with a clean
+     tree. After the branch is tracking `origin/<issue-branch>`, rerun without `-SkipTrackingCheck`
+     so violations surface immediately.
 
 ## Streaming guardrails
 
@@ -106,6 +115,14 @@ line buffers).
   - Installs `actionlint` (`vars.ACTIONLINT_VERSION`, default 1.7.7) if missing.
   - Runs `actionlint` across `.github/workflows`.
   - Optionally round-trips YAML with `ruamel.yaml` (if Python available).
+- `tools/Prepare-StandingCommit.ps1` is the canonical way to auto-stage standing-priority edits.
+  It writes a summary to `tests/results/_agent/commit-plan.json`; inspect that file during
+  hand-offs to understand what was staged or skipped. Files under `tests/results/`, `.agent_priority_cache.json`,
+  and other volatile paths are skipped automatically.
+- The push-target contract lives in `.agent_push_config.json`. Use
+  `pwsh -File tools/Ensure-AgentPushTarget.ps1` to verify the current branch
+  and remote before `git push` / `gh pr create`. The helper writes telemetry
+  to `tests/results/_agent/push-target.json` so handoffs inherit the last check.
 - Optional hook workflow:
   1. `git config core.hooksPath tools/hooks`
   2. Copy `tools/hooks/pre-push.sample` to `tools/hooks/pre-push`

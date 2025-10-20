@@ -4,7 +4,8 @@ param(
   [int]$Issue,
   [switch]$Execute,
   [string]$Base = 'develop',
-  [string]$BranchPrefix = 'issue'
+  [string]$BranchPrefix = 'issue',
+  [string]$PushTarget = 'standing'
 )
 
 Set-StrictMode -Version Latest
@@ -81,8 +82,35 @@ $ok = Ensure-Branch -Name $branchName -Base $Base
 if (-not $ok) { throw 'Failed to ensure branch' }
 
 if ($Execute) {
-  Write-Host '[orchestrator] Executing remote ops (push/PR)…'
-  try { & git push -u origin $branchName } catch { Write-Warning 'Push failed.' }
+  Write-Host '[orchestrator] Executing remote ops (push/PR).'
+  $preArgs = @(
+    '-NoLogo', '-NoProfile',
+    '-File', (Join-Path $repo 'tools' 'Ensure-AgentPushTarget.ps1'),
+    '-RepositoryRoot', $repo,
+    '-SkipTrackingCheck'
+  )
+  if ($PushTarget) {
+    $preArgs += '-Target'
+    $preArgs += $PushTarget
+  }
+  & pwsh @preArgs
+  if ($LASTEXITCODE -ne 0) { throw 'Push target contract failed (pre-push).' }
+
+  & git push -u origin $branchName
+  if ($LASTEXITCODE -ne 0) { throw "Push failed with exit code $LASTEXITCODE." }
+
+  $postArgs = @(
+    '-NoLogo', '-NoProfile',
+    '-File', (Join-Path $repo 'tools' 'Ensure-AgentPushTarget.ps1'),
+    '-RepositoryRoot', $repo
+  )
+  if ($PushTarget) {
+    $postArgs += '-Target'
+    $postArgs += $PushTarget
+  }
+  & pwsh @postArgs
+  if ($LASTEXITCODE -ne 0) { throw 'Push target contract failed (post-push).' }
+
   $gh = Get-Command gh -ErrorAction SilentlyContinue
   if ($gh) {
     try { & $gh.Source 'pr' 'create' '--fill' '--base' $Base '--head' $branchName | Out-Host } catch { Write-Warning 'PR create failed or already exists.' }
@@ -91,6 +119,5 @@ if ($Execute) {
     Write-Warning 'gh not found; cannot open PR automatically.'
   }
 } else {
-  Write-Host '[orchestrator] Dry run — no remote operations performed.'
+  Write-Host '[orchestrator] Dry run - no remote operations performed.'
 }
-
