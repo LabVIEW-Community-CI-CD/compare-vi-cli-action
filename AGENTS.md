@@ -33,15 +33,14 @@ line buffers).
   3. Create or sync a working branch (`issue/<standing-number>-<slug>`), push minimal changes,
      dispatch CI, update the PR (reference `#<standing-number>`), monitor to green, merge when
      acceptance is met.
-  4. Run `pwsh -File tools/Prepare-StandingCommit.ps1 -RepositoryRoot . -NoSummary` whenever the
-     working tree changes. The helper auto-creates the standing branch (if needed), stages tracked
-     files that belong in the commit, and leaves telemetry under
-     `tests/results/_agent/commit-plan.json`. Pass `-AutoCommit -CommitMessage "<subject>"` when you
-     want it to produce the commit on your behalf.
-  5. Validate the push-target contract before you push: `pwsh -File tools/Ensure-AgentPushTarget.ps1
-     -SkipTrackingCheck` confirms the workspace is on the `origin` standing-priority branch with a clean
-     tree. After the branch is tracking `origin/<issue-branch>`, rerun without `-SkipTrackingCheck`
-     so violations surface immediately.
+4. Run `pwsh -File tools/Prepare-StandingCommit.ps1 -RepositoryRoot . -AutoCommit` whenever the
+   working tree changes. The helper auto-creates/switches the standing branch, stages eligible files,
+   creates the commit with a generated subject, and records telemetry in
+   `tests/results/_agent/commit-plan.json` (`commitType`, `commitDescription`, staged/skipped lists).
+5. Follow up immediately with `pwsh -File tools/After-CommitActions.ps1 -RepositoryRoot . -Push
+   -CreatePR`. This script re-verifies the push-target contract, pushes to the correct remote (setting
+   upstream if missing), opens/updates the PR via `gh` when available, and writes
+   `tests/results/_agent/post-commit.json` so the next agent can see what happened.
 
 ## Streaming guardrails
 
@@ -116,13 +115,15 @@ line buffers).
   - Runs `actionlint` across `.github/workflows`.
   - Optionally round-trips YAML with `ruamel.yaml` (if Python available).
 - `tools/Prepare-StandingCommit.ps1` is the canonical way to auto-stage standing-priority edits.
-  It writes a summary to `tests/results/_agent/commit-plan.json`; inspect that file during
+  It writes a summary to `tests/results/_agent/commit-plan.json` (staged, autoSkipped, commit metadata); inspect that file during
   hand-offs to understand what was staged or skipped. Files under `tests/results/`, `.agent_priority_cache.json`,
   and other volatile paths are skipped automatically.
-- The push-target contract lives in `.agent_push_config.json`. Use
-  `pwsh -File tools/Ensure-AgentPushTarget.ps1` to verify the current branch
-  and remote before `git push` / `gh pr create`. The helper writes telemetry
-  to `tests/results/_agent/push-target.json` so handoffs inherit the last check.
+- `tools/After-CommitActions.ps1` (usually invoked immediately after the commit) pushes the branch,
+  re-runs the push-target contract, opens/updates the PR when `gh` is authenticated, and writes
+  `tests/results/_agent/post-commit.json` (push/PR outcomes, errors) so the next agent knows what happened.
+- The push-target contract lives in `.agent_push_config.json`. The helper above invokes it automatically,
+  but you can always re-run `pwsh -File tools/Ensure-AgentPushTarget.ps1` manually; telemetry lands in
+  `tests/results/_agent/push-target.json` so handoffs inherit the last check.
 - Optional hook workflow:
   1. `git config core.hooksPath tools/hooks`
   2. Copy `tools/hooks/pre-push.sample` to `tools/hooks/pre-push`

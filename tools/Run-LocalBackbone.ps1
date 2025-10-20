@@ -108,6 +108,31 @@ try {
     }
   }
 
+  Invoke-BackboneStep -Name 'Prepare standing commit' -SkipWhenDryRun -Action {
+    $args = @(
+      '-NoLogo', '-NoProfile',
+      '-File', (Join-Path $repoRoot 'tools' 'Prepare-StandingCommit.ps1'),
+      '-RepositoryRoot', $repoRoot,
+      '-AutoCommit'
+    )
+    & pwsh @args
+  }
+
+  Invoke-BackboneStep -Name 'Post-commit automation' -SkipWhenDryRun -Action {
+    $args = @(
+      '-NoLogo','-NoProfile',
+      '-File',(Join-Path $repoRoot 'tools' 'After-CommitActions.ps1'),
+      '-RepositoryRoot',$repoRoot,
+      '-Push',
+      '-CreatePR'
+    )
+    if ($PushTarget) {
+      $args += '-PushTarget'
+      $args += $PushTarget
+    }
+    & pwsh @args
+  }
+
   if (-not $SkipPester) {
     if ($UseLocalRunTests) {
       Invoke-BackboneStep -Name 'Local-RunTests.ps1' -Action {

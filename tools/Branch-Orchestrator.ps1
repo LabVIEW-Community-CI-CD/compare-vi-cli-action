@@ -83,41 +83,30 @@ if (-not $ok) { throw 'Failed to ensure branch' }
 
 if ($Execute) {
   Write-Host '[orchestrator] Executing remote ops (push/PR).'
-  $preArgs = @(
+  $prepareArgs = @(
     '-NoLogo', '-NoProfile',
-    '-File', (Join-Path $repo 'tools' 'Ensure-AgentPushTarget.ps1'),
+    '-File', (Join-Path $repo 'tools' 'Prepare-StandingCommit.ps1'),
     '-RepositoryRoot', $repo,
-    '-SkipTrackingCheck'
+    '-AutoCommit'
   )
-  if ($PushTarget) {
-    $preArgs += '-Target'
-    $preArgs += $PushTarget
-  }
-  & pwsh @preArgs
-  if ($LASTEXITCODE -ne 0) { throw 'Push target contract failed (pre-push).' }
+  & pwsh @prepareArgs
+  if ($LASTEXITCODE -ne 0) { throw 'Prepare-StandingCommit failed.' }
 
-  & git push -u origin $branchName
-  if ($LASTEXITCODE -ne 0) { throw "Push failed with exit code $LASTEXITCODE." }
-
-  $postArgs = @(
+  $afterArgs = @(
     '-NoLogo', '-NoProfile',
-    '-File', (Join-Path $repo 'tools' 'Ensure-AgentPushTarget.ps1'),
-    '-RepositoryRoot', $repo
+    '-File', (Join-Path $repo 'tools' 'After-CommitActions.ps1'),
+    '-RepositoryRoot', $repo,
+    '-Push',
+    '-CreatePR'
   )
   if ($PushTarget) {
-    $postArgs += '-Target'
-    $postArgs += $PushTarget
+    $afterArgs += '-PushTarget'
+    $afterArgs += $PushTarget
   }
-  & pwsh @postArgs
-  if ($LASTEXITCODE -ne 0) { throw 'Push target contract failed (post-push).' }
+  & pwsh @afterArgs
+  if ($LASTEXITCODE -ne 0) { throw 'Post-commit automation failed.' }
 
-  $gh = Get-Command gh -ErrorAction SilentlyContinue
-  if ($gh) {
-    try { & $gh.Source 'pr' 'create' '--fill' '--base' $Base '--head' $branchName | Out-Host } catch { Write-Warning 'PR create failed or already exists.' }
-    if ($digest) { Update-PRBodyWithDigest -Number $Issue -Digest $digest -SnapshotPath $snapPath }
-  } else {
-    Write-Warning 'gh not found; cannot open PR automatically.'
-  }
+  if ($digest) { Update-PRBodyWithDigest -Number $Issue -Digest $digest -SnapshotPath $snapPath }
 } else {
   Write-Host '[orchestrator] Dry run - no remote operations performed.'
 }

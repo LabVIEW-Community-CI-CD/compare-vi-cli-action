@@ -15,10 +15,11 @@ $ErrorActionPreference = 'Stop'
 
 function Invoke-Git {
   param(
-    [Parameter(ValueFromRemainingArguments = $true)]
-    [string[]]$Command
+    [Parameter(Mandatory = $true, Position = 0)]
+    [Alias('Args')]
+    [string[]]$GitArgs
   )
-  $output = & git @Command 2>&1
+  $output = & git @GitArgs 2>&1
   $exit = $LASTEXITCODE
   [pscustomobject]@{
     ExitCode = $exit
@@ -27,8 +28,12 @@ function Invoke-Git {
 }
 
 function Get-GitSingleLine {
-  param([string[]]$Args)
-  $result = Invoke-Git @Args
+  param(
+    [Parameter(Mandatory = $true, Position = 0)]
+    [Alias('Args')]
+    [string[]]$GitArgs
+  )
+  $result = Invoke-Git -Args $GitArgs
   if ($result.ExitCode -ne 0) { return $null }
   ($result.Output -join "`n").Trim()
 }
@@ -64,19 +69,19 @@ function Ensure-StandingBranch {
   if ($SkipCreation) {
     throw "Currently on '$current' but expected '$TargetBranch'. Use -SkipBranchCreation only when branch is already checked out."
   }
-  $existsLocal = Invoke-Git rev-parse --verify --quiet ("refs/heads/$TargetBranch")
+  $existsLocal = Invoke-Git -Args @('rev-parse','--verify','--quiet',"refs/heads/$TargetBranch")
   if ($existsLocal.ExitCode -eq 0) {
-    $switchResult = Invoke-Git checkout $TargetBranch
+    $switchResult = Invoke-Git -Args @('checkout',$TargetBranch)
     if ($switchResult.ExitCode -ne 0) { throw "Failed to checkout $TargetBranch." }
     return $TargetBranch
   }
   $baseRef = $BaseBranch
   if (-not $baseRef) { $baseRef = 'develop' }
-  [void](Invoke-Git fetch origin $baseRef)
-  $createResult = Invoke-Git checkout -b $TargetBranch $baseRef
+  [void](Invoke-Git -Args @('fetch','origin',$baseRef))
+  $createResult = Invoke-Git -Args @('checkout','-b',$TargetBranch,$baseRef)
   if ($createResult.ExitCode -ne 0) {
     # fallback: create from current HEAD to preserve changes
-    $fallback = Invoke-Git checkout -b $TargetBranch
+    $fallback = Invoke-Git -Args @('checkout','-b',$TargetBranch)
     if ($fallback.ExitCode -ne 0) { throw "Failed to create branch $TargetBranch." }
   }
   return $TargetBranch
@@ -84,7 +89,7 @@ function Ensure-StandingBranch {
 
 function Get-StatusEntries {
   param()
-  $result = Invoke-Git status --porcelain=v2 --untracked-files=normal
+  $result = Invoke-Git -Args @('status','--porcelain=v2','--untracked-files=normal')
   if ($result.ExitCode -ne 0) { throw "git status failed.`n$($result.Output -join "`n")" }
   $entries = @()
   foreach ($line in $result.Output) {
@@ -208,7 +213,7 @@ try {
     Write-Host '[prepare] No eligible files found to stage.' -ForegroundColor Yellow
   } else {
     foreach ($path in ($autoStage | Select-Object -ExpandProperty Path -Unique)) {
-      $stageResult = Invoke-Git add -- $path
+      $stageResult = Invoke-Git -Args @('add','--', $path)
       if ($stageResult.ExitCode -ne 0) { throw "Failed to stage $path" }
     }
     if ($autoStage.Count -gt 0) {
@@ -216,10 +221,10 @@ try {
     }
   }
 
-  $stagedAfter = Invoke-Git diff --cached --name-only
+  $stagedAfter = Invoke-Git -Args @('diff','--cached','--name-only')
   $stagedPaths = if ($stagedAfter.ExitCode -eq 0) { $stagedAfter.Output } else { @() }
 
-  $nameStatusResult = Invoke-Git diff --cached --name-status
+  $nameStatusResult = Invoke-Git -Args @('diff','--cached','--name-status')
   $diffEntries = @()
   if ($nameStatusResult.ExitCode -eq 0) {
     foreach ($line in $nameStatusResult.Output) {
@@ -233,15 +238,18 @@ try {
   }
 
   $suggestion = Get-CommitSuggestion -Paths $stagedPaths -DiffEntries $diffEntries -IssueNumber $issueNumber
+  $commitIssued = $false
 
   if ($AutoCommit) {
     if (-not $stagedPaths -or $stagedPaths.Count -eq 0) {
-      throw 'AutoCommit requested but no files are staged.'
+      Write-Host '[prepare] AutoCommit requested but nothing is staged; skipping commit.' -ForegroundColor Yellow
+    } else {
+      $message = if ($CommitMessage) { $CommitMessage } else { $suggestion.Message }
+      $commitResult = Invoke-Git -Args @('commit','-m',$message)
+      if ($commitResult.ExitCode -ne 0) { throw 'git commit failed.' }
+      Write-Host ("[prepare] Created commit: {0}" -f $message) -ForegroundColor Green
+      $commitIssued = $true
     }
-    $message = if ($CommitMessage) { $CommitMessage } else { $suggestion.Message }
-    $commitResult = Invoke-Git commit -m $message
-    if ($commitResult.ExitCode -ne 0) { throw 'git commit failed.' }
-    Write-Host ("[prepare] Created commit: {0}" -f $message) -ForegroundColor Green
   } elseif ($CommitMessage) {
     Write-Host ("[prepare] Commit message suggestion: {0}" -f $CommitMessage) -ForegroundColor Cyan
   } else {
@@ -263,7 +271,7 @@ try {
       suggestedMessage = if ($CommitMessage) { $CommitMessage } else { $suggestion.Message }
       commitType    = $suggestion.Type
       commitDescription = $suggestion.Description
-      autoCommitted = [bool]$AutoCommit
+      autoCommitted = $commitIssued
     }
     $summary | ConvertTo-Json -Depth 6 | Out-File -FilePath $summaryPath -Encoding utf8
     Write-Host ("[prepare] Summary written to {0}" -f $summaryPath) -ForegroundColor Gray
@@ -272,3 +280,5 @@ try {
 finally {
   if ($popLocation) { Pop-Location }
 }
+
+

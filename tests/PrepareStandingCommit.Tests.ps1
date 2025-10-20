@@ -67,6 +67,27 @@ Describe 'Prepare-StandingCommit helper' -Tag 'Unit' {
     }
   }
 
+  It 'auto commits with generated message' {
+    $repo = & $script:createRepo -ConfigPath $script:configPath
+    Push-Location $repo
+    try {
+      Add-Content -LiteralPath 'README.md' -Value "`nupdate" -Encoding utf8
+    } finally {
+      Pop-Location
+    }
+
+    & $script:toolPath -RepositoryRoot $repo -AutoCommit
+    $LASTEXITCODE | Should -Be 0
+
+    Push-Location $repo
+    try {
+      $commitMessage = (git log -1 --pretty='%s').Trim()
+      $commitMessage | Should -Match 'feat\(#260\):'
+    } finally {
+      Pop-Location
+    }
+  }
+
   It 'skips cache file and records summary' {
     $repo = & $script:createRepo -ConfigPath $script:configPath
     Push-Location $repo
