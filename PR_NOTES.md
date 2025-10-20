@@ -57,14 +57,22 @@ Release v0.5.1 focuses on four pillars:
 
 ## 7. Validation Snapshot (goal = all checked before merge/tag)
 
-- [ ] Validate workflow (actionlint, markdownlint, docs links) – rerun until clean.
-- [ ] `./Invoke-PesterTests.ps1` (non-integration) – expect PASS, session index uploaded.
-- [ ] Self-hosted integration run (`./Invoke-PesterTests.ps1 -IntegrationMode include`) – ensure guard/integration path
+- [ ] Validate workflow (actionlint, markdownlint, docs links) - rerun until clean.
+- [ ] `./Invoke-PesterTests.ps1` (non-integration) - expect PASS, session index uploaded.
+- [ ] Self-hosted integration run (`./Invoke-PesterTests.ps1 -IntegrationMode include`) - ensure guard/integration path
       exits cleanly.
-- [ ] Fixture drift jobs (Windows + Ubuntu) – confirm size/bytes alignment.
+- [ ] Fixture drift jobs (Windows + Ubuntu) - confirm size/bytes alignment.
 - [ ] LabVIEW CLI provider smoke: `tools/TestStand-CompareHarness.ps1` should complete without `CreateComparisonReport`
       errors.
 - [ ] `node tools/npm/run-script.mjs priority:release` succeeds, writing `tests/results/_agent/handoff/release-summary.json`.
+
+## 7a. Compare History Artifact Sanity
+
+- Confirm `tests/results/ref-compare-history/history-summary.json` exists, schema=`vi-history-compare/v1`, and `pairs` matches the commit window inspected.
+- For each pair, open the matching `*-summary.json`; ensure `cli.diff`, `exitCode`, and `reportHtml` align with expectations (diffs have `exitCode = 1`, identical runs stay at `0`).
+- Spot-check the rendered report (`cli-report.html`) for at least the first diff, verifying highlighted sections reflect the regression under review.
+- Ensure highlights captured in the summary (`cli.highlights`) mirror the report and that the artifact directory holds stdout/stderr captures for triage.
+- If `IncludeIdenticalPairs` was enabled, verify identical entries are flagged (`skippedIdentical=true`) and excluded from markdown rows when not requested.
 
 ## 8. Risks & Mitigations
 

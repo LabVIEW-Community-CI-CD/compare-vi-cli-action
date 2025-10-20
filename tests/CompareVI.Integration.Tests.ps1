@@ -183,7 +183,7 @@ Describe 'Invoke-CompareVI (real CLI on self-hosted)' -Tag Integration {
 
     # Verify flags are in the command
     foreach ($flag in @('-noattr','-nofp','-nofppos','-nobd','-nobdcosm')) {
-      $res.Command | Should -Match [regex]::Escape($flag)
+      ($res.Command.IndexOf($flag, [System.StringComparison]::OrdinalIgnoreCase)) | Should -BeGreaterThan -1 -Because $flag
     }
   }
 
@@ -218,7 +218,7 @@ Describe 'Invoke-CompareVI (real CLI on self-hosted)' -Tag Integration {
     # Verify all flags are in the command
     $res.Command | Should -Match '-lvpath'
     foreach ($flag in @('-noattr','-nofp','-nofppos','-nobd','-nobdcosm')) {
-      $res.Command | Should -Match [regex]::Escape($flag)
+      ($res.Command.IndexOf($flag, [System.StringComparison]::OrdinalIgnoreCase)) | Should -BeGreaterThan -1 -Because $flag
     }
   }
 }

@@ -55,6 +55,25 @@ function Get-ItemCount {
   return (@($Value) | Measure-Object).Count
 }
 
+function Get-PropertyValue {
+  param(
+    [object]$InputObject,
+    [Parameter(Mandatory = $true)][string]$PropertyName
+  )
+
+  if ($null -eq $InputObject) { return $null }
+
+  $psMeta = $InputObject.PSObject
+  $prop = $psMeta.Properties[$PropertyName]
+  if ($prop) { return $prop.Value }
+
+  if ($InputObject -is [System.Collections.IDictionary] -and $InputObject.Contains($PropertyName)) {
+    return $InputObject[$PropertyName]
+  }
+
+  return $null
+}
+
 function Resolve-ViRelativePath {
   param(
     [Parameter(Mandatory = $true)][string]$ViName,
@@ -266,6 +285,7 @@ $flagTokens = Split-ArgString -Value $LvCompareArgs
 $summaryItems = @()
 $hadFailure = $false
 $markdownRows = @()
+$firstDiffLogged = $false
 
 function Get-BlobIdForPath {
   param(
@@ -357,18 +377,32 @@ foreach ($pair in $pairs) {
 
   if (Test-Path -LiteralPath $compareSummaryPath) {
     $summaryJson = Get-Content -LiteralPath $compareSummaryPath -Raw | ConvertFrom-Json -Depth 8
-    $diffResult = $summaryJson.cli.diff
-    $cliInfo = $summaryJson.cli
-    if ($summaryJson.out -and $summaryJson.out.reportHtml) {
-      $reportFile = $summaryJson.out.reportHtml
+    $cliInfo = Get-PropertyValue -InputObject $summaryJson -PropertyName 'cli'
+    $diffResult = Get-PropertyValue -InputObject $cliInfo -PropertyName 'diff'
+
+    $outInfo = Get-PropertyValue -InputObject $summaryJson -PropertyName 'out'
+    $reportFile = Get-PropertyValue -InputObject $outInfo -PropertyName 'reportHtml'
+    if (-not $reportFile) {
+      $artifactDir = Get-PropertyValue -InputObject $outInfo -PropertyName 'artifactDir'
+      if ($artifactDir) {
+        $candidateReport = Join-Path $artifactDir 'cli-report.html'
+        if (Test-Path -LiteralPath $candidateReport) {
+          $reportFile = $candidateReport
+        }
+      }
     }
-    if ($summaryJson.cli -and $summaryJson.cli.highlights) {
-      $highlights = @($summaryJson.cli.highlights)
-    }
+
+    $highlightsValue = Get-PropertyValue -InputObject $cliInfo -PropertyName 'highlights'
+    if ($highlightsValue) { $highlights = @($highlightsValue) }
   }
 
-  if ($exitCode -ne 0 -and -not ($FailOnDiff -and $diffResult)) {
-    $hadFailure = $true
+  $diffDetected = [bool]$diffResult
+  if ($exitCode -ne 0) {
+    if ($diffDetected) {
+      if ($FailOnDiff) { $hadFailure = $true }
+    } else {
+      $hadFailure = $true
+    }
   }
 
   $summaryItems += [ordered]@{
