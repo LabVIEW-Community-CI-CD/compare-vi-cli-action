@@ -22,16 +22,39 @@ function checkoutInitialBranch(repoDir, branchName, baseBranch) {
     return;
   }
 
-  const remoteRef = spawnSync('git', ['rev-parse', '--verify', `upstream/${branchName}`], {
-    cwd: repoDir,
-    encoding: 'utf8'
-  });
-  if (remoteRef.status === 0) {
-    run('git', ['checkout', '-b', branchName, `upstream/${branchName}`], { cwd: repoDir });
+  const remotes = ['upstream', 'origin'];
+  for (const remote of remotes) {
+    const remoteRef = spawnSync('git', ['rev-parse', '--verify', `${remote}/${branchName}`], {
+      cwd: repoDir,
+      encoding: 'utf8'
+    });
+    if (remoteRef.status === 0) {
+      run('git', ['checkout', '-b', branchName, `${remote}/${branchName}`], { cwd: repoDir });
+      return;
+    }
+  }
+
+  const baseCandidates = ['upstream', 'origin']
+    .map((remote) => `${remote}/${baseBranch}`)
+    .concat([baseBranch, 'HEAD']);
+
+  for (const candidate of baseCandidates) {
+    if (candidate !== 'HEAD') {
+      const probe = spawnSync('git', ['rev-parse', '--verify', candidate], {
+        cwd: repoDir,
+        encoding: 'utf8'
+      });
+      if (probe.status !== 0) {
+        continue;
+      }
+    }
+
+    run('git', ['checkout', '-B', baseBranch, candidate], { cwd: repoDir });
+    run('git', ['checkout', '-b', branchName], { cwd: repoDir });
     return;
   }
 
-  run('git', ['checkout', baseBranch], { cwd: repoDir });
+  run('git', ['checkout', '-B', baseBranch, 'HEAD'], { cwd: repoDir });
   run('git', ['checkout', '-b', branchName], { cwd: repoDir });
 }
 
