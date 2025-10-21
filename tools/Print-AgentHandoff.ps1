@@ -886,7 +886,16 @@ try {
     }
     $handoffDir = Join-Path $ResultsRoot '_agent/handoff'
     New-Item -ItemType Directory -Force -Path $handoffDir | Out-Null
-    Copy-Item -LiteralPath $releasePath -Destination (Join-Path $handoffDir 'release-summary.json') -Force
+    $releaseDest = Join-Path $handoffDir 'release-summary.json'
+    $releaseSourceFull = $releasePath
+    $releaseDestFull = $releaseDest
+    try { $releaseSourceFull = [System.IO.Path]::GetFullPath($releasePath) } catch {}
+    try { $releaseDestFull = [System.IO.Path]::GetFullPath($releaseDest) } catch {}
+    if (-not [string]::Equals($releaseSourceFull, $releaseDestFull, [System.StringComparison]::OrdinalIgnoreCase)) {
+      Copy-Item -LiteralPath $releasePath -Destination $releaseDest -Force
+    } else {
+      Write-Verbose 'Release summary already present at destination; skipping copy.'
+    }
     if ($env:GITHUB_STEP_SUMMARY) {
       $releaseLines = @(
         '### SemVer Status',
