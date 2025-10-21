@@ -4,7 +4,8 @@ param(
   [int]$Issue,
   [switch]$Execute,
   [string]$Base = 'develop',
-  [string]$BranchPrefix = 'issue'
+  [string]$BranchPrefix = 'issue',
+  [string]$PushTarget = 'standing'
 )
 
 Set-StrictMode -Version Latest
@@ -74,6 +75,11 @@ $defaultBase = Get-GitDefaultBranch
 if (-not $Base) { $Base = $defaultBase }
 Write-Host ("[orchestrator] Base: {0}" -f $Base)
 
+$snapshotPath = Join-Path $repo 'tools' 'Save-WorkInProgress.ps1'
+if (Test-Path -LiteralPath $snapshotPath) {
+  & pwsh '-NoLogo' '-NoProfile' '-File' $snapshotPath '-RepositoryRoot' $repo '-Name' 'branch-orchestrator' | Out-Null
+}
+
 $branchName = New-BranchName -Number $Issue -Title $title
 Write-Host ("[orchestrator] Branch: {0}" -f $branchName)
 
@@ -81,16 +87,32 @@ $ok = Ensure-Branch -Name $branchName -Base $Base
 if (-not $ok) { throw 'Failed to ensure branch' }
 
 if ($Execute) {
-  Write-Host '[orchestrator] Executing remote ops (push/PR)…'
-  try { & git push -u origin $branchName } catch { Write-Warning 'Push failed.' }
-  $gh = Get-Command gh -ErrorAction SilentlyContinue
-  if ($gh) {
-    try { & $gh.Source 'pr' 'create' '--fill' '--base' $Base '--head' $branchName | Out-Host } catch { Write-Warning 'PR create failed or already exists.' }
-    if ($digest) { Update-PRBodyWithDigest -Number $Issue -Digest $digest -SnapshotPath $snapPath }
-  } else {
-    Write-Warning 'gh not found; cannot open PR automatically.'
-  }
-} else {
-  Write-Host '[orchestrator] Dry run — no remote operations performed.'
-}
+  Write-Host '[orchestrator] Executing remote ops (push/PR).'
+  $prepareArgs = @(
+    '-NoLogo', '-NoProfile',
+    '-File', (Join-Path $repo 'tools' 'Prepare-StandingCommit.ps1'),
+    '-RepositoryRoot', $repo,
+    '-AutoCommit'
+  )
+  & pwsh @prepareArgs
+  if ($LASTEXITCODE -ne 0) { throw 'Prepare-StandingCommit failed.' }
 
+  $afterArgs = @(
+    '-NoLogo', '-NoProfile',
+    '-File', (Join-Path $repo 'tools' 'After-CommitActions.ps1'),
+    '-RepositoryRoot', $repo,
+    '-Push',
+    '-CreatePR',
+    '-CloseIssue'
+  )
+  if ($PushTarget) {
+    $afterArgs += '-PushTarget'
+    $afterArgs += $PushTarget
+  }
+  & pwsh @afterArgs
+  if ($LASTEXITCODE -ne 0) { throw 'Post-commit automation failed.' }
+
+  if ($digest) { Update-PRBodyWithDigest -Number $Issue -Digest $digest -SnapshotPath $snapPath }
+} else {
+  Write-Host '[orchestrator] Dry run - no remote operations performed.'
+}

@@ -18,6 +18,12 @@
 1. Post a status update to issue/PR #134 covering the successful dispatcher run, live `priority:sync`, and the fresh rogue sweep.
 2. Investigate the `compare-report.html` self-copy warning and patch the results copy logic if it persists.
 3. Refresh `priority:handoff-tests` when touching priority routing or hook scripts so downstream agents inherit up-to-date summaries.
+4. Use `pwsh -File tools/Prepare-StandingCommit.ps1 -RepositoryRoot . -AutoCommit` to let the helper
+   create/switch the standing branch, auto-stage the tracked files, and commit with the generated
+   message (summary lands in `tests/results/_agent/commit-plan.json`, including commit metadata).
+   Follow immediately with `pwsh -File tools/After-CommitActions.ps1 -RepositoryRoot . -Push -CreatePR`
+   so the push-target contract runs, the branch is pushed (setting upstream if needed), the PR is
+   created/updated via `gh`, and telemetry is written to `tests/results/_agent/post-commit.json`.
 
 ## First Actions for the Next Agent
 1. Run `node tools/npm/run-script.mjs priority:sync` (standard kickoff) and confirm the cache still resolves from live data.
