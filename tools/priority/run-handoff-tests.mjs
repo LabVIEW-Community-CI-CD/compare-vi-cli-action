@@ -1,4 +1,4 @@
-import { spawn } from 'node:child_process';
+import { spawn, spawnSync } from 'node:child_process';
 import { promises as fs } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -9,6 +9,75 @@ const repoRoot = path.resolve(__dirname, '..', '..');
 
 const nodeExecPath = process.env.npm_node_execpath || process.execPath;
 const wrapperPath = path.join(repoRoot, 'tools', 'npm', 'run-script.mjs');
+
+function runGit(args) {
+  const result = spawnSync('git', args, {
+    cwd: repoRoot,
+    env: process.env,
+    encoding: 'utf8',
+    stdio: ['ignore', 'pipe', 'pipe']
+  });
+
+  return {
+    status: result.status ?? (typeof result.signal === 'string' ? 128 : -1),
+    stdout: (result.stdout ?? '').trim(),
+    stderr: (result.stderr ?? '').trim()
+  };
+}
+
+function gitRefExists(ref) {
+  const probe = runGit(['show-ref', '--verify', '--quiet', ref]);
+  return probe.status === 0;
+}
+
+function listGitRemotes() {
+  const remotes = runGit(['remote']);
+  if (remotes.status !== 0) {
+    return [];
+  }
+  return remotes.stdout.split(/\s+/).filter(Boolean);
+}
+
+function ensureLocalBranch(branch, remotes) {
+  const notes = [];
+  if (gitRefExists(`refs/heads/${branch}`)) {
+    return notes;
+  }
+
+  const preferred = ['upstream', 'origin'];
+  const remoteOrder = [...new Set([...preferred.filter((name) => remotes.includes(name)), ...remotes])];
+
+  for (const remote of remoteOrder) {
+    const fetch = runGit(['fetch', '--depth=1', remote, `${branch}:refs/heads/${branch}`]);
+    if (fetch.status !== 0) {
+      continue;
+    }
+
+    notes.push(`Fetched ${branch} from ${remote} for dry-run helpers.`);
+    return notes;
+  }
+
+  const fallback = runGit(['branch', branch]);
+  if (fallback.status === 0) {
+    notes.push(`Created local ${branch} from current HEAD (remote branch unavailable).`);
+  } else {
+    notes.push(`Failed to create local ${branch}: ${fallback.stderr || 'unknown error'}`);
+  }
+
+  return notes;
+}
+
+function ensureBaseBranchesAvailable() {
+  const remotes = listGitRemotes();
+  const branches = ['develop', 'main'];
+  const notes = [];
+
+  for (const branch of branches) {
+    notes.push(...ensureLocalBranch(branch, remotes));
+  }
+
+  return notes;
+}
 
 function runCommand(command, args) {
   return new Promise((resolve) => {
@@ -86,7 +155,7 @@ async function ensureWrapperAvailable() {
 async function run() {
   const { available, message: availabilityMessage } = await ensureWrapperAvailable();
   const results = [];
-  const notes = [];
+  const notes = ensureBaseBranchesAvailable();
 
   if (!available) {
     notes.push(availabilityMessage || 'npm wrapper check failed');
