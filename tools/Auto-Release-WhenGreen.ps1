@@ -68,11 +68,39 @@ while($true){
 
 Write-Info 'Pester is green. Proceeding to merge and tag.'
 
+$repoRoot = (Resolve-Path '.').Path
+$helperTarget = switch -Regex ($TargetBranch) {
+  { $_ -ieq 'main' } { 'release-main' }
+  { $_ -ieq 'develop' } { 'develop' }
+  default { $null }
+}
+
+function Invoke-PushContractCheck {
+  param([switch]$SkipTracking)
+  if (-not $helperTarget) { return }
+  $args = @(
+    '-NoLogo', '-NoProfile',
+    '-File', (Join-Path $repoRoot 'tools' 'Ensure-AgentPushTarget.ps1'),
+    '-RepositoryRoot', $repoRoot
+  )
+  if ($SkipTracking) { $args += '-SkipTrackingCheck' }
+  $args += '-Target'
+  $args += $helperTarget
+  & pwsh @args
+  if ($LASTEXITCODE -ne 0) {
+    $phase = if ($SkipTracking) { 'pre-push' } else { 'post-push' }
+    throw "Push target contract failed ($phase)."
+  }
+}
+
 git fetch origin $TargetBranch $RcBranch
 git checkout $TargetBranch
 git pull --ff-only origin $TargetBranch
 git merge --no-ff $RcBranch -m "Release $Tag"
+
+Invoke-PushContractCheck -SkipTracking
 git push origin $TargetBranch
+Invoke-PushContractCheck
 
 # Tag and push
 git tag -a $Tag -m "Release $Tag"

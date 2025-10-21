@@ -3,6 +3,7 @@ param(
   [switch]$Stage,
   [switch]$Commit,
   [switch]$Push,
+  [string]$PushTarget = 'standing',
   [switch]$CreatePR,
   [switch]$OpenResults
 )
@@ -13,6 +14,14 @@ $ErrorActionPreference = 'Stop'
 $workspace = (Get-Location).Path
 $summary = @()
 $summaryPath = Join-Path $workspace 'tests/results/_agent/onebutton-summary.md'
+
+if (Test-Path (Join-Path $workspace 'tools' 'Save-WorkInProgress.ps1')) {
+  try {
+    & pwsh '-NoLogo' '-NoProfile' '-File' (Join-Path $workspace 'tools' 'Save-WorkInProgress.ps1') '-RepositoryRoot' $workspace '-Name' 'one-button'
+  } catch {
+    Write-Warning ("Failed to capture work-in-progress snapshot: {0}" -f $_.Exception.Message)
+  }
+}
 
 function Add-Summary {
   param([string]$Step,[string]$Status,[TimeSpan]$Duration,[string]$Message)
@@ -88,6 +97,15 @@ foreach ($step in $validateSteps) {
   Invoke-Step -Name $step.Name -Action $step.Action
 }
 
+if ($Stage -and -not ($Commit -or $Push -or $CreatePR)) {
+  Invoke-Step -Name 'Prepare standing commit (stage)' -Action {
+    Invoke-CommandWithExit -Command 'pwsh' -Arguments @(
+      '-NoLogo','-NoProfile','-File','./tools/Prepare-StandingCommit.ps1',
+      '-RepositoryRoot',(Get-Location).Path
+    ) -FailureMessage 'Prepare-StandingCommit (stage) failed.'
+  }
+}
+
 if ($Stage -or $Commit -or $Push -or $CreatePR) {
   Invoke-Step -Name 'Workflow drift (stage)' -Action { Invoke-CommandWithExit -Command 'pwsh' -Arguments @('-NoLogo','-NoProfile','-File','./tools/Check-WorkflowDrift.ps1','-AutoFix','-Stage') -FailureMessage 'Workflow drift stage failed.' }
 }
@@ -100,53 +118,31 @@ if ($Stage -or $Commit) {
   Invoke-Step -Name 'PrePush checks (post-stage)' -Action { Invoke-CommandWithExit -Command 'pwsh' -Arguments @('-NoLogo','-NoProfile','-File','./tools/PrePush-Checks.ps1') -FailureMessage 'PrePush checks failed after staging.' }
 }
 
-if ($Push) {
-  Invoke-Step -Name 'Push branch' -Action {
-    $branch = git rev-parse --abbrev-ref HEAD
-    $remoteUrl = git config --get remote.origin.url 2>$null
-    if (-not $remoteUrl) {
-      Write-Host '::notice::No origin remote configured; skipping push.'
-      return
-    }
-    git ls-remote --heads origin 2>$null
-    if ($LASTEXITCODE -ne 0) {
-      Write-Host '::notice::Cannot reach origin; skipping push.'
-      return
-    }
-    git rev-parse --abbrev-ref --symbolic-full-name 'HEAD@{upstream}' 2>$null
-    if ($LASTEXITCODE -eq 0) {
-      git push
-    } else {
-      git push --set-upstream origin $branch
-    }
-    if ($LASTEXITCODE -ne 0) { throw "git push exited $LASTEXITCODE" }
+if ($Commit -or $Push -or $CreatePR) {
+  Invoke-Step -Name 'Prepare standing commit (auto)' -Action {
+    Invoke-CommandWithExit -Command 'pwsh' -Arguments @(
+      '-NoLogo','-NoProfile','-File','./tools/Prepare-StandingCommit.ps1',
+      '-RepositoryRoot',(Get-Location).Path,
+      '-AutoCommit'
+    ) -FailureMessage 'Prepare-StandingCommit (auto) failed.'
   }
 }
 
-  if ($CreatePR) {
-    Invoke-Step -Name 'Create/Update PR (#127)' -Action {
-    $branch = git rev-parse --abbrev-ref HEAD
-    $gh = Get-Command gh -ErrorAction SilentlyContinue
-    if (-not $gh) {
-      Write-Host '::notice::gh CLI not available; skipping PR step.'
-      return
+if ($Push -or $CreatePR) {
+  Invoke-Step -Name 'Post-commit automation' -Action {
+    $args = @(
+      '-NoLogo','-NoProfile',
+      '-File',(Join-Path $workspace 'tools' 'After-CommitActions.ps1'),
+      '-RepositoryRoot',$workspace
+    )
+    if ($Push) { $args += '-Push' }
+    if ($CreatePR) { $args += '-CreatePR' }
+    if ($Push -or $CreatePR) { $args += '-CloseIssue' }
+    if ($PushTarget) {
+      $args += '-PushTarget'
+      $args += $PushTarget
     }
-    gh auth status 2>$null
-    if ($LASTEXITCODE -ne 0) {
-      Write-Host '::notice::gh not authenticated; skipping PR step.'
-      return
-    }
-      $title = 'Normalize workflows and local Validate mirrors (#127)'
-      $body = 'Automated workflow normalization and Validate task updates for #127.'
-    $existingJson = gh pr view --json number --head $branch 2>$null
-    if ($LASTEXITCODE -eq 0 -and $existingJson) {
-      $pr = $existingJson | ConvertFrom-Json
-      gh pr edit $pr.number --title $title --body $body | Out-Host
-      if ($LASTEXITCODE -ne 0) { throw "gh pr edit failed ($LASTEXITCODE)" }
-    } else {
-      gh pr create --base develop --head $branch --title $title --body $body | Out-Host
-      if ($LASTEXITCODE -ne 0) { throw "gh pr create failed ($LASTEXITCODE)" }
-    }
+    Invoke-CommandWithExit -Command 'pwsh' -Arguments $args -FailureMessage 'Post-commit automation failed.'
   }
 }
 

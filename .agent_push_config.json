@@ -1,0 +1,28 @@
+{
+  "schema": "agent-push-target/config@v1",
+  "schemaVersion": "1.0.0",
+  "defaultTarget": "standing",
+  "targets": {
+    "standing": {
+      "remote": "origin",
+      "branchPattern": "^issue/{number}-[a-z0-9\\-]+$",
+      "description": "Standing-priority working branches must include the current issue number."
+    },
+    "release-main": {
+      "remote": "origin",
+      "branchPattern": "^main$",
+      "description": "Release automation pushes directly to main."
+    },
+    "develop": {
+      "remote": "origin",
+      "branchPattern": "^develop$",
+      "description": "Direct pushes to develop target origin for administrative fixes."
+    }
+  },
+  "requireClean": true,
+  "requireTracking": true,
+  "telemetry": {
+    "resultsPath": "tests/results/_agent/push-target.json",
+    "stepSummaryHeader": "Agent Push Target"
+  }
+}

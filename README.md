@@ -22,7 +22,7 @@ This composite action runs NI **LVCompare** to diff two LabVIEW virtual instrume
 scheduled verification, and loop-style benchmarking while emitting structured JSON artifacts and step summaries. The
 action is validated against **LabVIEW 2025 Q3** on self-hosted Windows runners.
 
-> **Breaking change (v0.5.0)** – canonical fixtures are now `VI1.vi` / `VI2.vi`. Legacy names > `Base.vi` / `Head.vi`
+> **Breaking change (v0.5.0)** ΓÇô canonical fixtures are now `VI1.vi` / `VI2.vi`. Legacy names > `Base.vi` / `Head.vi`
 > are no longer published.
 
 ### Key capabilities
@@ -57,9 +57,9 @@ jobs:
 
 - LabVIEW (and LVCompare) installed on the runner (LabVIEW 2025 or later recommended). Default path: `C:\Program
   Files\National Instruments\Shared\LabVIEW Compare\LVCompare.exe`. Bitness note: this canonical LVCompare path can
-  operate as a launcher. To guarantee 64‑bit comparisons on x64 runners, provide a 64‑bit LabVIEW path using `-lvpath`
-  or set `LABVIEW_EXE` to `C:\Program Files\National Instruments\LabVIEW 20xx\LabVIEW.exe`. The harness auto‑injects
-  `-lvpath` when `LABVIEW_EXE` is set, so the compare executes in the 64‑bit LabVIEW environment even if the LVCompare
+  operate as a launcher. To guarantee 64ΓÇæbit comparisons on x64 runners, provide a 64ΓÇæbit LabVIEW path using `-lvpath`
+  or set `LABVIEW_EXE` to `C:\Program Files\National Instruments\LabVIEW 20xx\LabVIEW.exe`. The harness autoΓÇæinjects
+  `-lvpath` when `LABVIEW_EXE` is set, so the compare executes in the 64ΓÇæbit LabVIEW environment even if the LVCompare
   stub itself is only a launcher.
 - The repository checkout includes or generates the `.vi` files to compare.
 
@@ -78,10 +78,10 @@ flags (for example `--noDependencies`), and honors `LVCI_CLI_TIMEOUT_SECONDS` (d
 Use `LVCI_COMPARE_POLICY` to direct how the harness chooses between LVCompare and LabVIEW CLI. When using harness flows,
 the default is `cli-only` so compares remain headless. Set the variable explicitly if you need a different behaviour.
 
-- `cli-only` (default) – run via LabVIEW CLI and fail if CLI capture fails.
-- `cli-first` – attempt CLI first, fall back to LVCompare on recoverable CLI failures (missing report, parse errors).
-- `lv-first` – prefer LVCompare; only run CLI when explicitly requested via `LVCI_COMPARE_MODE`.
-- `lv-only` – enforce LVCompare only.
+- `cli-only` (default) ΓÇô run via LabVIEW CLI and fail if CLI capture fails.
+- `cli-first` ΓÇô attempt CLI first, fall back to LVCompare on recoverable CLI failures (missing report, parse errors).
+- `lv-first` ΓÇô prefer LVCompare; only run CLI when explicitly requested via `LVCI_COMPARE_MODE`.
+- `lv-only` ΓÇô enforce LVCompare only.
 
 When the base and head VIs share the same filename (typical commit-to-commit compares), use the CLI-based harness
 flows. The composite action does not support comparing two different files that share the same filename; LVCompare will
@@ -98,17 +98,17 @@ reject that case.
 - Aggregated metadata: `tests/results/ref-compare-history/history-summary.json` (`schema: vi-history-compare/v1`)
   captures LVCompare exit codes, highlights (for example, block-diagram vs. attribute-only changes), skip reasons, and
   report locations. Missing commit stretches are grouped into a compact summary.
-- Step summary table: the workflow appends a Markdown grid showing each pair, diff status (with a ⭐ marker on the first
+- Step summary table: the workflow appends a Markdown grid showing each pair, diff status (with a Γ¡É marker on the first
   detected diff), exit code, and links to the generated reports.
 
 Workflow inputs mirror the script:
 
-- `vi_name` – target VI (default `VI1.vi`)
-- `branch` – branch/ref to analyse (`HEAD` by default)
-- `max_pairs` – adjacent commit pairs to evaluate (latest first)
+- `vi_name` ΓÇô target VI (default `VI1.vi`)
+- `branch` ΓÇô branch/ref to analyse (`HEAD` by default)
+- `max_pairs` ΓÇô adjacent commit pairs to evaluate (latest first)
 - LVCompare flags (`-nobdcosm`, `-nofppos`, `-noattr`) plus optional `additional_flags`
-- `fail_on_diff` – optionally fail the job when LVCompare detects a difference
-- `missing_strategy` – `skip` (default) ignores commits where the VI is absent; `abort` fails when the file disappears
+- `fail_on_diff` ΓÇô optionally fail the job when LVCompare detects a difference
+- `missing_strategy` ΓÇô `skip` (default) ignores commits where the VI is absent; `abort` fails when the file disappears
 
 > Tip: leave `fail_on_diff` set to `false` for the first pass, review the history summary, and rerun with `true` once
 > you are ready to gate on differences.
@@ -167,11 +167,11 @@ This command renders a local snapshot of session-lock heartbeat age, queue wait 
 - `tools/Print-AgentHandoff.ps1 -AutoTrim` (prints summary and trims automatically when `needsTrim=true`; also writes a
   session capsule under `tests/results/_agent/sessions/` for the current workspace state).
 
-Status JSON contains `state`, heartbeat freshness, and byte counters – ideal for hand-offs or CI summaries.
+Status JSON contains `state`, heartbeat freshness, and byte counters ΓÇô ideal for hand-offs or CI summaries.
 
 #### Watch orchestrated run (Docker)
 
-Use the token/REST-capable watcher to inspect the orchestrated run’s dispatcher logs and artifacts without opening the
+Use the token/REST-capable watcher to inspect the orchestrated runΓÇÖs dispatcher logs and artifacts without opening the
 web UI:
 
 ```powershell
@@ -196,12 +196,12 @@ Tips:
   - Local validation quick reference (see below) keeps local runs aligned with CI stages.
 - Prefer the REST watcher for GitHub status: `node tools/npm/run-script.mjs ci:watch:rest -- --run-id <id>` streams job
   conclusions without relying on the `gh` CLI. Passing `--branch <name>` auto-selects the latest run. A VS Code task
-  named “CI Watch (REST)” prompts for the run id.
+  named ΓÇ£CI Watch (REST)ΓÇ¥ prompts for the run id.
 - Repeated 404s or other API errors cause the watcher to exit with `conclusion: watcher-error` after the built-in grace
-  window (90s for “run not found”, 120s for other failures) while still writing `watcher-rest.json` to keep telemetry
+  window (90s for ΓÇ£run not foundΓÇ¥, 120s for other failures) while still writing `watcher-rest.json` to keep telemetry
   flowing. Direct rate-limit responses abort immediately with guidance to authenticate via `GH_TOKEN`/`GITHUB_TOKEN` or
   wait for the reset window.
-- The REST watcher writes `watcher-rest.json` into the job’s results directory; `tools/Update-SessionIndexWatcher.ps1`
+- The REST watcher writes `watcher-rest.json` into the jobΓÇÖs results directory; `tools/Update-SessionIndexWatcher.ps1`
   merges the data into `session-index.json` so CI telemetry reflects the final GitHub status alongside Pester results.
 - The watcher prunes old run directories (`.tmp/watch-run`) automatically and warns if run/dispatcher status stalls
   longer than the configured window (default 10 minutes). When consecutive dispatcher logs hash to the same digest, it
@@ -209,13 +209,14 @@ Tips:
 
 #### Local validation quick reference
 
-- **Run PrePush Checks** (`pwsh -File tools/PrePush-Checks.ps1` / “Run PrePush
-  Checks”): mirrors the Validate job (lint, compare-report manifest, rerun hint
+- **Run PrePush Checks** (`pwsh -File tools/PrePush-Checks.ps1` / ΓÇ£Run PrePush
+- **Prepare Standing Commit** (`pwsh -File tools/Prepare-StandingCommit.ps1`) auto-creates/switches the standing branch, stages tracked files meant for the next commit, and writes `tests/results/_agent/commit-plan.json` for hand-offs.
+  ChecksΓÇ¥): mirrors the Validate job (lint, compare-report manifest, rerun hint
   helper).
-- **Run Pester Tests (Unit)** (`pwsh ./Invoke-PesterTests.ps1` / “Run Pester
-  Tests (Unit)”): executes the Validate unit suites.
+- **Run Pester Tests (Unit)** (`pwsh ./Invoke-PesterTests.ps1` / ΓÇ£Run Pester
+  Tests (Unit)ΓÇ¥): executes the Validate unit suites.
 - **Run Pester Tests (Integration)** (`pwsh ./Invoke-PesterTests.ps1 -IntegrationMode
-  include` / “Run Pester Tests (Integration)”): runs integration coverage prior
+  include` / ΓÇ£Run Pester Tests (Integration)ΓÇ¥): runs integration coverage prior
   to orchestrated dispatch.
 - **Build Tools Image (Docker)**: `tools/Build-ToolsImage.ps1 -Tag
   comparevi-tools:local` prepares a unified container with dotnet, Node,
@@ -255,14 +256,14 @@ Prompts:
 
 `ci-orchestrated.yml` runs a deterministic chain with guarded branches:
 
-1. `normalize` (ubuntu) – normalizes inputs (e.g., `include_integration`) and writes run provenance.
-2. `lint` (ubuntu) – actionlint, docs lint, non‑LV checks in Docker; builds/validates the CLI when present; emits
+1. `normalize` (ubuntu) ΓÇô normalizes inputs (e.g., `include_integration`) and writes run provenance.
+2. `lint` (ubuntu) ΓÇô actionlint, docs lint, nonΓÇæLV checks in Docker; builds/validates the CLI when present; emits
    watcher sanity and checksums.
-3. `preflight` (windows‑latest) – hosted Windows health/notice gate; LVCompare presence is informational here.
-4. `probe` (self‑hosted Windows) – interactivity probe to decide single vs. matrix fallback.
-5. `pester-category` (self‑hosted Windows, matrix) – runs category suites with leak/artifact tracking and merges
+3. `preflight` (windowsΓÇælatest) ΓÇô hosted Windows health/notice gate; LVCompare presence is informational here.
+4. `probe` (selfΓÇæhosted Windows) ΓÇô interactivity probe to decide single vs. matrix fallback.
+5. `pester-category` (selfΓÇæhosted Windows, matrix) ΓÇô runs category suites with leak/artifact tracking and merges
    watcher/session index summaries.
-6. `windows-single` (self‑hosted Windows, conditional) – interactive single‑job path that warms up LabVIEW, runs the
+6. `windows-single` (selfΓÇæhosted Windows, conditional) ΓÇô interactive singleΓÇæjob path that warms up LabVIEW, runs the
    categories serially, generates a traceability matrix, executes fixture drift, and posts session index/closure
    crumbs.
 
@@ -314,7 +315,7 @@ node tools/npm/run-script.mjs lint:md:changed
 | Preflight validator & smoke | See README (this section) and `.github/workflows/smoke-on-label.yml` |
 | Integration runbook | `docs/INTEGRATION_RUNBOOK.md` |
 | Troubleshooting | `docs/TROUBLESHOOTING.md` |
-| Traceability (requirements ↔ tests) | `docs/TRACEABILITY_GUIDE.md` |
+| Traceability (requirements Γåö tests) | `docs/TRACEABILITY_GUIDE.md` |
 
 ## Contributing
 
@@ -331,19 +332,20 @@ link to supporting ADRs.
 Run the commands below (or invoke the matching VS Code task) before pushing. Each entry calls the same automation that
 our workflows execute, so local runs mirror CI behaviour.
 
-- **Run PrePush Checks** (`pwsh -File tools/PrePush-Checks.ps1` / “Run PrePush
-  Checks”): mirrors `validate.yml › lint` and runs actionlint, markdownlint,
+- **Run PrePush Checks** (`pwsh -File tools/PrePush-Checks.ps1` / ΓÇ£Run PrePush
+- **Prepare Standing Commit** (`pwsh -File tools/Prepare-StandingCommit.ps1`) auto-creates/switches the standing branch, stages tracked files meant for the next commit, and writes `tests/results/_agent/commit-plan.json` for hand-offs.
+  ChecksΓÇ¥): mirrors `validate.yml ΓÇ║ lint` and runs actionlint, markdownlint,
   the tracked-artifact guard, rerun-hint helper, and watcher schema validation.
-- **Run Pester Tests (Unit)** (`pwsh ./Invoke-PesterTests.ps1` / “Run Pester
-  Tests (Unit)”): mirrors the unit consumers in `validate.yml` for fast
+- **Run Pester Tests (Unit)** (`pwsh ./Invoke-PesterTests.ps1` / ΓÇ£Run Pester
+  Tests (Unit)ΓÇ¥): mirrors the unit consumers in `validate.yml` for fast
   feedback before orchestrated dispatch.
 - **Run Pester Tests (Integration)** (`pwsh ./Invoke-PesterTests.ps1
-  -IntegrationMode include` / “Run Pester Tests (Integration)”): mirrors the
+  -IntegrationMode include` / ΓÇ£Run Pester Tests (Integration)ΓÇ¥): mirrors the
   integration phase in `ci-orchestrated.yml` and smoke stages in
   `validate.yml`; requires LVCompare.
 - **Run Non-LV Checks (Tools Image)**:
   `tools/Run-NonLVChecksInDocker.ps1 -ToolsImageTag comparevi-tools:local
-  -UseToolsImage` mirrors `validate.yml › cli-smoke` using the consolidated
+  -UseToolsImage` mirrors `validate.yml ΓÇ║ cli-smoke` using the consolidated
   tools image so actionlint/markdownlint/docs drift checks match the smoke
   environment while building the CLI artifact.
 - **Run Non-LV Checks (Docker)**: `tools/Run-NonLVChecksInDocker.ps1` mirrors
@@ -371,13 +373,13 @@ Keeping these green locally prevents surprises when Validate or the orchestrated
 
 #### Standing priority helpers
 
-- `node tools/npm/run-script.mjs priority:bootstrap` — run hook preflight/parity (optional via `-- -VerboseHooks`) and
+- `node tools/npm/run-script.mjs priority:bootstrap` ΓÇö run hook preflight/parity (optional via `-- -VerboseHooks`) and
   refresh the standing-priority snapshot/router.
-- `node tools/npm/run-script.mjs priority:handoff` — import the latest handoff summaries into the current PowerShell
+- `node tools/npm/run-script.mjs priority:handoff` ΓÇö import the latest handoff summaries into the current PowerShell
   session (globals such as `$StandingPrioritySnapshot` and `$StandingPriorityRouter`).
-- `node tools/npm/run-script.mjs priority:handoff-tests` — execute the priority/hooks/semver checks and write
+- `node tools/npm/run-script.mjs priority:handoff-tests` ΓÇö execute the priority/hooks/semver checks and write
   `tests/results/_agent/handoff/test-summary.json` for later review.
-- `node tools/npm/run-script.mjs priority:release` — simulate the release path from the router; add `-- -Execute` to run
+- `node tools/npm/run-script.mjs priority:release` ΓÇö simulate the release path from the router; add `-- -Execute` to run
   `Branch-Orchestrator.ps1 -Execute` instead of the default dry-run.
 - `node tools/npm/run-script.mjs handoff:schema` - validate the stored hook handoff summary against
   `docs/schemas/handoff-hook-summary-v1.schema.json`.
@@ -385,17 +387,17 @@ Keeping these green locally prevents surprises when Validate or the orchestrated
   (`tests/results/_agent/handoff/release-summary.json`) against `docs/schemas/handoff-release-v1.schema.json`.
 - `node tools/npm/run-script.mjs handoff:session-schema` - validate stored session capsules
   (`tests/results/_agent/sessions/*.json`) against `docs/schemas/handoff-session-v1.schema.json`.
-- `node tools/npm/run-script.mjs semver:check` — run the SemVer validator (`tools/priority/validate-semver.mjs`) against
+- `node tools/npm/run-script.mjs semver:check` ΓÇö run the SemVer validator (`tools/priority/validate-semver.mjs`) against
   the current package version.
 
 
-- `node tools/npm/run-script.mjs hooks:plane` — prints the detected plane (for example `windows-pwsh`, `linux-wsl`,
+- `node tools/npm/run-script.mjs hooks:plane` ΓÇö prints the detected plane (for example `windows-pwsh`, `linux-wsl`,
   `github-ubuntu`) and the active enforcement mode.
-- `node tools/npm/run-script.mjs hooks:preflight` — verifies Node/PowerShell availability for the current plane and
+- `node tools/npm/run-script.mjs hooks:preflight` ΓÇö verifies Node/PowerShell availability for the current plane and
   warns if a dependency is missing.
-- `node tools/npm/run-script.mjs hooks:multi` — runs both the shell and PowerShell wrappers, publishes labelled
+- `node tools/npm/run-script.mjs hooks:multi` ΓÇö runs both the shell and PowerShell wrappers, publishes labelled
   summaries (`tests/results/_hooks/pre-commit.shell.json`, etc.), and fails when the JSON differs.
-- `node tools/npm/run-script.mjs hooks:schema` — validates all hook summaries against `docs/schemas/hooks-
+- `node tools/npm/run-script.mjs hooks:schema` ΓÇö validates all hook summaries against `docs/schemas/hooks-
   summary-v1.schema.json`.
 
 Tune behaviour with `HOOKS_ENFORCE=fail|warn|off` (default: `fail` in CI, `warn` locally). Use `HOOKS_PWSH` or
@@ -410,8 +412,8 @@ Tune behaviour with `HOOKS_ENFORCE=fail|warn|off` (default: `fail` in CI, `warn`
 ### VS Code extension (experimental)
 
 The N-CLI companion (under `vscode/comparevi-helper`) centralises CompareVI and other CLI helpers in VS Code. The
-CompareVI provider mirrors the CLI workflows from this repository—manual compares, commit compares, preset CRUD,
-artifact thumbnails—while adding health checks and telemetry. A stub g-cli provider exercises the provider registry and
+CompareVI provider mirrors the CLI workflows from this repositoryΓÇömanual compares, commit compares, preset CRUD,
+artifact thumbnailsΓÇöwhile adding health checks and telemetry. A stub g-cli provider exercises the provider registry and
 warns when g-cli is not installed yet.
 
 Key features:
@@ -434,9 +436,9 @@ For local development:
 Packaging notes:
 
 1. Development: use `node tools/npm/cli.mjs install` (or `--prefix vscode/comparevi-helper`) then press `F5`
-   (Debug: Start Debugging) from VS Code to side‑load the extension.
+   (Debug: Start Debugging) from VS Code to sideΓÇæload the extension.
 2. Optional VSIX: install `vsce` locally and run `node tools/npm/run-script.mjs --prefix vscode/comparevi-helper
-   package`; install the resulting VSIX via “Extensions: Install from VSIX...” if you prefer a self-contained bundle
+   package`; install the resulting VSIX via ΓÇ£Extensions: Install from VSIX...ΓÇ¥ if you prefer a self-contained bundle
    instead of running the debug host.
 
 
@@ -481,4 +483,5 @@ build per-RID archives and checksums for distribution.
 - `./comparevi-cli providers`
 - `./comparevi-cli providers --names-only`
 - `./comparevi-cli providers --name labviewcli`
+
 

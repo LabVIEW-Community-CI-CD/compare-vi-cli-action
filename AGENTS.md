@@ -33,6 +33,19 @@ line buffers).
   3. Create or sync a working branch (`issue/<standing-number>-<slug>`), push minimal changes,
      dispatch CI, update the PR (reference `#<standing-number>`), monitor to green, merge when
      acceptance is met.
+  4. When unsure if the standing workflow needs to run, call `pwsh -File tools/Trigger-StandingWorkflow.ps1 -PlanOnly`
+     to see the current recommendation (reasons land in `tests/results/_agent/standing-workflow.json`). Drop `-PlanOnly`
+     to execute the full workflow once the helper indicates it is required. The standing workflow automatically runs
+     `tools/Clean-RogueLV.ps1` after Pester so any lingering LabVIEW/LVCompare instances are terminated (and flagged)
+     before push/PR automation continues.
+4. Run `pwsh -File tools/Prepare-StandingCommit.ps1 -RepositoryRoot . -AutoCommit` whenever the
+   working tree changes. The helper auto-creates/switches the standing branch, stages eligible files,
+   creates the commit with a generated subject, and records telemetry in
+   `tests/results/_agent/commit-plan.json` (`commitType`, `commitDescription`, staged/skipped lists).
+5. Follow up immediately with `pwsh -File tools/After-CommitActions.ps1 -RepositoryRoot . -Push
+   -CreatePR`. This script re-verifies the push-target contract, pushes to the correct remote (setting
+   upstream if missing), opens/updates the PR via `gh` when available, and writes
+   `tests/results/_agent/post-commit.json` so the next agent can see what happened.
 
 ## Streaming guardrails
 
@@ -106,6 +119,16 @@ line buffers).
   - Installs `actionlint` (`vars.ACTIONLINT_VERSION`, default 1.7.7) if missing.
   - Runs `actionlint` across `.github/workflows`.
   - Optionally round-trips YAML with `ruamel.yaml` (if Python available).
+- `tools/Prepare-StandingCommit.ps1` is the canonical way to auto-stage standing-priority edits.
+  It writes a summary to `tests/results/_agent/commit-plan.json` (staged, autoSkipped, commit metadata); inspect that file during
+  hand-offs to understand what was staged or skipped. Files under `tests/results/`, `.agent_priority_cache.json`,
+  and other volatile paths are skipped automatically.
+- `tools/After-CommitActions.ps1` (usually invoked immediately after the commit) pushes the branch,
+  re-runs the push-target contract, opens/updates the PR when `gh` is authenticated, and writes
+  `tests/results/_agent/post-commit.json` (push/PR outcomes, errors) so the next agent knows what happened.
+- The push-target contract lives in `.agent_push_config.json`. The helper above invokes it automatically,
+  but you can always re-run `pwsh -File tools/Ensure-AgentPushTarget.ps1` manually; telemetry lands in
+  `tests/results/_agent/push-target.json` so handoffs inherit the last check.
 - Optional hook workflow:
   1. `git config core.hooksPath tools/hooks`
   2. Copy `tools/hooks/pre-push.sample` to `tools/hooks/pre-push`
@@ -299,4 +322,5 @@ Guidance:
 - For markdownlint, try `Resolve-MarkdownlintCli2Path`; only fall back to `npx --no-install` when necessary.
 - For LVCompare, continue to enforce the canonical path; pass `-lvpath` to LVCompare and never launch `LabVIEW.exe`.
 - Do not lint or link-check vendor documentation under `bin/`; scope link checks to `docs/` or ignore `bin/**`.
+
 
