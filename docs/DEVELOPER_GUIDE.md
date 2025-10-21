@@ -36,6 +36,21 @@ node tools/npm/run-script.mjs lint            # markdownlint + custom checks
 4. Update README usage examples to latest tag
 5. Verify marketplace listing once published
 
+## Branching model
+
+- `develop` is the integration branch. All standing-priority work lands here via squash merges (linear history).
+- `main` reflects the latest release. Use release branches to promote changes from `develop` to `main`.
+- For standing-priority work, create `issue/<number>-<slug>` and merge back with squash once checks are green.
+- Use short-lived `feature/<slug>` branches when parallel threads are needed. Rebase on `develop` frequently and
+  open PRs with `npm run priority:pr`.
+- When preparing a release:
+  1. Create `release/<version>` from `develop` with `npm run release:branch` (use `npm run release:branch:dry`
+     to rehearse without pushes or PR creation).
+  2. Finish release-only work on feature branches targeting `release/<version>`.
+  3. Merge the release branch into `main`, create the draft release, then fast-forward `develop`
+     with `npm run release:finalize -- <version>` (or `npm run release:finalize:dry` to rehearse).
+- Delete branches automatically after merging (GitHub setting) so the standing-priority flow starts clean each time.
+
 ## Pull request & merge policy
 
 - Branch protection requires a linear history: use the **Squash and merge** button (or rebase-and-merge) so no merge

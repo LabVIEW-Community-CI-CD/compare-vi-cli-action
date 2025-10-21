@@ -58,7 +58,11 @@
     "ext:package": "pwsh -NoLogo -NoProfile -File tools/Build-VSCExtension.ps1",
     "ext:install": "pwsh -NoLogo -NoProfile -File tools/Build-VSCExtension.ps1 -Install",
     "ext:bump-package": "pwsh -NoLogo -NoProfile -File tools/Build-VSCExtension.ps1 -BumpPatch",
-    "ext:bump-install": "pwsh -NoLogo -NoProfile -File tools/Build-VSCExtension.ps1 -BumpPatch -Install"
+    "ext:bump-install": "pwsh -NoLogo -NoProfile -File tools/Build-VSCExtension.ps1 -BumpPatch -Install",
+    "release:branch": "node tools/priority/create-release-branch.mjs",
+    "release:finalize": "node tools/priority/finalize-release.mjs",
+    "release:branch:dry": "node tools/priority/create-release-branch.dryrun.mjs",
+    "release:finalize:dry": "node tools/priority/finalize-release.dryrun.mjs"
   },
   "devDependencies": {
     "@types/argparse": "^2.0.16",
