@@ -154,6 +154,14 @@ async function run() {
     `[handoff-tests] status=${status} total=${summary.total} failures=${failureCount} -> ${summaryPath}`
   );
 
+  if (failureCount > 0) {
+    for (const entry of results.filter((item) => item.exitCode !== 0)) {
+      console.error(
+        `[handoff-tests] command failed: ${entry.command}\nstdout:\n${entry.stdout || '(empty)'}\n\nstderr:\n${entry.stderr || '(empty)'}\n`
+      );
+    }
+  }
+
   if (status === 'error' || failureCount > 0) {
     process.exitCode = 1;
   }

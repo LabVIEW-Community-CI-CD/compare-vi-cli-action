@@ -63,7 +63,14 @@ async function setupTemporaryRepo(t) {
     run('git', ['config', 'user.name', 'Dry-run Tests'], { cwd: repoDir });
     run('git', ['config', 'user.email', 'dryrun-tests@example.com'], { cwd: repoDir });
     run('git', ['add', 'tools/priority'], { cwd: repoDir });
-    run('git', ['commit', '-m', 'test: sync helper scripts'], { cwd: repoDir });
+    const commitResult = spawnSync('git', ['commit', '--allow-empty', '-m', 'test: sync helper scripts'], {
+      cwd: repoDir,
+      encoding: 'utf8'
+    });
+    const commitError = commitResult.stderr?.trim() ?? '';
+    if (commitResult.status !== 0 && !commitError.includes('nothing to commit')) {
+      throw new Error(`git commit failed: ${commitError || 'unknown error'}`);
+    }
   }
 
   t.after(async () => {
