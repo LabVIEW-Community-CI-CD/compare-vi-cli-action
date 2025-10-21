@@ -9,6 +9,31 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..', '..');
+const dryrunFeatureBranch = 'feature/release-dryrun-helpers';
+const dryrunBaseBranch = 'develop';
+
+function checkoutInitialBranch(repoDir, branchName, baseBranch) {
+  const localRef = spawnSync('git', ['rev-parse', '--verify', branchName], {
+    cwd: repoDir,
+    encoding: 'utf8'
+  });
+  if (localRef.status === 0) {
+    run('git', ['checkout', branchName], { cwd: repoDir });
+    return;
+  }
+
+  const remoteRef = spawnSync('git', ['rev-parse', '--verify', `upstream/${branchName}`], {
+    cwd: repoDir,
+    encoding: 'utf8'
+  });
+  if (remoteRef.status === 0) {
+    run('git', ['checkout', '-b', branchName, `upstream/${branchName}`], { cwd: repoDir });
+    return;
+  }
+
+  run('git', ['checkout', baseBranch], { cwd: repoDir });
+  run('git', ['checkout', '-b', branchName], { cwd: repoDir });
+}
 
 function run(command, args, options = {}) {
   const result = spawnSync(command, args, {
@@ -32,7 +57,7 @@ async function setupTemporaryRepo(t) {
   run('git', ['clone', '--local', '--no-hardlinks', repoRoot, repoDir]);
   run('git', ['remote', 'add', 'upstream', repoRoot], { cwd: repoDir });
   run('git', ['fetch', 'upstream'], { cwd: repoDir });
-  run('git', ['checkout', 'feature/release-dryrun-helpers'], { cwd: repoDir });
+  checkoutInitialBranch(repoDir, dryrunFeatureBranch, dryrunBaseBranch);
 
   const helperFiles = [
     'create-release-branch.dryrun.mjs',
@@ -89,7 +114,7 @@ test('dry-run helpers create metadata and restore branch context', async (t) => 
   const featureFinalize = path.join(repoDir, 'tools', 'priority', 'finalize-feature.dryrun.mjs');
 
   const initialBranch = run('git', ['rev-parse', '--abbrev-ref', 'HEAD'], { cwd: repoDir });
-  assert.equal(initialBranch, 'feature/release-dryrun-helpers');
+  assert.equal(initialBranch, dryrunFeatureBranch);
 
   const helpOutput = run('node', [releaseCreate, '--help'], { cwd: repoDir });
   assert.match(helpOutput, /Usage: npm run release:branch:dry/);
@@ -99,7 +124,7 @@ test('dry-run helpers create metadata and restore branch context', async (t) => 
   const version = 'v0.0.0-test';
   run('node', [releaseCreate, version], { cwd: repoDir });
   const postCreateBranch = run('git', ['rev-parse', '--abbrev-ref', 'HEAD'], { cwd: repoDir });
-  assert.equal(postCreateBranch, 'feature/release-dryrun-helpers');
+  assert.equal(postCreateBranch, dryrunFeatureBranch);
   const releaseBranchList = run('git', ['branch', '--list', `release/${version}`], { cwd: repoDir });
   assert.ok(releaseBranchList.includes(`release/${version}`));
 
@@ -107,13 +132,13 @@ test('dry-run helpers create metadata and restore branch context', async (t) => 
   const releaseMetadata = JSON.parse(await readFile(releaseMetadataPath, 'utf8'));
   assert.equal(releaseMetadata.branch, `release/${version}`);
   assert.equal(releaseMetadata.version, version);
-  assert.equal(releaseMetadata.baseBranch, 'develop');
+  assert.equal(releaseMetadata.baseBranch, dryrunBaseBranch);
   assert.equal(releaseMetadata.dryRun, true);
   assert.ok(Date.parse(releaseMetadata.createdAt));
 
   run('node', [releaseFinalize, version], { cwd: repoDir });
   const finalizeBranch = run('git', ['rev-parse', '--abbrev-ref', 'HEAD'], { cwd: repoDir });
-  assert.equal(finalizeBranch, 'feature/release-dryrun-helpers');
+  assert.equal(finalizeBranch, dryrunFeatureBranch);
 
   const releaseFinalizePath = path.join(repoDir, 'tests', 'results', '_agent', 'release', `release-${version}-finalize-dryrun.json`);
   const releaseFinalizeMetadata = JSON.parse(await readFile(releaseFinalizePath, 'utf8'));
@@ -125,18 +150,18 @@ test('dry-run helpers create metadata and restore branch context', async (t) => 
   const featureSlug = 'my-feature';
   run('node', [featureCreate, featureSlug], { cwd: repoDir });
   const featureBranchAfterCreate = run('git', ['rev-parse', '--abbrev-ref', 'HEAD'], { cwd: repoDir });
-  assert.equal(featureBranchAfterCreate, 'feature/release-dryrun-helpers');
+  assert.equal(featureBranchAfterCreate, dryrunFeatureBranch);
 
   const featureMetadataPath = path.join(repoDir, 'tests', 'results', '_agent', 'feature', `feature-${featureSlug}-dryrun.json`);
   const featureMetadata = JSON.parse(await readFile(featureMetadataPath, 'utf8'));
   assert.equal(featureMetadata.branch, `feature/${featureSlug}`);
-  assert.equal(featureMetadata.baseBranch, 'develop');
+  assert.equal(featureMetadata.baseBranch, dryrunBaseBranch);
   assert.equal(featureMetadata.dryRun, true);
   assert.ok(Date.parse(featureMetadata.createdAt));
 
   run('node', [featureFinalize, featureSlug], { cwd: repoDir });
   const featureBranchAfterFinalize = run('git', ['rev-parse', '--abbrev-ref', 'HEAD'], { cwd: repoDir });
-  assert.equal(featureBranchAfterFinalize, 'feature/release-dryrun-helpers');
+  assert.equal(featureBranchAfterFinalize, dryrunFeatureBranch);
 
   const featureFinalizePath = path.join(repoDir, 'tests', 'results', '_agent', 'feature', `feature-${featureSlug}-finalize-dryrun.json`);
   const featureFinalizeMetadata = JSON.parse(await readFile(featureFinalizePath, 'utf8'));
