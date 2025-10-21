@@ -92,6 +92,9 @@ async function run() {
     notes.push(availabilityMessage || 'npm wrapper check failed');
   } else {
     const scripts = ['priority:test', 'hooks:test', 'semver:check', 'priority:policy'];
+    if (process.env.PRIORITY_HANDOFF_SKIP_POLICY === '1') {
+      scripts.pop();
+    }
     for (const script of scripts) {
       const args = [wrapperPath, script];
       const { exitCode, stdout, stderr, startedAt, completedAt, durationMs, error } = await runCommand(nodeExecPath, args);

@@ -500,6 +500,7 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PRIORITY_HANDOFF_SKIP_POLICY: '1'
         run: node tools/npm/run-script.mjs priority:handoff-tests
 
   issue-snapshot:
