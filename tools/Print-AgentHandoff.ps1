@@ -34,6 +34,162 @@ function Format-BoolLabel {
   return 'unknown'
 }
 
+function Get-RogueLVStatus {
+  param(
+    [string]$RepoRoot,
+    [int]$LookBackSeconds = 900
+  )
+
+  if (-not $RepoRoot) {
+    $RepoRoot = (Resolve-Path '.').Path
+  }
+
+  $detectScript = Join-Path $RepoRoot 'tools' 'Detect-RogueLV.ps1'
+  if (-not (Test-Path -LiteralPath $detectScript -PathType Leaf)) {
+    return $null
+  }
+
+  $args = @(
+    '-NoLogo', '-NoProfile',
+    '-File', $detectScript,
+    '-LookBackSeconds', [int][math]::Abs($LookBackSeconds),
+    '-Quiet'
+  )
+
+  try {
+    $raw = & pwsh @args
+  } catch {
+    Write-Warning ("Failed to invoke Detect-RogueLV.ps1: {0}" -f $_.Exception.Message)
+    return $null
+  }
+
+  $joined = ($raw | ForEach-Object { $_.ToString() }) -join [Environment]::NewLine
+  $trimmed = $joined.Trim()
+  if ([string]::IsNullOrWhiteSpace($trimmed)) {
+    return $null
+  }
+
+  try {
+    return $trimmed | ConvertFrom-Json -ErrorAction Stop
+  } catch {
+    Write-Warning ("Failed to parse Detect-RogueLV output: {0}" -f $_.Exception.Message)
+    return $null
+  }
+}
+
+function Write-RogueLVSummary {
+  param(
+    [string]$RepoRoot,
+    [string]$ResultsRoot,
+    [int]$LookBackSeconds = 900
+  )
+
+  $status = Get-RogueLVStatus -RepoRoot $RepoRoot -LookBackSeconds $LookBackSeconds
+  if (-not $status) {
+    return $null
+  }
+
+  $liveLvCompare = @()
+  $liveLabVIEW = @()
+  $noticedLvCompare = @()
+  $noticedLabVIEW = @()
+  $rogueLvCompare = @()
+  $rogueLabVIEW = @()
+
+  if ($status.PSObject.Properties['live']) {
+    if ($status.live.PSObject.Properties['lvcompare']) { $liveLvCompare = @($status.live.lvcompare) }
+    if ($status.live.PSObject.Properties['labview'])   { $liveLabVIEW = @($status.live.labview) }
+  }
+  if ($status.PSObject.Properties['noticed']) {
+    if ($status.noticed.PSObject.Properties['lvcompare']) { $noticedLvCompare = @($status.noticed.lvcompare) }
+    if ($status.noticed.PSObject.Properties['labview'])   { $noticedLabVIEW = @($status.noticed.labview) }
+  }
+  if ($status.PSObject.Properties['rogue']) {
+    if ($status.rogue.PSObject.Properties['lvcompare']) { $rogueLvCompare = @($status.rogue.lvcompare) }
+    if ($status.rogue.PSObject.Properties['labview'])   { $rogueLabVIEW = @($status.rogue.labview) }
+  }
+
+  $lookback = if ($status.PSObject.Properties['lookbackSeconds']) { [int]$status.lookbackSeconds } else { $LookBackSeconds }
+  $schema = if ($status.PSObject.Properties['schema']) { $status.schema } else { 'unknown' }
+
+  $liveLvCompareLabel = if ($liveLvCompare.Count -gt 0) { $liveLvCompare -join ',' } else { '(none)' }
+  $liveLabViewLabel = if ($liveLabVIEW.Count -gt 0) { $liveLabVIEW -join ',' } else { '(none)' }
+  $noticedLvCompareLabel = if ($noticedLvCompare.Count -gt 0) { $noticedLvCompare -join ',' } else { '(none)' }
+  $noticedLabViewLabel = if ($noticedLabVIEW.Count -gt 0) { $noticedLabVIEW -join ',' } else { '(none)' }
+  $rogueLvCompareLabel = if ($rogueLvCompare.Count -gt 0) { $rogueLvCompare -join ',' } else { '(none)' }
+  $rogueLabViewLabel = if ($rogueLabVIEW.Count -gt 0) { $rogueLabVIEW -join ',' } else { '(none)' }
+
+  Write-Host ''
+  Write-Host '[Rogue LV Status]' -ForegroundColor Cyan
+  Write-Host ("  schema   : {0}" -f (Format-NullableValue $schema))
+  Write-Host ("  lookback : {0}s" -f $lookback)
+  Write-Host ("  live     : LVCompare={0}  LabVIEW={1}" -f (Format-NullableValue $liveLvCompareLabel), (Format-NullableValue $liveLabViewLabel))
+  Write-Host ("  noticed  : LVCompare={0}  LabVIEW={1}" -f (Format-NullableValue $noticedLvCompareLabel), (Format-NullableValue $noticedLabViewLabel))
+  Write-Host ("  rogue    : LVCompare={0}  LabVIEW={1}" -f (Format-NullableValue $rogueLvCompareLabel), (Format-NullableValue $rogueLabViewLabel))
+
+  $liveDetails = @()
+  if ($status.PSObject.Properties['liveDetails']) {
+    if ($status.liveDetails.PSObject.Properties['lvcompare']) {
+      foreach ($entry in @($status.liveDetails.lvcompare)) {
+        if ($null -eq $entry) { continue }
+        $liveDetails += [pscustomobject]@{
+          kind = 'LVCompare'
+          pid  = $entry.PSObject.Properties['pid'] ? $entry.pid : $null
+          commandLine = $entry.PSObject.Properties['commandLine'] ? $entry.commandLine : $null
+        }
+      }
+    }
+    if ($status.liveDetails.PSObject.Properties['labview']) {
+      foreach ($entry in @($status.liveDetails.labview)) {
+        if ($null -eq $entry) { continue }
+        $liveDetails += [pscustomobject]@{
+          kind = 'LabVIEW'
+          pid  = $entry.PSObject.Properties['pid'] ? $entry.pid : $null
+          commandLine = $entry.PSObject.Properties['commandLine'] ? $entry.commandLine : $null
+        }
+      }
+    }
+  }
+
+  if ($liveDetails.Count -gt 0) {
+    foreach ($detail in $liveDetails | Sort-Object kind,pid) {
+      $pidLabel = if ($detail.pid) { $detail.pid } else { '(unknown)' }
+      $cmdLabel = if ($detail.commandLine) { $detail.commandLine } else { '(no command line)' }
+      Write-Host ("  - {0} PID {1}: {2}" -f $detail.kind, $pidLabel, $cmdLabel)
+    }
+  }
+
+  if ($ResultsRoot) {
+    try {
+      $handoffDir = Join-Path $ResultsRoot '_agent/handoff'
+      New-Item -ItemType Directory -Force -Path $handoffDir | Out-Null
+      $status | ConvertTo-Json -Depth 6 | Out-File -FilePath (Join-Path $handoffDir 'rogue-summary.json') -Encoding utf8
+    } catch {
+      Write-Warning ("Failed to persist rogue summary: {0}" -f $_.Exception.Message)
+    }
+  }
+
+  if ($env:GITHUB_STEP_SUMMARY) {
+    $summaryLines = @(
+      '### Rogue LV Summary',
+      '',
+      ('- Lookback: {0}s' -f $lookback),
+      ('- Live: LVCompare={0}  LabVIEW={1}' -f $liveLvCompareLabel, $liveLabViewLabel),
+      ('- Rogue: LVCompare={0}  LabVIEW={1}' -f $rogueLvCompareLabel, $rogueLabViewLabel)
+    )
+    if ($liveDetails.Count -gt 0) {
+      $summaryLines += ''
+      $summaryLines += '| kind | pid | command |'
+      $summaryLines += '| --- | --- | --- |'
+      foreach ($detail in $liveDetails | Sort-Object kind,pid) {
+        $summaryLines += ('| {0} | {1} | {2} |' -f $detail.kind, (Format-NullableValue $detail.pid), (Format-NullableValue $detail.commandLine))
+      }
+    }
+    ($summaryLines -join "`n") | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8
+  }
+
+  return $status
+}
 function Get-StandingPriorityContext {
   param(
     [string]$RepoRoot,
@@ -828,6 +984,12 @@ try {
 }
 
 Write-WatcherStatusSummary -ResultsRoot $ResultsRoot -RequestAutoTrim:$AutoTrim
+
+try {
+  Write-RogueLVSummary -RepoRoot $repoRoot -ResultsRoot $ResultsRoot | Out-Null
+} catch {
+  Write-Warning ("Failed to emit rogue LV summary: {0}" -f $_.Exception.Message)
+}
 
 $hookSummaries = Write-HookSummaries -ResultsRoot $ResultsRoot
 if ($hookSummaries -and $hookSummaries.Count -gt 0) {

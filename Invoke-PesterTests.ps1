@@ -3374,6 +3374,22 @@ if ($DetectLeaks) {
           try { Stop-Process -Id $p.Id -Force -ErrorAction SilentlyContinue; $killed += [pscustomobject]@{ name=$p.ProcessName; pid=$p.Id } } catch {}
         }
         if ($procsForKill.Count -gt 0) { $actions += ("killedProcs:{0}" -f $procsForKill.Count) }
+        if ($procsForKill.Count -gt 0) {
+          foreach ($proc in $procsForKill) {
+            try { Wait-Process -Id $proc.Id -Timeout 5 -ErrorAction SilentlyContinue } catch {}
+          }
+        }
+        $remainingAttempts = 2
+        while ($remainingAttempts -gt 0) {
+          $remainingAttempts--
+          $pending = @()
+          try { $pending = @(_Find-ProcsByPattern -Patterns $leakTargets) } catch { $pending = @() }
+          if ($pending.Count -eq 0) { break }
+          Start-Sleep -Seconds 1
+          foreach ($p in $pending) {
+            try { Stop-Process -Id $p.Id -Force -ErrorAction SilentlyContinue; $killed += [pscustomobject]@{ name=$p.ProcessName; pid=$p.Id } } catch {}
+          }
+        }
       } catch {}
       # Attempt to stop/remove Pester jobs
       try {

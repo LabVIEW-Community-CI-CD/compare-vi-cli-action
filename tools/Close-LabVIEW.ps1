@@ -63,6 +63,11 @@ try {
   Write-Host ("[Close-LabVIEW] Provider: {0}" -f $result.provider) -ForegroundColor DarkGray
   Write-Host ("[Close-LabVIEW] Command : {0}" -f $result.command) -ForegroundColor DarkGray
   if ($result.exitCode -ne 0) {
+    $stderr = $result.PSObject.Properties['stderr'] ? $result.stderr : ''
+    if ($stderr -match '-350000' -or $stderr -match 'failed to establish a connection with LabVIEW') {
+      Write-Host "[Close-LabVIEW] LabVIEWCLI reported no running LabVIEW instance; treating as already closed." -ForegroundColor DarkGray
+      return
+    }
     throw "Provider '$($result.provider)' exited with code $($result.exitCode)."
   }
   Write-Host "[Close-LabVIEW] LabVIEW shutdown command completed successfully." -ForegroundColor DarkGreen

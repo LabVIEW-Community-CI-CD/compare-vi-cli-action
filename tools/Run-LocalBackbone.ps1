@@ -53,6 +53,85 @@ function Invoke-BackboneStep {
   }
 }
 
+function Invoke-RogueSweep {
+  param(
+    [string]$RepoRoot,
+    [int]$LookBackSeconds = 900,
+    [int]$MaxAttempts = 3
+  )
+
+  if (-not $RepoRoot) {
+    $RepoRoot = (Resolve-Path '.').Path
+  }
+
+  $attempts = [Math]::Max(1, [int][math]::Abs($MaxAttempts))
+  $detectScript = Join-Path $RepoRoot 'tools' 'Detect-RogueLV.ps1'
+  $closeScript = Join-Path $RepoRoot 'tools' 'Close-LabVIEW.ps1'
+  $resultsDir = Join-Path $RepoRoot 'tests' 'results'
+
+  if (-not (Test-Path -LiteralPath $detectScript -PathType Leaf)) {
+    throw "Detect-RogueLV.ps1 not found; aborting rogue sweep."
+  }
+
+  for ($attempt = 1; $attempt -le $attempts; $attempt++) {
+    $label = ("[rogue-sweep] Detect-RogueLV attempt {0}/{1}" -f $attempt, $attempts)
+    Write-Host $label -ForegroundColor Yellow
+
+    & pwsh '-NoLogo' '-NoProfile' '-File' $detectScript `
+      '-ResultsDir' $resultsDir `
+      '-LookBackSeconds' ([int][math]::Abs($LookBackSeconds)) `
+      '-AppendToStepSummary' `
+      '-FailOnRogue'
+
+    $exitCode = $LASTEXITCODE
+    if ($exitCode -eq 0) {
+      Write-Host '[rogue-sweep] No rogue LVCompare/LabVIEW processes detected.' -ForegroundColor DarkGreen
+      return $true
+    }
+
+    if ($exitCode -ne 3) {
+      throw ("Detect-RogueLV.ps1 exited with code {0}." -f $exitCode)
+    }
+
+    if ($attempt -eq $attempts) {
+      break
+    }
+
+    Write-Warning '[rogue-sweep] Rogue processes detected; attempting cleanup before retry.'
+
+    if (Test-Path -LiteralPath $closeScript -PathType Leaf) {
+      try {
+        & pwsh '-NoLogo' '-NoProfile' '-File' $closeScript | Out-Null
+        Write-Host '[rogue-sweep] Close-LabVIEW.ps1 invoked.' -ForegroundColor DarkGray
+      } catch {
+        Write-Warning ("[rogue-sweep] Close-LabVIEW.ps1 failed: {0}" -f $_.Exception.Message)
+      }
+    }
+
+    $liveProcs = @()
+    try {
+      $liveProcs = @(Get-Process -Name 'LabVIEW','LVCompare' -ErrorAction SilentlyContinue)
+    } catch {
+      Write-Warning ("[rogue-sweep] Failed to query LabVIEW/LVCompare processes: {0}" -f $_.Exception.Message)
+      $liveProcs = @()
+    }
+
+    if ($liveProcs.Count -gt 0) {
+      try {
+        $ids = $liveProcs.Id
+        Stop-Process -Id $ids -Force -ErrorAction Stop
+        Write-Warning ("[rogue-sweep] Forced termination issued for PID(s): {0}" -f ($ids -join ','))
+      } catch {
+        Write-Warning ("[rogue-sweep] Stop-Process failed: {0}" -f $_.Exception.Message)
+      }
+    }
+
+    Start-Sleep -Seconds 2
+  }
+
+  throw 'Rogue LVCompare/LabVIEW processes remain after retry attempts.'
+}
+
 Push-Location $repoRoot
 try {
   Write-Host "Repository root: $repoRoot" -ForegroundColor Gray
@@ -123,6 +202,13 @@ try {
         } else {
           $args += 'exclude'
         }
+        $args += '-CleanLabVIEW'
+        $args += '-CleanAfter'
+        $args += '-DetectLeaks'
+        $args += '-KillLeaks'
+        $args += '-FailOnLeaks'
+        $args += '-LeakGraceSeconds'
+        $args += '5'
         & pwsh @args
       }
     }
@@ -208,12 +294,8 @@ try {
     }
   } -SkipWhenDryRun
 
-  Invoke-BackboneStep -Name 'Detect-RogueLV.ps1' -Action {
-    & pwsh '-NoLogo' '-NoProfile' '-File' (Join-Path $repoRoot 'tools' 'Detect-RogueLV.ps1') `
-      '-ResultsDir' (Join-Path $repoRoot 'tests' 'results') `
-      '-LookBackSeconds' 900 `
-      '-AppendToStepSummary' `
-      '-FailOnRogue'
+  Invoke-BackboneStep -Name 'Rogue LV sweep' -Action {
+    Invoke-RogueSweep -RepoRoot $repoRoot -LookBackSeconds 900 -MaxAttempts 3 | Out-Null
   } -SkipWhenDryRun
 
   Write-Host ""

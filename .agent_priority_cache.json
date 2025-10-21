@@ -1,18 +1,18 @@
 {
-  "number": 254,
-  "title": "Add VI history compare workflow and artifact summary",
-  "url": "https://github.com/LabVIEW-Community-CI-CD/compare-vi-cli-action/issues/254",
+  "number": 263,
+  "title": "Standing priority: eliminate LabVIEW UI hangs",
+  "url": "https://github.com/LabVIEW-Community-CI-CD/compare-vi-cli-action/issues/263",
   "state": "OPEN",
   "labels": [
     "standing-priority"
   ],
   "assignees": [],
   "milestone": null,
-  "commentCount": 0,
-  "lastSeenUpdatedAt": "2025-10-20T01:06:09Z",
-  "issueDigest": "88a5f1d35ffb908e8ef0bbcbeffb1230e47f1bf1d5d01ef46e7a062bfd582f8c",
-  "bodyDigest": "c09ea70cb19eae4df95063107aaf70b88ce8daca46ca2028c7c2f8d2248418e7",
-  "cachedAtUtc": "2025-10-20T02:49:11.901Z",
+  "commentCount": 9,
+  "lastSeenUpdatedAt": "2025-10-21T12:34:27Z",
+  "issueDigest": "a6ea41a424f2a671af95221d0c9803f13598256bad0cf68c0eda0ec68887110c",
+  "bodyDigest": "3617392e892cbf8472dec49510db38b23ebd1004ce0547018c7822a112af9633",
+  "cachedAtUtc": "2025-10-21T13:01:29.103Z",
   "lastFetchSource": "live",
   "lastFetchError": null
 }
