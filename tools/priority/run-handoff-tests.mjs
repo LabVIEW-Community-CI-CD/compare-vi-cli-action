@@ -92,8 +92,12 @@ async function run() {
     notes.push(availabilityMessage || 'npm wrapper check failed');
   } else {
     const scripts = ['priority:test', 'hooks:test', 'semver:check', 'priority:policy'];
-    const skipPolicy = (process.env.PRIORITY_HANDOFF_SKIP_POLICY || '').toLowerCase();
-    if (skipPolicy && skipPolicy !== '0' && skipPolicy !== 'false') {
+    const skipPolicyEnv = process.env.PRIORITY_HANDOFF_SKIP_POLICY || '';
+    if (skipPolicyEnv) {
+      console.log(`[handoff-tests] PRIORITY_HANDOFF_SKIP_POLICY=${skipPolicyEnv}`);
+    }
+    const normalizedSkipPolicy = skipPolicyEnv.trim().toLowerCase();
+    if (normalizedSkipPolicy && normalizedSkipPolicy !== '0' && normalizedSkipPolicy !== 'false') {
       scripts.pop();
     }
     for (const script of scripts) {
