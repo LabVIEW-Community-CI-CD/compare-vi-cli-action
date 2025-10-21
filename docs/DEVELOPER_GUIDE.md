@@ -36,11 +36,18 @@ node tools/npm/run-script.mjs lint            # markdownlint + custom checks
 4. Update README usage examples to latest tag
 5. Verify marketplace listing once published
 
+## Pull request & merge policy
+
+- Branch protection requires a linear history: use the **Squash and merge** button (or rebase-and-merge) so no merge
+  commits land on `develop`/`main`.
+- Keep PRs focused and include the standing issue reference (`#<number>`) in the commit subject and PR description.
+- Ensure required checks (`validate`, `fixtures`, `session-index`) are green before merging; rerun as needed.
+
 ## Dispatcher modules
 
-- `scripts/Pester-Invoker.psm1` – per-file execution with crumbs (`pester-invoker/v1`)
-- `scripts/Invoke-PesterSingleLoop.ps1` – outer loop runner (unit + integration)
-- `scripts/Run-AutonomousIntegrationLoop.ps1` – latency/diff soak harness
+- `scripts/Pester-Invoker.psm1` - per-file execution with crumbs (`pester-invoker/v1`)
+- `scripts/Invoke-PesterSingleLoop.ps1` - outer loop runner (unit + integration)
+- `scripts/Run-AutonomousIntegrationLoop.ps1` - latency/diff soak harness
 
 ## Watch mode tips
 

@@ -846,14 +846,16 @@ try {
     Write-Host ("  state    : {0}" -f (Format-NullableValue $issueSnap.state))
     Write-Host ("  updated  : {0}" -f (Format-NullableValue $issueSnap.updatedAt))
     Write-Host ("  digest   : {0}" -f (Format-NullableValue $issueSnap.digest))
+    Write-Host ("  merge    : use Squash and Merge (linear history required)") -ForegroundColor DarkGray
 
     if ($env:GITHUB_STEP_SUMMARY) {
       $priorityLines = @(
         '### Standing Priority',
         '',
-        ('- Issue: #{0} — {1}' -f (Format-NullableValue $issueSnap.number), (Format-NullableValue $issueSnap.title)),
+        ('- Issue: #{0} - {1}' -f (Format-NullableValue $issueSnap.number), (Format-NullableValue $issueSnap.title)),
         ('- State: {0}  Updated: {1}' -f (Format-NullableValue $issueSnap.state), (Format-NullableValue $issueSnap.updatedAt)),
-        ('- Digest: `{0}`' -f (Format-NullableValue $issueSnap.digest))
+        ('- Digest: `{0}`' -f (Format-NullableValue $issueSnap.digest)),
+        '- Merge: Use Squash and Merge (linear history required)'
       )
       ($priorityLines -join "`n") | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8
     }

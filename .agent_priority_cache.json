@@ -1,18 +1,18 @@
 {
-  "number": 263,
-  "title": "Standing priority: eliminate LabVIEW UI hangs",
-  "url": "https://github.com/LabVIEW-Community-CI-CD/compare-vi-cli-action/issues/263",
+  "number": 267,
+  "title": "Automate merge-method enforcement for determinism",
+  "url": "https://github.com/LabVIEW-Community-CI-CD/compare-vi-cli-action/issues/267",
   "state": "OPEN",
   "labels": [
     "standing-priority"
   ],
   "assignees": [],
   "milestone": null,
-  "commentCount": 9,
-  "lastSeenUpdatedAt": "2025-10-21T12:34:27Z",
-  "issueDigest": "a6ea41a424f2a671af95221d0c9803f13598256bad0cf68c0eda0ec68887110c",
+  "commentCount": 0,
+  "lastSeenUpdatedAt": "2025-10-21T15:06:43Z",
+  "issueDigest": "d6c73f1f016ce44b1f505ebeebd6505edf3cd17a471edab4af8be134cfe66c38",
   "bodyDigest": "3617392e892cbf8472dec49510db38b23ebd1004ce0547018c7822a112af9633",
-  "cachedAtUtc": "2025-10-21T13:01:29.103Z",
+  "cachedAtUtc": "2025-10-21T15:10:21.272Z",
   "lastFetchSource": "live",
   "lastFetchError": null
 }
