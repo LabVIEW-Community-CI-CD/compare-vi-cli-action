@@ -248,6 +248,7 @@ $commitSha = $null
 $pushFollowup = $null
 $prFollowup = $null
 $ghCommand = $null
+$prHeadRef = $null
 
 if ($CreatePR -or $CloseIssue) {
   try {
@@ -291,6 +292,15 @@ try {
 
   $branch = Get-GitSingleLine @('rev-parse','--abbrev-ref','HEAD')
   if (-not $branch -or $branch -eq 'HEAD') { throw 'Cannot determine branch (detached HEAD).' }
+
+  if (-not $prHeadRef) {
+    $remoteUrl = Get-GitSingleLine @('config','--get',("remote.{0}.url" -f $Remote))
+    if ($remoteUrl -and $remoteUrl -match 'github\.com[:/](?<owner>[^/]+)/(?<repo>[^/.]+)') {
+      $prHeadRef = "{0}:{1}" -f $Matches.owner,$branch
+    } else {
+      $prHeadRef = $branch
+    }
+  }
 
   $commitMessage = Get-GitSingleLine @('log','-1','--pretty=%s')
   $commitSha = Get-GitSingleLine @('rev-parse','HEAD')
@@ -351,12 +361,12 @@ try {
       $authExit = $LASTEXITCODE
       $LASTEXITCODE = 0
       if ($authExit -eq 0) {
-        $existing = Invoke-GhCommand -Args @('pr','view','--json','number','--head',$branch) -GhCommand $ghCommand 2>$null
+        $existing = Invoke-GhCommand -Args @('pr','view',$branch,'--json','number') -GhCommand $ghCommand 2>$null
         $existingExit = $LASTEXITCODE
         $LASTEXITCODE = 0
         if ($existingExit -ne 0 -or -not $existing) {
           $title = if ($commitMessage) { $commitMessage } else { "Standing priority update #$issueNumber" }
-          $args = @('pr','create','--base',$BaseBranch,'--head',$branch,'--title',$title,'--fill')
+          $args = @('pr','create','--base',$BaseBranch,'--head',$prHeadRef,'--title',$title,'--fill')
           if ($issueNumber) { $args += @('--body',("Automated updates for #{0}." -f $issueNumber)) }
           $prOutput = Invoke-GhCommand -Args $args -GhCommand $ghCommand
           $createExit = $LASTEXITCODE
