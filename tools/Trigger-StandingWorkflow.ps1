@@ -97,6 +97,26 @@ function Read-JsonFile {
 }
 
 $repoRoot = Get-RepoRoot -RepositoryRoot $RepositoryRoot
+
+if ([string]::IsNullOrWhiteSpace($env:GH_TOKEN)) {
+  if ($env:GH_TOKEN_FILE -and (Test-Path -LiteralPath $env:GH_TOKEN_FILE -PathType Leaf)) {
+    try {
+      $token = (Get-Content -LiteralPath $env:GH_TOKEN_FILE -Raw).Trim()
+      if ($token) {
+        $env:GH_TOKEN = $token
+        if (-not $env:GITHUB_TOKEN) { $env:GITHUB_TOKEN = $token }
+        Write-Host '[standing] Loaded GH_TOKEN from GH_TOKEN_FILE.' -ForegroundColor DarkGray
+      } else {
+        Write-Warning 'GH_TOKEN_FILE is empty; GitHub API calls may be unauthenticated.'
+      }
+    } catch {
+      Write-Warning ("Failed to read GH_TOKEN_FILE ({0}): {1}" -f $env:GH_TOKEN_FILE, $_.Exception.Message)
+    }
+  } else {
+    Write-Warning 'GH_TOKEN not set and GH_TOKEN_FILE not available; GitHub API calls may be rate limited.'
+  }
+}
+
 $analysis = [ordered]@{
   repoRoot  = $repoRoot
   generated = (Get-Date).ToString('o')
@@ -214,3 +234,4 @@ if ($exit -ne 0) {
 
 Write-Host '[standing] Standing-priority workflow completed.' -ForegroundColor Green
 $global:LASTEXITCODE = 0
+

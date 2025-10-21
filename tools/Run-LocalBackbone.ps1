@@ -108,6 +108,14 @@ try {
     Invoke-BackboneStep -Name 'priority:sync' -Action {
       & node tools/npm/run-script.mjs priority:sync
     }
+    $cachePath = Join-Path $repoRoot '.agent_priority_cache.json'
+    if (Test-Path -LiteralPath $cachePath) {
+      $status = & git status --porcelain=1 -- $cachePath
+      if ($status) {
+        Write-Host '[priority] Refresh reverted: restoring .agent_priority_cache.json to clean state.' -ForegroundColor DarkGray
+        & git checkout -- $cachePath
+      }
+    }
   } else {
     Write-Host "Skipping priority sync as requested." -ForegroundColor Yellow
   }
@@ -247,9 +255,14 @@ try {
   }
 
   Invoke-BackboneStep -Name 'Rogue LV cleanup' -SkipWhenDryRun -Action {
+    $cleanScript = Join-Path $repoRoot 'tools' 'Clean-RogueLV.ps1'
+    if (-not (Test-Path -LiteralPath $cleanScript -PathType Leaf)) {
+      Write-Host "[rogue-lv] Cleanup script missing at $cleanScript; skipping sweep." -ForegroundColor Yellow
+      return
+    }
     $args = @(
       '-NoLogo','-NoProfile',
-      '-File',(Join-Path $repoRoot 'tools' 'Clean-RogueLV.ps1'),
+      '-File',$cleanScript,
       '-ResultsDir',(Join-Path $repoRoot 'tests' 'results')
     )
     & pwsh @args
