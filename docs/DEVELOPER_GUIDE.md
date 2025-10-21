@@ -48,7 +48,9 @@ node tools/npm/run-script.mjs lint            # markdownlint + custom checks
      to rehearse without pushes or PR creation).
   2. Finish release-only work on feature branches targeting `release/<version>`.
   3. Merge the release branch into `main`, create the draft release, then fast-forward `develop`
-     with `npm run release:finalize -- <version>` (or `npm run release:finalize:dry` to rehearse).
+     with `npm run release:finalize -- <version>` (use `npm run release:finalize:dry` to rehearse).
+- When rehearsing feature branch work, use `npm run feature:branch:dry -- my-feature` and
+  `npm run feature:finalize:dry -- my-feature` to simulate branch creation and finalization without touching remotes.
 - Delete branches automatically after merging (GitHub setting) so the standing-priority flow starts clean each time.
 
 ## Pull request & merge policy
