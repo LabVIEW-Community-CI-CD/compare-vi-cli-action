@@ -29,6 +29,47 @@ $scriptRoot = Split-Path -Parent $PSCommandPath
 $repoRoot = Resolve-Path (Join-Path $scriptRoot '..') | Select-Object -ExpandProperty Path
 $script:autoTestPlan = $null
 
+function Write-LabViewEnvSnapshot {
+  param(
+    [string]$RepoRoot,
+    [string]$OutputPath
+  )
+
+  $keys = @(
+    'CLEAN_LABVIEW',
+    'CLEAN_LVCOMPARE',
+    'LABVIEW_CLEANUP',
+    'LVCI_COMPARE_POLICY',
+    'LVCI_COMPARE_MODE',
+    'FAST_PESTER'
+  )
+
+  $snapshot = [ordered]@{
+    schema      = 'labview-env-snapshot/v1'
+    generatedAt = (Get-Date).ToString('o')
+    repoRoot    = $RepoRoot
+    values      = @{}
+  }
+
+  Write-Host '[pester] LabVIEW/LVCompare environment snapshot:' -ForegroundColor DarkGray
+  foreach ($key in $keys) {
+    $value = [System.Environment]::GetEnvironmentVariable($key)
+    $display = if ($null -eq $value) { '<unset>' } elseif ($value -eq '') { '""' } else { $value }
+    Write-Host ("  {0} = {1}" -f $key, $display) -ForegroundColor DarkGray
+    $snapshot.values[$key] = $value
+  }
+
+  if ($OutputPath) {
+    $outputDir = Split-Path -Parent $OutputPath
+    if (-not (Test-Path -LiteralPath $outputDir)) {
+      New-Item -ItemType Directory -Path $outputDir -Force | Out-Null
+    }
+    $snapshot | ConvertTo-Json -Depth 4 | Out-File -FilePath $OutputPath -Encoding utf8
+  }
+
+  return $snapshot
+}
+
 function Invoke-BackboneStep {
   param(
     [Parameter(Mandatory = $true)][string]$Name,
@@ -173,6 +214,9 @@ try {
   }
 
   if (-not $SkipPester) {
+    $labViewEnvPath = Join-Path $repoRoot 'tests/results/_agent/labview-env.json'
+    Write-LabViewEnvSnapshot -RepoRoot $repoRoot -OutputPath $labViewEnvPath
+
     if (-not $shouldRunPester) {
       $label = if ($testDecisionLabel) { $testDecisionLabel } else { 'n/a' }
       Write-Host ("Tests marked as '{0}' by commit plan; skipping Pester run." -f $label) -ForegroundColor Yellow
@@ -200,6 +244,15 @@ try {
     }
   } else {
     Write-Host "Skipping Pester run as requested." -ForegroundColor Yellow
+  }
+
+  Invoke-BackboneStep -Name 'Rogue LV cleanup' -SkipWhenDryRun -Action {
+    $args = @(
+      '-NoLogo','-NoProfile',
+      '-File',(Join-Path $repoRoot 'tools' 'Clean-RogueLV.ps1'),
+      '-ResultsDir',(Join-Path $repoRoot 'tests' 'results')
+    )
+    & pwsh @args
   }
 
   if ($RunWatcherUpdate) {
