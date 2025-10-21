@@ -497,6 +497,9 @@ jobs:
       - name: Install dependencies (no scripts)
         run: npm ci --ignore-scripts
       - name: Run priority handoff tests
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: node tools/npm/run-script.mjs priority:handoff-tests
 
   issue-snapshot:
