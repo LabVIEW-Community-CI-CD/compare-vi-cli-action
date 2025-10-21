@@ -1,39 +1,36 @@
 #!/usr/bin/env node
 
-import { spawnSync } from 'node:child_process';
 import { writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import process from 'node:process';
+import {
+  run,
+  parseSingleValueArg,
+  ensureValidIdentifier,
+  ensureBranchExists,
+  getRepoRoot
+} from './lib/branch-utils.mjs';
 
-function run(command, args, options = {}) {
-  const result = spawnSync(command, args, {
-    encoding: 'utf8',
-    stdio: ['ignore', 'pipe', 'inherit'],
-    ...options
-  });
-  if (result.status !== 0) {
-    throw new Error(`${command} ${args.join(' ')} failed with exit code ${result.status}`);
-  }
-  return result.stdout.trim();
-}
+const USAGE_LINES = [
+  'Usage: npm run release:finalize:dry -- <version>',
+  '',
+  'Simulates fast-forwarding release/<version> into main/develop and writes metadata under tests/results/_agent/release/.',
+  '',
+  'Options:',
+  '  -h, --help    Show this message and exit'
+];
 
 async function main() {
-  const version = process.argv[2];
-  if (!version) {
-    console.error('Usage: npm run release:finalize:dry -- vX.Y.Z');
-    process.exit(1);
-  }
+  const version = parseSingleValueArg(process.argv, {
+    usageLines: USAGE_LINES,
+    valueLabel: '<version>'
+  });
+  ensureValidIdentifier(version, { label: 'version' });
 
   const branch = `release/${version}`;
-  const root = run('git', ['rev-parse', '--show-toplevel']);
+  ensureBranchExists(branch);
 
-  const branches = run('git', ['branch'])
-    .split('\n')
-    .map((line) => line.replace('*', '').trim())
-    .filter(Boolean);
-  if (!branches.includes(branch)) {
-    throw new Error(`Branch ${branch} not found. Create it before running the dry-run finalizer.`);
-  }
+  const root = getRepoRoot();
 
   const releaseCommit = run('git', ['rev-parse', branch]);
   const mainBase = run('git', ['rev-parse', 'upstream/main']);

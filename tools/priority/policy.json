@@ -14,8 +14,10 @@
         "lint",
         "fixtures",
         "session-index",
-        "issue-snapshot"
+        "issue-snapshot",
+        "Workflows Lint / lint (pull_request)"
       ]
     }
   }
 }
+

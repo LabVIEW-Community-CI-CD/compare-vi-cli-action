@@ -44,14 +44,30 @@ node tools/npm/run-script.mjs lint            # markdownlint + custom checks
 - Use short-lived `feature/<slug>` branches when parallel threads are needed. Rebase on `develop` frequently and
   open PRs with `npm run priority:pr`.
 - When preparing a release:
-  1. Create `release/<version>` from `develop` with `npm run release:branch` (use `npm run release:branch:dry`
-     to rehearse without pushes or PR creation).
+  1. Create `release/<version>` from `develop` with `npm run release:branch`. The helper bumps `package.json`,
+     pushes the branch to your fork, and opens a PR targeting `main`. Use `npm run release:branch:dry`
+     when you want to rehearse the flow without touching remotes.
   2. Finish release-only work on feature branches targeting `release/<version>`.
   3. Merge the release branch into `main`, create the draft release, then fast-forward `develop`
-     with `npm run release:finalize -- <version>` (use `npm run release:finalize:dry` to rehearse).
+     with `npm run release:finalize -- <version>`. The helper fast-forwards `main`, creates a draft
+     GitHub release, fast-forwards `develop`, and records metadata under `tests/results/_agent/release/`.
+     Use `npm run release:finalize:dry` to rehearse the flow without pushing.
+     - The finalize helper blocks if the release PR has pending or failing checks; set
+       `RELEASE_FINALIZE_SKIP_CHECKS=1` (or `RELEASE_FINALIZE_ALLOW_MERGED=1` / `RELEASE_FINALIZE_ALLOW_DIRTY=1`)
+       to override in emergencies.
 - When rehearsing feature branch work, use `npm run feature:branch:dry -- my-feature` and
   `npm run feature:finalize:dry -- my-feature` to simulate branch creation and finalization without touching remotes.
 - Delete branches automatically after merging (GitHub setting) so the standing-priority flow starts clean each time.
+
+### Release metadata
+
+- Running the live helpers writes JSON snapshots under `tests/results/_agent/release/`:
+  - `release-<tag>-branch.json` captures the release branch base, commits, and linked PR.
+  - `release-<tag>-finalize.json` records the fast-forward results and the GitHub release draft.
+- `priority:sync` surfaces the most recent artifact in the standing-priority step summary and exposes it to downstream
+  automation via `snapshot.releaseArtifacts`.
+- The release router now suggests `npm run release:finalize -- <version>` automatically when the latest branch artifact
+  lacks a matching finalize record.
 
 ## Pull request & merge policy
 

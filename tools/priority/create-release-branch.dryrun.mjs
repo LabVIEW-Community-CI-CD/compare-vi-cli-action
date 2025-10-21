@@ -1,40 +1,61 @@
 #!/usr/bin/env node
 
-import { spawnSync } from 'node:child_process';
 import { mkdir, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import process from 'node:process';
+import {
+  run,
+  parseSingleValueArg,
+  ensureValidIdentifier,
+  ensureCleanWorkingTree,
+  ensureBranchDoesNotExist,
+  getCurrentBranch,
+  getRepoRoot
+} from './lib/branch-utils.mjs';
 
-function run(command, args, options = {}) {
-  const result = spawnSync(command, args, {
-    encoding: 'utf8',
-    stdio: ['ignore', 'pipe', 'inherit'],
-    ...options
-  });
-  if (result.status !== 0) {
-    throw new Error(`${command} ${args.join(' ')} failed with exit code ${result.status}`);
-  }
-  return result.stdout.trim();
-}
+const USAGE_LINES = [
+  'Usage: npm run release:branch:dry -- <version>',
+  '',
+  'Creates a release/<version> branch (dry-run) and records metadata under tests/results/_agent/release/.',
+  '',
+  'Options:',
+  '  -h, --help    Show this message and exit'
+];
 
 async function main() {
-  const version = process.argv[2];
-  if (!version) {
-    console.error('Usage: npm run release:branch:dry -- vX.Y.Z');
-    process.exit(1);
-  }
+  const version = parseSingleValueArg(process.argv, {
+    usageLines: USAGE_LINES,
+    valueLabel: '<version>'
+  });
+  ensureValidIdentifier(version, { label: 'version' });
 
   const branch = `release/${version}`;
-  const root = run('git', ['rev-parse', '--show-toplevel']);
-  const status = run('git', ['status', '--porcelain']);
-  if (status.length > 0) {
-    throw new Error('Working tree not clean. Commit or stash changes before running the dry-run helper.');
+  const root = getRepoRoot();
+  ensureCleanWorkingTree(run, 'Working tree not clean. Commit or stash changes before running the dry-run helper.');
+  ensureBranchDoesNotExist(branch);
+
+  const originalBranch = getCurrentBranch();
+  let baseCommit;
+  let restoreBranch = false;
+  try {
+    run('git', ['checkout', '-B', 'develop', 'upstream/develop']);
+    run('git', ['checkout', '-b', branch]);
+    baseCommit = run('git', ['rev-parse', 'HEAD']);
+    restoreBranch = true;
+  } finally {
+    if (restoreBranch && originalBranch) {
+      try {
+        run('git', ['checkout', originalBranch]);
+      } catch (restoreError) {
+        console.warn(`[release:branch:dry] warning: failed to restore branch ${originalBranch}: ${restoreError.message}`);
+      }
+    }
   }
 
-  run('git', ['checkout', '-B', 'develop', 'upstream/develop']);
-  run('git', ['checkout', '-b', branch]);
+  if (!baseCommit) {
+    throw new Error('Failed to determine release branch base commit.');
+  }
 
-  const baseCommit = run('git', ['rev-parse', 'HEAD']);
   const dir = path.join(root, 'tests', 'results', '_agent', 'release');
   await mkdir(dir, { recursive: true });
   const payload = {

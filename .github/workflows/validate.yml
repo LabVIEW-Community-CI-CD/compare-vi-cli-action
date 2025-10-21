@@ -464,6 +464,41 @@ jobs:
       - name: SemVer check
         run: node tools/npm/run-script.mjs semver:check
 
+  release-branch:
+    if: startsWith(github.head_ref, 'release/')
+    needs: lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v5
+        with:
+          node-version: '20'
+      - name: Install dependencies (no scripts)
+        run: npm ci --ignore-scripts
+      - name: Verify release branch
+        env:
+          GITHUB_HEAD_REF: ${{ github.head_ref }}
+          RELEASE_VALIDATE_BASE: origin/develop
+        run: node tools/priority/verify-release-branch.mjs
+
+  feature-handoff:
+    if: startsWith(github.head_ref, 'feature/')
+    needs: lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v5
+        with:
+          node-version: '20'
+      - name: Install dependencies (no scripts)
+        run: npm ci --ignore-scripts
+      - name: Run priority handoff tests
+        run: node tools/npm/run-script.mjs priority:handoff-tests
+
   issue-snapshot:
     needs: lint
     runs-on: ubuntu-latest
