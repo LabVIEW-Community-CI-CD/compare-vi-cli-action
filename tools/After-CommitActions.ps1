@@ -186,21 +186,34 @@ function Analyze-PrResult {
     return [pscustomobject]$analysis
   }
 
-  if ($PrResult.PSObject.Properties['created'] -and $PrResult.created) {
+  $isDictionary = $PrResult -is [System.Collections.IDictionary]
+  $hasProp = {
+    param($Name)
+    if ($isDictionary) { return $PrResult.Contains($Name) }
+    return $PrResult.PSObject.Properties[$Name] -ne $null
+  }
+  $getProp = {
+    param($Name)
+    if ($isDictionary) { return $PrResult[$Name] }
+    return $PrResult.PSObject.Properties[$Name].Value
+  }
+
+  if (&$hasProp 'created' -and (&$getProp 'created')) {
     $analysis.action = 'ok'
     return [pscustomobject]$analysis
   }
 
-  if ($PrResult.PSObject.Properties['existing'] -and $PrResult.existing) {
+  if (&$hasProp 'existing' -and (&$getProp 'existing')) {
     $analysis.action = 'noop'
-    $analysis.reasons = @("existing-pr-#{0}" -f $PrResult.existing)
+    $analysis.reasons = @("existing-pr-#{0}" -f (&$getProp 'existing'))
     return [pscustomobject]$analysis
   }
 
-  if ($PrResult.PSObject.Properties['reason']) {
+  if (&$hasProp 'reason') {
     $analysis.action = 'review'
-    $analysis.reasons = @($PrResult.reason)
-    switch ($PrResult.reason) {
+    $reasonValue = &$getProp 'reason'
+    $analysis.reasons = @($reasonValue)
+    switch ($reasonValue) {
       'gh-missing'     { $analysis.suggestions = @('Install GitHub CLI (gh) or ensure it is on PATH.'); break }
       'gh-auth-failed' { $analysis.suggestions = @('Run `gh auth login` to refresh authentication.'); break }
       default { }
@@ -211,8 +224,8 @@ function Analyze-PrResult {
   $analysis.action = 'review'
   $reasons = New-Object System.Collections.Generic.List[string]
   $reasons.Add('pr-failed') | Out-Null
-  if ($PrResult.PSObject.Properties['error']) {
-    $reasons.Add("exit-{0}" -f $PrResult.error) | Out-Null
+  if (&$hasProp 'error') {
+    $reasons.Add("exit-{0}" -f (&$getProp 'error')) | Out-Null
   }
   $analysis.reasons = @($reasons.ToArray())
   return [pscustomobject]$analysis
@@ -262,6 +275,18 @@ if ($env:COMPAREVI_SKIP_GH) {
   $ghCommand = $null
 }
 
+$prHeadRef = $null
+$baseRepo = $null
+
+function Resolve-RemoteRepo {
+  param([string]$RemoteName)
+  $remoteUrl = Get-GitSingleLine @('config','--get',("remote.{0}.url" -f $RemoteName))
+  if ($remoteUrl -and $remoteUrl -match 'github\.com[:/](?<owner>[^/]+)/(?<repo>[^/.]+)') {
+    return ("{0}/{1}" -f $Matches.owner,$Matches.repo)
+  }
+  return $null
+}
+
 try {
   $status = Invoke-Git @('status','--porcelain')
   $rawEntries = @()
@@ -300,6 +325,11 @@ try {
     } else {
       $prHeadRef = $branch
     }
+  }
+
+  $baseRepo = Resolve-RemoteRepo 'upstream'
+  if (-not $baseRepo) {
+    $baseRepo = Resolve-RemoteRepo $Remote
   }
 
   $commitMessage = Get-GitSingleLine @('log','-1','--pretty=%s')
@@ -361,10 +391,20 @@ try {
       $authExit = $LASTEXITCODE
       $LASTEXITCODE = 0
       if ($authExit -eq 0) {
-        $existing = Invoke-GhCommand -Args @('pr','view',$branch,'--json','number') -GhCommand $ghCommand 2>$null
+        $existingArgs = @('pr','list','--state','open','--head',$branch,'--json','number')
+        if ($baseRepo) { $existingArgs += @('--repo',$baseRepo) }
+        $existing = Invoke-GhCommand -Args $existingArgs -GhCommand $ghCommand 2>$null
         $existingExit = $LASTEXITCODE
         $LASTEXITCODE = 0
-        if ($existingExit -ne 0 -or -not $existing) {
+        $existingData = $null
+        if ($existingExit -eq 0 -and $existing) {
+          try {
+            $existingData = $existing | ConvertFrom-Json -ErrorAction Stop
+          } catch {
+            $existingData = $null
+          }
+        }
+        if ($existingExit -ne 0 -or -not $existingData -or $existingData.Count -eq 0) {
           $title = if ($commitMessage) { $commitMessage } else { "Standing priority update #$issueNumber" }
           $args = @('pr','create','--base',$BaseBranch,'--head',$prHeadRef,'--title',$title,'--fill')
           if ($issueNumber) { $args += @('--body',("Automated updates for #{0}." -f $issueNumber)) }
@@ -383,7 +423,7 @@ try {
             }
           }
         } else {
-          $data = $existing | ConvertFrom-Json
+          $data = $existingData[0]
           $prResult = @{
             created  = $false
             existing = $data.number
@@ -484,3 +524,4 @@ try {
 }
 
 $global:LASTEXITCODE = 0
+

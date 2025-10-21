@@ -35,7 +35,9 @@ line buffers).
      acceptance is met.
   4. When unsure if the standing workflow needs to run, call `pwsh -File tools/Trigger-StandingWorkflow.ps1 -PlanOnly`
      to see the current recommendation (reasons land in `tests/results/_agent/standing-workflow.json`). Drop `-PlanOnly`
-     to execute the full workflow once the helper indicates it is required.
+     to execute the full workflow once the helper indicates it is required. The standing workflow automatically runs
+     `tools/Clean-RogueLV.ps1` after Pester so any lingering LabVIEW/LVCompare instances are terminated (and flagged)
+     before push/PR automation continues.
 4. Run `pwsh -File tools/Prepare-StandingCommit.ps1 -RepositoryRoot . -AutoCommit` whenever the
    working tree changes. The helper auto-creates/switches the standing branch, stages eligible files,
    creates the commit with a generated subject, and records telemetry in
@@ -320,4 +322,5 @@ Guidance:
 - For markdownlint, try `Resolve-MarkdownlintCli2Path`; only fall back to `npx --no-install` when necessary.
 - For LVCompare, continue to enforce the canonical path; pass `-lvpath` to LVCompare and never launch `LabVIEW.exe`.
 - Do not lint or link-check vendor documentation under `bin/`; scope link checks to `docs/` or ignore `bin/**`.
+
 
