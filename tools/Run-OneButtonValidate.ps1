@@ -15,6 +15,14 @@ $workspace = (Get-Location).Path
 $summary = @()
 $summaryPath = Join-Path $workspace 'tests/results/_agent/onebutton-summary.md'
 
+if (Test-Path (Join-Path $workspace 'tools' 'Save-WorkInProgress.ps1')) {
+  try {
+    & pwsh '-NoLogo' '-NoProfile' '-File' (Join-Path $workspace 'tools' 'Save-WorkInProgress.ps1') '-RepositoryRoot' $workspace '-Name' 'one-button'
+  } catch {
+    Write-Warning ("Failed to capture work-in-progress snapshot: {0}" -f $_.Exception.Message)
+  }
+}
+
 function Add-Summary {
   param([string]$Step,[string]$Status,[TimeSpan]$Duration,[string]$Message)
   $script:summary += [pscustomobject]@{ Step = $Step; Status = $Status; Duration = $Duration; Message = $Message }
@@ -129,6 +137,7 @@ if ($Push -or $CreatePR) {
     )
     if ($Push) { $args += '-Push' }
     if ($CreatePR) { $args += '-CreatePR' }
+    if ($Push -or $CreatePR) { $args += '-CloseIssue' }
     if ($PushTarget) {
       $args += '-PushTarget'
       $args += $PushTarget

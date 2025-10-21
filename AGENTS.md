@@ -33,6 +33,9 @@ line buffers).
   3. Create or sync a working branch (`issue/<standing-number>-<slug>`), push minimal changes,
      dispatch CI, update the PR (reference `#<standing-number>`), monitor to green, merge when
      acceptance is met.
+  4. When unsure if the standing workflow needs to run, call `pwsh -File tools/Trigger-StandingWorkflow.ps1 -PlanOnly`
+     to see the current recommendation (reasons land in `tests/results/_agent/standing-workflow.json`). Drop `-PlanOnly`
+     to execute the full workflow once the helper indicates it is required.
 4. Run `pwsh -File tools/Prepare-StandingCommit.ps1 -RepositoryRoot . -AutoCommit` whenever the
    working tree changes. The helper auto-creates/switches the standing branch, stages eligible files,
    creates the commit with a generated subject, and records telemetry in

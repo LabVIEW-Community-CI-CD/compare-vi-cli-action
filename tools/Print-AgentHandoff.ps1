@@ -711,15 +711,124 @@ try {
       Copy-Item -LiteralPath $priorityContext.routerPath -Destination (Join-Path $handoffDir 'issue-router.json') -Force
     }
   }
-} catch {
-  Write-Warning ("Failed to display standing priority summary: {0}" -f $_.Exception.Message)
-}
+  } catch {
+    Write-Warning ("Failed to display standing priority summary: {0}" -f $_.Exception.Message)
+  }
 
-try {
-  $releasePath = Join-Path (Resolve-Path '.').Path 'tests/results/_agent/handoff/release-summary.json'
-  if (Test-Path -LiteralPath $releasePath -PathType Leaf) {
-    $release = Get-Content -LiteralPath $releasePath -Raw | ConvertFrom-Json -ErrorAction Stop
-    Write-Host ''
+  try {
+    $commitPlanPath = Join-Path (Resolve-Path '.').Path 'tests/results/_agent/commit-plan.json'
+    if (Test-Path -LiteralPath $commitPlanPath -PathType Leaf) {
+      $plan = Get-Content -LiteralPath $commitPlanPath -Raw | ConvertFrom-Json -ErrorAction Stop
+      Write-Host ''
+      Write-Host '[Commit Plan]' -ForegroundColor Cyan
+      Write-Host ("  suggested : {0}" -f (Format-NullableValue $plan.suggestedMessage))
+      Write-Host ("  type      : {0}" -f (Format-NullableValue $plan.commitType))
+      if ($plan.labels) {
+        $labelList = ($plan.labels | ForEach-Object { $_ }) -join ', '
+        Write-Host ("  labels    : {0}" -f (Format-NullableValue $labelList))
+      }
+      if ($plan.commitMessageStatus) {
+        $cms = $plan.commitMessageStatus
+        Write-Host ("  msg-state : needs-edit={0} state={1}" -f (Format-BoolLabel $cms.needsEdit), (Format-NullableValue $cms.state))
+        if ($cms.reasons) {
+          foreach ($reason in $cms.reasons) {
+            Write-Host ("    reason  : {0}" -f (Format-NullableValue $reason))
+          }
+        }
+      }
+      if ($plan.tests) {
+        $tests = $plan.tests
+        Write-Host ("  tests     : {0}" -f (Format-NullableValue $tests.decision))
+        if ($tests.docOnly -ne $null) {
+          Write-Host ("    docOnly : {0}" -f (Format-BoolLabel $tests.docOnly))
+        }
+        if ($tests.lastRun) {
+          Write-Host ("    lastRun : {0}" -f (Format-NullableValue $tests.lastRun))
+        }
+        if ($tests.includeIntegration -ne $null) {
+          Write-Host ("    includeIntegration : {0}" -f (Format-BoolLabel $tests.includeIntegration))
+        }
+        if ($tests.reasons) {
+          foreach ($reason in $tests.reasons) {
+            Write-Host ("    reason  : {0}" -f (Format-NullableValue $reason))
+          }
+        }
+      }
+      if ($env:GITHUB_STEP_SUMMARY) {
+        $commitLines = @(
+          '### Commit Plan',
+          '',
+          ('- Suggested: {0}' -f (Format-NullableValue $plan.suggestedMessage)),
+          ('- Type: {0}' -f (Format-NullableValue $plan.commitType))
+        )
+        if ($plan.labels) {
+          $commitLines += ('- Labels: {0}' -f (($plan.labels | ForEach-Object { $_ }) -join ', '))
+        }
+        if ($plan.commitMessageStatus) {
+          $cms = $plan.commitMessageStatus
+          $commitLines += ('- Message: needs-edit={0} state={1}' -f (Format-BoolLabel $cms.needsEdit), (Format-NullableValue $cms.state))
+          if ($cms.reasons) {
+            foreach ($reason in $cms.reasons) {
+              $commitLines += ('  - {0}' -f (Format-NullableValue $reason))
+            }
+          }
+        }
+        if ($plan.tests) {
+          $tests = $plan.tests
+          $commitLines += ('- Tests: {0}' -f (Format-NullableValue $tests.decision))
+          if ($tests.docOnly -ne $null) {
+            $commitLines += ('  - docOnly: {0}' -f (Format-BoolLabel $tests.docOnly))
+          }
+          if ($tests.lastRun) {
+            $commitLines += ('  - lastRun: {0}' -f (Format-NullableValue $tests.lastRun))
+          }
+          if ($tests.reasons) {
+            foreach ($reason in $tests.reasons) {
+              $commitLines += ('  - reason: {0}' -f (Format-NullableValue $reason))
+            }
+          }
+        }
+        ($commitLines -join "`n") | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8
+      }
+    }
+  } catch {
+    Write-Warning ("Failed to load commit plan summary: {0}" -f $_.Exception.Message)
+  }
+
+  try {
+    $wipDir = Join-Path (Resolve-Path '.').Path 'tests/results/_agent/wip'
+    if (Test-Path -LiteralPath $wipDir -PathType Container) {
+      $snapshots = Get-ChildItem -LiteralPath $wipDir -Directory | Sort-Object LastWriteTime -Descending | Select-Object -First 3
+      if ($snapshots) {
+        Write-Host ''
+        Write-Host '[WIP Snapshots]' -ForegroundColor Cyan
+        foreach ($snap in $snapshots) {
+          $metaPath = Join-Path $snap.FullName 'snapshot.json'
+          $label = $snap.Name
+          if (Test-Path -LiteralPath $metaPath) {
+            try {
+              $meta = Get-Content -LiteralPath $metaPath -Raw | ConvertFrom-Json -ErrorAction Stop
+              $time = if ($meta.PSObject.Properties['generatedAt']) { $meta.generatedAt } else { $snap.LastWriteTime.ToString('o') }
+              $entryCount = if ($meta.PSObject.Properties['entries']) { @($meta.entries).Count } else { 0 }
+              Write-Host ("  {0} => items: {1}  generated: {2}" -f $label, $entryCount, $time)
+            } catch {
+              Write-Host ("  {0} => snapshot (metadata unreadable)" -f $label)
+            }
+          } else {
+            Write-Host ("  {0} => snapshot (metadata missing)" -f $label)
+          }
+        }
+      }
+    }
+  } catch {
+    Write-Warning ("Failed to read WIP snapshots: {0}" -f $_.Exception.Message)
+  }
+
+  try {
+    $releasePath = Join-Path (Resolve-Path '.').Path 'tests/results/_agent/handoff/release-summary.json'
+    if (Test-Path -LiteralPath $releasePath -PathType Leaf) {
+      $release = Get-Content -LiteralPath $releasePath -Raw | ConvertFrom-Json -ErrorAction Stop
+      Write-Host ''
     Write-Host '[SemVer Status]' -ForegroundColor Cyan
     Write-Host ("  version : {0}" -f (Format-NullableValue $release.version))
     Write-Host ("  valid   : {0}" -f (Format-BoolLabel $release.valid))

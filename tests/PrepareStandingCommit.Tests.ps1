@@ -82,7 +82,7 @@ Describe 'Prepare-StandingCommit helper' -Tag 'Unit' {
     Push-Location $repo
     try {
       $commitMessage = (git log -1 --pretty='%s').Trim()
-      $commitMessage | Should -Match 'feat\(#260\):'
+      $commitMessage | Should -Match 'chore\(#260\):'
     } finally {
       Pop-Location
     }
@@ -105,9 +105,35 @@ Describe 'Prepare-StandingCommit helper' -Tag 'Unit' {
     $summary = Get-Content -LiteralPath $summaryPath -Raw | ConvertFrom-Json
     $summary.autoSkipped | Should -Contain '.agent_priority_cache.json'
     $summary.staged | Should -Not -Contain '.agent_priority_cache.json'
+    $summary.commitType | Should -Be 'chore'
+    $summary.suggestedMessage | Should -Match 'chore\(#260\):'
+    $summary.labels | Should -Contain 'standing priority update'
+    $summary.commitMessageStatus.needsEdit | Should -BeFalse
+    $summary.commitMessageStatus.state | Should -Be 'no-staged-files'
+    $summary.tests.decision | Should -Be 'skip'
+    $summary.tests.reasons | Should -Contain 'no-staged-files'
+  }
+
+  It 'flags doc-only additions as needing message review' {
+    $repo = & $script:createRepo -ConfigPath $script:configPath
+    Push-Location $repo
+    try {
+      New-Item -ItemType Directory -Force -Path 'docs' | Out-Null
+      Set-Content -LiteralPath (Join-Path 'docs' 'new-doc.md') -Value '# notes' -Encoding utf8
+    } finally {
+      Pop-Location
+    }
+
+    & $script:toolPath -RepositoryRoot $repo
+    $LASTEXITCODE | Should -Be 0
+
+    $summaryPath = Join-Path $repo 'tests/results/_agent/commit-plan.json'
+    $summary = Get-Content -LiteralPath $summaryPath -Raw | ConvertFrom-Json
     $summary.commitType | Should -Be 'feat'
-    $summary.suggestedMessage | Should -Match 'feat\(#260\):'
+    $summary.labels | Should -Contain 'docs'
+    $summary.commitMessageStatus.needsEdit | Should -BeTrue
+    $summary.commitMessageStatus.reasons | Should -Contain 'doc-only-change-prefers-chore'
+    $summary.tests.decision | Should -Be 'skip'
+    $summary.tests.docOnly | Should -BeTrue
   }
 }
-
-

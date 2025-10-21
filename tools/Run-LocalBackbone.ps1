@@ -27,6 +27,7 @@ $ErrorActionPreference = 'Stop'
 
 $scriptRoot = Split-Path -Parent $PSCommandPath
 $repoRoot = Resolve-Path (Join-Path $scriptRoot '..') | Select-Object -ExpandProperty Path
+$script:autoTestPlan = $null
 
 function Invoke-BackboneStep {
   param(
@@ -57,6 +58,10 @@ function Invoke-BackboneStep {
 Push-Location $repoRoot
 try {
   Write-Host "Repository root: $repoRoot" -ForegroundColor Gray
+
+  Invoke-BackboneStep -Name 'Snapshot work in progress' -SkipWhenDryRun -Action {
+    & pwsh '-NoLogo' '-NoProfile' '-File' (Join-Path $repoRoot 'tools' 'Save-WorkInProgress.ps1') '-RepositoryRoot' $repoRoot '-Name' 'local-backbone'
+  }
 
   if (-not $SkipPrioritySync) {
     Invoke-BackboneStep -Name 'priority:sync' -Action {
@@ -116,6 +121,21 @@ try {
       '-AutoCommit'
     )
     & pwsh @args
+    $exit = $LASTEXITCODE
+    if ($exit -eq 0) {
+      $planPath = Join-Path $repoRoot 'tests/results/_agent/commit-plan.json'
+      if (Test-Path -LiteralPath $planPath -PathType Leaf) {
+        try {
+          $plan = Get-Content -LiteralPath $planPath -Raw | ConvertFrom-Json -ErrorAction Stop
+          if ($plan.tests) {
+            $script:autoTestPlan = $plan.tests
+          }
+        } catch {
+          Write-Warning ("Failed to parse commit plan summary: {0}" -f $_.Exception.Message)
+        }
+      }
+    }
+    $LASTEXITCODE = $exit
   }
 
   Invoke-BackboneStep -Name 'Post-commit automation' -SkipWhenDryRun -Action {
@@ -124,7 +144,8 @@ try {
       '-File',(Join-Path $repoRoot 'tools' 'After-CommitActions.ps1'),
       '-RepositoryRoot',$repoRoot,
       '-Push',
-      '-CreatePR'
+      '-CreatePR',
+      '-CloseIssue'
     )
     if ($PushTarget) {
       $args += '-PushTarget'
@@ -133,19 +154,48 @@ try {
     & pwsh @args
   }
 
+  $autoPlan = $script:autoTestPlan
+  $shouldRunPester = -not $SkipPester
+  $testDecisionLabel = $null
+  $testDecisionReasons = @()
+  if ($shouldRunPester -and $autoPlan) {
+    if ($autoPlan.PSObject.Properties['decision']) {
+      $testDecisionLabel = $autoPlan.decision
+    }
+    if ($autoPlan.PSObject.Properties['reasons'] -and $autoPlan.reasons) {
+      $testDecisionReasons = @($autoPlan.reasons)
+    }
+    switch ($testDecisionLabel) {
+      'skip'  { $shouldRunPester = $false }
+      'fresh' { $shouldRunPester = $false }
+      default { }
+    }
+  }
+
   if (-not $SkipPester) {
-    if ($UseLocalRunTests) {
-      Invoke-BackboneStep -Name 'Local-RunTests.ps1' -Action {
-        $args = @('-NoLogo', '-NoProfile', '-File', (Join-Path $repoRoot 'tools' 'Local-RunTests.ps1'))
-        if ($IncludeIntegration) { $args += '-IncludeIntegration' }
-        & pwsh @args
+    if (-not $shouldRunPester) {
+      $label = if ($testDecisionLabel) { $testDecisionLabel } else { 'n/a' }
+      Write-Host ("Tests marked as '{0}' by commit plan; skipping Pester run." -f $label) -ForegroundColor Yellow
+      foreach ($reason in $testDecisionReasons) {
+        Write-Host ("  reason: {0}" -f $reason) -ForegroundColor Gray
       }
     } else {
-      Invoke-BackboneStep -Name 'Invoke-PesterTests.ps1' -Action {
-        $args = @('-NoLogo', '-NoProfile', '-File', (Join-Path $repoRoot 'Invoke-PesterTests.ps1'))
-        $args += '-IntegrationMode'
-        $args += (if ($IncludeIntegration) { 'include' } else { 'exclude' })
-        & pwsh @args
+      if ($testDecisionLabel) {
+        Write-Host ("Tests decision '{0}' -> running suite." -f $testDecisionLabel) -ForegroundColor Cyan
+      }
+      if ($UseLocalRunTests) {
+        Invoke-BackboneStep -Name 'Local-RunTests.ps1' -Action {
+          $args = @('-NoLogo', '-NoProfile', '-File', (Join-Path $repoRoot 'tools' 'Local-RunTests.ps1'))
+          if ($IncludeIntegration) { $args += '-IncludeIntegration' }
+          & pwsh @args
+        }
+      } else {
+        Invoke-BackboneStep -Name 'Invoke-PesterTests.ps1' -Action {
+          $args = @('-NoLogo', '-NoProfile', '-File', (Join-Path $repoRoot 'Invoke-PesterTests.ps1'))
+          $args += '-IntegrationMode'
+          $args += (if ($IncludeIntegration) { 'include' } else { 'exclude' })
+          & pwsh @args
+        }
       }
     }
   } else {

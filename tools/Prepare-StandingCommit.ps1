@@ -118,6 +118,7 @@ function Should-SkipPath {
   param([string]$Path)
   $patterns = @(
     '^\.agent_priority_cache\.json$',
+    '^\.agent_push_config\.json$',
     '^tests/results/',
     '^tests\\results\\',
     '^tmp/',
@@ -134,6 +135,152 @@ function Should-SkipPath {
   return $false
 }
 
+function Is-DocumentationPath {
+  param([string]$Path)
+  if (-not $Path) { return $false }
+  $normalized = $Path -replace '\\','/'
+  if ($normalized -match '^docs/') { return $true }
+  $name = [System.IO.Path]::GetFileName($normalized)
+  $docNames = @(
+    'README.md',
+    'AGENTS.md',
+    'PR_NOTES.md',
+    'TAG_PREP_CHECKLIST.md',
+    'CONTRIBUTING.md'
+  )
+  if ($docNames -contains $name) { return $true }
+  $extension = [System.IO.Path]::GetExtension($normalized)
+  if (-not [string]::IsNullOrWhiteSpace($extension)) {
+    $extension = $extension.ToLowerInvariant()
+    $docExtensions = @('.md','.adoc','.txt','.rst','.mdown')
+    if ($docExtensions -contains $extension) { return $true }
+  }
+  return $false
+}
+
+function Get-PesterSummary {
+  param([string]$RepoRoot)
+  $summaryPath = Join-Path $RepoRoot 'tests/results/pester-summary.json'
+  if (-not (Test-Path -LiteralPath $summaryPath -PathType Leaf)) { return $null }
+  try {
+    $summary = Get-Content -LiteralPath $summaryPath -Raw | ConvertFrom-Json -ErrorAction Stop
+  } catch {
+    return $null
+  }
+  $timestamp = $null
+  if ($summary.PSObject.Properties['timestamp'] -and $summary.timestamp) {
+    try {
+      $timestamp = [datetime]::Parse($summary.timestamp, [System.Globalization.CultureInfo]::InvariantCulture)
+    } catch {
+      $timestamp = $null
+    }
+  }
+  return [pscustomobject]@{
+    Path               = $summaryPath
+    Timestamp          = $timestamp
+    TimestampUtc       = if ($timestamp) { $timestamp.ToUniversalTime() } else { $null }
+    TimestampFormatted = if ($timestamp) { $timestamp.ToString('o') } else { $null }
+    IncludeIntegration = if ($summary.PSObject.Properties['includeIntegration']) { [bool]$summary.includeIntegration } else { $null }
+  }
+}
+
+function Get-TestDecision {
+  param(
+    [string[]]$Paths,
+    [object[]]$DiffEntries,
+    [string]$RepoRoot
+  )
+
+  $result = [ordered]@{
+    decision          = 'unknown'
+    reasons           = @()
+    lastRun           = $null
+    includeIntegration= $null
+    summaryPath       = $null
+    stagedLatestChange= $null
+    docOnly           = $false
+  }
+
+  if (-not $Paths -or (@($Paths)).Count -eq 0) {
+    $result.decision = 'skip'
+    $result.reasons  = @('no-staged-files')
+    return [pscustomobject]$result
+  }
+
+  $docOnly = $true
+  foreach ($path in $Paths) {
+    if (-not (Is-DocumentationPath -Path $path)) {
+      $docOnly = $false
+      break
+    }
+  }
+  $result.docOnly = $docOnly
+
+  $pesterSummary = Get-PesterSummary -RepoRoot $RepoRoot
+  if ($pesterSummary) {
+    $result.lastRun = $pesterSummary.TimestampFormatted
+    $result.includeIntegration = $pesterSummary.IncludeIntegration
+    $result.summaryPath = $pesterSummary.Path
+  }
+
+  if ($docOnly) {
+    $result.decision = 'skip'
+    $result.reasons  = @('doc-only-changes')
+    return [pscustomobject]$result
+  }
+
+  if (-not $pesterSummary) {
+    $result.decision = 'required'
+    $result.reasons  = @('pester-summary-missing')
+    return [pscustomobject]$result
+  }
+
+  $latestChangeUtc = $null
+  foreach ($path in $Paths) {
+    $fsPath = Join-Path $RepoRoot $path
+    if (Test-Path -LiteralPath $fsPath) {
+      try {
+        $info = Get-Item -LiteralPath $fsPath -ErrorAction Stop
+        $candidate = $info.LastWriteTimeUtc
+        if (-not $latestChangeUtc -or $candidate -gt $latestChangeUtc) {
+          $latestChangeUtc = $candidate
+        }
+      } catch {
+        # ignore retrieval failures; treat as requiring fresh tests
+        $latestChangeUtc = [datetime]::UtcNow
+        break
+      }
+    } else {
+      # deleted or renamed entry – conservative and require fresh tests
+      $latestChangeUtc = [datetime]::UtcNow
+      break
+    }
+  }
+
+  if (-not $latestChangeUtc) {
+    $latestChangeUtc = [datetime]::UtcNow
+  }
+
+  $result.stagedLatestChange = $latestChangeUtc.ToString('o')
+
+  if (-not $pesterSummary.TimestampUtc) {
+    $result.decision = 'required'
+    $result.reasons  = @('pester-summary-missing-timestamp')
+    return [pscustomobject]$result
+  }
+
+  $freshThreshold = $pesterSummary.TimestampUtc.AddSeconds(10)
+  if ($latestChangeUtc -gt $freshThreshold) {
+    $result.decision = 'required'
+    $result.reasons  = @('tests-older-than-staged-changes')
+  } else {
+    $result.decision = 'fresh'
+    $result.reasons  = @()
+  }
+
+  return [pscustomobject]$result
+}
+
 function Get-CommitSuggestion {
   param(
     [string[]]$Paths,
@@ -142,6 +289,7 @@ function Get-CommitSuggestion {
   )
 
   $paths = @($Paths | Where-Object { $_ })
+  $docOnly = $true
   $hasAddition = $false
   if ($DiffEntries) {
     foreach ($entry in $DiffEntries) {
@@ -151,6 +299,9 @@ function Get-CommitSuggestion {
 
   $labels = New-Object System.Collections.Generic.HashSet[string] ([System.StringComparer]::OrdinalIgnoreCase)
   foreach ($path in $paths) {
+    if (-not (Is-DocumentationPath -Path $path)) {
+      $docOnly = $false
+    }
     $root = if ($path -match '[\\/]') { ($path -split '[\\/]',2)[0] } else { $path }
     switch -Regex ($path) {
       'Ensure-AgentPushTarget' { $null = $labels.Add('push-target helper'); continue }
@@ -172,10 +323,16 @@ function Get-CommitSuggestion {
 
   $description = [string]::Join(' + ', $labels)
   $type = if ($hasAddition) { 'feat' } else { 'chore' }
+  $labelArray = @()
+  foreach ($label in $labels) {
+    $labelArray += $label
+  }
   return [pscustomobject]@{
     Type = $type
     Description = $description
     Message = ("{0}(#{1}): {2}" -f $type,$IssueNumber,$description)
+    Labels = $labelArray
+    DocOnly = [bool]$docOnly
   }
 }
 
@@ -222,7 +379,7 @@ try {
   }
 
   $stagedAfter = Invoke-Git -Args @('diff','--cached','--name-only')
-  $stagedPaths = if ($stagedAfter.ExitCode -eq 0) { $stagedAfter.Output } else { @() }
+  $stagedPaths = if ($stagedAfter.ExitCode -eq 0) { @($stagedAfter.Output) } else { @() }
 
   $nameStatusResult = Invoke-Git -Args @('diff','--cached','--name-status')
   $diffEntries = @()
@@ -237,12 +394,32 @@ try {
     }
   }
 
-  $suggestion = Get-CommitSuggestion -Paths $stagedPaths -DiffEntries $diffEntries -IssueNumber $issueNumber
-  $commitIssued = $false
+    $suggestion = Get-CommitSuggestion -Paths $stagedPaths -DiffEntries $diffEntries -IssueNumber $issueNumber
+    $commitLabels = @()
+    if ($suggestion.PSObject.Properties['Labels']) {
+      $commitLabels = @($suggestion.Labels)
+    }
+    $commitMessageReasons = @()
+    if ((@($commitLabels)).Count -eq 1 -and $commitLabels[0] -eq 'standing priority update') {
+      $commitMessageReasons += 'generic-description'
+    }
+    $testDecision = Get-TestDecision -Paths $stagedPaths -DiffEntries $diffEntries -RepoRoot $repoRoot
 
-  if ($AutoCommit) {
-    if (-not $stagedPaths -or $stagedPaths.Count -eq 0) {
-      Write-Host '[prepare] AutoCommit requested but nothing is staged; skipping commit.' -ForegroundColor Yellow
+    $docOnlyChange = $false
+    if ($suggestion.PSObject.Properties['DocOnly'] -and $suggestion.DocOnly) {
+      $docOnlyChange = $true
+    } elseif ($testDecision -and $testDecision.PSObject.Properties['docOnly'] -and $testDecision.docOnly) {
+      $docOnlyChange = $true
+    }
+    if ($docOnlyChange -and $suggestion.Type -eq 'feat') {
+      $commitMessageReasons += 'doc-only-change-prefers-chore'
+    }
+    $commitMessageNeedsEdit = (@($commitMessageReasons)).Count -gt 0
+    $commitIssued = $false
+
+    if ($AutoCommit) {
+    if (-not $stagedPaths -or (@($stagedPaths)).Count -eq 0) {
+        Write-Host '[prepare] AutoCommit requested but nothing is staged; skipping commit.' -ForegroundColor Yellow
     } else {
       $message = if ($CommitMessage) { $CommitMessage } else { $suggestion.Message }
       $commitResult = Invoke-Git -Args @('commit','-m',$message)
@@ -252,30 +429,68 @@ try {
     }
   } elseif ($CommitMessage) {
     Write-Host ("[prepare] Commit message suggestion: {0}" -f $CommitMessage) -ForegroundColor Cyan
-  } else {
-    Write-Host ("[prepare] Suggested commit message: {0}" -f $suggestion.Message) -ForegroundColor Cyan
-  }
-
-  if (-not $NoSummary) {
-    $summaryPath = Join-Path $repoRoot 'tests/results/_agent/commit-plan.json'
-    if (-not (Test-Path -LiteralPath (Split-Path -Parent $summaryPath))) {
-      New-Item -ItemType Directory -Path (Split-Path -Parent $summaryPath) -Force | Out-Null
+    } else {
+      Write-Host ("[prepare] Suggested commit message: {0}" -f $suggestion.Message) -ForegroundColor Cyan
     }
+
+    if (-not $stagedPaths -or (@($stagedPaths)).Count -eq 0) {
+      $commitMessageState = 'no-staged-files'
+      $commitMessageNeedsEdit = $false
+      $commitMessageReasons = @()
+    } elseif ($CommitMessage) {
+      $commitMessageState = 'custom-message-supplied'
+    } elseif ($AutoCommit) {
+      $commitMessageState = if ($commitIssued) { 'auto-committed' } else { 'auto-commit-skipped' }
+    } else {
+      $commitMessageState = 'suggested'
+    }
+
+    $commitReasonList = @($commitMessageReasons)
+    if ($commitMessageNeedsEdit) {
+      $reasonText = if ($commitReasonList.Count -gt 0) { $commitReasonList -join ', ' } else { 'unspecified' }
+      Write-Warning ("[prepare] Commit message flagged for manual review ({0})." -f $reasonText)
+    }
+
+    $testReasonList = @()
+    if ($null -ne $testDecision.reasons) {
+      $testReasonList = @($testDecision.reasons)
+    }
+    if ($testDecision.decision -eq 'required') {
+      $testReason = if ($testReasonList.Count -gt 0) { $testReasonList -join ', ' } else { 'unspecified' }
+      Write-Warning ("[prepare] Tests are required ({0})." -f $testReason)
+    } elseif ($testDecision.decision -eq 'skip') {
+      $testReason = if ($testReasonList.Count -gt 0) { $testReasonList -join ', ' } else { 'automated-decision' }
+      Write-Host ("[prepare] Tests may be skipped ({0})." -f $testReason) -ForegroundColor DarkGray
+    }
+
+    if (-not $NoSummary) {
+      $summaryPath = Join-Path $repoRoot 'tests/results/_agent/commit-plan.json'
+      if (-not (Test-Path -LiteralPath (Split-Path -Parent $summaryPath))) {
+        New-Item -ItemType Directory -Path (Split-Path -Parent $summaryPath) -Force | Out-Null
+      }
     $summary = [ordered]@{
       schema        = 'agent-commit-plan/v1'
       generatedAt   = (Get-Date).ToString('o')
       issue         = $issueNumber
-      branch        = $branchName
+        branch        = $branchName
       staged        = @($stagedPaths)
-      autoSkipped   = @($skipped | Select-Object -ExpandProperty Path -Unique)
-      suggestedMessage = if ($CommitMessage) { $CommitMessage } else { $suggestion.Message }
-      commitType    = $suggestion.Type
-      commitDescription = $suggestion.Description
-      autoCommitted = $commitIssued
+        autoSkipped   = @($skipped | Select-Object -ExpandProperty Path -Unique)
+        suggestedMessage = if ($CommitMessage) { $CommitMessage } else { $suggestion.Message }
+        commitType    = $suggestion.Type
+        commitDescription = $suggestion.Description
+        autoCommitted = $commitIssued
+        labels        = @($commitLabels)
+        tests         = $testDecision
+        commitMessageStatus = [ordered]@{
+          needsEdit = [bool]$commitMessageNeedsEdit
+          reasons   = @($commitMessageReasons)
+          state     = $commitMessageState
+          docOnly   = if ($suggestion.PSObject.Properties['DocOnly']) { [bool]$suggestion.DocOnly } else { $false }
+        }
+      }
+      $summary | ConvertTo-Json -Depth 6 | Out-File -FilePath $summaryPath -Encoding utf8
+      Write-Host ("[prepare] Summary written to {0}" -f $summaryPath) -ForegroundColor Gray
     }
-    $summary | ConvertTo-Json -Depth 6 | Out-File -FilePath $summaryPath -Encoding utf8
-    Write-Host ("[prepare] Summary written to {0}" -f $summaryPath) -ForegroundColor Gray
-  }
 }
 finally {
   if ($popLocation) { Pop-Location }

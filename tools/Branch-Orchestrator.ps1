@@ -75,6 +75,11 @@ $defaultBase = Get-GitDefaultBranch
 if (-not $Base) { $Base = $defaultBase }
 Write-Host ("[orchestrator] Base: {0}" -f $Base)
 
+$snapshotPath = Join-Path $repo 'tools' 'Save-WorkInProgress.ps1'
+if (Test-Path -LiteralPath $snapshotPath) {
+  & pwsh '-NoLogo' '-NoProfile' '-File' $snapshotPath '-RepositoryRoot' $repo '-Name' 'branch-orchestrator' | Out-Null
+}
+
 $branchName = New-BranchName -Number $Issue -Title $title
 Write-Host ("[orchestrator] Branch: {0}" -f $branchName)
 
@@ -97,7 +102,8 @@ if ($Execute) {
     '-File', (Join-Path $repo 'tools' 'After-CommitActions.ps1'),
     '-RepositoryRoot', $repo,
     '-Push',
-    '-CreatePR'
+    '-CreatePR',
+    '-CloseIssue'
   )
   if ($PushTarget) {
     $afterArgs += '-PushTarget'

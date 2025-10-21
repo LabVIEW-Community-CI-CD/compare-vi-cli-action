@@ -31,6 +31,7 @@ Describe 'After-CommitActions helper' -Tag 'Unit' {
         Copy-Item -LiteralPath $ConfigPath -Destination (Join-Path $work '.agent_push_config.json')
         New-Item -ItemType Directory -Path (Join-Path $work 'tools') -Force | Out-Null
         Copy-Item -LiteralPath (Join-Path $script:repoRoot 'tools' 'Ensure-AgentPushTarget.ps1') -Destination (Join-Path $work 'tools' 'Ensure-AgentPushTarget.ps1')
+        git add (Join-Path 'tools' 'Ensure-AgentPushTarget.ps1') | Out-Null
         $priority = @{
           number = $Issue
           title  = $Title
@@ -57,11 +58,54 @@ Describe 'After-CommitActions helper' -Tag 'Unit' {
       $currentBranch = git rev-parse --abbrev-ref HEAD
       $upstream = git rev-parse --abbrev-ref --symbolic-full-name 'HEAD@{u}'
       $upstream.Trim() | Should -Be ('origin/' + $currentBranch)
+
       $summary = Get-Content -LiteralPath (Join-Path $repoInfo.Work 'tests/results/_agent/post-commit.json') -Raw | ConvertFrom-Json
       $summary.pushExecuted | Should -BeTrue
       $summary.createPR | Should -BeFalse
+      $summary.issueClosed | Should -BeFalse
+      $summary.issueCloseResult | Should -BeNullOrEmpty
+      $summary.pushFollowup.action | Should -Be 'ok'
+      $summary.prFollowup.action | Should -Be 'skipped'
+    } finally {
+      Pop-Location
+    }
+  }
+
+  It 'records gh missing when CloseIssue requested without gh' {
+    $repoInfo = New-TestRepoWithRemote -ConfigPath $script:configPath
+    Push-Location $repoInfo.Work
+    try {
+      & $script:preparePath -RepositoryRoot $repoInfo.Work -AutoCommit | Out-Null
+      $LASTEXITCODE | Should -Be 0
+
+      if (Get-Command gh -ErrorAction SilentlyContinue) {
+        Remove-Item function:gh -ErrorAction SilentlyContinue
+        Remove-Item alias:gh -ErrorAction SilentlyContinue
+      }
+
+      $oldSkip = $env:COMPAREVI_SKIP_GH
+      $env:COMPAREVI_SKIP_GH = '1'
+      try {
+        & $script:afterPath -RepositoryRoot $repoInfo.Work -Push:$false -CreatePR:$false -CloseIssue | Out-Null
+        $LASTEXITCODE | Should -Be 0
+      } finally {
+        if ($null -ne $oldSkip) {
+          $env:COMPAREVI_SKIP_GH = $oldSkip
+        } else {
+          Remove-Item Env:COMPAREVI_SKIP_GH -ErrorAction SilentlyContinue
+        }
+      }
+
+      $summary = Get-Content -LiteralPath (Join-Path $repoInfo.Work 'tests/results/_agent/post-commit.json') -Raw | ConvertFrom-Json
+      $summary.issueClosed | Should -BeFalse
+      $summary.issueCloseResult.status | Should -Be 'skipped'
+      $summary.issueCloseResult.reason | Should -Be 'gh-missing'
+      $summary.pushFollowup.action | Should -Be 'skipped'
+      $summary.prFollowup.action | Should -Be 'skipped'
     } finally {
       Pop-Location
     }
   }
 }
+
+
