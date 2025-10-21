@@ -1,0 +1,34 @@
+name: Merge History Guard
+
+on:
+  pull_request:
+    branches: [ main, develop ]
+
+permissions:
+  contents: read
+  pull-requests: read
+
+jobs:
+  guard:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+      - name: Check for merge commits
+        shell: bash
+        env:
+          BASE_SHA: "${{ github.event.pull_request.base.sha }}"
+          HEAD_SHA: "${{ github.event.pull_request.head.sha }}"
+          PR_NUMBER: "${{ github.event.pull_request.number }}"
+          PR_TITLE: "${{ github.event.pull_request.title }}"
+        run: |
+          set -euo pipefail
+          echo "Checking range ${BASE_SHA}..${HEAD_SHA}"
+          if git rev-list --merges "${BASE_SHA}..${HEAD_SHA}" | grep -q .; then
+            echo "Merge commits detected in PR #${PR_NUMBER} (${PR_TITLE})." >&2
+            echo 'Ensure the branch is rebased or squash commits before merging.' >&2
+            git rev-list --merges "${BASE_SHA}..${HEAD_SHA}" | xargs -r git show --no-patch --pretty=oneline >&2
+            exit 1
+          fi
+          echo 'No merge commits detected in PR branch.'
