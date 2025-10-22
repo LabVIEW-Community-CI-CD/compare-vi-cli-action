@@ -1,18 +1,18 @@
 {
-  "number": 277,
-  "title": "Release candidate: v0.5.2",
-  "url": "https://github.com/LabVIEW-Community-CI-CD/compare-vi-cli-action/issues/277",
+  "number": 283,
+  "title": "Prevent fork dispatch of Validate",
+  "url": "https://github.com/LabVIEW-Community-CI-CD/compare-vi-cli-action/issues/283",
   "state": "OPEN",
   "labels": [
     "standing-priority"
   ],
   "assignees": [],
   "milestone": null,
-  "commentCount": 4,
-  "lastSeenUpdatedAt": "2025-10-22T06:15:22Z",
-  "issueDigest": "21f3f15d7ba63e9cdb35579d5508f4aba5e531a4de63c188f057e215b69880ab",
-  "bodyDigest": "ec03651863c4b6602e232e7845a533482856cd76604f56b516a8ee8103c65a99",
-  "cachedAtUtc": "2025-10-22T06:36:16.782Z",
+  "commentCount": 0,
+  "lastSeenUpdatedAt": "2025-10-22T14:34:41Z",
+  "issueDigest": "d7a2bf7bca447b0227d93feae7b01af12f288c791d7740989830d7aba24fa543",
+  "bodyDigest": "3973e022e93220f9212c18d0d0c543ae7c309e46640da93a4a0314de999f5112",
+  "cachedAtUtc": "2025-10-22T14:49:27.914Z",
   "lastFetchSource": "live",
   "lastFetchError": null
 }

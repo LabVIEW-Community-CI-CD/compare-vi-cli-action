@@ -51,6 +51,7 @@
     "release:branch": "node tools/priority/create-release-branch.mjs",
     "release:branch:dry": "node tools/priority/create-release-branch.dryrun.mjs",
     "release:finalize": "node tools/priority/finalize-release.mjs",
+    "priority:validate": "node tools/priority/dispatch-validate.mjs",
     "release:finalize:dry": "node tools/priority/finalize-release.dryrun.mjs",
     "feature:branch:dry": "node tools/priority/create-feature-branch.dryrun.mjs",
     "feature:finalize:dry": "node tools/priority/finalize-feature.dryrun.mjs",

@@ -19,7 +19,7 @@
 6. Workflow labels enforcement fix merged in PR #280; Validate still needs a fresh run on `main` now that the workflow change is available.
 
 ## Suggested Next Actions
-1. Trigger `Validate` on `main` (or wait for the next push) to confirm the labels enforcement step passes with PR #280 applied.
+1. Trigger `Validate` on `main` via `node tools/npm/run-script.mjs priority:validate -- --ref main` (or wait for the next push) to confirm the labels enforcement step passes with PR #280 applied.
 2. Check the status of PR #279 (release candidate finalize) and trigger CI reruns if any required checks are missing or stale.
 3. Exercise the updated VS Code tasks on another plane (macOS/Linux) to flush out shell-specific issues before documenting them.
 4. Run `pwsh -File tools/PrePush-Checks.ps1` and `node tools/npm/run-script.mjs hooks:multi` once new changes are staged for #277 to keep router priorities green.
@@ -28,7 +28,7 @@
 ## First Actions for the Next Agent
 1. Run `node tools/npm/run-script.mjs priority:sync` to refresh issue #277 metadata and router artifacts.
 2. Review release artifacts under `tests/results/_agent/release/` and sync with PR #279 status before making edits.
-3. Re-run `Validate` on `main` if it has not already picked up the workflow fix; confirm the labels enforcement job reports success.
+3. Re-run `Validate` on `main` with `node tools/npm/run-script.mjs priority:validate -- --ref main` if it has not already picked up the workflow fix; confirm the labels enforcement job reports success.
 4. Check `tests/results/_agent/issue/router.json` for the active validation order (hooks and PrePush) and schedule the relevant runs as changes land.
 
 ## Notes for Next Agent

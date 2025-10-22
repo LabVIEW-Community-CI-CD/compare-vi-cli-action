@@ -334,6 +334,7 @@ export function buildRouter(issue, policy) {
 
   addAction({ key: 'hooks:pre-commit', priority: 10, scripts: ['node tools/npm/run-script.mjs hooks:pre-commit'], rationale: 'baseline hook gate' });
   addAction({ key: 'hooks:multi', priority: 11, scripts: ['node tools/npm/run-script.mjs hooks:multi', 'node tools/npm/run-script.mjs hooks:schema'], rationale: 'ensure parity across planes' });
+  addAction({ key: 'validate:dispatch', priority: 95, scripts: ['node tools/npm/run-script.mjs priority:validate'], rationale: 'dispatch Validate via upstream guard' });
 
   const labelSet = new Set((issue.labels || []).map((l) => (l || '').toLowerCase()));
   const policyEntries = Array.isArray(policy?.labels) ? policy.labels : [];
@@ -388,9 +389,7 @@ export function buildRouter(issue, policy) {
     }
   }
 
-  if (actionsMap.size < 3) {
-    addAction({ key: 'validate:lint', priority: 90, scripts: ['pwsh -File tools/PrePush-Checks.ps1'], rationale: 'baseline validation' });
-  }
+  addAction({ key: 'validate:lint', priority: 90, scripts: ['pwsh -File tools/PrePush-Checks.ps1'], rationale: 'baseline validation' });
 
   const actions = Array.from(actionsMap.values()).sort((a, b) => (a.priority ?? 50) - (b.priority ?? 50) || a.key.localeCompare(b.key));
   return {
