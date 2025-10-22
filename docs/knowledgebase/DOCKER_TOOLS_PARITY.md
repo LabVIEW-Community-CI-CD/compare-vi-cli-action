@@ -49,7 +49,7 @@ pwsh -File tools/Run-NonLVChecksInDocker.ps1 `
 
 - GitHub workflow `Tools Parity (Linux)` (`.github/workflows/tools-parity.yml`) runs the helper on `ubuntu-latest`.
   Trigger it via `workflow_dispatch` to capture fresh parity logs and a `docker version` snapshot. Artifacts are uploaded
-  as `docker-parity-linux`.
+  as `docker-parity-linux` (example run: https://github.com/LabVIEW-Community-CI-CD/compare-vi-cli-action/actions/runs/18703466772).
 - Adjust the workflow inputs to re-enable docs, workflow drift, or markdown checks when validating broader coverage.
 
 ## macOS coverage (help wanted)
