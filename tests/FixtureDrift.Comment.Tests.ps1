@@ -3,9 +3,35 @@ $ErrorActionPreference = 'Stop'
 
 Describe 'Get-FixtureDriftComment' -Tag 'Unit' {
   BeforeAll {
-    $repoRoot = Resolve-Path (Join-Path $PSScriptRoot '..')
-    $modulePath = Join-Path $repoRoot 'scripts' 'Build-FixtureDriftComment.ps1'
-    . "$modulePath"
+    try {
+      $scriptPath = $PSCommandPath
+      if ([string]::IsNullOrWhiteSpace($scriptPath) -and $null -ne $MyInvocation?.MyCommand?.Path) {
+        $scriptPath = $MyInvocation.MyCommand.Path
+      }
+      if ([string]::IsNullOrWhiteSpace($scriptPath) -and $PSScriptRoot) {
+        $scriptPath = Join-Path $PSScriptRoot 'FixtureDrift.Comment.Tests.ps1'
+      }
+      if ([string]::IsNullOrWhiteSpace($scriptPath)) {
+        throw [System.InvalidOperationException]::new('Unable to resolve script path for FixtureDrift.Comment tests.')
+      }
+
+      $testDir = Split-Path -Parent $scriptPath
+      $repoRoot = Resolve-Path (Join-Path $testDir '..') -ErrorAction Stop
+      $modulePath = Join-Path $repoRoot 'scripts' 'Build-FixtureDriftComment.ps1'
+
+      if (-not (Test-Path -LiteralPath $modulePath)) {
+        throw [System.IO.FileNotFoundException]::new("Fixture drift helper not found", $modulePath)
+      }
+
+      Write-Host "[FixtureDrift] scriptPath=$scriptPath" -ForegroundColor Cyan
+      Write-Host "[FixtureDrift] modulePath=$modulePath" -ForegroundColor Cyan
+
+      . "$modulePath"
+    } catch {
+      $err = $_
+      $msg = "Fixture drift test setup failed: {0}" -f ($err.Exception.Message ?? $err.ToString())
+      throw [System.Exception]::new($msg, $err.Exception)
+    }
   }
 
   It 'embeds sanitized HTML report inline' {
