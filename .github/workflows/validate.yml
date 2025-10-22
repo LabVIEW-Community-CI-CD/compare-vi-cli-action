@@ -28,6 +28,8 @@ jobs:
     - name: Check PR mergeability
       if: ${{ github.event_name == 'pull_request' }}
       shell: pwsh
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       run: |
         ./tools/Check-PRMergeable.ps1 -Number ${{ github.event.pull_request.number }} -FailOnConflict
     - name: Wire Probe (J1)
