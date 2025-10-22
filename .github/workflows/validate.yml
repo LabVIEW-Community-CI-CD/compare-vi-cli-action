@@ -25,6 +25,11 @@ jobs:
     runs-on: ubuntu-latest
     steps:
     - uses: actions/checkout@v5
+    - name: Check PR mergeability
+      if: ${{ github.event_name == 'pull_request' }}
+      shell: pwsh
+      run: |
+        ./tools/Check-PRMergeable.ps1 -Number ${{ github.event.pull_request.number }} -FailOnConflict
     - name: Wire Probe (J1)
       if: '${{ vars.WIRE_PROBES != ''0'' }}'
       uses: ./.github/actions/wire-probe

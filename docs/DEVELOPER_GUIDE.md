@@ -18,10 +18,16 @@ Quick reference for building, testing, and releasing the LVCompare composite act
 
 Artifacts land in `tests/results/` (JSON summaries, XML, loop logs).
 
-See `docs/plans/VALIDATION_MATRIX.md` for a standing-priority view of the major validation entry points, including 
+See `docs/plans/VALIDATION_MATRIX.md` for a standing-priority view of the major validation entry points, including
 docker workflows and the integration gate. VS Code users can launch the same commands via the bundled tasks in
-`.vscode/tasks.json` (Command Palette -> "Run Task"); leak-handling switches are already wired in so LabVIEW closes after 
-each sweep. For container parity prerequisites and cleanup tips, refer to `docs/knowledgebase/DOCKER_TOOLS_PARITY.md`. 
+`.vscode/tasks.json` (Command Palette -> "Run Task"); leak-handling switches are already wired in so LabVIEW closes
+after each sweep.
+
+- macOS/Linux users must install PowerShell 7 and expose `pwsh` on `PATH` so the tasks can resolve the shell.
+- When LabVIEW is unavailable, run `pwsh -File Invoke-PesterTests.ps1 -IntegrationMode exclude` manually and omit the
+  leak-cleanup flags until the standing-priority tasks land on those platforms.
+
+For container parity prerequisites and cleanup tips, refer to `docs/knowledgebase/DOCKER_TOOLS_PARITY.md`.
 
 ## Pull request hygiene
 

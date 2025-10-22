@@ -1,18 +1,18 @@
 {
-  "number": 267,
-  "title": "Automate merge-method enforcement for determinism",
-  "url": "https://github.com/LabVIEW-Community-CI-CD/compare-vi-cli-action/issues/267",
+  "number": 127,
+  "title": "Standing priority: consolidate CLI tooling and traceability roadmap",
+  "url": "https://github.com/LabVIEW-Community-CI-CD/compare-vi-cli-action/issues/127",
   "state": "OPEN",
   "labels": [
     "standing-priority"
   ],
   "assignees": [],
   "milestone": null,
-  "commentCount": 0,
-  "lastSeenUpdatedAt": "2025-10-21T15:06:43Z",
-  "issueDigest": "d6c73f1f016ce44b1f505ebeebd6505edf3cd17a471edab4af8be134cfe66c38",
-  "bodyDigest": "3617392e892cbf8472dec49510db38b23ebd1004ce0547018c7822a112af9633",
-  "cachedAtUtc": "2025-10-21T15:10:21.272Z",
+  "commentCount": 7,
+  "lastSeenUpdatedAt": "2025-10-22T02:31:18Z",
+  "issueDigest": "bba0bbce4eb8d5b5c74298392f74c178091b5c91364deef76da29700ce7ddfbd",
+  "bodyDigest": "edc786e400043f9b53337f0a5564320e2f053192db1c02301e66644e7046c321",
+  "cachedAtUtc": "2025-10-22T02:38:23.123Z",
   "lastFetchSource": "live",
   "lastFetchError": null
 }

@@ -16,6 +16,8 @@ single source of truth when deciding which helper to run locally, invoke from VS
   - Typical invocation: `pwsh -File Invoke-PesterTests.ps1 -IntegrationMode exclude`.
   - Exit semantics: `0` = pass, `1` = failures/errors.
   - Artifacts: `tests/results/pester-*`.
+  - Platform note: install PowerShell 7 (`pwsh`) on macOS/Linux; when LabVIEW is unavailable, run the command
+    without leak-cleanup switches until parity wiring lands.
 - **`tools/Run-NonLVChecksInDocker.ps1`**
   - Scope: containerised lint, docs links, workflow drift, CLI build.
   - Typical invocation: `pwsh -File tools/Run-NonLVChecksInDocker.ps1 -UseToolsImage`.
@@ -98,7 +100,8 @@ Audience: contributors without the full local toolchain or anyone mirroring CI b
 - **Automation** - Trigger the `Tools Parity (Linux)` workflow (`.github/workflows/tools-parity.yml`) for a hosted
   Ubuntu run that uploads Docker version + parity logs. macOS parity remains a manual verification (see
   `docs/knowledgebase/DOCKER_TOOLS_PARITY.md` for contribution notes).
-- **Further reading** -  `docs/knowledgebase/DOCKER_TOOLS_PARITY.md` captures environment prerequisites, expected artifacts, and cleanup guidance. 
+- **Further reading** - `docs/knowledgebase/DOCKER_TOOLS_PARITY.md` captures environment prerequisites, expected
+  artifacts, and cleanup guidance.
 
 ## `tools/Start-IntegrationGated.ps1`
 
