@@ -1,18 +1,18 @@
 {
-  "number": 127,
-  "title": "Standing priority: consolidate CLI tooling and traceability roadmap",
-  "url": "https://github.com/LabVIEW-Community-CI-CD/compare-vi-cli-action/issues/127",
+  "number": 277,
+  "title": "Release candidate: v0.5.2",
+  "url": "https://github.com/LabVIEW-Community-CI-CD/compare-vi-cli-action/issues/277",
   "state": "OPEN",
   "labels": [
     "standing-priority"
   ],
   "assignees": [],
   "milestone": null,
-  "commentCount": 7,
-  "lastSeenUpdatedAt": "2025-10-22T02:31:18Z",
-  "issueDigest": "bba0bbce4eb8d5b5c74298392f74c178091b5c91364deef76da29700ce7ddfbd",
-  "bodyDigest": "edc786e400043f9b53337f0a5564320e2f053192db1c02301e66644e7046c321",
-  "cachedAtUtc": "2025-10-22T02:38:23.123Z",
+  "commentCount": 4,
+  "lastSeenUpdatedAt": "2025-10-22T06:15:22Z",
+  "issueDigest": "21f3f15d7ba63e9cdb35579d5508f4aba5e531a4de63c188f057e215b69880ab",
+  "bodyDigest": "ec03651863c4b6602e232e7845a533482856cd76604f56b516a8ee8103c65a99",
+  "cachedAtUtc": "2025-10-22T06:36:16.782Z",
   "lastFetchSource": "live",
   "lastFetchError": null
 }

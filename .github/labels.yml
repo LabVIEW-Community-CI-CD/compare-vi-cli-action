@@ -1,0 +1,57 @@
+- name: auto-close:drift
+  description: Auto-close when Fixture Drift Validation is green
+  color: "5319E7"
+- name: auto-close:orchestrated
+  description: Auto-close when CI Orchestrated is green
+  color: "0E8A16"
+- name: auto-close:validate
+  description: Auto-close when Validate is green
+  color: "0E8A16"
+- name: automerge
+  description: Enable PR auto-merge
+  color: "0366D6"
+- name: bug
+  description: Something isn't working
+  color: "D73A4A"
+- name: ci
+  description: CI/CD, workflows, and pipeline changes
+  color: "0E8A16"
+- name: codex
+  description: ""
+  color: "EDEDED"
+- name: dependencies
+  description: Pull requests that update a dependency file
+  color: "0366D6"
+- name: documentation
+  description: Improvements or additions to documentation
+  color: "0075CA"
+- name: duplicate
+  description: This issue or pull request already exists
+  color: "CFD3D7"
+- name: enhancement
+  description: New feature or request
+  color: "A2EEEF"
+- name: github_actions
+  description: Pull requests that update GitHub Actions code
+  color: "000000"
+- name: good first issue
+  description: Good for newcomers
+  color: "7057FF"
+- name: help wanted
+  description: Extra attention is needed
+  color: "008672"
+- name: invalid
+  description: This doesn't seem right
+  color: "E4E669"
+- name: question
+  description: Further information is requested
+  color: "D876E3"
+- name: release
+  description: Release planning and prep
+  color: "5319E7"
+- name: standing-priority
+  description: Current top objective for automation agents
+  color: "FFFFFF"
+- name: wontfix
+  description: This will not be worked on
+  color: "FFFFFF"

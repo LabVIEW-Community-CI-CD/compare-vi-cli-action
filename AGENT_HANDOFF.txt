@@ -4,40 +4,38 @@
 - Running on the Windows runner; PowerShell 7.5.3 is available at `C:\Program Files\PowerShell\7\pwsh.exe`.
 - Pester 5.7.1 is preinstalled and still on the PSModulePath.
 - GitHub CLI 2.81.0 resides at `C:\Program Files\GitHub CLI\gh.exe` with valid `repo`, `workflow`, `gist`, `read:org` scopes.
-- `node tools/npm/run-script.mjs priority:sync` ran at 2025-10-21T23:59Z; `.agent_priority_cache.json` now tracks standing issue #127 (`lastFetchSource = "live"`, digest aligned with `tests/results/_agent/issue/127.json`).
-- Latest `tools/Print-AgentHandoff.ps1 -ApplyToggles -AutoTrim` execution (2025-10-21T23:59Z) confirmed watcher is idle, toggles applied, and wrote session capsule `tests/results/_agent/sessions/session-20251021T235930714Z-d625f40b6661.json`.
-- `pwsh -File tools/Detect-RogueLV.ps1 -ResultsDir tests/results -LookBackSeconds 900 -AppendToStepSummary` executed at 2025-10-21T23:59Z; no rogue LVCompare/LabVIEW processes detected (JSON emitted to console only).
-- `node tools/npm/run-script.mjs priority:handoff-tests` last ran 2025-10-19T15:57Z; results remain cached in `tests/results/_agent/handoff/test-summary.json`.
-- Working tree on `origin/develop`; `.agent_priority_cache.json` is modified but unstaged, no commits created yet this session.
+- `node tools/npm/run-script.mjs priority:sync` ran at 2025-10-22T06:36Z; `.agent_priority_cache.json` now tracks standing issue #277 (`lastFetchSource = "live"`, digest aligned with `tests/results/_agent/issue/277.json`).
+- Latest `tools/Print-AgentHandoff.ps1 -ApplyToggles -AutoTrim` execution (2025-10-22T06:36Z) confirmed watcher is idle, toggles applied, and wrote session capsule `tests/results/_agent/sessions/session-20251022T063647628Z-2bb7286aa859.json`.
+- `pwsh -File tools/Detect-RogueLV.ps1 -ResultsDir tests/results -LookBackSeconds 900 -AppendToStepSummary` executed at 2025-10-22T06:37Z; no rogue LVCompare/LabVIEW processes detected (JSON emitted to console only).
+- `node tools/npm/run-script.mjs priority:handoff-tests` last ran 2025-10-22T03:23Z; results remain cached in `tests/results/_agent/handoff/test-summary.json`.
+- Working tree on `main...upstream/main`; `.agent_priority_cache.json` is modified but unstaged, no commits created yet this session.
 
 ## Status & Known Gaps
-1. Validation matrix drafted (`docs/plans/VALIDATION_MATRIX.md`); still needs live wiring once `tools/Start-IntegrationGated.ps1` lands.
-2. VS Code tasks added (`.vscode/tasks.json`); Windows validation complete (PrePush + `Invoke-PesterTests.ps1 -IntegrationMode exclude` ~8 min—CLI session hit the Codex timeout after the summary landed). Tasks now include `-DetectLeaks -KillLeaks -CleanLabVIEW -CleanAfter` for the unit sweep. Confirm parity on macOS/Linux and decide if we promote them into the docs.
-3. Leak handling verified: reran the unit sweep with the new flags (LVCompare PID 33540 / LabVIEW PID 34060 in `notice-20251021-1751506366.json`), and `tools/Detect-RogueLV.ps1` reports no live processes post-run. Regression logged on #127 as resolved with the updated task.
-4. Phase 1a Docker alignment verified locally: `tools/Run-NonLVChecksInDocker.ps1 -UseToolsImage -SkipDocs -SkipWorkflow -SkipMarkdown` succeeded once Docker Desktop was available (CLI build emitted `dist/comparevi-cli/*`, artifacts removed after validation). Results documented in `docs/knowledgebase/DOCKER_TOOLS_PARITY.md`; Linux automation captured via `Tools Parity (Linux)` workflow artifacts.
-5. Mergeability script added (`tools/Check-PRMergeable.ps1`) so we can poll GitHub for conflicts immediately after opening a PR.
-6. `priority:handoff-tests` artifacts refreshed (Oct 22). No additional action needed unless the validation flow changes.
+1. Release metadata captured for `v0.5.2-rc1` (see `tests/results/_agent/release/release-v0.5.2-rc1-finalize.json`); PR #279 merge status is `UNKNOWN`; confirm checks and reruns before closing #277.
+2. Release branch snapshot (`tests/results/_agent/release/release-v0.5.2-rc1-branch.json`) reflects commit `d9a28e3b16f5`; ensure `release/v0.5.2-rc1` stays aligned with develop/main as new fixes land.
+3. VS Code task updates (`.vscode/tasks.json`) validated on Windows only; cross-plane coverage (macOS/Linux) still outstanding before adding documentation guidance.
+4. Docker parity work captured in `docs/knowledgebase/DOCKER_TOOLS_PARITY.md`; rerun `tools/Run-NonLVChecksInDocker.ps1` with docs/workflow checks enabled when environment allows to complete Phase 1b notes.
+5. `priority:handoff-tests` artifacts refreshed (2025-10-22); rerun if release validation recipes change.
 
 ## Suggested Next Actions
-1. Exercise the new VS Code tasks on macOS/Linux (PrePush + Pester integration) and capture any shell/docker deltas.
-2. Expand Docker parity coverage: rerun the helper with docs/workflow checks enabled when ready and update `docs/knowledgebase/DOCKER_TOOLS_PARITY.md` with cross-platform findings.
-3. After opening/refreshing a PR, run `pwsh -File tools/Check-PRMergeable.ps1 -Number <pr> -FailOnConflict` (or wire it into CI) so merge conflicts are flagged promptly in #127.
-4. Backfill the integration-gate automation (`tools/Start-IntegrationGated.ps1`) or update the validation matrix once the script is available.
-5. If task wiring changes, rerun `node tools/npm/run-script.mjs priority:handoff-tests` to refresh the cache.
+1. Check the status of PR #279 (release candidate finalize) and trigger CI reruns if any required checks are missing or stale.
+2. Exercise the updated VS Code tasks on another plane (macOS/Linux) to flush out shell-specific issues before documenting them.
+3. Run `pwsh -File tools/PrePush-Checks.ps1` and `node tools/npm/run-script.mjs hooks:multi` once new changes are staged for #277 to keep router priorities green.
+4. Rerun `node tools/npm/run-script.mjs priority:handoff-tests` after any release-process script changes to keep cached results current.
 
 ## First Actions for the Next Agent
-1. Run `node tools/npm/run-script.mjs priority:sync` to ensure issue #127 metadata stays fresh.
-2. Review `docs/plans/VALIDATION_MATRIX.md` and `.vscode/tasks.json` updates; exercise at least one task on your plane if not already covered (Windows run completed).
-3. Check `tests/results/_agent/issue/router.json` for the highest-priority scripts (hooks + PrePush) and execute them if your changes touch those areas.
+1. Run `node tools/npm/run-script.mjs priority:sync` to refresh issue #277 metadata and router artifacts.
+2. Review release artifacts under `tests/results/_agent/release/` and sync with PR #279 status before making edits.
+3. Check `tests/results/_agent/issue/router.json` for the active validation order (hooks and PrePush) and schedule the relevant runs as changes land.
 
 ## Notes for Next Agent
 - `SUPPRESS_PATTERN_SELFTEST` remains enforced via `tests/_helpers/DispatcherTestHelper.psm1`; keep it enabled to avoid recursion loops.
 - Pester artifacts live under `tests/results/` (`pester-summary.json`, `pester-results.xml`, `pester-artifacts.json`, `pester-summary.txt`).
 - Rogue LV notices: most recent is `tests/results/_lvcompare_notice/notice-20251021-0521137873.json`; earlier notices from 2025-10-20 remain for history.
-- Latest session capsule: `tests/results/_agent/sessions/session-20251021T235930714Z-d625f40b6661.json`.
+- Latest session capsule: `tests/results/_agent/sessions/session-20251022T063647628Z-2bb7286aa859.json`.
 
 ## Manual LabVIEW Recovery (when LV refuses to exit)
 1. Run `pwsh -File tools/Detect-RogueLV.ps1 -ResultsDir tests/results -LookBackSeconds 900` to list live LVCompare/LabVIEW PIDs.
 2. Attempt graceful shutdown: `pwsh -File tools/Close-LabVIEW.ps1`.
 3. If PIDs remain, issue `Stop-Process -Id <pid> -Force` for each rogue entry (LVCompare first, then LabVIEW). Capture the console log for the issue thread.
-4. Re-run `tools/Detect-RogueLV.ps1 -FailOnRogue` to confirm cleanup; escalate in #127 if the second sweep still reports live processes.
+4. Re-run `tools/Detect-RogueLV.ps1 -FailOnRogue` to confirm cleanup; escalate in #277 if the second sweep still reports live processes.
