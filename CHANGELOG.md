@@ -7,7 +7,14 @@ The format is based on Keep a Changelog, and this project adheres to Semantic Ve
 
 ## [Unreleased]
 
-_No unreleased changes yet._
+### Added
+
+- Validate workflow now runs the mergeability probe (`tools/Check-PRMergeable.ps1`) before linting so conflicted PRs fail fast.
+
+### Changed
+
+- Integration runbook workflow skips forked repositories to avoid waiting on unavailable self-hosted runners.
+- Developer docs and validation matrix now call out cross-plane PowerShell requirements for bundled VS Code tasks and align with markdown linting.
 
 ## [v0.5.1] - 2025-10-19
 

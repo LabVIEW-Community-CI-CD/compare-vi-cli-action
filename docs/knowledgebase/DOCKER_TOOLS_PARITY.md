@@ -13,18 +13,15 @@ tooling. It supports standing priority #127 (Phase 1a: Docker image alignment).
 ## Quick parity run
 
 ```powershell
-pwsh -File tools/Run-NonLVChecksInDocker.ps1 `
-  -UseToolsImage `
-  -SkipDocs `
-  -SkipWorkflow `
-  -SkipMarkdown
+pwsh -File tools/Run-NonLVChecksInDocker.ps1 -UseToolsImage
 ```
 
 - The `dotnet-cli-build (sdk)` container publishes the CompareVI CLI into `dist/comparevi-cli/`. Expect artifacts:
   - `comparevi-cli.dll`, `CompareVi.Shared.dll`, matching `.deps.json` and `.runtimeconfig.json` files.
-- `actionlint` runs inside the tools image (or `rhysd/actionlint` if `-UseToolsImage` isn’t specified). Successful runs
+- `actionlint` runs inside the tools image (or `rhysd/actionlint` if `-UseToolsImage` isn't specified). Successful runs
   print `[docker] actionlint OK`.
-- Optional checks (`-SkipDocs`, `-SkipWorkflow`, `-SkipMarkdown`) can be removed for a full sweep once parity is done.
+- Optional flags (`-SkipDocs`, `-SkipWorkflow`, `-SkipMarkdown`) remain available when you want a quicker loop while
+  iterating locally.
 
 ## Cleanup expectations
 
@@ -59,8 +56,9 @@ pwsh -File tools/Run-NonLVChecksInDocker.ps1 `
 - Contributions welcome: run the parity helper locally on macOS, record `docker version` + script logs, and update this
   guide (and the validation matrix) with findings.
 
-## Status (2025-10-21)
+## Status (2025-10-22)
 
 - Parity check completed on Windows with Docker Desktop 4.47.0 (Engine 28.4.0). CLI build succeeded; cleanup confirmed.
+- Full helper sweep (docs, workflow drift, markdown) now runs cleanly after lint fixes logged in develop (Oct 22).
 - Documentation updated (validation matrix) to remind contributors to remove `dist/comparevi-cli/` after runs.
 - Linux automation added via `Tools Parity (Linux)` workflow; macOS parity remains open for contribution.
