@@ -3,20 +3,55 @@ $ErrorActionPreference = 'Stop'
 
 Describe 'Get-FixtureDriftComment' -Tag 'Unit' {
   BeforeAll {
+    $script:FixtureDriftSetupError = $null
+    $script:FixtureDriftDiagnostics = @{}
+
     try {
-      $scriptPath = $PSCommandPath
-      if ([string]::IsNullOrWhiteSpace($scriptPath) -and $null -ne $MyInvocation?.MyCommand?.Path) {
-        $scriptPath = $MyInvocation.MyCommand.Path
+      $scriptPathCandidates = @()
+      if (-not [string]::IsNullOrWhiteSpace($PSCommandPath)) {
+        $scriptPathCandidates += $PSCommandPath
       }
-      if ([string]::IsNullOrWhiteSpace($scriptPath) -and $PSScriptRoot) {
-        $scriptPath = Join-Path $PSScriptRoot 'FixtureDrift.Comment.Tests.ps1'
+      if ($null -ne $MyInvocation -and $null -ne $MyInvocation.MyCommand -and -not [string]::IsNullOrWhiteSpace($MyInvocation.MyCommand.Path)) {
+        $scriptPathCandidates += $MyInvocation.MyCommand.Path
       }
-      if ([string]::IsNullOrWhiteSpace($scriptPath)) {
+      if (-not [string]::IsNullOrWhiteSpace($PSScriptRoot)) {
+        $scriptPathCandidates += (Join-Path $PSScriptRoot 'FixtureDrift.Comment.Tests.ps1')
+      }
+      if (-not [string]::IsNullOrWhiteSpace($env:GITHUB_WORKSPACE)) {
+        $scriptPathCandidates += (Join-Path $env:GITHUB_WORKSPACE 'tests' 'FixtureDrift.Comment.Tests.ps1')
+      }
+
+      $scriptPathCandidates = $scriptPathCandidates | Where-Object { -not [string]::IsNullOrWhiteSpace($_) }
+
+      Write-Host "[FixtureDrift] scriptPath candidates: $($scriptPathCandidates -join ', ')" -ForegroundColor DarkCyan
+
+      $scriptPath = $scriptPathCandidates | Where-Object { Test-Path -LiteralPath $_ } | Select-Object -First 1
+      if (-not $scriptPath) {
         throw [System.InvalidOperationException]::new('Unable to resolve script path for FixtureDrift.Comment tests.')
       }
 
       $testDir = Split-Path -Parent $scriptPath
-      $repoRoot = Resolve-Path (Join-Path $testDir '..') -ErrorAction Stop
+      $repoCandidatePaths = @(
+        (Join-Path $testDir '..'),
+        $env:GITHUB_WORKSPACE
+      ) | Where-Object { -not [string]::IsNullOrWhiteSpace($_) }
+
+      Write-Host "[FixtureDrift] repo candidates: $($repoCandidatePaths -join ', ')" -ForegroundColor DarkCyan
+
+      $repoRoot = $null
+      foreach ($candidate in $repoCandidatePaths) {
+        if (Test-Path -LiteralPath $candidate) {
+          $resolved = Resolve-Path $candidate -ErrorAction SilentlyContinue
+          if ($resolved) {
+            $repoRoot = $resolved.ProviderPath
+            break
+          }
+        }
+      }
+      if (-not $repoRoot) {
+        throw [System.InvalidOperationException]::new('Unable to resolve repository root for FixtureDrift.Comment tests.')
+      }
+
       $modulePath = Join-Path $repoRoot 'scripts' 'Build-FixtureDriftComment.ps1'
 
       if (-not (Test-Path -LiteralPath $modulePath)) {
@@ -24,17 +59,44 @@ Describe 'Get-FixtureDriftComment' -Tag 'Unit' {
       }
 
       Write-Host "[FixtureDrift] scriptPath=$scriptPath" -ForegroundColor Cyan
+      Write-Host "[FixtureDrift] repoRoot=$repoRoot" -ForegroundColor Cyan
       Write-Host "[FixtureDrift] modulePath=$modulePath" -ForegroundColor Cyan
+
+      $script:FixtureDriftDiagnostics = [pscustomobject]@{
+        ScriptPathCandidates = $scriptPathCandidates
+        RepoCandidates       = $repoCandidatePaths
+        SelectedScriptPath   = $scriptPath
+        SelectedRepoRoot     = $repoRoot
+        ModulePath           = $modulePath
+      }
 
       . "$modulePath"
     } catch {
       $err = $_
-      $msg = "Fixture drift test setup failed: {0}" -f ($err.Exception.Message ?? $err.ToString())
-      throw [System.Exception]::new($msg, $err.Exception)
+      $diagnostics = @()
+      if ($scriptPathCandidates) {
+        $diagnostics += "scriptPathCandidates=[$($scriptPathCandidates -join ', ')]"
+      }
+      if ($repoCandidatePaths) {
+        $diagnostics += "repoCandidates=[$($repoCandidatePaths -join ', ')]"
+      }
+      if ($scriptPath) {
+        $diagnostics += "selectedScriptPath=$scriptPath"
+      }
+      if ($repoRoot) {
+        $diagnostics += "selectedRepoRoot=$repoRoot"
+      }
+      $diagnosticText = if ($diagnostics) { ' | ' + ($diagnostics -join ' | ') } else { [string]::Empty }
+      $msg = "Fixture drift test setup failed: {0}{1}" -f ($err.Exception.Message ?? $err.ToString()), $diagnosticText
+      Write-Warning $msg
+      $script:FixtureDriftSetupError = $msg
     }
   }
 
   It 'embeds sanitized HTML report inline' {
+    if ($script:FixtureDriftSetupError) {
+      throw $script:FixtureDriftSetupError
+    }
     $reportPath = Join-Path $TestDrive 'report.html'
     Set-Content -LiteralPath $reportPath -Value "<html><body><h1>Title & < > ' `"</h1></body></html>" -Encoding utf8
 
@@ -48,6 +110,9 @@ Describe 'Get-FixtureDriftComment' -Tag 'Unit' {
   }
 
   It 'truncates large HTML' {
+    if ($script:FixtureDriftSetupError) {
+      throw $script:FixtureDriftSetupError
+    }
     $reportPath = Join-Path $TestDrive 'report-large.html'
     $html = '<p>' + ('A' * 25000) + '</p>'
     Set-Content -LiteralPath $reportPath -Value $html -Encoding utf8
