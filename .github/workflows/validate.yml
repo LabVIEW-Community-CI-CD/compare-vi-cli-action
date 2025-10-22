@@ -223,6 +223,8 @@ jobs:
     - name: Labels sync summary (develop only)
       if: github.ref_name == 'develop'
       shell: pwsh
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       run: |
         $ErrorActionPreference = 'Continue'
         $labelsFile = '.github/labels.yml'
@@ -253,6 +255,8 @@ jobs:
     - name: Labels sync enforcement (main)
       if: github.ref_name == 'main'
       shell: pwsh
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       run: |
         $ErrorActionPreference = 'Stop'
         $labelsFile = '.github/labels.yml'
