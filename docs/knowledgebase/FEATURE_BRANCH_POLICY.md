@@ -54,6 +54,8 @@ checked into `tools/priority/policy.json` so `priority:policy` stays authoritati
 - `node tools/npm/run-script.mjs priority:policy` – verify only (fails on drift).
 - `node tools/npm/run-script.mjs priority:policy -- --apply` – pushes the manifest configuration back to GitHub (branch
   protections + rulesets); rerun without `--apply` afterward to confirm parity.
+- The Validate workflow runs the verify-only command on every PR targeting `develop`; fix GitHub settings or update
+  `tools/priority/policy.json` before re-running CI when it fails.
 
 ### `develop`
 - **Merge strategy**: squash only (enforce linear history, disable merge commits).

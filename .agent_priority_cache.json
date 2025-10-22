@@ -1,7 +1,7 @@
 {
-  "number": 285,
-  "title": "Document feature branch enforcement policy",
-  "url": "https://github.com/LabVIEW-Community-CI-CD/compare-vi-cli-action/issues/285",
+  "number": 289,
+  "title": "Enforce branch protection policy in CI (policy guard)",
+  "url": "https://github.com/LabVIEW-Community-CI-CD/compare-vi-cli-action/issues/289",
   "state": "OPEN",
   "labels": [
     "standing-priority"
@@ -9,10 +9,10 @@
   "assignees": [],
   "milestone": null,
   "commentCount": 0,
-  "lastSeenUpdatedAt": "2025-10-22T15:48:53Z",
-  "issueDigest": "d4ca445a1f89c2f8882ed4c7bcb7855fbed60f5e369fa9ba15c399b6b47c9c36",
-  "bodyDigest": "3973e022e93220f9212c18d0d0c543ae7c309e46640da93a4a0314de999f5112",
-  "cachedAtUtc": "2025-10-22T18:25:17.425Z",
+  "lastSeenUpdatedAt": "2025-10-22T19:30:39Z",
+  "issueDigest": "c7a39232d09d424b38723869e458ec3777c2b4badfec461ddaa0b3a5d06641f7",
+  "bodyDigest": "68bae82cd7375951745eb3413bc8617b85eca640415082f45edf2f3414836279",
+  "cachedAtUtc": "2025-10-22T19:30:50.558Z",
   "lastFetchSource": "live",
   "lastFetchError": null
 }

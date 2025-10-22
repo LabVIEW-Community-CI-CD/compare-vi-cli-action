@@ -113,6 +113,13 @@ jobs:
       run: |
         pwsh -File tools/PrePush-Checks.ps1
 
+    - name: Policy guard (branch protection)
+      shell: pwsh
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      run: |
+        node tools/npm/run-script.mjs priority:policy
+
     - name: Lint unanchored dot-sourcing (non-blocking)
       shell: pwsh
       continue-on-error: true
