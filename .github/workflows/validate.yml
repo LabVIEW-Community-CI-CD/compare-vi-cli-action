@@ -22,6 +22,8 @@ concurrency:
 
 jobs:
   lint:
+    environment:
+      name: production
     runs-on: ubuntu-latest
     steps:
     - uses: actions/checkout@v5
@@ -116,7 +118,8 @@ jobs:
     - name: Policy guard (branch protection)
       shell: pwsh
       env:
-        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        GITHUB_TOKEN: ${{ secrets.GH_TOKEN || secrets.GITHUB_TOKEN }}
+        GH_TOKEN: ${{ secrets.GH_TOKEN || secrets.GITHUB_TOKEN }}
       run: |
         node tools/npm/run-script.mjs priority:policy
 

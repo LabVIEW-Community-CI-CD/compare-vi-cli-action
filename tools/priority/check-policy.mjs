@@ -80,10 +80,19 @@ function getRepoFromEnv(env = process.env, execSyncFn = execSync) {
 }
 
 async function resolveToken(env = process.env, { readFileFn = readFile, accessFn = access } = {}) {
-  const envToken =
-    env.GITHUB_TOKEN ?? env.GH_TOKEN ?? env.GH_ENTERPRISE_TOKEN;
-  if (envToken && envToken.trim()) {
-    return envToken.trim();
+  if (env.GH_TOKEN && env.GH_TOKEN.trim()) {
+    console.log('[policy] auth source: GH_TOKEN');
+    return env.GH_TOKEN.trim();
+  }
+
+  if (env.GITHUB_TOKEN && env.GITHUB_TOKEN.trim()) {
+    console.log('[policy] auth source: GITHUB_TOKEN');
+    return env.GITHUB_TOKEN.trim();
+  }
+
+  if (env.GH_ENTERPRISE_TOKEN && env.GH_ENTERPRISE_TOKEN.trim()) {
+    console.log('[policy] auth source: GH_ENTERPRISE_TOKEN');
+    return env.GH_ENTERPRISE_TOKEN.trim();
   }
 
   const candidates = [env.GH_TOKEN_FILE];
