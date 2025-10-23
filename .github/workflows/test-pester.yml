@@ -27,6 +27,8 @@ on:
       - 'fixtures.manifest.json'
       - 'VI*.vi'
       - 'docs/schemas/**'
+  merge_group:
+    branches: [ main ]
   workflow_dispatch:
     inputs:
       include_integration:
@@ -49,5 +51,5 @@ jobs:
       sample_id: ${{ inputs.sample_id || '' }}
 
 concurrency:
-  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.event.inputs.sample_id || github.ref }}
+  group: ${{ github.workflow }}-${{ (github.event_name == 'pull_request' && github.event.pull_request.number) || github.event.inputs.sample_id || github.ref }}
   cancel-in-progress: true

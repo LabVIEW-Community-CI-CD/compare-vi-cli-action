@@ -2,39 +2,41 @@
 
 ## Context Snapshot
 - Running on the Windows runner; PowerShell 7.5.3 is available at `C:\Program Files\PowerShell\7\pwsh.exe`.
-- Pester 5.7.1 is preinstalled and still on the PSModulePath.
-- GitHub CLI 2.81.0 resides at `C:\Program Files\GitHub CLI\gh.exe` with valid `repo`, `workflow`, `gist`, `read:org` scopes.
-- `node tools/npm/run-script.mjs priority:sync` ran at 2025-10-21T13:01Z; `.agent_priority_cache.json` now tracks standing issue #263 (`lastFetchSource = "live"`, digest aligned with `tests/results/_agent/issue/263.json`).
-- Latest `tools/Print-AgentHandoff.ps1 -ApplyToggles -AutoTrim` execution (2025-10-21T13:01Z) confirmed watcher is idle, toggles applied, and wrote session capsule `tests/results/_agent/sessions/session-20251021T130152010Z-be79c9f00504.json`.
-- `pwsh -File tools/Detect-RogueLV.ps1 -ResultsDir tests/results -LookBackSeconds 900 -AppendToStepSummary` executed at 2025-10-21T13:02Z; no rogue LVCompare/LabVIEW processes detected (JSON emitted to console only).
-- `node tools/npm/run-script.mjs priority:handoff-tests` last ran 2025-10-19T15:57Z; results remain cached in `tests/results/_agent/handoff/test-summary.json`.
-- Working tree on `issue/263-eliminate-lv-ui-hangs`; `.agent_priority_cache.json` is staged for update, no commits created yet this session.
+- Pester 5.7.1 remains on the PSModulePath.
+- GitHub CLI 2.81.0 is available with `repo`, `workflow`, `gist`, and `read:org` scopes.
+- `node tools/npm/run-script.mjs priority:sync` ran at 2025-10-22T22:01Z; `.agent_priority_cache.json` now tracks standing issue #293 (`lastFetchSource = "live"`, digest aligned with `tests/results/_agent/issue/293.json`).
+- Latest `tools/Print-AgentHandoff.ps1 -ApplyToggles -AutoTrim` execution (2025-10-22T19:43Z) confirmed the watcher is idle, re-applied LabVIEW safety toggles, and wrote session capsule `tests/results/_agent/sessions/session-20251022T194354048Z-058a25d675fd.json`.
+- `pwsh -File tools/Detect-RogueLV.ps1 -ResultsDir tests/results -LookBackSeconds 900 -AppendToStepSummary` executed at 2025-10-22T19:32Z; no rogue LVCompare/LabVIEW processes detected.
+- `node tools/npm/run-script.mjs priority:handoff-tests` last ran 2025-10-22T03:23Z; cached results remain under `tests/results/_agent/handoff/test-summary.json`.
+- Working tree on `issue/293-validate-push` (tracking upstream); latest commit `2897467` ("feat: auto-publish validate refs (#293)") synced locally.
 
 ## Status & Known Gaps
-1. Dispatcher run still logs `WARNING: Failed to copy compare report: Cannot overwrite ...\compare-report.html with itself.` Confirm whether the copy helper needs a guard.
-2. LV cleanup currently depends on single-pass `Detect-RogueLV`; add retry + logging so LabVIEW hangs are surfaced automatically.
-3. `priority:handoff-tests` artifacts are two days old; refresh once dispatcher/leak fixes land.
-4. Issue/PR #263 needs an updated status once leak-handling patches are posted.
+1. `tools/priority/dispatch-validate.mjs` now supports `--push-missing` / `--force-push-ok`; `npm run priority:test` passed (40 tests, ~6.3s) after the update.
+2. Validate run 18730978798 (`priority:validate -- --ref issue/293-validate-push --push-missing --allow-fork --force-push-ok`, head `2897467`) completed **success** at 2025-10-22T22:00Z; earlier runs 18730963960 / 18730940250 auto-cancelled after the superseding dispatch.
+3. PR #294 (“feat: auto-publish validate refs (#293)”) is open against `develop`; the latest Validate jobs (`lint`, `fixtures`, `session-index`, `semver`, hook parity matrix) all report success.
+4. `docs/knowledgebase/FEATURE_BRANCH_POLICY.md` documents the auto-publish flag; loop SMEs for tone/accuracy once tests are green.
+5. Cached release artifacts (`tests/results/_agent/release/release-v0.5.2-rc1-*.json`) still reference PR #279; no action required unless the release thread reopens.
 
 ## Suggested Next Actions
-1. Land the Run-LocalBackbone / Invoke-PesterTests leak-handling updates (retry logic, cleanup flags).
-2. Refresh `priority:handoff-tests` to capture the post-fix baseline.
-3. Circle back to the compare-report duplication warning once leak work is merged.
-4. Post a progress update to issue/PR #263 summarizing leak mitigation work and remaining TODOs.
+1. Monitor PR #294 until Validate and required sub-jobs (`lint`, `fixtures`, `session-index`) stay green; re-dispatch `priority:validate` with `--push-missing`/`--force-push-ok` only if a follow-up commit lands.
+2. Coordinate SME feedback on the doc updates once reviewers are available; capture their sign-off in the PR.
+3. Kick off `tools/PrePush-Checks.ps1` and `node tools/npm/run-script.mjs hooks:multi` before any further workflow-touching commits to keep hook telemetry current.
 
 ## First Actions for the Next Agent
-1. Run `node tools/npm/run-script.mjs priority:sync` to ensure issue #263 metadata stays fresh.
-2. When touching dispatcher logic, rerun `pwsh -File Invoke-PesterTests.ps1 -IntegrationMode exclude -DetectLeaks -KillLeaks -CleanLabVIEW -CleanAfter` to capture a current baseline.
-3. Check the latest `tests/results/_lvcompare_notice/notice-*.json` entries and the handoff rogue summary before/after dispatcher runs.
+1. Run `node tools/npm/run-script.mjs priority:sync` to refresh the standing-priority snapshot (issue #293).
+2. Execute `npm run priority:test` after follow-up edits so the new auto-push flows stay covered.
+3. Watch `gh pr checks 294` (and `gh run view 18730978798 --log`) to ensure the PR summary stays accurate; only re-dispatch with `--push-missing`/`--force-push-ok` if new commits land.
+4. Check `tests/results/_agent/issue/router.json` for updated priority actions once the router refreshes.
 
 ## Notes for Next Agent
-- `SUPPRESS_PATTERN_SELFTEST` remains enforced via `tests/_helpers/DispatcherTestHelper.psm1`; keep it enabled to avoid recursion loops.
+- `SUPPRESS_PATTERN_SELFTEST` remains enforced via `tests/_helpers/DispatcherTestHelper.psm1`; leave it enabled to avoid recursion loops.
 - Pester artifacts live under `tests/results/` (`pester-summary.json`, `pester-results.xml`, `pester-artifacts.json`, `pester-summary.txt`).
-- Rogue LV notices: most recent is `tests/results/_lvcompare_notice/notice-20251021-0521137873.json`; earlier notices from 2025-10-20 remain for history.
-- Latest session capsule: `tests/results/_agent/sessions/session-20251021T130152010Z-be79c9f00504.json`.
+- Rogue LV notices: most recent is `tests/results/_lvcompare_notice/notice-20251021-0521137873.json`; earlier notices (2025-10-20) retained for history.
+- Latest session capsule: `tests/results/_agent/sessions/session-20251022T194354048Z-058a25d675fd.json`.
+- `priority:validate` now accepts `--push-missing` / `--force-push-ok`; combine with `--allow-fork` (or set the env toggles) when running from a fork so the helper can publish the branch before dispatching CI.
 
 ## Manual LabVIEW Recovery (when LV refuses to exit)
 1. Run `pwsh -File tools/Detect-RogueLV.ps1 -ResultsDir tests/results -LookBackSeconds 900` to list live LVCompare/LabVIEW PIDs.
 2. Attempt graceful shutdown: `pwsh -File tools/Close-LabVIEW.ps1`.
-3. If PIDs remain, issue `Stop-Process -Id <pid> -Force` for each rogue entry (LVCompare first, then LabVIEW). Capture the console log for the issue thread.
-4. Re-run `tools/Detect-RogueLV.ps1 -FailOnRogue` to confirm cleanup; escalate in #263 if the second sweep still reports live processes.
+3. If PIDs remain, issue `Stop-Process -Id <pid> -Force` for each rogue entry (LVCompare first, then LabVIEW). Capture the console output for the issue thread.
+4. Re-run `tools/Detect-RogueLV.ps1 -FailOnRogue` to confirm cleanup; escalate in #293 if rogues persist.

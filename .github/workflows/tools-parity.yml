@@ -1,0 +1,56 @@
+name: Tools Parity (Linux)
+
+on:
+  workflow_dispatch:
+    inputs:
+      skipDocs:
+        description: 'Skip documentation link check'
+        default: 'true'
+        required: false
+      skipWorkflow:
+        description: 'Skip workflow drift check'
+        default: 'true'
+        required: false
+      skipMarkdown:
+        description: 'Skip markdown lint'
+        default: 'true'
+        required: false
+
+permissions:
+  contents: read
+
+jobs:
+  docker-parity-linux:
+    name: Docker parity (ubuntu-latest)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Capture Docker version
+        shell: bash
+        run: docker version > docker-version.txt
+
+      - name: Run tools parity helper
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          $args = @('-UseToolsImage')
+          if ('${{ inputs.skipDocs }}' -eq 'true') { $args += '-SkipDocs' }
+          if ('${{ inputs.skipWorkflow }}' -eq 'true') { $args += '-SkipWorkflow' }
+          if ('${{ inputs.skipMarkdown }}' -eq 'true') { $args += '-SkipMarkdown' }
+          ./tools/Run-NonLVChecksInDocker.ps1 @args 2>&1 | Tee-Object -FilePath parity-log.txt
+
+      - name: Clean generated CLI artifacts
+        shell: pwsh
+        run: Remove-Item -LiteralPath dist/comparevi-cli -Recurse -Force -ErrorAction SilentlyContinue
+
+      - name: Upload parity evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: docker-parity-linux
+          path: |
+            docker-version.txt
+            parity-log.txt

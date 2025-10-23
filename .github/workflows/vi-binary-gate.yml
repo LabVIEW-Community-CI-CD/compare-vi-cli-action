@@ -11,6 +11,8 @@ on:
       - '.gitattributes'
       - 'scripts/**'
       - 'tests/ViBinaryHandling.Tests.ps1'
+  merge_group:
+    branches: [ main ]
   workflow_dispatch:
     inputs:
       sample_id:

@@ -1,0 +1,89 @@
+{
+  "repo": {
+    "allow_squash_merge": true,
+    "allow_merge_commit": false,
+    "allow_rebase_merge": true,
+    "allow_auto_merge": true,
+    "delete_branch_on_merge": true
+  },
+  "branches": {},
+  "rulesets": {
+    "8811898": {
+      "name": "develop",
+      "includes": [
+        "refs/heads/develop"
+      ],
+      "required_linear_history": true,
+      "required_status_checks": [
+        "guard",
+        "lint",
+        "fixtures",
+        "session-index",
+        "issue-snapshot",
+        "Workflows Lint / lint (pull_request)"
+      ],
+      "merge_queue": null,
+      "pull_request": {
+        "required_approving_review_count": 0,
+        "dismiss_stale_reviews_on_push": false,
+        "require_code_owner_review": false,
+        "require_last_push_approval": false,
+        "required_review_thread_resolution": false,
+        "allowed_merge_methods": [
+          "squash"
+        ]
+      }
+    },
+    "8614140": {
+      "name": "main",
+      "includes": [
+        "refs/heads/main"
+      ],
+      "required_status_checks": [
+        "lint",
+        "pester",
+        "vi-binary-check",
+        "vi-compare"
+      ],
+      "merge_queue": {
+        "merge_method": "SQUASH",
+        "grouping_strategy": "ALLGREEN",
+        "max_entries_to_build": 5,
+        "min_entries_to_merge": 1,
+        "max_entries_to_merge": 5,
+        "min_entries_to_merge_wait_minutes": 5,
+        "check_response_timeout_minutes": 60
+      },
+      "pull_request": {
+        "required_approving_review_count": 1,
+        "dismiss_stale_reviews_on_push": true,
+        "require_code_owner_review": false,
+        "require_last_push_approval": false,
+        "required_review_thread_resolution": true
+      }
+    },
+    "8614172": {
+      "name": "release",
+      "includes": [
+        "refs/heads/release/*"
+      ],
+      "required_status_checks": [
+        "lint",
+        "pester",
+        "publish",
+        "vi-binary-check",
+        "vi-compare",
+        "mock-cli"
+      ],
+      "merge_queue": null,
+      "pull_request": {
+        "required_approving_review_count": 1,
+        "dismiss_stale_reviews_on_push": true,
+        "require_code_owner_review": false,
+        "require_last_push_approval": false,
+        "required_review_thread_resolution": true
+      }
+    }
+  }
+}
+

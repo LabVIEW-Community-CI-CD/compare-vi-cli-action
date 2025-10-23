@@ -18,7 +18,7 @@ concurrency:
 
 jobs:
   runbook-check:
-    if: ${{ !startsWith(github.ref, 'refs/tags/') }}
+    if: ${{ github.repository_owner == 'LabVIEW-Community-CI-CD' && !startsWith(github.ref, 'refs/tags/') }}
     runs-on: [self-hosted, Windows, X64]
     timeout-minutes: 3
     steps:

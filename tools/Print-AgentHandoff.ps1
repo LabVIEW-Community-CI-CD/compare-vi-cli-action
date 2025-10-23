@@ -846,14 +846,16 @@ try {
     Write-Host ("  state    : {0}" -f (Format-NullableValue $issueSnap.state))
     Write-Host ("  updated  : {0}" -f (Format-NullableValue $issueSnap.updatedAt))
     Write-Host ("  digest   : {0}" -f (Format-NullableValue $issueSnap.digest))
+    Write-Host ("  merge    : use Squash and Merge (linear history required)") -ForegroundColor DarkGray
 
     if ($env:GITHUB_STEP_SUMMARY) {
       $priorityLines = @(
         '### Standing Priority',
         '',
-        ('- Issue: #{0} — {1}' -f (Format-NullableValue $issueSnap.number), (Format-NullableValue $issueSnap.title)),
+        ('- Issue: #{0} - {1}' -f (Format-NullableValue $issueSnap.number), (Format-NullableValue $issueSnap.title)),
         ('- State: {0}  Updated: {1}' -f (Format-NullableValue $issueSnap.state), (Format-NullableValue $issueSnap.updatedAt)),
-        ('- Digest: `{0}`' -f (Format-NullableValue $issueSnap.digest))
+        ('- Digest: `{0}`' -f (Format-NullableValue $issueSnap.digest)),
+        '- Merge: Use Squash and Merge (linear history required)'
       )
       ($priorityLines -join "`n") | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8
     }
@@ -886,7 +888,16 @@ try {
     }
     $handoffDir = Join-Path $ResultsRoot '_agent/handoff'
     New-Item -ItemType Directory -Force -Path $handoffDir | Out-Null
-    Copy-Item -LiteralPath $releasePath -Destination (Join-Path $handoffDir 'release-summary.json') -Force
+    $releaseDest = Join-Path $handoffDir 'release-summary.json'
+    $releaseSourceFull = $releasePath
+    $releaseDestFull = $releaseDest
+    try { $releaseSourceFull = [System.IO.Path]::GetFullPath($releasePath) } catch {}
+    try { $releaseDestFull = [System.IO.Path]::GetFullPath($releaseDest) } catch {}
+    if (-not [string]::Equals($releaseSourceFull, $releaseDestFull, [System.StringComparison]::OrdinalIgnoreCase)) {
+      Copy-Item -LiteralPath $releasePath -Destination $releaseDest -Force
+    } else {
+      Write-Verbose 'Release summary already present at destination; skipping copy.'
+    }
     if ($env:GITHUB_STEP_SUMMARY) {
       $releaseLines = @(
         '### SemVer Status',

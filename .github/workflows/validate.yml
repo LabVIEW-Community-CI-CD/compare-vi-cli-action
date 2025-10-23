@@ -5,6 +5,8 @@ on:
     branches: [main, develop]
   push:
     branches: [main]
+  merge_group:
+    branches: [main]
   workflow_dispatch:
     inputs:
       summary-verbose:
@@ -17,14 +19,23 @@ on:
         type: string
 
 concurrency:
-  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.event.inputs.sample_id || github.ref }}
+  group: ${{ github.workflow }}-${{ (github.event_name == 'pull_request' && github.event.pull_request.number) || github.event.inputs.sample_id || github.ref }}
   cancel-in-progress: true
 
 jobs:
   lint:
+    environment:
+      name: production
     runs-on: ubuntu-latest
     steps:
     - uses: actions/checkout@v5
+    - name: Check PR mergeability
+      if: ${{ github.event_name == 'pull_request' }}
+      shell: pwsh
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      run: |
+        ./tools/Check-PRMergeable.ps1 -Number ${{ github.event.pull_request.number }} -FailOnConflict
     - name: Wire Probe (J1)
       if: '${{ vars.WIRE_PROBES != ''0'' }}'
       uses: ./.github/actions/wire-probe
@@ -105,6 +116,14 @@ jobs:
       shell: pwsh
       run: |
         pwsh -File tools/PrePush-Checks.ps1
+
+    - name: Policy guard (branch protection)
+      shell: pwsh
+      env:
+        GITHUB_TOKEN: ${{ secrets.GH_TOKEN || secrets.GITHUB_TOKEN }}
+        GH_TOKEN: ${{ secrets.GH_TOKEN || secrets.GITHUB_TOKEN }}
+      run: |
+        node tools/npm/run-script.mjs priority:policy
 
     - name: Lint unanchored dot-sourcing (non-blocking)
       shell: pwsh
@@ -216,6 +235,8 @@ jobs:
     - name: Labels sync summary (develop only)
       if: github.ref_name == 'develop'
       shell: pwsh
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       run: |
         $ErrorActionPreference = 'Continue'
         $labelsFile = '.github/labels.yml'
@@ -226,7 +247,7 @@ jobs:
           $names = @([regex]::Matches($yaml,'(?m)^\s*-\s*name:\s*(.+?)\s*$') | ForEach-Object { $_.Groups[1].Value.Trim() })
         } catch { $names = @() }
         $api = "https://api.github.com/repos/${{ github.repository }}/labels?per_page=100"
-        $hdr = @{ Authorization = "Bearer $env:GITHUB_TOKEN"; Accept='application/vnd.github+json'; 'X-GitHub-Api-Version'='2022-11-28' }
+        $hdr = @{ Authorization = "token $env:GITHUB_TOKEN"; Accept='application/vnd.github+json'; 'X-GitHub-Api-Version'='2022-11-28' }
         $existing = @()
         try { $resp = Invoke-RestMethod -Method Get -Uri $api -Headers $hdr; $existing = @($resp | ForEach-Object { $_.name }) } catch {}
         $missing = @($names | Where-Object { $_ -and ($existing -notcontains $_) })
@@ -246,6 +267,8 @@ jobs:
     - name: Labels sync enforcement (main)
       if: github.ref_name == 'main'
       shell: pwsh
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       run: |
         $ErrorActionPreference = 'Stop'
         $labelsFile = '.github/labels.yml'
@@ -253,7 +276,7 @@ jobs:
         $yaml = Get-Content -LiteralPath $labelsFile -Raw
         $names = @([regex]::Matches($yaml,'(?m)^\s*-\s*name:\s*(.+?)\s*$') | ForEach-Object { $_.Groups[1].Value.Trim() })
         $api = "https://api.github.com/repos/${{ github.repository }}/labels?per_page=100"
-        $hdr = @{ Authorization = "Bearer $env:GITHUB_TOKEN"; Accept='application/vnd.github+json'; 'X-GitHub-Api-Version'='2022-11-28' }
+        $hdr = @{ Authorization = "token $env:GITHUB_TOKEN"; Accept='application/vnd.github+json'; 'X-GitHub-Api-Version'='2022-11-28' }
         $resp = Invoke-RestMethod -Method Get -Uri $api -Headers $hdr
         $existing = @($resp | ForEach-Object { $_.name })
         $missing = @($names | Where-Object { $_ -and ($existing -notcontains $_) })
@@ -464,6 +487,45 @@ jobs:
       - name: SemVer check
         run: node tools/npm/run-script.mjs semver:check
 
+  release-branch:
+    if: startsWith(github.head_ref, 'release/')
+    needs: lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v5
+        with:
+          node-version: '20'
+      - name: Install dependencies (no scripts)
+        run: npm ci --ignore-scripts
+      - name: Verify release branch
+        env:
+          GITHUB_HEAD_REF: ${{ github.head_ref }}
+          RELEASE_VALIDATE_BASE: origin/develop
+        run: node tools/priority/verify-release-branch.mjs
+
+  feature-handoff:
+    if: startsWith(github.head_ref, 'feature/')
+    needs: lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v5
+        with:
+          node-version: '20'
+      - name: Install dependencies (no scripts)
+        run: npm ci --ignore-scripts
+      - name: Run priority handoff tests
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PRIORITY_HANDOFF_SKIP_POLICY: '1'
+        run: node tools/npm/run-script.mjs priority:handoff-tests
+
   issue-snapshot:
     needs: lint
     runs-on: ubuntu-latest
@@ -475,8 +537,14 @@ jobs:
       - name: Sync standing-priority snapshot
         env:
           GITHUB_REPOSITORY: ${{ github.repository }}
+          GITHUB_TOKEN: ${{ secrets.GH_TOKEN || secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ secrets.GH_TOKEN || secrets.GITHUB_TOKEN }}
         run: |
-          node tools/npm/run-script.mjs priority:sync || true
+          if [ -z "${GH_TOKEN:-${GITHUB_TOKEN:-}}" ]; then
+            echo "::error::GH_TOKEN/GITHUB_TOKEN is required for priority:sync"
+            exit 1
+          fi
+          node tools/npm/run-script.mjs priority:sync
       - name: Validate snapshot schema (best-effort)
         continue-on-error: true
         run: |

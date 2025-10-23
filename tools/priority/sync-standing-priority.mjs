@@ -204,6 +204,18 @@ function normalizeList(values) {
   return normalized.sort((a, b) => a.localeCompare(b, undefined, { sensitivity: 'base' }));
 }
 
+function summarizeStatusCheckRollup(rollup) {
+  if (!Array.isArray(rollup)) return null;
+  return rollup
+    .filter(Boolean)
+    .map((check) => ({
+      name: check.name ?? null,
+      status: check.status ?? null,
+      conclusion: check.conclusion ?? null,
+      url: check.detailsUrl ?? null
+    }));
+}
+
 export function createSnapshot(issue) {
   const labels = normalizeList(issue.labels);
   const assignees = normalizeList(issue.assignees);
@@ -235,6 +247,57 @@ export function createSnapshot(issue) {
     bodyDigest,
     digest
   };
+}
+
+export function collectReleaseArtifacts(repoRoot) {
+  const dir = path.join(repoRoot, 'tests', 'results', '_agent', 'release');
+  if (!fs.existsSync(dir)) return [];
+
+  const artifacts = [];
+  for (const entry of fs.readdirSync(dir)) {
+    if (!entry.endsWith('.json')) continue;
+    if (entry.includes('-dryrun')) continue;
+
+    const filePath = path.join(dir, entry);
+    try {
+      const raw = fs.readFileSync(filePath, 'utf8');
+      const data = JSON.parse(raw);
+      const match = entry.match(/release-(.+)-(branch|finalize)\.json$/);
+      const tag = data.version ?? data.tag ?? (match ? match[1] : null);
+      const kind = match ? match[2] : data.schema?.includes('finalize') ? 'finalize' : 'branch';
+      const timestamp = data.completedAt ?? data.createdAt ?? null;
+      const pullRequestData = data.pullRequest ?? null;
+      artifacts.push({
+        file: path.relative(repoRoot, filePath).replace(/\\/g, '/'),
+        tag,
+        kind,
+        branch: data.branch ?? data.releaseBranch ?? null,
+        releaseCommit: data.releaseCommit ?? null,
+        mainCommit: data.mainCommit ?? null,
+        developCommit: data.developCommit ?? null,
+        timestamp,
+        pullRequest: pullRequestData
+          ? {
+              number: pullRequestData.number ?? null,
+              url: pullRequestData.url ?? null,
+              mergeStateStatus: pullRequestData.mergeStateStatus ?? null,
+              checks:
+                pullRequestData.checks ?? summarizeStatusCheckRollup(pullRequestData.statusCheckRollup ?? [])
+            }
+          : {
+              number: data.pullRequestNumber ?? null,
+              url: data.pullRequestUrl ?? null,
+              mergeStateStatus: data.mergeStateStatus ?? null,
+              checks: summarizeStatusCheckRollup(data.statusCheckRollup ?? [])
+            }
+      });
+    } catch (err) {
+      console.warn(`[priority] failed to parse release artifact ${entry}: ${err.message}`);
+    }
+  }
+
+  artifacts.sort((a, b) => ((b.timestamp || '').localeCompare(a.timestamp || '')));
+  return artifacts;
 }
 
 export function loadRoutingPolicy(repoRoot) {
@@ -271,6 +334,7 @@ export function buildRouter(issue, policy) {
 
   addAction({ key: 'hooks:pre-commit', priority: 10, scripts: ['node tools/npm/run-script.mjs hooks:pre-commit'], rationale: 'baseline hook gate' });
   addAction({ key: 'hooks:multi', priority: 11, scripts: ['node tools/npm/run-script.mjs hooks:multi', 'node tools/npm/run-script.mjs hooks:schema'], rationale: 'ensure parity across planes' });
+  addAction({ key: 'validate:dispatch', priority: 95, scripts: ['node tools/npm/run-script.mjs priority:validate'], rationale: 'dispatch Validate via upstream guard' });
 
   const labelSet = new Set((issue.labels || []).map((l) => (l || '').toLowerCase()));
   const policyEntries = Array.isArray(policy?.labels) ? policy.labels : [];
@@ -296,9 +360,36 @@ export function buildRouter(issue, policy) {
     }
   }
 
-  if (actionsMap.size < 3) {
-    addAction({ key: 'validate:lint', priority: 90, scripts: ['pwsh -File tools/PrePush-Checks.ps1'], rationale: 'baseline validation' });
+  const releaseArtifacts = Array.isArray(issue.releaseArtifacts) ? issue.releaseArtifacts : [];
+  if (labelSet.has('release')) {
+    const hasBranchMetadata = releaseArtifacts.some((artifact) => artifact.kind === 'branch');
+    if (!hasBranchMetadata) {
+      addAction({
+        key: 'release:branch',
+        priority: 38,
+        scripts: ['pwsh -Command "Write-Host Run npm run release:branch -- <version>"'],
+        rationale: 'release label present but no release branch metadata detected'
+      });
+    }
   }
+  if (releaseArtifacts.length > 0) {
+    const latestBranch = releaseArtifacts.find((artifact) => artifact.kind === 'branch');
+    if (latestBranch) {
+      const matchingFinalize = releaseArtifacts.find(
+        (artifact) => artifact.kind === 'finalize' && artifact.tag === latestBranch.tag
+      );
+      if (!matchingFinalize) {
+        addAction({
+          key: 'release:finalize',
+          priority: 35,
+          scripts: [`node tools/npm/run-script.mjs release:finalize -- ${latestBranch.tag}`],
+          rationale: `release ${latestBranch.tag} ready for finalize`
+        });
+      }
+    }
+  }
+
+  addAction({ key: 'validate:lint', priority: 90, scripts: ['pwsh -File tools/PrePush-Checks.ps1'], rationale: 'baseline validation' });
 
   const actions = Array.from(actionsMap.values()).sort((a, b) => (a.priority ?? 50) - (b.priority ?? 50) || a.key.localeCompare(b.key));
   return {
@@ -625,6 +716,11 @@ export async function main() {
   }
 
   const snapshot = createSnapshot(issue);
+  const releaseArtifacts = collectReleaseArtifacts(repoRoot);
+  if (releaseArtifacts.length > 0) {
+    snapshot.releaseArtifacts = releaseArtifacts;
+  }
+
   writeJson(path.join(resultsDir, `${number}.json`), snapshot);
   fs.writeFileSync(path.join(resultsDir, `${number}.digest`), snapshot.digest + '\n', 'utf8');
 
@@ -660,13 +756,20 @@ export async function main() {
       : `- Source: cache fallback${fetchError ? ` (${fetchError})` : ''}`;
   const summaryLines = [
     '### Standing Priority Snapshot',
-    `- Issue: #${snapshot.number} — ${snapshot.title || '(no title)'}`,
+    `- Issue: #${snapshot.number} - ${snapshot.title || '(no title)'}`,
     `- State: ${snapshot.state || 'n/a'}  Updated: ${snapshot.updatedAt || 'n/a'}`,
     `- Digest: \`${snapshot.digest}\``,
     `- Labels: ${(snapshot.labels || []).join(', ') || 'none'}`,
     `- Top actions: ${topActions}`,
     sourceLine
   ];
+
+  if (releaseArtifacts.length > 0) {
+    const latest = releaseArtifacts.find((artifact) => artifact.kind === 'finalize') ?? releaseArtifacts[0];
+    const versionLabel = latest?.tag ?? 'n/a';
+    const timestamp = latest?.timestamp ?? 'n/a';
+    summaryLines.splice(4, 0, `- Latest release: ${versionLabel} (${latest?.kind || 'branch'}, ${timestamp})`);
+  }
   stepSummaryAppend(summaryLines);
 
   return { snapshot, router, fetchSource, fetchError };
@@ -699,3 +802,4 @@ if (invokedPath && invokedPath === modulePath) {
     }
   })();
 }
+

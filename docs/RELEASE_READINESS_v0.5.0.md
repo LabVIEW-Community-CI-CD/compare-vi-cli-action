@@ -12,11 +12,13 @@
 - **Pester self-hosted (IntegrationMode include)** – ❌ Blocked. Dispatcher attempts recurse
   endlessly through the IncludePatterns tests, preventing completion and leaving no
   artifacts to verify.
-- **Fixture Drift (Windows/Ubuntu)** – ✅ Passing. Current and baseline fixture validation
+- **Fixture Drift (Windows/Ubuntu)** – PASS. Current and baseline fixture validation
   JSON reports show no missing/untracked fixtures or size mismatches.
-- **Validate workflow (actionlint, docs links)** – ✅ Passing. GitHub run [18635539468](https://github.com/svelderrainruiz/compare-vi-cli-action/actions/runs/18635539468) on 2025-10-19 (ref `develop`) completed successfully.
-  The run covered lint, preflight, and session-index jobs after the CLI updates.
-- **LabVIEW/LVCompare guard** – ✅ Passing. `tools/TestStand-CompareHarness.ps1`
+- **Validate workflow (actionlint, docs links)** - PASS. GitHub run
+  [18635539468](https://github.com/svelderrainruiz/compare-vi-cli-action/actions/runs/18635539468) on 2025-10-19
+  (ref `develop`) completed successfully. The run covered lint, preflight, and session-index jobs after the CLI
+  updates.
+- **LabVIEW/LVCompare guard** – PASS. `tools/TestStand-CompareHarness.ps1`
   (2025-10-19 21:55 UTC) now exits with code 0; the session index at
   `tests/results/teststand-session/session-index.json` shows `CreateComparisonReport`
   succeeded and produced the HTML report and image artifacts.

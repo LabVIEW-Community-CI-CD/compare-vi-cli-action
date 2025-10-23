@@ -3,11 +3,15 @@ param(
   [int]$LookBackSeconds = 900,
   [switch]$FailOnRogue,
   [switch]$AppendToStepSummary,
-  [switch]$Quiet
+  [switch]$Quiet,
+  [int]$RetryCount = 1,
+  [int]$RetryDelaySeconds = 5
 )
 
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
+$retryCount = [Math]::Max(1, [Math]::Abs([int]$RetryCount))
+$retryDelay = [Math]::Max(0, [Math]::Abs([int]$RetryDelaySeconds))
 
 $noticeDir = if ($env:LV_NOTICE_DIR) { $env:LV_NOTICE_DIR } else { Join-Path $ResultsDir '_lvcompare_notice' }
 $now = Get-Date
@@ -30,10 +34,6 @@ if (Test-Path -LiteralPath $noticeDir) {
     } catch {}
   }
 }
-
-$liveLC = @(); $liveLV = @()
-try { $liveLC = @(Get-Process -Name 'LVCompare' -ErrorAction SilentlyContinue | Select-Object -ExpandProperty Id) } catch {}
-try { $liveLV = @(Get-Process -Name 'LabVIEW'   -ErrorAction SilentlyContinue | Select-Object -ExpandProperty Id) } catch {}
 
 function Diff-Rogue([int[]]$live, $noticedSet){
   $rogue = @()
@@ -88,29 +88,107 @@ function Get-ProcessDetails {
   return $details
 }
 
-$rogueLC = Diff-Rogue $liveLC $noticedLC
-$rogueLV = Diff-Rogue $liveLV $noticedLV
+$attemptHistory = @()
+$finalAttemptIndex = 0
+$finalGeneratedAt = $now
+$finalLiveLC = @()
+$finalLiveLV = @()
+$finalRogueLC = @()
+$finalRogueLV = @()
+
+for ($attempt = 1; $attempt -le $retryCount; $attempt++) {
+  $attemptTimestamp = Get-Date
+
+  $liveLC = @()
+  $liveLV = @()
+  try { $liveLC = @(Get-Process -Name 'LVCompare' -ErrorAction SilentlyContinue | Select-Object -ExpandProperty Id) } catch {}
+  try { $liveLV = @(Get-Process -Name 'LabVIEW'   -ErrorAction SilentlyContinue | Select-Object -ExpandProperty Id) } catch {}
+
+  $rogueLC = Diff-Rogue $liveLC $noticedLC
+  $rogueLV = Diff-Rogue $liveLV $noticedLV
+
+  $attemptHistory += [ordered]@{
+    attempt = $attempt
+    generatedAt = $attemptTimestamp.ToString('o')
+    live = [ordered]@{
+      lvcompare = @($liveLC)
+      labview = @($liveLV)
+    }
+    rogue = [ordered]@{
+      lvcompare = @($rogueLC)
+      labview = @($rogueLV)
+    }
+  }
+
+  $finalAttemptIndex = $attempt
+  $finalGeneratedAt = $attemptTimestamp
+  $finalLiveLC = @($liveLC)
+  $finalLiveLV = @($liveLV)
+  $finalRogueLC = @($rogueLC)
+  $finalRogueLV = @($rogueLV)
+
+  $liveLabelLC = if ($liveLC.Count -gt 0) { $liveLC -join ',' } else { '(none)' }
+  $liveLabelLV = if ($liveLV.Count -gt 0) { $liveLV -join ',' } else { '(none)' }
+  $rogueLabelLC = if ($rogueLC.Count -gt 0) { $rogueLC -join ',' } else { '(none)' }
+  $rogueLabelLV = if ($rogueLV.Count -gt 0) { $rogueLV -join ',' } else { '(none)' }
+
+  $hasRogue = ($rogueLC.Count -gt 0 -or $rogueLV.Count -gt 0)
+
+  if (-not $Quiet -and $retryCount -gt 1) {
+    Write-Host ("[Detect-RogueLV] Attempt {0}/{1}: live LVCompare={2} LabVIEW={3} rogue LVCompare={4} LabVIEW={5}" -f $attempt, $retryCount, $liveLabelLC, $liveLabelLV, $rogueLabelLC, $rogueLabelLV) -ForegroundColor DarkGray
+    if ($hasRogue -and $attempt -lt $retryCount) {
+      if ($retryDelay -gt 0) {
+        Write-Warning ("[Detect-RogueLV] Rogue processes detected (attempt {0}/{1}); waiting {2}s before retry." -f $attempt, $retryCount, $retryDelay)
+      } else {
+        Write-Warning ("[Detect-RogueLV] Rogue processes detected (attempt {0}/{1}); retrying immediately." -f $attempt, $retryCount)
+      }
+    }
+  }
+
+  if (-not $hasRogue) { break }
+  if ($attempt -lt $retryCount -and $retryDelay -gt 0) {
+    Start-Sleep -Seconds $retryDelay
+  }
+}
+
+if ($finalAttemptIndex -eq 0) {
+  $finalAttemptIndex = 1
+  $finalGeneratedAt = Get-Date
+}
+
+$finalLiveDetails = [ordered]@{
+  lvcompare = @(Get-ProcessDetails -ProcessIds $finalLiveLC)
+  labview   = @(Get-ProcessDetails -ProcessIds $finalLiveLV)
+}
 
 $out = [ordered]@{
   schema = 'rogue-lv-detection/v1'
-  generatedAt = $now.ToString('o')
+  generatedAt = $finalGeneratedAt.ToString('o')
   lookbackSeconds = $LookBackSeconds
   noticeDir = $noticeDir
-  live = [ordered]@{ lvcompare = $liveLC; labview = $liveLV }
-  liveDetails = [ordered]@{
-    lvcompare = @(Get-ProcessDetails -ProcessIds $liveLC)
-    labview   = @(Get-ProcessDetails -ProcessIds $liveLV)
-  }
+  live = [ordered]@{ lvcompare = $finalLiveLC; labview = $finalLiveLV }
+  liveDetails = $finalLiveDetails
   noticed = [ordered]@{ lvcompare = @($noticedLC); labview = @($noticedLV) }
-  rogue = [ordered]@{ lvcompare = $rogueLC; labview = $rogueLV }
+  rogue = [ordered]@{ lvcompare = $finalRogueLC; labview = $finalRogueLV }
+  attempt = [ordered]@{
+    index = $finalAttemptIndex
+    total = $retryCount
+  }
+}
+
+if ($attemptHistory.Count -gt 0) {
+  $out['attempts'] = $attemptHistory
 }
 
 if (-not $Quiet) {
   $lines = @('### Rogue LV Detection','')
+  if ($retryCount -gt 1) {
+    $lines += ('- Attempt: {0}/{1}' -f $finalAttemptIndex, $retryCount)
+  }
   $lines += ('- Lookback: {0}s' -f $LookBackSeconds)
-  $lines += ('- Live: LVCompare={0} LabVIEW={1}' -f ($liveLC -join ','), ($liveLV -join ','))
-  $lines += ('- Noticed: LVCompare={0} LabVIEW={1}' -f ((@($noticedLC)) -join ','), ((@($noticedLV)) -join ','))
-  $lines += ('- Rogue: LVCompare={0} LabVIEW={1}' -f ($rogueLC -join ','), ($rogueLV -join ','))
+  $lines += ('- Live: LVCompare={0} LabVIEW={1}' -f ($finalLiveLC -join ','), ($finalLiveLV -join ','))
+  $lines += ('- Noticed: LVCompare={0} LabVIEW={1}' -f ((@($noticedLC)) -join ','), ((@($noticedLV)) -join ',')) 
+  $lines += ('- Rogue: LVCompare={0} LabVIEW={1}' -f ($finalRogueLC -join ','), ($finalRogueLV -join ','))
   if ($out.liveDetails.lvcompare.Count -gt 0 -or $out.liveDetails.labview.Count -gt 0) {
     $lines += ''
     if ($out.liveDetails.lvcompare.Count -gt 0) {
@@ -170,4 +248,4 @@ if (-not $Quiet) {
 $json = $out | ConvertTo-Json -Depth 6
 Write-Output $json
 
-if ($FailOnRogue -and ($rogueLC.Count -gt 0 -or $rogueLV.Count -gt 0)) { exit 3 } else { exit 0 }
+if ($FailOnRogue -and ($finalRogueLC.Count -gt 0 -or $finalRogueLV.Count -gt 0)) { exit 3 } else { exit 0 }

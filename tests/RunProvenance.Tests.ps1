@@ -53,6 +53,7 @@ Describe 'Write-RunProvenance' -Tag 'Unit' {
     $env:GITHUB_REF_NAME   = 'feature/fallback'
     Clear-ProvenanceEnv 'GITHUB_HEAD_REF'
     Clear-ProvenanceEnv 'GITHUB_BASE_REF'
+    Clear-ProvenanceEnv 'GITHUB_EVENT_PATH'
     $env:GITHUB_REPOSITORY = 'owner/repo'
     $env:GITHUB_RUN_ID = '1234'
     $env:GITHUB_RUN_ATTEMPT = '1'

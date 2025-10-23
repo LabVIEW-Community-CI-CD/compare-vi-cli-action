@@ -64,26 +64,36 @@ Release v0.5.1 focuses on four pillars:
 - [ ] Fixture drift jobs (Windows + Ubuntu) - confirm size/bytes alignment.
 - [ ] LabVIEW CLI provider smoke: `tools/TestStand-CompareHarness.ps1` should complete without `CreateComparisonReport`
       errors.
-- [ ] `node tools/npm/run-script.mjs priority:release` succeeds, writing `tests/results/_agent/handoff/release-summary.json`.
+- [ ] `node tools/npm/run-script.mjs priority:release` succeeds, writing
+      `tests/results/_agent/handoff/release-summary.json`.
 
 ## 7a. Compare History Artifact Sanity
 
-- Confirm `tests/results/ref-compare-history/history-summary.json` exists, schema=`vi-history-compare/v1`, and `pairs` matches the commit window inspected.
-- For each pair, open the matching `*-summary.json`; ensure `cli.diff`, `exitCode`, and `reportHtml` align with expectations (diffs have `exitCode = 1`, identical runs stay at `0`).
-- Spot-check the rendered report (`cli-report.html`) for at least the first diff, verifying highlighted sections reflect the regression under review.
-- Ensure highlights captured in the summary (`cli.highlights`) mirror the report and that the artifact directory holds stdout/stderr captures for triage.
-- If `IncludeIdenticalPairs` was enabled, verify identical entries are flagged (`skippedIdentical=true`) and excluded from markdown rows when not requested.
+- Confirm `tests/results/ref-compare-history/history-summary.json` exists,
+  schema=`vi-history-compare/v1`, and `pairs` matches the commit window inspected.
+- For each pair, open the matching `*-summary.json`; ensure `cli.diff`, `exitCode`, and
+  `reportHtml` align with expectations (diffs have `exitCode = 1`, identical runs stay at `0`).
+- Spot-check the rendered report (`cli-report.html`) for at least the first diff, verifying
+  highlighted sections reflect the regression under review.
+- Ensure highlights captured in the summary (`cli.highlights`) mirror the report and that the
+  artifact directory holds stdout/stderr captures for triage.
+- If `IncludeIdenticalPairs` was enabled, verify identical entries are flagged
+  (`skippedIdentical=true`) and excluded from markdown rows when not requested.
 
 ## 8. Risks & Mitigations
 
-<!-- markdownlint-disable MD013 -->
-| Risk | Impact | Mitigation |
-|------|--------|------------|
-| Guard still reports rogue LabVIEW.exe | Dispatcher blocks post-merge | Keep `tools/Detect-RogueLV.ps1` in the release branch CI; ensure guard summaries stay green |
-| Fixture manifest consumers ignore `bytes` | Downstream size checks fail | Highlight in CHANGELOG/README; keep `minBytes` compatibility shim only where necessary |
-| Session index not appended in forks | Reduced telemetry | Document fallback in README + watcher docs; keep branch protection script aligned |
-| Dockerized non-LV checks lack GH token | priority:sync/drift fails | Ship guidance to set `GH_TOKEN`/`GITHUB_TOKEN` (added to docs/ENVIRONMENT.md) |
-<!-- markdownlint-enable MD013 -->
+- **Risk:** Guard still reports rogue LabVIEW.exe
+  - **Impact:** Guard blocks post-merge
+  - **Mitigation:** Keep `tools/Detect-RogueLV.ps1` in release CI and verify guard summaries stay green.
+- **Risk:** Fixture manifest consumers ignore `bytes`
+  - **Impact:** Size checks fail downstream
+  - **Mitigation:** Highlight the change in CHANGELOG/README and retain `minBytes` compatibility shims only when needed.
+- **Risk:** Session index not appended in forks
+  - **Impact:** Telemetry coverage drops
+  - **Mitigation:** Document fallback in README and watcher docs; keep branch protection script aligned.
+- **Risk:** Dockerized non-LV checks lack GH token
+  - **Impact:** `priority:sync`/drift helpers fail
+  - **Mitigation:** Remind contributors to set `GH_TOKEN`/`GITHUB_TOKEN` (see `docs/ENVIRONMENT.md`).
 
 ## 9. Follow-Up Work After v0.5.1
 

@@ -29,16 +29,9 @@ function Zip-Dir($sourceDir, $zipPath) {
 
 function TarGz-Dir($sourceDir, $tarGzPath) {
   if (Test-Path $tarGzPath) { Remove-Item $tarGzPath -Force }
-  $parent = Split-Path -Parent $sourceDir
-  $name = Split-Path -Leaf $sourceDir
-  Push-Location $parent
-  try {
-    # Use system tar; on Windows this is bsdtar. Permissions for linux/osx binaries
-    # created on Windows may not preserve +x; advise consumers to chmod after extract.
-    tar -czf $tarGzPath $name
-  } finally {
-    Pop-Location
-  }
+  # Use system tar; on Windows this is bsdtar. Permissions for linux/osx binaries
+  # created on Windows may not preserve +x; advise consumers to chmod after extract.
+  tar -czf $tarGzPath -C $sourceDir .
 }
 
 function Copy-Docs($destDir) {

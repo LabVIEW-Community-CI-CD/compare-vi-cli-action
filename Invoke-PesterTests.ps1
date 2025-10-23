@@ -3136,6 +3136,14 @@ try {
         foreach ($probe in $attempts) {
           try {
             $full = [System.IO.Path]::GetFullPath($probe)
+            try {
+              $resolved = Resolve-Path -LiteralPath $full -ErrorAction Stop
+              if ($resolved -and $resolved.ProviderPath) {
+                $full = $resolved.ProviderPath
+              }
+            } catch {
+              # Resolve-Path can fail when the target does not exist yet; fall back to the computed path.
+            }
             if ($full.StartsWith('\?\UNC\', [System.StringComparison]::OrdinalIgnoreCase)) {
               return ('\' + $full.Substring(8))
             }

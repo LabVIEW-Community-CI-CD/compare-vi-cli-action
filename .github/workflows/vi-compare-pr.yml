@@ -5,6 +5,8 @@ on:
     types: [labeled, reopened, synchronize]
     paths-ignore:
       - '**/*.md'
+  merge_group:
+    branches: [ main ]
   workflow_dispatch:
     inputs:
       sample_id:
@@ -13,14 +15,14 @@ on:
         type: string
 
 concurrency:
-  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.event.inputs.sample_id || github.ref }}
+  group: ${{ github.workflow }}-${{ (github.event_name == 'pull_request' && github.event.pull_request.number) || github.event.inputs.sample_id || github.ref }}
   cancel-in-progress: true
 
 jobs:
   preflight:
     runs-on: [self-hosted, Windows, X64]
     timeout-minutes: 10
-    if: github.event_name == 'workflow_dispatch' || contains(github.event.pull_request.labels.*.name, 'vi-compare')
+    if: github.event_name == 'workflow_dispatch' || github.event_name == 'merge_group' || (github.event_name == 'pull_request' && contains(github.event.pull_request.labels.*.name, 'vi-compare'))
     steps:
       - name: Checkout
         uses: actions/checkout@v5
@@ -36,7 +38,7 @@ jobs:
           Write-Host 'Preflight OK: LVCompare present; LabVIEW not running.'
 
   vi-compare:
-    if: github.event_name == 'workflow_dispatch' || contains(github.event.pull_request.labels.*.name, 'vi-compare')
+    if: github.event_name == 'workflow_dispatch' || github.event_name == 'merge_group' || (github.event_name == 'pull_request' && contains(github.event.pull_request.labels.*.name, 'vi-compare'))
     runs-on: [self-hosted, Windows, X64]
     needs: preflight
     timeout-minutes: 45
@@ -50,6 +52,7 @@ jobs:
 
       - name: Detect docs-only change
         id: docs
+        if: github.event_name == 'pull_request'
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Continue'
@@ -196,7 +199,7 @@ jobs:
           Add-Content $env:GITHUB_STEP_SUMMARY "- Fixture Drift: ./docs/FIXTURE_DRIFT.md"
 
       - name: Comment on PR (using XCLI_PAT)
-        if: always() && (github.event_name == 'workflow_dispatch' || github.event.pull_request.number)
+        if: always() && github.event_name == 'pull_request' && github.event.pull_request.number
         shell: pwsh
         env:
           GH_REPO: ${{ github.repository }}

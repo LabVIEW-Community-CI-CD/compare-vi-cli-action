@@ -1,0 +1,105 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "Validation: PrePush (actionlint)",
+      "type": "process",
+      "command": "pwsh",
+      "args": [
+        "-NoLogo",
+        "-NoProfile",
+        "-File",
+        "tools/PrePush-Checks.ps1"
+      ],
+      "options": {
+        "cwd": "${workspaceFolder}"
+      },
+      "group": "test",
+      "problemMatcher": []
+    },
+    {
+      "label": "Validation: Pester (unit)",
+      "type": "process",
+      "command": "pwsh",
+      "args": [
+        "-NoLogo",
+        "-NoProfile",
+        "-File",
+        "Invoke-PesterTests.ps1",
+        "-IntegrationMode",
+        "exclude",
+        "-DetectLeaks",
+        "-KillLeaks",
+        "-CleanLabVIEW",
+        "-CleanAfter",
+        "-ResultsPath",
+        "tests/results"
+      ],
+      "options": {
+        "cwd": "${workspaceFolder}"
+      },
+      "group": "test",
+      "problemMatcher": []
+    },
+    {
+      "label": "Validation: Pester (integration + leak sweep)",
+      "type": "process",
+      "command": "pwsh",
+      "args": [
+        "-NoLogo",
+        "-NoProfile",
+        "-File",
+        "Invoke-PesterTests.ps1",
+        "-IntegrationMode",
+        "include",
+        "-DetectLeaks",
+        "-KillLeaks",
+        "-CleanLabVIEW",
+        "-CleanAfter",
+        "-ResultsPath",
+        "tests/results"
+      ],
+      "options": {
+        "cwd": "${workspaceFolder}"
+      },
+      "group": "test",
+      "problemMatcher": []
+    },
+    {
+      "label": "Validation: Non-LV checks (docker)",
+      "type": "process",
+      "command": "pwsh",
+      "args": [
+        "-NoLogo",
+        "-NoProfile",
+        "-File",
+        "tools/Run-NonLVChecksInDocker.ps1",
+        "-UseToolsImage"
+      ],
+      "options": {
+        "cwd": "${workspaceFolder}",
+        "env": {
+          "COMPAREVI_TOOLS_IMAGE": "ghcr.io/labview-community-ci-cd/comparevi-tools:latest"
+        }
+      },
+      "group": "test",
+      "problemMatcher": []
+    },
+    {
+      "label": "Validation: priority handoff tests",
+      "type": "process",
+      "command": "pwsh",
+      "args": [
+        "-NoLogo",
+        "-NoProfile",
+        "-Command",
+        "node tools/npm/run-script.mjs priority:handoff-tests"
+      ],
+      "options": {
+        "cwd": "${workspaceFolder}"
+      },
+      "group": "test",
+      "problemMatcher": []
+    }
+  ]
+}

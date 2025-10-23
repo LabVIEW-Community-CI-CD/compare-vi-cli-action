@@ -218,6 +218,9 @@ Use `tools/workflows/update_workflows.py` for mechanical updates (comment-preser
 ## Re-run with same inputs
 
 - Summaries include a copy/pastable `gh workflow run` command.
+- Use `node tools/npm/run-script.mjs priority:validate -- --ref <branch>` to dispatch
+  Validate from upstream; the helper blocks fork refs unless you pass `--allow-fork`
+  (or `VALIDATE_DISPATCH_ALLOW_FORK=1`).
 - Comment snippets documented in `.github/PR_COMMENT_SNIPPETS.md`.
 
 ## Watching orchestrated runs

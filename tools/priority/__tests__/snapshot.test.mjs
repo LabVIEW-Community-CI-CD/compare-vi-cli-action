@@ -57,6 +57,7 @@ test('buildRouter honours policy map and default actions', () => {
   assert.ok(keys.includes('hooks:multi'));
   assert.ok(keys.includes('docs:lint'));
   assert.ok(keys.includes('ci:parity'));
+  assert.ok(keys.includes('validate:dispatch'));
 
   const priorities = router.actions.map((a) => a.priority);
   assert.deepEqual([...priorities].sort((a, b) => a - b), priorities, 'actions sorted by priority');
@@ -77,5 +78,6 @@ test('buildRouter adds fallback validation action when needed', () => {
   const router = buildRouter(snapshot, null);
   const keys = router.actions.map((a) => a.key);
   assert.ok(keys.includes('validate:lint'));
+  assert.ok(keys.includes('validate:dispatch'));
 });
 
