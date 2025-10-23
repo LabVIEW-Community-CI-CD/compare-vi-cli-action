@@ -1,18 +1,20 @@
 {
-  "number": 263,
-  "title": "Standing priority: eliminate LabVIEW UI hangs",
-  "url": "https://github.com/LabVIEW-Community-CI-CD/compare-vi-cli-action/issues/263",
+  "number": 295,
+  "title": "Fine-tune VI compare refs workflow",
+  "url": "https://github.com/LabVIEW-Community-CI-CD/compare-vi-cli-action/issues/295",
   "state": "OPEN",
   "labels": [
+    "ci",
+    "enhancement",
     "standing-priority"
   ],
   "assignees": [],
   "milestone": null,
-  "commentCount": 9,
-  "lastSeenUpdatedAt": "2025-10-21T12:34:27Z",
-  "issueDigest": "a6ea41a424f2a671af95221d0c9803f13598256bad0cf68c0eda0ec68887110c",
-  "bodyDigest": "3617392e892cbf8472dec49510db38b23ebd1004ce0547018c7822a112af9633",
-  "cachedAtUtc": "2025-10-21T13:01:29.103Z",
+  "commentCount": 1,
+  "lastSeenUpdatedAt": "2025-10-23T00:22:01Z",
+  "issueDigest": "942eac41d321795aa180677e30829ffd8925ea1e4eddc2178d95b890a95706cc",
+  "bodyDigest": "7570f8e74d5f2b3405911b265e938532b185654a7454de32099fdb6450e02064",
+  "cachedAtUtc": "2025-10-23T00:25:33.339Z",
   "lastFetchSource": "live",
   "lastFetchError": null
 }

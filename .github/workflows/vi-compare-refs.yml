@@ -7,21 +7,32 @@ on:
         description: 'Optional sample id for concurrency grouping'
         required: false
         type: string
-      vi_name:
-        description: 'VI filename (e.g. VI1.vi)'
+      target_path:
+        description: 'Repository-relative VI path (e.g. path/to/VI1.vi)'
         required: true
         default: 'VI1.vi'
         type: string
-      base_commit:
-        description: 'Base git commit/ref'
-        required: true
-        default: 'f953572a18194b58ca4d05383c2795c56cc24865'
+      start_ref:
+        description: 'Starting commit/ref (defaults to HEAD)'
+        required: false
+        default: ''
         type: string
-      head_commit:
-        description: 'Head git commit/ref'
-        required: true
-        default: 'd173970c182842b39b21ff1ec14821496191b9a7'
+      end_ref:
+        description: 'Optional commit/ref to stop at (exclusive)'
+        required: false
+        default: ''
         type: string
+      max_pairs:
+        description: 'Maximum commit pairs to evaluate (0 = no limit)'
+        required: false
+        default: '10'
+        type: string
+      fail_fast:
+        description: 'Stop after the first detected diff'
+        required: false
+        default: 'false'
+        type: choice
+        options: ['true','false']
       flag_noattr:
         description: 'Ignore VI attributes (-noattr)'
         required: false
@@ -42,13 +53,18 @@ on:
         required: false
         type: boolean
         default: true
+      modes:
+        description: 'Comma-separated compare modes (default, attributes, front-panel, block-diagram, all)'
+        required: false
+        default: 'default'
+        type: string
       additional_flags:
         description: 'Extra LVCompare flags (optional, space-delimited)'
         required: false
         default: ''
         type: string
       fail_on_diff:
-        description: 'Fail the job when LVCompare reports differences'
+        description: 'Fail the job when any compare diff is detected'
         required: false
         default: 'false'
         type: choice
@@ -91,92 +107,163 @@ jobs:
         run: |
           git fetch --all --prune --prune-tags --tags
 
-      - name: Compare VI between refs
-        id: compare
+      - name: Compare VI history (commit pairs)
+        id: history
         shell: pwsh
         env:
-          VI_NAME: ${{ inputs.vi_name }}
-          BASE_REF: ${{ inputs.base_commit }}
-          HEAD_REF: ${{ inputs.head_commit }}
+          TARGET_PATH: ${{ inputs.target_path }}
+          START_REF: ${{ inputs.start_ref }}
+          END_REF: ${{ inputs.end_ref }}
+          MAX_PAIRS: ${{ inputs.max_pairs }}
           FLAG_NOATTR: ${{ inputs.flag_noattr }}
           FLAG_NOFP: ${{ inputs.flag_nofp }}
           FLAG_NOFPPOS: ${{ inputs.flag_nofppos }}
           FLAG_NOBDCOSM: ${{ inputs.flag_nobdcosm }}
+          MODES: ${{ inputs.modes }}
           EXTRA_FLAGS: ${{ inputs.additional_flags }}
+          FAIL_FAST: ${{ inputs.fail_fast }}
           FAIL_ON_DIFF: ${{ inputs.fail_on_diff }}
         run: |
           $ErrorActionPreference = 'Stop'
-          $resultsDir = Join-Path $env:GITHUB_WORKSPACE 'tests/results/ref-compare'
-          New-Item -ItemType Directory -Path $resultsDir -Force | Out-Null
-          $outName = $env:VI_NAME -replace '[\\/:]+','_'
-          if ([string]::IsNullOrWhiteSpace($outName)) { $outName = 'vi-compare' }
-          $scriptPath = Join-Path $env:GITHUB_WORKSPACE 'tools/Compare-RefsToTemp.ps1'
-          $flagList = @()
-          if ($env:FLAG_NOATTR -eq 'true') { $flagList += '-noattr' }
-          if ($env:FLAG_NOFP -eq 'true') { $flagList += '-nofp' }
-          if ($env:FLAG_NOFPPOS -eq 'true') { $flagList += '-nofppos' }
-          if ($env:FLAG_NOBDCOSM -eq 'true') { $flagList += '-nobdcosm' }
-          if (-not [string]::IsNullOrWhiteSpace($env:EXTRA_FLAGS)) {
-            $flagList += $env:EXTRA_FLAGS
+          function Convert-ToBoolean([string]$value, [bool]$default = $false) {
+            if ([string]::IsNullOrWhiteSpace($value)) { return $default }
+            switch ($value.Trim().ToLowerInvariant()) {
+              'true' { return $true }
+              'false' { return $false }
+              '1' { return $true }
+              '0' { return $false }
+              'yes' { return $true }
+              'no' { return $false }
+              default { return [System.Convert]::ToBoolean($value) }
+            }
           }
-          if ($flagList -notcontains '-nobd') { $flagList = @('-nobd') + $flagList }
-          $args = @(
-            '-NoLogo','-NoProfile','-File', $scriptPath,
-            '-ViName', $env:VI_NAME,
-            '-RefA', $env:BASE_REF,
-            '-RefB', $env:HEAD_REF,
-            '-ResultsDir', $resultsDir,
-            '-OutName', $outName,
-            '-Detailed',
-            '-RenderReport',
-            '-Quiet'
-          )
-          if ($flagList.Count -gt 0) {
-            $args += '-LvCompareArgs'
-            $args += ($flagList -join ' ')
+          if ([string]::IsNullOrWhiteSpace($env:TARGET_PATH)) {
+            throw 'target_path input cannot be empty.'
           }
-          if ($env:FAIL_ON_DIFF -eq 'true') { $args += '-FailOnDiff' }
-          $proc = Start-Process -FilePath 'pwsh' -ArgumentList $args -Wait -PassThru -WindowStyle Hidden
-          if ($proc.ExitCode -ne 0) {
-            throw "Compare-RefsToTemp.ps1 exited with $($proc.ExitCode). See logs for details."
+          $scriptPath = Join-Path $env:GITHUB_WORKSPACE 'tools/Compare-VIHistory.ps1'
+          if (-not (Test-Path -LiteralPath $scriptPath -PathType Leaf)) {
+            throw "Compare-VIHistory.ps1 not found at $scriptPath"
           }
-          $summaryPath = Join-Path $resultsDir ("{0}-summary.json" -f $outName)
-          if (-not (Test-Path -LiteralPath $summaryPath)) {
-            throw "Summary not found at $summaryPath"
-          }
-          "summaryPath=$summaryPath" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
-          "resultsDir=$resultsDir" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
-          "outName=$outName" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
+          $resultsRoot = Join-Path $env:GITHUB_WORKSPACE 'tests/results/ref-compare/history'
+          New-Item -ItemType Directory -Path $resultsRoot -Force | Out-Null
 
-      - name: Append summary
-        if: ${{ always() && steps.compare.outputs.summaryPath != '' }}
+          function Normalize-Mode([string]$value) {
+            $trim = $value.Trim()
+            if (-not $trim) { return 'default' }
+            return $trim.ToLowerInvariant()
+          }
+          function Get-ModeSlug([string]$value) {
+            $slug = ($value -replace '[^a-z0-9]+','-').Trim('-')
+            if ([string]::IsNullOrWhiteSpace($slug)) { return 'default' }
+            return $slug
+          }
+
+          $modeInput = if ([string]::IsNullOrWhiteSpace($env:MODES)) { 'default' } else { $env:MODES }
+          $modeTokens = @($modeInput -split '[,;]' | ForEach-Object { Normalize-Mode $_ } | Where-Object { $_ })
+          if ($modeTokens.Count -eq 0) { $modeTokens = @('default') }
+
+          $manifestPaths = @()
+          foreach ($mode in $modeTokens) {
+            $modeSlug = Get-ModeSlug $mode
+            $modeDir = Join-Path $resultsRoot $modeSlug
+            New-Item -ItemType Directory -Path $modeDir -Force | Out-Null
+            $manifestPath = Join-Path $modeDir 'manifest.json'
+            $outPrefix = ((Split-Path $env:TARGET_PATH -Leaf) -replace '[^A-Za-z0-9._-]+','_')
+            if ([string]::IsNullOrWhiteSpace($outPrefix)) { $outPrefix = 'vi-compare' }
+            $outPrefix = "$outPrefix-$modeSlug"
+
+            $scriptArgs = @(
+              '-TargetPath', $env:TARGET_PATH,
+              '-ResultsDir', $modeDir,
+              '-ManifestPath', $manifestPath,
+              '-OutPrefix', $outPrefix,
+              '-GitHubOutputPath', $env:GITHUB_OUTPUT,
+              '-StepSummaryPath', $env:GITHUB_STEP_SUMMARY,
+              '-Detailed',
+              '-RenderReport',
+              '-Mode', $mode
+            )
+            if (-not [string]::IsNullOrWhiteSpace($env:START_REF)) {
+              $scriptArgs += '-StartRef'
+              $scriptArgs += $env:START_REF
+            }
+            if (-not [string]::IsNullOrWhiteSpace($env:END_REF)) {
+              $scriptArgs += '-EndRef'
+              $scriptArgs += $env:END_REF
+            }
+            if (-not [string]::IsNullOrWhiteSpace($env:MAX_PAIRS)) {
+              $scriptArgs += '-MaxPairs'
+              $scriptArgs += $env:MAX_PAIRS
+            }
+            if (-not [string]::IsNullOrWhiteSpace($env:EXTRA_FLAGS)) {
+              $scriptArgs += '-AdditionalFlags'
+              $scriptArgs += $env:EXTRA_FLAGS
+            }
+            $scriptArgs += ("-FlagNoAttr:{0}" -f (Convert-ToBoolean $env:FLAG_NOATTR $true))
+            $scriptArgs += ("-FlagNoFp:{0}" -f (Convert-ToBoolean $env:FLAG_NOFP $true))
+            $scriptArgs += ("-FlagNoFpPos:{0}" -f (Convert-ToBoolean $env:FLAG_NOFPPOS $true))
+            $scriptArgs += ("-FlagNoBdCosm:{0}" -f (Convert-ToBoolean $env:FLAG_NOBDCOSM $true))
+            $scriptArgs += ("-FailFast:{0}" -f (Convert-ToBoolean $env:FAIL_FAST $false))
+            $scriptArgs += ("-FailOnDiff:{0}" -f (Convert-ToBoolean $env:FAIL_ON_DIFF $false))
+
+            & $scriptPath @scriptArgs
+            $manifestPaths += $manifestPath
+          }
+
+          $manifestOutput = ($manifestPaths -join "`n")
+          "manifest-path=$manifestOutput" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
+          "resultsDir=$resultsRoot" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
+
+      - name: Collect diff artifact directories
+        id: diffscan
+        if: ${{ always() && steps.history.outputs['manifest-path'] != '' }}
         shell: pwsh
         env:
-          SUMMARY_PATH: ${{ steps.compare.outputs.summaryPath }}
+          MANIFEST_PATH: ${{ steps.history.outputs['manifest-path'] }}
         run: |
           $ErrorActionPreference = 'Stop'
-          $summary = Get-Content -LiteralPath $env:SUMMARY_PATH -Raw | ConvertFrom-Json
-          $lines = @('### LVCompare Ref Diff','')
-          $lines += "- VI: $($summary.name)"
-          $lines += "- Path: $($summary.path)"
-          $lines += "- Base ref: $($summary.refA)"
-          $lines += "- Head ref: $($summary.refB)"
-          $lines += "- Diff detected: $($summary.cli.diff)"
-          $lines += "- Exit code: $($summary.cli.exitCode)"
-          if ($summary.out.reportHtml) { $lines += "- Report: $($summary.out.reportHtml)" }
-          if ($summary.cli.highlights) {
-            $lines += ''
-            $lines += '#### Highlights'
-            foreach ($h in $summary.cli.highlights) { $lines += "- $h" }
+          $manifestPaths = $env:MANIFEST_PATH -split "`n" | Where-Object { $_ }
+          $dirs = @()
+          foreach ($manifestPath in $manifestPaths) {
+            if (-not (Test-Path -LiteralPath $manifestPath)) { continue }
+            $manifest = Get-Content -LiteralPath $manifestPath -Raw | ConvertFrom-Json
+            foreach ($item in $manifest.comparisons) {
+              if ($item.result -and $item.result.artifactDir) {
+                if (Test-Path -LiteralPath $item.result.artifactDir) {
+                  $dirs += (Resolve-Path -LiteralPath $item.result.artifactDir).Path
+                }
+              }
+            }
           }
-          $lines -join "`n" | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8
+          if ($dirs.Count -gt 0) {
+            "hasDiff=true" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
+            $block = @"
+artifactDirs<<EOF
+$($dirs -join "`n")
+EOF
+"@
+            $block | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
+          } else {
+            "hasDiff=false" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
+          }
 
-      - name: Upload artifacts
-        if: always()
+      - name: Upload compare results
+        if: ${{ always() && steps.history.outputs['results-dir'] != '' }}
         uses: actions/upload-artifact@v4
         with:
-          name: vi-compare-refs
-          path: ${{ steps.compare.outputs.resultsDir }}/**
+          name: vi-compare-results
+          path: |
+            ${{ steps.history.outputs['manifest-path'] }}
+            ${{ steps.history.outputs['results-dir'] }}/**/*-summary.json
+            ${{ steps.history.outputs['results-dir'] }}/**/*-exec.json
+          if-no-files-found: warn
+
+      - name: Upload LVCompare diff artifacts
+        if: ${{ always() && steps.diffscan.outputs.hasDiff == 'true' }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: vi-compare-diff-artifacts
+          path: ${{ steps.diffscan.outputs.artifactDirs }}
           if-no-files-found: warn
 
       - name: Runner Unblock Guard
