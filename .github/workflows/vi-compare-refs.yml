@@ -33,26 +33,11 @@ on:
         default: 'false'
         type: choice
         options: ['true','false']
-      flag_noattr:
-        description: 'Ignore VI attributes (-noattr)'
+      ignore_flags:
+        description: 'Comma-separated ignore toggles (e.g., noattr,nofp,nofppos,nobdcosm or none)'
         required: false
-        type: boolean
-        default: true
-      flag_nofp:
-        description: 'Ignore front panel (-nofp)'
-        required: false
-        type: boolean
-        default: true
-      flag_nofppos:
-        description: 'Ignore front panel position changes (-nofppos)'
-        required: false
-        type: boolean
-        default: true
-      flag_nobdcosm:
-        description: 'Ignore block diagram cosmetic changes (-nobdcosm)'
-        required: false
-        type: boolean
-        default: true
+        default: 'noattr,nofp,nofppos,nobdcosm'
+        type: string
       modes:
         description: 'Comma-separated compare modes (default, attributes, front-panel, block-diagram, all)'
         required: false
@@ -115,10 +100,7 @@ jobs:
           START_REF: ${{ inputs.start_ref }}
           END_REF: ${{ inputs.end_ref }}
           MAX_PAIRS: ${{ inputs.max_pairs }}
-          FLAG_NOATTR: ${{ inputs.flag_noattr }}
-          FLAG_NOFP: ${{ inputs.flag_nofp }}
-          FLAG_NOFPPOS: ${{ inputs.flag_nofppos }}
-          FLAG_NOBDCOSM: ${{ inputs.flag_nobdcosm }}
+          IGNORE_FLAGS: ${{ inputs.ignore_flags }}
           MODES: ${{ inputs.modes }}
           EXTRA_FLAGS: ${{ inputs.additional_flags }}
           FAIL_FAST: ${{ inputs.fail_fast }}
@@ -190,10 +172,54 @@ jobs:
             $scriptArgs += '-AdditionalFlags'
             $scriptArgs += $env:EXTRA_FLAGS
           }
-          $scriptArgs += ("-FlagNoAttr:{0}" -f (Convert-ToBoolean $env:FLAG_NOATTR $true))
-          $scriptArgs += ("-FlagNoFp:{0}" -f (Convert-ToBoolean $env:FLAG_NOFP $true))
-          $scriptArgs += ("-FlagNoFpPos:{0}" -f (Convert-ToBoolean $env:FLAG_NOFPPOS $true))
-          $scriptArgs += ("-FlagNoBdCosm:{0}" -f (Convert-ToBoolean $env:FLAG_NOBDCOSM $true))
+
+          $defaultIgnoreFlags = @('noattr','nofp','nofppos','nobdcosm')
+          $ignoreTokens = @()
+          if (-not [string]::IsNullOrWhiteSpace($env:IGNORE_FLAGS)) {
+            $ignoreTokens = @(
+              $env:IGNORE_FLAGS -split '[,\s]+' |
+                Where-Object { $_ } |
+                ForEach-Object { $_.Trim() }
+            )
+          }
+          $ignoreSet = New-Object 'System.Collections.Generic.HashSet[string]' ([System.StringComparer]::OrdinalIgnoreCase)
+          if ($ignoreTokens.Count -eq 0) {
+            foreach ($flag in $defaultIgnoreFlags) { [void]$ignoreSet.Add($flag) }
+          }
+          foreach ($token in $ignoreTokens) {
+            $trim = $token.Trim()
+            if (-not $trim) { continue }
+            $lower = $trim.ToLowerInvariant()
+            if ($lower -eq 'default') {
+              foreach ($flag in $defaultIgnoreFlags) { [void]$ignoreSet.Add($flag) }
+              continue
+            }
+            if ($lower -eq 'none') {
+              $ignoreSet.Clear()
+              continue
+            }
+            if ($lower.StartsWith('+')) {
+              $flag = $lower.Substring(1)
+              if ($flag) { [void]$ignoreSet.Add($flag) }
+              continue
+            }
+            if ($lower.StartsWith('-')) {
+              $flag = $lower.Substring(1)
+              if ($flag) { [void]$ignoreSet.Remove($flag) }
+              continue
+            }
+            [void]$ignoreSet.Add($lower)
+          }
+
+          $flagNoAttr = $ignoreSet.Contains('noattr')
+          $flagNoFp = $ignoreSet.Contains('nofp')
+          $flagNoFpPos = $ignoreSet.Contains('nofppos')
+          $flagNoBdCosm = $ignoreSet.Contains('nobdcosm')
+
+          $scriptArgs += ("-FlagNoAttr:{0}" -f $flagNoAttr)
+          $scriptArgs += ("-FlagNoFp:{0}" -f $flagNoFp)
+          $scriptArgs += ("-FlagNoFpPos:{0}" -f $flagNoFpPos)
+          $scriptArgs += ("-FlagNoBdCosm:{0}" -f $flagNoBdCosm)
           $scriptArgs += ("-FailFast:{0}" -f (Convert-ToBoolean $env:FAIL_FAST $false))
           $scriptArgs += ("-FailOnDiff:{0}" -f (Convert-ToBoolean $env:FAIL_ON_DIFF $false))
 
@@ -240,12 +266,9 @@ jobs:
           }
           if ($dirs.Count -gt 0) {
             "hasDiff=true" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
-            $block = @"
-artifactDirs<<EOF
-$($dirs -join "`n")
-EOF
-"@
-            $block | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
+            $dirsText = $dirs -join "`n"
+            $blockLines = @('artifactDirs<<EOF', $dirsText, 'EOF')
+            ($blockLines -join "`n") | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
           } else {
             "hasDiff=false" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
           }
