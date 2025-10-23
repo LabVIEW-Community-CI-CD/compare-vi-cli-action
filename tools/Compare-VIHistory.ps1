@@ -15,8 +15,7 @@ param(
   [string]$LvCompareArgs,
   [switch]$ReplaceFlags,
 
-  [ValidateSet('default','attributes','front-panel','block-diagram','all','custom')]
-  [string]$Mode = 'default',
+  [string[]]$Mode = @('default'),
   [switch]$FailFast,
   [switch]$FailOnDiff,
 
@@ -25,6 +24,8 @@ param(
   [string]$ManifestPath,
   [switch]$Detailed,
   [switch]$RenderReport,
+  [ValidateSet('html','xml','text')]
+  [string]$ReportFormat = 'html',
   [switch]$KeepArtifactsOnNoDiff,
   [string]$InvokeScriptPath,
 
@@ -42,7 +43,7 @@ function Split-ArgString {
   $tokens = [System.Management.Automation.PSParser]::Tokenize($Value, [ref]$errors)
   if ($errors -and $errors.Count -gt 0) {
     $messages = @($errors | ForEach-Object { $_.Message.Trim() } | Where-Object { $_ })
-    if ($messages.Count -gt 0) {
+    if ($messages -and $messages.Count -gt 0) {
       throw ("Failed to parse argument string '{0}': {1}" -f $Value, ($messages -join '; '))
     }
   }
@@ -52,6 +53,145 @@ function Split-ArgString {
     if ($accepted -contains $token.Type) { $list += $token.Content }
   }
   return @($list | Where-Object { -not [string]::IsNullOrWhiteSpace($_) })
+}
+
+$modeDefinitions = @{
+  'default'       = @{ slug = 'default'; flags = @('-nobd','-noattr','-nofp','-nofppos','-nobdcosm') }
+  'attributes'    = @{ slug = 'attributes'; flags = @('-nobd','-nofp','-nofppos','-nobdcosm') }
+  'front-panel'   = @{ slug = 'front-panel'; flags = @('-nobd','-noattr','-nobdcosm') }
+  'block-diagram' = @{ slug = 'block-diagram'; flags = @('-nobd','-noattr','-nofp','-nofppos') }
+  'all'           = @{ slug = 'all'; flags = @() }
+  'custom'        = @{ slug = 'custom'; flags = $null }
+}
+
+function Resolve-ModeSpec {
+  param([string]$Value)
+  if ([string]::IsNullOrWhiteSpace($Value)) { return $null }
+  $token = $Value.Trim().ToLowerInvariant()
+  if (-not $modeDefinitions.ContainsKey($token)) {
+    $allowed = [string]::Join(', ', $modeDefinitions.Keys)
+    throw ("Unknown mode '{0}'. Allowed modes: {1}" -f $Value, $allowed)
+  }
+  $def = $modeDefinitions[$token]
+  return [pscustomobject]@{
+    Name = $token
+    Slug = $def.slug
+    PresetFlags = if ($def.flags -ne $null) { @($def.flags) } else { $null }
+  }
+}
+
+function Build-CustomFlags {
+  param(
+    [bool]$ForceNoBd,
+    [bool]$FlagNoAttr,
+    [bool]$FlagNoFp,
+    [bool]$FlagNoFpPos,
+    [bool]$FlagNoBdCosm,
+    [string]$AdditionalFlags,
+    [string]$LvCompareArgs
+  )
+  $flags = New-Object System.Collections.Generic.List[string]
+  if ($ForceNoBd)    { $flags.Add('-nobd') }
+  if ($FlagNoAttr)   { $flags.Add('-noattr') }
+  if ($FlagNoFp)     { $flags.Add('-nofp') }
+  if ($FlagNoFpPos)  { $flags.Add('-nofppos') }
+  if ($FlagNoBdCosm) { $flags.Add('-nobdcosm') }
+
+  foreach ($token in @(Split-ArgString -Value $AdditionalFlags)) {
+    $flags.Add($token)
+  }
+  foreach ($token in @(Split-ArgString -Value $LvCompareArgs)) {
+    $flags.Add($token)
+  }
+
+  $unique = New-Object System.Collections.Generic.List[string]
+  foreach ($flag in $flags) {
+    if (-not [string]::IsNullOrWhiteSpace($flag) -and -not $unique.Contains($flag)) {
+      $unique.Add($flag)
+    }
+  }
+  return @($unique)
+}
+
+function Expand-ModeTokens {
+  param([string[]]$Values)
+  $tokens = New-Object System.Collections.Generic.List[string]
+  if ($Values) {
+    foreach ($item in $Values) {
+      if ([string]::IsNullOrWhiteSpace($item)) { continue }
+      foreach ($piece in ($item -split '[,\s]+' | Where-Object { -not [string]::IsNullOrWhiteSpace($_) })) {
+        $tokens.Add($piece.Trim())
+      }
+    }
+  }
+  if ($tokens.Count -eq 0) {
+    $tokens.Add('default')
+  }
+  return @($tokens.ToArray())
+}
+
+function Build-FlagBundle {
+  param(
+    [pscustomobject]$ModeSpec,
+    [bool]$ReplaceFlags,
+    [string]$AdditionalFlags,
+    [string]$LvCompareArgs,
+    [bool]$ForceNoBd,
+    [bool]$FlagNoAttr,
+    [bool]$FlagNoFp,
+    [bool]$FlagNoFpPos,
+    [bool]$FlagNoBdCosm
+  )
+
+  $flags = New-Object System.Collections.Generic.List[string]
+  if ($ModeSpec.PresetFlags -ne $null) {
+    foreach ($flag in @($ModeSpec.PresetFlags)) {
+      if (-not [string]::IsNullOrWhiteSpace($flag)) {
+        $flags.Add($flag)
+      }
+    }
+  } else {
+    foreach ($flag in @(Build-CustomFlags -ForceNoBd:$ForceNoBd -FlagNoAttr:$FlagNoAttr -FlagNoFp:$FlagNoFp -FlagNoFpPos:$FlagNoFpPos -FlagNoBdCosm:$FlagNoBdCosm -AdditionalFlags:$AdditionalFlags -LvCompareArgs:$LvCompareArgs)) {
+      if (-not [string]::IsNullOrWhiteSpace($flag)) {
+        $flags.Add($flag)
+      }
+    }
+  }
+  if ($ModeSpec.Name -eq 'all') {
+    $flags.Clear()
+  }
+
+  if ($ReplaceFlags -and $LvCompareArgs) {
+    $flags.Clear()
+    foreach ($token in @(Split-ArgString -Value $LvCompareArgs)) {
+      if (-not [string]::IsNullOrWhiteSpace($token)) {
+        $flags.Add($token)
+      }
+    }
+  } else {
+    if (-not $ReplaceFlags -and -not [string]::IsNullOrWhiteSpace($AdditionalFlags)) {
+      foreach ($token in @(Split-ArgString -Value $AdditionalFlags)) {
+        if (-not [string]::IsNullOrWhiteSpace($token)) {
+          $flags.Add($token)
+        }
+      }
+    }
+    if ($LvCompareArgs) {
+      foreach ($token in @(Split-ArgString -Value $LvCompareArgs)) {
+        if (-not [string]::IsNullOrWhiteSpace($token)) {
+          $flags.Add($token)
+        }
+      }
+    }
+  }
+
+  $unique = New-Object System.Collections.Generic.List[string]
+  foreach ($flag in $flags) {
+    if (-not [string]::IsNullOrWhiteSpace($flag) -and -not $unique.Contains($flag)) {
+      $unique.Add($flag)
+    }
+  }
+  return @($unique.ToArray())
 }
 
 function Invoke-Git {
@@ -107,6 +247,11 @@ function Ensure-FileExistsAtRef {
     [Parameter(Mandatory = $true)][string]$Ref,
     [Parameter(Mandatory = $true)][string]$Path
   )
+  Write-Verbose ("Ensure-FileExistsAtRef Ref={0} Path={1}" -f $Ref, $Path)
+  try {
+    $refToken = $Ref.ToLowerInvariant()
+  } catch { $refToken = $Ref }
+  if ($refToken -and $modeDefinitions.ContainsKey($refToken)) { return }
   $expr = "{0}:{1}" -f $Ref, $Path
   $psi = [System.Diagnostics.ProcessStartInfo]::new()
   $psi.FileName = 'git'
@@ -201,7 +346,7 @@ function Resolve-CommitWithChange {
     }
   }
 
-  return $StartRef
+  return $null
 }
 
 function Write-GitHubOutput {
@@ -253,104 +398,50 @@ $startRef = if ([string]::IsNullOrWhiteSpace($StartRef)) { 'HEAD' } else { $Star
 if ([string]::IsNullOrWhiteSpace($startRef)) { $startRef = 'HEAD' }
 $endRef = if ([string]::IsNullOrWhiteSpace($EndRef)) { $null } else { $EndRef.Trim() }
 
-if (-not $Mode) { $Mode = 'default' }
-$modeEffective = $Mode.ToLowerInvariant()
+
+$modeTokens = Expand-ModeTokens -Values $Mode
+$modeSpecs = @()
+$modeSeen = @{}
+foreach ($tokenRaw in $modeTokens) {
+  $spec = Resolve-ModeSpec -Value $tokenRaw
+  if ($spec -and -not $modeSeen.ContainsKey($spec.Name)) {
+    $modeSpecs += $spec
+    $modeSeen[$spec.Name] = $true
+  }
+}
+if ($modeSpecs.Count -eq 0) {
+  throw 'No valid comparison modes resolved.'
+}
+
+$reportFormatEffective = if ($ReportFormat) { $ReportFormat.ToLowerInvariant() } else { 'html' }
 
 $requestedStartRef = $startRef
+Write-Verbose ("StartRef before resolve: {0}" -f $startRef)
 $resolvedStartRef = Resolve-CommitWithChange -StartRef $startRef -Path $targetRel -HeadRef 'HEAD'
 if (-not $resolvedStartRef) {
   throw ("Unable to locate a commit near {0} that modifies '{1}'." -f $startRef, $targetRel)
 }
 if ($resolvedStartRef -ne $startRef) {
-  Write-Host ("[Compare-VIHistory] Adjusted start ref from {0} to {1} to locate a change in {2}" -f (Get-ShortSha $startRef 12), (Get-ShortSha $resolvedStartRef 12), $targetRel)
+  Write-Verbose ("Adjusted start ref from {0} to {1} to locate a change in {2}" -f (Get-ShortSha $startRef 12), (Get-ShortSha $resolvedStartRef 12), $targetRel)
   $startRef = $resolvedStartRef
-}
-
-# Build flag list
-$flagTokens = @()
-$includeBdIgnore = $ForceNoBd
-$includeAttrIgnore = $FlagNoAttr
-$includeFpIgnore = $FlagNoFp
-$includeFpPosIgnore = $FlagNoFpPos
-$includeBdCosmIgnore = $FlagNoBdCosm
-
-switch ($modeEffective) {
-  'attributes'   { $includeAttrIgnore = $false }
-  'front-panel'  {
-    $includeFpIgnore = $false
-    $includeFpPosIgnore = $false
-  }
-  'block-diagram' { $includeBdCosmIgnore = $false }
-  'all' {
-    $includeBdIgnore = $false
-    $includeAttrIgnore = $false
-    $includeFpIgnore = $false
-    $includeFpPosIgnore = $false
-    $includeBdCosmIgnore = $false
-  }
-  default { }
-}
-
-if ($includeBdIgnore) { $flagTokens += '-nobd' }
-if ($includeAttrIgnore) { $flagTokens += '-noattr' }
-if ($includeFpIgnore) { $flagTokens += '-nofp' }
-if ($includeFpPosIgnore) { $flagTokens += '-nofppos' }
-if ($includeBdCosmIgnore) { $flagTokens += '-nobdcosm' }
-
-if (-not $ReplaceFlags -and -not [string]::IsNullOrWhiteSpace($AdditionalFlags)) {
-  $flagTokens += Split-ArgString -Value $AdditionalFlags
-}
-
-if ($ReplaceFlags -and $LvCompareArgs) {
-  $flagTokens = Split-ArgString -Value $LvCompareArgs
-} elseif ($LvCompareArgs) {
-  $flagTokens += Split-ArgString -Value $LvCompareArgs
 }
 
 $resultsRoot = if ([System.IO.Path]::IsPathRooted($ResultsDir)) { $ResultsDir } else { Join-Path $repoRoot $ResultsDir }
 New-Item -ItemType Directory -Path $resultsRoot -Force | Out-Null
+$resultsRootResolved = (Resolve-Path -LiteralPath $resultsRoot).Path
 
-$manifestPathResolved = if ($ManifestPath) {
+$aggregateManifestPath = if ($ManifestPath) {
   if ([System.IO.Path]::IsPathRooted($ManifestPath)) { $ManifestPath } else { Join-Path $repoRoot $ManifestPath }
 } else {
   Join-Path $resultsRoot 'manifest.json'
 }
 
-$outPrefixToken = if ($OutPrefix) { $OutPrefix } else { $targetLeaf -replace '[^A-Za-z0-9._-]+','_' }
-if ([string]::IsNullOrWhiteSpace($outPrefixToken)) { $outPrefixToken = 'vi-history' }
-
-$manifest = [ordered]@{
-  schema      = 'vi-compare/history@v1'
-  generatedAt = (Get-Date).ToString('o')
-  targetPath  = $targetRel
-  requestedStartRef = $requestedStartRef
-  startRef    = $startRef
-  endRef      = $endRef
-  maxPairs    = $MaxPairs
-  failFast    = [bool]$FailFast.IsPresent
-  failOnDiff  = [bool]$FailOnDiff.IsPresent
-  mode        = $modeEffective
-  flags       = $flagTokens
-  resultsDir  = $resultsRoot
-  comparisons = @()
-  stats       = [ordered]@{
-    processed        = 0
-    diffs            = 0
-    lastDiffIndex    = $null
-    lastDiffCommit   = $null
-    stopReason       = $null
-    errors           = 0
-    missing          = 0
-  }
-  status      = 'pending'
-}
-
+Write-Verbose ("StartRef before ensure: {0}; Target: {1}" -f $startRef, $targetRel)
 Ensure-FileExistsAtRef -Ref $startRef -Path $targetRel
 if ($endRef) { Ensure-FileExistsAtRef -Ref $endRef -Path $targetRel }
 
 $revArgs = @('rev-list','--first-parent',$startRef)
 if ($MaxPairs -gt 0) {
-  # Need parent for each pair; request +1 commits to ensure parent retrieval.
   $revArgs += ("--max-count={0}" -f ([int]($MaxPairs + 5)))
 }
 $revArgs += '--'
@@ -366,6 +457,10 @@ if (-not (Test-Path -LiteralPath $compareScript -PathType Leaf)) {
   throw ("Compare script not found: {0}" -f $compareScript)
 }
 
+$outPrefixToken = if ($OutPrefix) { $OutPrefix } else { $targetLeaf -replace '[^A-Za-z0-9._-]+','_' }
+if ([string]::IsNullOrWhiteSpace($outPrefixToken)) { $outPrefixToken = 'vi-history' }
+
+$modeNames = @($modeSpecs | ForEach-Object { $_.Name })
 $summaryLines = @('### VI Compare History','')
 $summaryLines += "- Target: $targetRel"
 if ($requestedStartRef -ne $startRef) {
@@ -375,110 +470,185 @@ if ($requestedStartRef -ne $startRef) {
   $summaryLines += "- Start ref: $startRef"
 }
 if ($endRef) { $summaryLines += "- End ref: $endRef" }
-$summaryLines += "- Mode: $modeEffective"
+$summaryLines += "- Modes: $($modeNames -join ', ')"
+$summaryLines += "- Report format: $reportFormatEffective"
 
-$processed = 0
-$diffCount = 0
-$lastDiffIndex = $null
-$lastDiffCommit = $null
-$stopReason = $null
-$errorCount = 0
-$missingCount = 0
-
-for ($i = 0; $i -lt $commitList.Count; $i++) {
-  $headCommit = $commitList[$i].Trim()
-  if (-not $headCommit) { continue }
-  if ($endRef -and [string]::Equals($headCommit, $endRef, [System.StringComparison]::OrdinalIgnoreCase)) {
-    $stopReason = 'reached-end-ref'
-    break
+$aggregate = [ordered]@{
+  schema      = 'vi-compare/history-suite@v1'
+  generatedAt = (Get-Date).ToString('o')
+  targetPath  = $targetRel
+  requestedStartRef = $requestedStartRef
+  startRef    = $startRef
+  endRef      = $endRef
+  maxPairs    = $MaxPairs
+  failFast    = [bool]$FailFast.IsPresent
+  failOnDiff  = [bool]$FailOnDiff.IsPresent
+  reportFormat = $reportFormatEffective
+  resultsDir  = $resultsRootResolved
+  modes       = @()
+  stats       = [ordered]@{
+    modes     = $modeSpecs.Count
+    processed = 0
+    diffs     = 0
+    errors    = 0
+    missing   = 0
   }
-  $parentExpr = ('{0}^' -f $headCommit)
-  $parentCommit = Invoke-Git -Arguments @('rev-parse', $parentExpr) -Quiet
-  $parentCommit = ($parentCommit -split "`n")[0].Trim()
-  if (-not $parentCommit) {
-    $stopReason = 'reached-root'
-    break
-  }
-  if ($endRef -and [string]::Equals($parentCommit, $endRef, [System.StringComparison]::OrdinalIgnoreCase)) {
-    # Include comparison against endRef and then stop.
-    $terminateAfter = $true
-  } else {
-    $terminateAfter = $false
-  }
+  status      = 'pending'
+}
 
-  $index = $processed + 1
-  if ($MaxPairs -gt 0 -and $index -gt $MaxPairs) {
-    $stopReason = 'max-pairs'
-    break
-  }
+$totalProcessed = 0
+$totalDiffs = 0
+$totalErrors = 0
+$totalMissing = 0
 
-  Write-Host ("[{0}] Comparing {1} -> {2}" -f $index, (Get-ShortSha $parentCommit 7), (Get-ShortSha $headCommit 7))
+foreach ($modeSpec in $modeSpecs) {
+  $modeName = $modeSpec.Name
+  $modeSlug = $modeSpec.Slug
+  $modeFlags = Build-FlagBundle -ModeSpec $modeSpec -ReplaceFlags:$ReplaceFlags.IsPresent -AdditionalFlags $AdditionalFlags -LvCompareArgs $LvCompareArgs -ForceNoBd:$ForceNoBd -FlagNoAttr:$FlagNoAttr -FlagNoFp:$FlagNoFp -FlagNoFpPos:$FlagNoFpPos -FlagNoBdCosm:$FlagNoBdCosm
+  if (-not $modeFlags) { $modeFlags = @() }
+  $mf = if ($modeFlags -and $modeFlags.Count -gt 0) { $modeFlags -join ' ' } else { '(empty)' }
+  Write-Verbose ("Mode {0} flags: {1}" -f $modeName, $mf)
 
-  $comparisonRecord = [ordered]@{
-    index   = $index
-    head    = @{
-      ref   = $headCommit
-      short = Get-ShortSha -Value $headCommit -Length 12
+  $modeResultsRoot = Join-Path $resultsRoot $modeSlug
+  New-Item -ItemType Directory -Path $modeResultsRoot -Force | Out-Null
+  $modeResultsResolved = (Resolve-Path -LiteralPath $modeResultsRoot).Path
+  $modeManifestPath = Join-Path $modeResultsRoot 'manifest.json'
+
+  $modeManifest = [ordered]@{
+    schema      = 'vi-compare/history@v1'
+    generatedAt = (Get-Date).ToString('o')
+    targetPath  = $targetRel
+    requestedStartRef = $requestedStartRef
+    startRef    = $startRef
+    endRef      = $endRef
+    maxPairs    = $MaxPairs
+    failFast    = [bool]$FailFast.IsPresent
+    failOnDiff  = [bool]$FailOnDiff.IsPresent
+    mode        = $modeName
+    slug        = $modeSlug
+    reportFormat = $reportFormatEffective
+    flags       = $modeFlags
+    resultsDir  = $modeResultsResolved
+    comparisons = @()
+    stats       = [ordered]@{
+      processed      = 0
+      diffs          = 0
+      lastDiffIndex  = $null
+      lastDiffCommit = $null
+      stopReason     = $null
+      errors         = 0
+      missing        = 0
     }
-    base    = @{
-      ref   = $parentCommit
-      short = Get-ShortSha -Value $parentCommit -Length 12
-    }
-    outName = "{0}-{1}" -f $outPrefixToken, $index.ToString('D3')
-    mode    = $modeEffective
+    status      = 'pending'
   }
 
-  try {
-    $headExists = Test-FileExistsAtRef -Ref $headCommit -Path $targetRel
-    if (-not $headExists) {
-      $missingCount++
-      $comparisonRecord.result = [ordered]@{
-        status  = 'missing-head'
-        message = ("Target '{0}' not present at {1}" -f $targetRel, $headCommit)
-      }
-      $manifest.comparisons += [pscustomobject]$comparisonRecord
-      $stopReason = 'missing-head'
+  $processed = 0
+  $diffCount = 0
+  $missingCount = 0
+  $errorCount = 0
+  $lastDiffIndex = $null
+  $lastDiffCommit = $null
+  $stopReason = $null
+
+  for ($i = 0; $i -lt $commitList.Count; $i++) {
+    $headCommit = $commitList[$i].Trim()
+    if (-not $headCommit) { continue }
+    if ($endRef -and [string]::Equals($headCommit, $endRef, [System.StringComparison]::OrdinalIgnoreCase)) {
+      $stopReason = 'reached-end-ref'
       break
     }
-    $baseExists = Test-FileExistsAtRef -Ref $parentCommit -Path $targetRel
-    if (-not $baseExists) {
-      $missingCount++
-      $comparisonRecord.result = [ordered]@{
-        status  = 'missing-base'
-        message = ("Target '{0}' not present at {1}" -f $targetRel, $parentCommit)
+
+    $parentExpr = ('{0}^' -f $headCommit)
+    $parentRaw = Invoke-Git -Arguments @('rev-parse', $parentExpr) -Quiet
+    $parentCommit = ($parentRaw -split "`n")[0].Trim()
+    if (-not $parentCommit) {
+      $stopReason = 'reached-root'
+      break
+    }
+
+    if ($endRef -and [string]::Equals($parentCommit, $endRef, [System.StringComparison]::OrdinalIgnoreCase)) {
+      $terminateAfter = $true
+    } else {
+      $terminateAfter = $false
+    }
+
+    $index = $processed + 1
+    if ($MaxPairs -gt 0 -and $index -gt $MaxPairs) {
+      $stopReason = 'max-pairs'
+      break
+    }
+
+    Write-Verbose ("[{0}] Comparing {1} -> {2} (mode: {3})" -f $index, (Get-ShortSha $parentCommit 7), (Get-ShortSha $headCommit 7), $modeName)
+
+    $comparisonRecord = [ordered]@{
+      index   = $index
+      head    = @{
+        ref   = $headCommit
+        short = Get-ShortSha -Value $headCommit -Length 12
       }
-      $processed++
-      $manifest.comparisons += [pscustomobject]$comparisonRecord
-      if ($terminateAfter) {
-        $stopReason = 'reached-end-ref'
+      base    = @{
+        ref   = $parentCommit
+        short = Get-ShortSha -Value $parentCommit -Length 12
+      }
+      outName      = "{0}-{1}" -f $outPrefixToken, $index.ToString('D3')
+      mode         = $modeName
+      slug         = $modeSlug
+      reportFormat = $reportFormatEffective
+    }
+
+    try {
+      $headExists = Test-FileExistsAtRef -Ref $headCommit -Path $targetRel
+      if (-not $headExists) {
+        $missingCount++
+        $comparisonRecord.result = [ordered]@{
+          status  = 'missing-head'
+          message = ("Target '{0}' not present at {1}" -f $targetRel, $headCommit)
+        }
+        $modeManifest.comparisons += [pscustomobject]$comparisonRecord
+        $stopReason = 'missing-head'
         break
       }
-      continue
-    }
+
+      $baseExists = Test-FileExistsAtRef -Ref $parentCommit -Path $targetRel
+      if (-not $baseExists) {
+        $missingCount++
+        $comparisonRecord.result = [ordered]@{
+          status  = 'missing-base'
+          message = ("Target '{0}' not present at {1}" -f $targetRel, $parentCommit)
+        }
+        $processed++
+        $modeManifest.comparisons += [pscustomobject]$comparisonRecord
+        if ($terminateAfter) {
+          $stopReason = 'reached-end-ref'
+          break
+        }
+        continue
+      }
 
     $compareArgs = @(
       '-NoLogo','-NoProfile','-File', $compareScript,
       '-Path', $targetRel,
       '-RefA', $parentCommit,
       '-RefB', $headCommit,
-      '-ResultsDir', $resultsRoot,
+      '-ResultsDir', $modeResultsResolved,
       '-OutName', $comparisonRecord.outName,
+      '-ReportFormat', $reportFormatEffective,
       '-Quiet'
     )
-    if ($Detailed.IsPresent -or $RenderReport.IsPresent) {
-      $compareArgs += '-Detailed'
-      $compareArgs += '-RenderReport'
-    }
-    if ($FailOnDiff.IsPresent) { $compareArgs += '-FailOnDiff' }
-    if ($flagTokens.Count -gt 0) {
-      $compareArgs += '-LvCompareArgs'
-      $compareArgs += ($flagTokens -join ' ')
-    }
+      if ($Detailed.IsPresent) { $compareArgs += '-Detailed' }
+      if ($RenderReport.IsPresent -or $reportFormatEffective -eq 'html') { $compareArgs += '-RenderReport' }
+      if ($FailOnDiff.IsPresent) { $compareArgs += '-FailOnDiff' }
+      if ($modeFlags -and $modeFlags.Count -gt 0) {
+        $compareArgs += '-LvCompareArgs'
+        $compareArgs += ($modeFlags -join ' ')
+      }
     if (-not [string]::IsNullOrWhiteSpace($InvokeScriptPath)) {
       $compareArgs += '-InvokeScriptPath'
       $compareArgs += $InvokeScriptPath
     }
-
+    if ($KeepArtifactsOnNoDiff.IsPresent) {
+      $compareArgs += '-KeepArtifactsOnNoDiff'
+    }
     $pwshResult = Invoke-Pwsh -Arguments $compareArgs
     if ($pwshResult.ExitCode -ne 0) {
       $msg = "Compare-RefsToTemp.ps1 exited with code {0}" -f $pwshResult.ExitCode
@@ -487,116 +657,175 @@ for ($i = 0; $i -lt $commitList.Count; $i++) {
       throw $msg
     }
 
-    $summaryPath = Join-Path $resultsRoot ("{0}-summary.json" -f $comparisonRecord.outName)
-    $execPath = Join-Path $resultsRoot ("{0}-exec.json" -f $comparisonRecord.outName)
-    if (-not (Test-Path -LiteralPath $summaryPath)) {
-      throw ("Summary not found at {0}" -f $summaryPath)
-    }
-    $summaryJson = Get-Content -LiteralPath $summaryPath -Raw | ConvertFrom-Json -Depth 8
+      $summaryPath = Join-Path $modeResultsResolved ("{0}-summary.json" -f $comparisonRecord.outName)
+      $execPath = Join-Path $modeResultsResolved ("{0}-exec.json" -f $comparisonRecord.outName)
+      if (-not (Test-Path -LiteralPath $summaryPath)) {
+        throw ("Summary not found at {0}" -f $summaryPath)
+      }
+      $summaryJson = Get-Content -LiteralPath $summaryPath -Raw | ConvertFrom-Json -Depth 8
 
-    $diff = [bool]$summaryJson.cli.diff
-    $comparisonRecord.result = [ordered]@{
-      summaryPath = (Resolve-Path -LiteralPath $summaryPath).Path
-      execPath    = if (Test-Path -LiteralPath $execPath) { (Resolve-Path -LiteralPath $execPath).Path } else { $null }
-      diff        = $diff
-      exitCode    = $summaryJson.cli.exitCode
-      duration_s  = $summaryJson.cli.duration_s
-      command     = $summaryJson.cli.command
-    }
-    $outNode = $summaryJson.out
-    if ($outNode -and $outNode.PSObject.Properties['reportHtml'] -and $outNode.reportHtml) {
-      $comparisonRecord.result.reportHtml = $outNode.reportHtml
-    }
-    if ($outNode -and $outNode.PSObject.Properties['artifactDir'] -and $outNode.artifactDir) {
-      $artifactDir = $outNode.artifactDir
-      if (-not $diff -and -not $KeepArtifactsOnNoDiff.IsPresent) {
-        if (Test-Path -LiteralPath $artifactDir) {
-          Remove-Item -LiteralPath $artifactDir -Recurse -Force -ErrorAction SilentlyContinue
+      $diff = [bool]$summaryJson.cli.diff
+      $comparisonRecord.result = [ordered]@{
+        summaryPath = (Resolve-Path -LiteralPath $summaryPath).Path
+        execPath    = if (Test-Path -LiteralPath $execPath) { (Resolve-Path -LiteralPath $execPath).Path } else { $null }
+        diff        = $diff
+        exitCode    = $summaryJson.cli.exitCode
+        duration_s  = $summaryJson.cli.duration_s
+        command     = $summaryJson.cli.command
+      }
+      if ($summaryJson.cli.PSObject.Properties['reportFormat']) {
+        $comparisonRecord.reportFormat = $summaryJson.cli.reportFormat
+      }
+      $outNode = $summaryJson.out
+      if ($outNode -and $outNode.PSObject.Properties['reportHtml'] -and $outNode.reportHtml) {
+        $comparisonRecord.result.reportHtml = $outNode.reportHtml
+      }
+      if ($outNode -and $outNode.PSObject.Properties['reportPath'] -and $outNode.reportPath) {
+        $comparisonRecord.result.reportPath = $outNode.reportPath
+      }
+      if ($outNode -and $outNode.PSObject.Properties['artifactDir'] -and $outNode.artifactDir) {
+        $artifactDir = $outNode.artifactDir
+        if (-not $diff -and -not $KeepArtifactsOnNoDiff.IsPresent) {
+          if (Test-Path -LiteralPath $artifactDir) {
+            Remove-Item -LiteralPath $artifactDir -Recurse -Force -ErrorAction SilentlyContinue
+          }
+        } elseif (Test-Path -LiteralPath $artifactDir) {
+          $comparisonRecord.result.artifactDir = (Resolve-Path -LiteralPath $artifactDir).Path
         }
-      } elseif (Test-Path -LiteralPath $artifactDir) {
-        $comparisonRecord.result.artifactDir = (Resolve-Path -LiteralPath $artifactDir).Path
       }
-    }
-    if ($summaryJson.cli -and $summaryJson.cli.PSObject.Properties['highlights'] -and $summaryJson.cli.highlights) {
-      $comparisonRecord.result.highlights = $summaryJson.cli.highlights
-    }
-
-    $processed++
-    if ($diff) {
-      $diffCount++
-      $lastDiffIndex = $index
-      $lastDiffCommit = $headCommit
-      if ($FailFast.IsPresent) {
-        $stopReason = 'fail-fast-diff'
-        $manifest.comparisons += [pscustomobject]$comparisonRecord
-        break
+      if ($summaryJson.cli -and $summaryJson.cli.PSObject.Properties['highlights'] -and $summaryJson.cli.highlights) {
+        $comparisonRecord.result.highlights = $summaryJson.cli.highlights
       }
+
+      $processed++
+      if ($diff) {
+        $diffCount++
+        $lastDiffIndex = $index
+        $lastDiffCommit = $headCommit
+        if ($FailFast.IsPresent) {
+          $stopReason = 'fail-fast-diff'
+          $modeManifest.comparisons += [pscustomobject]$comparisonRecord
+          break
+        }
+      }
+
+      $modeManifest.comparisons += [pscustomobject]$comparisonRecord
+    }
+    catch {
+      $comparisonRecord.error = $_.Exception.Message
+      $modeManifest.comparisons += [pscustomobject]$comparisonRecord
+      $errorCount++
+      $stopReason = if ($stopReason) { $stopReason } else { 'error' }
+      $modeManifest.status = 'failed'
+      $modeManifest.stats.errors = $errorCount
+      throw
     }
 
-    $manifest.comparisons += [pscustomobject]$comparisonRecord
-  }
-  catch {
-    $comparisonRecord.error = $_.Exception.Message
-    $manifest.comparisons += [pscustomobject]$comparisonRecord
-    $errorCount++
-    $stopReason = if ($stopReason) { $stopReason } else { 'error' }
-    $manifest.status = 'failed'
-    $manifest.stats.errors = $errorCount
-    throw
+    if ($terminateAfter) {
+      $stopReason = 'reached-end-ref'
+      break
+    }
   }
 
-  if ($terminateAfter) {
-    $stopReason = 'reached-end-ref'
-    break
+  if (-not $stopReason) {
+    if ($processed -eq 0) {
+      $stopReason = 'no-pairs'
+    } elseif ($errorCount -gt 0) {
+      $stopReason = 'error'
+    } else {
+      $stopReason = 'complete'
+    }
   }
-}
 
-if (-not $stopReason) {
-  if ($processed -eq 0) {
-    $stopReason = 'no-pairs'
-  } elseif ($errorCount -gt 0) {
-    $stopReason = 'error'
+  $modeManifest.stats.processed = $processed
+  $modeManifest.stats.diffs = $diffCount
+  $modeManifest.stats.lastDiffIndex = $lastDiffIndex
+  $modeManifest.stats.lastDiffCommit = $lastDiffCommit
+  $modeManifest.stats.stopReason = $stopReason
+  $modeManifest.stats.errors = $errorCount
+  $modeManifest.stats.missing = $missingCount
+
+  if ($errorCount -gt 0) {
+    $modeManifest.status = 'failed'
+  } elseif ($diffCount -gt 0 -and $FailOnDiff.IsPresent) {
+    $modeManifest.status = 'failed'
   } else {
-    $stopReason = 'complete'
+    $modeManifest.status = 'ok'
   }
+
+  $modeManifest | ConvertTo-Json -Depth 8 | Out-File -FilePath $modeManifestPath -Encoding utf8
+  $modeManifestResolved = (Resolve-Path -LiteralPath $modeManifestPath).Path
+
+  $summaryLines += ''
+  $summaryLines += "#### Mode: $modeName"
+  $summaryLines += "- Results dir: $modeResultsResolved"
+  $flagsDisplay = if ($modeFlags -and $modeFlags.Count -gt 0) { $modeFlags -join ' ' } else { '(none)' }
+  $summaryLines += "- Flags: $flagsDisplay"
+  $summaryLines += "- Pairs processed: $processed"
+  $summaryLines += "- Diffs detected: $diffCount"
+  $summaryLines += "- Missing pairs: $missingCount"
+  $summaryLines += "- Stop reason: $stopReason"
+  if ($lastDiffIndex) {
+    $summaryLines += "  - Last diff index: $lastDiffIndex"
+    if ($lastDiffCommit) {
+      $summaryLines += "  - Last diff commit: $(Get-ShortSha -Value $lastDiffCommit -Length 12)"
+    }
+  }
+
+  $aggregate.modes += [pscustomobject]@{
+    name         = $modeName
+    slug         = $modeSlug
+    reportFormat = $modeManifest.reportFormat
+    flags        = @($modeFlags)
+    manifestPath = $modeManifestResolved
+    resultsDir   = $modeResultsResolved
+    stats        = $modeManifest.stats
+    status       = $modeManifest.status
+  }
+
+  $totalProcessed += $processed
+  $totalDiffs += $diffCount
+  $totalErrors += $errorCount
+  $totalMissing += $missingCount
 }
 
-$manifest.stats.processed = $processed
-$manifest.stats.diffs = $diffCount
-$manifest.stats.lastDiffIndex = $lastDiffIndex
-$manifest.stats.lastDiffCommit = $lastDiffCommit
-$manifest.stats.stopReason = $stopReason
-$manifest.stats.errors = $errorCount
-$manifest.stats.missing = $missingCount
-
-if ($errorCount -gt 0) {
-  $manifest.status = 'failed'
-} else {
-  $manifest.status = 'ok'
+if ($aggregate.modes.Count -eq 0) {
+  throw 'No comparison modes executed.'
 }
 
-$manifest | ConvertTo-Json -Depth 8 | Out-File -FilePath $manifestPathResolved -Encoding utf8
+$aggregate.stats.processed = $totalProcessed
+$aggregate.stats.diffs = $totalDiffs
+$aggregate.stats.errors = $totalErrors
+$aggregate.stats.missing = $totalMissing
+$aggregate.status = if ($aggregate.modes | Where-Object { $_.status -eq 'failed' }) { 'failed' } else { 'ok' }
 
-$summaryLines += "- Pairs processed: $processed"
-$summaryLines += "- Diffs detected: $diffCount"
-$summaryLines += "- Missing pairs: $missingCount"
-$summaryLines += "- Stop reason: $stopReason"
-if ($lastDiffIndex) {
-  $summaryLines += ""
-  $summaryLines += "#### Last diff"
-  $summaryLines += "- Index: $lastDiffIndex"
-  $summaryLines += "- Commit: $(Get-ShortSha -Value $lastDiffCommit -Length 12)"
-}
+$aggregate | ConvertTo-Json -Depth 8 | Out-File -FilePath $aggregateManifestPath -Encoding utf8
+$aggregateManifestResolved = (Resolve-Path -LiteralPath $aggregateManifestPath).Path
 
 Write-StepSummary -Lines $summaryLines -DestPath $StepSummaryPath
-Write-GitHubOutput -Key 'manifest-path' -Value $manifestPathResolved -DestPath $GitHubOutputPath
-Write-GitHubOutput -Key 'results-dir' -Value $resultsRoot -DestPath $GitHubOutputPath
-Write-GitHubOutput -Key 'processed-count' -Value $processed -DestPath $GitHubOutputPath
-Write-GitHubOutput -Key 'diff-count' -Value $diffCount -DestPath $GitHubOutputPath
-Write-GitHubOutput -Key 'stop-reason' -Value $stopReason -DestPath $GitHubOutputPath
+Write-GitHubOutput -Key 'manifest-path' -Value $aggregateManifestResolved -DestPath $GitHubOutputPath
+Write-GitHubOutput -Key 'results-dir' -Value $resultsRootResolved -DestPath $GitHubOutputPath
+Write-GitHubOutput -Key 'mode-count' -Value $aggregate.modes.Count -DestPath $GitHubOutputPath
+Write-GitHubOutput -Key 'total-processed' -Value $totalProcessed -DestPath $GitHubOutputPath
+Write-GitHubOutput -Key 'total-diffs' -Value $totalDiffs -DestPath $GitHubOutputPath
+$aggregateStopReason = if ($aggregate.status -eq 'ok') { 'complete' } else { 'failed' }
+Write-GitHubOutput -Key 'stop-reason' -Value $aggregateStopReason -DestPath $GitHubOutputPath
 
-Write-Host ("VI compare history complete. Manifest: {0}" -f $manifestPathResolved)
+$modeManifestSummary = $aggregate.modes | ForEach-Object {
+  [ordered]@{
+    mode      = $_.name
+    slug      = $_.slug
+    manifest  = $_.manifestPath
+    resultsDir= $_.resultsDir
+    processed = $_.stats.processed
+    diffs     = $_.stats.diffs
+    status    = $_.status
+  }
+}
+Write-GitHubOutput -Key 'mode-manifests-json' -Value ((ConvertTo-Json $modeManifestSummary -Depth 4 -Compress)) -DestPath $GitHubOutputPath
 
-if ($FailOnDiff.IsPresent -and $diffCount -gt 0) {
-  throw ("Differences detected across {0} comparison(s)" -f $diffCount)
+Write-Host ("VI compare history suite complete. Aggregate manifest: {0}" -f $aggregateManifestResolved)
+
+if ($FailOnDiff.IsPresent -and $totalDiffs -gt 0) {
+  throw ("Differences detected across {0} comparison(s)" -f $totalDiffs)
 }

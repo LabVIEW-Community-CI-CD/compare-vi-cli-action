@@ -8,6 +8,8 @@ param(
   [switch]$Quiet,
   [switch]$Detailed,
   [switch]$RenderReport,
+  [ValidateSet('html','xml','text')]
+  [string]$ReportFormat = 'html',
   [string]$LvCompareArgs,
   [switch]$ReplaceFlags,
   [string]$LvComparePath,
@@ -210,8 +212,15 @@ if (-not $OutName) {
   if ([string]::IsNullOrWhiteSpace($OutName)) { $OutName = 'vi-compare' }
 }
 
-$detailRequested = $Detailed.IsPresent -or $RenderReport.IsPresent
+$reportFormatEffective = if ($ReportFormat) { $ReportFormat.ToLowerInvariant() } else { 'html' }
+if ($RenderReport.IsPresent -and $reportFormatEffective -ne 'html') {
+  $reportFormatEffective = 'html'
+}
+$renderReportRequested = ($reportFormatEffective -eq 'html')
+$detailRequested = $Detailed.IsPresent -or $renderReportRequested -or ($reportFormatEffective -ne 'html')
+Write-Host ("[Debug] detailRequested={0} renderReportRequested={1} reportFormat={2}" -f $detailRequested, $renderReportRequested, $reportFormatEffective)
 $flagTokens = Split-ArgString -Value $LvCompareArgs
+$customInvokeProvided = -not [string]::IsNullOrWhiteSpace($InvokeScriptPath)
 $lvComparePathResolved = Normalize-ExistingPath $LvComparePath
 $labviewExeResolved    = Normalize-ExistingPath $LabVIEWExePath
 $invokeScriptResolved  = $null
@@ -222,8 +231,6 @@ if ($detailRequested -or $InvokeScriptPath) {
     throw "Invoke-LVCompare script not found: $invokeScriptResolved"
   }
 }
-$renderReportRequested = $RenderReport.IsPresent -or $detailRequested
-
 $tmp = Join-Path $env:TEMP ("refcmp-" + [guid]::NewGuid().ToString('N'))
 New-Item -ItemType Directory -Path $tmp -Force | Out-Null
 $base = Join-Path $tmp 'Base.vi'
@@ -241,6 +248,14 @@ if ($detailRequested) {
   $artifactDir = Join-Path $rd ("$OutName-artifacts")
   New-Item -ItemType Directory -Path $artifactDir -Force | Out-Null
 }
+$reportFile = $null
+switch ($reportFormatEffective) {
+  'xml'  { if ($artifactDir) { $reportFile = Join-Path $artifactDir 'compare-report.xml' } }
+  'text' { if ($artifactDir) { $reportFile = Join-Path $artifactDir 'compare-report.txt' } }
+  default { if ($artifactDir) { $reportFile = Join-Path $artifactDir 'compare-report.html' } }
+}
+
+$invokeFlagTokens = if ($flagTokens) { @($flagTokens) } else { @() }
 
 $bytesBase = (Get-Item -LiteralPath $base).Length
 $bytesHead = (Get-Item -LiteralPath $head).Length
@@ -268,19 +283,37 @@ if ($detailRequested) {
   if ($renderReportRequested) { $invokeArgs += '-RenderReport' }
   if ($lvComparePathResolved) { $invokeArgs += '-LVComparePath'; $invokeArgs += $lvComparePathResolved }
   if ($labviewExeResolved) { $invokeArgs += '-LabVIEWExePath'; $invokeArgs += $labviewExeResolved }
-  if ($flagTokens -and $flagTokens.Length -gt 0) {
+  if ($customInvokeProvided -and $invokeFlagTokens -and $invokeFlagTokens.Length -gt 0) {
     $invokeArgs += '-Flags'
-    foreach ($token in $flagTokens) { $invokeArgs += $token }
+    foreach ($token in $invokeFlagTokens) { $invokeArgs += $token }
   }
   if ($ReplaceFlags) { $invokeArgs += '-ReplaceFlags' }
   $invokeArgs += '-LeakCheck:$true'
   $invokeArgs += '-LeakGraceSeconds'; $invokeArgs += '1.5'
 
-  $invokeResult = Invoke-PwshProcess -Arguments $invokeArgs -QuietOutput:$Quiet
+  $previousReportFormat = [System.Environment]::GetEnvironmentVariable('COMPAREVI_REPORT_FORMAT','Process')
+  $previousFlags = [System.Environment]::GetEnvironmentVariable('COMPAREVI_LVCOMPARE_FLAGS','Process')
+  try {
+    if ($reportFormatEffective) {
+      [System.Environment]::SetEnvironmentVariable('COMPAREVI_REPORT_FORMAT', $reportFormatEffective, 'Process')
+    } else {
+      [System.Environment]::SetEnvironmentVariable('COMPAREVI_REPORT_FORMAT', $null, 'Process')
+    }
+    if ($invokeFlagTokens -and $invokeFlagTokens.Length -gt 0) {
+      [System.Environment]::SetEnvironmentVariable('COMPAREVI_LVCOMPARE_FLAGS', ($invokeFlagTokens -join "`n"), 'Process')
+    } else {
+      [System.Environment]::SetEnvironmentVariable('COMPAREVI_LVCOMPARE_FLAGS', $null, 'Process')
+    }
+    $invokeResult = Invoke-PwshProcess -Arguments $invokeArgs -QuietOutput:$Quiet
+  }
+  finally {
+    [System.Environment]::SetEnvironmentVariable('COMPAREVI_REPORT_FORMAT', $previousReportFormat, 'Process')
+    [System.Environment]::SetEnvironmentVariable('COMPAREVI_LVCOMPARE_FLAGS', $previousFlags, 'Process')
+  }
   $capturePath = Join-Path $artifactDir 'lvcompare-capture.json'
   $stdoutPath  = Join-Path $artifactDir 'lvcompare-stdout.txt'
   $stderrPath  = Join-Path $artifactDir 'lvcompare-stderr.txt'
-  $reportPath  = Join-Path $artifactDir 'compare-report.html'
+  $reportPath  = $reportFile
   $imagesDir   = Join-Path $artifactDir 'cli-images'
 
   $capture = $null
@@ -348,14 +381,16 @@ if ($detailRequested) {
   if (Test-Path -LiteralPath $capturePath) { $detailPaths.captureJson = (Resolve-Path -LiteralPath $capturePath).Path }
   if (Test-Path -LiteralPath $stdoutPath)  { $detailPaths.stdout       = (Resolve-Path -LiteralPath $stdoutPath).Path }
   if (Test-Path -LiteralPath $stderrPath)  { $detailPaths.stderr       = (Resolve-Path -LiteralPath $stderrPath).Path }
-  if (Test-Path -LiteralPath $reportPath)  {
-    $reportHtmlPath = (Resolve-Path -LiteralPath $reportPath).Path
-    $detailPaths.reportHtml = $reportHtmlPath
-  } else {
-    $reportHtmlPath = $null
+  $reportResolved = $null
+  if ($reportFile -and (Test-Path -LiteralPath $reportFile)) {
+    $reportResolved = (Resolve-Path -LiteralPath $reportFile).Path
+    $detailPaths.reportPath = $reportResolved
+    if ($reportFormatEffective -eq 'html') {
+      $detailPaths.reportHtml = $reportResolved
+    }
   }
   if (Test-Path -LiteralPath $imagesDir)   { $detailPaths.imagesDir    = (Resolve-Path -LiteralPath $imagesDir).Path }
-  if ($reportHtmlPath) { $includedAttributes = Get-IncludedAttributesFromReport -ReportPath $reportHtmlPath }
+  if ($reportFormatEffective -eq 'html' -and $reportResolved) { $includedAttributes = Get-IncludedAttributesFromReport -ReportPath $reportResolved }
 
   $execObject = [ordered]@{
     schema      = 'compare-exec/v1'
@@ -374,7 +409,7 @@ if ($detailRequested) {
   $execObject | ConvertTo-Json -Depth 6 | Out-File -FilePath $execPath -Encoding utf8
 }
 else {
-  $argsString = if ($flagTokens -and $flagTokens.Length -gt 0) { ($flagTokens -join ' ') } else { '' }
+  $argsString = if ($invokeFlagTokens -and $invokeFlagTokens.Length -gt 0) { ($invokeFlagTokens -join ' ') } else { '' }
   $result = Invoke-CompareVI -Base $base -Head $head -LvComparePath $lvComparePathResolved -LvCompareArgs $argsString -CompareExecJsonPath $execPath -FailOnDiff:$false
   $cliExit = [int]$result.ExitCode
   $cliDiff = [bool]$result.Diff
@@ -382,7 +417,7 @@ else {
   $cliPath = $result.CliPath
   $cliDurationSeconds = $result.CompareDurationSeconds
   $cliDurationNanoseconds = $result.CompareDurationNanoseconds
-  if ($flagTokens -and $flagTokens.Length -gt 0) { $cliArgsRecorded = $flagTokens }
+  if ($invokeFlagTokens -and $invokeFlagTokens.Length -gt 0) { $cliArgsRecorded = $invokeFlagTokens }
 }
 
 if (-not $cliDiff -and $cliExit -eq $null) { $cliExit = 0 }
@@ -390,7 +425,7 @@ if (-not $cliDiff -and $cliExit -eq $null) { $cliExit = 0 }
 $exec = Get-Content -LiteralPath $execPath -Raw | ConvertFrom-Json -Depth 6
 
 $outPaths = [ordered]@{ execJson = (Resolve-Path -LiteralPath $execPath).Path }
-foreach ($k in @('captureJson','stdout','stderr','reportHtml','imagesDir')) {
+foreach ($k in @('captureJson','stdout','stderr','reportHtml','reportPath','imagesDir')) {
   if ($detailPaths.Contains($k) -and $detailPaths[$k]) { $outPaths[$k] = $detailPaths[$k] }
 }
 if ($artifactDir) { $outPaths.artifactDir = (Resolve-Path -LiteralPath $artifactDir).Path }
@@ -401,6 +436,7 @@ $cliSummary = [ordered]@{
   duration_s  = $cliDurationSeconds
   command     = $cliCommand
   cliPath     = $cliPath
+  reportFormat = $reportFormatEffective
 }
 if ($cliDurationNanoseconds -ne $null) { $cliSummary.duration_ns = $cliDurationNanoseconds }
 if ($cliArgsRecorded -and $cliArgsRecorded.Length -gt 0) { $cliSummary.args = $cliArgsRecorded }
@@ -417,6 +453,7 @@ $sum = [ordered]@{
   refA = $RefA
   refB = $RefB
   temp = $tmp
+  reportFormat = $reportFormatEffective
   out = [pscustomobject]$outPaths
   computed = [ordered]@{
     baseBytes = $bytesBase

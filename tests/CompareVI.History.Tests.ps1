@@ -35,6 +35,7 @@ param(
   [string]$LVComparePath,
   [string[]]$Flags,
   [switch]$RenderReport,
+  [ValidateSet('html','xml','text')][string[]]$ReportFormat = 'html',
   [switch]$Quiet,
   [Parameter(ValueFromRemainingArguments=$true)][string[]]$PassThru
 )
@@ -48,8 +49,42 @@ $stdoutPath = Join-Path $OutputDir 'lvcompare-stdout.txt'
 $stderrPath = Join-Path $OutputDir 'lvcompare-stderr.txt'
 $exitPath   = Join-Path $OutputDir 'lvcompare-exitcode.txt'
 $capturePath= Join-Path $OutputDir 'lvcompare-capture.json'
-$reportPath = Join-Path $OutputDir 'compare-report.html'
 $imagesDir  = Join-Path $OutputDir 'cli-images'
+
+$flagsArray = @()
+if ($Flags) { $flagsArray = @($Flags | ForEach-Object { [string]$_ }) }
+$reportToken = $null
+$repFormatToken = $null
+for ($i = 0; $i -lt $flagsArray.Count; $i++) {
+  $token = $flagsArray[$i]
+  if (-not $token) { continue }
+  if ($token -ieq '-report' -and ($i + 1) -lt $flagsArray.Count) {
+    $reportToken = $flagsArray[$i + 1]
+  }
+  if ($token -ieq '-repformat' -and ($i + 1) -lt $flagsArray.Count) {
+    $repFormatToken = ([string]$flagsArray[$i + 1]).ToLowerInvariant()
+  }
+}
+$renderReportSwitch = $PSBoundParameters.ContainsKey('RenderReport')
+$reportFormatParam = 'html'
+if ($ReportFormat -and $ReportFormat.Count -gt 0) {
+  $reportFormatParam = ([string]$ReportFormat[$ReportFormat.Count - 1]).ToLowerInvariant()
+}
+if (-not $PSBoundParameters.ContainsKey('ReportFormat')) {
+  $envReportFormat = [System.Environment]::GetEnvironmentVariable('COMPAREVI_REPORT_FORMAT','Process')
+  if ($envReportFormat) { $reportFormatParam = $envReportFormat.ToLowerInvariant() }
+}
+if (-not $repFormatToken) { $repFormatToken = $reportFormatParam }
+if (-not $repFormatToken) { $repFormatToken = 'html' }
+if (-not $reportToken) {
+  $reportExt = switch ($repFormatToken) {
+    'xml'  { 'xml' }
+    'text' { 'txt' }
+    default { 'html' }
+  }
+  $reportToken = Join-Path $OutputDir ("compare-report.{0}" -f $reportExt)
+}
+$reportPath = $reportToken
 
 $diff = if ($env:STUB_COMPARE_DIFF -eq '1') { $true } else { $false }
 $exitCode = if ($diff) { 1 } else { 0 }
@@ -63,11 +98,25 @@ $stdoutLines | Set-Content -LiteralPath $stdoutPath -Encoding utf8
 '' | Set-Content -LiteralPath $stderrPath -Encoding utf8
 $exitCode.ToString() | Set-Content -LiteralPath $exitPath -Encoding utf8
 
-if ($RenderReport.IsPresent) {
-  "<html><body><h1>Stub Report (diff=$diff)</h1></body></html>" | Set-Content -LiteralPath $reportPath -Encoding utf8
+if ($renderReportSwitch -or $reportToken -or ($repFormatToken -ne 'html')) {
+  switch ($repFormatToken) {
+    'xml'  { "<report diff='$diff' />" | Set-Content -LiteralPath $reportPath -Encoding utf8 }
+    'text' { "Stub report diff=$diff" | Set-Content -LiteralPath $reportPath -Encoding utf8 }
+    default { "<html><body><h1>Stub Report (diff=$diff)</h1></body></html>" | Set-Content -LiteralPath $reportPath -Encoding utf8 }
+  }
 }
 New-Item -ItemType Directory -Path $imagesDir -Force | Out-Null
 [System.IO.File]::WriteAllBytes((Join-Path $imagesDir 'cli-image-00.png'), @(0xCA,0xFE,0xBA,0xBE))
+
+$metadata = [ordered]@{
+  renderReport = $renderReportSwitch
+  reportFlag   = $reportToken
+  repFormat    = $repFormatToken
+  paramFormat  = $reportFormatParam
+  effectiveFormat = $repFormatToken
+  reportPath   = $reportPath
+}
+$metadata | ConvertTo-Json -Depth 4 | Set-Content -LiteralPath (Join-Path $OutputDir 'report-flags.json') -Encoding utf8
 
 $capture = [ordered]@{
   schema    = 'lvcompare-capture-v1'
@@ -85,7 +134,7 @@ $capture = [ordered]@{
 $capture | ConvertTo-Json -Depth 6 | Set-Content -LiteralPath $capturePath -Encoding utf8
 exit $exitCode
 '@
-    Set-Content -LiteralPath $stubPath -Value $stubContent -Encoding utf8
+    Set-Content -LiteralPath $stubPath -Value $stubContent -Encoding Unicode
 
     Set-Variable -Name '_repoRoot' -Value $repoRoot -Scope Script
     Set-Variable -Name '_pairs' -Value $pairs -Scope Script
@@ -140,6 +189,30 @@ exit $exitCode
     Remove-Item Env:STUB_COMPARE_DIFF -ErrorAction SilentlyContinue
   }
 
+  $getHistoryManifests = {
+    param(
+      [Parameter(Mandatory = $true)][string]$RootDir,
+      [string]$ModeSlug = 'default'
+    )
+
+    $suitePath = Join-Path $RootDir 'manifest.json'
+    Test-Path -LiteralPath $suitePath | Should -BeTrue
+    $suiteManifest = Get-Content -LiteralPath $suitePath -Raw | ConvertFrom-Json
+    $suiteManifest.schema | Should -Be 'vi-compare/history-suite@v1'
+
+    $modeEntry = $suiteManifest.modes | Where-Object { $_.slug -eq $ModeSlug }
+    $modeEntry | Should -Not -BeNullOrEmpty
+    Test-Path -LiteralPath $modeEntry.manifestPath | Should -BeTrue
+
+    $modeManifest = Get-Content -LiteralPath $modeEntry.manifestPath -Raw | ConvertFrom-Json
+    return [pscustomobject]@{
+      SuitePath     = $suitePath
+      SuiteManifest = $suiteManifest
+      ModeEntry     = $modeEntry
+      ModeManifest  = $modeManifest
+    }
+  }
+
   It 'produces manifest without artifacts when no diffs detected' {
     if (-not $_pairs) { Set-ItResult -Skipped -Because 'Missing commit data'; return }
     $env:STUB_COMPARE_DIFF = '0'
@@ -151,16 +224,23 @@ exit $exitCode
       -MaxPairs 1 `
       -InvokeScriptPath $_stubPath `
       -ResultsDir $rd `
-      -Detailed `
-      -RenderReport `
       -FailOnDiff:$false `
-      -Mode default | Out-Null
+      -Mode default `
+      -ReportFormat html | Out-Null
 
-    $manifestPath = Join-Path $rd 'manifest.json'
-    Test-Path -LiteralPath $manifestPath | Should -BeTrue
-    $manifest = Get-Content -LiteralPath $manifestPath -Raw | ConvertFrom-Json
+    $suitePath = Join-Path $rd 'manifest.json'
+    Test-Path -LiteralPath $suitePath | Should -BeTrue
+    $aggregate = Get-Content -LiteralPath $suitePath -Raw | ConvertFrom-Json
+    $modeEntry = $aggregate.modes | Where-Object { $_.slug -eq 'default' }
+    $modeEntry | Should -Not -BeNullOrEmpty
+    Test-Path -LiteralPath $modeEntry.manifestPath | Should -BeTrue
+    $manifest = Get-Content -LiteralPath $modeEntry.manifestPath -Raw | ConvertFrom-Json
 
+    $aggregate.stats.processed | Should -Be 1
+    $aggregate.stats.diffs | Should -Be 0
+    $aggregate.stats.missing | Should -Be 0
     $manifest.schema | Should -Be 'vi-compare/history@v1'
+    $manifest.reportFormat | Should -Be 'html'
     $manifest.flags | Should -Contain '-nobd'
     $manifest.flags | Should -Contain '-noattr'
     $manifest.flags | Should -Contain '-nofp'
@@ -170,6 +250,7 @@ exit $exitCode
     $manifest.stats.diffs | Should -Be 0
     $manifest.stats.stopReason | Should -Be 'max-pairs'
     $manifest.comparisons.Count | Should -Be 1
+    $manifest.comparisons[0].reportFormat | Should -Be 'html'
     $manifest.comparisons[0].result.diff | Should -BeFalse
     ($manifest.comparisons[0].result.PSObject.Properties['artifactDir']) | Should -Be $null
   }
@@ -190,10 +271,13 @@ exit $exitCode
       -FailOnDiff:$false `
       -Mode default | Out-Null
 
-    $manifestPath = Join-Path $rd 'manifest.json'
-    Test-Path -LiteralPath $manifestPath | Should -BeTrue
-    $manifest = Get-Content -LiteralPath $manifestPath -Raw | ConvertFrom-Json
-
+    $suitePath = Join-Path $rd 'manifest.json'
+    Test-Path -LiteralPath $suitePath | Should -BeTrue
+    $aggregate = Get-Content -LiteralPath $suitePath -Raw | ConvertFrom-Json
+    $modeEntry = $aggregate.modes | Where-Object { $_.slug -eq 'default' }
+    $modeEntry | Should -Not -BeNullOrEmpty
+    Test-Path -LiteralPath $modeEntry.manifestPath | Should -BeTrue
+    $manifest = Get-Content -LiteralPath $modeEntry.manifestPath -Raw | ConvertFrom-Json
     $manifest.stats.diffs | Should -Be 1
     $manifest.flags | Should -Contain '-nobd'
     $manifest.flags | Should -Contain '-noattr'
@@ -205,6 +289,49 @@ exit $exitCode
     $artifactDir = $manifest.comparisons[0].result.artifactDir
     [string]::IsNullOrWhiteSpace($artifactDir) | Should -BeFalse
     Test-Path -LiteralPath $artifactDir | Should -BeTrue
+  }
+
+  It 'captures xml report when alternate format requested' {
+    if (-not $_pairs) { Set-ItResult -Skipped -Because 'Missing commit data'; return }
+    $env:STUB_COMPARE_DIFF = '1'
+    try {
+      $pair = $_pairs[0]
+      $rd = Join-Path $TestDrive 'history-xml'
+      & pwsh -NoLogo -NoProfile -File (Join-Path $_repoRoot 'tools/Compare-VIHistory.ps1') `
+        -TargetPath $_target `
+        -StartRef $pair.Head `
+        -MaxPairs 1 `
+        -InvokeScriptPath $_stubPath `
+        -ResultsDir $rd `
+      -Detailed `
+      -ReportFormat xml `
+      -FailOnDiff:$false | Out-Null
+
+      $suitePath = Join-Path $rd 'manifest.json'
+      Test-Path -LiteralPath $suitePath | Should -BeTrue
+      $aggregate = Get-Content -LiteralPath $suitePath -Raw | ConvertFrom-Json
+      $modeEntry = $aggregate.modes | Where-Object { $_.slug -eq 'default' }
+      $modeEntry | Should -Not -BeNullOrEmpty
+      Test-Path -LiteralPath $modeEntry.manifestPath | Should -BeTrue
+      $manifest = Get-Content -LiteralPath $modeEntry.manifestPath -Raw | ConvertFrom-Json
+      $comparison = $manifest.comparisons[0]
+      $comparison.reportFormat | Should -Be 'xml'
+      $comparison.result.diff | Should -BeTrue
+      $comparison.result.PSObject.Properties['reportHtml'] | Should -Be $null
+      $artifactDir = $comparison.result.artifactDir
+      [string]::IsNullOrWhiteSpace($artifactDir) | Should -BeFalse
+      Test-Path -LiteralPath $artifactDir | Should -BeTrue
+      Test-Path -LiteralPath (Join-Path $artifactDir 'compare-report.xml') | Should -BeTrue
+
+      $metaPath = Join-Path $artifactDir 'report-flags.json'
+      Test-Path -LiteralPath $metaPath | Should -BeTrue
+      $meta = Get-Content -LiteralPath $metaPath -Raw | ConvertFrom-Json
+      $meta.effectiveFormat | Should -Be 'xml'
+      $meta.reportPath | Should -Match '\.xml$'
+    }
+    finally {
+      $env:STUB_COMPARE_DIFF = '0'
+    }
   }
 
   It 'shifts start ref to the next change when a more recent commit modified the VI' {
@@ -221,9 +348,13 @@ exit $exitCode
       -RenderReport `
       -FailOnDiff:$false | Out-Null
 
-    $manifestPath = Join-Path $rd 'manifest.json'
-    Test-Path -LiteralPath $manifestPath | Should -BeTrue
-    $manifest = Get-Content -LiteralPath $manifestPath -Raw | ConvertFrom-Json
+    $suitePath = Join-Path $rd 'manifest.json'
+    Test-Path -LiteralPath $suitePath | Should -BeTrue
+    $aggregate = Get-Content -LiteralPath $suitePath -Raw | ConvertFrom-Json
+    $modeEntry = $aggregate.modes | Where-Object { $_.slug -eq 'default' }
+    $modeEntry | Should -Not -BeNullOrEmpty
+    Test-Path -LiteralPath $modeEntry.manifestPath | Should -BeTrue
+    $manifest = Get-Content -LiteralPath $modeEntry.manifestPath -Raw | ConvertFrom-Json
     $manifest.requestedStartRef | Should -Be $candidate.start
     $manifest.startRef | Should -Be $candidate.expected
     $manifest.comparisons.Count | Should -Be 1
@@ -244,9 +375,13 @@ exit $exitCode
       -RenderReport `
       -FailOnDiff:$false | Out-Null
 
-    $manifestPath = Join-Path $rd 'manifest.json'
-    Test-Path -LiteralPath $manifestPath | Should -BeTrue
-    $manifest = Get-Content -LiteralPath $manifestPath -Raw | ConvertFrom-Json
+    $suitePath = Join-Path $rd 'manifest.json'
+    Test-Path -LiteralPath $suitePath | Should -BeTrue
+    $aggregate = Get-Content -LiteralPath $suitePath -Raw | ConvertFrom-Json
+    $modeEntry = $aggregate.modes | Where-Object { $_.slug -eq 'default' }
+    $modeEntry | Should -Not -BeNullOrEmpty
+    Test-Path -LiteralPath $modeEntry.manifestPath | Should -BeTrue
+    $manifest = Get-Content -LiteralPath $modeEntry.manifestPath -Raw | ConvertFrom-Json
     $manifest.requestedStartRef | Should -Be $candidate.start
     $manifest.startRef | Should -Be $candidate.expected
     $manifest.comparisons.Count | Should -BeGreaterThan 0
@@ -269,9 +404,13 @@ exit $exitCode
       -FailOnDiff:$false `
       -Mode attributes | Out-Null
 
-    $manifestPath = Join-Path $rd 'manifest.json'
-    Test-Path -LiteralPath $manifestPath | Should -BeTrue
-    $manifest = Get-Content -LiteralPath $manifestPath -Raw | ConvertFrom-Json
+    $suitePath = Join-Path $rd 'manifest.json'
+    Test-Path -LiteralPath $suitePath | Should -BeTrue
+    $aggregate = Get-Content -LiteralPath $suitePath -Raw | ConvertFrom-Json
+    $modeEntry = $aggregate.modes | Where-Object { $_.slug -eq 'attributes' }
+    $modeEntry | Should -Not -BeNullOrEmpty
+    Test-Path -LiteralPath $modeEntry.manifestPath | Should -BeTrue
+    $manifest = Get-Content -LiteralPath $modeEntry.manifestPath -Raw | ConvertFrom-Json
     $manifest.mode | Should -Be 'attributes'
     ($manifest.flags -contains '-noattr') | Should -BeFalse
     $manifest.flags | Should -Contain '-nobd'
@@ -296,9 +435,13 @@ exit $exitCode
       -Mode 'front-panel' `
       -FailOnDiff:$false | Out-Null
 
-    $manifestPath = Join-Path $rd 'manifest.json'
-    Test-Path -LiteralPath $manifestPath | Should -BeTrue
-    $manifest = Get-Content -LiteralPath $manifestPath -Raw | ConvertFrom-Json
+    $suitePath = Join-Path $rd 'manifest.json'
+    Test-Path -LiteralPath $suitePath | Should -BeTrue
+    $aggregate = Get-Content -LiteralPath $suitePath -Raw | ConvertFrom-Json
+    $modeEntry = $aggregate.modes | Where-Object { $_.slug -eq 'front-panel' }
+    $modeEntry | Should -Not -BeNullOrEmpty
+    Test-Path -LiteralPath $modeEntry.manifestPath | Should -BeTrue
+    $manifest = Get-Content -LiteralPath $modeEntry.manifestPath -Raw | ConvertFrom-Json
     $manifest.mode | Should -Be 'front-panel'
     ($manifest.flags -contains '-nofp') | Should -BeFalse
     ($manifest.flags -contains '-nofppos') | Should -BeFalse
@@ -321,9 +464,13 @@ exit $exitCode
       -Mode 'block-diagram' `
       -FailOnDiff:$false | Out-Null
 
-    $manifestPath = Join-Path $rd 'manifest.json'
-    Test-Path -LiteralPath $manifestPath | Should -BeTrue
-    $manifest = Get-Content -LiteralPath $manifestPath -Raw | ConvertFrom-Json
+    $suitePath = Join-Path $rd 'manifest.json'
+    Test-Path -LiteralPath $suitePath | Should -BeTrue
+    $aggregate = Get-Content -LiteralPath $suitePath -Raw | ConvertFrom-Json
+    $modeEntry = $aggregate.modes | Where-Object { $_.slug -eq 'block-diagram' }
+    $modeEntry | Should -Not -BeNullOrEmpty
+    Test-Path -LiteralPath $modeEntry.manifestPath | Should -BeTrue
+    $manifest = Get-Content -LiteralPath $modeEntry.manifestPath -Raw | ConvertFrom-Json
     $manifest.mode | Should -Be 'block-diagram'
     ($manifest.flags -contains '-nobdcosm') | Should -BeFalse
     $manifest.flags | Should -Contain '-nobd'
@@ -346,10 +493,72 @@ exit $exitCode
       -Mode 'all' `
       -FailOnDiff:$false | Out-Null
 
-    $manifestPath = Join-Path $rd 'manifest.json'
-    Test-Path -LiteralPath $manifestPath | Should -BeTrue
-    $manifest = Get-Content -LiteralPath $manifestPath -Raw | ConvertFrom-Json
+    $suitePath = Join-Path $rd 'manifest.json'
+    Test-Path -LiteralPath $suitePath | Should -BeTrue
+    $aggregate = Get-Content -LiteralPath $suitePath -Raw | ConvertFrom-Json
+    $modeEntry = $aggregate.modes | Where-Object { $_.slug -eq 'all' }
+    $modeEntry | Should -Not -BeNullOrEmpty
+    Test-Path -LiteralPath $modeEntry.manifestPath | Should -BeTrue
+    $manifest = Get-Content -LiteralPath $modeEntry.manifestPath -Raw | ConvertFrom-Json
     $manifest.mode | Should -Be 'all'
     $manifest.flags | Should -BeNullOrEmpty
   }
+
+  It 'executes multiple modes and writes per-mode manifests' {
+    if (-not $_pairs) { Set-ItResult -Skipped -Because 'Missing commit data'; return }
+    $env:STUB_COMPARE_DIFF = '0'
+    $pair = $_pairs[0]
+    $rd = Join-Path $TestDrive 'history-multi-mode'
+    & pwsh -NoLogo -NoProfile -File (Join-Path $_repoRoot 'tools/Compare-VIHistory.ps1') `
+      -TargetPath $_target `
+      -StartRef $pair.Head `
+      -MaxPairs 1 `
+      -InvokeScriptPath $_stubPath `
+      -ResultsDir $rd `
+      -Mode 'default,attributes' `
+      -FailOnDiff:$false | Out-Null
+
+    $suitePath = Join-Path $rd 'manifest.json'
+    Test-Path -LiteralPath $suitePath | Should -BeTrue
+    $suiteManifest = Get-Content -LiteralPath $suitePath -Raw | ConvertFrom-Json
+    $suiteManifest.modes.Count | Should -Be 2
+    $defaultEntry = $suiteManifest.modes | Where-Object { $_.slug -eq 'default' }
+    $attributeEntry = $suiteManifest.modes | Where-Object { $_.slug -eq 'attributes' }
+    $defaultEntry | Should -Not -BeNullOrEmpty
+    $attributeEntry | Should -Not -BeNullOrEmpty
+    Test-Path -LiteralPath $defaultEntry.manifestPath | Should -BeTrue
+    Test-Path -LiteralPath $attributeEntry.manifestPath | Should -BeTrue
+
+    $defaultManifest = Get-Content -LiteralPath $defaultEntry.manifestPath -Raw | ConvertFrom-Json
+    $defaultManifest.mode | Should -Be 'default'
+    $attributeManifest = Get-Content -LiteralPath $attributeEntry.manifestPath -Raw | ConvertFrom-Json
+    $attributeManifest.mode | Should -Be 'attributes'
+  }
+
+  It 'expands comma-separated mode tokens into multiple entries' {
+    if (-not $_pairs) { Set-ItResult -Skipped -Because 'Missing commit data'; return }
+    $env:STUB_COMPARE_DIFF = '0'
+    $pair = $_pairs[0]
+    $rd = Join-Path $TestDrive 'history-multi-token'
+    & pwsh -NoLogo -NoProfile -File (Join-Path $_repoRoot 'tools/Compare-VIHistory.ps1') `
+      -TargetPath $_target `
+      -StartRef $pair.Head `
+      -MaxPairs 1 `
+      -InvokeScriptPath $_stubPath `
+      -ResultsDir $rd `
+      -Mode 'default,attributes' `
+      -FailOnDiff:$false | Out-Null
+
+    $suitePath = Join-Path $rd 'manifest.json'
+    Test-Path -LiteralPath $suitePath | Should -BeTrue
+    $suiteManifest = Get-Content -LiteralPath $suitePath -Raw | ConvertFrom-Json
+    $suiteManifest.modes.Count | Should -Be 2
+    $slugs = @($suiteManifest.modes | ForEach-Object { $_.slug })
+    $slugs | Should -Contain 'default'
+    $slugs | Should -Contain 'attributes'
+  }
 }
+
+
+
+

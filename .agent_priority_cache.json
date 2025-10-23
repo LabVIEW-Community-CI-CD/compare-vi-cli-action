@@ -1,18 +1,20 @@
 {
-  "number": 289,
-  "title": "Enforce branch protection policy in CI (policy guard)",
-  "url": "https://github.com/LabVIEW-Community-CI-CD/compare-vi-cli-action/issues/289",
+  "number": 295,
+  "title": "Fine-tune VI compare refs workflow",
+  "url": "https://github.com/LabVIEW-Community-CI-CD/compare-vi-cli-action/issues/295",
   "state": "OPEN",
   "labels": [
+    "ci",
+    "enhancement",
     "standing-priority"
   ],
   "assignees": [],
   "milestone": null,
-  "commentCount": 0,
-  "lastSeenUpdatedAt": "2025-10-22T19:30:39Z",
-  "issueDigest": "c7a39232d09d424b38723869e458ec3777c2b4badfec461ddaa0b3a5d06641f7",
-  "bodyDigest": "68bae82cd7375951745eb3413bc8617b85eca640415082f45edf2f3414836279",
-  "cachedAtUtc": "2025-10-22T19:30:50.558Z",
+  "commentCount": 2,
+  "lastSeenUpdatedAt": "2025-10-23T02:15:58Z",
+  "issueDigest": "40baf5cac357271d3c75bc4db67c13546c11724f9f114680a4833857a720070f",
+  "bodyDigest": "7570f8e74d5f2b3405911b265e938532b185654a7454de32099fdb6450e02064",
+  "cachedAtUtc": "2025-10-23T03:02:02.853Z",
   "lastFetchSource": "live",
   "lastFetchError": null
 }

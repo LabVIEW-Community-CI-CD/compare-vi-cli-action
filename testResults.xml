@@ -1,19 +1,35 @@
 ﻿<?xml version="1.0" encoding="utf-8" standalone="no"?>
-<test-results xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="nunit_schema_2.5.xsd" name="Pester" total="2" errors="0" failures="0" not-run="0" inconclusive="0" ignored="0" skipped="0" invalid="0" date="2025-10-15" time="14:09:20">
-  <environment clr-version="9.0.8" os-version="10.0.22631" nunit-version="2.5.8.0" platform="Microsoft Windows 11 Enterprise|C:\WINDOWS|\Device\Harddisk0\Partition3" machine-name="USAUSLT-Z7DLW6G" user="svelderr" cwd="C:\codex\home\runner\work\compare-vi-cli-action" user-domain="NI" />
+<test-results xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="nunit_schema_2.5.xsd" name="Pester" total="10" errors="0" failures="2" not-run="0" inconclusive="0" ignored="0" skipped="2" invalid="0" date="2025-10-23" time="00:13:32">
+  <environment machine-name="USAUSLT-Z7DLW6G" clr-version="9.0.8" user="svelderr" nunit-version="2.5.8.0" os-version="10.0.22631" cwd="C:\codex\home\runner\work\compare-vi-cli-action" user-domain="NI" platform="Microsoft Windows 11 Enterprise|C:\WINDOWS|\Device\Harddisk0\Partition3" />
   <culture-info current-culture="en-US" current-uiculture="en-US" />
-  <test-suite type="TestFixture" name="Pester" executed="True" result="Success" success="True" time="41.9757" asserts="0" description="Pester">
+  <test-suite type="TestFixture" name="Pester" executed="True" result="Failure" success="False" time="57.029" asserts="0" description="Pester">
     <results>
-      <test-suite type="TestFixture" name="C:\codex\home\runner\work\compare-vi-cli-action\tests\Run-AutonomousIntegrationLoop.Tests.ps1" executed="True" result="Success" success="True" time="41.9757" asserts="0" description="C:\codex\home\runner\work\compare-vi-cli-action\tests\Run-AutonomousIntegrationLoop.Tests.ps1">
+      <test-suite type="TestFixture" name="C:\codex\home\runner\work\compare-vi-cli-action\tests\CompareVI.History.Tests.ps1" executed="True" result="Failure" success="False" time="57.029" asserts="0" description="C:\codex\home\runner\work\compare-vi-cli-action\tests\CompareVI.History.Tests.ps1">
         <results>
-          <test-suite type="TestFixture" name="Run-AutonomousIntegrationLoop FinalStatusJsonPath emission" executed="True" result="Success" success="True" time="9.413" asserts="0" description="Run-AutonomousIntegrationLoop FinalStatusJsonPath emission">
+          <test-suite type="TestFixture" name="Compare-VIHistory helper" executed="True" result="Failure" success="False" time="56.3473" asserts="0" description="Compare-VIHistory helper">
             <results>
-              <test-case description="emits final status JSON with expected shape in simulate mode" name="Run-AutonomousIntegrationLoop FinalStatusJsonPath emission.emits final status JSON with expected shape in simulate mode" time="9.2604" asserts="0" success="True" result="Success" executed="True" />
-            </results>
-          </test-suite>
-          <test-suite type="TestFixture" name="Run-AutonomousIntegrationLoop DiffExitCode behavior" executed="True" result="Success" success="True" time="41.3925" asserts="0" description="Run-AutonomousIntegrationLoop DiffExitCode behavior">
-            <results>
-              <test-case description="returns custom diff exit code when diffs detected and no errors" name="Run-AutonomousIntegrationLoop DiffExitCode behavior.returns custom diff exit code when diffs detected and no errors" time="31.9059" asserts="0" success="True" result="Success" executed="True" />
+              <test-case description="produces manifest without artifacts when no diffs detected" name="Compare-VIHistory helper.produces manifest without artifacts when no diffs detected" time="5.1601" asserts="0" success="True" result="Success" executed="True" />
+              <test-case description="retains artifact directory when the stub reports a diff" name="Compare-VIHistory helper.retains artifact directory when the stub reports a diff" time="4.5221" asserts="0" success="True" result="Success" executed="True" />
+              <test-case description="captures xml report when alternate format requested" name="Compare-VIHistory helper.captures xml report when alternate format requested" time="4.2742" asserts="0" success="True" result="Success" executed="True" />
+              <test-case description="shifts start ref to the next change when a more recent commit modified the VI" name="Compare-VIHistory helper.shifts start ref to the next change when a more recent commit modified the VI" time="0.0404" asserts="0" success="False" result="Ignored" executed="False" />
+              <test-case description="falls back to the previous change when no newer commits touched the VI" name="Compare-VIHistory helper.falls back to the previous change when no newer commits touched the VI" time="0.0039" asserts="0" success="False" result="Ignored" executed="False" />
+              <test-case description="exposes attribute-focused mode when requested" name="Compare-VIHistory helper.exposes attribute-focused mode when requested" time="4.4482" asserts="0" success="True" result="Success" executed="True" />
+              <test-case description="drops front panel ignores when front-panel mode is selected" name="Compare-VIHistory helper.drops front panel ignores when front-panel mode is selected" time="4.2795" asserts="0" success="True" result="Success" executed="True" />
+              <test-case description="drops block diagram cosmetic ignore when block-diagram mode is selected" name="Compare-VIHistory helper.drops block diagram cosmetic ignore when block-diagram mode is selected" time="4.922" asserts="0" success="True" result="Success" executed="True" />
+              <test-case description="removes all ignore flags when mode is &quot;all&quot;" name="Compare-VIHistory helper.removes all ignore flags when mode is &quot;all&quot;" time="4.6665" asserts="0" success="False" result="Failure" executed="True">
+                <failure>
+                  <message>Expected $true, but got $false.</message>
+                  <stack-trace>at Test-Path -LiteralPath $suitePath | Should -BeTrue, C:\codex\home\runner\work\compare-vi-cli-action\tests\CompareVI.History.Tests.ps1:497
+at &lt;ScriptBlock&gt;, C:\codex\home\runner\work\compare-vi-cli-action\tests\CompareVI.History.Tests.ps1:497</stack-trace>
+                </failure>
+              </test-case>
+              <test-case description="executes multiple modes and writes per-mode manifests" name="Compare-VIHistory helper.executes multiple modes and writes per-mode manifests" time="4.5472" asserts="0" success="False" result="Failure" executed="True">
+                <failure>
+                  <message>Expected 2, but got 1.</message>
+                  <stack-trace>at $suiteManifest.modes.Count | Should -Be 2, C:\codex\home\runner\work\compare-vi-cli-action\tests\CompareVI.History.Tests.ps1:524
+at &lt;ScriptBlock&gt;, C:\codex\home\runner\work\compare-vi-cli-action\tests\CompareVI.History.Tests.ps1:524</stack-trace>
+                </failure>
+              </test-case>
             </results>
           </test-suite>
         </results>

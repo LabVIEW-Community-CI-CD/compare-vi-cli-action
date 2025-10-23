@@ -152,77 +152,80 @@ jobs:
             if (-not $trim) { return 'default' }
             return $trim.ToLowerInvariant()
           }
-          function Get-ModeSlug([string]$value) {
-            $slug = ($value -replace '[^a-z0-9]+','-').Trim('-')
-            if ([string]::IsNullOrWhiteSpace($slug)) { return 'default' }
-            return $slug
-          }
 
           $modeInput = if ([string]::IsNullOrWhiteSpace($env:MODES)) { 'default' } else { $env:MODES }
-          $modeTokens = @($modeInput -split '[,;]' | ForEach-Object { Normalize-Mode $_ } | Where-Object { $_ })
+          $modeTokens = @(
+            $modeInput -split '[,;]' |
+              ForEach-Object { Normalize-Mode $_ } |
+              Where-Object { $_ }
+          )
           if ($modeTokens.Count -eq 0) { $modeTokens = @('default') }
+          $modeTokens = @($modeTokens | Select-Object -Unique)
 
-          $manifestPaths = @()
+          $scriptArgs = @(
+            '-TargetPath', $env:TARGET_PATH,
+            '-ResultsDir', $resultsRoot,
+            '-GitHubOutputPath', $env:GITHUB_OUTPUT,
+            '-StepSummaryPath', $env:GITHUB_STEP_SUMMARY,
+            '-Detailed',
+            '-RenderReport'
+          )
           foreach ($mode in $modeTokens) {
-            $modeSlug = Get-ModeSlug $mode
-            $modeDir = Join-Path $resultsRoot $modeSlug
-            New-Item -ItemType Directory -Path $modeDir -Force | Out-Null
-            $manifestPath = Join-Path $modeDir 'manifest.json'
-            $outPrefix = ((Split-Path $env:TARGET_PATH -Leaf) -replace '[^A-Za-z0-9._-]+','_')
-            if ([string]::IsNullOrWhiteSpace($outPrefix)) { $outPrefix = 'vi-compare' }
-            $outPrefix = "$outPrefix-$modeSlug"
-
-            $scriptArgs = @(
-              '-TargetPath', $env:TARGET_PATH,
-              '-ResultsDir', $modeDir,
-              '-ManifestPath', $manifestPath,
-              '-OutPrefix', $outPrefix,
-              '-GitHubOutputPath', $env:GITHUB_OUTPUT,
-              '-StepSummaryPath', $env:GITHUB_STEP_SUMMARY,
-              '-Detailed',
-              '-RenderReport',
-              '-Mode', $mode
-            )
-            if (-not [string]::IsNullOrWhiteSpace($env:START_REF)) {
-              $scriptArgs += '-StartRef'
-              $scriptArgs += $env:START_REF
-            }
-            if (-not [string]::IsNullOrWhiteSpace($env:END_REF)) {
-              $scriptArgs += '-EndRef'
-              $scriptArgs += $env:END_REF
-            }
-            if (-not [string]::IsNullOrWhiteSpace($env:MAX_PAIRS)) {
-              $scriptArgs += '-MaxPairs'
-              $scriptArgs += $env:MAX_PAIRS
-            }
-            if (-not [string]::IsNullOrWhiteSpace($env:EXTRA_FLAGS)) {
-              $scriptArgs += '-AdditionalFlags'
-              $scriptArgs += $env:EXTRA_FLAGS
-            }
-            $scriptArgs += ("-FlagNoAttr:{0}" -f (Convert-ToBoolean $env:FLAG_NOATTR $true))
-            $scriptArgs += ("-FlagNoFp:{0}" -f (Convert-ToBoolean $env:FLAG_NOFP $true))
-            $scriptArgs += ("-FlagNoFpPos:{0}" -f (Convert-ToBoolean $env:FLAG_NOFPPOS $true))
-            $scriptArgs += ("-FlagNoBdCosm:{0}" -f (Convert-ToBoolean $env:FLAG_NOBDCOSM $true))
-            $scriptArgs += ("-FailFast:{0}" -f (Convert-ToBoolean $env:FAIL_FAST $false))
-            $scriptArgs += ("-FailOnDiff:{0}" -f (Convert-ToBoolean $env:FAIL_ON_DIFF $false))
-
-            & $scriptPath @scriptArgs
-            $manifestPaths += $manifestPath
+            $scriptArgs += '-Mode'
+            $scriptArgs += $mode
           }
+          if (-not [string]::IsNullOrWhiteSpace($env:START_REF)) {
+            $scriptArgs += '-StartRef'
+            $scriptArgs += $env:START_REF
+          }
+          if (-not [string]::IsNullOrWhiteSpace($env:END_REF)) {
+            $scriptArgs += '-EndRef'
+            $scriptArgs += $env:END_REF
+          }
+          if (-not [string]::IsNullOrWhiteSpace($env:MAX_PAIRS)) {
+            $scriptArgs += '-MaxPairs'
+            $scriptArgs += $env:MAX_PAIRS
+          }
+          if (-not [string]::IsNullOrWhiteSpace($env:EXTRA_FLAGS)) {
+            $scriptArgs += '-AdditionalFlags'
+            $scriptArgs += $env:EXTRA_FLAGS
+          }
+          $scriptArgs += ("-FlagNoAttr:{0}" -f (Convert-ToBoolean $env:FLAG_NOATTR $true))
+          $scriptArgs += ("-FlagNoFp:{0}" -f (Convert-ToBoolean $env:FLAG_NOFP $true))
+          $scriptArgs += ("-FlagNoFpPos:{0}" -f (Convert-ToBoolean $env:FLAG_NOFPPOS $true))
+          $scriptArgs += ("-FlagNoBdCosm:{0}" -f (Convert-ToBoolean $env:FLAG_NOBDCOSM $true))
+          $scriptArgs += ("-FailFast:{0}" -f (Convert-ToBoolean $env:FAIL_FAST $false))
+          $scriptArgs += ("-FailOnDiff:{0}" -f (Convert-ToBoolean $env:FAIL_ON_DIFF $false))
 
-          $manifestOutput = ($manifestPaths -join "`n")
-          "manifest-path=$manifestOutput" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
-          "resultsDir=$resultsRoot" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
+          & $scriptPath @scriptArgs
 
       - name: Collect diff artifact directories
         id: diffscan
         if: ${{ always() && steps.history.outputs['manifest-path'] != '' }}
         shell: pwsh
         env:
-          MANIFEST_PATH: ${{ steps.history.outputs['manifest-path'] }}
+          MODE_MANIFESTS_JSON: ${{ steps.history.outputs['mode-manifests-json'] }}
+          LEGACY_MANIFEST_PATH: ${{ steps.history.outputs['manifest-path'] }}
         run: |
           $ErrorActionPreference = 'Stop'
-          $manifestPaths = $env:MANIFEST_PATH -split "`n" | Where-Object { $_ }
+          $manifestPaths = @()
+
+          if (-not [string]::IsNullOrWhiteSpace($env:MODE_MANIFESTS_JSON)) {
+            try {
+              $modeInfo = $env:MODE_MANIFESTS_JSON | ConvertFrom-Json
+              foreach ($entry in @($modeInfo)) {
+                if ($entry -and $entry.manifest) {
+                  $manifestPaths += [string]$entry.manifest
+                }
+              }
+            } catch {
+              Write-Warning ("Unable to parse mode manifest JSON: {0}" -f $_.Exception.Message)
+            }
+          }
+          if ($manifestPaths.Count -eq 0 -and -not [string]::IsNullOrWhiteSpace($env:LEGACY_MANIFEST_PATH)) {
+            $manifestPaths += ($env:LEGACY_MANIFEST_PATH -split "`n" | Where-Object { $_ })
+          }
+
           $dirs = @()
           foreach ($manifestPath in $manifestPaths) {
             if (-not (Test-Path -LiteralPath $manifestPath)) { continue }
@@ -254,6 +257,7 @@ EOF
           name: vi-compare-results
           path: |
             ${{ steps.history.outputs['manifest-path'] }}
+            ${{ steps.history.outputs['results-dir'] }}/**/manifest.json
             ${{ steps.history.outputs['results-dir'] }}/**/*-summary.json
             ${{ steps.history.outputs['results-dir'] }}/**/*-exec.json
           if-no-files-found: warn

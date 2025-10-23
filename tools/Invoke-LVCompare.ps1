@@ -7,7 +7,7 @@
   stable arguments, explicit LabVIEW selection via -lvpath, and NDJSON crumbs.
   Produces standard artifacts under the chosen OutputDir:
     - lvcompare-capture.json (schema lvcompare-capture-v1)
-    - compare-report.html (when -RenderReport)
+    - compare-report.<ext> (when reports enabled; html/xml/text)
     - lvcompare-stdout.txt / lvcompare-stderr.txt / lvcompare-exitcode.txt
 
 .PARAMETER BaseVi
@@ -36,6 +36,10 @@
 
 .PARAMETER RenderReport
   Emit compare-report.html (default: enabled).
+
+.PARAMETER ReportFormat
+  Report format to request (html, xml, text). Defaults to html; non-html formats
+  implicitly enable report capture even when -RenderReport is omitted.
 
 .PARAMETER JsonLogPath
   NDJSON crumb log (schema prime-lvcompare-v1 compatible): spawn/result/paths.
@@ -69,8 +73,10 @@ param(
   [string]$LVComparePath,
   [string[]]$Flags,
   [switch]$ReplaceFlags,
-  [string]$OutputDir = 'tests/results/single-compare',
-  [switch]$RenderReport,
+    [string]$OutputDir = 'tests/results/single-compare',
+    [switch]$RenderReport,
+    [ValidateSet('html','xml','text')]
+    [string]$ReportFormat = 'html',
   [string]$JsonLogPath,
   [switch]$Quiet,
   [switch]$LeakCheck,
@@ -82,6 +88,16 @@ param(
 
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
+if (-not $PSBoundParameters.ContainsKey('ReportFormat')) {
+  $envReportFormat = [System.Environment]::GetEnvironmentVariable('COMPAREVI_REPORT_FORMAT','Process')
+  if ($envReportFormat) { $ReportFormat = $envReportFormat }
+}
+if (-not $PSBoundParameters.ContainsKey('Flags')) {
+  $envFlagsRaw = [System.Environment]::GetEnvironmentVariable('COMPAREVI_LVCOMPARE_FLAGS','Process')
+  if ($envFlagsRaw) {
+    $Flags = @($envFlagsRaw -split "`n" | Where-Object { -not [string]::IsNullOrWhiteSpace($_) })
+  }
+}
 try { Import-Module (Join-Path (Split-Path -Parent $PSScriptRoot) 'tools' 'VendorTools.psm1') -Force } catch {}
 try { Import-Module (Join-Path (Split-Path -Parent $PSScriptRoot) 'tools' 'LabVIEWCli.psm1') -Force } catch {}
 
@@ -377,13 +393,27 @@ function Invoke-LabVIEWCLICompare {
     [Parameter(Mandatory)][string]$Head,
     [Parameter(Mandatory)][string]$OutDir,
     [switch]$RenderReport,
-    [string[]]$Flags
+    [string[]]$Flags,
+    [ValidateSet('html','xml','text')]
+    [string]$ReportFormat = 'html'
   )
 
   New-DirIfMissing -Path $OutDir
   $reportPath = $null
-  if ($RenderReport.IsPresent) {
-    $reportPath = Join-Path $OutDir 'cli-report.html'
+  $reportFormatEffective = if ($ReportFormat) { $ReportFormat.ToLowerInvariant() } else { 'html' }
+  $reportType = switch ($reportFormatEffective) {
+    'xml'  { 'XML' }
+    'text' { 'Text' }
+    default { 'HTMLSingleFile' }
+  }
+  $reportFileName = switch ($reportFormatEffective) {
+    'xml'  { 'compare-report.xml' }
+    'text' { 'compare-report.txt' }
+    default { 'compare-report.html' }
+  }
+  $shouldGenerateReport = $RenderReport.IsPresent -or ($reportFormatEffective -ne 'html')
+  if ($shouldGenerateReport) {
+    $reportPath = Join-Path $OutDir $reportFileName
   }
 
   $stdoutPath = Join-Path $OutDir 'lvcli-stdout.txt'
@@ -396,7 +426,7 @@ function Invoke-LabVIEWCLICompare {
   }
   if ($reportPath) {
     $invokeParams.ReportPath = $reportPath
-    $invokeParams.ReportType = 'HTMLSingleFile'
+    $invokeParams.ReportType = $reportType
   }
 
   if ($Flags) {
@@ -425,7 +455,10 @@ function Invoke-LabVIEWCLICompare {
   }
 
   $cliPath = $cliResult.cliPath
-  $cliInfoOrdered = [ordered]@{ path = $cliPath }
+  $cliInfoOrdered = [ordered]@{
+    path          = $cliPath
+    reportFormat  = $reportFormatEffective
+  }
   $cliVer = Get-FileProductVersion -Path $cliPath
   if ($cliVer) { $cliInfoOrdered.version = $cliVer }
   if ($reportPath) { $cliInfoOrdered.reportPath = $reportPath }
@@ -526,6 +559,13 @@ $baseName = Split-Path -Path $BaseVi -Leaf
 $headName = Split-Path -Path $HeadVi -Leaf
 $sameName = [string]::Equals($baseName, $headName, [System.StringComparison]::OrdinalIgnoreCase)
 
+$reportFormatEffective = if ($ReportFormat) { $ReportFormat.ToLowerInvariant() } else { 'html' }
+$reportFileName = switch ($reportFormatEffective) {
+  'xml'  { 'compare-report.xml' }
+  'text' { 'compare-report.txt' }
+  default { 'compare-report.html' }
+}
+
  $policy = $env:LVCI_COMPARE_POLICY
  if ([string]::IsNullOrWhiteSpace($policy)) { $policy = 'cli-only' }
  $mode   = $env:LVCI_COMPARE_MODE
@@ -544,6 +584,7 @@ Write-JsonEvent 'plan' @{
   flags     = ($effectiveFlags -join ' ')
   out       = $OutputDir
   report    = $RenderReport.IsPresent
+  reportFormat = $reportFormatEffective
   policy    = $policy
   mode      = $mode
   sameName  = $sameName
@@ -553,8 +594,8 @@ Write-JsonEvent 'plan' @{
  # Decide execution path based on compare policy/mode
  $didCli = $false
 if (-not $CaptureScriptPath -and (($policy -eq 'cli-only') -or $autoCli -or ($mode -eq 'labview-cli' -and $policy -ne 'lv-only'))) {
-   try {
-    $cliRes = Invoke-LabVIEWCLICompare -Base $BaseVi -Head $HeadVi -OutDir $OutputDir -RenderReport:$RenderReport.IsPresent -Flags $effectiveFlags
+  try {
+   $cliRes = Invoke-LabVIEWCLICompare -Base $BaseVi -Head $HeadVi -OutDir $OutputDir -RenderReport:$RenderReport.IsPresent -Flags $effectiveFlags -ReportFormat $ReportFormat
     if (-not $cliRes) { throw 'LabVIEW CLI compare returned no result payload.' }
     $reportAvailable = $false
     if ($cliRes -and $cliRes.PSObject.Properties['ReportPath'] -and $cliRes.ReportPath) {
@@ -625,9 +666,9 @@ if (-not $cap) {
 
 $exitCode = [int]$cap.exitCode
 $duration = [double]$cap.seconds
-$reportPath = Join-Path $OutputDir 'compare-report.html'
+$reportPath = Join-Path $OutputDir $reportFileName
 $reportExists = Test-Path -LiteralPath $reportPath -PathType Leaf
-Write-JsonEvent 'result' @{ exitCode=$exitCode; seconds=$duration; command=$cap.command; report=$reportExists }
+Write-JsonEvent 'result' @{ exitCode=$exitCode; seconds=$duration; command=$cap.command; report=$reportExists; reportFormat=$reportFormatEffective }
 
 $trackerStatus = switch ($exitCode) {
   1 { 'diff' }

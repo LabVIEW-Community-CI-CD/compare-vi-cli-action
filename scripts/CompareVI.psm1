@@ -354,13 +354,15 @@ function Invoke-CompareVI {
     $argsArr = @($cliArgs)
     if ($argsArr -and $argsArr.Count -gt 0) {
       $flagPolicy = @{
-        '-noattr'   = 'none'
-        '-nofp'     = 'none'
-        '-nofppos'  = 'none'
-        '-nobd'     = 'none'
-        '-nobdcosm' = 'none'
-        '-lvpath'   = 'value'
-        '--log'     = 'value'
+        '-noattr'    = 'none'
+        '-nofp'      = 'none'
+        '-nofppos'   = 'none'
+        '-nobd'      = 'none'
+        '-nobdcosm'  = 'none'
+        '-lvpath'    = 'value'
+        '--log'      = 'value'
+        '-report'    = 'value'
+        '-repformat' = 'value'
       }
       for ($i = 0; $i -lt $argsArr.Count; $i++) {
         $tok = [string]$argsArr[$i]
