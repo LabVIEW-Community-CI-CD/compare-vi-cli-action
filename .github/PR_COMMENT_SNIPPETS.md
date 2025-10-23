@@ -1,10 +1,12 @@
 # PR Comment Snippets
 
-Use these snippets in PR comments to (re)run workflows with explicit, reproducible inputs. Replace placeholders in angle brackets.
+Use these snippets in PR comments to (re)run workflows with explicit, reproducible inputs. Replace placeholders in angle
+brackets.
 
 ## Re-run Orchestrated With Same Inputs
 
-- Copy `strategy`, `include_integration`, and `sample_id` from the previous run’s "Run Provenance" block (or choose new values).
+- Copy `strategy`, `include_integration`, and `sample_id` from the previous run's "Run Provenance" block (or choose new
+  values).
 - Paste this as a new PR comment:
 
 ```

@@ -71,8 +71,8 @@ Optional additions:
 3. Execute `node tools/npm/run-script.mjs dev:watcher:status` (or call `tools/Dev-WatcherManager.ps1 -Status`
    in-process) and capture the output.
 4. Summarise the required fields in the reply (or step summary) using the template above.
-5. If `needsTrim=true`, call `node tools/npm/run-script.mjs dev:watcher:trim` (or `Print-AgentHandoff.ps1 -AutoTrim`) and
-   mention the trim result; otherwise note that no trim was necessary.
+5. If `needsTrim=true`, call `node tools/npm/run-script.mjs dev:watcher:trim` (or
+   `Print-AgentHandoff.ps1 -AutoTrim`) and mention the trim result; otherwise note that no trim was necessary.
 6. Record anomalies: missing artefacts, schema mismatches, stale timestamps, or command failures.
 
 ## Edge Cases

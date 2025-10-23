@@ -1,9 +1,10 @@
 <!-- markdownlint-disable-next-line MD041 -->
-# PR Acceptance Criteria: feat/dispatcher-diagnostics-and-schema-fix → develop
+# PR Acceptance Criteria: feat/dispatcher-diagnostics-and-schema-fix -> develop
 
 ## Overview
 
-This document defines the acceptance criteria for merging feat/dispatcher-diagnostics-and-schema-fix branch into develop.
+This document defines the acceptance criteria for merging feat/dispatcher-diagnostics-and-schema-fix branch into
+develop.
 
 ## Branch Information
 
@@ -14,7 +15,7 @@ This document defines the acceptance criteria for merging feat/dispatcher-diagno
 
 ## Acceptance Criteria
 
-### 1. Core Dispatcher Functionality ✅
+### 1. Core Dispatcher Functionality [done]
 
 #### 1.1 Duration Precision
 
@@ -35,7 +36,7 @@ This document defines the acceptance criteria for merging feat/dispatcher-diagno
 - [x] New diagnostic schema version **1.1.0** used only when opt-in flag enabled
 - [x] Verification: Check schemaVersion field in pester-summary.json
 
-### 2. New Diagnostic Features ✅
+### 2. New Diagnostic Features [done]
 
 #### 2.1 Result Shape Diagnostics
 
@@ -59,7 +60,7 @@ This document defines the acceptance criteria for merging feat/dispatcher-diagno
 - [x] Returns `$false` for empty/whitespace/other values
 - [x] Used consistently for all env var boolean parsing
 
-### 3. New Scripts & Tools ✅
+### 3. New Scripts & Tools [done]
 
 #### 3.1 Capture-LVCompare.ps1
 
@@ -92,7 +93,7 @@ This document defines the acceptance criteria for merging feat/dispatcher-diagno
 - [x] Sets `DISABLE_STEP_SUMMARY=1` automatically for local runs
 - [x] Documented in AGENTS.md
 
-### 4. Argument Tokenization ✅
+### 4. Argument Tokenization [done]
 
 #### 4.1 Test Coverage (tests/Args.Tokenization.Tests.ps1)
 
@@ -112,13 +113,13 @@ This document defines the acceptance criteria for merging feat/dispatcher-diagno
 
 #### 4.3 Tokenization Correctness
 
-- [x] Comma-separated: `"a,b,c"` → `@('a','b','c')`
-- [x] Whitespace-separated: `"a b c"` → `@('a','b','c')`
-- [x] Quoted values with spaces: `'"--log C:\a b\z.txt"'` → `@('--log', 'C:\a b\z.txt')`
-- [x] Equals-assignment: `'-lvpath=C:\X\LabVIEW.exe'` → `@('-lvpath', 'C:\X\LabVIEW.exe')`
+- [x] Comma-separated: `"a,b,c"` -> `@('a','b','c')`
+- [x] Whitespace-separated: `"a b c"` -> `@('a','b','c')`
+- [x] Quoted values with spaces: `'"--log C:\a b\z.txt"'` -> `@('--log', 'C:\a b\z.txt')`
+- [x] Equals-assignment: `'-lvpath=C:\X\LabVIEW.exe'` -> `@('-lvpath', 'C:\X\LabVIEW.exe')`
 - [x] Mixed: Order preserved, all forms work together
 
-### 5. Module Enhancements ✅
+### 5. Module Enhancements [done]
 
 #### 5.1 CompareLoop Preview Mode
 
@@ -133,7 +134,7 @@ This document defines the acceptance criteria for merging feat/dispatcher-diagno
 - [x] Environment variable `LV_PREVIEW=1` enables preview globally
 - [x] Displays tokenization without CLI execution
 
-### 6. Fixture Validation ✅
+### 6. Fixture Validation [done]
 
 #### 6.1 Dual-Job Strategy
 
@@ -154,7 +155,7 @@ This document defines the acceptance criteria for merging feat/dispatcher-diagno
 - [x] Valid JSON structure
 - [x] Tracked in git for drift validation
 
-### 7. Documentation ✅
+### 7. Documentation [done]
 
 #### 7.1 AGENTS.md (New File)
 
@@ -180,7 +181,7 @@ This document defines the acceptance criteria for merging feat/dispatcher-diagno
 - [x] docs/INTEGRATION_TESTS.md: Updated patterns and prerequisites
 - [x] docs/TROUBLESHOOTING.md: Enhanced with diagnostic tools
 
-### 8. Test Quality ✅
+### 8. Test Quality [done]
 
 #### 8.1 Test Execution Results
 
@@ -203,7 +204,7 @@ This document defines the acceptance criteria for merging feat/dispatcher-diagno
 - [x] Integration control loop smoke tests present
 - [x] Tests tagged correctly (`Integration` tag)
 
-### 9. Cleanup ✅
+### 9. Cleanup [done]
 
 #### 9.1 Artifact Removal
 
@@ -215,9 +216,9 @@ This document defines the acceptance criteria for merging feat/dispatcher-diagno
 
 #### 9.2 Manifest Cleanup
 
-- [x] fixtures.manifest.json: 229 trailing blank lines removed (247 → 18 lines)
+- [x] fixtures.manifest.json: 229 trailing blank lines removed (247 -> 18 lines)
 
-### 10. Backward Compatibility ✅
+### 10. Backward Compatibility [done]
 
 #### 10.1 No Breaking Changes
 
@@ -295,7 +296,8 @@ $env:DISABLE_STEP_SUMMARY = '1'
 ### Immediate (Post-Merge)
 
 - [ ] CI/CD pipeline passes on develop branch (verify after merge)
-- [x] No regression in existing test pass rate (local `Invoke-PesterTests.ps1 -IntegrationMode include` -> 193/193 green)
+- [x] No regression in existing test pass rate (local `Invoke-PesterTests.ps1 -IntegrationMode include` ->
+  193/193 green)
 - [x] Documentation builds without errors (`node tools/npm/run-script.mjs lint:md`)
 
 ### Short-Term (1 week)
@@ -314,11 +316,11 @@ $env:DISABLE_STEP_SUMMARY = '1'
 
 This PR is ready to merge when:
 
-1. ✅ All acceptance criteria marked as met
-2. ✅ Test suite passes (193/193 via Invoke-PesterTests.ps1 -IntegrationMode include on 2025-10-04)
-3. ✅ Code review completed (1+ approvals)
-4. ✅ Documentation reviewed
-5. ✅ No blocking issues identified
+1. [done] All acceptance criteria marked as met
+2. [done] Test suite passes (193/193 via Invoke-PesterTests.ps1 -IntegrationMode include on 2025-10-04)
+3. [done] Code review completed (1+ approvals)
+4. [done] Documentation reviewed
+5. [done] No blocking issues identified
 
 ## Post-Merge Actions
 

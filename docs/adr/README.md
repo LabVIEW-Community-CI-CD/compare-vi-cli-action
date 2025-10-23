@@ -3,10 +3,10 @@
 
 Index of ADRs. Use `tools/New-Adr.ps1` to scaffold new entries and update the table below.
 
-| ADR | Title | Status | Date | Related requirements |
-| --- | ----- | ------ | ---- | -------------------- |
-| [0003](0003-test-decision.md) | Test Decision | Draft | 2025-10-08 | _TBD_ |
-| [0001](0001-single-invoker-step-module.md) | Step-Based Pester Invoker Module | Accepted | 2025-10-08 | [`PESTER_SINGLE_INVOKER`](../requirements/PESTER_SINGLE_INVOKER.md), [`SINGLE_INVOKER_SYSTEM_DEFINITION`](../requirements/SINGLE_INVOKER_SYSTEM_DEFINITION.md) |
+- **[0003](0003-test-decision.md)** – Test Decision (Draft, 2025-10-08) – related requirements: _TBD_.
+- **[0001](0001-single-invoker-step-module.md)** – Step-Based Pester Invoker Module (Accepted, 2025-10-08) – related
+  requirements: [`PESTER_SINGLE_INVOKER`](../requirements/PESTER_SINGLE_INVOKER.md),
+  [`SINGLE_INVOKER_SYSTEM_DEFINITION`](../requirements/SINGLE_INVOKER_SYSTEM_DEFINITION.md).
 
 ## Validation
 

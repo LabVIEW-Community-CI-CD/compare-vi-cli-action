@@ -4,6 +4,8 @@
 vscode/comparevi-helper/node_modules/
 # Guard against the helper extension's symlinked dependency that points back to the repo root.
 vscode/comparevi-helper/node_modules/compare-vi-cli-action/
+tools/vscode/comparevi-extension/node_modules/
+tmp-summary-run/
 logs/
 tmp-agg/
 tmp-orch/

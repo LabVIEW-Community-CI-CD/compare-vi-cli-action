@@ -6,9 +6,11 @@ developer experience smooth.
 
 ## Policy
 
-- Keep `node tools/npm/run-script.mjs lint:md:changed` as the only blocking check for PRs. Full sweeps remain notice-only.
+- Keep `node tools/npm/run-script.mjs lint:md:changed` as the only blocking check for PRs. Full sweeps remain
+  notice-only.
 - Treat `MD041` as a warning (already configured); do not block merges on it.
-- Honor the 120-character guideline (`MD013`) for prose; allow exceptions for code blocks and tables (already configured).
+- Honor the 120-character guideline (`MD013`) for prose; allow exceptions for code blocks and tables (already
+  configured).
 
 ## Priorities
 
@@ -20,9 +22,9 @@ developer experience smooth.
 1. Inventory
    - Run `node tools/npm/run-script.mjs lint:md` locally to capture the current error list.
    - Group by rule and file; select the top 5 offenders.
-2. Quick wins (1–2 passes)
+2. Quick wins (1-2 passes)
    - `MD012` (consecutive blank lines): normalize to a maximum of 2.
-   - `MD013` (line length): reflow paragraphs to ≤120 chars; skip tables/code blocks (already excluded).
+   - `MD013` (line length): reflow paragraphs to <=120 chars; skip tables/code blocks (already excluded).
    - Add an H1 to docs missing a top-level heading when appropriate instead of suppressing.
 3. Suppress where justified
    - If a file is instructional metadata or has intentional formatting (e.g., `.copilot-instructions.md`), either:

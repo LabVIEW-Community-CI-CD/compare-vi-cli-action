@@ -5,7 +5,7 @@ This document summarizes the implementation status of the ten follow-up issues d
 
 ## Completed Issues
 
-### ✅ Issue 01: Remove Legacy Base.vi/Head.vi Fallback
+### [done] Issue 01: Remove Legacy Base.vi/Head.vi Fallback
 
 **Status**: Fully implemented and verified
 
@@ -22,9 +22,10 @@ This document summarizes the implementation status of the ten follow-up issues d
   - Prevents reintroduction of legacy artifact names
   - Enforces allowlist for historical documentation
   - Validates presence of `VI1.vi` and `VI2.vi` files
-- Verified all tests pass (135 tests total, 130 passed, 5 expected failures: 4 require LVCompare.exe, 1 performance threshold)
+- Verified all tests pass (135 tests total, 130 passed, 5 expected failures: 4 require LVCompare.exe, 1 performance
+  threshold)
 
-### ✅ Issue 04: Documentation Pruning and Consolidation
+### [done] Issue 04: Documentation Pruning and Consolidation
 
 **Status**: Completed
 
@@ -34,7 +35,7 @@ This document summarizes the implementation status of the ten follow-up issues d
 - Confirmed documentation structure is clean and non-redundant
 - Updated migration note in README to reflect v0.5.0 breaking change
 
-### ✅ Issue 07: Deterministic HTML Diff Fragment Test
+### [done] Issue 07: Deterministic HTML Diff Fragment Test
 
 **Status**: Fully implemented
 
@@ -49,7 +50,7 @@ This document summarizes the implementation status of the ten follow-up issues d
   - File writing determinism
 - All 5 tests passing
 
-### ✅ Issue 08: Expand Quantile Accuracy Documentation
+### [done] Issue 08: Expand Quantile Accuracy Documentation
 
 **Status**: Fully implemented
 
@@ -66,7 +67,7 @@ This document summarizes the implementation status of the ten follow-up issues d
 - Cross-linked from README.md and COMPARE_LOOP_MODULE.md
 - Markdown lint clean
 
-### ✅ CHANGELOG Update
+### [done] CHANGELOG Update
 
 **Status**: Completed
 
@@ -74,7 +75,7 @@ This document summarizes the implementation status of the ten follow-up issues d
 
 - Added v0.5.0 section with breaking changes notice
 - Documented legacy artifact naming removal
-- Included migration guide for v0.4.x → v0.5.0
+- Included migration guide for v0.4.x -> v0.5.0
 - Listed all new features, tests, and documentation
 
 ## Deferred Issues
@@ -83,7 +84,7 @@ The following issues require more substantial code changes to module internals a
 the minimal-change scope appropriate for this implementation phase. They are documented in the issues-drafts
 directory and can be addressed in future PRs.
 
-### ⏸️ Issue 02: Outcome Classification Enrichment
+### [pause] Issue 02: Outcome Classification Enrichment
 
 **Reason for Deferral**: Requires dispatcher final aggregation changes and new JSON schema fields
 
@@ -93,7 +94,7 @@ directory and can be addressed in future PRs.
 - Requires modification of `Invoke-PesterTests.ps1` aggregation logic
 - Need to add schema tests and backward compatibility checks
 
-### ⏸️ Issue 03: Optional Coverage Support
+### [pause] Issue 03: Optional Coverage Support
 
 **Reason for Deferral**: Requires dispatcher infrastructure additions
 
@@ -103,7 +104,7 @@ directory and can be addressed in future PRs.
 - Integrate PSProfiler or alternative coverage tool
 - Add coverage artifact emission and tests
 
-### ⏸️ Issue 05: Discovery Strict Mode Re-evaluation
+### [pause] Issue 05: Discovery Strict Mode Re-evaluation
 
 **Reason for Deferral**: Requires data collection and analysis from production runs
 
@@ -114,7 +115,7 @@ directory and can be addressed in future PRs.
 - Make informed decision on default strictness
 - Update dispatcher and tests accordingly
 
-### ⏸️ Issue 06: Loop Telemetry Expansion
+### [pause] Issue 06: Loop Telemetry Expansion
 
 **Reason for Deferral**: Requires module code changes and schema updates
 
@@ -126,7 +127,7 @@ directory and can be addressed in future PRs.
 - Extend run summary JSON schema
 - Add corresponding tests
 
-### ⏸️ Issue 09: Runbook Auto-Upload Artifacts
+### [pause] Issue 09: Runbook Auto-Upload Artifacts
 
 **Reason for Deferral**: Requires runbook script enhancements
 
@@ -138,7 +139,7 @@ directory and can be addressed in future PRs.
 - Add step summary guidance
 - Add tests for artifact presence
 
-### ⏸️ Issue 10: Consolidated Diagnostics Report Artifact
+### [pause] Issue 10: Consolidated Diagnostics Report Artifact
 
 **Reason for Deferral**: Requires new script creation and schema design
 
@@ -176,7 +177,7 @@ directory and can be addressed in future PRs.
 
 ## Migration Guide (for v0.5.0 consumers)
 
-1. **Artifact Naming**: Rename `Base.vi` → `VI1.vi` and `Head.vi` → `VI2.vi`
+1. **Artifact Naming**: Rename `Base.vi` -> `VI1.vi` and `Head.vi` -> `VI2.vi`
 2. **Workflow Updates**: Search for hardcoded legacy names in `.github/` workflows
 3. **Environment Variables**: `LV_BASE_VI` and `LV_HEAD_VI` names unchanged (only file they point to changes)
 4. **Validation**: Run tests with updated file names

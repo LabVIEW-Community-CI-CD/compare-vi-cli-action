@@ -202,9 +202,10 @@ function main() {
   }
 
   const rules = extractRules(`${stdout}\n${stderr}`);
-  const actionable = rules.filter((rule) => rule !== 'MD041' && rule !== 'MD013');
+  const suppressedRules = new Set(['MD013']);
+  const actionable = rules.filter((rule) => !suppressedRules.has(rule));
   if (actionable.length === 0) {
-    console.warn('Only MD041/MD013 violations detected; treating as a warning.');
+    console.warn('Only MD013 violations detected; treating as a warning.');
     return 0;
   }
   return typeof result.status === 'number' ? result.status : 1;

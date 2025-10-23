@@ -16,14 +16,24 @@ HTML, or JSON and operates entirely on files under `tests/results/`.
 
 ## Data Sources
 
-| Area | Files | Purpose |
-| ---- | ----- | ------- |
-| Session lock | `tests/results/_session_lock/<group>/lock.json`, `status.md` | Ownership, queue wait, heartbeat |
-| Pester | `tests/results/pester-summary.json`, `pester-results.xml`, `pester-dispatcher.log` | Totals, failures, dispatcher exit code |
-| Agent wait | `tests/results/_agent/wait-last.json`, `_agent/wait-log.ndjson` | Queue durations, outliers |
-| Watcher | `tests/results/_watch/watch-last.json`, `_watch/watch-log.ndjson` | Live watcher status |
-| Warmup | `tests/results/_warmup/labview-processes.json` | LabVIEW runtime warmup state |
-| Stakeholders | `tools/dashboard/stakeholders.json` (or `.psd1`) | Owners, channels, DX issue |
+- **Session lock**
+  - Files: `tests/results/_session_lock/<group>/lock.json`, `status.md`
+  - Purpose: Ownership, queue wait, heartbeat
+- **Pester**
+  - Files: `tests/results/pester-summary.json`, `pester-results.xml`, `pester-dispatcher.log`
+  - Purpose: Totals, failures, dispatcher exit code
+- **Agent wait**
+  - Files: `tests/results/_agent/wait-last.json`, `_agent/wait-log.ndjson`
+  - Purpose: Queue durations, outliers
+- **Watcher**
+  - Files: `tests/results/_watch/watch-last.json`, `_watch/watch-log.ndjson`
+  - Purpose: Live watcher status
+- **Warmup**
+  - Files: `tests/results/_warmup/labview-processes.json`
+  - Purpose: LabVIEW runtime warmup state
+- **Stakeholders**
+  - Files: `tools/dashboard/stakeholders.json` (or `.psd1`)
+  - Purpose: Owners, channels, DX issue
 
 Missing files should result in warnings rather than failures.
 

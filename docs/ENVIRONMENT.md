@@ -74,7 +74,9 @@ Notes:
 
 | Variable | Purpose |
 | -------- | ------- |
-| `COMPAREVI_TOOLS_IMAGE` | Default image tag for `tools/Run-NonLVChecksInDocker.ps1` when `-UseToolsImage` is supplied without `-ToolsImageTag` (for example, `ghcr.io/labview-community-ci-cd/comparevi-tools:latest`). |
+| `COMPAREVI_TOOLS_IMAGE` | Default image when `-UseToolsImage` is set without `-ToolsImageTag`. |
+|                          | Used by `tools/Run-NonLVChecksInDocker.ps1`. |
+|                          | Example: `ghcr.io/labview-community-ci-cd/comparevi-tools:latest`. |
 
 ## Schema locations
 
@@ -92,3 +94,4 @@ Notes:
 
 Use workflow inputs for most toggles; fall back to env variables for local runs and CI
 experiments. Unknown variables are ignored.
+

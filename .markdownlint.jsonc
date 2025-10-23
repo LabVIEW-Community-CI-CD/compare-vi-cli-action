@@ -10,6 +10,11 @@
     "results/**",
     "tests/results/**",
     "tmp-agg/**",
+    "tmp-summary-run/**",
+    "**/node_modules/**/README.md",
+    "**/node_modules/**/readme.md",
+    "**/node_modules/**/CHANGELOG.md",
+    "**/node_modules/**/SECURITY.md",
     "**/node_modules/**"
   ],
   "MD013": {
@@ -26,7 +31,7 @@
     "maximum": 2
   },
   "MD041": {
-    // Treated as a warning by the lint script; keep visible while the backlog is cleared.
-    "level": "warning"
+    // Require a top-level heading on the first content line.
+    "level": 1
   }
 }

@@ -44,8 +44,10 @@ standing priority issue (#134). Update or archive once the tag is live.
 
 ## 5. Release Materials Review
 
-- [ ] `PR_NOTES.md` summarizes the 0.5.1 release (deterministic CI, session index, fixture policy, drift/report hardening).
-- [ ] `PR_RELEASE_DESCRIPTION_v0.5.1.md`, `PR_RELEASE_CHECKLIST_v0.5.1.md`, and `RELEASE_NOTES_v0.5.1.md` are updated and
+- [ ] `PR_NOTES.md` summarizes the 0.5.1 release (deterministic CI, session index, fixture policy, drift/report
+  hardening).
+- [ ] `PR_RELEASE_DESCRIPTION_v0.5.1.md`, `PR_RELEASE_CHECKLIST_v0.5.1.md`, and `RELEASE_NOTES_v0.5.1.md` are updated
+  and
       consistent with each other.
 - [ ] `ROLLBACK_PLAN.md` still applies (update if new rollback considerations emerged).
 - [ ] Helper docs (`AGENTS.md`, `docs/ENVIRONMENT.md`, `docs/CI_ORCHESTRATION_REDESIGN.md`, etc.) reference the
