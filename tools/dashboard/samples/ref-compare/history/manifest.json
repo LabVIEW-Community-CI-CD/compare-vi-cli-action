@@ -1,0 +1,70 @@
+{
+  "schema": "vi-compare/history-suite@v1",
+  "generatedAt": "2025-10-01T12:00:00.000Z",
+  "targetPath": "Fixtures/Sample.vi",
+  "requestedStartRef": "HEAD",
+  "startRef": "HEAD",
+  "endRef": "",
+  "maxPairs": 3,
+  "failFast": false,
+  "failOnDiff": false,
+  "reportFormat": "html",
+  "resultsDir": "tools/dashboard/samples/ref-compare/history",
+  "modes": [
+    {
+      "name": "default",
+      "slug": "default",
+      "reportFormat": "html",
+      "flags": [
+        "-nobd",
+        "-noattr",
+        "-nofp",
+        "-nofppos",
+        "-nobdcosm"
+      ],
+      "manifestPath": "tools/dashboard/samples/ref-compare/history/default/manifest.json",
+      "resultsDir": "tools/dashboard/samples/ref-compare/history/default",
+      "stats": {
+        "processed": 2,
+        "diffs": 1,
+        "lastDiffIndex": 2,
+        "lastDiffCommit": "9f4a1c2d3e4f5a6b7c8d9e0f1a2b3c4d5e6f7a8b",
+        "stopReason": "complete",
+        "errors": 0,
+        "missing": 0
+      },
+      "status": "ok"
+    },
+    {
+      "name": "attributes",
+      "slug": "attributes",
+      "reportFormat": "html",
+      "flags": [
+        "-nobd",
+        "-nofp",
+        "-nofppos",
+        "-nobdcosm"
+      ],
+      "manifestPath": "tools/dashboard/samples/ref-compare/history/attributes/manifest.json",
+      "resultsDir": "tools/dashboard/samples/ref-compare/history/attributes",
+      "stats": {
+        "processed": 1,
+        "diffs": 0,
+        "lastDiffIndex": null,
+        "lastDiffCommit": null,
+        "stopReason": "complete",
+        "errors": 0,
+        "missing": 0
+      },
+      "status": "ok"
+    }
+  ],
+  "stats": {
+    "modes": 2,
+    "processed": 3,
+    "diffs": 1,
+    "errors": 0,
+    "missing": 0
+  },
+  "status": "ok"
+}

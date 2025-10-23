@@ -50,6 +50,21 @@ Describe 'Dev Dashboard loaders' -Tag 'Unit' {
     $lv.LVCompare.Processes[0].pid | Should -Be 5151
   }
 
+  It 'summarizes history suite compare telemetry' {
+    $compare = Get-CompareOutcomeTelemetry -ResultsRoot $script:samplesRoot
+    $compare | Should -Not -BeNullOrEmpty
+    $compare.HistorySuite | Should -Not -BeNullOrEmpty
+    $suite = $compare.HistorySuite
+    $suite.TargetPath | Should -Be 'Fixtures/Sample.vi'
+    $suite.ModeCount | Should -Be 2
+    $suite.Modes.Count | Should -Be 2
+    $suite.Modes[0].Slug | Should -Be 'default'
+    ($suite.Modes | Where-Object { $_.Slug -eq 'default' } | Select-Object -First 1).Processed | Should -Be 2
+    ($suite.Modes | Where-Object { $_.Slug -eq 'attributes' } | Select-Object -First 1).Diffs | Should -Be 0
+    $suite.ModeManifestsJson | Should -Match '"slug":"default"'
+    $suite.ModeManifestsJson | Should -Match '"slug":"attributes"'
+  }
+
   It 'resolves stakeholder information from configuration' {
     $info = Get-StakeholderInfo -Group 'pester-selfhosted' -StakeholderPath $script:stakeholderPath
     $info.Found | Should -BeTrue

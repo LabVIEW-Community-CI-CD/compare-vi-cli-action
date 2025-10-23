@@ -23,6 +23,8 @@ Describe 'Dev Dashboard CLI' -Tag 'Unit' {
     $json.WatchTelemetry.History.Count | Should -Be 2
     $json.LabVIEWSnapshot.ProcessCount | Should -Be 1
     $json.LabVIEWSnapshot.LVCompare.Count | Should -Be 1
+    $json.CompareOutcome.HistorySuite.ModeCount | Should -Be 2
+    $json.CompareOutcome.HistorySuite.Modes[0].Slug | Should -Be 'default'
   }
 
   It 'writes HTML report when requested' {
@@ -35,5 +37,6 @@ Describe 'Dev Dashboard CLI' -Tag 'Unit' {
     $content | Should -Match 'Session Lock'
     $content | Should -Match 'Watch Mode'
     $content | Should -Match 'LabVIEW Snapshot'
+    $content | Should -Match 'History Suite'
   }
 }

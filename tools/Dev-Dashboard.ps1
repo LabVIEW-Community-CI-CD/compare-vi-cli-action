@@ -72,72 +72,202 @@ function Get-CompareOutcomeTelemetry {
     return $null
   }
 
+  $latestOutcome = $null
   $outcome = Get-ChildItem -Path $resolved -Filter 'compare-outcome.json' -Recurse -File -ErrorAction SilentlyContinue |
     Sort-Object LastWriteTime -Descending |
     Select-Object -First 1
   if ($outcome) {
     try {
       $data = Get-Content -LiteralPath $outcome.FullName -Raw | ConvertFrom-Json -Depth 8
-      return [pscustomobject][ordered]@{
-        Source      = if ($data.source) { $data.source } else { 'compare-outcome' }
-        JsonPath    = $outcome.FullName
-        CapturePath = if ($data.captureJson) { $data.captureJson } else { $data.file }
-        ReportPath  = if ($data.reportPath) { $data.reportPath } else { $null }
-        ExitCode    = if ($data.exitCode -ne $null) { [int]$data.exitCode } else { $null }
-        Diff        = if ($data.diff -ne $null) { [bool]$data.diff } else { $null }
-        DurationMs  = if ($data.durationMs -ne $null) { [double]$data.durationMs } else { $null }
-        CliPath     = if ($data.cliPath) { $data.cliPath } else { $null }
-        Command     = if ($data.command) { $data.command } else { $null }
-        CliArtifacts= if ($data.cliArtifacts) { $data.cliArtifacts } else { $null }
+      $latestOutcome = [pscustomobject][ordered]@{
+        Source       = if ($data.source) { $data.source } else { 'compare-outcome' }
+        JsonPath     = $outcome.FullName
+        CapturePath  = if ($data.captureJson) { $data.captureJson } else { $data.file }
+        ReportPath   = if ($data.reportPath) { $data.reportPath } else { $null }
+        ExitCode     = if ($data.exitCode -ne $null) { [int]$data.exitCode } else { $null }
+        Diff         = if ($data.diff -ne $null) { [bool]$data.diff } else { $null }
+        DurationMs   = if ($data.durationMs -ne $null) { [double]$data.durationMs } else { $null }
+        CliPath      = if ($data.cliPath) { $data.cliPath } else { $null }
+        Command      = if ($data.command) { $data.command } else { $null }
+        CliArtifacts = if ($data.cliArtifacts) { $data.cliArtifacts } else { $null }
       }
-    } catch {}
+    } catch {
+      $latestOutcome = $null
+    }
   }
 
-  $capture = Get-ChildItem -Path $resolved -Filter 'lvcompare-capture.json' -Recurse -File -ErrorAction SilentlyContinue |
-    Sort-Object LastWriteTime -Descending |
-    Select-Object -First 1
-  if (-not $capture) { return $null }
+  if (-not $latestOutcome) {
+    $capture = Get-ChildItem -Path $resolved -Filter 'lvcompare-capture.json' -Recurse -File -ErrorAction SilentlyContinue |
+      Sort-Object LastWriteTime -Descending |
+      Select-Object -First 1
 
-  try {
-    $cap = Get-Content -LiteralPath $capture.FullName -Raw | ConvertFrom-Json -Depth 6
-    $exitCode = if ($cap.exitCode -ne $null) { [int]$cap.exitCode } else { $null }
-    $diff = if ($exitCode -ne $null) { $exitCode -eq 1 } else { $null }
-    $durationMs = $null
-    if ($cap.seconds -ne $null) { $durationMs = [math]::Round([double]$cap.seconds * 1000, 3) }
-    $cliPath = if ($cap.cliPath) { [string]$cap.cliPath } else { $null }
-    $command = if ($cap.command) { [string]$cap.command } else { $null }
+    if ($capture) {
+      try {
+        $cap = Get-Content -LiteralPath $capture.FullName -Raw | ConvertFrom-Json -Depth 6
+        $exitCode = if ($cap.exitCode -ne $null) { [int]$cap.exitCode } else { $null }
+        $diff = if ($exitCode -ne $null) { $exitCode -eq 1 } else { $null }
+        $durationMs = $null
+        if ($cap.seconds -ne $null) { $durationMs = [math]::Round([double]$cap.seconds * 1000, 3) }
+        $cliPath = if ($cap.cliPath) { [string]$cap.cliPath } else { $null }
+        $command = if ($cap.command) { [string]$cap.command } else { $null }
 
-    $artifacts = $null
-    if ($cap.environment -and $cap.environment.cli -and $cap.environment.cli.PSObject.Properties.Name -contains 'artifacts') {
-      $artifacts = $cap.environment.cli.artifacts
-    }
+        $artifacts = $null
+        if ($cap.environment -and $cap.environment.cli -and $cap.environment.cli.PSObject.Properties.Name -contains 'artifacts') {
+          $artifacts = $cap.environment.cli.artifacts
+        }
 
-    $reportPath = $null
-    if ($cap.environment -and $cap.environment.cli -and $cap.environment.cli.PSObject.Properties.Name -contains 'reportPath') {
-      $reportPath = $cap.environment.cli.reportPath
-    }
-    if (-not $reportPath) {
-      $compareHtml = Join-Path (Split-Path -Parent $capture.FullName) 'compare-report.html'
-      if (Test-Path -LiteralPath $compareHtml) { $reportPath = $compareHtml }
-      $cliHtml = Join-Path (Split-Path -Parent $capture.FullName) 'cli-report.html'
-      if (Test-Path -LiteralPath $cliHtml) { $reportPath = $cliHtml }
-    }
+        $reportPath = $null
+        if ($cap.environment -and $cap.environment.cli -and $cap.environment.cli.PSObject.Properties.Name -contains 'reportPath') {
+          $reportPath = $cap.environment.cli.reportPath
+        }
+        if (-not $reportPath) {
+          $compareHtml = Join-Path (Split-Path -Parent $capture.FullName) 'compare-report.html'
+          if (Test-Path -LiteralPath $compareHtml) { $reportPath = $compareHtml }
+          $cliHtml = Join-Path (Split-Path -Parent $capture.FullName) 'cli-report.html'
+          if (Test-Path -LiteralPath $cliHtml) { $reportPath = $cliHtml }
+        }
 
-    return [pscustomobject][ordered]@{
-      Source       = 'capture'
-      JsonPath     = $null
-      CapturePath  = $capture.FullName
-      ReportPath   = $reportPath
-      ExitCode     = $exitCode
-      Diff         = $diff
-      DurationMs   = $durationMs
-      CliPath      = $cliPath
-      Command      = $command
-      CliArtifacts = $artifacts
+        $latestOutcome = [pscustomobject][ordered]@{
+          Source       = 'capture'
+          JsonPath     = $null
+          CapturePath  = $capture.FullName
+          ReportPath   = $reportPath
+          ExitCode     = $exitCode
+          Diff         = $diff
+          DurationMs   = $durationMs
+          CliPath      = $cliPath
+          Command      = $command
+          CliArtifacts = $artifacts
+        }
+      } catch {
+        $latestOutcome = $null
+      }
     }
-  } catch {
-    return $null
   }
+
+  $historySuite = $null
+  $historyRoot = Join-Path $resolved 'ref-compare' 'history'
+  $suiteManifestPath = Join-Path $historyRoot 'manifest.json'
+  if (Test-Path -LiteralPath $suiteManifestPath) {
+    try {
+      $suiteRaw = Get-Content -LiteralPath $suiteManifestPath -Raw
+      if ($suiteRaw -and $suiteRaw.Trim()) {
+        $suite = $suiteRaw | ConvertFrom-Json -Depth 10
+        if ($suite -and $suite.schema -eq 'vi-compare/history-suite@v1') {
+          $suiteManifestResolved = $suiteManifestPath
+          try {
+            $suiteManifestResolved = (Resolve-Path -LiteralPath $suiteManifestPath -ErrorAction Stop).Path
+          } catch {}
+
+          $modeSummaries = @()
+          $modeManifestEntries = @()
+          foreach ($mode in @($suite.modes)) {
+            if (-not $mode) { continue }
+            $modeName = if ($mode.PSObject.Properties.Name -contains 'name') { [string]$mode.name } else { $null }
+            $modeSlug = if ($mode.PSObject.Properties.Name -contains 'slug') { [string]$mode.slug } else { $null }
+            $modeManifest = if ($mode.PSObject.Properties.Name -contains 'manifestPath') { [string]$mode.manifestPath } else { $null }
+            $modeResultsDir = if ($mode.PSObject.Properties.Name -contains 'resultsDir') { [string]$mode.resultsDir } else { $null }
+            $modeStatus = if ($mode.PSObject.Properties.Name -contains 'status') { [string]$mode.status } else { $null }
+            $statsObj = if ($mode.PSObject.Properties.Name -contains 'stats') { $mode.stats } else { $null }
+            $processed = $null
+            $diffs = $null
+            $errors = $null
+            $missing = $null
+            $lastDiffIndex = $null
+            $lastDiffCommit = $null
+            $stopReason = $null
+            if ($statsObj) {
+              if ($statsObj.PSObject.Properties.Name -contains 'processed') { $processed = $statsObj.processed }
+              if ($statsObj.PSObject.Properties.Name -contains 'diffs') { $diffs = $statsObj.diffs }
+              if ($statsObj.PSObject.Properties.Name -contains 'errors') { $errors = $statsObj.errors }
+              if ($statsObj.PSObject.Properties.Name -contains 'missing') { $missing = $statsObj.missing }
+              if ($statsObj.PSObject.Properties.Name -contains 'lastDiffIndex') { $lastDiffIndex = $statsObj.lastDiffIndex }
+              if ($statsObj.PSObject.Properties.Name -contains 'lastDiffCommit') { $lastDiffCommit = $statsObj.lastDiffCommit }
+              if ($statsObj.PSObject.Properties.Name -contains 'stopReason') { $stopReason = $statsObj.stopReason }
+            }
+
+            $resolvedManifestPath = $modeManifest
+            if ($resolvedManifestPath -and (Test-Path -LiteralPath $resolvedManifestPath)) {
+              try {
+                $resolvedManifestPath = (Resolve-Path -LiteralPath $resolvedManifestPath -ErrorAction Stop).Path
+              } catch {}
+            }
+            $resolvedResultsDir = $modeResultsDir
+            if ($resolvedResultsDir -and (Test-Path -LiteralPath $resolvedResultsDir)) {
+              try {
+                $resolvedResultsDir = (Resolve-Path -LiteralPath $resolvedResultsDir -ErrorAction Stop).Path
+              } catch {}
+            }
+
+            $modeManifestEntries += [ordered]@{
+              mode      = $modeName
+              slug      = $modeSlug
+              manifest  = $resolvedManifestPath
+              resultsDir= $resolvedResultsDir
+              processed = $processed
+              diffs     = $diffs
+              status    = $modeStatus
+            }
+
+            $modeSummaries += [pscustomobject][ordered]@{
+              Mode           = $modeName
+              Slug           = $modeSlug
+              ManifestPath   = $resolvedManifestPath
+              ResultsDir     = $resolvedResultsDir
+              Processed      = $processed
+              Diffs          = $diffs
+              Errors         = $errors
+              Missing        = $missing
+              Status         = $modeStatus
+              StopReason     = $stopReason
+              LastDiffIndex  = $lastDiffIndex
+              LastDiffCommit = $lastDiffCommit
+            }
+          }
+
+          $modeManifestsJson = $null
+          if ($modeManifestEntries.Count -gt 0) {
+            $modeManifestsJson = (ConvertTo-Json $modeManifestEntries -Depth 4 -Compress)
+          } else {
+            $modeManifestsJson = '[]'
+          }
+
+          $historySuite = [pscustomobject][ordered]@{
+            ManifestPath     = $suiteManifestResolved
+            ResultsDir       = if ($suite.PSObject.Properties.Name -contains 'resultsDir') { $suite.resultsDir } else { $null }
+            TargetPath       = if ($suite.PSObject.Properties.Name -contains 'targetPath') { $suite.targetPath } else { $null }
+            RequestedStartRef= if ($suite.PSObject.Properties.Name -contains 'requestedStartRef') { $suite.requestedStartRef } else { $null }
+            StartRef         = if ($suite.PSObject.Properties.Name -contains 'startRef') { $suite.startRef } else { $null }
+            EndRef           = if ($suite.PSObject.Properties.Name -contains 'endRef') { $suite.endRef } else { $null }
+            MaxPairs         = if ($suite.PSObject.Properties.Name -contains 'maxPairs') { $suite.maxPairs } else { $null }
+            GeneratedAt      = if ($suite.PSObject.Properties.Name -contains 'generatedAt') { $suite.generatedAt } else { $null }
+            Stats            = if ($suite.PSObject.Properties.Name -contains 'stats') { $suite.stats } else { $null }
+            Status           = if ($suite.PSObject.Properties.Name -contains 'status') { $suite.status } else { $null }
+            ModeCount        = $modeSummaries.Count
+            Modes            = $modeSummaries
+            ModeManifestsJson= $modeManifestsJson
+          }
+        }
+      }
+    } catch {
+      $historySuite = $null
+    }
+  }
+
+  if (-not $latestOutcome -and -not $historySuite) { return $null }
+
+  $resultOrdered = [ordered]@{}
+  if ($latestOutcome) {
+    foreach ($prop in $latestOutcome.PSObject.Properties) {
+      $resultOrdered[$prop.Name] = $prop.Value
+    }
+    $resultOrdered['LatestOutcome'] = $latestOutcome
+  }
+  if ($historySuite) {
+    $resultOrdered['HistorySuite'] = $historySuite
+  }
+
+  return [pscustomobject]$resultOrdered
 }
 
 function Get-DashboardSnapshot {
@@ -358,6 +488,33 @@ function Write-TerminalReport {
   } else {
     Write-Host "  Status   : no compare telemetry"
   }
+  if ($compareHistory) {
+    Write-Host "  History Suite:"
+    if ($compareHistoryTargetValue) { Write-Host "    Target   : $compareHistoryTargetValue" }
+    if ($compareHistoryManifestValue) { Write-Host "    Manifest : $compareHistoryManifestValue" }
+    if ($compareHistoryResultsDirValue) { Write-Host "    Results  : $compareHistoryResultsDirValue" }
+    if ($compareHistoryStatusValue) { Write-Host "    Status   : $compareHistoryStatusValue" }
+    if ($compareHistoryModeCountValue -ne $null) { Write-Host "    Modes    : $compareHistoryModeCountValue" }
+    if ($compareHistoryProcessedValue -ne $null -or $compareHistoryDiffsValue -ne $null) {
+      $processedDisplay = if ($compareHistoryProcessedValue -ne $null) { $compareHistoryProcessedValue } else { 'n/a' }
+      $diffsDisplay = if ($compareHistoryDiffsValue -ne $null) { $compareHistoryDiffsValue } else { 'n/a' }
+      Write-Host "    Totals   : processed=$processedDisplay diffs=$diffsDisplay"
+    }
+    foreach ($mode in $compareHistoryModes) {
+      $modeSlug = if ($mode.PSObject.Properties.Name -contains 'Slug' -and $mode.Slug) { $mode.Slug } elseif ($mode.PSObject.Properties.Name -contains 'Mode' -and $mode.Mode) { $mode.Mode } else { '(mode)' }
+      $modeProcessed = if ($mode.PSObject.Properties.Name -contains 'Processed') { $mode.Processed } else { $null }
+      $modeDiffs = if ($mode.PSObject.Properties.Name -contains 'Diffs') { $mode.Diffs } else { $null }
+      $modeStatus = if ($mode.PSObject.Properties.Name -contains 'Status') { $mode.Status } else { $null }
+      $processedText = if ($modeProcessed -ne $null) { $modeProcessed } else { 'n/a' }
+      $diffsText = if ($modeDiffs -ne $null) { $modeDiffs } else { 'n/a' }
+      $statusText = if ($modeStatus) { $modeStatus } else { 'n/a' }
+      Write-Host "    - $modeSlug : processed=$processedText diffs=$diffsText status=$statusText"
+    }
+    if ($compareHistoryModeJsonValue) {
+      Write-Host "    mode-manifests-json:"
+      Write-Host "      $compareHistoryModeJsonValue"
+    }
+  }
   Write-Host ''
 
   $wait = $Snapshot.AgentWait
@@ -531,6 +688,31 @@ function ConvertTo-HtmlReport {
   $compareReportPathValue = if ($compare -and $compare.PSObject.Properties.Name -contains 'ReportPath') { $compare.ReportPath } else { $null }
   $compareCapturePathValue = if ($compare -and $compare.PSObject.Properties.Name -contains 'CapturePath') { $compare.CapturePath } else { $null }
   $compareJsonPathValue = if ($compare -and $compare.PSObject.Properties.Name -contains 'JsonPath') { $compare.JsonPath } else { $null }
+  $compareHistory = if ($compare -and $compare.PSObject.Properties.Name -contains 'HistorySuite') { $compare.HistorySuite } else { $null }
+  $compareHistoryManifestValue = if ($compareHistory -and $compareHistory.PSObject.Properties.Name -contains 'ManifestPath') { $compareHistory.ManifestPath } else { $null }
+  $compareHistoryResultsDirValue = if ($compareHistory -and $compareHistory.PSObject.Properties.Name -contains 'ResultsDir') { $compareHistory.ResultsDir } else { $null }
+  $compareHistoryTargetValue = if ($compareHistory -and $compareHistory.PSObject.Properties.Name -contains 'TargetPath') { $compareHistory.TargetPath } else { $null }
+  $compareHistoryStatusValue = if ($compareHistory -and $compareHistory.PSObject.Properties.Name -contains 'Status') { $compareHistory.Status } else { $null }
+  $compareHistoryModeCountValue = if ($compareHistory -and $compareHistory.PSObject.Properties.Name -contains 'ModeCount') { $compareHistory.ModeCount } else { $null }
+  $compareHistoryModeJsonValue = if ($compareHistory -and $compareHistory.PSObject.Properties.Name -contains 'ModeManifestsJson') { $compareHistory.ModeManifestsJson } else { $null }
+  $compareHistoryGeneratedAtValue = if ($compareHistory -and $compareHistory.PSObject.Properties.Name -contains 'GeneratedAt') { $compareHistory.GeneratedAt } else { $null }
+  $compareHistoryStatsValue = $null
+  if ($compareHistory -and $compareHistory.PSObject.Properties.Name -contains 'Stats') {
+    $compareHistoryStatsValue = $compareHistory.Stats
+  }
+  $compareHistoryProcessedValue = $null
+  $compareHistoryDiffsValue = $null
+  if ($compareHistoryStatsValue) {
+    if ($compareHistoryStatsValue.PSObject.Properties.Name -contains 'processed') { $compareHistoryProcessedValue = $compareHistoryStatsValue.processed }
+    if ($compareHistoryStatsValue.PSObject.Properties.Name -contains 'diffs') { $compareHistoryDiffsValue = $compareHistoryStatsValue.diffs }
+  }
+  $compareHistoryModes = @()
+  if ($compareHistory -and $compareHistory.PSObject.Properties.Name -contains 'Modes' -and $compareHistory.Modes) {
+    $compareHistoryModes = @($compareHistory.Modes)
+    if ($compareHistoryModeCountValue -eq $null) {
+      $compareHistoryModeCountValue = $compareHistoryModes.Count
+    }
+  }
   $artifactsReportSize = $null
   $artifactsImageCount = $null
   $artifactsExportDir = $null
@@ -648,7 +830,7 @@ function ConvertTo-HtmlReport {
     "<ul>$([string]::Join('', $rows))</ul>"
   } else { '<p>None</p>' }
 
-  $compareSectionHtml = if ($compare) {
+  $compareSectionHtml = if ($compare -or $compareHistory) {
     $rows = [System.Collections.Generic.List[string]]::new()
     if ($compareExitValue -ne $null) { $null = $rows.Add("<dt>Exit Code</dt><dd>$(& $encode $compareExitValue)</dd>") }
     if ($compareDiffValue -ne $null) { $null = $rows.Add("<dt>Diff</dt><dd>$(& $encode $compareDiffValue)</dd>") }
@@ -667,8 +849,49 @@ function ConvertTo-HtmlReport {
       -ReportPath $compareReportPathValue
     if ($cliSummary) { $null = $rows.Add("<dt>CLI Images</dt><dd>$(& $encode $cliSummary)</dd>") }
     if ($compareJsonPathValue) { $null = $rows.Add("<dt>Outcome JSON</dt><dd>$(& $encode $compareJsonPathValue)</dd>") }
-    if ($rows.Count -eq 0) { $null = $rows.Add('<dt>Status</dt><dd>Available</dd>') }
-    "<dl>$([string]::Join('', $rows))</dl>"
+    if ($rows.Count -eq 0) {
+      $statusText = if ($compareHistory) { 'History suite available' } else { 'Available' }
+      $null = $rows.Add("<dt>Status</dt><dd>$(& $encode $statusText)</dd>")
+    }
+    $detailsHtml = "<dl>$([string]::Join('', $rows))</dl>"
+    $historyHtml = ''
+    if ($compareHistory) {
+      $historyRows = [System.Collections.Generic.List[string]]::new()
+      if ($compareHistoryTargetValue) { $null = $historyRows.Add("<dt>Target</dt><dd>$(& $encode $compareHistoryTargetValue)</dd>") }
+      if ($compareHistoryManifestValue) { $null = $historyRows.Add("<dt>Manifest</dt><dd>$(& $encode $compareHistoryManifestValue)</dd>") }
+      if ($compareHistoryResultsDirValue) { $null = $historyRows.Add("<dt>Results</dt><dd>$(& $encode $compareHistoryResultsDirValue)</dd>") }
+      if ($compareHistoryStatusValue) { $null = $historyRows.Add("<dt>Status</dt><dd>$(& $encode $compareHistoryStatusValue)</dd>") }
+      if ($compareHistoryModeCountValue -ne $null) { $null = $historyRows.Add("<dt>Modes</dt><dd>$(& $encode $compareHistoryModeCountValue)</dd>") }
+      if ($compareHistoryProcessedValue -ne $null -or $compareHistoryDiffsValue -ne $null) {
+        $processedDisplay = if ($compareHistoryProcessedValue -ne $null) { $compareHistoryProcessedValue } else { 'n/a' }
+        $diffsDisplay = if ($compareHistoryDiffsValue -ne $null) { $compareHistoryDiffsValue } else { 'n/a' }
+        $null = $historyRows.Add("<dt>Totals</dt><dd>processed=$(& $encode $processedDisplay) diffs=$(& $encode $diffsDisplay)</dd>")
+      }
+      if ($compareHistoryGeneratedAtValue) { $null = $historyRows.Add("<dt>Generated</dt><dd>$(& $encode $compareHistoryGeneratedAtValue)</dd>") }
+      if ($compareHistoryModeJsonValue) {
+        $jsonPreview = if ($compareHistoryModeJsonValue.Length -gt 120) { $compareHistoryModeJsonValue.Substring(0,120) + '…' } else { $compareHistoryModeJsonValue }
+        $null = $historyRows.Add("<dt>mode-manifests-json</dt><dd><code>$(& $encode $jsonPreview)</code></dd>")
+      }
+      $historyDetailsHtml = if ($historyRows.Count -gt 0) { "<dl>$([string]::Join('', $historyRows))</dl>" } else { '' }
+      $modeRows = @()
+      foreach ($mode in $compareHistoryModes) {
+        $modeSlug = if ($mode.PSObject.Properties.Name -contains 'Slug' -and $mode.Slug) { $mode.Slug } elseif ($mode.PSObject.Properties.Name -contains 'Mode' -and $mode.Mode) { $mode.Mode } else { '(mode)' }
+        $modeProcessed = if ($mode.PSObject.Properties.Name -contains 'Processed') { $mode.Processed } else { $null }
+        $modeDiffs = if ($mode.PSObject.Properties.Name -contains 'Diffs') { $mode.Diffs } else { $null }
+        $modeStatus = if ($mode.PSObject.Properties.Name -contains 'Status') { $mode.Status } else { $null }
+        $modeManifestPath = if ($mode.PSObject.Properties.Name -contains 'ManifestPath') { $mode.ManifestPath } else { $null }
+        $modeProcessedDisplay = if ($modeProcessed -ne $null) { $modeProcessed } else { 'n/a' }
+        $modeDiffsDisplay = if ($modeDiffs -ne $null) { $modeDiffs } else { 'n/a' }
+        $modeStatusDisplay = if ($modeStatus) { $modeStatus } else { 'n/a' }
+        $modeManifestDisplay = if ($modeManifestPath) { $modeManifestPath } else { '' }
+        $modeRows += "<tr><td>$(& $encode $modeSlug)</td><td>$(& $encode $modeProcessedDisplay)</td><td>$(& $encode $modeDiffsDisplay)</td><td>$(& $encode $modeStatusDisplay)</td><td>$(& $encode $modeManifestDisplay)</td></tr>"
+      }
+      $modeTableHtml = if ($modeRows.Count -gt 0) {
+        "<table><thead><tr><th>Mode</th><th>Processed</th><th>Diffs</th><th>Status</th><th>Manifest</th></tr></thead><tbody>$([string]::Join('', $modeRows))</tbody></table>"
+      } else { '<p>No history modes recorded.</p>' }
+      $historyHtml = "<h3>History Suite</h3>$historyDetailsHtml$modeTableHtml"
+    }
+    "$detailsHtml$historyHtml"
   } else {
     '<p>No compare artifacts.</p>'
   }

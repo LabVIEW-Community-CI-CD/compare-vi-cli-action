@@ -1,0 +1,27 @@
+{
+  "schema": "vi-compare/history@v1",
+  "mode": "attributes",
+  "reportFormat": "html",
+  "resultsDir": "tools/dashboard/samples/ref-compare/history/attributes",
+  "stats": {
+    "processed": 1,
+    "diffs": 0,
+    "errors": 0,
+    "missing": 0,
+    "stopReason": "complete",
+    "lastDiffIndex": null,
+    "lastDiffCommit": null
+  },
+  "status": "ok",
+  "comparisons": [
+    {
+      "index": 1,
+      "head": "mno7890",
+      "base": "pqr1234",
+      "result": {
+        "diff": false,
+        "artifactDir": ""
+      }
+    }
+  ]
+}

@@ -1,0 +1,36 @@
+{
+  "schema": "vi-compare/history@v1",
+  "mode": "default",
+  "reportFormat": "html",
+  "resultsDir": "tools/dashboard/samples/ref-compare/history/default",
+  "stats": {
+    "processed": 2,
+    "diffs": 1,
+    "errors": 0,
+    "missing": 0,
+    "stopReason": "complete",
+    "lastDiffIndex": 2,
+    "lastDiffCommit": "9f4a1c2d3e4f5a6b7c8d9e0f1a2b3c4d5e6f7a8b"
+  },
+  "status": "ok",
+  "comparisons": [
+    {
+      "index": 1,
+      "head": "abc1234",
+      "base": "def5678",
+      "result": {
+        "diff": false,
+        "artifactDir": ""
+      }
+    },
+    {
+      "index": 2,
+      "head": "ghi9012",
+      "base": "jkl3456",
+      "result": {
+        "diff": true,
+        "artifactDir": "tools/dashboard/samples/ref-compare/history/default/diff-002"
+      }
+    }
+  ]
+}

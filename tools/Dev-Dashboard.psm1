@@ -150,6 +150,205 @@ function Get-LabVIEWSnapshot {
   }
 }
 
+function Get-CompareOutcomeTelemetry {
+  [CmdletBinding()]
+  param(
+    [string]$ResultsRoot
+  )
+
+  if (-not $ResultsRoot) {
+    $ResultsRoot = Join-Path $script:repoRoot 'tests' 'results'
+  }
+
+  $resolvedRoot = Resolve-PathSafe -Path $ResultsRoot
+  if (-not $resolvedRoot) { return $null }
+
+  $latestOutcome = $null
+  $outcome = Get-ChildItem -Path $resolvedRoot -Filter 'compare-outcome.json' -Recurse -File -ErrorAction SilentlyContinue |
+    Sort-Object LastWriteTime -Descending |
+    Select-Object -First 1
+  if ($outcome) {
+    try {
+      $data = Get-Content -LiteralPath $outcome.FullName -Raw | ConvertFrom-Json -Depth 8
+      $latestOutcome = [pscustomobject][ordered]@{
+        Source       = if ($data.source) { $data.source } else { 'compare-outcome' }
+        JsonPath     = $outcome.FullName
+        CapturePath  = if ($data.captureJson) { $data.captureJson } else { $data.file }
+        ReportPath   = if ($data.reportPath) { $data.reportPath } else { $null }
+        ExitCode     = if ($data.exitCode -ne $null) { [int]$data.exitCode } else { $null }
+        Diff         = if ($data.diff -ne $null) { [bool]$data.diff } else { $null }
+        DurationMs   = if ($data.durationMs -ne $null) { [double]$data.durationMs } else { $null }
+        CliPath      = if ($data.cliPath) { $data.cliPath } else { $null }
+        Command      = if ($data.command) { $data.command } else { $null }
+        CliArtifacts = if ($data.cliArtifacts) { $data.cliArtifacts } else { $null }
+      }
+    } catch {
+      $latestOutcome = $null
+    }
+  }
+
+  if (-not $latestOutcome) {
+    $capture = Get-ChildItem -Path $resolvedRoot -Filter 'lvcompare-capture.json' -Recurse -File -ErrorAction SilentlyContinue |
+      Sort-Object LastWriteTime -Descending |
+      Select-Object -First 1
+
+    if ($capture) {
+      try {
+        $cap = Get-Content -LiteralPath $capture.FullName -Raw | ConvertFrom-Json -Depth 6
+        $exitCode = if ($cap.exitCode -ne $null) { [int]$cap.exitCode } else { $null }
+        $diff = if ($exitCode -ne $null) { $exitCode -eq 1 } else { $null }
+        $durationMs = $null
+        if ($cap.seconds -ne $null) { $durationMs = [math]::Round([double]$cap.seconds * 1000, 3) }
+        $cliPath = if ($cap.cliPath) { [string]$cap.cliPath } else { $null }
+        $command = if ($cap.command) { [string]$cap.command } else { $null }
+
+        $artifacts = $null
+        if ($cap.environment -and $cap.environment.cli -and $cap.environment.cli.PSObject.Properties.Name -contains 'artifacts') {
+          $artifacts = $cap.environment.cli.artifacts
+        }
+
+        $reportPath = $null
+        if ($cap.environment -and $cap.environment.cli -and $cap.environment.cli.PSObject.Properties.Name -contains 'reportPath') {
+          $reportPath = $cap.environment.cli.reportPath
+        }
+        if (-not $reportPath) {
+          $compareHtml = Join-Path (Split-Path -Parent $capture.FullName) 'compare-report.html'
+          if (Test-Path -LiteralPath $compareHtml) { $reportPath = $compareHtml }
+          $cliHtml = Join-Path (Split-Path -Parent $capture.FullName) 'cli-report.html'
+          if (Test-Path -LiteralPath $cliHtml) { $reportPath = $cliHtml }
+        }
+
+        $latestOutcome = [pscustomobject][ordered]@{
+          Source       = 'capture'
+          JsonPath     = $null
+          CapturePath  = $capture.FullName
+          ReportPath   = $reportPath
+          ExitCode     = $exitCode
+          Diff         = $diff
+          DurationMs   = $durationMs
+          CliPath      = $cliPath
+          Command      = $command
+          CliArtifacts = $artifacts
+        }
+      } catch {
+        $latestOutcome = $null
+      }
+    }
+  }
+
+  $historySuite = $null
+  $historyRoot = Join-Path $resolvedRoot 'ref-compare' 'history'
+  $suiteManifestPath = Join-Path $historyRoot 'manifest.json'
+  if (Test-Path -LiteralPath $suiteManifestPath) {
+    try {
+      $suiteRaw = Get-Content -LiteralPath $suiteManifestPath -Raw
+      if ($suiteRaw -and $suiteRaw.Trim()) {
+        $suite = $suiteRaw | ConvertFrom-Json -Depth 10
+        if ($suite -and $suite.schema -eq 'vi-compare/history-suite@v1') {
+          $suiteManifestResolved = Resolve-PathSafe -Path $suiteManifestPath
+
+          $modeSummaries = @()
+          $modeManifestEntries = @()
+          foreach ($mode in @($suite.modes)) {
+            if (-not $mode) { continue }
+            $modeName = if ($mode.PSObject.Properties.Name -contains 'name') { [string]$mode.name } else { $null }
+            $modeSlug = if ($mode.PSObject.Properties.Name -contains 'slug') { [string]$mode.slug } else { $null }
+            $modeManifest = if ($mode.PSObject.Properties.Name -contains 'manifestPath') { [string]$mode.manifestPath } else { $null }
+            $modeResultsDir = if ($mode.PSObject.Properties.Name -contains 'resultsDir') { [string]$mode.resultsDir } else { $null }
+            $modeStatus = if ($mode.PSObject.Properties.Name -contains 'status') { [string]$mode.status } else { $null }
+            $statsObj = if ($mode.PSObject.Properties.Name -contains 'stats') { $mode.stats } else { $null }
+            $processed = $null
+            $diffs = $null
+            $errors = $null
+            $missing = $null
+            $lastDiffIndex = $null
+            $lastDiffCommit = $null
+            $stopReason = $null
+            if ($statsObj) {
+              if ($statsObj.PSObject.Properties.Name -contains 'processed') { $processed = $statsObj.processed }
+              if ($statsObj.PSObject.Properties.Name -contains 'diffs') { $diffs = $statsObj.diffs }
+              if ($statsObj.PSObject.Properties.Name -contains 'errors') { $errors = $statsObj.errors }
+              if ($statsObj.PSObject.Properties.Name -contains 'missing') { $missing = $statsObj.missing }
+              if ($statsObj.PSObject.Properties.Name -contains 'lastDiffIndex') { $lastDiffIndex = $statsObj.lastDiffIndex }
+              if ($statsObj.PSObject.Properties.Name -contains 'lastDiffCommit') { $lastDiffCommit = $statsObj.lastDiffCommit }
+              if ($statsObj.PSObject.Properties.Name -contains 'stopReason') { $stopReason = $statsObj.stopReason }
+            }
+
+            $resolvedManifestPath = Resolve-PathSafe -Path $modeManifest
+            if (-not $resolvedManifestPath) { $resolvedManifestPath = $modeManifest }
+            $resolvedResultsDir = Resolve-PathSafe -Path $modeResultsDir
+            if (-not $resolvedResultsDir) { $resolvedResultsDir = $modeResultsDir }
+
+            $modeManifestEntries += [ordered]@{
+              mode      = $modeName
+              slug      = $modeSlug
+              manifest  = $resolvedManifestPath
+              resultsDir= $resolvedResultsDir
+              processed = $processed
+              diffs     = $diffs
+              status    = $modeStatus
+            }
+
+            $modeSummaries += [pscustomobject][ordered]@{
+              Mode           = $modeName
+              Slug           = $modeSlug
+              ManifestPath   = $resolvedManifestPath
+              ResultsDir     = $resolvedResultsDir
+              Processed      = $processed
+              Diffs          = $diffs
+              Errors         = $errors
+              Missing        = $missing
+              Status         = $modeStatus
+              StopReason     = $stopReason
+              LastDiffIndex  = $lastDiffIndex
+              LastDiffCommit = $lastDiffCommit
+            }
+          }
+
+          $modeManifestsJson = if ($modeManifestEntries.Count -gt 0) {
+            (ConvertTo-Json $modeManifestEntries -Depth 4 -Compress)
+          } else {
+            '[]'
+          }
+
+          $historySuite = [pscustomobject][ordered]@{
+            ManifestPath      = $suiteManifestResolved
+            ResultsDir        = if ($suite.PSObject.Properties.Name -contains 'resultsDir') { $suite.resultsDir } else { $null }
+            TargetPath        = if ($suite.PSObject.Properties.Name -contains 'targetPath') { $suite.targetPath } else { $null }
+            RequestedStartRef = if ($suite.PSObject.Properties.Name -contains 'requestedStartRef') { $suite.requestedStartRef } else { $null }
+            StartRef          = if ($suite.PSObject.Properties.Name -contains 'startRef') { $suite.startRef } else { $null }
+            EndRef            = if ($suite.PSObject.Properties.Name -contains 'endRef') { $suite.endRef } else { $null }
+            MaxPairs          = if ($suite.PSObject.Properties.Name -contains 'maxPairs') { $suite.maxPairs } else { $null }
+            GeneratedAt       = if ($suite.PSObject.Properties.Name -contains 'generatedAt') { $suite.generatedAt } else { $null }
+            Stats             = if ($suite.PSObject.Properties.Name -contains 'stats') { $suite.stats } else { $null }
+            Status            = if ($suite.PSObject.Properties.Name -contains 'status') { $suite.status } else { $null }
+            ModeCount         = $modeSummaries.Count
+            Modes             = $modeSummaries
+            ModeManifestsJson = $modeManifestsJson
+          }
+        }
+      }
+    } catch {
+      $historySuite = $null
+    }
+  }
+
+  if (-not $latestOutcome -and -not $historySuite) { return $null }
+
+  $resultOrdered = [ordered]@{}
+  if ($latestOutcome) {
+    foreach ($prop in $latestOutcome.PSObject.Properties) {
+      $resultOrdered[$prop.Name] = $prop.Value
+    }
+    $resultOrdered['LatestOutcome'] = $latestOutcome
+  }
+  if ($historySuite) {
+    $resultOrdered['HistorySuite'] = $historySuite
+  }
+
+  return [pscustomobject]$resultOrdered
+}
+
 function Get-SessionLockStatus {
   [CmdletBinding()]
   param(
