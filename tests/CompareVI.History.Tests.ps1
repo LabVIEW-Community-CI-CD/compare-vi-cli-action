@@ -535,6 +535,56 @@ exit $exitCode
     $attributeManifest.mode | Should -Be 'attributes'
   }
 
+  It 'emits GitHub outputs describing aggregate and per-mode manifests' {
+    if (-not $_pairs) { Set-ItResult -Skipped -Because 'Missing commit data'; return }
+    $env:STUB_COMPARE_DIFF = '0'
+    $pair = $_pairs[0]
+    $rd = Join-Path $TestDrive 'history-github-output'
+    $outputPath = Join-Path $TestDrive 'github-output.txt'
+    $summaryPath = Join-Path $TestDrive 'github-summary.md'
+
+    & pwsh -NoLogo -NoProfile -File (Join-Path $_repoRoot 'tools/Compare-VIHistory.ps1') `
+      -TargetPath $_target `
+      -StartRef $pair.Head `
+      -MaxPairs 1 `
+      -InvokeScriptPath $_stubPath `
+      -ResultsDir $rd `
+      -Mode 'default,attributes' `
+      -GitHubOutputPath $outputPath `
+      -StepSummaryPath $summaryPath `
+      -FailOnDiff:$false | Out-Null
+
+    Test-Path -LiteralPath $outputPath | Should -BeTrue
+    $outputLines = Get-Content -LiteralPath $outputPath
+
+    $manifestLine = $outputLines | Where-Object { $_ -like 'manifest-path=*' } | Select-Object -First 1
+    $manifestLine | Should -Not -BeNullOrEmpty
+    $manifestValue = (($manifestLine -split '=', 2)[1]).Trim()
+    $manifestValue | Should -Match 'manifest\.json$'
+    Test-Path -LiteralPath $manifestValue | Should -BeTrue
+
+    $modeJsonLine = $outputLines | Where-Object { $_ -like 'mode-manifests-json=*' } | Select-Object -First 1
+    $modeJsonLine | Should -Not -BeNullOrEmpty
+    $modeJsonValue = (($modeJsonLine -split '=', 2)[1]).Trim()
+    $modeSummary = $modeJsonValue | ConvertFrom-Json
+    $modeSummary.Count | Should -Be 2
+
+    $bySlug = @{}
+    foreach ($entry in $modeSummary) {
+      $entry | Should -Not -BeNullOrEmpty
+      $entry.mode | Should -Not -BeNullOrEmpty
+      $entry.manifest | Should -Not -BeNullOrEmpty
+      Test-Path -LiteralPath $entry.manifest | Should -BeTrue
+      $entry.resultsDir | Should -Not -BeNullOrEmpty
+      $bySlug[$entry.slug] = $entry
+    }
+
+    $bySlug.ContainsKey('default') | Should -BeTrue
+    $bySlug.ContainsKey('attributes') | Should -BeTrue
+    $bySlug['default'].mode | Should -Be 'default'
+    $bySlug['attributes'].mode | Should -Be 'attributes'
+  }
+
   It 'expands comma-separated mode tokens into multiple entries' {
     if (-not $_pairs) { Set-ItResult -Skipped -Because 'Missing commit data'; return }
     $env:STUB_COMPARE_DIFF = '0'

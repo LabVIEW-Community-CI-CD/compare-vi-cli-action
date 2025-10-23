@@ -34,11 +34,11 @@ real LVCompare artifacts are captured in CI. Current tests verify flag wiring vi
 
 16. `modes` input shall accept comma/semicolon separated tokens (case-insensitive) and default to `default`.
 17. Workflow shall invoke the helper once per mode, writing outputs to `tests/results/ref-compare/history/<mode>`.
-18. `steps.history.outputs['manifest-path']` shall list all manifest paths (newline-delimited).
-19. `steps.history.outputs['resultsDir']` shall equal the root history directory.
-20. Step summary shall report target, requested/resolved start refs, processed pairs, stop reason, last diff, and active mode for each iteration.
-21. `vi-compare-results` artifact shall include every manifest plus all `*-summary.json` and `*-exec.json` files.
-22. `mode-dirs` output shall list the mode subdirectories created.
+18. `steps.history.outputs['manifest-path']` shall resolve to the aggregate history suite manifest.
+19. `steps.history.outputs['mode-manifests-json']` shall emit a JSON array describing each requested mode (slug, manifest path, results directory, processed count, diff count, status).
+20. `steps.history.outputs['results-dir']` shall equal the root history directory.
+21. Step summary shall report target, requested/resolved start refs, processed pairs, stop reason, last diff, and active mode for each iteration.
+22. `vi-compare-results` artifact shall include every manifest plus all `*-summary.json` and `*-exec.json` files.
 23. Single-mode (`default`) runs shall produce the same layout as the legacy workflow.
 24. Workflow shall surface helper failures per mode and mark the job failed while preserving prior results.
 

@@ -50,7 +50,10 @@ gh workflow run vi-compare-refs.yml `
 
 - The compare step writes `tests/results/ref-compare/history/manifest.json`, an aggregate manifest with
   `schema: vi-compare/history-suite@v1`. Each `modes[]` entry captures the mode slug, resolved flag bundle,
-  stats, and the `manifestPath` for that mode’s detailed results.
+  stats, and the `manifestPath` for that mode's detailed results.
+- GitHub outputs include `manifest-path` (suite manifest), `results-dir` (root history directory), and
+  `mode-manifests-json` (JSON array enumerating each mode's manifest path, results directory, and summary stats).
+  Dashboards and metrics jobs should deserialize `mode-manifests-json` when they need per-mode artifact locations.
 - Per-mode manifests live under `tests/results/ref-compare/history/<mode>/manifest.json`
   (`schema: vi-compare/history@v1`) and enumerate the commit pairs, summaries, and LVCompare outcomes.
 - Per-iteration summaries (`*-summary.json`) and execution traces (`*-exec.json`) are stored beside the mode manifest

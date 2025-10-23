@@ -1,7 +1,8 @@
 Progress: history suite now writes one aggregate manifest (`vi-compare/history-suite@v1`) plus per-mode manifests. `tools/Compare-VIHistory.ps1` no longer runs per-mode loops separately, and the manual workflow consumes the suite output instead of stitching manifests on its own.
+Progress: Added GitHub-output coverage + docs so dashboards/metrics can deserialize `mode-manifests-json` for per-mode artifact routing.
 
-Tests: 11/11 passing via `./Invoke-PesterTests.ps1 -TestsPath tests/CompareVI.History.Tests.ps1 -IntegrationMode include`.
+Tests: 12/12 passing via `./Invoke-PesterTests.ps1 -TestsPath tests/CompareVI.History.Tests.ps1 -IntegrationMode include`.
 
 Next session:
-  1) Confirm downstream tooling that digests the workflow artifacts (dashboards, metrics jobs) reads `mode-manifests-json` successfully.
+  1) Spot-check downstream dashboards/metrics after the next workflow run to confirm the refreshed `mode-manifests-json` payload looks healthy.
   2) Once the branch lands on `develop`, rerun `vi-compare-refs.yml` to ensure artifact uploads and diff scanning behave with the new suite manifests.
