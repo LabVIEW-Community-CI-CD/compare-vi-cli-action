@@ -54,5 +54,9 @@ jobs:
 
           Write-Host "Policy guard token exported. GH_TOKEN_FILE=$tokenFile"
 
+      - name: Verify remote refs are unambiguous
+        shell: pwsh
+        run: pwsh -NoLogo -NoProfile -File tools/Assert-NoAmbiguousRemoteRefs.ps1
+
       - name: Run policy guard
         run: node tools/priority/check-policy.mjs

@@ -90,6 +90,17 @@ function Invoke-Actionlint([string]$repoRoot){
 }
 
 $root = (Get-RepoRoot).Path
+$guardScript = Join-Path (Split-Path -Parent $PSCommandPath) 'Assert-NoAmbiguousRemoteRefs.ps1'
+
+Push-Location $root
+try {
+  Write-Host '[pre-push] Verifying remote refs are unambiguous' -ForegroundColor Cyan
+  & $guardScript
+  Write-Host '[pre-push] remote references OK' -ForegroundColor Green
+} finally {
+  Pop-Location | Out-Null
+}
+
 $code = Invoke-Actionlint -repoRoot $root
 if ($code -ne 0) {
   Write-Error "actionlint reported issues (exit=$code)."
