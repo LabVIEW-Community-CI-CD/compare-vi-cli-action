@@ -35,8 +35,24 @@ jobs:
         with:
           node-version: '20'
 
-      - name: Run policy guard
+      - name: Prepare policy guard token
+        shell: pwsh
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          INPUT_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          if (-not $env:INPUT_TOKEN -or (-not $env:INPUT_TOKEN.Trim())) {
+            throw 'Policy Guard requires secrets.GITHUB_TOKEN to be populated.'
+          }
+
+          $token = $env:INPUT_TOKEN.Trim()
+          $tokenFile = Join-Path $env:RUNNER_TEMP 'policy-guard-gh-token.txt'
+          Set-Content -Path $tokenFile -Value $token -Encoding utf8 -NoNewline
+
+          Add-Content -Path $env:GITHUB_ENV -Value "GH_TOKEN=$token"
+          Add-Content -Path $env:GITHUB_ENV -Value "GITHUB_TOKEN=$token"
+          Add-Content -Path $env:GITHUB_ENV -Value "GH_TOKEN_FILE=$tokenFile"
+
+          Write-Host "Policy guard token exported. GH_TOKEN_FILE=$tokenFile"
+
+      - name: Run policy guard
         run: node tools/priority/check-policy.mjs
