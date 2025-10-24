@@ -9,9 +9,10 @@ line buffers).
 
 - The standing priority is whichever issue carries the `standing-priority` label. Use the sanitized wrappers (`node
   tools/npm/cli.mjs <command>` / `node tools/npm/run-script.mjs <script>`) instead of raw `npm` invocations (the
-  container exports `npm_config_http_proxy`, which triggers warnings in recent npm builds). Run `node tools/npm/run-
-  script.mjs priority:sync` at session start so `.agent_priority_cache.json` and `tests/results/_agent/issue/` reflect
-  the latest snapshot; treat that issue as the top objective for edits, CI runs, and PRs.
+  container exports `npm_config_http_proxy`, which triggers warnings in recent npm builds). Run `pwsh -NoLogo -NoProfile
+  -File tools/priority/bootstrap.ps1` at session start so `.agent_priority_cache.json` and `tests/results/_agent/issue/`
+  reflect the latest snapshot, hook preflight succeeds, and the working tree is anchored to `develop`; treat that issue
+  as the top objective for edits, CI runs, and PRs.
 - The human operator is signed in with an admin GitHub token; assume privileged operations (labels, reruns, merges) are
   allowed when safe.
 - Default behaviour:
@@ -19,15 +20,17 @@ line buffers).
   - Keep workflows deterministic and green.
   - Reference the current standing-priority issue (e.g., `#<standing-number>`) in commit and PR descriptions.
 - First actions in a session:
-  1. `node tools/npm/run-script.mjs priority:sync` to refresh the standing-priority snapshot and router
-     artifacts. When Node isn't available on the host plane, use the Docker fallback:
+  1. `pwsh -NoLogo -NoProfile -File tools/priority/bootstrap.ps1` to run hook preflight, refresh the standing-priority
+     snapshot/router artifacts, and auto-anchor the workspace to `develop`. When PowerShell + Node aren't available on
+     the host plane, use the Docker fallback:
      - `pwsh -NoLogo -NoProfile -File tools/Run-NonLVChecksInDocker.ps1 -ToolsImageTag comparevi-tools:local
        -UseToolsImage -PrioritySync -SkipActionlint -SkipMarkdown -SkipDocs -SkipWorkflow -SkipDotnetCliBuild`
      - `node tools/npm/run-script.mjs priority:sync:docker`
      Ensure a GitHub token is supplied via `GH_TOKEN`/`GITHUB_TOKEN` or `GH_TOKEN_FILE`
      (default `C:\github_token.txt`). The helper injects the token into the container
      without writing it to logs. Set `COMPAREVI_TOOLS_IMAGE=ghcr.io/labview-community-ci-cd/comparevi-tools:latest`
-     to use the published tools image instead of building locally.
+     to use the published tools image instead of building locally. After the Docker fallback completes, manually verify
+     the working tree is on `develop` before creating a feature branch.
   2. Review `.agent_priority_cache.json` / `tests/results/_agent/issue/` for tasks, acceptance, and
      linked PRs on the standing issue.
   3. Create or sync a working branch (`issue/<standing-number>-<slug>`), push minimal changes,

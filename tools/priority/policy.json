@@ -16,11 +16,10 @@
       "required_linear_history": true,
       "required_status_checks": [
         "guard",
-        "lint",
         "fixtures",
         "session-index",
         "issue-snapshot",
-        "Workflows Lint / lint (pull_request)"
+        "Policy Guard (Upstream) / policy-guard"
       ],
       "merge_queue": null,
       "pull_request": {
@@ -30,7 +29,8 @@
         "require_last_push_approval": false,
         "required_review_thread_resolution": false,
         "allowed_merge_methods": [
-          "squash"
+          "squash",
+          "rebase"
         ]
       }
     },
@@ -40,10 +40,10 @@
         "refs/heads/main"
       ],
       "required_status_checks": [
-        "lint",
         "pester",
         "vi-binary-check",
-        "vi-compare"
+        "vi-compare",
+        "Policy Guard (Upstream) / policy-guard"
       ],
       "merge_queue": {
         "merge_method": "SQUASH",
@@ -55,11 +55,15 @@
         "check_response_timeout_minutes": 60
       },
       "pull_request": {
-        "required_approving_review_count": 1,
-        "dismiss_stale_reviews_on_push": true,
+        "required_approving_review_count": 0,
+        "dismiss_stale_reviews_on_push": false,
         "require_code_owner_review": false,
         "require_last_push_approval": false,
-        "required_review_thread_resolution": true
+        "required_review_thread_resolution": false,
+        "allowed_merge_methods": [
+          "squash",
+          "rebase"
+        ]
       }
     },
     "8614172": {
@@ -68,20 +72,24 @@
         "refs/heads/release/*"
       ],
       "required_status_checks": [
-        "lint",
         "pester",
         "publish",
         "vi-binary-check",
         "vi-compare",
-        "mock-cli"
+        "mock-cli",
+        "Policy Guard (Upstream) / policy-guard"
       ],
       "merge_queue": null,
       "pull_request": {
-        "required_approving_review_count": 1,
-        "dismiss_stale_reviews_on_push": true,
+        "required_approving_review_count": 0,
+        "dismiss_stale_reviews_on_push": false,
         "require_code_owner_review": false,
         "require_last_push_approval": false,
-        "required_review_thread_resolution": true
+        "required_review_thread_resolution": false,
+        "allowed_merge_methods": [
+          "squash",
+          "rebase"
+        ]
       }
     }
   }

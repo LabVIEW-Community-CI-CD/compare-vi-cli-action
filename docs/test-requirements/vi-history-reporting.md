@@ -31,7 +31,7 @@ This document tracks the atomic test requirements for `tools/Compare-VIHistory.p
 real LVCompare artifacts are captured in CI. Current tests verify flag wiring via the stub driver.*
 
 ## Workflow (`.github/workflows/vi-compare-refs.yml`)
-
+<!-- markdownlint-disable MD029 -->
 16. `modes` input shall accept comma/semicolon separated tokens (case-insensitive) and default to `default`.
 17. Workflow shall invoke the helper once per mode, writing outputs to `tests/results/ref-compare/history/<mode>`.
 18. `steps.history.outputs['manifest-path']` shall resolve to the aggregate history suite manifest.
@@ -50,4 +50,6 @@ real LVCompare artifacts are captured in CI. Current tests verify flag wiring vi
 26. Documentation shall explain helper usage with `-Mode` and how manifest fields map to modes and flag bundles.
 27. Documentation shall note that artifacts are partitioned per mode and that report-format tests will be enriched with
    real LVCompare outputs.
+
+<!-- markdownlint-enable MD029 -->
 
