@@ -27,10 +27,12 @@ This document tracks the atomic test requirements for `tools/Compare-VIHistory.p
 14. If no touching commit exists, helper shall exit non-zero with "Unable to locate a commit".
 15. Capture JSON, stdout, stderr, and manifest files shall be emitted for every run.
 
-*Report format enrichment note: tests validating XML and text report contents shall be augmented once
-real LVCompare artifacts are captured in CI. Current tests verify flag wiring via the stub driver.*
+_Report format enrichment note: tests validating XML and text report contents shall be augmented once
+real LVCompare artifacts are captured in CI. Current tests verify flag wiring via the stub driver._
 
 ## Workflow (`.github/workflows/vi-compare-refs.yml`)
+
+<!-- Ensure ordered list numbering resets cleanly across sections -->
 
 1. `modes` input shall accept comma/semicolon separated tokens (case-insensitive) and default to `default`.
 2. Workflow shall invoke the helper once per mode, writing outputs to `tests/results/ref-compare/history/<mode>`.
