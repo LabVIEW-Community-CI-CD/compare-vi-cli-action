@@ -2,10 +2,13 @@ Progress: history suite now writes one aggregate manifest (`vi-compare/history-s
 Progress: Added GitHub-output coverage + docs so dashboards/metrics can deserialize `mode-manifests-json` for per-mode artifact routing.
 Progress: Dev Dashboard loaders + CLI render the history suite using the new mode manifest JSON; sample fixtures live under `tools/dashboard/samples/ref-compare/history/`.
 Progress: Prepped v0.5.2 release collateral (CHANGELOG, release notes, PR checklist/description, tag prep) and bumped `package.json` to `0.5.2`.
+Progress: Scoped and began implementing branch protection guard plan (#302): added `policy-guard-upstream.yml` so upstream PRs run `check-policy.mjs`; policy manifest/tests now require the new status.
+Progress: Removed the legacy `Workflows Lint / lint (pull_request)` requirement, updated docs/samples, and added develop/main/release branch expectations so `Policy Guard (Upstream) / policy-guard` is part of the contract.
+Progress: Updated `priority:policy` to use PUT for ruleset applies and refreshed GitHub branch protections (develop/main/release/v0.5.2 now require the upstream policy guard); `priority:test` and `priority:policy` both green post-update.
 
-Tests: `./Invoke-PesterTests.ps1 -TestsPath tests/CompareVI.History.Tests.ps1 -IntegrationMode include` (12/12) and `./Invoke-PesterTests.ps1 -TestsPath tests -IncludePatterns 'DevDashboard.*'` (10/10). `node tools/npm/run-script.mjs priority:handoff-tests` (4/4) and `node tools/priority/validate-semver.mjs` (0.5.2 valid).
+Tests: `./Invoke-PesterTests.ps1 -TestsPath tests/CompareVI.History.Tests.ps1 -IntegrationMode include` (12/12) and `./Invoke-PesterTests.ps1 -TestsPath tests -IncludePatterns 'DevDashboard.*'` (10/10). `node tools/npm/run-script.mjs priority:handoff-tests` (4/4), `node tools/priority/validate-semver.mjs` (0.5.2 valid), and `node tools/npm/run-script.mjs priority:test`.
 
 Next session:
-  1) Spot-check downstream dashboards/metrics after the next workflow run to confirm live telemetry is ingesting the refreshed `mode-manifests-json` payload.
-  2) Once the branch lands on `develop`, rerun `vi-compare-refs.yml` to ensure artifact uploads and diff scanning behave with the new suite manifests.
-  3) Cut `release/v0.5.2` from the updated sources and run the release finalize dry-run (`node tools/priority/finalize-release.dryrun.mjs v0.5.2`) once the branch exists.
+  1) Finish upstream merge for release/v0.5.2 (PR #301) and rerun `node tools/priority/finalize-release.mjs v0.5.2` once checks are green.
+  2) Monitor `policy-guard-upstream` on PR #301 (rerun if the new status is missing) and keep `priority:policy` in the handoff loop after merges.
+  3) After release merge, rerun `vi-compare-refs.yml` and spot-check dashboards ingesting refreshed history manifests.

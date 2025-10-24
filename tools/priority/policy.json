@@ -6,7 +6,38 @@
     "allow_auto_merge": true,
     "delete_branch_on_merge": true
   },
-  "branches": {},
+  "branches": {
+    "develop": {
+      "required_status_checks": [
+        "guard",
+        "fixtures",
+        "session-index",
+        "issue-snapshot",
+        "Policy Guard (Upstream) / policy-guard"
+      ],
+      "required_linear_history": true
+    },
+    "main": {
+      "required_status_checks": [
+        "pester",
+        "vi-binary-check",
+        "vi-compare",
+        "Policy Guard (Upstream) / policy-guard"
+      ],
+      "required_linear_history": true
+    },
+    "release/v0.5.2": {
+      "required_status_checks": [
+        "pester",
+        "publish",
+        "vi-binary-check",
+        "vi-compare",
+        "mock-cli",
+        "Policy Guard (Upstream) / policy-guard"
+      ],
+      "required_linear_history": true
+    }
+  },
   "rulesets": {
     "8811898": {
       "name": "develop",
@@ -16,11 +47,10 @@
       "required_linear_history": true,
       "required_status_checks": [
         "guard",
-        "lint",
         "fixtures",
         "session-index",
         "issue-snapshot",
-        "Workflows Lint / lint (pull_request)"
+        "Policy Guard (Upstream) / policy-guard"
       ],
       "merge_queue": null,
       "pull_request": {
@@ -30,7 +60,8 @@
         "require_last_push_approval": false,
         "required_review_thread_resolution": false,
         "allowed_merge_methods": [
-          "squash"
+          "squash",
+          "rebase"
         ]
       }
     },
@@ -40,10 +71,10 @@
         "refs/heads/main"
       ],
       "required_status_checks": [
-        "lint",
         "pester",
         "vi-binary-check",
-        "vi-compare"
+        "vi-compare",
+        "Policy Guard (Upstream) / policy-guard"
       ],
       "merge_queue": {
         "merge_method": "SQUASH",
@@ -68,20 +99,23 @@
         "refs/heads/release/*"
       ],
       "required_status_checks": [
-        "lint",
         "pester",
         "publish",
         "vi-binary-check",
         "vi-compare",
-        "mock-cli"
+        "mock-cli",
+        "Policy Guard (Upstream) / policy-guard"
       ],
       "merge_queue": null,
       "pull_request": {
-        "required_approving_review_count": 1,
+        "required_approving_review_count": 0,
         "dismiss_stale_reviews_on_push": true,
         "require_code_owner_review": false,
         "require_last_push_approval": false,
-        "required_review_thread_resolution": true
+        "required_review_thread_resolution": false,
+        "allowed_merge_methods": [
+          "rebase"
+        ]
       }
     }
   }

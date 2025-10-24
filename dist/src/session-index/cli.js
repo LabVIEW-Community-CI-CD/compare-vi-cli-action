@@ -43,7 +43,7 @@ if (args.sample) {
         status: 'warn',
         reason: 'api_forbidden',
         expected: ['Validate / lint', 'Validate / fixtures', 'Validate / session-index'],
-        actual: ['Validate', 'Workflows Lint'],
+        actual: ['Validate', 'Policy Guard (Upstream) / policy-guard'],
         mapping: {
             path: 'tools/policy/branch-required-checks.json',
             digest: '9121da2e7b43a122c02db5adf6148f42de443d89159995fce7d035ae66745772'

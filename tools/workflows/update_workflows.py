@@ -1312,7 +1312,7 @@ def apply_transforms(path: Path) -> tuple[bool, str]:
         except Exception:
             pass
     if path.name == 'validate.yml':
-        # Make markdownlint non-blocking in Validate to avoid PR noise; Workflows Lint is the required check.
+        # Make markdownlint non-blocking in Validate to avoid PR noise; the upstream policy guard enforces branch protection.
         lr2 = ensure_lint_resiliency(doc, 'lint', include_node=True, markdown_non_blocking=True)
         wp2 = ensure_wire_probes_all_jobs(doc, 'tests/results')
         s12 = ensure_wire_S1_before_session_index(doc)

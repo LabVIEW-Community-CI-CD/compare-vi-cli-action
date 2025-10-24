@@ -22,11 +22,24 @@ function createResponse(data, status = 200, statusText = 'OK') {
 test('priority:policy --apply updates rulesets for develop/main/release', async () => {
   const expectedDevelopChecks = [
     'guard',
-    'lint',
     'fixtures',
     'session-index',
     'issue-snapshot',
-    'Workflows Lint / lint (pull_request)'
+    'Policy Guard (Upstream) / policy-guard'
+  ];
+  const expectedMainChecks = [
+    'pester',
+    'vi-binary-check',
+    'vi-compare',
+    'Policy Guard (Upstream) / policy-guard'
+  ];
+  const expectedReleaseChecks = [
+    'pester',
+    'publish',
+    'vi-binary-check',
+    'vi-compare',
+    'mock-cli',
+    'Policy Guard (Upstream) / policy-guard'
   ];
 
   const repoUrl = 'https://api.github.com/repos/test-org/test-repo';
@@ -62,9 +75,10 @@ test('priority:policy --apply updates rulesets for develop/main/release', async 
           do_not_enforce_on_create: true,
           required_status_checks: [
             { context: 'guard', integration_id: 15368 },
-            { context: 'lint', integration_id: 15368 },
             { context: 'fixtures', integration_id: 15368 },
-            { context: 'session-index', integration_id: 15368 }
+            { context: 'session-index', integration_id: 15368 },
+            { context: 'issue-snapshot', integration_id: 15368 },
+            { context: 'Policy Guard (Upstream) / policy-guard' }
           ]
         }
       },
@@ -124,9 +138,10 @@ test('priority:policy --apply updates rulesets for develop/main/release', async 
           strict_required_status_checks_policy: true,
           do_not_enforce_on_create: false,
           required_status_checks: [
-            { context: 'lint', integration_id: 15368 },
             { context: 'pester', integration_id: 15368 },
-            { context: 'vi-binary-check', integration_id: 15368 }
+            { context: 'vi-binary-check', integration_id: 15368 },
+            { context: 'vi-compare', integration_id: 15368 },
+            { context: 'Policy Guard (Upstream) / policy-guard' }
           ]
         }
       }
@@ -165,16 +180,89 @@ test('priority:policy --apply updates rulesets for develop/main/release', async 
           strict_required_status_checks_policy: true,
           do_not_enforce_on_create: false,
           required_status_checks: [
-            { context: 'lint', integration_id: 15368 },
             { context: 'pester', integration_id: 15368 },
             { context: 'publish', integration_id: 15368 },
             { context: 'vi-binary-check', integration_id: 15368 },
             { context: 'vi-compare', integration_id: 15368 },
-            { context: 'mock-cli', integration_id: 15368 }
+            { context: 'mock-cli', integration_id: 15368 },
+            { context: 'Policy Guard (Upstream) / policy-guard' }
           ]
         }
       }
     ]
+  };
+
+  const branchDevelopUrl = `${repoUrl}/branches/develop/protection`;
+  const branchMainUrl = `${repoUrl}/branches/main/protection`;
+  const branchReleaseUrl = `${repoUrl}/branches/release%2Fv0.5.2/protection`;
+
+  let branchDevelopProtection = {
+    required_status_checks: {
+      strict: true,
+      contexts: ['guard', 'fixtures', 'session-index', 'issue-snapshot'],
+      checks: [
+        { context: 'guard', app_id: 15368 },
+        { context: 'fixtures', app_id: 15368 },
+        { context: 'session-index', app_id: 15368 },
+        { context: 'issue-snapshot', app_id: 15368 }
+      ]
+    },
+    enforce_admins: { enabled: false },
+    required_pull_request_reviews: null,
+    restrictions: null,
+    required_linear_history: { enabled: false },
+    allow_force_pushes: { enabled: false },
+    allow_deletions: { enabled: false },
+    block_creations: { enabled: false },
+    required_conversation_resolution: { enabled: false },
+    lock_branch: { enabled: false },
+    allow_fork_syncing: { enabled: false }
+  };
+
+  let branchMainProtection = {
+    required_status_checks: {
+      strict: true,
+      contexts: ['pester', 'vi-binary-check', 'vi-compare'],
+      checks: [
+        { context: 'pester', app_id: 15368 },
+        { context: 'vi-binary-check', app_id: 15368 },
+        { context: 'vi-compare', app_id: 15368 }
+      ]
+    },
+    enforce_admins: { enabled: false },
+    required_pull_request_reviews: null,
+    restrictions: null,
+    required_linear_history: { enabled: false },
+    allow_force_pushes: { enabled: false },
+    allow_deletions: { enabled: false },
+    block_creations: { enabled: false },
+    required_conversation_resolution: { enabled: false },
+    lock_branch: { enabled: false },
+    allow_fork_syncing: { enabled: false }
+  };
+
+  let branchReleaseProtection = {
+    required_status_checks: {
+      strict: true,
+      contexts: ['pester', 'publish', 'vi-binary-check', 'vi-compare', 'mock-cli'],
+      checks: [
+        { context: 'pester', app_id: 15368 },
+        { context: 'publish', app_id: 15368 },
+        { context: 'vi-binary-check', app_id: 15368 },
+        { context: 'vi-compare', app_id: 15368 },
+        { context: 'mock-cli', app_id: 15368 }
+      ]
+    },
+    enforce_admins: { enabled: false },
+    required_pull_request_reviews: null,
+    restrictions: null,
+    required_linear_history: { enabled: false },
+    allow_force_pushes: { enabled: false },
+    allow_deletions: { enabled: false },
+    block_creations: { enabled: false },
+    required_conversation_resolution: { enabled: false },
+    lock_branch: { enabled: false },
+    allow_fork_syncing: { enabled: false }
   };
 
   const requests = [];
@@ -186,11 +274,95 @@ test('priority:policy --apply updates rulesets for develop/main/release', async 
       return createResponse(repoState);
     }
 
+    if (url === branchDevelopUrl) {
+      if (method === 'GET') {
+        return createResponse(branchDevelopProtection);
+      }
+      if (method === 'PUT') {
+        const payload = JSON.parse(options.body);
+        const contexts = payload.required_status_checks?.contexts ?? [];
+        branchDevelopProtection = {
+          enforce_admins: payload.enforce_admins,
+          required_pull_request_reviews: payload.required_pull_request_reviews,
+          restrictions: payload.restrictions,
+          required_status_checks: {
+            strict: payload.required_status_checks?.strict ?? true,
+            contexts,
+            checks: contexts.map((context) => ({ context }))
+          },
+          required_linear_history: payload.required_linear_history,
+          allow_force_pushes: payload.allow_force_pushes,
+          allow_deletions: payload.allow_deletions,
+          block_creations: payload.block_creations,
+          required_conversation_resolution: payload.required_conversation_resolution,
+          lock_branch: payload.lock_branch,
+          allow_fork_syncing: payload.allow_fork_syncing
+        };
+        return createResponse(branchDevelopProtection);
+      }
+    }
+
+    if (url === branchMainUrl) {
+      if (method === 'GET') {
+        return createResponse(branchMainProtection);
+      }
+      if (method === 'PUT') {
+        const payload = JSON.parse(options.body);
+        const contexts = payload.required_status_checks?.contexts ?? [];
+        branchMainProtection = {
+          enforce_admins: payload.enforce_admins,
+          required_pull_request_reviews: payload.required_pull_request_reviews,
+          restrictions: payload.restrictions,
+          required_status_checks: {
+            strict: payload.required_status_checks?.strict ?? true,
+            contexts,
+            checks: contexts.map((context) => ({ context }))
+          },
+          required_linear_history: payload.required_linear_history,
+          allow_force_pushes: payload.allow_force_pushes,
+          allow_deletions: payload.allow_deletions,
+          block_creations: payload.block_creations,
+          required_conversation_resolution: payload.required_conversation_resolution,
+          lock_branch: payload.lock_branch,
+          allow_fork_syncing: payload.allow_fork_syncing
+        };
+        return createResponse(branchMainProtection);
+      }
+    }
+
+    if (url === branchReleaseUrl) {
+      if (method === 'GET') {
+        return createResponse(branchReleaseProtection);
+      }
+      if (method === 'PUT') {
+        const payload = JSON.parse(options.body);
+        const contexts = payload.required_status_checks?.contexts ?? [];
+        branchReleaseProtection = {
+          enforce_admins: payload.enforce_admins,
+          required_pull_request_reviews: payload.required_pull_request_reviews,
+          restrictions: payload.restrictions,
+          required_status_checks: {
+            strict: payload.required_status_checks?.strict ?? true,
+            contexts,
+            checks: contexts.map((context) => ({ context }))
+          },
+          required_linear_history: payload.required_linear_history,
+          allow_force_pushes: payload.allow_force_pushes,
+          allow_deletions: payload.allow_deletions,
+          block_creations: payload.block_creations,
+          required_conversation_resolution: payload.required_conversation_resolution,
+          lock_branch: payload.lock_branch,
+          allow_fork_syncing: payload.allow_fork_syncing
+        };
+        return createResponse(branchReleaseProtection);
+      }
+    }
+
     if (url === rulesetDevelopUrl) {
       if (method === 'GET') {
         return createResponse(rulesetDevelop);
       }
-      if (method === 'PATCH') {
+      if (method === 'PUT') {
         const payload = JSON.parse(options.body);
         rulesetDevelop.conditions = structuredClone(payload.conditions);
         rulesetDevelop.rules = structuredClone(payload.rules);
@@ -201,7 +373,7 @@ test('priority:policy --apply updates rulesets for develop/main/release', async 
       if (method === 'GET') {
         return createResponse(rulesetMain);
       }
-      if (method === 'PATCH') {
+      if (method === 'PUT') {
         const payload = JSON.parse(options.body);
         rulesetMain.conditions = structuredClone(payload.conditions);
         rulesetMain.rules = structuredClone(payload.rules);
@@ -213,7 +385,7 @@ test('priority:policy --apply updates rulesets for develop/main/release', async 
       if (method === 'GET') {
         return createResponse(rulesetRelease);
       }
-      if (method === 'PATCH') {
+      if (method === 'PUT') {
         const payload = JSON.parse(options.body);
         rulesetRelease.conditions = structuredClone(payload.conditions);
         rulesetRelease.rules = structuredClone(payload.rules);
@@ -254,8 +426,8 @@ test('priority:policy --apply updates rulesets for develop/main/release', async 
   );
   const developPullRule = rulesetDevelop.rules.find((rule) => rule.type === 'pull_request');
   assert.deepEqual(
-    developPullRule.parameters.allowed_merge_methods,
-    ['squash']
+    developPullRule.parameters.allowed_merge_methods.sort(),
+    ['rebase', 'squash']
   );
 
   const mergeQueueRule = rulesetMain.rules.find((rule) => rule.type === 'merge_queue');
@@ -263,25 +435,167 @@ test('priority:policy --apply updates rulesets for develop/main/release', async 
 
   const statusRule = rulesetMain.rules.find((rule) => rule.type === 'required_status_checks');
   assert.deepEqual(
-    statusRule.parameters.required_status_checks.map((check) => check.context),
-    ['lint', 'pester', 'vi-binary-check', 'vi-compare']
+    statusRule.parameters.required_status_checks.map((check) => check.context).sort(),
+    ['pester', 'vi-binary-check', 'vi-compare', 'Policy Guard (Upstream) / policy-guard'].sort()
   );
 
   const pullRule = rulesetMain.rules.find((rule) => rule.type === 'pull_request');
   assert.equal(pullRule.parameters.required_approving_review_count, 1);
   assert.equal(pullRule.parameters.required_review_thread_resolution, true);
 
+  const statusRuleRelease = rulesetRelease.rules.find((rule) => rule.type === 'required_status_checks');
+  assert.deepEqual(
+    statusRuleRelease.parameters.required_status_checks.map((check) => check.context).sort(),
+    ['Policy Guard (Upstream) / policy-guard', 'mock-cli', 'pester', 'publish', 'vi-binary-check', 'vi-compare'].sort()
+  );
+
   assert.ok(
-    requests.some((entry) => entry.method === 'PATCH' && entry.url === rulesetDevelopUrl),
-    'develop ruleset patch call expected'
+    requests.some((entry) => entry.method === 'PUT' && entry.url === rulesetDevelopUrl),
+    'develop ruleset put call expected'
   );
   assert.ok(
-    requests.some((entry) => entry.method === 'PATCH' && entry.url === rulesetMainUrl),
-    'ruleset patch call expected'
+    requests.some((entry) => entry.method === 'PUT' && entry.url === rulesetMainUrl),
+    'ruleset put call expected'
+  );
+  assert.ok(
+    requests.some((entry) => entry.method === 'PUT' && entry.url === branchDevelopUrl),
+    'develop branch protection put call expected'
+  );
+  assert.ok(
+    requests.some((entry) => entry.method === 'PUT' && entry.url === branchMainUrl),
+    'main branch protection put call expected'
+  );
+  assert.ok(
+    requests.some((entry) => entry.method === 'PUT' && entry.url === branchReleaseUrl),
+    'release branch protection put call expected'
+  );
+
+  const developApplied = branchDevelopProtection.required_status_checks.checks.map((check) => check.context).sort();
+  assert.deepEqual(
+    developApplied,
+    expectedDevelopChecks.slice().sort(),
+    'develop branch contexts should match expectations'
+  );
+
+  const mainApplied = branchMainProtection.required_status_checks.checks.map((check) => check.context).sort();
+  assert.deepEqual(
+    mainApplied,
+    expectedMainChecks.slice().sort(),
+    'main branch contexts should match expectations'
+  );
+
+  const releaseApplied = branchReleaseProtection.required_status_checks.checks.map((check) => check.context).sort();
+  assert.deepEqual(
+    releaseApplied,
+    expectedReleaseChecks.slice().sort(),
+    'release branch contexts should match expectations'
   );
   assert.deepEqual(errorMessages, []);
   assert.ok(
     logMessages.includes('Merge policy apply completed successfully.'),
     'apply success message expected'
   );
+});
+
+test('priority:policy skips when repository settings require admin access', async () => {
+  const repoUrl = 'https://api.github.com/repos/test-org/test-repo';
+  const rulesetDevelopUrl = `${repoUrl}/rulesets/8811898`;
+  const repoState = {
+    permissions: {
+      admin: false
+    }
+  };
+  const rulesetDevelop = {
+    id: 8811898,
+    name: 'develop',
+    target: 'branch',
+    enforcement: 'active',
+    conditions: {
+      ref_name: {
+        include: ['refs/heads/develop'],
+        exclude: []
+      }
+    },
+    bypass_actors: [],
+    rules: [
+      {
+        type: 'pull_request',
+        parameters: {
+          allowed_merge_methods: ['merge']
+        }
+      }
+    ]
+  };
+  const rulesetMain = {
+    id: 8614140,
+    name: 'main',
+    target: 'branch',
+    enforcement: 'active',
+    conditions: {
+      ref_name: {
+        include: ['refs/heads/main'],
+        exclude: []
+      }
+    },
+    bypass_actors: [],
+    rules: []
+  };
+  const rulesetRelease = {
+    id: 8614172,
+    name: 'release',
+    target: 'branch',
+    enforcement: 'active',
+    conditions: {
+      ref_name: {
+        include: ['refs/heads/release/*'],
+        exclude: []
+      }
+    },
+    bypass_actors: [],
+    rules: []
+  };
+
+  const rulesetMainUrl = `${repoUrl}/rulesets/8614140`;
+  const rulesetReleaseUrl = `${repoUrl}/rulesets/8614172`;
+
+  const fetchMock = async (url, options = {}) => {
+    const method = options.method ?? 'GET';
+    if (method === 'GET' && url === repoUrl) {
+      return createResponse(repoState);
+    }
+    if (method === 'GET' && url === rulesetDevelopUrl) {
+      return createResponse(rulesetDevelop);
+    }
+    if (method === 'GET' && url === rulesetMainUrl) {
+      return createResponse(rulesetMain);
+    }
+    if (method === 'GET' && url === rulesetReleaseUrl) {
+      return createResponse(rulesetRelease);
+    }
+
+    throw new Error(`Unexpected request ${method} ${url}`);
+  };
+
+  const logMessages = [];
+  const errorMessages = [];
+  const code = await run({
+    argv: ['node', 'check-policy.mjs'],
+    env: {
+      ...process.env,
+      GITHUB_REPOSITORY: 'test-org/test-repo'
+    },
+    fetchFn: fetchMock,
+    execSyncFn: () => {
+      throw new Error('execSync should not be called when GITHUB_REPOSITORY is set');
+    },
+    log: (msg) => logMessages.push(msg),
+    error: (msg) => errorMessages.push(msg)
+  });
+
+  assert.equal(code, 0, 'run should exit cleanly with skip');
+  assert.ok(
+    logMessages.some((msg) => msg.includes('skipping policy check')),
+    'skip message expected when admin permissions unavailable'
+  );
+  assert.deepEqual(errorMessages, []);
 });

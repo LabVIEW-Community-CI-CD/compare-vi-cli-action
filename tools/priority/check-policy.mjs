@@ -39,6 +39,23 @@ async function loadManifest() {
   return JSON.parse(raw);
 }
 
+async function detectForkRun(env = process.env) {
+  if (env.GITHUB_EVENT_NAME !== 'pull_request') {
+    return false;
+  }
+  const eventPath = env.GITHUB_EVENT_PATH;
+  if (!eventPath) {
+    return false;
+  }
+  try {
+    const raw = await readFile(eventPath, 'utf8');
+    const data = JSON.parse(raw);
+    return Boolean(data?.pull_request?.head?.repo?.fork);
+  } catch {
+    return false;
+  }
+}
+
 function parseRemoteUrl(url) {
   if (!url) return null;
   const sshMatch = url.match(/:(?<repoPath>[^/]+\/[^/]+)(?:\.git)?$/);
@@ -542,7 +559,7 @@ async function applyBranchProtection(repoUrl, token, branch, expected, actual, f
 async function applyRuleset(repoUrl, token, id, expectations, actual, fetchFn, logFn = console.log) {
   const rulesetUrl = `${repoUrl}/rulesets/${id}`;
   const payload = buildUpdatedRuleset(expectations, actual);
-  await requestJson(rulesetUrl, token, { method: 'PATCH', body: payload, fetchFn });
+  await requestJson(rulesetUrl, token, { method: 'PUT', body: payload, fetchFn });
   logFn(`[policy] ruleset ${id}: applied configuration.`);
 }
 
@@ -627,6 +644,7 @@ export async function run({
   const dbg = options.debug ? (...args) => log('[policy][debug]', ...args) : () => {};
 
   const manifest = await loadManifest();
+  const forkRun = await detectForkRun(env);
   const tokenResult = await resolveToken(env);
   const token = tokenResult?.token;
   if (!token) {
@@ -669,6 +687,18 @@ export async function run({
     ...initialDiffs.branchDiffs,
     ...initialDiffs.rulesetDiffs
   ];
+
+  const missingRepoFields = initialDiffs.repoDiffs.filter((diff) => diff.includes('actual undefined'));
+  const repoFieldsAllMissing =
+    initialDiffs.repoDiffs.length > 0 && missingRepoFields.length === initialDiffs.repoDiffs.length;
+  const hasAdminPermission = initialState.repoData?.permissions?.admin === true;
+
+  if (!options.apply && repoFieldsAllMissing && (!hasAdminPermission || forkRun)) {
+    log(
+      '[policy] Repository settings unavailable with current token; skipping policy check (admin permissions required). Upstream status "Policy Guard (Upstream) / policy-guard" will enforce branch protection.'
+    );
+    return 0;
+  }
 
   if (options.apply) {
     const branchStatesNeedingUpdates = initialState.branchStates.filter((entry, index) => {
@@ -736,7 +766,6 @@ export async function run({
   }
 
   if (allDiffs.length > 0) {
-    const missingRepoFields = initialDiffs.repoDiffs.filter((diff) => diff.includes('actual undefined'));
     if (missingRepoFields.length > 0 && !options.debug) {
       error(
         '[policy] Repository settings were returned as undefined. Ensure the provided token has admin access to the repository or rerun with --debug for more details.'
