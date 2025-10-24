@@ -88,6 +88,92 @@ function Invoke-SemVerCheck {
   }
 }
 
+function Invoke-GitCommand {
+  param(
+    [Parameter(Mandatory=$true)][string[]]$Arguments,
+    [switch]$AllowFailure
+  )
+
+  $output = & git @Arguments 2>&1
+  $exitCode = $LASTEXITCODE
+  if ($exitCode -ne 0 -and -not $AllowFailure) {
+    throw "git $($Arguments -join ' ') failed with exit code $exitCode`n$output"
+  }
+  return [pscustomobject]@{ ExitCode = $exitCode; Output = $output }
+}
+
+function Get-GitCurrentBranch {
+  $result = Invoke-GitCommand -Arguments @('rev-parse','--abbrev-ref','HEAD') -AllowFailure
+  if ($result.ExitCode -ne 0) { return $null }
+  $branch = ($result.Output | Select-Object -First 1).Trim()
+  if (-not $branch) { return $null }
+  return $branch
+}
+
+function Get-GitStatusPorcelain {
+  $result = Invoke-GitCommand -Arguments @('status','--porcelain') -AllowFailure
+  if ($result.ExitCode -ne 0) { return @() }
+  return @($result.Output)
+}
+
+function Test-GitBranchExists {
+  param([Parameter(Mandatory=$true)][string]$Name)
+  Invoke-GitCommand -Arguments @('show-ref','--verify','--quiet',"refs/heads/$Name") -AllowFailure
+  return ($LASTEXITCODE -eq 0)
+}
+
+function Resolve-RemoteDevelopRef {
+  foreach ($remote in @('upstream','origin')) {
+    $check = Invoke-GitCommand -Arguments @('ls-remote','--heads',$remote,'develop') -AllowFailure
+    if ($check.ExitCode -eq 0 -and $check.Output) {
+      return @{ Remote = $remote; Ref = "$remote/develop" }
+    }
+  }
+  return $null
+}
+
+function Ensure-DevelopBranch {
+  $current = Get-GitCurrentBranch
+  if (-not $current) {
+    Write-Warning '[bootstrap] Unable to determine current git branch; skipping develop checkout.'
+    return
+  }
+
+  if ($current -eq 'develop') { return }
+
+  if ($current -match '^(issue/|feature/|release/|hotfix/|bugfix/)') {
+    Write-Host ("[bootstrap] Current branch '{0}' appears to be a work branch; leaving as-is." -f $current)
+    return
+  }
+
+  if ($current -notin @('main','master','HEAD')) {
+    Write-Host ("[bootstrap] Current branch '{0}' retained." -f $current)
+    return
+  }
+
+  $dirty = Get-GitStatusPorcelain
+  if ($dirty.Count -gt 0) {
+    Write-Warning '[bootstrap] Working tree has local changes; skipping automatic checkout of develop.'
+    return
+  }
+
+  $hasDevelop = Test-GitBranchExists -Name 'develop'
+  if (-not $hasDevelop) {
+    $remoteRef = Resolve-RemoteDevelopRef
+    if (-not $remoteRef) {
+      Write-Warning '[bootstrap] develop branch not found on upstream/origin; skipping automatic checkout.'
+      return
+    }
+    Write-Host ("[bootstrap] Creating local develop from {0}." -f $remoteRef.Ref)
+    Invoke-GitCommand -Arguments @('fetch',$remoteRef.Remote,'develop') | Out-Null
+    Invoke-GitCommand -Arguments @('checkout','-B','develop',$remoteRef.Ref) | Out-Null
+    return
+  }
+
+  Write-Host '[bootstrap] Checking out develop.'
+  Invoke-GitCommand -Arguments @('checkout','develop') | Out-Null
+}
+
 function Write-ReleaseSummary {
   param([pscustomobject]$SemVerResult)
 
@@ -126,6 +212,7 @@ function Write-ReleaseSummary {
 }
 
 Write-Host '[bootstrap] Detecting hook plane…'
+Ensure-DevelopBranch
 Invoke-Npm -Script 'hooks:plane' -AllowFailure
 
 Write-Host '[bootstrap] Running hook preflight…'

@@ -9,11 +9,12 @@ brackets.
   values).
 - Paste this as a new PR comment:
 
-```
+```text
 /run orchestrated strategy=<single|matrix> include_integration=<true|false> sample_id=<same-or-new-id>
 ```
 
 Notes:
+
 - Prefer `strategy=single` under typical load; use `matrix` when runners are idle.
 - Re-using the same `sample_id` links runs for easier comparison and can help idempotency.
 - If you omit `sample_id`, the dispatcher will generate one automatically.
@@ -21,11 +22,14 @@ Notes:
 ## Quick Variants
 
 - Single (deterministic chain):
-```
+
+```text
 /run orchestrated strategy=single include_integration=true sample_id=<id>
 ```
+
 - Matrix (parallel categories):
-```
+
+```text
 /run orchestrated strategy=matrix include_integration=true sample_id=<id>
 ```
 
