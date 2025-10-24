@@ -38,4 +38,5 @@ jobs:
       - name: Run policy guard
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: node tools/priority/check-policy.mjs

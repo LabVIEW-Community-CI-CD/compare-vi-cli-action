@@ -93,7 +93,11 @@ Describe 'Update-SessionIndexBranchProtection' -Tag 'Unit' {
 
   It 'warns when required contexts are missing' {
     $resultsDir = & $script:newSessionIndexFixture 'results-missing'
-    $produced = $script:developExpected | Where-Object { $_ -ne 'Validate / fixtures' }
+    $missingContext = ($script:developExpected | Where-Object { $_ -match 'fixtures' } | Select-Object -First 1)
+    if (-not $missingContext) {
+      $missingContext = $script:developExpected | Select-Object -First 1
+    }
+    $produced = $script:developExpected | Where-Object { $_ -ne $missingContext }
 
     & $script:updateScript `
       -ResultsDir $resultsDir `
@@ -107,12 +111,16 @@ Describe 'Update-SessionIndexBranchProtection' -Tag 'Unit' {
     ($bp.produced | Sort-Object) | Should -Be ($produced | Sort-Object)
     $bp.result.status | Should -Be 'warn'
     $bp.result.reason | Should -Be 'missing_required'
-    $bp.notes | Should -Contain 'Missing contexts: Validate / fixtures'
+    $bp.notes | Should -Contain ("Missing contexts: {0}" -f $missingContext)
   }
 
   It 'escalates to fail when Strict is set and contexts are missing' {
     $resultsDir = & $script:newSessionIndexFixture 'results-missing-strict'
-    $produced = $script:developExpected | Where-Object { $_ -ne 'Validate / lint' }
+    $missingContext = ($script:developExpected | Where-Object { $_ -match 'guard' } | Select-Object -First 1)
+    if (-not $missingContext) {
+      $missingContext = $script:developExpected | Select-Object -First 1
+    }
+    $produced = $script:developExpected | Where-Object { $_ -ne $missingContext }
 
     & $script:updateScript `
       -ResultsDir $resultsDir `
@@ -125,12 +133,13 @@ Describe 'Update-SessionIndexBranchProtection' -Tag 'Unit' {
     $bp = $idx.branchProtection
     $bp.result.status | Should -Be 'fail'
     $bp.result.reason | Should -Be 'missing_required'
-    $bp.notes | Should -Contain 'Missing contexts: Validate / lint'
+    $bp.notes | Should -Contain ("Missing contexts: {0}" -f $missingContext)
   }
 
   It 'records unexpected contexts when extras are produced' {
     $resultsDir = & $script:newSessionIndexFixture 'results-extra'
-    $extraContexts = @('Validate / fixtures', 'Validate / lint', 'Validate / session-index', 'Validate / docs')
+    $extraContext = 'unexpected-check'
+    $extraContexts = @($script:developExpected + $extraContext)
 
     & $script:updateScript `
       -ResultsDir $resultsDir `
@@ -142,13 +151,13 @@ Describe 'Update-SessionIndexBranchProtection' -Tag 'Unit' {
     $bp = $idx.branchProtection
     $bp.result.status | Should -Be 'warn'
     $bp.result.reason | Should -Be 'extra_required'
-    $bp.notes | Should -Contain 'Unexpected contexts: Validate / docs'
+    $bp.notes | Should -Contain ("Unexpected contexts: {0}" -f $extraContext)
   }
 
   It 'captures live branch protection data when provided' {
     $resultsDir = & $script:newSessionIndexFixture 'results-actual-contexts'
     $produced = $script:developExpected
-    $actual = @('Validate / fixtures', 'Validate / lint', 'Validate / session-index')
+    $actual = @($script:developExpected)
 
     & $script:updateScript `
       -ResultsDir $resultsDir `

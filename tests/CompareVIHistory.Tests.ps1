@@ -3,6 +3,7 @@ Describe 'Compare-VIHistory.ps1' {
   $scriptPath = Join-Path $repoRoot 'tools' 'Compare-VIHistory.ps1'
   Test-Path -LiteralPath $scriptPath -PathType Leaf | Should -BeTrue
 
+
   Context 'artifact handling' {
     It 'falls back to cli-report.html when compare report is renamed' {
       $scriptPath = Join-Path (Get-Location).Path 'tools' 'Compare-VIHistory.ps1'
@@ -83,25 +84,30 @@ $cap | ConvertTo-Json -Depth 6 | Out-File -LiteralPath $capPath -Encoding utf8
 
       $resultsDir = Join-Path $TestDrive 'history-fallback'
       $env:STUB_COMPARE_RENAME_REPORT = '1'
+      $startRef = git rev-list HEAD --max-count=1 --first-parent -- 'VI1.vi' 2>$null | Where-Object { $_ } | Select-Object -First 1
+      if ($LASTEXITCODE -ne 0 -or -not $startRef) {
+        Set-ItResult -Skipped -Because "No commit for VI1.vi found in repo history."
+        return
+      }
+      $startRef = $startRef.Trim()
       try {
         $invokeHistory = {
-          param([string[]]$ExtraArgs)
+          param([string[]]$ExtraArgs, [string]$StartRef)
           $baseArgs = @(
             '-NoLogo', '-NoProfile',
             '-File', $scriptPath,
-            '-ViName', 'VI1.vi',
-            '-Branch', 'HEAD',
+            '-TargetPath', 'VI1.vi',
+            '-StartRef', $StartRef,
             '-MaxPairs', 2,
             '-ResultsDir', $resultsDir,
-            '-InvokeScriptPath', $stubPath,
-            '-Quiet'
+            '-InvokeScriptPath', $stubPath
           )
           if ($ExtraArgs) { $baseArgs += $ExtraArgs }
           $proc = Start-Process -FilePath 'pwsh' -ArgumentList $baseArgs -Wait -PassThru -WindowStyle Hidden
           return $proc.ExitCode
         }
 
-        $exit = & $invokeHistory @()
+        $exit = & $invokeHistory @() $startRef
         $exit | Should -Be 0
 
         $summaryPath = Join-Path $resultsDir 'history-summary.json'
@@ -212,25 +218,30 @@ $cap | ConvertTo-Json -Depth 6 | Out-File -LiteralPath $capPath -Encoding utf8
       $resultsDir = Join-Path $TestDrive 'history-diff'
       $env:STUB_COMPARE_EXITCODE = '1'
       $env:STUB_COMPARE_DIFF = '1'
+      $startRef = git rev-list HEAD --max-count=1 --first-parent -- 'VI1.vi' 2>$null | Where-Object { $_ } | Select-Object -First 1
+      if ($LASTEXITCODE -ne 0 -or -not $startRef) {
+        Set-ItResult -Skipped -Because "No commit for VI1.vi found in repo history."
+        return
+      }
+      $startRef = $startRef.Trim()
       try {
         $invokeHistory = {
-          param([string[]]$ExtraArgs)
+          param([string[]]$ExtraArgs, [string]$StartRefValue)
           $baseArgs = @(
             '-NoLogo', '-NoProfile',
             '-File', $scriptPath,
-            '-ViName', 'VI1.vi',
-            '-Branch', 'HEAD',
+            '-TargetPath', 'VI1.vi',
+            '-StartRef', $StartRefValue,
             '-MaxPairs', 1,
             '-ResultsDir', $resultsDir,
-            '-InvokeScriptPath', $stubPath,
-            '-Quiet'
+            '-InvokeScriptPath', $stubPath
           )
           if ($ExtraArgs) { $baseArgs += $ExtraArgs }
           $proc = Start-Process -FilePath 'pwsh' -ArgumentList $baseArgs -Wait -PassThru -WindowStyle Hidden
           return $proc.ExitCode
         }
 
-        $exit = & $invokeHistory @()
+        $exit = & $invokeHistory @() $startRef
         $exit | Should -Be 0
 
         $summaryPath = Join-Path $resultsDir 'history-summary.json'
@@ -258,17 +269,17 @@ $cap | ConvertTo-Json -Depth 6 | Out-File -LiteralPath $capPath -Encoding utf8
           return
         }
 
-        $null = pwsh @(
+        $failArgs = @(
           '-NoLogo','-NoProfile',
           '-File', $scriptPath,
-          '-ViName','VI1.vi',
-          '-Branch','HEAD',
+          '-TargetPath','VI1.vi',
+          '-StartRef',$startRef,
           '-MaxPairs','1',
           '-ResultsDir', $resultsDir,
           '-InvokeScriptPath', $stubPath,
-          '-Quiet',
           '-FailOnDiff'
         )
+        $null = pwsh $failArgs
         $LASTEXITCODE | Should -Be 1
       }
       finally {

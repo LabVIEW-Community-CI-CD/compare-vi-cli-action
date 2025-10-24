@@ -1,20 +1,23 @@
 {
-  "number": 303,
-  "title": "CI: ensure policy guard has admin token",
-  "url": "https://github.com/LabVIEW-Community-CI-CD/compare-vi-cli-action/issues/303",
+  "number": 302,
+  "title": "Branch protection guard: fork skip + upstream enforcement",
+  "url": "https://github.com/LabVIEW-Community-CI-CD/compare-vi-cli-action/issues/302",
   "state": "OPEN",
   "labels": [
     "ci",
+    "enhancement",
     "github_actions",
     "standing-priority"
   ],
-  "assignees": [],
+  "assignees": [
+    "svelderrainruiz"
+  ],
   "milestone": null,
   "commentCount": 0,
-  "lastSeenUpdatedAt": "2025-10-23T21:31:28Z",
-  "issueDigest": "bdef7600ab91ff00739cc85da5d21374cf2b7f7c182d2e9b5469307248cf1836",
-  "bodyDigest": "6646f4e6fd7f47999952c27b0d0ee510fcb4ace9a05ea5a46f21bb1786aa81e9",
-  "cachedAtUtc": "2025-10-23T21:43:44.863Z",
+  "lastSeenUpdatedAt": "2025-10-24T01:23:19Z",
+  "issueDigest": "4f87fb7de3e95d10922aecd5f5a88e36522e00719b77d57570d46d3e4354ed61",
+  "bodyDigest": "86a4ce6e2ff72d17c40fea9537964f64fe8ce82edd0a4c0a7d6c25c4c76dfa7f",
+  "cachedAtUtc": "2025-10-24T06:37:16.215Z",
   "lastFetchSource": "live",
   "lastFetchError": null
 }
