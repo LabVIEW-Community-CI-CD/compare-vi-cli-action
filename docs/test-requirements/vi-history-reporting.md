@@ -41,8 +41,10 @@ real LVCompare artifacts are captured in CI. Current tests verify flag wiring vi
    manifest path, results directory, processed count, diff count, status).
 1. `steps.history.outputs['results-dir']` shall equal the root history directory.
 1. Step summary shall report target, requested/resolved start refs, processed pairs, stop reason, last diff, and active
-   mode for each iteration.
-1. `vi-compare-results` artifact shall include every manifest plus all `*-summary.json` and `*-exec.json` files.
+   mode for each iteration, and render a per-mode Markdown table covering processed/diff/missing counts (including
+   last diff details).
+1. `vi-compare-manifests` artifact shall include the aggregate history suite manifest and each mode's `manifest.json`
+   and `*-summary.json` files; execution traces (`*-exec.json`) remain local to keep the upload lean.
 1. Single-mode (`default`) runs shall produce the same layout as the legacy workflow.
 1. Workflow shall surface helper failures per mode and mark the job failed while preserving prior results.
 
@@ -52,4 +54,3 @@ real LVCompare artifacts are captured in CI. Current tests verify flag wiring vi
 1. Documentation shall explain helper usage with `-Mode` and how manifest fields map to modes and flag bundles.
 1. Documentation shall note that artifacts are partitioned per mode and that report-format tests will be enriched with
    real LVCompare outputs.
-

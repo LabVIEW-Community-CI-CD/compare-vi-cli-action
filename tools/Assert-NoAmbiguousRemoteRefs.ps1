@@ -1,117 +1,104 @@
-#Requires -Version 7.0
-<#
-.SYNOPSIS
-  Fails when a remote-tracking ref name is ambiguous.
-.DESCRIPTION
-  Scans git references for duplicate display names (e.g. "origin/develop") and
-  throws when a remote-tracking branch shares its display name with any other
-  ref (typically a tag or local branch). This prevents Git from guessing which
-  ref a caller intended when running commands such as `git merge origin/develop`.
-.PARAMETER Remote
-  Remote name to guard (defaults to "origin"). Only display names that start
-  with "<Remote>/" are considered for ambiguity checking.
-.PARAMETER GitPath
-  Override the git executable path (defaults to "git").
-#>
 param(
-  [string]$Remote = 'origin',
-  [string]$GitPath = 'git'
+  [string]$Remote = 'origin'
 )
 
-$ErrorActionPreference = 'Stop'
+<#
+.SYNOPSIS
+Ensures the specified remote does not publish multiple refs (branch/tag)
+that collapse to the same short name.
+
+.DESCRIPTION
+`git checkout` / `git fetch` operations become ambiguous when a remote
+contains both a branch and a tag (or multiple tag ref forms) with the
+same short name.  The policy guard relies on fast, unambiguous fetches,
+so we fail early if the remote advertises such duplicates.
+
+.PARAMETER Remote
+Remote name to inspect. Defaults to `origin`.
+#>
+
 Set-StrictMode -Version Latest
+$ErrorActionPreference = 'Stop'
 
-function Invoke-Git([string[]]$Arguments) {
-  $psi = New-Object System.Diagnostics.ProcessStartInfo
-  $psi.FileName = $GitPath
-  $psi.RedirectStandardOutput = $true
-  $psi.RedirectStandardError = $true
-  $psi.UseShellExecute = $false
-  foreach ($arg in $Arguments) {
-    $null = $psi.ArgumentList.Add($arg)
-  }
-
-  $process = New-Object System.Diagnostics.Process
-  $process.StartInfo = $psi
-  $null = $process.Start()
-  $stdout = $process.StandardOutput.ReadToEnd()
-  $stderr = $process.StandardError.ReadToEnd()
-  $process.WaitForExit()
-
-  if ($process.ExitCode -ne 0) {
-    throw "git $($Arguments -join ' ') failed (exit=$($process.ExitCode)): $stderr"
-  }
-
-  return $stdout
+if (-not (Get-Command git -ErrorAction SilentlyContinue)) {
+  throw 'git must be available on PATH.'
 }
 
-function Get-DisplayName([string]$RefName) {
-  if ($RefName -match '^refs/(remotes|heads|tags)/(.+)$') {
-    return $Matches[2]
-  }
-  return $null
+$remoteTrim = $Remote.Trim()
+if (-not $remoteTrim) {
+  throw 'Remote name cannot be empty.'
 }
 
-$showRefOutput = Invoke-Git @('show-ref')
-$entries = @{}
-
-foreach ($line in $showRefOutput -split "`n") {
-  $trimmed = $line.Trim()
-  if (-not $trimmed) {
-    continue
-  }
-
-  $parts = $trimmed -split '\s+'
-  if ($parts.Count -lt 2) {
-    continue
-  }
-
-  $fullRef = $parts[1]
-  $display = Get-DisplayName $fullRef
-  if (-not $display) {
-    continue
-  }
-
-  if (-not $entries.ContainsKey($display)) {
-    $entries[$display] = [System.Collections.Generic.List[string]]::new()
-  }
-  $entries[$display].Add($fullRef)
+$lsRemoteArgs = @('ls-remote', '--heads', '--tags', $remoteTrim)
+$rawRefs = git @lsRemoteArgs
+if ($LASTEXITCODE -ne 0) {
+  throw "git ls-remote failed (exit $LASTEXITCODE)."
 }
 
-$ambiguous = @()
-foreach ($pair in $entries.GetEnumerator()) {
-  $displayName = $pair.Key
-  if (-not $displayName.StartsWith("$Remote/")) {
+if (-not $rawRefs) {
+  Write-Verbose ("Remote '{0}' advertises no heads/tags." -f $remoteTrim)
+  return
+}
+
+$entries = @()
+foreach ($line in $rawRefs -split "`n") {
+  $parts = $line.Trim() -split "`t"
+  if ($parts.Count -lt 2) { continue }
+  $sha = $parts[0].Trim()
+  $ref = $parts[1].Trim()
+  if (-not $ref) { continue }
+
+  $kind = $null
+  $short = $null
+  if ($ref -like 'refs/heads/*') {
+    $kind = 'head'
+    $short = $ref.Substring('refs/heads/'.Length)
+  } elseif ($ref -like 'refs/tags/*') {
+    $kind = 'tag'
+    $short = $ref.Substring('refs/tags/'.Length)
+    # Strip dereferenced suffix produced for annotated tags
+    if ($short.EndsWith('^{}')) {
+      $short = $short.Substring(0, $short.Length - 3)
+    }
+  } else {
     continue
   }
 
-  $refs = $pair.Value
-  if ($refs.Count -le 1) {
-    continue
-  }
-
-  $hasRemote = $refs | Where-Object { $_ -like "refs/remotes/$Remote/*" }
-  if ($hasRemote) {
-    $ambiguous += [PSCustomObject]@{
-      DisplayName = $displayName
-      Refs        = $refs
+  if (-not [string]::IsNullOrWhiteSpace($short)) {
+    $entries += [pscustomobject]@{
+      Ref   = $ref
+      Kind  = $kind
+      Short = $short
+      Sha   = $sha
     }
   }
 }
 
-if ($ambiguous.Count -gt 0) {
-  $messages = foreach ($item in $ambiguous) {
-    "- $($item.DisplayName):`n  " + ($item.Refs -join "`n  ")
-  }
-
-  $guidance = @(
-    'Ambiguous git references detected.',
-    'Clean up duplicate refs (e.g. tags or local branches shadowing remote-tracking branches) before proceeding.',
-    'Example cleanup commands:',
-    '  git tag -d <duplicate>',
-    '  git branch -D <duplicate>',
-    ''
-  )
-
-  throw ($guidance + $messages) -join "`n"
+if ($entries.Count -eq 0) {
+  Write-Verbose ("Remote '{0}' advertises no branch/tag refs." -f $remoteTrim)
+  return
 }
+
+$ambiguous = @(
+  $entries |
+    Group-Object Short |
+    Where-Object {
+      ($_.Group | Select-Object -ExpandProperty Kind -Unique).Count -gt 1
+    }
+)
+
+if ($ambiguous.Count -gt 0) {
+  $details = @()
+  foreach ($group in $ambiguous) {
+    $items = $group.Group | ForEach-Object { "{0} ({1})" -f $_.Ref, $_.Kind }
+    $details += ("- {0}: {1}" -f $group.Name, ($items -join ', '))
+  }
+  $message = @(
+    "Ambiguous remote refs detected on '$remoteTrim'.",
+    "Branches and tags must not share the same short name:",
+    ""
+  ) + $details
+  throw ($message -join [Environment]::NewLine)
+}
+
+Write-Verbose ("Remote '{0}' passed ambiguity checks." -f $remoteTrim)

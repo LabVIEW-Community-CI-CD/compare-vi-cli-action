@@ -49,6 +49,11 @@ on:
         description: 'Optional sample id for concurrency grouping'
         required: false
         type: string
+      notify_issue:
+        description: 'Optional GitHub issue number to receive a summary comment'
+        required: false
+        default: ''
+        type: string
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.event.inputs.sample_id || github.ref }}
@@ -306,6 +311,32 @@ jobs:
           name: vi-compare-diff-artifacts
           path: ${{ steps.diffscan.outputs.artifactDirs }}
           if-no-files-found: warn
+
+      - name: Publish stakeholder summary comment
+        if: ${{ success() && inputs.notify_issue != '' && github.event.repository.fork == false }}
+        shell: pwsh
+        env:
+          MANIFEST_PATH: ${{ steps.history.outputs['manifest-path'] }}
+          MODE_SUMMARY: ${{ steps.history.outputs['mode-manifests-json'] }}
+          ISSUE_NUMBER: ${{ inputs.notify_issue }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $script = Join-Path $env:GITHUB_WORKSPACE 'tools/Publish-VICompareSummary.ps1'
+          if (-not (Test-Path -LiteralPath $script -PathType Leaf)) {
+            throw ("Publish-VICompareSummary.ps1 not found at {0}" -f $script)
+          }
+          $params = @{
+            ManifestPath   = $env:MANIFEST_PATH
+            ModeSummaryJson= $env:MODE_SUMMARY
+            Issue          = $env:ISSUE_NUMBER
+            Repository     = $env:GITHUB_REPOSITORY
+          }
+          if ($env:GH_TOKEN) {
+            $params.GitHubToken = $env:GH_TOKEN
+          }
+          & $script @params
 
       - name: Runner Unblock Guard
         if: always()

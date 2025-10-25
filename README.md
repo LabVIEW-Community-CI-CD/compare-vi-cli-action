@@ -23,8 +23,9 @@ tuning.
 2. Click **Run workflow**.
 3. Supply `vi_path` (for example `Fixtures/Loop.vi`) and, optionally,
    `compare_ref` if you want something other than the workflow branch tip.
-4. Run the workflow. Results appear under the job summary with links to
-   the generated manifests and any LVCompare diff artifacts.
+4. Run the workflow. The job summary includes a Markdown table of processed
+   pairs, diff counts, and missing entries per mode; any differences raise a
+   warning that points at the uploaded diff artifacts.
 
 ### CLI (gh)
 
@@ -37,8 +38,11 @@ gh workflow run vi-compare-refs.yml `
 Use `gh run watch <run-id>` or the rendered summary to follow progress. The
 workflow uploads two artifacts:
 
-- `vi-compare-manifests` – aggregate suite manifest and per-mode summaries
-- `vi-compare-diff-artifacts` – only present when LVCompare detects differences
+- `vi-compare-manifests` - aggregate suite manifest and per-mode summaries
+- `vi-compare-diff-artifacts` - only present when LVCompare detects differences
+
+Provide the optional `notify_issue` input when dispatching the workflow to post
+the same summary table to a GitHub issue for stakeholders.
 
 ## Optional inputs
 
@@ -51,6 +55,7 @@ workflow uploads two artifacts:
 | `compare_fail_fast`      | `false`   | Stop after the first diff                                                   |
 | `compare_fail_on_diff`   | `false`   | Fail the workflow when any diff is detected                                 |
 | `sample_id`              | _(empty)_ | Optional concurrency key (advanced use)                                     |
+| `notify_issue`           | _(empty)_ | Issue number to receive the summary table as a comment                      |
 
 These inputs map directly onto the parameters in `tools/Compare-VIHistory.ps1`,
 so advanced behaviour remains available without cluttering the default UX.

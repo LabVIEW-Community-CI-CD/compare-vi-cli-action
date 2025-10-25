@@ -1,7 +1,9 @@
 param(
   [Parameter(Mandatory = $true)]
+  [Alias('ViName')]
   [string]$TargetPath,
 
+  [Alias('Branch')]
   [string]$StartRef = 'HEAD',
   [string]$EndRef,
   [int]$MaxPairs,
@@ -18,6 +20,7 @@ param(
   [string[]]$Mode = @('default'),
   [switch]$FailFast,
   [switch]$FailOnDiff,
+  [switch]$Quiet,
 
   [string]$ResultsDir = 'tests/results/ref-compare/history',
   [string]$OutPrefix,
@@ -419,7 +422,8 @@ $requestedStartRef = $startRef
 Write-Verbose ("StartRef before resolve: {0}" -f $startRef)
 $resolvedStartRef = Resolve-CommitWithChange -StartRef $startRef -Path $targetRel -HeadRef 'HEAD'
 if (-not $resolvedStartRef) {
-  throw ("Unable to locate a commit near {0} that modifies '{1}'." -f $startRef, $targetRel)
+  Write-Warning ("Unable to locate a commit near {0} that modifies '{1}'. Using the provided start ref." -f $startRef, $targetRel)
+  $resolvedStartRef = $startRef
 }
 if ($resolvedStartRef -ne $startRef) {
   Write-Verbose ("Adjusted start ref from {0} to {1} to locate a change in {2}" -f (Get-ShortSha $startRef 12), (Get-ShortSha $resolvedStartRef 12), $targetRel)
@@ -461,6 +465,14 @@ $outPrefixToken = if ($OutPrefix) { $OutPrefix } else { $targetLeaf -replace '[^
 if ([string]::IsNullOrWhiteSpace($outPrefixToken)) { $outPrefixToken = 'vi-history' }
 
 $modeNames = @($modeSpecs | ForEach-Object { $_.Name })
+$stepSummaryDest = if (-not [string]::IsNullOrWhiteSpace($StepSummaryPath)) {
+  $StepSummaryPath
+} elseif (-not [string]::IsNullOrWhiteSpace($env:GITHUB_STEP_SUMMARY)) {
+  $env:GITHUB_STEP_SUMMARY
+} else {
+  $null
+}
+$hasStepSummary = -not [string]::IsNullOrWhiteSpace($stepSummaryDest)
 $summaryLines = @('### VI Compare History','')
 $summaryLines += "- Target: $targetRel"
 if ($requestedStartRef -ne $startRef) {
@@ -500,6 +512,8 @@ $totalProcessed = 0
 $totalDiffs = 0
 $totalErrors = 0
 $totalMissing = 0
+$modeSummaryRows = New-Object System.Collections.Generic.List[object]
+$diffHighlights = New-Object System.Collections.Generic.List[string]
 
 foreach ($modeSpec in $modeSpecs) {
   $modeName = $modeSpec.Name
@@ -651,10 +665,14 @@ foreach ($modeSpec in $modeSpecs) {
     }
     $pwshResult = Invoke-Pwsh -Arguments $compareArgs
     if ($pwshResult.ExitCode -ne 0) {
-      $msg = "Compare-RefsToTemp.ps1 exited with code {0}" -f $pwshResult.ExitCode
-      if ($pwshResult.StdErr) { $msg = "$msg`n$($pwshResult.StdErr.Trim())" }
-      if ($pwshResult.StdOut) { $msg = "$msg`n$($pwshResult.StdOut.Trim())" }
-      throw $msg
+      if ($pwshResult.ExitCode -eq 1) {
+        Write-Verbose 'Compare-RefsToTemp reported exit code 1 (diff detected); continuing.'
+      } else {
+        $msg = "Compare-RefsToTemp.ps1 exited with code {0}" -f $pwshResult.ExitCode
+        if ($pwshResult.StdErr) { $msg = "$msg`n$($pwshResult.StdErr.Trim())" }
+        if ($pwshResult.StdOut) { $msg = "$msg`n$($pwshResult.StdOut.Trim())" }
+        throw $msg
+      }
     }
 
       $summaryPath = Join-Path $modeResultsResolved ("{0}-summary.json" -f $comparisonRecord.outName)
@@ -756,20 +774,46 @@ foreach ($modeSpec in $modeSpecs) {
   $modeManifest | ConvertTo-Json -Depth 8 | Out-File -FilePath $modeManifestPath -Encoding utf8
   $modeManifestResolved = (Resolve-Path -LiteralPath $modeManifestPath).Path
 
-  $summaryLines += ''
-  $summaryLines += "#### Mode: $modeName"
-  $summaryLines += "- Results dir: $modeResultsResolved"
-  $flagsDisplay = if ($modeFlags -and $modeFlags.Count -gt 0) { $modeFlags -join ' ' } else { '(none)' }
-  $summaryLines += "- Flags: $flagsDisplay"
-  $summaryLines += "- Pairs processed: $processed"
-  $summaryLines += "- Diffs detected: $diffCount"
-  $summaryLines += "- Missing pairs: $missingCount"
-  $summaryLines += "- Stop reason: $stopReason"
-  if ($lastDiffIndex) {
-    $summaryLines += "  - Last diff index: $lastDiffIndex"
-    if ($lastDiffCommit) {
-      $summaryLines += "  - Last diff commit: $(Get-ShortSha -Value $lastDiffCommit -Length 12)"
+  if (-not $hasStepSummary) {
+    $summaryLines += ''
+    $summaryLines += "#### Mode: $modeName"
+    $summaryLines += "- Results dir: $modeResultsResolved"
+    $flagsDisplay = if ($modeFlags -and $modeFlags.Count -gt 0) { $modeFlags -join ' ' } else { '(none)' }
+    $summaryLines += "- Flags: $flagsDisplay"
+    $summaryLines += "- Pairs processed: $processed"
+    $summaryLines += "- Diffs detected: $diffCount"
+    $summaryLines += "- Missing pairs: $missingCount"
+    $summaryLines += "- Stop reason: $stopReason"
+    if ($lastDiffIndex) {
+      $summaryLines += "  - Last diff index: $lastDiffIndex"
+      if ($lastDiffCommit) {
+        $summaryLines += "  - Last diff commit: $(Get-ShortSha -Value $lastDiffCommit -Length 12)"
+      }
     }
+  }
+
+  $modeSummaryRows.Add([pscustomobject]@{
+    Mode           = $modeName
+    Slug           = $modeSlug
+    Processed      = $processed
+    Diffs          = $diffCount
+    Missing        = $missingCount
+    LastDiffIndex  = $lastDiffIndex
+    LastDiffCommit = $lastDiffCommit
+    ManifestPath   = $modeManifestResolved
+  })
+
+  if ($diffCount -gt 0) {
+    $diffPlural = if ($diffCount -eq 1) { '' } else { 's' }
+    $highlight = "{0}: {1} diff{2}" -f $modeName, $diffCount, $diffPlural
+    if ($lastDiffIndex) {
+      $highlight += (" (last #{0}" -f $lastDiffIndex)
+      if ($lastDiffCommit) {
+        $highlight += (" @{0}" -f (Get-ShortSha -Value $lastDiffCommit -Length 12))
+      }
+      $highlight += ')'
+    }
+    $diffHighlights.Add($highlight)
   }
 
   $aggregate.modes += [pscustomobject]@{
@@ -787,6 +831,39 @@ foreach ($modeSpec in $modeSpecs) {
   $totalDiffs += $diffCount
   $totalErrors += $errorCount
   $totalMissing += $missingCount
+}
+
+$summaryLines += ''
+$summaryLines += "- Total processed pairs: $totalProcessed"
+$summaryLines += "- Total diffs: $totalDiffs"
+$summaryLines += "- Total missing pairs: $totalMissing"
+
+if ($hasStepSummary -and $modeSummaryRows.Count -gt 0) {
+  $summaryLines += ''
+  $summaryLines += '#### Mode Summary'
+  $summaryLines += ''
+  $summaryLines += '| Mode | Processed | Diffs | Missing | Last Diff | Manifest |'
+  $summaryLines += '| --- | ---: | ---: | ---: | --- | --- |'
+  foreach ($row in $modeSummaryRows) {
+    $lastDiffCell = '-'
+    if ($row.Diffs -gt 0) {
+      if ($row.LastDiffIndex) {
+        $lastDiffCell = "#$($row.LastDiffIndex)"
+        if ($row.LastDiffCommit) {
+          $lastDiffCell += " @$(Get-ShortSha -Value $row.LastDiffCommit -Length 12)"
+        }
+      } else {
+        $lastDiffCell = 'diff detected'
+      }
+    }
+    $manifestLeaf = if ($row.ManifestPath) { [System.IO.Path]::GetFileName($row.ManifestPath) } else { $null }
+    $manifestCell = if ($manifestLeaf) { "``$manifestLeaf``" } else { 'n/a' }
+    $summaryLines += ('| {0} | {1} | {2} | {3} | {4} | {5} |' -f $row.Mode, $row.Processed, $row.Diffs, $row.Missing, $lastDiffCell, $manifestCell)
+  }
+  if ($totalDiffs -gt 0) {
+    $summaryLines += ''
+    $summaryLines += '> Diff artifacts are available under the `vi-compare-diff-artifacts` upload.'
+  }
 }
 
 if ($aggregate.modes.Count -eq 0) {
@@ -819,12 +896,26 @@ $modeManifestSummary = $aggregate.modes | ForEach-Object {
     resultsDir= $_.resultsDir
     processed = $_.stats.processed
     diffs     = $_.stats.diffs
+    missing   = $_.stats.missing
+    lastDiffIndex = $_.stats.lastDiffIndex
+    lastDiffCommit = $_.stats.lastDiffCommit
+    stopReason = $_.stats.stopReason
     status    = $_.status
   }
 }
 Write-GitHubOutput -Key 'mode-manifests-json' -Value ((ConvertTo-Json $modeManifestSummary -Depth 4 -Compress)) -DestPath $GitHubOutputPath
 
 Write-Host ("VI compare history suite complete. Aggregate manifest: {0}" -f $aggregateManifestResolved)
+
+if ($hasStepSummary -and $totalDiffs -gt 0) {
+  $diffSummaryText = if ($diffHighlights.Count -gt 0) {
+    $diffHighlights -join '; '
+  } else {
+    $diffSuffix = if ($totalDiffs -eq 1) { '' } else { 's' }
+    "$totalDiffs diff$diffSuffix detected"
+  }
+  Write-Host ("::warning::LVCompare detected differences ({0}). Review the 'vi-compare-diff-artifacts' artifact for details." -f $diffSummaryText)
+}
 
 if ($FailOnDiff.IsPresent -and $totalDiffs -gt 0) {
   throw ("Differences detected across {0} comparison(s)" -f $totalDiffs)

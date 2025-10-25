@@ -32,6 +32,7 @@
   `none` (apply none), direct flag names (`noattr`, `nofp`, `nofppos`, `nobdcosm`), and `+flag` / `-flag` modifiers
   to add or remove flags relative to the current set.
 - The helper always prepends `-nobd`. Add extra switches via `compare_additional_flags` (space-delimited).
+- `notify_issue` (string, optional): GitHub issue number that should receive the run summary table as a comment. Ignored on forks.
 
 ### Quick-start scenarios
 
@@ -69,8 +70,8 @@ gh workflow run vi-compare-refs.yml `
 - When LVCompare reports differences, the helper preserves the `*-artifacts` directory (HTML report, screenshots, stdout)
   within the mode directory, and the workflow uploads them as `vi-compare-diff-artifacts`. Runs without differences discard those directories so the
   diff artifact upload is skipped.
-- The job summary includes a lightweight table with the total pairs processed, diff count, stop reason, and the most
-  recent diff (if any).
+- The job summary includes a Markdown table for each mode (processed pairs, diff count, missing count, and last diff details).
+- When `notify_issue` is set, the workflow posts the same table to the referenced issue so stakeholders can track results.
 
 ## Running the helper locally
 
