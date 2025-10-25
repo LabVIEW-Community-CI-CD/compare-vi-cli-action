@@ -119,6 +119,51 @@ if ($totalDiffs -gt 0) {
   $lines.Add("Diff artifacts are available under the `vi-compare-diff-artifacts` upload.")
 }
 
+$lines.Add("")
+$lines.Add("#### Attribute coverage")
+$attributeCoverageAdded = $false
+foreach ($mode in $modeSummaries) {
+  $modeName = $mode.mode
+  if (-not $modeName) { $modeName = $mode.name }
+  $attributeMap = @{}
+  if ($mode -and $mode.PSObject.Properties['comparisons']) {
+    foreach ($comparison in @($mode.comparisons)) {
+      if (-not $comparison) { continue }
+      $resultNode = $null
+      if ($comparison.PSObject.Properties['result']) { $resultNode = $comparison.result }
+      if (-not $resultNode) { continue }
+      $cliNode = $null
+      if ($resultNode.PSObject.Properties['cli']) { $cliNode = $resultNode.cli }
+      if (-not $cliNode) { continue }
+      $includedAttributes = $null
+      if ($cliNode.PSObject.Properties['includedAttributes']) { $includedAttributes = $cliNode.includedAttributes }
+      if (-not $includedAttributes) { continue }
+      foreach ($entry in @($includedAttributes)) {
+        if (-not $entry) { continue }
+        $attrName = $entry.name
+        if (-not $attrName) { continue }
+        $included = $entry.included
+        if (-not $attributeMap.ContainsKey($attrName)) {
+          $attributeMap[$attrName] = [bool]$included
+        } else {
+          if ($included) { $attributeMap[$attrName] = $true }
+        }
+      }
+    }
+  }
+  if ($attributeMap.Count -eq 0) { continue }
+  $attributeCoverageAdded = $true
+  $segments = @()
+  foreach ($kvp in ($attributeMap.GetEnumerator() | Sort-Object Name)) {
+    $icon = if ($kvp.Value) { '✓' } else { '✕' }
+    $segments += ("{0} {1}" -f $icon, $kvp.Name)
+  }
+  $lines.Add(("- **{0}**: {1}" -f $modeName, ($segments -join ' • ')))
+}
+if (-not $attributeCoverageAdded) {
+  $lines.Add("- *(Attribute coverage unavailable in manifest)*")
+}
+
 $body = $lines -join "`n"
 
 if ($DryRun.IsPresent) {

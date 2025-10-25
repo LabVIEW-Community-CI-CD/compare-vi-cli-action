@@ -42,6 +42,17 @@
 - **Deep dive** - bump `compare_depth` to `0` (unbounded) and enable `compare_fail_fast='true'` when you just need to know whether any
   difference exists in the history span.
 
+### Local automation helpers
+
+- `scripts/Run-VIHistory.ps1` regenerates local history results and prints the enriched Markdown summary (including attribute coverage) in one step:
+  ```powershell
+  pwsh -File scripts/Run-VIHistory.ps1 -ViPath Fixtures/Loop.vi -StartRef HEAD -MaxPairs 3
+  ```
+- `scripts/Dispatch-VIHistoryWorkflow.ps1` dispatches the GitHub workflow with consistent parameters once you are happy with the local preview:
+  ```powershell
+  pwsh -File scripts/Dispatch-VIHistoryWorkflow.ps1 -ViPath Fixtures/Loop.vi -CompareRef develop -NotifyIssue 316
+  ```
+
 Example CLI dispatch (requires `gh workflow run` permissions):
 
 ```powershell

@@ -50,7 +50,7 @@ the same summary table to a GitHub issue for stakeholders.
 | ------------------------ | --------- | --------------------------------------------------------------------------- |
 | `compare_depth`          | `10`      | Maximum commit pairs to evaluate (`0` = no limit)                           |
 | `compare_modes`          | `default` | Comma/semicolon list of compare modes (`default,attributes,front-panel` …) |
-| `compare_ignore_flags`   | `default` | LVCompare ignore toggles (`default`, `none`, or comma-separated flags)      |
+| `compare_ignore_flags`   | `none`    | LVCompare ignore toggles (`none`, `default`, or comma-separated flags)      |
 | `compare_additional_flags` | ` `   | Extra LVCompare switches (space-delimited)                                  |
 | `compare_fail_fast`      | `false`   | Stop after the first diff                                                   |
 | `compare_fail_on_diff`   | `false`   | Fail the workflow when any diff is detected                                 |
@@ -76,9 +76,18 @@ pwsh -NoLogo -NoProfile -File tools/Compare-VIHistory.ps1 `
 Artifacts are written under `tests/results/ref-compare/history/` using the same
 schema as the workflow outputs.
 
+For a quicker end-to-end loop:
+
+- `scripts/Run-VIHistory.ps1` regenerates the history results and prints the enriched Markdown summary (including attribute coverage) in one step.
+- `scripts/Dispatch-VIHistoryWorkflow.ps1` wraps `gh workflow run` and echoes the URL to the most recent run so you can follow progress immediately.
+
 ## Release and compatibility
 
 Renaming the workflow inputs breaks compatibility with previous revisions, so the
 next release should cut a new major tag (for example `v1.0.0`). Update downstream
 automation or scheduled triggers to use the new `vi_path` / `compare_ref` inputs
 before adopting the release.
+
+
+
+
