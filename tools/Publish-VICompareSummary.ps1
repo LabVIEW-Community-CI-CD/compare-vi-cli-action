@@ -13,6 +13,27 @@ param(
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
+function Get-ObjectPropertyValue {
+  param(
+    [Parameter()]
+    $InputObject,
+    [Parameter(Mandatory = $true)]
+    [string]$PropertyName,
+    $Default = $null
+  )
+
+  if ($null -eq $InputObject) {
+    return $Default
+  }
+
+  $property = $InputObject.PSObject.Properties[$PropertyName]
+  if ($property) {
+    return $property.Value
+  }
+
+  return $Default
+}
+
 if (-not (Test-Path -LiteralPath $ManifestPath -PathType Leaf)) {
   throw ("Manifest not found at {0}" -f $ManifestPath)
 }
@@ -34,22 +55,20 @@ if (-not [string]::IsNullOrWhiteSpace($ModeSummaryJson)) {
   }
 }
 
-if (-not $modeSummaries -and $aggregate.modes) {
-  $modeSummaries = @($aggregate.modes)
+$aggregateModes = Get-ObjectPropertyValue -InputObject $aggregate -PropertyName 'modes'
+if (-not $modeSummaries -and $aggregateModes) {
+  $modeSummaries = @($aggregateModes)
 }
 
 if (-not $modeSummaries) {
   throw 'Mode summary data unavailable; cannot build stakeholder report.'
 }
 
-$targetPath = $aggregate.targetPath
-$requestedStart = $aggregate.requestedStartRef
-$resolvedStart = $aggregate.startRef
-$endRef = $aggregate.endRef
-$aggregateStats = $null
-if ($aggregate -and $aggregate.PSObject.Properties['stats']) {
-  $aggregateStats = $aggregate.stats
-}
+$targetPath = Get-ObjectPropertyValue -InputObject $aggregate -PropertyName 'targetPath'
+$requestedStart = Get-ObjectPropertyValue -InputObject $aggregate -PropertyName 'requestedStartRef'
+$resolvedStart = Get-ObjectPropertyValue -InputObject $aggregate -PropertyName 'startRef'
+$endRef = Get-ObjectPropertyValue -InputObject $aggregate -PropertyName 'endRef'
+$aggregateStats = Get-ObjectPropertyValue -InputObject $aggregate -PropertyName 'stats'
 if (-not $aggregateStats) {
   $aggregateStats = [ordered]@{
     processed = 0
@@ -57,10 +76,21 @@ if (-not $aggregateStats) {
     missing   = 0
   }
 }
-$totalProcessed = $aggregateStats.processed
-$totalDiffs = $aggregateStats.diffs
-$totalMissing = $aggregateStats.missing
-$modeNames = ($modeSummaries | ForEach-Object { $_.mode ?? $_.name })
+$totalProcessed = Get-ObjectPropertyValue -InputObject $aggregateStats -PropertyName 'processed' -Default 0
+$totalDiffs = Get-ObjectPropertyValue -InputObject $aggregateStats -PropertyName 'diffs' -Default 0
+$totalMissing = Get-ObjectPropertyValue -InputObject $aggregateStats -PropertyName 'missing' -Default 0
+
+$modeNames = @()
+foreach ($mode in $modeSummaries) {
+  $modeName = Get-ObjectPropertyValue -InputObject $mode -PropertyName 'mode'
+  if (-not $modeName) {
+    $modeName = Get-ObjectPropertyValue -InputObject $mode -PropertyName 'name'
+  }
+  if (-not $modeName) {
+    $modeName = '(unnamed)'
+  }
+  $modeNames += $modeName
+}
 
 $lines = New-Object System.Collections.Generic.List[string]
 $lines.Add("### Manual VI Compare summary")
@@ -84,21 +114,51 @@ $lines.Add("| Mode | Processed | Diffs | Missing | Last Diff | Status |")
 $lines.Add("| --- | ---: | ---: | ---: | --- | --- |")
 
 foreach ($mode in $modeSummaries) {
-  $modeName = $mode.mode
-  if (-not $modeName) { $modeName = $mode.name }
+  $modeName = Get-ObjectPropertyValue -InputObject $mode -PropertyName 'mode'
+  if (-not $modeName) {
+    $modeName = Get-ObjectPropertyValue -InputObject $mode -PropertyName 'name'
+  }
+  if (-not $modeName) {
+    $modeName = '(unnamed)'
+  }
+
   $modeStats = $null
   if ($mode -and $mode.PSObject.Properties['stats']) {
     $modeStats = $mode.stats
   }
-  $processed = $mode.processed
-  if ($null -eq $processed -and $modeStats) { $processed = $modeStats.processed }
-  $diffs = if ($mode.diffs -ne $null) { $mode.diffs } elseif ($modeStats) { $modeStats.diffs } else { 0 }
-  $missing = if ($mode.missing -ne $null) { $mode.missing } elseif ($modeStats) { $modeStats.missing } else { 0 }
-  $lastDiffIndex = if ($mode.lastDiffIndex -ne $null) { $mode.lastDiffIndex } elseif ($modeStats) { $modeStats.lastDiffIndex } else { $null }
-  $lastDiffCommit = if ($mode.lastDiffCommit) { $mode.lastDiffCommit } elseif ($modeStats) { $modeStats.lastDiffCommit } else { $null }
-  $status = if ($mode.status) { $mode.status } else { 'unknown' }
 
-  $lastDiffCell = '—'
+  $processed = Get-ObjectPropertyValue -InputObject $mode -PropertyName 'processed'
+  if ($null -eq $processed -and $modeStats) {
+    $processed = Get-ObjectPropertyValue -InputObject $modeStats -PropertyName 'processed'
+  }
+  if ($null -eq $processed) { $processed = 0 }
+
+  $diffs = Get-ObjectPropertyValue -InputObject $mode -PropertyName 'diffs'
+  if ($null -eq $diffs -and $modeStats) {
+    $diffs = Get-ObjectPropertyValue -InputObject $modeStats -PropertyName 'diffs'
+  }
+  if ($null -eq $diffs) { $diffs = 0 }
+
+  $missing = Get-ObjectPropertyValue -InputObject $mode -PropertyName 'missing'
+  if ($null -eq $missing -and $modeStats) {
+    $missing = Get-ObjectPropertyValue -InputObject $modeStats -PropertyName 'missing'
+  }
+  if ($null -eq $missing) { $missing = 0 }
+
+  $lastDiffIndex = Get-ObjectPropertyValue -InputObject $mode -PropertyName 'lastDiffIndex'
+  if ($null -eq $lastDiffIndex -and $modeStats) {
+    $lastDiffIndex = Get-ObjectPropertyValue -InputObject $modeStats -PropertyName 'lastDiffIndex'
+  }
+
+  $lastDiffCommit = Get-ObjectPropertyValue -InputObject $mode -PropertyName 'lastDiffCommit'
+  if (-not $lastDiffCommit -and $modeStats) {
+    $lastDiffCommit = Get-ObjectPropertyValue -InputObject $modeStats -PropertyName 'lastDiffCommit'
+  }
+
+  $status = Get-ObjectPropertyValue -InputObject $mode -PropertyName 'status' -Default 'unknown'
+  if (-not $status) { $status = 'unknown' }
+
+  $lastDiffCell = '-'
   if ($diffs -gt 0) {
     if ($lastDiffIndex) {
       $lastDiffCell = "#$lastDiffIndex"
@@ -116,50 +176,73 @@ foreach ($mode in $modeSummaries) {
 
 if ($totalDiffs -gt 0) {
   $lines.Add("")
-  $lines.Add("Diff artifacts are available under the `vi-compare-diff-artifacts` upload.")
+  $lines.Add('Diff artifacts are available under the `vi-compare-diff-artifacts` upload.')
 }
 
 $lines.Add("")
 $lines.Add("#### Attribute coverage")
 $attributeCoverageAdded = $false
 foreach ($mode in $modeSummaries) {
-  $modeName = $mode.mode
-  if (-not $modeName) { $modeName = $mode.name }
+  $modeName = Get-ObjectPropertyValue -InputObject $mode -PropertyName 'mode'
+  if (-not $modeName) {
+    $modeName = Get-ObjectPropertyValue -InputObject $mode -PropertyName 'name'
+  }
+  if (-not $modeName) {
+    $modeName = '(unnamed)'
+  }
+
   $attributeMap = @{}
   if ($mode -and $mode.PSObject.Properties['comparisons']) {
     foreach ($comparison in @($mode.comparisons)) {
       if (-not $comparison) { continue }
+
       $resultNode = $null
-      if ($comparison.PSObject.Properties['result']) { $resultNode = $comparison.result }
+      if ($comparison.PSObject.Properties['result']) {
+        $resultNode = $comparison.result
+      }
       if (-not $resultNode) { continue }
+
       $cliNode = $null
-      if ($resultNode.PSObject.Properties['cli']) { $cliNode = $resultNode.cli }
+      if ($resultNode.PSObject.Properties['cli']) {
+        $cliNode = $resultNode.cli
+      }
       if (-not $cliNode) { continue }
+
       $includedAttributes = $null
-      if ($cliNode.PSObject.Properties['includedAttributes']) { $includedAttributes = $cliNode.includedAttributes }
+      if ($cliNode.PSObject.Properties['includedAttributes']) {
+        $includedAttributes = $cliNode.includedAttributes
+      }
       if (-not $includedAttributes) { continue }
+
       foreach ($entry in @($includedAttributes)) {
         if (-not $entry) { continue }
-        $attrName = $entry.name
+        $attrName = Get-ObjectPropertyValue -InputObject $entry -PropertyName 'name'
         if (-not $attrName) { continue }
-        $included = $entry.included
+
+        $included = Get-ObjectPropertyValue -InputObject $entry -PropertyName 'included'
+        $includedBool = [bool]$included
+
         if (-not $attributeMap.ContainsKey($attrName)) {
-          $attributeMap[$attrName] = [bool]$included
-        } else {
-          if ($included) { $attributeMap[$attrName] = $true }
+          $attributeMap[$attrName] = $includedBool
+        } elseif ($includedBool) {
+          $attributeMap[$attrName] = $true
         }
       }
     }
   }
+
   if ($attributeMap.Count -eq 0) { continue }
+
   $attributeCoverageAdded = $true
   $segments = @()
   foreach ($kvp in ($attributeMap.GetEnumerator() | Sort-Object Name)) {
-    $icon = if ($kvp.Value) { '✓' } else { '✕' }
-    $segments += ("{0} {1}" -f $icon, $kvp.Name)
+    $label = if ($kvp.Value) { 'Yes' } else { 'No' }
+    $segments += ("{0}: {1}" -f $kvp.Name, $label)
   }
-  $lines.Add(("- **{0}**: {1}" -f $modeName, ($segments -join ' • ')))
+
+  $lines.Add(("- **{0}**: {1}" -f $modeName, ($segments -join '; ')))
 }
+
 if (-not $attributeCoverageAdded) {
   $lines.Add("- *(Attribute coverage unavailable in manifest)*")
 }
@@ -198,4 +281,3 @@ $headers = @{
 $payload = @{ body = $body } | ConvertTo-Json -Depth 4
 
 Invoke-RestMethod -Uri $uri -Method Post -Headers $headers -Body $payload | Out-Null
-

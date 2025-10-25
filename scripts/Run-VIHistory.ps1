@@ -9,17 +9,136 @@ param(
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
+function Get-NormalizedRepoRelativePath {
+  param(
+    [string]$InputPath,
+    [string]$RepoRoot
+  )
+
+  if ([string]::IsNullOrWhiteSpace($InputPath)) {
+    return $null
+  }
+
+  try {
+    $normalizedRepoRoot = [System.IO.Path]::GetFullPath($RepoRoot)
+    $candidateFullPath = if ([System.IO.Path]::IsPathRooted($InputPath)) {
+      [System.IO.Path]::GetFullPath($InputPath)
+    } else {
+      [System.IO.Path]::GetFullPath((Join-Path $RepoRoot $InputPath))
+    }
+  } catch {
+    return $null
+  }
+
+  if (-not $candidateFullPath.StartsWith($normalizedRepoRoot, [System.StringComparison]::OrdinalIgnoreCase)) {
+    return $null
+  }
+
+  return ($candidateFullPath.Substring($normalizedRepoRoot.Length).TrimStart('\','/') -replace '\\','/')
+}
+
+function Test-ViTrackedAtRef {
+  param(
+    [string]$Ref,
+    [string]$RepoRelativePath
+  )
+
+  if ([string]::IsNullOrWhiteSpace($Ref) -or [string]::IsNullOrWhiteSpace($RepoRelativePath)) {
+    return $false
+  }
+
+  & git --no-pager cat-file -e ("{0}:{1}" -f $Ref, $RepoRelativePath) 2>$null
+  return ($LASTEXITCODE -eq 0)
+}
+
+function Get-ViCandidatesAtRef {
+  param([string]$Ref)
+
+  if ([string]::IsNullOrWhiteSpace($Ref)) {
+    return @()
+  }
+
+  $candidates = & git --no-pager ls-tree -r --name-only $Ref 2>$null
+  if ($LASTEXITCODE -ne 0 -or -not $candidates) {
+    return ,@()
+  }
+
+  $normalized = @()
+  foreach ($entry in @($candidates)) {
+    if (-not [string]::IsNullOrWhiteSpace($entry) -and $entry -like '*.vi') {
+      $normalized += $entry
+    }
+  }
+
+  return ,$normalized
+}
+
+function Get-CompareHistoryGuidance {
+  param(
+    [string]$ErrorMessage,
+    [string]$RepoRelativePath,
+    [string]$StartRef,
+    [int]$MaxPairs,
+    [string]$ResultsDir
+  )
+
+  if ([string]::IsNullOrWhiteSpace($ErrorMessage)) {
+    return $null
+  }
+
+  $message = $ErrorMessage.Trim()
+  $guidance = $null
+
+  if ($message -match '^No commits found for .+ reachable from .+$') {
+    $guidance = ("No commits for `{0}` are reachable from `{1}`. Increase `-MaxPairs` (current: {2}) or choose an earlier start ref (for example `develop~5`). `git log --follow -- {0}` can help confirm history." -f $RepoRelativePath, $StartRef, $MaxPairs)
+  } elseif ($message -eq 'No comparison modes executed.') {
+    $guidance = ("No compare modes ran for `{0}`. Ensure the VI has prior revisions relative to `{1}` and that history automation hasn't pruned the branch." -f $RepoRelativePath, $StartRef)
+  } elseif ($message -match 'git merge-base --is-ancestor failed') {
+    $guidance = ("Git merge-base failed while walking history. Fetch latest commits and verify `{0}` exists on `{1}`." -f $RepoRelativePath, $StartRef)
+  } elseif ($message -match 'Compare script not found') {
+    $guidance = 'The compare helper script was not located. Run tools/priority/bootstrap.ps1 or restore the tools directory before retrying.'
+  } elseif ($message -match 'No valid comparison modes resolved') {
+    $guidance = 'No comparison modes resolved. Confirm the history helper configuration includes at least one mode (default is `default`).'
+  } elseif ($message -match 'git must be available on PATH') {
+    $guidance = 'Git is required for history capture. Install git and ensure it is on PATH.'
+  }
+
+  if (-not $guidance) {
+    $guidance = ("Inspect `{0}` for partial artifacts and review previous output for more details." -f $ResultsDir)
+  }
+
+  return $guidance
+}
+
 $repoRoot = Split-Path -Parent $PSScriptRoot
 $historyResultsDir = Join-Path $repoRoot 'tests' 'results' 'ref-compare' 'history'
 
 Push-Location $repoRoot
 try {
-  $repoRelativePath = ($ViPath -replace '\\','/').Trim('/')
+  $repoRelativePath = Get-NormalizedRepoRelativePath -InputPath $ViPath -RepoRoot $repoRoot
+  if (-not $repoRelativePath) {
+    Write-Warning ("VI '{0}' is outside the repository root or could not be normalized. Provide a path relative to '{1}'." -f $ViPath, $repoRoot)
+    return
+  }
+
   $refToCheck = if ([string]::IsNullOrWhiteSpace($StartRef)) { 'HEAD' } else { $StartRef }
 
-  & git --no-pager cat-file -e "${refToCheck}:${repoRelativePath}" 2>$null
-  if ($LASTEXITCODE -ne 0) {
-    Write-Warning "VI '$ViPath' was not found at ref '$refToCheck'. Choose a commit/branch where the file exists."
+  if (-not (Test-ViTrackedAtRef -Ref $refToCheck -RepoRelativePath $repoRelativePath)) {
+    Write-Warning ("VI '{0}' (resolved to '{1}') was not found at ref '{2}'. Choose a commit or branch where the file exists." -f $ViPath, $repoRelativePath, $refToCheck)
+
+    $candidateSample = Get-ViCandidatesAtRef -Ref $refToCheck
+    if ($candidateSample.Count -gt 0) {
+      $previewCount = [Math]::Min($candidateSample.Count, 5)
+      Write-Host ("Available VI paths at '{0}' (showing {1}):" -f $refToCheck, $previewCount)
+      for ($index = 0; $index -lt $previewCount; $index++) {
+        Write-Host ("  - {0}" -f $candidateSample[$index])
+      }
+      if ($candidateSample.Count -gt $previewCount) {
+        Write-Host ("  ... ({0} more)" -f ($candidateSample.Count - $previewCount))
+      }
+    }
+
+    Write-Host ("Tip: git ls-tree {0} --name-only | Select-String '\\.vi$'" -f $refToCheck)
     return
   }
 
@@ -31,7 +150,12 @@ try {
       -Detailed `
       -RenderReport:$HtmlReport.IsPresent
   } catch {
-    Write-Error "Compare-VIHistory.ps1 failed. Confirm '$ViPath' exists across the selected history range. Details: $($_.Exception.Message)"
+    $compareMessage = $_.Exception.Message
+    $guidance = Get-CompareHistoryGuidance -ErrorMessage $compareMessage -RepoRelativePath $repoRelativePath -StartRef $refToCheck -MaxPairs $MaxPairs -ResultsDir $historyResultsDir
+    Write-Error ("Compare-VIHistory.ps1 failed: {0}" -f $compareMessage)
+    if ($guidance) {
+      Write-Warning $guidance
+    }
     return
   }
 
