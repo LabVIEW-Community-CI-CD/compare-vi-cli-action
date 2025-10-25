@@ -83,7 +83,12 @@ $ambiguous = @(
   $entries |
     Group-Object Short |
     Where-Object {
-      ($_.Group | Select-Object -ExpandProperty Kind -Unique).Count -gt 1
+      $kinds = @(
+        $_.Group |
+          Select-Object -ExpandProperty Kind -Unique
+      )
+
+      $kinds.Count -gt 1
     }
 )
 
