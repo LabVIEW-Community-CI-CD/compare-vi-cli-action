@@ -26,6 +26,22 @@ param(
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
+$script:PesterVersion = '5.7.1'
+$resolverPath = Join-Path $PSScriptRoot 'Get-PesterVersion.ps1'
+if (Test-Path -LiteralPath $resolverPath) {
+    try {
+        $resolved = & $resolverPath
+        if ($resolved -and -not [string]::IsNullOrWhiteSpace($resolved)) {
+            $script:PesterVersion = $resolved
+        }
+    } catch {
+        Write-Verbose ("Falling back to default Pester version ({0}) because resolver failed: {1}" -f $script:PesterVersion, $_.Exception.Message)
+    }
+}
+if (-not $env:PESTER_VERSION -or [string]::IsNullOrWhiteSpace($env:PESTER_VERSION)) {
+    $env:PESTER_VERSION = $script:PesterVersion
+}
+
 # Lightweight session naming for observability
 function Get-SessionName {
   try {
@@ -68,11 +84,13 @@ function Invoke-PesterSelective {
   $ChangedFiles = @($ChangedFiles | Where-Object { $_ -ne $null -and $_ -ne '' })
   function Get-ItemCount { param($o) if ($null -eq $o) { return 0 } return (@($o)).Length }
   Write-Log "DEBUG Enter Invoke-PesterSelective; ChangedFiles count=$(Get-ItemCount $ChangedFiles)" 'DEBUG'
-  if (-not (Get-Module -ListAvailable -Name Pester)) {
-    Write-Log 'Pester not found; installing locally (CurrentUser).' 'WARN'
-    Install-Module Pester -MinimumVersion 5.0.0 -Scope CurrentUser -Force -ErrorAction Stop
+  $desiredVersion = $script:PesterVersion
+  $available = Get-Module -ListAvailable -Name Pester | Where-Object { $_.Version -eq [version]$desiredVersion } | Select-Object -First 1
+  if (-not $available) {
+    Write-Log ("Pester {0} not found; installing locally (CurrentUser)." -f $desiredVersion) 'WARN'
+    Install-Module Pester -RequiredVersion $desiredVersion -Scope CurrentUser -Force -ErrorAction Stop
   }
-  Import-Module Pester -ErrorAction Stop | Out-Null
+  Import-Module Pester -RequiredVersion $desiredVersion -ErrorAction Stop | Out-Null
 
   $config = New-PesterConfiguration
   $config.Run.PassThru = $true

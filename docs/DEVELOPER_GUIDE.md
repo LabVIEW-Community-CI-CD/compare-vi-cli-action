@@ -108,6 +108,12 @@ node tools/npm/run-script.mjs lint            # markdownlint + custom checks
 - `scripts/Invoke-PesterSingleLoop.ps1` - outer loop runner (unit + integration)
 - `scripts/Run-AutonomousIntegrationLoop.ps1` - latency/diff soak harness
 
+## History automation helpers
+
+- `scripts/Run-VIHistory.ps1` - regenerates the manual compare suite locally, verifies the target VI exists at the selected ref, and prints the Markdown summary (attribute coverage included) for issue comments. You can also call it via `npm run history:run -- -ViPath Fixtures/Loop.vi -StartRef HEAD -MaxPairs 3`.
+- `scripts/Dispatch-VIHistoryWorkflow.ps1` - wraps `gh workflow run` for `vi-compare-refs.yml`, echoes the latest run id/link, and records dispatch metadata under `tests/results/_agent/handoff/vi-history-run.json` for follow-up. Invoke with `npm run history:dispatch -- -ViPath Fixtures/Loop.vi -CompareRef develop -NotifyIssue 317`.
+- VS Code tasks **VI History: Run local suite** and **VI History: Dispatch workflow** prompt for VI path/refs and route through the same scripts so editors can trigger the flow without remembering the parameters.
+
 ## Watch mode tips
 
 ```powershell

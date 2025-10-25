@@ -20,7 +20,7 @@ running tests on both GitHub-hosted and self-hosted runners.
   - `TestsPath` (default: `tests`)
   - `IncludeIntegration` (default: `false`)
   - `ResultsPath` (default: `tests/results`)
-- Assumes Pester v5+ is pre-installed on self-hosted runners
+- Assumes the policy Pester version (currently v5.7.1) is pre-installed on self-hosted runners
 - Generates NUnit XML and summary text files
 - Provides detailed progress logging
 
@@ -120,8 +120,11 @@ Directly calls the local dispatcher:
 
 ### For Self-Hosted Runners
 
-- **Pester v5+** must be pre-installed
-  - Install: `Install-Module -Name Pester -MinimumVersion 5.0.0 -Force`
+- **Pester v5.7.1** must be pre-installed
+  - Windows (elevated PowerShell): `Install-Module -Name Pester -RequiredVersion 5.7.1 -Force`
+  - Windows (current user): `Install-Module -Name Pester -RequiredVersion 5.7.1 -Scope CurrentUser -Force`
+  - macOS/Linux (elevated): `sudo pwsh -NoLogo -NoProfile -Command "Install-Module -Name Pester -RequiredVersion 5.7.1 -Force"`
+  - macOS/Linux (current user): `pwsh -NoLogo -NoProfile -Command "Install-Module -Name Pester -RequiredVersion 5.7.1 -Scope CurrentUser -Force"`
   - Verify: `Get-Module -ListAvailable Pester`
 - PowerShell 7+
 - LabVIEW Compare CLI at canonical path (for Integration tests)
@@ -198,12 +201,22 @@ Verifies:
 
 ### Pester Not Found
 
-**Symptom:** Dispatcher fails with "Pester v5+ not found"
+**Symptom:** Dispatcher fails with "Pester v5.7.1 not found"
 
-**Solution:**
+**Solution:** Install the policy version using the option that matches your runner access:
 
 ```powershell
-Install-Module -Name Pester -MinimumVersion 5.0.0 -Force -Scope CurrentUser
+# Windows (elevated PowerShell)
+Install-Module -Name Pester -RequiredVersion 5.7.1 -Force
+
+# Windows (current user only)
+Install-Module -Name Pester -RequiredVersion 5.7.1 -Scope CurrentUser -Force
+
+# macOS / Linux (elevated)
+sudo pwsh -NoLogo -NoProfile -Command "Install-Module -Name Pester -RequiredVersion 5.7.1 -Force"
+
+# macOS / Linux (current user)
+pwsh -NoLogo -NoProfile -Command "Install-Module -Name Pester -RequiredVersion 5.7.1 -Scope CurrentUser -Force"
 ```
 
 ### Parameter Mismatch
