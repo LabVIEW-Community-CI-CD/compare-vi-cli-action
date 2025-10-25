@@ -3,57 +3,52 @@ name: Manual VI Compare (refs)
 on:
   workflow_dispatch:
     inputs:
-      sample_id:
-        description: 'Optional sample id for concurrency grouping'
-        required: false
-        type: string
-      target_path:
-        description: 'Repository-relative VI path (e.g. path/to/VI1.vi)'
+      vi_path:
+        description: 'Repository-relative VI path (e.g. Fixtures/Loop.vi)'
         required: true
         default: 'VI1.vi'
         type: string
-      start_ref:
-        description: 'Starting commit/ref (defaults to HEAD)'
+      compare_ref:
+        description: 'Branch, tag, or commit to walk history from (defaults to HEAD)'
         required: false
         default: ''
         type: string
-      end_ref:
-        description: 'Optional commit/ref to stop at (exclusive)'
-        required: false
-        default: ''
-        type: string
-      max_pairs:
+      compare_depth:
         description: 'Maximum commit pairs to evaluate (0 = no limit)'
         required: false
         default: '10'
         type: string
-      fail_fast:
+      compare_modes:
+        description: 'Comma/semicolon separated modes to evaluate (default,attributes,front-panel,block-diagram,all)'
+        required: false
+        default: 'default'
+        type: string
+      compare_ignore_flags:
+        description: 'LVCompare ignore toggles (default, none, or comma-separated flags such as noattr,nofp)'
+        required: false
+        default: 'default'
+        type: string
+      compare_additional_flags:
+        description: 'Extra LVCompare flags (optional, space-delimited)'
+        required: false
+        default: ''
+        type: string
+      compare_fail_fast:
         description: 'Stop after the first detected diff'
         required: false
         default: 'false'
         type: choice
         options: ['true','false']
-      ignore_flags:
-        description: 'Comma-separated ignore toggles (e.g., noattr,nofp,nofppos,nobdcosm or none)'
-        required: false
-        default: 'noattr,nofp,nofppos,nobdcosm'
-        type: string
-      modes:
-        description: 'Comma-separated compare modes (default, attributes, front-panel, block-diagram, all)'
-        required: false
-        default: 'default'
-        type: string
-      additional_flags:
-        description: 'Extra LVCompare flags (optional, space-delimited)'
-        required: false
-        default: ''
-        type: string
-      fail_on_diff:
+      compare_fail_on_diff:
         description: 'Fail the job when any compare diff is detected'
         required: false
         default: 'false'
         type: choice
         options: ['true','false']
+      sample_id:
+        description: 'Optional sample id for concurrency grouping'
+        required: false
+        type: string
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.event.inputs.sample_id || github.ref }}
@@ -100,15 +95,14 @@ jobs:
         id: history
         shell: pwsh
         env:
-          TARGET_PATH: ${{ inputs.target_path }}
-          START_REF: ${{ inputs.start_ref }}
-          END_REF: ${{ inputs.end_ref }}
-          MAX_PAIRS: ${{ inputs.max_pairs }}
-          IGNORE_FLAGS: ${{ inputs.ignore_flags }}
-          MODES: ${{ inputs.modes }}
-          EXTRA_FLAGS: ${{ inputs.additional_flags }}
-          FAIL_FAST: ${{ inputs.fail_fast }}
-          FAIL_ON_DIFF: ${{ inputs.fail_on_diff }}
+          TARGET_PATH: ${{ inputs.vi_path }}
+          START_REF: ${{ inputs.compare_ref }}
+          MAX_PAIRS: ${{ inputs.compare_depth }}
+          IGNORE_FLAGS: ${{ inputs.compare_ignore_flags }}
+          MODES: ${{ inputs.compare_modes }}
+          EXTRA_FLAGS: ${{ inputs.compare_additional_flags }}
+          FAIL_FAST: ${{ inputs.compare_fail_fast }}
+          FAIL_ON_DIFF: ${{ inputs.compare_fail_on_diff }}
         run: |
           $ErrorActionPreference = 'Stop'
           function Convert-ToBoolean([string]$value, [bool]$default = $false) {
@@ -153,7 +147,7 @@ jobs:
           $modeTokens = @($modeTokens | Select-Object -Unique)
 
           $startRef = if ([string]::IsNullOrWhiteSpace($env:START_REF)) { $null } else { $env:START_REF.Trim() }
-          $endRef = if ([string]::IsNullOrWhiteSpace($env:END_REF)) { $null } else { $env:END_REF.Trim() }
+          $endRef = $null
 
           $parsedMaxPairs = $null
           if (-not [string]::IsNullOrWhiteSpace($env:MAX_PAIRS)) {

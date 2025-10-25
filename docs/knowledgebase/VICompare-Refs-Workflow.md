@@ -12,46 +12,44 @@
 
 ## Dispatch inputs (GitHub UI or `gh workflow run`)
 
-- `target_path` (required): repository-relative `.vi` path (example `Fixtures/Loop.vim`). Use the exact casing committed
+- `vi_path` (required): repository-relative `.vi` path (example `Fixtures/Loop.vi`). Use the exact casing committed
   to git.
-- `start_ref` (optional): commit/ref where the walk begins. Defaults to `HEAD` when blank.
-- `end_ref` (optional): stop when this ref is reached. The pair that lands on `end_ref` is compared once, then the loop
-  exits.
-- `max_pairs` (optional): limit comparisons (set to `"0"` for no limit). The workflow defaults to `10`.
+- `compare_ref` (optional): branch/tag/commit where the walk begins. Defaults to `HEAD` when blank.
+- `compare_depth` (optional): limit comparisons (set to `"0"` for no limit). The workflow defaults to `10`.
   - Input must be a non-negative integer; anything else fails fast with a clear message.
-- `fail_fast` (`true`/`false`): stop iterating after the first detected diff (still uploads results, does not fail the job).
-- `fail_on_diff` (`true`/`false`): exit the job with failure status if any LVCompare run reports differences.
-- `modes` (string): comma-separated compare modes. Recognised values:
-  - `default` - honour the ignore list defined by `ignore_flags` (defaults to `noattr,nofp,nofppos,nobdcosm`).
+- `compare_fail_fast` (`true`/`false`): stop iterating after the first detected diff (still uploads results, does not fail the job).
+- `compare_fail_on_diff` (`true`/`false`): exit the job with failure status if any LVCompare run reports differences.
+- `compare_modes` (string): comma-separated compare modes. Recognised values:
+  - `default` - honour the ignore list defined by `compare_ignore_flags` (defaults to `noattr,nofp,nofppos,nobdcosm`).
   - `attributes` - drop `-noattr` so VI attribute changes surface.
   - `front-panel` - drop `-nofp`/`-nofppos` to observe FP layout changes.
   - `block-diagram` - drop `-nobdcosm` to surface BD cosmetic tweaks.
   - `all` - remove every ignore flag (`-nobd`, `-noattr`, `-nofp`, `-nofppos`, `-nobdcosm`).
-  - `custom` - honour the ignore list supplied via `ignore_flags` exactly as provided.
+  - `custom` - honour the ignore list supplied via `compare_ignore_flags` exactly as provided.
 - Multiple modes can be supplied (e.g. `default,attributes`); the workflow loops over each and emits a manifest/artifact
   set per mode.
-- `ignore_flags` (string): comma-separated LVCompare ignore toggles. Accepts `default` (apply all default ignores),
+- `compare_ignore_flags` (string): comma-separated LVCompare ignore toggles. Accepts `default` (apply all default ignores),
   `none` (apply none), direct flag names (`noattr`, `nofp`, `nofppos`, `nobdcosm`), and `+flag` / `-flag` modifiers
   to add or remove flags relative to the current set.
-- The helper always prepends `-nobd`. Add extra switches via `additional_flags` (space-delimited).
+- The helper always prepends `-nobd`. Add extra switches via `compare_additional_flags` (space-delimited).
 
 ### Quick-start scenarios
 
-- **Default history sweep** – leave inputs at their defaults and supply only `target_path`. The workflow walks the first
+- **Default history sweep** - leave inputs at their defaults and supply only `vi_path`. The workflow walks the first
   ten commit pairs starting at `HEAD`, honours the standard ignore flags, and uploads a lightweight manifest.
-- **Attribute audit** – set `modes` to `default,attributes` so the second pass removes `-noattr` and calls out attribute
+- **Attribute audit** - set `compare_modes` to `default,attributes` so the second pass removes `-noattr` and calls out attribute
   changes explicitly in the manifest/summary.
-- **Deep dive** – bump `max_pairs` to `0` (unbounded) and enable `fail_fast='true'` when you just need to know whether any
+- **Deep dive** - bump `compare_depth` to `0` (unbounded) and enable `compare_fail_fast='true'` when you just need to know whether any
   difference exists in the history span.
 
 Example CLI dispatch (requires `gh workflow run` permissions):
 
 ```powershell
 gh workflow run vi-compare-refs.yml `
-  -f target_path='VI1.vi' `
-  -f start_ref='develop' `
-  -f max_pairs='5' `
-  -f fail_fast='true'
+  -f vi_path='VI1.vi' `
+  -f compare_ref='develop' `
+  -f compare_depth='5' `
+  -f compare_fail_fast='true'
 ```
 
 ## Outputs & artifacts
@@ -102,9 +100,9 @@ gh workflow run vi-compare-refs.yml `
 
 ```powershell
 gh workflow run vi-compare-refs.yml `
-  -f target_path='VI1.vi' `
-  -f start_ref='develop' `
-  -f modes='default,attributes'
+  -f vi_path='VI1.vi' `
+  -f compare_ref='develop' `
+  -f compare_modes='default,attributes'
 ```
 
 ## Behaviour highlights
@@ -114,7 +112,7 @@ gh workflow run vi-compare-refs.yml `
 - When the requested start ref does not change the target VI, the helper automatically walks to the nearest commit that
   does (preferring newer commits first, then older ones as a fallback).
 - Commit traversal uses `git rev-list --first-parent` to honour linear history; provide a branch or commit SHA in
-  `start_ref` for non-`HEAD` runs.
+  `compare_ref` for non-`HEAD` runs.
 - When a parent commit does not contain the target VI (for example the commit where it was introduced), the manifest
   records the pair with `status = "missing-base"` and the loop keeps going. Once the walk reaches a commit where the VI
   itself is missing, the helper emits a final `missing-head` entry and stops.
