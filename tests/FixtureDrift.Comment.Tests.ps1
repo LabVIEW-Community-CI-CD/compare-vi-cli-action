@@ -6,13 +6,23 @@ Describe 'Get-FixtureDriftComment' -Tag 'Unit' {
     $script:FixtureDriftSetupError = $null
     $script:FixtureDriftDiagnostics = @{}
 
+    # Initialize locals so StrictMode catch diagnostics do not fault when early setup fails
+    $scriptPathCandidates = @()
+    $repoCandidatePaths = @()
+    $scriptPath = $null
+    $repoRoot = $null
+    $modulePath = $null
+
     try {
-      $scriptPathCandidates = @()
       if (-not [string]::IsNullOrWhiteSpace($PSCommandPath)) {
         $scriptPathCandidates += $PSCommandPath
       }
-      if ($null -ne $MyInvocation -and $null -ne $MyInvocation.MyCommand -and -not [string]::IsNullOrWhiteSpace($MyInvocation.MyCommand.Path)) {
-        $scriptPathCandidates += $MyInvocation.MyCommand.Path
+      if ($null -ne $MyInvocation -and $null -ne $MyInvocation.MyCommand) {
+        $commandInfo = $MyInvocation.MyCommand
+        $pathProp = $commandInfo.PSObject.Properties['Path']
+        if ($pathProp -and -not [string]::IsNullOrWhiteSpace($pathProp.Value)) {
+          $scriptPathCandidates += [string]$pathProp.Value
+        }
       }
       if (-not [string]::IsNullOrWhiteSpace($PSScriptRoot)) {
         $scriptPathCandidates += (Join-Path $PSScriptRoot 'FixtureDrift.Comment.Tests.ps1')
