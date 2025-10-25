@@ -99,6 +99,7 @@ function Get-FixtureDriftComment {
   return ($lines -join "`n")
 }
 
-if ($PSCmdlet.MyInvocation.MyCommand.Module) {
+$psCmdletVariable = Get-Variable -Name PSCmdlet -ErrorAction SilentlyContinue
+if ($psCmdletVariable -and $psCmdletVariable.Value -and $psCmdletVariable.Value.MyInvocation.MyCommand.Module) {
   Export-ModuleMember -Function Get-FixtureDriftComment
 }

@@ -1,0 +1,4 @@
+{
+  "schema": "compare-vi-cli/tool-versions@v1",
+  "pester": "5.7.1"
+}
