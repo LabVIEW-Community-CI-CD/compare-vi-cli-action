@@ -21,7 +21,7 @@
 .EXAMPLE
     ./Invoke-PesterTests.ps1 -IntegrationMode exclude
 .NOTES
-    Requires Pester v5.0.0 or later to be pre-installed on the runner.
+    Requires Pester v5.7.1 (policy-managed) to be pre-installed on the runner.
     Exit codes: 0 = success, 1 = failure (test failures or execution errors)
 #>
 
@@ -158,6 +158,80 @@ param(
 $dispatcherSelectionModule = Join-Path $PSScriptRoot 'tools' 'Dispatcher' 'TestSelection.psm1'
 if (Test-Path -LiteralPath $dispatcherSelectionModule) {
   Import-Module $dispatcherSelectionModule -Force
+}
+
+$PesterPolicyVersion = '5.7.1'
+try {
+  $pesterResolverPath = Join-Path $PSScriptRoot 'tools' 'Get-PesterVersion.ps1'
+  if (Test-Path -LiteralPath $pesterResolverPath) {
+    $resolvedPesterVersion = & $pesterResolverPath
+    if ($resolvedPesterVersion -and -not [string]::IsNullOrWhiteSpace($resolvedPesterVersion)) {
+      $PesterPolicyVersion = $resolvedPesterVersion
+    }
+  }
+} catch {
+  Write-Verbose ("Falling back to default Pester policy version ({0}) because resolver failed: {1}" -f $PesterPolicyVersion, $_.Exception.Message)
+}
+if (-not $env:PESTER_VERSION -or [string]::IsNullOrWhiteSpace($env:PESTER_VERSION)) {
+  $env:PESTER_VERSION = $PesterPolicyVersion
+}
+
+$script:GetPesterInstallGuidance = {
+  param([string]$Version)
+
+  $guidance = [ordered]@{
+    OsLabel = 'unknown platform'
+    Lines   = @(
+      ("Install-Module -Name Pester -RequiredVersion {0} -Force" -f $Version),
+      ("If administrator access is unavailable, retry with: Install-Module -Name Pester -RequiredVersion {0} -Scope CurrentUser -Force" -f $Version)
+    )
+  }
+
+  $platformIsWindows = $false
+  $platformIsMacOS = $false
+  $platformIsLinux = $false
+
+  try {
+    $platformIsWindows = $PSVersionTable.Platform -eq 'Win32NT'
+  } catch {
+    $platformIsWindows = $false
+  }
+
+  try {
+    $platformIsMacOS = [System.Runtime.InteropServices.RuntimeInformation]::IsOSPlatform([System.Runtime.InteropServices.OSPlatform]::OSX)
+  } catch {
+    $platformIsMacOS = $false
+  }
+
+  try {
+    $platformIsLinux = [System.Runtime.InteropServices.RuntimeInformation]::IsOSPlatform([System.Runtime.InteropServices.OSPlatform]::Linux)
+  } catch {
+    $platformIsLinux = $false
+  }
+
+  if ($platformIsWindows) {
+    $guidance.OsLabel = 'Windows'
+    $guidance.Lines = @(
+      ("Open an elevated PowerShell (Run as Administrator) and run: Install-Module -Name Pester -RequiredVersion {0} -Force" -f $Version),
+      ("Without elevation, install for the runner account only: Install-Module -Name Pester -RequiredVersion {0} -Scope CurrentUser -Force" -f $Version)
+    )
+  }
+  elseif ($platformIsMacOS) {
+    $guidance.OsLabel = 'macOS'
+    $guidance.Lines = @(
+      ('Elevated install: sudo pwsh -NoLogo -NoProfile -Command "Install-Module -Name Pester -RequiredVersion {0} -Force"' -f $Version),
+      ('User scope: pwsh -NoLogo -NoProfile -Command "Install-Module -Name Pester -RequiredVersion {0} -Scope CurrentUser -Force"' -f $Version)
+    )
+  }
+  elseif ($platformIsLinux) {
+    $guidance.OsLabel = 'Linux'
+    $guidance.Lines = @(
+      ('Elevated install: sudo pwsh -NoLogo -NoProfile -Command "Install-Module -Name Pester -RequiredVersion {0} -Force"' -f $Version),
+      ('User scope: pwsh -NoLogo -NoProfile -Command "Install-Module -Name Pester -RequiredVersion {0} -Scope CurrentUser -Force"' -f $Version)
+    )
+  }
+
+  return $guidance
 }
 
 $labviewPidTrackerModule = Join-Path $PSScriptRoot 'tools' 'LabVIEWPidTracker.psm1'
@@ -889,7 +963,8 @@ function Write-FailureDiagnostics {
 
 # Display dispatcher information
 Write-Host "=== Pester Test Dispatcher ===" -ForegroundColor Cyan
-Write-Host "Script Version: 1.0.0"
+Write-Host "Script Version: 1.1.1"
+Write-Host "Policy Pester Version: $PesterPolicyVersion"
 Write-Host "PowerShell Version: $($PSVersionTable.PSVersion)"
 Write-Host ""
 Write-Host "Configuration:" -ForegroundColor Yellow
@@ -1823,28 +1898,36 @@ if ($EmitFailuresJsonAlways) { Ensure-FailuresJson -Directory $resultsDir -Force
 
 Write-Host ""
 
-# Check for Pester v5+ availability (should be pre-installed on self-hosted runner)
+# Check for required Pester availability (should be pre-installed on self-hosted runner)
 Write-Host "Checking for Pester availability..." -ForegroundColor Yellow
-$pesterModule = Get-Module -ListAvailable -Name Pester | Where-Object { $_.Version -ge '5.0.0' } | Select-Object -First 1
+$pesterVersionRequired = $PesterPolicyVersion
+$pesterVersionParsed = [version]$pesterVersionRequired
+$pesterModule = Get-Module -ListAvailable -Name Pester | Where-Object { $_.Version -eq $pesterVersionParsed } | Select-Object -First 1
 
 if (-not $pesterModule) {
-  Write-Error "Pester v5+ not found."
-  Write-Host ""
-  Write-Host "Please install Pester on the self-hosted runner:" -ForegroundColor Yellow
-  Write-Host "  Install-Module -Name Pester -MinimumVersion 5.0.0 -Force -Scope CurrentUser" -ForegroundColor Cyan
+  $latestAvailable = Get-Module -ListAvailable -Name Pester | Sort-Object Version -Descending | Select-Object -First 1
+  if ($latestAvailable) {
+    Write-Warning ("Pester v{0} detected, but policy requires v{1}." -f $latestAvailable.Version, $pesterVersionRequired)
+  }
+  $guidance = & $script:GetPesterInstallGuidance $pesterVersionRequired
+  Write-Error ("Pester v{0} not found on this runner." -f $pesterVersionRequired) -ErrorAction Continue
+  Write-Host ("Remediation ({0}):" -f $guidance.OsLabel) -ForegroundColor Yellow
+  foreach ($line in $guidance.Lines) {
+    Write-Host ("  - {0}" -f $line) -ForegroundColor Cyan
+  }
   Write-Host ""
   exit 1
 }
 
-Write-Host "Pester module found: v$($pesterModule.Version)" -ForegroundColor Green
+Write-Host ("Pester module found: v{0}" -f $pesterModule.Version) -ForegroundColor Green
 
 # Import Pester module
 try {
-  Import-Module Pester -MinimumVersion 5.0.0 -Force -ErrorAction Stop
+  Import-Module Pester -RequiredVersion $pesterVersionRequired -Force -ErrorAction Stop
   $loadedPester = Get-Module Pester
-  Write-Host "Using Pester v$($loadedPester.Version)" -ForegroundColor Green
+  Write-Host ("Using Pester v{0}" -f $loadedPester.Version) -ForegroundColor Green
 } catch {
-  Write-Error "Failed to import Pester module: $_"
+  Write-Error ("Failed to import Pester module: {0}" -f $_)
   exit 1
 }
 

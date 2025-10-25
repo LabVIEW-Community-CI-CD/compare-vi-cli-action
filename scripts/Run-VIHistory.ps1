@@ -110,6 +110,27 @@ function Get-CompareHistoryGuidance {
   return $guidance
 }
 
+function Get-CommitMetadata {
+  param([string]$Ref)
+
+  if ([string]::IsNullOrWhiteSpace($Ref)) { return $null }
+
+  $format = '%H|%h|%an|%ad|%s'
+  $data = & git --no-pager show --no-patch --date=iso8601-strict --pretty=format:$format $Ref 2>$null
+  if ($LASTEXITCODE -ne 0 -or -not $data) { return $null }
+
+  $parts = $data -split '\|',5
+  if ($parts.Count -lt 5) { return $null }
+
+  return [ordered]@{
+    full    = $parts[0]
+    short   = $parts[1]
+    author  = $parts[2]
+    date    = $parts[3]
+    subject = $parts[4]
+  }
+}
+
 $repoRoot = Split-Path -Parent $PSScriptRoot
 $historyResultsDir = Join-Path $repoRoot 'tests' 'results' 'ref-compare' 'history'
 
@@ -170,6 +191,86 @@ try {
     Write-Warning 'History manifest does not contain mode data; skipping summary preview.'
     return
   }
+
+  $comparisonDetails = @()
+  foreach ($mode in @($manifest.modes)) {
+    if (-not $mode.manifestPath) { continue }
+    if (-not (Test-Path -LiteralPath $mode.manifestPath -PathType Leaf)) { continue }
+
+    try {
+      $modeManifest = Get-Content -LiteralPath $mode.manifestPath -Raw | ConvertFrom-Json -Depth 8
+    } catch {
+      Write-Warning ("Unable to parse mode manifest '{0}': {1}" -f $mode.manifestPath, $_.Exception.Message)
+      continue
+    }
+
+    foreach ($comparison in @($modeManifest.comparisons)) {
+      $baseMeta = Get-CommitMetadata -Ref $comparison.base.ref
+      if (-not $baseMeta) {
+        $baseMeta = [ordered]@{
+          full    = $comparison.base.ref
+          short   = $comparison.base.short
+          author  = $null
+          date    = $null
+          subject = $null
+        }
+      }
+
+      $headMeta = Get-CommitMetadata -Ref $comparison.head.ref
+      if (-not $headMeta) {
+        $headMeta = [ordered]@{
+          full    = $comparison.head.ref
+          short   = $comparison.head.short
+          author  = $null
+          date    = $null
+          subject = $null
+        }
+      }
+
+      $comparisonDetails += [pscustomobject]@{
+        mode   = $mode.name
+        index  = $comparison.index
+        report = $comparison.outName
+        base   = $baseMeta
+        head   = $headMeta
+        result = [pscustomobject]@{
+          diff        = $comparison.result.diff
+          exitCode    = $comparison.result.exitCode
+          duration_s  = $comparison.result.duration_s
+          summaryPath = $comparison.result.summaryPath
+          reportPath  = $comparison.result.reportPath
+        }
+      }
+    }
+  }
+
+  if ($comparisonDetails.Count -gt 0) {
+    $preview = [Math]::Min(3, $comparisonDetails.Count)
+    Write-Host ("Comparison commit pairs ({0} total, showing {1}):" -f $comparisonDetails.Count, $preview) -ForegroundColor Yellow
+    for ($i = 0; $i -lt $preview; $i++) {
+      $entry = $comparisonDetails[$i]
+      $baseLabel = if ($entry.base.subject) { "{0} ({1})" -f $entry.base.short, $entry.base.subject } else { $entry.base.short }
+      $headLabel = if ($entry.head.subject) { "{0} ({1})" -f $entry.head.short, $entry.head.subject } else { $entry.head.short }
+      $diffLabel = if ($entry.result.diff) { 'diff=yes' } else { 'diff=no' }
+      Write-Host ("  [{0} #{1}] {2} -> {3} ({4})" -f $entry.mode, $entry.index, $baseLabel, $headLabel, $diffLabel)
+    }
+    if ($comparisonDetails.Count -gt $preview) {
+      Write-Host ("  ... ({0} more pair(s))" -f ($comparisonDetails.Count - $preview))
+    }
+  }
+
+  $contextPath = Join-Path $historyResultsDir 'history-context.json'
+  $contextPayload = [ordered]@{
+    schema             = 'vi-compare/history-context@v1'
+    generatedAt        = (Get-Date).ToString('o')
+    targetPath         = $manifest.targetPath
+    requestedStartRef  = $manifest.requestedStartRef
+    startRef           = $manifest.startRef
+    maxPairs           = $manifest.maxPairs
+    comparisons        = $comparisonDetails
+  }
+  $contextPayload | ConvertTo-Json -Depth 6 | Out-File -FilePath $contextPath -Encoding utf8
+  Write-Host ("History context summary written to {0}" -f $contextPath)
 
   $modeSummaryJson = ($manifest.modes | ConvertTo-Json -Depth 4)
 

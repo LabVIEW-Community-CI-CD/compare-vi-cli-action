@@ -216,11 +216,19 @@ jobs:
           phase: T1
           results-dir: tests/results
 
+      - name: Resolve Pester version
+        id: pester_version
+        if: ${{ inputs.skip_run != 'true' }}
+        shell: pwsh
+        run: ./tools/Get-PesterVersion.ps1 -EmitEnv -EmitOutput
+
       - name: Install Pester v5 (optional)
-        if: ${{ inputs.install_pester == 'true' }}
+        if: ${{ inputs.install_pester == 'true' && inputs.skip_run != 'true' }}
         shell: pwsh
         run: |
-          Install-Module -Name Pester -RequiredVersion 5.4.0 -Force -SkipPublisherCheck -Scope CurrentUser
+          $version = if ($env:PESTER_VERSION -and $env:PESTER_VERSION.Trim()) { $env:PESTER_VERSION } else { (./tools/Get-PesterVersion.ps1) }
+          Write-Host "Installing Pester $version"
+          Install-Module -Name Pester -RequiredVersion $version -Force -SkipPublisherCheck -Scope CurrentUser
 
       - name: Enable diagnostics (synthetic failure)
         if: ${{ inputs.diagnostic_fail == 'true' }}
@@ -243,6 +251,9 @@ jobs:
           $bound.TestsPath = 'tests'
           $bound.IncludeIntegration = '${{ needs.normalize.outputs.include_integration }}'
           $bound.ResultsPath = 'tests/results'
+          if ($env:DISPATCHER_LIVE_OUTPUT -ne '0') {
+            $bound.LiveOutput = $true
+          }
           if ('${{ steps.dprofile.outputs.emit_failures_json_always }}' -eq 'true') { $bound.EmitFailuresJsonAlways = $true }
           if ('${{ inputs.include_patterns }}' -ne '') {
             $patternInput = '${{ inputs.include_patterns }}'
