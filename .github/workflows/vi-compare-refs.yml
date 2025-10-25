@@ -62,6 +62,8 @@ concurrency:
 jobs:
   preflight:
     runs-on: [self-hosted, Windows, X64]
+    permissions:
+      contents: read
     timeout-minutes: 5
     steps:
       - uses: actions/checkout@v5
@@ -79,6 +81,8 @@ jobs:
   compare:
     runs-on: [self-hosted, Windows, X64]
     needs: preflight
+    permissions:
+      contents: read
     timeout-minutes: 30
     env:
       UNBLOCK_GUARD: '1'
@@ -122,6 +126,10 @@ jobs:
           if ([string]::IsNullOrWhiteSpace($env:TARGET_PATH)) {
             throw 'target_path input cannot be empty.'
           }
+          $targetPath = $env:TARGET_PATH.Trim()
+          if (-not $targetPath) {
+            throw 'target_path input cannot be empty.'
+          }
           $scriptPath = Join-Path $env:GITHUB_WORKSPACE 'tools/Compare-VIHistory.ps1'
           if (-not (Test-Path -LiteralPath $scriptPath -PathType Leaf)) {
             throw "Compare-VIHistory.ps1 not found at $scriptPath"
@@ -144,8 +152,21 @@ jobs:
           if ($modeTokens.Count -eq 0) { $modeTokens = @('default') }
           $modeTokens = @($modeTokens | Select-Object -Unique)
 
+          $startRef = if ([string]::IsNullOrWhiteSpace($env:START_REF)) { $null } else { $env:START_REF.Trim() }
+          $endRef = if ([string]::IsNullOrWhiteSpace($env:END_REF)) { $null } else { $env:END_REF.Trim() }
+
+          $parsedMaxPairs = $null
+          if (-not [string]::IsNullOrWhiteSpace($env:MAX_PAIRS)) {
+            $rawMax = $env:MAX_PAIRS.Trim()
+            $parsed = 0
+            if (-not [int]::TryParse($rawMax, [ref]$parsed) -or $parsed -lt 0) {
+              throw "max_pairs must be a non-negative integer (received '$rawMax')."
+            }
+            $parsedMaxPairs = $parsed
+          }
+
           $scriptArgs = @(
-            '-TargetPath', $env:TARGET_PATH,
+            '-TargetPath', $targetPath,
             '-ResultsDir', $resultsRoot,
             '-GitHubOutputPath', $env:GITHUB_OUTPUT,
             '-StepSummaryPath', $env:GITHUB_STEP_SUMMARY,
@@ -156,17 +177,17 @@ jobs:
             $scriptArgs += '-Mode'
             $scriptArgs += $mode
           }
-          if (-not [string]::IsNullOrWhiteSpace($env:START_REF)) {
+          if ($startRef) {
             $scriptArgs += '-StartRef'
-            $scriptArgs += $env:START_REF
+            $scriptArgs += $startRef
           }
-          if (-not [string]::IsNullOrWhiteSpace($env:END_REF)) {
+          if ($endRef) {
             $scriptArgs += '-EndRef'
-            $scriptArgs += $env:END_REF
+            $scriptArgs += $endRef
           }
-          if (-not [string]::IsNullOrWhiteSpace($env:MAX_PAIRS)) {
+          if ($null -ne $parsedMaxPairs) {
             $scriptArgs += '-MaxPairs'
-            $scriptArgs += $env:MAX_PAIRS
+            $scriptArgs += $parsedMaxPairs
           }
           if (-not [string]::IsNullOrWhiteSpace($env:EXTRA_FLAGS)) {
             $scriptArgs += '-AdditionalFlags'
@@ -277,12 +298,11 @@ jobs:
         if: ${{ always() && steps.history.outputs['results-dir'] != '' }}
         uses: actions/upload-artifact@v4
         with:
-          name: vi-compare-results
+          name: vi-compare-manifests
           path: |
             ${{ steps.history.outputs['manifest-path'] }}
             ${{ steps.history.outputs['results-dir'] }}/**/manifest.json
             ${{ steps.history.outputs['results-dir'] }}/**/*-summary.json
-            ${{ steps.history.outputs['results-dir'] }}/**/*-exec.json
           if-no-files-found: warn
 
       - name: Upload LVCompare diff artifacts

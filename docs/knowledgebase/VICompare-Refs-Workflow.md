@@ -18,6 +18,7 @@
 - `end_ref` (optional): stop when this ref is reached. The pair that lands on `end_ref` is compared once, then the loop
   exits.
 - `max_pairs` (optional): limit comparisons (set to `"0"` for no limit). The workflow defaults to `10`.
+  - Input must be a non-negative integer; anything else fails fast with a clear message.
 - `fail_fast` (`true`/`false`): stop iterating after the first detected diff (still uploads results, does not fail the job).
 - `fail_on_diff` (`true`/`false`): exit the job with failure status if any LVCompare run reports differences.
 - `modes` (string): comma-separated compare modes. Recognised values:
@@ -33,6 +34,15 @@
   `none` (apply none), direct flag names (`noattr`, `nofp`, `nofppos`, `nobdcosm`), and `+flag` / `-flag` modifiers
   to add or remove flags relative to the current set.
 - The helper always prepends `-nobd`. Add extra switches via `additional_flags` (space-delimited).
+
+### Quick-start scenarios
+
+- **Default history sweep** – leave inputs at their defaults and supply only `target_path`. The workflow walks the first
+  ten commit pairs starting at `HEAD`, honours the standard ignore flags, and uploads a lightweight manifest.
+- **Attribute audit** – set `modes` to `default,attributes` so the second pass removes `-noattr` and calls out attribute
+  changes explicitly in the manifest/summary.
+- **Deep dive** – bump `max_pairs` to `0` (unbounded) and enable `fail_fast='true'` when you just need to know whether any
+  difference exists in the history span.
 
 Example CLI dispatch (requires `gh workflow run` permissions):
 
@@ -54,9 +64,10 @@ gh workflow run vi-compare-refs.yml `
   Dashboards and metrics jobs should deserialize `mode-manifests-json` when they need per-mode artifact locations.
 - Per-mode manifests live under `tests/results/ref-compare/history/<mode>/manifest.json`
   (`schema: vi-compare/history@v1`) and enumerate the commit pairs, summaries, and LVCompare outcomes.
-- Per-iteration summaries (`*-summary.json`) and execution traces (`*-exec.json`) are stored beside the mode manifest
-  (for example `tests/results/ref-compare/history/default/VI1.vi-001-summary.json`) and uploaded in the
-  `vi-compare-results` artifact.
+- Per-iteration summaries (`*-summary.json`) live beside the mode manifest
+  (for example `tests/results/ref-compare/history/default/VI1.vi-001-summary.json`) and are uploaded in the
+  `vi-compare-manifests` artifact. Execution traces (`*-exec.json`) stay on disk for local triage but are no longer
+  included in the workflow artifact to keep uploads lean.
 - When LVCompare reports differences, the helper preserves the `*-artifacts` directory (HTML report, screenshots, stdout)
   within the mode directory, and the workflow uploads them as `vi-compare-diff-artifacts`. Runs without differences discard those directories so the
   diff artifact upload is skipped.
