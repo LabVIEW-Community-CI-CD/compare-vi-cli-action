@@ -50,6 +50,7 @@ Set `fail-on-diff: false` to treat code 1 as notice-only.
 - Check `tests/results/loop/**` for JSON logs and timing stats.
 - Enable leak detection (`tools/Detect-RogueLV.ps1 -FailOnRogue`).
 - Close LVCompare after loop runs (`tools/Close-LVCompare.ps1`).
+- Post-run cleanup retries LabVIEW shutdown automatically (up to three attempts). If it still fails, inspect `tests/results/_agent/post/post-run-cleanup.log`—the script now reports remaining PID lists before throwing so you can terminate them manually.
 
 ## Test environment tips
 

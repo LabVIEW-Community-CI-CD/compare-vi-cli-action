@@ -59,4 +59,66 @@ exit 0
     $lvMarker.key | Should -Be 'close-lvcompare'
     @((Get-ChildItem -LiteralPath (Join-Path $markerDir 'requests') -ErrorAction SilentlyContinue)).Count | Should -Be 0
   }
+
+  It 'retries LabVIEW close until process exits' {
+    $repoRoot = Join-Path $TestDrive 'repo-retry'
+    $toolsDir = Join-Path $repoRoot 'tools'
+    New-Item -ItemType Directory -Path $repoRoot -Force | Out-Null
+    New-Item -ItemType Directory -Path (Join-Path $toolsDir 'PostRun') -Force | Out-Null
+
+    $sourceRoot = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path
+    Copy-Item -LiteralPath (Join-Path $sourceRoot 'tools' 'Post-Run-Cleanup.ps1') -Destination (Join-Path $toolsDir 'Post-Run-Cleanup.ps1') -Force
+    Copy-Item -LiteralPath (Join-Path $sourceRoot 'tools' 'Once-Guard.psm1') -Destination (Join-Path $toolsDir 'Once-Guard.psm1') -Force
+    Copy-Item -LiteralPath (Join-Path $sourceRoot 'tools' 'PostRun' 'PostRunRequests.psm1') -Destination (Join-Path $toolsDir 'PostRun' 'PostRunRequests.psm1') -Force
+
+    $stateFile = Join-Path $repoRoot 'stub-state.txt'
+    $pidFile = Join-Path $repoRoot 'stub-pid.txt'
+    '' | Set-Content -LiteralPath $stateFile -Encoding utf8
+
+    $labStub = @'
+param()
+$statePath = $env:LABVIEW_STUB_STATE
+$pidPath = $env:LABVIEW_STUB_PID
+if (-not $statePath) { exit 1 }
+if (-not (Test-Path -LiteralPath $statePath)) { '0' | Set-Content -LiteralPath $statePath -Encoding utf8 }
+$count = [int](Get-Content -LiteralPath $statePath)
+$count++
+Set-Content -LiteralPath $statePath -Value $count -Encoding utf8
+if ($count -lt 3) { exit 1 }
+if ($pidPath -and (Test-Path -LiteralPath $pidPath)) {
+  $pid = [int](Get-Content -LiteralPath $pidPath)
+  try { Stop-Process -Id $pid -ErrorAction SilentlyContinue } catch {}
+}
+exit 0
+'@
+    Set-Content -LiteralPath (Join-Path $toolsDir 'Close-LabVIEW.ps1') -Value $labStub -Encoding utf8
+
+    $lvcompareStub = @"
+param()
+exit 0
+"@
+    Set-Content -LiteralPath (Join-Path $toolsDir 'Close-LVCompare.ps1') -Value $lvcompareStub -Encoding utf8
+
+    $fakeLabVIEW = Join-Path $repoRoot 'LabVIEW.exe'
+    Copy-Item -LiteralPath (Join-Path $PSHOME 'pwsh.exe') -Destination $fakeLabVIEW -Force
+    $proc = Start-Process -FilePath $fakeLabVIEW -ArgumentList '-NoLogo','-NoProfile','-Command','Start-Sleep -Seconds 120' -PassThru
+    try {
+      Set-Content -LiteralPath $pidFile -Value $proc.Id -Encoding utf8
+      $env:LABVIEW_STUB_STATE = $stateFile
+      $env:LABVIEW_STUB_PID = $pidFile
+
+      Push-Location $repoRoot
+      & (Join-Path $toolsDir 'Post-Run-Cleanup.ps1') -CloseLabVIEW | Out-Null
+      Pop-Location
+
+      $finalState = [int](Get-Content -LiteralPath $stateFile)
+      $finalState | Should -BeGreaterThan 2
+      $remaining = Get-Process -Id $proc.Id -ErrorAction SilentlyContinue
+      $remaining | Should -BeNullOrEmpty
+    } finally {
+      Remove-Item Env:LABVIEW_STUB_STATE -ErrorAction SilentlyContinue
+      Remove-Item Env:LABVIEW_STUB_PID -ErrorAction SilentlyContinue
+      try { if (-not $proc.HasExited) { $proc.Kill() } } catch {}
+    }
+  }
 }
