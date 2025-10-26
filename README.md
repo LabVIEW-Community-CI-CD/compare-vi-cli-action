@@ -41,6 +41,15 @@ workflow uploads two artifacts:
 - `vi-compare-manifests` - aggregate suite manifest and per-mode summaries
 - `vi-compare-diff-artifacts` - only present when LVCompare detects differences
 
+Each job also emits GitHub outputs pointing at the aggregate manifest, the
+history results directory, the per-mode manifest summary (`mode-manifests-json`),
+and the generated history report paths (`history-report-md` and, when HTML
+renders, `history-report-html`). Downstream workflows and reusable snippets can
+consume those keys to surface the Markdown/HTML report or to dispatch follow-up
+automation without spelunking the artifacts. When the renderer is unavailable,
+`Compare-VIHistory.ps1` writes a lightweight fallback report so the Markdown
+output key always resolves to a readable summary.
+
 Provide the optional `notify_issue` input when dispatching the workflow to post
 the same summary table to a GitHub issue for stakeholders.
 
@@ -82,8 +91,11 @@ For a quicker end-to-end loop:
   enriched Markdown summary (including attribute coverage), surfaces the first
   commit pairs it processed, writes `tests/results/ref-compare/history/history-context.json`
   with commit metadata, and renders `tests/results/ref-compare/history/history-report.md`
-  (plus `history-report.html` when `-HtmlReport`) so reviewers have a single document
-  to scan.
+  (plus `history-report.html` when `-HtmlReport`) so reviewers get a single document
+  with author/date context, diff outcome, and relative links to the preserved LVCompare
+  report and artifact directory whenever a difference is detected. If the
+  renderer throws or is missing, the script falls back to a lightweight Markdown
+  stub so downstream tooling still has a report to reference.
 - `scripts/Dispatch-VIHistoryWorkflow.ps1` wraps `gh workflow run` and echoes
   the URL to the most recent run so you can follow progress immediately.
 

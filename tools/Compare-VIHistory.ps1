@@ -8,11 +8,11 @@ param(
   [string]$EndRef,
   [int]$MaxPairs,
 
-  [bool]$FlagNoAttr = $false,
-  [bool]$FlagNoFp = $false,
-  [bool]$FlagNoFpPos = $false,
-  [bool]$FlagNoBdCosm = $false,
-  [bool]$ForceNoBd = $false,
+  [bool]$FlagNoAttr = $true,
+  [bool]$FlagNoFp = $true,
+  [bool]$FlagNoFpPos = $true,
+  [bool]$FlagNoBdCosm = $true,
+  [bool]$ForceNoBd = $true,
   [string]$AdditionalFlags,
   [string]$LvCompareArgs,
   [switch]$ReplaceFlags,
@@ -59,11 +59,11 @@ function Split-ArgString {
 }
 
 $modeDefinitions = @{
-  'default'       = @{ slug = 'default'; flags = @() }
-  'attributes'    = @{ slug = 'attributes'; flags = @('-noattr') }
-  'front-panel'   = @{ slug = 'front-panel'; flags = @('-nofp','-nofppos') }
-  'block-diagram' = @{ slug = 'block-diagram'; flags = @('-nobdcosm') }
-  'all'           = @{ slug = 'all'; flags = @() }
+  'default'       = @{ slug = 'default'; flags = $null }
+  'attributes'    = @{ slug = 'attributes'; flags = $null }
+  'front-panel'   = @{ slug = 'front-panel'; flags = $null }
+  'block-diagram' = @{ slug = 'block-diagram'; flags = $null }
+  'all'           = @{ slug = 'all'; flags = $null }
   'custom'        = @{ slug = 'custom'; flags = $null }
 }
 
@@ -518,9 +518,35 @@ $diffHighlights = New-Object System.Collections.Generic.List[string]
 foreach ($modeSpec in $modeSpecs) {
   $modeName = $modeSpec.Name
   $modeSlug = $modeSpec.Slug
-  $modeFlags = Build-FlagBundle -ModeSpec $modeSpec -ReplaceFlags:$ReplaceFlags.IsPresent -AdditionalFlags $AdditionalFlags -LvCompareArgs $LvCompareArgs -ForceNoBd:$ForceNoBd -FlagNoAttr:$FlagNoAttr -FlagNoFp:$FlagNoFp -FlagNoFpPos:$FlagNoFpPos -FlagNoBdCosm:$FlagNoBdCosm
-  if (-not $modeFlags) { $modeFlags = @() }
-  $mf = if ($modeFlags -and $modeFlags.Count -gt 0) { $modeFlags -join ' ' } else { '(empty)' }
+  $modeForceNoBd = $ForceNoBd
+  $modeFlagNoAttr = $FlagNoAttr
+  $modeFlagNoFp = $FlagNoFp
+  $modeFlagNoFpPos = $FlagNoFpPos
+  $modeFlagNoBdCosm = $FlagNoBdCosm
+
+  switch ($modeName) {
+    'attributes' {
+      $modeFlagNoAttr = $false
+    }
+    'front-panel' {
+      $modeFlagNoFp = $false
+      $modeFlagNoFpPos = $false
+    }
+    'block-diagram' {
+      $modeFlagNoBdCosm = $false
+    }
+    'all' {
+      $modeForceNoBd = $false
+      $modeFlagNoAttr = $false
+      $modeFlagNoFp = $false
+      $modeFlagNoFpPos = $false
+      $modeFlagNoBdCosm = $false
+    }
+  }
+
+  $modeFlagsRaw = Build-FlagBundle -ModeSpec $modeSpec -ReplaceFlags:$ReplaceFlags.IsPresent -AdditionalFlags $AdditionalFlags -LvCompareArgs $LvCompareArgs -ForceNoBd:$modeForceNoBd -FlagNoAttr:$modeFlagNoAttr -FlagNoFp:$modeFlagNoFp -FlagNoFpPos:$modeFlagNoFpPos -FlagNoBdCosm:$modeFlagNoBdCosm
+  $modeFlags = @($modeFlagsRaw | Where-Object { -not [string]::IsNullOrWhiteSpace($_) })
+  $mf = if ($modeFlags.Count -gt 0) { $modeFlags -join ' ' } else { '(empty)' }
   Write-Verbose ("Mode {0} flags: {1}" -f $modeName, $mf)
 
   $modeResultsRoot = Join-Path $resultsRoot $modeSlug
@@ -982,33 +1008,103 @@ if ($flagArray -and $flagArray.Count -gt 0) {
 }
 
 $historyReportMarkdownPath = Join-Path $resultsRootResolved 'history-report.md'
-$historyReportHtmlPath = Join-Path $resultsRootResolved 'history-report.html'
-$shouldRenderSummary = $RenderReport.IsPresent -or `
-  (-not [string]::IsNullOrWhiteSpace($GitHubOutputPath)) -or `
-  (-not [string]::IsNullOrWhiteSpace($StepSummaryPath))
-if ($shouldRenderSummary) {
-  $rendererScript = Join-Path (Split-Path -Parent $PSCommandPath) 'Render-VIHistoryReport.ps1'
-  if (Test-Path -LiteralPath $rendererScript -PathType Leaf) {
-    $rendererArgs = @{
-      ManifestPath       = $aggregateManifestResolved
-      HistoryContextPath = Join-Path $resultsRootResolved 'history-context.json'
-      OutputDir          = $resultsRootResolved
-      MarkdownPath       = $historyReportMarkdownPath
-      GitHubOutputPath   = $GitHubOutputPath
-      StepSummaryPath    = $StepSummaryPath
-    }
-    if ($ReportFormat -eq 'html') {
-      $rendererArgs['EmitHtml'] = $true
-      $rendererArgs['HtmlPath'] = $historyReportHtmlPath
-    }
-    try {
-      & $rendererScript @rendererArgs | Out-Null
-    } catch {
-      Write-Warning ("Failed to render VI history report: {0}" -f $_.Exception.Message)
-    }
-  } else {
-    Write-Warning ("VI history renderer script not found at {0}" -f $rendererScript)
+$historyReportHtmlPath = if ($ReportFormat -eq 'html') {
+  Join-Path $resultsRootResolved 'history-report.html'
+} else {
+  $null
+}
+$rendererScript = Join-Path (Split-Path -Parent $PSCommandPath) 'Render-VIHistoryReport.ps1'
+$renderSucceeded = $false
+if (Test-Path -LiteralPath $rendererScript -PathType Leaf) {
+  $rendererArgs = @{
+    ManifestPath       = $aggregateManifestResolved
+    HistoryContextPath = Join-Path $resultsRootResolved 'history-context.json'
+    OutputDir          = $resultsRootResolved
+    MarkdownPath       = $historyReportMarkdownPath
+    GitHubOutputPath   = $GitHubOutputPath
+    StepSummaryPath    = $StepSummaryPath
   }
+  if ($historyReportHtmlPath) {
+    $rendererArgs['EmitHtml'] = $true
+    $rendererArgs['HtmlPath'] = $historyReportHtmlPath
+  }
+  try {
+    & $rendererScript @rendererArgs | Out-Null
+    $renderSucceeded = $true
+  } catch {
+    Write-Warning ("Failed to render VI history report: {0}" -f $_.Exception.Message)
+  }
+} else {
+  Write-Warning ("VI history renderer script not found at {0}" -f $rendererScript)
+}
+
+if (-not $renderSucceeded) {
+  try {
+    $fallbackLines = @(
+      '# VI history report'
+      ''
+      ('Target: `{0}`' -f ($targetRel ?? 'unknown'))
+      ('Manifest: `{0}`' -f ($aggregateManifestResolved ?? 'unknown'))
+      ''
+      '## Commit pairs'
+      ''
+      '<sub>n/a - n/a</sub>'
+      ''
+      '| Pair | **diff** | Report |'
+      '| --- | --- | --- |'
+      '| n/a | n/a | [report](./) |'
+      ''
+      '## Attribute coverage'
+      ''
+      '_History renderer unavailable; see manifest for details._'
+    )
+    [System.IO.File]::WriteAllText(
+      $historyReportMarkdownPath,
+      ($fallbackLines -join [Environment]::NewLine),
+      [System.Text.Encoding]::UTF8
+    )
+    if ($historyReportHtmlPath) {
+      $fallbackHtml = @"
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>VI History Report (fallback)</title>
+</head>
+<body>
+  <article>
+    <h1>VI history report</h1>
+    <p>History renderer unavailable; see manifest: <code>$([System.Net.WebUtility]::HtmlEncode($aggregateManifestResolved))</code></p>
+    <section>
+      <h2>Commit pairs</h2>
+      <p><sub>n/a - n/a</sub></p>
+      <table>
+        <thead><tr><th>Pair</th><th>Diff</th><th>Report</th></tr></thead>
+        <tbody><tr><td>n/a</td><td>pending</td><td><code>n/a</code></td></tr></tbody>
+      </table>
+    </section>
+    <section>
+      <h2>Attribute coverage</h2>
+      <p>History renderer unavailable.</p>
+    </section>
+  </article>
+</body>
+</html>
+"@
+      [System.IO.File]::WriteAllText($historyReportHtmlPath, $fallbackHtml, [System.Text.Encoding]::UTF8)
+    }
+  } catch {
+    Write-Warning ("Failed to create fallback VI history report: {0}" -f $_.Exception.Message)
+  }
+}
+
+if (Test-Path -LiteralPath $historyReportMarkdownPath -PathType Leaf) {
+  $historyReportMarkdownResolved = (Resolve-Path -LiteralPath $historyReportMarkdownPath).Path
+  Write-GitHubOutput -Key 'history-report-md' -Value $historyReportMarkdownResolved -DestPath $GitHubOutputPath
+}
+if ($historyReportHtmlPath -and (Test-Path -LiteralPath $historyReportHtmlPath -PathType Leaf)) {
+  $historyReportHtmlResolved = (Resolve-Path -LiteralPath $historyReportHtmlPath).Path
+  Write-GitHubOutput -Key 'history-report-html' -Value $historyReportHtmlResolved -DestPath $GitHubOutputPath
 }
 
 Write-Host ("VI compare history suite complete. Aggregate manifest: {0}" -f $aggregateManifestResolved)
@@ -1026,3 +1122,4 @@ if ($hasStepSummary -and $totalDiffs -gt 0) {
 if ($FailOnDiff.IsPresent -and $totalDiffs -gt 0) {
   throw ("Differences detected across {0} comparison(s)" -f $totalDiffs)
 }
+

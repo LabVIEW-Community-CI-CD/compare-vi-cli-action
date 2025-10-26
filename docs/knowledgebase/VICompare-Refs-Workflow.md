@@ -44,10 +44,10 @@
 
 ### Local automation helpers
 
-- `scripts/Run-VIHistory.ps1` regenerates local history results, prints the enriched Markdown summary (including attribute coverage), previews the first few commit pairs it processed, and drops both `history-context.json` (commit metadata) and `history-report.md` (single-document summary; plus `history-report.html` when `-HtmlReport`) under the history results directory:
-  ```powershell
-  pwsh -File scripts/Run-VIHistory.ps1 -ViPath Fixtures/Loop.vi -StartRef HEAD -MaxPairs 3
-  ```
+- `scripts/Run-VIHistory.ps1` regenerates local history results, prints the enriched Markdown summary (including attribute coverage), previews the first few commit pairs it processed, and drops both `history-context.json` (commit metadata) and `history-report.md` (single-document summary; plus `history-report.html` when `-HtmlReport`) under the history results directory. The report now folds in author/date details for each commit pair and, when a diff is present, includes relative links to the LVCompare report and artifact directory so you can open them straight from the document. If the renderer is unavailable, the helper writes a lightweight fallback report so the Markdown summary is always present:
+    ```powershell
+    pwsh -File scripts/Run-VIHistory.ps1 -ViPath Fixtures/Loop.vi -StartRef HEAD -MaxPairs 3
+    ```
 - `scripts/Dispatch-VIHistoryWorkflow.ps1` dispatches the GitHub workflow with consistent parameters once you are happy with the local preview:
   ```powershell
   pwsh -File scripts/Dispatch-VIHistoryWorkflow.ps1 -ViPath Fixtures/Loop.vi -CompareRef develop -NotifyIssue 316
@@ -68,8 +68,8 @@ gh workflow run vi-compare-refs.yml `
 - The compare step writes `tests/results/ref-compare/history/manifest.json`, an aggregate manifest with
   `schema: vi-compare/history-suite@v1`. Each `modes[]` entry captures the mode slug, resolved flag bundle,
   stats, and the `manifestPath` for that mode's detailed results.
-- `scripts/Run-VIHistory.ps1` also writes `tests/results/ref-compare/history/history-context.json` (`schema: vi-compare/history-context@v1`) summarising the commit pairs and `tests/results/ref-compare/history/history-report.md` / `history-report.html` so reviewers can triage outcomes without spelunking manifests.
-- GitHub outputs include `manifest-path` (suite manifest), `results-dir` (root history directory), `mode-manifests-json` (JSON array enumerating each mode's manifest path, results directory, and summary stats), and the new `history-report-md` / `history-report-html` pointers for dashboards or PR comments. Dashboards and metrics jobs should deserialize `mode-manifests-json` when they need per-mode artifact locations.
+- `scripts/Run-VIHistory.ps1` also writes `tests/results/ref-compare/history/history-context.json` (`schema: vi-compare/history-context@v1`) summarising the commit pairs and `tests/results/ref-compare/history/history-report.md` / `history-report.html` so reviewers can triage outcomes without spelunking manifests. The report lists each pair with author/date context, explicit diff outcome, run duration, and—when differences exist—relative links to the LVCompare report and preserved artifact directory.
+- GitHub outputs include `manifest-path` (suite manifest), `results-dir` (root history directory), `mode-manifests-json` (JSON array enumerating each mode's manifest path, results directory, and summary stats), and the `history-report-md` / `history-report-html` pointers for dashboards or PR comments. Dashboards and metrics jobs should deserialize `mode-manifests-json` when they need per-mode artifact locations. When HTML rendering is skipped or fails, the Markdown key still points at the fallback report so consumers always have a summary to ingest.
 - Per-mode manifests live under `tests/results/ref-compare/history/<mode>/manifest.json`
   (`schema: vi-compare/history@v1`) and enumerate the commit pairs, summaries, and LVCompare outcomes.
 - Per-iteration summaries (`*-summary.json`) live beside the mode manifest

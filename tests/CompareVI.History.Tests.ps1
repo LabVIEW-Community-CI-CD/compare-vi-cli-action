@@ -600,6 +600,42 @@ exit $exitCode
     $summaryContent | Should -Match 'history-report.md'
   }
 
+  It 'renders enriched history report with commit metadata and artifact links' {
+    if (-not $_pairs) { Set-ItResult -Skipped -Because 'Missing commit data'; return }
+    $previousDiff = $env:STUB_COMPARE_DIFF
+    try {
+      $env:STUB_COMPARE_DIFF = '1'
+      $pair = $_pairs[0]
+      $rd = Join-Path $TestDrive 'history-report-rich'
+
+      & pwsh -NoLogo -NoProfile -File (Join-Path $_repoRoot 'tools/Compare-VIHistory.ps1') `
+        -TargetPath $_target `
+        -StartRef $pair.Head `
+        -MaxPairs 1 `
+        -InvokeScriptPath $_stubPath `
+        -ResultsDir $rd `
+        -Mode 'default' `
+        -FailOnDiff:$false | Out-Null
+
+      $historyMd = Get-Content -LiteralPath (Join-Path $rd 'history-report.md') -Raw
+      $historyMd | Should -Match '\#\# Commit pairs'
+      $historyMd | Should -Match '\*\*diff\*\*'
+      $historyMd | Should -Match '\[report\]\(\./'
+      $historyMd | Should -Match '<sub>.* - .*<\/sub>'
+      $historyMd | Should -Match '\#\# Attribute coverage'
+
+      $historyHtml = Get-Content -LiteralPath (Join-Path $rd 'history-report.html') -Raw
+      $historyHtml | Should -Match '<h2>Attribute coverage</h2>'
+      $historyHtml | Should -Match '<td class="diff-yes">Diff</td>'
+    } finally {
+      if ($null -eq $previousDiff) {
+        Remove-Item Env:STUB_COMPARE_DIFF -ErrorAction SilentlyContinue
+      } else {
+        $env:STUB_COMPARE_DIFF = $previousDiff
+      }
+    }
+  }
+
   It 'expands comma-separated mode tokens into multiple entries' {
     if (-not $_pairs) { Set-ItResult -Skipped -Because 'Missing commit data'; return }
     $env:STUB_COMPARE_DIFF = '0'

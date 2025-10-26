@@ -94,6 +94,15 @@ function ConvertTo-HtmlSafe {
   return $script:HtmlEncoder::HtmlEncode([string]$Value)
 }
 
+function Coalesce {
+  param(
+    [Parameter()]$Value,
+    [Parameter()]$Fallback
+  )
+  if ($Value -ne $null) { return $Value }
+  return $Fallback
+}
+
 $manifestResolved = Resolve-ExistingPath -Path $ManifestPath -Description 'Manifest'
 if (-not $HistoryContextPath) {
   $HistoryContextPath = Join-Path (Split-Path -Parent $manifestResolved) 'history-context.json'
@@ -133,6 +142,13 @@ function Build-FallbackHistoryContext {
 
   $comparisons = New-Object System.Collections.Generic.List[object]
   foreach ($mode in @($Manifest.modes)) {
+    $modeLabel = $mode.name
+    if ([string]::IsNullOrWhiteSpace($modeLabel)) {
+      $modeLabel = $mode.slug
+    }
+    if ([string]::IsNullOrWhiteSpace($modeLabel)) {
+      $modeLabel = 'unknown'
+    }
     $modeManifestPath = $mode.manifestPath
     if (-not $modeManifestPath) { continue }
     if (-not (Test-Path -LiteralPath $modeManifestPath -PathType Leaf)) { continue }
@@ -149,9 +165,10 @@ function Build-FallbackHistoryContext {
       $baseNode = $comparison.base
       $headNode = $comparison.head
       $resultNode = $comparison.result
+      $modeName = $modeLabel
 
       $comparisons.Add([pscustomobject]@{
-        mode  = $mode.name ?? $mode.slug ?? 'unknown'
+        mode  = [string](Coalesce $modeName 'unknown')
         index = $comparison.index
         report = $comparison.outName
         base  = [pscustomobject]@{
@@ -186,7 +203,7 @@ function Build-FallbackHistoryContext {
     requestedStartRef = $Manifest.requestedStartRef
     startRef          = $Manifest.startRef
     maxPairs          = $Manifest.maxPairs
-    comparisons       = @($comparisons)
+    comparisons       = $comparisons.ToArray()
   }
 }
 
@@ -202,7 +219,6 @@ if (-not $historyContext) {
   Write-Verbose 'History context payload missing; deriving comparisons from mode manifests.'
   $historyContext = Build-FallbackHistoryContext -Manifest $manifest
 }
-
 $targetPath = $manifest.targetPath
 $startRef = $manifest.startRef
 $requestedStart = $manifest.requestedStartRef
@@ -212,18 +228,18 @@ $modeEntries = @($manifest.modes)
 $summaryLines = New-Object System.Collections.Generic.List[string]
 $summaryLines.Add('# VI History Report')
 $summaryLines.Add('')
-$summaryLines.Add(('Target: `{0}`' -f ($targetPath ?? 'unknown')))
-$summaryLines.Add(('Requested Start Ref: `{0}`' -f ($requestedStart ?? 'n/a')))
-$summaryLines.Add(('Effective Start Ref: `{0}`' -f ($startRef ?? 'n/a')))
+$summaryLines.Add(('Target: `{0}`' -f (Coalesce $targetPath 'unknown')))
+$summaryLines.Add(('Requested Start Ref: `{0}`' -f (Coalesce $requestedStart 'n/a')))
+$summaryLines.Add(('Effective Start Ref: `{0}`' -f (Coalesce $startRef 'n/a')))
 
 if ($stats) {
   $summaryLines.Add('')
   $summaryLines.Add('| Metric | Value |')
   $summaryLines.Add('| --- | --- |')
-  $summaryLines.Add(('| Modes | {0} |' -f ($stats.modes ?? $modeEntries.Count)))
-  $summaryLines.Add(('| Comparisons | {0} |' -f ($stats.processed ?? 'n/a')))
-  $summaryLines.Add(('| Diffs | {0} |' -f ($stats.diffs ?? 'n/a')))
-  $summaryLines.Add(('| Missing | {0} |' -f ($stats.missing ?? 'n/a')))
+  $summaryLines.Add(('| Modes | {0} |' -f (Coalesce $stats.modes $modeEntries.Count)))
+  $summaryLines.Add(('| Comparisons | {0} |' -f (Coalesce $stats.processed 'n/a')))
+  $summaryLines.Add(('| Diffs | {0} |' -f (Coalesce $stats.diffs 'n/a')))
+  $summaryLines.Add(('| Missing | {0} |' -f (Coalesce $stats.missing 'n/a')))
   if ($stats.errors -ne $null) {
     $summaryLines.Add(('| Errors | {0} |' -f $stats.errors))
   }
@@ -243,7 +259,7 @@ if ($modeEntries.Count -gt 0) {
         $flagDisplay = ($flags | ForEach-Object { ('`{0}`' -f $_) }) -join '<br>'
       }
     }
-    $summaryLines.Add(('| {0} | {1} | {2} | {3} |' -f ($mode.name ?? 'unknown'), ($mode.stats.processed ?? 'n/a'), ($mode.stats.diffs ?? 'n/a'), $flagDisplay))
+    $summaryLines.Add(('| {0} | {1} | {2} | {3} |' -f (Coalesce $mode.name 'unknown'), (Coalesce $mode.stats.processed 'n/a'), (Coalesce $mode.stats.diffs 'n/a'), $flagDisplay))
   }
 }
 
@@ -255,31 +271,77 @@ if ($comparisons.Count -gt 0) {
   $summaryLines.Add('')
   $summaryLines.Add('| Mode | Pair | Base | Head | Diff | Duration (s) | Report |')
   $summaryLines.Add('| --- | --- | --- | --- | --- | --- | --- |')
+  $comparisonSubLines = New-Object System.Collections.Generic.List[string]
   foreach ($entry in $comparisons) {
-    $baseRef = $entry.base.short ?? $entry.base.full
+    $baseRef = Coalesce $entry.base.short $entry.base.full
     if ($entry.base.subject) { $baseRef = '{0} ({1})' -f $baseRef, $entry.base.subject }
-    $headRef = $entry.head.short ?? $entry.head.full
+    $headRef = Coalesce $entry.head.short $entry.head.full
     if ($entry.head.subject) { $headRef = '{0} ({1})' -f $headRef, $entry.head.subject }
-    $diffCell = if ($entry.result.diff -eq $true) { ':warning: yes' } else { 'no' }
+    $diffCell = if ($entry.result.diff -eq $true) { '**diff**' } else { 'clean' }
     $durationValue = $null
     if ($entry.result.duration_s -ne $null -and $entry.result.duration_s -is [ValueType]) {
       try { $durationValue = [double]$entry.result.duration_s } catch { $durationValue = $null }
     }
     $duration = if ($durationValue -ne $null) { '{0:N2}' -f $durationValue } else { 'n/a' }
-    $reportCell = if ($entry.result.reportPath) { ('`{0}`' -f $entry.result.reportPath) } else { '_missing_' }
-    $summaryLines.Add(('| {0} | {1} | {2} | {3} | {4} | {5} | {6} |' -f ($entry.mode ?? 'n/a'), ($entry.index ?? 'n/a'), $baseRef, $headRef, $diffCell, $duration, $reportCell))
+    $reportCell = '_missing_'
+    $reportRelativeNormalized = $null
+    $reportPath = $entry.result.reportPath
+    if ($reportPath) {
+      $reportRelative = $null
+      try {
+        $reportRelative = [System.IO.Path]::GetRelativePath($outputResolved, $reportPath)
+      } catch {
+        $reportRelative = $null
+      }
+      if (-not [string]::IsNullOrWhiteSpace($reportRelative)) {
+        $reportRelative = $reportRelative -replace '\\','/'
+        if (-not $reportRelative.StartsWith('.')) {
+          $reportRelative = "./$reportRelative"
+        }
+        $reportRelativeNormalized = $reportRelative
+        $reportCell = ('[report]({0})' -f $reportRelative)
+      } else {
+        $reportCell = ('`{0}`' -f $reportPath)
+      }
+    }
+    $summaryLines.Add(('| {0} | {1} | {2} | {3} | {4} | {5} | {6} |' -f (Coalesce $entry.mode 'n/a'), (Coalesce $entry.index 'n/a'), $baseRef, $headRef, $diffCell, $duration, $reportCell))
+    $comparisonSubLines.Add(('<sub>{0} - {1}</sub>' -f $baseRef, $headRef))
     $comparisonHtmlRows.Add([pscustomobject]@{
-      Mode       = $entry.mode ?? 'n/a'
-      Index      = $entry.index ?? 'n/a'
+      Mode       = Coalesce $entry.mode 'n/a'
+      Index      = Coalesce $entry.index 'n/a'
       BaseLabel  = $baseRef
       HeadLabel  = $headRef
       Diff       = [bool]$entry.result.diff
       Duration   = $durationValue
       DurationDisplay = $duration
-      ReportPath = $entry.result.reportPath
+      ReportPath = $reportPath
+      ReportRelative = $reportRelativeNormalized
+      ReportDisplay = $reportCell
       ExitCode   = $entry.result.exitCode
     })
   }
+  if ($comparisonSubLines.Count -gt 0) {
+    foreach ($subLine in $comparisonSubLines) {
+      $summaryLines.Add($subLine)
+    }
+  }
+}
+
+$summaryLines.Add('')
+$summaryLines.Add('## Attribute coverage')
+$summaryLines.Add('')
+if ($modeEntries.Count -gt 0) {
+  foreach ($mode in $modeEntries) {
+    $modeTitle = Coalesce $mode.name 'unknown'
+    $flagList = @()
+    if ($mode.flags) {
+      $flagList = @($mode.flags | Where-Object { -not [string]::IsNullOrWhiteSpace($_) })
+    }
+    $flagSummary = if ($flagList.Count -gt 0) { $flagList -join ', ' } else { 'none' }
+    $summaryLines.Add(('- {0}: {1}' -f $modeTitle, $flagSummary))
+  }
+} else {
+  $summaryLines.Add('_No attribute coverage data available._')
 }
 
 $summaryLines.Add('')
@@ -294,8 +356,8 @@ $markdownOutPath = (Resolve-Path -LiteralPath $MarkdownPath).Path
 $htmlOutPath = $null
 if ($emitHtml -and $HtmlPath) {
   $metricsRows = @(
-    @{ Label = 'Modes'; Value = $stats.modes ?? $modeEntries.Count },
-    @{ Label = 'Comparisons'; Value = $stats.processed ?? $comparisons.Count },
+    @{ Label = 'Modes'; Value = Coalesce $stats.modes $modeEntries.Count },
+    @{ Label = 'Comparisons'; Value = Coalesce $stats.processed $comparisons.Count },
     @{ Label = 'Diffs'; Value = $stats.diffs },
     @{ Label = 'Missing'; Value = $stats.missing },
     @{ Label = 'Errors'; Value = $stats.errors }
@@ -330,8 +392,8 @@ if ($emitHtml -and $HtmlPath) {
   [void]$htmlBuilder.AppendLine('  <h1>VI History Report</h1>')
   [void]$htmlBuilder.AppendLine('  <dl class="meta">')
   [void]$htmlBuilder.AppendLine(('    <dt>Target</dt><dd><code>{0}</code></dd>' -f (ConvertTo-HtmlSafe $targetPath)))
-  [void]$htmlBuilder.AppendLine(('    <dt>Requested start</dt><dd><code>{0}</code></dd>' -f (ConvertTo-HtmlSafe ($requestedStart ?? 'n/a'))))
-  [void]$htmlBuilder.AppendLine(('    <dt>Effective start</dt><dd><code>{0}</code></dd>' -f (ConvertTo-HtmlSafe ($startRef ?? 'n/a'))))
+  [void]$htmlBuilder.AppendLine(('    <dt>Requested start</dt><dd><code>{0}</code></dd>' -f (ConvertTo-HtmlSafe (Coalesce $requestedStart 'n/a'))))
+  [void]$htmlBuilder.AppendLine(('    <dt>Effective start</dt><dd><code>{0}</code></dd>' -f (ConvertTo-HtmlSafe (Coalesce $startRef 'n/a'))))
   if ($manifest.maxPairs) {
     [void]$htmlBuilder.AppendLine(('    <dt>Max pairs</dt><dd>{0}</dd>' -f (ConvertTo-HtmlSafe $manifest.maxPairs)))
   }
@@ -363,10 +425,10 @@ if ($emitHtml -and $HtmlPath) {
     [void]$htmlBuilder.AppendLine('    <thead><tr><th>Mode</th><th>Processed</th><th>Diffs</th><th>Missing</th><th>Flags</th></tr></thead>')
     [void]$htmlBuilder.AppendLine('    <tbody>')
     foreach ($mode in $modeEntries) {
-      $modeName = ConvertTo-HtmlSafe ($mode.name ?? 'unknown')
-      $processed = ConvertTo-HtmlSafe ($mode.stats.processed ?? 'n/a')
-      $diffCount = ConvertTo-HtmlSafe ($mode.stats.diffs ?? 'n/a')
-      $missingCount = ConvertTo-HtmlSafe ($mode.stats.missing ?? 'n/a')
+      $modeName = ConvertTo-HtmlSafe (Coalesce $mode.name 'unknown')
+      $processed = ConvertTo-HtmlSafe (Coalesce $mode.stats.processed 'n/a')
+      $diffCount = ConvertTo-HtmlSafe (Coalesce $mode.stats.diffs 'n/a')
+      $missingCount = ConvertTo-HtmlSafe (Coalesce $mode.stats.missing 'n/a')
       $flags = @($mode.flags | Where-Object { -not [string]::IsNullOrWhiteSpace($_) })
       if ($flags.Count -gt 0) {
         $flagCells = $flags | ForEach-Object { "<code>{0}</code>" -f (ConvertTo-HtmlSafe $_) }
@@ -387,7 +449,7 @@ if ($emitHtml -and $HtmlPath) {
     [void]$htmlBuilder.AppendLine('    <tbody>')
     foreach ($row in $comparisonHtmlRows) {
       $diffClass = if ($row.Diff) { 'diff-yes' } else { 'diff-no' }
-      $diffLabel = if ($row.Diff) { 'Yes' } else { 'No' }
+      $diffLabel = if ($row.Diff) { 'Diff' } else { 'No' }
       $durationDisplay = '<span class="muted">n/a</span>'
       if ($row.DurationDisplay -and $row.DurationDisplay -ne 'n/a') {
         $durationDisplay = ConvertTo-HtmlSafe $row.DurationDisplay
@@ -395,15 +457,40 @@ if ($emitHtml -and $HtmlPath) {
         $durationDisplay = ('{0:N2}' -f $row.Duration)
       }
       $reportHtml = '<span class="muted">missing</span>'
-      if ($row.ReportPath) {
+      if ($row.ReportRelative) {
+        $reportHref = $row.ReportRelative -replace '\\','/'
+        $reportHtml = ('<a href="{0}">report</a>' -f (ConvertTo-HtmlSafe $reportHref))
+      } elseif ($row.ReportPath) {
         $reportHtml = ('<code>{0}</code>' -f (ConvertTo-HtmlSafe $row.ReportPath))
       }
-      [void]$htmlBuilder.AppendLine(("      <tr><td>{0}</td><td>{1}</td><td>{2}</td><td>{3}</td><td class=""{4}"">{5}</td><td>{6}</td><td class=""report-path"">{7}</td></tr>" -f (ConvertTo-HtmlSafe $row.Mode), (ConvertTo-HtmlSafe $row.Index), (ConvertTo-HtmlSafe $row.BaseLabel), (ConvertTo-HtmlSafe $row.HeadLabel), $diffClass, $diffLabel, $durationDisplay, $reportHtml))
+      [void]$htmlBuilder.AppendLine(("      <tr><td>{0}</td><td>{1}</td><td>{2}</td><td>{3}</td><td class=""{4}"">{5}</td><td>{6}</td><td class=""report-path"">{7}</td></tr>" -f (ConvertTo-HtmlSafe (Coalesce $row.Mode 'n/a')), (ConvertTo-HtmlSafe (Coalesce $row.Index 'n/a')), (ConvertTo-HtmlSafe $row.BaseLabel), (ConvertTo-HtmlSafe $row.HeadLabel), $diffClass, $diffLabel, $durationDisplay, $reportHtml))
     }
     [void]$htmlBuilder.AppendLine('    </tbody>')
     [void]$htmlBuilder.AppendLine('  </table>')
   } else {
     [void]$htmlBuilder.AppendLine('  <p class="muted">No commit pairs were captured for the requested history window.</p>')
+  }
+
+  [void]$htmlBuilder.AppendLine('  <h2>Attribute coverage</h2>')
+  if ($modeEntries.Count -gt 0) {
+    [void]$htmlBuilder.AppendLine('  <ul>')
+    foreach ($mode in $modeEntries) {
+      $modeTitle = ConvertTo-HtmlSafe (Coalesce $mode.name 'unknown')
+      $flagList = @()
+      if ($mode.flags) {
+        $flagList = @($mode.flags | Where-Object { -not [string]::IsNullOrWhiteSpace($_) })
+      }
+      if ($flagList.Count -gt 0) {
+        $flagHtml = $flagList | ForEach-Object { ('<code>{0}</code>' -f (ConvertTo-HtmlSafe $_)) }
+        $flagDisplay = [string]::Join(', ', $flagHtml)
+      } else {
+        $flagDisplay = '<span class="muted">none</span>'
+      }
+      [void]$htmlBuilder.AppendLine(("    <li>{0}: {1}</li>" -f $modeTitle, $flagDisplay))
+    }
+    [void]$htmlBuilder.AppendLine('  </ul>')
+  } else {
+    [void]$htmlBuilder.AppendLine('  <p class="muted">No attribute coverage data available.</p>')
   }
 
   [void]$htmlBuilder.AppendLine('  <footer>')
@@ -428,9 +515,9 @@ Write-GitHubOutput -Key 'history-report-md' -Value $markdownOutPath -DestPath $G
 $stepLines = @(
   '### VI history report',
   '',
-  ('- Target: `{0}`' -f ($targetPath ?? 'unknown')),
-  ('- Total comparisons: {0}' -f ($stats.processed ?? $comparisons.Count)),
-  ('- Diffs: {0}' -f ($stats.diffs ?? 'n/a')),
+  ('- Target: `{0}`' -f (Coalesce $targetPath 'unknown')),
+  ('- Total comparisons: {0}' -f (Coalesce $stats.processed $comparisons.Count)),
+  ('- Diffs: {0}' -f (Coalesce $stats.diffs 'n/a')),
   ('- Report: `{0}`' -f $markdownOutPath)
 )
 if ($htmlOutPath) {

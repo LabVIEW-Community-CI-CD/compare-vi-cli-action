@@ -227,19 +227,38 @@ try {
         }
       }
 
+      $resultPayload = [ordered]@{
+        diff        = $comparison.result.diff
+        exitCode    = $comparison.result.exitCode
+        duration_s  = $comparison.result.duration_s
+        summaryPath = $comparison.result.summaryPath
+      }
+      if ($comparison.result.PSObject.Properties['reportPath'] -and $comparison.result.reportPath) {
+        $resultPayload.reportPath = $comparison.result.reportPath
+      }
+      if ($comparison.result.PSObject.Properties['reportHtml'] -and $comparison.result.reportHtml) {
+        $resultPayload.reportHtml = $comparison.result.reportHtml
+      }
+      if ($comparison.result.PSObject.Properties['artifactDir'] -and $comparison.result.artifactDir) {
+        $resultPayload.artifactDir = $comparison.result.artifactDir
+      }
+      if ($comparison.result.PSObject.Properties['execPath'] -and $comparison.result.execPath) {
+        $resultPayload.execPath = $comparison.result.execPath
+      }
+      if ($comparison.result.PSObject.Properties['command'] -and $comparison.result.command) {
+        $resultPayload.command = $comparison.result.command
+      }
+      if ($comparison.result.PSObject.Properties['includedAttributes'] -and $comparison.result.includedAttributes) {
+        $resultPayload.includedAttributes = @($comparison.result.includedAttributes)
+      }
+
       $comparisonDetails += [pscustomobject]@{
         mode   = $mode.name
         index  = $comparison.index
         report = $comparison.outName
         base   = $baseMeta
         head   = $headMeta
-        result = [pscustomobject]@{
-          diff        = $comparison.result.diff
-          exitCode    = $comparison.result.exitCode
-          duration_s  = $comparison.result.duration_s
-          summaryPath = $comparison.result.summaryPath
-          reportPath  = $comparison.result.reportPath
-        }
+        result = [pscustomobject]$resultPayload
       }
     }
   }
