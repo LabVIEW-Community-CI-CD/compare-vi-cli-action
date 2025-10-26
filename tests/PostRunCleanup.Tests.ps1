@@ -70,10 +70,25 @@ exit 0
     Copy-Item -LiteralPath (Join-Path $sourceRoot 'tools' 'Post-Run-Cleanup.ps1') -Destination (Join-Path $toolsDir 'Post-Run-Cleanup.ps1') -Force
     Copy-Item -LiteralPath (Join-Path $sourceRoot 'tools' 'Once-Guard.psm1') -Destination (Join-Path $toolsDir 'Once-Guard.psm1') -Force
     Copy-Item -LiteralPath (Join-Path $sourceRoot 'tools' 'PostRun' 'PostRunRequests.psm1') -Destination (Join-Path $toolsDir 'PostRun' 'PostRunRequests.psm1') -Force
+    Copy-Item -LiteralPath (Join-Path $sourceRoot 'tools' 'Force-CloseLabVIEW.ps1') -Destination (Join-Path $toolsDir 'Force-CloseLabVIEW.ps1') -Force
+    Copy-Item -LiteralPath (Join-Path $sourceRoot 'tools' 'Force-CloseLabVIEW.ps1') -Destination (Join-Path $toolsDir 'Force-CloseLabVIEW.ps1') -Force
 
     $stateFile = Join-Path $repoRoot 'stub-state.txt'
     $pidFile = Join-Path $repoRoot 'stub-pid.txt'
     '' | Set-Content -LiteralPath $stateFile -Encoding utf8
+
+    $forceLog = Join-Path $repoRoot 'force-close-log.txt'
+$forceStub = @'
+param([string[]]$ProcessName)
+$logPath = $env:LABVIEW_FORCE_LOG
+if ($logPath) { "forced" | Set-Content -LiteralPath $logPath -Encoding utf8 }
+$forcePid = $env:LABVIEW_FORCE_PID
+if ($forcePid) {
+  try { Stop-Process -Id [int]$forcePid -Force -ErrorAction SilentlyContinue } catch {}
+}
+exit 0
+'@
+    Set-Content -LiteralPath (Join-Path $toolsDir 'Force-CloseLabVIEW.ps1') -Value $forceStub -Encoding utf8
 
     $labStub = @'
 param()
@@ -84,12 +99,7 @@ if (-not (Test-Path -LiteralPath $statePath)) { '0' | Set-Content -LiteralPath $
 $count = [int](Get-Content -LiteralPath $statePath)
 $count++
 Set-Content -LiteralPath $statePath -Value $count -Encoding utf8
-if ($count -lt 3) { exit 1 }
-if ($pidPath -and (Test-Path -LiteralPath $pidPath)) {
-  $pid = [int](Get-Content -LiteralPath $pidPath)
-  try { Stop-Process -Id $pid -ErrorAction SilentlyContinue } catch {}
-}
-exit 0
+exit 1
 '@
     Set-Content -LiteralPath (Join-Path $toolsDir 'Close-LabVIEW.ps1') -Value $labStub -Encoding utf8
 
@@ -106,6 +116,8 @@ exit 0
       Set-Content -LiteralPath $pidFile -Value $proc.Id -Encoding utf8
       $env:LABVIEW_STUB_STATE = $stateFile
       $env:LABVIEW_STUB_PID = $pidFile
+      $env:LABVIEW_FORCE_LOG = $forceLog
+      $env:LABVIEW_FORCE_PID = $proc.Id.ToString()
 
       Push-Location $repoRoot
       & (Join-Path $toolsDir 'Post-Run-Cleanup.ps1') -CloseLabVIEW | Out-Null
@@ -115,9 +127,13 @@ exit 0
       $finalState | Should -BeGreaterThan 2
       $remaining = Get-Process -Id $proc.Id -ErrorAction SilentlyContinue
       $remaining | Should -BeNullOrEmpty
+      Test-Path -LiteralPath $forceLog | Should -BeTrue
+      (Get-Content -LiteralPath $forceLog -Raw) | Should -Match 'forced'
     } finally {
       Remove-Item Env:LABVIEW_STUB_STATE -ErrorAction SilentlyContinue
       Remove-Item Env:LABVIEW_STUB_PID -ErrorAction SilentlyContinue
+      Remove-Item Env:LABVIEW_FORCE_LOG -ErrorAction SilentlyContinue
+      Remove-Item Env:LABVIEW_FORCE_PID -ErrorAction SilentlyContinue
       try { if (-not $proc.HasExited) { $proc.Kill() } } catch {}
     }
   }

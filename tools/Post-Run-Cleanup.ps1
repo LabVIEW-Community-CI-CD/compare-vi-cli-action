@@ -76,6 +76,51 @@ function Remove-RequestFiles {
   }
 }
 
+function Invoke-ForceCloseProcesses {
+  param(
+    [string[]]$ProcessNames,
+    [string]$Label
+  )
+
+  $scriptPath = Join-Path $repoRoot 'tools' 'Force-CloseLabVIEW.ps1'
+  if (-not (Test-Path -LiteralPath $scriptPath -PathType Leaf)) {
+    Write-Log ("Force-CloseLabVIEW.ps1 not found; skipping {0} fallback." -f $Label)
+    return $false
+  }
+
+  $processArgs = @()
+  if ($ProcessNames -and $ProcessNames.Count -gt 0) {
+    $processArgs = @('-ProcessName', $ProcessNames)
+  }
+
+  $output = & $scriptPath @processArgs
+  $exitCode = $LASTEXITCODE
+  if ($output) {
+    Write-Log ("Force-CloseLabVIEW output ({0}): {1}" -f $Label, $output)
+  }
+
+  Start-Sleep -Milliseconds 300
+  $remaining = @()
+  foreach ($name in $ProcessNames) {
+    try { $remaining += @(Get-Process -Name $name -ErrorAction SilentlyContinue) } catch {}
+  }
+  if ($exitCode -eq 0 -and $remaining.Count -eq 0) {
+    Write-Log ("Force close succeeded for {0}." -f ($ProcessNames -join ','))
+    return $true
+  }
+
+  if ($remaining.Count -gt 0) {
+    $details = $remaining | ForEach-Object { "{0}(PID {1})" -f $_.ProcessName, $_.Id }
+    Write-Warning ("Force-CloseLabVIEW unable to terminate {0}: {1}" -f $Label, ($details -join ', '))
+  }
+
+  if ($exitCode -ne 0) {
+    Write-Warning ("Force-CloseLabVIEW exited with code {0} for {1}." -f $exitCode, $Label)
+  }
+
+  return $false
+}
+
 Write-Log ("Post-Run-Cleanup invoked. Parameters: CloseLabVIEW={0}, CloseLVCompare={1}" -f $CloseLabVIEW.IsPresent, $CloseLVCompare.IsPresent)
 $debugTool = Join-Path $repoRoot 'tools' 'Debug-ChildProcesses.ps1'
 $preSnapshot = $null
@@ -127,10 +172,16 @@ function Invoke-CloseLabVIEW {
     if ($stillRunning.Count -gt 0) {
       Write-Warning ("Close-LabVIEW.ps1 completed but LabVIEW.exe still running (PID(s): {0})" -f ($stillRunning.Id -join ','))
     }
-    if ($attempt -lt $maxAttempts) {
-      Write-Log ("Close-LabVIEW retry scheduled ({0}/{1})." -f ($attempt + 1), $maxAttempts)
-      Start-Sleep -Seconds 1
-    }
+  if ($attempt -lt $maxAttempts) {
+    Write-Log ("Close-LabVIEW retry scheduled ({0}/{1})." -f ($attempt + 1), $maxAttempts)
+    Start-Sleep -Seconds 1
+  }
+}
+  Write-Log "Close-LabVIEW helper retries exhausted; invoking force-close fallback."
+  if (Invoke-ForceCloseProcesses -ProcessNames @('LabVIEW') -Label 'LabVIEW') {
+    $executed = Invoke-Once -Key 'close-labview' -Action { } -ScopeDirectory $logDir
+    if ($executed) { Write-Log "Close-LabVIEW force-close executed successfully." }
+    return
   }
   throw "Close-LabVIEW.ps1 failed to terminate LabVIEW.exe after $maxAttempts attempt(s)."
 }
@@ -186,10 +237,16 @@ function Invoke-CloseLVCompare {
       return
     }
     Write-Warning ("Close-LVCompare.ps1 completed but LVCompare.exe still running (PID(s): {0})" -f ($remaining.Id -join ','))
-    if ($attempt -lt $maxAttempts) {
-      Write-Log ("Close-LVCompare retry scheduled ({0}/{1})." -f ($attempt + 1), $maxAttempts)
-      Start-Sleep -Seconds 1
-    }
+  if ($attempt -lt $maxAttempts) {
+    Write-Log ("Close-LVCompare retry scheduled ({0}/{1})." -f ($attempt + 1), $maxAttempts)
+    Start-Sleep -Seconds 1
+  }
+}
+  Write-Log "Close-LVCompare helper retries exhausted; invoking force-close fallback."
+  if (Invoke-ForceCloseProcesses -ProcessNames @('LVCompare') -Label 'LVCompare') {
+    $executed = Invoke-Once -Key 'close-lvcompare' -Action { } -ScopeDirectory $logDir
+    if ($executed) { Write-Log "Close-LVCompare force-close executed successfully." }
+    return
   }
   throw "Close-LVCompare.ps1 failed to terminate LVCompare.exe after $maxAttempts attempt(s)."
 }
