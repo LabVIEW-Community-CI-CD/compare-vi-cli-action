@@ -180,17 +180,37 @@ function Write-ReleaseSummary {
   $handoffDir = Join-Path (Resolve-Path '.').Path 'tests/results/_agent/handoff'
   New-Item -ItemType Directory -Force -Path $handoffDir | Out-Null
 
-  $result = $SemVerResult?.Result
-  $summary = [ordered]@{
-    schema   = 'agent-handoff/release-v1'
-    version  = $result?.version ?? '(unknown)'
-    valid    = [bool]($result?.valid)
-    issues   = @()
-    checkedAt = $result?.checkedAt ?? (Get-Date).ToString('o')
+  $result = $null
+  if ($SemVerResult -and $SemVerResult.PSObject.Properties['Result']) {
+    $result = $SemVerResult.Result
   }
 
-  if ($result?.issues) {
-    $summary.issues = @($result.issues)
+  $version = '(unknown)'
+  $valid = $false
+  $checkedAt = (Get-Date).ToString('o')
+  $issues = @()
+
+  if ($result) {
+    if ($result.PSObject.Properties['version'] -and -not [string]::IsNullOrWhiteSpace($result.version)) {
+      $version = [string]$result.version
+    }
+    if ($result.PSObject.Properties['valid']) {
+      $valid = [bool]$result.valid
+    }
+    if ($result.PSObject.Properties['checkedAt'] -and $result.checkedAt) {
+      $checkedAt = [string]$result.checkedAt
+    }
+    if ($result.PSObject.Properties['issues'] -and $result.issues) {
+      $issues = @($result.issues)
+    }
+  }
+
+  $summary = [ordered]@{
+    schema   = 'agent-handoff/release-v1'
+    version  = $version
+    valid    = [bool]$valid
+    issues   = $issues
+    checkedAt = $checkedAt
   }
 
   $summaryPath = Join-Path $handoffDir 'release-summary.json'
