@@ -22,6 +22,13 @@ Only the canonical path is supported; ensure LabVIEW 2025 Q3 (compare feature) i
 Even when `lvComparePath`/`LVCOMPARE_PATH` is provided, it must resolve to the canonical
 location. Update the runner install if the CLI lives elsewhere.
 
+### Custom install layout
+
+- Copy `configs/labview-paths.sample.json` to `configs/labview-paths.json` to
+  list non-default `LVCompare.exe` / `LabVIEW.exe` locations. The helpers will
+  read those paths before scanning the canonical Program Files directories.
+- Run scripts with `-Verbose` (or `pwsh -v 5`) to see every candidate path the
+  resolver evaluates when debugging missing installs.
 ## Exit codes & behaviour
 
 | Exit code | Meaning | Notes |
@@ -50,7 +57,10 @@ Set `fail-on-diff: false` to treat code 1 as notice-only.
 - Check `tests/results/loop/**` for JSON logs and timing stats.
 - Enable leak detection (`tools/Detect-RogueLV.ps1 -FailOnRogue`).
 - Close LVCompare after loop runs (`tools/Close-LVCompare.ps1`).
-- Post-run cleanup retries LabVIEW shutdown automatically (up to three attempts). If it still fails, inspect `tests/results/_agent/post/post-run-cleanup.log`—the script now reports remaining PID lists before throwing so you can terminate them manually.
+- Post-run cleanup retries LabVIEW shutdown automatically (up to three attempts).
+  If it still fails, inspect `tests/results/_agent/post/post-run-cleanup.log`
+  where the script now reports remaining PID lists before throwing and then falls
+  back to `tools/Force-CloseLabVIEW.ps1` to terminate LabVIEW/LVCompare forcibly.
 
 ## Test environment tips
 

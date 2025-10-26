@@ -124,6 +124,17 @@ node tools/npm/run-script.mjs lint            # markdownlint + custom checks
   workflow** prompt for VI path/refs and route through the same scripts so
   editors can trigger the flow without remembering the parameters.
 
+### LabVIEW / LVCompare path overrides
+
+- On shared runners the canonical installs sit under `C:\Program Files`, but
+  local setups may vary. Copy `configs/labview-paths.sample.json` to
+  `configs/labview-paths.json` and list overrides under:
+  - `lvcompare` array – explicit `LVCompare.exe` locations; first match wins.
+  - `labview` array – candidate `LabVIEW.exe` paths (per version/bitness).
+- Environment variables (`LVCOMPARE_PATH`, `LABVIEW_PATH`, etc.) still win, and
+  the provider now writes verbose logs enumerating every candidate so you can
+  troubleshoot missing installs quickly (`pwsh -v 5` to surface messages).
+
 ## Watch mode tips
 
 ```powershell

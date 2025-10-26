@@ -20,24 +20,32 @@ function Resolve-LabVIEWCliBinaryPath {
 function Get-LabVIEWInstallCandidates {
   param(
     [Parameter(Mandatory)][string]$Version,
-    [Parameter(Mandatory)][string]$Bitness
+    [Parameter(Mandatory)][string]$Bitness,
+    [object]$Config
   )
-  $candidates = @()
+  $candidates = New-Object System.Collections.Generic.List[string]
+  if ($Config -and $Config.PSObject.Properties['labview']) {
+    $cfg = $Config.labview
+    if ($cfg -is [string]) { $candidates.Add($cfg) }
+    elseif ($cfg -is [System.Collections.IEnumerable]) {
+      foreach ($entry in $cfg) { if ($entry) { $candidates.Add([string]$entry) } }
+    }
+  }
   $pf = $env:ProgramFiles
   $pf86 = ${env:ProgramFiles(x86)}
   if ($Bitness -eq '32') {
     foreach ($root in @($pf, $pf86)) {
       if (-not $root) { continue }
-      $candidates += (Join-Path $root ("National Instruments\LabVIEW $Version (32-bit)\LabVIEW.exe"))
-      $candidates += (Join-Path $root ("National Instruments\LabVIEW $Version\LabVIEW.exe"))
+      $candidates.Add((Join-Path $root ("National Instruments\LabVIEW $Version (32-bit)\LabVIEW.exe")))
+      $candidates.Add((Join-Path $root ("National Instruments\LabVIEW $Version\LabVIEW.exe")))
     }
   } else {
     foreach ($root in @($pf, $pf86)) {
       if (-not $root) { continue }
-      $candidates += (Join-Path $root ("National Instruments\LabVIEW $Version\LabVIEW.exe"))
+      $candidates.Add((Join-Path $root ("National Instruments\LabVIEW $Version\LabVIEW.exe")))
     }
   }
-  return $candidates | Where-Object { $_ }
+  return @($candidates | Where-Object { -not [string]::IsNullOrWhiteSpace($_) })
 }
 
 function Resolve-LabVIEWPathFromParams {
@@ -47,13 +55,22 @@ function Resolve-LabVIEWPathFromParams {
     if (Test-Path -LiteralPath $candidate -PathType Leaf) { return (Resolve-Path -LiteralPath $candidate).Path }
     return $candidate
   }
+  $config = $null
+  $root = Get-ProviderRepoRoot
+  $configPath = Join-Path $root 'configs/labview-paths.json'
+  if (Test-Path -LiteralPath $configPath -PathType Leaf) {
+    try { $config = Get-Content -LiteralPath $configPath -Raw | ConvertFrom-Json -Depth 4 } catch {}
+  }
   $version = if ($Params.ContainsKey('labviewVersion')) { $Params.labviewVersion } else { '2025' }
   $bitness = if ($Params.ContainsKey('labviewBitness')) { $Params.labviewBitness } else { '64' }
-  foreach ($candidate in Get-LabVIEWInstallCandidates -Version $version -Bitness $bitness) {
+  $candidates = New-Object System.Collections.Generic.List[string]
+  foreach ($candidate in Get-LabVIEWInstallCandidates -Version $version -Bitness $bitness -Config $config) {
+    $candidates.Add($candidate)
     if (Test-Path -LiteralPath $candidate -PathType Leaf) {
       return (Resolve-Path -LiteralPath $candidate).Path
     }
   }
+  Write-Verbose ("LabVIEWCLI provider: LabVIEW candidates -> {0}" -f ($candidates -join '; '))
   return $null
 }
 
@@ -188,3 +205,18 @@ function New-LVProvider {
 }
 
 Export-ModuleMember -Function New-LVProvider
+$script:ProviderRepoRoot = $null
+function Get-ProviderRepoRoot {
+  if ($script:ProviderRepoRoot) { return $script:ProviderRepoRoot }
+  $start = (Get-Location).Path
+  try {
+    $root = git -C $start rev-parse --show-toplevel 2>$null
+    if ($root) {
+      $script:ProviderRepoRoot = $root.Trim()
+      return $script:ProviderRepoRoot
+    }
+  } catch {}
+  $script:ProviderRepoRoot = (Resolve-Path -LiteralPath $start).Path
+  return $script:ProviderRepoRoot
+}
+

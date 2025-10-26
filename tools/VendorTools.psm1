@@ -67,11 +67,42 @@ function Get-MarkdownlintCli2Version {
 
 function Resolve-LVComparePath {
   if (-not $IsWindows) { return $null }
-  $candidates = @(
+  $root = Resolve-RepoRoot
+  $configPath = Join-Path $root 'configs/labview-paths.json'
+  $config = $null
+  if (Test-Path -LiteralPath $configPath -PathType Leaf) {
+    try {
+      $config = Get-Content -LiteralPath $configPath -Raw | ConvertFrom-Json -Depth 4
+    } catch {}
+  }
+
+  $jsonCandidates = @()
+  if ($config -and $config.PSObject.Properties['lvcompare']) {
+    $values = $config.lvcompare
+    if ($values -is [string]) { $jsonCandidates += $values }
+    if ($values -is [System.Collections.IEnumerable]) { $jsonCandidates += $values }
+  }
+
+  $envCandidates = @(
+    $env:LVCOMPARE_PATH,
+    $env:LV_COMPARE_PATH
+  ) | Where-Object { -not [string]::IsNullOrWhiteSpace($_) }
+
+  $canonicalCandidates = @(
     (Join-Path $env:ProgramFiles 'National Instruments\Shared\LabVIEW Compare\LVCompare.exe'),
     (Join-Path ${env:ProgramFiles(x86)} 'National Instruments\Shared\LabVIEW Compare\LVCompare.exe')
   )
-  foreach ($c in $candidates) { if ($c -and (Test-Path -LiteralPath $c -PathType Leaf)) { return $c } }
+
+  $allCandidates = @($jsonCandidates + $envCandidates + $canonicalCandidates) | Where-Object { $_ }
+  foreach ($candidate in $allCandidates) {
+    try {
+      if (Test-Path -LiteralPath $candidate -PathType Leaf) {
+        return (Resolve-Path -LiteralPath $candidate).Path
+      }
+    } catch {}
+  }
+
+  Write-Verbose ('VendorTools: LVCompare candidates evaluated -> {0}' -f ($allCandidates -join '; '))
   return $null
 }
 
