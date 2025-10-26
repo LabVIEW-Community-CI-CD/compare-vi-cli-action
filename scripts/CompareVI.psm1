@@ -40,7 +40,11 @@ function Get-CanonicalCliCandidates {
   $candidates = New-Object System.Collections.Generic.List[string]
   if ($primary) { $null = $candidates.Add($primary) }
   if ($secondary -and -not ($secondary -eq $primary)) { $null = $candidates.Add($secondary) }
+  $savedLvComparePath = $env:LVCOMPARE_PATH
+  $savedLegacyLvComparePath = $env:LV_COMPARE_PATH
   try {
+    Remove-Item Env:LVCOMPARE_PATH -ErrorAction SilentlyContinue
+    Remove-Item Env:LV_COMPARE_PATH -ErrorAction SilentlyContinue
     $resolved = Resolve-LVComparePath
     if ($resolved) {
       if (-not ($candidates | Where-Object { $_ -ieq $resolved })) {
@@ -48,6 +52,18 @@ function Get-CanonicalCliCandidates {
       }
     }
   } catch {}
+  finally {
+    if ($null -eq $savedLvComparePath) {
+      Remove-Item Env:LVCOMPARE_PATH -ErrorAction SilentlyContinue
+    } else {
+      $env:LVCOMPARE_PATH = $savedLvComparePath
+    }
+    if ($null -eq $savedLegacyLvComparePath) {
+      Remove-Item Env:LV_COMPARE_PATH -ErrorAction SilentlyContinue
+    } else {
+      $env:LV_COMPARE_PATH = $savedLegacyLvComparePath
+    }
+  }
   return @($candidates | Where-Object { $_ } | Select-Object -Unique)
 }
 
