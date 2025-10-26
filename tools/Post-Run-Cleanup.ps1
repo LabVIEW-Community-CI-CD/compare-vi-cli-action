@@ -97,20 +97,42 @@ function Invoke-CloseLabVIEW {
     if ($Metadata.ContainsKey('version') -and $Metadata.version) { $params.MinimumSupportedLVVersion = $Metadata.version }
     if ($Metadata.ContainsKey('bitness') -and $Metadata.bitness) { $params.SupportedBitness = $Metadata.bitness }
   }
+  $markerPath = Join-Path $logDir 'once-close-labview.marker'
+  if (Test-Path -LiteralPath $markerPath) {
+    Write-Log 'Close-LabVIEW already executed; skipping duplicate.'
+    return
+  }
   $action = {
     param($scriptPath,$params)
     & $scriptPath @params
     $exit = $LASTEXITCODE
-    if ($exit -ne 0) {
-      throw "Close-LabVIEW.ps1 exited with code $exit."
-    }
+    $exit
   }.GetNewClosure()
-  $executed = Invoke-Once -Key 'close-labview' -Action { & $action $scriptPath $params } -ScopeDirectory $logDir
-  if ($executed) {
-    Write-Log "Close-LabVIEW executed successfully."
-  } else {
-    Write-Log 'Close-LabVIEW already executed; skipping duplicate.'
+  $attempt = 0
+  $maxAttempts = 3
+  while ($attempt -lt $maxAttempts) {
+    $attempt++
+    $exitCode = & $action $scriptPath $params
+    if ($exitCode -ne 0) {
+      Write-Warning ("Close-LabVIEW.ps1 exited with code {0} (attempt {1}/{2})." -f $exitCode,$attempt,$maxAttempts)
+    }
+    Start-Sleep -Milliseconds 300
+    $stillRunning = @()
+    try { $stillRunning = @(Get-Process -Name 'LabVIEW' -ErrorAction SilentlyContinue) } catch {}
+    if ($exitCode -eq 0 -and $stillRunning.Count -eq 0) {
+      $executed = Invoke-Once -Key 'close-labview' -Action { } -ScopeDirectory $logDir
+      if ($executed) { Write-Log "Close-LabVIEW executed successfully." }
+      return
+    }
+    if ($stillRunning.Count -gt 0) {
+      Write-Warning ("Close-LabVIEW.ps1 completed but LabVIEW.exe still running (PID(s): {0})" -f ($stillRunning.Id -join ','))
+    }
+    if ($attempt -lt $maxAttempts) {
+      Write-Log ("Close-LabVIEW retry scheduled ({0}/{1})." -f ($attempt + 1), $maxAttempts)
+      Start-Sleep -Seconds 1
+    }
   }
+  throw "Close-LabVIEW.ps1 failed to terminate LabVIEW.exe after $maxAttempts attempt(s)."
 }
 
 function Invoke-CloseLVCompare {
@@ -141,12 +163,35 @@ function Invoke-CloseLVCompare {
       throw "Close-LVCompare.ps1 exited with code $exit."
     }
   }.GetNewClosure()
-  $executed = Invoke-Once -Key 'close-lvcompare' -Action { & $action $scriptPath $params } -ScopeDirectory $logDir
-  if ($executed) {
-    Write-Log "Close-LVCompare executed successfully."
-  } else {
+  $markerPath = Join-Path $logDir 'once-close-lvcompare.marker'
+  if (Test-Path -LiteralPath $markerPath) {
     Write-Log 'Close-LVCompare already executed; skipping duplicate.'
+    return
   }
+  $attempt = 0
+  $maxAttempts = 3
+  while ($attempt -lt $maxAttempts) {
+    $attempt++
+    try {
+      & $action $scriptPath $params
+    } catch {
+      Write-Warning ("Close-LVCompare.ps1 exited with error (attempt {0}/{1}): {2}" -f $attempt,$maxAttempts,$_.Exception.Message)
+    }
+    Start-Sleep -Milliseconds 300
+    $remaining = @()
+    try { $remaining = @(Get-Process -Name 'LVCompare' -ErrorAction SilentlyContinue) } catch {}
+    if ($remaining.Count -eq 0) {
+      $executed = Invoke-Once -Key 'close-lvcompare' -Action { } -ScopeDirectory $logDir
+      if ($executed) { Write-Log "Close-LVCompare executed successfully." }
+      return
+    }
+    Write-Warning ("Close-LVCompare.ps1 completed but LVCompare.exe still running (PID(s): {0})" -f ($remaining.Id -join ','))
+    if ($attempt -lt $maxAttempts) {
+      Write-Log ("Close-LVCompare retry scheduled ({0}/{1})." -f ($attempt + 1), $maxAttempts)
+      Start-Sleep -Seconds 1
+    }
+  }
+  throw "Close-LVCompare.ps1 failed to terminate LVCompare.exe after $maxAttempts attempt(s)."
 }
 
 try {
