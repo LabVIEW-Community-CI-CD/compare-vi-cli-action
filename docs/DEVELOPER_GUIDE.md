@@ -99,7 +99,8 @@ node tools/npm/run-script.mjs lint            # markdownlint + custom checks
 - Prefer opening PRs from your fork with `npm run priority:pr`; the helper ensures `origin` targets your fork (creating
   it via `gh repo fork` if needed), pushes the current branch, and calls
   `gh pr create --fill --repo <upstream> --base develop --head <fork>:branch`.
-- Detailed enforcement notes (feature-branch guards, merge history workflow, merge queue parameters) live in
+- Detailed enforcement notes (feature-branch guards, merge history workflow,
+  merge queue parameters) live in
   [`docs/knowledgebase/FEATURE_BRANCH_POLICY.md`](./knowledgebase/FEATURE_BRANCH_POLICY.md).
 
 ## Dispatcher modules
@@ -110,9 +111,18 @@ node tools/npm/run-script.mjs lint            # markdownlint + custom checks
 
 ## History automation helpers
 
-- `scripts/Run-VIHistory.ps1` - regenerates the manual compare suite locally, verifies the target VI exists at the selected ref, and prints the Markdown summary (attribute coverage included) for issue comments. You can also call it via `npm run history:run -- -ViPath Fixtures/Loop.vi -StartRef HEAD -MaxPairs 3`.
-- `scripts/Dispatch-VIHistoryWorkflow.ps1` - wraps `gh workflow run` for `vi-compare-refs.yml`, echoes the latest run id/link, and records dispatch metadata under `tests/results/_agent/handoff/vi-history-run.json` for follow-up. Invoke with `npm run history:dispatch -- -ViPath Fixtures/Loop.vi -CompareRef develop -NotifyIssue 317`.
-- VS Code tasks **VI History: Run local suite** and **VI History: Dispatch workflow** prompt for VI path/refs and route through the same scripts so editors can trigger the flow without remembering the parameters.
+- `scripts/Run-VIHistory.ps1` - regenerates the manual compare suite locally,
+  verifies the target VI exists at the selected ref, and prints the Markdown
+  summary (attribute coverage included) for issue comments. You can also call it
+  via `npm run history:run -- -ViPath Fixtures/Loop.vi -StartRef HEAD -MaxPairs 3`.
+- `scripts/Dispatch-VIHistoryWorkflow.ps1` - wraps `gh workflow run` for
+  `vi-compare-refs.yml`, echoes the latest run id/link, and records dispatch
+  metadata under `tests/results/_agent/handoff/vi-history-run.json` for
+  follow-up. Invoke with
+  `npm run history:dispatch -- -ViPath Fixtures/Loop.vi -CompareRef develop -NotifyIssue 317`.
+- VS Code tasks **VI History: Run local suite** and **VI History: Dispatch
+  workflow** prompt for VI path/refs and route through the same scripts so
+  editors can trigger the flow without remembering the parameters.
 
 ## Watch mode tips
 

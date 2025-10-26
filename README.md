@@ -78,8 +78,15 @@ schema as the workflow outputs.
 
 For a quicker end-to-end loop:
 
-- `scripts/Run-VIHistory.ps1` regenerates the history results, prints the enriched Markdown summary (including attribute coverage), surfaces the first commit pairs it processed, writes `tests/results/ref-compare/history/history-context.json` with commit metadata, and renders `tests/results/ref-compare/history/history-report.md` (plus `history-report.html` when `-HtmlReport`) so reviewers have a single document to scan.
-- `scripts/Dispatch-VIHistoryWorkflow.ps1` wraps `gh workflow run` and echoes the URL to the most recent run so you can follow progress immediately.
+- `scripts/Run-VIHistory.ps1` regenerates the history results, prints the
+  enriched Markdown summary (including attribute coverage), surfaces the first
+  commit pairs it processed, writes
+  `tests/results/ref-compare/history/history-context.json` with commit metadata,
+  and renders `tests/results/ref-compare/history/history-report.md` (plus
+  `history-report.html` when `-HtmlReport`) so reviewers have a single document
+  to scan.
+- `scripts/Dispatch-VIHistoryWorkflow.ps1` wraps `gh workflow run` and echoes
+  the URL to the most recent run so you can follow progress immediately.
 
 ## Release and compatibility
 
@@ -87,7 +94,3 @@ Renaming the workflow inputs breaks compatibility with previous revisions, so th
 next release should cut a new major tag (for example `v1.0.0`). Update downstream
 automation or scheduled triggers to use the new `vi_path` / `compare_ref` inputs
 before adopting the release.
-
-
-
-

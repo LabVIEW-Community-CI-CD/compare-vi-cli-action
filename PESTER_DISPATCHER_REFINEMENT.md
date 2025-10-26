@@ -121,10 +121,14 @@ Directly calls the local dispatcher:
 ### For Self-Hosted Runners
 
 - **Pester v5.7.1** must be pre-installed
-  - Windows (elevated PowerShell): `Install-Module -Name Pester -RequiredVersion 5.7.1 -Force`
-  - Windows (current user): `Install-Module -Name Pester -RequiredVersion 5.7.1 -Scope CurrentUser -Force`
-  - macOS/Linux (elevated): `sudo pwsh -NoLogo -NoProfile -Command "Install-Module -Name Pester -RequiredVersion 5.7.1 -Force"`
-  - macOS/Linux (current user): `pwsh -NoLogo -NoProfile -Command "Install-Module -Name Pester -RequiredVersion 5.7.1 -Scope CurrentUser -Force"`
+  - Windows (elevated PowerShell):
+    `Install-Module -Name Pester -RequiredVersion 5.7.1 -Force`
+  - Windows (current user):
+    `Install-Module -Name Pester -RequiredVersion 5.7.1 -Scope CurrentUser -Force`
+  - macOS/Linux (elevated):
+    `sudo pwsh -NoLogo -NoProfile -Command "Install-Module -Name Pester -RequiredVersion 5.7.1 -Force"`
+  - macOS/Linux (current user):
+    `pwsh -NoLogo -NoProfile -Command "Install-Module -Name Pester -RequiredVersion 5.7.1 -Scope CurrentUser -Force"`
   - Verify: `Get-Module -ListAvailable Pester`
 - PowerShell 7+
 - LabVIEW Compare CLI at canonical path (for Integration tests)
