@@ -96,6 +96,8 @@ jobs:
       diff_artifact_name: ${{ steps.job_outputs.outputs.diff_artifact_name }}
       mode_list: ${{ steps.job_outputs.outputs.mode_list }}
       flag_list: ${{ steps.job_outputs.outputs.flag_list }}
+      history_report_md: ${{ steps.job_outputs.outputs.history_report_md }}
+      history_report_html: ${{ steps.job_outputs.outputs.history_report_html }}
     timeout-minutes: 30
     env:
       UNBLOCK_GUARD: '1'
@@ -412,6 +414,7 @@ jobs:
           MANIFEST_ARTIFACT: ${{ steps.artifact_context.outputs.manifest_artifact_name || 'vi-compare-manifests' }}
           DIFF_ARTIFACT: ${{ steps.artifact_context.outputs.diff_artifact_name || 'vi-compare-diff-artifacts' }}
           HAS_DIFF: ${{ steps.diffscan.outputs.hasDiff }}
+          HISTORY_REPORT_MD: ${{ steps.history.outputs['history-report-md'] }}
         run: |
           if (-not $env:GITHUB_STEP_SUMMARY) { return }
           $lines = @('', '#### Workflow Artifacts', '')
@@ -420,6 +423,9 @@ jobs:
             $lines += ('- Diff artifacts: `{0}`' -f $env:DIFF_ARTIFACT)
           } else {
             $lines += '- Diff artifacts: *(not produced)*'
+          }
+          if ($env:HISTORY_REPORT_MD) {
+            $lines += ('- History report: `{0}`' -f $env:HISTORY_REPORT_MD)
           }
           $lines -join "`n" | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Encoding utf8 -Append
 
@@ -432,6 +438,8 @@ jobs:
           ISSUE_NUMBER: ${{ inputs.notify_issue }}
           GITHUB_REPOSITORY: ${{ github.repository }}
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          HISTORY_REPORT_MD: ${{ steps.history.outputs['history-report-md'] }}
+          HISTORY_REPORT_HTML: ${{ steps.history.outputs['history-report-html'] }}
         run: |
           $ErrorActionPreference = 'Stop'
           $script = Join-Path $env:GITHUB_WORKSPACE 'tools/Publish-VICompareSummary.ps1'
@@ -443,6 +451,12 @@ jobs:
             ModeSummaryJson= $env:MODE_SUMMARY
             Issue          = $env:ISSUE_NUMBER
             Repository     = $env:GITHUB_REPOSITORY
+          }
+          if ($env:HISTORY_REPORT_MD) {
+            $params.HistoryReportPath = $env:HISTORY_REPORT_MD
+          }
+          if ($env:HISTORY_REPORT_HTML) {
+            $params.HistoryReportHtmlPath = $env:HISTORY_REPORT_HTML
           }
           if ($env:GH_TOKEN) {
             $params.GitHubToken = $env:GH_TOKEN
@@ -466,6 +480,8 @@ jobs:
           ARTIFACT_PREFIX: ${{ steps.artifact_context.outputs.artifact_prefix }}
           MANIFEST_ARTIFACT: ${{ steps.artifact_context.outputs.manifest_artifact_name }}
           DIFF_ARTIFACT: ${{ steps.artifact_context.outputs.diff_artifact_name }}
+          HISTORY_REPORT_MD: ${{ steps.history.outputs['history-report-md'] }}
+          HISTORY_REPORT_HTML: ${{ steps.history.outputs['history-report-html'] }}
         run: |
           $ErrorActionPreference = 'Stop'
 
@@ -513,6 +529,12 @@ jobs:
           Set-OutputValue -Name 'has_diff' -Value $hasDiff
           if ($env:DIFF_DIRS -ne $null -and $env:DIFF_DIRS -ne '') {
             Set-MultilineOutput -Name 'diff_artifact_dirs' -Value $env:DIFF_DIRS
+          }
+          if ($env:HISTORY_REPORT_MD -ne $null -and $env:HISTORY_REPORT_MD -ne '') {
+            Set-OutputValue -Name 'history_report_md' -Value $env:HISTORY_REPORT_MD
+          }
+          if ($env:HISTORY_REPORT_HTML -ne $null -and $env:HISTORY_REPORT_HTML -ne '') {
+            Set-OutputValue -Name 'history_report_html' -Value $env:HISTORY_REPORT_HTML
           }
 
       - name: Runner Unblock Guard

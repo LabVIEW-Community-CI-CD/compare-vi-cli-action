@@ -69,7 +69,12 @@ gh workflow run vi-compare-refs.yml `
   `schema: vi-compare/history-suite@v1`. Each `modes[]` entry captures the mode slug, resolved flag bundle,
   stats, and the `manifestPath` for that mode's detailed results.
 - `scripts/Run-VIHistory.ps1` also writes `tests/results/ref-compare/history/history-context.json` (`schema: vi-compare/history-context@v1`) summarising the commit pairs and `tests/results/ref-compare/history/history-report.md` / `history-report.html` so reviewers can triage outcomes without spelunking manifests. The report lists each pair with author/date context, explicit diff outcome, run duration, and—when differences exist—relative links to the LVCompare report and preserved artifact directory.
-- GitHub outputs include `manifest-path` (suite manifest), `results-dir` (root history directory), `mode-manifests-json` (JSON array enumerating each mode's manifest path, results directory, and summary stats), and the `history-report-md` / `history-report-html` pointers for dashboards or PR comments. Dashboards and metrics jobs should deserialize `mode-manifests-json` when they need per-mode artifact locations. When HTML rendering is skipped or fails, the Markdown key still points at the fallback report so consumers always have a summary to ingest.
+- GitHub outputs include `manifest_path` (suite manifest), `results_dir` (root history directory), `mode_manifests_json`
+  (JSON array enumerating each mode's manifest path, results directory, and summary stats), plus the history report
+  pointers. The compare step emits `history-report-md` / `history-report-html`, and the workflow surfaces those as job
+  outputs `history_report_md` / `history_report_html` for downstream jobs, dashboards, or PR comments. When HTML
+  rendering is skipped or fails, the Markdown path still points at the fallback report so consumers always have a
+  summary to ingest.
 - Per-mode manifests live under `tests/results/ref-compare/history/<mode>/manifest.json`
   (`schema: vi-compare/history@v1`) and enumerate the commit pairs, summaries, and LVCompare outcomes.
 - Per-iteration summaries (`*-summary.json`) live beside the mode manifest
