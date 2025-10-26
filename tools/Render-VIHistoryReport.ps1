@@ -167,6 +167,40 @@ function Build-FallbackHistoryContext {
       $resultNode = $comparison.result
       $modeName = $modeLabel
 
+      $resultPayload = [ordered]@{}
+      if ($resultNode) {
+        if ($resultNode.PSObject.Properties['diff']) {
+          $resultPayload.diff = [bool]$resultNode.diff
+        }
+        if ($resultNode.PSObject.Properties['exitCode']) {
+          $resultPayload.exitCode = $resultNode.exitCode
+        }
+        if ($resultNode.PSObject.Properties['duration_s']) {
+          $resultPayload.duration_s = $resultNode.duration_s
+        }
+        if ($resultNode.PSObject.Properties['summaryPath'] -and $resultNode.summaryPath) {
+          $resultPayload.summaryPath = $resultNode.summaryPath
+        }
+        if ($resultNode.PSObject.Properties['reportPath'] -and $resultNode.reportPath) {
+          $resultPayload.reportPath = $resultNode.reportPath
+        }
+        if ($resultNode.PSObject.Properties['status']) {
+          $resultPayload.status = $resultNode.status
+        }
+        if ($resultNode.PSObject.Properties['message']) {
+          $resultPayload.message = $resultNode.message
+        }
+        if ($resultNode.PSObject.Properties['artifactDir'] -and $resultNode.artifactDir) {
+          $resultPayload.artifactDir = $resultNode.artifactDir
+        }
+        if ($resultNode.PSObject.Properties['execPath'] -and $resultNode.execPath) {
+          $resultPayload.execPath = $resultNode.execPath
+        }
+        if ($resultNode.PSObject.Properties['command'] -and $resultNode.command) {
+          $resultPayload.command = $resultNode.command
+        }
+      }
+
       $comparisons.Add([pscustomobject]@{
         mode  = [string](Coalesce $modeName 'unknown')
         index = $comparison.index
@@ -185,13 +219,7 @@ function Build-FallbackHistoryContext {
           date    = $null
           subject = $null
         }
-        result = [pscustomobject]@{
-          diff        = $resultNode.diff
-          exitCode    = $resultNode.exitCode
-          duration_s  = $resultNode.duration_s
-          summaryPath = $resultNode.summaryPath
-          reportPath  = $resultNode.reportPath
-        }
+        result = [pscustomobject]$resultPayload
       })
     }
   }
@@ -277,15 +305,25 @@ if ($comparisons.Count -gt 0) {
     if ($entry.base.subject) { $baseRef = '{0} ({1})' -f $baseRef, $entry.base.subject }
     $headRef = Coalesce $entry.head.short $entry.head.full
     if ($entry.head.subject) { $headRef = '{0} ({1})' -f $headRef, $entry.head.subject }
-    $diffCell = if ($entry.result.diff -eq $true) { '**diff**' } else { 'clean' }
+    $resultNode = $entry.result
+    $hasDiffValue = $resultNode -and $resultNode.PSObject.Properties['diff']
+    $diffValue = $hasDiffValue -and ($resultNode.diff -eq $true)
+    $statusValue = if ($resultNode -and $resultNode.PSObject.Properties['status']) { [string]$resultNode.status } else { $null }
+    $diffCell = if ($hasDiffValue) {
+      if ($diffValue) { '**diff**' } else { 'clean' }
+    } elseif ($statusValue) {
+      ('_{0}_' -f $statusValue)
+    } else {
+      'n/a'
+    }
     $durationValue = $null
-    if ($entry.result.duration_s -ne $null -and $entry.result.duration_s -is [ValueType]) {
-      try { $durationValue = [double]$entry.result.duration_s } catch { $durationValue = $null }
+    if ($resultNode -and $resultNode.PSObject.Properties['duration_s'] -and $resultNode.duration_s -ne $null -and $resultNode.duration_s -is [ValueType]) {
+      try { $durationValue = [double]$resultNode.duration_s } catch { $durationValue = $null }
     }
     $duration = if ($durationValue -ne $null) { '{0:N2}' -f $durationValue } else { 'n/a' }
     $reportCell = '_missing_'
     $reportRelativeNormalized = $null
-    $reportPath = $entry.result.reportPath
+    $reportPath = if ($resultNode -and $resultNode.PSObject.Properties['reportPath']) { $resultNode.reportPath } else { $null }
     if ($reportPath) {
       $reportRelative = $null
       try {
@@ -311,13 +349,15 @@ if ($comparisons.Count -gt 0) {
       Index      = Coalesce $entry.index 'n/a'
       BaseLabel  = $baseRef
       HeadLabel  = $headRef
-      Diff       = [bool]$entry.result.diff
+      Diff       = [bool]$diffValue
+      HasDiff    = $hasDiffValue
+      Status     = $statusValue
       Duration   = $durationValue
       DurationDisplay = $duration
       ReportPath = $reportPath
       ReportRelative = $reportRelativeNormalized
       ReportDisplay = $reportCell
-      ExitCode   = $entry.result.exitCode
+      ExitCode   = if ($resultNode -and $resultNode.PSObject.Properties['exitCode']) { $resultNode.exitCode } else { $null }
     })
   }
   if ($comparisonSubLines.Count -gt 0) {
@@ -382,6 +422,7 @@ if ($emitHtml -and $HtmlPath) {
   [void]$htmlBuilder.AppendLine('    dl.meta dt { font-weight: 600; }')
   [void]$htmlBuilder.AppendLine('    .diff-yes { color: #b00020; font-weight: 600; }')
   [void]$htmlBuilder.AppendLine('    .diff-no { color: #0c7c11; }')
+  [void]$htmlBuilder.AppendLine('    .diff-status { color: #92400e; font-weight: 600; }')
   [void]$htmlBuilder.AppendLine('    .muted { color: #6b7280; font-style: italic; }')
   [void]$htmlBuilder.AppendLine('    .report-path code { word-break: break-all; }')
   [void]$htmlBuilder.AppendLine('    footer { margin-top: 2.5rem; font-size: 0.9rem; color: #4b5563; }')
@@ -448,8 +489,8 @@ if ($emitHtml -and $HtmlPath) {
     [void]$htmlBuilder.AppendLine('    <thead><tr><th>Mode</th><th>Pair</th><th>Base</th><th>Head</th><th>Diff</th><th>Duration (s)</th><th>Report</th></tr></thead>')
     [void]$htmlBuilder.AppendLine('    <tbody>')
     foreach ($row in $comparisonHtmlRows) {
-      $diffClass = if ($row.Diff) { 'diff-yes' } else { 'diff-no' }
-      $diffLabel = if ($row.Diff) { 'Diff' } else { 'No' }
+      $diffClass = if ($row.Diff) { 'diff-yes' } elseif ($row.Status) { 'diff-status' } else { 'diff-no' }
+      $diffLabel = if ($row.Diff) { 'Diff' } elseif ($row.Status) { ConvertTo-HtmlSafe $row.Status } else { 'No' }
       $durationDisplay = '<span class="muted">n/a</span>'
       if ($row.DurationDisplay -and $row.DurationDisplay -ne 'n/a') {
         $durationDisplay = ConvertTo-HtmlSafe $row.DurationDisplay

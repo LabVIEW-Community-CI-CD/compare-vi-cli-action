@@ -227,29 +227,50 @@ try {
         }
       }
 
-      $resultPayload = [ordered]@{
-        diff        = $comparison.result.diff
-        exitCode    = $comparison.result.exitCode
-        duration_s  = $comparison.result.duration_s
-        summaryPath = $comparison.result.summaryPath
+      $resultNode = $null
+      if ($comparison.PSObject.Properties['result']) {
+        $resultNode = $comparison.result
       }
-      if ($comparison.result.PSObject.Properties['reportPath'] -and $comparison.result.reportPath) {
-        $resultPayload.reportPath = $comparison.result.reportPath
-      }
-      if ($comparison.result.PSObject.Properties['reportHtml'] -and $comparison.result.reportHtml) {
-        $resultPayload.reportHtml = $comparison.result.reportHtml
-      }
-      if ($comparison.result.PSObject.Properties['artifactDir'] -and $comparison.result.artifactDir) {
-        $resultPayload.artifactDir = $comparison.result.artifactDir
-      }
-      if ($comparison.result.PSObject.Properties['execPath'] -and $comparison.result.execPath) {
-        $resultPayload.execPath = $comparison.result.execPath
-      }
-      if ($comparison.result.PSObject.Properties['command'] -and $comparison.result.command) {
-        $resultPayload.command = $comparison.result.command
-      }
-      if ($comparison.result.PSObject.Properties['includedAttributes'] -and $comparison.result.includedAttributes) {
-        $resultPayload.includedAttributes = @($comparison.result.includedAttributes)
+
+      $resultPayload = [ordered]@{}
+
+      if ($resultNode) {
+        if ($resultNode.PSObject.Properties['diff']) {
+          $resultPayload.diff = [bool]$resultNode.diff
+        }
+        if ($resultNode.PSObject.Properties['exitCode']) {
+          $resultPayload.exitCode = $resultNode.exitCode
+        }
+        if ($resultNode.PSObject.Properties['duration_s']) {
+          $resultPayload.duration_s = $resultNode.duration_s
+        }
+        if ($resultNode.PSObject.Properties['summaryPath'] -and $resultNode.summaryPath) {
+          $resultPayload.summaryPath = $resultNode.summaryPath
+        }
+        if ($resultNode.PSObject.Properties['reportPath'] -and $resultNode.reportPath) {
+          $resultPayload.reportPath = $resultNode.reportPath
+        }
+        if ($resultNode.PSObject.Properties['reportHtml'] -and $resultNode.reportHtml) {
+          $resultPayload.reportHtml = $resultNode.reportHtml
+        }
+        if ($resultNode.PSObject.Properties['artifactDir'] -and $resultNode.artifactDir) {
+          $resultPayload.artifactDir = $resultNode.artifactDir
+        }
+        if ($resultNode.PSObject.Properties['execPath'] -and $resultNode.execPath) {
+          $resultPayload.execPath = $resultNode.execPath
+        }
+        if ($resultNode.PSObject.Properties['command'] -and $resultNode.command) {
+          $resultPayload.command = $resultNode.command
+        }
+        if ($resultNode.PSObject.Properties['includedAttributes'] -and $resultNode.includedAttributes) {
+          $resultPayload.includedAttributes = @($resultNode.includedAttributes)
+        }
+        if ($resultNode.PSObject.Properties['status']) {
+          $resultPayload.status = $resultNode.status
+        }
+        if ($resultNode.PSObject.Properties['message']) {
+          $resultPayload.message = $resultNode.message
+        }
       }
 
       $comparisonDetails += [pscustomobject]@{
@@ -270,7 +291,13 @@ try {
       $entry = $comparisonDetails[$i]
       $baseLabel = if ($entry.base.subject) { "{0} ({1})" -f $entry.base.short, $entry.base.subject } else { $entry.base.short }
       $headLabel = if ($entry.head.subject) { "{0} ({1})" -f $entry.head.short, $entry.head.subject } else { $entry.head.short }
-      $diffLabel = if ($entry.result.diff) { 'diff=yes' } else { 'diff=no' }
+      $diffLabel = if ($entry.result.PSObject.Properties['diff']) {
+        if ($entry.result.diff) { 'diff=yes' } else { 'diff=no' }
+      } elseif ($entry.result.PSObject.Properties['status']) {
+        "status=$($entry.result.status)"
+      } else {
+        'diff=n/a'
+      }
       Write-Host ("  [{0} #{1}] {2} -> {3} ({4})" -f $entry.mode, $entry.index, $baseLabel, $headLabel, $diffLabel)
     }
     if ($comparisonDetails.Count -gt $preview) {
