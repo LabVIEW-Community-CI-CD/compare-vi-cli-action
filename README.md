@@ -78,7 +78,7 @@ schema as the workflow outputs.
 
 For a quicker end-to-end loop:
 
-- `scripts/Run-VIHistory.ps1` regenerates the history results, prints the enriched Markdown summary (including attribute coverage), surfaces the first commit pairs it processed, and writes `tests/results/ref-compare/history/history-context.json` with commit metadata for deeper debugging.
+- `scripts/Run-VIHistory.ps1` regenerates the history results, prints the enriched Markdown summary (including attribute coverage), surfaces the first commit pairs it processed, writes `tests/results/ref-compare/history/history-context.json` with commit metadata, and renders `tests/results/ref-compare/history/history-report.md` (plus `history-report.html` when `-HtmlReport`) so reviewers have a single document to scan.
 - `scripts/Dispatch-VIHistoryWorkflow.ps1` wraps `gh workflow run` and echoes the URL to the most recent run so you can follow progress immediately.
 
 ## Release and compatibility

@@ -274,9 +274,37 @@ try {
 
   $modeSummaryJson = ($manifest.modes | ConvertTo-Json -Depth 4)
 
+  $historyReportPath = Join-Path $historyResultsDir 'history-report.md'
+  $historyReportHtmlPath = $null
+  if ($HtmlReport.IsPresent) {
+    $historyReportHtmlPath = Join-Path $historyResultsDir 'history-report.html'
+  }
+  $historyRenderer = Join-Path $repoRoot 'tools' 'Render-VIHistoryReport.ps1'
+  if (Test-Path -LiteralPath $historyRenderer -PathType Leaf) {
+    $rendererArgs = @{
+      ManifestPath       = $manifestPath
+      HistoryContextPath = $contextPath
+      OutputDir          = $historyResultsDir
+      MarkdownPath       = $historyReportPath
+    }
+    if ($HtmlReport.IsPresent) {
+      $rendererArgs['EmitHtml'] = $true
+      $rendererArgs['HtmlPath'] = $historyReportHtmlPath
+    }
+    try {
+      & $historyRenderer @rendererArgs | Out-Null
+    } catch {
+      Write-Warning ("Failed to render history report: {0}" -f $_.Exception.Message)
+    }
+  } else {
+    Write-Warning ("VI history report renderer missing at {0}" -f $historyRenderer)
+  }
+
   pwsh -NoLogo -NoProfile -File (Join-Path $repoRoot 'tools' 'Publish-VICompareSummary.ps1') `
     -ManifestPath $manifestPath `
     -ModeSummaryJson $modeSummaryJson `
+    -HistoryReportPath $historyReportPath `
+    -HistoryReportHtmlPath $historyReportHtmlPath `
     -Issue 0 `
     -DryRun
 } finally {

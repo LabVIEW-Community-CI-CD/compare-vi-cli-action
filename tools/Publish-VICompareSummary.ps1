@@ -3,6 +3,8 @@ param(
   [string]$ManifestPath,
   [Parameter(Mandatory = $true)]
   [string]$ModeSummaryJson,
+  [string]$HistoryReportPath,
+  [string]$HistoryReportHtmlPath,
   [Parameter(Mandatory = $true)]
   [string]$Issue,
   [string]$Repository = $env:GITHUB_REPOSITORY,
@@ -41,6 +43,24 @@ if (-not (Test-Path -LiteralPath $ManifestPath -PathType Leaf)) {
 $aggregate = Get-Content -LiteralPath $ManifestPath -Raw | ConvertFrom-Json -Depth 16
 if (-not $aggregate) {
   throw ("Unable to deserialize manifest: {0}" -f $ManifestPath)
+}
+
+$historyReportResolved = $null
+if (-not [string]::IsNullOrWhiteSpace($HistoryReportPath)) {
+  if (Test-Path -LiteralPath $HistoryReportPath -PathType Leaf) {
+    $historyReportResolved = (Resolve-Path -LiteralPath $HistoryReportPath).Path
+  } else {
+    Write-Warning ("History report Markdown not found at {0}" -f $HistoryReportPath)
+  }
+}
+
+$historyReportHtmlResolved = $null
+if (-not [string]::IsNullOrWhiteSpace($HistoryReportHtmlPath)) {
+  if (Test-Path -LiteralPath $HistoryReportHtmlPath -PathType Leaf) {
+    $historyReportHtmlResolved = (Resolve-Path -LiteralPath $HistoryReportHtmlPath).Path
+  } else {
+    Write-Warning ("History report HTML not found at {0}" -f $HistoryReportHtmlPath)
+  }
 }
 
 $modeSummaries = @()
@@ -109,6 +129,12 @@ $lines.Add(('* Modes: {0}' -f ([string]::Join(', ', $modeNames))))
 $lines.Add(('* Total processed pairs: {0}' -f $totalProcessed))
 $lines.Add(('* Total diffs: {0}' -f $totalDiffs))
 $lines.Add(('* Total missing pairs: {0}' -f $totalMissing))
+if ($historyReportResolved) {
+  $lines.Add(('* History report: `{0}`' -f $historyReportResolved))
+}
+if ($historyReportHtmlResolved) {
+  $lines.Add(('* History report (HTML): `{0}`' -f $historyReportHtmlResolved))
+}
 $lines.Add("")
 $lines.Add("| Mode | Processed | Diffs | Missing | Last Diff | Status |")
 $lines.Add("| --- | ---: | ---: | ---: | --- | --- |")

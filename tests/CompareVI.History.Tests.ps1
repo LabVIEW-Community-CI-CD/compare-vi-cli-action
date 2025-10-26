@@ -583,6 +583,21 @@ exit $exitCode
     $bySlug.ContainsKey('attributes') | Should -BeTrue
     $bySlug['default'].mode | Should -Be 'default'
     $bySlug['attributes'].mode | Should -Be 'attributes'
+
+    $historyMdLine = $outputLines | Where-Object { $_ -like 'history-report-md=*' } | Select-Object -First 1
+    $historyMdLine | Should -Not -BeNullOrEmpty
+    $historyMdPath = (($historyMdLine -split '=', 2)[1]).Trim()
+    Test-Path -LiteralPath $historyMdPath | Should -BeTrue
+
+    $historyHtmlLine = $outputLines | Where-Object { $_ -like 'history-report-html=*' } | Select-Object -First 1
+    $historyHtmlLine | Should -Not -BeNullOrEmpty
+    $historyHtmlPath = (($historyHtmlLine -split '=', 2)[1]).Trim()
+    Test-Path -LiteralPath $historyHtmlPath | Should -BeTrue
+
+    Test-Path -LiteralPath $summaryPath | Should -BeTrue
+    $summaryContent = Get-Content -LiteralPath $summaryPath -Raw
+    $summaryContent | Should -Match 'VI history report'
+    $summaryContent | Should -Match 'history-report.md'
   }
 
   It 'expands comma-separated mode tokens into multiple entries' {

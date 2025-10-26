@@ -44,7 +44,7 @@
 
 ### Local automation helpers
 
-- `scripts/Run-VIHistory.ps1` regenerates local history results, prints the enriched Markdown summary (including attribute coverage), previews the first few commit pairs it processed, and drops `history-context.json` with commit metadata under the history results directory:
+- `scripts/Run-VIHistory.ps1` regenerates local history results, prints the enriched Markdown summary (including attribute coverage), previews the first few commit pairs it processed, and drops both `history-context.json` (commit metadata) and `history-report.md` (single-document summary; plus `history-report.html` when `-HtmlReport`) under the history results directory:
   ```powershell
   pwsh -File scripts/Run-VIHistory.ps1 -ViPath Fixtures/Loop.vi -StartRef HEAD -MaxPairs 3
   ```
@@ -68,10 +68,8 @@ gh workflow run vi-compare-refs.yml `
 - The compare step writes `tests/results/ref-compare/history/manifest.json`, an aggregate manifest with
   `schema: vi-compare/history-suite@v1`. Each `modes[]` entry captures the mode slug, resolved flag bundle,
   stats, and the `manifestPath` for that mode's detailed results.
-- `scripts/Run-VIHistory.ps1` also writes `tests/results/ref-compare/history/history-context.json` (`schema: vi-compare/history-context@v1`) summarising the commit pairs (base/head metadata, LVCompare outcome). Use this file when you need to troubleshoot which revisions were diffed locally before dispatching.
-- GitHub outputs include `manifest-path` (suite manifest), `results-dir` (root history directory), and
-  `mode-manifests-json` (JSON array enumerating each mode's manifest path, results directory, and summary stats).
-  Dashboards and metrics jobs should deserialize `mode-manifests-json` when they need per-mode artifact locations.
+- `scripts/Run-VIHistory.ps1` also writes `tests/results/ref-compare/history/history-context.json` (`schema: vi-compare/history-context@v1`) summarising the commit pairs and `tests/results/ref-compare/history/history-report.md` / `history-report.html` so reviewers can triage outcomes without spelunking manifests.
+- GitHub outputs include `manifest-path` (suite manifest), `results-dir` (root history directory), `mode-manifests-json` (JSON array enumerating each mode's manifest path, results directory, and summary stats), and the new `history-report-md` / `history-report-html` pointers for dashboards or PR comments. Dashboards and metrics jobs should deserialize `mode-manifests-json` when they need per-mode artifact locations.
 - Per-mode manifests live under `tests/results/ref-compare/history/<mode>/manifest.json`
   (`schema: vi-compare/history@v1`) and enumerate the commit pairs, summaries, and LVCompare outcomes.
 - Per-iteration summaries (`*-summary.json`) live beside the mode manifest

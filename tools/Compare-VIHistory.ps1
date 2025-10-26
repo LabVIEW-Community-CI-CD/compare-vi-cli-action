@@ -971,7 +971,7 @@ foreach ($modeEntry in $aggregate.modes) {
 }
 if ($modeNameBuffer.Count -gt 0) {
   $modeListValue = ($modeNameBuffer | Sort-Object -Unique) -join ', '
-  Write-GitHubOutput -Key 'mode-list' -Value $modeListValue -DestPath $GitHubOutputPath
+Write-GitHubOutput -Key 'mode-list' -Value $modeListValue -DestPath $GitHubOutputPath
 }
 $flagArray = [System.Linq.Enumerable]::ToArray($flagSet)
 if ($flagArray -and $flagArray.Count -gt 0) {
@@ -979,6 +979,36 @@ if ($flagArray -and $flagArray.Count -gt 0) {
   Write-GitHubOutput -Key 'flag-list' -Value $flagListValue -DestPath $GitHubOutputPath
 } else {
   Write-GitHubOutput -Key 'flag-list' -Value 'none' -DestPath $GitHubOutputPath
+}
+
+$historyReportMarkdownPath = Join-Path $resultsRootResolved 'history-report.md'
+$historyReportHtmlPath = Join-Path $resultsRootResolved 'history-report.html'
+$shouldRenderSummary = $RenderReport.IsPresent -or `
+  (-not [string]::IsNullOrWhiteSpace($GitHubOutputPath)) -or `
+  (-not [string]::IsNullOrWhiteSpace($StepSummaryPath))
+if ($shouldRenderSummary) {
+  $rendererScript = Join-Path (Split-Path -Parent $PSCommandPath) 'Render-VIHistoryReport.ps1'
+  if (Test-Path -LiteralPath $rendererScript -PathType Leaf) {
+    $rendererArgs = @{
+      ManifestPath       = $aggregateManifestResolved
+      HistoryContextPath = Join-Path $resultsRootResolved 'history-context.json'
+      OutputDir          = $resultsRootResolved
+      MarkdownPath       = $historyReportMarkdownPath
+      GitHubOutputPath   = $GitHubOutputPath
+      StepSummaryPath    = $StepSummaryPath
+    }
+    if ($ReportFormat -eq 'html') {
+      $rendererArgs['EmitHtml'] = $true
+      $rendererArgs['HtmlPath'] = $historyReportHtmlPath
+    }
+    try {
+      & $rendererScript @rendererArgs | Out-Null
+    } catch {
+      Write-Warning ("Failed to render VI history report: {0}" -f $_.Exception.Message)
+    }
+  } else {
+    Write-Warning ("VI history renderer script not found at {0}" -f $rendererScript)
+  }
 }
 
 Write-Host ("VI compare history suite complete. Aggregate manifest: {0}" -f $aggregateManifestResolved)
