@@ -660,6 +660,90 @@ exit $exitCode
   }
 }
 
+Describe 'Compare-VIHistory source control handling' -Tag 'Integration' {
+  BeforeAll {
+    $script:RepoRoot = (Get-Location).Path
+    $compareScript = Join-Path $script:RepoRoot 'tools' 'Compare-VIHistory.ps1'
+    $localConfigPath = Join-Path $script:RepoRoot 'configs' 'labview-paths.local.json'
+    $script:CompareScript = $compareScript
+    $script:LocalConfigPath = $localConfigPath
+    $script:OriginalLocalConfig = $null
+    $script:HadLocalConfig = Test-Path -LiteralPath $localConfigPath -PathType Leaf
+    if ($script:HadLocalConfig) {
+      $script:OriginalLocalConfig = Get-Content -LiteralPath $localConfigPath -Raw
+    }
+  }
+
+  AfterEach {
+    if (Test-Path -LiteralPath $script:LocalConfigPath -PathType Leaf) {
+      Remove-Item -LiteralPath $script:LocalConfigPath -Force
+    }
+  }
+
+  AfterAll {
+    if ($script:HadLocalConfig) {
+      Set-Content -LiteralPath $script:LocalConfigPath -Value $script:OriginalLocalConfig
+    } else {
+      if (Test-Path -LiteralPath $script:LocalConfigPath -PathType Leaf) {
+        Remove-Item -LiteralPath $script:LocalConfigPath -Force
+      }
+    }
+  }
+
+  It 'emits a warning when SCC is enabled in LabVIEW.ini' {
+    $tempRoot = Join-Path $TestDrive 'lv-scc-enabled'
+    New-Item -ItemType Directory -Path $tempRoot | Out-Null
+    $fakeExe = Join-Path $tempRoot 'LabVIEW.exe'
+    Set-Content -LiteralPath $fakeExe -Value '' -Encoding Byte
+    $fakeIni = Join-Path $tempRoot 'LabVIEW.ini'
+    Set-Content -LiteralPath $fakeIni -Value "SCCUseInLabVIEW=True`nSCCProviderIsActive=True`n"
+
+    @"
+{
+  "labview": [ "$fakeExe" ]
+}
+"@ | Set-Content -LiteralPath $script:LocalConfigPath
+
+    $resultsDir = Join-Path $TestDrive 'history-enabled'
+    Push-Location $script:RepoRoot
+    try {
+      $WarningPreference = 'Continue'
+      $output = & $script:CompareScript -TargetPath 'VI1.vi' -StartRef 'HEAD' -MaxPairs 1 -ResultsDir $resultsDir -RenderReport 3>&1
+      $warnings = $output | Where-Object { $_ -is [System.Management.Automation.WarningRecord] } | ForEach-Object { $_.Message }
+      $warnings | Should -ContainMatch 'LabVIEW source control is enabled'
+    } finally {
+      Pop-Location
+      if (Test-Path -LiteralPath $resultsDir) { Remove-Item -LiteralPath $resultsDir -Recurse -Force }
+    }
+  }
+
+  It 'does not emit a warning when SCC is disabled' {
+    $tempRoot = Join-Path $TestDrive 'lv-scc-disabled'
+    New-Item -ItemType Directory -Path $tempRoot | Out-Null
+    $fakeExe = Join-Path $tempRoot 'LabVIEW.exe'
+    Set-Content -LiteralPath $fakeExe -Value '' -Encoding Byte
+    $fakeIni = Join-Path $tempRoot 'LabVIEW.ini'
+    Set-Content -LiteralPath $fakeIni -Value "SCCUseInLabVIEW=False`nSCCProviderIsActive=False`n"
+
+    @"
+{
+  "labview": [ "$fakeExe" ]
+}
+"@ | Set-Content -LiteralPath $script:LocalConfigPath
+
+    $resultsDir = Join-Path $TestDrive 'history-disabled'
+    Push-Location $script:RepoRoot
+    try {
+      $WarningPreference = 'Continue'
+      $output = & $script:CompareScript -TargetPath 'VI1.vi' -StartRef 'HEAD' -MaxPairs 1 -ResultsDir $resultsDir -RenderReport 3>&1
+      $warnings = $output | Where-Object { $_ -is [System.Management.Automation.WarningRecord] } | ForEach-Object { $_.Message }
+      $warnings | Should -BeNullOrEmpty
+    } finally {
+      Pop-Location
+      if (Test-Path -LiteralPath $resultsDir) { Remove-Item -LiteralPath $resultsDir -Recurse -Force }
+    }
+  }
+}
 
 
 

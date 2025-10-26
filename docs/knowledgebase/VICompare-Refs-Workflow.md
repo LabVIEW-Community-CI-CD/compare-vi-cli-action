@@ -106,6 +106,13 @@ gh workflow run vi-compare-refs.yml `
 - Set `-AdditionalFlags` when you need extra LVCompare switches (for example `-AdditionalFlags '-noconpane -noselect'`).
 - Pass `-Mode attributes` / `-Mode 'front-panel'` / `-Mode 'block-diagram'` / `-Mode all` to mirror the workflow modes locally.
 
+### Source control settings
+
+- Before launching LabVIEWCLI, the helper inspects the active `LabVIEW.ini` for source-control keys (`SCCUseInLabVIEW`,
+  `SCCProviderIsActive`). When either value is `True`, the script logs a warning because headless compare sessions will
+  trigger LabVIEW's SCC connector and surface the 0x401 “Application Reference is invalid” dialog. Disable source control
+  inside LabVIEW (Tools → Options → Source Control) or set those INI keys to `False` to keep unattended runs quiet.
+
 ### Attribute-focused runs
 
 - Include `attributes` in the `modes` list (or run the helper with `-Mode attributes`) to remove `-noattr` while leaving

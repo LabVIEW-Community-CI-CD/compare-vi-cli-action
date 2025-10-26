@@ -9,6 +9,14 @@ param(
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
+try {
+  $scriptRoot = Split-Path -Parent $PSCommandPath
+  $vendorModule = Join-Path (Split-Path -Parent $scriptRoot) 'tools\VendorTools.psm1'
+  if (Test-Path -LiteralPath $vendorModule -PathType Leaf) {
+    Import-Module $vendorModule -Force
+  }
+} catch {}
+
 function Get-NormalizedRepoRelativePath {
   param(
     [string]$InputPath,

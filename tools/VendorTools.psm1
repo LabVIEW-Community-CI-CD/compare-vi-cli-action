@@ -127,4 +127,119 @@ function Resolve-LabVIEWCliPath {
   return $null
 }
 
+function Get-LabVIEWCandidateExePaths {
+  param([string]$LabVIEWExePath)
+
+  if (-not $IsWindows) { return @() }
+
+  $candidates = New-Object System.Collections.Generic.List[string]
+
+  if (-not [string]::IsNullOrWhiteSpace($LabVIEWExePath)) {
+    $candidates.Add($LabVIEWExePath)
+  }
+
+  foreach ($envValue in @($env:LABVIEW_PATH, $env:LABVIEW_EXE_PATH)) {
+    if ([string]::IsNullOrWhiteSpace($envValue)) { continue }
+    foreach ($entry in ($envValue -split ';')) {
+      if (-not [string]::IsNullOrWhiteSpace($entry)) {
+        $candidates.Add($entry.Trim())
+      }
+    }
+  }
+
+  $root = Resolve-RepoRoot
+  foreach ($configName in @('labview-paths.local.json','labview-paths.json')) {
+    $configPath = Join-Path $root "configs/$configName"
+    if (-not (Test-Path -LiteralPath $configPath -PathType Leaf)) { continue }
+    try {
+      $config = Get-Content -LiteralPath $configPath -Raw | ConvertFrom-Json -Depth 4
+      if ($config -and $config.PSObject.Properties['labview']) {
+        $entries = $config.labview
+        if ($entries -is [string]) { $candidates.Add($entries) }
+        elseif ($entries -is [System.Collections.IEnumerable]) {
+          foreach ($item in $entries) {
+            if ($item) { $candidates.Add([string]$item) }
+          }
+        }
+      }
+    } catch {}
+  }
+
+  $programRoots = @($env:ProgramFiles, ${env:ProgramFiles(x86)}) | Where-Object { -not [string]::IsNullOrWhiteSpace($_) }
+  foreach ($rootPath in $programRoots) {
+    try {
+      $niRoot = Join-Path $rootPath 'National Instruments'
+      if (-not (Test-Path -LiteralPath $niRoot -PathType Container)) { continue }
+      $labviewDirs = Get-ChildItem -LiteralPath $niRoot -Directory -Filter 'LabVIEW*' -ErrorAction SilentlyContinue
+      foreach ($dir in $labviewDirs) {
+        $exe = Join-Path $dir.FullName 'LabVIEW.exe'
+        if (Test-Path -LiteralPath $exe -PathType Leaf) {
+          $candidates.Add($exe)
+        }
+      }
+    } catch {}
+  }
+
+  $resolved = New-Object System.Collections.Generic.List[string]
+  foreach ($candidate in $candidates) {
+    if ([string]::IsNullOrWhiteSpace($candidate)) { continue }
+    try {
+      if (Test-Path -LiteralPath $candidate -PathType Leaf) {
+        $path = (Resolve-Path -LiteralPath $candidate).Path
+        if (-not $resolved.Contains($path)) {
+          $resolved.Add($path)
+        }
+      }
+    } catch {}
+  }
+
+  return $resolved.ToArray()
+}
+
+function Get-LabVIEWIniPath {
+  param(
+    [string]$LabVIEWExePath
+  )
+
+  foreach ($exe in (Get-LabVIEWCandidateExePaths -LabVIEWExePath $LabVIEWExePath)) {
+    try {
+      $rootDir = Split-Path -Parent $exe
+      $iniCandidate = Join-Path $rootDir 'LabVIEW.ini'
+      if (Test-Path -LiteralPath $iniCandidate -PathType Leaf) {
+        return (Resolve-Path -LiteralPath $iniCandidate).Path
+      }
+    } catch {}
+  }
+  return $null
+}
+
+function Get-LabVIEWIniValue {
+  param(
+    [Parameter(Mandatory = $true)][string]$Key,
+    [string]$LabVIEWIniPath,
+    [string]$LabVIEWExePath
+  )
+
+  if (-not $IsWindows) { return $null }
+
+  if ([string]::IsNullOrWhiteSpace($LabVIEWIniPath)) {
+    $LabVIEWIniPath = Get-LabVIEWIniPath -LabVIEWExePath $LabVIEWExePath
+  }
+  if (-not $LabVIEWIniPath) { return $null }
+
+  try {
+    foreach ($line in (Get-Content -LiteralPath $LabVIEWIniPath)) {
+      if ([string]::IsNullOrWhiteSpace($line)) { continue }
+      if ($line -match '^\s*[#;]') { continue }
+      $parts = $line -split '=', 2
+      if ($parts.Count -ne 2) { continue }
+      if ($parts[0].Trim() -ieq $Key) {
+        return $parts[1].Trim()
+      }
+    }
+  } catch {}
+
+  return $null
+}
+
 Export-ModuleMember -Function *

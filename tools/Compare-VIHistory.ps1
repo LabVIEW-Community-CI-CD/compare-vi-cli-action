@@ -39,6 +39,13 @@ param(
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
+try {
+  $vendorModule = Join-Path (Split-Path -Parent $PSCommandPath) 'VendorTools.psm1'
+  if (Test-Path -LiteralPath $vendorModule -PathType Leaf) {
+    Import-Module $vendorModule -Force
+  }
+} catch {}
+
 function Split-ArgString {
   param([string]$Value)
   if ([string]::IsNullOrWhiteSpace($Value)) { return @() }
@@ -389,6 +396,21 @@ function Get-ShortSha {
 }
 
 try { Invoke-Git -Arguments @('--version') -Quiet | Out-Null } catch { throw 'git must be available on PATH.' }
+
+$labVIEWIniPath = $null
+try {
+  $labVIEWIniPath = Get-LabVIEWIniPath
+} catch {}
+if ($labVIEWIniPath) {
+  try {
+    $sccUseValue = Get-LabVIEWIniValue -LabVIEWIniPath $labVIEWIniPath -Key 'SCCUseInLabVIEW'
+    $sccProviderValue = Get-LabVIEWIniValue -LabVIEWIniPath $labVIEWIniPath -Key 'SCCProviderIsActive'
+    $sccEnabled = ($sccUseValue -eq 'True') -or ($sccProviderValue -eq 'True')
+    if ($sccEnabled) {
+      Write-Warning ("LabVIEW source control is enabled in '{0}'. Headless comparisons may emit SCC startup warnings. Disable Source Control in LabVIEW (Tools -> Options -> Source Control) or set SCCUseInLabVIEW=FALSE for automation runs." -f $labVIEWIniPath)
+    }
+  } catch {}
+}
 
 $repoRoot = (Get-Location).Path
 
