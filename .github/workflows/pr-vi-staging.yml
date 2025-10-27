@@ -45,6 +45,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           INPUT_PR: ${{ inputs.pr }}
           COMMENT_PR: ${{ github.event.issue.number }}
+          REPO_SLUG: ${{ github.repository }}
         shell: pwsh
         run: |
           Set-StrictMode -Version Latest
@@ -56,20 +57,35 @@ jobs:
           }
 
           Write-Host "Resolving metadata for PR #$prNumber"
-          $json = gh pr view $prNumber --json number,url,baseRefName,baseRefOid,headRefName,headRefOid,headRepositoryOwner,headRepository
-          $info = $json | ConvertFrom-Json
-
-          if (-not $info) {
-            throw "Unable to load pull request metadata for #$prNumber"
+          $repoSlug = $env:REPO_SLUG
+          if (-not $repoSlug) {
+            $repoSlug = $env:GITHUB_REPOSITORY
+          }
+          if (-not $repoSlug) {
+            throw 'Unable to determine repository slug for gh commands.'
           }
 
-          $baseSha = $info.baseRefOid
-          $headSha = $info.headRefOid
-          $baseRef = $info.baseRefName
-          $headRef = $info.headRefName
+          $headers = @{
+            Authorization = "Bearer $env:GH_TOKEN"
+            'User-Agent'  = 'compare-vi-staging'
+            Accept        = 'application/vnd.github+json'
+          }
 
-          $ownerLogin = $info.headRepositoryOwner?.login
-          $repoName = $info.headRepository?.name
+          $uri = "https://api.github.com/repos/$repoSlug/pulls/$prNumber"
+          try {
+            $info = Invoke-RestMethod -Uri $uri -Headers $headers -Method Get -ErrorAction Stop
+          } catch {
+            $message = $_.Exception.Message
+            throw ("Unable to load pull request metadata for #{0}: {1}" -f $prNumber, $message)
+          }
+
+          $baseSha = $info.base.sha
+          $headSha = $info.head.sha
+          $baseRef = $info.base.ref
+          $headRef = $info.head.ref
+
+          $ownerLogin = $info.head.user?.login
+          $repoName = $info.head.repo?.name
 
           if (-not $repoName) {
             $repoParts = ($env:GITHUB_REPOSITORY ?? '') -split '/'
@@ -90,10 +106,14 @@ jobs:
             }
           }
 
-          $headRepo = "$ownerLogin/$repoName"
+          if ($info.head.repo?.full_name) {
+            $headRepo = $info.head.repo.full_name
+          } else {
+            $headRepo = "$ownerLogin/$repoName"
+          }
 
           "pr_number=$prNumber" | Out-File -FilePath $Env:GITHUB_OUTPUT -Encoding utf8 -Append
-          "pr_url=$($info.url)" | Out-File -FilePath $Env:GITHUB_OUTPUT -Encoding utf8 -Append
+          "pr_url=$($info.html_url)" | Out-File -FilePath $Env:GITHUB_OUTPUT -Encoding utf8 -Append
           "base_sha=$baseSha" | Out-File -FilePath $Env:GITHUB_OUTPUT -Encoding utf8 -Append
           "head_sha=$headSha" | Out-File -FilePath $Env:GITHUB_OUTPUT -Encoding utf8 -Append
           "base_ref=$baseRef" | Out-File -FilePath $Env:GITHUB_OUTPUT -Encoding utf8 -Append
