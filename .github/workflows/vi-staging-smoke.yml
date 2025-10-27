@@ -1,0 +1,52 @@
+name: Smoke VI Staging
+
+on:
+  workflow_dispatch:
+    inputs:
+      keep_branch:
+        description: 'Keep scratch branch and PR after the smoke test'
+        required: false
+        default: 'false'
+        type: choice
+        options:
+          - 'false'
+          - 'true'
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  smoke:
+    runs-on: windows-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Configure git identity
+        shell: pwsh
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+      - name: Run staging smoke helper
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          KEEP_BRANCH: ${{ inputs.keep_branch }}
+        run: |
+          $params = @()
+          if ($env:KEEP_BRANCH -eq 'true') {
+            $params += '-KeepBranch'
+          }
+          pwsh -NoLogo -NoProfile -File tools/Test-PRVIStagingSmoke.ps1 @params
+
+      - name: Upload smoke summary
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: vi-staging-smoke
+          path: tests/results/_agent/smoke/vi-stage/
+          if-no-files-found: ignore

@@ -18,6 +18,20 @@
       "problemMatcher": []
     },
     {
+      "label": "Smoke: VI staging label",
+      "type": "process",
+      "command": "npm",
+      "args": [
+        "run",
+        "smoke:vi-stage"
+      ],
+      "options": {
+        "cwd": "${workspaceFolder}"
+      },
+      "group": "test",
+      "problemMatcher": []
+    },
+    {
       "label": "Validation: Pester (unit)",
       "type": "process",
       "command": "pwsh",

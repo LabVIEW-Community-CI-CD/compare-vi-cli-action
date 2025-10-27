@@ -67,7 +67,8 @@
     "ext:bump-package": "pwsh -NoLogo -NoProfile -File tools/Build-VSCExtension.ps1 -BumpPatch",
     "ext:bump-install": "pwsh -NoLogo -NoProfile -File tools/Build-VSCExtension.ps1 -BumpPatch -Install",
     "history:run": "pwsh -NoLogo -NoProfile -File scripts/Run-VIHistory.ps1",
-    "history:dispatch": "pwsh -NoLogo -NoProfile -File scripts/Dispatch-VIHistoryWorkflow.ps1"
+    "history:dispatch": "pwsh -NoLogo -NoProfile -File scripts/Dispatch-VIHistoryWorkflow.ps1",
+    "smoke:vi-stage": "pwsh -NoLogo -NoProfile -File tools/Test-PRVIStagingSmoke.ps1"
   },
   "devDependencies": {
     "@types/argparse": "^2.0.16",

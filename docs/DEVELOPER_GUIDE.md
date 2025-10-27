@@ -12,9 +12,14 @@ Quick reference for building, testing, and releasing the LVCompare composite act
   - Set `LV_BASE_VI`, `LV_HEAD_VI`
   - `./Invoke-PesterTests.ps1 -IntegrationMode include`
 - **Helpers**
-  - `tools/Dev-Dashboard.ps1` → telemetry snapshot
-  - `tools/Watch-Pester.ps1` → file watcher / retry loop
-  - `tools/Detect-RogueLV.ps1 -FailOnRogue` → leak check
+  - `tools/Dev-Dashboard.ps1`
+- **Smoke tests**
+  - `npm run smoke:vi-stage -- --DryRun`
+  - `npm run smoke:vi-stage`
+
+ â†’ telemetry snapshot
+  - `tools/Watch-Pester.ps1` â†’ file watcher / retry loop
+  - `tools/Detect-RogueLV.ps1 -FailOnRogue` â†’ leak check
 
 Artifacts land in `tests/results/` (JSON summaries, XML, loop logs).
 
@@ -80,13 +85,13 @@ node tools/npm/run-script.mjs lint            # markdownlint + custom checks
 
 ## CI automation secrets
 
-- `AUTO_APPROVE_TOKEN` – Personal access token (PAT) used by the `PR Auto-approve` workflow to submit an approval once the
+- `AUTO_APPROVE_TOKEN` â€“ Personal access token (PAT) used by the `PR Auto-approve` workflow to submit an approval once the
   `Validate` workflow succeeds. The token must belong to an account with review rights on this repository. Grant the token
   the minimal scopes required (`public_repo` is sufficient for GitHub.com repos). When the secret is unset the workflow
   quietly skips auto-approval.
-- `AUTO_APPROVE_LABEL` *(optional)* – When set, the auto-approval workflow only acts on PRs carrying this label. The default
+- `AUTO_APPROVE_LABEL` *(optional)* â€“ When set, the auto-approval workflow only acts on PRs carrying this label. The default
   label is `auto-approve` if the secret is omitted. Set the secret to `none` to disable label gating.
-- `AUTO_APPROVE_ALLOWED` *(optional)* – Comma-separated list of GitHub usernames permitted for auto-approval (e.g.,
+- `AUTO_APPROVE_ALLOWED` *(optional)* â€“ Comma-separated list of GitHub usernames permitted for auto-approval (e.g.,
   `svelderrainruiz,octocat`). If omitted, all authors are eligible.
 
 ### Release metadata
@@ -140,8 +145,8 @@ node tools/npm/run-script.mjs lint            # markdownlint + custom checks
 - On shared runners the canonical installs sit under `C:\Program Files`, but
   local setups may vary. Copy `configs/labview-paths.sample.json` to
   `configs/labview-paths.json` and list overrides under:
-  - `lvcompare` array – explicit `LVCompare.exe` locations; first match wins.
-  - `labview` array – candidate `LabVIEW.exe` paths (per version/bitness).
+  - `lvcompare` array â€“ explicit `LVCompare.exe` locations; first match wins.
+  - `labview` array â€“ candidate `LabVIEW.exe` paths (per version/bitness).
 - Environment variables (`LVCOMPARE_PATH`, `LABVIEW_PATH`, etc.) still win, and
   the provider now writes verbose logs enumerating every candidate so you can
   troubleshoot missing installs quickly (`pwsh -v 5` to surface messages).
