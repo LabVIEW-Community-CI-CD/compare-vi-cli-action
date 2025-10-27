@@ -33,7 +33,20 @@ Describe 'Pester Watcher Live Feed' -Tag 'Unit' {
       Set-Content -LiteralPath $summaryPath -Value '{"result":"Running","totals":{"tests":1,"passed":1,"failed":0},"durationSeconds":1}' -Encoding utf8
       Invoke-TestSleep -Milliseconds 200 -FastMilliseconds 100
       Add-Content -LiteralPath $logPath -Value "`nIt done" -Encoding utf8
-      Invoke-TestSleep -Milliseconds 500 -FastMilliseconds 200
+      $deadline = (Get-Date).AddMilliseconds(2000)
+      do {
+        Invoke-TestSleep -Milliseconds 150 -FastMilliseconds 80
+        $stdoutSnapshot = if (Test-Path $stdoutPath) { Get-Content -LiteralPath $stdoutPath -Raw } else { '' }
+        if ($stdoutSnapshot -match '\[summary\].*Result=') { break }
+      } while ((Get-Date) -lt $deadline)
+      if (-not (Test-IsFastMode)) {
+        $logDeadline = (Get-Date).AddMilliseconds(2000)
+        do {
+          Invoke-TestSleep -Milliseconds 150 -FastMilliseconds 80
+          $stdoutSnapshot = if (Test-Path $stdoutPath) { Get-Content -LiteralPath $stdoutPath -Raw } else { '' }
+          if ($stdoutSnapshot -match '\[log\].*It done') { break }
+        } while ((Get-Date) -lt $logDeadline)
+      }
     }
     finally {
       try { Stop-Process -Id $proc.Id -Force -ErrorAction SilentlyContinue } catch {}
