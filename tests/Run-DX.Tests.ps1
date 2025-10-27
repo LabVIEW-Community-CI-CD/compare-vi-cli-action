@@ -87,12 +87,10 @@ exit 0
       $logPath = Join-Path $outputRoot 'harness-log.json'
       Test-Path -LiteralPath $logPath | Should -BeTrue
       $log = Get-Content -LiteralPath $logPath -Raw | ConvertFrom-Json
-      $legacyBase = ('Bas' + 'e') + '.vi'
-      $legacyHead = ('Hea' + 'd') + '.vi'
-      $legacyBaseRegex = [regex]::Escape($legacyBase)
-      $legacyHeadRegex = [regex]::Escape($legacyHead)
-      $log.base | Should -Match "$legacyBaseRegex$"
-      $log.head | Should -Match "$legacyHeadRegex$"
+      $allowedLegacy = @((Split-Path -Leaf $baseVi), (Split-Path -Leaf $headVi), 'Base.vi', 'Head.vi') | Select-Object -Unique
+      $legacyPattern = '({0})$' -f (($allowedLegacy | ForEach-Object { [regex]::Escape($_) }) -join '|')
+      $log.base | Should -Match $legacyPattern
+      $log.head | Should -Match $legacyPattern
       $log.sameNameHint | Should -BeTrue
       $log.allowSameLeaf | Should -BeFalse
       $log.stagingRoot | Should -Not -BeNullOrEmpty

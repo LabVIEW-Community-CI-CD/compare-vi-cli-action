@@ -1,30 +1,33 @@
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
-$repoRoot = (git rev-parse --show-toplevel).Trim()
-$modulePath = Join-Path $repoRoot 'tools/VendorTools.psm1'
-Import-Module $modulePath -Force
-
-$localConfigPath = Join-Path $repoRoot 'configs/labview-paths.local.json'
-$hadExistingLocalConfig = Test-Path -LiteralPath $localConfigPath -PathType Leaf
-$existingLocalConfig = $null
-if ($hadExistingLocalConfig) {
-  $existingLocalConfig = Get-Content -LiteralPath $localConfigPath -Raw
-}
-
 Describe 'VendorTools LabVIEW helpers' {
+  BeforeAll {
+    $script:repoRoot = (git rev-parse --show-toplevel).Trim()
+    $script:modulePath = Join-Path $script:repoRoot 'tools/VendorTools.psm1'
+    Import-Module $script:modulePath -Force
+
+    $script:localConfigPath = Join-Path $script:repoRoot 'configs/labview-paths.local.json'
+    $script:hadExistingLocalConfig = Test-Path -LiteralPath $script:localConfigPath -PathType Leaf
+    if ($script:hadExistingLocalConfig) {
+      $script:existingLocalConfig = Get-Content -LiteralPath $script:localConfigPath -Raw
+    } else {
+      $script:existingLocalConfig = $null
+    }
+  }
+
   AfterEach {
-    if (Test-Path -LiteralPath $localConfigPath -PathType Leaf) {
-      Remove-Item -LiteralPath $localConfigPath -Force
+    if ($script:localConfigPath -and (Test-Path -LiteralPath $script:localConfigPath -PathType Leaf)) {
+      Remove-Item -LiteralPath $script:localConfigPath -Force
     }
   }
 
   AfterAll {
-    if ($hadExistingLocalConfig) {
-      Set-Content -LiteralPath $localConfigPath -Value $existingLocalConfig
+    if ($script:hadExistingLocalConfig) {
+      Set-Content -LiteralPath $script:localConfigPath -Value $script:existingLocalConfig -Encoding utf8
     } else {
-      if (Test-Path -LiteralPath $localConfigPath -PathType Leaf) {
-        Remove-Item -LiteralPath $localConfigPath -Force
+      if ($script:localConfigPath -and (Test-Path -LiteralPath $script:localConfigPath -PathType Leaf)) {
+        Remove-Item -LiteralPath $script:localConfigPath -Force
       }
     }
   }
@@ -34,7 +37,7 @@ Describe 'VendorTools LabVIEW helpers' {
     New-Item -ItemType Directory -Path $tempRoot | Out-Null
 
     $fakeExe = Join-Path $tempRoot 'LabVIEW.exe'
-    Set-Content -LiteralPath $fakeExe -Value '' -Encoding Byte
+    [System.IO.File]::WriteAllBytes($fakeExe, [byte[]](0x00)) | Out-Null
     $fakeIni = Join-Path $tempRoot 'LabVIEW.ini'
     Set-Content -LiteralPath $fakeIni -Value "SCCUseInLabVIEW=True`nSCCProviderIsActive=False`n"
 
@@ -42,7 +45,7 @@ Describe 'VendorTools LabVIEW helpers' {
 {
   "labview": [ "$fakeExe" ]
 }
-"@ | Set-Content -LiteralPath $localConfigPath
+"@ | Set-Content -LiteralPath $script:localConfigPath
 
     $candidates = Get-LabVIEWCandidateExePaths -LabVIEWExePath $fakeExe
     $resolvedExe = (Resolve-Path -LiteralPath $fakeExe).Path

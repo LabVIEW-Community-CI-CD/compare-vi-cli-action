@@ -67,6 +67,124 @@ exit 1
     finally { Pop-Location }
   }
 
+  It 'aborts before launch when LabVIEW source control is enabled' {
+    $work = Join-Path $TestDrive 'driver-scc-guard'
+    New-Item -ItemType Directory -Path $work | Out-Null
+    Push-Location $work
+    try {
+      $captureStub = Join-Path $work 'CaptureStub.ps1'
+      $stub = @'
+param(
+  [string]$Base,
+  [string]$Head,
+  [object]$LvArgs,
+  [string]$LvComparePath,
+  [switch]$RenderReport,
+  [string]$OutputDir,
+  [switch]$Quiet
+)
+if (-not (Test-Path $OutputDir)) { New-Item -ItemType Directory -Path $OutputDir -Force | Out-Null }
+Set-Content -LiteralPath (Join-Path $OutputDir 'stub-invoked.txt') -Value 'called' -Encoding utf8
+exit 0
+'@
+      Set-Content -LiteralPath $captureStub -Value $stub -Encoding UTF8
+
+      $labviewExe = Join-Path $work 'LabVIEW.exe'; Set-Content -LiteralPath $labviewExe -Encoding ascii -Value ''
+      $labviewIni = Join-Path $work 'LabVIEW.ini'; Set-Content -LiteralPath $labviewIni -Value "SCCUseInLabVIEW=True`nSCCProviderIsActive=True`n" -Encoding utf8
+      $base = Join-Path $work 'Base.vi'; Set-Content -LiteralPath $base -Encoding ascii -Value ''
+      $head = Join-Path $work 'Head.vi'; Set-Content -LiteralPath $head -Encoding ascii -Value ''
+      $outDir = Join-Path $work 'out'
+
+      $driverQuoted = $script:driverPath.Replace("'", "''")
+      $baseQuoted = $base.Replace("'", "''")
+      $headQuoted = $head.Replace("'", "''")
+      $labviewQuoted = $labviewExe.Replace("'", "''")
+      $outQuoted = $outDir.Replace("'", "''")
+      $stubQuoted = $captureStub.Replace("'", "''")
+      $command = "& { \$WarningPreference = 'Continue'; & '$driverQuoted' -BaseVi '$baseQuoted' -HeadVi '$headQuoted' -LabVIEWExePath '$labviewQuoted' -OutputDir '$outQuoted' -CaptureScriptPath '$stubQuoted' 3>&1; exit `$LASTEXITCODE }"
+      $output = & pwsh -NoLogo -NoProfile -Command $command
+      $exitCode = $LASTEXITCODE
+
+      $exitCode | Should -Be 2
+      $warningLines = @(
+        $output | ForEach-Object {
+          if ($_ -is [System.Management.Automation.WarningRecord]) { $_ }
+          elseif ([string]$_ -match 'WARNING:') { $_ }
+        }
+      ) | Where-Object { $_ }
+      $warningText = $warningLines | ForEach-Object {
+        if ($_ -is [System.Management.Automation.WarningRecord]) { $_.Message }
+        else { [string]$_ }
+      }
+      $warningText | Should -Not -BeNullOrEmpty
+      ($warningText | Where-Object { $_ -match 'LabVIEW source control is enabled' }) | Should -Not -BeNullOrEmpty
+      ($warningText | Where-Object { $_ -match 'Likely cause: LabVIEW Source Control bootstrap dialog' }) | Should -Not -BeNullOrEmpty
+
+      $capturePath = Join-Path $outDir 'lvcompare-capture.json'
+      Test-Path -LiteralPath $capturePath | Should -BeFalse
+      $stubMarker = Join-Path $outDir 'stub-invoked.txt'
+      Test-Path -LiteralPath $stubMarker | Should -BeFalse
+    }
+    finally { Pop-Location }
+  }
+
+  It 'stages duplicate filenames by default' {
+    $work = Join-Path $TestDrive 'driver-stage'
+    New-Item -ItemType Directory -Path $work | Out-Null
+    Push-Location $work
+    try {
+      $captureStub = Join-Path $work 'CaptureStub.ps1'
+      $stub = @'
+param(
+  [string]$Base,
+  [string]$Head,
+  [object]$LvArgs,
+  [string]$LvComparePath,
+  [switch]$RenderReport,
+  [string]$OutputDir,
+  [switch]$Quiet
+)
+if (-not (Test-Path $OutputDir)) { New-Item -ItemType Directory -Path $OutputDir -Force | Out-Null }
+$log = [ordered]@{ base = $Base; head = $Head }
+$log | ConvertTo-Json -Depth 4 | Set-Content -LiteralPath (Join-Path $OutputDir 'stage-log.json') -Encoding utf8
+$cap = [ordered]@{ schema='lvcompare-capture-v1'; exitCode=0; seconds=0.25; command='stub'; args=@() }
+$cap | ConvertTo-Json -Depth 4 | Set-Content -LiteralPath (Join-Path $OutputDir 'lvcompare-capture.json') -Encoding utf8
+exit 0
+'@
+      Set-Content -LiteralPath $captureStub -Value $stub -Encoding UTF8
+
+      $labviewExe = Join-Path $work 'LabVIEW.exe'
+      Set-Content -LiteralPath $labviewExe -Encoding ascii -Value ''
+      $baseDir = Join-Path $work 'base'
+      $headDir = Join-Path $work 'head'
+      New-Item -ItemType Directory -Path $baseDir, $headDir | Out-Null
+      $baseVi = Join-Path $baseDir 'Sample.vi'; Set-Content -LiteralPath $baseVi -Encoding ascii -Value ''
+      $headVi = Join-Path $headDir 'Sample.vi'; Set-Content -LiteralPath $headVi -Encoding ascii -Value ''
+      $outDir = Join-Path $work 'out'
+
+      $driverQuoted = $script:driverPath.Replace("'", "''")
+      $baseQuoted = $baseVi.Replace("'", "''")
+      $headQuoted = $headVi.Replace("'", "''")
+      $labviewQuoted = $labviewExe.Replace("'", "''")
+      $outQuoted = $outDir.Replace("'", "''")
+      $stubQuoted = $captureStub.Replace("'", "''")
+      $command = "& { & '$driverQuoted' -BaseVi '$baseQuoted' -HeadVi '$headQuoted' -LabVIEWExePath '$labviewQuoted' -OutputDir '$outQuoted' -CaptureScriptPath '$stubQuoted'; exit `$LASTEXITCODE }"
+      & pwsh -NoLogo -NoProfile -Command $command *> $null
+
+      $LASTEXITCODE | Should -Be 0
+      $logPath = Join-Path $outDir 'stage-log.json'
+      Test-Path -LiteralPath $logPath | Should -BeTrue
+      $stageLog = Get-Content -LiteralPath $logPath -Raw | ConvertFrom-Json
+      $stageLog.base | Should -Not -Be $baseVi
+      $stageLog.head | Should -Not -Be $headVi
+      (Split-Path -Leaf $stageLog.base) | Should -Be 'Base.vi'
+      (Split-Path -Leaf $stageLog.head) | Should -Be 'Head.vi'
+      $stageRoot = Split-Path -Parent $stageLog.base
+      Test-Path -LiteralPath $stageRoot | Should -BeFalse
+    }
+    finally { Pop-Location }
+  }
+
   It 'supports ReplaceFlags to override defaults' {
     $work = Join-Path $TestDrive 'driver-custom'
     New-Item -ItemType Directory -Path $work | Out-Null

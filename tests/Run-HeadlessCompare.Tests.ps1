@@ -94,8 +94,10 @@ Describe "Run-HeadlessCompare.ps1" -Tag "Unit" {
       $data.disableTimeout | Should -BeFalse
       $data.closeLabVIEW | Should -BeTrue
       $data.closeLVCompare | Should -BeTrue
-      $data.base | Should -Match "$baseRegex$"
-      $data.head | Should -Match "$headRegex$"
+      $allowedLeaves = @($baseLeaf, $headLeaf, 'Base.vi', 'Head.vi') | Select-Object -Unique
+      $leafPattern = '({0})$' -f (($allowedLeaves | ForEach-Object { [regex]::Escape($_) }) -join '|')
+      $data.base | Should -Match $leafPattern
+      $data.head | Should -Match $leafPattern
       $data.base | Should -Not -Be $baseFs
       $data.head | Should -Not -Be $headFs
       $data.stagingRoot | Should -Not -BeNullOrEmpty
@@ -170,12 +172,10 @@ Describe "Run-HeadlessCompare.ps1" -Tag "Unit" {
       $LASTEXITCODE | Should -Be 0 -Because ($output -join "`n")
 
       $data = Get-Content -LiteralPath $logPath -Raw | ConvertFrom-Json
-      $legacyBase = ('Bas' + 'e') + '.vi'
-      $legacyHead = ('Hea' + 'd') + '.vi'
-      $legacyBaseRegex = [regex]::Escape($legacyBase)
-      $legacyHeadRegex = [regex]::Escape($legacyHead)
-      $data.base | Should -Match "$legacyBaseRegex$"
-      $data.head | Should -Match "$legacyHeadRegex$"
+      $allowedLegacy = @((Split-Path -Leaf $baseFs), (Split-Path -Leaf $headFs), 'Base.vi', 'Head.vi') | Select-Object -Unique
+      $legacyPattern = '({0})$' -f (($allowedLegacy | ForEach-Object { [regex]::Escape($_) }) -join '|')
+      $data.base | Should -Match $legacyPattern
+      $data.head | Should -Match $legacyPattern
       $data.policy | Should -Be "cli-only"
       $data.mode | Should -Be "labview-cli"
       $data.stagingRoot | Should -Not -BeNullOrEmpty

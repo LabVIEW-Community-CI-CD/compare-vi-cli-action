@@ -64,23 +64,39 @@ exit 0
 
       $outputRoot = Join-Path $work 'results'
       $harness = Join-Path $work 'tools\TestStand-CompareHarness.ps1'
+      $stageDir = Join-Path $work 'stage'
+      New-Item -ItemType Directory -Path $stageDir | Out-Null
+      $stagedBase = Join-Path $stageDir 'Base.vi'
+      $stagedHead = Join-Path $stageDir 'Head.vi'
+      Copy-Item -LiteralPath $baseReal -Destination $stagedBase -Force
+      Copy-Item -LiteralPath $headReal -Destination $stagedHead -Force
+
       & pwsh -NoLogo -NoProfile -File $harness `
-        -BaseVi $baseReal `
-        -HeadVi $headReal `
+        -BaseVi $stagedBase `
+        -HeadVi $stagedHead `
         -LabVIEWPath 'C:\Program Files\National Instruments\LabVIEW 2025\LabVIEW.exe' `
         -OutputRoot $outputRoot `
         -Warmup skip `
         -RenderReport:$false `
         -CloseLabVIEW `
-        -CloseLVCompare *> $null
+        -CloseLVCompare `
+        -StagingRoot $stageDir `
+        -SameNameHint *> $null
 
       $invokeLogPath = Get-ChildItem -Path $outputRoot -Recurse -Filter 'invoke-args.json' | Select-Object -First 1
       $invokeLogPath | Should -Not -BeNullOrEmpty
       $invokeData = Get-Content -LiteralPath $invokeLogPath.FullName -Raw | ConvertFrom-Json
-      $invokeData.base | Should -Be $baseReal
-      $invokeData.head | Should -Be $headReal
+      $invokeData.base | Should -Be $stagedBase
+      $invokeData.head | Should -Be $stagedHead
       $invokeData.lvExe | Should -Be 'C:\Program Files\National Instruments\LabVIEW 2025\LabVIEW.exe'
       $invokeData.lvCompare | Should -BeNullOrEmpty
+
+      $sessionIndex = Join-Path $outputRoot 'session-index.json'
+      Test-Path -LiteralPath $sessionIndex | Should -BeTrue
+      $indexData = Get-Content -LiteralPath $sessionIndex -Raw | ConvertFrom-Json
+      $indexData.compare.sameName | Should -BeTrue
+      $indexData.compare.staging.enabled | Should -BeTrue
+      $indexData.compare.staging.root | Should -Be $stageDir
     }
     finally { Pop-Location }
   }
@@ -136,16 +152,24 @@ exit 0
 
       $harness = Join-Path $work 'tools\TestStand-CompareHarness.ps1'
       $outputRoot = Join-Path $work 'results'
+      $stageDir = Join-Path $work 'stage'
+      New-Item -ItemType Directory -Path $stageDir | Out-Null
+      $stagedBase = Join-Path $stageDir 'Base.vi'
+      $stagedHead = Join-Path $stageDir 'Head.vi'
+      Copy-Item -LiteralPath $baseVi -Destination $stagedBase -Force
+      Copy-Item -LiteralPath $headVi -Destination $stagedHead -Force
       $previousPolicy = $env:LVCI_COMPARE_POLICY
       try {
         Remove-Item Env:LVCI_COMPARE_POLICY -ErrorAction SilentlyContinue
         & pwsh -NoLogo -NoProfile -File $harness `
-          -BaseVi $baseVi `
-          -HeadVi $headVi `
+          -BaseVi $stagedBase `
+          -HeadVi $stagedHead `
           -OutputRoot $outputRoot `
           -Warmup detect `
           -RenderReport `
-          -CloseLabVIEW *> $null
+          -CloseLabVIEW `
+          -StagingRoot $stageDir `
+          -SameNameHint *> $null
       } finally {
         if ($null -ne $previousPolicy) { $env:LVCI_COMPARE_POLICY = $previousPolicy } else { Remove-Item Env:LVCI_COMPARE_POLICY -ErrorAction SilentlyContinue }
       }
@@ -159,6 +183,8 @@ exit 0
       $indexData.compare.autoCli | Should -BeTrue
       $indexData.compare.sameName | Should -BeTrue
       $indexData.compare.timeoutSeconds | Should -Be 600
+      $indexData.compare.staging.enabled | Should -BeTrue
+      $indexData.compare.staging.root | Should -Be $stageDir
     }
     finally { Pop-Location }
   }
