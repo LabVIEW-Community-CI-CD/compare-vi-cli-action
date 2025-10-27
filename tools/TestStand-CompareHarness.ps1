@@ -59,7 +59,10 @@ param(
 [switch]$CloseLabVIEW,
 [switch]$CloseLVCompare,
 [int]$TimeoutSeconds = 600,
-[switch]$DisableTimeout
+[switch]$DisableTimeout,
+[string]$StagingRoot,
+[switch]$SameNameHint,
+[switch]$AllowSameLeaf
 )
 
 Set-StrictMode -Version Latest
@@ -74,14 +77,22 @@ function Invoke-WithTimeout {
     [scriptblock]$Block,
     [int]$TimeoutSeconds,
     [string]$Stage,
-    [switch]$DisableTimeout
+    [switch]$DisableTimeout,
+    [object[]]$ArgumentList
   )
 
   if ($DisableTimeout -or $TimeoutSeconds -le 0) {
+    if ($ArgumentList) {
+      return & $Block @ArgumentList
+    }
     return & $Block
   }
 
-  $job = Start-ThreadJob -ScriptBlock $Block
+  $job = if ($ArgumentList) {
+    Start-ThreadJob -ScriptBlock $Block -ArgumentList $ArgumentList
+  } else {
+    Start-ThreadJob -ScriptBlock $Block
+  }
   try {
     if (-not (Wait-Job -Job $job -Timeout $TimeoutSeconds)) {
       try { Stop-Job -Job $job -Force -ErrorAction SilentlyContinue } catch {}
@@ -110,6 +121,18 @@ New-Dir $paths.compareDir
 $baseLeaf = Split-Path -Path $BaseVi -Leaf
 $headLeaf = Split-Path -Path $HeadVi -Leaf
 $sameName = [string]::Equals($baseLeaf, $headLeaf, [System.StringComparison]::OrdinalIgnoreCase)
+$baseResolved = (Resolve-Path -LiteralPath $BaseVi -ErrorAction Stop).Path
+$headResolved = (Resolve-Path -LiteralPath $HeadVi -ErrorAction Stop).Path
+if ($baseResolved -ne $headResolved) {
+  $baseResolvedLeaf = Split-Path -Path $baseResolved -Leaf
+  $headResolvedLeaf = Split-Path -Path $headResolved -Leaf
+  if ([string]::Equals($baseResolvedLeaf, $headResolvedLeaf, [System.StringComparison]::OrdinalIgnoreCase) -and -not $AllowSameLeaf.IsPresent) {
+    throw ("LVCompare limitation: staged inputs must have distinct filenames. Received '{0}' and '{1}'." -f $BaseVi, $HeadVi)
+  }
+}
+if ($SameNameHint.IsPresent) {
+  $sameName = $true
+}
 $rawPolicy = $env:LVCI_COMPARE_POLICY
 $policy = if ([string]::IsNullOrWhiteSpace($rawPolicy)) { 'cli-only' } else { $rawPolicy }
 $rawMode = $env:LVCI_COMPARE_MODE
@@ -153,8 +176,12 @@ try {
     if (-not (Test-Path -LiteralPath $warmupScript)) { throw "Warmup-LabVIEWRuntime.ps1 not found at $warmupScript" }
     $warmParams = @{ JsonLogPath = $warmupLog }
     if ($LabVIEWExePath) { $warmParams.LabVIEWPath = $LabVIEWExePath }
+    $warmupRunner = {
+      param($warmupScriptPath, $warmupParameters)
+      & $warmupScriptPath @warmupParameters | Out-Null
+    }
     try {
-      Invoke-WithTimeout -Block { & $using:warmupScript @using:warmParams | Out-Null } -TimeoutSeconds $effectiveTimeout -Stage 'warmup' -DisableTimeout:$DisableTimeout | Out-Null
+      Invoke-WithTimeout -Block $warmupRunner -TimeoutSeconds $effectiveTimeout -Stage 'warmup' -DisableTimeout:$DisableTimeout -ArgumentList @($warmupScript, $warmParams) | Out-Null
       $warmupRan = $true
     } catch {
       $err = $_.Exception.Message
@@ -176,7 +203,12 @@ try {
   if ($LVComparePath) { $invokeParams.LVComparePath = $LVComparePath }
   if ($Flags) { $invokeParams.Flags = $Flags }
   if ($ReplaceFlags) { $invokeParams.ReplaceFlags = $true }
-  Invoke-WithTimeout -Block { & $using:invoke @using:invokeParams | Out-Null } -TimeoutSeconds $effectiveTimeout -Stage 'compare' -DisableTimeout:$DisableTimeout | Out-Null
+  if ($AllowSameLeaf.IsPresent) { $invokeParams.AllowSameLeaf = $true }
+  $compareRunner = {
+    param($invokePath, $invokeParameters)
+    & $invokePath @invokeParameters | Out-Null
+  }
+  Invoke-WithTimeout -Block $compareRunner -TimeoutSeconds $effectiveTimeout -Stage 'compare' -DisableTimeout:$DisableTimeout -ArgumentList @($invoke, $invokeParams) | Out-Null
   if (Test-Path -LiteralPath $capPath) { $cap = Get-Content -LiteralPath $capPath -Raw | ConvertFrom-Json }
 } catch { $err = $_.Exception.Message }
 finally {
@@ -199,6 +231,11 @@ $compareNode = [ordered]@{
   capture = $capPath
   report  = $reportExists
 }
+$compareNode.staging = [ordered]@{
+  enabled = [bool]([string]::IsNullOrWhiteSpace($StagingRoot) -eq $false)
+  root    = if ([string]::IsNullOrWhiteSpace($StagingRoot)) { $null } else { $StagingRoot }
+}
+$compareNode.allowSameLeaf = $AllowSameLeaf.IsPresent
 if ($cap) {
   if ($cap.PSObject.Properties['command'])   { $compareNode.command = $cap.command }
   if ($cap.PSObject.Properties['cliPath'])   { $compareNode.cliPath = $cap.cliPath }

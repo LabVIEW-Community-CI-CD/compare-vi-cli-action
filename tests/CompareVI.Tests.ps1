@@ -18,6 +18,10 @@ $script:canonical = $script:canonicalCandidates[0]
 $script:existingCanonicalPath = $script:canonicalCandidates | Where-Object { Test-Path -LiteralPath $_ -PathType Leaf } | Select-Object -First 1
 
 Describe 'Invoke-CompareVI core behavior' -Tag 'Unit' {
+  BeforeAll {
+    $modulePath = Join-Path (Resolve-Path (Join-Path $PSScriptRoot '..')) 'scripts/CompareVI.psm1'
+    Import-Module $modulePath -Force
+  }
   BeforeEach {
     # Use Pester's native TestDrive
     $vis = Join-Path $TestDrive 'vis'

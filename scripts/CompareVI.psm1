@@ -283,6 +283,7 @@ function Invoke-CompareVI {
   }
   $lvBefore = @(); try { $lvBefore = @(Get-Process -Name 'LabVIEW' -ErrorAction SilentlyContinue | Select-Object -ExpandProperty Id) } catch {}
   $lvcomparePid = $null
+  $stageCleanupRoot = $null
 
   try {
     $cwd = (Get-Location).Path
@@ -303,7 +304,28 @@ function Invoke-CompareVI {
 
     $baseLeaf = Split-Path -Leaf $baseAbs
     $headLeaf = Split-Path -Leaf $headAbs
-    if ($baseLeaf -ieq $headLeaf -and $baseAbs -ne $headAbs) { throw "LVCompare limitation: Cannot compare two VIs sharing the same filename '$baseLeaf' located in different directories. Rename one copy or provide distinct filenames. Base=$baseAbs Head=$headAbs" }
+    $allowSameLeafStage = $false
+    if ($baseAbs -ne $headAbs -and [string]::Equals($baseLeaf, $headLeaf, [System.StringComparison]::OrdinalIgnoreCase)) {
+      $stageScript = Join-Path (Split-Path -Parent $PSScriptRoot) 'tools' 'Stage-CompareInputs.ps1'
+      if (-not (Test-Path -LiteralPath $stageScript -PathType Leaf)) {
+        throw "LVCompare limitation: Cannot compare two VIs sharing the same filename '$baseLeaf' located in different directories. Rename one copy or provide distinct filenames. Base=$baseAbs Head=$headAbs"
+      }
+      try {
+        $stagingInfo = & $stageScript -BaseVi $baseAbs -HeadVi $headAbs
+      } catch {
+        throw ("Invoke-CompareVI: staging failed -> {0}" -f $_.Exception.Message)
+      }
+      if (-not $stagingInfo) { throw 'Invoke-CompareVI: Stage-CompareInputs.ps1 returned no staging information.' }
+      if ($stagingInfo.Root) { $stageCleanupRoot = $stagingInfo.Root }
+      try { $baseAbs = (Resolve-Path -LiteralPath $stagingInfo.Base -ErrorAction Stop).Path } catch { $baseAbs = $stagingInfo.Base }
+      try { $headAbs = (Resolve-Path -LiteralPath $stagingInfo.Head -ErrorAction Stop).Path } catch { $headAbs = $stagingInfo.Head }
+      if ($stagingInfo.PSObject.Properties['AllowSameLeaf']) {
+        try { $allowSameLeafStage = [bool]$stagingInfo.AllowSameLeaf } catch { $allowSameLeafStage = $false }
+      }
+      $baseLeaf = Split-Path -Leaf $baseAbs
+      $headLeaf = Split-Path -Leaf $headAbs
+    }
+    if ($baseLeaf -ieq $headLeaf -and $baseAbs -ne $headAbs -and -not $allowSameLeafStage) { throw "LVCompare limitation: Cannot compare two VIs sharing the same filename '$baseLeaf' located in different directories. Rename one copy or provide distinct filenames. Base=$baseAbs Head=$headAbs" }
 
     if ($baseAbs -eq $headAbs) {
       $result = [pscustomobject]@{
@@ -597,6 +619,13 @@ function Invoke-CompareVI {
           if (-not $closedAny) { break }
           Start-Sleep -Milliseconds 250
         } while ((Get-Date) -lt $deadline)
+      } catch {}
+    }
+    if ($stageCleanupRoot) {
+      try {
+        if (Test-Path -LiteralPath $stageCleanupRoot -PathType Container) {
+          Remove-Item -LiteralPath $stageCleanupRoot -Recurse -Force -ErrorAction SilentlyContinue
+        }
       } catch {}
     }
     if ($pushed) { Pop-Location }

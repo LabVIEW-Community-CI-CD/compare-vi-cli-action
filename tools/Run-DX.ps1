@@ -24,7 +24,8 @@ param(
   [switch]$RenderReport,
   [switch]$CloseLabVIEW,
   [switch]$CloseLVCompare,
-  [switch]$OpenReport
+  [switch]$OpenReport,
+  [switch]$UseRawPaths
 )
 
 Set-StrictMode -Version Latest
@@ -96,7 +97,51 @@ $harness = Join-Path $repoRoot 'tools/TestStand-CompareHarness.ps1'
     $OutputRoot = Join-Path $repoRoot $OutputRoot
   }
 
-  $hParams = @{ BaseVi = $BaseVi; HeadVi = $HeadVi; OutputRoot = $OutputRoot; Warmup = $Warmup }
+  $baseResolved = Resolve-PathSafe $BaseVi
+  $headResolved = Resolve-PathSafe $HeadVi
+  $baseLeaf = if ($baseResolved) { Split-Path -Path $baseResolved -Leaf } else { $null }
+  $headLeaf = if ($headResolved) { Split-Path -Path $headResolved -Leaf } else { $null }
+  $sameNameCollision = $false
+  if (-not [string]::IsNullOrWhiteSpace($baseLeaf) -and -not [string]::IsNullOrWhiteSpace($headLeaf)) {
+    if ([string]::Equals($baseLeaf, $headLeaf, [System.StringComparison]::OrdinalIgnoreCase)) {
+      $sameNameCollision = $true
+    }
+  }
+  if ($UseRawPaths -and $sameNameCollision) {
+    throw "Run-DX: -UseRawPaths cannot be used when BaseVi and HeadVi share the same filename ('$baseLeaf')."
+  }
+
+  $stageCleanupPath = $null
+  $stageScript = Join-Path $repoRoot 'tools' 'Stage-CompareInputs.ps1'
+  $hParams = @{ BaseVi = $baseResolved; HeadVi = $headResolved; OutputRoot = $OutputRoot; Warmup = $Warmup }
+
+  if (-not $UseRawPaths) {
+    if (-not (Test-Path -LiteralPath $stageScript -PathType Leaf)) {
+      throw "Stage-CompareInputs.ps1 not found at $stageScript"
+    }
+    $stageParams = @{
+      BaseVi     = $baseResolved
+      HeadVi     = $headResolved
+      WorkingRoot= $OutputRoot
+    }
+    try {
+      $stagingInfo = & $stageScript @stageParams
+    } catch {
+      throw ("Run-DX: staging inputs failed -> {0}" -f $_.Exception.Message)
+    }
+    if (-not $stagingInfo) { throw 'Run-DX: Stage-CompareInputs.ps1 returned no staging information.' }
+    $hParams.BaseVi = $stagingInfo.Base
+    $hParams.HeadVi = $stagingInfo.Head
+    $stageCleanupPath = $stagingInfo.Root
+    if ($stageCleanupPath) { $hParams.StagingRoot = $stageCleanupPath }
+    if ($stagingInfo.PSObject.Properties['AllowSameLeaf']) {
+      try {
+        if ([bool]$stagingInfo.AllowSameLeaf) { $hParams.AllowSameLeaf = $true }
+      } catch {}
+    }
+  }
+  if ($sameNameCollision) { $hParams.SameNameHint = $true }
+
   if ($LabVIEWExePath) { $hParams.LabVIEWExePath = $LabVIEWExePath }
   if ($LVComparePath)  { $hParams.LVComparePath  = $LVComparePath }
   if ($PSBoundParameters.ContainsKey('Flags')) { $hParams.Flags = $Flags }
@@ -111,6 +156,14 @@ $harness = Join-Path $repoRoot 'tools/TestStand-CompareHarness.ps1'
   } catch {
     Write-Error $_
     $exit = 1
+  } finally {
+    if ($stageCleanupPath) {
+      try {
+        if (Test-Path -LiteralPath $stageCleanupPath -PathType Container) {
+          Remove-Item -LiteralPath $stageCleanupPath -Recurse -Force -ErrorAction SilentlyContinue
+        }
+      } catch {}
+    }
   }
 
   $sessionIndex = Join-Path $OutputRoot 'session-index.json'

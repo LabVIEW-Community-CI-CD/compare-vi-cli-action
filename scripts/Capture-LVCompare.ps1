@@ -5,10 +5,13 @@ param(
 	[Parameter()][string]$LvComparePath,
 	[Parameter()][switch]$RenderReport,
 	[Parameter()][string]$OutputDir = 'tests/results',
-	[Parameter()][switch]$Quiet
+	[Parameter()][switch]$Quiet,
+	[Parameter()][switch]$AllowSameLeaf
 )
 
 $ErrorActionPreference = 'Stop'
+
+$stageCleanupRoot = $null
 
 # Import shared tokenization module
 Import-Module (Join-Path $PSScriptRoot 'ArgTokenization.psm1') -Force
@@ -338,26 +341,48 @@ function Get-CliReportArtifacts {
 
 # Resolve inputs
 # capture working directory if needed in future (not used currently)
-$baseItem = Get-Item -LiteralPath $Base -ErrorAction Stop
-$headItem = Get-Item -LiteralPath $Head -ErrorAction Stop
-if ($baseItem.PSIsContainer) { throw "Base path refers to a directory, expected a VI file: $($baseItem.FullName)" }
-if ($headItem.PSIsContainer) { throw "Head path refers to a directory, expected a VI file: $($headItem.FullName)" }
+try {
+	$baseItem = Get-Item -LiteralPath $Base -ErrorAction Stop
+	$headItem = Get-Item -LiteralPath $Head -ErrorAction Stop
+	if ($baseItem.PSIsContainer) { throw "Base path refers to a directory, expected a VI file: $($baseItem.FullName)" }
+	if ($headItem.PSIsContainer) { throw "Head path refers to a directory, expected a VI file: $($headItem.FullName)" }
 $basePath = (Resolve-Path -LiteralPath $baseItem.FullName).Path
 $headPath = (Resolve-Path -LiteralPath $headItem.FullName).Path
-# Preflight: disallow identical filenames in different directories (prevents LVCompare UI dialog)
-$baseLeaf = Split-Path -Leaf $basePath
-$headLeaf = Split-Path -Leaf $headPath
-if ($baseLeaf -ieq $headLeaf -and $basePath -ne $headPath) { throw "LVCompare limitation: Cannot compare two VIs sharing the same filename '$baseLeaf' located in different directories. Rename one copy or provide distinct filenames. Base=$basePath Head=$headPath" }
-$argsList = ConvertTo-ArgList -value $LvArgs
-$argsList = Convert-ArgTokensNormalized -tokens $argsList
-Test-ArgTokensValid -tokens $argsList | Out-Null
-$cliPath = Resolve-CanonicalCliPath -Override $LvComparePath
-$labviewFromArgs = Get-LabVIEWPathFromArgs -Tokens $argsList
-$labviewResolved = Resolve-ExistingFilePath -Path $labviewFromArgs
-if (-not $labviewResolved) {
-	$envLv = @($env:LABVIEW_EXE, $env:LABVIEW_PATH) | Where-Object { $_ } | Select-Object -First 1
-	$labviewResolved = Resolve-ExistingFilePath -Path $envLv
-}
+	$stageScript = Join-Path (Split-Path -Parent $PSScriptRoot) 'tools' 'Stage-CompareInputs.ps1'
+	$baseLeaf = Split-Path -Leaf $basePath
+	$headLeaf = Split-Path -Leaf $headPath
+	$allowSameLeaf = $AllowSameLeaf.IsPresent
+	if ($basePath -ne $headPath -and $baseLeaf -ieq $headLeaf -and -not $allowSameLeaf) {
+		if (-not (Test-Path -LiteralPath $stageScript -PathType Leaf)) {
+			throw "LVCompare limitation: Cannot compare two VIs sharing the same filename '$baseLeaf' located in different directories. Rename one copy or provide distinct filenames. Base=$basePath Head=$headPath"
+		}
+		try {
+			$stagingInfo = & $stageScript -BaseVi $basePath -HeadVi $headPath
+		} catch {
+			throw ("Capture-LVCompare: staging failed -> {0}" -f $_.Exception.Message)
+		}
+		if (-not $stagingInfo) { throw "Capture-LVCompare: Stage-CompareInputs.ps1 returned no staging information." }
+		if ($stagingInfo.Root) { $stageCleanupRoot = $stagingInfo.Root }
+		try { $basePath = (Resolve-Path -LiteralPath $stagingInfo.Base -ErrorAction Stop).Path } catch { $basePath = $stagingInfo.Base }
+		try { $headPath = (Resolve-Path -LiteralPath $stagingInfo.Head -ErrorAction Stop).Path } catch { $headPath = $stagingInfo.Head }
+		if ($stagingInfo.PSObject.Properties['AllowSameLeaf']) {
+			try { $allowSameLeaf = [bool]$stagingInfo.AllowSameLeaf } catch { $allowSameLeaf = $false }
+		}
+		$baseLeaf = Split-Path -Leaf $basePath
+		$headLeaf = Split-Path -Leaf $headPath
+	}
+	# Preflight: disallow identical filenames in different directories (prevents LVCompare UI dialog)
+	if ($baseLeaf -ieq $headLeaf -and $basePath -ne $headPath -and -not $allowSameLeaf) { throw "LVCompare limitation: Cannot compare two VIs sharing the same filename '$baseLeaf' located in different directories. Rename one copy or provide distinct filenames. Base=$basePath Head=$headPath" }
+	$argsList = ConvertTo-ArgList -value $LvArgs
+	$argsList = Convert-ArgTokensNormalized -tokens $argsList
+	Test-ArgTokensValid -tokens $argsList | Out-Null
+	$cliPath = Resolve-CanonicalCliPath -Override $LvComparePath
+	$labviewFromArgs = Get-LabVIEWPathFromArgs -Tokens $argsList
+	$labviewResolved = Resolve-ExistingFilePath -Path $labviewFromArgs
+	if (-not $labviewResolved) {
+		$envLv = @($env:LABVIEW_EXE, $env:LABVIEW_PATH) | Where-Object { $_ } | Select-Object -First 1
+		$labviewResolved = Resolve-ExistingFilePath -Path $envLv
+	}
 
 # Prepare output paths
 New-DirectoryIfMissing -path $OutputDir
@@ -491,6 +516,14 @@ if ($cliInfo.PSObject.Properties.Name -contains 'reportPath') {
 	if ($cliReportPath -and (Test-Path -LiteralPath $cliReportPath -PathType Leaf)) {
 		try {
 			$cliArtifacts = Get-CliReportArtifacts -ReportPath $cliReportPath -OutputDir $OutputDir
+  } catch {}
+}
+} finally {
+	if ($stageCleanupRoot) {
+		try {
+			if (Test-Path -LiteralPath $stageCleanupRoot -PathType Container) {
+				Remove-Item -LiteralPath $stageCleanupRoot -Recurse -Force -ErrorAction SilentlyContinue
+			}
 		} catch {}
 	}
 }
