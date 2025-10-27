@@ -270,6 +270,7 @@ test('priority:policy --apply updates rulesets for develop/main/release', async 
     allow_fork_syncing: { enabled: false }
   };
 
+  const wrapEnabled = (value) => ({ enabled: Boolean(value) });
   const requests = [];
   const fetchMock = async (url, options = {}) => {
     const method = options.method ?? 'GET';
@@ -287,7 +288,7 @@ test('priority:policy --apply updates rulesets for develop/main/release', async 
         const payload = JSON.parse(options.body);
         const contexts = payload.required_status_checks?.contexts ?? [];
         branchDevelopProtection = {
-          enforce_admins: payload.enforce_admins,
+          enforce_admins: wrapEnabled(payload.enforce_admins),
           required_pull_request_reviews: payload.required_pull_request_reviews,
           restrictions: payload.restrictions,
           required_status_checks: {
@@ -295,13 +296,13 @@ test('priority:policy --apply updates rulesets for develop/main/release', async 
             contexts,
             checks: contexts.map((context) => ({ context }))
           },
-          required_linear_history: payload.required_linear_history,
-          allow_force_pushes: payload.allow_force_pushes,
-          allow_deletions: payload.allow_deletions,
-          block_creations: payload.block_creations,
-          required_conversation_resolution: payload.required_conversation_resolution,
-          lock_branch: payload.lock_branch,
-          allow_fork_syncing: payload.allow_fork_syncing
+          required_linear_history: wrapEnabled(payload.required_linear_history),
+          allow_force_pushes: wrapEnabled(payload.allow_force_pushes),
+          allow_deletions: wrapEnabled(payload.allow_deletions),
+          block_creations: wrapEnabled(payload.block_creations),
+          required_conversation_resolution: wrapEnabled(payload.required_conversation_resolution),
+          lock_branch: wrapEnabled(payload.lock_branch),
+          allow_fork_syncing: wrapEnabled(payload.allow_fork_syncing)
         };
         return createResponse(branchDevelopProtection);
       }
@@ -315,7 +316,7 @@ test('priority:policy --apply updates rulesets for develop/main/release', async 
         const payload = JSON.parse(options.body);
         const contexts = payload.required_status_checks?.contexts ?? [];
         branchMainProtection = {
-          enforce_admins: payload.enforce_admins,
+          enforce_admins: wrapEnabled(payload.enforce_admins),
           required_pull_request_reviews: payload.required_pull_request_reviews,
           restrictions: payload.restrictions,
           required_status_checks: {
@@ -323,13 +324,13 @@ test('priority:policy --apply updates rulesets for develop/main/release', async 
             contexts,
             checks: contexts.map((context) => ({ context }))
           },
-          required_linear_history: payload.required_linear_history,
-          allow_force_pushes: payload.allow_force_pushes,
-          allow_deletions: payload.allow_deletions,
-          block_creations: payload.block_creations,
-          required_conversation_resolution: payload.required_conversation_resolution,
-          lock_branch: payload.lock_branch,
-          allow_fork_syncing: payload.allow_fork_syncing
+          required_linear_history: wrapEnabled(payload.required_linear_history),
+          allow_force_pushes: wrapEnabled(payload.allow_force_pushes),
+          allow_deletions: wrapEnabled(payload.allow_deletions),
+          block_creations: wrapEnabled(payload.block_creations),
+          required_conversation_resolution: wrapEnabled(payload.required_conversation_resolution),
+          lock_branch: wrapEnabled(payload.lock_branch),
+          allow_fork_syncing: wrapEnabled(payload.allow_fork_syncing)
         };
         return createResponse(branchMainProtection);
       }
@@ -343,7 +344,7 @@ test('priority:policy --apply updates rulesets for develop/main/release', async 
         const payload = JSON.parse(options.body);
         const contexts = payload.required_status_checks?.contexts ?? [];
         branchReleaseProtection = {
-          enforce_admins: payload.enforce_admins,
+          enforce_admins: wrapEnabled(payload.enforce_admins),
           required_pull_request_reviews: payload.required_pull_request_reviews,
           restrictions: payload.restrictions,
           required_status_checks: {
@@ -351,13 +352,13 @@ test('priority:policy --apply updates rulesets for develop/main/release', async 
             contexts,
             checks: contexts.map((context) => ({ context }))
           },
-          required_linear_history: payload.required_linear_history,
-          allow_force_pushes: payload.allow_force_pushes,
-          allow_deletions: payload.allow_deletions,
-          block_creations: payload.block_creations,
-          required_conversation_resolution: payload.required_conversation_resolution,
-          lock_branch: payload.lock_branch,
-          allow_fork_syncing: payload.allow_fork_syncing
+          required_linear_history: wrapEnabled(payload.required_linear_history),
+          allow_force_pushes: wrapEnabled(payload.allow_force_pushes),
+          allow_deletions: wrapEnabled(payload.allow_deletions),
+          block_creations: wrapEnabled(payload.block_creations),
+          required_conversation_resolution: wrapEnabled(payload.required_conversation_resolution),
+          lock_branch: wrapEnabled(payload.lock_branch),
+          allow_fork_syncing: wrapEnabled(payload.allow_fork_syncing)
         };
         return createResponse(branchReleaseProtection);
       }

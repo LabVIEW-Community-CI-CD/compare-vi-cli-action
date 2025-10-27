@@ -39,6 +39,14 @@ async function loadManifest() {
   return JSON.parse(raw);
 }
 
+function isNotFoundError(error) {
+  if (!error) {
+    return false;
+  }
+  const message = typeof error.message === 'string' ? error.message : String(error);
+  return message.includes('404');
+}
+
 async function detectForkRun(env = process.env) {
   if (env.GITHUB_EVENT_NAME !== 'pull_request') {
     return false;
@@ -377,11 +385,14 @@ function compareRuleset(id, expected, actual) {
   return diffs;
 }
 
-function toEnabledNode(value, fallback = false) {
-  if (value && typeof value.enabled === 'boolean') {
-    return { enabled: Boolean(value.enabled) };
+function resolveEnabledFlag(value, fallback = false) {
+  if (typeof value === 'boolean') {
+    return value;
   }
-  return { enabled: fallback };
+  if (value && typeof value.enabled === 'boolean') {
+    return Boolean(value.enabled);
+  }
+  return Boolean(fallback);
 }
 
 function buildBranchProtectionPayload(expected, actual) {
@@ -394,18 +405,16 @@ function buildBranchProtectionPayload(expected, actual) {
       strict: actualStrict,
       contexts: expectedChecks
     },
-    enforce_admins: toEnabledNode(actual?.enforce_admins, false),
+    enforce_admins: resolveEnabledFlag(actual?.enforce_admins, false),
     required_pull_request_reviews: actual?.required_pull_request_reviews ?? null,
     restrictions: actual?.restrictions ?? null,
-    required_linear_history: {
-      enabled: expected.required_linear_history ?? false
-    },
-    allow_force_pushes: toEnabledNode(actual?.allow_force_pushes, false),
-    allow_deletions: toEnabledNode(actual?.allow_deletions, false),
-    block_creations: toEnabledNode(actual?.block_creations, false),
-    required_conversation_resolution: toEnabledNode(actual?.required_conversation_resolution, false),
-    lock_branch: toEnabledNode(actual?.lock_branch, false),
-    allow_fork_syncing: toEnabledNode(actual?.allow_fork_syncing, false)
+    required_linear_history: Boolean(expected.required_linear_history ?? false),
+    allow_force_pushes: resolveEnabledFlag(actual?.allow_force_pushes, false),
+    allow_deletions: resolveEnabledFlag(actual?.allow_deletions, false),
+    block_creations: resolveEnabledFlag(actual?.block_creations, false),
+    required_conversation_resolution: resolveEnabledFlag(actual?.required_conversation_resolution, false),
+    lock_branch: resolveEnabledFlag(actual?.lock_branch, false),
+    allow_fork_syncing: resolveEnabledFlag(actual?.allow_fork_syncing, false)
   };
 
   return payload;
@@ -703,7 +712,7 @@ export async function run({
   if (options.apply) {
     const branchStatesNeedingUpdates = initialState.branchStates.filter((entry, index) => {
       if (entry.error) {
-        return false;
+        return isNotFoundError(entry.error);
       }
       const diffs = compareBranchSettings(
         entry.branch,
