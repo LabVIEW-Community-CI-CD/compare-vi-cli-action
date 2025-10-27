@@ -116,7 +116,7 @@ Describe 'Update-SessionIndexBranchProtection' -Tag 'Unit' {
 
   It 'escalates to fail when Strict is set and contexts are missing' {
     $resultsDir = & $script:newSessionIndexFixture 'results-missing-strict'
-    $missingContext = ($script:developExpected | Where-Object { $_ -match 'guard' } | Select-Object -First 1)
+    $missingContext = ($script:developExpected | Where-Object { $_ -match 'lint' } | Select-Object -First 1)
     if (-not $missingContext) {
       $missingContext = $script:developExpected | Select-Object -First 1
     }

@@ -9,10 +9,10 @@
   "branches": {
     "develop": {
       "required_status_checks": [
-        "guard",
-        "fixtures",
-        "session-index",
-        "issue-snapshot",
+        "Validate / lint",
+        "Validate / fixtures",
+        "Validate / session-index",
+        "Validate / issue-snapshot",
         "Policy Guard (Upstream) / policy-guard"
       ],
       "required_linear_history": true
@@ -46,10 +46,10 @@
       ],
       "required_linear_history": true,
       "required_status_checks": [
-        "guard",
-        "fixtures",
-        "session-index",
-        "issue-snapshot",
+        "Validate / lint",
+        "Validate / fixtures",
+        "Validate / session-index",
+        "Validate / issue-snapshot",
         "Policy Guard (Upstream) / policy-guard"
       ],
       "merge_queue": null,

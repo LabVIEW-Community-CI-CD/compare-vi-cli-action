@@ -3,10 +3,10 @@
   "schemaVersion": "1.0.0",
   "branches": {
     "develop": [
-      "guard",
-      "fixtures",
-      "session-index",
-      "issue-snapshot",
+      "Validate / lint",
+      "Validate / fixtures",
+      "Validate / session-index",
+      "Validate / issue-snapshot",
       "Policy Guard (Upstream) / policy-guard"
     ],
     "main": [

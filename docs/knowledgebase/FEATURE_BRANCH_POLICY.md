@@ -58,7 +58,7 @@ standing GitHub protection rules (including the `main` merge queue).
 ### GitHub rulesets
 | Ruleset ID | Scope                | Highlights                                                                                   |
 |------------|----------------------|----------------------------------------------------------------------------------------------|
-| `8811898`  | `refs/heads/develop` | Linear history required, squash-only merges, checks: `guard`, `lint`, `fixtures`, `session-index`, `issue-snapshot`, `Policy Guard (Upstream) / policy-guard` |
+| `8811898`  | `refs/heads/develop` | Linear history required, squash-only merges, checks: `Validate / lint`, `Validate / fixtures`, `Validate / session-index`, `Validate / issue-snapshot`, `Policy Guard (Upstream) / policy-guard` |
 | `8614140`  | `refs/heads/main`    | Merge queue enabled (`merge_method=SQUASH`, `grouping=ALLGREEN`, build queue <=5 entries, 5-minute quiet window). Required checks: `lint`, `pester`, `vi-binary-check`, `vi-compare`, `Policy Guard (Upstream) / policy-guard`. Requires one approving review with resolved threads. |
 | `8614172`  | `refs/heads/release/*` | No merge queue; protects against force-push/deletion. Required checks: `lint`, `pester`, `publish`, `vi-binary-check`, `vi-compare`, `mock-cli`, `Policy Guard (Upstream) / policy-guard`. Requires one approving review with resolved threads. |
 
@@ -78,7 +78,7 @@ checked into `tools/priority/policy.json` so `priority:policy` stays authoritati
 
 ### `develop`
 - **Merge strategy**: squash only (enforce linear history, disable merge commits).
-- **Required checks**: `guard`, `lint`, `fixtures`, `session-index`, `issue-snapshot`,
+- **Required checks**: `Validate / lint`, `Validate / fixtures`, `Validate / session-index`, `Validate / issue-snapshot`,
   `Policy Guard (Upstream) / policy-guard`.
 - **Admin bypass**: leave disabled; administrators should only intervene when `priority:policy` confirms parity.
 - **Reapply**: Use `node tools/npm/run-script.mjs priority:policy -- --apply` to push the manifest configuration when drift is detected.

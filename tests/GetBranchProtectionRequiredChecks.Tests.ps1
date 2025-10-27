@@ -10,10 +10,10 @@ Describe 'Get-BranchProtectionRequiredChecks' -Tag 'Unit' {
         required_status_checks = [pscustomobject]@{
           contexts = @()
           checks   = @(
-            @{ context = 'guard' },
-            @{ context = 'fixtures' },
-            @{ context = 'session-index' },
-            @{ context = 'issue-snapshot' },
+            @{ context = 'Validate / lint' },
+            @{ context = 'Validate / fixtures' },
+            @{ context = 'Validate / session-index' },
+            @{ context = 'Validate / issue-snapshot' },
             @{ context = 'Policy Guard (Upstream) / policy-guard' }
           )
         }
@@ -24,10 +24,10 @@ Describe 'Get-BranchProtectionRequiredChecks' -Tag 'Unit' {
     $result.status | Should -Be 'available'
     $expected = @(
       'Policy Guard (Upstream) / policy-guard',
-      'fixtures',
-      'guard',
-      'issue-snapshot',
-      'session-index'
+      'Validate / fixtures',
+      'Validate / issue-snapshot',
+      'Validate / lint',
+      'Validate / session-index'
     )
     ($result.contexts | Sort-Object) | Should -Be ($expected | Sort-Object)
     @($result.notes).Length | Should -Be 0

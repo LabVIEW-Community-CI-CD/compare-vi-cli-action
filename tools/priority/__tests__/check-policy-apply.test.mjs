@@ -21,10 +21,10 @@ function createResponse(data, status = 200, statusText = 'OK') {
 
 test('priority:policy --apply updates rulesets for develop/main/release', async () => {
   const expectedDevelopChecks = [
-    'guard',
-    'fixtures',
-    'session-index',
-    'issue-snapshot',
+    'Validate / lint',
+    'Validate / fixtures',
+    'Validate / session-index',
+    'Validate / issue-snapshot',
     'Policy Guard (Upstream) / policy-guard'
   ];
   const expectedMainChecks = [
@@ -74,10 +74,10 @@ test('priority:policy --apply updates rulesets for develop/main/release', async 
           strict_required_status_checks_policy: true,
           do_not_enforce_on_create: true,
           required_status_checks: [
-            { context: 'guard', integration_id: 15368 },
-            { context: 'fixtures', integration_id: 15368 },
-            { context: 'session-index', integration_id: 15368 },
-            { context: 'issue-snapshot', integration_id: 15368 },
+            { context: 'Validate / lint', integration_id: 15368 },
+            { context: 'Validate / fixtures', integration_id: 15368 },
+            { context: 'Validate / session-index', integration_id: 15368 },
+            { context: 'Validate / issue-snapshot', integration_id: 15368 },
             { context: 'Policy Guard (Upstream) / policy-guard' }
           ]
         }
@@ -199,12 +199,17 @@ test('priority:policy --apply updates rulesets for develop/main/release', async 
   let branchDevelopProtection = {
     required_status_checks: {
       strict: true,
-      contexts: ['guard', 'fixtures', 'session-index', 'issue-snapshot'],
+      contexts: [
+        'Validate / lint',
+        'Validate / fixtures',
+        'Validate / session-index',
+        'Validate / issue-snapshot'
+      ],
       checks: [
-        { context: 'guard', app_id: 15368 },
-        { context: 'fixtures', app_id: 15368 },
-        { context: 'session-index', app_id: 15368 },
-        { context: 'issue-snapshot', app_id: 15368 }
+        { context: 'Validate / lint', app_id: 15368 },
+        { context: 'Validate / fixtures', app_id: 15368 },
+        { context: 'Validate / session-index', app_id: 15368 },
+        { context: 'Validate / issue-snapshot', app_id: 15368 }
       ]
     },
     enforce_admins: { enabled: false },
