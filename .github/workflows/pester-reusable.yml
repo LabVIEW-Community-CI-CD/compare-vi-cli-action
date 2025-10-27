@@ -252,7 +252,25 @@ jobs:
           $lockScript = Join-Path (Get-Location) 'tools/Session-Lock.ps1'
           $bound = [ordered]@{}
           $bound.TestsPath = 'tests'
-          $bound.IncludeIntegration = '${{ needs.normalize.outputs.include_integration }}'
+          $includeIntegration = '${{ needs.normalize.outputs.include_integration }}'
+          if ($includeIntegration) {
+            try {
+              $normalized = $includeIntegration.ToString().ToLowerInvariant()
+            } catch {
+              $normalized = $null
+            }
+            switch ($normalized) {
+              { $_ -in @('true','1','yes','y','on','include') } {
+                $bound.IntegrationMode = 'include'
+              }
+              { $_ -in @('false','0','no','n','off','exclude') } {
+                $bound.IntegrationMode = 'exclude'
+              }
+              'auto' {
+                $bound.IntegrationMode = 'auto'
+              }
+            }
+          }
           $bound.ResultsPath = 'tests/results'
           if ($env:DISPATCHER_LIVE_OUTPUT -ne '0') {
             $bound.LiveOutput = $true

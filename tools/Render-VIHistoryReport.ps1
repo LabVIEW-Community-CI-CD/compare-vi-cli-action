@@ -387,7 +387,9 @@ if ($modeEntries.Count -gt 0) {
 $summaryLines.Add('')
 $summaryLines.Add('---')
 $summaryLines.Add(('History manifest: `{0}`' -f $manifestResolved))
-$summaryLines.Add(('History context: `{0}`' -f $contextResolved))
+if ($contextResolved) {
+  $summaryLines.Add(('History context: `{0}`' -f $contextResolved))
+}
 
 $markdownContent = $summaryLines -join [Environment]::NewLine
 [System.IO.File]::WriteAllText($MarkdownPath, $markdownContent, [System.Text.Encoding]::UTF8)
