@@ -12,6 +12,9 @@ on:
       note:
         description: 'Optional note that will be echoed in the run summary'
         required: false
+      label_name:
+        description: 'Label to apply when staging succeeds (defaults to vi-staging-ready)'
+        required: false
 
 permissions:
   contents: read
@@ -34,6 +37,7 @@ jobs:
     runs-on: windows-latest
     env:
       NOTE: ${{ inputs.note }}
+      STAGING_LABEL: ${{ inputs.label_name || 'vi-staging-ready' }}
     steps:
       - name: Resolve pull request metadata
         id: pr
@@ -170,6 +174,19 @@ jobs:
           "artifact_dir=$exportDir" | Out-File -FilePath $Env:GITHUB_OUTPUT -Encoding utf8 -Append
           "stage_count=$($results.Count)" | Out-File -FilePath $Env:GITHUB_OUTPUT -Encoding utf8 -Append
 
+      - name: Ensure staging label exists
+        if: steps.stage.outputs.stage_count != '0'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          STAGING_LABEL: ${{ env.STAGING_LABEL }}
+        shell: pwsh
+        run: |
+          Set-StrictMode -Version Latest
+          $ErrorActionPreference = 'Stop'
+          if (-not $env:STAGING_LABEL) { return }
+          gh label create $env:STAGING_LABEL --color FFC82C --description "PR has VI staging bundles ready" 2>$null
+          gh label edit $env:STAGING_LABEL --color FFC82C --description "PR has VI staging bundles ready" --force
+
       - name: Upload manifest & summary
         uses: actions/upload-artifact@v4
         with:
@@ -202,6 +219,19 @@ jobs:
           $lines += ''
           $lines += "Artifacts: [Run $env:GITHUB_RUN_ID](https://github.com/$env:GITHUB_REPOSITORY/actions/runs/$env:GITHUB_RUN_ID)"
           $lines -join "`n" | Out-File -FilePath $Env:GITHUB_STEP_SUMMARY -Encoding utf8 -Append
+
+      - name: Apply staging label
+        if: steps.stage.outputs.stage_count != '0'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR_NUMBER: ${{ steps.pr.outputs.pr_number }}
+          STAGING_LABEL: ${{ env.STAGING_LABEL }}
+        shell: pwsh
+        run: |
+          Set-StrictMode -Version Latest
+          $ErrorActionPreference = 'Stop'
+          if (-not $env:STAGING_LABEL) { return }
+          gh pr edit $env:PR_NUMBER --add-label "$env:STAGING_LABEL"
 
       - name: Comment with results
         if: github.event_name == 'issue_comment'
@@ -238,3 +268,23 @@ jobs:
 
           $body = $bodyLines -join "`n"
           gh pr comment $env:PR_NUMBER --body $body
+
+      - name: Remove staging label when not applicable
+        if: always()
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR_NUMBER: ${{ steps.pr.outputs.pr_number }}
+          STAGING_LABEL: ${{ env.STAGING_LABEL }}
+          STAGE_COUNT: ${{ steps.stage.outputs.stage_count }}
+          JOB_STATUS: ${{ job.status }}
+        shell: pwsh
+        run: |
+          Set-StrictMode -Version Latest
+          $ErrorActionPreference = 'Stop'
+          if (-not $env:STAGING_LABEL) { return }
+          $shouldRemove = $false
+          if ($env:JOB_STATUS -ne 'success') { $shouldRemove = $true }
+          elseif (-not $env:STAGE_COUNT -or $env:STAGE_COUNT -eq '0') { $shouldRemove = $true }
+          if ($shouldRemove) {
+            gh pr edit $env:PR_NUMBER --remove-label "$env:STAGING_LABEL" 2>$null
+          }
