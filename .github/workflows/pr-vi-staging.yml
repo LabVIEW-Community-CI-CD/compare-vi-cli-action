@@ -203,11 +203,59 @@ jobs:
           name: vi-compare-staging
           path: ${{ steps.stage.outputs.artifact_dir }}
 
+      - name: Collect artifact download links
+        id: collect_links
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+          GITHUB_RUN_ID: ${{ github.run_id }}
+        shell: pwsh
+        run: |
+          Set-StrictMode -Version Latest
+          $ErrorActionPreference = 'Stop'
+
+          $targetNames = @('vi-compare-manifest', 'vi-compare-staging')
+          $raw = gh api "repos/$env:GITHUB_REPOSITORY/actions/runs/$env:GITHUB_RUN_ID/artifacts" --paginate --jq '.artifacts[] | @json'
+          $artifacts = @()
+          if ($raw) {
+            foreach ($line in ($raw -split "`n")) {
+              if ($line) {
+                $artifacts += ($line | ConvertFrom-Json)
+              }
+            }
+          }
+
+          $links = @()
+          foreach ($name in $targetNames) {
+            $artifact = $artifacts | Where-Object { $_.name -eq $name } | Select-Object -First 1
+            if ($artifact) {
+              $downloadUrl = gh api "repos/$env:GITHUB_REPOSITORY/actions/artifacts/$($artifact.id)" --jq '.archive_download_url'
+              if ($downloadUrl) {
+                $links += [pscustomobject]@{
+                  name = $name
+                  url  = $downloadUrl
+                  size = $artifact.size_in_bytes
+                }
+              }
+            }
+          }
+
+          $linksJson = ($links | ConvertTo-Json -Depth 4)
+          $linksPath = Join-Path (Get-Location) 'vi-compare-artifacts/vi-staging-links.json'
+          if ($linksJson) {
+            $linksJson | Set-Content -LiteralPath $linksPath -Encoding utf8
+            "artifact_links=$linksJson" | Out-File -FilePath $Env:GITHUB_OUTPUT -Encoding utf8 -Append
+            "artifact_links_path=$linksPath" | Out-File -FilePath $Env:GITHUB_OUTPUT -Encoding utf8 -Append
+          } else {
+            "artifact_links=[]" | Out-File -FilePath $Env:GITHUB_OUTPUT -Encoding utf8 -Append
+          }
+
       - name: Append job summary
         shell: pwsh
         env:
           SUMMARY_PATH: ${{ steps.stage.outputs.summary_path }}
           NOTE: ${{ env.NOTE }}
+          ARTIFACT_LINKS: ${{ steps.collect_links.outputs.artifact_links }}
         run: |
           $summary = Get-Content $env:SUMMARY_PATH -Raw
           $lines = @('## VI Compare Staging Summary', '')
@@ -217,6 +265,18 @@ jobs:
           }
           $lines += $summary
           $lines += ''
+          if ($env:ARTIFACT_LINKS) {
+            $links = $env:ARTIFACT_LINKS | ConvertFrom-Json
+            if ($links.Count -gt 0) {
+              $lines += '### Download Links (expire ~1 hour)'
+              foreach ($link in $links) {
+                $size = if ($link.size) { [math]::Round(($link.size/1KB), 1) } else { $null }
+                $suffix = if ($size) { " (${size} KB)" } else { '' }
+                $lines += "- [${link.name}]($($link.url))$suffix"
+              }
+              $lines += ''
+            }
+          }
           $lines += "Artifacts: [Run $env:GITHUB_RUN_ID](https://github.com/$env:GITHUB_REPOSITORY/actions/runs/$env:GITHUB_RUN_ID)"
           $lines -join "`n" | Out-File -FilePath $Env:GITHUB_STEP_SUMMARY -Encoding utf8 -Append
 
@@ -240,6 +300,7 @@ jobs:
           PR_NUMBER: ${{ steps.pr.outputs.pr_number }}
           SUMMARY_PATH: ${{ steps.stage.outputs.summary_path }}
           STAGE_COUNT: ${{ steps.stage.outputs.stage_count }}
+          ARTIFACT_LINKS: ${{ steps.collect_links.outputs.artifact_links }}
           GITHUB_RUN_ID: ${{ github.run_id }}
           GITHUB_REPOSITORY: ${{ github.repository }}
         shell: pwsh
@@ -255,9 +316,19 @@ jobs:
               "VI compare staging is ready (**$env:STAGE_COUNT** pair$(if ($env:STAGE_COUNT -eq '1') { '' } else { 's' })).",
               '',
               $summary,
-              '',
-              "Download artifacts from [$runUrl]($runUrl)."
+              ''
             )
+            if ($env:ARTIFACT_LINKS) {
+              $links = $env:ARTIFACT_LINKS | ConvertFrom-Json
+              if ($links.Count -gt 0) {
+                $bodyLines += 'Download links (expire ~1 hour):'
+                foreach ($link in $links) {
+                  $bodyLines += "- [${link.name}]($($link.url))"
+                }
+                $bodyLines += ''
+              }
+            }
+            $bodyLines += "Download artifacts from [$runUrl]($runUrl)."
           } else {
             $bodyLines = @(
               'VI compare staging completed: no VI pairs with both base/head paths were found.',

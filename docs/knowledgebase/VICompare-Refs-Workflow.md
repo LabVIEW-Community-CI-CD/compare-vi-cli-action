@@ -26,6 +26,7 @@
 - The workflow posts a PR comment summarising the staged pairs and linking back to the run artifacts; the job summary
   mirrors the same table. For zero staged pairs you still get a quick confirmation and run link.
 - Successful runs now add the `vi-staging-ready` label to the PR (configurable via workflow input) so reviewers can spot staged bundles at a glance. The label is removed automatically if staging finds no VI pairs or the workflow fails.
+- The summary and PR comment include direct download links for the `vi-compare-manifest` and `vi-compare-staging` artifacts (links expire after roughly one hour; rerun `/vi-stage` to refresh).
 - Local parity: the same experience can be reproduced offline with
   ```powershell
   pwsh -File tools/Get-PRVIDiffManifest.ps1 -BaseRef origin/develop -HeadRef HEAD -OutputPath vi-manifest.json
