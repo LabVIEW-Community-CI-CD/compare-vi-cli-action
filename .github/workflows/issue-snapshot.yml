@@ -17,6 +17,8 @@ jobs:
       - name: Sync standing-priority snapshot
         env:
           GITHUB_REPOSITORY: ${{ github.repository }}
+          GITHUB_TOKEN: ${{ github.token }}
+          GH_TOKEN: ${{ github.token }}
         run: |
           npm ci --ignore-scripts
           node tools/npm/run-script.mjs priority:sync || true
