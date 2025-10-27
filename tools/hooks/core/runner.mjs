@@ -100,6 +100,11 @@ export class HookRunner {
     this.exitCode = 0;
     this.plane = detectPlane();
     this.enforcement = resolveEnforcement();
+    const enforcementHint =
+      this.enforcement === 'fail'
+        ? 'Set HOOKS_ENFORCE=warn to treat parity mismatches as warnings during local experiments.'
+        : null;
+
     this.environment = {
       platform: process.platform,
       nodeVersion: process.version,
@@ -112,7 +117,12 @@ export class HookRunner {
       runnerArch: process.env.RUNNER_ARCH || null,
       runnerTrackingId: process.env.RUNNER_TRACKING_ID || null,
       job: process.env.GITHUB_JOB || null,
+      enforcementHint,
     };
+
+    if (enforcementHint && !this.environment.githubActions) {
+      info(`[hooks ${this.hook}] ${enforcementHint}`);
+    }
 
     this.resultsDir = path.join(this.repoRoot, 'tests', 'results', '_hooks');
     mkdirSync(this.resultsDir, { recursive: true });
