@@ -293,7 +293,7 @@ jobs:
             $exitCode = $LASTEXITCODE
           } finally {
             if ($heartbeatJob) {
-              Stop-Job -Id $heartbeatJob.Id -Force | Out-Null
+              Stop-Job -Id $heartbeatJob.Id | Out-Null
               Remove-Job -Id $heartbeatJob.Id -Force | Out-Null
             }
             pwsh -NoLogo -NoProfile -File $lockScript -Action Heartbeat | Out-Null
