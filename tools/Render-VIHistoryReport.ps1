@@ -53,6 +53,39 @@ function Resolve-FullPath {
   }
 }
 
+$script:HistoryCommitMetadataCache = @{}
+function Get-CommitMetadata {
+  param([string]$Commit)
+
+  if ([string]::IsNullOrWhiteSpace($Commit)) { return $null }
+  if ($script:HistoryCommitMetadataCache.ContainsKey($Commit)) {
+    return $script:HistoryCommitMetadataCache[$Commit]
+  }
+
+  $meta = $null
+  try {
+    $formatArg = "--format=%H%x00%an%x00%ae%x00%ad%x00%s"
+    $output = & git log -1 --no-patch --date=iso-strict $formatArg $Commit 2>$null
+    if ($LASTEXITCODE -eq 0 -and $output) {
+      $parts = $output -split [char]0
+      if ($parts.Count -ge 5) {
+        $meta = [pscustomobject]@{
+          sha         = $parts[0]
+          authorName  = $parts[1]
+          authorEmail = $parts[2]
+          authorDate  = $parts[3]
+          subject     = $parts[4]
+        }
+      }
+    }
+  } catch {
+    $meta = $null
+  }
+
+  $script:HistoryCommitMetadataCache[$Commit] = $meta
+  return $meta
+}
+
 function Write-GitHubOutput {
   param(
     [string]$Key,
@@ -166,6 +199,14 @@ function Build-FallbackHistoryContext {
       $headNode = $comparison.head
       $resultNode = $comparison.result
       $modeName = $modeLabel
+      $baseMeta = $null
+      $headMeta = $null
+      if ($baseNode -and $baseNode.ref) {
+        $baseMeta = Get-CommitMetadata -Commit $baseNode.ref
+      }
+      if ($headNode -and $headNode.ref) {
+        $headMeta = Get-CommitMetadata -Commit $headNode.ref
+      }
 
       $resultPayload = [ordered]@{}
       if ($resultNode) {
@@ -208,16 +249,18 @@ function Build-FallbackHistoryContext {
         base  = [pscustomobject]@{
           full    = $baseNode.ref
           short   = $baseNode.short
-          author  = $null
-          date    = $null
-          subject = $null
+          author  = if ($baseMeta) { $baseMeta.authorName } else { $null }
+          authorEmail = if ($baseMeta) { $baseMeta.authorEmail } else { $null }
+          date    = if ($baseMeta) { $baseMeta.authorDate } else { $null }
+          subject = if ($baseMeta) { $baseMeta.subject } else { $null }
         }
         head  = [pscustomobject]@{
           full    = $headNode.ref
           short   = $headNode.short
-          author  = $null
-          date    = $null
-          subject = $null
+          author  = if ($headMeta) { $headMeta.authorName } else { $null }
+          authorEmail = if ($headMeta) { $headMeta.authorEmail } else { $null }
+          date    = if ($headMeta) { $headMeta.authorDate } else { $null }
+          subject = if ($headMeta) { $headMeta.subject } else { $null }
         }
         result = [pscustomobject]$resultPayload
       })
