@@ -15,7 +15,7 @@ jobs:
     runs-on: ubuntu-latest
     env:
       AUTO_APPROVE_TOKEN: ${{ secrets.AUTO_APPROVE_TOKEN }}
-      AUTO_APPROVE_LABEL: ${{ secrets.AUTO_APPROVE_LABEL || "auto-approve" }}
+      AUTO_APPROVE_LABEL: ${{ secrets.AUTO_APPROVE_LABEL || 'auto-approve' }}
       AUTO_APPROVE_ALLOWED: ${{ secrets.AUTO_APPROVE_ALLOWED || '' }}
       GITHUB_REPO: ${{ github.repository }}
     steps:
