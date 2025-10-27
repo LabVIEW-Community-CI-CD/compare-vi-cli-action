@@ -9,7 +9,9 @@ if ($skipHistoryTests) {
       Set-ItResult -Skipped -Because 'Compare-VIHistory tests temporarily skipped on CI pending follow-up (#319)'
     }
   }
-} else {
+  return
+}
+
 Describe 'Compare-VIHistory.ps1' {
   $repoRoot = (Get-Location).Path
   $scriptPath = Join-Path $repoRoot 'tools' 'Compare-VIHistory.ps1'
@@ -345,11 +347,9 @@ $cap | ConvertTo-Json -Depth 6 | Out-File -LiteralPath $capPath -Encoding utf8
         Remove-Item Env:STUB_COMPARE_RENAME_REPORT -ErrorAction SilentlyContinue
         Remove-Item Env:STUB_COMPARE_EXITCODE -ErrorAction SilentlyContinue
         Remove-Item Env:STUB_COMPARE_DIFF -ErrorAction SilentlyContinue
+      }
     }
   }
-}
-}
-}
 
   Context 'step summary reporting' {
     BeforeAll {
