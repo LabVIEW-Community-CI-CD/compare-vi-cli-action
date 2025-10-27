@@ -502,17 +502,25 @@ async function fetchStandingPriorityNumberViaRest(repoRoot, slug) {
     console.warn('[priority] No GitHub token available for REST fallback; attempting unauthenticated request');
   }
 
-  const url = new URL(`https://api.github.com/repos/${resolvedSlug}/issues`);
-  url.searchParams.set('labels', 'standing-priority');
-  url.searchParams.set('state', 'open');
-  url.searchParams.set('per_page', '1');
-  url.searchParams.set('sort', 'created');
-  url.searchParams.set('direction', 'asc');
+    const url = new URL(`https://api.github.com/repos/${resolvedSlug}/issues`);
+    url.searchParams.set('labels', 'standing-priority');
+    url.searchParams.set('state', 'open');
+    url.searchParams.set('per_page', '25');
+    url.searchParams.set('sort', 'updated');
+    url.searchParams.set('direction', 'desc');
 
   try {
     const data = await requestGitHubJson(url.toString(), token);
-    const first = Array.isArray(data) ? data[0] : data;
-    if (first?.number != null) return Number(first.number);
+      if (Array.isArray(data)) {
+        if (data.length > 1) {
+          const ids = data.map((item) => item?.number).filter(Boolean);
+          console.warn(`[priority] Multiple open items carry the standing-priority label (candidates: ${ids.join(', ')}) – selecting the most recently updated entry.`);
+        }
+        const first = data.find((item) => item?.number != null);
+        if (first) return Number(first.number);
+      } else if (data?.number != null) {
+        return Number(data.number);
+      }
   } catch (err) {
     console.warn(`[priority] REST fallback failed: ${err.message}`);
   }
