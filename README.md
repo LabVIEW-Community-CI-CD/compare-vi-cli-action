@@ -113,6 +113,3 @@ next release should cut a new major tag (for example `v1.0.0`). Update downstrea
 automation or scheduled triggers to use the new `vi_path` / `compare_ref` inputs
 before adopting the release.
 
-
-
-

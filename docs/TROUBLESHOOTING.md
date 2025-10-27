@@ -29,6 +29,7 @@ location. Update the runner install if the CLI lives elsewhere.
   read those paths before scanning the canonical Program Files directories.
 - Run scripts with `-Verbose` (or `pwsh -v 5`) to see every candidate path the
   resolver evaluates when debugging missing installs.
+
 ## Exit codes & behaviour
 
 | Exit code | Meaning | Notes |
@@ -74,6 +75,4 @@ Set `fail-on-diff: false` to treat code 1 as notice-only.
 - [`docs/USAGE_GUIDE.md`](./USAGE_GUIDE.md)
 - [`docs/COMPARE_LOOP_MODULE.md`](./COMPARE_LOOP_MODULE.md)
 - [`docs/DEV_DASHBOARD_PLAN.md`](./DEV_DASHBOARD_PLAN.md)
-
-
 
