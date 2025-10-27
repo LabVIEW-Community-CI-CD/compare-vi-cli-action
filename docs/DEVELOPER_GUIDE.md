@@ -78,6 +78,17 @@ node tools/npm/run-script.mjs lint            # markdownlint + custom checks
   `npm run feature:finalize:dry -- my-feature` to simulate branch creation and finalization without touching remotes.
 - Delete branches automatically after merging (GitHub setting) so the standing-priority flow starts clean each time.
 
+## CI automation secrets
+
+- `AUTO_APPROVE_TOKEN` – Personal access token (PAT) used by the `PR Auto-approve` workflow to submit an approval once the
+  `Validate` workflow succeeds. The token must belong to an account with review rights on this repository. Grant the token
+  the minimal scopes required (`public_repo` is sufficient for GitHub.com repos). When the secret is unset the workflow
+  quietly skips auto-approval.
+- `AUTO_APPROVE_LABEL` *(optional)* – When set, the auto-approval workflow only acts on PRs carrying this label. The default
+  label is `auto-approve` if the secret is omitted. Set the secret to `none` to disable label gating.
+- `AUTO_APPROVE_ALLOWED` *(optional)* – Comma-separated list of GitHub usernames permitted for auto-approval (e.g.,
+  `svelderrainruiz,octocat`). If omitted, all authors are eligible.
+
 ### Release metadata
 
 - Running the live helpers writes JSON snapshots under `tests/results/_agent/release/`:
