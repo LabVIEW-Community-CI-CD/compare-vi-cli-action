@@ -10,6 +10,28 @@
 - Artifacts only include detailed LVCompare output when a difference is detected; runs with no diffs upload the lightweight
   manifest and JSON summaries.
 
+## Pull request staging helper
+
+- Comment `/vi-stage` on a pull request (or dispatch `pr-vi-staging.yml`) to have the automation generate a manifest with
+  `tools/Get-PRVIDiffManifest.ps1`, stage the resolvable base/head pairs via `tools/Invoke-PRVIStaging.ps1`, and upload a
+  zipped bundle per staged pair.
+- The workflow only honours comments authored by repository members/collaborators. Maintainers can also run the job
+  manually with `gh workflow run pr-vi-staging.yml -f pr=<number> [-f note="context"]`.
+- Outputs:
+  - `vi-compare-manifest` artifact containing `vi-manifest.json`, `vi-staging-results.json` (full JSON payload), and a
+    Markdown summary table.
+  - `vi-compare-staging` artifact (when any pairs staged) with numbered `vi-staging-XX.zip` archives. Each zip mirrors the
+    staging directory returned by `Stage-CompareInputs.ps1`, so reviewers can launch LVCompare locally without hand-
+    gathering source files.
+- The workflow posts a PR comment summarising the staged pairs and linking back to the run artifacts; the job summary
+  mirrors the same table. For zero staged pairs you still get a quick confirmation and run link.
+- Local parity: the same experience can be reproduced offline with
+  ```powershell
+  pwsh -File tools/Get-PRVIDiffManifest.ps1 -BaseRef origin/develop -HeadRef HEAD -OutputPath vi-manifest.json
+  $results = pwsh -File tools/Invoke-PRVIStaging.ps1 -ManifestPath vi-manifest.json -WorkingRoot .\vi-staging
+  ```
+  Compress the `Root` directories from `$results` when you want to share the bundles manually.
+
 ## Dispatch inputs (GitHub UI or `gh workflow run`)
 
 - `vi_path` (required): repository-relative `.vi` path (example `Fixtures/Loop.vi`). Use the exact casing committed

@@ -1,0 +1,240 @@
+name: PR VI Compare Staging
+
+on:
+  issue_comment:
+    types:
+      - created
+  workflow_dispatch:
+    inputs:
+      pr:
+        description: 'Pull request number'
+        required: true
+      note:
+        description: 'Optional note that will be echoed in the run summary'
+        required: false
+
+permissions:
+  contents: read
+  pull-requests: write
+
+concurrency:
+  group: pr-vi-staging-${{ github.event.issue.number || inputs.pr || github.run_id }}
+  cancel-in-progress: false
+
+jobs:
+  stage:
+    if: >
+      github.event_name == 'workflow_dispatch' ||
+      (
+        github.event_name == 'issue_comment' &&
+        github.event.issue.pull_request &&
+        contains(github.event.comment.body || '', '/vi-stage') &&
+        contains('OWNER,MEMBER,COLLABORATOR', github.event.comment.author_association)
+      )
+    runs-on: windows-latest
+    env:
+      NOTE: ${{ inputs.note }}
+    steps:
+      - name: Resolve pull request metadata
+        id: pr
+        env:
+          GH_TOKEN: ${{ github.token }}
+          INPUT_PR: ${{ inputs.pr }}
+          COMMENT_PR: ${{ github.event.issue.number }}
+        shell: pwsh
+        run: |
+          Set-StrictMode -Version Latest
+          $ErrorActionPreference = 'Stop'
+
+          $prNumber = if ($env:INPUT_PR) { $env:INPUT_PR } elseif ($env:COMMENT_PR) { $env:COMMENT_PR } else { '' }
+          if (-not $prNumber) {
+            throw 'A pull request number is required (workflow_dispatch input or issue comment).'
+          }
+
+          Write-Host "Resolving metadata for PR #$prNumber"
+          $json = gh pr view $prNumber --json number,url,baseRefName,baseRefOid,headRefName,headRefOid,headRepositoryOwner,headRepository
+          $info = $json | ConvertFrom-Json
+
+          if (-not $info) {
+            throw "Unable to load pull request metadata for #$prNumber"
+          }
+
+          $baseSha = $info.baseRefOid
+          $headSha = $info.headRefOid
+          $baseRef = $info.baseRefName
+          $headRef = $info.headRefName
+
+          $ownerLogin = $info.headRepositoryOwner?.login
+          $repoName = $info.headRepository?.name
+
+          if (-not $repoName) {
+            $repoParts = ($env:GITHUB_REPOSITORY ?? '') -split '/'
+            if ($repoParts.Length -ge 2) {
+              if (-not $ownerLogin) { $ownerLogin = $repoParts[0] }
+              $repoName = $repoParts[1]
+            } else {
+              throw 'Unable to determine head repository name.'
+            }
+          }
+
+          if (-not $ownerLogin) {
+            $repoParts = ($env:GITHUB_REPOSITORY ?? '') -split '/'
+            if ($repoParts.Length -ge 2) {
+              $ownerLogin = $repoParts[0]
+            } else {
+              throw 'Unable to determine head repository owner.'
+            }
+          }
+
+          $headRepo = "$ownerLogin/$repoName"
+
+          "pr_number=$prNumber" | Out-File -FilePath $Env:GITHUB_OUTPUT -Encoding utf8 -Append
+          "pr_url=$($info.url)" | Out-File -FilePath $Env:GITHUB_OUTPUT -Encoding utf8 -Append
+          "base_sha=$baseSha" | Out-File -FilePath $Env:GITHUB_OUTPUT -Encoding utf8 -Append
+          "head_sha=$headSha" | Out-File -FilePath $Env:GITHUB_OUTPUT -Encoding utf8 -Append
+          "base_ref=$baseRef" | Out-File -FilePath $Env:GITHUB_OUTPUT -Encoding utf8 -Append
+          "head_ref=$headRef" | Out-File -FilePath $Env:GITHUB_OUTPUT -Encoding utf8 -Append
+          "head_repo=$headRepo" | Out-File -FilePath $Env:GITHUB_OUTPUT -Encoding utf8 -Append
+
+      - name: Checkout pull request head
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          repository: ${{ steps.pr.outputs.head_repo }}
+          ref: ${{ steps.pr.outputs.head_ref }}
+
+      - name: Generate manifest and stage VI pairs
+        id: stage
+        shell: pwsh
+        env:
+          BASE_SHA: ${{ steps.pr.outputs.base_sha }}
+          HEAD_SHA: ${{ steps.pr.outputs.head_sha }}
+        run: |
+          Set-StrictMode -Version Latest
+          $ErrorActionPreference = 'Stop'
+
+          $repoRoot = Get-Location
+          $artifactsDir = Join-Path $repoRoot 'vi-compare-artifacts'
+          New-Item -ItemType Directory -Path $artifactsDir -Force | Out-Null
+
+          $manifestPath = Join-Path $artifactsDir 'vi-manifest.json'
+          & "$repoRoot\tools\Get-PRVIDiffManifest.ps1" -BaseRef $env:BASE_SHA -HeadRef $env:HEAD_SHA -OutputPath $manifestPath | Out-Null
+
+          $stagingWorkRoot = Join-Path $repoRoot 'vi-staging-work'
+          New-Item -ItemType Directory -Path $stagingWorkRoot -Force | Out-Null
+
+          $results = & "$repoRoot\tools\Invoke-PRVIStaging.ps1" -ManifestPath $manifestPath -WorkingRoot $stagingWorkRoot
+          if (-not $results) {
+            $results = @()
+          }
+
+          $exportDir = Join-Path $repoRoot 'vi-staging-artifacts'
+          New-Item -ItemType Directory -Path $exportDir -Force | Out-Null
+
+          $counter = 1
+          foreach ($entry in $results) {
+            if ($entry.staged -and $entry.staged.Root -and (Test-Path -LiteralPath $entry.staged.Root -PathType Container)) {
+              $zipName = 'vi-staging-{0:D2}.zip' -f $counter
+              $zipPath = Join-Path $exportDir $zipName
+              if (Test-Path -LiteralPath $zipPath) {
+                Remove-Item -LiteralPath $zipPath -Force
+              }
+              Compress-Archive -Path (Join-Path $entry.staged.Root '*') -DestinationPath $zipPath -Force
+              Add-Member -InputObject $entry -NotePropertyName artifact -NotePropertyValue $zipName -Force
+              $counter++
+            }
+          }
+
+          $resultsPath = Join-Path $artifactsDir 'vi-staging-results.json'
+          $results | ConvertTo-Json -Depth 6 | Set-Content -LiteralPath $resultsPath -Encoding utf8
+
+          $summaryPath = Join-Path $artifactsDir 'vi-staging-summary.md'
+          if ($results.Count -gt 0) {
+            $lines = @(
+              '| # | Change | Base | Head | Artifact |',
+              '| - | ------ | ---- | ---- | -------- |'
+            )
+            $idx = 1
+            foreach ($entry in $results) {
+              $artifactCell = if ($entry.artifact) { $entry.artifact } else { 'n/a' }
+              $lines += "| $idx | $($entry.changeType) | $($entry.basePath) | $($entry.headPath) | $artifactCell |"
+              $idx++
+            }
+            $lines -join "`n" | Set-Content -LiteralPath $summaryPath -Encoding utf8
+          } else {
+            'No VI pairs with both base/head paths were staged.' | Set-Content -LiteralPath $summaryPath -Encoding utf8
+          }
+
+          "results_path=$resultsPath" | Out-File -FilePath $Env:GITHUB_OUTPUT -Encoding utf8 -Append
+          "summary_path=$summaryPath" | Out-File -FilePath $Env:GITHUB_OUTPUT -Encoding utf8 -Append
+          "artifact_dir=$exportDir" | Out-File -FilePath $Env:GITHUB_OUTPUT -Encoding utf8 -Append
+          "stage_count=$($results.Count)" | Out-File -FilePath $Env:GITHUB_OUTPUT -Encoding utf8 -Append
+
+      - name: Upload manifest & summary
+        uses: actions/upload-artifact@v4
+        with:
+          name: vi-compare-manifest
+          path: |
+            vi-compare-artifacts/vi-manifest.json
+            vi-compare-artifacts/vi-staging-results.json
+            vi-compare-artifacts/vi-staging-summary.md
+
+      - name: Upload staged bundles
+        if: steps.stage.outputs.stage_count != '0'
+        uses: actions/upload-artifact@v4
+        with:
+          name: vi-compare-staging
+          path: ${{ steps.stage.outputs.artifact_dir }}
+
+      - name: Append job summary
+        shell: pwsh
+        env:
+          SUMMARY_PATH: ${{ steps.stage.outputs.summary_path }}
+          NOTE: ${{ env.NOTE }}
+        run: |
+          $summary = Get-Content $env:SUMMARY_PATH -Raw
+          $lines = @('## VI Compare Staging Summary', '')
+          if ($env:NOTE) {
+            $lines += "Note: $($env:NOTE)"
+            $lines += ''
+          }
+          $lines += $summary
+          $lines += ''
+          $lines += "Artifacts: [Run $env:GITHUB_RUN_ID](https://github.com/$env:GITHUB_REPOSITORY/actions/runs/$env:GITHUB_RUN_ID)"
+          $lines -join "`n" | Out-File -FilePath $Env:GITHUB_STEP_SUMMARY -Encoding utf8 -Append
+
+      - name: Comment with results
+        if: github.event_name == 'issue_comment'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR_NUMBER: ${{ steps.pr.outputs.pr_number }}
+          SUMMARY_PATH: ${{ steps.stage.outputs.summary_path }}
+          STAGE_COUNT: ${{ steps.stage.outputs.stage_count }}
+          GITHUB_RUN_ID: ${{ github.run_id }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+        shell: pwsh
+        run: |
+          Set-StrictMode -Version Latest
+          $ErrorActionPreference = 'Stop'
+
+          $runUrl = "https://github.com/$env:GITHUB_REPOSITORY/actions/runs/$env:GITHUB_RUN_ID"
+          $summary = Get-Content $env:SUMMARY_PATH -Raw
+
+          if ([int]$env:STAGE_COUNT -gt 0) {
+            $bodyLines = @(
+              "VI compare staging is ready (**$env:STAGE_COUNT** pair$(if ($env:STAGE_COUNT -eq '1') { '' } else { 's' })).",
+              '',
+              $summary,
+              '',
+              "Download artifacts from [$runUrl]($runUrl)."
+            )
+          } else {
+            $bodyLines = @(
+              'VI compare staging completed: no VI pairs with both base/head paths were found.',
+              '',
+              "Run details: [$runUrl]($runUrl)."
+            )
+          }
+
+          $body = $bodyLines -join "`n"
+          gh pr comment $env:PR_NUMBER --body $body
