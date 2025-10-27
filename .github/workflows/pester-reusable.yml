@@ -244,8 +244,11 @@ jobs:
           $logDir = Split-Path -Parent $logPath
           if (-not (Test-Path $logDir)) { New-Item -ItemType Directory -Force -Path $logDir | Out-Null }
           if (Test-Path -LiteralPath $logPath) { Remove-Item -LiteralPath $logPath -Force }
-          Import-Module ./Invoke-PesterTests.ps1 -Force
-          $cmd = Get-Command Invoke-PesterTests.ps1 -ErrorAction Stop
+          $dispatcherPath = Join-Path (Get-Location) 'Invoke-PesterTests.ps1'
+          if (-not (Test-Path -LiteralPath $dispatcherPath -PathType Leaf)) {
+            throw "Dispatcher script not found at $dispatcherPath"
+          }
+          $cmd = $dispatcherPath
           $lockScript = Join-Path (Get-Location) 'tools/Session-Lock.ps1'
           $bound = [ordered]@{}
           $bound.TestsPath = 'tests'
