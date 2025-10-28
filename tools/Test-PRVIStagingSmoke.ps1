@@ -252,8 +252,8 @@ try {
             CommitMessage = 'chore: synthetic VI diff for staging smoke'
             Prepare       = {
                 Reset-FixtureFiles -Ref $fixtureRef
-                Copy-ViContent -Source 'fixtures/vi-attr/VI2.vi' -Destination 'fixtures/vi-attr/Head.vi'
-                Invoke-Git -Arguments @('add', 'fixtures/vi-attr/Base.vi', 'fixtures/vi-attr/Head.vi')
+                Touch-ViFile -Path 'fixtures/vi-attr/Head.vi'
+                Invoke-Git -Arguments @('add', 'fixtures/vi-attr/Head.vi')
             }.GetNewClosure()
         }
     )
