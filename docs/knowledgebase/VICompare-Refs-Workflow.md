@@ -28,7 +28,13 @@
   | `attr-diff` | Stage the attribute fixtures `fixtures/vi-attr/attr/{BaseAttr,HeadAttr}.vi` | diff |
 
   The attribute fixtures live alongside the baseline set so we can keep the scenario data in-source without editing binaries in place. Update them only when you intend to change the smoke baseline.
-  The PR comment table now appends per-category detail lines (for example `VI Attribute — Documentation » Description`) so attribute-only changes are visible at a glance.
+  The PR comment table now appends per-category detail lines (for example `VI Attribute — Documentation » Description`) so attribute-only changes are visible at a glance.  Additional atomic scenarios are scaffolded under ixtures/vi-stage/ (each seeded with the baseline pair until the LabVIEW edits land):
+  - p-cosmetic moves only a front-panel element to isolate pure FP cosmetic diffs.
+  - connector-pane will swap a connector assignment to surface functional wiring changes.
+  - d-cosmetic nudges a diagram constant so only Block Diagram Cosmetic reports.
+  - control-rename renames a control/indicator to exercise Front Panel objects.
+  - p-window resizes the VI window/pane to trigger Front Panel Position/Size.
+  Update those copies in LabVIEW (or via LabVIEW CLI) before wiring the scenarios into 	ools/Test-PRVIStagingSmoke.ps1.
 - The workflow only honours comments authored by repository members/collaborators. Maintainers can also run the job
   manually with `gh workflow run pr-vi-staging.yml -f pr=<number> [-f note="context"]`.
 - Outputs:
@@ -193,3 +199,4 @@ gh workflow run vi-compare-refs.yml `
   itself is missing, the helper emits a final `missing-head` entry and stops.
 - Artifacts for no-diff runs stay lightweight (<5 KB) so you can keep the workflow optional without overwhelming CI
   storage.
+
