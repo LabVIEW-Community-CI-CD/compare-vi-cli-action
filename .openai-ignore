@@ -12,6 +12,7 @@ tmp-orch/
 tmp-rc-pester-results/
 artifacts/
 backup-original-vis/
+fixtures/vi-attr/
 job-*.log
 tmp-win-drift.log
 tmp_predefined.html

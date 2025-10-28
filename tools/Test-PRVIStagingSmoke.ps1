@@ -197,7 +197,7 @@ if ($DryRun) {
     Write-Host "Plan:"
     Write-Host "  - Fetch origin/$BaseBranch"
     Write-Host "  - Create $scratchBranch from origin/$BaseBranch"
-    Write-Host "  - Mutate VI1.vi and VI2.vi, commit, push"
+    Write-Host "  - Copy fixtures/vi-attr/Head.vi over Base.vi, commit, push"
     Write-Host "  - Open draft PR, dispatch pr-vi-staging.yml, verify label"
     Write-Host "  - Cleanup branch/PR (unless -KeepBranch)"
     return
@@ -220,9 +220,9 @@ try {
     Invoke-Git -Arguments @('fetch', 'origin', $BaseBranch)
     Invoke-Git -Arguments @('checkout', '-b', $scratchBranch, "origin/$BaseBranch")
 
-    Copy-ViContent -Source 'VI2.vi' -Destination 'VI1.vi'
+    Copy-ViContent -Source 'fixtures/vi-attr/Head.vi' -Destination 'fixtures/vi-attr/Base.vi'
 
-    Invoke-Git -Arguments @('add', 'VI1.vi')
+    Invoke-Git -Arguments @('add', 'fixtures/vi-attr/Base.vi')
     Invoke-Git -Arguments @('commit', '-m', 'chore: synthetic VI changes for staging smoke')
 
     Invoke-Git -Arguments @('push', '-u', 'origin', $scratchBranch)
