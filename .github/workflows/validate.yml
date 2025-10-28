@@ -23,7 +23,28 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  smoke-gate:
+    runs-on: ubuntu-latest
+    outputs:
+      skip: ${{ steps.determine.outputs.skip }}
+    steps:
+      - name: Determine skip for smoke branches
+        id: determine
+        shell: pwsh
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          HEAD_REF: ${{ github.head_ref }}
+        run: |
+          $isSmoke = $false
+          if ($env:EVENT_NAME -eq 'pull_request' -and $env:HEAD_REF -and $env:HEAD_REF.StartsWith('smoke/')) {
+            $isSmoke = $true
+          }
+          $value = if ($isSmoke) { 'true' } else { 'false' }
+          "skip=$value" | Out-File -FilePath $Env:GITHUB_OUTPUT -Encoding utf8 -Append
+
   lint:
+    needs: smoke-gate
+    if: needs.smoke-gate.outputs.skip != 'true'
     environment:
       name: production
     runs-on: ubuntu-latest
@@ -559,6 +580,7 @@ jobs:
             tests/results/_agent/issue/*.digest
 
   session-index:
+    needs: lint
     runs-on: ubuntu-latest
     steps:
     - uses: actions/checkout@v5
