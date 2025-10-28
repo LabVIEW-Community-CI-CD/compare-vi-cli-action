@@ -1,21 +1,20 @@
 {
-  "number": 351,
-  "title": "Automate LVCompare after PR staging bundles",
-  "url": "https://github.com/LabVIEW-Community-CI-CD/compare-vi-cli-action/issues/351",
+  "number": 388,
+  "title": "Expand PR VI staging smoke scenarios and fixture catalog",
+  "url": "https://github.com/LabVIEW-Community-CI-CD/compare-vi-cli-action/issues/388",
   "state": "OPEN",
   "labels": [
     "ci",
     "enhancement",
-    "github_actions",
     "standing-priority"
   ],
   "assignees": [],
   "milestone": null,
-  "commentCount": 0,
-  "lastSeenUpdatedAt": "2025-10-28T03:08:13Z",
-  "issueDigest": "e91f5df23dbec1a927a8af944f82cff8b2f7a771c496b3eafd84dff47927e5fc",
-  "bodyDigest": "9aa52b70ecdfcfe19feea33e4c454b3a7c1740d55b03dca674cba3f89c589f67",
-  "cachedAtUtc": "2025-10-28T15:03:15.304Z",
+  "commentCount": 1,
+  "lastSeenUpdatedAt": "2025-10-28T17:37:35Z",
+  "issueDigest": "f8a5333002f05448c7c5b63cbd096d1bf7d1b931ad499c2081b42f53917e78a1",
+  "bodyDigest": "5aa2a1c22bf0ac115fa1cba83fcc67b0e224214e7327ebe6df7e9cbab1a51ee9",
+  "cachedAtUtc": "2025-10-28T17:37:53.357Z",
   "lastFetchSource": "live",
   "lastFetchError": null
 }

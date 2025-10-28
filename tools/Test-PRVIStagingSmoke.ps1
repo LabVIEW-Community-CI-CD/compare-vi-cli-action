@@ -103,6 +103,57 @@ function Reset-FixtureFiles {
     Invoke-Git -Arguments @('checkout', $Ref, '--', 'fixtures/vi-attr/Base.vi', 'fixtures/vi-attr/Head.vi') | Out-Null
 }
 
+function Get-VIStagingSmokeScenarios {
+    param(
+        [Parameter(Mandatory)]
+        [string]$FixtureRef
+    )
+
+    $noDiffPrep = {
+        Reset-FixtureFiles -Ref $FixtureRef
+        Copy-ViContent -Source 'fixtures/vi-attr/Head.vi' -Destination 'fixtures/vi-attr/Base.vi'
+        Invoke-Git -Arguments @('add', 'fixtures/vi-attr/Base.vi')
+    }.GetNewClosure()
+
+    $vi2DiffPrep = {
+        Reset-FixtureFiles -Ref $FixtureRef
+        Copy-ViContent -Source 'fixtures/vi-attr/Head.vi' -Destination 'fixtures/vi-attr/Base.vi'
+        Touch-ViFile -Path 'fixtures/vi-attr/Head.vi'
+        Invoke-Git -Arguments @('add', 'fixtures/vi-attr/Base.vi', 'fixtures/vi-attr/Head.vi')
+    }.GetNewClosure()
+
+    $attrDiffPrep = {
+        Reset-FixtureFiles -Ref $FixtureRef
+        Copy-ViContent -Source 'VI1.vi' -Destination 'fixtures/vi-attr/Base.vi'
+        Copy-ViContent -Source 'VI2.vi' -Destination 'fixtures/vi-attr/Head.vi'
+        Invoke-Git -Arguments @('add', 'fixtures/vi-attr/Base.vi', 'fixtures/vi-attr/Head.vi')
+    }.GetNewClosure()
+
+    return @(
+        [ordered]@{
+            Name          = 'no-diff'
+            Description   = 'Copy Head.vi onto Base.vi so LVCompare reports no differences.'
+            Expectation   = 'match'
+            CommitMessage = 'chore: synthetic VI changes for staging smoke'
+            Prepare       = $noDiffPrep
+        },
+        [ordered]@{
+            Name          = 'vi2-diff'
+            Description   = 'Copy Head.vi onto Base.vi, flip Head.vi bytes to guarantee a diff.'
+            Expectation   = 'diff'
+            CommitMessage = 'chore: synthetic VI diff for staging smoke'
+            Prepare       = $vi2DiffPrep
+        },
+        [ordered]@{
+            Name          = 'attr-diff'
+            Description   = 'Stage VI1/VI2 fixture pair to exercise metadata-focused differences.'
+            Expectation   = 'diff'
+            CommitMessage = 'chore: synthetic VI attribute diff for staging smoke'
+            Prepare       = $attrDiffPrep
+        }
+    )
+}
+
 function Get-RepoInfo {
     if ($env:GITHUB_REPOSITORY -and ($env:GITHUB_REPOSITORY -match '^(?<owner>[^/]+)/(?<name>.+)$')) {
         return [ordered]@{
@@ -198,6 +249,8 @@ $timestamp = (Get-Date).ToString('yyyyMMddHHmmss')
 $branchPrefix = "smoke/vi-stage-$timestamp"
 $prTitle = "Smoke: VI staging label test ($timestamp)"
 $note = "staging smoke $timestamp"
+$fixtureRef = "origin/$BaseBranch"
+$scenarios = Get-VIStagingSmokeScenarios -FixtureRef $fixtureRef
 
 Write-Host "Branch prefix: $branchPrefix"
 
@@ -206,8 +259,13 @@ if ($DryRun) {
     Write-Host "Plan:"
     Write-Host "  - Fetch origin/$BaseBranch"
     Write-Host "  - Create $branchPrefix-<scenario> branches from origin/$BaseBranch"
-    Write-Host "  - Scenario #1 (no-diff): copy fixtures/vi-attr/Head.vi over Base.vi, commit, push, dispatch pr-vi-staging.yml"
-    Write-Host "  - Scenario #2 (diff): restore fixtures, copy fixtures/vi-attr/VI2.vi over Head.vi, commit, push, dispatch pr-vi-staging.yml"
+    for ($idx = 0; $idx -lt $scenarios.Count; $idx++) {
+        $scenario = $scenarios[$idx]
+        $label = "Scenario #{0} ({1})" -f ($idx + 1), $scenario.Name
+        $expectation = if ($scenario.Expectation) { " (expectation: $($scenario.Expectation))" } else { '' }
+        $description = if ($scenario.Description) { $scenario.Description } else { 'No description provided.' }
+        Write-Host ("  - {0}: {1}{2}" -f $label, $description, $expectation)
+    }
     Write-Host "  - Verify both workflow runs succeed and label updates"
     Write-Host "  - Cleanup branch/PR (unless -KeepBranch)"
     return
@@ -225,31 +283,8 @@ $overallContext = [ordered]@{
 try {
     Invoke-Git -Arguments @('fetch', 'origin', $BaseBranch)
 
-    $fixtureRef = "origin/$BaseBranch"
     $resultsDir = Join-Path 'tests' 'results' '_agent' 'smoke' 'vi-stage'
     New-Item -ItemType Directory -Path $resultsDir -Force | Out-Null
-
-    $scenarios = @(
-        @{
-            Name          = 'no-diff'
-            CommitMessage = 'chore: synthetic VI changes for staging smoke'
-            Prepare       = {
-                Reset-FixtureFiles -Ref $fixtureRef
-                Copy-ViContent -Source 'fixtures/vi-attr/Head.vi' -Destination 'fixtures/vi-attr/Base.vi'
-                Invoke-Git -Arguments @('add', 'fixtures/vi-attr/Base.vi')
-            }.GetNewClosure()
-        },
-        @{
-            Name          = 'vi2-diff'
-            CommitMessage = 'chore: synthetic VI diff for staging smoke'
-            Prepare       = {
-                Reset-FixtureFiles -Ref $fixtureRef
-                Copy-ViContent -Source 'fixtures/vi-attr/Head.vi' -Destination 'fixtures/vi-attr/Base.vi'
-                Touch-ViFile -Path 'fixtures/vi-attr/Head.vi'
-                Invoke-Git -Arguments @('add', 'fixtures/vi-attr/Base.vi', 'fixtures/vi-attr/Head.vi')
-            }.GetNewClosure()
-        }
-    )
 
     foreach ($scenario in $scenarios) {
         $scenarioName = $scenario.Name
