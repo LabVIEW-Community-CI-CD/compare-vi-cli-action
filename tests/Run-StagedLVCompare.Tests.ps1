@@ -95,6 +95,8 @@ Describe 'Run-StagedLVCompare.ps1' -Tag 'Unit' {
         $summaryPath = Join-Path $artifactsDir 'vi-staging-compare.json'
         $compareSummary = Get-Content -LiteralPath $summaryPath -Raw | ConvertFrom-Json
         $compareSummary[0].status | Should -Be 'match'
+        $compareSummary[0].stagedBase | Should -Be $stagedBase
+        $compareSummary[0].stagedHead | Should -Be $stagedHead
 
         $outputMap = @{}
         foreach ($line in Get-Content -LiteralPath $outputFile) {

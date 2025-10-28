@@ -50,6 +50,8 @@ Describe 'Summarize-VIStaging.ps1' -Tag 'Unit' {
                 changeType = 'modify'
                 basePath   = 'VI1.vi'
                 headPath   = 'VI1.vi'
+                stagedBase = 'staged\Base.vi'
+                stagedHead = 'staged\Head.vi'
                 status     = 'diff'
                 exitCode   = 1
                 outputDir  = $pairDir
@@ -71,6 +73,8 @@ Describe 'Summarize-VIStaging.ps1' -Tag 'Unit' {
         $result.pairs[0].diffCategories | Should -Contain 'Block Diagram Functional'
         $result.pairs[0].includedAttributes.Count | Should -BeGreaterThan 0
         ($result.pairs[0].includedAttributes | Where-Object { $_.name -eq 'VI Attribute' }).value | Should -BeTrue
+        $result.pairs[0].stagedBase | Should -Be 'staged\Base.vi'
+        $result.pairs[0].stagedHead | Should -Be 'staged\Head.vi'
 
         Test-Path -LiteralPath $mdPath | Should -BeTrue
         (Get-Content -LiteralPath $mdPath -Raw) | Should -Match 'VI Attribute'

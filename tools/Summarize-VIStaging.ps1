@@ -279,11 +279,22 @@ foreach ($entry in $entries) {
         $reportRelative = Get-RelativePath -BasePath $compareRoot -TargetPath $reportPath
     }
 
+    $stagedBase = $null
+    $stagedHead = $null
+    if ($entry.PSObject.Properties['stagedBase']) {
+        $stagedBase = $entry.stagedBase
+    }
+    if ($entry.PSObject.Properties['stagedHead']) {
+        $stagedHead = $entry.stagedHead
+    }
+
     $pairInfo = [pscustomobject]@{
         index             = $entry.index
         changeType        = $entry.changeType
         basePath          = $entry.basePath
         headPath          = $entry.headPath
+        stagedBase        = $stagedBase
+        stagedHead        = $stagedHead
         status            = $status
         exitCode          = $entry.exitCode
         capturePath       = $capturePath
