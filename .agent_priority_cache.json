@@ -1,18 +1,21 @@
 {
-  "number": 319,
-  "title": "Define comprehensive VI history compare report",
-  "url": "https://github.com/LabVIEW-Community-CI-CD/compare-vi-cli-action/issues/319",
+  "number": 351,
+  "title": "Automate LVCompare after PR staging bundles",
+  "url": "https://github.com/LabVIEW-Community-CI-CD/compare-vi-cli-action/issues/351",
   "state": "OPEN",
   "labels": [
+    "ci",
+    "enhancement",
+    "github_actions",
     "standing-priority"
   ],
   "assignees": [],
   "milestone": null,
-  "commentCount": 9,
-  "lastSeenUpdatedAt": "2025-10-27T01:55:39Z",
-  "issueDigest": "19b4eba3fb3ed67d2ce373d9566beaadddb4e1df480eb41366fdc79ffc662c94",
-  "bodyDigest": "5dd39b6e986f8721324cf216a6c5d303683626712cc15f760ceff3edc500047c",
-  "cachedAtUtc": "2025-10-27T15:43:39.527Z",
+  "commentCount": 0,
+  "lastSeenUpdatedAt": "2025-10-28T03:08:13Z",
+  "issueDigest": "e91f5df23dbec1a927a8af944f82cff8b2f7a771c496b3eafd84dff47927e5fc",
+  "bodyDigest": "9aa52b70ecdfcfe19feea33e4c454b3a7c1740d55b03dca674cba3f89c589f67",
+  "cachedAtUtc": "2025-10-28T15:03:15.304Z",
   "lastFetchSource": "live",
   "lastFetchError": null
 }
