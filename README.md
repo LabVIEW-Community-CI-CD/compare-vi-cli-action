@@ -53,6 +53,20 @@ output key always resolves to a readable summary.
 Provide the optional `notify_issue` input when dispatching the workflow to post
 the same summary table to a GitHub issue for stakeholders.
 
+### PR staging helper at a glance
+
+- Comment `/vi-stage` on a pull request (or run `gh workflow run pr-vi-staging.yml -f pr=<number>`).
+- The workflow stages VI pairs via `tools/Invoke-PRVIStaging.ps1`, runs LVCompare on each, and posts a summary comment
+  with staged/skipped counts, AllowSameLeaf totals, mode breakdown, and LVCompare results. A collapsible table mirrors
+  the Markdown summary artifact.
+- Artifacts: `vi-compare-manifest` (manifest + summary) and `vi-compare-staging` (numbered `vi-staging-XX.zip` bundles).
+- Labels: successful runs add `vi-staging-ready` (input configurable) and remove it automatically if staging fails or
+  finds no pairs.
+- Flag overrides: set repository variables `VI_STAGE_COMPARE_FLAGS_MODE` (defaults to `replace`), `VI_STAGE_COMPARE_FLAGS`
+  (newline-separated list), and `VI_STAGE_COMPARE_REPLACE_FLAGS` to control LVCompare ignore bundles.
+- Smoke coverage: `npm run smoke:vi-stage -- --DryRun` prints the plan; `npm run smoke:vi-stage` pushes a scratch branch
+  using the baked-in `fixtures/vi-attr` pair so every run produces deterministic LVCompare output.
+
 ## Optional inputs
 
 | Input name                 | Default   | Description                                                                 |
