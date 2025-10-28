@@ -117,9 +117,8 @@ function Get-VIStagingSmokeScenarios {
 
     $vi2DiffPrep = {
         Reset-FixtureFiles -Ref $FixtureRef
-        Copy-ViContent -Source 'fixtures/vi-attr/Head.vi' -Destination 'fixtures/vi-attr/Base.vi'
-        Touch-ViFile -Path 'fixtures/vi-attr/Head.vi'
-        Invoke-Git -Arguments @('add', 'fixtures/vi-attr/Base.vi', 'fixtures/vi-attr/Head.vi')
+        Copy-ViContent -Source 'VI2.vi' -Destination 'fixtures/vi-attr/Head.vi'
+        Invoke-Git -Arguments @('add', 'fixtures/vi-attr/Head.vi')
     }.GetNewClosure()
 
     $attrBasePath = 'fixtures/vi-attr/attr/BaseAttr.vi'
@@ -150,7 +149,7 @@ function Get-VIStagingSmokeScenarios {
         },
         [ordered]@{
             Name          = 'vi2-diff'
-            Description   = 'Copy Head.vi onto Base.vi, flip Head.vi bytes to guarantee a diff.'
+            Description   = 'Copy repository VI2.vi onto Head.vi for a non-attribute diff.'
             Expectation   = 'diff'
             CommitMessage = 'chore: synthetic VI diff for staging smoke'
             Prepare       = $vi2DiffPrep
@@ -460,3 +459,6 @@ finally {
         [System.Environment]::SetEnvironmentVariable('RUN_STAGED_LVCOMPARE_FLAGS_MODE', $originalFlagsMode, 'Process')
     }
 }
+    if (-not (Test-Path -LiteralPath 'VI2.vi' -PathType Leaf)) {
+        throw "Diff fixture missing: VI2.vi"
+    }
