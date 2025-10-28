@@ -19,8 +19,16 @@
   environment used in production compares is exercised during staging, and immediately launches `Invoke-LVCompare.ps1`
   against each staged pair. The capture artifacts (HTML report, `lvcompare-capture.json`, stdout/stderr) are stored under
   `vi-compare-artifacts/compare/pair-XX/` and summarised in the PR comment.
-- The staging smoke helper now commits the baked-in attribute diff under `fixtures/vi-attr/{Base,Head}.vi`, so every run
-  produces deterministic LVCompare output. Only update those fixtures when you intentionally want to change the smoke baseline.
+- The staging smoke helper ships a baked catalog so every run produces deterministic LVCompare output. The current scenarios are:
+
+  | Scenario | Fixture prep | Expected LVCompare |
+  |----------|--------------|--------------------|
+  | `no-diff` | Copy `fixtures/vi-attr/Head.vi` onto `Base.vi` | match |
+  | `vi2-diff` | Copy `Head.vi` onto `Base.vi`, then mutate the staged `Head.vi` bytes | diff |
+  | `attr-diff` | Stage the attribute fixtures `fixtures/vi-attr/attr/{BaseAttr,HeadAttr}.vi` | diff |
+
+  The attribute fixtures live alongside the baseline set so we can keep the scenario data in-source without editing binaries in place. Update them only when you intend to change the smoke baseline.
+  The PR comment table now appends per-category detail lines (for example `VI Attribute — Documentation » Description`) so attribute-only changes are visible at a glance.
 - The workflow only honours comments authored by repository members/collaborators. Maintainers can also run the job
   manually with `gh workflow run pr-vi-staging.yml -f pr=<number> [-f note="context"]`.
 - Outputs:

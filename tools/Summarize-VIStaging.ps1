@@ -106,6 +106,46 @@ function Parse-DiffDetails {
     return $details
 }
 
+function Get-DiffDetailPreview {
+    param(
+        [System.Collections.IEnumerable]$Details,
+        [System.Collections.IEnumerable]$Headings,
+        [string]$Status
+    )
+
+    $preview = New-Object System.Collections.Generic.List[string]
+    $seen = New-Object System.Collections.Generic.HashSet[string]
+
+    if ($Details) {
+        foreach ($item in $Details) {
+            $text = [string]$item
+            if ([string]::IsNullOrWhiteSpace($text)) { continue }
+            if ($seen.Add($text) -eq $false) { continue }
+            if ($preview.Count -lt 3) {
+                $preview.Add($text) | Out-Null
+            } elseif ($preview.Count -eq 3) {
+                $preview[2] = $preview[2] + '; …'
+                break
+            }
+        }
+    }
+
+    if ($preview.Count -eq 0 -and $Status -eq 'diff' -and $Headings) {
+        foreach ($heading in $Headings) {
+            $text = [string]$heading
+            if ([string]::IsNullOrWhiteSpace($text)) { continue }
+            if ($preview.Count -lt 3) {
+                $preview.Add($text) | Out-Null
+            } elseif ($preview.Count -eq 3) {
+                $preview[2] = $preview[2] + '; …'
+                break
+            }
+        }
+    }
+
+    return $preview
+}
+
 function Build-MarkdownTable {
     param(
         [pscustomobject[]]$Pairs,
@@ -133,11 +173,24 @@ function Build-MarkdownTable {
         $categories = if ($pair.diffCategories -and $pair.diffCategories.Count -gt 0) {
             ($pair.diffCategories -join ', ')
         } elseif ($pair.status -eq 'match') {
-            '—'
+            '-'
         } elseif ($pair.status -eq 'skipped') {
             'staged bundle missing'
         } else {
             'n/a'
+        }
+
+        $detailList = @()
+        if ($pair.PSObject.Properties['diffDetailPreview'] -and $pair.diffDetailPreview) {
+            $detailList = @($pair.diffDetailPreview | Where-Object { -not [string]::IsNullOrWhiteSpace($_) })
+        }
+        if ($detailList.Count -gt 0) {
+            $detailMarkup = "<small>{0}</small>" -f ($detailList -join '<br/>')
+            if ($categories -and $categories -ne '-' -and $categories -ne 'n/a') {
+                $categories = "$categories<br/>$detailMarkup"
+            } else {
+                $categories = $detailMarkup
+            }
         }
 
         $included = if ($pair.includedAttributes -and $pair.includedAttributes.Count -gt 0) {
@@ -145,7 +198,7 @@ function Build-MarkdownTable {
                 if ($_.value) { "{0} ✅" -f $_.name } else { "{0} ❌" -f $_.name }
             }) -join '<br/>'
         } else {
-            '—'
+            '-'
         }
 
         $reportLink = if ($pair.reportRelative) {
@@ -273,6 +326,7 @@ foreach ($entry in $entries) {
             value = [bool]$included[$key]
         })
     }
+    $detailPreviewList = Get-DiffDetailPreview -Details $details -Headings $headings -Status $status
 
     $reportRelative = $null
     if ($reportPath -and $compareRoot) {
@@ -303,6 +357,7 @@ foreach ($entry in $entries) {
         diffCategories    = $categories
         diffHeadings      = $headings
         diffDetails       = $details
+        diffDetailPreview = $detailPreviewList
         includedAttributes= $includedList
     }
 

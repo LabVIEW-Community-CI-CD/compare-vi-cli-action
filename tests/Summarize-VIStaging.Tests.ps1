@@ -73,15 +73,19 @@ Describe 'Summarize-VIStaging.ps1' -Tag 'Unit' {
         $result.pairs[0].diffCategories | Should -Contain 'Block Diagram Functional'
         $result.pairs[0].includedAttributes.Count | Should -BeGreaterThan 0
         ($result.pairs[0].includedAttributes | Where-Object { $_.name -eq 'VI Attribute' }).value | Should -BeTrue
+        (@($result.pairs[0].diffDetailPreview | Where-Object { $_ -match 'Difference Type: VI icon' })).Count | Should -BeGreaterThan 0
         $result.pairs[0].stagedBase | Should -Be 'staged\Base.vi'
         $result.pairs[0].stagedHead | Should -Be 'staged\Head.vi'
 
         Test-Path -LiteralPath $mdPath | Should -BeTrue
-        (Get-Content -LiteralPath $mdPath -Raw) | Should -Match 'VI Attribute'
+        $markdown = Get-Content -LiteralPath $mdPath -Raw
+        $markdown | Should -Match 'VI Attribute'
+        $markdown | Should -Match 'Difference Type: VI icon'
 
         Test-Path -LiteralPath $jsonPath | Should -BeTrue
         $jsonPayload = Get-Content -LiteralPath $jsonPath -Raw | ConvertFrom-Json -Depth 6
         $jsonPayload.totals.diff | Should -Be 1
+        (@($jsonPayload.pairs[0].diffDetailPreview | Where-Object { $_ -match 'Difference Type: VI icon' })).Count | Should -BeGreaterThan 0
     }
 
     It 'handles missing report gracefully' {

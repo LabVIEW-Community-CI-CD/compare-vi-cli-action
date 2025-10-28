@@ -262,6 +262,12 @@ $prTitle = "Smoke: VI staging label test ($timestamp)"
 $note = "staging smoke $timestamp"
 $fixtureRef = "origin/$BaseBranch"
 $scenarios = Get-VIStagingSmokeScenarios -FixtureRef $fixtureRef
+$originalFlagsMode = [System.Environment]::GetEnvironmentVariable('RUN_STAGED_LVCOMPARE_FLAGS_MODE', 'Process')
+$restoreFlagsMode = $false
+if ([string]::IsNullOrWhiteSpace($originalFlagsMode)) {
+    [System.Environment]::SetEnvironmentVariable('RUN_STAGED_LVCOMPARE_FLAGS_MODE', 'replace', 'Process')
+    $restoreFlagsMode = $true
+}
 
 Write-Host "Branch prefix: $branchPrefix"
 
@@ -448,5 +454,9 @@ finally {
                 # ignore branch delete failures
             }
         }
+    }
+
+    if ($restoreFlagsMode) {
+        [System.Environment]::SetEnvironmentVariable('RUN_STAGED_LVCOMPARE_FLAGS_MODE', $originalFlagsMode, 'Process')
     }
 }

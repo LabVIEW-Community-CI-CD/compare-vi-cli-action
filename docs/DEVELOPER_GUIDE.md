@@ -25,7 +25,16 @@ Quick reference for building, testing, and releasing the LVCompare composite act
       - `keep_branch`: set to `true` when you want to inspect the synthetic scratch PR afterward; keep `false` for normal sweeps so the helper cleans up.
     - Requires `GH_TOKEN`/`GITHUB_TOKEN` with push + workflow scopes. Locally, populate `$env:GH_TOKEN` (for example from `C:\github_token.txt`) before running `tools/Test-PRVIStagingSmoke.ps1`.
     - Successful runs upload `tests/results/_agent/smoke/vi-stage/smoke-*.json` summaries and assert the scratch PR carries the `vi-staging-ready` label.
-    - The smoke helper stages `fixtures/vi-attr/Base.vi`/`Head.vi`, a baked-in VI attribute diff, so each run produces deterministic LVCompare output. Update those fixtures only when you intentionally want to change the smoke baseline.
+    - Scenario catalog (defined in `Get-VIStagingSmokeScenarios`):
+
+      | Scenario  | Fixture prep                                                                 | Expected LVCompare |
+      |-----------|------------------------------------------------------------------------------|--------------------|
+      | `no-diff` | Copy `fixtures/vi-attr/Head.vi` onto `Base.vi`                               | match              |
+      | `vi2-diff`| Copy `Head.vi` onto `Base.vi`, flip the staged `Head.vi` bytes               | diff               |
+      | `attr-diff` | Stage the baked attribute fixtures `fixtures/vi-attr/attr/{BaseAttr,HeadAttr}.vi` | diff               |
+
+      Update those fixtures only when you intentionally want to change the smoke baseline; the helper writes their bytes into the scenario prep blocks for deterministic runs.
+      Compare summaries now append per-category detail lines (for example `VI Attribute — Documentation » Description`) so reviewers can see attribute changes without downloading the artifacts.
     - Compare flags: the staging helper honours `VI_STAGE_COMPARE_FLAGS_MODE` (default `replace`) and
       `VI_STAGE_COMPARE_FLAGS` repository variables. The default `replace` mode clears the quiet bundle so LVCompare
       reports include VI Attribute differences. Set the mode to `append` to keep the quiet bundle, and provide
