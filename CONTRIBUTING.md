@@ -14,8 +14,10 @@ Thank you for contributing to `compare-vi-cli-action`!
 
 - Fork and clone the repo
 - Create a feature branch
-- Use the smoke test workflow (`.github/workflows/smoke.yml`) to validate changes against sample `.vi` files on your
-  self-hosted runner
+- Run the staging smoke helper before pushing:
+  - `pwsh -File tools/Test-PRVIStagingSmoke.ps1 -DryRun` to preview the plan
+  - `npm run smoke:vi-stage` to run end-to-end using the baked-in `fixtures/vi-attr` attribute diff
+  All staging runs post a summary comment and upload `vi-compare-manifest` / `vi-staging-XX.zip` artifacts; check the comment for links.
 
 ## Action Development Tips
 
@@ -176,4 +178,5 @@ If we later re-enable MD013:
 3. Avoid splitting code spans across lines solely for lint; prefer disabling for that line.
 
 Always ensure examples remain copy/paste friendly (avoid trailing spaces, stray prompts inside code blocks).
+
 
