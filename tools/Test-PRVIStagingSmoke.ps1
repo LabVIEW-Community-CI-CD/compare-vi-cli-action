@@ -124,8 +124,8 @@ function Get-VIStagingSmokeScenarios {
 
     $attrDiffPrep = {
         Reset-FixtureFiles -Ref $FixtureRef
-        Copy-ViContent -Source 'VI1.vi' -Destination 'fixtures/vi-attr/Base.vi'
-        Copy-ViContent -Source 'VI2.vi' -Destination 'fixtures/vi-attr/Head.vi'
+        Copy-ViContent -Source 'fixtures/vi-attr/attr/BaseAttr.vi' -Destination 'fixtures/vi-attr/Base.vi'
+        Copy-ViContent -Source 'fixtures/vi-attr/attr/HeadAttr.vi' -Destination 'fixtures/vi-attr/Head.vi'
         Invoke-Git -Arguments @('add', 'fixtures/vi-attr/Base.vi', 'fixtures/vi-attr/Head.vi')
     }.GetNewClosure()
 
