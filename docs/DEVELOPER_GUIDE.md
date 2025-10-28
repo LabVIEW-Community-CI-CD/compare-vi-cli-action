@@ -31,6 +31,17 @@ Quick reference for building, testing, and releasing the LVCompare composite act
       reports include VI Attribute differences. Set the mode to `append` to keep the quiet bundle, and provide
       newline-separated entries in `VI_STAGE_COMPARE_FLAGS` (for example `-nobd`) when you want to add explicit flags.
       `VI_STAGE_COMPARE_REPLACE_FLAGS` accepts `true`/`false` to override the mode for a single run when needed.
+    - `pr-vi-staging.yml` now calls `tools/Summarize-VIStaging.ps1` after LVCompare finishes. The helper inspects
+      `vi-staging-compare.json`, captures the categories surfaced in each compare report (front panel, block diagram
+      functional/cosmetic, VI attributes), and emits both a Markdown table and JSON snapshot. The workflow drops that
+      table directly into the PR comment, so reviewers see attribute/block diagram/front panel hits without downloading
+      the artifacts. Locally reproduce the same summary with:
+      ```powershell
+      pwsh -File tools/Summarize-VIStaging.ps1 `
+        -CompareJson vi-compare-artifacts/compare/vi-staging-compare.json `
+        -MarkdownPath ./vi-staging-compare.md `
+        -SummaryJsonPath ./vi-staging-compare-summary.json
+      ```
 
  â†’ telemetry snapshot
   - `tools/Watch-Pester.ps1` â†’ file watcher / retry loop
