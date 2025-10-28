@@ -329,3 +329,5 @@ if ($failureMessages.Count -gt 0) {
     $message = "LVCompare reported failures for {0} staged pair(s): {1}" -f $failureMessages.Count, ($failureMessages -join '; ')
     throw $message
 }
+
+$global:LASTEXITCODE = 0
