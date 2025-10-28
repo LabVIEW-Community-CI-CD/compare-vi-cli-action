@@ -157,43 +157,19 @@ jobs:
           $stagingWorkRoot = Join-Path $repoRoot 'vi-staging-work'
           New-Item -ItemType Directory -Path $stagingWorkRoot -Force | Out-Null
 
-          Write-Host "[stage] Manifest path: $env:MANIFEST_PATH"
-          Write-Host "[stage] Staging work root: $stagingWorkRoot"
           $results = & "$repoRoot\tools\Invoke-PRVIStaging.ps1" -ManifestPath $env:MANIFEST_PATH -WorkingRoot $stagingWorkRoot
           if (-not $results) {
             $results = @()
           }
 
-          $stagedCount = 0
-          $skippedCount = 0
-          $totalCount = $results.Count
-          $allowSameLeafCount = 0
-          $modeCounts = @{}
-          Write-Host ("[stage] Processed manifest with {0} candidate pair(s)." -f $totalCount)
-
           $exportDir = Join-Path $repoRoot 'vi-staging-artifacts'
           New-Item -ItemType Directory -Path $exportDir -Force | Out-Null
+          $stagedCount = 0
+          $skippedCount = 0
 
           $counter = 1
           foreach ($entry in $results) {
-            $basePath = $entry.basePath
-            $headPath = $entry.headPath
-
             if ($entry.staged -and $entry.staged.Root -and (Test-Path -LiteralPath $entry.staged.Root -PathType Container)) {
-              $stagedRoot = $entry.staged.Root
-              $stagedBase = $entry.staged.Base
-              $stagedHead = $entry.staged.Head
-              $stageMode = $entry.staged.Mode
-              $modeKey = if ($stageMode) { $stageMode } else { 'unknown' }
-              if (-not $modeCounts.ContainsKey($modeKey)) { $modeCounts[$modeKey] = 0 }
-              $modeCounts[$modeKey]++
-
-              $allowSameLeaf = $false
-              if ($entry.staged.PSObject.Properties['AllowSameLeaf']) {
-                try { $allowSameLeaf = [bool]$entry.staged.AllowSameLeaf } catch { $allowSameLeaf = $false }
-              }
-              if ($allowSameLeaf) { $allowSameLeafCount++ }
-
               $zipName = 'vi-staging-{0:D2}.zip' -f $counter
               $zipPath = Join-Path $exportDir $zipName
               if (Test-Path -LiteralPath $zipPath) {
@@ -202,23 +178,12 @@ jobs:
               Compress-Archive -Path (Join-Path $entry.staged.Root '*') -DestinationPath $zipPath -Force
               Add-Member -InputObject $entry -NotePropertyName artifact -NotePropertyValue $zipName -Force
               $stagedCount++
-              $zipSizeKB = try { [math]::Round((Get-Item -LiteralPath $zipPath).Length / 1KB, 1) } catch { 0 }
-              Write-Host ("[stage] Staged pair {0:D2}: change={1} base='{2}' head='{3}' mode={4} allowSameLeaf={5} root='{6}' artifact='{7}' sizeKB={8} stagedBase='{9}' stagedHead='{10}'" -f $counter, $entry.changeType, $basePath, $headPath, $modeKey, $allowSameLeaf, $stagedRoot, $zipName, $zipSizeKB, $stagedBase, $stagedHead)
               $counter++
             } else {
               $skippedCount++
               if (-not $entry.PSObject.Properties['skipReason']) {
-                $reason = 'No staged output generated'
-                Add-Member -InputObject $entry -NotePropertyName skipReason -NotePropertyValue $reason -Force
+                Add-Member -InputObject $entry -NotePropertyName skipReason -NotePropertyValue 'No staged output generated' -Force
               }
-              $reasonText = $entry.skipReason
-              if (-not $reasonText -and $entry.staged -and $entry.staged.Root) {
-                $reasonText = "staged root missing at $($entry.staged.Root)"
-                Add-Member -InputObject $entry -NotePropertyName skipReason -NotePropertyValue $reasonText -Force
-              }
-              $artifactHint = if ($entry.artifact) { $entry.artifact } else { 'n/a' }
-              $stagedRoot = if ($entry.staged) { $entry.staged.Root } else { '' }
-              Write-Warning ("[stage] Skipped pair: change={0} base='{1}' head='{2}' stagedRoot='{3}' artifact='{4}' reason='{5}'" -f $entry.changeType, $basePath, $headPath, $stagedRoot, $artifactHint, ($entry.skipReason ?? 'unknown'))
             }
           }
 
@@ -230,14 +195,6 @@ jobs:
           "stage_count=$($results.Count)" | Out-File -FilePath $Env:GITHUB_OUTPUT -Encoding utf8 -Append
           "stage_staged=$stagedCount" | Out-File -FilePath $Env:GITHUB_OUTPUT -Encoding utf8 -Append
           "stage_skipped=$skippedCount" | Out-File -FilePath $Env:GITHUB_OUTPUT -Encoding utf8 -Append
-          "stage_allow_same_leaf=$allowSameLeafCount" | Out-File -FilePath $Env:GITHUB_OUTPUT -Encoding utf8 -Append
-          if ($modeCounts.Keys.Count -gt 0) {
-            $modeSummary = ($modeCounts.GetEnumerator() | ForEach-Object { "$($_.Key):$($_.Value)" }) -join ','
-            "stage_mode_counts=$modeSummary" | Out-File -FilePath $Env:GITHUB_OUTPUT -Encoding utf8 -Append
-          }
-
-          $modeSummaryText = if ($modeCounts.Keys.Count -gt 0) { ($modeCounts.GetEnumerator() | ForEach-Object { "$($_.Key)=$($_.Value)" } | Sort-Object) -join ', ' } else { 'none' }
-          Write-Host ("[stage] Summary: staged={0} skipped={1} allowSameLeaf={2} modes=[{3}] artifactsDir='{4}' results='{5}'" -f $stagedCount, $skippedCount, $allowSameLeafCount, $modeSummaryText, $exportDir, $resultsPath)
 
       - name: Run LVCompare on staged pairs
         id: compare
@@ -275,13 +232,13 @@ jobs:
         env:
           RESULTS_PATH: ${{ steps.stage.outputs.results_path }}
           ARTIFACTS_DIR: ${{ steps.manifest.outputs.artifacts_dir }}
-          COMPARE_JSON: ${{ steps.compare.outputs.compare_json }}
-          COMPARE_DIR: ${{ steps.compare.outputs.compare_dir }}
           STAGE_COUNT: ${{ steps.stage.outputs.stage_count }}
           STAGE_STAGED: ${{ steps.stage.outputs.stage_staged }}
           STAGE_SKIPPED: ${{ steps.stage.outputs.stage_skipped }}
-          STAGE_ALLOW_SAME_LEAF: ${{ steps.stage.outputs.stage_allow_same_leaf }}
-          STAGE_MODE_COUNTS: ${{ steps.stage.outputs.stage_mode_counts }}
+          COMPARE_MATCH: ${{ steps.compare.outputs.match_count }}
+          COMPARE_DIFF: ${{ steps.compare.outputs.diff_count }}
+          COMPARE_ERROR: ${{ steps.compare.outputs.error_count }}
+          COMPARE_SKIP: ${{ steps.compare.outputs.skip_count }}
         run: |
           Set-StrictMode -Version Latest
           $ErrorActionPreference = 'Stop'
@@ -291,9 +248,6 @@ jobs:
           }
 
           $summaryPath = Join-Path $env:ARTIFACTS_DIR 'vi-staging-summary.md'
-          $compareMarkdownPath = $null
-          $compareSummaryPath = $null
-
           $results = @()
           if ($env:RESULTS_PATH -and (Test-Path -LiteralPath $env:RESULTS_PATH -PathType Leaf)) {
             $json = Get-Content -LiteralPath $env:RESULTS_PATH -Raw
@@ -302,186 +256,80 @@ jobs:
             }
           }
 
-          $compareTotals = @{
-            diff    = 0
-            match   = 0
-            error   = 0
-            skipped = 0
+          $compareCounts = @{
+            diff   = 0
+            match  = 0
+            error  = 0
+            skipped= 0
           }
 
-          $compareSummary = $null
-          $comparePairsByIndex = @{}
-          if ($env:COMPARE_JSON -and (Test-Path -LiteralPath $env:COMPARE_JSON -PathType Leaf)) {
-            $summarizePath = Join-Path (Get-Location) 'tools' 'Summarize-VIStaging.ps1'
-            if (-not (Test-Path -LiteralPath $summarizePath -PathType Leaf)) {
-              throw "Summarize-VIStaging.ps1 not found at $summarizePath"
-            }
-            $compareMarkdownPath = Join-Path $env:ARTIFACTS_DIR 'vi-staging-compare.md'
-            $compareSummaryPath = Join-Path $env:ARTIFACTS_DIR 'vi-staging-compare-summary.json'
-            $compareSummary = & $summarizePath -CompareJson $env:COMPARE_JSON -MarkdownPath $compareMarkdownPath -SummaryJsonPath $compareSummaryPath
-            if ($compareSummary -and $compareSummary.totals) {
-              foreach ($key in @('diff','match','error','skipped')) {
-                if ($compareSummary.totals.PSObject.Properties[$key]) {
-                  $rawValue = $compareSummary.totals.$key
-                  $parsed = 0
-                  if ([int]::TryParse([string]$rawValue, [ref]$parsed)) {
-                    $compareTotals[$key] = $parsed
-                  } elseif ($rawValue -ne $null) {
-                    try { $compareTotals[$key] = [int]$rawValue } catch {}
-                  }
-                }
-              }
-            }
-            if ($compareSummary -and $compareSummary.pairs) {
-              foreach ($pair in $compareSummary.pairs) {
-                if ($pair -and $pair.PSObject.Properties['index'] -and $pair.index -ne $null) {
-                  $indexKey = [int]$pair.index
-                  $comparePairsByIndex[$indexKey] = $pair
-                }
-              }
-            }
+          if ($env:COMPARE_DIFF) {
+            try { $compareCounts.diff = [int]$env:COMPARE_DIFF } catch {}
+          }
+          if ($env:COMPARE_MATCH) {
+            try { $compareCounts.match = [int]$env:COMPARE_MATCH } catch {}
+          }
+          if ($env:COMPARE_ERROR) {
+            try { $compareCounts.error = [int]$env:COMPARE_ERROR } catch {}
+          }
+          if ($env:COMPARE_SKIP) {
+            try { $compareCounts.skipped = [int]$env:COMPARE_SKIP } catch {}
           }
 
-          $lines = @()
           if (-not $results) {
-            $lines += 'No VI pairs with both base/head paths were staged.'
+            $compareCounts.skipped = 0
+            'No VI pairs with both base/head paths were staged.' | Set-Content -LiteralPath $summaryPath -Encoding utf8
           } else {
-            $lines += ("Total staged pairs: {0}" -f $results.Count)
+            $lines = @()
+            $totalPairs = $results.Count
+            $lines += ("Total manifest pairs: {0}" -f $totalPairs)
             if ($env:STAGE_STAGED) {
               $lines += ("Staged bundles: {0}" -f $env:STAGE_STAGED)
             }
             if ($env:STAGE_SKIPPED) {
               $lines += ("Skipped bundles: {0}" -f $env:STAGE_SKIPPED)
             }
-            if ($env:STAGE_ALLOW_SAME_LEAF) {
-              $lines += ("AllowSameLeaf pairs: {0}" -f $env:STAGE_ALLOW_SAME_LEAF)
-            }
-            if ($env:STAGE_MODE_COUNTS) {
-              $lines += ("Staging modes: {0}" -f $env:STAGE_MODE_COUNTS.Replace(',', ', '))
-            }
-          }
 
-          if ($compareSummary -and $compareSummary.markdown) {
-            $lines += ''
-            $lines += '### LVCompare breakdown'
-            $lines += ''
-            $lines += $compareSummary.markdown
-          } elseif ($env:COMPARE_JSON) {
-            $lines += ''
-            $lines += '### LVCompare breakdown'
-            $lines += ''
-            $lines += 'No LVCompare comparisons were recorded.'
-          }
-
-          if ($results) {
-            $lines += ''
-            $lines += '### Staged bundle catalog'
-            $lines += ''
             $table = @(
-              '| # | Change | Base | Head | Mode | AllowSameLeaf | Artifact | Compare |',
-              '| - | ------ | ---- | ---- | ---- | ------------- | -------- | ------- |'
+              '| # | Change | Base | Head | Artifact | Compare |',
+              '| - | ------ | ---- | ---- | -------- | ------- |'
             )
 
-            $useFallbackCounts = -not $compareSummary
             $idx = 1
             foreach ($entry in $results) {
               $compareStatus = 'n/a'
-              $compareDisplay = 'n/a'
-              $pairInfo = $null
-              if ($comparePairsByIndex.ContainsKey($idx)) {
-                $pairInfo = $comparePairsByIndex[$idx]
-              }
-
-              if ($pairInfo) {
-                $compareStatus = $pairInfo.status
-                $compareDisplay = $compareStatus
-                if ($pairInfo.reportRelative) {
-                  $reportRel = ($pairInfo.reportRelative -replace '\\','/')
-                  $compareDisplay = "$compareStatus (`$reportRel`)"
-                } elseif ($pairInfo.reportPath) {
-                  $compareDisplay = "$compareStatus (`$($pairInfo.reportPath)`)"
-                }
-              } elseif ($entry.PSObject.Properties['compare'] -and $entry.compare) {
+              if ($entry.PSObject.Properties['compare'] -and $entry.compare) {
                 $compareStatus = $entry.compare.status
-                if ($entry.compare.status -eq 'diff' -and $entry.compare.reportPath) {
-                  $reportRel = $entry.compare.reportPath
-                  if ($env:COMPARE_DIR) {
-                    try {
-                      $reportRel = [System.IO.Path]::GetRelativePath($env:COMPARE_DIR, $entry.compare.reportPath)
-                    } catch {}
-                  }
-                  $compareDisplay = "$($entry.compare.status) (`$($reportRel -replace '\\','/')`)"
-                } else {
-                  $compareDisplay = $compareStatus
-                }
-              }
-
-              if ($useFallbackCounts) {
                 switch ($compareStatus) {
-                  'diff'    { $compareTotals.diff++ }
-                  'match'   { $compareTotals.match++ }
-                  'error'   { $compareTotals.error++ }
-                  'skipped' { $compareTotals.skipped++ }
-                  default   { if ($compareStatus) { $compareTotals.skipped++ } }
+                  'diff'    { $compareCounts.diff++ }
+                  'match'   { $compareCounts.match++ }
+                  'error'   { $compareCounts.error++ }
+                  'skipped' { $compareCounts.skipped++ }
+                  default   { if ($compareStatus) { $compareCounts.skipped++ } }
                 }
+                if ($entry.compare.status -eq 'diff' -and $entry.compare.reportPath) {
+                  $compareStatus = "$($entry.compare.status) (report)"
+                }
+              } else {
+                $compareCounts.skipped++
               }
-
               $artifactCell = if ($entry.artifact) { $entry.artifact } else { 'n/a' }
-              $stageMode = if ($entry.staged) { $entry.staged.Mode } else { '' }
-              $allowSameLeaf = $false
-              if ($entry.staged -and $entry.staged.PSObject.Properties['AllowSameLeaf']) {
-                try { $allowSameLeaf = [bool]$entry.staged.AllowSameLeaf } catch { $allowSameLeaf = $false }
-              }
-              $allowText = if ($allowSameLeaf) { 'Yes' } else { 'No' }
-
-              $baseDisplay = $entry.basePath
-              $headDisplay = $entry.headPath
-              $stagedBasePath = $null
-              $stagedHeadPath = $null
-              if ($entry.staged) {
-                if ($entry.staged.PSObject.Properties['Base']) {
-                  $stagedBasePath = $entry.staged.Base
-                }
-                if ($entry.staged.PSObject.Properties['Head']) {
-                  $stagedHeadPath = $entry.staged.Head
-                }
-              }
-              if ($stagedBasePath) {
-                if ($baseDisplay -and -not [string]::Equals($baseDisplay, $stagedBasePath, [System.StringComparison]::OrdinalIgnoreCase)) {
-                  $baseDisplay = "$baseDisplay -> $stagedBasePath"
-                } else {
-                  $baseDisplay = $stagedBasePath
-                }
-              }
-              if ($stagedHeadPath) {
-                if ($headDisplay -and -not [string]::Equals($headDisplay, $stagedHeadPath, [System.StringComparison]::OrdinalIgnoreCase)) {
-                  $headDisplay = "$headDisplay -> $stagedHeadPath"
-                } else {
-                  $headDisplay = $stagedHeadPath
-                }
-              }
-
-              $table += "| $idx | $($entry.changeType) | $baseDisplay | $headDisplay | $stageMode | $allowText | $artifactCell | $compareDisplay |"
+              $table += "| $idx | $($entry.changeType) | $($entry.basePath) | $($entry.headPath) | $artifactCell | $compareStatus |"
               $idx++
             }
 
+            $lines += ("Compare results → match: {0}, diff: {1}, error: {2}, skipped: {3}" -f $compareCounts.match, $compareCounts.diff, $compareCounts.error, $compareCounts.skipped)
+            $lines += ''
             $lines += $table
+            $lines -join "`n" | Set-Content -LiteralPath $summaryPath -Encoding utf8
           }
-
-          $lines -join "`n" | Set-Content -LiteralPath $summaryPath -Encoding utf8
 
           "summary_path=$summaryPath" | Out-File -FilePath $Env:GITHUB_OUTPUT -Encoding utf8 -Append
-          if ($compareMarkdownPath) {
-            "compare_markdown_path=$compareMarkdownPath" | Out-File -FilePath $Env:GITHUB_OUTPUT -Encoding utf8 -Append
-          }
-          if ($compareSummaryPath) {
-            "compare_summary_json=$compareSummaryPath" | Out-File -FilePath $Env:GITHUB_OUTPUT -Encoding utf8 -Append
-          }
           if ($Env:GITHUB_OUTPUT) {
-            "diff_count=$($compareTotals.diff)" | Out-File -FilePath $Env:GITHUB_OUTPUT -Encoding utf8 -Append
-            "match_count=$($compareTotals.match)" | Out-File -FilePath $Env:GITHUB_OUTPUT -Encoding utf8 -Append
-            "error_count=$($compareTotals.error)" | Out-File -FilePath $Env:GITHUB_OUTPUT -Encoding utf8 -Append
-            "skip_count=$($compareTotals.skipped)" | Out-File -FilePath $Env:GITHUB_OUTPUT -Encoding utf8 -Append
+            "diff_count=$($compareCounts.diff)" | Out-File -FilePath $Env:GITHUB_OUTPUT -Encoding utf8 -Append
+            "match_count=$($compareCounts.match)" | Out-File -FilePath $Env:GITHUB_OUTPUT -Encoding utf8 -Append
+            "error_count=$($compareCounts.error)" | Out-File -FilePath $Env:GITHUB_OUTPUT -Encoding utf8 -Append
+            "skip_count=$($compareCounts.skipped)" | Out-File -FilePath $Env:GITHUB_OUTPUT -Encoding utf8 -Append
           }
 
       - name: Ensure staging label exists
@@ -495,7 +343,7 @@ jobs:
           $ErrorActionPreference = 'Stop'
           if (-not $env:STAGING_LABEL) { return }
           gh label create $env:STAGING_LABEL --color FFC82C --description "PR has VI staging bundles ready" 2>$null
-          gh label edit $env:STAGING_LABEL --color FFC82C --description "PR has VI staging bundles ready"
+          gh label edit $env:STAGING_LABEL --color FFC82C --description "PR has VI staging bundles ready" --force
 
       - name: Upload manifest & summary
         uses: actions/upload-artifact@v4
@@ -574,30 +422,15 @@ jobs:
           $lines += $summary
           $lines += ''
           if ($env:ARTIFACT_LINKS) {
-            $parsedLinks = $env:ARTIFACT_LINKS | ConvertFrom-Json
-            if ($parsedLinks) {
-              $links = @()
-              if ($parsedLinks -is [System.Collections.IEnumerable] -and -not ($parsedLinks -is [string])) {
-                $links = @($parsedLinks)
-              } else {
-                $links = @($parsedLinks)
+            $links = $env:ARTIFACT_LINKS | ConvertFrom-Json
+            if ($links.Count -gt 0) {
+              $lines += '### Download Links (expire ~1 hour)'
+              foreach ($link in $links) {
+                $size = if ($link.size) { [math]::Round(($link.size/1KB), 1) } else { $null }
+                $suffix = if ($size) { " (${size} KB)" } else { '' }
+                $lines += "- [${link.name}]($($link.url))$suffix"
               }
-              if ($links.Count -gt 0) {
-                $lines += '### Download Links (expire ~1 hour)'
-                foreach ($link in $links) {
-                  if (-not $link) { continue }
-                  $name = if ($link.PSObject.Properties['name']) { $link.name } else { $null }
-                  $url  = if ($link.PSObject.Properties['url']) { $link.url } else { $null }
-                  if (-not $name -or -not $url) { continue }
-                  $size = $null
-                  if ($link.PSObject.Properties['size'] -and $link.size -ne $null) {
-                    try { $size = [math]::Round(($link.size/1KB), 1) } catch { $size = $null }
-                  }
-                  $suffix = if ($size) { " (${size} KB)" } else { '' }
-                  $lines += "- [$name]($url)$suffix"
-                }
-                $lines += ''
-              }
+              $lines += ''
             }
           }
           $lines += "Artifacts: [Run $env:GITHUB_RUN_ID](https://github.com/$env:GITHUB_REPOSITORY/actions/runs/$env:GITHUB_RUN_ID)"
@@ -626,24 +459,17 @@ jobs:
           }
 
       - name: Comment with results
-        if: github.event_name == 'issue_comment' || github.event_name == 'workflow_dispatch'
-        env:
-          GH_TOKEN: ${{ github.token }}
-          PR_NUMBER: ${{ steps.pr.outputs.pr_number }}
-          SUMMARY_PATH: ${{ steps.summary.outputs.summary_path }}
-          STAGE_COUNT: ${{ steps.stage.outputs.stage_count }}
-          STAGE_STAGED: ${{ steps.stage.outputs.stage_staged }}
-          STAGE_SKIPPED: ${{ steps.stage.outputs.stage_skipped }}
-          STAGE_ALLOW_SAME_LEAF: ${{ steps.stage.outputs.stage_allow_same_leaf }}
-          STAGE_MODE_COUNTS: ${{ steps.stage.outputs.stage_mode_counts }}
-          COMPARE_MATCH: ${{ steps.compare.outputs.match_count }}
-          COMPARE_DIFF: ${{ steps.compare.outputs.diff_count }}
-          COMPARE_ERROR: ${{ steps.compare.outputs.error_count }}
-          COMPARE_SKIP: ${{ steps.compare.outputs.skip_count }}
-          ARTIFACT_LINKS: ${{ steps.collect_links.outputs.artifact_links }}
-          GITHUB_RUN_ID: ${{ github.run_id }}
-          GITHUB_REPOSITORY: ${{ github.repository }}
-          REPO_SLUG: ${{ github.repository }}
+        if: github.event_name == 'issue_comment'
+          env:
+            GH_TOKEN: ${{ github.token }}
+            PR_NUMBER: ${{ steps.pr.outputs.pr_number }}
+            SUMMARY_PATH: ${{ steps.summary.outputs.summary_path }}
+            STAGE_COUNT: ${{ steps.stage.outputs.stage_count }}
+             STAGE_SKIPPED: ${{ steps.stage.outputs.stage_skipped }}
+            ARTIFACT_LINKS: ${{ steps.collect_links.outputs.artifact_links }}
+            GITHUB_RUN_ID: ${{ github.run_id }}
+            GITHUB_REPOSITORY: ${{ github.repository }}
+            REPO_SLUG: ${{ github.repository }}
         shell: pwsh
         run: |
           Set-StrictMode -Version Latest
@@ -654,69 +480,36 @@ jobs:
           $runUrl = "https://github.com/$env:GITHUB_REPOSITORY/actions/runs/$env:GITHUB_RUN_ID"
           $summary = Get-Content $env:SUMMARY_PATH -Raw
 
-          $stageTotal = 0
-          $stageStaged = 0
-          $stageSkipped = 0
-          [void][int]::TryParse(($env:STAGE_COUNT ?? '0'), [ref]$stageTotal)
-          [void][int]::TryParse(($env:STAGE_STAGED ?? '0'), [ref]$stageStaged)
-          [void][int]::TryParse(($env:STAGE_SKIPPED ?? '0'), [ref]$stageSkipped)
-
-          $allowSameLeaf = if ($env:STAGE_ALLOW_SAME_LEAF) { $env:STAGE_ALLOW_SAME_LEAF } else { '0' }
-          $modeSummary = if ($env:STAGE_MODE_COUNTS) { $env:STAGE_MODE_COUNTS.Replace(',', ', ') } else { 'n/a' }
-
-          $compareLine = $null
-          if ($env:COMPARE_MATCH -or $env:COMPARE_DIFF -or $env:COMPARE_ERROR -or $env:COMPARE_SKIP) {
-            $compareLine = ("LVCompare results: match {0}, diff {1}, error {2}, skipped {3}" -f `
-              ($env:COMPARE_MATCH ?? '0'), ($env:COMPARE_DIFF ?? '0'), ($env:COMPARE_ERROR ?? '0'), ($env:COMPARE_SKIP ?? '0'))
-          }
-
-          if ($stageTotal -gt 0) {
+          if ([int]$env:STAGE_COUNT -gt 0) {
             $bodyLines = @(
-              "### VI Compare Staging",
+              "VI compare staging is ready (**$env:STAGE_COUNT** pair$(if ($env:STAGE_COUNT -eq '1') { '' } else { 's' })).",
               '',
-              "- Pairs staged: **$stageStaged** / $stageTotal (skipped: $stageSkipped)",
-              "- AllowSameLeaf bundles: $allowSameLeaf",
-              "- Staging modes: $modeSummary"
-            )
-            if ($compareLine) { $bodyLines += $compareLine }
-            $bodyLines += ''
-            $bodyLines += '<details><summary>Staging table</summary>'
-            $bodyLines += ''
-            $bodyLines += $summary
-            $bodyLines += ''
-            $bodyLines += '</details>'
-            $bodyLines += ''
-          } else {
-            $bodyLines = @(
-              "VI compare staging completed: no VI pairs with both base/head paths were found.",
+              $summary,
               ''
             )
-          }
-
-          if ($env:ARTIFACT_LINKS) {
-            $parsedLinks = $env:ARTIFACT_LINKS | ConvertFrom-Json
-            if ($parsedLinks) {
-              $links = @()
-              if ($parsedLinks -is [System.Collections.IEnumerable] -and -not ($parsedLinks -is [string])) {
-                $links = @($parsedLinks)
-              } else {
-                $links = @($parsedLinks)
-              }
+            if ($env:STAGE_SKIPPED -and [int]$env:STAGE_SKIPPED -gt 0) {
+              $bodyLines += "Skipped bundles: $env:STAGE_SKIPPED"
+              $bodyLines += ''
+            }
+            if ($env:ARTIFACT_LINKS) {
+              $links = $env:ARTIFACT_LINKS | ConvertFrom-Json
               if ($links.Count -gt 0) {
                 $bodyLines += 'Download links (expire ~1 hour):'
                 foreach ($link in $links) {
-                  if (-not $link) { continue }
-                  $name = if ($link.PSObject.Properties['name']) { $link.name } else { $null }
-                  $url  = if ($link.PSObject.Properties['url']) { $link.url } else { $null }
-                  if (-not $name -or -not $url) { continue }
-                  $bodyLines += "- [$name]($url)"
+                  $bodyLines += "- [${link.name}]($($link.url))"
                 }
                 $bodyLines += ''
               }
             }
+            $bodyLines += "Download artifacts from [$runUrl]($runUrl)."
+          } else {
+            $bodyLines = @(
+              'VI compare staging completed: no VI pairs with both base/head paths were found.',
+              '',
+              "Run details: [$runUrl]($runUrl)."
+            )
           }
 
-          $bodyLines += "Run details: [$runUrl]($runUrl)."
           $body = $bodyLines -join "`n"
           $repoSlug = $env:REPO_SLUG
           if (-not $repoSlug) { $repoSlug = $env:GITHUB_REPOSITORY }
