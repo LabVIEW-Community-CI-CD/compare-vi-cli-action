@@ -15,10 +15,12 @@
 - Comment `/vi-stage` on a pull request (or dispatch `pr-vi-staging.yml`) to have the automation generate a manifest with
   `tools/Get-PRVIDiffManifest.ps1`, stage the resolvable base/head pairs via `tools/Invoke-PRVIStaging.ps1`, and upload a
   zipped bundle per staged pair.
-- The workflow runs on the repository’s self-hosted Windows runner (`self-hosted, Windows, X64`) so the same LabVIEW/LVCompare
+- The workflow runs on the repository's self-hosted Windows runner (`self-hosted, Windows, X64`) so the same LabVIEW/LVCompare
   environment used in production compares is exercised during staging, and immediately launches `Invoke-LVCompare.ps1`
   against each staged pair. The capture artifacts (HTML report, `lvcompare-capture.json`, stdout/stderr) are stored under
   `vi-compare-artifacts/compare/pair-XX/` and summarised in the PR comment.
+- The staging smoke helper now commits the baked-in attribute diff under `fixtures/vi-attr/{Base,Head}.vi`, so every run
+  produces deterministic LVCompare output. Only update those fixtures when you intentionally want to change the smoke baseline.
 - The workflow only honours comments authored by repository members/collaborators. Maintainers can also run the job
   manually with `gh workflow run pr-vi-staging.yml -f pr=<number> [-f note="context"]`.
 - Outputs:
@@ -27,8 +29,12 @@
   - `vi-compare-staging` artifact (when any pairs staged) with numbered `vi-staging-XX.zip` archives. Each zip mirrors the
     staging directory returned by `Stage-CompareInputs.ps1`, so reviewers can launch LVCompare locally without hand-
     gathering source files.
-- The workflow posts a PR comment summarising the staged pairs and linking back to the run artifacts; the job summary
-  mirrors the same table. For zero staged pairs you still get a quick confirmation and run link.
+- LVCompare flags can be overridden with repository variables: `VI_STAGE_COMPARE_FLAGS_MODE` (defaults to `replace`),
+  `VI_STAGE_COMPARE_FLAGS` (newline-separated list), and `VI_STAGE_COMPARE_REPLACE_FLAGS` (boolean override).
+  The default `replace` mode removes the legacy "quiet" ignore bundle so attribute differences surface automatically.
+- The workflow posts a PR comment with a bullet summary (pairs staged/skipped, AllowSameLeaf count, mode breakdown,
+  LVCompare totals), followed by a collapsible table that mirrors the Markdown summary file. Even when no pairs stage you
+  receive a confirmation plus the run link.
 - Successful runs now add the `vi-staging-ready` label to the PR (configurable via workflow input) so reviewers can spot staged bundles at a glance. The label is removed automatically if staging finds no VI pairs or the workflow fails.
 - A dedicated smoke workflow (`Smoke VI Staging`) is available via manual dispatch; it exercises the helper end-to-end and uploads the summary artifact for traceability.
 - The summary and PR comment include direct download links for the `vi-compare-manifest` and `vi-compare-staging` artifacts (links expire after roughly one hour; rerun `/vi-stage` to refresh).
