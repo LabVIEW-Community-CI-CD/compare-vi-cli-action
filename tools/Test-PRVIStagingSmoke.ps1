@@ -122,10 +122,21 @@ function Get-VIStagingSmokeScenarios {
         Invoke-Git -Arguments @('add', 'fixtures/vi-attr/Base.vi', 'fixtures/vi-attr/Head.vi')
     }.GetNewClosure()
 
+    $attrBasePath = 'fixtures/vi-attr/attr/BaseAttr.vi'
+    $attrHeadPath = 'fixtures/vi-attr/attr/HeadAttr.vi'
+    if (-not (Test-Path -LiteralPath $attrBasePath -PathType Leaf)) {
+        throw "Attr-diff base fixture missing: $attrBasePath"
+    }
+    if (-not (Test-Path -LiteralPath $attrHeadPath -PathType Leaf)) {
+        throw "Attr-diff head fixture missing: $attrHeadPath"
+    }
+    $attrBaseBytes = [System.IO.File]::ReadAllBytes($attrBasePath)
+    $attrHeadBytes = [System.IO.File]::ReadAllBytes($attrHeadPath)
+
     $attrDiffPrep = {
         Reset-FixtureFiles -Ref $FixtureRef
-        Copy-ViContent -Source 'fixtures/vi-attr/attr/BaseAttr.vi' -Destination 'fixtures/vi-attr/Base.vi'
-        Copy-ViContent -Source 'fixtures/vi-attr/attr/HeadAttr.vi' -Destination 'fixtures/vi-attr/Head.vi'
+        [System.IO.File]::WriteAllBytes('fixtures/vi-attr/Base.vi', $attrBaseBytes)
+        [System.IO.File]::WriteAllBytes('fixtures/vi-attr/Head.vi', $attrHeadBytes)
         Invoke-Git -Arguments @('add', 'fixtures/vi-attr/Base.vi', 'fixtures/vi-attr/Head.vi')
     }.GetNewClosure()
 
