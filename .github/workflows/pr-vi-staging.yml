@@ -164,6 +164,8 @@ jobs:
 
           $exportDir = Join-Path $repoRoot 'vi-staging-artifacts'
           New-Item -ItemType Directory -Path $exportDir -Force | Out-Null
+          $stagedCount = 0
+          $skippedCount = 0
 
           $counter = 1
           foreach ($entry in $results) {
@@ -175,7 +177,13 @@ jobs:
               }
               Compress-Archive -Path (Join-Path $entry.staged.Root '*') -DestinationPath $zipPath -Force
               Add-Member -InputObject $entry -NotePropertyName artifact -NotePropertyValue $zipName -Force
+              $stagedCount++
               $counter++
+            } else {
+              $skippedCount++
+              if (-not $entry.PSObject.Properties['skipReason']) {
+                Add-Member -InputObject $entry -NotePropertyName skipReason -NotePropertyValue 'No staged output generated' -Force
+              }
             }
           }
 
@@ -185,6 +193,8 @@ jobs:
           "results_path=$resultsPath" | Out-File -FilePath $Env:GITHUB_OUTPUT -Encoding utf8 -Append
           "artifact_dir=$exportDir" | Out-File -FilePath $Env:GITHUB_OUTPUT -Encoding utf8 -Append
           "stage_count=$($results.Count)" | Out-File -FilePath $Env:GITHUB_OUTPUT -Encoding utf8 -Append
+          "stage_staged=$stagedCount" | Out-File -FilePath $Env:GITHUB_OUTPUT -Encoding utf8 -Append
+          "stage_skipped=$skippedCount" | Out-File -FilePath $Env:GITHUB_OUTPUT -Encoding utf8 -Append
 
       - name: Run LVCompare on staged pairs
         id: compare
@@ -222,6 +232,9 @@ jobs:
         env:
           RESULTS_PATH: ${{ steps.stage.outputs.results_path }}
           ARTIFACTS_DIR: ${{ steps.manifest.outputs.artifacts_dir }}
+          STAGE_COUNT: ${{ steps.stage.outputs.stage_count }}
+          STAGE_STAGED: ${{ steps.stage.outputs.stage_staged }}
+          STAGE_SKIPPED: ${{ steps.stage.outputs.stage_skipped }}
         run: |
           Set-StrictMode -Version Latest
           $ErrorActionPreference = 'Stop'
@@ -251,7 +264,14 @@ jobs:
             'No VI pairs with both base/head paths were staged.' | Set-Content -LiteralPath $summaryPath -Encoding utf8
           } else {
             $lines = @()
-            $lines += ("Total staged pairs: {0}" -f $results.Count)
+            $totalPairs = $results.Count
+            $lines += ("Total manifest pairs: {0}" -f $totalPairs)
+            if ($env:STAGE_STAGED) {
+              $lines += ("Staged bundles: {0}" -f $env:STAGE_STAGED)
+            }
+            if ($env:STAGE_SKIPPED) {
+              $lines += ("Skipped bundles: {0}" -f $env:STAGE_SKIPPED)
+            }
 
             $table = @(
               '| # | Change | Base | Head | Artifact | Compare |',
@@ -423,15 +443,16 @@ jobs:
 
       - name: Comment with results
         if: github.event_name == 'issue_comment'
-        env:
-          GH_TOKEN: ${{ github.token }}
-          PR_NUMBER: ${{ steps.pr.outputs.pr_number }}
-          SUMMARY_PATH: ${{ steps.summary.outputs.summary_path }}
-          STAGE_COUNT: ${{ steps.stage.outputs.stage_count }}
-          ARTIFACT_LINKS: ${{ steps.collect_links.outputs.artifact_links }}
-          GITHUB_RUN_ID: ${{ github.run_id }}
-          GITHUB_REPOSITORY: ${{ github.repository }}
-          REPO_SLUG: ${{ github.repository }}
+          env:
+            GH_TOKEN: ${{ github.token }}
+            PR_NUMBER: ${{ steps.pr.outputs.pr_number }}
+            SUMMARY_PATH: ${{ steps.summary.outputs.summary_path }}
+            STAGE_COUNT: ${{ steps.stage.outputs.stage_count }}
+             STAGE_SKIPPED: ${{ steps.stage.outputs.stage_skipped }}
+            ARTIFACT_LINKS: ${{ steps.collect_links.outputs.artifact_links }}
+            GITHUB_RUN_ID: ${{ github.run_id }}
+            GITHUB_REPOSITORY: ${{ github.repository }}
+            REPO_SLUG: ${{ github.repository }}
         shell: pwsh
         run: |
           Set-StrictMode -Version Latest
@@ -449,6 +470,10 @@ jobs:
               $summary,
               ''
             )
+            if ($env:STAGE_SKIPPED -and [int]$env:STAGE_SKIPPED -gt 0) {
+              $bodyLines += "Skipped bundles: $env:STAGE_SKIPPED"
+              $bodyLines += ''
+            }
             if ($env:ARTIFACT_LINKS) {
               $links = $env:ARTIFACT_LINKS | ConvertFrom-Json
               if ($links.Count -gt 0) {
