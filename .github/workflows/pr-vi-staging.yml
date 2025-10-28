@@ -583,7 +583,7 @@ jobs:
           }
 
       - name: Comment with results
-        if: github.event_name == 'issue_comment'
+        if: github.event_name == 'issue_comment' || github.event_name == 'workflow_dispatch'
         env:
           GH_TOKEN: ${{ github.token }}
           PR_NUMBER: ${{ steps.pr.outputs.pr_number }}
