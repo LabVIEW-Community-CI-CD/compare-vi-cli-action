@@ -1,14 +1,15 @@
 Describe 'Run-StagedLVCompare.ps1' -Tag 'Unit' {
-    $repoRoot = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path
-    $scriptPath = Join-Path $repoRoot 'tools' 'Run-StagedLVCompare.ps1'
-
     BeforeAll {
+        $script:repoRoot = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path
+        $script:scriptPath = Join-Path $script:repoRoot 'tools' 'Run-StagedLVCompare.ps1'
         $script:originalLocation = Get-Location
-        Set-Location $repoRoot
+        Set-Location $script:repoRoot
     }
 
     AfterAll {
-        Set-Location $script:originalLocation
+        if ($script:originalLocation) {
+            Set-Location $script:originalLocation
+        }
     }
 
     AfterEach {
@@ -51,7 +52,9 @@ Describe 'Run-StagedLVCompare.ps1' -Tag 'Unit' {
                 [string]$HeadVi,
                 [string]$OutputDir,
                 [switch]$AllowSameLeaf,
-                [switch]$RenderReport
+                [switch]$RenderReport,
+                [string[]]$Flags,
+                [switch]$ReplaceFlags
             )
             $call = [pscustomobject]@{
                 Base         = $BaseVi
@@ -60,7 +63,7 @@ Describe 'Run-StagedLVCompare.ps1' -Tag 'Unit' {
                 AllowSameLeaf= $AllowSameLeaf.IsPresent
                 RenderReport = $RenderReport.IsPresent
             }
-            $using:invokeCalls.Add($call) | Out-Null
+            $null = $invokeCalls.Add($call)
             New-Item -ItemType Directory -Path $OutputDir -Force | Out-Null
             $capturePath = Join-Path $OutputDir 'lvcompare-capture.json'
             $reportPath  = Join-Path $OutputDir 'compare-report.html'
@@ -76,7 +79,7 @@ Describe 'Run-StagedLVCompare.ps1' -Tag 'Unit' {
         $outputFile = Join-Path $TestDrive 'outputs.txt'
         $env:GITHUB_OUTPUT = $outputFile
 
-        & $scriptPath -ResultsPath $resultsPath -ArtifactsDir $artifactsDir -RenderReport -InvokeLVCompare $invoke
+        & $script:scriptPath -ResultsPath $resultsPath -ArtifactsDir $artifactsDir -RenderReport -InvokeLVCompare $invoke
 
         $updated = @(Get-Content -LiteralPath $resultsPath -Raw | ConvertFrom-Json)
         $entry = $updated[0]
@@ -133,7 +136,11 @@ Describe 'Run-StagedLVCompare.ps1' -Tag 'Unit' {
             param(
                 [string]$BaseVi,
                 [string]$HeadVi,
-                [string]$OutputDir
+                [string]$OutputDir,
+                [switch]$AllowSameLeaf,
+                [switch]$RenderReport,
+                [string[]]$Flags,
+                [switch]$ReplaceFlags
             )
             New-Item -ItemType Directory -Path $OutputDir -Force | Out-Null
             return [pscustomobject]@{
@@ -144,7 +151,7 @@ Describe 'Run-StagedLVCompare.ps1' -Tag 'Unit' {
         $outputFile = Join-Path $TestDrive 'outputs2.txt'
         $env:GITHUB_OUTPUT = $outputFile
 
-        & $scriptPath -ResultsPath $resultsPath -ArtifactsDir $artifactsDir -InvokeLVCompare $invoke
+        & $script:scriptPath -ResultsPath $resultsPath -ArtifactsDir $artifactsDir -InvokeLVCompare $invoke
 
         $updated = @(Get-Content -LiteralPath $resultsPath -Raw | ConvertFrom-Json)
         $updated[0].compare.status | Should -Be 'diff'
@@ -188,15 +195,25 @@ Describe 'Run-StagedLVCompare.ps1' -Tag 'Unit' {
             param(
                 [string]$BaseVi,
                 [string]$HeadVi,
-                [string]$OutputDir
+                [string]$OutputDir,
+                [switch]$AllowSameLeaf,
+                [switch]$RenderReport,
+                [string[]]$Flags,
+                [switch]$ReplaceFlags
             )
             return [pscustomobject]@{
                 ExitCode = 2
             }
         }.GetNewClosure()
 
-        { & $scriptPath -ResultsPath $resultsPath -ArtifactsDir $artifactsDir -InvokeLVCompare $invoke } |
-            Should -Throw -ErrorMessage '*LVCompare reported failures*'
+        $caughtError = $null
+        try {
+            & $script:scriptPath -ResultsPath $resultsPath -ArtifactsDir $artifactsDir -InvokeLVCompare $invoke
+        } catch {
+            $caughtError = $_
+        }
+        $caughtError | Should -Not -BeNullOrEmpty
+        $caughtError.Exception.Message | Should -Match 'LVCompare reported failures'
     }
 
     It 'passes replace flags and custom flags to Invoke-LVCompare' {
@@ -233,17 +250,17 @@ Describe 'Run-StagedLVCompare.ps1' -Tag 'Unit' {
                 [string[]]$Flags,
                 [switch]$ReplaceFlags
             )
-            $invokeCalls.Add([pscustomobject]@{
+            $null = $invokeCalls.Add([pscustomobject]@{
                 Flags        = $Flags
                 ReplaceFlags = $ReplaceFlags.IsPresent
-            }) | Out-Null
+            })
             New-Item -ItemType Directory -Path $OutputDir -Force | Out-Null
             return [pscustomobject]@{
                 ExitCode = 0
             }
         }.GetNewClosure()
 
-        & $scriptPath -ResultsPath $resultsPath -ArtifactsDir $artifactsDir -ReplaceFlags -Flags @('-nobd','-nobdcosm') -InvokeLVCompare $invoke
+        & $script:scriptPath -ResultsPath $resultsPath -ArtifactsDir $artifactsDir -ReplaceFlags -Flags @('-nobd','-nobdcosm') -InvokeLVCompare $invoke
 
         $invokeCalls.Count | Should -Be 1
         $invokeCalls[0].ReplaceFlags | Should -BeTrue
@@ -287,17 +304,17 @@ Describe 'Run-StagedLVCompare.ps1' -Tag 'Unit' {
                 [string[]]$Flags,
                 [switch]$ReplaceFlags
             )
-            $invokeCalls.Add([pscustomobject]@{
+            $null = $invokeCalls.Add([pscustomobject]@{
                 Flags        = $Flags
                 ReplaceFlags = $ReplaceFlags.IsPresent
-            }) | Out-Null
+            })
             New-Item -ItemType Directory -Path $OutputDir -Force | Out-Null
             return [pscustomobject]@{
                 ExitCode = 0
             }
         }.GetNewClosure()
 
-        & $scriptPath -ResultsPath $resultsPath -ArtifactsDir $artifactsDir -InvokeLVCompare $invoke
+        & $script:scriptPath -ResultsPath $resultsPath -ArtifactsDir $artifactsDir -InvokeLVCompare $invoke
 
         $invokeCalls.Count | Should -Be 1
         $invokeCalls[0].ReplaceFlags | Should -BeTrue
@@ -341,20 +358,23 @@ Describe 'Run-StagedLVCompare.ps1' -Tag 'Unit' {
                 [string[]]$Flags,
                 [switch]$ReplaceFlags
             )
-            $invokeCalls.Add([pscustomobject]@{
+            $null = $invokeCalls.Add([pscustomobject]@{
                 Flags        = $Flags
                 ReplaceFlags = $ReplaceFlags.IsPresent
-            }) | Out-Null
+            })
             New-Item -ItemType Directory -Path $OutputDir -Force | Out-Null
             return [pscustomobject]@{
                 ExitCode = 0
             }
         }.GetNewClosure()
 
-        & $scriptPath -ResultsPath $resultsPath -ArtifactsDir $artifactsDir -InvokeLVCompare $invoke
+        & $script:scriptPath -ResultsPath $resultsPath -ArtifactsDir $artifactsDir -InvokeLVCompare $invoke
 
         $invokeCalls.Count | Should -Be 1
         $invokeCalls[0].ReplaceFlags | Should -BeTrue
         $invokeCalls[0].Flags | Should -BeNullOrEmpty
     }
 }
+
+
+

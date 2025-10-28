@@ -107,7 +107,7 @@ if ([string]::IsNullOrWhiteSpace($raw)) {
 try {
     $results = $raw | ConvertFrom-Json -ErrorAction Stop
 } catch {
-    throw "Unable to parse staging results JSON at $ResultsPath: $($_.Exception.Message)"
+    throw ("Unable to parse staging results JSON at {0}: {1}" -f $ResultsPath, $_.Exception.Message)
 }
 
 if (-not $results) {
