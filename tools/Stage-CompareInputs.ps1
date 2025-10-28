@@ -165,9 +165,7 @@ $finalBaseLeaf = Split-Path -Leaf $stagedBase
 $finalHeadLeaf = Split-Path -Leaf $stagedHead
 $allowSameLeaf =
   ($finalBaseLeaf -and $finalHeadLeaf -and
-   [string]::Equals($finalBaseLeaf, $finalHeadLeaf, [System.StringComparison]::OrdinalIgnoreCase) -and
-   -not ([string]::Equals($finalBaseLeaf, 'Base.vi', [System.StringComparison]::OrdinalIgnoreCase)) -and
-   -not ([string]::Equals($finalHeadLeaf, 'Head.vi', [System.StringComparison]::OrdinalIgnoreCase)))
+   [string]::Equals($finalBaseLeaf, $finalHeadLeaf, [System.StringComparison]::OrdinalIgnoreCase))
 
 return [pscustomobject]@{
   Base = (Resolve-Path -LiteralPath $stagedBase).Path
