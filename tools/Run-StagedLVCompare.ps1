@@ -143,7 +143,7 @@ if (-not $InvokeLVCompare) {
 
         $args = @(
             '-NoLogo', '-NoProfile',
-            '-File', $using:invokeScript,
+            '-File', $invokeScript,
             '-BaseVi', $BaseVi,
             '-HeadVi', $HeadVi,
             '-OutputDir', $OutputDir,
@@ -180,6 +180,7 @@ foreach ($entry in $results) {
         outputDir  = $null
         capturePath= $null
         reportPath = $null
+        allowSameLeaf = $false
     }
 
     $hasStaging =
@@ -213,6 +214,19 @@ foreach ($entry in $results) {
                     $allowSameLeafRequested = $true
                 }
             } catch {}
+        }
+
+        if (-not $allowSameLeafRequested) {
+            $stagedBaseLeaf = try { Split-Path -Leaf $entry.staged.Base } catch { $null }
+            $stagedHeadLeaf = try { Split-Path -Leaf $entry.staged.Head } catch { $null }
+            if ($stagedBaseLeaf -and $stagedHeadLeaf -and
+                [string]::Equals($stagedBaseLeaf, $stagedHeadLeaf, [System.StringComparison]::OrdinalIgnoreCase)) {
+                $invokeParams.AllowSameLeaf = $true
+                $allowSameLeafRequested = $true
+            }
+        }
+        if ($allowSameLeafRequested) {
+            $compareInfo.allowSameLeaf = $true
         }
 
         Write-Host ("[compare] Running LVCompare for pair {0}: Base={1} Head={2}" -f $index, $entry.basePath, $entry.headPath)
@@ -280,6 +294,7 @@ foreach ($entry in $results) {
         outputDir  = $compareInfo.outputDir
         capturePath= $compareInfo.capturePath
         reportPath = $compareInfo.reportPath
+        allowSameLeaf = $allowSameLeafRequested
     })
 
     $index++

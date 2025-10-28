@@ -73,6 +73,7 @@ param(
   [string]$LVComparePath,
   [string[]]$Flags,
   [switch]$ReplaceFlags,
+  [switch]$AllowSameLeaf,
     [string]$OutputDir = 'tests/results/single-compare',
     [switch]$RenderReport,
     [ValidateSet('html','xml','text')]
@@ -421,7 +422,9 @@ function Invoke-LabVIEWCLICompare {
       try { $baseResolved = (Resolve-Path -LiteralPath $stagingInfo.Base -ErrorAction Stop).Path } catch { $baseResolved = $stagingInfo.Base }
       try { $headResolved = (Resolve-Path -LiteralPath $stagingInfo.Head -ErrorAction Stop).Path } catch { $headResolved = $stagingInfo.Head }
       if ($stagingInfo.PSObject.Properties['AllowSameLeaf']) {
-        try { $stageAllowSameLeaf = [bool]$stagingInfo.AllowSameLeaf } catch { $stageAllowSameLeaf = $false }
+        $allowSameLeafValue = $false
+        try { $allowSameLeafValue = [bool]$stagingInfo.AllowSameLeaf } catch { $allowSameLeafValue = $false }
+        if ($allowSameLeafValue) { $stageAllowSameLeaf = $true }
       }
       $baseLeaf = Split-Path -Leaf $baseResolved
       $headLeaf = Split-Path -Leaf $headResolved
@@ -636,7 +639,7 @@ $baseResolvedForStage = $null
 $headResolvedForStage = $null
 try { $baseResolvedForStage = (Resolve-Path -LiteralPath $BaseVi -ErrorAction Stop).Path } catch {}
 try { $headResolvedForStage = (Resolve-Path -LiteralPath $HeadVi -ErrorAction Stop).Path } catch {}
-$stageAllowSameLeafOuter = $false
+$stageAllowSameLeafOuter = $AllowSameLeaf.IsPresent
 if ($baseResolvedForStage -and $headResolvedForStage -and $baseResolvedForStage -ne $headResolvedForStage) {
   $baseLeafStage = Split-Path -Leaf $baseResolvedForStage
   $headLeafStage = Split-Path -Leaf $headResolvedForStage
@@ -655,7 +658,9 @@ if ($baseResolvedForStage -and $headResolvedForStage -and $baseResolvedForStage 
     try { $BaseVi = (Resolve-Path -LiteralPath $stagingInfo.Base -ErrorAction Stop).Path } catch { $BaseVi = $stagingInfo.Base }
     try { $HeadVi = (Resolve-Path -LiteralPath $stagingInfo.Head -ErrorAction Stop).Path } catch { $HeadVi = $stagingInfo.Head }
     if ($stagingInfo.PSObject.Properties['AllowSameLeaf']) {
-      try { $stageAllowSameLeafOuter = [bool]$stagingInfo.AllowSameLeaf } catch { $stageAllowSameLeafOuter = $false }
+      $allowSameLeafValueOuter = $false
+      try { $allowSameLeafValueOuter = [bool]$stagingInfo.AllowSameLeaf } catch { $allowSameLeafValueOuter = $false }
+      if ($allowSameLeafValueOuter) { $stageAllowSameLeafOuter = $true }
     }
   }
 }
