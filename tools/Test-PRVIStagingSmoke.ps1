@@ -123,11 +123,13 @@ function Get-VIStagingSmokeScenarios {
     if (-not (Test-Path -LiteralPath $vi2HeadFixture -PathType Leaf)) {
         throw "Block-diagram head fixture missing: $vi2HeadFixture"
     }
+    $vi2BaseBytes = [System.IO.File]::ReadAllBytes($vi2BaseFixture)
+    $vi2HeadBytes = [System.IO.File]::ReadAllBytes($vi2HeadFixture)
 
     $vi2DiffPrep = {
         Reset-FixtureFiles -Ref $FixtureRef
-        Copy-ViContent -Source $vi2BaseFixture -Destination 'fixtures/vi-attr/Base.vi'
-        Copy-ViContent -Source $vi2HeadFixture -Destination 'fixtures/vi-attr/Head.vi'
+        [System.IO.File]::WriteAllBytes('fixtures/vi-attr/Base.vi', $vi2BaseBytes)
+        [System.IO.File]::WriteAllBytes('fixtures/vi-attr/Head.vi', $vi2HeadBytes)
         Invoke-Git -Arguments @('add', 'fixtures/vi-attr/Base.vi', 'fixtures/vi-attr/Head.vi')
     }.GetNewClosure()
 
