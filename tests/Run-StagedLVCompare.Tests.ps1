@@ -109,6 +109,62 @@ Describe 'Run-StagedLVCompare.ps1' -Tag 'Unit' {
         $outputMap['skip_count'] | Should -Be '0'
     }
 
+    It 'forces AllowSameLeaf when staged leaf names are identical' {
+        $resultsPath = Join-Path $TestDrive 'vi-sameleaf-results.json'
+        $artifactsDir = Join-Path $TestDrive 'artifacts'
+        New-Item -ItemType Directory -Path $artifactsDir -Force | Out-Null
+
+        $stagedBase = Join-Path $TestDrive 'mirror\base\vi-attr\Base.vi'
+        $stagedHead = Join-Path $TestDrive 'mirror\head\vi-attr\Base.vi'
+        New-Item -ItemType Directory -Path (Split-Path $stagedBase -Parent) -Force | Out-Null
+        New-Item -ItemType Directory -Path (Split-Path $stagedHead -Parent) -Force | Out-Null
+        Set-Content -LiteralPath $stagedBase -Value 'base'
+        Set-Content -LiteralPath $stagedHead -Value 'head'
+
+        @(
+            [ordered]@{
+                changeType = 'modify'
+                basePath   = 'fixtures/vi-attr/Base.vi'
+                headPath   = 'fixtures/vi-attr/Base.vi'
+                staged     = [ordered]@{
+                    Base         = $stagedBase
+                    Head         = $stagedHead
+                    AllowSameLeaf= $false
+                }
+            }
+        ) | ConvertTo-Json -Depth 6 | Set-Content -LiteralPath $resultsPath -Encoding utf8
+
+        $invokeCalls = New-Object System.Collections.Generic.List[object]
+        $invoke = {
+            param(
+                [string]$BaseVi,
+                [string]$HeadVi,
+                [string]$OutputDir,
+                [switch]$AllowSameLeaf,
+                [switch]$RenderReport,
+                [string[]]$Flags,
+                [switch]$ReplaceFlags
+            )
+            $invokeCalls.Add([pscustomobject]@{
+                Base         = $BaseVi
+                Head         = $HeadVi
+                AllowSameLeaf= $AllowSameLeaf.IsPresent
+            }) | Out-Null
+            New-Item -ItemType Directory -Path $OutputDir -Force | Out-Null
+            return [pscustomobject]@{
+                ExitCode = 0
+            }
+        }.GetNewClosure()
+
+        & $script:scriptPath -ResultsPath $resultsPath -ArtifactsDir $artifactsDir -InvokeLVCompare $invoke
+
+        $invokeCalls.Count | Should -Be 1
+        $invokeCalls[0].AllowSameLeaf | Should -BeTrue
+
+        $updated = @(Get-Content -LiteralPath $resultsPath -Raw | ConvertFrom-Json)
+        $updated[0].compare.allowSameLeaf | Should -BeTrue
+    }
+
     It 'marks diff when LVCompare exits 1' {
         $resultsPath = Join-Path $TestDrive 'results.json'
         $artifactsDir = Join-Path $TestDrive 'artifacts'
