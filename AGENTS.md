@@ -61,7 +61,10 @@ line buffers).
 - Integration: `./Invoke-PesterTests.ps1 -IntegrationMode include`
 - Custom paths: `./Invoke-PesterTests.ps1 -TestsPath tests -ResultsPath tests/results`
 - Pattern filter: `./Invoke-PesterTests.ps1 -IncludePatterns 'CompareVI.*'`
-- Quick smoke: `./tools/Quick-DispatcherSmoke.ps1 -Keep`
+- Staging smoke:
+  - `pwsh -File tools/Test-PRVIStagingSmoke.ps1 -DryRun` (plan only)
+  - `npm run smoke:vi-stage` (full run; uses fixtures/vi-attr for a baked-in VI attribute diff)
+  Both flows post artifact links and the updated PR summary comment.
 - Containerized non-LV checks: `pwsh -File tools/Run-NonLVChecksInDocker.ps1`
 - Compare harnesses default to headless CLI runs (`LVCI_COMPARE_POLICY=cli-only`). Override with `lv-only` only when you
   explicitly need the LVCompare UI; otherwise leave it unset to avoid prompts and stuck LabVIEW instances.
@@ -145,7 +148,7 @@ line buffers).
 - Canonical required-status mapping lives in `tools/policy/branch-required-checks.json` (hash = contract digest).
 - `tools/Update-SessionIndexBranchProtection.ps1` injects the verification block into `session-index.json` and emits a
   step-summary entry.
-- When running smoke tests locally:
+- When validating Branch Protection locally:
 
   ```powershell
   pwsh -File tools/Quick-DispatcherSmoke.ps1 -PreferWorkspace -ResultsPath .tmp/sessionindex
@@ -153,6 +156,8 @@ line buffers).
     -PolicyPath tools/policy/branch-required-checks.json `
     -Branch (git branch --show-current)
   ```
+
+Staging smoke runs use the dedicated helper (`Test-PRVIStagingSmoke.ps1`) so staged VI bundles and LVCompare outputs are exercised end-to-end.
 
 - Confirm `session-index.json` contains `branchProtection.result.status = "ok"`; mismatches should be logged in
   `branchProtection.notes`.
@@ -305,4 +310,6 @@ Guidance:
 - For markdownlint, try `Resolve-MarkdownlintCli2Path`; only fall back to `npx --no-install` when necessary.
 - For LVCompare, continue to enforce the canonical path; pass `-lvpath` to LVCompare and never launch `LabVIEW.exe`.
 - Do not lint or link-check vendor documentation under `bin/`; scope link checks to `docs/` or ignore `bin/**`.
+
+
 
