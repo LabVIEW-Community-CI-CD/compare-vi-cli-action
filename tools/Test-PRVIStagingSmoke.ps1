@@ -151,6 +151,41 @@ function Get-VIStagingSmokeScenarios {
         Invoke-Git -Arguments @('add', 'fixtures/vi-attr/Base.vi', 'fixtures/vi-attr/Head.vi')
     }.GetNewClosure()
 
+    $fpCosmeticPrep = {
+        Reset-FixtureFiles -Ref $FixtureRef
+        Copy-ViContent -Source 'fixtures/vi-stage/fp-cosmetic/Base.vi' -Destination 'fixtures/vi-attr/Base.vi'
+        Copy-ViContent -Source 'fixtures/vi-stage/fp-cosmetic/Head.vi' -Destination 'fixtures/vi-attr/Head.vi'
+        Invoke-Git -Arguments @('add', 'fixtures/vi-attr/Base.vi', 'fixtures/vi-attr/Head.vi')
+    }.GetNewClosure()
+
+    $connectorPanePrep = {
+        Reset-FixtureFiles -Ref $FixtureRef
+        Copy-ViContent -Source 'fixtures/vi-stage/connector-pane/Base.vi' -Destination 'fixtures/vi-attr/Base.vi'
+        Copy-ViContent -Source 'fixtures/vi-stage/connector-pane/Head.vi' -Destination 'fixtures/vi-attr/Head.vi'
+        Invoke-Git -Arguments @('add', 'fixtures/vi-attr/Base.vi', 'fixtures/vi-attr/Head.vi')
+    }.GetNewClosure()
+
+    $bdCosmeticPrep = {
+        Reset-FixtureFiles -Ref $FixtureRef
+        Copy-ViContent -Source 'fixtures/vi-stage/bd-cosmetic/Base.vi' -Destination 'fixtures/vi-attr/Base.vi'
+        Copy-ViContent -Source 'fixtures/vi-stage/bd-cosmetic/Head.vi' -Destination 'fixtures/vi-attr/Head.vi'
+        Invoke-Git -Arguments @('add', 'fixtures/vi-attr/Base.vi', 'fixtures/vi-attr/Head.vi')
+    }.GetNewClosure()
+
+    $controlRenamePrep = {
+        Reset-FixtureFiles -Ref $FixtureRef
+        Copy-ViContent -Source 'fixtures/vi-stage/control-rename/Base.vi' -Destination 'fixtures/vi-attr/Base.vi'
+        Copy-ViContent -Source 'fixtures/vi-stage/control-rename/Head.vi' -Destination 'fixtures/vi-attr/Head.vi'
+        Invoke-Git -Arguments @('add', 'fixtures/vi-attr/Base.vi', 'fixtures/vi-attr/Head.vi')
+    }.GetNewClosure()
+
+    $fpWindowPrep = {
+        Reset-FixtureFiles -Ref $FixtureRef
+        Copy-ViContent -Source 'fixtures/vi-stage/fp-window/Base.vi' -Destination 'fixtures/vi-attr/Base.vi'
+        Copy-ViContent -Source 'fixtures/vi-stage/fp-window/Head.vi' -Destination 'fixtures/vi-attr/Head.vi'
+        Invoke-Git -Arguments @('add', 'fixtures/vi-attr/Base.vi', 'fixtures/vi-attr/Head.vi')
+    }.GetNewClosure()
+
     return @(
         [ordered]@{
             Name          = 'no-diff'
@@ -172,6 +207,41 @@ function Get-VIStagingSmokeScenarios {
             Expectation   = 'diff'
             CommitMessage = 'chore: synthetic VI attribute diff for staging smoke'
             Prepare       = $attrDiffPrep
+        },
+        [ordered]@{
+            Name          = 'fp-cosmetic'
+            Description   = 'Stage fp-cosmetic fixture pair to exercise front panel cosmetic differences.'
+            Expectation   = 'diff'
+            CommitMessage = 'chore: synthetic VI front panel cosmetic diff for staging smoke'
+            Prepare       = $fpCosmeticPrep
+        },
+        [ordered]@{
+            Name          = 'connector-pane'
+            Description   = 'Stage connector-pane fixture pair to exercise connector pane wiring differences.'
+            Expectation   = 'diff'
+            CommitMessage = 'chore: synthetic VI connector pane diff for staging smoke'
+            Prepare       = $connectorPanePrep
+        },
+        [ordered]@{
+            Name          = 'bd-cosmetic'
+            Description   = 'Stage bd-cosmetic fixture pair to exercise block diagram cosmetic differences.'
+            Expectation   = 'diff'
+            CommitMessage = 'chore: synthetic VI block diagram cosmetic diff for staging smoke'
+            Prepare       = $bdCosmeticPrep
+        },
+        [ordered]@{
+            Name          = 'control-rename'
+            Description   = 'Stage control-rename fixture pair to exercise front panel control rename differences.'
+            Expectation   = 'diff'
+            CommitMessage = 'chore: synthetic VI control rename diff for staging smoke'
+            Prepare       = $controlRenamePrep
+        },
+        [ordered]@{
+            Name          = 'fp-window'
+            Description   = 'Stage fp-window fixture pair to exercise front panel window sizing differences.'
+            Expectation   = 'diff'
+            CommitMessage = 'chore: synthetic VI window size diff for staging smoke'
+            Prepare       = $fpWindowPrep
         }
     )
 }
