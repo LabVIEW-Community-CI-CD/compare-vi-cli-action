@@ -24,6 +24,11 @@ Quick reference for building, testing, and releasing the LVCompare composite act
       - `keep_branch`: set to `true` when you want to inspect the synthetic scratch PR afterward; keep `false` for normal sweeps so the helper cleans up.
     - Requires `GH_TOKEN`/`GITHUB_TOKEN` with push + workflow scopes. Locally, populate `$env:GH_TOKEN` (for example from `C:\github_token.txt`) before running `tools/Test-PRVIStagingSmoke.ps1`.
     - Successful runs upload `tests/results/_agent/smoke/vi-stage/smoke-*.json` summaries and assert the scratch PR carries the `vi-staging-ready` label.
+    - Compare flags: the staging helper honours `VI_STAGE_COMPARE_FLAGS_MODE` (default `replace`) and
+      `VI_STAGE_COMPARE_FLAGS` repository variables. The default `replace` mode clears the quiet bundle so LVCompare
+      reports include VI Attribute differences. Set the mode to `append` to keep the quiet bundle, and provide
+      newline-separated entries in `VI_STAGE_COMPARE_FLAGS` (for example `-nobd`) when you want to add explicit flags.
+      `VI_STAGE_COMPARE_REPLACE_FLAGS` accepts `true`/`false` to override the mode for a single run when needed.
 
  â†’ telemetry snapshot
   - `tools/Watch-Pester.ps1` â†’ file watcher / retry loop
