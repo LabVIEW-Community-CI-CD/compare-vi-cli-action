@@ -280,6 +280,34 @@ if ([string]::IsNullOrWhiteSpace($originalFlagsMode)) {
     $restoreFlagsMode = $true
 }
 
+$metadataHelperPath = Join-Path (Get-Location) 'tools' 'Get-VICompareMetadata.ps1'
+$metadataHelperContent = $null
+if (Test-Path -LiteralPath $metadataHelperPath -PathType Leaf) {
+    $metadataHelperContent = Get-Content -LiteralPath $metadataHelperPath -Raw
+} else {
+    Write-Warning "Optional metadata helper not found at $metadataHelperPath; pre-compare metadata will be skipped."
+}
+$metadataInvoker = {
+    param(
+        [string]$BaseVi,
+        [string]$HeadVi,
+        [string]$MetadataPath,
+        [string]$HelperContent
+    )
+    if (-not $HelperContent) { return $null }
+    $tempPath = Join-Path ([System.IO.Path]::GetTempPath()) ("Get-VICompareMetadata-{0}.ps1" -f ([Guid]::NewGuid().ToString('N')))
+    try {
+        Set-Content -LiteralPath $tempPath -Value $HelperContent -Encoding utf8
+        return & pwsh -NoLogo -NoProfile -File $tempPath `
+            -BaseVi $BaseVi `
+            -HeadVi $HeadVi `
+            -OutputPath $MetadataPath `
+            -ReplaceFlags
+    } finally {
+        Remove-Item -LiteralPath $tempPath -ErrorAction SilentlyContinue
+    }
+}.GetNewClosure()
+
 Write-Host "Branch prefix: $branchPrefix"
 
 if ($DryRun) {
@@ -340,19 +368,18 @@ try {
 
         & $scenario.Prepare
 
+        $metadata = $null
         try {
-            $metadataScript = Join-Path (Get-Location) 'tools' 'Get-VICompareMetadata.ps1'
-            if (-not (Test-Path -LiteralPath $metadataScript -PathType Leaf)) {
-                throw "Get-VICompareMetadata.ps1 not found at $metadataScript"
-            }
-            $metadata = & pwsh -NoLogo -NoProfile -File $metadataScript `
+            $metadata = & $metadataInvoker `
                 -BaseVi (Join-Path 'fixtures' 'vi-attr' 'Base.vi') `
                 -HeadVi (Join-Path 'fixtures' 'vi-attr' 'Head.vi') `
-                -OutputPath $scenarioMetadataPath `
-                -ReplaceFlags
-            $scenarioCtx | Add-Member -NotePropertyName Metadata -NotePropertyValue $metadata -Force
+                -MetadataPath $scenarioMetadataPath `
+                -HelperContent $metadataHelperContent
         } catch {
             Write-Warning ("Failed to capture pre-compare metadata for scenario '{0}': {1}" -f $scenarioName, $_.Exception.Message)
+        }
+        if ($metadata) {
+            $scenarioCtx | Add-Member -NotePropertyName Metadata -NotePropertyValue $metadata -Force
         }
 
         Invoke-Git -Arguments @('commit', '-m', $scenario.CommitMessage)
