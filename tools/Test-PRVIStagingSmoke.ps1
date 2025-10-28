@@ -115,15 +115,20 @@ function Get-VIStagingSmokeScenarios {
         Invoke-Git -Arguments @('add', 'fixtures/vi-attr/Base.vi')
     }.GetNewClosure()
 
-    $vi2FixturePath = 'tmp-commit-236ffab/VI2.vi'
-    if (-not (Test-Path -LiteralPath $vi2FixturePath -PathType Leaf)) {
-        throw "Block-diagram diff fixture missing: $vi2FixturePath"
+    $vi2BaseFixture = 'tmp-commit-236ffab/VI1.vi'
+    $vi2HeadFixture = 'tmp-commit-236ffab/VI2.vi'
+    if (-not (Test-Path -LiteralPath $vi2BaseFixture -PathType Leaf)) {
+        throw "Block-diagram base fixture missing: $vi2BaseFixture"
+    }
+    if (-not (Test-Path -LiteralPath $vi2HeadFixture -PathType Leaf)) {
+        throw "Block-diagram head fixture missing: $vi2HeadFixture"
     }
 
     $vi2DiffPrep = {
         Reset-FixtureFiles -Ref $FixtureRef
-        Copy-ViContent -Source $vi2FixturePath -Destination 'fixtures/vi-attr/Head.vi'
-        Invoke-Git -Arguments @('add', 'fixtures/vi-attr/Head.vi')
+        Copy-ViContent -Source $vi2BaseFixture -Destination 'fixtures/vi-attr/Base.vi'
+        Copy-ViContent -Source $vi2HeadFixture -Destination 'fixtures/vi-attr/Head.vi'
+        Invoke-Git -Arguments @('add', 'fixtures/vi-attr/Base.vi', 'fixtures/vi-attr/Head.vi')
     }.GetNewClosure()
 
     $attrBasePath = 'fixtures/vi-attr/attr/BaseAttr.vi'
@@ -154,7 +159,7 @@ function Get-VIStagingSmokeScenarios {
         },
         [ordered]@{
             Name          = 'vi2-diff'
-            Description   = 'Copy repository VI2.vi onto Head.vi for a block diagram cosmetic diff.'
+            Description   = 'Copy tracked fixtures tmp-commit-236ffab/{VI1,VI2}.vi onto Base.vi/Head.vi for a block diagram cosmetic diff.'
             Expectation   = 'diff'
             CommitMessage = 'chore: synthetic VI diff for staging smoke'
             Prepare       = $vi2DiffPrep

@@ -30,7 +30,7 @@ Quick reference for building, testing, and releasing the LVCompare composite act
       | Scenario  | Fixture prep                                                                 | Expected LVCompare |
       |-----------|------------------------------------------------------------------------------|--------------------|
       | `no-diff` | Copy `fixtures/vi-attr/Head.vi` onto `Base.vi`                               | match              |
-      | `vi2-diff`| Copy tracked fixture `tmp-commit-236ffab/VI2.vi` onto `fixtures/vi-attr/Head.vi` (block diagram cosmetic diff) | diff |
+      | `vi2-diff`| Copy tracked fixtures `tmp-commit-236ffab/{VI1,VI2}.vi` onto `fixtures/vi-attr/{Base,Head}.vi` (block diagram cosmetic diff) | diff |
       | `attr-diff` | Stage the baked attribute fixtures `fixtures/vi-attr/attr/{BaseAttr,HeadAttr}.vi` | diff               |
 
       Update those fixtures only when you intentionally want to change the smoke baseline; the helper writes their bytes into the scenario prep blocks for deterministic runs.

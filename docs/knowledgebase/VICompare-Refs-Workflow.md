@@ -24,7 +24,7 @@
   | Scenario | Fixture prep | Expected LVCompare |
   |----------|--------------|--------------------|
   | `no-diff` | Copy `fixtures/vi-attr/Head.vi` onto `Base.vi` | match |
-  | `vi2-diff` | Copy tracked fixture `tmp-commit-236ffab/VI2.vi` onto `fixtures/vi-attr/Head.vi` (block diagram cosmetic diff) | diff |
+  | `vi2-diff` | Copy tracked fixtures `tmp-commit-236ffab/{VI1,VI2}.vi` onto `fixtures/vi-attr/{Base,Head}.vi` (block diagram cosmetic diff) | diff |
   | `attr-diff` | Stage the attribute fixtures `fixtures/vi-attr/attr/{BaseAttr,HeadAttr}.vi` | diff |
 
   The attribute fixtures live alongside the baseline set so we can keep the scenario data in-source without editing binaries in place. Update them only when you intend to change the smoke baseline.
