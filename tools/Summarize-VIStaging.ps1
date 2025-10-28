@@ -156,7 +156,7 @@ function Build-MarkdownTable {
             '—'
         }
 
-        $pairLabel = ('#{0} ({1})' -f $pair.index, $pair.changeType)
+        $pairLabel = ('Pair {0} ({1})' -f $pair.index, $pair.changeType)
         $rows += ('| {0} | {1} | {2} | {3} | {4} |' -f $pairLabel, $statusIcon, $categories, $included, $reportLink)
     }
 
