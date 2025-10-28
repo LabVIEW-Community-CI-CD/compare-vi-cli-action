@@ -323,12 +323,14 @@ try {
 
         $scenarioNote = "$note [$scenarioName]"
         $scenarioSummaryPath = Join-Path $resultsDir ("smoke-{0}-{1}.json" -f $timestamp, $scenarioName)
+        $scenarioMetadataPath = Join-Path $resultsDir ("smoke-{0}-{1}-metadata.json" -f $timestamp, $scenarioName)
 
         $scenarioCtx = [pscustomobject]@{
             Branch      = $scenarioBranch
             Scenario    = $scenarioName
             Note        = $scenarioNote
             SummaryPath = $scenarioSummaryPath
+            MetadataPath= $scenarioMetadataPath
             PrNumber    = $null
             PrUrl       = $null
             RunId       = $null
@@ -337,6 +339,21 @@ try {
         $scenarioContexts.Add($scenarioCtx) | Out-Null
 
         & $scenario.Prepare
+
+        try {
+            $metadataScript = Join-Path (Get-Location) 'tools' 'Get-VICompareMetadata.ps1'
+            if (-not (Test-Path -LiteralPath $metadataScript -PathType Leaf)) {
+                throw "Get-VICompareMetadata.ps1 not found at $metadataScript"
+            }
+            $metadata = & pwsh -NoLogo -NoProfile -File $metadataScript `
+                -BaseVi (Join-Path 'fixtures' 'vi-attr' 'Base.vi') `
+                -HeadVi (Join-Path 'fixtures' 'vi-attr' 'Head.vi') `
+                -OutputPath $scenarioMetadataPath `
+                -ReplaceFlags
+            $scenarioCtx | Add-Member -NotePropertyName Metadata -NotePropertyValue $metadata -Force
+        } catch {
+            Write-Warning ("Failed to capture pre-compare metadata for scenario '{0}': {1}" -f $scenarioName, $_.Exception.Message)
+        }
 
         Invoke-Git -Arguments @('commit', '-m', $scenario.CommitMessage)
         Invoke-Git -Arguments @('push', '-u', 'origin', $scenarioBranch)
@@ -423,6 +440,7 @@ try {
             created  = (Get-Date).ToString('o')
             success  = $true
             url      = $scenarioCtx.PrUrl
+            metadata = if ($scenarioCtx.PSObject.Properties['Metadata'] -and $scenarioCtx.Metadata) { $scenarioCtx.Metadata } else { $null }
         }
         $summary | ConvertTo-Json -Depth 4 | Set-Content -LiteralPath $scenarioSummaryPath -Encoding utf8
 
