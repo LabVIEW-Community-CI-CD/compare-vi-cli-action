@@ -430,6 +430,165 @@ Describe 'Run-StagedLVCompare.ps1' -Tag 'Unit' {
         $invokeCalls[0].ReplaceFlags | Should -BeTrue
         $invokeCalls[0].Flags | Should -BeNullOrEmpty
     }
+
+    It 'passes replace flags and custom flags to Invoke-LVCompare' {
+        $resultsPath = Join-Path $TestDrive 'flags-results.json'
+        $artifactsDir = Join-Path $TestDrive 'artifacts'
+        New-Item -ItemType Directory -Path $artifactsDir -Force | Out-Null
+
+        $stagedBase = Join-Path $TestDrive 'flags\Base.vi'
+        $stagedHead = Join-Path $TestDrive 'flags\Head.vi'
+        New-Item -ItemType Directory -Path (Split-Path $stagedBase -Parent) -Force | Out-Null
+        Set-Content -LiteralPath $stagedBase -Value 'base'
+        Set-Content -LiteralPath $stagedHead -Value 'head'
+
+        @(
+            [ordered]@{
+                changeType = 'modify'
+                basePath   = 'VI3.vi'
+                headPath   = 'VI3.vi'
+                staged     = [ordered]@{
+                    Base = $stagedBase
+                    Head = $stagedHead
+                }
+            }
+        ) | ConvertTo-Json -Depth 6 | Set-Content -LiteralPath $resultsPath -Encoding utf8
+
+        $invokeCalls = New-Object System.Collections.Generic.List[object]
+        $invoke = {
+            param(
+                [string]$BaseVi,
+                [string]$HeadVi,
+                [string]$OutputDir,
+                [switch]$AllowSameLeaf,
+                [switch]$RenderReport,
+                [string[]]$Flags,
+                [switch]$ReplaceFlags
+            )
+            $invokeCalls.Add([pscustomobject]@{
+                Flags        = $Flags
+                ReplaceFlags = $ReplaceFlags.IsPresent
+            }) | Out-Null
+            New-Item -ItemType Directory -Path $OutputDir -Force | Out-Null
+            return [pscustomobject]@{
+                ExitCode = 0
+            }
+        }.GetNewClosure()
+
+        & $scriptPath -ResultsPath $resultsPath -ArtifactsDir $artifactsDir -ReplaceFlags -Flags @('-nobd','-nobdcosm') -InvokeLVCompare $invoke
+
+        $invokeCalls.Count | Should -Be 1
+        $invokeCalls[0].ReplaceFlags | Should -BeTrue
+        $invokeCalls[0].Flags | Should -Be @('-nobd','-nobdcosm')
+    }
+
+    It 'honors environment flag configuration when parameters omitted' {
+        $resultsPath = Join-Path $TestDrive 'env-results.json'
+        $artifactsDir = Join-Path $TestDrive 'artifacts'
+        New-Item -ItemType Directory -Path $artifactsDir -Force | Out-Null
+
+        $stagedBase = Join-Path $TestDrive 'env\Base.vi'
+        $stagedHead = Join-Path $TestDrive 'env\Head.vi'
+        New-Item -ItemType Directory -Path (Split-Path $stagedBase -Parent) -Force | Out-Null
+        Set-Content -LiteralPath $stagedBase -Value 'base'
+        Set-Content -LiteralPath $stagedHead -Value 'head'
+
+        @(
+            [ordered]@{
+                changeType = 'modify'
+                basePath   = 'VI4.vi'
+                headPath   = 'VI4.vi'
+                staged     = [ordered]@{
+                    Base = $stagedBase
+                    Head = $stagedHead
+                }
+            }
+        ) | ConvertTo-Json -Depth 6 | Set-Content -LiteralPath $resultsPath -Encoding utf8
+
+        $env:RUN_STAGED_LVCOMPARE_FLAGS_MODE = 'replace'
+        $env:RUN_STAGED_LVCOMPARE_FLAGS = @('-nobd','-nobdcosm') -join "`n"
+
+        $invokeCalls = New-Object System.Collections.Generic.List[object]
+        $invoke = {
+            param(
+                [string]$BaseVi,
+                [string]$HeadVi,
+                [string]$OutputDir,
+                [switch]$AllowSameLeaf,
+                [switch]$RenderReport,
+                [string[]]$Flags,
+                [switch]$ReplaceFlags
+            )
+            $invokeCalls.Add([pscustomobject]@{
+                Flags        = $Flags
+                ReplaceFlags = $ReplaceFlags.IsPresent
+            }) | Out-Null
+            New-Item -ItemType Directory -Path $OutputDir -Force | Out-Null
+            return [pscustomobject]@{
+                ExitCode = 0
+            }
+        }.GetNewClosure()
+
+        & $scriptPath -ResultsPath $resultsPath -ArtifactsDir $artifactsDir -InvokeLVCompare $invoke
+
+        $invokeCalls.Count | Should -Be 1
+        $invokeCalls[0].ReplaceFlags | Should -BeTrue
+        $invokeCalls[0].Flags | Should -Be @('-nobd','-nobdcosm')
+    }
+
+    It 'honors replace mode without explicit flags' {
+        $resultsPath = Join-Path $TestDrive 'env-replace.json'
+        $artifactsDir = Join-Path $TestDrive 'artifacts'
+        New-Item -ItemType Directory -Path $artifactsDir -Force | Out-Null
+
+        $stagedBase = Join-Path $TestDrive 'env2\Base.vi'
+        $stagedHead = Join-Path $TestDrive 'env2\Head.vi'
+        New-Item -ItemType Directory -Path (Split-Path $stagedBase -Parent) -Force | Out-Null
+        Set-Content -LiteralPath $stagedBase -Value 'base'
+        Set-Content -LiteralPath $stagedHead -Value 'head'
+
+        @(
+            [ordered]@{
+                changeType = 'modify'
+                basePath   = 'VI5.vi'
+                headPath   = 'VI5.vi'
+                staged     = [ordered]@{
+                    Base = $stagedBase
+                    Head = $stagedHead
+                }
+            }
+        ) | ConvertTo-Json -Depth 6 | Set-Content -LiteralPath $resultsPath -Encoding utf8
+
+        $env:RUN_STAGED_LVCOMPARE_FLAGS_MODE = 'replace'
+        Remove-Item Env:RUN_STAGED_LVCOMPARE_FLAGS -ErrorAction SilentlyContinue
+
+        $invokeCalls = New-Object System.Collections.Generic.List[object]
+        $invoke = {
+            param(
+                [string]$BaseVi,
+                [string]$HeadVi,
+                [string]$OutputDir,
+                [switch]$AllowSameLeaf,
+                [switch]$RenderReport,
+                [string[]]$Flags,
+                [switch]$ReplaceFlags
+            )
+            $invokeCalls.Add([pscustomobject]@{
+                Flags        = $Flags
+                ReplaceFlags = $ReplaceFlags.IsPresent
+            }) | Out-Null
+            New-Item -ItemType Directory -Path $OutputDir -Force | Out-Null
+            return [pscustomobject]@{
+                ExitCode = 0
+            }
+        }.GetNewClosure()
+
+        & $scriptPath -ResultsPath $resultsPath -ArtifactsDir $artifactsDir -InvokeLVCompare $invoke
+
+        $invokeCalls.Count | Should -Be 1
+        $invokeCalls[0].ReplaceFlags | Should -BeTrue
+        $invokeCalls[0].Flags | Should -BeNullOrEmpty
+    }
 }
 
 
