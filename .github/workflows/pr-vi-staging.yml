@@ -467,7 +467,7 @@ jobs:
           $ErrorActionPreference = 'Stop'
           if (-not $env:STAGING_LABEL) { return }
           gh label create $env:STAGING_LABEL --color FFC82C --description "PR has VI staging bundles ready" 2>$null
-          gh label edit $env:STAGING_LABEL --color FFC82C --description "PR has VI staging bundles ready" --force
+          gh label edit $env:STAGING_LABEL --color FFC82C --description "PR has VI staging bundles ready"
 
       - name: Upload manifest & summary
         uses: actions/upload-artifact@v4
