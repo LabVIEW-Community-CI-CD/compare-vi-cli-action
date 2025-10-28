@@ -245,8 +245,8 @@ jobs:
         env:
           RESULTS_PATH: ${{ steps.stage.outputs.results_path }}
           ARTIFACTS_DIR: ${{ steps.manifest.outputs.artifacts_dir }}
-          RUN_STAGED_LVCOMPARE_FLAGS_MODE: ${{ vars.VI_STAGE_COMPARE_FLAGS_MODE != '' && vars.VI_STAGE_COMPARE_FLAGS_MODE || 'replace' }}
-          RUN_STAGED_LVCOMPARE_FLAGS: ${{ vars.VI_STAGE_COMPARE_FLAGS }}
+          VI_STAGE_COMPARE_FLAGS_MODE: ${{ vars.VI_STAGE_COMPARE_FLAGS_MODE }}
+          VI_STAGE_COMPARE_FLAGS: ${{ vars.VI_STAGE_COMPARE_FLAGS }}
         run: |
           Set-StrictMode -Version Latest
           $ErrorActionPreference = 'Stop'

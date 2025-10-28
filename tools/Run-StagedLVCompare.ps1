@@ -58,25 +58,45 @@ function Get-RunStagedFlagList {
 }
 
 if (-not $flagsProvided) {
-    $envFlagsRaw = [System.Environment]::GetEnvironmentVariable('RUN_STAGED_LVCOMPARE_FLAGS', 'Process')
-    if (-not [string]::IsNullOrWhiteSpace($envFlagsRaw)) {
-        $parsedFlags = Get-RunStagedFlagList -Raw $envFlagsRaw
-        if ($parsedFlags.Count -gt 0) {
+    $effectiveFlags = $null
+    $envFlagCandidates = @(
+        [System.Environment]::GetEnvironmentVariable('RUN_STAGED_LVCOMPARE_FLAGS', 'Process'),
+        [System.Environment]::GetEnvironmentVariable('VI_STAGE_COMPARE_FLAGS', 'Process')
+    )
+    foreach ($rawFlags in $envFlagCandidates) {
+        if ([string]::IsNullOrWhiteSpace($rawFlags)) { continue }
+        $parsedFlags = [string[]](Get-RunStagedFlagList -Raw $rawFlags)
+        if ($parsedFlags -and $parsedFlags.Length -gt 0) {
             $effectiveFlags = $parsedFlags
+            break
         } else {
             $effectiveFlags = $null
         }
     }
 }
 
-if (-not $effectiveReplace) {
-    $envModeRaw = [System.Environment]::GetEnvironmentVariable('RUN_STAGED_LVCOMPARE_FLAGS_MODE', 'Process')
-    if (-not [string]::IsNullOrWhiteSpace($envModeRaw)) {
-        if ($envModeRaw.Trim().ToLowerInvariant() -eq 'replace') {
-            $effectiveReplace = $true
-        } elseif ($envModeRaw.Trim().ToLowerInvariant() -eq 'append') {
-            $effectiveReplace = $false
+$modeCandidates = @()
+$envModeRaw = [System.Environment]::GetEnvironmentVariable('RUN_STAGED_LVCOMPARE_FLAGS_MODE', 'Process')
+if (-not [string]::IsNullOrWhiteSpace($envModeRaw)) { $modeCandidates += $envModeRaw }
+$stageModeRaw = [System.Environment]::GetEnvironmentVariable('VI_STAGE_COMPARE_FLAGS_MODE', 'Process')
+if (-not [string]::IsNullOrWhiteSpace($stageModeRaw)) { $modeCandidates += $stageModeRaw }
+
+if ($ReplaceFlags.IsPresent) {
+    $effectiveReplace = $true
+} else {
+    $modeDecision = $null
+    foreach ($mode in $modeCandidates) {
+        if ([string]::IsNullOrWhiteSpace($mode)) { continue }
+        $normalized = $mode.Trim().ToLowerInvariant()
+        if ($normalized -eq 'replace' -or $normalized -eq 'append') {
+            $modeDecision = $normalized
+            break
         }
+    }
+    if ($modeDecision) {
+        $effectiveReplace = ($modeDecision -eq 'replace')
+    } else {
+        $effectiveReplace = $true
     }
 }
 
