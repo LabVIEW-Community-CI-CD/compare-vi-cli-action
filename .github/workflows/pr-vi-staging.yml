@@ -235,6 +235,10 @@ jobs:
           STAGE_COUNT: ${{ steps.stage.outputs.stage_count }}
           STAGE_STAGED: ${{ steps.stage.outputs.stage_staged }}
           STAGE_SKIPPED: ${{ steps.stage.outputs.stage_skipped }}
+          COMPARE_MATCH: ${{ steps.compare.outputs.match_count }}
+          COMPARE_DIFF: ${{ steps.compare.outputs.diff_count }}
+          COMPARE_ERROR: ${{ steps.compare.outputs.error_count }}
+          COMPARE_SKIP: ${{ steps.compare.outputs.skip_count }}
         run: |
           Set-StrictMode -Version Latest
           $ErrorActionPreference = 'Stop'
@@ -257,6 +261,19 @@ jobs:
             match  = 0
             error  = 0
             skipped= 0
+          }
+
+          if ($env:COMPARE_DIFF) {
+            try { $compareCounts.diff = [int]$env:COMPARE_DIFF } catch {}
+          }
+          if ($env:COMPARE_MATCH) {
+            try { $compareCounts.match = [int]$env:COMPARE_MATCH } catch {}
+          }
+          if ($env:COMPARE_ERROR) {
+            try { $compareCounts.error = [int]$env:COMPARE_ERROR } catch {}
+          }
+          if ($env:COMPARE_SKIP) {
+            try { $compareCounts.skipped = [int]$env:COMPARE_SKIP } catch {}
           }
 
           if (-not $results) {
@@ -527,3 +544,4 @@ jobs:
               $global:LASTEXITCODE = 0
             }
           }
+
