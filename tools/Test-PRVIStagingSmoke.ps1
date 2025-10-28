@@ -115,9 +115,14 @@ function Get-VIStagingSmokeScenarios {
         Invoke-Git -Arguments @('add', 'fixtures/vi-attr/Base.vi')
     }.GetNewClosure()
 
+    $vi2FixturePath = 'tmp-commit-236ffab/VI2.vi'
+    if (-not (Test-Path -LiteralPath $vi2FixturePath -PathType Leaf)) {
+        throw "Block-diagram diff fixture missing: $vi2FixturePath"
+    }
+
     $vi2DiffPrep = {
         Reset-FixtureFiles -Ref $FixtureRef
-        Copy-ViContent -Source 'VI2.vi' -Destination 'fixtures/vi-attr/Head.vi'
+        Copy-ViContent -Source $vi2FixturePath -Destination 'fixtures/vi-attr/Head.vi'
         Invoke-Git -Arguments @('add', 'fixtures/vi-attr/Head.vi')
     }.GetNewClosure()
 
