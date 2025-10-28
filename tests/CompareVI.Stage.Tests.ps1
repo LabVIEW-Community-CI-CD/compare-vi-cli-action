@@ -83,4 +83,28 @@ It 'mirrors dependency trees and allows duplicate leaf names when required' {
     }
   }
 }
+
+It 'allows same leaf names even when originals were Base.vi/Head.vi' {
+  $stageScript = Join-Path (Resolve-Path (Join-Path $PSScriptRoot '..')).Path 'tools/Stage-CompareInputs.ps1'
+  $workDir = Join-Path $TestDrive 'stage-sameleaf'
+  New-Item -ItemType Directory -Path $workDir | Out-Null
+
+  $baseDir = Join-Path $workDir 'fixture-base'
+  $headDir = Join-Path $workDir 'fixture-head'
+  New-Item -ItemType Directory -Path $baseDir, $headDir | Out-Null
+
+  $baseVi = Join-Path $baseDir 'Base.vi'
+  $headVi = Join-Path $headDir 'Base.vi'
+  Set-Content -LiteralPath $baseVi -Value 'base' -Encoding utf8
+  Set-Content -LiteralPath $headVi -Value 'head' -Encoding utf8
+  New-Item -ItemType Directory -Path (Join-Path $baseDir 'helpers'), (Join-Path $headDir 'helpers') | Out-Null
+  Set-Content -LiteralPath (Join-Path $baseDir 'helpers\meta.ctl') -Value 'meta' -Encoding utf8
+  Set-Content -LiteralPath (Join-Path $headDir 'helpers\meta.ctl') -Value 'meta' -Encoding utf8
+
+  $result = & $stageScript -BaseVi $baseVi -HeadVi $headVi
+  $result | Should -Not -BeNullOrEmpty
+  $result.AllowSameLeaf | Should -BeTrue
+  (Split-Path -Leaf $result.Base) | Should -Be 'Base.vi'
+  (Split-Path -Leaf $result.Head) | Should -Be 'Base.vi'
+}
 }
