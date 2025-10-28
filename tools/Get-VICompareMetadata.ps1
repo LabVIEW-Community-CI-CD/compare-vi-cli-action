@@ -172,6 +172,22 @@ foreach ($heading in $headings) {
     if (-not $categories.Contains($primary)) { $categories.Add($primary) }
 }
 
+$hasBlockDiagramCosmetic = $false
+if ($htmlContent) {
+    $patternCosmeticHeading = '<summary\s+class="[^"]*\bdifference-cosmetic-heading\b[^"]*"\s*>'
+    if ([System.Text.RegularExpressions.Regex]::IsMatch($htmlContent, $patternCosmeticHeading, 'IgnoreCase')) {
+        $hasBlockDiagramCosmetic = $true
+    } else {
+        $patternCosmeticDetail = '<li\s+class="[^"]*\bdiff-detail-cosmetic\b[^"]*"\s*>'
+        if ([System.Text.RegularExpressions.Regex]::IsMatch($htmlContent, $patternCosmeticDetail, 'IgnoreCase')) {
+            $hasBlockDiagramCosmetic = $true
+        }
+    }
+}
+if ($hasBlockDiagramCosmetic -and -not $categories.Contains('Block Diagram Cosmetic')) {
+    $categories.Add('Block Diagram Cosmetic')
+}
+
 $includedList = New-Object System.Collections.Generic.List[pscustomobject]
 foreach ($key in $included.Keys) {
     $includedList.Add([pscustomobject]@{
