@@ -149,7 +149,7 @@ function Get-VIStagingSmokeScenarios {
         },
         [ordered]@{
             Name          = 'vi2-diff'
-            Description   = 'Copy repository VI2.vi onto Head.vi for a non-attribute diff.'
+            Description   = 'Copy repository VI2.vi onto Head.vi for a block diagram cosmetic diff.'
             Expectation   = 'diff'
             CommitMessage = 'chore: synthetic VI diff for staging smoke'
             Prepare       = $vi2DiffPrep
