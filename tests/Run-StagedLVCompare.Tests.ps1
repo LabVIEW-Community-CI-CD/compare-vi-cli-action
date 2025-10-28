@@ -39,7 +39,7 @@ Describe 'Run-StagedLVCompare.ps1' -Tag 'Unit' {
                 staged     = [ordered]@{
                     Base         = $stagedBase
                     Head         = $stagedHead
-                    AllowSameLeaf= $true
+                    AllowSameLeaf= $false
                 }
             }
         )
@@ -89,7 +89,7 @@ Describe 'Run-StagedLVCompare.ps1' -Tag 'Unit' {
         $entry.compare.reportPath | Should -Match 'compare-report\.html$'
 
         $invokeCalls.Count | Should -Be 1
-        $invokeCalls[0].AllowSameLeaf | Should -BeTrue
+        $invokeCalls[0].AllowSameLeaf | Should -BeFalse
         $invokeCalls[0].RenderReport | Should -BeTrue
 
         $summaryPath = Join-Path $artifactsDir 'vi-staging-compare.json'
@@ -109,17 +109,14 @@ Describe 'Run-StagedLVCompare.ps1' -Tag 'Unit' {
         $outputMap['skip_count'] | Should -Be '0'
     }
 
-    It 'forces AllowSameLeaf when staged leaf names are identical' {
+    It 'fails when staged filenames are identical' {
         $resultsPath = Join-Path $TestDrive 'vi-sameleaf-results.json'
         $artifactsDir = Join-Path $TestDrive 'artifacts'
         New-Item -ItemType Directory -Path $artifactsDir -Force | Out-Null
 
-        $stagedBase = Join-Path $TestDrive 'mirror\base\vi-attr\Base.vi'
-        $stagedHead = Join-Path $TestDrive 'mirror\head\vi-attr\Base.vi'
-        New-Item -ItemType Directory -Path (Split-Path $stagedBase -Parent) -Force | Out-Null
-        New-Item -ItemType Directory -Path (Split-Path $stagedHead -Parent) -Force | Out-Null
-        Set-Content -LiteralPath $stagedBase -Value 'base'
-        Set-Content -LiteralPath $stagedHead -Value 'head'
+        $sharedPath = Join-Path $TestDrive 'mirror\same\Sample.vi'
+        New-Item -ItemType Directory -Path (Split-Path $sharedPath -Parent) -Force | Out-Null
+        Set-Content -LiteralPath $sharedPath -Value 'both'
 
         @(
             [ordered]@{
@@ -127,42 +124,18 @@ Describe 'Run-StagedLVCompare.ps1' -Tag 'Unit' {
                 basePath   = 'fixtures/vi-attr/Base.vi'
                 headPath   = 'fixtures/vi-attr/Base.vi'
                 staged     = [ordered]@{
-                    Base         = $stagedBase
-                    Head         = $stagedHead
-                    AllowSameLeaf= $false
+                    Base = $sharedPath
+                    Head = $sharedPath
                 }
             }
         ) | ConvertTo-Json -Depth 6 | Set-Content -LiteralPath $resultsPath -Encoding utf8
 
-        $invokeCalls = New-Object System.Collections.Generic.List[object]
         $invoke = {
-            param(
-                [string]$BaseVi,
-                [string]$HeadVi,
-                [string]$OutputDir,
-                [switch]$AllowSameLeaf,
-                [switch]$RenderReport,
-                [string[]]$Flags,
-                [switch]$ReplaceFlags
-            )
-            $invokeCalls.Add([pscustomobject]@{
-                Base         = $BaseVi
-                Head         = $HeadVi
-                AllowSameLeaf= $AllowSameLeaf.IsPresent
-            }) | Out-Null
-            New-Item -ItemType Directory -Path $OutputDir -Force | Out-Null
-            return [pscustomobject]@{
-                ExitCode = 0
-            }
+            throw 'LVCompare should not be called when staged paths match.'
         }.GetNewClosure()
 
-        & $script:scriptPath -ResultsPath $resultsPath -ArtifactsDir $artifactsDir -InvokeLVCompare $invoke
-
-        $invokeCalls.Count | Should -Be 1
-        $invokeCalls[0].AllowSameLeaf | Should -BeTrue
-
-        $updated = @(Get-Content -LiteralPath $resultsPath -Raw | ConvertFrom-Json)
-        $updated[0].compare.allowSameLeaf | Should -BeTrue
+        { & $script:scriptPath -ResultsPath $resultsPath -ArtifactsDir $artifactsDir -InvokeLVCompare $invoke } |
+            Should -Throw -ExpectedMessage '*identical Base/Head*'
     }
 
     It 'marks diff when LVCompare exits 1' {

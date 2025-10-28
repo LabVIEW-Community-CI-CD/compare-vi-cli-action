@@ -96,14 +96,6 @@ function Should-MirrorSource {
 
 $baseSource = Resolve-AbsoluteFile -Path $BaseVi -ParameterName 'BaseVi'
 $headSource = Resolve-AbsoluteFile -Path $HeadVi -ParameterName 'HeadVi'
-$originalBaseLeaf = try { Split-Path -Leaf $baseSource } catch { $null }
-$originalHeadLeaf = try { Split-Path -Leaf $headSource } catch { $null }
-$originalLeafMatch = $false
-if ($originalBaseLeaf -and $originalHeadLeaf) {
-  if ([string]::Equals($originalBaseLeaf, $originalHeadLeaf, [System.StringComparison]::OrdinalIgnoreCase)) {
-    $originalLeafMatch = $true
-  }
-}
 
 $rootParent = if ([string]::IsNullOrWhiteSpace($WorkingRoot)) {
   [System.IO.Path]::GetTempPath()
@@ -188,15 +180,15 @@ if ($mirrorStage) {
 
 $finalBaseLeaf = Split-Path -Leaf $stagedBase
 $finalHeadLeaf = Split-Path -Leaf $stagedHead
-$stagedLeafMatch =
-  ($finalBaseLeaf -and $finalHeadLeaf -and
-   [string]::Equals($finalBaseLeaf, $finalHeadLeaf, [System.StringComparison]::OrdinalIgnoreCase))
-$allowSameLeaf = $originalLeafMatch -or $stagedLeafMatch
+if ($finalBaseLeaf -and $finalHeadLeaf -and
+    [string]::Equals($finalBaseLeaf, $finalHeadLeaf, [System.StringComparison]::OrdinalIgnoreCase)) {
+  throw "Staging produced identical Base/Head filenames (`$finalBaseLeaf`). This indicates the staging rename failed."
+}
 
 return [pscustomobject]@{
   Base = (Resolve-Path -LiteralPath $stagedBase).Path
   Head = (Resolve-Path -LiteralPath $stagedHead).Path
   Root = (Resolve-Path -LiteralPath $stagingRoot).Path
   Mode = if ($mirrorStage) { 'mirror' } else { 'single-file' }
-  AllowSameLeaf = $allowSameLeaf
+  AllowSameLeaf = $false
 }
