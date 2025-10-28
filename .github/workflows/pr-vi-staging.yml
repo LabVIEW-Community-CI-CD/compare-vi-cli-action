@@ -433,7 +433,35 @@ jobs:
                 try { $allowSameLeaf = [bool]$entry.staged.AllowSameLeaf } catch { $allowSameLeaf = $false }
               }
               $allowText = if ($allowSameLeaf) { 'Yes' } else { 'No' }
-              $table += "| $idx | $($entry.changeType) | $($entry.basePath) | $($entry.headPath) | $stageMode | $allowText | $artifactCell | $compareDisplay |"
+
+              $baseDisplay = $entry.basePath
+              $headDisplay = $entry.headPath
+              $stagedBasePath = $null
+              $stagedHeadPath = $null
+              if ($entry.staged) {
+                if ($entry.staged.PSObject.Properties['Base']) {
+                  $stagedBasePath = $entry.staged.Base
+                }
+                if ($entry.staged.PSObject.Properties['Head']) {
+                  $stagedHeadPath = $entry.staged.Head
+                }
+              }
+              if ($stagedBasePath) {
+                if ($baseDisplay -and -not [string]::Equals($baseDisplay, $stagedBasePath, [System.StringComparison]::OrdinalIgnoreCase)) {
+                  $baseDisplay = "$baseDisplay -> $stagedBasePath"
+                } else {
+                  $baseDisplay = $stagedBasePath
+                }
+              }
+              if ($stagedHeadPath) {
+                if ($headDisplay -and -not [string]::Equals($headDisplay, $stagedHeadPath, [System.StringComparison]::OrdinalIgnoreCase)) {
+                  $headDisplay = "$headDisplay -> $stagedHeadPath"
+                } else {
+                  $headDisplay = $stagedHeadPath
+                }
+              }
+
+              $table += "| $idx | $($entry.changeType) | $baseDisplay | $headDisplay | $stageMode | $allowText | $artifactCell | $compareDisplay |"
               $idx++
             }
 

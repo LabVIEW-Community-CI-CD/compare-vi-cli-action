@@ -294,16 +294,18 @@ foreach ($entry in $results) {
     $entry | Add-Member -NotePropertyName compare -NotePropertyValue ([pscustomobject]$compareInfo) -Force
 
     $comparisons.Add([pscustomobject]@{
-        index      = $index
-        changeType = $entry.changeType
-        basePath   = $entry.basePath
-        headPath   = $entry.headPath
-        status     = $compareInfo.status
-        exitCode   = $compareInfo.exitCode
-        outputDir  = $compareInfo.outputDir
-        capturePath= $compareInfo.capturePath
-        reportPath = $compareInfo.reportPath
-        allowSameLeaf = $allowSameLeafRequested
+        index        = $index
+        changeType   = $entry.changeType
+        basePath     = $entry.basePath
+        headPath     = $entry.headPath
+        stagedBase   = $stagedBasePath
+        stagedHead   = $stagedHeadPath
+        status       = $compareInfo.status
+        exitCode     = $compareInfo.exitCode
+        outputDir    = $compareInfo.outputDir
+        capturePath  = $compareInfo.capturePath
+        reportPath   = $compareInfo.reportPath
+        allowSameLeaf= $allowSameLeafRequested
     })
 
     $index++
