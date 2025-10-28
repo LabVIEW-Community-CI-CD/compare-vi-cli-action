@@ -7,6 +7,7 @@ Quick reference for building, testing, and releasing the LVCompare composite act
 
 - **Unit tests** (no LabVIEW required)
   - `./Invoke-PesterTests.ps1`
+  - `./Invoke-PesterTests.ps1 -TestsPath tests/Run-StagedLVCompare.Tests.ps1` (targeted staged-compare coverage)
   - `pwsh -File tools/Run-Pester.ps1`
 - **Integration tests** (LabVIEW + LVCompare installed)
   - Set `LV_BASE_VI`, `LV_HEAD_VI`
@@ -14,16 +15,17 @@ Quick reference for building, testing, and releasing the LVCompare composite act
 - **Helpers**
   - `tools/Dev-Dashboard.ps1`
 - **Smoke tests**
-  - `npm run smoke:vi-stage -- --DryRun`
-  - `npm run smoke:vi-stage`
+  - `pwsh -File tools/Test-PRVIStagingSmoke.ps1 -DryRun` (planning pass; prints the branch/PR that would be created)
+  - `npm run smoke:vi-stage` (full sweep; requires `GH_TOKEN`/`GITHUB_TOKEN` with push + workflow scopes)
   - GitHub workflow "Smoke VI Staging" (`.github/workflows/vi-staging-smoke.yml`)
     - Trigger from the Actions UI or `gh workflow run vi-staging-smoke.yml`.
-    - Runs on the repository’s self-hosted Windows runner (`self-hosted, Windows, X64`) and exercises both staging and
+    - Runs on the repository's self-hosted Windows runner (`self-hosted, Windows, X64`) and exercises both staging and
       LVCompare end-to-end; no hosted option.
     - Inputs:
       - `keep_branch`: set to `true` when you want to inspect the synthetic scratch PR afterward; keep `false` for normal sweeps so the helper cleans up.
     - Requires `GH_TOKEN`/`GITHUB_TOKEN` with push + workflow scopes. Locally, populate `$env:GH_TOKEN` (for example from `C:\github_token.txt`) before running `tools/Test-PRVIStagingSmoke.ps1`.
     - Successful runs upload `tests/results/_agent/smoke/vi-stage/smoke-*.json` summaries and assert the scratch PR carries the `vi-staging-ready` label.
+    - The smoke helper stages `fixtures/vi-attr/Base.vi`/`Head.vi`, a baked-in VI attribute diff, so each run produces deterministic LVCompare output. Update those fixtures only when you intentionally want to change the smoke baseline.
     - Compare flags: the staging helper honours `VI_STAGE_COMPARE_FLAGS_MODE` (default `replace`) and
       `VI_STAGE_COMPARE_FLAGS` repository variables. The default `replace` mode clears the quiet bundle so LVCompare
       reports include VI Attribute differences. Set the mode to `append` to keep the quiet bundle, and provide
