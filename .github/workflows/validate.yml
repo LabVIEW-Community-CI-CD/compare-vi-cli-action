@@ -380,12 +380,12 @@ jobs:
         pwsh -File tools/Invoke-JsonSchemaLite.ps1 -JsonPath fixture-validation-delta.json -SchemaPath docs/schemas/fixture-validation-delta-v1.schema.json
     - name: Upload fixture validation delta JSON
       if: steps.restore_prev_fixture_validation.outputs.cache-hit == 'true' && hashFiles('fixture-validation-delta.json') != ''
-      uses: actions/upload-artifact@v4
+      uses: actions/upload-artifact@v5
       with:
         name: validate-fixture-validation-delta-json
         path: fixture-validation-delta.json
     - name: Upload fixture validation JSON
-      uses: actions/upload-artifact@v4
+      uses: actions/upload-artifact@v5
       with:
         name: validate-fixture-validation-json
         path: fixture-validation.json
@@ -408,7 +408,7 @@ jobs:
       run: pwsh -File tools/Write-FixtureValidationSummary.ps1 -ValidationJson fixture-validation.json -DeltaJson fixture-validation-delta.json -SummaryPath fixture-summary.md
     - name: Upload fixture summary artifact
       if: always() && hashFiles('fixture-summary.md') != ''
-      uses: actions/upload-artifact@v4
+      uses: actions/upload-artifact@v5
       with:
         name: fixture-validation-summary
         path: fixture-summary.md
@@ -483,7 +483,7 @@ jobs:
 
     - name: Upload hook parity summaries
       if: always()
-      uses: actions/upload-artifact@v4
+      uses: actions/upload-artifact@v5
       with:
         name: hook-parity-${{ matrix.os }}
         path: tests/results/_hooks/*.json
@@ -572,7 +572,7 @@ jobs:
           node tools/npm/run-script.mjs priority:schema
       - name: Upload issue snapshot artifacts
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v5
         with:
           name: standing-priority-snapshot
           path: |
@@ -641,7 +641,7 @@ jobs:
 
     - name: Upload session index artifact
       if: always()
-      uses: actions/upload-artifact@v4
+      uses: actions/upload-artifact@v5
       with:
         name: validate-session-index
         path: ${{ runner.temp }}/sessionindex/session-index.json

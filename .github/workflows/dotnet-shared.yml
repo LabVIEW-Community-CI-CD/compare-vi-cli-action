@@ -37,7 +37,7 @@ jobs:
       - name: Pack
         run: dotnet pack -c Release src/CompareVi.Shared/CompareVi.Shared.csproj -o artifacts --no-build
       - name: Upload package
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v5
         with:
           name: comparevi-shared-nuget
           path: artifacts/*.nupkg

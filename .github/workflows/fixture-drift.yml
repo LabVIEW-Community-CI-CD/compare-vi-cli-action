@@ -383,7 +383,7 @@ jobs:
 
     - name: Upload dev dashboard (fixture drift)
       if: always()
-      uses: actions/upload-artifact@v4
+      uses: actions/upload-artifact@v5
       with:
         name: fixture-drift-dev-dashboard
         path: |

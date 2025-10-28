@@ -24,7 +24,7 @@ jobs:
           node tools/npm/run-script.mjs priority:sync || true
       - name: Upload snapshot
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v5
         with:
           name: standing-priority-snapshot-${{ github.run_id }}
           path: |

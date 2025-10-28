@@ -136,7 +136,7 @@ jobs:
 
       - name: Upload history artifacts
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v5
         with:
           name: vi-history-compare
           path: tests/results/ref-compare-history/**

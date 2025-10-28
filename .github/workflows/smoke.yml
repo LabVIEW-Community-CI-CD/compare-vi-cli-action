@@ -89,7 +89,7 @@ jobs:
 
       - name: Upload fixture validation JSON
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v5
         with:
           name: fixture-validation-json
           path: fixture-validation.json
@@ -190,7 +190,7 @@ jobs:
 
       - name: Upload smoke HTML report
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v5
         with:
           name: smoke-html-report
           path: ${{ runner.temp }}/smoke-report/compare-report.html

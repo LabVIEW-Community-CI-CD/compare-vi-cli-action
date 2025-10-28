@@ -48,7 +48,7 @@ jobs:
         run: Remove-Item -LiteralPath dist/comparevi-cli -Recurse -Force -ErrorAction SilentlyContinue
 
       - name: Upload parity evidence
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v5
         with:
           name: docker-parity-linux
           path: |

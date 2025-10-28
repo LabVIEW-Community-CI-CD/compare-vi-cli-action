@@ -390,7 +390,7 @@ jobs:
           Write-OutputValue -Name 'diff_artifact_name' -Value ("vi-compare-{0}-diffs" -f $artifactPrefix)
       - name: Upload compare results
         if: ${{ always() && steps.history.outputs['results-dir'] != '' }}
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v5
         with:
           name: ${{ steps.artifact_context.outputs.manifest_artifact_name || 'vi-compare-manifests' }}
           path: |
@@ -401,7 +401,7 @@ jobs:
 
       - name: Upload LVCompare diff artifacts
         if: ${{ always() && steps.diffscan.outputs.hasDiff == 'true' }}
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v5
         with:
           name: ${{ steps.artifact_context.outputs.diff_artifact_name || 'vi-compare-diff-artifacts' }}
           path: ${{ steps.diffscan.outputs.artifactDirs }}
