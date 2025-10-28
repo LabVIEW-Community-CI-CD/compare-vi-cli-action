@@ -505,6 +505,14 @@ jobs:
           PR_NUMBER: ${{ steps.pr.outputs.pr_number }}
           SUMMARY_PATH: ${{ steps.summary.outputs.summary_path }}
           STAGE_COUNT: ${{ steps.stage.outputs.stage_count }}
+          STAGE_STAGED: ${{ steps.stage.outputs.stage_staged }}
+          STAGE_SKIPPED: ${{ steps.stage.outputs.stage_skipped }}
+          STAGE_ALLOW_SAME_LEAF: ${{ steps.stage.outputs.stage_allow_same_leaf }}
+          STAGE_MODE_COUNTS: ${{ steps.stage.outputs.stage_mode_counts }}
+          COMPARE_MATCH: ${{ steps.compare.outputs.match_count }}
+          COMPARE_DIFF: ${{ steps.compare.outputs.diff_count }}
+          COMPARE_ERROR: ${{ steps.compare.outputs.error_count }}
+          COMPARE_SKIP: ${{ steps.compare.outputs.skip_count }}
           ARTIFACT_LINKS: ${{ steps.collect_links.outputs.artifact_links }}
           GITHUB_RUN_ID: ${{ github.run_id }}
           GITHUB_REPOSITORY: ${{ github.repository }}
@@ -519,32 +527,57 @@ jobs:
           $runUrl = "https://github.com/$env:GITHUB_REPOSITORY/actions/runs/$env:GITHUB_RUN_ID"
           $summary = Get-Content $env:SUMMARY_PATH -Raw
 
-          if ([int]$env:STAGE_COUNT -gt 0) {
+          $stageTotal = 0
+          $stageStaged = 0
+          $stageSkipped = 0
+          [void][int]::TryParse(($env:STAGE_COUNT ?? '0'), [ref]$stageTotal)
+          [void][int]::TryParse(($env:STAGE_STAGED ?? '0'), [ref]$stageStaged)
+          [void][int]::TryParse(($env:STAGE_SKIPPED ?? '0'), [ref]$stageSkipped)
+
+          $allowSameLeaf = if ($env:STAGE_ALLOW_SAME_LEAF) { $env:STAGE_ALLOW_SAME_LEAF } else { '0' }
+          $modeSummary = if ($env:STAGE_MODE_COUNTS) { $env:STAGE_MODE_COUNTS.Replace(',', ', ') } else { 'n/a' }
+
+          $compareLine = $null
+          if ($env:COMPARE_MATCH -or $env:COMPARE_DIFF -or $env:COMPARE_ERROR -or $env:COMPARE_SKIP) {
+            $compareLine = ("LVCompare results: match {0}, diff {1}, error {2}, skipped {3}" -f `
+              ($env:COMPARE_MATCH ?? '0'), ($env:COMPARE_DIFF ?? '0'), ($env:COMPARE_ERROR ?? '0'), ($env:COMPARE_SKIP ?? '0'))
+          }
+
+          if ($stageTotal -gt 0) {
             $bodyLines = @(
-              "VI compare staging is ready (**$env:STAGE_COUNT** pair$(if ($env:STAGE_COUNT -eq '1') { '' } else { 's' })).",
+              "### VI Compare Staging",
               '',
-              $summary,
-              ''
+              "- Pairs staged: **$stageStaged** / $stageTotal (skipped: $stageSkipped)",
+              "- AllowSameLeaf bundles: $allowSameLeaf",
+              "- Staging modes: $modeSummary"
             )
-            if ($env:ARTIFACT_LINKS) {
-              $links = $env:ARTIFACT_LINKS | ConvertFrom-Json
-              if ($links.Count -gt 0) {
-                $bodyLines += 'Download links (expire ~1 hour):'
-                foreach ($link in $links) {
-                  $bodyLines += "- [${link.name}]($($link.url))"
-                }
-                $bodyLines += ''
-              }
-            }
-            $bodyLines += "Download artifacts from [$runUrl]($runUrl)."
+            if ($compareLine) { $bodyLines += $compareLine }
+            $bodyLines += ''
+            $bodyLines += '<details><summary>Staging table</summary>'
+            $bodyLines += ''
+            $bodyLines += $summary
+            $bodyLines += ''
+            $bodyLines += '</details>'
+            $bodyLines += ''
           } else {
             $bodyLines = @(
-              'VI compare staging completed: no VI pairs with both base/head paths were found.',
-              '',
-              "Run details: [$runUrl]($runUrl)."
+              "VI compare staging completed: no VI pairs with both base/head paths were found.",
+              ''
             )
           }
 
+          if ($env:ARTIFACT_LINKS) {
+            $links = $env:ARTIFACT_LINKS | ConvertFrom-Json
+            if ($links.Count -gt 0) {
+              $bodyLines += 'Download links (expire ~1 hour):'
+              foreach ($link in $links) {
+                $bodyLines += "- [${link.name}]($($link.url))"
+              }
+              $bodyLines += ''
+            }
+          }
+
+          $bodyLines += "Run details: [$runUrl]($runUrl)."
           $body = $bodyLines -join "`n"
           $repoSlug = $env:REPO_SLUG
           if (-not $repoSlug) { $repoSlug = $env:GITHUB_REPOSITORY }
