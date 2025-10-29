@@ -15,19 +15,29 @@ Quick reference for building, testing, and releasing the LVCompare composite act
 - **Helpers**
   - `tools/Dev-Dashboard.ps1`
 - **Smoke tests**
-  - `pwsh -File tools/Test-PRVIStagingSmoke.ps1 -DryRun` (planning pass; prints the branch/PR that would be created)
-  - `npm run smoke:vi-stage` (full sweep; requires `GH_TOKEN`/`GITHUB_TOKEN` with push + workflow scopes)
-  - `pwsh -File tools/Test-PRVIHistorySmoke.ps1 -DryRun` (plan the `/vi-history` entry-point smoke)
-- `pwsh -File tools/Test-PRVIHistorySmoke.ps1 -Scenario sequential -DryRun` (plan the sequential multi-category history smoke; steps defined in `fixtures/vi-history/sequential.json`)
-  - `npm run smoke:vi-history` (full `/vi-history` dispatch; requires `GH_TOKEN`/`GITHUB_TOKEN` with repo + workflow scopes)
+  - `pwsh -File tools/Test-PRVIStagingSmoke.ps1 -DryRun`
+    (planning pass; prints the branch/PR that would be created)
+  - `npm run smoke:vi-stage` (full sweep; requires
+    `GH_TOKEN`/`GITHUB_TOKEN` with push + workflow scopes)
+  - `pwsh -File tools/Test-PRVIHistorySmoke.ps1 -DryRun`
+    (plan the `/vi-history` entry-point smoke)
+  - `pwsh -File tools/Test-PRVIHistorySmoke.ps1 -Scenario sequential -DryRun`
+    (plan the sequential multi-category history smoke; steps defined in
+    `fixtures/vi-history/sequential.json`)
+  - `npm run smoke:vi-history` (full `/vi-history` dispatch; requires
+    `GH_TOKEN`/`GITHUB_TOKEN` with repo + workflow scopes)
   - GitHub workflow "Smoke VI Staging" (`.github/workflows/vi-staging-smoke.yml`)
     - Trigger from the Actions UI or `gh workflow run vi-staging-smoke.yml`.
-    - Runs on the repository's self-hosted Windows runner (`self-hosted, Windows, X64`) and exercises both staging and
-      LVCompare end-to-end; no hosted option.
+    - Runs on the repository's self-hosted Windows runner (`self-hosted, Windows, X64`)
+      and exercises both staging and LVCompare end-to-end; no hosted option.
     - Inputs:
-      - `keep_branch`: set to `true` when you want to inspect the synthetic scratch PR afterward; keep `false` for normal sweeps so the helper cleans up.
-    - Requires `GH_TOKEN`/`GITHUB_TOKEN` with push + workflow scopes. Locally, populate `$env:GH_TOKEN` (for example from `C:\github_token.txt`) before running `tools/Test-PRVIStagingSmoke.ps1`.
-    - Successful runs upload `tests/results/_agent/smoke/vi-stage/smoke-*.json` summaries and assert the scratch PR carries the `vi-staging-ready` label.
+      - `keep_branch`: set to `true` when you want to inspect the synthetic scratch
+        PR afterward; keep `false` for normal sweeps so the helper cleans up.
+    - Requires `GH_TOKEN`/`GITHUB_TOKEN` with push + workflow scopes. Locally,
+      populate `$env:GH_TOKEN` (for example from `C:\github_token.txt`) before
+      running `tools/Test-PRVIStagingSmoke.ps1`.
+    - Successful runs upload `tests/results/_agent/smoke/vi-stage/smoke-*.json`
+      summaries and assert the scratch PR carries the `vi-staging-ready` label.
     - Scenario catalog (defined in `Get-VIStagingSmokeScenarios`):
 
       | Scenario        | Fixture prep                                                                 | Expected LVCompare |
@@ -41,17 +51,36 @@ Quick reference for building, testing, and releasing the LVCompare composite act
       | `control-rename`| Stage `fixtures/vi-stage/control-rename/{Base,Head}.vi` (control rename)     | diff |
       | `fp-window`     | Stage `fixtures/vi-stage/fp-window/{Base,Head}.vi` (window sizing change)    | diff |
 
-      Treat these fixtures as read-only baselines—update them only when you intentionally want to change the smoke matrix. The `/vi-stage` PR comment includes this table (via `tools/Summarize-VIStaging.ps1`) so reviewers can immediately see which categories (front panel, block diagram functional/cosmetic, VI attributes) triggered without downloading artifacts. Locally, run the helper against `vi-staging-compare.json` to preview the Markdown before you push.
+      Treat these fixtures as read-only baselines—update them only when you intend
+      to change the smoke matrix. The `/vi-stage` PR comment includes this table
+      (via `tools/Summarize-VIStaging.ps1`) so reviewers can immediately see which
+      categories (front panel, block diagram functional/cosmetic, VI attributes)
+      triggered without downloading artifacts. Locally, run the helper against
+      `vi-staging-compare.json` to preview the Markdown before you push.
 
-      Reading the PR comment: the staging workflow drops the same table into the `/vi-stage` response. Green checkmarks indicate staged pairs; review the category columns (front panel, block diagram functional/cosmetic, VI attributes) to catch unexpected diffs without downloading artifacts. Follow the artifact links when you need to inspect compare reports in detail.
+      Reading the PR comment: the staging workflow drops the same table into the
+      `/vi-stage` response. Green checkmarks indicate staged pairs; review the
+      category columns (front panel, block diagram functional/cosmetic,
+      VI attributes) to catch unexpected diffs without downloading artifacts.
+      Follow the artifact links when you need to inspect compare reports in detail.
 
-      Compare flags: the staging helper honours `VI_STAGE_COMPARE_FLAGS_MODE` (default `replace`) and `VI_STAGE_COMPARE_FLAGS` repository variables. The default `replace` mode clears the quiet bundle so LVCompare reports include VI Attribute differences. Set the mode to `append` to keep the quiet bundle, and provide newline-separated entries in `VI_STAGE_COMPARE_FLAGS` (for example `-nobd`) when you want to add explicit flags. `VI_STAGE_COMPARE_REPLACE_FLAGS` accepts `true`/`false` to override the mode for a single run when needed.
+      Compare flags: the staging helper honours `VI_STAGE_COMPARE_FLAGS_MODE`
+      (default `replace`) and `VI_STAGE_COMPARE_FLAGS` repository variables. The
+      default `replace` mode clears the quiet bundle so LVCompare reports include
+      VI Attribute differences. Set the mode to `append` to keep the quiet bundle,
+      and provide newline-separated entries in `VI_STAGE_COMPARE_FLAGS` (for
+      example `-nobd`) when you want to add explicit flags.
+      `VI_STAGE_COMPARE_REPLACE_FLAGS` accepts `true`/`false` to override the mode
+      for a single run when needed.
 
-    - `pr-vi-staging.yml` now calls `tools/Summarize-VIStaging.ps1` after LVCompare finishes. The helper inspects
-      `vi-staging-compare.json`, captures the categories surfaced in each compare report (front panel, block diagram
-      functional/cosmetic, VI attributes), and emits both a Markdown table and JSON snapshot. The workflow drops that
-      table directly into the PR comment, so reviewers see attribute/block diagram/front panel hits without downloading
-      the artifacts. Locally reproduce the same summary with:
+    - `pr-vi-staging.yml` now calls `tools/Summarize-VIStaging.ps1` after
+      LVCompare finishes. The helper inspects `vi-staging-compare.json`, captures
+      the categories surfaced in each compare report (front panel, block diagram
+      functional/cosmetic, VI attributes), and emits both a Markdown table and
+      JSON snapshot. The workflow drops that table directly into the PR comment,
+      so reviewers see attribute/block diagram/front panel hits without
+      downloading the artifacts. Locally reproduce the same summary with:
+
       ```powershell
       pwsh -File tools/Summarize-VIStaging.ps1 `
         -CompareJson vi-compare-artifacts/compare/vi-staging-compare.json `
@@ -60,20 +89,28 @@ Quick reference for building, testing, and releasing the LVCompare composite act
       ```
     - `/vi-history` PR comments (or the `pr-vi-history.yml` workflow) reuse the same pattern for history diffs:
       1. `tools/Get-PRVIDiffManifest.ps1` enumerates VI changes between the PR base/head commits.
-    2. `tools/Invoke-PRVIHistory.ps1` resolves the history helper once (works with repo-relative targets) and runs the
-       compare suite per VI (default `-MaxPairs 6`), writing artifacts under `tests/results/pr-vi-history/`
-       (aggregate manifest + `history-report.{md,html}` per target). Enable `-Verbose` locally to see the resolved
-       helper path plus the origin (base/head) of each compare target.
-      3. `tools/Summarize-PRVIHistory.ps1` renders the PR table with change types, comparison/diff counts, and relative
-         report paths so reviewers can triage without downloading the artifact bundle.
-      Override the history depth via the workflow_dispatch input `max_pairs` when you need a longer runway; otherwise
-      accept the default for quick attribution. The workflow uploads the results directory as
-      `pr-vi-history-<pr-number>.zip` for local inspection.
-      History runs now keep the full signal by default (no quiet bundle). Override the compare flags with repository or
-      runner variables when you need to restore selective filters: set `PR_VI_HISTORY_COMPARE_FLAGS_MODE` /
-      `VI_HISTORY_COMPARE_FLAGS_MODE` to `replace` or `append`, provide newline-separated entries in
-      `PR_VI_HISTORY_COMPARE_FLAGS` / `VI_HISTORY_COMPARE_FLAGS`, and use `PR_VI_HISTORY_COMPARE_REPLACE_FLAGS` /
-      `VI_HISTORY_COMPARE_REPLACE_FLAGS` to force replace/append for a single run.
+    2. `tools/Invoke-PRVIHistory.ps1` resolves the history helper once
+       (works with repo-relative targets) and runs the compare suite per VI
+       (default `-MaxPairs 6`), writing artifacts under
+       `tests/results/pr-vi-history/` (aggregate manifest plus
+       `history-report.{md,html}` per target). Enable `-Verbose` locally to see
+       the resolved helper path plus the origin (base/head) of each compare target.
+    3. `tools/Summarize-PRVIHistory.ps1` renders the PR table with change types,
+       comparison/diff counts, and relative report paths so reviewers can triage
+       without downloading the artifact bundle.
+  - Override the history depth via the workflow_dispatch input `max_pairs` when
+    you need a longer runway; otherwise accept the default for quick attribution.
+    The workflow uploads the results directory as `pr-vi-history-<pr-number>.zip`
+    for local inspection.
+  - History runs now keep the full signal by default (no quiet bundle). Override
+    the compare flags with repository or runner variables when you need to restore
+    selective filters:
+    - `PR_VI_HISTORY_COMPARE_FLAGS_MODE` / `VI_HISTORY_COMPARE_FLAGS_MODE` (values
+      `replace` or `append`)
+    - `PR_VI_HISTORY_COMPARE_FLAGS` / `VI_HISTORY_COMPARE_FLAGS` (newline-delimited
+      flag list)
+    - `PR_VI_HISTORY_COMPARE_REPLACE_FLAGS` / `VI_HISTORY_COMPARE_REPLACE_FLAGS`
+      (force replace/append for a single run)
 
  â†’ telemetry snapshot
   - `tools/Watch-Pester.ps1` â†’ file watcher / retry loop

@@ -7,12 +7,15 @@ line buffers).
 
 ## Primary directive
 
-- The standing priority is whichever issue carries the `standing-priority` label. Use the sanitized wrappers (`node
-  tools/npm/cli.mjs <command>` / `node tools/npm/run-script.mjs <script>`) instead of raw `npm` invocations (the
-  container exports `npm_config_http_proxy`, which triggers warnings in recent npm builds). Run `pwsh -NoLogo -NoProfile
-  -File tools/priority/bootstrap.ps1` at session start so `.agent_priority_cache.json` and `tests/results/_agent/issue/`
-  reflect the latest snapshot, hook preflight succeeds, and the working tree is anchored to `develop`; treat that issue
-  as the top objective for edits, CI runs, and PRs.
+- The standing priority is whichever issue carries the `standing-priority`
+  label. Use the sanitized wrappers (`node tools/npm/cli.mjs <command>` /
+  `node tools/npm/run-script.mjs <script>`) instead of raw `npm` invocations
+  (the container exports `npm_config_http_proxy`, which triggers warnings in
+  recent npm builds). Run `pwsh -NoLogo -NoProfile -File
+  tools/priority/bootstrap.ps1` at session start so
+  `.agent_priority_cache.json` and `tests/results/_agent/issue/` reflect the
+  latest snapshot, hook preflight succeeds, and the working tree is anchored to
+  `develop`; treat that issue as the top objective for edits, CI runs, and PRs.
 - The human operator is signed in with an admin GitHub token; assume privileged operations (labels, reruns, merges) are
   allowed when safe.
 - Default behaviour:
@@ -63,7 +66,8 @@ line buffers).
 - Pattern filter: `./Invoke-PesterTests.ps1 -IncludePatterns 'CompareVI.*'`
 - Staging smoke:
   - `pwsh -File tools/Test-PRVIStagingSmoke.ps1 -DryRun` (plan only)
-  - `npm run smoke:vi-stage` (full run; uses fixtures/vi-attr for a baked-in VI attribute diff)
+  - `npm run smoke:vi-stage` (full run; uses fixtures/vi-attr for a baked-in VI
+    attribute diff)
   Both flows post artifact links and the updated PR summary comment.
 - Containerized non-LV checks: `pwsh -File tools/Run-NonLVChecksInDocker.ps1`
 - Compare harnesses default to headless CLI runs (`LVCI_COMPARE_POLICY=cli-only`). Override with `lv-only` only when you
@@ -310,6 +314,4 @@ Guidance:
 - For markdownlint, try `Resolve-MarkdownlintCli2Path`; only fall back to `npx --no-install` when necessary.
 - For LVCompare, continue to enforce the canonical path; pass `-lvpath` to LVCompare and never launch `LabVIEW.exe`.
 - Do not lint or link-check vendor documentation under `bin/`; scope link checks to `docs/` or ignore `bin/**`.
-
-
 

@@ -6,9 +6,10 @@ Thank you for contributing to `compare-vi-cli-action`!
 ## Prerequisites
 
 - Self-hosted Windows runner with LabVIEW 2025 Q3 installed and licensed
-- LVCompare must be installed at the canonical path: `C:\Program Files\National Instruments\Shared\LabVIEW
-  Compare\LVCompare.exe`; `LVCOMPARE_PATH` or `lvComparePath` may be used only if they resolve to this canonical
-  location (no alternative install paths supported)
+- LVCompare must be installed at the canonical path:
+  `C:\Program Files\National Instruments\Shared\LabVIEW Compare\LVCompare.exe`;
+  `LVCOMPARE_PATH` or `lvComparePath` may be used only if they resolve to this
+  canonical location (no alternative install paths supported)
 
 ## Getting Started
 
@@ -16,8 +17,10 @@ Thank you for contributing to `compare-vi-cli-action`!
 - Create a feature branch
 - Run the staging smoke helper before pushing:
   - `pwsh -File tools/Test-PRVIStagingSmoke.ps1 -DryRun` to preview the plan
-  - `npm run smoke:vi-stage` to run end-to-end using the baked-in `fixtures/vi-attr` attribute diff
-  All staging runs post a summary comment and upload `vi-compare-manifest` / `vi-staging-XX.zip` artifacts; check the comment for links.
+  - `npm run smoke:vi-stage` to run end-to-end using the baked-in `fixtures/vi-attr`
+    attribute diff
+  All staging runs post a summary comment and upload `vi-compare-manifest` /
+  `vi-staging-XX.zip` artifacts; check the comment for links.
 
 ## Action Development Tips
 
@@ -104,15 +107,19 @@ $env:LV_HEAD_VI = 'VI2.vi'
 
 ## Standing priority workflow
 
-- `node tools/npm/run-script.mjs priority:bootstrap` — detect the current plane, run hook preflight (and parity when `--
-  -VerboseHooks` is supplied), and refresh the standing-priority snapshot/router.
-- `node tools/npm/run-script.mjs priority:handoff` — ingest the latest handoff artifacts (`issue-summary.json`, `issue-
-  router.json`, hook and watcher summaries) into the session, hydrating `$StandingPrioritySnapshot`,
+- `node tools/npm/run-script.mjs priority:bootstrap` - detect the current plane,
+  run hook preflight (and parity when `--VerboseHooks` is supplied), and refresh
+  the standing-priority snapshot/router.
+- `node tools/npm/run-script.mjs priority:handoff` - ingest the latest handoff
+  artifacts (`issue-summary.json`, `issue-router.json`, hook and watcher summaries)
+  into the session, hydrating `$StandingPrioritySnapshot`,
   `$StandingPriorityRouter`, etc.
-- `node tools/npm/run-script.mjs priority:handoff-tests` — run the priority/hooks/semver checks and persist results to
+- `node tools/npm/run-script.mjs priority:handoff-tests` - run the
+  priority/hooks/semver checks and persist results to
   `tests/results/_agent/handoff/test-summary.json` for downstream agents.
-- `node tools/npm/run-script.mjs priority:release` — simulate the release actions described by the router; pass `--
-  -Execute` to run `Branch-Orchestrator.ps1 -Execute` instead of the default dry-run.
+- `node tools/npm/run-script.mjs priority:release` - simulate the release actions
+  described by the router; pass `--Execute` to run `Branch-Orchestrator.ps1 -Execute`
+  instead of the default dry-run.
 - `node tools/npm/run-script.mjs handoff:schema` — validate the hook handoff summary
   (`tests/results/_agent/handoff/hook-summary.json`) against `docs/schemas/handoff-hook-summary-v1.schema.json`.
 - `node tools/npm/run-script.mjs handoff:release-schema` — validate the release summary
@@ -178,5 +185,6 @@ If we later re-enable MD013:
 3. Avoid splitting code spans across lines solely for lint; prefer disabling for that line.
 
 Always ensure examples remain copy/paste friendly (avoid trailing spaces, stray prompts inside code blocks).
+
 
 
