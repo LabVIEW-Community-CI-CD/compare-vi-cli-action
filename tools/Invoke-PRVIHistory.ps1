@@ -317,12 +317,19 @@ $effectiveSummaryPath = if ($SummaryPath) {
 }
 
 $compareScriptPath = Join-Path (Split-Path -Parent $PSCommandPath) 'Compare-VIHistory.ps1'
+try {
+    $compareScriptPath = (Resolve-Path -LiteralPath $compareScriptPath -ErrorAction Stop).ProviderPath
+} catch {
+    throw ("Unable to locate Compare-VIHistory.ps1 at expected path: {0}" -f $compareScriptPath)
+}
+$script:InvokePRVIHistory_CompareScriptPath = $compareScriptPath
+
 if (-not $CompareInvoker) {
     $CompareInvoker = {
         param(
             [hashtable]$Arguments
         )
-        & $using:compareScriptPath @Arguments
+        & $script:InvokePRVIHistory_CompareScriptPath @Arguments
     }.GetNewClosure()
 }
 
@@ -342,8 +349,13 @@ for ($i = 0; $i -lt $targets.Count; $i++) {
     $targetResultsDir = Join-Path $resultsRootResolved $targetDirName
     New-Item -ItemType Directory -Force -Path $targetResultsDir | Out-Null
 
+    $effectiveTargetPath = $targetFullPath
+    if (-not [string]::IsNullOrWhiteSpace($repoPath) -and -not [System.IO.Path]::IsPathRooted($repoPath)) {
+        $effectiveTargetPath = $repoPath
+    }
+
     $compareArgs = @{
-        TargetPath = $targetFullPath
+        TargetPath = $effectiveTargetPath
         ResultsDir = $targetResultsDir
         OutPrefix  = $sanitized
     }
@@ -488,5 +500,7 @@ if ($errorTargets.Count -gt 0) {
     $message = "VI history execution failed for {0} target(s): {1}" -f $errorTargets.Count, ($messages -join '; ')
     throw $message
 }
+
+Remove-Variable -Name InvokePRVIHistory_CompareScriptPath -Scope Script -ErrorAction SilentlyContinue
 
 return $summary
