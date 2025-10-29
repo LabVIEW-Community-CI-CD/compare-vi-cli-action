@@ -261,7 +261,7 @@ jobs:
           }
 
           $bodyLines.Add("") | Out-Null
-          $bodyLines.Add(("Run details: [link]({0})." -f $env:WORKFLOW_URL)) | Out-Null
+          $bodyLines.Add([string]::Format('Run details: [link]({0}).', $env:WORKFLOW_URL)) | Out-Null
 
           if ($env:JOB_STATUS -ne 'success') {
             $bodyLines.Add("") | Out-Null
