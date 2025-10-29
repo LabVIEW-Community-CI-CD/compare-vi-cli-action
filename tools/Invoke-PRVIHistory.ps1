@@ -356,15 +356,15 @@ for ($i = 0; $i -lt $targets.Count; $i++) {
     try {
         & $CompareInvoker $compareArgs | Out-Null
     } catch {
-        $error = $_
+        $caughtError = $_
         [void]$errorTargets.Add([pscustomobject]@{
             repoPath = $repoPath
-            message  = $error.Exception.Message
+            message  = $caughtError.Exception.Message
         }) | Out-Null
         [void]$summaryTargets.Add([pscustomobject]@{
             repoPath    = $repoPath
             status      = 'error'
-            message     = $error.Exception.Message
+            message     = $caughtError.Exception.Message
             changeTypes = $target.changeTypes.ToArray()
             basePaths   = $target.basePaths.ToArray()
             headPaths   = $target.headPaths.ToArray()
