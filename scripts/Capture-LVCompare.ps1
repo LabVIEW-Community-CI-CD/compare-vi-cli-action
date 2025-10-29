@@ -5,8 +5,9 @@ param(
 	[Parameter()][string]$LvComparePath,
 	[Parameter()][switch]$RenderReport,
 	[Parameter()][string]$OutputDir = 'tests/results',
-	[Parameter()][switch]$Quiet,
-	[Parameter()][switch]$AllowSameLeaf
+[Parameter()][switch]$Quiet,
+[Parameter()][switch]$AllowSameLeaf,
+[Nullable[int]]$TimeoutSeconds
 )
 
 $ErrorActionPreference = 'Stop'
@@ -436,7 +437,20 @@ $sw = [System.Diagnostics.Stopwatch]::StartNew()
 $p = [System.Diagnostics.Process]::Start($psi)
 $stdout = $p.StandardOutput.ReadToEnd()
 $stderr = $p.StandardError.ReadToEnd()
-$p.WaitForExit()
+$waitTimeoutMs = -1
+if ($PSBoundParameters.ContainsKey('TimeoutSeconds') -and $TimeoutSeconds.HasValue -and $TimeoutSeconds.Value -gt 0) {
+	$waitTimeoutMs = [Math]::Max(1, [int]$TimeoutSeconds.Value) * 1000
+}
+if ($waitTimeoutMs -gt 0) {
+	$waitSucceeded = $p.WaitForExit($waitTimeoutMs)
+	if (-not $waitSucceeded) {
+		$sw.Stop()
+		try { $p.Kill($true) } catch {}
+		Throw "LVCompare.exe (PID $($p.Id)) timed out after $($TimeoutSeconds.Value) second(s). Command: $commandDisplay"
+	}
+} else {
+	$p.WaitForExit()
+}
 $sw.Stop()
 $exitCode = [int]$p.ExitCode
 

@@ -17,6 +17,9 @@ Describe 'Run-StagedLVCompare.ps1' -Tag 'Unit' {
         Remove-Item Env:RUN_STAGED_LVCOMPARE_FLAGS -ErrorAction SilentlyContinue
         Remove-Item Env:RUN_STAGED_LVCOMPARE_FLAGS_MODE -ErrorAction SilentlyContinue
         Remove-Item Env:RUN_STAGED_LVCOMPARE_REPLACE_FLAGS -ErrorAction SilentlyContinue
+        Remove-Item Env:RUN_STAGED_LVCOMPARE_TIMEOUT_SECONDS -ErrorAction SilentlyContinue
+        Remove-Item Env:RUN_STAGED_LVCOMPARE_LEAK_CHECK -ErrorAction SilentlyContinue
+        Remove-Item Env:RUN_STAGED_LVCOMPARE_LEAK_GRACE_SECONDS -ErrorAction SilentlyContinue
         Remove-Item Env:VI_STAGE_COMPARE_FLAGS -ErrorAction SilentlyContinue
         Remove-Item Env:VI_STAGE_COMPARE_FLAGS_MODE -ErrorAction SilentlyContinue
     }
@@ -56,7 +59,10 @@ Describe 'Run-StagedLVCompare.ps1' -Tag 'Unit' {
                 [switch]$AllowSameLeaf,
                 [switch]$RenderReport,
                 [string[]]$Flags,
-                [switch]$ReplaceFlags
+                [switch]$ReplaceFlags,
+                [switch]$LeakCheck,
+                [Nullable[int]]$TimeoutSeconds,
+                [Nullable[double]]$LeakGraceSeconds
             )
             $call = [pscustomobject]@{
                 Base         = $BaseVi
@@ -64,6 +70,9 @@ Describe 'Run-StagedLVCompare.ps1' -Tag 'Unit' {
                 OutputDir    = $OutputDir
                 AllowSameLeaf= $AllowSameLeaf.IsPresent
                 RenderReport = $RenderReport.IsPresent
+                LeakCheck    = $LeakCheck.IsPresent
+                TimeoutSeconds = if ($PSBoundParameters.ContainsKey('TimeoutSeconds') -and $TimeoutSeconds -ne $null) { [int]$TimeoutSeconds } else { $null }
+                LeakGraceSeconds = if ($PSBoundParameters.ContainsKey('LeakGraceSeconds') -and $LeakGraceSeconds -ne $null) { [double]$LeakGraceSeconds } else { $null }
             }
             $null = $invokeCalls.Add($call)
             New-Item -ItemType Directory -Path $OutputDir -Force | Out-Null
@@ -173,7 +182,10 @@ Describe 'Run-StagedLVCompare.ps1' -Tag 'Unit' {
                 [switch]$AllowSameLeaf,
                 [switch]$RenderReport,
                 [string[]]$Flags,
-                [switch]$ReplaceFlags
+                [switch]$ReplaceFlags,
+                [switch]$LeakCheck,
+                [Nullable[int]]$TimeoutSeconds,
+                [Nullable[double]]$LeakGraceSeconds
             )
             New-Item -ItemType Directory -Path $OutputDir -Force | Out-Null
             return [pscustomobject]@{
@@ -232,7 +244,10 @@ Describe 'Run-StagedLVCompare.ps1' -Tag 'Unit' {
                 [switch]$AllowSameLeaf,
                 [switch]$RenderReport,
                 [string[]]$Flags,
-                [switch]$ReplaceFlags
+                [switch]$ReplaceFlags,
+                [switch]$LeakCheck,
+                [Nullable[int]]$TimeoutSeconds,
+                [Nullable[double]]$LeakGraceSeconds
             )
             return [pscustomobject]@{
                 ExitCode = 2
@@ -281,11 +296,17 @@ Describe 'Run-StagedLVCompare.ps1' -Tag 'Unit' {
                 [switch]$AllowSameLeaf,
                 [switch]$RenderReport,
                 [string[]]$Flags,
-                [switch]$ReplaceFlags
+                [switch]$ReplaceFlags,
+                [switch]$LeakCheck,
+                [Nullable[int]]$TimeoutSeconds,
+                [Nullable[double]]$LeakGraceSeconds
             )
             $null = $invokeCalls.Add([pscustomobject]@{
                 Flags        = @($Flags)
                 ReplaceFlags = $ReplaceFlags.IsPresent
+                LeakCheck    = $LeakCheck.IsPresent
+                TimeoutSeconds = if ($PSBoundParameters.ContainsKey('TimeoutSeconds') -and $TimeoutSeconds -ne $null) { [int]$TimeoutSeconds } else { $null }
+                LeakGraceSeconds = if ($PSBoundParameters.ContainsKey('LeakGraceSeconds') -and $LeakGraceSeconds -ne $null) { [double]$LeakGraceSeconds } else { $null }
             })
             New-Item -ItemType Directory -Path $OutputDir -Force | Out-Null
             return [pscustomobject]@{
@@ -335,11 +356,17 @@ Describe 'Run-StagedLVCompare.ps1' -Tag 'Unit' {
                 [switch]$AllowSameLeaf,
                 [switch]$RenderReport,
                 [string[]]$Flags,
-                [switch]$ReplaceFlags
+                [switch]$ReplaceFlags,
+                [switch]$LeakCheck,
+                [Nullable[int]]$TimeoutSeconds,
+                [Nullable[double]]$LeakGraceSeconds
             )
             $null = $invokeCalls.Add([pscustomobject]@{
                 Flags        = @($Flags)
                 ReplaceFlags = $ReplaceFlags.IsPresent
+                LeakCheck    = $LeakCheck.IsPresent
+                TimeoutSeconds = if ($PSBoundParameters.ContainsKey('TimeoutSeconds') -and $TimeoutSeconds -ne $null) { [int]$TimeoutSeconds } else { $null }
+                LeakGraceSeconds = if ($PSBoundParameters.ContainsKey('LeakGraceSeconds') -and $LeakGraceSeconds -ne $null) { [double]$LeakGraceSeconds } else { $null }
             })
             New-Item -ItemType Directory -Path $OutputDir -Force | Out-Null
             return [pscustomobject]@{
@@ -390,11 +417,17 @@ Describe 'Run-StagedLVCompare.ps1' -Tag 'Unit' {
                 [switch]$AllowSameLeaf,
                 [switch]$RenderReport,
                 [string[]]$Flags,
-                [switch]$ReplaceFlags
+                [switch]$ReplaceFlags,
+                [switch]$LeakCheck,
+                [Nullable[int]]$TimeoutSeconds,
+                [Nullable[double]]$LeakGraceSeconds
             )
             $null = $invokeCalls.Add([pscustomobject]@{
                 Flags        = $Flags
                 ReplaceFlags = $ReplaceFlags.IsPresent
+                LeakCheck    = $LeakCheck.IsPresent
+                TimeoutSeconds = if ($PSBoundParameters.ContainsKey('TimeoutSeconds') -and $TimeoutSeconds -ne $null) { [int]$TimeoutSeconds } else { $null }
+                LeakGraceSeconds = if ($PSBoundParameters.ContainsKey('LeakGraceSeconds') -and $LeakGraceSeconds -ne $null) { [double]$LeakGraceSeconds } else { $null }
             })
             New-Item -ItemType Directory -Path $OutputDir -Force | Out-Null
             return [pscustomobject]@{
@@ -444,11 +477,17 @@ Describe 'Run-StagedLVCompare.ps1' -Tag 'Unit' {
                 [switch]$AllowSameLeaf,
                 [switch]$RenderReport,
                 [string[]]$Flags,
-                [switch]$ReplaceFlags
+                [switch]$ReplaceFlags,
+                [switch]$LeakCheck,
+                [Nullable[int]]$TimeoutSeconds,
+                [Nullable[double]]$LeakGraceSeconds
             )
             $null = $invokeCalls.Add([pscustomobject]@{
                 Flags        = @($Flags)
                 ReplaceFlags = $ReplaceFlags.IsPresent
+                LeakCheck    = $LeakCheck.IsPresent
+                TimeoutSeconds = if ($PSBoundParameters.ContainsKey('TimeoutSeconds') -and $TimeoutSeconds -ne $null) { [int]$TimeoutSeconds } else { $null }
+                LeakGraceSeconds = if ($PSBoundParameters.ContainsKey('LeakGraceSeconds') -and $LeakGraceSeconds -ne $null) { [double]$LeakGraceSeconds } else { $null }
             })
             New-Item -ItemType Directory -Path $OutputDir -Force | Out-Null
             return [pscustomobject]@{
@@ -461,6 +500,191 @@ Describe 'Run-StagedLVCompare.ps1' -Tag 'Unit' {
         $invokeCalls.Count | Should -Be 1
         $invokeCalls[0].ReplaceFlags | Should -BeFalse
         @($invokeCalls[0].Flags) | Should -Contain '-nobd'
+    }
+
+    It 'records leak warnings when leak summary present' {
+        $resultsPath = Join-Path $TestDrive 'leak-results.json'
+        $artifactsDir = Join-Path $TestDrive 'artifacts'
+        New-Item -ItemType Directory -Path $artifactsDir -Force | Out-Null
+
+        $stagedBase = Join-Path $TestDrive 'leak\Base.vi'
+        $stagedHead = Join-Path $TestDrive 'leak\Head.vi'
+        New-Item -ItemType Directory -Path (Split-Path $stagedBase -Parent) -Force | Out-Null
+        Set-Content -LiteralPath $stagedBase -Value 'base'
+        Set-Content -LiteralPath $stagedHead -Value 'head'
+
+        @(
+            [ordered]@{
+                changeType = 'modify'
+                basePath   = 'VI7.vi'
+                headPath   = 'VI7.vi'
+                staged     = [ordered]@{
+                    Base = $stagedBase
+                    Head = $stagedHead
+                }
+            }
+        ) | ConvertTo-Json -Depth 6 | Set-Content -LiteralPath $resultsPath -Encoding utf8
+
+        $invokeCalls = New-Object System.Collections.Generic.List[object]
+        $invoke = {
+            param(
+                [string]$BaseVi,
+                [string]$HeadVi,
+                [string]$OutputDir,
+                [switch]$AllowSameLeaf,
+                [switch]$RenderReport,
+                [string[]]$Flags,
+                [switch]$ReplaceFlags,
+                [switch]$LeakCheck,
+                [Nullable[int]]$TimeoutSeconds,
+                [Nullable[double]]$LeakGraceSeconds
+            )
+            $null = $invokeCalls.Add([pscustomobject]@{
+                LeakCheck    = $LeakCheck.IsPresent
+                TimeoutSeconds = if ($PSBoundParameters.ContainsKey('TimeoutSeconds') -and $TimeoutSeconds -ne $null) { [int]$TimeoutSeconds } else { $null }
+                LeakGraceSeconds = if ($PSBoundParameters.ContainsKey('LeakGraceSeconds') -and $LeakGraceSeconds -ne $null) { [double]$LeakGraceSeconds } else { $null }
+            })
+
+            New-Item -ItemType Directory -Path $OutputDir -Force | Out-Null
+            $capturePath = Join-Path $OutputDir 'lvcompare-capture.json'
+            '{"capture":true}' | Set-Content -LiteralPath $capturePath -Encoding utf8
+            $reportPath = Join-Path $OutputDir 'compare-report.html'
+            '<html />' | Set-Content -LiteralPath $reportPath -Encoding utf8
+
+            $leakPath = Join-Path $OutputDir 'compare-leak.json'
+            $leakPayload = [ordered]@{
+                schema    = 'prime-lvcompare-leak/v1'
+                at        = (Get-Date).ToString('o')
+                lvcompare = @{
+                    remaining = @(1234, 5678)
+                    count     = 2
+                }
+                labview   = @{
+                    remaining = @(4444)
+                    count     = 1
+                }
+            }
+            $leakPayload | ConvertTo-Json -Depth 4 | Set-Content -LiteralPath $leakPath -Encoding utf8
+
+            return [pscustomobject]@{
+                ExitCode    = 1
+                CapturePath = $capturePath
+                ReportPath  = $reportPath
+            }
+        }.GetNewClosure()
+
+        $outputFile = Join-Path $TestDrive 'outputs-leak.txt'
+        $env:GITHUB_OUTPUT = $outputFile
+
+        & $script:scriptPath -ResultsPath $resultsPath -ArtifactsDir $artifactsDir -RenderReport -InvokeLVCompare $invoke
+
+        $invokeCalls.Count | Should -Be 1
+        $invokeCalls[0].LeakCheck | Should -BeTrue
+
+        $updated = @(Get-Content -LiteralPath $resultsPath -Raw | ConvertFrom-Json)
+        $entry = $updated[0].compare
+        $entry.status | Should -Be 'diff'
+        $entry.leakWarning | Should -BeTrue
+        $entry.leak.lvcompare | Should -Be 2
+        $entry.leak.labview | Should -Be 1
+        $entry.leak.path | Should -Match 'compare-leak\.json$'
+
+        $summaryPath = Join-Path $artifactsDir 'vi-staging-compare.json'
+        Test-Path -LiteralPath $summaryPath | Should -BeTrue
+        $summary = Get-Content -LiteralPath $summaryPath -Raw | ConvertFrom-Json
+        $summary[0].leakWarning | Should -BeTrue
+        $summary[0].leakLvcompare | Should -Be 2
+        $summary[0].leakLabVIEW | Should -Be 1
+
+        $outputMap = @{}
+        foreach ($line in Get-Content -LiteralPath $outputFile) {
+            if ($line -match '=') {
+                $key, $value = $line.Split('=', 2)
+                $outputMap[$key] = $value
+            }
+        }
+        $outputMap['leak_warning_count'] | Should -Be '1'
+    }
+
+    It 'honors timeout and leak env overrides' {
+        $resultsPath = Join-Path $TestDrive 'timeout-results.json'
+        $artifactsDir = Join-Path $TestDrive 'artifacts'
+        New-Item -ItemType Directory -Path $artifactsDir -Force | Out-Null
+
+        $stagedBase = Join-Path $TestDrive 'timeout\Base.vi'
+        $stagedHead = Join-Path $TestDrive 'timeout\Head.vi'
+        New-Item -ItemType Directory -Path (Split-Path $stagedBase -Parent) -Force | Out-Null
+        Set-Content -LiteralPath $stagedBase -Value 'base'
+        Set-Content -LiteralPath $stagedHead -Value 'head'
+
+        @(
+            [ordered]@{
+                changeType = 'modify'
+                basePath   = 'VI8.vi'
+                headPath   = 'VI8.vi'
+                staged     = [ordered]@{
+                    Base = $stagedBase
+                    Head = $stagedHead
+                }
+            }
+        ) | ConvertTo-Json -Depth 6 | Set-Content -LiteralPath $resultsPath -Encoding utf8
+
+        $env:RUN_STAGED_LVCOMPARE_TIMEOUT_SECONDS = '45'
+        $env:RUN_STAGED_LVCOMPARE_LEAK_CHECK = 'false'
+        $env:RUN_STAGED_LVCOMPARE_LEAK_GRACE_SECONDS = '2.5'
+
+        $invokeCalls = New-Object System.Collections.Generic.List[object]
+        $invoke = {
+            param(
+                [string]$BaseVi,
+                [string]$HeadVi,
+                [string]$OutputDir,
+                [switch]$AllowSameLeaf,
+                [switch]$RenderReport,
+                [string[]]$Flags,
+                [switch]$ReplaceFlags,
+                [switch]$LeakCheck,
+                [Nullable[int]]$TimeoutSeconds,
+                [Nullable[double]]$LeakGraceSeconds
+            )
+            $call = [pscustomobject]@{
+                LeakCheck        = $LeakCheck.IsPresent
+                TimeoutProvided  = $PSBoundParameters.ContainsKey('TimeoutSeconds')
+                TimeoutSeconds   = if ($PSBoundParameters.ContainsKey('TimeoutSeconds') -and $TimeoutSeconds -ne $null) { [int]$TimeoutSeconds } else { $null }
+                LeakGraceProvided= $PSBoundParameters.ContainsKey('LeakGraceSeconds')
+                LeakGraceSeconds = if ($PSBoundParameters.ContainsKey('LeakGraceSeconds') -and $LeakGraceSeconds -ne $null) { [double]$LeakGraceSeconds } else { $null }
+            }
+            $null = $invokeCalls.Add($call)
+            New-Item -ItemType Directory -Path $OutputDir -Force | Out-Null
+            return [pscustomobject]@{
+                ExitCode = 0
+            }
+        }.GetNewClosure()
+
+        $outputFile = Join-Path $TestDrive 'outputs-timeout.txt'
+        $env:GITHUB_OUTPUT = $outputFile
+
+        & $script:scriptPath -ResultsPath $resultsPath -ArtifactsDir $artifactsDir -InvokeLVCompare $invoke
+
+        $invokeCalls.Count | Should -Be 1
+        $invokeCalls[0].LeakCheck | Should -BeFalse
+        $invokeCalls[0].TimeoutProvided | Should -BeTrue
+        $invokeCalls[0].TimeoutSeconds | Should -Be 45
+        $invokeCalls[0].LeakGraceProvided | Should -BeFalse
+        $invokeCalls[0].LeakGraceSeconds | Should -Be $null
+
+        $updated = @(Get-Content -LiteralPath $resultsPath -Raw | ConvertFrom-Json)
+        $compareObject = $updated[0].compare
+        ($compareObject.PSObject.Properties.Name) | Should -Not -Contain 'leakWarning'
+
+        $outputMap = @{}
+        foreach ($line in Get-Content -LiteralPath $outputFile) {
+            if ($line -match '=') {
+                $key, $value = $line.Split('=', 2)
+                $outputMap[$key] = $value
+            }
+        }
+        $outputMap['leak_warning_count'] | Should -Be '0'
     }
 }
 

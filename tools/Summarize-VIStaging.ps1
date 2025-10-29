@@ -158,8 +158,8 @@ function Build-MarkdownTable {
     }
 
     $rows = @()
-    $rows += '| Pair | Status | Diff Categories | Included | Report |'
-    $rows += '| --- | --- | --- | --- | --- |'
+    $rows += '| Pair | Status | Diff Categories | Included | Report | Leak |'
+    $rows += '| --- | --- | --- | --- | --- | --- |'
 
     foreach ($pair in $Pairs) {
         $statusIcon = switch ($pair.status) {
@@ -206,16 +206,38 @@ function Build-MarkdownTable {
         } elseif ($pair.reportPath) {
             ('`{0}`' -f $pair.reportPath)
         } else {
-            '—'
+            '-'
+        }
+
+        $leakCell = '-'
+        $leakCountsKnown = $false
+        $lvLeak = $null
+        $labLeak = $null
+        if ($pair.PSObject.Properties['leakLvcompare']) {
+            try { $lvLeak = [int]$pair.leakLvcompare } catch { $lvLeak = $pair.leakLvcompare }
+            $leakCountsKnown = $true
+        }
+        if ($pair.PSObject.Properties['leakLabVIEW']) {
+            try { $labLeak = [int]$pair.leakLabVIEW } catch { $labLeak = $pair.leakLabVIEW }
+            $leakCountsKnown = $true
+        }
+        if ($leakCountsKnown) {
+            $lvLeak = if ($lvLeak -ne $null) { $lvLeak } else { 0 }
+            $labLeak = if ($labLeak -ne $null) { $labLeak } else { 0 }
+            if ($lvLeak -gt 0 -or $labLeak -gt 0 -or ($pair.PSObject.Properties['leakWarning'] -and $pair.leakWarning)) {
+                $leakCell = ("⚠ lv={0}, lab={1}" -f $lvLeak, $labLeak)
+            } else {
+                $leakCell = '_none_'
+            }
         }
 
         $pairLabel = ('Pair {0} ({1})' -f $pair.index, $pair.changeType)
-        $rows += ('| {0} | {1} | {2} | {3} | {4} |' -f $pairLabel, $statusIcon, $categories, $included, $reportLink)
+        $rows += ('| {0} | {1} | {2} | {3} | {4} | {5} |' -f $pairLabel, $statusIcon, $categories, $included, $reportLink, $leakCell)
     }
 
     $summaryLines = @()
-    $summaryLines += ('**Totals** — diff: {0}, match: {1}, skipped: {2}, error: {3}' -f `
-        $Totals.diff, $Totals.match, $Totals.skipped, $Totals.error)
+    $summaryLines += ('**Totals** - diff: {0}, match: {1}, skipped: {2}, error: {3}, leaks: {4}' -f `
+        $Totals.diff, $Totals.match, $Totals.skipped, $Totals.error, $Totals.leakWarnings)
     if ($CompareDir) {
         $summaryLines += ('Artifacts rooted at `{0}`.' -f $CompareDir.Replace('\','/'))
     }
@@ -244,10 +266,11 @@ if ($entries -isnot [System.Collections.IEnumerable]) {
 
 $pairs = New-Object System.Collections.Generic.List[pscustomobject]
 $totals = [ordered]@{
-    diff    = 0
-    match   = 0
-    skipped = 0
-    error   = 0
+    diff         = 0
+    match        = 0
+    skipped      = 0
+    error        = 0
+    leakWarnings = 0
 }
 
 $compareRoot = $null
@@ -358,6 +381,43 @@ foreach ($entry in $entries) {
         $stagedHead = $entry.stagedHead
     }
 
+    $leakWarning = $false
+    if ($entry.PSObject.Properties['leakWarning']) {
+        try { $leakWarning = [bool]$entry.leakWarning } catch { $leakWarning = $entry.leakWarning }
+    }
+    $leakPath = $null
+    $lvLeak = $null
+    $labLeak = $null
+    if ($entry.PSObject.Properties['leakLvcompare']) {
+        $lvLeak = $entry.leakLvcompare
+    } elseif ($entry.PSObject.Properties['leak'] -and $entry.leak -and $entry.leak.PSObject.Properties['lvcompare']) {
+        $lvLeak = $entry.leak.lvcompare
+    }
+    if ($entry.PSObject.Properties['leakLabVIEW']) {
+        $labLeak = $entry.leakLabVIEW
+    } elseif ($entry.PSObject.Properties['leak'] -and $entry.leak -and $entry.leak.PSObject.Properties['labview']) {
+        $labLeak = $entry.leak.labview
+    }
+    if ($entry.PSObject.Properties['leakPath'] -and $entry.leakPath) {
+        $leakPath = $entry.leakPath
+    } elseif ($entry.PSObject.Properties['leak'] -and $entry.leak -and $entry.leak.PSObject.Properties['path'] -and $entry.leak.path) {
+        $leakPath = $entry.leak.path
+    }
+    $lvLeakInt = $null
+    $labLeakInt = $null
+    if ($lvLeak -ne $null) {
+        try { $lvLeakInt = [int]$lvLeak } catch { $lvLeakInt = $lvLeak }
+    }
+    if ($labLeak -ne $null) {
+        try { $labLeakInt = [int]$labLeak } catch { $labLeakInt = $labLeak }
+    }
+    if (($lvLeakInt -ne $null -and $lvLeakInt -gt 0) -or ($labLeakInt -ne $null -and $labLeakInt -gt 0)) {
+        $leakWarning = $true
+    }
+    if ($leakWarning -and $totals.Contains('leakWarnings')) {
+        $totals.leakWarnings++
+    }
+
     $pairInfo = [pscustomobject]@{
         index             = $entry.index
         changeType        = $entry.changeType
@@ -375,6 +435,10 @@ foreach ($entry in $entries) {
         diffDetails       = $details
         diffDetailPreview = $detailPreviewList
         includedAttributes= $includedList
+        leakWarning       = $leakWarning
+        leakLvcompare     = $lvLeakInt
+        leakLabVIEW       = $labLeakInt
+        leakPath          = $leakPath
     }
 
     $pairs.Add($pairInfo)

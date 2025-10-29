@@ -57,6 +57,17 @@ function Get-RunStagedFlagList {
     return $result.ToArray()
 }
 
+function Get-EnvBoolean {
+    param([string]$Value)
+    if ([string]::IsNullOrWhiteSpace($Value)) { return $null }
+    $normalized = $Value.Trim().ToLowerInvariant()
+    $truthy = @('1','true','yes','on')
+    $falsy  = @('0','false','no','off')
+    if ($truthy -contains $normalized) { return $true }
+    if ($falsy -contains $normalized) { return $false }
+    return $null
+}
+
 if (-not $flagsProvided) {
     $effectiveFlags = $null
     $envFlagCandidates = @(
@@ -111,6 +122,41 @@ if (-not $effectiveReplace) {
         } elseif ($falsy -contains $value) {
             $effectiveReplace = $false
         }
+    }
+}
+
+$timeoutSeconds = $null
+$timeoutRaw = [System.Environment]::GetEnvironmentVariable('RUN_STAGED_LVCOMPARE_TIMEOUT_SECONDS', 'Process')
+if (-not [string]::IsNullOrWhiteSpace($timeoutRaw)) {
+    $parsedTimeout = 0
+    if ([int]::TryParse($timeoutRaw.Trim(), [ref]$parsedTimeout)) {
+        if ($parsedTimeout -gt 0) {
+            $timeoutSeconds = $parsedTimeout
+        } else {
+            Write-Warning ("RUN_STAGED_LVCOMPARE_TIMEOUT_SECONDS must be greater than zero. Value '{0}' ignored." -f $timeoutRaw)
+        }
+    } else {
+        Write-Warning ("RUN_STAGED_LVCOMPARE_TIMEOUT_SECONDS is not a valid integer: '{0}'." -f $timeoutRaw)
+    }
+}
+
+$leakCheckEnabled = $true
+$leakCheckRaw = [System.Environment]::GetEnvironmentVariable('RUN_STAGED_LVCOMPARE_LEAK_CHECK', 'Process')
+$leakCheckValue = Get-EnvBoolean -Value $leakCheckRaw
+if ($leakCheckValue -ne $null) { $leakCheckEnabled = $leakCheckValue }
+
+$leakGraceSecondsOverride = $null
+$leakGraceRaw = [System.Environment]::GetEnvironmentVariable('RUN_STAGED_LVCOMPARE_LEAK_GRACE_SECONDS', 'Process')
+if (-not [string]::IsNullOrWhiteSpace($leakGraceRaw)) {
+    $parsedGrace = 0.0
+    if ([double]::TryParse($leakGraceRaw.Trim(), [ref]$parsedGrace)) {
+        if ($parsedGrace -ge 0) {
+            $leakGraceSecondsOverride = $parsedGrace
+        } else {
+            Write-Warning ("RUN_STAGED_LVCOMPARE_LEAK_GRACE_SECONDS must be non-negative. Value '{0}' ignored." -f $leakGraceRaw)
+        }
+    } else {
+        Write-Warning ("RUN_STAGED_LVCOMPARE_LEAK_GRACE_SECONDS is not a valid number: '{0}'." -f $leakGraceRaw)
     }
 }
 
@@ -190,6 +236,7 @@ $diffCount = 0
 $matchCount = 0
 $skipCount = 0
 $errorCount = 0
+$leakWarningCount = 0
 $failureMessages = New-Object System.Collections.Generic.List[string]
 
 $index = 1
@@ -211,6 +258,10 @@ foreach ($entry in $results) {
         $entry.staged.PSObject.Properties['Head'] -and
         -not [string]::IsNullOrWhiteSpace($entry.staged.Base) -and
         -not [string]::IsNullOrWhiteSpace($entry.staged.Head)
+
+    $stagedBasePath = $null
+    $stagedHeadPath = $null
+    $pairDir = $null
 
     if ($hasStaging) {
         $pairDir = Join-Path $compareRoot ("pair-{0:D2}" -f $index)
@@ -243,6 +294,11 @@ foreach ($entry in $results) {
         if ($RenderReport.IsPresent) { $invokeParams.RenderReport = $true }
         if ($effectiveFlags) { $invokeParams.Flags = $effectiveFlags }
         if ($effectiveReplace) { $invokeParams.ReplaceFlags = $true }
+        if ($timeoutSeconds) { $invokeParams.TimeoutSeconds = $timeoutSeconds }
+        if ($leakCheckEnabled) {
+            $invokeParams.LeakCheck = $true
+            if ($leakGraceSecondsOverride -ne $null) { $invokeParams.LeakGraceSeconds = [double]$leakGraceSecondsOverride }
+        }
 
         $allowSameLeafRequested = $false
         if ($entry.staged.PSObject.Properties['AllowSameLeaf']) {
@@ -292,6 +348,38 @@ foreach ($entry in $results) {
             $compareInfo.reportPath = $invokeResult.ReportPath
         }
 
+        if ($leakCheckEnabled) {
+            $leakPath = Join-Path $pairDir 'compare-leak.json'
+            if (Test-Path -LiteralPath $leakPath -PathType Leaf) {
+                $leakData = $null
+                try {
+                    $leakData = Get-Content -LiteralPath $leakPath -Raw -ErrorAction Stop | ConvertFrom-Json -Depth 4
+                } catch {
+                    Write-Warning ("[compare] Failed to parse leak summary for pair {0}: {1}" -f $index, $_.Exception.Message)
+                }
+                if ($leakData) {
+                    $lvLeak = 0
+                    $labLeak = 0
+                    if ($leakData.PSObject.Properties['lvcompare'] -and $leakData.lvcompare.PSObject.Properties['count']) {
+                        try { $lvLeak = [int]$leakData.lvcompare.count } catch { $lvLeak = 0 }
+                    }
+                    if ($leakData.PSObject.Properties['labview'] -and $leakData.labview.PSObject.Properties['count']) {
+                        try { $labLeak = [int]$leakData.labview.count } catch { $labLeak = 0 }
+                    }
+                    $compareInfo.leak = [pscustomobject]@{
+                        path      = $leakPath
+                        lvcompare = $lvLeak
+                        labview   = $labLeak
+                    }
+                    if ($lvLeak -gt 0 -or $labLeak -gt 0) {
+                        $compareInfo.leakWarning = $true
+                        $leakWarningCount++
+                        Write-Warning ("[compare] Leak warning for pair {0}: LVCompare={1}, LabVIEW={2}. Details: {3}" -f $index, $lvLeak, $labLeak, $leakPath)
+                    }
+                }
+            }
+        }
+
         switch ($exitCode) {
             0 {
                 $compareInfo.status = 'match'
@@ -313,19 +401,59 @@ foreach ($entry in $results) {
 
     $entry | Add-Member -NotePropertyName compare -NotePropertyValue ([pscustomobject]$compareInfo) -Force
 
+    $compareLeakWarning = $false
+    $leakRecord = $null
+    if ($compareInfo -is [System.Collections.IDictionary]) {
+        if ($compareInfo.Contains('leakWarning')) { $compareLeakWarning = [bool]$compareInfo['leakWarning'] }
+        if ($compareInfo.Contains('leak')) { $leakRecord = $compareInfo['leak'] }
+    } elseif ($compareInfo.PSObject) {
+        if ($compareInfo.PSObject.Properties['leakWarning']) {
+            try { $compareLeakWarning = [bool]$compareInfo.leakWarning } catch { $compareLeakWarning = $compareInfo.leakWarning }
+        }
+        if ($compareInfo.PSObject.Properties['leak']) { $leakRecord = $compareInfo.leak }
+    }
+
+    $leakLvValue = $null
+    $leakLabValue = $null
+    $leakPathValue = $null
+    if ($leakRecord) {
+        if ($leakRecord -is [System.Collections.IDictionary]) {
+            if ($leakRecord.Contains('lvcompare')) { $leakLvValue = $leakRecord['lvcompare'] }
+            if ($leakRecord.Contains('labview')) { $leakLabValue = $leakRecord['labview'] }
+            if ($leakRecord.Contains('path')) { $leakPathValue = $leakRecord['path'] }
+        } elseif ($leakRecord.PSObject) {
+            if ($leakRecord.PSObject.Properties['lvcompare']) { $leakLvValue = $leakRecord.lvcompare }
+            if ($leakRecord.PSObject.Properties['labview']) { $leakLabValue = $leakRecord.labview }
+            if ($leakRecord.PSObject.Properties['path']) { $leakPathValue = $leakRecord.path }
+        }
+    }
+
+    $leakLvInt = $null
+    if ($leakLvValue -ne $null) {
+        try { $leakLvInt = [int]$leakLvValue } catch { $leakLvInt = $leakLvValue }
+    }
+    $leakLabInt = $null
+    if ($leakLabValue -ne $null) {
+        try { $leakLabInt = [int]$leakLabValue } catch { $leakLabInt = $leakLabValue }
+    }
+
     $comparisons.Add([pscustomobject]@{
-        index        = $index
-        changeType   = $entry.changeType
-        basePath     = $entry.basePath
-        headPath     = $entry.headPath
-        stagedBase   = $stagedBasePath
-        stagedHead   = $stagedHeadPath
-        status       = $compareInfo.status
-        exitCode     = $compareInfo.exitCode
-        outputDir    = $compareInfo.outputDir
-        capturePath  = $compareInfo.capturePath
-        reportPath   = $compareInfo.reportPath
-        allowSameLeaf= $allowSameLeafRequested
+        index         = $index
+        changeType    = $entry.changeType
+        basePath      = $entry.basePath
+        headPath      = $entry.headPath
+        stagedBase    = $stagedBasePath
+        stagedHead    = $stagedHeadPath
+        status        = $compareInfo.status
+        exitCode      = $compareInfo.exitCode
+        outputDir     = $compareInfo.outputDir
+        capturePath   = $compareInfo.capturePath
+        reportPath    = $compareInfo.reportPath
+        allowSameLeaf = $allowSameLeafRequested
+        leakWarning   = [bool]$compareLeakWarning
+        leakLvcompare = $leakLvInt
+        leakLabVIEW   = $leakLabInt
+        leakPath      = $leakPathValue
     })
 
     $index++
@@ -343,6 +471,7 @@ if ($Env:GITHUB_OUTPUT) {
     "match_count=$matchCount" | Out-File -FilePath $Env:GITHUB_OUTPUT -Encoding utf8 -Append
     "skip_count=$skipCount" | Out-File -FilePath $Env:GITHUB_OUTPUT -Encoding utf8 -Append
     "error_count=$errorCount" | Out-File -FilePath $Env:GITHUB_OUTPUT -Encoding utf8 -Append
+    "leak_warning_count=$leakWarningCount" | Out-File -FilePath $Env:GITHUB_OUTPUT -Encoding utf8 -Append
 }
 
 if ($failureMessages.Count -gt 0) {

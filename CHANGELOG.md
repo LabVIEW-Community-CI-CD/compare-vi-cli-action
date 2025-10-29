@@ -7,7 +7,19 @@ The format is based on Keep a Changelog, and this project adheres to Semantic Ve
 
 ## [Unreleased]
 
-_No unreleased changes yet._
+### Added
+
+- Staged LVCompare automation now records per-pair leak metadata (`compare-leak.json`) and exposes leak counts via
+  `tools/Run-StagedLVCompare.ps1`, `tools/Summarize-VIStaging.ps1`, and the `/vi-stage` PR summary table so reviewers can
+  see lingering LVCompare/LabVIEW processes without downloading artifacts.
+- Timeout overrides can be supplied end-to-end (`Run-StagedLVCompare.ps1`, `Invoke-LVCompare.ps1`,
+  `scripts/Capture-LVCompare.ps1`, `tools/LabVIEWCli.psm1`) allowing LVCompare runs to fail-fast during long captures.
+
+### Changed
+
+- Developer guide now documents the new leak/timeout environment toggles for staged comparisons and clarifies the
+  `/vi-history` table structure.
+- `pr-vi-staging.yml` surfaces leak totals in the workflow summary/PR comment for easier triage.
 
 ## [v0.5.2] - 2025-10-23
 

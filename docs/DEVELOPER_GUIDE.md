@@ -72,6 +72,12 @@ Quick reference for building, testing, and releasing the LVCompare composite act
       example `-nobd`) when you want to add explicit flags.
       `VI_STAGE_COMPARE_REPLACE_FLAGS` accepts `true`/`false` to override the mode
       for a single run when needed.
+    - Staged compare automation exposes runtime toggles for LVCompare execution:
+      - `RUN_STAGED_LVCOMPARE_TIMEOUT_SECONDS` sets an upper bound (seconds) for each compare run.
+      - `RUN_STAGED_LVCOMPARE_LEAK_CHECK` (`true`/`false`) toggles post-run leak collection.
+      - `RUN_STAGED_LVCOMPARE_LEAK_GRACE_SECONDS` adds a post-run delay before the leak probe runs.
+      Leak counts now appear in the staging Markdown table and PR comment so reviewers can see lingering
+      LVCompare/LabVIEW processes without downloading the artifacts.
 
     - `pr-vi-staging.yml` now calls `tools/Summarize-VIStaging.ps1` after
       LVCompare finishes. The helper inspects `vi-staging-compare.json`, captures
@@ -81,71 +87,35 @@ Quick reference for building, testing, and releasing the LVCompare composite act
       so reviewers see attribute/block diagram/front panel hits without
       downloading the artifacts. Locally reproduce the same summary with:
 
-      ```powershell
+      ``powershell
       pwsh -File tools/Summarize-VIStaging.ps1 `
         -CompareJson vi-compare-artifacts/compare/vi-staging-compare.json `
         -MarkdownPath ./vi-staging-compare.md `
         -SummaryJsonPath ./vi-staging-compare-summary.json
-      ```
+      ``
+
     - `/vi-history` PR comments (or the `pr-vi-history.yml` workflow) reuse the same pattern for history diffs:
       1. `tools/Get-PRVIDiffManifest.ps1` enumerates VI changes between the PR base/head commits.
-    2. `tools/Invoke-PRVIHistory.ps1` resolves the history helper once
-       (works with repo-relative targets) and runs the compare suite per VI
-       (default `-MaxPairs 6`), writing artifacts under
-       `tests/results/pr-vi-history/` (aggregate manifest plus
-       `history-report.{md,html}` per target). Enable `-Verbose` locally to see
-       the resolved helper path plus the origin (base/head) of each compare target.
-    3. `tools/Summarize-PRVIHistory.ps1` renders the PR table with change types,
-       comparison/diff counts, and relative report paths so reviewers can triage
-       without downloading the artifact bundle.
-  - Override the history depth via the workflow_dispatch input `max_pairs` when
-    you need a longer runway; otherwise accept the default for quick attribution.
-    The workflow uploads the results directory as `pr-vi-history-<pr-number>.zip`
-    for local inspection.
-  - History runs now keep the full signal by default (no quiet bundle). Override
-    the compare flags with repository or runner variables when you need to restore
-    selective filters:
-    - `PR_VI_HISTORY_COMPARE_FLAGS_MODE` / `VI_HISTORY_COMPARE_FLAGS_MODE` (values
-      `replace` or `append`)
-    - `PR_VI_HISTORY_COMPARE_FLAGS` / `VI_HISTORY_COMPARE_FLAGS` (newline-delimited
-      flag list)
-    - `PR_VI_HISTORY_COMPARE_REPLACE_FLAGS` / `VI_HISTORY_COMPARE_REPLACE_FLAGS`
-      (force replace/append for a single run)
-
- â†’ telemetry snapshot
-  - `tools/Watch-Pester.ps1` â†’ file watcher / retry loop
-  - `tools/Detect-RogueLV.ps1 -FailOnRogue` â†’ leak check
-
-Artifacts land in `tests/results/` (JSON summaries, XML, loop logs).
-
-See `docs/plans/VALIDATION_MATRIX.md` for a standing-priority view of the major validation entry points, including
-docker workflows and the integration gate. VS Code users can launch the same commands via the bundled tasks in
-`.vscode/tasks.json` (Command Palette -> "Run Task"); leak-handling switches are already wired in so LabVIEW closes
-after each sweep.
-
-- macOS/Linux users must install PowerShell 7 and expose `pwsh` on `PATH` so the tasks can resolve the shell.
-- When LabVIEW is unavailable, run `pwsh -File Invoke-PesterTests.ps1 -IntegrationMode exclude` manually and omit the
-  leak-cleanup flags until the standing-priority tasks land on those platforms.
-
-For container parity prerequisites and cleanup tips, refer to `docs/knowledgebase/DOCKER_TOOLS_PARITY.md`.
-
-## Pull request hygiene
-
-```powershell
-pwsh -File tools/Check-PRMergeable.ps1 -Number <pr> -FailOnConflict
-```
-
-Use this after opening a PR to poll GitHub's mergeable state (exits non-zero when conflicts are detected).
-
-## Building & linting
-
-```powershell
-node tools/npm/cli.mjs ci
+      2. `tools/Invoke-PRVIHistory.ps1` resolves the history helper once
+         (works with repo-relative targets) and runs the compare suite per VI.
+         Use the default `-MaxPairs 6`; artifacts land under `tests/results/pr-vi-history/` (aggregate manifest plus
+         `history-report.{md,html}` per target). Enable `-Verbose` locally to see the resolved helper path and origin
+         (base/head) for each target.
+      3. `tools/Summarize-PRVIHistory.ps1` renders the PR table with change types, comparison/diff counts, and relative
+         report paths so reviewers can triage without downloading the artifact bundle.
+    - Override the history depth via the workflow_dispatch input `max_pairs` when you need a longer runway; otherwise
+      accept the default for quick attribution. The workflow uploads the results directory as
+      `pr-vi-history-<pr-number>.zip` for local inspection.
+    - History runs now keep the full signal by default (no quiet bundle). Override the compare flags with repository or
+      runner variables when you need to restore selective filters:
+      - `PR_VI_HISTORY_COMPARE_FLAGS_MODE` / `VI_HISTORY_COMPARE_FLAGS_MODE` (values `replace` or `append`)
+      - `PR_VI_HISTORY_COMPARE_FLAGS` / `VI_HISTORY_COMPARE_FLAGS` (newline-delimited flag list)
+      - `PR_VI_HISTORY_COMPARE_REPLACE_FLAGS` / `VI_HISTORY_COMPARE_REPLACE_FLAGS` (force replace/append for a single run)
 node tools/npm/run-script.mjs build
 node tools/npm/run-script.mjs generate:outputs
 node tools/npm/run-script.mjs lint            # markdownlint + custom checks
 ./tools/PrePush-Checks.ps1  # actionlint, optional YAML round-trip
-```
+``
 
 ## Release checklist
 
@@ -180,13 +150,13 @@ node tools/npm/run-script.mjs lint            # markdownlint + custom checks
 
 ## CI automation secrets
 
-- `AUTO_APPROVE_TOKEN` â€“ Personal access token (PAT) used by the `PR Auto-approve` workflow to submit an approval once the
+- `AUTO_APPROVE_TOKEN` - Personal access token (PAT) used by the `PR Auto-approve` workflow to submit an approval once the
   `Validate` workflow succeeds. The token must belong to an account with review rights on this repository. Grant the token
   the minimal scopes required (`public_repo` is sufficient for GitHub.com repos). When the secret is unset the workflow
   quietly skips auto-approval.
-- `AUTO_APPROVE_LABEL` *(optional)* â€“ When set, the auto-approval workflow only acts on PRs carrying this label. The default
+- `AUTO_APPROVE_LABEL` *(optional)* - When set, the auto-approval workflow only acts on PRs carrying this label. The default
   label is `auto-approve` if the secret is omitted. Set the secret to `none` to disable label gating.
-- `AUTO_APPROVE_ALLOWED` *(optional)* â€“ Comma-separated list of GitHub usernames permitted for auto-approval (e.g.,
+- `AUTO_APPROVE_ALLOWED` *(optional)* - Comma-separated list of GitHub usernames permitted for auto-approval (e.g.,
   `svelderrainruiz,octocat`). If omitted, all authors are eligible.
 
 ### Release metadata
@@ -248,19 +218,19 @@ node tools/npm/run-script.mjs lint            # markdownlint + custom checks
 
 ## Watch mode tips
 
-```powershell
+``powershell
 $env:WATCH_RESULTS_DIR = 'tests/results/_watch'
 pwsh -File tools/Watch-Pester.ps1 -RunAllOnStart -ChangedOnly
-```
+``
 
 Artifacts: `watch-last.json`, `watch-log.ndjson`. Dev Dashboard surfaces these along with
 queue telemetry and stakeholder contacts.
 
 ## Handoff telemetry & auto-trim
 
-```powershell
+``powershell
 pwsh -File tools/Print-AgentHandoff.ps1 -ApplyToggles -AutoTrim
-```
+``
 
 - Surfaces watcher status inline (alive, verifiedProcess, heartbeatFresh/Reason, needsTrim).
 - Emits a compact JSON snapshot to `tests/results/_agent/handoff/watcher-telemetry.json` and, when in CI,
@@ -272,17 +242,17 @@ pwsh -File tools/Print-AgentHandoff.ps1 -ApplyToggles -AutoTrim
 
 ## Quick verification
 
-```powershell
+``powershell
 ./tools/Quick-VerifyCompare.ps1                # temp files
 ./tools/Quick-VerifyCompare.ps1 -Same          # identical path preview
 ./tools/Quick-VerifyCompare.ps1 -Base A.vi -Head B.vi
-```
+``
 
 Preview LVCompare command without executing:
 
-```powershell
+``powershell
 pwsh -File scripts/CompareVI.ps1 -Base VI1.vi -Head VI2.vi -LvCompareArgs "-nobdcosm" -PreviewArgs
-```
+``
 
 ## References
 

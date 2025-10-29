@@ -185,6 +185,3 @@ If we later re-enable MD013:
 3. Avoid splitting code spans across lines solely for lint; prefer disabling for that line.
 
 Always ensure examples remain copy/paste friendly (avoid trailing spaces, stray prompts inside code blocks).
-
-
-

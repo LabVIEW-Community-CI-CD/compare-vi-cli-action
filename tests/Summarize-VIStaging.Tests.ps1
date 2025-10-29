@@ -111,4 +111,42 @@ Describe 'Summarize-VIStaging.ps1' -Tag 'Unit' {
         $result.pairs[0].diffCategories.Count | Should -Be 0
         $result.markdown | Should -Match 'Totals'
     }
+
+    It 'tracks leak warnings in totals and markdown' {
+        $compareRoot = Join-Path $TestDrive 'compare'
+        $pairDir = Join-Path $compareRoot 'pair-01'
+        New-Item -ItemType Directory -Path $pairDir -Force | Out-Null
+
+        $compareEntry = @(
+            [ordered]@{
+                index          = 1
+                changeType     = 'modify'
+                basePath       = 'VI1.vi'
+                headPath       = 'VI1.vi'
+                status         = 'diff'
+                exitCode       = 1
+                outputDir      = $pairDir
+                reportPath     = $null
+                leakWarning    = $true
+                leakLvcompare  = 3
+                leakLabVIEW    = 1
+                leakPath       = Join-Path $pairDir 'compare-leak.json'
+            }
+        )
+
+        $compareJson = Join-Path $TestDrive 'vi-staging-compare-leak.json'
+        $compareEntry | ConvertTo-Json -Depth 6 | Set-Content -LiteralPath $compareJson -Encoding utf8
+
+        $result = & $script:scriptPath -CompareJson $compareJson
+
+        $result | Should -Not -BeNullOrEmpty
+        $result.totals.leakWarnings | Should -Be 1
+        $result.pairs.Count | Should -Be 1
+        $result.pairs[0].leakWarning | Should -BeTrue
+        $result.pairs[0].leakLvcompare | Should -Be 3
+        $result.pairs[0].leakLabVIEW | Should -Be 1
+        $result.markdown.Contains('lv=3') | Should -BeTrue
+        $result.markdown.Contains('lab=1') | Should -BeTrue
+        $result.markdown | Should -Match 'Totals'
+    }
 }

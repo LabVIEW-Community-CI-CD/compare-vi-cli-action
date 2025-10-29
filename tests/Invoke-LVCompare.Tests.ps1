@@ -246,4 +246,58 @@ $head = Join-Path $work 'Head.vi'; Set-Content -LiteralPath $head -Encoding asci
     finally { Pop-Location }
   }
 
+  It 'forwards TimeoutSeconds to the capture script' {
+    $work = Join-Path $TestDrive 'driver-timeout'
+    New-Item -ItemType Directory -Path $work | Out-Null
+    Push-Location $work
+    try {
+      $captureStub = Join-Path $work 'CaptureStub.ps1'
+      $stub = @'
+param(
+  [string]$Base,
+  [string]$Head,
+  [object]$LvArgs,
+  [string]$LvComparePath,
+  [switch]$RenderReport,
+  [string]$OutputDir,
+  [switch]$Quiet,
+  [Nullable[int]]$TimeoutSeconds
+)
+if (-not (Test-Path $OutputDir)) { New-Item -ItemType Directory -Path $OutputDir -Force | Out-Null }
+$log = [ordered]@{
+  timeoutProvided = $PSBoundParameters.ContainsKey('TimeoutSeconds')
+  timeoutSeconds  = if ($PSBoundParameters.ContainsKey('TimeoutSeconds') -and $TimeoutSeconds -ne $null) { [int]$TimeoutSeconds } else { $null }
+}
+$log | ConvertTo-Json -Depth 4 | Set-Content -LiteralPath (Join-Path $OutputDir 'timeout-log.json') -Encoding utf8
+$cap = [ordered]@{ schema='lvcompare-capture-v1'; exitCode=0; seconds=0.1; command='stub'; args=@() }
+$cap | ConvertTo-Json -Depth 4 | Set-Content -LiteralPath (Join-Path $OutputDir 'lvcompare-capture.json') -Encoding utf8
+exit 0
+'@
+      Set-Content -LiteralPath $captureStub -Value $stub -Encoding UTF8
+
+      $labviewExe = Join-Path $work 'LabVIEW.exe'
+      Set-Content -LiteralPath $labviewExe -Encoding ascii -Value ''
+      $base = Join-Path $work 'Base.vi'; Set-Content -LiteralPath $base -Encoding ascii -Value ''
+      $head = Join-Path $work 'Head.vi'; Set-Content -LiteralPath $head -Encoding ascii -Value ''
+      $outDir = Join-Path $work 'out'
+
+      $driverQuoted = $script:driverPath.Replace("'", "''")
+      $baseQuoted = $base.Replace("'", "''")
+      $headQuoted = $head.Replace("'", "''")
+      $labviewQuoted = $labviewExe.Replace("'", "''")
+      $outQuoted = $outDir.Replace("'", "''")
+      $stubQuoted = $captureStub.Replace("'", "''")
+      $command = "& { & '$driverQuoted' -BaseVi '$baseQuoted' -HeadVi '$headQuoted' -LabVIEWExePath '$labviewQuoted' -OutputDir '$outQuoted' -CaptureScriptPath '$stubQuoted' -TimeoutSeconds 12; exit `$LASTEXITCODE }"
+      & pwsh -NoLogo -NoProfile -Command $command *> $null
+
+      $LASTEXITCODE | Should -Be 0
+      $logPath = Join-Path $outDir 'timeout-log.json'
+      Test-Path -LiteralPath $logPath | Should -BeTrue
+      $log = Get-Content -LiteralPath $logPath -Raw | ConvertFrom-Json
+      $log.timeoutProvided | Should -BeTrue
+      $log.timeoutSeconds | Should -Be 12
+    }
+    finally { Pop-Location }
+  }
+
 }

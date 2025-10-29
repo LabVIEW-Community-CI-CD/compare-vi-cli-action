@@ -161,7 +161,8 @@ line buffers).
     -Branch (git branch --show-current)
   ```
 
-Staging smoke runs use the dedicated helper (`Test-PRVIStagingSmoke.ps1`) so staged VI bundles and LVCompare outputs are exercised end-to-end.
+Staging smoke runs use the dedicated helper (`Test-PRVIStagingSmoke.ps1`) so staged VI bundles and LVCompare outputs
+are exercised end-to-end.
 
 - Confirm `session-index.json` contains `branchProtection.result.status = "ok"`; mismatches should be logged in
   `branchProtection.notes`.

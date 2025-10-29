@@ -305,10 +305,11 @@ jobs:
           }
 
           $compareTotals = @{
-            diff    = 0
-            match   = 0
-            error   = 0
-            skipped = 0
+            diff         = 0
+            match        = 0
+            error        = 0
+            skipped      = 0
+            leakWarnings = 0
           }
 
           $compareSummary = $null
@@ -322,7 +323,7 @@ jobs:
             $compareSummaryPath = Join-Path $env:ARTIFACTS_DIR 'vi-staging-compare-summary.json'
             $compareSummary = & $summarizePath -CompareJson $env:COMPARE_JSON -MarkdownPath $compareMarkdownPath -SummaryJsonPath $compareSummaryPath
             if ($compareSummary -and $compareSummary.totals) {
-              foreach ($key in @('diff','match','error','skipped')) {
+              foreach ($key in @('diff','match','error','skipped','leakWarnings')) {
                 if ($compareSummary.totals.PSObject.Properties[$key]) {
                   $rawValue = $compareSummary.totals.$key
                   $parsed = 0
@@ -355,12 +356,15 @@ jobs:
             if ($env:STAGE_SKIPPED) {
               $lines += ("Skipped bundles: {0}" -f $env:STAGE_SKIPPED)
             }
-            if ($env:STAGE_ALLOW_SAME_LEAF) {
-              $lines += ("AllowSameLeaf pairs: {0}" -f $env:STAGE_ALLOW_SAME_LEAF)
-            }
-            if ($env:STAGE_MODE_COUNTS) {
-              $lines += ("Staging modes: {0}" -f $env:STAGE_MODE_COUNTS.Replace(',', ', '))
-            }
+          if ($env:STAGE_ALLOW_SAME_LEAF) {
+            $lines += ("AllowSameLeaf pairs: {0}" -f $env:STAGE_ALLOW_SAME_LEAF)
+          }
+          if ($env:STAGE_MODE_COUNTS) {
+            $lines += ("Staging modes: {0}" -f $env:STAGE_MODE_COUNTS.Replace(',', ', '))
+          }
+          if ($compareTotals.leakWarnings -gt 0) {
+            $lines += ("Leak warnings: {0}" -f $compareTotals.leakWarnings)
+          }
           }
 
           if ($compareSummary -and $compareSummary.markdown) {
@@ -380,8 +384,8 @@ jobs:
             $lines += '### Staged bundle catalog'
             $lines += ''
             $table = @(
-              '| # | Change | Base | Head | Mode | AllowSameLeaf | Artifact | Compare |',
-              '| - | ------ | ---- | ---- | ---- | ------------- | -------- | ------- |'
+              '| # | Change | Base | Head | Mode | AllowSameLeaf | Artifact | Compare | Leak |',
+              '| - | ------ | ---- | ---- | ---- | ------------- | -------- | ------- | ---- |'
             )
 
             $useFallbackCounts = -not $compareSummary
@@ -484,6 +488,7 @@ jobs:
             "match_count=$($compareTotals.match)" | Out-File -FilePath $Env:GITHUB_OUTPUT -Encoding utf8 -Append
             "error_count=$($compareTotals.error)" | Out-File -FilePath $Env:GITHUB_OUTPUT -Encoding utf8 -Append
             "skip_count=$($compareTotals.skipped)" | Out-File -FilePath $Env:GITHUB_OUTPUT -Encoding utf8 -Append
+            "leak_warning_count=$($compareTotals.leakWarnings)" | Out-File -FilePath $Env:GITHUB_OUTPUT -Encoding utf8 -Append
           }
 
       - name: Ensure staging label exists
@@ -754,4 +759,6 @@ jobs:
               $global:LASTEXITCODE = 0
             }
           }
+
+
 

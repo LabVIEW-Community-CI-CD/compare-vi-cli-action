@@ -61,6 +61,11 @@
 
 .PARAMETER LeakGraceSeconds
   Optional grace delay before leak check to reduce false positives (default 0.5 seconds).
+
+.PARAMETER TimeoutSeconds
+  Optional override for the LVCompare execution timeout (seconds). When omitted,
+  defaults apply (300s for LabVIEW CLI captures, unlimited for direct LVCompare
+  capture).
 #>
 [CmdletBinding()]
 param(
@@ -84,7 +89,8 @@ param(
   [string]$LeakJsonPath,
   [string]$CaptureScriptPath,
   [switch]$Summary,
-  [double]$LeakGraceSeconds = 0.5
+  [double]$LeakGraceSeconds = 0.5,
+  [Nullable[int]]$TimeoutSeconds
 )
 
 Set-StrictMode -Version Latest
@@ -397,7 +403,8 @@ function Invoke-LabVIEWCLICompare {
     [string[]]$Flags,
     [ValidateSet('html','xml','text')]
     [string]$ReportFormat = 'html',
-    [switch]$AllowSameLeaf
+    [switch]$AllowSameLeaf,
+    [Nullable[int]]$TimeoutSeconds
   )
 
   $stageCleanupRoot = $null
@@ -480,6 +487,10 @@ function Invoke-LabVIEWCLICompare {
     if ($filteredFlags.Count -gt 0) {
       $invokeParams.Flags = @($filteredFlags)
     }
+  }
+
+  if ($PSBoundParameters.ContainsKey('TimeoutSeconds') -and $TimeoutSeconds -gt 0) {
+    $invokeParams.TimeoutSeconds = $TimeoutSeconds
   }
 
   $cliResult = Invoke-LVCreateComparisonReport @invokeParams
@@ -718,6 +729,9 @@ if (-not $CaptureScriptPath -and (($policy -eq 'cli-only') -or $autoCli -or ($mo
      ReportFormat = $ReportFormat
    }
    if ($stageAllowSameLeafOuter) { $cliParams.AllowSameLeaf = $true }
+   if ($PSBoundParameters.ContainsKey('TimeoutSeconds') -and $TimeoutSeconds -gt 0) {
+     $cliParams.TimeoutSeconds = [int]$TimeoutSeconds
+   }
    $cliRes = Invoke-LabVIEWCLICompare @cliParams
     if (-not $cliRes) { throw 'LabVIEW CLI compare returned no result payload.' }
     $reportAvailable = $false
@@ -740,7 +754,7 @@ if (-not $CaptureScriptPath -and (($policy -eq 'cli-only') -or $autoCli -or ($mo
    if ($CaptureScriptPath) { $captureScript = $CaptureScriptPath } else { $captureScript = Join-Path $repoRoot 'scripts' 'Capture-LVCompare.ps1' }
   if (-not (Test-Path -LiteralPath $captureScript -PathType Leaf)) { throw "Capture-LVCompare.ps1 not found at $captureScript" }
   try {
-    $captureParams = @{
+  $captureParams = @{
       Base         = $BaseVi
       Head         = $HeadVi
       LvArgs       = $effectiveFlags
@@ -751,6 +765,9 @@ if (-not $CaptureScriptPath -and (($policy -eq 'cli-only') -or $autoCli -or ($mo
   if (-not $LVComparePath) { try { $LVComparePath = Resolve-LVComparePath } catch {} }
   if ($LVComparePath) { $captureParams.LvComparePath = $LVComparePath }
   if ($stageAllowSameLeafOuter) { $captureParams.AllowSameLeaf = $true }
+  if ($PSBoundParameters.ContainsKey('TimeoutSeconds') -and $TimeoutSeconds -gt 0) {
+    $captureParams.TimeoutSeconds = [int]$TimeoutSeconds
+  }
   & $captureScript @captureParams
   } catch {
    $message = $_.Exception.Message

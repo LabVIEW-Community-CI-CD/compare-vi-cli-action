@@ -779,7 +779,8 @@ function Invoke-LVCreateComparisonReport {
     [string]$ReportType,
     [string[]]$Flags,
     [string]$Provider = 'auto',
-    [switch]$Preview
+    [switch]$Preview,
+    [Nullable[int]]$TimeoutSeconds
   )
 
   $params = @{
@@ -795,7 +796,16 @@ function Invoke-LVCreateComparisonReport {
   if ($PSBoundParameters.ContainsKey('Flags') -and $Flags) {
     $params.flags = @($Flags)
   }
-  Invoke-LVOperation -Operation 'CreateComparisonReport' -Params $params -Provider $Provider -Preview:$Preview
+  $invokeArgs = @{
+    Operation = 'CreateComparisonReport'
+    Params    = $params
+    Provider  = $Provider
+    Preview   = $Preview.IsPresent
+  }
+  if ($PSBoundParameters.ContainsKey('TimeoutSeconds') -and $TimeoutSeconds -gt 0) {
+    $invokeArgs.TimeoutSeconds = [int]$TimeoutSeconds
+  }
+  Invoke-LVOperation @invokeArgs
 }
 
 function Invoke-LVRunVI {
