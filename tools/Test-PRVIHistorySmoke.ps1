@@ -222,6 +222,90 @@ function Restore-HistoryTracking {
     }
 }
 
+
+$script:SequentialFixtureCache = $null
+
+function Get-SequentialHistorySequence {
+    if ($script:SequentialFixtureCache) {
+        return $script:SequentialFixtureCache
+    }
+
+    $repoRoot = Invoke-Git -Arguments @('rev-parse', '--show-toplevel') | Select-Object -First 1
+    if ([string]::IsNullOrWhiteSpace($repoRoot)) {
+        throw 'Unable to resolve repository root for sequential history fixture.'
+    }
+
+    $fixturePath = Join-Path $repoRoot 'fixtures' 'vi-history' 'sequential.json'
+    if (-not (Test-Path -LiteralPath $fixturePath -PathType Leaf)) {
+        throw "Sequential history fixture not found: $fixturePath"
+    }
+
+    try {
+        $fixtureRaw = Get-Content -LiteralPath $fixturePath -Raw -ErrorAction Stop
+        $fixtureObj = $fixtureRaw | ConvertFrom-Json -ErrorAction Stop
+    } catch {
+        throw ("Unable to parse sequential history fixture {0}: {1}" -f $fixturePath, $_.Exception.Message)
+    }
+
+    if ($fixtureObj.schema -ne 'vi-history-sequence@v1') {
+        throw "Unsupported sequential fixture schema '$($fixtureObj.schema)' (expected vi-history-sequence@v1)."
+    }
+
+    if ([string]::IsNullOrWhiteSpace($fixtureObj.targetPath)) {
+        throw 'Sequential history fixture must declare targetPath.'
+    }
+
+    if (-not $fixtureObj.steps -or $fixtureObj.steps.Count -eq 0) {
+        throw 'Sequential history fixture must define at least one step.'
+    }
+
+    $targetResolved = if ([System.IO.Path]::IsPathRooted($fixtureObj.targetPath)) {
+        $fixtureObj.targetPath
+    } else {
+        Join-Path $repoRoot $fixtureObj.targetPath
+    }
+
+    if (-not (Test-Path -LiteralPath $targetResolved -PathType Leaf)) {
+        throw "Sequential history target not found on disk: $($fixtureObj.targetPath)"
+    }
+
+    $stepObjects = New-Object System.Collections.Generic.List[pscustomobject]
+    foreach ($step in $fixtureObj.steps) {
+        if (-not $step.source) {
+            throw 'Sequential history fixture step missing source path.'
+        }
+
+        $resolvedSource = if ([System.IO.Path]::IsPathRooted($step.source)) {
+            $step.source
+        } else {
+            Join-Path $repoRoot $step.source
+        }
+
+        if (-not (Test-Path -LiteralPath $resolvedSource -PathType Leaf)) {
+            throw "Sequential history source not found: $($step.source)"
+        }
+
+        $stepObjects.Add([pscustomobject]@{
+            id             = $step.id
+            title          = $step.title
+            message        = $step.message
+            source         = $step.source
+            resolvedSource = $resolvedSource
+        }) | Out-Null
+    }
+
+    $script:SequentialFixtureCache = [pscustomobject]@{
+        path               = $fixturePath
+        repoRoot           = $repoRoot
+        targetPathRelative = $fixtureObj.targetPath
+        targetPathResolved = $targetResolved
+        steps              = $stepObjects
+        maxPairs           = if ($fixtureObj.PSObject.Properties['maxPairs']) { [int]$fixtureObj.maxPairs } else { $null }
+    }
+
+    return $script:SequentialFixtureCache
+}
+
 function Invoke-AttributeHistoryCommit {
     param(
         [Parameter(Mandatory)]
@@ -251,49 +335,51 @@ function Invoke-SequentialHistoryCommits {
         [string]$TargetVi
     )
 
-    $sequence = @(
-        [ordered]@{
-            Title   = 'VI Attribute'
-            Source  = 'fixtures/vi-attr/attr/HeadAttr.vi'
-            Message = 'chore: sequential history attribute update'
-        },
-        [ordered]@{
-            Title   = 'Front Panel Cosmetic'
-            Source  = 'fixtures/vi-stage/fp-cosmetic/Head.vi'
-            Message = 'chore: sequential history front panel cosmetic update'
-        },
-        [ordered]@{
-            Title   = 'Connector Pane'
-            Source  = 'fixtures/vi-stage/connector-pane/Head.vi'
-            Message = 'chore: sequential history connector pane update'
-        },
-        [ordered]@{
-            Title   = 'Control Rename'
-            Source  = 'fixtures/vi-stage/control-rename/Head.vi'
-            Message = 'chore: sequential history control rename update'
-        },
-        [ordered]@{
-            Title   = 'Block Diagram Cosmetic'
-            Source  = 'fixtures/vi-stage/bd-cosmetic/Head.vi'
-            Message = 'chore: sequential history block diagram cosmetic update'
-        }
-    )
+    $fixture = Get-SequentialHistorySequence
+    Write-Verbose ("Sequential fixture loaded from {0}" -f $fixture.path)
+
+    $targetSource = if ([string]::IsNullOrWhiteSpace($TargetVi)) {
+        $fixture.targetPathRelative
+    } else {
+        $TargetVi
+    }
+
+    $targetResolved = if ([System.IO.Path]::IsPathRooted($targetSource)) {
+        $targetSource
+    } else {
+        Join-Path $fixture.repoRoot $targetSource
+    }
+
+    $targetRelative = if ([System.IO.Path]::IsPathRooted($targetSource)) {
+        [System.IO.Path]::GetRelativePath($fixture.repoRoot, $targetResolved)
+    } else {
+        $targetSource
+    }
+
+    if ($fixture.targetPathRelative -and ($fixture.targetPathRelative -ne $targetRelative)) {
+        Write-Verbose ("Sequential fixture target differs from supplied target: fixture={0}, requested={1}" -f $fixture.targetPathRelative, $targetRelative)
+    }
 
     $commits = New-Object System.Collections.Generic.List[pscustomobject]
-    for ($index = 0; $index -lt $sequence.Count; $index++) {
-        $step = $sequence[$index]
-        $sourceVi = $step.Source
+    for ($index = 0; $index -lt $fixture.steps.Count; $index++) {
+        $step = $fixture.steps[$index]
         $stepNumber = $index + 1
-        Write-Host ("Applying sequential step {0}: {1} <= {2}" -f $stepNumber, $TargetVi, $sourceVi)
-        Copy-VIContent -Source $sourceVi -Destination $TargetVi
-        $statusAfterStep = Invoke-Git -Arguments @('status', '--short', $TargetVi)
-        Write-Host ("Post-step status for {0}: {1}" -f $TargetVi, ($statusAfterStep -join ' '))
-        Invoke-Git -Arguments @('add', '-f', $TargetVi) | Out-Null
-        Invoke-Git -Arguments @('commit', '-m', $step.Message) | Out-Null
+        $displaySource = if ($step.source) { $step.source } else { $step.resolvedSource }
+        Write-Host ("Applying sequential step {0}: {1} <= {2}" -f $stepNumber, $targetRelative, $displaySource)
+        Copy-VIContent -Source $step.resolvedSource -Destination $targetResolved
+        $statusAfterStep = Invoke-Git -Arguments @('status', '--short', $targetRelative)
+        Write-Host ("Post-step status for {0}: {1}" -f $targetRelative, ($statusAfterStep -join ' '))
+        Invoke-Git -Arguments @('add', '-f', $targetRelative) | Out-Null
+        $commitMessage = if ([string]::IsNullOrWhiteSpace($step.message)) {
+            "chore: sequential history step $stepNumber"
+        } else {
+            $step.message
+        }
+        Invoke-Git -Arguments @('commit', '-m', $commitMessage) | Out-Null
         $commits.Add([pscustomobject]@{
-            Title   = $step.Title
-            Source  = $sourceVi
-            Message = $step.Message
+            Title   = if ($step.title) { $step.title } else { "Step $stepNumber" }
+            Source  = $displaySource
+            Message = $commitMessage
         }) | Out-Null
     }
 
@@ -324,7 +410,7 @@ switch ($scenarioKey) {
         $scenarioBranchSuffix = 'sequential'
         $scenarioDescription  = 'sequential multi-category history'
         $scenarioExpectation  = '`/vi-history` workflow reports multi-row diff summary'
-        $scenarioPlanHint     = '- Apply sequential fixture commits (attribute, front panel, connector pane, control rename, block diagram cosmetic)'
+        $scenarioPlanHint     = '- Apply sequential fixture commits from fixtures/vi-history/sequential.json (attribute, front panel, connector pane, control rename, block diagram cosmetic)'
         $scenarioNeedsArtifactValidation = $true
     }
     default {

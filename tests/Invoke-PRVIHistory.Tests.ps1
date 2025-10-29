@@ -86,6 +86,14 @@ Describe 'Invoke-PRVIHistory.ps1' {
         $invocations.Count | Should -Be 1
         $invocations[0].TargetPath | Should -Be $headPath
         $invocations[0].MaxPairs | Should -Be 4
+        $invocations[0].FlagNoAttr | Should -BeFalse
+        $invocations[0].FlagNoFp | Should -BeFalse
+        $invocations[0].FlagNoFpPos | Should -BeFalse
+        $invocations[0].FlagNoBdCosm | Should -BeFalse
+        $invocations[0].ForceNoBd | Should -BeFalse
+        $invocations[0].ContainsKey('ReplaceFlags') | Should -BeFalse
+        $invocations[0].ContainsKey('AdditionalFlags') | Should -BeFalse
+        $invocations[0].ContainsKey('LvCompareArgs') | Should -BeFalse
 
         $result | Should -Not -BeNullOrEmpty
         $result.schema | Should -Be 'pr-vi-history-summary@v1'

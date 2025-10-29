@@ -18,7 +18,7 @@ Quick reference for building, testing, and releasing the LVCompare composite act
   - `pwsh -File tools/Test-PRVIStagingSmoke.ps1 -DryRun` (planning pass; prints the branch/PR that would be created)
   - `npm run smoke:vi-stage` (full sweep; requires `GH_TOKEN`/`GITHUB_TOKEN` with push + workflow scopes)
   - `pwsh -File tools/Test-PRVIHistorySmoke.ps1 -DryRun` (plan the `/vi-history` entry-point smoke)
-  - `pwsh -File tools/Test-PRVIHistorySmoke.ps1 -Scenario sequential -DryRun` (plan the sequential multi-category history smoke)
+- `pwsh -File tools/Test-PRVIHistorySmoke.ps1 -Scenario sequential -DryRun` (plan the sequential multi-category history smoke; steps defined in `fixtures/vi-history/sequential.json`)
   - `npm run smoke:vi-history` (full `/vi-history` dispatch; requires `GH_TOKEN`/`GITHUB_TOKEN` with repo + workflow scopes)
   - GitHub workflow "Smoke VI Staging" (`.github/workflows/vi-staging-smoke.yml`)
     - Trigger from the Actions UI or `gh workflow run vi-staging-smoke.yml`.
@@ -69,6 +69,11 @@ Quick reference for building, testing, and releasing the LVCompare composite act
       Override the history depth via the workflow_dispatch input `max_pairs` when you need a longer runway; otherwise
       accept the default for quick attribution. The workflow uploads the results directory as
       `pr-vi-history-<pr-number>.zip` for local inspection.
+      History runs now keep the full signal by default (no quiet bundle). Override the compare flags with repository or
+      runner variables when you need to restore selective filters: set `PR_VI_HISTORY_COMPARE_FLAGS_MODE` /
+      `VI_HISTORY_COMPARE_FLAGS_MODE` to `replace` or `append`, provide newline-separated entries in
+      `PR_VI_HISTORY_COMPARE_FLAGS` / `VI_HISTORY_COMPARE_FLAGS`, and use `PR_VI_HISTORY_COMPARE_REPLACE_FLAGS` /
+      `VI_HISTORY_COMPARE_REPLACE_FLAGS` to force replace/append for a single run.
 
  â†’ telemetry snapshot
   - `tools/Watch-Pester.ps1` â†’ file watcher / retry loop

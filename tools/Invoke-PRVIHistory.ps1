@@ -133,6 +133,84 @@ function Resolve-ViPath {
     }
 }
 
+function Get-HistoryFlagList {
+    param([string]$Raw)
+    if ([string]::IsNullOrWhiteSpace($Raw)) { return @() }
+    $segments = $Raw -split "(\r\n|\n|\r)"
+    $result = New-Object System.Collections.Generic.List[string]
+    foreach ($segment in $segments) {
+        $candidate = $segment.Trim()
+        if ([string]::IsNullOrWhiteSpace($candidate)) { continue }
+        $result.Add($candidate)
+    }
+    return $result.ToArray()
+}
+
+function ConvertTo-NullableBool {
+    param([string]$Value)
+    if ([string]::IsNullOrWhiteSpace($Value)) { return $null }
+    $normalized = $Value.Trim().ToLowerInvariant()
+    $truthy = @('1','true','yes','on','replace')
+    $falsy  = @('0','false','no','off','append')
+    if ($truthy -contains $normalized) { return $true }
+    if ($falsy -contains $normalized) { return $false }
+    return $null
+}
+
+$historyFlagList = $null
+$historyFlagSources = @(
+    [System.Environment]::GetEnvironmentVariable('PR_VI_HISTORY_COMPARE_FLAGS', 'Process'),
+    [System.Environment]::GetEnvironmentVariable('VI_HISTORY_COMPARE_FLAGS', 'Process')
+)
+foreach ($rawFlags in $historyFlagSources) {
+    if ([string]::IsNullOrWhiteSpace($rawFlags)) { continue }
+    $parsedFlags = [string[]](Get-HistoryFlagList -Raw $rawFlags)
+    if ($parsedFlags -and $parsedFlags.Length -gt 0) {
+        $historyFlagList = $parsedFlags
+        break
+    }
+}
+
+$historyFlagMode = $null
+$historyModeSources = @(
+    [System.Environment]::GetEnvironmentVariable('PR_VI_HISTORY_COMPARE_FLAGS_MODE', 'Process'),
+    [System.Environment]::GetEnvironmentVariable('VI_HISTORY_COMPARE_FLAGS_MODE', 'Process')
+)
+foreach ($rawMode in $historyModeSources) {
+    if ([string]::IsNullOrWhiteSpace($rawMode)) { continue }
+    $normalized = $rawMode.Trim().ToLowerInvariant()
+    if ($normalized -eq 'replace' -or $normalized -eq 'append') {
+        $historyFlagMode = $normalized
+        break
+    }
+}
+
+$historyReplaceOverride = $null
+$historyReplaceSources = @(
+    [System.Environment]::GetEnvironmentVariable('PR_VI_HISTORY_COMPARE_REPLACE_FLAGS', 'Process'),
+    [System.Environment]::GetEnvironmentVariable('VI_HISTORY_COMPARE_REPLACE_FLAGS', 'Process')
+)
+foreach ($rawReplace in $historyReplaceSources) {
+    if ([string]::IsNullOrWhiteSpace($rawReplace)) { continue }
+    $converted = ConvertTo-NullableBool -Value $rawReplace
+    if ($converted -ne $null) {
+        $historyReplaceOverride = $converted
+        break
+    }
+}
+
+$historyReplaceFlags = $null
+if ($historyReplaceOverride -ne $null) {
+    $historyReplaceFlags = $historyReplaceOverride
+} elseif ($historyFlagMode) {
+    $historyReplaceFlags = ($historyFlagMode -eq 'replace')
+}
+
+$historyFlagString = $null
+if ($historyFlagList -and $historyFlagList.Length -gt 0) {
+    $historyFlagString = ($historyFlagList -join ' ')
+}
+
 function Get-RepoRelativePath {
     param(
         [string]$FullPath,
@@ -365,6 +443,26 @@ for ($i = 0; $i -lt $targets.Count; $i++) {
     if (-not [string]::IsNullOrWhiteSpace($StartRef)) { $compareArgs.StartRef = $StartRef }
     if (-not [string]::IsNullOrWhiteSpace($EndRef)) { $compareArgs.EndRef = $EndRef }
     if (-not $SkipRenderReport.IsPresent) { $compareArgs.RenderReport = $true }
+
+    $compareArgs.FlagNoAttr = $false
+    $compareArgs.FlagNoFp = $false
+    $compareArgs.FlagNoFpPos = $false
+    $compareArgs.FlagNoBdCosm = $false
+    $compareArgs.ForceNoBd = $false
+
+    if ($historyReplaceFlags -eq $true) {
+        $compareArgs.ReplaceFlags = $true
+        if ($historyFlagString) {
+            $compareArgs.LvCompareArgs = $historyFlagString
+        }
+    } elseif ($historyReplaceFlags -eq $false) {
+        if ($historyFlagString) {
+            $compareArgs.AdditionalFlags = $historyFlagString
+        }
+    } elseif ($historyFlagString) {
+        $compareArgs.ReplaceFlags = $true
+        $compareArgs.LvCompareArgs = $historyFlagString
+    }
 
     try {
         & $CompareInvoker $compareArgs | Out-Null

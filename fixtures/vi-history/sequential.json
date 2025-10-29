@@ -1,0 +1,38 @@
+{
+  "schema": "vi-history-sequence@v1",
+  "description": "Sequential multi-category VI history smoke fixture.",
+  "targetPath": "fixtures/vi-attr/Head.vi",
+  "maxPairs": 6,
+  "steps": [
+    {
+      "id": "attribute",
+      "title": "VI Attribute",
+      "source": "fixtures/vi-attr/attr/HeadAttr.vi",
+      "message": "chore: sequential history attribute update"
+    },
+    {
+      "id": "front-panel",
+      "title": "Front Panel Cosmetic",
+      "source": "fixtures/vi-stage/fp-cosmetic/Head.vi",
+      "message": "chore: sequential history front panel cosmetic update"
+    },
+    {
+      "id": "connector-pane",
+      "title": "Connector Pane",
+      "source": "fixtures/vi-stage/connector-pane/Head.vi",
+      "message": "chore: sequential history connector pane update"
+    },
+    {
+      "id": "control-rename",
+      "title": "Control Rename",
+      "source": "fixtures/vi-stage/control-rename/Head.vi",
+      "message": "chore: sequential history control rename update"
+    },
+    {
+      "id": "block-diagram",
+      "title": "Block Diagram Cosmetic",
+      "source": "fixtures/vi-stage/bd-cosmetic/Head.vi",
+      "message": "chore: sequential history block diagram cosmetic update"
+    }
+  ]
+}
