@@ -142,7 +142,7 @@ Describe 'Invoke-PRVIHistory.ps1' {
 
         Push-Location $repoRoot
         try {
-            & $scriptPath `
+            $result = & $scriptPath `
                 -ManifestPath $manifestPath `
                 -ResultsRoot $resultsRoot `
                 -CompareInvoker $compareStub `
@@ -153,6 +153,14 @@ Describe 'Invoke-PRVIHistory.ps1' {
         }
 
         $captured.Value | Should -Be 'fixtures/vi-attr/Head.vi'
+        $result | Should -Not -BeNullOrEmpty
+        $result.targets.Count | Should -Be 1
+        $result.targets[0].repoPath | Should -Be 'fixtures/vi-attr/Head.vi'
+
+        $summaryPath = Join-Path $resultsRoot 'vi-history-summary.json'
+        Test-Path -LiteralPath $summaryPath -PathType Leaf | Should -BeTrue
+        $summaryJson = Get-Content -LiteralPath $summaryPath -Raw | ConvertFrom-Json -Depth 4
+        $summaryJson.targets[0].repoPath | Should -Be 'fixtures/vi-attr/Head.vi'
     }
 
     It 'records skipped targets when both base and head paths are missing' {
