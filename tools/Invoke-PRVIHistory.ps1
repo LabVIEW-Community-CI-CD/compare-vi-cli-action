@@ -322,6 +322,7 @@ try {
 } catch {
     throw ("Unable to locate Compare-VIHistory.ps1 at expected path: {0}" -f $compareScriptPathCandidate)
 }
+Write-Verbose ("Compare-VIHistory resolved to: {0}" -f $compareScriptPathResolved)
 
 if (-not $CompareInvoker) {
     $compareScriptLiteral = $compareScriptPathResolved.Replace("'", "''")
@@ -358,6 +359,7 @@ for ($i = 0; $i -lt $targets.Count; $i++) {
         ResultsDir = $targetResultsDir
         OutPrefix  = $sanitized
     }
+    Write-Verbose ("[{0}/{1}] Target '{2}' (origin: {3}) -> compare path '{4}'" -f ($i + 1), $targets.Count, $repoPath, $target.origin, $effectiveTargetPath)
     if ($MaxPairs -gt 0) { $compareArgs.MaxPairs = $MaxPairs }
     if ($Mode) { $compareArgs.Mode = $Mode }
     if (-not [string]::IsNullOrWhiteSpace($StartRef)) { $compareArgs.StartRef = $StartRef }
