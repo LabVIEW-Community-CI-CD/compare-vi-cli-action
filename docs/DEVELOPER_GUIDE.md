@@ -59,8 +59,10 @@ Quick reference for building, testing, and releasing the LVCompare composite act
       ```
     - `/vi-history` PR comments (or the `pr-vi-history.yml` workflow) reuse the same pattern for history diffs:
       1. `tools/Get-PRVIDiffManifest.ps1` enumerates VI changes between the PR base/head commits.
-      2. `tools/Invoke-PRVIHistory.ps1` runs the compare suite per VI (default `-MaxPairs 6`) and drops artifacts under
-         `tests/results/pr-vi-history/` (aggregate manifest + `history-report.{md,html}` per target).
+    2. `tools/Invoke-PRVIHistory.ps1` resolves the history helper once (works with repo-relative targets) and runs the
+       compare suite per VI (default `-MaxPairs 6`), writing artifacts under `tests/results/pr-vi-history/`
+       (aggregate manifest + `history-report.{md,html}` per target). Enable `-Verbose` locally to see the resolved
+       helper path plus the origin (base/head) of each compare target.
       3. `tools/Summarize-PRVIHistory.ps1` renders the PR table with change types, comparison/diff counts, and relative
          report paths so reviewers can triage without downloading the artifact bundle.
       Override the history depth via the workflow_dispatch input `max_pairs` when you need a longer runway; otherwise

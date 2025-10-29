@@ -68,10 +68,13 @@
     -SummaryJsonPath ./vi-staging-compare-summary.json
   ```
 - Comment `/vi-history` when you want the automation to walk commit history for every VI in the PR. The companion
-  workflow (`pr-vi-history.yml`) generates the diff manifest, runs `tools/Invoke-PRVIHistory.ps1` (default `-MaxPairs 6`),
+  workflow (`pr-vi-history.yml`) generates the diff manifest, runs `tools/Invoke-PRVIHistory.ps1` (default `-MaxPairs 6`;
+  add `-Verbose` locally to see the resolved helper and whether we lifted the path from the base or head tree),
   renders the Markdown table via `tools/Summarize-PRVIHistory.ps1`, uploads `tests/results/pr-vi-history/`, and replies
   to the PR with the same table. Supply `max_pairs=<n>` in the comment (or the workflow_dispatch input) when you need a
   deeper history window.
+  The `tools/Test-PRVIHistorySmoke.ps1` helper now also verifies that the PR comment lands successfully when the workflow
+  finishes, so a green smoke run means reviewers can rely on the summary table without spelunking artifacts.
   ```powershell
   pwsh -File tools/Get-PRVIDiffManifest.ps1 -BaseRef origin/develop -HeadRef HEAD -OutputPath vi-history-manifest.json
   pwsh -File tools/Invoke-PRVIHistory.ps1 -ManifestPath vi-history-manifest.json -ResultsRoot tests/results/pr-vi-history -MaxPairs 6
