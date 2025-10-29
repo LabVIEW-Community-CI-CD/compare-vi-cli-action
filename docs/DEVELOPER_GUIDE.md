@@ -17,6 +17,8 @@ Quick reference for building, testing, and releasing the LVCompare composite act
 - **Smoke tests**
   - `pwsh -File tools/Test-PRVIStagingSmoke.ps1 -DryRun` (planning pass; prints the branch/PR that would be created)
   - `npm run smoke:vi-stage` (full sweep; requires `GH_TOKEN`/`GITHUB_TOKEN` with push + workflow scopes)
+  - `pwsh -File tools/Test-PRVIHistorySmoke.ps1 -DryRun` (plan the `/vi-history` entry-point smoke)
+  - `npm run smoke:vi-history` (full `/vi-history` dispatch; requires `GH_TOKEN`/`GITHUB_TOKEN` with repo + workflow scopes)
   - GitHub workflow "Smoke VI Staging" (`.github/workflows/vi-staging-smoke.yml`)
     - Trigger from the Actions UI or `gh workflow run vi-staging-smoke.yml`.
     - Runs on the repository's self-hosted Windows runner (`self-hosted, Windows, X64`) and exercises both staging and
