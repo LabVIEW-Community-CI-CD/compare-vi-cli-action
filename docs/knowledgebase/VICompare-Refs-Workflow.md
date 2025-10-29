@@ -74,7 +74,9 @@
   to the PR with the same table. Supply `max_pairs=<n>` in the comment (or the workflow_dispatch input) when you need a
   deeper history window.
   The `tools/Test-PRVIHistorySmoke.ps1` helper now also verifies that the PR comment lands successfully when the workflow
-  finishes, so a green smoke run means reviewers can rely on the summary table without spelunking artifacts.
+  finishes, so a green smoke run means reviewers can rely on the summary table without spelunking artifacts. Pass
+  `-Scenario sequential` to replay a multi-category fixture chain and validate the richer history dashboard before
+  exercising a live pull request.
   ```powershell
   pwsh -File tools/Get-PRVIDiffManifest.ps1 -BaseRef origin/develop -HeadRef HEAD -OutputPath vi-history-manifest.json
   pwsh -File tools/Invoke-PRVIHistory.ps1 -ManifestPath vi-history-manifest.json -ResultsRoot tests/results/pr-vi-history -MaxPairs 6
