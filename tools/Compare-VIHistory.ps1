@@ -412,10 +412,47 @@ if ($labVIEWIniPath) {
   } catch {}
 }
 
-$repoRoot = (Get-Location).Path
+$repoRoot = Resolve-RepoRoot
+try {
+  $repoRoot = [System.IO.Path]::GetFullPath($repoRoot)
+} catch {}
 
-$targetRel = ($TargetPath -replace '\\','/').Trim('/')
-if ([string]::IsNullOrWhiteSpace($targetRel)) { throw 'TargetPath cannot be empty.' }
+if ([string]::IsNullOrWhiteSpace($TargetPath)) {
+  throw 'TargetPath cannot be empty.'
+}
+
+$targetFullPath = $TargetPath
+try {
+  if (-not [System.IO.Path]::IsPathRooted($targetFullPath)) {
+    $targetFullPath = Join-Path $repoRoot $targetFullPath
+  }
+  $targetFullPath = [System.IO.Path]::GetFullPath($targetFullPath)
+} catch {
+  throw ("Unable to resolve TargetPath '{0}': {1}" -f $TargetPath, $_.Exception.Message)
+}
+
+if (-not (Test-Path -LiteralPath $targetFullPath -PathType Leaf)) {
+  Write-Verbose ("TargetPath '{0}' not found on disk; continuing with git history refs." -f $targetFullPath)
+}
+
+$targetRel = $targetFullPath
+try {
+  if ($repoRoot) {
+    $rootNormalized = [System.IO.Path]::GetFullPath($repoRoot)
+    $rootPrefix = $rootNormalized.TrimEnd('\','/')
+    if ($rootPrefix.Length -gt 0) {
+      $rootPrefix = $rootPrefix + [System.IO.Path]::DirectorySeparatorChar
+    }
+    if ($targetFullPath.StartsWith($rootPrefix, [System.StringComparison]::OrdinalIgnoreCase)) {
+      $targetRel = $targetFullPath.Substring($rootPrefix.Length).TrimStart('\','/')
+    }
+  }
+} catch {}
+$targetRel = ($targetRel -replace '\\','/').Trim('/')
+if ([string]::IsNullOrWhiteSpace($targetRel)) {
+  throw ("TargetPath '{0}' could not be normalized relative to repository root '{1}'." -f $TargetPath, $repoRoot)
+}
+Write-Verbose ("Normalized target path: {0}" -f $targetRel)
 $targetLeaf = Split-Path $targetRel -Leaf
 if ([string]::IsNullOrWhiteSpace($targetLeaf)) { $targetLeaf = 'vi' }
 

@@ -103,6 +103,58 @@ Describe 'Invoke-PRVIHistory.ps1' {
         Test-Path -LiteralPath $result.targets[0].reportMd -PathType Leaf | Should -BeTrue
     }
 
+    It 'prefers repo-relative target paths when the VI resides in the repository' {
+        $manifestPath = Join-Path $TestDrive 'vi-diff-rel.json'
+        $manifest = [ordered]@{
+            schema = 'vi-diff-manifest@v1'
+            pairs  = @(
+                [ordered]@{
+                    changeType = 'modified'
+                    basePath   = 'fixtures/vi-attr/Base.vi'
+                    headPath   = 'fixtures/vi-attr/Head.vi'
+                }
+            )
+        }
+        $manifest | ConvertTo-Json -Depth 3 | Set-Content -LiteralPath $manifestPath -Encoding utf8
+
+        $captured = [ref]$null
+        $resultsRoot = Join-Path $TestDrive 'history-rel-results'
+        $compareStub = {
+            param([hashtable]$Arguments)
+            $captured.Value = $Arguments.TargetPath
+
+            New-Item -ItemType Directory -Path $Arguments.ResultsDir -Force | Out-Null
+            $summaryManifest = [ordered]@{
+                schema      = 'vi-compare/history-suite@v1'
+                targetPath  = $Arguments.TargetPath
+                requestedStartRef = $Arguments.StartRef
+                startRef    = $Arguments.StartRef
+                stats       = [ordered]@{
+                    processed = 1
+                    diffs     = 0
+                    missing   = 0
+                }
+                modes       = @()
+            }
+            $manifestOut = Join-Path $Arguments.ResultsDir 'manifest.json'
+            $summaryManifest | ConvertTo-Json -Depth 6 | Set-Content -LiteralPath $manifestOut -Encoding utf8
+        }.GetNewClosure()
+
+        Push-Location $repoRoot
+        try {
+            & $scriptPath `
+                -ManifestPath $manifestPath `
+                -ResultsRoot $resultsRoot `
+                -CompareInvoker $compareStub `
+                -SkipRenderReport
+        }
+        finally {
+            Pop-Location
+        }
+
+        $captured.Value | Should -Be 'fixtures/vi-attr/Head.vi'
+    }
+
     It 'records skipped targets when both base and head paths are missing' {
         $manifestPath = Join-Path $TestDrive 'vi-diff-missing.json'
         $manifest = [ordered]@{
