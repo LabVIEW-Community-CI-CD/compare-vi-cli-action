@@ -77,6 +77,7 @@
   pwsh -File tools/Invoke-PRVIHistory.ps1 -ManifestPath vi-history-manifest.json -ResultsRoot tests/results/pr-vi-history -MaxPairs 6
   pwsh -File tools/Summarize-PRVIHistory.ps1 -SummaryPath tests/results/pr-vi-history/vi-history-summary.json -MarkdownPath vi-history-summary.md
   ```
+  For a full end-to-end validation, run the smoke helper (`pwsh -File tools/Test-PRVIHistorySmoke.ps1` or `npm run smoke:vi-history`) to create a scratch PR, dispatch the workflow, and record the results under `tests/results/_agent/smoke/vi-history/`.
 
 ## Dispatch inputs (GitHub UI or `gh workflow run`)
 
