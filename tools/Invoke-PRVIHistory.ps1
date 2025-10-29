@@ -316,21 +316,20 @@ $effectiveSummaryPath = if ($SummaryPath) {
     Join-Path $resultsRootResolved 'vi-history-summary.json'
 }
 
-$compareScriptPath = Join-Path (Split-Path -Parent $PSCommandPath) 'Compare-VIHistory.ps1'
+$compareScriptPathCandidate = Join-Path (Split-Path -Parent $PSCommandPath) 'Compare-VIHistory.ps1'
 try {
-    $compareScriptPath = (Resolve-Path -LiteralPath $compareScriptPath -ErrorAction Stop).ProviderPath
+    $compareScriptPathResolved = (Resolve-Path -LiteralPath $compareScriptPathCandidate -ErrorAction Stop).ProviderPath
 } catch {
-    throw ("Unable to locate Compare-VIHistory.ps1 at expected path: {0}" -f $compareScriptPath)
+    throw ("Unable to locate Compare-VIHistory.ps1 at expected path: {0}" -f $compareScriptPathCandidate)
 }
-$script:InvokePRVIHistory_CompareScriptPath = $compareScriptPath
 
 if (-not $CompareInvoker) {
-    $CompareInvoker = {
-        param(
-            [hashtable]$Arguments
-        )
-        & $script:InvokePRVIHistory_CompareScriptPath @Arguments
-    }.GetNewClosure()
+    $compareScriptLiteral = $compareScriptPathResolved.Replace("'", "''")
+    $compareInvokerSource = @"
+param([hashtable]`$Arguments)
+& '$compareScriptLiteral' @Arguments
+"@
+    $CompareInvoker = [scriptblock]::Create($compareInvokerSource)
 }
 
 $summaryTargets = [System.Collections.Generic.List[object]]::new()
@@ -500,7 +499,5 @@ if ($errorTargets.Count -gt 0) {
     $message = "VI history execution failed for {0} target(s): {1}" -f $errorTargets.Count, ($messages -join '; ')
     throw $message
 }
-
-Remove-Variable -Name InvokePRVIHistory_CompareScriptPath -Scope Script -ErrorAction SilentlyContinue
 
 return $summary
