@@ -75,6 +75,9 @@
   `tools/Summarize-VIStaging.ps1`, and uploads the compare artifacts. It executes on the trusted self-hosted Windows
   runner (`self-hosted, Windows, X64`) and keeps the job read-only (no pushes/releases), so reviewers get deterministic
   LVCompare bundles at the start of every fork PR without manual staging.
+- Rehearse the fork path with `tools/Test-ForkSimulation.ps1`: start with `-DryRun` to review the plan, run the helper
+  normally to open a draft PR and validate the automatic compare job, then repeat with `-KeepBranch` when you want the
+  scratch branch preserved while the `/vi-stage` and `/vi-history` dispatches finish.
 - Comment `/vi-history` when you want the automation to walk commit history for every VI in the PR. The companion
   workflow (`pr-vi-history.yml`) generates the diff manifest, runs `tools/Invoke-PRVIHistory.ps1` (default `-MaxPairs 6`;
   add `-Verbose` locally to see the resolved helper and whether we lifted the path from the base or head tree),
@@ -232,4 +235,5 @@ gh workflow run vi-compare-refs.yml `
 
 - VI Compare (Fork PR) runs automatically on PRs targeting develop (including forks). The workflow fetches the fork head via the composite etch-pr-head helper, stages pairs, runs LVCompare on the self-hosted Windows runner, and uploads the same artifacts as /vi-stage.
 - The command-driven workflows (pr-vi-staging.yml, pr-vi-history.yml) now reuse the helper so they operate on fork commits safely without bespoke checkout logic.
+- Manual `/vi-stage` and `/vi-history` dispatches accept an optional `fetch_depth` input (default `20`) so you can deepen history when needed.
 - PR auto-approval depends on the standing label gate: the new auto-approve label workflow toggles the label automatically once Validate succeeds for eligible PRs.

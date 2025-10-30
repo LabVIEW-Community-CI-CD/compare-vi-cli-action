@@ -9,6 +9,10 @@ on:
       pr:
         description: 'Pull request number'
         required: true
+      fetch_depth:
+        description: 'Depth used when fetching the PR head (default 20)'
+        required: false
+        default: '20'
       note:
         description: 'Optional note that will be echoed in the run summary'
         required: false
@@ -38,6 +42,7 @@ jobs:
     env:
       NOTE: ${{ inputs.note }}
       STAGING_LABEL: ${{ inputs.label_name || 'vi-staging-ready' }}
+      FETCH_DEPTH: ${{ github.event.inputs.fetch_depth || '20' }}
     steps:
       - name: Resolve pull request metadata
         id: pr
@@ -113,6 +118,7 @@ jobs:
         shell: pwsh
         env:
           PR_NUMBER: ${{ steps.pr.outputs.pr_number }}
+          FETCH_DEPTH: ${{ env.FETCH_DEPTH }}
         run: |
           Set-StrictMode -Version Latest
           $ErrorActionPreference = 'Stop'
@@ -120,7 +126,7 @@ jobs:
             throw 'PR number unavailable; cannot fetch head commit.'
           }
 
-          $fetchDepth = 1
+          $fetchDepth = if ($env:FETCH_DEPTH) { [int]$env:FETCH_DEPTH } else { 20 }
           git fetch --no-tags --depth=$fetchDepth origin ("pull/{0}/head:pr-{0}-head" -f $env:PR_NUMBER)
           git checkout --detach ("pr-{0}-head" -f $env:PR_NUMBER)
           git branch -D ("pr-{0}-head" -f $env:PR_NUMBER) 2>$null | Out-Null

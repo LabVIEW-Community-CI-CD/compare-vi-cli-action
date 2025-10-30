@@ -273,5 +273,9 @@ pwsh -File scripts/CompareVI.ps1 -Base VI1.vi -Head VI2.vi -LvCompareArgs "-nobd
 - /vi-stage and /vi-history commands remain available for both upstream and fork contributions. Those workflows now also use the fetch helper so they can operate on fork heads safely.
 - The new **PR Auto-approve Label** workflow runs after Validate. When a PR targets develop, is not a fork/draft, its checks are green, and (optionally) the author is allowed, the workflow adds the auto-approve label automatically. If any condition fails, the label is removed.
 - When the workflow skips a PR, it now emits structured outputs (`autoapprove_reason`, `autoapprove_checks`, `autoapprove_detail`) and `::notice::` messages (for example, merge conflicts or failing checks). Downstream automation can inspect those outputs to surface richer status or trigger follow-up actions.
-- Auto-approve still requires AUTO_APPROVE_TOKEN, optional AUTO_APPROVE_LABEL (default uto-approve), and optional AUTO_APPROVE_ALLOWED. The label lifecycle is now fully automated so contributors don’t need to toggle it manually.
+- Auto-approve still requires AUTO_APPROVE_TOKEN, optional AUTO_APPROVE_LABEL (default uto-approve), and optional AUTO_APPROVE_ALLOWED. The label lifecycle is now fully automated so contributors don't need to toggle it manually.
+- Manual `/vi-stage` and `/vi-history` workflows accept an optional `fetch_depth` input (default `20`). Increase it when you need additional commit history before running compares.
+- Use `tools/Test-ForkSimulation.ps1` when validating fork automation. Run it in three passes: `-DryRun` prints the
+  plan, the default run pushes a scratch branch, opens a draft PR, and waits for the fork compare workflow, and adding
+  `-KeepBranch` preserves the branch/PR after the staging and history dispatches complete for manual inspection.
 - When testing fork scenarios locally, use the composite ./.github/actions/fetch-pr-head to simulate pull/<id>/head checkouts before invoking staging/history helpers.
