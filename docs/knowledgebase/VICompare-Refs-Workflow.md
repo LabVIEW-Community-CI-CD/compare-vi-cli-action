@@ -69,6 +69,12 @@
     -MarkdownPath ./vi-staging-compare.md `
     -SummaryJsonPath ./vi-staging-compare-summary.json
   ```
+- `VI Compare (Fork PR)` runs automatically when a pull request targeting `develop` originates from a fork. The workflow
+  checks out the base/head commits, generates a `vi-diff-manifest.json` with `tools/Get-PRVIDiffManifest.ps1`, stages
+  pairs via `tools/Invoke-PRVIStaging.ps1`, runs `tools/Run-StagedLVCompare.ps1`, renders the Markdown/JSON summary with
+  `tools/Summarize-VIStaging.ps1`, and uploads the compare artifacts. It executes on the trusted self-hosted Windows
+  runner (`self-hosted, Windows, X64`) and keeps the job read-only (no pushes/releases), so reviewers get deterministic
+  LVCompare bundles at the start of every fork PR without manual staging.
 - Comment `/vi-history` when you want the automation to walk commit history for every VI in the PR. The companion
   workflow (`pr-vi-history.yml`) generates the diff manifest, runs `tools/Invoke-PRVIHistory.ps1` (default `-MaxPairs 6`;
   add `-Verbose` locally to see the resolved helper and whether we lifted the path from the base or head tree),

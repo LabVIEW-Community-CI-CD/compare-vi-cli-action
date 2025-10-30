@@ -1,0 +1,98 @@
+name: VI Compare (Fork PR)
+
+on:
+  pull_request:
+    branches:
+      - develop
+
+jobs:
+  detect-and-compare:
+    name: Compare Changed VIs
+    runs-on: [self-hosted, Windows, X64]
+    permissions:
+      contents: read
+      actions: read
+      pull-requests: write
+    env:
+      PR_NUMBER: ${{ github.event.number }}
+      BASE_SHA: ${{ github.event.pull_request.base.sha }}
+      HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+    steps:
+      - name: Checkout base (parent repository)
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ env.BASE_SHA }}
+          fetch-depth: 0
+
+      - name: Fetch PR head from fork
+        run: |
+          git fetch --no-tags --depth=1 origin pull/${{ github.event.number }}/head
+
+      - name: Checkout PR head
+        run: git checkout -B pr-head FETCH_HEAD
+
+      - name: Generate VI manifest
+        id: manifest
+        shell: pwsh
+        run: |
+          $repoRoot = Get-Location
+          $manifestPath = Join-Path $repoRoot 'vi-diff-manifest.json'
+          $manifestScript = Join-Path $repoRoot 'tools' 'Get-PRVIDiffManifest.ps1'
+          & $manifestScript -BaseRef "${{ env.BASE_SHA }}" -HeadRef 'pr-head' -OutputPath $manifestPath
+
+          $manifest = Get-Content -LiteralPath $manifestPath -Raw -Encoding UTF8 | ConvertFrom-Json
+          $pairCount = 0
+          if ($manifest -and $manifest.pairs) {
+            $pairCount = @($manifest.pairs).Count
+          }
+
+          if ($pairCount -eq 0) {
+            Write-Host '::notice::No VI changes detected between base/head; skipping staging.'
+            "has_pairs=false" | Out-File -FilePath $ENV:GITHUB_OUTPUT -Append -Encoding utf8
+            exit 0
+          }
+
+          "has_pairs=true" | Out-File -FilePath $ENV:GITHUB_OUTPUT -Append -Encoding utf8
+          "pair_count=$pairCount" | Out-File -FilePath $ENV:GITHUB_OUTPUT -Append -Encoding utf8
+
+      - name: Stage and compare VI files
+        if: steps.manifest.outputs.has_pairs == 'true'
+        id: compare
+        shell: pwsh
+        run: |
+          $repoRoot = Get-Location
+          $manifestPath = Join-Path $repoRoot 'vi-diff-manifest.json'
+          $stagingRoot = Join-Path $repoRoot 'vi-staging-work'
+          $resultsPath = Join-Path $repoRoot 'vi-staging-results.json'
+          $artifactsDir = Join-Path $repoRoot 'vi-compare-artifacts'
+
+          New-Item -ItemType Directory -Path $stagingRoot -Force | Out-Null
+          New-Item -ItemType Directory -Path $artifactsDir -Force | Out-Null
+
+          $invokeScript = Join-Path $repoRoot 'tools' 'Invoke-PRVIStaging.ps1'
+          $stagedPairs = @(& $invokeScript -ManifestPath $manifestPath -WorkingRoot $stagingRoot)
+
+          if (-not $stagedPairs -or $stagedPairs.Count -eq 0) {
+            Write-Host '::warning::Found VI manifest entries but none were stageable (missing files?).'
+            "compare_dir=" | Out-File -FilePath $ENV:GITHUB_OUTPUT -Append -Encoding utf8
+            "compare_json=" | Out-File -FilePath $ENV:GITHUB_OUTPUT -Append -Encoding utf8
+            exit 0
+          }
+
+          $stagedPairs | ConvertTo-Json -Depth 6 | Set-Content -LiteralPath $resultsPath -Encoding UTF8
+
+          $compareScript = Join-Path $repoRoot 'tools' 'Run-StagedLVCompare.ps1'
+          & $compareScript -ResultsPath $resultsPath -ArtifactsDir $artifactsDir -RenderReport | Out-Null
+
+          $summaryScript = Join-Path $repoRoot 'tools' 'Summarize-VIStaging.ps1'
+          $summaryPath = Join-Path $artifactsDir 'vi-compare-summary.md'
+          & $summaryScript -CompareJson (Join-Path $artifactsDir 'vi-staging-compare.json') -MarkdownPath $summaryPath -SummaryJsonPath (Join-Path $artifactsDir 'vi-compare-summary.json') | Out-Null
+
+      - name: Upload VI compare artifacts
+        if: steps.compare.outputs.compare_dir != ''
+        uses: actions/upload-artifact@v4
+        with:
+          name: vi-compare-${{ github.run_id }}
+          path: |
+            ${{ steps.compare.outputs.compare_dir }}
+            vi-diff-manifest.json

@@ -68,6 +68,19 @@ the same summary table to a GitHub issue for stakeholders.
 - Smoke coverage: `npm run smoke:vi-stage -- --DryRun` prints the plan; `npm run smoke:vi-stage` pushes a scratch branch
   using the baked-in `fixtures/vi-attr` pair so every run produces deterministic LVCompare output.
 
+### Automatic VI compare for fork pull requests
+
+- The `VI Compare (Fork PR)` workflow runs on every pull request that targets `develop`, including those opened from
+  forks.
+- It executes on the self-hosted Windows runner (`self-hosted, Windows, X64`) so the trusted LabVIEW/LVCompare install
+  handles the work.
+- Steps: checkout base/head commits, generate a VI diff manifest, stage the resolvable pairs via
+  `tools/Invoke-PRVIStaging.ps1`, run `tools/Run-StagedLVCompare.ps1`, summarise the results with
+  `tools/Summarize-VIStaging.ps1`, and upload the artifacts (`vi-diff-manifest.json`, compare summaries, LVCompare
+  reports).
+- The job is read-only (no pushes/releases) and produces the same artifact layout as `/vi-stage`, giving reviewers
+  deterministic diff bundles without manual staging.
+
 ## Optional inputs
 
 | Input name                 | Default   | Description                                                                 |

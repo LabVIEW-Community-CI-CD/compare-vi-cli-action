@@ -1,7 +1,7 @@
 {
-  "number": 388,
-  "title": "Expand PR VI staging smoke scenarios and fixture catalog",
-  "url": "https://github.com/LabVIEW-Community-CI-CD/compare-vi-cli-action/issues/388",
+  "number": 493,
+  "title": "Automate VI compare for fork pull requests",
+  "url": "https://github.com/LabVIEW-Community-CI-CD/compare-vi-cli-action/issues/493",
   "state": "OPEN",
   "labels": [
     "ci",
@@ -10,11 +10,11 @@
   ],
   "assignees": [],
   "milestone": null,
-  "commentCount": 1,
-  "lastSeenUpdatedAt": "2025-10-28T17:37:35Z",
-  "issueDigest": "f8a5333002f05448c7c5b63cbd096d1bf7d1b931ad499c2081b42f53917e78a1",
-  "bodyDigest": "5aa2a1c22bf0ac115fa1cba83fcc67b0e224214e7327ebe6df7e9cbab1a51ee9",
-  "cachedAtUtc": "2025-10-28T17:37:53.357Z",
+  "commentCount": 0,
+  "lastSeenUpdatedAt": "2025-10-30T17:34:21Z",
+  "issueDigest": "70cb5e8ad5882cee4ca5dc8bb669226c68095bc9281a76a1f98fcc23eec3b7ab",
+  "bodyDigest": "532de4f29ebaa77afc536fb246b4ecbc2b0c679bd5b86e8333b1ebbb526c9926",
+  "cachedAtUtc": "2025-10-30T17:34:35.876Z",
   "lastFetchSource": "live",
   "lastFetchError": null
 }

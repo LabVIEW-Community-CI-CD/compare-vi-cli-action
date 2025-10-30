@@ -2,7 +2,7 @@
   "$schema": "./schemas/documentation-manifest-v1.schema.json",
   "schema": "documentation-manifest-v1",
   "version": "1.0.0",
-  "updated": "2025-10-29T18:40:00Z",
+  "updated": "2025-10-30T17:40:00Z",
   "entries": [
     {
       "name": "Root Playbooks",
