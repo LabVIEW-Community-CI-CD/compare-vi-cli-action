@@ -70,16 +70,12 @@ the same summary table to a GitHub issue for stakeholders.
 
 ### Automatic VI compare for fork pull requests
 
-- The `VI Compare (Fork PR)` workflow runs on every pull request that targets `develop`, including those opened from
-  forks.
-- It executes on the self-hosted Windows runner (`self-hosted, Windows, X64`) so the trusted LabVIEW/LVCompare install
-  handles the work.
-- Steps: checkout base/head commits, generate a VI diff manifest, stage the resolvable pairs via
-  `tools/Invoke-PRVIStaging.ps1`, run `tools/Run-StagedLVCompare.ps1`, summarise the results with
-  `tools/Summarize-VIStaging.ps1`, and upload the artifacts (`vi-diff-manifest.json`, compare summaries, LVCompare
-  reports).
-- The job is read-only (no pushes/releases) and produces the same artifact layout as `/vi-stage`, giving reviewers
-  deterministic diff bundles without manual staging.
+- The `VI Compare (Fork PR)` workflow runs on every pull request that targets `develop`, including forks. The helper
+  uses a custom fetch action so the fork head commit is checked out safely, generates a diff manifest, stages pairs,
+  runs LVCompare, and uploads compare reports for reviewers.
+- The job is read-only (no pushes or release writes) and produces the same artifact layout as `/vi-stage`, giving
+  reviewers deterministic bundles without manual staging. The workflow executes on the trusted self-hosted Windows
+  runner (`self-hosted, Windows, X64`) so the same LVCompare install used in CI handles fork PRs.
 
 ## Optional inputs
 
@@ -140,4 +136,6 @@ Renaming the workflow inputs breaks compatibility with previous revisions, so th
 next release should cut a new major tag (for example `v1.0.0`). Update downstream
 automation or scheduled triggers to use the new `vi_path` / `compare_ref` inputs
 before adopting the release.
+
+
 
