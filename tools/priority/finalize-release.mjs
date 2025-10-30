@@ -2,6 +2,7 @@
 
 import { readFile } from 'node:fs/promises';
 import path from 'node:path';
+import { spawnSync } from 'node:child_process';
 import process from 'node:process';
 import {
   run,
@@ -59,20 +60,70 @@ function ensureReleasePrReady(repoRoot, branch) {
     return null;
   }
 
-  let infoRaw;
-  try {
-    infoRaw = run('gh', ['pr', 'view', branch, '--json', 'number,state,mergeStateStatus,statusCheckRollup,url'], {
-      cwd: repoRoot
-    });
-  } catch (error) {
-    throw new Error(
-      `Unable to fetch release PR for ${branch}: ${error.message}. Set RELEASE_FINALIZE_SKIP_CHECKS=1 to override.`
+  const prView = spawnSync(
+    'gh',
+    ['pr', 'view', branch, '--json', 'number,state,mergeStateStatus,statusCheckRollup,url'],
+    {
+      cwd: repoRoot,
+      encoding: 'utf8',
+      stdio: ['ignore', 'pipe', 'pipe']
+    }
+  );
+
+  if (prView.status !== 0) {
+    const stderr = prView.stderr ?? '';
+    const stdout = prView.stdout ?? '';
+    const diagnostic = `${stderr}${stdout}`;
+    const missing =
+      diagnostic.includes('no pull requests found') ||
+      diagnostic.includes('GraphQL: Could not resolve to a PullRequest') ||
+      diagnostic.includes('Not Found');
+
+    if (!missing) {
+      throw new Error(
+        `Unable to fetch release PR for ${branch}: gh pr view failed with exit code ${prView.status}. Set RELEASE_FINALIZE_SKIP_CHECKS=1 to override.`
+      );
+    }
+
+    const mergedProbe = spawnSync(
+      'gh',
+      ['pr', 'list', '--state', 'merged', '--head', branch, '--json', 'number,url'],
+      {
+        cwd: repoRoot,
+        encoding: 'utf8',
+        stdio: ['ignore', 'pipe', 'pipe']
+      }
     );
+
+    if (mergedProbe.status === 0) {
+      try {
+        const mergedList = JSON.parse(mergedProbe.stdout ?? '[]');
+        if (Array.isArray(mergedList) && mergedList.length > 0) {
+          const merged = mergedList[0];
+          console.warn(
+            `[release:finalize] release PR for ${branch} already merged (PR #${merged.number ?? 'unknown'}).`
+          );
+          return {
+            number: merged.number ?? null,
+            url: merged.url ?? null,
+            mergeStateStatus: 'MERGED',
+            checks: summarizeStatusChecks([])
+          };
+        }
+      } catch {
+        /* ignore JSON errors, fall through to generic warning */
+      }
+    }
+
+    console.warn(
+      `[release:finalize] release PR for ${branch} not found (likely merged and branch deleted). Continuing without PR checks.`
+    );
+    return null;
   }
 
   let info = null;
   try {
-    info = JSON.parse(infoRaw);
+    info = JSON.parse(prView.stdout ?? '');
   } catch (error) {
     throw new Error(`Failed to parse release PR details: ${error.message}`);
   }
@@ -83,11 +134,7 @@ function ensureReleasePrReady(repoRoot, branch) {
 
   const state = typeof info.state === 'string' ? info.state.toUpperCase() : info.state;
   if (state === 'MERGED') {
-    if (process.env.RELEASE_FINALIZE_ALLOW_MERGED === '1') {
-      console.warn('[release:finalize] release PR already merged; proceeding due to RELEASE_FINALIZE_ALLOW_MERGED=1');
-    } else {
-      throw new Error('Release PR is already merged. Set RELEASE_FINALIZE_ALLOW_MERGED=1 to proceed.');
-    }
+    console.warn('[release:finalize] release PR already merged; continuing.');
   } else if (state && state !== 'OPEN') {
     throw new Error(`Release PR state is ${info.state}. Finalize aborted.`);
   }
@@ -119,6 +166,23 @@ function ensureReleasePrReady(repoRoot, branch) {
     mergeStateStatus,
     checks: summarizeStatusChecks(info.statusCheckRollup ?? [])
   };
+}
+
+function isAncestor(repoRoot, ancestorRef, descendantRef) {
+  const result = spawnSync('git', ['merge-base', '--is-ancestor', ancestorRef, descendantRef], {
+    cwd: repoRoot,
+    encoding: 'utf8',
+    stdio: ['ignore', 'ignore', 'inherit']
+  });
+  return result.status === 0;
+}
+
+function refsEqual(repoRoot, refA, refB) {
+  const result = spawnSync('git', ['diff', '--quiet', refA, refB], {
+    cwd: repoRoot,
+    stdio: ['ignore', 'ignore', 'inherit']
+  });
+  return result.status === 0;
 }
 
 async function main() {
@@ -165,17 +229,38 @@ async function main() {
     }
 
     run('git', ['checkout', '-B', 'main', 'upstream/main'], { cwd: repoRoot });
-    run('git', ['merge', '--ff-only', releaseBranch], { cwd: repoRoot });
+    try {
+      run('git', ['merge', '--ff-only', releaseBranch], { cwd: repoRoot });
+    } catch (error) {
+      if (isAncestor(repoRoot, releaseCommit, 'HEAD')) {
+        console.warn(
+          `[release:finalize] ${releaseBranch} already integrated into main; skipping fast-forward (${error.message}).`
+        );
+      } else if (refsEqual(repoRoot, releaseBranch, 'HEAD')) {
+        console.warn(
+          `[release:finalize] ${releaseBranch} tree matches main; treating fast-forward failure as no-op (${error.message}).`
+        );
+      } else {
+        throw error;
+      }
+    }
     pushToRemote(repoRoot, 'upstream', 'main');
     const mainCommit = run('git', ['rev-parse', 'HEAD'], { cwd: repoRoot });
 
     const releaseTitle = buildReleaseTitle(tag);
     const releaseNotes = buildReleaseNotes(tag);
-    run('gh', ['release', 'create', tag, '--draft', '--target', releaseCommit, '--title', releaseTitle, '--notes', releaseNotes], {
-      cwd: repoRoot,
-      stdio: 'inherit',
-      encoding: 'utf8'
-    });
+    const releaseResult = spawnSync(
+      'gh',
+      ['release', 'create', tag, '--draft', '--target', releaseCommit, '--title', releaseTitle, '--notes', releaseNotes],
+      {
+        cwd: repoRoot,
+        stdio: 'inherit',
+        encoding: 'utf8'
+      }
+    );
+    if (releaseResult.status !== 0) {
+      throw new Error('gh release create failed. Review the output above.');
+    }
 
     run('git', ['checkout', '-B', 'develop', 'upstream/develop'], { cwd: repoRoot });
     const mergeBase = run('git', ['merge-base', 'develop', releaseBranch], { cwd: repoRoot });
