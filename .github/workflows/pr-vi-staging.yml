@@ -110,11 +110,10 @@ jobs:
           "head_repo=$headRepo" | Out-File -FilePath $Env:GITHUB_OUTPUT -Encoding utf8 -Append
 
       - name: Checkout pull request head
-        uses: actions/checkout@v4
+        uses: ./.github/actions/fetch-pr-head
         with:
-          fetch-depth: 0
-          repository: ${{ steps.pr.outputs.head_repo }}
-          ref: ${{ steps.pr.outputs.head_ref }}
+          pull-number: ${{ steps.pr.outputs.pr_number }}
+          fetch-depth: 1
 
       - name: Generate VI manifest
         id: manifest
