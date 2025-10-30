@@ -28,11 +28,11 @@ jobs:
         if: env.AUTO_APPROVE_TOKEN != ''
         env:
           GH_TOKEN: ${{ env.AUTO_APPROVE_TOKEN }}
-          EVENT_PATH: ${{ github.event_path }}
+        
         run: |
           set -euo pipefail
 
-          pull_number=$(jq -r '.workflow_run.pull_requests[0].number' "$EVENT_PATH")
+          pull_number=$(jq -r '.workflow_run.pull_requests[0].number' "$GITHUB_EVENT_PATH")
           if [ -z "$pull_number" ] || [ "$pull_number" = "null" ]; then
             echo "No associated pull request found; exiting."
             exit 0
@@ -98,3 +98,4 @@ jobs:
 
           gh pr review "$pull_number" --approve --body "Auto-approval: Validate workflow completed successfully."
           echo "Submitted approval on PR #$pull_number as $bot_login."
+
