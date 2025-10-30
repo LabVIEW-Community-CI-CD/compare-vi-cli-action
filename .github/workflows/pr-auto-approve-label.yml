@@ -1,0 +1,85 @@
+name: PR Auto-approve Label
+
+on:
+  workflow_run:
+    workflows:
+      - Validate
+    types:
+      - completed
+
+permissions:
+  pull-requests: write
+
+jobs:
+  manage-label:
+    if: >
+      github.event.workflow_run.conclusion == 'success' &&
+      github.event.workflow_run.event == 'pull_request'
+    runs-on: ubuntu-latest
+    env:
+      AUTO_APPROVE_LABEL: ${{ secrets.AUTO_APPROVE_LABEL || 'auto-approve' }}
+    steps:
+      - name: Ensure auto-approve label state
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_EVENT_PATH: ${{ github.event_path }}
+          AUTO_APPROVE_ALLOWED: ${{ secrets.AUTO_APPROVE_ALLOWED || '' }}
+        run: |
+          set -euo pipefail
+
+          pull_number=$(jq -r '.workflow_run.pull_requests[0].number' "$GITHUB_EVENT_PATH")
+          if [ -z "$pull_number" ] || [ "$pull_number" = "null" ]; then
+            echo "No pull request associated with workflow run; exiting."
+            exit 0
+          fi
+
+          pr_json=$(gh pr view "$pull_number" --json number,state,isDraft,isCrossRepository,baseRefName,author,labels,mergeStateStatus --jq '.')
+          state=$(echo "$pr_json" | jq -r '.state')
+          is_draft=$(echo "$pr_json" | jq -r '.isDraft')
+          is_cross=$(echo "$pr_json" | jq -r '.isCrossRepository')
+          base=$(echo "$pr_json" | jq -r '.baseRefName')
+          merge_state=$(echo "$pr_json" | jq -r '.mergeStateStatus // empty')
+          pr_author=$(echo "$pr_json" | jq -r '.author.login // empty')
+
+          label_present=$(echo "$pr_json" | jq --arg label "$AUTO_APPROVE_LABEL" '[.labels[].name == $label] | any')
+
+          should_label=true
+          if [ "$AUTO_APPROVE_LABEL" = "none" ]; then
+            should_label=false
+          fi
+          if [ "$state" != "OPEN" ]; then
+            should_label=false
+          fi
+          if [ "$is_draft" = "true" ] || [ "$is_cross" = "true" ]; then
+            should_label=false
+          fi
+          if [ "$base" != "develop" ]; then
+            should_label=false
+          fi
+          if [ -n "$merge_state" ] && [ "$merge_state" != "CLEAN" ]; then
+            should_label=false
+          fi
+          if [ -n "$AUTO_APPROVE_ALLOWED" ] && [ -n "$pr_author" ]; then
+            allowed_match=0
+            IFS=',' read -r -a allowed_array <<< "$AUTO_APPROVE_ALLOWED"
+            for entry in "${allowed_array[@]}"; do
+              trimmed=$(echo "$entry" | xargs)
+              if [ -n "$trimmed" ] && [ "$trimmed" = "$pr_author" ]; then
+                allowed_match=1
+                break
+              fi
+            done
+            if [ $allowed_match -ne 1 ]; then
+              should_label=false
+            fi
+          fi
+
+          if [ "$should_label" = true ] && [ "$label_present" != "true" ]; then
+            gh pr edit "$pull_number" --add-label "$AUTO_APPROVE_LABEL"
+            echo "Applied label '$AUTO_APPROVE_LABEL' to PR #$pull_number."
+          fi
+
+          if [ "$should_label" = false ] && [ "$label_present" = "true" ]; then
+            gh pr edit "$pull_number" --remove-label "$AUTO_APPROVE_LABEL"
+            echo "Removed label '$AUTO_APPROVE_LABEL' from PR #$pull_number."
+          fi

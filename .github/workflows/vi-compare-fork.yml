@@ -24,12 +24,11 @@ jobs:
           ref: ${{ env.BASE_SHA }}
           fetch-depth: 0
 
-      - name: Fetch PR head from fork
-        run: |
-          git fetch --no-tags --depth=1 origin pull/${{ github.event.number }}/head
-
       - name: Checkout PR head
-        run: git checkout -B pr-head FETCH_HEAD
+        uses: ./.github/actions/fetch-pr-head
+        with:
+          pull-number: ${{ github.event.number }}
+          fetch-depth: 1
 
       - name: Generate VI manifest
         id: manifest
@@ -38,7 +37,7 @@ jobs:
           $repoRoot = Get-Location
           $manifestPath = Join-Path $repoRoot 'vi-diff-manifest.json'
           $manifestScript = Join-Path $repoRoot 'tools' 'Get-PRVIDiffManifest.ps1'
-          & $manifestScript -BaseRef "${{ env.BASE_SHA }}" -HeadRef 'pr-head' -OutputPath $manifestPath
+          & $manifestScript -BaseRef "${{ env.BASE_SHA }}" -HeadRef "${{ env.HEAD_SHA }}" -OutputPath $manifestPath
 
           $manifest = Get-Content -LiteralPath $manifestPath -Raw -Encoding UTF8 | ConvertFrom-Json
           $pairCount = 0

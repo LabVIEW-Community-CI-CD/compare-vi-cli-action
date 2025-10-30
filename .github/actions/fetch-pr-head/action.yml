@@ -1,0 +1,24 @@
+name: Fetch PR head
+description: Fetch and check out the pull request head commit (supports forks).
+inputs:
+  pull-number:
+    description: Pull request number whose head should be checked out.
+    required: true
+  fetch-depth:
+    description: Depth to use when fetching (defaults to 1).
+    required: false
+    default: '1'
+runs:
+  using: composite
+  steps:
+    - name: Fetch pull request head
+      shell: bash
+      run: |
+        set -euo pipefail
+        git fetch --no-tags --depth=${{ inputs.fetch-depth }} origin pull/${{ inputs.pull-number }}/head
+
+    - name: Checkout fetched head
+      shell: bash
+      run: |
+        set -euo pipefail
+        git checkout --detach FETCH_HEAD
