@@ -261,3 +261,12 @@ pwsh -File scripts/CompareVI.ps1 -Base VI1.vi -Head VI2.vi -LvCompareArgs "-nobd
 - [`docs/SCHEMA_HELPER.md`](./SCHEMA_HELPER.md)
 - [`docs/TROUBLESHOOTING.md`](./TROUBLESHOOTING.md)
 
+
+
+### Fork pull request automation
+
+- Fork PRs targeting develop automatically run the **VI Compare (Fork PR)** workflow. The job checks out the head commit using the shared etch-pr-head helper, stages the affected VIs, runs LVCompare on the self-hosted runner, and uploads artifacts identical to /vi-stage.
+- /vi-stage and /vi-history commands remain available for both upstream and fork contributions. Those workflows now also use the fetch helper so they can operate on fork heads safely.
+- The new **PR Auto-approve Label** workflow runs after Validate. When a PR targets develop, is not a fork/draft, its checks are green, and (optionally) the author is allowed, the workflow adds the auto-approve label automatically. If any condition fails, the label is removed.
+- Auto-approve still requires AUTO_APPROVE_TOKEN, optional AUTO_APPROVE_LABEL (default uto-approve), and optional AUTO_APPROVE_ALLOWED. The label lifecycle is now fully automated so contributors don’t need to toggle it manually.
+- When testing fork scenarios locally, use the composite ./.github/actions/fetch-pr-head to simulate pull/<id>/head checkouts before invoking staging/history helpers.

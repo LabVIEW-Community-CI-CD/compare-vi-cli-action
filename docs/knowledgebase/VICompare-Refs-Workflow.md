@@ -228,3 +228,8 @@ gh workflow run vi-compare-refs.yml `
   storage.
 
 
+### Fork pull request automation
+
+- VI Compare (Fork PR) runs automatically on PRs targeting develop (including forks). The workflow fetches the fork head via the composite etch-pr-head helper, stages pairs, runs LVCompare on the self-hosted Windows runner, and uploads the same artifacts as /vi-stage.
+- The command-driven workflows (pr-vi-staging.yml, pr-vi-history.yml) now reuse the helper so they operate on fork commits safely without bespoke checkout logic.
+- PR auto-approval depends on the standing label gate: the new auto-approve label workflow toggles the label automatically once Validate succeeds for eligible PRs.
