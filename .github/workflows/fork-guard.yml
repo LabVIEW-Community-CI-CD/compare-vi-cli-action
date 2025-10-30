@@ -1,0 +1,15 @@
+name: Fork Guard
+
+on:
+  workflow_dispatch:
+
+jobs:
+  simulate-fetch:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v5
+      - name: Simulate pull ref
+        shell: pwsh
+        run: pwsh -NoLogo -NoProfile -File tests/fork-guard/invoke.ps1 -WorkflowPath .github/workflows/vi-compare-fork.yml
