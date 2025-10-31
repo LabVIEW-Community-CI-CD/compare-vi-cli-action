@@ -46,7 +46,7 @@ jobs:
     needs: smoke-gate
     if: needs.smoke-gate.outputs.skip != 'true'
     environment:
-      name: production
+      name: validation
     runs-on: ubuntu-latest
     steps:
     - uses: actions/checkout@v5
