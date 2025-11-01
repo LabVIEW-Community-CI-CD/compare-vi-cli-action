@@ -1,19 +1,20 @@
 {
-  "number": 544,
-  "title": "Compare-VIHistory: add noise collapse and signal budget",
-  "url": "https://github.com/LabVIEW-Community-CI-CD/compare-vi-cli-action/issues/544",
+  "number": 551,
+  "title": "Automate LVCompare config scaffolding for local diff sessions",
+  "url": "https://github.com/LabVIEW-Community-CI-CD/compare-vi-cli-action/issues/551",
   "state": "OPEN",
   "labels": [
+    "ci",
     "enhancement",
     "standing-priority"
   ],
   "assignees": [],
   "milestone": null,
   "commentCount": 0,
-  "lastSeenUpdatedAt": "2025-11-01T17:29:09Z",
-  "issueDigest": "313c1b802c9153f134956ac0ba8a6a85746f501c037f4e966b3ee1d9297991c5",
-  "bodyDigest": "21794e33f61d86d88ead0fc44bab263c168b18e3f07ed8813646dea831d2ed10",
-  "cachedAtUtc": "2025-11-01T17:32:15.761Z",
+  "lastSeenUpdatedAt": "2025-11-01T20:45:21Z",
+  "issueDigest": "155130205596ed77483537aa52b66cc3a229ec5271427a76d6d062f44e5e746c",
+  "bodyDigest": "d98122022b88f77a440f860ec661af51d370e4322e027ed65783e62ec585467a",
+  "cachedAtUtc": "2025-11-01T20:45:34.775Z",
   "lastFetchSource": "live",
   "lastFetchError": null
 }
