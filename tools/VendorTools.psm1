@@ -303,6 +303,94 @@ function Resolve-GCliPath {
   return $null
 }
 
+function Get-LabVIEWConfig {
+  $root = Resolve-RepoRoot
+  foreach ($configName in @('labview-paths.local.json','labview-paths.json')) {
+    $configPath = Join-Path $root "configs/$configName"
+    if (-not (Test-Path -LiteralPath $configPath -PathType Leaf)) { continue }
+    try {
+      $json = Get-Content -LiteralPath $configPath -Raw | ConvertFrom-Json -Depth 6
+      if ($json) { return $json }
+    } catch {}
+  }
+  return $null
+}
+
+function Get-LabVIEWConfigEntries {
+  param($Config)
+
+  $entries = New-Object System.Collections.Generic.List[object]
+  if (-not $Config) { return $entries.ToArray() }
+
+  $versionsNode = $Config.PSObject.Properties['versions']
+  if ($versionsNode -and $Config.versions) {
+    foreach ($versionProp in $Config.versions.PSObject.Properties) {
+      $versionName = $versionProp.Name
+      $versionValue = $versionProp.Value
+      if (-not $versionValue) { continue }
+      foreach ($bitnessProp in $versionValue.PSObject.Properties) {
+        $bitnessName = $bitnessProp.Name
+        $bitnessValue = $bitnessProp.Value
+        if (-not $bitnessValue) { continue }
+        $path = $null
+        if ($bitnessValue -is [string]) {
+          $path = $bitnessValue
+        } elseif ($bitnessValue.PSObject.Properties['LabVIEWExePath']) {
+          $path = $bitnessValue.LabVIEWExePath
+        }
+        if ([string]::IsNullOrWhiteSpace($path)) { continue }
+        try {
+          if (Test-Path -LiteralPath $path -PathType Leaf) {
+            $resolved = (Resolve-Path -LiteralPath $path).Path
+            $entries.Add([pscustomobject]@{
+              Version = $versionName
+              Bitness = $bitnessName
+              Path    = $resolved
+            }) | Out-Null
+          }
+        } catch {}
+      }
+    }
+  }
+
+  return $entries.ToArray()
+}
+
+function Find-LabVIEWVersionExePath {
+  param(
+    [Parameter(Mandatory)][int]$Version,
+    [Parameter(Mandatory)][ValidateSet(32,64)][int]$Bitness,
+    $Config = (Get-LabVIEWConfig)
+  )
+
+  $versionString = $Version.ToString()
+  $bitnessString = $Bitness.ToString()
+
+  if ($Config) {
+    foreach ($entry in (Get-LabVIEWConfigEntries -Config $Config)) {
+      if (($entry.Version -eq $versionString) -and ($entry.Bitness -eq $bitnessString)) {
+        return $entry.Path
+      }
+    }
+  }
+
+  foreach ($candidate in (Get-LabVIEWCandidateExePaths)) {
+    if ([string]::IsNullOrWhiteSpace($candidate)) { continue }
+    $matchesVersion = $candidate -match ("LabVIEW\s*$versionString")
+    if (-not $matchesVersion) { continue }
+    $is32BitPath = $candidate -match '(?i)Program Files \(x86\)'
+    $candidateBitness = if ($is32BitPath) { 32 } else { 64 }
+    if ($candidateBitness -ne $Bitness) { continue }
+    try {
+      if (Test-Path -LiteralPath $candidate -PathType Leaf) {
+        return (Resolve-Path -LiteralPath $candidate).Path
+      }
+    } catch {}
+  }
+
+  return $null
+}
+
 function Get-LabVIEWCandidateExePaths {
   param([string]$LabVIEWExePath)
 

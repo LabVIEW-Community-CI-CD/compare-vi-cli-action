@@ -1,6 +1,4 @@
 #Requires -Version 7.0
-Set-StrictMode -Version Latest
-$ErrorActionPreference = 'Stop'
 
 param(
   [string]$IconEditorRoot,
@@ -13,10 +11,13 @@ param(
   [string]$AuthorName = 'LabVIEW Community CI/CD',
   [string]$MinimumSupportedLVVersion = '2021',
   [int]$LabVIEWMinorRevision = 3,
-  [switch]$InstallDependencies,
+  [bool]$InstallDependencies = $true,
   [switch]$RunUnitTests,
   [string]$ResultsRoot
 )
+
+Set-StrictMode -Version Latest
+$ErrorActionPreference = 'Stop'
 
 function Resolve-RepoRoot {
   param([string]$StartPath = (Get-Location).Path)
@@ -47,6 +48,22 @@ if (-not $gCliPath) {
 
 $gCliDirectory = Split-Path -Parent $gCliPath
 $previousPath = $env:Path
+$requiredLabVIEW = @(
+  @{ Version = 2021; Bitness = 32 },
+  @{ Version = 2021; Bitness = 64 },
+  @{ Version = 2023; Bitness = 64 }
+)
+$missingLabVIEW = @()
+foreach ($requirement in $requiredLabVIEW) {
+  $requiredPath = Find-LabVIEWVersionExePath -Version $requirement.Version -Bitness $requirement.Bitness
+  if (-not $requiredPath) {
+    $missingLabVIEW += $requirement
+  }
+}
+if ($missingLabVIEW.Count -gt 0) {
+  $missingText = ($missingLabVIEW | ForEach-Object { "LabVIEW {0} ({1}-bit)" -f $_.Version, $_.Bitness }) -join ', '
+  throw ("Required LabVIEW installations not found: {0}. Install the missing versions or set `versions.<version>.<bitness>.LabVIEWExePath` in configs/labview-paths.local.json." -f $missingText)
+}
 try {
   if ($previousPath -notlike "$gCliDirectory*") {
     $env:Path = "$gCliDirectory;$previousPath"

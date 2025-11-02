@@ -123,4 +123,32 @@ Describe 'VendorTools LabVIEW helpers' {
       $env:GCLI_EXE_PATH = $previous
     }
   }
+
+  It 'resolves LabVIEW executable from versioned config entries' {
+    $tempRoot = Join-Path $TestDrive 'labview-config'
+    New-Item -ItemType Directory -Path $tempRoot | Out-Null
+
+    $lv2021x86 = Join-Path $tempRoot 'LabVIEW2021x86.exe'
+    Set-Content -LiteralPath $lv2021x86 -Value '' -Encoding ascii
+
+    $configJson = @{
+      versions = @{
+        '2021' = @{
+          '32' = @{
+            LabVIEWExePath = $lv2021x86
+          }
+        }
+      }
+    } | ConvertTo-Json -Depth 6
+    Set-Content -LiteralPath $script:localConfigPath -Value $configJson -Encoding utf8
+
+    $resolved = Find-LabVIEWVersionExePath -Version 2021 -Bitness 32
+    $resolved | Should -Be (Resolve-Path -LiteralPath $lv2021x86).Path
+  }
+
+  It 'returns null when required LabVIEW version is missing' {
+    '{}' | Set-Content -LiteralPath $script:localConfigPath -Encoding utf8
+    $resolved = Find-LabVIEWVersionExePath -Version 2099 -Bitness 64
+    $resolved | Should -Be $null
+  }
 }

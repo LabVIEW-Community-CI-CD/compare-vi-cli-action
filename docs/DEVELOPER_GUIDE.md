@@ -15,9 +15,10 @@ Quick reference for building, testing, and releasing the LVCompare composite act
 - **Helpers**
   - `tools/Dev-Dashboard.ps1`
 - **Icon Editor build pipeline**
-  - `node tools/npm/run-script.mjs icon-editor:build` — runs the vendored LabVIEW Icon Editor build using the upstream PowerShell actions.
+  - `node tools/npm/run-script.mjs icon-editor:build` - runs the vendored LabVIEW Icon Editor build using the upstream PowerShell actions.
+  - Requires LabVIEW 2021 SP1 (32-bit and 64-bit) and LabVIEW 2023 (64-bit). `Invoke-IconEditorBuild.ps1` now validates those installs via `Find-LabVIEWVersionExePath` and fails fast with a remediation hint when any executable is missing.
   - `g-cli.exe` is expected at `C:\Program Files\G-CLI\bin\g-cli.exe`. Use `configs/labview-paths.local.json` (`GCliExePath`) or set `GCLI_EXE_PATH` only when you need to override the default.
-  - Artifacts land in `tests/results/_agent/icon-editor/` (manifest + packaged outputs). Add `-InstallDependencies` to apply `runner_dependencies.vipc` and `-RunUnitTests` to execute the icon editor unit suite.
+  - Artifacts land in `tests/results/_agent/icon-editor/` (manifest + packaged outputs). Dependency VIPCs (`runner_dependencies.vipc`) apply automatically unless you pass `-InstallDependencies:$false`; add `-RunUnitTests` to execute the icon editor unit suite.
 - **Smoke tests**
   - `pwsh -File tools/Test-PRVIStagingSmoke.ps1 -DryRun`
     (planning pass; prints the branch/PR that would be created)
@@ -325,3 +326,4 @@ pwsh -File scripts/CompareVI.ps1 `
   `-KeepBranch` preserves the branch/PR after the staging and history dispatches complete for manual inspection.
 - When testing fork scenarios locally, use the composite `.github/actions/fetch-pr-head` action to simulate
   `pull/<id>/head` checkouts before invoking the staging or history helpers.
+

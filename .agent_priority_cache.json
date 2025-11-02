@@ -1,20 +1,18 @@
 {
-  "number": 551,
-  "title": "Automate LVCompare config scaffolding for local diff sessions",
-  "url": "https://github.com/LabVIEW-Community-CI-CD/compare-vi-cli-action/issues/551",
+  "number": 556,
+  "title": "Umbrella: Vendor Icon Editor & Align Build Automation",
+  "url": "https://github.com/LabVIEW-Community-CI-CD/compare-vi-cli-action/issues/556",
   "state": "OPEN",
   "labels": [
-    "ci",
-    "enhancement",
     "standing-priority"
   ],
   "assignees": [],
   "milestone": null,
   "commentCount": 0,
-  "lastSeenUpdatedAt": "2025-11-01T20:45:21Z",
-  "issueDigest": "155130205596ed77483537aa52b66cc3a229ec5271427a76d6d062f44e5e746c",
-  "bodyDigest": "d98122022b88f77a440f860ec661af51d370e4322e027ed65783e62ec585467a",
-  "cachedAtUtc": "2025-11-01T20:45:34.775Z",
+  "lastSeenUpdatedAt": "2025-11-02T03:45:42Z",
+  "issueDigest": "13d4d2ea21988473b5ebabf38894b1bf6dea5e2653631940bdf2068203a2c22d",
+  "bodyDigest": "e2b0c878a1d38c6311a4554e930005fa035154f744dfa1216727d91b89753717",
+  "cachedAtUtc": "2025-11-02T04:10:02.513Z",
   "lastFetchSource": "live",
   "lastFetchError": null
 }
