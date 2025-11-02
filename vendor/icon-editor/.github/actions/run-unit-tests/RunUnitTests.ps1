@@ -46,7 +46,7 @@ function Get-SingleLvproj {
 
     while ($true) {
         Write-Host "Searching '$currentDir' for *.lvproj files..."
-        $lvprojFiles = Get-ChildItem -Path $currentDir -Filter '*.lvproj' -File -ErrorAction SilentlyContinue
+        $lvprojFiles = @(Get-ChildItem -Path $currentDir -Filter '*.lvproj' -File -ErrorAction SilentlyContinue)
 
         if ($lvprojFiles.Count -eq 1) {
             # Found exactly one .lvproj
