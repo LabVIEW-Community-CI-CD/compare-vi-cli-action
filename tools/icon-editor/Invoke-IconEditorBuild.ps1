@@ -90,6 +90,7 @@ try {
   $renameScript       = Join-Path $actionsRoot 'rename-file' 'Rename-file.ps1'
   $modifyVipbScript   = Join-Path $actionsRoot 'modify-vipb-display-info' 'ModifyVIPBDisplayInfo.ps1'
   $buildVipScript     = Join-Path $actionsRoot 'build-vi-package' 'build_vip.ps1'
+  $packageSmokeScript = Join-Path $repoRoot 'tools' 'icon-editor' 'Test-IconEditorPackage.ps1'
 
   foreach ($required in @($buildLvlibpScript, $closeLabviewScript, $renameScript, $modifyVipbScript, $buildVipScript)) {
     if (-not (Test-Path -LiteralPath $required -PathType Leaf)) {
@@ -216,6 +217,7 @@ try {
 
   $displayInfoJson = $displayInfo | ConvertTo-Json -Depth 3
   $vipArtifacts = @()
+  $packageSmokeSummary = $null
 
   if ($packagingRequested) {
     Write-Host 'Packaging icon editor VIP...' -ForegroundColor Cyan
@@ -275,6 +277,33 @@ try {
     Write-Host 'Packaging skipped by request.' -ForegroundColor Yellow
   }
 
+  if (Test-Path -LiteralPath $packageSmokeScript -PathType Leaf) {
+    $vipDestinations = @()
+    foreach ($entry in $vipArtifacts) {
+      $vipDestinations += (Join-Path $ResultsRoot $entry.Name)
+    }
+
+    try {
+      $packageSmokeSummary = & $packageSmokeScript `
+        -VipPath $vipDestinations `
+        -ResultsRoot $ResultsRoot `
+        -VersionInfo @{
+          major  = $Major
+          minor  = $Minor
+          patch  = $Patch
+          build  = $Build
+          commit = $Commit
+        } `
+        -RequireVip:$packagingRequested
+    } catch {
+      if ($RequirePackaging.IsPresent -or $packagingRequested) {
+        throw
+      }
+
+      Write-Warning "Package smoke test failed: $($_.Exception.Message)"
+    }
+  }
+
   $artifactMap = @(
     @{ Source = Join-Path $IconEditorRoot 'resource\plugins\lv_icon_x86.lvlibp'; Name = 'lv_icon_x86.lvlibp'; Kind = 'lvlibp' },
     @{ Source = Join-Path $IconEditorRoot 'resource\plugins\lv_icon_x64.lvlibp'; Name = 'lv_icon_x64.lvlibp'; Kind = 'lvlibp' }
@@ -330,6 +359,10 @@ try {
     unitTestsRun        = [bool]$RunUnitTests
     packagingRequested  = [bool]$packagingRequested
     artifacts = @()
+  }
+
+  if ($packageSmokeSummary) {
+    $manifest.packageSmoke = $packageSmokeSummary
   }
 
   $devModeState = Get-IconEditorDevModeState -RepoRoot $repoRoot

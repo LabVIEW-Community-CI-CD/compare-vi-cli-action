@@ -26,6 +26,7 @@ Quick reference for building, testing, and releasing the LVCompare composite act
     - `npm run env:labview:check` prints the availability of each lane and surfaces missing prerequisites.
   - `g-cli.exe` is expected at `C:\Program Files\G-CLI\bin\g-cli.exe`. Use `configs/labview-paths.local.json` (`GCliExePath`) or set `GCLI_EXE_PATH` only when you need to override the default.
   - Artifacts land in `tests/results/_agent/icon-editor/` (manifest + packaged outputs). Dependency VIPCs (`runner_dependencies.vipc`) apply automatically unless you pass `-InstallDependencies:$false`; the helper mirrors the upstream Build.ps1 (dev-mode enable → apply VIPCs → build lvlibp (32/64) & rename → update VIPB metadata → build the VI package → restore dev mode). Add `-RunUnitTests` to execute the icon editor unit suite. The manifest records the dev-mode state (`developmentMode.*`) and lists both lvlibp + vip artifacts for audit.
+  - Packaging now runs a lightweight smoke check (`tools/icon-editor/Test-IconEditorPackage.ps1`) against the emitted `.vip` files, writing `package-smoke-summary.json` and recording the results under `manifest.packageSmoke` so CI can flag structural regressions without rerunning VIPM.
 - **Smoke tests**
   - `pwsh -File tools/Test-PRVIStagingSmoke.ps1 -DryRun`
     (planning pass; prints the branch/PR that would be created)

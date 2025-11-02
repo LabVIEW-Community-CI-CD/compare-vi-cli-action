@@ -22,6 +22,7 @@ Patterns for structuring Pester tests in this repository.
 Examples (Icon Editor):
 - Suite: `Describe 'IconEditor …' -Tag 'IconEditor'`
 - Unit context (no external tools): `-Tag 'IconEditor','DevMode','Unit'`
+- Package validation (VIP smoke): `-Tag 'IconEditor','Packaging','Unit'`
 - INI round-trip (real installs): `-Tag 'IconEditor','DevMode','INI','Integration','E2E','RequiresGCLI','RequiresLabVIEW'`
 
 ## Dispatcher behaviour

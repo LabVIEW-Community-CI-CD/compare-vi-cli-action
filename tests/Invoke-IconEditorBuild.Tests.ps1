@@ -235,7 +235,30 @@ $vipOut = Join-Path $iconRoot 'Tooling\deployment\IconEditor_Test.vip'
         'build_vip.ps1' {
           $iconRoot = Split-Path -Parent (Split-Path -Parent (Split-Path -Parent (Split-Path -Parent $ScriptPath)))
           $vipOut = Join-Path $iconRoot 'Tooling\deployment\IconEditor_Test.vip'
-          "vip-$($argsMap['SupportedBitness'])" | Set-Content -LiteralPath $vipOut -Encoding utf8
+          if (Test-Path -LiteralPath $vipOut) {
+            Remove-Item -LiteralPath $vipOut -Force
+          }
+
+          $tempRoot = Join-Path $iconRoot 'Tooling\deployment\_vip_temp'
+          if (Test-Path -LiteralPath $tempRoot) {
+            Remove-Item -LiteralPath $tempRoot -Recurse -Force
+          }
+
+          $null = New-Item -ItemType Directory -Path (Join-Path $tempRoot 'resource\plugins') -Force
+          $null = New-Item -ItemType Directory -Path (Join-Path $tempRoot 'support') -Force
+
+          'dummy' | Set-Content -LiteralPath (Join-Path $tempRoot 'resource\plugins\lv_icon_x86.lvlibp') -Encoding utf8
+          'dummy' | Set-Content -LiteralPath (Join-Path $tempRoot 'resource\plugins\lv_icon_x64.lvlibp') -Encoding utf8
+
+          $major = $argsMap['Major']
+          $minor = $argsMap['Minor']
+          $patch = $argsMap['Patch']
+          $build = $argsMap['Build']
+          $versionString = '{0}.{1}.{2}.{3}' -f $major, $minor, $patch, $build
+          $versionString | Set-Content -LiteralPath (Join-Path $tempRoot 'support\build.txt') -Encoding utf8
+
+          Compress-Archive -Path (Join-Path $tempRoot '*') -DestinationPath $vipOut -Force
+          Remove-Item -LiteralPath $tempRoot -Recurse -Force
         }
         default { }
       }
@@ -273,6 +296,8 @@ $vipOut = Join-Path $iconRoot 'Tooling\deployment\IconEditor_Test.vip'
     $manifest.dependenciesApplied | Should -BeTrue
     $manifest.developmentMode.toggled | Should -BeTrue
     @($manifest.artifacts | Where-Object { $_.kind -eq 'vip' }).Count | Should -BeGreaterThan 0
+    $manifest.packageSmoke.status | Should -Be 'ok'
+    $manifest.packageSmoke.vipCount | Should -Be 1
   }
 
   It 'skips packaging when requested' {
@@ -291,6 +316,7 @@ $vipOut = Join-Path $iconRoot 'Tooling\deployment\IconEditor_Test.vip'
 
     $manifest = Get-Content -LiteralPath (Join-Path $script:resultsRoot 'manifest.json') -Raw | ConvertFrom-Json
     $manifest.packagingRequested | Should -BeFalse
-      @($manifest.artifacts | Where-Object { $_.kind -eq 'vip' }).Count | Should -Be 0
+    @($manifest.artifacts | Where-Object { $_.kind -eq 'vip' }).Count | Should -Be 0
+    $manifest.packageSmoke.status | Should -Be 'skipped'
   }
 }
