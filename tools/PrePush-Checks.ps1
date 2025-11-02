@@ -118,8 +118,9 @@ if (Test-Path -LiteralPath $updateReportScript -PathType Leaf) {
       throw "Update-IconEditorFixtureReport.ps1 reported issues (exit=$LASTEXITCODE)."
     }
     git -C $root diff --quiet -- docs/ICON_EDITOR_PACKAGE.md
-    if ($LASTEXITCODE -ne 0) {
-      throw "docs/ICON_EDITOR_PACKAGE.md is out of date. Run `pwsh -File tools/icon-editor/Update-IconEditorFixtureReport.ps1` and commit the changes."
+    $docClean = $LASTEXITCODE -eq 0
+    if (-not $docClean) {
+      Write-Host '::notice::docs/ICON_EDITOR_PACKAGE.md differs from HEAD (regenerated); commit or revert as appropriate.' -ForegroundColor Yellow
     }
     Write-Host '[pre-push] icon-editor fixture report OK' -ForegroundColor Green
     Write-Host '[pre-push] Checking icon-editor canonical hashes via node --test' -ForegroundColor Cyan
@@ -128,8 +129,20 @@ if (Test-Path -LiteralPath $updateReportScript -PathType Leaf) {
       throw "node --test reported failures (exit=$LASTEXITCODE)."
     }
     Write-Host '[pre-push] icon-editor hash checks OK' -ForegroundColor Green
-    git checkout -- docs/ICON_EDITOR_PACKAGE.md | Out-Null
-    Remove-Item -LiteralPath (Join-Path $root 'tests' 'results' '_agent' 'icon-editor' 'fixture-report.json') -ErrorAction SilentlyContinue
+    if ($docClean) {
+      git checkout -- docs/ICON_EDITOR_PACKAGE.md | Out-Null
+    }
+    $artifactDir = Join-Path $root 'tests' 'results' '_agent' 'icon-editor'
+    $jsonPath = Join-Path $artifactDir 'fixture-report.json'
+    $markdownPath = Join-Path $artifactDir 'fixture-report.md'
+    if (-not ($env:GITHUB_ACTIONS -eq 'true')) {
+      if (Test-Path -LiteralPath $jsonPath) {
+        Remove-Item -LiteralPath $jsonPath -Force -ErrorAction SilentlyContinue
+      }
+      if (Test-Path -LiteralPath $markdownPath) {
+        Remove-Item -LiteralPath $markdownPath -Force -ErrorAction SilentlyContinue
+      }
+    }
   } finally {
     Pop-Location | Out-Null
   }

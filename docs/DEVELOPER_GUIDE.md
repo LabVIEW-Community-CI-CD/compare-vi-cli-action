@@ -26,6 +26,7 @@ Quick reference for building, testing, and releasing the LVCompare composite act
     the real pipeline executes.
   - `pwsh -File tools/icon-editor/Update-IconEditorFixtureReport.ps1` refreshes the fixture report (generates the JSON snapshot and rewrites the section in `docs/ICON_EDITOR_PACKAGE.md`; pre-push guards that it stays current).
   - `npm run icon-editor:dev:on` / `npm run icon-editor:dev:off` toggle LabVIEW development mode using the vendored helpers (`Set_Development_Mode.ps1` / `RevertDevelopmentMode.ps1`) and persist the current state.
+  - Validate uploads the `icon-editor-fixture-report` artifact (JSON + Markdown) on each run for stakeholders.
   - `npm run icon-editor:dev:assert:on` / `npm run icon-editor:dev:assert:off` validate the LabVIEW `LocalHost.LibraryPaths` token so you can confirm dev mode is actually enabled or disabled before continuing.
   - Multi-lane tooling:
     - **Source lane (2021 SP1, 32/64-bit)** – dev-mode toggles, VIPC apply/restore, lvlibp builds.

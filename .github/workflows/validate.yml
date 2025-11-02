@@ -138,6 +138,15 @@ jobs:
       run: |
         pwsh -File tools/PrePush-Checks.ps1
 
+    - name: Upload icon-editor fixture report
+      if: always()
+      uses: actions/upload-artifact@v5
+      with:
+        name: icon-editor-fixture-report
+        path: |
+          tests/results/_agent/icon-editor/fixture-report.json
+          tests/results/_agent/icon-editor/fixture-report.md
+
     - name: Policy guard (branch protection)
       shell: pwsh
       env:

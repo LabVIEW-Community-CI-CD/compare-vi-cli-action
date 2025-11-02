@@ -33,6 +33,7 @@ if (-not (Test-Path -LiteralPath $reportDir -PathType Container)) {
   New-Item -ItemType Directory -Path $reportDir -Force | Out-Null
 }
 $reportPath = Join-Path $reportDir 'fixture-report.json'
+$markdownPath = Join-Path $reportDir 'fixture-report.md'
 
 $describeParams = @{
   OutputPath = $reportPath
@@ -43,6 +44,7 @@ if ($FixturePath) {
 }
 
 pwsh -NoLogo -NoProfile -File $describeScript @describeParams | Out-Null
+pwsh -NoLogo -NoProfile -File $renderScript -ReportPath $reportPath -OutputPath $markdownPath | Out-Null
 pwsh -NoLogo -NoProfile -File $renderScript -ReportPath $reportPath -UpdateDoc | Out-Null
 
 if ($CheckOnly.IsPresent) {
@@ -51,6 +53,9 @@ if ($CheckOnly.IsPresent) {
   git -C $repoRoot checkout -- docs/ICON_EDITOR_PACKAGE.md | Out-Null
   if (Test-Path -LiteralPath $reportPath) {
     Remove-Item -LiteralPath $reportPath -Force -ErrorAction SilentlyContinue
+  }
+  if (Test-Path -LiteralPath $markdownPath) {
+    Remove-Item -LiteralPath $markdownPath -Force -ErrorAction SilentlyContinue
   }
   if ($diffExit -ne 0) {
     throw "docs/ICON_EDITOR_PACKAGE.md is out of date. Run `pwsh -File tools/icon-editor/Update-IconEditorFixtureReport.ps1` and commit the changes."

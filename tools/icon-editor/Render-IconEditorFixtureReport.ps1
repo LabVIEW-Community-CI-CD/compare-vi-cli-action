@@ -116,6 +116,7 @@ try {
   $fixturePath = $fixturePathFull
 }
 $manifest = $summary.manifest
+$stakeholder = $summary.stakeholder
 
 $lines = @()
 $lines += "## Package layout highlights"
@@ -123,10 +124,18 @@ $lines += ""
 $lines += [string]::Format('- Fixture version `{0}` (system `{1}`), license `{2}`.', $fixtureVersion, $systemVersion, $fixtureLicense)
 $lines += [string]::Format('- Fixture path: `{0}`', $fixturePath)
 $lines += [string]::Format('- Package smoke status: **{0}** (VIPs: {1})', $manifest.packageSmoke.status, $manifest.packageSmoke.vipCount)
+$lines += [string]::Format('- Report generated: `{0}`', $stakeholder.generatedAt ?? $generatedAt)
 $lines += "- Artifacts:"
 foreach ($item in (Render-ArtifactList $summary.artifacts)) {
   $lines += ("  - {0}" -f $item)
 }
+$lines += ""
+$lines += "## Stakeholder summary"
+$lines += ""
+$lines += [string]::Format('- Smoke status: **{0}**', $stakeholder.smokeStatus)
+$lines += [string]::Format('- Runner dependencies: {0}', $stakeholder.runnerDependencies.matchesRepo ? 'match' : 'mismatch')
+$lines += [string]::Format('- Custom actions: {0} entries (all match: {1})', ($stakeholder.customActions | Measure-Object).Count, (($stakeholder.customActions | Where-Object { $_.matchStatus -ne 'match' } | Measure-Object).Count -eq 0))
+$lines += [string]::Format('- Fixture-only assets discovered: {0}', ($stakeholder.fixtureOnlyAssets | Measure-Object).Count)
 $lines += ""
 $lines += "## Comparison with repository sources"
 $lines += ""

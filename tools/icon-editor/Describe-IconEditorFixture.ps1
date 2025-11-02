@@ -177,6 +177,9 @@ try {
     }
   }
 
+  $fixtureVersionRaw = $fixtureSpec.Package.Version
+  $systemVersionRaw = $systemSpec.Package.Version
+
   $summary = [ordered]@{
     schema      = 'icon-editor/fixture-report@v1'
     generatedAt = (Get-Date).ToString('o')
@@ -185,29 +188,60 @@ try {
       repoRoot    = $repoRoot
     }
     fixture      = [ordered]@{
-      package    = $fixtureSpec.Package
+      package     = $fixtureSpec.Package
       description = $fixtureSpec.Description
     }
     systemPackage = [ordered]@{
-      package    = $systemSpec.Package
+      package     = $systemSpec.Package
       description = $systemSpec.Description
     }
     manifest    = $manifest
     artifacts   = $artifactFiles
     customActions = $customActions
     runnerDependencies = [ordered]@{
-      fixture = $runnerDependenciesFixture
-      repo    = $runnerDependenciesRepo
+      fixture   = $runnerDependenciesFixture
+      repo      = $runnerDependenciesRepo
       hashMatch = ($runnerDependenciesFixture -and $runnerDependenciesRepo -and ($runnerDependenciesFixture.hash -eq $runnerDependenciesRepo.hash))
     }
     fixtureOnlyAssets = $fixtureOnlyAssets
   }
 
-  if ($OutputPath) {
-    $summary | ConvertTo-Json -Depth 8 | Set-Content -LiteralPath $OutputPath -Encoding utf8
+  $stakeholderArtifacts = $artifactFiles | ForEach-Object {
+    [ordered]@{
+      name      = $_.name
+      hash      = $_.hash
+      sizeBytes = $_.sizeBytes
+    }
+  }
+  $stakeholderCustomActions = $customActions | ForEach-Object {
+    [ordered]@{
+      name        = $_.name
+      hash        = $_.fixture ? $_.fixture.hash : $null
+      matchStatus = if ($_.hashMatch) { 'match' } else { 'mismatch' }
+    }
+  }
+  $summary.stakeholder = [ordered]@{
+    version             = $fixtureVersionRaw
+    systemVersion       = $systemVersionRaw
+    license             = $summary.fixture.description.License
+    smokeStatus         = $manifest.packageSmoke.status
+    simulationEnabled   = $manifest.simulation.enabled
+    unitTestsRun        = $manifest.unitTestsRun
+    artifacts           = $stakeholderArtifacts
+    customActions       = $stakeholderCustomActions
+    runnerDependencies  = [ordered]@{
+      hash        = $runnerDependenciesFixture ? $runnerDependenciesFixture.hash : $null
+      matchesRepo = $summary.runnerDependencies.hashMatch
+    }
+    generatedAt         = $summary.generatedAt
+    fixtureOnlyAssets   = $fixtureOnlyAssets
   }
 
-  return [pscustomobject]$summary
+if ($OutputPath) {
+  $summary | ConvertTo-Json -Depth 8 | Set-Content -LiteralPath $OutputPath -Encoding utf8
+}
+
+return [pscustomobject]$summary
 }
 finally {
   if (-not $KeepWork.IsPresent) {
