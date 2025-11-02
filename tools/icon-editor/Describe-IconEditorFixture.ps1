@@ -157,22 +157,27 @@ try {
   $scriptsPath = Join-Path $systemExtractRoot 'File Group 0\National Instruments\LabVIEW Icon Editor\scripts'
   if (Test-Path -LiteralPath $scriptsPath -PathType Container) {
     Get-ChildItem -LiteralPath $scriptsPath -File | ForEach-Object {
+      $item = $_
       $fixtureOnlyAssets += [ordered]@{
-        category = 'script'
-        name     = $_.Name
-        path     = $_.FullName
-        hash     = (Get-FileHash -LiteralPath $_.FullName -Algorithm SHA256).Hash.ToLowerInvariant()
+        category  = 'script'
+        name      = $item.Name
+        path      = $item.FullName
+        sizeBytes = $item.Length
+        hash      = (Get-FileHash -LiteralPath $item.FullName -Algorithm SHA256).Hash.ToLowerInvariant()
       }
     }
   }
   $testsPath = Join-Path $systemExtractRoot 'File Group 0\National Instruments\LabVIEW Icon Editor\Test'
   if (Test-Path -LiteralPath $testsPath -PathType Container) {
     Get-ChildItem -LiteralPath $testsPath -Recurse -File | ForEach-Object {
+      $item = $_
+      $rel  = $item.FullName.Substring($testsPath.Length + 1)
       $fixtureOnlyAssets += [ordered]@{
-        category = 'test'
-        name     = $_.FullName.Substring($testsPath.Length + 1)
-        path     = $_.FullName
-        hash     = (Get-FileHash -LiteralPath $_.FullName -Algorithm SHA256).Hash.ToLowerInvariant()
+        category  = 'test'
+        name      = $rel
+        path      = $item.FullName
+        sizeBytes = $item.Length
+        hash      = (Get-FileHash -LiteralPath $item.FullName -Algorithm SHA256).Hash.ToLowerInvariant()
       }
     }
   }

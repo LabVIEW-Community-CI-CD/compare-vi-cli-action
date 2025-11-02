@@ -24,7 +24,7 @@ carries the actual LabVIEW payload.
 - Fixture version `1.4.1.948` (system `1.4.1.948`), license `MIT`.
 - Fixture path: `tests\fixtures\icon-editor\ni_icon_editor-1.4.1.948.vip`
 - Package smoke status: **ok** (VIPs: 1)
-- Report generated: `11/2/2025 1:28:33 PM`
+- Report generated: `11/2/2025 1:43:21 PM`
 - Artifacts:
   - ni_icon_editor-1.4.1.948.vip - 28.12 MB (`ed48a629e7fe5256dcb04cf3288a6e42fe8c8996dc33c4d838f8b102b43a9e44`)
   - ni_icon_editor_system-1.4.1.948.vip - 28.03 MB (`534ff97b24f608ac79997169eca9616ab2c72014cc9c9ea9955ee7fb3c5493c2`)
@@ -61,6 +61,10 @@ carries the actual LabVIEW payload.
   - Unit Tests\Editor Position\Editor Position.lvclass (58ea81ddcd56be9a0aaa74a50684270d0c6c624fbde9ab538416ed87ae7321d8)
   - Unit Tests\Editor Position\INI Position Removed.vi (62872f3cc37348238d71d3c5ecb64bc7f0d93e62a3ec0e24b3137f9d6a5b391d)
   - ... 18 more
+
+## Fixture-only manifest delta
+
+- Added: 0, Removed: 0, Changed: 0
 
 ## Simulation metadata
 

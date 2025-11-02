@@ -101,6 +101,49 @@ function Render-FixtureOnlyAssets {
   return $lines
 }
 
+function Build-FixtureManifestFromSummary {
+  param($Summary)
+  $entries = @()
+  foreach ($asset in ($Summary.fixtureOnlyAssets | Sort-Object category, name)) {
+    $rel = if ($asset.category -eq 'script') { Join-Path 'scripts' $asset.name } else { Join-Path 'tests' $asset.name }
+    $entries += [ordered]@{
+      key       = ($asset.category + ':' + $rel).ToLower()
+      category  = $asset.category
+      path      = $rel
+      sizeBytes = ($asset.sizeBytes ?? 0)
+      hash      = $asset.hash
+    }
+  }
+  return $entries
+}
+
+function Compute-ManifestDelta {
+  param($BaseEntries, $NewEntries)
+  $baseMap = @{}
+  foreach ($e in $BaseEntries) { $baseMap[$e.key] = $e }
+  $newMap = @{}
+  foreach ($e in $NewEntries) { $newMap[$e.key] = $e }
+
+  $added = @()
+  $removed = @()
+  $changed = @()
+
+  foreach ($k in $newMap.Keys) {
+    if (-not $baseMap.ContainsKey($k)) { $added += $newMap[$k]; continue }
+    $b = $baseMap[$k]; $n = $newMap[$k]
+    if (($b.hash -ne $n.hash) -or ([int64]$b.sizeBytes -ne [int64]$n.sizeBytes)) { $changed += $n }
+  }
+  foreach ($k in $baseMap.Keys) {
+    if (-not $newMap.ContainsKey($k)) { $removed += $baseMap[$k] }
+  }
+
+  return [ordered]@{
+    added   = $added
+    removed = $removed
+    changed = $changed
+  }
+}
+
 $repoRoot = Resolve-RepoRoot
 $resolvedReportPath = Ensure-FixtureReport -ReportPath $ReportPath -FixturePath $FixturePath -RepoRoot $repoRoot
 $summary = Get-Content -LiteralPath $resolvedReportPath -Raw | ConvertFrom-Json -Depth 10
@@ -147,6 +190,33 @@ $lines += ""
 $lines += "## Fixture-only assets"
 $lines += ""
 $lines += Render-FixtureOnlyAssets $summary.fixtureOnlyAssets
+$lines += ""
+$lines += "## Fixture-only manifest delta"
+$lines += ""
+$baselinePath = Join-Path $repoRoot 'tests' 'fixtures' 'icon-editor' 'fixture-manifest.json'
+if (-not (Test-Path -LiteralPath $baselinePath -PathType Leaf)) {
+  $lines += "- Baseline manifest not found (tests/fixtures/icon-editor/fixture-manifest.json); skipping delta."
+} else {
+  try {
+    $baseline = Get-Content -LiteralPath $baselinePath -Raw | ConvertFrom-Json -Depth 6
+    $currentEntries = Build-FixtureManifestFromSummary -Summary $summary
+    $delta = Compute-ManifestDelta -BaseEntries $baseline.entries -NewEntries $currentEntries
+    $lines += [string]::Format('- Added: {0}, Removed: {1}, Changed: {2}', ($delta.added | Measure-Object).Count, ($delta.removed | Measure-Object).Count, ($delta.changed | Measure-Object).Count)
+    foreach ($tuple in @(@('Added', $delta.added), @('Removed', $delta.removed), @('Changed', $delta.changed))) {
+      $label = $tuple[0]; $items = $tuple[1]
+      if (($items | Measure-Object).Count -gt 0) {
+        $lines += ([string]::Format('- {0}:', $label))
+        foreach ($e in ($items | Sort-Object key | Select-Object -First 5)) { $lines += ([string]::Format('  - `{0}`', $e.key)) }
+        if (($items | Measure-Object).Count -gt 5) {
+          $more = ((($items | Measure-Object).Count) - 5)
+          $lines += ([string]::Format('  - (+{0} more)', $more))
+        }
+      }
+    }
+  } catch {
+    $lines += ("- Failed to compute delta: {0}" -f $_.Exception.Message)
+  }
+}
 $lines += ""
 $lines += "## Simulation metadata"
 $lines += ""

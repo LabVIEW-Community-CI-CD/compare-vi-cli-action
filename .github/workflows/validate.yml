@@ -147,6 +147,53 @@ jobs:
           tests/results/_agent/icon-editor/fixture-report.json
           tests/results/_agent/icon-editor/fixture-report.md
 
+    - name: Build icon-editor fixture manifest (current + baseline)
+      if: always()
+      shell: pwsh
+      run: |
+        $ErrorActionPreference = 'Stop'
+        $reportPath = 'tests/results/_agent/icon-editor/fixture-report.json'
+        if (-not (Test-Path -LiteralPath $reportPath -PathType Leaf)) {
+          Write-Host '::notice::fixture-report.json not found; skipping manifest build'
+          exit 0
+        }
+        $summary = Get-Content -LiteralPath $reportPath -Raw | ConvertFrom-Json -Depth 10
+        $entries = @()
+        foreach ($asset in ($summary.fixtureOnlyAssets | Sort-Object category, name)) {
+          $rel = if ($asset.category -eq 'script') { Join-Path 'scripts' $asset.name } else { Join-Path 'tests' $asset.name }
+          $entries += [ordered]@{
+            key       = ($asset.category + ':' + $rel).ToLower()
+            category  = $asset.category
+            path      = $rel
+            sizeBytes = ($asset.sizeBytes ?? 0)
+            hash      = $asset.hash
+          }
+        }
+        $manifest = [ordered]@{
+          schema      = 'icon-editor/fixture-manifest@v1'
+          generatedAt = (Get-Date).ToString('o')
+          entries     = $entries
+        }
+        $outDir = 'tests/results/_agent/icon-editor'
+        if (-not (Test-Path -LiteralPath $outDir -PathType Container)) { New-Item -ItemType Directory -Force -Path $outDir | Out-Null }
+        $currentPath = Join-Path $outDir 'fixture-manifest.json'
+        $manifest | ConvertTo-Json -Depth 6 | Set-Content -LiteralPath $currentPath -Encoding utf8
+        $baselineSrc = 'tests/fixtures/icon-editor/fixture-manifest.json'
+        if (Test-Path -LiteralPath $baselineSrc -PathType Leaf) {
+          Copy-Item -LiteralPath $baselineSrc -Destination (Join-Path $outDir 'fixture-manifest-baseline.json') -Force
+        } else {
+          Write-Host '::notice::baseline fixture-manifest.json not found (ok)'
+        }
+
+    - name: Upload icon-editor fixture manifest
+      if: always()
+      uses: actions/upload-artifact@v5
+      with:
+        name: icon-editor-fixture-manifest
+        path: |
+          tests/results/_agent/icon-editor/fixture-manifest.json
+          tests/results/_agent/icon-editor/fixture-manifest-baseline.json
+
     - name: Policy guard (branch protection)
       shell: pwsh
       env:

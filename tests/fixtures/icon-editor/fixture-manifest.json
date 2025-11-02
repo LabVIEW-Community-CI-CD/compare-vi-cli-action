@@ -1,0 +1,175 @@
+{
+  "schema": "icon-editor/fixture-manifest@v1",
+  "generatedAt": "2025-11-02T00:00:00.000Z",
+  "entries": [
+    {
+      "key": "script:scripts\\update_readme_hours.py",
+      "category": "script",
+      "path": "scripts\\update_readme_hours.py",
+      "sizeBytes": 4168,
+      "hash": "7f5bbfadb1193a89f1a4aa6332ccf62650951d389edb2188d86e1e29442049c4"
+    },
+    {
+      "key": "test:tests\\unit tests\\editor position\\adjust position.vi",
+      "category": "test",
+      "path": "tests\\Unit Tests\\Editor Position\\Adjust Position.vi",
+      "sizeBytes": 16979,
+      "hash": "7b14873d4a25688c5f78c40ffa547b93836a04661fbeeeddb426268fcd192dbb"
+    },
+    {
+      "key": "test:tests\\unit tests\\editor position\\assert windows bounds.vi",
+      "category": "test",
+      "path": "tests\\Unit Tests\\Editor Position\\Assert Windows Bounds.vi",
+      "sizeBytes": 79917,
+      "hash": "8eb3bdbc13edaa58df1d3f9ad8d005c24cdae6ee2178bc9b099dc9781e69d7ca"
+    },
+    {
+      "key": "test:tests\\unit tests\\editor position\\backup ini data.vi",
+      "category": "test",
+      "path": "tests\\Unit Tests\\Editor Position\\Backup INI Data.vi",
+      "sizeBytes": 16843,
+      "hash": "da527567a1c21e2c3bb89c28e315ae22ae4202323d28f4bc302ca56113a7e48b"
+    },
+    {
+      "key": "test:tests\\unit tests\\editor position\\editor position.lvclass",
+      "category": "test",
+      "path": "tests\\Unit Tests\\Editor Position\\Editor Position.lvclass",
+      "sizeBytes": 51438,
+      "hash": "58ea81ddcd56be9a0aaa74a50684270d0c6c624fbde9ab538416ed87ae7321d8"
+    },
+    {
+      "key": "test:tests\\unit tests\\editor position\\ini position removed.vi",
+      "category": "test",
+      "path": "tests\\Unit Tests\\Editor Position\\INI Position Removed.vi",
+      "sizeBytes": 82232,
+      "hash": "62872f3cc37348238d71d3c5ecb64bc7f0d93e62a3ec0e24b3137f9d6a5b391d"
+    },
+    {
+      "key": "test:tests\\unit tests\\editor position\\ini use position size.vi",
+      "category": "test",
+      "path": "tests\\Unit Tests\\Editor Position\\INI Use Position Size.vi",
+      "sizeBytes": 20649,
+      "hash": "9ebcac162880e301bfedabd1097756f77c77ef14b9837e07f67472404cb24700"
+    },
+    {
+      "key": "test:tests\\unit tests\\editor position\\invalid ini read.vi",
+      "category": "test",
+      "path": "tests\\Unit Tests\\Editor Position\\Invalid INI Read.vi",
+      "sizeBytes": 82036,
+      "hash": "ec9961f5a058ea3feb23d8a4afe23a863f45ecaa464817c9e6416c3f0fe8880d"
+    },
+    {
+      "key": "test:tests\\unit tests\\editor position\\position invalid test.vi",
+      "category": "test",
+      "path": "tests\\Unit Tests\\Editor Position\\Position Invalid Test.vi",
+      "sizeBytes": 17233,
+      "hash": "80077eeea03f04a3f6d0476f3e75b1ad3ad347bad4b9736b4ae6003a74e913f2"
+    },
+    {
+      "key": "test:tests\\unit tests\\editor position\\position out of bounds test.vi",
+      "category": "test",
+      "path": "tests\\Unit Tests\\Editor Position\\Position Out of Bounds Test.vi",
+      "sizeBytes": 36131,
+      "hash": "4cd28c4be4a4c2e1da236da3afde4d80efc08d34335c3d52067cb7aab719c876"
+    },
+    {
+      "key": "test:tests\\unit tests\\editor position\\position set test.vi",
+      "category": "test",
+      "path": "tests\\Unit Tests\\Editor Position\\Position Set Test.vi",
+      "sizeBytes": 17765,
+      "hash": "f470f8fb4c5fa3edb6f29dd7e83b516323aa2c2c048ea4647a377ff55a4fa9a6"
+    },
+    {
+      "key": "test:tests\\unit tests\\editor position\\restore ini data.vi",
+      "category": "test",
+      "path": "tests\\Unit Tests\\Editor Position\\Restore INI Data.vi",
+      "sizeBytes": 18600,
+      "hash": "692eba88f40aa96b71f7595c0f14c12604c4a81906df1268021aa0986bf3132a"
+    },
+    {
+      "key": "test:tests\\unit tests\\editor position\\size test.vi",
+      "category": "test",
+      "path": "tests\\Unit Tests\\Editor Position\\Size Test.vi",
+      "sizeBytes": 20973,
+      "hash": "29d23f71bccc036477d7bb2fa42ebf44cba88853af1fb04fa0f1cee5dba5f906"
+    },
+    {
+      "key": "test:tests\\unit tests\\editor position\\standard ini write read.vi",
+      "category": "test",
+      "path": "tests\\Unit Tests\\Editor Position\\Standard INI Write Read.vi",
+      "sizeBytes": 81735,
+      "hash": "107df3c8296b6ace0c76c64dd0c41ae9647987a61cc421738e14f86bd6e39181"
+    },
+    {
+      "key": "test:tests\\unit tests\\editor position\\test position ini.vi",
+      "category": "test",
+      "path": "tests\\Unit Tests\\Editor Position\\Test Position INI.vi",
+      "sizeBytes": 16077,
+      "hash": "9fa53918c579bdb191a2939bb3dac479ea8e0dbf3b53bf6719667226ccb6dcb9"
+    },
+    {
+      "key": "test:tests\\unit tests\\editor position\\test window position.vi",
+      "category": "test",
+      "path": "tests\\Unit Tests\\Editor Position\\Test Window Position.vi",
+      "sizeBytes": 18392,
+      "hash": "fdb5405fd1d68a71ddb9c128edc141ff801c9a0bc83f5ad5426f4ae64073bae4"
+    },
+    {
+      "key": "test:tests\\unit tests\\text-based vi icon tests\\test split text into words.vi",
+      "category": "test",
+      "path": "tests\\Unit Tests\\Text-Based VI Icon Tests\\Test Split Text into Words.vi",
+      "sizeBytes": 83362,
+      "hash": "7dd2193bee3dceab79bf3b2229c415f936d7ca2798f260ff82f1e2f6ca13866f"
+    },
+    {
+      "key": "test:tests\\unit tests\\text-based vi icon tests\\text-based vi icon tests.lvclass",
+      "category": "test",
+      "path": "tests\\Unit Tests\\Text-Based VI Icon Tests\\Text-Based VI Icon Tests.lvclass",
+      "sizeBytes": 22585,
+      "hash": "8bdc3dc4b09aeb8be8a5ee3a82df9315e775171b5932a5b9fdbfddafb556765d"
+    },
+    {
+      "key": "test:tests\\unit tests\\undo redo core\\initial states.vi",
+      "category": "test",
+      "path": "tests\\Unit Tests\\Undo Redo Core\\Initial States.vi",
+      "sizeBytes": 81722,
+      "hash": "7bfa76685338b794f95397301003229edbf6bce4a797cf7804d1c9571c14b8ae"
+    },
+    {
+      "key": "test:tests\\unit tests\\undo redo core\\test add and undo all.vi",
+      "category": "test",
+      "path": "tests\\Unit Tests\\Undo Redo Core\\Test Add and Undo All.vi",
+      "sizeBytes": 22557,
+      "hash": "2858b42ec1e9e00e57bc06a03f2d672568f4c8e5c7e8bf218f4fef076db6d9c7"
+    },
+    {
+      "key": "test:tests\\unit tests\\undo redo core\\test add clears redo.vi",
+      "category": "test",
+      "path": "tests\\Unit Tests\\Undo Redo Core\\Test Add Clears Redo.vi",
+      "sizeBytes": 143588,
+      "hash": "4c07989b2e07e800bfa8b3e1653237bf8287d3fe33180c6879719305587aa157"
+    },
+    {
+      "key": "test:tests\\unit tests\\undo redo core\\test overflow.vi",
+      "category": "test",
+      "path": "tests\\Unit Tests\\Undo Redo Core\\Test Overflow.vi",
+      "sizeBytes": 26013,
+      "hash": "46009d803d05fb2abc232f34681636f38f8cadbe966c294adfb90bfe61eecb0c"
+    },
+    {
+      "key": "test:tests\\unit tests\\undo redo core\\undo redo core.lvclass",
+      "category": "test",
+      "path": "tests\\Unit Tests\\Undo Redo Core\\Undo Redo Core.lvclass",
+      "sizeBytes": 27150,
+      "hash": "819f7cb22273332f0a3c3504537b8b230d702da35c135542bb9e6719ec38295b"
+    },
+    {
+      "key": "test:tests\\unit tests\\undo redo core\\undo states.vi",
+      "category": "test",
+      "path": "tests\\Unit Tests\\Undo Redo Core\\Undo States.vi",
+      "sizeBytes": 81395,
+      "hash": "1a72d89ffd74299224cca581f69184e9c0e33b03ecf7440e97ba979554f993c1"
+    }
+  ]
+}
+

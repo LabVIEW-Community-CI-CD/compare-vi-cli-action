@@ -1,7 +1,7 @@
 {
-  "number": 556,
-  "title": "Umbrella: Vendor Icon Editor & Align Build Automation",
-  "url": "https://github.com/LabVIEW-Community-CI-CD/compare-vi-cli-action/issues/556",
+  "number": 573,
+  "title": "Stakeholder artifact for icon-editor fixture metadata",
+  "url": "https://github.com/LabVIEW-Community-CI-CD/compare-vi-cli-action/issues/573",
   "state": "OPEN",
   "labels": [
     "standing-priority"
@@ -9,10 +9,10 @@
   "assignees": [],
   "milestone": null,
   "commentCount": 0,
-  "lastSeenUpdatedAt": "2025-11-02T03:45:42Z",
-  "issueDigest": "13d4d2ea21988473b5ebabf38894b1bf6dea5e2653631940bdf2068203a2c22d",
-  "bodyDigest": "e2b0c878a1d38c6311a4554e930005fa035154f744dfa1216727d91b89753717",
-  "cachedAtUtc": "2025-11-02T04:10:02.513Z",
+  "lastSeenUpdatedAt": "2025-11-02T21:13:30Z",
+  "issueDigest": "dc40110eb0673d6b13f3e41ef500acbe9c91e13a5c0bd24edb4459747c622902",
+  "bodyDigest": "0897976243b54716d98e262489d49b3954b5bbe203b3e1262cb6081a213dd319",
+  "cachedAtUtc": "2025-11-02T21:30:17.794Z",
   "lastFetchSource": "live",
   "lastFetchError": null
 }

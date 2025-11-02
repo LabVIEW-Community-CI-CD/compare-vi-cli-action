@@ -129,6 +129,12 @@ if (Test-Path -LiteralPath $updateReportScript -PathType Leaf) {
       throw "node --test reported failures (exit=$LASTEXITCODE)."
     }
     Write-Host '[pre-push] icon-editor hash checks OK' -ForegroundColor Green
+    Write-Host '[pre-push] Checking icon-editor fixture manifest vs baseline via node --test' -ForegroundColor Cyan
+    node --test tools/icon-editor/__tests__/fixture-manifests.test.mjs
+    if ($LASTEXITCODE -ne 0) {
+      throw "node --test reported failures (exit=$LASTEXITCODE)."
+    }
+    Write-Host '[pre-push] icon-editor manifest checks OK' -ForegroundColor Green
     if ($docClean) {
       git checkout -- docs/ICON_EDITOR_PACKAGE.md | Out-Null
     }
