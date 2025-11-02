@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
-import { join, dirname } from 'node:path';
+import { join, dirname, posix } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -22,9 +22,10 @@ function loadBaseline() {
 function buildManifestFromSummary(summary) {
   const entries = [];
   for (const asset of [...summary.fixtureOnlyAssets].sort((a, b) => (a.category + a.name).localeCompare(b.category + b.name))) {
-    const rel = asset.category === 'script' ? join('scripts', asset.name) : join('tests', asset.name);
+    // Normalize to POSIX separators for cross-platform determinism
+    const rel = asset.category === 'script' ? posix.join('scripts', asset.name) : posix.join('tests', asset.name);
     entries.push({
-      key: `${asset.category}:${rel}`.toLowerCase(),
+      key: `${asset.category}:${rel}`.toLowerCase().replace(/\\/g, '/'),
       category: asset.category,
       path: rel,
       sizeBytes: asset.sizeBytes ?? 0,
@@ -40,8 +41,9 @@ test('fixture manifest matches baseline and is deterministic', () => {
 
   const current = buildManifestFromSummary(summary);
 
-  const baseMap = Object.fromEntries(baseline.entries.map(e => [e.key, e]));
-  const curMap = Object.fromEntries(current.map(e => [e.key, e]));
+  const norm = (k) => k.toLowerCase().replace(/\\/g, '/');
+  const baseMap = Object.fromEntries(baseline.entries.map(e => [norm(e.key), e]));
+  const curMap = Object.fromEntries(current.map(e => [norm(e.key), e]));
 
   // sets equal
   assert.deepEqual(new Set(Object.keys(curMap)), new Set(Object.keys(baseMap)));
@@ -53,4 +55,3 @@ test('fixture manifest matches baseline and is deterministic', () => {
     assert.equal(Number(curMap[k].sizeBytes), Number(baseMap[k].sizeBytes), `size mismatch for ${k}`);
   }
 });
-
