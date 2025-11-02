@@ -77,32 +77,15 @@ if ($changedVis.Count -eq 0) {
 
 $outDir = if ($OutputDir) { Ensure-Directory $OutputDir } else { Ensure-Directory (Join-Path $repoRoot 'tests/results/_agent/icon-editor/vi-diff') }
 
-# Determine current and baseline VIPs
+# Determine current VIP (always) and baseline VIP (optional)
 $currentVip = $summary.source.fixturePath
-if (-not $BaselineFixturePath) {
-  # Try previous commit version if the VIP is tracked in repo
-  try {
-    $rel = [System.IO.Path]::GetRelativePath($repoRoot, $currentVip)
-    if (Test-Path -LiteralPath (Join-Path $repoRoot $rel) -PathType Leaf) {
-      $tmpVip = Join-Path $outDir 'baseline.vip'
-      $baseRef = (git -C $repoRoot rev-parse HEAD~1 2>$null).Trim()
-      if ($baseRef) {
-        $bytes = git -C $repoRoot show "$baseRef:$rel" 2>$null
-        if ($LASTEXITCODE -eq 0 -and $bytes) { [IO.File]::WriteAllBytes($tmpVip, [Convert]::FromBase64String([Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes($bytes)))) } else { $tmpVip = $null }
-      } else { $tmpVip = $null }
-      if ($tmpVip -and (Test-Path -LiteralPath $tmpVip)) { $BaselineFixturePath = $tmpVip }
-    }
-  } catch { $BaselineFixturePath = $null }
-}
-
-if (-not $BaselineFixturePath) {
-  Write-Host '::notice::Baseline VIP not resolved; requests will reference current paths only.'
-}
-
 $curExtract = Expand-VipWithSystem -VipPath $currentVip -DestRoot (Join-Path $outDir '__cur')
+
 $baseExtract = $null
 if ($BaselineFixturePath -and (Test-Path -LiteralPath $BaselineFixturePath -PathType Leaf)) {
-  $baseExtract = Expand-VipWithSystem -VipPath $BaselineFixturePath -DestRoot (Join-Path $outDir '__base')
+  try { $baseExtract = Expand-VipWithSystem -VipPath $BaselineFixturePath -DestRoot (Join-Path $outDir '__base') } catch { $baseExtract = $null }
+} else {
+  Write-Host '::notice::Baseline VIP not provided; generating head-only compare requests.'
 }
 
 function Map-TestRelToFull {
@@ -142,4 +125,3 @@ $mdPath = Join-Path $outDir 'vi-diff-requests.md'
 ($md -join "`n") | Set-Content -LiteralPath $mdPath -Encoding utf8
 
 Write-Host "Prepared VI diff requests -> $jsonPath"
-
