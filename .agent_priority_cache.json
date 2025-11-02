@@ -1,18 +1,19 @@
 {
-  "number": 573,
-  "title": "Stakeholder artifact for icon-editor fixture metadata",
-  "url": "https://github.com/LabVIEW-Community-CI-CD/compare-vi-cli-action/issues/573",
+  "number": 575,
+  "title": "Icon-editor: Generate VI Comparison Report for changed VIs",
+  "url": "https://github.com/LabVIEW-Community-CI-CD/compare-vi-cli-action/issues/575",
   "state": "OPEN",
   "labels": [
+    "enhancement",
     "standing-priority"
   ],
   "assignees": [],
   "milestone": null,
   "commentCount": 0,
-  "lastSeenUpdatedAt": "2025-11-02T21:13:30Z",
-  "issueDigest": "dc40110eb0673d6b13f3e41ef500acbe9c91e13a5c0bd24edb4459747c622902",
-  "bodyDigest": "0897976243b54716d98e262489d49b3954b5bbe203b3e1262cb6081a213dd319",
-  "cachedAtUtc": "2025-11-02T21:30:17.794Z",
+  "lastSeenUpdatedAt": "2025-11-02T21:51:33Z",
+  "issueDigest": "c16d9bf3d2c8845aeced81faaa26a5510f1c86f4ee835044bae9ed193106950b",
+  "bodyDigest": "cbcef8efd6225758792c9862e1603397acafc633d793b8ea59f0d7b32237d11d",
+  "cachedAtUtc": "2025-11-02T21:51:46.029Z",
   "lastFetchSource": "live",
   "lastFetchError": null
 }
