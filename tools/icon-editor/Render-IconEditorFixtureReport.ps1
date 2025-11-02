@@ -218,6 +218,12 @@ if (-not (Test-Path -LiteralPath $baselinePath -PathType Leaf)) {
   }
 }
 $lines += ""
+$lines += "## Changed VI comparison (requests)"
+$lines += ""
+$lines += "- When changed VI assets are detected, Validate publishes an 'icon-editor-fixture-vi-diff-requests' artifact"
+$lines += "  with the list of base/head paths for LVCompare."
+$lines += "- Local runs can generate requests via tools/icon-editor/Prepare-FixtureViDiffs.ps1."
+$lines += ""
 $lines += "## Simulation metadata"
 $lines += ""
 $lines += [string]::Format('- Simulation enabled: {0}', $manifest.simulation.enabled)

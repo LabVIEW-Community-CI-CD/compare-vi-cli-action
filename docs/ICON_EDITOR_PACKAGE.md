@@ -24,7 +24,7 @@ carries the actual LabVIEW payload.
 - Fixture version `1.4.1.948` (system `1.4.1.948`), license `MIT`.
 - Fixture path: `tests\fixtures\icon-editor\ni_icon_editor-1.4.1.948.vip`
 - Package smoke status: **ok** (VIPs: 1)
-- Report generated: `11/2/2025 1:43:21 PM`
+- Report generated: `11/2/2025 1:46:23 PM`
 - Artifacts:
   - ni_icon_editor-1.4.1.948.vip - 28.12 MB (`ed48a629e7fe5256dcb04cf3288a6e42fe8c8996dc33c4d838f8b102b43a9e44`)
   - ni_icon_editor_system-1.4.1.948.vip - 28.03 MB (`534ff97b24f608ac79997169eca9616ab2c72014cc9c9ea9955ee7fb3c5493c2`)
@@ -65,6 +65,12 @@ carries the actual LabVIEW payload.
 ## Fixture-only manifest delta
 
 - Added: 0, Removed: 0, Changed: 0
+
+## Changed VI comparison (requests)
+
+- When changed VI assets are detected, Validate publishes an 'icon-editor-fixture-vi-diff-requests' artifact
+  with the list of base/head paths for LVCompare.
+- Local runs can generate requests via tools/icon-editor/Prepare-FixtureViDiffs.ps1.
 
 ## Simulation metadata
 

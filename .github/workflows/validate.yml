@@ -194,6 +194,23 @@ jobs:
           tests/results/_agent/icon-editor/fixture-manifest.json
           tests/results/_agent/icon-editor/fixture-manifest-baseline.json
 
+    - name: Prepare icon-editor VI diff requests
+      if: always()
+      shell: pwsh
+      run: |
+        $ErrorActionPreference = 'Stop'
+        pwsh -File tools/icon-editor/Prepare-FixtureViDiffs.ps1 -ReportPath tests/results/_agent/icon-editor/fixture-report.json -BaselineManifestPath tests/fixtures/icon-editor/fixture-manifest.json -OutputDir tests/results/_agent/icon-editor/vi-diff
+        if ($LASTEXITCODE -ne 0) { Write-Host "::notice::VI diff requests step reported code $LASTEXITCODE (non-blocking)" }
+
+    - name: Upload icon-editor VI diff requests
+      if: always() && hashFiles('tests/results/_agent/icon-editor/vi-diff/vi-diff-requests.json') != ''
+      uses: actions/upload-artifact@v5
+      with:
+        name: icon-editor-fixture-vi-diff-requests
+        path: |
+          tests/results/_agent/icon-editor/vi-diff/vi-diff-requests.json
+          tests/results/_agent/icon-editor/vi-diff/vi-diff-requests.md
+
     - name: Policy guard (branch protection)
       shell: pwsh
       env:
