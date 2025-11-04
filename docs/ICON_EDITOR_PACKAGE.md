@@ -1,4 +1,5 @@
 # Icon Editor VI Package Audit
+<!-- markdownlint-disable MD013 -->
 
 This note records what ships inside the committed fixture `tests/fixtures/icon-editor/ni_icon_editor-1.4.1.948.vip`
 and how it maps back to sources in this repository or the upstream `ni/labview-icon-editor` project. Use it as a quick
@@ -24,7 +25,7 @@ carries the actual LabVIEW payload.
 - Fixture version `1.4.1.948` (system `1.4.1.948`), license `MIT`.
 - Fixture path: `tests\fixtures\icon-editor\ni_icon_editor-1.4.1.948.vip`
 - Package smoke status: **ok** (VIPs: 1)
-- Report generated: `11/3/2025 2:01:28 PM`
+- Report generated: `11/3/2025 5:59:29 PM`
 - Artifacts:
   - ni_icon_editor-1.4.1.948.vip - 28.12 MB (`ed48a629e7fe5256dcb04cf3288a6e42fe8c8996dc33c4d838f8b102b43a9e44`)
   - ni_icon_editor_system-1.4.1.948.vip - 28.03 MB (`534ff97b24f608ac79997169eca9616ab2c72014cc9c9ea9955ee7fb3c5493c2`)
@@ -71,13 +72,20 @@ carries the actual LabVIEW payload.
 
 ## Fixture-only manifest delta
 
-- Added: 311, Removed: 0, Changed: 0
+- Added: 311, Removed: 311, Changed: 0
 - Added:
-  - `resource:tests\plugins\niiconeditor\miscellaneous\icon editor\mouse down_templates.vi`
-  - `resource:tests\plugins\niiconeditor\class\fakedarray\tomorespecificclass\clusterref_2_displaytemplatesref.vi`
-  - `resource:tests\plugins\niiconeditor\miscellaneous\magic active layer constant.vi`
-  - `resource:tests\plugins\niiconeditor\miscellaneous\graphics\buildcategories.vi`
-  - `resource:tests\plugins\niiconeditor\controls\drawaction.ctl`
+  - `resource:tests\plugins\niiconeditor\class\fakedarray\misc\get cluster label number.vi`
+  - `resource:tests\plugins\niiconeditor\miscellaneous\load unload\read data from caller.vi`
+  - `resource:tests\plugins\niiconeditor\class\settings\get\get_show.vi`
+  - `resource:tests\plugins\niiconeditor\class\fakedarray\initialization\resetcolor.vi`
+  - `resource:tests\plugins\niiconeditor\class\ants\get\get_delayrestarttl.vi`
+  - (+306 more)
+- Removed:
+  - `resource:resource\plugins\lv_icon.vi`
+  - `resource:resource\plugins\lv_icon.vit`
+  - `resource:resource\plugins\lv_iconeditor.lvlib`
+  - `resource:resource\plugins\niiconeditor\class\ants\ants.lvclass`
+  - `resource:resource\plugins\niiconeditor\class\ants\get\get_antsline.vi`
   - (+306 more)
 
 ## Changed VI comparison (requests)
@@ -94,10 +102,13 @@ carries the actual LabVIEW payload.
 
 ## Development mode targets
 
-- LabVIEW targets are now managed in `configs/icon-editor/dev-mode-targets.json` (schema `icon-editor/dev-mode-targets@v1`). Each operation maps to the LabVIEW version/bitness it needs; the defaults ship with:
+- LabVIEW targets are now managed in `configs/icon-editor/dev-mode-targets.json`
+  (schema `icon-editor/dev-mode-targets@v1`). Each operation maps to the LabVIEW version/bitness it needs; the defaults
+  ship with:
   - `BuildPackage` → LabVIEW 2021 (32-bit and 64-bit) for VIP builds.
   - `Compare` → LabVIEW 2025 (64-bit) for VI comparison/report helpers.
-- `Enable-IconEditorDevelopmentMode` and `Disable-IconEditorDevelopmentMode` accept an `-Operation` switch so callers do not have to repeat version/bitness lists. Examples:
+- `Enable-IconEditorDevelopmentMode` and `Disable-IconEditorDevelopmentMode` accept an `-Operation` switch so callers do
+  not have to repeat version/bitness lists. Examples:
 
   ```powershell
   # Prep the icon editor repository for VI comparisons (LabVIEW 2025 x64)
@@ -120,13 +131,14 @@ carries the actual LabVIEW payload.
     -Operation BuildPackage
   ```
 
-- You can still override `-Versions`/`-Bitness` explicitly when experimenting; doing so bypasses the policy file for that invocation.
+- You can still override `-Versions`/`-Bitness` explicitly when experimenting; doing so bypasses the policy file for
+  that invocation.
 
 ## Follow-up opportunities
 
 - Decide whether key assets that only live inside the package (e.g., `update_readme_hours.py`, unit-test directories)
   should be mirrored under `vendor/icon-editor/` for easier diffing, or if documenting their presence is sufficient.
-- Capture golden hashes for the 32-bit and 64-bit PPLs once we confirm their stability; this would let us detect build
+- Capture golden hashes for the 32-bit and 64-bit PPLs once we confirm their stability; this approach highlights build
   drift without checking large binaries into git.
 - Extend the simulation helper to emit a lightweight manifest of fixture-only scripts/tests so we can track upstream
   changes without unpacking the VIP manually.
@@ -377,4 +389,5 @@ carries the actual LabVIEW payload.
 - The generated summary lives at `tests/results/_agent/icon-editor/fixture-report.json`; delete it if you need a clean slate.
 - Canonical hashes are enforced by `node --test tools/icon-editor/__tests__/fixture-hashes.test.mjs` (invoked from `tools/PrePush-Checks.ps1`), so report drift from the committed fixture is caught automatically.
 - Validate uploads the `icon-editor-fixture-report` artifact (JSON + Markdown) so stakeholders can review the latest snapshot without digging through logs.
+<!-- markdownlint-enable MD013 -->
 

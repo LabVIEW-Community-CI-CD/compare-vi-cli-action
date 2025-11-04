@@ -22,8 +22,22 @@ function loadBaseline() {
 function buildManifestFromSummary(summary) {
   const entries = [];
   for (const asset of [...summary.fixtureOnlyAssets].sort((a, b) => (a.category + a.name).localeCompare(b.category + b.name))) {
-    // Normalize to POSIX separators for cross-platform determinism
-    const rel = asset.category === 'script' ? posix.join('scripts', asset.name) : posix.join('tests', asset.name);
+    const normalizedName = typeof asset.name === 'string' ? asset.name.replace(/\\/g, '/') : '';
+    let rel;
+    switch (asset.category) {
+      case 'script':
+        rel = posix.join('scripts', normalizedName);
+        break;
+      case 'test':
+        rel = posix.join('tests', normalizedName);
+        break;
+      case 'resource':
+        rel = posix.join('resource', normalizedName);
+        break;
+      default:
+        rel = posix.join(asset.category ?? 'unknown', normalizedName);
+        break;
+    }
     entries.push({
       key: `${asset.category}:${rel}`.toLowerCase().replace(/\\/g, '/'),
       category: asset.category,

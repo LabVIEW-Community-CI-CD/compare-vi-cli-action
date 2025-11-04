@@ -75,8 +75,12 @@ line buffers).
   - Note (scope): `LVCI_COMPARE_MODE`/`LVCI_COMPARE_POLICY` apply to harness/workflow helpers only. The composite
     action always invokes LVCompare directly and does not honor these toggles.
 - VI diff discovery quick start:
-  - Run the sweep: `pwsh -File tools/icon-editor/Invoke-VIDiffSweep.ps1 -SummaryCount 10` (defaults to syncing `tmp/icon-editor/repo`, scanning `origin/develop~50..origin/develop`, and writing `tests/results/_agent/icon-editor/vi-changes.json`).
-  - Inspect the JSON / on-screen summary (includes author + subject). To stage a specific commit head-to-head, run `pwsh -File tools/icon-editor/Invoke-VIComparisonFromCommit.ps1 -Commit <hash> [-LabVIEWExePath 'C:\Program Files\National Instruments\LabVIEW 2025\LabVIEW.exe'] [-SkipLVCompare -SkipValidate]`. This prepares the overlay and snapshot directory; drop the skip flags when you want LVCompare captures.
+  - Run the sweep: `pwsh -File tools/icon-editor/Invoke-VIDiffSweep.ps1 -SummaryCount 10`.  
+    Defaults to syncing `tmp/icon-editor/repo`, scanning `origin/develop~50..origin/develop`, and writing
+    `tests/results/_agent/icon-editor/vi-changes.json`.
+  - Inspect the JSON / on-screen summary and, when you need to stage a specific commit head-to-head, run:  
+    `pwsh -File tools/icon-editor/Invoke-VIComparisonFromCommit.ps1 -Commit <hash> [-LabVIEWExePath 'C:\Program Files\National Instruments\LabVIEW 2025\LabVIEW.exe'] [-SkipLVCompare -SkipValidate]`  
+    The helper prepares the overlay and snapshot directory; drop the skip flags when you want LVCompare captures.
   - Full walkthrough lives in `docs/ICON_EDITOR_PACKAGE.md` if you need deeper context.
 
 ## Coding style

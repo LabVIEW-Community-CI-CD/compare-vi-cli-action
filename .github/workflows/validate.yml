@@ -1161,12 +1161,55 @@ jobs:
             ${{ runner.temp }}\icon-editor\vip-vi-diff-captures\vi-comparison-summary.json
             ${{ runner.temp }}\icon-editor\vip-vi-diff-captures\vi-comparison-report.md
           if-no-files-found: warn
-      - name: Upload icon-editor artifacts
+      - name: Stage icon-editor artifacts
+        id: stage_icon_editor_artifacts
         if: always()
+        env:
+          RESULTS_DIR: ${{ runner.temp }}\icon-editor
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $stageJsonRaw = pwsh -NoLogo -NoProfile -File tools/icon-editor/Stage-BuildArtifacts.ps1 -ResultsRoot $env:RESULTS_DIR
+          $stageJson = ($stageJsonRaw | Out-String).Trim()
+          if ([string]::IsNullOrWhiteSpace($stageJson)) {
+            return
+          }
+          Write-Host $stageJson
+          $stageInfo = $stageJson | ConvertFrom-Json -Depth 5
+          if ($env:GITHUB_OUTPUT -and $stageInfo -and $stageInfo.buckets) {
+            foreach ($bucket in $stageInfo.buckets.PSObject.Properties) {
+              $name = $bucket.Name
+              $path = $bucket.Value.path
+              $glob = $bucket.Value.glob
+              $count = [string]($bucket.Value.count ?? 0)
+              "{0}_path={1}" -f $name, $path | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+              "{0}_glob={1}" -f $name, $glob | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+              "{0}_count={1}" -f $name, $count | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+            }
+          }
+          if ($env:GITHUB_STEP_SUMMARY) {
+            "### Icon Editor Artifact Buckets`n$stageJson`n" | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8
+          }
+      - name: Upload icon-editor packages
+        if: always() && steps.stage_icon_editor_artifacts.outputs.packages_count != '0'
         uses: actions/upload-artifact@v5
         with:
-          name: icon-editor-build-${{ steps.build.outputs.package_version || 'unversioned' }}
-          path: ${{ runner.temp }}\icon-editor
+          name: icon-editor-packages-${{ steps.build.outputs.package_version || 'unversioned' }}
+          path: ${{ steps.stage_icon_editor_artifacts.outputs.packages_glob }}
+          if-no-files-found: warn
+      - name: Upload icon-editor reports
+        if: always() && steps.stage_icon_editor_artifacts.outputs.reports_count != '0'
+        uses: actions/upload-artifact@v5
+        with:
+          name: icon-editor-reports-${{ steps.build.outputs.package_version || 'unversioned' }}
+          path: ${{ steps.stage_icon_editor_artifacts.outputs.reports_glob }}
+          if-no-files-found: warn
+      - name: Upload icon-editor logs
+        if: always() && steps.stage_icon_editor_artifacts.outputs.logs_count != '0'
+        uses: actions/upload-artifact@v5
+        with:
+          name: icon-editor-logs-${{ steps.build.outputs.package_version || 'unversioned' }}
+          path: ${{ steps.stage_icon_editor_artifacts.outputs.logs_glob }}
+          if-no-files-found: warn
       - name: Upload IconEditor dev-mode proof
         if: always()
         uses: actions/upload-artifact@v5
@@ -1185,7 +1228,12 @@ jobs:
         vars.ICON_EDITOR_COMPARE_ENABLE == '1' ||
         github.event.inputs.enable_compare == '1'
       )
-    runs-on: [self-hosted, Windows, X64]
+    strategy:
+      fail-fast: false
+      matrix:
+        pool: ${{ fromJSON(vars.ICON_EDITOR_COMPARE_POOLS || '[{"name":"windows","runsOn":["self-hosted","Windows","X64"],"dryRun":false},{"name":"linux","runsOn":["self-hosted","Linux","X64"],"dryRun":true}]') }}
+    name: icon-editor-compare (${{ matrix.pool.name }})
+    runs-on: ${{ matrix.pool.runsOn }}
     defaults:
       run:
         shell: pwsh
@@ -1214,11 +1262,19 @@ jobs:
             Write-Host '::notice::No VI diff requests present; skipping comparisons.'
             exit 0
           }
+          $capturesRoot = 'tests/results/_agent/icon-editor/vi-diff-captures'
+          $summaryPath = Join-Path $capturesRoot 'vi-comparison-summary.json'
+          $dryRunLiteral = "${{ matrix.pool.dryRun }}"
+          $dryRun = $false
+          if (-not [string]::IsNullOrWhiteSpace($dryRunLiteral) -and $dryRunLiteral -ne 'null') {
+            $dryRun = $dryRunLiteral.ToLowerInvariant() -eq 'true'
+          }
           pwsh -File tools/icon-editor/Invoke-FixtureViDiffs.ps1 `
             -RequestsPath $requestsPath `
-            -CapturesRoot tests/results/_agent/icon-editor/vi-diff-captures `
-            -SummaryPath tests/results/_agent/icon-editor/vi-diff-captures/vi-comparison-summary.json `
-            -TimeoutSeconds 900
+            -CapturesRoot $capturesRoot `
+            -SummaryPath $summaryPath `
+            -TimeoutSeconds 900 `
+            -DryRun:$dryRun
 
       - name: Render VI comparison report
         if: always()

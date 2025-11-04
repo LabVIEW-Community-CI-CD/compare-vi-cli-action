@@ -50,8 +50,8 @@ Set `fail-on-diff: false` to treat code 1 as notice-only.
 
 - `[hang-watch]` / `[hang-suspect]` → idle for extended periods.
 - `[busy-watch]` / `[busy-suspect]` → log growing without progress markers.
-- Use `node tools/npm/run-script.mjs dev:watcher:status` to inspect heartbeat freshness; run
-  `node tools/npm/run-script.mjs dev:watcher:trim` if `needsTrim=true`.
+- Use `node tools/npm/run-script.mjs dev:watcher:status` to inspect heartbeat freshness.
+  Run `node tools/npm/run-script.mjs dev:watcher:trim` if `needsTrim=true`.
 
 ## Loop mode hiccups
 
@@ -74,10 +74,12 @@ Set `fail-on-diff: false` to treat code 1 as notice-only.
 
 ## Git difftool overlap (duplicate CLI invocations)
 
-Symptoms: LabVIEWCLI.exe appears to launch twice during a manual diff, or CLI capture runs unexpectedly when using a Git difftool/IDE diff.
+Symptoms: LabVIEWCLI.exe appears to launch twice during a manual diff, or CLI capture runs unexpectedly when using a
+Git difftool/IDE diff.
 
 Why it happens:
-- Git difftool/mergetool may be configured to invoke LabVIEWCLI, while the compare helper also uses the CLI (CreateComparisonReport) to generate HTML artifacts. Both can fire for the same intent.
+- Git difftool/mergetool may be configured to invoke LabVIEWCLI, while the compare helper also uses the CLI
+  (CreateComparisonReport) to generate HTML artifacts. Both can fire for the same intent.
 
 Mitigations:
 - Suppress CLI capture during Git difftool sessions:
@@ -105,10 +107,12 @@ Notes:
 
 ## Git difftool overlap (duplicate CLI invocations)
 
-Symptoms: LabVIEWCLI.exe appears to launch twice during a manual diff, or CLI capture runs unexpectedly when using a Git difftool/IDE diff.
+Symptoms: LabVIEWCLI.exe appears to launch twice during a manual diff, or CLI capture runs unexpectedly when using a
+Git difftool/IDE diff.
 
 Why it happens:
-- Git difftool/mergetool may be configured to invoke LabVIEWCLI, while the compare helper also uses the CLI (CreateComparisonReport) to generate HTML artifacts. Both can fire for the same intent.
+- Git difftool/mergetool may be configured to invoke LabVIEWCLI, while the compare helper also uses the CLI
+  (CreateComparisonReport) to generate HTML artifacts. Both can fire for the same intent.
 
 Mitigations:
 - Suppress CLI capture during Git difftool sessions:

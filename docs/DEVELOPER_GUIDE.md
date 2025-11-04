@@ -15,8 +15,11 @@ Quick reference for building, testing, and releasing the LVCompare composite act
 - **Helpers**
   - `tools/Dev-Dashboard.ps1`
 - **Icon Editor build pipeline**
-  - `node tools/npm/run-script.mjs icon-editor:build` - runs the vendored LabVIEW Icon Editor build using the upstream PowerShell actions.
-  - Requires LabVIEW 2021 SP1 (32-bit and 64-bit) and LabVIEW 2023 (64-bit). `Invoke-IconEditorBuild.ps1` now validates those installs via `Find-LabVIEWVersionExePath` and fails fast with a remediation hint when any executable is missing.
+  - `node tools/npm/run-script.mjs icon-editor:build`  
+    Runs the vendored LabVIEW Icon Editor build using the upstream PowerShell actions.
+  - Requires LabVIEW 2021 SP1 (32-bit and 64-bit) and LabVIEW 2023 (64-bit).  
+    `Invoke-IconEditorBuild.ps1` validates those installs via `Find-LabVIEWVersionExePath` and fails fast with a
+    remediation hint when any executable is missing.
   - Need quick feedback without LabVIEW? Set `ICON_EDITOR_BUILD_MODE=simulate`
     (optionally `ICON_EDITOR_SIMULATION_FIXTURE` to override the default VIP)
     before invoking the workflow or `priority:validate`. The run will call
@@ -24,18 +27,31 @@ Quick reference for building, testing, and releasing the LVCompare composite act
     and emit the same manifest + package-smoke summary expected from a full build.
     Clear the variable or set it back to `build` before release/sign-off runs so
     the real pipeline executes.
-  - `pwsh -File tools/icon-editor/Update-IconEditorFixtureReport.ps1` refreshes the fixture report (generates the JSON snapshot and rewrites the section in `docs/ICON_EDITOR_PACKAGE.md`; pre-push guards that it stays current).
-  - `npm run icon-editor:dev:on` / `npm run icon-editor:dev:off` toggle LabVIEW development mode using the vendored helpers (`Set_Development_Mode.ps1` / `RevertDevelopmentMode.ps1`) and persist the current state.
+  - `pwsh -File tools/icon-editor/Update-IconEditorFixtureReport.ps1`  
+    Refreshes the fixture report (generates the JSON snapshot and rewrites the section in `docs/ICON_EDITOR_PACKAGE.md`;
+    pre-push guards that it stays current).
+  - `npm run icon-editor:dev:on` / `npm run icon-editor:dev:off`  
+    Toggle LabVIEW development mode using the vendored helpers (`Set_Development_Mode.ps1` /
+    `RevertDevelopmentMode.ps1`) and persist the current state.
   - Validate uploads the `icon-editor-fixture-report` artifact (JSON + Markdown) on each run for stakeholders.
-  - `npm run icon-editor:dev:assert:on` / `npm run icon-editor:dev:assert:off` validate the LabVIEW `LocalHost.LibraryPaths` token so you can confirm dev mode is actually enabled or disabled before continuing.
+  - `npm run icon-editor:dev:assert:on` / `npm run icon-editor:dev:assert:off`  
+    Validate the LabVIEW `LocalHost.LibraryPaths` token so you can confirm dev mode is actually enabled or disabled
+    before continuing.
   - Multi-lane tooling:
     - **Source lane (2021 SP1, 32/64-bit)** – dev-mode toggles, VIPC apply/restore, lvlibp builds.
     - **Report lane (2025, 64-bit)** – LabVIEWCLI/HTML compare reports; requires the shared `LabVIEWCLI.exe`.
     - **Packaging lane (2021 SP1, 32-bit + VIPM)** – VI Package Manager builds; ensure VIPM is installed alongside 2021.
-    - `npm run env:labview:check` prints the availability of each lane and surfaces missing prerequisites.
-  - `g-cli.exe` is expected at `C:\Program Files\G-CLI\bin\g-cli.exe`. Use `configs/labview-paths.local.json` (`GCliExePath`) or set `GCLI_EXE_PATH` only when you need to override the default.
-  - Artifacts land in `tests/results/_agent/icon-editor/` (manifest + packaged outputs). Dependency VIPCs (`runner_dependencies.vipc`) apply automatically unless you pass `-InstallDependencies:$false`; the helper mirrors the upstream Build.ps1 (dev-mode enable → apply VIPCs → build lvlibp (32/64) & rename → update VIPB metadata → build the VI package → restore dev mode). Add `-RunUnitTests` to execute the icon editor unit suite. The manifest records the dev-mode state (`developmentMode.*`) and lists both lvlibp + vip artifacts for audit.
-  - Packaging now runs a lightweight smoke check (`tools/icon-editor/Test-IconEditorPackage.ps1`) against the emitted `.vip` files, writing `package-smoke-summary.json` and recording the results under `manifest.packageSmoke` so CI can flag structural regressions without rerunning VIPM.
+  - `npm run env:labview:check` prints the availability of each lane and surfaces missing prerequisites.
+  - `g-cli.exe` is expected at `C:\Program Files\G-CLI\bin\g-cli.exe`. Use `configs/labview-paths.local.json`
+    (`GCliExePath`) or set `GCLI_EXE_PATH` only when you need to override the default.
+  - Artifacts land in `tests/results/_agent/icon-editor/` (manifest + packaged outputs). Dependency VIPCs
+    (`runner_dependencies.vipc`) apply automatically unless you pass `-InstallDependencies:$false`; the helper mirrors
+    the upstream Build.ps1 (dev-mode enable → apply VIPCs → build lvlibp (32/64) & rename → update VIPB metadata → build
+    the VI package → restore dev mode). Add `-RunUnitTests` to execute the icon editor unit suite. The manifest records
+    the dev-mode state (`developmentMode.*`) and lists both lvlibp + vip artifacts for audit.
+  - Packaging now runs a lightweight smoke check (`tools/icon-editor/Test-IconEditorPackage.ps1`) against the emitted
+    `.vip` files, writing `package-smoke-summary.json` and recording the results under `manifest.packageSmoke` so CI can
+    flag structural regressions without rerunning VIPM.
 - **Smoke tests**
   - `pwsh -File tools/Test-PRVIStagingSmoke.ps1 -DryRun`
     (planning pass; prints the branch/PR that would be created)
@@ -95,7 +111,7 @@ Quick reference for building, testing, and releasing the LVCompare composite act
       also executes an unsuppressed `full` pass so block diagram/front panel edits
       are never hidden; both modes surface in the PR summary's **Flags** column.
       LVCompare reports now use the multi-file HTML layout (`compare-report.html`
-      + `compare-report_files/`) so the 2025 CLI retains category headings and images.
+      - `compare-report_files/`) so the 2025 CLI retains category headings and images.
       Set `COMPAREVI_REPORT_FORMAT=html-single` when you explicitly need the legacy
       single-file artifact.
     - Staged compare automation exposes runtime toggles for LVCompare execution:
@@ -124,13 +140,12 @@ Quick reference for building, testing, and releasing the LVCompare composite act
       1. `tools/Get-PRVIDiffManifest.ps1` enumerates VI changes between the PR base/head commits.
       2. `tools/Invoke-PRVIHistory.ps1` resolves the history helper once
         (works with repo-relative targets) and runs the compare suite per VI.
-        The helper now walks every reachable commit pair by default; pass `-MaxPairs <n>` only when you need
-        a deliberate cap (for example the history smoke script still uses `-MaxPairs 6` to keep the loop fast).
-        Use `-MaxSignalPairs <n>` (default `2`) to limit how many signal diffs surface in a run and tune
-        cosmetic churn via `-NoisePolicy include|collapse|skip` (default `collapse`).
+        The helper now walks every reachable commit pair by default. Pass `-MaxPairs <n>` only when you need a deliberate
+        cap (for example the history smoke script still uses `-MaxPairs 6` to keep the loop fast). Use `-MaxSignalPairs
+        <n>` (default `2`) to limit how many signal diffs surface in a run and tune cosmetic churn via
+        `-NoisePolicy include|collapse|skip` (default `collapse`).
         Artifacts land under `tests/results/pr-vi-history/` (aggregate manifest plus `history-report.{md,html}` per
-        target). Enable `-Verbose` locally to see the resolved helper path and origin
-         (base/head) for each target.
+        target). Enable `-Verbose` locally to see the resolved helper path and origin (base/head) for each target.
         When LabVIEW/LVCompare is unavailable, run the helper with
         `-InvokeScriptPath tests/stubs/Invoke-LVCompare.stub.ps1` to exercise the flow using the stubbed CLI.
         `tools/Inspect-HistorySignalStats.ps1` wraps the helper + stub and prints the signal/noise counts directly.
@@ -149,11 +164,13 @@ Quick reference for building, testing, and releasing the LVCompare composite act
 ## GitHub helper utilities
 
 - `node tools/priority/github-helper.mjs sanitize --input issue-body.md --output issue-body.gh.txt`  
-  Doubles backslashes and normalises line endings so literal sequences (for example `\t`, `\tools`) survive `gh issue create/edit`. Omit `--output` to print to STDOUT.
+  Doubles backslashes and normalises line endings so literal sequences (for example `\t`, `\tools`) survive `gh issue create/edit`.  
+  Omit `--output` to print to STDOUT.
 - `node tools/priority/github-helper.mjs snippet --issue 531 --prefix Fixes`  
   Emits an auto-link snippet (defaults to `Fixes #531`) you can drop into PR descriptions so GitHub auto-closes the issue.
 - `node tools/priority/standing-priority-handoff.mjs [--dry-run] <next-issue>`  
-  Removes the `standing-priority` label from the current issue (if any), applies it to `<next-issue>`, and re-runs the cache sync (`tools/priority/sync-standing-priority.mjs`). Use `--dry-run` to preview the actions without mutating labels.
+  Removes the `standing-priority` label from the current issue (if any), applies it to `<next-issue>`, and re-runs the cache sync (`tools/priority/sync-standing-priority.mjs`).  
+  Use `--dry-run` to preview the actions without mutating labels.
 
 ```bash
 node tools/npm/run-script.mjs build
