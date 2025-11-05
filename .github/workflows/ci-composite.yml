@@ -163,7 +163,7 @@ jobs:
         with:
           current_filename: ${{ github.workspace }}/vendor/icon-editor/resource/plugins/lv_icon.lvlibp
           new_filename: ${{ github.workspace }}/vendor/icon-editor/resource/plugins/lv_icon_${{ matrix.suffix }}.lvlibp
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v5
         with:
           name: lv_icon_${{ matrix.suffix }}.lvlibp
           path: vendor/icon-editor/resource/plugins/lv_icon_${{ matrix.suffix }}.lvlibp
@@ -241,7 +241,7 @@ jobs:
           minimum_supported_lv_version: 2025
           supported_bitness: 64
       - name: Upload VI Package
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v5
         with:
           name: vi-package
           path: builds/VI Package/*.vip
