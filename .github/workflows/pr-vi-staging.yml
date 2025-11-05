@@ -529,14 +529,14 @@ jobs:
           gh label edit $env:STAGING_LABEL --color FFC82C --description "PR has VI staging bundles ready"
 
       - name: Upload manifest & summary
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v5
         with:
           name: vi-compare-manifest
           path: vi-compare-artifacts/
 
       - name: Upload staged bundles
         if: steps.stage.outputs.stage_count != '0'
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v5
         with:
           name: vi-compare-staging
           path: ${{ steps.stage.outputs.artifact_dir }}

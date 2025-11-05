@@ -100,7 +100,7 @@ jobs:
 
       - name: Upload VI compare artifacts
         if: steps.compare.outputs.compare_dir != ''
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v5
         with:
           name: vi-compare-${{ github.run_id }}
           path: |
