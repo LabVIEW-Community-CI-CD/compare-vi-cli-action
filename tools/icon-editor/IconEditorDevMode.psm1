@@ -184,7 +184,7 @@ function Get-DefaultIconEditorDevModeTargets {
   switch ($normalized) {
     'buildpackage' {
       return [pscustomobject]@{
-        Versions = @(2021)
+        Versions = @(2023)
         Bitness  = @(32, 64)
       }
     }
@@ -497,7 +497,7 @@ function Get-IconEditorDevModeLabVIEWTargets {
   param(
     [string]$RepoRoot,
     [string]$IconEditorRoot,
-    [int[]]$Versions = @(2021),
+    [int[]]$Versions = @(2023),
     [int[]]$Bitness = @(32, 64)
   )
 
@@ -515,7 +515,7 @@ function Get-IconEditorDevModeLabVIEWTargets {
 
   Import-Module (Join-Path $RepoRoot 'tools' 'VendorTools.psm1') -Force
 
-  $versionList = ConvertTo-IntList -Values $Versions -DefaultValues @(2021)
+  $versionList = ConvertTo-IntList -Values $Versions -DefaultValues @(2023)
   $bitnessList = ConvertTo-IntList -Values $Bitness -DefaultValues @(32,64)
 
   $targets = New-Object System.Collections.Generic.List[object]
@@ -546,7 +546,7 @@ function Test-IconEditorDevelopmentMode {
   param(
     [string]$RepoRoot,
     [string]$IconEditorRoot,
-    [int[]]$Versions = @(2021),
+    [int[]]$Versions = @(2023),
     [int[]]$Bitness = @(32, 64)
   )
 

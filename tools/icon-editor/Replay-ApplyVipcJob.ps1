@@ -13,7 +13,7 @@
     Workflow run identifier containing the job to replay.
 
 .PARAMETER JobName
-    Display title of the job (defaults to "Apply VIPC Dependencies (2025, 64)").
+    Display title of the job (defaults to "Apply VIPC Dependencies (2026, 64)").
 
 .PARAMETER Repository
     Optional owner/repo override when the run lives outside the current clone.
@@ -31,7 +31,7 @@
 
 .PARAMETER MinimumSupportedLVVersion
     LabVIEW version supplied to the action. When omitted the script attempts to
-    derive it from the job title (e.g. "(2025, 64)").
+    derive it from the job title (e.g. "(2026, 64)").
 
 .PARAMETER VipLabVIEWVersion
     Value forwarded to the action's vip_lv_version input. When omitted this
@@ -50,7 +50,7 @@ param(
     [Parameter(ParameterSetName = 'Run')]
     [string]$RunId,
 
-    [string]$JobName = 'Apply VIPC Dependencies (2025, 64)',
+    [string]$JobName = 'Apply VIPC Dependencies (2026, 64)',
 
     [Parameter(ParameterSetName = 'Run')]
     [string]$Repository,
@@ -295,7 +295,7 @@ function Invoke-ReplayApplyVipcJob {
     )
 
     if (-not $InitialParameters.ContainsKey('JobName') -or [string]::IsNullOrWhiteSpace($InitialParameters['JobName'])) {
-        $InitialParameters['JobName'] = 'Apply VIPC Dependencies (2025, 64)'
+        $InitialParameters['JobName'] = 'Apply VIPC Dependencies (2023, 64)'
     }
     if (-not $InitialParameters.ContainsKey('Workspace')) {
         $InitialParameters['Workspace'] = (Get-Location).Path

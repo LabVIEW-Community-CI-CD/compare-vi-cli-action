@@ -9,9 +9,9 @@ Describe 'Replay-ApplyVipcJob helpers' -Tag 'Unit' {
     }
 
     It 'parses matrix job titles' {
-        $parsed = Parse-ApplyVipcJobTitle -Title 'Apply VIPC Dependencies (2025, 64)'
+        $parsed = Parse-ApplyVipcJobTitle -Title 'Apply VIPC Dependencies (2026, 64)'
         $parsed | Should -Not -BeNullOrEmpty
-        $parsed.Version | Should -Be '2025'
+        $parsed.Version | Should -Be '2026'
         $parsed.Bitness | Should -Be 64
     }
 
@@ -23,7 +23,7 @@ Describe 'Replay-ApplyVipcJob helpers' -Tag 'Unit' {
     It 'prefers explicit parameters over job title parsing' {
         $resolved = Resolve-ApplyVipcParameters `
             -RunId $null `
-            -JobName 'Apply VIPC Dependencies (2025, 64)' `
+            -JobName 'Apply VIPC Dependencies (2026, 64)' `
             -Repository $null `
             -LogPath $null `
             -MinimumSupportedLVVersion '2021' `
@@ -37,8 +37,8 @@ Describe 'Replay-ApplyVipcJob helpers' -Tag 'Unit' {
 
     It 'applies default workspace and vipc path when omitted' {
         $params = @{
-            MinimumSupportedLVVersion = '2025'
-            VipLabVIEWVersion         = '2025'
+            MinimumSupportedLVVersion = '2023'
+            VipLabVIEWVersion         = '2026'
             SupportedBitness          = 64
             SkipExecution             = $true
         }

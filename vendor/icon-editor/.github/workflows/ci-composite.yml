@@ -220,11 +220,11 @@ jobs:
     strategy:
       matrix:
         include:
-          - lv-version: "2021"
+          - lv-version: "2023"
             bitness: "32"
-          - lv-version: "2021"
+          - lv-version: "2023"
             bitness: "64"
-          - lv-version: "2025"
+          - lv-version: "2026"
             bitness: "64"
     steps:
       - uses: ./.github/actions/apply-vipc
@@ -233,6 +233,33 @@ jobs:
           vip_lv_version:               ${{ matrix['lv-version'] }}
           supported_bitness:            ${{ matrix.bitness }}
           relative_path:                ${{ github.workspace }}
+
+  enable-dev-mode:
+    name: Enable Icon Editor Dev Mode
+    needs: [changes, apply-deps]
+    if: ${{ needs.changes.result == 'success' && (needs.apply-deps.result == 'success' || needs.apply-deps.result == 'skipped') }}
+    runs-on: self-hosted-windows-lv
+    strategy:
+      matrix:
+        include:
+          - lv-version: "2023"
+            bitness: "32"
+          - lv-version: "2023"
+            bitness: "64"
+          - lv-version: "2026"
+            bitness: "64"
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Enable development mode
+        shell: pwsh
+        run: |
+          & "$Env:GITHUB_WORKSPACE\tools\icon-editor\Enable-DevMode.ps1" `
+            -RepoRoot "$Env:GITHUB_WORKSPACE" `
+            -Versions ${{ matrix['lv-version'] }} `
+            -Bitness ${{ matrix.bitness }} `
+            -Operation BuildPackage
 
   version:
     name: Compute Version
@@ -257,13 +284,13 @@ jobs:
 
   missing-in-project-check:
     name: Test Missing-In-Project Action on Windows
-    needs: [changes, apply-deps]
+    needs: [changes, apply-deps, enable-dev-mode]
     if: ${{ needs.changes.result == 'success' && (needs.apply-deps.result == 'success' || needs.apply-deps.result == 'skipped') }}
     runs-on: self-hosted-windows-lv
     strategy:
       fail-fast: false
       matrix:
-        lv-version: ["2021"]
+        lv-version: ["2023"]
         bitness:    ["64","32"]
     steps:
       - uses: ./.github/actions/missing-in-project
@@ -279,7 +306,7 @@ jobs:
     strategy:
       matrix:
         os: [windows]
-        lv-version: ["2021"]
+        lv-version: ["2023"]
         bitness: ["64","32"]
       fail-fast: false
     steps:
@@ -306,7 +333,7 @@ jobs:
     steps:
       - uses: ./.github/actions/build-lvlibp
         with:
-          minimum_supported_lv_version: 2021
+          minimum_supported_lv_version: 2023
           supported_bitness: ${{ matrix.bitness }}
           relative_path: ${{ github.workspace }}
           major: ${{ needs.version.outputs.MAJOR }}
@@ -316,7 +343,7 @@ jobs:
           commit: ${{ github.sha }}
       - uses: ./.github/actions/close-labview
         with:
-          minimum_supported_lv_version: 2021
+          minimum_supported_lv_version: 2023
           supported_bitness: ${{ matrix.bitness }}
       - uses: ./.github/actions/rename-file
         with:
@@ -374,7 +401,7 @@ jobs:
           supported_bitness: 64
           relative_path: ${{ github.workspace }}
           vipb_path: .github/actions/build-vi-package/NI Icon editor.vipb
-          minimum_supported_lv_version: 2025
+          minimum_supported_lv_version: 2026
           labview_minor_revision: 3
           major: ${{ needs.version.outputs.MAJOR }}
           minor: ${{ needs.version.outputs.MINOR }}
@@ -386,7 +413,7 @@ jobs:
       - uses: ./.github/actions/build-vi-package
         with:
           supported_bitness: 64
-          minimum_supported_lv_version: 2025
+          minimum_supported_lv_version: 2026
           labview_minor_revision: 3
           major: ${{ needs.version.outputs.MAJOR }}
           minor: ${{ needs.version.outputs.MINOR }}
@@ -397,10 +424,39 @@ jobs:
           display_information_json: ${{ steps.display-info.outputs.json }}
       - uses: ./.github/actions/close-labview
         with:
-          minimum_supported_lv_version: 2025
+          minimum_supported_lv_version: 2026
           supported_bitness: 64
       - name: Upload VI Package
         uses: actions/upload-artifact@v4
         with:
           name: vi-package
           path: builds/VI Package/*.vip
+
+  disable-dev-mode:
+    name: Disable Icon Editor Dev Mode
+    needs:
+      - enable-dev-mode
+      - build-vi-package
+    if: ${{ always() }}
+    runs-on: self-hosted-windows-lv
+    strategy:
+      matrix:
+        include:
+          - lv-version: "2023"
+            bitness: "32"
+          - lv-version: "2023"
+            bitness: "64"
+          - lv-version: "2026"
+            bitness: "64"
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Disable development mode
+        shell: pwsh
+        run: |
+          & "$Env:GITHUB_WORKSPACE\tools\icon-editor\Disable-DevMode.ps1" `
+            -RepoRoot "$Env:GITHUB_WORKSPACE" `
+            -Versions ${{ matrix['lv-version'] }} `
+            -Bitness ${{ matrix.bitness }} `
+            -Operation BuildPackage

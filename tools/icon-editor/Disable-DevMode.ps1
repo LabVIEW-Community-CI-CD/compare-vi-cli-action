@@ -35,8 +35,25 @@ if ($Operation) {
 $state = Disable-IconEditorDevelopmentMode @invokeParams
 
 Write-Host "Icon editor development mode disabled."
-Write-Host ("State file: {0}" -f $state.Path)
-Write-Host ("Updated at : {0}" -f $state.UpdatedAt)
+if ($null -eq $state) {
+  Write-Warning "Disable-IconEditorDevelopmentMode returned no state payload."
+} else {
+  $stateType = $state.GetType().FullName
+  $pathProp = $state.PSObject.Properties['Path']
+  $updatedProp = $state.PSObject.Properties['UpdatedAt']
+
+  if ($pathProp) {
+    Write-Host ("State file: {0}" -f $pathProp.Value)
+  } else {
+    Write-Warning ("Dev-mode state omitted 'Path' (type: {0})" -f $stateType)
+    Write-Warning ($state | ConvertTo-Json -Depth 5 -Compress)
+  }
+
+  if ($updatedProp) {
+    Write-Host ("Updated at : {0}" -f $updatedProp.Value)
+  } else {
+    Write-Warning ("Dev-mode state omitted 'UpdatedAt' (type: {0})" -f $stateType)
+  }
+}
 
 $state
-

@@ -16,7 +16,7 @@ Quick reference for building, testing, and releasing the LVCompare composite act
   - `tools/Dev-Dashboard.ps1`
 - **Icon Editor build pipeline**
   - `node tools/npm/run-script.mjs icon-editor:build` - runs the vendored LabVIEW Icon Editor build using the upstream PowerShell actions.
-- Requires LabVIEW 2021 SP1 (32-bit and 64-bit) and LabVIEW 2025 (64-bit). `Invoke-IconEditorBuild.ps1` now validates those installs via `Find-LabVIEWVersionExePath` and fails fast with a remediation hint when any executable is missing.
+- Requires LabVIEW 2023 SP1 (32-bit and 64-bit) for lvlibp builds and LabVIEW 2026 (64-bit) for VIPM CLI packaging. `Invoke-IconEditorBuild.ps1` now validates those installs via `Find-LabVIEWVersionExePath` and fails fast with a remediation hint when any executable is missing.
   - Need quick feedback without LabVIEW? Set `ICON_EDITOR_BUILD_MODE=simulate`
     (optionally `ICON_EDITOR_SIMULATION_FIXTURE` to override the default VIP)
     before invoking the workflow or `priority:validate`. The run will call
@@ -29,9 +29,9 @@ Quick reference for building, testing, and releasing the LVCompare composite act
   - Validate uploads the `icon-editor-fixture-report` artifact (JSON + Markdown) on each run for stakeholders.
   - `npm run icon-editor:dev:assert:on` / `npm run icon-editor:dev:assert:off` validate the LabVIEW `LocalHost.LibraryPaths` token so you can confirm dev mode is actually enabled or disabled before continuing.
   - Multi-lane tooling:
-    - **Source lane (2021 SP1, 32/64-bit)** – dev-mode toggles, VIPC apply/restore, lvlibp builds.
+    - **Source lane (2023 SP1, 32/64-bit)** – dev-mode toggles, VIPC apply/restore, lvlibp builds.
     - **Report lane (2025, 64-bit)** – LabVIEWCLI/HTML compare reports; requires the shared `LabVIEWCLI.exe`.
-    - **Packaging lane (2021 SP1, 32-bit + VIPM)** - VI Package Manager builds powered by `tools/Vipm.psm1`; ensure VIPM is installed alongside 2021 and point `VIPM.exe` via `VIPM_PATH`/`VIPM_EXE_PATH` or `configs/labview-paths*.json`.
+    - **Packaging lane (LabVIEW 2026, 64-bit + VIPM CLI)** – VI Package Manager builds powered by `tools/Vipm.psm1`; ensure the LabVIEW 2026 beta + VIPM CLI are installed and resolve the executable via `VIPM_PATH`/`VIPM_EXE_PATH` or `configs/labview-paths*.json`.
     - `npm run env:labview:check` prints the availability of each lane and surfaces missing prerequisites.
   - `g-cli.exe` is expected at `C:\Program Files\G-CLI\bin\g-cli.exe`. Use `configs/labview-paths.local.json` (`GCliExePath`) or set `GCLI_EXE_PATH` only when you need to override the default.
   - Artifacts land in `tests/results/_agent/icon-editor/` (manifest + packaged outputs). Dependency VIPCs (`runner_dependencies.vipc`) apply automatically unless you pass `-InstallDependencies:$false`; the helper mirrors the upstream Build.ps1 (dev-mode enable → apply VIPCs → build lvlibp (32/64) & rename → update VIPB metadata → build the VI package → restore dev mode). Add `-RunUnitTests` to execute the icon editor unit suite. The manifest records the dev-mode state (`developmentMode.*`) and lists both lvlibp + vip artifacts for audit.
@@ -39,7 +39,7 @@ Quick reference for building, testing, and releasing the LVCompare composite act
   - LabVIEW readiness gates now hinge on the presence of `LabVIEW.ini` for the requested version/bitness. If the INI exists, the helpers proceed (emitting a warning when `server.tcp.enabled` is off) and rely on provider output to surface any downstream issues.
 - Packaging now runs a lightweight smoke check (`tools/icon-editor/Test-IconEditorPackage.ps1`) against the emitted `.vip` files, writing `package-smoke-summary.json` and recording the results under `manifest.packageSmoke` so CI can flag structural regressions without rerunning VIPM.
 - **VIPM provider comparison**
-- `pwsh -File tools/Vipm/Invoke-ProviderComparison.ps1` runs the default single-lane scenario (runner dependency `.vipc` on LabVIEW 2025 × 64-bit) through each registered VIPM provider and appends telemetry to `tests/results/_agent/vipm-provider-matrix.json`. Pass `-ScenarioFile` or `-Scenario` to exercise custom matrices (see `tools/Vipm/example-scenarios.json`) when you need multi-target coverage.
+- `pwsh -File tools/Vipm/Invoke-ProviderComparison.ps1` runs the default single-lane scenario (runner dependency `.vipc` on LabVIEW 2026 × 64-bit) through each registered VIPM provider and appends telemetry to `tests/results/_agent/vipm-provider-matrix.json`. Pass `-ScenarioFile` or `-Scenario` to exercise custom matrices (see `tools/Vipm/example-scenarios.json`) when you need multi-target coverage.
   - Set `VIPM_PROVIDER_COMPARISON=skip` to bypass runs in local environments without VIPM.
   - Results include duration, exit code, warnings, and artifact hashes so discrepancies surface quickly; the script prints a plain-text summary for at-a-glance review.
   - `pwsh -File tools/Vipm/Test-ProviderTelemetry.ps1` validates the aggregated telemetry (failing on non-success scenarios) and is intended for CI gating; the helper supports `-TreatMissingAsWarning` for optional runs.

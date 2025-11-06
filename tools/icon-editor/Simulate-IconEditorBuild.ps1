@@ -118,7 +118,7 @@ if (-not $SkipResourceOverlay.IsPresent -and $resourceRoot -and (Test-Path -Lite
   if ($robocopyCommand) {
     $quotedSource = '"{0}"' -f $resourceRoot
     $quotedDest = '"{0}"' -f $resourceDest
-    $robocopyArgs = @($quotedSource, $quotedDest, '/MIR')
+    $robocopyArgs = @($quotedSource, $quotedDest, '/E')
     $rc = Start-Process -FilePath $robocopyCommand.Source -ArgumentList $robocopyArgs -NoNewWindow -PassThru -Wait
     if ($rc.ExitCode -gt 3) {
       Write-Warning "Failed to mirror resource directory with robocopy (exit code $($rc.ExitCode)); using Copy-Item fallback."
@@ -130,9 +130,7 @@ if (-not $SkipResourceOverlay.IsPresent -and $resourceRoot -and (Test-Path -Lite
   }
 
   if ($useFallback) {
-    if (Test-Path -LiteralPath $resourceDest -PathType Container) {
-      Get-ChildItem -LiteralPath $resourceDest -Force | Remove-Item -Recurse -Force
-    } else {
+    if (-not (Test-Path -LiteralPath $resourceDest -PathType Container)) {
       [void](New-Item -ItemType Directory -Path $resourceDest -Force)
     }
     Get-ChildItem -LiteralPath $resourceRoot -Force | ForEach-Object {
@@ -163,7 +161,8 @@ if (-not $lvlibpFiles -or $lvlibpFiles.Count -eq 0) {
   }
 }
 if (-not $lvlibpFiles -or $lvlibpFiles.Count -eq 0) {
-  throw "Unable to locate lvlibp artifacts inside system VIP under '$installRoot'."
+  Write-Warning "Unable to locate lvlibp artifacts inside system VIP under '$installRoot'. Packaging outputs may be incomplete; continuing without lvlibp artifacts."
+  $lvlibpFiles = @()
 }
 
 $artifacts = @()

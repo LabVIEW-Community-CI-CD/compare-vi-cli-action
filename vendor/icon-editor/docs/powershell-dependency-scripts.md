@@ -24,7 +24,7 @@ This document lists the PowerShell scripts used to build, test, and distribute t
 Adds a custom `LocalHost.LibraryPaths` token to the LabVIEW INI file so LabVIEW can find project libraries during development or builds. Used by `Set_Development_Mode.ps1`.
 
 ## ApplyVIPC.ps1
-Applies a `.vipc` container to a specific LabVIEW version and bitness using g-cli. Ensures that all required LabVIEW dependencies are installed before building.
+Applies a `.vipc` container to a specific LabVIEW version and bitness using the VIPM CLI (through `tools/Vipm.psm1`). Ensures that all required LabVIEW dependencies are installed before building, and fails fast if the VIPM invocation exits non-zero.
 
 ## Build.ps1
 Top-level script that orchestrates the full build. Cleans previous outputs, builds packed libraries for 32-bit and 64-bit, updates metadata, and produces the final `.vip` package. Depends on many of the other scripts listed here.

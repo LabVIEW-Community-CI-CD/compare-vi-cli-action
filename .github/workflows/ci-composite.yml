@@ -57,16 +57,15 @@ jobs:
   apply-deps:
     name: Apply VIPC Dependencies
     needs: changes
-    if: needs.changes.outputs.vipc == 'true'
     runs-on: [self-hosted, Windows, X64]
     strategy:
       matrix:
         include:
-          - lv-version: "2021"
+          - lv-version: "2023"
             bitness: "32"
-          - lv-version: "2021"
+          - lv-version: "2023"
             bitness: "64"
-          - lv-version: "2025"
+          - lv-version: "2026"
             bitness: "64"
     steps:
       - uses: ./.github/actions/apply-vipc
@@ -75,6 +74,32 @@ jobs:
           vip_lv_version:               ${{ matrix['lv-version'] }}
           supported_bitness:            ${{ matrix.bitness }}
           relative_path:                ${{ github.workspace }}
+
+  enable-dev-mode:
+    name: Enable Icon Editor Dev Mode
+    needs: apply-deps
+    runs-on: [self-hosted, Windows, X64]
+    strategy:
+      matrix:
+        include:
+          - lv-version: "2023"
+            bitness: "32"
+          - lv-version: "2023"
+            bitness: "64"
+          - lv-version: "2026"
+            bitness: "64"
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Enable development mode
+        shell: pwsh
+        run: |
+          & "$Env:GITHUB_WORKSPACE\tools\icon-editor\Enable-DevMode.ps1" `
+            -RepoRoot "$Env:GITHUB_WORKSPACE" `
+            -Versions ${{ matrix['lv-version'] }} `
+            -Bitness ${{ matrix.bitness }} `
+            -Operation BuildPackage
 
   version:
     name: Compute Version
@@ -97,13 +122,13 @@ jobs:
 
   missing-in-project-check:
     name: Test Missing-In-Project Action on Windows
-    needs: [changes, apply-deps]
+    needs: [changes, apply-deps, enable-dev-mode]
     if: ${{ needs.changes.result == 'success' && (needs.apply-deps.result == 'success' || needs.apply-deps.result == 'skipped') }}
     runs-on: [self-hosted, Windows, X64]
     strategy:
       fail-fast: false
       matrix:
-        lv-version: ["2021"]
+        lv-version: ["2023"]
         bitness:    ["64","32"]
     steps:
       - uses: ./.github/actions/missing-in-project
@@ -119,7 +144,7 @@ jobs:
     strategy:
       matrix:
         os: [windows]
-        lv-version: ["2021"]
+        lv-version: ["2023"]
         bitness: ["64","32"]
       fail-fast: false
     steps:
@@ -131,7 +156,7 @@ jobs:
 
   build-ppl:
     name: Build ${{ matrix.bitness }}-bit Packed Library
-    needs: [test, version]
+    needs: [test, version, enable-dev-mode]
     runs-on: [self-hosted, Windows, X64]
     permissions:
       contents: read
@@ -147,7 +172,7 @@ jobs:
     steps:
       - uses: ./.github/actions/build-lvlibp
         with:
-          minimum_supported_lv_version: 2021
+          minimum_supported_lv_version: 2023
           supported_bitness: ${{ matrix.bitness }}
           relative_path: ${{ github.workspace }}/vendor/icon-editor
           major: ${{ needs.version.outputs.MAJOR }}
@@ -157,7 +182,7 @@ jobs:
           commit: ${{ github.sha }}
       - uses: ./.github/actions/close-labview
         with:
-          minimum_supported_lv_version: 2021
+          minimum_supported_lv_version: 2023
           supported_bitness: ${{ matrix.bitness }}
       - uses: ./.github/actions/rename-file
         with:
@@ -170,7 +195,8 @@ jobs:
 
   build-vi-package:
     name: Build VI Package
-    needs: [build-ppl, version]
+    needs: [apply-deps, build-ppl, version, enable-dev-mode]
+    if: ${{ needs.apply-deps.result == 'success' || needs.apply-deps.result == 'skipped' }}
     runs-on: [self-hosted, Windows, X64]
     permissions:
       contents: read
@@ -187,6 +213,22 @@ jobs:
           path: resource/plugins
           pattern: lv_icon_*.lvlibp
           merge-multiple: true
+      - name: Report VIPM CLI version
+        shell: pwsh
+        run: |
+          Import-Module "$PWD\tools\Vipm.psm1" -Force
+          $vipbPath = Join-Path $PWD '.github\actions\build-vi-package\NI Icon editor.vipb'
+          $invocation = Get-VipmInvocation -Operation 'BuildVip' -Params @{
+            vipbPath        = $vipbPath
+            outputDirectory = (Join-Path $PWD '.github\actions\build-vi-package\_temp')
+            buildVersion    = '0.0.0.0'
+          }
+          Write-Host "VIPM CLI binary: $($invocation.Binary)"
+          try {
+            & $($invocation.Binary) --version
+          } catch {
+            Write-Warning "Unable to query VIPM CLI version: $($_.Exception.Message)"
+          }
       - name: Generate display information JSON
         id: display-info
         shell: pwsh
@@ -215,7 +257,7 @@ jobs:
           supported_bitness: 64
           relative_path: ${{ github.workspace }}
           vipb_path: .github/actions/build-vi-package/NI Icon editor.vipb
-          minimum_supported_lv_version: 2025
+          minimum_supported_lv_version: 2026
           labview_minor_revision: 3
           major: ${{ needs.version.outputs.MAJOR }}
           minor: ${{ needs.version.outputs.MINOR }}
@@ -224,10 +266,11 @@ jobs:
           commit: ${{ github.sha }}
           release_notes_file: ${{ github.workspace }}/Tooling/deployment/release_notes.md
           display_information_json: ${{ steps.display-info.outputs.json }}
-      - uses: ./.github/actions/build-vi-package
+      - id: run_vipm_build
+        uses: ./.github/actions/build-vi-package
         with:
           supported_bitness: 64
-          minimum_supported_lv_version: 2025
+          minimum_supported_lv_version: 2026
           labview_minor_revision: 3
           major: ${{ needs.version.outputs.MAJOR }}
           minor: ${{ needs.version.outputs.MINOR }}
@@ -236,14 +279,51 @@ jobs:
           commit: ${{ github.sha }}
           release_notes_file: ${{ github.workspace }}/Tooling/deployment/release_notes.md
           display_information_json: ${{ steps.display-info.outputs.json }}
+      - name: Upload VIPM build logs
+        if: ${{ steps.run_vipm_build.outputs.vipm_build_log != '' }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: vipm-build-logs
+          path: |
+            ${{ steps.run_vipm_build.outputs.vipm_build_log }}
+            ${{ steps.run_vipm_build.outputs.vipm_build_metadata }}
       - uses: ./.github/actions/close-labview
         with:
-          minimum_supported_lv_version: 2025
+          minimum_supported_lv_version: 2026
           supported_bitness: 64
       - name: Upload VI Package
         uses: actions/upload-artifact@v4
         with:
           name: vi-package
           path: builds/VI Package/*.vip
+
+  disable-dev-mode:
+    name: Disable Icon Editor Dev Mode
+    needs:
+      - enable-dev-mode
+      - build-vi-package
+    if: ${{ always() }}
+    runs-on: [self-hosted, Windows, X64]
+    strategy:
+      matrix:
+        include:
+          - lv-version: "2023"
+            bitness: "32"
+          - lv-version: "2023"
+            bitness: "64"
+          - lv-version: "2026"
+            bitness: "64"
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Disable development mode
+        shell: pwsh
+        run: |
+          & "$Env:GITHUB_WORKSPACE\tools\icon-editor\Disable-DevMode.ps1" `
+            -RepoRoot "$Env:GITHUB_WORKSPACE" `
+            -Versions ${{ matrix['lv-version'] }} `
+            -Bitness ${{ matrix.bitness }} `
+            -Operation BuildPackage
 
 

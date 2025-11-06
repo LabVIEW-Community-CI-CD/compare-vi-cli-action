@@ -1,12 +1,12 @@
 # Build VI Package 📦
 
-Runs **`build_vip.ps1`** to update a `.vipb` file's display info and build the VI Package via g-cli.
+Runs **`build_vip.ps1`** to update a `.vipb` file's display info and build the VI Package via the VIPM CLI.
 
 ## Inputs
 | Name | Required | Example | Description |
 |------|----------|---------|-------------|
 | `supported_bitness` | **Yes** | `64` | Target LabVIEW bitness. |
-| `minimum_supported_lv_version` | **Yes** | `2021` | LabVIEW major version. |
+| `minimum_supported_lv_version` | **Yes** | `2026` | LabVIEW major version used for packaging. |
 | `labview_minor_revision` | No (defaults to `3`) | `3` | LabVIEW minor revision. |
 | `major` | **Yes** | `1` | Major version component. |
 | `minor` | **Yes** | `0` | Minor version component. |
@@ -18,12 +18,19 @@ Runs **`build_vip.ps1`** to update a `.vipb` file's display info and build the V
 
 > **Note:** The action automatically uses the first `.vipb` file located in this directory.
 
+## Outputs
+
+| Name | Description |
+|------|-------------|
+| `vipm_build_log` | Relative path to the VIPM CLI stdout/stderr log for the build. |
+| `vipm_build_metadata` | Relative path to the structured JSON metadata captured from the VIPM build invocation. |
+
 ## Quick-start
 ```yaml
 - uses: ./.github/actions/build-vi-package
   with:
     supported_bitness: 64
-    minimum_supported_lv_version: 2024
+    minimum_supported_lv_version: 2026
     major: 1
     minor: 0
     patch: 0
@@ -31,6 +38,7 @@ Runs **`build_vip.ps1`** to update a `.vipb` file's display info and build the V
     commit: ${{ github.sha }}
     release_notes_file: Tooling/deployment/release_notes.md
     display_information_json: '{}'
+  # outputs available via steps.<id>.outputs.vipm_build_log, etc.
 ```
 
 ## License

@@ -1,39 +1,42 @@
 <#
 .SYNOPSIS
-    Applies a .vipc file to a given LabVIEW version/bitness.
-    This version includes additional debug/verbose output.
+    Applies the icon editor runner dependencies using the VIPM CLI.
 
 .EXAMPLE
-    .\applyvipc.ps1 -MinimumSupportedLVVersion "2021" -SupportedBitness "64" -RelativePath "C:\release\labview-icon-editor-fork" -VIP_LVVersion "2021" -Verbose
+    .\ApplyVIPC.ps1 -MinimumSupportedLVVersion 2023 -SupportedBitness 64 -RelativePath vendor\icon-editor -VIP_LVVersion 2026
 #>
 
-[CmdletBinding()]  # Enables -Verbose and other common parameters
-Param (
-    [string]$MinimumSupportedLVVersion,
-    [string]$VIP_LVVersion,
-    [string]$SupportedBitness,
+[CmdletBinding()]
+param(
+    [int]$MinimumSupportedLVVersion,
+    [int]$VIP_LVVersion,
+    [ValidateSet('32','64')][string]$SupportedBitness,
     [string]$RelativePath,
-    [string]$VIPCPath,
-    [ValidateSet('auto','gcli','vipm')]
-    [string]$Toolchain = 'auto'
+    [string]$VIPCPath
 )
 
-# Auto-detect the VIPC file if one isn't provided
+Set-StrictMode -Version Latest
+$ErrorActionPreference = 'Stop'
+
+$iconEditorRoot = (Resolve-Path (Join-Path $PSScriptRoot '..\..\..')).ProviderPath
+$vipmModule = Join-Path $iconEditorRoot 'tools\Vipm.psm1'
+if (-not (Test-Path -LiteralPath $vipmModule -PathType Leaf)) {
+    throw "Vipm module not found at '$vipmModule'."
+}
+Import-Module $vipmModule -Force
+
 if (-not $VIPCPath) {
-    $vipcFiles = Get-ChildItem -Path $PSScriptRoot -Filter *.vipc
+    $vipcFiles = Get-ChildItem -Path $PSScriptRoot -Filter '*.vipc'
     if ($vipcFiles.Count -eq 0) {
-        Write-Error "No .vipc file found in '$PSScriptRoot'."
-        exit 1
+        throw "No .vipc file found in '$PSScriptRoot'."
     }
     if ($vipcFiles.Count -gt 1) {
-        Write-Error "Multiple .vipc files found in '$PSScriptRoot'. Specify -VIPCPath."
-        exit 1
+        throw "Multiple .vipc files found in '$PSScriptRoot'. Specify -VIPCPath."
     }
     $VIPCPath = $vipcFiles[0].FullName
     Write-Verbose "Auto-detected VIPCPath: $VIPCPath"
 }
 
-Write-Verbose "Script Name: $($MyInvocation.MyCommand.Definition)"
 Write-Verbose "Parameters provided:"
 Write-Verbose " - MinimumSupportedLVVersion: $MinimumSupportedLVVersion"
 Write-Verbose " - VIP_LVVersion:             $VIP_LVVersion"
@@ -41,155 +44,50 @@ Write-Verbose " - SupportedBitness:          $SupportedBitness"
 Write-Verbose " - RelativePath:              $RelativePath"
 Write-Verbose " - VIPCPath:                  $VIPCPath"
 
-# -------------------------
-# 1) Resolve Paths & Validate
-# -------------------------
 try {
-    Write-Verbose "Attempting to resolve the 'RelativePath'..."
-    $ResolvedRelativePath = (Resolve-Path -Path $RelativePath -ErrorAction Stop).ProviderPath
-    Write-Verbose "ResolvedRelativePath: $ResolvedRelativePath"
-
-    Write-Verbose "Building full path for the .vipc file..."
-    if ([System.IO.Path]::IsPathRooted($VIPCPath)) {
-        $ResolvedVIPCPath = (Resolve-Path -Path $VIPCPath -ErrorAction Stop).ProviderPath
+    $resolvedWorkspace = if ($RelativePath) {
+        (Resolve-Path -Path $RelativePath -ErrorAction Stop).ProviderPath
     } else {
-        $ResolvedVIPCPath = (Resolve-Path -Path (Join-Path -Path $ResolvedRelativePath -ChildPath $VIPCPath) -ErrorAction Stop).ProviderPath
+        $iconEditorRoot
     }
-    Write-Verbose "ResolvedVIPCPath:     $ResolvedVIPCPath"
 
-    # Verify that the .vipc file actually exists
-    Write-Verbose "Checking if the .vipc file exists at the resolved path..."
-    if (-not (Test-Path $ResolvedVIPCPath)) {
-        Write-Error "The .vipc file does not exist at '$ResolvedVIPCPath'."
-        exit 1
+    if ([System.IO.Path]::IsPathRooted($VIPCPath)) {
+        $resolvedVipcPath = (Resolve-Path -Path $VIPCPath -ErrorAction Stop).ProviderPath
+    } else {
+        $resolvedVipcPath = (Resolve-Path -Path (Join-Path $resolvedWorkspace $VIPCPath) -ErrorAction Stop).ProviderPath
     }
-    Write-Verbose "The .vipc file was found successfully."
-}
-catch {
-    Write-Error "Error resolving paths. Ensure RelativePath and VIPCPath are valid. Details: $($_.Exception.Message)"
-    exit 1
+} catch {
+    throw "Error resolving paths. Ensure RelativePath/VIPCPath are valid. Details: $($_.Exception.Message)"
 }
 
-$versionsToApply = [System.Collections.Generic.List[string]]::new()
-$versionsToApply.Add([string]$MinimumSupportedLVVersion) | Out-Null
-if ($VIP_LVVersion -and ($VIP_LVVersion -ne $MinimumSupportedLVVersion)) {
-    $versionsToApply.Add([string]$VIP_LVVersion) | Out-Null
+if (-not (Test-Path -LiteralPath $resolvedVipcPath -PathType Leaf)) {
+    throw "The .vipc file does not exist at '$resolvedVipcPath'."
 }
 
-$uniqueVersions = $versionsToApply | Select-Object -Unique
+Write-Host ("Applying dependencies for LabVIEW {0} ({1}-bit) via VIPM CLI..." -f $VIP_LVVersion, $SupportedBitness)
 
-function Invoke-ProcessInvocation {
-    param(
-        [Parameter(Mandatory)][pscustomobject]$Invocation,
-        [string]$WorkingDirectory
-    )
+$invocation = Get-VipmInvocation -Operation 'InstallVipc' -Params @{
+    vipcPath       = $resolvedVipcPath
+    labviewVersion = $VIP_LVVersion.ToString()
+    labviewBitness = $SupportedBitness
+}
 
-    $psi = New-Object System.Diagnostics.ProcessStartInfo
-    $psi.FileName = $Invocation.Binary
-    foreach ($arg in $Invocation.Arguments) {
-        if ($null -ne $arg) {
-            [void]$psi.ArgumentList.Add([string]$arg)
+Write-Host ("Executing: {0} {1}" -f $invocation.Binary, ($invocation.Arguments -join ' '))
+$output = & $invocation.Binary @($invocation.Arguments) 2>&1
+$exitCode = $LASTEXITCODE
+
+if ($output) {
+    $output | ForEach-Object {
+        if ($_ -match '^\s*\[WARN\]') {
+            Write-Warning $_
+        } else {
+            Write-Output $_
         }
     }
-    if ($WorkingDirectory) {
-        $psi.WorkingDirectory = $WorkingDirectory
-    }
-    $psi.RedirectStandardOutput = $true
-    $psi.RedirectStandardError = $true
-    $psi.UseShellExecute = $false
-
-    $process = [System.Diagnostics.Process]::Start($psi)
-    $stdout = $process.StandardOutput.ReadToEnd()
-    $stderr = $process.StandardError.ReadToEnd()
-    $process.WaitForExit()
-
-    if ($stdout) { Write-Host $stdout.Trim() }
-    if ($stderr) { Write-Host $stderr.Trim() }
-
-    if ($process.ExitCode -ne 0) {
-        throw "Process exited with code $($process.ExitCode)."
-    }
 }
 
-$toolchainOrder = switch ($Toolchain.ToLowerInvariant()) {
-    'gcli' { @('gcli') }
-    'vipm' { @('vipm') }
-    default { @('gcli','vipm') }
+if ($exitCode -ne 0) {
+    throw "VIPM CLI exited with code $exitCode while applying '$resolvedVipcPath' for LabVIEW $VIP_LVVersion ($SupportedBitness-bit)."
 }
 
-$applyVipcPath = $null
-$gcliModuleImported = $false
-$vipmModuleImported = $false
-$errors = New-Object System.Collections.Generic.List[string]
-$usedToolchain = $null
-
-foreach ($tool in $toolchainOrder) {
-    try {
-        switch ($tool) {
-            'gcli' {
-                $gcliModulePath = Join-Path $ResolvedRelativePath 'tools' 'GCli.psm1'
-                if (-not (Test-Path -LiteralPath $gcliModulePath -PathType Leaf)) {
-                    throw "g-cli module not found at '$gcliModulePath'."
-                }
-                if (-not $gcliModuleImported) {
-                    Import-Module $gcliModulePath -Force
-                    $gcliModuleImported = $true
-                }
-
-                if (-not $applyVipcPath) {
-                    $applyVipcRelative = 'vendor/icon-editor/Tooling/deployment/Applyvipc.vi'
-                    $applyVipcPath = (Resolve-Path -Path (Join-Path $ResolvedRelativePath $applyVipcRelative) -ErrorAction Stop).ProviderPath
-                }
-
-                foreach ($version in $uniqueVersions) {
-                    Write-Output ("Applying dependencies via g-cli for LabVIEW {0} ({1}-bit)..." -f $version, $SupportedBitness)
-                    $invocation = Get-GCliInvocation -Operation 'VipcInstall' -Params @{
-                        vipcPath       = $ResolvedVIPCPath
-                        labviewVersion = $version
-                        labviewBitness = $SupportedBitness
-                        applyVipcPath  = $applyVipcPath
-                        targetVersion  = $version
-                    }
-                    Write-Output ("Executing g-cli provider [{0}]: {1} {2}" -f $invocation.Provider, $invocation.Binary, ($invocation.Arguments -join ' '))
-                    Invoke-ProcessInvocation -Invocation $invocation -WorkingDirectory (Split-Path -Parent $ResolvedVIPCPath)
-                }
-            }
-            'vipm' {
-                $vipmModulePath = Join-Path $ResolvedRelativePath 'tools' 'Vipm.psm1'
-                if (-not (Test-Path -LiteralPath $vipmModulePath -PathType Leaf)) {
-                    throw "VIPM module not found at '$vipmModulePath'."
-                }
-                if (-not $vipmModuleImported) {
-                    Import-Module $vipmModulePath -Force
-                    $vipmModuleImported = $true
-                }
-
-                foreach ($version in $uniqueVersions) {
-                    Write-Output ("Applying dependencies via VIPM for LabVIEW {0} ({1}-bit)..." -f $version, $SupportedBitness)
-                    $params = @{
-                        vipcPath       = $ResolvedVIPCPath
-                        labviewVersion = $version
-                        labviewBitness = $SupportedBitness
-                    }
-                    $invocation = Get-VipmInvocation -Operation 'InstallVipc' -Params $params
-                    Write-Output ("Executing VIPM provider [{0}]: {1} {2}" -f $invocation.Provider, $invocation.Binary, ($invocation.Arguments -join ' '))
-                    Invoke-ProcessInvocation -Invocation $invocation -WorkingDirectory (Split-Path -Parent $ResolvedVIPCPath)
-                }
-            }
-        }
-
-        $usedToolchain = $tool
-        break
-    } catch {
-        $message = "[{0}] {1}" -f $tool, $_.Exception.Message
-        $errors.Add($message) | Out-Null
-        Write-Warning $message
-    }
-}
-
-if (-not $usedToolchain) {
-    Write-Error ("Failed to apply VIPC dependencies. Errors:`n{0}" -f ($errors -join [Environment]::NewLine))
-    exit 1
-}
-
-Write-Host ("Successfully applied dependencies using {0} provider." -f $usedToolchain)
+Write-Host ("Successfully applied dependencies to LabVIEW {0} ({1}-bit)." -f $VIP_LVVersion, $SupportedBitness)

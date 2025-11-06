@@ -115,25 +115,25 @@ if ($RelativePath) {
     }
 
     It 'enables development mode via helper' {
-      $state = Enable-IconEditorDevelopmentMode -RepoRoot $script:repoRoot -IconEditorRoot $script:iconRoot -Versions @(2025) -Bitness @(64)
+      $state = Enable-IconEditorDevelopmentMode -RepoRoot $script:repoRoot -IconEditorRoot $script:iconRoot -Versions @(2026) -Bitness @(64)
       $state.Active | Should -BeTrue
       (Get-Content -LiteralPath (Join-Path $script:iconRoot 'dev-mode.txt') -Raw).Trim() | Should -Be 'dev-mode:on-64'
     }
 
     It 'disables development mode via helper' {
       Set-IconEditorDevModeState -RepoRoot $script:repoRoot -Active $true -Source 'pretest' | Out-Null
-      $state = Disable-IconEditorDevelopmentMode -RepoRoot $script:repoRoot -IconEditorRoot $script:iconRoot -Versions @(2025) -Bitness @(64)
+      $state = Disable-IconEditorDevelopmentMode -RepoRoot $script:repoRoot -IconEditorRoot $script:iconRoot -Versions @(2026) -Bitness @(64)
       $state.Active | Should -BeFalse
       (Get-Content -LiteralPath (Join-Path $script:iconRoot 'dev-mode.txt') -Raw).Trim() | Should -Be 'dev-mode:off-64'
     }
 
     It 'supports alternate bitness overrides' {
-      $state = Enable-IconEditorDevelopmentMode -RepoRoot $script:repoRoot -IconEditorRoot $script:iconRoot -Versions @(2025) -Bitness @(32)
+      $state = Enable-IconEditorDevelopmentMode -RepoRoot $script:repoRoot -IconEditorRoot $script:iconRoot -Versions @(2023) -Bitness @(32)
       $state.Active | Should -BeTrue
       (Get-Content -LiteralPath (Join-Path $script:iconRoot 'dev-mode.txt') -Raw).Trim() | Should -Be 'dev-mode:on-32'
 
       Set-IconEditorDevModeState -RepoRoot $script:repoRoot -Active $true -Source 'pretest' | Out-Null
-      $state = Disable-IconEditorDevelopmentMode -RepoRoot $script:repoRoot -IconEditorRoot $script:iconRoot -Versions @(2025) -Bitness @(32)
+      $state = Disable-IconEditorDevelopmentMode -RepoRoot $script:repoRoot -IconEditorRoot $script:iconRoot -Versions @(2023) -Bitness @(32)
       $state.Active | Should -BeFalse
       (Get-Content -LiteralPath (Join-Path $script:iconRoot 'dev-mode.txt') -Raw).Trim() | Should -Be 'dev-mode:off-32'
     }
@@ -147,7 +147,7 @@ if ($RelativePath) {
   "schema": "icon-editor/dev-mode-targets@v1",
   "operations": {
     "BuildPackage": {
-      "versions": [2021],
+      "versions": [2023, 2026],
       "bitness": [32, 64]
     },
     "Compare": {
@@ -208,3 +208,5 @@ if ($RelativePath) {
     }
   }
 }
+
+

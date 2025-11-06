@@ -84,6 +84,11 @@ param(
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 $PwshExecutable = (Get-Command pwsh).Source
+$packedLibLabVIEWVersion = 2023
+$packedLibLabVIEWMinorRevision = 3
+$packagingLabVIEWVersion = 2026
+$packagingLabVIEWMinorRevision = 0
+$packagingSupportedBitness = 64
 
 function Invoke-GitHubCli {
     param(
@@ -287,11 +292,11 @@ try {
         Write-Host "Updating VIPB metadata via PowerShell helper"
         $updateResult = Invoke-ExternalPwsh -Arguments @(
             '-NoLogo','-NoProfile','-File','.github/actions/modify-vipb-display-info/Update-VipbDisplayInfo.ps1',
-            '-SupportedBitness','64',
+            '-SupportedBitness',"$packagingSupportedBitness",
             '-RelativePath',(Get-Location).Path,
             '-VIPBPath',$vipbRelative,
-            '-MinimumSupportedLVVersion','2025',
-            '-LabVIEWMinorRevision','3',
+            '-MinimumSupportedLVVersion',"$packedLibLabVIEWVersion",
+            '-LabVIEWMinorRevision',"$packedLibLabVIEWMinorRevision",
             '-Major',$intMajor,
             '-Minor',$intMinor,
             '-Patch',$intPatch,
@@ -315,9 +320,9 @@ try {
             Minor                     = $intMinor
             Patch                     = $intPatch
             Build                     = $intBuild
-            SupportedBitness          = 64
-            MinimumSupportedLVVersion = 2025
-            LabVIEWMinorRevision      = 3
+            SupportedBitness          = $packagingSupportedBitness
+            MinimumSupportedLVVersion = $packagingLabVIEWVersion
+            LabVIEWMinorRevision      = $packagingLabVIEWMinorRevision
             ReleaseNotesPath          = $releaseNotesFull
             WorkspaceRoot             = $workspaceRoot
             Provider                  = $BuildToolchain
@@ -339,11 +344,11 @@ try {
     }
 
     if ($CloseLabVIEW) {
-        Write-Host "Closing LabVIEW 2025 (64-bit)"
+        Write-Host ("Closing LabVIEW {0} ({1}-bit)" -f $packagingLabVIEWVersion, $packagingSupportedBitness)
         $closeResult = Invoke-ExternalPwsh -Arguments @(
             '-NoLogo','-NoProfile','-File','.github/actions/close-labview/Close_LabVIEW.ps1',
-            '-MinimumSupportedLVVersion','2025',
-            '-SupportedBitness','64'
+            '-MinimumSupportedLVVersion',"$packagingLabVIEWVersion",
+            '-SupportedBitness',"$packagingSupportedBitness"
         )
         if ($closeResult.ExitCode -ne 0) {
             Write-Warning "close-labview script reported an error:`n$($closeResult.StdOut)$($closeResult.StdErr)"
@@ -359,6 +364,8 @@ Write-Host "Replay completed."
 Write-Host " VIPB updated at $(Join-Path $workspaceRoot $vipbRelative)"
 Write-Host " Release notes path: $releaseNotesFull"
 Write-Host (" Build toolchain: {0}" -f $script:buildToolchain)
+Write-Host (" Packed library LabVIEW version: {0}" -f $packedLibLabVIEWVersion)
+Write-Host (" Packaging LabVIEW version: {0} ({1}-bit)" -f $packagingLabVIEWVersion, $packagingSupportedBitness)
 if ($script:buildProviderName) {
     Write-Host (" Provider backend: {0}" -f $script:buildProviderName)
 } elseif ($BuildProvider) {
@@ -373,25 +380,29 @@ if ($script:removedPackage) {
 }
 if ($script:buildOutput) {
     if ($script:buildWarnings.Count -gt 0) {
-        Write-Warning "g-cli emitted warnings during build:"
+        $warningSource = if ($script:buildToolchain) { $script:buildToolchain } else { 'packaging provider' }
+        Write-Warning ("{0} emitted warnings during build:" -f $warningSource)
         $script:buildWarnings | ForEach-Object { Write-Warning "  $_" }
-        $logHint = Join-Path $env:USERPROFILE 'Documents\LabVIEW Data\Logs'
-        if (-not (Test-Path -LiteralPath $logHint -PathType Container)) {
-            $logHint = '%USERPROFILE%\Documents\LabVIEW Data\Logs'
-        }
-        Write-Host " Hint: g-cli reported transient comms errors; if the build still completes you can proceed. Otherwise rerun or inspect LabVIEW logs at $logHint."
-        if ($script:viServerSnapshots.Count -gt 0) {
-            Write-Host " VI Server ports (LabVIEW.ini snapshot):"
-            foreach ($snapshot in $script:viServerSnapshots) {
-                $label = "{0} {1}-bit" -f $snapshot.Version, $snapshot.Bitness
-                if ($snapshot.Status -ne 'ok') {
-                    $detail = if ($snapshot.Message) { $snapshot.Message } else { 'Unavailable' }
-                    Write-Host ("  - {0}: {1}" -f $label, $detail)
-                } else {
-                    $portText = if ($snapshot.Port) { $snapshot.Port } else { 'unknown' }
-                    $enabledText = if ($snapshot.Enabled) { $snapshot.Enabled } else { 'unknown' }
-                    $iniRef = if ($snapshot.IniPath) { $snapshot.IniPath } else { 'n/a' }
-                    Write-Host ("  - {0}: port={1}, enabled={2} (ini: {3})" -f $label, $portText, $enabledText, $iniRef)
+
+        if ($script:buildToolchain -eq 'gcli') {
+            $logHint = Join-Path $env:USERPROFILE 'Documents\LabVIEW Data\Logs'
+            if (-not (Test-Path -LiteralPath $logHint -PathType Container)) {
+                $logHint = '%USERPROFILE%\Documents\LabVIEW Data\Logs'
+            }
+            Write-Host " Hint: g-cli reported transient comms errors; if the build still completes you can proceed. Otherwise rerun or inspect LabVIEW logs at $logHint."
+            if ($script:viServerSnapshots.Count -gt 0) {
+                Write-Host " VI Server ports (LabVIEW.ini snapshot):"
+                foreach ($snapshot in $script:viServerSnapshots) {
+                    $label = "{0} {1}-bit" -f $snapshot.Version, $snapshot.Bitness
+                    if ($snapshot.Status -ne 'ok') {
+                        $detail = if ($snapshot.Message) { $snapshot.Message } else { 'Unavailable' }
+                        Write-Host ("  - {0}: {1}" -f $label, $detail)
+                    } else {
+                        $portText = if ($snapshot.Port) { $snapshot.Port } else { 'unknown' }
+                        $enabledText = if ($snapshot.Enabled) { $snapshot.Enabled } else { 'unknown' }
+                        $iniRef = if ($snapshot.IniPath) { $snapshot.IniPath } else { 'n/a' }
+                        Write-Host ("  - {0}: port={1}, enabled={2} (ini: {3})" -f $label, $portText, $enabledText, $iniRef)
+                    }
                 }
             }
         }

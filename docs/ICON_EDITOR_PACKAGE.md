@@ -24,19 +24,17 @@ carries the actual LabVIEW payload.
 - Fixture version `1.4.1.948` (system `1.4.1.948`), license `MIT`.
 - Fixture path: `tests\fixtures\icon-editor\ni_icon_editor-1.4.1.948.vip`
 - Package smoke status: **fail** (VIPs: 1)
-- Report generated: `11/4/2025 2:11:28 PM`
+- Report generated: `11/5/2025 5:27:07 PM`
 - Artifacts:
   - ni_icon_editor-1.4.1.948.vip - 0.35 MB (`919104d1e35405e40862776f853cc6b9c23b87121d4b717fcbd06742e937e75e`)
   - ni_icon_editor_system-1.4.1.948.vip - 0.28 MB (`8181b37939ed27faa0fdf5f87c881e1cc0b2fe4edecee4384a10c04b9b9af03a`)
-  - lv_icon_x64.lvlibp - 2.85 MB (`e851ac8d296e78f4ed1fd66af576c50ae5ff48caf18775ac3d4085c29d4bd013`)
-  - lv_icon_x86.lvlibp - 2.85 MB (`8a3d07791c5f03d11bddfb32d25fd5d7c933a2950d96b5668cc5837fe7dece23`)
 
 ## Stakeholder summary
 
 - Smoke status: **fail**
 - Runner dependencies: mismatch
 - Custom actions: 4 entries (all match: False)
-- Fixture-only assets discovered: 311
+- Fixture-only assets discovered: 0
 
 ## Comparison with repository sources
 
@@ -52,31 +50,11 @@ carries the actual LabVIEW payload.
 
 ## Fixture-only assets
 
-- resource (311 entries)
-  - plugins\lv_icon.vi (af6be82644d7b0d9252bb5188847a161c641653a38f664bddcacc75bbc6b0b51)
-  - plugins\lv_icon.vit (c74159e8f4e16d1881359dae205e71fdee6131020c7c735440697138eec0c0dd)
-  - plugins\lv_IconEditor.lvlib (a2721f0b8aea3c32a00d0b148f24bdeee05201b41cffbaa212dbe325fdd4f3f7)
-  - plugins\NIIconEditor\Class\Ants\Ants.lvclass (650baef4cded7115e549f0f99258884c43185f88b6a082b1629e0fa72406f176)
-  - plugins\NIIconEditor\Class\Ants\GET\GET_AntsLine.vi (794dfcbf2ed7ff560f2346ba51c840d00dc22e58098c9f4a76cdeb370b9c9df9)
-  - ... 306 more
+- None detected.
 
 ## Fixture-only manifest delta
 
-- Added: 311, Removed: 311, Changed: 0
-- Added:
-  - `resource:tests\plugins\niiconeditor\class\fakedarray\misc\updatevisibledata.vi`
-  - `resource:tests\plugins\niiconeditor\controls\draw.ctl`
-  - `resource:tests\plugins\niiconeditor\controls\user event communication enum.ctl`
-  - `resource:tests\plugins\niiconeditor\miscellaneous\icon editor\mousemove.vi`
-  - `resource:tests\plugins\lv_icon.vit`
-  - (+306 more)
-- Removed:
-  - `resource:resource\plugins\lv_icon.vi`
-  - `resource:resource\plugins\lv_icon.vit`
-  - `resource:resource\plugins\lv_iconeditor.lvlib`
-  - `resource:resource\plugins\niiconeditor\class\ants\ants.lvclass`
-  - `resource:resource\plugins\niiconeditor\class\ants\get\get_antsline.vi`
-  - (+306 more)
+- Added: 0, Removed: 0, Changed: 0
 
 ## Changed VI comparison (requests)
 
@@ -93,7 +71,7 @@ carries the actual LabVIEW payload.
 ## Development mode targets
 
 - LabVIEW targets are now managed in `configs/icon-editor/dev-mode-targets.json` (schema `icon-editor/dev-mode-targets@v1`). Each operation maps to the LabVIEW version/bitness it needs; the defaults ship with:
-  - `BuildPackage` → LabVIEW 2021 (32-bit and 64-bit) for VIP builds.
+  - `BuildPackage` – LabVIEW 2023 (32-bit and 64-bit) for lvlibp builds; LabVIEW 2026 (64-bit) is enabled automatically when the packaging step runs.
   - `Compare` → LabVIEW 2025 (64-bit) for VI comparison/report helpers.
 - `Enable-IconEditorDevelopmentMode` and `Disable-IconEditorDevelopmentMode` accept an `-Operation` switch so callers do not have to repeat version/bitness lists. Examples:
 
@@ -111,7 +89,7 @@ carries the actual LabVIEW payload.
     -IconEditorRoot vendor/icon-editor `
     -Operation Compare
 
-  # Enable development mode for packaging/build flows (LabVIEW 2021 32/64)
+# Enable development mode for packaging/build flows (LabVIEW 2023 32/64 + 2026 x64 packaging)
   pwsh -File tools/icon-editor/Enable-DevMode.ps1 `
     -RepoRoot . `
     -IconEditorRoot vendor/icon-editor `
@@ -279,8 +257,8 @@ carries the actual LabVIEW payload.
   - `-SourcePath` reuses an existing tree. Pair it with `Prepare-OverlayFromRepo.ps1` to limit the snapshot to just the changed resources/tests.
   - `-SkipValidate` prevents `Invoke-ValidateLocal` from running; the helper still emits the manifest/report.
   - `-DryRun` automatically sets `-SkipLVCompare` for the validate step so LVCompare stays offline.
-  - `-DevModeVersions` / `-DevModeBitness` let you override the LabVIEW version/bitness used when toggling development mode (defaults to 2025 / 64-bit). Use `-SkipDevMode` to bypass the toggle entirely if you have already prepared the environment.
-  - When not specified, the helper inspects the local LabVIEW installations via `Get-IconEditorDevModeLabVIEWTargets` and prefers LabVIEW 2025 x64 when present, falling back to any available LabVIEW 2025 bitness (or the newest detected version).
+  - `-DevModeVersions` / `-DevModeBitness` let you override the LabVIEW version/bitness used when toggling development mode (defaults to 2023 / 64-bit). Use `-SkipDevMode` to bypass the toggle entirely if you have already prepared the environment.
+  - When not specified, the helper inspects the local LabVIEW installations via `Get-IconEditorDevModeLabVIEWTargets` and prefers LabVIEW 2023 x64 when present, falling back to any available LabVIEW 2023 bitness (or the newest detected version).
   - `-SkipBootstrapForValidate` passes through to `Invoke-ValidateLocal` when `priority/bootstrap.ps1` already ran.
 - Pair with `Sync-IconEditorFork.ps1` when you want a long-lived mirror under `vendor/icon-editor/`, or use this helper to stage ad-hoc “fake PR” heads before pushing upstream.
 - For quick diffs without editing the VI in LabVIEW, mirror the resource tree into a disposable overlay, swap in a substitute VI, then stage the snapshot:
@@ -338,7 +316,7 @@ carries the actual LabVIEW payload.
 
 - Flags roll up to the underlying helpers:
   - `-SkipValidate`, `-SkipLVCompare` → forwarded to `Invoke-VIComparisonFromCommit.ps1` when comparisons still run.
-  - `-LabVIEWExePath` → overrides the auto-resolved LabVIEW 2025 64-bit binary.
+  - `-LabVIEWExePath` → overrides the auto-resolved LabVIEW 2023 64-bit binary.
 - `-EventsPath` controls where heuristic decisions are logged (`compare-events.ndjson` style). Omit to use the default under `tests/results/_agent/icon-editor/vi-diff/`.
 - `-CachePath` stores per-commit decisions so re-running the sweep can fast-path previously triaged commits.
 - Heuristic tuning (size delta threshold, compare throttling, prefix allow/deny rules) lives in `configs/icon-editor/vi-diff-heuristics.json`. Set `ICON_EDITOR_VI_DIFF_RULES` to point at an alternate JSON file while experimenting locally. `maxComparePerCommit` limits how many VI paths a single commit can send to LVCompare; overflow paths are skipped with a `compare-throttle` reason so you can follow up manually.
@@ -404,11 +382,12 @@ by the script now records both the toolchain and resolved provider so you can co
 which backend executed the build. The generated `icon-editor/build@v1` manifest records
 the requested backend under `packaging.requestedToolchain` (and `packaging.requestedProvider`
 when supplied) so downstream diagnostics stay transparent.
+The manifest also tracks `packaging.packedLibVersion` and `packaging.packagingLabviewVersion` so reviewers can confirm the lvlibp build and packaging LabVIEW versions.
 
 When dependency application is the failing stage, replay it via:
 
 ```powershell
-pwsh tools/icon-editor/Replay-ApplyVipcJob.ps1 -RunId <workflow-run-id> -JobName 'Apply VIPC Dependencies (2025, 64)'
+pwsh tools/icon-editor/Replay-ApplyVipcJob.ps1 -RunId <workflow-run-id> -JobName 'Apply VIPC Dependencies (2023, 64)'
 ```
 
 The script resolves the LabVIEW version/bitness from the matrix entry (or accepts them

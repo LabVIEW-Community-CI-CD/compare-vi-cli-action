@@ -90,18 +90,20 @@ $prepFlag = Join-Path $RelativePath 'Tooling\deployment\prepare-flag.txt'
 "prepared:$MinimumSupportedLVVersion-$SupportedBitness" | Set-Content -LiteralPath $prepFlag -Encoding utf8
 '@
 
-    New-StubScript 'modify-vipb-display-info/ModifyVIPBDisplayInfo.ps1' @'
+    $updateVipbPath = Join-Path $TestDrive 'Update-VipbDisplayInfo.ps1'
+    $env:ICON_EDITOR_UPDATE_VIPB_HELPER = $updateVipbPath
+    @'
 param(
-  [string]$SupportedBitness,
-  [string]$RelativePath,
-  [string]$VIPBPath,
   [int]$MinimumSupportedLVVersion,
   [string]$LabVIEWMinorRevision,
+  [string]$SupportedBitness,
   [int]$Major,
   [int]$Minor,
   [int]$Patch,
   [int]$Build,
   [string]$Commit,
+  [string]$RelativePath,
+  [string]$VIPBPath,
   [string]$ReleaseNotesFile,
   [string]$DisplayInformationJSON
 )
@@ -110,7 +112,7 @@ Set-Content -LiteralPath $infoPath -Value $DisplayInformationJSON -Encoding utf8
 if (-not (Test-Path -LiteralPath $ReleaseNotesFile -PathType Leaf)) {
   New-Item -ItemType File -Path $ReleaseNotesFile -Force | Out-Null
 }
-'@
+'@ | Set-Content -LiteralPath $updateVipbPath -Encoding utf8
 
     New-StubScript 'restore-setup-lv-source/RestoreSetupLVSource.ps1' @'
 param(
@@ -179,7 +181,7 @@ $vipOut = Join-Path $iconRoot 'Tooling\deployment\IconEditor_Test.vip'
         [string]$IconEditorRoot,
         [string]$Operation
       )
-      if (-not $Versions) { $Versions = @(2021) }
+      if (-not $Versions) { $Versions = @(2023) }
       if (-not $Bitness) { $Bitness = @(32,64) }
       if (-not $Operation) { $Operation = 'BuildPackage' }
       $global:IconBuildDevModeState = [pscustomobject]@{
@@ -206,7 +208,7 @@ $vipOut = Join-Path $iconRoot 'Tooling\deployment\IconEditor_Test.vip'
         [string]$IconEditorRoot,
         [string]$Operation
       )
-      if (-not $Versions) { $Versions = @(2021) }
+      if (-not $Versions) { $Versions = @(2023) }
       if (-not $Bitness) { $Bitness = @(32,64) }
       if (-not $Operation) { $Operation = 'BuildPackage' }
       $global:IconBuildDevModeState = [pscustomobject]@{
@@ -273,7 +275,7 @@ $vipOut = Join-Path $iconRoot 'Tooling\deployment\IconEditor_Test.vip'
             Rename-Item -LiteralPath $argsMap['CurrentFilename'] -NewName $argsMap['NewFilename'] -Force
           }
         }
-        'ModifyVIPBDisplayInfo.ps1' {
+        'Update-VipbDisplayInfo.ps1' {
           $relativePath = $argsMap['RelativePath']
           if ($relativePath) {
             $infoPath = Join-Path $relativePath 'Tooling\deployment\display-info.json'
@@ -319,6 +321,7 @@ $vipOut = Join-Path $iconRoot 'Tooling\deployment\IconEditor_Test.vip'
   AfterEach {
     Remove-Variable -Name IconBuildRecorded -Scope Global -ErrorAction SilentlyContinue
     Remove-Variable -Name IconBuildDevModeState -Scope Global -ErrorAction SilentlyContinue
+    Remove-Item Env:ICON_EDITOR_UPDATE_VIPB_HELPER -ErrorAction SilentlyContinue
   }
 
   It 'runs full build and packaging flow' {
@@ -332,20 +335,28 @@ $vipOut = Join-Path $iconRoot 'Tooling\deployment\IconEditor_Test.vip'
     $calledScripts | Should -Contain 'Build_lvlibp.ps1'
     ($calledScripts | Where-Object { $_ -eq 'Build_lvlibp.ps1' }).Count | Should -Be 2
     ($calledScripts | Where-Object { $_ -eq 'Close_LabVIEW.ps1' }).Count | Should -Be 3
-    $calledScripts | Should -Contain 'ModifyVIPBDisplayInfo.ps1'
+    $calledScripts | Should -Contain 'Update-VipbDisplayInfo.ps1'
     $calledScripts | Should -Contain 'build_vip.ps1'
 
-    $enableCall = $global:IconBuildRecorded | Where-Object { $_.Script -eq 'EnableDevMode' } | Select-Object -First 1
-    $enableCall | Should -Not -BeNullOrEmpty
-    $enableCall.Arguments.Operation | Should -Be 'BuildPackage'
-    ($enableCall.Arguments.Versions -join ',') | Should -Be '2021'
-    ($enableCall.Arguments.Bitness -join ',')  | Should -Be '32,64'
+    $enableCalls = $global:IconBuildRecorded | Where-Object { $_.Script -eq 'EnableDevMode' }
+    $enableCalls | Should -Not -BeNullOrEmpty
+    $enableCalls.Count | Should -Be 2
+    $enableCalls[0].Arguments.Operation | Should -Be 'BuildPackage'
+    ($enableCalls[0].Arguments.Versions -join ',') | Should -Be '2023'
+    ($enableCalls[0].Arguments.Bitness -join ',')  | Should -Be '32,64'
+    $enableCalls[1].Arguments.Operation | Should -Be 'BuildPackage'
+    ($enableCalls[1].Arguments.Versions -join ',') | Should -Be '2026'
+    ($enableCalls[1].Arguments.Bitness -join ',')  | Should -Be '64'
 
-    $disableCall = $global:IconBuildRecorded | Where-Object { $_.Script -eq 'DisableDevMode' } | Select-Object -First 1
-    $disableCall | Should -Not -BeNullOrEmpty
-    $disableCall.Arguments.Operation | Should -Be 'BuildPackage'
-    ($disableCall.Arguments.Versions -join ',') | Should -Be '2021'
-    ($disableCall.Arguments.Bitness -join ',')  | Should -Be '32,64'
+    $disableCalls = $global:IconBuildRecorded | Where-Object { $_.Script -eq 'DisableDevMode' }
+    $disableCalls | Should -Not -BeNullOrEmpty
+    $disableCalls.Count | Should -Be 2
+    $disableCalls[0].Arguments.Operation | Should -Be 'BuildPackage'
+    ($disableCalls[0].Arguments.Versions -join ',') | Should -Be '2023'
+    ($disableCalls[0].Arguments.Bitness -join ',')  | Should -Be '32,64'
+    $disableCalls[1].Arguments.Operation | Should -Be 'BuildPackage'
+    ($disableCalls[1].Arguments.Versions -join ',') | Should -Be '2026'
+    ($disableCalls[1].Arguments.Bitness -join ',')  | Should -Be '64'
 
     Test-Path -LiteralPath (Join-Path $script:resultsRoot 'lv_icon_x86.lvlibp') | Should -BeTrue
     Test-Path -LiteralPath (Join-Path $script:resultsRoot 'lv_icon_x64.lvlibp') | Should -BeTrue
@@ -359,6 +370,8 @@ $vipOut = Join-Path $iconRoot 'Tooling\deployment\IconEditor_Test.vip'
     $manifest.dependenciesApplied | Should -BeTrue
     $manifest.developmentMode.toggled | Should -BeTrue
     $manifest.packaging.requestedToolchain | Should -Be 'gcli'
+    $manifest.packaging.packedLibVersion   | Should -Be 2023
+    $manifest.packaging.packagingLabviewVersion | Should -Be 2026
     [string]::IsNullOrEmpty($manifest.packaging.requestedProvider) | Should -BeTrue
     @($manifest.artifacts | Where-Object { $_.kind -eq 'vip' }).Count | Should -BeGreaterThan 0
     $manifest.packageSmoke.status | Should -Be 'ok'
@@ -374,22 +387,24 @@ $vipOut = Join-Path $iconRoot 'Tooling\deployment\IconEditor_Test.vip'
     } | Should -Not -Throw
 
     $calledScripts = $global:IconBuildRecorded | Where-Object { $_.Script -like '*.ps1' } | Select-Object -ExpandProperty Script
-    $calledScripts | Should -Not -Contain 'ModifyVIPBDisplayInfo.ps1'
+    $calledScripts | Should -Not -Contain 'Update-VipbDisplayInfo.ps1'
     $calledScripts | Should -Not -Contain 'build_vip.ps1'
 
     Test-Path -LiteralPath (Join-Path $script:resultsRoot 'IconEditor_Test.vip') | Should -BeFalse
 
-    $enableCall = $global:IconBuildRecorded | Where-Object { $_.Script -eq 'EnableDevMode' } | Select-Object -First 1
-    $enableCall | Should -Not -BeNullOrEmpty
-    $enableCall.Arguments.Operation | Should -Be 'BuildPackage'
-    ($enableCall.Arguments.Versions -join ',') | Should -Be '2021'
-    ($enableCall.Arguments.Bitness -join ',')  | Should -Be '32,64'
+    $enableCalls = $global:IconBuildRecorded | Where-Object { $_.Script -eq 'EnableDevMode' }
+    $enableCalls.Count | Should -Be 2
+    ($enableCalls[0].Arguments.Versions -join ',') | Should -Be '2023'
+    ($enableCalls[0].Arguments.Bitness -join ',')  | Should -Be '32,64'
+    ($enableCalls[1].Arguments.Versions -join ',') | Should -Be '2026'
+    ($enableCalls[1].Arguments.Bitness -join ',')  | Should -Be '64'
 
-    $disableCall = $global:IconBuildRecorded | Where-Object { $_.Script -eq 'DisableDevMode' } | Select-Object -First 1
-    $disableCall | Should -Not -BeNullOrEmpty
-    $disableCall.Arguments.Operation | Should -Be 'BuildPackage'
-    ($disableCall.Arguments.Versions -join ',') | Should -Be '2021'
-    ($disableCall.Arguments.Bitness -join ',')  | Should -Be '32,64'
+    $disableCalls = $global:IconBuildRecorded | Where-Object { $_.Script -eq 'DisableDevMode' }
+    $disableCalls.Count | Should -Be 2
+    ($disableCalls[0].Arguments.Versions -join ',') | Should -Be '2023'
+    ($disableCalls[0].Arguments.Bitness -join ',')  | Should -Be '32,64'
+    ($disableCalls[1].Arguments.Versions -join ',') | Should -Be '2026'
+    ($disableCalls[1].Arguments.Bitness -join ',')  | Should -Be '64'
 
     $manifest = Get-Content -LiteralPath (Join-Path $script:resultsRoot 'manifest.json') -Raw | ConvertFrom-Json
     $manifest.packagingRequested | Should -BeFalse
@@ -419,6 +434,8 @@ $vipOut = Join-Path $iconRoot 'Tooling\deployment\IconEditor_Test.vip'
 
     $argMap['BuildToolchain'] | Should -Be 'vipm'
     $argMap['BuildProvider']  | Should -Be 'vipm-custom'
+    $argMap['MinimumSupportedLVVersion'] | Should -Be '2026'
+    $argMap['LabVIEWMinorRevision']      | Should -Be '0'
 
     $manifest = Get-Content -LiteralPath (Join-Path $script:resultsRoot 'manifest.json') -Raw | ConvertFrom-Json
     $manifest.packaging.requestedToolchain | Should -Be 'vipm'

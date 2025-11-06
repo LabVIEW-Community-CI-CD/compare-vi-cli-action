@@ -4,7 +4,7 @@
 
 .DESCRIPTION
     Locates a VIPB file stored alongside this script, merges version details into
-    DisplayInformation JSON, and calls g-cli to create the final VI package.
+    DisplayInformation JSON, and calls the VIPM CLI to create the final VI package.
 
 .PARAMETER SupportedBitness
     LabVIEW bitness for the build ("32" or "64").
@@ -60,6 +60,29 @@ param (
     [string]$DisplayInformationJSON
 )
 
+#Requires -Version 7.0
+
+Set-StrictMode -Version Latest
+$ErrorActionPreference = 'Stop'
+
+# Resolve repository roots for shared tooling
+$actionRoot      = $PSScriptRoot
+$repoRoot        = (Resolve-Path (Join-Path $actionRoot '..\..\..\..\..')).ProviderPath
+$iconEditorRoot  = (Resolve-Path (Join-Path $repoRoot 'vendor' 'icon-editor')).ProviderPath
+$toolsRoot       = Join-Path $repoRoot 'tools'
+$vipmModulePath  = Join-Path $iconEditorRoot 'tools' 'Vipm.psm1'
+$packageModule   = Join-Path $toolsRoot 'icon-editor' 'IconEditorPackage.psm1'
+
+if (-not (Test-Path -LiteralPath $vipmModulePath -PathType Leaf)) {
+    throw "Vipm module not found at '$vipmModulePath'."
+}
+Import-Module $vipmModulePath -Force
+
+if (-not (Test-Path -LiteralPath $packageModule -PathType Leaf)) {
+    throw "IconEditorPackage module not found at '$packageModule'."
+}
+Import-Module $packageModule -Force
+
 # 1) Locate VIPB file in the action directory
 try {
     $vipbFile = Get-ChildItem -Path $PSScriptRoot -Filter *.vipb -ErrorAction Stop | Select-Object -First 1
@@ -77,9 +100,19 @@ catch {
 }
 
 # 2) Create release notes if needed
-if (-not (Test-Path $ReleaseNotesFile)) {
-    Write-Host "Release notes file '$ReleaseNotesFile' does not exist. Creating it..."
-    New-Item -ItemType File -Path $ReleaseNotesFile -Force | Out-Null
+$resolvedReleaseNotes = if ([System.IO.Path]::IsPathRooted($ReleaseNotesFile)) {
+    $ReleaseNotesFile
+} else {
+    Join-Path $repoRoot $ReleaseNotesFile
+}
+
+if (-not (Test-Path $resolvedReleaseNotes)) {
+    Write-Host "Release notes file '$resolvedReleaseNotes' does not exist. Creating it..."
+    $releaseDir = Split-Path -Parent $resolvedReleaseNotes
+    if (-not (Test-Path -LiteralPath $releaseDir -PathType Container)) {
+        New-Item -ItemType Directory -Path $releaseDir -Force | Out-Null
+    }
+    New-Item -ItemType File -Path $resolvedReleaseNotes -Force | Out-Null
 }
 
 # 3) Calculate the LabVIEW version string
@@ -127,27 +160,67 @@ else {
 # Re-convert to a JSON string with a comfortable nesting depth
 $UpdatedDisplayInformationJSON = $jsonObj | ConvertTo-Json -Depth 5
 
-# 5) Construct the command script
+# 5) Invoke the VIPM CLI build
+$bitnessValue = [int]$SupportedBitness
+$labviewMinor = [int]$LabVIEWMinorRevision
 
-$script = @"
-g-cli --lv-ver $MinimumSupportedLVVersion --arch $SupportedBitness vipb -- --buildspec "$ResolvedVIPBPath" -v "$Major.$Minor.$Patch.$Build" --release-notes "$ReleaseNotesFile" --timeout 300
-"@
+Write-Output "Invoking VIPM CLI build for $MinimumSupportedLVVersion ($SupportedBitness-bit)..."
 
-Write-Output "Executing the following commands:"
-Write-Output $script
-
-# 6) Execute the commands
 try {
-    Invoke-Expression $script
-    Write-Host "Successfully built VI package: $ResolvedVIPBPath"
+    $result = Invoke-IconEditorVipBuild `
+        -VipbPath $ResolvedVIPBPath `
+        -Major $Major `
+        -Minor $Minor `
+        -Patch $Patch `
+        -Build $Build `
+        -SupportedBitness $bitnessValue `
+        -MinimumSupportedLVVersion $MinimumSupportedLVVersion `
+        -LabVIEWMinorRevision $labviewMinor `
+        -ReleaseNotesPath $resolvedReleaseNotes `
+        -WorkspaceRoot $iconEditorRoot `
+        -Provider 'vipm'
+
+    Write-Host "Successfully built VI package: $($result.PackagePath)"
 }
 catch {
     $errorObject = [PSCustomObject]@{
-        error      = "An error occurred while executing the build commands."
+        error      = "An error occurred while executing the VIPM build."
         exception  = $_.Exception.Message
         stackTrace = $_.Exception.StackTrace
     }
     $errorObject | ConvertTo-Json -Depth 10
     exit 1
+}
+
+# 6) Persist VIPM build diagnostics
+$logRoot = Join-Path $iconEditorRoot 'tests\results\_agent\icon-editor\vipm-cli-build'
+if (-not (Test-Path -LiteralPath $logRoot -PathType Container)) {
+    New-Item -ItemType Directory -Path $logRoot -Force | Out-Null
+}
+$timestamp = Get-Date -Format 'yyyyMMddTHHmmssfff'
+$logPath = Join-Path $logRoot ("vipm-build-{0}.log" -f $timestamp)
+$metadataPath = Join-Path $logRoot ("vipm-build-{0}.json" -f $timestamp)
+
+$logLines = @()
+$logLines += "VIPM Build Invocation"
+$logLines += "Timestamp (UTC): {0}" -f (Get-Date -Format 'u')
+$logLines += "Provider: {0}" -f $result.Provider
+$logLines += "ProviderBinary: {0}" -f $result.ProviderBinary
+$logLines += "PackagePath: {0}" -f $result.PackagePath
+$logLines += "DurationSeconds: {0}" -f $result.DurationSeconds
+$logLines += "Warnings: {0}" -f (($result.Warnings -join '; ') ?? '')
+$logLines += "---- StdOut ----"
+if ($result.StdOut) { $logLines += $result.StdOut } else { $logLines += '<empty>' }
+$logLines += "---- StdErr ----"
+if ($result.StdErr) { $logLines += $result.StdErr } else { $logLines += '<empty>' }
+
+Set-Content -LiteralPath $logPath -Value $logLines -Encoding UTF8
+$result | ConvertTo-Json -Depth 6 | Set-Content -LiteralPath $metadataPath -Encoding UTF8
+
+if ($Env:GITHUB_OUTPUT) {
+    $relativeLog = [System.IO.Path]::GetRelativePath($repoRoot, (Resolve-Path -LiteralPath $logPath).ProviderPath).Replace('\','/')
+    $relativeMetadata = [System.IO.Path]::GetRelativePath($repoRoot, (Resolve-Path -LiteralPath $metadataPath).ProviderPath).Replace('\','/')
+    "vipm_build_log=$relativeLog" >> $Env:GITHUB_OUTPUT
+    "vipm_build_metadata=$relativeMetadata" >> $Env:GITHUB_OUTPUT
 }
 
