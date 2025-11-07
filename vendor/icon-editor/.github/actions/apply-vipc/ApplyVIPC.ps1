@@ -13,9 +13,7 @@ Param (
     [string]$VIP_LVVersion,
     [string]$SupportedBitness,
     [string]$RelativePath,
-    [string]$VIPCPath,
-    [ValidateSet('auto','gcli','vipm')]
-    [string]$Toolchain = 'auto'
+    [string]$VIPCPath
 )
 
 # Auto-detect the VIPC file if one isn't provided
@@ -46,14 +44,14 @@ Write-Verbose " - VIPCPath:                  $VIPCPath"
 # -------------------------
 try {
     Write-Verbose "Attempting to resolve the 'RelativePath'..."
-    $ResolvedRelativePath = (Resolve-Path -Path $RelativePath -ErrorAction Stop).ProviderPath
+    $ResolvedRelativePath = Resolve-Path -Path $RelativePath -ErrorAction Stop
     Write-Verbose "ResolvedRelativePath: $ResolvedRelativePath"
 
     Write-Verbose "Building full path for the .vipc file..."
     if ([System.IO.Path]::IsPathRooted($VIPCPath)) {
-        $ResolvedVIPCPath = (Resolve-Path -Path $VIPCPath -ErrorAction Stop).ProviderPath
+        $ResolvedVIPCPath = Resolve-Path -Path $VIPCPath -ErrorAction Stop
     } else {
-        $ResolvedVIPCPath = (Resolve-Path -Path (Join-Path -Path $ResolvedRelativePath -ChildPath $VIPCPath) -ErrorAction Stop).ProviderPath
+        $ResolvedVIPCPath = Resolve-Path -Path (Join-Path -Path $ResolvedRelativePath -ChildPath $VIPCPath) -ErrorAction Stop
     }
     Write-Verbose "ResolvedVIPCPath:     $ResolvedVIPCPath"
 
@@ -70,126 +68,80 @@ catch {
     exit 1
 }
 
-$versionsToApply = [System.Collections.Generic.List[string]]::new()
-$versionsToApply.Add([string]$MinimumSupportedLVVersion) | Out-Null
-if ($VIP_LVVersion -and ($VIP_LVVersion -ne $MinimumSupportedLVVersion)) {
-    $versionsToApply.Add([string]$VIP_LVVersion) | Out-Null
-}
-
-$uniqueVersions = $versionsToApply | Select-Object -Unique
-
-function Invoke-ProcessInvocation {
-    param(
-        [Parameter(Mandatory)][pscustomobject]$Invocation,
-        [string]$WorkingDirectory
-    )
-
-    $psi = New-Object System.Diagnostics.ProcessStartInfo
-    $psi.FileName = $Invocation.Binary
-    foreach ($arg in $Invocation.Arguments) {
-        if ($null -ne $arg) {
-            [void]$psi.ArgumentList.Add([string]$arg)
-        }
-    }
-    if ($WorkingDirectory) {
-        $psi.WorkingDirectory = $WorkingDirectory
-    }
-    $psi.RedirectStandardOutput = $true
-    $psi.RedirectStandardError = $true
-    $psi.UseShellExecute = $false
-
-    $process = [System.Diagnostics.Process]::Start($psi)
-    $stdout = $process.StandardOutput.ReadToEnd()
-    $stderr = $process.StandardError.ReadToEnd()
-    $process.WaitForExit()
-
-    if ($stdout) { Write-Host $stdout.Trim() }
-    if ($stderr) { Write-Host $stderr.Trim() }
-
-    if ($process.ExitCode -ne 0) {
-        throw "Process exited with code $($process.ExitCode)."
+# -------------------------
+# 2) Build LabVIEW Version Strings
+# -------------------------
+Write-Verbose "Determining LabVIEW version strings..."
+switch ("$VIP_LVVersion-$SupportedBitness") {
+    "2021-64" { $VIP_LVVersion_A = "21.0 (64-bit)" }
+    "2021-32" { $VIP_LVVersion_A = "21.0" }
+    "2022-64" { $VIP_LVVersion_A = "22.3 (64-bit)" }
+    "2022-32" { $VIP_LVVersion_A = "22.3" }
+    "2023-64" { $VIP_LVVersion_A = "23.3 (64-bit)" }
+    "2023-32" { $VIP_LVVersion_A = "23.3" }
+    "2024-64" { $VIP_LVVersion_A = "24.3 (64-bit)" }
+    "2024-32" { $VIP_LVVersion_A = "24.3" }
+    "2025-64" { $VIP_LVVersion_A = "25.3 (64-bit)" }
+    "2025-32" { $VIP_LVVersion_A = "25.3" }
+    default {
+        Write-Error "Unsupported VIP_LVVersion or SupportedBitness for VIP_LVVersion_A."
+        exit 1
     }
 }
 
-$toolchainOrder = switch ($Toolchain.ToLowerInvariant()) {
-    'gcli' { @('gcli') }
-    'vipm' { @('vipm') }
-    default { @('gcli','vipm') }
-}
-
-$applyVipcPath = $null
-$gcliModuleImported = $false
-$vipmModuleImported = $false
-$errors = New-Object System.Collections.Generic.List[string]
-$usedToolchain = $null
-
-foreach ($tool in $toolchainOrder) {
-    try {
-        switch ($tool) {
-            'gcli' {
-                $gcliModulePath = Join-Path $ResolvedRelativePath 'tools' 'GCli.psm1'
-                if (-not (Test-Path -LiteralPath $gcliModulePath -PathType Leaf)) {
-                    throw "g-cli module not found at '$gcliModulePath'."
-                }
-                if (-not $gcliModuleImported) {
-                    Import-Module $gcliModulePath -Force
-                    $gcliModuleImported = $true
-                }
-
-                if (-not $applyVipcPath) {
-                    $applyVipcRelative = 'vendor/icon-editor/Tooling/deployment/Applyvipc.vi'
-                    $applyVipcPath = (Resolve-Path -Path (Join-Path $ResolvedRelativePath $applyVipcRelative) -ErrorAction Stop).ProviderPath
-                }
-
-                foreach ($version in $uniqueVersions) {
-                    Write-Output ("Applying dependencies via g-cli for LabVIEW {0} ({1}-bit)..." -f $version, $SupportedBitness)
-                    $invocation = Get-GCliInvocation -Operation 'VipcInstall' -Params @{
-                        vipcPath       = $ResolvedVIPCPath
-                        labviewVersion = $version
-                        labviewBitness = $SupportedBitness
-                        applyVipcPath  = $applyVipcPath
-                        targetVersion  = $version
-                    }
-                    Write-Output ("Executing g-cli provider [{0}]: {1} {2}" -f $invocation.Provider, $invocation.Binary, ($invocation.Arguments -join ' '))
-                    Invoke-ProcessInvocation -Invocation $invocation -WorkingDirectory (Split-Path -Parent $ResolvedVIPCPath)
-                }
-            }
-            'vipm' {
-                $vipmModulePath = Join-Path $ResolvedRelativePath 'tools' 'Vipm.psm1'
-                if (-not (Test-Path -LiteralPath $vipmModulePath -PathType Leaf)) {
-                    throw "VIPM module not found at '$vipmModulePath'."
-                }
-                if (-not $vipmModuleImported) {
-                    Import-Module $vipmModulePath -Force
-                    $vipmModuleImported = $true
-                }
-
-                foreach ($version in $uniqueVersions) {
-                    Write-Output ("Applying dependencies via VIPM for LabVIEW {0} ({1}-bit)..." -f $version, $SupportedBitness)
-                    $params = @{
-                        vipcPath       = $ResolvedVIPCPath
-                        labviewVersion = $version
-                        labviewBitness = $SupportedBitness
-                    }
-                    $invocation = Get-VipmInvocation -Operation 'InstallVipc' -Params $params
-                    Write-Output ("Executing VIPM provider [{0}]: {1} {2}" -f $invocation.Provider, $invocation.Binary, ($invocation.Arguments -join ' '))
-                    Invoke-ProcessInvocation -Invocation $invocation -WorkingDirectory (Split-Path -Parent $ResolvedVIPCPath)
-                }
-            }
-        }
-
-        $usedToolchain = $tool
-        break
-    } catch {
-        $message = "[{0}] {1}" -f $tool, $_.Exception.Message
-        $errors.Add($message) | Out-Null
-        Write-Warning $message
+switch ("$MinimumSupportedLVVersion-$SupportedBitness") {
+    "2021-64" { $VIP_LVVersion_B = "21.0 (64-bit)" }
+    "2021-32" { $VIP_LVVersion_B = "21.0" }
+    "2022-64" { $VIP_LVVersion_B = "22.3 (64-bit)" }
+    "2022-32" { $VIP_LVVersion_B = "22.3" }
+    "2023-64" { $VIP_LVVersion_B = "23.3 (64-bit)" }
+    "2023-32" { $VIP_LVVersion_B = "23.3" }
+    "2024-64" { $VIP_LVVersion_B = "24.3 (64-bit)" }
+    "2024-32" { $VIP_LVVersion_B = "24.3" }
+    "2025-64" { $VIP_LVVersion_B = "25.3 (64-bit)" }
+    "2025-32" { $VIP_LVVersion_B = "25.3" }
+    default {
+        Write-Error "Unsupported MinimumSupportedLVVersion or SupportedBitness for VIP_LVVersion_B."
+        exit 1
     }
 }
 
-if (-not $usedToolchain) {
-    Write-Error ("Failed to apply VIPC dependencies. Errors:`n{0}" -f ($errors -join [Environment]::NewLine))
+Write-Output "Applying dependencies for LabVIEW $VIP_LVVersion_B..."
+Write-Verbose "VIP_LVVersion_A (for primary LVVersion): $VIP_LVVersion_A"
+Write-Verbose "VIP_LVVersion_B (for minimum LVVersion): $VIP_LVVersion_B"
+
+# -------------------------
+# 3) Construct the Script to Execute
+# -------------------------
+Write-Verbose "Constructing the g-cli command script..."
+$script = @"
+g-cli --lv-ver $MinimumSupportedLVVersion --arch $SupportedBitness -v "$($ResolvedRelativePath)\Tooling\Deployment\Applyvipc.vi" -- "$ResolvedVIPCPath" "$VIP_LVVersion_B"
+"@
+
+if ($VIP_LVVersion -ne $MinimumSupportedLVVersion) {
+    Write-Verbose "VIP_LVVersion and MinimumSupportedLVVersion differ; adding commands for $VIP_LVVersion..."
+    $script += @"
+g-cli vipc -- -t 3000 -v "$VIP_LVVersion" "$ResolvedVIPCPath"
+"@
+}
+
+# -------------------------
+# 4) Output the script for debugging
+# -------------------------
+Write-Output "Executing the following commands:"
+Write-Output $script
+Write-Verbose "Full script content (for debugging): `n$script"
+
+# -------------------------
+# 5) Execute the Script & Handle Errors (Try/Catch with Invoke-Expression)
+# -------------------------
+try {
+    Write-Verbose "Starting Invoke-Expression to run g-cli commands..."
+    Invoke-Expression $script
+    Write-Host "Successfully applied dependencies to LabVIEW: $VIP_LVVersion_B" `
+        " (and potentially $VIP_LVVersion_A if switched)."
+}
+catch {
+    Write-Error "An error occurred while applying the .vipc dependencies. Details: $($_.Exception.Message)"
     exit 1
 }
-
-Write-Host ("Successfully applied dependencies using {0} provider." -f $usedToolchain)

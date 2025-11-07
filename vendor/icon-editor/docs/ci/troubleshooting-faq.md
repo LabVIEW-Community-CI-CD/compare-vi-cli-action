@@ -31,7 +31,7 @@ This document provides a collection of common **troubleshooting** scenarios (wit
    6. [Q6: What About Draft Releases?](#q6-what-about-draft-releases)
    7. [Q7: Can I Use This Workflow Without Gitflow?](#q7-can-i-use-this-workflow-without-gitflow)
    8. [Q8: Why Is My Dev Mode Toggle Not Working Locally?](#q8-why-is-my-dev-mode-toggle-not-working-locally)
-   9. [Q9: Can I Use a Different LabVIEW Version (e.g., 2025)?](#q9-can-i-use-a-different-labview-version-eg-2025)
+   9. [Q9: Can I Use a Different LabVIEW Version (e.g., 2023)?](#q9-can-i-use-a-different-labview-version-eg-2023)
    10. [Q10: How Do I Pass Repository Name and Organization?](#q10-how-do-i-pass-repository-name-and-organization)
    11. [Q11: Can I Omit the Company/Author Fields in My JSON?](#q11-can-i-omit-the-companyauthor-fields-in-my-json)
    12. [Q12: Why Must I Use Single-Dash Instead of Double-Dash?](#q12-why-must-i-use-single-dash-instead-of-double-dash)
@@ -317,7 +317,7 @@ The Dev Mode Toggle scripts rely on a self-hosted runner context. If you’re tr
 
 ---
 
-### Q9: Can I Use a Different LabVIEW Version (e.g., 2025)?
+### Q9: Can I Use a Different LabVIEW Version (e.g., 2023)?
 
 **Answer**:  
 Yes, if your machine and project support it. You’ll need to install that version on your self-hosted runner, and potentially update environment variables or references in the build scripts (e.g., specifying the correct LabVIEW EXE path). Just ensure everything in the project is compatible.

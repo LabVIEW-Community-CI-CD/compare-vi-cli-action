@@ -224,7 +224,7 @@ jobs:
             bitness: "32"
           - lv-version: "2021"
             bitness: "64"
-          - lv-version: "2025"
+          - lv-version: "2023"
             bitness: "64"
     steps:
       - uses: ./.github/actions/apply-vipc
@@ -374,7 +374,7 @@ jobs:
           supported_bitness: 64
           relative_path: ${{ github.workspace }}
           vipb_path: .github/actions/build-vi-package/NI Icon editor.vipb
-          minimum_supported_lv_version: 2025
+          minimum_supported_lv_version: 2023
           labview_minor_revision: 3
           major: ${{ needs.version.outputs.MAJOR }}
           minor: ${{ needs.version.outputs.MINOR }}
@@ -386,7 +386,7 @@ jobs:
       - uses: ./.github/actions/build-vi-package
         with:
           supported_bitness: 64
-          minimum_supported_lv_version: 2025
+          minimum_supported_lv_version: 2023
           labview_minor_revision: 3
           major: ${{ needs.version.outputs.MAJOR }}
           minor: ${{ needs.version.outputs.MINOR }}
@@ -397,7 +397,7 @@ jobs:
           display_information_json: ${{ steps.display-info.outputs.json }}
       - uses: ./.github/actions/close-labview
         with:
-          minimum_supported_lv_version: 2025
+          minimum_supported_lv_version: 2023
           supported_bitness: 64
       - name: Upload VI Package
         uses: actions/upload-artifact@v4

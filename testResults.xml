@@ -1,30 +1,20 @@
 ﻿<?xml version="1.0" encoding="utf-8" standalone="no"?>
-<test-results xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="nunit_schema_2.5.xsd" name="Pester" total="3" errors="0" failures="1" not-run="0" inconclusive="0" ignored="0" skipped="0" invalid="0" date="2025-11-02" time="21:05:07">
-  <environment nunit-version="2.5.8.0" clr-version="9.0.8" platform="Microsoft Windows 11 Enterprise|C:\WINDOWS|\Device\Harddisk0\Partition3" machine-name="USAUSLT-Z7DLW6G" cwd="C:\codex\home\runner\work\compare-vi-cli-action" user-domain="NI" user="svelderr" os-version="10.0.22631" />
+<test-results xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="nunit_schema_2.5.xsd" name="Pester" total="3" errors="0" failures="0" not-run="0" inconclusive="0" ignored="0" skipped="0" invalid="0" date="2025-11-06" time="08:53:06">
+  <environment user="svelderr" user-domain="NI" cwd="C:\codex\home\runner\work\compare-vi-cli-action" clr-version="9.0.8" machine-name="USAUSLT-Z7DLW6G" os-version="10.0.22631" nunit-version="2.5.8.0" platform="Microsoft Windows 11 Enterprise|C:\WINDOWS|\Device\Harddisk0\Partition3" />
   <culture-info current-culture="en-US" current-uiculture="en-US" />
-  <test-suite type="TestFixture" name="Pester" executed="True" result="Failure" success="False" time="14.1926" asserts="0" description="Pester">
+  <test-suite type="TestFixture" name="Pester" executed="True" result="Success" success="True" time="668.9342" asserts="0" description="Pester">
     <results>
-      <test-suite type="TestFixture" name="C:\codex\home\runner\work\compare-vi-cli-action\tests\Prepare-OverlayFromRepo.Tests.ps1" executed="True" result="Success" success="True" time="4.515" asserts="0" description="C:\codex\home\runner\work\compare-vi-cli-action\tests\Prepare-OverlayFromRepo.Tests.ps1">
+      <test-suite type="TestFixture" name="C:\codex\home\runner\work\compare-vi-cli-action\tests\IconEditorMissingInProject.DevMode.Tests.ps1" executed="True" result="Success" success="True" time="668.9342" asserts="0" description="C:\codex\home\runner\work\compare-vi-cli-action\tests\IconEditorMissingInProject.DevMode.Tests.ps1">
         <results>
-          <test-suite type="TestFixture" name="Prepare-OverlayFromRepo.ps1" executed="True" result="Success" success="True" time="3.9122" asserts="0" description="Prepare-OverlayFromRepo.ps1">
+          <test-suite type="TestFixture" name="MissingInProject honours dev-mode token" executed="True" result="Success" success="True" time="668.084" asserts="0" description="MissingInProject honours dev-mode token">
             <results>
-              <test-case description="copies only changed files into the overlay" name="Prepare-OverlayFromRepo.ps1.copies only changed files into the overlay" time="1.9924" asserts="0" success="True" result="Success" executed="True" />
-              <test-case description="skips unchanged files even when extensions match" name="Prepare-OverlayFromRepo.ps1.skips unchanged files even when extensions match" time="1.6734" asserts="0" success="True" result="Success" executed="True" />
-            </results>
-          </test-suite>
-        </results>
-      </test-suite>
-      <test-suite type="TestFixture" name="C:\codex\home\runner\work\compare-vi-cli-action\tests\Invoke-IconEditorSnapshotFromRepo.Tests.ps1" executed="True" result="Failure" success="False" time="9.6776" asserts="0" description="C:\codex\home\runner\work\compare-vi-cli-action\tests\Invoke-IconEditorSnapshotFromRepo.Tests.ps1">
-        <results>
-          <test-suite type="TestFixture" name="Invoke-IconEditorSnapshotFromRepo.ps1" executed="True" result="Failure" success="False" time="9.5312" asserts="0" description="Invoke-IconEditorSnapshotFromRepo.ps1">
-            <results>
-              <test-case description="generates a snapshot workspace using changed files from the repo" name="Invoke-IconEditorSnapshotFromRepo.ps1.generates a snapshot workspace using changed files from the repo" time="9.4337" asserts="0" success="False" result="Failure" executed="True">
-                <failure>
-                  <message>Expected $true, but got $null.</message>
-                  <stack-trace>at $result.stageExecuted | Should -BeTrue, C:\codex\home\runner\work\compare-vi-cli-action\tests\Invoke-IconEditorSnapshotFromRepo.Tests.ps1:58
-at &lt;ScriptBlock&gt;, C:\codex\home\runner\work\compare-vi-cli-action\tests\Invoke-IconEditorSnapshotFromRepo.Tests.ps1:58</stack-trace>
-                </failure>
-              </test-case>
+              <test-suite type="TestFixture" name="MissingInProject honours dev-mode token.LabVIEW dev-mode token behaviour" executed="True" result="Success" success="True" time="668.005" asserts="0" description="MissingInProject honours dev-mode token.LabVIEW dev-mode token behaviour">
+                <results>
+                  <test-case description="passes MissingInProject when dev mode is enabled (LabVIEW  -bit)" name="MissingInProject honours dev-mode token.LabVIEW dev-mode token behaviour.passes MissingInProject when dev mode is enabled (LabVIEW  -bit)" time="124.3567" asserts="0" success="True" result="Success" executed="True" />
+                  <test-case description="fails MissingInProject after dev mode is disabled (LabVIEW  -bit)" name="MissingInProject honours dev-mode token.LabVIEW dev-mode token behaviour.fails MissingInProject after dev mode is disabled (LabVIEW  -bit)" time="185.7258" asserts="0" success="True" result="Success" executed="True" />
+                  <test-case description="builds the icon editor packed library after validations (LabVIEW  -bit)" name="MissingInProject honours dev-mode token.LabVIEW dev-mode token behaviour.builds the icon editor packed library after validations (LabVIEW  -bit)" time="357.8451" asserts="0" success="True" result="Success" executed="True" />
+                </results>
+              </test-suite>
             </results>
           </test-suite>
         </results>

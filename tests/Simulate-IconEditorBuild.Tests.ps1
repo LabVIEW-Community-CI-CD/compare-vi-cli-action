@@ -8,6 +8,11 @@ Describe 'Simulate-IconEditorBuild.ps1' -Tag 'IconEditor','Simulation','Unit' {
   }
 
   It 'materialises fixture artifacts and manifest' {
+    if (-not (Test-Path -LiteralPath $script:fixturePath -PathType Leaf)) {
+      Set-ItResult -Skip -Because 'Fixture VIP not available; skipping simulation test.'
+      return
+    }
+
     $resultsRoot = Join-Path $TestDrive 'simulate-results'
     $expected = @{
       major  = 9
@@ -44,6 +49,11 @@ Describe 'Simulate-IconEditorBuild.ps1' -Tag 'IconEditor','Simulation','Unit' {
   }
 
   It 'handles legacy fixtures with install\plugins layout' {
+    if (-not (Test-Path -LiteralPath $script:fixturePath -PathType Leaf)) {
+      Set-ItResult -Skip -Because 'Fixture VIP not available; skipping simulation test.'
+      return
+    }
+
     $resultsRoot = Join-Path $TestDrive 'legacy-results'
     $fixtureRoot = Join-Path $TestDrive 'legacy-fixture'
     $systemRoot = Join-Path $TestDrive 'legacy-system'
@@ -116,6 +126,11 @@ Sub-Packages=""
   }
 
   It 'falls back to Copy-Item overlay when robocopy is unavailable' {
+    if (-not (Test-Path -LiteralPath $script:fixturePath -PathType Leaf)) {
+      Set-ItResult -Skip -Because 'Fixture VIP not available; skipping simulation test.'
+      return
+    }
+
     $resultsRoot = Join-Path $TestDrive 'fallback-results'
     $overlayRoot = Join-Path $TestDrive 'overlay-source'
     New-Item -ItemType Directory -Path $overlayRoot | Out-Null
@@ -133,5 +148,29 @@ Sub-Packages=""
 
     $resourceCopy = Join-Path $resultsRoot '__fixture_extract\__system_extract\File Group 0\National Instruments\LabVIEW Icon Editor\resource\overlay.txt'
     Test-Path -LiteralPath $resourceCopy -PathType Leaf | Should -BeTrue
+  }
+
+  It 'emits VIP diff metadata when a requests output directory is provided' {
+    if (-not (Test-Path -LiteralPath $script:fixturePath -PathType Leaf)) {
+      Set-ItResult -Skip -Because 'Fixture VIP not available; skipping simulation test.'
+      return
+    }
+
+    $resultsRoot = Join-Path $TestDrive 'vip-diff-results'
+    $vipDiffRoot = Join-Path $TestDrive 'vip-diff-output'
+    $requestsPath = Join-Path $vipDiffRoot 'custom-requests.json'
+
+    $manifest = & $script:scriptPath `
+      -FixturePath $script:fixturePath `
+      -ResultsRoot $resultsRoot `
+      -VipDiffOutputDir $vipDiffRoot `
+      -VipDiffRequestsPath $requestsPath
+
+    $manifest | Should -Not -BeNullOrEmpty
+    $manifest.vipDiff | Should -Not -BeNullOrEmpty
+    $manifest.vipDiff.requestsPath | Should -Be (Resolve-Path -LiteralPath $requestsPath).Path
+    $manifest.vipDiff.count | Should -BeGreaterThan 0
+    Test-Path -LiteralPath $requestsPath -PathType Leaf | Should -BeTrue
+    Test-Path -LiteralPath $vipDiffRoot -PathType Container | Should -BeTrue
   }
 }

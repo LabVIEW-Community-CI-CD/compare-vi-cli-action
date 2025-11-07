@@ -1,48 +1,68 @@
-<#
-.SYNOPSIS
-    Adds a custom library path token to the LabVIEW INI file.
-
-.DESCRIPTION
-    Uses g-cli to call Create_LV_INI_Token.vi, inserting the provided path into
-    the LabVIEW INI file under the Localhost.LibraryPaths token. This enables
-    LabVIEW to locate local project libraries during development or builds.
-
-.PARAMETER MinimumSupportedLVVersion
-    LabVIEW version used by g-cli (e.g., "2021").
-
-.PARAMETER SupportedBitness
-    Target bitness of the LabVIEW environment ("32" or "64").
-
-.PARAMETER RelativePath
-    Path to the repository root that should be added to the INI token.
-
-.EXAMPLE
-    .\AddTokenToLabVIEW.ps1 -MinimumSupportedLVVersion "2021" -SupportedBitness "64" -RelativePath "C:\labview-icon-editor"
-#>
-
+[CmdletBinding()]
 param(
-    [string]$MinimumSupportedLVVersion,
-    [string]$SupportedBitness,
-    [string]$RelativePath
+    [Parameter(Mandatory)][string]$MinimumSupportedLVVersion,
+    [Parameter(Mandatory)][ValidateSet('32','64')][string]$SupportedBitness,
+    [Parameter(Mandatory)][Alias('IconEditorRoot')][string]$RelativePath
 )
 
-# Construct the command
-$script = @"
-g-cli --lv-ver $MinimumSupportedLVVersion --arch $SupportedBitness -v "$RelativePath\Tooling\deployment\Create_LV_INI_Token.vi" -- "LabVIEW" "Localhost.LibraryPaths" "$RelativePath"
-"@
+$ErrorActionPreference = 'Stop'
 
-Write-Output "Executing the following command:"
-Write-Output $script
-
-# Execute the command and check for errors
-try {
-    Invoke-Expression $script
-
-    # Check the exit code of the executed command
-    if ($LASTEXITCODE -eq 0) {
-        Write-Host "Create localhost.library path from ini file"
+function Resolve-PathOrDefault {
+    param([string]$PathValue)
+    if ([string]::IsNullOrWhiteSpace($PathValue)) { return $null }
+    try {
+        return (Resolve-Path -LiteralPath $PathValue -ErrorAction Stop).Path
+    } catch {
+        return $PathValue
     }
-} catch {
-    Write-Host ""
-    exit 0
+}
+
+$targetRoot = Resolve-PathOrDefault -PathValue $RelativePath
+if (-not $targetRoot) {
+    throw "RelativePath/IconEditorRoot is required."
+}
+
+$deploymentRoot = Join-Path $targetRoot 'Tooling' 'deployment'
+$createTokenPath = Join-Path $deploymentRoot 'Create_LV_INI_Token.vi'
+
+$gCliExe = if ($env:GCLI_EXE_PATH -and -not [string]::IsNullOrWhiteSpace($env:GCLI_EXE_PATH)) {
+    $env:GCLI_EXE_PATH
+} else {
+    'g-cli'
+}
+
+$gCliArgs = @(
+    '--lv-ver', $MinimumSupportedLVVersion,
+    '--arch',   $SupportedBitness,
+    '-v',       $createTokenPath,
+    '--',
+    'LabVIEW',
+    'Localhost.LibraryPaths',
+    $targetRoot
+)
+
+Write-Host ("Executing: {0} {1}" -f $gCliExe, ($gCliArgs -join ' '))
+& $gCliExe @gCliArgs
+$exitCode = $LASTEXITCODE
+if ($exitCode -ne 0) {
+    throw "g-cli exited with code $exitCode while updating Localhost.LibraryPaths."
+}
+
+Write-Host "Create localhost.library path from ini file"
+
+$closeScriptOverride = $env:ICON_EDITOR_CLOSE_SCRIPT_PATH
+$scriptDir = Split-Path -Parent $PSCommandPath
+$closeScriptDefault = Join-Path (Split-Path -Parent $scriptDir) 'close-labview' 'Close_LabVIEW.ps1'
+$closeScript = if (-not [string]::IsNullOrWhiteSpace($closeScriptOverride)) { $closeScriptOverride } else { $closeScriptDefault }
+
+if ($closeScript -and (Test-Path -LiteralPath $closeScript -PathType Leaf)) {
+    try {
+        & $closeScript `
+            -MinimumSupportedLVVersion $MinimumSupportedLVVersion `
+            -SupportedBitness $SupportedBitness | Out-Null
+    } catch {
+        Write-Warning ("Failed to close LabVIEW after token update via '{0}': {1}" -f $closeScript, $_.Exception.Message)
+    }
+} else {
+    Write-Verbose ("Close-LabVIEW helper not found at '{0}'; skipping post-token close." -f $closeScript)
 }

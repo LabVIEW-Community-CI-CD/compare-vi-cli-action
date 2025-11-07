@@ -18,6 +18,133 @@
       "problemMatcher": []
     },
     {
+      "label": "IconEditor: Dev Mode On",
+      "type": "process",
+      "command": "pwsh",
+      "args": [
+        "-NoLogo",
+        "-NoProfile",
+        "-File",
+        "tools/icon-editor/Enable-DevMode.ps1",
+        "-RepoRoot",
+        ".",
+        "-IconEditorRoot",
+        "vendor/icon-editor",
+        "-Versions",
+        "${input:devModeVersion}",
+        "-Bitness",
+        "${input:devModeBitness}",
+        "-Operation",
+        "BuildPackage"
+      ],
+      "options": {
+        "cwd": "${workspaceFolder}"
+      },
+      "group": "build",
+      "detail": "Enable icon-editor dev mode for BuildPackage targets",
+      "problemMatcher": []
+    },
+    {
+      "label": "IconEditor: Dev Mode Off",
+      "type": "process",
+      "command": "pwsh",
+      "args": [
+        "-NoLogo",
+        "-NoProfile",
+        "-File",
+        "tools/icon-editor/Disable-DevMode.ps1",
+        "-RepoRoot",
+        ".",
+        "-IconEditorRoot",
+        "vendor/icon-editor",
+        "-Versions",
+        "${input:devModeVersion}",
+        "-Bitness",
+        "${input:devModeBitness}",
+        "-Operation",
+        "BuildPackage"
+      ],
+      "options": {
+        "cwd": "${workspaceFolder}"
+      },
+      "group": "build",
+      "detail": "Disable icon-editor dev mode (restores Localhost.LibraryPaths)",
+      "problemMatcher": []
+    },
+    {
+      "label": "IconEditor: Prepare LabVIEW Host",
+      "type": "process",
+      "command": "pwsh",
+      "args": [
+        "-NoLogo",
+        "-NoProfile",
+        "-File",
+        "tools/icon-editor/Prepare-LabVIEWHost.ps1",
+        "-FixturePath",
+        "${input:iconEditorPrepFixture}",
+        "-Versions",
+        "${input:iconEditorPrepVersions}",
+        "-Bitness",
+        "${input:iconEditorPrepBitness}",
+        "-StageName",
+        "${input:iconEditorPrepStage}"
+      ],
+      "options": {
+        "cwd": "${workspaceFolder}"
+      },
+      "group": "build",
+      "detail": "Stages fixtures, enables dev mode, closes LabVIEW, and resets workspaces ahead of MissingInProject runs",
+      "problemMatcher": []
+    },
+    {
+      "label": "Tests: MissingInProject (unit harness)",
+      "type": "process",
+      "command": "pwsh",
+      "args": [
+        "-NoLogo",
+        "-NoProfile",
+        "-File",
+        "Invoke-PesterTests.ps1",
+        "-TestsPath",
+        "tests",
+        "-IncludePatterns",
+        "Invoke-MissingInProjectCLI.*",
+        "-IntegrationMode",
+        "exclude",
+        "-ResultsPath",
+        "tests/results"
+      ],
+      "options": {
+        "cwd": "${workspaceFolder}"
+      },
+      "group": "test",
+      "detail": "Unit harness only (no LabVIEW/dev-mode)",
+      "problemMatcher": []
+    },
+    {
+      "label": "Tests: MissingInProject (dev-mode integration)",
+      "type": "process",
+      "command": "pwsh",
+      "args": [
+        "-NoLogo",
+        "-NoProfile",
+        "-File",
+        "Invoke-PesterTests.ps1",
+        "-TestsPath",
+        "tests/IconEditorMissingInProject.DevMode.Tests.ps1",
+        "-IntegrationMode",
+        "include",
+        "-ResultsPath",
+        "tests/results"
+      ],
+      "options": {
+        "cwd": "${workspaceFolder}"
+      },
+      "group": "test",
+      "detail": "Dev-mode toggles + packed-library build",
+      "problemMatcher": []
+    },
+    {
       "label": "Local: Verify diff session (real, stateless)",
       "type": "process",
       "command": "pwsh",
@@ -314,6 +441,202 @@
       },
       "group": "test",
       "problemMatcher": []
+    },
+    {
+      "label": "IconEditor: MissingInProject (Pester)",
+      "type": "process",
+      "command": "pwsh",
+      "args": [
+        "-NoLogo",
+        "-NoProfile",
+        "-File",
+        "Invoke-PesterTests.ps1",
+        "-TestsPath",
+        "tests",
+        "-IncludePatterns",
+        "*MissingInProject*",
+        "-IntegrationMode",
+        "include",
+        "-LiveOutput",
+        "-ResultsPath",
+        "tests/results"
+      ],
+      "options": {
+        "cwd": "${workspaceFolder}"
+      },
+      "group": "test",
+      "detail": "Runs MissingInProject action + dev-mode integration coverage",
+      "problemMatcher": []
+    },
+    {
+      "label": "IconEditor: MissingInProject (Wrapper-only)",
+      "type": "process",
+      "command": "pwsh",
+      "args": [
+        "-NoLogo",
+        "-NoProfile",
+        "-File",
+        "Invoke-PesterTests.ps1",
+        "-TestsPath",
+        "tests",
+        "-IncludePatterns",
+        "Invoke-MissingInProjectCLI.*",
+        "-IntegrationMode",
+        "include",
+        "-LiveOutput",
+        "-ResultsPath",
+        "tests/results"
+      ],
+      "options": {
+        "cwd": "${workspaceFolder}"
+      },
+      "group": "test",
+      "detail": "Runs only the MissingInProject action wrapper tests (readiness gate)",
+      "problemMatcher": []
+    },
+    {
+      "label": "IconEditor: Build (VIPM CLI)",
+      "type": "process",
+      "command": "pwsh",
+      "args": [
+        "-NoLogo",
+        "-NoProfile",
+        "-File",
+        "tools/icon-editor/Invoke-VipmCliBuild.ps1",
+        "-RepoSlug",
+        "LabVIEW-Community-CI-CD/labview-icon-editor",
+        "-MinimumSupportedLVVersion",
+        "2023",
+        "-PackageMinimumSupportedLVVersion",
+        "2026",
+        "-PackageSupportedBitness",
+        "64"
+      ],
+      "options": {
+        "cwd": "${workspaceFolder}"
+      },
+      "group": "build",
+      "detail": "Runs full VIPM CLI packaging lane (no unit tests)",
+      "problemMatcher": []
+    },
+    {
+      "label": "IconEditor: Unit Tests (Validate-only)",
+      "type": "process",
+      "command": "pwsh",
+      "args": [
+        "-NoLogo",
+        "-NoProfile",
+        "-File",
+        "tools/icon-editor/Invoke-IconEditorBuild.ps1",
+        "-RunUnitTests",
+        "-SkipPackaging",
+        "-ResultsRoot",
+        "tests/results/_agent/icon-editor/local-validate"
+      ],
+      "options": {
+        "cwd": "${workspaceFolder}"
+      },
+      "group": "test",
+      "detail": "Runs icon-editor unit tests only (skips packaging)",
+      "problemMatcher": []
+    },
+    {
+      "label": "IconEditor: Build + Unit Tests (One-shot)",
+      "type": "process",
+      "command": "pwsh",
+      "args": [
+        "-NoLogo",
+        "-NoProfile",
+        "-Command",
+        "& { & 'tools/icon-editor/Invoke-VipmCliBuild.ps1' -RepoSlug 'LabVIEW-Community-CI-CD/labview-icon-editor' -MinimumSupportedLVVersion 2023 -PackageMinimumSupportedLVVersion 2026 -PackageSupportedBitness 64; & 'tools/icon-editor/Invoke-IconEditorBuild.ps1' -RunUnitTests -SkipPackaging -ResultsRoot 'tests/results/_agent/icon-editor/local-validate' }"
+      ],
+      "options": {
+        "cwd": "${workspaceFolder}"
+      },
+      "group": "build",
+      "detail": "VIPM packaging then unit tests (skip packaging again)",
+      "problemMatcher": []
+    },
+    {
+      "label": "IconEditor: Build + Unit Tests (One-shot, Robust)",
+      "type": "process",
+      "command": "pwsh",
+      "args": [
+        "-NoLogo",
+        "-NoProfile",
+        "-File",
+        "tools/icon-editor/Run-OneShotBuildAndTests.ps1",
+        "-MinimumSupportedLVVersion",
+        "${input:oneshotMinLV}",
+        "-PackageMinimumSupportedLVVersion",
+        "${input:oneshotPkgLV}",
+        "-PackageSupportedBitness",
+        "${input:oneshotPkgBitness}",
+        "-GhTokenPath",
+        "${input:oneshotGhTokenPath}",
+        "-SkipSync",
+        "",
+        "-SkipVipcApply",
+        "",
+        "-SkipClose",
+        ""
+      ],
+      "options": {
+        "cwd": "${workspaceFolder}"
+      },
+      "group": "build",
+      "detail": "VIPM packaging then unit tests (skip re-packaging), with bootstrap, env toggles, rogue scans, transcript",
+      "problemMatcher": []
+    },
+    {
+      "label": "IconEditor: One-shot (Fast path)",
+      "type": "process",
+      "command": "pwsh",
+      "args": [
+        "-NoLogo",
+        "-NoProfile",
+        "-File",
+        "tools/icon-editor/Run-OneShotBuildAndTests.ps1",
+        "-MinimumSupportedLVVersion",
+        "${input:oneshotMinLV}",
+        "-PackageMinimumSupportedLVVersion",
+        "${input:oneshotPkgLV}",
+        "-PackageSupportedBitness",
+        "${input:oneshotPkgBitness}",
+        "-GhTokenPath",
+        "${input:oneshotGhTokenPath}",
+        "-SkipSync",
+        "yes",
+        "-SkipVipcApply",
+        "yes"
+      ],
+      "options": {
+        "cwd": "${workspaceFolder}"
+      },
+      "group": "build",
+      "detail": "Fast inner loop: skip vendor sync and VIPC apply; runs unit tests after",
+      "problemMatcher": []
+    },
+    {
+      "label": "IconEditor: Publish Local Artifacts",
+      "type": "process",
+      "command": "pwsh",
+      "args": [
+        "-NoLogo",
+        "-NoProfile",
+        "-File",
+        "tools/icon-editor/Publish-LocalArtifacts.ps1",
+        "-GhTokenPath",
+        "${input:oneshotGhTokenPath}",
+        "-SkipUpload",
+        "${input:publishSkipUpload}"
+      ],
+      "options": {
+        "cwd": "${workspaceFolder}"
+      },
+      "group": "build",
+      "detail": "Package latest VIP/PPL outputs into a zip and (optionally) upload via gh release",
+      "problemMatcher": []
     }
   ],
   "inputs": [
@@ -416,6 +739,144 @@
         }
       ],
       "default": "64"
+    },
+    {
+      "id": "oneshotMinLV",
+      "type": "promptString",
+      "description": "Minimum Supported LabVIEW (build lvlibp)",
+      "default": "2021"
+    },
+    {
+      "id": "oneshotPkgLV",
+      "type": "promptString",
+      "description": "Packaging LabVIEW version",
+      "default": "2023"
+    },
+    {
+      "id": "oneshotPkgBitness",
+      "type": "pickString",
+      "description": "Packaging bitness",
+      "default": "64",
+      "options": [
+        {
+          "label": "64-bit",
+          "value": "64"
+        },
+        {
+          "label": "32-bit",
+          "value": "32"
+        }
+      ]
+    },
+    {
+      "id": "oneshotSkipSync",
+      "type": "pickString",
+      "description": "Skip vendor sync?",
+      "default": "no",
+      "options": [
+        {
+          "label": "no",
+          "value": "no"
+        },
+        {
+          "label": "yes",
+          "value": "yes"
+        }
+      ]
+    },
+    {
+      "id": "oneshotSkipApply",
+      "type": "pickString",
+      "description": "Skip VIPC apply?",
+      "default": "no",
+      "options": [
+        {
+          "label": "no",
+          "value": "no"
+        },
+        {
+          "label": "yes",
+          "value": "yes"
+        }
+      ]
+    },
+    {
+      "id": "oneshotSkipClose",
+      "type": "pickString",
+      "description": "Skip labview close?",
+      "default": "no",
+      "options": [
+        {
+          "label": "no",
+          "value": "no"
+        },
+        {
+          "label": "yes",
+          "value": "yes"
+        }
+      ]
+    },
+    {
+      "id": "oneshotGhTokenPath",
+      "type": "promptString",
+      "description": "GH token file path (optional)",
+      "default": "C:\\\\github_token.txt"
+    },
+    {
+      "id": "publishSkipUpload",
+      "type": "pickString",
+      "description": "Skip upload? (yes to only zip locally)",
+      "default": "no",
+      "options": [
+        {
+          "value": "",
+          "label": "no (upload if possible)"
+        },
+        {
+          "value": "yes",
+          "label": "yes (zip only)"
+        }
+      ]
+    },
+    {
+      "id": "devModeVersion",
+      "type": "promptString",
+      "description": "LabVIEW version for dev-mode toggle",
+      "default": "2021"
+    },
+    {
+      "id": "devModeBitness",
+      "type": "pickString",
+      "description": "Bitness for dev-mode toggle tasks",
+      "default": "32",
+      "options": [
+        { "label": "32-bit", "value": "32" },
+        { "label": "64-bit", "value": "64" }
+      ]
+    },
+    {
+      "id": "iconEditorPrepFixture",
+      "type": "promptString",
+      "description": "Path to the icon-editor fixture VIP (absolute or workspace-relative)",
+      "default": "vendor/icon-editor/fixtures/ni_icon_editor.vip"
+    },
+    {
+      "id": "iconEditorPrepVersions",
+      "type": "promptString",
+      "description": "LabVIEW versions to prepare (comma/space separated)",
+      "default": "2021"
+    },
+    {
+      "id": "iconEditorPrepBitness",
+      "type": "promptString",
+      "description": "Bitness targets to prepare (comma/space separated, e.g. \"32 64\")",
+      "default": "32 64"
+    },
+    {
+      "id": "iconEditorPrepStage",
+      "type": "promptString",
+      "description": "Stage name recorded under tests/results/_agent/icon-editor/snapshots",
+      "default": "host-prep"
     }
   ]
 }

@@ -1,5 +1,12 @@
 name: "Build VI Package"
 description: "Runs build_vip.ps1 to update a VIPB file and build the VI package."
+outputs:
+  vipm_build_log:
+    description: "Relative path to the VIPM CLI build log file"
+    value: ${{ steps.run-vipm.outputs.vipm_build_log }}
+  vipm_build_metadata:
+    description: "Relative path to the VIPM CLI build metadata file"
+    value: ${{ steps.run-vipm.outputs.vipm_build_metadata }}
 runs:
   using: "composite"
   steps:
@@ -9,7 +16,8 @@ runs:
         fetch-depth: 0
         clean: false
 
-    - name: Run build_vip.ps1
+    - id: run-vipm
+      name: Run build_vip.ps1
       shell: pwsh
       run: |
         & "${{ github.action_path }}/build_vip.ps1" `

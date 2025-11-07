@@ -5,8 +5,8 @@ Describe 'Invoke-IconEditorSnapshotFromRepo.ps1' -Tag 'IconEditor','Snapshot','I
         $repoRoot = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path
         Set-Variable -Scope Script -Name scriptPath -Value (Join-Path $repoRoot 'tools/icon-editor/Invoke-IconEditorSnapshotFromRepo.ps1')
         Test-Path -LiteralPath $script:scriptPath | Should -BeTrue "Snapshot invocation script not found."
-        Set-Variable -Scope Script -Name fixturePath -Value (Join-Path $repoRoot 'tests/fixtures/icon-editor/ni_icon_editor-1.4.1.948.vip')
-        Set-Variable -Scope Script -Name manifestPath -Value (Join-Path $repoRoot 'tests/fixtures/icon-editor/fixture-manifest.json')
+        Set-Variable -Scope Script -Name fixturePath -Value $env:ICON_EDITOR_FIXTURE_PATH
+        Set-Variable -Scope Script -Name manifestPath -Value $env:ICON_EDITOR_BASELINE_MANIFEST_PATH
     }
 
     BeforeEach {
@@ -39,20 +39,28 @@ Describe 'Invoke-IconEditorSnapshotFromRepo.ps1' -Tag 'IconEditor','Snapshot','I
     }
 
     It 'generates a snapshot workspace using changed files from the repo' {
+        if (-not $script:fixturePath -or -not (Test-Path -LiteralPath $script:fixturePath -PathType Leaf)) {
+            Set-ItResult -Skip -Because 'ICON_EDITOR_FIXTURE_PATH not supplied; skipping snapshot integration test.'
+            return
+        }
+
         $workspace = Join-Path $TestDrive 'snapshots'
         $stageName = 'test-snapshot'
 
-        $result = & $script:scriptPath `
-            -RepoPath $script:testRoot `
-            -BaseRef $script:baseRef `
-            -HeadRef $script:headRef `
-            -WorkspaceRoot $workspace `
-            -StageName $stageName `
-            -FixturePath $script:fixturePath `
-            -BaselineFixture $script:fixturePath `
-            -BaselineManifest $script:manifestPath `
-            -SkipValidate `
-            -SkipLVCompare
+        $invokeArgs = @(
+            '-RepoPath', $script:testRoot,
+            '-BaseRef', $script:baseRef,
+            '-HeadRef', $script:headRef,
+            '-WorkspaceRoot', $workspace,
+            '-StageName', $stageName,
+            '-FixturePath', $script:fixturePath,
+            '-SkipValidate',
+            '-SkipLVCompare'
+        )
+        if ($script:manifestPath -and (Test-Path -LiteralPath $script:manifestPath -PathType Leaf)) {
+            $invokeArgs += @('-BaselineManifest', $script:manifestPath)
+        }
+        $result = & $script:scriptPath $invokeArgs
 
         $result | Should -Not -BeNullOrEmpty
         $result.stageExecuted | Should -BeTrue

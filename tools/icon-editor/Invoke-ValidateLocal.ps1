@@ -11,13 +11,15 @@ Windows runner. Expects LabVIEW/LVCompare/TestStand to be available, along with
 GH_TOKEN/GITHUB_TOKEN for API calls. Leaves results under the specified
 ResultsRoot (defaults to tests/results/_agent/icon-editor/local-validate).
 
+ .PARAMETER FixturePath
+ Path to the VIP produced by the build (for example, the artifact downloaded
+ from the composite workflow).
+
 .PARAMETER BaselineFixture
-Optional path to the baseline VIP used for comparison prep. Defaults to
-tests/fixtures/icon-editor/ni_icon_editor-1.4.1.794.vip.
+Optional path to the baseline VIP used for comparison prep.
 
 .PARAMETER BaselineManifest
-Optional path to the baseline manifest (icon-editor/fixture-manifest@v1). Defaults to
-tests/fixtures/icon-editor/fixture-manifest-1.4.1.794.json.
+Optional path to the baseline manifest (icon-editor/fixture-manifest@v1).
 
 .PARAMETER SkipLVCompare
 When present, runs comparison tooling in dry-run mode (no LVCompare launch) but still renders reports.
@@ -37,6 +39,7 @@ Also run Simulate-IconEditorBuild VIP diff (dry-run compare and report).
 #>
 
 param(
+  [string]$FixturePath,
   [string]$BaselineFixture,
   [string]$BaselineManifest,
   [string]$ResourceOverlayRoot,
@@ -56,16 +59,21 @@ function Resolve-RepoRoot {
   try { return (git -C $StartPath rev-parse --show-toplevel 2>$null).Trim() } catch { return $StartPath }
 }
 
-function Resolve-PathOrDefault {
+function Resolve-PathFromRepo {
   param(
-    [string]$DefaultRelative,
-    [string]$Override
+    [string]$Path,
+    [string]$RepoRoot,
+    [string]$ParameterName,
+    [switch]$Optional
   )
-  if ($Override) {
-    return (Resolve-Path -LiteralPath $Override).Path
+  if (-not $Path) {
+    if ($Optional) { return $null }
+    throw "$ParameterName is required."
   }
-  $repoRoot = Resolve-RepoRoot
-  return (Resolve-Path -LiteralPath (Join-Path $repoRoot $DefaultRelative)).Path
+  if ([System.IO.Path]::IsPathRooted($Path)) {
+    return (Resolve-Path -LiteralPath $Path).Path
+  }
+  return (Resolve-Path -LiteralPath (Join-Path $RepoRoot $Path)).Path
 }
 
 $repoRoot = Resolve-RepoRoot
@@ -91,9 +99,9 @@ if (-not (Test-Path -LiteralPath $ResultsRoot -PathType Container)) {
 }
 $resultsRootResolved = (Resolve-Path -LiteralPath $ResultsRoot).Path
 
-$fixtureCurrent = Resolve-PathOrDefault -DefaultRelative 'tests/fixtures/icon-editor/ni_icon_editor-1.4.1.948.vip'
-$baselineFixtureResolved = Resolve-PathOrDefault -DefaultRelative 'tests/fixtures/icon-editor/ni_icon_editor-1.4.1.794.vip' -Override $BaselineFixture
-$baselineManifestResolved = Resolve-PathOrDefault -DefaultRelative 'tests/fixtures/icon-editor/fixture-manifest-1.4.1.794.json' -Override $BaselineManifest
+$fixtureCurrent = Resolve-PathFromRepo -Path $FixturePath -RepoRoot $repoRoot -ParameterName 'FixturePath'
+$baselineFixtureResolved = Resolve-PathFromRepo -Path $BaselineFixture -RepoRoot $repoRoot -ParameterName 'BaselineFixture' -Optional
+$baselineManifestResolved = Resolve-PathFromRepo -Path $BaselineManifest -RepoRoot $repoRoot -ParameterName 'BaselineManifest' -Optional
 $overlayResolved = $null
 if ($ResourceOverlayRoot) {
   $overlayResolved = (Resolve-Path -LiteralPath $ResourceOverlayRoot).Path
@@ -105,8 +113,8 @@ if ($ResourceOverlayRoot) {
 }
 
 Write-Host "==> Current fixture: $fixtureCurrent"
-Write-Host "==> Baseline fixture: $baselineFixtureResolved"
-Write-Host "==> Baseline manifest: $baselineManifestResolved"
+Write-Host ("==> Baseline fixture: {0}" -f ($baselineFixtureResolved ?? '(not provided)'))
+Write-Host ("==> Baseline manifest: {0}" -f ($baselineManifestResolved ?? '(not provided)'))
 Write-Host "==> Results root: $resultsRootResolved"
 if ($overlayResolved) {
   Write-Host "==> Resource overlay: $overlayResolved"

@@ -193,12 +193,21 @@ $lines += Render-FixtureOnlyAssets $summary.fixtureOnlyAssets
 $lines += ""
 $lines += "## Fixture-only manifest delta"
 $lines += ""
-$baselinePath = Join-Path $repoRoot 'tests' 'fixtures' 'icon-editor' 'fixture-manifest.json'
-if (-not (Test-Path -LiteralPath $baselinePath -PathType Leaf)) {
-  $lines += "- Baseline manifest not found (tests/fixtures/icon-editor/fixture-manifest.json); skipping delta."
+$baselinePath = $env:ICON_EDITOR_BASELINE_MANIFEST_PATH
+$baselinePathResolved = $null
+if ($baselinePath) {
+  if ([System.IO.Path]::IsPathRooted($baselinePath)) {
+    $baselinePathResolved = $baselinePath
+  } else {
+    $baselinePathResolved = Join-Path $repoRoot $baselinePath
+  }
+}
+
+if (-not $baselinePathResolved -or -not (Test-Path -LiteralPath $baselinePathResolved -PathType Leaf)) {
+  $lines += "- Baseline manifest not provided; skipping delta."
 } else {
   try {
-    $baseline = Get-Content -LiteralPath $baselinePath -Raw | ConvertFrom-Json -Depth 6
+    $baseline = Get-Content -LiteralPath $baselinePathResolved -Raw | ConvertFrom-Json -Depth 6
     $currentEntries = Build-FixtureManifestFromSummary -Summary $summary
     $delta = Compute-ManifestDelta -BaseEntries $baseline.entries -NewEntries $currentEntries
     $lines += [string]::Format('- Added: {0}, Removed: {1}, Changed: {2}', ($delta.added | Measure-Object).Count, ($delta.removed | Measure-Object).Count, ($delta.changed | Measure-Object).Count)

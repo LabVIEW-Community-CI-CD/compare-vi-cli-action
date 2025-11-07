@@ -1,20 +1,7 @@
-<#
-.SYNOPSIS
-    Runs MissingInProjectCLI.vi via G‑CLI and streams the VI’s output.
+#Runs MissingInProjectCLI.vi via g-cli.
+#Leaves exit status in $LASTEXITCODE for caller.
+#NOTE: g-cli must be available and configured for the requested LabVIEW version.
 
-.PARAMETER LVVersion
-    LabVIEW version (e.g. "2021").
-
-.PARAMETER Arch
-    Bitness ("32" or "64").
-
-.PARAMETER ProjectFile
-    Full path to the .lvproj that should be inspected.
-
-.NOTES
-    • Leaves exit status in $LASTEXITCODE for the caller.
-    • Does NOT call 'exit' to avoid terminating a parent session.
-#>
 #Requires -Version 7.0
 [CmdletBinding()]
 param(
@@ -22,56 +9,49 @@ param(
     [Parameter(Mandatory)][ValidateSet('32','64')][string]$Arch,
     [Parameter(Mandatory)][string]$ProjectFile
 )
-$ErrorActionPreference = 'Stop'
-Write-Host "ℹ️  [GCLI] Starting Missing‑in‑Project check ..."
 
-# ---------- sanity checks ----------
-if (-not (Get-Command g-cli -ErrorAction SilentlyContinue)) {
-    Write-Host "❌  g-cli executable not found in PATH."
-    $global:LASTEXITCODE = 127
-    return
-}
+$ErrorActionPreference = 'Stop'
+Write-Host "==> [g-cli] Starting Missing-in-Project check ..."
 
 $viPath = Join-Path -Path $PSScriptRoot -ChildPath 'MissingInProjectCLI.vi'
 if (-not (Test-Path $viPath)) {
-    Write-Host "❌  VI not found: $viPath"
+    Write-Host "!! VI not found: $viPath"
     $global:LASTEXITCODE = 2
     return
 }
 if (-not (Test-Path $ProjectFile)) {
-    Write-Host "❌  Project file not found: $ProjectFile"
+    Write-Host "!! Project file not found: $ProjectFile"
     $global:LASTEXITCODE = 3
     return
 }
 
-Write-Host "ℹ️  VI path      : $viPath"
-Write-Host "ℹ️  Project file : $ProjectFile"
-Write-Host "ℹ️  LabVIEW ver  : $LVVersion  ($Arch-bit)"
+Write-Host "   VI Path      : $viPath"
+Write-Host "   Project File : $ProjectFile"
+Write-Host "   LabVIEW Ver  : $LVVersion ($Arch-bit)"
 Write-Host "--------------------------------------------------"
 
-# ---------- build argument list & invoke ----------
-$gcliArgs = @(
-    '--lv-ver', $LVVersion,
-    '--arch',   $Arch,
-    $viPath,
-    '--',
-    $ProjectFile
-)
+$repoRoot = (Resolve-Path (Join-Path $PSScriptRoot '..\..\..')).Path
+Import-Module (Join-Path $repoRoot 'tools' 'VendorTools.psm1') -Force
 
-$gcliOutput = & g-cli @gcliArgs 2>&1 | Tee-Object -Variable _outLines
-$exitCode   = $LASTEXITCODE
+$gCliPath = Resolve-GCliPath
+if (-not $gCliPath) {
+    Write-Host "!! g-cli executable not found. Configure GCLI_EXE_PATH or labview-paths*.json."
+    $global:LASTEXITCODE = 127
+    return
+}
+$gCliPath = (Resolve-Path -LiteralPath $gCliPath).Path
+Write-Host "   CLI Path     : $gCliPath"
 
-# relay all output so the wrapper can capture & parse
-$gcliOutput | ForEach-Object { Write-Output $_ }
+$cliArgs = @('--lv-ver', $LVVersion, '--arch', $Arch, '-v', $viPath, '--', $ProjectFile)
+$cliOutput = & $gCliPath @cliArgs 2>&1 | Tee-Object -Variable _outLines
+$exitCode = $LASTEXITCODE
+
+$cliOutput | ForEach-Object { Write-Output $_ }
 
 if ($exitCode -eq 0) {
-    Write-Host "✅  Missing‑in‑Project check passed (no missing files)."
+    Write-Host "==> Missing-in-Project check passed (no missing files)."
 } else {
-    Write-Host "❌  Missing‑in‑Project check FAILED – exit code $exitCode"
+    Write-Host "==> Missing-in-Project check FAILED - exit code $exitCode"
 }
 
-# close LabVIEW if still running (harmless if not)
-& g-cli --lv-ver $LVVersion --arch $Arch QuitLabVIEW | Out-Null
-
 $global:LASTEXITCODE = $exitCode
-return

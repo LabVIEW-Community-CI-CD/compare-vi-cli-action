@@ -20,26 +20,41 @@ param(
     [string]$SupportedBitness
 )
 
-# Construct the command
-$script = @"
-g-cli --lv-ver $MinimumSupportedLVVersion --arch $SupportedBitness QuitLabVIEW
-"@
+Set-StrictMode -Version Latest
+$ErrorActionPreference = 'Stop'
+
+$repoRoot = (Resolve-Path (Join-Path $PSScriptRoot '..\..\..\..\..')).Path
+$helperPath = Join-Path $repoRoot 'tools' 'Close-LabVIEW.ps1'
+
+if (Test-Path -LiteralPath $helperPath -PathType Leaf) {
+    try {
+        & $helperPath -MinimumSupportedLVVersion $MinimumSupportedLVVersion -SupportedBitness $SupportedBitness
+        exit $LASTEXITCODE
+    } catch {
+        Write-Warning ("Close-LabVIEW helper failed: {0} (falling back to legacy g-cli path)" -f $_.Exception.Message)
+    }
+}
+
+$vendorTools = Join-Path $repoRoot 'tools\VendorTools.psm1'
+Import-Module $vendorTools -Force
+
+$gCli = Get-Command g-cli -ErrorAction Stop
+$args = @('--lv-ver', $MinimumSupportedLVVersion, '--arch', $SupportedBitness, 'QuitLabVIEW')
 
 Write-Output "Executing the following command:"
-Write-Output $script
+Write-Output ("{0} {1}" -f $gCli.Source, ($args -join ' '))
 
-# Execute the command and check for errors
-try {
-    Invoke-Expression $script
+$output = & $gCli.Source @args 2>&1
+$exitCode = $LASTEXITCODE
 
-    # Check the exit code of the executed command
-    if ($LASTEXITCODE -ne 0) {
-        Write-Error "Failed to close LabVIEW with exit code $LASTEXITCODE."
-        exit $LASTEXITCODE
+if ($exitCode -ne 0) {
+    $joinedOutput = $output -join [Environment]::NewLine
+    if ($joinedOutput -match 'Timed out waiting for app to connect to g-cli') {
+        Write-Warning "Close LabVIEW $MinimumSupportedLVVersion ($SupportedBitness-bit) reported no running instance (g-cli timeout); continuing."
+        exit 0
     }
-} catch {
-    Write-Error "An error occurred while trying to close LabVIEW."
-    exit 1
+    Write-Error ("Failed to close LabVIEW (exit code {0}). Output:`n{1}" -f $exitCode, $joinedOutput)
+    exit $exitCode
 }
 
 Write-Host "Close LabVIEW $MinimumSupportedLVVersion ($SupportedBitness-bit)"

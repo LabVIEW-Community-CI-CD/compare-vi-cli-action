@@ -53,7 +53,7 @@ Describe 'Update-VipbDisplayInfo.ps1' {
             -Patch 7 `
             -Build 6 `
             -Commit 'commit-hash' `
-            -RelativePath $contextDir `
+            -IconEditorRoot $contextDir `
             -VIPBPath (Split-Path -Leaf $vipbCopyPath) `
             -ReleaseNotesFile $releaseNotesRelative `
             -DisplayInformationJSON $displayPayload

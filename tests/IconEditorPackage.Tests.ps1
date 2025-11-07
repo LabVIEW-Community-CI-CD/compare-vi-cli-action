@@ -93,10 +93,10 @@ exit 0
     }
 
     Context 'VI Server snapshot captures' {
-        It 'returns a structured snapshot even when LabVIEW 2021 is unavailable' {
-            $snapshot = Get-IconEditorViServerSnapshot -Version 2021 -Bitness 64 -WorkspaceRoot $script:WorkspaceRoot
+        It 'returns a structured snapshot even when LabVIEW 2023 is unavailable' {
+            $snapshot = Get-IconEditorViServerSnapshot -Version 2023 -Bitness 64 -WorkspaceRoot $script:WorkspaceRoot
             $snapshot | Should -Not -BeNullOrEmpty
-            $snapshot.Version | Should -Be 2021
+            $snapshot.Version | Should -Be 2023
             $snapshot.Bitness | Should -Be 64
 
             $allowedStatuses = @('ok','missing','missing-ini','vendor-tools-missing','error')
@@ -135,7 +135,7 @@ exit 0
 
                 Mock -CommandName Get-IconEditorViServerSnapshot -ModuleName IconEditorPackage -MockWith {
                     [pscustomobject]@{
-                        Version = 2025
+                        Version = 2023
                         Bitness = 64
                         Status  = 'ok'
                         ExePath = 'C:\LabVIEW.exe'
@@ -161,7 +161,7 @@ exit 0
                     -Patch 0 `
                     -Build 1300 `
                     -SupportedBitness 64 `
-                    -MinimumSupportedLVVersion 2025 `
+                    -MinimumSupportedLVVersion 2023 `
                     -LabVIEWMinorRevision 3 `
                     -ReleaseNotesPath 'Tooling/deployment/release_notes.md' `
                     -WorkspaceRoot $script:WorkspaceRoot `
@@ -212,7 +212,7 @@ exit 0
                     -Patch 0 `
                     -Build 1301 `
                     -SupportedBitness 64 `
-                    -MinimumSupportedLVVersion 2025 `
+                    -MinimumSupportedLVVersion 2023 `
                     -LabVIEWMinorRevision 3 `
                     -ReleaseNotesPath 'Tooling/deployment/release_notes.md' `
                     -WorkspaceRoot $script:WorkspaceRoot `
@@ -242,7 +242,7 @@ exit 0
         It 'throws when provider process exits non-zero and includes output' {
             Mock -CommandName Get-IconEditorViServerSnapshot -ModuleName IconEditorPackage -MockWith {
                 [pscustomobject]@{
-                    Version = 2025
+                    Version = 2023
                     Bitness = 64
                     Status  = 'ok'
                     ExePath = 'C:\LabVIEW.exe'
@@ -288,7 +288,7 @@ exit 0
                     -Patch 0 `
                     -Build 1303 `
                     -SupportedBitness 64 `
-                    -MinimumSupportedLVVersion 2025 `
+                    -MinimumSupportedLVVersion 2023 `
                     -LabVIEWMinorRevision 3 `
                     -ReleaseNotesPath 'Tooling/deployment/release_notes.md' `
                     -WorkspaceRoot $script:WorkspaceRoot `
@@ -308,7 +308,7 @@ exit 0
         It 'warns when g-cli provider detects disabled VI Server but proceeds' {
             Mock -CommandName Get-IconEditorViServerSnapshot -ModuleName IconEditorPackage -MockWith {
                 [pscustomobject]@{
-                    Version = 2025
+                    Version = 2023
                     Bitness = 64
                     Status  = 'ok'
                     Message = 'LabVIEW VI Server disabled'
@@ -342,7 +342,7 @@ exit 0
                     -Patch 0 `
                     -Build 1302 `
                     -SupportedBitness 64 `
-                    -MinimumSupportedLVVersion 2025 `
+                    -MinimumSupportedLVVersion 2023 `
                     -LabVIEWMinorRevision 3 `
                     -ReleaseNotesPath 'Tooling/deployment/release_notes.md' `
                     -WorkspaceRoot $script:WorkspaceRoot `

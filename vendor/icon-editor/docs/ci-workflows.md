@@ -27,7 +27,7 @@ Automating your Icon Editor builds and tests:
 - **Allows you to brand** each VI Package build with your organization or repository name for unique identification
 
 **Prerequisites**:
-- LabVIEW 2021 SP1 (32-bit and 64-bit) and LabVIEW 2025 (64-bit)
+- LabVIEW 2021 SP1 (32-bit and 64-bit) and LabVIEW 2023 (64-bit)
 - PowerShell 7+
 - Git for Windows
 
@@ -128,7 +128,7 @@ The `build-ppl` job uses a matrix to produce both bitnesses rather than distinct
 ### 3.3 Setting Up a Self-Hosted Runner
 
 1. **Install Prerequisites**:
-   - LabVIEW 2021 SP1 (32-bit and 64-bit) and LabVIEW 2025 (64-bit)
+   - LabVIEW 2021 SP1 (32-bit and 64-bit) and LabVIEW 2023 (64-bit)
    - PowerShell 7+
    - Git for Windows
 

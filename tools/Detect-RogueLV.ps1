@@ -5,7 +5,8 @@ param(
   [switch]$AppendToStepSummary,
   [switch]$Quiet,
   [int]$RetryCount = 1,
-  [int]$RetryDelaySeconds = 5
+  [int]$RetryDelaySeconds = 5,
+  [string]$OutputPath
 )
 
 Set-StrictMode -Version Latest
@@ -246,6 +247,17 @@ if (-not $Quiet) {
 }
 
 $json = $out | ConvertTo-Json -Depth 6
+if ($OutputPath) {
+  try {
+    $outputDir = Split-Path -Parent $OutputPath
+    if ($outputDir -and -not (Test-Path -LiteralPath $outputDir -PathType Container)) {
+      New-Item -ItemType Directory -Force -Path $outputDir | Out-Null
+    }
+    $json | Out-File -FilePath $OutputPath -Encoding utf8
+  } catch {
+    Write-Warning ("Failed to write rogue detection payload to '{0}': {1}" -f $OutputPath, $_.Exception.Message)
+  }
+}
 Write-Output $json
 
 if ($FailOnRogue -and ($finalRogueLC.Count -gt 0 -or $finalRogueLV.Count -gt 0)) { exit 3 } else { exit 0 }

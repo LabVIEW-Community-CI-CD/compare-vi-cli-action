@@ -8,6 +8,11 @@ Describe 'LabVIEW CLI provider' -Tag 'Unit' {
     Test-Path -LiteralPath $script:providerModulePath | Should -BeTrue
     $script:providerModule = Import-Module $script:providerModulePath -Force -PassThru
   }
+  AfterAll {
+    if ($script:providerModule) {
+      Remove-Module -ModuleInfo $script:providerModule -ErrorAction SilentlyContinue
+    }
+  }
 
   BeforeEach {
     $script:prevLabVIEWPath = $env:LABVIEW_PATH
@@ -55,5 +60,48 @@ Describe 'LabVIEW CLI provider' -Tag 'Unit' {
     $args | Should -Contain '-LabVIEWPath'
     $index = [Array]::IndexOf($args, '-LabVIEWPath')
     $args[$index + 1] | Should -Be (Resolve-Path -LiteralPath $labviewPath).Path
+  }
+
+}
+
+Describe 'LabVIEW CLI dispatcher' -Tag 'Unit' {
+  BeforeAll {
+    $repoRoot = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path
+    $script:cliModulePath = Join-Path $repoRoot 'tools/LabVIEWCli.psm1'
+    Test-Path -LiteralPath $script:cliModulePath | Should -BeTrue
+    $script:cliModule = Import-Module $script:cliModulePath -Force -PassThru
+  }
+  AfterAll {
+    if ($script:cliModule) {
+      Remove-Module -ModuleInfo $script:cliModule -ErrorAction SilentlyContinue
+    }
+  }
+
+  It 'quotes LabVIEWPath in the preview command line' {
+    $cliStubPath = Join-Path $TestDrive 'Shared Tools\LabVIEW CLI\LabVIEWCLI.exe'
+    New-Item -ItemType Directory -Path (Split-Path -Parent $cliStubPath) -Force | Out-Null
+    Set-Content -LiteralPath $cliStubPath -Value '' -Encoding utf8
+    $labviewPath = Join-Path $TestDrive 'Program Files\National Instruments\LabVIEW 2025\LabVIEW.exe'
+    New-Item -ItemType Directory -Path (Split-Path -Parent $labviewPath) -Force | Out-Null
+    Set-Content -LiteralPath $labviewPath -Value '' -Encoding utf8
+
+    $originalCli = $env:LABVIEWCLI_PATH
+    try {
+      Set-Item Env:LABVIEWCLI_PATH $cliStubPath
+      $preview = InModuleScope $script:cliModule.Name {
+        param($lvPath)
+        Invoke-LVOperation -Operation 'CloseLabVIEW' -Params @{ labviewPath = $lvPath } -Preview
+      } -ArgumentList $labviewPath
+
+      $preview.command.Trim().StartsWith('"') | Should -BeTrue
+      $preview.command | Should -Match '-LabVIEWPath\s+"[^"]*LabVIEW\.exe"'
+      $preview.args | Should -Contain '-LabVIEWPath'
+    } finally {
+      if ($originalCli) {
+        Set-Item Env:LABVIEWCLI_PATH $originalCli
+      } else {
+        Remove-Item Env:LABVIEWCLI_PATH -ErrorAction SilentlyContinue
+      }
+    }
   }
 }

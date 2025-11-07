@@ -1,0 +1,10 @@
+{
+  "lvcompare": [
+    "C:\\Program Files\\National Instruments\\Shared\\LabVIEW Compare\\LVCompare.exe"
+  ],
+  "labview": [
+    "C:\\Program Files\\National Instruments\\LabVIEW 2023\\LabVIEW.exe",
+    "C:\\Program Files (x86)\\National Instruments\\LabVIEW 2023\\LabVIEW.exe",
+    "C:\\Program Files\\National Instruments\\LabVIEW 2026\\LabVIEW.exe"
+  ]
+}

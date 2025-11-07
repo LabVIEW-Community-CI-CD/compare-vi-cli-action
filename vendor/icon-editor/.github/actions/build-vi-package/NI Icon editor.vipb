@@ -1,7 +1,7 @@
-<VI_Package_Builder_Settings Version="2020.1" Created_Date="2024-11-13 13:58:09" Modified_Date="2025-11-03 22:12:31" Creator="svelderr" Comments="" ID="436ecc3ea11d78ae7b4e52c2ca284c03">
+<VI_Package_Builder_Settings Version="2020.1" Created_Date="2024-11-13 13:58:09" Modified_Date="2025-07-21 16:33:38" Creator="svelderr" Comments="" ID="3b584450cdea4374f225443577f6ec16">
   <Library_General_Settings>
     <Package_File_Name>NI_Icon_editor</Package_File_Name>
-    <Library_Version>1.4.1.948</Library_Version>
+    <Library_Version>21.0.0.12</Library_Version>
     <Auto_Increment_Version>false</Auto_Increment_Version>
     <Library_Source_Folder>..\..</Library_Source_Folder>
     <Library_Output_Folder>..\..\builds\VI Package</Library_Output_Folder>
@@ -136,6 +136,18 @@
         <Additional_Destination>true</Additional_Destination>
         <Additional_Destination_Index>4</Additional_Destination_Index>
       </Destination_Overrides>
+      <Destination_Overrides>
+        <Path>Tooling/deployment/lv_icon_versions/lv_icon_uninstall_backup.zip</Path>
+        <Destination>0</Destination>
+        <Additional_Destination>true</Additional_Destination>
+        <Additional_Destination_Index>2</Additional_Destination_Index>
+      </Destination_Overrides>
+      <Destination_Overrides>
+        <Path>resource/plugins</Path>
+        <Destination>0</Destination>
+        <Additional_Destination>true</Additional_Destination>
+        <Additional_Destination_Index>3</Additional_Destination_Index>
+      </Destination_Overrides>
       <Password_Overrides>
         <Path>.</Path>
         <Password/>
@@ -146,6 +158,144 @@
         <Namespace_Type>Prefix</Namespace_Type>
         <Namespace/>
       </Namespace_Overrides>
+      <Exclusions>
+        <Path>.github</Path>
+      </Exclusions>
+      <Exclusions>
+        <Path>Antidoc-Output</Path>
+      </Exclusions>
+      <Exclusions>
+        <Path>pipeline/templates</Path>
+      </Exclusions>
+      <Exclusions>
+        <Path>vi.lib</Path>
+      </Exclusions>
+      <Exclusions>
+        <Path>.gitattributes</Path>
+      </Exclusions>
+      <Exclusions>
+        <Path>.gitignore</Path>
+      </Exclusions>
+      <Exclusions>
+        <Path>CODE_OF_CONDUCT.md</Path>
+      </Exclusions>
+      <Exclusions>
+        <Path>CONTRIBUTING.md</Path>
+      </Exclusions>
+      <Exclusions>
+        <Path>LICENSE</Path>
+      </Exclusions>
+      <Exclusions>
+        <Path>lv_icon_editor.lvproj</Path>
+      </Exclusions>
+      <Exclusions>
+        <Path>README.md</Path>
+      </Exclusions>
+      <Exclusions>
+        <Path>pipeline</Path>
+      </Exclusions>
+      <Exclusions>
+        <Path>resource/plugins/NIIconEditor</Path>
+      </Exclusions>
+      <Exclusions>
+        <Path>resource/plugins/lv_icon.vi</Path>
+      </Exclusions>
+      <Exclusions>
+        <Path>resource/plugins/lv_icon.vit</Path>
+      </Exclusions>
+      <Exclusions>
+        <Path>resource/plugins/lv_IconEditor.lvlib</Path>
+      </Exclusions>
+      <Exclusions>
+        <Path>resource/plugins/SAMPLE_lv_icon.vi</Path>
+      </Exclusions>
+      <Exclusions>
+        <Path>Tooling/deployment/ApplyVIPC.vi</Path>
+      </Exclusions>
+      <Exclusions>
+        <Path>Tooling/deployment/BuildVIPackage.vi</Path>
+      </Exclusions>
+      <Exclusions>
+        <Path>Tooling/deployment/Create_LV_INI_Token.vi</Path>
+      </Exclusions>
+      <Exclusions>
+        <Path>Tooling/deployment/CreateLVAddonJSONfile.vi</Path>
+      </Exclusions>
+      <Exclusions>
+        <Path>Tooling/deployment/Destroy_LV_INI_Token.vi</Path>
+      </Exclusions>
+      <Exclusions>
+        <Path>Tooling/deployment/ModifyProjectBuildOutput.vi</Path>
+      </Exclusions>
+      <Exclusions>
+        <Path>Tooling/deployment/NIP Post uninstall.vi</Path>
+      </Exclusions>
+      <Exclusions>
+        <Path>Tooling/deployment/VIP_Post-Install Custom Action.vi</Path>
+      </Exclusions>
+      <Exclusions>
+        <Path>Tooling/deployment/VIP_Post-Uninstall Custom Action.vi</Path>
+      </Exclusions>
+      <Exclusions>
+        <Path>Tooling/deployment/VIP_Pre-Install Custom Action.vi</Path>
+      </Exclusions>
+      <Exclusions>
+        <Path>Tooling/deployment/VIP_Pre-Uninstall Custom Action.vi</Path>
+      </Exclusions>
+      <Exclusions>
+        <Path>Tooling/support</Path>
+      </Exclusions>
+      <Exclusions>
+        <Path>Tooling/CI CD.lvproj</Path>
+      </Exclusions>
+      <Exclusions>
+        <Path>Tooling/Force Icon Editor to Unload.vi</Path>
+      </Exclusions>
+      <Exclusions>
+        <Path>Tooling/Post Build Icon Editor PPL.vi</Path>
+      </Exclusions>
+      <Exclusions>
+        <Path>Tooling/Pre Build Icon Editor PPL.vi</Path>
+      </Exclusions>
+      <Exclusions>
+        <Path>Tooling/Prepare LV to Use Icon Editor Source.vi</Path>
+      </Exclusions>
+      <Exclusions>
+        <Path>Tooling/PrepareIESource.vi</Path>
+      </Exclusions>
+      <Exclusions>
+        <Path>Tooling/Run all tests CLI.vi</Path>
+      </Exclusions>
+      <Exclusions>
+        <Path>Tooling/Run all tests.vi</Path>
+      </Exclusions>
+      <Exclusions>
+        <Path>Tooling/RestoreSetupLVSource.vi</Path>
+      </Exclusions>
+      <Exclusions>
+        <Path>docs</Path>
+      </Exclusions>
+      <Exclusions>
+        <Path>GOVERNANCE.md</Path>
+      </Exclusions>
+      <Exclusions>
+        <Path>requirements.txt</Path>
+      </Exclusions>
+      <Exclusions>
+        <Path>Tooling/deployment/Modify_VIPB_Display_Information.vi</Path>
+      </Exclusions>
+      <Exclusions>
+        <Path>Tooling/PrepareIESourceCore.vi</Path>
+      </Exclusions>
+      <Exclusions>
+        <Path>Tooling/RestoreSetupLVSourceCore.vi</Path>
+      </Exclusions>
+      <Exclusions>
+        <Path>Tooling/VI Package Tooling.lvproj</Path>
+      </Exclusions>
+      <Exclusions>
+        <Path>Tooling/VIP_Post-Install Custom Action.vi</Path>
+      </Exclusions>
       <Compile_Exclusions>
         <Path>.</Path>
       </Compile_Exclusions>
