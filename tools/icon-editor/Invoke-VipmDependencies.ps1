@@ -31,13 +31,11 @@ Write-Verbose " - ProviderName:              $ProviderName"
 
 $ResolvedRelativePath = (Resolve-Path -Path $RelativePath -ErrorAction Stop).ProviderPath
 
-if (-not $ProviderName) {
-    if ($env:VIPM_PROVIDER) {
-        $ProviderName = $env:VIPM_PROVIDER
-    } else {
-        $ProviderName = 'vipm-gcli'
-    }
+if ($ProviderName -and $ProviderName -ne 'vipm-gcli') {
+    throw "Provider '$ProviderName' is not supported. Dependency installs must use 'vipm-gcli'."
 }
+
+$ProviderName = 'vipm-gcli'
 
 $expandedBitness = @()
 foreach ($entry in $SupportedBitness) {

@@ -36,5 +36,4 @@ if (-not $bitnessList) {
     -SupportedBitness $bitnessList `
     -RelativePath ($RelativePath ?? $repoRoot) `
     -VIPCPath $VIPCPath `
-    -DisplayOnly:$DisplayOnly `
-    -ProviderName 'vipm-gcli'
+    -DisplayOnly:$DisplayOnly
