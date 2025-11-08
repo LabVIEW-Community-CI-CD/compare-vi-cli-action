@@ -634,6 +634,10 @@ function _IsTruthyEnv {
 }
 if (-not $EmitResultShapeDiagnostics) { $EmitResultShapeDiagnostics = (_IsTruthyEnv $env:EMIT_RESULT_SHAPES) }
 if (-not $DisableStepSummary) { $DisableStepSummary = (_IsTruthyEnv $env:DISABLE_STEP_SUMMARY) }
+$originalDisableStepSummaryEnv = $env:DISABLE_STEP_SUMMARY
+if ($DisableStepSummary) {
+  $env:DISABLE_STEP_SUMMARY = '1'
+}
 
 function _Interpret-LegacyIncludeIntegration {
   param(
@@ -2894,22 +2898,26 @@ if ($env:GITHUB_STEP_SUMMARY -and -not $DisableStepSummary) {
     $stepSummaryLines += '### Re-run (gh)'
     $stepSummaryLines += ''
     $stepSummaryLines += ("- {0}" -f $ghCommand)
-    $summaryFile = $env:GITHUB_STEP_SUMMARY
-    if ($summaryFile) {
-      try {
-        $summaryDir = Split-Path -Parent $summaryFile
-        if ($summaryDir -and -not (Test-Path -LiteralPath $summaryDir)) {
-          New-Item -ItemType Directory -Force -Path $summaryDir | Out-Null
+    if (-not $DisableStepSummary) {
+      $summaryFile = $env:GITHUB_STEP_SUMMARY
+      if ($summaryFile) {
+        try {
+          $summaryDir = Split-Path -Parent $summaryFile
+          if ($summaryDir -and -not (Test-Path -LiteralPath $summaryDir)) {
+            New-Item -ItemType Directory -Force -Path $summaryDir | Out-Null
+          }
+          $summaryText = ($stepSummaryLines -join [Environment]::NewLine) + [Environment]::NewLine
+          $encoding = New-Object System.Text.UTF8Encoding($false)
+          [System.IO.File]::WriteAllText($summaryFile, $summaryText, $encoding)
+        } catch {
+          $errMsg = $_.Exception.Message
+          Write-Host ("Step summary append failed: {0}" -f $errMsg) -ForegroundColor DarkYellow
         }
-        $summaryText = ($stepSummaryLines -join [Environment]::NewLine) + [Environment]::NewLine
-        $encoding = New-Object System.Text.UTF8Encoding($false)
-        [System.IO.File]::WriteAllText($summaryFile, $summaryText, $encoding)
-      } catch {
-        $errMsg = $_.Exception.Message
-        Write-Host ("Step summary append failed: {0}" -f $errMsg) -ForegroundColor DarkYellow
+      } else {
+        Write-Host 'Step summary append skipped: GITHUB_STEP_SUMMARY not set.' -ForegroundColor DarkYellow
       }
     } else {
-      Write-Host 'Step summary append skipped: GITHUB_STEP_SUMMARY not set.' -ForegroundColor DarkYellow
+      Write-Host 'Step summary append skipped: DisableStepSummary requested.' -ForegroundColor DarkYellow
     }
   } catch {
     $errMsg = $_.Exception.Message
@@ -2919,7 +2927,7 @@ if ($env:GITHUB_STEP_SUMMARY -and -not $DisableStepSummary) {
 }
 
 # Append optional Guard block to step summary (notice-only)
-if ($script:stuckGuardEnabled -and $env:GITHUB_STEP_SUMMARY) {
+if ($script:stuckGuardEnabled -and $env:GITHUB_STEP_SUMMARY -and -not $DisableStepSummary) {
   try {
     $hbCount = 0; $last = ''
     if (Test-Path -LiteralPath $script:hbPath) {
@@ -3834,6 +3842,13 @@ if ($EmitFailuresJsonAlways) { Ensure-FailuresJson -Directory $resultsDir -Norma
 }
 exit 0
 finally {
+  if ($DisableStepSummary) {
+    if ($null -ne $originalDisableStepSummaryEnv) {
+      $env:DISABLE_STEP_SUMMARY = $originalDisableStepSummaryEnv
+    } else {
+      Remove-Item Env:DISABLE_STEP_SUMMARY -ErrorAction SilentlyContinue
+    }
+  }
   if ($script:fastModeTemporarilySet) {
     Remove-Item Env:FAST_PESTER -ErrorAction SilentlyContinue
   }

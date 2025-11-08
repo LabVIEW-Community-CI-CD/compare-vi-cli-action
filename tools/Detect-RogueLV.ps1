@@ -243,7 +243,17 @@ if (-not $Quiet) {
   }
   $txt = $lines -join [Environment]::NewLine
   Write-Host $txt
-  if ($AppendToStepSummary -and $env:GITHUB_STEP_SUMMARY) { $txt | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8 }
+  if ($AppendToStepSummary -and $env:GITHUB_STEP_SUMMARY) {
+    $skipSummary = $false
+    if ($env:DISABLE_STEP_SUMMARY -and ($env:DISABLE_STEP_SUMMARY -is [string])) {
+      if ($env:DISABLE_STEP_SUMMARY -match '^(?i)(1|true|yes|on)$') { $skipSummary = $true }
+    }
+    if ($skipSummary) {
+      Write-Host 'Rogue LV summary append skipped: DisableStepSummary requested.' -ForegroundColor DarkYellow
+    } else {
+      $txt | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8
+    }
+  }
 }
 
 $json = $out | ConvertTo-Json -Depth 6
