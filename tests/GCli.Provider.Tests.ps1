@@ -5,7 +5,7 @@ Set-StrictMode -Version Latest
 Describe 'g-cli provider' -Tag 'Unit' {
     BeforeAll {
         $repoRoot = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path
-        $script:providerModulePath = Join-Path $repoRoot 'tools/providers/gcli/Provider.psm1'
+        $script:providerModulePath = Join-Path $repoRoot 'tools/providers/gcli/gcli.Provider.psd1'
         Test-Path -LiteralPath $script:providerModulePath | Should -BeTrue
         Remove-Module Provider -Force -ErrorAction SilentlyContinue
         Import-Module $script:providerModulePath -Force | Out-Null

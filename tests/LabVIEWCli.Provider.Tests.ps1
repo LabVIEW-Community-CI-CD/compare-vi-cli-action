@@ -4,7 +4,7 @@ Set-StrictMode -Version Latest
 Describe 'LabVIEW CLI provider' -Tag 'Unit' {
   BeforeAll {
     $repoRoot = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path
-    $script:providerModulePath = Join-Path $repoRoot 'tools/providers/labviewcli/Provider.psm1'
+    $script:providerModulePath = Join-Path $repoRoot 'tools/providers/labviewcli/labviewcli.Provider.psd1'
     Test-Path -LiteralPath $script:providerModulePath | Should -BeTrue
     $script:providerModule = Import-Module $script:providerModulePath -Force -PassThru
   }

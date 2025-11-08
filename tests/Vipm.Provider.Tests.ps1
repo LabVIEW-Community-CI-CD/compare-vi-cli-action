@@ -5,7 +5,7 @@ Set-StrictMode -Version Latest
 Describe 'VIPM provider module' -Tag 'Unit' {
     BeforeAll {
         $repoRoot = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path
-        $script:providerModulePath = Join-Path $repoRoot 'tools/providers/vipm/Provider.psm1'
+        $script:providerModulePath = Join-Path $repoRoot 'tools/providers/vipm/vipm.Provider.psd1'
         Test-Path -LiteralPath $script:providerModulePath | Should -BeTrue
         Remove-Module -Name Provider -Force -ErrorAction SilentlyContinue
         $script:providerModule = Import-Module $script:providerModulePath -Force -PassThru
