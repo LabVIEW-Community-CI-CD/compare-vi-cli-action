@@ -7,20 +7,10 @@ function Test-VipmCliReady {
     param(
         [Parameter(Mandatory)][string]$LabVIEWVersion,
         [Parameter(Mandatory)][string]$LabVIEWBitness,
-        [Parameter(Mandatory)][string]$RepoRoot
+        [Parameter(Mandatory)][string]$RepoRoot,
+        [Parameter(Mandatory)][string]$ProviderName,
+        [string]$VipcPath
     )
-
-    $vipmCommand = Get-Command vipm -ErrorAction Stop
-
-    $versionOutput = & $vipmCommand.Source '--version' 2>&1
-    if ($LASTEXITCODE -ne 0) {
-        throw "VIPM CLI '--version' failed: $versionOutput"
-    }
-
-    & $vipmCommand.Source 'build' '--help' 2>&1 | Out-Null
-    if ($LASTEXITCODE -ne 0) {
-        throw "VIPM CLI 'build --help' failed; ensure VIPM is installed and accessible."
-    }
 
     Import-Module (Join-Path $RepoRoot 'tools' 'VendorTools.psm1') -Force
     $labviewExe = Find-LabVIEWVersionExePath -Version ([int]$LabVIEWVersion) -Bitness ([int]$LabVIEWBitness)
@@ -28,10 +18,88 @@ function Test-VipmCliReady {
         throw "LabVIEW $LabVIEWVersion ($LabVIEWBitness-bit) was not detected. Install or configure that version before applying VIPC dependencies."
     }
 
-    return [pscustomobject]@{
-        vipmVersion = $versionOutput.Trim()
-        labviewExe  = $labviewExe
+    Import-Module (Join-Path $RepoRoot 'tools' 'Vipm.psm1') -Force
+    $params = @{
+        vipcPath       = $VipcPath
+        labviewVersion = $LabVIEWVersion
+        labviewBitness = $LabVIEWBitness
     }
+
+    $providerExtras = Get-VipmProviderInstallParameters -ProviderName $ProviderName -RepoRoot $RepoRoot -LabVIEWVersion $LabVIEWVersion -LabVIEWBitness $LabVIEWBitness -VipcPath $VipcPath
+    foreach ($key in $providerExtras.Keys) {
+        $params[$key] = $providerExtras[$key]
+    }
+
+    try {
+        $null = Get-VipmInvocation -Operation 'InstallVipc' -Params $params -ProviderName $ProviderName
+    } catch {
+        throw "VIPM provider '$ProviderName' is not ready: $($_.Exception.Message)"
+    }
+
+    return [pscustomobject]@{
+        provider   = $ProviderName
+        labviewExe = $labviewExe
+    }
+}
+
+function Get-VipmDisplayVersionString {
+    param(
+        [Parameter(Mandatory)][string]$LabVIEWVersion,
+        [Parameter(Mandatory)][string]$LabVIEWBitness
+    )
+
+    $key = ("{0}-{1}" -f $LabVIEWVersion, $LabVIEWBitness)
+    switch ($key) {
+        '2021-64' { return '21.0 (64-bit)' }
+        '2021-32' { return '21.0' }
+        '2022-64' { return '22.3 (64-bit)' }
+        '2022-32' { return '22.3' }
+        '2023-64' { return '23.3 (64-bit)' }
+        '2023-32' { return '23.3' }
+        '2024-64' { return '24.3 (64-bit)' }
+        '2024-32' { return '24.3' }
+        '2025-64' { return '25.3 (64-bit)' }
+        '2025-32' { return '25.3' }
+        default {
+            if ($LabVIEWBitness -eq '64') {
+                return ("{0} (64-bit)" -f $LabVIEWVersion)
+            }
+            return $LabVIEWVersion
+        }
+    }
+}
+
+function Resolve-VipmApplyVipcPath {
+    param([Parameter(Mandatory)][string]$RepoRoot)
+
+    $candidate = Join-Path $RepoRoot 'vendor\icon-editor\Tooling\deployment\Applyvipc.vi'
+    if (-not (Test-Path -LiteralPath $candidate -PathType Leaf)) {
+        throw "Applyvipc.vi not found at '$candidate'. Ensure vendor/icon-editor assets are present."
+    }
+    return (Resolve-Path -LiteralPath $candidate).Path
+}
+
+function Get-VipmProviderInstallParameters {
+    param(
+        [Parameter(Mandatory)][string]$ProviderName,
+        [Parameter(Mandatory)][string]$RepoRoot,
+        [Parameter(Mandatory)][string]$LabVIEWVersion,
+        [Parameter(Mandatory)][string]$LabVIEWBitness,
+        [string]$VipcPath
+    )
+
+    $extras = @{}
+    switch ($ProviderName.ToLowerInvariant()) {
+        'vipm-gcli' {
+            if (-not $VipcPath) {
+                throw 'vipm-gcli provider requires a VIPC path.'
+            }
+            $extras.applyVipcPath = Resolve-VipmApplyVipcPath -RepoRoot $RepoRoot
+            $extras.targetVersion = Get-VipmDisplayVersionString -LabVIEWVersion $LabVIEWVersion -LabVIEWBitness $LabVIEWBitness
+        }
+    }
+
+    return $extras
 }
 
 function Initialize-VipmTelemetry {
@@ -179,7 +247,8 @@ function Install-VipmVipc {
         [Parameter(Mandatory)][string]$LabVIEWVersion,
         [Parameter(Mandatory)][string]$LabVIEWBitness,
         [Parameter(Mandatory)][string]$RepoRoot,
-        [Parameter(Mandatory)][string]$TelemetryRoot
+        [Parameter(Mandatory)][string]$TelemetryRoot,
+        [Parameter(Mandatory)][string]$ProviderName
     )
 
     $params = @{
@@ -188,7 +257,12 @@ function Install-VipmVipc {
         labviewBitness = $LabVIEWBitness
     }
 
-    $invocation = Get-VipmInvocation -Operation 'InstallVipc' -Params $params
+    $extras = Get-VipmProviderInstallParameters -ProviderName $ProviderName -RepoRoot $RepoRoot -LabVIEWVersion $LabVIEWVersion -LabVIEWBitness $LabVIEWBitness -VipcPath $VipcPath
+    foreach ($key in $extras.Keys) {
+        $params[$key] = $extras[$key]
+    }
+
+    $invocation = Get-VipmInvocation -Operation 'InstallVipc' -Params $params -ProviderName $ProviderName
     $result = Invoke-VipmProcess -Invocation $invocation -WorkingDirectory (Split-Path -Parent $VipcPath)
     Write-VipmTelemetryLog `
         -LogRoot $TelemetryRoot `
@@ -202,12 +276,20 @@ function Install-VipmVipc {
         -LabVIEWVersion $LabVIEWVersion `
         -LabVIEWBitness $LabVIEWBitness | Out-Null
 
-    $packageInfo = Get-VipmInstalledPackages -LabVIEWVersion $LabVIEWVersion -LabVIEWBitness $LabVIEWBitness
-    Write-VipmInstalledPackagesLog `
-        -LogRoot $TelemetryRoot `
-        -LabVIEWVersion $LabVIEWVersion `
-        -LabVIEWBitness $LabVIEWBitness `
-        -PackageInfo $packageInfo | Out-Null
+    $packageInfo = $null
+    if ($ProviderName -eq 'vipm') {
+        $packageInfo = Get-VipmInstalledPackages -LabVIEWVersion $LabVIEWVersion -LabVIEWBitness $LabVIEWBitness
+        Write-VipmInstalledPackagesLog `
+            -LogRoot $TelemetryRoot `
+            -LabVIEWVersion $LabVIEWVersion `
+            -LabVIEWBitness $LabVIEWBitness `
+            -PackageInfo $packageInfo | Out-Null
+    } else {
+        $packageInfo = [pscustomobject]@{
+            rawOutput = ''
+            packages  = @()
+        }
+    }
 
     return [ordered]@{
         version  = $LabVIEWVersion
@@ -220,8 +302,13 @@ function Show-VipmDependencies {
     param(
         [Parameter(Mandatory)][string]$LabVIEWVersion,
         [Parameter(Mandatory)][string]$LabVIEWBitness,
-        [Parameter(Mandatory)][string]$TelemetryRoot
+        [Parameter(Mandatory)][string]$TelemetryRoot,
+        [Parameter(Mandatory)][string]$ProviderName
     )
+
+    if ($ProviderName -ne 'vipm') {
+        throw "DisplayOnly mode requires the classic VIPM provider. Provider '$ProviderName' does not support listing installed packages."
+    }
 
     $packageInfo = Get-VipmInstalledPackages -LabVIEWVersion $LabVIEWVersion -LabVIEWBitness $LabVIEWBitness
     Write-VipmInstalledPackagesLog `

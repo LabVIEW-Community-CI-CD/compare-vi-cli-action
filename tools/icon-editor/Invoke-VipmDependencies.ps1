@@ -7,7 +7,8 @@ param (
     [string]$SupportedBitness,
     [string]$RelativePath = (Resolve-Path '.').ProviderPath,
     [string]$VIPCPath,
-    [switch]$DisplayOnly
+    [switch]$DisplayOnly,
+    [string]$ProviderName
 )
 
 Set-StrictMode -Version Latest
@@ -26,8 +27,17 @@ Write-Verbose " - SupportedBitness:          $SupportedBitness"
 Write-Verbose " - RelativePath:              $RelativePath"
 Write-Verbose " - VIPCPath:                  $VIPCPath"
 Write-Verbose " - DisplayOnly:               $($DisplayOnly.IsPresent)"
+Write-Verbose " - ProviderName:              $ProviderName"
 
 $ResolvedRelativePath = (Resolve-Path -Path $RelativePath -ErrorAction Stop).ProviderPath
+
+if (-not $ProviderName) {
+    if ($env:VIPM_PROVIDER) {
+        $ProviderName = $env:VIPM_PROVIDER
+    } else {
+        $ProviderName = 'vipm-gcli'
+    }
+}
 
 if (-not $DisplayOnly) {
     if (-not $VIPCPath) {
@@ -49,6 +59,11 @@ if (-not $DisplayOnly) {
     }
 }
 
+$ProviderName = $ProviderName.ToLowerInvariant()
+if ($DisplayOnly -and $ProviderName -ne 'vipm') {
+    throw "DisplayOnly runs require the classic 'vipm' provider. '$ProviderName' was requested."
+}
+
 $vipmModulePath = Join-Path $ResolvedRelativePath 'tools' 'Vipm.psm1'
 if (-not (Test-Path -LiteralPath $vipmModulePath -PathType Leaf)) {
     throw "VIPM module not found at '$vipmModulePath'."
@@ -66,19 +81,20 @@ $vipmTelemetryRoot = Initialize-VipmTelemetry -RepoRoot $ResolvedRelativePath
 $collectedPackages = New-Object System.Collections.Generic.List[object]
 
 foreach ($version in $uniqueVersions) {
-    Test-VipmCliReady -LabVIEWVersion $version -LabVIEWBitness $SupportedBitness -RepoRoot $ResolvedRelativePath | Out-Null
+    $vipcForValidation = if ($DisplayOnly) { $null } else { $VIPCPath }
+    Test-VipmCliReady -LabVIEWVersion $version -LabVIEWBitness $SupportedBitness -RepoRoot $ResolvedRelativePath -ProviderName $ProviderName -VipcPath $vipcForValidation | Out-Null
     if ($DisplayOnly) {
-        $collectedPackages.Add((Show-VipmDependencies -LabVIEWVersion $version -LabVIEWBitness $SupportedBitness -TelemetryRoot $vipmTelemetryRoot)) | Out-Null
+        $collectedPackages.Add((Show-VipmDependencies -LabVIEWVersion $version -LabVIEWBitness $SupportedBitness -TelemetryRoot $vipmTelemetryRoot -ProviderName $ProviderName)) | Out-Null
     } else {
-        Write-Output ("Applying dependencies via VIPM for LabVIEW {0} ({1}-bit)..." -f $version, $SupportedBitness)
-        $collectedPackages.Add((Install-VipmVipc -VipcPath $VIPCPath -LabVIEWVersion $version -LabVIEWBitness $SupportedBitness -RepoRoot $ResolvedRelativePath -TelemetryRoot $vipmTelemetryRoot)) | Out-Null
+        Write-Output ("Applying dependencies via provider '{0}' for LabVIEW {1} ({2}-bit)..." -f $ProviderName, $version, $SupportedBitness)
+        $collectedPackages.Add((Install-VipmVipc -VipcPath $VIPCPath -LabVIEWVersion $version -LabVIEWBitness $SupportedBitness -RepoRoot $ResolvedRelativePath -TelemetryRoot $vipmTelemetryRoot -ProviderName $ProviderName)) | Out-Null
     }
 }
 
 if ($DisplayOnly) {
     Write-Host 'Displayed VIPM dependencies:'
 } else {
-    Write-Host 'Successfully applied dependencies using VIPM CLI.'
+    Write-Host ("Successfully applied dependencies using provider '{0}'." -f $ProviderName)
 }
 
 Write-Host '=== VIPM Packages ==='

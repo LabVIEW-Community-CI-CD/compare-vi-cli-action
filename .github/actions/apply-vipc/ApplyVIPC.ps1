@@ -28,4 +28,5 @@ if (-not (Test-Path -LiteralPath $helperPath -PathType Leaf)) {
     -SupportedBitness $SupportedBitness `
     -RelativePath ($RelativePath ?? $repoRoot) `
     -VIPCPath $VIPCPath `
-    -DisplayOnly:$DisplayOnly
+    -DisplayOnly:$DisplayOnly `
+    -ProviderName 'vipm-gcli'
