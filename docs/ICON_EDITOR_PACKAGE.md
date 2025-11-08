@@ -7,15 +7,16 @@ helpers) from the current sources.
 ## Building locally
 
 The composite workflow and the helper scripts expect LabVIEW 2021
-(32-bit and 64-bit) for the PPL builds and LabVIEW 2026 (64-bit) for
+(32-bit and 64-bit) for the PPL builds and LabVIEW 2023 (32-bit and
+64-bit) for the VIPM packaging step. To build the package on a workstation:
 the VIPM CLI packaging step. To build the package on a workstation:
 
 ```powershell
 # Install VIPC dependencies (preferred helper)
 pwsh -File tools/icon-editor/Invoke-VipmDependencies.ps1 `
   -MinimumSupportedLVVersion 2021 `
-  -VIP_LVVersion 2026 `
-  -SupportedBitness 64
+  -VIP_LVVersion 2023 `
+  -SupportedBitness 32,64
 
 # Display installed packages only (no install)
 pwsh -File tools/icon-editor/Invoke-VipmDependencies.ps1 `

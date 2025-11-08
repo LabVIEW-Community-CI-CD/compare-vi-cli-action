@@ -4,7 +4,7 @@
 param (
     [string]$MinimumSupportedLVVersion,
     [string]$VIP_LVVersion,
-    [string]$SupportedBitness,
+    [string[]]$SupportedBitness = @('64'),
     [string]$RelativePath = (Resolve-Path '.').ProviderPath,
     [string]$VIPCPath,
     [switch]$DisplayOnly,
@@ -23,7 +23,7 @@ Import-Module $helperModule -Force
 Write-Verbose "Parameters:"
 Write-Verbose " - MinimumSupportedLVVersion: $MinimumSupportedLVVersion"
 Write-Verbose " - VIP_LVVersion:             $VIP_LVVersion"
-Write-Verbose " - SupportedBitness:          $SupportedBitness"
+Write-Verbose " - SupportedBitness:          $($SupportedBitness -join ', ')"
 Write-Verbose " - RelativePath:              $RelativePath"
 Write-Verbose " - VIPCPath:                  $VIPCPath"
 Write-Verbose " - DisplayOnly:               $($DisplayOnly.IsPresent)"
@@ -37,6 +37,15 @@ if (-not $ProviderName) {
     } else {
         $ProviderName = 'vipm-gcli'
     }
+}
+
+$expandedBitness = @()
+foreach ($entry in $SupportedBitness) {
+    if ([string]::IsNullOrWhiteSpace($entry)) { continue }
+    $expandedBitness += ($entry -split '[,\s]+' | Where-Object { $_ })
+}
+if ($expandedBitness) {
+    $SupportedBitness = $expandedBitness
 }
 
 if (-not $DisplayOnly) {
@@ -77,17 +86,34 @@ if ($VIP_LVVersion -and ($VIP_LVVersion -ne $MinimumSupportedLVVersion)) {
 }
 $uniqueVersions = $versionsToApply | Select-Object -Unique
 
+$bitnessList = @()
+foreach ($bitness in $SupportedBitness) {
+    if ([string]::IsNullOrWhiteSpace($bitness)) { continue }
+    $normalized = $bitness.Trim()
+    if ($normalized -notin @('32','64')) {
+        throw "SupportedBitness must be 32 or 64. Invalid value '$bitness'."
+    }
+    if ($bitnessList -notcontains $normalized) {
+        $bitnessList += $normalized
+    }
+}
+if (-not $bitnessList) {
+    $bitnessList = @('64')
+}
+
 $vipmTelemetryRoot = Initialize-VipmTelemetry -RepoRoot $ResolvedRelativePath
 $collectedPackages = New-Object System.Collections.Generic.List[object]
 
-foreach ($version in $uniqueVersions) {
-    $vipcForValidation = if ($DisplayOnly) { $null } else { $VIPCPath }
-    Test-VipmCliReady -LabVIEWVersion $version -LabVIEWBitness $SupportedBitness -RepoRoot $ResolvedRelativePath -ProviderName $ProviderName -VipcPath $vipcForValidation | Out-Null
-    if ($DisplayOnly) {
-        $collectedPackages.Add((Show-VipmDependencies -LabVIEWVersion $version -LabVIEWBitness $SupportedBitness -TelemetryRoot $vipmTelemetryRoot -ProviderName $ProviderName)) | Out-Null
-    } else {
-        Write-Output ("Applying dependencies via provider '{0}' for LabVIEW {1} ({2}-bit)..." -f $ProviderName, $version, $SupportedBitness)
-        $collectedPackages.Add((Install-VipmVipc -VipcPath $VIPCPath -LabVIEWVersion $version -LabVIEWBitness $SupportedBitness -RepoRoot $ResolvedRelativePath -TelemetryRoot $vipmTelemetryRoot -ProviderName $ProviderName)) | Out-Null
+foreach ($bitness in $bitnessList) {
+    foreach ($version in $uniqueVersions) {
+        $vipcForValidation = if ($DisplayOnly) { $null } else { $VIPCPath }
+        Test-VipmCliReady -LabVIEWVersion $version -LabVIEWBitness $bitness -RepoRoot $ResolvedRelativePath -ProviderName $ProviderName -VipcPath $vipcForValidation | Out-Null
+        if ($DisplayOnly) {
+            $collectedPackages.Add((Show-VipmDependencies -LabVIEWVersion $version -LabVIEWBitness $bitness -TelemetryRoot $vipmTelemetryRoot -ProviderName $ProviderName)) | Out-Null
+        } else {
+            Write-Output ("Applying dependencies via provider '{0}' for LabVIEW {1} ({2}-bit)..." -f $ProviderName, $version, $bitness)
+            $collectedPackages.Add((Install-VipmVipc -VipcPath $VIPCPath -LabVIEWVersion $version -LabVIEWBitness $bitness -RepoRoot $ResolvedRelativePath -TelemetryRoot $vipmTelemetryRoot -ProviderName $ProviderName)) | Out-Null
+        }
     }
 }
 

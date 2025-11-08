@@ -141,6 +141,48 @@ function Get-VipmInstalledPackages {
     }
 }
 
+$serializerOptions = [System.Text.Json.JsonSerializerOptions]::new()
+$serializerOptions.WriteIndented = $true
+$serializerOptions.ReferenceHandler = [System.Text.Json.Serialization.ReferenceHandler]::Preserve
+$serializerOptions.DefaultIgnoreCondition = [System.Text.Json.Serialization.JsonIgnoreCondition]::WhenWritingNull
+
+function ConvertTo-SerializableObject {
+    param([object]$Value)
+
+    if ($null -eq $Value) { return $null }
+
+    $type = $Value.GetType()
+    if ($type.IsPrimitive -or $Value -is [string] -or $Value -is [decimal] -or $Value -is [datetime]) {
+        return $Value
+    }
+
+    if ($Value -is [System.Collections.IDictionary]) {
+        $dict = @{}
+        foreach ($key in $Value.Keys) {
+            $dict[$key] = ConvertTo-SerializableObject -Value $Value[$key]
+        }
+        return $dict
+    }
+
+    if ($Value -is [System.Collections.IEnumerable] -and -not ($Value -is [string])) {
+        $list = New-Object System.Collections.ArrayList
+        foreach ($item in $Value) {
+            $list.Add((ConvertTo-SerializableObject -Value $item)) | Out-Null
+        }
+        return $list
+    }
+
+    if ($Value -is [System.Management.Automation.PSCustomObject] -or $Value -is [psobject]) {
+        $cleanObject = [pscustomobject]@{}
+        foreach ($prop in $Value.PSObject.Properties) {
+            $cleanObject | Add-Member -NotePropertyName $prop.Name -NotePropertyValue (ConvertTo-SerializableObject -Value $prop.Value)
+        }
+        return $cleanObject
+    }
+
+    return $Value.ToString()
+}
+
 function Write-VipmTelemetryLog {
     param(
         [Parameter(Mandatory)][string]$LogRoot,
@@ -171,7 +213,9 @@ function Write-VipmTelemetryLog {
 
     $logName = ('vipm-install-{0:yyyyMMddTHHmmssfff}.json' -f (Get-Date))
     $logPath = Join-Path $LogRoot $logName
-    $payload | ConvertTo-Json -InputObject $payload -Depth 128 | Set-Content -LiteralPath $logPath -Encoding UTF8
+    $cleanPayload = ConvertTo-SerializableObject -Value $payload
+    $json = [System.Text.Json.JsonSerializer]::Serialize($cleanPayload, $serializerOptions)
+    Set-Content -LiteralPath $logPath -Encoding UTF8 -Value $json
     return $logPath
 }
 
@@ -194,7 +238,9 @@ function Write-VipmInstalledPackagesLog {
 
     $logName = ('vipm-installed-{0}-{1}bit-{2:yyyyMMddTHHmmssfff}.json' -f $LabVIEWVersion, $LabVIEWBitness, (Get-Date))
     $logPath = Join-Path $LogRoot $logName
-    $payload | ConvertTo-Json -InputObject $payload -Depth 128 | Set-Content -LiteralPath $logPath -Encoding UTF8
+    $cleanPayload = ConvertTo-SerializableObject -Value $payload
+    $json = [System.Text.Json.JsonSerializer]::Serialize($cleanPayload, $serializerOptions)
+    Set-Content -LiteralPath $logPath -Encoding UTF8 -Value $json
     return $logPath
 }
 
@@ -225,14 +271,6 @@ function Invoke-VipmProcess {
 
     if ($stdout) { Write-Host $stdout.Trim() }
     if ($stderr) { Write-Host $stderr.Trim() }
-
-    if ($process.ExitCode -ne 0) {
-        $message = "Process exited with code $($process.ExitCode)."
-        if ($stderr) {
-            $message += [Environment]::NewLine + $stderr.Trim()
-        }
-        throw $message
-    }
 
     return [pscustomobject]@{
         ExitCode = $process.ExitCode
@@ -275,6 +313,14 @@ function Install-VipmVipc {
         -StdErr $result.StdErr `
         -LabVIEWVersion $LabVIEWVersion `
         -LabVIEWBitness $LabVIEWBitness | Out-Null
+
+    if ($result.ExitCode -ne 0) {
+        $message = "Process exited with code $($result.ExitCode)."
+        if ($result.StdErr) {
+            $message += [Environment]::NewLine + $result.StdErr.Trim()
+        }
+        throw $message
+    }
 
     $packageInfo = $null
     if ($ProviderName -eq 'vipm') {

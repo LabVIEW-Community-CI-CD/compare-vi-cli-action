@@ -22,10 +22,18 @@ if (-not (Test-Path -LiteralPath $helperPath -PathType Leaf)) {
     throw "Unable to locate helper script at '$helperPath'."
 }
 
+$bitnessList = @()
+if ($SupportedBitness) {
+    $bitnessList = $SupportedBitness -split '[,\s]+' | Where-Object { $_ }
+}
+if (-not $bitnessList) {
+    $bitnessList = @('64')
+}
+
 & $helperPath `
     -MinimumSupportedLVVersion $MinimumSupportedLVVersion `
     -VIP_LVVersion $VIP_LVVersion `
-    -SupportedBitness $SupportedBitness `
+    -SupportedBitness $bitnessList `
     -RelativePath ($RelativePath ?? $repoRoot) `
     -VIPCPath $VIPCPath `
     -DisplayOnly:$DisplayOnly `
