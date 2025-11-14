@@ -3,9 +3,21 @@
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
+$script:RepoRoot = Split-Path -Parent (Split-Path -Parent (Split-Path -Parent $PSCommandPath))
+
 $script:VendorToolsImported = $false
 $script:GCliImported = $false
 $script:VipmImported = $false
+
+function Get-IconEditorLogDirectory {
+    $logsRoot = Join-Path $script:RepoRoot 'tests\results\_agent\icon-editor\logs'
+    if (-not (Test-Path -LiteralPath $logsRoot -PathType Container)) {
+        try {
+            New-Item -ItemType Directory -Path $logsRoot -Force | Out-Null
+        } catch {}
+    }
+    return $logsRoot
+}
 
 function Invoke-IconEditorVendorToolsImport {
     param([string]$WorkspaceRoot)
@@ -197,6 +209,32 @@ function Invoke-IconEditorProcess {
       $_ -and ($_ -match '\[WARN\]' -or $_ -match '\[ERROR\]' -or $_ -match 'Comms Error' -or $_ -match '\b[Ee]rror\b')
     }
   )
+  $logPath = $null
+  if ($process.ExitCode -ne 0) {
+    $logsRoot = Get-IconEditorLogDirectory
+    if ($logsRoot) {
+      $timestamp = Get-Date -Format 'yyyyMMddTHHmmssfff'
+      $binaryLeaf = if ($Binary) { ($Binary -replace '[^A-Za-z0-9\-\.]+','_') } else { 'process' }
+      $logFileName = "{0}-{1}.log" -f $binaryLeaf.Trim('_'), $timestamp
+      $logPathCandidate = Join-Path $logsRoot $logFileName
+      $logLines = @(
+        "# Icon Editor process failure"
+        "Timestamp: $(Get-Date -Format o)"
+        "WorkingDirectory: $WorkingDirectory"
+        "Binary: $Binary"
+        "Arguments: $([string]::Join(' ', ($Arguments | ForEach-Object { if ($_ -match '\s') { '\"{0}\"' -f $_ } else { $_ } })))"
+        "ExitCode: $($process.ExitCode)"
+        "---- STDOUT ----"
+        $stdout
+        "---- STDERR ----"
+        $stderr
+      )
+      try {
+        Set-Content -LiteralPath $logPathCandidate -Value $logLines -Encoding UTF8
+        $logPath = $logPathCandidate
+      } catch {}
+    }
+  }
 
   if (-not $Quiet) {
     if (-not [string]::IsNullOrWhiteSpace($stdout)) {
@@ -216,6 +254,7 @@ function Invoke-IconEditorProcess {
     Output          = $combinedOutput
     DurationSeconds = [Math]::Round($stopwatch.Elapsed.TotalSeconds, 3)
     Warnings        = $warnings
+    LogPath         = $logPath
   }
 }
 
@@ -262,7 +301,7 @@ function Invoke-IconEditorVipBuild {
         [Parameter(Mandatory)][int]$Patch,
         [Parameter(Mandatory)][int]$Build,
         [Parameter()][ValidateSet(32,64)][int]$SupportedBitness = 64,
-        [Parameter()][int]$MinimumSupportedLVVersion = 2025,
+        [Parameter()][int]$MinimumSupportedLVVersion = 2023,
         [Parameter()][ValidateSet(0,3)][int]$LabVIEWMinorRevision = 3,
         [Parameter(Mandatory)][string]$ReleaseNotesPath,
         [string]$WorkspaceRoot,

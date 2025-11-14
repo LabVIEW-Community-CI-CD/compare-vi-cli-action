@@ -9,6 +9,11 @@ Import-Module (Join-Path $toolsRoot 'VendorTools.psm1') -Force
 function Resolve-VipmBinaryPath {
     $path = Resolve-VIPMPath
     if ([string]::IsNullOrWhiteSpace($path)) {
+        $cliCommand = Get-Command vipm -ErrorAction SilentlyContinue
+        if ($cliCommand) {
+            return $cliCommand.Source
+        }
+
         throw 'Unable to resolve VIPM executable path. Configure VIPM_PATH/VIPM_EXE_PATH or update configs/labview-paths*.json.'
     }
 
@@ -115,4 +120,8 @@ function New-VipmProvider {
     return $provider
 }
 
-Export-ModuleMember -Function New-VipmProvider
+function New-LVProvider {
+    return New-VipmProvider
+}
+
+Export-ModuleMember -Function New-VipmProvider, New-LVProvider

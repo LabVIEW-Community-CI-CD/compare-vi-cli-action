@@ -14,6 +14,7 @@ Describe 'Invoke-IconEditorBuild.ps1' -Tag 'IconEditor','Build','Unit' {
     Remove-Module IconEditorDevMode -Force -ErrorAction SilentlyContinue
     Remove-Module VendorTools -Force -ErrorAction SilentlyContinue
     Remove-Module IconEditorPackage -Force -ErrorAction SilentlyContinue
+    Remove-Module PackedLibraryBuild -Force -ErrorAction SilentlyContinue
   }
 
   BeforeEach {
@@ -29,10 +30,11 @@ Describe 'Invoke-IconEditorBuild.ps1' -Tag 'IconEditor','Build','Unit' {
     $null = New-Item -ItemType Directory -Path (Join-Path $script:iconRoot 'resource\plugins') -Force
     $null = New-Item -ItemType Directory -Path (Join-Path $script:iconRoot 'Tooling\deployment') -Force
     $null = New-Item -ItemType File -Path (Join-Path $script:iconRoot 'Tooling\deployment\NI Icon editor.vipb') -Force
+    $null = New-Item -ItemType File -Path (Join-Path $script:iconRoot 'lv_icon_editor.lvproj') -Force
 
     function New-StubScript {
-      param([string]$RelativePath, [string]$Content)
-      $scriptPath = Join-Path $actionsRoot $RelativePath
+      param([string]$ActionRelativePath, [string]$Content)
+      $scriptPath = Join-Path $actionsRoot $ActionRelativePath
       $null = New-Item -ItemType Directory -Path (Split-Path -Parent $scriptPath) -Force
       Set-Content -LiteralPath $scriptPath -Value $Content -Encoding utf8
     }
@@ -41,14 +43,14 @@ Describe 'Invoke-IconEditorBuild.ps1' -Tag 'IconEditor','Build','Unit' {
 param(
   [string]$MinimumSupportedLVVersion,
   [string]$SupportedBitness,
-  [string]$RelativePath,
+  [string]$IconEditorRoot,
   [int]$Major,
   [int]$Minor,
   [int]$Patch,
   [int]$Build,
   [string]$Commit
 )
-$target = Join-Path $RelativePath 'resource\plugins\lv_icon.lvlibp'
+$target = Join-Path $IconEditorRoot 'resource\plugins\lv_icon.lvlibp'
 New-Item -ItemType Directory -Path (Split-Path -Parent $target) -Force | Out-Null
 "build-$SupportedBitness-$Major.$Minor.$Patch.$Build" | Set-Content -LiteralPath $target -Encoding utf8
 '@
@@ -73,7 +75,7 @@ Rename-Item -LiteralPath $CurrentFilename -NewName $NewFilename -Force
 param(
   [string]$MinimumSupportedLVVersion,
   [string]$SupportedBitness,
-  [string]$RelativePath
+  [string]$IconEditorRoot
 )
 "token:$MinimumSupportedLVVersion-$SupportedBitness" | Out-Null
 '@
@@ -82,41 +84,50 @@ param(
 param(
   [string]$MinimumSupportedLVVersion,
   [string]$SupportedBitness,
-  [string]$RelativePath,
+  [string]$IconEditorRoot,
   [string]$LabVIEW_Project,
   [string]$Build_Spec
 )
-$prepFlag = Join-Path $RelativePath 'Tooling\deployment\prepare-flag.txt'
+$prepFlag = Join-Path $IconEditorRoot 'Tooling\deployment\prepare-flag.txt'
 "prepared:$MinimumSupportedLVVersion-$SupportedBitness" | Set-Content -LiteralPath $prepFlag -Encoding utf8
 '@
 
-    New-StubScript 'modify-vipb-display-info/ModifyVIPBDisplayInfo.ps1' @'
+    $updateVipbPath = Join-Path $TestDrive 'Update-VipbDisplayInfo.ps1'
+    $env:ICON_EDITOR_UPDATE_VIPB_HELPER = $updateVipbPath
+    @'
 param(
-  [string]$SupportedBitness,
-  [string]$RelativePath,
-  [string]$VIPBPath,
   [int]$MinimumSupportedLVVersion,
   [string]$LabVIEWMinorRevision,
+  [string]$SupportedBitness,
   [int]$Major,
   [int]$Minor,
   [int]$Patch,
   [int]$Build,
   [string]$Commit,
+  [string]$IconEditorRoot,
+  [string]$VIPBPath,
   [string]$ReleaseNotesFile,
   [string]$DisplayInformationJSON
 )
-$infoPath = Join-Path $RelativePath 'Tooling\deployment\display-info.json'
+$infoPath = Join-Path $IconEditorRoot 'Tooling\deployment\display-info.json'
 Set-Content -LiteralPath $infoPath -Value $DisplayInformationJSON -Encoding utf8
 if (-not (Test-Path -LiteralPath $ReleaseNotesFile -PathType Leaf)) {
   New-Item -ItemType File -Path $ReleaseNotesFile -Force | Out-Null
 }
-'@
+'@ | Set-Content -LiteralPath $updateVipbPath -Encoding utf8
+
+    $unitReadyHelper = Join-Path $TestDrive 'UnitTestReady.ps1'
+    $env:ICON_EDITOR_UNIT_READY_HELPER = $unitReadyHelper
+    @'
+param([switch]$Validate)
+"unit-ready" | Out-File (Join-Path $env:TEMP 'unit-ready.log')
+'@ | Set-Content -LiteralPath $unitReadyHelper -Encoding utf8
 
     New-StubScript 'restore-setup-lv-source/RestoreSetupLVSource.ps1' @'
 param(
   [string]$MinimumSupportedLVVersion,
   [string]$SupportedBitness,
-  [string]$RelativePath,
+  [string]$IconEditorRoot,
   [string]$LabVIEW_Project,
   [string]$Build_Spec
 )
@@ -141,6 +152,24 @@ param(
 $iconRoot = Split-Path -Parent (Split-Path -Parent (Split-Path -Parent $PSScriptRoot))
 $vipOut = Join-Path $iconRoot 'Tooling\deployment\IconEditor_Test.vip'
 "vip-$SupportedBitness" | Set-Content -LiteralPath $vipOut -Encoding utf8
+'@
+
+    New-StubScript 'missing-in-project/Invoke-MissingInProjectCLI.ps1' @'
+param(
+  [string]$LVVersion,
+  [string]$Arch,
+  [string]$ProjectFile
+)
+'@
+
+    New-StubScript 'run-unit-tests/RunUnitTests.ps1' @'
+param(
+  [string]$MinimumSupportedLVVersion,
+  [string]$SupportedBitness,
+  [string]$ProjectPath
+)
+$reportPath = Join-Path $PSScriptRoot 'UnitTestReport.xml'
+"<Report lv='$MinimumSupportedLVVersion' arch='$SupportedBitness' />" | Set-Content -LiteralPath $reportPath -Encoding utf8
 '@
 
     $global:IconBuildDevModeState = [pscustomobject]@{
@@ -179,7 +208,7 @@ $vipOut = Join-Path $iconRoot 'Tooling\deployment\IconEditor_Test.vip'
         [string]$IconEditorRoot,
         [string]$Operation
       )
-      if (-not $Versions) { $Versions = @(2021) }
+      if (-not $Versions) { $Versions = @(2023) }
       if (-not $Bitness) { $Bitness = @(32,64) }
       if (-not $Operation) { $Operation = 'BuildPackage' }
       $global:IconBuildDevModeState = [pscustomobject]@{
@@ -206,7 +235,7 @@ $vipOut = Join-Path $iconRoot 'Tooling\deployment\IconEditor_Test.vip'
         [string]$IconEditorRoot,
         [string]$Operation
       )
-      if (-not $Versions) { $Versions = @(2021) }
+      if (-not $Versions) { $Versions = @(2023) }
       if (-not $Bitness) { $Bitness = @(32,64) }
       if (-not $Operation) { $Operation = 'BuildPackage' }
       $global:IconBuildDevModeState = [pscustomobject]@{
@@ -261,9 +290,9 @@ $vipOut = Join-Path $iconRoot 'Tooling\deployment\IconEditor_Test.vip'
 
       switch ($scriptName) {
         'Build_lvlibp.ps1' {
-          $relativePath = $argsMap['RelativePath']
-          if ($relativePath) {
-            $target = Join-Path $relativePath 'resource\plugins\lv_icon.lvlibp'
+          $IconEditorRoot = $argsMap['IconEditorRoot']
+          if ($IconEditorRoot) {
+            $target = Join-Path $IconEditorRoot 'resource\plugins\lv_icon.lvlibp'
             New-Item -ItemType Directory -Path (Split-Path -Parent $target) -Force | Out-Null
             "build-$($argsMap['SupportedBitness'])" | Set-Content -LiteralPath $target -Encoding utf8
           }
@@ -273,10 +302,10 @@ $vipOut = Join-Path $iconRoot 'Tooling\deployment\IconEditor_Test.vip'
             Rename-Item -LiteralPath $argsMap['CurrentFilename'] -NewName $argsMap['NewFilename'] -Force
           }
         }
-        'ModifyVIPBDisplayInfo.ps1' {
-          $relativePath = $argsMap['RelativePath']
-          if ($relativePath) {
-            $infoPath = Join-Path $relativePath 'Tooling\deployment\display-info.json'
+        'Update-VipbDisplayInfo.ps1' {
+          $IconEditorRoot = $argsMap['IconEditorRoot']
+          if ($IconEditorRoot) {
+            $infoPath = Join-Path $IconEditorRoot 'Tooling\deployment\display-info.json'
             $argsMap['DisplayInformationJSON'] | Set-Content -LiteralPath $infoPath -Encoding utf8
           }
           if ($argsMap['ReleaseNotesFile'] -and -not (Test-Path -LiteralPath $argsMap['ReleaseNotesFile'] -PathType Leaf)) {
@@ -311,6 +340,19 @@ $vipOut = Join-Path $iconRoot 'Tooling\deployment\IconEditor_Test.vip'
           Compress-Archive -Path (Join-Path $tempRoot '*') -DestinationPath $vipOut -Force
           Remove-Item -LiteralPath $tempRoot -Recurse -Force
         }
+        'Invoke-MissingInProjectCLI.ps1' {
+          $resultsDir = Join-Path $RepoRoot 'tests\results\_agent\missing-in-project'
+          New-Item -ItemType Directory -Path $resultsDir -Force | Out-Null
+          $payload = [ordered]@{
+            schema       = 'test/missing-in-project'
+            generatedAt  = (Get-Date).ToString('o')
+            lvVersion    = $argsMap['LVVersion']
+            arch         = $argsMap['Arch']
+            missingFiles = @()
+            passed       = $true
+          }
+          $payload | ConvertTo-Json -Depth 5 | Set-Content -LiteralPath (Join-Path $resultsDir 'last-run.json') -Encoding utf8
+        }
         default { }
       }
     }
@@ -319,6 +361,12 @@ $vipOut = Join-Path $iconRoot 'Tooling\deployment\IconEditor_Test.vip'
   AfterEach {
     Remove-Variable -Name IconBuildRecorded -Scope Global -ErrorAction SilentlyContinue
     Remove-Variable -Name IconBuildDevModeState -Scope Global -ErrorAction SilentlyContinue
+    Remove-Item Env:ICON_EDITOR_UPDATE_VIPB_HELPER -ErrorAction SilentlyContinue
+    Remove-Item Env:ICON_EDITOR_UNIT_READY_HELPER -ErrorAction SilentlyContinue
+    $missingTelemetry = Join-Path $script:repoRoot 'tests\results\_agent\missing-in-project\last-run.json'
+    if (Test-Path -LiteralPath $missingTelemetry -PathType Leaf) {
+      Remove-Item -LiteralPath $missingTelemetry -Force -ErrorAction SilentlyContinue
+    }
   }
 
   It 'runs full build and packaging flow' {
@@ -332,20 +380,28 @@ $vipOut = Join-Path $iconRoot 'Tooling\deployment\IconEditor_Test.vip'
     $calledScripts | Should -Contain 'Build_lvlibp.ps1'
     ($calledScripts | Where-Object { $_ -eq 'Build_lvlibp.ps1' }).Count | Should -Be 2
     ($calledScripts | Where-Object { $_ -eq 'Close_LabVIEW.ps1' }).Count | Should -Be 3
-    $calledScripts | Should -Contain 'ModifyVIPBDisplayInfo.ps1'
+    $calledScripts | Should -Contain 'Update-VipbDisplayInfo.ps1'
     $calledScripts | Should -Contain 'build_vip.ps1'
 
-    $enableCall = $global:IconBuildRecorded | Where-Object { $_.Script -eq 'EnableDevMode' } | Select-Object -First 1
-    $enableCall | Should -Not -BeNullOrEmpty
-    $enableCall.Arguments.Operation | Should -Be 'BuildPackage'
-    ($enableCall.Arguments.Versions -join ',') | Should -Be '2021'
-    ($enableCall.Arguments.Bitness -join ',')  | Should -Be '32,64'
+    $enableCalls = $global:IconBuildRecorded | Where-Object { $_.Script -eq 'EnableDevMode' }
+    $enableCalls | Should -Not -BeNullOrEmpty
+    $enableCalls.Count | Should -Be 2
+    $enableCalls[0].Arguments.Operation | Should -Be 'BuildPackage'
+    ($enableCalls[0].Arguments.Versions -join ',') | Should -Be '2023'
+    ($enableCalls[0].Arguments.Bitness -join ',')  | Should -Be '32,64'
+    $enableCalls[1].Arguments.Operation | Should -Be 'BuildPackage'
+    ($enableCalls[1].Arguments.Versions -join ',') | Should -Be '2026'
+    ($enableCalls[1].Arguments.Bitness -join ',')  | Should -Be '64'
 
-    $disableCall = $global:IconBuildRecorded | Where-Object { $_.Script -eq 'DisableDevMode' } | Select-Object -First 1
-    $disableCall | Should -Not -BeNullOrEmpty
-    $disableCall.Arguments.Operation | Should -Be 'BuildPackage'
-    ($disableCall.Arguments.Versions -join ',') | Should -Be '2021'
-    ($disableCall.Arguments.Bitness -join ',')  | Should -Be '32,64'
+    $disableCalls = $global:IconBuildRecorded | Where-Object { $_.Script -eq 'DisableDevMode' }
+    $disableCalls | Should -Not -BeNullOrEmpty
+    $disableCalls.Count | Should -Be 2
+    $disableCalls[0].Arguments.Operation | Should -Be 'BuildPackage'
+    ($disableCalls[0].Arguments.Versions -join ',') | Should -Be '2023'
+    ($disableCalls[0].Arguments.Bitness -join ',')  | Should -Be '32,64'
+    $disableCalls[1].Arguments.Operation | Should -Be 'BuildPackage'
+    ($disableCalls[1].Arguments.Versions -join ',') | Should -Be '2026'
+    ($disableCalls[1].Arguments.Bitness -join ',')  | Should -Be '64'
 
     Test-Path -LiteralPath (Join-Path $script:resultsRoot 'lv_icon_x86.lvlibp') | Should -BeTrue
     Test-Path -LiteralPath (Join-Path $script:resultsRoot 'lv_icon_x64.lvlibp') | Should -BeTrue
@@ -359,6 +415,8 @@ $vipOut = Join-Path $iconRoot 'Tooling\deployment\IconEditor_Test.vip'
     $manifest.dependenciesApplied | Should -BeTrue
     $manifest.developmentMode.toggled | Should -BeTrue
     $manifest.packaging.requestedToolchain | Should -Be 'gcli'
+    $manifest.packaging.packedLibVersion   | Should -Be 2023
+    $manifest.packaging.packagingLabviewVersion | Should -Be 2026
     [string]::IsNullOrEmpty($manifest.packaging.requestedProvider) | Should -BeTrue
     @($manifest.artifacts | Where-Object { $_.kind -eq 'vip' }).Count | Should -BeGreaterThan 0
     $manifest.packageSmoke.status | Should -Be 'ok'
@@ -374,22 +432,24 @@ $vipOut = Join-Path $iconRoot 'Tooling\deployment\IconEditor_Test.vip'
     } | Should -Not -Throw
 
     $calledScripts = $global:IconBuildRecorded | Where-Object { $_.Script -like '*.ps1' } | Select-Object -ExpandProperty Script
-    $calledScripts | Should -Not -Contain 'ModifyVIPBDisplayInfo.ps1'
+    $calledScripts | Should -Not -Contain 'Update-VipbDisplayInfo.ps1'
     $calledScripts | Should -Not -Contain 'build_vip.ps1'
 
     Test-Path -LiteralPath (Join-Path $script:resultsRoot 'IconEditor_Test.vip') | Should -BeFalse
 
-    $enableCall = $global:IconBuildRecorded | Where-Object { $_.Script -eq 'EnableDevMode' } | Select-Object -First 1
-    $enableCall | Should -Not -BeNullOrEmpty
-    $enableCall.Arguments.Operation | Should -Be 'BuildPackage'
-    ($enableCall.Arguments.Versions -join ',') | Should -Be '2021'
-    ($enableCall.Arguments.Bitness -join ',')  | Should -Be '32,64'
+    $enableCalls = $global:IconBuildRecorded | Where-Object { $_.Script -eq 'EnableDevMode' }
+    $enableCalls.Count | Should -Be 2
+    ($enableCalls[0].Arguments.Versions -join ',') | Should -Be '2023'
+    ($enableCalls[0].Arguments.Bitness -join ',')  | Should -Be '32,64'
+    ($enableCalls[1].Arguments.Versions -join ',') | Should -Be '2026'
+    ($enableCalls[1].Arguments.Bitness -join ',')  | Should -Be '64'
 
-    $disableCall = $global:IconBuildRecorded | Where-Object { $_.Script -eq 'DisableDevMode' } | Select-Object -First 1
-    $disableCall | Should -Not -BeNullOrEmpty
-    $disableCall.Arguments.Operation | Should -Be 'BuildPackage'
-    ($disableCall.Arguments.Versions -join ',') | Should -Be '2021'
-    ($disableCall.Arguments.Bitness -join ',')  | Should -Be '32,64'
+    $disableCalls = $global:IconBuildRecorded | Where-Object { $_.Script -eq 'DisableDevMode' }
+    $disableCalls.Count | Should -Be 2
+    ($disableCalls[0].Arguments.Versions -join ',') | Should -Be '2023'
+    ($disableCalls[0].Arguments.Bitness -join ',')  | Should -Be '32,64'
+    ($disableCalls[1].Arguments.Versions -join ',') | Should -Be '2026'
+    ($disableCalls[1].Arguments.Bitness -join ',')  | Should -Be '64'
 
     $manifest = Get-Content -LiteralPath (Join-Path $script:resultsRoot 'manifest.json') -Raw | ConvertFrom-Json
     $manifest.packagingRequested | Should -BeFalse
@@ -419,9 +479,42 @@ $vipOut = Join-Path $iconRoot 'Tooling\deployment\IconEditor_Test.vip'
 
     $argMap['BuildToolchain'] | Should -Be 'vipm'
     $argMap['BuildProvider']  | Should -Be 'vipm-custom'
+    $argMap['MinimumSupportedLVVersion'] | Should -Be '2026'
+    $argMap['LabVIEWMinorRevision']      | Should -Be '0'
 
     $manifest = Get-Content -LiteralPath (Join-Path $script:resultsRoot 'manifest.json') -Raw | ConvertFrom-Json
     $manifest.packaging.requestedToolchain | Should -Be 'vipm'
     $manifest.packaging.requestedProvider  | Should -Be 'vipm-custom'
+  }
+
+  It 'runs missing-in-project checks before executing unit tests' {
+    { & $script:scriptPath `
+        -IconEditorRoot $script:iconRoot `
+        -ResultsRoot $script:resultsRoot `
+        -SkipPackaging `
+        -RunUnitTests `
+        -Commit 'unittest' } | Should -Not -Throw
+
+    $missingCalls = $global:IconBuildRecorded | Where-Object { $_.Script -eq 'Invoke-MissingInProjectCLI.ps1' }
+    $missingCalls.Count | Should -Be 2
+
+    $arches = @()
+    foreach ($call in $missingCalls) {
+      $map = @{}
+      for ($i = 0; $i -lt $call.Arguments.Count; $i += 2) {
+        $key = $call.Arguments[$i].TrimStart('-')
+        $value = if ($i + 1 -lt $call.Arguments.Count) { $call.Arguments[$i + 1] } else { $null }
+        $map[$key] = $value
+      }
+      $map['LVVersion'] | Should -Be '2023'
+      $arches += $map['Arch']
+    }
+    (($arches | Sort-Object -Unique) -join ',') | Should -Be '32,64'
+
+    $telemetryPath = Join-Path $script:repoRoot 'tests\results\_agent\missing-in-project\last-run.json'
+    Test-Path -LiteralPath $telemetryPath | Should -BeTrue
+
+    $unitReport = Join-Path $script:resultsRoot 'UnitTestReport.xml'
+    Test-Path -LiteralPath $unitReport | Should -BeTrue
   }
 }

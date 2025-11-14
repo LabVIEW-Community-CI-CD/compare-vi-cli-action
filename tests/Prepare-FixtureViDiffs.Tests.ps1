@@ -6,13 +6,17 @@ Describe 'Prepare-FixtureViDiffs.ps1' -Tag 'IconEditor','VICompare','Unit' {
         Set-Variable -Scope Script -Name repoRoot -Value $repoRoot
         Set-Variable -Scope Script -Name prepareScript -Value (Join-Path $repoRoot 'tools/icon-editor/Prepare-FixtureViDiffs.ps1')
         Set-Variable -Scope Script -Name describeScript -Value (Join-Path $repoRoot 'tools/icon-editor/Describe-IconEditorFixture.ps1')
-        Set-Variable -Scope Script -Name currentFixture -Value (Join-Path $repoRoot 'tests/fixtures/icon-editor/ni_icon_editor-1.4.1.948.vip')
-        Set-Variable -Scope Script -Name baselineFixture -Value (Join-Path $repoRoot 'tests/fixtures/icon-editor/ni_icon_editor-1.4.1.794.vip')
-        Set-Variable -Scope Script -Name baselineManifestPath -Value (Join-Path $repoRoot 'tests/fixtures/icon-editor/fixture-manifest-1.4.1.794.json')
+        Set-Variable -Scope Script -Name currentFixture -Value $env:ICON_EDITOR_FIXTURE_PATH
+        Set-Variable -Scope Script -Name baselineFixture -Value $env:ICON_EDITOR_BASELINE_FIXTURE_PATH
+        Set-Variable -Scope Script -Name baselineManifestPath -Value $env:ICON_EDITOR_BASELINE_MANIFEST_PATH
     }
 
-    It 'emits requests when baseline manifest hash diverges' {
-        $reportPath = Join-Path $TestDrive 'fixture-report.json'
+    function New-FixtureDiffSetup {
+        param(
+            [Parameter(Mandatory)][string]$OutputDir
+        )
+
+        $reportPath = Join-Path $TestDrive ("fixture-report-{0}.json" -f ([guid]::NewGuid().ToString('n')))
         $summary = & $script:describeScript -FixturePath $script:currentFixture
         $summary | Should -Not -BeNullOrEmpty
         $summary.fixtureOnlyAssets += [ordered]@{
@@ -43,15 +47,38 @@ Describe 'Prepare-FixtureViDiffs.ps1' -Tag 'IconEditor','VICompare','Unit' {
             $baselineManifest.entries | Where-Object { $_.key -ne $resourceEntry.key }
         )
         $baselineManifest.entries += $resourceEntry
-
         $baselineManifest.generatedAt = (Get-Date).ToString('o')
-        $tempManifestPath = Join-Path $TestDrive 'baseline-manifest.json'
+
+        $tempManifestPath = Join-Path $TestDrive ("baseline-manifest-{0}.json" -f ([guid]::NewGuid().ToString('n')))
         $baselineManifest | ConvertTo-Json -Depth 6 | Set-Content -LiteralPath $tempManifestPath -Encoding utf8
 
-        $outputDir = Join-Path $TestDrive 'vi-diff'
+        return [pscustomobject]@{
+            ReportPath           = $reportPath
+            BaselineManifestPath = $tempManifestPath
+            OutputDir            = $OutputDir
+            ResourceRelPath      = $resourcePath
+        }
+    }
+
+    It 'emits requests when baseline manifest hash diverges' {
+        if (-not $script:currentFixture -or -not (Test-Path -LiteralPath $script:currentFixture -PathType Leaf)) {
+            Set-ItResult -Skip -Because 'ICON_EDITOR_FIXTURE_PATH not supplied; skipping VI diff request test.'
+            return
+        }
+        if (-not $script:baselineFixture -or -not (Test-Path -LiteralPath $script:baselineFixture -PathType Leaf)) {
+            Set-ItResult -Skip -Because 'ICON_EDITOR_BASELINE_FIXTURE_PATH not supplied; skipping VI diff request test.'
+            return
+        }
+        if (-not $script:baselineManifestPath -or -not (Test-Path -LiteralPath $script:baselineManifestPath -PathType Leaf)) {
+            Set-ItResult -Skip -Because 'ICON_EDITOR_BASELINE_MANIFEST_PATH not supplied; skipping VI diff request test.'
+            return
+        }
+
+        $context = New-FixtureDiffSetup -OutputDir (Join-Path $TestDrive 'vi-diff')
+        $outputDir = $context.OutputDir
         & $script:prepareScript `
-            -ReportPath $reportPath `
-            -BaselineManifestPath $tempManifestPath `
+            -ReportPath $context.ReportPath `
+            -BaselineManifestPath $context.BaselineManifestPath `
             -BaselineFixturePath $script:baselineFixture `
             -OutputDir $outputDir | Out-Null
 
@@ -67,8 +94,59 @@ Describe 'Prepare-FixtureViDiffs.ps1' -Tag 'IconEditor','VICompare','Unit' {
         Test-Path -LiteralPath $testRequest.base | Should -BeTrue
         Test-Path -LiteralPath $testRequest.head | Should -BeTrue
 
-        $resourceRequest = $requests.requests | Where-Object { $_.category -eq 'resource' -and $_.relPath -eq $resourcePath } | Select-Object -First 1
+        $resourceRequest = $requests.requests | Where-Object { $_.category -eq 'resource' -and $_.relPath -eq $context.ResourceRelPath } | Select-Object -First 1
         $resourceRequest | Should -Not -BeNullOrEmpty
         $resourceRequest.head | Should -Not -BeNullOrEmpty
+    }
+
+    It 'uses baseline environment paths when parameters are omitted' {
+        if (-not $script:currentFixture -or -not (Test-Path -LiteralPath $script:currentFixture -PathType Leaf)) {
+            Set-ItResult -Skip -Because 'ICON_EDITOR_FIXTURE_PATH not supplied; skipping VI diff request test.'
+            return
+        }
+        if (-not $script:baselineFixture -or -not (Test-Path -LiteralPath $script:baselineFixture -PathType Leaf)) {
+            Set-ItResult -Skip -Because 'ICON_EDITOR_BASELINE_FIXTURE_PATH not supplied; skipping VI diff request test.'
+            return
+        }
+        if (-not $script:baselineManifestPath -or -not (Test-Path -LiteralPath $script:baselineManifestPath -PathType Leaf)) {
+            Set-ItResult -Skip -Because 'ICON_EDITOR_BASELINE_MANIFEST_PATH not supplied; skipping VI diff request test.'
+            return
+        }
+
+        $context = New-FixtureDiffSetup -OutputDir (Join-Path $TestDrive 'vi-diff-env')
+
+        $originalBaselineFixture = $env:ICON_EDITOR_BASELINE_FIXTURE_PATH
+        $originalBaselineManifest = $env:ICON_EDITOR_BASELINE_MANIFEST_PATH
+        try {
+            $env:ICON_EDITOR_BASELINE_FIXTURE_PATH = $script:baselineFixture
+            $env:ICON_EDITOR_BASELINE_MANIFEST_PATH = $context.BaselineManifestPath
+
+            & $script:prepareScript `
+                -ReportPath $context.ReportPath `
+                -OutputDir $context.OutputDir `
+                -ResourceOverlayRoot $null | Out-Null
+
+            $requestsPath = Join-Path $context.OutputDir 'vi-diff-requests.json'
+            Test-Path -LiteralPath $requestsPath | Should -BeTrue
+            $requests = Get-Content -LiteralPath $requestsPath -Raw | ConvertFrom-Json -Depth 6
+            $requests.count | Should -BeGreaterThan 0
+
+            $resourceRequest = $requests.requests | Where-Object { $_.category -eq 'resource' -and $_.relPath -eq $context.ResourceRelPath } | Select-Object -First 1
+            $resourceRequest | Should -Not -BeNullOrEmpty
+            $resourceRequest.base | Should -Not -BeNullOrEmpty
+            $resourceRequest.head | Should -Not -BeNullOrEmpty
+        }
+        finally {
+            if ($null -ne $originalBaselineFixture) {
+                $env:ICON_EDITOR_BASELINE_FIXTURE_PATH = $originalBaselineFixture
+            } else {
+                Remove-Item Env:ICON_EDITOR_BASELINE_FIXTURE_PATH -ErrorAction SilentlyContinue
+            }
+            if ($null -ne $originalBaselineManifest) {
+                $env:ICON_EDITOR_BASELINE_MANIFEST_PATH = $originalBaselineManifest
+            } else {
+                Remove-Item Env:ICON_EDITOR_BASELINE_MANIFEST_PATH -ErrorAction SilentlyContinue
+            }
+        }
     }
 }

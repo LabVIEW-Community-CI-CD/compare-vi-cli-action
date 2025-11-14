@@ -1,18 +1,18 @@
 {
-  "number": 588,
-  "title": "Decouple icon editor build steps into composite actions",
-  "url": "https://github.com/LabVIEW-Community-CI-CD/compare-vi-cli-action/issues/588",
+  "number": 593,
+  "title": "Complete Migration to VIPM CLI for Icon Editor Packaging",
+  "url": "https://github.com/LabVIEW-Community-CI-CD/compare-vi-cli-action/issues/593",
   "state": "OPEN",
   "labels": [
     "standing-priority"
   ],
   "assignees": [],
   "milestone": null,
-  "commentCount": 6,
-  "lastSeenUpdatedAt": "2025-11-04T04:06:28Z",
-  "issueDigest": "74eda9ff3d7fdd8090dbcfb37d98dabeeb6ec60f51fa8c5b8dee6ac4036bb737",
-  "bodyDigest": "6b5e2727553071ff27094be41e6f6a290074db2dfbe813fdc8d7209e6ce7e55d",
-  "cachedAtUtc": "2025-11-04T07:14:08.556Z",
+  "commentCount": 0,
+  "lastSeenUpdatedAt": "2025-11-05T20:01:22Z",
+  "issueDigest": "3e74e31de0a081df0fd752c7084e8ae89d7cbc434a419760d0ed40075d7e4229",
+  "bodyDigest": "62cce0f0b24c345a4696f453c863c3571f92546b0843486292ea4dc900d9e277",
+  "cachedAtUtc": "2025-11-05T22:21:57.807Z",
   "lastFetchSource": "live",
   "lastFetchError": null
 }

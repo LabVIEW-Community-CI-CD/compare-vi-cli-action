@@ -97,7 +97,7 @@ jobs:
       - uses: ./.github/actions/modify-vipb-display-info
         with:
           vipb_path: .github/actions/build-vi-package/NI Icon editor.vipb
-          minimum_supported_lv_version: 2025
+          minimum_supported_lv_version: 2023
           labview_minor_revision: 3
           relative_path: ${{ github.workspace }}
           supported_bitness: 64
@@ -110,7 +110,7 @@ jobs:
           display_information_json: ${{ steps.display-info.outputs.json }}
       - uses: ./.github/actions/build-vi-package
         with:
-          minimum_supported_lv_version: 2025
+          minimum_supported_lv_version: 2023
           labview_minor_revision: 3
           supported_bitness: 64
           major: ${{ needs.version.outputs.MAJOR }}
@@ -140,7 +140,7 @@ jobs:
    2. `build-lvlibp` compiles the **32- and 64-bit** packed libraries.
    3. A PowerShell step generates JSON with `CompanyName` and `AuthorName` fields derived from GitHub variables.
    4. `modify-vipb-display-info` merges that JSON into the `.vipb` file.
-   5. `build-vi-package` produces the final **64-bit LabVIEW 2025** Icon Editor `.vip` package.
+   5. `build-vi-package` produces the final **64-bit LabVIEW 2023** Icon Editor `.vip` package.
 4. **Actions** can then upload the resulting `.vip` as an artifact.
 
 ---

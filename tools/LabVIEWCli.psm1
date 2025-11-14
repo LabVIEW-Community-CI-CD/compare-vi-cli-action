@@ -119,6 +119,32 @@ function Convert-ToAbsolutePath {
   }
 }
 
+function Format-LVCommandToken {
+  param([AllowNull()][string]$Token)
+  if ($null -eq $Token) { return '""' }
+  if ($Token.Length -eq 0) { return '""' }
+  if ($Token -match '[\s"]') {
+    $escaped = $Token -replace '\\','\\' -replace '"','\"'
+    return '"' + $escaped + '"'
+  }
+  return $Token
+}
+
+function Format-LVCommandLine {
+  param(
+    [Parameter(Mandatory)][string]$Binary,
+    [string[]]$Arguments
+  )
+  $tokens = New-Object System.Collections.Generic.List[string]
+  $tokens.Add((Format-LVCommandToken -Token $Binary)) | Out-Null
+  if ($Arguments) {
+    foreach ($arg in $Arguments) {
+      $tokens.Add((Format-LVCommandToken -Token $arg)) | Out-Null
+    }
+  }
+  return [string]::Join(' ', $tokens.ToArray())
+}
+
 function Resolve-LVNormalizedParams {
   param(
     [Parameter(Mandatory)][object]$OperationSpec,
@@ -743,7 +769,7 @@ function Invoke-LVOperation {
     $providerObject.Validate($Operation, $normalized)
   }
   $arguments = $providerObject.BuildArgs($Operation, $normalized)
-  $commandLine = "$binary " + ($arguments -join ' ')
+  $commandLine = Format-LVCommandLine -Binary $binary -Arguments $arguments
   $result = [ordered]@{
     provider        = if ($providerObject -and ($providerObject | Get-Member -Name 'Name' -ErrorAction SilentlyContinue)) { $providerObject.Name() } else { $providerLabel }
     operation       = $Operation

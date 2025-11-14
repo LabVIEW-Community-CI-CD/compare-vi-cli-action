@@ -6,6 +6,7 @@ Describe 'Stage-IconEditorSnapshot.ps1' -Tag 'IconEditor','Snapshot','Unit' {
         Set-Variable -Scope Script -Name repoRoot -Value $repoRoot
         Set-Variable -Scope Script -Name stageScript -Value (Join-Path $repoRoot 'tools/icon-editor/Stage-IconEditorSnapshot.ps1')
         Set-Variable -Scope Script -Name vendorPath -Value (Join-Path $repoRoot 'vendor/icon-editor')
+        Set-Variable -Scope Script -Name fixturePath -Value $env:ICON_EDITOR_FIXTURE_PATH
 
         Test-Path -LiteralPath $script:stageScript | Should -BeTrue
         Test-Path -LiteralPath $script:vendorPath | Should -BeTrue
@@ -86,11 +87,17 @@ Describe 'Stage-IconEditorSnapshot.ps1' -Tag 'IconEditor','Snapshot','Unit' {
     }
 
     It 'stages a snapshot using an existing source and skips validation' {
+        if (-not $script:fixturePath -or -not (Test-Path -LiteralPath $script:fixturePath -PathType Leaf)) {
+            Set-ItResult -Skip -Because 'ICON_EDITOR_FIXTURE_PATH not supplied; skipping snapshot staging test.'
+            return
+        }
+
         $workspaceRoot = Join-Path $TestDrive 'workspace'
         $result = & $script:stageScript `
             -SourcePath $script:vendorPath `
             -WorkspaceRoot $workspaceRoot `
             -StageName 'unit-snapshot' `
+            -FixturePath $script:fixturePath `
             -SkipValidate
 
         $result | Should -Not -BeNullOrEmpty
@@ -111,6 +118,11 @@ Describe 'Stage-IconEditorSnapshot.ps1' -Tag 'IconEditor','Snapshot','Unit' {
     }
 
     It 'invokes the provided validate helper with dry-run semantics' {
+        if (-not $script:fixturePath -or -not (Test-Path -LiteralPath $script:fixturePath -PathType Leaf)) {
+            Set-ItResult -Skip -Because 'ICON_EDITOR_FIXTURE_PATH not supplied; skipping snapshot staging test.'
+            return
+        }
+
         $workspaceRoot = Join-Path $TestDrive 'workspace'
         $validateStubDir = Join-Path $TestDrive 'validate-stub'
         $null = New-Item -ItemType Directory -Path $validateStubDir -Force
@@ -143,6 +155,7 @@ $stubTemplate.Replace('__LOG_PATH__', $logPath) | Set-Content -LiteralPath $vali
             -SourcePath $script:vendorPath `
             -WorkspaceRoot $workspaceRoot `
             -StageName 'unit-dryrun' `
+            -FixturePath $script:fixturePath `
             -InvokeValidateScript $validateStub `
             -DryRun `
             -SkipBootstrapForValidate
@@ -167,6 +180,75 @@ $stubTemplate.Replace('__LOG_PATH__', $logPath) | Set-Content -LiteralPath $vali
         $Global:StageDevModeLog[1].Operation | Should -Be 'Compare'
         ($Global:StageDevModeLog[1].Versions -join ',') | Should -Be '2025'
         ($Global:StageDevModeLog[1].Bitness -join ',')  | Should -Be '64'
+    }
+
+    It 'honours baseline environment variables when parameters are omitted' {
+        if (-not $script:fixturePath -or -not (Test-Path -LiteralPath $script:fixturePath -PathType Leaf)) {
+            Set-ItResult -Skip -Because 'ICON_EDITOR_FIXTURE_PATH not supplied; skipping snapshot staging test.'
+            return
+        }
+
+        $baselineFixturePath = Join-Path $TestDrive 'baseline-fixture.vip'
+        'stub baseline fixture' | Set-Content -LiteralPath $baselineFixturePath -Encoding utf8
+        $baselineManifestPath = Join-Path $TestDrive 'baseline-manifest.json'
+        '{}' | Set-Content -LiteralPath $baselineManifestPath -Encoding utf8
+
+        $workspaceRoot = Join-Path $TestDrive 'workspace-env'
+        $logDir = Join-Path $TestDrive 'validate-env'
+        $null = New-Item -ItemType Directory -Path $logDir -Force
+        $logPath = Join-Path $logDir 'log.json'
+        $validateStub = Join-Path $logDir 'Invoke-ValidateLocal.ps1'
+$stubTemplate = @'
+param(
+  [string]$BaselineFixture,
+  [string]$BaselineManifest,
+  [string]$ResourceOverlayRoot,
+  [string]$ResultsRoot
+)
+$payload = [ordered]@{
+  baselineFixture  = $BaselineFixture
+  baselineManifest = $BaselineManifest
+  resourceOverlay  = $ResourceOverlayRoot
+  resultsRoot      = $ResultsRoot
+}
+$payload | ConvertTo-Json -Depth 4 | Set-Content -LiteralPath "__LOG_PATH__" -Encoding utf8
+'@
+$stubTemplate.Replace('__LOG_PATH__', $logPath) | Set-Content -LiteralPath $validateStub -Encoding utf8
+
+        $originalBaselineFixture = $env:ICON_EDITOR_BASELINE_FIXTURE_PATH
+        $originalBaselineManifest = $env:ICON_EDITOR_BASELINE_MANIFEST_PATH
+        try {
+            $env:ICON_EDITOR_BASELINE_FIXTURE_PATH = $baselineFixturePath
+            $env:ICON_EDITOR_BASELINE_MANIFEST_PATH = $baselineManifestPath
+
+            $result = & $script:stageScript `
+                -SourcePath $script:vendorPath `
+                -WorkspaceRoot $workspaceRoot `
+                -StageName 'env-baseline' `
+                -FixturePath $script:fixturePath `
+                -InvokeValidateScript $validateStub `
+                -SkipDevMode
+
+            $result | Should -Not -BeNullOrEmpty
+            Test-Path -LiteralPath $logPath -PathType Leaf | Should -BeTrue
+
+            $log = Get-Content -LiteralPath $logPath -Raw | ConvertFrom-Json -Depth 3
+            $log.baselineFixture | Should -Be (Resolve-Path -LiteralPath $baselineFixturePath).Path
+            $log.baselineManifest | Should -Be (Resolve-Path -LiteralPath $baselineManifestPath).Path
+            Test-Path -LiteralPath $log.resultsRoot -PathType Container | Should -BeTrue
+        }
+        finally {
+            if ($null -ne $originalBaselineFixture) {
+                $env:ICON_EDITOR_BASELINE_FIXTURE_PATH = $originalBaselineFixture
+            } else {
+                Remove-Item Env:ICON_EDITOR_BASELINE_FIXTURE_PATH -ErrorAction SilentlyContinue
+            }
+            if ($null -ne $originalBaselineManifest) {
+                $env:ICON_EDITOR_BASELINE_MANIFEST_PATH = $originalBaselineManifest
+            } else {
+                Remove-Item Env:ICON_EDITOR_BASELINE_MANIFEST_PATH -ErrorAction SilentlyContinue
+            }
+        }
     }
 
     It 'honors dev mode overrides' {
@@ -198,10 +280,16 @@ $payload | ConvertTo-Json -Depth 6 | Set-Content -LiteralPath "__LOG_PATH__" -En
 '@
 $stubTemplate.Replace('__LOG_PATH__', $logPath) | Set-Content -LiteralPath $validateStub -Encoding utf8
 
+        if (-not $script:fixturePath -or -not (Test-Path -LiteralPath $script:fixturePath -PathType Leaf)) {
+            Set-ItResult -Skip -Because 'ICON_EDITOR_FIXTURE_PATH not supplied; skipping snapshot staging test.'
+            return
+        }
+
         $result = & $script:stageScript `
             -SourcePath $script:vendorPath `
             -WorkspaceRoot $workspaceRoot `
             -StageName 'unit-override' `
+            -FixturePath $script:fixturePath `
             -InvokeValidateScript $validateStub `
             -DryRun `
             -SkipBootstrapForValidate `
@@ -240,6 +328,11 @@ $stubTemplate.Replace('__LOG_PATH__', $logPath) | Set-Content -LiteralPath $vali
             )
         }
 
+        if (-not $script:fixturePath -or -not (Test-Path -LiteralPath $script:fixturePath -PathType Leaf)) {
+            Set-ItResult -Skip -Because 'ICON_EDITOR_FIXTURE_PATH not supplied; skipping snapshot staging test.'
+            return
+        }
+
         $workspaceRoot = Join-Path $TestDrive 'workspace-missing'
         $validateStubDir = Join-Path $TestDrive 'validate-missing'
         $null = New-Item -ItemType Directory -Path $validateStubDir -Force
@@ -257,6 +350,7 @@ $stubTemplate.Replace('__LOG_PATH__', $logPath) | Set-Content -LiteralPath $vali
                 -SourcePath $script:vendorPath `
                 -WorkspaceRoot $workspaceRoot `
                 -StageName 'missing-dev-mode' `
+                -FixturePath $script:fixturePath `
                 -InvokeValidateScript $validateStub `
                 -DryRun `
                 -SkipBootstrapForValidate

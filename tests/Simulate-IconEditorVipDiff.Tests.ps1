@@ -24,8 +24,14 @@ Describe 'Simulate-IconEditorBuild VIP diff' {
             commit = 'fixture'
         }
 
+        $fixturePath = $env:ICON_EDITOR_FIXTURE_PATH
+        if (-not $fixturePath -or -not (Test-Path -LiteralPath $fixturePath -PathType Leaf)) {
+            Set-ItResult -Skip -Because 'ICON_EDITOR_FIXTURE_PATH not supplied; skipping simulation diff test.'
+            return
+        }
+
         & $script:simulateScript `
-            -FixturePath (Join-Path $script:repoRoot 'tests/fixtures/icon-editor/ni_icon_editor-1.4.1.948.vip') `
+            -FixturePath $fixturePath `
             -ResultsRoot $resultsRoot `
             -ExpectedVersion $expectedVersion `
             -VipDiffOutputDir $vipDiffDir `

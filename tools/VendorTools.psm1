@@ -472,8 +472,39 @@ function Get-GCliCandidateExePaths {
 
 function Resolve-GCliPath {
   if (-not $IsWindows) { return $null }
-  $paths = @(Get-GCliCandidateExePaths -GCliExePath $null)
-  if ($paths.Count -gt 0) { return $paths[0] }
+  $candidates = @(Get-GCliCandidateExePaths -GCliExePath $null)
+  if ($candidates.Count -eq 0) { return $null }
+
+  $viable = New-Object System.Collections.Generic.List[string]
+
+  foreach ($candidate in $candidates) {
+    if ([string]::IsNullOrWhiteSpace($candidate)) { continue }
+    $trimmed = $candidate.Trim()
+
+    if ($trimmed.StartsWith('function:', [System.StringComparison]::OrdinalIgnoreCase)) {
+      Write-Verbose ("Resolve-GCliPath using function reference '{0}'." -f $trimmed)
+      return $trimmed
+    }
+
+    try {
+      if (Test-Path -LiteralPath $trimmed -PathType Leaf) {
+        $resolved = (Resolve-Path -LiteralPath $trimmed).Path
+        Write-Verbose ("Resolve-GCliPath found '{0}'." -f $resolved)
+        return $resolved
+      }
+    } catch {
+      # fall through, we only log aggregate failure below
+    }
+
+    if (-not $viable.Contains($trimmed)) {
+      $viable.Add($trimmed) | Out-Null
+    }
+  }
+
+  if ($viable.Count -gt 0) {
+    Write-Verbose ("Resolve-GCliPath tried candidates: {0}" -f ($viable -join ', '))
+  }
+
   return $null
 }
 
@@ -686,6 +717,32 @@ function Get-LabVIEWIniValue {
   return $null
 }
 
+function Resolve-LabVIEWServerPort {
+  param(
+    [string]$LabVIEWExePath,
+    [int]$DefaultPort = 3363
+  )
+
+  $iniPath = $null
+  if ($LabVIEWExePath) {
+    $iniPath = Get-LabVIEWIniPath -LabVIEWExePath $LabVIEWExePath
+  }
+
+  $value = $null
+  if ($iniPath) {
+    $value = Get-LabVIEWIniValue -Key 'server.tcp.port' -LabVIEWIniPath $iniPath -LabVIEWExePath $LabVIEWExePath
+  }
+
+  if ([string]::IsNullOrWhiteSpace($value)) { return $DefaultPort }
+
+  $port = 0
+  if ([int]::TryParse($value, [ref]$port) -and $port -gt 0) {
+    return $port
+  }
+
+  return $DefaultPort
+}
+
 function Resolve-LabVIEWCLIPath {
   param(
     [int]$Version,
@@ -744,6 +801,113 @@ function Resolve-LabVIEWCLIPath {
   & $addCandidate $candidates 'C:\Program Files (x86)\National Instruments\Shared\LabVIEW CLI\LabVIEWCLI.exe'
 
   foreach ($candidate in $candidates) {
+    try {
+      if (Test-Path -LiteralPath $candidate -PathType Leaf) {
+        return (Resolve-Path -LiteralPath $candidate).Path
+      }
+    } catch {}
+  }
+
+  return $null
+}
+
+function Resolve-LabVIEWExePath {
+  param(
+    [int]$Version,
+    [int]$Bitness = 64,
+    [string]$LabVIEWPath
+  )
+
+  if (-not $IsWindows) { return $null }
+
+  $candidates = New-Object System.Collections.ArrayList
+  $addCandidate = {
+    param([System.Collections.ArrayList]$list, [string]$value)
+    if ([string]::IsNullOrWhiteSpace($value)) { return }
+    if (-not $list.Contains($value)) { [void]$list.Add($value) }
+  }
+
+  & $addCandidate $candidates $LabVIEWPath
+
+  foreach ($envKey in @('LABVIEW_EXE_PATH','LABVIEW_PATH')) {
+    $envValue = [System.Environment]::GetEnvironmentVariable($envKey)
+    if ([string]::IsNullOrWhiteSpace($envValue)) { continue }
+    foreach ($entry in ($envValue -split ';')) {
+      & $addCandidate $candidates ($entry.Trim())
+    }
+  }
+
+  foreach ($config in (Get-LabVIEWConfigObjects)) {
+    foreach ($prop in @('labview','LabVIEWPath','labviewPath')) {
+      $propVal = $config.PSObject.Properties[$prop]
+      if (-not $propVal) { continue }
+      $value = $propVal.Value
+      if ($value -is [string]) { & $addCandidate $candidates $value }
+      elseif ($value -is [System.Collections.IEnumerable]) {
+        foreach ($item in $value) { & $addCandidate $candidates $item }
+      }
+    }
+
+    if ($Version) {
+      foreach ($name in @('LabVIEWPath','labview')) {
+        $versionValue = Get-VersionedConfigValue -Config $config -PropertyName $name -Version $Version -Bitness $Bitness
+        if ($versionValue) { & $addCandidate $candidates $versionValue }
+      }
+    }
+  }
+
+  if ($Version) {
+    $programRoots = @($env:ProgramFiles, ${env:ProgramFiles(x86)}) | Where-Object { -not [string]::IsNullOrWhiteSpace($_) }
+    foreach ($rootPath in $programRoots) {
+      $candidate = Join-Path $rootPath ("National Instruments\LabVIEW {0}\LabVIEW.exe" -f $Version)
+      & $addCandidate $candidates $candidate
+    }
+  }
+
+  $orderedCandidates = @()
+  try {
+    $orderedCandidates = [string[]]$candidates.ToArray()
+  } catch {
+    $orderedCandidates = @($candidates)
+  }
+
+  if ($Bitness -in @(32, 64)) {
+    $preferred = @()
+    $fallback  = @()
+    foreach ($candidate in $orderedCandidates) {
+      if ([string]::IsNullOrWhiteSpace($candidate)) { continue }
+      $normalized = $candidate.ToLowerInvariant()
+      $isPreferred = $false
+      if ($Bitness -eq 32) {
+        if ($normalized -like '*program files (x86)*' -or $normalized -match '\\32(bit)?\\') {
+          $isPreferred = $true
+        }
+      } elseif ($Bitness -eq 64) {
+        if (($normalized -like '*program files*' -and $normalized -notlike '*program files (x86)*') -or $normalized -match '\\64(bit)?\\') {
+          $isPreferred = $true
+        }
+      }
+      if ($isPreferred) {
+        $preferred += $candidate
+      } else {
+        $fallback += $candidate
+      }
+    }
+    $orderedCandidates = $preferred + $fallback
+  }
+
+  foreach ($candidate in $orderedCandidates) {
+    if ($candidate -is [string]) {
+      if ($candidate.StartsWith('function:', [System.StringComparison]::OrdinalIgnoreCase)) {
+        $functionName = $candidate.Substring('function:'.Length)
+        if (-not [string]::IsNullOrWhiteSpace($functionName)) {
+          return $functionName
+        }
+      }
+    }
+  }
+
+  foreach ($candidate in $orderedCandidates) {
     try {
       if (Test-Path -LiteralPath $candidate -PathType Leaf) {
         return (Resolve-Path -LiteralPath $candidate).Path

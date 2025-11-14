@@ -42,8 +42,17 @@ function Import-GCliProviderModules {
 
     $modules = Get-ChildItem -Path $providerRoot -Directory -ErrorAction SilentlyContinue
     foreach ($modDir in $modules) {
-        $modulePath = Join-Path $modDir.FullName 'Provider.psm1'
-        if (-not (Test-Path -LiteralPath $modulePath -PathType Leaf)) { continue }
+        $modulePath = $null
+        $manifestPath = Join-Path $modDir.FullName ("{0}.Provider.psd1" -f $modDir.Name)
+        if (Test-Path -LiteralPath $manifestPath -PathType Leaf) {
+            $modulePath = $manifestPath
+        } else {
+            $fallbackPath = Join-Path $modDir.FullName 'Provider.psm1'
+            if (Test-Path -LiteralPath $fallbackPath -PathType Leaf) {
+                $modulePath = $fallbackPath
+            }
+        }
+        if (-not $modulePath) { continue }
         try {
             $moduleInfo = Import-Module $modulePath -Force -PassThru
             $command = Get-Command -Name 'New-GCliProvider' -Module $moduleInfo.Name -ErrorAction Stop

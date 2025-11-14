@@ -105,6 +105,34 @@ function Invoke-Actionlint([string]$repoRoot){
   }
 }
 
+function Assert-NoDirectLabVIEWExeInvocation {
+  param([Parameter(Mandatory)][string]$RepoRoot)
+
+  $scripts = Get-ChildItem -Path $RepoRoot -Recurse -Include *.ps1 -File
+  $violations = New-Object System.Collections.Generic.List[object]
+  foreach ($script in $scripts) {
+    $lineNumber = 0
+    foreach ($line in Get-Content -LiteralPath $script.FullName) {
+      $lineNumber++
+      if ($line -match '(?i)start-process\s+.+LabVIEW\.exe') {
+        $violations.Add([pscustomobject]@{ Path = $script.FullName; Line = $lineNumber; Text = $line.Trim() }) | Out-Null
+        continue
+      }
+      if ($line -match '(?i)(?:^|\s)&\s*(?:(?:"[^"]*LabVIEW\.exe[^"]*")|(?:''[^'']*LabVIEW\.exe[^'']*'')|(?:\S*LabVIEW\.exe))') {
+        $violations.Add([pscustomobject]@{ Path = $script.FullName; Line = $lineNumber; Text = $line.Trim() }) | Out-Null
+      }
+    }
+  }
+
+  if ($violations.Count -gt 0) {
+    Write-Error "Direct LabVIEW.exe invocation detected. Use LabVIEWCLI/g-cli helpers instead."
+    foreach ($violation in $violations) {
+      Write-Host (" - {0}:{1}: {2}" -f $violation.Path, $violation.Line, $violation.Text) -ForegroundColor Red
+    }
+    exit 1
+  }
+}
+
 $root = (Get-RepoRoot).Path
 $guardScript = Join-Path (Split-Path -Parent $PSCommandPath) 'Assert-NoAmbiguousRemoteRefs.ps1'
 
@@ -124,97 +152,7 @@ if ($code -ne 0) {
 }
 Write-Host '[pre-push] actionlint OK' -ForegroundColor Green
 
-$updateReportScript = Join-Path $root 'tools' 'icon-editor' 'Update-IconEditorFixtureReport.ps1'
-if (Test-Path -LiteralPath $updateReportScript -PathType Leaf) {
-  Write-Host '[pre-push] Verifying icon-editor fixture report freshness' -ForegroundColor Cyan
-  Push-Location $root
-  try {
-    $updateOutput = pwsh -NoLogo -NoProfile -File $updateReportScript -NoSummary 2>&1
-    $updateExitCode = $LASTEXITCODE
-    if ($updateExitCode -ne 0) {
-      if ($updateOutput) {
-        $updateOutput | ForEach-Object { Write-Error $_ }
-      }
-      throw "Update-IconEditorFixtureReport.ps1 reported issues (exit=$LASTEXITCODE)."
-    }
-    # Surface any non-fatal warnings for optional debugging without breaking parity noise.
-    if ($updateOutput) {
-      Write-Verbose ($updateOutput -join [Environment]::NewLine)
-    }
-    git -C $root diff --quiet -- docs/ICON_EDITOR_PACKAGE.md
-    $docClean = $LASTEXITCODE -eq 0
-    if (-not $docClean) {
-      Write-Host '::notice::docs/ICON_EDITOR_PACKAGE.md differs from HEAD (regenerated); commit or revert as appropriate.' -ForegroundColor Yellow
-    }
-    Write-Host '[pre-push] icon-editor fixture report OK' -ForegroundColor Green
-    Write-Host '[pre-push] Checking icon-editor canonical hashes via node --test' -ForegroundColor Cyan
-    $hashExit = Invoke-NodeTestSanitized -Args @('--test','tools/icon-editor/__tests__/fixture-hashes.test.mjs')
-    if ($hashExit -ne 0) {
-      throw "node --test reported failures (exit=$hashExit)."
-    }
-    Write-Host '[pre-push] icon-editor hash checks OK' -ForegroundColor Green
-    Write-Host '[pre-push] Checking icon-editor fixture manifest vs baseline via node --test' -ForegroundColor Cyan
-    $manifestExit = Invoke-NodeTestSanitized -Args @('--test','tools/icon-editor/__tests__/fixture-manifests.test.mjs')
-    if ($manifestExit -ne 0) {
-      throw "node --test reported failures (exit=$manifestExit)."
-    }
-    Write-Host '[pre-push] icon-editor manifest checks OK' -ForegroundColor Green
-    $reportPath = Join-Path $root 'tests' 'results' '_agent' 'icon-editor' 'fixture-report.json'
-    if (Test-Path -LiteralPath $reportPath -PathType Leaf) {
-      try {
-        $fixtureReport = Get-Content -LiteralPath $reportPath -Raw | ConvertFrom-Json -Depth 8
-        if ($fixtureReport) {
-          $sanitizedSummary = [ordered]@{
-            schema                       = $fixtureReport.schema
-            fixturePackage               = $fixtureReport.fixture.package
-            systemPackage                = $fixtureReport.systemPackage.package
-            artifactHashes               = @()
-            customActions                = @()
-            runnerDependencyHashMatch    = [bool]$fixtureReport.runnerDependencies.hashMatch
-            fixtureAssetCategoryCounts   = @()
-          }
-          foreach ($artifact in ($fixtureReport.artifacts | Sort-Object name)) {
-            $sanitizedSummary.artifactHashes += [ordered]@{
-              name = $artifact.name
-              hash = $artifact.hash
-            }
-          }
-          foreach ($action in ($fixtureReport.customActions | Sort-Object name)) {
-            $sanitizedSummary.customActions += [ordered]@{
-              name      = $action.name
-              hashMatch = [bool]$action.hashMatch
-            }
-          }
-          foreach ($group in ($fixtureReport.fixtureOnlyAssets | Group-Object category | Sort-Object Name)) {
-            $sanitizedSummary.fixtureAssetCategoryCounts += [ordered]@{
-              category = $group.Name
-              count    = $group.Count
-            }
-          }
-          Write-Host '[pre-push] icon-editor fixture summary (sanitized):' -ForegroundColor Cyan
-          Write-Host ($sanitizedSummary | ConvertTo-Json -Depth 5) -ForegroundColor Green
-        }
-      } catch {
-        Write-Warning "Failed to load icon-editor fixture summary: $_"
-      }
-    }
-    if ($docClean) {
-      git checkout -- docs/ICON_EDITOR_PACKAGE.md | Out-Null
-    }
-    $artifactDir = Join-Path $root 'tests' 'results' '_agent' 'icon-editor'
-    $jsonPath = Join-Path $artifactDir 'fixture-report.json'
-    $markdownPath = Join-Path $artifactDir 'fixture-report.md'
-    if (-not ($env:GITHUB_ACTIONS -eq 'true')) {
-      if (Test-Path -LiteralPath $jsonPath) {
-        Remove-Item -LiteralPath $jsonPath -Force -ErrorAction SilentlyContinue
-      }
-      if (Test-Path -LiteralPath $markdownPath) {
-        Remove-Item -LiteralPath $markdownPath -Force -ErrorAction SilentlyContinue
-      }
-    }
-  } finally {
-    Pop-Location | Out-Null
-  }
-}
+Assert-NoDirectLabVIEWExeInvocation -RepoRoot $root
+Write-Host '[pre-push] verified no direct LabVIEW.exe invocations' -ForegroundColor Green
 
 

@@ -104,7 +104,7 @@ For a visual reference, you may consult a **Gitflow diagram** that includes alph
 For **detailed runner configuration**, see **`runner-setup-guide.md`**. Below is a short summary:
 
 1. **Install Prerequisites**
-   - **LabVIEW 2021 SP1** (32-bit and 64-bit) plus **LabVIEW 2025** (as needed for packaging)
+   - **LabVIEW 2021 SP1** (32-bit and 64-bit) plus **LabVIEW 2023** (as needed for packaging)
    - **PowerShell 7+**
    - **Git for Windows**
 2. **Add a Self-Hosted Runner**  

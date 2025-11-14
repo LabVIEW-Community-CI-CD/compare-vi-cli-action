@@ -133,6 +133,9 @@ param(
   [switch]$DisableStepSummary
 ,
   [Parameter(Mandatory = $false)]
+  [switch]$DisableRogueDetection
+,
+  [Parameter(Mandatory = $false)]
   [switch]$SingleInvoker
 ,
   [Parameter(Mandatory = $false)]
@@ -266,6 +269,13 @@ $script:labviewPidTrackerFinalizedContextSource = $null
 $script:labviewPidTrackerFinalizedContextDetail = $null
 $script:labviewPidTrackerSummaryContext = $null
 
+$script:rogueDetectionRuns = @()
+$script:rogueDetectionEnabled = $false
+$script:rogueDetectionScriptPath = $null
+$script:rogueDetectionResultsDir = $null
+$script:rogueDetectionOutputDir = $null
+$script:rogueDetectionPostRunExecuted = $false
+
 function _Normalize-LabVIEWPidContext {
   param([object]$Value)
 
@@ -358,6 +368,148 @@ function _Normalize-LabVIEWPidContext {
   }
 
   return & $normalizeValue $Value
+}
+
+function _Set-LabVIEWPidContextProperty {
+  param(
+    [Parameter(Mandatory)][object]$Object,
+    [Parameter(Mandatory)][string]$Name,
+    $Value
+  )
+
+  if (-not $Object) { return $null }
+  if ($Object -is [System.Collections.IDictionary]) {
+    $Object[$Name] = $Value
+    return $Object
+  }
+
+  $target = $Object
+  if (-not ($target -is [pscustomobject])) {
+    try {
+      $copy = [pscustomobject]@{}
+      $copiedAny = $false
+      try {
+        $props = $Object.PSObject.Properties
+      } catch {
+        $props = $null
+      }
+      if ($props) {
+        foreach ($prop in $props) {
+          if (-not $prop) { continue }
+          Add-Member -InputObject $copy -MemberType NoteProperty -Name $prop.Name -Value $prop.Value
+          $copiedAny = $true
+        }
+      }
+      if (-not $copiedAny) {
+        Add-Member -InputObject $copy -MemberType NoteProperty -Name 'value' -Value $Object
+      }
+      $target = $copy
+    } catch {
+      return $Object
+    }
+  }
+
+  $propHandle = $target.PSObject.Properties[$Name]
+  if ($propHandle) {
+    $propHandle.Value = $Value
+  } else {
+    try {
+      Add-Member -InputObject $target -MemberType NoteProperty -Name $Name -Value $Value
+    } catch {
+      return $target
+    }
+  }
+
+  return $target
+}
+
+function _Invoke-RogueLvDetection {
+  param(
+    [Parameter(Mandatory)][string]$Stage,
+    [switch]$FailOnRogue,
+    [switch]$AppendSummary
+  )
+
+  if (-not $script:rogueDetectionEnabled) { return $null }
+  if (-not $script:rogueDetectionScriptPath -or -not (Test-Path -LiteralPath $script:rogueDetectionScriptPath -PathType Leaf)) { return $null }
+  if (-not $script:rogueDetectionResultsDir) { return $null }
+
+  $safeStage = ($Stage -replace '[^a-zA-Z0-9_-]','-')
+  if (-not $safeStage) { $safeStage = 'stage' }
+  $timestamp = Get-Date -Format 'yyyyMMddTHHmmssfff'
+  $outputDir = $script:rogueDetectionOutputDir
+  if ($outputDir -and -not (Test-Path -LiteralPath $outputDir -PathType Container)) {
+    try { New-Item -ItemType Directory -Force -Path $outputDir | Out-Null } catch {}
+  }
+  $outputPath = if ($outputDir) { Join-Path $outputDir ("rogue-lv-{0}-{1}.json" -f $safeStage,$timestamp) } else { $null }
+
+  $pwshExe = 'pwsh'
+  try {
+    $pwshCmd = Get-Command -Name 'pwsh' -ErrorAction Stop
+    if ($pwshCmd.Path) { $pwshExe = $pwshCmd.Path }
+  } catch {}
+
+  $psArgs = @(
+    '-NoLogo',
+    '-NoProfile',
+    '-File', $script:rogueDetectionScriptPath,
+    '-ResultsDir', $script:rogueDetectionResultsDir
+  )
+  if ($outputPath) {
+    $psArgs += @('-OutputPath', $outputPath)
+  }
+  $psArgs += @('-LookBackSeconds','900','-RetryCount','2','-RetryDelaySeconds','5')
+  if ($AppendSummary) { $psArgs += '-AppendToStepSummary' }
+  if ($FailOnRogue) { $psArgs += '-FailOnRogue' }
+
+  $record = $null
+  $exitCode = 0
+  try {
+    & $pwshExe @psArgs | Out-Null
+    $exitCode = $LASTEXITCODE
+  } catch {
+    $exitCode = 1
+    Write-Warning ("Detect-RogueLV invocation failed in stage '{0}': {1}" -f $Stage, $_.Exception.Message)
+    $script:rogueDetectionEnabled = $false
+    return $null
+  }
+
+  $data = $null
+  if ($outputPath -and (Test-Path -LiteralPath $outputPath -PathType Leaf)) {
+    try {
+      $data = Get-Content -LiteralPath $outputPath -Raw | ConvertFrom-Json -ErrorAction Stop
+    } catch {
+      Write-Warning ("Failed to parse rogue detection payload at '{0}': {1}" -f $outputPath, $_.Exception.Message)
+    }
+  }
+
+  $record = [pscustomobject]@{
+    stage    = $Stage
+    path     = $outputPath
+    exitCode = $exitCode
+    data     = $data
+  }
+  $script:rogueDetectionRuns += ,$record
+
+  if ($exitCode -ne 0) {
+    $artifactLabel = if ($outputPath) { $outputPath } else { '(no artifact)' }
+    $message = "Rogue LabVIEW/LVCompare processes detected during stage '{0}'. See {1} for details." -f $Stage, $artifactLabel
+    if ($FailOnRogue) {
+      throw $message
+    } else {
+      Write-Warning $message
+      $script:rogueDetectionEnabled = $false
+    }
+  }
+
+  return $record
+}
+
+function _Ensure-RogueDetectionPost {
+  if (-not $script:rogueDetectionEnabled) { return }
+  if ($script:rogueDetectionPostRunExecuted) { return }
+  $script:rogueDetectionPostRunExecuted = $true
+  _Invoke-RogueLvDetection -Stage 'post' -FailOnRogue -AppendSummary
 }
 
 function _Finalize-LabVIEWPidTracker {
@@ -482,6 +634,10 @@ function _IsTruthyEnv {
 }
 if (-not $EmitResultShapeDiagnostics) { $EmitResultShapeDiagnostics = (_IsTruthyEnv $env:EMIT_RESULT_SHAPES) }
 if (-not $DisableStepSummary) { $DisableStepSummary = (_IsTruthyEnv $env:DISABLE_STEP_SUMMARY) }
+$originalDisableStepSummaryEnv = $env:DISABLE_STEP_SUMMARY
+if ($DisableStepSummary) {
+  $env:DISABLE_STEP_SUMMARY = '1'
+}
 
 function _Interpret-LegacyIncludeIntegration {
   param(
@@ -1101,6 +1257,25 @@ try {
   exit 1
 }
 
+if (-not $DisableRogueDetection) {
+  $skipRogueDetection = Test-EnvTruthy $env:SKIP_ROGUE_LV_DETECTION
+  $candidateDetectScript = Join-Path $root 'tools' 'Detect-RogueLV.ps1'
+  if (-not $skipRogueDetection -and (Test-Path -LiteralPath $candidateDetectScript -PathType Leaf)) {
+    $script:rogueDetectionEnabled = $true
+    $script:rogueDetectionScriptPath = $candidateDetectScript
+    $script:rogueDetectionResultsDir = $resultsDir
+    $script:rogueDetectionOutputDir = Join-Path $resultsDir '_agent/rogue-lv'
+    try {
+      if (-not (Test-Path -LiteralPath $script:rogueDetectionOutputDir -PathType Container)) {
+        New-Item -ItemType Directory -Force -Path $script:rogueDetectionOutputDir | Out-Null
+      }
+    } catch {}
+  }
+} else {
+  $script:rogueDetectionEnabled = $false
+  $script:rogueDetectionScriptPath = $null
+}
+
 if ($labviewPidTrackerLoaded) {
   $trackerPath = Join-Path $resultsDir '_agent' 'labview-pid.json'
   $script:labviewPidTrackerPath = $trackerPath
@@ -1528,6 +1703,15 @@ if ($CleanLabVIEW) {
   _Stop-ProcsSafely -Names @('LabVIEW')
   Start-Sleep -Milliseconds 200
   _Report-Procs -Names @('LabVIEW')
+}
+
+if ($script:rogueDetectionEnabled) {
+  try {
+    _Invoke-RogueLvDetection -Stage 'pre' -FailOnRogue | Out-Null
+  } catch {
+    Write-Error $_.Exception.Message
+    exit 1
+  }
 }
 
 # Artifact tracking pre-snapshot (optional)
@@ -2571,6 +2755,21 @@ if ($env:GITHUB_STEP_SUMMARY -and -not $DisableStepSummary) {
     $stepSummaryLines += ("- Integration Mode: {0}" -f $modeText)
     $stepSummaryLines += ("- Integration Source: {0}" -f $modeSource)
     $stepSummaryLines += ("- Discovery: {0}" -f $discoveryDescriptor)
+    if ($script:rogueDetectionRuns -and $script:rogueDetectionRuns.Count -gt 0) {
+      $stepSummaryLines += ''
+      $stepSummaryLines += '### Rogue LV Checks'
+      $stepSummaryLines += ''
+      foreach ($run in $script:rogueDetectionRuns) {
+        $rogueLc = 0
+        $rogueLv = 0
+        if ($run -and $run.data -and $run.data.rogue) {
+          if ($run.data.rogue.lvcompare) { $rogueLc = @($run.data.rogue.lvcompare).Count }
+          if ($run.data.rogue.labview)   { $rogueLv = @($run.data.rogue.labview).Count }
+        }
+        $leaf = if ($run.path) { Split-Path -Leaf $run.path } else { '(no artifact)' }
+        $stepSummaryLines += ("- {0}: LVCompare={1} LabVIEW={2} ({3})" -f $run.stage, $rogueLc, $rogueLv, $leaf)
+      }
+    }
     if ($labviewPidTrackerLoaded -and $script:labviewPidTrackerPath) {
       $stepSummaryLines += ''
       $stepSummaryLines += '### LabVIEW PID Tracker'
@@ -2664,7 +2863,7 @@ if ($env:GITHUB_STEP_SUMMARY -and -not $DisableStepSummary) {
           timedOut          = [bool]$script:timedOut
         }
         if ($script:labviewPidTrackerState -and $script:labviewPidTrackerState.PSObject.Properties['Pid'] -and $script:labviewPidTrackerState.Pid) {
-          $finalContext.pid = $script:labviewPidTrackerState.Pid
+          $finalContext = _Set-LabVIEWPidContextProperty -Object $finalContext -Name 'pid' -Value $script:labviewPidTrackerState.Pid
         }
         if (-not $contextSource) { $contextSource = 'dispatcher:summary' }
         if (-not $contextDetail) { $contextDetail = $contextSource }
@@ -2699,22 +2898,26 @@ if ($env:GITHUB_STEP_SUMMARY -and -not $DisableStepSummary) {
     $stepSummaryLines += '### Re-run (gh)'
     $stepSummaryLines += ''
     $stepSummaryLines += ("- {0}" -f $ghCommand)
-    $summaryFile = $env:GITHUB_STEP_SUMMARY
-    if ($summaryFile) {
-      try {
-        $summaryDir = Split-Path -Parent $summaryFile
-        if ($summaryDir -and -not (Test-Path -LiteralPath $summaryDir)) {
-          New-Item -ItemType Directory -Force -Path $summaryDir | Out-Null
+    if (-not $DisableStepSummary) {
+      $summaryFile = $env:GITHUB_STEP_SUMMARY
+      if ($summaryFile) {
+        try {
+          $summaryDir = Split-Path -Parent $summaryFile
+          if ($summaryDir -and -not (Test-Path -LiteralPath $summaryDir)) {
+            New-Item -ItemType Directory -Force -Path $summaryDir | Out-Null
+          }
+          $summaryText = ($stepSummaryLines -join [Environment]::NewLine) + [Environment]::NewLine
+          $encoding = New-Object System.Text.UTF8Encoding($false)
+          [System.IO.File]::WriteAllText($summaryFile, $summaryText, $encoding)
+        } catch {
+          $errMsg = $_.Exception.Message
+          Write-Host ("Step summary append failed: {0}" -f $errMsg) -ForegroundColor DarkYellow
         }
-        $summaryText = ($stepSummaryLines -join [Environment]::NewLine) + [Environment]::NewLine
-        $encoding = New-Object System.Text.UTF8Encoding($false)
-        [System.IO.File]::WriteAllText($summaryFile, $summaryText, $encoding)
-      } catch {
-        $errMsg = $_.Exception.Message
-        Write-Host ("Step summary append failed: {0}" -f $errMsg) -ForegroundColor DarkYellow
+      } else {
+        Write-Host 'Step summary append skipped: GITHUB_STEP_SUMMARY not set.' -ForegroundColor DarkYellow
       }
     } else {
-      Write-Host 'Step summary append skipped: GITHUB_STEP_SUMMARY not set.' -ForegroundColor DarkYellow
+      Write-Host 'Step summary append skipped: DisableStepSummary requested.' -ForegroundColor DarkYellow
     }
   } catch {
     $errMsg = $_.Exception.Message
@@ -2724,7 +2927,7 @@ if ($env:GITHUB_STEP_SUMMARY -and -not $DisableStepSummary) {
 }
 
 # Append optional Guard block to step summary (notice-only)
-if ($script:stuckGuardEnabled -and $env:GITHUB_STEP_SUMMARY) {
+if ($script:stuckGuardEnabled -and $env:GITHUB_STEP_SUMMARY -and -not $DisableStepSummary) {
   try {
     $hbCount = 0; $last = ''
     if (Test-Path -LiteralPath $script:hbPath) {
@@ -2953,7 +3156,7 @@ try {
           timedOut          = [bool]$script:timedOut
         }
         if ($script:labviewPidTrackerState -and $script:labviewPidTrackerState.PSObject.Properties['Pid'] -and $script:labviewPidTrackerState.Pid) {
-          $finalContext.pid = $script:labviewPidTrackerState.Pid
+          $finalContext = _Set-LabVIEWPidContextProperty -Object $finalContext -Name 'pid' -Value $script:labviewPidTrackerState.Pid
         }
         if (-not $contextSource) { $contextSource = 'dispatcher:summary' }
         if (-not $contextDetail) { $contextDetail = $contextSource }
@@ -3528,6 +3731,15 @@ if ($DetectLeaks) {
   } catch { Write-Warning "Leak detection failed: $_" }
 }
 
+if ($script:rogueDetectionEnabled) {
+  try {
+    _Ensure-RogueDetectionPost
+  } catch {
+    Write-Error $_.Exception.Message
+    exit 1
+  }
+}
+
 # Provide contextual note if integration was requested but effectively absent
 try {
   if ($includeIntegrationBool) {
@@ -3630,6 +3842,13 @@ if ($EmitFailuresJsonAlways) { Ensure-FailuresJson -Directory $resultsDir -Norma
 }
 exit 0
 finally {
+  if ($DisableStepSummary) {
+    if ($null -ne $originalDisableStepSummaryEnv) {
+      $env:DISABLE_STEP_SUMMARY = $originalDisableStepSummaryEnv
+    } else {
+      Remove-Item Env:DISABLE_STEP_SUMMARY -ErrorAction SilentlyContinue
+    }
+  }
   if ($script:fastModeTemporarilySet) {
     Remove-Item Env:FAST_PESTER -ErrorAction SilentlyContinue
   }

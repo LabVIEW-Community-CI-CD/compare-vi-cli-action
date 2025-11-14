@@ -40,3 +40,6 @@ Tests: `./Invoke-PesterTests.ps1 -TestsPath tests/CompareVI.History.Tests.ps1 -I
 2. Attempt graceful shutdown: `pwsh -File tools/Close-LabVIEW.ps1`.
 3. If PIDs remain, issue `Stop-Process -Id <pid> -Force` for each rogue entry (LVCompare first, then LabVIEW). Capture the console output for the issue thread.
 4. Re-run `tools/Detect-RogueLV.ps1 -FailOnRogue` to confirm cleanup; escalate in #293 if rogues persist.
+
+## LabVIEW host prep (MissingInProject)
+- Before running the icon-editor MissingInProject suite (#595), execute `pwsh -File tools/icon-editor/Prepare-LabVIEWHost.ps1 -FixturePath <vip> -Versions 2021 -Bitness 32,64 -StageName <label>` (or the VS Code task “IconEditor: Prepare LabVIEW Host”). The helper stages fixtures, enables dev mode, and enforces a deterministic LabVIEW shutdown; attach the generated telemetry from `tests/results/_agent/icon-editor/host-prep/` when reporting issues.

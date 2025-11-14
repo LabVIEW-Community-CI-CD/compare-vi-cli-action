@@ -40,9 +40,22 @@ function Import-VipmProviderModules {
     $providerRoot = Join-Path $PSScriptRoot 'providers'
     if (-not (Test-Path -LiteralPath $providerRoot -PathType Container)) { return }
 
-    $moduleFiles = Get-ChildItem -Path (Join-Path $providerRoot 'vipm') -Filter 'Provider.psm1' -File -ErrorAction SilentlyContinue
-    foreach ($moduleFile in $moduleFiles) {
-        $modulePath = $moduleFile.FullName
+    $providerDirs = Get-ChildItem -Path $providerRoot -Directory -ErrorAction SilentlyContinue |
+        Where-Object { $_.Name -like 'vipm*' }
+
+    foreach ($dir in $providerDirs) {
+        $modulePath = $null
+        $manifestPath = Join-Path $dir.FullName ("{0}.Provider.psd1" -f $dir.Name)
+        if (Test-Path -LiteralPath $manifestPath -PathType Leaf) {
+            $modulePath = $manifestPath
+        } else {
+            $fallback = Join-Path $dir.FullName 'Provider.psm1'
+            if (Test-Path -LiteralPath $fallback -PathType Leaf) {
+                $modulePath = $fallback
+            }
+        }
+        if (-not $modulePath) { continue }
+
         try {
             $moduleInfo = Import-Module $modulePath -Force -PassThru
             $command = Get-Command -Name 'New-VipmProvider' -Module $moduleInfo.Name -ErrorAction Stop

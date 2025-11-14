@@ -16,7 +16,8 @@ runs:
           -VIP_LVVersion ${{ inputs.vip_lv_version }} `
           -SupportedBitness ${{ inputs.supported_bitness }} `
           -RelativePath "${{ inputs.relative_path }}" `
-          -Toolchain "${{ inputs.toolchain }}"
+          -VIPCPath "${{ inputs.vipc_path }}" `
+          -DisplayOnly:(${{ inputs.display_only }} -eq 'true')
 inputs:
   minimum_supported_lv_version:
     description: 'LabVIEW major version (e.g. 2021)'
@@ -30,7 +31,11 @@ inputs:
   relative_path:
     description: 'Workspace root path'
     required: true
-  toolchain:
-    description: 'Toolchain to apply VIPC dependencies (auto, gcli, vipm)'
+  vipc_path:
+    description: 'Path to the VIPC file (optional when display_only=true)'
     required: false
-    default: 'auto'
+    default: ''
+  display_only:
+    description: 'Set to true to only display installed packages (no install).'
+    required: false
+    default: 'false'

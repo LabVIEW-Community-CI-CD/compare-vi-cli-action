@@ -137,5 +137,9 @@ function New-GCliProvider {
     return $provider
 }
 
-Export-ModuleMember -Function New-GCliProvider
+function New-LVProvider {
+    return New-GCliProvider
+}
+
+Export-ModuleMember -Function New-GCliProvider, New-LVProvider
 

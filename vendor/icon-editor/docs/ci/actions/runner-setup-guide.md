@@ -27,7 +27,7 @@ This document details how to automate **building**, **testing**, and **packaging
 Additionally, **you can pass metadata fields** (like **organization** or **repository name**) to the **build script**. These fields are embedded into the **VI Package** display information, effectively **branding** the Icon Editor package with a unique identifier. This is especially useful when multiple forks or organizations produce their own versions of the Icon Editor—ensuring each `.vip` is clearly labeled with the correct “author” or “company.”
 
 > **Prerequisites**:
-> - **LabVIEW 2021 SP1 (32-bit and 64-bit)** – and **LabVIEW 2025 (64-bit) for building the package**.
+> - **LabVIEW 2021 SP1 (32-bit and 64-bit)** – and **LabVIEW 2023 (64-bit) for building the package**.
 > - The relevant **VIPC** file is now at `.github/actions/apply-vipc/runner_dependencies.vipc`.
 > - [PowerShell 7+](https://github.com/PowerShell/PowerShell/releases/latest)
 > - [Git for Windows](https://github.com/git-for-windows/git/releases/latest)
@@ -38,12 +38,12 @@ Additionally, **you can pass metadata fields** (like **organization** or **repos
 **For experienced users**, a brief overview:
 
 1. **Install Required Software**
-   - Ensure **LabVIEW 2021 SP1 32-bit and 64-bit** are installed. If you plan to build the package, install **LabVIEW 2025 (64-bit)** as well.
+   - Ensure **LabVIEW 2021 SP1 32-bit and 64-bit** are installed. If you plan to build the package, install **LabVIEW 2023 (64-bit)** as well.
    - [PowerShell 7+](https://github.com/PowerShell/PowerShell/releases/latest)
    - [Git for Windows](https://github.com/git-for-windows/git/releases/latest)
 
 2. **Apply the VIPC**
-  - Apply `.github/actions/apply-vipc/runner_dependencies.vipc` with VIPM in **LabVIEW 2021 (32-bit)**; repeat for **LabVIEW 2021 (64-bit)**. If using **LabVIEW 2025 (64-bit)** for builds, apply the same VIPC there as well.
+  - Apply `.github/actions/apply-vipc/runner_dependencies.vipc` with VIPM in **LabVIEW 2021 (32-bit)**; repeat for **LabVIEW 2021 (64-bit)**. If using **LabVIEW 2023 (64-bit)** for builds, apply the same VIPC there as well.
    - This is required on new runners because the workflow's `apply-deps` job in `.github/workflows/ci-composite.yml` runs only when `.vipc` files change (`if: needs.changes.outputs.vipc == 'true'`). When no `.vipc` updates exist, dependencies aren't installed automatically, so apply the VIPC manually.
 
 3. **Configure a Self-Hosted Runner**  

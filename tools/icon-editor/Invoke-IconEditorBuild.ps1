@@ -9,16 +9,20 @@ param(
   [string]$Commit,
   [string]$CompanyName = 'LabVIEW Community CI/CD',
   [string]$AuthorName = 'LabVIEW Community CI/CD',
-  [string]$MinimumSupportedLVVersion = '2021',
+  [string]$MinimumSupportedLVVersion = '2023',
   [int]$LabVIEWMinorRevision = 3,
   [bool]$InstallDependencies = $true,
   [switch]$SkipPackaging,
   [switch]$RequirePackaging,
   [switch]$RunUnitTests,
+  [switch]$SkipMissingInProject,
   [string]$ResultsRoot,
   [ValidateSet('gcli','vipm')]
   [string]$BuildToolchain = 'gcli',
-  [string]$BuildProvider
+  [string]$BuildProvider,
+  [string]$PackageMinimumSupportedLVVersion = '2026',
+  [int]$PackageLabVIEWMinorRevision = 0,
+  [ValidateSet(32,64)][int]$PackageSupportedBitness = 64
 )
 
 Set-StrictMode -Version Latest
@@ -31,7 +35,10 @@ function Resolve-RepoRoot {
 
 $repoRoot = Resolve-RepoRoot
 Import-Module (Join-Path $repoRoot 'tools' 'VendorTools.psm1') -Force
+Import-Module (Join-Path $repoRoot 'tools' 'vendor' 'PackedLibraryBuild.psm1') -Force
+Import-Module (Join-Path $repoRoot 'tools' 'vendor' 'IconEditorPackaging.psm1') -Force
 Import-Module (Join-Path $repoRoot 'tools' 'icon-editor' 'IconEditorDevMode.psm1') -Force
+Import-Module (Join-Path $repoRoot 'tools' 'icon-editor' 'VipmBuildHelpers.psm1') -Force
 
 if (-not $IconEditorRoot) {
   $IconEditorRoot = Join-Path $repoRoot 'vendor' 'icon-editor'
@@ -46,6 +53,7 @@ if (-not $ResultsRoot) {
 }
 
 $ResultsRoot = (Resolve-Path -LiteralPath (New-Item -ItemType Directory -Path $ResultsRoot -Force)).Path
+$vipmBuildTelemetryRoot = Initialize-VipmBuildTelemetry -RepoRoot $repoRoot
 
 $gCliPath = Resolve-GCliPath
 if (-not $gCliPath) {
@@ -55,10 +63,13 @@ if (-not $gCliPath) {
 $gCliDirectory = Split-Path -Parent $gCliPath
 $previousPath = $env:Path
 $requiredLabVIEW = @(
-  @{ Version = 2021; Bitness = 32 },
-  @{ Version = 2021; Bitness = 64 },
-  @{ Version = 2025; Bitness = 64 }
+  @{ Version = [int]$MinimumSupportedLVVersion; Bitness = 32 },
+  @{ Version = [int]$MinimumSupportedLVVersion; Bitness = 64 }
 )
+if ([int]$PackageMinimumSupportedLVVersion -ne [int]$MinimumSupportedLVVersion -or $PackageSupportedBitness -notin @(32,64)) {
+  $requiredLabVIEW += @{ Version = [int]$PackageMinimumSupportedLVVersion; Bitness = $PackageSupportedBitness }
+}
+$requiredLabVIEW = $requiredLabVIEW | Sort-Object Version, Bitness -Unique
 $missingLabVIEW = @()
 foreach ($requirement in $requiredLabVIEW) {
   $requiredPath = Find-LabVIEWVersionExePath -Version $requirement.Version -Bitness $requirement.Bitness
@@ -72,6 +83,62 @@ if ($missingLabVIEW.Count -gt 0) {
 }
 $devModeWasToggled = $false
 $devModeActive = $false
+$devModeToggleTargets = New-Object System.Collections.Generic.List[object]
+
+function Add-DevModeTarget {
+  param(
+    [int]$Version,
+    [int[]]$Bitness
+  )
+
+  $existing = $null
+  foreach ($entry in $devModeToggleTargets) {
+    if ($entry.Version -eq $Version) {
+      $existing = $entry
+      break
+    }
+  }
+
+  $bitnessList = ($Bitness | Sort-Object -Unique)
+
+  if ($existing) {
+    $existing.Bitness = (@($existing.Bitness) + $bitnessList) | Sort-Object -Unique
+  } else {
+    $devModeToggleTargets.Add([pscustomobject]@{
+      Version = $Version
+      Bitness = $bitnessList
+    }) | Out-Null
+  }
+}
+
+$logsRoot = Join-Path $repoRoot 'tests' 'results' '_agent' 'icon-editor' 'logs'
+function Get-LatestIconEditorLog {
+  param()
+  if (-not (Test-Path -LiteralPath $logsRoot -PathType Container)) { return $null }
+  return Get-ChildItem -LiteralPath $logsRoot -Filter '*.log' | Sort-Object LastWriteTime | Select-Object -Last 1
+}
+
+function Capture-IconEditorMissingItems {
+  param(
+    [string]$ResultsRootPath,
+    [string]$ProjectRoot
+  )
+
+  $inspectScript = Join-Path $repoRoot 'tools' 'icon-editor' 'Inspect-MissingProjectItems.ps1'
+  if (-not (Test-Path -LiteralPath $inspectScript -PathType Leaf)) {
+    return $null
+  }
+
+  $missingPath = Join-Path $ResultsRootPath 'missing-items.json'
+  try {
+    & $inspectScript -ProjectPath (Join-Path $ProjectRoot 'lv_icon_editor.lvproj') -OutputPath $missingPath | Out-Null
+    return $missingPath
+  } catch {
+    Write-Warning ("Failed to capture missing project items: {0}" -f $_.Exception.Message)
+    return $null
+  }
+}
+
 try {
   if ($previousPath -notlike "$gCliDirectory*") {
     $env:Path = "$gCliDirectory;$previousPath"
@@ -88,12 +155,20 @@ try {
   $actionsRoot = Join-Path $IconEditorRoot '.github' 'actions'
 
   $unitTestScript     = Join-Path $actionsRoot 'run-unit-tests' 'RunUnitTests.ps1'
+  $unitReadyHelper    = if ($env:ICON_EDITOR_UNIT_READY_HELPER) { $env:ICON_EDITOR_UNIT_READY_HELPER } else { Join-Path $repoRoot 'tools' 'icon-editor' 'Prepare-UnitTestState.ps1' }
   $buildLvlibpScript  = Join-Path $actionsRoot 'build-lvlibp' 'Build_lvlibp.ps1'
   $closeLabviewScript = Join-Path $actionsRoot 'close-labview' 'Close_LabVIEW.ps1'
   $renameScript       = Join-Path $actionsRoot 'rename-file' 'Rename-file.ps1'
-  $modifyVipbScript   = Join-Path $actionsRoot 'modify-vipb-display-info' 'ModifyVIPBDisplayInfo.ps1'
+  $modifyVipbScript   = Join-Path $repoRoot '.github' 'actions' 'modify-vipb-display-info' 'Update-VipbDisplayInfo.ps1'
+  if ($env:ICON_EDITOR_UPDATE_VIPB_HELPER) {
+    $overrideScript = $env:ICON_EDITOR_UPDATE_VIPB_HELPER
+    if (Test-Path -LiteralPath $overrideScript -PathType Leaf) {
+      $modifyVipbScript = (Resolve-Path -LiteralPath $overrideScript).ProviderPath
+    }
+  }
   $buildVipScript     = Join-Path $actionsRoot 'build-vi-package' 'build_vip.ps1'
   $packageSmokeScript = Join-Path $repoRoot 'tools' 'icon-editor' 'Test-IconEditorPackage.ps1'
+  $missingInProjectScript = Join-Path $actionsRoot 'missing-in-project' 'Invoke-MissingInProjectCLI.ps1'
 
   foreach ($required in @($buildLvlibpScript, $closeLabviewScript, $renameScript, $modifyVipbScript, $buildVipScript)) {
     if (-not (Test-Path -LiteralPath $required -PathType Leaf)) {
@@ -108,6 +183,59 @@ try {
     )
 
     Invoke-IconEditorDevModeScript -ScriptPath $ScriptPath -ArgumentList $Arguments -RepoRoot $repoRoot -IconEditorRoot $IconEditorRoot
+  }
+
+  function Invoke-MissingInProjectCheck {
+    param(
+      [string[]]$BitnessTargets
+    )
+
+    if ($SkipMissingInProject) {
+      Write-Host 'Skipping missing-in-project check.' -ForegroundColor Yellow
+      return
+    }
+
+    if (-not (Test-Path -LiteralPath $missingInProjectScript -PathType Leaf)) {
+      throw "Invoke-MissingInProjectCLI.ps1 not found at '$missingInProjectScript'."
+    }
+
+    $projectFile = Join-Path $IconEditorRoot 'lv_icon_editor.lvproj'
+    if (-not (Test-Path -LiteralPath $projectFile -PathType Leaf)) {
+      throw "Icon editor project not found at '$projectFile'."
+    }
+
+    $bitnessList = if ($BitnessTargets -and $BitnessTargets.Count -gt 0) { $BitnessTargets } else { @('32','64') }
+    $bitnessList = $bitnessList | ForEach-Object { $_.ToString() } | Sort-Object -Unique
+
+    $missingResultsRoot = Join-Path $repoRoot 'tests' 'results' '_agent' 'missing-in-project'
+    $previousRepoRoot = $env:MIP_REPO_ROOT
+    $previousResultsRoot = $env:MIP_RESULTS_ROOT
+
+    try {
+      $env:MIP_REPO_ROOT = $repoRoot
+      $env:MIP_RESULTS_ROOT = $missingResultsRoot
+
+      foreach ($arch in $bitnessList) {
+        Write-Host ("Running MissingInProject check for LabVIEW {0} ({1}-bit)..." -f $MinimumSupportedLVVersion, $arch) -ForegroundColor Cyan
+        $arguments = @(
+          '-LVVersion', "$MinimumSupportedLVVersion",
+          '-Arch', $arch,
+          '-ProjectFile', $projectFile
+        )
+        Invoke-IconEditorAction -ScriptPath $missingInProjectScript -Arguments $arguments
+      }
+    } finally {
+      if ($null -ne $previousRepoRoot) {
+        $env:MIP_REPO_ROOT = $previousRepoRoot
+      } else {
+        Remove-Item Env:MIP_REPO_ROOT -ErrorAction SilentlyContinue
+      }
+      if ($null -ne $previousResultsRoot) {
+        $env:MIP_RESULTS_ROOT = $previousResultsRoot
+      } else {
+        Remove-Item Env:MIP_RESULTS_ROOT -ErrorAction SilentlyContinue
+      }
+    }
   }
 
   if ($SkipPackaging.IsPresent -and $RequirePackaging.IsPresent) {
@@ -126,7 +254,26 @@ try {
   $devModeActive = $false
   if ($InstallDependencies -and (-not $previousDevState.Active)) {
     Write-Host 'Enabling icon editor development mode...' -ForegroundColor Cyan
-    Enable-IconEditorDevelopmentMode -RepoRoot $repoRoot -IconEditorRoot $IconEditorRoot -Operation 'BuildPackage' | Out-Null
+
+    $packedLibBitnessTargets = @(32, 64)
+    Enable-IconEditorDevelopmentMode `
+      -RepoRoot $repoRoot `
+      -IconEditorRoot $IconEditorRoot `
+      -Operation 'BuildPackage' `
+      -Versions @([int]$MinimumSupportedLVVersion) `
+      -Bitness $packedLibBitnessTargets | Out-Null
+    Add-DevModeTarget -Version ([int]$MinimumSupportedLVVersion) -Bitness $packedLibBitnessTargets
+
+    if ([int]$PackageMinimumSupportedLVVersion -ne [int]$MinimumSupportedLVVersion -or $PackageSupportedBitness -notin $packedLibBitnessTargets) {
+      Enable-IconEditorDevelopmentMode `
+        -RepoRoot $repoRoot `
+        -IconEditorRoot $IconEditorRoot `
+        -Operation 'BuildPackage' `
+        -Versions @([int]$PackageMinimumSupportedLVVersion) `
+        -Bitness @($PackageSupportedBitness) | Out-Null
+      Add-DevModeTarget -Version ([int]$PackageMinimumSupportedLVVersion) -Bitness @($PackageSupportedBitness)
+    }
+
     $devModeWasToggled = $true
     $devModeActive = $true
   } elseif ($previousDevState.Active) {
@@ -134,71 +281,98 @@ try {
   }
 
   $pluginsPath = Join-Path $IconEditorRoot 'resource' 'plugins'
-  if (Test-Path -LiteralPath $pluginsPath -PathType Container) {
-    Get-ChildItem -LiteralPath $pluginsPath -Filter '*.lvlibp' -ErrorAction SilentlyContinue | ForEach-Object {
-      Remove-Item -LiteralPath $_.FullName -Force -ErrorAction SilentlyContinue
-    }
-  }
-
-  $lvLibPath = Join-Path $pluginsPath 'lv_icon.lvlibp'
+  $baseArtifactName = 'lv_icon.lvlibp'
   $renameToX86 = 'lv_icon_x86.lvlibp'
   $renameToX64 = 'lv_icon_x64.lvlibp'
 
   Write-Host 'Building icon editor packed libraries...' -ForegroundColor Cyan
 
-  Invoke-IconEditorAction `
-    -ScriptPath $buildLvlibpScript `
-    -Arguments @(
-      '-MinimumSupportedLVVersion','2021',
-      '-SupportedBitness','32',
-      '-RelativePath', $IconEditorRoot,
-      '-Major', "$Major",
-      '-Minor', "$Minor",
-      '-Patch', "$Patch",
-      '-Build', "$Build",
-      '-Commit', $Commit
+  $buildTargets = @(
+    [ordered]@{
+      Label = '32-bit'
+      BuildArguments = @(
+        '-MinimumSupportedLVVersion', "$MinimumSupportedLVVersion",
+        '-SupportedBitness','32',
+        '-RelativePath', $IconEditorRoot,
+        '-Major', "$Major",
+        '-Minor', "$Minor",
+        '-Patch', "$Patch",
+        '-Build', "$Build",
+        '-Commit', $Commit
+      )
+      CloseArguments = @(
+        '-MinimumSupportedLVVersion', "$MinimumSupportedLVVersion",
+        '-SupportedBitness','32'
+      )
+      RenameArguments = @(
+        '-CurrentFilename', '{{BaseArtifactPath}}',
+        '-NewFilename', $renameToX86
+      )
+    },
+    [ordered]@{
+      Label = '64-bit'
+      BuildArguments = @(
+        '-MinimumSupportedLVVersion', "$MinimumSupportedLVVersion",
+        '-SupportedBitness','64',
+        '-RelativePath', $IconEditorRoot,
+        '-Major', "$Major",
+        '-Minor', "$Minor",
+        '-Patch', "$Patch",
+        '-Build', "$Build",
+        '-Commit', $Commit
+      )
+      CloseArguments = @(
+        '-MinimumSupportedLVVersion', "$MinimumSupportedLVVersion",
+        '-SupportedBitness','64'
+      )
+      RenameArguments = @(
+        '-CurrentFilename', '{{BaseArtifactPath}}',
+        '-NewFilename', $renameToX64
+      )
+    }
+  )
+
+  $actionInvoker = {
+    param(
+      [string]$ScriptPath,
+      [string[]]$Arguments
+    )
+    Invoke-IconEditorAction -ScriptPath $ScriptPath -Arguments $Arguments
+  }
+
+  $onBuildError = {
+    param(
+      [hashtable]$Target,
+      [System.Management.Automation.ErrorRecord]$ErrorRecord
     )
 
-  Invoke-IconEditorAction `
-    -ScriptPath $closeLabviewScript `
-    -Arguments @(
-      '-MinimumSupportedLVVersion','2021',
-      '-SupportedBitness','32'
-    )
+    $label = if ($Target.ContainsKey('Label')) { $Target.Label } else { 'unknown target' }
+    $diagnostics = [ordered]@{
+      LogPath      = (Get-LatestIconEditorLog)?.FullName
+      MissingItems = Capture-IconEditorMissingItems -ResultsRootPath $ResultsRoot -ProjectRoot $IconEditorRoot
+    }
 
-  Invoke-IconEditorAction `
-    -ScriptPath $renameScript `
-    -Arguments @(
-      '-CurrentFilename', $lvLibPath,
-      '-NewFilename', $renameToX86
-    )
+    $message = "Failed to build icon editor packed library ($label)."
+    if ($diagnostics.LogPath) {
+      $message += " See $($diagnostics.LogPath) for g-cli output."
+    }
+    if ($diagnostics.MissingItems) {
+      $message += " Missing item details captured at $($diagnostics.MissingItems)."
+    }
 
-  Invoke-IconEditorAction `
-    -ScriptPath $buildLvlibpScript `
-    -Arguments @(
-      '-MinimumSupportedLVVersion','2021',
-      '-SupportedBitness','64',
-      '-RelativePath', $IconEditorRoot,
-      '-Major', "$Major",
-      '-Minor', "$Minor",
-      '-Patch', "$Patch",
-      '-Build', "$Build",
-      '-Commit', $Commit
-    )
+    return [System.InvalidOperationException]::new($message, $ErrorRecord.Exception)
+  }
 
-  Invoke-IconEditorAction `
-    -ScriptPath $closeLabviewScript `
-    -Arguments @(
-      '-MinimumSupportedLVVersion','2021',
-      '-SupportedBitness','64'
-    )
-
-  Invoke-IconEditorAction `
-    -ScriptPath $renameScript `
-    -Arguments @(
-      '-CurrentFilename', $lvLibPath,
-      '-NewFilename', $renameToX64
-    )
+  Invoke-LVPackedLibraryBuild `
+    -InvokeAction $actionInvoker `
+    -BuildScriptPath $buildLvlibpScript `
+    -CloseScriptPath $closeLabviewScript `
+    -RenameScriptPath $renameScript `
+    -ArtifactDirectory $pluginsPath `
+    -BaseArtifactName $baseArtifactName `
+    -CleanupPatterns @('lv_icon*.lvlibp') `
+    -Targets $buildTargets `
+    -OnBuildError $onBuildError
 
   $displayInfo = [ordered]@{
     'Package Version' = [ordered]@{
@@ -219,7 +393,7 @@ try {
   }
 
   $displayInfoJson = $displayInfo | ConvertTo-Json -Depth 3
-  $vipArtifacts = @()
+  $vipArtifacts = New-Object System.Collections.Generic.List[object]
   $packageSmokeSummary = $null
 
   if ($packagingRequested) {
@@ -228,27 +402,25 @@ try {
     $vipbRelativePath = 'Tooling\deployment\NI Icon editor.vipb'
     $releaseNotesPath = Join-Path $IconEditorRoot 'Tooling\deployment\release_notes.md'
 
-    Invoke-IconEditorAction `
-      -ScriptPath $modifyVipbScript `
-      -Arguments @(
-        '-SupportedBitness','64',
-        '-RelativePath', $IconEditorRoot,
-        '-VIPBPath', $vipbRelativePath,
-        '-MinimumSupportedLVVersion','2025',
-        '-LabVIEWMinorRevision', "$LabVIEWMinorRevision",
-        '-Major', "$Major",
-        '-Minor', "$Minor",
-        '-Patch', "$Patch",
-        '-Build', "$Build",
-        '-Commit', $Commit,
-        '-ReleaseNotesFile', $releaseNotesPath,
-        '-DisplayInformationJSON', $displayInfoJson
-      )
+    $modifyVipbArguments = @(
+      '-SupportedBitness','64',
+      '-IconEditorRoot', $IconEditorRoot,
+      '-VIPBPath', $vipbRelativePath,
+      '-MinimumSupportedLVVersion', "$MinimumSupportedLVVersion",
+      '-LabVIEWMinorRevision', "$LabVIEWMinorRevision",
+      '-Major', "$Major",
+      '-Minor', "$Minor",
+      '-Patch', "$Patch",
+      '-Build', "$Build",
+      '-Commit', $Commit,
+      '-ReleaseNotesFile', $releaseNotesPath,
+      '-DisplayInformationJSON', $displayInfoJson
+    )
 
     $vipArguments = @(
-      '-SupportedBitness','64',
-      '-MinimumSupportedLVVersion','2025',
-      '-LabVIEWMinorRevision', "$LabVIEWMinorRevision",
+      '-SupportedBitness', "$PackageSupportedBitness",
+      '-MinimumSupportedLVVersion', "$PackageMinimumSupportedLVVersion",
+      '-LabVIEWMinorRevision', "$PackageLabVIEWMinorRevision",
       '-Major', "$Major",
       '-Minor', "$Minor",
       '-Patch', "$Patch",
@@ -261,23 +433,42 @@ try {
     if ($BuildProvider) {
       $vipArguments += @('-BuildProvider', $BuildProvider)
     }
-    Invoke-IconEditorAction `
-      -ScriptPath $buildVipScript `
-      -Arguments $vipArguments
 
-    Invoke-IconEditorAction `
-      -ScriptPath $closeLabviewScript `
-      -Arguments @(
-        '-MinimumSupportedLVVersion','2025',
-        '-SupportedBitness','64'
-      )
+    $closeArguments = @(
+      '-MinimumSupportedLVVersion', "$PackageMinimumSupportedLVVersion",
+      '-SupportedBitness', "$PackageSupportedBitness"
+    )
 
-    $vipCandidates = Get-ChildItem -Path $IconEditorRoot -Filter '*.vip' -Recurse -ErrorAction SilentlyContinue | Where-Object { $_.LastWriteTime -ge $buildStart }
-    foreach ($vip in $vipCandidates) {
-      $destName = $vip.Name
-      $destPath = Join-Path $ResultsRoot $destName
-      Copy-Item -LiteralPath $vip.FullName -Destination $destPath -Force
-      $vipArtifacts += @{ Source = $vip.FullName; Name = $destName; Kind = 'vip' }
+    $packagingMetadata = [ordered]@{
+      version = @{
+        major  = $Major
+        minor  = $Minor
+        patch  = $Patch
+        build  = $Build
+        commit = $Commit
+      }
+      releaseNotes = $releaseNotesPath
+      vipbPath     = $vipbRelativePath
+    }
+
+    $packagingResult = Invoke-VipmPackageBuild `
+      -InvokeAction $actionInvoker `
+      -ModifyScriptPath $modifyVipbScript `
+      -ModifyArguments $modifyVipbArguments `
+      -BuildScriptPath $buildVipScript `
+      -BuildArguments $vipArguments `
+      -CloseScriptPath $closeLabviewScript `
+      -CloseArguments $closeArguments `
+      -IconEditorRoot $IconEditorRoot `
+      -ResultsRoot $ResultsRoot `
+      -ArtifactCutoffUtc ($buildStart.ToUniversalTime()) `
+      -TelemetryRoot $vipmBuildTelemetryRoot `
+      -Metadata $packagingMetadata `
+      -Toolchain $BuildToolchain `
+      -Provider $BuildProvider
+
+    foreach ($artifact in $packagingResult.Artifacts) {
+      $vipArtifacts.Add($artifact) | Out-Null
     }
   } elseif ($RequirePackaging.IsPresent) {
     throw 'Packaging was required but could not be executed.'
@@ -288,7 +479,11 @@ try {
   if (Test-Path -LiteralPath $packageSmokeScript -PathType Leaf) {
     $vipDestinations = @()
     foreach ($entry in $vipArtifacts) {
-      $vipDestinations += (Join-Path $ResultsRoot $entry.Name)
+      if ($entry.DestinationPath) {
+        $vipDestinations += $entry.DestinationPath
+      } else {
+        $vipDestinations += (Join-Path $ResultsRoot $entry.Name)
+      }
     }
 
     try {
@@ -324,6 +519,13 @@ try {
   }
 
   if ($RunUnitTests) {
+    Invoke-MissingInProjectCheck -BitnessTargets @('32','64')
+    if (-not (Test-Path -LiteralPath $unitReadyHelper -PathType Leaf)) {
+      throw "Unit readiness helper '$unitReadyHelper' was not found."
+    }
+    Write-Host 'Validating icon editor unit-test prerequisites...' -ForegroundColor Cyan
+    pwsh -NoLogo -NoProfile -File $unitReadyHelper -Validate
+
     if (-not (Test-Path -LiteralPath $unitTestScript -PathType Leaf)) {
       throw "Unit test script '$unitTestScript' not found."
     }
@@ -348,7 +550,15 @@ try {
   if ($devModeActive -and $devModeWasToggled) {
     Write-Host 'Disabling icon editor development mode...' -ForegroundColor Cyan
     try {
-      Disable-IconEditorDevelopmentMode -RepoRoot $repoRoot -IconEditorRoot $IconEditorRoot -Operation 'BuildPackage' | Out-Null
+      $targetsToDisable = if ($devModeToggleTargets.Count -gt 0) { $devModeToggleTargets } else { @([pscustomobject]@{ Version = [int]$MinimumSupportedLVVersion; Bitness = @(32,64) }) }
+      foreach ($target in $targetsToDisable) {
+        Disable-IconEditorDevelopmentMode `
+          -RepoRoot $repoRoot `
+          -IconEditorRoot $IconEditorRoot `
+          -Operation 'BuildPackage' `
+          -Versions @($target.Version) `
+          -Bitness $target.Bitness | Out-Null
+      }
       $devModeActive = $false
     } catch {
       Write-Warning "Failed to disable icon editor development mode: $($_.Exception.Message)"
@@ -374,7 +584,10 @@ try {
   }
 
   $manifest.packaging = [ordered]@{
-    requestedToolchain = $BuildToolchain
+    requestedToolchain       = $BuildToolchain
+    requestedProvider        = $null
+    packedLibVersion         = [int]$MinimumSupportedLVVersion
+    packagingLabviewVersion  = [int]$PackageMinimumSupportedLVVersion
   }
   if ($BuildProvider) {
     $manifest.packaging.requestedProvider = $BuildProvider
@@ -406,15 +619,18 @@ try {
   }
 
   foreach ($entry in $vipArtifacts) {
-    $dest = Join-Path $ResultsRoot $entry.Name
-    if (Test-Path -LiteralPath $dest -PathType Leaf) {
-      $info = Get-Item -LiteralPath $dest
-      $manifest.artifacts += [ordered]@{
-        name = $entry.Name
-        path = $info.FullName
-        sizeBytes = $info.Length
-        kind = $entry.Kind
-      }
+    $pathToRecord = if ($entry.DestinationPath -and (Test-Path -LiteralPath $entry.DestinationPath -PathType Leaf)) {
+      $entry.DestinationPath
+    } else {
+      Join-Path $ResultsRoot $entry.Name
+    }
+    if (-not (Test-Path -LiteralPath $pathToRecord -PathType Leaf)) { continue }
+    $info = Get-Item -LiteralPath $pathToRecord
+    $manifest.artifacts += [ordered]@{
+      name = $info.Name
+      path = $info.FullName
+      sizeBytes = $info.Length
+      kind = 'vip'
     }
   }
 
@@ -427,7 +643,15 @@ finally {
   if ($devModeWasToggled -and $devModeActive) {
     try {
       Write-Host 'Disabling icon editor development mode...' -ForegroundColor Cyan
-      Disable-IconEditorDevelopmentMode -RepoRoot $repoRoot -IconEditorRoot $IconEditorRoot -Operation 'BuildPackage' | Out-Null
+      $targetsToDisable = if ($devModeToggleTargets.Count -gt 0) { $devModeToggleTargets } else { @([pscustomobject]@{ Version = [int]$MinimumSupportedLVVersion; Bitness = @(32,64) }) }
+      foreach ($target in $targetsToDisable) {
+        Disable-IconEditorDevelopmentMode `
+          -RepoRoot $repoRoot `
+          -IconEditorRoot $IconEditorRoot `
+          -Operation 'BuildPackage' `
+          -Versions @($target.Version) `
+          -Bitness $target.Bitness | Out-Null
+      }
     } catch {
       Write-Warning "Failed to disable icon editor development mode: $($_.Exception.Message)"
     }

@@ -5,7 +5,7 @@ Set-StrictMode -Version Latest
 Describe 'VIPM provider module' -Tag 'Unit' {
     BeforeAll {
         $repoRoot = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path
-        $script:providerModulePath = Join-Path $repoRoot 'tools/providers/vipm/Provider.psm1'
+        $script:providerModulePath = Join-Path $repoRoot 'tools/providers/vipm/vipm.Provider.psd1'
         Test-Path -LiteralPath $script:providerModulePath | Should -BeTrue
         Remove-Module -Name Provider -Force -ErrorAction SilentlyContinue
         $script:providerModule = Import-Module $script:providerModulePath -Force -PassThru
@@ -62,6 +62,21 @@ Describe 'VIPM provider module' -Tag 'Unit' {
         $resolved | Should -Be (Resolve-Path -LiteralPath $fakeExe).Path
     }
 
+    It 'invokes resolved VIPM binary via provider interface' {
+        $vipmCmd = Get-Command vipm -ErrorAction Stop
+        Set-Item Env:VIPM_PATH $vipmCmd.Source
+
+        $resolved = InModuleScope $script:providerModule {
+            $provider = New-VipmProvider
+            $provider.ResolveBinaryPath()
+        }
+        $resolved | Should -Be (Resolve-Path -LiteralPath $vipmCmd.Source).Path
+
+        $output = & $resolved '--help' 2>&1 | Out-String
+        $LASTEXITCODE | Should -Be 0
+        $output | Should -Match 'A command-line interface for VIPM'
+    }
+
     Context 'argument generation' {
         It 'builds InstallVipc arguments' {
             $args = InModuleScope $script:providerModule {
@@ -98,6 +113,27 @@ Describe 'VIPM provider module' -Tag 'Unit' {
                 '-output','C:\tooling\out',
                 '-version','1.2.3.4',
                 '-silent'
+            )
+        }
+    }
+
+    It 'advertises supported operations via provider interface' {
+        InModuleScope $script:providerModule {
+            $provider = New-VipmProvider
+            $provider.Supports('InstallVipc') | Should -BeTrue
+            $provider.Supports('BuildVip')    | Should -BeTrue
+            $provider.Supports('ListPackages') | Should -BeFalse
+
+            $buildArgs = $provider.BuildArgs('BuildVip', @{
+                vipbPath        = 'C:\tmp\icon.vipb'
+                outputDirectory = 'C:\tmp\dist'
+                buildVersion    = '1.0.0.0'
+            })
+            $buildArgs | Should -Be @(
+                '-vipb','C:\tmp\icon.vipb',
+                '-q',
+                '-output','C:\tmp\dist',
+                '-version','1.0.0.0'
             )
         }
     }
