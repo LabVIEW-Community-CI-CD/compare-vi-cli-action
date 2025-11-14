@@ -4,6 +4,9 @@
   "version": "0.6.0",
   "license": "MIT",
   "type": "module",
+  "engines": {
+    "node": ">=20.10.0 <21"
+  },
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "ci:status": "pwsh -NoLogo -NoProfile -File tools/Follow-OrchestratedRun.ps1",
@@ -11,6 +14,7 @@
     "ci:watch:rest": "tsc -p tsconfig.cli.json && node dist/tools/watchers/orchestrated-watch.js",
     "cli:validate": "tsc -p tsconfig.cli.json && node dist/tools/cli/validate-cli.js",
     "derive:env": "node dist/src/env/derive-env.js --json",
+    "semver:check": "node ./src/tools/priority/validate-semver.mjs",
     "dev:watcher:autotrim": "pwsh -NoLogo -NoProfile -File tools/Dev-WatcherManager.ps1 -AutoTrim",
     "dev:watcher:ensure": "pwsh -NoLogo -NoProfile -File tools/Dev-WatcherManager.ps1 -Ensure",
     "dev:watcher:status": "pwsh -NoLogo -NoProfile -File tools/Dev-WatcherManager.ps1 -Status",
