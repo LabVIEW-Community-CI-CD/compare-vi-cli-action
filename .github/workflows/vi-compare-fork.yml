@@ -20,7 +20,7 @@ jobs:
       FETCH_DEPTH: 20
     steps:
       - name: Checkout base (parent repository)
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
         with:
           ref: ${{ env.BASE_SHA }}
           fetch-depth: 0

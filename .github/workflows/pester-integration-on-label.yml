@@ -22,7 +22,7 @@ jobs:
     outputs:
       docs_only: ${{ steps.d.outputs.normalized }}
     steps:
-    - uses: actions/checkout@v5
+    - uses: actions/checkout@v6
     - name: Detect docs-only change
       id: detect
       shell: pwsh

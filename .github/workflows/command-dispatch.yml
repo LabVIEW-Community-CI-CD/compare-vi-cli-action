@@ -30,7 +30,7 @@ jobs:
           if [ -n "$XCLI_PAT" ]; then echo "token=$XCLI_PAT" >> "$GITHUB_OUTPUT"; else echo "token=$GITHUB_TOKEN" >> "$GITHUB_OUTPUT"; fi
 
       - name: Checkout
-        uses: actions/checkout@v5
+        uses: actions/checkout@v6
 
       - name: Runner health (notice-only)
         if: ${{ vars.RUNNER_HEALTH != '0' }}

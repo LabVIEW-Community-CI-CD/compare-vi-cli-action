@@ -9,7 +9,7 @@ jobs:
     permissions:
       contents: read
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v6
       - name: Simulate pull ref
         shell: pwsh
         run: pwsh -NoLogo -NoProfile -File tests/fork-guard/invoke.ps1 -WorkflowPath .github/workflows/vi-compare-fork.yml

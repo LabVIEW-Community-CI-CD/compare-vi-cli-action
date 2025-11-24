@@ -64,7 +64,7 @@ jobs:
     runs-on: [self-hosted, Windows, X64]
     timeout-minutes: 5
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v6
       - name: Verify LVCompare installation
         shell: pwsh
         run: |
@@ -92,7 +92,7 @@ jobs:
       FAIL_ON_DIFF: ${{ inputs.fail_on_diff || 'false' }}
       MISSING_STRATEGY: ${{ inputs.missing_strategy || 'skip' }}
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v6
         with:
           fetch-depth: 0
 

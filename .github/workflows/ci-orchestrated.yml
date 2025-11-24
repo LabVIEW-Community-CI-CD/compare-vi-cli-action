@@ -54,7 +54,7 @@ jobs:
     outputs:
       include_integration: ${{ steps.b.outputs.normalized }}
     steps:
-    - uses: actions/checkout@v5
+    - uses: actions/checkout@v6
     - name: Wire Probe (J1)
       if: '${{ vars.WIRE_PROBES != ''0'' }}'
       uses: ./.github/actions/wire-probe
@@ -116,7 +116,7 @@ jobs:
       GH_TOKEN: ${{ secrets.GH_TOKEN || github.token }}
       COMPAREVI_TOOLS_IMAGE: ghcr.io/labview-community-ci-cd/comparevi-tools:latest
     steps:
-    - uses: actions/checkout@v5
+    - uses: actions/checkout@v6
     - name: Wire Probe (J1)
       if: '${{ vars.WIRE_PROBES != ''0'' }}'
       uses: ./.github/actions/wire-probe
@@ -252,7 +252,7 @@ jobs:
       RESULTS_DIR: tests/results/preflight
     # Hosted Windows health gate before self-hosted jobs
     steps:
-    - uses: actions/checkout@v5
+    - uses: actions/checkout@v6
     - name: Wire Probe (J1)
       if: '${{ vars.WIRE_PROBES != ''0'' }}'
       uses: ./.github/actions/wire-probe
@@ -301,7 +301,7 @@ jobs:
     outputs:
       ok: ${{ steps.out.outputs.ok }}
     steps:
-    - uses: actions/checkout@v5
+    - uses: actions/checkout@v6
     - name: Wire Probe (J1)
       if: '${{ vars.WIRE_PROBES != ''0'' }}'
       uses: ./.github/actions/wire-probe
@@ -357,7 +357,7 @@ jobs:
       LABVIEW_EXE: C:\\Program Files\\National Instruments\\LabVIEW 2025\\LabVIEW.exe
       EMIT_LV_CLOSURE_CRUMBS: '1'
     steps:
-    - uses: actions/checkout@v5
+    - uses: actions/checkout@v6
     - name: Wire Probe (J1)
       if: '${{ vars.WIRE_PROBES != ''0'' }}'
       uses: ./.github/actions/wire-probe
@@ -654,7 +654,7 @@ jobs:
       LABVIEW_EXE: C:\\Program Files\\National Instruments\\LabVIEW 2025\\LabVIEW.exe
       EMIT_LV_CLOSURE_CRUMBS: '1'
     steps:
-    - uses: actions/checkout@v5
+    - uses: actions/checkout@v6
     - name: Wire Probe (J1)
       if: '${{ vars.WIRE_PROBES != ''0'' }}'
       uses: ./.github/actions/wire-probe
@@ -805,7 +805,7 @@ jobs:
     runs-on: ubuntu-latest
     needs: [lint, pester-category, drift]
     steps:
-    - uses: actions/checkout@v5
+    - uses: actions/checkout@v6
     - name: Wire Probe (J1)
       if: '${{ vars.WIRE_PROBES != ''0'' }}'
       uses: ./.github/actions/wire-probe
@@ -1044,7 +1044,7 @@ jobs:
       TRACE_MATRIX: '1'
       TRACE_MATRIX_HTML: '1'
     steps:
-    - uses: actions/checkout@v5
+    - uses: actions/checkout@v6
     - name: Wire Probe (J1)
       if: '${{ vars.WIRE_PROBES != ''0'' }}'
       uses: ./.github/actions/wire-probe

@@ -13,7 +13,7 @@ jobs:
     outputs:
       cli_version: ${{ steps.meta.outputs.cli_version }}
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v6
 
       - name: Build release notes from CHANGELOG
         id: notes

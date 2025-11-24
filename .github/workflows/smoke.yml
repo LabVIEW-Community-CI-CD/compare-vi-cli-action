@@ -49,7 +49,7 @@ jobs:
     runs-on: [self-hosted, Windows, X64]
     timeout-minutes: 3
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v6
       - name: Verify LVCompare and idle LabVIEW state
         shell: pwsh
         run: |
@@ -70,7 +70,7 @@ jobs:
       WATCH_CONSOLE: '1'
       LV_SUPPRESS_UI: '1'
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v6
 
       - name: Validate canonical fixtures
         shell: pwsh

@@ -57,7 +57,7 @@ jobs:
     outputs:
       include_integration: ${{ steps.b.outputs.normalized }}
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v6
       - name: Apply determinism profile
         uses: ./.github/actions/determinism-profile
         with:
@@ -84,7 +84,7 @@ jobs:
       LV_IDLE_WAIT_SECONDS: ${{ vars.LV_IDLE_WAIT_SECONDS || '2' }}
       LV_IDLE_MAX_WAIT_SECONDS: ${{ vars.LV_IDLE_MAX_WAIT_SECONDS || '5' }}
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v6
       - name: Rogue LV scan (notice-only)
         shell: pwsh
         run: pwsh -File tools/Detect-RogueLV.ps1 -ResultsDir tests/results -LookBackSeconds 900
@@ -153,7 +153,7 @@ jobs:
       errors: ${{ steps.export.outputs.errors }}
       duration_s: ${{ steps.export.outputs.duration_s }}
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v6
       - name: Install Node dependencies
         shell: pwsh
         run: node tools/npm/cli.mjs ci

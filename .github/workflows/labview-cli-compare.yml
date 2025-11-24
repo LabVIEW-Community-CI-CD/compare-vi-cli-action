@@ -28,7 +28,7 @@ jobs:
       # Enable cleanup at the end of the job
       UNBLOCK_GUARD: '1'
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v6
 
       - name: Validate LabVIEW CLI presence
         shell: pwsh
