@@ -222,6 +222,7 @@ jobs:
           tests/results/_agent/icon-editor/vi-diff/vi-diff-requests.md
 
     - name: Policy guard (branch protection)
+      if: ${{ github.event.repository.fork == false }}
       shell: pwsh
       env:
         GITHUB_TOKEN: ${{ secrets.GH_TOKEN || secrets.GITHUB_TOKEN }}
