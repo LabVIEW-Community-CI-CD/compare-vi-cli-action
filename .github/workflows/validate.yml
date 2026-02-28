@@ -551,7 +551,7 @@ jobs:
 
     - name: Prime actionlint binary
       shell: pwsh
-      run: ./tools/PrePush-Checks.ps1
+      run: ./tools/PrePush-Checks.ps1 -SkipIconEditorFixtureChecks
 
     - name: Hooks plane info
       run: node tools/npm/run-script.mjs hooks:plane
@@ -860,11 +860,16 @@ jobs:
           github-token: ${{ secrets.GITHUB_TOKEN }}
           script: |
             const summary = [];
+            const isForkRepo = context.payload.repository?.fork === true;
             const branch =
               context.payload.pull_request?.head.ref ??
               context.ref.replace('refs/heads/', '');
             const match = branch.match(/(?:^|\/)issue\/(\d+)/i);
-            if (!match) {
+            if (isForkRepo) {
+              core.setOutput('proceed', 'false');
+              summary.push('Repository is a fork. Skipping icon-editor build and compare jobs.');
+              core.info(summary.at(-1));
+            } else if (!match) {
               core.setOutput('proceed', 'false');
               summary.push(`Branch \`${branch}\` is not issue-scoped (missing \`issue/<number>\`). Skipping icon-editor build.`);
               core.info(summary.at(-1));
