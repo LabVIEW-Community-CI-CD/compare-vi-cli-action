@@ -126,6 +126,10 @@ Write-Host '[pre-push] actionlint OK' -ForegroundColor Green
 
 $updateReportScript = Join-Path $root 'tools' 'icon-editor' 'Update-IconEditorFixtureReport.ps1'
 if (Test-Path -LiteralPath $updateReportScript -PathType Leaf) {
+  if (-not $IsWindows) {
+    Write-Host '[pre-push] Skipping icon-editor fixture freshness checks on non-Windows host' -ForegroundColor Yellow
+    return
+  }
   Write-Host '[pre-push] Verifying icon-editor fixture report freshness' -ForegroundColor Cyan
   Push-Location $root
   try {
