@@ -12,7 +12,8 @@
 #>
 param(
   [string]$ActionlintVersion = '1.7.7',
-  [bool]$InstallIfMissing = $true
+  [bool]$InstallIfMissing = $true,
+  [switch]$SkipIconEditorFixtureChecks
 )
 
 $ErrorActionPreference = 'Stop'
@@ -126,6 +127,14 @@ Write-Host '[pre-push] actionlint OK' -ForegroundColor Green
 
 $updateReportScript = Join-Path $root 'tools' 'icon-editor' 'Update-IconEditorFixtureReport.ps1'
 if (Test-Path -LiteralPath $updateReportScript -PathType Leaf) {
+  if ($SkipIconEditorFixtureChecks -or ($env:PREPUSH_SKIP_ICON_EDITOR_FIXTURE_CHECKS -eq '1')) {
+    Write-Host '[pre-push] Skipping icon-editor fixture freshness checks by request' -ForegroundColor Yellow
+    return
+  }
+  if (-not $IsWindows) {
+    Write-Host '[pre-push] Skipping icon-editor fixture freshness checks on non-Windows host' -ForegroundColor Yellow
+    return
+  }
   Write-Host '[pre-push] Verifying icon-editor fixture report freshness' -ForegroundColor Cyan
   Push-Location $root
   try {
