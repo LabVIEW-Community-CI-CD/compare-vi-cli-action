@@ -114,6 +114,9 @@ pwsh -File tools/Run-NIWindowsContainerCompare.ps1 `
   -TimeoutSeconds 600
 ```
 
+The helper injects `-Headless` automatically for container runs unless you
+already provide it in `-Flags`.
+
 The helper writes deterministic artifacts beside the report:
 
 - `ni-windows-container-capture.json`
