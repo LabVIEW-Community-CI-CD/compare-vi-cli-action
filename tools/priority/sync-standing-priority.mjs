@@ -494,7 +494,7 @@ async function fetchStandingPriorityNumberViaRest(repoRoot, slug) {
   const resolvedSlug = slug ?? resolveRepositorySlug(repoRoot);
   if (!resolvedSlug) {
     console.warn('[priority] Unable to resolve repository slug for REST fallback');
-    return null;
+    return { status: 'error', error: 'repository slug unavailable' };
   }
 
   const token = resolveGitHubToken();
@@ -511,21 +511,77 @@ async function fetchStandingPriorityNumberViaRest(repoRoot, slug) {
 
   try {
     const data = await requestGitHubJson(url.toString(), token);
-      if (Array.isArray(data)) {
-        if (data.length > 1) {
-          const ids = data.map((item) => item?.number).filter(Boolean);
-          console.warn(`[priority] Multiple open items carry the standing-priority label (candidates: ${ids.join(', ')}) – selecting the most recently updated entry.`);
-        }
-        const first = data.find((item) => item?.number != null);
-        if (first) return Number(first.number);
-      } else if (data?.number != null) {
-        return Number(data.number);
+    if (Array.isArray(data)) {
+      if (data.length > 1) {
+        const ids = data.map((item) => item?.number).filter(Boolean);
+        console.warn(
+          `[priority] Multiple open items carry the standing-priority label (candidates: ${ids.join(', ')}) – selecting the most recently updated entry.`
+        );
       }
+      const first = data.find((item) => item?.number != null);
+      if (first) return { status: 'found', number: Number(first.number) };
+      return { status: 'empty' };
+    }
+    if (data?.number != null) {
+      return { status: 'found', number: Number(data.number) };
+    }
+    return { status: 'empty' };
   } catch (err) {
     console.warn(`[priority] REST fallback failed: ${err.message}`);
+    return { status: 'error', error: err.message };
+  }
+}
+
+function createNoStandingPriorityError(message) {
+  const err = new Error(message || "No open issue with label 'standing-priority' found.");
+  err.code = 'NO_STANDING_PRIORITY';
+  return err;
+}
+
+function isNoStandingOutcome(outcome) {
+  return outcome?.status === 'empty';
+}
+
+function isUnavailableOutcome(outcome) {
+  return !outcome || outcome.status === 'error' || outcome.status === 'unavailable';
+}
+
+export function isStandingPriorityCacheCandidate(cache) {
+  if (!cache || cache.number == null) return false;
+  const labels = normalizeList(cache.labels || []);
+  const state = String(cache.state || '').trim().toUpperCase();
+  return state === 'OPEN' && labels.includes('standing-priority');
+}
+
+export function resolveStandingPriorityFromSources({ ghOutcome, restOutcome, cache }) {
+  if (isNoStandingOutcome(ghOutcome) || isNoStandingOutcome(restOutcome)) {
+    throw createNoStandingPriorityError();
   }
 
-  return null;
+  if (isStandingPriorityCacheCandidate(cache)) {
+    return Number(cache.number);
+  }
+
+  const reasons = [];
+  if (!isUnavailableOutcome(ghOutcome)) {
+    reasons.push(`gh status=${ghOutcome.status}`);
+  } else if (ghOutcome?.error) {
+    reasons.push(`gh: ${ghOutcome.error}`);
+  }
+  if (!isUnavailableOutcome(restOutcome)) {
+    reasons.push(`rest status=${restOutcome.status}`);
+  } else if (restOutcome?.error) {
+    reasons.push(`rest: ${restOutcome.error}`);
+  }
+  if (cache?.number != null) {
+    reasons.push('cache invalid (must be OPEN and include standing-priority label)');
+  }
+
+  throw new Error(
+    `Unable to resolve standing-priority issue number${
+      reasons.length > 0 ? ` (${reasons.join('; ')})` : ''
+    }`
+  );
 }
 
 async function fetchIssueViaRest(repoRoot, number, slug) {
@@ -563,36 +619,37 @@ async function resolveStandingPriorityNumber(repoRoot, slug) {
     } catch {}
   }
 
-  let ghMissing = false;
-  let ghErrorMessage = null;
+  let ghOutcome = { status: 'error', error: 'unknown' };
   try {
     const query = ensureCommand(
       sh('gh', ['issue', 'list', '--label', 'standing-priority', '--state', 'open', '--limit', '1', '--json', 'number']),
       'gh'
     );
-    if (query.status === 0 && query.stdout.trim()) {
-      const parsed = JSON.parse(query.stdout);
+    if (query.status === 0) {
+      const parsed = query.stdout.trim() ? JSON.parse(query.stdout) : [];
       const first = Array.isArray(parsed) ? parsed[0] : parsed;
       if (first?.number) return Number(first.number);
-    }
-    if (query.status !== 0) {
-      ghErrorMessage = query.stderr?.trim() || `gh exited with status ${query.status}`;
+      ghOutcome = { status: 'empty' };
+    } else {
+      ghOutcome = {
+        status: 'error',
+        error: query.stderr?.trim() || `gh exited with status ${query.status}`
+      };
     }
   } catch (err) {
     if (err?.code === 'ENOENT') {
       console.warn('[priority] gh CLI not found; falling back to cached standing-priority issue number');
-      ghMissing = true;
+      ghOutcome = { status: 'unavailable', error: err.message || 'gh CLI unavailable' };
+    } else {
+      ghOutcome = { status: 'error', error: err?.message || 'gh issue list failed' };
     }
-    ghErrorMessage = err?.message || ghErrorMessage;
   }
 
-  const restNumber = await fetchStandingPriorityNumberViaRest(repoRoot, slug);
-  if (restNumber != null) return restNumber;
+  const restOutcome = await fetchStandingPriorityNumberViaRest(repoRoot, slug);
+  if (restOutcome?.status === 'found') return restOutcome.number;
 
   const cache = readJson(path.join(repoRoot, '.agent_priority_cache.json'));
-  if (cache?.number != null) return Number(cache.number);
-  const reason = ghMissing ? 'gh CLI unavailable' : ghErrorMessage;
-  throw new Error(`Unable to resolve standing-priority issue number${reason ? ` (${reason})` : ''}`);
+  return resolveStandingPriorityFromSources({ ghOutcome, restOutcome, cache });
 }
 
 function normalizeIssueResult(result) {
@@ -695,7 +752,50 @@ export async function main() {
   const resultsDir = path.join(repoRoot, 'tests', 'results', '_agent', 'issue');
   fs.mkdirSync(resultsDir, { recursive: true });
 
-  const number = await resolveStandingPriorityNumber(repoRoot, slug);
+  let number;
+  try {
+    number = await resolveStandingPriorityNumber(repoRoot, slug);
+  } catch (err) {
+    if (err?.code === 'NO_STANDING_PRIORITY') {
+      const clearedAt = new Date().toISOString();
+      const clearedRouter = {
+        schema: 'agent/priority-router@v1',
+        issue: null,
+        updatedAt: clearedAt,
+        actions: []
+      };
+      writeJson(path.join(resultsDir, 'router.json'), clearedRouter);
+
+      const clearedCache = {
+        ...cache,
+        number: null,
+        title: null,
+        url: null,
+        state: 'NONE',
+        labels: [],
+        assignees: [],
+        milestone: null,
+        commentCount: null,
+        lastSeenUpdatedAt: null,
+        issueDigest: null,
+        bodyDigest: null,
+        cachedAtUtc: clearedAt,
+        lastFetchSource: 'none',
+        lastFetchError: err.message
+      };
+      if (shouldWriteCache(cache, clearedCache)) {
+        writeJson(cachePath, clearedCache);
+      }
+
+      stepSummaryAppend([
+        '### Standing Priority Snapshot',
+        "- Issue: none found (`standing-priority` label on open issues)",
+        `- Status: ${err.message}`,
+        '- Top actions: n/a'
+      ]);
+    }
+    throw err;
+  }
   console.log(`[priority] Standing issue: #${number}`);
 
   let issue;
