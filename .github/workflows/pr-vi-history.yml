@@ -163,6 +163,7 @@ jobs:
           RESULTS_ROOT: ${{ github.workspace }}\tests\results\pr-vi-history
           MAX_PAIRS: ${{ env.MAX_PAIRS }}
           MANIFEST_PATH: ${{ steps.manifest.outputs.manifest_path }}
+          PR_VI_HISTORY_EXTRACT_REPORT_IMAGES: '1'
         run: |
           Set-StrictMode -Version Latest
           $ErrorActionPreference = 'Stop'
