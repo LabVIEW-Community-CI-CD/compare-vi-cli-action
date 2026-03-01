@@ -367,8 +367,12 @@ function Invoke-SequentialHistoryCommits {
         $displaySource = if ($step.source) { $step.source } else { $step.resolvedSource }
         Write-Host ("Applying sequential step {0}: {1} <= {2}" -f $stepNumber, $targetRelative, $displaySource)
         Copy-VIContent -Source $step.resolvedSource -Destination $targetResolved
-        $statusAfterStep = Invoke-Git -Arguments @('status', '--short', $targetRelative)
+        $statusAfterStep = Invoke-Git -Arguments @('status', '--porcelain', '--', $targetRelative)
         Write-Host ("Post-step status for {0}: {1}" -f $targetRelative, ($statusAfterStep -join ' '))
+        if ($statusAfterStep.Count -eq 0) {
+            Write-Host ("Sequential step {0} produced no file delta; skipping commit." -f $stepNumber)
+            continue
+        }
         Invoke-Git -Arguments @('add', '-f', $targetRelative) | Out-Null
         $commitMessage = if ([string]::IsNullOrWhiteSpace($step.message)) {
             "chore: sequential history step $stepNumber"
@@ -381,6 +385,10 @@ function Invoke-SequentialHistoryCommits {
             Source  = $displaySource
             Message = $commitMessage
         }) | Out-Null
+    }
+
+    if ($commits.Count -lt 1) {
+        throw 'Sequential history fixture produced no commits; every step resolved to a no-op for the target VI.'
     }
 
     return $commits.ToArray()
