@@ -367,7 +367,7 @@ function Invoke-SequentialHistoryCommits {
         $displaySource = if ($step.source) { $step.source } else { $step.resolvedSource }
         Write-Host ("Applying sequential step {0}: {1} <= {2}" -f $stepNumber, $targetRelative, $displaySource)
         Copy-VIContent -Source $step.resolvedSource -Destination $targetResolved
-        $statusAfterStep = Invoke-Git -Arguments @('status', '--porcelain', '--', $targetRelative)
+        $statusAfterStep = @(Invoke-Git -Arguments @('status', '--porcelain', '--', $targetRelative))
         Write-Host ("Post-step status for {0}: {1}" -f $targetRelative, ($statusAfterStep -join ' '))
         if ($statusAfterStep.Count -eq 0) {
             Write-Host ("Sequential step {0} produced no file delta; skipping commit." -f $stepNumber)
