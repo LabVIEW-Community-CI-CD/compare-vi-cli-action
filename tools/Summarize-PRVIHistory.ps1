@@ -26,7 +26,13 @@ param(
 
     [string]$MarkdownPath,
 
-    [string]$OutputJsonPath
+    [string]$OutputJsonPath,
+
+    [ValidateRange(0, 50)]
+    [int]$MaxPreviewImages = 6,
+
+    [ValidateRange(500, 65535)]
+    [int]$MaxMarkdownLength = 55000
 )
 
 Set-StrictMode -Version Latest
@@ -230,6 +236,9 @@ foreach ($target in $targets) {
 
 $markdown = $rows -join [Environment]::NewLine
 $previewEntries = Get-MobilePreviewEntries -Targets $targets -ResultsRoot $resultsRoot -MaxPerTarget 1
+if ($MaxPreviewImages -ge 0 -and $previewEntries.Count -gt $MaxPreviewImages) {
+    $previewEntries = @($previewEntries | Select-Object -First $MaxPreviewImages)
+}
 if ($previewEntries.Count -gt 0) {
     $previewLines = New-Object System.Collections.Generic.List[string]
     $previewLines.Add('') | Out-Null
@@ -241,6 +250,14 @@ if ($previewEntries.Count -gt 0) {
     $markdown = ($markdown, ($previewLines -join [Environment]::NewLine)) -join [Environment]::NewLine
 }
 
+$markdownTruncated = $false
+if ($MaxMarkdownLength -gt 0 -and $markdown.Length -gt $MaxMarkdownLength) {
+    $suffix = [Environment]::NewLine + [Environment]::NewLine + '> NOTE - Summary truncated for comment size safety.'
+    $safeLength = [Math]::Max(0, $MaxMarkdownLength - $suffix.Length)
+    $markdown = $markdown.Substring(0, $safeLength).TrimEnd() + $suffix
+    $markdownTruncated = $true
+}
+
 $result = [pscustomobject]@{
     totals = [pscustomobject]@{
         targets     = $targets.Count
@@ -248,6 +265,7 @@ $result = [pscustomobject]@{
         comparisons = $comparisonTotal
         diffs       = $diffTotal
         previewImages = $previewEntries.Count
+        markdownTruncated = $markdownTruncated
     }
     targets  = $targets
     previews = $previewEntries

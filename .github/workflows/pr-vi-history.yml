@@ -213,7 +213,9 @@ jobs:
           pwsh -NoLogo -NoProfile -File (Join-Path $env:GITHUB_WORKSPACE 'tools' 'Summarize-PRVIHistory.ps1') `
             -SummaryPath $summaryPath `
             -MarkdownPath $markdownPath `
-            -OutputJsonPath $expandedPath
+            -OutputJsonPath $expandedPath `
+            -MaxPreviewImages 6 `
+            -MaxMarkdownLength 55000
 
           "markdown_path=$markdownPath" | Out-File -FilePath $Env:GITHUB_OUTPUT -Encoding utf8 -Append
 
@@ -255,6 +257,12 @@ jobs:
           $markdown = $null
           if ($env:MARKDOWN_ENCODED) {
             $markdown = ($env:MARKDOWN_ENCODED -replace '%0A', "`n")
+            $maxCommentMarkdownLength = 58000
+            if ($markdown.Length -gt $maxCommentMarkdownLength) {
+              $truncationNote = "`n`n> NOTE - Comment body truncated for GitHub size safety."
+              $safeLength = [Math]::Max(0, $maxCommentMarkdownLength - $truncationNote.Length)
+              $markdown = $markdown.Substring(0, $safeLength).TrimEnd() + $truncationNote
+            }
           }
 
           if ($pairCount -le 0) {
