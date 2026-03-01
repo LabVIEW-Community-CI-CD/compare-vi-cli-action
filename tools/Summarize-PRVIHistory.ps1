@@ -235,7 +235,7 @@ foreach ($target in $targets) {
 }
 
 $markdown = $rows -join [Environment]::NewLine
-$previewEntries = Get-MobilePreviewEntries -Targets $targets -ResultsRoot $resultsRoot -MaxPerTarget 1
+$previewEntries = @(Get-MobilePreviewEntries -Targets $targets -ResultsRoot $resultsRoot -MaxPerTarget 1)
 if ($MaxPreviewImages -ge 0 -and $previewEntries.Count -gt $MaxPreviewImages) {
     $previewEntries = @($previewEntries | Select-Object -First $MaxPreviewImages)
 }
