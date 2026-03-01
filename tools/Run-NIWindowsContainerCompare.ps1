@@ -255,6 +255,35 @@ exit $LASTEXITCODE
 '@
 }
 
+function Get-EffectiveCompareFlags {
+  param(
+    [AllowNull()][string[]]$InputFlags
+  )
+
+  $flags = @()
+  if ($InputFlags) {
+    foreach ($flag in $InputFlags) {
+      if (-not [string]::IsNullOrWhiteSpace([string]$flag)) {
+        $flags += [string]$flag
+      }
+    }
+  }
+
+  $hasHeadless = $false
+  foreach ($flag in $flags) {
+    if ($flag.Trim().ToLowerInvariant() -eq '-headless') {
+      $hasHeadless = $true
+      break
+    }
+  }
+  if (-not $hasHeadless) {
+    # Container execution is non-interactive; force headless CLI mode by default.
+    $flags += '-Headless'
+  }
+
+  return @($flags)
+}
+
 function Convert-ToEncodedCommand {
   param(
     [Parameter(Mandatory)][string]$CommandText
@@ -364,6 +393,22 @@ function Test-LabVIEWCliFailure {
   return (
     $combined -match 'Error code\s*:' -or
     $combined -match 'An error occurred while running the LabVIEW CLI'
+  )
+}
+
+function Test-ReportOverwriteFailure {
+  param(
+    [AllowNull()][string]$StdErr,
+    [AllowNull()][string]$StdOut
+  )
+
+  $combined = @($StdErr, $StdOut) -join "`n"
+  if ([string]::IsNullOrWhiteSpace($combined)) {
+    return $false
+  }
+  return (
+    $combined -match 'Report path already exists' -or
+    $combined -match 'Use\s+-o\s+to overwrite existing report'
   )
 }
 
@@ -500,6 +545,9 @@ try {
     if (-not (Test-Path -LiteralPath $reportDirectory -PathType Container)) {
       New-Item -ItemType Directory -Path $reportDirectory -Force | Out-Null
     }
+    if (Test-Path -LiteralPath $resolvedReportPath -PathType Leaf) {
+      Remove-Item -LiteralPath $resolvedReportPath -Force -ErrorAction Stop
+    }
 
     $capturePath = Join-Path $reportDirectory 'ni-windows-container-capture.json'
     $stdoutPath = Join-Path $reportDirectory 'ni-windows-container-stdout.txt'
@@ -511,7 +559,7 @@ try {
     $capture.stdoutPath = $stdoutPath
     $capture.stderrPath = $stderrPath
 
-    $flagsPayload = if ($Flags) { @($Flags) } else { @() }
+    $flagsPayload = Get-EffectiveCompareFlags -InputFlags $Flags
     $flagsJson = $flagsPayload | ConvertTo-Json -Compress
     if ([string]::IsNullOrWhiteSpace($flagsJson)) {
       $flagsJson = '[]'
@@ -586,6 +634,10 @@ try {
             $capture.message = $failure.message
             $capture.labviewCliErrorCode = $failure.labviewCliErrorCode
             $capture.recommendation = $failure.recommendation
+          } elseif (Test-ReportOverwriteFailure -StdErr $stderrContent -StdOut $stdoutContent) {
+            $capture.status = 'error'
+            $capture.classification = 'run-error'
+            $capture.message = Resolve-RunFailureMessage -StdErr $stderrContent -StdOut $stdoutContent -ExitCode $exitCode
           } else {
             $capture.status = 'diff'
             $capture.classification = 'diff'
