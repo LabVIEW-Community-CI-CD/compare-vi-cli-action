@@ -212,6 +212,20 @@ if ($historyReplaceOverride -ne $null) {
     $historyReplaceFlags = ($historyFlagMode -eq 'replace')
 }
 
+$extractReportImagesEnabled = $true
+$extractImageSources = @(
+    [System.Environment]::GetEnvironmentVariable('PR_VI_HISTORY_EXTRACT_REPORT_IMAGES', 'Process'),
+    [System.Environment]::GetEnvironmentVariable('VI_HISTORY_EXTRACT_REPORT_IMAGES', 'Process')
+)
+foreach ($rawExtract in $extractImageSources) {
+    if ([string]::IsNullOrWhiteSpace($rawExtract)) { continue }
+    $converted = ConvertTo-NullableBool -Value $rawExtract
+    if ($converted -ne $null) {
+        $extractReportImagesEnabled = [bool]$converted
+        break
+    }
+}
+
 $historyFlagString = $null
 if ($historyFlagList -and $historyFlagList.Length -gt 0) {
     $historyFlagString = ($historyFlagList -join ' ')
@@ -417,12 +431,31 @@ param([hashtable]`$Arguments)
     $CompareInvoker = [scriptblock]::Create($compareInvokerSource)
 }
 
+$extractReportImagesScriptPath = $null
+if ($extractReportImagesEnabled) {
+    $extractScriptCandidate = Join-Path (Split-Path -Parent $PSCommandPath) 'Extract-VIHistoryReportImages.ps1'
+    if (Test-Path -LiteralPath $extractScriptCandidate -PathType Leaf) {
+        try {
+            $extractReportImagesScriptPath = (Resolve-Path -LiteralPath $extractScriptCandidate -ErrorAction Stop).ProviderPath
+        } catch {
+            Write-Warning ("Failed to resolve Extract-VIHistoryReportImages helper: {0}" -f $_.Exception.Message)
+            $extractReportImagesEnabled = $false
+        }
+    } else {
+        Write-Warning ("Extract-VIHistoryReportImages helper not found at expected path; report image extraction disabled: {0}" -f $extractScriptCandidate)
+        $extractReportImagesEnabled = $false
+    }
+}
+
 $summaryTargets = [System.Collections.Generic.List[object]]::new()
 $errorTargets = [System.Collections.Generic.List[object]]::new()
 $totalComparisons = 0
 $totalDiffs = 0
 $completedCount = 0
 $diffTargetCount = 0
+$reportImageTargetCount = 0
+$reportImageExportedCount = 0
+$reportImageExtractionErrors = 0
 
 for ($i = 0; $i -lt $targets.Count; $i++) {
     $target = $targets[$i]
@@ -540,6 +573,59 @@ for ($i = 0; $i -lt $targets.Count; $i++) {
         $reportHtml = $null
     }
 
+    $reportImages = [ordered]@{
+        status             = if ($reportHtml) { 'not-run' } else { 'no-html-report' }
+        indexPath          = $null
+        outputDir          = $null
+        sourceImageCount   = 0
+        exportedImageCount = 0
+        error              = $null
+    }
+
+    if ($reportHtml) {
+        if (-not $extractReportImagesEnabled) {
+            $reportImages.status = 'disabled'
+        } elseif ([string]::IsNullOrWhiteSpace($extractReportImagesScriptPath)) {
+            $reportImages.status = 'unavailable'
+            $reportImages.error = 'Extractor script path not resolved.'
+            $reportImageExtractionErrors++
+        } else {
+            try {
+                $imageOutputDir = Join-Path $targetResultsDir 'previews'
+                $imageIndexPath = Join-Path $targetResultsDir 'vi-history-image-index.json'
+                $extractResult = & $extractReportImagesScriptPath `
+                    -ReportPath $reportHtml `
+                    -OutputDir $imageOutputDir `
+                    -IndexPath $imageIndexPath
+
+                $reportImages.status = 'completed'
+                if ($extractResult -and $extractResult.PSObject.Properties['sourceImageCount']) {
+                    $reportImages.sourceImageCount = [int]$extractResult.sourceImageCount
+                }
+                if ($extractResult -and $extractResult.PSObject.Properties['exportedImageCount']) {
+                    $reportImages.exportedImageCount = [int]$extractResult.exportedImageCount
+                }
+
+                if (Test-Path -LiteralPath $imageIndexPath -PathType Leaf) {
+                    $reportImages.indexPath = (Resolve-Path -LiteralPath $imageIndexPath).Path
+                }
+                if (Test-Path -LiteralPath $imageOutputDir -PathType Container) {
+                    $reportImages.outputDir = (Resolve-Path -LiteralPath $imageOutputDir).Path
+                }
+
+                $reportImageExportedCount += [int]$reportImages.exportedImageCount
+                if ([int]$reportImages.exportedImageCount -gt 0) {
+                    $reportImageTargetCount++
+                }
+            } catch {
+                $reportImages.status = 'error'
+                $reportImages.error = $_.Exception.Message
+                $reportImageExtractionErrors++
+                Write-Warning ("Failed to extract report images for '{0}': {1}" -f $repoPath, $_.Exception.Message)
+            }
+        }
+    }
+
     [void]$summaryTargets.Add([pscustomobject]@{
         repoPath    = $repoPath
         status      = 'completed'
@@ -550,6 +636,7 @@ for ($i = 0; $i -lt $targets.Count; $i++) {
         manifest    = $manifestPath
         reportMd    = $reportMarkdown
         reportHtml  = $reportHtml
+        reportImages= [pscustomobject]$reportImages
         stats       = [pscustomobject]@{
             processed = $processed
             diffs     = $diffs
@@ -584,6 +671,9 @@ $summary = [pscustomobject]@{
         diffs            = $totalDiffs
         errors           = $errorTargets.Count
         skippedEntries   = $skippedPairs.Count
+        imageTargets     = $reportImageTargetCount
+        extractedImages  = $reportImageExportedCount
+        imageErrors      = $reportImageExtractionErrors
     }
     targets     = $summaryTargets
 }
