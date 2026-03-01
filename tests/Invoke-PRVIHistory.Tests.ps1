@@ -68,7 +68,13 @@ Describe 'Invoke-PRVIHistory.ps1' {
             $manifestOut = Join-Path $Arguments.ResultsDir 'manifest.json'
             $summaryManifest | ConvertTo-Json -Depth 6 | Set-Content -LiteralPath $manifestOut -Encoding utf8
             Set-Content -LiteralPath (Join-Path $Arguments.ResultsDir 'history-report.md') -Value '# history' -Encoding utf8
-            Set-Content -LiteralPath (Join-Path $Arguments.ResultsDir 'history-report.html') -Value '<html></html>' -Encoding utf8
+            $reportHtml = @'
+<!DOCTYPE html>
+<html><body>
+  <img src="data:image/png;base64,AA==" alt="Preview">
+</body></html>
+'@
+            Set-Content -LiteralPath (Join-Path $Arguments.ResultsDir 'history-report.html') -Value $reportHtml -Encoding utf8
         }.GetNewClosure()
 
         Push-Location $repoRoot
@@ -105,6 +111,10 @@ Describe 'Invoke-PRVIHistory.ps1' {
         $target.status | Should -Be 'completed'
         $target.stats.processed | Should -Be 3
         $target.stats.diffs | Should -Be 1
+        $target.reportImages.status | Should -Be 'completed'
+        $target.reportImages.exportedImageCount | Should -Be 1
+        $target.reportImages.sourceImageCount | Should -Be 1
+        Test-Path -LiteralPath $target.reportImages.indexPath -PathType Leaf | Should -BeTrue
 
         Test-Path -LiteralPath $result.resultsRoot -PathType Container | Should -BeTrue
         Test-Path -LiteralPath $result.targets[0].manifest -PathType Leaf | Should -BeTrue
@@ -189,6 +199,8 @@ Describe 'Invoke-PRVIHistory.ps1' {
         $result.targets | Should -Not -BeNullOrEmpty
         $result.targets[0].status | Should -Be 'completed'
         $result.targets[0].stats.processed | Should -Be 2
+        $result.targets[0].reportImages.status | Should -Be 'no-html-report'
+        $result.targets[0].reportImages.exportedImageCount | Should -Be 0
 
         Test-Path -LiteralPath $result.targets[0].manifest -PathType Leaf | Should -BeTrue
     }
