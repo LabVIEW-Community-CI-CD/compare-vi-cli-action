@@ -70,6 +70,68 @@ function Get-RelativePath {
     }
 }
 
+function Get-MobilePreviewEntries {
+    param(
+        [object[]]$Targets,
+        [string]$ResultsRoot,
+        [int]$MaxPerTarget = 1
+    )
+
+    $entries = New-Object System.Collections.Generic.List[object]
+    if (-not $Targets) { return $entries }
+
+    foreach ($target in $Targets) {
+        if (-not $target) { continue }
+        if (-not ($target.PSObject.Properties['reportImages'] -and $target.reportImages)) { continue }
+
+        $reportImages = $target.reportImages
+        $status = if ($reportImages.PSObject.Properties['status']) { [string]$reportImages.status } else { $null }
+        if ($status -ne 'completed') { continue }
+
+        $indexPath = if ($reportImages.PSObject.Properties['indexPath']) { [string]$reportImages.indexPath } else { $null }
+        if ([string]::IsNullOrWhiteSpace($indexPath)) { continue }
+        if (-not (Test-Path -LiteralPath $indexPath -PathType Leaf)) { continue }
+
+        $indexPayload = $null
+        try {
+            $indexPayload = Get-Content -LiteralPath $indexPath -Raw -ErrorAction Stop | ConvertFrom-Json -ErrorAction Stop
+        } catch {
+            continue
+        }
+        if (-not $indexPayload) { continue }
+
+        $images = @()
+        if ($indexPayload.PSObject.Properties['images'] -and $indexPayload.images -is [System.Collections.IEnumerable]) {
+            $images = @($indexPayload.images | Where-Object {
+                $_ -and $_.PSObject.Properties['status'] -and $_.status -eq 'saved' -and $_.PSObject.Properties['savedPath'] -and $_.savedPath
+            })
+        }
+        if ($images.Count -eq 0) { continue }
+
+        $takeCount = [Math]::Min($MaxPerTarget, $images.Count)
+        for ($i = 0; $i -lt $takeCount; $i++) {
+            $img = $images[$i]
+            $savedPath = [string]$img.savedPath
+            $relativePath = Get-RelativePath -BasePath $ResultsRoot -TargetPath $savedPath
+            $altText = if ($img.PSObject.Properties['alt'] -and $img.alt) {
+                [string]$img.alt
+            } else {
+                'preview'
+            }
+            $repoPath = if ($target.PSObject.Properties['repoPath']) { [string]$target.repoPath } else { '(unknown)' }
+
+            $entries.Add([pscustomobject]@{
+                repoPath   = $repoPath
+                alt        = $altText
+                path       = $relativePath
+                sourcePath = $savedPath
+            }) | Out-Null
+        }
+    }
+
+    return $entries
+}
+
 $resolvedSummary = Resolve-ExistingFile -Path $SummaryPath -Description 'Summary'
 $summaryRaw = Get-Content -LiteralPath $resolvedSummary -Raw -ErrorAction Stop
 if ([string]::IsNullOrWhiteSpace($summaryRaw)) {
@@ -167,6 +229,17 @@ foreach ($target in $targets) {
 }
 
 $markdown = $rows -join [Environment]::NewLine
+$previewEntries = Get-MobilePreviewEntries -Targets $targets -ResultsRoot $resultsRoot -MaxPerTarget 1
+if ($previewEntries.Count -gt 0) {
+    $previewLines = New-Object System.Collections.Generic.List[string]
+    $previewLines.Add('') | Out-Null
+    $previewLines.Add('### Mobile Preview') | Out-Null
+    $previewLines.Add('') | Out-Null
+    foreach ($entry in $previewEntries) {
+        $previewLines.Add(('- <code>{0}</code><br /><img src="{1}" alt="{2}" width="240" />' -f $entry.repoPath, $entry.path, $entry.alt)) | Out-Null
+    }
+    $markdown = ($markdown, ($previewLines -join [Environment]::NewLine)) -join [Environment]::NewLine
+}
 
 $result = [pscustomobject]@{
     totals = [pscustomobject]@{
@@ -174,8 +247,10 @@ $result = [pscustomobject]@{
         completed   = $completed
         comparisons = $comparisonTotal
         diffs       = $diffTotal
+        previewImages = $previewEntries.Count
     }
     targets  = $targets
+    previews = $previewEntries
     markdown = $markdown
 }
 
