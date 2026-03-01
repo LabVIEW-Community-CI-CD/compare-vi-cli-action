@@ -56,4 +56,51 @@ Describe 'LabVIEW CLI provider' -Tag 'Unit' {
     $index = [Array]::IndexOf($args, '-LabVIEWPath')
     $args[$index + 1] | Should -Be (Resolve-Path -LiteralPath $labviewPath).Path
   }
+
+  It 'maps headless and logToConsole booleans for CreateComparisonReport' {
+    $args = InModuleScope $script:providerModule.Name {
+      Get-LabVIEWCliArgs -Operation 'CreateComparisonReport' -Params @{
+        vi1 = 'C:\repo\Base.vi'
+        vi2 = 'C:\repo\Head.vi'
+        headless = $true
+        logToConsole = $false
+      }
+    }
+
+    $args | Should -Contain '-Headless'
+    $headlessIndex = [Array]::IndexOf($args, '-Headless')
+    $args[$headlessIndex + 1] | Should -Be 'true'
+
+    $args | Should -Contain '-LogToConsole'
+    $logIndex = [Array]::IndexOf($args, '-LogToConsole')
+    $args[$logIndex + 1] | Should -Be 'false'
+  }
+
+  It 'normalizes string boolean tokens for CreateComparisonReport' {
+    $args = InModuleScope $script:providerModule.Name {
+      Get-LabVIEWCliArgs -Operation 'CreateComparisonReport' -Params @{
+        vi1 = 'C:\repo\Base.vi'
+        vi2 = 'C:\repo\Head.vi'
+        headless = '1'
+        logToConsole = 'false'
+      }
+    }
+
+    $headlessIndex = [Array]::IndexOf($args, '-Headless')
+    $args[$headlessIndex + 1] | Should -Be 'true'
+    $logIndex = [Array]::IndexOf($args, '-LogToConsole')
+    $args[$logIndex + 1] | Should -Be 'false'
+  }
+
+  It 'fails on unsupported boolean tokens for CreateComparisonReport' {
+    {
+      InModuleScope $script:providerModule.Name {
+        Get-LabVIEWCliArgs -Operation 'CreateComparisonReport' -Params @{
+          vi1 = 'C:\repo\Base.vi'
+          vi2 = 'C:\repo\Head.vi'
+          headless = 'maybe'
+        }
+      }
+    } | Should -Throw "*headless*"
+  }
 }
