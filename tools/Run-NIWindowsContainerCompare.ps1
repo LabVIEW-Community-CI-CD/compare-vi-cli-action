@@ -393,6 +393,51 @@ function Resolve-RunFailureMessage {
   return ("Container compare failed with exit code {0}." -f $ExitCode)
 }
 
+function Get-LabVIEWCliErrorCode {
+  param(
+    [AllowNull()][string]$StdErr,
+    [AllowNull()][string]$StdOut
+  )
+
+  $combined = @($StdErr, $StdOut) -join "`n"
+  if ([string]::IsNullOrWhiteSpace($combined)) {
+    return $null
+  }
+
+  $match = [regex]::Match($combined, 'Error code\s*:\s*(-?\d+)')
+  if ($match.Success -and -not [string]::IsNullOrWhiteSpace($match.Groups[1].Value)) {
+    return [int]$match.Groups[1].Value
+  }
+  return $null
+}
+
+function Resolve-RunFailureClassification {
+  param(
+    [Parameter(Mandatory)][string]$Image,
+    [AllowNull()][string]$StdErr,
+    [AllowNull()][string]$StdOut,
+    [Parameter(Mandatory)][int]$ExitCode
+  )
+
+  $classification = [ordered]@{
+    status = 'error'
+    classification = 'run-error'
+    message = Resolve-RunFailureMessage -StdErr $StdErr -StdOut $StdOut -ExitCode $ExitCode
+    labviewCliErrorCode = Get-LabVIEWCliErrorCode -StdErr $StdErr -StdOut $StdOut
+    recommendation = $null
+  }
+
+  if ($classification.labviewCliErrorCode -eq -350000) {
+    $classification.classification = 'labview-cli-connection'
+    $classification.recommendation = @(
+      "LabVIEW CLI could not connect inside image '$Image'.",
+      "Confirm the image/runtime supports LabVIEW CLI operations on this host.",
+      "Use the capture stderr/stdout artifacts and NI image documentation to validate container prerequisites."
+    ) -join ' '
+  }
+  return [pscustomobject]$classification
+}
+
 if ($TimeoutSeconds -le 0) {
   throw '-TimeoutSeconds must be greater than zero.'
 }
@@ -405,6 +450,7 @@ $capture = [ordered]@{
   timeoutSeconds= $TimeoutSeconds
   probe         = [bool]$Probe
   status        = 'init'
+  classification= 'init'
   exitCode      = $null
   timedOut      = $false
   dockerServerOs= $null
@@ -414,6 +460,9 @@ $capture = [ordered]@{
   command       = $null
   stdoutPath    = $null
   stderrPath    = $null
+  reportExists  = $false
+  labviewCliErrorCode = $null
+  recommendation = $null
   message       = $null
 }
 
@@ -438,6 +487,7 @@ try {
 
   if ($Probe) {
     $capture.status = 'probe-ok'
+    $capture.classification = 'probe-ok'
     $capture.exitCode = 0
     $capture.message = ("Docker is in windows mode and image '{0}' is available." -f $Image)
     Write-Host ("[ni-container-probe] {0}" -f $capture.message) -ForegroundColor Green
@@ -515,6 +565,7 @@ try {
 
     if ($runResult.TimedOut) {
       $capture.status = 'timeout'
+      $capture.classification = 'timeout'
       $capture.timedOut = $true
       $capture.exitCode = $script:TimeoutExitCode
       $capture.message = ("Container compare timed out after {0} second(s)." -f $TimeoutSeconds)
@@ -523,18 +574,30 @@ try {
       $exitCode = [int]$runResult.ExitCode
       $capture.exitCode = $exitCode
       switch ($exitCode) {
-        0 { $capture.status = 'ok' }
+        0 {
+          $capture.status = 'ok'
+          $capture.classification = 'ok'
+        }
         1 {
           if (Test-LabVIEWCliFailure -StdErr $stderrContent -StdOut $stdoutContent) {
-            $capture.status = 'error'
-            $capture.message = Resolve-RunFailureMessage -StdErr $stderrContent -StdOut $stdoutContent -ExitCode $exitCode
+            $failure = Resolve-RunFailureClassification -Image $Image -StdErr $stderrContent -StdOut $stdoutContent -ExitCode $exitCode
+            $capture.status = $failure.status
+            $capture.classification = $failure.classification
+            $capture.message = $failure.message
+            $capture.labviewCliErrorCode = $failure.labviewCliErrorCode
+            $capture.recommendation = $failure.recommendation
           } else {
             $capture.status = 'diff'
+            $capture.classification = 'diff'
           }
         }
         default {
-          $capture.status = 'error'
-          $capture.message = Resolve-RunFailureMessage -StdErr $stderrContent -StdOut $stdoutContent -ExitCode $exitCode
+          $failure = Resolve-RunFailureClassification -Image $Image -StdErr $stderrContent -StdOut $stdoutContent -ExitCode $exitCode
+          $capture.status = $failure.status
+          $capture.classification = $failure.classification
+          $capture.message = $failure.message
+          $capture.labviewCliErrorCode = $failure.labviewCliErrorCode
+          $capture.recommendation = $failure.recommendation
         }
       }
       $finalExitCode = $exitCode
@@ -542,10 +605,14 @@ try {
   }
 } catch {
   $capture.status = 'preflight-error'
+  $capture.classification = 'preflight-error'
   $capture.exitCode = $script:PreflightExitCode
   $capture.message = $_.Exception.Message
   $finalExitCode = $script:PreflightExitCode
 } finally {
+  if (-not [string]::IsNullOrWhiteSpace($capture.reportPath)) {
+    $capture.reportExists = Test-Path -LiteralPath $capture.reportPath -PathType Leaf
+  }
   if (-not $Probe) {
     if ($stdoutPath) { Write-TextArtifact -Path $stdoutPath -Content $stdoutContent }
     if ($stderrPath) { Write-TextArtifact -Path $stderrPath -Content $stderrContent }

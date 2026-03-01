@@ -84,6 +84,8 @@ Notes:
 - Override image explicitly with `tools/Run-NIWindowsContainerCompare.ps1 -Image <tag>`.
 - Docker daemon must run in `windows` mode; `compare:docker:ni:windows:probe` fails fast when mode/image checks fail.
 - Output defaults to `tests/results/ni-windows-container/compare-report.html` with deterministic capture logs.
+- Capture JSON (`ni-windows-container-capture.json`) records machine-readable classification fields
+  (`classification`, `labviewCliErrorCode`, `recommendation`, `reportExists`) for deterministic triage.
 
 ## Tooling helpers
 
