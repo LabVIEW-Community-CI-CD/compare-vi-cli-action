@@ -478,6 +478,7 @@ $scratchContext = [ordered]@{
     mobilePreviewValidated = $false
     mobilePreviewImageCount = 0
     mobilePreviewCommentFound = $false
+    NetDiffAnchored = $false
 }
 
 $commitSummaries = @()
@@ -496,6 +497,25 @@ try {
         }
         'sequential' {
             $commitSummaries = Invoke-SequentialHistoryCommits -TargetVi $targetVi
+            $netDiffPaths = @(Invoke-Git -Arguments @('diff', '--name-only', "origin/$BaseBranch", '--', $targetVi))
+            if ($netDiffPaths.Count -eq 0) {
+                $anchorSourceVi = 'fixtures/vi-attr/Base.vi'
+                Write-Host ("Sequential scenario has no net diff against origin/{0}; applying anchor commit: {1} <= {2}" -f $BaseBranch, $targetVi, $anchorSourceVi)
+                Copy-VIContent -Source $anchorSourceVi -Destination $targetVi
+                $anchorStatus = @(Invoke-Git -Arguments @('status', '--porcelain', '--', $targetVi))
+                if ($anchorStatus.Count -eq 0) {
+                    throw 'Failed to produce net diff anchor change for sequential scenario.'
+                }
+                Invoke-Git -Arguments @('add', '-f', $targetVi) | Out-Null
+                $anchorMessage = 'chore: sequential history net-diff anchor'
+                Invoke-Git -Arguments @('commit', '-m', $anchorMessage) | Out-Null
+                $commitSummaries += [pscustomobject]@{
+                    Title   = 'Net-diff anchor'
+                    Source  = $anchorSourceVi
+                    Message = $anchorMessage
+                }
+                $scratchContext.NetDiffAnchored = $true
+            }
         }
     }
     $scratchContext.CommitCount = $commitSummaries.Count
