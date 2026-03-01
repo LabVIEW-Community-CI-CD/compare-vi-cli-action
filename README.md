@@ -81,6 +81,14 @@ the same summary table to a GitHub issue for stakeholders.
   runner (`self-hosted, Windows, X64`) so the same LVCompare install used in CI handles fork PRs.
 - Manual `/vi-stage` and `/vi-history` dispatches accept a `fetch_depth` input (default `20`) when you need to pull a
   deeper history for local tests.
+- `/vi-history` artifacts now include extracted preview assets under
+  `tests/results/pr-vi-history/<target>/previews/history-image-*` plus
+  `tests/results/pr-vi-history/<target>/vi-history-image-index.json`
+  (`schema: pr-vi-history-image-index@v1`) for deterministic image lookup.
+- The history summary/comment renderer adds a `### Mobile Preview` block that inlines a capped set of extracted images
+  so reviewers can scan cosmetic changes on mobile without downloading artifacts first.
+- Comment-size safety guards cap preview/image payload and apply markdown truncation when needed; the summarizer writes
+  this state to totals (`previewImages`, `markdownTruncated`) and emits an explicit truncation note in the PR comment.
 - To rehearse the fork flow locally, run `pwsh -File tools/Test-ForkSimulation.ps1` in three passes: `-DryRun` shows the
   steps, the default run opens a draft PR and validates the automatic compare job, and `-KeepBranch` preserves the
   scratch branch while the staging/history dispatches finish so you can inspect the artifacts.

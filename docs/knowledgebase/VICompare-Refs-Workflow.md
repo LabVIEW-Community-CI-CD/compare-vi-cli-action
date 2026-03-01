@@ -103,6 +103,13 @@
   pwsh -File tools/Invoke-PRVIHistory.ps1 -ManifestPath vi-history-manifest.json -ResultsRoot tests/results/pr-vi-history
   pwsh -File tools/Summarize-PRVIHistory.ps1 -SummaryPath tests/results/pr-vi-history/vi-history-summary.json -MarkdownPath vi-history-summary.md
   ```
+  Mobile preview extraction writes additive artifacts per target:
+  - `tests/results/pr-vi-history/<target>/previews/history-image-*`
+  - `tests/results/pr-vi-history/<target>/vi-history-image-index.json`
+    (`schema: pr-vi-history-image-index@v1`)
+  The rendered summary/comment includes `### Mobile Preview` with inline `<img ...history-image-...>` tags, capped by
+  comment safety limits. Totals expose `previewImages` and `markdownTruncated`; per-target metadata surfaces under
+  `targets[].reportImages` in `pr-vi-history-summary@v1`.
   For a full end-to-end validation, run the smoke helper (`pwsh -File tools/Test-PRVIHistorySmoke.ps1` or `npm run smoke:vi-history`) to create a scratch PR, dispatch the workflow, and record the results under `tests/results/_agent/smoke/vi-history/`.
 
 ## Dispatch inputs (GitHub UI or `gh workflow run`)
@@ -194,6 +201,9 @@ gh workflow run vi-compare-refs.yml `
   rendering is skipped or fails, the Markdown path still points at the fallback report so consumers always have a
   summary to ingest. A compressed `category-counts-json` blob is also published so downstream automation can react to runs
   dominated by cosmetic noise without re-reading the manifests.
+- History summary JSON (`tests/results/pr-vi-history/vi-history-summary.json`) now adds `targets[].reportImages` and
+  totals `previewImages` / `markdownTruncated` so downstream checks can verify image extraction and comment-size
+  truncation deterministically.
 - Per-mode manifests live under `tests/results/ref-compare/history/<mode>/manifest.json`
   (`schema: vi-compare/history@v1`) and enumerate the commit pairs, summaries, and LVCompare outcomes.
 - Per-iteration summaries (`*-summary.json`) live beside the mode manifest
