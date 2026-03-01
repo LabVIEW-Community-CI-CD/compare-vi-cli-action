@@ -89,6 +89,7 @@ Describe 'Summarize-PRVIHistory.ps1' {
         $result.totals.diffs | Should -Be 2
         $result.totals.comparisons | Should -Be 4
         $result.totals.previewImages | Should -Be 1
+        $result.totals.markdownTruncated | Should -BeFalse
         $result.previews.Count | Should -Be 1
         $result.markdown | Should -Match 'fixtures/Example.vi'
         $result.markdown | Should -Match 'diff'
@@ -101,5 +102,90 @@ Describe 'Summarize-PRVIHistory.ps1' {
 
         $jsonEcho = Get-Content -LiteralPath $jsonOutPath -Raw -Encoding utf8 | ConvertFrom-Json -Depth 4
         $jsonEcho.markdown | Should -Be $result.markdown
+    }
+
+    It 'limits preview entries and truncates oversized markdown safely' {
+        $resultsRoot = Join-Path $TestDrive 'pr-history-limits'
+        $targetA = Join-Path $resultsRoot '01-A'
+        $targetB = Join-Path $resultsRoot '02-B'
+        New-Item -ItemType Directory -Path $targetA -Force | Out-Null
+        New-Item -ItemType Directory -Path $targetB -Force | Out-Null
+
+        $reportA = Join-Path $targetA 'history-report.html'
+        $reportB = Join-Path $targetB 'history-report.html'
+        Set-Content -LiteralPath $reportA -Value '<html></html>' -Encoding utf8
+        Set-Content -LiteralPath $reportB -Value '<html></html>' -Encoding utf8
+
+        $imageAPath = Join-Path $targetA 'previews/history-image-000.png'
+        $imageBPath = Join-Path $targetB 'previews/history-image-000.png'
+        New-Item -ItemType Directory -Path (Split-Path -Parent $imageAPath) -Force | Out-Null
+        New-Item -ItemType Directory -Path (Split-Path -Parent $imageBPath) -Force | Out-Null
+        [System.IO.File]::WriteAllBytes($imageAPath, @(0x01, 0x02))
+        [System.IO.File]::WriteAllBytes($imageBPath, @(0x03, 0x04))
+
+        $indexA = Join-Path $targetA 'vi-history-image-index.json'
+        $indexB = Join-Path $targetB 'vi-history-image-index.json'
+        [ordered]@{
+            schema = 'pr-vi-history-image-index@v1'
+            images = @(
+                [ordered]@{
+                    status   = 'saved'
+                    savedPath= $imageAPath
+                    alt      = 'A'
+                }
+            )
+        } | ConvertTo-Json -Depth 4 | Set-Content -LiteralPath $indexA -Encoding utf8
+        [ordered]@{
+            schema = 'pr-vi-history-image-index@v1'
+            images = @(
+                [ordered]@{
+                    status   = 'saved'
+                    savedPath= $imageBPath
+                    alt      = 'B'
+                }
+            )
+        } | ConvertTo-Json -Depth 4 | Set-Content -LiteralPath $indexB -Encoding utf8
+
+        $longMessage = ('x' * 1200)
+        $summaryPath = Join-Path $TestDrive 'pr-history-limits-summary.json'
+        $longRepoA = ('A' * 360) + '.vi'
+        $longRepoB = ('B' * 360) + '.vi'
+        [ordered]@{
+            schema = 'pr-vi-history-summary@v1'
+            resultsRoot = $resultsRoot
+            targets = @(
+                [ordered]@{
+                    repoPath = $longRepoA
+                    status = 'completed'
+                    changeTypes = @('modified')
+                    message = $longMessage
+                    stats = [ordered]@{ processed = 1; diffs = 1 }
+                    reportHtml = $reportA
+                    reportImages = [ordered]@{
+                        status = 'completed'
+                        indexPath = $indexA
+                    }
+                },
+                [ordered]@{
+                    repoPath = $longRepoB
+                    status = 'completed'
+                    changeTypes = @('modified')
+                    message = $longMessage
+                    stats = [ordered]@{ processed = 1; diffs = 1 }
+                    reportHtml = $reportB
+                    reportImages = [ordered]@{
+                        status = 'completed'
+                        indexPath = $indexB
+                    }
+                }
+            )
+        } | ConvertTo-Json -Depth 8 | Set-Content -LiteralPath $summaryPath -Encoding utf8
+
+        $result = & $scriptPath -SummaryPath $summaryPath -MaxPreviewImages 1 -MaxMarkdownLength 500
+        $result.previews.Count | Should -Be 1
+        $result.totals.previewImages | Should -Be 1
+        $result.totals.markdownTruncated | Should -BeTrue
+        $result.markdown.Length | Should -BeLessOrEqual 900
+        $result.markdown | Should -Match 'Summary truncated for comment size safety'
     }
 }
