@@ -143,6 +143,15 @@ Quick reference for building, testing, and releasing the LVCompare composite act
         `tools/Inspect-HistorySignalStats.ps1` wraps the helper + stub and prints the signal/noise counts directly.
       3. `tools/Summarize-PRVIHistory.ps1` renders the PR table with change types, comparison/diff counts, and
          relative report paths so reviewers can triage without downloading the artifact bundle.
+        The summary contract now includes additive image metadata for report rendering:
+        - target node `reportImages` (`enabled`, `indexPath`, `previewCount`, `previews[]`)
+        - totals `previewImages` and `markdownTruncated` in `pr-vi-history-summary@v1`
+        The same helper emits a `### Mobile Preview` section in the PR comment/summary markdown when previews are
+        available, and writes extracted files to `tests/results/pr-vi-history/<target>/previews/` with index contract
+        `pr-vi-history-image-index@v1`.
+        Extractor toggles:
+        - `PR_VI_HISTORY_EXTRACT_REPORT_IMAGES`
+        - `VI_HISTORY_EXTRACT_REPORT_IMAGES`
     - Override the history depth via the workflow_dispatch input `max_pairs` when you need a longer runway; otherwise
       accept the default for quick attribution. The workflow uploads the results directory as
       `pr-vi-history-<pr-number>.zip` for local inspection.

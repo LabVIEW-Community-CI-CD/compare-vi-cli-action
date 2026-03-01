@@ -467,6 +467,9 @@ $scratchContext = [ordered]@{
     Comparisons   = $null
     Diffs         = $null
     ArtifactValidated = $false
+    mobilePreviewValidated = $false
+    mobilePreviewImageCount = 0
+    mobilePreviewCommentFound = $false
 }
 
 $commitSummaries = @()
@@ -575,6 +578,10 @@ try {
     if (-not $historyComment) {
         throw 'Expected `/vi-history` comment not found on the draft PR.'
     }
+    $mobilePreviewHeaderMatch = [regex]::Match($historyComment, '(?im)^###\s+Mobile Preview\s*$')
+    $mobilePreviewImageMatches = [regex]::Matches($historyComment, '<img\s+[^>]*src=["''][^"''>]*history-image-[^"''>]*["''][^>]*>')
+    $scratchContext.mobilePreviewCommentFound = $mobilePreviewHeaderMatch.Success
+    $scratchContext.mobilePreviewImageCount = $mobilePreviewImageMatches.Count
 
     $rowPattern = '\|\s*<code>fixtures/vi-attr/Head\.vi</code>\s*\|\s*(?<change>[^|]+)\|\s*(?<comparisons>\d+)\s*\|\s*(?<diffs>\d+)\s*\|\s*(?<status>[^|]+)\|'
     $rowMatch = [regex]::Match($historyComment, $rowPattern)
@@ -600,6 +607,12 @@ try {
         }
         if ($statusValue -notlike '*diff*') {
             throw ("Expected status column to mark diff but saw '{0}'." -f $statusValue)
+        }
+        if (-not $mobilePreviewHeaderMatch.Success) {
+            throw 'Sequential history comment is missing the `### Mobile Preview` section.'
+        }
+        if ($mobilePreviewImageMatches.Count -lt 1) {
+            throw 'Sequential history comment did not include preview image tags (`history-image-*`).'
         }
 
         $artifactDir = Join-Path $summaryDir ("artifact-$timestamp")
@@ -628,6 +641,18 @@ try {
         if ($artifactDiffs -lt 1) {
             throw 'Summary JSON should report at least one diff for sequential history smoke.'
         }
+
+        $imageIndexFiles = Get-ChildItem -LiteralPath $artifactDir -Recurse -Filter 'vi-history-image-index.json' -File
+        if (-not $imageIndexFiles -or $imageIndexFiles.Count -lt 1) {
+            throw 'vi-history-image-index.json not found in downloaded artifact.'
+        }
+        $previewImageFiles = Get-ChildItem -LiteralPath $artifactDir -Recurse -File |
+            Where-Object { $_.Name -like 'history-image-*' -and $_.FullName -match '[\\/]+previews[\\/]' }
+        if (-not $previewImageFiles -or $previewImageFiles.Count -lt 1) {
+            throw 'Preview image files (`previews/history-image-*`) not found in downloaded artifact.'
+        }
+        $scratchContext.mobilePreviewImageCount = [Math]::Max($scratchContext.mobilePreviewImageCount, $previewImageFiles.Count)
+        $scratchContext.mobilePreviewValidated = $true
         $scratchContext.ArtifactValidated = $true
         try {
             Remove-Item -LiteralPath $artifactDir -Recurse -Force
