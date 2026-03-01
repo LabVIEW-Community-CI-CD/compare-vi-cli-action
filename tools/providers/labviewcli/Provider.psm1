@@ -13,6 +13,36 @@ function Convert-ToBoolString {
   return $script:boolFalse
 }
 
+function Convert-ToCliBoolString {
+  param(
+    [Parameter(Mandatory)][object]$Value,
+    [Parameter(Mandatory)][string]$ParameterName
+  )
+
+  if ($Value -is [bool]) {
+    return (Convert-ToBoolString -Value $Value)
+  }
+  if ($Value -is [byte] -or $Value -is [int16] -or $Value -is [int] -or $Value -is [int64]) {
+    switch ([int64]$Value) {
+      0 { return $script:boolFalse }
+      1 { return $script:boolTrue }
+      default { throw ("Parameter '{0}' only accepts boolean, 0, or 1 values." -f $ParameterName) }
+    }
+  }
+  if ($Value -is [string]) {
+    $normalized = $Value.Trim().ToLowerInvariant()
+    switch ($normalized) {
+      'true' { return $script:boolTrue }
+      'false' { return $script:boolFalse }
+      '1' { return $script:boolTrue }
+      '0' { return $script:boolFalse }
+      default { throw ("Parameter '{0}' string value '{1}' is not a supported boolean token." -f $ParameterName, $Value) }
+    }
+  }
+
+  throw ("Parameter '{0}' value type '{1}' is not supported for boolean conversion." -f $ParameterName, $Value.GetType().FullName)
+}
+
 function Resolve-LabVIEWCliBinaryPath {
   return Resolve-LabVIEWCliPath
 }
@@ -130,6 +160,12 @@ function Get-LabVIEWCliArgs {
       $resolvedLvPath = Resolve-LabVIEWPathFromParams -Params $Params
       if ($resolvedLvPath) {
         $args += @('-LabVIEWPath', $resolvedLvPath)
+      }
+      if ($Params.ContainsKey('headless')) {
+        $args += @('-Headless', (Convert-ToCliBoolString -Value $Params.headless -ParameterName 'headless'))
+      }
+      if ($Params.ContainsKey('logToConsole')) {
+        $args += @('-LogToConsole', (Convert-ToCliBoolString -Value $Params.logToConsole -ParameterName 'logToConsole'))
       }
       return $args
     }
