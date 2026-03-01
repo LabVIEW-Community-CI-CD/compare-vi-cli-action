@@ -188,4 +188,32 @@ Describe 'Summarize-PRVIHistory.ps1' {
         $result.markdown.Length | Should -BeLessOrEqual 900
         $result.markdown | Should -Match 'Summary truncated for comment size safety'
     }
+
+    It 'handles summaries with no preview entries' {
+        $resultsRoot = Join-Path $TestDrive 'pr-history-no-previews'
+        New-Item -ItemType Directory -Path $resultsRoot -Force | Out-Null
+
+        $summaryPath = Join-Path $TestDrive 'pr-history-no-previews-summary.json'
+        [ordered]@{
+            schema = 'pr-vi-history-summary@v1'
+            resultsRoot = $resultsRoot
+            targets = @(
+                [ordered]@{
+                    repoPath = 'fixtures/NoPreview.vi'
+                    status = 'completed'
+                    changeTypes = @('modified')
+                    stats = [ordered]@{
+                        processed = 1
+                        diffs = 1
+                    }
+                }
+            )
+        } | ConvertTo-Json -Depth 6 | Set-Content -LiteralPath $summaryPath -Encoding utf8
+
+        $result = & $scriptPath -SummaryPath $summaryPath
+        $result.totals.targets | Should -Be 1
+        $result.totals.previewImages | Should -Be 0
+        $result.previews.Count | Should -Be 0
+        $result.markdown | Should -Not -Match '### Mobile Preview'
+    }
 }
