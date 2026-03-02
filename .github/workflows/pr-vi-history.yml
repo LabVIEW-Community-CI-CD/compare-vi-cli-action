@@ -39,6 +39,7 @@ jobs:
         contains('OWNER,MEMBER,COLLABORATOR', github.event.comment.author_association)
       )
     runs-on: [self-hosted, Windows, X64]
+    timeout-minutes: 10
     env:
       NOTE: ${{ inputs.note }}
       MAX_PAIRS: ${{ inputs.max_pairs || '6' }}

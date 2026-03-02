@@ -817,28 +817,38 @@ try {
             max_pairs = $effectiveMaxPairs.ToString()
         }
     } | ConvertTo-Json -Depth 4
+    $dispatchStartedAtUtc = (Get-Date).ToUniversalTime()
     Write-Host 'Triggering pr-vi-history workflow via dispatch API...'
     Invoke-RestMethod -Uri $dispatchUri -Headers $auth.Headers -Method Post -Body $dispatchBody -ContentType 'application/json'
     Write-Host 'Workflow dispatch accepted.'
 
     Write-Host 'Waiting for workflow run to appear...'
     $runId = $null
-    for ($attempt = 0; $attempt -lt 60; $attempt++) {
-        $runs = Invoke-Gh -Arguments @(
-            'run', 'list',
-            '--workflow', 'pr-vi-history.yml',
-            '--branch', $branchName,
-            '--limit', '1',
-            '--json', 'databaseId,status,conclusion,headBranch'
-        ) -ExpectJson
-        if ($runs -and $runs.Count -gt 0 -and $runs[0].headBranch -eq $branchName) {
-            $runId = $runs[0].databaseId
-            if ($runs[0].status -eq 'completed') { break }
+    $workflowRunsUri = "https://api.github.com/repos/$($repoInfo.Slug)/actions/workflows/pr-vi-history.yml/runs?branch=$branchName&event=workflow_dispatch&per_page=20"
+    $lastRunProbe = $null
+    for ($attempt = 0; $attempt -lt 120; $attempt++) {
+        $runResponse = Invoke-RestMethod -Uri $workflowRunsUri -Headers $auth.Headers -Method Get -ErrorAction Stop
+        $workflowRuns = @($runResponse.workflow_runs)
+        if ($workflowRuns.Count -gt 0) {
+            $candidate = $workflowRuns |
+                Where-Object { $_.head_branch -eq $branchName } |
+                Sort-Object { [DateTime]$_.created_at } -Descending |
+                Select-Object -First 1
+            if ($null -ne $candidate) {
+                $runId = [int64]$candidate.id
+                break
+            }
         }
+        $lastRunProbe = $workflowRuns | Select-Object -First 5
         Start-Sleep -Seconds 5
     }
     if (-not $runId) {
-        throw 'Unable to locate dispatched workflow run.'
+        $probeJson = if ($lastRunProbe) {
+            $lastRunProbe | ConvertTo-Json -Depth 6 -Compress
+        } else {
+            '[]'
+        }
+        throw ("Unable to locate dispatched workflow run. Dispatch started at {0:o}. Last run probe: {1}" -f $dispatchStartedAtUtc, $probeJson)
     }
     $scratchContext.RunId = $runId
     $scratchContext.WorkflowUrl = "https://github.com/$($repoInfo.Slug)/actions/runs/$runId"
