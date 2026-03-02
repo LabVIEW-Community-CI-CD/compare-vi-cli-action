@@ -1,12 +1,13 @@
 #Requires -Version 7.0
 <#
 .SYNOPSIS
-  Runs a LabVIEW CLI compare inside a local NI Windows container image.
+  Runs a LabVIEW CLI compare inside a local NI Linux container image.
 
 .DESCRIPTION
-  Preflights Docker mode/image availability and then executes
-  CreateComparisonReport inside `nationalinstruments/labview:2026q1-windows`
-  (or a caller-supplied image). The helper writes deterministic capture
+  Preflights Docker Linux mode/image availability, enforces runtime determinism,
+  and executes CreateComparisonReport inside
+  `nationalinstruments/labview:2026q1-linux` (or a caller-supplied image).
+  The helper enforces headless execution and writes deterministic capture
   artifacts adjacent to the report output.
 
 .PARAMETER BaseVi
@@ -17,11 +18,11 @@
 
 .PARAMETER Image
   Docker image tag to execute. Defaults to
-  nationalinstruments/labview:2026q1-windows.
+  nationalinstruments/labview:2026q1-linux.
 
 .PARAMETER ReportPath
   Optional report path on host. Defaults to
-  tests/results/ni-windows-container/compare-report.<ext>.
+  tests/results/ni-linux-container/compare-report.<ext>.
 
 .PARAMETER ReportType
   Host-facing report type selector: html, xml, or text.
@@ -33,11 +34,28 @@
   Additional CLI flags appended to CreateComparisonReport.
 
 .PARAMETER LabVIEWPath
-  Optional explicit in-container LabVIEW.exe path forwarded as -LabVIEWPath.
+  Optional explicit in-container LabVIEW executable path forwarded as
+  -LabVIEWPath and used for prelaunch.
 
 .PARAMETER Probe
-  Preflight only (Docker availability, Windows container mode, and image
+  Preflight only (Docker availability, Linux container mode, and image
   presence). Does not require BaseVi/HeadVi.
+
+.PARAMETER AutoRepairRuntime
+  Allows deterministic runtime repair attempts when Docker mode/context
+  mismatches are detected.
+
+.PARAMETER RuntimeSnapshotPath
+  Optional path for runtime determinism snapshot JSON.
+
+.PARAMETER StartupRetryCount
+  Retry count for transient CLI startup/connectivity failures (-350000).
+
+.PARAMETER PrelaunchWaitSeconds
+  Sleep after headless prelaunch before initial CLI invocation.
+
+.PARAMETER RetryDelaySeconds
+  Delay between retry attempts for transient startup failures.
 
 .PARAMETER PassThru
   Emit the capture object to stdout in addition to writing capture JSON.
@@ -46,14 +64,15 @@
 param(
   [string]$BaseVi,
   [string]$HeadVi,
-  [string]$Image = 'nationalinstruments/labview:2026q1-windows',
+  [string]$Image = 'nationalinstruments/labview:2026q1-linux',
   [string]$ReportPath,
-  [ValidateSet('html','xml','text')]
+  [ValidateSet('html', 'xml', 'text')]
   [string]$ReportType = 'html',
   [int]$TimeoutSeconds = 600,
   [int]$HeartbeatSeconds = 15,
   [string[]]$Flags,
   [string]$LabVIEWPath,
+  [switch]$Probe,
   [bool]$AutoRepairRuntime = $true,
   [int]$RuntimeEngineReadyTimeoutSeconds = 120,
   [int]$RuntimeEngineReadyPollSeconds = 3,
@@ -61,7 +80,6 @@ param(
   [int]$StartupRetryCount = 1,
   [int]$PrelaunchWaitSeconds = 8,
   [int]$RetryDelaySeconds = 8,
-  [switch]$Probe,
   [switch]$PassThru
 )
 
@@ -85,10 +103,7 @@ function Assert-Tool {
 }
 
 function Resolve-EnvTokenValue {
-  param(
-    [Parameter(Mandatory)][string]$Name
-  )
-
+  param([Parameter(Mandatory)][string]$Name)
   foreach ($scope in @('Process', 'User', 'Machine')) {
     $value = [Environment]::GetEnvironmentVariable($Name, $scope)
     if (-not [string]::IsNullOrWhiteSpace($value)) {
@@ -176,21 +191,13 @@ function Resolve-OutputReportPath {
     [Parameter(Mandatory)][string]$Extension
   )
   if ([string]::IsNullOrWhiteSpace($PathValue)) {
-    $defaultRoot = Join-Path (Resolve-Path '.').Path 'tests/results/ni-windows-container'
+    $defaultRoot = Join-Path (Resolve-Path '.').Path 'tests/results/ni-linux-container'
     return (Join-Path $defaultRoot ("compare-report.{0}" -f $Extension))
   }
   if ([System.IO.Path]::IsPathRooted($PathValue)) {
     return [System.IO.Path]::GetFullPath($PathValue)
   }
   return [System.IO.Path]::GetFullPath((Join-Path (Resolve-Path '.').Path $PathValue))
-}
-
-function Get-DockerServerOsType {
-  $output = & docker info --format '{{.OSType}}' 2>$null
-  if ($LASTEXITCODE -ne 0 -or [string]::IsNullOrWhiteSpace($output)) {
-    throw 'Unable to query Docker daemon mode. Ensure Docker Desktop is running.'
-  }
-  return $output.Trim().ToLowerInvariant()
 }
 
 function Test-DockerImageExists {
@@ -206,7 +213,7 @@ function Get-OrAddMountPath {
     [Parameter(Mandatory)][string]$HostDirectory
   )
   if (-not $Map.ContainsKey($HostDirectory)) {
-    $Map[$HostDirectory] = ('C:\compare\m{0}' -f $Index.Value)
+    $Map[$HostDirectory] = ('/compare/m{0}' -f $Index.Value)
     $Index.Value++
   }
   return $Map[$HostDirectory]
@@ -220,226 +227,171 @@ function Convert-HostFileToContainerPath {
   )
   $hostDir = Split-Path -Parent $HostFilePath
   $containerDir = Get-OrAddMountPath -Map $MountMap -Index $MountIndex -HostDirectory $hostDir
-  return (Join-Path $containerDir (Split-Path -Leaf $HostFilePath))
+  return (Join-Path $containerDir (Split-Path -Leaf $HostFilePath)).Replace('\', '/')
 }
 
 function New-ContainerCommand {
   return @'
-$ErrorActionPreference = "Stop"
-$cliCandidates = @(
-  "C:\Program Files\National Instruments\Shared\LabVIEW CLI\LabVIEWCLI.exe",
-  "C:\Program Files (x86)\National Instruments\Shared\LabVIEW CLI\LabVIEWCLI.exe"
-)
-$cliPath = $cliCandidates | Where-Object { Test-Path -LiteralPath $_ } | Select-Object -First 1
-if (-not $cliPath) {
-  throw "LabVIEWCLI.exe not found in container. Ensure the NI image includes the LabVIEW CLI component."
+set -u
+set -o pipefail
+
+find_cli() {
+  if command -v LabVIEWCLI >/dev/null 2>&1; then
+    command -v LabVIEWCLI
+    return 0
+  fi
+  if command -v labviewcli >/dev/null 2>&1; then
+    command -v labviewcli
+    return 0
+  fi
+  local found
+  found="$(find / -maxdepth 6 -type f \( -name LabVIEWCLI -o -name LabVIEWCLI.sh -o -name labviewcli \) 2>/dev/null | head -n 1 || true)"
+  if [ -n "$found" ]; then
+    echo "$found"
+    return 0
+  fi
+  return 1
 }
-function Set-IniToken {
-  param(
-    [Parameter(Mandatory)][string]$Path,
-    [Parameter(Mandatory)][string]$Key,
-    [Parameter(Mandatory)][string]$Value
+
+find_labview() {
+  if [ -n "${COMPARE_LABVIEW_PATH:-}" ] && [ -x "${COMPARE_LABVIEW_PATH}" ]; then
+    echo "${COMPARE_LABVIEW_PATH}"
+    return 0
+  fi
+  local candidates=(
+    "/usr/local/natinst/LabVIEW-2026-64/labview"
+    "/usr/local/natinst/LabVIEW/labview"
+    "/usr/local/bin/labview"
   )
-  if (-not (Test-Path -LiteralPath $Path -PathType Leaf)) { return }
-  $content = Get-Content -LiteralPath $Path -Raw -ErrorAction SilentlyContinue
-  if ($null -eq $content) { $content = '' }
-  if ($content -match ("(?m)^\s*{0}\s*=" -f [regex]::Escape($Key))) {
-    $updated = [regex]::Replace($content, ("(?m)^\s*{0}\s*=.*$" -f [regex]::Escape($Key)), ("{0}={1}" -f $Key, $Value))
-  } else {
-    $updated = ($content.TrimEnd() + [Environment]::NewLine + ("{0}={1}" -f $Key, $Value) + [Environment]::NewLine)
-  }
-  Set-Content -LiteralPath $Path -Value $updated -Encoding utf8
+  local c
+  for c in "${candidates[@]}"; do
+    if [ -x "$c" ]; then
+      echo "$c"
+      return 0
+    fi
+  done
+  return 1
 }
-$meta = [ordered]@{
-  retryAttempts = 0
-  retryTriggered = $false
-  prelaunchAttempted = $false
-  iniPath = ''
-  openTimeout = 180
-  afterLaunchTimeout = 180
-}
-$openTimeout = 180
-if (-not [string]::IsNullOrWhiteSpace($env:COMPARE_OPEN_APP_TIMEOUT)) {
-  [void][int]::TryParse($env:COMPARE_OPEN_APP_TIMEOUT, [ref]$openTimeout)
-}
-$afterLaunchTimeout = 180
-if (-not [string]::IsNullOrWhiteSpace($env:COMPARE_AFTER_LAUNCH_TIMEOUT)) {
-  [void][int]::TryParse($env:COMPARE_AFTER_LAUNCH_TIMEOUT, [ref]$afterLaunchTimeout)
-}
-$meta.openTimeout = $openTimeout
-$meta.afterLaunchTimeout = $afterLaunchTimeout
-$cliIniCandidates = @(
-  "C:\ProgramData\National Instruments\LabVIEW CLI\LabVIEWCLI.ini",
-  "C:\ProgramData\National Instruments\LabVIEWCLI\LabVIEWCLI.ini",
-  "C:\Program Files\National Instruments\Shared\LabVIEW CLI\LabVIEWCLI.ini",
-  "C:\Program Files (x86)\National Instruments\Shared\LabVIEW CLI\LabVIEWCLI.ini"
-)
-$cliIni = $cliIniCandidates | Where-Object { Test-Path -LiteralPath $_ } | Select-Object -First 1
-if ($cliIni) {
-  Set-IniToken -Path $cliIni -Key 'OpenAppReferenceTimeoutInSecond' -Value ([string]$openTimeout)
-  Set-IniToken -Path $cliIni -Key 'AfterLaunchOpenAppReferenceTimeoutInSecond' -Value ([string]$afterLaunchTimeout)
-  $meta.iniPath = $cliIni
-}
-$args = @(
-  "-OperationName", "CreateComparisonReport",
-  "-VI1", $env:COMPARE_BASE_VI,
-  "-VI2", $env:COMPARE_HEAD_VI,
-  "-ReportPath", $env:COMPARE_REPORT_PATH,
-  "-ReportType", $env:COMPARE_REPORT_TYPE,
-  "-Headless"
-)
-if (-not [string]::IsNullOrWhiteSpace($env:COMPARE_LABVIEW_PATH)) {
-  $args += @("-LabVIEWPath", $env:COMPARE_LABVIEW_PATH)
-}
-$flags = @()
-if (-not [string]::IsNullOrWhiteSpace($env:COMPARE_FLAGS_B64)) {
-  $rawBytes = [System.Convert]::FromBase64String($env:COMPARE_FLAGS_B64)
-  $rawJson = [System.Text.Encoding]::UTF8.GetString($rawBytes)
-  if (-not [string]::IsNullOrWhiteSpace($rawJson)) {
-    $parsed = $rawJson | ConvertFrom-Json -ErrorAction Stop
-    if ($parsed -is [System.Collections.IEnumerable] -and -not ($parsed -is [string])) {
-      foreach ($flag in $parsed) {
-        if (-not [string]::IsNullOrWhiteSpace([string]$flag)) {
-          $flags += [string]$flag
-        }
-      }
-    } elseif (-not [string]::IsNullOrWhiteSpace([string]$parsed)) {
-      $flags += [string]$parsed
-    }
-  }
-}
-if ($flags.Count -gt 0) {
-  $args += $flags
-}
-$prelaunchEnabled = -not [string]::Equals($env:COMPARE_PRELAUNCH_ENABLED, '0', [System.StringComparison]::OrdinalIgnoreCase)
-if ($prelaunchEnabled) {
-  $lvCandidates = @(
-    $env:COMPARE_LABVIEW_PATH,
-    "C:\Program Files\National Instruments\LabVIEW 2026\LabVIEW.exe",
-    "C:\Program Files\National Instruments\LabVIEW 2025\LabVIEW.exe"
-  ) | Where-Object { -not [string]::IsNullOrWhiteSpace($_) } | Select-Object -Unique
-  $lvPath = $lvCandidates | Where-Object { Test-Path -LiteralPath $_ } | Select-Object -First 1
-  if ($lvPath) {
-    $meta.prelaunchAttempted = $true
-    Start-Process -FilePath $lvPath -ArgumentList '--headless' -WindowStyle Hidden | Out-Null
-    $prelaunchWait = 8
-    if (-not [string]::IsNullOrWhiteSpace($env:COMPARE_PRELAUNCH_WAIT_SECONDS)) {
-      [void][int]::TryParse($env:COMPARE_PRELAUNCH_WAIT_SECONDS, [ref]$prelaunchWait)
-    }
-    if ($prelaunchWait -gt 0) {
-      Start-Sleep -Seconds $prelaunchWait
-    }
-  }
-}
-$startupRetries = 1
-if (-not [string]::IsNullOrWhiteSpace($env:COMPARE_STARTUP_RETRY_COUNT)) {
-  [void][int]::TryParse($env:COMPARE_STARTUP_RETRY_COUNT, [ref]$startupRetries)
-}
-if ($startupRetries -lt 0) { $startupRetries = 0 }
-$retryDelay = 8
-if (-not [string]::IsNullOrWhiteSpace($env:COMPARE_RETRY_DELAY_SECONDS)) {
-  [void][int]::TryParse($env:COMPARE_RETRY_DELAY_SECONDS, [ref]$retryDelay)
-}
-if ($retryDelay -lt 0) { $retryDelay = 0 }
-$maxAttempts = [Math]::Max(1, $startupRetries + 1)
-$attempt = 0
-$lastExit = 1
 
-function Invoke-CliWithCapturedStreams {
-  param(
-    [Parameter(Mandatory)][string]$FilePath,
-    [Parameter(Mandatory)][string[]]$ArgumentList
+set_ini_timeout_token() {
+  local file="$1"
+  local key="$2"
+  local value="$3"
+  if [ ! -f "$file" ]; then
+    return 0
+  fi
+  if grep -q "^${key}=" "$file"; then
+    sed -i "s#^${key}=.*#${key}=${value}#g" "$file"
+  else
+    printf "%s=%s\n" "$key" "$value" >> "$file"
+  fi
+}
+
+find_cli_ini() {
+  local candidates=(
+    "/etc/natinst/LabVIEWCLI/LabVIEWCLI.ini"
+    "/usr/local/natinst/LabVIEWCLI/LabVIEWCLI.ini"
+    "/usr/local/natinst/LabVIEW/LabVIEWCLI.ini"
   )
-
-  $stdoutPath = Join-Path $env:TEMP ("lvcli-stdout-{0}.log" -f ([guid]::NewGuid().ToString('N')))
-  $stderrPath = Join-Path $env:TEMP ("lvcli-stderr-{0}.log" -f ([guid]::NewGuid().ToString('N')))
-  try {
-    $proc = Start-Process -FilePath $FilePath `
-      -ArgumentList $ArgumentList `
-      -NoNewWindow `
-      -Wait `
-      -PassThru `
-      -RedirectStandardOutput $stdoutPath `
-      -RedirectStandardError $stderrPath
-    $stdoutText = if (Test-Path -LiteralPath $stdoutPath -PathType Leaf) { Get-Content -LiteralPath $stdoutPath -Raw } else { '' }
-    $stderrText = if (Test-Path -LiteralPath $stderrPath -PathType Leaf) { Get-Content -LiteralPath $stderrPath -Raw } else { '' }
-    $combinedText = ((@($stdoutText, $stderrText) | Where-Object { -not [string]::IsNullOrWhiteSpace($_) }) -join [Environment]::NewLine)
-    return [pscustomobject]@{
-      ExitCode = [int]$proc.ExitCode
-      Output = $combinedText
-    }
-  } finally {
-    Remove-Item -LiteralPath $stdoutPath -Force -ErrorAction SilentlyContinue
-    Remove-Item -LiteralPath $stderrPath -Force -ErrorAction SilentlyContinue
-  }
+  local c
+  for c in "${candidates[@]}"; do
+    if [ -f "$c" ]; then
+      echo "$c"
+      return 0
+    fi
+  done
+  local found
+  found="$(find / -maxdepth 6 -type f -name LabVIEWCLI.ini 2>/dev/null | head -n 1 || true)"
+  if [ -n "$found" ]; then
+    echo "$found"
+    return 0
+  fi
+  return 1
 }
 
-while ($attempt -lt $maxAttempts) {
-  $attempt++
-  $meta.retryAttempts = $attempt
-  $cliRun = Invoke-CliWithCapturedStreams -FilePath $cliPath -ArgumentList $args
-  $lastExit = [int]$cliRun.ExitCode
-  $output = $cliRun.Output
-  if (-not [string]::IsNullOrWhiteSpace($output)) {
-    $output -split "`r?`n" | ForEach-Object {
-      if (-not [string]::IsNullOrWhiteSpace($_)) {
-        Write-Output $_
-      }
-    }
-  }
-  if ($lastExit -eq 0) { break }
-  $text = if ([string]::IsNullOrWhiteSpace($output)) { '' } else { [string]$output }
-  $isCliFailure = ($text -match 'Error code\s*:' -or $text -match 'An error occurred while running the LabVIEW CLI')
-  if ($lastExit -eq 1 -and -not $isCliFailure) { break }
-  $isStartupTimeout = ($text -match '-350000')
-  if ($isStartupTimeout -and $attempt -lt $maxAttempts) {
-    $meta.retryTriggered = $true
-    if ($retryDelay -gt 0) {
-      Start-Sleep -Seconds $retryDelay
-    }
+if ! CLI_PATH="$(find_cli)"; then
+  echo "LabVIEWCLI not found in container. Ensure NI image includes LabVIEW CLI component." 1>&2
+  exit 2
+fi
+
+if ! command -v xvfb-run >/dev/null 2>&1; then
+  echo "xvfb-run not found. Linux headless container compares require Xvfb." 1>&2
+  exit 2
+fi
+
+declare -a CLI_ARGS
+CLI_ARGS+=("-OperationName" "CreateComparisonReport")
+CLI_ARGS+=("-VI1" "${COMPARE_BASE_VI}")
+CLI_ARGS+=("-VI2" "${COMPARE_HEAD_VI}")
+CLI_ARGS+=("-ReportPath" "${COMPARE_REPORT_PATH}")
+CLI_ARGS+=("-ReportType" "${COMPARE_REPORT_TYPE}")
+CLI_ARGS+=("-Headless")
+
+if [ -n "${COMPARE_LABVIEW_PATH:-}" ]; then
+  CLI_ARGS+=("-LabVIEWPath" "${COMPARE_LABVIEW_PATH}")
+fi
+
+if [ -n "${COMPARE_FLAGS_B64:-}" ]; then
+  while IFS= read -r flag; do
+    if [ -n "$flag" ]; then
+      CLI_ARGS+=("$flag")
+    fi
+  done < <(printf "%s" "${COMPARE_FLAGS_B64}" | base64 -d 2>/dev/null || true)
+fi
+
+INI_PATH=""
+if INI_PATH="$(find_cli_ini)"; then
+  set_ini_timeout_token "$INI_PATH" "OpenAppReferenceTimeoutInSecond" "${COMPARE_OPEN_APP_TIMEOUT:-180}"
+  set_ini_timeout_token "$INI_PATH" "AfterLaunchOpenAppReferenceTimeoutInSecond" "${COMPARE_AFTER_LAUNCH_TIMEOUT:-180}"
+fi
+
+PRELAUNCH_ATTEMPTED=0
+if [ "${COMPARE_PRELAUNCH_ENABLED:-1}" = "1" ]; then
+  if LV_PATH="$(find_labview)"; then
+    PRELAUNCH_ATTEMPTED=1
+    "${LV_PATH}" --headless >/tmp/labview-prelaunch.log 2>&1 &
+    sleep "${COMPARE_PRELAUNCH_WAIT_SECONDS:-8}"
+  fi
+fi
+
+MAX_RETRIES="${COMPARE_STARTUP_RETRY_COUNT:-1}"
+RETRY_DELAY="${COMPARE_RETRY_DELAY_SECONDS:-8}"
+ATTEMPT=0
+RETRY_TRIGGERED=0
+EXIT_CODE=1
+OUTPUT_TEXT=""
+
+while true; do
+  ATTEMPT=$((ATTEMPT + 1))
+  OUTPUT_TEXT="$(xvfb-run -a "${CLI_PATH}" "${CLI_ARGS[@]}" 2>&1)"
+  EXIT_CODE=$?
+  printf "%s\n" "${OUTPUT_TEXT}"
+
+  if [ "${EXIT_CODE}" = "0" ]; then
+    break
+  fi
+
+  if [ "${EXIT_CODE}" = "1" ] && ! printf "%s" "${OUTPUT_TEXT}" | grep -Eq "Error code|An error occurred while running the LabVIEW CLI|-350000"; then
+    break
+  fi
+
+  if printf "%s" "${OUTPUT_TEXT}" | grep -q -- "-350000" && [ "${ATTEMPT}" -le "${MAX_RETRIES}" ]; then
+    RETRY_TRIGGERED=1
+    sleep "${RETRY_DELAY}"
     continue
-  }
+  fi
+
   break
-}
-Write-Output ("[ni-container-meta]retryAttempts={0};retryTriggered={1};prelaunchAttempted={2};iniPath={3};openTimeout={4};afterLaunchTimeout={5}" -f $meta.retryAttempts, ($(if ($meta.retryTriggered) { 1 } else { 0 })), ($(if ($meta.prelaunchAttempted) { 1 } else { 0 })), $meta.iniPath, $meta.openTimeout, $meta.afterLaunchTimeout)
-exit $lastExit
+done
+
+printf "%s\n" "[ni-linux-meta]retryAttempts=${ATTEMPT};retryTriggered=${RETRY_TRIGGERED};prelaunchAttempted=${PRELAUNCH_ATTEMPTED};iniPath=${INI_PATH};openTimeout=${COMPARE_OPEN_APP_TIMEOUT:-180};afterLaunchTimeout=${COMPARE_AFTER_LAUNCH_TIMEOUT:-180}"
+exit "${EXIT_CODE}"
 '@
 }
 
-function Get-EffectiveCompareFlags {
-  param(
-    [AllowNull()][string[]]$InputFlags
-  )
-
-  $flags = @()
-  if ($InputFlags) {
-    foreach ($flag in $InputFlags) {
-      if (-not [string]::IsNullOrWhiteSpace([string]$flag)) {
-        $flags += [string]$flag
-      }
-    }
-  }
-
-  $hasHeadless = $false
-  foreach ($flag in $flags) {
-    if ($flag.Trim().ToLowerInvariant() -eq '-headless') {
-      $hasHeadless = $true
-      break
-    }
-  }
-  if (-not $hasHeadless) {
-    # Container execution is non-interactive; force headless CLI mode by default.
-    $flags += '-Headless'
-  }
-
-  return @($flags)
-}
-
 function Convert-ToEncodedCommand {
-  param(
-    [Parameter(Mandatory)][string]$CommandText
-  )
-  return [Convert]::ToBase64String([Text.Encoding]::Unicode.GetBytes($CommandText))
+  param([Parameter(Mandatory)][string]$CommandText)
+  return [Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes($CommandText))
 }
 
 function Invoke-DockerRunWithTimeout {
@@ -450,9 +402,9 @@ function Invoke-DockerRunWithTimeout {
     [int]$HeartbeatSeconds = 15
   )
 
-  $stdoutFile = Join-Path $env:TEMP ("ni-windows-container-stdout-{0}.log" -f ([guid]::NewGuid().ToString('N')))
-  $stderrFile = Join-Path $env:TEMP ("ni-windows-container-stderr-{0}.log" -f ([guid]::NewGuid().ToString('N')))
-  $dockerArgsFile = Join-Path $env:TEMP ("ni-windows-container-docker-args-{0}.json" -f ([guid]::NewGuid().ToString('N')))
+  $stdoutFile = Join-Path $env:TEMP ("ni-linux-container-stdout-{0}.log" -f ([guid]::NewGuid().ToString('N')))
+  $stderrFile = Join-Path $env:TEMP ("ni-linux-container-stderr-{0}.log" -f ([guid]::NewGuid().ToString('N')))
+  $dockerArgsFile = Join-Path $env:TEMP ("ni-linux-container-docker-args-{0}.json" -f ([guid]::NewGuid().ToString('N')))
   $process = $null
   try {
     $pwshPath = (Get-Command -Name 'pwsh' -ErrorAction SilentlyContinue | Select-Object -First 1).Source
@@ -479,7 +431,7 @@ if ([string]::IsNullOrWhiteSpace(`$raw)) {
 & docker @args
 exit `$LASTEXITCODE
 "@
-    $encodedInvokeDockerScript = Convert-ToEncodedCommand -CommandText $invokeDockerScript
+    $encodedInvokeDockerScript = [Convert]::ToBase64String([Text.Encoding]::Unicode.GetBytes($invokeDockerScript))
 
     $process = Start-Process -FilePath $pwshPath `
       -ArgumentList @('-NoLogo', '-NoProfile', '-EncodedCommand', $encodedInvokeDockerScript) `
@@ -496,18 +448,16 @@ exit `$LASTEXITCODE
       if ((Get-Date) -ge $deadline) {
         try { Stop-Process -Id $process.Id -Force -ErrorAction SilentlyContinue } catch {}
         try { & docker rm -f $ContainerName *> $null } catch {}
-        $stdout = if (Test-Path -LiteralPath $stdoutFile -PathType Leaf) { Get-Content -LiteralPath $stdoutFile -Raw } else { '' }
-        $stderr = if (Test-Path -LiteralPath $stderrFile -PathType Leaf) { Get-Content -LiteralPath $stderrFile -Raw } else { '' }
         return [pscustomobject]@{
           TimedOut = $true
           ExitCode = $script:TimeoutExitCode
-          StdOut   = $stdout
-          StdErr   = $stderr
+          StdOut   = if (Test-Path -LiteralPath $stdoutFile -PathType Leaf) { Get-Content -LiteralPath $stdoutFile -Raw } else { '' }
+          StdErr   = if (Test-Path -LiteralPath $stderrFile -PathType Leaf) { Get-Content -LiteralPath $stderrFile -Raw } else { '' }
         }
       }
       $elapsedSeconds = [math]::Round(((Get-Date) - $process.StartTime).TotalSeconds, 1)
       if (((Get-Date) - $lastHeartbeat).TotalSeconds -ge $heartbeatWindow) {
-        Write-Host ("[ni-container-compare] running container={0} elapsed={1}s timeout={2}s" -f $ContainerName, $elapsedSeconds, $timeoutSeconds) -ForegroundColor DarkGray
+        Write-Host ("[ni-linux-container-compare] running container={0} elapsed={1}s timeout={2}s" -f $ContainerName, $elapsedSeconds, $timeoutSeconds) -ForegroundColor DarkGray
         $lastHeartbeat = Get-Date
       }
       Start-Sleep -Milliseconds $pollMs
@@ -515,23 +465,19 @@ exit `$LASTEXITCODE
     if (-not $process.HasExited) {
       try { Stop-Process -Id $process.Id -Force -ErrorAction SilentlyContinue } catch {}
       try { & docker rm -f $ContainerName *> $null } catch {}
-      $stdout = if (Test-Path -LiteralPath $stdoutFile -PathType Leaf) { Get-Content -LiteralPath $stdoutFile -Raw } else { '' }
-      $stderr = if (Test-Path -LiteralPath $stderrFile -PathType Leaf) { Get-Content -LiteralPath $stderrFile -Raw } else { '' }
       return [pscustomobject]@{
         TimedOut = $true
         ExitCode = $script:TimeoutExitCode
-        StdOut   = $stdout
-        StdErr   = $stderr
+        StdOut   = if (Test-Path -LiteralPath $stdoutFile -PathType Leaf) { Get-Content -LiteralPath $stdoutFile -Raw } else { '' }
+        StdErr   = if (Test-Path -LiteralPath $stderrFile -PathType Leaf) { Get-Content -LiteralPath $stderrFile -Raw } else { '' }
       }
     }
 
-    $stdout = if (Test-Path -LiteralPath $stdoutFile -PathType Leaf) { Get-Content -LiteralPath $stdoutFile -Raw } else { '' }
-    $stderr = if (Test-Path -LiteralPath $stderrFile -PathType Leaf) { Get-Content -LiteralPath $stderrFile -Raw } else { '' }
     return [pscustomobject]@{
       TimedOut = $false
       ExitCode = [int]$process.ExitCode
-      StdOut   = $stdout
-      StdErr   = $stderr
+      StdOut   = if (Test-Path -LiteralPath $stdoutFile -PathType Leaf) { Get-Content -LiteralPath $stdoutFile -Raw } else { '' }
+      StdErr   = if (Test-Path -LiteralPath $stderrFile -PathType Leaf) { Get-Content -LiteralPath $stderrFile -Raw } else { '' }
     }
   } finally {
     if ($process) {
@@ -572,22 +518,6 @@ function Test-LabVIEWCliFailure {
   )
 }
 
-function Test-ReportOverwriteFailure {
-  param(
-    [AllowNull()][string]$StdErr,
-    [AllowNull()][string]$StdOut
-  )
-
-  $combined = @($StdErr, $StdOut) -join "`n"
-  if ([string]::IsNullOrWhiteSpace($combined)) {
-    return $false
-  }
-  return (
-    $combined -match 'Report path already exists' -or
-    $combined -match 'Use\s+-o\s+to overwrite existing report'
-  )
-}
-
 function Resolve-RunFailureMessage {
   param(
     [AllowNull()][string]$StdErr,
@@ -596,15 +526,11 @@ function Resolve-RunFailureMessage {
   )
 
   foreach ($candidate in @($StdErr, $StdOut)) {
-    if ([string]::IsNullOrWhiteSpace($candidate)) {
-      continue
-    }
-
+    if ([string]::IsNullOrWhiteSpace($candidate)) { continue }
     $match = [regex]::Match($candidate, 'Error message\s*:\s*(.+)')
     if ($match.Success -and -not [string]::IsNullOrWhiteSpace($match.Groups[1].Value)) {
       return $match.Groups[1].Value.Trim()
     }
-
     $lines = @($candidate -split "`r?`n" | Where-Object { -not [string]::IsNullOrWhiteSpace($_) })
     if ($lines.Count -gt 0) {
       return $lines[-1].Trim()
@@ -614,112 +540,70 @@ function Resolve-RunFailureMessage {
   return ("Container compare failed with exit code {0}." -f $ExitCode)
 }
 
-function Parse-ContainerMeta {
+function Parse-MetaLine {
   param([AllowNull()][string]$StdOut)
-
   $meta = [ordered]@{
-    retryAttempts = 0
-    retryTriggered = $false
-    prelaunchAttempted = $false
-    iniPath = ''
-    openTimeout = 180
-    afterLaunchTimeout = 180
+    retryAttempts     = 0
+    retryTriggered    = $false
+    prelaunchAttempted= $false
+    iniPath           = ''
+    openTimeout       = 180
+    afterLaunchTimeout= 180
   }
-  if ([string]::IsNullOrWhiteSpace($StdOut)) { return $meta }
-  $line = ($StdOut -split "`r?`n" | Where-Object { $_ -match '^\[ni-container-meta\]' } | Select-Object -Last 1)
+  if ([string]::IsNullOrWhiteSpace($StdOut)) {
+    return $meta
+  }
+  $line = ($StdOut -split "`r?`n" | Where-Object { $_ -match '^\[ni-linux-meta\]' } | Select-Object -Last 1)
   if ([string]::IsNullOrWhiteSpace($line)) { return $meta }
-  $payload = $line -replace '^\[ni-container-meta\]', ''
+  $payload = $line -replace '^\[ni-linux-meta\]', ''
   foreach ($entry in ($payload -split ';')) {
     if ([string]::IsNullOrWhiteSpace($entry) -or $entry -notmatch '=') { continue }
     $parts = $entry -split '=', 2
-    $key = $parts[0].Trim()
-    $value = $parts[1].Trim()
-    switch ($key) {
-      'retryAttempts' { [void][int]::TryParse($value, [ref]$meta.retryAttempts) }
-      'retryTriggered' { $meta.retryTriggered = [string]::Equals($value, '1', [System.StringComparison]::OrdinalIgnoreCase) -or [string]::Equals($value, 'true', [System.StringComparison]::OrdinalIgnoreCase) }
-      'prelaunchAttempted' { $meta.prelaunchAttempted = [string]::Equals($value, '1', [System.StringComparison]::OrdinalIgnoreCase) -or [string]::Equals($value, 'true', [System.StringComparison]::OrdinalIgnoreCase) }
-      'iniPath' { $meta.iniPath = $value }
-      'openTimeout' { [void][int]::TryParse($value, [ref]$meta.openTimeout) }
-      'afterLaunchTimeout' { [void][int]::TryParse($value, [ref]$meta.afterLaunchTimeout) }
+    $k = $parts[0].Trim()
+    $v = $parts[1].Trim()
+    switch ($k) {
+      'retryAttempts' { [void][int]::TryParse($v, [ref]$meta.retryAttempts) }
+      'retryTriggered' { $meta.retryTriggered = [string]::Equals($v, '1', [System.StringComparison]::OrdinalIgnoreCase) -or [string]::Equals($v, 'true', [System.StringComparison]::OrdinalIgnoreCase) }
+      'prelaunchAttempted' { $meta.prelaunchAttempted = [string]::Equals($v, '1', [System.StringComparison]::OrdinalIgnoreCase) -or [string]::Equals($v, 'true', [System.StringComparison]::OrdinalIgnoreCase) }
+      'iniPath' { $meta.iniPath = $v }
+      'openTimeout' { [void][int]::TryParse($v, [ref]$meta.openTimeout) }
+      'afterLaunchTimeout' { [void][int]::TryParse($v, [ref]$meta.afterLaunchTimeout) }
     }
   }
   return $meta
 }
 
-function Get-LabVIEWCliErrorCode {
-  param(
-    [AllowNull()][string]$StdErr,
-    [AllowNull()][string]$StdOut
-  )
-
-  $combined = @($StdErr, $StdOut) -join "`n"
-  if ([string]::IsNullOrWhiteSpace($combined)) {
-    return $null
-  }
-
-  $match = [regex]::Match($combined, 'Error code\s*:\s*(-?\d+)')
-  if ($match.Success -and -not [string]::IsNullOrWhiteSpace($match.Groups[1].Value)) {
-    return [int]$match.Groups[1].Value
-  }
-  return $null
-}
-
-function Resolve-RunFailureClassification {
-  param(
-    [Parameter(Mandatory)][string]$Image,
-    [AllowNull()][string]$StdErr,
-    [AllowNull()][string]$StdOut,
-    [Parameter(Mandatory)][int]$ExitCode
-  )
-
-  $classification = [ordered]@{
-    status = 'error'
-    classification = 'run-error'
-    message = Resolve-RunFailureMessage -StdErr $StdErr -StdOut $StdOut -ExitCode $ExitCode
-    labviewCliErrorCode = Get-LabVIEWCliErrorCode -StdErr $StdErr -StdOut $StdOut
-    recommendation = $null
-  }
-
-  if ($classification.labviewCliErrorCode -eq -350000) {
-    $classification.classification = 'labview-cli-connection'
-    $classification.recommendation = @(
-      "LabVIEW CLI could not connect inside image '$Image'.",
-      "Confirm the image/runtime supports LabVIEW CLI operations on this host.",
-      "Use the capture stderr/stdout artifacts and NI image documentation to validate container prerequisites."
-    ) -join ' '
-  }
-  return [pscustomobject]$classification
-}
-
 if ($TimeoutSeconds -le 0) {
   throw '-TimeoutSeconds must be greater than zero.'
 }
+if ($StartupRetryCount -lt 0) {
+  throw '-StartupRetryCount must be zero or greater.'
+}
 
 $capture = [ordered]@{
-  schema        = 'ni-windows-container-compare/v1'
-  generatedAt   = (Get-Date).ToUniversalTime().ToString('o')
-  image         = $Image
-  reportType    = $ReportType
-  timeoutSeconds= $TimeoutSeconds
-  probe         = [bool]$Probe
-  status        = 'init'
-  classification= 'init'
-  exitCode      = $null
-  timedOut      = $false
-  dockerServerOs= $null
-  dockerContext = $null
-  baseVi        = $null
-  headVi        = $null
-  reportPath    = $null
-  command       = $null
-  stdoutPath    = $null
-  stderrPath    = $null
+  schema         = 'ni-linux-container-compare/v1'
+  generatedAt    = (Get-Date).ToUniversalTime().ToString('o')
+  image          = $Image
+  reportType     = $ReportType
+  timeoutSeconds = $TimeoutSeconds
+  probe          = [bool]$Probe
+  status         = 'init'
+  exitCode       = $null
+  timedOut       = $false
+  dockerServerOs = $null
+  dockerContext  = $null
+  baseVi         = $null
+  headVi         = $null
+  reportPath     = $null
+  command        = $null
+  stdoutPath     = $null
+  stderrPath     = $null
   runtimeDeterminism = $null
   headlessContract = [ordered]@{
     required = $true
     enforcedCliHeadless = $true
     lvRteHeadlessEnv = $true
-    linuxRequiresHeadlessEveryInvocation = $false
+    linuxRequiresHeadlessEveryInvocation = $true
   }
   startupMitigation = [ordered]@{
     startupRetryCount = $StartupRetryCount
@@ -732,14 +616,11 @@ $capture = [ordered]@{
     openAppReferenceTimeoutInSecond = 180
     afterLaunchOpenAppReferenceTimeoutInSecond = 180
   }
-  resultClass   = 'failure-preflight'
-  isDiff        = $false
-  gateOutcome   = 'fail'
-  failureClass  = 'preflight'
-  reportExists  = $false
-  labviewCliErrorCode = $null
-  recommendation = $null
-  message       = $null
+  resultClass = 'failure-preflight'
+  isDiff = $false
+  gateOutcome = 'fail'
+  failureClass = 'preflight'
+  message = $null
 }
 
 $finalExitCode = 0
@@ -757,7 +638,7 @@ try {
     throw ("Runtime guard script not found: {0}" -f $runtimeGuardPath)
   }
   $runtimeSnapshot = if ([string]::IsNullOrWhiteSpace($RuntimeSnapshotPath)) {
-    $defaultRoot = Join-Path (Resolve-Path '.').Path 'tests/results/ni-windows-container'
+    $defaultRoot = Join-Path (Resolve-Path '.').Path 'tests/results/ni-linux-container'
     Join-Path $defaultRoot 'runtime-determinism.json'
   } else {
     if ([System.IO.Path]::IsPathRooted($RuntimeSnapshotPath)) {
@@ -768,8 +649,8 @@ try {
   }
 
   & pwsh -NoLogo -NoProfile -File $runtimeGuardPath `
-    -ExpectedOsType windows `
-    -ExpectedContext 'desktop-windows' `
+    -ExpectedOsType linux `
+    -ExpectedContext 'desktop-linux' `
     -AutoRepair:$AutoRepairRuntime `
     -EngineReadyTimeoutSeconds $RuntimeEngineReadyTimeoutSeconds `
     -EngineReadyPollSeconds $RuntimeEngineReadyPollSeconds `
@@ -805,16 +686,16 @@ try {
   if ($runtimeStatus -eq 'mismatch-failed') {
     throw ("Docker runtime determinism mismatch. See snapshot: {0}" -f $runtimeSnapshot)
   }
+
   if (-not (Test-DockerImageExists -Tag $Image)) {
     throw ("Docker image '{0}' not found locally. Pull it first: docker pull {0}" -f $Image)
   }
 
   if ($Probe) {
     $capture.status = 'probe-ok'
-    $capture.classification = 'probe-ok'
     $capture.exitCode = 0
-    $capture.message = ("Docker is in windows mode and image '{0}' is available." -f $Image)
-    Write-Host ("[ni-container-probe] {0}" -f $capture.message) -ForegroundColor Green
+    $capture.message = ("Docker is in linux mode and image '{0}' is available." -f $Image)
+    Write-Host ("[ni-linux-container-probe] {0}" -f $capture.message) -ForegroundColor Green
   } else {
     $baseViPath = Resolve-ExistingFilePath -InputPath $BaseVi -ParameterName 'BaseVi'
     $headViPath = Resolve-ExistingFilePath -InputPath $HeadVi -ParameterName 'HeadVi'
@@ -825,25 +706,36 @@ try {
       New-Item -ItemType Directory -Path $reportDirectory -Force | Out-Null
     }
     if (Test-Path -LiteralPath $resolvedReportPath -PathType Leaf) {
-      Remove-Item -LiteralPath $resolvedReportPath -Force -ErrorAction Stop
+      Remove-Item -LiteralPath $resolvedReportPath -Force -ErrorAction SilentlyContinue
     }
 
-    $capturePath = Join-Path $reportDirectory 'ni-windows-container-capture.json'
-    $stdoutPath = Join-Path $reportDirectory 'ni-windows-container-stdout.txt'
-    $stderrPath = Join-Path $reportDirectory 'ni-windows-container-stderr.txt'
+    $capturePath = Join-Path $reportDirectory 'ni-linux-container-capture.json'
+    $stdoutPath = Join-Path $reportDirectory 'ni-linux-container-stdout.txt'
+    $stderrPath = Join-Path $reportDirectory 'ni-linux-container-stderr.txt'
 
     $capture.baseVi = $baseViPath
     $capture.headVi = $headViPath
     $capture.reportPath = $resolvedReportPath
     $capture.stdoutPath = $stdoutPath
     $capture.stderrPath = $stderrPath
-
-    $flagsPayload = Get-EffectiveCompareFlags -InputFlags $Flags
-    $flagsJson = $flagsPayload | ConvertTo-Json -Compress
-    if ([string]::IsNullOrWhiteSpace($flagsJson)) {
-      $flagsJson = '[]'
+    if (-not $capture.runtimeDeterminism) {
+      $capture.runtimeDeterminism = [ordered]@{
+        status = 'unknown'
+        snapshotPath = $runtimeSnapshot
+      }
+    } else {
+      $capture.runtimeDeterminism.snapshotPath = $runtimeSnapshot
     }
-    $flagsB64 = [Convert]::ToBase64String([System.Text.Encoding]::UTF8.GetBytes($flagsJson))
+
+    [string[]]$flagsPayload = @()
+    if ($Flags) {
+      $flagsPayload = @($Flags | Where-Object { -not [string]::IsNullOrWhiteSpace([string]$_) } | ForEach-Object { [string]$_ })
+    }
+    $flagsJoined = ''
+    if ($null -ne $flagsPayload -and $flagsPayload.Length -gt 0) {
+      $flagsJoined = [string]::Join("`n", [string[]]$flagsPayload)
+    }
+    $flagsB64 = [Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes($flagsJoined))
 
     $mounts = @{}
     $mountIndex = 0
@@ -852,7 +744,7 @@ try {
     $containerHeadVi = Convert-HostFileToContainerPath -HostFilePath $headViPath -MountMap $mounts -MountIndex $mountRef
     $containerReportPath = Convert-HostFileToContainerPath -HostFilePath $resolvedReportPath -MountMap $mounts -MountIndex $mountRef
 
-    $containerName = 'ni-compare-{0}' -f ([guid]::NewGuid().ToString('N').Substring(0, 12))
+    $containerName = 'ni-lnx-compare-{0}' -f ([guid]::NewGuid().ToString('N').Substring(0, 12))
     $containerCommand = New-ContainerCommand
     $encodedContainerCommand = Convert-ToEncodedCommand -CommandText $containerCommand
 
@@ -860,7 +752,7 @@ try {
       'run',
       '--rm',
       '--name', $containerName,
-      '--workdir', 'C:\compare'
+      '--workdir', '/compare'
     )
     foreach ($entry in ($mounts.GetEnumerator() | Sort-Object Name)) {
       $volumeSpec = '{0}:{1}' -f $entry.Name, $entry.Value
@@ -883,15 +775,13 @@ try {
     }
     $dockerArgs += @(
       $Image,
-      'powershell',
-      '-NoLogo',
-      '-NoProfile',
-      '-EncodedCommand',
-      $encodedContainerCommand
+      'bash',
+      '-lc',
+      ([Text.Encoding]::UTF8.GetString([Convert]::FromBase64String($encodedContainerCommand)))
     )
 
-    $capture.command = ('docker run --rm --name {0} ... {1} powershell -NoLogo -NoProfile -EncodedCommand <base64-compare-script>' -f $containerName, $Image)
-    Write-Host ("[ni-container-compare] image={0} report={1}" -f $Image, $resolvedReportPath) -ForegroundColor Cyan
+    $capture.command = ('docker run --rm --name {0} ... {1} bash -lc <linux-compare-script>' -f $containerName, $Image)
+    Write-Host ("[ni-linux-container-compare] image={0} report={1}" -f $Image, $resolvedReportPath) -ForegroundColor Cyan
 
     $runResult = Invoke-DockerRunWithTimeout `
       -DockerArgs $dockerArgs `
@@ -901,7 +791,7 @@ try {
     $stdoutContent = $runResult.StdOut
     $stderrContent = $runResult.StdErr
 
-    $meta = Parse-ContainerMeta -StdOut $stdoutContent
+    $meta = Parse-MetaLine -StdOut $stdoutContent
     $capture.startupMitigation.retryAttempts = $meta.retryAttempts
     $capture.startupMitigation.retryTriggered = [bool]$meta.retryTriggered
     $capture.startupMitigation.prelaunchAttempted = [bool]$meta.prelaunchAttempted
@@ -911,7 +801,6 @@ try {
 
     if ($runResult.TimedOut) {
       $capture.status = 'timeout'
-      $capture.classification = 'timeout'
       $capture.timedOut = $true
       $capture.exitCode = $script:TimeoutExitCode
       $capture.message = ("Container compare timed out after {0} second(s)." -f $TimeoutSeconds)
@@ -920,34 +809,18 @@ try {
       $exitCode = [int]$runResult.ExitCode
       $capture.exitCode = $exitCode
       switch ($exitCode) {
-        0 {
-          $capture.status = 'ok'
-          $capture.classification = 'ok'
-        }
+        0 { $capture.status = 'ok' }
         1 {
           if (Test-LabVIEWCliFailure -StdErr $stderrContent -StdOut $stdoutContent) {
-            $failure = Resolve-RunFailureClassification -Image $Image -StdErr $stderrContent -StdOut $stdoutContent -ExitCode $exitCode
-            $capture.status = $failure.status
-            $capture.classification = $failure.classification
-            $capture.message = $failure.message
-            $capture.labviewCliErrorCode = $failure.labviewCliErrorCode
-            $capture.recommendation = $failure.recommendation
-          } elseif (Test-ReportOverwriteFailure -StdErr $stderrContent -StdOut $stdoutContent) {
             $capture.status = 'error'
-            $capture.classification = 'run-error'
             $capture.message = Resolve-RunFailureMessage -StdErr $stderrContent -StdOut $stdoutContent -ExitCode $exitCode
           } else {
             $capture.status = 'diff'
-            $capture.classification = 'diff'
           }
         }
         default {
-          $failure = Resolve-RunFailureClassification -Image $Image -StdErr $stderrContent -StdOut $stdoutContent -ExitCode $exitCode
-          $capture.status = $failure.status
-          $capture.classification = $failure.classification
-          $capture.message = $failure.message
-          $capture.labviewCliErrorCode = $failure.labviewCliErrorCode
-          $capture.recommendation = $failure.recommendation
+          $capture.status = 'error'
+          $capture.message = Resolve-RunFailureMessage -StdErr $stderrContent -StdOut $stdoutContent -ExitCode $exitCode
         }
       }
       $finalExitCode = $exitCode
@@ -955,7 +828,6 @@ try {
   }
 } catch {
   $capture.status = 'preflight-error'
-  $capture.classification = 'preflight-error'
   $capture.exitCode = $script:PreflightExitCode
   $capture.message = $_.Exception.Message
   $finalExitCode = $script:PreflightExitCode
@@ -985,16 +857,13 @@ try {
   $capture.gateOutcome = [string]$classification.gateOutcome
   $capture.failureClass = [string]$classification.failureClass
 
-  if (-not [string]::IsNullOrWhiteSpace($capture.reportPath)) {
-    $capture.reportExists = Test-Path -LiteralPath $capture.reportPath -PathType Leaf
-  }
   if (-not $Probe) {
     if ($stdoutPath) { Write-TextArtifact -Path $stdoutPath -Content $stdoutContent }
     if ($stderrPath) { Write-TextArtifact -Path $stderrPath -Content $stderrContent }
     if ($capturePath) {
       $capture.generatedAt = (Get-Date).ToUniversalTime().ToString('o')
-      $capture | ConvertTo-Json -Depth 6 | Set-Content -LiteralPath $capturePath -Encoding utf8
-      Write-Host ("[ni-container-compare] capture={0} status={1} exit={2}" -f $capturePath, $capture.status, $capture.exitCode) -ForegroundColor DarkGray
+      $capture | ConvertTo-Json -Depth 8 | Set-Content -LiteralPath $capturePath -Encoding utf8
+      Write-Host ("[ni-linux-container-compare] capture={0} status={1} exit={2}" -f $capturePath, $capture.status, $capture.exitCode) -ForegroundColor DarkGray
     }
   }
 }
@@ -1004,7 +873,7 @@ if ($PassThru) {
 }
 
 if ($finalExitCode -ne 0 -and -not [string]::IsNullOrWhiteSpace($capture.message)) {
-  Write-Host ("[ni-container-compare] {0}" -f $capture.message) -ForegroundColor Red
+  Write-Host ("[ni-linux-container-compare] {0}" -f $capture.message) -ForegroundColor Red
 }
 
 exit $finalExitCode
