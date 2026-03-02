@@ -1323,15 +1323,18 @@ foreach ($modeSpec in $modeSpecs) {
 
     $summaryPath = Join-Path $modeResultsResolved ("{0}-summary.json" -f $comparisonRecord.outName)
     $execPath    = Join-Path $modeResultsResolved ("{0}-exec.json" -f $comparisonRecord.outName)
+    $artifactsPath = Join-Path $modeResultsResolved ("{0}-artifacts" -f $comparisonRecord.outName)
     $summaryJson = $null
     $summaryPreExisting = $false
-    if (Test-Path -LiteralPath $summaryPath -PathType Leaf) {
-      try {
-        $summaryJson = Get-Content -LiteralPath $summaryPath -Raw | ConvertFrom-Json -Depth 8
-        $summaryPreExisting = $true
-      } catch {
-        $summaryJson = $null
-        $summaryPreExisting = $false
+    # Determinism guard: self-hosted workspaces may retain prior run outputs.
+    # Always clear per-pair artifacts so each compare is executed fresh.
+    foreach ($stalePath in @($summaryPath, $execPath, $artifactsPath)) {
+      if (Test-Path -LiteralPath $stalePath) {
+        try {
+          Remove-Item -LiteralPath $stalePath -Recurse -Force -ErrorAction Stop
+        } catch {
+          Write-Warning ("Failed to remove stale comparison output '{0}': {1}" -f $stalePath, $_.Exception.Message)
+        }
       }
     }
 
