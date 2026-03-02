@@ -205,6 +205,125 @@ Describe 'Invoke-PRVIHistory.ps1' {
         Test-Path -LiteralPath $result.targets[0].manifest -PathType Leaf | Should -BeTrue
     }
 
+    It 'collects commit-pair timeline rows and timing aggregates from mode manifests' {
+        $tempDir = Join-Path $TestDrive 'history-fixtures-timeline'
+        New-Item -ItemType Directory -Path $tempDir | Out-Null
+
+        $headPath = Join-Path $tempDir 'Head.vi'
+        Set-Content -LiteralPath $headPath -Value 'vi-bytes'
+
+        $manifestPath = Join-Path $TestDrive 'vi-diff-manifest-timeline.json'
+        $manifest = [ordered]@{
+            schema      = 'vi-diff-manifest@v1'
+            generatedAt = (Get-Date).ToString('o')
+            baseRef     = 'base'
+            headRef     = 'head'
+            pairs       = @(
+                [ordered]@{
+                    changeType = 'modified'
+                    basePath   = 'Base.vi'
+                    headPath   = $headPath
+                }
+            )
+        }
+        $manifest | ConvertTo-Json -Depth 4 | Set-Content -LiteralPath $manifestPath -Encoding utf8
+
+        $resultsRoot = Join-Path $TestDrive 'history-results-timeline'
+        $compareStub = {
+            param([hashtable]$Arguments)
+
+            New-Item -ItemType Directory -Path $Arguments.ResultsDir -Force | Out-Null
+            $modeManifestPath = Join-Path $Arguments.ResultsDir 'default-manifest.json'
+            $modeManifest = [ordered]@{
+                schema = 'vi-compare/history@v1'
+                mode   = 'default'
+                stats  = [ordered]@{
+                    processed = 2
+                    diffs     = 1
+                    missing   = 0
+                }
+                comparisons = @(
+                    [ordered]@{
+                        index = 1
+                        base  = [ordered]@{ ref = 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa' }
+                        head  = [ordered]@{ ref = 'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb' }
+                        result = [ordered]@{
+                            diff          = $true
+                            duration_s    = 1.25
+                            classification= 'signal'
+                            reportPath    = (Join-Path $Arguments.ResultsDir 'signal-report.html')
+                        }
+                    },
+                    [ordered]@{
+                        index = 2
+                        base  = [ordered]@{ ref = 'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb' }
+                        head  = [ordered]@{ ref = 'cccccccccccccccccccccccccccccccccccccccc' }
+                        result = [ordered]@{
+                            diff          = $true
+                            duration_s    = 2.75
+                            classification= 'noise'
+                            bucket        = 'metadata'
+                            categories    = @('VI Attribute - Miscellaneous')
+                            reportPath    = (Join-Path $Arguments.ResultsDir 'noise-report.html')
+                        }
+                    }
+                )
+            }
+            $modeManifest | ConvertTo-Json -Depth 8 | Set-Content -LiteralPath $modeManifestPath -Encoding utf8
+
+            $summaryManifest = [ordered]@{
+                schema      = 'vi-compare/history-suite@v1'
+                targetPath  = $Arguments.TargetPath
+                requestedStartRef = $Arguments.StartRef
+                startRef    = $Arguments.StartRef
+                stats       = [ordered]@{
+                    processed = 2
+                    diffs     = 1
+                    missing   = 0
+                }
+                modes       = @(
+                    [ordered]@{
+                        name         = 'default'
+                        slug         = 'default'
+                        manifestPath = $modeManifestPath
+                        stats        = [ordered]@{
+                            processed = 2
+                            diffs     = 1
+                            missing   = 0
+                        }
+                    }
+                )
+            }
+            $manifestOut = Join-Path $Arguments.ResultsDir 'manifest.json'
+            $summaryManifest | ConvertTo-Json -Depth 8 | Set-Content -LiteralPath $manifestOut -Encoding utf8
+            Set-Content -LiteralPath (Join-Path $Arguments.ResultsDir 'history-report.md') -Value '# history' -Encoding utf8
+        }.GetNewClosure()
+
+        Push-Location $repoRoot
+        try {
+            $result = & $scriptPath `
+                -ManifestPath $manifestPath `
+                -ResultsRoot $resultsRoot `
+                -CompareInvoker $compareStub `
+                -SkipRenderReport
+        }
+        finally {
+            Pop-Location
+        }
+
+        $result | Should -Not -BeNullOrEmpty
+        $result.pairTimeline.Count | Should -Be 2
+        $result.totals.pairRows | Should -Be 2
+        $result.totals.diffPairRows | Should -Be 2
+        $result.targets[0].commitPairs.Count | Should -Be 2
+        $result.targets[0].commitPairs[0].classification | Should -Be 'signal'
+        $result.targets[0].commitPairs[1].classification | Should -Be 'noise-masscompile'
+        $result.targets[0].timing.totalSeconds | Should -Be 4
+        $result.targets[0].timing.medianSeconds | Should -Be 2
+        $result.totals.timing.totalSeconds | Should -Be 4
+        $result.estimatedCompareTime.seconds | Should -Be 2
+    }
+
     It 'prefers repo-relative target paths when the VI resides in the repository' {
         $manifestPath = Join-Path $TestDrive 'vi-diff-rel.json'
         $manifest = [ordered]@{
@@ -261,7 +380,7 @@ Describe 'Invoke-PRVIHistory.ps1' {
 
         $summaryPath = Join-Path $resultsRoot 'vi-history-summary.json'
         Test-Path -LiteralPath $summaryPath -PathType Leaf | Should -BeTrue
-        $summaryJson = Get-Content -LiteralPath $summaryPath -Raw | ConvertFrom-Json -Depth 4
+        $summaryJson = Get-Content -LiteralPath $summaryPath -Raw | ConvertFrom-Json -Depth 12
         $summaryJson.targets[0].repoPath | Should -Be 'fixtures/vi-attr/Head.vi'
     }
 

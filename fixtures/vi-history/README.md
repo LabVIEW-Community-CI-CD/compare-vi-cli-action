@@ -23,3 +23,30 @@ PR command and the smoke helper).
 
 Extend the `steps` list when new scenarios are required; tests ensure every referenced
 `source` path exists in the repository.
+
+## `mixed-same-commit.json`
+
+- Schema: `vi-history-mixed-commit@v1`
+- Defines a deterministic single commit that mutates two VI targets:
+  - one strict signal target (`requireDiff: true`)
+  - one non-strict metadata-noise target (`requireDiff: false`)
+- Consumed by `tools/Test-PRVIHistorySmoke.ps1` when
+  `-Scenario mixed-same-commit` is selected.
+
+```jsonc
+{
+  "schema": "vi-history-mixed-commit@v1",
+  "commit": {
+    "changes": [
+      {
+        "targetPath": "fixtures/vi-attr/Head.vi",
+        "requireDiff": true
+      },
+      {
+        "targetPath": "fixtures/vi-attr/Base.vi",
+        "requireDiff": false
+      }
+    ]
+  }
+}
+```

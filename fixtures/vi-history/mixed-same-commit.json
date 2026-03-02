@@ -1,0 +1,28 @@
+{
+  "schema": "vi-history-mixed-commit@v1",
+  "description": "Two-target same-commit fixture for signal plus metadata-noise history coverage.",
+  "maxPairs": 6,
+  "commit": {
+    "message": "chore: mixed same-commit signal and metadata-noise update",
+    "changes": [
+      {
+        "id": "signal-target",
+        "title": "Signal target",
+        "targetPath": "fixtures/vi-attr/Head.vi",
+        "source": "fixtures/vi-stage/connector-pane/Head.vi",
+        "requireDiff": true,
+        "minDiffs": 1,
+        "classificationHint": "signal"
+      },
+      {
+        "id": "masscompile-target",
+        "title": "Masscompile-like metadata target",
+        "targetPath": "fixtures/vi-attr/Base.vi",
+        "source": "fixtures/vi-attr/attr/HeadAttr.vi",
+        "requireDiff": false,
+        "minDiffs": 0,
+        "classificationHint": "noise-masscompile"
+      }
+    ]
+  }
+}
