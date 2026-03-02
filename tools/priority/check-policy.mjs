@@ -110,43 +110,64 @@ function getRepoFromEnv(env = process.env, execSyncFn = execSync) {
 }
 
 async function resolveToken(env = process.env, { readFileFn = readFile, accessFn = access, logFn = console.log } = {}) {
-  if (env.GH_TOKEN && env.GH_TOKEN.trim()) {
-    logFn('[policy] auth source: GH_TOKEN');
-    return { token: env.GH_TOKEN.trim(), source: 'GH_TOKEN' };
+  const candidates = await resolveTokenCandidates(env, { readFileFn, accessFn });
+  if (candidates.length === 0) {
+    return null;
   }
+  logFn(`[policy] auth source: ${candidates[0].source}`);
+  return candidates[0];
+}
 
-  if (env.GITHUB_TOKEN && env.GITHUB_TOKEN.trim()) {
-    logFn('[policy] auth source: GITHUB_TOKEN');
-    return { token: env.GITHUB_TOKEN.trim(), source: 'GITHUB_TOKEN' };
-  }
+async function resolveTokenCandidates(
+  env = process.env,
+  { readFileFn = readFile, accessFn = access } = {}
+) {
+  const candidates = [];
+  const seen = new Set();
+  const addCandidate = (tokenValue, source) => {
+    if (!tokenValue || !tokenValue.trim()) {
+      return;
+    }
+    const token = tokenValue.trim();
+    const key = `${source}:${token}`;
+    if (seen.has(key)) {
+      return;
+    }
+    candidates.push({ token, source });
+    seen.add(key);
+  };
 
-  if (env.GH_ENTERPRISE_TOKEN && env.GH_ENTERPRISE_TOKEN.trim()) {
-    logFn('[policy] auth source: GH_ENTERPRISE_TOKEN');
-    return { token: env.GH_ENTERPRISE_TOKEN.trim(), source: 'GH_ENTERPRISE_TOKEN' };
-  }
+  addCandidate(env.GH_TOKEN, 'GH_TOKEN');
+  addCandidate(env.GITHUB_TOKEN, 'GITHUB_TOKEN');
+  addCandidate(env.GH_ENTERPRISE_TOKEN, 'GH_ENTERPRISE_TOKEN');
 
-  const candidates = [env.GH_TOKEN_FILE];
+  const fileCandidates = [env.GH_TOKEN_FILE];
   if (process.platform === 'win32') {
-    candidates.push('C:\\github_token.txt');
+    fileCandidates.push('C:\\github_token.txt');
   }
 
-  for (const candidate of candidates) {
+  for (const candidate of fileCandidates) {
     if (!candidate) {
       continue;
     }
     try {
       await accessFn(candidate);
       const fileToken = (await readFileFn(candidate, 'utf8')).trim();
-      if (fileToken) {
-        logFn(`[policy] auth source: file:${candidate}`);
-        return { token: fileToken, source: `file:${candidate}` };
-      }
+      addCandidate(fileToken, `file:${candidate}`);
     } catch {
       // ignore missing/invalid file
     }
   }
 
-  return null;
+  return candidates;
+}
+
+function isUnauthorizedAuthError(error) {
+  if (!error) {
+    return false;
+  }
+  const message = typeof error.message === 'string' ? error.message : String(error);
+  return /401/.test(message) && /unauthorized/i.test(message);
 }
 
 async function requestJson(url, token, { method = 'GET', body, fetchFn } = {}) {
@@ -654,20 +675,58 @@ export async function run({
 
   const manifest = await loadManifest();
   const forkRun = await detectForkRun(env);
-  const tokenResult = await resolveToken(env);
-  const token = tokenResult?.token;
-  if (!token) {
+  const tokenCandidates = await resolveTokenCandidates(env);
+  if (tokenCandidates.length === 0) {
     throw new Error('GitHub token not found. Set GITHUB_TOKEN, GH_TOKEN, or GH_TOKEN_FILE.');
   }
+  let activeTokenIndex = 0;
+  let activeTokenResult = tokenCandidates[activeTokenIndex];
+  log(`[policy] auth source: ${activeTokenResult.source}`);
+
+  const invokeWithAuthFallback = async (operationName, operationFn) => {
+    try {
+      return await operationFn(activeTokenResult.token);
+    } catch (initialError) {
+      if (!isUnauthorizedAuthError(initialError)) {
+        throw initialError;
+      }
+
+      const fallback = tokenCandidates.find(
+        (candidate, index) => index > activeTokenIndex && candidate.token !== activeTokenResult.token
+      );
+      if (!fallback) {
+        throw new Error(
+          `${operationName} failed with 401 Unauthorized using ${activeTokenResult.source}. No fallback token available.`
+        );
+      }
+
+      log(`[policy] auth fallback: ${activeTokenResult.source} -> ${fallback.source} (401 Unauthorized)`);
+      activeTokenIndex = tokenCandidates.indexOf(fallback);
+      activeTokenResult = fallback;
+
+      try {
+        return await operationFn(activeTokenResult.token);
+      } catch (fallbackError) {
+        if (isUnauthorizedAuthError(fallbackError)) {
+          throw new Error(
+            `${operationName} failed after auth fallback ${tokenCandidates[0].source} -> ${activeTokenResult.source}: ${fallbackError.message}`
+          );
+        }
+        throw fallbackError;
+      }
+    }
+  };
 
   const { owner, repo } = getRepoFromEnv(env, execSyncFn);
   dbg(`Resolved repository ${owner}/${repo}`);
-  if (tokenResult?.source) {
-    dbg(`Token source ${tokenResult.source}`);
+  if (activeTokenResult?.source) {
+    dbg(`Token source ${activeTokenResult.source}`);
   }
   const repoUrl = `https://api.github.com/repos/${owner}/${repo}`;
 
-  const initialState = await collectState(manifest, repoUrl, token, fetchFn);
+  const initialState = await invokeWithAuthFallback('collectState', (token) =>
+    collectState(manifest, repoUrl, token, fetchFn)
+  );
   if (options.debug) {
     const repoKeys = initialState.repoData ? Object.keys(initialState.repoData) : [];
     dbg(`Repo response keys: ${repoKeys.length ? repoKeys.join(', ') : '(none)'}`);
@@ -723,14 +782,16 @@ export async function run({
     });
 
     for (const entry of branchStatesNeedingUpdates) {
-      await applyBranchProtection(
-        repoUrl,
-        token,
-        entry.branch,
-        entry.expectations,
-        entry.protection,
-        fetchFn,
-        log
+      await invokeWithAuthFallback(`applyBranchProtection(${entry.branch})`, (token) =>
+        applyBranchProtection(
+          repoUrl,
+          token,
+          entry.branch,
+          entry.expectations,
+          entry.protection,
+          fetchFn,
+          log
+        )
       );
     }
 
@@ -743,18 +804,22 @@ export async function run({
     });
 
     for (const entry of rulesetStatesNeedingUpdates) {
-      await applyRuleset(
-        repoUrl,
-        token,
-        entry.id,
-        entry.expectations,
-        entry.ruleset,
-        fetchFn,
-        log
+      await invokeWithAuthFallback(`applyRuleset(${entry.id})`, (token) =>
+        applyRuleset(
+          repoUrl,
+          token,
+          entry.id,
+          entry.expectations,
+          entry.ruleset,
+          fetchFn,
+          log
+        )
       );
     }
 
-    const postState = await collectState(manifest, repoUrl, token, fetchFn);
+    const postState = await invokeWithAuthFallback('collectState(post-apply)', (token) =>
+      collectState(manifest, repoUrl, token, fetchFn)
+    );
     const postDiffs = evaluateDiffs(manifest, postState);
     const remainingDiffs = [
       ...postDiffs.repoDiffs,

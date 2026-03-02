@@ -588,7 +588,8 @@ test('priority:policy skips when repository settings require admin access', asyn
     argv: ['node', 'check-policy.mjs'],
     env: {
       ...process.env,
-      GITHUB_REPOSITORY: 'test-org/test-repo'
+      GITHUB_REPOSITORY: 'test-org/test-repo',
+      GITHUB_TOKEN: 'fake-token'
     },
     fetchFn: fetchMock,
     execSyncFn: () => {
@@ -604,4 +605,225 @@ test('priority:policy skips when repository settings require admin access', asyn
     'skip message expected when admin permissions unavailable'
   );
   assert.deepEqual(errorMessages, []);
+});
+
+test('priority:policy keeps GH_TOKEN when valid and does not fallback', async () => {
+  const repoUrl = 'https://api.github.com/repos/test-org/test-repo';
+  const rulesetDevelopUrl = `${repoUrl}/rulesets/8811898`;
+  const rulesetMainUrl = `${repoUrl}/rulesets/8614140`;
+  const rulesetReleaseUrl = `${repoUrl}/rulesets/8614172`;
+  const repoState = {
+    permissions: {
+      admin: false
+    }
+  };
+  const rulesetDevelop = {
+    id: 8811898,
+    name: 'develop',
+    target: 'branch',
+    enforcement: 'active',
+    conditions: { ref_name: { include: ['refs/heads/develop'], exclude: [] } },
+    bypass_actors: [],
+    rules: []
+  };
+  const rulesetMain = {
+    id: 8614140,
+    name: 'main',
+    target: 'branch',
+    enforcement: 'active',
+    conditions: { ref_name: { include: ['refs/heads/main'], exclude: [] } },
+    bypass_actors: [],
+    rules: []
+  };
+  const rulesetRelease = {
+    id: 8614172,
+    name: 'release',
+    target: 'branch',
+    enforcement: 'active',
+    conditions: { ref_name: { include: ['refs/heads/release/*'], exclude: [] } },
+    bypass_actors: [],
+    rules: []
+  };
+
+  const tokensSeen = [];
+  const fetchMock = async (url, options = {}) => {
+    const method = options.method ?? 'GET';
+    const authHeader = options.headers?.Authorization ?? '';
+    const token = String(authHeader).replace(/^Bearer\s+/i, '');
+    tokensSeen.push(token);
+    if (token !== 'gh-valid') {
+      return createResponse({ message: 'Bad credentials', status: '401' }, 401, 'Unauthorized');
+    }
+
+    if (method === 'GET' && url === repoUrl) {
+      return createResponse(repoState);
+    }
+    if (method === 'GET' && url === rulesetDevelopUrl) {
+      return createResponse(rulesetDevelop);
+    }
+    if (method === 'GET' && url === rulesetMainUrl) {
+      return createResponse(rulesetMain);
+    }
+    if (method === 'GET' && url === rulesetReleaseUrl) {
+      return createResponse(rulesetRelease);
+    }
+    throw new Error(`Unexpected request ${method} ${url}`);
+  };
+
+  const logMessages = [];
+  const errorMessages = [];
+  const code = await run({
+    argv: ['node', 'check-policy.mjs'],
+    env: {
+      ...process.env,
+      GITHUB_REPOSITORY: 'test-org/test-repo',
+      GH_TOKEN: 'gh-valid',
+      GITHUB_TOKEN: 'github-valid'
+    },
+    fetchFn: fetchMock,
+    execSyncFn: () => {
+      throw new Error('execSync should not be called when GITHUB_REPOSITORY is set');
+    },
+    log: (msg) => logMessages.push(msg),
+    error: (msg) => errorMessages.push(msg)
+  });
+
+  assert.equal(code, 0, 'run should exit cleanly with valid GH_TOKEN');
+  assert.ok(tokensSeen.length > 0, 'expected at least one authenticated request');
+  assert.ok(tokensSeen.every((token) => token === 'gh-valid'), 'requests should remain on GH_TOKEN');
+  assert.ok(
+    logMessages.some((msg) => msg.includes('auth source: GH_TOKEN')),
+    'auth source log should report GH_TOKEN'
+  );
+  assert.ok(
+    !logMessages.some((msg) => msg.includes('auth fallback:')),
+    'fallback should not occur when GH_TOKEN is valid'
+  );
+  assert.deepEqual(errorMessages, []);
+});
+
+test('priority:policy falls back from GH_TOKEN to GITHUB_TOKEN on 401', async () => {
+  const repoUrl = 'https://api.github.com/repos/test-org/test-repo';
+  const rulesetDevelopUrl = `${repoUrl}/rulesets/8811898`;
+  const rulesetMainUrl = `${repoUrl}/rulesets/8614140`;
+  const rulesetReleaseUrl = `${repoUrl}/rulesets/8614172`;
+  const repoState = {
+    permissions: {
+      admin: false
+    }
+  };
+  const rulesetDevelop = {
+    id: 8811898,
+    name: 'develop',
+    target: 'branch',
+    enforcement: 'active',
+    conditions: { ref_name: { include: ['refs/heads/develop'], exclude: [] } },
+    bypass_actors: [],
+    rules: []
+  };
+  const rulesetMain = {
+    id: 8614140,
+    name: 'main',
+    target: 'branch',
+    enforcement: 'active',
+    conditions: { ref_name: { include: ['refs/heads/main'], exclude: [] } },
+    bypass_actors: [],
+    rules: []
+  };
+  const rulesetRelease = {
+    id: 8614172,
+    name: 'release',
+    target: 'branch',
+    enforcement: 'active',
+    conditions: { ref_name: { include: ['refs/heads/release/*'], exclude: [] } },
+    bypass_actors: [],
+    rules: []
+  };
+
+  const tokensSeen = [];
+  const fetchMock = async (url, options = {}) => {
+    const method = options.method ?? 'GET';
+    const authHeader = options.headers?.Authorization ?? '';
+    const token = String(authHeader).replace(/^Bearer\s+/i, '');
+    tokensSeen.push(token);
+
+    if (token === 'gh-stale') {
+      return createResponse({ message: 'Bad credentials', status: '401' }, 401, 'Unauthorized');
+    }
+    if (token !== 'github-valid') {
+      return createResponse({ message: 'Bad credentials', status: '401' }, 401, 'Unauthorized');
+    }
+
+    if (method === 'GET' && url === repoUrl) {
+      return createResponse(repoState);
+    }
+    if (method === 'GET' && url === rulesetDevelopUrl) {
+      return createResponse(rulesetDevelop);
+    }
+    if (method === 'GET' && url === rulesetMainUrl) {
+      return createResponse(rulesetMain);
+    }
+    if (method === 'GET' && url === rulesetReleaseUrl) {
+      return createResponse(rulesetRelease);
+    }
+    throw new Error(`Unexpected request ${method} ${url}`);
+  };
+
+  const logMessages = [];
+  const errorMessages = [];
+  const code = await run({
+    argv: ['node', 'check-policy.mjs'],
+    env: {
+      ...process.env,
+      GITHUB_REPOSITORY: 'test-org/test-repo',
+      GH_TOKEN: 'gh-stale',
+      GITHUB_TOKEN: 'github-valid'
+    },
+    fetchFn: fetchMock,
+    execSyncFn: () => {
+      throw new Error('execSync should not be called when GITHUB_REPOSITORY is set');
+    },
+    log: (msg) => logMessages.push(msg),
+    error: (msg) => errorMessages.push(msg)
+  });
+
+  assert.equal(code, 0, 'run should succeed after auth fallback');
+  assert.ok(tokensSeen.includes('gh-stale'), 'GH token should be attempted first');
+  assert.ok(tokensSeen.includes('github-valid'), 'GITHUB token should be used as fallback');
+  assert.ok(
+    logMessages.some((msg) => msg.includes('auth fallback: GH_TOKEN -> GITHUB_TOKEN')),
+    'fallback log should report GH_TOKEN -> GITHUB_TOKEN'
+  );
+  assert.deepEqual(errorMessages, []);
+});
+
+test('priority:policy fails with actionable message when GH_TOKEN 401 has no fallback', async () => {
+  const fetchMock = async () => createResponse({ message: 'Bad credentials', status: '401' }, 401, 'Unauthorized');
+  const logMessages = [];
+  const errorMessages = [];
+
+  await assert.rejects(
+    () =>
+      run({
+        argv: ['node', 'check-policy.mjs'],
+        env: {
+          ...process.env,
+          GITHUB_REPOSITORY: 'test-org/test-repo',
+          GH_TOKEN: 'gh-stale',
+          GITHUB_TOKEN: ''
+        },
+        fetchFn: fetchMock,
+        execSyncFn: () => {
+          throw new Error('execSync should not be called when GITHUB_REPOSITORY is set');
+        },
+        log: (msg) => logMessages.push(msg),
+        error: (msg) => errorMessages.push(msg)
+      }),
+    /No fallback token available/
+  );
+
+  assert.ok(
+    logMessages.some((msg) => msg.includes('auth source: GH_TOKEN')),
+    'auth source log should report GH_TOKEN'
+  );
 });
