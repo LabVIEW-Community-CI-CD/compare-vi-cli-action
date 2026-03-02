@@ -363,12 +363,12 @@ try {
     $lines = @(
       '### Docker Runtime Manager',
       '',
-      ("- status: `{0}`" -f [string]$summary.status),
-      ("- start context: `{0}`" -f [string]$summary.contexts.start),
-      ("- final context: `{0}`" -f [string]$summary.contexts.final),
-      ("- windows image: `{0}` digest=`{1}`" -f [string]$summary.probes.windows.image, [string]$summary.probes.windows.digest),
-      ("- linux image: `{0}` digest=`{1}`" -f [string]$summary.probes.linux.image, [string]$summary.probes.linux.digest),
-      ("- summary json: `{0}`" -f $outputJsonResolved)
+      ('- status: `{0}`' -f [string]$summary.status),
+      ('- start context: `{0}`' -f [string]$summary.contexts.start),
+      ('- final context: `{0}`' -f [string]$summary.contexts.final),
+      ('- windows image: `{0}` digest=`{1}`' -f [string]$summary.probes.windows.image, [string]$summary.probes.windows.digest),
+      ('- linux image: `{0}` digest=`{1}`' -f [string]$summary.probes.linux.image, [string]$summary.probes.linux.digest),
+      ('- summary json: `{0}`' -f $outputJsonResolved)
     )
     if ($summary.status -ne 'success' -and -not [string]::IsNullOrWhiteSpace([string]$summary.failureMessage)) {
       $lines += ("- failure: {0}" -f [string]$summary.failureMessage)
