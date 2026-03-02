@@ -170,6 +170,15 @@ function isUnauthorizedAuthError(error) {
   return /401/.test(message) && /unauthorized/i.test(message);
 }
 
+function createAuthUnavailableError(operationName, attemptedSources = [], reason = '') {
+  const chain = attemptedSources.length > 0 ? attemptedSources.join(' -> ') : 'unknown';
+  const suffix = reason && reason.trim() ? ` ${reason.trim()}` : '';
+  const error = new Error(`${operationName} authorization unavailable after sources: ${chain}.${suffix}`);
+  error.code = 'POLICY_AUTH_UNAVAILABLE';
+  error.attemptedSources = attemptedSources;
+  return error;
+}
+
 async function requestJson(url, token, { method = 'GET', body, fetchFn } = {}) {
   const fetchImpl = fetchFn ?? globalThis.fetch;
   if (typeof fetchImpl !== 'function') {
@@ -684,6 +693,7 @@ export async function run({
   log(`[policy] auth source: ${activeTokenResult.source}`);
 
   const invokeWithAuthFallback = async (operationName, operationFn) => {
+    const attemptedSources = [activeTokenResult.source];
     try {
       return await operationFn(activeTokenResult.token);
     } catch (initialError) {
@@ -695,21 +705,26 @@ export async function run({
         (candidate, index) => index > activeTokenIndex && candidate.token !== activeTokenResult.token
       );
       if (!fallback) {
-        throw new Error(
-          `${operationName} failed with 401 Unauthorized using ${activeTokenResult.source}. No fallback token available.`
+        throw createAuthUnavailableError(
+          operationName,
+          attemptedSources,
+          `No fallback token available. Last error: ${initialError.message}`
         );
       }
 
       log(`[policy] auth fallback: ${activeTokenResult.source} -> ${fallback.source} (401 Unauthorized)`);
       activeTokenIndex = tokenCandidates.indexOf(fallback);
       activeTokenResult = fallback;
+      attemptedSources.push(activeTokenResult.source);
 
       try {
         return await operationFn(activeTokenResult.token);
       } catch (fallbackError) {
         if (isUnauthorizedAuthError(fallbackError)) {
-          throw new Error(
-            `${operationName} failed after auth fallback ${tokenCandidates[0].source} -> ${activeTokenResult.source}: ${fallbackError.message}`
+          throw createAuthUnavailableError(
+            operationName,
+            attemptedSources,
+            `Last error: ${fallbackError.message}`
           );
         }
         throw fallbackError;
@@ -724,9 +739,23 @@ export async function run({
   }
   const repoUrl = `https://api.github.com/repos/${owner}/${repo}`;
 
-  const initialState = await invokeWithAuthFallback('collectState', (token) =>
-    collectState(manifest, repoUrl, token, fetchFn)
-  );
+  let initialState;
+  try {
+    initialState = await invokeWithAuthFallback('collectState', (token) =>
+      collectState(manifest, repoUrl, token, fetchFn)
+    );
+  } catch (authError) {
+    if (!options.apply && authError?.code === 'POLICY_AUTH_UNAVAILABLE') {
+      const attempted = Array.isArray(authError.attemptedSources) && authError.attemptedSources.length > 0
+        ? authError.attemptedSources.join(' -> ')
+        : 'unknown';
+      log(
+        `[policy] Authorization unavailable for policy check (attempted: ${attempted}); skipping non-apply validation. Upstream status "Policy Guard (Upstream) / policy-guard" remains authoritative.`
+      );
+      return 0;
+    }
+    throw authError;
+  }
   if (options.debug) {
     const repoKeys = initialState.repoData ? Object.keys(initialState.repoData) : [];
     dbg(`Repo response keys: ${repoKeys.length ? repoKeys.join(', ') : '(none)'}`);

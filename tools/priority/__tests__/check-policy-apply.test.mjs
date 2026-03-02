@@ -797,7 +797,40 @@ test('priority:policy falls back from GH_TOKEN to GITHUB_TOKEN on 401', async ()
   assert.deepEqual(errorMessages, []);
 });
 
-test('priority:policy fails with actionable message when GH_TOKEN 401 has no fallback', async () => {
+test('priority:policy skips non-apply validation when GH_TOKEN 401 has no fallback', async () => {
+  const fetchMock = async () => createResponse({ message: 'Bad credentials', status: '401' }, 401, 'Unauthorized');
+  const logMessages = [];
+  const errorMessages = [];
+
+  const code = await run({
+    argv: ['node', 'check-policy.mjs'],
+    env: {
+      ...process.env,
+      GITHUB_REPOSITORY: 'test-org/test-repo',
+      GH_TOKEN: 'gh-stale',
+      GITHUB_TOKEN: ''
+    },
+    fetchFn: fetchMock,
+    execSyncFn: () => {
+      throw new Error('execSync should not be called when GITHUB_REPOSITORY is set');
+    },
+    log: (msg) => logMessages.push(msg),
+    error: (msg) => errorMessages.push(msg)
+  });
+
+  assert.equal(code, 0, 'non-apply mode should skip on auth-unavailable path');
+  assert.ok(
+    logMessages.some((msg) => msg.includes('auth source: GH_TOKEN')),
+    'auth source log should report GH_TOKEN'
+  );
+  assert.ok(
+    logMessages.some((msg) => msg.includes('Authorization unavailable for policy check')),
+    'skip log should report authorization-unavailable reason'
+  );
+  assert.deepEqual(errorMessages, []);
+});
+
+test('priority:policy --apply fails when GH_TOKEN 401 has no fallback', async () => {
   const fetchMock = async () => createResponse({ message: 'Bad credentials', status: '401' }, 401, 'Unauthorized');
   const logMessages = [];
   const errorMessages = [];
@@ -805,7 +838,7 @@ test('priority:policy fails with actionable message when GH_TOKEN 401 has no fal
   await assert.rejects(
     () =>
       run({
-        argv: ['node', 'check-policy.mjs'],
+        argv: ['node', 'check-policy.mjs', '--apply'],
         env: {
           ...process.env,
           GITHUB_REPOSITORY: 'test-org/test-repo',
@@ -819,11 +852,12 @@ test('priority:policy fails with actionable message when GH_TOKEN 401 has no fal
         log: (msg) => logMessages.push(msg),
         error: (msg) => errorMessages.push(msg)
       }),
-    /No fallback token available/
+    /authorization unavailable/i
   );
 
   assert.ok(
     logMessages.some((msg) => msg.includes('auth source: GH_TOKEN')),
     'auth source log should report GH_TOKEN'
   );
+  assert.deepEqual(errorMessages, []);
 });
