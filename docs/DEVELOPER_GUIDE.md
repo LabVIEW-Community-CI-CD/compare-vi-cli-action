@@ -149,6 +149,10 @@ Quick reference for building, testing, and releasing the LVCompare composite act
         The same helper emits a `### Mobile Preview` section in the PR comment/summary markdown when previews are
         available, and writes extracted files to `tests/results/pr-vi-history/<target>/previews/` with index contract
         `pr-vi-history-image-index@v1`.
+        The on-demand smoke harness (`tools/Test-PRVIHistorySmoke.ps1`) enforces hybrid gate policy:
+        - strict targets (`requireDiff=true`) are hard-fail
+        - smoke targets (`requireDiff=false`) are non-blocking warnings
+        - summary output includes `Policy` (`vi-history-policy-gate@v1`) with separated strict failures and smoke warnings
         Extractor toggles:
         - `PR_VI_HISTORY_EXTRACT_REPORT_IMAGES`
         - `VI_HISTORY_EXTRACT_REPORT_IMAGES`
