@@ -53,6 +53,7 @@ param(
     [string]$ResultsRoot = 'tests/results/pr-vi-history',
 
     [Nullable[int]]$MaxPairs,
+    [Nullable[int]]$CompareTimeoutSeconds,
 
     [string[]]$Mode,
 
@@ -76,6 +77,23 @@ $ErrorActionPreference = 'Stop'
 
 $maxPairsValue = if ($PSBoundParameters.ContainsKey('MaxPairs')) { $MaxPairs } else { $null }
 $maxPairsRequested = ($null -ne $maxPairsValue) -and ($maxPairsValue -gt 0)
+$compareTimeoutValue = if ($PSBoundParameters.ContainsKey('CompareTimeoutSeconds')) { $CompareTimeoutSeconds } else { $null }
+if ($null -eq $compareTimeoutValue -or $compareTimeoutValue -le 0) {
+    $timeoutSources = @(
+        [System.Environment]::GetEnvironmentVariable('PR_VI_HISTORY_COMPARE_TIMEOUT_SECONDS', 'Process'),
+        [System.Environment]::GetEnvironmentVariable('VI_HISTORY_COMPARE_TIMEOUT_SECONDS', 'Process'),
+        [System.Environment]::GetEnvironmentVariable('COMPAREVI_TIMEOUT_SECONDS', 'Process')
+    )
+    foreach ($rawTimeout in $timeoutSources) {
+        if ([string]::IsNullOrWhiteSpace($rawTimeout)) { continue }
+        $parsedTimeout = 0
+        if ([int]::TryParse($rawTimeout.Trim(), [ref]$parsedTimeout) -and $parsedTimeout -gt 0) {
+            $compareTimeoutValue = [int]$parsedTimeout
+            break
+        }
+    }
+}
+$compareTimeoutRequested = ($null -ne $compareTimeoutValue) -and ($compareTimeoutValue -gt 0)
 
 function Resolve-ExistingFile {
     param(
@@ -885,6 +903,7 @@ for ($i = 0; $i -lt $targets.Count; $i++) {
     }
     Write-Verbose ("[{0}/{1}] Target '{2}' (origin: {3}) -> compare path '{4}'" -f ($i + 1), $targets.Count, $repoPath, $target.origin, $effectiveTargetPath)
     if ($maxPairsRequested) { $compareArgs.MaxPairs = $maxPairsValue }
+    if ($compareTimeoutRequested) { $compareArgs.CompareTimeoutSeconds = [int]$compareTimeoutValue }
     if ($Mode) { $compareArgs.Mode = $Mode }
     if (-not [string]::IsNullOrWhiteSpace($StartRef)) { $compareArgs.StartRef = $StartRef }
     if (-not [string]::IsNullOrWhiteSpace($EndRef)) { $compareArgs.EndRef = $EndRef }
@@ -1037,6 +1056,76 @@ for ($i = 0; $i -lt $targets.Count; $i++) {
                 $reportImages.error = $_.Exception.Message
                 $reportImageExtractionErrors++
                 Write-Warning ("Failed to extract report images for '{0}': {1}" -f $repoPath, $_.Exception.Message)
+            }
+        }
+
+        if ($reportImages.status -eq 'completed' -and [int]$reportImages.exportedImageCount -le 0) {
+            try {
+                $cliImageCandidates = @(Get-ChildItem -LiteralPath $targetResultsDir -Recurse -File -ErrorAction SilentlyContinue |
+                    Where-Object { $_.Name -like 'cli-image-*' -and $_.FullName -match '[\\/]+cli-images[\\/]' } |
+                    Sort-Object FullName)
+                Write-Host ("[report-images] fallback scan for '{0}' found {1} CLI image candidate(s)." -f $repoPath, $cliImageCandidates.Count)
+                if ($cliImageCandidates.Count -gt 0) {
+                    $imageOutputDir = Join-Path $targetResultsDir 'previews'
+                    $imageIndexPath = Join-Path $targetResultsDir 'vi-history-image-index.json'
+                    New-Item -ItemType Directory -Path $imageOutputDir -Force | Out-Null
+
+                    $fallbackImages = New-Object System.Collections.Generic.List[object]
+                    $copiedCount = 0
+                    foreach ($candidate in $cliImageCandidates) {
+                        if (-not $candidate) { continue }
+                        $extension = $candidate.Extension
+                        if ([string]::IsNullOrWhiteSpace($extension)) {
+                            $extension = '.png'
+                        }
+                        $extension = $extension.Trim().TrimStart('.').ToLowerInvariant()
+                        if ([string]::IsNullOrWhiteSpace($extension)) {
+                            $extension = 'png'
+                        }
+
+                        $fileName = ('history-image-{0:D3}.{1}' -f $copiedCount, $extension)
+                        $destinationPath = Join-Path $imageOutputDir $fileName
+                        Copy-Item -LiteralPath $candidate.FullName -Destination $destinationPath -Force
+                        $resolvedSavedPath = (Resolve-Path -LiteralPath $destinationPath).Path
+                        $fallbackImages.Add([pscustomobject]@{
+                            index      = $copiedCount
+                            source     = $candidate.FullName
+                            sourceType = 'cli-images'
+                            alt        = 'VI diff preview'
+                            fileName   = $fileName
+                            savedPath  = $resolvedSavedPath
+                            byteLength = [int64]$candidate.Length
+                            status     = 'saved'
+                        }) | Out-Null
+                        $copiedCount++
+                    }
+
+                    $resolvedOutputDir = (Resolve-Path -LiteralPath $imageOutputDir).Path
+                    $fallbackIndex = [pscustomobject]@{
+                        schema             = 'pr-vi-history-image-index@v1'
+                        generatedAt        = (Get-Date).ToString('o')
+                        reportPath         = $reportHtml
+                        outputDir          = $resolvedOutputDir
+                        sourceImageCount   = $cliImageCandidates.Count
+                        exportedImageCount = $copiedCount
+                        images             = @($fallbackImages.ToArray())
+                    }
+                    $fallbackIndex | ConvertTo-Json -Depth 8 | Set-Content -LiteralPath $imageIndexPath -Encoding utf8
+
+                    $reportImages.sourceImageCount = [int]$cliImageCandidates.Count
+                    $reportImages.exportedImageCount = [int]$copiedCount
+                    $reportImages.indexPath = (Resolve-Path -LiteralPath $imageIndexPath).Path
+                    $reportImages.outputDir = $resolvedOutputDir
+                    $reportImages.source = 'cli-images-fallback'
+
+                    $reportImageExportedCount += [int]$copiedCount
+                    if ($copiedCount -gt 0) {
+                        $reportImageTargetCount++
+                    }
+                    Write-Host ("[report-images] fallback exported {0} preview image(s) for '{1}'." -f $copiedCount, $repoPath)
+                }
+            } catch {
+                Write-Warning ("Failed CLI-image fallback extraction for '{0}': {1}" -f $repoPath, $_.Exception.Message)
             }
         }
     }
