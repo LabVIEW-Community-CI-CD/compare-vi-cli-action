@@ -119,6 +119,7 @@ jobs:
             "compare_json=" | Out-File -FilePath $ENV:GITHUB_OUTPUT -Append -Encoding utf8
             "summary_json=" | Out-File -FilePath $ENV:GITHUB_OUTPUT -Append -Encoding utf8
             "summary_md=" | Out-File -FilePath $ENV:GITHUB_OUTPUT -Append -Encoding utf8
+            "summary_html=" | Out-File -FilePath $ENV:GITHUB_OUTPUT -Append -Encoding utf8
             exit 0
           }
 
@@ -200,18 +201,23 @@ jobs:
           $summaryScript = Join-Path $repoRoot 'tools' 'Summarize-VIStaging.ps1'
           $summaryPath = Join-Path $artifactsDir 'vi-compare-summary.md'
           $summaryJsonPath = Join-Path $artifactsDir 'vi-compare-summary.json'
-          & $summaryScript -CompareJson $compareJsonPath -MarkdownPath $summaryPath -SummaryJsonPath $summaryJsonPath | Out-Null
+          $summaryHtmlPath = Join-Path $artifactsDir 'vi-compare-summary.html'
+          & $summaryScript -CompareJson $compareJsonPath -MarkdownPath $summaryPath -SummaryJsonPath $summaryJsonPath -HtmlPath $summaryHtmlPath | Out-Null
           if (-not (Test-Path -LiteralPath $summaryPath -PathType Leaf)) {
             throw "Summary markdown not found: $summaryPath"
           }
           if (-not (Test-Path -LiteralPath $summaryJsonPath -PathType Leaf)) {
             throw "Summary JSON not found: $summaryJsonPath"
           }
+          if (-not (Test-Path -LiteralPath $summaryHtmlPath -PathType Leaf)) {
+            throw "Summary HTML not found: $summaryHtmlPath"
+          }
 
           "compare_dir=$artifactsDir" | Out-File -FilePath $ENV:GITHUB_OUTPUT -Append -Encoding utf8
           "compare_json=$compareJsonPath" | Out-File -FilePath $ENV:GITHUB_OUTPUT -Append -Encoding utf8
           "summary_json=$summaryJsonPath" | Out-File -FilePath $ENV:GITHUB_OUTPUT -Append -Encoding utf8
           "summary_md=$summaryPath" | Out-File -FilePath $ENV:GITHUB_OUTPUT -Append -Encoding utf8
+          "summary_html=$summaryHtmlPath" | Out-File -FilePath $ENV:GITHUB_OUTPUT -Append -Encoding utf8
 
       - name: Validate compare contract
         if: steps.compare.outputs.compare_json != ''
@@ -222,6 +228,7 @@ jobs:
           $compareJsonPath = "${{ steps.compare.outputs.compare_json }}"
           $summaryJsonPath = "${{ steps.compare.outputs.summary_json }}"
           $summaryMarkdownPath = "${{ steps.compare.outputs.summary_md }}"
+          $summaryHtmlPath = "${{ steps.compare.outputs.summary_html }}"
 
           if (-not (Test-Path -LiteralPath $compareJsonPath -PathType Leaf)) {
             throw "Compare JSON missing: $compareJsonPath"
@@ -231,6 +238,9 @@ jobs:
           }
           if (-not (Test-Path -LiteralPath $summaryMarkdownPath -PathType Leaf)) {
             throw "Summary markdown missing: $summaryMarkdownPath"
+          }
+          if (-not (Test-Path -LiteralPath $summaryHtmlPath -PathType Leaf)) {
+            throw "Summary HTML missing: $summaryHtmlPath"
           }
 
           $compare = Get-Content -LiteralPath $compareJsonPath -Raw -Encoding UTF8 | ConvertFrom-Json
@@ -257,6 +267,7 @@ jobs:
           $pairCount = "${{ steps.manifest.outputs.pair_count }}"
           $compareJsonPath = "${{ steps.compare.outputs.compare_json }}"
           $summaryMarkdownPath = "${{ steps.compare.outputs.summary_md }}"
+          $summaryHtmlPath = "${{ steps.compare.outputs.summary_html }}"
           $out = New-Object System.Collections.Generic.List[string]
           $out.Add("## VI Compare (Fork PR)") | Out-Null
           $out.Add("- Manifest: $manifestPath") | Out-Null
@@ -270,6 +281,11 @@ jobs:
             $out.Add("- Summary markdown: $summaryMarkdownPath") | Out-Null
           } else {
             $out.Add("- Summary markdown: (not produced)") | Out-Null
+          }
+          if ($summaryHtmlPath) {
+            $out.Add("- Summary HTML: $summaryHtmlPath") | Out-Null
+          } else {
+            $out.Add("- Summary HTML: (not produced)") | Out-Null
           }
           $out -join "`n" | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Encoding utf8 -Append
 
