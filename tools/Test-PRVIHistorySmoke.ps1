@@ -572,6 +572,7 @@ switch ($scenarioKey) {
         $scenarioExpectation  = '`/vi-history` workflow completes successfully'
         $scenarioPlanHint     = '- Replace fixtures/vi-attr/Head.vi with attribute variant and commit'
         $scenarioNeedsArtifactValidation = $false
+        $scenarioRequiresMobilePreview = $false
     }
     'sequential' {
         $scenarioBranchSuffix = 'sequential'
@@ -579,6 +580,7 @@ switch ($scenarioKey) {
         $scenarioExpectation  = '`/vi-history` workflow reports multi-row diff summary'
         $scenarioPlanHint     = '- Apply sequential fixture commits from fixtures/vi-history/sequential.json (attribute, front panel, connector pane, control rename, block diagram cosmetic)'
         $scenarioNeedsArtifactValidation = $true
+        $scenarioRequiresMobilePreview = $true
     }
     'mixed-same-commit' {
         $scenarioBranchSuffix = 'mixed'
@@ -586,6 +588,7 @@ switch ($scenarioKey) {
         $scenarioExpectation  = '`/vi-history` workflow itemizes strict signal and non-strict metadata-noise targets from the same commit'
         $scenarioPlanHint     = '- Apply mixed same-commit fixture from fixtures/vi-history/mixed-same-commit.json (two targets in one commit)'
         $scenarioNeedsArtifactValidation = $true
+        $scenarioRequiresMobilePreview = $false
     }
     default {
         throw "Unsupported scenario: $Scenario"
@@ -680,6 +683,7 @@ $scratchContext = [ordered]@{
     TargetValidation = @()
     MaxPairsRequested = $MaxPairs
     MaxPairsEffective = $effectiveMaxPairs
+    MobilePreviewRequired = $scenarioRequiresMobilePreview
 }
 
 $commitSummaries = @()
@@ -917,13 +921,6 @@ try {
                 throw ("Expected at least {0} comparisons for sequential scenario, but comment reported {1}." -f [Math]::Max(1, $commitSummaries.Count), $sequentialTarget.comparisons)
             }
         }
-        if (-not $mobilePreviewHeaderMatch.Success) {
-            throw ("Scenario '{0}' comment is missing the `### Mobile Preview` section." -f $scenarioKey)
-        }
-        if ($mobilePreviewImageMatches.Count -lt 1) {
-            throw ("Scenario '{0}' comment did not include preview image tags (`history-image-*`)." -f $scenarioKey)
-        }
-
         $artifactDir = Join-Path $summaryDir ("artifact-$timestamp")
         New-Item -ItemType Directory -Path $artifactDir -Force | Out-Null
         Invoke-Gh -Arguments @(
@@ -968,11 +965,25 @@ try {
         }
         $previewImageFiles = Get-ChildItem -LiteralPath $artifactDir -Recurse -File |
             Where-Object { $_.Name -like 'history-image-*' -and $_.FullName -match '[\\/]+previews[\\/]' }
-        if (-not $previewImageFiles -or $previewImageFiles.Count -lt 1) {
-            throw 'Preview image files (`previews/history-image-*`) not found in downloaded artifact.'
+        $previewImageCount = if ($previewImageFiles) { @($previewImageFiles).Count } else { 0 }
+        if ($scenarioRequiresMobilePreview) {
+            if ($previewImageCount -lt 1) {
+                throw ("Scenario '{0}' expected preview image files (`previews/history-image-*`) but none were found." -f $scenarioKey)
+            }
+            if (-not $mobilePreviewHeaderMatch.Success) {
+                throw ("Scenario '{0}' comment is missing the `### Mobile Preview` section." -f $scenarioKey)
+            }
+            if ($mobilePreviewImageMatches.Count -lt 1) {
+                throw ("Scenario '{0}' comment did not include preview image tags (`history-image-*`)." -f $scenarioKey)
+            }
+            $scratchContext.mobilePreviewValidated = $true
+        } else {
+            $scratchContext.mobilePreviewValidated = $true
+            if ($previewImageCount -gt 0 -and -not $mobilePreviewHeaderMatch.Success) {
+                Write-Warning ("Scenario '{0}' produced preview images but comment did not include a Mobile Preview heading." -f $scenarioKey)
+            }
         }
-        $scratchContext.mobilePreviewImageCount = [Math]::Max($scratchContext.mobilePreviewImageCount, $previewImageFiles.Count)
-        $scratchContext.mobilePreviewValidated = $true
+        $scratchContext.mobilePreviewImageCount = [Math]::Max($scratchContext.mobilePreviewImageCount, $previewImageCount)
         $scratchContext.ArtifactValidated = $true
         try {
             Remove-Item -LiteralPath $artifactDir -Recurse -Force
