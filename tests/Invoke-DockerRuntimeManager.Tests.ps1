@@ -30,6 +30,16 @@ function Get-StatePath {
   return $path
 }
 
+function New-SeedState {
+  $initial = [Environment]::GetEnvironmentVariable('DOCKER_STUB_INITIAL_CONTEXT')
+  if ([string]::IsNullOrWhiteSpace($initial)) { $initial = 'desktop-windows' }
+  return [ordered]@{
+    activeContext = $initial
+    pulledWindows = $false
+    pulledLinux = $false
+  }
+}
+
 function Get-State {
   $statePath = Get-StatePath
   if (Test-Path -LiteralPath $statePath -PathType Leaf) {
@@ -38,10 +48,8 @@ function Get-State {
     } catch {
     }
   }
-  $initial = [Environment]::GetEnvironmentVariable('DOCKER_STUB_INITIAL_CONTEXT')
-  if ([string]::IsNullOrWhiteSpace($initial)) { $initial = 'desktop-windows' }
-  $seed = [ordered]@{ activeContext = $initial }
-  ($seed | ConvertTo-Json -Depth 5) | Set-Content -LiteralPath $statePath -Encoding utf8
+  $seed = New-SeedState
+  ($seed | ConvertTo-Json -Depth 10) | Set-Content -LiteralPath $statePath -Encoding utf8
   return (Get-Content -LiteralPath $statePath -Raw | ConvertFrom-Json -ErrorAction Stop)
 }
 
@@ -51,7 +59,15 @@ function Set-State([object]$State) {
   if ($parent -and -not (Test-Path -LiteralPath $parent -PathType Container)) {
     New-Item -ItemType Directory -Path $parent -Force | Out-Null
   }
-  ($State | ConvertTo-Json -Depth 5) | Set-Content -LiteralPath $statePath -Encoding utf8
+  ($State | ConvertTo-Json -Depth 10) | Set-Content -LiteralPath $statePath -Encoding utf8
+}
+
+function Is-WindowsImage([string]$Image) {
+  return ($Image -match '(?i)windows')
+}
+
+function Is-LinuxImage([string]$Image) {
+  return ($Image -match '(?i)linux')
 }
 
 if ($Args.Count -eq 0) { exit 0 }
@@ -93,14 +109,14 @@ if ($Args[0] -eq 'manifest' -and $Args.Count -ge 3 -and $Args[1] -eq 'inspect') 
     schemaVersion = 2
     manifests = @(
       [ordered]@{
-        digest = 'sha256:stubwindows'
+        digest = 'sha256:1111111111111111111111111111111111111111111111111111111111111111'
         platform = [ordered]@{
           os = 'windows'
           architecture = 'amd64'
         }
       },
       [ordered]@{
-        digest = 'sha256:stublinux'
+        digest = 'sha256:2222222222222222222222222222222222222222222222222222222222222222'
         platform = [ordered]@{
           os = 'linux'
           architecture = 'amd64'
@@ -109,6 +125,65 @@ if ($Args[0] -eq 'manifest' -and $Args.Count -ge 3 -and $Args[1] -eq 'inspect') 
     )
   }
   ($manifest | ConvertTo-Json -Depth 10) | Write-Output
+  exit 0
+}
+
+if ($Args[0] -eq 'image' -and $Args.Count -ge 3 -and $Args[1] -eq 'inspect') {
+  $image = [string]$Args[2]
+  $requirePullWindows = ([Environment]::GetEnvironmentVariable('DOCKER_STUB_REQUIRE_PULL_WINDOWS') -eq '1')
+  $requirePullLinux = ([Environment]::GetEnvironmentVariable('DOCKER_STUB_REQUIRE_PULL_LINUX') -eq '1')
+
+  $needsPull = $false
+  if ($requirePullWindows -and (Is-WindowsImage -Image $image) -and -not [bool]$state.pulledWindows) { $needsPull = $true }
+  if ($requirePullLinux -and (Is-LinuxImage -Image $image) -and -not [bool]$state.pulledLinux) { $needsPull = $true }
+
+  if ($needsPull) {
+    [Console]::Error.WriteLine(("Error: No such image: {0}" -f $image))
+    exit 1
+  }
+
+  $digest = if (Is-WindowsImage -Image $image) { 'sha256:3333333333333333333333333333333333333333333333333333333333333333' } else { 'sha256:4444444444444444444444444444444444444444444444444444444444444444' }
+  $id = if (Is-WindowsImage -Image $image) { 'sha256:stub-image-id-windows' } else { 'sha256:stub-image-id-linux' }
+  $payload = [ordered]@{
+    Id = $id
+    RepoDigests = @("$image@$digest")
+  }
+  ($payload | ConvertTo-Json -Depth 10 -Compress) | Write-Output
+  exit 0
+}
+
+if ($Args[0] -eq 'pull' -and $Args.Count -ge 2) {
+  $image = [string]$Args[1]
+  if (([Environment]::GetEnvironmentVariable('DOCKER_STUB_PULL_FAIL_WINDOWS') -eq '1') -and (Is-WindowsImage -Image $image)) {
+    [Console]::Error.WriteLine(("pull denied for {0}" -f $image))
+    exit 1
+  }
+  if (([Environment]::GetEnvironmentVariable('DOCKER_STUB_PULL_FAIL_LINUX') -eq '1') -and (Is-LinuxImage -Image $image)) {
+    [Console]::Error.WriteLine(("pull denied for {0}" -f $image))
+    exit 1
+  }
+
+  if (Is-WindowsImage -Image $image) { $state.pulledWindows = $true }
+  if (Is-LinuxImage -Image $image) { $state.pulledLinux = $true }
+  Set-State -State $state
+  $digest = if (Is-WindowsImage -Image $image) { 'sha256:3333333333333333333333333333333333333333333333333333333333333333' } else { 'sha256:4444444444444444444444444444444444444444444444444444444444444444' }
+  Write-Output ("Digest: {0}" -f $digest)
+  exit 0
+}
+
+if ($Args[0] -eq 'run') {
+  $joined = ($Args -join ' ')
+  $runFailWindows = ([Environment]::GetEnvironmentVariable('DOCKER_STUB_RUN_FAIL_WINDOWS') -eq '1')
+  $runFailLinux = ([Environment]::GetEnvironmentVariable('DOCKER_STUB_RUN_FAIL_LINUX') -eq '1')
+  if ($runFailWindows -and $joined -match '(?i)windows') {
+    [Console]::Error.WriteLine('runtime probe failed (windows)')
+    exit 5
+  }
+  if ($runFailLinux -and $joined -match '(?i)linux') {
+    [Console]::Error.WriteLine('runtime probe failed (linux)')
+    exit 6
+  }
+  Write-Output 'ni-runtime-probe-ok'
   exit 0
 }
 
@@ -133,6 +208,12 @@ exit 0
       DOCKER_STUB_INITIAL_CONTEXT = $env:DOCKER_STUB_INITIAL_CONTEXT
       DOCKER_STUB_FAIL_CONTEXT = $env:DOCKER_STUB_FAIL_CONTEXT
       DOCKER_STUB_FORCE_INFO_FAILURE = $env:DOCKER_STUB_FORCE_INFO_FAILURE
+      DOCKER_STUB_REQUIRE_PULL_WINDOWS = $env:DOCKER_STUB_REQUIRE_PULL_WINDOWS
+      DOCKER_STUB_REQUIRE_PULL_LINUX = $env:DOCKER_STUB_REQUIRE_PULL_LINUX
+      DOCKER_STUB_PULL_FAIL_WINDOWS = $env:DOCKER_STUB_PULL_FAIL_WINDOWS
+      DOCKER_STUB_PULL_FAIL_LINUX = $env:DOCKER_STUB_PULL_FAIL_LINUX
+      DOCKER_STUB_RUN_FAIL_WINDOWS = $env:DOCKER_STUB_RUN_FAIL_WINDOWS
+      DOCKER_STUB_RUN_FAIL_LINUX = $env:DOCKER_STUB_RUN_FAIL_LINUX
       RUNNER_TEMP = $env:RUNNER_TEMP
     }
   }
@@ -170,26 +251,61 @@ exit 0
       -SwitchTimeoutSeconds 30 2>&1
     $LASTEXITCODE | Should -Be 0 -Because ($output -join "`n")
 
-    $json = Get-Content -LiteralPath $jsonPath -Raw | ConvertFrom-Json -Depth 25
+    $json = Get-Content -LiteralPath $jsonPath -Raw | ConvertFrom-Json -Depth 30
     $json.schema | Should -Be 'docker-runtime-manager@v1'
     $json.status | Should -Be 'success'
     $json.failureClass | Should -Be 'none'
     $json.lock.acquired | Should -BeTrue
     $json.probes.windows.status | Should -Be 'success'
     $json.probes.linux.status | Should -Be 'success'
-    $json.probes.windows.digest | Should -Be 'sha256:stubwindows'
-    $json.probes.linux.digest | Should -Be 'sha256:stublinux'
+    $json.probes.windows.digest | Should -Be 'sha256:1111111111111111111111111111111111111111111111111111111111111111'
+    $json.probes.linux.digest | Should -Be 'sha256:2222222222222222222222222222222222222222222222222222222222222222'
+    $json.probes.windows.bootstrap.imagePresent | Should -BeTrue
+    $json.probes.linux.bootstrap.imagePresent | Should -BeTrue
+    $json.probes.windows.bootstrap.localDigest | Should -Be 'sha256:3333333333333333333333333333333333333333333333333333333333333333'
+    $json.probes.linux.bootstrap.localDigest | Should -Be 'sha256:4444444444444444444444444444444444444444444444444444444444444444'
+    $json.probes.windows.probe.status | Should -Be 'success'
+    $json.probes.linux.probe.status | Should -Be 'success'
     $json.contexts.start | Should -Be 'desktop-linux'
     $json.contexts.final | Should -Be 'desktop-windows'
 
     $ghOutput = Get-Content -LiteralPath $outputPath -Raw
     $ghOutput | Should -Match 'manager_status=success'
-    $ghOutput | Should -Match 'windows_image_digest=sha256:stubwindows'
-    $ghOutput | Should -Match 'linux_image_digest=sha256:stublinux'
+    $ghOutput | Should -Match 'windows_image_digest=sha256:3333333333333333333333333333333333333333333333333333333333333333'
+    $ghOutput | Should -Match 'linux_image_digest=sha256:4444444444444444444444444444444444444444444444444444444444444444'
+    $ghOutput | Should -Match 'windows_probe_status=success'
+    $ghOutput | Should -Match 'linux_probe_status=success'
 
     $summary = Get-Content -LiteralPath $summaryPath -Raw
     $summary | Should -Match '### Docker Runtime Manager'
     $summary | Should -Match 'status: `success`'
+    $summary | Should -Match 'probe=`success`'
+  }
+
+  It 'bootstraps missing windows image when windows-only probe scope is selected' {
+    $work = Join-Path $TestDrive 'bootstrap-windows'
+    New-Item -ItemType Directory -Path $work -Force | Out-Null
+    & $script:CreateDockerStub -WorkRoot $work
+
+    Set-Item Env:DOCKER_STUB_STATE_PATH (Join-Path $work 'docker-state.json')
+    Set-Item Env:DOCKER_STUB_INITIAL_CONTEXT 'desktop-windows'
+    Set-Item Env:DOCKER_STUB_REQUIRE_PULL_WINDOWS '1'
+    Set-Item Env:RUNNER_TEMP (Join-Path $work 'runner-temp')
+
+    $jsonPath = Join-Path $work 'docker-runtime-manager.json'
+    $output = & pwsh -NoLogo -NoProfile -File $script:ManagerScript `
+      -ProbeScope windows `
+      -OutputJsonPath $jsonPath `
+      -SwitchRetryCount 1 `
+      -SwitchTimeoutSeconds 30 2>&1
+    $LASTEXITCODE | Should -Be 0 -Because ($output -join "`n")
+
+    $json = Get-Content -LiteralPath $jsonPath -Raw | ConvertFrom-Json -Depth 30
+    $json.status | Should -Be 'success'
+    $json.probes.windows.bootstrap.pulled | Should -BeTrue
+    $json.probes.windows.bootstrap.imagePresent | Should -BeTrue
+    $json.probes.windows.probe.status | Should -Be 'success'
+    $json.probes.linux.status | Should -Be 'skipped'
   }
 
   It 'classifies context switch failure as runtime-determinism failure' {
@@ -214,7 +330,7 @@ exit 0
     $text = $output -join "`n"
     $text | Should -Match 'Failed to switch Docker context to'
 
-    $json = Get-Content -LiteralPath $jsonPath -Raw | ConvertFrom-Json -Depth 25
+    $json = Get-Content -LiteralPath $jsonPath -Raw | ConvertFrom-Json -Depth 30
     $json.status | Should -Be 'failure'
     $json.failureClass | Should -Be 'runtime-determinism'
     $json.probes.windows.status | Should -Be 'success'
@@ -223,6 +339,33 @@ exit 0
 
     $ghOutput = Get-Content -LiteralPath $outputPath -Raw
     $ghOutput | Should -Match 'manager_status=failure'
+  }
+
+  It 'fails with image-bootstrap classification when windows image is missing and bootstrap is disabled' {
+    $work = Join-Path $TestDrive 'bootstrap-disabled'
+    New-Item -ItemType Directory -Path $work -Force | Out-Null
+    & $script:CreateDockerStub -WorkRoot $work
+
+    Set-Item Env:DOCKER_STUB_STATE_PATH (Join-Path $work 'docker-state.json')
+    Set-Item Env:DOCKER_STUB_INITIAL_CONTEXT 'desktop-windows'
+    Set-Item Env:DOCKER_STUB_REQUIRE_PULL_WINDOWS '1'
+    Set-Item Env:RUNNER_TEMP (Join-Path $work 'runner-temp')
+
+    $jsonPath = Join-Path $work 'docker-runtime-manager.json'
+    $output = & pwsh -NoLogo -NoProfile -File $script:ManagerScript `
+      -ProbeScope windows `
+      -BootstrapWindowsImage:$false `
+      -OutputJsonPath $jsonPath `
+      -SwitchRetryCount 1 `
+      -SwitchTimeoutSeconds 30 2>&1
+
+    $LASTEXITCODE | Should -Not -Be 0
+    ($output -join "`n") | Should -Match 'Local image inspect failed'
+
+    $json = Get-Content -LiteralPath $jsonPath -Raw | ConvertFrom-Json -Depth 30
+    $json.status | Should -Be 'failure'
+    $json.failureClass | Should -Be 'image-bootstrap'
+    $json.probes.windows.status | Should -Be 'success'
   }
 
   It 'fails with lock timeout when the runtime manager lock is held by another process' {
@@ -249,7 +392,7 @@ exit 0
       $LASTEXITCODE | Should -Not -Be 0
       ($output -join "`n") | Should -Match 'Timed out waiting for Docker manager lock'
 
-      $json = Get-Content -LiteralPath $jsonPath -Raw | ConvertFrom-Json -Depth 25
+      $json = Get-Content -LiteralPath $jsonPath -Raw | ConvertFrom-Json -Depth 30
       $json.status | Should -Be 'failure'
       $json.failureClass | Should -Be 'runtime-determinism'
       $json.failureMessage | Should -Match 'Timed out waiting for Docker manager lock'

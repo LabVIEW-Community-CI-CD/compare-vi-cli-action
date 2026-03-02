@@ -33,10 +33,10 @@ function AddCounts($obj){
     $lines += ('- {0}: {1}' -f $k,$v)
   }
 }
-if ($json.summaryCounts) { AddCounts $json.summaryCounts }
-elseif ($json.counts) { AddCounts $json.counts }
+if ($json.PSObject.Properties['summaryCounts'] -and $json.summaryCounts) { AddCounts $json.summaryCounts }
+elseif ($json.PSObject.Properties['counts'] -and $json.counts) { AddCounts $json.counts }
 
-if ($json.notes) {
+if ($json.PSObject.Properties['notes'] -and $json.notes) {
   $n = $json.notes
   if ($n -is [array]) { foreach ($x in $n) { $lines += ('- Note: {0}' -f $x) } }
   else { $lines += ('- Note: {0}' -f $n) }

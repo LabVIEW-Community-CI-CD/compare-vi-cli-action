@@ -45,6 +45,19 @@ Reusable output keys emitted by the manager step:
 The Windows fixture lane consumes these fields into step summary output and injects them into
 `session-index.json` under `runContext.dockerRuntimeManager` for downstream evidence review.
 
+The manager also bootstraps NI images when missing (`docker pull`) and records local runtime probe
+results per lane (`probes.<lane>.probe`), so evidence includes:
+
+- host OS + Docker start/final context metadata
+- local image presence and digest (`probes.<lane>.bootstrap.localDigest`)
+- probe command outcome (`probes.<lane>.probe.status` / `exitCode`)
+
+Quick local host bootstrap command:
+
+```powershell
+node tools/npm/run-script.mjs docker:ni:windows:bootstrap
+```
+
 ## Manual manifest updates
 
 For intentional fixture updates (outside automation):

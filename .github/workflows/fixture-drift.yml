@@ -60,7 +60,7 @@ jobs:
     runs-on: [self-hosted, Windows, X64, self-hosted-docker]
     needs:
     - preflight-windows
-    timeout-minutes: 6
+    timeout-minutes: 10
     outputs:
       manager_status: ${{ steps.manager.outputs.manager_status }}
       manager_summary_path: ${{ steps.manager.outputs.manager_summary_path }}
@@ -80,6 +80,8 @@ jobs:
         pwsh -NoLogo -NoProfile -File tools/Invoke-DockerRuntimeManager.ps1 `
           -WindowsImage $env:NI_WINDOWS_IMAGE `
           -LinuxImage $env:NI_LINUX_IMAGE `
+          -BootstrapWindowsImage:$true `
+          -BootstrapLinuxImage:$true `
           -OutputJsonPath 'results/fixture-drift/docker-runtime-manager.json' `
           -GitHubOutputPath $env:GITHUB_OUTPUT `
           -StepSummaryPath $env:GITHUB_STEP_SUMMARY
@@ -217,63 +219,14 @@ jobs:
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       run: |
-        $ErrorActionPreference = 'Stop'
-        $requiredLabel = 'self-hosted-docker'
-        $runnerName = '${{ runner.name }}'
-        $repo = '${{ github.repository }}'
-        $runId = '${{ github.run_id }}'
-        $token = $env:GITHUB_TOKEN
-        if ([string]::IsNullOrWhiteSpace($token)) {
-          throw 'GITHUB_TOKEN is required to validate runner labels. Set permissions.actions=read.'
-        }
-
-        $headers = @{
-          Authorization = "Bearer $token"
-          Accept = 'application/vnd.github+json'
-          'X-GitHub-Api-Version' = '2022-11-28'
-        }
-
-        $page = 1
-        $perPage = 100
-        $jobs = @()
-        do {
-          $uri = "https://api.github.com/repos/$repo/actions/runs/$runId/jobs?per_page=$perPage&page=$page"
-          $response = Invoke-RestMethod -Method Get -Uri $uri -Headers $headers -ErrorAction Stop
-          $candidates = @($response.jobs)
-          if ($candidates.Count -gt 0) {
-            $jobs += $candidates
-          }
-          $page++
-        } while ($candidates.Count -eq $perPage)
-
-        $currentJob = $jobs |
-          Where-Object { $_.runner_name -eq $runnerName -and $_.status -eq 'in_progress' } |
-          Select-Object -First 1
-        if (-not $currentJob) {
-          $currentJob = $jobs |
-            Where-Object { $_.runner_name -eq $runnerName } |
-            Sort-Object started_at -Descending |
-            Select-Object -First 1
-        }
-        if (-not $currentJob) {
-          throw ("Unable to resolve current job metadata for runner '{0}' in run {1}. Remediation: verify Actions run-jobs API visibility and rerun fixture-drift." -f $runnerName, $runId)
-        }
-
-        $labels = @($currentJob.labels | ForEach-Object { [string]$_ } | Where-Object { -not [string]::IsNullOrWhiteSpace($_) })
-        $labelsSorted = @($labels | Sort-Object -Unique)
-        $hasRequiredLabel = $labelsSorted -contains $requiredLabel
-        $labelsCsv = $labelsSorted -join ','
-
-        "has_required_label=$($hasRequiredLabel.ToString().ToLowerInvariant())" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
-        "labels=$labelsCsv" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
-        "runner_id=$($currentJob.runner_id)" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
-
-        if (-not $hasRequiredLabel) {
-          $message = "Runner '$runnerName' (id=$($currentJob.runner_id)) is missing required label '$requiredLabel'. Remediation: add the label in Repository Settings > Actions > Runners, then re-run fixture-drift."
-          Write-Host "::error::$message"
-          throw $message
-        }
-        Write-Host ("Runner label contract satisfied for '{0}' (id={1}): {2}" -f $runnerName, $currentJob.runner_id, $labelsCsv)
+        pwsh -NoLogo -NoProfile -File tools/Assert-RunnerLabelContract.ps1 `
+          -Repository '${{ github.repository }}' `
+          -RunId '${{ github.run_id }}' `
+          -RunnerName '${{ runner.name }}' `
+          -RequiredLabel 'self-hosted-docker' `
+          -OutputJsonPath 'results/fixture-drift/runner-label-contract.json' `
+          -GitHubOutputPath $env:GITHUB_OUTPUT `
+          -StepSummaryPath $env:GITHUB_STEP_SUMMARY
 
     - name: Persist docker runtime manager context
       id: docker_manager_context
@@ -541,35 +494,20 @@ jobs:
       if: always()
       shell: pwsh
       run: |
-        $ErrorActionPreference = 'Stop'
-        $resultsDir = 'results/fixture-drift'
-        $sessionPath = Join-Path $resultsDir 'session-index.json'
-        if (-not (Test-Path -LiteralPath $sessionPath -PathType Leaf)) {
-          Write-Host "::warning::session-index.json not found at $sessionPath; docker manager metadata was not attached."
-          exit 0
-        }
-
-        $contextPath = Join-Path $resultsDir 'docker-runtime-manager-context.json'
-        $idx = Get-Content -LiteralPath $sessionPath -Raw | ConvertFrom-Json -Depth 30
-        if (-not $idx.PSObject.Properties['runContext'] -or $null -eq $idx.runContext) {
-          $idx | Add-Member -MemberType NoteProperty -Name 'runContext' -Value ([ordered]@{}) -Force
-        }
-        $idx.runContext.dockerRuntimeManager = [ordered]@{
-          status = [string]$env:DOCKER_MANAGER_STATUS
-          summaryPath = [string]$env:DOCKER_MANAGER_SUMMARY_PATH
-          windowsImageDigest = [string]$env:DOCKER_MANAGER_WINDOWS_IMAGE_DIGEST
-          linuxImageDigest = [string]$env:DOCKER_MANAGER_LINUX_IMAGE_DIGEST
-          startContext = [string]$env:DOCKER_MANAGER_START_CONTEXT
-          finalContext = [string]$env:DOCKER_MANAGER_FINAL_CONTEXT
-          contextArtifactPath = if (Test-Path -LiteralPath $contextPath -PathType Leaf) { $contextPath } else { '' }
-        }
-        $idx.runContext.runnerLabelContract = [ordered]@{
-          requiredLabel = 'self-hosted-docker'
-          hasRequiredLabel = ('${{ steps.runner_label_contract.outputs.has_required_label }}' -eq 'true')
-          labels = @('${{ steps.runner_label_contract.outputs.labels }}' -split ',' | Where-Object { -not [string]::IsNullOrWhiteSpace($_) })
-        }
-        ($idx | ConvertTo-Json -Depth 30) | Set-Content -LiteralPath $sessionPath -Encoding utf8
-        Write-Host "Attached docker manager metadata to session index: $sessionPath"
+        $hasRequiredLabel = ('${{ steps.runner_label_contract.outputs.has_required_label }}' -eq 'true')
+        pwsh -NoLogo -NoProfile -File tools/Update-FixtureDriftSessionIndex.ps1 `
+          -ResultsDir 'results/fixture-drift' `
+          -ContextPath '${{ steps.docker_manager_context.outputs.context_path }}' `
+          -RequiredLabel 'self-hosted-docker' `
+          -HasRequiredLabel:$hasRequiredLabel `
+          -RunnerLabelsCsv '${{ steps.runner_label_contract.outputs.labels }}' `
+          -ManagerStatus $env:DOCKER_MANAGER_STATUS `
+          -ManagerSummaryPath $env:DOCKER_MANAGER_SUMMARY_PATH `
+          -WindowsImageDigest $env:DOCKER_MANAGER_WINDOWS_IMAGE_DIGEST `
+          -LinuxImageDigest $env:DOCKER_MANAGER_LINUX_IMAGE_DIGEST `
+          -StartContext $env:DOCKER_MANAGER_START_CONTEXT `
+          -FinalContext $env:DOCKER_MANAGER_FINAL_CONTEXT `
+          -IgnoreMissingSessionIndex
 
     - name: Wire Session Index (S1)
       if: always()
@@ -660,7 +598,7 @@ jobs:
       if: always()
       shell: pwsh
       run: |
-        $list = 'results/fixture-drift/drift-summary.json;results/fixture-drift/compare-report.html;results/fixture-drift/session-index.json;results/fixture-drift/docker-runtime-manager-context.json;results/fixture-drift/docker-runtime-manager.json'
+        $list = 'results/fixture-drift/drift-summary.json;results/fixture-drift/compare-report.html;results/fixture-drift/session-index.json;results/fixture-drift/docker-runtime-manager-context.json;results/fixture-drift/docker-runtime-manager.json;results/fixture-drift/runner-label-contract.json'
         pwsh -File tools/Write-ArtifactMap.ps1 -PathsList $list -Title 'Artifacts'
 
     - name: Re-run hint
