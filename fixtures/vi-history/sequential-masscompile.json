@@ -1,0 +1,70 @@
+{
+  "schema": "vi-history-sequence-matrix@v1",
+  "description": "Deterministic masscompile-vs-signal sequential history matrix with multi-VI same-commit coverage.",
+  "maxPairs": 8,
+  "commits": [
+    {
+      "id": "masscompile-1",
+      "title": "Masscompile metadata pass 1",
+      "message": "chore: masscompile metadata pass 1",
+      "changes": [
+        {
+          "targetPath": "fixtures/vi-attr/Base.vi",
+          "source": "fixtures/vi-attr/attr/HeadAttr.vi",
+          "requireDiff": false,
+          "minDiffs": 0,
+          "classificationHint": "noise-masscompile"
+        }
+      ]
+    },
+    {
+      "id": "masscompile-2",
+      "title": "Masscompile metadata pass 2",
+      "message": "chore: masscompile metadata pass 2",
+      "changes": [
+        {
+          "targetPath": "fixtures/vi-attr/Base.vi",
+          "source": "fixtures/vi-attr/attr/BaseAttr.vi",
+          "requireDiff": false,
+          "minDiffs": 0,
+          "classificationHint": "noise-masscompile"
+        }
+      ]
+    },
+    {
+      "id": "signal-plus-masscompile",
+      "title": "Signal + masscompile same commit",
+      "message": "feat: signal icon update with metadata pass",
+      "changes": [
+        {
+          "targetPath": "fixtures/vi-attr/Head.vi",
+          "source": "fixtures/vi-stage/connector-pane/Head.vi",
+          "requireDiff": true,
+          "minDiffs": 1,
+          "classificationHint": "signal"
+        },
+        {
+          "targetPath": "fixtures/vi-attr/Base.vi",
+          "source": "fixtures/vi-attr/attr/HeadAttr.vi",
+          "requireDiff": false,
+          "minDiffs": 0,
+          "classificationHint": "noise-masscompile"
+        }
+      ]
+    },
+    {
+      "id": "masscompile-3",
+      "title": "Masscompile metadata pass 3",
+      "message": "chore: masscompile metadata pass 3",
+      "changes": [
+        {
+          "targetPath": "fixtures/vi-attr/Base.vi",
+          "source": "fixtures/vi-attr/attr/BaseAttr.vi",
+          "requireDiff": false,
+          "minDiffs": 0,
+          "classificationHint": "noise-masscompile"
+        }
+      ]
+    }
+  ]
+}

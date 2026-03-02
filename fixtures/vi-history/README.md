@@ -51,6 +51,16 @@ Extend the `steps` list when new scenarios are required; tests ensure every refe
 }
 ```
 
+## `sequential-masscompile.json`
+
+- Schema: `vi-history-sequence-matrix@v1`
+- Defines an ordered commit chain that alternates masscompile-like metadata
+  updates with one mixed signal+noise commit.
+- Includes a multi-VI same-commit step (`signal-plus-masscompile`) where at
+  least two VI targets are updated in one commit.
+- Consumed by `tools/Test-PRVIHistorySmoke.ps1` when
+  `-Scenario sequential-masscompile` is selected.
+
 ## Policy Gate Semantics
 
 `tools/Test-PRVIHistorySmoke.ps1` evaluates each expected target with a hybrid
