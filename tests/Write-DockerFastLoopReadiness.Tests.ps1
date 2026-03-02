@@ -45,6 +45,10 @@ Describe 'Write-DockerFastLoopReadiness.ps1' -Tag 'Unit' {
           gateOutcome = 'pass'
           failureClass = 'none'
           isDiff = $true
+          diffEvidenceSource = 'html'
+          diffImageCount = 2
+          extractedReportPath = 'tests/results/local-parity/history/windows-report.html'
+          containerExportStatus = 'success'
         },
         [ordered]@{
           name = 'linux-runtime-preflight'
@@ -78,7 +82,10 @@ Describe 'Write-DockerFastLoopReadiness.ps1' -Tag 'Unit' {
     $readiness.verdict | Should -Be 'ready-to-push'
     $readiness.recommendation | Should -Be 'push'
     $readiness.diffStepCount | Should -Be 1
+    $readiness.diffEvidenceSteps | Should -Be 1
     $readiness.diffLaneCount | Should -Be 1
+    $readiness.extractedReportCount | Should -Be 1
+    $readiness.containerExportFailureCount | Should -Be 0
     $readiness.runtimeFailureCount | Should -Be 0
     $readiness.toolFailureCount | Should -Be 0
     $readiness.lanes.windows.diffDetected | Should -BeTrue
@@ -109,6 +116,7 @@ Describe 'Write-DockerFastLoopReadiness.ps1' -Tag 'Unit' {
           gateOutcome = 'fail'
           failureClass = 'cli/tool'
           isDiff = $false
+          containerExportStatus = 'failed'
         },
         [ordered]@{
           name = 'linux-runtime-preflight'
@@ -142,6 +150,7 @@ Describe 'Write-DockerFastLoopReadiness.ps1' -Tag 'Unit' {
     $readiness.verdict | Should -Be 'not-ready'
     $readiness.recommendation | Should -Be 'do-not-push'
     $readiness.toolFailureCount | Should -Be 1
+    $readiness.containerExportFailureCount | Should -Be 1
     $readiness.runtimeFailureCount | Should -Be 0
     $readiness.lanes.windows.failureClass | Should -Be 'cli/tool'
   }

@@ -247,6 +247,9 @@ function Get-ClassificationAggregate {
   param([Parameter(Mandatory)][object[]]$Steps)
 
   $diffStepCount = 0
+  $diffEvidenceSteps = 0
+  $extractedReportCount = 0
+  $containerExportFailureCount = 0
   $runtimeFailureCount = 0
   $toolFailureCount = 0
   $timeoutFailureCount = 0
@@ -256,6 +259,18 @@ function Get-ClassificationAggregate {
     if (-not $step) { continue }
     if ($step.PSObject.Properties['isDiff'] -and [bool]$step.isDiff) {
       $diffStepCount++
+    }
+    $diffEvidenceSource = if ($step.PSObject.Properties['diffEvidenceSource']) { [string]$step.diffEvidenceSource } else { '' }
+    if ([string]::Equals($diffEvidenceSource, 'html', [System.StringComparison]::OrdinalIgnoreCase)) {
+      $diffEvidenceSteps++
+    }
+    $extractedReportPath = if ($step.PSObject.Properties['extractedReportPath']) { [string]$step.extractedReportPath } else { '' }
+    if (-not [string]::IsNullOrWhiteSpace($extractedReportPath)) {
+      $extractedReportCount++
+    }
+    $containerExportStatus = if ($step.PSObject.Properties['containerExportStatus']) { [string]$step.containerExportStatus } else { '' }
+    if ($containerExportStatus -in @('failed', 'partial')) {
+      $containerExportFailureCount++
     }
     $failureClass = if ($step.PSObject.Properties['failureClass']) { [string]$step.failureClass } else { 'none' }
     switch ($failureClass) {
@@ -269,6 +284,9 @@ function Get-ClassificationAggregate {
 
   [ordered]@{
     diffStepCount = [int]$diffStepCount
+    diffEvidenceSteps = [int]$diffEvidenceSteps
+    extractedReportCount = [int]$extractedReportCount
+    containerExportFailureCount = [int]$containerExportFailureCount
     runtimeFailureCount = [int]$runtimeFailureCount
     toolFailureCount = [int]$toolFailureCount
     timeoutFailureCount = [int]$timeoutFailureCount
@@ -375,7 +393,10 @@ $readiness = [ordered]@{
   schema = 'vi-history/docker-fast-loop-readiness@v1'
   generatedAt = (Get-Date).ToUniversalTime().ToString('o')
   diffStepCount = [int]$classification.diffStepCount
+  diffEvidenceSteps = [int]$classification.diffEvidenceSteps
   diffLaneCount = [int]$diffLaneCount
+  extractedReportCount = [int]$classification.extractedReportCount
+  containerExportFailureCount = [int]$classification.containerExportFailureCount
   runtimeFailureCount = [int]$classification.runtimeFailureCount
   toolFailureCount = [int]$classification.toolFailureCount
   hardStopTriggered = [bool]$hardStopTriggered
@@ -394,6 +415,9 @@ $readiness = [ordered]@{
     hardStopTriggered = [bool]$hardStopTriggered
     hardStopReason = $hardStopReason
     diffStepCount = [int]$classification.diffStepCount
+    diffEvidenceSteps = [int]$classification.diffEvidenceSteps
+    extractedReportCount = [int]$classification.extractedReportCount
+    containerExportFailureCount = [int]$classification.containerExportFailureCount
     runtimeFailureCount = [int]$classification.runtimeFailureCount
     toolFailureCount = [int]$classification.toolFailureCount
     timeoutFailureCount = [int]$classification.timeoutFailureCount
@@ -445,7 +469,10 @@ if (-not [string]::IsNullOrWhiteSpace($hardStopReason)) {
   $mdLines.Add(('| Hard Stop Reason | `{0}` |' -f $hardStopReason)) | Out-Null
 }
 $mdLines.Add(('| Diff Step Count | `{0}` |' -f $readiness.diffStepCount)) | Out-Null
+$mdLines.Add(('| Diff Evidence Steps | `{0}` |' -f $readiness.diffEvidenceSteps)) | Out-Null
 $mdLines.Add(('| Diff Lane Count | `{0}` |' -f $readiness.diffLaneCount)) | Out-Null
+$mdLines.Add(('| Extracted Report Count | `{0}` |' -f $readiness.extractedReportCount)) | Out-Null
+$mdLines.Add(('| Container Export Failure Count | `{0}` |' -f $readiness.containerExportFailureCount)) | Out-Null
 $mdLines.Add(('| Runtime Failure Count | `{0}` |' -f $readiness.runtimeFailureCount)) | Out-Null
 $mdLines.Add(('| Tool Failure Count | `{0}` |' -f $readiness.toolFailureCount)) | Out-Null
 $mdLines.Add(('| Timeout Failure Count | `{0}` |' -f $readiness.run.timeoutFailureCount)) | Out-Null
@@ -474,8 +501,8 @@ foreach ($laneName in @('windows', 'linux')) {
 }
 $mdLines.Add('') | Out-Null
 
-$mdLines.Add('| Step | Lane | Status | Exit | Result Class | Gate | Diff | Failure Class | Duration (s) | Hist Median (s) | Hist P90 (s) |') | Out-Null
-$mdLines.Add('| --- | --- | --- | ---: | --- | --- | --- | --- | ---: | ---: | ---: |') | Out-Null
+$mdLines.Add('| Step | Lane | Status | Exit | Result Class | Gate | Diff | Diff Source | Diff Images | Export | Failure Class | Duration (s) | Hist Median (s) | Hist P90 (s) |') | Out-Null
+$mdLines.Add('| --- | --- | --- | ---: | --- | --- | --- | --- | ---: | --- | --- | ---: | ---: | ---: |') | Out-Null
 foreach ($step in @($steps)) {
   $stepName = if ($step.PSObject.Properties['name']) { [string]$step.name } else { '<unknown>' }
   $laneName = Get-StepLane -StepName $stepName
@@ -485,10 +512,15 @@ foreach ($step in @($steps)) {
   $resultClassValue = if ($step.PSObject.Properties['resultClass']) { [string]$step.resultClass } else { '' }
   $gateValue = if ($step.PSObject.Properties['gateOutcome']) { [string]$step.gateOutcome } else { '' }
   $isDiffValue = if ($step.PSObject.Properties['isDiff']) { [bool]$step.isDiff } else { $false }
+  $diffEvidenceSourceValue = if ($step.PSObject.Properties['diffEvidenceSource']) { [string]$step.diffEvidenceSource } else { '' }
+  if ([string]::IsNullOrWhiteSpace($diffEvidenceSourceValue)) { $diffEvidenceSourceValue = '-' }
+  $diffImageCountValue = if ($step.PSObject.Properties['diffImageCount']) { [int]$step.diffImageCount } else { 0 }
+  $containerExportStatusValue = if ($step.PSObject.Properties['containerExportStatus']) { [string]$step.containerExportStatus } else { '' }
+  if ([string]::IsNullOrWhiteSpace($containerExportStatusValue)) { $containerExportStatusValue = '-' }
   $failureClassValue = if ($step.PSObject.Properties['failureClass']) { [string]$step.failureClass } else { '' }
   $durationMs = if ($step.PSObject.Properties['durationMs']) { [double]$step.durationMs } else { 0.0 }
   $histStep = if ($historical.steps.ContainsKey($stepName)) { $historical.steps[$stepName] } else { [ordered]@{ medianMs = 0; p90Ms = 0 } }
-  $mdLines.Add(('| `{0}` | {1} | `{2}` | `{3}` | `{4}` | `{5}` | `{6}` | `{7}` | {8} | {9} | {10} |' -f `
+  $mdLines.Add(('| `{0}` | {1} | `{2}` | `{3}` | `{4}` | `{5}` | `{6}` | `{7}` | `{8}` | `{9}` | `{10}` | {11} | {12} | {13} |' -f `
       $stepName, `
       $laneName, `
       $statusValue, `
@@ -496,6 +528,9 @@ foreach ($step in @($steps)) {
       $resultClassValue, `
       $gateValue, `
       $isDiffValue, `
+      $diffEvidenceSourceValue, `
+      $diffImageCountValue, `
+      $containerExportStatusValue, `
       $failureClassValue, `
       (Convert-ToSecondsString -Milliseconds $durationMs), `
       (Convert-ToSecondsString -Milliseconds ([double]$histStep.medianMs)), `

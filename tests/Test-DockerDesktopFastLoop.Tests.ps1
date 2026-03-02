@@ -264,7 +264,8 @@ if (-not [string]::IsNullOrWhiteSpace($GitHubOutputPath)) {
     {
       "id": "sample",
       "mode": "attribute",
-      "source": "fixtures/head.vi"
+      "source": "fixtures/head.vi",
+      "requireDiff": true
     }
   ]
 }
@@ -352,6 +353,85 @@ if (-not [string]::IsNullOrWhiteSpace($GitHubOutputPath)) {
       $readiness.verdict | Should -Be 'ready-to-push'
       $readiness.diffStepCount | Should -Be 1
       $readiness.diffLaneCount | Should -Be 1
+    } finally {
+      Pop-Location | Out-Null
+    }
+  }
+
+  It 'fails history-core when no scenario is marked requireDiff=true' {
+    $repoRoot = Join-Path $TestDrive 'fast-loop-history-require-diff'
+    New-HarnessRepo -RootPath $repoRoot
+    $harnessPath = Join-Path $repoRoot 'fixtures/vi-history/pr-harness.json'
+    Set-Content -LiteralPath $harnessPath -Encoding utf8 -Value @'
+{
+  "schema": "vi-history-pr-harness@v1",
+  "scenarios": [
+    {
+      "id": "sample",
+      "mode": "attribute",
+      "source": "fixtures/head.vi",
+      "requireDiff": false
+    }
+  ]
+}
+'@
+
+    Push-Location $repoRoot
+    try {
+      $resultsRoot = Join-Path $repoRoot 'tests/results/local-parity'
+      $output = & pwsh -NoLogo -NoProfile -File (Join-Path $repoRoot 'tools' 'Test-DockerDesktopFastLoop.ps1') `
+        -ResultsRoot $resultsRoot `
+        -SkipWindowsProbe `
+        -SkipLinuxProbe `
+        -HistoryScenarioSet history-core 2>&1
+      $LASTEXITCODE | Should -Not -Be 0
+      ($output -join "`n") | Should -Match 'requireDiff=true'
+    } finally {
+      Pop-Location | Out-Null
+    }
+  }
+
+  It 'fails sequential scenario when sequential steps are not marked requireDiff=true' {
+    $repoRoot = Join-Path $TestDrive 'fast-loop-sequential-require-diff'
+    New-HarnessRepo -RootPath $repoRoot
+
+    $harnessPath = Join-Path $repoRoot 'fixtures/vi-history/pr-harness.json'
+    Set-Content -LiteralPath $harnessPath -Encoding utf8 -Value @'
+{
+  "schema": "vi-history-pr-harness@v1",
+  "scenarios": [
+    {
+      "id": "sequential",
+      "mode": "sequential",
+      "requireDiff": true
+    }
+  ]
+}
+'@
+    $sequentialPath = Join-Path $repoRoot 'fixtures/vi-history/sequential.json'
+    Set-Content -LiteralPath $sequentialPath -Encoding utf8 -Value @'
+{
+  "schema": "vi-history-sequence@v1",
+  "steps": [
+    {
+      "id": "s1",
+      "source": "fixtures/head.vi",
+      "requireDiff": false
+    }
+  ]
+}
+'@
+
+    Push-Location $repoRoot
+    try {
+      $resultsRoot = Join-Path $repoRoot 'tests/results/local-parity'
+      $output = & pwsh -NoLogo -NoProfile -File (Join-Path $repoRoot 'tools' 'Test-DockerDesktopFastLoop.ps1') `
+        -ResultsRoot $resultsRoot `
+        -SkipWindowsProbe `
+        -SkipLinuxProbe `
+        -HistoryScenarioSet history-core 2>&1
+      $LASTEXITCODE | Should -Not -Be 0
+      ($output -join "`n") | Should -Match 'resolved to empty after requireDiff=true filtering'
     } finally {
       Pop-Location | Out-Null
     }
