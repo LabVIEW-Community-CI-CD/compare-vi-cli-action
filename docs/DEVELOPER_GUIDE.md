@@ -164,6 +164,14 @@ Quick reference for building, testing, and releasing the LVCompare composite act
         - strict targets (`requireDiff=true`) are hard-fail
         - smoke targets (`requireDiff=false`) are non-blocking warnings
         - summary output includes `Policy` (`vi-history-policy-gate@v1`) with separated strict failures and smoke warnings
+        Smoke KPI artifacts are additive and emitted per run:
+        - `tests/results/_agent/smoke/vi-history/benchmarks/vi-history-benchmark-*.json`
+          (`schema: vi-history-benchmark@v1`)
+        - `tests/results/_agent/smoke/vi-history/benchmarks/vi-history-benchmark-delta-*.json`
+          (`schema: vi-history-benchmark-delta@v1`)
+        - `tests/results/_agent/smoke/vi-history/benchmarks/vi-history-benchmark-delta-*.md`
+          (PR/issue evidence comment body)
+        Use `-EvidenceIssueNumber <n>` to mirror KPI delta comments to a tracking issue.
         Extractor toggles:
         - `PR_VI_HISTORY_EXTRACT_REPORT_IMAGES`
         - `VI_HISTORY_EXTRACT_REPORT_IMAGES`
