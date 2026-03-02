@@ -261,6 +261,26 @@ function Get-VmmemProcesses {
   return $items.ToArray()
 }
 
+function Get-DockerBackendProcesses {
+  $items = New-Object System.Collections.Generic.List[object]
+  if (-not $IsWindows) { return @() }
+
+  try {
+    $procs = Get-Process -Name 'com.docker.backend','com.docker.proxy','Docker Desktop' -ErrorAction SilentlyContinue
+    foreach ($proc in @($procs)) {
+      $items.Add([ordered]@{
+        name = $proc.ProcessName
+        id = $proc.Id
+        cpu = [double]$proc.CPU
+        wsMb = [math]::Round(($proc.WorkingSet64 / 1MB), 2)
+        startUtc = if ($proc.StartTime) { $proc.StartTime.ToUniversalTime().ToString('o') } else { $null }
+      }) | Out-Null
+    }
+  } catch {}
+
+  return $items.ToArray()
+}
+
 function Get-RunningContainers {
   $items = New-Object System.Collections.Generic.List[object]
   try {
@@ -313,6 +333,59 @@ function Resolve-DockerCliPath {
     }
   }
   return $null
+}
+
+function Invoke-DockerServiceRecovery {
+  [CmdletBinding()]
+  param()
+
+  $result = [ordered]@{
+    attempted = $false
+    steps = @()
+  }
+
+  if (-not $IsWindows) {
+    return [pscustomobject]$result
+  }
+
+  $result.attempted = $true
+  $steps = New-Object System.Collections.Generic.List[string]
+
+  foreach ($serviceName in @('com.docker.service', 'docker')) {
+    try {
+      $svc = Get-Service -Name $serviceName -ErrorAction SilentlyContinue
+      if ($null -eq $svc) {
+        $steps.Add(("service {0}: not-found" -f $serviceName)) | Out-Null
+        continue
+      }
+
+      if ($svc.Status -ne 'Running') {
+        Start-Service -Name $serviceName -ErrorAction Stop
+        $steps.Add(("service {0}: started" -f $serviceName)) | Out-Null
+      } else {
+        Restart-Service -Name $serviceName -Force -ErrorAction Stop
+        $steps.Add(("service {0}: restarted" -f $serviceName)) | Out-Null
+      }
+    } catch {
+      $steps.Add(("service {0}: failed ({1})" -f $serviceName, $_.Exception.Message)) | Out-Null
+    }
+  }
+
+  $dockerCli = Resolve-DockerCliPath
+  if ([string]::IsNullOrWhiteSpace($dockerCli)) {
+    $steps.Add('docker cli shutdown: docker-cli-not-found') | Out-Null
+  } else {
+    try {
+      $null = & $dockerCli -Shutdown 2>&1
+      $exitCode = [int]$LASTEXITCODE
+      $steps.Add(("docker cli shutdown: exit={0}" -f $exitCode)) | Out-Null
+    } catch {
+      $steps.Add(("docker cli shutdown: failed ({0})" -f $_.Exception.Message)) | Out-Null
+    }
+  }
+
+  $result.steps = @($steps.ToArray())
+  return [pscustomobject]$result
 }
 
 function Invoke-DockerEngineSwitch {
@@ -592,6 +665,7 @@ $snapshot = [ordered]@{
     runningContainers = @(Get-RunningContainers)
     wslDistributions = @(Get-WslDistributions)
     vmmemProcesses = @(Get-VmmemProcesses)
+    dockerBackendProcesses = @(Get-DockerBackendProcesses)
   }
   repairActions = @($repairActions.ToArray())
   result = [ordered]@{
@@ -617,3 +691,4 @@ Write-Host ("[runtime-determinism] status={0} expected={1}/{2} observed={3}/{4} 
 if ($resultStatus -eq 'mismatch-failed') {
   throw ($reason ?? 'Runtime determinism check failed.')
 }
+
