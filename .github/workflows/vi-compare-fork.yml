@@ -22,6 +22,8 @@ jobs:
       BASE_SHA: ${{ github.event.pull_request.base.sha }}
       HEAD_SHA: ${{ github.event.pull_request.head.sha }}
       FETCH_DEPTH: 20
+      NI_WINDOWS_IMAGE: nationalinstruments/labview:2026q1-windows
+      COMPARE_TIMEOUT_SECONDS: 600
     steps:
       - name: Checkout base (parent repository)
         uses: actions/checkout@v4
@@ -122,8 +124,73 @@ jobs:
 
           $stagedPairs | ConvertTo-Json -Depth 6 | Set-Content -LiteralPath $resultsPath -Encoding UTF8
 
+          $containerCompareScript = Join-Path $repoRoot 'tools' 'Run-NIWindowsContainerCompare.ps1'
+          if (-not (Test-Path -LiteralPath $containerCompareScript -PathType Leaf)) {
+            throw "Container compare script not found: $containerCompareScript"
+          }
+
+          $image = [string]$env:NI_WINDOWS_IMAGE
+          if ([string]::IsNullOrWhiteSpace($image)) {
+            throw 'NI_WINDOWS_IMAGE is not set.'
+          }
+          & docker image inspect $image *> $null
+          if ($LASTEXITCODE -ne 0) {
+            Write-Host ("Image not present locally; pulling {0}" -f $image)
+            & docker pull $image
+            if ($LASTEXITCODE -ne 0) {
+              throw ("Failed to pull image: {0}" -f $image)
+            }
+          }
+
+          $invokeContainerCompare = {
+            param(
+              [string]$BaseVi,
+              [string]$HeadVi,
+              [string]$OutputDir,
+              [switch]$AllowSameLeaf,
+              [switch]$RenderReport,
+              [string[]]$Flags,
+              [switch]$ReplaceFlags,
+              [ValidateSet('full','legacy')]
+              [string]$NoiseProfile = 'full',
+              [Nullable[int]]$TimeoutSeconds
+            )
+
+            $reportPath = Join-Path $OutputDir 'compare-report.html'
+            $runtimeSnapshotPath = Join-Path $OutputDir 'runtime-determinism.json'
+            $effectiveTimeout = if ($TimeoutSeconds -and $TimeoutSeconds -gt 0) { [int]$TimeoutSeconds } else { [int]$env:COMPARE_TIMEOUT_SECONDS }
+
+            $args = @(
+              '-NoLogo', '-NoProfile',
+              '-File', $containerCompareScript,
+              '-BaseVi', $BaseVi,
+              '-HeadVi', $HeadVi,
+              '-Image', $env:NI_WINDOWS_IMAGE,
+              '-ReportPath', $reportPath,
+              '-ReportType', 'html',
+              '-RuntimeSnapshotPath', $runtimeSnapshotPath,
+              '-TimeoutSeconds', [string]$effectiveTimeout
+            )
+            if ($Flags) {
+              $args += '-Flags'
+              $args += $Flags
+            }
+
+            $output = & pwsh @args 2>&1
+            if ($output) {
+              $output | ForEach-Object { Write-Host $_ }
+            }
+
+            $capturePath = Join-Path $OutputDir 'ni-windows-container-capture.json'
+            [pscustomobject]@{
+              ExitCode    = $LASTEXITCODE
+              ReportPath  = $reportPath
+              CapturePath = $(if (Test-Path -LiteralPath $capturePath -PathType Leaf) { $capturePath } else { $null })
+            }
+          }.GetNewClosure()
+
           $compareScript = Join-Path $repoRoot 'tools' 'Run-StagedLVCompare.ps1'
-          & $compareScript -ResultsPath $resultsPath -ArtifactsDir $artifactsDir -RenderReport | Out-Null
+          & $compareScript -ResultsPath $resultsPath -ArtifactsDir $artifactsDir -RenderReport -InvokeLVCompare $invokeContainerCompare | Out-Null
 
           $compareJsonPath = Join-Path $artifactsDir 'vi-staging-compare.json'
           if (-not (Test-Path -LiteralPath $compareJsonPath -PathType Leaf)) {
