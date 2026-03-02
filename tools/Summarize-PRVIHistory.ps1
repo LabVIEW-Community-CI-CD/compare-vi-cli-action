@@ -156,6 +156,131 @@ function Get-DurationDisplay {
     }
 }
 
+function Get-PercentileSeconds {
+    param(
+        [double[]]$SortedValues,
+        [ValidateRange(0.0, 1.0)][double]$Percentile
+    )
+
+    if (-not $SortedValues -or $SortedValues.Count -eq 0) {
+        return $null
+    }
+
+    $index = [Math]::Ceiling($SortedValues.Count * $Percentile) - 1
+    if ($index -lt 0) { $index = 0 }
+    if ($index -ge $SortedValues.Count) { $index = $SortedValues.Count - 1 }
+    return [Math]::Round([double]$SortedValues[$index], 3)
+}
+
+function Get-PairKpiEnvelope {
+    param(
+        [AllowNull()]
+        [object[]]$Pairs,
+        [AllowNull()]
+        [object]$TimingSummary,
+        [bool]$CommentTruncated = $false,
+        [string]$TruncationReason = 'none'
+    )
+
+    $pairRows = @($Pairs)
+    $diffPairs = 0
+    $signalDiffPairs = 0
+    $noiseMasscompileDiffPairs = 0
+    $noiseCosmeticDiffPairs = 0
+    $previewPresentPairs = 0
+    $durations = New-Object System.Collections.Generic.List[double]
+
+    foreach ($pair in $pairRows) {
+        if (-not $pair) { continue }
+
+        $diffDetected = $false
+        if ($pair.PSObject.Properties['diff']) {
+            $diffDetected = [bool]$pair.diff
+        }
+
+        $classification = 'unknown'
+        if ($pair.PSObject.Properties['classification'] -and $pair.classification) {
+            $classification = [string]$pair.classification
+        }
+        $classificationKey = $classification.Trim().ToLowerInvariant()
+
+        if ($diffDetected) {
+            $diffPairs++
+            switch ($classificationKey) {
+                'signal'            { $signalDiffPairs++ }
+                'noise-masscompile' { $noiseMasscompileDiffPairs++ }
+                'noise-cosmetic'    { $noiseCosmeticDiffPairs++ }
+            }
+        }
+
+        $previewStatus = if ($pair.PSObject.Properties['previewStatus'] -and $pair.previewStatus) {
+            [string]$pair.previewStatus
+        } else {
+            'unknown'
+        }
+        if ($previewStatus.Trim().ToLowerInvariant() -eq 'present') {
+            $previewPresentPairs++
+        }
+
+        if ($pair.PSObject.Properties['durationSeconds']) {
+            try {
+                $durationValue = [double]$pair.durationSeconds
+                if (-not [double]::IsNaN($durationValue) -and -not [double]::IsInfinity($durationValue) -and $durationValue -ge 0) {
+                    $durations.Add([double]$durationValue) | Out-Null
+                }
+            } catch {
+            }
+        }
+    }
+
+    $signalRecall = $null
+    if ($diffPairs -gt 0) {
+        $signalRecall = [Math]::Round(($signalDiffPairs / [double]$diffPairs), 6)
+    }
+
+    $noisePrecisionMasscompile = $null
+    $noiseDiffPairs = $noiseMasscompileDiffPairs + $noiseCosmeticDiffPairs
+    if ($noiseDiffPairs -gt 0) {
+        $noisePrecisionMasscompile = [Math]::Round(($noiseMasscompileDiffPairs / [double]$noiseDiffPairs), 6)
+    }
+
+    $previewCoverage = $null
+    if ($pairRows.Count -gt 0) {
+        $previewCoverage = [Math]::Round(($previewPresentPairs / [double]$pairRows.Count), 6)
+    }
+
+    $timingP50Seconds = $null
+    $timingP95Seconds = $null
+    $sortedDurations = @($durations | Sort-Object)
+    if ($sortedDurations.Count -gt 0) {
+        $timingP50Seconds = Get-PercentileSeconds -SortedValues $sortedDurations -Percentile 0.5
+        $timingP95Seconds = Get-PercentileSeconds -SortedValues $sortedDurations -Percentile 0.95
+    } elseif ($TimingSummary) {
+        if ($TimingSummary.PSObject.Properties['medianSeconds'] -and $null -ne $TimingSummary.medianSeconds) {
+            $timingP50Seconds = [double]$TimingSummary.medianSeconds
+        }
+        if ($TimingSummary.PSObject.Properties['p95Seconds'] -and $null -ne $TimingSummary.p95Seconds) {
+            $timingP95Seconds = [double]$TimingSummary.p95Seconds
+        }
+    }
+
+    $normalizedReason = if ([string]::IsNullOrWhiteSpace($TruncationReason)) {
+        if ($CommentTruncated) { 'unspecified' } else { 'none' }
+    } else {
+        $TruncationReason
+    }
+
+    [pscustomobject]@{
+        signalRecall              = $signalRecall
+        noisePrecisionMasscompile = $noisePrecisionMasscompile
+        previewCoverage           = $previewCoverage
+        timingP50Seconds          = $timingP50Seconds
+        timingP95Seconds          = $timingP95Seconds
+        commentTruncated          = [bool]$CommentTruncated
+        truncationReason          = $normalizedReason
+    }
+}
+
 function Get-CommitTimelineRows {
     param(
         [AllowNull()]$Summary,
@@ -480,6 +605,16 @@ if ($summary.PSObject.Properties['timing'] -and $summary.timing) {
     $timingSummary = $summary.totals.timing
 }
 
+$commentTruncated = ($markdownTruncated -or $timelineRowsDropped -gt 0)
+$truncationReason = if ($markdownTruncated) {
+    'max-markdown-length'
+} elseif ($timelineRowsDropped -gt 0) {
+    'timeline-row-drop'
+} else {
+    'none'
+}
+$kpiEnvelope = Get-PairKpiEnvelope -Pairs $activeTimelineRows -TimingSummary $timingSummary -CommentTruncated:$commentTruncated -TruncationReason $truncationReason
+
 $result = [pscustomobject]@{
     totals = [pscustomobject]@{
         targets     = $targets.Count
@@ -497,6 +632,7 @@ $result = [pscustomobject]@{
     targets  = $targets
     pairTimeline = $activeTimelineRows
     previews = $previewEntries
+    kpi      = $kpiEnvelope
     markdown = $markdown
 }
 

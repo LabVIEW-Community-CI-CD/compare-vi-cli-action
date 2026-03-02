@@ -146,6 +146,17 @@ Quick reference for building, testing, and releasing the LVCompare composite act
         The summary contract now includes additive image metadata for report rendering:
         - target node `reportImages` (`enabled`, `indexPath`, `previewCount`, `previews[]`)
         - totals `previewImages` and `markdownTruncated` in `pr-vi-history-summary@v1`
+        - per-pair rows under `pairTimeline[]`:
+          `targetPath`, `baseRef`, `headRef`, `classification`, `diff`, `durationSeconds`,
+          `previewStatus`, `reportPath`, `imageIndexPath`
+        - run-level `kpi` envelope:
+          `signalRecall`, `noisePrecisionMasscompile`, `previewCoverage`,
+          `timingP50Seconds`, `timingP95Seconds`, `commentTruncated`, `truncationReason`
+        Classification enum contract for `pairTimeline[].classification`:
+        - `signal`
+        - `noise-masscompile`
+        - `noise-cosmetic`
+        - `unknown`
         The same helper emits a `### Mobile Preview` section in the PR comment/summary markdown when previews are
         available, and writes extracted files to `tests/results/pr-vi-history/<target>/previews/` with index contract
         `pr-vi-history-image-index@v1`.

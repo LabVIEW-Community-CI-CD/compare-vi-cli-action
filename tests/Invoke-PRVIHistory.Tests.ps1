@@ -106,6 +106,8 @@ Describe 'Invoke-PRVIHistory.ps1' {
         $result.totals.completed | Should -Be 1
         $result.totals.diffTargets | Should -Be 1
         $result.targets.Count | Should -Be 1
+        $result.kpi.commentTruncated | Should -BeFalse
+        $result.kpi.truncationReason | Should -Be 'none'
 
         $target = $result.targets[0]
         $target.status | Should -Be 'completed'
@@ -406,6 +408,13 @@ Describe 'Invoke-PRVIHistory.ps1' {
         $result.targets[0].timing.medianSeconds | Should -Be 2
         $result.totals.timing.totalSeconds | Should -Be 4
         $result.estimatedCompareTime.seconds | Should -Be 2
+        $result.kpi.signalRecall | Should -Be 0.5
+        $result.kpi.noisePrecisionMasscompile | Should -Be 1
+        $result.kpi.previewCoverage | Should -Be 0
+        $result.kpi.timingP50Seconds | Should -Be 1.25
+        $result.kpi.timingP95Seconds | Should -Be 2.75
+        $result.kpi.commentTruncated | Should -BeFalse
+        $result.kpi.truncationReason | Should -Be 'none'
     }
 
     It 'prefers repo-relative target paths when the VI resides in the repository' {

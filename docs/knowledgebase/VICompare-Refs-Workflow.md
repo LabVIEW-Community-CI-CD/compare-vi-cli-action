@@ -201,9 +201,46 @@ gh workflow run vi-compare-refs.yml `
   rendering is skipped or fails, the Markdown path still points at the fallback report so consumers always have a
   summary to ingest. A compressed `category-counts-json` blob is also published so downstream automation can react to runs
   dominated by cosmetic noise without re-reading the manifests.
-- History summary JSON (`tests/results/pr-vi-history/vi-history-summary.json`) now adds `targets[].reportImages` and
-  totals `previewImages` / `markdownTruncated` so downstream checks can verify image extraction and comment-size
-  truncation deterministically.
+- History summary JSON (`tests/results/pr-vi-history/vi-history-summary.json`) now adds:
+  - `targets[].reportImages` for per-target extraction metadata.
+  - `pairTimeline[]` with additive per-pair contract fields:
+    `targetPath`, `baseRef`, `headRef`, `classification`, `diff`, `durationSeconds`,
+    `previewStatus`, `reportPath`, `imageIndexPath`.
+  - top-level `kpi` envelope:
+    `signalRecall`, `noisePrecisionMasscompile`, `previewCoverage`,
+    `timingP50Seconds`, `timingP95Seconds`, `commentTruncated`, `truncationReason`.
+  - classification enum for `pairTimeline[].classification`:
+    `signal | noise-masscompile | noise-cosmetic | unknown`.
+  - totals `previewImages` / `markdownTruncated` so downstream checks can verify image extraction and comment-size
+    truncation deterministically.
+- Minimal example (additive fields only):
+  ```json
+  {
+    "schema": "pr-vi-history-summary@v1",
+    "pairTimeline": [
+      {
+        "targetPath": "fixtures/vi-attr/Head.vi",
+        "baseRef": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "headRef": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+        "classification": "signal",
+        "diff": true,
+        "durationSeconds": 1.25,
+        "previewStatus": "present",
+        "reportPath": "tests/results/pr-vi-history/01.../history-report.html",
+        "imageIndexPath": "tests/results/pr-vi-history/01.../vi-history-image-index.json"
+      }
+    ],
+    "kpi": {
+      "signalRecall": 1.0,
+      "noisePrecisionMasscompile": null,
+      "previewCoverage": 1.0,
+      "timingP50Seconds": 1.25,
+      "timingP95Seconds": 1.25,
+      "commentTruncated": false,
+      "truncationReason": "none"
+    }
+  }
+  ```
 - Per-mode manifests live under `tests/results/ref-compare/history/<mode>/manifest.json`
   (`schema: vi-compare/history@v1`) and enumerate the commit pairs, summaries, and LVCompare outcomes.
 - Per-iteration summaries (`*-summary.json`) live beside the mode manifest
