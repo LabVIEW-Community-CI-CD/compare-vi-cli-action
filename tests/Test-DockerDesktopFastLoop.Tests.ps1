@@ -591,14 +591,14 @@ if (-not [string]::IsNullOrWhiteSpace($GitHubOutputPath)) {
     }
   }
 
-  It 'classifies timeout failures as blocking in summary metadata' {
+  It 'normalizes conflicting timeout classification to non-zero exit telemetry' {
     $repoRoot = Join-Path $TestDrive 'fast-loop-timeout-classification'
     New-HarnessRepo -RootPath $repoRoot
 
     Push-Location $repoRoot
     try {
       $resultsRoot = Join-Path $repoRoot 'tests/results/local-parity'
-      $env:FASTLOOP_WINDOWS_EXIT = '124'
+      $env:FASTLOOP_WINDOWS_EXIT = '0'
       $env:FASTLOOP_WINDOWS_STATUS = 'timeout'
       $env:FASTLOOP_WINDOWS_RESULT_CLASS = 'failure-timeout'
       $env:FASTLOOP_WINDOWS_GATE_OUTCOME = 'fail'
@@ -622,6 +622,64 @@ if (-not [string]::IsNullOrWhiteSpace($GitHubOutputPath)) {
       $summary.steps.Count | Should -BeGreaterThan 0
       $summary.steps[0].failureClass | Should -Be 'timeout'
       $summary.steps[0].resultClass | Should -Be 'failure-timeout'
+      $summary.steps[0].exitCode | Should -Be 124
+      $summary.steps[0].gateOutcome | Should -Be 'fail'
+    } finally {
+      Remove-Item Env:FASTLOOP_WINDOWS_EXIT -ErrorAction SilentlyContinue
+      Remove-Item Env:FASTLOOP_WINDOWS_STATUS -ErrorAction SilentlyContinue
+      Remove-Item Env:FASTLOOP_WINDOWS_RESULT_CLASS -ErrorAction SilentlyContinue
+      Remove-Item Env:FASTLOOP_WINDOWS_GATE_OUTCOME -ErrorAction SilentlyContinue
+      Remove-Item Env:FASTLOOP_WINDOWS_FAILURE_CLASS -ErrorAction SilentlyContinue
+      Pop-Location | Out-Null
+    }
+  }
+
+  It 'normalizes conflicting runtime and tool classified failures to deterministic exits' {
+    $repoRoot = Join-Path $TestDrive 'fast-loop-failure-exit-normalization'
+    New-HarnessRepo -RootPath $repoRoot
+
+    Push-Location $repoRoot
+    try {
+      $resultsRoot = Join-Path $repoRoot 'tests/results/local-parity'
+      $cases = @(
+        @{
+          Name = 'runtime'
+          ResultClass = 'failure-runtime'
+          FailureClass = 'runtime-determinism'
+          ExpectedExit = 2
+        },
+        @{
+          Name = 'tool'
+          ResultClass = 'failure-tool'
+          FailureClass = 'cli/tool'
+          ExpectedExit = 1
+        }
+      )
+
+      foreach ($case in $cases) {
+        $env:FASTLOOP_WINDOWS_EXIT = '0'
+        $env:FASTLOOP_WINDOWS_STATUS = 'error'
+        $env:FASTLOOP_WINDOWS_RESULT_CLASS = $case.ResultClass
+        $env:FASTLOOP_WINDOWS_GATE_OUTCOME = 'fail'
+        $env:FASTLOOP_WINDOWS_FAILURE_CLASS = $case.FailureClass
+
+        $output = & pwsh -NoLogo -NoProfile -File (Join-Path $repoRoot 'tools' 'Test-DockerDesktopFastLoop.ps1') `
+          -ResultsRoot $resultsRoot `
+          -SkipWindowsProbe `
+          -SkipLinuxProbe `
+          -HistoryScenarioSet history-core 2>&1
+        $LASTEXITCODE | Should -Not -Be 0 -Because ($output -join "`n")
+
+        $summaryPath = Get-LatestFastLoopSummary -ResultsRoot $resultsRoot
+        $summaryPath | Should -Not -BeNullOrEmpty
+        $summary = Get-Content -LiteralPath $summaryPath -Raw | ConvertFrom-Json -Depth 12
+        $summary.steps.Count | Should -BeGreaterThan 0
+        $step = $summary.steps[0]
+        $step.resultClass | Should -Be $case.ResultClass -Because $case.Name
+        $step.failureClass | Should -Be $case.FailureClass -Because $case.Name
+        $step.gateOutcome | Should -Be 'fail' -Because $case.Name
+        $step.exitCode | Should -Be $case.ExpectedExit -Because $case.Name
+      }
     } finally {
       Remove-Item Env:FASTLOOP_WINDOWS_EXIT -ErrorAction SilentlyContinue
       Remove-Item Env:FASTLOOP_WINDOWS_STATUS -ErrorAction SilentlyContinue
