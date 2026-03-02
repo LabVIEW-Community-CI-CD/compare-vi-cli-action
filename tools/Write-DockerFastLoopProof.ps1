@@ -107,10 +107,31 @@ $diffStepCount = if ($readiness.PSObject.Properties['diffStepCount']) {
 } else {
   0
 }
+$diffEvidenceSteps = if ($readiness.PSObject.Properties['diffEvidenceSteps']) {
+  [int]$readiness.diffEvidenceSteps
+} elseif ($summary -and $summary.PSObject.Properties['diffEvidenceSteps']) {
+  [int]$summary.diffEvidenceSteps
+} else {
+  0
+}
 $diffLaneCount = if ($readiness.PSObject.Properties['diffLaneCount']) {
   [int]$readiness.diffLaneCount
 } elseif ($summary -and $summary.PSObject.Properties['diffLaneCount']) {
   [int]$summary.diffLaneCount
+} else {
+  0
+}
+$extractedReportCount = if ($readiness.PSObject.Properties['extractedReportCount']) {
+  [int]$readiness.extractedReportCount
+} elseif ($summary -and $summary.PSObject.Properties['extractedReportCount']) {
+  [int]$summary.extractedReportCount
+} else {
+  0
+}
+$containerExportFailureCount = if ($readiness.PSObject.Properties['containerExportFailureCount']) {
+  [int]$readiness.containerExportFailureCount
+} elseif ($summary -and $summary.PSObject.Properties['containerExportFailureCount']) {
+  [int]$summary.containerExportFailureCount
 } else {
   0
 }
@@ -149,7 +170,10 @@ $proof = [ordered]@{
   verdict = if ($readiness.PSObject.Properties['verdict']) { [string]$readiness.verdict } else { 'unknown' }
   recommendation = if ($readiness.PSObject.Properties['recommendation']) { [string]$readiness.recommendation } else { 'unknown' }
   diffStepCount = [int]$diffStepCount
+  diffEvidenceSteps = [int]$diffEvidenceSteps
   diffLaneCount = [int]$diffLaneCount
+  extractedReportCount = [int]$extractedReportCount
+  containerExportFailureCount = [int]$containerExportFailureCount
   runtimeFailureCount = [int]$runtimeFailureCount
   toolFailureCount = [int]$toolFailureCount
   hardStopTriggered = [bool]$hardStopTriggered
