@@ -1,0 +1,55 @@
+{
+  "schema": "vi-history-pr-harness@v1",
+  "description": "Fixture-driven PR harness scenarios for VI history workflow traffic.",
+  "targetPath": "fixtures/vi-attr/Head.vi",
+  "maxPairs": 6,
+  "scenarios": [
+    {
+      "id": "attribute",
+      "title": "VI Attribute",
+      "mode": "attribute",
+      "source": "fixtures/vi-attr/attr/HeadAttr.vi",
+      "message": "chore: harness vi attribute update",
+      "requireDiff": true
+    },
+    {
+      "id": "fp-cosmetic",
+      "title": "Front Panel Cosmetic",
+      "mode": "attribute",
+      "source": "fixtures/vi-stage/fp-cosmetic/Head.vi",
+      "message": "chore: harness front panel cosmetic update",
+      "requireDiff": true
+    },
+    {
+      "id": "connector-pane",
+      "title": "Connector Pane",
+      "mode": "attribute",
+      "source": "fixtures/vi-stage/connector-pane/Head.vi",
+      "message": "chore: harness connector pane update",
+      "requireDiff": true
+    },
+    {
+      "id": "control-rename",
+      "title": "Control Rename",
+      "mode": "attribute",
+      "source": "fixtures/vi-stage/control-rename/Head.vi",
+      "message": "chore: harness control rename update",
+      "requireDiff": true
+    },
+    {
+      "id": "block-diagram",
+      "title": "Block Diagram Cosmetic",
+      "mode": "attribute",
+      "source": "fixtures/vi-stage/bd-cosmetic/Head.vi",
+      "message": "chore: harness block diagram cosmetic update",
+      "requireDiff": true
+    },
+    {
+      "id": "sequential",
+      "title": "Sequential Multi-Category",
+      "mode": "sequential",
+      "message": "chore: harness sequential history run",
+      "requireDiff": true
+    }
+  ]
+}
