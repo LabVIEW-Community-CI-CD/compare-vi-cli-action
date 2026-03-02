@@ -85,8 +85,11 @@ Describe 'Summarize-PRVIHistory.ps1' {
                     status      = 'completed'
                     changeTypes = @('modified','renamed')
                     stats       = [ordered]@{
-                        processed = 4
-                        diffs     = 2
+                        processed          = 4
+                        diffs              = 2
+                        durationSeconds    = 12.5
+                        durationSamples    = 4
+                        durationAvgSeconds = 3.125
                     }
                     reportMd   = $reportMd
                     reportHtml = $reportHtml
@@ -124,6 +127,8 @@ Describe 'Summarize-PRVIHistory.ps1' {
         $result.totals.diffPairRows | Should -Be 1
         $result.totals.previewImages | Should -Be 1
         $result.totals.markdownTruncated | Should -BeFalse
+        $result.totals.durationSeconds | Should -Be 12.5
+        $result.totals.durationSamples | Should -Be 4
         $result.totals.timing.totalSeconds | Should -Be 3.75
         $result.kpi.signalRecall | Should -Be 1
         $result.kpi.noisePrecisionMasscompile | Should -BeNullOrEmpty
@@ -143,6 +148,7 @@ Describe 'Summarize-PRVIHistory.ps1' {
         $result.markdown | Should -Match 'Timing'
         $result.markdown | Should -Match '\[signal\]'
         $result.markdown | Should -Match '\[fast 1\.5s\]'
+        $result.markdown | Should -Match 'time: 12\.50s total'
         $result.markdown | Should -Match '### Mobile Preview'
         $result.markdown | Should -Match 'history-image-000.png'
 
