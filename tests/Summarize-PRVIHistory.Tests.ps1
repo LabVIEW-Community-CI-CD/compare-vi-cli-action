@@ -133,7 +133,9 @@ Describe 'Summarize-PRVIHistory.ps1' {
         $result.markdown | Should -Match '### Commit Pair Timeline'
         $result.markdown | Should -Match 'signal'
         $result.markdown | Should -Match 'unknown'
-        $result.markdown | Should -Match 'Time \(s\)'
+        $result.markdown | Should -Match 'Timing'
+        $result.markdown | Should -Match '\[signal\]'
+        $result.markdown | Should -Match '\[fast 1\.5s\]'
         $result.markdown | Should -Match '### Mobile Preview'
         $result.markdown | Should -Match 'history-image-000.png'
 
