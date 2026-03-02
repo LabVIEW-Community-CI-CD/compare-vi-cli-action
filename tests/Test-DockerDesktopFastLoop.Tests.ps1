@@ -469,6 +469,44 @@ if (-not [string]::IsNullOrWhiteSpace($GitHubOutputPath)) {
     }
   }
 
+
+  It 'reports startup-connectivity hard-stop reason without runtime-determinism wording' {
+    $repoRoot = Join-Path $TestDrive 'fast-loop-startup-connectivity-reason'
+    New-HarnessRepo -RootPath $repoRoot
+
+    Push-Location $repoRoot
+    try {
+      $resultsRoot = Join-Path $repoRoot 'tests/results/local-parity'
+      $env:FASTLOOP_WINDOWS_EXIT = '125'
+      $env:FASTLOOP_WINDOWS_STATUS = 'error'
+      $env:FASTLOOP_WINDOWS_RESULT_CLASS = 'failure-tool'
+      $env:FASTLOOP_WINDOWS_GATE_OUTCOME = 'fail'
+      $env:FASTLOOP_WINDOWS_FAILURE_CLASS = 'startup-connectivity'
+
+      $output = & pwsh -NoLogo -NoProfile -File (Join-Path $repoRoot 'tools' 'Test-DockerDesktopFastLoop.ps1') `
+        -ResultsRoot $resultsRoot `
+        -SkipLinuxProbe `
+        -HistoryScenarioSet history-core 2>&1
+      $LASTEXITCODE | Should -Not -Be 0
+
+      $summaryPath = Get-LatestFastLoopSummary -ResultsRoot $resultsRoot
+      $summaryPath | Should -Not -BeNullOrEmpty
+      $summary = Get-Content -LiteralPath $summaryPath -Raw | ConvertFrom-Json -Depth 12
+      $summary.status | Should -Be 'failure'
+      $summary.hardStopTriggered | Should -BeTrue
+      $summary.hardStopReason | Should -Match 'Startup/connectivity failure detected'
+      $summary.hardStopReason | Should -Not -Match 'Runtime determinism check failed'
+      $summary.steps.Count | Should -BeGreaterThan 0
+      $summary.steps[-1].failureClass | Should -Be 'startup-connectivity'
+    } finally {
+      Remove-Item Env:FASTLOOP_WINDOWS_EXIT -ErrorAction SilentlyContinue
+      Remove-Item Env:FASTLOOP_WINDOWS_STATUS -ErrorAction SilentlyContinue
+      Remove-Item Env:FASTLOOP_WINDOWS_RESULT_CLASS -ErrorAction SilentlyContinue
+      Remove-Item Env:FASTLOOP_WINDOWS_GATE_OUTCOME -ErrorAction SilentlyContinue
+      Remove-Item Env:FASTLOOP_WINDOWS_FAILURE_CLASS -ErrorAction SilentlyContinue
+      Pop-Location | Out-Null
+    }
+  }
   It 'orders lanes linux-first by default before windows history steps' {
     $repoRoot = Join-Path $TestDrive 'fast-loop-lane-order'
     New-HarnessRepo -RootPath $repoRoot
@@ -499,3 +537,4 @@ if (-not [string]::IsNullOrWhiteSpace($GitHubOutputPath)) {
     }
   }
 }
+

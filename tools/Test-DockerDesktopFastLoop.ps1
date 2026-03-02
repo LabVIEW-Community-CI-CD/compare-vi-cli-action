@@ -1063,7 +1063,15 @@ foreach ($definition in $stepDefinitions.ToArray()) {
     Write-Host ("[docker-fast-loop] failed: {0} ({1} ms) class={2} failureClass={3} exit={4}: {5}" -f $stepName, $durationText, [string]$stepResult.resultClass, [string]$stepResult.failureClass, [int]$stepResult.exitCode, $failureMessage) -ForegroundColor Red
     if ($stepResult.PSObject.Properties['hardStopTriggered'] -and [bool]$stepResult.hardStopTriggered) {
       $hardStopTriggered = $true
-      $hardStopReason = ("Runtime determinism check failed at step '{0}' (failureClass={1}, exit={2}): {3}" -f $stepName, [string]$stepResult.failureClass, [int]$stepResult.exitCode, $failureMessage)
+      $failureClassText = [string]$stepResult.failureClass
+      $reasonPrefix = switch ($failureClassText) {
+        'runtime-determinism' { 'Runtime determinism check failed' }
+        'startup-connectivity' { 'Startup/connectivity failure detected' }
+        'timeout' { 'Timeout failure detected' }
+        'preflight' { 'Preflight failure detected' }
+        default { 'Tool failure detected' }
+      }
+      $hardStopReason = ("{0} at step '{1}' (failureClass={2}, exit={3}): {4}" -f $reasonPrefix, $stepName, $failureClassText, [int]$stepResult.exitCode, $failureMessage)
       Write-Host ("[docker-fast-loop] hard-stop: {0}" -f $hardStopReason) -ForegroundColor Red
     }
   }
@@ -1213,3 +1221,4 @@ if ($failed.Count -gt 0) {
 }
 
 Write-Output $summaryPath
+
