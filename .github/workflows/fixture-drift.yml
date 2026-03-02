@@ -57,118 +57,39 @@ jobs:
 
   docker-runtime-manager:
     name: Docker Runtime Manager (Host)
-    runs-on: [self-hosted, Windows, X64]
+    runs-on: [self-hosted, Windows, X64, self-hosted-docker]
     needs:
     - preflight-windows
     timeout-minutes: 6
+    outputs:
+      manager_status: ${{ steps.manager.outputs.manager_status }}
+      manager_summary_path: ${{ steps.manager.outputs.manager_summary_path }}
+      windows_image_digest: ${{ steps.manager.outputs.windows_image_digest }}
+      linux_image_digest: ${{ steps.manager.outputs.linux_image_digest }}
+      start_context: ${{ steps.manager.outputs.start_context }}
+      final_context: ${{ steps.manager.outputs.final_context }}
     env:
       NI_WINDOWS_IMAGE: nationalinstruments/labview:2026q1-windows
       NI_LINUX_IMAGE: nationalinstruments/labview:2026q1-linux
     steps:
     - uses: actions/checkout@v5
-    - name: Validate Docker Desktop windows/linux runtime + NI image tags
+    - name: Run Docker runtime manager
+      id: manager
       shell: pwsh
       run: |
-        Set-StrictMode -Version Latest
-        $ErrorActionPreference = 'Stop'
-
-        if (-not (Get-Command docker -ErrorAction SilentlyContinue)) {
-          throw 'Docker CLI not found on host. Install Docker Desktop and ensure docker.exe is on PATH.'
-        }
-
-        function Set-ContextAndWait {
-          param(
-            [Parameter(Mandatory)][string]$ContextName,
-            [Parameter(Mandatory)][string]$ExpectedOsType,
-            [int]$TimeoutSeconds = 120
-          )
-
-          $contextOut = & docker context use $ContextName 2>&1
-          if ($LASTEXITCODE -ne 0) {
-            throw ("Failed to switch Docker context to '{0}'. Output: {1}" -f $ContextName, ($contextOut -join ' '))
-          }
-
-          $deadline = (Get-Date).ToUniversalTime().AddSeconds($TimeoutSeconds)
-          do {
-            $osTypeOut = (& docker info --format '{{.OSType}}' 2>$null)
-            if ($LASTEXITCODE -eq 0) {
-              $osType = ([string]$osTypeOut).Trim().ToLowerInvariant()
-              if ($osType -eq $ExpectedOsType) {
-                return $osType
-              }
-            }
-            Start-Sleep -Seconds 2
-          } while ((Get-Date).ToUniversalTime() -lt $deadline)
-
-          $lastOs = ''
-          try {
-            $lastOs = [string](& docker info --format '{{.OSType}}' 2>$null)
-          } catch {}
-          throw ("Docker context '{0}' did not reach expected OSType '{1}' (last='{2}')." -f $ContextName, $ExpectedOsType, ($lastOs.Trim()))
-        }
-
-        function Assert-ManifestPlatform {
-          param(
-            [Parameter(Mandatory)][string]$Image,
-            [Parameter(Mandatory)][string]$ExpectedOs
-          )
-
-          $manifestOut = & docker manifest inspect $Image 2>&1
-          if ($LASTEXITCODE -ne 0) {
-            throw ("Failed to inspect image '{0}'. Output: {1}" -f $Image, ($manifestOut -join ' '))
-          }
-
-          $manifest = $manifestOut | ConvertFrom-Json -Depth 20
-          if ($manifest -and $manifest.PSObject.Properties['manifests'] -and $manifest.manifests) {
-            $platformOk = $false
-            foreach ($entry in @($manifest.manifests)) {
-              $platform = $entry.platform
-              if (-not $platform) { continue }
-              $os = if ($platform.PSObject.Properties['os']) { [string]$platform.os } else { '' }
-              $arch = if ($platform.PSObject.Properties['architecture']) { [string]$platform.architecture } else { '' }
-              if ($os.Trim().ToLowerInvariant() -eq $ExpectedOs -and $arch.Trim().ToLowerInvariant() -eq 'amd64') {
-                $platformOk = $true
-                break
-              }
-            }
-            if (-not $platformOk) {
-              throw ("Image '{0}' does not expose expected platform '{1}/amd64'." -f $Image, $ExpectedOs)
-            }
-          }
-
-          Write-Host ("Image manifest validated: {0} ({1}/amd64)" -f $Image, $ExpectedOs)
-        }
-
-        $contextAtStart = ''
-        try { $contextAtStart = ([string](& docker context show 2>$null)).Trim() } catch {}
-        if ([string]::IsNullOrWhiteSpace($contextAtStart)) { $contextAtStart = 'unknown' }
-        Write-Host ("Docker context at start: {0}" -f $contextAtStart)
-
-        try {
-          $null = Set-ContextAndWait -ContextName 'desktop-windows' -ExpectedOsType 'windows'
-          Assert-ManifestPlatform -Image $env:NI_WINDOWS_IMAGE -ExpectedOs 'windows'
-
-          $null = Set-ContextAndWait -ContextName 'desktop-linux' -ExpectedOsType 'linux'
-          Assert-ManifestPlatform -Image $env:NI_LINUX_IMAGE -ExpectedOs 'linux'
-        } finally {
-          try {
-            $null = Set-ContextAndWait -ContextName 'desktop-windows' -ExpectedOsType 'windows' -TimeoutSeconds 90
-            Write-Host 'Docker context restored to desktop-windows for downstream Windows job steps.'
-          } catch {
-            Write-Host ("::warning::Unable to restore Docker context to desktop-windows: {0}" -f $_.Exception.Message)
-          }
-        }
-
-        if ($env:GITHUB_STEP_SUMMARY) {
-          @(
-            '### Docker Runtime Manager',
-            '',
-            "- start context: $contextAtStart",
-            "- validated: `$($env:NI_WINDOWS_IMAGE)` (windows/amd64)",
-            "- validated: `$($env:NI_LINUX_IMAGE)` (linux/amd64)",
-            '- final context: desktop-windows'
-          ) -join "`n" | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8
-        }
+        pwsh -NoLogo -NoProfile -File tools/Invoke-DockerRuntimeManager.ps1 `
+          -WindowsImage $env:NI_WINDOWS_IMAGE `
+          -LinuxImage $env:NI_LINUX_IMAGE `
+          -OutputJsonPath 'results/fixture-drift/docker-runtime-manager.json' `
+          -GitHubOutputPath $env:GITHUB_OUTPUT `
+          -StepSummaryPath $env:GITHUB_STEP_SUMMARY
+    - name: Upload docker runtime manager artifact
+      if: always()
+      uses: actions/upload-artifact@v5
+      with:
+        name: fixture-drift-docker-runtime-manager
+        path: results/fixture-drift/docker-runtime-manager.json
+        if-no-files-found: warn
   validate-ubuntu:
     name: Fixture Drift (Ubuntu)
     runs-on: ubuntu-latest
@@ -241,7 +162,7 @@ jobs:
         soft-fail: ${{ github.event_name == 'pull_request' || steps.docs.outputs.docs_only }}
 
   validate-windows:
-    name: Fixture Drift (Windows)
+    name: Fixture Drift (Windows LabVIEW 2026 q1 Host)
     runs-on: [self-hosted, Windows, X64]
     concurrency:
       group: lv-fixture-win
