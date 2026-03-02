@@ -31,11 +31,11 @@ Optional override for the `max_pairs` workflow input. Defaults to `6`.
 
 .PARAMETER WorkflowTimeoutMinutes
 Optional override for the `history_timeout_minutes` workflow input used by
-`pr-vi-history.yml`. Defaults to `25` for smoke evidence runs.
+`pr-vi-history.yml`. Defaults to `10` for smoke evidence runs.
 
 .PARAMETER CompareTimeoutSeconds
 Optional override for the `compare_timeout_seconds` workflow input used by
-`pr-vi-history.yml`. Defaults to `900` for smoke evidence runs.
+`pr-vi-history.yml`. Defaults to `600` for smoke evidence runs.
 
 .PARAMETER BenchmarkBaselineWindow
 Rolling baseline window (same scenario) used when computing KPI deltas.
@@ -51,8 +51,8 @@ param(
     [ValidateSet('attribute', 'sequential', 'mixed-same-commit', 'sequential-masscompile')]
     [string]$Scenario = 'attribute',
     [int]$MaxPairs = 6,
-    [int]$WorkflowTimeoutMinutes = 25,
-    [int]$CompareTimeoutSeconds = 900,
+    [int]$WorkflowTimeoutMinutes = 10,
+    [int]$CompareTimeoutSeconds = 600,
     [ValidateRange(1, 50)]
     [int]$BenchmarkBaselineWindow = 5,
     [int]$EvidenceIssueNumber = 0
