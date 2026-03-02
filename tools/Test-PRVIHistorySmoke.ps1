@@ -27,6 +27,10 @@ plus non-strict metadata-noise coverage).
 
 .PARAMETER MaxPairs
 Optional override for the `max_pairs` workflow input. Defaults to `6`.
+
+.PARAMETER WorkflowTimeoutMinutes
+Optional override for the `history_timeout_minutes` workflow input used by
+`pr-vi-history.yml`. Defaults to `25` for smoke evidence runs.
 #>
 [CmdletBinding()]
 param(
@@ -35,11 +39,16 @@ param(
     [switch]$DryRun,
     [ValidateSet('attribute', 'sequential', 'mixed-same-commit')]
     [string]$Scenario = 'attribute',
-    [int]$MaxPairs = 6
+    [int]$MaxPairs = 6,
+    [int]$WorkflowTimeoutMinutes = 25
 )
 
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
+
+if ($WorkflowTimeoutMinutes -lt 1) {
+    throw 'WorkflowTimeoutMinutes must be greater than zero.'
+}
 
 function Invoke-Git {
     param(
@@ -143,6 +152,30 @@ function Get-PullRequestInfo {
         throw "Failed to locate scratch PR: $($lastError.Exception.Message)"
     }
     throw 'Failed to locate scratch PR.'
+}
+
+function Wait-WorkflowRunCompletion {
+    param(
+        [Parameter(Mandatory)]
+        [hashtable]$Repo,
+        [Parameter(Mandatory)]
+        [int64]$RunId,
+        [int]$TimeoutMinutes = 60,
+        [int]$PollSeconds = 5
+    )
+
+    $auth = Get-GitHubAuth
+    $uri = "https://api.github.com/repos/$($Repo.Slug)/actions/runs/$RunId"
+    $deadline = (Get-Date).ToUniversalTime().AddMinutes([Math]::Max(1, $TimeoutMinutes))
+    do {
+        $run = Invoke-RestMethod -Uri $uri -Headers $auth.Headers -Method Get -ErrorAction Stop
+        if ($run.status -eq 'completed') {
+            return $run
+        }
+        Start-Sleep -Seconds ([Math]::Max(1, $PollSeconds))
+    } while ((Get-Date).ToUniversalTime() -lt $deadline)
+
+    throw ("Timed out waiting for workflow run {0} to complete after {1} minute(s)." -f $RunId, $TimeoutMinutes)
 }
 
 function Ensure-CleanWorkingTree {
@@ -638,7 +671,7 @@ $planSteps.Add("- Fetch origin/$BaseBranch") | Out-Null
 $planSteps.Add("- Create branch $branchName from origin/$BaseBranch") | Out-Null
 $planSteps.Add($scenarioPlanHint) | Out-Null
 $planSteps.Add("- Push scratch branch and create draft PR") | Out-Null
-$planSteps.Add("- Dispatch pr-vi-history.yml with PR input (max_pairs=$effectiveMaxPairs)") | Out-Null
+$planSteps.Add("- Dispatch pr-vi-history.yml with PR input (max_pairs=$effectiveMaxPairs, history_timeout_minutes=$WorkflowTimeoutMinutes)") | Out-Null
 $planSteps.Add("- Wait for workflow completion and verify PR comment") | Out-Null
 if ($scenarioNeedsArtifactValidation) {
     $planSteps.Add("- Download workflow artifact and validate diff/comparison counts") | Out-Null
@@ -683,6 +716,7 @@ $scratchContext = [ordered]@{
     TargetValidation = @()
     MaxPairsRequested = $MaxPairs
     MaxPairsEffective = $effectiveMaxPairs
+    WorkflowTimeoutMinutes = $WorkflowTimeoutMinutes
     MobilePreviewRequired = $scenarioRequiresMobilePreview
 }
 
@@ -813,8 +847,9 @@ try {
     $dispatchBody = @{
         ref    = $branchName
         inputs = @{
-            pr        = $scratchContext.PrNumber.ToString()
-            max_pairs = $effectiveMaxPairs.ToString()
+            pr                      = $scratchContext.PrNumber.ToString()
+            max_pairs               = $effectiveMaxPairs.ToString()
+            history_timeout_minutes = $WorkflowTimeoutMinutes.ToString()
         }
     } | ConvertTo-Json -Depth 4
     $dispatchStartedAtUtc = (Get-Date).ToUniversalTime()
@@ -854,12 +889,27 @@ try {
     $scratchContext.WorkflowUrl = "https://github.com/$($repoInfo.Slug)/actions/runs/$runId"
     Write-Host "Workflow run id: $runId"
 
-    Write-Host "Watching workflow run $runId..."
-    Invoke-Gh -Arguments @('run', 'watch', $runId.ToString(), '--repo', $repoInfo.Slug, '--exit-status') | Out-Null
-
-    $runSummary = Invoke-Gh -Arguments @('run', 'view', $runId.ToString(), '--repo', $repoInfo.Slug, '--json', 'conclusion') -ExpectJson
+    Write-Host ("Waiting for workflow run completion (id={0}, timeout={1}m)..." -f $runId, [Math]::Max($WorkflowTimeoutMinutes + 20, 40))
+    $runSummary = Wait-WorkflowRunCompletion -Repo $repoInfo -RunId $runId -TimeoutMinutes ([Math]::Max($WorkflowTimeoutMinutes + 20, 40))
     if ($runSummary.conclusion -ne 'success') {
-        throw "Workflow run $runId concluded with '$($runSummary.conclusion)'."
+        $runDetails = Invoke-Gh -Arguments @('run', 'view', $runId.ToString(), '--repo', $repoInfo.Slug, '--json', 'conclusion,jobs,url') -ExpectJson
+        $failedJobs = @($runDetails.jobs | Where-Object { $_.conclusion -in @('failure','cancelled','timed_out','startup_failure') })
+        $jobSummary = if ($failedJobs.Count -gt 0) {
+            $failedJobs |
+                ForEach-Object {
+                    $failedStep = @($_.steps | Where-Object { $_.conclusion -in @('failure','cancelled','timed_out','startup_failure') } | Select-Object -First 1)
+                    if ($failedStep.Count -gt 0) {
+                        "{0}:{1}" -f $_.name, $failedStep[0].name
+                    } else {
+                        "{0}:{1}" -f $_.name, $_.conclusion
+                    }
+                } |
+                Select-Object -Unique |
+                Join-String -Separator '; '
+        } else {
+            'no failed job details available'
+        }
+        throw ("Workflow run {0} concluded with '{1}' ({2}). URL: {3}" -f $runId, $runSummary.conclusion, $jobSummary, $runDetails.url)
     }
 
     Write-Host 'Verifying PR comment includes history summary...'
