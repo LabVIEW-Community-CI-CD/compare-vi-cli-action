@@ -47,6 +47,38 @@ Describe 'Summarize-PRVIHistory.ps1' {
             schema      = 'pr-vi-history-summary@v1'
             generatedAt = (Get-Date).ToString('o')
             resultsRoot = $resultsRoot
+            timing      = [ordered]@{
+                comparisonCount = 2
+                totalSeconds    = 3.75
+            }
+            pairTimeline = @(
+                [ordered]@{
+                    targetPath     = 'fixtures/Example.vi'
+                    mode           = 'default'
+                    pairIndex      = 1
+                    baseRef        = 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa'
+                    headRef        = 'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb'
+                    diff           = $true
+                    classification = 'signal'
+                    durationSeconds= 1.5
+                    previewStatus  = 'present'
+                    reportPath     = $reportHtml
+                    imageIndexPath = $imageIndex
+                },
+                [ordered]@{
+                    targetPath     = 'fixtures/Example.vi'
+                    mode           = 'default'
+                    pairIndex      = 2
+                    baseRef        = 'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb'
+                    headRef        = 'cccccccccccccccccccccccccccccccccccccccc'
+                    diff           = $false
+                    classification = 'unknown'
+                    durationSeconds= 2.25
+                    previewStatus  = 'missing'
+                    reportPath     = $null
+                    imageIndexPath = $imageIndex
+                }
+            )
             targets     = @(
                 [ordered]@{
                     repoPath    = 'fixtures/Example.vi'
@@ -88,12 +120,20 @@ Describe 'Summarize-PRVIHistory.ps1' {
         $result.totals.targets | Should -Be 2
         $result.totals.diffs | Should -Be 2
         $result.totals.comparisons | Should -Be 4
+        $result.totals.pairRows | Should -Be 2
+        $result.totals.diffPairRows | Should -Be 1
         $result.totals.previewImages | Should -Be 1
         $result.totals.markdownTruncated | Should -BeFalse
+        $result.totals.timing.totalSeconds | Should -Be 3.75
+        $result.pairTimeline.Count | Should -Be 2
         $result.previews.Count | Should -Be 1
         $result.markdown | Should -Match 'fixtures/Example.vi'
         $result.markdown | Should -Match 'diff'
         $result.markdown | Should -Match 'missing path'
+        $result.markdown | Should -Match '### Commit Pair Timeline'
+        $result.markdown | Should -Match 'signal'
+        $result.markdown | Should -Match 'unknown'
+        $result.markdown | Should -Match 'Time \(s\)'
         $result.markdown | Should -Match '### Mobile Preview'
         $result.markdown | Should -Match 'history-image-000.png'
 

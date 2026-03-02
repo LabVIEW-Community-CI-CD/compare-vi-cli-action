@@ -277,6 +277,409 @@ function Sanitize-Token {
     return $token
 }
 
+function Convert-ToNullableDouble {
+    param([AllowNull()]$Value)
+
+    if ($null -eq $Value) { return $null }
+    try {
+        $number = [double]$Value
+        if ([double]::IsNaN($number) -or [double]::IsInfinity($number)) {
+            return $null
+        }
+        return $number
+    } catch {
+        return $null
+    }
+}
+
+function Get-PercentileSeconds {
+    param(
+        [double[]]$SortedValues,
+        [ValidateRange(0.0, 1.0)][double]$Percentile
+    )
+
+    if (-not $SortedValues -or $SortedValues.Count -eq 0) {
+        return $null
+    }
+
+    $index = [Math]::Ceiling($SortedValues.Count * $Percentile) - 1
+    if ($index -lt 0) { $index = 0 }
+    if ($index -ge $SortedValues.Count) { $index = $SortedValues.Count - 1 }
+    return [Math]::Round([double]$SortedValues[$index], 3)
+}
+
+function New-TimingSummary {
+    param(
+        [double[]]$DurationsSeconds
+    )
+
+    $durations = @()
+    if ($DurationsSeconds) {
+        foreach ($duration in $DurationsSeconds) {
+            $candidate = Convert-ToNullableDouble -Value $duration
+            if ($candidate -eq $null) { continue }
+            if ($candidate -lt 0) { continue }
+            $durations += [double]$candidate
+        }
+    }
+
+    if (-not $durations -or $durations.Count -eq 0) {
+        return [pscustomobject]@{
+            comparisonCount = 0
+            minSeconds      = $null
+            medianSeconds   = $null
+            p95Seconds      = $null
+            totalSeconds    = 0.0
+            estimatedCompareTime = [pscustomobject]@{
+                seconds     = $null
+                source      = 'insufficient-data'
+                confidence  = 'low'
+                note        = 'No observed compare durations were available.'
+            }
+        }
+    }
+
+    $sorted = @($durations | Sort-Object)
+    $mid = [Math]::Floor(($sorted.Count - 1) / 2)
+    $median = if (($sorted.Count % 2) -eq 1) {
+        [double]$sorted[$mid]
+    } else {
+        ([double]$sorted[$mid] + [double]$sorted[$mid + 1]) / 2.0
+    }
+    $total = 0.0
+    foreach ($duration in $sorted) {
+        $total += [double]$duration
+    }
+
+    $estimateSeconds = if ($sorted.Count -ge 5) {
+        Get-PercentileSeconds -SortedValues $sorted -Percentile 0.95
+    } elseif ($sorted.Count -ge 2) {
+        [Math]::Round($median, 3)
+    } else {
+        [Math]::Round([double]$sorted[0], 3)
+    }
+    $estimateConfidence = if ($sorted.Count -ge 8) {
+        'medium'
+    } elseif ($sorted.Count -ge 3) {
+        'low'
+    } else {
+        'very-low'
+    }
+
+    return [pscustomobject]@{
+        comparisonCount = $sorted.Count
+        minSeconds      = [Math]::Round([double]$sorted[0], 3)
+        medianSeconds   = [Math]::Round([double]$median, 3)
+        p95Seconds      = Get-PercentileSeconds -SortedValues $sorted -Percentile 0.95
+        totalSeconds    = [Math]::Round([double]$total, 3)
+        estimatedCompareTime = [pscustomobject]@{
+            seconds     = $estimateSeconds
+            source      = 'observed-durations'
+            confidence  = $estimateConfidence
+            note        = 'Heuristic seed based on observed per-comparison durations.'
+        }
+    }
+}
+
+function Resolve-PathBestEffort {
+    param(
+        [string]$PathValue,
+        [string]$PrimaryBase,
+        [string]$SecondaryBase
+    )
+
+    if ([string]::IsNullOrWhiteSpace($PathValue)) {
+        return $null
+    }
+
+    $candidates = [System.Collections.Generic.List[string]]::new()
+    if ([System.IO.Path]::IsPathRooted($PathValue)) {
+        $candidates.Add([System.IO.Path]::GetFullPath($PathValue)) | Out-Null
+    } else {
+        if (-not [string]::IsNullOrWhiteSpace($PrimaryBase)) {
+            $candidates.Add([System.IO.Path]::GetFullPath((Join-Path $PrimaryBase $PathValue))) | Out-Null
+        }
+        if (-not [string]::IsNullOrWhiteSpace($SecondaryBase)) {
+            $candidates.Add([System.IO.Path]::GetFullPath((Join-Path $SecondaryBase $PathValue))) | Out-Null
+        }
+    }
+
+    if ($candidates.Count -eq 0) {
+        return $PathValue
+    }
+
+    foreach ($candidate in ($candidates | Select-Object -Unique)) {
+        if (Test-Path -LiteralPath $candidate) {
+            return (Resolve-Path -LiteralPath $candidate).Path
+        }
+    }
+
+    return $candidates[0]
+}
+
+function Get-ComparisonRefValue {
+    param(
+        [AllowNull()]$Comparison,
+        [ValidateSet('base','head')]
+        [string]$Side
+    )
+
+    if (-not $Comparison) { return $null }
+    if (-not $Comparison.PSObject.Properties[$Side]) { return $null }
+
+    $node = $Comparison.$Side
+    if ($node -is [string]) {
+        return [string]$node
+    }
+    if ($node -and $node.PSObject.Properties['ref']) {
+        return [string]$node.ref
+    }
+    return $null
+}
+
+function Resolve-PairClassification {
+    param(
+        [AllowNull()]$ResultNode,
+        [bool]$DiffDetected
+    )
+
+    $rawClassification = $null
+    if ($ResultNode -and $ResultNode.PSObject.Properties['classification']) {
+        $rawClassification = [string]$ResultNode.classification
+    }
+    $normalizedRaw = if ([string]::IsNullOrWhiteSpace($rawClassification)) {
+        $null
+    } else {
+        $rawClassification.Trim().ToLowerInvariant()
+    }
+
+    $bucketTokens = New-Object 'System.Collections.Generic.HashSet[string]' ([System.StringComparer]::OrdinalIgnoreCase)
+    $categoryTokens = New-Object 'System.Collections.Generic.HashSet[string]' ([System.StringComparer]::OrdinalIgnoreCase)
+
+    if ($ResultNode) {
+        if ($ResultNode.PSObject.Properties['bucket'] -and $ResultNode.bucket) {
+            [void]$bucketTokens.Add([string]$ResultNode.bucket)
+        }
+        if ($ResultNode.PSObject.Properties['categoryBuckets'] -and $ResultNode.categoryBuckets -is [System.Collections.IEnumerable]) {
+            foreach ($bucket in @($ResultNode.categoryBuckets)) {
+                if ([string]::IsNullOrWhiteSpace([string]$bucket)) { continue }
+                [void]$bucketTokens.Add([string]$bucket)
+            }
+        }
+        if ($ResultNode.PSObject.Properties['categoryBucketDetails'] -and $ResultNode.categoryBucketDetails -is [System.Collections.IEnumerable]) {
+            foreach ($detail in @($ResultNode.categoryBucketDetails)) {
+                if (-not $detail) { continue }
+                if ($detail.PSObject.Properties['slug'] -and $detail.slug) {
+                    [void]$bucketTokens.Add([string]$detail.slug)
+                }
+            }
+        }
+        if ($ResultNode.PSObject.Properties['categoryDetails'] -and $ResultNode.categoryDetails -is [System.Collections.IEnumerable]) {
+            foreach ($detail in @($ResultNode.categoryDetails)) {
+                if (-not $detail) { continue }
+                if ($detail.PSObject.Properties['slug'] -and $detail.slug) {
+                    [void]$categoryTokens.Add([string]$detail.slug)
+                }
+                if ($detail.PSObject.Properties['bucketSlug'] -and $detail.bucketSlug) {
+                    [void]$bucketTokens.Add([string]$detail.bucketSlug)
+                }
+                if ($detail.PSObject.Properties['label'] -and $detail.label) {
+                    [void]$categoryTokens.Add([string]$detail.label)
+                }
+            }
+        }
+        if ($ResultNode.PSObject.Properties['categories'] -and $ResultNode.categories -is [System.Collections.IEnumerable]) {
+            foreach ($category in @($ResultNode.categories)) {
+                if ([string]::IsNullOrWhiteSpace([string]$category)) { continue }
+                [void]$categoryTokens.Add([string]$category)
+            }
+        }
+    }
+
+    $metadataNoise = $false
+    if ($bucketTokens.Contains('metadata')) {
+        $metadataNoise = $true
+    }
+    foreach ($token in $categoryTokens) {
+        $lower = $token.ToLowerInvariant()
+        if ($lower -match 'vi attribute' -or $lower -match 'metadata' -or $lower -match 'masscompile' -or $lower -match 'compile') {
+            $metadataNoise = $true
+            break
+        }
+    }
+
+    $cosmeticNoise = $false
+    if ($bucketTokens.Contains('ui-visual')) {
+        $cosmeticNoise = $true
+    }
+    foreach ($token in $categoryTokens) {
+        $lower = $token.ToLowerInvariant()
+        if ($lower -match 'cosmetic' -or $lower -match 'front panel' -or $lower -match 'icon' -or $lower -match 'block diagram cosmetic') {
+            $cosmeticNoise = $true
+            break
+        }
+    }
+
+    switch ($normalizedRaw) {
+        'signal' { return 'signal' }
+        'noise' {
+            if ($metadataNoise) { return 'noise-masscompile' }
+            if ($cosmeticNoise) { return 'noise-cosmetic' }
+            return 'noise-cosmetic'
+        }
+        'neutral' {
+            if ($metadataNoise) { return 'noise-masscompile' }
+            if ($cosmeticNoise) { return 'noise-cosmetic' }
+            return 'unknown'
+        }
+    }
+
+    if ($DiffDetected) {
+        if ($metadataNoise) { return 'noise-masscompile' }
+        if ($cosmeticNoise) { return 'noise-cosmetic' }
+    }
+
+    return 'unknown'
+}
+
+function Resolve-PreviewStatus {
+    param([AllowNull()]$ReportImages)
+
+    if (-not $ReportImages) { return 'skipped' }
+    $status = if ($ReportImages.PSObject.Properties['status']) { [string]$ReportImages.status } else { '' }
+    switch ($status) {
+        'completed' {
+            $exported = if ($ReportImages.PSObject.Properties['exportedImageCount']) { [int]$ReportImages.exportedImageCount } else { 0 }
+            if ($exported -gt 0) { return 'present' }
+            return 'missing'
+        }
+        'error' { return 'error' }
+        'disabled' { return 'skipped' }
+        'no-html-report' { return 'skipped' }
+        'unavailable' { return 'skipped' }
+        default { return 'missing' }
+    }
+}
+
+function Get-TargetPairTimeline {
+    param(
+        [AllowNull()]$AggregateManifest,
+        [string]$TargetRepoPath,
+        [string]$TargetResultsDir,
+        [string]$RepoRoot,
+        [AllowNull()]$ReportImages
+    )
+
+    $pairRows = [System.Collections.Generic.List[object]]::new()
+    $durations = [System.Collections.Generic.List[double]]::new()
+    if (-not $AggregateManifest) {
+        return [pscustomobject]@{
+            Pairs     = @()
+            Durations = @()
+        }
+    }
+
+    $modes = @()
+    if ($AggregateManifest.PSObject.Properties['modes'] -and $AggregateManifest.modes -is [System.Collections.IEnumerable]) {
+        $modes = @($AggregateManifest.modes)
+    }
+    if ($modes.Count -eq 0) {
+        return [pscustomobject]@{
+            Pairs     = @()
+            Durations = @()
+        }
+    }
+
+    $previewStatus = Resolve-PreviewStatus -ReportImages $ReportImages
+    $imageIndexPath = $null
+    if ($ReportImages -and $ReportImages.PSObject.Properties['indexPath']) {
+        $imageIndexPath = Resolve-PathBestEffort -PathValue ([string]$ReportImages.indexPath) -PrimaryBase $TargetResultsDir -SecondaryBase $RepoRoot
+    }
+
+    foreach ($modeEntry in $modes) {
+        if (-not $modeEntry) { continue }
+
+        $modeName = if ($modeEntry.PSObject.Properties['name']) { [string]$modeEntry.name } else { 'default' }
+        if ([string]::IsNullOrWhiteSpace($modeName) -and $modeEntry.PSObject.Properties['slug']) {
+            $modeName = [string]$modeEntry.slug
+        }
+        if ([string]::IsNullOrWhiteSpace($modeName)) {
+            $modeName = 'default'
+        }
+
+        $modeManifestPath = $null
+        if ($modeEntry.PSObject.Properties['manifestPath']) {
+            $modeManifestPath = Resolve-PathBestEffort -PathValue ([string]$modeEntry.manifestPath) -PrimaryBase $TargetResultsDir -SecondaryBase $RepoRoot
+        }
+        if ([string]::IsNullOrWhiteSpace($modeManifestPath) -or -not (Test-Path -LiteralPath $modeManifestPath -PathType Leaf)) {
+            continue
+        }
+
+        $modeManifest = $null
+        try {
+            $modeManifest = Get-Content -LiteralPath $modeManifestPath -Raw -ErrorAction Stop | ConvertFrom-Json -ErrorAction Stop
+        } catch {
+            continue
+        }
+        if (-not $modeManifest) { continue }
+
+        $comparisons = @()
+        if ($modeManifest.PSObject.Properties['comparisons'] -and $modeManifest.comparisons -is [System.Collections.IEnumerable]) {
+            $comparisons = @($modeManifest.comparisons)
+        }
+        if ($comparisons.Count -eq 0) { continue }
+
+        $pairCounter = 0
+        foreach ($comparison in $comparisons) {
+            if (-not $comparison) { continue }
+            $pairCounter++
+
+            $resultNode = if ($comparison.PSObject.Properties['result']) { $comparison.result } else { $null }
+            $diffDetected = $false
+            if ($resultNode -and $resultNode.PSObject.Properties['diff']) {
+                $diffDetected = [bool]$resultNode.diff
+            }
+
+            $durationSeconds = $null
+            if ($resultNode -and $resultNode.PSObject.Properties['duration_s']) {
+                $durationSeconds = Convert-ToNullableDouble -Value $resultNode.duration_s
+            }
+            if ($durationSeconds -ne $null -and $durationSeconds -ge 0) {
+                $durations.Add([double]$durationSeconds) | Out-Null
+            }
+
+            $reportPath = $null
+            if ($resultNode) {
+                if ($resultNode.PSObject.Properties['reportPath'] -and $resultNode.reportPath) {
+                    $reportPath = Resolve-PathBestEffort -PathValue ([string]$resultNode.reportPath) -PrimaryBase $TargetResultsDir -SecondaryBase $RepoRoot
+                } elseif ($resultNode.PSObject.Properties['reportHtml'] -and $resultNode.reportHtml) {
+                    $reportPath = Resolve-PathBestEffort -PathValue ([string]$resultNode.reportHtml) -PrimaryBase $TargetResultsDir -SecondaryBase $RepoRoot
+                }
+            }
+
+            $pairIndex = if ($comparison.PSObject.Properties['index']) { [int]$comparison.index } else { $pairCounter }
+            $pairRows.Add([pscustomobject]@{
+                targetPath     = $TargetRepoPath
+                mode           = $modeName
+                pairIndex      = $pairIndex
+                baseRef        = Get-ComparisonRefValue -Comparison $comparison -Side base
+                headRef        = Get-ComparisonRefValue -Comparison $comparison -Side head
+                diff           = [bool]$diffDetected
+                classification = Resolve-PairClassification -ResultNode $resultNode -DiffDetected:$diffDetected
+                durationSeconds= $durationSeconds
+                previewStatus  = $previewStatus
+                reportPath     = $reportPath
+                imageIndexPath = $imageIndexPath
+            }) | Out-Null
+        }
+    }
+
+    return [pscustomobject]@{
+        Pairs     = @($pairRows)
+        Durations = @($durations)
+    }
+}
+
 $resolvedManifest = Resolve-ExistingFile -Path $ManifestPath -Description 'Manifest'
 $manifestRaw = Get-Content -LiteralPath $resolvedManifest -Raw -ErrorAction Stop
 if ([string]::IsNullOrWhiteSpace($manifestRaw)) {
@@ -448,11 +851,15 @@ if ($extractReportImagesEnabled) {
 }
 
 $summaryTargets = [System.Collections.Generic.List[object]]::new()
+$summaryPairTimeline = [System.Collections.Generic.List[object]]::new()
 $errorTargets = [System.Collections.Generic.List[object]]::new()
 $totalComparisons = 0
 $totalDiffs = 0
 $completedCount = 0
 $diffTargetCount = 0
+$totalPairRows = 0
+$diffPairRows = 0
+$pairDurations = [System.Collections.Generic.List[double]]::new()
 $reportImageTargetCount = 0
 $reportImageExportedCount = 0
 $reportImageExtractionErrors = 0
@@ -508,6 +915,7 @@ for ($i = 0; $i -lt $targets.Count; $i++) {
         & $CompareInvoker $compareArgs | Out-Null
     } catch {
         $caughtError = $_
+        $errorTiming = New-TimingSummary -DurationsSeconds @()
         [void]$errorTargets.Add([pscustomobject]@{
             repoPath = $repoPath
             message  = $caughtError.Exception.Message
@@ -520,6 +928,9 @@ for ($i = 0; $i -lt $targets.Count; $i++) {
             basePaths   = $target.basePaths.ToArray()
             headPaths   = $target.headPaths.ToArray()
             resultsDir  = $targetResultsDir
+            commitPairs = @()
+            timing      = $errorTiming
+            estimatedCompareTime = $errorTiming.estimatedCompareTime
         }) | Out-Null
         continue
     }
@@ -527,6 +938,7 @@ for ($i = 0; $i -lt $targets.Count; $i++) {
     $manifestPath = Join-Path $targetResultsDir 'manifest.json'
     if (-not (Test-Path -LiteralPath $manifestPath -PathType Leaf)) {
         $errorMessage = "manifest.json not produced for $repoPath"
+        $errorTiming = New-TimingSummary -DurationsSeconds @()
         [void]$errorTargets.Add([pscustomobject]@{
             repoPath = $repoPath
             message  = $errorMessage
@@ -539,6 +951,9 @@ for ($i = 0; $i -lt $targets.Count; $i++) {
             basePaths   = $target.basePaths.ToArray()
             headPaths   = $target.headPaths.ToArray()
             resultsDir  = $targetResultsDir
+            commitPairs = @()
+            timing      = $errorTiming
+            estimatedCompareTime = $errorTiming.estimatedCompareTime
         }) | Out-Null
         continue
     }
@@ -626,6 +1041,31 @@ for ($i = 0; $i -lt $targets.Count; $i++) {
         }
     }
 
+    $targetTimeline = Get-TargetPairTimeline `
+        -AggregateManifest $aggregate `
+        -TargetRepoPath $repoPath `
+        -TargetResultsDir $targetResultsDir `
+        -RepoRoot $repoRoot `
+        -ReportImages ([pscustomobject]$reportImages)
+    $targetPairs = @($targetTimeline.Pairs)
+    $targetDurations = @($targetTimeline.Durations)
+    $targetTiming = New-TimingSummary -DurationsSeconds $targetDurations
+
+    $totalPairRows += $targetPairs.Count
+    foreach ($pairRow in $targetPairs) {
+        if (-not $pairRow) { continue }
+        $summaryPairTimeline.Add($pairRow) | Out-Null
+        if ($pairRow.PSObject.Properties['diff'] -and [bool]$pairRow.diff) {
+            $diffPairRows++
+        }
+    }
+    foreach ($durationValue in $targetDurations) {
+        $candidateDuration = Convert-ToNullableDouble -Value $durationValue
+        if ($candidateDuration -eq $null) { continue }
+        if ($candidateDuration -lt 0) { continue }
+        $pairDurations.Add([double]$candidateDuration) | Out-Null
+    }
+
     [void]$summaryTargets.Add([pscustomobject]@{
         repoPath    = $repoPath
         status      = 'completed'
@@ -637,6 +1077,9 @@ for ($i = 0; $i -lt $targets.Count; $i++) {
         reportMd    = $reportMarkdown
         reportHtml  = $reportHtml
         reportImages= [pscustomobject]$reportImages
+        commitPairs = $targetPairs
+        timing      = $targetTiming
+        estimatedCompareTime = $targetTiming.estimatedCompareTime
         stats       = [pscustomobject]@{
             processed = $processed
             diffs     = $diffs
@@ -646,6 +1089,7 @@ for ($i = 0; $i -lt $targets.Count; $i++) {
 }
 
 foreach ($skipped in $skippedPairs) {
+    $skippedTiming = New-TimingSummary -DurationsSeconds @()
     [void]$summaryTargets.Add([pscustomobject]@{
         repoPath    = if ($skipped.headPath) { $skipped.headPath } elseif ($skipped.basePath) { $skipped.basePath } else { '(unknown)' }
         status      = 'skipped'
@@ -653,8 +1097,14 @@ foreach ($skipped in $skippedPairs) {
         changeTypes = @($skipped.changeType)
         basePaths   = @($skipped.basePath)
         headPaths   = @($skipped.headPath)
+        commitPairs = @()
+        timing      = $skippedTiming
+        estimatedCompareTime = $skippedTiming.estimatedCompareTime
     }) | Out-Null
 }
+
+$pairTimelineRows = @($summaryPairTimeline)
+$overallTiming = New-TimingSummary -DurationsSeconds @($pairDurations)
 
 $summary = [pscustomobject]@{
     schema      = 'pr-vi-history-summary@v1'
@@ -674,11 +1124,18 @@ $summary = [pscustomobject]@{
         imageTargets     = $reportImageTargetCount
         extractedImages  = $reportImageExportedCount
         imageErrors      = $reportImageExtractionErrors
+        pairRows         = $totalPairRows
+        diffPairRows     = $diffPairRows
+        timing           = $overallTiming
+        estimatedCompareTime = $overallTiming.estimatedCompareTime
     }
     targets     = $summaryTargets
+    pairTimeline= $pairTimelineRows
+    timing      = $overallTiming
+    estimatedCompareTime = $overallTiming.estimatedCompareTime
 }
 
-$summary | ConvertTo-Json -Depth 8 | Set-Content -LiteralPath $effectiveSummaryPath -Encoding utf8
+$summary | ConvertTo-Json -Depth 12 | Set-Content -LiteralPath $effectiveSummaryPath -Encoding utf8
 
 if ($Env:GITHUB_OUTPUT) {
     "summary_path=$effectiveSummaryPath" | Out-File -FilePath $Env:GITHUB_OUTPUT -Encoding utf8 -Append
@@ -689,6 +1146,8 @@ if ($Env:GITHUB_OUTPUT) {
     "comparison_count=$totalComparisons" | Out-File -FilePath $Env:GITHUB_OUTPUT -Encoding utf8 -Append
     "diff_count=$totalDiffs" | Out-File -FilePath $Env:GITHUB_OUTPUT -Encoding utf8 -Append
     "error_count=$($errorTargets.Count)" | Out-File -FilePath $Env:GITHUB_OUTPUT -Encoding utf8 -Append
+    "pair_row_count=$totalPairRows" | Out-File -FilePath $Env:GITHUB_OUTPUT -Encoding utf8 -Append
+    "diff_pair_count=$diffPairRows" | Out-File -FilePath $Env:GITHUB_OUTPUT -Encoding utf8 -Append
 }
 
 if ($errorTargets.Count -gt 0) {
