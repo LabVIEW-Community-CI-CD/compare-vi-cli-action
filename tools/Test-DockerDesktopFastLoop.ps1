@@ -24,6 +24,8 @@ param(
   [string]$LaneScope = 'both',
   [string]$HistoryHarnessPath = 'fixtures/vi-history/pr-harness.json',
   [string]$SequentialFixturePath = 'fixtures/vi-history/sequential.json',
+  [ValidateRange(1, 86400)]
+  [int]$StepTimeoutSeconds = 600,
   [bool]$ManageDockerEngine = $false,
   [ValidateSet('linux-first', 'windows-first')]
   [string]$LaneOrder = 'linux-first',
@@ -160,7 +162,10 @@ function Invoke-WindowsHistoryCompare {
     [Parameter(Mandatory)][string]$HeadVi,
     [Parameter(Mandatory)][string]$ReportPath,
     [Parameter(Mandatory)][string]$WindowsImage,
-    [Parameter(Mandatory)][string]$RuntimeSnapshotPath
+    [Parameter(Mandatory)][string]$RuntimeSnapshotPath,
+    [Parameter(Mandatory)][bool]$RuntimeAutoRepair,
+    [Parameter(Mandatory)][bool]$ManageDockerEngine,
+    [Parameter(Mandatory)][int]$StepTimeoutSeconds
   )
 
   $reportDir = Split-Path -Parent $ReportPath
@@ -175,9 +180,9 @@ function Invoke-WindowsHistoryCompare {
   & pwsh -NoLogo -NoProfile -File $runtimeGuardScript `
     -ExpectedOsType windows `
     -ExpectedContext desktop-windows `
-    -AutoRepair:$true `
+    -AutoRepair:$RuntimeAutoRepair `
     -ManageDockerEngine:$ManageDockerEngine `
-    -EngineReadyTimeoutSeconds 90 `
+    -EngineReadyTimeoutSeconds $StepTimeoutSeconds `
     -EngineReadyPollSeconds 3 `
     -SnapshotPath $RuntimeSnapshotPath `
     -GitHubOutputPath '' | Out-Null
@@ -190,8 +195,11 @@ function Invoke-WindowsHistoryCompare {
     -HeadVi $HeadVi `
     -Image $WindowsImage `
     -ReportPath $ReportPath `
-    -AutoRepairRuntime:$true `
+    -TimeoutSeconds $StepTimeoutSeconds `
+    -AutoRepairRuntime:$RuntimeAutoRepair `
     -ManageDockerEngine:$ManageDockerEngine `
+    -RuntimeEngineReadyTimeoutSeconds $StepTimeoutSeconds `
+    -RuntimeEngineReadyPollSeconds 3 `
     -RuntimeSnapshotPath $RuntimeSnapshotPath | Out-Null
 
   $compareExit = $LASTEXITCODE
@@ -452,12 +460,105 @@ function Write-SemiLiveStatus {
     linuxImage = $LinuxImage
     historyScenarioSet = $HistoryScenarioSet
     laneScope = $LaneScope
-    manageDockerEngine = [bool]$ManageDockerEngine
+    singleLaneMode = [bool]$singleLaneMode
+    runtimeAutoRepair = [bool]$runtimeAutoRepairEnabled
+    stepTimeoutSeconds = [int]$StepTimeoutSeconds
+    manageDockerEngine = [bool]$effectiveManageDockerEngine
     telemetry = $telemetry
     steps = @($Steps)
     summaryPath = ($SummaryPath ?? '')
   }
   $payload | ConvertTo-Json -Depth 10 | Set-Content -LiteralPath $Path -Encoding utf8
+}
+
+function Invoke-StepActionWithTimeout {
+  param(
+    [Parameter(Mandatory)][scriptblock]$Action,
+    [Parameter(Mandatory)][int]$TimeoutSeconds
+  )
+
+  $threadJobAvailable = $null -ne (Get-Command -Name Start-ThreadJob -ErrorAction SilentlyContinue)
+  if (-not $threadJobAvailable) {
+    $global:LASTEXITCODE = 0
+    try {
+      $directOutput = & $Action
+      $directExit = if ($null -eq $LASTEXITCODE) { 0 } else { [int]$LASTEXITCODE }
+      return [pscustomobject]@{
+        timedOut = $false
+        succeeded = $true
+        exitCode = [int]$directExit
+        output = $directOutput
+        errorMessage = ''
+      }
+    } catch {
+      $directExit = if ($null -eq $LASTEXITCODE) { 1 } else { [int]$LASTEXITCODE }
+      return [pscustomobject]@{
+        timedOut = $false
+        succeeded = $false
+        exitCode = [int]$directExit
+        output = $null
+        errorMessage = [string]$_.Exception.Message
+      }
+    }
+  }
+
+  $job = $null
+  try {
+    $job = Start-ThreadJob -ScriptBlock {
+      param([scriptblock]$InnerAction)
+      Set-StrictMode -Version Latest
+      $ErrorActionPreference = 'Stop'
+      $global:LASTEXITCODE = 0
+      try {
+        $innerOutput = & $InnerAction
+        $innerExit = if ($null -eq $LASTEXITCODE) { 0 } else { [int]$LASTEXITCODE }
+        [pscustomobject]@{
+          timedOut = $false
+          succeeded = $true
+          exitCode = [int]$innerExit
+          output = $innerOutput
+          errorMessage = ''
+        }
+      } catch {
+        $innerExit = if ($null -eq $LASTEXITCODE) { 1 } else { [int]$LASTEXITCODE }
+        [pscustomobject]@{
+          timedOut = $false
+          succeeded = $false
+          exitCode = [int]$innerExit
+          output = $null
+          errorMessage = [string]$_.Exception.Message
+        }
+      }
+    } -ArgumentList $Action
+
+    $completed = Wait-Job -Job $job -Timeout $TimeoutSeconds
+    if ($null -eq $completed) {
+      Stop-Job -Job $job -Force -ErrorAction SilentlyContinue | Out-Null
+      return [pscustomobject]@{
+        timedOut = $true
+        succeeded = $false
+        exitCode = 124
+        output = $null
+        errorMessage = ("Step timed out after {0} second(s)." -f [int]$TimeoutSeconds)
+      }
+    }
+
+    $jobResult = @(Receive-Job -Job $job -ErrorAction SilentlyContinue) | Select-Object -Last 1
+    if (-not $jobResult) {
+      return [pscustomobject]@{
+        timedOut = $false
+        succeeded = $false
+        exitCode = 1
+        output = $null
+        errorMessage = 'Step runner returned no output.'
+      }
+    }
+    return $jobResult
+  } finally {
+    if ($job) {
+      Remove-Job -Job $job -Force -ErrorAction SilentlyContinue | Out-Null
+    }
+  }
 }
 
 function Invoke-Step {
@@ -466,7 +567,8 @@ function Invoke-Step {
     [Parameter(Mandatory)][scriptblock]$Action,
     [int[]]$AllowedExitCodes = @(0),
     [bool]$HardStopOnRuntimeFailure = $false,
-    [scriptblock]$CaptureValidator
+    [scriptblock]$CaptureValidator,
+    [int]$TimeoutSeconds = 600
   )
 
   $stepStartUtc = (Get-Date).ToUniversalTime()
@@ -484,59 +586,71 @@ function Invoke-Step {
   $containerExportStatus = ''
 
   try {
-    $global:LASTEXITCODE = 0
-    $stepOutput = & $Action
-    $stepExitCode = if ($null -eq $LASTEXITCODE) { 0 } else { [int]$LASTEXITCODE }
+    $execution = Invoke-StepActionWithTimeout -Action $Action -TimeoutSeconds $TimeoutSeconds
+    $stepOutput = $execution.output
+    $stepExitCode = [int]$execution.exitCode
 
-    $classification = $null
-    if ($CaptureValidator) {
-      $classification = & $CaptureValidator $stepOutput $stepExitCode
-    }
-    if (-not $classification) {
-      $defaultStatus = if ($AllowedExitCodes -contains $stepExitCode) { 'ok' } else { 'error' }
-      $classification = Get-CompareExitClassification `
-        -ExitCode $stepExitCode `
-        -CaptureStatus $defaultStatus `
-        -StdOut '' `
-        -StdErr '' `
-        -Message ''
-    }
-
-    $resultClass = [string]$classification.resultClass
-    $gateOutcome = [string]$classification.gateOutcome
-    $failureClass = [string]$classification.failureClass
-    $isDiff = [bool]$classification.isDiff
-    if ($classification.PSObject.Properties['message']) {
-      $stepMessage = [string]$classification.message
-    }
-    if ($classification.PSObject.Properties['diffEvidenceSource']) {
-      $diffEvidenceSource = [string]$classification.diffEvidenceSource
-    }
-    if ($classification.PSObject.Properties['diffImageCount']) {
-      $diffImageCount = [int]$classification.diffImageCount
-    }
-    if ($classification.PSObject.Properties['extractedReportPath']) {
-      $extractedReportPath = [string]$classification.extractedReportPath
-    }
-    if ($classification.PSObject.Properties['containerExportStatus']) {
-      $containerExportStatus = [string]$classification.containerExportStatus
-    }
-
-    if (-not ($AllowedExitCodes -contains $stepExitCode) -and $gateOutcome -eq 'pass') {
-      $gateOutcome = 'fail'
-      $resultClass = 'failure-preflight'
-      $failureClass = 'preflight'
-      $stepMessage = ("Native command exited with disallowed code {0}." -f $stepExitCode)
-    } elseif (-not ($AllowedExitCodes -contains $stepExitCode) -and [string]::IsNullOrWhiteSpace($stepMessage)) {
-      $stepMessage = ("Native command exited with code {0}." -f $stepExitCode)
-    }
-
-    if ($gateOutcome -eq 'pass') {
-      $stepStatus = 'success'
-    } else {
+    if ([bool]$execution.timedOut) {
       $stepStatus = 'failure'
-      if ([string]::IsNullOrWhiteSpace($stepMessage)) {
-        $stepMessage = ("Step failed with resultClass={0} failureClass={1} exit={2}." -f $resultClass, $failureClass, $stepExitCode)
+      $stepMessage = [string]$execution.errorMessage
+      $resultClass = 'failure-timeout'
+      $gateOutcome = 'fail'
+      $failureClass = 'timeout'
+    } else {
+      if (-not [bool]$execution.succeeded) {
+        throw ([System.Exception]::new([string]$execution.errorMessage))
+      }
+
+      $classification = $null
+      if ($CaptureValidator) {
+        $classification = & $CaptureValidator $stepOutput $stepExitCode
+      }
+      if (-not $classification) {
+        $defaultStatus = if ($AllowedExitCodes -contains $stepExitCode) { 'ok' } else { 'error' }
+        $classification = Get-CompareExitClassification `
+          -ExitCode $stepExitCode `
+          -CaptureStatus $defaultStatus `
+          -StdOut '' `
+          -StdErr '' `
+          -Message ''
+      }
+
+      $resultClass = [string]$classification.resultClass
+      $gateOutcome = [string]$classification.gateOutcome
+      $failureClass = [string]$classification.failureClass
+      $isDiff = [bool]$classification.isDiff
+      if ($classification.PSObject.Properties['message']) {
+        $stepMessage = [string]$classification.message
+      }
+      if ($classification.PSObject.Properties['diffEvidenceSource']) {
+        $diffEvidenceSource = [string]$classification.diffEvidenceSource
+      }
+      if ($classification.PSObject.Properties['diffImageCount']) {
+        $diffImageCount = [int]$classification.diffImageCount
+      }
+      if ($classification.PSObject.Properties['extractedReportPath']) {
+        $extractedReportPath = [string]$classification.extractedReportPath
+      }
+      if ($classification.PSObject.Properties['containerExportStatus']) {
+        $containerExportStatus = [string]$classification.containerExportStatus
+      }
+
+      if (-not ($AllowedExitCodes -contains $stepExitCode) -and $gateOutcome -eq 'pass') {
+        $gateOutcome = 'fail'
+        $resultClass = 'failure-preflight'
+        $failureClass = 'preflight'
+        $stepMessage = ("Native command exited with disallowed code {0}." -f $stepExitCode)
+      } elseif (-not ($AllowedExitCodes -contains $stepExitCode) -and [string]::IsNullOrWhiteSpace($stepMessage)) {
+        $stepMessage = ("Native command exited with code {0}." -f $stepExitCode)
+      }
+
+      if ($gateOutcome -eq 'pass') {
+        $stepStatus = 'success'
+      } else {
+        $stepStatus = 'failure'
+        if ([string]::IsNullOrWhiteSpace($stepMessage)) {
+          $stepMessage = ("Step failed with resultClass={0} failureClass={1} exit={2}." -f $resultClass, $failureClass, $stepExitCode)
+        }
       }
     }
   } catch {
@@ -632,6 +746,12 @@ $historyScenariosRoot = Join-Path $root 'history-scenarios'
 $repoRoot = Get-RepoRootFromToolsScript
 $historyScenarioSetNormalized = if ([string]::IsNullOrWhiteSpace($HistoryScenarioSet)) { 'none' } else { $HistoryScenarioSet.Trim().ToLowerInvariant() }
 $laneScopeNormalized = if ([string]::IsNullOrWhiteSpace($LaneScope)) { 'both' } else { $LaneScope.Trim().ToLowerInvariant() }
+$singleLaneMode = $laneScopeNormalized -ne 'both'
+if ($singleLaneMode -and $ManageDockerEngine) {
+  throw ("LaneScope '{0}' does not allow -ManageDockerEngine`:$true. Use LaneScope 'both' for managed engine switching." -f $laneScopeNormalized)
+}
+$effectiveManageDockerEngine = if ($singleLaneMode) { $false } else { [bool]$ManageDockerEngine }
+$runtimeAutoRepairEnabled = -not $singleLaneMode
 $effectiveSkipWindowsProbe = [bool]$SkipWindowsProbe
 $effectiveSkipLinuxProbe = [bool]$SkipLinuxProbe
 switch ($laneScopeNormalized) {
@@ -687,8 +807,10 @@ if (-not $effectiveSkipWindowsProbe) {
     pwsh -NoLogo -NoProfile -File (Join-Path $PSScriptRoot 'Assert-DockerRuntimeDeterminism.ps1') `
       -ExpectedOsType windows `
       -ExpectedContext desktop-windows `
-      -AutoRepair:$true `
-      -ManageDockerEngine:$ManageDockerEngine `
+      -AutoRepair:$runtimeAutoRepairEnabled `
+      -ManageDockerEngine:$effectiveManageDockerEngine `
+      -EngineReadyTimeoutSeconds $StepTimeoutSeconds `
+      -EngineReadyPollSeconds 3 `
       -SnapshotPath $windowsSnapshot `
       -GitHubOutputPath ''
     }
@@ -702,8 +824,11 @@ if (-not $effectiveSkipWindowsProbe) {
     pwsh -NoLogo -NoProfile -File (Join-Path $PSScriptRoot 'Run-NIWindowsContainerCompare.ps1') `
       -Probe `
       -Image $WindowsImage `
-      -AutoRepairRuntime:$true `
-      -ManageDockerEngine:$ManageDockerEngine `
+      -TimeoutSeconds $StepTimeoutSeconds `
+      -AutoRepairRuntime:$runtimeAutoRepairEnabled `
+      -ManageDockerEngine:$effectiveManageDockerEngine `
+      -RuntimeEngineReadyTimeoutSeconds $StepTimeoutSeconds `
+      -RuntimeEngineReadyPollSeconds 3 `
       -RuntimeSnapshotPath $windowsSnapshot | Out-Null
     }
   }) | Out-Null
@@ -748,8 +873,10 @@ if (-not $effectiveSkipLinuxProbe) {
     pwsh -NoLogo -NoProfile -File (Join-Path $PSScriptRoot 'Assert-DockerRuntimeDeterminism.ps1') `
       -ExpectedOsType linux `
       -ExpectedContext desktop-linux `
-      -AutoRepair:$true `
-      -ManageDockerEngine:$ManageDockerEngine `
+      -AutoRepair:$runtimeAutoRepairEnabled `
+      -ManageDockerEngine:$effectiveManageDockerEngine `
+      -EngineReadyTimeoutSeconds $StepTimeoutSeconds `
+      -EngineReadyPollSeconds 3 `
       -SnapshotPath $linuxSnapshot `
       -GitHubOutputPath ''
     }
@@ -763,8 +890,10 @@ if (-not $effectiveSkipLinuxProbe) {
     pwsh -NoLogo -NoProfile -File (Join-Path $PSScriptRoot 'Run-NILinuxContainerCompare.ps1') `
       -Probe `
       -Image $LinuxImage `
-      -AutoRepairRuntime:$true `
-      -ManageDockerEngine:$ManageDockerEngine `
+      -TimeoutSeconds $StepTimeoutSeconds `
+      -AutoRepairRuntime:$runtimeAutoRepairEnabled `
+      -RuntimeEngineReadyTimeoutSeconds $StepTimeoutSeconds `
+      -RuntimeEngineReadyPollSeconds 3 `
       -RuntimeSnapshotPath $linuxSnapshot | Out-Null
     }
   }) | Out-Null
@@ -902,7 +1031,10 @@ if ($historyScenarioSetNormalized -ne 'none') {
               -HeadVi $headForStep `
               -ReportPath $reportPath `
               -WindowsImage $WindowsImage `
-              -RuntimeSnapshotPath $windowsSnapshot
+              -RuntimeSnapshotPath $windowsSnapshot `
+              -RuntimeAutoRepair:$runtimeAutoRepairEnabled `
+              -ManageDockerEngine:$effectiveManageDockerEngine `
+              -StepTimeoutSeconds $StepTimeoutSeconds
           }
         }) | Out-Null
 
@@ -956,7 +1088,10 @@ if ($historyScenarioSetNormalized -ne 'none') {
           -HeadVi $headPath `
           -ReportPath $reportPath `
           -WindowsImage $WindowsImage `
-          -RuntimeSnapshotPath $windowsSnapshot
+          -RuntimeSnapshotPath $windowsSnapshot `
+          -RuntimeAutoRepair:$runtimeAutoRepairEnabled `
+          -ManageDockerEngine:$effectiveManageDockerEngine `
+          -StepTimeoutSeconds $StepTimeoutSeconds
       }
     }) | Out-Null
     $historyScenarioCount++
@@ -1045,7 +1180,8 @@ foreach ($definition in $stepDefinitions.ToArray()) {
     -Action $definition.action `
     -AllowedExitCodes $allowedExitCodes `
     -HardStopOnRuntimeFailure:$hardStopOnRuntimeFailure `
-    -CaptureValidator $captureValidator
+    -CaptureValidator $captureValidator `
+    -TimeoutSeconds $StepTimeoutSeconds
   $results.Add($stepResult) | Out-Null
   $durationText = if ($stepResult.PSObject.Properties['durationMs']) { [string]$stepResult.durationMs } else { '0' }
   $stepStatusText = [string]$stepResult.status
@@ -1178,7 +1314,10 @@ $summary = [ordered]@{
   skipWindowsProbe = [bool]$effectiveSkipWindowsProbe
   skipLinuxProbe = [bool]$effectiveSkipLinuxProbe
   historyScenarioFilterDiagnostics = @($historyScenarioFilterDiagnostics.ToArray())
-  manageDockerEngine = [bool]$ManageDockerEngine
+  singleLaneMode = [bool]$singleLaneMode
+  runtimeAutoRepair = [bool]$runtimeAutoRepairEnabled
+  stepTimeoutSeconds = [int]$StepTimeoutSeconds
+  manageDockerEngine = [bool]$effectiveManageDockerEngine
   laneOrder = $LaneOrder
   steps = $results.ToArray()
   status = if ($failed.Count -eq 0) { 'success' } else { 'failure' }
