@@ -485,6 +485,44 @@ if (-not [string]::IsNullOrWhiteSpace($GitHubOutputPath)) {
       $summary.steps[0].failureClass | Should -Be 'runtime-determinism'
       $summary.steps[0].hardStopEligible | Should -BeTrue
       $summary.steps[0].hardStopTriggered | Should -BeTrue
+      $summary.laneLifecycle.windows.status | Should -Be 'failure'
+      $summary.laneLifecycle.windows.hardStopTriggered | Should -BeTrue
+      $summary.laneLifecycle.windows.stopClass | Should -Be 'hard-stop'
+      $summary.laneLifecycle.windows.startStep | Should -Be 'windows-runtime-preflight'
+      $summary.laneLifecycle.windows.endStep | Should -Be 'windows-runtime-preflight'
+      $summary.laneLifecycle.linux.status | Should -Be 'skipped'
+    } finally {
+      Remove-Item Env:FASTLOOP_ASSERT_FAIL_WINDOWS -ErrorAction SilentlyContinue
+      Pop-Location | Out-Null
+    }
+  }
+
+  It 'marks opposite lane blocked when hard-stop occurs before it starts in dual-lane mode' {
+    $repoRoot = Join-Path $TestDrive 'fast-loop-hard-stop-blocked-lane'
+    New-HarnessRepo -RootPath $repoRoot
+
+    Push-Location $repoRoot
+    try {
+      $resultsRoot = Join-Path $repoRoot 'tests/results/local-parity'
+      $env:FASTLOOP_ASSERT_FAIL_WINDOWS = '1'
+      $output = & pwsh -NoLogo -NoProfile -File (Join-Path $repoRoot 'tools' 'Test-DockerDesktopFastLoop.ps1') `
+        -ResultsRoot $resultsRoot `
+        -LaneOrder windows-first `
+        -HistoryScenarioSet none 2>&1
+      $LASTEXITCODE | Should -Not -Be 0
+
+      $summaryPath = Get-LatestFastLoopSummary -ResultsRoot $resultsRoot
+      $summaryPath | Should -Not -BeNullOrEmpty
+      $summary = Get-Content -LiteralPath $summaryPath -Raw | ConvertFrom-Json -Depth 12
+      $summary.hardStopTriggered | Should -BeTrue
+      $summary.laneScope | Should -Be 'both'
+      $summary.laneLifecycle.windows.status | Should -Be 'failure'
+      $summary.laneLifecycle.windows.stopClass | Should -Be 'hard-stop'
+      $summary.laneLifecycle.linux.status | Should -Be 'blocked'
+      $summary.laneLifecycle.linux.stopClass | Should -Be 'blocked'
+      $summary.laneLifecycle.linux.executedSteps | Should -Be 0
+      $summary.laneLifecycle.linux.totalPlannedSteps | Should -BeGreaterThan 0
+      $summary.laneLifecycle.linux.stopReason | Should -Match 'Runtime determinism check failed'
     } finally {
       Remove-Item Env:FASTLOOP_ASSERT_FAIL_WINDOWS -ErrorAction SilentlyContinue
       Pop-Location | Out-Null
@@ -557,6 +595,12 @@ if (-not [string]::IsNullOrWhiteSpace($GitHubOutputPath)) {
       foreach ($step in @($summary.steps)) {
         ([string]$step.name) | Should -Match '^windows-'
       }
+      $summary.laneLifecycle.windows.status | Should -Be 'success'
+      $summary.laneLifecycle.windows.stopClass | Should -Be 'completed'
+      $summary.laneLifecycle.windows.started | Should -BeTrue
+      $summary.laneLifecycle.windows.completed | Should -BeTrue
+      $summary.laneLifecycle.linux.status | Should -Be 'skipped'
+      $summary.laneLifecycle.linux.started | Should -BeFalse
 
       Test-Path -LiteralPath $tracePath -PathType Leaf | Should -BeTrue
       $traceLines = @(Get-Content -LiteralPath $tracePath | Where-Object { -not [string]::IsNullOrWhiteSpace($_) })
