@@ -592,6 +592,17 @@ switch ($scenarioKey) {
     }
 }
 
+# Preload scenario fixture data before we checkout the base branch. This keeps
+# in-progress scenario definitions available when they are not yet on develop.
+switch ($scenarioKey) {
+    'sequential' {
+        Get-SequentialHistorySequence | Out-Null
+    }
+    'mixed-same-commit' {
+        Get-MixedSameCommitFixture | Out-Null
+    }
+}
+
 $effectiveMaxPairs = $MaxPairs
 if (-not $PSBoundParameters.ContainsKey('MaxPairs')) {
     switch ($scenarioKey) {
