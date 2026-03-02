@@ -163,7 +163,7 @@ jobs:
 
   validate-windows:
     name: Fixture Drift (Windows LabVIEW 2026 q1 Host)
-    runs-on: [self-hosted, Windows, X64]
+    runs-on: [self-hosted, Windows, X64, self-hosted-docker]
     concurrency:
       group: lv-fixture-win
       cancel-in-progress: false
