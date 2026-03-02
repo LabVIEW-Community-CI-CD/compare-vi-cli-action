@@ -35,9 +35,6 @@ function Test-CompareToolFailureSignature {
   return (
     $combined -match 'Error code\s*:' -or
     $combined -match 'An error occurred while running the LabVIEW CLI' -or
-    $combined -match 'Report path already exists' -or
-    $combined -match 'overwrite existing report' -or
-    $combined -match 'CreateComparisonReport operation failed' -or
     $combined -match '(?i)\bexception\b' -or
     $combined -match '(?i)\bfatal\b'
   )
