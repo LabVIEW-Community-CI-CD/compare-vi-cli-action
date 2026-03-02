@@ -8,6 +8,7 @@ param(
   [string]$ResultsDir = 'results/fixture-drift',
   [string]$SessionIndexPath = '',
   [string]$ContextPath = '',
+  [string]$RuntimeSnapshotPath = '',
   [string]$RequiredLabel = 'self-hosted-docker',
   [bool]$HasRequiredLabel = $false,
   [string]$RunnerLabelsCsv = '',
@@ -42,6 +43,11 @@ $contextPathResolved = if ([string]::IsNullOrWhiteSpace($ContextPath)) {
 } else {
   Resolve-AbsolutePath -Path $ContextPath
 }
+$runtimeSnapshotPathResolved = if ([string]::IsNullOrWhiteSpace($RuntimeSnapshotPath)) {
+  Join-Path $resultsResolved 'windows-runtime-determinism.json'
+} else {
+  Resolve-AbsolutePath -Path $RuntimeSnapshotPath
+}
 
 if (-not (Test-Path -LiteralPath $sessionPathResolved -PathType Leaf)) {
   if ($IgnoreMissingSessionIndex) {
@@ -69,6 +75,7 @@ $index.runContext.dockerRuntimeManager = [ordered]@{
   startContext = [string]$StartContext
   finalContext = [string]$FinalContext
   contextArtifactPath = if (Test-Path -LiteralPath $contextPathResolved -PathType Leaf) { $contextPathResolved } else { '' }
+  runtimeSnapshotPath = if (Test-Path -LiteralPath $runtimeSnapshotPathResolved -PathType Leaf) { $runtimeSnapshotPathResolved } else { '' }
 }
 $index.runContext.runnerLabelContract = [ordered]@{
   requiredLabel = [string]$RequiredLabel
