@@ -23,7 +23,8 @@ Emit the planned steps without executing them.
 Selects which synthetic change set to exercise. Use `attribute` for the legacy
 single-commit attr diff, `sequential` to replay multiple fixture commits, or
 `mixed-same-commit` to mutate two VI targets in a single commit (strict signal
-plus non-strict metadata-noise coverage).
+plus non-strict metadata-noise coverage), or `sequential-masscompile` to replay
+masscompile-only commits around a mixed signal+noise commit.
 
 .PARAMETER MaxPairs
 Optional override for the `max_pairs` workflow input. Defaults to `6`.
@@ -41,7 +42,7 @@ param(
     [string]$BaseBranch = 'develop',
     [switch]$KeepBranch,
     [switch]$DryRun,
-    [ValidateSet('attribute', 'sequential', 'mixed-same-commit')]
+    [ValidateSet('attribute', 'sequential', 'mixed-same-commit', 'sequential-masscompile')]
     [string]$Scenario = 'attribute',
     [int]$MaxPairs = 6,
     [int]$WorkflowTimeoutMinutes = 25,
@@ -311,6 +312,7 @@ function Restore-HistoryTracking {
 
 $script:SequentialFixtureCache = $null
 $script:MixedSameCommitFixtureCache = $null
+$script:SequentialMasscompileFixtureCache = $null
 
 function Get-SequentialHistorySequence {
     if ($script:SequentialFixtureCache) {
@@ -469,6 +471,103 @@ function Get-MixedSameCommitFixture {
         changes      = $changeObjects
     }
     return $script:MixedSameCommitFixtureCache
+}
+
+function Get-SequentialMasscompileFixture {
+    if ($script:SequentialMasscompileFixtureCache) {
+        return $script:SequentialMasscompileFixtureCache
+    }
+
+    $repoRoot = Invoke-Git -Arguments @('rev-parse', '--show-toplevel') | Select-Object -First 1
+    if ([string]::IsNullOrWhiteSpace($repoRoot)) {
+        throw 'Unable to resolve repository root for sequential masscompile fixture.'
+    }
+
+    $fixturePath = Join-Path $repoRoot 'fixtures' 'vi-history' 'sequential-masscompile.json'
+    if (-not (Test-Path -LiteralPath $fixturePath -PathType Leaf)) {
+        throw "Sequential masscompile fixture not found: $fixturePath"
+    }
+
+    try {
+        $fixtureRaw = Get-Content -LiteralPath $fixturePath -Raw -ErrorAction Stop
+        $fixtureObj = $fixtureRaw | ConvertFrom-Json -ErrorAction Stop
+    } catch {
+        throw ("Unable to parse sequential masscompile fixture {0}: {1}" -f $fixturePath, $_.Exception.Message)
+    }
+
+    if ($fixtureObj.schema -ne 'vi-history-sequence-matrix@v1') {
+        throw "Unsupported sequential masscompile fixture schema '$($fixtureObj.schema)' (expected vi-history-sequence-matrix@v1)."
+    }
+    if (-not $fixtureObj.commits -or $fixtureObj.commits.Count -lt 1) {
+        throw 'Sequential masscompile fixture must define at least one commit.'
+    }
+
+    $commitObjects = New-Object System.Collections.Generic.List[pscustomobject]
+    $commitIdSet = New-Object System.Collections.Generic.HashSet[string]
+    foreach ($commit in $fixtureObj.commits) {
+        $commitId = if ($commit.PSObject.Properties['id']) { [string]$commit.id } else { $null }
+        if (-not [string]::IsNullOrWhiteSpace($commitId)) {
+            $commitIdSet.Add($commitId) | Out-Null
+        }
+        if (-not $commit.changes -or $commit.changes.Count -lt 1) {
+            throw ("Sequential masscompile commit '{0}' must define at least one change." -f $commitId)
+        }
+
+        $changeObjects = New-Object System.Collections.Generic.List[pscustomobject]
+        foreach ($change in $commit.changes) {
+            if (-not $change.targetPath) {
+                throw ("Sequential masscompile commit '{0}' change missing targetPath." -f $commitId)
+            }
+            if (-not $change.source) {
+                throw ("Sequential masscompile commit '{0}' change '{1}' missing source path." -f $commitId, $change.targetPath)
+            }
+
+            $resolvedTarget = if ([System.IO.Path]::IsPathRooted($change.targetPath)) {
+                $change.targetPath
+            } else {
+                Join-Path $repoRoot $change.targetPath
+            }
+            $resolvedSource = if ([System.IO.Path]::IsPathRooted($change.source)) {
+                $change.source
+            } else {
+                Join-Path $repoRoot $change.source
+            }
+
+            if (-not (Test-Path -LiteralPath $resolvedTarget -PathType Leaf)) {
+                throw ("Sequential masscompile target not found: {0}" -f $change.targetPath)
+            }
+            if (-not (Test-Path -LiteralPath $resolvedSource -PathType Leaf)) {
+                throw ("Sequential masscompile source not found: {0}" -f $change.source)
+            }
+
+            $changeObjects.Add([pscustomobject]@{
+                id                = if ($change.PSObject.Properties['id']) { [string]$change.id } else { $null }
+                title             = if ($change.PSObject.Properties['title']) { [string]$change.title } else { $null }
+                targetPath        = [string]$change.targetPath
+                resolvedTarget    = [string]$resolvedTarget
+                source            = [string]$change.source
+                resolvedSource    = [string]$resolvedSource
+                requireDiff       = if ($change.PSObject.Properties['requireDiff']) { [bool]$change.requireDiff } else { $false }
+                minDiffs          = if ($change.PSObject.Properties['minDiffs']) { [int]$change.minDiffs } else { if ($change.requireDiff) { 1 } else { 0 } }
+                classificationHint= if ($change.PSObject.Properties['classificationHint']) { [string]$change.classificationHint } else { $null }
+            }) | Out-Null
+        }
+
+        $commitObjects.Add([pscustomobject]@{
+            id      = $commitId
+            title   = if ($commit.PSObject.Properties['title']) { [string]$commit.title } else { $commitId }
+            message = if ($commit.PSObject.Properties['message']) { [string]$commit.message } else { "chore: sequential masscompile step $($commitObjects.Count + 1)" }
+            changes = $changeObjects
+        }) | Out-Null
+    }
+
+    $script:SequentialMasscompileFixtureCache = [pscustomobject]@{
+        path     = $fixturePath
+        repoRoot = $repoRoot
+        maxPairs = if ($fixtureObj.PSObject.Properties['maxPairs']) { [int]$fixtureObj.maxPairs } else { $null }
+        commits  = $commitObjects
+    }
+    return $script:SequentialMasscompileFixtureCache
 }
 
 function Invoke-MixedSameCommitHistoryCommit {
@@ -645,6 +744,90 @@ function Invoke-SequentialHistoryCommits {
     return $commits.ToArray()
 }
 
+function Invoke-SequentialMasscompileHistoryCommits {
+    $fixture = Get-SequentialMasscompileFixture
+    Write-Verbose ("Sequential masscompile fixture loaded from {0}" -f $fixture.path)
+
+    $targetExpectations = @{}
+    $commitSummaries = New-Object System.Collections.Generic.List[pscustomobject]
+
+    for ($commitIndex = 0; $commitIndex -lt $fixture.commits.Count; $commitIndex++) {
+        $fixtureCommit = $fixture.commits[$commitIndex]
+        $displayTitle = if ([string]::IsNullOrWhiteSpace($fixtureCommit.title)) { "Commit $($commitIndex + 1)" } else { [string]$fixtureCommit.title }
+        Write-Host ("Applying sequential-masscompile commit {0}: {1}" -f ($commitIndex + 1), $displayTitle)
+
+        $changedPaths = New-Object System.Collections.Generic.HashSet[string]
+        $sourceNotes = New-Object System.Collections.Generic.List[string]
+        foreach ($change in $fixtureCommit.changes) {
+            Write-Host ("  - {0} <= {1}" -f $change.targetPath, $change.source)
+            Copy-VIContent -Source $change.resolvedSource -Destination $change.resolvedTarget
+            $statusAfterStep = @(Invoke-Git -Arguments @('status', '--porcelain', '--', $change.targetPath))
+            if ($statusAfterStep.Count -gt 0) {
+                Invoke-Git -Arguments @('add', '-f', $change.targetPath) | Out-Null
+                $changedPaths.Add([string]$change.targetPath) | Out-Null
+            } else {
+                Write-Host ("    no staged delta for {0}; change treated as no-op" -f $change.targetPath)
+            }
+            $sourceNotes.Add(("{0} <= {1}" -f $change.targetPath, $change.source)) | Out-Null
+
+            $targetKey = [string]$change.targetPath
+            if (-not $targetExpectations.ContainsKey($targetKey)) {
+                $targetExpectations[$targetKey] = [ordered]@{
+                    repoPath          = $targetKey
+                    requireDiff       = [bool]$change.requireDiff
+                    minDiffs          = [int]$change.minDiffs
+                    classificationHint= $change.classificationHint
+                }
+            } else {
+                $existing = $targetExpectations[$targetKey]
+                $existing.requireDiff = [bool]$existing.requireDiff -or [bool]$change.requireDiff
+                $existing.minDiffs = [Math]::Max([int]$existing.minDiffs, [int]$change.minDiffs)
+                if ([string]::IsNullOrWhiteSpace($existing.classificationHint) -and -not [string]::IsNullOrWhiteSpace($change.classificationHint)) {
+                    $existing.classificationHint = [string]$change.classificationHint
+                }
+            }
+        }
+
+        if ($changedPaths.Count -eq 0) {
+            Write-Host ("Sequential-masscompile commit {0} produced no staged changes; skipping commit." -f ($commitIndex + 1))
+            continue
+        }
+
+        $commitMessage = if ([string]::IsNullOrWhiteSpace($fixtureCommit.message)) {
+            "chore: sequential masscompile commit $($commitIndex + 1)"
+        } else {
+            [string]$fixtureCommit.message
+        }
+        Invoke-Git -Arguments @('commit', '-m', $commitMessage) | Out-Null
+        $commitSummaries.Add([pscustomobject]@{
+            Title   = $displayTitle
+            Source  = [string]::Join(' | ', @($sourceNotes))
+            Message = $commitMessage
+        }) | Out-Null
+    }
+
+    if ($commitSummaries.Count -lt 1) {
+        throw 'Sequential masscompile fixture produced no commits; every step resolved to a no-op.'
+    }
+
+    $expectedTargets = New-Object System.Collections.Generic.List[pscustomobject]
+    foreach ($entry in $targetExpectations.GetEnumerator()) {
+        $value = $entry.Value
+        $expectedTargets.Add([pscustomobject]@{
+            repoPath          = [string]$value.repoPath
+            requireDiff       = [bool]$value.requireDiff
+            minDiffs          = [int]$value.minDiffs
+            classificationHint= if ($value.classificationHint) { [string]$value.classificationHint } else { $null }
+        }) | Out-Null
+    }
+
+    return [pscustomobject]@{
+        CommitSummaries = $commitSummaries.ToArray()
+        ExpectedTargets = $expectedTargets.ToArray()
+        SuggestedMaxPairs = if ($null -ne $fixture.maxPairs) { [int]$fixture.maxPairs } else { $null }
+    }
+}
+
 Write-Verbose "Base branch: $BaseBranch"
 Write-Verbose "KeepBranch: $KeepBranch"
 Write-Verbose "DryRun: $DryRun"
@@ -680,6 +863,14 @@ switch ($scenarioKey) {
         $scenarioNeedsArtifactValidation = $true
         $scenarioRequiresMobilePreview = $false
     }
+    'sequential-masscompile' {
+        $scenarioBranchSuffix = 'sequential-masscompile'
+        $scenarioDescription  = 'sequential masscompile-vs-signal history matrix'
+        $scenarioExpectation  = '`/vi-history` workflow captures strict signal and non-strict masscompile noise across sequential commits'
+        $scenarioPlanHint     = '- Apply sequential masscompile fixture from fixtures/vi-history/sequential-masscompile.json (masscompile-only + mixed signal commit chain)'
+        $scenarioNeedsArtifactValidation = $true
+        $scenarioRequiresMobilePreview = $false
+    }
     default {
         throw "Unsupported scenario: $Scenario"
     }
@@ -693,6 +884,9 @@ switch ($scenarioKey) {
     }
     'mixed-same-commit' {
         Get-MixedSameCommitFixture | Out-Null
+    }
+    'sequential-masscompile' {
+        Get-SequentialMasscompileFixture | Out-Null
     }
 }
 
@@ -709,6 +903,12 @@ if (-not $PSBoundParameters.ContainsKey('MaxPairs')) {
             $mixedFixture = Get-MixedSameCommitFixture
             if ($null -ne $mixedFixture.maxPairs) {
                 $effectiveMaxPairs = [int]$mixedFixture.maxPairs
+            }
+        }
+        'sequential-masscompile' {
+            $sequentialMasscompileFixture = Get-SequentialMasscompileFixture
+            if ($null -ne $sequentialMasscompileFixture.maxPairs) {
+                $effectiveMaxPairs = [int]$sequentialMasscompileFixture.maxPairs
             }
         }
     }
@@ -874,6 +1074,30 @@ try {
             $expectedTargets = @($mixedCommit.ExpectedTargets)
             if (-not $PSBoundParameters.ContainsKey('MaxPairs') -and $null -ne $mixedCommit.SuggestedMaxPairs) {
                 $effectiveMaxPairs = [int]$mixedCommit.SuggestedMaxPairs
+                $scratchContext.MaxPairsEffective = $effectiveMaxPairs
+            }
+        }
+        'sequential-masscompile' {
+            $matrixFixture = Get-SequentialMasscompileFixture
+            $uniqueTargets = New-Object System.Collections.Generic.HashSet[string]
+            foreach ($fixtureCommit in $matrixFixture.commits) {
+                foreach ($change in $fixtureCommit.changes) {
+                    $repoPath = [string]$change.targetPath
+                    if ([string]::IsNullOrWhiteSpace($repoPath)) {
+                        continue
+                    }
+                    if ($uniqueTargets.Add($repoPath)) {
+                        Enable-HistoryTracking -Path $repoPath
+                        $trackedHistoryPaths.Add($repoPath) | Out-Null
+                    }
+                }
+            }
+
+            $matrixResult = Invoke-SequentialMasscompileHistoryCommits
+            $commitSummaries = @($matrixResult.CommitSummaries)
+            $expectedTargets = @($matrixResult.ExpectedTargets)
+            if (-not $PSBoundParameters.ContainsKey('MaxPairs') -and $null -ne $matrixResult.SuggestedMaxPairs) {
+                $effectiveMaxPairs = [int]$matrixResult.SuggestedMaxPairs
                 $scratchContext.MaxPairsEffective = $effectiveMaxPairs
             }
         }
