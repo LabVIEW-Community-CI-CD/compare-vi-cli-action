@@ -196,6 +196,7 @@ exit 0
     $snapshot.result.status | Should -Be 'mismatch-failed'
     $snapshot.observed.osType | Should -BeNullOrEmpty
     $snapshot.observed.dockerOsProbe.last.parseReason | Should -Be 'daemon-unavailable'
+    $snapshot.observed.PSObject.Properties.Name | Should -Contain 'dockerBackendProcesses'
     $snapshot.result.reason | Should -Match 'parseReason=daemon-unavailable'
     $snapshot.result.reason | Should -Match 'exitCode=1'
   }
@@ -225,9 +226,12 @@ exit 0
     $snapshot.observed.context | Should -Be 'desktop-windows'
     $snapshot.observed.dockerOsProbe.initial.parseReason | Should -Be 'parsed'
     $snapshot.observed.dockerOsProbe.last.command | Should -Match 'docker --context desktop-windows info --format'
+    $snapshot.observed.dockerBackendProcesses | Should -Not -BeNull
 
     $ghOut = Get-Content -LiteralPath $githubOutput -Raw
     $ghOut | Should -Match 'runtime-status=ok'
     $ghOut | Should -Match 'docker-ostype-parse-reason=parsed'
   }
 }
+
+
