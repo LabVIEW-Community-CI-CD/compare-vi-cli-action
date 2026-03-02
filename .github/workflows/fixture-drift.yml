@@ -164,7 +164,7 @@ jobs:
         soft-fail: ${{ github.event_name == 'pull_request' || steps.docs.outputs.docs_only }}
 
   validate-windows:
-    name: Fixture Drift (Windows LabVIEW 2026 q1 Host)
+    name: Fixture Drift (Docker Desktop Host - LabVIEW 2026 q1 windows)
     runs-on: [self-hosted, Windows, X64, self-hosted-docker]
     concurrency:
       group: lv-fixture-win
@@ -213,6 +213,17 @@ jobs:
       with:
         phase: J2
         results-dir: results/fixture-drift
+    - name: Assert Docker runtime determinism (windows)
+      id: runtime_determinism
+      shell: pwsh
+      run: |
+        pwsh -NoLogo -NoProfile -File tools/Assert-DockerRuntimeDeterminism.ps1 `
+          -ExpectedOsType windows `
+          -ExpectedContext desktop-windows `
+          -AutoRepair:$true `
+          -ManageDockerEngine:$true `
+          -SnapshotPath 'results/fixture-drift/windows-runtime-determinism.json' `
+          -GitHubOutputPath $env:GITHUB_OUTPUT
     - name: Assert self-hosted-docker runner label
       id: runner_label_contract
       shell: pwsh
@@ -498,6 +509,7 @@ jobs:
         pwsh -NoLogo -NoProfile -File tools/Update-FixtureDriftSessionIndex.ps1 `
           -ResultsDir 'results/fixture-drift' `
           -ContextPath '${{ steps.docker_manager_context.outputs.context_path }}' `
+          -RuntimeSnapshotPath 'results/fixture-drift/windows-runtime-determinism.json' `
           -RequiredLabel 'self-hosted-docker' `
           -HasRequiredLabel:$hasRequiredLabel `
           -RunnerLabelsCsv '${{ steps.runner_label_contract.outputs.labels }}' `
@@ -598,7 +610,7 @@ jobs:
       if: always()
       shell: pwsh
       run: |
-        $list = 'results/fixture-drift/drift-summary.json;results/fixture-drift/compare-report.html;results/fixture-drift/session-index.json;results/fixture-drift/docker-runtime-manager-context.json;results/fixture-drift/docker-runtime-manager.json;results/fixture-drift/runner-label-contract.json'
+        $list = 'results/fixture-drift/drift-summary.json;results/fixture-drift/compare-report.html;results/fixture-drift/session-index.json;results/fixture-drift/docker-runtime-manager-context.json;results/fixture-drift/docker-runtime-manager.json;results/fixture-drift/runner-label-contract.json;results/fixture-drift/windows-runtime-determinism.json'
         pwsh -File tools/Write-ArtifactMap.ps1 -PathsList $list -Title 'Artifacts'
 
     - name: Re-run hint

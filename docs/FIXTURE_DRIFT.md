@@ -32,6 +32,12 @@ enforce Docker Desktop engine determinism before Windows-host comparison steps.
 - Primary artifact: `results/fixture-drift/docker-runtime-manager.json`
 - Windows lane context artifact:
   `results/fixture-drift/docker-runtime-manager-context.json`
+- Windows runtime determinism snapshot:
+  `results/fixture-drift/windows-runtime-determinism.json`
+
+Dedicated Windows host lane name:
+
+- `Fixture Drift (Docker Desktop Host - LabVIEW 2026 q1 windows)`
 
 Reusable output keys emitted by the manager step:
 

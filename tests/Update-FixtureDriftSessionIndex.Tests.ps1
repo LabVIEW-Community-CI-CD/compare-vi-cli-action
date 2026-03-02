@@ -28,10 +28,17 @@ Describe 'Update-FixtureDriftSessionIndex.ps1' -Tag 'Unit' {
       schema = 'fixture-drift/docker-runtime-manager-context@v1'
     }
     ($context | ConvertTo-Json -Depth 10) | Set-Content -LiteralPath $contextPath -Encoding utf8
+    $runtimeSnapshotPath = Join-Path $resultsDir 'windows-runtime-determinism.json'
+    $runtimeSnapshot = [ordered]@{
+      schema = 'docker-runtime-determinism@v1'
+      result = [ordered]@{ status = 'ok' }
+    }
+    ($runtimeSnapshot | ConvertTo-Json -Depth 10) | Set-Content -LiteralPath $runtimeSnapshotPath -Encoding utf8
 
     $resultPath = & $script:ToolPath `
       -ResultsDir $resultsDir `
       -ContextPath $contextPath `
+      -RuntimeSnapshotPath $runtimeSnapshotPath `
       -RequiredLabel 'self-hosted-docker' `
       -HasRequiredLabel:$true `
       -RunnerLabelsCsv 'self-hosted,windows,self-hosted-docker' `
@@ -48,6 +55,7 @@ Describe 'Update-FixtureDriftSessionIndex.ps1' -Tag 'Unit' {
     $updated.runContext.dockerRuntimeManager.status | Should -Be 'success'
     $updated.runContext.dockerRuntimeManager.windowsImageDigest | Should -Be 'sha256:windows'
     $updated.runContext.dockerRuntimeManager.contextArtifactPath | Should -Be $contextPath
+    $updated.runContext.dockerRuntimeManager.runtimeSnapshotPath | Should -Be $runtimeSnapshotPath
     $updated.runContext.runnerLabelContract.requiredLabel | Should -Be 'self-hosted-docker'
     $updated.runContext.runnerLabelContract.hasRequiredLabel | Should -BeTrue
     @($updated.runContext.runnerLabelContract.labels) | Should -Contain 'self-hosted-docker'

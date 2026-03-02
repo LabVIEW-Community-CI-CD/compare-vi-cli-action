@@ -232,6 +232,30 @@ exit 0
     $ghOut | Should -Match 'runtime-status=ok'
     $ghOut | Should -Match 'docker-ostype-parse-reason=parsed'
   }
+
+  It 'accepts default context alias when os probe matches expected lane' {
+    $work = Join-Path $TestDrive 'default-context-alias'
+    New-Item -ItemType Directory -Path $work -Force | Out-Null
+    & $script:CreateDockerWslStubs -WorkRoot $work
+
+    Set-Item Env:DOCKER_STUB_INFO_MODE 'parsed-windows'
+    Set-Item Env:DOCKER_STUB_CONTEXT 'default'
+
+    $snapshotPath = Join-Path $work 'runtime.json'
+    $output = & pwsh -NoLogo -NoProfile -File $script:GuardScript `
+      -ExpectedOsType windows `
+      -ExpectedContext desktop-windows `
+      -AutoRepair:$true `
+      -SnapshotPath $snapshotPath `
+      -GitHubOutputPath '' 2>&1
+    $LASTEXITCODE | Should -Be 0 -Because ($output -join "`n")
+
+    $snapshot = Get-Content -LiteralPath $snapshotPath -Raw | ConvertFrom-Json -Depth 12
+    $snapshot.result.status | Should -Be 'ok'
+    $snapshot.observed.osType | Should -Be 'windows'
+    $snapshot.observed.context | Should -Be 'default'
+    $snapshot.repairActions.Count | Should -Be 0
+  }
 }
 
 
