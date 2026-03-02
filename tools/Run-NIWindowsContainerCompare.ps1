@@ -55,6 +55,7 @@ param(
   [string[]]$Flags,
   [string]$LabVIEWPath,
   [bool]$AutoRepairRuntime = $true,
+  [bool]$ManageDockerEngine = $true,
   [int]$RuntimeEngineReadyTimeoutSeconds = 120,
   [int]$RuntimeEngineReadyPollSeconds = 3,
   [string]$RuntimeSnapshotPath,
@@ -82,6 +83,30 @@ function Assert-Tool {
   if (-not (Get-Command -Name $Name -ErrorAction SilentlyContinue)) {
     throw ("Required tool not found on PATH: {0}" -f $Name)
   }
+}
+
+function Resolve-DockerCommandSource {
+  $override = $env:DOCKER_COMMAND_OVERRIDE
+  if (-not [string]::IsNullOrWhiteSpace($override) -and (Test-Path -LiteralPath $override -PathType Leaf)) {
+    return [System.IO.Path]::GetFullPath($override)
+  }
+  $pathSeparator = [System.IO.Path]::PathSeparator
+  $pathEntries = @($env:PATH -split [regex]::Escape([string]$pathSeparator))
+  $candidates = @('docker.cmd', 'docker.ps1', 'docker.exe', 'docker.bat', 'docker')
+  foreach ($entry in $pathEntries) {
+    if ([string]::IsNullOrWhiteSpace($entry)) { continue }
+    foreach ($name in $candidates) {
+      $candidatePath = Join-Path $entry $name
+      if (Test-Path -LiteralPath $candidatePath -PathType Leaf) {
+        return [System.IO.Path]::GetFullPath($candidatePath)
+      }
+    }
+  }
+  $command = Get-Command -Name 'docker' -ErrorAction Stop
+  if ([string]::IsNullOrWhiteSpace($command.Source)) {
+    throw 'Unable to resolve docker command source path.'
+  }
+  return [string]$command.Source
 }
 
 function Resolve-EnvTokenValue {
@@ -452,39 +477,22 @@ function Invoke-DockerRunWithTimeout {
 
   $stdoutFile = Join-Path $env:TEMP ("ni-windows-container-stdout-{0}.log" -f ([guid]::NewGuid().ToString('N')))
   $stderrFile = Join-Path $env:TEMP ("ni-windows-container-stderr-{0}.log" -f ([guid]::NewGuid().ToString('N')))
-  $dockerArgsFile = Join-Path $env:TEMP ("ni-windows-container-docker-args-{0}.json" -f ([guid]::NewGuid().ToString('N')))
   $process = $null
   try {
-    $pwshPath = (Get-Command -Name 'pwsh' -ErrorAction SilentlyContinue | Select-Object -First 1).Source
-    if ([string]::IsNullOrWhiteSpace($pwshPath)) {
-      throw 'pwsh was not found; unable to launch docker command.'
+    $dockerCommandSource = Resolve-DockerCommandSource
+    $startFilePath = $dockerCommandSource
+    $startArgs = @($DockerArgs)
+    if ([System.StringComparer]::OrdinalIgnoreCase.Equals([System.IO.Path]::GetExtension($dockerCommandSource), '.ps1')) {
+      $pwshExe = (Get-Command -Name 'pwsh' -ErrorAction Stop).Source
+      $startFilePath = $pwshExe
+      $startArgs = @('-NoLogo', '-NoProfile', '-File', $dockerCommandSource) + @($DockerArgs)
     }
 
-    $DockerArgs | ConvertTo-Json -Compress | Set-Content -LiteralPath $dockerArgsFile -Encoding utf8
-    $dockerArgsFileEscaped = $dockerArgsFile.Replace("'", "''")
-    $invokeDockerScript = @"
-`$raw = Get-Content -LiteralPath '$dockerArgsFileEscaped' -Raw
-if ([string]::IsNullOrWhiteSpace(`$raw)) {
-  `$args = @()
-} else {
-  `$parsed = `$raw | ConvertFrom-Json
-  if (`$parsed -is [System.Collections.IEnumerable] -and -not (`$parsed -is [string])) {
-    `$args = @(`$parsed | ForEach-Object { [string]`$_ })
-  } elseif (`$null -eq `$parsed) {
-    `$args = @()
-  } else {
-    `$args = @([string]`$parsed)
-  }
-}
-& docker @args
-exit `$LASTEXITCODE
-"@
-    $encodedInvokeDockerScript = Convert-ToEncodedCommand -CommandText $invokeDockerScript
-
-    $process = Start-Process -FilePath $pwshPath `
-      -ArgumentList @('-NoLogo', '-NoProfile', '-EncodedCommand', $encodedInvokeDockerScript) `
+    $process = Start-Process -FilePath $startFilePath `
+      -ArgumentList $startArgs `
       -RedirectStandardOutput $stdoutFile `
       -RedirectStandardError $stderrFile `
+      -NoNewWindow `
       -PassThru
 
     $timeoutSeconds = [Math]::Max(1, $Seconds)
@@ -495,7 +503,6 @@ exit `$LASTEXITCODE
     while (-not $process.HasExited) {
       if ((Get-Date) -ge $deadline) {
         try { Stop-Process -Id $process.Id -Force -ErrorAction SilentlyContinue } catch {}
-        try { & docker rm -f $ContainerName *> $null } catch {}
         $stdout = if (Test-Path -LiteralPath $stdoutFile -PathType Leaf) { Get-Content -LiteralPath $stdoutFile -Raw } else { '' }
         $stderr = if (Test-Path -LiteralPath $stderrFile -PathType Leaf) { Get-Content -LiteralPath $stderrFile -Raw } else { '' }
         return [pscustomobject]@{
@@ -514,7 +521,6 @@ exit `$LASTEXITCODE
     }
     if (-not $process.HasExited) {
       try { Stop-Process -Id $process.Id -Force -ErrorAction SilentlyContinue } catch {}
-      try { & docker rm -f $ContainerName *> $null } catch {}
       $stdout = if (Test-Path -LiteralPath $stdoutFile -PathType Leaf) { Get-Content -LiteralPath $stdoutFile -Raw } else { '' }
       $stderr = if (Test-Path -LiteralPath $stderrFile -PathType Leaf) { Get-Content -LiteralPath $stderrFile -Raw } else { '' }
       return [pscustomobject]@{
@@ -537,7 +543,6 @@ exit `$LASTEXITCODE
     if ($process) {
       try { $process.Dispose() } catch {}
     }
-    Remove-Item -LiteralPath $dockerArgsFile -ErrorAction SilentlyContinue
     Remove-Item -LiteralPath $stdoutFile -ErrorAction SilentlyContinue
     Remove-Item -LiteralPath $stderrFile -ErrorAction SilentlyContinue
   }
@@ -646,6 +651,107 @@ function Parse-ContainerMeta {
   return $meta
 }
 
+function Export-ContainerArtifacts {
+  param(
+    [Parameter(Mandatory)][string]$ContainerName,
+    [AllowNull()][string]$ContainerReportPath,
+    [Parameter(Mandatory)][string]$ReportDirectory,
+    [AllowEmptyCollection()][string[]]$AdditionalContainerPaths = @()
+  )
+
+  $exportDir = Join-Path $ReportDirectory 'container-export'
+  if (-not (Test-Path -LiteralPath $exportDir -PathType Container)) {
+    New-Item -ItemType Directory -Path $exportDir -Force | Out-Null
+  }
+
+  $copiedPaths = New-Object System.Collections.Generic.List[string]
+  $attemptCount = 0
+  $successCount = 0
+  $reportPathExtracted = ''
+
+  if (-not [string]::IsNullOrWhiteSpace($ContainerReportPath)) {
+    $attemptCount++
+    $reportLeaf = Split-Path -Leaf $ContainerReportPath
+    if ([string]::IsNullOrWhiteSpace($reportLeaf)) {
+      $reportLeaf = 'windows-compare-report.html'
+    }
+    $reportPathExtracted = Join-Path $exportDir $reportLeaf
+    $sourceSpec = '{0}:{1}' -f $ContainerName, $ContainerReportPath
+    & docker cp $sourceSpec $reportPathExtracted *> $null
+    if ($LASTEXITCODE -eq 0 -and (Test-Path -LiteralPath $reportPathExtracted -PathType Leaf)) {
+      $successCount++
+      $copiedPaths.Add($reportPathExtracted) | Out-Null
+    }
+  }
+
+  foreach ($containerPath in @($AdditionalContainerPaths)) {
+    if ([string]::IsNullOrWhiteSpace($containerPath)) { continue }
+    $attemptCount++
+    $safeLeaf = Split-Path -Leaf $containerPath
+    if ([string]::IsNullOrWhiteSpace($safeLeaf)) {
+      $safeLeaf = ($containerPath -replace '[^a-zA-Z0-9._-]', '_')
+    }
+    $destinationPath = Join-Path $exportDir $safeLeaf
+    $sourceSpec = '{0}:{1}' -f $ContainerName, $containerPath
+    & docker cp $sourceSpec $destinationPath *> $null
+    if ($LASTEXITCODE -eq 0 -and (Test-Path -LiteralPath $destinationPath -PathType Leaf -ErrorAction SilentlyContinue)) {
+      $successCount++
+      $copiedPaths.Add($destinationPath) | Out-Null
+    }
+  }
+
+  $copyStatus = 'not-attempted'
+  if ($attemptCount -gt 0) {
+    if ($successCount -eq $attemptCount) {
+      $copyStatus = 'success'
+    } elseif ($successCount -gt 0) {
+      $copyStatus = 'partial'
+    } else {
+      $copyStatus = 'failed'
+    }
+  }
+
+  return [ordered]@{
+    exportDir = $exportDir
+    copiedPaths = @($copiedPaths.ToArray())
+    copyStatus = $copyStatus
+    reportPathExtracted = $reportPathExtracted
+  }
+}
+
+function Get-ReportAnalysis {
+  param(
+    [AllowNull()][string]$ExtractedReportPath
+  )
+
+  $analysis = [ordered]@{
+    source = 'container-export'
+    reportPathExtracted = ($ExtractedReportPath ?? '')
+    htmlParsed = $false
+    diffMarkerCount = 0
+    diffDetailCount = 0
+    diffImageCount = 0
+    hasDiffEvidence = $false
+  }
+
+  if ([string]::IsNullOrWhiteSpace($ExtractedReportPath) -or -not (Test-Path -LiteralPath $ExtractedReportPath -PathType Leaf)) {
+    return $analysis
+  }
+
+  try {
+    $html = Get-Content -LiteralPath $ExtractedReportPath -Raw -ErrorAction Stop
+    $analysis.htmlParsed = $true
+    $analysis.diffMarkerCount = [regex]::Matches($html, 'summary\.difference-heading', [System.Text.RegularExpressions.RegexOptions]::IgnoreCase).Count
+    $analysis.diffDetailCount = [regex]::Matches($html, 'li\.diff-detail(?:-cosmetic)?', [System.Text.RegularExpressions.RegexOptions]::IgnoreCase).Count
+    $analysis.diffImageCount = [regex]::Matches($html, '<img[^>]+class\s*=\s*["''][^"'']*difference-image', [System.Text.RegularExpressions.RegexOptions]::IgnoreCase).Count
+    $analysis.hasDiffEvidence = (($analysis.diffMarkerCount + $analysis.diffDetailCount + $analysis.diffImageCount) -gt 0)
+  } catch {
+    $analysis.htmlParsed = $false
+    $analysis.hasDiffEvidence = $false
+  }
+  return $analysis
+}
+
 if ($TimeoutSeconds -le 0) {
   throw '-TimeoutSeconds must be greater than zero.'
 }
@@ -687,6 +793,21 @@ $capture = [ordered]@{
     openAppReferenceTimeoutInSecond = 180
     afterLaunchOpenAppReferenceTimeoutInSecond = 180
   }
+  reportAnalysis = [ordered]@{
+    source = 'container-export'
+    reportPathExtracted = ''
+    htmlParsed = $false
+    diffMarkerCount = 0
+    diffDetailCount = 0
+    diffImageCount = 0
+    hasDiffEvidence = $false
+  }
+  containerArtifacts = [ordered]@{
+    exportDir = ''
+    copiedPaths = @()
+    copyStatus = 'not-attempted'
+  }
+  diffEvidenceSource = 'fallback'
   resultClass   = 'failure-preflight'
   isDiff        = $false
   gateOutcome   = 'fail'
@@ -700,6 +821,10 @@ $stderrContent = ''
 $capturePath = $null
 $stdoutPath = $null
 $stderrPath = $null
+$containerNameForCleanup = ''
+$containerReportPathForExport = ''
+$reportDirectoryForExport = ''
+$additionalExportPaths = @()
 
 try {
   Assert-Tool -Name 'docker'
@@ -723,6 +848,7 @@ try {
     -ExpectedOsType windows `
     -ExpectedContext 'desktop-windows' `
     -AutoRepair:$AutoRepairRuntime `
+    -ManageDockerEngine:$ManageDockerEngine `
     -EngineReadyTimeoutSeconds $RuntimeEngineReadyTimeoutSeconds `
     -EngineReadyPollSeconds $RuntimeEngineReadyPollSeconds `
     -SnapshotPath $runtimeSnapshot `
@@ -805,12 +931,14 @@ try {
     $containerReportPath = Convert-HostFileToContainerPath -HostFilePath $resolvedReportPath -MountMap $mounts -MountIndex $mountRef
 
     $containerName = 'ni-compare-{0}' -f ([guid]::NewGuid().ToString('N').Substring(0, 12))
+    $containerNameForCleanup = $containerName
+    $containerReportPathForExport = $containerReportPath
+    $reportDirectoryForExport = $reportDirectory
     $containerCommand = New-ContainerCommand
     $encodedContainerCommand = Convert-ToEncodedCommand -CommandText $containerCommand
 
     $dockerArgs = @(
       'run',
-      '--rm',
       '--name', $containerName,
       '--workdir', 'C:\compare'
     )
@@ -830,6 +958,12 @@ try {
     $dockerArgs += @('--env', ("COMPARE_RETRY_DELAY_SECONDS={0}" -f [Math]::Max(0, $RetryDelaySeconds)))
     $dockerArgs += @('--env', 'COMPARE_OPEN_APP_TIMEOUT=180')
     $dockerArgs += @('--env', 'COMPARE_AFTER_LAUNCH_TIMEOUT=180')
+    foreach ($stubVar in @('DOCKER_STUB_RUN_EXIT_CODE', 'DOCKER_STUB_RUN_SLEEP_SECONDS', 'DOCKER_STUB_RUN_STDOUT', 'DOCKER_STUB_RUN_STDERR', 'DOCKER_STUB_CP_REPORT_HTML', 'DOCKER_STUB_CP_FAIL')) {
+      $stubValue = [Environment]::GetEnvironmentVariable($stubVar, 'Process')
+      if (-not [string]::IsNullOrWhiteSpace($stubValue)) {
+        $dockerArgs += @('--env', ("{0}={1}" -f $stubVar, $stubValue))
+      }
+    }
     if (-not [string]::IsNullOrWhiteSpace($LabVIEWPath)) {
       $dockerArgs += @('--env', ("COMPARE_LABVIEW_PATH={0}" -f $LabVIEWPath))
     }
@@ -842,7 +976,7 @@ try {
       $encodedContainerCommand
     )
 
-    $capture.command = ('docker run --rm --name {0} ... {1} powershell -NoLogo -NoProfile -EncodedCommand <base64-compare-script>' -f $containerName, $Image)
+    $capture.command = ('docker run --name {0} ... {1} powershell -NoLogo -NoProfile -EncodedCommand <base64-compare-script>' -f $containerName, $Image)
     Write-Host ("[ni-container-compare] image={0} report={1}" -f $Image, $resolvedReportPath) -ForegroundColor Cyan
 
     $runResult = Invoke-DockerRunWithTimeout `
@@ -860,6 +994,7 @@ try {
     $capture.startupMitigation.iniPath = $meta.iniPath
     $capture.startupMitigation.openAppReferenceTimeoutInSecond = $meta.openTimeout
     $capture.startupMitigation.afterLaunchOpenAppReferenceTimeoutInSecond = $meta.afterLaunchTimeout
+    $additionalExportPaths = @()
 
     if ($runResult.TimedOut) {
       $capture.status = 'timeout'
@@ -912,6 +1047,24 @@ try {
   $capture.message = $_.Exception.Message
   $finalExitCode = $script:PreflightExitCode
 } finally {
+  if (-not $Probe -and -not [string]::IsNullOrWhiteSpace($containerNameForCleanup) -and -not [string]::IsNullOrWhiteSpace($reportDirectoryForExport)) {
+    $exportResult = Export-ContainerArtifacts `
+      -ContainerName $containerNameForCleanup `
+      -ContainerReportPath $containerReportPathForExport `
+      -ReportDirectory $reportDirectoryForExport `
+      -AdditionalContainerPaths $additionalExportPaths
+    $capture.containerArtifacts = [ordered]@{
+      exportDir = [string]$exportResult.exportDir
+      copiedPaths = @($exportResult.copiedPaths)
+      copyStatus = [string]$exportResult.copyStatus
+    }
+    $capture.reportAnalysis = Get-ReportAnalysis -ExtractedReportPath ([string]$exportResult.reportPathExtracted)
+  }
+
+  if (-not [string]::IsNullOrWhiteSpace($containerNameForCleanup)) {
+    try { & docker rm -f $containerNameForCleanup *> $null } catch {}
+  }
+
   $runtimeStatusForClassification = ''
   $runtimeReasonForClassification = ''
   if ($capture.runtimeDeterminism) {
@@ -932,6 +1085,32 @@ try {
     -RuntimeDeterminismStatus $runtimeStatusForClassification `
     -RuntimeDeterminismReason $runtimeReasonForClassification `
     -TimedOut:([bool]$capture.timedOut)
+
+  $hasHtmlDiffEvidence = $false
+  if ($capture.PSObject.Properties['reportAnalysis'] -and $capture.reportAnalysis -and $capture.reportAnalysis.PSObject.Properties['hasDiffEvidence']) {
+    $hasHtmlDiffEvidence = [bool]$capture.reportAnalysis.hasDiffEvidence
+  }
+  if (
+    $hasHtmlDiffEvidence -and
+    (
+      [string]::IsNullOrWhiteSpace([string]$classification.failureClass) -or
+      [string]::Equals([string]$classification.failureClass, 'none', [System.StringComparison]::OrdinalIgnoreCase)
+    )
+  ) {
+    $capture.status = 'diff'
+    $classification = [pscustomobject]@{
+      resultClass = 'success-diff'
+      isDiff = $true
+      gateOutcome = 'pass'
+      failureClass = 'none'
+    }
+    $capture.diffEvidenceSource = 'html'
+  } elseif ([bool]$classification.isDiff) {
+    $capture.diffEvidenceSource = 'exit-code'
+  } else {
+    $capture.diffEvidenceSource = 'fallback'
+  }
+
   $capture.resultClass = [string]$classification.resultClass
   $capture.isDiff = [bool]$classification.isDiff
   $capture.gateOutcome = [string]$classification.gateOutcome
@@ -942,7 +1121,7 @@ try {
     if ($stderrPath) { Write-TextArtifact -Path $stderrPath -Content $stderrContent }
     if ($capturePath) {
       $capture.generatedAt = (Get-Date).ToUniversalTime().ToString('o')
-      $capture | ConvertTo-Json -Depth 6 | Set-Content -LiteralPath $capturePath -Encoding utf8
+      $capture | ConvertTo-Json -Depth 8 | Set-Content -LiteralPath $capturePath -Encoding utf8
       Write-Host ("[ni-container-compare] capture={0} status={1} exit={2}" -f $capturePath, $capture.status, $capture.exitCode) -ForegroundColor DarkGray
     }
   }
