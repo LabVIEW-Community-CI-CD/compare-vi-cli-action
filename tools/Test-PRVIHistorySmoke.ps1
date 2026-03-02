@@ -506,11 +506,30 @@ function Invoke-AttributeHistoryCommit {
         [string]$TargetVi
     )
 
-    $sourceVi = 'fixtures/vi-attr/Base.vi'
-    Write-Host "Applying synthetic history change: $TargetVi <= $sourceVi"
-    Copy-VIContent -Source $sourceVi -Destination $TargetVi
-    $statusAfterPrep = Invoke-Git -Arguments @('status', '--short', $TargetVi)
-    Write-Host ("Post-change status for {0}: {1}" -f $TargetVi, ($statusAfterPrep -join ' '))
+    $candidateSources = @(
+        'fixtures/vi-attr/attr/HeadAttr.vi',
+        'fixtures/vi-stage/fp-cosmetic/Head.vi',
+        'fixtures/vi-attr/Base.vi'
+    )
+
+    $sourceVi = $null
+    $statusAfterPrep = @()
+    foreach ($candidate in $candidateSources) {
+        Write-Host "Applying synthetic history change: $TargetVi <= $candidate"
+        Copy-VIContent -Source $candidate -Destination $TargetVi
+        $statusAfterPrep = @(Invoke-Git -Arguments @('status', '--short', '--', $TargetVi))
+        Write-Host ("Post-change status for {0}: {1}" -f $TargetVi, ($statusAfterPrep -join ' '))
+        if ($statusAfterPrep.Count -gt 0) {
+            $sourceVi = $candidate
+            break
+        }
+        Write-Host ("No delta produced by {0}; trying next attribute fixture." -f $candidate)
+    }
+
+    if (-not $sourceVi) {
+        throw ("Unable to produce attribute scenario diff for target '{0}'. Tried: {1}" -f $TargetVi, ($candidateSources -join ', '))
+    }
+
     Invoke-Git -Arguments @('add', '-f', $TargetVi) | Out-Null
     Invoke-Git -Arguments @('commit', '-m', 'chore: synthetic VI attr diff for history smoke') | Out-Null
 
