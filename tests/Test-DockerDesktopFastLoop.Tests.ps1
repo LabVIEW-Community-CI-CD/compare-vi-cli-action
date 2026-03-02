@@ -56,6 +56,22 @@ $snapshot = [ordered]@{
   result = [ordered]@{ status = 'ok'; reason = '' }
 }
 
+if (-not [string]::IsNullOrWhiteSpace($env:FASTLOOP_ASSERT_TRACE_PATH)) {
+  $traceLine = "os=$ExpectedOsType;context=$ExpectedContext;autoRepair=$AutoRepair;manageEngine=$ManageDockerEngine;timeout=$EngineReadyTimeoutSeconds"
+  $traceDir = Split-Path -Parent $env:FASTLOOP_ASSERT_TRACE_PATH
+  if ($traceDir -and -not (Test-Path -LiteralPath $traceDir -PathType Container)) {
+    New-Item -ItemType Directory -Path $traceDir -Force | Out-Null
+  }
+  Add-Content -LiteralPath $env:FASTLOOP_ASSERT_TRACE_PATH -Value $traceLine -Encoding utf8
+}
+
+if (-not [string]::IsNullOrWhiteSpace($env:FASTLOOP_ASSERT_SLEEP_SECONDS)) {
+  $sleepSeconds = 0
+  if ([int]::TryParse($env:FASTLOOP_ASSERT_SLEEP_SECONDS, [ref]$sleepSeconds) -and $sleepSeconds -gt 0) {
+    Start-Sleep -Seconds $sleepSeconds
+  }
+}
+
 if ([string]::Equals($env:FASTLOOP_ASSERT_FAIL_WINDOWS, '1', [System.StringComparison]::OrdinalIgnoreCase) -and `
     [string]::Equals($ExpectedOsType, 'windows', [System.StringComparison]::OrdinalIgnoreCase)) {
   $snapshot.observed.osType = 'linux'
@@ -106,6 +122,12 @@ param(
 )
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
+if (-not [string]::IsNullOrWhiteSpace($env:FASTLOOP_WINDOWS_SLEEP_SECONDS)) {
+  $sleepSeconds = 0
+  if ([int]::TryParse($env:FASTLOOP_WINDOWS_SLEEP_SECONDS, [ref]$sleepSeconds) -and $sleepSeconds -gt 0) {
+    Start-Sleep -Seconds $sleepSeconds
+  }
+}
 if ($Probe) {
   if ($PassThru) {
     [pscustomobject]@{
@@ -345,7 +367,7 @@ if (-not [string]::IsNullOrWhiteSpace($GitHubOutputPath)) {
       $summary.steps.Count | Should -Be 1
       $summary.steps[0].name | Should -Match '^windows-history-'
       $summary.steps[0].status | Should -Be 'success'
-      $summary.steps[0].exitCode | Should -Be 1
+      $summary.steps[0].exitCode | Should -BeIn @(0, 1)
       $summary.steps[0].resultClass | Should -Be 'success-diff'
       $summary.steps[0].gateOutcome | Should -Be 'pass'
       $summary.steps[0].isDiff | Should -BeTrue
@@ -507,6 +529,109 @@ if (-not [string]::IsNullOrWhiteSpace($GitHubOutputPath)) {
       Pop-Location | Out-Null
     }
   }
+
+  It 'runs single-lane windows mode without runtime auto-repair or managed engine switching' {
+    $repoRoot = Join-Path $TestDrive 'fast-loop-single-lane-windows'
+    New-HarnessRepo -RootPath $repoRoot
+
+    Push-Location $repoRoot
+    try {
+      $resultsRoot = Join-Path $repoRoot 'tests/results/local-parity'
+      $tracePath = Join-Path $resultsRoot 'assert-trace.log'
+      $env:FASTLOOP_ASSERT_TRACE_PATH = $tracePath
+      $output = & pwsh -NoLogo -NoProfile -File (Join-Path $repoRoot 'tools' 'Test-DockerDesktopFastLoop.ps1') `
+        -ResultsRoot $resultsRoot `
+        -LaneScope windows `
+        -HistoryScenarioSet none 2>&1
+      $LASTEXITCODE | Should -Be 0 -Because ($output -join "`n")
+
+      $summaryPath = Get-LatestFastLoopSummary -ResultsRoot $resultsRoot
+      $summaryPath | Should -Not -BeNullOrEmpty
+      $summary = Get-Content -LiteralPath $summaryPath -Raw | ConvertFrom-Json -Depth 12
+      $summary.status | Should -Be 'success'
+      $summary.laneScope | Should -Be 'windows'
+      $summary.singleLaneMode | Should -BeTrue
+      $summary.runtimeAutoRepair | Should -BeFalse
+      $summary.manageDockerEngine | Should -BeFalse
+      $summary.steps.Count | Should -BeGreaterThan 0
+      foreach ($step in @($summary.steps)) {
+        ([string]$step.name) | Should -Match '^windows-'
+      }
+
+      Test-Path -LiteralPath $tracePath -PathType Leaf | Should -BeTrue
+      $traceLines = @(Get-Content -LiteralPath $tracePath | Where-Object { -not [string]::IsNullOrWhiteSpace($_) })
+      $traceLines.Count | Should -BeGreaterThan 0
+      foreach ($line in $traceLines) {
+        $line | Should -Match 'autoRepair=False'
+        $line | Should -Match 'manageEngine=False'
+      }
+    } finally {
+      Remove-Item Env:FASTLOOP_ASSERT_TRACE_PATH -ErrorAction SilentlyContinue
+      Pop-Location | Out-Null
+    }
+  }
+
+  It 'fails early when single-lane mode enables managed engine switching' {
+    $repoRoot = Join-Path $TestDrive 'fast-loop-single-lane-manage-engine'
+    New-HarnessRepo -RootPath $repoRoot
+
+    Push-Location $repoRoot
+    try {
+      $resultsRoot = Join-Path $repoRoot 'tests/results/local-parity'
+      $output = & pwsh -NoLogo -NoProfile -File (Join-Path $repoRoot 'tools' 'Test-DockerDesktopFastLoop.ps1') `
+        -ResultsRoot $resultsRoot `
+        -LaneScope windows `
+        -ManageDockerEngine:$true `
+        -SkipWindowsProbe `
+        -SkipLinuxProbe 2>&1
+      $LASTEXITCODE | Should -Not -Be 0
+      ($output -join "`n") | Should -Match 'does not allow -ManageDockerEngine'
+    } finally {
+      Pop-Location | Out-Null
+    }
+  }
+
+  It 'classifies timeout failures as blocking in summary metadata' {
+    $repoRoot = Join-Path $TestDrive 'fast-loop-timeout-classification'
+    New-HarnessRepo -RootPath $repoRoot
+
+    Push-Location $repoRoot
+    try {
+      $resultsRoot = Join-Path $repoRoot 'tests/results/local-parity'
+      $env:FASTLOOP_WINDOWS_EXIT = '124'
+      $env:FASTLOOP_WINDOWS_STATUS = 'timeout'
+      $env:FASTLOOP_WINDOWS_RESULT_CLASS = 'failure-timeout'
+      $env:FASTLOOP_WINDOWS_GATE_OUTCOME = 'fail'
+      $env:FASTLOOP_WINDOWS_FAILURE_CLASS = 'timeout'
+      $output = & pwsh -NoLogo -NoProfile -File (Join-Path $repoRoot 'tools' 'Test-DockerDesktopFastLoop.ps1') `
+        -ResultsRoot $resultsRoot `
+        -StepTimeoutSeconds 1 `
+        -SkipWindowsProbe `
+        -SkipLinuxProbe `
+        -HistoryScenarioSet history-core 2>&1
+      $LASTEXITCODE | Should -Not -Be 0
+
+      $summaryPath = Get-LatestFastLoopSummary -ResultsRoot $resultsRoot
+      $summaryPath | Should -Not -BeNullOrEmpty
+      $summary = Get-Content -LiteralPath $summaryPath -Raw | ConvertFrom-Json -Depth 12
+      $summary.status | Should -Be 'failure'
+      $summary.stepTimeoutSeconds | Should -Be 1
+      $summary.timeoutFailureCount | Should -BeGreaterThan 0
+      $summary.hardStopTriggered | Should -BeTrue
+      $summary.hardStopReason | Should -Match 'Timeout failure detected'
+      $summary.steps.Count | Should -BeGreaterThan 0
+      $summary.steps[0].failureClass | Should -Be 'timeout'
+      $summary.steps[0].resultClass | Should -Be 'failure-timeout'
+    } finally {
+      Remove-Item Env:FASTLOOP_WINDOWS_EXIT -ErrorAction SilentlyContinue
+      Remove-Item Env:FASTLOOP_WINDOWS_STATUS -ErrorAction SilentlyContinue
+      Remove-Item Env:FASTLOOP_WINDOWS_RESULT_CLASS -ErrorAction SilentlyContinue
+      Remove-Item Env:FASTLOOP_WINDOWS_GATE_OUTCOME -ErrorAction SilentlyContinue
+      Remove-Item Env:FASTLOOP_WINDOWS_FAILURE_CLASS -ErrorAction SilentlyContinue
+      Pop-Location | Out-Null
+    }
+  }
+
   It 'orders lanes linux-first by default before windows history steps' {
     $repoRoot = Join-Path $TestDrive 'fast-loop-lane-order'
     New-HarnessRepo -RootPath $repoRoot

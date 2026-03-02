@@ -201,6 +201,15 @@ node tools/npm/run-script.mjs lint            # markdownlint + custom checks
 ./tools/PrePush-Checks.ps1  # actionlint, optional YAML round-trip
 ```
 
+For Docker/Desktop VI history validation, run fast-loop lanes explicitly:
+
+- Single-lane strict (recommended before full loop):
+  - `pwsh -NoLogo -NoProfile -File tools/Test-DockerDesktopFastLoop.ps1 -LaneScope linux -StepTimeoutSeconds 600`
+  - `pwsh -NoLogo -NoProfile -File tools/Test-DockerDesktopFastLoop.ps1 -LaneScope windows -StepTimeoutSeconds 600`
+- Full dual-lane loop:
+  - `pwsh -NoLogo -NoProfile -File tools/Test-DockerDesktopFastLoop.ps1 -LaneScope both -StepTimeoutSeconds 600`
+- `-ManageDockerEngine` is permitted only when `-LaneScope both`.
+
 ## Release checklist
 
 1. Update `CHANGELOG.md`
