@@ -561,6 +561,39 @@ function Invoke-StepActionWithTimeout {
   }
 }
 
+function Get-NormalizedStepExitCode {
+  param(
+    [Parameter(Mandatory)][int]$ExitCode,
+    [AllowNull()][AllowEmptyString()][string]$ResultClass,
+    [AllowNull()][AllowEmptyString()][string]$GateOutcome,
+    [AllowNull()][AllowEmptyString()][string]$FailureClass
+  )
+
+  $normalizedExit = [int]$ExitCode
+  $gate = if ([string]::IsNullOrWhiteSpace($GateOutcome)) { '' } else { $GateOutcome.Trim().ToLowerInvariant() }
+  $result = if ([string]::IsNullOrWhiteSpace($ResultClass)) { '' } else { $ResultClass.Trim().ToLowerInvariant() }
+  $failure = if ([string]::IsNullOrWhiteSpace($FailureClass)) { '' } else { $FailureClass.Trim().ToLowerInvariant() }
+
+  if ($gate -ne 'fail' -or $normalizedExit -ne 0) {
+    return $normalizedExit
+  }
+
+  switch ($failure) {
+    'timeout' { return 124 }
+    'runtime-determinism' { return 2 }
+    'preflight' { return 2 }
+    'startup-connectivity' { return 1 }
+    'cli/tool' { return 1 }
+  }
+
+  switch ($result) {
+    'failure-timeout' { return 124 }
+    'failure-runtime' { return 2 }
+    'failure-preflight' { return 2 }
+    default { return 1 }
+  }
+}
+
 function Invoke-Step {
   param(
     [Parameter(Mandatory)][string]$Name,
@@ -634,6 +667,11 @@ function Invoke-Step {
       if ($classification.PSObject.Properties['containerExportStatus']) {
         $containerExportStatus = [string]$classification.containerExportStatus
       }
+      $stepExitCode = Get-NormalizedStepExitCode `
+        -ExitCode $stepExitCode `
+        -ResultClass $resultClass `
+        -GateOutcome $gateOutcome `
+        -FailureClass $failureClass
 
       if (-not ($AllowedExitCodes -contains $stepExitCode) -and $gateOutcome -eq 'pass') {
         $gateOutcome = 'fail'
