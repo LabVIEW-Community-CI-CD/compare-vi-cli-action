@@ -37,7 +37,10 @@ Describe 'Write-DockerFastLoopProof.ps1' -Tag 'Unit' {
       verdict = 'ready-to-push'
       recommendation = 'push'
       diffStepCount = 3
+      diffEvidenceSteps = 2
       diffLaneCount = 2
+      extractedReportCount = 2
+      containerExportFailureCount = 0
       runtimeFailureCount = 0
       toolFailureCount = 0
       hardStopTriggered = $false
@@ -66,7 +69,10 @@ Describe 'Write-DockerFastLoopProof.ps1' -Tag 'Unit' {
     $proof.verdict | Should -Be 'ready-to-push'
     $proof.recommendation | Should -Be 'push'
     $proof.diffStepCount | Should -Be 3
+    $proof.diffEvidenceSteps | Should -Be 2
     $proof.diffLaneCount | Should -Be 2
+    $proof.extractedReportCount | Should -Be 2
+    $proof.containerExportFailureCount | Should -Be 0
     $proof.runtimeFailureCount | Should -Be 0
     $proof.toolFailureCount | Should -Be 0
     $proof.hardStopTriggered | Should -BeFalse
@@ -89,7 +95,10 @@ Describe 'Write-DockerFastLoopProof.ps1' -Tag 'Unit' {
       generatedAt = (Get-Date).ToUniversalTime().ToString('o')
       status = 'failure'
       diffStepCount = 1
+      diffEvidenceSteps = 1
       diffLaneCount = 1
+      extractedReportCount = 1
+      containerExportFailureCount = 1
       runtimeFailureCount = 1
       toolFailureCount = 2
       hardStopTriggered = $true
@@ -117,7 +126,10 @@ Describe 'Write-DockerFastLoopProof.ps1' -Tag 'Unit' {
     $proof.verdict | Should -Be 'not-ready'
     $proof.recommendation | Should -Be 'do-not-push'
     $proof.diffStepCount | Should -Be 1
+    $proof.diffEvidenceSteps | Should -Be 1
     $proof.diffLaneCount | Should -Be 1
+    $proof.extractedReportCount | Should -Be 1
+    $proof.containerExportFailureCount | Should -Be 1
     $proof.runtimeFailureCount | Should -Be 1
     $proof.toolFailureCount | Should -Be 2
     $proof.hardStopTriggered | Should -BeTrue

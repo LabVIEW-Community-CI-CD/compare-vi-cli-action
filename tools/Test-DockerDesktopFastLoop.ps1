@@ -20,9 +20,11 @@ param(
   [string]$ReadinessMarkdownPath = '',
   [ValidateSet('none', 'smoke', 'history-core')]
   [string]$HistoryScenarioSet = 'none',
+  [ValidateSet('both', 'windows', 'linux')]
+  [string]$LaneScope = 'both',
   [string]$HistoryHarnessPath = 'fixtures/vi-history/pr-harness.json',
   [string]$SequentialFixturePath = 'fixtures/vi-history/sequential.json',
-  [bool]$ManageDockerEngine = $true,
+  [bool]$ManageDockerEngine = $false,
   [ValidateSet('linux-first', 'windows-first')]
   [string]$LaneOrder = 'linux-first',
   [switch]$SkipWindowsProbe,
@@ -74,27 +76,77 @@ function Get-HistoryScenarioIdsForSet {
     [Parameter(Mandatory)][object]$Harness
   )
 
-  $availableIds = @($Harness.scenarios | ForEach-Object { [string]$_.id })
+  $diagnostics = New-Object System.Collections.Generic.List[string]
+  $scenarioMap = @{}
+  foreach ($scenario in @($Harness.scenarios)) {
+    if (-not $scenario -or -not $scenario.PSObject.Properties['id']) { continue }
+    $id = [string]$scenario.id
+    if ([string]::IsNullOrWhiteSpace($id)) { continue }
+    $scenarioMap[$id] = $scenario
+  }
+
   switch ($ScenarioSet) {
-    'none' { return @() }
+    'none' {
+      return [pscustomobject]@{
+        scenarioIds = @()
+        diagnostics = @()
+      }
+    }
     'smoke' {
       $preferred = @('attribute', 'sequential')
       $resolved = New-Object System.Collections.Generic.List[string]
       foreach ($id in $preferred) {
-        if ($availableIds -contains $id) {
+        if (-not $scenarioMap.ContainsKey($id)) {
+          $diagnostics.Add(("History smoke scenario '{0}' is not present in harness manifest." -f $id)) | Out-Null
+          continue
+        }
+        $scenario = $scenarioMap[$id]
+        $requireDiff = $false
+        if ($scenario.PSObject.Properties['requireDiff']) {
+          $requireDiff = [bool]$scenario.requireDiff
+        }
+        if ($requireDiff) {
           $resolved.Add($id) | Out-Null
+        } else {
+          $diagnostics.Add(("History smoke scenario '{0}' skipped because requireDiff=true is required." -f $id)) | Out-Null
         }
       }
       if ($resolved.Count -eq 0) {
-        throw 'History smoke scenario set resolved to empty. Ensure harness includes attribute/sequential scenarios.'
+        $details = if ($diagnostics.Count -gt 0) { [string]::Join(' ', @($diagnostics.ToArray())) } else { '' }
+        throw ("History smoke scenario set resolved to empty after requireDiff=true filtering. {0}" -f $details)
       }
-      return $resolved.ToArray()
+      return [pscustomobject]@{
+        scenarioIds = @($resolved.ToArray())
+        diagnostics = @($diagnostics.ToArray())
+      }
     }
     'history-core' {
       if (-not $Harness.scenarios -or @($Harness.scenarios).Count -eq 0) {
         throw 'History core scenario set requires at least one scenario in the harness manifest.'
       }
-      return @($Harness.scenarios | ForEach-Object { [string]$_.id })
+      $resolved = New-Object System.Collections.Generic.List[string]
+      foreach ($scenario in @($Harness.scenarios)) {
+        if (-not $scenario -or -not $scenario.PSObject.Properties['id']) { continue }
+        $id = [string]$scenario.id
+        if ([string]::IsNullOrWhiteSpace($id)) { continue }
+        $requireDiff = $false
+        if ($scenario.PSObject.Properties['requireDiff']) {
+          $requireDiff = [bool]$scenario.requireDiff
+        }
+        if ($requireDiff) {
+          $resolved.Add($id) | Out-Null
+        } else {
+          $diagnostics.Add(("History scenario '{0}' skipped because requireDiff=true is required for history-core." -f $id)) | Out-Null
+        }
+      }
+      if ($resolved.Count -eq 0) {
+        $details = if ($diagnostics.Count -gt 0) { [string]::Join(' ', @($diagnostics.ToArray())) } else { '' }
+        throw ("History core scenario set resolved to empty after requireDiff=true filtering. {0}" -f $details)
+      }
+      return [pscustomobject]@{
+        scenarioIds = @($resolved.ToArray())
+        diagnostics = @($diagnostics.ToArray())
+      }
     }
     default {
       throw ("Unsupported HistoryScenarioSet: {0}" -f $ScenarioSet)
@@ -138,7 +190,8 @@ function Invoke-WindowsHistoryCompare {
     -HeadVi $HeadVi `
     -Image $WindowsImage `
     -ReportPath $ReportPath `
-    -AutoRepairRuntime:$false `
+    -AutoRepairRuntime:$true `
+    -ManageDockerEngine:$ManageDockerEngine `
     -RuntimeSnapshotPath $RuntimeSnapshotPath | Out-Null
 
   $compareExit = $LASTEXITCODE
@@ -398,6 +451,7 @@ function Write-SemiLiveStatus {
     windowsImage = $WindowsImage
     linuxImage = $LinuxImage
     historyScenarioSet = $HistoryScenarioSet
+    laneScope = $LaneScope
     manageDockerEngine = [bool]$ManageDockerEngine
     telemetry = $telemetry
     steps = @($Steps)
@@ -424,6 +478,10 @@ function Invoke-Step {
   $gateOutcome = 'fail'
   $failureClass = 'cli/tool'
   $isDiff = $false
+  $diffEvidenceSource = ''
+  $diffImageCount = 0
+  $extractedReportPath = ''
+  $containerExportStatus = ''
 
   try {
     $global:LASTEXITCODE = 0
@@ -450,6 +508,18 @@ function Invoke-Step {
     $isDiff = [bool]$classification.isDiff
     if ($classification.PSObject.Properties['message']) {
       $stepMessage = [string]$classification.message
+    }
+    if ($classification.PSObject.Properties['diffEvidenceSource']) {
+      $diffEvidenceSource = [string]$classification.diffEvidenceSource
+    }
+    if ($classification.PSObject.Properties['diffImageCount']) {
+      $diffImageCount = [int]$classification.diffImageCount
+    }
+    if ($classification.PSObject.Properties['extractedReportPath']) {
+      $extractedReportPath = [string]$classification.extractedReportPath
+    }
+    if ($classification.PSObject.Properties['containerExportStatus']) {
+      $containerExportStatus = [string]$classification.containerExportStatus
     }
 
     if (-not ($AllowedExitCodes -contains $stepExitCode) -and $gateOutcome -eq 'pass') {
@@ -494,6 +564,21 @@ function Invoke-Step {
   if ($stepOutput -and $stepOutput.PSObject -and $stepOutput.PSObject.Properties['CapturePath']) {
     $capturePath = [string]$stepOutput.CapturePath
   }
+  if ($stepOutput -and $stepOutput.PSObject -and $stepOutput.PSObject.Properties['Capture'] -and $stepOutput.Capture) {
+    $capture = $stepOutput.Capture
+    if ([string]::IsNullOrWhiteSpace($diffEvidenceSource) -and $capture.PSObject.Properties['diffEvidenceSource']) {
+      $diffEvidenceSource = [string]$capture.diffEvidenceSource
+    }
+    if ($diffImageCount -le 0 -and $capture.PSObject.Properties['reportAnalysis'] -and $capture.reportAnalysis -and $capture.reportAnalysis.PSObject.Properties['diffImageCount']) {
+      $diffImageCount = [int]$capture.reportAnalysis.diffImageCount
+    }
+    if ([string]::IsNullOrWhiteSpace($extractedReportPath) -and $capture.PSObject.Properties['reportAnalysis'] -and $capture.reportAnalysis -and $capture.reportAnalysis.PSObject.Properties['reportPathExtracted']) {
+      $extractedReportPath = [string]$capture.reportAnalysis.reportPathExtracted
+    }
+    if ([string]::IsNullOrWhiteSpace($containerExportStatus) -and $capture.PSObject.Properties['containerArtifacts'] -and $capture.containerArtifacts -and $capture.containerArtifacts.PSObject.Properties['copyStatus']) {
+      $containerExportStatus = [string]$capture.containerArtifacts.copyStatus
+    }
+  }
 
   return [pscustomobject]@{
     name = $Name
@@ -507,6 +592,10 @@ function Invoke-Step {
     gateOutcome = $gateOutcome
     failureClass = $failureClass
     isDiff = [bool]$isDiff
+    diffEvidenceSource = $diffEvidenceSource
+    diffImageCount = [int]$diffImageCount
+    extractedReportPath = $extractedReportPath
+    containerExportStatus = $containerExportStatus
     hardStopEligible = [bool]$hardStopEligible
     hardStopTriggered = [bool]$hardStopTriggered
     allowedExitCodes = @($AllowedExitCodes)
@@ -542,7 +631,16 @@ $linuxSmokeRoot = Join-Path $root 'linux-smoke'
 $historyScenariosRoot = Join-Path $root 'history-scenarios'
 $repoRoot = Get-RepoRootFromToolsScript
 $historyScenarioSetNormalized = if ([string]::IsNullOrWhiteSpace($HistoryScenarioSet)) { 'none' } else { $HistoryScenarioSet.Trim().ToLowerInvariant() }
+$laneScopeNormalized = if ([string]::IsNullOrWhiteSpace($LaneScope)) { 'both' } else { $LaneScope.Trim().ToLowerInvariant() }
+$effectiveSkipWindowsProbe = [bool]$SkipWindowsProbe
+$effectiveSkipLinuxProbe = [bool]$SkipLinuxProbe
+switch ($laneScopeNormalized) {
+  'windows' { $effectiveSkipLinuxProbe = $true }
+  'linux' { $effectiveSkipWindowsProbe = $true }
+  default { }
+}
 $historyScenarioCount = 0
+$historyScenarioFilterDiagnostics = New-Object System.Collections.Generic.List[string]
 
 $results = New-Object System.Collections.Generic.List[object]
 $runStartedAt = (Get-Date).ToUniversalTime().ToString('o')
@@ -550,7 +648,7 @@ $stepDefinitions = New-Object System.Collections.Generic.List[object]
 $hardStopTriggered = $false
 $hardStopReason = ''
 
-if (-not $SkipWindowsProbe) {
+if (-not $effectiveSkipWindowsProbe) {
   $stepDefinitions.Add([pscustomobject]@{
     name = 'windows-runtime-preflight'
     allowedExitCodes = @(0)
@@ -605,12 +703,13 @@ if (-not $SkipWindowsProbe) {
       -Probe `
       -Image $WindowsImage `
       -AutoRepairRuntime:$true `
+      -ManageDockerEngine:$ManageDockerEngine `
       -RuntimeSnapshotPath $windowsSnapshot | Out-Null
     }
   }) | Out-Null
 }
 
-if (-not $SkipLinuxProbe) {
+if (-not $effectiveSkipLinuxProbe) {
   $stepDefinitions.Add([pscustomobject]@{
     name = 'linux-runtime-preflight'
     allowedExitCodes = @(0)
@@ -665,6 +764,7 @@ if (-not $SkipLinuxProbe) {
       -Probe `
       -Image $LinuxImage `
       -AutoRepairRuntime:$true `
+      -ManageDockerEngine:$ManageDockerEngine `
       -RuntimeSnapshotPath $linuxSnapshot | Out-Null
     }
   }) | Out-Null
@@ -713,7 +813,13 @@ if ($historyScenarioSetNormalized -ne 'none') {
   if (-not $harness -or [string]$harness.schema -ne 'vi-history-pr-harness@v1') {
     throw ("Unsupported history harness schema in {0}" -f $harnessPathResolved)
   }
-  $scenarioIds = @(Get-HistoryScenarioIdsForSet -ScenarioSet $historyScenarioSetNormalized -Harness $harness)
+  $scenarioSelection = Get-HistoryScenarioIdsForSet -ScenarioSet $historyScenarioSetNormalized -Harness $harness
+  $scenarioIds = @($scenarioSelection.scenarioIds)
+  foreach ($diagnostic in @($scenarioSelection.diagnostics)) {
+    if ([string]::IsNullOrWhiteSpace([string]$diagnostic)) { continue }
+    $historyScenarioFilterDiagnostics.Add([string]$diagnostic) | Out-Null
+    Write-Host ("[docker-fast-loop][history-filter] {0}" -f [string]$diagnostic) -ForegroundColor DarkYellow
+  }
   if ($scenarioIds.Count -gt 0 -and -not (Test-Path -LiteralPath $historyScenariosRoot -PathType Container)) {
     New-Item -ItemType Directory -Path $historyScenariosRoot -Force | Out-Null
   }
@@ -743,9 +849,20 @@ if ($historyScenarioSetNormalized -ne 'none') {
       }
       $previousHead = $baselineBase
       $stepIndex = 0
+      $addedSequentialSteps = 0
       foreach ($sequenceStep in @($sequential.steps)) {
         $stepIndex++
         $seqIdRaw = if ($sequenceStep.PSObject.Properties['id']) { [string]$sequenceStep.id } else { ("step-{0:000}" -f $stepIndex) }
+        $requireStepDiff = $false
+        if ($sequenceStep.PSObject.Properties['requireDiff']) {
+          $requireStepDiff = [bool]$sequenceStep.requireDiff
+        }
+        if (-not $requireStepDiff) {
+          $skipMessage = ("Sequential step '{0}' skipped because requireDiff=true is required for diff-only history execution." -f $seqIdRaw)
+          $historyScenarioFilterDiagnostics.Add($skipMessage) | Out-Null
+          Write-Host ("[docker-fast-loop][history-filter] {0}" -f $skipMessage) -ForegroundColor DarkYellow
+          continue
+        }
         $safeSeqId = $seqIdRaw -replace '[^a-zA-Z0-9._-]', '-'
         $headPath = Resolve-RepoRelativePath -RepoRoot $repoRoot -PathValue ([string]$sequenceStep.source) -Description ("Sequential step source '{0}'" -f $seqIdRaw)
         $reportPath = Join-Path $historyScenariosRoot (Join-Path 'sequential' (Join-Path $safeSeqId 'windows-compare-report.html'))
@@ -773,6 +890,10 @@ if ($historyScenarioSetNormalized -ne 'none') {
               gateOutcome = [string]$classification.gateOutcome
               failureClass = [string]$classification.failureClass
               message = $validatorMessage
+              diffEvidenceSource = if ($stepOutput.Capture.PSObject.Properties['diffEvidenceSource']) { [string]$stepOutput.Capture.diffEvidenceSource } else { '' }
+              diffImageCount = if ($stepOutput.Capture.PSObject.Properties['reportAnalysis'] -and $stepOutput.Capture.reportAnalysis -and $stepOutput.Capture.reportAnalysis.PSObject.Properties['diffImageCount']) { [int]$stepOutput.Capture.reportAnalysis.diffImageCount } else { 0 }
+              extractedReportPath = if ($stepOutput.Capture.PSObject.Properties['reportAnalysis'] -and $stepOutput.Capture.reportAnalysis -and $stepOutput.Capture.reportAnalysis.PSObject.Properties['reportPathExtracted']) { [string]$stepOutput.Capture.reportAnalysis.reportPathExtracted } else { '' }
+              containerExportStatus = if ($stepOutput.Capture.PSObject.Properties['containerArtifacts'] -and $stepOutput.Capture.containerArtifacts -and $stepOutput.Capture.containerArtifacts.PSObject.Properties['copyStatus']) { [string]$stepOutput.Capture.containerArtifacts.copyStatus } else { '' }
             }
           }
           action = {
@@ -786,7 +907,11 @@ if ($historyScenarioSetNormalized -ne 'none') {
         }) | Out-Null
 
         $historyScenarioCount++
+        $addedSequentialSteps++
         $previousHead = $headPath
+      }
+      if ($addedSequentialSteps -eq 0) {
+        throw ("History sequential scenario '{0}' resolved to empty after requireDiff=true filtering in {1}." -f $scenarioId, $sequentialPathResolved)
       }
       continue
     }
@@ -819,6 +944,10 @@ if ($historyScenarioSetNormalized -ne 'none') {
           gateOutcome = [string]$classification.gateOutcome
           failureClass = [string]$classification.failureClass
           message = $validatorMessage
+          diffEvidenceSource = if ($stepOutput.Capture.PSObject.Properties['diffEvidenceSource']) { [string]$stepOutput.Capture.diffEvidenceSource } else { '' }
+          diffImageCount = if ($stepOutput.Capture.PSObject.Properties['reportAnalysis'] -and $stepOutput.Capture.reportAnalysis -and $stepOutput.Capture.reportAnalysis.PSObject.Properties['diffImageCount']) { [int]$stepOutput.Capture.reportAnalysis.diffImageCount } else { 0 }
+          extractedReportPath = if ($stepOutput.Capture.PSObject.Properties['reportAnalysis'] -and $stepOutput.Capture.reportAnalysis -and $stepOutput.Capture.reportAnalysis.PSObject.Properties['reportPathExtracted']) { [string]$stepOutput.Capture.reportAnalysis.reportPathExtracted } else { '' }
+          containerExportStatus = if ($stepOutput.Capture.PSObject.Properties['containerArtifacts'] -and $stepOutput.Capture.containerArtifacts -and $stepOutput.Capture.containerArtifacts.PSObject.Properties['copyStatus']) { [string]$stepOutput.Capture.containerArtifacts.copyStatus } else { '' }
         }
       }
       action = {
@@ -920,8 +1049,15 @@ foreach ($definition in $stepDefinitions.ToArray()) {
   $results.Add($stepResult) | Out-Null
   $durationText = if ($stepResult.PSObject.Properties['durationMs']) { [string]$stepResult.durationMs } else { '0' }
   $stepStatusText = [string]$stepResult.status
+  $diffEvidenceText = ''
+  if ($stepResult.PSObject.Properties['diffEvidenceSource'] -and -not [string]::IsNullOrWhiteSpace([string]$stepResult.diffEvidenceSource)) {
+    $diffEvidenceText = (" evidence={0}" -f [string]$stepResult.diffEvidenceSource)
+    if ($stepResult.PSObject.Properties['diffImageCount']) {
+      $diffEvidenceText = ("{0} images={1}" -f $diffEvidenceText, [int]$stepResult.diffImageCount)
+    }
+  }
   if ($stepStatusText -eq 'success') {
-    Write-Host ("[docker-fast-loop] done: {0} ({1} ms) class={2} diff={3} exit={4}" -f $stepName, $durationText, [string]$stepResult.resultClass, [bool]$stepResult.isDiff, [int]$stepResult.exitCode) -ForegroundColor Green
+    Write-Host ("[docker-fast-loop] done: {0} ({1} ms) class={2} diff={3} exit={4}{5}" -f $stepName, $durationText, [string]$stepResult.resultClass, [bool]$stepResult.isDiff, [int]$stepResult.exitCode, $diffEvidenceText) -ForegroundColor Green
   } else {
     $failureMessage = [string]$stepResult.message
     Write-Host ("[docker-fast-loop] failed: {0} ({1} ms) class={2} failureClass={3} exit={4}: {5}" -f $stepName, $durationText, [string]$stepResult.resultClass, [string]$stepResult.failureClass, [int]$stepResult.exitCode, $failureMessage) -ForegroundColor Red
@@ -966,6 +1102,9 @@ $runtimeFailureCount = 0
 $toolFailureCount = 0
 $timeoutFailureCount = 0
 $preflightFailureCount = 0
+$diffEvidenceSteps = 0
+$extractedReportCount = 0
+$containerExportFailureCount = 0
 $diffLaneSet = New-Object System.Collections.Generic.HashSet[string]
 foreach ($entry in $results.ToArray()) {
   $entryIsDiff = $false
@@ -987,6 +1126,18 @@ foreach ($entry in $results.ToArray()) {
     'timeout' { $timeoutFailureCount++ }
     'preflight' { $preflightFailureCount++ }
   }
+  $diffEvidenceSourceValue = if ($entry.PSObject.Properties['diffEvidenceSource']) { [string]$entry.diffEvidenceSource } else { '' }
+  if ([string]::Equals($diffEvidenceSourceValue, 'html', [System.StringComparison]::OrdinalIgnoreCase)) {
+    $diffEvidenceSteps++
+  }
+  $extractedPathValue = if ($entry.PSObject.Properties['extractedReportPath']) { [string]$entry.extractedReportPath } else { '' }
+  if (-not [string]::IsNullOrWhiteSpace($extractedPathValue)) {
+    $extractedReportCount++
+  }
+  $exportStatusValue = if ($entry.PSObject.Properties['containerExportStatus']) { [string]$entry.containerExportStatus } else { '' }
+  if ($exportStatusValue -in @('failed', 'partial')) {
+    $containerExportFailureCount++
+  }
 }
 
 $summary = [ordered]@{
@@ -1003,15 +1154,22 @@ $summary = [ordered]@{
   readinessJsonPath = $readinessJsonResolved
   readinessMarkdownPath = $readinessMarkdownResolved
   historyScenarioSet = $historyScenarioSetNormalized
+  laneScope = $laneScopeNormalized
   historyScenarioCount = [int]$historyScenarioCount
   diffStepCount = [int]$diffStepCount
+  diffEvidenceSteps = [int]$diffEvidenceSteps
   diffLaneCount = [int]$diffLaneSet.Count
+  extractedReportCount = [int]$extractedReportCount
+  containerExportFailureCount = [int]$containerExportFailureCount
   runtimeFailureCount = [int]$runtimeFailureCount
   toolFailureCount = [int]$toolFailureCount
   timeoutFailureCount = [int]$timeoutFailureCount
   preflightFailureCount = [int]$preflightFailureCount
   hardStopTriggered = [bool]$hardStopTriggered
   hardStopReason = $hardStopReason
+  skipWindowsProbe = [bool]$effectiveSkipWindowsProbe
+  skipLinuxProbe = [bool]$effectiveSkipLinuxProbe
+  historyScenarioFilterDiagnostics = @($historyScenarioFilterDiagnostics.ToArray())
   manageDockerEngine = [bool]$ManageDockerEngine
   laneOrder = $LaneOrder
   steps = $results.ToArray()
