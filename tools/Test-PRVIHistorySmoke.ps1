@@ -58,6 +58,12 @@ if (-not (Test-Path -LiteralPath $policyHelperPath -PathType Leaf)) {
 }
 . $policyHelperPath
 
+$pairTimelineHelperPath = Join-Path $PSScriptRoot 'Get-VIHistoryPairTimeline.ps1'
+if (-not (Test-Path -LiteralPath $pairTimelineHelperPath -PathType Leaf)) {
+    throw "Pair timeline helper not found: $pairTimelineHelperPath"
+}
+. $pairTimelineHelperPath
+
 if ($WorkflowTimeoutMinutes -lt 1) {
     throw 'WorkflowTimeoutMinutes must be greater than zero.'
 }
@@ -986,6 +992,14 @@ $scratchContext = [ordered]@{
             warnings = @()
         }
     }
+    PairTimeline = @()
+    PairClassification = [ordered]@{}
+    PairTiming = [ordered]@{
+        comparisonCount = 0
+        totalSeconds = 0
+        p50Seconds = $null
+        p95Seconds = $null
+    }
     MaxPairsRequested = $MaxPairs
     MaxPairsEffective = $effectiveMaxPairs
     WorkflowTimeoutMinutes = $WorkflowTimeoutMinutes
@@ -1325,6 +1339,19 @@ try {
             throw 'Summary JSON not found in downloaded artifact.'
         }
         $summaryData = Get-Content -LiteralPath $summaryFile.FullName -Raw -ErrorAction Stop | ConvertFrom-Json -ErrorAction Stop
+        $pairInsight = Get-VIHistoryPairTimeline -Summary $summaryData
+        $scratchContext.PairTimeline = @($pairInsight.rows)
+        $scratchContext.PairClassification = if ($pairInsight.classificationCounts) { $pairInsight.classificationCounts } else { [ordered]@{} }
+        $scratchContext.PairTiming = if ($pairInsight.timing) {
+            $pairInsight.timing
+        } else {
+            [ordered]@{
+                comparisonCount = 0
+                totalSeconds = 0
+                p50Seconds = $null
+                p95Seconds = $null
+            }
+        }
         $targetSummaries = @($summaryData.targets)
         if ($targetSummaries.Count -eq 0) {
             throw 'Summary JSON does not contain target entries.'
@@ -1335,7 +1362,15 @@ try {
             $artifactComparisons = if ($summaryTarget -and $summaryTarget.stats) { [int]$summaryTarget.stats.processed } else { 0 }
             $artifactDiffs = if ($summaryTarget -and $summaryTarget.stats) { [int]$summaryTarget.stats.diffs } else { 0 }
             $requiredDiffs = [Math]::Max(0, [int]$expectedTarget.minDiffs)
-            $artifactStatus = if ($summaryTarget -and $summaryTarget.PSObject.Properties['status']) { [string]$summaryTarget.status } else { 'missing' }
+            $artifactStatus = if (-not $summaryTarget) {
+                'missing'
+            } elseif ($artifactDiffs -gt 0) {
+                'diff'
+            } elseif ($artifactComparisons -gt 0) {
+                'match'
+            } else {
+                'missing'
+            }
             $artifactDecision = Resolve-VIHistoryPolicyDecision `
                 -TargetPath ([string]$expectedTarget.repoPath) `
                 -RequireDiff ([bool]$expectedTarget.requireDiff) `
