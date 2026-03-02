@@ -60,6 +60,8 @@ Extend the `steps` list when new scenarios are required; tests ensure every refe
   least two VI targets are updated in one commit.
 - Consumed by `tools/Test-PRVIHistorySmoke.ps1` when
   `-Scenario sequential-masscompile` is selected.
+- Harness summary output records pair-level timeline/timing metadata under
+  `PairTimeline`, `PairClassification`, and `PairTiming`.
 
 ## Policy Gate Semantics
 
