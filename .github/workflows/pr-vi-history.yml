@@ -19,6 +19,10 @@ on:
       max_pairs:
         description: 'Maximum commit pairs per VI (default 6)'
         required: false
+      history_timeout_minutes:
+        description: 'History job timeout in minutes (default 10)'
+        required: false
+        default: '10'
 
 permissions:
   contents: read
@@ -39,7 +43,7 @@ jobs:
         contains('OWNER,MEMBER,COLLABORATOR', github.event.comment.author_association)
       )
     runs-on: [self-hosted, Windows, X64]
-    timeout-minutes: 10
+    timeout-minutes: ${{ fromJson(github.event.inputs.history_timeout_minutes || '10') }}
     env:
       NOTE: ${{ inputs.note }}
       MAX_PAIRS: ${{ inputs.max_pairs || '6' }}
