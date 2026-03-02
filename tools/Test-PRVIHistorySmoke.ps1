@@ -21,8 +21,9 @@ Emit the planned steps without executing them.
 
 .PARAMETER Scenario
 Selects which synthetic change set to exercise. Use `attribute` for the legacy
-single-commit attr diff, or `sequential` to replay multiple fixture commits and
-validate richer history output.
+single-commit attr diff, `sequential` to replay multiple fixture commits, or
+`mixed-same-commit` to mutate two VI targets in a single commit (strict signal
+plus non-strict metadata-noise coverage).
 
 .PARAMETER MaxPairs
 Optional override for the `max_pairs` workflow input. Defaults to `6`.
@@ -32,7 +33,7 @@ param(
     [string]$BaseBranch = 'develop',
     [switch]$KeepBranch,
     [switch]$DryRun,
-    [ValidateSet('attribute', 'sequential')]
+    [ValidateSet('attribute', 'sequential', 'mixed-same-commit')]
     [string]$Scenario = 'attribute',
     [int]$MaxPairs = 6
 )
@@ -174,21 +175,28 @@ function Copy-VIContent {
     [System.IO.File]::Copy($Source, $Destination, $true)
 }
 
-$script:HistoryTrackingFlags = [ordered]@{
-    assume = $false
-    skip   = $false
-}
+$script:HistoryTrackingFlagsByPath = @{}
 function Enable-HistoryTracking {
     param(
         [Parameter(Mandatory)]
         [string]$Path
     )
+    $pathKey = $Path.ToLowerInvariant()
+    if ($script:HistoryTrackingFlagsByPath.ContainsKey($pathKey)) {
+        return
+    }
+
+    $trackingFlags = [ordered]@{
+        assume = $false
+        skip   = $false
+    }
+
     try {
         $lsEntry = Invoke-Git -Arguments @('ls-files', '-v', $Path) | Select-Object -First 1
         if ($lsEntry) {
             $prefix = $lsEntry.Substring(0,1)
-            if ($prefix -match '[Hh]') { $script:HistoryTrackingFlags.assume = $true }
-            if ($prefix -match '[Ss]') { $script:HistoryTrackingFlags.skip = $true }
+            if ($prefix -match '[Hh]') { $trackingFlags.assume = $true }
+            if ($prefix -match '[Ss]') { $trackingFlags.skip = $true }
         }
     } catch {
         Write-Warning ("Failed to query tracking flags for {0}: {1}" -f $Path, $_.Exception.Message)
@@ -200,6 +208,8 @@ function Enable-HistoryTracking {
     } catch {
         Write-Warning ("Failed to adjust tracking flags for {0}: {1}" -f $Path, $_.Exception.Message)
     }
+
+    $script:HistoryTrackingFlagsByPath[$pathKey] = $trackingFlags
 }
 
 function Restore-HistoryTracking {
@@ -207,23 +217,29 @@ function Restore-HistoryTracking {
         [Parameter(Mandatory)]
         [string]$Path
     )
+    $pathKey = $Path.ToLowerInvariant()
+    if (-not $script:HistoryTrackingFlagsByPath.ContainsKey($pathKey)) {
+        return
+    }
+    $trackingFlags = $script:HistoryTrackingFlagsByPath[$pathKey]
+
     try {
-        if ($script:HistoryTrackingFlags.assume) {
+        if ($trackingFlags.assume) {
             Invoke-Git -Arguments @('update-index', '--assume-unchanged', $Path) | Out-Null
         }
-        if ($script:HistoryTrackingFlags.skip) {
+        if ($trackingFlags.skip) {
             Invoke-Git -Arguments @('update-index', '--skip-worktree', $Path) | Out-Null
         }
     } catch {
         Write-Warning ("Failed to restore tracking flags for {0}: {1}" -f $Path, $_.Exception.Message)
     } finally {
-        $script:HistoryTrackingFlags.assume = $false
-        $script:HistoryTrackingFlags.skip = $false
+        $script:HistoryTrackingFlagsByPath.Remove($pathKey) | Out-Null
     }
 }
 
 
 $script:SequentialFixtureCache = $null
+$script:MixedSameCommitFixtureCache = $null
 
 function Get-SequentialHistorySequence {
     if ($script:SequentialFixtureCache) {
@@ -304,6 +320,151 @@ function Get-SequentialHistorySequence {
     }
 
     return $script:SequentialFixtureCache
+}
+
+function Get-MixedSameCommitFixture {
+    if ($script:MixedSameCommitFixtureCache) {
+        return $script:MixedSameCommitFixtureCache
+    }
+
+    $repoRoot = Invoke-Git -Arguments @('rev-parse', '--show-toplevel') | Select-Object -First 1
+    if ([string]::IsNullOrWhiteSpace($repoRoot)) {
+        throw 'Unable to resolve repository root for mixed same-commit fixture.'
+    }
+
+    $fixturePath = Join-Path $repoRoot 'fixtures' 'vi-history' 'mixed-same-commit.json'
+    if (-not (Test-Path -LiteralPath $fixturePath -PathType Leaf)) {
+        throw "Mixed same-commit fixture not found: $fixturePath"
+    }
+
+    try {
+        $fixtureRaw = Get-Content -LiteralPath $fixturePath -Raw -ErrorAction Stop
+        $fixtureObj = $fixtureRaw | ConvertFrom-Json -ErrorAction Stop
+    } catch {
+        throw ("Unable to parse mixed same-commit fixture {0}: {1}" -f $fixturePath, $_.Exception.Message)
+    }
+
+    if ($fixtureObj.schema -ne 'vi-history-mixed-commit@v1') {
+        throw "Unsupported mixed fixture schema '$($fixtureObj.schema)' (expected vi-history-mixed-commit@v1)."
+    }
+    if (-not $fixtureObj.commit -or -not $fixtureObj.commit.changes -or $fixtureObj.commit.changes.Count -lt 2) {
+        throw 'Mixed same-commit fixture must define at least two commit changes.'
+    }
+
+    $changeObjects = New-Object System.Collections.Generic.List[pscustomobject]
+    foreach ($change in $fixtureObj.commit.changes) {
+        if (-not $change.targetPath) {
+            throw 'Mixed same-commit fixture change missing targetPath.'
+        }
+        if (-not $change.source) {
+            throw ("Mixed same-commit fixture change '{0}' missing source path." -f $change.targetPath)
+        }
+
+        $resolvedTarget = if ([System.IO.Path]::IsPathRooted($change.targetPath)) {
+            $change.targetPath
+        } else {
+            Join-Path $repoRoot $change.targetPath
+        }
+        $resolvedSource = if ([System.IO.Path]::IsPathRooted($change.source)) {
+            $change.source
+        } else {
+            Join-Path $repoRoot $change.source
+        }
+        if (-not (Test-Path -LiteralPath $resolvedTarget -PathType Leaf)) {
+            throw "Mixed fixture target not found: $($change.targetPath)"
+        }
+        if (-not (Test-Path -LiteralPath $resolvedSource -PathType Leaf)) {
+            throw "Mixed fixture source not found: $($change.source)"
+        }
+
+        $changeObjects.Add([pscustomobject]@{
+            id               = $change.id
+            title            = $change.title
+            targetPath       = [string]$change.targetPath
+            resolvedTarget   = [string]$resolvedTarget
+            source           = [string]$change.source
+            resolvedSource   = [string]$resolvedSource
+            requireDiff      = [bool]$change.requireDiff
+            minDiffs         = if ($change.PSObject.Properties['minDiffs']) { [int]$change.minDiffs } else { if ([bool]$change.requireDiff) { 1 } else { 0 } }
+            classificationHint = if ($change.PSObject.Properties['classificationHint']) { [string]$change.classificationHint } else { $null }
+        }) | Out-Null
+    }
+
+    $script:MixedSameCommitFixtureCache = [pscustomobject]@{
+        path         = $fixturePath
+        repoRoot     = $repoRoot
+        maxPairs     = if ($fixtureObj.PSObject.Properties['maxPairs']) { [int]$fixtureObj.maxPairs } else { $null }
+        commitMessage= if ($fixtureObj.commit.PSObject.Properties['message']) { [string]$fixtureObj.commit.message } else { 'chore: mixed same-commit VI history update' }
+        changes      = $changeObjects
+    }
+    return $script:MixedSameCommitFixtureCache
+}
+
+function Invoke-MixedSameCommitHistoryCommit {
+    $fixture = Get-MixedSameCommitFixture
+    Write-Verbose ("Mixed same-commit fixture loaded from {0}" -f $fixture.path)
+
+    $expectedTargets = New-Object System.Collections.Generic.List[pscustomobject]
+    $changedTargets = New-Object System.Collections.Generic.List[string]
+    foreach ($change in $fixture.changes) {
+        Write-Host ("Applying mixed same-commit change: {0} <= {1}" -f $change.targetPath, $change.source)
+        Copy-VIContent -Source $change.resolvedSource -Destination $change.resolvedTarget
+        $statusAfterStep = @(Invoke-Git -Arguments @('status', '--porcelain', '--', $change.targetPath))
+        Write-Host ("Post-change status for {0}: {1}" -f $change.targetPath, ($statusAfterStep -join ' '))
+        if ($statusAfterStep.Count -eq 0) {
+            throw ("Mixed fixture change produced no delta for target '{0}'." -f $change.targetPath)
+        }
+        Invoke-Git -Arguments @('add', '-f', $change.targetPath) | Out-Null
+        $changedTargets.Add([string]$change.targetPath) | Out-Null
+
+        $expectedTargets.Add([pscustomobject]@{
+            repoPath          = [string]$change.targetPath
+            requireDiff       = [bool]$change.requireDiff
+            minDiffs          = [int]$change.minDiffs
+            classificationHint= $change.classificationHint
+        }) | Out-Null
+    }
+
+    if ($changedTargets.Count -lt 2) {
+        throw 'Mixed same-commit fixture did not stage at least two target files.'
+    }
+
+    Invoke-Git -Arguments @('commit', '-m', $fixture.commitMessage) | Out-Null
+
+    return [pscustomobject]@{
+        CommitSummaries = @(
+            [pscustomobject]@{
+                Title   = 'Mixed same-commit (signal + metadata-noise)'
+                Source  = 'fixtures/vi-history/mixed-same-commit.json'
+                Message = $fixture.commitMessage
+            }
+        )
+        ExpectedTargets = @($expectedTargets)
+        TargetPaths = @($changedTargets | Select-Object -Unique)
+        SuggestedMaxPairs = $fixture.maxPairs
+    }
+}
+
+function Get-HistorySummaryRowsFromComment {
+    param(
+        [Parameter(Mandatory)]
+        [string]$CommentBody
+    )
+
+    $pattern = '\|\s*<code>(?<path>[^<]+)</code>\s*\|\s*(?<change>[^|]+)\|\s*(?<comparisons>\d+)\s*\|\s*(?<diffs>\d+)\s*\|\s*(?<status>[^|]+)\|'
+    $matches = [regex]::Matches($CommentBody, $pattern)
+    $rows = New-Object System.Collections.Generic.List[pscustomobject]
+    foreach ($match in $matches) {
+        if (-not $match.Success) { continue }
+        $rows.Add([pscustomobject]@{
+            path        = $match.Groups['path'].Value.Trim()
+            change      = $match.Groups['change'].Value.Trim()
+            comparisons = [int]$match.Groups['comparisons'].Value
+            diffs       = [int]$match.Groups['diffs'].Value
+            status      = $match.Groups['status'].Value.Trim()
+        }) | Out-Null
+    }
+    return @($rows)
 }
 
 function Invoke-AttributeHistoryCommit {
@@ -403,8 +564,6 @@ Write-Verbose "MaxPairs: $MaxPairs"
 $repoInfo = Get-RepoInfo
 $initialBranch = Invoke-Git -Arguments @('rev-parse', '--abbrev-ref', 'HEAD') | Select-Object -First 1
 
-Ensure-CleanWorkingTree
-
 $scenarioKey = $Scenario.ToLowerInvariant()
 switch ($scenarioKey) {
     'attribute' {
@@ -421,8 +580,33 @@ switch ($scenarioKey) {
         $scenarioPlanHint     = '- Apply sequential fixture commits from fixtures/vi-history/sequential.json (attribute, front panel, connector pane, control rename, block diagram cosmetic)'
         $scenarioNeedsArtifactValidation = $true
     }
+    'mixed-same-commit' {
+        $scenarioBranchSuffix = 'mixed'
+        $scenarioDescription  = 'mixed same-commit two-target history'
+        $scenarioExpectation  = '`/vi-history` workflow itemizes strict signal and non-strict metadata-noise targets from the same commit'
+        $scenarioPlanHint     = '- Apply mixed same-commit fixture from fixtures/vi-history/mixed-same-commit.json (two targets in one commit)'
+        $scenarioNeedsArtifactValidation = $true
+    }
     default {
         throw "Unsupported scenario: $Scenario"
+    }
+}
+
+$effectiveMaxPairs = $MaxPairs
+if (-not $PSBoundParameters.ContainsKey('MaxPairs')) {
+    switch ($scenarioKey) {
+        'sequential' {
+            $sequentialFixture = Get-SequentialHistorySequence
+            if ($null -ne $sequentialFixture.maxPairs) {
+                $effectiveMaxPairs = [int]$sequentialFixture.maxPairs
+            }
+        }
+        'mixed-same-commit' {
+            $mixedFixture = Get-MixedSameCommitFixture
+            if ($null -ne $mixedFixture.maxPairs) {
+                $effectiveMaxPairs = [int]$mixedFixture.maxPairs
+            }
+        }
     }
 }
 
@@ -440,7 +624,7 @@ $planSteps.Add("- Fetch origin/$BaseBranch") | Out-Null
 $planSteps.Add("- Create branch $branchName from origin/$BaseBranch") | Out-Null
 $planSteps.Add($scenarioPlanHint) | Out-Null
 $planSteps.Add("- Push scratch branch and create draft PR") | Out-Null
-$planSteps.Add("- Dispatch pr-vi-history.yml with PR input (max_pairs=$MaxPairs)") | Out-Null
+$planSteps.Add("- Dispatch pr-vi-history.yml with PR input (max_pairs=$effectiveMaxPairs)") | Out-Null
 $planSteps.Add("- Wait for workflow completion and verify PR comment") | Out-Null
 if ($scenarioNeedsArtifactValidation) {
     $planSteps.Add("- Download workflow artifact and validate diff/comparison counts") | Out-Null
@@ -461,6 +645,8 @@ if ($DryRun) {
     return
 }
 
+Ensure-CleanWorkingTree
+
 $scratchContext = [ordered]@{
     Branch        = $branchName
     PrNumber      = $null
@@ -479,23 +665,45 @@ $scratchContext = [ordered]@{
     mobilePreviewImageCount = 0
     mobilePreviewCommentFound = $false
     NetDiffAnchored = $false
+    TargetExpectations = @()
+    TargetValidation = @()
+    MaxPairsRequested = $MaxPairs
+    MaxPairsEffective = $effectiveMaxPairs
 }
 
 $commitSummaries = @()
+$expectedTargets = @()
+$trackedHistoryPaths = New-Object System.Collections.Generic.List[string]
 
 try {
     Invoke-Git -Arguments @('fetch', 'origin', $BaseBranch) | Out-Null
 
     Invoke-Git -Arguments @('checkout', "-B$branchName", "origin/$BaseBranch") | Out-Null
 
-    $targetVi = 'fixtures/vi-attr/Head.vi'
-    Enable-HistoryTracking -Path $targetVi
-
     switch ($scenarioKey) {
         'attribute' {
+            $targetVi = 'fixtures/vi-attr/Head.vi'
+            Enable-HistoryTracking -Path $targetVi
+            $trackedHistoryPaths.Add($targetVi) | Out-Null
             $commitSummaries = Invoke-AttributeHistoryCommit -TargetVi $targetVi
+            $expectedTargets = @(
+                [pscustomobject]@{
+                    repoPath          = $targetVi
+                    requireDiff       = $true
+                    minDiffs          = 1
+                    classificationHint= 'signal'
+                }
+            )
         }
         'sequential' {
+            $sequentialFixture = Get-SequentialHistorySequence
+            $targetVi = if ([string]::IsNullOrWhiteSpace($sequentialFixture.targetPathRelative)) {
+                'fixtures/vi-attr/Head.vi'
+            } else {
+                [string]$sequentialFixture.targetPathRelative
+            }
+            Enable-HistoryTracking -Path $targetVi
+            $trackedHistoryPaths.Add($targetVi) | Out-Null
             $commitSummaries = Invoke-SequentialHistoryCommits -TargetVi $targetVi
             $netDiffPaths = @(Invoke-Git -Arguments @('diff', '--name-only', "origin/$BaseBranch", '--', $targetVi))
             if ($netDiffPaths.Count -eq 0) {
@@ -516,9 +724,43 @@ try {
                 }
                 $scratchContext.NetDiffAnchored = $true
             }
+            $expectedTargets = @(
+                [pscustomobject]@{
+                    repoPath          = $targetVi
+                    requireDiff       = $true
+                    minDiffs          = 1
+                    classificationHint= 'signal'
+                }
+            )
+        }
+        'mixed-same-commit' {
+            $mixedFixture = Get-MixedSameCommitFixture
+            $uniqueTargets = New-Object System.Collections.Generic.HashSet[string]
+            foreach ($change in $mixedFixture.changes) {
+                $repoPath = [string]$change.targetPath
+                if ([string]::IsNullOrWhiteSpace($repoPath)) {
+                    continue
+                }
+                if ($uniqueTargets.Add($repoPath)) {
+                    Enable-HistoryTracking -Path $repoPath
+                    $trackedHistoryPaths.Add($repoPath) | Out-Null
+                }
+            }
+
+            $mixedCommit = Invoke-MixedSameCommitHistoryCommit
+            $commitSummaries = @($mixedCommit.CommitSummaries)
+            $expectedTargets = @($mixedCommit.ExpectedTargets)
+            if (-not $PSBoundParameters.ContainsKey('MaxPairs') -and $null -ne $mixedCommit.SuggestedMaxPairs) {
+                $effectiveMaxPairs = [int]$mixedCommit.SuggestedMaxPairs
+                $scratchContext.MaxPairsEffective = $effectiveMaxPairs
+            }
         }
     }
+    if ($expectedTargets.Count -lt 1) {
+        throw ("Scenario '{0}' did not produce expected target metadata." -f $scenarioKey)
+    }
     $scratchContext.CommitCount = $commitSummaries.Count
+    $scratchContext.TargetExpectations = @($expectedTargets)
 
     Invoke-Git -Arguments @('push', '-u', 'origin', $branchName) | Out-Null
 
@@ -557,7 +799,7 @@ try {
         ref    = $branchName
         inputs = @{
             pr        = $scratchContext.PrNumber.ToString()
-            max_pairs = $MaxPairs.ToString()
+            max_pairs = $effectiveMaxPairs.ToString()
         }
     } | ConvertTo-Json -Depth 4
     Write-Host 'Triggering pr-vi-history workflow via dispatch API...'
@@ -611,36 +853,64 @@ try {
     $scratchContext.mobilePreviewCommentFound = $mobilePreviewHeaderMatch.Success
     $scratchContext.mobilePreviewImageCount = $mobilePreviewImageMatches.Count
 
-    $rowPattern = '\|\s*<code>fixtures/vi-attr/Head\.vi</code>\s*\|\s*(?<change>[^|]+)\|\s*(?<comparisons>\d+)\s*\|\s*(?<diffs>\d+)\s*\|\s*(?<status>[^|]+)\|'
-    $rowMatch = [regex]::Match($historyComment, $rowPattern)
-    if ($rowMatch.Success) {
-        $scratchContext.Comparisons = [int]$rowMatch.Groups['comparisons'].Value
-        $scratchContext.Diffs = [int]$rowMatch.Groups['diffs'].Value
-    } else {
-        Write-Warning 'Unable to parse comparison/diff counts from the history comment.'
+    $commentRows = @(Get-HistorySummaryRowsFromComment -CommentBody $historyComment)
+    if ($commentRows.Count -eq 0) {
+        Write-Warning 'Unable to parse comparison/diff rows from the history comment.'
     }
 
-    if ($scenarioKey -eq 'sequential') {
-        if (-not $rowMatch.Success) {
-            throw 'Failed to parse sequential summary row from history comment.'
+    $targetValidations = New-Object System.Collections.Generic.List[pscustomobject]
+    $totalComparisons = 0
+    $totalDiffs = 0
+    foreach ($expectedTarget in $expectedTargets) {
+        $row = $commentRows | Where-Object { $_.path -eq $expectedTarget.repoPath } | Select-Object -First 1
+        if (-not $row) {
+            throw ("History comment is missing summary row for target '{0}'." -f $expectedTarget.repoPath)
         }
-        $comparisonsValue = [int]$rowMatch.Groups['comparisons'].Value
-        $diffsValue = [int]$rowMatch.Groups['diffs'].Value
-        $statusValue = $rowMatch.Groups['status'].Value.Trim()
-        if ($comparisonsValue -lt [Math]::Max(1, $commitSummaries.Count)) {
-            throw ("Expected at least {0} comparisons, but comment reported {1}." -f [Math]::Max(1, $commitSummaries.Count), $comparisonsValue)
+
+        if ($row.comparisons -lt 1) {
+            throw ("Target '{0}' reported zero comparisons in history comment." -f $expectedTarget.repoPath)
         }
-        if ($diffsValue -lt 1) {
-            throw 'Sequential history comment should report at least one diff.'
+
+        $requiredDiffs = [Math]::Max(0, [int]$expectedTarget.minDiffs)
+        if ([bool]$expectedTarget.requireDiff -and $row.diffs -lt $requiredDiffs) {
+            throw ("Target '{0}' expected at least {1} diff(s) but comment reported {2}." -f $expectedTarget.repoPath, $requiredDiffs, $row.diffs)
         }
-        if ($statusValue -notlike '*diff*') {
-            throw ("Expected status column to mark diff but saw '{0}'." -f $statusValue)
+
+        if ([bool]$expectedTarget.requireDiff -and $row.status -notlike '*diff*') {
+            throw ("Target '{0}' expected diff status but saw '{1}'." -f $expectedTarget.repoPath, $row.status)
+        }
+
+        $totalComparisons += [int]$row.comparisons
+        $totalDiffs += [int]$row.diffs
+        $targetValidations.Add([pscustomobject]@{
+            repoPath          = [string]$expectedTarget.repoPath
+            comparisons       = [int]$row.comparisons
+            diffs             = [int]$row.diffs
+            status            = [string]$row.status
+            requireDiff       = [bool]$expectedTarget.requireDiff
+            minDiffs          = [int]$expectedTarget.minDiffs
+            classificationHint= if ($expectedTarget.PSObject.Properties['classificationHint']) { [string]$expectedTarget.classificationHint } else { $null }
+        }) | Out-Null
+    }
+    $scratchContext.TargetValidation = @($targetValidations)
+    $scratchContext.Comparisons = $totalComparisons
+    $scratchContext.Diffs = $totalDiffs
+
+    if ($scenarioNeedsArtifactValidation) {
+        if ($scenarioKey -eq 'sequential') {
+            $sequentialTarget = $targetValidations | Where-Object { $_.repoPath -eq 'fixtures/vi-attr/Head.vi' } | Select-Object -First 1
+            if (-not $sequentialTarget) {
+                $sequentialTarget = $targetValidations | Select-Object -First 1
+            }
+            if ($sequentialTarget.comparisons -lt [Math]::Max(1, $commitSummaries.Count)) {
+                throw ("Expected at least {0} comparisons for sequential scenario, but comment reported {1}." -f [Math]::Max(1, $commitSummaries.Count), $sequentialTarget.comparisons)
+            }
         }
         if (-not $mobilePreviewHeaderMatch.Success) {
-            throw 'Sequential history comment is missing the `### Mobile Preview` section.'
+            throw ("Scenario '{0}' comment is missing the `### Mobile Preview` section." -f $scenarioKey)
         }
         if ($mobilePreviewImageMatches.Count -lt 1) {
-            throw 'Sequential history comment did not include preview image tags (`history-image-*`).'
+            throw ("Scenario '{0}' comment did not include preview image tags (`history-image-*`)." -f $scenarioKey)
         }
 
         $artifactDir = Join-Path $summaryDir ("artifact-$timestamp")
@@ -657,17 +927,28 @@ try {
             throw 'Summary JSON not found in downloaded artifact.'
         }
         $summaryData = Get-Content -LiteralPath $summaryFile.FullName -Raw -ErrorAction Stop | ConvertFrom-Json -ErrorAction Stop
-        $targetSummary = $summaryData.targets | Select-Object -First 1
-        if (-not $targetSummary) {
+        $targetSummaries = @($summaryData.targets)
+        if ($targetSummaries.Count -eq 0) {
             throw 'Summary JSON does not contain target entries.'
         }
-        $artifactComparisons = if ($targetSummary.stats) { [int]$targetSummary.stats.processed } else { 0 }
-        $artifactDiffs = if ($targetSummary.stats) { [int]$targetSummary.stats.diffs } else { 0 }
-        if ($artifactComparisons -lt [Math]::Max(1, $commitSummaries.Count)) {
-            throw ("Summary JSON reported {0} comparisons; expected at least {1}." -f $artifactComparisons, [Math]::Max(1, $commitSummaries.Count))
-        }
-        if ($artifactDiffs -lt 1) {
-            throw 'Summary JSON should report at least one diff for sequential history smoke.'
+
+        foreach ($expectedTarget in $expectedTargets) {
+            $summaryTarget = $targetSummaries | Where-Object { $_.repoPath -eq $expectedTarget.repoPath } | Select-Object -First 1
+            if (-not $summaryTarget) {
+                throw ("Summary JSON missing target entry for '{0}'." -f $expectedTarget.repoPath)
+            }
+            $artifactComparisons = if ($summaryTarget.stats) { [int]$summaryTarget.stats.processed } else { 0 }
+            $artifactDiffs = if ($summaryTarget.stats) { [int]$summaryTarget.stats.diffs } else { 0 }
+            if ($artifactComparisons -lt 1) {
+                throw ("Summary JSON reported zero comparisons for target '{0}'." -f $expectedTarget.repoPath)
+            }
+            $requiredDiffs = [Math]::Max(0, [int]$expectedTarget.minDiffs)
+            if ([bool]$expectedTarget.requireDiff -and $artifactDiffs -lt $requiredDiffs) {
+                throw ("Summary JSON target '{0}' expected at least {1} diff(s) but saw {2}." -f $expectedTarget.repoPath, $requiredDiffs, $artifactDiffs)
+            }
+            if ($scenarioKey -eq 'sequential' -and $summaryTarget.repoPath -eq 'fixtures/vi-attr/Head.vi' -and $artifactComparisons -lt [Math]::Max(1, $commitSummaries.Count)) {
+                throw ("Summary JSON reported {0} comparisons for sequential target; expected at least {1}." -f $artifactComparisons, [Math]::Max(1, $commitSummaries.Count))
+            }
         }
 
         $imageIndexFiles = Get-ChildItem -LiteralPath $artifactDir -Recurse -Filter 'vi-history-image-index.json' -File
@@ -704,7 +985,9 @@ finally {
     } catch {
         Write-Warning ("Failed to return to initial branch {0}: {1}" -f $initialBranch, $_.Exception.Message)
     }
-    Restore-HistoryTracking -Path 'fixtures/vi-attr/Head.vi'
+    foreach ($trackedPath in ($trackedHistoryPaths | Select-Object -Unique)) {
+        Restore-HistoryTracking -Path $trackedPath
+    }
 
     if (-not $KeepBranch) {
         Write-Host 'Cleaning up scratch PR and branch...'
@@ -732,9 +1015,9 @@ finally {
     $scratchContext.SummaryGeneratedAt = (Get-Date).ToString('o')
     $scratchContext.KeepBranch = [bool]$KeepBranch
     $scratchContext.BaseBranch = $BaseBranch
-    $scratchContext.MaxPairs = $MaxPairs
+    $scratchContext.MaxPairs = $effectiveMaxPairs
     $scratchContext.InitialBranch = $initialBranch
 
-    $scratchContext | ConvertTo-Json -Depth 6 | Set-Content -LiteralPath $summaryPath -Encoding utf8
+    $scratchContext | ConvertTo-Json -Depth 8 | Set-Content -LiteralPath $summaryPath -Encoding utf8
     Write-Host "Summary written to $summaryPath"
 }
