@@ -427,6 +427,22 @@ function Invoke-Pwsh {
   }
 }
 
+function Get-ExecDiffEvidence {
+  param(
+    [Parameter(Mandatory = $true)][string]$ExecPath
+  )
+  if (-not (Test-Path -LiteralPath $ExecPath -PathType Leaf)) {
+    return $false
+  }
+  try {
+    $execData = Get-Content -LiteralPath $ExecPath -Raw | ConvertFrom-Json -Depth 8
+    if ($execData -and $execData.PSObject.Properties['diff']) {
+      return [bool]$execData.diff
+    }
+  } catch {}
+  return $false
+}
+
 function Ensure-FileExistsAtRef {
   param(
     [Parameter(Mandatory = $true)][string]$Ref,
@@ -1397,7 +1413,16 @@ foreach ($modeSpec in $modeSpecs) {
         $pwshResult = Invoke-Pwsh -Arguments $compareArgs
         if ($pwshResult.ExitCode -ne 0) {
           if ($pwshResult.ExitCode -eq 1) {
-            Write-Verbose 'Compare-RefsToTemp reported exit code 1 (diff detected); continuing.'
+            $hasSummary = Test-Path -LiteralPath $summaryPath -PathType Leaf
+            $hasDiffEvidence = $hasSummary -or (Get-ExecDiffEvidence -ExecPath $execPath)
+            if ($hasDiffEvidence) {
+              Write-Verbose 'Compare-RefsToTemp reported exit code 1 with diff evidence; continuing.'
+            } else {
+              $msg = "Compare-RefsToTemp.ps1 exited with code 1 without diff evidence."
+              if ($pwshResult.StdErr) { $msg = "$msg`n$($pwshResult.StdErr.Trim())" }
+              if ($pwshResult.StdOut) { $msg = "$msg`n$($pwshResult.StdOut.Trim())" }
+              throw $msg
+            }
           } else {
             $msg = "Compare-RefsToTemp.ps1 exited with code {0}" -f $pwshResult.ExitCode
             if ($pwshResult.StdErr) { $msg = "$msg`n$($pwshResult.StdErr.Trim())" }
@@ -1419,7 +1444,16 @@ foreach ($modeSpec in $modeSpecs) {
           $retryResult = Invoke-Pwsh -Arguments $retryArgs
           if ($retryResult.ExitCode -ne 0) {
             if ($retryResult.ExitCode -eq 1) {
-              Write-Verbose 'Retry Compare-RefsToTemp reported exit code 1 (diff detected); continuing.'
+              $hasSummary = Test-Path -LiteralPath $summaryPath -PathType Leaf
+              $hasDiffEvidence = $hasSummary -or (Get-ExecDiffEvidence -ExecPath $execPath)
+              if ($hasDiffEvidence) {
+                Write-Verbose 'Retry Compare-RefsToTemp reported exit code 1 with diff evidence; continuing.'
+              } else {
+                $msg = "Retry Compare-RefsToTemp.ps1 exited with code 1 without diff evidence."
+                if ($retryResult.StdErr) { $msg = "$msg`n$($retryResult.StdErr.Trim())" }
+                if ($retryResult.StdOut) { $msg = "$msg`n$($retryResult.StdOut.Trim())" }
+                throw $msg
+              }
             } else {
               $msg = "Retry Compare-RefsToTemp.ps1 exited with code {0}" -f $retryResult.ExitCode
               if ($retryResult.StdErr) { $msg = "$msg`n$($retryResult.StdErr.Trim())" }
