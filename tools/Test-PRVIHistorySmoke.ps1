@@ -36,6 +36,12 @@ Optional override for the `history_timeout_minutes` workflow input used by
 .PARAMETER CompareTimeoutSeconds
 Optional override for the `compare_timeout_seconds` workflow input used by
 `pr-vi-history.yml`. Defaults to `900` for smoke evidence runs.
+
+.PARAMETER BenchmarkBaselineWindow
+Rolling baseline window (same scenario) used when computing KPI deltas.
+
+.PARAMETER EvidenceIssueNumber
+Optional issue number where KPI delta markdown should be posted.
 #>
 [CmdletBinding()]
 param(
@@ -46,7 +52,10 @@ param(
     [string]$Scenario = 'attribute',
     [int]$MaxPairs = 6,
     [int]$WorkflowTimeoutMinutes = 25,
-    [int]$CompareTimeoutSeconds = 900
+    [int]$CompareTimeoutSeconds = 900,
+    [ValidateRange(1, 50)]
+    [int]$BenchmarkBaselineWindow = 5,
+    [int]$EvidenceIssueNumber = 0
 )
 
 Set-StrictMode -Version Latest
@@ -63,6 +72,11 @@ if (-not (Test-Path -LiteralPath $pairTimelineHelperPath -PathType Leaf)) {
     throw "Pair timeline helper not found: $pairTimelineHelperPath"
 }
 . $pairTimelineHelperPath
+
+$benchmarkWriterPath = Join-Path $PSScriptRoot 'Write-VIHistoryBenchmark.ps1'
+if (-not (Test-Path -LiteralPath $benchmarkWriterPath -PathType Leaf)) {
+    throw "Benchmark writer helper not found: $benchmarkWriterPath"
+}
 
 if ($WorkflowTimeoutMinutes -lt 1) {
     throw 'WorkflowTimeoutMinutes must be greater than zero.'
@@ -974,6 +988,8 @@ $scratchContext = [ordered]@{
     mobilePreviewValidated = $false
     mobilePreviewImageCount = 0
     mobilePreviewCommentFound = $false
+    CommentTruncated = $false
+    TruncationReason = 'none'
     NetDiffAnchored = $false
     TargetExpectations = @()
     TargetValidation = @()
@@ -1000,10 +1016,19 @@ $scratchContext = [ordered]@{
         p50Seconds = $null
         p95Seconds = $null
     }
+    Benchmark = [ordered]@{
+        benchmarkPath = $null
+        deltaPath = $null
+        commentPath = $null
+        baselineCount = 0
+        deltaStatus = 'pending'
+    }
     MaxPairsRequested = $MaxPairs
     MaxPairsEffective = $effectiveMaxPairs
     WorkflowTimeoutMinutes = $WorkflowTimeoutMinutes
     CompareTimeoutSeconds = $CompareTimeoutSeconds
+    BenchmarkBaselineWindow = $BenchmarkBaselineWindow
+    EvidenceIssueNumber = $EvidenceIssueNumber
     MobilePreviewRequired = $scenarioRequiresMobilePreview
 }
 
@@ -1239,6 +1264,16 @@ try {
     $mobilePreviewImageMatches = [regex]::Matches($historyComment, '<img\s+[^>]*src=["''][^"''>]*history-image-[^"''>]*["''][^>]*>')
     $scratchContext.mobilePreviewCommentFound = $mobilePreviewHeaderMatch.Success
     $scratchContext.mobilePreviewImageCount = $mobilePreviewImageMatches.Count
+    if ($historyComment -match 'Summary truncated for comment size safety') {
+        $scratchContext.CommentTruncated = $true
+        $scratchContext.TruncationReason = 'max-markdown-length'
+    } elseif ($historyComment -match 'Timeline rows truncated for mobile/comment-size safety') {
+        $scratchContext.CommentTruncated = $true
+        $scratchContext.TruncationReason = 'timeline-row-drop'
+    } else {
+        $scratchContext.CommentTruncated = $false
+        $scratchContext.TruncationReason = 'none'
+    }
 
     $commentRows = @(Get-HistorySummaryRowsFromComment -CommentBody $historyComment)
     if ($commentRows.Count -eq 0) {
@@ -1510,6 +1545,51 @@ finally {
         Restore-HistoryTracking -Path $trackedPath
     }
 
+    $scratchContext.SummaryGeneratedAt = (Get-Date).ToString('o')
+    $scratchContext.KeepBranch = [bool]$KeepBranch
+    $scratchContext.BaseBranch = $BaseBranch
+    $scratchContext.MaxPairs = $effectiveMaxPairs
+    $scratchContext.InitialBranch = $initialBranch
+    $scratchContext | ConvertTo-Json -Depth 10 | Set-Content -LiteralPath $summaryPath -Encoding utf8
+
+    try {
+        $benchmarkResult = & $benchmarkWriterPath `
+            -SmokeSummaryPath $summaryPath `
+            -BaselineWindow $BenchmarkBaselineWindow
+        if ($benchmarkResult) {
+            $scratchContext.Benchmark.benchmarkPath = if ($benchmarkResult.PSObject.Properties['benchmarkPath']) { [string]$benchmarkResult.benchmarkPath } else { $null }
+            $scratchContext.Benchmark.deltaPath = if ($benchmarkResult.PSObject.Properties['deltaPath']) { [string]$benchmarkResult.deltaPath } else { $null }
+            $scratchContext.Benchmark.commentPath = if ($benchmarkResult.PSObject.Properties['commentPath']) { [string]$benchmarkResult.commentPath } else { $null }
+            $scratchContext.Benchmark.baselineCount = if ($benchmarkResult.PSObject.Properties['baselineCount']) { [int]$benchmarkResult.baselineCount } else { 0 }
+            $scratchContext.Benchmark.deltaStatus = if ($benchmarkResult.PSObject.Properties['deltaStatus']) { [string]$benchmarkResult.deltaStatus } else { 'unknown' }
+
+            $commentMarkdown = if ($benchmarkResult.PSObject.Properties['commentMarkdown']) { [string]$benchmarkResult.commentMarkdown } else { $null }
+            if (-not [string]::IsNullOrWhiteSpace($commentMarkdown)) {
+                if ($scratchContext.PrNumber) {
+                    try {
+                        Invoke-Gh -Arguments @('pr', 'comment', $scratchContext.PrNumber.ToString(), '--repo', $repoInfo.Slug, '--body', $commentMarkdown) | Out-Null
+                        Write-Host ("Posted KPI delta comment to PR #{0}." -f $scratchContext.PrNumber)
+                    } catch {
+                        Write-Warning ("Failed to post KPI delta comment to PR #{0}: {1}" -f $scratchContext.PrNumber, $_.Exception.Message)
+                    }
+                }
+                if ($EvidenceIssueNumber -gt 0) {
+                    try {
+                        Invoke-Gh -Arguments @('issue', 'comment', $EvidenceIssueNumber.ToString(), '--repo', $repoInfo.Slug, '--body', $commentMarkdown) | Out-Null
+                        Write-Host ("Posted KPI delta comment to issue #{0}." -f $EvidenceIssueNumber)
+                    } catch {
+                        Write-Warning ("Failed to post KPI delta comment to issue #{0}: {1}" -f $EvidenceIssueNumber, $_.Exception.Message)
+                    }
+                }
+            }
+        }
+    } catch {
+        Write-Warning ("Failed to generate KPI benchmark/delta artifacts: {0}" -f $_.Exception.Message)
+    }
+
+    $scratchContext | ConvertTo-Json -Depth 10 | Set-Content -LiteralPath $summaryPath -Encoding utf8
+    Write-Host "Summary written to $summaryPath"
+
     if (-not $KeepBranch) {
         Write-Host 'Cleaning up scratch PR and branch...'
         try {
@@ -1532,13 +1612,4 @@ finally {
     } else {
         Write-Host 'KeepBranch specified - leaving scratch PR and branch in place.'
     }
-
-    $scratchContext.SummaryGeneratedAt = (Get-Date).ToString('o')
-    $scratchContext.KeepBranch = [bool]$KeepBranch
-    $scratchContext.BaseBranch = $BaseBranch
-    $scratchContext.MaxPairs = $effectiveMaxPairs
-    $scratchContext.InitialBranch = $initialBranch
-
-    $scratchContext | ConvertTo-Json -Depth 8 | Set-Content -LiteralPath $summaryPath -Encoding utf8
-    Write-Host "Summary written to $summaryPath"
 }

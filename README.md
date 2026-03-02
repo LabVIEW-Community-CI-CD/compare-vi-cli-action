@@ -98,6 +98,13 @@ the same summary table to a GitHub issue for stakeholders.
 - `tools/Test-PRVIHistorySmoke.ps1` now emits explicit hybrid gate policy metadata (`schema: vi-history-policy-gate@v1`):
   strict (`requireDiff=true`) violations are hard failures, while smoke (`requireDiff=false`) violations are recorded as
   non-blocking warnings for diagnostics.
+- Smoke runs now emit benchmark artifacts under `tests/results/_agent/smoke/vi-history/benchmarks/`:
+  - `vi-history-benchmark-*.json` (`schema: vi-history-benchmark@v1`)
+  - `vi-history-benchmark-delta-*.json` (`schema: vi-history-benchmark-delta@v1`)
+  - `vi-history-benchmark-delta-*.md` (PR/issue-ready KPI delta comment body)
+- `tools/Test-PRVIHistorySmoke.ps1` can post KPI delta evidence comments automatically:
+  - always to the synthetic PR (before cleanup)
+  - optionally to an issue via `-EvidenceIssueNumber`
 - To rehearse the fork flow locally, run `pwsh -File tools/Test-ForkSimulation.ps1` in three passes: `-DryRun` shows the
   steps, the default run opens a draft PR and validates the automatic compare job, and `-KeepBranch` preserves the
   scratch branch while the staging/history dispatches finish so you can inspect the artifacts.

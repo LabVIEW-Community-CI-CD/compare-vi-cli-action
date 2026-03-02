@@ -111,6 +111,9 @@
   comment safety limits. Totals expose `previewImages` and `markdownTruncated`; per-target metadata surfaces under
   `targets[].reportImages` in `pr-vi-history-summary@v1`.
   For a full end-to-end validation, run the smoke helper (`pwsh -File tools/Test-PRVIHistorySmoke.ps1` or `npm run smoke:vi-history`) to create a scratch PR, dispatch the workflow, and record the results under `tests/results/_agent/smoke/vi-history/`.
+  Benchmark/delta evidence is emitted alongside smoke summaries under
+  `tests/results/_agent/smoke/vi-history/benchmarks/` (`vi-history-benchmark@v1` and
+  `vi-history-benchmark-delta@v1`) with a markdown comment body ready for PR/issue posting.
 
 ## Dispatch inputs (GitHub UI or `gh workflow run`)
 
