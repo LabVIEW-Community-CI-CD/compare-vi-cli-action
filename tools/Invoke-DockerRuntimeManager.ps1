@@ -100,6 +100,42 @@ function Acquire-LockStream {
   throw ("Timed out waiting for Docker manager lock: {0}" -f $LockPath)
 }
 
+function Resolve-DockerCliPath {
+  $candidates = @(
+    (Join-Path ${env:ProgramFiles} 'Docker\Docker\DockerCli.exe'),
+    (Join-Path ${env:ProgramFiles(x86)} 'Docker\Docker\DockerCli.exe')
+  ) | Where-Object { -not [string]::IsNullOrWhiteSpace($_) }
+
+  foreach ($candidate in $candidates) {
+    if (Test-Path -LiteralPath $candidate -PathType Leaf) {
+      return $candidate
+    }
+  }
+  return ''
+}
+
+function Invoke-DockerEngineSwitchFallback {
+  param(
+    [Parameter(Mandatory)][string]$ExpectedOsType
+  )
+
+  $dockerCliPath = Resolve-DockerCliPath
+  if ([string]::IsNullOrWhiteSpace($dockerCliPath)) {
+    throw ("DockerCli.exe not found. Unable to switch engine to '{0}' without context metadata." -f $ExpectedOsType)
+  }
+
+  $switchArg = switch ($ExpectedOsType.Trim().ToLowerInvariant()) {
+    'windows' { '-SwitchWindowsEngine' }
+    'linux' { '-SwitchLinuxEngine' }
+    default { throw ("Unsupported ExpectedOsType for engine switch fallback: {0}" -f $ExpectedOsType) }
+  }
+
+  $raw = & $dockerCliPath $switchArg 2>&1
+  if ($LASTEXITCODE -ne 0) {
+    throw ("Docker engine switch fallback failed via '{0} {1}'. Output: {2}" -f $dockerCliPath, $switchArg, (@($raw | ForEach-Object { [string]$_ }) -join ' '))
+  }
+}
+
 function Set-ContextAndWait {
   param(
     [Parameter(Mandatory)][string]$ContextName,
@@ -112,7 +148,17 @@ function Set-ContextAndWait {
   $lastError = $null
   for ($attempt = 1; $attempt -le $RetryCount; $attempt++) {
     try {
-      Invoke-DockerCommand -Arguments @('context', 'use', $ContextName) | Out-Null
+      $useContext = Invoke-DockerCommand -Arguments @('context', 'use', $ContextName) -IgnoreExitCode
+      if ($useContext.ExitCode -ne 0) {
+        $switchError = [string]$useContext.Text
+        $missingContext = ($switchError -match '(?i)context.+not found') -or ($switchError -match '(?i)cannot find the path specified')
+        if ($missingContext) {
+          Invoke-DockerEngineSwitchFallback -ExpectedOsType $ExpectedOsType
+        } else {
+          throw ("docker context use {0} failed (exit={1}). Output: {2}" -f $ContextName, $useContext.ExitCode, $switchError)
+        }
+      }
+
       $deadline = (Get-Date).ToUniversalTime().AddSeconds($TimeoutSeconds)
       do {
         $osProbe = Invoke-DockerCommand -Arguments @('info', '--format', '{{.OSType}}') -IgnoreExitCode
