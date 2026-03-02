@@ -31,6 +31,10 @@ Optional override for the `max_pairs` workflow input. Defaults to `6`.
 .PARAMETER WorkflowTimeoutMinutes
 Optional override for the `history_timeout_minutes` workflow input used by
 `pr-vi-history.yml`. Defaults to `25` for smoke evidence runs.
+
+.PARAMETER CompareTimeoutSeconds
+Optional override for the `compare_timeout_seconds` workflow input used by
+`pr-vi-history.yml`. Defaults to `900` for smoke evidence runs.
 #>
 [CmdletBinding()]
 param(
@@ -40,7 +44,8 @@ param(
     [ValidateSet('attribute', 'sequential', 'mixed-same-commit')]
     [string]$Scenario = 'attribute',
     [int]$MaxPairs = 6,
-    [int]$WorkflowTimeoutMinutes = 25
+    [int]$WorkflowTimeoutMinutes = 25,
+    [int]$CompareTimeoutSeconds = 900
 )
 
 Set-StrictMode -Version Latest
@@ -48,6 +53,9 @@ $ErrorActionPreference = 'Stop'
 
 if ($WorkflowTimeoutMinutes -lt 1) {
     throw 'WorkflowTimeoutMinutes must be greater than zero.'
+}
+if ($CompareTimeoutSeconds -lt 1) {
+    throw 'CompareTimeoutSeconds must be greater than zero.'
 }
 
 function Invoke-Git {
@@ -167,15 +175,39 @@ function Wait-WorkflowRunCompletion {
     $auth = Get-GitHubAuth
     $uri = "https://api.github.com/repos/$($Repo.Slug)/actions/runs/$RunId"
     $deadline = (Get-Date).ToUniversalTime().AddMinutes([Math]::Max(1, $TimeoutMinutes))
+    $lastPollError = $null
     do {
-        $run = Invoke-RestMethod -Uri $uri -Headers $auth.Headers -Method Get -ErrorAction Stop
-        if ($run.status -eq 'completed') {
-            return $run
+        try {
+            $run = Invoke-RestMethod -Uri $uri -Headers $auth.Headers -Method Get -ErrorAction Stop
+            $lastPollError = $null
+            if ($run.status -eq 'completed') {
+                return $run
+            }
+        } catch {
+            $lastPollError = $_
+            $errorText = if ($_.Exception -and $_.Exception.Message) { $_.Exception.Message } else { [string]$_ }
+            $compactError = ($errorText -replace '\s+', ' ').Trim()
+            $isTransient = $compactError -match '(?i)(unicorn|issues producing the response|502|503|504|gateway|temporar|timeout|timed out)'
+            if (-not $isTransient) {
+                throw
+            }
+            if ($compactError.Length -gt 220) {
+                $compactError = $compactError.Substring(0, 220) + '...'
+            }
+            Write-Warning ("Transient workflow polling error for run {0}; retrying: {1}" -f $RunId, $compactError)
         }
         Start-Sleep -Seconds ([Math]::Max(1, $PollSeconds))
     } while ((Get-Date).ToUniversalTime() -lt $deadline)
 
-    throw ("Timed out waiting for workflow run {0} to complete after {1} minute(s)." -f $RunId, $TimeoutMinutes)
+    $timeoutMessage = "Timed out waiting for workflow run $RunId to complete after $TimeoutMinutes minute(s)."
+    if ($lastPollError -and $lastPollError.Exception -and $lastPollError.Exception.Message) {
+        $lastMessage = ($lastPollError.Exception.Message -replace '\s+', ' ').Trim()
+        if ($lastMessage.Length -gt 220) {
+            $lastMessage = $lastMessage.Substring(0, 220) + '...'
+        }
+        $timeoutMessage = "$timeoutMessage Last polling error: $lastMessage"
+    }
+    throw $timeoutMessage
 }
 
 function Ensure-CleanWorkingTree {
@@ -690,7 +722,7 @@ $planSteps.Add("- Fetch origin/$BaseBranch") | Out-Null
 $planSteps.Add("- Create branch $branchName from origin/$BaseBranch") | Out-Null
 $planSteps.Add($scenarioPlanHint) | Out-Null
 $planSteps.Add("- Push scratch branch and create draft PR") | Out-Null
-$planSteps.Add("- Dispatch pr-vi-history.yml with PR input (max_pairs=$effectiveMaxPairs, history_timeout_minutes=$WorkflowTimeoutMinutes)") | Out-Null
+$planSteps.Add("- Dispatch pr-vi-history.yml with PR input (max_pairs=$effectiveMaxPairs, history_timeout_minutes=$WorkflowTimeoutMinutes, compare_timeout_seconds=$CompareTimeoutSeconds)") | Out-Null
 $planSteps.Add("- Wait for workflow completion and verify PR comment") | Out-Null
 if ($scenarioNeedsArtifactValidation) {
     $planSteps.Add("- Download workflow artifact and validate diff/comparison counts") | Out-Null
@@ -736,6 +768,7 @@ $scratchContext = [ordered]@{
     MaxPairsRequested = $MaxPairs
     MaxPairsEffective = $effectiveMaxPairs
     WorkflowTimeoutMinutes = $WorkflowTimeoutMinutes
+    CompareTimeoutSeconds = $CompareTimeoutSeconds
     MobilePreviewRequired = $scenarioRequiresMobilePreview
 }
 
@@ -869,6 +902,7 @@ try {
             pr                      = $scratchContext.PrNumber.ToString()
             max_pairs               = $effectiveMaxPairs.ToString()
             history_timeout_minutes = $WorkflowTimeoutMinutes.ToString()
+            compare_timeout_seconds = $CompareTimeoutSeconds.ToString()
         }
     } | ConvertTo-Json -Depth 4
     $dispatchStartedAtUtc = (Get-Date).ToUniversalTime()
@@ -992,12 +1026,16 @@ try {
 
     if ($scenarioNeedsArtifactValidation) {
         if ($scenarioKey -eq 'sequential') {
+            $expectedSequentialComparisons = [Math]::Max(1, $commitSummaries.Count)
+            if ($effectiveMaxPairs -gt 0) {
+                $expectedSequentialComparisons = [Math]::Max(1, [Math]::Min($expectedSequentialComparisons, $effectiveMaxPairs))
+            }
             $sequentialTarget = $targetValidations | Where-Object { $_.repoPath -eq 'fixtures/vi-attr/Head.vi' } | Select-Object -First 1
             if (-not $sequentialTarget) {
                 $sequentialTarget = $targetValidations | Select-Object -First 1
             }
-            if ($sequentialTarget.comparisons -lt [Math]::Max(1, $commitSummaries.Count)) {
-                throw ("Expected at least {0} comparisons for sequential scenario, but comment reported {1}." -f [Math]::Max(1, $commitSummaries.Count), $sequentialTarget.comparisons)
+            if ($sequentialTarget.comparisons -lt $expectedSequentialComparisons) {
+                throw ("Expected at least {0} comparisons for sequential scenario, but comment reported {1}." -f $expectedSequentialComparisons, $sequentialTarget.comparisons)
             }
         }
         $artifactDir = Join-Path $summaryDir ("artifact-$timestamp")
@@ -1034,13 +1072,19 @@ try {
             if ([bool]$expectedTarget.requireDiff -and $artifactDiffs -lt $requiredDiffs) {
                 throw ("Summary JSON target '{0}' expected at least {1} diff(s) but saw {2}." -f $expectedTarget.repoPath, $requiredDiffs, $artifactDiffs)
             }
-            if ($scenarioKey -eq 'sequential' -and $summaryTarget.repoPath -eq 'fixtures/vi-attr/Head.vi' -and $artifactComparisons -lt [Math]::Max(1, $commitSummaries.Count)) {
-                throw ("Summary JSON reported {0} comparisons for sequential target; expected at least {1}." -f $artifactComparisons, [Math]::Max(1, $commitSummaries.Count))
+            if ($scenarioKey -eq 'sequential' -and $summaryTarget.repoPath -eq 'fixtures/vi-attr/Head.vi') {
+                $expectedSequentialComparisons = [Math]::Max(1, $commitSummaries.Count)
+                if ($effectiveMaxPairs -gt 0) {
+                    $expectedSequentialComparisons = [Math]::Max(1, [Math]::Min($expectedSequentialComparisons, $effectiveMaxPairs))
+                }
+                if ($artifactComparisons -lt $expectedSequentialComparisons) {
+                    throw ("Summary JSON reported {0} comparisons for sequential target; expected at least {1}." -f $artifactComparisons, $expectedSequentialComparisons)
+                }
             }
         }
 
-        $imageIndexFiles = Get-ChildItem -LiteralPath $artifactDir -Recurse -Filter 'vi-history-image-index.json' -File
-        if (-not $imageIndexFiles -or $imageIndexFiles.Count -lt 1) {
+        $imageIndexFiles = @(Get-ChildItem -LiteralPath $artifactDir -Recurse -Filter 'vi-history-image-index.json' -File)
+        if ($imageIndexFiles.Count -lt 1) {
             throw 'vi-history-image-index.json not found in downloaded artifact.'
         }
         $previewImageFiles = Get-ChildItem -LiteralPath $artifactDir -Recurse -File |

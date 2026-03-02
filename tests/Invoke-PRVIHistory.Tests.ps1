@@ -205,6 +205,90 @@ Describe 'Invoke-PRVIHistory.ps1' {
         Test-Path -LiteralPath $result.targets[0].manifest -PathType Leaf | Should -BeTrue
     }
 
+    It 'forwards compare timeout to Compare-VIHistory via explicit parameter and env fallback' {
+        $tempDir = Join-Path $TestDrive 'history-fixtures-timeout'
+        New-Item -ItemType Directory -Path $tempDir | Out-Null
+
+        $headPath = Join-Path $tempDir 'Head.vi'
+        Set-Content -LiteralPath $headPath -Value 'vi-bytes'
+
+        $manifestPath = Join-Path $TestDrive 'vi-diff-manifest-timeout.json'
+        $manifest = [ordered]@{
+            schema      = 'vi-diff-manifest@v1'
+            generatedAt = (Get-Date).ToString('o')
+            baseRef     = 'base'
+            headRef     = 'head'
+            pairs       = @(
+                [ordered]@{
+                    changeType = 'modified'
+                    basePath   = 'Base.vi'
+                    headPath   = $headPath
+                }
+            )
+        }
+        $manifest | ConvertTo-Json -Depth 4 | Set-Content -LiteralPath $manifestPath -Encoding utf8
+
+        $resultsRoot = Join-Path $TestDrive 'history-results-timeout'
+        $invocations = [System.Collections.Generic.List[hashtable]]::new()
+        $compareStub = {
+            param([hashtable]$Arguments)
+            $invocations.Add($Arguments) | Out-Null
+
+            New-Item -ItemType Directory -Path $Arguments.ResultsDir -Force | Out-Null
+            $summaryManifest = [ordered]@{
+                schema      = 'vi-compare/history-suite@v1'
+                targetPath  = $Arguments.TargetPath
+                stats       = [ordered]@{
+                    processed = 1
+                    diffs     = 0
+                    missing   = 0
+                }
+                modes       = @(
+                    [ordered]@{
+                        name = 'default'
+                        stats = [ordered]@{
+                            processed = 1
+                            diffs     = 0
+                            missing   = 0
+                        }
+                        comparisons = @()
+                    }
+                )
+            }
+            $manifestOut = Join-Path $Arguments.ResultsDir 'manifest.json'
+            $summaryManifest | ConvertTo-Json -Depth 6 | Set-Content -LiteralPath $manifestOut -Encoding utf8
+            Set-Content -LiteralPath (Join-Path $Arguments.ResultsDir 'history-report.md') -Value '# history' -Encoding utf8
+        }.GetNewClosure()
+
+        Push-Location $repoRoot
+        try {
+            & $scriptPath `
+                -ManifestPath $manifestPath `
+                -ResultsRoot $resultsRoot `
+                -CompareInvoker $compareStub `
+                -CompareTimeoutSeconds 777 `
+                -SkipRenderReport | Out-Null
+
+            $invocations.Count | Should -Be 1
+            $invocations[0].CompareTimeoutSeconds | Should -Be 777
+
+            $invocations.Clear()
+            $env:PR_VI_HISTORY_COMPARE_TIMEOUT_SECONDS = '666'
+            & $scriptPath `
+                -ManifestPath $manifestPath `
+                -ResultsRoot (Join-Path $TestDrive 'history-results-timeout-env') `
+                -CompareInvoker $compareStub `
+                -SkipRenderReport | Out-Null
+        }
+        finally {
+            Remove-Item Env:PR_VI_HISTORY_COMPARE_TIMEOUT_SECONDS -ErrorAction SilentlyContinue
+            Pop-Location
+        }
+
+        $invocations.Count | Should -Be 1
+        $invocations[0].CompareTimeoutSeconds | Should -Be 666
+    }
+
     It 'collects commit-pair timeline rows and timing aggregates from mode manifests' {
         $tempDir = Join-Path $TestDrive 'history-fixtures-timeline'
         New-Item -ItemType Directory -Path $tempDir | Out-Null
