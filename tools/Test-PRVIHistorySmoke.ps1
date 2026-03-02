@@ -22,6 +22,8 @@ Emit the planned steps without executing them.
 .PARAMETER Scenario
 Selects which synthetic change set to exercise. Use `attribute` for the legacy
 single-commit attr diff, `sequential` to replay multiple fixture commits, or
+`sequential-multi-vi` to replay the same sequential fixture with two VI targets
+mutated in each commit, or
 `mixed-same-commit` to mutate two VI targets in a single commit (strict signal
 plus non-strict metadata-noise coverage), or `sequential-masscompile` to replay
 masscompile-only commits around a mixed signal+noise commit.
@@ -48,7 +50,7 @@ param(
     [string]$BaseBranch = 'develop',
     [switch]$KeepBranch,
     [switch]$DryRun,
-    [ValidateSet('attribute', 'sequential', 'mixed-same-commit', 'sequential-masscompile')]
+    [ValidateSet('attribute', 'sequential', 'sequential-multi-vi', 'mixed-same-commit', 'sequential-masscompile')]
     [string]$Scenario = 'attribute',
     [int]$MaxPairs = 6,
     [int]$WorkflowTimeoutMinutes = 10,
@@ -764,6 +766,73 @@ function Invoke-SequentialHistoryCommits {
     return $commits.ToArray()
 }
 
+function Invoke-SequentialMultiViHistoryCommits {
+    param(
+        [Parameter(Mandatory)]
+        [string[]]$TargetVis
+    )
+
+    if (-not $TargetVis -or $TargetVis.Count -lt 2) {
+        throw 'Sequential multi-VI scenario requires at least two target VI paths.'
+    }
+
+    $fixture = Get-SequentialHistorySequence
+    Write-Verbose ("Sequential fixture loaded from {0}" -f $fixture.path)
+
+    $targetDetails = New-Object System.Collections.Generic.List[pscustomobject]
+    foreach ($targetVi in ($TargetVis | Select-Object -Unique)) {
+        $targetResolved = if ([System.IO.Path]::IsPathRooted($targetVi)) {
+            $targetVi
+        } else {
+            Join-Path $fixture.repoRoot $targetVi
+        }
+        if (-not (Test-Path -LiteralPath $targetResolved -PathType Leaf)) {
+            throw ("Sequential multi-VI target not found: {0}" -f $targetVi)
+        }
+        $targetRelative = if ([System.IO.Path]::IsPathRooted($targetVi)) {
+            [System.IO.Path]::GetRelativePath($fixture.repoRoot, $targetResolved)
+        } else {
+            $targetVi
+        }
+        $targetDetails.Add([pscustomobject]@{
+            relativePath = $targetRelative
+            resolvedPath = $targetResolved
+        }) | Out-Null
+    }
+
+    $commits = New-Object System.Collections.Generic.List[pscustomobject]
+    for ($index = 0; $index -lt $fixture.steps.Count; $index++) {
+        $step = $fixture.steps[$index]
+        $stepNumber = $index + 1
+        $displaySource = if ($step.source) { $step.source } else { $step.resolvedSource }
+
+        foreach ($target in $targetDetails) {
+            Write-Host ("Applying sequential multi-VI step {0}: {1} <= {2}" -f $stepNumber, $target.relativePath, $displaySource)
+            Copy-VIContent -Source $step.resolvedSource -Destination $target.resolvedPath
+            $statusAfterStep = @(Invoke-Git -Arguments @('status', '--porcelain', '--', $target.relativePath))
+            Write-Host ("Post-step status for {0}: {1}" -f $target.relativePath, ($statusAfterStep -join ' '))
+            if ($statusAfterStep.Count -eq 0) {
+                throw ("Sequential multi-VI step {0} produced no delta for target '{1}'." -f $stepNumber, $target.relativePath)
+            }
+            Invoke-Git -Arguments @('add', '-f', $target.relativePath) | Out-Null
+        }
+
+        $commitMessage = if ([string]::IsNullOrWhiteSpace($step.message)) {
+            "chore: sequential multi-VI history step $stepNumber"
+        } else {
+            $step.message
+        }
+        Invoke-Git -Arguments @('commit', '-m', $commitMessage) | Out-Null
+        $commits.Add([pscustomobject]@{
+            Title   = if ($step.title) { "$($step.title) (multi-VI)" } else { "Step $stepNumber (multi-VI)" }
+            Source  = $displaySource
+            Message = $commitMessage
+        }) | Out-Null
+    }
+
+    return $commits.ToArray()
+}
+
 function Invoke-SequentialMasscompileHistoryCommits {
     $fixture = Get-SequentialMasscompileFixture
     Write-Verbose ("Sequential masscompile fixture loaded from {0}" -f $fixture.path)
@@ -875,6 +944,14 @@ switch ($scenarioKey) {
         $scenarioNeedsArtifactValidation = $true
         $scenarioRequiresMobilePreview = $true
     }
+    'sequential-multi-vi' {
+        $scenarioBranchSuffix = 'sequential-multi-vi'
+        $scenarioDescription  = 'sequential multi-category history (two VIs per commit)'
+        $scenarioExpectation  = '`/vi-history` workflow reports per-target rows for two sequentially changed VIs'
+        $scenarioPlanHint     = '- Apply sequential fixture commits to fixtures/vi-attr/Head.vi and fixtures/vi-attr/Base.vi in each commit'
+        $scenarioNeedsArtifactValidation = $true
+        $scenarioRequiresMobilePreview = $true
+    }
     'mixed-same-commit' {
         $scenarioBranchSuffix = 'mixed'
         $scenarioDescription  = 'mixed same-commit two-target history'
@@ -902,6 +979,9 @@ switch ($scenarioKey) {
     'sequential' {
         Get-SequentialHistorySequence | Out-Null
     }
+    'sequential-multi-vi' {
+        Get-SequentialHistorySequence | Out-Null
+    }
     'mixed-same-commit' {
         Get-MixedSameCommitFixture | Out-Null
     }
@@ -914,6 +994,12 @@ $effectiveMaxPairs = $MaxPairs
 if (-not $PSBoundParameters.ContainsKey('MaxPairs')) {
     switch ($scenarioKey) {
         'sequential' {
+            $sequentialFixture = Get-SequentialHistorySequence
+            if ($null -ne $sequentialFixture.maxPairs) {
+                $effectiveMaxPairs = [int]$sequentialFixture.maxPairs
+            }
+        }
+        'sequential-multi-vi' {
             $sequentialFixture = Get-SequentialHistorySequence
             if ($null -ne $sequentialFixture.maxPairs) {
                 $effectiveMaxPairs = [int]$sequentialFixture.maxPairs
@@ -1088,6 +1174,28 @@ try {
             $expectedTargets = @(
                 [pscustomobject]@{
                     repoPath          = $targetVi
+                    requireDiff       = $true
+                    minDiffs          = 1
+                    classificationHint= 'signal'
+                }
+            )
+        }
+        'sequential-multi-vi' {
+            $targetVis = @('fixtures/vi-attr/Head.vi', 'fixtures/vi-attr/Base.vi')
+            foreach ($targetVi in $targetVis) {
+                Enable-HistoryTracking -Path $targetVi
+                $trackedHistoryPaths.Add($targetVi) | Out-Null
+            }
+            $commitSummaries = Invoke-SequentialMultiViHistoryCommits -TargetVis $targetVis
+            $expectedTargets = @(
+                [pscustomobject]@{
+                    repoPath          = 'fixtures/vi-attr/Head.vi'
+                    requireDiff       = $true
+                    minDiffs          = 1
+                    classificationHint= 'signal'
+                },
+                [pscustomobject]@{
+                    repoPath          = 'fixtures/vi-attr/Base.vi'
                     requireDiff       = $true
                     minDiffs          = 1
                     classificationHint= 'signal'
@@ -1346,17 +1454,23 @@ try {
     $scratchContext.Diffs = $totalDiffs
 
     if ($scenarioNeedsArtifactValidation) {
-        if ($scenarioKey -eq 'sequential') {
+        if ($scenarioKey -in @('sequential', 'sequential-multi-vi')) {
             $expectedSequentialComparisons = [Math]::Max(1, $commitSummaries.Count)
             if ($effectiveMaxPairs -gt 0) {
                 $expectedSequentialComparisons = [Math]::Max(1, [Math]::Min($expectedSequentialComparisons, $effectiveMaxPairs))
             }
-            $sequentialTarget = $targetValidations | Where-Object { $_.repoPath -eq 'fixtures/vi-attr/Head.vi' } | Select-Object -First 1
-            if (-not $sequentialTarget) {
-                $sequentialTarget = $targetValidations | Select-Object -First 1
+            $sequentialTargets = @($expectedTargets | Where-Object { $_.requireDiff })
+            if ($sequentialTargets.Count -eq 0) {
+                $sequentialTargets = @($expectedTargets)
             }
-            if ($sequentialTarget.comparisons -lt $expectedSequentialComparisons) {
-                throw ("Expected at least {0} comparisons for sequential scenario, but comment reported {1}." -f $expectedSequentialComparisons, $sequentialTarget.comparisons)
+            foreach ($sequentialTargetExpectation in $sequentialTargets) {
+                $sequentialTarget = $targetValidations | Where-Object { $_.repoPath -eq $sequentialTargetExpectation.repoPath } | Select-Object -First 1
+                if (-not $sequentialTarget) {
+                    throw ("Expected sequential target row was not parsed: {0}" -f $sequentialTargetExpectation.repoPath)
+                }
+                if ($sequentialTarget.comparisons -lt $expectedSequentialComparisons) {
+                    throw ("Expected at least {0} comparisons for {1}, but comment reported {2}." -f $expectedSequentialComparisons, $sequentialTargetExpectation.repoPath, $sequentialTarget.comparisons)
+                }
             }
         }
         $artifactDir = Join-Path $summaryDir ("artifact-$timestamp")
@@ -1441,13 +1555,13 @@ try {
                 $targetValidation.artifactPolicyReason = [string]$artifactDecision.reasonMessage
             }
 
-            if ($scenarioKey -eq 'sequential' -and $summaryTarget -and $summaryTarget.repoPath -eq 'fixtures/vi-attr/Head.vi') {
+            if ($scenarioKey -in @('sequential', 'sequential-multi-vi') -and $summaryTarget) {
                 $expectedSequentialComparisons = [Math]::Max(1, $commitSummaries.Count)
                 if ($effectiveMaxPairs -gt 0) {
                     $expectedSequentialComparisons = [Math]::Max(1, [Math]::Min($expectedSequentialComparisons, $effectiveMaxPairs))
                 }
                 if ($artifactComparisons -lt $expectedSequentialComparisons) {
-                    throw ("Summary JSON reported {0} comparisons for sequential target; expected at least {1}." -f $artifactComparisons, $expectedSequentialComparisons)
+                    throw ("Summary JSON reported {0} comparisons for {1}; expected at least {2}." -f $artifactComparisons, $summaryTarget.repoPath, $expectedSequentialComparisons)
                 }
             }
         }
