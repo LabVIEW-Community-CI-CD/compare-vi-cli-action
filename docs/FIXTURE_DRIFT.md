@@ -23,6 +23,28 @@ The Fixture Drift workflow:
 
 CI can gate on non-zero exit code or inspect `autoManifest.written` to flag drift.
 
+## Docker runtime manager contract
+
+Fixture Drift uses `tools/Invoke-DockerRuntimeManager.ps1` (schema `docker-runtime-manager@v1`) to
+enforce Docker Desktop engine determinism before Windows-host comparison steps.
+
+- Workflow job: `docker-runtime-manager` in `.github/workflows/fixture-drift.yml`
+- Primary artifact: `results/fixture-drift/docker-runtime-manager.json`
+- Windows lane context artifact:
+  `results/fixture-drift/docker-runtime-manager-context.json`
+
+Reusable output keys emitted by the manager step:
+
+- `manager_status`
+- `manager_summary_path`
+- `windows_image_digest`
+- `linux_image_digest`
+- `start_context`
+- `final_context`
+
+The Windows fixture lane consumes these fields into step summary output and injects them into
+`session-index.json` under `runContext.dockerRuntimeManager` for downstream evidence review.
+
 ## Manual manifest updates
 
 For intentional fixture updates (outside automation):
