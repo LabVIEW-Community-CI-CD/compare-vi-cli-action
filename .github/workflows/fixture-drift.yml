@@ -221,6 +221,7 @@ jobs:
         $requiredLabel = 'self-hosted-docker'
         $runnerName = '${{ runner.name }}'
         $repo = '${{ github.repository }}'
+        $runId = '${{ github.run_id }}'
         $token = $env:GITHUB_TOKEN
         if ([string]::IsNullOrWhiteSpace($token)) {
           throw 'GITHUB_TOKEN is required to validate runner labels. Set permissions.actions=read.'
@@ -234,37 +235,45 @@ jobs:
 
         $page = 1
         $perPage = 100
-        $runner = $null
+        $jobs = @()
         do {
-          $uri = "https://api.github.com/repos/$repo/actions/runners?per_page=$perPage&page=$page"
+          $uri = "https://api.github.com/repos/$repo/actions/runs/$runId/jobs?per_page=$perPage&page=$page"
           $response = Invoke-RestMethod -Method Get -Uri $uri -Headers $headers -ErrorAction Stop
-          $candidates = @($response.runners)
+          $candidates = @($response.jobs)
           if ($candidates.Count -gt 0) {
-            $runner = $candidates | Where-Object { $_.name -eq $runnerName } | Select-Object -First 1
-            if ($runner) { break }
+            $jobs += $candidates
           }
           $page++
         } while ($candidates.Count -eq $perPage)
 
-        if (-not $runner) {
-          throw ("Unable to resolve runner '{0}' via Actions API for {1}. Remediation: verify the runner is online and repository-scoped." -f $runnerName, $repo)
+        $currentJob = $jobs |
+          Where-Object { $_.runner_name -eq $runnerName -and $_.status -eq 'in_progress' } |
+          Select-Object -First 1
+        if (-not $currentJob) {
+          $currentJob = $jobs |
+            Where-Object { $_.runner_name -eq $runnerName } |
+            Sort-Object started_at -Descending |
+            Select-Object -First 1
+        }
+        if (-not $currentJob) {
+          throw ("Unable to resolve current job metadata for runner '{0}' in run {1}. Remediation: verify Actions run-jobs API visibility and rerun fixture-drift." -f $runnerName, $runId)
         }
 
-        $labels = @($runner.labels | ForEach-Object { [string]$_.name } | Where-Object { -not [string]::IsNullOrWhiteSpace($_) })
+        $labels = @($currentJob.labels | ForEach-Object { [string]$_ } | Where-Object { -not [string]::IsNullOrWhiteSpace($_) })
         $labelsSorted = @($labels | Sort-Object -Unique)
         $hasRequiredLabel = $labelsSorted -contains $requiredLabel
         $labelsCsv = $labelsSorted -join ','
 
         "has_required_label=$($hasRequiredLabel.ToString().ToLowerInvariant())" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
         "labels=$labelsCsv" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
-        "runner_id=$($runner.id)" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+        "runner_id=$($currentJob.runner_id)" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
 
         if (-not $hasRequiredLabel) {
-          $message = "Runner '$runnerName' (id=$($runner.id)) is missing required label '$requiredLabel'. Remediation: add the label in Repository Settings > Actions > Runners, then re-run fixture-drift."
+          $message = "Runner '$runnerName' (id=$($currentJob.runner_id)) is missing required label '$requiredLabel'. Remediation: add the label in Repository Settings > Actions > Runners, then re-run fixture-drift."
           Write-Host "::error::$message"
           throw $message
         }
-        Write-Host ("Runner label contract satisfied for '{0}' (id={1}): {2}" -f $runnerName, $runner.id, $labelsCsv)
+        Write-Host ("Runner label contract satisfied for '{0}' (id={1}): {2}" -f $runnerName, $currentJob.runner_id, $labelsCsv)
 
     - name: Persist docker runtime manager context
       id: docker_manager_context
