@@ -138,6 +138,52 @@ function Get-MobilePreviewEntries {
     return $entries
 }
 
+function Get-ShortRef {
+    param([string]$Ref)
+    if ([string]::IsNullOrWhiteSpace($Ref)) { return $null }
+    $value = $Ref.Trim()
+    if ($value.Length -le 12) { return $value }
+    return $value.Substring(0, 12)
+}
+
+function Get-DurationDisplay {
+    param([AllowNull()]$Seconds)
+    if ($null -eq $Seconds) { return '_n/a_' }
+    try {
+        return ([Math]::Round([double]$Seconds, 3)).ToString('0.###')
+    } catch {
+        return '_n/a_'
+    }
+}
+
+function Get-CommitTimelineRows {
+    param(
+        [AllowNull()]$Summary,
+        [AllowNull()]$Targets
+    )
+
+    $rows = [System.Collections.Generic.List[object]]::new()
+    if ($Summary -and $Summary.PSObject.Properties['pairTimeline'] -and $Summary.pairTimeline -is [System.Collections.IEnumerable]) {
+        foreach ($pair in @($Summary.pairTimeline)) {
+            if (-not $pair) { continue }
+            $rows.Add($pair) | Out-Null
+        }
+    }
+
+    if ($rows.Count -eq 0 -and $Targets) {
+        foreach ($target in $Targets) {
+            if (-not $target) { continue }
+            if (-not ($target.PSObject.Properties['commitPairs'] -and $target.commitPairs -is [System.Collections.IEnumerable])) { continue }
+            foreach ($pair in @($target.commitPairs)) {
+                if (-not $pair) { continue }
+                $rows.Add($pair) | Out-Null
+            }
+        }
+    }
+
+    return @($rows)
+}
+
 $resolvedSummary = Resolve-ExistingFile -Path $SummaryPath -Description 'Summary'
 $summaryRaw = Get-Content -LiteralPath $resolvedSummary -Raw -ErrorAction Stop
 if ([string]::IsNullOrWhiteSpace($summaryRaw)) {
@@ -235,6 +281,55 @@ foreach ($target in $targets) {
 }
 
 $markdown = $rows -join [Environment]::NewLine
+$timelineRows = @(Get-CommitTimelineRows -Summary $summary -Targets $targets)
+if ($timelineRows.Count -gt 0) {
+    $timelineLines = New-Object System.Collections.Generic.List[string]
+    $timelineLines.Add('') | Out-Null
+    $timelineLines.Add('### Commit Pair Timeline') | Out-Null
+    $timelineLines.Add('') | Out-Null
+    $timelineLines.Add('| VI | Mode | Pair | Base | Head | Diff | Classification | Time (s) | Preview | Report |') | Out-Null
+    $timelineLines.Add('| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |') | Out-Null
+
+    foreach ($pair in $timelineRows) {
+        $targetPath = if ($pair.PSObject.Properties['targetPath'] -and $pair.targetPath) { [string]$pair.targetPath } else { '(unknown)' }
+        $mode = if ($pair.PSObject.Properties['mode'] -and $pair.mode) { [string]$pair.mode } else { 'default' }
+        $pairIndex = if ($pair.PSObject.Properties['pairIndex']) { [string]$pair.pairIndex } else { '_' }
+        $baseRef = if ($pair.PSObject.Properties['baseRef']) { Get-ShortRef -Ref ([string]$pair.baseRef) } else { $null }
+        $headRef = if ($pair.PSObject.Properties['headRef']) { Get-ShortRef -Ref ([string]$pair.headRef) } else { $null }
+        $diffDetected = if ($pair.PSObject.Properties['diff']) { [bool]$pair.diff } else { $false }
+        $classification = if ($pair.PSObject.Properties['classification'] -and $pair.classification) { [string]$pair.classification } else { 'unknown' }
+        $durationDisplay = if ($pair.PSObject.Properties['durationSeconds']) {
+            Get-DurationDisplay -Seconds $pair.durationSeconds
+        } else {
+            '_n/a_'
+        }
+        $previewStatus = if ($pair.PSObject.Properties['previewStatus'] -and $pair.previewStatus) { [string]$pair.previewStatus } else { 'unknown' }
+        $reportValue = if ($pair.PSObject.Properties['reportPath'] -and $pair.reportPath) {
+            $relativeReport = Get-RelativePath -BasePath $resultsRoot -TargetPath ([string]$pair.reportPath)
+            "<code>$relativeReport</code>"
+        } else {
+            '_n/a_'
+        }
+
+        $diffLabel = if ($diffDetected) { 'yes' } else { 'no' }
+        $timelineLines.Add((
+            '| <code>{0}</code> | {1} | {2} | <code>{3}</code> | <code>{4}</code> | {5} | {6} | {7} | {8} | {9} |' -f `
+                $targetPath,
+                $mode,
+                $pairIndex,
+                $(if ($baseRef) { $baseRef } else { '_' }),
+                $(if ($headRef) { $headRef } else { '_' }),
+                $diffLabel,
+                $classification,
+                $durationDisplay,
+                $previewStatus,
+                $reportValue
+        )) | Out-Null
+    }
+
+    $markdown = ($markdown, ($timelineLines -join [Environment]::NewLine)) -join [Environment]::NewLine
+}
+
 $previewEntries = @(Get-MobilePreviewEntries -Targets $targets -ResultsRoot $resultsRoot -MaxPerTarget 1)
 if ($MaxPreviewImages -ge 0 -and $previewEntries.Count -gt $MaxPreviewImages) {
     $previewEntries = @($previewEntries | Select-Object -First $MaxPreviewImages)
@@ -258,16 +353,35 @@ if ($MaxMarkdownLength -gt 0 -and $markdown.Length -gt $MaxMarkdownLength) {
     $markdownTruncated = $true
 }
 
+$diffPairRows = 0
+foreach ($pair in $timelineRows) {
+    if (-not $pair) { continue }
+    if ($pair.PSObject.Properties['diff'] -and [bool]$pair.diff) {
+        $diffPairRows++
+    }
+}
+
+$timingSummary = $null
+if ($summary.PSObject.Properties['timing'] -and $summary.timing) {
+    $timingSummary = $summary.timing
+} elseif ($summary.PSObject.Properties['totals'] -and $summary.totals -and $summary.totals.PSObject.Properties['timing']) {
+    $timingSummary = $summary.totals.timing
+}
+
 $result = [pscustomobject]@{
     totals = [pscustomobject]@{
         targets     = $targets.Count
         completed   = $completed
         comparisons = $comparisonTotal
         diffs       = $diffTotal
+        pairRows    = $timelineRows.Count
+        diffPairRows= $diffPairRows
         previewImages = $previewEntries.Count
         markdownTruncated = $markdownTruncated
+        timing      = $timingSummary
     }
     targets  = $targets
+    pairTimeline = $timelineRows
     previews = $previewEntries
     markdown = $markdown
 }
@@ -286,6 +400,8 @@ if ($Env:GITHUB_OUTPUT) {
     "target_count=$($targets.Count)" | Out-File -FilePath $Env:GITHUB_OUTPUT -Encoding utf8 -Append
     "completed_count=$completed" | Out-File -FilePath $Env:GITHUB_OUTPUT -Encoding utf8 -Append
     "diff_count=$diffTotal" | Out-File -FilePath $Env:GITHUB_OUTPUT -Encoding utf8 -Append
+    "pair_row_count=$($timelineRows.Count)" | Out-File -FilePath $Env:GITHUB_OUTPUT -Encoding utf8 -Append
+    "diff_pair_count=$diffPairRows" | Out-File -FilePath $Env:GITHUB_OUTPUT -Encoding utf8 -Append
 }
 
 return $result
