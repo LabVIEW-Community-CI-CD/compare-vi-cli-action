@@ -120,6 +120,13 @@ line buffers).
   - Installs `actionlint` (`vars.ACTIONLINT_VERSION`, default 1.7.7) if missing.
   - Runs `actionlint` across `.github/workflows`.
   - Optionally round-trips YAML with `ruamel.yaml` (if Python available).
+- For VI history/container work, run Docker fast-loop before push:
+  - Single-lane strict (recommended first, no runtime auto-repair/engine switching):
+    - `pwsh -NoLogo -NoProfile -File tools/Test-DockerDesktopFastLoop.ps1 -LaneScope linux -StepTimeoutSeconds 600`
+    - `pwsh -NoLogo -NoProfile -File tools/Test-DockerDesktopFastLoop.ps1 -LaneScope windows -StepTimeoutSeconds 600`
+  - Full dual-lane validation:
+    - `pwsh -NoLogo -NoProfile -File tools/Test-DockerDesktopFastLoop.ps1 -LaneScope both -StepTimeoutSeconds 600`
+  - `-ManageDockerEngine` is only allowed with `-LaneScope both`.
 - Optional hook workflow:
   1. `git config core.hooksPath tools/hooks`
   2. Copy `tools/hooks/pre-push.sample` to `tools/hooks/pre-push`
