@@ -280,16 +280,11 @@ foreach ($target in $targets) {
     $rows.Add(("| {0} | {1} | {2} | {3} | {4} | {5} |" -f $displayPath, $changeLabel, $comparisons, $diffs, $statusLabel, $reportNote)) | Out-Null
 }
 
-$markdown = $rows -join [Environment]::NewLine
+$baseMarkdown = $rows -join [Environment]::NewLine
 $timelineRows = @(Get-CommitTimelineRows -Summary $summary -Targets $targets)
+$timelineEntries = New-Object System.Collections.Generic.List[object]
 if ($timelineRows.Count -gt 0) {
-    $timelineLines = New-Object System.Collections.Generic.List[string]
-    $timelineLines.Add('') | Out-Null
-    $timelineLines.Add('### Commit Pair Timeline') | Out-Null
-    $timelineLines.Add('') | Out-Null
-    $timelineLines.Add('| VI | Mode | Pair | Base | Head | Diff | Classification | Time (s) | Preview | Report |') | Out-Null
-    $timelineLines.Add('| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |') | Out-Null
-
+    $timelineOrder = 0
     foreach ($pair in $timelineRows) {
         $targetPath = if ($pair.PSObject.Properties['targetPath'] -and $pair.targetPath) { [string]$pair.targetPath } else { '(unknown)' }
         $mode = if ($pair.PSObject.Properties['mode'] -and $pair.mode) { [string]$pair.mode } else { 'default' }
@@ -298,12 +293,29 @@ if ($timelineRows.Count -gt 0) {
         $headRef = if ($pair.PSObject.Properties['headRef']) { Get-ShortRef -Ref ([string]$pair.headRef) } else { $null }
         $diffDetected = if ($pair.PSObject.Properties['diff']) { [bool]$pair.diff } else { $false }
         $classification = if ($pair.PSObject.Properties['classification'] -and $pair.classification) { [string]$pair.classification } else { 'unknown' }
-        $durationDisplay = if ($pair.PSObject.Properties['durationSeconds']) {
-            Get-DurationDisplay -Seconds $pair.durationSeconds
-        } else {
-            '_n/a_'
+        $classificationKey = $classification.ToLowerInvariant()
+        $classificationBadge = ("[{0}]" -f $classificationKey)
+
+        $durationSeconds = $null
+        if ($pair.PSObject.Properties['durationSeconds']) {
+            try { $durationSeconds = [double]$pair.durationSeconds } catch { $durationSeconds = $null }
         }
+        $timingBadge = '[n/a]'
+        if ($durationSeconds -ne $null) {
+            $timingClass = if ($durationSeconds -le 60) { 'fast' } elseif ($durationSeconds -le 180) { 'steady' } else { 'slow' }
+            $timingBadge = ("[{0} {1}s]" -f $timingClass, (Get-DurationDisplay -Seconds $durationSeconds))
+        }
+
         $previewStatus = if ($pair.PSObject.Properties['previewStatus'] -and $pair.previewStatus) { [string]$pair.previewStatus } else { 'unknown' }
+        $previewKey = $previewStatus.ToLowerInvariant()
+        $previewBadge = switch ($previewKey) {
+            'present' { '[image]' }
+            'missing' { '[no-image]' }
+            'error'   { '[preview-error]' }
+            'skipped' { '[preview-skipped]' }
+            default   { ("[{0}]" -f $previewKey) }
+        }
+
         $reportValue = if ($pair.PSObject.Properties['reportPath'] -and $pair.reportPath) {
             $relativeReport = Get-RelativePath -BasePath $resultsRoot -TargetPath ([string]$pair.reportPath)
             "<code>$relativeReport</code>"
@@ -312,49 +324,149 @@ if ($timelineRows.Count -gt 0) {
         }
 
         $diffLabel = if ($diffDetected) { 'yes' } else { 'no' }
-        $timelineLines.Add((
-            '| <code>{0}</code> | {1} | {2} | <code>{3}</code> | <code>{4}</code> | {5} | {6} | {7} | {8} | {9} |' -f `
-                $targetPath,
-                $mode,
-                $pairIndex,
-                $(if ($baseRef) { $baseRef } else { '_' }),
-                $(if ($headRef) { $headRef } else { '_' }),
-                $diffLabel,
-                $classification,
-                $durationDisplay,
-                $previewStatus,
-                $reportValue
-        )) | Out-Null
-    }
+        $priorityScore = if ($diffDetected -and $classificationKey -eq 'signal') {
+            0
+        } elseif ($diffDetected) {
+            1
+        } elseif ($previewKey -eq 'present') {
+            2
+        } else {
+            3
+        }
 
-    $markdown = ($markdown, ($timelineLines -join [Environment]::NewLine)) -join [Environment]::NewLine
+        $timelineEntries.Add([pscustomobject]@{
+            order = $timelineOrder
+            priority = $priorityScore
+            diff = $diffDetected
+            line = (
+                '| <code>{0}</code> | {1} | {2} | <code>{3}</code> | <code>{4}</code> | {5} | {6} | {7} | {8} | {9} |' -f `
+                    $targetPath,
+                    $mode,
+                    $pairIndex,
+                    $(if ($baseRef) { $baseRef } else { '_' }),
+                    $(if ($headRef) { $headRef } else { '_' }),
+                    $diffLabel,
+                    $classificationBadge,
+                    $timingBadge,
+                    $previewBadge,
+                    $reportValue
+            )
+        }) | Out-Null
+        $timelineOrder++
+    }
+}
+
+$renderTimelineSection = {
+    param([object[]]$Entries)
+    if (-not $Entries -or $Entries.Count -eq 0) { return $null }
+    $lines = New-Object System.Collections.Generic.List[string]
+    $lines.Add('') | Out-Null
+    $lines.Add('### Commit Pair Timeline') | Out-Null
+    $lines.Add('') | Out-Null
+    $lines.Add('| VI | Mode | Pair | Base | Head | Diff | Classification | Timing | Preview | Report |') | Out-Null
+    $lines.Add('| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |') | Out-Null
+    foreach ($entry in @($Entries | Sort-Object order)) {
+        $lines.Add([string]$entry.line) | Out-Null
+    }
+    return ($lines -join [Environment]::NewLine)
 }
 
 $previewEntries = @(Get-MobilePreviewEntries -Targets $targets -ResultsRoot $resultsRoot -MaxPerTarget 1)
 if ($MaxPreviewImages -ge 0 -and $previewEntries.Count -gt $MaxPreviewImages) {
     $previewEntries = @($previewEntries | Select-Object -First $MaxPreviewImages)
 }
-if ($previewEntries.Count -gt 0) {
-    $previewLines = New-Object System.Collections.Generic.List[string]
-    $previewLines.Add('') | Out-Null
-    $previewLines.Add('### Mobile Preview') | Out-Null
-    $previewLines.Add('') | Out-Null
-    foreach ($entry in $previewEntries) {
-        $previewLines.Add(('- <code>{0}</code><br /><img src="{1}" alt="{2}" width="240" />' -f $entry.repoPath, $entry.path, $entry.alt)) | Out-Null
+
+$renderPreviewSection = {
+    param([object[]]$Entries)
+    if (-not $Entries -or $Entries.Count -eq 0) { return $null }
+    $lines = New-Object System.Collections.Generic.List[string]
+    $lines.Add('') | Out-Null
+    $lines.Add('### Mobile Preview') | Out-Null
+    $lines.Add('') | Out-Null
+    foreach ($entry in $Entries) {
+        $lines.Add(('- <code>{0}</code><br /><img src="{1}" alt="{2}" width="240" />' -f $entry.repoPath, $entry.path, $entry.alt)) | Out-Null
     }
-    $markdown = ($markdown, ($previewLines -join [Environment]::NewLine)) -join [Environment]::NewLine
+    return ($lines -join [Environment]::NewLine)
+}
+
+$composeMarkdown = {
+    param(
+        [string]$Base,
+        [string]$Timeline,
+        [string]$Preview
+    )
+    $sections = New-Object System.Collections.Generic.List[string]
+    if (-not [string]::IsNullOrWhiteSpace($Base)) { $sections.Add($Base) | Out-Null }
+    if (-not [string]::IsNullOrWhiteSpace($Timeline)) { $sections.Add($Timeline) | Out-Null }
+    if (-not [string]::IsNullOrWhiteSpace($Preview)) { $sections.Add($Preview) | Out-Null }
+    return ($sections -join [Environment]::NewLine)
+}
+
+$activeTimelineEntries = @($timelineEntries.ToArray())
+$timelineSection = & $renderTimelineSection $activeTimelineEntries
+$previewSection = & $renderPreviewSection $previewEntries
+$markdown = & $composeMarkdown $baseMarkdown $timelineSection $previewSection
+
+$timelineRowsDropped = 0
+$timelineRowsTotal = $activeTimelineEntries.Count
+if ($MaxMarkdownLength -gt 0 -and $markdown.Length -gt $MaxMarkdownLength -and $activeTimelineEntries.Count -gt 0) {
+    $removalQueue = @($activeTimelineEntries | Sort-Object @{ Expression = { $_.priority }; Descending = $true }, @{ Expression = { $_.order }; Descending = $true })
+    $kept = New-Object System.Collections.Generic.List[object]
+    foreach ($entry in $activeTimelineEntries) { $kept.Add($entry) | Out-Null }
+
+    foreach ($removeEntry in $removalQueue) {
+        if ($kept.Count -le 1) { break }
+        $candidate = @($kept | Where-Object { $_.order -ne $removeEntry.order })
+        if ($candidate.Count -eq $kept.Count) { continue }
+        $candidateTimeline = & $renderTimelineSection $candidate
+        $candidateMarkdown = & $composeMarkdown $baseMarkdown $candidateTimeline $previewSection
+        $kept.Clear()
+        foreach ($entry in $candidate) { $kept.Add($entry) | Out-Null }
+        $timelineSection = $candidateTimeline
+        $markdown = $candidateMarkdown
+        if ($markdown.Length -le $MaxMarkdownLength) { break }
+    }
+
+    $activeTimelineEntries = @($kept)
+    $timelineRowsDropped = [Math]::Max(0, $timelineRowsTotal - $activeTimelineEntries.Count)
 }
 
 $markdownTruncated = $false
 if ($MaxMarkdownLength -gt 0 -and $markdown.Length -gt $MaxMarkdownLength) {
-    $suffix = [Environment]::NewLine + [Environment]::NewLine + '> NOTE - Summary truncated for comment size safety.'
+    $suffix = [Environment]::NewLine + [Environment]::NewLine + (
+        '> NOTE - Summary truncated for comment size safety (limit={0}, original={1}, pair_rows_kept={2}, pair_rows_dropped={3}, policy=newest-signal-first).' -f `
+            $MaxMarkdownLength,
+            $markdown.Length,
+            $activeTimelineEntries.Count,
+            $timelineRowsDropped
+    )
     $safeLength = [Math]::Max(0, $MaxMarkdownLength - $suffix.Length)
     $markdown = $markdown.Substring(0, $safeLength).TrimEnd() + $suffix
     $markdownTruncated = $true
+} elseif ($timelineRowsDropped -gt 0) {
+    $markdown = ($markdown, '', (
+        '> NOTE - Timeline rows truncated for mobile/comment-size safety (kept {0} of {1}; dropped {2}; policy=newest-signal-first).' -f `
+            $activeTimelineEntries.Count,
+            $timelineRowsTotal,
+            $timelineRowsDropped
+    )) -join [Environment]::NewLine
+}
+
+$activeTimelineRows = @()
+if ($activeTimelineEntries.Count -eq $timelineRows.Count) {
+    $activeTimelineRows = @($timelineRows)
+} else {
+    $activeOrderLookup = New-Object 'System.Collections.Generic.HashSet[int]'
+    foreach ($entry in $activeTimelineEntries) { [void]$activeOrderLookup.Add([int]$entry.order) }
+    for ($i = 0; $i -lt $timelineRows.Count; $i++) {
+        if ($activeOrderLookup.Contains($i)) {
+            $activeTimelineRows += $timelineRows[$i]
+        }
+    }
 }
 
 $diffPairRows = 0
-foreach ($pair in $timelineRows) {
+foreach ($pair in $activeTimelineRows) {
     if (-not $pair) { continue }
     if ($pair.PSObject.Properties['diff'] -and [bool]$pair.diff) {
         $diffPairRows++
@@ -374,14 +486,16 @@ $result = [pscustomobject]@{
         completed   = $completed
         comparisons = $comparisonTotal
         diffs       = $diffTotal
-        pairRows    = $timelineRows.Count
+        pairRows    = $activeTimelineEntries.Count
+        pairRowsTotal = $timelineRows.Count
+        pairRowsDropped = $timelineRowsDropped
         diffPairRows= $diffPairRows
         previewImages = $previewEntries.Count
         markdownTruncated = $markdownTruncated
         timing      = $timingSummary
     }
     targets  = $targets
-    pairTimeline = $timelineRows
+    pairTimeline = $activeTimelineRows
     previews = $previewEntries
     markdown = $markdown
 }
@@ -400,7 +514,7 @@ if ($Env:GITHUB_OUTPUT) {
     "target_count=$($targets.Count)" | Out-File -FilePath $Env:GITHUB_OUTPUT -Encoding utf8 -Append
     "completed_count=$completed" | Out-File -FilePath $Env:GITHUB_OUTPUT -Encoding utf8 -Append
     "diff_count=$diffTotal" | Out-File -FilePath $Env:GITHUB_OUTPUT -Encoding utf8 -Append
-    "pair_row_count=$($timelineRows.Count)" | Out-File -FilePath $Env:GITHUB_OUTPUT -Encoding utf8 -Append
+    "pair_row_count=$($activeTimelineEntries.Count)" | Out-File -FilePath $Env:GITHUB_OUTPUT -Encoding utf8 -Append
     "diff_pair_count=$diffPairRows" | Out-File -FilePath $Env:GITHUB_OUTPUT -Encoding utf8 -Append
 }
 
