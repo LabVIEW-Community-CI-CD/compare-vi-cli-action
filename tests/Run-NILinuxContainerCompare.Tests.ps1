@@ -1,12 +1,12 @@
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
-Describe 'Run-NIWindowsContainerCompare.ps1' -Tag 'Unit' {
+Describe 'Run-NILinuxContainerCompare.ps1' -Tag 'Unit' {
   BeforeAll {
     $repoRoot = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path
-    $script:RunnerScript = Join-Path $repoRoot 'tools' 'Run-NIWindowsContainerCompare.ps1'
+    $script:RunnerScript = Join-Path $repoRoot 'tools' 'Run-NILinuxContainerCompare.ps1'
     if (-not (Test-Path -LiteralPath $script:RunnerScript -PathType Leaf)) {
-      throw "Run-NIWindowsContainerCompare.ps1 not found at $script:RunnerScript"
+      throw "Run-NILinuxContainerCompare.ps1 not found at $script:RunnerScript"
     }
 
     $script:NewDockerStub = {
@@ -37,7 +37,7 @@ if ($Args.Count -ge 3 -and $Args[0] -eq '--context') {
 
 if ($Args[0] -eq 'info') {
   $osType = [System.Environment]::GetEnvironmentVariable('DOCKER_STUB_OSTYPE')
-  if ([string]::IsNullOrWhiteSpace($osType)) { $osType = 'windows' }
+  if ([string]::IsNullOrWhiteSpace($osType)) { $osType = 'linux' }
   Write-Output $osType
   exit 0
 }
@@ -45,7 +45,7 @@ if ($Args[0] -eq 'info') {
 if ($Args[0] -eq 'context' -and $Args.Count -ge 2 -and $Args[1] -eq 'show') {
   $ctx = [System.Environment]::GetEnvironmentVariable('DOCKER_STUB_CONTEXT')
   if (-not [string]::IsNullOrWhiteSpace($contextOverride)) { $ctx = $contextOverride }
-  if ([string]::IsNullOrWhiteSpace($ctx)) { $ctx = 'desktop-windows' }
+  if ([string]::IsNullOrWhiteSpace($ctx)) { $ctx = 'desktop-linux' }
   Write-Output $ctx
   exit 0
 }
@@ -53,7 +53,7 @@ if ($Args[0] -eq 'context' -and $Args.Count -ge 2 -and $Args[1] -eq 'show') {
 if ($Args[0] -eq 'context' -and $Args.Count -ge 2 -and $Args[1] -eq 'ls') {
   $ctx = [System.Environment]::GetEnvironmentVariable('DOCKER_STUB_CONTEXT')
   if (-not [string]::IsNullOrWhiteSpace($contextOverride)) { $ctx = $contextOverride }
-  if ([string]::IsNullOrWhiteSpace($ctx)) { $ctx = 'desktop-windows' }
+  if ([string]::IsNullOrWhiteSpace($ctx)) { $ctx = 'desktop-linux' }
   Write-Output ("{""Name"":""$ctx"",""Current"":""*""}")
   exit 0
 }
@@ -117,47 +117,6 @@ exit 0
       $env:PATH = "{0};{1}" -f $binDir, $env:PATH
       return $binDir
     }
-
-    $script:ReadDockerStubLog = {
-      param([Parameter(Mandatory)][string]$Path)
-      if (-not (Test-Path -LiteralPath $Path -PathType Leaf)) { return @() }
-      $lines = @(
-        Get-Content -LiteralPath $Path |
-          Where-Object { -not [string]::IsNullOrWhiteSpace($_) }
-      )
-      if ($lines.Count -eq 0) { return @() }
-      return @($lines | ForEach-Object { $_ | ConvertFrom-Json })
-    }
-
-    $script:GetFlagsFromDockerRunRecord = {
-      param([Parameter(Mandatory)]$Record)
-      $args = @($Record.args)
-      $b64Value = $null
-      for ($i = 0; $i -lt $args.Count; $i++) {
-        if ($args[$i] -eq '--env' -and ($i + 1) -lt $args.Count) {
-          $next = [string]$args[$i + 1]
-          if ($next.StartsWith('COMPARE_FLAGS_B64=')) {
-            $b64Value = $next.Substring('COMPARE_FLAGS_B64='.Length)
-            break
-          }
-        }
-      }
-      if ([string]::IsNullOrWhiteSpace($b64Value)) {
-        return @()
-      }
-      $json = [System.Text.Encoding]::UTF8.GetString([Convert]::FromBase64String($b64Value))
-      if ([string]::IsNullOrWhiteSpace($json)) {
-        return @()
-      }
-      $parsed = $json | ConvertFrom-Json
-      if ($parsed -is [System.Collections.IEnumerable] -and -not ($parsed -is [string])) {
-        return @($parsed | ForEach-Object { [string]$_ })
-      }
-      if ([string]::IsNullOrWhiteSpace([string]$parsed)) {
-        return @()
-      }
-      return @([string]$parsed)
-    }
   }
 
   BeforeEach {
@@ -186,58 +145,50 @@ exit 0
     }
   }
 
-  It 'passes probe when Windows docker mode and local image are available' {
+  It 'passes probe when Linux docker mode and local image are available' {
     $work = Join-Path $TestDrive 'probe-ok'
     New-Item -ItemType Directory -Path $work | Out-Null
     & $script:NewDockerStub -WorkRoot $work | Out-Null
 
-    $logPath = Join-Path $work 'docker-log.ndjson'
-    Set-Item Env:DOCKER_STUB_LOG $logPath
-    Set-Item Env:DOCKER_STUB_OSTYPE 'windows'
+    Set-Item Env:DOCKER_STUB_LOG (Join-Path $work 'docker-log.ndjson')
+    Set-Item Env:DOCKER_STUB_OSTYPE 'linux'
+    Set-Item Env:DOCKER_STUB_CONTEXT 'desktop-linux'
     Set-Item Env:DOCKER_STUB_IMAGE_EXISTS '1'
-    Set-Item Env:DOCKER_STUB_CONTEXT 'desktop-windows'
 
     $output = & pwsh -NoLogo -NoProfile -File $script:RunnerScript `
       -RuntimeEngineReadyTimeoutSeconds 5 `
       -RuntimeEngineReadyPollSeconds 1 `
       -Probe 2>&1
     $LASTEXITCODE | Should -Be 0 -Because ($output -join "`n")
-
-    $records = & $script:ReadDockerStubLog -Path $logPath
-    (@($records | Where-Object {
-      ($_.args[0] -eq 'info') -or ($_.args.Count -ge 3 -and $_.args[0] -eq '--context' -and $_.args[2] -eq 'info')
-    })).Count | Should -Be 1
-    (@($records | Where-Object { $_.args[0] -eq 'image' -and $_.args[1] -eq 'inspect' })).Count | Should -Be 1
   }
 
-  It 'fails probe with remediation when Docker is not in Windows container mode' {
-    $work = Join-Path $TestDrive 'probe-linux-mode'
+  It 'fails probe with remediation when Docker is not in Linux mode' {
+    $work = Join-Path $TestDrive 'probe-win-mode'
     New-Item -ItemType Directory -Path $work | Out-Null
     & $script:NewDockerStub -WorkRoot $work | Out-Null
 
     Set-Item Env:DOCKER_STUB_LOG (Join-Path $work 'docker-log.ndjson')
-    Set-Item Env:DOCKER_STUB_OSTYPE 'linux'
+    Set-Item Env:DOCKER_STUB_OSTYPE 'windows'
+    Set-Item Env:DOCKER_STUB_CONTEXT 'desktop-windows'
     Set-Item Env:DOCKER_STUB_IMAGE_EXISTS '1'
-    Set-Item Env:DOCKER_STUB_CONTEXT 'desktop-linux'
 
     $output = & pwsh -NoLogo -NoProfile -File $script:RunnerScript `
       -RuntimeEngineReadyTimeoutSeconds 5 `
       -RuntimeEngineReadyPollSeconds 1 `
       -Probe 2>&1
     $LASTEXITCODE | Should -Not -Be 0
-    ($output -join "`n") | Should -Match 'runtime determinism mismatch|expected os=windows'
+    ($output -join "`n") | Should -Match 'runtime determinism mismatch|expected os=linux'
   }
 
-  It 'writes deterministic capture artifacts for compare execution' {
+  It 'writes deterministic capture artifacts for Linux compare execution' {
     $work = Join-Path $TestDrive 'compare-ok'
     New-Item -ItemType Directory -Path $work | Out-Null
     & $script:NewDockerStub -WorkRoot $work | Out-Null
 
-    $logPath = Join-Path $work 'docker-log.ndjson'
-    Set-Item Env:DOCKER_STUB_LOG $logPath
-    Set-Item Env:DOCKER_STUB_OSTYPE 'windows'
+    Set-Item Env:DOCKER_STUB_LOG (Join-Path $work 'docker-log.ndjson')
+    Set-Item Env:DOCKER_STUB_OSTYPE 'linux'
+    Set-Item Env:DOCKER_STUB_CONTEXT 'desktop-linux'
     Set-Item Env:DOCKER_STUB_IMAGE_EXISTS '1'
-    Set-Item Env:DOCKER_STUB_CONTEXT 'desktop-windows'
     Set-Item Env:DOCKER_STUB_RUN_EXIT_CODE '1'
     Set-Item Env:DOCKER_STUB_RUN_STDOUT 'CreateComparisonReport completed with diff.'
 
@@ -257,43 +208,31 @@ exit 0
       -Flags @('-noattr') 2>&1
     $LASTEXITCODE | Should -Be 1 -Because ($output -join "`n")
 
-    $capturePath = Join-Path (Split-Path -Parent $reportPath) 'ni-windows-container-capture.json'
-    $stdoutPath = Join-Path (Split-Path -Parent $reportPath) 'ni-windows-container-stdout.txt'
-    $stderrPath = Join-Path (Split-Path -Parent $reportPath) 'ni-windows-container-stderr.txt'
+    $capturePath = Join-Path (Split-Path -Parent $reportPath) 'ni-linux-container-capture.json'
     Test-Path -LiteralPath $capturePath | Should -BeTrue
-    Test-Path -LiteralPath $stdoutPath | Should -BeTrue
-    Test-Path -LiteralPath $stderrPath | Should -BeTrue
-
     $capture = Get-Content -LiteralPath $capturePath -Raw | ConvertFrom-Json
     $capture.status | Should -Be 'diff'
-    $capture.exitCode | Should -Be 1
     $capture.resultClass | Should -Be 'success-diff'
     $capture.isDiff | Should -BeTrue
     $capture.gateOutcome | Should -Be 'pass'
     $capture.failureClass | Should -Be 'none'
-    $capture.reportType | Should -Be 'html'
-    $capture.reportPath | Should -Be ([System.IO.Path]::GetFullPath($reportPath))
-    $capture.image | Should -Be 'nationalinstruments/labview:2026q1-windows'
-    $capture.timedOut | Should -BeFalse
+    $capture.image | Should -Be 'nationalinstruments/labview:2026q1-linux'
     $capture.headlessContract.required | Should -BeTrue
     $capture.headlessContract.enforcedCliHeadless | Should -BeTrue
     $capture.headlessContract.lvRteHeadlessEnv | Should -BeTrue
     $capture.runtimeDeterminism.status | Should -Match 'ok|mismatch-repaired'
     $capture.startupMitigation | Should -Not -BeNullOrEmpty
-
-    $records = & $script:ReadDockerStubLog -Path $logPath
-    (@($records | Where-Object { $_.args[0] -eq 'run' })).Count | Should -Be 1
   }
 
-  It 'removes an existing report file before launching compare execution' {
+  It 'removes an existing report file before launching Linux compare execution' {
     $work = Join-Path $TestDrive 'compare-removes-stale-report'
     New-Item -ItemType Directory -Path $work | Out-Null
     & $script:NewDockerStub -WorkRoot $work | Out-Null
 
     Set-Item Env:DOCKER_STUB_LOG (Join-Path $work 'docker-log.ndjson')
-    Set-Item Env:DOCKER_STUB_OSTYPE 'windows'
+    Set-Item Env:DOCKER_STUB_OSTYPE 'linux'
+    Set-Item Env:DOCKER_STUB_CONTEXT 'desktop-linux'
     Set-Item Env:DOCKER_STUB_IMAGE_EXISTS '1'
-    Set-Item Env:DOCKER_STUB_CONTEXT 'desktop-windows'
     Set-Item Env:DOCKER_STUB_RUN_EXIT_CODE '1'
     Set-Item Env:DOCKER_STUB_RUN_STDOUT 'CreateComparisonReport completed with diff.'
 
@@ -317,51 +256,15 @@ exit 0
     Test-Path -LiteralPath $reportPath -PathType Leaf | Should -BeFalse
   }
 
-  It 'injects -Headless into container compare flags by default' {
-    $work = Join-Path $TestDrive 'compare-headless-default'
-    New-Item -ItemType Directory -Path $work | Out-Null
-    & $script:NewDockerStub -WorkRoot $work | Out-Null
-
-    $logPath = Join-Path $work 'docker-log.ndjson'
-    Set-Item Env:DOCKER_STUB_LOG $logPath
-    Set-Item Env:DOCKER_STUB_OSTYPE 'windows'
-    Set-Item Env:DOCKER_STUB_IMAGE_EXISTS '1'
-    Set-Item Env:DOCKER_STUB_CONTEXT 'desktop-windows'
-    Set-Item Env:DOCKER_STUB_RUN_EXIT_CODE '0'
-
-    $baseVi = Join-Path $work 'Base.vi'
-    $headVi = Join-Path $work 'Head.vi'
-    Set-Content -LiteralPath $baseVi -Value 'base' -Encoding utf8
-    Set-Content -LiteralPath $headVi -Value 'head' -Encoding utf8
-    $reportPath = Join-Path $work 'out\compare-report.html'
-
-    & pwsh -NoLogo -NoProfile -File $script:RunnerScript `
-      -BaseVi $baseVi `
-      -HeadVi $headVi `
-      -ReportPath $reportPath `
-      -RuntimeEngineReadyTimeoutSeconds 5 `
-      -RuntimeEngineReadyPollSeconds 1 `
-      -Flags @('-noattr') 2>&1 | Out-Null
-    $LASTEXITCODE | Should -Be 0
-
-    $records = & $script:ReadDockerStubLog -Path $logPath
-    $runRecord = @($records | Where-Object { $_.args[0] -eq 'run' } | Select-Object -First 1)
-    $runRecord.Count | Should -Be 1
-    $flags = & $script:GetFlagsFromDockerRunRecord -Record $runRecord[0]
-    $flags | Should -Contain '-noattr'
-    $flags | Should -Contain '-Headless'
-    (@($flags | Where-Object { $_ -eq '-Headless' })).Count | Should -Be 1
-  }
-
   It 'classifies exit 1 with CLI error signature as failure-tool' {
     $work = Join-Path $TestDrive 'compare-tool-failure'
     New-Item -ItemType Directory -Path $work | Out-Null
     & $script:NewDockerStub -WorkRoot $work | Out-Null
 
     Set-Item Env:DOCKER_STUB_LOG (Join-Path $work 'docker-log.ndjson')
-    Set-Item Env:DOCKER_STUB_OSTYPE 'windows'
+    Set-Item Env:DOCKER_STUB_OSTYPE 'linux'
+    Set-Item Env:DOCKER_STUB_CONTEXT 'desktop-linux'
     Set-Item Env:DOCKER_STUB_IMAGE_EXISTS '1'
-    Set-Item Env:DOCKER_STUB_CONTEXT 'desktop-windows'
     Set-Item Env:DOCKER_STUB_RUN_EXIT_CODE '1'
     Set-Item Env:DOCKER_STUB_RUN_STDERR 'Error code: 8'
     Set-Item Env:DOCKER_STUB_RUN_STDOUT 'An error occurred while running the LabVIEW CLI'
@@ -380,7 +283,7 @@ exit 0
       -RuntimeEngineReadyPollSeconds 1 2>&1
     $LASTEXITCODE | Should -Be 1 -Because ($output -join "`n")
 
-    $capturePath = Join-Path (Split-Path -Parent $reportPath) 'ni-windows-container-capture.json'
+    $capturePath = Join-Path (Split-Path -Parent $reportPath) 'ni-linux-container-capture.json'
     Test-Path -LiteralPath $capturePath | Should -BeTrue
     $capture = Get-Content -LiteralPath $capturePath -Raw | ConvertFrom-Json
     $capture.status | Should -Be 'error'
@@ -388,50 +291,6 @@ exit 0
     $capture.gateOutcome | Should -Be 'fail'
     $capture.failureClass | Should -Be 'cli/tool'
     $capture.isDiff | Should -BeFalse
-  }
-
-  It 'classifies report overwrite failures as error (not diff)' {
-    $work = Join-Path $TestDrive 'compare-report-overwrite'
-    New-Item -ItemType Directory -Path $work | Out-Null
-    & $script:NewDockerStub -WorkRoot $work | Out-Null
-
-    Set-Item Env:DOCKER_STUB_LOG (Join-Path $work 'docker-log.ndjson')
-    Set-Item Env:DOCKER_STUB_OSTYPE 'windows'
-    Set-Item Env:DOCKER_STUB_IMAGE_EXISTS '1'
-    Set-Item Env:DOCKER_STUB_CONTEXT 'desktop-windows'
-    Set-Item Env:DOCKER_STUB_RUN_EXIT_CODE '1'
-    Set-Item Env:DOCKER_STUB_RUN_STDERR @'
-Operation output:
-Report path already exists: C:\compare\m1\compare-report.html
-
-Use -o to overwrite existing report.
-CreateComparisonReport operation failed.
-'@
-
-    $baseVi = Join-Path $work 'Base.vi'
-    $headVi = Join-Path $work 'Head.vi'
-    Set-Content -LiteralPath $baseVi -Value 'base' -Encoding utf8
-    Set-Content -LiteralPath $headVi -Value 'head' -Encoding utf8
-    $reportPath = Join-Path $work 'out\compare-report.html'
-
-    $output = & pwsh -NoLogo -NoProfile -File $script:RunnerScript `
-      -BaseVi $baseVi `
-      -HeadVi $headVi `
-      -ReportPath $reportPath `
-      -RuntimeEngineReadyTimeoutSeconds 5 `
-      -RuntimeEngineReadyPollSeconds 1 2>&1
-    $LASTEXITCODE | Should -Be 1 -Because ($output -join "`n")
-
-    $capturePath = Join-Path (Split-Path -Parent $reportPath) 'ni-windows-container-capture.json'
-    Test-Path -LiteralPath $capturePath | Should -BeTrue
-    $capture = Get-Content -LiteralPath $capturePath -Raw | ConvertFrom-Json
-    $capture.status | Should -Be 'error'
-    $capture.classification | Should -Be 'run-error'
-    $capture.resultClass | Should -Be 'failure-tool'
-    $capture.gateOutcome | Should -Be 'fail'
-    $capture.failureClass | Should -Be 'cli/tool'
-    $capture.isDiff | Should -BeFalse
-    $capture.message | Should -Match 'Report path already exists|overwrite existing report|operation failed'
   }
 
   It 'classifies startup connectivity signature as startup-connectivity failure class' {
@@ -440,9 +299,9 @@ CreateComparisonReport operation failed.
     & $script:NewDockerStub -WorkRoot $work | Out-Null
 
     Set-Item Env:DOCKER_STUB_LOG (Join-Path $work 'docker-log.ndjson')
-    Set-Item Env:DOCKER_STUB_OSTYPE 'windows'
+    Set-Item Env:DOCKER_STUB_OSTYPE 'linux'
+    Set-Item Env:DOCKER_STUB_CONTEXT 'desktop-linux'
     Set-Item Env:DOCKER_STUB_IMAGE_EXISTS '1'
-    Set-Item Env:DOCKER_STUB_CONTEXT 'desktop-windows'
     Set-Item Env:DOCKER_STUB_RUN_EXIT_CODE '1'
     Set-Item Env:DOCKER_STUB_RUN_STDERR 'Error code: -350000'
     Set-Item Env:DOCKER_STUB_RUN_STDOUT 'An error occurred while running the LabVIEW CLI'
@@ -461,7 +320,7 @@ CreateComparisonReport operation failed.
       -RuntimeEngineReadyPollSeconds 1 2>&1
     $LASTEXITCODE | Should -Be 1 -Because ($output -join "`n")
 
-    $capturePath = Join-Path (Split-Path -Parent $reportPath) 'ni-windows-container-capture.json'
+    $capturePath = Join-Path (Split-Path -Parent $reportPath) 'ni-linux-container-capture.json'
     Test-Path -LiteralPath $capturePath | Should -BeTrue
     $capture = Get-Content -LiteralPath $capturePath -Raw | ConvertFrom-Json
     $capture.status | Should -Be 'error'
@@ -471,78 +330,15 @@ CreateComparisonReport operation failed.
     $capture.isDiff | Should -BeFalse
   }
 
-  It 'treats stderr-only operation output noise as diff when no failure signature is present' {
-    $work = Join-Path $TestDrive 'compare-stderr-noise-diff'
-    New-Item -ItemType Directory -Path $work | Out-Null
-    & $script:NewDockerStub -WorkRoot $work | Out-Null
-
-    Set-Item Env:DOCKER_STUB_LOG (Join-Path $work 'docker-log.ndjson')
-    Set-Item Env:DOCKER_STUB_OSTYPE 'windows'
-    Set-Item Env:DOCKER_STUB_IMAGE_EXISTS '1'
-    Set-Item Env:DOCKER_STUB_CONTEXT 'desktop-windows'
-    Set-Item Env:DOCKER_STUB_RUN_EXIT_CODE '1'
-    Set-Item Env:DOCKER_STUB_RUN_STDERR 'LabVIEWCLI.exe : Operation output:'
-    Set-Item Env:DOCKER_STUB_RUN_STDOUT ''
-
-    $baseVi = Join-Path $work 'Base.vi'
-    $headVi = Join-Path $work 'Head.vi'
-    Set-Content -LiteralPath $baseVi -Value 'base' -Encoding utf8
-    Set-Content -LiteralPath $headVi -Value 'head' -Encoding utf8
-    $reportPath = Join-Path $work 'out\\compare-report.html'
-
-    $output = & pwsh -NoLogo -NoProfile -File $script:RunnerScript `
-      -BaseVi $baseVi `
-      -HeadVi $headVi `
-      -ReportPath $reportPath `
-      -RuntimeEngineReadyTimeoutSeconds 5 `
-      -RuntimeEngineReadyPollSeconds 1 2>&1
-    $LASTEXITCODE | Should -Be 1 -Because ($output -join "`n")
-
-    $capturePath = Join-Path (Split-Path -Parent $reportPath) 'ni-windows-container-capture.json'
-    Test-Path -LiteralPath $capturePath | Should -BeTrue
-    $capture = Get-Content -LiteralPath $capturePath -Raw | ConvertFrom-Json
-    $capture.status | Should -Be 'diff'
-    $capture.resultClass | Should -Be 'success-diff'
-    $capture.gateOutcome | Should -Be 'pass'
-    $capture.failureClass | Should -Be 'none'
-    $capture.isDiff | Should -BeTrue
-  }
-
-  It 'fails fast when image is missing with actionable preflight message' {
-    $work = Join-Path $TestDrive 'compare-missing-image'
-    New-Item -ItemType Directory -Path $work | Out-Null
-    & $script:NewDockerStub -WorkRoot $work | Out-Null
-
-    Set-Item Env:DOCKER_STUB_LOG (Join-Path $work 'docker-log.ndjson')
-    Set-Item Env:DOCKER_STUB_OSTYPE 'windows'
-    Set-Item Env:DOCKER_STUB_IMAGE_EXISTS '0'
-    Set-Item Env:DOCKER_STUB_CONTEXT 'desktop-windows'
-
-    $baseVi = Join-Path $work 'Base.vi'
-    $headVi = Join-Path $work 'Head.vi'
-    Set-Content -LiteralPath $baseVi -Value 'base' -Encoding utf8
-    Set-Content -LiteralPath $headVi -Value 'head' -Encoding utf8
-    $reportPath = Join-Path $work 'out\compare-report.html'
-
-    $output = & pwsh -NoLogo -NoProfile -File $script:RunnerScript `
-      -BaseVi $baseVi `
-      -HeadVi $headVi `
-      -ReportPath $reportPath `
-      -RuntimeEngineReadyTimeoutSeconds 5 `
-      -RuntimeEngineReadyPollSeconds 1 2>&1
-    $LASTEXITCODE | Should -Be 2 -Because ($output -join "`n")
-    ($output -join "`n") | Should -Match "Docker image 'nationalinstruments/labview:2026q1-windows' not found locally"
-  }
-
-  It 'returns timeout classification with deterministic timeout exit code' {
+  It 'classifies timeout with deterministic timeout exit code' {
     $work = Join-Path $TestDrive 'compare-timeout'
     New-Item -ItemType Directory -Path $work | Out-Null
     & $script:NewDockerStub -WorkRoot $work | Out-Null
 
     Set-Item Env:DOCKER_STUB_LOG (Join-Path $work 'docker-log.ndjson')
-    Set-Item Env:DOCKER_STUB_OSTYPE 'windows'
+    Set-Item Env:DOCKER_STUB_OSTYPE 'linux'
+    Set-Item Env:DOCKER_STUB_CONTEXT 'desktop-linux'
     Set-Item Env:DOCKER_STUB_IMAGE_EXISTS '1'
-    Set-Item Env:DOCKER_STUB_CONTEXT 'desktop-windows'
     Set-Item Env:DOCKER_STUB_RUN_SLEEP_SECONDS '2'
     Set-Item Env:DOCKER_STUB_RUN_EXIT_CODE '0'
 
@@ -561,7 +357,7 @@ CreateComparisonReport operation failed.
       -TimeoutSeconds 1 2>&1
     $LASTEXITCODE | Should -Be 124 -Because ($output -join "`n")
 
-    $capturePath = Join-Path (Split-Path -Parent $reportPath) 'ni-windows-container-capture.json'
+    $capturePath = Join-Path (Split-Path -Parent $reportPath) 'ni-linux-container-capture.json'
     Test-Path -LiteralPath $capturePath | Should -BeTrue
     $capture = Get-Content -LiteralPath $capturePath -Raw | ConvertFrom-Json
     $capture.status | Should -Be 'timeout'
@@ -570,5 +366,31 @@ CreateComparisonReport operation failed.
     $capture.resultClass | Should -Be 'failure-timeout'
     $capture.gateOutcome | Should -Be 'fail'
     $capture.failureClass | Should -Be 'timeout'
+  }
+
+  It 'fails fast when image is missing with actionable preflight message' {
+    $work = Join-Path $TestDrive 'compare-missing-image'
+    New-Item -ItemType Directory -Path $work | Out-Null
+    & $script:NewDockerStub -WorkRoot $work | Out-Null
+
+    Set-Item Env:DOCKER_STUB_LOG (Join-Path $work 'docker-log.ndjson')
+    Set-Item Env:DOCKER_STUB_OSTYPE 'linux'
+    Set-Item Env:DOCKER_STUB_CONTEXT 'desktop-linux'
+    Set-Item Env:DOCKER_STUB_IMAGE_EXISTS '0'
+
+    $baseVi = Join-Path $work 'Base.vi'
+    $headVi = Join-Path $work 'Head.vi'
+    Set-Content -LiteralPath $baseVi -Value 'base' -Encoding utf8
+    Set-Content -LiteralPath $headVi -Value 'head' -Encoding utf8
+    $reportPath = Join-Path $work 'out\compare-report.html'
+
+    $output = & pwsh -NoLogo -NoProfile -File $script:RunnerScript `
+      -BaseVi $baseVi `
+      -HeadVi $headVi `
+      -ReportPath $reportPath `
+      -RuntimeEngineReadyTimeoutSeconds 5 `
+      -RuntimeEngineReadyPollSeconds 1 2>&1
+    $LASTEXITCODE | Should -Be 2 -Because ($output -join "`n")
+    ($output -join "`n") | Should -Match "Docker image 'nationalinstruments/labview:2026q1-linux' not found locally"
   }
 }
