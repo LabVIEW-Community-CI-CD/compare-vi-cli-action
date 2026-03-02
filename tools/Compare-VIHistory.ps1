@@ -34,6 +34,7 @@ param(
   [string]$ReportFormat = 'html',
   [switch]$KeepArtifactsOnNoDiff,
   [string]$InvokeScriptPath,
+  [Nullable[int]]$CompareTimeoutSeconds,
 
   [string]$GitHubOutputPath,
   [string]$StepSummaryPath,
@@ -1401,6 +1402,10 @@ foreach ($modeSpec in $modeSpecs) {
         if ($modeFlags -and $modeFlags.Count -gt 0) {
           $compareArgs += "-LvCompareArgs"
           $compareArgs += ($modeFlags -join ' ')
+        }
+        if ($PSBoundParameters.ContainsKey('CompareTimeoutSeconds') -and $CompareTimeoutSeconds -gt 0) {
+          $compareArgs += "-TimeoutSeconds"
+          $compareArgs += [string][int]$CompareTimeoutSeconds
         }
         if (-not [string]::IsNullOrWhiteSpace($InvokeScriptPath)) {
           $compareArgs += "-InvokeScriptPath"
