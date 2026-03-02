@@ -12,7 +12,7 @@ Describe 'Write-VIHistoryWorkflowReadiness.ps1' -Tag 'Unit' {
     }
   }
 
-  It 'writes envelope with explicit diff/failure lane metadata and markdown columns' {
+  It 'writes envelope with explicit lane lifecycle metadata and markdown columns' {
     $work = Join-Path $TestDrive 'workflow-readiness-explicit'
     New-Item -ItemType Directory -Path $work -Force | Out-Null
 
@@ -26,6 +26,15 @@ Describe 'Write-VIHistoryWorkflowReadiness.ps1' -Tag 'Unit' {
       -LinuxDiffDetected false `
       -WindowsFailureClass none `
       -LinuxFailureClass preflight `
+      -WindowsLaneStopClass completed `
+      -LinuxLaneStopClass hard-stop `
+      -WindowsLaneStopReason lane-complete `
+      -LinuxLaneStopReason runtime-determinism-hard-stop `
+      -WindowsLaneStartStep windows-runtime-preflight `
+      -WindowsLaneEndStep windows-container-probe `
+      -LinuxLaneStartStep linux-runtime-preflight `
+      -LinuxLaneEndStep linux-runtime-preflight `
+      -LinuxLaneHardStopTriggered true `
       -ResultsRoot $work `
       -SummaryPath 'D:\tmp\summary.json' `
       -LinuxSmokeSummaryPath 'D:\tmp\linux-smoke-summary.json' `
@@ -50,14 +59,24 @@ Describe 'Write-VIHistoryWorkflowReadiness.ps1' -Tag 'Unit' {
     $envelope.lanes.windows.status | Should -Be 'success'
     $envelope.lanes.windows.diffDetected | Should -BeTrue
     $envelope.lanes.windows.failureClass | Should -Be 'none'
+    $envelope.lanes.windows.stopClass | Should -Be 'completed'
+    $envelope.lanes.windows.stopReason | Should -Be 'lane-complete'
     $envelope.lanes.linux.status | Should -Be 'failure'
     $envelope.lanes.linux.diffDetected | Should -BeFalse
     $envelope.lanes.linux.failureClass | Should -Be 'preflight'
+    $envelope.lanes.linux.stopClass | Should -Be 'hard-stop'
+    $envelope.lanes.linux.stopReason | Should -Be 'runtime-determinism-hard-stop'
+    $envelope.laneLifecycle.windows.startStep | Should -Be 'windows-runtime-preflight'
+    $envelope.laneLifecycle.windows.endStep | Should -Be 'windows-container-probe'
+    $envelope.laneLifecycle.linux.startStep | Should -Be 'linux-runtime-preflight'
+    $envelope.laneLifecycle.linux.endStep | Should -Be 'linux-runtime-preflight'
+    $envelope.laneLifecycle.linux.hardStopTriggered | Should -BeTrue
 
     $markdown = Get-Content -LiteralPath $mdPath -Raw
-    $markdown | Should -Match '\| Lane \| Status \| Diff Detected \| Failure Class \| Runtime Snapshot \| Summary \|'
+    $markdown | Should -Match '\| Lane \| Status \| Diff Detected \| Failure Class \| Stop Class \| Start Step \| End Step \| Runtime Snapshot \| Summary \|'
     $markdown | Should -Match '\| windows \| `success` \| `True` \| `none` \|'
-    $markdown | Should -Match '\| linux \| `failure` \| `False` \| `preflight` \|'
+    $markdown | Should -Match '\| linux \| `failure` \| `False` \| `preflight` \| `hard-stop` \|'
+    $markdown | Should -Match '\| \| \| \| \| stop reason \| runtime-determinism-hard-stop \|'
   }
 
   It 'applies fallback failure classes when not provided' {
@@ -81,8 +100,11 @@ Describe 'Write-VIHistoryWorkflowReadiness.ps1' -Tag 'Unit' {
     $envelope.verdict | Should -Be 'not-ready'
     $envelope.lanes.windows.failureClass | Should -Be 'cli/tool'
     $envelope.lanes.windows.diffDetected | Should -BeFalse
+    $envelope.lanes.windows.stopClass | Should -Be 'failure'
+    $envelope.laneLifecycle.windows.stopReason | Should -Match 'lane-failed'
     $envelope.lanes.linux.failureClass | Should -Be 'none'
     $envelope.lanes.linux.diffDetected | Should -BeFalse
+    $envelope.lanes.linux.stopClass | Should -Be 'completed'
   }
 
   It 'normalizes lane statuses and bool-like diff flags' {
@@ -113,6 +135,8 @@ Describe 'Write-VIHistoryWorkflowReadiness.ps1' -Tag 'Unit' {
     $envelope.lanes.linux.diffDetected | Should -BeFalse
     $envelope.lanes.windows.failureClass | Should -Be 'none'
     $envelope.lanes.linux.failureClass | Should -Be 'cli/tool'
+    $envelope.lanes.windows.stopClass | Should -Be 'completed'
+    $envelope.lanes.linux.stopClass | Should -Be 'failure'
   }
 
   It 'marks ready only when both lanes are success' {
@@ -135,6 +159,64 @@ Describe 'Write-VIHistoryWorkflowReadiness.ps1' -Tag 'Unit' {
     $envelope = Get-Content -LiteralPath $jsonPath -Raw | ConvertFrom-Json -Depth 10
     $envelope.verdict | Should -Be 'ready'
     $envelope.recommendation | Should -Be 'proceed'
+    $envelope.laneLifecycle.windows.stopClass | Should -Be 'completed'
+    $envelope.laneLifecycle.linux.stopClass | Should -Be 'completed'
+  }
+
+  It 'imports lane lifecycle from fast-loop readiness artifact when explicit values are not provided' {
+    $work = Join-Path $TestDrive 'workflow-readiness-fastloop-import'
+    New-Item -ItemType Directory -Path $work -Force | Out-Null
+
+    $jsonPath = Join-Path $work 'vi-history-workflow-readiness.json'
+    $mdPath = Join-Path $work 'vi-history-workflow-readiness.md'
+    $fastLoopPath = Join-Path $work 'docker-runtime-fastloop-readiness.json'
+
+    ([ordered]@{
+      schema = 'vi-history/docker-fast-loop-readiness@v1'
+      generatedAt = (Get-Date).ToUniversalTime().ToString('o')
+      laneLifecycle = [ordered]@{
+        windows = [ordered]@{
+          stopClass = 'completed'
+          stopReason = 'lane-complete'
+          startStep = 'windows-runtime-preflight'
+          endStep = 'windows-container-probe'
+          started = $true
+          completed = $true
+          totalPlannedSteps = 2
+          executedSteps = 2
+        }
+        linux = [ordered]@{
+          stopClass = 'blocked'
+          stopReason = 'Runtime determinism check failed at step windows-runtime-preflight'
+          startStep = ''
+          endStep = ''
+          started = $false
+          completed = $false
+          totalPlannedSteps = 3
+          executedSteps = 0
+        }
+      }
+    } | ConvertTo-Json -Depth 12) | Set-Content -LiteralPath $fastLoopPath -Encoding utf8
+
+    $output = & pwsh -NoLogo -NoProfile -File $script:ReadinessScript `
+      -WindowsLaneStatus success `
+      -LinuxLaneStatus failure `
+      -LinuxFailureClass runtime-determinism `
+      -FastLoopReadinessPath $fastLoopPath `
+      -ResultsRoot $work `
+      -OutputJsonPath $jsonPath `
+      -OutputMarkdownPath $mdPath `
+      -GitHubOutputPath '' `
+      -StepSummaryPath '' 2>&1
+    $LASTEXITCODE | Should -Be 0 -Because ($output -join "`n")
+
+    $envelope = Get-Content -LiteralPath $jsonPath -Raw | ConvertFrom-Json -Depth 12
+    $envelope.source.fastLoopReadinessPath | Should -Be $fastLoopPath
+    $envelope.laneLifecycle.windows.startStep | Should -Be 'windows-runtime-preflight'
+    $envelope.laneLifecycle.windows.endStep | Should -Be 'windows-container-probe'
+    $envelope.laneLifecycle.linux.stopClass | Should -Be 'blocked'
+    $envelope.laneLifecycle.linux.stopReason | Should -Match 'Runtime determinism'
+    $envelope.lanes.linux.stopClass | Should -Be 'blocked'
   }
 
   It 'writes GitHub output keys and appends step summary markdown' {
@@ -170,6 +252,6 @@ Describe 'Write-VIHistoryWorkflowReadiness.ps1' -Tag 'Unit' {
 
     $stepText = Get-Content -LiteralPath $stepSummary -Raw
     $stepText | Should -Match '### VI History Workflow Readiness'
-    $stepText | Should -Match '\| Lane \| Status \| Diff Detected \| Failure Class \|'
+    $stepText | Should -Match '\| Lane \| Status \| Diff Detected \| Failure Class \| Stop Class \|'
   }
 }
