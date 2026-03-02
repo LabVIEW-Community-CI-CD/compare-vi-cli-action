@@ -125,6 +125,13 @@ Describe 'Summarize-PRVIHistory.ps1' {
         $result.totals.previewImages | Should -Be 1
         $result.totals.markdownTruncated | Should -BeFalse
         $result.totals.timing.totalSeconds | Should -Be 3.75
+        $result.kpi.signalRecall | Should -Be 1
+        $result.kpi.noisePrecisionMasscompile | Should -BeNullOrEmpty
+        $result.kpi.previewCoverage | Should -Be 0.5
+        $result.kpi.timingP50Seconds | Should -Be 1.5
+        $result.kpi.timingP95Seconds | Should -Be 2.25
+        $result.kpi.commentTruncated | Should -BeFalse
+        $result.kpi.truncationReason | Should -Be 'none'
         $result.pairTimeline.Count | Should -Be 2
         $result.previews.Count | Should -Be 1
         $result.markdown | Should -Match 'fixtures/Example.vi'
@@ -227,6 +234,8 @@ Describe 'Summarize-PRVIHistory.ps1' {
         $result.previews.Count | Should -Be 1
         $result.totals.previewImages | Should -Be 1
         $result.totals.markdownTruncated | Should -BeTrue
+        $result.kpi.commentTruncated | Should -BeTrue
+        $result.kpi.truncationReason | Should -Be 'max-markdown-length'
         $result.markdown.Length | Should -BeLessOrEqual 900
         $result.markdown | Should -Match 'Summary truncated for comment size safety'
     }

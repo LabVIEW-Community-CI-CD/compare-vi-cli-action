@@ -89,6 +89,12 @@ the same summary table to a GitHub issue for stakeholders.
   so reviewers can scan cosmetic changes on mobile without downloading artifacts first.
 - Comment-size safety guards cap preview/image payload and apply markdown truncation when needed; the summarizer writes
   this state to totals (`previewImages`, `markdownTruncated`) and emits an explicit truncation note in the PR comment.
+- `pr-vi-history-summary@v1` now carries additive per-pair rows under `pairTimeline[]`:
+  `targetPath`, `baseRef`, `headRef`, `classification`, `diff`, `durationSeconds`, `previewStatus`, `reportPath`,
+  `imageIndexPath`.
+- Run-level KPI envelope (`kpi`) is additive and includes:
+  `signalRecall`, `noisePrecisionMasscompile`, `previewCoverage`, `timingP50Seconds`, `timingP95Seconds`,
+  `commentTruncated`, `truncationReason`.
 - `tools/Test-PRVIHistorySmoke.ps1` now emits explicit hybrid gate policy metadata (`schema: vi-history-policy-gate@v1`):
   strict (`requireDiff=true`) violations are hard failures, while smoke (`requireDiff=false`) violations are recorded as
   non-blocking warnings for diagnostics.
