@@ -194,6 +194,34 @@ function Get-DockerContext {
   }
 }
 
+function Test-ContextAccepted {
+  param(
+    [AllowNull()][string]$ObservedContext,
+    [Parameter(Mandatory = $true)][string]$ExpectedContext,
+    [Parameter(Mandatory = $true)][ValidateSet('windows', 'linux')][string]$ExpectedOsType,
+    [AllowNull()][string]$ObservedOsType
+  )
+
+  if ([string]::IsNullOrWhiteSpace($ObservedContext)) {
+    return $false
+  }
+
+  $observed = $ObservedContext.Trim().ToLowerInvariant()
+  $expected = $ExpectedContext.Trim().ToLowerInvariant()
+
+  if ($observed -eq $expected) {
+    return $true
+  }
+
+  # Some runners keep the active context as "default" while docker info reports
+  # the expected lane OSType. Treat that alias as deterministic-equivalent.
+  if ($observed -eq 'default' -and -not [string]::IsNullOrWhiteSpace($ObservedOsType)) {
+    return ($ObservedOsType.Trim().ToLowerInvariant() -eq $ExpectedOsType)
+  }
+
+  return $false
+}
+
 function Get-DockerContexts {
   $rows = New-Object System.Collections.Generic.List[object]
   try {
@@ -549,7 +577,11 @@ if (-not $hostAlignmentOk) {
   $resultStatus = 'mismatch-failed'
 } else {
   $osMismatch = [string]::IsNullOrWhiteSpace($observedOsType) -or ($observedOsType -ne $ExpectedOsType)
-  $contextMismatch = [string]::IsNullOrWhiteSpace($observedContext) -or ($observedContext -ne $effectiveExpectedContext)
+  $contextMismatch = -not (Test-ContextAccepted `
+    -ObservedContext $observedContext `
+    -ExpectedContext $effectiveExpectedContext `
+    -ExpectedOsType $ExpectedOsType `
+    -ObservedOsType $observedOsType)
 
   if ($osMismatch -or $contextMismatch) {
     Write-Host ("[runtime-determinism] mismatch detected expected={0}/{1} observed={2}/{3}" -f $ExpectedOsType, $effectiveExpectedContext, ($observedOsType ?? '<null>'), ($observedContext ?? '<null>')) -ForegroundColor Yellow
@@ -613,7 +645,11 @@ if (-not $hostAlignmentOk) {
       }
 
       $osMismatchAfter = [string]::IsNullOrWhiteSpace($recheckedOsType) -or ($recheckedOsType -ne $ExpectedOsType)
-      $contextMismatchAfter = [string]::IsNullOrWhiteSpace($recheckedContext) -or ($recheckedContext -ne $effectiveExpectedContext)
+      $contextMismatchAfter = -not (Test-ContextAccepted `
+        -ObservedContext $recheckedContext `
+        -ExpectedContext $effectiveExpectedContext `
+        -ExpectedOsType $ExpectedOsType `
+        -ObservedOsType $recheckedOsType)
 
       $observedOsType = $recheckedOsType
       $observedContext = $recheckedContext
