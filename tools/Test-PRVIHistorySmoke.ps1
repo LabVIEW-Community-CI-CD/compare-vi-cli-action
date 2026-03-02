@@ -855,9 +855,9 @@ try {
     Write-Host "Workflow run id: $runId"
 
     Write-Host "Watching workflow run $runId..."
-    Invoke-Gh -Arguments @('run', 'watch', $runId.ToString(), '--exit-status') | Out-Null
+    Invoke-Gh -Arguments @('run', 'watch', $runId.ToString(), '--repo', $repoInfo.Slug, '--exit-status') | Out-Null
 
-    $runSummary = Invoke-Gh -Arguments @('run', 'view', $runId.ToString(), '--json', 'conclusion') -ExpectJson
+    $runSummary = Invoke-Gh -Arguments @('run', 'view', $runId.ToString(), '--repo', $repoInfo.Slug, '--json', 'conclusion') -ExpectJson
     if ($runSummary.conclusion -ne 'success') {
         throw "Workflow run $runId concluded with '$($runSummary.conclusion)'."
     }
@@ -936,6 +936,7 @@ try {
         Invoke-Gh -Arguments @(
             'run', 'download',
             $runId.ToString(),
+            '--repo', $repoInfo.Slug,
             '--name', ("pr-vi-history-{0}" -f $scratchContext.PrNumber),
             '--dir', $artifactDir
         ) | Out-Null
