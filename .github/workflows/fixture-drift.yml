@@ -57,7 +57,7 @@ jobs:
 
   docker-runtime-manager:
     name: Docker Runtime Manager (Host)
-    runs-on: [self-hosted, Windows, X64]
+    runs-on: [self-hosted, Windows, X64, self-hosted-docker]
     needs:
     - preflight-windows
     timeout-minutes: 6
