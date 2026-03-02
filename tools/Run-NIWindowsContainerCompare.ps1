@@ -619,6 +619,44 @@ function Resolve-RunFailureMessage {
   return ("Container compare failed with exit code {0}." -f $ExitCode)
 }
 
+function Resolve-RunFailureClassification {
+  param(
+    [Parameter(Mandatory)][string]$Image,
+    [AllowNull()][string]$StdErr,
+    [AllowNull()][string]$StdOut,
+    [Parameter(Mandatory)][int]$ExitCode
+  )
+
+  $combined = @($StdErr, $StdOut) -join "`n"
+  $message = Resolve-RunFailureMessage -StdErr $StdErr -StdOut $StdOut -ExitCode $ExitCode
+
+  $labviewCliErrorCode = $null
+  if (-not [string]::IsNullOrWhiteSpace($combined)) {
+    $codeMatch = [regex]::Match($combined, 'Error code\s*:\s*(-?\d+)')
+    if ($codeMatch.Success) {
+      $parsedCode = 0
+      if ([int]::TryParse($codeMatch.Groups[1].Value, [ref]$parsedCode)) {
+        $labviewCliErrorCode = $parsedCode
+      }
+    }
+  }
+
+  $isStartupConnectivity = Test-CompareStartupConnectivitySignature -StdOut $StdOut -StdErr $StdErr -Message $message
+  $recommendation = if ($isStartupConnectivity) {
+    'LabVIEW CLI startup/connectivity failure detected. Retry after prelaunch and verify LabVIEWCLI.ini timeout settings.'
+  } else {
+    ('Inspect stdout/stderr artifacts and runtime logs for the failed compare in image {0}.' -f $Image)
+  }
+
+  return [pscustomobject]@{
+    status = 'error'
+    classification = 'run-error'
+    message = $message
+    labviewCliErrorCode = $labviewCliErrorCode
+    recommendation = $recommendation
+  }
+}
+
 function Parse-ContainerMeta {
   param([AllowNull()][string]$StdOut)
 
@@ -1136,3 +1174,4 @@ if ($finalExitCode -ne 0 -and -not [string]::IsNullOrWhiteSpace($capture.message
 }
 
 exit $finalExitCode
+

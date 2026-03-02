@@ -647,4 +647,39 @@ exit 0
       $capture.timedOut | Should -BeFalse
     }
   }
+  It 'handles non-diff non-timeout non-preflight exit codes without missing helper failures' {
+    $work = Join-Path $TestDrive 'compare-nondiff-exit2'
+    New-Item -ItemType Directory -Path $work | Out-Null
+    & $script:NewDockerStub -WorkRoot $work | Out-Null
+
+    Set-Item Env:DOCKER_STUB_LOG (Join-Path $work 'docker-log.ndjson')
+    Set-Item Env:DOCKER_STUB_OSTYPE 'windows'
+    Set-Item Env:DOCKER_STUB_IMAGE_EXISTS '1'
+    Set-Item Env:DOCKER_STUB_CONTEXT 'desktop-windows'
+    Set-Item Env:DOCKER_STUB_RUN_EXIT_CODE '2'
+    Set-Item Env:DOCKER_STUB_RUN_STDERR 'Error message: synthetic non-diff execution failure'
+
+    $baseVi = Join-Path $work 'Base.vi'
+    $headVi = Join-Path $work 'Head.vi'
+    Set-Content -LiteralPath $baseVi -Value 'base' -Encoding utf8
+    Set-Content -LiteralPath $headVi -Value 'head' -Encoding utf8
+    $reportPath = Join-Path $work 'out\compare-report.html'
+
+    $output = & pwsh -NoLogo -NoProfile -File $script:RunnerScript `
+      -BaseVi $baseVi `
+      -HeadVi $headVi `
+      -ReportPath $reportPath `
+      -RuntimeEngineReadyTimeoutSeconds 5 `
+      -RuntimeEngineReadyPollSeconds 1 2>&1
+    $LASTEXITCODE | Should -BeIn @(1, 2) -Because ($output -join "`n")
+    ($output -join "`n") | Should -Not -Match 'Resolve-RunFailureClassification'
+
+    $capturePath = Join-Path (Split-Path -Parent $reportPath) 'ni-windows-container-capture.json'
+    Test-Path -LiteralPath $capturePath | Should -BeTrue
+    $capture = Get-Content -LiteralPath $capturePath -Raw | ConvertFrom-Json
+    [string]::IsNullOrWhiteSpace([string]$capture.resultClass) | Should -BeFalse
+    [string]::IsNullOrWhiteSpace([string]$capture.gateOutcome) | Should -BeFalse
+  }
 }
+
+
