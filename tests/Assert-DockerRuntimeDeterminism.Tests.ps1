@@ -1,0 +1,233 @@
+#Requires -Version 7.0
+
+Set-StrictMode -Version Latest
+$ErrorActionPreference = 'Stop'
+
+Describe 'Assert-DockerRuntimeDeterminism.ps1' -Tag 'Unit' {
+  BeforeAll {
+    $script:RepoRoot = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path
+    $script:GuardScript = Join-Path $script:RepoRoot 'tools' 'Assert-DockerRuntimeDeterminism.ps1'
+    if (-not (Test-Path -LiteralPath $script:GuardScript -PathType Leaf)) {
+      throw "Guard script not found: $script:GuardScript"
+    }
+
+    $script:CreateDockerWslStubs = {
+      param([Parameter(Mandatory)][string]$WorkRoot)
+
+      $binDir = Join-Path $WorkRoot 'bin'
+      New-Item -ItemType Directory -Path $binDir -Force | Out-Null
+      $pwshPath = (Get-Command pwsh -ErrorAction Stop).Source
+
+      $dockerStub = @'
+param([Parameter(ValueFromRemainingArguments = $true)][string[]]$Args)
+if ($Args.Count -eq 0) { exit 0 }
+
+if ($Args.Count -ge 3 -and $Args[0] -eq '--context') {
+  $Args = @($Args | Select-Object -Skip 2)
+}
+
+$infoMode = [Environment]::GetEnvironmentVariable('DOCKER_STUB_INFO_MODE')
+if ([string]::IsNullOrWhiteSpace($infoMode)) { $infoMode = 'parsed-windows' }
+
+if ($Args[0] -eq 'context' -and $Args.Count -ge 2 -and $Args[1] -eq 'show') {
+  if ([Environment]::GetEnvironmentVariable('DOCKER_STUB_CONTEXT_SHOW_EMPTY') -eq '1') {
+    exit 0
+  }
+  $ctx = [Environment]::GetEnvironmentVariable('DOCKER_STUB_CONTEXT')
+  if ([string]::IsNullOrWhiteSpace($ctx)) { $ctx = 'desktop-windows' }
+  Write-Output $ctx
+  exit 0
+}
+
+if ($Args[0] -eq 'context' -and $Args.Count -ge 2 -and $Args[1] -eq 'ls') {
+  $ctx = [Environment]::GetEnvironmentVariable('DOCKER_STUB_CONTEXT')
+  if ([string]::IsNullOrWhiteSpace($ctx)) { $ctx = 'desktop-windows' }
+
+  $rows = @(
+    [ordered]@{
+      Name = 'default'
+      Current = 'false'
+      Description = 'Current DOCKER_HOST based configuration'
+      DockerEndpoint = 'npipe:////./pipe/docker_engine'
+      Error = ''
+    },
+    [ordered]@{
+      Name = 'desktop-linux'
+      Current = if ($ctx -eq 'desktop-linux') { 'true' } else { 'false' }
+      Description = 'Docker Desktop'
+      DockerEndpoint = 'npipe:////./pipe/dockerDesktopLinuxEngine'
+      Error = ''
+    },
+    [ordered]@{
+      Name = 'desktop-windows'
+      Current = if ($ctx -eq 'desktop-windows') { 'true' } else { 'false' }
+      Description = 'Docker Desktop'
+      DockerEndpoint = 'npipe:////./pipe/dockerDesktopWindowsEngine'
+      Error = ''
+    }
+  )
+  foreach ($row in $rows) {
+    ($row | ConvertTo-Json -Compress) | Write-Output
+  }
+  exit 0
+}
+
+if ($Args[0] -eq 'context' -and $Args.Count -ge 3 -and $Args[1] -eq 'use') {
+  $failTarget = [Environment]::GetEnvironmentVariable('DOCKER_STUB_CONTEXT_USE_FAIL_TARGET')
+  if (-not [string]::IsNullOrWhiteSpace($failTarget) -and $Args[2] -eq $failTarget) {
+    [Console]::Error.WriteLine('context not found')
+    exit 1
+  }
+  Write-Output $Args[2]
+  exit 0
+}
+
+if ($Args[0] -eq 'ps') { exit 0 }
+
+if ($Args[0] -eq 'info') {
+  switch ($infoMode) {
+    'parsed-windows' {
+      Write-Output 'windows'
+      exit 0
+    }
+    'parsed-linux' {
+      Write-Output 'linux'
+      exit 0
+    }
+    'daemon-unavailable' {
+      Write-Output 'Error response from daemon: Docker Desktop is unable to start'
+      Write-Output 'bootstrapping main distribution failed'
+      $exitCode = 1
+      $exitRaw = [Environment]::GetEnvironmentVariable('DOCKER_STUB_INFO_EXIT_CODE')
+      if (-not [string]::IsNullOrWhiteSpace($exitRaw)) {
+        [void][int]::TryParse($exitRaw, [ref]$exitCode)
+      }
+      exit $exitCode
+    }
+    'unparseable-success' {
+      Write-Output 'not-an-os-token'
+      exit 0
+    }
+    default {
+      Write-Output $infoMode
+      exit 0
+    }
+  }
+}
+
+exit 0
+'@
+      Set-Content -LiteralPath (Join-Path $binDir 'docker.ps1') -Value $dockerStub -Encoding utf8
+
+      $dockerCmd = @"
+@echo off
+"$pwshPath" -NoLogo -NoProfile -File "%~dp0docker.ps1" %*
+"@
+      Set-Content -LiteralPath (Join-Path $binDir 'docker.cmd') -Value $dockerCmd -Encoding ascii
+
+      $wslStub = @'
+param([Parameter(ValueFromRemainingArguments = $true)][string[]]$Args)
+if ($Args.Count -ge 2 -and $Args[0] -eq '-l' -and $Args[1] -eq '-v') {
+  Write-Output '  NAME              STATE           VERSION'
+  Write-Output '* docker-desktop    Stopped         2'
+  exit 0
+}
+if ($Args.Count -ge 1 -and $Args[0] -eq '--shutdown') {
+  exit 0
+}
+exit 0
+'@
+      Set-Content -LiteralPath (Join-Path $binDir 'wsl.ps1') -Value $wslStub -Encoding utf8
+
+      $wslCmd = @"
+@echo off
+"$pwshPath" -NoLogo -NoProfile -File "%~dp0wsl.ps1" %*
+"@
+      Set-Content -LiteralPath (Join-Path $binDir 'wsl.cmd') -Value $wslCmd -Encoding ascii
+
+      $env:PATH = "{0};{1}" -f $binDir, $env:PATH
+    }
+  }
+
+  BeforeEach {
+    $script:SavedPath = $env:PATH
+    $script:SavedEnv = @{
+      DOCKER_STUB_INFO_MODE = $env:DOCKER_STUB_INFO_MODE
+      DOCKER_STUB_INFO_EXIT_CODE = $env:DOCKER_STUB_INFO_EXIT_CODE
+      DOCKER_STUB_CONTEXT = $env:DOCKER_STUB_CONTEXT
+      DOCKER_STUB_CONTEXT_SHOW_EMPTY = $env:DOCKER_STUB_CONTEXT_SHOW_EMPTY
+      DOCKER_STUB_CONTEXT_USE_FAIL_TARGET = $env:DOCKER_STUB_CONTEXT_USE_FAIL_TARGET
+    }
+  }
+
+  AfterEach {
+    $env:PATH = $script:SavedPath
+    foreach ($name in $script:SavedEnv.Keys) {
+      $value = $script:SavedEnv[$name]
+      if ($null -eq $value -or $value -eq '') {
+        Remove-Item ("Env:{0}" -f $name) -ErrorAction SilentlyContinue
+      } else {
+        Set-Item ("Env:{0}" -f $name) $value
+      }
+    }
+  }
+
+  It 'classifies daemon-unavailable probe when docker info cannot return OSType' {
+    $work = Join-Path $TestDrive 'daemon-unavailable'
+    New-Item -ItemType Directory -Path $work -Force | Out-Null
+    & $script:CreateDockerWslStubs -WorkRoot $work
+
+    Set-Item Env:DOCKER_STUB_INFO_MODE 'daemon-unavailable'
+    Set-Item Env:DOCKER_STUB_CONTEXT 'desktop-windows'
+
+    $snapshotPath = Join-Path $work 'runtime.json'
+    $output = & pwsh -NoLogo -NoProfile -File $script:GuardScript `
+      -ExpectedOsType windows `
+      -ExpectedContext desktop-windows `
+      -AutoRepair:$false `
+      -SnapshotPath $snapshotPath `
+      -GitHubOutputPath '' 2>&1
+    $LASTEXITCODE | Should -Not -Be 0
+
+    $text = $output -join "`n"
+    $text | Should -Match 'Docker info probe: parseReason=daemon-unavailable'
+
+    $snapshot = Get-Content -LiteralPath $snapshotPath -Raw | ConvertFrom-Json -Depth 12
+    $snapshot.result.status | Should -Be 'mismatch-failed'
+    $snapshot.observed.osType | Should -BeNullOrEmpty
+    $snapshot.observed.dockerOsProbe.last.parseReason | Should -Be 'daemon-unavailable'
+    $snapshot.result.reason | Should -Match 'parseReason=daemon-unavailable'
+    $snapshot.result.reason | Should -Match 'exitCode=1'
+  }
+
+  It 'captures parsed probe details and emits parse-reason output on success' {
+    $work = Join-Path $TestDrive 'probe-success'
+    New-Item -ItemType Directory -Path $work -Force | Out-Null
+    & $script:CreateDockerWslStubs -WorkRoot $work
+
+    Set-Item Env:DOCKER_STUB_INFO_MODE 'parsed-windows'
+    Set-Item Env:DOCKER_STUB_CONTEXT 'desktop-windows'
+
+    $snapshotPath = Join-Path $work 'runtime.json'
+    $githubOutput = Join-Path $work 'github-output.txt'
+
+    $output = & pwsh -NoLogo -NoProfile -File $script:GuardScript `
+      -ExpectedOsType windows `
+      -ExpectedContext desktop-windows `
+      -AutoRepair:$true `
+      -SnapshotPath $snapshotPath `
+      -GitHubOutputPath $githubOutput 2>&1
+    $LASTEXITCODE | Should -Be 0 -Because ($output -join "`n")
+
+    $snapshot = Get-Content -LiteralPath $snapshotPath -Raw | ConvertFrom-Json -Depth 12
+    $snapshot.result.status | Should -Be 'ok'
+    $snapshot.observed.osType | Should -Be 'windows'
+    $snapshot.observed.context | Should -Be 'desktop-windows'
+    $snapshot.observed.dockerOsProbe.initial.parseReason | Should -Be 'parsed'
+    $snapshot.observed.dockerOsProbe.last.command | Should -Match 'docker --context desktop-windows info --format'
+
+    $ghOut = Get-Content -LiteralPath $githubOutput -Raw
+    $ghOut | Should -Match 'runtime-status=ok'
+    $ghOut | Should -Match 'docker-ostype-parse-reason=parsed'
+  }
+}
