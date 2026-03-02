@@ -89,6 +89,9 @@ the same summary table to a GitHub issue for stakeholders.
   so reviewers can scan cosmetic changes on mobile without downloading artifacts first.
 - Comment-size safety guards cap preview/image payload and apply markdown truncation when needed; the summarizer writes
   this state to totals (`previewImages`, `markdownTruncated`) and emits an explicit truncation note in the PR comment.
+- `tools/Test-PRVIHistorySmoke.ps1` now emits explicit hybrid gate policy metadata (`schema: vi-history-policy-gate@v1`):
+  strict (`requireDiff=true`) violations are hard failures, while smoke (`requireDiff=false`) violations are recorded as
+  non-blocking warnings for diagnostics.
 - To rehearse the fork flow locally, run `pwsh -File tools/Test-ForkSimulation.ps1` in three passes: `-DryRun` shows the
   steps, the default run opens a draft PR and validates the automatic compare job, and `-KeepBranch` preserves the
   scratch branch while the staging/history dispatches finish so you can inspect the artifacts.

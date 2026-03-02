@@ -51,6 +51,12 @@ param(
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
+$policyHelperPath = Join-Path $PSScriptRoot 'Resolve-VIHistoryPolicyDecision.ps1'
+if (-not (Test-Path -LiteralPath $policyHelperPath -PathType Leaf)) {
+    throw "Policy helper not found: $policyHelperPath"
+}
+. $policyHelperPath
+
 if ($WorkflowTimeoutMinutes -lt 1) {
     throw 'WorkflowTimeoutMinutes must be greater than zero.'
 }
@@ -765,6 +771,21 @@ $scratchContext = [ordered]@{
     NetDiffAnchored = $false
     TargetExpectations = @()
     TargetValidation = @()
+    Policy = [ordered]@{
+        schema = 'vi-history-policy-gate@v1'
+        strict = [ordered]@{
+            total = 0
+            pass = 0
+            fail = 0
+            failures = @()
+        }
+        smoke = [ordered]@{
+            total = 0
+            pass = 0
+            warn = 0
+            warnings = @()
+        }
+    }
     MaxPairsRequested = $MaxPairs
     MaxPairsEffective = $effectiveMaxPairs
     WorkflowTimeoutMinutes = $WorkflowTimeoutMinutes
@@ -987,38 +1008,65 @@ try {
     }
 
     $targetValidations = New-Object System.Collections.Generic.List[pscustomobject]
+    $targetValidationByPath = @{}
+    $strictFailures = New-Object System.Collections.Generic.List[pscustomobject]
+    $smokeWarnings = New-Object System.Collections.Generic.List[pscustomobject]
     $totalComparisons = 0
     $totalDiffs = 0
     foreach ($expectedTarget in $expectedTargets) {
         $row = $commentRows | Where-Object { $_.path -eq $expectedTarget.repoPath } | Select-Object -First 1
-        if (-not $row) {
-            throw ("History comment is missing summary row for target '{0}'." -f $expectedTarget.repoPath)
-        }
-
-        if ($row.comparisons -lt 1) {
-            throw ("Target '{0}' reported zero comparisons in history comment." -f $expectedTarget.repoPath)
-        }
-
+        $comparisons = if ($row) { [int]$row.comparisons } else { 0 }
+        $diffs = if ($row) { [int]$row.diffs } else { 0 }
+        $status = if ($row) { [string]$row.status } else { 'missing' }
         $requiredDiffs = [Math]::Max(0, [int]$expectedTarget.minDiffs)
-        if ([bool]$expectedTarget.requireDiff -and $row.diffs -lt $requiredDiffs) {
-            throw ("Target '{0}' expected at least {1} diff(s) but comment reported {2}." -f $expectedTarget.repoPath, $requiredDiffs, $row.diffs)
+
+        $commentDecision = Resolve-VIHistoryPolicyDecision `
+            -TargetPath ([string]$expectedTarget.repoPath) `
+            -RequireDiff ([bool]$expectedTarget.requireDiff) `
+            -MinDiffs $requiredDiffs `
+            -Comparisons $comparisons `
+            -Diffs $diffs `
+            -Status $status `
+            -Missing:(-not [bool]$row)
+
+        if ($commentDecision.hardFail) {
+            $strictFailures.Add([pscustomobject]@{
+                source      = 'comment'
+                targetPath  = [string]$expectedTarget.repoPath
+                reasonCode  = [string]$commentDecision.reasonCode
+                reason      = [string]$commentDecision.reasonMessage
+            }) | Out-Null
+            throw ("[strict policy][comment] {0}" -f $commentDecision.reasonMessage)
+        }
+        if ($commentDecision.warning) {
+            $warningRecord = [pscustomobject]@{
+                source      = 'comment'
+                targetPath  = [string]$expectedTarget.repoPath
+                reasonCode  = [string]$commentDecision.reasonCode
+                reason      = [string]$commentDecision.reasonMessage
+            }
+            $smokeWarnings.Add($warningRecord) | Out-Null
+            Write-Warning ("[smoke policy][comment] {0}" -f $commentDecision.reasonMessage)
         }
 
-        if ([bool]$expectedTarget.requireDiff -and $row.status -notlike '*diff*') {
-            throw ("Target '{0}' expected diff status but saw '{1}'." -f $expectedTarget.repoPath, $row.status)
+        $totalComparisons += $comparisons
+        $totalDiffs += $diffs
+        $validationRecord = [pscustomobject]@{
+            repoPath            = [string]$expectedTarget.repoPath
+            comparisons         = $comparisons
+            diffs               = $diffs
+            status              = $status
+            requireDiff         = [bool]$expectedTarget.requireDiff
+            minDiffs            = [int]$expectedTarget.minDiffs
+            classificationHint  = if ($expectedTarget.PSObject.Properties['classificationHint']) { [string]$expectedTarget.classificationHint } else { $null }
+            policyClass         = [string]$commentDecision.policyClass
+            commentPolicyOutcome= [string]$commentDecision.outcome
+            commentPolicyReason = [string]$commentDecision.reasonMessage
+            artifactPolicyOutcome= 'pending'
+            artifactPolicyReason = $null
         }
-
-        $totalComparisons += [int]$row.comparisons
-        $totalDiffs += [int]$row.diffs
-        $targetValidations.Add([pscustomobject]@{
-            repoPath          = [string]$expectedTarget.repoPath
-            comparisons       = [int]$row.comparisons
-            diffs             = [int]$row.diffs
-            status            = [string]$row.status
-            requireDiff       = [bool]$expectedTarget.requireDiff
-            minDiffs          = [int]$expectedTarget.minDiffs
-            classificationHint= if ($expectedTarget.PSObject.Properties['classificationHint']) { [string]$expectedTarget.classificationHint } else { $null }
-        }) | Out-Null
+        $targetValidations.Add($validationRecord) | Out-Null
+        $targetValidationByPath[[string]$expectedTarget.repoPath] = $validationRecord
     }
     $scratchContext.TargetValidation = @($targetValidations)
     $scratchContext.Comparisons = $totalComparisons
@@ -1060,19 +1108,46 @@ try {
 
         foreach ($expectedTarget in $expectedTargets) {
             $summaryTarget = $targetSummaries | Where-Object { $_.repoPath -eq $expectedTarget.repoPath } | Select-Object -First 1
-            if (-not $summaryTarget) {
-                throw ("Summary JSON missing target entry for '{0}'." -f $expectedTarget.repoPath)
-            }
-            $artifactComparisons = if ($summaryTarget.stats) { [int]$summaryTarget.stats.processed } else { 0 }
-            $artifactDiffs = if ($summaryTarget.stats) { [int]$summaryTarget.stats.diffs } else { 0 }
-            if ($artifactComparisons -lt 1) {
-                throw ("Summary JSON reported zero comparisons for target '{0}'." -f $expectedTarget.repoPath)
-            }
+            $artifactComparisons = if ($summaryTarget -and $summaryTarget.stats) { [int]$summaryTarget.stats.processed } else { 0 }
+            $artifactDiffs = if ($summaryTarget -and $summaryTarget.stats) { [int]$summaryTarget.stats.diffs } else { 0 }
             $requiredDiffs = [Math]::Max(0, [int]$expectedTarget.minDiffs)
-            if ([bool]$expectedTarget.requireDiff -and $artifactDiffs -lt $requiredDiffs) {
-                throw ("Summary JSON target '{0}' expected at least {1} diff(s) but saw {2}." -f $expectedTarget.repoPath, $requiredDiffs, $artifactDiffs)
+            $artifactStatus = if ($summaryTarget -and $summaryTarget.PSObject.Properties['status']) { [string]$summaryTarget.status } else { 'missing' }
+            $artifactDecision = Resolve-VIHistoryPolicyDecision `
+                -TargetPath ([string]$expectedTarget.repoPath) `
+                -RequireDiff ([bool]$expectedTarget.requireDiff) `
+                -MinDiffs $requiredDiffs `
+                -Comparisons $artifactComparisons `
+                -Diffs $artifactDiffs `
+                -Status $artifactStatus `
+                -Missing:(-not [bool]$summaryTarget)
+
+            if ($artifactDecision.hardFail) {
+                $strictFailures.Add([pscustomobject]@{
+                    source      = 'artifact'
+                    targetPath  = [string]$expectedTarget.repoPath
+                    reasonCode  = [string]$artifactDecision.reasonCode
+                    reason      = [string]$artifactDecision.reasonMessage
+                }) | Out-Null
+                throw ("[strict policy][artifact] {0}" -f $artifactDecision.reasonMessage)
             }
-            if ($scenarioKey -eq 'sequential' -and $summaryTarget.repoPath -eq 'fixtures/vi-attr/Head.vi') {
+            if ($artifactDecision.warning) {
+                $warningRecord = [pscustomobject]@{
+                    source      = 'artifact'
+                    targetPath  = [string]$expectedTarget.repoPath
+                    reasonCode  = [string]$artifactDecision.reasonCode
+                    reason      = [string]$artifactDecision.reasonMessage
+                }
+                $smokeWarnings.Add($warningRecord) | Out-Null
+                Write-Warning ("[smoke policy][artifact] {0}" -f $artifactDecision.reasonMessage)
+            }
+
+            $targetValidation = $targetValidationByPath[[string]$expectedTarget.repoPath]
+            if ($targetValidation) {
+                $targetValidation.artifactPolicyOutcome = [string]$artifactDecision.outcome
+                $targetValidation.artifactPolicyReason = [string]$artifactDecision.reasonMessage
+            }
+
+            if ($scenarioKey -eq 'sequential' -and $summaryTarget -and $summaryTarget.repoPath -eq 'fixtures/vi-attr/Head.vi') {
                 $expectedSequentialComparisons = [Math]::Max(1, $commitSummaries.Count)
                 if ($effectiveMaxPairs -gt 0) {
                     $expectedSequentialComparisons = [Math]::Max(1, [Math]::Min($expectedSequentialComparisons, $effectiveMaxPairs))
@@ -1114,6 +1189,47 @@ try {
         } catch {
             Write-Warning ("Failed to delete temporary artifact directory {0}: {1}" -f $artifactDir, $_.Exception.Message)
         }
+    }
+
+    $policyStrictTotal = 0
+    $policyStrictPass = 0
+    $policySmokeTotal = 0
+    $policySmokePass = 0
+    $policySmokeWarn = 0
+    foreach ($validation in @($targetValidations)) {
+        if (-not $validation) { continue }
+        $isStrict = [bool]$validation.requireDiff
+        $commentOutcome = if ($validation.PSObject.Properties['commentPolicyOutcome']) { [string]$validation.commentPolicyOutcome } else { 'pass' }
+        $artifactOutcome = if ($validation.PSObject.Properties['artifactPolicyOutcome']) { [string]$validation.artifactPolicyOutcome } else { 'pass' }
+        $hasWarn = @($commentOutcome, $artifactOutcome) -contains 'warn'
+
+        if ($isStrict) {
+            $policyStrictTotal++
+            if ($commentOutcome -ne 'fail' -and $artifactOutcome -ne 'fail') {
+                $policyStrictPass++
+            }
+        } else {
+            $policySmokeTotal++
+            if ($hasWarn) {
+                $policySmokeWarn++
+            } else {
+                $policySmokePass++
+            }
+        }
+    }
+
+    $scratchContext.Policy.strict.total = $policyStrictTotal
+    $scratchContext.Policy.strict.pass = $policyStrictPass
+    $scratchContext.Policy.strict.fail = $strictFailures.Count
+    $scratchContext.Policy.strict.failures = @($strictFailures)
+    $scratchContext.Policy.smoke.total = $policySmokeTotal
+    $scratchContext.Policy.smoke.pass = $policySmokePass
+    $scratchContext.Policy.smoke.warn = $policySmokeWarn
+    $scratchContext.Policy.smoke.warnings = @($smokeWarnings)
+
+    if ($smokeWarnings.Count -gt 0) {
+        Write-Host ("Policy summary: strict pass={0}/{1}, strict fail={2}; smoke pass={3}/{4}, smoke warn={5}" -f `
+                $policyStrictPass, $policyStrictTotal, $strictFailures.Count, $policySmokePass, $policySmokeTotal, $policySmokeWarn)
     }
 
     $scratchContext.Success = $true
