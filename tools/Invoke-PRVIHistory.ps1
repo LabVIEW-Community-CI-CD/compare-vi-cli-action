@@ -399,6 +399,112 @@ function New-TimingSummary {
     }
 }
 
+function Get-PairKpiEnvelope {
+    param(
+        [AllowNull()]
+        [object[]]$Pairs,
+        [AllowNull()]
+        [object]$TimingSummary,
+        [bool]$CommentTruncated = $false,
+        [string]$TruncationReason = 'none'
+    )
+
+    $pairRows = @($Pairs)
+    $diffPairs = 0
+    $signalDiffPairs = 0
+    $noiseMasscompileDiffPairs = 0
+    $noiseCosmeticDiffPairs = 0
+    $previewPresentPairs = 0
+    $durations = New-Object System.Collections.Generic.List[double]
+
+    foreach ($pair in $pairRows) {
+        if (-not $pair) { continue }
+
+        $diffDetected = $false
+        if ($pair.PSObject.Properties['diff']) {
+            $diffDetected = [bool]$pair.diff
+        }
+
+        $classification = 'unknown'
+        if ($pair.PSObject.Properties['classification'] -and $pair.classification) {
+            $classification = [string]$pair.classification
+        }
+        $classificationKey = $classification.Trim().ToLowerInvariant()
+
+        if ($diffDetected) {
+            $diffPairs++
+            switch ($classificationKey) {
+                'signal'            { $signalDiffPairs++ }
+                'noise-masscompile' { $noiseMasscompileDiffPairs++ }
+                'noise-cosmetic'    { $noiseCosmeticDiffPairs++ }
+            }
+        }
+
+        $previewStatus = if ($pair.PSObject.Properties['previewStatus'] -and $pair.previewStatus) {
+            [string]$pair.previewStatus
+        } else {
+            'unknown'
+        }
+        if ($previewStatus.Trim().ToLowerInvariant() -eq 'present') {
+            $previewPresentPairs++
+        }
+
+        if ($pair.PSObject.Properties['durationSeconds']) {
+            $durationSeconds = Convert-ToNullableDouble -Value $pair.durationSeconds
+            if ($durationSeconds -ne $null -and $durationSeconds -ge 0) {
+                $durations.Add([double]$durationSeconds) | Out-Null
+            }
+        }
+    }
+
+    $signalRecall = $null
+    if ($diffPairs -gt 0) {
+        $signalRecall = [Math]::Round(($signalDiffPairs / [double]$diffPairs), 6)
+    }
+
+    $noisePrecisionMasscompile = $null
+    $noiseDiffPairs = $noiseMasscompileDiffPairs + $noiseCosmeticDiffPairs
+    if ($noiseDiffPairs -gt 0) {
+        $noisePrecisionMasscompile = [Math]::Round(($noiseMasscompileDiffPairs / [double]$noiseDiffPairs), 6)
+    }
+
+    $previewCoverage = $null
+    if ($pairRows.Count -gt 0) {
+        $previewCoverage = [Math]::Round(($previewPresentPairs / [double]$pairRows.Count), 6)
+    }
+
+    $timingP50Seconds = $null
+    $timingP95Seconds = $null
+    $sortedDurations = @($durations | Sort-Object)
+    if ($sortedDurations.Count -gt 0) {
+        $timingP50Seconds = Get-PercentileSeconds -SortedValues $sortedDurations -Percentile 0.5
+        $timingP95Seconds = Get-PercentileSeconds -SortedValues $sortedDurations -Percentile 0.95
+    } elseif ($TimingSummary) {
+        if ($TimingSummary.PSObject.Properties['medianSeconds']) {
+            $timingP50Seconds = Convert-ToNullableDouble -Value $TimingSummary.medianSeconds
+        }
+        if ($TimingSummary.PSObject.Properties['p95Seconds']) {
+            $timingP95Seconds = Convert-ToNullableDouble -Value $TimingSummary.p95Seconds
+        }
+    }
+
+    $normalizedReason = if ([string]::IsNullOrWhiteSpace($TruncationReason)) {
+        if ($CommentTruncated) { 'unspecified' } else { 'none' }
+    } else {
+        $TruncationReason
+    }
+
+    return [pscustomobject]@{
+        signalRecall             = $signalRecall
+        noisePrecisionMasscompile= $noisePrecisionMasscompile
+        previewCoverage          = $previewCoverage
+        timingP50Seconds         = $timingP50Seconds
+        timingP95Seconds         = $timingP95Seconds
+        commentTruncated         = [bool]$CommentTruncated
+        truncationReason         = $normalizedReason
+    }
+}
+
 function Resolve-PathBestEffort {
     param(
         [string]$PathValue,
@@ -1194,6 +1300,7 @@ foreach ($skipped in $skippedPairs) {
 
 $pairTimelineRows = @($summaryPairTimeline)
 $overallTiming = New-TimingSummary -DurationsSeconds @($pairDurations)
+$kpiEnvelope = Get-PairKpiEnvelope -Pairs $pairTimelineRows -TimingSummary $overallTiming -CommentTruncated:$false -TruncationReason 'none'
 
 $summary = [pscustomobject]@{
     schema      = 'pr-vi-history-summary@v1'
@@ -1222,6 +1329,7 @@ $summary = [pscustomobject]@{
     pairTimeline= $pairTimelineRows
     timing      = $overallTiming
     estimatedCompareTime = $overallTiming.estimatedCompareTime
+    kpi         = $kpiEnvelope
 }
 
 $summary | ConvertTo-Json -Depth 12 | Set-Content -LiteralPath $effectiveSummaryPath -Encoding utf8
