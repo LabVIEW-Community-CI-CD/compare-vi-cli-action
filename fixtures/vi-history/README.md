@@ -50,3 +50,18 @@ Extend the `steps` list when new scenarios are required; tests ensure every refe
   }
 }
 ```
+
+## Policy Gate Semantics
+
+`tools/Test-PRVIHistorySmoke.ps1` evaluates each expected target with a hybrid
+policy contract:
+
+- `strict` (`requireDiff: true`):
+  - missing rows, zero comparisons, or missing required diffs are **hard
+    failures** (blocking).
+- `smoke` (`requireDiff: false`):
+  - the same conditions are emitted as **warnings** (non-blocking) so
+    diagnostics stay visible without failing the run.
+
+The smoke summary JSON now includes `Policy` (`vi-history-policy-gate@v1`) with
+separate strict failure and smoke warning buckets.
