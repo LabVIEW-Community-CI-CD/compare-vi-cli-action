@@ -646,51 +646,6 @@ function Parse-ContainerMeta {
   return $meta
 }
 
-function Get-LabVIEWCliErrorCode {
-  param(
-    [AllowNull()][string]$StdErr,
-    [AllowNull()][string]$StdOut
-  )
-
-  $combined = @($StdErr, $StdOut) -join "`n"
-  if ([string]::IsNullOrWhiteSpace($combined)) {
-    return $null
-  }
-
-  $match = [regex]::Match($combined, 'Error code\s*:\s*(-?\d+)')
-  if ($match.Success -and -not [string]::IsNullOrWhiteSpace($match.Groups[1].Value)) {
-    return [int]$match.Groups[1].Value
-  }
-  return $null
-}
-
-function Resolve-RunFailureClassification {
-  param(
-    [Parameter(Mandatory)][string]$Image,
-    [AllowNull()][string]$StdErr,
-    [AllowNull()][string]$StdOut,
-    [Parameter(Mandatory)][int]$ExitCode
-  )
-
-  $classification = [ordered]@{
-    status = 'error'
-    classification = 'run-error'
-    message = Resolve-RunFailureMessage -StdErr $StdErr -StdOut $StdOut -ExitCode $ExitCode
-    labviewCliErrorCode = Get-LabVIEWCliErrorCode -StdErr $StdErr -StdOut $StdOut
-    recommendation = $null
-  }
-
-  if ($classification.labviewCliErrorCode -eq -350000) {
-    $classification.classification = 'labview-cli-connection'
-    $classification.recommendation = @(
-      "LabVIEW CLI could not connect inside image '$Image'.",
-      "Confirm the image/runtime supports LabVIEW CLI operations on this host.",
-      "Use the capture stderr/stdout artifacts and NI image documentation to validate container prerequisites."
-    ) -join ' '
-  }
-  return [pscustomobject]$classification
-}
-
 if ($TimeoutSeconds -le 0) {
   throw '-TimeoutSeconds must be greater than zero.'
 }
@@ -736,9 +691,6 @@ $capture = [ordered]@{
   isDiff        = $false
   gateOutcome   = 'fail'
   failureClass  = 'preflight'
-  reportExists  = $false
-  labviewCliErrorCode = $null
-  recommendation = $null
   message       = $null
 }
 
@@ -825,7 +777,7 @@ try {
       New-Item -ItemType Directory -Path $reportDirectory -Force | Out-Null
     }
     if (Test-Path -LiteralPath $resolvedReportPath -PathType Leaf) {
-      Remove-Item -LiteralPath $resolvedReportPath -Force -ErrorAction Stop
+      Remove-Item -LiteralPath $resolvedReportPath -Force -ErrorAction SilentlyContinue
     }
 
     $capturePath = Join-Path $reportDirectory 'ni-windows-container-capture.json'
@@ -985,9 +937,6 @@ try {
   $capture.gateOutcome = [string]$classification.gateOutcome
   $capture.failureClass = [string]$classification.failureClass
 
-  if (-not [string]::IsNullOrWhiteSpace($capture.reportPath)) {
-    $capture.reportExists = Test-Path -LiteralPath $capture.reportPath -PathType Leaf
-  }
   if (-not $Probe) {
     if ($stdoutPath) { Write-TextArtifact -Path $stdoutPath -Content $stdoutContent }
     if ($stderrPath) { Write-TextArtifact -Path $stderrPath -Content $stderrContent }
