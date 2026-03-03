@@ -34,6 +34,18 @@ Describe 'Update-SessionIndexParity.ps1' -Tag 'Unit' {
       tipDiff = [ordered]@{
         fileCount = 0
       }
+      treeParity = [ordered]@{
+        equal = $true
+        status = 'equal'
+      }
+      historyParity = [ordered]@{
+        equal = $false
+        status = 'diverged'
+      }
+      recommendation = [ordered]@{
+        code = 'history-diverged-tree-equal'
+        summary = 'Tree aligned, history diverged.'
+      }
       commitDivergence = [ordered]@{
         baseOnly = 33
         headOnly = 126
@@ -54,14 +66,20 @@ Describe 'Update-SessionIndexParity.ps1' -Tag 'Unit' {
     $updated = Get-Content -LiteralPath $sessionIndexPath -Raw | ConvertFrom-Json -Depth 30
     $updated.runContext.parity.status | Should -Be 'ok'
     $updated.runContext.parity.tipDiff.fileCount | Should -Be 0
+    $updated.runContext.parity.treeParity.status | Should -Be 'equal'
+    $updated.runContext.parity.historyParity.status | Should -Be 'diverged'
+    $updated.runContext.parity.recommendation.code | Should -Be 'history-diverged-tree-equal'
     $updated.runContext.parity.commitDivergence.baseOnly | Should -Be 33
     $updated.runContext.parity.commitDivergence.headOnly | Should -Be 126
     $updated.runContext.parity.reportPath | Should -Be $parityPath
 
     $summary = Get-Content -LiteralPath $summaryPath -Raw
     $summary | Should -Match 'Origin/Upstream Parity Telemetry'
+    $summary | Should -Match 'Tree Parity \| equal'
+    $summary | Should -Match 'History Parity \| diverged'
     $summary | Should -Match 'Tip Diff File Count \| 0'
     $summary | Should -Match 'Commit Divergence \(base-only/head-only\) \| 33/126'
+    $summary | Should -Match 'Recommendation \| history-diverged-tree-equal'
   }
 
   It 'writes unavailable parity telemetry when report is missing' {
@@ -91,4 +109,3 @@ Describe 'Update-SessionIndexParity.ps1' -Tag 'Unit' {
     } | Should -Not -Throw
   }
 }
-
