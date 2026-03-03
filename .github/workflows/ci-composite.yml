@@ -1,249 +1,30 @@
 name: CI Pipeline (Composite)
-# Builds, tests, and packages the Icon Editor. See docs/ci-workflows.md for details.
 
 permissions:
   contents: read
 
-concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
-
 on:
-  push:
-    branches:
-      - main
-      - develop
-      - release-alpha/*
-      - release-beta/*
-      - release-rc/*
-      - feature/*
-      - hotfix/*
-      - issue-*
-  pull_request:
-    branches:
-      - main
-      - develop
-      - release-alpha/*
-      - release-beta/*
-      - release-rc/*
-      - feature/*
-      - hotfix/*
-      - issue-*
-    types:
-      - opened
-      - synchronize
-      - reopened
-      - ready_for_review
-  workflow_dispatch: # manual trigger
+  workflow_dispatch:
 
 jobs:
-  # Detect if VIPC files changed to decide whether dependencies must be installed
-  changes:
-    name: Detect VIPC changes
+  legacy-compatibility-notice:
+    name: Legacy Compatibility Notice
     runs-on: ubuntu-latest
-    outputs:
-      vipc: ${{ steps.filter.outputs.vipc }}
     steps:
-      - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-      - id: filter
-        uses: dorny/paths-filter@v3
-        with:
-          filters: |
-            vipc:
-              - '**/*.vipc'
-
-  apply-deps:
-    name: Apply VIPC Dependencies
-    needs: changes
-    if: needs.changes.outputs.vipc == 'true'
-    runs-on: [self-hosted, Windows, X64]
-    strategy:
-      matrix:
-        include:
-          - lv-version: "2021"
-            bitness: "32"
-          - lv-version: "2021"
-            bitness: "64"
-          - lv-version: "2025"
-            bitness: "64"
-    steps:
-      - uses: ./.github/actions/apply-vipc
-        with:
-          minimum_supported_lv_version: ${{ matrix['lv-version'] }}
-          vip_lv_version:               ${{ matrix['lv-version'] }}
-          supported_bitness:            ${{ matrix.bitness }}
-          relative_path:                ${{ github.workspace }}
-
-  version:
-    name: Compute Version
-    runs-on: [self-hosted, Windows, X64]
-    outputs:
-      VERSION:       ${{ steps.compute.outputs.VERSION }}
-      MAJOR:         ${{ steps.compute.outputs.MAJOR }}
-      MINOR:         ${{ steps.compute.outputs.MINOR }}
-      PATCH:         ${{ steps.compute.outputs.PATCH }}
-      BUILD:         ${{ steps.compute.outputs.BUILD }}
-      IS_PRERELEASE: ${{ steps.compute.outputs.IS_PRERELEASE }}
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-      - id: compute
-        uses: ./.github/actions/compute-version
-        with:
-          github_token: ${{ secrets.GITHUB_TOKEN }}
-
-  missing-in-project-check:
-    name: Test Missing-In-Project Action on Windows
-    needs: [changes, apply-deps]
-    if: ${{ needs.changes.result == 'success' && (needs.apply-deps.result == 'success' || needs.apply-deps.result == 'skipped') }}
-    runs-on: [self-hosted, Windows, X64]
-    strategy:
-      fail-fast: false
-      matrix:
-        lv-version: ["2021"]
-        bitness:    ["64","32"]
-    steps:
-      - uses: ./.github/actions/missing-in-project
-        with:
-          lv-ver:       ${{ matrix.lv-version }}
-          arch:         ${{ matrix.bitness }}
-          project-file: "vendor/icon-editor/lv_icon_editor.lvproj"
-
-  test:
-    name: Run Unit Tests
-    needs: [changes, missing-in-project-check]
-    runs-on: [self-hosted, Windows, X64]
-    strategy:
-      matrix:
-        os: [windows]
-        lv-version: ["2021"]
-        bitness: ["64","32"]
-      fail-fast: false
-    steps:
-      - uses: ./.github/actions/run-unit-tests
-        with:
-          minimum_supported_lv_version: ${{ matrix['lv-version'] }}
-          supported_bitness:            ${{ matrix.bitness }}
-          project-file:                 vendor/icon-editor/lv_icon_editor.lvproj
-
-  build-ppl:
-    name: Build ${{ matrix.bitness }}-bit Packed Library
-    needs: [test, version]
-    runs-on: [self-hosted, Windows, X64]
-    permissions:
-      contents: read
-      actions: write
-    strategy:
-      matrix:
-        bitness: [32, 64]
-        include:
-          - bitness: 32
-            suffix: x86
-          - bitness: 64
-            suffix: x64
-    steps:
-      - uses: ./.github/actions/build-lvlibp
-        with:
-          minimum_supported_lv_version: 2021
-          supported_bitness: ${{ matrix.bitness }}
-          relative_path: ${{ github.workspace }}/vendor/icon-editor
-          major: ${{ needs.version.outputs.MAJOR }}
-          minor: ${{ needs.version.outputs.MINOR }}
-          patch: ${{ needs.version.outputs.PATCH }}
-          build: ${{ needs.version.outputs.BUILD }}
-          commit: ${{ github.sha }}
-      - uses: ./.github/actions/close-labview
-        with:
-          minimum_supported_lv_version: 2021
-          supported_bitness: ${{ matrix.bitness }}
-      - uses: ./.github/actions/rename-file
-        with:
-          current_filename: ${{ github.workspace }}/vendor/icon-editor/resource/plugins/lv_icon.lvlibp
-          new_filename: ${{ github.workspace }}/vendor/icon-editor/resource/plugins/lv_icon_${{ matrix.suffix }}.lvlibp
-      - uses: actions/upload-artifact@v4
-        with:
-          name: lv_icon_${{ matrix.suffix }}.lvlibp
-          path: vendor/icon-editor/resource/plugins/lv_icon_${{ matrix.suffix }}.lvlibp
-
-  build-vi-package:
-    name: Build VI Package
-    needs: [build-ppl, version]
-    runs-on: [self-hosted, Windows, X64]
-    permissions:
-      contents: read
-      actions: read
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-      - name: Generate release notes
-        uses: ./.github/actions/generate-release-notes
-        # output_path defaults to Tooling/deployment/release_notes.md
-      - uses: actions/download-artifact@v4
-        with:
-          path: resource/plugins
-          pattern: lv_icon_*.lvlibp
-          merge-multiple: true
-      - name: Generate display information JSON
-        id: display-info
-        shell: pwsh
+      - name: Emit deprecation notice
+        shell: bash
         run: |
-          $info = @{
-            "Package Version" = @{
-              "major" = ${{ needs.version.outputs.MAJOR }}
-              "minor" = ${{ needs.version.outputs.MINOR }}
-              "patch" = ${{ needs.version.outputs.PATCH }}
-              "build" = ${{ needs.version.outputs.BUILD }}
-            }
-            "Product Name" = ""
-            "Company Name" = "${{ github.repository_owner }}"
-            "Author Name (Person or Company)" = "${{ github.event.repository.name }}"
-            "Product Homepage (URL)" = ""
-            "Legal Copyright" = ""
-            "License Agreement Name" = ""
-            "Product Description Summary" = ""
-            "Product Description" = ""
-            "Release Notes - Change Log" = ""
-          }
-          $json = $info | ConvertTo-Json -Depth 5 -Compress
-          "json=$json" >> $Env:GITHUB_OUTPUT
-      - uses: ./.github/actions/modify-vipb-display-info
-        with:
-          supported_bitness: 64
-          relative_path: ${{ github.workspace }}
-          vipb_path: .github/actions/build-vi-package/NI Icon editor.vipb
-          minimum_supported_lv_version: 2025
-          labview_minor_revision: 3
-          major: ${{ needs.version.outputs.MAJOR }}
-          minor: ${{ needs.version.outputs.MINOR }}
-          patch: ${{ needs.version.outputs.PATCH }}
-          build: ${{ needs.version.outputs.BUILD }}
-          commit: ${{ github.sha }}
-          release_notes_file: ${{ github.workspace }}/Tooling/deployment/release_notes.md
-          display_information_json: ${{ steps.display-info.outputs.json }}
-      - uses: ./.github/actions/build-vi-package
-        with:
-          supported_bitness: 64
-          minimum_supported_lv_version: 2025
-          labview_minor_revision: 3
-          major: ${{ needs.version.outputs.MAJOR }}
-          minor: ${{ needs.version.outputs.MINOR }}
-          patch: ${{ needs.version.outputs.PATCH }}
-          build: ${{ needs.version.outputs.BUILD }}
-          commit: ${{ github.sha }}
-          release_notes_file: ${{ github.workspace }}/Tooling/deployment/release_notes.md
-          display_information_json: ${{ steps.display-info.outputs.json }}
-      - uses: ./.github/actions/close-labview
-        with:
-          minimum_supported_lv_version: 2025
-          supported_bitness: 64
-      - name: Upload VI Package
-        uses: actions/upload-artifact@v4
-        with:
-          name: vi-package
-          path: builds/VI Package/*.vip
+          echo "::notice::ci-composite.yml is a manual compatibility stub."
+          echo "::notice::Use Validate + Fixture Drift Validation for active CI gates."
 
-
+      - name: Append summary
+        shell: bash
+        run: |
+          {
+            echo "### CI Pipeline (Composite) Status"
+            echo ""
+            echo "- This workflow is intentionally reduced to a manual compatibility stub."
+            echo "- Active branch-protection and standing-priority validation runs in:"
+            echo "  - \`Validate\`"
+            echo "  - \`Fixture Drift Validation\`"
+          } >> "$GITHUB_STEP_SUMMARY"

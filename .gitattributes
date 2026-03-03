@@ -1,2 +1,24 @@
+# Binary fixtures
 *.vi binary
+
+# Deterministic line endings for cross-platform CI/agent flows.
+# Keep source, workflow, and documentation files normalized to LF to avoid
+# repetitive "LF will be replaced by CRLF" warning noise on Windows hosts.
+*.ps1 text eol=lf
+*.psm1 text eol=lf
+*.psd1 text eol=lf
+*.yml text eol=lf
+*.yaml text eol=lf
+*.json text eol=lf
+*.jsonc text eol=lf
+*.md text eol=lf
+*.mjs text eol=lf
+*.js text eol=lf
+*.ts text eol=lf
+*.sh text eol=lf
+*.xml text eol=lf
+
+# Windows command wrappers stay CRLF-native.
+*.cmd text eol=crlf
+*.bat text eol=crlf
 

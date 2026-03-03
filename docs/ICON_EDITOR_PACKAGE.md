@@ -378,8 +378,9 @@ carries the actual LabVIEW payload.
 
 ## Local replay for CI build failures
 
-When the `Build VI Package` job fails late in `ci-composite.yml`, you can replay that
-stage locally without re-running the whole pipeline:
+When a historical `Build VI Package` job fails in the legacy
+`ci-composite.yml` workflow, you can replay that stage locally without
+re-running the full legacy pipeline:
 
 ```powershell
 pwsh tools/icon-editor/Replay-BuildVipJob.ps1 -RunId <workflow-run-id>

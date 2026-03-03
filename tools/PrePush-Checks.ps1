@@ -19,6 +19,7 @@ param(
 $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version Latest
 Import-Module (Join-Path (Split-Path -Parent $PSCommandPath) 'VendorTools.psm1') -Force
+Import-Module (Join-Path (Split-Path -Parent $PSCommandPath) 'PrePush-IconEditorScope.psm1') -Force
 
 function Write-Info([string]$msg){ Write-Host $msg -ForegroundColor DarkGray }
 
@@ -127,12 +128,32 @@ Write-Host '[pre-push] actionlint OK' -ForegroundColor Green
 
 $updateReportScript = Join-Path $root 'tools' 'icon-editor' 'Update-IconEditorFixtureReport.ps1'
 if (Test-Path -LiteralPath $updateReportScript -PathType Leaf) {
-  if ($SkipIconEditorFixtureChecks -or ($env:PREPUSH_SKIP_ICON_EDITOR_FIXTURE_CHECKS -eq '1')) {
-    Write-Host '[pre-push] Skipping icon-editor fixture freshness checks by request' -ForegroundColor Yellow
+  $skipLegacyFixtureChecks = $SkipIconEditorFixtureChecks `
+    -or ($env:PREPUSH_SKIP_ICON_EDITOR_FIXTURE_CHECKS -match '^(1|true|yes|on)$') `
+    -or ($env:PREPUSH_SKIP_LEGACY_FIXTURE_CHECKS -match '^(1|true|yes|on)$')
+  if ($skipLegacyFixtureChecks) {
+    Write-Host '[pre-push] Skipping legacy fixture freshness checks by request' -ForegroundColor Yellow
     return
   }
   if (-not $IsWindows) {
-    Write-Host '[pre-push] Skipping icon-editor fixture freshness checks on non-Windows host' -ForegroundColor Yellow
+    Write-Host '[pre-push] Skipping legacy fixture freshness checks on non-Windows host' -ForegroundColor Yellow
+    return
+  }
+  $refUpdateLines = @()
+  try {
+    if ([Console]::IsInputRedirected) {
+      $rawRefInput = [Console]::In.ReadToEnd()
+      if (-not [string]::IsNullOrWhiteSpace($rawRefInput)) {
+        $refUpdateLines = @($rawRefInput -split "(`r`n|`n)" | Where-Object { -not [string]::IsNullOrWhiteSpace($_) })
+      }
+    }
+  } catch {}
+  $forceIconEditorChecks = ($env:PREPUSH_FORCE_ICON_EDITOR_FIXTURE_CHECKS -match '^(1|true|yes|on)$') `
+    -or ($env:PREPUSH_FORCE_LEGACY_FIXTURE_CHECKS -match '^(1|true|yes|on)$')
+  $changedPaths = Get-PrePushChangedPaths -RepoRoot $root -RefUpdateLines $refUpdateLines
+  $shouldRunIconEditorChecks = Test-IconEditorFixtureCheckRequired -ChangedPaths $changedPaths -Force:$forceIconEditorChecks
+  if (-not $shouldRunIconEditorChecks) {
+    Write-Host '[pre-push] Skipping icon-editor fixture freshness checks (no icon-editor scoped paths changed)' -ForegroundColor Yellow
     return
   }
   Write-Host '[pre-push] Verifying icon-editor fixture report freshness' -ForegroundColor Cyan
