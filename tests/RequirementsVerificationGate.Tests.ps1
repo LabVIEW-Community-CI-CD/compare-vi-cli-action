@@ -2,6 +2,8 @@ Describe 'Requirements verification gate' {
   BeforeAll {
     $repoRoot = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path
     $scriptPath = Join-Path $repoRoot 'tools/Verify-RequirementsGate.ps1'
+    $schemaLitePath = Join-Path $repoRoot 'tools/Invoke-JsonSchemaLite.ps1'
+    $summarySchemaPath = Join-Path $repoRoot 'docs/schemas/requirements-verification-v1.schema.json'
 
     function Invoke-GateScript {
       param(
@@ -80,6 +82,10 @@ Describe 'Requirements verification gate' {
     $summary.deltas.newUncoveredRequirementIds.Count | Should -Be 0
 
     (Get-Content -LiteralPath $ghOut -Raw) | Should -Match 'verification-status=pass'
+
+    $schemaValidation = & pwsh -NoLogo -NonInteractive -NoProfile -File $schemaLitePath -JsonPath $summaryPath -SchemaPath $summarySchemaPath
+    $LASTEXITCODE | Should -Be 0
+    ($schemaValidation -join "`n") | Should -Match 'Schema-lite validation passed.'
   }
 
   It 'fails when new unknown requirement IDs are introduced' {

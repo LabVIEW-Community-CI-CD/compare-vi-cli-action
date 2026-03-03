@@ -35,6 +35,13 @@ jobs:
             -GitHubOutputPath $env:GITHUB_OUTPUT `
             -StepSummaryPath $env:GITHUB_STEP_SUMMARY
 
+      - name: Validate verification summary schema
+        shell: pwsh
+        run: |
+          pwsh -NoLogo -NonInteractive -NoProfile -File tools/Invoke-JsonSchemaLite.ps1 `
+            -JsonPath tests/results/_agent/verification/verification-summary.json `
+            -SchemaPath docs/schemas/requirements-verification-v1.schema.json
+
       - name: Upload verification artifacts
         if: always()
         uses: actions/upload-artifact@v5
