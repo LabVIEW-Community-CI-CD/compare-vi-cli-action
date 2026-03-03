@@ -35,6 +35,14 @@ internal static class Program
                     return CmdOperations(args);
                 case "providers":
                     return CmdProviders(args);
+                case "compare":
+                    return CmdCompare(args);
+                case "history":
+                    return CmdHistory(args);
+                case "report":
+                    return CmdReport(args);
+                case "contracts":
+                    return CmdContracts(args);
                 default:
                     Console.Error.WriteLine($"Unknown command: {cmd}");
                     PrintHelp();
@@ -61,6 +69,10 @@ internal static class Program
         Console.WriteLine("  comparevi-cli quote --path <path>");
         Console.WriteLine("  comparevi-cli operations [--name <operation>] [--names-only]");
         Console.WriteLine("  comparevi-cli providers [--name <provider>] [--names-only]");
+        Console.WriteLine("  comparevi-cli compare single --input <file> --dry-run [--diff] [--exit-code <n>] [--failure-class <name>]");
+        Console.WriteLine("  comparevi-cli history run --input <file> --dry-run [--diff] [--exit-code <n>] [--failure-class <name>]");
+        Console.WriteLine("  comparevi-cli report consolidate --input <file> --dry-run");
+        Console.WriteLine("  comparevi-cli contracts validate --input <file>");
     }
 
     private static int CmdVersion()
@@ -242,6 +254,173 @@ internal static class Program
 
         Console.Error.WriteLine($"Provider '{providerName}' was not found in the providers catalog.");
         return 3;
+    }
+
+    private static int CmdCompare(string[] args)
+    {
+        if (args.Length < 2 || !args[1].Equals("single", StringComparison.OrdinalIgnoreCase))
+        {
+            Console.Error.WriteLine("Usage: comparevi-cli compare single --input <file> --dry-run [--diff] [--exit-code <n>] [--failure-class <name>]");
+            return 2;
+        }
+
+        return RunDryContractLane(
+            lane: "compare-single",
+            schema: "comparevi-cli/compare-single@v1",
+            command: "compare single",
+            args: args,
+            tailStart: 2
+        );
+    }
+
+    private static int CmdHistory(string[] args)
+    {
+        if (args.Length < 2 || !args[1].Equals("run", StringComparison.OrdinalIgnoreCase))
+        {
+            Console.Error.WriteLine("Usage: comparevi-cli history run --input <file> --dry-run [--diff] [--exit-code <n>] [--failure-class <name>]");
+            return 2;
+        }
+
+        return RunDryContractLane(
+            lane: "history-run",
+            schema: "comparevi-cli/history-run@v1",
+            command: "history run",
+            args: args,
+            tailStart: 2
+        );
+    }
+
+    private static int CmdReport(string[] args)
+    {
+        if (args.Length < 2 || !args[1].Equals("consolidate", StringComparison.OrdinalIgnoreCase))
+        {
+            Console.Error.WriteLine("Usage: comparevi-cli report consolidate --input <file> --dry-run");
+            return 2;
+        }
+
+        return RunDryContractLane(
+            lane: "report-consolidate",
+            schema: "comparevi-cli/report-consolidate@v1",
+            command: "report consolidate",
+            args: args,
+            tailStart: 2
+        );
+    }
+
+    private static int CmdContracts(string[] args)
+    {
+        if (args.Length < 2 || !args[1].Equals("validate", StringComparison.OrdinalIgnoreCase))
+        {
+            Console.Error.WriteLine("Usage: comparevi-cli contracts validate --input <file>");
+            return 2;
+        }
+
+        if (!TryReadOption(args, 2, "--input", out var inputPath) || string.IsNullOrWhiteSpace(inputPath))
+        {
+            Console.Error.WriteLine("Missing required option: --input <file>");
+            return 2;
+        }
+
+        var exists = File.Exists(inputPath);
+        var payload = new Dictionary<string, object?>
+        {
+            ["schema"] = "comparevi-cli/contracts-validate@v1",
+            ["command"] = "contracts validate",
+            ["generatedAtUtc"] = DateTimeOffset.UtcNow.ToString("O"),
+            ["inputPath"] = Path.GetFullPath(inputPath),
+            ["exists"] = exists,
+            ["valid"] = exists,
+            ["resultClass"] = exists ? "success-no-diff" : "failure-preflight",
+            ["isDiff"] = false,
+            ["gateOutcome"] = exists ? "pass" : "fail",
+            ["failureClass"] = exists ? "none" : "preflight"
+        };
+
+        Console.WriteLine(JsonSerializer.Serialize(payload, SerializerOptions));
+        return exists ? 0 : 1;
+    }
+
+    private static int RunDryContractLane(string lane, string schema, string command, string[] args, int tailStart)
+    {
+        if (!TryReadOption(args, tailStart, "--input", out var inputPath) || string.IsNullOrWhiteSpace(inputPath))
+        {
+            Console.Error.WriteLine("Missing required option: --input <file>");
+            return 2;
+        }
+
+        var dryRun = HasFlag(args, tailStart, "--dry-run");
+        if (!dryRun)
+        {
+            Console.Error.WriteLine($"Command '{command}' currently supports adapter-dry-run only. Pass --dry-run.");
+            return 2;
+        }
+
+        var isDiff = HasFlag(args, tailStart, "--diff");
+        var exitCode = TryReadIntOption(args, tailStart, "--exit-code", out var parsedExitCode)
+            ? parsedExitCode
+            : (isDiff ? 1 : 0);
+        var declaredFailureClass = TryReadOption(args, tailStart, "--failure-class", out var failureClassValue)
+            ? failureClassValue
+            : null;
+
+        var classification = ExitClassification.Classify(exitCode, isDiff, declaredFailureClass);
+        var payload = new Dictionary<string, object?>
+        {
+            ["schema"] = schema,
+            ["lane"] = lane,
+            ["command"] = command,
+            ["generatedAtUtc"] = DateTimeOffset.UtcNow.ToString("O"),
+            ["inputPath"] = Path.GetFullPath(inputPath),
+            ["dryRun"] = dryRun,
+            ["simulatedExitCode"] = exitCode,
+            ["resultClass"] = classification.ResultClass,
+            ["isDiff"] = classification.IsDiff,
+            ["gateOutcome"] = classification.GateOutcome,
+            ["failureClass"] = classification.FailureClass
+        };
+
+        Console.WriteLine(JsonSerializer.Serialize(payload, SerializerOptions));
+        return string.Equals(classification.GateOutcome, "pass", StringComparison.OrdinalIgnoreCase) ? 0 : 1;
+    }
+
+    private static bool HasFlag(string[] args, int startIndex, string flag)
+    {
+        for (int i = startIndex; i < args.Length; i++)
+        {
+            if (args[i].Equals(flag, StringComparison.OrdinalIgnoreCase))
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private static bool TryReadOption(string[] args, int startIndex, string option, out string? value)
+    {
+        for (int i = startIndex; i < args.Length; i++)
+        {
+            if (args[i].Equals(option, StringComparison.OrdinalIgnoreCase) && i + 1 < args.Length)
+            {
+                value = args[i + 1];
+                return true;
+            }
+        }
+
+        value = null;
+        return false;
+    }
+
+    private static bool TryReadIntOption(string[] args, int startIndex, string option, out int value)
+    {
+        if (TryReadOption(args, startIndex, option, out var raw) && int.TryParse(raw, out var parsed))
+        {
+            value = parsed;
+            return true;
+        }
+
+        value = 0;
+        return false;
     }
 
     private static JsonSerializerOptions CreateSerializerOptions()
