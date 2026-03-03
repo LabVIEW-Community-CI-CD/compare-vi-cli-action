@@ -115,6 +115,53 @@ Describe 'Assert-LineEndingDeterminism.ps1' {
     }
   }
 
+  It 'handles GitHub event payloads without pull_request metadata' {
+    $repoPath = Join-Path $TestDrive 'eol-gha-no-pr-event'
+    $toolsPath = Join-Path $repoPath 'tools'
+    New-Item -ItemType Directory -Path $toolsPath -Force | Out-Null
+    New-Item -ItemType Directory -Path (Join-Path $repoPath 'docs') -Force | Out-Null
+    New-Item -ItemType Directory -Path (Join-Path $repoPath 'tests/results/lint') -Force | Out-Null
+
+    Copy-Item -LiteralPath $script:GuardScript -Destination (Join-Path $toolsPath 'Assert-LineEndingDeterminism.ps1') -Force
+    @'
+*.md text eol=lf
+'@ | Set-Content -LiteralPath (Join-Path $repoPath '.gitattributes') -Encoding ascii
+    [System.IO.File]::WriteAllBytes((Join-Path $repoPath 'docs/good.md'), [byte[]][char[]]"# Good`n")
+
+    Push-Location $repoPath
+    $oldGitHubActions = $env:GITHUB_ACTIONS
+    $oldGitHubEventPath = $env:GITHUB_EVENT_PATH
+    try {
+      git init | Out-Null
+      git config core.autocrlf false
+      git config user.email eol-tests@example.com
+      git config user.name eol-tests
+      git add .gitattributes docs/good.md tools/Assert-LineEndingDeterminism.ps1
+      git commit -m 'init' | Out-Null
+
+      $eventPath = Join-Path $repoPath 'event.json'
+      $eventPayload = [ordered]@{
+        action = 'requested'
+      }
+      $eventPayload | ConvertTo-Json -Depth 4 | Set-Content -LiteralPath $eventPath -Encoding utf8
+
+      $env:GITHUB_ACTIONS = 'true'
+      $env:GITHUB_EVENT_PATH = $eventPath
+      $reportPath = Join-Path $repoPath 'tests/results/lint/line-ending-drift.json'
+
+      & pwsh -NoLogo -NoProfile -File (Join-Path $repoPath 'tools/Assert-LineEndingDeterminism.ps1')
+      $LASTEXITCODE | Should -Be 0
+      Test-Path -LiteralPath $reportPath | Should -BeTrue
+
+      $report = Get-Content -LiteralPath $reportPath -Raw | ConvertFrom-Json
+      $report.violationCount | Should -Be 0
+    } finally {
+      $env:GITHUB_ACTIONS = $oldGitHubActions
+      $env:GITHUB_EVENT_PATH = $oldGitHubEventPath
+      Pop-Location
+    }
+  }
+
   It 'uses merge-parent diff scope on synthetic merge commits in GitHub Actions' {
     $repoPath = Join-Path $TestDrive 'eol-gha-merge-scope'
     $toolsPath = Join-Path $repoPath 'tools'

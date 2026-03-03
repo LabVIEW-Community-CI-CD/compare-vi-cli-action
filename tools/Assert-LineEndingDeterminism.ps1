@@ -33,10 +33,17 @@ function Resolve-PullRequestRangeFromEvent {
   } catch {
     return $null
   }
-  if (-not $event.pull_request) { return $null }
+  if (-not $event) { return $null }
+  if (-not ($event.PSObject.Properties.Name -contains 'pull_request')) { return $null }
 
-  $baseSha = [string]$event.pull_request.base.sha
-  $headSha = [string]$event.pull_request.head.sha
+  $pullRequest = $event.pull_request
+  if (-not $pullRequest) { return $null }
+  if (-not ($pullRequest.PSObject.Properties.Name -contains 'base')) { return $null }
+  if (-not ($pullRequest.PSObject.Properties.Name -contains 'head')) { return $null }
+  if (-not $pullRequest.base -or -not $pullRequest.head) { return $null }
+
+  $baseSha = if ($pullRequest.base.PSObject.Properties.Name -contains 'sha') { [string]$pullRequest.base.sha } else { '' }
+  $headSha = if ($pullRequest.head.PSObject.Properties.Name -contains 'sha') { [string]$pullRequest.head.sha } else { '' }
   if ([string]::IsNullOrWhiteSpace($baseSha) -or [string]::IsNullOrWhiteSpace($headSha)) {
     return $null
   }
