@@ -7,8 +7,12 @@ line buffers).
 
 ## Primary directive
 
-- The standing priority is whichever issue carries the `standing-priority`
-  label. Use the sanitized wrappers (`node tools/npm/cli.mjs <command>` /
+- The standing priority is whichever issue carries the active standing-priority
+  label for the current repository context:
+  - canonical/upstream: `standing-priority`
+  - fork repos: `fork-standing-priority` (with fallback to
+    `standing-priority` for compatibility)
+  Use the sanitized wrappers (`node tools/npm/cli.mjs <command>` /
   `node tools/npm/run-script.mjs <script>`) instead of raw `npm` invocations
   (the container exports `npm_config_http_proxy`, which triggers warnings in
   recent npm builds). Run `pwsh -NoLogo -NoProfile -File
