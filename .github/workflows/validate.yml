@@ -862,7 +862,7 @@ jobs:
         github.repository == 'LabVIEW-Community-CI-CD/compare-vi-cli-action' ||
         github.event.inputs.allow_noncanonical_vi_history == 'true'
       )
-    runs-on: [self-hosted, Windows, X64, self-hosted-docker]
+    runs-on: [self-hosted, Windows, X64, self-hosted-docker-windows]
     defaults:
       run:
         shell: pwsh
