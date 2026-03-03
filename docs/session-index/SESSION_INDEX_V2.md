@@ -46,7 +46,7 @@
   "branchProtection": {
     "status": "error",
     "reason": "api_forbidden",
-    "expected": ["Validate / lint", "Validate / fixtures", "Validate / session-index"],
+    "expected": ["Validate / lint", "Validate / fixtures", "Validate / session-index", "Requirements Verification / requirements-verification"],
     "actual": ["Validate", "Policy Guard (Upstream) / policy-guard"],
     "notes": [
       "Branch protection query failed: Response status code does not indicate success: 403 (Forbidden)."

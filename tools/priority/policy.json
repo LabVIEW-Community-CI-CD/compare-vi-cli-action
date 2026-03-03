@@ -13,6 +13,7 @@
         "Validate / fixtures",
         "Validate / session-index",
         "Validate / issue-snapshot",
+        "Requirements Verification / requirements-verification",
         "Policy Guard (Upstream) / policy-guard"
       ],
       "required_linear_history": true
@@ -50,6 +51,7 @@
         "Validate / fixtures",
         "Validate / session-index",
         "Validate / issue-snapshot",
+        "Requirements Verification / requirements-verification",
         "Policy Guard (Upstream) / policy-guard"
       ],
       "merge_queue": null,
