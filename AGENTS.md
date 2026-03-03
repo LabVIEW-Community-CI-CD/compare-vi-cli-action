@@ -130,6 +130,11 @@ line buffers).
   - Full dual-lane validation:
     - `pwsh -NoLogo -NoProfile -File tools/Test-DockerDesktopFastLoop.ps1 -LaneScope both -StepTimeoutSeconds 600`
   - `-ManageDockerEngine` is only allowed with `-LaneScope both`.
+- Markdown lint changed-file contract:
+  - `tools/Lint-Markdown.ps1` and `tools/lint-markdown.mjs` suppress temporary
+    draft files (`.tmp-*.md`, `pr-*-body.md`) during changed-file runs.
+  - Tracked markdown is still linted; temp-file suppression is only for
+    untracked local drafts.
 - Optional hook workflow:
   1. `git config core.hooksPath tools/hooks`
   2. Copy `tools/hooks/pre-push.sample` to `tools/hooks/pre-push`
