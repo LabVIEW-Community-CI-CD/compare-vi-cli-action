@@ -21,6 +21,16 @@ on:
         description: 'VI history scenario set for self-hosted-docker validation (none|smoke|history-core)'
         required: false
         default: 'smoke'
+      allow_noncanonical_vi_history:
+        description: 'Allow vi-history-scenarios to run on non-canonical repos (manual override)'
+        required: false
+        type: boolean
+        default: false
+      allow_noncanonical_history_core:
+        description: 'Allow history-core scenario set on non-canonical repos (requires allow_noncanonical_vi_history=true)'
+        required: false
+        type: boolean
+        default: false
 
 concurrency:
   group: ${{ github.workflow }}-${{ (github.event_name == 'pull_request' && github.event.pull_request.number) || github.event.inputs.sample_id || github.ref }}
@@ -806,12 +816,37 @@ jobs:
         path: ${{ runner.temp }}/sessionindex/session-index.json
         if-no-files-found: warn
 
+  vi-history-scenarios-skip-note:
+    needs: [smoke-gate, lint, fixtures, session-index]
+    if: >
+      needs.smoke-gate.outputs.skip != 'true' &&
+      github.event_name == 'workflow_dispatch' &&
+      github.repository != 'LabVIEW-Community-CI-CD/compare-vi-cli-action' &&
+      github.event.inputs.allow_noncanonical_vi_history != 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Append canonical guard skip note
+        shell: bash
+        run: |
+          {
+            echo "### VI History Scenarios Guard"
+            echo ""
+            echo "- Skipped on non-canonical repository: \`${GITHUB_REPOSITORY}\`."
+            echo "- To run on origin/fork, dispatch Validate with:"
+            echo "  - \`allow_noncanonical_vi_history=true\`"
+            echo "- For \`history-core\` on origin/fork also set:"
+            echo "  - \`allow_noncanonical_history_core=true\`"
+          } >> "$GITHUB_STEP_SUMMARY"
+
   vi-history-scenarios:
     needs: [smoke-gate, lint, fixtures, session-index]
     if: >
       needs.smoke-gate.outputs.skip != 'true' &&
       github.event_name == 'workflow_dispatch' &&
-      github.repository == 'LabVIEW-Community-CI-CD/compare-vi-cli-action'
+      (
+        github.repository == 'LabVIEW-Community-CI-CD/compare-vi-cli-action' ||
+        github.event.inputs.allow_noncanonical_vi_history == 'true'
+      )
     runs-on: [self-hosted, Windows, X64, self-hosted-docker]
     defaults:
       run:
@@ -829,6 +864,20 @@ jobs:
           if ($allowed -notcontains $set) {
             throw ("Unsupported history_scenario_set '{0}'. Allowed: {1}" -f $setRaw, ($allowed -join ', '))
           }
+          $repo = '${{ github.repository }}'
+          $isCanonical = $repo -eq 'LabVIEW-Community-CI-CD/compare-vi-cli-action'
+          $allowNonCanonical = '${{ github.event.inputs.allow_noncanonical_vi_history }}' -eq 'true'
+          $allowNonCanonicalHistoryCore = '${{ github.event.inputs.allow_noncanonical_history_core }}' -eq 'true'
+
+          if (-not $isCanonical -and -not $allowNonCanonical) {
+            throw ("vi-history-scenarios non-canonical execution is disabled for '{0}'. Set allow_noncanonical_vi_history=true." -f $repo)
+          }
+
+          if (-not $isCanonical -and $set -eq 'history-core' -and -not $allowNonCanonicalHistoryCore) {
+            Write-Host "::warning::history-core is disabled on non-canonical repos unless allow_noncanonical_history_core=true. Downgrading to smoke."
+            $set = 'smoke'
+          }
+
           "history_scenario_set=$set" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
 
       - name: Run Docker Desktop fast-loop (Windows lane, VI history scenarios)
