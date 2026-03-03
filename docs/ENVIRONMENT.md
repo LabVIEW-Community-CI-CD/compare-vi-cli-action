@@ -87,6 +87,24 @@ Notes:
 - Capture JSON (`ni-windows-container-capture.json`) records machine-readable classification fields
   (`classification`, `labviewCliErrorCode`, `recommendation`, `reportExists`) for deterministic triage.
 
+### NI 2026 q1 host bootstrap preflight
+
+Use this when the NI Windows image is missing locally or to re-verify host readiness:
+
+```powershell
+node tools/npm/run-script.mjs docker:ni:windows:bootstrap
+```
+
+Default artifact path:
+
+- `tests/results/local-parity/windows-ni-2026q1-host-preflight.json`
+
+Common remediation:
+
+- Docker mode mismatch: switch Docker Desktop to Windows containers (`desktop-windows`) and retry.
+- Image pull failure: verify Docker Hub/GHCR connectivity and authentication, then rerun bootstrap.
+- Runtime probe failure: confirm the host can run Windows containers and that the NI tag is available.
+
 ## Tooling helpers
 
 | Variable | Purpose |

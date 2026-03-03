@@ -23,6 +23,47 @@ The Fixture Drift workflow:
 
 CI can gate on non-zero exit code or inspect `autoManifest.written` to flag drift.
 
+## Docker runtime manager contract
+
+Fixture Drift uses `tools/Invoke-DockerRuntimeManager.ps1` (schema `docker-runtime-manager@v1`) to
+enforce Docker Desktop engine determinism before Windows-host comparison steps.
+
+- Workflow job: `docker-runtime-manager` in `.github/workflows/fixture-drift.yml`
+- Primary artifact: `results/fixture-drift/docker-runtime-manager.json`
+- Windows lane context artifact:
+  `results/fixture-drift/docker-runtime-manager-context.json`
+- Windows runtime determinism snapshot:
+  `results/fixture-drift/windows-runtime-determinism.json`
+
+Dedicated Windows host lane name:
+
+- `Fixture Drift (Docker Desktop Host - LabVIEW 2026 q1 windows)`
+
+Reusable output keys emitted by the manager step:
+
+- `manager_status`
+- `manager_summary_path`
+- `windows_image_digest`
+- `linux_image_digest`
+- `start_context`
+- `final_context`
+
+The Windows fixture lane consumes these fields into step summary output and injects them into
+`session-index.json` under `runContext.dockerRuntimeManager` for downstream evidence review.
+
+The manager also bootstraps NI images when missing (`docker pull`) and records local runtime probe
+results per lane (`probes.<lane>.probe`), so evidence includes:
+
+- host OS + Docker start/final context metadata
+- local image presence and digest (`probes.<lane>.bootstrap.localDigest`)
+- probe command outcome (`probes.<lane>.probe.status` / `exitCode`)
+
+Quick local host bootstrap command:
+
+```powershell
+node tools/npm/run-script.mjs docker:ni:windows:bootstrap
+```
+
 ## Manual manifest updates
 
 For intentional fixture updates (outside automation):
