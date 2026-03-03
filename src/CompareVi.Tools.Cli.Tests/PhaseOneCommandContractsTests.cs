@@ -35,6 +35,8 @@ namespace CompareVi.Tools.Cli.Tests
             Assert.Equal("pass", json["outcome"]!["class"]!.GetValue<string>());
             Assert.Equal("no_diff", json["outcome"]!["kind"]!.GetValue<string>());
             Assert.True(json["checks"]!.AsArray().Count >= 1);
+            Assert.Contains(json["checks"]!.AsArray(), check =>
+                string.Equals(check!["id"]!.GetValue<string>(), "windows-host", StringComparison.OrdinalIgnoreCase));
             Assert.Empty(json["diagnostics"]!.AsArray());
         }
 
@@ -119,6 +121,37 @@ namespace CompareVi.Tools.Cli.Tests
             Assert.Equal("comparevi-cli/image-index@v1", json["imageIndex"]!["schema"]!.GetValue<string>());
             Assert.Equal("1.0.0", json["imageIndex"]!["schemaVersion"]!.GetValue<string>());
             Assert.Empty(json["imageIndex"]!["images"]!.AsArray());
+            Assert.True(json["items"]!.AsArray().Count >= 1);
+            Assert.True(json["items"]![0]!["timing"]!["durationMs"]!.GetValue<double>() >= 0);
+            Assert.True(json["timingSummary"]!["p50Ms"]!.GetValue<double>() >= 0);
+            Assert.True(json["timingSummary"]!["p90Ms"]!.GetValue<double>() >= 0);
+            Assert.True(json["timingSummary"]!["p95Ms"]!.GetValue<double>() >= 0);
+        }
+
+        [Fact]
+        public void CompareRange_NonInteractiveWithoutHeadless_FailsPolicy()
+        {
+            var run = RunCli("compare range --base origin/develop --head HEAD --dry-run --non-interactive");
+            Assert.Equal(1, run.ExitCode);
+
+            var json = JsonNode.Parse(run.StdOut)!.AsObject();
+            Assert.Equal("failure-preflight", json["resultClass"]!.GetValue<string>());
+            Assert.Equal("preflight", json["failureClass"]!.GetValue<string>());
+            Assert.Equal("fail", json["outcome"]!["class"]!.GetValue<string>());
+            Assert.Equal("preflight_error", json["outcome"]!["kind"]!.GetValue<string>());
+            Assert.Equal("headless-required", json["diagnostics"]![0]!["code"]!.GetValue<string>());
+        }
+
+        [Fact]
+        public void CompareRange_NonInteractiveWithHeadless_Passes()
+        {
+            var run = RunCli("compare range --base origin/develop --head HEAD --dry-run --non-interactive --headless");
+            Assert.Equal(0, run.ExitCode);
+
+            var json = JsonNode.Parse(run.StdOut)!.AsObject();
+            Assert.True(json["headless"]!.GetValue<bool>());
+            Assert.True(json["nonInteractive"]!.GetValue<bool>());
+            Assert.Equal("pass", json["gateOutcome"]!.GetValue<string>());
         }
 
         [Fact]
