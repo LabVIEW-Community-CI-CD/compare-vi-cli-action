@@ -24,10 +24,10 @@
 
 ### Integrity and provenance
 
-- [ ] SHA-256 checksum file published for each release asset.
-- [ ] SBOM (`spdx` or equivalent) is published.
-- [ ] Provenance attestation is published and references source revision/workflow run.
-- [ ] Signing verification procedure is documented and reproducible.
+- [x] SHA-256 checksum file published for each release asset.
+- [x] SBOM (`spdx` or equivalent) is published.
+- [x] Provenance attestation is published and references source revision/workflow run.
+- [x] Signing verification procedure is documented and reproducible.
 
 ### Contract compatibility
 
