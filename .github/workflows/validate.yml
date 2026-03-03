@@ -1128,8 +1128,12 @@ jobs:
           }
           $payload | ConvertTo-Json -Depth 8 | Set-Content -LiteralPath $summaryPath -Encoding utf8
 
-          if ($compareSucceeded -and -not $reportExists) {
-            throw ("Linux compare step succeeded but report file was not found: {0}" -f $reportPath)
+          $requireReport = $compareSucceeded -and [string]::Equals($captureResultClass, 'success-diff', [System.StringComparison]::OrdinalIgnoreCase)
+          if ($requireReport -and -not $reportExists) {
+            throw ("Linux compare classified success-diff but report file was not found: {0}" -f $reportPath)
+          }
+          if ($compareSucceeded -and -not $reportExists -and -not $requireReport) {
+            Write-Host ("::warning::Linux compare succeeded without diff classification ({0}); no report file was generated at {1}." -f $captureResultClass, $reportPath)
           }
           if (-not $reportExists) {
             Write-Host ("::warning::Linux comparison report not found at {0}" -f $reportPath)
@@ -1144,6 +1148,9 @@ jobs:
             tests/results/local-parity/linux/linux-compare-report.html
             tests/results/local-parity/linux/linux-compare-artifact-summary.json
             tests/results/local-parity/linux/ni-linux-container-capture.json
+            tests/results/local-parity/linux/ni-linux-container-stdout.txt
+            tests/results/local-parity/linux/ni-linux-container-stderr.txt
+            tests/results/local-parity/linux/container-export/**
             tests/results/local-parity/linux/runtime-manager-preflight-linux.json
             tests/results/local-parity/linux/runtime-manager-compare-linux.json
           if-no-files-found: warn
