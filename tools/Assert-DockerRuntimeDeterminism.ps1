@@ -332,6 +332,53 @@ function Test-IsDaemonUnavailableProbe {
   return $false
 }
 
+function Get-ProbeParseReasonNormalized {
+  param([AllowNull()]$Probe)
+
+  if ($null -eq $Probe) { return '' }
+  $parseReason = ''
+  if ($Probe.PSObject.Properties['parseReason']) {
+    $parseReason = [string]$Probe.parseReason
+  }
+  if ([string]::IsNullOrWhiteSpace($parseReason)) {
+    return ''
+  }
+  return $parseReason.Trim().ToLowerInvariant()
+}
+
+function Resolve-RuntimeFailureClass {
+  param(
+    [AllowNull()]$Probe,
+    [AllowEmptyString()][string]$ObservedOsType,
+    [bool]$HostAlignmentFailure = $false,
+    [bool]$ContextOrOsMismatch = $false
+  )
+
+  if ($HostAlignmentFailure) {
+    return 'host-mismatch'
+  }
+
+  $parseReason = Get-ProbeParseReasonNormalized -Probe $Probe
+  if ($parseReason -in @('daemon-unavailable', 'docker-info-command-failed')) {
+    return 'daemon-unavailable'
+  }
+
+  if ([string]::IsNullOrWhiteSpace($ObservedOsType)) {
+    if ($parseReason -in @('empty-output', 'unparseable-output', 'exception', 'timeout', 'parsed-fallback-default-context')) {
+      return 'parse-defect'
+    }
+    if (-not [string]::IsNullOrWhiteSpace($parseReason)) {
+      return 'parse-defect'
+    }
+  }
+
+  if ($ContextOrOsMismatch) {
+    return 'context-os-mismatch'
+  }
+
+  return 'runtime-mismatch'
+}
+
 function Get-DockerOsType {
   param([AllowNull()][string]$Context)
   $probe = Get-DockerOsProbe -Context $Context -TimeoutSeconds $CommandTimeoutSeconds
@@ -737,6 +784,7 @@ if ($snapshotDir -and -not (Test-Path -LiteralPath $snapshotDir -PathType Contai
 
 $resultStatus = 'ok'
 $reason = ''
+$resultFailureClass = 'none'
 $repairActions = New-Object System.Collections.Generic.List[string]
 $initialDockerOsProbe = $null
 $fallbackDockerOsProbe = $null
@@ -772,9 +820,11 @@ if ([string]::IsNullOrWhiteSpace($observedOsType)) {
 
 if (-not $hostAlignmentOk) {
   $resultStatus = 'mismatch-failed'
+  $resultFailureClass = Resolve-RuntimeFailureClass -Probe $lastDockerOsProbe -ObservedOsType $observedOsType -HostAlignmentFailure:$true
 } else {
   if ([string]::IsNullOrWhiteSpace($observedOsType)) {
     $resultStatus = 'mismatch-failed'
+    $resultFailureClass = Resolve-RuntimeFailureClass -Probe $lastDockerOsProbe -ObservedOsType $observedOsType
     $probeHint = Format-DockerOsProbeHint -Probe $lastDockerOsProbe
     $manualSteps = Get-ManualRemediationSteps -TargetOsType $ExpectedOsType -ExpectedContext $effectiveExpectedContext
     $manualText = if ($manualSteps.Count -gt 0) { [string]::Join('; ', $manualSteps) } else { 'n/a' }
@@ -876,15 +926,24 @@ if (-not $hostAlignmentOk) {
         $manualText = if ($manualSteps.Count -gt 0) { [string]::Join('; ', $manualSteps) } else { 'n/a' }
         $probeHint = Format-DockerOsProbeHint -Probe $lastDockerOsProbe
         $resultStatus = 'mismatch-failed'
+        $resultFailureClass = Resolve-RuntimeFailureClass `
+          -Probe $lastDockerOsProbe `
+          -ObservedOsType $observedOsType `
+          -ContextOrOsMismatch:($osMismatchAfter -or $contextMismatchAfter)
         $reason = ("Runtime invariant mismatch after repair. expected os={0}, context={1}; observed os={2}, context={3}. Manual remediation: {4}. {5}" -f $ExpectedOsType, $effectiveExpectedContext, ($observedOsType ?? '<null>'), ($observedContext ?? '<null>'), $manualText, $probeHint)
         } else {
           $resultStatus = 'mismatch-repaired'
+          $resultFailureClass = 'none'
         }
       } else {
         $manualSteps = Get-ManualRemediationSteps -TargetOsType $ExpectedOsType -ExpectedContext $effectiveExpectedContext
         $manualText = if ($manualSteps.Count -gt 0) { [string]::Join('; ', $manualSteps) } else { 'n/a' }
         $probeHint = Format-DockerOsProbeHint -Probe $lastDockerOsProbe
         $resultStatus = 'mismatch-failed'
+        $resultFailureClass = Resolve-RuntimeFailureClass `
+          -Probe $lastDockerOsProbe `
+          -ObservedOsType $observedOsType `
+          -ContextOrOsMismatch:$true
         $reason = ("Runtime invariant mismatch. expected os={0}, context={1}; observed os={2}, context={3}. Manual remediation: {4}. {5}" -f $ExpectedOsType, $effectiveExpectedContext, ($observedOsType ?? '<null>'), ($observedContext ?? '<null>'), $manualText, $probeHint)
       }
     }
@@ -926,6 +985,8 @@ $snapshot = [ordered]@{
   result = [ordered]@{
     status = $resultStatus
     reason = $reason
+    failureClass = $resultFailureClass
+    probeParseReason = (Get-ProbeParseReasonNormalized -Probe $lastDockerOsProbe)
   }
 }
 
@@ -934,6 +995,7 @@ $snapshot | ConvertTo-Json -Depth 10 | Set-Content -LiteralPath $snapshotResolve
 Write-GitHubOutput -Key 'runtime-status' -Value $resultStatus -DestPath $GitHubOutputPath
 Write-GitHubOutput -Key 'docker-ostype' -Value ($observedOsType ?? '') -DestPath $GitHubOutputPath
 Write-GitHubOutput -Key 'docker-context' -Value ($observedContext ?? '') -DestPath $GitHubOutputPath
+Write-GitHubOutput -Key 'runtime-failure-class' -Value ($resultFailureClass ?? '') -DestPath $GitHubOutputPath
 $dockerOsParseReason = ''
 if ($lastDockerOsProbe -and $lastDockerOsProbe.PSObject.Properties['parseReason']) {
   $dockerOsParseReason = [string]$lastDockerOsProbe.parseReason
@@ -946,4 +1008,3 @@ Write-Host ("[runtime-determinism] status={0} expectedContext={1} observedContex
 if ($resultStatus -eq 'mismatch-failed') {
   throw ($reason ?? 'Runtime determinism check failed.')
 }
-
