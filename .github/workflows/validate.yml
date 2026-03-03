@@ -810,7 +810,8 @@ jobs:
     needs: [smoke-gate, lint, fixtures, session-index]
     if: >
       needs.smoke-gate.outputs.skip != 'true' &&
-      github.event_name == 'workflow_dispatch'
+      github.event_name == 'workflow_dispatch' &&
+      github.repository == 'LabVIEW-Community-CI-CD/compare-vi-cli-action'
     runs-on: [self-hosted, Windows, X64, self-hosted-docker]
     defaults:
       run:
