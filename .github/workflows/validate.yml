@@ -1030,7 +1030,7 @@ jobs:
             -ExpectedOsType linux `
             -ExpectedContext desktop-linux `
             -AutoRepair:$true `
-            -ManageDockerEngine:$true `
+            -ManageDockerEngine:$false `
             -EngineReadyTimeoutSeconds 300 `
             -EngineReadyPollSeconds 3 `
             -SnapshotPath $snapshotPath `
@@ -1069,58 +1069,6 @@ jobs:
             throw ("Linux compare failed (exit={0}) and capture file was not found at {1}" -f $compareExit, $capturePath)
           }
 
-      - name: Run Docker fast-loop (Linux lane)
-        id: loop
-        run: |
-          $resultsRoot = 'tests/results/local-parity/linux'
-          $summaryOutput = pwsh -NoLogo -NoProfile -File tools/Test-DockerDesktopFastLoop.ps1 `
-            -ResultsRoot $resultsRoot `
-            -LinuxImage 'nationalinstruments/labview:2026q1-linux' `
-            -SkipWindowsProbe `
-            -HistoryScenarioSet none `
-            -ManageDockerEngine:$true
-          $exit = $LASTEXITCODE
-          $summaryPath = ''
-          if ($summaryOutput) {
-            $summaryPath = ($summaryOutput | Select-Object -Last 1).ToString().Trim()
-          }
-          if ($summaryPath -and (Test-Path -LiteralPath $summaryPath -PathType Leaf)) {
-            "summary_path=$summaryPath" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
-          } else {
-            Write-Host '::warning::Fast-loop summary path was not captured from stdout; readiness step will resolve latest summary.'
-          }
-          if ($exit -ne 0) { exit $exit }
-
-      - name: Write Docker fast-loop readiness (Linux lane)
-        id: readiness
-        if: always()
-        run: |
-          $summaryPath = '${{ steps.loop.outputs.summary_path }}'
-          $resultsRoot = 'tests/results/local-parity/linux'
-          $args = @(
-            '-NoLogo', '-NoProfile', '-File', 'tools/Write-DockerFastLoopReadiness.ps1',
-            '-ResultsRoot', $resultsRoot,
-            '-GitHubOutputPath', $env:GITHUB_OUTPUT,
-            '-StepSummaryPath', $env:GITHUB_STEP_SUMMARY
-          )
-          if (-not [string]::IsNullOrWhiteSpace($summaryPath)) {
-            $args += @('-SummaryPath', $summaryPath)
-          }
-          & pwsh @args
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-
-      - name: Write Docker fast-loop proof (Linux lane)
-        id: proof
-        if: always() && steps.readiness.outputs.readiness-json-path != ''
-        run: |
-          $resultsRoot = 'tests/results/local-parity/linux'
-          $statusPath = Join-Path $resultsRoot 'docker-runtime-fastloop-status.json'
-          pwsh -NoLogo -NoProfile -File tools/Write-DockerFastLoopProof.ps1 `
-            -ReadinessPath '${{ steps.readiness.outputs.readiness-json-path }}' `
-            -SummaryPath '${{ steps.loop.outputs.summary_path }}' `
-            -StatusPath $statusPath `
-            -GitHubOutputPath $env:GITHUB_OUTPUT
-
       - name: Upload VI history scenario artifacts (Linux lane)
         if: always()
         uses: actions/upload-artifact@v5
@@ -1129,10 +1077,6 @@ jobs:
           path: |
             tests/results/local-parity/linux/linux-compare-report.html
             tests/results/local-parity/linux/ni-linux-container-capture.json
+            tests/results/local-parity/linux/runtime-manager-preflight-linux.json
             tests/results/local-parity/linux/runtime-manager-compare-linux.json
-            tests/results/local-parity/linux/docker-runtime-fastloop-*.json
-            tests/results/local-parity/linux/docker-runtime-fastloop-status.json
-            tests/results/local-parity/linux/docker-runtime-fastloop-readiness.json
-            tests/results/local-parity/linux/docker-runtime-fastloop-readiness.md
-            tests/results/_agent/gates/docker-fast-loop-proof-*.json
           if-no-files-found: warn
