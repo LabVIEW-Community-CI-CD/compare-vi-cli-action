@@ -136,8 +136,17 @@ if (Test-Path -LiteralPath $updateReportScript -PathType Leaf) {
     Write-Host '[pre-push] Skipping icon-editor fixture freshness checks on non-Windows host' -ForegroundColor Yellow
     return
   }
+  $refUpdateLines = @()
+  try {
+    if ([Console]::IsInputRedirected) {
+      $rawRefInput = [Console]::In.ReadToEnd()
+      if (-not [string]::IsNullOrWhiteSpace($rawRefInput)) {
+        $refUpdateLines = @($rawRefInput -split "(`r`n|`n)" | Where-Object { -not [string]::IsNullOrWhiteSpace($_) })
+      }
+    }
+  } catch {}
   $forceIconEditorChecks = ($env:PREPUSH_FORCE_ICON_EDITOR_FIXTURE_CHECKS -match '^(1|true|yes|on)$')
-  $changedPaths = Get-PrePushChangedPaths -RepoRoot $root
+  $changedPaths = Get-PrePushChangedPaths -RepoRoot $root -RefUpdateLines $refUpdateLines
   $shouldRunIconEditorChecks = Test-IconEditorFixtureCheckRequired -ChangedPaths $changedPaths -Force:$forceIconEditorChecks
   if (-not $shouldRunIconEditorChecks) {
     Write-Host '[pre-push] Skipping icon-editor fixture freshness checks (no icon-editor scoped paths changed)' -ForegroundColor Yellow
