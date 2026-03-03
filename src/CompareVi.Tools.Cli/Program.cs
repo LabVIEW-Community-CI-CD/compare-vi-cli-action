@@ -72,10 +72,10 @@ internal static class Program
         Console.WriteLine("  comparevi-cli quote --path <path>");
         Console.WriteLine("  comparevi-cli operations [--name <operation>] [--names-only]");
         Console.WriteLine("  comparevi-cli providers [--name <provider>] [--names-only]");
-        Console.WriteLine("  comparevi-cli compare single --input <file> --dry-run [--diff] [--exit-code <n>] [--failure-class <name>]");
-        Console.WriteLine("  comparevi-cli compare range --base <ref> --head <ref> --dry-run [--diff] [--exit-code <n>] [--failure-class <name>]");
-        Console.WriteLine("  comparevi-cli history run --input <file> --dry-run [--diff] [--exit-code <n>] [--failure-class <name>]");
-        Console.WriteLine("  comparevi-cli report consolidate --input <file> --dry-run");
+        Console.WriteLine("  comparevi-cli compare single --input <file> --dry-run [--diff] [--exit-code <n>] [--failure-class <name>] [--out-dir <path>]");
+        Console.WriteLine("  comparevi-cli compare range --base <ref> --head <ref> --dry-run [--diff] [--exit-code <n>] [--failure-class <name>] [--max-pairs <n>] [--out-dir <path>]");
+        Console.WriteLine("  comparevi-cli history run --input <file> --dry-run [--diff] [--exit-code <n>] [--failure-class <name>] [--out-dir <path>]");
+        Console.WriteLine("  comparevi-cli report consolidate --input <file> --dry-run [--out-dir <path>]");
         Console.WriteLine("  comparevi-cli contracts validate --input <file>");
     }
 
@@ -378,7 +378,7 @@ internal static class Program
         if (!ValidateCommandOptions(
                 args,
                 startIndex: tailStart,
-                valueOptions: new[] { "--base", "--head", "--exit-code", "--failure-class", "--max-pairs" },
+            valueOptions: new[] { "--base", "--head", "--exit-code", "--failure-class", "--max-pairs", "--out-dir" },
                 flagOptions: new[] { "--dry-run", "--diff", "--non-interactive" },
                 out var optionError))
         {
@@ -420,10 +420,14 @@ internal static class Program
         }
 
         var classification = ExitClassification.Classify(exitCode, isDiff, declaredFailureClass);
+        var outDir = ResolveOutputDirectory(args, tailStart);
+        var artifacts = BuildArtifactPaths("compare-range", outDir);
+        var imageIndex = BuildImageIndexPayload(classification.IsDiff);
         var payload = new Dictionary<string, object?>
         {
             ["schema"] = "comparevi-cli/compare-range@v1",
             ["schemaVersion"] = "1.0.0",
+            ["schemaCompatibility"] = BuildSchemaCompatibility(),
             ["lane"] = "compare-range",
             ["command"] = "compare range",
             ["generatedAtUtc"] = DateTimeOffset.UtcNow.ToString("O"),
@@ -431,6 +435,15 @@ internal static class Program
             ["head"] = headRef,
             ["maxPairs"] = hasMaxPairs ? maxPairs : null,
             ["truncated"] = false,
+            ["outDir"] = outDir,
+            ["artifacts"] = artifacts,
+            ["summaryJsonPath"] = artifacts["summaryJsonPath"],
+            ["summaryMarkdownPath"] = artifacts["summaryMarkdownPath"],
+            ["reportHtmlPath"] = artifacts["reportHtmlPath"],
+            ["consolidatedReportPath"] = artifacts["reportHtmlPath"],
+            ["imageIndexPath"] = artifacts["imageIndexPath"],
+            ["runLogPath"] = artifacts["runLogPath"],
+            ["imageIndex"] = imageIndex,
             ["dryRun"] = dryRun,
             ["simulatedExitCode"] = exitCode,
             ["outcome"] = new Dictionary<string, object?>
@@ -537,7 +550,7 @@ internal static class Program
         if (!ValidateCommandOptions(
                 args,
                 startIndex: tailStart,
-                valueOptions: new[] { "--input", "--exit-code", "--failure-class" },
+            valueOptions: new[] { "--input", "--exit-code", "--failure-class", "--out-dir" },
                 flagOptions: new[] { "--dry-run", "--diff", "--non-interactive" },
                 out var optionError))
         {
@@ -567,14 +580,27 @@ internal static class Program
             : null;
 
         var classification = ExitClassification.Classify(exitCode, isDiff, declaredFailureClass);
+        var outDir = ResolveOutputDirectory(args, tailStart);
+        var artifacts = BuildArtifactPaths(lane, outDir);
+        var imageIndex = BuildImageIndexPayload(classification.IsDiff);
         var payload = new Dictionary<string, object?>
         {
             ["schema"] = schema,
             ["schemaVersion"] = "1.0.0",
+            ["schemaCompatibility"] = BuildSchemaCompatibility(),
             ["lane"] = lane,
             ["command"] = command,
             ["generatedAtUtc"] = DateTimeOffset.UtcNow.ToString("O"),
             ["inputPath"] = Path.GetFullPath(inputPath),
+            ["outDir"] = outDir,
+            ["artifacts"] = artifacts,
+            ["summaryJsonPath"] = artifacts["summaryJsonPath"],
+            ["summaryMarkdownPath"] = artifacts["summaryMarkdownPath"],
+            ["reportHtmlPath"] = artifacts["reportHtmlPath"],
+            ["consolidatedReportPath"] = artifacts["reportHtmlPath"],
+            ["imageIndexPath"] = artifacts["imageIndexPath"],
+            ["runLogPath"] = artifacts["runLogPath"],
+            ["imageIndex"] = imageIndex,
             ["dryRun"] = dryRun,
             ["simulatedExitCode"] = exitCode,
             ["outcome"] = new Dictionary<string, object?>
@@ -590,6 +616,68 @@ internal static class Program
 
         Console.WriteLine(JsonSerializer.Serialize(payload, SerializerOptions));
         return string.Equals(classification.GateOutcome, "pass", StringComparison.OrdinalIgnoreCase) ? 0 : 1;
+    }
+
+    private static Dictionary<string, object?> BuildSchemaCompatibility()
+    {
+        return new Dictionary<string, object?>
+        {
+            ["policy"] = "additive-within-major",
+            ["majorVersion"] = 1
+        };
+    }
+
+    private static string ResolveOutputDirectory(string[] args, int startIndex)
+    {
+        if (TryReadOption(args, startIndex, "--out-dir", out var outDirValue) && !string.IsNullOrWhiteSpace(outDirValue))
+        {
+            return Path.GetFullPath(outDirValue);
+        }
+
+        return Path.GetFullPath(Environment.CurrentDirectory);
+    }
+
+    private static Dictionary<string, object?> BuildArtifactPaths(string lane, string outDir)
+    {
+        var prefix = lane switch
+        {
+            "compare-range" => "vi-history",
+            "history-run" => "vi-history",
+            "report-consolidate" => "vi-history",
+            _ => lane
+        };
+
+        return new Dictionary<string, object?>
+        {
+            ["summaryJsonPath"] = Path.GetFullPath(Path.Combine(outDir, $"{prefix}-summary.json")),
+            ["summaryMarkdownPath"] = Path.GetFullPath(Path.Combine(outDir, $"{prefix}-summary.md")),
+            ["reportHtmlPath"] = Path.GetFullPath(Path.Combine(outDir, $"{prefix}-report.html")),
+            ["imageIndexPath"] = Path.GetFullPath(Path.Combine(outDir, $"{prefix}-image-index.json")),
+            ["runLogPath"] = Path.GetFullPath(Path.Combine(outDir, $"{prefix}.log"))
+        };
+    }
+
+    private static Dictionary<string, object?> BuildImageIndexPayload(bool hasDiff)
+    {
+        var images = new List<Dictionary<string, object?>>();
+        if (hasDiff)
+        {
+            images.Add(new Dictionary<string, object?>
+            {
+                ["path"] = "images/pair-0001.png",
+                ["compareItemId"] = "pair-0001",
+                ["mediaType"] = "image/png"
+            });
+        }
+
+        return new Dictionary<string, object?>
+        {
+            ["schema"] = "comparevi-cli/image-index@v1",
+            ["schemaVersion"] = "1.0.0",
+            ["schemaCompatibility"] = BuildSchemaCompatibility(),
+            ["generatedAtUtc"] = DateTimeOffset.UtcNow.ToString("O"),
+            ["images"] = images
+        };
     }
 
     private static bool HasFlag(string[] args, int startIndex, string flag)

@@ -20,7 +20,7 @@
 - [ ] CLI executable and required runtime files are included in the `.zip`.
 - [ ] No container runtime dependency is required for host-native execution.
 - [x] Summary JSON schema version is present and valid.
-- [ ] Image index JSON schema version is present and valid.
+- [x] Image index JSON schema version is present and valid.
 
 ### Integrity and provenance
 
@@ -40,7 +40,7 @@
 - [ ] `preflight` passes on a Windows host with LabVIEW 2026 installed.
 - [ ] `compare single` pass-class and fail-class cases validated.
 - [ ] `compare range` with `--max-pairs` truncation telemetry validated.
-- [ ] `report consolidate` artifact paths validated.
+- [x] `report consolidate` artifact paths validated.
 - [ ] `contracts validate` detects schema drift.
 
 ### Release notes
