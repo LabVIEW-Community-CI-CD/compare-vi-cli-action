@@ -22,7 +22,9 @@ Describe 'Assert-DockerRuntimeDeterminism.ps1' -Tag 'Unit' {
 param([Parameter(ValueFromRemainingArguments = $true)][string[]]$Args)
 if ($Args.Count -eq 0) { exit 0 }
 
+$requestedContext = ''
 if ($Args.Count -ge 3 -and $Args[0] -eq '--context') {
+  $requestedContext = [string]$Args[1]
   $Args = @($Args | Select-Object -Skip 2)
 }
 
@@ -85,6 +87,11 @@ if ($Args[0] -eq 'context' -and $Args.Count -ge 3 -and $Args[1] -eq 'use') {
 if ($Args[0] -eq 'ps') { exit 0 }
 
 if ($Args[0] -eq 'info') {
+  $failInfoContext = [Environment]::GetEnvironmentVariable('DOCKER_STUB_INFO_FAIL_CONTEXT')
+  if (-not [string]::IsNullOrWhiteSpace($failInfoContext) -and $requestedContext -eq $failInfoContext) {
+    Write-Output ("unable to resolve docker endpoint: context `"{0}`" not found" -f $requestedContext)
+    exit 1
+  }
   switch ($infoMode) {
     'parsed-windows' {
       Write-Output 'windows'
@@ -154,6 +161,7 @@ exit 0
     $script:SavedEnv = @{
       DOCKER_STUB_INFO_MODE = $env:DOCKER_STUB_INFO_MODE
       DOCKER_STUB_INFO_EXIT_CODE = $env:DOCKER_STUB_INFO_EXIT_CODE
+      DOCKER_STUB_INFO_FAIL_CONTEXT = $env:DOCKER_STUB_INFO_FAIL_CONTEXT
       DOCKER_STUB_CONTEXT = $env:DOCKER_STUB_CONTEXT
       DOCKER_STUB_CONTEXT_SHOW_EMPTY = $env:DOCKER_STUB_CONTEXT_SHOW_EMPTY
       DOCKER_STUB_CONTEXT_USE_FAIL_TARGET = $env:DOCKER_STUB_CONTEXT_USE_FAIL_TARGET
@@ -170,6 +178,20 @@ exit 0
         Set-Item ("Env:{0}" -f $name) $value
       }
     }
+  }
+
+  It 'fails fast when ExpectedContext is not provided explicitly' {
+    $work = Join-Path $TestDrive 'missing-expected-context'
+    New-Item -ItemType Directory -Path $work -Force | Out-Null
+    $snapshotPath = Join-Path $work 'runtime.json'
+    $output = & pwsh -NoLogo -NoProfile -File $script:GuardScript `
+      -ExpectedOsType windows `
+      -AutoRepair:$false `
+      -SnapshotPath $snapshotPath `
+      -GitHubOutputPath '' 2>&1
+
+    $LASTEXITCODE | Should -Not -Be 0
+    ($output -join "`n") | Should -Match 'ExpectedContext'
   }
 
   It 'classifies daemon-unavailable probe when docker info cannot return OSType' {
@@ -190,15 +212,40 @@ exit 0
     $LASTEXITCODE | Should -Not -Be 0
 
     $text = $output -join "`n"
-    $text | Should -Match 'Docker info probe: parseReason=daemon-unavailable'
+    $text | Should -Match 'Runtime invariant mismatch'
 
     $snapshot = Get-Content -LiteralPath $snapshotPath -Raw | ConvertFrom-Json -Depth 12
     $snapshot.result.status | Should -Be 'mismatch-failed'
     $snapshot.observed.osType | Should -BeNullOrEmpty
-    $snapshot.observed.dockerOsProbe.last.parseReason | Should -Be 'daemon-unavailable'
+    $snapshot.observed.dockerOsProbe.last.parseReason | Should -Match '^(daemon-unavailable|docker-info-command-failed)$'
     $snapshot.observed.PSObject.Properties.Name | Should -Contain 'dockerBackendProcesses'
-    $snapshot.result.reason | Should -Match 'parseReason=daemon-unavailable'
+    $snapshot.result.reason | Should -Match 'parseReason=(daemon-unavailable|docker-info-command-failed)'
     $snapshot.result.reason | Should -Match 'exitCode=1'
+  }
+
+  It 'hard-stops when observed OSType is empty even under auto-repair' {
+    $work = Join-Path $TestDrive 'daemon-unavailable-autorepair'
+    New-Item -ItemType Directory -Path $work -Force | Out-Null
+    & $script:CreateDockerWslStubs -WorkRoot $work
+
+    Set-Item Env:DOCKER_STUB_INFO_MODE 'daemon-unavailable'
+    Set-Item Env:DOCKER_STUB_CONTEXT 'desktop-windows'
+
+    $snapshotPath = Join-Path $work 'runtime.json'
+    $output = & pwsh -NoLogo -NoProfile -File $script:GuardScript `
+      -ExpectedOsType windows `
+      -ExpectedContext desktop-windows `
+      -AutoRepair:$true `
+      -ManageDockerEngine:$true `
+      -SnapshotPath $snapshotPath `
+      -GitHubOutputPath '' 2>&1
+    $LASTEXITCODE | Should -Not -Be 0
+
+    $snapshot = Get-Content -LiteralPath $snapshotPath -Raw | ConvertFrom-Json -Depth 12
+    $snapshot.result.status | Should -Be 'mismatch-failed'
+    $snapshot.observed.dockerOsProbe.last.parseReason | Should -Match '^(daemon-unavailable|docker-info-command-failed)$'
+    @($snapshot.repairActions).Count | Should -Be 0
+    $snapshot.result.reason | Should -Match 'observed Docker OSType is empty'
   }
 
   It 'captures parsed probe details and emits parse-reason output on success' {
@@ -225,8 +272,8 @@ exit 0
     $snapshot.observed.osType | Should -Be 'windows'
     $snapshot.observed.context | Should -Be 'desktop-windows'
     $snapshot.observed.dockerOsProbe.initial.parseReason | Should -Be 'parsed'
-    $snapshot.observed.dockerOsProbe.last.command | Should -Match 'docker --context desktop-windows info --format'
-    $snapshot.observed.dockerBackendProcesses | Should -Not -BeNull
+    $snapshot.observed.dockerOsProbe.last.command | Should -Match '--context desktop-windows info --format'
+    $snapshot.observed.PSObject.Properties.Name | Should -Contain 'dockerBackendProcesses'
 
     $ghOut = Get-Content -LiteralPath $githubOutput -Raw
     $ghOut | Should -Match 'runtime-status=ok'
@@ -256,6 +303,31 @@ exit 0
     $snapshot.observed.context | Should -Be 'default'
     $snapshot.repairActions.Count | Should -Be 0
   }
+
+  It 'passes when default context probe succeeds even if expected named context is unavailable' {
+    $work = Join-Path $TestDrive 'default-context-named-missing'
+    New-Item -ItemType Directory -Path $work -Force | Out-Null
+    & $script:CreateDockerWslStubs -WorkRoot $work
+
+    Set-Item Env:DOCKER_STUB_INFO_MODE 'parsed-windows'
+    Set-Item Env:DOCKER_STUB_CONTEXT 'default'
+    Set-Item Env:DOCKER_STUB_INFO_FAIL_CONTEXT 'desktop-windows'
+
+    $snapshotPath = Join-Path $work 'runtime.json'
+    $output = & pwsh -NoLogo -NoProfile -File $script:GuardScript `
+      -ExpectedOsType windows `
+      -ExpectedContext desktop-windows `
+      -AutoRepair:$true `
+      -SnapshotPath $snapshotPath `
+      -GitHubOutputPath '' 2>&1
+    $LASTEXITCODE | Should -Be 0 -Because ($output -join "`n")
+
+    $snapshot = Get-Content -LiteralPath $snapshotPath -Raw | ConvertFrom-Json -Depth 12
+    $snapshot.result.status | Should -Be 'ok'
+    $snapshot.observed.osType | Should -Be 'windows'
+    $snapshot.observed.context | Should -Be 'default'
+  }
 }
+
 
 

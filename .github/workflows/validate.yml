@@ -18,9 +18,19 @@ on:
         required: false
         type: string
       history_scenario_set:
-        description: 'VI history scenario set for self-hosted-docker validation (none|smoke|history-core)'
+        description: 'VI history scenario set for Validate VI history lanes (none|smoke|history-core)'
         required: false
         default: 'smoke'
+      allow_noncanonical_vi_history:
+        description: 'Allow vi-history-scenarios to run on non-canonical repos (manual override)'
+        required: false
+        type: boolean
+        default: false
+      allow_noncanonical_history_core:
+        description: 'Allow history-core scenario set on non-canonical repos (requires allow_noncanonical_vi_history=true)'
+        required: false
+        type: boolean
+        default: false
 
 concurrency:
   group: ${{ github.workflow }}-${{ (github.event_name == 'pull_request' && github.event.pull_request.number) || github.event.inputs.sample_id || github.ref }}
@@ -806,17 +816,100 @@ jobs:
         path: ${{ runner.temp }}/sessionindex/session-index.json
         if-no-files-found: warn
 
-  vi-history-scenarios:
+  vi-history-scenarios-skip-note:
     needs: [smoke-gate, lint, fixtures, session-index]
     if: >
       needs.smoke-gate.outputs.skip != 'true' &&
-      github.event_name == 'workflow_dispatch'
+      github.event_name == 'workflow_dispatch' &&
+      github.repository != 'LabVIEW-Community-CI-CD/compare-vi-cli-action' &&
+      github.event.inputs.allow_noncanonical_vi_history != 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Append canonical guard skip note
+        shell: bash
+        run: |
+          {
+            echo "### VI History Scenarios Guard"
+            echo ""
+            echo "- Skipped on non-canonical repository: \`${GITHUB_REPOSITORY}\`."
+            echo "- To run on origin/fork, dispatch Validate with:"
+            echo "  - \`allow_noncanonical_vi_history=true\`"
+            echo "- For \`history-core\` on origin/fork also set:"
+            echo "  - \`allow_noncanonical_history_core=true\`"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  vi-history-scenarios-windows:
+    needs: [smoke-gate, lint, fixtures, session-index, vi-history-scenarios-linux]
+    if: >
+      needs.smoke-gate.outputs.skip != 'true' &&
+      github.event_name == 'workflow_dispatch' &&
+      (
+        github.repository == 'LabVIEW-Community-CI-CD/compare-vi-cli-action' ||
+        github.event.inputs.allow_noncanonical_vi_history == 'true'
+      )
     runs-on: [self-hosted, Windows, X64, self-hosted-docker]
     defaults:
       run:
         shell: pwsh
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v5
+
+      - name: Bootstrap Docker Windows engine (self-hosted)
+        run: |
+          $service = Get-Service -Name 'com.docker.service' -ErrorAction SilentlyContinue
+          if ($service -and $service.Status -ne 'Running') {
+            Start-Service -Name 'com.docker.service' -ErrorAction Stop
+          }
+
+          $dockerCliCandidates = @(
+            (Join-Path $env:ProgramFiles 'Docker\Docker\DockerCli.exe'),
+            (Join-Path $env:ProgramW6432 'Docker\Docker\DockerCli.exe'),
+            (Join-Path $env:ProgramFiles 'Docker\Docker\com.docker.cli.exe'),
+            (Join-Path $env:ProgramW6432 'Docker\Docker\com.docker.cli.exe')
+          ) | Where-Object { -not [string]::IsNullOrWhiteSpace($_) -and (Test-Path -LiteralPath $_ -PathType Leaf) }
+
+          if ($dockerCliCandidates.Count -gt 0) {
+            $dockerCli = $dockerCliCandidates[0]
+            Write-Host ("[docker-bootstrap] switching engine via {0} -SwitchWindowsEngine" -f $dockerCli)
+            & $dockerCli -SwitchWindowsEngine 2>&1 | Out-Host
+          } else {
+            Write-Host '[docker-bootstrap] DockerCli.exe not found; relying on existing engine mode'
+          }
+
+          $deadline = (Get-Date).AddMinutes(3)
+          $ready = $false
+          while ((Get-Date) -lt $deadline) {
+            $probe = & docker info --format '{{.OSType}}' 2>&1
+            if ($LASTEXITCODE -eq 0 -and $probe) {
+              $osType = ([string]$probe).Trim().ToLowerInvariant()
+              if ($osType -eq 'windows') {
+                Write-Host '[docker-bootstrap] docker info reports windows'
+                $ready = $true
+                break
+              }
+            }
+            Start-Sleep -Seconds 3
+          }
+
+          if (-not $ready) {
+            throw 'Docker windows engine did not become ready within 3 minutes.'
+          }
+
+      - name: Manage Docker runtime (Windows lane preflight)
+        run: |
+          $resultsRoot = 'tests/results/local-parity/windows'
+          New-Item -ItemType Directory -Path $resultsRoot -Force | Out-Null
+          $snapshotPath = Join-Path $resultsRoot 'runtime-manager-preflight-windows.json'
+          pwsh -NoLogo -NoProfile -File tools/Assert-DockerRuntimeDeterminism.ps1 `
+            -ExpectedOsType windows `
+            -ExpectedContext desktop-windows `
+            -AutoRepair:$true `
+            -ManageDockerEngine:$true `
+            -EngineReadyTimeoutSeconds 300 `
+            -EngineReadyPollSeconds 3 `
+            -SnapshotPath $snapshotPath `
+            -GitHubOutputPath ''
 
       - name: Resolve VI history scenario set
         id: resolve
@@ -828,13 +921,29 @@ jobs:
           if ($allowed -notcontains $set) {
             throw ("Unsupported history_scenario_set '{0}'. Allowed: {1}" -f $setRaw, ($allowed -join ', '))
           }
+          $repo = '${{ github.repository }}'
+          $isCanonical = $repo -eq 'LabVIEW-Community-CI-CD/compare-vi-cli-action'
+          $allowNonCanonical = '${{ github.event.inputs.allow_noncanonical_vi_history }}' -eq 'true'
+          $allowNonCanonicalHistoryCore = '${{ github.event.inputs.allow_noncanonical_history_core }}' -eq 'true'
+
+          if (-not $isCanonical -and -not $allowNonCanonical) {
+            throw ("vi-history-scenarios non-canonical execution is disabled for '{0}'. Set allow_noncanonical_vi_history=true." -f $repo)
+          }
+
+          if (-not $isCanonical -and $set -eq 'history-core' -and -not $allowNonCanonicalHistoryCore) {
+            Write-Host "::warning::history-core is disabled on non-canonical repos unless allow_noncanonical_history_core=true. Downgrading to smoke."
+            $set = 'smoke'
+          }
+
           "history_scenario_set=$set" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
 
-      - name: Run Docker Desktop fast-loop (Windows lane, VI history scenarios)
+      - name: Run Docker Desktop fast-loop (Windows VI history lane)
         id: loop
         run: |
           $set = '${{ steps.resolve.outputs.history_scenario_set }}'
+          $resultsRoot = 'tests/results/local-parity/windows'
           $summaryOutput = pwsh -NoLogo -NoProfile -File tools/Test-DockerDesktopFastLoop.ps1 `
+            -ResultsRoot $resultsRoot `
             -SkipLinuxProbe `
             -HistoryScenarioSet $set `
             -ManageDockerEngine:$true
@@ -852,12 +961,13 @@ jobs:
 
       - name: Write Docker fast-loop readiness
         id: readiness
-        if: always()
+        if: always() && steps.loop.outcome != 'skipped'
         run: |
           $summaryPath = '${{ steps.loop.outputs.summary_path }}'
+          $resultsRoot = 'tests/results/local-parity/windows'
           $args = @(
             '-NoLogo', '-NoProfile', '-File', 'tools/Write-DockerFastLoopReadiness.ps1',
-            '-ResultsRoot', 'tests/results/local-parity',
+            '-ResultsRoot', $resultsRoot,
             '-GitHubOutputPath', $env:GITHUB_OUTPUT,
             '-StepSummaryPath', $env:GITHUB_STEP_SUMMARY
           )
@@ -871,21 +981,176 @@ jobs:
         id: proof
         if: always() && steps.readiness.outputs.readiness-json-path != ''
         run: |
+          $resultsRoot = 'tests/results/local-parity/windows'
+          $statusPath = Join-Path $resultsRoot 'docker-runtime-fastloop-status.json'
           pwsh -NoLogo -NoProfile -File tools/Write-DockerFastLoopProof.ps1 `
             -ReadinessPath '${{ steps.readiness.outputs.readiness-json-path }}' `
             -SummaryPath '${{ steps.loop.outputs.summary_path }}' `
-            -StatusPath 'tests/results/local-parity/docker-runtime-fastloop-status.json' `
+            -StatusPath $statusPath `
             -GitHubOutputPath $env:GITHUB_OUTPUT
 
-      - name: Upload VI history scenario artifacts
+      - name: Upload VI history scenario artifacts (Windows lane)
         if: always()
         uses: actions/upload-artifact@v5
         with:
-          name: validate-vi-history-scenarios
+          name: validate-vi-history-scenarios-windows
           path: |
-            tests/results/local-parity/docker-runtime-fastloop-*.json
-            tests/results/local-parity/docker-runtime-fastloop-status.json
-            tests/results/local-parity/docker-runtime-fastloop-readiness.json
-            tests/results/local-parity/docker-runtime-fastloop-readiness.md
+            tests/results/local-parity/windows/docker-runtime-fastloop-*.json
+            tests/results/local-parity/windows/docker-runtime-fastloop-status.json
+            tests/results/local-parity/windows/docker-runtime-fastloop-readiness.json
+            tests/results/local-parity/windows/docker-runtime-fastloop-readiness.md
             tests/results/_agent/gates/docker-fast-loop-proof-*.json
+          if-no-files-found: warn
+
+  vi-history-scenarios-linux:
+    needs: [smoke-gate, lint, fixtures, session-index]
+    if: >
+      needs.smoke-gate.outputs.skip != 'true' &&
+      github.event_name == 'workflow_dispatch' &&
+      (
+        github.repository == 'LabVIEW-Community-CI-CD/compare-vi-cli-action' ||
+        github.event.inputs.allow_noncanonical_vi_history == 'true'
+      )
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        shell: pwsh
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Pull NI Linux image (2026q1-linux)
+        run: docker pull nationalinstruments/labview:2026q1-linux
+
+      - name: Manage Docker runtime (Linux preflight)
+        run: |
+          $resultsRoot = 'tests/results/local-parity/linux'
+          New-Item -ItemType Directory -Path $resultsRoot -Force | Out-Null
+          $snapshotPath = Join-Path $resultsRoot 'runtime-manager-preflight-linux.json'
+          pwsh -NoLogo -NoProfile -File tools/Assert-DockerRuntimeDeterminism.ps1 `
+            -ExpectedOsType linux `
+            -ExpectedContext desktop-linux `
+            -AutoRepair:$true `
+            -ManageDockerEngine:$false `
+            -EngineReadyTimeoutSeconds 300 `
+            -EngineReadyPollSeconds 3 `
+            -SnapshotPath $snapshotPath `
+            -GitHubOutputPath ''
+
+      - name: Run NI Linux create comparison report (fail-fast)
+        id: linux-compare
+        run: |
+          $resultsRoot = 'tests/results/local-parity/linux'
+          New-Item -ItemType Directory -Path $resultsRoot -Force | Out-Null
+          $reportPath = Join-Path $resultsRoot 'linux-compare-report.html'
+          "linux_compare_report=$reportPath" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
+          $runtimeSnapshot = Join-Path $resultsRoot 'runtime-manager-compare-linux.json'
+          pwsh -NoLogo -NoProfile -File tools/Run-NILinuxContainerCompare.ps1 `
+            -BaseVi 'fixtures/vi-stage/control-rename/Base.vi' `
+            -HeadVi 'fixtures/vi-stage/control-rename/Head.vi' `
+            -Image 'nationalinstruments/labview:2026q1-linux' `
+            -ReportPath $reportPath `
+            -TimeoutSeconds 300 `
+            -AutoRepairRuntime:$true `
+            -RuntimeEngineReadyTimeoutSeconds 120 `
+            -RuntimeEngineReadyPollSeconds 3 `
+            -RuntimeSnapshotPath $runtimeSnapshot
+          $compareExit = $LASTEXITCODE
+
+          $capturePath = Join-Path $resultsRoot 'ni-linux-container-capture.json'
+          if (Test-Path -LiteralPath $capturePath -PathType Leaf) {
+            "linux_compare_capture=$capturePath" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
+            $capture = Get-Content -LiteralPath $capturePath -Raw | ConvertFrom-Json -Depth 12
+            $gateOutcome = if ($capture.PSObject.Properties['gateOutcome']) { [string]$capture.gateOutcome } else { '' }
+            $resultClass = if ($capture.PSObject.Properties['resultClass']) { [string]$capture.resultClass } else { '' }
+            Write-Host ("[linux-compare] exit={0} gateOutcome={1} resultClass={2}" -f $compareExit, $gateOutcome, $resultClass)
+            if ($compareExit -ne 0 -and $gateOutcome -ne 'pass') {
+              exit $compareExit
+            }
+          } elseif ($compareExit -ne 0) {
+            throw ("Linux compare failed (exit={0}) and capture file was not found at {1}" -f $compareExit, $capturePath)
+          }
+
+      - name: Validate Linux comparison report artifact contract
+        if: always()
+        run: |
+          $resultsRoot = 'tests/results/local-parity/linux'
+          $reportPath = '${{ steps.linux-compare.outputs.linux_compare_report }}'
+          if ([string]::IsNullOrWhiteSpace($reportPath)) {
+            $reportPath = Join-Path $resultsRoot 'linux-compare-report.html'
+          }
+          $capturePath = Join-Path $resultsRoot 'ni-linux-container-capture.json'
+          $summaryPath = Join-Path $resultsRoot 'linux-compare-artifact-summary.json'
+
+          $captureExists = Test-Path -LiteralPath $capturePath -PathType Leaf
+          $recoveredFromCapture = $false
+          $recoveredReportPath = ''
+          $captureResultClass = ''
+          $captureGateOutcome = ''
+          if (-not (Test-Path -LiteralPath $reportPath -PathType Leaf) -and $captureExists) {
+            try {
+              $capture = Get-Content -LiteralPath $capturePath -Raw | ConvertFrom-Json -Depth 12
+              $captureResultClass = if ($capture.PSObject.Properties['resultClass']) { [string]$capture.resultClass } else { '' }
+              $captureGateOutcome = if ($capture.PSObject.Properties['gateOutcome']) { [string]$capture.gateOutcome } else { '' }
+              if ($capture.PSObject.Properties['reportAnalysis'] -and $capture.reportAnalysis) {
+                $candidate = if ($capture.reportAnalysis.PSObject.Properties['reportPathExtracted']) { [string]$capture.reportAnalysis.reportPathExtracted } else { '' }
+                if (-not [string]::IsNullOrWhiteSpace($candidate) -and (Test-Path -LiteralPath $candidate -PathType Leaf)) {
+                  Copy-Item -LiteralPath $candidate -Destination $reportPath -Force
+                  $recoveredFromCapture = $true
+                  $recoveredReportPath = $candidate
+                }
+              }
+            } catch {
+              Write-Host ("::warning::Unable to parse Linux compare capture for report recovery: {0}" -f $_.Exception.Message)
+            }
+          } elseif ($captureExists) {
+            try {
+              $capture = Get-Content -LiteralPath $capturePath -Raw | ConvertFrom-Json -Depth 12
+              $captureResultClass = if ($capture.PSObject.Properties['resultClass']) { [string]$capture.resultClass } else { '' }
+              $captureGateOutcome = if ($capture.PSObject.Properties['gateOutcome']) { [string]$capture.gateOutcome } else { '' }
+            } catch {}
+          }
+
+          $reportExists = Test-Path -LiteralPath $reportPath -PathType Leaf
+          $compareSucceeded = '${{ steps.linux-compare.conclusion }}' -eq 'success'
+
+          $payload = [ordered]@{
+            schema = 'vi-history/linux-compare-artifact-summary@v1'
+            generatedAt = (Get-Date).ToUniversalTime().ToString('o')
+            compareStepConclusion = '${{ steps.linux-compare.conclusion }}'
+            reportPath = $reportPath
+            reportExists = [bool]$reportExists
+            reportRecoveredFromCapture = [bool]$recoveredFromCapture
+            recoveredReportPath = $recoveredReportPath
+            capturePath = $capturePath
+            captureExists = [bool]$captureExists
+            captureResultClass = $captureResultClass
+            captureGateOutcome = $captureGateOutcome
+          }
+          $payload | ConvertTo-Json -Depth 8 | Set-Content -LiteralPath $summaryPath -Encoding utf8
+
+          $requireReport = $compareSucceeded -and [string]::Equals($captureResultClass, 'success-diff', [System.StringComparison]::OrdinalIgnoreCase)
+          if ($requireReport -and -not $reportExists) {
+            throw ("Linux compare classified success-diff but report file was not found: {0}" -f $reportPath)
+          }
+          if ($compareSucceeded -and -not $reportExists -and -not $requireReport) {
+            Write-Host ("::warning::Linux compare succeeded without diff classification ({0}); no report file was generated at {1}." -f $captureResultClass, $reportPath)
+          }
+          if (-not $reportExists) {
+            Write-Host ("::warning::Linux comparison report not found at {0}" -f $reportPath)
+          }
+
+      - name: Upload VI history scenario artifacts (Linux lane)
+        if: always()
+        uses: actions/upload-artifact@v5
+        with:
+          name: validate-vi-history-scenarios-linux
+          path: |
+            tests/results/local-parity/linux/linux-compare-report.html
+            tests/results/local-parity/linux/linux-compare-artifact-summary.json
+            tests/results/local-parity/linux/ni-linux-container-capture.json
+            tests/results/local-parity/linux/ni-linux-container-stdout.txt
+            tests/results/local-parity/linux/ni-linux-container-stderr.txt
+            tests/results/local-parity/linux/container-export/**
+            tests/results/local-parity/linux/runtime-manager-preflight-linux.json
+            tests/results/local-parity/linux/runtime-manager-compare-linux.json
           if-no-files-found: warn
