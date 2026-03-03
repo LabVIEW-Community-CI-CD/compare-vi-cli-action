@@ -101,6 +101,14 @@ checked into `tools/priority/policy.json` so `priority:policy` stays authoritati
   ./Invoke-PesterTests.ps1 -IncludePatterns 'RequirementsVerificationGate.Tests.ps1'
   ```
 
+- Validate the gate output contract schema explicitly:
+
+  ```powershell
+  pwsh -NoLogo -NonInteractive -NoProfile -File tools/Invoke-JsonSchemaLite.ps1 \
+    -JsonPath tests/results/_agent/verification/verification-summary.json \
+    -SchemaPath docs/schemas/requirements-verification-v1.schema.json
+  ```
+
 ### `main`
 - **Ruleset**: `8614140` (repository ruleset, scope `refs/heads/main`).
 - **Allowed merges**: queue-managed squash enforced by the `merge_queue` rule (`merge_method=SQUASH`); direct merges and

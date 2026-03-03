@@ -1,0 +1,74 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "requirements-verification/v1",
+  "type": "object",
+  "required": [
+    "schema",
+    "schemaVersion",
+    "generatedAtUtc",
+    "traceMatrixPath",
+    "baselinePolicyPath",
+    "traceSource",
+    "metrics",
+    "deltas",
+    "outcome"
+  ],
+  "properties": {
+    "schema": { "const": "requirements-verification/v1" },
+    "schemaVersion": { "type": "string" },
+    "generatedAtUtc": { "type": "string", "format": "date-time" },
+    "traceMatrixPath": { "type": "string" },
+    "baselinePolicyPath": { "type": "string" },
+    "traceSource": { "type": "string", "enum": ["generated", "provided"] },
+    "metrics": {
+      "type": "object",
+      "required": [
+        "requirementTotal",
+        "requirementCovered",
+        "requirementUncovered",
+        "unknownRequirementIds"
+      ],
+      "properties": {
+        "requirementTotal": { "type": "integer", "minimum": 0 },
+        "requirementCovered": { "type": "integer", "minimum": 0 },
+        "requirementUncovered": { "type": "integer", "minimum": 0 },
+        "unknownRequirementIds": {
+          "type": "array",
+          "items": { "type": "string" }
+        }
+      },
+      "additionalProperties": false
+    },
+    "deltas": {
+      "type": "object",
+      "required": [
+        "newUnknownRequirementIds",
+        "newUncoveredRequirementIds"
+      ],
+      "properties": {
+        "newUnknownRequirementIds": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "newUncoveredRequirementIds": {
+          "type": "array",
+          "items": { "type": "string" }
+        }
+      },
+      "additionalProperties": false
+    },
+    "outcome": {
+      "type": "object",
+      "required": ["status", "kind"],
+      "properties": {
+        "status": { "type": "string", "enum": ["pass", "fail"] },
+        "kind": {
+          "type": "string",
+          "enum": ["requirements_coverage_ok", "requirements_coverage_regression"]
+        }
+      },
+      "additionalProperties": false
+    }
+  },
+  "additionalProperties": false
+}
