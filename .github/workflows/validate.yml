@@ -140,7 +140,7 @@ jobs:
     - name: PrePush local gates (includes watcher schema validation)
       shell: pwsh
       env:
-        PREPUSH_SKIP_ICON_EDITOR_FIXTURE_CHECKS: '1'
+        PREPUSH_SKIP_LEGACY_FIXTURE_CHECKS: '1'
       run: |
         pwsh -File tools/PrePush-Checks.ps1
 
@@ -226,8 +226,8 @@ jobs:
           Where-Object {
             $path = $_.FullName -replace '\\','/'
             return $path -notmatch '/node_modules/' `
-              -and $path -notmatch '/vendor/icon-editor/' `
-              -and $path -notmatch '/tmp/icon-editor/'
+              -and $path -notmatch '/vendor/' `
+              -and $path -notmatch '/tmp/'
           }
         $errors = @()
         foreach ($file in $mdFiles) {
@@ -479,7 +479,7 @@ jobs:
         os: [ubuntu-latest, windows-latest]
     runs-on: ${{ matrix.os }}
     env:
-      PREPUSH_SKIP_ICON_EDITOR_FIXTURE_CHECKS: '1'
+      PREPUSH_SKIP_LEGACY_FIXTURE_CHECKS: '1'
     steps:
     - uses: actions/checkout@v5
 
