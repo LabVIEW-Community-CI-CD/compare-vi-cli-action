@@ -290,6 +290,71 @@ Describe 'Summarize-VIStaging.ps1' -Tag 'Unit' {
         $result.pairs[0].diffCategoryDetails[0].slug | Should -Be 'block-diagram-functional'
     }
 
+    It 'renders consolidated html with valid local artifact links' {
+        $compareRoot = Join-Path $TestDrive 'compare-html'
+        $pairDir = Join-Path $compareRoot 'pair-01'
+        New-Item -ItemType Directory -Path $pairDir -Force | Out-Null
+
+        $reportPath = Join-Path $pairDir 'compare-report.html'
+        @'
+<!DOCTYPE html>
+<html>
+<body>
+<details open>
+  <summary class="difference-heading">1. Front Panel - Panel</summary>
+  <ol class="detailed-description-list">
+    <li class="diff-detail">Control moved</li>
+  </ol>
+</details>
+</body>
+</html>
+'@ | Set-Content -LiteralPath $reportPath -Encoding utf8
+
+        $capturePath = Join-Path $pairDir 'lvcompare-capture.json'
+        '{"exitCode":1,"status":"diff"}' | Set-Content -LiteralPath $capturePath -Encoding utf8
+
+        $compareEntry = @(
+            [ordered]@{
+                index      = 1
+                changeType = 'modify'
+                basePath   = 'fixtures/vi-stage/fp-cosmetic/Base.vi'
+                headPath   = 'fixtures/vi-stage/fp-cosmetic/Head.vi'
+                status     = 'diff'
+                exitCode   = 1
+                outputDir  = $pairDir
+                reportPath = $reportPath
+                capturePath= $capturePath
+            }
+        )
+
+        $compareJson = Join-Path $TestDrive 'vi-staging-compare-html.json'
+        $compareEntry | ConvertTo-Json -Depth 6 | Set-Content -LiteralPath $compareJson -Encoding utf8
+
+        $htmlPath = Join-Path $TestDrive 'vi-compare-summary.html'
+        $result = & $script:scriptPath -CompareJson $compareJson -HtmlPath $htmlPath
+
+        Test-Path -LiteralPath $htmlPath -PathType Leaf | Should -BeTrue
+        $result.htmlPath | Should -Be ([System.IO.Path]::GetFullPath($htmlPath))
+
+        $html = Get-Content -LiteralPath $htmlPath -Raw
+        $html | Should -Match '<a href="[^"]+">compare-report</a>'
+        $html | Should -Match '<a href="[^"]+">capture-json</a>'
+
+        $hrefMatches = [regex]::Matches($html, 'href="(?<href>[^"]+)"')
+        $hrefMatches.Count | Should -BeGreaterThan 0
+        $htmlDir = Split-Path -Parent $htmlPath
+        foreach ($match in $hrefMatches) {
+            $href = [string]$match.Groups['href'].Value
+            if ([string]::IsNullOrWhiteSpace($href)) { continue }
+            if ($href -match '^(?i)https?://') { continue }
+            if ($href.StartsWith('#')) { continue }
+            $decodedHref = [Uri]::UnescapeDataString($href)
+            $relativePath = $decodedHref -replace '/', [System.IO.Path]::DirectorySeparatorChar
+            $resolvedTarget = [System.IO.Path]::GetFullPath((Join-Path $htmlDir $relativePath))
+            Test-Path -LiteralPath $resolvedTarget -PathType Leaf | Should -BeTrue
+        }
+    }
+
     It 'handles missing report gracefully' {
         $compareEntry = @(
             [ordered]@{

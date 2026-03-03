@@ -338,6 +338,8 @@ $rows.Add('| --- | --- | --- | --- | --- | --- |') | Out-Null
 $diffTotal = 0
 $comparisonTotal = 0
 $completed = 0
+$durationTotalSeconds = 0.0
+$durationSampleTotal = 0
 
 foreach ($target in $targets) {
     $repoPath = if ($target.PSObject.Properties['repoPath']) { [string]$target.repoPath } else { '(unknown)' }
@@ -355,6 +357,9 @@ foreach ($target in $targets) {
     $comparisons = '0'
     $diffs = '0'
     $reportNote = '_n/a_'
+    $durationSecondsValue = $null
+    $durationSamplesValue = 0
+    $durationAvgSecondsValue = $null
 
     if ($target.PSObject.Properties['stats'] -and $target.stats) {
         $stats = $target.stats
@@ -367,6 +372,27 @@ foreach ($target in $targets) {
             $diffValue = [int]$stats.diffs
             $diffTotal += $diffValue
             $diffs = $diffValue.ToString()
+        }
+        if ($stats.PSObject.Properties['durationSeconds']) {
+            $parsedDuration = 0.0
+            if ([double]::TryParse([string]$stats.durationSeconds, [ref]$parsedDuration)) {
+                $durationSecondsValue = $parsedDuration
+                $durationTotalSeconds += $parsedDuration
+            }
+        }
+        if ($stats.PSObject.Properties['durationSamples']) {
+            try {
+                $durationSamplesValue = [int]$stats.durationSamples
+                if ($durationSamplesValue -gt 0) {
+                    $durationSampleTotal += $durationSamplesValue
+                }
+            } catch {}
+        }
+        if ($stats.PSObject.Properties['durationAvgSeconds']) {
+            $parsedAvg = 0.0
+            if ([double]::TryParse([string]$stats.durationAvgSeconds, [ref]$parsedAvg)) {
+                $durationAvgSecondsValue = $parsedAvg
+            }
         }
     }
 
@@ -389,6 +415,24 @@ foreach ($target in $targets) {
         $reportNote = [string]::Join('<br />', $reportPaths)
     } elseif ($message) {
         $reportNote = $message
+    }
+
+    $timingNote = $null
+    if ($durationSecondsValue -ne $null -and $durationSamplesValue -gt 0) {
+        $timingNote = ("time: {0:N2}s total ({1} compare{2}" -f $durationSecondsValue, $durationSamplesValue, $(if ($durationSamplesValue -eq 1) { '' } else { 's' }))
+        if ($durationAvgSecondsValue -ne $null) {
+            $timingNote += (", avg {0:N2}s" -f $durationAvgSecondsValue)
+        }
+        $timingNote += ')'
+    } elseif ($durationSecondsValue -ne $null) {
+        $timingNote = ("time: {0:N2}s total" -f $durationSecondsValue)
+    }
+    if ($timingNote) {
+        if ($reportNote -eq '_n/a_') {
+            $reportNote = $timingNote
+        } else {
+            $reportNote = ($reportNote + '<br />' + $timingNote)
+        }
     }
 
     $statusLabel = switch ($status) {
@@ -627,6 +671,8 @@ $result = [pscustomobject]@{
         diffPairRows= $diffPairRows
         previewImages = $previewEntries.Count
         markdownTruncated = $markdownTruncated
+        durationSeconds = [Math]::Round($durationTotalSeconds, 6)
+        durationSamples = $durationSampleTotal
         timing      = $timingSummary
     }
     targets  = $targets

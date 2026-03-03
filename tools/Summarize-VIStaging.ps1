@@ -18,8 +18,11 @@
 .PARAMETER SummaryJsonPath
   Optional path for writing the enriched summary (pairs, totals, markdown).
 
+.PARAMETER HtmlPath
+  Optional path where a consolidated HTML summary should be written.
+
 .OUTPUTS
-  PSCustomObject with `totals`, `pairs`, `markdown`, and `compareDir`.
+  PSCustomObject with `totals`, `pairs`, `markdown`, `html`, and `compareDir`.
 #>
 [CmdletBinding()]
 param(
@@ -28,7 +31,9 @@ param(
 
     [string]$MarkdownPath,
 
-    [string]$SummaryJsonPath
+    [string]$SummaryJsonPath,
+
+    [string]$HtmlPath
 )
 
 Set-StrictMode -Version Latest
@@ -83,6 +88,32 @@ function Get-RelativePath {
     } catch {
         return $TargetPath
     }
+}
+
+function Convert-ToSafeHtmlText {
+    param([string]$Value)
+    if ($null -eq $Value) { return '' }
+    return [System.Net.WebUtility]::HtmlEncode([string]$Value)
+}
+
+function Convert-ToHtmlHref {
+    param(
+        [string]$BasePath,
+        [string]$TargetPath
+    )
+    if ([string]::IsNullOrWhiteSpace($TargetPath)) { return $null }
+    $relative = Get-RelativePath -BasePath $BasePath -TargetPath $TargetPath
+    if ([string]::IsNullOrWhiteSpace($relative)) { return $null }
+    $normalized = ($relative -replace '\\', '/')
+    $segments = $normalized -split '/'
+    $encoded = foreach ($segment in $segments) {
+        if ($segment -eq '.' -or $segment -eq '..' -or [string]::IsNullOrWhiteSpace($segment)) {
+            $segment
+        } else {
+            [Uri]::EscapeDataString($segment)
+        }
+    }
+    return ($encoded -join '/')
 }
 
 function Parse-InclusionList {
@@ -629,6 +660,118 @@ function Build-MarkdownTable {
     return ($summaryLines + '' + $rows) -join "`n"
 }
 
+function Build-HtmlReport {
+    param(
+        [pscustomobject[]]$Pairs,
+        [pscustomobject]$Totals,
+        [string]$CompareDir,
+        [string]$HtmlRoot
+    )
+
+    $lines = New-Object System.Collections.Generic.List[string]
+    $lines.Add('<!DOCTYPE html>') | Out-Null
+    $lines.Add('<html lang="en">') | Out-Null
+    $lines.Add('<head>') | Out-Null
+    $lines.Add('  <meta charset="utf-8">') | Out-Null
+    $lines.Add('  <meta name="viewport" content="width=device-width, initial-scale=1">') | Out-Null
+    $lines.Add('  <title>VI Compare Summary</title>') | Out-Null
+    $lines.Add('  <style>') | Out-Null
+    $lines.Add('    body { font-family: Segoe UI, Arial, sans-serif; margin: 20px; color: #111; }') | Out-Null
+    $lines.Add('    h1 { margin: 0 0 8px 0; }') | Out-Null
+    $lines.Add('    .meta { margin: 0 0 12px 0; color: #333; }') | Out-Null
+    $lines.Add('    table { border-collapse: collapse; width: 100%; }') | Out-Null
+    $lines.Add('    th, td { border: 1px solid #ccc; padding: 8px; text-align: left; vertical-align: top; }') | Out-Null
+    $lines.Add('    th { background: #f2f2f2; }') | Out-Null
+    $lines.Add('    .status-diff { color: #7a1515; font-weight: 700; }') | Out-Null
+    $lines.Add('    .status-match { color: #155724; font-weight: 700; }') | Out-Null
+    $lines.Add('    .status-error { color: #8a6d3b; font-weight: 700; }') | Out-Null
+    $lines.Add('    .status-skipped { color: #555; font-weight: 700; }') | Out-Null
+    $lines.Add('    .mono { font-family: Consolas, Menlo, monospace; font-size: 12px; }') | Out-Null
+    $lines.Add('  </style>') | Out-Null
+    $lines.Add('</head>') | Out-Null
+    $lines.Add('<body>') | Out-Null
+    $lines.Add('  <h1>VI Compare Summary</h1>') | Out-Null
+    $summaryText = "Totals: diff=$($Totals.diff), match=$($Totals.match), skipped=$($Totals.skipped), error=$($Totals.error), leaks=$($Totals.leakWarnings)"
+    $lines.Add("  <p class=`"meta`">$([System.Net.WebUtility]::HtmlEncode($summaryText))</p>") | Out-Null
+    if (-not [string]::IsNullOrWhiteSpace($CompareDir)) {
+        $lines.Add("  <p class=`"meta`">Artifacts root: <span class=`"mono`">$([System.Net.WebUtility]::HtmlEncode(($CompareDir -replace '\\','/')))</span></p>") | Out-Null
+    }
+    $lines.Add('  <table>') | Out-Null
+    $lines.Add('    <thead><tr><th>Pair</th><th>Target</th><th>Status</th><th>Exit</th><th>Categories</th><th>Details</th><th>Report</th><th>Capture</th></tr></thead>') | Out-Null
+    $lines.Add('    <tbody>') | Out-Null
+
+    foreach ($pair in $Pairs) {
+        $pairLabel = Convert-ToSafeHtmlText -Value ("Pair {0} ({1})" -f $pair.index, $pair.changeType)
+        $targetText = if (-not [string]::IsNullOrWhiteSpace([string]$pair.headPath)) { [string]$pair.headPath } else { [string]$pair.basePath }
+        $targetCell = Convert-ToSafeHtmlText -Value $targetText
+        $statusRaw = [string]$pair.status
+        $statusClass = switch ($statusRaw) {
+            'diff'    { 'status-diff' }
+            'match'   { 'status-match' }
+            'error'   { 'status-error' }
+            'skipped' { 'status-skipped' }
+            default   { '' }
+        }
+        $statusCell = Convert-ToSafeHtmlText -Value $statusRaw
+        $exitCell = if ($null -ne $pair.exitCode) { Convert-ToSafeHtmlText -Value ([string]$pair.exitCode) } else { '-' }
+
+        $categoryValues = New-Object System.Collections.Generic.List[string]
+        if ($pair.PSObject.Properties['diffCategoryDetails'] -and $pair.diffCategoryDetails) {
+            foreach ($detail in $pair.diffCategoryDetails) {
+                if (-not $detail) { continue }
+                $label = if ($detail.PSObject.Properties['label'] -and $detail.label) { [string]$detail.label } else { [string]$detail.slug }
+                if (-not [string]::IsNullOrWhiteSpace($label)) {
+                    $categoryValues.Add($label) | Out-Null
+                }
+            }
+        } elseif ($pair.PSObject.Properties['diffCategories'] -and $pair.diffCategories) {
+            foreach ($category in $pair.diffCategories) {
+                if (-not [string]::IsNullOrWhiteSpace([string]$category)) {
+                    $categoryValues.Add([string]$category) | Out-Null
+                }
+            }
+        }
+        $categoriesCell = if ($categoryValues.Count -gt 0) {
+            Convert-ToSafeHtmlText -Value ($categoryValues -join ', ')
+        } else {
+            '-'
+        }
+
+        $detailValues = @()
+        if ($pair.PSObject.Properties['diffDetailPreview'] -and $pair.diffDetailPreview) {
+            $detailValues = @($pair.diffDetailPreview | Where-Object { -not [string]::IsNullOrWhiteSpace([string]$_) } | Select-Object -First 3)
+        }
+        $detailsCell = if ($detailValues.Count -gt 0) {
+            (Convert-ToSafeHtmlText -Value ($detailValues -join '; '))
+        } else {
+            '-'
+        }
+
+        $reportHref = if ($pair.PSObject.Properties['reportPath']) { Convert-ToHtmlHref -BasePath $HtmlRoot -TargetPath ([string]$pair.reportPath) } else { $null }
+        $reportCell = if (-not [string]::IsNullOrWhiteSpace($reportHref)) {
+            "<a href=`"$reportHref`">compare-report</a>"
+        } else {
+            '-'
+        }
+
+        $captureHref = if ($pair.PSObject.Properties['capturePath']) { Convert-ToHtmlHref -BasePath $HtmlRoot -TargetPath ([string]$pair.capturePath) } else { $null }
+        $captureCell = if (-not [string]::IsNullOrWhiteSpace($captureHref)) {
+            "<a href=`"$captureHref`">capture-json</a>"
+        } else {
+            '-'
+        }
+
+        $lines.Add("      <tr><td>$pairLabel</td><td><span class=`"mono`">$targetCell</span></td><td class=`"$statusClass`">$statusCell</td><td>$exitCell</td><td>$categoriesCell</td><td>$detailsCell</td><td>$reportCell</td><td>$captureCell</td></tr>") | Out-Null
+    }
+
+    $lines.Add('    </tbody>') | Out-Null
+    $lines.Add('  </table>') | Out-Null
+    $lines.Add('</body>') | Out-Null
+    $lines.Add('</html>') | Out-Null
+
+    return ($lines -join "`n")
+}
+
 if (-not (Test-Path -LiteralPath $CompareJson -PathType Leaf)) {
     throw "Compare summary file not found: $CompareJson"
 }
@@ -969,11 +1112,24 @@ $totals.bucketCounts = $sortedBucketTotals
 
 $totalsObj = [pscustomobject]$totals
 $markdown = Build-MarkdownTable -Pairs $pairs -Totals $totalsObj -CompareDir $compareRoot
+$html = $null
+$resolvedHtmlPath = $null
+if ($HtmlPath) {
+    $resolvedHtmlPath = [System.IO.Path]::GetFullPath($HtmlPath)
+    $htmlRoot = Split-Path -Parent $resolvedHtmlPath
+    if (-not [string]::IsNullOrWhiteSpace($htmlRoot)) {
+        New-Item -ItemType Directory -Path $htmlRoot -Force | Out-Null
+    }
+    $html = Build-HtmlReport -Pairs $pairs -Totals $totalsObj -CompareDir $compareRoot -HtmlRoot $htmlRoot
+    $html | Set-Content -LiteralPath $resolvedHtmlPath -Encoding utf8
+}
 
 $result = [pscustomobject]@{
     totals     = $totalsObj
     pairs      = $pairs
     markdown   = $markdown
+    html       = $html
+    htmlPath   = $resolvedHtmlPath
     compareDir = $compareRoot
 }
 
@@ -991,6 +1147,9 @@ if ($Env:GITHUB_OUTPUT) {
     }
     if ($SummaryJsonPath) {
         "summary_json=$SummaryJsonPath" | Out-File -FilePath $Env:GITHUB_OUTPUT -Encoding utf8 -Append
+    }
+    if ($resolvedHtmlPath) {
+        "summary_html=$resolvedHtmlPath" | Out-File -FilePath $Env:GITHUB_OUTPUT -Encoding utf8 -Append
     }
     if ($compareRoot) {
         "compare_dir=$compareRoot" | Out-File -FilePath $Env:GITHUB_OUTPUT -Encoding utf8 -Append
