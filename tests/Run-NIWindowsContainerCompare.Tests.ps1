@@ -253,6 +253,28 @@ exit 0
     (@($records | Where-Object { $_.args[0] -eq 'image' -and $_.args[1] -eq 'inspect' })).Count | Should -Be 1
   }
 
+  It 'passes probe when docker context is default and Windows docker mode is active' {
+    $work = Join-Path $TestDrive 'probe-default-context'
+    New-Item -ItemType Directory -Path $work | Out-Null
+    & $script:NewDockerStub -WorkRoot $work | Out-Null
+
+    $logPath = Join-Path $work 'docker-log.ndjson'
+    Set-Item Env:DOCKER_STUB_LOG $logPath
+    Set-Item Env:DOCKER_STUB_OSTYPE 'windows'
+    Set-Item Env:DOCKER_STUB_IMAGE_EXISTS '1'
+    Set-Item Env:DOCKER_STUB_CONTEXT 'default'
+
+    $output = & pwsh -NoLogo -NoProfile -File $script:RunnerScript `
+      -RuntimeEngineReadyTimeoutSeconds 5 `
+      -RuntimeEngineReadyPollSeconds 1 `
+      -Probe 2>&1
+    $LASTEXITCODE | Should -Be 0 -Because ($output -join "`n")
+
+    $records = & $script:ReadDockerStubLog -Path $logPath
+    (@($records | Where-Object { $_.args[0] -eq 'context' -and $_.args[1] -eq 'show' })).Count | Should -BeGreaterThan 0
+    (@($records | Where-Object { $_.args[0] -eq 'image' -and $_.args[1] -eq 'inspect' })).Count | Should -Be 1
+  }
+
   It 'fails probe with remediation when Docker is not in Windows container mode' {
     $work = Join-Path $TestDrive 'probe-linux-mode'
     New-Item -ItemType Directory -Path $work | Out-Null
