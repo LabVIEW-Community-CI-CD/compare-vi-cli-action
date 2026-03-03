@@ -987,6 +987,8 @@ $pairDurations = [System.Collections.Generic.List[double]]::new()
 $reportImageTargetCount = 0
 $reportImageExportedCount = 0
 $reportImageExtractionErrors = 0
+$totalDurationSeconds = 0.0
+$totalDurationSamples = 0
 
 for ($i = 0; $i -lt $targets.Count; $i++) {
     $target = $targets[$i]
@@ -1245,6 +1247,21 @@ for ($i = 0; $i -lt $targets.Count; $i++) {
     $targetPairs = @($targetTimeline.Pairs)
     $targetDurations = @($targetTimeline.Durations)
     $targetTiming = New-TimingSummary -DurationsSeconds $targetDurations
+    $targetDurationSeconds = if ($targetTiming -and $targetTiming.PSObject.Properties['totalSeconds'] -and $null -ne $targetTiming.totalSeconds) {
+        [double]$targetTiming.totalSeconds
+    } else {
+        0.0
+    }
+    $targetDurationSamples = if ($targetTiming -and $targetTiming.PSObject.Properties['comparisonCount']) {
+        [int]$targetTiming.comparisonCount
+    } else {
+        0
+    }
+    $targetDurationAvgSeconds = if ($targetDurationSamples -gt 0) {
+        [Math]::Round(($targetDurationSeconds / [double]$targetDurationSamples), 6)
+    } else {
+        $null
+    }
 
     $totalPairRows += $targetPairs.Count
     foreach ($pairRow in $targetPairs) {
@@ -1260,6 +1277,8 @@ for ($i = 0; $i -lt $targets.Count; $i++) {
         if ($candidateDuration -lt 0) { continue }
         $pairDurations.Add([double]$candidateDuration) | Out-Null
     }
+    $totalDurationSeconds += $targetDurationSeconds
+    $totalDurationSamples += $targetDurationSamples
 
     [void]$summaryTargets.Add([pscustomobject]@{
         repoPath    = $repoPath
@@ -1276,9 +1295,12 @@ for ($i = 0; $i -lt $targets.Count; $i++) {
         timing      = $targetTiming
         estimatedCompareTime = $targetTiming.estimatedCompareTime
         stats       = [pscustomobject]@{
-            processed = $processed
-            diffs     = $diffs
-            missing   = $missing
+            processed          = $processed
+            diffs              = $diffs
+            missing            = $missing
+            durationSeconds    = [Math]::Round($targetDurationSeconds, 6)
+            durationSamples    = $targetDurationSamples
+            durationAvgSeconds = $targetDurationAvgSeconds
         }
     }) | Out-Null
 }
@@ -1322,6 +1344,8 @@ $summary = [pscustomobject]@{
         imageErrors      = $reportImageExtractionErrors
         pairRows         = $totalPairRows
         diffPairRows     = $diffPairRows
+        durationSeconds  = [Math]::Round($totalDurationSeconds, 6)
+        durationSamples  = $totalDurationSamples
         timing           = $overallTiming
         estimatedCompareTime = $overallTiming.estimatedCompareTime
     }

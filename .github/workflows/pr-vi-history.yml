@@ -24,9 +24,9 @@ on:
         required: false
         default: '10'
       compare_timeout_seconds:
-        description: 'Per-compare timeout in seconds passed to history compare (default 900)'
+        description: 'Per-compare timeout in seconds passed to history compare (default 600)'
         required: false
-        default: '900'
+        default: '600'
       labview_path:
         description: 'LabVIEW.exe path used by headless compare operations'
         required: false
@@ -56,7 +56,7 @@ jobs:
       NOTE: ${{ inputs.note }}
       MAX_PAIRS: ${{ inputs.max_pairs || '6' }}
       FETCH_DEPTH: ${{ github.event.inputs.fetch_depth || '20' }}
-      COMPARE_TIMEOUT_SECONDS: ${{ github.event.inputs.compare_timeout_seconds || '900' }}
+      COMPARE_TIMEOUT_SECONDS: ${{ github.event.inputs.compare_timeout_seconds || '600' }}
       LABVIEW_PATH: ${{ github.event.inputs.labview_path || 'C:\Program Files\National Instruments\LabVIEW 2026\LabVIEW.exe' }}
     steps:
       - name: Resolve pull request metadata
