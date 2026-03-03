@@ -56,7 +56,7 @@ runs:
     - name: Run markdownlint (strict)
       shell: pwsh
       continue-on-error: ${{ inputs.enforce != 'true' }}
-      run: node tools/npm/run-script.mjs lint:md
+      run: node tools/npm/run-script.mjs lint:md:changed
 
     - name: Run markdownlint (relaxed path)
       if: ${{ inputs.relaxed-path != '' }}

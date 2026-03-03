@@ -139,6 +139,8 @@ jobs:
 
     - name: PrePush local gates (includes watcher schema validation)
       shell: pwsh
+      env:
+        PREPUSH_SKIP_ICON_EDITOR_FIXTURE_CHECKS: '1'
       run: |
         pwsh -File tools/PrePush-Checks.ps1
 
@@ -317,10 +319,9 @@ jobs:
           Write-Host 'Labels OK on main.'
         }
 
-    - name: Run markdownlint (non-blocking)
-      run: |
-        markdownlint "**/*.md" --ignore node_modules
-      continue-on-error: true
+    - name: Run markdownlint (scoped changed files)
+      shell: bash
+      run: node tools/npm/run-script.mjs lint:md:changed
   fixtures:
     runs-on: [self-hosted, Windows, X64]
     env:

@@ -1,5 +1,6 @@
 name: CI Pipeline (Composite)
-# Builds, tests, and packages the Icon Editor. See docs/ci-workflows.md for details.
+# Legacy icon-editor pipeline retained for manual diagnostics only.
+# Active PR/push validation is owned by Validate + fixture drift workflows.
 
 permissions:
   contents: read
@@ -9,31 +10,6 @@ concurrency:
   cancel-in-progress: true
 
 on:
-  push:
-    branches:
-      - main
-      - develop
-      - release-alpha/*
-      - release-beta/*
-      - release-rc/*
-      - feature/*
-      - hotfix/*
-      - issue-*
-  pull_request:
-    branches:
-      - main
-      - develop
-      - release-alpha/*
-      - release-beta/*
-      - release-rc/*
-      - feature/*
-      - hotfix/*
-      - issue-*
-    types:
-      - opened
-      - synchronize
-      - reopened
-      - ready_for_review
   workflow_dispatch: # manual trigger
 
 jobs:

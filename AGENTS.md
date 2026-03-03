@@ -22,6 +22,9 @@ line buffers).
   - Operate inside this repository unless the human asks otherwise.
   - Keep workflows deterministic and green.
   - Reference the current standing-priority issue (e.g., `#<standing-number>`) in commit and PR descriptions.
+  - Treat icon-editor CI/package automation as legacy/manual-only. Do not expand
+    `ci-composite.yml` or icon-editor fixture freshness checks into required PR
+    gates unless a standing-priority issue explicitly re-enables that scope.
 - First actions in a session:
   1. `pwsh -NoLogo -NoProfile -File tools/priority/bootstrap.ps1` to run hook preflight, refresh the standing-priority
      snapshot/router artifacts, and auto-anchor the workspace to `develop`. When PowerShell + Node aren't available on
