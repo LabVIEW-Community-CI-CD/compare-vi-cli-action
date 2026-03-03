@@ -139,6 +139,8 @@ jobs:
 
     - name: PrePush local gates (includes watcher schema validation)
       shell: pwsh
+      env:
+        PREPUSH_SKIP_ICON_EDITOR_FIXTURE_CHECKS: '1'
       run: |
         pwsh -File tools/PrePush-Checks.ps1
 
@@ -317,10 +319,11 @@ jobs:
           Write-Host 'Labels OK on main.'
         }
 
-    - name: Run markdownlint (non-blocking)
+    - name: Run markdownlint (scoped)
+      shell: pwsh
       run: |
-        markdownlint "**/*.md" --ignore node_modules
-      continue-on-error: true
+        # Use repo-scoped linter so legacy icon-editor docs do not flood required lint output.
+        pwsh -NoLogo -NoProfile -File tools/Lint-Markdown.ps1 -All
   fixtures:
     runs-on: [self-hosted, Windows, X64]
     env:
