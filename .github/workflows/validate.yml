@@ -322,6 +322,33 @@ jobs:
     - name: Run markdownlint (scoped changed files)
       shell: bash
       run: node tools/npm/run-script.mjs lint:md:changed
+
+    - name: Markdown lint determinism regression (Pester)
+      shell: pwsh
+      run: |
+        $ErrorActionPreference = 'Stop'
+        if (-not (Get-Module -ListAvailable -Name Pester)) {
+          Install-Module -Name Pester -Scope CurrentUser -Force -SkipPublisherCheck
+        }
+        Invoke-Pester -Path 'tests/Lint-Markdown.Tests.ps1' -CI
+
+    - name: Markdown lint determinism regression (Node)
+      shell: bash
+      run: node --test tools/__tests__/lint-markdown.test.mjs
+
+    - name: Append markdown determinism summary
+      if: always()
+      shell: pwsh
+      run: |
+        if ($env:GITHUB_STEP_SUMMARY) {
+          $lines = @(
+            '### Markdown Lint Determinism Regression',
+            '',
+            '- `Invoke-Pester -Path tests/Lint-Markdown.Tests.ps1 -CI`',
+            '- `node --test tools/__tests__/lint-markdown.test.mjs`'
+          )
+          $lines -join "`n" | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8
+        }
   fixtures:
     runs-on: [self-hosted, Windows, X64]
     env:
