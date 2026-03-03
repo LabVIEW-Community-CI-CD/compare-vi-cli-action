@@ -83,6 +83,24 @@ checked into `tools/priority/policy.json` so `priority:policy` stays authoritati
 - **Admin bypass**: leave disabled; administrators should only intervene when `priority:policy` confirms parity.
 - **Reapply**: Use `node tools/npm/run-script.mjs priority:policy -- --apply` to push the manifest configuration when drift is detected.
 
+#### Requirements verification gate (local runbook)
+
+- Generate and evaluate the gate summary locally:
+
+  ```powershell
+  pwsh -NoLogo -NonInteractive -NoProfile -File tools/Verify-RequirementsGate.ps1 \
+    -TestsPath tests \
+    -ResultsRoot tests/results \
+    -OutDir tests/results/_agent/verification \
+    -BaselinePolicyPath tools/policy/requirements-verification-baseline.json
+  ```
+
+- Run focused regression tests for baseline pass/fail logic:
+
+  ```powershell
+  ./Invoke-PesterTests.ps1 -IncludePatterns 'RequirementsVerificationGate.Tests.ps1'
+  ```
+
 ### `main`
 - **Ruleset**: `8614140` (repository ruleset, scope `refs/heads/main`).
 - **Allowed merges**: queue-managed squash enforced by the `merge_queue` rule (`merge_method=SQUASH`); direct merges and
