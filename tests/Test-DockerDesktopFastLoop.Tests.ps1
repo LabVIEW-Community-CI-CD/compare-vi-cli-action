@@ -53,7 +53,13 @@ $snapshot = [ordered]@{
   generatedAt = (Get-Date).ToUniversalTime().ToString('o')
   expected = [ordered]@{ osType = $ExpectedOsType; context = $ExpectedContext }
   observed = [ordered]@{ osType = $ExpectedOsType; context = $ExpectedContext }
-  result = [ordered]@{ status = 'ok'; reason = '' }
+  repairActions = @()
+  result = [ordered]@{
+    status = 'ok'
+    reason = ''
+    failureClass = 'none'
+    probeParseReason = 'parsed'
+  }
 }
 
 if (-not [string]::IsNullOrWhiteSpace($env:FASTLOOP_ASSERT_TRACE_PATH)) {
@@ -78,6 +84,9 @@ if ([string]::Equals($env:FASTLOOP_ASSERT_FAIL_WINDOWS, '1', [System.StringCompa
   $snapshot.observed.context = 'desktop-linux'
   $snapshot.result.status = 'mismatch-failed'
   $snapshot.result.reason = 'Runtime determinism check failed: expected os=windows'
+  $snapshot.result.failureClass = 'daemon-unavailable'
+  $snapshot.result.probeParseReason = 'daemon-unavailable'
+  $snapshot.repairActions = @('docker service recovery: restart-service')
 }
 
 if (-not [string]::IsNullOrWhiteSpace($SnapshotPath)) {
@@ -491,6 +500,9 @@ if (-not [string]::IsNullOrWhiteSpace($GitHubOutputPath)) {
       $summary.laneLifecycle.windows.startStep | Should -Be 'windows-runtime-preflight'
       $summary.laneLifecycle.windows.endStep | Should -Be 'windows-runtime-preflight'
       $summary.laneLifecycle.linux.status | Should -Be 'skipped'
+      $summary.runtimeManager.schema | Should -Be 'docker-fast-loop/runtime-manager@v1'
+      $summary.runtimeManager.daemonUnavailableCount | Should -Be 1
+      $summary.runtimeManager.transitionCount | Should -BeGreaterThan 0
     } finally {
       Remove-Item Env:FASTLOOP_ASSERT_FAIL_WINDOWS -ErrorAction SilentlyContinue
       Pop-Location | Out-Null
@@ -764,4 +776,3 @@ if (-not [string]::IsNullOrWhiteSpace($GitHubOutputPath)) {
     }
   }
 }
-

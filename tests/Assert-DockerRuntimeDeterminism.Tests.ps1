@@ -216,11 +216,39 @@ exit 0
 
     $snapshot = Get-Content -LiteralPath $snapshotPath -Raw | ConvertFrom-Json -Depth 12
     $snapshot.result.status | Should -Be 'mismatch-failed'
+    $snapshot.result.failureClass | Should -Be 'daemon-unavailable'
     $snapshot.observed.osType | Should -BeNullOrEmpty
     $snapshot.observed.dockerOsProbe.last.parseReason | Should -Match '^(daemon-unavailable|docker-info-command-failed)$'
     $snapshot.observed.PSObject.Properties.Name | Should -Contain 'dockerBackendProcesses'
     $snapshot.result.reason | Should -Match 'parseReason=(daemon-unavailable|docker-info-command-failed)'
     $snapshot.result.reason | Should -Match 'exitCode=1'
+  }
+
+  It 'classifies parse-defect when docker info output is non-empty but unparseable' {
+    $work = Join-Path $TestDrive 'parse-defect-unparseable'
+    New-Item -ItemType Directory -Path $work -Force | Out-Null
+    & $script:CreateDockerWslStubs -WorkRoot $work
+
+    Set-Item Env:DOCKER_STUB_INFO_MODE 'unparseable-success'
+    Set-Item Env:DOCKER_STUB_CONTEXT 'desktop-windows'
+
+    $snapshotPath = Join-Path $work 'runtime.json'
+    $githubOutput = Join-Path $work 'github-output.txt'
+    $output = & pwsh -NoLogo -NoProfile -File $script:GuardScript `
+      -ExpectedOsType windows `
+      -ExpectedContext desktop-windows `
+      -AutoRepair:$false `
+      -SnapshotPath $snapshotPath `
+      -GitHubOutputPath $githubOutput 2>&1
+    $LASTEXITCODE | Should -Not -Be 0
+
+    $snapshot = Get-Content -LiteralPath $snapshotPath -Raw | ConvertFrom-Json -Depth 12
+    $snapshot.result.status | Should -Be 'mismatch-failed'
+    $snapshot.result.failureClass | Should -Be 'parse-defect'
+    $snapshot.result.probeParseReason | Should -Be 'unparseable-output'
+
+    $ghOut = Get-Content -LiteralPath $githubOutput -Raw
+    $ghOut | Should -Match 'runtime-failure-class=parse-defect'
   }
 
   It 'hard-stops when observed OSType is empty even under auto-repair' {
@@ -269,6 +297,7 @@ exit 0
 
     $snapshot = Get-Content -LiteralPath $snapshotPath -Raw | ConvertFrom-Json -Depth 12
     $snapshot.result.status | Should -Be 'ok'
+    $snapshot.result.failureClass | Should -Be 'none'
     $snapshot.observed.osType | Should -Be 'windows'
     $snapshot.observed.context | Should -Be 'desktop-windows'
     $snapshot.observed.dockerOsProbe.initial.parseReason | Should -Be 'parsed'
@@ -277,6 +306,7 @@ exit 0
 
     $ghOut = Get-Content -LiteralPath $githubOutput -Raw
     $ghOut | Should -Match 'runtime-status=ok'
+    $ghOut | Should -Match 'runtime-failure-class=none'
     $ghOut | Should -Match 'docker-ostype-parse-reason=parsed'
   }
 
@@ -328,6 +358,5 @@ exit 0
     $snapshot.observed.context | Should -Be 'default'
   }
 }
-
 
 

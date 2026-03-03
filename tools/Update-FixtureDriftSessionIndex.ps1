@@ -9,7 +9,7 @@ param(
   [string]$SessionIndexPath = '',
   [string]$ContextPath = '',
   [string]$RuntimeSnapshotPath = '',
-  [string]$RequiredLabel = 'self-hosted-docker',
+  [string]$RequiredLabel = 'self-hosted-docker-windows',
   [bool]$HasRequiredLabel = $false,
   [string]$RunnerLabelsCsv = '',
   [string]$ManagerStatus = '',

@@ -72,6 +72,99 @@ function Resolve-RepoRelativePath {
   return $resolved
 }
 
+function Read-JsonFileOrNull {
+  param([AllowNull()][AllowEmptyString()][string]$Path)
+
+  if ([string]::IsNullOrWhiteSpace($Path)) { return $null }
+  if (-not (Test-Path -LiteralPath $Path -PathType Leaf)) { return $null }
+  try {
+    return (Get-Content -LiteralPath $Path -Raw | ConvertFrom-Json -Depth 12)
+  } catch {
+    return $null
+  }
+}
+
+function Get-RuntimeManagerLaneTelemetry {
+  param(
+    [Parameter(Mandatory)][ValidateSet('windows', 'linux')][string]$Lane,
+    [Parameter(Mandatory)][string]$SnapshotPath
+  )
+
+  $snapshot = Read-JsonFileOrNull -Path $SnapshotPath
+  $repairActions = @()
+  if ($snapshot -and $snapshot.PSObject.Properties['repairActions'] -and $snapshot.repairActions) {
+    $repairActions = @($snapshot.repairActions | ForEach-Object { [string]$_ })
+  }
+
+  $status = ''
+  $failureClass = ''
+  $probeParseReason = ''
+  $observedOsType = ''
+  $observedContext = ''
+  if ($snapshot -and $snapshot.PSObject.Properties['result'] -and $snapshot.result) {
+    if ($snapshot.result.PSObject.Properties['status']) { $status = [string]$snapshot.result.status }
+    if ($snapshot.result.PSObject.Properties['failureClass']) { $failureClass = [string]$snapshot.result.failureClass }
+    if ($snapshot.result.PSObject.Properties['probeParseReason']) { $probeParseReason = [string]$snapshot.result.probeParseReason }
+  }
+  if ($snapshot -and $snapshot.PSObject.Properties['observed'] -and $snapshot.observed) {
+    if ($snapshot.observed.PSObject.Properties['osType']) { $observedOsType = [string]$snapshot.observed.osType }
+    if ($snapshot.observed.PSObject.Properties['context']) { $observedContext = [string]$snapshot.observed.context }
+  }
+  if ([string]::IsNullOrWhiteSpace($probeParseReason) -and $snapshot -and $snapshot.PSObject.Properties['observed'] -and $snapshot.observed -and $snapshot.observed.PSObject.Properties['dockerOsProbe'] -and $snapshot.observed.dockerOsProbe -and $snapshot.observed.dockerOsProbe.PSObject.Properties['last'] -and $snapshot.observed.dockerOsProbe.last -and $snapshot.observed.dockerOsProbe.last.PSObject.Properties['parseReason']) {
+    $probeParseReason = [string]$snapshot.observed.dockerOsProbe.last.parseReason
+  }
+
+  $contextSwitchCount = 0
+  $engineSwitchCount = 0
+  $serviceRecoveryCount = 0
+  foreach ($action in @($repairActions)) {
+    if ($action -match '(?i)^docker context use ') { $contextSwitchCount++ }
+    if ($action -match '(?i)^docker engine switch to ') { $engineSwitchCount++ }
+    if ($action -match '(?i)^docker service recovery:') { $serviceRecoveryCount++ }
+  }
+
+  return [ordered]@{
+    lane = $Lane
+    snapshotPath = $SnapshotPath
+    snapshotPresent = ($null -ne $snapshot)
+    status = $status
+    failureClass = if ([string]::IsNullOrWhiteSpace($failureClass)) { 'none' } else { $failureClass }
+    probeParseReason = $probeParseReason
+    observedOsType = $observedOsType
+    observedContext = $observedContext
+    repairActionCount = @($repairActions).Count
+    contextSwitchCount = [int]$contextSwitchCount
+    engineSwitchCount = [int]$engineSwitchCount
+    serviceRecoveryCount = [int]$serviceRecoveryCount
+    daemonUnavailable = ([string]$failureClass -eq 'daemon-unavailable')
+    parseDefect = ([string]$failureClass -eq 'parse-defect')
+    repairActions = @($repairActions)
+  }
+}
+
+function Get-RuntimeManagerTelemetry {
+  param(
+    [Parameter(Mandatory)][string]$WindowsSnapshotPath,
+    [Parameter(Mandatory)][string]$LinuxSnapshotPath
+  )
+
+  $windows = Get-RuntimeManagerLaneTelemetry -Lane windows -SnapshotPath $WindowsSnapshotPath
+  $linux = Get-RuntimeManagerLaneTelemetry -Lane linux -SnapshotPath $LinuxSnapshotPath
+  return [ordered]@{
+    schema = 'docker-fast-loop/runtime-manager@v1'
+    lanes = [ordered]@{
+      windows = $windows
+      linux = $linux
+    }
+    transitionCount = [int]($windows.repairActionCount + $linux.repairActionCount)
+    contextSwitchCount = [int]($windows.contextSwitchCount + $linux.contextSwitchCount)
+    engineSwitchCount = [int]($windows.engineSwitchCount + $linux.engineSwitchCount)
+    serviceRecoveryCount = [int]($windows.serviceRecoveryCount + $linux.serviceRecoveryCount)
+    daemonUnavailableCount = [int](([int]$windows.daemonUnavailable) + ([int]$linux.daemonUnavailable))
+    parseDefectCount = [int](([int]$windows.parseDefect) + ([int]$linux.parseDefect))
+  }
+}
+
 function Get-HistoryScenarioIdsForSet {
   param(
     [Parameter(Mandatory)][string]$ScenarioSet,
@@ -585,7 +678,8 @@ function Write-SemiLiveStatus {
     [Parameter(Mandatory)][hashtable]$HistoricalStepMedians,
     [bool]$HardStopTriggered = $false,
     [AllowEmptyString()][string]$HardStopReason = '',
-    [AllowEmptyString()][string]$SummaryPath
+    [AllowEmptyString()][string]$SummaryPath,
+    [AllowNull()]$RuntimeManagerTelemetry = $null
   )
 
   if ([string]::IsNullOrWhiteSpace($Path)) {
@@ -626,6 +720,7 @@ function Write-SemiLiveStatus {
     hardStopReason = ($HardStopReason ?? '')
     laneLifecycle = $telemetry.laneLifecycle
     telemetry = $telemetry
+    runtimeManager = $RuntimeManagerTelemetry
     steps = @($Steps)
     summaryPath = ($SummaryPath ?? '')
   }
@@ -1524,6 +1619,7 @@ $summary = [ordered]@{
   stepTimeoutSeconds = [int]$StepTimeoutSeconds
   manageDockerEngine = [bool]$effectiveManageDockerEngine
   laneOrder = $LaneOrder
+  runtimeManager = (Get-RuntimeManagerTelemetry -WindowsSnapshotPath $windowsSnapshot -LinuxSnapshotPath $linuxSnapshot)
   laneLifecycle = (Get-LaneLifecycleFromPlan `
     -StepPlan $stepPlan `
     -ObservedSteps $results.ToArray() `
@@ -1549,7 +1645,8 @@ Write-SemiLiveStatus `
   -HistoricalStepMedians $historicalStepMedians `
   -HardStopTriggered:$hardStopTriggered `
   -HardStopReason $hardStopReason `
-  -SummaryPath $summaryPath
+  -SummaryPath $summaryPath `
+  -RuntimeManagerTelemetry $summary.runtimeManager
 
 pwsh -NoLogo -NoProfile -File (Join-Path $PSScriptRoot 'Write-DockerFastLoopReadiness.ps1') `
   -ResultsRoot $root `
@@ -1573,4 +1670,3 @@ if ($failed.Count -gt 0) {
 }
 
 Write-Output $summaryPath
-

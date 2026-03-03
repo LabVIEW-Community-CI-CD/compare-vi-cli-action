@@ -1,3 +1,4 @@
 self-hosted-runner:
   labels:
-    - self-hosted-docker
+    - self-hosted-docker-windows
+    - self-hosted-docker-linux

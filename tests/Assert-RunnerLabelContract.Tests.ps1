@@ -24,7 +24,7 @@ Describe 'Assert-RunnerLabelContract.ps1' -Tag 'Unit' {
           runner_id = 42
           status = 'in_progress'
           started_at = '2026-03-02T00:00:00Z'
-          labels = @('self-hosted', 'windows', 'self-hosted-docker')
+          labels = @('self-hosted', 'windows', 'self-hosted-docker-windows')
         }
       )
     }
@@ -39,7 +39,7 @@ Describe 'Assert-RunnerLabelContract.ps1' -Tag 'Unit' {
         -Repository 'owner/repo' `
         -RunId '100' `
         -RunnerName 'host-a' `
-        -RequiredLabel 'self-hosted-docker' `
+        -RequiredLabel 'self-hosted-docker-windows' `
         -JobsPayloadPath $jobsPayloadPath `
         -OutputJsonPath $outputJsonPath `
         -GitHubOutputPath $githubOutputPath `
@@ -52,7 +52,7 @@ Describe 'Assert-RunnerLabelContract.ps1' -Tag 'Unit' {
     $json.failureClass | Should -Be 'none'
     $json.hasRequiredLabel | Should -BeTrue
     $json.runnerId | Should -Be '42'
-    @($json.labels) | Should -Contain 'self-hosted-docker'
+    @($json.labels) | Should -Contain 'self-hosted-docker-windows'
 
     $ghOutput = Get-Content -LiteralPath $githubOutputPath -Raw
     $ghOutput | Should -Match 'has_required_label=true'
@@ -89,7 +89,7 @@ Describe 'Assert-RunnerLabelContract.ps1' -Tag 'Unit' {
         -Repository 'owner/repo' `
         -RunId '101' `
         -RunnerName 'host-b' `
-        -RequiredLabel 'self-hosted-docker' `
+        -RequiredLabel 'self-hosted-docker-windows' `
         -JobsPayloadPath $jobsPayloadPath `
         -OutputJsonPath $outputJsonPath
     } | Should -Throw
@@ -119,7 +119,7 @@ Describe 'Assert-RunnerLabelContract.ps1' -Tag 'Unit' {
         -Repository 'owner/repo' `
         -RunId '102' `
         -RunnerName 'host-c' `
-        -RequiredLabel 'self-hosted-docker' `
+        -RequiredLabel 'self-hosted-docker-windows' `
         -JobsPayloadPath $jobsPayloadPath `
         -OutputJsonPath $outputJsonPath
     } | Should -Throw

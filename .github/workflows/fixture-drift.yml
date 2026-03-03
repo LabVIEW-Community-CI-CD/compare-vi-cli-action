@@ -57,7 +57,7 @@ jobs:
 
   docker-runtime-manager:
     name: Docker Runtime Manager (Host)
-    runs-on: [self-hosted, Windows, X64, self-hosted-docker]
+    runs-on: [self-hosted, Windows, X64, self-hosted-docker-windows]
     needs:
     - preflight-windows
     timeout-minutes: 10
@@ -165,7 +165,7 @@ jobs:
 
   validate-windows:
     name: Fixture Drift (Docker Desktop Host - LabVIEW 2026 q1 windows)
-    runs-on: [self-hosted, Windows, X64, self-hosted-docker]
+    runs-on: [self-hosted, Windows, X64, self-hosted-docker-windows]
     concurrency:
       group: lv-fixture-win
       cancel-in-progress: false
@@ -224,7 +224,7 @@ jobs:
           -ManageDockerEngine:$true `
           -SnapshotPath 'results/fixture-drift/windows-runtime-determinism.json' `
           -GitHubOutputPath $env:GITHUB_OUTPUT
-    - name: Assert self-hosted-docker runner label
+    - name: Assert self-hosted-docker-windows runner label
       id: runner_label_contract
       shell: pwsh
       env:
@@ -234,7 +234,7 @@ jobs:
           -Repository '${{ github.repository }}' `
           -RunId '${{ github.run_id }}' `
           -RunnerName '${{ runner.name }}' `
-          -RequiredLabel 'self-hosted-docker' `
+          -RequiredLabel 'self-hosted-docker-windows' `
           -OutputJsonPath 'results/fixture-drift/runner-label-contract.json' `
           -GitHubOutputPath $env:GITHUB_OUTPUT `
           -StepSummaryPath $env:GITHUB_STEP_SUMMARY
@@ -263,7 +263,7 @@ jobs:
           runner = [ordered]@{
             name = '${{ runner.name }}'
             id = '${{ steps.runner_label_contract.outputs.runner_id }}'
-            requiredLabel = 'self-hosted-docker'
+            requiredLabel = 'self-hosted-docker-windows'
             hasRequiredLabel = ('${{ steps.runner_label_contract.outputs.has_required_label }}' -eq 'true')
             labels = $labels
           }
@@ -510,7 +510,7 @@ jobs:
           -ResultsDir 'results/fixture-drift' `
           -ContextPath '${{ steps.docker_manager_context.outputs.context_path }}' `
           -RuntimeSnapshotPath 'results/fixture-drift/windows-runtime-determinism.json' `
-          -RequiredLabel 'self-hosted-docker' `
+          -RequiredLabel 'self-hosted-docker-windows' `
           -HasRequiredLabel:$hasRequiredLabel `
           -RunnerLabelsCsv '${{ steps.runner_label_contract.outputs.labels }}' `
           -ManagerStatus $env:DOCKER_MANAGER_STATUS `

@@ -25,6 +25,12 @@ Describe 'Write-DockerFastLoopReadiness.ps1' -Tag 'Unit' {
       generatedAt = (Get-Date).ToUniversalTime().ToString('o')
       status = 'success'
       hardStopTriggered = $false
+      runtimeManager = [ordered]@{
+        schema = 'docker-fast-loop/runtime-manager@v1'
+        transitionCount = 3
+        daemonUnavailableCount = 1
+        parseDefectCount = 0
+      }
       steps = @(
         [ordered]@{
           name = 'windows-runtime-preflight'
@@ -88,6 +94,10 @@ Describe 'Write-DockerFastLoopReadiness.ps1' -Tag 'Unit' {
     $readiness.containerExportFailureCount | Should -Be 0
     $readiness.runtimeFailureCount | Should -Be 0
     $readiness.toolFailureCount | Should -Be 0
+    $readiness.runtimeManagerTransitionCount | Should -Be 3
+    $readiness.runtimeManagerDaemonUnavailableCount | Should -Be 1
+    $readiness.runtimeManagerParseDefectCount | Should -Be 0
+    $readiness.runtimeManager.transitionCount | Should -Be 3
     $readiness.lanes.windows.diffDetected | Should -BeTrue
     $readiness.lanes.windows.failureClass | Should -Be 'none'
     $readiness.lanes.linux.diffDetected | Should -BeFalse
