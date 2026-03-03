@@ -5,6 +5,10 @@ on:
     branches:
       - develop
 
+concurrency:
+  group: vi-compare-fork-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
 jobs:
   detect-and-compare:
     name: Compare Changed VIs
@@ -41,6 +45,16 @@ jobs:
           git checkout --detach ("pr-{0}-head" -f $env:PR_NUMBER)
           git branch -D ("pr-{0}-head" -f $env:PR_NUMBER) 2>$null | Out-Null
 
+          $actual = (git rev-parse HEAD).Trim()
+          $expected = ("${{ env.HEAD_SHA }}").Trim()
+          if ([string]::IsNullOrWhiteSpace($expected)) {
+            throw 'Expected PR head SHA is empty; cannot verify checkout.'
+          }
+          if ($actual -ne $expected) {
+            throw ("Checked out HEAD SHA mismatch. expected={0} actual={1}" -f $expected, $actual)
+          }
+          Write-Host ("Verified PR head SHA: {0}" -f $actual)
+
       - name: Generate VI manifest
         id: manifest
         shell: pwsh
@@ -56,6 +70,9 @@ jobs:
             $pairCount = @($manifest.pairs).Count
           }
 
+          "manifest_path=$manifestPath" | Out-File -FilePath $ENV:GITHUB_OUTPUT -Append -Encoding utf8
+          "pair_count=$pairCount" | Out-File -FilePath $ENV:GITHUB_OUTPUT -Append -Encoding utf8
+
           if ($pairCount -eq 0) {
             Write-Host '::notice::No VI changes detected between base/head; skipping staging.'
             "has_pairs=false" | Out-File -FilePath $ENV:GITHUB_OUTPUT -Append -Encoding utf8
@@ -63,7 +80,6 @@ jobs:
           }
 
           "has_pairs=true" | Out-File -FilePath $ENV:GITHUB_OUTPUT -Append -Encoding utf8
-          "pair_count=$pairCount" | Out-File -FilePath $ENV:GITHUB_OUTPUT -Append -Encoding utf8
 
       - name: Stage and compare VI files
         if: steps.manifest.outputs.has_pairs == 'true'
@@ -86,6 +102,8 @@ jobs:
             Write-Host '::warning::Found VI manifest entries but none were stageable (missing files?).'
             "compare_dir=" | Out-File -FilePath $ENV:GITHUB_OUTPUT -Append -Encoding utf8
             "compare_json=" | Out-File -FilePath $ENV:GITHUB_OUTPUT -Append -Encoding utf8
+            "summary_json=" | Out-File -FilePath $ENV:GITHUB_OUTPUT -Append -Encoding utf8
+            "summary_md=" | Out-File -FilePath $ENV:GITHUB_OUTPUT -Append -Encoding utf8
             exit 0
           }
 
@@ -94,15 +112,56 @@ jobs:
           $compareScript = Join-Path $repoRoot 'tools' 'Run-StagedLVCompare.ps1'
           & $compareScript -ResultsPath $resultsPath -ArtifactsDir $artifactsDir -RenderReport | Out-Null
 
-          $summaryScript = Join-Path $repoRoot 'tools' 'Summarize-VIStaging.ps1'
+          $compareJsonPath = Join-Path $artifactsDir 'vi-staging-compare.json'
+          $summaryJsonPath = Join-Path $artifactsDir 'vi-compare-summary.json'
           $summaryPath = Join-Path $artifactsDir 'vi-compare-summary.md'
-          & $summaryScript -CompareJson (Join-Path $artifactsDir 'vi-staging-compare.json') -MarkdownPath $summaryPath -SummaryJsonPath (Join-Path $artifactsDir 'vi-compare-summary.json') | Out-Null
+          $summaryScript = Join-Path $repoRoot 'tools' 'Summarize-VIStaging.ps1'
+          & $summaryScript -CompareJson $compareJsonPath -MarkdownPath $summaryPath -SummaryJsonPath $summaryJsonPath | Out-Null
+
+          "compare_dir=$artifactsDir" | Out-File -FilePath $ENV:GITHUB_OUTPUT -Append -Encoding utf8
+          "compare_json=$compareJsonPath" | Out-File -FilePath $ENV:GITHUB_OUTPUT -Append -Encoding utf8
+          "summary_json=$summaryJsonPath" | Out-File -FilePath $ENV:GITHUB_OUTPUT -Append -Encoding utf8
+          "summary_md=$summaryPath" | Out-File -FilePath $ENV:GITHUB_OUTPUT -Append -Encoding utf8
+
+      - name: Validate compare contract
+        if: steps.manifest.outputs.has_pairs == 'true'
+        shell: pwsh
+        run: |
+          $compareDir = '${{ steps.compare.outputs.compare_dir }}'
+          $compareJson = '${{ steps.compare.outputs.compare_json }}'
+          $summaryJson = '${{ steps.compare.outputs.summary_json }}'
+          $summaryMd = '${{ steps.compare.outputs.summary_md }}'
+
+          if ([string]::IsNullOrWhiteSpace($compareDir) -or -not (Test-Path -LiteralPath $compareDir -PathType Container)) {
+            throw 'Compare contract failed: compare_dir output is empty or missing.'
+          }
+          foreach ($path in @($compareJson, $summaryJson, $summaryMd)) {
+            if ([string]::IsNullOrWhiteSpace($path) -or -not (Test-Path -LiteralPath $path -PathType Leaf)) {
+              throw ("Compare contract failed: required output file missing -> {0}" -f $path)
+            }
+          }
+
+          $comparePayload = Get-Content -LiteralPath $compareJson -Raw -Encoding UTF8 | ConvertFrom-Json -Depth 8
+          $rows = @($comparePayload)
+          if ($rows.Count -lt 1) {
+            throw 'Compare contract failed: compare_json has no entries.'
+          }
+          $statusCount = @($rows | Where-Object { $_.PSObject.Properties['status'] -and -not [string]::IsNullOrWhiteSpace([string]$_.status) }).Count
+          if ($statusCount -lt 1) {
+            throw 'Compare contract failed: compare_json entries do not contain status-bearing rows.'
+          }
+
+          Write-Host ("Compare contract OK: entries={0} statusRows={1}" -f $rows.Count, $statusCount)
 
       - name: Upload VI compare artifacts
-        if: steps.compare.outputs.compare_dir != ''
-        uses: actions/upload-artifact@v4
+        if: always() && steps.manifest.outputs.has_pairs == 'true'
+        uses: actions/upload-artifact@v5
         with:
           name: vi-compare-${{ github.run_id }}
           path: |
             ${{ steps.compare.outputs.compare_dir }}
+            ${{ steps.compare.outputs.compare_json }}
+            ${{ steps.compare.outputs.summary_json }}
+            ${{ steps.compare.outputs.summary_md }}
+            ${{ steps.manifest.outputs.manifest_path }}
             vi-diff-manifest.json

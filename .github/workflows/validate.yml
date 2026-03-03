@@ -17,10 +17,10 @@ on:
         description: 'Sampling correlation id (prevents cancels)'
         required: false
         type: string
-      enable_compare:
-        description: 'Force-enable self-hosted icon-editor VI comparisons for this dispatch (1 = enable)'
+      history_scenario_set:
+        description: 'VI history scenario set for self-hosted-docker validation (none|smoke|history-core)'
         required: false
-        default: '0'
+        default: 'smoke'
 
 concurrency:
   group: ${{ github.workflow }}-${{ (github.event_name == 'pull_request' && github.event.pull_request.number) || github.event.inputs.sample_id || github.ref }}
@@ -52,11 +52,6 @@ jobs:
     environment:
       name: validation
     runs-on: ubuntu-latest
-    env:
-      ICON_EDITOR_SKIP_DOC_UPDATE: '1'
-    outputs:
-      vi_diff_requests: ${{ steps.vi_diff.outputs.has_requests }}
-      vi_diff_request_count: ${{ steps.vi_diff.outputs.request_count }}
     steps:
     - uses: actions/checkout@v5
     - name: Check PR mergeability
@@ -146,80 +141,6 @@ jobs:
       shell: pwsh
       run: |
         pwsh -File tools/PrePush-Checks.ps1
-
-    - name: Upload icon-editor fixture report
-      if: always()
-      uses: actions/upload-artifact@v5
-      with:
-        name: icon-editor-fixture-report
-        path: |
-          tests/results/_agent/icon-editor/fixture-report.json
-          tests/results/_agent/icon-editor/fixture-report.md
-
-    - name: Build icon-editor fixture manifest (current + baseline)
-      if: always()
-      shell: pwsh
-      run: |
-        $ErrorActionPreference = 'Stop'
-        $reportPath = 'tests/results/_agent/icon-editor/fixture-report.json'
-        if (-not (Test-Path -LiteralPath $reportPath -PathType Leaf)) {
-          Write-Host '::notice::fixture-report.json not found; skipping manifest build'
-          exit 0
-        }
-        $summary = Get-Content -LiteralPath $reportPath -Raw | ConvertFrom-Json -Depth 10
-        $entries = @()
-        foreach ($asset in ($summary.fixtureOnlyAssets | Sort-Object category, name)) {
-          $rel = if ($asset.category -eq 'script') { Join-Path 'scripts' $asset.name } else { Join-Path 'tests' $asset.name }
-          $entries += [ordered]@{
-            key       = ($asset.category + ':' + $rel).ToLower()
-            category  = $asset.category
-            path      = $rel
-            sizeBytes = ($asset.sizeBytes ?? 0)
-            hash      = $asset.hash
-          }
-        }
-        $manifest = [ordered]@{
-          schema      = 'icon-editor/fixture-manifest@v1'
-          generatedAt = (Get-Date).ToString('o')
-          entries     = $entries
-        }
-        $outDir = 'tests/results/_agent/icon-editor'
-        if (-not (Test-Path -LiteralPath $outDir -PathType Container)) { New-Item -ItemType Directory -Force -Path $outDir | Out-Null }
-        $currentPath = Join-Path $outDir 'fixture-manifest.json'
-        $manifest | ConvertTo-Json -Depth 6 | Set-Content -LiteralPath $currentPath -Encoding utf8
-        $baselineSrc = 'tests/fixtures/icon-editor/fixture-manifest.json'
-        if (Test-Path -LiteralPath $baselineSrc -PathType Leaf) {
-          Copy-Item -LiteralPath $baselineSrc -Destination (Join-Path $outDir 'fixture-manifest-baseline.json') -Force
-        } else {
-          Write-Host '::notice::baseline fixture-manifest.json not found (ok)'
-        }
-
-    - name: Upload icon-editor fixture manifest
-      if: always()
-      uses: actions/upload-artifact@v5
-      with:
-        name: icon-editor-fixture-manifest
-        path: |
-          tests/results/_agent/icon-editor/fixture-manifest.json
-          tests/results/_agent/icon-editor/fixture-manifest-baseline.json
-
-    - name: Prepare icon-editor VI diff requests
-      id: vi_diff
-      if: always() && hashFiles('tests/results/_agent/icon-editor/fixture-report.json') != ''
-      uses: ./.github/actions/icon-editor/prepare-vi-diff
-      with:
-        report-path: tests/results/_agent/icon-editor/fixture-report.json
-        baseline-manifest-path: tests/fixtures/icon-editor/fixture-manifest.json
-        output-dir: tests/results/_agent/icon-editor/vi-diff
-
-    - name: Upload icon-editor VI diff requests
-      if: always() && hashFiles('tests/results/_agent/icon-editor/vi-diff/vi-diff-requests.json') != ''
-      uses: actions/upload-artifact@v5
-      with:
-        name: icon-editor-fixture-vi-diff-requests
-        path: |
-          tests/results/_agent/icon-editor/vi-diff/vi-diff-requests.json
-          tests/results/_agent/icon-editor/vi-diff/vi-diff-requests.md
 
     - name: Policy guard (branch protection)
       if: ${{ github.event.repository.fork == false }}
@@ -847,477 +768,86 @@ jobs:
         path: ${{ runner.temp }}/sessionindex/session-index.json
         if-no-files-found: warn
 
-  icon-editor-gate:
-    needs: [smoke-gate, lint]
-    if: needs.smoke-gate.outputs.skip != 'true'
-    runs-on: ubuntu-latest
-    outputs:
-      proceed: ${{ steps.decision.outputs.proceed }}
-      issue-number: ${{ steps.decision.outputs.issue }}
-    steps:
-      - name: Determine icon-editor CI eligibility
-        id: decision
-        uses: actions/github-script@v7
-        with:
-          github-token: ${{ secrets.GITHUB_TOKEN }}
-          script: |
-            const summary = [];
-            const isForkRepo = context.payload.repository?.fork === true;
-            const branch =
-              context.payload.pull_request?.head.ref ??
-              context.ref.replace('refs/heads/', '');
-            const match = branch.match(/(?:^|\/)issue\/(\d+)/i);
-            if (isForkRepo) {
-              core.setOutput('proceed', 'false');
-              summary.push('Repository is a fork. Skipping icon-editor build and compare jobs.');
-              core.info(summary.at(-1));
-            } else if (!match) {
-              core.setOutput('proceed', 'false');
-              summary.push(`Branch \`${branch}\` is not issue-scoped (missing \`issue/<number>\`). Skipping icon-editor build.`);
-              core.info(summary.at(-1));
-            } else {
-              const issueNumber = parseInt(match[1], 10);
-              core.setOutput('issue', issueNumber.toString());
-              const { data: issue } = await github.rest.issues.get({
-                owner: context.repo.owner,
-                repo: context.repo.repo,
-                issue_number: issueNumber
-              });
-              const hasNoCI =
-                issue.labels?.some((label) => label.name?.toLowerCase() === 'noci') ??
-                false;
-              if (issue.state !== 'open') {
-                core.setOutput('proceed', 'false');
-                summary.push(`Issue #${issueNumber} is ${issue.state}. Icon-editor build will be skipped.`);
-                core.info(summary.at(-1));
-              } else if (hasNoCI) {
-                core.setOutput('proceed', 'false');
-                summary.push(`#${issueNumber} carries a \`NoCI\` label. Icon-editor build will be skipped.`);
-                core.info(summary.at(-1));
-              } else {
-                core.setOutput('proceed', 'true');
-                summary.push(`Icon-editor CI enabled for issue #${issueNumber}.`);
-                core.info(summary.at(-1));
-              }
-            }
-            if (process.env.GITHUB_STEP_SUMMARY && summary.length) {
-              const text = ['### Icon Editor CI Gate', '', ...summary, ''].join('\n');
-              require('fs').appendFileSync(process.env.GITHUB_STEP_SUMMARY, text);
-            }
-
-  icon-editor-build:
-    needs: [smoke-gate, lint, icon-editor-gate]
+  vi-history-scenarios:
+    needs: [smoke-gate, lint, fixtures, session-index]
     if: >
       needs.smoke-gate.outputs.skip != 'true' &&
-      needs.icon-editor-gate.outputs.proceed == 'true'
-    environment:
-      name: validation
-    runs-on: [self-hosted, Windows, X64]
-    env:
-      ICON_EDITOR_BUILD_MODE: ${{ vars.ICON_EDITOR_BUILD_MODE || 'build' }}
-      ICON_EDITOR_SIMULATION_FIXTURE: ${{ vars.ICON_EDITOR_SIMULATION_FIXTURE || '' }}
-    defaults:
-      run:
-        shell: pwsh
-    steps:
-      - uses: actions/checkout@v5
-      - name: Verify PowerShell host
-        run: |
-          Write-Host "pwsh path: $PSCommandPath"
-          Write-Host "PowerShell version: $($PSVersionTable.PSVersion.ToString())"
-      - name: Prepare icon-editor build inputs
-        id: prepare
-        env:
-          RESULTS_DIR: ${{ runner.temp }}\icon-editor
-          ICON_EDITOR_ISSUE: ${{ needs.icon-editor-gate.outputs.issue-number }}
-        run: |
-          $ErrorActionPreference = 'Stop'
-          $results = $env:RESULTS_DIR
-          if ([string]::IsNullOrWhiteSpace($results)) {
-            throw 'RESULTS_DIR environment variable is not set.'
-          }
-          New-Item -ItemType Directory -Force -Path $results | Out-Null
-
-          $packageJson = Get-Content -LiteralPath 'package.json' -Raw | ConvertFrom-Json
-          if (-not $packageJson.version) {
-            throw 'package.json does not contain a version field.'
-          }
-
-          $versionParts = $packageJson.version.Split('.')
-          if ($versionParts.Count -lt 3) {
-            throw ("package.json version '{0}' is not in major.minor.patch format." -f $packageJson.version)
-          }
-
-          $buildNumberText = (& git rev-list --count HEAD).Trim()
-          if (-not $buildNumberText) {
-            throw 'Unable to compute git commit count for build number.'
-          }
-
-          $major = [int]$versionParts[0]
-          $minor = [int]$versionParts[1]
-          $patch = [int]$versionParts[2]
-          $build = [int]$buildNumberText
-          $rawVersion = '{0}.{1}.{2}.{3}' -f $major, $minor, $patch, $build
-
-          $metadata = [ordered]@{
-            schema     = 'icon-editor/build-metadata@v1'
-            issue      = $env:ICON_EDITOR_ISSUE
-            runId      = $env:GITHUB_RUN_ID
-            runAttempt = $env:GITHUB_RUN_ATTEMPT
-            ref        = $env:GITHUB_REF
-            commit     = $env:GITHUB_SHA
-            timestamp  = (Get-Date).ToString('o')
-            version    = [ordered]@{
-              major = $major
-              minor = $minor
-              patch = $patch
-              build = $build
-              raw   = $rawVersion
-              source = $packageJson.version
-            }
-          }
-          if (-not $metadata.issue) { $metadata.issue = 'unknown' }
-          if (-not $metadata.runId) { $metadata.runId = 'unknown' }
-          if (-not $metadata.runAttempt) { $metadata.runAttempt = 'unknown' }
-          if (-not $metadata.ref) { $metadata.ref = 'unknown' }
-          if (-not $metadata.commit) { $metadata.commit = 'unknown' }
-
-          $expectedVersion = [ordered]@{
-            major  = $major
-            minor  = $minor
-            patch  = $patch
-            build  = $build
-            commit = $metadata.commit
-          }
-
-          $modeRaw = $env:ICON_EDITOR_BUILD_MODE
-          if ([string]::IsNullOrWhiteSpace($modeRaw)) {
-            $modeRaw = 'build'
-          }
-          $mode = $modeRaw.ToLowerInvariant()
-          $metadata.mode = $mode
-
-          $fixturePath = $null
-          if ($mode -eq 'simulate') {
-            $fixtureCandidate = $env:ICON_EDITOR_SIMULATION_FIXTURE
-            if ([string]::IsNullOrWhiteSpace($fixtureCandidate)) {
-              $fixtureCandidate = Join-Path (Get-Location).Path 'tests' 'fixtures' 'icon-editor' 'ni_icon_editor-1.4.1.948.vip'
-            } elseif (-not (Test-Path -LiteralPath $fixtureCandidate -PathType Leaf)) {
-              $candidateRelative = Join-Path (Get-Location).Path $fixtureCandidate
-              if (Test-Path -LiteralPath $candidateRelative -PathType Leaf) {
-                $fixtureCandidate = $candidateRelative
-              }
-            }
-
-            if (-not (Test-Path -LiteralPath $fixtureCandidate -PathType Leaf)) {
-              throw "Simulation requested but fixture not found at '$fixtureCandidate'."
-            }
-
-            $fixturePath = (Resolve-Path -LiteralPath $fixtureCandidate).Path
-            $metadata.simulationFixture = $fixturePath
-          }
-
-          $metadataPath = Join-Path $results 'metadata.json'
-          $metadata | ConvertTo-Json -Depth 6 | Set-Content -LiteralPath $metadataPath -Encoding utf8
-
-          $expectedVersion['raw'] = $rawVersion
-          $expectedVersionJson = $expectedVersion | ConvertTo-Json -Depth 6 -Compress
-          $fixturePathOutput = if ($fixturePath) { $fixturePath } else { '' }
-          $vipDiffRoot = Join-Path $results 'vip-vi-diff'
-          $vipRequests = Join-Path $vipDiffRoot 'vi-diff-requests.json'
-
-          "mode=$mode" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
-          "results-root=$results" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
-          "metadata-path=$metadataPath" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
-          "expected-version=$expectedVersionJson" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
-          "expected-version-raw=$($expectedVersion.raw)" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
-          "fixture-path=$fixturePathOutput" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
-          "major=$major" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
-          "minor=$minor" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
-          "patch=$patch" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
-          "build=$build" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
-          "source-version=$packageJson.version" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
-          "vip-diff-root=$vipDiffRoot" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
-          "vip-requests-path=$vipRequests" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
-
-      - name: Simulate icon-editor build
-        if: ${{ steps.prepare.outputs.mode == 'simulate' }}
-        id: simulate
-        uses: ./.github/actions/icon-editor/simulate-build
-        with:
-          results-root: ${{ steps.prepare.outputs.results-root }}
-          fixture-path: ${{ steps.prepare.outputs.fixture-path }}
-          expected-version-json: ${{ steps.prepare.outputs.expected-version }}
-          vip-diff-output-dir: ${{ steps.prepare.outputs.vip-diff-root }}
-          vip-diff-requests-path: ${{ steps.prepare.outputs.vip-requests-path }}
-
-      - name: Run icon-editor build (real)
-        if: ${{ steps.prepare.outputs.mode != 'simulate' }}
-        env:
-          RESULTS_DIR: ${{ steps.prepare.outputs.results-root }}
-        run: |
-          $ErrorActionPreference = 'Stop'
-          pwsh -NoLogo -NoProfile -File tools/icon-editor/Invoke-IconEditorBuild.ps1 `
-            -Major ${{ steps.prepare.outputs.major }} `
-            -Minor ${{ steps.prepare.outputs.minor }} `
-            -Patch ${{ steps.prepare.outputs.patch }} `
-            -Build ${{ steps.prepare.outputs.build }} `
-            -ResultsRoot $env:RESULTS_DIR `
-            -RunUnitTests
-
-      - name: Summarize icon-editor build
-        id: build
-        run: |
-          $ErrorActionPreference = 'Stop'
-          $mode = '${{ steps.prepare.outputs.mode }}'
-          $resultsRoot = '${{ steps.prepare.outputs.results-root }}'
-          $metadataPath = '${{ steps.prepare.outputs.metadata-path }}'
-          $expectedVersionRaw = '${{ steps.prepare.outputs.expected-version-raw }}'
-          $sourceVersion = '${{ steps.prepare.outputs.source-version }}'
-          $buildNumber = '${{ steps.prepare.outputs.build }}'
-
-          $manifestPath = ''
-          if ($mode -eq 'simulate' -and '${{ steps.simulate.outputs.manifest-path }}') {
-            $manifestPath = '${{ steps.simulate.outputs.manifest-path }}'
-          }
-          if (-not $manifestPath) {
-            $manifestPath = Join-Path $resultsRoot 'manifest.json'
-          }
-
-          $metadata = $null
-          if (-not [string]::IsNullOrWhiteSpace($metadataPath) -and (Test-Path -LiteralPath $metadataPath -PathType Leaf)) {
-            try {
-              $metadata = Get-Content -LiteralPath $metadataPath -Raw | ConvertFrom-Json -Depth 6
-            } catch {
-              Write-Host "::notice::Failed to parse metadata.json: $($_.Exception.Message)"
-            }
-          }
-
-          $manifest = $null
-          $artifactCount = 0
-          $packageVersion = ''
-          if (Test-Path -LiteralPath $manifestPath -PathType Leaf) {
-            try {
-              $manifest = Get-Content -LiteralPath $manifestPath -Raw | ConvertFrom-Json -Depth 6
-              if ($manifest.artifacts) {
-                $artifactCount = ($manifest.artifacts | Measure-Object).Count
-              }
-              if ($manifest.version -and $manifest.version.fixture -and $manifest.version.fixture.raw) {
-                $packageVersion = $manifest.version.fixture.raw
-              } elseif ($manifest.version -and $manifest.version.expected -and $manifest.version.expected.raw) {
-                $packageVersion = $manifest.version.expected.raw
-              }
-            } catch {
-              Write-Host "::notice::Failed to parse manifest.json: $($_.Exception.Message)"
-            }
-          }
-
-          if (-not $packageVersion -and '${{ steps.simulate.outputs.package-version }}') {
-            $packageVersion = '${{ steps.simulate.outputs.package-version }}'
-          }
-          if (-not $packageVersion) {
-            $packageVersion = $expectedVersionRaw
-          }
-
-          $vipDiffRoot = if ($mode -eq 'simulate' -and '${{ steps.simulate.outputs.vip-diff-root }}') {
-            '${{ steps.simulate.outputs.vip-diff-root }}'
-          } else {
-            Join-Path $resultsRoot 'vip-vi-diff'
-          }
-          $vipRequestsPath = if ($mode -eq 'simulate' -and '${{ steps.simulate.outputs.vip-diff-requests-path }}') {
-            '${{ steps.simulate.outputs.vip-diff-requests-path }}'
-          } else {
-            Join-Path $vipDiffRoot 'vi-diff-requests.json'
-          }
-          $capturesRoot = Join-Path $resultsRoot 'vip-vi-diff-captures'
-
-          if ($env:GITHUB_OUTPUT) {
-            "package_version=$packageVersion" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
-            "manifest_path=$manifestPath" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
-            "metadata_path=$metadataPath" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
-            "build_mode=$mode" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
-            "vip_diff_root=$vipDiffRoot" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
-            "vip_diff_requests_path=$vipRequestsPath" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
-            "vip_diff_captures_root=$capturesRoot" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
-          }
-
-          $summary = @('### Icon Editor Build', '', ("- Mode: {0}" -f $mode))
-          if ($mode -eq 'simulate' -and $metadata -and $metadata.simulationFixture) {
-            $summary += ("- Fixture path: {0}" -f $metadata.simulationFixture)
-          }
-          $issueDisplay = if ($metadata -and $metadata.issue) { $metadata.issue } else { 'unknown' }
-          $runDisplay = if ($metadata -and $metadata.runId) { $metadata.runId } else { 'unknown' }
-          $attemptDisplay = if ($metadata -and $metadata.runAttempt) { $metadata.runAttempt } else { 'unknown' }
-          $summary += @(
-            ("- Issue: #{0}" -f $issueDisplay),
-            ("- Run: {0} (attempt {1})" -f $runDisplay, $attemptDisplay),
-            ("- Package version: {0}" -f ($packageVersion ?? 'unknown'))
-          )
-          if ($manifest -and $manifest.version -and $manifest.version.expected -and $manifest.version.expected.raw) {
-            $summary += ("- Expected version: {0}" -f $manifest.version.expected.raw)
-          } elseif ($expectedVersionRaw) {
-            $summary += ("- Expected version: {0}" -f $expectedVersionRaw)
-          }
-          $commitDisplay = if ($metadata -and $metadata.commit) { $metadata.commit } else { $env:GITHUB_SHA }
-          $summary += @(
-            ("- Source version: {0}" -f $sourceVersion),
-            ("- Build number: {0}" -f $buildNumber),
-            ("- Commit: {0}" -f $commitDisplay)
-          )
-          if ($manifest) {
-            $summary += @(
-              ("- Packaging requested: {0}" -f $manifest.packagingRequested),
-              ("- Dependencies toggled: {0}" -f $manifest.dependenciesApplied),
-              ("- Unit tests run: {0}" -f $manifest.unitTestsRun)
-            )
-          }
-          $summary += @(
-            ("- Artifact count: {0}" -f $artifactCount),
-            ("- Metadata: {0}" -f $metadataPath),
-            ("- Manifest: {0}" -f $manifestPath),
-            ''
-          )
-
-          if ($env:GITHUB_STEP_SUMMARY) {
-            $summary -join "`n" | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8
-          }
-      - name: Execute VIP VI comparisons
-        id: build_vi_diff
-        if: ${{ steps.build.outputs.build_mode == 'simulate' }}
-        uses: ./.github/actions/icon-editor/invoke-vi-diff
-        with:
-          requests-path: ${{ steps.build.outputs.vip_diff_requests_path }}
-          captures-root: ${{ steps.build.outputs.vip_diff_captures_root }}
-          summary-path: ${{ steps.build.outputs.vip_diff_captures_root }}\vi-comparison-summary.json
-          timeout-seconds: '900'
-          dry-run: 'true'
-      - name: Render VIP VI comparison report
-        id: build_vi_report
-        if: ${{ always() && steps.build.outputs.build_mode == 'simulate' }}
-        uses: ./.github/actions/icon-editor/render-vi-report
-        with:
-          summary-path: ${{ steps.build_vi_diff.outputs.summary_path }}
-      - name: Run IconEditor dev-mode integration checks
-        env:
-          RESULTS_DIR: ${{ runner.temp }}\icon-editor
-        run: |
-          $ErrorActionPreference = 'Stop'
-          $resultsDir = Join-Path $env:RESULTS_DIR 'dev-mode-integration'
-          if (-not (Test-Path -LiteralPath $resultsDir -PathType Container)) {
-            New-Item -ItemType Directory -Force -Path $resultsDir | Out-Null
-          }
-          $include = 'IconEditorDevMode.Integration.Tests.ps1'
-          pwsh -NoLogo -NoProfile -File Invoke-PesterTests.ps1 `
-            -TestsPath tests `
-            -IntegrationMode include `
-            -ResultsPath $resultsDir `
-            -IncludePatterns $include `
-            -EmitFailuresJsonAlways `
-            -LiveOutput
-      - name: Upload VIP VI diff captures
-        if: ${{ always() && steps.build.outputs.build_mode == 'simulate' }}
-        uses: actions/upload-artifact@v5
-        with:
-          name: icon-editor-vip-vi-diff-captures
-          path: |
-            ${{ steps.build.outputs.vip_diff_captures_root }}\**\compare\**
-            ${{ steps.build.outputs.vip_diff_captures_root }}\**\session-index.json
-          if-no-files-found: warn
-      - name: Upload VIP VI comparison report
-        if: ${{ always() && steps.build.outputs.build_mode == 'simulate' }}
-        uses: actions/upload-artifact@v5
-        with:
-          name: icon-editor-vip-vi-comparison-report
-          path: |
-            ${{ steps.build.outputs.vip_diff_root }}\vi-diff-requests.json
-            ${{ steps.build.outputs.vip_diff_root }}\head\**
-            ${{ steps.build.outputs.vip_diff_captures_root }}\vi-comparison-summary.json
-            ${{ steps.build_vi_report.outputs.report_path || format('{0}\vi-comparison-report.md', steps.build.outputs.vip_diff_captures_root) }}
-          if-no-files-found: warn
-      - name: Stage icon-editor artifacts
-        id: stage_artifacts
-        if: always()
-        uses: ./.github/actions/icon-editor/stage-artifacts
-        with:
-          results-root: ${{ steps.prepare.outputs.results-root }}
-
-      - name: Upload icon-editor artifacts
-        if: always()
-        uses: actions/upload-artifact@v5
-        with:
-          name: icon-editor-build-${{ steps.build.outputs.package_version || 'unversioned' }}
-          path: ${{ steps.stage_artifacts.outputs.packages-path }}
-      - name: Upload IconEditor dev-mode proof
-        if: always()
-        uses: actions/upload-artifact@v5
-        with:
-          name: icon-editor-dev-mode-proof
-          path: tests/results/_agent/icon-editor/dev-mode-proof.json
-          if-no-files-found: warn
-
-  icon-editor-compare:
-    needs: [smoke-gate, lint, icon-editor-gate]
-    if: >
-      needs.smoke-gate.outputs.skip != 'true' &&
-      needs.icon-editor-gate.outputs.proceed == 'true' &&
-      (
-        needs.lint.outputs.vi_diff_requests == 'true' ||
-        vars.ICON_EDITOR_COMPARE_ENABLE == '1' ||
-        github.event.inputs.enable_compare == '1'
-      )
-    runs-on: [self-hosted, Windows, X64]
+      github.event_name == 'workflow_dispatch'
+    runs-on: [self-hosted, Windows, X64, self-hosted-docker]
     defaults:
       run:
         shell: pwsh
     steps:
       - uses: actions/checkout@v5
 
-      - name: Download icon-editor fixture report
-        uses: actions/download-artifact@v5
-        with:
-          name: icon-editor-fixture-report
-          path: tests/results/_agent/icon-editor
+      - name: Resolve VI history scenario set
+        id: resolve
+        run: |
+          $setRaw = '${{ github.event.inputs.history_scenario_set }}'
+          if ([string]::IsNullOrWhiteSpace($setRaw)) { $setRaw = 'smoke' }
+          $set = $setRaw.Trim().ToLowerInvariant()
+          $allowed = @('none', 'smoke', 'history-core')
+          if ($allowed -notcontains $set) {
+            throw ("Unsupported history_scenario_set '{0}'. Allowed: {1}" -f $setRaw, ($allowed -join ', '))
+          }
+          "history_scenario_set=$set" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
 
-      - name: Prepare comparison requests (self-hosted)
-        id: compare_prepare
-        if: hashFiles('tests/results/_agent/icon-editor/fixture-report.json') != ''
-        uses: ./.github/actions/icon-editor/prepare-vi-diff
-        with:
-          report-path: tests/results/_agent/icon-editor/fixture-report.json
-          baseline-manifest-path: tests/fixtures/icon-editor/fixture-manifest.json
-          output-dir: tests/results/_agent/icon-editor/vi-diff
+      - name: Run Docker Desktop fast-loop (Windows lane, VI history scenarios)
+        id: loop
+        run: |
+          $set = '${{ steps.resolve.outputs.history_scenario_set }}'
+          $summaryOutput = pwsh -NoLogo -NoProfile -File tools/Test-DockerDesktopFastLoop.ps1 `
+            -SkipLinuxProbe `
+            -HistoryScenarioSet $set `
+            -ManageDockerEngine:$true
+          $exit = $LASTEXITCODE
+          $summaryPath = ''
+          if ($summaryOutput) {
+            $summaryPath = ($summaryOutput | Select-Object -Last 1).ToString().Trim()
+          }
+          if ($summaryPath -and (Test-Path -LiteralPath $summaryPath -PathType Leaf)) {
+            "summary_path=$summaryPath" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
+          } else {
+            Write-Host '::warning::Fast-loop summary path was not captured from stdout; readiness step will resolve latest summary.'
+          }
+          if ($exit -ne 0) { exit $exit }
 
-      - name: Execute VI comparisons
-        id: compare_invoke
-        uses: ./.github/actions/icon-editor/invoke-vi-diff
-        with:
-          requests-path: ${{ steps.compare_prepare.outputs.requests_path }}
-          captures-root: tests/results/_agent/icon-editor/vi-diff-captures
-          summary-path: tests/results/_agent/icon-editor/vi-diff-captures/vi-comparison-summary.json
-          timeout-seconds: '900'
-
-      - name: Render VI comparison report
-        id: compare_render
+      - name: Write Docker fast-loop readiness
+        id: readiness
         if: always()
-        uses: ./.github/actions/icon-editor/render-vi-report
-        with:
-          summary-path: ${{ steps.compare_invoke.outputs.summary_path }}
+        run: |
+          $summaryPath = '${{ steps.loop.outputs.summary_path }}'
+          $args = @(
+            '-NoLogo', '-NoProfile', '-File', 'tools/Write-DockerFastLoopReadiness.ps1',
+            '-ResultsRoot', 'tests/results/local-parity',
+            '-GitHubOutputPath', $env:GITHUB_OUTPUT,
+            '-StepSummaryPath', $env:GITHUB_STEP_SUMMARY
+          )
+          if (-not [string]::IsNullOrWhiteSpace($summaryPath)) {
+            $args += @('-SummaryPath', $summaryPath)
+          }
+          & pwsh @args
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
-      - name: Upload VI diff captures
+      - name: Write Docker fast-loop proof
+        id: proof
+        if: always() && steps.readiness.outputs.readiness-json-path != ''
+        run: |
+          pwsh -NoLogo -NoProfile -File tools/Write-DockerFastLoopProof.ps1 `
+            -ReadinessPath '${{ steps.readiness.outputs.readiness-json-path }}' `
+            -SummaryPath '${{ steps.loop.outputs.summary_path }}' `
+            -StatusPath 'tests/results/local-parity/docker-runtime-fastloop-status.json' `
+            -GitHubOutputPath $env:GITHUB_OUTPUT
+
+      - name: Upload VI history scenario artifacts
         if: always()
         uses: actions/upload-artifact@v5
         with:
-          name: icon-editor-vi-diff-captures
+          name: validate-vi-history-scenarios
           path: |
-            ${{ steps.compare_invoke.outputs.captures_root }}\**\compare\**
-            ${{ steps.compare_invoke.outputs.captures_root }}\**\session-index.json
+            tests/results/local-parity/docker-runtime-fastloop-*.json
+            tests/results/local-parity/docker-runtime-fastloop-status.json
+            tests/results/local-parity/docker-runtime-fastloop-readiness.json
+            tests/results/local-parity/docker-runtime-fastloop-readiness.md
+            tests/results/_agent/gates/docker-fast-loop-proof-*.json
           if-no-files-found: warn
-
-      - name: Upload VI comparison report
-        if: always()
-        uses: actions/upload-artifact@v5
-        with:
-          name: icon-editor-vi-comparison-report
-          path: |
-            ${{ steps.compare_invoke.outputs.summary_path || 'tests/results/_agent/icon-editor/vi-diff-captures/vi-comparison-summary.json' }}
-            ${{ steps.compare_render.outputs.report_path || 'tests/results/_agent/icon-editor/vi-diff-captures/vi-comparison-report.md' }}
