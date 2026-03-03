@@ -1036,6 +1036,39 @@ jobs:
             -SnapshotPath $snapshotPath `
             -GitHubOutputPath ''
 
+      - name: Run NI Linux create comparison report (fail-fast)
+        id: linux-compare
+        run: |
+          $resultsRoot = 'tests/results/local-parity/linux'
+          New-Item -ItemType Directory -Path $resultsRoot -Force | Out-Null
+          $reportPath = Join-Path $resultsRoot 'linux-compare-report.html'
+          $runtimeSnapshot = Join-Path $resultsRoot 'runtime-manager-compare-linux.json'
+          pwsh -NoLogo -NoProfile -File tools/Run-NILinuxContainerCompare.ps1 `
+            -BaseVi 'fixtures/vi-attr/Base.vi' `
+            -HeadVi 'fixtures/vi-attr/Head.vi' `
+            -Image 'nationalinstruments/labview:2026q1-linux' `
+            -ReportPath $reportPath `
+            -TimeoutSeconds 300 `
+            -AutoRepairRuntime:$true `
+            -RuntimeEngineReadyTimeoutSeconds 120 `
+            -RuntimeEngineReadyPollSeconds 3 `
+            -RuntimeSnapshotPath $runtimeSnapshot
+          $compareExit = $LASTEXITCODE
+
+          $capturePath = Join-Path $resultsRoot 'ni-linux-container-capture.json'
+          if (Test-Path -LiteralPath $capturePath -PathType Leaf) {
+            "linux_compare_capture=$capturePath" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
+            $capture = Get-Content -LiteralPath $capturePath -Raw | ConvertFrom-Json -Depth 12
+            $gateOutcome = if ($capture.PSObject.Properties['gateOutcome']) { [string]$capture.gateOutcome } else { '' }
+            $resultClass = if ($capture.PSObject.Properties['resultClass']) { [string]$capture.resultClass } else { '' }
+            Write-Host ("[linux-compare] exit={0} gateOutcome={1} resultClass={2}" -f $compareExit, $gateOutcome, $resultClass)
+            if ($compareExit -ne 0 -and $gateOutcome -ne 'pass') {
+              exit $compareExit
+            }
+          } elseif ($compareExit -ne 0) {
+            throw ("Linux compare failed (exit={0}) and capture file was not found at {1}" -f $compareExit, $capturePath)
+          }
+
       - name: Run Docker fast-loop (Linux lane)
         id: loop
         run: |
@@ -1094,6 +1127,9 @@ jobs:
         with:
           name: validate-vi-history-scenarios-linux
           path: |
+            tests/results/local-parity/linux/linux-compare-report.html
+            tests/results/local-parity/linux/ni-linux-container-capture.json
+            tests/results/local-parity/linux/runtime-manager-compare-linux.json
             tests/results/local-parity/linux/docker-runtime-fastloop-*.json
             tests/results/local-parity/linux/docker-runtime-fastloop-status.json
             tests/results/local-parity/linux/docker-runtime-fastloop-readiness.json
