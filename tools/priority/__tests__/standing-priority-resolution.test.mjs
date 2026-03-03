@@ -6,10 +6,11 @@ import {
   buildNoStandingPriorityState,
   determinePrioritySyncExitCode,
   isStandingPriorityCacheCandidate,
+  resolveStandingPriorityLabels,
   resolveStandingPriorityFromSources
 } from '../sync-standing-priority.mjs';
 
-test('isStandingPriorityCacheCandidate requires OPEN state and standing-priority label', () => {
+test('isStandingPriorityCacheCandidate requires OPEN state and matching standing label', () => {
   assert.equal(
     isStandingPriorityCacheCandidate({
       number: 42,
@@ -42,6 +43,7 @@ test('resolveStandingPriorityFromSources uses cache only when lookups are unavai
   const number = resolveStandingPriorityFromSources({
     ghOutcome: { status: 'unavailable', error: 'gh missing' },
     restOutcome: { status: 'error', error: 'network timeout' },
+    standingPriorityLabels: ['fork-standing-priority', 'standing-priority'],
     cache: {
       number: 99,
       state: 'OPEN',
@@ -57,6 +59,7 @@ test('resolveStandingPriorityFromSources rejects stale cache when gh reports emp
       resolveStandingPriorityFromSources({
         ghOutcome: { status: 'empty' },
         restOutcome: { status: 'error', error: 'network timeout' },
+        standingPriorityLabels: ['fork-standing-priority', 'standing-priority'],
         cache: {
           number: 1,
           state: 'OPEN',
@@ -73,6 +76,7 @@ test('resolveStandingPriorityFromSources rejects stale cache when rest reports e
       resolveStandingPriorityFromSources({
         ghOutcome: { status: 'error', error: 'gh unavailable' },
         restOutcome: { status: 'empty' },
+        standingPriorityLabels: ['fork-standing-priority', 'standing-priority'],
         cache: {
           number: 1,
           state: 'OPEN',
@@ -89,6 +93,7 @@ test('resolveStandingPriorityFromSources fails when only invalid cache remains',
       resolveStandingPriorityFromSources({
         ghOutcome: { status: 'unavailable', error: 'gh missing' },
         restOutcome: { status: 'error', error: 'network timeout' },
+        standingPriorityLabels: ['fork-standing-priority', 'standing-priority'],
         cache: {
           number: 1,
           state: 'CLOSED',
@@ -107,8 +112,9 @@ test('buildNoStandingPriorityState clears router/cache deterministically', () =>
       state: 'OPEN',
       labels: ['standing-priority']
     },
-    "No open issue with label 'standing-priority' found.",
-    '2026-03-03T03:10:00.000Z'
+    'No open issue found with labels: `fork-standing-priority`, `standing-priority`.',
+    '2026-03-03T03:10:00.000Z',
+    ['fork-standing-priority', 'standing-priority']
   );
 
   assert.equal(state.clearedRouter.issue, null);
@@ -117,9 +123,25 @@ test('buildNoStandingPriorityState clears router/cache deterministically', () =>
   assert.equal(state.clearedCache.state, 'NONE');
   assert.equal(
     state.clearedCache.lastFetchError,
-    "No open issue with label 'standing-priority' found."
+    'No open issue found with labels: `fork-standing-priority`, `standing-priority`.'
   );
   assert.equal(state.result.fetchSource, 'none');
+});
+
+test('resolveStandingPriorityLabels prefers fork-standing-priority for non-canonical owners', () => {
+  const labels = resolveStandingPriorityLabels(
+    '/tmp/repo',
+    'svelderrainruiz/compare-vi-cli-action',
+    {}
+  );
+  assert.deepEqual(labels, ['fork-standing-priority', 'standing-priority']);
+});
+
+test('resolveStandingPriorityLabels honors explicit env override order', () => {
+  const labels = resolveStandingPriorityLabels('/tmp/repo', null, {
+    AGENT_STANDING_PRIORITY_LABELS: 'custom-one, custom-two, custom-one'
+  });
+  assert.deepEqual(labels, ['custom-one', 'custom-two']);
 });
 
 test('determinePrioritySyncExitCode maps no-standing to success and real errors to failure', () => {
@@ -127,4 +149,3 @@ test('determinePrioritySyncExitCode maps no-standing to success and real errors 
   assert.equal(determinePrioritySyncExitCode({ code: 'NO_STANDING_PRIORITY' }), 0);
   assert.equal(determinePrioritySyncExitCode(new Error('boom')), 1);
 });
-
