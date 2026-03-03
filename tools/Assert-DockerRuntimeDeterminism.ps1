@@ -13,8 +13,8 @@
   Required expected Docker daemon OSType: windows or linux.
 
 .PARAMETER ExpectedContext
-  Optional expected Docker context. Defaults to desktop-windows for windows
-  lanes and desktop-linux for linux lanes.
+  Required expected Docker context (for example desktop-windows or
+  desktop-linux). No implicit default is applied.
 
 .PARAMETER AutoRepair
   When true, mismatch remediation is attempted before failing.
@@ -41,6 +41,8 @@ param(
   [ValidateSet('windows', 'linux')]
   [string]$ExpectedOsType,
 
+  [Parameter(Mandatory = $true)]
+  [ValidateNotNullOrEmpty()]
   [string]$ExpectedContext,
 
   [bool]$AutoRepair = $true,
@@ -558,9 +560,9 @@ function Wait-DockerEngineReady {
   }
 }
 
-$effectiveExpectedContext = $ExpectedContext
+$effectiveExpectedContext = $ExpectedContext.Trim()
 if ([string]::IsNullOrWhiteSpace($effectiveExpectedContext)) {
-  $effectiveExpectedContext = if ($ExpectedOsType -eq 'windows') { 'desktop-windows' } else { 'desktop-linux' }
+  throw 'ExpectedContext must be provided explicitly and cannot be empty.'
 }
 
 $snapshotResolved = if ([System.IO.Path]::IsPathRooted($SnapshotPath)) {

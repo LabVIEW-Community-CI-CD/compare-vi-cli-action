@@ -172,6 +172,20 @@ exit 0
     }
   }
 
+  It 'fails fast when ExpectedContext is not provided explicitly' {
+    $work = Join-Path $TestDrive 'missing-expected-context'
+    New-Item -ItemType Directory -Path $work -Force | Out-Null
+    $snapshotPath = Join-Path $work 'runtime.json'
+    $output = & pwsh -NoLogo -NoProfile -File $script:GuardScript `
+      -ExpectedOsType windows `
+      -AutoRepair:$false `
+      -SnapshotPath $snapshotPath `
+      -GitHubOutputPath '' 2>&1
+
+    $LASTEXITCODE | Should -Not -Be 0
+    ($output -join "`n") | Should -Match 'ExpectedContext'
+  }
+
   It 'classifies daemon-unavailable probe when docker info cannot return OSType' {
     $work = Join-Path $TestDrive 'daemon-unavailable'
     New-Item -ItemType Directory -Path $work -Force | Out-Null
