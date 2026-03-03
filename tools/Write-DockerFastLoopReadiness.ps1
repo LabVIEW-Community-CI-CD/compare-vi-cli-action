@@ -438,6 +438,24 @@ if ($summary.PSObject.Properties['hardStopTriggered']) {
   $hardStopTriggered = [bool]$summary.hardStopTriggered
 }
 $hardStopReason = if ($summary.PSObject.Properties['hardStopReason']) { [string]$summary.hardStopReason } else { '' }
+$runtimeManager = $null
+if ($summary.PSObject.Properties['runtimeManager']) {
+  $runtimeManager = $summary.runtimeManager
+}
+$runtimeManagerTransitionCount = 0
+$runtimeManagerDaemonUnavailableCount = 0
+$runtimeManagerParseDefectCount = 0
+if ($runtimeManager) {
+  if ($runtimeManager.PSObject.Properties['transitionCount']) {
+    $runtimeManagerTransitionCount = [int]$runtimeManager.transitionCount
+  }
+  if ($runtimeManager.PSObject.Properties['daemonUnavailableCount']) {
+    $runtimeManagerDaemonUnavailableCount = [int]$runtimeManager.daemonUnavailableCount
+  }
+  if ($runtimeManager.PSObject.Properties['parseDefectCount']) {
+    $runtimeManagerParseDefectCount = [int]$runtimeManager.parseDefectCount
+  }
+}
 $laneLifecycle = Resolve-LaneLifecycle `
   -Summary $summary `
   -LaneState $lane `
@@ -481,6 +499,10 @@ $readiness = [ordered]@{
   toolFailureCount = [int]$classification.toolFailureCount
   hardStopTriggered = [bool]$hardStopTriggered
   hardStopReason = $hardStopReason
+  runtimeManagerTransitionCount = [int]$runtimeManagerTransitionCount
+  runtimeManagerDaemonUnavailableCount = [int]$runtimeManagerDaemonUnavailableCount
+  runtimeManagerParseDefectCount = [int]$runtimeManagerParseDefectCount
+  runtimeManager = $runtimeManager
   source = [ordered]@{
     summaryPath = $summaryResolved
     statusPath = if (Test-Path -LiteralPath $statusResolved -PathType Leaf) { $statusResolved } else { '' }
@@ -494,6 +516,9 @@ $readiness = [ordered]@{
     historyScenarioCount = [int]$historyScenarioCount
     hardStopTriggered = [bool]$hardStopTriggered
     hardStopReason = $hardStopReason
+    runtimeManagerTransitionCount = [int]$runtimeManagerTransitionCount
+    runtimeManagerDaemonUnavailableCount = [int]$runtimeManagerDaemonUnavailableCount
+    runtimeManagerParseDefectCount = [int]$runtimeManagerParseDefectCount
     diffStepCount = [int]$classification.diffStepCount
     diffEvidenceSteps = [int]$classification.diffEvidenceSteps
     extractedReportCount = [int]$classification.extractedReportCount
@@ -556,6 +581,9 @@ $mdLines.Add(('| Extracted Report Count | `{0}` |' -f $readiness.extractedReport
 $mdLines.Add(('| Container Export Failure Count | `{0}` |' -f $readiness.containerExportFailureCount)) | Out-Null
 $mdLines.Add(('| Runtime Failure Count | `{0}` |' -f $readiness.runtimeFailureCount)) | Out-Null
 $mdLines.Add(('| Tool Failure Count | `{0}` |' -f $readiness.toolFailureCount)) | Out-Null
+$mdLines.Add(('| Runtime Manager Transitions | `{0}` |' -f $readiness.runtimeManagerTransitionCount)) | Out-Null
+$mdLines.Add(('| Runtime Manager Daemon-Unavailable Count | `{0}` |' -f $readiness.runtimeManagerDaemonUnavailableCount)) | Out-Null
+$mdLines.Add(('| Runtime Manager Parse-Defect Count | `{0}` |' -f $readiness.runtimeManagerParseDefectCount)) | Out-Null
 $mdLines.Add(('| Timeout Failure Count | `{0}` |' -f $readiness.run.timeoutFailureCount)) | Out-Null
 $mdLines.Add(('| Preflight Failure Count | `{0}` |' -f $readiness.run.preflightFailureCount)) | Out-Null
 $mdLines.Add(('| Completed Steps | `{0}` |' -f @($steps).Count)) | Out-Null

@@ -12,7 +12,7 @@ concurrency:
 jobs:
   detect-and-compare:
     name: Compare Changed VIs
-    runs-on: [self-hosted, Windows, X64, self-hosted-docker]
+    runs-on: [self-hosted, Windows, X64, self-hosted-docker-windows]
     permissions:
       contents: read
       actions: read
@@ -31,7 +31,7 @@ jobs:
           ref: ${{ env.BASE_SHA }}
           fetch-depth: 0
 
-      - name: Assert self-hosted-docker runner label
+      - name: Assert self-hosted-docker-windows runner label
         id: runner_label_contract
         shell: pwsh
         env:
@@ -41,7 +41,7 @@ jobs:
             -Repository '${{ github.repository }}' `
             -RunId '${{ github.run_id }}' `
             -RunnerName '${{ runner.name }}' `
-            -RequiredLabel 'self-hosted-docker' `
+            -RequiredLabel 'self-hosted-docker-windows' `
             -OutputJsonPath 'results/vi-compare-fork/runner-label-contract.json' `
             -GitHubOutputPath $env:GITHUB_OUTPUT `
             -StepSummaryPath $env:GITHUB_STEP_SUMMARY

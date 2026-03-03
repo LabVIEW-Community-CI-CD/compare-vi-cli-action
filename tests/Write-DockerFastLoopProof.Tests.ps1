@@ -45,6 +45,15 @@ Describe 'Write-DockerFastLoopProof.ps1' -Tag 'Unit' {
       toolFailureCount = 0
       hardStopTriggered = $false
       hardStopReason = ''
+      runtimeManagerTransitionCount = 2
+      runtimeManagerDaemonUnavailableCount = 1
+      runtimeManagerParseDefectCount = 0
+      runtimeManager = [ordered]@{
+        schema = 'docker-fast-loop/runtime-manager@v1'
+        transitionCount = 2
+        daemonUnavailableCount = 1
+        parseDefectCount = 0
+      }
       source = [ordered]@{
         summaryPath = $summaryPath
         statusPath = $statusPath
@@ -92,6 +101,10 @@ Describe 'Write-DockerFastLoopProof.ps1' -Tag 'Unit' {
     $proof.runtimeFailureCount | Should -Be 0
     $proof.toolFailureCount | Should -Be 0
     $proof.hardStopTriggered | Should -BeFalse
+    $proof.runtimeManagerTransitionCount | Should -Be 2
+    $proof.runtimeManagerDaemonUnavailableCount | Should -Be 1
+    $proof.runtimeManagerParseDefectCount | Should -Be 0
+    $proof.runtimeManager.transitionCount | Should -Be 2
     $proof.hashes.readinessSha256 | Should -Not -BeNullOrEmpty
     $proof.hashes.summarySha256 | Should -Not -BeNullOrEmpty
     $proof.hashes.statusSha256 | Should -Not -BeNullOrEmpty
@@ -121,6 +134,12 @@ Describe 'Write-DockerFastLoopProof.ps1' -Tag 'Unit' {
       toolFailureCount = 2
       hardStopTriggered = $true
       hardStopReason = 'Runtime determinism check failed at step windows-runtime-preflight'
+      runtimeManager = [ordered]@{
+        schema = 'docker-fast-loop/runtime-manager@v1'
+        transitionCount = 4
+        daemonUnavailableCount = 1
+        parseDefectCount = 1
+      }
       laneLifecycle = [ordered]@{
         windows = [ordered]@{
           status = 'failure'
@@ -164,6 +183,10 @@ Describe 'Write-DockerFastLoopProof.ps1' -Tag 'Unit' {
     $proof.toolFailureCount | Should -Be 2
     $proof.hardStopTriggered | Should -BeTrue
     $proof.hardStopReason | Should -Match 'Runtime determinism'
+    $proof.runtimeManagerTransitionCount | Should -Be 4
+    $proof.runtimeManagerDaemonUnavailableCount | Should -Be 1
+    $proof.runtimeManagerParseDefectCount | Should -Be 1
+    $proof.runtimeManager.transitionCount | Should -Be 4
     $proof.laneLifecycle.windows.stopClass | Should -Be 'hard-stop'
     $proof.laneLifecycle.linux.stopClass | Should -Be 'blocked'
   }
