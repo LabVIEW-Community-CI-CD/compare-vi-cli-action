@@ -12,7 +12,7 @@ concurrency:
 jobs:
   detect-and-compare:
     name: Compare Changed VIs
-    runs-on: [self-hosted, Windows, X64]
+    runs-on: [self-hosted, Windows, X64, self-hosted-docker]
     permissions:
       contents: read
       actions: read
@@ -22,12 +22,29 @@ jobs:
       BASE_SHA: ${{ github.event.pull_request.base.sha }}
       HEAD_SHA: ${{ github.event.pull_request.head.sha }}
       FETCH_DEPTH: 20
+      NI_WINDOWS_IMAGE: nationalinstruments/labview:2026q1-windows
+      COMPARE_TIMEOUT_SECONDS: 600
     steps:
       - name: Checkout base (parent repository)
         uses: actions/checkout@v4
         with:
           ref: ${{ env.BASE_SHA }}
           fetch-depth: 0
+
+      - name: Assert self-hosted-docker runner label
+        id: runner_label_contract
+        shell: pwsh
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          pwsh -NoLogo -NoProfile -File tools/Assert-RunnerLabelContract.ps1 `
+            -Repository '${{ github.repository }}' `
+            -RunId '${{ github.run_id }}' `
+            -RunnerName '${{ runner.name }}' `
+            -RequiredLabel 'self-hosted-docker' `
+            -OutputJsonPath 'results/vi-compare-fork/runner-label-contract.json' `
+            -GitHubOutputPath $env:GITHUB_OUTPUT `
+            -StepSummaryPath $env:GITHUB_STEP_SUMMARY
 
       - name: Checkout PR head
         shell: pwsh
@@ -43,17 +60,14 @@ jobs:
           $fetchDepth = if ($env:FETCH_DEPTH) { [int]$env:FETCH_DEPTH } else { 20 }
           git fetch --no-tags --depth=$fetchDepth origin ("pull/{0}/head:pr-{0}-head" -f $env:PR_NUMBER)
           git checkout --detach ("pr-{0}-head" -f $env:PR_NUMBER)
+          $checkedOutHead = (git rev-parse HEAD).Trim()
+          if (-not $checkedOutHead) {
+            throw 'Unable to resolve checked out PR head SHA.'
+          }
+          if ($checkedOutHead -ne "${{ env.HEAD_SHA }}") {
+            throw ("PR head SHA mismatch. Expected {0} but checked out {1}." -f "${{ env.HEAD_SHA }}", $checkedOutHead)
+          }
           git branch -D ("pr-{0}-head" -f $env:PR_NUMBER) 2>$null | Out-Null
-
-          $actual = (git rev-parse HEAD).Trim()
-          $expected = ("${{ env.HEAD_SHA }}").Trim()
-          if ([string]::IsNullOrWhiteSpace($expected)) {
-            throw 'Expected PR head SHA is empty; cannot verify checkout.'
-          }
-          if ($actual -ne $expected) {
-            throw ("Checked out HEAD SHA mismatch. expected={0} actual={1}" -f $expected, $actual)
-          }
-          Write-Host ("Verified PR head SHA: {0}" -f $actual)
 
       - name: Generate VI manifest
         id: manifest
@@ -70,16 +84,17 @@ jobs:
             $pairCount = @($manifest.pairs).Count
           }
 
-          "manifest_path=$manifestPath" | Out-File -FilePath $ENV:GITHUB_OUTPUT -Append -Encoding utf8
-          "pair_count=$pairCount" | Out-File -FilePath $ENV:GITHUB_OUTPUT -Append -Encoding utf8
-
           if ($pairCount -eq 0) {
             Write-Host '::notice::No VI changes detected between base/head; skipping staging.'
+            "manifest_path=$manifestPath" | Out-File -FilePath $ENV:GITHUB_OUTPUT -Append -Encoding utf8
             "has_pairs=false" | Out-File -FilePath $ENV:GITHUB_OUTPUT -Append -Encoding utf8
+            "pair_count=0" | Out-File -FilePath $ENV:GITHUB_OUTPUT -Append -Encoding utf8
             exit 0
           }
 
+          "manifest_path=$manifestPath" | Out-File -FilePath $ENV:GITHUB_OUTPUT -Append -Encoding utf8
           "has_pairs=true" | Out-File -FilePath $ENV:GITHUB_OUTPUT -Append -Encoding utf8
+          "pair_count=$pairCount" | Out-File -FilePath $ENV:GITHUB_OUTPUT -Append -Encoding utf8
 
       - name: Stage and compare VI files
         if: steps.manifest.outputs.has_pairs == 'true'
@@ -104,64 +119,182 @@ jobs:
             "compare_json=" | Out-File -FilePath $ENV:GITHUB_OUTPUT -Append -Encoding utf8
             "summary_json=" | Out-File -FilePath $ENV:GITHUB_OUTPUT -Append -Encoding utf8
             "summary_md=" | Out-File -FilePath $ENV:GITHUB_OUTPUT -Append -Encoding utf8
+            "summary_html=" | Out-File -FilePath $ENV:GITHUB_OUTPUT -Append -Encoding utf8
             exit 0
           }
 
           $stagedPairs | ConvertTo-Json -Depth 6 | Set-Content -LiteralPath $resultsPath -Encoding UTF8
 
+          $containerCompareScript = Join-Path $repoRoot 'tools' 'Run-NIWindowsContainerCompare.ps1'
+          if (-not (Test-Path -LiteralPath $containerCompareScript -PathType Leaf)) {
+            throw "Container compare script not found: $containerCompareScript"
+          }
+
+          $image = [string]$env:NI_WINDOWS_IMAGE
+          if ([string]::IsNullOrWhiteSpace($image)) {
+            throw 'NI_WINDOWS_IMAGE is not set.'
+          }
+          & docker image inspect $image *> $null
+          if ($LASTEXITCODE -ne 0) {
+            Write-Host ("Image not present locally; pulling {0}" -f $image)
+            & docker pull $image
+            if ($LASTEXITCODE -ne 0) {
+              throw ("Failed to pull image: {0}" -f $image)
+            }
+          }
+
+          $invokeContainerCompare = {
+            param(
+              [string]$BaseVi,
+              [string]$HeadVi,
+              [string]$OutputDir,
+              [switch]$AllowSameLeaf,
+              [switch]$RenderReport,
+              [string[]]$Flags,
+              [switch]$ReplaceFlags,
+              [ValidateSet('full','legacy')]
+              [string]$NoiseProfile = 'full',
+              [Nullable[int]]$TimeoutSeconds
+            )
+
+            $reportPath = Join-Path $OutputDir 'compare-report.html'
+            $runtimeSnapshotPath = Join-Path $OutputDir 'runtime-determinism.json'
+            $effectiveTimeout = if ($TimeoutSeconds -and $TimeoutSeconds -gt 0) { [int]$TimeoutSeconds } else { [int]$env:COMPARE_TIMEOUT_SECONDS }
+
+            $args = @(
+              '-NoLogo', '-NoProfile',
+              '-File', $containerCompareScript,
+              '-BaseVi', $BaseVi,
+              '-HeadVi', $HeadVi,
+              '-Image', $env:NI_WINDOWS_IMAGE,
+              '-ReportPath', $reportPath,
+              '-ReportType', 'html',
+              '-RuntimeSnapshotPath', $runtimeSnapshotPath,
+              '-TimeoutSeconds', [string]$effectiveTimeout
+            )
+            if ($Flags) {
+              $args += '-Flags'
+              $args += $Flags
+            }
+
+            $output = & pwsh @args 2>&1
+            if ($output) {
+              $output | ForEach-Object { Write-Host $_ }
+            }
+
+            $capturePath = Join-Path $OutputDir 'ni-windows-container-capture.json'
+            [pscustomobject]@{
+              ExitCode    = $LASTEXITCODE
+              ReportPath  = $reportPath
+              CapturePath = $(if (Test-Path -LiteralPath $capturePath -PathType Leaf) { $capturePath } else { $null })
+            }
+          }.GetNewClosure()
+
           $compareScript = Join-Path $repoRoot 'tools' 'Run-StagedLVCompare.ps1'
-          & $compareScript -ResultsPath $resultsPath -ArtifactsDir $artifactsDir -RenderReport | Out-Null
+          & $compareScript -ResultsPath $resultsPath -ArtifactsDir $artifactsDir -RenderReport -InvokeLVCompare $invokeContainerCompare | Out-Null
 
           $compareJsonPath = Join-Path $artifactsDir 'vi-staging-compare.json'
-          $summaryJsonPath = Join-Path $artifactsDir 'vi-compare-summary.json'
-          $summaryPath = Join-Path $artifactsDir 'vi-compare-summary.md'
+          if (-not (Test-Path -LiteralPath $compareJsonPath -PathType Leaf)) {
+            throw "Compare output JSON not found: $compareJsonPath"
+          }
+
           $summaryScript = Join-Path $repoRoot 'tools' 'Summarize-VIStaging.ps1'
-          & $summaryScript -CompareJson $compareJsonPath -MarkdownPath $summaryPath -SummaryJsonPath $summaryJsonPath | Out-Null
+          $summaryPath = Join-Path $artifactsDir 'vi-compare-summary.md'
+          $summaryJsonPath = Join-Path $artifactsDir 'vi-compare-summary.json'
+          $summaryHtmlPath = Join-Path $artifactsDir 'vi-compare-summary.html'
+          & $summaryScript -CompareJson $compareJsonPath -MarkdownPath $summaryPath -SummaryJsonPath $summaryJsonPath -HtmlPath $summaryHtmlPath | Out-Null
+          if (-not (Test-Path -LiteralPath $summaryPath -PathType Leaf)) {
+            throw "Summary markdown not found: $summaryPath"
+          }
+          if (-not (Test-Path -LiteralPath $summaryJsonPath -PathType Leaf)) {
+            throw "Summary JSON not found: $summaryJsonPath"
+          }
+          if (-not (Test-Path -LiteralPath $summaryHtmlPath -PathType Leaf)) {
+            throw "Summary HTML not found: $summaryHtmlPath"
+          }
 
           "compare_dir=$artifactsDir" | Out-File -FilePath $ENV:GITHUB_OUTPUT -Append -Encoding utf8
           "compare_json=$compareJsonPath" | Out-File -FilePath $ENV:GITHUB_OUTPUT -Append -Encoding utf8
           "summary_json=$summaryJsonPath" | Out-File -FilePath $ENV:GITHUB_OUTPUT -Append -Encoding utf8
           "summary_md=$summaryPath" | Out-File -FilePath $ENV:GITHUB_OUTPUT -Append -Encoding utf8
+          "summary_html=$summaryHtmlPath" | Out-File -FilePath $ENV:GITHUB_OUTPUT -Append -Encoding utf8
 
       - name: Validate compare contract
-        if: steps.manifest.outputs.has_pairs == 'true'
+        if: steps.compare.outputs.compare_json != ''
         shell: pwsh
         run: |
-          $compareDir = '${{ steps.compare.outputs.compare_dir }}'
-          $compareJson = '${{ steps.compare.outputs.compare_json }}'
-          $summaryJson = '${{ steps.compare.outputs.summary_json }}'
-          $summaryMd = '${{ steps.compare.outputs.summary_md }}'
+          Set-StrictMode -Version Latest
+          $ErrorActionPreference = 'Stop'
+          $compareJsonPath = "${{ steps.compare.outputs.compare_json }}"
+          $summaryJsonPath = "${{ steps.compare.outputs.summary_json }}"
+          $summaryMarkdownPath = "${{ steps.compare.outputs.summary_md }}"
+          $summaryHtmlPath = "${{ steps.compare.outputs.summary_html }}"
 
-          if ([string]::IsNullOrWhiteSpace($compareDir) -or -not (Test-Path -LiteralPath $compareDir -PathType Container)) {
-            throw 'Compare contract failed: compare_dir output is empty or missing.'
+          if (-not (Test-Path -LiteralPath $compareJsonPath -PathType Leaf)) {
+            throw "Compare JSON missing: $compareJsonPath"
           }
-          foreach ($path in @($compareJson, $summaryJson, $summaryMd)) {
-            if ([string]::IsNullOrWhiteSpace($path) -or -not (Test-Path -LiteralPath $path -PathType Leaf)) {
-              throw ("Compare contract failed: required output file missing -> {0}" -f $path)
-            }
+          if (-not (Test-Path -LiteralPath $summaryJsonPath -PathType Leaf)) {
+            throw "Summary JSON missing: $summaryJsonPath"
           }
-
-          $comparePayload = Get-Content -LiteralPath $compareJson -Raw -Encoding UTF8 | ConvertFrom-Json -Depth 8
-          $rows = @($comparePayload)
-          if ($rows.Count -lt 1) {
-            throw 'Compare contract failed: compare_json has no entries.'
+          if (-not (Test-Path -LiteralPath $summaryMarkdownPath -PathType Leaf)) {
+            throw "Summary markdown missing: $summaryMarkdownPath"
           }
-          $statusCount = @($rows | Where-Object { $_.PSObject.Properties['status'] -and -not [string]::IsNullOrWhiteSpace([string]$_.status) }).Count
-          if ($statusCount -lt 1) {
-            throw 'Compare contract failed: compare_json entries do not contain status-bearing rows.'
+          if (-not (Test-Path -LiteralPath $summaryHtmlPath -PathType Leaf)) {
+            throw "Summary HTML missing: $summaryHtmlPath"
           }
 
-          Write-Host ("Compare contract OK: entries={0} statusRows={1}" -f $rows.Count, $statusCount)
+          $compare = Get-Content -LiteralPath $compareJsonPath -Raw -Encoding UTF8 | ConvertFrom-Json
+          if (-not $compare) {
+            throw "Compare JSON is empty: $compareJsonPath"
+          }
+          $items = @($compare)
+          if ($items.Count -eq 0) {
+            throw "Compare JSON did not contain any staged compare entries: $compareJsonPath"
+          }
+
+          $missingStatus = @($items | Where-Object { -not $_.status })
+          if ($missingStatus.Count -gt 0) {
+            throw ("Compare JSON contains entries without status: {0}" -f $compareJsonPath)
+          }
+
+      - name: Emit compare summary
+        if: always()
+        shell: pwsh
+        run: |
+          Set-StrictMode -Version Latest
+          $ErrorActionPreference = 'Stop'
+          $manifestPath = "${{ steps.manifest.outputs.manifest_path }}"
+          $pairCount = "${{ steps.manifest.outputs.pair_count }}"
+          $compareJsonPath = "${{ steps.compare.outputs.compare_json }}"
+          $summaryMarkdownPath = "${{ steps.compare.outputs.summary_md }}"
+          $summaryHtmlPath = "${{ steps.compare.outputs.summary_html }}"
+          $out = New-Object System.Collections.Generic.List[string]
+          $out.Add("## VI Compare (Fork PR)") | Out-Null
+          $out.Add("- Manifest: $manifestPath") | Out-Null
+          $out.Add("- Manifest pairs: $pairCount") | Out-Null
+          if ($compareJsonPath) {
+            $out.Add("- Compare JSON: $compareJsonPath") | Out-Null
+          } else {
+            $out.Add("- Compare JSON: (not produced)") | Out-Null
+          }
+          if ($summaryMarkdownPath) {
+            $out.Add("- Summary markdown: $summaryMarkdownPath") | Out-Null
+          } else {
+            $out.Add("- Summary markdown: (not produced)") | Out-Null
+          }
+          if ($summaryHtmlPath) {
+            $out.Add("- Summary HTML: $summaryHtmlPath") | Out-Null
+          } else {
+            $out.Add("- Summary HTML: (not produced)") | Out-Null
+          }
+          $out -join "`n" | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Encoding utf8 -Append
 
       - name: Upload VI compare artifacts
-        if: always() && steps.manifest.outputs.has_pairs == 'true'
+        if: always() && steps.compare.outputs.compare_dir != ''
         uses: actions/upload-artifact@v5
         with:
           name: vi-compare-${{ github.run_id }}
           path: |
             ${{ steps.compare.outputs.compare_dir }}
-            ${{ steps.compare.outputs.compare_json }}
-            ${{ steps.compare.outputs.summary_json }}
-            ${{ steps.compare.outputs.summary_md }}
-            ${{ steps.manifest.outputs.manifest_path }}
             vi-diff-manifest.json
+            results/vi-compare-fork/runner-label-contract.json
