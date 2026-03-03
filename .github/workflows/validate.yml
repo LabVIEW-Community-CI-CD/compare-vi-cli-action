@@ -18,7 +18,7 @@ on:
         required: false
         type: string
       history_scenario_set:
-        description: 'VI history scenario set for self-hosted-docker validation (none|smoke|history-core)'
+        description: 'VI history scenario set for Validate VI history lanes (none|smoke|history-core)'
         required: false
         default: 'smoke'
       allow_noncanonical_vi_history:
@@ -969,7 +969,7 @@ jobs:
         github.repository == 'LabVIEW-Community-CI-CD/compare-vi-cli-action' ||
         github.event.inputs.allow_noncanonical_vi_history == 'true'
       )
-    runs-on: [self-hosted, Windows, X64, self-hosted-docker]
+    runs-on: ubuntu-latest
     defaults:
       run:
         shell: pwsh
