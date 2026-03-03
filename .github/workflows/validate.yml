@@ -1045,8 +1045,8 @@ jobs:
           "linux_compare_report=$reportPath" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
           $runtimeSnapshot = Join-Path $resultsRoot 'runtime-manager-compare-linux.json'
           pwsh -NoLogo -NoProfile -File tools/Run-NILinuxContainerCompare.ps1 `
-            -BaseVi 'fixtures/vi-attr/Base.vi' `
-            -HeadVi 'fixtures/vi-attr/Head.vi' `
+            -BaseVi 'fixtures/vi-stage/control-rename/Base.vi' `
+            -HeadVi 'fixtures/vi-stage/control-rename/Head.vi' `
             -Image 'nationalinstruments/labview:2026q1-linux' `
             -ReportPath $reportPath `
             -TimeoutSeconds 300 `
@@ -1081,8 +1081,36 @@ jobs:
           $capturePath = Join-Path $resultsRoot 'ni-linux-container-capture.json'
           $summaryPath = Join-Path $resultsRoot 'linux-compare-artifact-summary.json'
 
-          $reportExists = Test-Path -LiteralPath $reportPath -PathType Leaf
           $captureExists = Test-Path -LiteralPath $capturePath -PathType Leaf
+          $recoveredFromCapture = $false
+          $recoveredReportPath = ''
+          $captureResultClass = ''
+          $captureGateOutcome = ''
+          if (-not (Test-Path -LiteralPath $reportPath -PathType Leaf) -and $captureExists) {
+            try {
+              $capture = Get-Content -LiteralPath $capturePath -Raw | ConvertFrom-Json -Depth 12
+              $captureResultClass = if ($capture.PSObject.Properties['resultClass']) { [string]$capture.resultClass } else { '' }
+              $captureGateOutcome = if ($capture.PSObject.Properties['gateOutcome']) { [string]$capture.gateOutcome } else { '' }
+              if ($capture.PSObject.Properties['reportAnalysis'] -and $capture.reportAnalysis) {
+                $candidate = if ($capture.reportAnalysis.PSObject.Properties['reportPathExtracted']) { [string]$capture.reportAnalysis.reportPathExtracted } else { '' }
+                if (-not [string]::IsNullOrWhiteSpace($candidate) -and (Test-Path -LiteralPath $candidate -PathType Leaf)) {
+                  Copy-Item -LiteralPath $candidate -Destination $reportPath -Force
+                  $recoveredFromCapture = $true
+                  $recoveredReportPath = $candidate
+                }
+              }
+            } catch {
+              Write-Host ("::warning::Unable to parse Linux compare capture for report recovery: {0}" -f $_.Exception.Message)
+            }
+          } elseif ($captureExists) {
+            try {
+              $capture = Get-Content -LiteralPath $capturePath -Raw | ConvertFrom-Json -Depth 12
+              $captureResultClass = if ($capture.PSObject.Properties['resultClass']) { [string]$capture.resultClass } else { '' }
+              $captureGateOutcome = if ($capture.PSObject.Properties['gateOutcome']) { [string]$capture.gateOutcome } else { '' }
+            } catch {}
+          }
+
+          $reportExists = Test-Path -LiteralPath $reportPath -PathType Leaf
           $compareSucceeded = '${{ steps.linux-compare.conclusion }}' -eq 'success'
 
           $payload = [ordered]@{
@@ -1091,8 +1119,12 @@ jobs:
             compareStepConclusion = '${{ steps.linux-compare.conclusion }}'
             reportPath = $reportPath
             reportExists = [bool]$reportExists
+            reportRecoveredFromCapture = [bool]$recoveredFromCapture
+            recoveredReportPath = $recoveredReportPath
             capturePath = $capturePath
             captureExists = [bool]$captureExists
+            captureResultClass = $captureResultClass
+            captureGateOutcome = $captureGateOutcome
           }
           $payload | ConvertTo-Json -Depth 8 | Set-Content -LiteralPath $summaryPath -Encoding utf8
 
