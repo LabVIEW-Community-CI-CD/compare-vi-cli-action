@@ -22,9 +22,10 @@ line buffers).
   - Operate inside this repository unless the human asks otherwise.
   - Keep workflows deterministic and green.
   - Reference the current standing-priority issue (e.g., `#<standing-number>`) in commit and PR descriptions.
-  - Treat icon-editor CI/package automation as legacy/manual-only. Do not expand
-    `ci-composite.yml` or icon-editor fixture freshness checks into required PR
-    gates unless a standing-priority issue explicitly re-enables that scope.
+  - Treat icon-editor CI/package automation as legacy/manual-only.
+    `ci-composite.yml` is now a manual compatibility stub; do not reintroduce
+    icon-editor fixture freshness checks into required PR gates unless a
+    standing-priority issue explicitly re-enables that scope.
 - First actions in a session:
   1. `pwsh -NoLogo -NoProfile -File tools/priority/bootstrap.ps1` to run hook preflight, refresh the standing-priority
      snapshot/router artifacts, and auto-anchor the workspace to `develop`. When PowerShell + Node aren't available on
@@ -343,4 +344,3 @@ Guidance:
 - For markdownlint, try `Resolve-MarkdownlintCli2Path`; only fall back to `npx --no-install` when necessary.
 - For LVCompare, continue to enforce the canonical path; pass `-lvpath` to LVCompare and never launch `LabVIEW.exe`.
 - Do not lint or link-check vendor documentation under `bin/`; scope link checks to `docs/` or ignore `bin/**`.
-
