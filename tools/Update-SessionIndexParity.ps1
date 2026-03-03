@@ -39,6 +39,18 @@ function New-UnavailableParityPayload {
     tipDiff     = [ordered]@{
       fileCount = $null
     }
+    treeParity = [ordered]@{
+      equal = $null
+      status = 'unknown'
+    }
+    historyParity = [ordered]@{
+      equal = $null
+      status = 'unknown'
+    }
+    recommendation = [ordered]@{
+      code = ''
+      summary = ''
+    }
     commitDivergence = [ordered]@{
       baseOnly = $null
       headOnly = $null
@@ -77,6 +89,38 @@ function Convert-ToParityTelemetry {
   $tipDiff = Get-ChildValue -Object $ParityReport -Name 'tipDiff'
   if ($null -ne $tipDiff) { $tipDiffCount = Get-ChildValue -Object $tipDiff -Name 'fileCount' }
 
+  $treeParity = Get-ChildValue -Object $ParityReport -Name 'treeParity'
+  $treeParityEqual = $null
+  $treeParityStatus = 'unknown'
+  if ($null -ne $treeParity) {
+    $treeParityEqual = Get-ChildValue -Object $treeParity -Name 'equal'
+    $candidate = Get-ChildValue -Object $treeParity -Name 'status'
+    if ($null -ne $candidate -and -not [string]::IsNullOrWhiteSpace([string]$candidate)) {
+      $treeParityStatus = [string]$candidate
+    }
+  }
+
+  $historyParity = Get-ChildValue -Object $ParityReport -Name 'historyParity'
+  $historyParityEqual = $null
+  $historyParityStatus = 'unknown'
+  if ($null -ne $historyParity) {
+    $historyParityEqual = Get-ChildValue -Object $historyParity -Name 'equal'
+    $candidate = Get-ChildValue -Object $historyParity -Name 'status'
+    if ($null -ne $candidate -and -not [string]::IsNullOrWhiteSpace([string]$candidate)) {
+      $historyParityStatus = [string]$candidate
+    }
+  }
+
+  $recommendationNode = Get-ChildValue -Object $ParityReport -Name 'recommendation'
+  $recommendationCode = ''
+  $recommendationSummary = ''
+  if ($null -ne $recommendationNode) {
+    $candidate = Get-ChildValue -Object $recommendationNode -Name 'code'
+    if ($null -ne $candidate) { $recommendationCode = [string]$candidate }
+    $candidate = Get-ChildValue -Object $recommendationNode -Name 'summary'
+    if ($null -ne $candidate) { $recommendationSummary = [string]$candidate }
+  }
+
   $baseOnly = $null
   $headOnly = $null
   $commitDivergence = Get-ChildValue -Object $ParityReport -Name 'commitDivergence'
@@ -96,6 +140,18 @@ function Convert-ToParityTelemetry {
     tipDiff     = [ordered]@{
       fileCount = $tipDiffCount
     }
+    treeParity = [ordered]@{
+      equal = $treeParityEqual
+      status = $treeParityStatus
+    }
+    historyParity = [ordered]@{
+      equal = $historyParityEqual
+      status = $historyParityStatus
+    }
+    recommendation = [ordered]@{
+      code = $recommendationCode
+      summary = $recommendationSummary
+    }
     commitDivergence = [ordered]@{
       baseOnly = $baseOnly
       headOnly = $headOnly
@@ -111,11 +167,17 @@ function Write-ParityStepSummary {
   $tipDiffCount = Get-ChildValue -Object (Get-ChildValue -Object $Parity -Name 'tipDiff') -Name 'fileCount'
   $baseOnly = Get-ChildValue -Object (Get-ChildValue -Object $Parity -Name 'commitDivergence') -Name 'baseOnly'
   $headOnly = Get-ChildValue -Object (Get-ChildValue -Object $Parity -Name 'commitDivergence') -Name 'headOnly'
+  $treeParityStatus = Get-ChildValue -Object (Get-ChildValue -Object $Parity -Name 'treeParity') -Name 'status'
+  $historyParityStatus = Get-ChildValue -Object (Get-ChildValue -Object $Parity -Name 'historyParity') -Name 'status'
+  $recommendationCode = Get-ChildValue -Object (Get-ChildValue -Object $Parity -Name 'recommendation') -Name 'code'
 
   $statusValue = if ($Parity.status) { [string]$Parity.status } else { 'unavailable' }
   $reasonValue = if ($Parity.reason) { [string]$Parity.reason } else { '' }
   $tipDiffValue = if ($null -ne $tipDiffCount -and "$tipDiffCount".Trim() -ne '') { [string]$tipDiffCount } else { 'n/a' }
   $divergenceValue = if (($null -ne $baseOnly -and "$baseOnly".Trim() -ne '') -and ($null -ne $headOnly -and "$headOnly".Trim() -ne '')) { ('{0}/{1}' -f $baseOnly, $headOnly) } else { 'n/a' }
+  $treeParityValue = if ($null -ne $treeParityStatus -and -not [string]::IsNullOrWhiteSpace([string]$treeParityStatus)) { [string]$treeParityStatus } else { 'n/a' }
+  $historyParityValue = if ($null -ne $historyParityStatus -and -not [string]::IsNullOrWhiteSpace([string]$historyParityStatus)) { [string]$historyParityStatus } else { 'n/a' }
+  $recommendationValue = if ($null -ne $recommendationCode -and -not [string]::IsNullOrWhiteSpace([string]$recommendationCode)) { [string]$recommendationCode } else { 'n/a' }
 
   $lines = @(
     '### Origin/Upstream Parity Telemetry',
@@ -123,8 +185,11 @@ function Write-ParityStepSummary {
     '| Metric | Value |',
     '| --- | --- |',
     ('| Status | {0} |' -f $statusValue),
+    ('| Tree Parity | {0} |' -f $treeParityValue),
+    ('| History Parity | {0} |' -f $historyParityValue),
     ('| Tip Diff File Count | {0} |' -f $tipDiffValue),
-    ('| Commit Divergence (base-only/head-only) | {0} |' -f $divergenceValue)
+    ('| Commit Divergence (base-only/head-only) | {0} |' -f $divergenceValue),
+    ('| Recommendation | {0} |' -f $recommendationValue)
   )
   if (-not [string]::IsNullOrWhiteSpace($reasonValue)) {
     $lines += ('| Reason | {0} |' -f $reasonValue.Replace('|', '\|'))
