@@ -3,6 +3,7 @@ param(
   [string]$TestsPath = 'tests',
   [string]$ResultsRoot = 'tests/results',
   [string]$OutDir = 'tests/results/_agent/verification',
+  [string]$TraceMatrixPath,
   [string]$BaselinePolicyPath = 'tools/policy/requirements-verification-baseline.json',
   [string]$GitHubOutputPath = $env:GITHUB_OUTPUT,
   [string]$StepSummaryPath = $env:GITHUB_STEP_SUMMARY
@@ -16,20 +17,44 @@ if (-not (Test-Path -LiteralPath $OutDir -PathType Container)) {
   New-Item -ItemType Directory -Path $OutDir -Force | Out-Null
 }
 
-$traceScript = Join-Path $repoRoot 'tools/Traceability-Matrix.ps1'
-if (-not (Test-Path -LiteralPath $traceScript -PathType Leaf)) {
-  throw "Traceability matrix script not found: $traceScript"
+$resolvedTracePath = $null
+if ($TraceMatrixPath) {
+  if (-not (Test-Path -LiteralPath $TraceMatrixPath -PathType Leaf)) {
+    throw "Trace matrix path does not exist: $TraceMatrixPath"
+  }
+  $resolvedTracePath = (Resolve-Path -LiteralPath $TraceMatrixPath).Path
+} else {
+  $traceScript = Join-Path $repoRoot 'tools/Traceability-Matrix.ps1'
+  if (-not (Test-Path -LiteralPath $traceScript -PathType Leaf)) {
+    throw "Traceability matrix script not found: $traceScript"
+  }
+
+  pwsh -NoLogo -NoProfile -File $traceScript -TestsPath $TestsPath -ResultsRoot $ResultsRoot -OutDir $OutDir -RenderHtml | Out-Host
+
+  $generatedTracePath = Join-Path $OutDir 'trace-matrix.json'
+  if (-not (Test-Path -LiteralPath $generatedTracePath -PathType Leaf)) {
+    throw "Traceability matrix output missing: $generatedTracePath"
+  }
+  $resolvedTracePath = (Resolve-Path -LiteralPath $generatedTracePath).Path
 }
 
-pwsh -NoLogo -NoProfile -File $traceScript -TestsPath $TestsPath -ResultsRoot $ResultsRoot -OutDir $OutDir -RenderHtml | Out-Host
-
-$tracePath = Join-Path $OutDir 'trace-matrix.json'
-if (-not (Test-Path -LiteralPath $tracePath -PathType Leaf)) {
-  throw "Traceability matrix output missing: $tracePath"
+if (-not (Test-Path -LiteralPath $BaselinePolicyPath -PathType Leaf)) {
+  throw "Baseline policy path does not exist: $BaselinePolicyPath"
 }
 
-$trace = Get-Content -LiteralPath $tracePath -Raw | ConvertFrom-Json -Depth 20
-$baseline = Get-Content -LiteralPath $BaselinePolicyPath -Raw | ConvertFrom-Json -Depth 10
+$trace = Get-Content -LiteralPath $resolvedTracePath -Raw | ConvertFrom-Json -Depth 20
+$baselineResolvedPath = (Resolve-Path -LiteralPath $BaselinePolicyPath).Path
+$baseline = Get-Content -LiteralPath $baselineResolvedPath -Raw | ConvertFrom-Json -Depth 10
+
+if (-not $baseline.allowlist) {
+  throw "Baseline policy is missing 'allowlist': $BaselinePolicyPath"
+}
+if (-not ($baseline.allowlist.PSObject.Properties.Name -contains 'unknownRequirementIds')) {
+  throw "Baseline policy is missing allowlist.unknownRequirementIds: $BaselinePolicyPath"
+}
+if (-not ($baseline.allowlist.PSObject.Properties.Name -contains 'uncoveredRequirementIds')) {
+  throw "Baseline policy is missing allowlist.uncoveredRequirementIds: $BaselinePolicyPath"
+}
 
 $allowedUnknown = @($baseline.allowlist.unknownRequirementIds | ForEach-Object { [string]$_ })
 $allowedUncovered = @($baseline.allowlist.uncoveredRequirementIds | ForEach-Object { [string]$_ })
@@ -46,8 +71,9 @@ $summary = [ordered]@{
   schema = 'requirements-verification/v1'
   schemaVersion = '1.0.0'
   generatedAtUtc = (Get-Date).ToUniversalTime().ToString('o')
-  traceMatrixPath = [IO.Path]::GetRelativePath($repoRoot, (Resolve-Path -LiteralPath $tracePath).Path).Replace('\\', '/')
-  baselinePolicyPath = [IO.Path]::GetRelativePath($repoRoot, (Resolve-Path -LiteralPath $BaselinePolicyPath).Path).Replace('\\', '/')
+  traceMatrixPath = [IO.Path]::GetRelativePath($repoRoot, $resolvedTracePath).Replace('\\', '/')
+  baselinePolicyPath = [IO.Path]::GetRelativePath($repoRoot, $baselineResolvedPath).Replace('\\', '/')
+  traceSource = if ($TraceMatrixPath) { 'provided' } else { 'generated' }
   metrics = [ordered]@{
     requirementTotal = [int]$trace.summary.requirements.total
     requirementCovered = [int]$trace.summary.requirements.covered
