@@ -422,6 +422,28 @@ function Convert-ToEncodedCommand {
   return [Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes($CommandText))
 }
 
+function Resolve-TempDirectoryPath {
+  [string[]]$candidates = @(
+    $env:TEMP,
+    $env:TMP,
+    $env:TMPDIR,
+    [System.IO.Path]::GetTempPath()
+  )
+  foreach ($candidate in $candidates) {
+    if ([string]::IsNullOrWhiteSpace($candidate)) { continue }
+    try {
+      $fullPath = [System.IO.Path]::GetFullPath($candidate)
+      if (-not (Test-Path -LiteralPath $fullPath -PathType Container)) {
+        New-Item -ItemType Directory -Path $fullPath -Force | Out-Null
+      }
+      return $fullPath
+    } catch {
+      continue
+    }
+  }
+  throw 'Unable to resolve temp directory path for docker compare logs.'
+}
+
 function Invoke-DockerRunWithTimeout {
   param(
     [Parameter(Mandatory)][string[]]$DockerArgs,
@@ -430,8 +452,9 @@ function Invoke-DockerRunWithTimeout {
     [int]$HeartbeatSeconds = 15
   )
 
-  $stdoutFile = Join-Path $env:TEMP ("ni-linux-container-stdout-{0}.log" -f ([guid]::NewGuid().ToString('N')))
-  $stderrFile = Join-Path $env:TEMP ("ni-linux-container-stderr-{0}.log" -f ([guid]::NewGuid().ToString('N')))
+  $tempDirectory = Resolve-TempDirectoryPath
+  $stdoutFile = Join-Path $tempDirectory ("ni-linux-container-stdout-{0}.log" -f ([guid]::NewGuid().ToString('N')))
+  $stderrFile = Join-Path $tempDirectory ("ni-linux-container-stderr-{0}.log" -f ([guid]::NewGuid().ToString('N')))
   $process = $null
   try {
     $dockerCommandSource = Resolve-DockerCommandSource
