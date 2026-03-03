@@ -54,6 +54,44 @@ jobs:
         $lv = Get-Process -Name 'LabVIEW' -ErrorAction SilentlyContinue
         if ($lv) { $pids = ($lv | ForEach-Object Id); $msg = '::notice::LabVIEW.exe is running (PID(s): {0}).' -f ([string]::Join(',', $pids)); Write-Host $msg } else { Write-Host 'LabVIEW not running.' }
         Write-Host 'Preflight check complete.'
+
+  docker-runtime-manager:
+    name: Docker Runtime Manager (Host)
+    runs-on: [self-hosted, Windows, X64, self-hosted-docker]
+    needs:
+    - preflight-windows
+    timeout-minutes: 10
+    outputs:
+      manager_status: ${{ steps.manager.outputs.manager_status }}
+      manager_summary_path: ${{ steps.manager.outputs.manager_summary_path }}
+      windows_image_digest: ${{ steps.manager.outputs.windows_image_digest }}
+      linux_image_digest: ${{ steps.manager.outputs.linux_image_digest }}
+      start_context: ${{ steps.manager.outputs.start_context }}
+      final_context: ${{ steps.manager.outputs.final_context }}
+    env:
+      NI_WINDOWS_IMAGE: nationalinstruments/labview:2026q1-windows
+      NI_LINUX_IMAGE: nationalinstruments/labview:2026q1-linux
+    steps:
+    - uses: actions/checkout@v5
+    - name: Run Docker runtime manager
+      id: manager
+      shell: pwsh
+      run: |
+        pwsh -NoLogo -NoProfile -File tools/Invoke-DockerRuntimeManager.ps1 `
+          -WindowsImage $env:NI_WINDOWS_IMAGE `
+          -LinuxImage $env:NI_LINUX_IMAGE `
+          -BootstrapWindowsImage:$true `
+          -BootstrapLinuxImage:$true `
+          -OutputJsonPath 'results/fixture-drift/docker-runtime-manager.json' `
+          -GitHubOutputPath $env:GITHUB_OUTPUT `
+          -StepSummaryPath $env:GITHUB_STEP_SUMMARY
+    - name: Upload docker runtime manager artifact
+      if: always()
+      uses: actions/upload-artifact@v5
+      with:
+        name: fixture-drift-docker-runtime-manager
+        path: results/fixture-drift/docker-runtime-manager.json
+        if-no-files-found: warn
   validate-ubuntu:
     name: Fixture Drift (Ubuntu)
     runs-on: ubuntu-latest
@@ -126,12 +164,14 @@ jobs:
         soft-fail: ${{ github.event_name == 'pull_request' || steps.docs.outputs.docs_only }}
 
   validate-windows:
-    name: Fixture Drift (Windows)
-    runs-on: [self-hosted, Windows, X64]
+    name: Fixture Drift (Docker Desktop Host - LabVIEW 2026 q1 windows)
+    runs-on: [self-hosted, Windows, X64, self-hosted-docker]
     concurrency:
       group: lv-fixture-win
       cancel-in-progress: false
-    needs: preflight-windows
+    needs:
+    - preflight-windows
+    - docker-runtime-manager
     timeout-minutes: 3
     env:
       INVOKER_REQUIRED: '1'
@@ -148,6 +188,12 @@ jobs:
       LV_CURSOR_RESTORE: ${{ vars.LV_CURSOR_RESTORE || '1' }}
       LV_IDLE_WAIT_SECONDS: ${{ vars.LV_IDLE_WAIT_SECONDS || '2' }}
       LV_IDLE_MAX_WAIT_SECONDS: ${{ vars.LV_IDLE_MAX_WAIT_SECONDS || '5' }}
+      DOCKER_MANAGER_STATUS: ${{ needs.docker-runtime-manager.outputs.manager_status }}
+      DOCKER_MANAGER_SUMMARY_PATH: ${{ needs.docker-runtime-manager.outputs.manager_summary_path }}
+      DOCKER_MANAGER_WINDOWS_IMAGE_DIGEST: ${{ needs.docker-runtime-manager.outputs.windows_image_digest }}
+      DOCKER_MANAGER_LINUX_IMAGE_DIGEST: ${{ needs.docker-runtime-manager.outputs.linux_image_digest }}
+      DOCKER_MANAGER_START_CONTEXT: ${{ needs.docker-runtime-manager.outputs.start_context }}
+      DOCKER_MANAGER_FINAL_CONTEXT: ${{ needs.docker-runtime-manager.outputs.final_context }}
     permissions:
       actions: read
       contents: read
@@ -167,6 +213,99 @@ jobs:
       with:
         phase: J2
         results-dir: results/fixture-drift
+    - name: Assert Docker runtime determinism (windows)
+      id: runtime_determinism
+      shell: pwsh
+      run: |
+        pwsh -NoLogo -NoProfile -File tools/Assert-DockerRuntimeDeterminism.ps1 `
+          -ExpectedOsType windows `
+          -ExpectedContext desktop-windows `
+          -AutoRepair:$true `
+          -ManageDockerEngine:$true `
+          -SnapshotPath 'results/fixture-drift/windows-runtime-determinism.json' `
+          -GitHubOutputPath $env:GITHUB_OUTPUT
+    - name: Assert self-hosted-docker runner label
+      id: runner_label_contract
+      shell: pwsh
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      run: |
+        pwsh -NoLogo -NoProfile -File tools/Assert-RunnerLabelContract.ps1 `
+          -Repository '${{ github.repository }}' `
+          -RunId '${{ github.run_id }}' `
+          -RunnerName '${{ runner.name }}' `
+          -RequiredLabel 'self-hosted-docker' `
+          -OutputJsonPath 'results/fixture-drift/runner-label-contract.json' `
+          -GitHubOutputPath $env:GITHUB_OUTPUT `
+          -StepSummaryPath $env:GITHUB_STEP_SUMMARY
+
+    - name: Persist docker runtime manager context
+      id: docker_manager_context
+      shell: pwsh
+      run: |
+        $ErrorActionPreference = 'Stop'
+        $dir = 'results/fixture-drift'
+        New-Item -ItemType Directory -Path $dir -Force | Out-Null
+        $path = Join-Path $dir 'docker-runtime-manager-context.json'
+        $labelsRaw = '${{ steps.runner_label_contract.outputs.labels }}'
+        $labels = if ([string]::IsNullOrWhiteSpace($labelsRaw)) { @() } else { @($labelsRaw -split ',' | Where-Object { -not [string]::IsNullOrWhiteSpace($_) }) }
+        $payload = [ordered]@{
+          schema = 'fixture-drift/docker-runtime-manager-context@v1'
+          generatedAtUtc = (Get-Date).ToUniversalTime().ToString('o')
+          manager = [ordered]@{
+            status = [string]$env:DOCKER_MANAGER_STATUS
+            summaryPath = [string]$env:DOCKER_MANAGER_SUMMARY_PATH
+            windowsImageDigest = [string]$env:DOCKER_MANAGER_WINDOWS_IMAGE_DIGEST
+            linuxImageDigest = [string]$env:DOCKER_MANAGER_LINUX_IMAGE_DIGEST
+            startContext = [string]$env:DOCKER_MANAGER_START_CONTEXT
+            finalContext = [string]$env:DOCKER_MANAGER_FINAL_CONTEXT
+          }
+          runner = [ordered]@{
+            name = '${{ runner.name }}'
+            id = '${{ steps.runner_label_contract.outputs.runner_id }}'
+            requiredLabel = 'self-hosted-docker'
+            hasRequiredLabel = ('${{ steps.runner_label_contract.outputs.has_required_label }}' -eq 'true')
+            labels = $labels
+          }
+        }
+        ($payload | ConvertTo-Json -Depth 20) | Set-Content -LiteralPath $path -Encoding utf8
+        "context_path=$path" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+
+    - name: Download docker runtime manager artifact
+      if: always()
+      uses: actions/download-artifact@v5
+      with:
+        name: fixture-drift-docker-runtime-manager
+        path: results/fixture-drift/_docker-runtime-manager
+
+    - name: Stage docker runtime manager artifact
+      if: always()
+      shell: pwsh
+      run: |
+        $ErrorActionPreference = 'Stop'
+        $resultsDir = 'results/fixture-drift'
+        New-Item -ItemType Directory -Path $resultsDir -Force | Out-Null
+        $dest = Join-Path $resultsDir 'docker-runtime-manager.json'
+        $source = Get-ChildItem -Path (Join-Path $resultsDir '_docker-runtime-manager') -Recurse -File -Filter 'docker-runtime-manager.json' -ErrorAction SilentlyContinue | Select-Object -First 1
+        if ($source) {
+          Copy-Item -LiteralPath $source.FullName -Destination $dest -Force
+          Write-Host "Staged docker runtime manager artifact: $dest"
+          exit 0
+        }
+
+        Write-Host '::warning::docker-runtime-manager artifact not found; writing fallback context file for evidence continuity.'
+        $fallback = [ordered]@{
+          schema = 'fixture-drift/docker-runtime-manager-fallback@v1'
+          generatedAtUtc = (Get-Date).ToUniversalTime().ToString('o')
+          status = [string]$env:DOCKER_MANAGER_STATUS
+          summaryPath = [string]$env:DOCKER_MANAGER_SUMMARY_PATH
+          windowsImageDigest = [string]$env:DOCKER_MANAGER_WINDOWS_IMAGE_DIGEST
+          linuxImageDigest = [string]$env:DOCKER_MANAGER_LINUX_IMAGE_DIGEST
+          startContext = [string]$env:DOCKER_MANAGER_START_CONTEXT
+          finalContext = [string]$env:DOCKER_MANAGER_FINAL_CONTEXT
+          note = 'Source artifact missing in downstream lane; values copied from docker-runtime-manager job outputs.'
+        }
+        ($fallback | ConvertTo-Json -Depth 20) | Set-Content -LiteralPath $dest -Encoding utf8
 
     - name: Detect docs-only change
       id: docs
@@ -362,6 +501,26 @@ jobs:
       shell: pwsh
       run: pwsh -File tools/Ensure-SessionIndex.ps1 -ResultsDir 'results/fixture-drift' -SummaryJson 'drift-summary.json'
 
+    - name: Attach docker manager metadata to session index
+      if: always()
+      shell: pwsh
+      run: |
+        $hasRequiredLabel = ('${{ steps.runner_label_contract.outputs.has_required_label }}' -eq 'true')
+        pwsh -NoLogo -NoProfile -File tools/Update-FixtureDriftSessionIndex.ps1 `
+          -ResultsDir 'results/fixture-drift' `
+          -ContextPath '${{ steps.docker_manager_context.outputs.context_path }}' `
+          -RuntimeSnapshotPath 'results/fixture-drift/windows-runtime-determinism.json' `
+          -RequiredLabel 'self-hosted-docker' `
+          -HasRequiredLabel:$hasRequiredLabel `
+          -RunnerLabelsCsv '${{ steps.runner_label_contract.outputs.labels }}' `
+          -ManagerStatus $env:DOCKER_MANAGER_STATUS `
+          -ManagerSummaryPath $env:DOCKER_MANAGER_SUMMARY_PATH `
+          -WindowsImageDigest $env:DOCKER_MANAGER_WINDOWS_IMAGE_DIGEST `
+          -LinuxImageDigest $env:DOCKER_MANAGER_LINUX_IMAGE_DIGEST `
+          -StartContext $env:DOCKER_MANAGER_START_CONTEXT `
+          -FinalContext $env:DOCKER_MANAGER_FINAL_CONTEXT `
+          -IgnoreMissingSessionIndex
+
     - name: Wire Session Index (S1)
       if: always()
       uses: ./.github/actions/wire-session-index
@@ -451,7 +610,7 @@ jobs:
       if: always()
       shell: pwsh
       run: |
-        $list = 'results/fixture-drift/drift-summary.json;results/fixture-drift/compare-report.html;results/fixture-drift/session-index.json'
+        $list = 'results/fixture-drift/drift-summary.json;results/fixture-drift/compare-report.html;results/fixture-drift/session-index.json;results/fixture-drift/docker-runtime-manager-context.json;results/fixture-drift/docker-runtime-manager.json;results/fixture-drift/runner-label-contract.json;results/fixture-drift/windows-runtime-determinism.json'
         pwsh -File tools/Write-ArtifactMap.ps1 -PathsList $list -Title 'Artifacts'
 
     - name: Re-run hint
