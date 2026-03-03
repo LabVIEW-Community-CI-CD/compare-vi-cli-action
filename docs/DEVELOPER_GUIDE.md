@@ -269,6 +269,8 @@ For Docker/Desktop VI history validation, run fast-loop lanes explicitly:
 - `priority:parity` reports origin/upstream parity using two metrics:
   - `tipDiff.fileCount` from `git diff --name-only upstream/develop origin/develop` (primary KPI; `0` means tip parity)
   - commit divergence from `git rev-list --left-right --count upstream/develop...origin/develop` (telemetry only)
+- Validate `session-index` now embeds parity telemetry under `runContext.parity` and appends an
+  `Origin/Upstream Parity Telemetry` block to the step summary.
 - The release router now suggests `npm run release:finalize -- <version>` automatically when the latest branch artifact
   lacks a matching finalize record.
 

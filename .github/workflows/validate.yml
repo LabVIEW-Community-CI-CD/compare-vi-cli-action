@@ -803,6 +803,19 @@ jobs:
         if ($bpResult.notes) { $updateArgs['AdditionalNotes'] = @($bpResult.notes) }
         & $bpScript @updateArgs
 
+    - name: Attach origin/upstream parity telemetry
+      shell: pwsh
+      run: |
+        $res = Join-Path $env:RUNNER_TEMP 'sessionindex'
+        $parityPath = Join-Path $res 'origin-upstream-parity.json'
+        try {
+          git remote add upstream 'https://github.com/LabVIEW-Community-CI-CD/compare-vi-cli-action.git' 2>$null | Out-Null
+        } catch { }
+        try { git fetch --no-tags --prune --depth=1 origin develop | Out-Null } catch { Write-Host ("::notice::origin/develop fetch skipped: {0}" -f $_.Exception.Message) }
+        try { git fetch --no-tags --prune --depth=1 upstream develop | Out-Null } catch { Write-Host ("::notice::upstream/develop fetch skipped: {0}" -f $_.Exception.Message) }
+        node tools/priority/report-origin-upstream-parity.mjs --base-ref 'upstream/develop' --head-ref 'origin/develop' --sample-limit 20 --output-path "$parityPath"
+        pwsh -File tools/Update-SessionIndexParity.ps1 -ResultsDir $res -ParityReportPath $parityPath -StepSummaryPath $env:GITHUB_STEP_SUMMARY
+
     - name: Validate session index schema (schema-lite)
       shell: pwsh
       run: |
