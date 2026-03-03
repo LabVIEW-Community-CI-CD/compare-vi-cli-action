@@ -54,6 +54,7 @@
     "priority:handoff-tests": "node tools/priority/run-handoff-tests.mjs",
     "priority:merge-sync": "node tools/priority/merge-sync-pr.mjs",
     "priority:policy": "node tools/priority/check-policy.mjs",
+    "priority:parity": "node tools/priority/report-origin-upstream-parity.mjs",
     "priority:pr": "node tools/priority/create-pr.mjs",
     "priority:release": "pwsh -NoLogo -NoProfile -File tools/priority/Simulate-Release.ps1",
     "priority:schema": "npm run schema:validate -- --schema docs/schemas/standing-priority-issue-v1.schema.json --data tests/results/_agent/issue/[0-9]*.json --optional",

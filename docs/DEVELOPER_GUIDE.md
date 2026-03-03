@@ -266,6 +266,9 @@ For Docker/Desktop VI history validation, run fast-loop lanes explicitly:
   - `release-<tag>-finalize.json` records the fast-forward results and the GitHub release draft.
 - `priority:sync` surfaces the most recent artifact in the standing-priority step summary and exposes it to downstream
   automation via `snapshot.releaseArtifacts`.
+- `priority:parity` reports origin/upstream parity using two metrics:
+  - `tipDiff.fileCount` from `git diff --name-only upstream/develop origin/develop` (primary KPI; `0` means tip parity)
+  - commit divergence from `git rev-list --left-right --count upstream/develop...origin/develop` (telemetry only)
 - The release router now suggests `npm run release:finalize -- <version>` automatically when the latest branch artifact
   lacks a matching finalize record.
 
@@ -391,4 +394,3 @@ pwsh -File scripts/CompareVI.ps1 `
   `-KeepBranch` preserves the branch/PR after the staging and history dispatches complete for manual inspection.
 - When testing fork scenarios locally, use the composite `.github/actions/fetch-pr-head` action to simulate
   `pull/<id>/head` checkouts before invoking the staging or history helpers.
-
