@@ -744,6 +744,46 @@ function stepSummaryAppend(lines) {
   fs.appendFileSync(file, lines.join('\n') + '\n');
 }
 
+export function buildNoStandingPriorityState(cache, message, clearedAt = new Date().toISOString()) {
+  const clearedRouter = {
+    schema: 'agent/priority-router@v1',
+    issue: null,
+    updatedAt: clearedAt,
+    actions: []
+  };
+  const clearedCache = {
+    ...cache,
+    number: null,
+    title: null,
+    url: null,
+    state: 'NONE',
+    labels: [],
+    assignees: [],
+    milestone: null,
+    commentCount: null,
+    lastSeenUpdatedAt: null,
+    issueDigest: null,
+    bodyDigest: null,
+    cachedAtUtc: clearedAt,
+    lastFetchSource: 'none',
+    lastFetchError: message
+  };
+  const summaryLines = [
+    '### Standing Priority Snapshot',
+    "- Issue: none found (`standing-priority` label on open issues)",
+    `- Status: ${message}`,
+    '- Top actions: n/a'
+  ];
+  const result = {
+    snapshot: null,
+    router: clearedRouter,
+    fetchSource: 'none',
+    fetchError: message
+  };
+
+  return { clearedRouter, clearedCache, summaryLines, result };
+}
+
 export async function main() {
   const repoRoot = gitRoot();
   const slug = resolveRepositorySlug(repoRoot);
@@ -757,42 +797,19 @@ export async function main() {
     number = await resolveStandingPriorityNumber(repoRoot, slug);
   } catch (err) {
     if (err?.code === 'NO_STANDING_PRIORITY') {
-      const clearedAt = new Date().toISOString();
-      const clearedRouter = {
-        schema: 'agent/priority-router@v1',
-        issue: null,
-        updatedAt: clearedAt,
-        actions: []
-      };
+      const { clearedRouter, clearedCache, summaryLines, result } = buildNoStandingPriorityState(
+        cache,
+        err.message
+      );
       writeJson(path.join(resultsDir, 'router.json'), clearedRouter);
 
-      const clearedCache = {
-        ...cache,
-        number: null,
-        title: null,
-        url: null,
-        state: 'NONE',
-        labels: [],
-        assignees: [],
-        milestone: null,
-        commentCount: null,
-        lastSeenUpdatedAt: null,
-        issueDigest: null,
-        bodyDigest: null,
-        cachedAtUtc: clearedAt,
-        lastFetchSource: 'none',
-        lastFetchError: err.message
-      };
       if (shouldWriteCache(cache, clearedCache)) {
         writeJson(cachePath, clearedCache);
       }
 
-      stepSummaryAppend([
-        '### Standing Priority Snapshot',
-        "- Issue: none found (`standing-priority` label on open issues)",
-        `- Status: ${err.message}`,
-        '- Top actions: n/a'
-      ]);
+      stepSummaryAppend(summaryLines);
+      console.log(`[priority] ${err.message}`);
+      return result;
     }
     throw err;
   }
@@ -898,16 +915,51 @@ export function shouldWriteCache(previousCache, nextCache) {
   return !isDeepStrictEqual(previousCache, normalizedNext);
 }
 
+export async function closeProxyAgents() {
+  const closeOps = [];
+  for (const agent of PROXY_AGENT_CACHE.values()) {
+    if (!agent || typeof agent.close !== 'function') continue;
+    try {
+      const result = agent.close();
+      if (result && typeof result.then === 'function') {
+        closeOps.push(result);
+      }
+    } catch {}
+  }
+  PROXY_AGENT_CACHE.clear();
+  if (closeOps.length > 0) {
+    await Promise.allSettled(closeOps);
+  }
+}
+
+export function determinePrioritySyncExitCode(err) {
+  if (!err) return 0;
+  return err?.code === 'NO_STANDING_PRIORITY' ? 0 : 1;
+}
+
+export async function runCli() {
+  let exitCode = 0;
+  try {
+    await main();
+  } catch (err) {
+    exitCode = determinePrioritySyncExitCode(err);
+    if (exitCode === 0) {
+      console.warn('[priority] ' + err.message);
+    } else {
+      console.error('[priority] ' + err.message);
+    }
+  } finally {
+    await closeProxyAgents();
+  }
+  return exitCode;
+}
+
 const modulePath = path.resolve(fileURLToPath(import.meta.url));
 const invokedPath = process.argv[1] ? path.resolve(process.argv[1]) : null;
 if (invokedPath && invokedPath === modulePath) {
   (async () => {
-    try {
-      await main();
-    } catch (err) {
-      console.error('[priority] ' + err.message);
-      process.exit(1);
-    }
+    const exitCode = await runCli();
+    process.exitCode = exitCode;
   })();
 }
 
