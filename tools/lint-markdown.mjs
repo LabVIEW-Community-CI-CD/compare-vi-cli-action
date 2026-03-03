@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
-import { dirname, join } from 'node:path';
+import { dirname, join, resolve } from 'node:path';
 import { existsSync } from 'node:fs';
 
 function parseArgs(argv) {
@@ -153,6 +153,20 @@ function extractRules(output) {
   return Array.from(matches);
 }
 
+export function isSuppressedMarkdownPath(file) {
+  if (!file) {
+    return true;
+  }
+  const normalized = file.replace(/\\/g, '/');
+  const leaf = normalized.split('/').pop() || normalized;
+  const suppressedExact = new Set(['CHANGELOG.md', 'fixture-summary.md']);
+  if (suppressedExact.has(normalized)) {
+    return true;
+  }
+  const suppressedNamePatterns = [/^\.tmp-.*\.md$/i, /^pr-.*-body\.md$/i];
+  return suppressedNamePatterns.some((pattern) => pattern.test(leaf));
+}
+
 function main() {
   const { all, baseRef } = parseArgs(process.argv);
   const repoRoot = resolveRepoRoot();
@@ -177,8 +191,7 @@ function main() {
     return 0;
   }
 
-  const suppressed = new Set(['CHANGELOG.md', 'fixture-summary.md']);
-  const filesToLint = markdownFiles.filter((file) => !suppressed.has(file));
+  const filesToLint = markdownFiles.filter((file) => !isSuppressedMarkdownPath(file));
   if (filesToLint.length === 0) {
     console.log('No Markdown files to lint.');
     return 0;
@@ -211,10 +224,15 @@ function main() {
   return typeof result.status === 'number' ? result.status : 1;
 }
 
-try {
-  const exitCode = main();
-  process.exitCode = exitCode;
-} catch (error) {
-  console.error(error instanceof Error ? error.message : String(error));
-  process.exitCode = 1;
+const invokedPath = process.argv[1] ? resolve(process.argv[1]) : '';
+const modulePath = fileURLToPath(import.meta.url);
+
+if (invokedPath === modulePath) {
+  try {
+    const exitCode = main();
+    process.exitCode = exitCode;
+  } catch (error) {
+    console.error(error instanceof Error ? error.message : String(error));
+    process.exitCode = 1;
+  }
 }

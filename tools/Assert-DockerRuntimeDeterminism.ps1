@@ -13,8 +13,8 @@
   Required expected Docker daemon OSType: windows or linux.
 
 .PARAMETER ExpectedContext
-  Optional expected Docker context. Defaults to desktop-windows for windows
-  lanes and desktop-linux for linux lanes.
+  Required expected Docker context (for example desktop-windows or
+  desktop-linux). No implicit default is applied.
 
 .PARAMETER AutoRepair
   When true, mismatch remediation is attempted before failing.
@@ -29,6 +29,10 @@
 .PARAMETER EngineReadyPollSeconds
   Poll interval while waiting for Docker daemon readiness.
 
+.PARAMETER CommandTimeoutSeconds
+  Timeout in seconds applied to docker/wsl command invocations used by this
+  guard.
+
 .PARAMETER SnapshotPath
   Path to write the runtime determinism snapshot JSON.
 
@@ -41,6 +45,8 @@ param(
   [ValidateSet('windows', 'linux')]
   [string]$ExpectedOsType,
 
+  [Parameter(Mandatory = $true)]
+  [ValidateNotNullOrEmpty()]
   [string]$ExpectedContext,
 
   [bool]$AutoRepair = $true,
@@ -50,6 +56,9 @@ param(
   [int]$EngineReadyTimeoutSeconds = 120,
 
   [int]$EngineReadyPollSeconds = 3,
+
+  [ValidateRange(5, 600)]
+  [int]$CommandTimeoutSeconds = 45,
 
   [Parameter(Mandatory = $true)]
   [string]$SnapshotPath,
@@ -78,8 +87,88 @@ function Write-GitHubOutput {
   Add-Content -LiteralPath $DestPath -Value ("{0}={1}" -f $Key, $Value) -Encoding utf8
 }
 
+function Split-OutputLines {
+  param([AllowNull()][string]$Text)
+
+  if ([string]::IsNullOrEmpty($Text)) { return @() }
+  return @($Text -split "(`r`n|`n|`r)" | Where-Object { -not [string]::IsNullOrWhiteSpace($_) })
+}
+
+function Invoke-ProcessWithTimeout {
+  [CmdletBinding()]
+  param(
+    [Parameter(Mandatory = $true)][string]$FilePath,
+    [string[]]$Arguments = @(),
+    [int]$TimeoutSeconds = 45
+  )
+
+  $safeTimeout = [math]::Max(5, [int]$TimeoutSeconds)
+  $resolvedFilePath = $FilePath
+  try {
+    $resolvedCommand = Get-Command -Name $FilePath -CommandType Application -ErrorAction Stop | Select-Object -First 1
+    if ($resolvedCommand -and $resolvedCommand.Source) {
+      $resolvedFilePath = [string]$resolvedCommand.Source
+    } elseif ($resolvedCommand -and $resolvedCommand.Path) {
+      $resolvedFilePath = [string]$resolvedCommand.Path
+    }
+  } catch {}
+
+  $argText = if ($Arguments -and $Arguments.Count -gt 0) { [string]::Join(' ', $Arguments) } else { '' }
+  $commandText = if ([string]::IsNullOrWhiteSpace($argText)) { $resolvedFilePath } else { "$resolvedFilePath $argText" }
+
+  $result = [ordered]@{
+    timedOut = $false
+    exitCode = $null
+    stdout = @()
+    stderr = @()
+    command = $commandText
+    exception = ''
+  }
+
+  $psi = [System.Diagnostics.ProcessStartInfo]::new()
+  $psi.FileName = $resolvedFilePath
+  $psi.UseShellExecute = $false
+  $psi.RedirectStandardOutput = $true
+  $psi.RedirectStandardError = $true
+  $psi.CreateNoWindow = $true
+  foreach ($arg in @($Arguments)) {
+    [void]$psi.ArgumentList.Add([string]$arg)
+  }
+
+  $proc = [System.Diagnostics.Process]::new()
+  $proc.StartInfo = $psi
+
+  try {
+    [void]$proc.Start()
+    $completed = $proc.WaitForExit($safeTimeout * 1000)
+    if (-not $completed) {
+      $result.timedOut = $true
+      try { $proc.Kill($true) } catch {}
+      return [pscustomobject]$result
+    }
+
+    $result.exitCode = [int]$proc.ExitCode
+    $result.stdout = @(Split-OutputLines -Text $proc.StandardOutput.ReadToEnd())
+    $result.stderr = @(Split-OutputLines -Text $proc.StandardError.ReadToEnd())
+  } catch {
+    $result.exception = [string]$_.Exception.Message
+    try {
+      if (-not $proc.HasExited) {
+        $proc.Kill($true)
+      }
+    } catch {}
+  } finally {
+    $proc.Dispose()
+  }
+
+  return [pscustomobject]$result
+}
+
 function Get-DockerOsProbe {
-  param([AllowNull()][string]$Context)
+  param(
+    [AllowNull()][string]$Context,
+    [int]$TimeoutSeconds = 45
+  )
 
   $probe = [ordered]@{
     context = $Context
@@ -91,13 +180,26 @@ function Get-DockerOsProbe {
   }
   try {
     $args = @('info', '--format', '{{.OSType}}')
-    if (-not [string]::IsNullOrWhiteSpace($Context)) {
+    $normalizedContext = if ([string]::IsNullOrWhiteSpace($Context)) { '' } else { $Context.Trim().ToLowerInvariant() }
+    # `default` context can be service-account local; probe without explicit
+    # --context to avoid false negatives when desktop-* metadata is absent.
+    if (-not [string]::IsNullOrWhiteSpace($normalizedContext) -and $normalizedContext -ne 'default') {
       $args = @('--context', $Context) + $args
     }
-    $probe.command = ('docker {0}' -f ($args -join ' '))
-    $output = & docker @args 2>&1
-    $probe.exitCode = [int]$LASTEXITCODE
-    $lines = @($output | ForEach-Object { [string]$_ })
+    $invoke = Invoke-ProcessWithTimeout -FilePath 'docker' -Arguments $args -TimeoutSeconds $TimeoutSeconds
+    $probe.command = [string]$invoke.command
+    if ($invoke.timedOut) {
+      $probe.parseReason = 'timeout'
+      $probe.rawLines = @(("timeout after {0}s" -f [math]::Max(5, [int]$TimeoutSeconds)))
+      return [pscustomobject]$probe
+    }
+
+    if ($invoke.exception) {
+      throw ([System.Exception]::new([string]$invoke.exception))
+    }
+
+    $probe.exitCode = if ($null -eq $invoke.exitCode) { $null } else { [int]$invoke.exitCode }
+    $lines = @(@($invoke.stdout) + @($invoke.stderr) | ForEach-Object { [string]$_ })
     $probe.rawLines = @($lines | Select-Object -First 12)
 
     foreach ($line in $lines) {
@@ -125,6 +227,28 @@ function Get-DockerOsProbe {
         $probe.parseReason = 'docker-info-command-failed'
       } else {
         $probe.parseReason = 'unparseable-output'
+      }
+    }
+
+    if (
+      [string]::IsNullOrWhiteSpace([string]$probe.osType) -and
+      -not [string]::IsNullOrWhiteSpace($normalizedContext) -and
+      $normalizedContext -ne 'default'
+    ) {
+      $fallbackInvoke = Invoke-ProcessWithTimeout -FilePath 'docker' -Arguments @('info', '--format', '{{.OSType}}') -TimeoutSeconds $TimeoutSeconds
+      if (-not $fallbackInvoke.timedOut -and -not $fallbackInvoke.exception) {
+        $fallbackExitCode = if ($null -eq $fallbackInvoke.exitCode) { $null } else { [int]$fallbackInvoke.exitCode }
+        $fallbackLines = @(@($fallbackInvoke.stdout) + @($fallbackInvoke.stderr) | ForEach-Object { [string]$_ })
+        foreach ($line in $fallbackLines) {
+          $candidate = $line.Trim().ToLowerInvariant()
+          if ($candidate -eq 'windows' -or $candidate -eq 'linux') {
+            $probe.osType = $candidate
+            $probe.parseReason = 'parsed-fallback-default-context'
+            $probe.exitCode = $fallbackExitCode
+            $probe.rawLines = @($fallbackLines | Select-Object -First 12)
+            break
+          }
+        }
       }
     }
   } catch {
@@ -173,9 +297,44 @@ function Format-DockerOsProbeHint {
   return ("Docker info probe: parseReason={0}, exitCode={1}, sample='{2}'" -f $parseReason, $exitCode, $sample)
 }
 
+function Test-IsDaemonUnavailableProbe {
+  param([AllowNull()]$Probe)
+
+  if ($null -eq $Probe) { return $false }
+  $parseReason = ''
+  if ($Probe.PSObject.Properties['parseReason']) {
+    $parseReason = [string]$Probe.parseReason
+  }
+  $parseReasonNormalized = if ([string]::IsNullOrWhiteSpace($parseReason)) {
+    ''
+  } else {
+    $parseReason.Trim().ToLowerInvariant()
+  }
+  if ($parseReasonNormalized -in @('daemon-unavailable', 'docker-info-command-failed')) {
+    return $true
+  }
+
+  if ($Probe.PSObject.Properties['rawLines'] -and $Probe.rawLines) {
+    foreach ($line in @($Probe.rawLines)) {
+      $text = [string]$line
+      if ([string]::IsNullOrWhiteSpace($text)) { continue }
+      if (
+        $text -match 'Docker Desktop is unable to start' -or
+        $text -match 'Cannot connect to the Docker daemon' -or
+        $text -match 'error during connect' -or
+        $text -match 'Error response from daemon'
+      ) {
+        return $true
+      }
+    }
+  }
+
+  return $false
+}
+
 function Get-DockerOsType {
   param([AllowNull()][string]$Context)
-  $probe = Get-DockerOsProbe -Context $Context
+  $probe = Get-DockerOsProbe -Context $Context -TimeoutSeconds $CommandTimeoutSeconds
   if ($null -eq $probe) {
     return $null
   }
@@ -184,8 +343,12 @@ function Get-DockerOsType {
 
 function Get-DockerContext {
   try {
-    $output = & docker context show 2>$null
-    if ($LASTEXITCODE -ne 0 -or [string]::IsNullOrWhiteSpace($output)) {
+    $invoke = Invoke-ProcessWithTimeout -FilePath 'docker' -Arguments @('context', 'show') -TimeoutSeconds $CommandTimeoutSeconds
+    if ($invoke.timedOut -or $invoke.exception -or $null -eq $invoke.exitCode -or [int]$invoke.exitCode -ne 0) {
+      return $null
+    }
+    $output = if ($invoke.stdout -and $invoke.stdout.Count -gt 0) { [string]$invoke.stdout[0] } else { '' }
+    if ([string]::IsNullOrWhiteSpace($output)) {
       return $null
     }
     return $output.Trim()
@@ -194,11 +357,43 @@ function Get-DockerContext {
   }
 }
 
+function Test-ContextAccepted {
+  param(
+    [AllowNull()][string]$ObservedContext,
+    [Parameter(Mandatory = $true)][string]$ExpectedContext,
+    [Parameter(Mandatory = $true)][ValidateSet('windows', 'linux')][string]$ExpectedOsType,
+    [AllowNull()][string]$ObservedOsType
+  )
+
+  if ([string]::IsNullOrWhiteSpace($ObservedContext)) {
+    return $false
+  }
+
+  $observed = $ObservedContext.Trim().ToLowerInvariant()
+  $expected = $ExpectedContext.Trim().ToLowerInvariant()
+
+  if ($observed -eq $expected) {
+    return $true
+  }
+
+  # Some runners keep the active context as "default" while docker info reports
+  # the expected lane OSType. Treat that alias as deterministic-equivalent.
+  if ($observed -eq 'default' -and -not [string]::IsNullOrWhiteSpace($ObservedOsType)) {
+    return ($ObservedOsType.Trim().ToLowerInvariant() -eq $ExpectedOsType)
+  }
+
+  return $false
+}
+
 function Get-DockerContexts {
   $rows = New-Object System.Collections.Generic.List[object]
   try {
-    $output = & docker context ls --format '{{json .}}' 2>$null
-    if ($LASTEXITCODE -ne 0 -or -not $output) {
+    $invoke = Invoke-ProcessWithTimeout -FilePath 'docker' -Arguments @('context', 'ls', '--format', '{{json .}}') -TimeoutSeconds $CommandTimeoutSeconds
+    if ($invoke.timedOut -or $invoke.exception -or $null -eq $invoke.exitCode -or [int]$invoke.exitCode -ne 0) {
+      return @()
+    }
+    $output = @($invoke.stdout)
+    if (-not $output) {
       return @()
     }
     foreach ($line in @($output)) {
@@ -217,8 +412,13 @@ function Get-WslDistributions {
 
   $items = New-Object System.Collections.Generic.List[object]
   try {
-    $output = & wsl -l -v 2>$null
-    if ($LASTEXITCODE -ne 0 -or -not $output) {
+    $invoke = Invoke-ProcessWithTimeout -FilePath 'wsl' -Arguments @('-l', '-v') -TimeoutSeconds $CommandTimeoutSeconds
+    if ($invoke.timedOut -or $invoke.exception -or $null -eq $invoke.exitCode -or [int]$invoke.exitCode -ne 0) {
+      return @()
+    }
+
+    $output = @($invoke.stdout)
+    if (-not $output) {
       return @()
     }
 
@@ -284,8 +484,12 @@ function Get-DockerBackendProcesses {
 function Get-RunningContainers {
   $items = New-Object System.Collections.Generic.List[object]
   try {
-    $output = & docker ps --format '{{json .}}' 2>$null
-    if ($LASTEXITCODE -ne 0 -or -not $output) {
+    $invoke = Invoke-ProcessWithTimeout -FilePath 'docker' -Arguments @('ps', '--format', '{{json .}}') -TimeoutSeconds $CommandTimeoutSeconds
+    if ($invoke.timedOut -or $invoke.exception -or $null -eq $invoke.exitCode -or [int]$invoke.exitCode -ne 0) {
+      return @()
+    }
+    $output = @($invoke.stdout)
+    if (-not $output) {
       return @()
     }
     foreach ($line in @($output)) {
@@ -302,8 +506,11 @@ function Get-RunningContainers {
 function Invoke-DockerContextUse {
   param([Parameter(Mandatory = $true)][string]$Context)
   try {
-    $null = & docker context use $Context 2>&1
-    return ($LASTEXITCODE -eq 0)
+    $invoke = Invoke-ProcessWithTimeout -FilePath 'docker' -Arguments @('context', 'use', $Context) -TimeoutSeconds $CommandTimeoutSeconds
+    if ($invoke.timedOut -or $invoke.exception -or $null -eq $invoke.exitCode) {
+      return $false
+    }
+    return ([int]$invoke.exitCode -eq 0)
   } catch {
     return $false
   }
@@ -312,8 +519,11 @@ function Invoke-DockerContextUse {
 function Invoke-WslShutdown {
   if (-not $IsWindows) { return $false }
   try {
-    $null = & wsl --shutdown 2>&1
-    return ($LASTEXITCODE -eq 0)
+    $invoke = Invoke-ProcessWithTimeout -FilePath 'wsl' -Arguments @('--shutdown') -TimeoutSeconds $CommandTimeoutSeconds
+    if ($invoke.timedOut -or $invoke.exception -or $null -eq $invoke.exitCode) {
+      return $false
+    }
+    return ([int]$invoke.exitCode -eq 0)
   } catch {
     return $false
   }
@@ -376,9 +586,15 @@ function Invoke-DockerServiceRecovery {
     $steps.Add('docker cli shutdown: docker-cli-not-found') | Out-Null
   } else {
     try {
-      $null = & $dockerCli -Shutdown 2>&1
-      $exitCode = [int]$LASTEXITCODE
-      $steps.Add(("docker cli shutdown: exit={0}" -f $exitCode)) | Out-Null
+      $invoke = Invoke-ProcessWithTimeout -FilePath $dockerCli -Arguments @('-Shutdown') -TimeoutSeconds $CommandTimeoutSeconds
+      if ($invoke.timedOut) {
+        $steps.Add(("docker cli shutdown: timeout after {0}s" -f [int]$CommandTimeoutSeconds)) | Out-Null
+      } elseif ($invoke.exception) {
+        $steps.Add(("docker cli shutdown: failed ({0})" -f [string]$invoke.exception)) | Out-Null
+      } else {
+        $exitCode = if ($null -eq $invoke.exitCode) { '<null>' } else { [string][int]$invoke.exitCode }
+        $steps.Add(("docker cli shutdown: exit={0}" -f $exitCode)) | Out-Null
+      }
     } catch {
       $steps.Add(("docker cli shutdown: failed ({0})" -f $_.Exception.Message)) | Out-Null
     }
@@ -413,13 +629,22 @@ function Invoke-DockerEngineSwitch {
   $result.attempted = $true
   $result.command = "$dockerCli $switchArg"
   try {
-    $output = & $dockerCli $switchArg 2>&1
-    $exitCode = $LASTEXITCODE
-    $result.success = ($exitCode -eq 0)
-    if ($output) {
-      $result.message = ((@($output) | ForEach-Object { [string]$_ }) -join '; ')
+    $invoke = Invoke-ProcessWithTimeout -FilePath $dockerCli -Arguments @($switchArg) -TimeoutSeconds $CommandTimeoutSeconds
+    if ($invoke.timedOut) {
+      $result.success = $false
+      $result.message = ("timeout after {0}s" -f [int]$CommandTimeoutSeconds)
+    } elseif ($invoke.exception) {
+      $result.success = $false
+      $result.message = [string]$invoke.exception
     } else {
-      $result.message = "exit=$exitCode"
+      $exitCode = if ($null -eq $invoke.exitCode) { -1 } else { [int]$invoke.exitCode }
+      $result.success = ($exitCode -eq 0)
+      $output = @(@($invoke.stdout) + @($invoke.stderr))
+      if ($output) {
+        $result.message = (($output | ForEach-Object { [string]$_ }) -join '; ')
+      } else {
+        $result.message = "exit=$exitCode"
+      }
     }
   } catch {
     $result.success = $false
@@ -467,7 +692,7 @@ function Wait-DockerEngineReady {
     if ([string]::IsNullOrWhiteSpace($context)) {
       $context = $FallbackContext
     }
-    $probe = Get-DockerOsProbe -Context $context
+    $probe = Get-DockerOsProbe -Context $context -TimeoutSeconds $CommandTimeoutSeconds
     $osType = [string]$probe.osType
     if ($osType -eq $ExpectedOsType) {
       return [ordered]@{
@@ -484,7 +709,7 @@ function Wait-DockerEngineReady {
   if ([string]::IsNullOrWhiteSpace($finalContext)) {
     $finalContext = $FallbackContext
   }
-  $finalProbe = Get-DockerOsProbe -Context $finalContext
+  $finalProbe = Get-DockerOsProbe -Context $finalContext -TimeoutSeconds $CommandTimeoutSeconds
   $finalOsType = [string]$finalProbe.osType
   return [ordered]@{
     ready = $false
@@ -495,9 +720,9 @@ function Wait-DockerEngineReady {
   }
 }
 
-$effectiveExpectedContext = $ExpectedContext
+$effectiveExpectedContext = $ExpectedContext.Trim()
 if ([string]::IsNullOrWhiteSpace($effectiveExpectedContext)) {
-  $effectiveExpectedContext = if ($ExpectedOsType -eq 'windows') { 'desktop-windows' } else { 'desktop-linux' }
+  throw 'ExpectedContext must be provided explicitly and cannot be empty.'
 }
 
 $snapshotResolved = if ([System.IO.Path]::IsPathRooted($SnapshotPath)) {
@@ -536,11 +761,11 @@ if ($ExpectedOsType -eq 'windows') {
 }
 
 $observedContext = Get-DockerContext
-$initialDockerOsProbe = Get-DockerOsProbe -Context $observedContext
+$initialDockerOsProbe = Get-DockerOsProbe -Context $observedContext -TimeoutSeconds $CommandTimeoutSeconds
 $observedOsType = [string]$initialDockerOsProbe.osType
 $lastDockerOsProbe = $initialDockerOsProbe
 if ([string]::IsNullOrWhiteSpace($observedOsType)) {
-  $fallbackDockerOsProbe = Get-DockerOsProbe -Context $effectiveExpectedContext
+  $fallbackDockerOsProbe = Get-DockerOsProbe -Context $effectiveExpectedContext -TimeoutSeconds $CommandTimeoutSeconds
   $observedOsType = [string]$fallbackDockerOsProbe.osType
   $lastDockerOsProbe = $fallbackDockerOsProbe
 }
@@ -548,12 +773,36 @@ if ([string]::IsNullOrWhiteSpace($observedOsType)) {
 if (-not $hostAlignmentOk) {
   $resultStatus = 'mismatch-failed'
 } else {
-  $osMismatch = [string]::IsNullOrWhiteSpace($observedOsType) -or ($observedOsType -ne $ExpectedOsType)
-  $contextMismatch = [string]::IsNullOrWhiteSpace($observedContext) -or ($observedContext -ne $effectiveExpectedContext)
+  if ([string]::IsNullOrWhiteSpace($observedOsType)) {
+    $resultStatus = 'mismatch-failed'
+    $probeHint = Format-DockerOsProbeHint -Probe $lastDockerOsProbe
+    $manualSteps = Get-ManualRemediationSteps -TargetOsType $ExpectedOsType -ExpectedContext $effectiveExpectedContext
+    $manualText = if ($manualSteps.Count -gt 0) { [string]::Join('; ', $manualSteps) } else { 'n/a' }
+    Write-Host ("[runtime-determinism] mismatch detected expectedContext={0} observedContext={1} expectedOs={2} observedOs=<empty>" -f $effectiveExpectedContext, ($observedContext ?? '<null>'), $ExpectedOsType) -ForegroundColor Yellow
+    $reason = ("Runtime invariant mismatch. observed Docker OSType is empty for context={0}; expected os={1}, context={2}. Manual remediation: {3}. {4}" -f ($observedContext ?? '<null>'), $ExpectedOsType, $effectiveExpectedContext, $manualText, $probeHint)
+  } else {
+    $osMismatch = ($observedOsType -ne $ExpectedOsType)
+    $contextMismatch = -not (Test-ContextAccepted `
+      -ObservedContext $observedContext `
+      -ExpectedContext $effectiveExpectedContext `
+      -ExpectedOsType $ExpectedOsType `
+      -ObservedOsType $observedOsType)
 
-  if ($osMismatch -or $contextMismatch) {
-    Write-Host ("[runtime-determinism] mismatch detected expected={0}/{1} observed={2}/{3}" -f $ExpectedOsType, $effectiveExpectedContext, ($observedOsType ?? '<null>'), ($observedContext ?? '<null>')) -ForegroundColor Yellow
-    if ($AutoRepair) {
+    if ($osMismatch -or $contextMismatch) {
+      Write-Host ("[runtime-determinism] mismatch detected expectedContext={0} observedContext={1} expectedOs={2} observedOs={3}" -f $effectiveExpectedContext, ($observedContext ?? '<null>'), $ExpectedOsType, ($observedOsType ?? '<null>')) -ForegroundColor Yellow
+      if ($AutoRepair) {
+      $daemonUnavailable = (Test-IsDaemonUnavailableProbe -Probe $initialDockerOsProbe) -or (Test-IsDaemonUnavailableProbe -Probe $fallbackDockerOsProbe)
+      if ($ManageDockerEngine -and $hostIsWindows -and $osMismatch -and $daemonUnavailable) {
+        Write-Host '[runtime-determinism] attempting docker service recovery' -ForegroundColor DarkGray
+        $serviceRecovery = Invoke-DockerServiceRecovery
+        if ($serviceRecovery -and $serviceRecovery.PSObject.Properties['steps'] -and $serviceRecovery.steps) {
+          foreach ($stepMessage in @($serviceRecovery.steps)) {
+            $repairActions.Add(("docker service recovery: {0}" -f [string]$stepMessage)) | Out-Null
+          }
+        } else {
+          $repairActions.Add('docker service recovery: no-actions') | Out-Null
+        }
+      }
       if ($contextMismatch) {
         Write-Host ("[runtime-determinism] attempting: docker context use {0}" -f $effectiveExpectedContext) -ForegroundColor DarkGray
         $ok = Invoke-DockerContextUse -Context $effectiveExpectedContext
@@ -598,14 +847,14 @@ if (-not $hostAlignmentOk) {
         $recheckedContext = Get-DockerContext
       }
       if ([string]::IsNullOrWhiteSpace($recheckedOsType)) {
-        $recheckedProbe = Get-DockerOsProbe -Context $recheckedContext
+        $recheckedProbe = Get-DockerOsProbe -Context $recheckedContext -TimeoutSeconds $CommandTimeoutSeconds
         $recheckedOsType = [string]$recheckedProbe.osType
         if ($recheckedProbe) {
           $lastDockerOsProbe = $recheckedProbe
         }
       }
       if ([string]::IsNullOrWhiteSpace($recheckedOsType)) {
-        $recheckedFallbackProbe = Get-DockerOsProbe -Context $effectiveExpectedContext
+        $recheckedFallbackProbe = Get-DockerOsProbe -Context $effectiveExpectedContext -TimeoutSeconds $CommandTimeoutSeconds
         $recheckedOsType = [string]$recheckedFallbackProbe.osType
         if ($recheckedFallbackProbe) {
           $lastDockerOsProbe = $recheckedFallbackProbe
@@ -613,7 +862,11 @@ if (-not $hostAlignmentOk) {
       }
 
       $osMismatchAfter = [string]::IsNullOrWhiteSpace($recheckedOsType) -or ($recheckedOsType -ne $ExpectedOsType)
-      $contextMismatchAfter = [string]::IsNullOrWhiteSpace($recheckedContext) -or ($recheckedContext -ne $effectiveExpectedContext)
+      $contextMismatchAfter = -not (Test-ContextAccepted `
+        -ObservedContext $recheckedContext `
+        -ExpectedContext $effectiveExpectedContext `
+        -ExpectedOsType $ExpectedOsType `
+        -ObservedOsType $recheckedOsType)
 
       $observedOsType = $recheckedOsType
       $observedContext = $recheckedContext
@@ -624,15 +877,16 @@ if (-not $hostAlignmentOk) {
         $probeHint = Format-DockerOsProbeHint -Probe $lastDockerOsProbe
         $resultStatus = 'mismatch-failed'
         $reason = ("Runtime invariant mismatch after repair. expected os={0}, context={1}; observed os={2}, context={3}. Manual remediation: {4}. {5}" -f $ExpectedOsType, $effectiveExpectedContext, ($observedOsType ?? '<null>'), ($observedContext ?? '<null>'), $manualText, $probeHint)
+        } else {
+          $resultStatus = 'mismatch-repaired'
+        }
       } else {
-        $resultStatus = 'mismatch-repaired'
+        $manualSteps = Get-ManualRemediationSteps -TargetOsType $ExpectedOsType -ExpectedContext $effectiveExpectedContext
+        $manualText = if ($manualSteps.Count -gt 0) { [string]::Join('; ', $manualSteps) } else { 'n/a' }
+        $probeHint = Format-DockerOsProbeHint -Probe $lastDockerOsProbe
+        $resultStatus = 'mismatch-failed'
+        $reason = ("Runtime invariant mismatch. expected os={0}, context={1}; observed os={2}, context={3}. Manual remediation: {4}. {5}" -f $ExpectedOsType, $effectiveExpectedContext, ($observedOsType ?? '<null>'), ($observedContext ?? '<null>'), $manualText, $probeHint)
       }
-    } else {
-      $manualSteps = Get-ManualRemediationSteps -TargetOsType $ExpectedOsType -ExpectedContext $effectiveExpectedContext
-      $manualText = if ($manualSteps.Count -gt 0) { [string]::Join('; ', $manualSteps) } else { 'n/a' }
-      $probeHint = Format-DockerOsProbeHint -Probe $lastDockerOsProbe
-      $resultStatus = 'mismatch-failed'
-      $reason = ("Runtime invariant mismatch. expected os={0}, context={1}; observed os={2}, context={3}. Manual remediation: {4}. {5}" -f $ExpectedOsType, $effectiveExpectedContext, ($observedOsType ?? '<null>'), ($observedContext ?? '<null>'), $manualText, $probeHint)
     }
   }
 }
@@ -647,6 +901,7 @@ $snapshot = [ordered]@{
     manageDockerEngine = [bool]$ManageDockerEngine
     engineReadyTimeoutSeconds = [int]$EngineReadyTimeoutSeconds
     engineReadyPollSeconds = [int]$EngineReadyPollSeconds
+    commandTimeoutSeconds = [int]$CommandTimeoutSeconds
   }
   host = [ordered]@{
     isWindows = $hostIsWindows
@@ -686,7 +941,7 @@ if ($lastDockerOsProbe -and $lastDockerOsProbe.PSObject.Properties['parseReason'
 Write-GitHubOutput -Key 'docker-ostype-parse-reason' -Value $dockerOsParseReason -DestPath $GitHubOutputPath
 Write-GitHubOutput -Key 'snapshot-path' -Value $snapshotResolved -DestPath $GitHubOutputPath
 
-Write-Host ("[runtime-determinism] status={0} expected={1}/{2} observed={3}/{4} snapshot={5}" -f $resultStatus, $ExpectedOsType, $effectiveExpectedContext, ($observedOsType ?? '<null>'), ($observedContext ?? '<null>'), $snapshotResolved)
+Write-Host ("[runtime-determinism] status={0} expectedContext={1} observedContext={2} expectedOs={3} observedOs={4} snapshot={5}" -f $resultStatus, $effectiveExpectedContext, ($observedContext ?? '<null>'), $ExpectedOsType, ($observedOsType ?? '<null>'), $snapshotResolved)
 
 if ($resultStatus -eq 'mismatch-failed') {
   throw ($reason ?? 'Runtime determinism check failed.')
