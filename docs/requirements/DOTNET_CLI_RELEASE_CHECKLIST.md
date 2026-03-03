@@ -19,7 +19,7 @@
 
 - [ ] CLI executable and required runtime files are included in the `.zip`.
 - [ ] No container runtime dependency is required for host-native execution.
-- [ ] Summary JSON schema version is present and valid.
+- [x] Summary JSON schema version is present and valid.
 - [ ] Image index JSON schema version is present and valid.
 
 ### Integrity and provenance
@@ -31,9 +31,9 @@
 
 ### Contract compatibility
 
-- [ ] Output schema changes are additive for current major version.
-- [ ] Legacy output keys required by workflows remain available.
-- [ ] Exit classification behavior matches `REQ-DOTNET_CLI_RELEASE_ASSET` contract.
+- [x] Output schema changes are additive for current major version.
+- [x] Legacy output keys required by workflows remain available.
+- [x] Exit classification behavior matches `REQ-DOTNET_CLI_RELEASE_ASSET` contract.
 
 ### Validation evidence
 
