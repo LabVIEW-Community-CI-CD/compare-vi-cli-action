@@ -19,6 +19,7 @@ param(
 $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version Latest
 Import-Module (Join-Path (Split-Path -Parent $PSCommandPath) 'VendorTools.psm1') -Force
+Import-Module (Join-Path (Split-Path -Parent $PSCommandPath) 'PrePush-IconEditorScope.psm1') -Force
 
 function Write-Info([string]$msg){ Write-Host $msg -ForegroundColor DarkGray }
 
@@ -133,6 +134,13 @@ if (Test-Path -LiteralPath $updateReportScript -PathType Leaf) {
   }
   if (-not $IsWindows) {
     Write-Host '[pre-push] Skipping icon-editor fixture freshness checks on non-Windows host' -ForegroundColor Yellow
+    return
+  }
+  $forceIconEditorChecks = ($env:PREPUSH_FORCE_ICON_EDITOR_FIXTURE_CHECKS -match '^(1|true|yes|on)$')
+  $changedPaths = Get-PrePushChangedPaths -RepoRoot $root
+  $shouldRunIconEditorChecks = Test-IconEditorFixtureCheckRequired -ChangedPaths $changedPaths -Force:$forceIconEditorChecks
+  if (-not $shouldRunIconEditorChecks) {
+    Write-Host '[pre-push] Skipping icon-editor fixture freshness checks (no icon-editor scoped paths changed)' -ForegroundColor Yellow
     return
   }
   Write-Host '[pre-push] Verifying icon-editor fixture report freshness' -ForegroundColor Cyan
