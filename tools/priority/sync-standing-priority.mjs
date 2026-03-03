@@ -9,6 +9,8 @@ import { ProxyAgent } from 'undici';
 
 const USER_AGENT = 'compare-vi-cli-action/priority-sync';
 const PROXY_AGENT_CACHE = new Map();
+let GH_AUTH_TOKEN_CACHE;
+let WARNED_NO_GITHUB_TOKEN_FOR_REST = false;
 
 function toUrl(input) {
   if (!input) return null;
@@ -464,9 +466,53 @@ function resolveRepositorySlug(repoRoot) {
   return null;
 }
 
-function resolveGitHubToken() {
-  const token = process.env.GH_TOKEN || process.env.GITHUB_TOKEN;
-  return token ? token.trim() : null;
+function normalizeTokenValue(value) {
+  const normalized = typeof value === 'string' ? value.trim() : '';
+  return normalized || null;
+}
+
+function resolveGitHubTokenViaGh() {
+  if (GH_AUTH_TOKEN_CACHE !== undefined) {
+    return GH_AUTH_TOKEN_CACHE;
+  }
+
+  try {
+    const auth = ensureCommand(sh('gh', ['auth', 'token']), 'gh');
+    if (auth.status === 0) {
+      GH_AUTH_TOKEN_CACHE = normalizeTokenValue(auth.stdout);
+      return GH_AUTH_TOKEN_CACHE;
+    }
+    GH_AUTH_TOKEN_CACHE = null;
+    return null;
+  } catch {
+    GH_AUTH_TOKEN_CACHE = null;
+    return null;
+  }
+}
+
+export function resolveGitHubToken(options = {}) {
+  const env = options.env ?? process.env;
+  const tokenFromEnv = normalizeTokenValue(env.GH_TOKEN) || normalizeTokenValue(env.GITHUB_TOKEN);
+  if (tokenFromEnv) {
+    return tokenFromEnv;
+  }
+
+  if (typeof options.authTokenProvider === 'function') {
+    return normalizeTokenValue(options.authTokenProvider());
+  }
+
+  return resolveGitHubTokenViaGh();
+}
+
+export function warnNoGitHubTokenForRestOnce() {
+  if (WARNED_NO_GITHUB_TOKEN_FOR_REST) return;
+  WARNED_NO_GITHUB_TOKEN_FOR_REST = true;
+  console.warn('[priority] No GitHub token available for REST fallback; attempting unauthenticated request');
+}
+
+export function resetPrioritySyncTokenStateForTests() {
+  GH_AUTH_TOKEN_CACHE = undefined;
+  WARNED_NO_GITHUB_TOKEN_FOR_REST = false;
 }
 
 async function requestGitHubJson(url, token) {
@@ -499,7 +545,7 @@ async function fetchStandingPriorityNumberViaRest(repoRoot, slug) {
 
   const token = resolveGitHubToken();
   if (!token) {
-    console.warn('[priority] No GitHub token available for REST fallback; attempting unauthenticated request');
+    warnNoGitHubTokenForRestOnce();
   }
 
     const url = new URL(`https://api.github.com/repos/${resolvedSlug}/issues`);
@@ -593,7 +639,7 @@ async function fetchIssueViaRest(repoRoot, number, slug) {
 
   const token = resolveGitHubToken();
   if (!token) {
-    console.warn('[priority] No GitHub token available for REST fallback; attempting unauthenticated request');
+    warnNoGitHubTokenForRestOnce();
   }
 
   try {
