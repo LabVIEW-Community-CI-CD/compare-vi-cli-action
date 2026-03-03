@@ -40,7 +40,9 @@ line buffers).
      the working tree is on `develop` before creating a feature branch.
   2. Review `.agent_priority_cache.json` / `tests/results/_agent/issue/` for tasks, acceptance, and
      linked PRs on the standing issue.
-  3. Create or sync a working branch (`issue/<standing-number>-<slug>`), push minimal changes,
+  3. Run `node tools/priority/report-origin-upstream-parity.mjs --base-ref upstream/develop --head-ref origin/develop`
+     and use `tipDiff.fileCount` as the primary origin/upstream alignment KPI (`0` means branch-tip content parity).
+  4. Create or sync a working branch (`issue/<standing-number>-<slug>`), push minimal changes,
      dispatch CI, update the PR (reference `#<standing-number>`), monitor to green, merge when
      acceptance is met.
 

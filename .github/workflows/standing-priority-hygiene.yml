@@ -24,6 +24,22 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v5
 
+      - name: Fetch parity refs
+        shell: bash
+        run: |
+          git remote add upstream https://github.com/LabVIEW-Community-CI-CD/compare-vi-cli-action.git 2>/dev/null || true
+          git fetch --no-tags --prune --depth=1 origin develop
+          git fetch --no-tags --prune --depth=1 upstream develop
+
+      - name: Report origin/upstream parity
+        run: |
+          node tools/priority/report-origin-upstream-parity.mjs \
+            --base-ref "upstream/develop" \
+            --head-ref "origin/develop" \
+            --sample-limit 20 \
+            --github-output "$GITHUB_OUTPUT" \
+            --step-summary "$GITHUB_STEP_SUMMARY"
+
       - name: Resolve issue number
         id: issue
         shell: bash
@@ -41,4 +57,3 @@ jobs:
           node tools/priority/standing-priority-hygiene.mjs \
             --issue "${{ steps.issue.outputs.number }}" \
             --label "standing-priority"
-
