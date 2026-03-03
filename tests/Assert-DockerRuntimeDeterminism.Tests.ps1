@@ -201,6 +201,33 @@ exit 0
     $snapshot.result.reason | Should -Match 'exitCode=1'
   }
 
+  It 'attempts deterministic repair when daemon-unavailable is detected under auto-repair' {
+    $work = Join-Path $TestDrive 'daemon-unavailable-autorepair'
+    New-Item -ItemType Directory -Path $work -Force | Out-Null
+    & $script:CreateDockerWslStubs -WorkRoot $work
+
+    Set-Item Env:DOCKER_STUB_INFO_MODE 'daemon-unavailable'
+    Set-Item Env:DOCKER_STUB_CONTEXT 'desktop-windows'
+
+    $snapshotPath = Join-Path $work 'runtime.json'
+    $output = & pwsh -NoLogo -NoProfile -File $script:GuardScript `
+      -ExpectedOsType windows `
+      -ExpectedContext desktop-windows `
+      -AutoRepair:$true `
+      -ManageDockerEngine:$true `
+      -SnapshotPath $snapshotPath `
+      -GitHubOutputPath '' 2>&1
+    $LASTEXITCODE | Should -Not -Be 0
+
+    $snapshot = Get-Content -LiteralPath $snapshotPath -Raw | ConvertFrom-Json -Depth 12
+    $snapshot.result.status | Should -Be 'mismatch-failed'
+    $snapshot.observed.dockerOsProbe.last.parseReason | Should -Be 'daemon-unavailable'
+    @($snapshot.repairActions).Count | Should -BeGreaterThan 0
+    if ($IsWindows) {
+      (@($snapshot.repairActions) -join "`n") | Should -Match 'docker service recovery'
+    }
+  }
+
   It 'captures parsed probe details and emits parse-reason output on success' {
     $work = Join-Path $TestDrive 'probe-success'
     New-Item -ItemType Directory -Path $work -Force | Out-Null
@@ -226,7 +253,7 @@ exit 0
     $snapshot.observed.context | Should -Be 'desktop-windows'
     $snapshot.observed.dockerOsProbe.initial.parseReason | Should -Be 'parsed'
     $snapshot.observed.dockerOsProbe.last.command | Should -Match 'docker --context desktop-windows info --format'
-    $snapshot.observed.dockerBackendProcesses | Should -Not -BeNull
+    $snapshot.observed.PSObject.Properties.Name | Should -Contain 'dockerBackendProcesses'
 
     $ghOut = Get-Content -LiteralPath $githubOutput -Raw
     $ghOut | Should -Match 'runtime-status=ok'

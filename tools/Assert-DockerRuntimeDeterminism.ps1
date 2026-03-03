@@ -173,6 +173,41 @@ function Format-DockerOsProbeHint {
   return ("Docker info probe: parseReason={0}, exitCode={1}, sample='{2}'" -f $parseReason, $exitCode, $sample)
 }
 
+function Test-IsDaemonUnavailableProbe {
+  param([AllowNull()]$Probe)
+
+  if ($null -eq $Probe) { return $false }
+  $parseReason = ''
+  if ($Probe.PSObject.Properties['parseReason']) {
+    $parseReason = [string]$Probe.parseReason
+  }
+  $parseReasonNormalized = if ([string]::IsNullOrWhiteSpace($parseReason)) {
+    ''
+  } else {
+    $parseReason.Trim().ToLowerInvariant()
+  }
+  if ($parseReasonNormalized -in @('daemon-unavailable', 'docker-info-command-failed')) {
+    return $true
+  }
+
+  if ($Probe.PSObject.Properties['rawLines'] -and $Probe.rawLines) {
+    foreach ($line in @($Probe.rawLines)) {
+      $text = [string]$line
+      if ([string]::IsNullOrWhiteSpace($text)) { continue }
+      if (
+        $text -match 'Docker Desktop is unable to start' -or
+        $text -match 'Cannot connect to the Docker daemon' -or
+        $text -match 'error during connect' -or
+        $text -match 'Error response from daemon'
+      ) {
+        return $true
+      }
+    }
+  }
+
+  return $false
+}
+
 function Get-DockerOsType {
   param([AllowNull()][string]$Context)
   $probe = Get-DockerOsProbe -Context $Context
@@ -586,6 +621,18 @@ if (-not $hostAlignmentOk) {
   if ($osMismatch -or $contextMismatch) {
     Write-Host ("[runtime-determinism] mismatch detected expected={0}/{1} observed={2}/{3}" -f $ExpectedOsType, $effectiveExpectedContext, ($observedOsType ?? '<null>'), ($observedContext ?? '<null>')) -ForegroundColor Yellow
     if ($AutoRepair) {
+      $daemonUnavailable = (Test-IsDaemonUnavailableProbe -Probe $initialDockerOsProbe) -or (Test-IsDaemonUnavailableProbe -Probe $fallbackDockerOsProbe)
+      if ($ManageDockerEngine -and $hostIsWindows -and $osMismatch -and $daemonUnavailable) {
+        Write-Host '[runtime-determinism] attempting docker service recovery' -ForegroundColor DarkGray
+        $serviceRecovery = Invoke-DockerServiceRecovery
+        if ($serviceRecovery -and $serviceRecovery.PSObject.Properties['steps'] -and $serviceRecovery.steps) {
+          foreach ($stepMessage in @($serviceRecovery.steps)) {
+            $repairActions.Add(("docker service recovery: {0}" -f [string]$stepMessage)) | Out-Null
+          }
+        } else {
+          $repairActions.Add('docker service recovery: no-actions') | Out-Null
+        }
+      }
       if ($contextMismatch) {
         Write-Host ("[runtime-determinism] attempting: docker context use {0}" -f $effectiveExpectedContext) -ForegroundColor DarkGray
         $ok = Invoke-DockerContextUse -Context $effectiveExpectedContext
