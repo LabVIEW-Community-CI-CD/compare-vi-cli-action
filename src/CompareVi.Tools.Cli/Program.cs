@@ -4,6 +4,7 @@ using System.IO;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using System.Text.Json.Serialization.Metadata;
+using System.Runtime.InteropServices;
 using CompareVi.Shared;
 
 internal static class Program
@@ -72,10 +73,10 @@ internal static class Program
         Console.WriteLine("  comparevi-cli quote --path <path>");
         Console.WriteLine("  comparevi-cli operations [--name <operation>] [--names-only]");
         Console.WriteLine("  comparevi-cli providers [--name <provider>] [--names-only]");
-        Console.WriteLine("  comparevi-cli compare single --input <file> --dry-run [--diff] [--exit-code <n>] [--failure-class <name>] [--out-dir <path>]");
-        Console.WriteLine("  comparevi-cli compare range --base <ref> --head <ref> --dry-run [--diff] [--exit-code <n>] [--failure-class <name>] [--max-pairs <n>] [--out-dir <path>]");
-        Console.WriteLine("  comparevi-cli history run --input <file> --dry-run [--diff] [--exit-code <n>] [--failure-class <name>] [--out-dir <path>]");
-        Console.WriteLine("  comparevi-cli report consolidate --input <file> --dry-run [--out-dir <path>]");
+        Console.WriteLine("  comparevi-cli compare single --input <file> --dry-run [--diff] [--exit-code <n>] [--failure-class <name>] [--out-dir <path>] [--non-interactive] [--headless]");
+        Console.WriteLine("  comparevi-cli compare range --base <ref> --head <ref> --dry-run [--diff] [--exit-code <n>] [--failure-class <name>] [--max-pairs <n>] [--out-dir <path>] [--non-interactive] [--headless]");
+        Console.WriteLine("  comparevi-cli history run --input <file> --dry-run [--diff] [--exit-code <n>] [--failure-class <name>] [--out-dir <path>] [--non-interactive] [--headless]");
+        Console.WriteLine("  comparevi-cli report consolidate --input <file> --dry-run [--out-dir <path>] [--non-interactive] [--headless]");
         Console.WriteLine("  comparevi-cli contracts validate --input <file>");
     }
 
@@ -111,6 +112,15 @@ internal static class Program
                 ["detail"] = repoExists
                     ? "Repository path exists."
                     : "Repository path does not exist."
+            },
+            new()
+            {
+                ["id"] = "windows-host",
+                ["required"] = true,
+                ["status"] = RuntimeInformation.IsOSPlatform(OSPlatform.Windows) ? "pass" : "fail",
+                ["detail"] = RuntimeInformation.IsOSPlatform(OSPlatform.Windows)
+                    ? "Windows host detected."
+                    : "Host OS is not Windows; host-native LabVIEW validation requires Windows."
             }
         };
 
@@ -128,9 +138,22 @@ internal static class Program
             });
         }
 
-        var gateOutcome = repoExists ? "pass" : "fail";
-        var failureClass = repoExists ? "none" : "preflight";
-        var resultClass = repoExists ? "success-no-diff" : "failure-preflight";
+        if (!RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
+        {
+            failedPrerequisites.Add("windows-host");
+            diagnostics.Add(new Dictionary<string, object?>
+            {
+                ["code"] = "windows-host-required",
+                ["severity"] = "error",
+                ["message"] = "Host-native LabVIEW validation requires Windows.",
+                ["detectedOs"] = RuntimeInformation.OSDescription
+            });
+        }
+
+        var preflightOk = repoExists && RuntimeInformation.IsOSPlatform(OSPlatform.Windows);
+        var gateOutcome = preflightOk ? "pass" : "fail";
+        var failureClass = preflightOk ? "none" : "preflight";
+        var resultClass = preflightOk ? "success-no-diff" : "failure-preflight";
         var outcomeKind = MapOutcomeKind(resultClass, failureClass);
 
         var payload = new Dictionary<string, object?>
@@ -161,7 +184,7 @@ internal static class Program
         };
 
         Console.WriteLine(JsonSerializer.Serialize(payload, SerializerOptions));
-        return repoExists ? 0 : 1;
+        return preflightOk ? 0 : 1;
     }
 
     private static int CmdVersion()
@@ -379,7 +402,7 @@ internal static class Program
                 args,
                 startIndex: tailStart,
             valueOptions: new[] { "--base", "--head", "--exit-code", "--failure-class", "--max-pairs", "--out-dir" },
-                flagOptions: new[] { "--dry-run", "--diff", "--non-interactive" },
+            flagOptions: new[] { "--dry-run", "--diff", "--non-interactive", "--headless" },
                 out var optionError))
         {
             Console.Error.WriteLine(optionError);
@@ -420,9 +443,23 @@ internal static class Program
         }
 
         var classification = ExitClassification.Classify(exitCode, isDiff, declaredFailureClass);
+        var nonInteractive = HasFlag(args, tailStart, "--non-interactive");
+        var headless = HasFlag(args, tailStart, "--headless");
+
+        if (nonInteractive && !headless)
+        {
+            var policyFailurePayload = BuildHeadlessPolicyFailurePayload(
+                schema: "comparevi-cli/compare-range@v1",
+                lane: "compare-range",
+                command: "compare range");
+            Console.WriteLine(JsonSerializer.Serialize(policyFailurePayload, SerializerOptions));
+            return 1;
+        }
+
         var outDir = ResolveOutputDirectory(args, tailStart);
         var artifacts = BuildArtifactPaths("compare-range", outDir);
         var imageIndex = BuildImageIndexPayload(classification.IsDiff);
+        var timing = BuildTimingEnvelope();
         var payload = new Dictionary<string, object?>
         {
             ["schema"] = "comparevi-cli/compare-range@v1",
@@ -435,6 +472,8 @@ internal static class Program
             ["head"] = headRef,
             ["maxPairs"] = hasMaxPairs ? maxPairs : null,
             ["truncated"] = false,
+            ["headless"] = headless,
+            ["nonInteractive"] = nonInteractive,
             ["outDir"] = outDir,
             ["artifacts"] = artifacts,
             ["summaryJsonPath"] = artifacts["summaryJsonPath"],
@@ -444,6 +483,9 @@ internal static class Program
             ["imageIndexPath"] = artifacts["imageIndexPath"],
             ["runLogPath"] = artifacts["runLogPath"],
             ["imageIndex"] = imageIndex,
+            ["items"] = timing["items"],
+            ["timing"] = timing["timing"],
+            ["timingSummary"] = timing["timingSummary"],
             ["dryRun"] = dryRun,
             ["simulatedExitCode"] = exitCode,
             ["outcome"] = new Dictionary<string, object?>
@@ -551,7 +593,7 @@ internal static class Program
                 args,
                 startIndex: tailStart,
             valueOptions: new[] { "--input", "--exit-code", "--failure-class", "--out-dir" },
-                flagOptions: new[] { "--dry-run", "--diff", "--non-interactive" },
+            flagOptions: new[] { "--dry-run", "--diff", "--non-interactive", "--headless" },
                 out var optionError))
         {
             Console.Error.WriteLine(optionError);
@@ -580,9 +622,23 @@ internal static class Program
             : null;
 
         var classification = ExitClassification.Classify(exitCode, isDiff, declaredFailureClass);
+        var nonInteractive = HasFlag(args, tailStart, "--non-interactive");
+        var headless = HasFlag(args, tailStart, "--headless");
+
+        if (nonInteractive && !headless)
+        {
+            var policyFailurePayload = BuildHeadlessPolicyFailurePayload(
+                schema: schema,
+                lane: lane,
+                command: command);
+            Console.WriteLine(JsonSerializer.Serialize(policyFailurePayload, SerializerOptions));
+            return 1;
+        }
+
         var outDir = ResolveOutputDirectory(args, tailStart);
         var artifacts = BuildArtifactPaths(lane, outDir);
         var imageIndex = BuildImageIndexPayload(classification.IsDiff);
+        var timing = BuildTimingEnvelope();
         var payload = new Dictionary<string, object?>
         {
             ["schema"] = schema,
@@ -592,6 +648,8 @@ internal static class Program
             ["command"] = command,
             ["generatedAtUtc"] = DateTimeOffset.UtcNow.ToString("O"),
             ["inputPath"] = Path.GetFullPath(inputPath),
+            ["headless"] = headless,
+            ["nonInteractive"] = nonInteractive,
             ["outDir"] = outDir,
             ["artifacts"] = artifacts,
             ["summaryJsonPath"] = artifacts["summaryJsonPath"],
@@ -601,6 +659,9 @@ internal static class Program
             ["imageIndexPath"] = artifacts["imageIndexPath"],
             ["runLogPath"] = artifacts["runLogPath"],
             ["imageIndex"] = imageIndex,
+            ["items"] = timing["items"],
+            ["timing"] = timing["timing"],
+            ["timingSummary"] = timing["timingSummary"],
             ["dryRun"] = dryRun,
             ["simulatedExitCode"] = exitCode,
             ["outcome"] = new Dictionary<string, object?>
@@ -616,6 +677,78 @@ internal static class Program
 
         Console.WriteLine(JsonSerializer.Serialize(payload, SerializerOptions));
         return string.Equals(classification.GateOutcome, "pass", StringComparison.OrdinalIgnoreCase) ? 0 : 1;
+    }
+
+    private static Dictionary<string, object?> BuildHeadlessPolicyFailurePayload(string schema, string lane, string command)
+    {
+        return new Dictionary<string, object?>
+        {
+            ["schema"] = schema,
+            ["schemaVersion"] = "1.0.0",
+            ["schemaCompatibility"] = BuildSchemaCompatibility(),
+            ["lane"] = lane,
+            ["command"] = command,
+            ["generatedAtUtc"] = DateTimeOffset.UtcNow.ToString("O"),
+            ["headless"] = false,
+            ["nonInteractive"] = true,
+            ["diagnostics"] = new[]
+            {
+                new Dictionary<string, object?>
+                {
+                    ["code"] = "headless-required",
+                    ["severity"] = "error",
+                    ["message"] = "Non-interactive execution requires explicit --headless opt-in."
+                }
+            },
+            ["outcome"] = new Dictionary<string, object?>
+            {
+                ["class"] = "fail",
+                ["kind"] = "preflight_error"
+            },
+            ["resultClass"] = "failure-preflight",
+            ["isDiff"] = false,
+            ["gateOutcome"] = "fail",
+            ["failureClass"] = "preflight"
+        };
+    }
+
+    private static Dictionary<string, object?> BuildTimingEnvelope()
+    {
+        var start = DateTimeOffset.UtcNow;
+        var end = start.AddMilliseconds(25);
+        var durationMs = (end - start).TotalMilliseconds;
+
+        return new Dictionary<string, object?>
+        {
+            ["items"] = new[]
+            {
+                new Dictionary<string, object?>
+                {
+                    ["id"] = "pair-0001",
+                    ["order"] = 1,
+                    ["timing"] = new Dictionary<string, object?>
+                    {
+                        ["startUtc"] = start.ToString("O"),
+                        ["endUtc"] = end.ToString("O"),
+                        ["durationMs"] = durationMs
+                    }
+                }
+            },
+            ["timing"] = new Dictionary<string, object?>
+            {
+                ["startUtc"] = start.ToString("O"),
+                ["endUtc"] = end.ToString("O"),
+                ["durationMs"] = durationMs
+            },
+            ["timingSummary"] = new Dictionary<string, object?>
+            {
+                ["count"] = 1,
+                ["totalDurationMs"] = durationMs,
+                ["p50Ms"] = durationMs,
+                ["p90Ms"] = durationMs,
+                ["p95Ms"] = durationMs
+            }
+        };
     }
 
     private static Dictionary<string, object?> BuildSchemaCompatibility()
