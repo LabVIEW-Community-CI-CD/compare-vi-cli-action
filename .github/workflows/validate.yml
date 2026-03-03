@@ -319,11 +319,9 @@ jobs:
           Write-Host 'Labels OK on main.'
         }
 
-    - name: Run markdownlint (scoped)
-      shell: pwsh
-      run: |
-        # Use repo-scoped linter so legacy icon-editor docs do not flood required lint output.
-        pwsh -NoLogo -NoProfile -File tools/Lint-Markdown.ps1 -All
+    - name: Run markdownlint (scoped changed files)
+      shell: bash
+      run: node tools/npm/run-script.mjs lint:md:changed
   fixtures:
     runs-on: [self-hosted, Windows, X64]
     env:
