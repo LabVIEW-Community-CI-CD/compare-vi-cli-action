@@ -345,13 +345,160 @@ function Get-HistoricalStepDurationMedians {
   return $medians
 }
 
+function Get-LaneLifecycleFromPlan {
+  param(
+    [Parameter(Mandatory)][AllowEmptyCollection()][string[]]$StepPlan,
+    [Parameter(Mandatory)][AllowEmptyCollection()][object[]]$ObservedSteps,
+    [Parameter(Mandatory)][string]$Phase,
+    [bool]$HardStopTriggered = $false,
+    [AllowEmptyString()][string]$HardStopReason = ''
+  )
+
+  $laneNames = @('windows', 'linux')
+  $lifecycle = [ordered]@{}
+  foreach ($laneName in $laneNames) {
+    $lifecycle[$laneName] = [ordered]@{
+      totalPlannedSteps = 0
+      executedSteps = 0
+      started = $false
+      completed = $false
+      status = 'skipped'
+      startStep = ''
+      endStep = ''
+      startedAt = ''
+      endedAt = ''
+      hardStopTriggered = $false
+      stopClass = 'none'
+      stopReason = ''
+    }
+  }
+
+  foreach ($planStep in @($StepPlan)) {
+    $laneName = Get-StepLane -StepName $planStep
+    if ([string]::IsNullOrWhiteSpace($laneName) -or -not $lifecycle.Contains($laneName)) { continue }
+    $lifecycle[$laneName].totalPlannedSteps = [int]$lifecycle[$laneName].totalPlannedSteps + 1
+    if ([string]$lifecycle[$laneName].status -eq 'skipped') {
+      $lifecycle[$laneName].status = 'pending'
+    }
+  }
+
+  foreach ($step in @($ObservedSteps)) {
+    if (-not $step -or -not $step.PSObject.Properties['name']) { continue }
+    $stepName = [string]$step.name
+    $laneName = Get-StepLane -StepName $stepName
+    if ([string]::IsNullOrWhiteSpace($laneName) -or -not $lifecycle.Contains($laneName)) { continue }
+
+    $lane = $lifecycle[$laneName]
+    $lane.executedSteps = [int]$lane.executedSteps + 1
+    $lane.started = $true
+    if ([string]::IsNullOrWhiteSpace([string]$lane.startStep)) {
+      $lane.startStep = $stepName
+    }
+    $lane.endStep = $stepName
+    if ([string]::IsNullOrWhiteSpace([string]$lane.startedAt) -and $step.PSObject.Properties['startedAt']) {
+      $lane.startedAt = [string]$step.startedAt
+    }
+    if ($step.PSObject.Properties['finishedAt']) {
+      $lane.endedAt = [string]$step.finishedAt
+    }
+
+    $stepStatus = if ($step.PSObject.Properties['status']) { [string]$step.status } else { '' }
+    if ($stepStatus -ne 'success') {
+      $lane.status = 'failure'
+      $lane.stopClass = 'failure'
+      if ($step.PSObject.Properties['hardStopTriggered'] -and [bool]$step.hardStopTriggered) {
+        $lane.hardStopTriggered = $true
+        $lane.stopClass = 'hard-stop'
+      }
+      $failureClassText = if ($step.PSObject.Properties['failureClass']) { [string]$step.failureClass } else { '' }
+      $messageText = if ($step.PSObject.Properties['message']) { [string]$step.message } else { '' }
+      if (-not [string]::IsNullOrWhiteSpace($messageText)) {
+        $lane.stopReason = $messageText
+      } elseif (-not [string]::IsNullOrWhiteSpace($failureClassText)) {
+        $lane.stopReason = ("failureClass={0}" -f $failureClassText)
+      } else {
+        $lane.stopReason = 'step-failure'
+      }
+      continue
+    }
+
+    if ([string]$lane.status -notin @('failure', 'success', 'incomplete')) {
+      $lane.status = 'running'
+    }
+  }
+
+  foreach ($laneName in $laneNames) {
+    $lane = $lifecycle[$laneName]
+    $planned = [int]$lane.totalPlannedSteps
+    $executed = [int]$lane.executedSteps
+
+    if ($planned -eq 0) {
+      $lane.status = 'skipped'
+      $lane.completed = $false
+      $lane.stopClass = 'none'
+      $lane.stopReason = ''
+      continue
+    }
+
+    if ($executed -eq 0) {
+      if ($HardStopTriggered) {
+        $lane.status = 'blocked'
+        $lane.stopClass = 'blocked'
+        $lane.stopReason = if ([string]::IsNullOrWhiteSpace($HardStopReason)) { 'blocked-by-hard-stop' } else { $HardStopReason }
+      } elseif ($Phase -eq 'completed') {
+        $lane.status = 'blocked'
+        $lane.stopClass = 'blocked'
+        $lane.stopReason = 'lane-not-started'
+      } else {
+        $lane.status = 'pending'
+        $lane.stopClass = 'none'
+      }
+      continue
+    }
+
+    if ([string]$lane.status -eq 'failure') {
+      $lane.completed = ($executed -ge $planned)
+      if ($lane.hardStopTriggered -and [string]::IsNullOrWhiteSpace([string]$lane.stopReason) -and -not [string]::IsNullOrWhiteSpace($HardStopReason)) {
+        $lane.stopReason = $HardStopReason
+      }
+      continue
+    }
+
+    if ($executed -ge $planned) {
+      $lane.status = 'success'
+      $lane.completed = $true
+      $lane.stopClass = 'completed'
+      if ([string]::IsNullOrWhiteSpace([string]$lane.stopReason)) {
+        $lane.stopReason = 'lane-complete'
+      }
+      continue
+    }
+
+    $lane.completed = $false
+    if ($HardStopTriggered) {
+      $lane.status = 'incomplete'
+      $lane.stopClass = 'blocked'
+      $lane.stopReason = if ([string]::IsNullOrWhiteSpace($HardStopReason)) { 'hard-stop-before-lane-complete' } else { $HardStopReason }
+    } else {
+      $lane.status = if ($Phase -eq 'completed') { 'incomplete' } else { 'running' }
+      if ([string]$lane.stopClass -eq 'none') {
+        $lane.stopReason = ''
+      }
+    }
+  }
+
+  return $lifecycle
+}
+
 function New-StatusTelemetry {
   param(
     [Parameter(Mandatory)][string]$RunStatus,
     [Parameter(Mandatory)][string]$Phase,
     [Parameter(Mandatory)][AllowEmptyCollection()][string[]]$StepPlan,
     [Parameter(Mandatory)][AllowEmptyCollection()][object[]]$ObservedSteps,
-    [Parameter(Mandatory)][hashtable]$HistoricalMedians
+    [Parameter(Mandatory)][hashtable]$HistoricalMedians,
+    [bool]$HardStopTriggered = $false,
+    [AllowEmptyString()][string]$HardStopReason = ''
   )
 
   $completedDurationMs = 0
@@ -402,6 +549,12 @@ function New-StatusTelemetry {
   } elseif ($Phase -eq 'completed' -and $RunStatus -ne 'success') {
     $pushRecommendation = 'do-not-push'
   }
+  $laneLifecycle = Get-LaneLifecycleFromPlan `
+    -StepPlan $StepPlan `
+    -ObservedSteps $ObservedSteps `
+    -Phase $Phase `
+    -HardStopTriggered:$HardStopTriggered `
+    -HardStopReason $HardStopReason
 
   return [ordered]@{
     completedDurationMs = [int]$completedDurationMs
@@ -412,6 +565,7 @@ function New-StatusTelemetry {
       windows = [ordered]@{ completed = [int]$laneCompleted.windows; total = [int]$laneTotals.windows }
       linux = [ordered]@{ completed = [int]$laneCompleted.linux; total = [int]$laneTotals.linux }
     }
+    laneLifecycle = $laneLifecycle
     pushRecommendation = $pushRecommendation
     canPush = [bool]$canPush
   }
@@ -429,6 +583,8 @@ function Write-SemiLiveStatus {
     [Parameter(Mandatory)][AllowEmptyCollection()][string[]]$StepPlan,
     [Parameter(Mandatory)][AllowEmptyCollection()][object[]]$Steps,
     [Parameter(Mandatory)][hashtable]$HistoricalStepMedians,
+    [bool]$HardStopTriggered = $false,
+    [AllowEmptyString()][string]$HardStopReason = '',
     [AllowEmptyString()][string]$SummaryPath
   )
 
@@ -444,7 +600,9 @@ function Write-SemiLiveStatus {
     -Phase $Phase `
     -StepPlan $StepPlan `
     -ObservedSteps $Steps `
-    -HistoricalMedians $HistoricalStepMedians
+    -HistoricalMedians $HistoricalStepMedians `
+    -HardStopTriggered:$HardStopTriggered `
+    -HardStopReason $HardStopReason
 
   $payload = [ordered]@{
     schema = 'docker-desktop-fast-loop-status@v1'
@@ -464,6 +622,9 @@ function Write-SemiLiveStatus {
     runtimeAutoRepair = [bool]$runtimeAutoRepairEnabled
     stepTimeoutSeconds = [int]$StepTimeoutSeconds
     manageDockerEngine = [bool]$effectiveManageDockerEngine
+    hardStopTriggered = [bool]$HardStopTriggered
+    hardStopReason = ($HardStopReason ?? '')
+    laneLifecycle = $telemetry.laneLifecycle
     telemetry = $telemetry
     steps = @($Steps)
     summaryPath = ($SummaryPath ?? '')
@@ -1183,6 +1344,8 @@ Write-SemiLiveStatus `
   -StepPlan $stepPlan `
   -Steps @() `
   -HistoricalStepMedians $historicalStepMedians `
+  -HardStopTriggered:$hardStopTriggered `
+  -HardStopReason $hardStopReason `
   -SummaryPath ''
 
 foreach ($definition in $stepDefinitions.ToArray()) {
@@ -1199,6 +1362,8 @@ foreach ($definition in $stepDefinitions.ToArray()) {
     -StepPlan $stepPlan `
     -Steps $results.ToArray() `
     -HistoricalStepMedians $historicalStepMedians `
+    -HardStopTriggered:$hardStopTriggered `
+    -HardStopReason $hardStopReason `
     -SummaryPath ''
 
   $allowedExitCodes = @(0)
@@ -1260,6 +1425,8 @@ foreach ($definition in $stepDefinitions.ToArray()) {
     -StepPlan $stepPlan `
     -Steps $results.ToArray() `
     -HistoricalStepMedians $historicalStepMedians `
+    -HardStopTriggered:$hardStopTriggered `
+    -HardStopReason $hardStopReason `
     -SummaryPath ''
 
   if ($hardStopTriggered) {
@@ -1357,6 +1524,12 @@ $summary = [ordered]@{
   stepTimeoutSeconds = [int]$StepTimeoutSeconds
   manageDockerEngine = [bool]$effectiveManageDockerEngine
   laneOrder = $LaneOrder
+  laneLifecycle = (Get-LaneLifecycleFromPlan `
+    -StepPlan $stepPlan `
+    -ObservedSteps $results.ToArray() `
+    -Phase 'completed' `
+    -HardStopTriggered:$hardStopTriggered `
+    -HardStopReason $hardStopReason)
   steps = $results.ToArray()
   status = if ($failed.Count -eq 0) { 'success' } else { 'failure' }
 }
@@ -1374,6 +1547,8 @@ Write-SemiLiveStatus `
   -StepPlan $stepPlan `
   -Steps $results.ToArray() `
   -HistoricalStepMedians $historicalStepMedians `
+  -HardStopTriggered:$hardStopTriggered `
+  -HardStopReason $hardStopReason `
   -SummaryPath $summaryPath
 
 pwsh -NoLogo -NoProfile -File (Join-Path $PSScriptRoot 'Write-DockerFastLoopReadiness.ps1') `

@@ -3,6 +3,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
+  buildNoStandingPriorityState,
+  determinePrioritySyncExitCode,
   isStandingPriorityCacheCandidate,
   resolveStandingPriorityFromSources
 } from '../sync-standing-priority.mjs';
@@ -95,5 +97,34 @@ test('resolveStandingPriorityFromSources fails when only invalid cache remains',
       }),
     /Unable to resolve standing-priority issue number/
   );
+});
+
+test('buildNoStandingPriorityState clears router/cache deterministically', () => {
+  const state = buildNoStandingPriorityState(
+    {
+      number: 12,
+      title: 'Old',
+      state: 'OPEN',
+      labels: ['standing-priority']
+    },
+    "No open issue with label 'standing-priority' found.",
+    '2026-03-03T03:10:00.000Z'
+  );
+
+  assert.equal(state.clearedRouter.issue, null);
+  assert.deepEqual(state.clearedRouter.actions, []);
+  assert.equal(state.clearedCache.number, null);
+  assert.equal(state.clearedCache.state, 'NONE');
+  assert.equal(
+    state.clearedCache.lastFetchError,
+    "No open issue with label 'standing-priority' found."
+  );
+  assert.equal(state.result.fetchSource, 'none');
+});
+
+test('determinePrioritySyncExitCode maps no-standing to success and real errors to failure', () => {
+  assert.equal(determinePrioritySyncExitCode(null), 0);
+  assert.equal(determinePrioritySyncExitCode({ code: 'NO_STANDING_PRIORITY' }), 0);
+  assert.equal(determinePrioritySyncExitCode(new Error('boom')), 1);
 });
 

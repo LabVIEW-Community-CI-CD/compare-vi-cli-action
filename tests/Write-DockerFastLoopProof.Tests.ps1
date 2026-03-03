@@ -49,6 +49,22 @@ Describe 'Write-DockerFastLoopProof.ps1' -Tag 'Unit' {
         summaryPath = $summaryPath
         statusPath = $statusPath
       }
+      laneLifecycle = [ordered]@{
+        windows = [ordered]@{
+          status = 'success'
+          stopClass = 'completed'
+          stopReason = 'lane-complete'
+          startStep = 'windows-runtime-preflight'
+          endStep = 'windows-container-probe'
+        }
+        linux = [ordered]@{
+          status = 'success'
+          stopClass = 'completed'
+          stopReason = 'lane-complete'
+          startStep = 'linux-runtime-preflight'
+          endStep = 'linux-container-probe'
+        }
+      }
       lanes = [ordered]@{
         windows = [ordered]@{ status = 'success'; diffDetected = $true; failureClass = 'none' }
         linux = [ordered]@{ status = 'success'; diffDetected = $true; failureClass = 'none' }
@@ -80,6 +96,8 @@ Describe 'Write-DockerFastLoopProof.ps1' -Tag 'Unit' {
     $proof.hashes.summarySha256 | Should -Not -BeNullOrEmpty
     $proof.hashes.statusSha256 | Should -Not -BeNullOrEmpty
     $proof.lanes.windows.diffDetected | Should -BeTrue
+    $proof.laneLifecycle.windows.stopClass | Should -Be 'completed'
+    $proof.laneLifecycle.windows.startStep | Should -Be 'windows-runtime-preflight'
   }
 
   It 'falls back to summary aggregates when readiness omits additive fields' {
@@ -103,6 +121,18 @@ Describe 'Write-DockerFastLoopProof.ps1' -Tag 'Unit' {
       toolFailureCount = 2
       hardStopTriggered = $true
       hardStopReason = 'Runtime determinism check failed at step windows-runtime-preflight'
+      laneLifecycle = [ordered]@{
+        windows = [ordered]@{
+          status = 'failure'
+          stopClass = 'hard-stop'
+          stopReason = 'Runtime determinism check failed at step windows-runtime-preflight'
+        }
+        linux = [ordered]@{
+          status = 'blocked'
+          stopClass = 'blocked'
+          stopReason = 'Runtime determinism check failed at step windows-runtime-preflight'
+        }
+      }
     } | ConvertTo-Json -Depth 8) | Set-Content -LiteralPath $summaryPath -Encoding utf8
 
     ([ordered]@{
@@ -134,6 +164,8 @@ Describe 'Write-DockerFastLoopProof.ps1' -Tag 'Unit' {
     $proof.toolFailureCount | Should -Be 2
     $proof.hardStopTriggered | Should -BeTrue
     $proof.hardStopReason | Should -Match 'Runtime determinism'
+    $proof.laneLifecycle.windows.stopClass | Should -Be 'hard-stop'
+    $proof.laneLifecycle.linux.stopClass | Should -Be 'blocked'
   }
 
   It 'keeps optional hashes null when summary/status files are unavailable' {

@@ -243,6 +243,80 @@ function Get-LaneFromSteps {
   return $laneState
 }
 
+function Resolve-LaneLifecycle {
+  param(
+    [AllowNull()]$Summary,
+    [Parameter(Mandatory)][hashtable]$LaneState,
+    [Parameter(Mandatory)][object[]]$Steps,
+    [bool]$HardStopTriggered = $false,
+    [AllowEmptyString()][string]$HardStopReason = ''
+  )
+
+  $resolved = [ordered]@{}
+  foreach ($laneName in @('windows', 'linux')) {
+    $laneData = $LaneState[$laneName]
+    $firstStep = @($Steps | Where-Object {
+        $_ -and $_.PSObject -and $_.PSObject.Properties['name'] -and ((Get-StepLane -StepName ([string]$_.name)) -eq $laneName)
+      } | Select-Object -First 1)
+    $lastStep = @($Steps | Where-Object {
+        $_ -and $_.PSObject -and $_.PSObject.Properties['name'] -and ((Get-StepLane -StepName ([string]$_.name)) -eq $laneName)
+      } | Select-Object -Last 1)
+
+    $defaultStopClass = switch ([string]$laneData.status) {
+      'success' { 'completed' }
+      'failure' { if ($HardStopTriggered) { 'hard-stop' } else { 'failure' } }
+      'skipped' { 'none' }
+      default { if ($HardStopTriggered) { 'blocked' } else { 'none' } }
+    }
+    $defaultStopReason = switch ([string]$laneData.status) {
+      'success' { 'lane-complete' }
+      'failure' { if (-not [string]::IsNullOrWhiteSpace($HardStopReason)) { $HardStopReason } else { 'lane-failed' } }
+      'skipped' { '' }
+      default { if (-not [string]::IsNullOrWhiteSpace($HardStopReason)) { $HardStopReason } else { '' } }
+    }
+    $derived = [ordered]@{
+      totalPlannedSteps = [int]$laneData.total
+      executedSteps = [int]$laneData.total
+      started = ([int]$laneData.total -gt 0)
+      completed = ([string]$laneData.status -eq 'success')
+      status = [string]$laneData.status
+      startStep = if ($firstStep.Count -gt 0 -and $firstStep[0].PSObject.Properties['name']) { [string]$firstStep[0].name } else { '' }
+      endStep = if ($lastStep.Count -gt 0 -and $lastStep[0].PSObject.Properties['name']) { [string]$lastStep[0].name } else { '' }
+      startedAt = if ($firstStep.Count -gt 0 -and $firstStep[0].PSObject.Properties['startedAt']) { [string]$firstStep[0].startedAt } else { '' }
+      endedAt = if ($lastStep.Count -gt 0 -and $lastStep[0].PSObject.Properties['finishedAt']) { [string]$lastStep[0].finishedAt } else { '' }
+      hardStopTriggered = ($HardStopTriggered -and [string]$laneData.status -eq 'failure')
+      stopClass = $defaultStopClass
+      stopReason = $defaultStopReason
+    }
+
+    $summaryEntry = $null
+    if ($Summary -and $Summary.PSObject.Properties['laneLifecycle'] -and $Summary.laneLifecycle -and $Summary.laneLifecycle.PSObject.Properties[$laneName]) {
+      $summaryEntry = $Summary.laneLifecycle.$laneName
+    }
+
+    if ($summaryEntry) {
+      $resolved[$laneName] = [ordered]@{
+        totalPlannedSteps = if ($summaryEntry.PSObject.Properties['totalPlannedSteps']) { [int]$summaryEntry.totalPlannedSteps } else { [int]$derived.totalPlannedSteps }
+        executedSteps = if ($summaryEntry.PSObject.Properties['executedSteps']) { [int]$summaryEntry.executedSteps } else { [int]$derived.executedSteps }
+        started = if ($summaryEntry.PSObject.Properties['started']) { [bool]$summaryEntry.started } else { [bool]$derived.started }
+        completed = if ($summaryEntry.PSObject.Properties['completed']) { [bool]$summaryEntry.completed } else { [bool]$derived.completed }
+        status = if ($summaryEntry.PSObject.Properties['status']) { [string]$summaryEntry.status } else { [string]$derived.status }
+        startStep = if ($summaryEntry.PSObject.Properties['startStep']) { [string]$summaryEntry.startStep } else { [string]$derived.startStep }
+        endStep = if ($summaryEntry.PSObject.Properties['endStep']) { [string]$summaryEntry.endStep } else { [string]$derived.endStep }
+        startedAt = if ($summaryEntry.PSObject.Properties['startedAt']) { [string]$summaryEntry.startedAt } else { [string]$derived.startedAt }
+        endedAt = if ($summaryEntry.PSObject.Properties['endedAt']) { [string]$summaryEntry.endedAt } else { [string]$derived.endedAt }
+        hardStopTriggered = if ($summaryEntry.PSObject.Properties['hardStopTriggered']) { [bool]$summaryEntry.hardStopTriggered } else { [bool]$derived.hardStopTriggered }
+        stopClass = if ($summaryEntry.PSObject.Properties['stopClass']) { [string]$summaryEntry.stopClass } else { [string]$derived.stopClass }
+        stopReason = if ($summaryEntry.PSObject.Properties['stopReason']) { [string]$summaryEntry.stopReason } else { [string]$derived.stopReason }
+      }
+    } else {
+      $resolved[$laneName] = $derived
+    }
+  }
+
+  return $resolved
+}
+
 function Get-ClassificationAggregate {
   param([Parameter(Mandatory)][object[]]$Steps)
 
@@ -364,6 +438,12 @@ if ($summary.PSObject.Properties['hardStopTriggered']) {
   $hardStopTriggered = [bool]$summary.hardStopTriggered
 }
 $hardStopReason = if ($summary.PSObject.Properties['hardStopReason']) { [string]$summary.hardStopReason } else { '' }
+$laneLifecycle = Resolve-LaneLifecycle `
+  -Summary $summary `
+  -LaneState $lane `
+  -Steps $steps `
+  -HardStopTriggered:$hardStopTriggered `
+  -HardStopReason $hardStopReason
 $statusRecommendation = ''
 $etaSeconds = 0.0
 if ($status -and $status.PSObject.Properties['telemetry'] -and $status.telemetry) {
@@ -427,6 +507,7 @@ $readiness = [ordered]@{
     totalDurationSeconds = [math]::Round(($totalDurationMs / 1000.0), 3)
     etaSeconds = [math]::Round($etaSeconds, 1)
   }
+  laneLifecycle = $laneLifecycle
   lanes = [ordered]@{
     windows = [ordered]@{
       status = [string]$lane.windows.status
@@ -483,21 +564,31 @@ $mdLines.Add(('| ETA (s) | `{0}` |' -f ([math]::Round($etaSeconds, 1)))) | Out-N
 $mdLines.Add(('| Readiness JSON | `{0}` |' -f $jsonOutResolved)) | Out-Null
 $mdLines.Add('') | Out-Null
 
-$mdLines.Add('| Lane | Status | Diff Detected | Failure Class | Completed | Total | Duration (s) | Hist Median (s) | Hist P90 (s) |') | Out-Null
-$mdLines.Add('| --- | --- | --- | --- | ---: | ---: | ---: | ---: | ---: |') | Out-Null
+$mdLines.Add('| Lane | Status | Diff Detected | Failure Class | Stop Class | Start Step | End Step | Completed | Total | Duration (s) | Hist Median (s) | Hist P90 (s) |') | Out-Null
+$mdLines.Add('| --- | --- | --- | --- | --- | --- | --- | ---: | ---: | ---: | ---: | ---: |') | Out-Null
 foreach ($laneName in @('windows', 'linux')) {
   $laneData = $readiness.lanes.$laneName
+  $laneTelemetry = $readiness.laneLifecycle.$laneName
   $histLane = $historical.lanes.$laneName
-  $mdLines.Add(('| {0} | `{1}` | `{2}` | `{3}` | {4} | {5} | {6} | {7} | {8} |' -f `
+  $startStepValue = if ($laneTelemetry -and $laneTelemetry.PSObject.Properties['startStep'] -and -not [string]::IsNullOrWhiteSpace([string]$laneTelemetry.startStep)) { [string]$laneTelemetry.startStep } else { '-' }
+  $endStepValue = if ($laneTelemetry -and $laneTelemetry.PSObject.Properties['endStep'] -and -not [string]::IsNullOrWhiteSpace([string]$laneTelemetry.endStep)) { [string]$laneTelemetry.endStep } else { '-' }
+  $stopClassValue = if ($laneTelemetry -and $laneTelemetry.PSObject.Properties['stopClass'] -and -not [string]::IsNullOrWhiteSpace([string]$laneTelemetry.stopClass)) { [string]$laneTelemetry.stopClass } else { 'none' }
+  $mdLines.Add(('| {0} | `{1}` | `{2}` | `{3}` | `{4}` | `{5}` | `{6}` | {7} | {8} | {9} | {10} | {11} |' -f `
       $laneName, `
       $laneData.status, `
       $laneData.diffDetected, `
       $laneData.failureClass, `
+      $stopClassValue, `
+      $startStepValue, `
+      $endStepValue, `
       $laneData.completed, `
       $laneData.total, `
       (Convert-ToSecondsString -Milliseconds ([double]$laneData.durationMs)), `
       (Convert-ToSecondsString -Milliseconds ([double]$histLane.medianMs)), `
       (Convert-ToSecondsString -Milliseconds ([double]$histLane.p90Ms)))) | Out-Null
+  if ($laneTelemetry -and $laneTelemetry.PSObject.Properties['stopReason'] -and -not [string]::IsNullOrWhiteSpace([string]$laneTelemetry.stopReason)) {
+    $mdLines.Add(("| | | | | stop reason | `{0}` | | | | | | |" -f [string]$laneTelemetry.stopReason)) | Out-Null
+  }
 }
 $mdLines.Add('') | Out-Null
 

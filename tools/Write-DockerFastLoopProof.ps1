@@ -186,6 +186,7 @@ $proof = [ordered]@{
     summarySha256 = Get-FileHashOrNull -Path $summaryResolved
     statusSha256 = Get-FileHashOrNull -Path $statusResolved
   }
+  laneLifecycle = if ($readiness.PSObject.Properties['laneLifecycle']) { $readiness.laneLifecycle } elseif ($summary -and $summary.PSObject.Properties['laneLifecycle']) { $summary.laneLifecycle } else { $null }
   lanes = if ($readiness.PSObject.Properties['lanes']) { $readiness.lanes } else { $null }
 }
 

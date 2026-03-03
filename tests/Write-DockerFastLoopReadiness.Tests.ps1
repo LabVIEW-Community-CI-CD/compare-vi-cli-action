@@ -91,6 +91,10 @@ Describe 'Write-DockerFastLoopReadiness.ps1' -Tag 'Unit' {
     $readiness.lanes.windows.diffDetected | Should -BeTrue
     $readiness.lanes.windows.failureClass | Should -Be 'none'
     $readiness.lanes.linux.diffDetected | Should -BeFalse
+    $readiness.laneLifecycle.windows.status | Should -Be 'success'
+    $readiness.laneLifecycle.windows.stopClass | Should -Be 'completed'
+    $readiness.laneLifecycle.windows.startStep | Should -Be 'windows-runtime-preflight'
+    $readiness.laneLifecycle.windows.endStep | Should -Be 'windows-history-attribute'
   }
 
   It 'marks tool failure runs not-ready' {
@@ -216,6 +220,8 @@ Describe 'Write-DockerFastLoopReadiness.ps1' -Tag 'Unit' {
     $readiness.toolFailureCount | Should -Be 0
     $readiness.lanes.windows.failureClass | Should -Be 'runtime-determinism'
     $readiness.lanes.linux.failureClass | Should -Be 'none'
+    $readiness.laneLifecycle.windows.stopClass | Should -Be 'hard-stop'
+    $readiness.laneLifecycle.windows.stopReason | Should -Match 'Runtime determinism'
   }
 
   It 'ignores unknown step lanes while preserving step rows' {
