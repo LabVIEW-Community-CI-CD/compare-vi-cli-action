@@ -348,16 +348,21 @@ if ! command -v xvfb-run >/dev/null 2>&1; then
 fi
 
 declare -a CLI_ARGS
+
+if [ -n "${COMPARE_LABVIEW_PATH:-}" ]; then
+  CLI_ARGS+=("-LabVIEWPath" "${COMPARE_LABVIEW_PATH}")
+else
+  if LV_PATH="$(find_labview)"; then
+    CLI_ARGS+=("-LabVIEWPath" "${LV_PATH}")
+  fi
+fi
+
 CLI_ARGS+=("-OperationName" "CreateComparisonReport")
 CLI_ARGS+=("-VI1" "${COMPARE_BASE_VI}")
 CLI_ARGS+=("-VI2" "${COMPARE_HEAD_VI}")
 CLI_ARGS+=("-ReportPath" "${COMPARE_REPORT_PATH}")
 CLI_ARGS+=("-ReportType" "${COMPARE_REPORT_TYPE}")
 CLI_ARGS+=("-Headless")
-
-if [ -n "${COMPARE_LABVIEW_PATH:-}" ]; then
-  CLI_ARGS+=("-LabVIEWPath" "${COMPARE_LABVIEW_PATH}")
-fi
 
 if [ -n "${COMPARE_FLAGS_B64:-}" ]; then
   while IFS= read -r flag; do
@@ -415,11 +420,6 @@ done
 printf "%s\n" "[ni-linux-meta]retryAttempts=${ATTEMPT};retryTriggered=${RETRY_TRIGGERED};prelaunchAttempted=${PRELAUNCH_ATTEMPTED};iniPath=${INI_PATH};openTimeout=${COMPARE_OPEN_APP_TIMEOUT:-180};afterLaunchTimeout=${COMPARE_AFTER_LAUNCH_TIMEOUT:-180}"
 exit "${EXIT_CODE}"
 '@
-}
-
-function Convert-ToEncodedCommand {
-  param([Parameter(Mandatory)][string]$CommandText)
-  return [Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes($CommandText))
 }
 
 function Resolve-TempDirectoryPath {
@@ -531,6 +531,21 @@ function Write-TextArtifact {
   }
   if ($null -eq $Content) { $Content = '' }
   Set-Content -LiteralPath $Path -Value $Content -Encoding utf8
+}
+
+function Write-UnixScriptArtifact {
+  param(
+    [Parameter(Mandatory)][string]$Path,
+    [AllowNull()][string]$Content
+  )
+  $parent = Split-Path -Parent $Path
+  if ($parent -and -not (Test-Path -LiteralPath $parent -PathType Container)) {
+    New-Item -ItemType Directory -Path $parent -Force | Out-Null
+  }
+  if ($null -eq $Content) { $Content = '' }
+  $normalized = ([string]$Content) -replace "`r`n", "`n"
+  $utf8NoBom = [System.Text.UTF8Encoding]::new($false)
+  [System.IO.File]::WriteAllText($Path, $normalized, $utf8NoBom)
 }
 
 function Test-LabVIEWCliFailure {
@@ -774,6 +789,7 @@ $stderrContent = ''
 $capturePath = $null
 $stdoutPath = $null
 $stderrPath = $null
+$containerScriptHostPath = $null
 $containerNameForCleanup = ''
 $containerReportPathForExport = ''
 $reportDirectoryForExport = ''
@@ -898,7 +914,9 @@ try {
     $containerReportPathForExport = $containerReportPath
     $reportDirectoryForExport = $reportDirectory
     $containerCommand = New-ContainerCommand
-    $encodedContainerCommand = Convert-ToEncodedCommand -CommandText $containerCommand
+    $containerScriptHostPath = Join-Path $reportDirectory ('linux-compare-entrypoint-{0}.sh' -f $containerName)
+    Write-UnixScriptArtifact -Path $containerScriptHostPath -Content $containerCommand
+    $containerScriptPath = Convert-HostFileToContainerPath -HostFilePath $containerScriptHostPath -MountMap $mounts -MountIndex $mountRef
 
     $dockerArgs = @(
       'run',
@@ -933,8 +951,7 @@ try {
     $dockerArgs += @(
       $Image,
       'bash',
-      '-lc',
-      ([Text.Encoding]::UTF8.GetString([Convert]::FromBase64String($encodedContainerCommand)))
+      $containerScriptPath
     )
 
     $capture.command = ('docker run --name {0} ... {1} bash -lc <linux-compare-script>' -f $containerName, $Image)
@@ -1007,6 +1024,9 @@ try {
   if (-not [string]::IsNullOrWhiteSpace($containerNameForCleanup)) {
     try { & docker rm -f $containerNameForCleanup *> $null } catch {}
   }
+  if (-not [string]::IsNullOrWhiteSpace($containerScriptHostPath) -and (Test-Path -LiteralPath $containerScriptHostPath -PathType Leaf)) {
+    Remove-Item -LiteralPath $containerScriptHostPath -Force -ErrorAction SilentlyContinue
+  }
 
   $runtimeStatusForClassification = ''
   $runtimeReasonForClassification = ''
@@ -1030,8 +1050,22 @@ try {
     -TimedOut:([bool]$capture.timedOut)
 
   $hasHtmlDiffEvidence = $false
-  if ($capture.PSObject.Properties['reportAnalysis'] -and $capture.reportAnalysis -and $capture.reportAnalysis.PSObject.Properties['hasDiffEvidence']) {
-    $hasHtmlDiffEvidence = [bool]$capture.reportAnalysis.hasDiffEvidence
+  $reportAnalysis = $null
+  if ($capture -is [System.Collections.IDictionary]) {
+    if ($capture.Contains('reportAnalysis')) {
+      $reportAnalysis = $capture['reportAnalysis']
+    }
+  } elseif ($capture.PSObject.Properties['reportAnalysis']) {
+    $reportAnalysis = $capture.reportAnalysis
+  }
+  if ($reportAnalysis) {
+    if ($reportAnalysis -is [System.Collections.IDictionary]) {
+      if ($reportAnalysis.Contains('hasDiffEvidence')) {
+        $hasHtmlDiffEvidence = [bool]$reportAnalysis['hasDiffEvidence']
+      }
+    } elseif ($reportAnalysis.PSObject.Properties['hasDiffEvidence']) {
+      $hasHtmlDiffEvidence = [bool]$reportAnalysis.hasDiffEvidence
+    }
   }
   if (
     $hasHtmlDiffEvidence -and
