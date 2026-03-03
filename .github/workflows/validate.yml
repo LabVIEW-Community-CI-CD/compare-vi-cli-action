@@ -336,6 +336,15 @@ jobs:
       shell: bash
       run: node --test tools/__tests__/lint-markdown.test.mjs
 
+    - name: Line ending drift guard
+      shell: pwsh
+      env:
+        GITHUB_TOKEN: ${{ github.token }}
+      run: |
+        pwsh -NoLogo -NoProfile -File tools/Assert-LineEndingDeterminism.ps1 `
+          -GitHubOutputPath $env:GITHUB_OUTPUT `
+          -StepSummaryPath $env:GITHUB_STEP_SUMMARY
+
     - name: Append markdown determinism summary
       if: always()
       shell: pwsh
@@ -345,7 +354,8 @@ jobs:
             '### Markdown Lint Determinism Regression',
             '',
             '- `Invoke-Pester -Path tests/Lint-Markdown.Tests.ps1 -CI`',
-            '- `node --test tools/__tests__/lint-markdown.test.mjs`'
+            '- `node --test tools/__tests__/lint-markdown.test.mjs`',
+            '- `tools/Assert-LineEndingDeterminism.ps1`'
           )
           $lines -join "`n" | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8
         }

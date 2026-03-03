@@ -36,6 +36,7 @@ exit 0
     Push-Location $repoPath
     try {
       git init | Out-Null
+      git config core.autocrlf false
       git config user.email lint-tests@example.com
       git config user.name lint-tests
       git add README.md .markdownlint.jsonc .markdownlintignore tools
@@ -81,6 +82,7 @@ exit 0
     Push-Location $repoPath
     try {
       git init | Out-Null
+      git config core.autocrlf false
       git config user.email lint-tests@example.com
       git config user.name lint-tests
       git add README.md .markdownlint.jsonc .markdownlintignore tools
