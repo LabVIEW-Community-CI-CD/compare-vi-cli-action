@@ -212,7 +212,7 @@ exit 0
     $LASTEXITCODE | Should -Not -Be 0
 
     $text = $output -join "`n"
-    $text | Should -Match 'Docker info probe: parseReason=(daemon-unavailable|docker-info-command-failed)'
+    $text | Should -Match 'Runtime invariant mismatch'
 
     $snapshot = Get-Content -LiteralPath $snapshotPath -Raw | ConvertFrom-Json -Depth 12
     $snapshot.result.status | Should -Be 'mismatch-failed'
@@ -223,7 +223,7 @@ exit 0
     $snapshot.result.reason | Should -Match 'exitCode=1'
   }
 
-  It 'attempts deterministic repair when daemon-unavailable is detected under auto-repair' {
+  It 'hard-stops when observed OSType is empty even under auto-repair' {
     $work = Join-Path $TestDrive 'daemon-unavailable-autorepair'
     New-Item -ItemType Directory -Path $work -Force | Out-Null
     & $script:CreateDockerWslStubs -WorkRoot $work
@@ -244,10 +244,8 @@ exit 0
     $snapshot = Get-Content -LiteralPath $snapshotPath -Raw | ConvertFrom-Json -Depth 12
     $snapshot.result.status | Should -Be 'mismatch-failed'
     $snapshot.observed.dockerOsProbe.last.parseReason | Should -Match '^(daemon-unavailable|docker-info-command-failed)$'
-    @($snapshot.repairActions).Count | Should -BeGreaterThan 0
-    if ($IsWindows) {
-      (@($snapshot.repairActions) -join "`n") | Should -Match 'docker service recovery'
-    }
+    @($snapshot.repairActions).Count | Should -Be 0
+    $snapshot.result.reason | Should -Match 'observed Docker OSType is empty'
   }
 
   It 'captures parsed probe details and emits parse-reason output on success' {

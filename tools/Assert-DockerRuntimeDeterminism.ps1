@@ -773,16 +773,24 @@ if ([string]::IsNullOrWhiteSpace($observedOsType)) {
 if (-not $hostAlignmentOk) {
   $resultStatus = 'mismatch-failed'
 } else {
-  $osMismatch = [string]::IsNullOrWhiteSpace($observedOsType) -or ($observedOsType -ne $ExpectedOsType)
-  $contextMismatch = -not (Test-ContextAccepted `
-    -ObservedContext $observedContext `
-    -ExpectedContext $effectiveExpectedContext `
-    -ExpectedOsType $ExpectedOsType `
-    -ObservedOsType $observedOsType)
+  if ([string]::IsNullOrWhiteSpace($observedOsType)) {
+    $resultStatus = 'mismatch-failed'
+    $probeHint = Format-DockerOsProbeHint -Probe $lastDockerOsProbe
+    $manualSteps = Get-ManualRemediationSteps -TargetOsType $ExpectedOsType -ExpectedContext $effectiveExpectedContext
+    $manualText = if ($manualSteps.Count -gt 0) { [string]::Join('; ', $manualSteps) } else { 'n/a' }
+    Write-Host ("[runtime-determinism] mismatch detected expectedContext={0} observedContext={1} expectedOs={2} observedOs=<empty>" -f $effectiveExpectedContext, ($observedContext ?? '<null>'), $ExpectedOsType) -ForegroundColor Yellow
+    $reason = ("Runtime invariant mismatch. observed Docker OSType is empty for context={0}; expected os={1}, context={2}. Manual remediation: {3}. {4}" -f ($observedContext ?? '<null>'), $ExpectedOsType, $effectiveExpectedContext, $manualText, $probeHint)
+  } else {
+    $osMismatch = ($observedOsType -ne $ExpectedOsType)
+    $contextMismatch = -not (Test-ContextAccepted `
+      -ObservedContext $observedContext `
+      -ExpectedContext $effectiveExpectedContext `
+      -ExpectedOsType $ExpectedOsType `
+      -ObservedOsType $observedOsType)
 
-  if ($osMismatch -or $contextMismatch) {
-    Write-Host ("[runtime-determinism] mismatch detected expectedContext={0} observedContext={1} expectedOs={2} observedOs={3}" -f $effectiveExpectedContext, ($observedContext ?? '<null>'), $ExpectedOsType, ($observedOsType ?? '<null>')) -ForegroundColor Yellow
-    if ($AutoRepair) {
+    if ($osMismatch -or $contextMismatch) {
+      Write-Host ("[runtime-determinism] mismatch detected expectedContext={0} observedContext={1} expectedOs={2} observedOs={3}" -f $effectiveExpectedContext, ($observedContext ?? '<null>'), $ExpectedOsType, ($observedOsType ?? '<null>')) -ForegroundColor Yellow
+      if ($AutoRepair) {
       $daemonUnavailable = (Test-IsDaemonUnavailableProbe -Probe $initialDockerOsProbe) -or (Test-IsDaemonUnavailableProbe -Probe $fallbackDockerOsProbe)
       if ($ManageDockerEngine -and $hostIsWindows -and $osMismatch -and $daemonUnavailable) {
         Write-Host '[runtime-determinism] attempting docker service recovery' -ForegroundColor DarkGray
@@ -869,15 +877,16 @@ if (-not $hostAlignmentOk) {
         $probeHint = Format-DockerOsProbeHint -Probe $lastDockerOsProbe
         $resultStatus = 'mismatch-failed'
         $reason = ("Runtime invariant mismatch after repair. expected os={0}, context={1}; observed os={2}, context={3}. Manual remediation: {4}. {5}" -f $ExpectedOsType, $effectiveExpectedContext, ($observedOsType ?? '<null>'), ($observedContext ?? '<null>'), $manualText, $probeHint)
+        } else {
+          $resultStatus = 'mismatch-repaired'
+        }
       } else {
-        $resultStatus = 'mismatch-repaired'
+        $manualSteps = Get-ManualRemediationSteps -TargetOsType $ExpectedOsType -ExpectedContext $effectiveExpectedContext
+        $manualText = if ($manualSteps.Count -gt 0) { [string]::Join('; ', $manualSteps) } else { 'n/a' }
+        $probeHint = Format-DockerOsProbeHint -Probe $lastDockerOsProbe
+        $resultStatus = 'mismatch-failed'
+        $reason = ("Runtime invariant mismatch. expected os={0}, context={1}; observed os={2}, context={3}. Manual remediation: {4}. {5}" -f $ExpectedOsType, $effectiveExpectedContext, ($observedOsType ?? '<null>'), ($observedContext ?? '<null>'), $manualText, $probeHint)
       }
-    } else {
-      $manualSteps = Get-ManualRemediationSteps -TargetOsType $ExpectedOsType -ExpectedContext $effectiveExpectedContext
-      $manualText = if ($manualSteps.Count -gt 0) { [string]::Join('; ', $manualSteps) } else { 'n/a' }
-      $probeHint = Format-DockerOsProbeHint -Probe $lastDockerOsProbe
-      $resultStatus = 'mismatch-failed'
-      $reason = ("Runtime invariant mismatch. expected os={0}, context={1}; observed os={2}, context={3}. Manual remediation: {4}. {5}" -f $ExpectedOsType, $effectiveExpectedContext, ($observedOsType ?? '<null>'), ($observedContext ?? '<null>'), $manualText, $probeHint)
     }
   }
 }
