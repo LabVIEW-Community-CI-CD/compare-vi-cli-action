@@ -205,22 +205,39 @@ try {
       Get-ChangedMarkdownFiles -Base $mergeBase
     }
   )
+  $markdownFiles = @($markdownFiles | Where-Object { $_ })
 
-  if ($markdownFiles) {
-    $markdownFiles = $markdownFiles | Where-Object { -not (Test-MarkdownlintIgnored -Path $_ -Matchers $ignoreMatchers) }
+  if ($markdownFiles.Count -gt 0) {
+    $markdownFiles = @(
+      $markdownFiles | Where-Object { -not (Test-MarkdownlintIgnored -Path $_ -Matchers $ignoreMatchers) }
+    )
   }
 
-  if (-not $markdownFiles -or $markdownFiles.Count -eq 0) {
+  if ($markdownFiles.Count -eq 0) {
     Write-Host 'No Markdown files to lint.'
     exit 0
   }
 
   # Scoped suppressions for known large/generated files until backlog is addressed
-  $suppressed = @(
+  $suppressedExact = @(
     'CHANGELOG.md',
     'fixture-summary.md'
   )
-  $filesToLint = @($markdownFiles | Where-Object { $suppressed -notcontains $_ })
+  $suppressedNamePatterns = @(
+    '^\.tmp-.*\.md$',
+    '^pr-.*-body\.md$'
+  )
+  $filesToLint = @(
+    $markdownFiles | Where-Object {
+      $path = $_.Replace('\', '/')
+      $leaf = Split-Path -Path $path -Leaf
+      if ($suppressedExact -contains $path) { return $false }
+      foreach ($pattern in $suppressedNamePatterns) {
+        if ($leaf -match $pattern) { return $false }
+      }
+      return $true
+    }
+  )
 
   if (-not $filesToLint -or $filesToLint.Count -eq 0) {
     Write-Host 'No Markdown files to lint.'
