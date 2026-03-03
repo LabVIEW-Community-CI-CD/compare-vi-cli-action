@@ -90,23 +90,35 @@ namespace CompareVi.Tools.Cli.Tests
             Assert.True(json["isDiff"]!.GetValue<bool>());
             Assert.Equal("pass", json["gateOutcome"]!.GetValue<string>());
             Assert.Equal("none", json["failureClass"]!.GetValue<string>());
+            Assert.Equal("1.0.0", json["imageIndex"]!["schemaVersion"]!.GetValue<string>());
+            Assert.True(json["imageIndex"]!["images"]!.AsArray().Count >= 1);
         }
 
         [Fact]
         public void CompareRange_DryRun_EmitsRangeContract()
         {
-            var run = RunCli("compare range --base origin/develop --head HEAD --dry-run");
+            var outDir = Path.Combine(RepoRoot, "tests", "results", "_agent", "cli-phase1-range-out");
+            var run = RunCli($"compare range --base origin/develop --head HEAD --dry-run --out-dir \"{outDir}\"");
             Assert.Equal(0, run.ExitCode);
 
             var json = JsonNode.Parse(run.StdOut)!.AsObject();
             Assert.Equal("comparevi-cli/compare-range@v1", json["schema"]!.GetValue<string>());
             Assert.Equal("1.0.0", json["schemaVersion"]!.GetValue<string>());
+            Assert.Equal("additive-within-major", json["schemaCompatibility"]!["policy"]!.GetValue<string>());
             Assert.Equal("compare range", json["command"]!.GetValue<string>());
             Assert.Equal("origin/develop", json["base"]!.GetValue<string>());
             Assert.Equal("HEAD", json["head"]!.GetValue<string>());
             Assert.Equal("pass", json["outcome"]!["class"]!.GetValue<string>());
             Assert.Equal("no_diff", json["outcome"]!["kind"]!.GetValue<string>());
             Assert.Equal("pass", json["gateOutcome"]!.GetValue<string>());
+            Assert.Equal(Path.GetFullPath(outDir), json["outDir"]!.GetValue<string>());
+            Assert.EndsWith("vi-history-summary.json", json["summaryJsonPath"]!.GetValue<string>(), StringComparison.OrdinalIgnoreCase);
+            Assert.EndsWith("vi-history-summary.md", json["summaryMarkdownPath"]!.GetValue<string>(), StringComparison.OrdinalIgnoreCase);
+            Assert.EndsWith("vi-history-report.html", json["consolidatedReportPath"]!.GetValue<string>(), StringComparison.OrdinalIgnoreCase);
+            Assert.EndsWith("vi-history-image-index.json", json["imageIndexPath"]!.GetValue<string>(), StringComparison.OrdinalIgnoreCase);
+            Assert.Equal("comparevi-cli/image-index@v1", json["imageIndex"]!["schema"]!.GetValue<string>());
+            Assert.Equal("1.0.0", json["imageIndex"]!["schemaVersion"]!.GetValue<string>());
+            Assert.Empty(json["imageIndex"]!["images"]!.AsArray());
         }
 
         [Fact]
@@ -132,7 +144,8 @@ namespace CompareVi.Tools.Cli.Tests
             Directory.CreateDirectory(Path.GetDirectoryName(inputPath)!);
             File.WriteAllText(inputPath, "{}");
 
-            var run = RunCli($"history run --input \"{inputPath}\" --dry-run");
+            var outDir = Path.Combine(RepoRoot, "tests", "results", "_agent", "cli-phase1-history-out");
+            var run = RunCli($"history run --input \"{inputPath}\" --dry-run --out-dir \"{outDir}\"");
             Assert.Equal(0, run.ExitCode);
 
             var json = JsonNode.Parse(run.StdOut)!.AsObject();
@@ -142,6 +155,9 @@ namespace CompareVi.Tools.Cli.Tests
             Assert.Equal("pass", json["outcome"]!["class"]!.GetValue<string>());
             Assert.Equal("no_diff", json["outcome"]!["kind"]!.GetValue<string>());
             Assert.Equal("pass", json["gateOutcome"]!.GetValue<string>());
+            Assert.Equal(Path.GetFullPath(outDir), json["outDir"]!.GetValue<string>());
+            Assert.EndsWith("vi-history-report.html", json["consolidatedReportPath"]!.GetValue<string>(), StringComparison.OrdinalIgnoreCase);
+            Assert.Equal("1.0.0", json["imageIndex"]!["schemaVersion"]!.GetValue<string>());
         }
 
         [Fact]
@@ -151,7 +167,8 @@ namespace CompareVi.Tools.Cli.Tests
             Directory.CreateDirectory(Path.GetDirectoryName(inputPath)!);
             File.WriteAllText(inputPath, "{}");
 
-            var run = RunCli($"report consolidate --input \"{inputPath}\" --dry-run");
+            var outDir = Path.Combine(RepoRoot, "tests", "results", "_agent", "cli-phase1-report-out");
+            var run = RunCli($"report consolidate --input \"{inputPath}\" --dry-run --out-dir \"{outDir}\"");
             Assert.Equal(0, run.ExitCode);
 
             var json = JsonNode.Parse(run.StdOut)!.AsObject();
@@ -161,6 +178,9 @@ namespace CompareVi.Tools.Cli.Tests
             Assert.Equal("pass", json["outcome"]!["class"]!.GetValue<string>());
             Assert.Equal("no_diff", json["outcome"]!["kind"]!.GetValue<string>());
             Assert.Equal("pass", json["gateOutcome"]!.GetValue<string>());
+            Assert.Equal(Path.GetFullPath(outDir), json["outDir"]!.GetValue<string>());
+            Assert.EndsWith("vi-history-image-index.json", json["imageIndexPath"]!.GetValue<string>(), StringComparison.OrdinalIgnoreCase);
+            Assert.Equal("comparevi-cli/image-index@v1", json["imageIndex"]!["schema"]!.GetValue<string>());
         }
 
         [Fact]
