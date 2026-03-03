@@ -80,6 +80,7 @@
         "docs/plans/TRACEABILITY_MATRIX_PLAN.md",
         "docs/plans/VALIDATION_MATRIX.md",
         "docs/QUANTILE_ACCURACY.md",
+        "docs/requirements/DOTNET_CLI_RELEASE_ASSET.md",
         "docs/requirements/PESTER_SINGLE_INVOKER.md",
         "docs/requirements/SINGLE_INVOKER_SYSTEM_DEFINITION.md",
         "docs/requirements/WATCH_AND_QUEUE.md",
