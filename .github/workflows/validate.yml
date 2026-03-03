@@ -851,8 +851,50 @@ jobs:
     defaults:
       run:
         shell: pwsh
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v5
+
+      - name: Bootstrap Docker Windows engine (self-hosted)
+        run: |
+          $service = Get-Service -Name 'com.docker.service' -ErrorAction SilentlyContinue
+          if ($service -and $service.Status -ne 'Running') {
+            Start-Service -Name 'com.docker.service' -ErrorAction Stop
+          }
+
+          $dockerCliCandidates = @(
+            (Join-Path $env:ProgramFiles 'Docker\Docker\DockerCli.exe'),
+            (Join-Path $env:ProgramW6432 'Docker\Docker\DockerCli.exe'),
+            (Join-Path $env:ProgramFiles 'Docker\Docker\com.docker.cli.exe'),
+            (Join-Path $env:ProgramW6432 'Docker\Docker\com.docker.cli.exe')
+          ) | Where-Object { -not [string]::IsNullOrWhiteSpace($_) -and (Test-Path -LiteralPath $_ -PathType Leaf) }
+
+          if ($dockerCliCandidates.Count -gt 0) {
+            $dockerCli = $dockerCliCandidates[0]
+            Write-Host ("[docker-bootstrap] switching engine via {0} -SwitchWindowsEngine" -f $dockerCli)
+            & $dockerCli -SwitchWindowsEngine 2>&1 | Out-Host
+          } else {
+            Write-Host '[docker-bootstrap] DockerCli.exe not found; relying on existing engine mode'
+          }
+
+          $deadline = (Get-Date).AddMinutes(3)
+          $ready = $false
+          while ((Get-Date) -lt $deadline) {
+            $probe = & docker info --format '{{.OSType}}' 2>&1
+            if ($LASTEXITCODE -eq 0 -and $probe) {
+              $osType = ([string]$probe).Trim().ToLowerInvariant()
+              if ($osType -eq 'windows') {
+                Write-Host '[docker-bootstrap] docker info reports windows'
+                $ready = $true
+                break
+              }
+            }
+            Start-Sleep -Seconds 3
+          }
+
+          if (-not $ready) {
+            throw 'Docker windows engine did not become ready within 3 minutes.'
+          }
 
       - name: Manage Docker runtime (Windows lane preflight)
         run: |
@@ -919,7 +961,7 @@ jobs:
 
       - name: Write Docker fast-loop readiness
         id: readiness
-        if: always()
+        if: always() && steps.loop.outcome != 'skipped'
         run: |
           $summaryPath = '${{ steps.loop.outputs.summary_path }}'
           $resultsRoot = 'tests/results/local-parity/windows'
