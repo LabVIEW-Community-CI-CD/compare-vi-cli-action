@@ -10,6 +10,8 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: write
+      attestations: write
+      id-token: write
     outputs:
       cli_version: ${{ steps.meta.outputs.cli_version }}
     steps:
@@ -64,6 +66,14 @@ jobs:
         shell: pwsh
         run: pwsh -File tools/Publish-Cli.ps1
 
+      - name: Generate SBOM (SPDX)
+        shell: pwsh
+        run: pwsh -NoLogo -NoProfile -File tools/Generate-ReleaseSbom.ps1 -ArtifactsRoot artifacts/cli -OutputPath sbom.spdx.json
+
+      - name: Generate provenance metadata
+        shell: pwsh
+        run: pwsh -NoLogo -NoProfile -File tools/Generate-ReleaseProvenance.ps1 -ArtifactsRoot artifacts/cli -OutputPath provenance.json
+
       - name: Upload workflow artifact (CLI)
         uses: actions/upload-artifact@v5
         with:
@@ -72,7 +82,19 @@ jobs:
             artifacts/cli/*.zip
             artifacts/cli/*.tar.gz
             artifacts/cli/SHA256SUMS.txt
+            artifacts/cli/sbom.spdx.json
+            artifacts/cli/provenance.json
           if-no-files-found: error
+
+      - name: Attest release assets provenance
+        uses: actions/attest-build-provenance@v2
+        with:
+          subject-path: |
+            artifacts/cli/*.zip
+            artifacts/cli/*.tar.gz
+            artifacts/cli/SHA256SUMS.txt
+            artifacts/cli/sbom.spdx.json
+            artifacts/cli/provenance.json
 
       - name: Upload assets to GitHub Release
         uses: softprops/action-gh-release@v2
@@ -81,6 +103,8 @@ jobs:
             artifacts/cli/*.zip
             artifacts/cli/*.tar.gz
             artifacts/cli/SHA256SUMS.txt
+            artifacts/cli/sbom.spdx.json
+            artifacts/cli/provenance.json
 
   validate-cli-artifacts:
     runs-on: ${{ matrix.os }}
