@@ -2,7 +2,7 @@
   "$schema": "./schemas/documentation-manifest-v1.schema.json",
   "schema": "documentation-manifest-v1",
   "version": "1.0.0",
-  "updated": "2025-11-02T01:40:00Z",
+  "updated": "2026-03-03T21:35:00Z",
   "entries": [
     {
       "name": "Root Playbooks",
@@ -81,6 +81,8 @@
         "docs/plans/VALIDATION_MATRIX.md",
         "docs/QUANTILE_ACCURACY.md",
         "docs/requirements/DOTNET_CLI_RELEASE_ASSET.md",
+        "docs/requirements/DOTNET_CLI_POWERSHELL_MAPPING.md",
+        "docs/requirements/DOTNET_CLI_RELEASE_CHECKLIST.md",
         "docs/requirements/PESTER_SINGLE_INVOKER.md",
         "docs/requirements/SINGLE_INVOKER_SYSTEM_DEFINITION.md",
         "docs/requirements/WATCH_AND_QUEUE.md",
