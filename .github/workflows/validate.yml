@@ -1042,6 +1042,7 @@ jobs:
           $resultsRoot = 'tests/results/local-parity/linux'
           New-Item -ItemType Directory -Path $resultsRoot -Force | Out-Null
           $reportPath = Join-Path $resultsRoot 'linux-compare-report.html'
+          "linux_compare_report=$reportPath" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
           $runtimeSnapshot = Join-Path $resultsRoot 'runtime-manager-compare-linux.json'
           pwsh -NoLogo -NoProfile -File tools/Run-NILinuxContainerCompare.ps1 `
             -BaseVi 'fixtures/vi-attr/Base.vi' `
@@ -1069,6 +1070,39 @@ jobs:
             throw ("Linux compare failed (exit={0}) and capture file was not found at {1}" -f $compareExit, $capturePath)
           }
 
+      - name: Validate Linux comparison report artifact contract
+        if: always()
+        run: |
+          $resultsRoot = 'tests/results/local-parity/linux'
+          $reportPath = '${{ steps.linux-compare.outputs.linux_compare_report }}'
+          if ([string]::IsNullOrWhiteSpace($reportPath)) {
+            $reportPath = Join-Path $resultsRoot 'linux-compare-report.html'
+          }
+          $capturePath = Join-Path $resultsRoot 'ni-linux-container-capture.json'
+          $summaryPath = Join-Path $resultsRoot 'linux-compare-artifact-summary.json'
+
+          $reportExists = Test-Path -LiteralPath $reportPath -PathType Leaf
+          $captureExists = Test-Path -LiteralPath $capturePath -PathType Leaf
+          $compareSucceeded = '${{ steps.linux-compare.conclusion }}' -eq 'success'
+
+          $payload = [ordered]@{
+            schema = 'vi-history/linux-compare-artifact-summary@v1'
+            generatedAt = (Get-Date).ToUniversalTime().ToString('o')
+            compareStepConclusion = '${{ steps.linux-compare.conclusion }}'
+            reportPath = $reportPath
+            reportExists = [bool]$reportExists
+            capturePath = $capturePath
+            captureExists = [bool]$captureExists
+          }
+          $payload | ConvertTo-Json -Depth 8 | Set-Content -LiteralPath $summaryPath -Encoding utf8
+
+          if ($compareSucceeded -and -not $reportExists) {
+            throw ("Linux compare step succeeded but report file was not found: {0}" -f $reportPath)
+          }
+          if (-not $reportExists) {
+            Write-Host ("::warning::Linux comparison report not found at {0}" -f $reportPath)
+          }
+
       - name: Upload VI history scenario artifacts (Linux lane)
         if: always()
         uses: actions/upload-artifact@v5
@@ -1076,6 +1110,7 @@ jobs:
           name: validate-vi-history-scenarios-linux
           path: |
             tests/results/local-parity/linux/linux-compare-report.html
+            tests/results/local-parity/linux/linux-compare-artifact-summary.json
             tests/results/local-parity/linux/ni-linux-container-capture.json
             tests/results/local-parity/linux/runtime-manager-preflight-linux.json
             tests/results/local-parity/linux/runtime-manager-compare-linux.json
