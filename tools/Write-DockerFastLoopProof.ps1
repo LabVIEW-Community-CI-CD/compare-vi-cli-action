@@ -163,6 +163,40 @@ $hardStopReason = if ($readiness.PSObject.Properties['hardStopReason']) {
 } else {
   ''
 }
+$runtimeManager = if ($readiness.PSObject.Properties['runtimeManager']) {
+  $readiness.runtimeManager
+} elseif ($summary -and $summary.PSObject.Properties['runtimeManager']) {
+  $summary.runtimeManager
+} else {
+  $null
+}
+$runtimeManagerTransitionCount = if ($readiness.PSObject.Properties['runtimeManagerTransitionCount']) {
+  [int]$readiness.runtimeManagerTransitionCount
+} elseif ($summary -and $summary.PSObject.Properties['runtimeManagerTransitionCount']) {
+  [int]$summary.runtimeManagerTransitionCount
+} elseif ($runtimeManager -and $runtimeManager.PSObject.Properties['transitionCount']) {
+  [int]$runtimeManager.transitionCount
+} else {
+  0
+}
+$runtimeManagerDaemonUnavailableCount = if ($readiness.PSObject.Properties['runtimeManagerDaemonUnavailableCount']) {
+  [int]$readiness.runtimeManagerDaemonUnavailableCount
+} elseif ($summary -and $summary.PSObject.Properties['runtimeManagerDaemonUnavailableCount']) {
+  [int]$summary.runtimeManagerDaemonUnavailableCount
+} elseif ($runtimeManager -and $runtimeManager.PSObject.Properties['daemonUnavailableCount']) {
+  [int]$runtimeManager.daemonUnavailableCount
+} else {
+  0
+}
+$runtimeManagerParseDefectCount = if ($readiness.PSObject.Properties['runtimeManagerParseDefectCount']) {
+  [int]$readiness.runtimeManagerParseDefectCount
+} elseif ($summary -and $summary.PSObject.Properties['runtimeManagerParseDefectCount']) {
+  [int]$summary.runtimeManagerParseDefectCount
+} elseif ($runtimeManager -and $runtimeManager.PSObject.Properties['parseDefectCount']) {
+  [int]$runtimeManager.parseDefectCount
+} else {
+  0
+}
 
 $proof = [ordered]@{
   schema = 'vi-history/docker-fast-loop-proof@v1'
@@ -178,6 +212,10 @@ $proof = [ordered]@{
   toolFailureCount = [int]$toolFailureCount
   hardStopTriggered = [bool]$hardStopTriggered
   hardStopReason = $hardStopReason
+  runtimeManagerTransitionCount = [int]$runtimeManagerTransitionCount
+  runtimeManagerDaemonUnavailableCount = [int]$runtimeManagerDaemonUnavailableCount
+  runtimeManagerParseDefectCount = [int]$runtimeManagerParseDefectCount
+  runtimeManager = $runtimeManager
   readinessPath = $readinessResolved
   summaryPath = $summaryResolved
   statusPath = $statusResolved
