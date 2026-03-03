@@ -839,7 +839,7 @@ jobs:
           } >> "$GITHUB_STEP_SUMMARY"
 
   vi-history-scenarios-windows:
-    needs: [smoke-gate, lint, fixtures, session-index]
+    needs: [smoke-gate, lint, fixtures, session-index, vi-history-scenarios-linux]
     if: >
       needs.smoke-gate.outputs.skip != 'true' &&
       github.event_name == 'workflow_dispatch' &&
@@ -960,7 +960,7 @@ jobs:
             tests/results/_agent/gates/docker-fast-loop-proof-*.json
           if-no-files-found: warn
 
-  vi-history-scenarios-linux-parity:
+  vi-history-scenarios-linux:
     needs: [smoke-gate, lint, fixtures, session-index]
     if: >
       needs.smoke-gate.outputs.skip != 'true' &&
@@ -976,7 +976,10 @@ jobs:
     steps:
       - uses: actions/checkout@v5
 
-      - name: Manage Docker runtime (Linux parity preflight)
+      - name: Pull NI Linux image (2026q1-linux)
+        run: docker pull nationalinstruments/labview:2026q1-linux
+
+      - name: Manage Docker runtime (Linux preflight)
         run: |
           $resultsRoot = 'tests/results/local-parity/linux'
           New-Item -ItemType Directory -Path $resultsRoot -Force | Out-Null
@@ -991,12 +994,13 @@ jobs:
             -SnapshotPath $snapshotPath `
             -GitHubOutputPath ''
 
-      - name: Run Docker Desktop fast-loop (Linux parity lane)
+      - name: Run Docker fast-loop (Linux lane)
         id: loop
         run: |
           $resultsRoot = 'tests/results/local-parity/linux'
           $summaryOutput = pwsh -NoLogo -NoProfile -File tools/Test-DockerDesktopFastLoop.ps1 `
             -ResultsRoot $resultsRoot `
+            -LinuxImage 'nationalinstruments/labview:2026q1-linux' `
             -SkipWindowsProbe `
             -HistoryScenarioSet none `
             -ManageDockerEngine:$true
@@ -1012,7 +1016,7 @@ jobs:
           }
           if ($exit -ne 0) { exit $exit }
 
-      - name: Write Docker fast-loop readiness (Linux parity lane)
+      - name: Write Docker fast-loop readiness (Linux lane)
         id: readiness
         if: always()
         run: |
@@ -1030,7 +1034,7 @@ jobs:
           & pwsh @args
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
-      - name: Write Docker fast-loop proof (Linux parity lane)
+      - name: Write Docker fast-loop proof (Linux lane)
         id: proof
         if: always() && steps.readiness.outputs.readiness-json-path != ''
         run: |
@@ -1042,7 +1046,7 @@ jobs:
             -StatusPath $statusPath `
             -GitHubOutputPath $env:GITHUB_OUTPUT
 
-      - name: Upload VI history scenario artifacts (Linux parity lane)
+      - name: Upload VI history scenario artifacts (Linux lane)
         if: always()
         uses: actions/upload-artifact@v5
         with:
