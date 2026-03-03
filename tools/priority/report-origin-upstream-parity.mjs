@@ -81,7 +81,8 @@ export function parseCliArgs(argv = process.argv.slice(2)) {
     outputPath: null,
     githubOutputPath: null,
     stepSummaryPath: null,
-    strict: false
+    strict: false,
+    failOnTreeDiff: false
   };
 
   for (let i = 0; i < args.length; i += 1) {
@@ -126,6 +127,10 @@ export function parseCliArgs(argv = process.argv.slice(2)) {
       options.strict = true;
       continue;
     }
+    if (token === '--fail-on-tree-diff') {
+      options.failOnTreeDiff = true;
+      continue;
+    }
     if (token === '--help' || token === '-h') {
       options.help = true;
       continue;
@@ -136,6 +141,99 @@ export function parseCliArgs(argv = process.argv.slice(2)) {
   return options;
 }
 
+function parseRemoteFromRef(ref) {
+  const text = trimText(ref);
+  if (!text.includes('/')) return null;
+  const [candidate] = text.split('/');
+  if (!candidate) return null;
+  if (!/^[A-Za-z0-9._-]+$/.test(candidate)) return null;
+  return candidate;
+}
+
+function runGitOptional(args, runner = sh) {
+  const result = ensureCommand(runner('git', args), 'git');
+  if (result.status !== 0) return null;
+  return trimText(result.stdout);
+}
+
+function collectRemoteDetails(remoteName, runner = sh) {
+  if (!remoteName) {
+    return {
+      name: null,
+      present: false,
+      fetchUrl: null,
+      pushUrl: null
+    };
+  }
+
+  const fetchUrl = runGitOptional(['remote', 'get-url', remoteName], runner);
+  const pushUrl = runGitOptional(['remote', 'get-url', '--push', remoteName], runner);
+  return {
+    name: remoteName,
+    present: Boolean(fetchUrl || pushUrl),
+    fetchUrl: fetchUrl || null,
+    pushUrl: pushUrl || null
+  };
+}
+
+function buildParityRecommendation({
+  baseRef,
+  headRef,
+  treeEqual,
+  baseOnly,
+  headOnly,
+  tipDiffCount
+}) {
+  if (treeEqual && baseOnly === 0 && headOnly === 0) {
+    return {
+      code: 'aligned',
+      summary: 'Tree and history are aligned.',
+      nextActions: []
+    };
+  }
+
+  if (treeEqual) {
+    return {
+      code: 'history-diverged-tree-equal',
+      summary: 'Tree is aligned but commit history diverges (typically due to squash/merge style).',
+      nextActions: [
+        `No code sync required; optional history normalization can be handled with policy-approved merge strategy between ${baseRef} and ${headRef}.`
+      ]
+    };
+  }
+
+  if (headOnly > 0 && baseOnly === 0) {
+    return {
+      code: 'sync-base-from-head',
+      summary: `${headRef} is ahead with tree drift; sync ${baseRef} from ${headRef}.`,
+      nextActions: [
+        `Open a sync PR from ${headRef} into ${baseRef} or apply a tip-diff file sync from ${headRef}.`,
+        `Validate required checks before merging into ${baseRef}.`
+      ]
+    };
+  }
+
+  if (baseOnly > 0 && headOnly === 0) {
+    return {
+      code: 'sync-head-from-base',
+      summary: `${baseRef} is ahead with tree drift; sync ${headRef} from ${baseRef}.`,
+      nextActions: [
+        `Open a sync PR from ${baseRef} into ${headRef} or apply a tip-diff file sync from ${baseRef}.`,
+        `Validate required checks before merging into ${headRef}.`
+      ]
+    };
+  }
+
+  return {
+    code: 'bidirectional-drift',
+    summary: `Both ${baseRef} and ${headRef} diverged with tree drift; manual parity branch required.`,
+    nextActions: [
+      `Create a dedicated parity branch from ${baseRef}, cherry-pick or file-sync intended deltas from ${headRef}.`,
+      'Run full validation and merge with admin policy as needed.'
+    ]
+  };
+}
+
 export function collectParity(options = {}, runner = sh) {
   const baseRef = options.baseRef || 'upstream/develop';
   const headRef = options.headRef || 'origin/develop';
@@ -144,11 +242,32 @@ export function collectParity(options = {}, runner = sh) {
   const now = new Date().toISOString();
 
   try {
+    const baseCommit = trimText(runGit(['rev-parse', '--verify', baseRef], runner));
+    const headCommit = trimText(runGit(['rev-parse', '--verify', headRef], runner));
+    const baseTree = trimText(runGit(['rev-parse', `${baseRef}^{tree}`], runner));
+    const headTree = trimText(runGit(['rev-parse', `${headRef}^{tree}`], runner));
     const countsText = runGit(['rev-list', '--left-right', '--count', `${baseRef}...${headRef}`], runner);
     const counts = parseRevListCounts(countsText);
     const filesText = runGit(['diff', '--name-only', baseRef, headRef], runner);
     const files = parseFileList(filesText);
     const sample = sampleLimit > 0 ? files.slice(0, sampleLimit) : [];
+    const treeEqual = baseTree === headTree;
+    const historyEqual = counts.baseOnly === 0 && counts.headOnly === 0;
+    const baseRemote = parseRemoteFromRef(baseRef);
+    const headRemote = parseRemoteFromRef(headRef);
+    const recommendation = buildParityRecommendation({
+      baseRef,
+      headRef,
+      treeEqual,
+      baseOnly: counts.baseOnly,
+      headOnly: counts.headOnly,
+      tipDiffCount: files.length
+    });
+    const baseRemoteDetails = collectRemoteDetails(baseRemote, runner);
+    const headRemoteDetails = collectRemoteDetails(headRemote, runner);
+    const remotes = {};
+    if (baseRemoteDetails.name) remotes[baseRemoteDetails.name] = baseRemoteDetails;
+    if (headRemoteDetails.name) remotes[headRemoteDetails.name] = headRemoteDetails;
 
     return {
       schema: 'origin-upstream-parity@v1',
@@ -156,10 +275,41 @@ export function collectParity(options = {}, runner = sh) {
       generatedAt: now,
       baseRef,
       headRef,
+      refs: {
+        base: {
+          ref: baseRef,
+          commit: baseCommit,
+          tree: baseTree
+        },
+        head: {
+          ref: headRef,
+          commit: headCommit,
+          tree: headTree
+        }
+      },
+      treeParity: {
+        equal: treeEqual,
+        status: treeEqual ? 'equal' : 'different',
+        baseTree,
+        headTree
+      },
+      historyParity: {
+        equal: historyEqual,
+        status: historyEqual ? 'equal' : 'diverged',
+        baseOnly: counts.baseOnly,
+        headOnly: counts.headOnly
+      },
+      recommendation,
+      remoteManagement: {
+        baseRemote,
+        headRemote,
+        remotes
+      },
       tipDiff: {
         fileCount: files.length,
         sampleLimit,
-        sample
+        sample,
+        treeConsistent: treeEqual ? files.length === 0 : true
       },
       commitDivergence: {
         baseOnly: counts.baseOnly,
@@ -212,14 +362,26 @@ export function renderSummaryMarkdown(report) {
     `| Status | ok |`,
     `| Base Ref | ${report.baseRef} |`,
     `| Head Ref | ${report.headRef} |`,
+    `| Tree Parity | ${report.treeParity?.status || 'unknown'} |`,
+    `| History Parity | ${report.historyParity?.status || 'unknown'} |`,
     `| Tip Diff File Count | ${report.tipDiff.fileCount} |`,
-    `| Commit Divergence (base-only/head-only) | ${report.commitDivergence.baseOnly}/${report.commitDivergence.headOnly} |`
+    `| Commit Divergence (base-only/head-only) | ${report.commitDivergence.baseOnly}/${report.commitDivergence.headOnly} |`,
+    `| Recommendation | ${report.recommendation?.code || 'n/a'} |`
   ];
 
   if (Array.isArray(report.tipDiff.sample) && report.tipDiff.sample.length > 0) {
     lines.push('', 'Tip-diff sample:');
     for (const file of report.tipDiff.sample) {
       lines.push(`- \`${file}\``);
+    }
+  }
+  if (report.recommendation?.summary) {
+    lines.push('', `Recommendation summary: ${report.recommendation.summary}`);
+  }
+  if (Array.isArray(report.recommendation?.nextActions) && report.recommendation.nextActions.length > 0) {
+    lines.push('', 'Next actions:');
+    for (const action of report.recommendation.nextActions) {
+      lines.push(`- ${action}`);
     }
   }
 
@@ -239,6 +401,7 @@ Options:
   --github-output <file>    Append GitHub output variables
   --step-summary <file>     Append markdown summary
   --strict                  Fail on git/ref errors instead of reporting unavailable
+  --fail-on-tree-diff       Exit non-zero when tree parity is different
   --help, -h                Show help`);
 }
 
@@ -272,6 +435,21 @@ async function main() {
     'parity_head_only_commits',
     report.status === 'ok' ? report.commitDivergence.headOnly : ''
   );
+  appendGitHubOutput(
+    options.githubOutputPath,
+    'parity_tree_equal',
+    report.status === 'ok' ? report.treeParity?.equal : ''
+  );
+  appendGitHubOutput(
+    options.githubOutputPath,
+    'parity_history_equal',
+    report.status === 'ok' ? report.historyParity?.equal : ''
+  );
+  appendGitHubOutput(
+    options.githubOutputPath,
+    'parity_recommendation_code',
+    report.status === 'ok' ? report.recommendation?.code : ''
+  );
   appendGitHubOutput(options.githubOutputPath, 'parity_report_path', outputPath);
 
   if (options.stepSummaryPath) {
@@ -284,10 +462,24 @@ async function main() {
     console.log(
       `[parity] tipDiff=${report.tipDiff.fileCount} commits=${report.commitDivergence.baseOnly}/${report.commitDivergence.headOnly}`
     );
+    console.log(
+      `[parity] tree=${report.treeParity?.status || 'unknown'} history=${report.historyParity?.status || 'unknown'} recommendation=${report.recommendation?.code || 'n/a'}`
+    );
   } else {
     console.log(`[parity] reason=${report.reason}`);
   }
   console.log(`[parity] report=${outputPath}`);
+
+  if (options.failOnTreeDiff) {
+    if (report.status !== 'ok') {
+      throw new Error('Unable to evaluate tree parity because parity status is unavailable.');
+    }
+    if (!report.treeParity?.equal) {
+      throw new Error(
+        `Tree parity mismatch for ${report.baseRef} vs ${report.headRef} (${report.refs?.base?.tree || '<unknown>'} != ${report.refs?.head?.tree || '<unknown>'}).`
+      );
+    }
+  }
 }
 
 const modulePath = path.resolve(fileURLToPath(import.meta.url));
@@ -298,4 +490,3 @@ if (invokedPath && invokedPath === modulePath) {
     process.exitCode = 1;
   });
 }
-
