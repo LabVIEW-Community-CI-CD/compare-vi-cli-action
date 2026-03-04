@@ -1,0 +1,64 @@
+name: PR Agent Review Routing
+
+on:
+  pull_request_target:
+    types: [opened, synchronize, reopened, ready_for_review, edited, labeled, unlabeled]
+
+permissions:
+  pull-requests: write
+  contents: read
+
+jobs:
+  request-reviewer:
+    if: github.event.pull_request.draft == false
+    runs-on: ubuntu-latest
+    steps:
+      - name: Route reviewer for agent-authored PRs
+        uses: actions/github-script@v8
+        with:
+          script: |
+            const pr = context.payload.pull_request;
+            const body = pr.body || '';
+            const title = pr.title || '';
+            const labels = (pr.labels || []).map((l) => l.name);
+
+            const hasAgentMetadata = /Agent-ID\s*:/i.test(body);
+            const hasCodexLabel = labels.includes('codex');
+            const isAgentPR = hasAgentMetadata || hasCodexLabel;
+
+            if (!isAgentPR) {
+              core.info('PR is not marked as agent-authored; skipping reviewer routing.');
+              return;
+            }
+
+            const owner = context.repo.owner;
+            const repo = context.repo.repo;
+            const pull_number = pr.number;
+            const requiredReviewer = 'svelderrainruiz';
+
+            const currentReviewRequests = await github.rest.pulls.listRequestedReviewers({
+              owner,
+              repo,
+              pull_number
+            });
+            const alreadyRequested = (currentReviewRequests.data.users || []).some((u) => u.login === requiredReviewer);
+            if (alreadyRequested) {
+              core.info(`Reviewer @${requiredReviewer} is already requested.`);
+              return;
+            }
+
+            try {
+              await github.rest.pulls.requestReviewers({
+                owner,
+                repo,
+                pull_number,
+                reviewers: [requiredReviewer]
+              });
+              core.info(`Requested reviewer @${requiredReviewer} for PR #${pull_number}.`);
+            } catch (error) {
+              if ((error.status || 0) === 422) {
+                core.info(`Reviewer @${requiredReviewer} could not be re-requested (likely already reviewed/requested).`);
+                return;
+              }
+              throw error;
+            }
