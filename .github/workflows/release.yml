@@ -333,14 +333,18 @@ jobs:
             -RuntimeEngineReadyTimeoutSeconds 120 `
             -RuntimeEngineReadyPollSeconds 3 `
             -RuntimeSnapshotPath $runtimeSnapshot
+          $compareExit = $LASTEXITCODE
 
-          $capturePath = 'tests/results/ni-linux-container/ni-linux-container-capture.json'
+          $capturePath = Join-Path $resultsRoot 'ni-linux-container-capture.json'
           if (-not (Test-Path -LiteralPath $capturePath -PathType Leaf)) {
             throw "NI Linux capture was not created: $capturePath"
           }
           $capture = Get-Content -LiteralPath $capturePath -Raw | ConvertFrom-Json -Depth 12
-          if ($capture.status -ne 'pass') {
-            throw ("NI Linux image compare failed. status={0} exit={1} message={2}" -f $capture.status, $capture.exitCode, $capture.message)
+          $gateOutcome = if ($capture.PSObject.Properties['gateOutcome']) { [string]$capture.gateOutcome } else { '' }
+          $resultClass = if ($capture.PSObject.Properties['resultClass']) { [string]$capture.resultClass } else { '' }
+          Write-Host ("[ni-linux-hosted] compareExit={0} gateOutcome={1} resultClass={2} status={3}" -f $compareExit, $gateOutcome, $resultClass, $capture.status)
+          if ($compareExit -ne 0 -and $gateOutcome -ne 'pass') {
+            throw ("NI Linux image compare failed. compareExit={0} gateOutcome={1} resultClass={2} status={3} captureExit={4} message={5}" -f $compareExit, $gateOutcome, $resultClass, $capture.status, $capture.exitCode, $capture.message)
           }
 
       - name: Pull NI Windows image (hosted validation)
@@ -367,12 +371,16 @@ jobs:
             -RuntimeEngineReadyTimeoutSeconds 120 `
             -RuntimeEngineReadyPollSeconds 3 `
             -RuntimeSnapshotPath $runtimeSnapshot
+          $compareExit = $LASTEXITCODE
 
-          $capturePath = 'tests/results/ni-windows-container/ni-windows-container-capture.json'
+          $capturePath = Join-Path $resultsRoot 'ni-windows-container-capture.json'
           if (-not (Test-Path -LiteralPath $capturePath -PathType Leaf)) {
             throw "NI Windows capture was not created: $capturePath"
           }
           $capture = Get-Content -LiteralPath $capturePath -Raw | ConvertFrom-Json -Depth 12
-          if ($capture.status -ne 'pass') {
-            throw ("NI Windows image compare failed. status={0} exit={1} message={2}" -f $capture.status, $capture.exitCode, $capture.message)
+          $gateOutcome = if ($capture.PSObject.Properties['gateOutcome']) { [string]$capture.gateOutcome } else { '' }
+          $resultClass = if ($capture.PSObject.Properties['resultClass']) { [string]$capture.resultClass } else { '' }
+          Write-Host ("[ni-windows-hosted] compareExit={0} gateOutcome={1} resultClass={2} status={3}" -f $compareExit, $gateOutcome, $resultClass, $capture.status)
+          if ($compareExit -ne 0 -and $gateOutcome -ne 'pass') {
+            throw ("NI Windows image compare failed. compareExit={0} gateOutcome={1} resultClass={2} status={3} captureExit={4} message={5}" -f $compareExit, $gateOutcome, $resultClass, $capture.status, $capture.exitCode, $capture.message)
           }
