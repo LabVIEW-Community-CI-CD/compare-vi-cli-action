@@ -144,6 +144,10 @@ if (Test-Path -LiteralPath $verificationContractScript -PathType Leaf) {
 Write-Host '[pre-push] Validating release VI history review schema contracts' -ForegroundColor Cyan
 Push-Location $root
 try {
+  node tools/npm/run-script.mjs release:vi-history:profiles:schema
+  if ($LASTEXITCODE -ne 0) {
+    throw "release:vi-history:profiles:schema failed (exit=$LASTEXITCODE)."
+  }
   node tools/npm/run-script.mjs release:vi-history:schema
   if ($LASTEXITCODE -ne 0) {
     throw "release:vi-history:schema failed (exit=$LASTEXITCODE)."

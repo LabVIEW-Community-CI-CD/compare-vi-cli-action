@@ -1,0 +1,72 @@
+{
+  "schema": "release-vi-history/profiles@v1",
+  "defaultProfile": "history-core",
+  "osTargets": [
+    {
+      "id": "linux",
+      "runner": "ubuntu-latest",
+      "image": "nationalinstruments/labview:2026q1-linux"
+    },
+    {
+      "id": "windows",
+      "runner": "windows-latest",
+      "image": "nationalinstruments/labview:2026q1-windows"
+    }
+  ],
+  "profiles": [
+    {
+      "id": "smoke",
+      "description": "Minimal baseline review profile for quick release checks.",
+      "scenarios": [
+        {
+          "id": "baseline",
+          "flags": ""
+        }
+      ]
+    },
+    {
+      "id": "history-core",
+      "description": "Current default release profile with baseline, noattr, and layout-position scenarios.",
+      "scenarios": [
+        {
+          "id": "baseline",
+          "flags": ""
+        },
+        {
+          "id": "noattr",
+          "flags": "-noattr"
+        },
+        {
+          "id": "layout-and-position",
+          "flags": "-nobdcosm -nofppos"
+        }
+      ]
+    },
+    {
+      "id": "full",
+      "description": "Expanded release profile with additional isolated front panel and block diagram comparisons.",
+      "scenarios": [
+        {
+          "id": "baseline",
+          "flags": ""
+        },
+        {
+          "id": "noattr",
+          "flags": "-noattr"
+        },
+        {
+          "id": "layout-and-position",
+          "flags": "-nobdcosm -nofppos"
+        },
+        {
+          "id": "front-panel-only",
+          "flags": "-nobdcosm"
+        },
+        {
+          "id": "block-diagram-only",
+          "flags": "-nofppos"
+        }
+      ]
+    }
+  ]
+}

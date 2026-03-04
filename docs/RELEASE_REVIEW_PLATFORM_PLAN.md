@@ -42,7 +42,7 @@ Out of scope (for this track):
 Use this section as the canonical phase checklist mirrored in issue #216.
 
 - [ ] Phase 1 — Contracts and Foundations
-- [ ] Phase 2 — Scenario Strategy as Data
+- [x] Phase 2 — Scenario Strategy as Data
 - [x] Phase 3 — Evidence Producers (OS × Scenario)
 - [x] Phase 4 — Review Index and Reviewer UX
 - [ ] Phase 5 — Policy Gate and Promotion Controls
@@ -206,7 +206,7 @@ Exit criteria:
 - [x] Release-time OS/scenario artifact fan-out (initial implementation)
 - [x] Release review index artifact + step summary (initial implementation)
 - [x] Canonical review schema + CI contract checks
-- [ ] Scenario profile manifest + selector
+- [x] Scenario profile manifest + selector
 - [ ] Policy gate enforcement
 - [ ] Unified comment publishing
 - [ ] Historical trend aggregation
@@ -220,3 +220,4 @@ Exit criteria:
 - policy contracts: `tools/policy/branch-required-checks.json`
 - session index schema: `docs/schemas/session-index-v1.schema.json`
 - release review contract: `docs/RELEASE_VI_HISTORY_REVIEW_CONTRACT.md`
+- release profile manifest: `docs/RELEASE_VI_HISTORY_PROFILE_MANIFEST.md`

@@ -385,43 +385,124 @@ jobs:
             throw ("NI Windows image compare failed. compareExit={0} gateOutcome={1} resultClass={2} status={3} captureExit={4} message={5}" -f $compareExit, $gateOutcome, $resultClass, $capture.status, $capture.exitCode, $capture.message)
           }
 
+  release-vi-history-profile:
+    runs-on: ubuntu-latest
+    outputs:
+      profile: ${{ steps.resolve.outputs.profile }}
+      matrix: ${{ steps.resolve.outputs.matrix }}
+      scenario_count: ${{ steps.resolve.outputs.scenario_count }}
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v5
+        with:
+          node-version: '20'
+
+      - name: Install npm dependencies
+        shell: pwsh
+        run: |
+          node tools/npm/cli.mjs ci --no-audit --no-fund
+
+      - name: Validate release VI history profile manifest schema
+        shell: pwsh
+        run: |
+          node tools/npm/run-script.mjs release:vi-history:profiles:schema
+
+      - name: Resolve release VI history profile matrix
+        id: resolve
+        shell: pwsh
+        run: |
+          $manifestPath = 'configs/release-vi-history-profiles.json'
+          if (-not (Test-Path -LiteralPath $manifestPath -PathType Leaf)) {
+            throw "Release VI history profile manifest not found: $manifestPath"
+          }
+
+          $manifest = Get-Content -LiteralPath $manifestPath -Raw | ConvertFrom-Json -Depth 30
+          if (-not $manifest) {
+            throw "Failed to parse manifest: $manifestPath"
+          }
+
+          $requestedRaw = '${{ vars.RELEASE_VI_HISTORY_PROFILE }}'
+          $requested = if ([string]::IsNullOrWhiteSpace($requestedRaw)) { '' } else { $requestedRaw.Trim() }
+          $defaultProfile = [string]$manifest.defaultProfile
+          if ([string]::IsNullOrWhiteSpace($defaultProfile)) {
+            throw 'Manifest defaultProfile is required.'
+          }
+
+          $profilesById = @{}
+          foreach ($profile in @($manifest.profiles)) {
+            $profileId = [string]$profile.id
+            if ([string]::IsNullOrWhiteSpace($profileId)) {
+              throw 'Manifest profile id must not be empty.'
+            }
+            $profilesById[$profileId] = $profile
+          }
+
+          if (-not $profilesById.ContainsKey($defaultProfile)) {
+            throw "Manifest defaultProfile '$defaultProfile' does not exist in profiles list."
+          }
+
+          $selectedProfileId = if ([string]::IsNullOrWhiteSpace($requested)) { $defaultProfile } else { $requested }
+          if (-not $profilesById.ContainsKey($selectedProfileId)) {
+            Write-Host "::warning::Unknown RELEASE_VI_HISTORY_PROFILE '$requested'; falling back to '$defaultProfile'."
+            $selectedProfileId = $defaultProfile
+          }
+
+          $selectedProfile = $profilesById[$selectedProfileId]
+          $scenarios = @($selectedProfile.scenarios)
+          $osTargets = @($manifest.osTargets)
+          if ($scenarios.Count -eq 0) {
+            throw "Selected profile '$selectedProfileId' has no scenarios."
+          }
+          if ($osTargets.Count -eq 0) {
+            throw 'Manifest has no osTargets entries.'
+          }
+
+          $rows = [System.Collections.Generic.List[object]]::new()
+          foreach ($osTarget in $osTargets) {
+            $osId = [string]$osTarget.id
+            $runner = [string]$osTarget.runner
+            $image = [string]$osTarget.image
+            foreach ($scenario in $scenarios) {
+              $rows.Add([ordered]@{
+                os = $runner
+                os_label = $osId
+                image = $image
+                scenario = [string]$scenario.id
+                flags = [string]$scenario.flags
+              }) | Out-Null
+            }
+          }
+
+          if ($rows.Count -eq 0) {
+            throw "No matrix rows produced for profile '$selectedProfileId'."
+          }
+
+          $matrixObj = [ordered]@{ include = @($rows) }
+          $matrixJson = $matrixObj | ConvertTo-Json -Depth 20 -Compress
+          $scenarioCount = $rows.Count
+
+          "profile=$selectedProfileId" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+          "scenario_count=$scenarioCount" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+          "matrix=$matrixJson" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+
+          if ($env:GITHUB_STEP_SUMMARY) {
+            @(
+              '### Release VI History Profile',
+              '',
+              "- Requested: $([string]::IsNullOrWhiteSpace($requested) ? '(empty)' : $requested)",
+              "- Selected: $selectedProfileId",
+              "- Matrix rows: $scenarioCount"
+            ) -join "`n" | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8
+          }
+
   release-vi-history-review:
     runs-on: ${{ matrix.os }}
-    needs: release
+    needs: [release, release-vi-history-profile]
     strategy:
       fail-fast: false
-      matrix:
-        include:
-          - os: ubuntu-latest
-            os_label: linux
-            image: nationalinstruments/labview:2026q1-linux
-            scenario: baseline
-            flags: ''
-          - os: ubuntu-latest
-            os_label: linux
-            image: nationalinstruments/labview:2026q1-linux
-            scenario: noattr
-            flags: '-noattr'
-          - os: ubuntu-latest
-            os_label: linux
-            image: nationalinstruments/labview:2026q1-linux
-            scenario: layout-and-position
-            flags: '-nobdcosm -nofppos'
-          - os: windows-latest
-            os_label: windows
-            image: nationalinstruments/labview:2026q1-windows
-            scenario: baseline
-            flags: ''
-          - os: windows-latest
-            os_label: windows
-            image: nationalinstruments/labview:2026q1-windows
-            scenario: noattr
-            flags: '-noattr'
-          - os: windows-latest
-            os_label: windows
-            image: nationalinstruments/labview:2026q1-windows
-            scenario: layout-and-position
-            flags: '-nobdcosm -nofppos'
+      matrix: ${{ fromJson(needs.release-vi-history-profile.outputs.matrix) }}
     steps:
       - uses: actions/checkout@v5
 
@@ -528,7 +609,7 @@ jobs:
 
   release-vi-history-review-index:
     runs-on: ubuntu-latest
-    needs: release-vi-history-review
+    needs: [release-vi-history-review, release-vi-history-profile]
     if: always()
     steps:
       - uses: actions/checkout@v5
@@ -590,6 +671,8 @@ jobs:
 
           $lines = [System.Collections.Generic.List[string]]::new()
           $lines.Add('# Release VI History Review Index') | Out-Null
+          $lines.Add('') | Out-Null
+          $lines.Add(('Profile: `{0}` ({1} rows)' -f '${{ needs.release-vi-history-profile.outputs.profile }}', '${{ needs.release-vi-history-profile.outputs.scenario_count }}')) | Out-Null
           $lines.Add('') | Out-Null
           $lines.Add(('Run: https://github.com/{0}/actions/runs/{1}' -f '${{ github.repository }}', '${{ github.run_id }}')) | Out-Null
           $lines.Add('') | Out-Null

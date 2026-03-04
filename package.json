@@ -68,6 +68,7 @@
     "release:branch:dry": "node tools/priority/create-release-branch.dryrun.mjs",
     "release:finalize": "node tools/priority/finalize-release.mjs",
     "release:finalize:dry": "node tools/priority/finalize-release.dryrun.mjs",
+    "release:vi-history:profiles:schema": "npm run schema:validate -- --schema docs/schemas/release-vi-history-profiles-v1.schema.json --data configs/release-vi-history-profiles.json",
     "release:vi-history:schema": "node tools/npm/run-script.mjs release:vi-history:schema:scenario && node tools/npm/run-script.mjs release:vi-history:schema:index",
     "release:vi-history:schema:index": "npm run schema:validate -- --schema docs/schemas/release-vi-history-review-index-v1.schema.json --data tests/results/release-vi-history-index/release-vi-history-review.json --optional",
     "release:vi-history:schema:scenario": "npm run schema:validate -- --schema docs/schemas/release-vi-history-review-scenario-v1.schema.json --data tests/results/release-vi-history/**/scenario-summary.json --optional",
