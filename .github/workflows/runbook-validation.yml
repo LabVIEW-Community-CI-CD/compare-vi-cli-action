@@ -25,12 +25,6 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v5
 
-      - name: Setup PowerShell Core
-        uses: actions/setup-python@v6
-        with:
-          python-version: '3.x'
-        # (Using setup-python only to ensure UTF-8 locale; PowerShell 7 available by default on windows-latest.)
-
       - name: Run Runbook Core Phases
         shell: pwsh
         run: |
