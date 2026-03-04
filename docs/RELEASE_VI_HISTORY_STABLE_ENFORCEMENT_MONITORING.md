@@ -76,6 +76,18 @@ Use a specific run id:
 pwsh -NoLogo -NoProfile -File ./tools/Update-ReleaseVIHistoryStableMonitoring.ps1 -RunId <run-id>
 ```
 
+Generate a PR-comment body file from the harvested row:
+
+```powershell
+pwsh -NoLogo -NoProfile -File ./tools/Update-ReleaseVIHistoryStableMonitoring.ps1 -EmitPrCommentBody
+```
+
+Generate and post directly to a PR:
+
+```powershell
+pwsh -NoLogo -NoProfile -File ./tools/Update-ReleaseVIHistoryStableMonitoring.ps1 -EmitPrCommentBody -PostPrComment -PrRepoSlug LabVIEW-Community-CI-CD/compare-vi-cli-action -PrNumber 646
+```
+
 ## Exception Handling
 
 If stable mode deviates from `hard`:

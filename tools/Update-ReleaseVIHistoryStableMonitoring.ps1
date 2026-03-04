@@ -8,7 +8,12 @@ param(
   [string]$PolicySummaryPath,
   [string]$TrackerPath = 'docs/RELEASE_VI_HISTORY_STABLE_ENFORCEMENT_MONITORING.md',
   [string]$DownloadRoot = 'tests/results/_agent/release-proof/monitoring-auto',
-  [string]$DateUtc = ((Get-Date).ToUniversalTime().ToString('yyyy-MM-dd'))
+  [string]$DateUtc = ((Get-Date).ToUniversalTime().ToString('yyyy-MM-dd')),
+  [switch]$EmitPrCommentBody,
+  [string]$CommentBodyPath = 'tests/results/_agent/release-proof/monitoring-auto/pr-comment.md',
+  [switch]$PostPrComment,
+  [int]$PrNumber,
+  [string]$PrRepoSlug
 )
 
 Set-StrictMode -Version Latest
@@ -118,6 +123,41 @@ function Upsert-MonitoringRow {
   return 'appended-eof'
 }
 
+function Build-PrCommentBody {
+  param(
+    [string]$TagValue,
+    [string]$RunUrlValue,
+    [string]$IndexJobUrlValue,
+    [string]$RowValue,
+    [object]$FieldsValue,
+    [string]$TrackerValue,
+    [string]$ActionValue
+  )
+
+  $lines = [System.Collections.Generic.List[string]]::new()
+  $lines.Add('Stable enforcement monitoring row updated.') | Out-Null
+  $lines.Add('') | Out-Null
+  $lines.Add(('- Tag: `{0}`' -f $TagValue)) | Out-Null
+  $lines.Add(('- Run: {0}' -f $RunUrlValue)) | Out-Null
+  $lines.Add(('- Index job: {0}' -f $IndexJobUrlValue)) | Out-Null
+  $lines.Add(('- Tracker action: `{0}`' -f $ActionValue)) | Out-Null
+  $lines.Add('') | Out-Null
+  $lines.Add('Extracted policy fields:') | Out-Null
+  $lines.Add(('- tagClass: `{0}`' -f [string]$FieldsValue.tagClass)) | Out-Null
+  $lines.Add(('- enforcementSource: `{0}`' -f [string]$FieldsValue.enforcementSource)) | Out-Null
+  $lines.Add(('- enforcementMode: `{0}`' -f [string]$FieldsValue.enforcementMode)) | Out-Null
+  $lines.Add(('- rawOutcome: `{0}`' -f [string]$FieldsValue.rawOutcome)) | Out-Null
+  $lines.Add(('- outcome: `{0}`' -f [string]$FieldsValue.outcome)) | Out-Null
+  $lines.Add('') | Out-Null
+  $lines.Add(('- Tracker file: `{0}`' -f $TrackerValue)) | Out-Null
+  $lines.Add('') | Out-Null
+  $lines.Add('Appended row:') | Out-Null
+  $lines.Add('') | Out-Null
+  $lines.Add(('`{0}`' -f $RowValue)) | Out-Null
+
+  return ($lines -join [Environment]::NewLine)
+}
+
 $effectiveRunId = $RunId
 $effectiveTag = $Tag
 $effectiveRunUrl = $RunUrl
@@ -171,6 +211,40 @@ $row = "| $DateUtc | $effectiveTag | $tagClass | $effectiveRunUrl | $effectiveIn
 
 $action = Upsert-MonitoringRow -Path $TrackerPath -Row $row -TagValue $effectiveTag
 
+$commentBody = Build-PrCommentBody `
+  -TagValue $effectiveTag `
+  -RunUrlValue $effectiveRunUrl `
+  -IndexJobUrlValue $effectiveIndexJobUrl `
+  -RowValue $row `
+  -FieldsValue $fields `
+  -TrackerValue $TrackerPath `
+  -ActionValue $action
+
+if ($EmitPrCommentBody -or $PostPrComment) {
+  $commentDir = Split-Path -Parent $CommentBodyPath
+  if (-not [string]::IsNullOrWhiteSpace($commentDir) -and -not (Test-Path -LiteralPath $commentDir -PathType Container)) {
+    New-Item -ItemType Directory -Path $commentDir -Force | Out-Null
+  }
+  Set-Content -LiteralPath $CommentBodyPath -Value $commentBody -Encoding utf8
+}
+
+if ($PostPrComment) {
+  if ($PrNumber -le 0) {
+    throw 'PrNumber is required when -PostPrComment is set.'
+  }
+  if ([string]::IsNullOrWhiteSpace($PrRepoSlug)) {
+    throw 'PrRepoSlug is required when -PostPrComment is set.'
+  }
+  if (-not (Get-Command gh -ErrorAction SilentlyContinue)) {
+    throw "GitHub CLI ('gh') is required when -PostPrComment is set."
+  }
+
+  & gh pr comment $PrNumber --repo $PrRepoSlug --body-file $CommentBodyPath
+  if ($LASTEXITCODE -ne 0) {
+    throw "gh pr comment failed with exit code $LASTEXITCODE"
+  }
+}
+
 [pscustomobject]@{
   trackerPath = $TrackerPath
   action = $action
@@ -180,4 +254,5 @@ $action = Upsert-MonitoringRow -Path $TrackerPath -Row $row -TagValue $effective
   indexJobUrl = $effectiveIndexJobUrl
   policySummaryPath = $PolicySummaryPath
   row = $row
+  commentBodyPath = if ($EmitPrCommentBody -or $PostPrComment) { $CommentBodyPath } else { '' }
 }

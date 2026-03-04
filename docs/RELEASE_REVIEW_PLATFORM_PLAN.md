@@ -215,6 +215,7 @@ Exit criteria:
 - [x] Phase 8 slice: stable-enforcement monitoring tracker template
 - [x] Phase 8 slice: policy-field extraction helper automation
 - [x] Phase 8 slice: one-command stable monitoring row updater
+- [x] Phase 8 slice: monitoring updater PR-comment automation
 - [ ] Migration hardening and rollout controls
 
 ## References
