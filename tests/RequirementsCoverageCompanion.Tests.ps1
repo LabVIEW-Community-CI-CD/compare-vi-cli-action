@@ -94,4 +94,16 @@ Describe 'Requirements coverage companion' {
     $checklistContent | Should -Match 'naming'
     Test-Path -LiteralPath $followupDraft | Should -BeTrue
   }
+
+  It 'documents reproducibility metadata signing and schema evolution non-functional requirements' {
+    # REQ:CLI-NFR-001
+    # REQ:CLI-NFR-002
+    # REQ:CLI-NFR-010
+    # REQ:CLI-NFR-030
+    $content = Get-Content -LiteralPath $requirementsDoc -Raw
+    $content | Should -Match 'Build inputs shall be reproducible'
+    $content | Should -Match 'build metadata'
+    $content | Should -Match 'cryptographically signed and verifiable'
+    $content | Should -Match 'schema evolution shall be additive'
+  }
 }
