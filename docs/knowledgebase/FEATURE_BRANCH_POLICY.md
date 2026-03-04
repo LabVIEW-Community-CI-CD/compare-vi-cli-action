@@ -115,6 +115,20 @@ checked into `tools/priority/policy.json` so `priority:policy` stays authoritati
   pwsh -NoLogo -NonInteractive -NoProfile -File tools/Assert-RequirementsVerificationCheckContract.ps1
   ```
 
+- Validate branch-protection helper contract deterministically (explicitly includes
+  `Requirements Verification / requirements-verification` in develop policy):
+
+  ```powershell
+  pwsh -NoLogo -NoProfile -Command "Invoke-Pester -Path 'tests/SessionIndex.BranchProtection.Tests.ps1','tests/GetBranchProtectionRequiredChecks.Tests.ps1','tests/RequirementsVerificationCheckContract.Tests.ps1' -Output Detailed"
+  ```
+
+- Optional parity run for non-LV checks using the published tools image:
+
+  ```powershell
+  $env:COMPAREVI_TOOLS_IMAGE = 'ghcr.io/svelderrainruiz/comparevi-tools:latest'
+  pwsh -NoLogo -NoProfile -File tools/Run-NonLVChecksInDocker.ps1 -UseToolsImage
+  ```
+
 ### `main`
 - **Ruleset**: `8614140` (repository ruleset, scope `refs/heads/main`).
 - **Allowed merges**: queue-managed squash enforced by the `merge_queue` rule (`merge_method=SQUASH`); direct merges and

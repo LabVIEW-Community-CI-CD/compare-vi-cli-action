@@ -2,6 +2,7 @@ Describe 'Get-BranchProtectionRequiredChecks' -Tag 'Unit' {
   BeforeAll {
     $repoRoot = (Get-Location).Path
     Set-Variable -Name scriptPath -Scope Script -Value (Join-Path $repoRoot 'tools/Get-BranchProtectionRequiredChecks.ps1')
+    Set-Variable -Name requiredVerificationCheck -Scope Script -Value 'Requirements Verification / requirements-verification'
   }
 
   It 'returns contexts when API succeeds' {
@@ -10,10 +11,12 @@ Describe 'Get-BranchProtectionRequiredChecks' -Tag 'Unit' {
         required_status_checks = [pscustomobject]@{
           contexts = @()
           checks   = @(
-            @{ context = 'Validate / lint' },
-            @{ context = 'Validate / fixtures' },
             @{ context = 'Validate / session-index' },
+            @{ context = 'Validate / lint' },
+            @{ context = 'Requirements Verification / requirements-verification' },
+            @{ context = 'Validate / fixtures' },
             @{ context = 'Validate / issue-snapshot' },
+            @{ context = 'Validate / lint' },
             @{ context = 'Policy Guard (Upstream) / policy-guard' }
           )
         }
@@ -24,12 +27,45 @@ Describe 'Get-BranchProtectionRequiredChecks' -Tag 'Unit' {
     $result.status | Should -Be 'available'
     $expected = @(
       'Policy Guard (Upstream) / policy-guard',
+      'Requirements Verification / requirements-verification',
       'Validate / fixtures',
       'Validate / issue-snapshot',
       'Validate / lint',
       'Validate / session-index'
     )
-    ($result.contexts | Sort-Object) | Should -Be ($expected | Sort-Object)
+    $result.contexts | Should -Be $expected
+    $result.contexts | Should -Contain $script:requiredVerificationCheck
+    @($result.notes).Length | Should -Be 0
+  }
+
+  It 'normalizes contexts payload ordering and duplicates' {
+    Mock Invoke-RestMethod {
+      [pscustomobject]@{
+        required_status_checks = [pscustomobject]@{
+          contexts = @(
+            'Validate / session-index',
+            'Validate / lint',
+            'Requirements Verification / requirements-verification',
+            'Validate / fixtures',
+            'Validate / lint',
+            'Validate / issue-snapshot',
+            'Policy Guard (Upstream) / policy-guard'
+          )
+        }
+      }
+    }
+
+    $result = & $script:scriptPath -Owner 'octo' -Repository 'repo' -Branch 'develop' -Token 'token'
+    $result.status | Should -Be 'available'
+    $expected = @(
+      'Policy Guard (Upstream) / policy-guard',
+      'Requirements Verification / requirements-verification',
+      'Validate / fixtures',
+      'Validate / issue-snapshot',
+      'Validate / lint',
+      'Validate / session-index'
+    )
+    $result.contexts | Should -Be $expected
     @($result.notes).Length | Should -Be 0
   }
 

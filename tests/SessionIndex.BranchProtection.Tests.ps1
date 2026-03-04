@@ -10,6 +10,7 @@ Describe 'Update-SessionIndexBranchProtection' -Tag 'Unit' {
     Set-Variable -Name policy -Scope Script -Value $policyLocal
 
     Set-Variable -Name developExpected -Scope Script -Value @($policyLocal.branches.develop)
+    Set-Variable -Name requiredVerificationCheck -Scope Script -Value 'Requirements Verification / requirements-verification'
     Set-Variable -Name updateScript -Scope Script -Value (Join-Path $repoRootLocal 'tools/Update-SessionIndexBranchProtection.ps1')
     $newFixture = {
       param([string]$Name)
@@ -32,6 +33,10 @@ Describe 'Update-SessionIndexBranchProtection' -Tag 'Unit' {
       return $resultsDir
     }
     Set-Variable -Name newSessionIndexFixture -Scope Script -Value $newFixture
+  }
+
+  It 'requires develop policy to include requirements verification required check' {
+    $script:developExpected | Should -Contain $script:requiredVerificationCheck
   }
 
   It 'embeds branch protection contract when contexts align' {
@@ -171,6 +176,36 @@ Describe 'Update-SessionIndexBranchProtection' -Tag 'Unit' {
     $bp.actual.status | Should -Be 'available'
     ($bp.actual.contexts | Sort-Object) | Should -Be ($actual | Sort-Object)
     ($bp.PSObject.Properties.Name -contains 'notes') | Should -BeFalse
+  }
+
+  It 'emits deterministic branch protection output for equivalent context sets' {
+    $resultsDir = & $script:newSessionIndexFixture 'results-deterministic'
+    $firstProduced = @($script:developExpected + $script:requiredVerificationCheck + $script:developExpected[0])
+    $secondProduced = @($script:developExpected | Sort-Object -Descending)
+    $secondProduced += $script:requiredVerificationCheck
+
+    & $script:updateScript `
+      -ResultsDir $resultsDir `
+      -PolicyPath $script:policyPath `
+      -Branch 'develop' `
+      -ProducedContexts $firstProduced
+
+    $firstIndex = Get-Content -LiteralPath (Join-Path $resultsDir 'session-index.json') -Raw | ConvertFrom-Json
+    $firstBranchProtection = $firstIndex.branchProtection | ConvertTo-Json -Depth 10 -Compress
+
+    & $script:updateScript `
+      -ResultsDir $resultsDir `
+      -PolicyPath $script:policyPath `
+      -Branch 'develop' `
+      -ProducedContexts $secondProduced
+
+    $secondIndex = Get-Content -LiteralPath (Join-Path $resultsDir 'session-index.json') -Raw | ConvertFrom-Json
+    $secondBranchProtection = $secondIndex.branchProtection | ConvertTo-Json -Depth 10 -Compress
+
+    $secondIndex.branchProtection.result.status | Should -Be 'ok'
+    $secondIndex.branchProtection.result.reason | Should -Be 'aligned'
+    $secondBranchProtection | Should -Be $firstBranchProtection
+    $secondIndex.branchProtection.expected | Should -Contain $script:requiredVerificationCheck
   }
 
   It 'flags API errors when live context retrieval fails' {
