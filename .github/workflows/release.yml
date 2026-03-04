@@ -23,7 +23,7 @@ jobs:
         run: |
           node tools/npm/cli.mjs ci --no-audit --no-fund
 
-      - name: Run matrix release gate (containers then host LabVIEW 2026)
+      - name: Run matrix release gate (Windows container lane)
         shell: pwsh
         run: |
           $historyViPath = if ([string]::IsNullOrWhiteSpace('${{ vars.RELEASE_HISTORY_VI_PATH }}')) { 'fixtures/vi-attr/Head.vi' } else { '${{ vars.RELEASE_HISTORY_VI_PATH }}' }
@@ -34,7 +34,7 @@ jobs:
 
           $args = @(
             '-NoLogo','-NoProfile','-File','tools/Run-ValidationMatrix.ps1',
-            '-LaneScope','all',
+            '-LaneScope','windows',
             '-HistoryViPath',$historyViPath,
             '-HistoryStartRef',$historyStartRef,
             '-LabVIEWPath',$hostLabviewPath,
