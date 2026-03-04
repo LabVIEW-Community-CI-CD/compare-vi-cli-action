@@ -1,0 +1,44 @@
+name: CLI Maturity Gate
+
+on:
+  workflow_dispatch:
+  pull_request:
+    branches:
+      - develop
+    paths:
+      - 'src/CompareVi.Tools.Cli/**'
+      - 'tools/Assert-CliMaturityMilestone.ps1'
+      - '.github/workflows/cli-maturity-gate.yml'
+
+jobs:
+  maturity:
+    name: cli-maturity-${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os:
+          - windows-latest
+          - ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+
+      - name: Run CLI maturity gate
+        shell: pwsh
+        run: |
+          pwsh -NoLogo -NoProfile -File tools/Assert-CliMaturityMilestone.ps1 -Configuration Release -ResultsRoot tests/results/_agent/cli-maturity -EmitJsonSummary tests/results/_agent/cli-maturity/maturity-summary.json -AppendStepSummary
+
+      - name: Upload maturity artifacts
+        uses: actions/upload-artifact@v5
+        with:
+          name: cli-maturity-${{ matrix.os }}
+          path: tests/results/_agent/cli-maturity/**
+          if-no-files-found: error

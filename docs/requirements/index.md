@@ -9,3 +9,5 @@
 - [`REQ-DOTNET_CLI_RELEASE_ASSET`](./DOTNET_CLI_RELEASE_ASSET.md)
 - [`DOTNET CLI PowerShell Mapping`](./DOTNET_CLI_POWERSHELL_MAPPING.md)
 - [`DOTNET CLI Release Checklist`](./DOTNET_CLI_RELEASE_CHECKLIST.md)
+- [`CLI Practical Milestone Tracker`](./CLI_MATURITY_MILESTONE.md)
+- [`Icon Editor CLI Consumption Template`](./ICON_EDITOR_CLI_CONSUMPTION_TEMPLATE.md)

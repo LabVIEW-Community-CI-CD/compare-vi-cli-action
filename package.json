@@ -76,6 +76,7 @@
     "release:finalize": "node tools/priority/finalize-release.mjs",
     "release:finalize:dry": "node tools/priority/finalize-release.dryrun.mjs",
     "release:vi-history:monitor:auto": "pwsh -NoLogo -NoProfile -File tools/Invoke-ReleaseVIHistoryStableMonitoringAuto.ps1",
+    "maturity:cli:check": "pwsh -NoLogo -NoProfile -File tools/Assert-CliMaturityMilestone.ps1 -Configuration Release -ResultsRoot tests/results/_agent/cli-maturity -EmitJsonSummary tests/results/_agent/cli-maturity/maturity-summary.json",
     "release:vi-history:policy:schema": "npm run schema:validate -- --schema docs/schemas/release-vi-history-policy-v1.schema.json --data configs/release-vi-history-policy.json",
     "release:vi-history:profiles:schema": "npm run schema:validate -- --schema docs/schemas/release-vi-history-profiles-v1.schema.json --data configs/release-vi-history-profiles.json",
     "release:vi-history:migration:schema": "npm run schema:validate -- --schema docs/schemas/release-vi-history-migration-v1.schema.json --data configs/release-vi-history-migration.json",

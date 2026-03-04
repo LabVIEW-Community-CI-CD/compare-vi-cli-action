@@ -400,6 +400,20 @@
       },
       "group": "test",
       "problemMatcher": []
+    },
+    {
+      "label": "CLI Maturity: Gate check",
+      "type": "process",
+      "command": "node",
+      "args": [
+        "tools/npm/run-script.mjs",
+        "maturity:cli:check"
+      ],
+      "options": {
+        "cwd": "${workspaceFolder}"
+      },
+      "group": "test",
+      "problemMatcher": []
     }
   ],
   "inputs": [
