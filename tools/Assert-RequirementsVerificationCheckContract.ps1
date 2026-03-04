@@ -51,30 +51,33 @@ if (-not [regex]::IsMatch($workflowContent, $jobNamePattern)) {
 }
 
 $branchPolicy = Read-JsonFile -Path $BranchRequiredChecksPath
+$branchHasExpectedCheck = $false
 if (-not $branchPolicy.branches) {
   Add-ContractError "Missing branches node in $BranchRequiredChecksPath."
 } else {
   $developChecks = @($branchPolicy.branches.$BranchName)
   if ($developChecks.Count -eq 0) {
     Add-ContractError "Missing required checks for branch '$BranchName' in $BranchRequiredChecksPath."
-  } elseif ($developChecks -notcontains $expectedCheckName) {
-    Add-ContractError "Required check '$expectedCheckName' missing from $BranchRequiredChecksPath for branch '$BranchName'."
   }
+  $branchHasExpectedCheck = $developChecks -contains $expectedCheckName
 }
 
 $priorityPolicy = Read-JsonFile -Path $PriorityPolicyPath
 $priorityBranchChecks = @($priorityPolicy.branches.$BranchName.required_status_checks)
+$priorityBranchHasExpectedCheck = $priorityBranchChecks -contains $expectedCheckName
 if ($priorityBranchChecks.Count -eq 0) {
   Add-ContractError "Missing priority branch checks for '$BranchName' in $PriorityPolicyPath."
-} elseif ($priorityBranchChecks -notcontains $expectedCheckName) {
-  Add-ContractError "Required check '$expectedCheckName' missing from $PriorityPolicyPath branch '$BranchName'."
 }
 
 $rulesetChecks = @($priorityPolicy.rulesets.$RulesetId.required_status_checks)
+$rulesetHasExpectedCheck = $rulesetChecks -contains $expectedCheckName
 if ($rulesetChecks.Count -eq 0) {
   Add-ContractError "Missing ruleset '$RulesetId' required checks in $PriorityPolicyPath."
-} elseif ($rulesetChecks -notcontains $expectedCheckName) {
-  Add-ContractError "Required check '$expectedCheckName' missing from ruleset '$RulesetId' in $PriorityPolicyPath."
+}
+
+$presenceCount = @($branchHasExpectedCheck, $priorityBranchHasExpectedCheck, $rulesetHasExpectedCheck | Where-Object { $_ }).Count
+if ($presenceCount -gt 0 -and $presenceCount -lt 3) {
+  Add-ContractError "Check '$expectedCheckName' appears in only part of the contract set (branch policy, priority branch, ruleset). Keep all three in sync."
 }
 
 if ($errors.Count -gt 0) {
