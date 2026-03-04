@@ -59,6 +59,11 @@ Evaluation order in workflow:
 
 The generated policy summary includes `tagClass`, `enforcementMode`, and `enforcementSource` for auditability.
 
+## Operations References
+
+- runbook: `docs/RELEASE_VI_HISTORY_MIGRATION_RUNBOOK.md`
+- incident playbook: `docs/RELEASE_VI_HISTORY_MIGRATION_INCIDENT_PLAYBOOK.md`
+
 ## Validation
 
 - schema: `docs/schemas/release-vi-history-migration-v1.schema.json`
