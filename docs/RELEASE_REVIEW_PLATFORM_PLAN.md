@@ -205,7 +205,7 @@ Exit criteria:
 
 - [x] Release-time OS/scenario artifact fan-out (initial implementation)
 - [x] Release review index artifact + step summary (initial implementation)
-- [ ] Canonical review schema + CI contract checks
+- [x] Canonical review schema + CI contract checks
 - [ ] Scenario profile manifest + selector
 - [ ] Policy gate enforcement
 - [ ] Unified comment publishing
@@ -219,3 +219,4 @@ Exit criteria:
 - scenario harness: `fixtures/vi-history/pr-harness.json`
 - policy contracts: `tools/policy/branch-required-checks.json`
 - session index schema: `docs/schemas/session-index-v1.schema.json`
+- release review contract: `docs/RELEASE_VI_HISTORY_REVIEW_CONTRACT.md`

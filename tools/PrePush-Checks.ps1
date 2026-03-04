@@ -141,6 +141,18 @@ if (Test-Path -LiteralPath $verificationContractScript -PathType Leaf) {
   Write-Host '[pre-push] requirements-verification check contract OK' -ForegroundColor Green
 }
 
+Write-Host '[pre-push] Validating release VI history review schema contracts' -ForegroundColor Cyan
+Push-Location $root
+try {
+  node tools/npm/run-script.mjs release:vi-history:schema
+  if ($LASTEXITCODE -ne 0) {
+    throw "release:vi-history:schema failed (exit=$LASTEXITCODE)."
+  }
+} finally {
+  Pop-Location | Out-Null
+}
+Write-Host '[pre-push] release VI history review schema contracts OK' -ForegroundColor Green
+
 $updateReportScript = Join-Path $root 'tools' 'icon-editor' 'Update-IconEditorFixtureReport.ps1'
 if (Test-Path -LiteralPath $updateReportScript -PathType Leaf) {
   $skipLegacyFixtureChecks = $SkipIconEditorFixtureChecks `

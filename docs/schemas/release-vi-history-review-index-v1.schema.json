@@ -1,0 +1,51 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://labview-community-ci-cd.github.io/compare-vi-cli-action/schemas/release-vi-history-review-index-v1.schema.json",
+  "title": "Release VI History Review Index",
+  "type": "array",
+  "items": {
+    "type": "object",
+    "required": [
+      "os",
+      "scenario",
+      "flags",
+      "status",
+      "gateOutcome",
+      "resultClass",
+      "compareExit",
+      "reportExists",
+      "artifactPath"
+    ],
+    "properties": {
+      "os": {
+        "type": "string"
+      },
+      "scenario": {
+        "type": "string"
+      },
+      "flags": {
+        "type": "string"
+      },
+      "status": {
+        "type": "string"
+      },
+      "gateOutcome": {
+        "type": "string"
+      },
+      "resultClass": {
+        "type": "string"
+      },
+      "compareExit": {
+        "type": "string"
+      },
+      "reportExists": {
+        "type": "string"
+      },
+      "artifactPath": {
+        "type": "string",
+        "minLength": 1
+      }
+    },
+    "additionalProperties": false
+  }
+}

@@ -1,0 +1,92 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://labview-community-ci-cd.github.io/compare-vi-cli-action/schemas/release-vi-history-review-scenario-v1.schema.json",
+  "title": "Release VI History Review Scenario Summary",
+  "type": "object",
+  "required": [
+    "schema",
+    "generatedAt",
+    "tag",
+    "os",
+    "scenario",
+    "flags",
+    "image",
+    "compareExit",
+    "captureExit",
+    "gateOutcome",
+    "resultClass",
+    "status",
+    "message",
+    "reportPath",
+    "reportExists",
+    "capturePath"
+  ],
+  "properties": {
+    "schema": {
+      "type": "string",
+      "const": "release-vi-history-review/scenario@v1"
+    },
+    "generatedAt": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "tag": {
+      "type": "string",
+      "minLength": 1
+    },
+    "os": {
+      "type": "string",
+      "enum": [
+        "linux",
+        "windows"
+      ]
+    },
+    "scenario": {
+      "type": "string",
+      "minLength": 1
+    },
+    "flags": {
+      "type": "string"
+    },
+    "image": {
+      "type": "string",
+      "minLength": 1
+    },
+    "compareExit": {
+      "type": "integer"
+    },
+    "captureExit": {
+      "type": "integer"
+    },
+    "gateOutcome": {
+      "type": "string",
+      "enum": [
+        "",
+        "pass",
+        "warn",
+        "fail"
+      ]
+    },
+    "resultClass": {
+      "type": "string"
+    },
+    "status": {
+      "type": "string"
+    },
+    "message": {
+      "type": "string"
+    },
+    "reportPath": {
+      "type": "string",
+      "minLength": 1
+    },
+    "reportExists": {
+      "type": "boolean"
+    },
+    "capturePath": {
+      "type": "string",
+      "minLength": 1
+    }
+  },
+  "additionalProperties": false
+}

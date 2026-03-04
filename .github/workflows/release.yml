@@ -531,6 +531,18 @@ jobs:
     needs: release-vi-history-review
     if: always()
     steps:
+      - uses: actions/checkout@v5
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v5
+        with:
+          node-version: '20'
+
+      - name: Install npm dependencies
+        shell: pwsh
+        run: |
+          node tools/npm/cli.mjs ci --no-audit --no-fund
+
       - name: Download VI history review artifacts
         uses: actions/download-artifact@v4
         with:
@@ -595,6 +607,11 @@ jobs:
           $rows | ConvertTo-Json -Depth 12 | Set-Content -LiteralPath $jsonPath -Encoding utf8
           $lines -join "`n" | Set-Content -LiteralPath $indexPath -Encoding utf8
           Get-Content -LiteralPath $indexPath | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8
+
+      - name: Validate release VI history review schemas
+        shell: pwsh
+        run: |
+          node tools/npm/run-script.mjs release:vi-history:schema
 
       - name: Upload review index artifact
         if: always()
