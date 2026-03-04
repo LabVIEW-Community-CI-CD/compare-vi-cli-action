@@ -216,6 +216,7 @@ Exit criteria:
 - [x] Phase 8 slice: policy-field extraction helper automation
 - [x] Phase 8 slice: one-command stable monitoring row updater
 - [x] Phase 8 slice: monitoring updater PR-comment automation
+- [x] Phase 8 slice: zero-arg auto orchestrator (script/npm/task)
 - [ ] Migration hardening and rollout controls
 
 ## References
@@ -236,3 +237,4 @@ Exit criteria:
 - stable enforcement monitoring: `docs/RELEASE_VI_HISTORY_STABLE_ENFORCEMENT_MONITORING.md`
 - policy field helper: `tools/Get-ReleaseVIHistoryPolicyFields.ps1`
 - monitoring updater: `tools/Update-ReleaseVIHistoryStableMonitoring.ps1`
+- monitoring auto wrapper: `tools/Invoke-ReleaseVIHistoryStableMonitoringAuto.ps1`

@@ -314,6 +314,22 @@
       },
       "group": "test",
       "problemMatcher": []
+    },
+    {
+      "label": "Release VI History: Stable monitoring auto",
+      "type": "process",
+      "command": "pwsh",
+      "args": [
+        "-NoLogo",
+        "-NoProfile",
+        "-File",
+        "tools/Invoke-ReleaseVIHistoryStableMonitoringAuto.ps1"
+      ],
+      "options": {
+        "cwd": "${workspaceFolder}"
+      },
+      "group": "test",
+      "problemMatcher": []
     }
   ],
   "inputs": [

@@ -88,6 +88,22 @@ Generate and post directly to a PR:
 pwsh -NoLogo -NoProfile -File ./tools/Update-ReleaseVIHistoryStableMonitoring.ps1 -EmitPrCommentBody -PostPrComment -PrRepoSlug LabVIEW-Community-CI-CD/compare-vi-cli-action -PrNumber 646
 ```
 
+Zero-arg auto mode (resolve repo + branch PR context automatically):
+
+```powershell
+pwsh -NoLogo -NoProfile -File ./tools/Invoke-ReleaseVIHistoryStableMonitoringAuto.ps1
+```
+
+NPM wrapper:
+
+```powershell
+npm run release:vi-history:monitor:auto
+```
+
+VS Code task:
+
+- `Release VI History: Stable monitoring auto`
+
 ## Exception Handling
 
 If stable mode deviates from `hard`:

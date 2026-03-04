@@ -44,6 +44,26 @@ function Get-RunDetails {
   return gh run view -R $Repo $Id --json url,displayTitle,headBranch,jobs | ConvertFrom-Json
 }
 
+function Resolve-TagFromRunMetadata {
+  param(
+    [string]$DisplayTitle,
+    [string]$HeadBranch
+  )
+
+  $candidates = @([string]$HeadBranch, [string]$DisplayTitle)
+  foreach ($candidate in $candidates) {
+    if (-not [string]::IsNullOrWhiteSpace($candidate) -and $candidate -like 'v*') {
+      return $candidate
+    }
+  }
+
+  if (-not [string]::IsNullOrWhiteSpace($HeadBranch)) {
+    return [string]$HeadBranch
+  }
+
+  return [string]$DisplayTitle
+}
+
 function Resolve-PolicyPathFromRun {
   param(
     [string]$Repo,
@@ -168,7 +188,7 @@ if ([string]::IsNullOrWhiteSpace($PolicySummaryPath)) {
     $latest = Get-LatestStableReleaseRun -Repo $RepoSlug
     $effectiveRunId = [long]$latest.databaseId
     if ([string]::IsNullOrWhiteSpace($effectiveTag)) {
-      $effectiveTag = [string]$(if ([string]::IsNullOrWhiteSpace($latest.displayTitle)) { $latest.headBranch } else { $latest.displayTitle })
+      $effectiveTag = Resolve-TagFromRunMetadata -DisplayTitle ([string]$latest.displayTitle) -HeadBranch ([string]$latest.headBranch)
     }
     if ([string]::IsNullOrWhiteSpace($effectiveRunUrl)) {
       $effectiveRunUrl = [string]$latest.url
@@ -177,7 +197,7 @@ if ([string]::IsNullOrWhiteSpace($PolicySummaryPath)) {
 
   $details = Get-RunDetails -Repo $RepoSlug -Id $effectiveRunId
   if ([string]::IsNullOrWhiteSpace($effectiveTag)) {
-    $effectiveTag = [string]$(if ([string]::IsNullOrWhiteSpace($details.displayTitle)) { $details.headBranch } else { $details.displayTitle })
+    $effectiveTag = Resolve-TagFromRunMetadata -DisplayTitle ([string]$details.displayTitle) -HeadBranch ([string]$details.headBranch)
   }
   if ([string]::IsNullOrWhiteSpace($effectiveRunUrl)) {
     $effectiveRunUrl = [string]$details.url
