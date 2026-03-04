@@ -14,6 +14,8 @@ let WARNED_NO_GITHUB_TOKEN_FOR_REST = false;
 const DEFAULT_STANDING_PRIORITY_LABEL = 'standing-priority';
 const FORK_STANDING_PRIORITY_LABEL = 'fork-standing-priority';
 const CANONICAL_PRIORITY_OWNER = 'labview-community-ci-cd';
+const MODULE_FILE_PATH = fileURLToPath(import.meta.url);
+const MODULE_REPO_ROOT = path.resolve(path.dirname(MODULE_FILE_PATH), '../..');
 
 function normalizeStandingPriorityLabels(values) {
   const seen = new Set();
@@ -174,10 +176,137 @@ function ensureCommand(result, cmd) {
   return result;
 }
 
-function gitRoot() {
-  const r = sh('git', ['rev-parse', '--show-toplevel']);
-  if (r.status !== 0) throw new Error('git rev-parse failed');
-  return r.stdout.trim();
+function formatCommandFailure(command, args, result, cwd = process.cwd()) {
+  const parts = [`${command} ${args.join(' ')} failed`];
+  if (Number.isInteger(result?.status)) {
+    parts.push(`status=${result.status}`);
+  }
+  if (result?.error?.code) {
+    parts.push(`error=${result.error.code}`);
+  }
+  const stderr = (result?.stderr || '').trim();
+  if (stderr) {
+    parts.push(`stderr=${stderr}`);
+  }
+  parts.push(`cwd=${cwd}`);
+  return parts.join(' ');
+}
+
+function hasRepoMarkers(candidateRoot) {
+  if (!candidateRoot) {
+    return false;
+  }
+  return fs.existsSync(path.join(candidateRoot, '.git')) || fs.existsSync(path.join(candidateRoot, 'package.json'));
+}
+
+function resolveGitDir(repoRoot) {
+  const dotGitPath = path.join(repoRoot, '.git');
+  try {
+    const stats = fs.statSync(dotGitPath);
+    if (stats.isDirectory()) {
+      return dotGitPath;
+    }
+    if (stats.isFile()) {
+      const marker = fs.readFileSync(dotGitPath, 'utf8');
+      const match = marker.match(/^gitdir:\s*(.+)$/im);
+      if (match?.[1]) {
+        return path.resolve(repoRoot, match[1].trim());
+      }
+    }
+  } catch {}
+  return null;
+}
+
+function readGitConfigText(repoRoot) {
+  const gitDir = resolveGitDir(repoRoot);
+  if (!gitDir) {
+    return null;
+  }
+  const configPath = path.join(gitDir, 'config');
+  try {
+    return fs.readFileSync(configPath, 'utf8');
+  } catch {
+    return null;
+  }
+}
+
+function parseGitConfigRemotes(configText) {
+  if (!configText) {
+    return {};
+  }
+
+  const remotes = {};
+  let currentRemote = null;
+  for (const rawLine of String(configText).split(/\r?\n/)) {
+    const line = rawLine.trim();
+    const remoteMatch = line.match(/^\[remote\s+"([^"]+)"\]$/i);
+    if (remoteMatch) {
+      currentRemote = remoteMatch[1];
+      if (!remotes[currentRemote]) {
+        remotes[currentRemote] = {};
+      }
+      continue;
+    }
+
+    if (line.startsWith('[')) {
+      currentRemote = null;
+      continue;
+    }
+
+    if (!currentRemote) {
+      continue;
+    }
+
+    const kv = line.match(/^([A-Za-z][A-Za-z0-9_.-]*)\s*=\s*(.+)$/);
+    if (!kv) {
+      continue;
+    }
+
+    remotes[currentRemote][kv[1].toLowerCase()] = kv[2].trim();
+  }
+
+  return remotes;
+}
+
+function resolveGitRemoteUrl(repoRoot, remoteName) {
+  const configText = readGitConfigText(repoRoot);
+  if (configText != null) {
+    const remotes = parseGitConfigRemotes(configText);
+    const remote = remotes?.[remoteName];
+    const configUrl = remote?.url;
+    return configUrl || null;
+  }
+
+  const remote = sh('git', ['config', '--get', `remote.${remoteName}.url`]);
+  if (remote.status === 0) {
+    const value = String(remote.stdout || '').trim();
+    if (value) {
+      return value;
+    }
+  }
+  return null;
+}
+
+export function gitRoot(options = {}) {
+  const commandRunner = options.commandRunner ?? sh;
+  const cwd = options.cwd ?? process.cwd();
+  const fallbackRoot = options.fallbackRoot ?? MODULE_REPO_ROOT;
+  const warn = options.warn ?? ((message) => console.warn(message));
+
+  const result = commandRunner('git', ['rev-parse', '--show-toplevel'], { cwd });
+  if (result?.status === 0) {
+    const root = String(result.stdout || '').trim();
+    if (root) {
+      return root;
+    }
+  }
+
+  if (hasRepoMarkers(fallbackRoot)) {
+    warn(`[priority] ${formatCommandFailure('git', ['rev-parse', '--show-toplevel'], result, cwd)}; using module fallback ${fallbackRoot}`);
+    return fallbackRoot;
+  }
+
+  throw new Error(formatCommandFailure('git', ['rev-parse', '--show-toplevel'], result, cwd));
 }
 
 function readJson(file) {
@@ -453,15 +582,41 @@ export function parseGitRemoteUrl(remoteUrl) {
   return null;
 }
 
+function parseGitHubIssueUrlSlug(issueUrl) {
+  if (!issueUrl) {
+    return null;
+  }
+
+  try {
+    const parsed = new URL(String(issueUrl));
+    if (!parsed.hostname.toLowerCase().endsWith('github.com')) {
+      return null;
+    }
+
+    const segments = parsed.pathname.split('/').filter(Boolean);
+    if (segments.length < 4) {
+      return null;
+    }
+
+    if (segments[2] !== 'issues') {
+      return null;
+    }
+
+    return `${segments[0]}/${segments[1]}`;
+  } catch {
+    return null;
+  }
+}
+
 function resolveRepositorySlug(repoRoot) {
   if (process.env.GITHUB_REPOSITORY) {
     const slug = process.env.GITHUB_REPOSITORY.trim();
     if (slug) return slug;
   }
 
-  const remote = sh('git', ['config', '--get', 'remote.origin.url']);
-  if (remote.status === 0) {
-    const slug = parseGitRemoteUrl(remote.stdout);
+  const originUrl = resolveGitRemoteUrl(repoRoot, 'origin');
+  if (originUrl) {
+    const slug = parseGitRemoteUrl(originUrl);
     if (slug) return slug;
   }
 
@@ -484,6 +639,30 @@ function resolveRepositorySlug(repoRoot) {
   } catch {}
 
   return null;
+}
+
+export function resolveUpstreamRepositorySlug(repoRoot, slug) {
+  const resolvedSlug = slug || resolveRepositorySlug(repoRoot);
+  if (!resolvedSlug || !resolvedSlug.includes('/')) {
+    return null;
+  }
+
+  const [owner, repoName] = resolvedSlug.split('/');
+  if (!owner || owner.toLowerCase() === CANONICAL_PRIORITY_OWNER) {
+    return null;
+  }
+
+  const upstreamUrl = resolveGitRemoteUrl(repoRoot, 'upstream');
+  const upstreamSlug = parseGitRemoteUrl(upstreamUrl);
+  if (upstreamSlug) {
+    return upstreamSlug;
+  }
+
+  if (!repoName) {
+    return null;
+  }
+
+  return `${CANONICAL_PRIORITY_OWNER}/${repoName}`;
 }
 
 export function resolveStandingPriorityLabels(repoRoot, slug, env = process.env) {
@@ -609,11 +788,11 @@ async function fetchStandingPriorityNumberViaRest(repoRoot, slug, standingPriori
           );
         }
         const first = data.find((item) => item?.number != null);
-        if (first) return { status: 'found', number: Number(first.number), label };
+        if (first) return { status: 'found', number: Number(first.number), label, repoSlug: resolvedSlug };
         continue;
       }
       if (data?.number != null) {
-        return { status: 'found', number: Number(data.number), label };
+        return { status: 'found', number: Number(data.number), label, repoSlug: resolvedSlug };
       }
     } catch (err) {
       errors.push(`${label}: ${err.message}`);
@@ -709,36 +888,52 @@ async function fetchIssueViaRest(repoRoot, number, slug) {
   }
 }
 
-async function resolveStandingPriorityNumber(repoRoot, slug, standingPriorityLabels = [DEFAULT_STANDING_PRIORITY_LABEL]) {
-  const override = process.env.AGENT_PRIORITY_OVERRIDE;
-  if (override) {
-    try {
-      if (override.trim().startsWith('{')) {
-        const obj = JSON.parse(override);
-        if (obj.number) return Number(obj.number);
-      } else {
-        const head = override.split('|')[0].trim();
-        if (head) return Number(head);
-      }
-    } catch {}
+function didReportNoStandingPriority(result) {
+  return isNoStandingOutcome(result?.ghOutcome) || isNoStandingOutcome(result?.restOutcome);
+}
+
+function defaultRunGhStandingPriorityList({ slug, label }) {
+  const ghArgs = ['issue', 'list', '--label', label, '--state', 'open', '--limit', '1', '--json', 'number'];
+  if (slug) {
+    ghArgs.push('--repo', slug);
   }
+  return ensureCommand(sh('gh', ghArgs), 'gh');
+}
+
+function defaultRunStandingPriorityRestLookup({ repoRoot, slug, standingPriorityLabels }) {
+  return fetchStandingPriorityNumberViaRest(repoRoot, slug, standingPriorityLabels);
+}
+
+export async function resolveStandingPriorityForRepo(
+  repoRoot,
+  slug,
+  standingPriorityLabels = [DEFAULT_STANDING_PRIORITY_LABEL],
+  options = {}
+) {
+  const runGhList = options.runGhList ?? defaultRunGhStandingPriorityList;
+  const runRestLookup = options.runRestLookup ?? defaultRunStandingPriorityRestLookup;
+  const warn = options.warn ?? ((message) => console.warn(message));
 
   let ghOutcome = { status: 'error', error: 'unknown' };
   try {
     let ghHasEmpty = false;
     const ghErrors = [];
     for (const label of standingPriorityLabels) {
-      const query = ensureCommand(
-        sh('gh', ['issue', 'list', '--label', label, '--state', 'open', '--limit', '1', '--json', 'number']),
-        'gh'
-      );
-      if (query.status === 0) {
-        const parsed = query.stdout.trim() ? JSON.parse(query.stdout) : [];
+      const query = await runGhList({ repoRoot, slug, label });
+      if (query?.status === 0) {
+        const parsed = query.stdout?.trim() ? JSON.parse(query.stdout) : [];
         const first = Array.isArray(parsed) ? parsed[0] : parsed;
-        if (first?.number) return Number(first.number);
+        if (first?.number) {
+          return {
+            found: { number: Number(first.number), label, repoSlug: slug || null, source: 'gh' },
+            ghOutcome: { status: 'found', label },
+            restOutcome: { status: 'unavailable', error: 'not-used' },
+            repoSlug: slug || null
+          };
+        }
         ghHasEmpty = true;
       } else {
-        ghErrors.push(`${label}: ${query.stderr?.trim() || `gh exited with status ${query.status}`}`);
+        ghErrors.push(`${label}: ${query?.stderr?.trim() || `gh exited with status ${query?.status}`}`);
       }
     }
     if (ghHasEmpty) {
@@ -751,18 +946,157 @@ async function resolveStandingPriorityNumber(repoRoot, slug, standingPriorityLab
     }
   } catch (err) {
     if (err?.code === 'ENOENT') {
-      console.warn('[priority] gh CLI not found; falling back to cached standing-priority issue number');
+      warn('[priority] gh CLI not found; falling back to REST/cache standing-priority lookups');
       ghOutcome = { status: 'unavailable', error: err.message || 'gh CLI unavailable' };
     } else {
       ghOutcome = { status: 'error', error: err?.message || 'gh issue list failed' };
     }
   }
 
-  const restOutcome = await fetchStandingPriorityNumberViaRest(repoRoot, slug, standingPriorityLabels);
-  if (restOutcome?.status === 'found') return restOutcome.number;
+  const restOutcome = await runRestLookup({ repoRoot, slug, standingPriorityLabels });
+  if (restOutcome?.status === 'found') {
+    return {
+      found: {
+        number: restOutcome.number,
+        label: restOutcome.label,
+        repoSlug: restOutcome.repoSlug || slug || null,
+        source: 'rest'
+      },
+      ghOutcome,
+      restOutcome,
+      repoSlug: restOutcome.repoSlug || slug || null
+    };
+  }
+
+  return {
+    found: null,
+    ghOutcome,
+    restOutcome,
+    repoSlug: slug || null
+  };
+}
+
+export async function resolveStandingPriorityLookupPlan({
+  repoRoot,
+  slug,
+  standingPriorityLabels = [DEFAULT_STANDING_PRIORITY_LABEL],
+  resolveForRepo = resolveStandingPriorityForRepo,
+  resolveUpstreamSlug = resolveUpstreamRepositorySlug,
+  warn = (message) => console.warn(message)
+}) {
+  const primary = await resolveForRepo(repoRoot, slug, standingPriorityLabels);
+  if (primary.found) {
+    return {
+      found: primary.found,
+      cacheSource: primary,
+      cacheLabels: standingPriorityLabels,
+      cacheRepoSlug: primary.repoSlug || slug || null
+    };
+  }
+
+  const resolvedSlug = slug || resolveRepositorySlug(repoRoot);
+  const primaryOwner = (resolvedSlug || '').split('/')[0].toLowerCase();
+  const shouldCheckUpstream = Boolean(primaryOwner) && primaryOwner !== CANONICAL_PRIORITY_OWNER;
+
+  let cacheSource = primary;
+  let cacheLabels = standingPriorityLabels;
+  let cacheRepoSlug = primary.repoSlug || resolvedSlug || null;
+
+  if (shouldCheckUpstream) {
+    const upstreamSlug = resolveUpstreamSlug(repoRoot, resolvedSlug);
+    if (upstreamSlug && upstreamSlug.toLowerCase() !== (resolvedSlug || '').toLowerCase()) {
+      if (didReportNoStandingPriority(primary)) {
+        warn(`[priority] No standing-priority issue found in ${resolvedSlug}; checking upstream ${upstreamSlug}.`);
+      }
+
+      const upstreamAttempt = await resolveForRepo(repoRoot, upstreamSlug, [DEFAULT_STANDING_PRIORITY_LABEL]);
+      if (upstreamAttempt.found) {
+        return {
+          found: upstreamAttempt.found,
+          cacheSource: upstreamAttempt,
+          cacheLabels: [DEFAULT_STANDING_PRIORITY_LABEL],
+          cacheRepoSlug: upstreamAttempt.repoSlug || upstreamSlug
+        };
+      }
+
+      if (didReportNoStandingPriority(primary) && didReportNoStandingPriority(upstreamAttempt)) {
+        throw createNoStandingPriorityError(
+          `No open issue found in ${resolvedSlug} with labels: ${formatStandingPriorityLabels(standingPriorityLabels)}; upstream ${upstreamSlug} also has no open issues with labels: ${formatStandingPriorityLabels([DEFAULT_STANDING_PRIORITY_LABEL])}.`,
+          [DEFAULT_STANDING_PRIORITY_LABEL]
+        );
+      }
+
+      if (didReportNoStandingPriority(primary)) {
+        cacheSource = upstreamAttempt;
+        cacheLabels = [DEFAULT_STANDING_PRIORITY_LABEL];
+        cacheRepoSlug = upstreamAttempt.repoSlug || upstreamSlug;
+      }
+    }
+  }
+
+  return {
+    found: null,
+    cacheSource,
+    cacheLabels,
+    cacheRepoSlug
+  };
+}
+async function resolveStandingPriorityNumber(repoRoot, slug, standingPriorityLabels = [DEFAULT_STANDING_PRIORITY_LABEL]) {
+  const override = process.env.AGENT_PRIORITY_OVERRIDE;
+  if (override) {
+    try {
+      if (override.trim().startsWith('{')) {
+        const obj = JSON.parse(override);
+        if (obj.number) {
+          return {
+            number: Number(obj.number),
+            repoSlug: obj.repo ? String(obj.repo) : slug || null,
+            label: obj.label || null,
+            source: 'override'
+          };
+        }
+      } else {
+        const head = override.split('|')[0].trim();
+        if (head) {
+          return {
+            number: Number(head),
+            repoSlug: slug || null,
+            label: null,
+            source: 'override'
+          };
+        }
+      }
+    } catch {}
+  }
+
+  const lookupPlan = await resolveStandingPriorityLookupPlan({
+    repoRoot,
+    slug,
+    standingPriorityLabels
+  });
+  if (lookupPlan.found) {
+    return lookupPlan.found;
+  }
+
+  const { cacheSource, cacheLabels, cacheRepoSlug } = lookupPlan;
 
   const cache = readJson(path.join(repoRoot, '.agent_priority_cache.json'));
-  return resolveStandingPriorityFromSources({ ghOutcome, restOutcome, cache, standingPriorityLabels });
+  const cacheRepositorySlug =
+    (typeof cache?.repository === 'string' && cache.repository.trim() ? cache.repository.trim() : null) ||
+    parseGitHubIssueUrlSlug(cache?.url);
+  const number = resolveStandingPriorityFromSources({
+    ghOutcome: cacheSource.ghOutcome,
+    restOutcome: cacheSource.restOutcome,
+    cache,
+    standingPriorityLabels: cacheLabels
+  });
+
+  return {
+    number,
+    repoSlug: cacheRepositorySlug || cacheRepoSlug,
+    label: null,
+    source: 'cache'
+  };
 }
 
 function normalizeIssueResult(result) {
@@ -790,50 +1124,75 @@ function normalizeIssueResult(result) {
   };
 }
 
-async function fetchIssue(number, repoRoot, slug) {
+function defaultGhIssueFetcher({ args }) {
+  const response = ensureCommand(sh('gh', args), 'gh');
+  if (response.status !== 0) {
+    const err = new Error(response.stderr?.trim() || `gh exited with status ${response.status}`);
+    err.code = response.error?.code || null;
+    err.status = response.status;
+    err.stdout = response.stdout;
+    err.stderr = response.stderr;
+    throw err;
+  }
+
+  if (!response.stdout?.trim()) {
+    return null;
+  }
+
+  return JSON.parse(response.stdout);
+}
+
+async function defaultRestIssueFetcher({ repoRoot, number, slug }) {
+  return fetchIssueViaRest(repoRoot, number, slug);
+}
+
+export async function fetchIssue(number, repoRoot, slug, options = {}) {
+  const ghIssueFetcher = options.ghIssueFetcher ?? defaultGhIssueFetcher;
+  const restIssueFetcher = options.restIssueFetcher ?? defaultRestIssueFetcher;
+
   let result = null;
-  let lastGhResult = null;
   let ghMissing = false;
   let ghErrorMessage = null;
 
-  const attemptGh = (args) => {
+  const attemptGh = async (args) => {
     try {
-      const response = ensureCommand(sh('gh', args), 'gh');
-      lastGhResult = response;
-      if (response.status === 0 && response.stdout.trim()) {
-        return JSON.parse(response.stdout);
-      }
-      if (response.status !== 0) {
-        ghErrorMessage = response.stderr?.trim() || `gh exited with status ${response.status}`;
-      }
+      return await ghIssueFetcher({ number, repoRoot, slug, args });
     } catch (err) {
       if (err?.code === 'ENOENT') {
         ghMissing = true;
-        ghErrorMessage = err.message;
-      } else {
-        ghErrorMessage = err?.message || ghErrorMessage;
       }
+      ghErrorMessage = err?.message || ghErrorMessage;
+      return null;
     }
-    return null;
   };
 
-  if (process.env.GITHUB_REPOSITORY) {
+  const targetSlug =
+    (typeof slug === 'string' && slug.trim() ? slug.trim() : null) ||
+    (typeof process.env.GITHUB_REPOSITORY === 'string' && process.env.GITHUB_REPOSITORY.trim()
+      ? process.env.GITHUB_REPOSITORY.trim()
+      : null);
+
+  if (targetSlug) {
     const fetchArgs = [
       'api',
-      `repos/${process.env.GITHUB_REPOSITORY}/issues/${number}`,
+      `repos/${targetSlug}/issues/${number}`,
       '--jq',
       `. | {number,title,state,updatedAt,html_url:.html_url,url:.url,labels,assignees,milestone,comments,body}`
     ];
-    result = attemptGh(fetchArgs);
+    result = await attemptGh(fetchArgs);
   }
 
   if (!result) {
     const fields = ['number', 'title', 'state', 'updatedAt', 'url', 'labels', 'assignees', 'milestone', 'comments', 'body'];
-    result = attemptGh(['issue', 'view', String(number), '--json', fields.join(',')]);
+    const viewArgs = ['issue', 'view', String(number), '--json', fields.join(',')];
+    if (targetSlug) {
+      viewArgs.push('--repo', targetSlug);
+    }
+    result = await attemptGh(viewArgs);
   }
 
   if (!result) {
-    const restResult = await fetchIssueViaRest(repoRoot, number, slug);
+    const restResult = await restIssueFetcher({ repoRoot, number, slug: targetSlug || slug || null });
     if (restResult) {
       result = restResult;
     }
@@ -841,10 +1200,10 @@ async function fetchIssue(number, repoRoot, slug) {
 
   if (!result) {
     const messageParts = [`Failed to fetch issue #${number} via gh CLI`];
-    const details = ghMissing
-      ? 'gh CLI not found'
-      : ghErrorMessage || [lastGhResult?.stderr, lastGhResult?.stdout].find((part) => part && part.trim());
-    if (details) messageParts.push(`(${details})`);
+    const details = ghMissing ? 'gh CLI not found' : ghErrorMessage;
+    if (details) {
+      messageParts.push(`(${details})`);
+    }
     throw new Error(messageParts.join(' '));
   }
 
@@ -902,6 +1261,34 @@ export function buildNoStandingPriorityState(
   return { clearedRouter, clearedCache, summaryLines, result };
 }
 
+export function computeNextPriorityCacheState({
+  cache,
+  number,
+  issueRepoSlug,
+  snapshot,
+  fetchSource,
+  fetchError,
+  cachedAtUtc = new Date().toISOString()
+}) {
+  return {
+    ...cache,
+    number,
+    repository: issueRepoSlug || cache.repository || null,
+    title: snapshot.title || cache.title || null,
+    url: snapshot.url || cache.url || null,
+    state: snapshot.state || cache.state || null,
+    labels: Array.isArray(snapshot.labels) ? snapshot.labels : cache.labels || [],
+    assignees: Array.isArray(snapshot.assignees) ? snapshot.assignees : cache.assignees || [],
+    milestone: snapshot.milestone ?? cache.milestone ?? null,
+    commentCount: snapshot.commentCount ?? cache.commentCount ?? null,
+    lastSeenUpdatedAt: snapshot.updatedAt || cache.lastSeenUpdatedAt || null,
+    issueDigest: snapshot.digest,
+    bodyDigest: snapshot.bodyDigest ?? cache.bodyDigest ?? null,
+    cachedAtUtc,
+    lastFetchSource: fetchSource,
+    lastFetchError: fetchError
+  };
+}
 export async function main() {
   const repoRoot = gitRoot();
   const slug = resolveRepositorySlug(repoRoot);
@@ -911,9 +1298,9 @@ export async function main() {
   const resultsDir = path.join(repoRoot, 'tests', 'results', '_agent', 'issue');
   fs.mkdirSync(resultsDir, { recursive: true });
 
-  let number;
+  let standingPriority;
   try {
-    number = await resolveStandingPriorityNumber(repoRoot, slug, standingPriorityLabels);
+    standingPriority = await resolveStandingPriorityNumber(repoRoot, slug, standingPriorityLabels);
   } catch (err) {
     if (err?.code === 'NO_STANDING_PRIORITY') {
       const { clearedRouter, clearedCache, summaryLines, result } = buildNoStandingPriorityState(
@@ -934,13 +1321,15 @@ export async function main() {
     }
     throw err;
   }
-  console.log(`[priority] Standing issue: #${number}`);
+  const number = standingPriority.number;
+  const issueRepoSlug = standingPriority.repoSlug || slug || null;
+  console.log(`[priority] Standing issue: #${number}${issueRepoSlug ? ` (${issueRepoSlug})` : ''}`);
 
   let issue;
   let fetchSource = 'live';
   let fetchError = null;
   try {
-    issue = await fetchIssue(number, repoRoot, slug);
+    issue = await fetchIssue(number, repoRoot, issueRepoSlug);
   } catch (err) {
     console.warn(`[priority] Fetch failed: ${err.message}`);
     fetchSource = 'cache';
@@ -974,23 +1363,14 @@ export async function main() {
   const router = buildRouter(snapshot, policy);
   writeJson(path.join(resultsDir, 'router.json'), router);
 
-  const newCache = {
-    ...cache,
+  const newCache = computeNextPriorityCacheState({
+    cache,
     number,
-    title: snapshot.title || cache.title || null,
-    url: snapshot.url || cache.url || null,
-    state: snapshot.state || cache.state || null,
-    labels: Array.isArray(snapshot.labels) ? snapshot.labels : cache.labels || [],
-    assignees: Array.isArray(snapshot.assignees) ? snapshot.assignees : cache.assignees || [],
-    milestone: snapshot.milestone ?? cache.milestone ?? null,
-    commentCount: snapshot.commentCount ?? cache.commentCount ?? null,
-    lastSeenUpdatedAt: snapshot.updatedAt || cache.lastSeenUpdatedAt || null,
-    issueDigest: snapshot.digest,
-    bodyDigest: snapshot.bodyDigest ?? cache.bodyDigest ?? null,
-    cachedAtUtc: new Date().toISOString(),
-    lastFetchSource: fetchSource,
-    lastFetchError: fetchError
-  };
+    issueRepoSlug,
+    snapshot,
+    fetchSource,
+    fetchError
+  });
   if (shouldWriteCache(cache, newCache)) {
     writeJson(cachePath, newCache);
   }
