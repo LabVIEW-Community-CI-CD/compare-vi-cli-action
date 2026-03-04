@@ -358,6 +358,48 @@
       },
       "group": "test",
       "problemMatcher": []
+    },
+    {
+      "label": "Release CLI: Scenario matrix consolidate",
+      "type": "process",
+      "command": "node",
+      "args": [
+        "tools/npm/run-script.mjs",
+        "release:cli:matrix:consolidate"
+      ],
+      "options": {
+        "cwd": "${workspaceFolder}"
+      },
+      "group": "test",
+      "problemMatcher": []
+    },
+    {
+      "label": "Release CLI: Scenario matrix all + consolidated",
+      "type": "process",
+      "command": "node",
+      "args": [
+        "tools/npm/run-script.mjs",
+        "release:cli:matrix:all:consolidated"
+      ],
+      "options": {
+        "cwd": "${workspaceFolder}"
+      },
+      "group": "test",
+      "problemMatcher": []
+    },
+    {
+      "label": "Release CLI: Scenario matrix all + real + consolidated",
+      "type": "process",
+      "command": "node",
+      "args": [
+        "tools/npm/run-script.mjs",
+        "release:cli:matrix:all:real:consolidated"
+      ],
+      "options": {
+        "cwd": "${workspaceFolder}"
+      },
+      "group": "test",
+      "problemMatcher": []
     }
   ],
   "inputs": [

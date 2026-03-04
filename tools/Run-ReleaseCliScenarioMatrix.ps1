@@ -3,7 +3,8 @@
 param(
   [string]$RepoRoot,
   [string]$ReleaseRoot = 'tests/results/_agent/release-v1.0.1',
-  [string]$Image
+  [string]$Image,
+  [switch]$RealMode
 )
 
 Set-StrictMode -Version Latest
@@ -118,7 +119,7 @@ try {
             baseVi = $pair.baseVi
             headVi = $pair.headVi
             generatedAtUtc = (Get-Date).ToUniversalTime().ToString('o')
-            note = 'Scenario matrix input for compare single dry-run'
+            note = if ($RealMode.IsPresent) { 'Scenario matrix input for compare single real mode' } else { 'Scenario matrix input for compare single dry-run' }
           } | ConvertTo-Json -Depth 8 | Set-Content -LiteralPath $inputPath -Encoding utf8
 
           $inputRel = ($inputPath.Replace($basePrefix, '') -replace '\\', '/')
@@ -131,7 +132,8 @@ try {
             $outInContainer = '/work/' + $outRel
           }
 
-          $argsText = @('compare', 'single', '--input', ('"{0}"' -f $inputInContainer), '--dry-run', '--out-dir', ('"{0}"' -f $outInContainer))
+          $argsText = @('compare', 'single', '--input', ('"{0}"' -f $inputInContainer), '--out-dir', ('"{0}"' -f $outInContainer))
+          if (-not $RealMode.IsPresent) { $argsText += '--dry-run' }
           if ($diff -eq 1) { $argsText += '--diff' }
           if ($nonInteractive -eq 1) { $argsText += '--non-interactive' }
           if ($headless -eq 1) { $argsText += '--headless' }
@@ -201,6 +203,7 @@ try {
     exitNonZero = @($results | Where-Object { $_.exitCode -ne 0 }).Count
     dockerEngineOs = $dockerOs
     image = $effectiveImage
+    mode = if ($RealMode.IsPresent) { 'real' } else { 'dry-run' }
     fixtures = @($pairs | Select-Object -ExpandProperty fixture)
     resultJson = ($jsonPath.Replace($basePrefix, '') -replace '\\', '/')
     resultCsv = ($csvPath.Replace($basePrefix, '') -replace '\\', '/')

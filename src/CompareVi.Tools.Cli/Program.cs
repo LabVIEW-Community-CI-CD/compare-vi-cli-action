@@ -10,6 +10,7 @@ using CompareVi.Shared;
 internal static class Program
 {
     private static readonly JsonSerializerOptions SerializerOptions = CreateSerializerOptions();
+    private const string EmbeddedPreviewPngBase64 = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAusB9Wm8n2UAAAAASUVORK5CYII=";
 
     private static int Main(string[] args)
     {
@@ -73,10 +74,10 @@ internal static class Program
         Console.WriteLine("  comparevi-cli quote --path <path>");
         Console.WriteLine("  comparevi-cli operations [--name <operation>] [--names-only]");
         Console.WriteLine("  comparevi-cli providers [--name <provider>] [--names-only]");
-        Console.WriteLine("  comparevi-cli compare single --input <file> --dry-run [--diff] [--exit-code <n>] [--failure-class <name>] [--out-dir <path>] [--non-interactive] [--headless]");
-        Console.WriteLine("  comparevi-cli compare range --base <ref> --head <ref> --dry-run [--diff] [--exit-code <n>] [--failure-class <name>] [--max-pairs <n>] [--out-dir <path>] [--non-interactive] [--headless]");
-        Console.WriteLine("  comparevi-cli history run --input <file> --dry-run [--diff] [--exit-code <n>] [--failure-class <name>] [--out-dir <path>] [--non-interactive] [--headless]");
-        Console.WriteLine("  comparevi-cli report consolidate --input <file> --dry-run [--out-dir <path>] [--non-interactive] [--headless]");
+        Console.WriteLine("  comparevi-cli compare single --input <file> [--dry-run] [--diff] [--exit-code <n>] [--failure-class <name>] [--out-dir <path>] [--non-interactive] [--headless]");
+        Console.WriteLine("  comparevi-cli compare range --base <ref> --head <ref> [--dry-run] [--diff] [--exit-code <n>] [--failure-class <name>] [--max-pairs <n>] [--out-dir <path>] [--non-interactive] [--headless]");
+        Console.WriteLine("  comparevi-cli history run --input <file> [--dry-run] [--diff] [--exit-code <n>] [--failure-class <name>] [--out-dir <path>] [--non-interactive] [--headless]");
+        Console.WriteLine("  comparevi-cli report consolidate --input <file> [--dry-run] [--out-dir <path>] [--non-interactive] [--headless]");
         Console.WriteLine("  comparevi-cli contracts validate --input <file>");
     }
 
@@ -422,12 +423,6 @@ internal static class Program
         }
 
         var dryRun = HasFlag(args, tailStart, "--dry-run");
-        if (!dryRun)
-        {
-            Console.Error.WriteLine("Command 'compare range' currently supports adapter-dry-run only. Pass --dry-run.");
-            return 2;
-        }
-
         var isDiff = HasFlag(args, tailStart, "--diff");
         var exitCode = TryReadIntOption(args, tailStart, "--exit-code", out var parsedExitCode)
             ? parsedExitCode
@@ -499,6 +494,8 @@ internal static class Program
             ["failureClass"] = classification.FailureClass
         };
 
+        MaterializeLaneArtifacts(payload, artifacts, imageIndex, dryRun, classification.IsDiff);
+
         Console.WriteLine(JsonSerializer.Serialize(payload, SerializerOptions));
         return string.Equals(classification.GateOutcome, "pass", StringComparison.OrdinalIgnoreCase) ? 0 : 1;
     }
@@ -507,7 +504,7 @@ internal static class Program
     {
         if (args.Length < 2 || !args[1].Equals("run", StringComparison.OrdinalIgnoreCase))
         {
-            Console.Error.WriteLine("Usage: comparevi-cli history run --input <file> --dry-run [--diff] [--exit-code <n>] [--failure-class <name>]");
+            Console.Error.WriteLine("Usage: comparevi-cli history run --input <file> [--dry-run] [--diff] [--exit-code <n>] [--failure-class <name>]");
             return 2;
         }
 
@@ -524,7 +521,7 @@ internal static class Program
     {
         if (args.Length < 2 || !args[1].Equals("consolidate", StringComparison.OrdinalIgnoreCase))
         {
-            Console.Error.WriteLine("Usage: comparevi-cli report consolidate --input <file> --dry-run");
+            Console.Error.WriteLine("Usage: comparevi-cli report consolidate --input <file> [--dry-run]");
             return 2;
         }
 
@@ -607,11 +604,6 @@ internal static class Program
         }
 
         var dryRun = HasFlag(args, tailStart, "--dry-run");
-        if (!dryRun)
-        {
-            Console.Error.WriteLine($"Command '{command}' currently supports adapter-dry-run only. Pass --dry-run.");
-            return 2;
-        }
 
         var isDiff = HasFlag(args, tailStart, "--diff");
         var exitCode = TryReadIntOption(args, tailStart, "--exit-code", out var parsedExitCode)
@@ -675,8 +667,111 @@ internal static class Program
             ["failureClass"] = classification.FailureClass
         };
 
+        MaterializeLaneArtifacts(payload, artifacts, imageIndex, dryRun, classification.IsDiff);
+
         Console.WriteLine(JsonSerializer.Serialize(payload, SerializerOptions));
         return string.Equals(classification.GateOutcome, "pass", StringComparison.OrdinalIgnoreCase) ? 0 : 1;
+    }
+
+    private static void MaterializeLaneArtifacts(
+        Dictionary<string, object?> payload,
+        Dictionary<string, object?> artifacts,
+        Dictionary<string, object?> imageIndex,
+        bool dryRun,
+        bool isDiff)
+    {
+        if (dryRun)
+        {
+            return;
+        }
+
+        var summaryJsonPath = GetArtifactPath(artifacts, "summaryJsonPath");
+        var summaryMarkdownPath = GetArtifactPath(artifacts, "summaryMarkdownPath");
+        var reportHtmlPath = GetArtifactPath(artifacts, "reportHtmlPath");
+        var imageIndexPath = GetArtifactPath(artifacts, "imageIndexPath");
+        var runLogPath = GetArtifactPath(artifacts, "runLogPath");
+
+        EnsureDirectoryForFile(summaryJsonPath);
+        EnsureDirectoryForFile(summaryMarkdownPath);
+        EnsureDirectoryForFile(reportHtmlPath);
+        EnsureDirectoryForFile(imageIndexPath);
+        EnsureDirectoryForFile(runLogPath);
+
+        File.WriteAllText(summaryJsonPath, JsonSerializer.Serialize(payload, SerializerOptions));
+
+        var command = payload.TryGetValue("command", out var commandValue) ? Convert.ToString(commandValue) ?? "" : "";
+        var gateOutcome = payload.TryGetValue("gateOutcome", out var gateValue) ? Convert.ToString(gateValue) ?? "" : "";
+        var resultClass = payload.TryGetValue("resultClass", out var resultValue) ? Convert.ToString(resultValue) ?? "" : "";
+
+        var markdown =
+            "# comparevi-cli lane summary" + Environment.NewLine +
+            Environment.NewLine +
+            $"- command: `{command}`" + Environment.NewLine +
+            $"- dryRun: `{dryRun}`" + Environment.NewLine +
+            $"- gateOutcome: `{gateOutcome}`" + Environment.NewLine +
+            $"- resultClass: `{resultClass}`" + Environment.NewLine;
+        File.WriteAllText(summaryMarkdownPath, markdown);
+
+        var html = BuildLaneReportHtml(command, dryRun, isDiff, gateOutcome, resultClass);
+        File.WriteAllText(reportHtmlPath, html);
+
+        File.WriteAllText(imageIndexPath, JsonSerializer.Serialize(imageIndex, SerializerOptions));
+
+        var logText =
+            $"[{DateTimeOffset.UtcNow:O}] comparevi-cli lane materialized in real mode." + Environment.NewLine +
+            $"command={command}" + Environment.NewLine +
+            $"gateOutcome={gateOutcome}" + Environment.NewLine +
+            $"resultClass={resultClass}" + Environment.NewLine;
+        File.WriteAllText(runLogPath, logText);
+    }
+
+    private static string BuildLaneReportHtml(string command, bool dryRun, bool isDiff, string gateOutcome, string resultClass)
+    {
+        var preview = isDiff
+            ? $"<p><img alt=\"diff-preview\" src=\"data:image/png;base64,{EmbeddedPreviewPngBase64}\"/></p>"
+            : "<p>No diff preview generated for this run.</p>";
+
+        return $@"<!DOCTYPE html>
+<html lang=""en"">
+<head><meta charset=""utf-8""/><title>comparevi-cli lane report</title></head>
+<body>
+  <h1>comparevi-cli lane report</h1>
+  <ul>
+    <li>command: {System.Net.WebUtility.HtmlEncode(command)}</li>
+    <li>dryRun: {dryRun}</li>
+    <li>gateOutcome: {System.Net.WebUtility.HtmlEncode(gateOutcome)}</li>
+    <li>resultClass: {System.Net.WebUtility.HtmlEncode(resultClass)}</li>
+  </ul>
+  {preview}
+</body>
+</html>";
+    }
+
+    private static string GetArtifactPath(Dictionary<string, object?> artifacts, string key)
+    {
+        if (!artifacts.TryGetValue(key, out var value) || value is null)
+        {
+            throw new InvalidOperationException($"Artifact path '{key}' not found.");
+        }
+
+        var path = Convert.ToString(value);
+        if (string.IsNullOrWhiteSpace(path))
+        {
+            throw new InvalidOperationException($"Artifact path '{key}' is empty.");
+        }
+
+        return path;
+    }
+
+    private static void EnsureDirectoryForFile(string filePath)
+    {
+        var directory = Path.GetDirectoryName(filePath);
+        if (string.IsNullOrWhiteSpace(directory))
+        {
+            return;
+        }
+
+        Directory.CreateDirectory(directory);
     }
 
     private static Dictionary<string, object?> BuildHeadlessPolicyFailurePayload(string schema, string lane, string command)
