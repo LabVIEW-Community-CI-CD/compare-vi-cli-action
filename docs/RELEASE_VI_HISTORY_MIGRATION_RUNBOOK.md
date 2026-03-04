@@ -75,3 +75,8 @@ Before enabling any less strict stable behavior:
 - Keep changes additive; do not remove legacy outputs during Phase 8.
 - Use disposable tags for proof runs; do not reuse released tags.
 - Treat mode changes as configuration changes requiring PR review.
+
+## Ongoing Monitoring
+
+- Track stable-tag hard-enforcement evidence in `docs/RELEASE_VI_HISTORY_STABLE_ENFORCEMENT_MONITORING.md`.
+- Update the tracker after each stable release cycle with run/job URLs and policy summary field values.

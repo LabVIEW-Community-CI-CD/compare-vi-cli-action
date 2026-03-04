@@ -2,7 +2,7 @@
   "$schema": "./schemas/documentation-manifest-v1.schema.json",
   "schema": "documentation-manifest-v1",
   "version": "1.0.0",
-  "updated": "2026-03-03T23:15:00Z",
+  "updated": "2026-03-03T23:45:00Z",
   "entries": [
     {
       "name": "Root Playbooks",
@@ -80,6 +80,7 @@
         "docs/RELEASE_VI_HISTORY_MIGRATION_HARDENING.md",
         "docs/RELEASE_VI_HISTORY_MIGRATION_INCIDENT_PLAYBOOK.md",
         "docs/RELEASE_VI_HISTORY_MIGRATION_RUNBOOK.md",
+        "docs/RELEASE_VI_HISTORY_STABLE_ENFORCEMENT_MONITORING.md",
         "docs/plans/TRACEABILITY_MATRIX_PLAN.md",
         "docs/plans/VALIDATION_MATRIX.md",
         "docs/QUANTILE_ACCURACY.md",
