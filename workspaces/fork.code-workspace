@@ -1,0 +1,387 @@
+{
+  "folders": [
+    {
+      "name": "fork — compare-vi-cli-action",
+      "path": ".."
+    }
+  ],
+  "settings": {
+    "workbench.colorCustomizations": {
+      "statusBar.background": "#1a7f37",
+      "statusBar.foreground": "#ffffff",
+      "statusBarItem.remoteBackground": "#1a7f37",
+      "statusBarItem.remoteForeground": "#ffffff"
+    }
+  },
+  "tasks": {
+    "version": "2.0.0",
+    "tasks": [
+      {
+        "label": "Fork: PrePush (actionlint)",
+        "type": "process",
+        "command": "pwsh",
+        "args": [
+          "-NoLogo",
+          "-NoProfile",
+          "-File",
+          "tools/PrePush-Checks.ps1"
+        ],
+        "options": {
+          "cwd": "${workspaceFolder}"
+        },
+        "group": "test",
+        "problemMatcher": []
+      },
+      {
+        "label": "Fork: Pester (unit)",
+        "type": "process",
+        "command": "pwsh",
+        "args": [
+          "-NoLogo",
+          "-NoProfile",
+          "-File",
+          "Invoke-PesterTests.ps1",
+          "-IntegrationMode",
+          "exclude",
+          "-DetectLeaks",
+          "-KillLeaks",
+          "-CleanLabVIEW",
+          "-CleanAfter",
+          "-ResultsPath",
+          "tests/results"
+        ],
+        "options": {
+          "cwd": "${workspaceFolder}"
+        },
+        "group": "test",
+        "problemMatcher": []
+      },
+      {
+        "label": "Fork: Pester (integration + leak sweep)",
+        "type": "process",
+        "command": "pwsh",
+        "args": [
+          "-NoLogo",
+          "-NoProfile",
+          "-File",
+          "Invoke-PesterTests.ps1",
+          "-IntegrationMode",
+          "include",
+          "-DetectLeaks",
+          "-KillLeaks",
+          "-CleanLabVIEW",
+          "-CleanAfter",
+          "-ResultsPath",
+          "tests/results"
+        ],
+        "options": {
+          "cwd": "${workspaceFolder}"
+        },
+        "group": "test",
+        "problemMatcher": []
+      },
+      {
+        "label": "Fork: Non-LV checks (docker)",
+        "type": "process",
+        "command": "pwsh",
+        "args": [
+          "-NoLogo",
+          "-NoProfile",
+          "-File",
+          "tools/Run-NonLVChecksInDocker.ps1",
+          "-UseToolsImage"
+        ],
+        "options": {
+          "cwd": "${workspaceFolder}",
+          "env": {
+            "COMPAREVI_TOOLS_IMAGE": "ghcr.io/labview-community-ci-cd/comparevi-tools:latest"
+          }
+        },
+        "group": "test",
+        "problemMatcher": []
+      },
+      {
+        "label": "Fork: Priority handoff tests",
+        "type": "process",
+        "command": "pwsh",
+        "args": [
+          "-NoLogo",
+          "-NoProfile",
+          "-Command",
+          "node tools/npm/run-script.mjs priority:handoff-tests"
+        ],
+        "options": {
+          "cwd": "${workspaceFolder}"
+        },
+        "group": "test",
+        "problemMatcher": []
+      },
+      {
+        "label": "Fork: Verify diff session (real, stateless)",
+        "type": "process",
+        "command": "pwsh",
+        "args": [
+          "-NoLogo",
+          "-NoProfile",
+          "-File",
+          "tools/Run-LocalDiffSession.ps1",
+          "-BaseVi",
+          "${input:localDiffBase}",
+          "-HeadVi",
+          "${input:localDiffHead}",
+          "-Mode",
+          "${input:localDiffMode}",
+          "-ResultsRoot",
+          "${input:localDiffResultsReal}",
+          "-ProbeSetup",
+          "-AutoConfig",
+          "-Stateless",
+          "-RenderReport",
+          "-ArchiveDir",
+          "tests/results/_agent/local-diff/latest",
+          "-ArchiveZip",
+          "tests/results/_agent/local-diff/latest.zip"
+        ],
+        "options": {
+          "cwd": "${workspaceFolder}"
+        },
+        "group": "test",
+        "problemMatcher": []
+      },
+      {
+        "label": "Fork: Verify diff session (stub)",
+        "type": "process",
+        "command": "pwsh",
+        "args": [
+          "-NoLogo",
+          "-NoProfile",
+          "-File",
+          "tools/Run-LocalDiffSession.ps1",
+          "-BaseVi",
+          "${input:localDiffBase}",
+          "-HeadVi",
+          "${input:localDiffHead}",
+          "-Mode",
+          "${input:localDiffMode}",
+          "-ResultsRoot",
+          "${input:localDiffResults}",
+          "-UseStub",
+          "-ArchiveDir",
+          "tests/results/_agent/local-diff/latest-stub",
+          "-ArchiveZip",
+          "tests/results/_agent/local-diff/latest-stub.zip"
+        ],
+        "options": {
+          "cwd": "${workspaceFolder}"
+        },
+        "group": "test",
+        "problemMatcher": []
+      },
+      {
+        "label": "Fork: Verify diff session (real)",
+        "type": "process",
+        "command": "pwsh",
+        "args": [
+          "-NoLogo",
+          "-NoProfile",
+          "-File",
+          "tools/Run-LocalDiffSession.ps1",
+          "-BaseVi",
+          "${input:localDiffBase}",
+          "-HeadVi",
+          "${input:localDiffHead}",
+          "-Mode",
+          "${input:localDiffMode}",
+          "-ResultsRoot",
+          "${input:localDiffResultsReal}",
+          "-ProbeSetup",
+          "-AutoConfig",
+          "-LabVIEWVersion",
+          "${input:localDiffVersion}",
+          "-LabVIEWBitness",
+          "${input:localDiffBitness}",
+          "-Stateless",
+          "-RenderReport"
+        ],
+        "options": {
+          "cwd": "${workspaceFolder}"
+        },
+        "group": "test",
+        "problemMatcher": []
+      },
+      {
+        "label": "Fork: Verify diff session (legacy noise)",
+        "type": "process",
+        "command": "pwsh",
+        "args": [
+          "-NoLogo",
+          "-NoProfile",
+          "-File",
+          "tools/Run-LocalDiffSession.ps1",
+          "-BaseVi",
+          "${input:localDiffBase}",
+          "-HeadVi",
+          "${input:localDiffHead}",
+          "-Mode",
+          "${input:localDiffMode}",
+          "-ResultsRoot",
+          "${input:localDiffResultsReal}",
+          "-ProbeSetup",
+          "-AutoConfig",
+          "-LabVIEWVersion",
+          "${input:localDiffVersion}",
+          "-LabVIEWBitness",
+          "${input:localDiffBitness}",
+          "-NoiseProfile",
+          "legacy",
+          "-RenderReport"
+        ],
+        "options": {
+          "cwd": "${workspaceFolder}"
+        },
+        "group": "test",
+        "problemMatcher": []
+      },
+      {
+        "label": "Fork: Smoke — VI staging label",
+        "type": "process",
+        "command": "pwsh",
+        "args": [
+          "-NoLogo",
+          "-NoProfile",
+          "-Command",
+          "$env:GH_TOKEN = Get-Content -Raw 'C:\\github_token.txt'; npm run smoke:vi-stage"
+        ],
+        "options": {
+          "cwd": "${workspaceFolder}"
+        },
+        "group": "test",
+        "problemMatcher": []
+      },
+      {
+        "label": "Fork: VI History — Run local suite",
+        "type": "process",
+        "command": "npm",
+        "args": [
+          "run",
+          "history:run",
+          "--",
+          "-ViPath",
+          "${input:viHistoryPath}",
+          "-StartRef",
+          "${input:viHistoryStartRef}",
+          "-MaxPairs",
+          "${input:viHistoryMaxPairs}"
+        ],
+        "options": {
+          "cwd": "${workspaceFolder}"
+        },
+        "problemMatcher": []
+      },
+      {
+        "label": "Fork: VI History — Dispatch workflow",
+        "type": "process",
+        "command": "npm",
+        "args": [
+          "run",
+          "history:dispatch",
+          "--",
+          "-ViPath",
+          "${input:viHistoryPath}",
+          "-CompareRef",
+          "${input:viHistoryCompareRef}",
+          "-NotifyIssue",
+          "${input:viHistoryNotifyIssue}"
+        ],
+        "options": {
+          "cwd": "${workspaceFolder}"
+        },
+        "problemMatcher": []
+      }
+    ],
+    "inputs": [
+      {
+        "id": "viHistoryPath",
+        "type": "promptString",
+        "description": "Repository-relative VI path",
+        "default": "VI1.vi"
+      },
+      {
+        "id": "viHistoryStartRef",
+        "type": "promptString",
+        "description": "Start ref (use HEAD for branch tip)",
+        "default": "HEAD"
+      },
+      {
+        "id": "viHistoryMaxPairs",
+        "type": "promptString",
+        "description": "Maximum commit pairs to inspect (0 = unlimited)",
+        "default": "3"
+      },
+      {
+        "id": "viHistoryCompareRef",
+        "type": "promptString",
+        "description": "Workflow compare ref (branch/commit)",
+        "default": "develop"
+      },
+      {
+        "id": "viHistoryNotifyIssue",
+        "type": "promptString",
+        "description": "Issue number to notify (leave blank to skip)",
+        "default": "317"
+      },
+      {
+        "id": "localDiffBase",
+        "type": "promptString",
+        "description": "Base VI path (relative or absolute)",
+        "default": "fixtures/vi-stage/bd-cosmetic/Base.vi"
+      },
+      {
+        "id": "localDiffHead",
+        "type": "promptString",
+        "description": "Head VI path (relative or absolute)",
+        "default": "fixtures/vi-stage/bd-cosmetic/Head.vi"
+      },
+      {
+        "id": "localDiffMode",
+        "type": "pickString",
+        "description": "Local diff session mode",
+        "options": [
+          { "label": "normal", "value": "normal" },
+          { "label": "cli-suppressed", "value": "cli-suppressed" },
+          { "label": "git-context", "value": "git-context" },
+          { "label": "duplicate-window", "value": "duplicate-window" }
+        ],
+        "default": "normal"
+      },
+      {
+        "id": "localDiffResults",
+        "type": "promptString",
+        "description": "Results directory (relative or absolute)",
+        "default": "tests/results/_agent/local-diff/stub"
+      },
+      {
+        "id": "localDiffResultsReal",
+        "type": "promptString",
+        "description": "Results directory for real CLI session (relative or absolute)",
+        "default": "tests/results/_agent/local-diff/real"
+      },
+      {
+        "id": "localDiffVersion",
+        "type": "promptString",
+        "description": "LabVIEW version to prefer during auto-config (leave blank for auto-detect)",
+        "default": "2025"
+      },
+      {
+        "id": "localDiffBitness",
+        "type": "pickString",
+        "description": "LabVIEW bitness for auto-config",
+        "options": [
+          { "label": "64-bit", "value": "64" },
+          { "label": "32-bit", "value": "32" }
+        ],
+        "default": "64"
+      }
+    ]
+  }
+}

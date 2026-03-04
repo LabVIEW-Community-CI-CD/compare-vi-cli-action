@@ -1,0 +1,176 @@
+{
+  "folders": [
+    {
+      "name": "upstream",
+      "path": "../../compare-vi-cli-action-upstream"
+    },
+    {
+      "name": "fork",
+      "path": "../../compare-vi-cli-action-fork"
+    }
+  ],
+  "settings": {
+    "workbench.colorCustomizations": {
+      "statusBar.background": "#6f42c1",
+      "statusBar.foreground": "#ffffff",
+      "statusBarItem.remoteBackground": "#6f42c1",
+      "statusBarItem.remoteForeground": "#ffffff"
+    }
+  },
+  "tasks": {
+    "version": "2.0.0",
+    "tasks": [
+      {
+        "label": "Command Center: Parity check (upstream)",
+        "type": "process",
+        "command": "node",
+        "args": [
+          "tools/priority/report-origin-upstream-parity.mjs"
+        ],
+        "options": {
+          "cwd": "${workspaceFolder:upstream}"
+        },
+        "problemMatcher": []
+      },
+      {
+        "label": "Command Center: Priority bootstrap (upstream)",
+        "type": "process",
+        "command": "pwsh",
+        "args": [
+          "-NoLogo",
+          "-NoProfile",
+          "-File",
+          "tools/priority/bootstrap.ps1"
+        ],
+        "options": {
+          "cwd": "${workspaceFolder:upstream}"
+        },
+        "problemMatcher": []
+      },
+      {
+        "label": "Command Center: Priority sync (upstream)",
+        "type": "process",
+        "command": "node",
+        "args": [
+          "tools/priority/sync-standing-priority.mjs"
+        ],
+        "options": {
+          "cwd": "${workspaceFolder:upstream}"
+        },
+        "problemMatcher": []
+      },
+      {
+        "label": "Command Center: CI Watch REST (fork)",
+        "type": "process",
+        "command": "npm",
+        "args": [
+          "run",
+          "ci:watch:rest",
+          "--",
+          "--run-id",
+          "${input:ciRunId}"
+        ],
+        "options": {
+          "cwd": "${workspaceFolder:fork}"
+        },
+        "problemMatcher": []
+      },
+      {
+        "label": "Command Center: Dispatch validate (fork)",
+        "type": "process",
+        "command": "node",
+        "args": [
+          "tools/priority/dispatch-validate.mjs"
+        ],
+        "options": {
+          "cwd": "${workspaceFolder:fork}"
+        },
+        "problemMatcher": []
+      },
+      {
+        "label": "Command Center: Pester (unit, fork)",
+        "type": "process",
+        "command": "pwsh",
+        "args": [
+          "-NoLogo",
+          "-NoProfile",
+          "-File",
+          "Invoke-PesterTests.ps1",
+          "-IntegrationMode",
+          "exclude",
+          "-DetectLeaks",
+          "-KillLeaks",
+          "-CleanLabVIEW",
+          "-CleanAfter",
+          "-ResultsPath",
+          "tests/results"
+        ],
+        "options": {
+          "cwd": "${workspaceFolder:fork}"
+        },
+        "group": "test",
+        "problemMatcher": []
+      },
+      {
+        "label": "Command Center: PrePush (actionlint, upstream)",
+        "type": "process",
+        "command": "pwsh",
+        "args": [
+          "-NoLogo",
+          "-NoProfile",
+          "-File",
+          "tools/PrePush-Checks.ps1"
+        ],
+        "options": {
+          "cwd": "${workspaceFolder:upstream}"
+        },
+        "group": "test",
+        "problemMatcher": []
+      },
+      {
+        "label": "Command Center: Priority handoff tests (fork)",
+        "type": "process",
+        "command": "pwsh",
+        "args": [
+          "-NoLogo",
+          "-NoProfile",
+          "-Command",
+          "node tools/npm/run-script.mjs priority:handoff-tests"
+        ],
+        "options": {
+          "cwd": "${workspaceFolder:fork}"
+        },
+        "group": "test",
+        "problemMatcher": []
+      },
+      {
+        "label": "Command Center: Non-LV checks docker (fork)",
+        "type": "process",
+        "command": "pwsh",
+        "args": [
+          "-NoLogo",
+          "-NoProfile",
+          "-File",
+          "tools/Run-NonLVChecksInDocker.ps1",
+          "-UseToolsImage"
+        ],
+        "options": {
+          "cwd": "${workspaceFolder:fork}",
+          "env": {
+            "COMPAREVI_TOOLS_IMAGE": "ghcr.io/labview-community-ci-cd/comparevi-tools:latest"
+          }
+        },
+        "group": "test",
+        "problemMatcher": []
+      }
+    ],
+    "inputs": [
+      {
+        "id": "ciRunId",
+        "type": "promptString",
+        "description": "GitHub Actions workflow run ID to watch",
+        "default": ""
+      }
+    ]
+  }
+}

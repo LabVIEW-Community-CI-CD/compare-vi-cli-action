@@ -1,0 +1,116 @@
+{
+  "folders": [
+    {
+      "name": "upstream — compare-vi-cli-action",
+      "path": ".."
+    }
+  ],
+  "settings": {
+    "workbench.colorCustomizations": {
+      "statusBar.background": "#005a9e",
+      "statusBar.foreground": "#ffffff",
+      "statusBarItem.remoteBackground": "#005a9e",
+      "statusBarItem.remoteForeground": "#ffffff"
+    }
+  },
+  "tasks": {
+    "version": "2.0.0",
+    "tasks": [
+      {
+        "label": "Upstream: PrePush (actionlint)",
+        "type": "process",
+        "command": "pwsh",
+        "args": [
+          "-NoLogo",
+          "-NoProfile",
+          "-File",
+          "tools/PrePush-Checks.ps1"
+        ],
+        "options": {
+          "cwd": "${workspaceFolder}"
+        },
+        "group": "test",
+        "problemMatcher": []
+      },
+      {
+        "label": "Upstream: Parity check",
+        "type": "process",
+        "command": "node",
+        "args": [
+          "tools/priority/report-origin-upstream-parity.mjs"
+        ],
+        "options": {
+          "cwd": "${workspaceFolder}"
+        },
+        "problemMatcher": []
+      },
+      {
+        "label": "Upstream: Priority bootstrap",
+        "type": "process",
+        "command": "pwsh",
+        "args": [
+          "-NoLogo",
+          "-NoProfile",
+          "-File",
+          "tools/priority/bootstrap.ps1"
+        ],
+        "options": {
+          "cwd": "${workspaceFolder}"
+        },
+        "problemMatcher": []
+      },
+      {
+        "label": "Upstream: Priority sync",
+        "type": "process",
+        "command": "node",
+        "args": [
+          "tools/priority/sync-standing-priority.mjs"
+        ],
+        "options": {
+          "cwd": "${workspaceFolder}"
+        },
+        "problemMatcher": []
+      },
+      {
+        "label": "Upstream: Pester (unit)",
+        "type": "process",
+        "command": "pwsh",
+        "args": [
+          "-NoLogo",
+          "-NoProfile",
+          "-File",
+          "Invoke-PesterTests.ps1",
+          "-IntegrationMode",
+          "exclude",
+          "-ResultsPath",
+          "tests/results"
+        ],
+        "options": {
+          "cwd": "${workspaceFolder}"
+        },
+        "group": "test",
+        "problemMatcher": []
+      },
+      {
+        "label": "Upstream: Non-LV checks (docker)",
+        "type": "process",
+        "command": "pwsh",
+        "args": [
+          "-NoLogo",
+          "-NoProfile",
+          "-File",
+          "tools/Run-NonLVChecksInDocker.ps1",
+          "-UseToolsImage"
+        ],
+        "options": {
+          "cwd": "${workspaceFolder}",
+          "env": {
+            "COMPAREVI_TOOLS_IMAGE": "ghcr.io/labview-community-ci-cd/comparevi-tools:latest"
+          }
+        },
+        "group": "test",
+        "problemMatcher": []
+      }
+    ]
+  }
+}
