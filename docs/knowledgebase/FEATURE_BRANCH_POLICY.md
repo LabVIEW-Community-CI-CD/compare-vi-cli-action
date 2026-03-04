@@ -166,6 +166,12 @@ checked into `tools/priority/policy.json` so `priority:policy` stays authoritati
   pwsh -NoLogo -NoProfile -Command "Get-Content tests/results/_agent/priority/merge-sync-dry-run.json -Raw | ConvertFrom-Json | Select-Object selectedMode,selectedReason,@{Name='fallbackExpected';Expression={'merge-state-unspecified'}},@{Name='baseRef';Expression={$_.prState.baseRefName}} | ConvertTo-Json -Depth 4"
   ```
 
+- Inspect minimal fallback diagnostics fields (reason + mergeability context):
+
+  ```powershell
+  pwsh -NoLogo -NoProfile -Command "Get-Content tests/results/_agent/priority/merge-sync-dry-run.json -Raw | ConvertFrom-Json | Select-Object selectedReason,@{Name='mergeState';Expression={$_.prState.mergeStateStatus}},@{Name='mergeable';Expression={$_.prState.mergeable}},@{Name='baseRef';Expression={$_.prState.baseRefName}} | ConvertTo-Json -Depth 4"
+  ```
+
 `prState.baseRefName` is normalized to lowercase branch names (for example,
 `refs/heads/Main` → `main`) before mode diagnostics are emitted.
 
