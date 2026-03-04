@@ -169,7 +169,8 @@ line buffers).
 
 - Enforce the required statuses listed in `tools/policy/branch-required-checks.json` (contract source of truth). At
   present these are: `Validate / lint`, `Validate / fixtures`, `Validate / session-index`,
-  `Requirements Verification / requirements-verification`, and `Policy Guard (Upstream) / policy-guard`.
+  `Requirements Verification / requirements-verification`, `CLI Maturity Gate / cli-maturity-windows-latest`,
+  `CLI Maturity Gate / cli-maturity-ubuntu-latest`, and `Policy Guard (Upstream) / policy-guard`.
   Optionally apply the same requirement to `main` per repository policy.
 - One-time GitHub CLI snippet (admin only):
 
@@ -181,6 +182,8 @@ line buffers).
     -f required_status_checks.contexts[]='Validate / fixtures' \
     -f required_status_checks.contexts[]='Validate / session-index' \
     -f required_status_checks.contexts[]='Requirements Verification / requirements-verification' \
+    -f required_status_checks.contexts[]='CLI Maturity Gate / cli-maturity-windows-latest' \
+    -f required_status_checks.contexts[]='CLI Maturity Gate / cli-maturity-ubuntu-latest' \
     -f required_status_checks.contexts[]='Policy Guard (Upstream) / policy-guard' \
     -H "Accept: application/vnd.github+json"
   ```

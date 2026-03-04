@@ -8,6 +8,8 @@
       "Validate / session-index",
       "Validate / issue-snapshot",
       "Requirements Verification / requirements-verification",
+      "CLI Maturity Gate / cli-maturity-windows-latest",
+      "CLI Maturity Gate / cli-maturity-ubuntu-latest",
       "Policy Guard (Upstream) / policy-guard"
     ],
     "main": [
