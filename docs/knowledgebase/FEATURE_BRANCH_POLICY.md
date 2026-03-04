@@ -128,6 +128,12 @@ checked into `tools/priority/policy.json` so `priority:policy` stays authoritati
   node --test tools/priority/__tests__/check-policy-apply.test.mjs
   ```
 
+- Validate merge-mode selection guardrails (`develop` direct merge vs `main` merge-queue/auto):
+
+  ```powershell
+  node --test tools/priority/__tests__/merge-sync-pr.test.mjs
+  ```
+
 - Optional parity run for non-LV checks using the published tools image:
 
   ```powershell
