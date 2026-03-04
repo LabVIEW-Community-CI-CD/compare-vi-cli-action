@@ -1,0 +1,68 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://labview-community-ci-cd.github.io/compare-vi-cli-action/schemas/release-vi-history-trend-v1.schema.json",
+  "title": "Release VI History Trend Artifact",
+  "type": "object",
+  "required": [
+    "schema",
+    "generatedAt",
+    "currentTag",
+    "currentProfile",
+    "historyCount",
+    "outcomes",
+    "latest"
+  ],
+  "properties": {
+    "schema": {
+      "type": "string",
+      "const": "release-vi-history/trend@v1"
+    },
+    "generatedAt": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "currentTag": {
+      "type": "string",
+      "minLength": 1
+    },
+    "currentProfile": {
+      "type": "string",
+      "minLength": 1
+    },
+    "historyCount": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "outcomes": {
+      "type": "object",
+      "required": [
+        "pass",
+        "warn",
+        "fail"
+      ],
+      "properties": {
+        "pass": { "type": "integer", "minimum": 0 },
+        "warn": { "type": "integer", "minimum": 0 },
+        "fail": { "type": "integer", "minimum": 0 }
+      },
+      "additionalProperties": false
+    },
+    "latest": {
+      "type": "object",
+      "required": [
+        "tag",
+        "policyOutcome",
+        "violationCount",
+        "rowCount"
+      ],
+      "properties": {
+        "tag": { "type": "string" },
+        "policyOutcome": { "type": "string" },
+        "violationCount": { "type": "integer", "minimum": 0 },
+        "rowCount": { "type": "integer", "minimum": 0 }
+      },
+      "additionalProperties": false
+    }
+  },
+  "additionalProperties": false
+}

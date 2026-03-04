@@ -47,7 +47,7 @@ Use this section as the canonical phase checklist mirrored in issue #216.
 - [x] Phase 4 — Review Index and Reviewer UX
 - [x] Phase 5 — Policy Gate and Promotion Controls
 - [x] Phase 6 — Unified Comment Publishing
-- [ ] Phase 7 — Historical Analytics
+- [x] Phase 7 — Historical Analytics
 - [ ] Phase 8 — Hardening and Migration
 
 ## Phase 1 — Contracts and Foundations
@@ -209,7 +209,7 @@ Exit criteria:
 - [x] Scenario profile manifest + selector
 - [x] Policy gate enforcement
 - [x] Unified comment publishing
-- [ ] Historical trend aggregation
+- [x] Historical trend aggregation
 - [ ] Migration hardening and rollout controls
 
 ## References
@@ -223,3 +223,4 @@ Exit criteria:
 - release profile manifest: `docs/RELEASE_VI_HISTORY_PROFILE_MANIFEST.md`
 - release policy gate: `docs/RELEASE_VI_HISTORY_POLICY_GATE.md`
 - release comment publishing: `docs/RELEASE_VI_HISTORY_COMMENT_PUBLISHING.md`
+- release trends: `docs/RELEASE_VI_HISTORY_TRENDS.md`

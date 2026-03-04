@@ -156,6 +156,10 @@ try {
   if ($LASTEXITCODE -ne 0) {
     throw "release:vi-history:schema failed (exit=$LASTEXITCODE)."
   }
+  node tools/npm/run-script.mjs release:vi-history:trend:schema
+  if ($LASTEXITCODE -ne 0) {
+    throw "release:vi-history:trend:schema failed (exit=$LASTEXITCODE)."
+  }
 } finally {
   Pop-Location | Out-Null
 }
