@@ -32,8 +32,9 @@ function detectIssueNumber(repoRoot) {
   try {
     const cachePath = path.join(repoRoot, '.agent_priority_cache.json');
     const file = require(cachePath);
-    if (file?.number) {
-      return Number(file.number);
+    const number = file?.number ?? file?.issue?.number;
+    if (number) {
+      return Number(number);
     }
   } catch {
     // ignore cache read failures

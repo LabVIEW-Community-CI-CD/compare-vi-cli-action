@@ -3,12 +3,14 @@
   "schemaVersion": "1.0.0",
   "branches": {
     "develop": [
-      "Validate / lint",
-      "Validate / fixtures",
-      "Validate / session-index",
-      "Validate / issue-snapshot",
-      "Requirements Verification / requirements-verification",
-      "Policy Guard (Upstream) / policy-guard"
+      "lint",
+      "fixtures",
+      "session-index",
+      "issue-snapshot",
+      "semver",
+      "hook-parity (windows-latest)",
+      "hook-parity (ubuntu-latest)",
+      "vi-history-scenarios-linux"
     ],
     "main": [
       "pester",
