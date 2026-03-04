@@ -20,6 +20,25 @@ test('selectMergeMode chooses auto for policy-blocked merge states', () => {
   assert.match(selection.reason, /merge-state-blocked/);
 });
 
+test('selectMergeMode maps unknown merge state to unknown reason when queue branch is absent', () => {
+  const selection = selectMergeMode(
+    {
+      state: 'OPEN',
+      isDraft: false,
+      baseRefName: 'develop',
+      mergeStateStatus: 'UNKNOWN',
+      mergeable: 'MERGEABLE'
+    },
+    {
+      mergeQueueBranches: new Set(['main'])
+    }
+  );
+  assert.deepEqual(selection, {
+    mode: 'auto',
+    reason: 'unknown-merge-state'
+  });
+});
+
 test('selectMergeMode chooses direct for clean mergeable PRs', () => {
   const selection = selectMergeMode({
     state: 'OPEN',
@@ -60,6 +79,25 @@ test('selectMergeMode keeps queue reason stable for refs/heads base branch value
       isDraft: false,
       baseRefName: 'refs/heads/Main',
       mergeStateStatus: 'UNSTABLE',
+      mergeable: 'MERGEABLE'
+    },
+    {
+      mergeQueueBranches: new Set(['main'])
+    }
+  );
+  assert.deepEqual(selection, {
+    mode: 'auto',
+    reason: 'merge-queue-branch-main'
+  });
+});
+
+test('selectMergeMode preserves queue reason precedence when merge state is unknown', () => {
+  const selection = selectMergeMode(
+    {
+      state: 'OPEN',
+      isDraft: false,
+      baseRefName: 'refs/heads/main',
+      mergeStateStatus: 'UNKNOWN',
       mergeable: 'MERGEABLE'
     },
     {

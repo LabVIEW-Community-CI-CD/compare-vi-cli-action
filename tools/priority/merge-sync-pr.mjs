@@ -1,12 +1,14 @@
 #!/usr/bin/env node
 
-import { writeFile } from 'node:fs/promises';
+import { readFile, writeFile } from 'node:fs/promises';
 import { spawnSync } from 'node:child_process';
 import path from 'node:path';
 import process from 'node:process';
 import { fileURLToPath } from 'node:url';
 import { ensureGhCli, resolveUpstream } from './lib/remote-utils.mjs';
 import { getRepoRoot } from './lib/branch-utils.mjs';
+
+const manifestPath = new URL('./policy.json', import.meta.url);
 
 const USAGE_LINES = [
   'Usage: node tools/priority/merge-sync-pr.mjs --pr <number> [options]',
