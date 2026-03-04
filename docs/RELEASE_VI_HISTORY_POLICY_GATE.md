@@ -33,6 +33,16 @@ When migration mode downgrades a fail, the policy summary includes:
 - `outcome`: effective post-enforcement result,
 - `enforcementMode`: active migration mode.
 
+Phase 8 tag-class adoption adds:
+
+- `tagClass`: resolved class for the current tag (`rc` or `stable`),
+- `enforcementSource`: where effective mode came from (`migration.policyEnforcementMode` or `migration.tagClassEnforcement.<tagClass>`).
+
+Current rollout policy:
+
+- RC tags default to `soft` enforcement.
+- Stable tags default to `hard` enforcement.
+
 ## Evaluation Contract
 
 For each required `(os, scenario)` pair:

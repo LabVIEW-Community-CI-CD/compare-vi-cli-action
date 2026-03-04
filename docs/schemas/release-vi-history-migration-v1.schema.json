@@ -19,6 +19,28 @@
         "hard"
       ]
     },
+    "tagClassEnforcement": {
+      "type": "object",
+      "properties": {
+        "rc": {
+          "type": "string",
+          "enum": [
+            "observe",
+            "soft",
+            "hard"
+          ]
+        },
+        "stable": {
+          "type": "string",
+          "enum": [
+            "observe",
+            "soft",
+            "hard"
+          ]
+        }
+      },
+      "additionalProperties": false
+    },
     "notes": {
       "type": "string"
     }

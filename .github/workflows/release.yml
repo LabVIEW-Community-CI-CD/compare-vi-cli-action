@@ -719,19 +719,36 @@ jobs:
           $indexPath = 'tests/results/release-vi-history-index/release-vi-history-review.json'
           $policySummaryPath = 'tests/results/release-vi-history-index/release-vi-history-policy.json'
           $selectedProfile = '${{ needs.release-vi-history-profile.outputs.profile }}'
+          $refName = '${{ github.ref_name }}'
+          $tagClass = if ($refName -match '-') { 'rc' } else { 'stable' }
 
           if (-not (Test-Path -LiteralPath $policyPath -PathType Leaf)) {
             throw "Policy file not found: $policyPath"
           }
 
           $policyEnforcementMode = 'hard'
+          $enforcementSource = 'default'
           if (Test-Path -LiteralPath $migrationPath -PathType Leaf) {
             $migrationConfig = Get-Content -LiteralPath $migrationPath -Raw | ConvertFrom-Json -Depth 20
             $candidatePolicyEnforcementMode = [string]$migrationConfig.policyEnforcementMode
             if ($candidatePolicyEnforcementMode -in @('observe', 'soft', 'hard')) {
               $policyEnforcementMode = $candidatePolicyEnforcementMode
+              $enforcementSource = 'migration.policyEnforcementMode'
             } else {
               throw "Unsupported policyEnforcementMode '$candidatePolicyEnforcementMode' in $migrationPath"
+            }
+
+            if ($migrationConfig.PSObject.Properties.Name -contains 'tagClassEnforcement' -and $null -ne $migrationConfig.tagClassEnforcement) {
+              $tagClassMap = $migrationConfig.tagClassEnforcement
+              if ($tagClassMap.PSObject.Properties.Name -contains $tagClass) {
+                $candidateTagClassMode = [string]$tagClassMap.$tagClass
+                if ($candidateTagClassMode -in @('observe', 'soft', 'hard')) {
+                  $policyEnforcementMode = $candidateTagClassMode
+                  $enforcementSource = "migration.tagClassEnforcement.$tagClass"
+                } else {
+                  throw "Unsupported tagClassEnforcement '$candidateTagClassMode' for '$tagClass' in $migrationPath"
+                }
+              }
             }
           }
           if (-not (Test-Path -LiteralPath $indexPath -PathType Leaf)) {
@@ -848,7 +865,9 @@ jobs:
             generatedAt = (Get-Date).ToUniversalTime().ToString('o')
             profile = $selectedProfile
             mode = $mode
+            tagClass = $tagClass
             enforcementMode = $policyEnforcementMode
+            enforcementSource = $enforcementSource
             requiredOs = @($requiredOs)
             requiredScenarios = @($requiredScenarios)
             allowedGateOutcomes = @($allowedGateOutcomes)
@@ -867,7 +886,9 @@ jobs:
               '',
               "- Profile: $selectedProfile",
               "- Mode: $mode",
+              "- Tag class: $tagClass",
               "- Enforcement mode: $policyEnforcementMode",
+              "- Enforcement source: $enforcementSource",
               "- Outcome: $outcome",
               "- Violations: $($violations.Count)",
               "- Required scenarios: $($requiredScenarios -join ', ')"

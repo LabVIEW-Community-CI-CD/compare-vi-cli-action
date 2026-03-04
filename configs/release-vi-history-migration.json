@@ -1,5 +1,9 @@
 {
   "schema": "release-vi-history/migration@v1",
   "policyEnforcementMode": "hard",
-  "notes": "Phase 8 rollout gate: observe|soft|hard. Keep hard until explicit migration approval."
+  "tagClassEnforcement": {
+    "rc": "soft",
+    "stable": "hard"
+  },
+  "notes": "Phase 8 rollout gate: RC uses soft enforcement while stable tags remain hard unless explicitly overridden."
 }

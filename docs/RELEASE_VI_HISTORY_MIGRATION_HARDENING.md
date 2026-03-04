@@ -39,6 +39,26 @@ Config file: `configs/release-vi-history-migration.json`
 
 Default for initial Phase 8 rollout is `hard` to preserve current release behavior.
 
+## Tag-Class Adoption Rules (Phase 8 Slice)
+
+The migration config supports tag-class-specific enforcement overrides:
+
+- `tagClassEnforcement.rc`: effective mode for prerelease tags (for example `v0.6.0-rc.*`).
+- `tagClassEnforcement.stable`: effective mode for stable release tags.
+
+Current defaults:
+
+- RC tags use `soft` enforcement.
+- Stable tags use `hard` enforcement.
+
+Evaluation order in workflow:
+
+1. Start from `policyEnforcementMode` (fallback/default).
+2. Determine tag class from `github.ref_name` (`rc` if tag contains `-`, otherwise `stable`).
+3. If `tagClassEnforcement.<tagClass>` exists, it overrides the fallback.
+
+The generated policy summary includes `tagClass`, `enforcementMode`, and `enforcementSource` for auditability.
+
 ## Validation
 
 - schema: `docs/schemas/release-vi-history-migration-v1.schema.json`
