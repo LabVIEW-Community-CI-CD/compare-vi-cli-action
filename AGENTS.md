@@ -168,8 +168,9 @@ line buffers).
 ## Required checks (develop)
 
 - Enforce the required statuses listed in `tools/policy/branch-required-checks.json` (contract source of truth). At
-  present these are: `Validate / lint`, `Validate / fixtures`, and `Validate / session-index`. Optionally apply the
-  same requirement to `main` per repository policy.
+  present these are: `Validate / lint`, `Validate / fixtures`, `Validate / session-index`,
+  `Requirements Verification / requirements-verification`, and `Policy Guard (Upstream) / policy-guard`.
+  Optionally apply the same requirement to `main` per repository policy.
 - One-time GitHub CLI snippet (admin only):
 
   ```bash
@@ -179,6 +180,8 @@ line buffers).
     -f required_status_checks.contexts[]='Validate / lint' \
     -f required_status_checks.contexts[]='Validate / fixtures' \
     -f required_status_checks.contexts[]='Validate / session-index' \
+    -f required_status_checks.contexts[]='Requirements Verification / requirements-verification' \
+    -f required_status_checks.contexts[]='Policy Guard (Upstream) / policy-guard' \
     -H "Accept: application/vnd.github+json"
   ```
 

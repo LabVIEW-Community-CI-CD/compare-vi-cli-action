@@ -25,6 +25,7 @@ test('priority:policy --apply updates rulesets for develop/main/release', async 
     'Validate / fixtures',
     'Validate / session-index',
     'Validate / issue-snapshot',
+    'Requirements Verification / requirements-verification',
     'Policy Guard (Upstream) / policy-guard'
   ];
   const expectedMainChecks = [
@@ -453,6 +454,12 @@ test('priority:policy --apply updates rulesets for develop/main/release', async 
   assert.deepEqual(
     statusRuleRelease.parameters.required_status_checks.map((check) => check.context).sort(),
     ['Policy Guard (Upstream) / policy-guard', 'mock-cli', 'pester', 'publish', 'vi-binary-check', 'vi-compare'].sort()
+  );
+  assert.ok(
+    !statusRuleRelease.parameters.required_status_checks.some(
+      (check) => check.context === 'Requirements Verification / requirements-verification'
+    ),
+    'release ruleset should not include requirements-verification check'
   );
 
   assert.ok(

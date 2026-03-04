@@ -19,28 +19,28 @@
 
 - [ ] CLI executable and required runtime files are included in the `.zip`.
 - [ ] No container runtime dependency is required for host-native execution.
-- [ ] Summary JSON schema version is present and valid.
-- [ ] Image index JSON schema version is present and valid.
+- [x] Summary JSON schema version is present and valid.
+- [x] Image index JSON schema version is present and valid.
 
 ### Integrity and provenance
 
-- [ ] SHA-256 checksum file published for each release asset.
-- [ ] SBOM (`spdx` or equivalent) is published.
-- [ ] Provenance attestation is published and references source revision/workflow run.
-- [ ] Signing verification procedure is documented and reproducible.
+- [x] SHA-256 checksum file published for each release asset.
+- [x] SBOM (`spdx` or equivalent) is published.
+- [x] Provenance attestation is published and references source revision/workflow run.
+- [x] Signing verification procedure is documented and reproducible.
 
 ### Contract compatibility
 
-- [ ] Output schema changes are additive for current major version.
-- [ ] Legacy output keys required by workflows remain available.
-- [ ] Exit classification behavior matches `REQ-DOTNET_CLI_RELEASE_ASSET` contract.
+- [x] Output schema changes are additive for current major version.
+- [x] Legacy output keys required by workflows remain available.
+- [x] Exit classification behavior matches `REQ-DOTNET_CLI_RELEASE_ASSET` contract.
 
 ### Validation evidence
 
 - [ ] `preflight` passes on a Windows host with LabVIEW 2026 installed.
 - [ ] `compare single` pass-class and fail-class cases validated.
 - [ ] `compare range` with `--max-pairs` truncation telemetry validated.
-- [ ] `report consolidate` artifact paths validated.
+- [x] `report consolidate` artifact paths validated.
 - [ ] `contracts validate` detects schema drift.
 
 ### Release notes
