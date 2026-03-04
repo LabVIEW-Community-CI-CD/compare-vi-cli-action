@@ -10,6 +10,7 @@ Describe 'Update-SessionIndexBranchProtection' -Tag 'Unit' {
     Set-Variable -Name policy -Scope Script -Value $policyLocal
 
     Set-Variable -Name developExpected -Scope Script -Value @($policyLocal.branches.develop)
+    Set-Variable -Name releaseExpected -Scope Script -Value @($policyLocal.branches.'release/v0.5.2')
     Set-Variable -Name requiredVerificationCheck -Scope Script -Value 'Requirements Verification / requirements-verification'
     Set-Variable -Name updateScript -Scope Script -Value (Join-Path $repoRootLocal 'tools/Update-SessionIndexBranchProtection.ps1')
     $newFixture = {
@@ -176,6 +177,46 @@ Describe 'Update-SessionIndexBranchProtection' -Tag 'Unit' {
     $bp.actual.status | Should -Be 'available'
     ($bp.actual.contexts | Sort-Object) | Should -Be ($actual | Sort-Object)
     ($bp.PSObject.Properties.Name -contains 'notes') | Should -BeFalse
+  }
+
+  It 'embeds branch protection contract when release contexts align' {
+    $resultsDir = & $script:newSessionIndexFixture 'results-release-align'
+
+    & $script:updateScript `
+      -ResultsDir $resultsDir `
+      -PolicyPath $script:policyPath `
+      -Branch 'release/v0.5.2' `
+      -ProducedContexts $script:releaseExpected
+
+    $idx = Get-Content -LiteralPath (Join-Path $resultsDir 'session-index.json') -Raw | ConvertFrom-Json
+    $bp = $idx.branchProtection
+    $bp.branch | Should -Be 'release/v0.5.2'
+    ($bp.expected | Sort-Object) | Should -Be ($script:releaseExpected | Sort-Object)
+    ($bp.produced | Sort-Object) | Should -Be ($script:releaseExpected | Sort-Object)
+    $bp.result.status | Should -Be 'ok'
+    $bp.result.reason | Should -Be 'aligned'
+    ($bp.expected -contains $script:requiredVerificationCheck) | Should -BeFalse
+  }
+
+  It 'warns when required release contexts are missing' {
+    $resultsDir = & $script:newSessionIndexFixture 'results-release-missing'
+    $missingContext = ($script:releaseExpected | Where-Object { $_ -match 'publish' } | Select-Object -First 1)
+    if (-not $missingContext) {
+      $missingContext = $script:releaseExpected | Select-Object -First 1
+    }
+    $produced = $script:releaseExpected | Where-Object { $_ -ne $missingContext }
+
+    & $script:updateScript `
+      -ResultsDir $resultsDir `
+      -PolicyPath $script:policyPath `
+      -Branch 'release/v0.5.2' `
+      -ProducedContexts $produced
+
+    $idx = Get-Content -LiteralPath (Join-Path $resultsDir 'session-index.json') -Raw | ConvertFrom-Json
+    $bp = $idx.branchProtection
+    $bp.result.status | Should -Be 'warn'
+    $bp.result.reason | Should -Be 'missing_required'
+    $bp.notes | Should -Contain ("Missing contexts: {0}" -f $missingContext)
   }
 
   It 'emits deterministic branch protection output for equivalent context sets' {

@@ -122,6 +122,12 @@ checked into `tools/priority/policy.json` so `priority:policy` stays authoritati
   pwsh -NoLogo -NoProfile -Command "Invoke-Pester -Path 'tests/SessionIndex.BranchProtection.Tests.ps1','tests/GetBranchProtectionRequiredChecks.Tests.ps1','tests/RequirementsVerificationCheckContract.Tests.ps1' -Output Detailed"
   ```
 
+- Validate policy helper drift coverage for develop and release required-check contracts:
+
+  ```powershell
+  node --test tools/priority/__tests__/check-policy-apply.test.mjs
+  ```
+
 - Optional parity run for non-LV checks using the published tools image:
 
   ```powershell
