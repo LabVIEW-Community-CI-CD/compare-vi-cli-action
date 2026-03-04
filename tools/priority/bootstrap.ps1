@@ -8,6 +8,9 @@ param(
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
+$bootstrapDecisionModule = Join-Path (Split-Path -Parent $PSCommandPath) 'bootstrap-decision.psm1'
+Import-Module $bootstrapDecisionModule -Force
+
 function Invoke-Npm {
   param(
     [Parameter(Mandatory=$true)][string]$Script,
@@ -134,44 +137,64 @@ function Resolve-RemoteDevelopRef {
 
 function Ensure-DevelopBranch {
   $current = Get-GitCurrentBranch
-  if (-not $current) {
-    Write-Warning '[bootstrap] Unable to determine current git branch; skipping develop checkout.'
-    return
+
+  $isDirty = $false
+  $hasDevelop = $false
+  $remoteRef = $null
+
+  if ($current -in @('main', 'master', 'HEAD')) {
+    $dirty = Get-GitStatusPorcelain
+    $isDirty = $dirty.Count -gt 0
+
+    if (-not $isDirty) {
+      $hasDevelop = Test-GitBranchExists -Name 'develop'
+      if (-not $hasDevelop) {
+        $remoteRef = Resolve-RemoteDevelopRef
+      }
+    }
   }
 
-  if ($current -eq 'develop') { return }
+  $decision = Get-DevelopCheckoutDecision -CurrentBranch $current -IsDirty:$isDirty -HasDevelop:$hasDevelop -RemoteDevelopRef $remoteRef
 
-  if ($current -match '^(issue/|feature/|release/|hotfix/|bugfix/)') {
-    Write-Host ("[bootstrap] Current branch '{0}' appears to be a work branch; leaving as-is." -f $current)
-    return
-  }
-
-  if ($current -notin @('main','master','HEAD')) {
-    Write-Host ("[bootstrap] Current branch '{0}' retained." -f $current)
-    return
-  }
-
-  $dirty = Get-GitStatusPorcelain
-  if ($dirty.Count -gt 0) {
-    Write-Warning '[bootstrap] Working tree has local changes; skipping automatic checkout of develop.'
-    return
-  }
-
-  $hasDevelop = Test-GitBranchExists -Name 'develop'
-  if (-not $hasDevelop) {
-    $remoteRef = Resolve-RemoteDevelopRef
-    if (-not $remoteRef) {
-      Write-Warning '[bootstrap] develop branch not found on upstream/origin; skipping automatic checkout.'
+  switch ($decision.Action) {
+    'noop-already-develop' {
       return
     }
-    Write-Host ("[bootstrap] Creating local develop from {0}." -f $remoteRef.Ref)
-    Invoke-GitCommand -Arguments @('fetch',$remoteRef.Remote,'develop') | Out-Null
-    Invoke-GitCommand -Arguments @('checkout','-B','develop',$remoteRef.Ref) | Out-Null
-    return
+    'skip-unknown-branch' {
+      Write-Warning $decision.Message
+      return
+    }
+    'skip-work-branch' {
+      Write-Host $decision.Message
+      return
+    }
+    'skip-retain-branch' {
+      Write-Host $decision.Message
+      return
+    }
+    'skip-dirty' {
+      Write-Warning $decision.Message
+      return
+    }
+    'skip-no-remote-develop' {
+      Write-Warning $decision.Message
+      return
+    }
+    'create-develop-from-remote' {
+      Write-Host $decision.Message
+      Invoke-GitCommand -Arguments @('fetch', $decision.Remote, 'develop') | Out-Null
+      Invoke-GitCommand -Arguments @('checkout', '-B', 'develop', $decision.Ref) | Out-Null
+      return
+    }
+    'checkout-develop' {
+      Write-Host $decision.Message
+      Invoke-GitCommand -Arguments @('checkout', 'develop') | Out-Null
+      return
+    }
+    default {
+      throw "[bootstrap] Unsupported develop-branch decision: $($decision.Action)"
+    }
   }
-
-  Write-Host '[bootstrap] Checking out develop.'
-  Invoke-GitCommand -Arguments @('checkout','develop') | Out-Null
 }
 
 function Write-ReleaseSummary {
