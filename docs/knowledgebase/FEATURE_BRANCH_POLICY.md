@@ -109,6 +109,12 @@ checked into `tools/priority/policy.json` so `priority:policy` stays authoritati
     -SchemaPath docs/schemas/requirements-verification-v1.schema.json
   ```
 
+- Assert check naming drift guard (workflow + policy contract alignment):
+
+  ```powershell
+  pwsh -NoLogo -NonInteractive -NoProfile -File tools/Assert-RequirementsVerificationCheckContract.ps1
+  ```
+
 ### `main`
 - **Ruleset**: `8614140` (repository ruleset, scope `refs/heads/main`).
 - **Allowed merges**: queue-managed squash enforced by the `merge_queue` rule (`merge_method=SQUASH`); direct merges and
