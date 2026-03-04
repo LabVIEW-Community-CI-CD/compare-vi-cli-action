@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import {
   buildMergeSummaryPayload,
   buildPolicyTrace,
+  normalizeBaseRefName,
   selectMergeMode,
   shouldRetryWithAuto,
   getMergeQueueBranches
@@ -198,7 +199,7 @@ test('buildMergeSummaryPayload captures auto mode policy-driven selection detail
       state: 'OPEN',
       mergeStateStatus: 'BLOCKED',
       mergeable: 'MERGEABLE',
-      baseRefName: 'main',
+      baseRefName: 'refs/heads/main',
       isDraft: false,
       url: 'https://example.test/pr/456'
     },
@@ -209,6 +210,13 @@ test('buildMergeSummaryPayload captures auto mode policy-driven selection detail
   assert.equal(payload.finalReason, 'merge-queue-branch-main');
   assert.equal(payload.prState.baseRefName, 'main');
   assert.deepEqual(payload.policyTrace.mergeQueueBranches, ['main']);
+});
+
+test('normalizeBaseRefName handles refs prefix and casing', () => {
+  assert.equal(normalizeBaseRefName('refs/heads/Main'), 'main');
+  assert.equal(normalizeBaseRefName('DEVELOP'), 'develop');
+  assert.equal(normalizeBaseRefName(''), '');
+  assert.equal(normalizeBaseRefName(undefined), '');
 });
 
 test('buildMergeSummaryPayload captures admin override selection details', () => {

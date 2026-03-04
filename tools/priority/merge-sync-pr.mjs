@@ -116,6 +116,18 @@ function normalizeLower(value) {
   return typeof value === 'string' ? value.toLowerCase() : '';
 }
 
+export function normalizeBaseRefName(value) {
+  const lowered = normalizeLower(value).trim();
+  if (!lowered) {
+    return '';
+  }
+  const refsPrefix = 'refs/heads/';
+  if (lowered.startsWith(refsPrefix)) {
+    return lowered.substring(refsPrefix.length);
+  }
+  return lowered;
+}
+
 export function getMergeQueueBranches(policy) {
   const branches = new Set();
   const rulesets = policy?.rulesets;
@@ -163,6 +175,7 @@ export function buildMergeSummaryPayload({
   prInfo,
   createdAt = new Date().toISOString()
 }) {
+  const normalizedBaseRefName = normalizeBaseRefName(prInfo?.baseRefName);
   return {
     schema: 'priority/sync-merge@v1',
     createdAt,
@@ -180,7 +193,7 @@ export function buildMergeSummaryPayload({
       state: prInfo?.state ?? null,
       mergeStateStatus: prInfo?.mergeStateStatus ?? null,
       mergeable: prInfo?.mergeable ?? null,
-      baseRefName: prInfo?.baseRefName ?? null,
+      baseRefName: normalizedBaseRefName || null,
       isDraft: Boolean(prInfo?.isDraft)
     },
     prUrl: prInfo?.url ?? null
@@ -191,7 +204,7 @@ export function selectMergeMode(prInfo, { admin = false, mergeQueueBranches = ne
   const state = normalizeUpper(prInfo?.state);
   const mergeState = normalizeUpper(prInfo?.mergeStateStatus);
   const mergeable = normalizeUpper(prInfo?.mergeable);
-  const baseRefName = normalizeLower(prInfo?.baseRefName);
+  const baseRefName = normalizeBaseRefName(prInfo?.baseRefName);
   const isDraft = Boolean(prInfo?.isDraft);
 
   if (state === 'MERGED') {
