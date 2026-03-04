@@ -714,7 +714,39 @@ jobs:
             throw "Policy file not found: $policyPath"
           }
           if (-not (Test-Path -LiteralPath $indexPath -PathType Leaf)) {
-            throw "Review index file not found: $indexPath"
+            Write-Host "::warning::Review index file missing at policy step. Rebuilding from downloaded scenario summaries."
+            $indexDir = Split-Path -Parent $indexPath
+            New-Item -ItemType Directory -Path $indexDir -Force | Out-Null
+            $summaryFiles = Get-ChildItem -Path 'vi-history-review' -Filter 'scenario-summary.json' -Recurse -File -ErrorAction SilentlyContinue
+            $fallbackRows = foreach ($file in $summaryFiles) {
+              try {
+                $payload = Get-Content -LiteralPath $file.FullName -Raw | ConvertFrom-Json -Depth 12
+                [pscustomobject]@{
+                  os = [string]$payload.os
+                  scenario = [string]$payload.scenario
+                  flags = [string]$payload.flags
+                  status = [string]$payload.status
+                  gateOutcome = [string]$payload.gateOutcome
+                  resultClass = [string]$payload.resultClass
+                  compareExit = [string]$payload.compareExit
+                  reportExists = [string]$payload.reportExists
+                  artifactPath = $file.FullName
+                }
+              } catch {
+                [pscustomobject]@{
+                  os = 'unknown'
+                  scenario = 'unknown'
+                  flags = ''
+                  status = 'parse-error'
+                  gateOutcome = ''
+                  resultClass = ''
+                  compareExit = ''
+                  reportExists = ''
+                  artifactPath = $file.FullName
+                }
+              }
+            }
+            $fallbackRows | ConvertTo-Json -Depth 20 | Set-Content -LiteralPath $indexPath -Encoding utf8
           }
 
           $policy = Get-Content -LiteralPath $policyPath -Raw | ConvertFrom-Json -Depth 20
