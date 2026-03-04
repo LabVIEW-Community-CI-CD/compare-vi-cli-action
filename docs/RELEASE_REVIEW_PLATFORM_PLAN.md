@@ -194,9 +194,9 @@ Exit criteria:
 
 ## Immediate Backlog (Fork)
 
-1. Add compatibility normalization adapter for legacy scenario summary aliases.
-2. Add migration rollout config (`observe`/`soft`/`hard`) with schema validation.
-3. Validate migration controls in release and pre-push checks.
+1. Enforce release CLI scenario matrix assertions for changed fixtures in Docker Desktop workflows.
+2. Normalize command surface documentation/tasks to wrapper-first execution.
+3. Complete field-level contract tables across release review policy/runbook docs.
 4. Continue monitoring stable-tag hard enforcement across subsequent release cycles.
 
 ## Progress Tracker
@@ -217,6 +217,10 @@ Exit criteria:
 - [x] Phase 8 slice: one-command stable monitoring row updater
 - [x] Phase 8 slice: monitoring updater PR-comment automation
 - [x] Phase 8 slice: zero-arg auto orchestrator (script/npm/task)
+- [x] Phase 8 slice: release CLI scenario matrix runner + assertion gate (Docker Desktop)
+- [x] Phase 8 slice: wrapper-first command surface normalization
+- [x] Phase 8 slice: requirement-ID dangling reference cleanup
+- [x] Phase 8 slice: field-level contract tables for review/policy/runbook/monitoring docs
 - [ ] Migration hardening and rollout controls
 
 ## References
@@ -238,3 +242,5 @@ Exit criteria:
 - policy field helper: `tools/Get-ReleaseVIHistoryPolicyFields.ps1`
 - monitoring updater: `tools/Update-ReleaseVIHistoryStableMonitoring.ps1`
 - monitoring auto wrapper: `tools/Invoke-ReleaseVIHistoryStableMonitoringAuto.ps1`
+- release CLI scenario matrix runner: `tools/Run-ReleaseCliScenarioMatrix.ps1`
+- release CLI scenario matrix assertion: `tools/Assert-ReleaseCliScenarioMatrix.ps1`

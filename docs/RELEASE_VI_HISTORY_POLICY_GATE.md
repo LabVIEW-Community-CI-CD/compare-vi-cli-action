@@ -57,3 +57,22 @@ The evaluator writes `tests/results/release-vi-history-index/release-vi-history-
 - required scenarios and OS targets,
 - pass/warn/fail outcome,
 - violation list and row counts.
+
+## Policy Output Field Contract
+
+| Field | Type | Required | Source | Notes |
+| --- | --- | --- | --- | --- |
+| `profile` | string | yes | profile resolver | Selected review profile key. |
+| `policyMode` | string | yes | profile policy config | `strict` or `warn`. |
+| `requiredOs` | array of string | yes | profile policy config | Required OS targets for this profile. |
+| `requiredScenarios` | array of string | yes | profile policy config | Required scenario ids for this profile. |
+| `allowedGateOutcomes` | array of string | yes | profile policy config | Gate outcomes accepted by policy. |
+| `allowedResultClasses` | array of string | yes | profile policy config | Result classes accepted by policy. |
+| `tagClass` | string | yes | migration resolver | `rc` or `stable` for the evaluated tag. |
+| `enforcementSource` | string | yes | migration resolver | Resolution path (`migration.policyEnforcementMode` or tag-class override). |
+| `enforcementMode` | string | yes | migration resolver | Effective mode: `observe`, `soft`, or `hard`. |
+| `rawOutcome` | string | yes | policy evaluator | Outcome before migration mode adjustment. |
+| `outcome` | string | yes | policy evaluator + migration mode | Effective `pass` / `warn` / `fail`. |
+| `violations` | array | yes | policy evaluator | Row/constraint violations with diagnostics. |
+| `rowCount` | integer | yes | index reader | Total indexed rows considered. |
+| `evaluatedAt` | string (`date-time`) | yes | evaluator runtime | UTC timestamp for policy evaluation. |

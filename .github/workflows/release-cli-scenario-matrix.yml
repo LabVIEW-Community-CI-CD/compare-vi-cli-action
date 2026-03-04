@@ -1,0 +1,53 @@
+name: Release CLI Scenario Matrix
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Release tag to validate (for example v1.0.1)'
+        required: true
+        default: 'v1.0.1'
+
+jobs:
+  matrix:
+    name: release-cli-matrix
+    runs-on: [self-hosted, windows, x64]
+    permissions:
+      contents: read
+    env:
+      GH_TOKEN: ${{ github.token }}
+      RELEASE_ROOT: tests/results/_agent/release-${{ inputs.tag }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Ensure release payload folder
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Path $env:RELEASE_ROOT -Force | Out-Null
+
+      - name: Download release payload
+        shell: pwsh
+        run: |
+          $tag = '${{ inputs.tag }}'
+          gh release download $tag --repo ${{ github.repository }} --dir $env:RELEASE_ROOT --clobber
+
+      - name: Run scenario matrix
+        shell: pwsh
+        run: |
+          pwsh -NoLogo -NoProfile -File tools/Run-ReleaseCliScenarioMatrix.ps1 -ReleaseRoot $env:RELEASE_ROOT
+
+      - name: Assert matrix truth table
+        shell: pwsh
+        run: |
+          pwsh -NoLogo -NoProfile -File tools/Assert-ReleaseCliScenarioMatrix.ps1 -CsvPath (Join-Path $env:RELEASE_ROOT 'scenario-matrix/scenario-results.csv')
+
+      - name: Upload matrix artifacts
+        uses: actions/upload-artifact@v5
+        with:
+          name: release-cli-scenario-matrix-${{ inputs.tag }}
+          path: |
+            ${{ env.RELEASE_ROOT }}/scenario-matrix/scenario-results.json
+            ${{ env.RELEASE_ROOT }}/scenario-matrix/scenario-results.csv
+            ${{ env.RELEASE_ROOT }}/scenario-matrix/runs/**
+          if-no-files-found: error

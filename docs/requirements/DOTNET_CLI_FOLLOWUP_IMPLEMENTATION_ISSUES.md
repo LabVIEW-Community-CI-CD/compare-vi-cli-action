@@ -38,7 +38,7 @@ resumes.
   - Add repeatable local validation for Docker Desktop windows NI image lane.
   - Add repeatable local validation for host-native LabVIEW 2026 64-bit lane.
 - Requirement coverage:
-  - CLI-FR-070, CLI-FR-071, CLI-REL-011.
+  - CLI-FR-060, CLI-FR-061, CLI-REL-010.
 
 ### CLI-IMPL-004: Release packaging, integrity, and provenance
 

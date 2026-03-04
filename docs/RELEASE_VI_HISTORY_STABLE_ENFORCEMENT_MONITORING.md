@@ -62,6 +62,21 @@ For stable tags:
 - `enforcementMode = hard` unless an approved exception exists
 - if `rawOutcome = fail`, workflow should fail under hard enforcement
 
+### Monitoring Row Field Contract
+
+| Field | Type | Required | Source | Expected value for stable baseline |
+| --- | --- | --- | --- | --- |
+| `Date (UTC)` | string (`yyyy-MM-dd`) | yes | tracker update script | Run date in UTC. |
+| `Tag` | string | yes | release metadata | Stable tag (no hyphen prerelease suffix). |
+| `Tag Class` | string | yes | policy summary | `stable`. |
+| `Run URL` | string (URL) | yes | run metadata | Workflow run URL. |
+| `Index Job URL` | string (URL) | yes | run metadata | `release-vi-history-review-index` job URL. |
+| `enforcementSource` | string | yes | policy summary | `migration.tagClassEnforcement.stable` (or approved fallback). |
+| `enforcementMode` | string | yes | policy summary | `hard`. |
+| `rawOutcome` | string | yes | policy summary | Pre-enforcement outcome. |
+| `outcome` | string | yes | policy summary | Effective outcome; for hard mode, fail is not downgraded. |
+| `Notes` | string | yes | tracker update script | Audit note including run id. |
+
 ## Quick Field Extraction
 
 Use this PowerShell snippet after downloading `release-vi-history-review-index` artifacts:
@@ -130,7 +145,7 @@ pwsh -NoLogo -NoProfile -File ./tools/Invoke-ReleaseVIHistoryStableMonitoringAut
 NPM wrapper:
 
 ```powershell
-npm run release:vi-history:monitor:auto
+node tools/npm/run-script.mjs release:vi-history:monitor:auto
 ```
 
 VS Code task:
@@ -148,4 +163,4 @@ If stable mode deviates from `hard`:
 ## Current Baseline
 
 - RC evidence is tracked via recent Phase 8 disposable proof comments on PR #646.
-- First stable-tag entry should be added on the next stable release run.
+- Stable hard-enforcement baseline is recorded for `v1.0.1`.

@@ -28,6 +28,27 @@ Each OS/scenario lane publishes one summary file with:
 - `reportExists`: whether the report file exists
 - `capturePath`: capture JSON path produced in job workspace
 
+### Scenario Summary Field Contract
+
+| Field | Type | Required | Source | Notes |
+| --- | --- | --- | --- | --- |
+| `schema` | string | yes | scenario schema | Constant `release-vi-history-review/scenario@v1`. |
+| `generatedAt` | string (`date-time`) | yes | scenario schema | UTC generation timestamp. |
+| `tag` | string | yes | release workflow input | Release tag under evaluation. |
+| `os` | string | yes | scenario schema | `linux` or `windows`. |
+| `scenario` | string | yes | scenario profile manifest | Scenario id (`baseline`, `noattr`, `layout-and-position`, future ids). |
+| `flags` | string | yes | scenario runner | Effective compare flags string. |
+| `image` | string | yes | lane runtime | NI image identifier used for execution. |
+| `compareExit` | integer | yes | compare execution | Compare script process exit code. |
+| `captureExit` | integer | yes | capture execution | Capture payload process exit code. |
+| `gateOutcome` | string | no | policy evaluator | `pass`, `warn`, `fail`, or empty when unavailable. |
+| `resultClass` | string | no | capture payload | Result class from capture payload. |
+| `status` | string | no | capture payload | Lane status string. |
+| `message` | string | no | capture payload | Lane status message. |
+| `reportPath` | string | yes | lane artifact writer | Workspace-local report path. |
+| `reportExists` | boolean | yes | lane artifact writer | Whether report file exists at `reportPath`. |
+| `capturePath` | string | yes | lane artifact writer | Workspace-local capture JSON path. |
+
 ## Review Index (`release-vi-history-review.json`)
 
 The index job publishes a JSON array where each item corresponds to one discovered scenario summary.
@@ -43,6 +64,20 @@ Each row includes:
 - `compareExit`
 - `reportExists`
 - `artifactPath`
+
+### Review Index Row Field Contract
+
+| Field | Type | Required | Source | Notes |
+| --- | --- | --- | --- | --- |
+| `os` | string | yes | normalized scenario summary | Lane OS value. |
+| `scenario` | string | yes | normalized scenario summary | Scenario id. |
+| `flags` | string | yes | normalized scenario summary | Effective scenario flags. |
+| `status` | string | no | normalized scenario summary | Lane status from capture payload. |
+| `gateOutcome` | string | no | policy/capture synthesis | Used by policy gate evaluation. |
+| `resultClass` | string | no | normalized scenario summary | Capture result class. |
+| `compareExit` | integer | yes | normalized scenario summary | Compare process exit code. |
+| `reportExists` | boolean | yes | normalized scenario summary | Report presence signal. |
+| `artifactPath` | string | yes | index job | Artifact-relative pointer to scenario summary. |
 
 ## Validation Hooks
 

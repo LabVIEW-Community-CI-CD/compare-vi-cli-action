@@ -53,6 +53,16 @@ From `release-vi-history-policy.json`:
 - `rawOutcome`
 - `outcome`
 
+### Verification Field Contract
+
+| Field | Type | Required | Expected semantics | Verification check |
+| --- | --- | --- | --- | --- |
+| `tagClass` | string | yes | Resolved tag class (`rc` / `stable`). | Must match tag pattern and rollout intent. |
+| `enforcementSource` | string | yes | Config path used to resolve effective mode. | Must match active branch in migration config. |
+| `enforcementMode` | string | yes | Effective mode (`observe` / `soft` / `hard`). | Must match selected rollout phase for tag class. |
+| `rawOutcome` | string | yes | Policy outcome before migration adjustment. | Compare against expected policy violations for run. |
+| `outcome` | string | yes | Effective post-enforcement result. | Must follow mode mapping (`hard` keeps fail, `observe`/`soft` downgrade fail to warn). |
+
 Expected consistency checks:
 
 - RC tags should resolve `tagClass = rc`.
