@@ -22,7 +22,7 @@ jobs:
             const body = pr.body || '';
             const labels = (pr.labels || []).map((l) => l.name);
 
-            const hasAgentMetadata = /Agent-ID\s*:/i.test(body);
+            const hasAgentMetadata = /Agent[-\s]?ID\s*:/i.test(body);
             const hasCodexLabel = labels.includes('codex');
             const isAgentPR = hasAgentMetadata || hasCodexLabel;
 
@@ -41,6 +41,16 @@ jobs:
             const repo = context.repo.repo;
             const pull_number = pr.number;
             const requiredReviewer = 'svelderrainruiz';
+            const prAuthor = pr.user?.login || '';
+
+            // GitHub does not allow self-approval, so skip enforcement when the PR author
+            // is the required reviewer to avoid an unsatisfiable required check.
+            if (prAuthor === requiredReviewer) {
+              core.info(
+                `PR author @${prAuthor} is the required reviewer; skipping self-approval requirement.`
+              );
+              return;
+            }
 
             const reviews = await github.paginate(github.rest.pulls.listReviews, {
               owner,

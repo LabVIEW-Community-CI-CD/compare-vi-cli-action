@@ -21,7 +21,7 @@ jobs:
             const body = pr.body || '';
             const labels = (pr.labels || []).map((l) => l.name);
 
-            const hasAgentMetadata = /Agent-ID\s*:/i.test(body);
+            const hasAgentMetadata = /Agent[-\s]?ID\s*:/i.test(body);
             const hasCodexLabel = labels.includes('codex');
             const isAgentPR = hasAgentMetadata || hasCodexLabel;
 

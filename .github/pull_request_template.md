@@ -4,7 +4,7 @@ Briefly describe the changes.
 
 ## Agent Metadata (required for automation-authored PRs)
 
-- Agent ID: `agent/copilot-codex-a`
+- Agent-ID: `agent/copilot-codex-a`
 - Operator: `@svelderrainruiz`
 - Reviewer-Required: `@svelderrainruiz`
 - Emergency-Bypass-Label: `AllowCIBypass`
