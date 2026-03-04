@@ -36,18 +36,6 @@ jobs:
             echo "fallback=false" >> "$GITHUB_OUTPUT"
           fi
 
-      - name: Create GitHub Release (CHANGELOG)
-        if: steps.notes.outputs.fallback == 'false'
-        uses: softprops/action-gh-release@v2
-        with:
-          body_path: RELEASE_NOTES.md
-
-      - name: Create GitHub Release (auto notes)
-        if: steps.notes.outputs.fallback == 'true'
-        uses: softprops/action-gh-release@v2
-        with:
-          generate_release_notes: true
-
       - name: Setup .NET 8
         uses: actions/setup-dotnet@v5
         with:
@@ -96,9 +84,23 @@ jobs:
             artifacts/cli/sbom.spdx.json
             artifacts/cli/provenance.json
 
-      - name: Upload assets to GitHub Release
+      - name: Create GitHub Release with assets (CHANGELOG)
+        if: steps.notes.outputs.fallback == 'false'
         uses: softprops/action-gh-release@v2
         with:
+          body_path: RELEASE_NOTES.md
+          files: |
+            artifacts/cli/*.zip
+            artifacts/cli/*.tar.gz
+            artifacts/cli/SHA256SUMS.txt
+            artifacts/cli/sbom.spdx.json
+            artifacts/cli/provenance.json
+
+      - name: Create GitHub Release with assets (auto notes)
+        if: steps.notes.outputs.fallback == 'true'
+        uses: softprops/action-gh-release@v2
+        with:
+          generate_release_notes: true
           files: |
             artifacts/cli/*.zip
             artifacts/cli/*.tar.gz
