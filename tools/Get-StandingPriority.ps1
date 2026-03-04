@@ -96,9 +96,36 @@ function Try-LoadCache {
   try {
     $cacheObj = Get-Content -LiteralPath $cachePath -Raw | ConvertFrom-Json -ErrorAction Stop
     if ($cacheObj) {
+      $cacheNumber = $null
+      if ($cacheObj.PSObject.Properties.Name -contains 'number') {
+        $cacheNumber = $cacheObj.number
+      } elseif ($cacheObj.PSObject.Properties.Name -contains 'issue' -and $cacheObj.issue) {
+        if ($cacheObj.issue.PSObject.Properties.Name -contains 'number') {
+          $cacheNumber = $cacheObj.issue.number
+        }
+      }
+
+      $cacheTitle = $null
+      if ($cacheObj.PSObject.Properties.Name -contains 'title') {
+        $cacheTitle = $cacheObj.title
+      } elseif ($cacheObj.PSObject.Properties.Name -contains 'issue' -and $cacheObj.issue) {
+        if ($cacheObj.issue.PSObject.Properties.Name -contains 'title') {
+          $cacheTitle = $cacheObj.issue.title
+        }
+      }
+
+      $cacheUrl = $null
+      if ($cacheObj.PSObject.Properties.Name -contains 'url') {
+        $cacheUrl = $cacheObj.url
+      } elseif ($cacheObj.PSObject.Properties.Name -contains 'issue' -and $cacheObj.issue) {
+        if ($cacheObj.issue.PSObject.Properties.Name -contains 'url') {
+          $cacheUrl = $cacheObj.issue.url
+        }
+      }
+
       $seq = $null; if ($cacheObj.PSObject.Properties.Name -contains 'sequence') { $seq = $cacheObj.sequence }
       $nxt = $null; if ($cacheObj.PSObject.Properties.Name -contains 'next') { $nxt = $cacheObj.next }
-      return Normalize-PriorityObject -Number $cacheObj.number -Title $cacheObj.title -Url $cacheObj.url -Source 'cache' -Sequence $seq -Next $nxt
+      return Normalize-PriorityObject -Number $cacheNumber -Title $cacheTitle -Url $cacheUrl -Source 'cache' -Sequence $seq -Next $nxt
     }
   } catch {}
   return $null

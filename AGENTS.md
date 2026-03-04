@@ -168,8 +168,8 @@ line buffers).
 ## Required checks (develop)
 
 - Enforce the required statuses listed in `tools/policy/branch-required-checks.json` (contract source of truth). At
-  present these are: `Validate / lint`, `Validate / fixtures`, `Validate / session-index`,
-  `Requirements Verification / requirements-verification`, and `Policy Guard (Upstream) / policy-guard`.
+  present these are: `lint`, `fixtures`, `session-index`, `issue-snapshot`, `semver`,
+  `hook-parity (windows-latest)`, `hook-parity (ubuntu-latest)`, and `vi-history-scenarios-linux`.
   Optionally apply the same requirement to `main` per repository policy.
 - One-time GitHub CLI snippet (admin only):
 
@@ -177,11 +177,14 @@ line buffers).
   gh api repos/$REPO/branches/develop/protection \
     -X PUT \
     -f required_status_checks.strict=true \
-    -f required_status_checks.contexts[]='Validate / lint' \
-    -f required_status_checks.contexts[]='Validate / fixtures' \
-    -f required_status_checks.contexts[]='Validate / session-index' \
-    -f required_status_checks.contexts[]='Requirements Verification / requirements-verification' \
-    -f required_status_checks.contexts[]='Policy Guard (Upstream) / policy-guard' \
+    -f required_status_checks.contexts[]='lint' \
+    -f required_status_checks.contexts[]='fixtures' \
+    -f required_status_checks.contexts[]='session-index' \
+    -f required_status_checks.contexts[]='issue-snapshot' \
+    -f required_status_checks.contexts[]='semver' \
+    -f required_status_checks.contexts[]='hook-parity (windows-latest)' \
+    -f required_status_checks.contexts[]='hook-parity (ubuntu-latest)' \
+    -f required_status_checks.contexts[]='vi-history-scenarios-linux' \
     -H "Accept: application/vnd.github+json"
   ```
 
