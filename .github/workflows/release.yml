@@ -306,3 +306,71 @@ jobs:
           tok_json=$("$bin" tokenize --input 'foo -x=1 "bar baz"')
           node -e "const o=JSON.parse(process.argv[1]); if(!o.normalized.includes('-x')||!o.normalized.includes('1')) throw new Error('bad tokenize')" "$tok_json"
           "$bin" procs >/dev/null
+
+      - name: Pull NI Linux image (hosted validation)
+        if: runner.os == 'Linux'
+        shell: bash
+        run: docker pull nationalinstruments/labview:2026q1-linux
+
+      - name: NI Linux image compare validation (hosted)
+        if: runner.os == 'Linux'
+        shell: pwsh
+        run: |
+          $resultsRoot = 'tests/results/release-validate/linux'
+          New-Item -ItemType Directory -Path $resultsRoot -Force | Out-Null
+          $reportPath = Join-Path $resultsRoot 'ni-linux-compare-report.html'
+          $runtimeSnapshot = Join-Path $resultsRoot 'runtime-manager-linux.json'
+
+          pwsh -NoLogo -NoProfile -File tools/Run-NILinuxContainerCompare.ps1 `
+            -BaseVi 'fixtures/vi-stage/control-rename/Base.vi' `
+            -HeadVi 'fixtures/vi-stage/control-rename/Head.vi' `
+            -Image 'nationalinstruments/labview:2026q1-linux' `
+            -ReportPath $reportPath `
+            -TimeoutSeconds 300 `
+            -AutoRepairRuntime:$true `
+            -RuntimeEngineReadyTimeoutSeconds 120 `
+            -RuntimeEngineReadyPollSeconds 3 `
+            -RuntimeSnapshotPath $runtimeSnapshot
+
+          $capturePath = 'tests/results/ni-linux-container/ni-linux-container-capture.json'
+          if (-not (Test-Path -LiteralPath $capturePath -PathType Leaf)) {
+            throw "NI Linux capture was not created: $capturePath"
+          }
+          $capture = Get-Content -LiteralPath $capturePath -Raw | ConvertFrom-Json -Depth 12
+          if ($capture.status -ne 'pass') {
+            throw ("NI Linux image compare failed. status={0} exit={1} message={2}" -f $capture.status, $capture.exitCode, $capture.message)
+          }
+
+      - name: Pull NI Windows image (hosted validation)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: docker pull nationalinstruments/labview:2026q1-windows
+
+      - name: NI Windows image compare validation (hosted)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $resultsRoot = 'tests/results/release-validate/windows'
+          New-Item -ItemType Directory -Path $resultsRoot -Force | Out-Null
+          $reportPath = Join-Path $resultsRoot 'ni-windows-compare-report.html'
+          $runtimeSnapshot = Join-Path $resultsRoot 'runtime-manager-windows.json'
+
+          pwsh -NoLogo -NoProfile -File tools/Run-NIWindowsContainerCompare.ps1 `
+            -BaseVi 'fixtures/vi-stage/control-rename/Base.vi' `
+            -HeadVi 'fixtures/vi-stage/control-rename/Head.vi' `
+            -Image 'nationalinstruments/labview:2026q1-windows' `
+            -ReportPath $reportPath `
+            -TimeoutSeconds 300 `
+            -AutoRepairRuntime:$true `
+            -RuntimeEngineReadyTimeoutSeconds 120 `
+            -RuntimeEngineReadyPollSeconds 3 `
+            -RuntimeSnapshotPath $runtimeSnapshot
+
+          $capturePath = 'tests/results/ni-windows-container/ni-windows-container-capture.json'
+          if (-not (Test-Path -LiteralPath $capturePath -PathType Leaf)) {
+            throw "NI Windows capture was not created: $capturePath"
+          }
+          $capture = Get-Content -LiteralPath $capturePath -Raw | ConvertFrom-Json -Depth 12
+          if ($capture.status -ne 'pass') {
+            throw ("NI Windows image compare failed. status={0} exit={1} message={2}" -f $capture.status, $capture.exitCode, $capture.message)
+          }
