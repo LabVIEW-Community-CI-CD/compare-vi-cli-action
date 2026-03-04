@@ -54,6 +54,7 @@ try {
       $contexts = @($statusSection.checks | ForEach-Object { $_.context } | Where-Object { $_ })
     }
   }
+  $contexts = @($contexts | Sort-Object -Unique)
   [pscustomobject]@{
     status   = 'available'
     contexts = $contexts

@@ -126,6 +126,21 @@ if ($code -ne 0) {
 }
 Write-Host '[pre-push] actionlint OK' -ForegroundColor Green
 
+$verificationContractScript = Join-Path $root 'tools' 'Assert-RequirementsVerificationCheckContract.ps1'
+if (Test-Path -LiteralPath $verificationContractScript -PathType Leaf) {
+  Write-Host '[pre-push] Verifying requirements-verification check naming contract' -ForegroundColor Cyan
+  Push-Location $root
+  try {
+    pwsh -NoLogo -NonInteractive -NoProfile -File $verificationContractScript
+    if ($LASTEXITCODE -ne 0) {
+      throw "Assert-RequirementsVerificationCheckContract.ps1 failed (exit=$LASTEXITCODE)."
+    }
+  } finally {
+    Pop-Location | Out-Null
+  }
+  Write-Host '[pre-push] requirements-verification check contract OK' -ForegroundColor Green
+}
+
 $updateReportScript = Join-Path $root 'tools' 'icon-editor' 'Update-IconEditorFixtureReport.ps1'
 if (Test-Path -LiteralPath $updateReportScript -PathType Leaf) {
   $skipLegacyFixtureChecks = $SkipIconEditorFixtureChecks `

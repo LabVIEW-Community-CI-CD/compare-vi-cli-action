@@ -58,7 +58,7 @@ standing GitHub protection rules (including the `main` merge queue).
 ### GitHub rulesets
 | Ruleset ID | Scope                | Highlights                                                                                   |
 |------------|----------------------|----------------------------------------------------------------------------------------------|
-| `8811898`  | `refs/heads/develop` | Linear history required, squash-only merges, checks: `Validate / lint`, `Validate / fixtures`, `Validate / session-index`, `Validate / issue-snapshot`, `Policy Guard (Upstream) / policy-guard` |
+| `8811898`  | `refs/heads/develop` | Linear history required, squash-only merges, checks: `Validate / lint`, `Validate / fixtures`, `Validate / session-index`, `Validate / issue-snapshot`, `Requirements Verification / requirements-verification`, `Policy Guard (Upstream) / policy-guard` |
 | `8614140`  | `refs/heads/main`    | Merge queue enabled (`merge_method=SQUASH`, `grouping=ALLGREEN`, build queue <=5 entries, 5-minute quiet window). Required checks: `lint`, `pester`, `vi-binary-check`, `vi-compare`, `Policy Guard (Upstream) / policy-guard`. Requires one approving review with resolved threads. |
 | `8614172`  | `refs/heads/release/*` | No merge queue; protects against force-push/deletion. Required checks: `lint`, `pester`, `publish`, `vi-binary-check`, `vi-compare`, `mock-cli`, `Policy Guard (Upstream) / policy-guard`. Requires one approving review with resolved threads. |
 
@@ -79,9 +79,115 @@ checked into `tools/priority/policy.json` so `priority:policy` stays authoritati
 ### `develop`
 - **Merge strategy**: squash only (enforce linear history, disable merge commits).
 - **Required checks**: `Validate / lint`, `Validate / fixtures`, `Validate / session-index`, `Validate / issue-snapshot`,
-  `Policy Guard (Upstream) / policy-guard`.
+  `Requirements Verification / requirements-verification`, `Policy Guard (Upstream) / policy-guard`.
 - **Admin bypass**: leave disabled; administrators should only intervene when `priority:policy` confirms parity.
 - **Reapply**: Use `node tools/npm/run-script.mjs priority:policy -- --apply` to push the manifest configuration when drift is detected.
+
+#### Requirements verification gate (local runbook)
+
+- Generate and evaluate the gate summary locally:
+
+  ```powershell
+  pwsh -NoLogo -NonInteractive -NoProfile -File tools/Verify-RequirementsGate.ps1 \
+    -TestsPath tests \
+    -ResultsRoot tests/results \
+    -OutDir tests/results/_agent/verification \
+    -BaselinePolicyPath tools/policy/requirements-verification-baseline.json
+  ```
+
+- Run focused regression tests for baseline pass/fail logic:
+
+  ```powershell
+  ./Invoke-PesterTests.ps1 -IncludePatterns 'RequirementsVerificationGate.Tests.ps1'
+  ```
+
+- Validate the gate output contract schema explicitly:
+
+  ```powershell
+  pwsh -NoLogo -NonInteractive -NoProfile -File tools/Invoke-JsonSchemaLite.ps1 \
+    -JsonPath tests/results/_agent/verification/verification-summary.json \
+    -SchemaPath docs/schemas/requirements-verification-v1.schema.json
+  ```
+
+- Assert check naming drift guard (workflow + policy contract alignment):
+
+  ```powershell
+  pwsh -NoLogo -NonInteractive -NoProfile -File tools/Assert-RequirementsVerificationCheckContract.ps1
+  ```
+
+- Validate branch-protection helper contract deterministically (explicitly includes
+  `Requirements Verification / requirements-verification` in develop policy):
+
+  ```powershell
+  pwsh -NoLogo -NoProfile -Command "Invoke-Pester -Path 'tests/SessionIndex.BranchProtection.Tests.ps1','tests/GetBranchProtectionRequiredChecks.Tests.ps1','tests/RequirementsVerificationCheckContract.Tests.ps1' -Output Detailed"
+  ```
+
+- Validate policy helper drift coverage for develop and release required-check contracts:
+
+  ```powershell
+  node --test tools/priority/__tests__/check-policy-apply.test.mjs
+  ```
+
+- Validate merge-mode selection guardrails (`develop` direct merge vs `main` merge-queue/auto):
+
+  ```powershell
+  node --test tools/priority/__tests__/merge-sync-pr.test.mjs
+  ```
+
+- Generate a merge helper dry-run summary with policy trace metadata (`policyTrace.mergeQueueBranches`):
+
+  ```powershell
+  node tools/priority/merge-sync-pr.mjs --pr <number> --repo <owner/repo> --dry-run --summary-path tests/results/_agent/priority/merge-sync-dry-run.json
+  ```
+
+- Inspect stable summary payload fields (`selectedMode`, `finalMode`, `prState.baseRefName`):
+
+  ```powershell
+  pwsh -NoLogo -NoProfile -Command "Get-Content tests/results/_agent/priority/merge-sync-dry-run.json -Raw | ConvertFrom-Json | Select-Object schema,selectedMode,finalMode,@{Name='baseRefName';Expression={$_.prState.baseRefName}},policyTrace | ConvertTo-Json -Depth 6"
+  ```
+
+- Inspect reason diagnostics (`selectedReason`, `finalReason`) for queue/non-queue
+  troubleshooting:
+
+  ```powershell
+  pwsh -NoLogo -NoProfile -Command "Get-Content tests/results/_agent/priority/merge-sync-dry-run.json -Raw | ConvertFrom-Json | Select-Object selectedMode,selectedReason,finalMode,finalReason | ConvertTo-Json -Depth 4"
+  ```
+
+- Inspect unknown-state reason output explicitly:
+
+  ```powershell
+  pwsh -NoLogo -NoProfile -Command "Get-Content tests/results/_agent/priority/merge-sync-dry-run.json -Raw | ConvertFrom-Json | Select-Object selectedMode,selectedReason,@{Name='mergeState';Expression={$_.prState.mergeStateStatus}},@{Name='baseRef';Expression={$_.prState.baseRefName}} | ConvertTo-Json -Depth 4"
+  ```
+
+- Inspect fallback reason mapping output (`merge-state-unspecified`) when merge
+  state is absent:
+
+  ```powershell
+  pwsh -NoLogo -NoProfile -Command "Get-Content tests/results/_agent/priority/merge-sync-dry-run.json -Raw | ConvertFrom-Json | Select-Object selectedMode,selectedReason,@{Name='fallbackExpected';Expression={'merge-state-unspecified'}},@{Name='baseRef';Expression={$_.prState.baseRefName}} | ConvertTo-Json -Depth 4"
+  ```
+
+- Inspect minimal fallback diagnostics fields (reason + mergeability context):
+
+  ```powershell
+  pwsh -NoLogo -NoProfile -Command "Get-Content tests/results/_agent/priority/merge-sync-dry-run.json -Raw | ConvertFrom-Json | Select-Object selectedReason,@{Name='mergeState';Expression={$_.prState.mergeStateStatus}},@{Name='mergeable';Expression={$_.prState.mergeable}},@{Name='baseRef';Expression={$_.prState.baseRefName}} | ConvertTo-Json -Depth 4"
+  ```
+
+`prState.baseRefName` is normalized to lowercase branch names (for example,
+`refs/heads/Main` → `main`) before mode diagnostics are emitted.
+
+- Inspect retry-flow transitions (`selectedMode`, `finalMode`, `attempts`) from the
+  dry-run summary:
+
+  ```powershell
+  pwsh -NoLogo -NoProfile -Command "Get-Content tests/results/_agent/priority/merge-sync-dry-run.json -Raw | ConvertFrom-Json | Select-Object selectedMode,finalMode,finalReason,attempts | ConvertTo-Json -Depth 8"
+  ```
+
+- Optional parity run for non-LV checks using the published tools image:
+
+  ```powershell
+  $env:COMPAREVI_TOOLS_IMAGE = 'ghcr.io/svelderrainruiz/comparevi-tools:latest'
+  pwsh -NoLogo -NoProfile -File tools/Run-NonLVChecksInDocker.ps1 -UseToolsImage
+  ```
 
 ### `main`
 - **Ruleset**: `8614140` (repository ruleset, scope `refs/heads/main`).

@@ -1,12 +1,14 @@
 #!/usr/bin/env node
 
-import { writeFile } from 'node:fs/promises';
+import { readFile, writeFile } from 'node:fs/promises';
 import { spawnSync } from 'node:child_process';
 import path from 'node:path';
 import process from 'node:process';
 import { fileURLToPath } from 'node:url';
 import { ensureGhCli, resolveUpstream } from './lib/remote-utils.mjs';
 import { getRepoRoot } from './lib/branch-utils.mjs';
+
+const manifestPath = new URL('./policy.json', import.meta.url);
 
 const USAGE_LINES = [
   'Usage: node tools/priority/merge-sync-pr.mjs --pr <number> [options]',
@@ -112,10 +114,99 @@ function normalizeUpper(value) {
   return typeof value === 'string' ? value.toUpperCase() : '';
 }
 
-export function selectMergeMode(prInfo, { admin = false } = {}) {
+function normalizeLower(value) {
+  return typeof value === 'string' ? value.toLowerCase() : '';
+}
+
+export function normalizeBaseRefName(value) {
+  const lowered = normalizeLower(value).trim();
+  if (!lowered) {
+    return '';
+  }
+  const refsPrefix = 'refs/heads/';
+  if (lowered.startsWith(refsPrefix)) {
+    return lowered.substring(refsPrefix.length);
+  }
+  return lowered;
+}
+
+export function getMergeQueueBranches(policy) {
+  const branches = new Set();
+  const rulesets = policy?.rulesets;
+  if (!rulesets || typeof rulesets !== 'object') {
+    return branches;
+  }
+
+  for (const ruleset of Object.values(rulesets)) {
+    if (!ruleset?.merge_queue) {
+      continue;
+    }
+    const includes = Array.isArray(ruleset.includes) ? ruleset.includes : [];
+    for (const ref of includes) {
+      if (typeof ref !== 'string') {
+        continue;
+      }
+      const match = ref.match(/^refs\/heads\/(.+)$/i);
+      if (match && match[1] && !match[1].includes('*')) {
+        branches.add(match[1].toLowerCase());
+      }
+    }
+  }
+
+  return branches;
+}
+
+export function buildPolicyTrace(mergeQueueBranches = new Set()) {
+  return {
+    manifestPath: 'tools/priority/policy.json',
+    mergeQueueBranches: Array.from(mergeQueueBranches).sort()
+  };
+}
+
+export function buildMergeSummaryPayload({
+  repo,
+  pr,
+  mergeMethod,
+  selectedMode,
+  selectedReason,
+  finalMode,
+  finalReason,
+  dryRun,
+  mergeQueueBranches,
+  attempts,
+  prInfo,
+  createdAt = new Date().toISOString()
+}) {
+  const normalizedBaseRefName = normalizeBaseRefName(prInfo?.baseRefName);
+  return {
+    schema: 'priority/sync-merge@v1',
+    createdAt,
+    repo,
+    pr,
+    mergeMethod,
+    selectedMode,
+    selectedReason,
+    finalMode,
+    finalReason,
+    dryRun,
+    policyTrace: buildPolicyTrace(mergeQueueBranches),
+    attempts,
+    prState: {
+      state: prInfo?.state ?? null,
+      mergeStateStatus: prInfo?.mergeStateStatus ?? null,
+      mergeable: prInfo?.mergeable ?? null,
+      baseRefName: normalizedBaseRefName || null,
+      isDraft: Boolean(prInfo?.isDraft)
+    },
+    prUrl: prInfo?.url ?? null
+  };
+}
+
+export function selectMergeMode(prInfo, { admin = false, mergeQueueBranches = new Set() } = {}) {
   const state = normalizeUpper(prInfo?.state);
   const mergeState = normalizeUpper(prInfo?.mergeStateStatus);
   const mergeable = normalizeUpper(prInfo?.mergeable);
+  const baseRefName = normalizeBaseRefName(prInfo?.baseRefName);
   const isDraft = Boolean(prInfo?.isDraft);
 
   if (state === 'MERGED') {
@@ -135,6 +226,10 @@ export function selectMergeMode(prInfo, { admin = false } = {}) {
   }
   if (mergeable === 'UNMERGEABLE') {
     throw new Error('PR is UNMERGEABLE. Resolve branch/ruleset blockers before merge automation.');
+  }
+
+  if (baseRefName && mergeQueueBranches.has(baseRefName)) {
+    return { mode: 'auto', reason: `merge-queue-branch-${baseRefName}` };
   }
 
   if (mergeState === 'CLEAN' && (mergeable === 'MERGEABLE' || mergeable === '')) {
@@ -171,7 +266,7 @@ function parseJsonOutput(raw, { label }) {
 function readPrInfo({ repoRoot, repo, pr }) {
   const result = spawnSync(
     'gh',
-    ['pr', 'view', String(pr), '--repo', repo, '--json', 'number,state,isDraft,mergeStateStatus,mergeable,url'],
+    ['pr', 'view', String(pr), '--repo', repo, '--json', 'number,state,isDraft,mergeStateStatus,mergeable,baseRefName,url'],
     {
       cwd: repoRoot,
       encoding: 'utf8',
@@ -240,12 +335,16 @@ export async function runMergeSync({
     return `${upstream.owner}/${upstream.repo}`;
   })();
 
+  const policyRaw = await readFile(manifestPath, 'utf8');
+  const policy = JSON.parse(policyRaw);
+  const mergeQueueBranches = getMergeQueueBranches(policy);
+
   const prInfo = readPrInfo({
     repoRoot,
     repo: resolvedRepo,
     pr: options.pr
   });
-  const selection = selectMergeMode(prInfo, { admin: options.admin });
+  const selection = selectMergeMode(prInfo, { admin: options.admin, mergeQueueBranches });
   console.log(
     `[priority:merge-sync] selected mode=${selection.mode} reason=${selection.reason} mergeState=${prInfo.mergeStateStatus ?? 'n/a'}`
   );
@@ -308,9 +407,7 @@ export async function runMergeSync({
     }
   }
 
-  const payload = {
-    schema: 'priority/sync-merge@v1',
-    createdAt: new Date().toISOString(),
+  const payload = buildMergeSummaryPayload({
     repo: resolvedRepo,
     pr: options.pr,
     mergeMethod: options.method,
@@ -319,15 +416,10 @@ export async function runMergeSync({
     finalMode,
     finalReason,
     dryRun: options.dryRun,
+    mergeQueueBranches,
     attempts,
-    prState: {
-      state: prInfo.state ?? null,
-      mergeStateStatus: prInfo.mergeStateStatus ?? null,
-      mergeable: prInfo.mergeable ?? null,
-      isDraft: Boolean(prInfo.isDraft)
-    },
-    prUrl: prInfo.url ?? null
-  };
+    prInfo
+  });
   await maybeWriteSummary(options.summaryPath, payload);
 
   console.log(`[priority:merge-sync] final mode=${finalMode} reason=${finalReason}`);
