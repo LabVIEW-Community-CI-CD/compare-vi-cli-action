@@ -1,4 +1,3 @@
-"use strict";
 // Minimal JS/TS action without external deps.
 // Reads INPUT_BODY, writes multi-line 'comment' and single-line 'target' to GITHUB_OUTPUT.
 function getEnv(name) {
@@ -58,3 +57,4 @@ catch (err) {
     process.stderr.write(`normalize-command error: ${msg}\n`);
     process.exit(1);
 }
+export {};
