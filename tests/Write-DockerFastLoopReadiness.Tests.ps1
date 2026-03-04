@@ -363,6 +363,30 @@ Describe 'Write-DockerFastLoopReadiness.ps1' -Tag 'Unit' {
     $readiness.toolFailureCount | Should -Be 0
   }
 
+  It 'falls back to not-ready when summary json is missing' {
+    $resultsRoot = Join-Path $TestDrive 'missing-summary'
+    New-Item -ItemType Directory -Path $resultsRoot -Force | Out-Null
+    $jsonOut = Join-Path $resultsRoot 'docker-runtime-fastloop-readiness.json'
+    $mdOut = Join-Path $resultsRoot 'docker-runtime-fastloop-readiness.md'
+
+    $output = & pwsh -NoLogo -NoProfile -File $script:ReadinessScript `
+      -ResultsRoot $resultsRoot `
+      -OutputJsonPath $jsonOut `
+      -OutputMarkdownPath $mdOut `
+      -GitHubOutputPath '' `
+      -StepSummaryPath '' 2>&1
+    $LASTEXITCODE | Should -Be 0 -Because ($output -join "`n")
+
+    Test-Path -LiteralPath $jsonOut | Should -BeTrue
+    $readiness = Get-Content -LiteralPath $jsonOut -Raw | ConvertFrom-Json -Depth 16
+    $readiness.verdict | Should -Be 'not-ready'
+    $readiness.recommendation | Should -Be 'do-not-push'
+    $readiness.hardStopTriggered | Should -BeTrue
+    $readiness.run.status | Should -Be 'missing-summary'
+    $readiness.source.summaryPath | Should -Be ''
+    $readiness.hardStopReason | Should -Match 'Unable to locate docker fast-loop summary json'
+  }
+
   It 'writes GitHub outputs for readiness paths and verdict' {
     $resultsRoot = Join-Path $TestDrive 'github-output-contract'
     New-Item -ItemType Directory -Path $resultsRoot -Force | Out-Null
