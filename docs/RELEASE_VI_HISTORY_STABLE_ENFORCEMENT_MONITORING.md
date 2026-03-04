@@ -62,6 +62,20 @@ One-line step-summary variant (for CI/manual notes):
 pwsh -NoLogo -NoProfile -File ./tools/Get-ReleaseVIHistoryPolicyFields.ps1 -AppendStepSummary
 ```
 
+## One-Command Tracker Update
+
+Auto-harvest latest successful stable `Release on tag` run and upsert tracker row:
+
+```powershell
+pwsh -NoLogo -NoProfile -File ./tools/Update-ReleaseVIHistoryStableMonitoring.ps1
+```
+
+Use a specific run id:
+
+```powershell
+pwsh -NoLogo -NoProfile -File ./tools/Update-ReleaseVIHistoryStableMonitoring.ps1 -RunId <run-id>
+```
+
 ## Exception Handling
 
 If stable mode deviates from `hard`:

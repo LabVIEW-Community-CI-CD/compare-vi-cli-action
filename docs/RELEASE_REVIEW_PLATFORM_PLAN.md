@@ -214,6 +214,7 @@ Exit criteria:
 - [x] Phase 8 slice: rollback verification proof run completed
 - [x] Phase 8 slice: stable-enforcement monitoring tracker template
 - [x] Phase 8 slice: policy-field extraction helper automation
+- [x] Phase 8 slice: one-command stable monitoring row updater
 - [ ] Migration hardening and rollout controls
 
 ## References
@@ -233,3 +234,4 @@ Exit criteria:
 - release migration incident playbook: `docs/RELEASE_VI_HISTORY_MIGRATION_INCIDENT_PLAYBOOK.md`
 - stable enforcement monitoring: `docs/RELEASE_VI_HISTORY_STABLE_ENFORCEMENT_MONITORING.md`
 - policy field helper: `tools/Get-ReleaseVIHistoryPolicyFields.ps1`
+- monitoring updater: `tools/Update-ReleaseVIHistoryStableMonitoring.ps1`
