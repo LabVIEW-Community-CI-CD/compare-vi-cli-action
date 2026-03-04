@@ -19,20 +19,18 @@ param(
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
-function Get-LatestStableReleaseRun {
+function Get-StableReleaseRuns {
   param([string]$Repo)
 
   $runs = gh run list -R $Repo --workflow 'Release on tag' --limit 100 --json databaseId,displayTitle,headBranch,status,conclusion,url,createdAt | ConvertFrom-Json
   $stableRuns = @($runs | Where-Object {
-      $candidate = [string]$(if ([string]::IsNullOrWhiteSpace($_.displayTitle)) { $_.headBranch } else { $_.displayTitle })
-      $_.status -eq 'completed' -and $_.conclusion -eq 'success' -and $candidate -like 'v*' -and $candidate -notmatch '-'
+      $displayTitle = [string]$_.displayTitle
+      $headBranch = [string]$_.headBranch
+      $isStableTag = (($displayTitle -like 'v*' -and $displayTitle -notmatch '-') -or ($headBranch -like 'v*' -and $headBranch -notmatch '-'))
+      $_.status -eq 'completed' -and $_.conclusion -eq 'success' -and $isStableTag
     } | Sort-Object createdAt -Descending)
 
-  if ($stableRuns.Count -eq 0) {
-    throw "No successful stable Release on tag runs found in $Repo"
-  }
-
-  return $stableRuns[0]
+  return $stableRuns
 }
 
 function Get-RunDetails {
@@ -185,31 +183,59 @@ $effectiveIndexJobUrl = $IndexJobUrl
 
 if ([string]::IsNullOrWhiteSpace($PolicySummaryPath)) {
   if ($effectiveRunId -le 0) {
-    $latest = Get-LatestStableReleaseRun -Repo $RepoSlug
-    $effectiveRunId = [long]$latest.databaseId
+    $stableRuns = @(Get-StableReleaseRuns -Repo $RepoSlug)
+    if ($stableRuns.Count -eq 0) {
+      throw "No successful stable Release on tag runs found in $RepoSlug"
+    }
+
+    $selectedDetails = $null
+    foreach ($stableRun in $stableRuns) {
+      $candidateRunId = [long]$stableRun.databaseId
+      try {
+        $candidatePolicyPath = Resolve-PolicyPathFromRun -Repo $RepoSlug -Id $candidateRunId -Root $DownloadRoot
+        $selectedDetails = Get-RunDetails -Repo $RepoSlug -Id $candidateRunId
+        $effectiveRunId = $candidateRunId
+        $PolicySummaryPath = $candidatePolicyPath
+        if ([string]::IsNullOrWhiteSpace($effectiveTag)) {
+          $effectiveTag = Resolve-TagFromRunMetadata -DisplayTitle ([string]$selectedDetails.displayTitle) -HeadBranch ([string]$selectedDetails.headBranch)
+        }
+        if ([string]::IsNullOrWhiteSpace($effectiveRunUrl)) {
+          $effectiveRunUrl = [string]$selectedDetails.url
+        }
+        if ([string]::IsNullOrWhiteSpace($effectiveIndexJobUrl)) {
+          $indexJob = @($selectedDetails.jobs | Where-Object { [string]$_.name -eq 'release-vi-history-review-index' } | Select-Object -First 1)
+          if ($indexJob) {
+            $effectiveIndexJobUrl = [string]$indexJob.url
+          }
+        }
+        break
+      } catch {
+        Write-Verbose "Skipping stable run ${candidateRunId}: $($_.Exception.Message)"
+      }
+    }
+
+    if ([string]::IsNullOrWhiteSpace($PolicySummaryPath)) {
+      throw "No successful stable Release on tag runs with release-vi-history-policy.json artifact found in $RepoSlug"
+    }
+  }
+
+  if ($effectiveRunId -gt 0 -and [string]::IsNullOrWhiteSpace($PolicySummaryPath)) {
+    $details = Get-RunDetails -Repo $RepoSlug -Id $effectiveRunId
     if ([string]::IsNullOrWhiteSpace($effectiveTag)) {
-      $effectiveTag = Resolve-TagFromRunMetadata -DisplayTitle ([string]$latest.displayTitle) -HeadBranch ([string]$latest.headBranch)
+      $effectiveTag = Resolve-TagFromRunMetadata -DisplayTitle ([string]$details.displayTitle) -HeadBranch ([string]$details.headBranch)
     }
     if ([string]::IsNullOrWhiteSpace($effectiveRunUrl)) {
-      $effectiveRunUrl = [string]$latest.url
+      $effectiveRunUrl = [string]$details.url
     }
-  }
-
-  $details = Get-RunDetails -Repo $RepoSlug -Id $effectiveRunId
-  if ([string]::IsNullOrWhiteSpace($effectiveTag)) {
-    $effectiveTag = Resolve-TagFromRunMetadata -DisplayTitle ([string]$details.displayTitle) -HeadBranch ([string]$details.headBranch)
-  }
-  if ([string]::IsNullOrWhiteSpace($effectiveRunUrl)) {
-    $effectiveRunUrl = [string]$details.url
-  }
-  if ([string]::IsNullOrWhiteSpace($effectiveIndexJobUrl)) {
-    $indexJob = @($details.jobs | Where-Object { [string]$_.name -eq 'release-vi-history-review-index' } | Select-Object -First 1)
-    if ($indexJob) {
-      $effectiveIndexJobUrl = [string]$indexJob.url
+    if ([string]::IsNullOrWhiteSpace($effectiveIndexJobUrl)) {
+      $indexJob = @($details.jobs | Where-Object { [string]$_.name -eq 'release-vi-history-review-index' } | Select-Object -First 1)
+      if ($indexJob) {
+        $effectiveIndexJobUrl = [string]$indexJob.url
+      }
     }
-  }
 
-  $PolicySummaryPath = Resolve-PolicyPathFromRun -Repo $RepoSlug -Id $effectiveRunId -Root $DownloadRoot
+    $PolicySummaryPath = Resolve-PolicyPathFromRun -Repo $RepoSlug -Id $effectiveRunId -Root $DownloadRoot
+  }
 }
 
 if ([string]::IsNullOrWhiteSpace($effectiveTag)) {
