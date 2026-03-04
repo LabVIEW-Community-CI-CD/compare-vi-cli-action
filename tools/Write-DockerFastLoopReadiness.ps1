@@ -174,7 +174,7 @@ function Get-HistoricalStats {
 }
 
 function Get-LaneFromSteps {
-  param([Parameter(Mandatory)][object[]]$Steps)
+  param([Parameter(Mandatory)][AllowEmptyCollection()][object[]]$Steps)
 
   $laneState = @{
     windows = [ordered]@{ total = 0; completed = 0; failed = 0; durationMs = 0; diffDetected = $false; failureClass = 'none' }
@@ -247,7 +247,7 @@ function Resolve-LaneLifecycle {
   param(
     [AllowNull()]$Summary,
     [Parameter(Mandatory)][hashtable]$LaneState,
-    [Parameter(Mandatory)][object[]]$Steps,
+    [Parameter(Mandatory)][AllowEmptyCollection()][object[]]$Steps,
     [bool]$HardStopTriggered = $false,
     [AllowEmptyString()][string]$HardStopReason = ''
   )
@@ -318,7 +318,7 @@ function Resolve-LaneLifecycle {
 }
 
 function Get-ClassificationAggregate {
-  param([Parameter(Mandatory)][object[]]$Steps)
+  param([Parameter(Mandatory)][AllowEmptyCollection()][object[]]$Steps)
 
   $diffStepCount = 0
   $diffEvidenceSteps = 0
@@ -392,8 +392,22 @@ $summaryResolved = if ([string]::IsNullOrWhiteSpace($SummaryPath)) {
 } else {
   Resolve-AbsolutePath -Path $SummaryPath
 }
+
+$summary = $null
 if ([string]::IsNullOrWhiteSpace($summaryResolved) -or -not (Test-Path -LiteralPath $summaryResolved -PathType Leaf)) {
-  throw ("Unable to locate docker fast-loop summary json under: {0}" -f $resultsRootResolved)
+  $summaryResolved = ''
+  $summaryMissingReason = "Unable to locate docker fast-loop summary json under: $resultsRootResolved"
+  Write-Warning $summaryMissingReason
+  $summary = [pscustomobject][ordered]@{
+    schema = 'docker-desktop-fast-loop@v1'
+    generatedAt = (Get-Date).ToUniversalTime().ToString('o')
+    status = 'missing-summary'
+    historyScenarioSet = 'none'
+    historyScenarioCount = 0
+    hardStopTriggered = $true
+    hardStopReason = $summaryMissingReason
+    steps = @()
+  }
 }
 
 $statusResolved = if ([string]::IsNullOrWhiteSpace($StatusPath)) {
@@ -413,9 +427,25 @@ $mdOutResolved = if ([string]::IsNullOrWhiteSpace($OutputMarkdownPath)) {
   Resolve-AbsolutePath -Path $OutputMarkdownPath
 }
 
-$summary = Read-JsonOrNull -Path $summaryResolved
-if (-not $summary) {
-  throw ("Unable to parse summary json: {0}" -f $summaryResolved)
+$parsedSummary = $null
+if ($summaryResolved) {
+  $parsedSummary = Read-JsonOrNull -Path $summaryResolved
+}
+if ($parsedSummary) {
+  $summary = $parsedSummary
+} elseif (-not $summary) {
+  $summaryMissingReason = "Unable to parse summary json: $summaryResolved"
+  Write-Warning $summaryMissingReason
+  $summary = [pscustomobject][ordered]@{
+    schema = 'docker-desktop-fast-loop@v1'
+    generatedAt = (Get-Date).ToUniversalTime().ToString('o')
+    status = 'invalid-summary'
+    historyScenarioSet = 'none'
+    historyScenarioCount = 0
+    hardStopTriggered = $true
+    hardStopReason = $summaryMissingReason
+    steps = @()
+  }
 }
 $status = Read-JsonOrNull -Path $statusResolved
 $steps = @()
