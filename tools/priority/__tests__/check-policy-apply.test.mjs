@@ -21,12 +21,14 @@ function createResponse(data, status = 200, statusText = 'OK') {
 
 test('priority:policy --apply updates rulesets for develop/main/release', async () => {
   const expectedDevelopChecks = [
-    'Validate / lint',
-    'Validate / fixtures',
-    'Validate / session-index',
-    'Validate / issue-snapshot',
-    'Requirements Verification / requirements-verification',
-    'Policy Guard (Upstream) / policy-guard'
+    'lint',
+    'fixtures',
+    'session-index',
+    'issue-snapshot',
+    'semver',
+    'hook-parity (windows-latest)',
+    'hook-parity (ubuntu-latest)',
+    'vi-history-scenarios-linux'
   ];
   const expectedMainChecks = [
     'pester',
