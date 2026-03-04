@@ -26,12 +26,16 @@
         "requirementTotal",
         "requirementCovered",
         "requirementUncovered",
+        "requirementCoveragePercent",
+        "requirementCoverageTargetPercent",
         "unknownRequirementIds"
       ],
       "properties": {
         "requirementTotal": { "type": "integer", "minimum": 0 },
         "requirementCovered": { "type": "integer", "minimum": 0 },
         "requirementUncovered": { "type": "integer", "minimum": 0 },
+        "requirementCoveragePercent": { "type": "number", "minimum": 0, "maximum": 100 },
+        "requirementCoverageTargetPercent": { "type": "number", "minimum": 0, "maximum": 100 },
         "unknownRequirementIds": {
           "type": "array",
           "items": { "type": "string" }
@@ -64,7 +68,7 @@
         "status": { "type": "string", "enum": ["pass", "fail"] },
         "kind": {
           "type": "string",
-          "enum": ["requirements_coverage_ok", "requirements_coverage_regression"]
+          "enum": ["requirements_coverage_ok", "requirements_coverage_regression", "requirements_coverage_below_target"]
         }
       },
       "additionalProperties": false

@@ -29,17 +29,24 @@ const psFiles = stagedFiles.filter((file) => file.match(/\.(ps1|psm1|psd1)$/i));
 if (psFiles.length === 0) {
   info('[pre-commit] No staged PowerShell files detected; skipping PowerShell lint.');
   runner.addNote('No staged PowerShell files detected; PowerShell lint skipped.');
-  runner.writeSummary();
-  process.exit(0);
+} else {
+  const scriptPath = path.join('tools', 'hooks', 'scripts', 'pre-commit.ps1');
+  info('[pre-commit] Running PowerShell validation script');
+  runner.runPwshStep('powershell-validation', scriptPath, [], {
+    env: {
+      HOOKS_STAGED_FILES_JSON: JSON.stringify(psFiles),
+    },
+  });
 }
 
-const scriptPath = path.join('tools', 'hooks', 'scripts', 'pre-commit.ps1');
-info('[pre-commit] Running PowerShell validation script');
-runner.runPwshStep('powershell-validation', scriptPath, [], {
-  env: {
-    HOOKS_STAGED_FILES_JSON: JSON.stringify(psFiles),
-  },
-});
+const requirementsGateScriptPath = path.join('tools', 'Verify-RequirementsGate.ps1');
+info('[pre-commit] Running requirements coverage gate');
+const previousEnforcement = runner.enforcement;
+runner.enforcement = 'fail';
+runner.environment.enforcement = 'fail';
+runner.runPwshStep('requirements-coverage-gate', requirementsGateScriptPath, []);
+runner.enforcement = previousEnforcement;
+runner.environment.enforcement = previousEnforcement;
 
 runner.writeSummary();
 
