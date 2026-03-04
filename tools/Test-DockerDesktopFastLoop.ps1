@@ -14,6 +14,7 @@
 param(
   [string]$WindowsImage = 'nationalinstruments/labview:2026q1-windows',
   [string]$LinuxImage = 'nationalinstruments/labview:2026q1-linux',
+  [string]$LabVIEWPath = '',
   [string]$ResultsRoot = 'tests/results/local-parity',
   [string]$StatusPath = '',
   [string]$ReadinessJsonPath = '',
@@ -254,6 +255,7 @@ function Invoke-WindowsHistoryCompare {
     [Parameter(Mandatory)][string]$BaseVi,
     [Parameter(Mandatory)][string]$HeadVi,
     [Parameter(Mandatory)][string]$ReportPath,
+    [string]$LabVIEWPath,
     [Parameter(Mandatory)][string]$WindowsImage,
     [Parameter(Mandatory)][string]$RuntimeSnapshotPath,
     [Parameter(Mandatory)][bool]$RuntimeAutoRepair,
@@ -283,17 +285,24 @@ function Invoke-WindowsHistoryCompare {
     throw ("Windows runtime preflight failed before history compare. Snapshot: {0}" -f $RuntimeSnapshotPath)
   }
 
-  & pwsh -NoLogo -NoProfile -File (Join-Path $PSScriptRoot 'Run-NIWindowsContainerCompare.ps1') `
-    -BaseVi $BaseVi `
-    -HeadVi $HeadVi `
-    -Image $WindowsImage `
-    -ReportPath $ReportPath `
-    -TimeoutSeconds $StepTimeoutSeconds `
-    -AutoRepairRuntime:$RuntimeAutoRepair `
-    -ManageDockerEngine:$ManageDockerEngine `
-    -RuntimeEngineReadyTimeoutSeconds $StepTimeoutSeconds `
-    -RuntimeEngineReadyPollSeconds 3 `
-    -RuntimeSnapshotPath $RuntimeSnapshotPath | Out-Null
+  $windowsCompareArgs = @(
+    '-NoLogo', '-NoProfile',
+    '-File', (Join-Path $PSScriptRoot 'Run-NIWindowsContainerCompare.ps1'),
+    '-BaseVi', $BaseVi,
+    '-HeadVi', $HeadVi,
+    '-Image', $WindowsImage,
+    '-ReportPath', $ReportPath,
+    '-TimeoutSeconds', [string]$StepTimeoutSeconds,
+    "-AutoRepairRuntime:$RuntimeAutoRepair",
+    "-ManageDockerEngine:$ManageDockerEngine",
+    '-RuntimeEngineReadyTimeoutSeconds', [string]$StepTimeoutSeconds,
+    '-RuntimeEngineReadyPollSeconds', '3',
+    '-RuntimeSnapshotPath', $RuntimeSnapshotPath
+  )
+  if (-not [string]::IsNullOrWhiteSpace($LabVIEWPath)) {
+    $windowsCompareArgs += @('-LabVIEWPath', $LabVIEWPath)
+  }
+  & pwsh @windowsCompareArgs | Out-Null
 
   $compareExit = $LASTEXITCODE
 
@@ -1046,6 +1055,15 @@ if ($singleLaneMode -and $ManageDockerEngine) {
 }
 $effectiveManageDockerEngine = if ($singleLaneMode) { $false } else { [bool]$ManageDockerEngine }
 $runtimeAutoRepairEnabled = -not $singleLaneMode
+$effectiveLabVIEWPath = $LabVIEWPath
+if ([string]::IsNullOrWhiteSpace($effectiveLabVIEWPath)) {
+  foreach ($candidateLabVIEWPath in @($env:COMPARE_LABVIEW_PATH, $env:LOOP_LABVIEW_PATH, $env:LABVIEW_PATH, $env:LV_LABVIEW_PATH, $env:LABVIEW_EXE)) {
+    if (-not [string]::IsNullOrWhiteSpace($candidateLabVIEWPath)) {
+      $effectiveLabVIEWPath = $candidateLabVIEWPath
+      break
+    }
+  }
+}
 $effectiveSkipWindowsProbe = [bool]$SkipWindowsProbe
 $effectiveSkipLinuxProbe = [bool]$SkipLinuxProbe
 switch ($laneScopeNormalized) {
@@ -1115,15 +1133,22 @@ if (-not $effectiveSkipWindowsProbe) {
     allowedExitCodes = @(0)
     hardStopOnRuntimeFailure = $true
     action = {
-    pwsh -NoLogo -NoProfile -File (Join-Path $PSScriptRoot 'Run-NIWindowsContainerCompare.ps1') `
-      -Probe `
-      -Image $WindowsImage `
-      -TimeoutSeconds $StepTimeoutSeconds `
-      -AutoRepairRuntime:$runtimeAutoRepairEnabled `
-      -ManageDockerEngine:$effectiveManageDockerEngine `
-      -RuntimeEngineReadyTimeoutSeconds $StepTimeoutSeconds `
-      -RuntimeEngineReadyPollSeconds 3 `
-      -RuntimeSnapshotPath $windowsSnapshot | Out-Null
+    $windowsProbeArgs = @(
+      '-NoLogo', '-NoProfile',
+      '-File', (Join-Path $PSScriptRoot 'Run-NIWindowsContainerCompare.ps1'),
+      '-Probe',
+      '-Image', $WindowsImage,
+      '-TimeoutSeconds', [string]$StepTimeoutSeconds,
+      "-AutoRepairRuntime:$runtimeAutoRepairEnabled",
+      "-ManageDockerEngine:$effectiveManageDockerEngine",
+      '-RuntimeEngineReadyTimeoutSeconds', [string]$StepTimeoutSeconds,
+      '-RuntimeEngineReadyPollSeconds', '3',
+      '-RuntimeSnapshotPath', $windowsSnapshot
+    )
+    if (-not [string]::IsNullOrWhiteSpace($effectiveLabVIEWPath)) {
+      $windowsProbeArgs += @('-LabVIEWPath', $effectiveLabVIEWPath)
+    }
+    pwsh @windowsProbeArgs | Out-Null
     }
   }) | Out-Null
 }
@@ -1324,6 +1349,7 @@ if ($historyScenarioSetNormalized -ne 'none') {
               -BaseVi $baseForStep `
               -HeadVi $headForStep `
               -ReportPath $reportPath `
+              -LabVIEWPath $effectiveLabVIEWPath `
               -WindowsImage $WindowsImage `
               -RuntimeSnapshotPath $windowsSnapshot `
               -RuntimeAutoRepair:$runtimeAutoRepairEnabled `
@@ -1381,6 +1407,7 @@ if ($historyScenarioSetNormalized -ne 'none') {
           -BaseVi $baselineBase `
           -HeadVi $headPath `
           -ReportPath $reportPath `
+          -LabVIEWPath $effectiveLabVIEWPath `
           -WindowsImage $WindowsImage `
           -RuntimeSnapshotPath $windowsSnapshot `
           -RuntimeAutoRepair:$runtimeAutoRepairEnabled `
