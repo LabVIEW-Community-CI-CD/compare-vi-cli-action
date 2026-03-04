@@ -612,6 +612,9 @@ jobs:
 
   release-vi-history-review-index:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      issues: write
     needs: [release-vi-history-review, release-vi-history-profile]
     if: always()
     steps:
@@ -847,6 +850,41 @@ jobs:
           if ($outcome -eq 'fail') {
             throw "Release VI history policy gate failed with $($violations.Count) violation(s)."
           }
+
+      - name: Build unified release review comment body
+        if: always()
+        shell: pwsh
+        env:
+          RUN_URL: https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          $bodyPath = 'tests/results/release-vi-history-index/release-vi-history-comment.md'
+          pwsh -NoLogo -NoProfile -File ./tools/Publish-ReleaseVIHistoryComment.ps1 `
+            -ReviewIndexJsonPath 'tests/results/release-vi-history-index/release-vi-history-review.json' `
+            -PolicySummaryJsonPath 'tests/results/release-vi-history-index/release-vi-history-policy.json' `
+            -Profile '${{ needs.release-vi-history-profile.outputs.profile }}' `
+            -RunUrl $env:RUN_URL `
+            -BodyPath $bodyPath
+
+      - name: Publish release review comment to issue (optional)
+        if: always() && vars.RELEASE_VI_HISTORY_NOTIFY_ISSUE != ''
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ secrets.GH_TOKEN || secrets.GITHUB_TOKEN }}
+          RUN_URL: https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          $issue = 0
+          if (-not [int]::TryParse('${{ vars.RELEASE_VI_HISTORY_NOTIFY_ISSUE }}', [ref]$issue) -or $issue -le 0) {
+            throw "Invalid RELEASE_VI_HISTORY_NOTIFY_ISSUE value: '${{ vars.RELEASE_VI_HISTORY_NOTIFY_ISSUE }}'"
+          }
+          pwsh -NoLogo -NoProfile -File ./tools/Publish-ReleaseVIHistoryComment.ps1 `
+            -ReviewIndexJsonPath 'tests/results/release-vi-history-index/release-vi-history-review.json' `
+            -PolicySummaryJsonPath 'tests/results/release-vi-history-index/release-vi-history-policy.json' `
+            -Profile '${{ needs.release-vi-history-profile.outputs.profile }}' `
+            -RunUrl $env:RUN_URL `
+            -BodyPath 'tests/results/release-vi-history-index/release-vi-history-comment.md' `
+            -RepoSlug '${{ github.repository }}' `
+            -IssueNumber $issue `
+            -Post
 
       - name: Upload review index artifact
         if: always()
