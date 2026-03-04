@@ -41,6 +41,22 @@ workflow uploads two artifacts:
 - `vi-compare-manifests` - aggregate suite manifest and per-mode summaries
 - `vi-compare-diff-artifacts` - only present when LVCompare detects differences
 
+## VS Code Plane Workspaces
+
+Use the committed workspace files to keep upstream, fork, and command-center
+operations explicit:
+
+- `compare-vi-cli-action.upstream-plane.code-workspace`
+- `compare-vi-cli-action.fork-plane.code-workspace`
+- `compare-vi-cli-action.command-center.code-workspace`
+
+Folder names inside those files follow plane prefixes (`PLANE_UPSTREAM__*`,
+`PLANE_FORK__*`) and all included tasks pin `cwd` to a named workspace folder so
+commands run in the intended plane.
+
+See `docs/DUAL_PLANE_WORKSPACES.md` for the expected directory layout and task
+usage.
+
 Each job also emits GitHub outputs pointing at the aggregate manifest, the
 history results directory, the per-mode manifest summary (`mode-manifests-json`),
 and the generated history report paths (`history-report-md` and, when HTML
