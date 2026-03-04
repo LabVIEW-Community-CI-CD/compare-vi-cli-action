@@ -1,0 +1,65 @@
+name: Agent Review Policy
+
+on:
+  pull_request_target:
+    types: [opened, synchronize, reopened, ready_for_review, edited, labeled, unlabeled, review_requested, review_request_removed]
+
+permissions:
+  pull-requests: read
+  contents: read
+
+jobs:
+  agent-review-policy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Enforce required reviewer for agent-authored PRs
+        uses: actions/github-script@v8
+        with:
+          script: |
+            const pr = context.payload.pull_request;
+            const body = pr.body || '';
+            const labels = (pr.labels || []).map((l) => l.name);
+
+            const hasAgentMetadata = /Agent-ID\s*:/i.test(body);
+            const hasCodexLabel = labels.includes('codex');
+            const isAgentPR = hasAgentMetadata || hasCodexLabel;
+
+            if (!isAgentPR) {
+              core.info('PR is not marked as agent-authored; passing policy check.');
+              return;
+            }
+
+            const bypassLabel = 'AllowCIBypass';
+            if (labels.includes(bypassLabel)) {
+              core.warning(`Bypass label '${bypassLabel}' detected; passing policy check.`);
+              return;
+            }
+
+            const owner = context.repo.owner;
+            const repo = context.repo.repo;
+            const pull_number = pr.number;
+            const requiredReviewer = 'svelderrainruiz';
+
+            const reviews = await github.paginate(github.rest.pulls.listReviews, {
+              owner,
+              repo,
+              pull_number,
+              per_page: 100
+            });
+
+            const latestStateByUser = new Map();
+            for (const review of reviews) {
+              if (!review.user || !review.user.login) continue;
+              latestStateByUser.set(review.user.login, review.state);
+            }
+
+            const reviewerState = latestStateByUser.get(requiredReviewer) || 'NONE';
+            if (reviewerState !== 'APPROVED') {
+              core.setFailed(
+                `Agent PR requires approval from @${requiredReviewer}. Current state: ${reviewerState}. ` +
+                `If urgent, apply '${bypassLabel}' label with explicit rationale.`
+              );
+              return;
+            }
+
+            core.info(`Policy satisfied: @${requiredReviewer} approved this agent-authored PR.`);
