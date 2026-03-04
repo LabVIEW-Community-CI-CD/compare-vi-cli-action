@@ -34,6 +34,19 @@ git diff -- docs/RELEASE_VI_HISTORY_STABLE_ENFORCEMENT_MONITORING.md
 git add docs/RELEASE_VI_HISTORY_STABLE_ENFORCEMENT_MONITORING.md; git commit -m "docs: update stable monitoring evidence (#216)"; git push
 ```
 
+Expected output sanity-check (example):
+
+```text
+trackerPath       : docs/RELEASE_VI_HISTORY_STABLE_ENFORCEMENT_MONITORING.md
+action            : replaced-placeholder | updated-existing-tag | appended
+tag               : v0.6.x
+runId             : <run-id>
+runUrl            : https://github.com/<owner>/<repo>/actions/runs/<run-id>
+indexJobUrl       : https://github.com/<owner>/<repo>/actions/runs/<run-id>/job/<job-id>
+row               : | <date> | <tag> | stable | <runUrl> | <indexJobUrl> | migration.tagClassEnforcement.stable | hard | <rawOutcome> | <outcome> | auto-harvested from run <run-id> |
+commentBodyPath   : tests/results/_agent/release-proof/monitoring-auto/pr-comment.md
+```
+
 ## Evidence Template
 
 | Date (UTC) | Tag | Tag Class | Run URL | Index Job URL | enforcementSource | enforcementMode | rawOutcome | outcome | Notes |
