@@ -149,6 +149,44 @@ export function buildPolicyTrace(mergeQueueBranches = new Set()) {
   };
 }
 
+export function buildMergeSummaryPayload({
+  repo,
+  pr,
+  mergeMethod,
+  selectedMode,
+  selectedReason,
+  finalMode,
+  finalReason,
+  dryRun,
+  mergeQueueBranches,
+  attempts,
+  prInfo,
+  createdAt = new Date().toISOString()
+}) {
+  return {
+    schema: 'priority/sync-merge@v1',
+    createdAt,
+    repo,
+    pr,
+    mergeMethod,
+    selectedMode,
+    selectedReason,
+    finalMode,
+    finalReason,
+    dryRun,
+    policyTrace: buildPolicyTrace(mergeQueueBranches),
+    attempts,
+    prState: {
+      state: prInfo?.state ?? null,
+      mergeStateStatus: prInfo?.mergeStateStatus ?? null,
+      mergeable: prInfo?.mergeable ?? null,
+      baseRefName: prInfo?.baseRefName ?? null,
+      isDraft: Boolean(prInfo?.isDraft)
+    },
+    prUrl: prInfo?.url ?? null
+  };
+}
+
 export function selectMergeMode(prInfo, { admin = false, mergeQueueBranches = new Set() } = {}) {
   const state = normalizeUpper(prInfo?.state);
   const mergeState = normalizeUpper(prInfo?.mergeStateStatus);
@@ -354,9 +392,7 @@ export async function runMergeSync({
     }
   }
 
-  const payload = {
-    schema: 'priority/sync-merge@v1',
-    createdAt: new Date().toISOString(),
+  const payload = buildMergeSummaryPayload({
     repo: resolvedRepo,
     pr: options.pr,
     mergeMethod: options.method,
@@ -365,17 +401,10 @@ export async function runMergeSync({
     finalMode,
     finalReason,
     dryRun: options.dryRun,
-    policyTrace: buildPolicyTrace(mergeQueueBranches),
+    mergeQueueBranches,
     attempts,
-    prState: {
-      state: prInfo.state ?? null,
-      mergeStateStatus: prInfo.mergeStateStatus ?? null,
-      mergeable: prInfo.mergeable ?? null,
-      baseRefName: prInfo.baseRefName ?? null,
-      isDraft: Boolean(prInfo.isDraft)
-    },
-    prUrl: prInfo.url ?? null
-  };
+    prInfo
+  });
   await maybeWriteSummary(options.summaryPath, payload);
 
   console.log(`[priority:merge-sync] final mode=${finalMode} reason=${finalReason}`);

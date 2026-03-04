@@ -140,6 +140,12 @@ checked into `tools/priority/policy.json` so `priority:policy` stays authoritati
   node tools/priority/merge-sync-pr.mjs --pr <number> --repo <owner/repo> --dry-run --summary-path tests/results/_agent/priority/merge-sync-dry-run.json
   ```
 
+- Inspect stable summary payload fields (`selectedMode`, `finalMode`, `prState.baseRefName`):
+
+  ```powershell
+  pwsh -NoLogo -NoProfile -Command "Get-Content tests/results/_agent/priority/merge-sync-dry-run.json -Raw | ConvertFrom-Json | Select-Object schema,selectedMode,finalMode,@{Name='baseRefName';Expression={$_.prState.baseRefName}},policyTrace | ConvertTo-Json -Depth 6"
+  ```
+
 - Optional parity run for non-LV checks using the published tools image:
 
   ```powershell
