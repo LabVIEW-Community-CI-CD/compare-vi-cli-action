@@ -4,12 +4,12 @@ Briefly describe the changes.
 
 ## Agent Metadata (required for automation-authored PRs)
 
-- Agent-ID: `agent/copilot-codex-a`
+- Agent ID: `agent/copilot-codex-a`
 - Operator: `@svelderrainruiz`
 - Reviewer-Required: `@svelderrainruiz`
 - Emergency-Bypass-Label: `AllowCIBypass`
 
-> For automation-authored PRs, keep this block populated. Policy checks use it to route reviewer requests and enforce approval.
+> For automation-authored PRs, keep this block populated. Policy checks use it to route reviewer requests and enforce approval. Human-authored PRs may delete this section.
 
 ## Changes
 

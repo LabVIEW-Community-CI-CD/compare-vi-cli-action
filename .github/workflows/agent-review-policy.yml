@@ -3,6 +3,8 @@ name: Agent Review Policy
 on:
   pull_request_target:
     types: [opened, synchronize, reopened, ready_for_review, edited, labeled, unlabeled, review_requested, review_request_removed]
+  pull_request_review:
+    types: [submitted, edited, dismissed]
 
 permissions:
   pull-requests: read
@@ -47,13 +49,24 @@ jobs:
               per_page: 100
             });
 
-            const latestStateByUser = new Map();
+            // Emulate GitHub's review-decision semantics:
+            // - COMMENTED reviews don't change the approval state
+            // - APPROVED sets approved state
+            // - CHANGES_REQUESTED or DISMISSED override any previous APPROVED
+            const effectiveStateByUser = new Map();
             for (const review of reviews) {
               if (!review.user || !review.user.login) continue;
-              latestStateByUser.set(review.user.login, review.state);
+              const user = review.user.login;
+              const state = review.state;
+              
+              // Ignore COMMENTED reviews - they don't affect approval status
+              if (state === 'COMMENTED') continue;
+              
+              // APPROVED, CHANGES_REQUESTED, DISMISSED all update the effective state
+              effectiveStateByUser.set(user, state);
             }
 
-            const reviewerState = latestStateByUser.get(requiredReviewer) || 'NONE';
+            const reviewerState = effectiveStateByUser.get(requiredReviewer) || 'NONE';
             if (reviewerState !== 'APPROVED') {
               core.setFailed(
                 `Agent PR requires approval from @${requiredReviewer}. Current state: ${reviewerState}. ` +
