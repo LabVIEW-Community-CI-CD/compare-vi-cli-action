@@ -51,7 +51,7 @@ commentBodyPath   : tests/results/_agent/release-proof/monitoring-auto/pr-commen
 
 | Date (UTC) | Tag | Tag Class | Run URL | Index Job URL | enforcementSource | enforcementMode | rawOutcome | outcome | Notes |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| 2026-03-03 | next-stable-tag | stable | pending-next-stable-run-url | pending-next-stable-index-job-url | migration.tagClassEnforcement.stable | expected-hard | pending | pending | prefilled row for next stable release capture |
+| 2026-03-04 | v1.0.1 | stable | https://github.com/svelderrainruiz/compare-vi-cli-action/actions/runs/22660227291 | https://github.com/svelderrainruiz/compare-vi-cli-action/actions/runs/22660227291/job/65680042901 | migration.tagClassEnforcement.stable | hard | pass | pass | auto-harvested from run 22660227291 |
 
 ## Acceptance Checks Per Entry
 
