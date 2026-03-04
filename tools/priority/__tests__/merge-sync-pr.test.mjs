@@ -53,6 +53,25 @@ test('selectMergeMode chooses auto for merge-queue branches', () => {
   });
 });
 
+test('selectMergeMode keeps queue reason stable for refs/heads base branch values', () => {
+  const selection = selectMergeMode(
+    {
+      state: 'OPEN',
+      isDraft: false,
+      baseRefName: 'refs/heads/Main',
+      mergeStateStatus: 'UNSTABLE',
+      mergeable: 'MERGEABLE'
+    },
+    {
+      mergeQueueBranches: new Set(['main'])
+    }
+  );
+  assert.deepEqual(selection, {
+    mode: 'auto',
+    reason: 'merge-queue-branch-main'
+  });
+});
+
 test('selectMergeMode honors explicit admin override', () => {
   const selection = selectMergeMode(
     {
@@ -285,4 +304,34 @@ test('buildMergeSummaryPayload preserves direct-to-auto retry attempt sequence',
       { mode: 'auto', exitCode: 0 }
     ]
   );
+});
+
+test('buildMergeSummaryPayload preserves selected/final reason fields for diagnostics', () => {
+  const payload = buildMergeSummaryPayload({
+    repo: 'owner/repo',
+    pr: 911,
+    mergeMethod: 'squash',
+    selectedMode: 'auto',
+    selectedReason: 'merge-state-unstable',
+    finalMode: 'auto',
+    finalReason: 'direct-merge-policy-block-retry-auto',
+    dryRun: false,
+    mergeQueueBranches: new Set(['main']),
+    attempts: [
+      { mode: 'direct', args: ['pr', 'merge', '--squash'], exitCode: 1 },
+      { mode: 'auto', args: ['pr', 'merge', '--squash', '--auto'], exitCode: 0 }
+    ],
+    prInfo: {
+      state: 'OPEN',
+      mergeStateStatus: 'UNSTABLE',
+      mergeable: 'MERGEABLE',
+      baseRefName: 'develop',
+      isDraft: false,
+      url: 'https://example.test/pr/911'
+    },
+    createdAt: '2026-03-03T00:00:04.000Z'
+  });
+
+  assert.equal(payload.selectedReason, 'merge-state-unstable');
+  assert.equal(payload.finalReason, 'direct-merge-policy-block-retry-auto');
 });

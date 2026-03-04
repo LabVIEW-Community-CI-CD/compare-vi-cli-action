@@ -146,6 +146,13 @@ checked into `tools/priority/policy.json` so `priority:policy` stays authoritati
   pwsh -NoLogo -NoProfile -Command "Get-Content tests/results/_agent/priority/merge-sync-dry-run.json -Raw | ConvertFrom-Json | Select-Object schema,selectedMode,finalMode,@{Name='baseRefName';Expression={$_.prState.baseRefName}},policyTrace | ConvertTo-Json -Depth 6"
   ```
 
+- Inspect reason diagnostics (`selectedReason`, `finalReason`) for queue/non-queue
+  troubleshooting:
+
+  ```powershell
+  pwsh -NoLogo -NoProfile -Command "Get-Content tests/results/_agent/priority/merge-sync-dry-run.json -Raw | ConvertFrom-Json | Select-Object selectedMode,selectedReason,finalMode,finalReason | ConvertTo-Json -Depth 4"
+  ```
+
 `prState.baseRefName` is normalized to lowercase branch names (for example,
 `refs/heads/Main` → `main`) before mode diagnostics are emitted.
 
