@@ -328,7 +328,7 @@
         "id": "viHistoryNotifyIssue",
         "type": "promptString",
         "description": "Issue number to notify (leave blank to skip)",
-        "default": "317"
+        "default": ""
       },
       {
         "id": "localDiffBase",
