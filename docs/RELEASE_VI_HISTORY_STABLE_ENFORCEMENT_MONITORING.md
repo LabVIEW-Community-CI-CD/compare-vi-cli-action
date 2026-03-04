@@ -29,6 +29,27 @@ For stable tags:
 - `enforcementMode = hard` unless an approved exception exists
 - if `rawOutcome = fail`, workflow should fail under hard enforcement
 
+## Quick Field Extraction
+
+Use this PowerShell snippet after downloading `release-vi-history-review-index` artifacts:
+
+```powershell
+$policyPath = Get-ChildItem -Path tests/results/_agent/release-proof -Filter release-vi-history-policy.json -Recurse -File |
+	Sort-Object LastWriteTimeUtc -Descending |
+	Select-Object -First 1 -ExpandProperty FullName
+
+$policy = Get-Content -LiteralPath $policyPath -Raw | ConvertFrom-Json -Depth 20
+
+[pscustomobject]@{
+	tagClass = $policy.tagClass
+	enforcementSource = $policy.enforcementSource
+	enforcementMode = $policy.enforcementMode
+	rawOutcome = $policy.rawOutcome
+	outcome = $policy.outcome
+	policyPath = $policyPath
+} | Format-List
+```
+
 ## Exception Handling
 
 If stable mode deviates from `hard`:
