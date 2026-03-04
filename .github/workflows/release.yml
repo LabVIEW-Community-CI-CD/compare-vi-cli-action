@@ -384,3 +384,222 @@ jobs:
           if ($compareExit -ne 0 -and $gateOutcome -ne 'pass') {
             throw ("NI Windows image compare failed. compareExit={0} gateOutcome={1} resultClass={2} status={3} captureExit={4} message={5}" -f $compareExit, $gateOutcome, $resultClass, $capture.status, $capture.exitCode, $capture.message)
           }
+
+  release-vi-history-review:
+    runs-on: ${{ matrix.os }}
+    needs: release
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            os_label: linux
+            image: nationalinstruments/labview:2026q1-linux
+            scenario: baseline
+            flags: ''
+          - os: ubuntu-latest
+            os_label: linux
+            image: nationalinstruments/labview:2026q1-linux
+            scenario: noattr
+            flags: '-noattr'
+          - os: ubuntu-latest
+            os_label: linux
+            image: nationalinstruments/labview:2026q1-linux
+            scenario: layout-and-position
+            flags: '-nobdcosm -nofppos'
+          - os: windows-latest
+            os_label: windows
+            image: nationalinstruments/labview:2026q1-windows
+            scenario: baseline
+            flags: ''
+          - os: windows-latest
+            os_label: windows
+            image: nationalinstruments/labview:2026q1-windows
+            scenario: noattr
+            flags: '-noattr'
+          - os: windows-latest
+            os_label: windows
+            image: nationalinstruments/labview:2026q1-windows
+            scenario: layout-and-position
+            flags: '-nobdcosm -nofppos'
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Pull NI image for scenario
+        shell: pwsh
+        run: docker pull '${{ matrix.image }}'
+
+      - name: Run VI history review scenario
+        shell: pwsh
+        run: |
+          $resultsRoot = Join-Path 'tests/results/release-vi-history' ('{0}/{1}' -f '${{ matrix.os_label }}', '${{ matrix.scenario }}')
+          New-Item -ItemType Directory -Path $resultsRoot -Force | Out-Null
+
+          $reportPath = Join-Path $resultsRoot 'compare-report.html'
+          $runtimeSnapshot = Join-Path $resultsRoot 'runtime-manager.json'
+          $flagsRaw = '${{ matrix.flags }}'
+          $flags = @()
+          if (-not [string]::IsNullOrWhiteSpace($flagsRaw)) {
+            $flags = @($flagsRaw.Split(' ', [System.StringSplitOptions]::RemoveEmptyEntries))
+          }
+
+          if ('${{ matrix.os_label }}' -eq 'linux') {
+            $args = @(
+              '-BaseVi', 'fixtures/vi-stage/control-rename/Base.vi',
+              '-HeadVi', 'fixtures/vi-stage/control-rename/Head.vi',
+              '-Image', '${{ matrix.image }}',
+              '-ReportPath', $reportPath,
+              '-TimeoutSeconds', '300',
+              '-AutoRepairRuntime:$true',
+              '-RuntimeEngineReadyTimeoutSeconds', '120',
+              '-RuntimeEngineReadyPollSeconds', '3',
+              '-RuntimeSnapshotPath', $runtimeSnapshot
+            )
+            if ($flags.Count -gt 0) {
+              $args += '-Flags'
+              $args += $flags
+            }
+            & ./tools/Run-NILinuxContainerCompare.ps1 @args
+            $compareExit = $LASTEXITCODE
+            $capturePath = Join-Path $resultsRoot 'ni-linux-container-capture.json'
+          } else {
+            $args = @(
+              '-BaseVi', 'fixtures/vi-stage/control-rename/Base.vi',
+              '-HeadVi', 'fixtures/vi-stage/control-rename/Head.vi',
+              '-Image', '${{ matrix.image }}',
+              '-ReportPath', $reportPath,
+              '-TimeoutSeconds', '300',
+              '-AutoRepairRuntime:$true',
+              '-RuntimeEngineReadyTimeoutSeconds', '120',
+              '-RuntimeEngineReadyPollSeconds', '3',
+              '-RuntimeSnapshotPath', $runtimeSnapshot
+            )
+            if ($flags.Count -gt 0) {
+              $args += '-Flags'
+              $args += $flags
+            }
+            & ./tools/Run-NIWindowsContainerCompare.ps1 @args
+            $compareExit = $LASTEXITCODE
+            $capturePath = Join-Path $resultsRoot 'ni-windows-container-capture.json'
+          }
+
+          if (-not (Test-Path -LiteralPath $capturePath -PathType Leaf)) {
+            throw "Expected capture file was not created: $capturePath"
+          }
+
+          $capture = Get-Content -LiteralPath $capturePath -Raw | ConvertFrom-Json -Depth 12
+          $gateOutcome = if ($capture.PSObject.Properties['gateOutcome']) { [string]$capture.gateOutcome } else { '' }
+          $resultClass = if ($capture.PSObject.Properties['resultClass']) { [string]$capture.resultClass } else { '' }
+          $captureExit = if ($capture.PSObject.Properties['exitCode']) { [int]$capture.exitCode } else { -1 }
+
+          $summary = [ordered]@{
+            schema = 'release-vi-history-review/scenario@v1'
+            generatedAt = (Get-Date).ToUniversalTime().ToString('o')
+            tag = '${{ github.ref_name }}'
+            os = '${{ matrix.os_label }}'
+            scenario = '${{ matrix.scenario }}'
+            flags = if ($flags.Count -gt 0) { ($flags -join ' ') } else { '' }
+            image = '${{ matrix.image }}'
+            compareExit = $compareExit
+            captureExit = $captureExit
+            gateOutcome = $gateOutcome
+            resultClass = $resultClass
+            status = [string]$capture.status
+            message = [string]$capture.message
+            reportPath = $reportPath
+            reportExists = [bool](Test-Path -LiteralPath $reportPath -PathType Leaf)
+            capturePath = $capturePath
+          }
+          $summaryPath = Join-Path $resultsRoot 'scenario-summary.json'
+          $summary | ConvertTo-Json -Depth 12 | Set-Content -LiteralPath $summaryPath -Encoding utf8
+
+          Write-Host ("[release-vi-history-review] os={0} scenario={1} compareExit={2} gateOutcome={3} resultClass={4} status={5}" -f '${{ matrix.os_label }}','${{ matrix.scenario }}',$compareExit,$gateOutcome,$resultClass,$summary.status)
+          if ($compareExit -ne 0 -and $gateOutcome -ne 'pass') {
+            throw ("Release VI history scenario failed hard (os={0}, scenario={1}, compareExit={2}, gateOutcome={3}, resultClass={4}, status={5})." -f '${{ matrix.os_label }}','${{ matrix.scenario }}',$compareExit,$gateOutcome,$resultClass,$summary.status)
+          }
+
+      - name: Upload VI history review artifact
+        if: always()
+        uses: actions/upload-artifact@v5
+        with:
+          name: release-vi-history-${{ matrix.os_label }}-${{ matrix.scenario }}
+          path: tests/results/release-vi-history/${{ matrix.os_label }}/${{ matrix.scenario }}/**
+          if-no-files-found: warn
+
+  release-vi-history-review-index:
+    runs-on: ubuntu-latest
+    needs: release-vi-history-review
+    if: always()
+    steps:
+      - name: Download VI history review artifacts
+        uses: actions/download-artifact@v4
+        with:
+          pattern: release-vi-history-*
+          path: vi-history-review
+          merge-multiple: false
+
+      - name: Build review index
+        shell: pwsh
+        run: |
+          $indexDir = 'tests/results/release-vi-history-index'
+          New-Item -ItemType Directory -Path $indexDir -Force | Out-Null
+          $indexPath = Join-Path $indexDir 'release-vi-history-review.md'
+          $jsonPath = Join-Path $indexDir 'release-vi-history-review.json'
+
+          $summaryFiles = Get-ChildItem -Path 'vi-history-review' -Filter 'scenario-summary.json' -Recurse -File -ErrorAction SilentlyContinue
+          $rows = foreach ($file in $summaryFiles) {
+            try {
+              $payload = Get-Content -LiteralPath $file.FullName -Raw | ConvertFrom-Json -Depth 12
+              [pscustomobject]@{
+                os = [string]$payload.os
+                scenario = [string]$payload.scenario
+                flags = [string]$payload.flags
+                status = [string]$payload.status
+                gateOutcome = [string]$payload.gateOutcome
+                resultClass = [string]$payload.resultClass
+                compareExit = [string]$payload.compareExit
+                reportExists = [string]$payload.reportExists
+                artifactPath = $file.FullName
+              }
+            } catch {
+              [pscustomobject]@{
+                os = 'unknown'
+                scenario = 'unknown'
+                flags = ''
+                status = 'parse-error'
+                gateOutcome = ''
+                resultClass = ''
+                compareExit = ''
+                reportExists = ''
+                artifactPath = $file.FullName
+              }
+            }
+          }
+
+          $lines = [System.Collections.Generic.List[string]]::new()
+          $lines.Add('# Release VI History Review Index') | Out-Null
+          $lines.Add('') | Out-Null
+          $lines.Add(('Run: https://github.com/{0}/actions/runs/{1}' -f '${{ github.repository }}', '${{ github.run_id }}')) | Out-Null
+          $lines.Add('') | Out-Null
+          $lines.Add('| OS | Scenario | Flags | Status | Gate | Result Class | Compare Exit | Report Exists |') | Out-Null
+          $lines.Add('|---|---|---|---|---|---|---:|---|') | Out-Null
+
+          if (-not $rows -or $rows.Count -eq 0) {
+            $lines.Add('| n/a | n/a | n/a | no-artifacts | n/a | n/a | n/a | n/a |') | Out-Null
+          } else {
+            foreach ($row in @($rows | Sort-Object os, scenario)) {
+              $lines.Add(("| {0} | {1} | `{2}` | {3} | {4} | {5} | {6} | {7} |" -f $row.os, $row.scenario, $row.flags, $row.status, $row.gateOutcome, $row.resultClass, $row.compareExit, $row.reportExists)) | Out-Null
+            }
+          }
+
+          $rows | ConvertTo-Json -Depth 12 | Set-Content -LiteralPath $jsonPath -Encoding utf8
+          $lines -join "`n" | Set-Content -LiteralPath $indexPath -Encoding utf8
+          Get-Content -LiteralPath $indexPath | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8
+
+      - name: Upload review index artifact
+        if: always()
+        uses: actions/upload-artifact@v5
+        with:
+          name: release-vi-history-review-index
+          path: tests/results/release-vi-history-index/**
+          if-no-files-found: warn
