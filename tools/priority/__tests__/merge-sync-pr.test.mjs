@@ -248,3 +248,41 @@ test('buildMergeSummaryPayload captures admin override selection details', () =>
   assert.equal(payload.prState.baseRefName, 'develop');
   assert.equal(payload.attempts.length, 1);
 });
+
+test('buildMergeSummaryPayload preserves direct-to-auto retry attempt sequence', () => {
+  const payload = buildMergeSummaryPayload({
+    repo: 'owner/repo',
+    pr: 910,
+    mergeMethod: 'squash',
+    selectedMode: 'direct',
+    selectedReason: 'clean-mergeable',
+    finalMode: 'auto',
+    finalReason: 'direct-merge-policy-block-retry-auto',
+    dryRun: false,
+    mergeQueueBranches: new Set(['main']),
+    attempts: [
+      { mode: 'direct', args: ['pr', 'merge', '--squash'], exitCode: 1 },
+      { mode: 'auto', args: ['pr', 'merge', '--squash', '--auto'], exitCode: 0 }
+    ],
+    prInfo: {
+      state: 'OPEN',
+      mergeStateStatus: 'UNSTABLE',
+      mergeable: 'MERGEABLE',
+      baseRefName: 'develop',
+      isDraft: false,
+      url: 'https://example.test/pr/910'
+    },
+    createdAt: '2026-03-03T00:00:03.000Z'
+  });
+
+  assert.equal(payload.selectedMode, 'direct');
+  assert.equal(payload.finalMode, 'auto');
+  assert.equal(payload.finalReason, 'direct-merge-policy-block-retry-auto');
+  assert.deepEqual(
+    payload.attempts.map((attempt) => ({ mode: attempt.mode, exitCode: attempt.exitCode })),
+    [
+      { mode: 'direct', exitCode: 1 },
+      { mode: 'auto', exitCode: 0 }
+    ]
+  );
+});

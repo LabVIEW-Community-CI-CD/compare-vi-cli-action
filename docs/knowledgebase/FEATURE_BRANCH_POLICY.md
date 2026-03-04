@@ -149,6 +149,13 @@ checked into `tools/priority/policy.json` so `priority:policy` stays authoritati
 `prState.baseRefName` is normalized to lowercase branch names (for example,
 `refs/heads/Main` → `main`) before mode diagnostics are emitted.
 
+- Inspect retry-flow transitions (`selectedMode`, `finalMode`, `attempts`) from the
+  dry-run summary:
+
+  ```powershell
+  pwsh -NoLogo -NoProfile -Command "Get-Content tests/results/_agent/priority/merge-sync-dry-run.json -Raw | ConvertFrom-Json | Select-Object selectedMode,finalMode,finalReason,attempts | ConvertTo-Json -Depth 8"
+  ```
+
 - Optional parity run for non-LV checks using the published tools image:
 
   ```powershell
