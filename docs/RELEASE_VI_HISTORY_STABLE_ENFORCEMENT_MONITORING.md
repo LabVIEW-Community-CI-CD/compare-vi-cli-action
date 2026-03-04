@@ -18,7 +18,7 @@ This tracker captures long-tail evidence that stable tags continue to enforce mi
 
 | Date (UTC) | Tag | Tag Class | Run URL | Index Job URL | enforcementSource | enforcementMode | rawOutcome | outcome | Notes |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| yyyy-mm-dd | v0.x.y | stable | <url> | <url> | migration.tagClassEnforcement.stable | hard | pass/warn/fail | pass/warn/fail | baseline entry |
+| 2026-03-03 | next-stable-tag | stable | pending-next-stable-run-url | pending-next-stable-index-job-url | migration.tagClassEnforcement.stable | expected-hard | pending | pending | prefilled row for next stable release capture |
 
 ## Acceptance Checks Per Entry
 
