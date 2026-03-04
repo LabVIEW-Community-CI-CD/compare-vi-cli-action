@@ -321,7 +321,7 @@ jobs:
           $reportPath = Join-Path $resultsRoot 'ni-linux-compare-report.html'
           $runtimeSnapshot = Join-Path $resultsRoot 'runtime-manager-linux.json'
 
-          pwsh -NoLogo -NoProfile -File tools/Run-NILinuxContainerCompare.ps1 `
+          & ./tools/Run-NILinuxContainerCompare.ps1 `
             -BaseVi 'fixtures/vi-stage/control-rename/Base.vi' `
             -HeadVi 'fixtures/vi-stage/control-rename/Head.vi' `
             -Image 'nationalinstruments/labview:2026q1-linux' `
@@ -355,7 +355,7 @@ jobs:
           $reportPath = Join-Path $resultsRoot 'ni-windows-compare-report.html'
           $runtimeSnapshot = Join-Path $resultsRoot 'runtime-manager-windows.json'
 
-          pwsh -NoLogo -NoProfile -File tools/Run-NIWindowsContainerCompare.ps1 `
+          & ./tools/Run-NIWindowsContainerCompare.ps1 `
             -BaseVi 'fixtures/vi-stage/control-rename/Base.vi' `
             -HeadVi 'fixtures/vi-stage/control-rename/Head.vi' `
             -Image 'nationalinstruments/labview:2026q1-windows' `
