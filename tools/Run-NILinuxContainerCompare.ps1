@@ -86,6 +86,10 @@ param(
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
+if (-not [string]::IsNullOrWhiteSpace($LabVIEWPath) -and $LabVIEWPath -match '(?i)labview\s*2025') {
+  throw ("LabVIEW 2025 is not allowed for container execution: {0}" -f $LabVIEWPath)
+}
+
 $classifierScriptPath = Join-Path (Split-Path -Parent $PSCommandPath) 'Compare-ExitCodeClassifier.ps1'
 if (-not (Test-Path -LiteralPath $classifierScriptPath -PathType Leaf)) {
   throw ("Exit-code classifier script not found: {0}" -f $classifierScriptPath)
@@ -289,7 +293,6 @@ find_labview() {
   local candidates=(
     "/usr/local/natinst/LabVIEW-2026-64/labview"
     "/usr/local/natinst/LabVIEW/labview"
-    "/usr/local/bin/labview"
   )
   local c
   for c in "${candidates[@]}"; do

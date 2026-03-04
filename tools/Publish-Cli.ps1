@@ -1,11 +1,12 @@
 param(
   [string]$ProjectPath = "src/CompareVi.Tools.Cli/CompareVi.Tools.Cli.csproj",
   [string]$Configuration = "Release",
-  [string[]]$Rids = @("win-x64","linux-x64","osx-x64"),
+  [string[]]$Rids = @("win-x64","linux-x64"),
   [string]$OutputRoot = "artifacts/cli",
-  [switch]$FrameworkDependent = $true,
+  [switch]$FrameworkDependent = $false,
   [switch]$SelfContained = $true,
-  [switch]$SingleFile = $true
+  [switch]$SingleFile = $true,
+  [switch]$Deterministic = $true
 )
 
 $ErrorActionPreference = 'Stop'
@@ -32,6 +33,9 @@ function TarGz-Dir($sourceDir, $tarGzPath) {
   # Use system tar; on Windows this is bsdtar. Permissions for linux/osx binaries
   # created on Windows may not preserve +x; advise consumers to chmod after extract.
   tar -czf $tarGzPath -C $sourceDir .
+  if ($LASTEXITCODE -ne 0) {
+    throw ("tar failed while creating archive: {0}" -f $tarGzPath)
+  }
 }
 
 function Copy-Docs($destDir) {
@@ -52,11 +56,27 @@ $root = Resolve-Path '.' | Select-Object -ExpandProperty Path
 $outRoot = Join-Path $root $OutputRoot
 Ensure-Dir $outRoot
 
-foreach ($rid in $Rids) {
+$normalizedRids = New-Object System.Collections.Generic.List[string]
+foreach ($ridValue in @($Rids)) {
+  foreach ($ridToken in @(([string]$ridValue) -split ',')) {
+    $ridTrimmed = $ridToken.Trim()
+    if (-not [string]::IsNullOrWhiteSpace($ridTrimmed)) {
+      $normalizedRids.Add($ridTrimmed) | Out-Null
+    }
+  }
+}
+if ($normalizedRids.Count -eq 0) {
+  throw 'No runtime identifiers resolved from -Rids.'
+}
+
+foreach ($rid in $normalizedRids) {
   if ($FrameworkDependent) {
     $out = Join-Path $outRoot "fxdependent/$rid"
     Ensure-Dir $out
     dotnet publish $projFull -c $Configuration -r $rid --self-contained false -p:PublishTrimmed=false -o $out
+    if ($LASTEXITCODE -ne 0) {
+      throw ("dotnet publish failed for RID '{0}' (framework-dependent)." -f $rid)
+    }
     Copy-Docs $out
     if ($rid -like 'win-*') {
       $zip = Join-Path $outRoot ("comparevi-cli-v{0}-{1}-fxdependent.zip" -f $version,$rid)
@@ -71,9 +91,19 @@ foreach ($rid in $Rids) {
     $out = Join-Path $outRoot "selfcontained/$rid"
     Ensure-Dir $out
     $props = @('PublishTrimmed=false')
+    if ($Deterministic) {
+      $props += 'Deterministic=true'
+      $props += 'ContinuousIntegrationBuild=true'
+      $props += 'DeterministicSourcePaths=true'
+      $props += 'DebugType=none'
+      $props += 'UseAppHost=true'
+    }
     if ($SingleFile) { $props += 'PublishSingleFile=true'; $props += 'IncludeNativeLibrariesForSelfExtract=true' }
     $propArgs = $props | ForEach-Object { "-p:$_" }
     dotnet publish $projFull -c $Configuration -r $rid --self-contained true @propArgs -o $out
+    if ($LASTEXITCODE -ne 0) {
+      throw ("dotnet publish failed for RID '{0}' (self-contained)." -f $rid)
+    }
     Copy-Docs $out
     if ($rid -like 'win-*') {
       $zip = Join-Path $outRoot ("comparevi-cli-v{0}-{1}-selfcontained.zip" -f $version,$rid)
@@ -92,10 +122,9 @@ $archives = Get-ChildItem $outRoot -File -Recurse | Where-Object { $_.Name -matc
 if ($archives) {
   $sumPath = Join-Path $outRoot 'SHA256SUMS.txt'
   if (Test-Path $sumPath) { Remove-Item $sumPath -Force }
-  foreach ($a in $archives) {
+  foreach ($a in @($archives | Sort-Object Name)) {
     $hash = (Get-FileHash -Algorithm SHA256 $a.FullName).Hash.ToLower()
-    # Write relative path from $outRoot for readability
-    $rel = Resolve-Path -Relative $a.FullName
+    $rel = [System.IO.Path]::GetRelativePath($outRoot, $a.FullName).Replace('\\','/')
     "$hash  $rel" | Out-File -FilePath $sumPath -Append -Encoding ascii
   }
   Write-Host "Checksums written to $sumPath" -ForegroundColor Green

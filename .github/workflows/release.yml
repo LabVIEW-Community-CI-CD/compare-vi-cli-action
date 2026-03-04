@@ -6,7 +6,48 @@ on:
       - 'v*'
 
 jobs:
+  release-gate:
+    runs-on: [self-hosted, windows, x64]
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v5
+        with:
+          node-version: '20'
+
+      - name: Install npm dependencies
+        shell: pwsh
+        run: |
+          node tools/npm/cli.mjs ci --no-audit --no-fund
+
+      - name: Run matrix release gate (containers then host LabVIEW 2026)
+        shell: pwsh
+        run: |
+          $historyViPath = if ([string]::IsNullOrWhiteSpace('${{ vars.RELEASE_HISTORY_VI_PATH }}')) { 'fixtures/vi-attr/Head.vi' } else { '${{ vars.RELEASE_HISTORY_VI_PATH }}' }
+          $historyStartRef = if ([string]::IsNullOrWhiteSpace('${{ vars.RELEASE_HISTORY_START_REF }}')) { 'HEAD' } else { '${{ vars.RELEASE_HISTORY_START_REF }}' }
+          $historyEndRef = if ([string]::IsNullOrWhiteSpace('${{ vars.RELEASE_HISTORY_END_REF }}')) { '' } else { '${{ vars.RELEASE_HISTORY_END_REF }}' }
+          $hostLabviewPath = if ([string]::IsNullOrWhiteSpace('${{ vars.RELEASE_HOST_LABVIEW_PATH }}')) { 'C:\Program Files\National Instruments\LabVIEW 2026\LabVIEW.exe' } else { '${{ vars.RELEASE_HOST_LABVIEW_PATH }}' }
+          $containerLabviewPath = if ([string]::IsNullOrWhiteSpace('${{ vars.RELEASE_CONTAINER_LABVIEW_PATH }}')) { 'C:\Program Files\National Instruments\LabVIEW 2026\LabVIEW.exe' } else { '${{ vars.RELEASE_CONTAINER_LABVIEW_PATH }}' }
+
+          $args = @(
+            '-NoLogo','-NoProfile','-File','tools/Run-ValidationMatrix.ps1',
+            '-LaneScope','all',
+            '-HistoryViPath',$historyViPath,
+            '-HistoryStartRef',$historyStartRef,
+            '-LabVIEWPath',$hostLabviewPath,
+            '-ContainerLabVIEWPath',$containerLabviewPath
+          )
+          if (-not [string]::IsNullOrWhiteSpace($historyEndRef)) {
+            $args += '-HistoryEndRef'
+            $args += $historyEndRef
+          }
+          & pwsh @args
+
   release:
+    needs: release-gate
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -41,12 +82,16 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           body_path: RELEASE_NOTES.md
+          prerelease: ${{ contains(github.ref_name, '-') }}
+          make_latest: ${{ contains(github.ref_name, '-') && 'false' || 'true' }}
 
       - name: Create GitHub Release (auto notes)
         if: steps.notes.outputs.fallback == 'true'
         uses: softprops/action-gh-release@v2
         with:
           generate_release_notes: true
+          prerelease: ${{ contains(github.ref_name, '-') }}
+          make_latest: ${{ contains(github.ref_name, '-') && 'false' || 'true' }}
 
       - name: Setup .NET 8
         uses: actions/setup-dotnet@v5
@@ -64,7 +109,11 @@ jobs:
 
       - name: Publish CLI artifacts
         shell: pwsh
-        run: pwsh -File tools/Publish-Cli.ps1
+        run: pwsh -File tools/Publish-Cli.ps1 -FrameworkDependent:$false -SelfContained -SingleFile -Deterministic -Rids win-x64,linux-x64
+
+      - name: Package CLI requirements asset
+        shell: pwsh
+        run: pwsh -NoLogo -NoProfile -File tools/Package-RequirementsAsset.ps1
 
       - name: Generate SBOM (SPDX)
         shell: pwsh
@@ -111,7 +160,7 @@ jobs:
     needs: release
     strategy:
       matrix:
-        os: [windows-latest, ubuntu-latest, macos-latest]
+        os: [windows-latest, ubuntu-latest]
     steps:
       - name: Download CLI artifacts
         uses: actions/download-artifact@v4
@@ -180,34 +229,56 @@ jobs:
           fi
           echo "Checksum OK for $file"
 
-      - name: Extract artifact (macOS)
-        if: runner.os == 'macOS'
+      - name: Verify requirements asset and checksum (Linux)
+        if: runner.os == 'Linux'
         shell: bash
         run: |
           set -euo pipefail
           v='${{ needs.release.outputs.cli_version }}'
-          tarball=$(ls -1 cli-dl/comparevi-cli-v${v}-osx-x64-selfcontained.tar.gz)
-          mkdir -p cli-out
-          tar -xzf "$tarball" -C cli-out
-          ls -la cli-out
-
-      - name: Verify checksum (macOS)
-        if: runner.os == 'macOS'
-        shell: bash
-        run: |
-          set -euo pipefail
-          v='${{ needs.release.outputs.cli_version }}'
-          file="comparevi-cli-v${v}-osx-x64-selfcontained.tar.gz"
-          tarball="cli-dl/${file}"
-          [ -f "$tarball" ]
-          expected=$(awk -v file="$file" '$2 ~ file {print tolower($1)}' cli-dl/SHA256SUMS.txt)
+          req_zip="cli-dl/comparevi-cli-requirements-v${v}.zip"
+          [ -f "$req_zip" ]
+          req_file=$(basename "$req_zip")
+          expected=$(awk -v file="$req_file" '$2 ~ file {print tolower($1)}' cli-dl/SHA256SUMS.txt)
           [ -n "$expected" ]
-          actual=$(shasum -a 256 "$tarball" | awk '{print tolower($1)}')
+          actual=$(sha256sum "$req_zip" | awk '{print tolower($1)}')
           if [ "$actual" != "$expected" ]; then
-            echo "Checksum mismatch for $file: expected=$expected actual=$actual"
+            echo "Checksum mismatch for $req_file: expected=$expected actual=$actual"
             exit 1
           fi
-          echo "Checksum OK for $file"
+          unzip -l "$req_zip" | grep -E 'DOTNET_CLI_RELEASE_ASSET.md|DOTNET_CLI_RELEASE_CHECKLIST.md|DOTNET_CLI_POWERSHELL_MAPPING.md' >/dev/null
+          echo "Requirements asset and checksum OK"
+
+      - name: Verify requirements asset and checksum (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $v = '${{ needs.release.outputs.cli_version }}'
+          $zip = Join-Path 'cli-dl' ("comparevi-cli-requirements-v{0}.zip" -f $v)
+          if (-not (Test-Path -LiteralPath $zip -PathType Leaf)) { throw "Requirements asset not found: $zip" }
+
+          $sumPath = Join-Path 'cli-dl' 'SHA256SUMS.txt'
+          if (-not (Test-Path -LiteralPath $sumPath -PathType Leaf)) { throw "Missing SHA256SUMS.txt" }
+
+          $entries = @()
+          foreach ($line in Get-Content $sumPath) {
+            if ($line -match '^([0-9a-fA-F]{64})\s+(.+)$') {
+              $entries += [pscustomobject]@{ Hash = $matches[1].ToLower(); Path = $matches[2].Trim(); Name = (Split-Path -Leaf $matches[2].Trim()) }
+            }
+          }
+
+          $expected = ($entries | Where-Object { $_.Name -eq (Split-Path -Leaf $zip) } | Select-Object -First 1)
+          if (-not $expected) { throw "No checksum entry found for requirements zip" }
+          $actual = (Get-FileHash -Algorithm SHA256 $zip).Hash.ToLower()
+          if ($actual -ne $expected.Hash) { throw "SHA256 mismatch for requirements zip. expected=$($expected.Hash) actual=$actual" }
+
+          Add-Type -AssemblyName System.IO.Compression.FileSystem
+          $zipEntries = [System.IO.Compression.ZipFile]::OpenRead((Resolve-Path $zip)).Entries.FullName
+          foreach ($required in @('DOTNET_CLI_RELEASE_ASSET.md','DOTNET_CLI_RELEASE_CHECKLIST.md','DOTNET_CLI_POWERSHELL_MAPPING.md')) {
+            if (-not ($zipEntries | Where-Object { $_ -eq $required })) {
+              throw "Missing required document in requirements zip: $required"
+            }
+          }
+          Write-Host 'Requirements asset and checksum OK'
 
       - name: Smoke run (Windows)
         if: runner.os == 'Windows'

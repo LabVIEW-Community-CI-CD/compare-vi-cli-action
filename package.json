@@ -73,6 +73,7 @@
     "schema:watcher:validate": "npm run schema:validate -- --schema docs/schemas/watcher-telemetry.v1.schema.json --data tests/results/_agent/handoff/watcher-telemetry.json --optional",
     "schemas:generate": "tsc -p tsconfig.cli.json && node dist/tools/schemas/generate-schemas.js",
     "semver:check": "node tools/priority/validate-semver.mjs",
+    "validate:matrix": "pwsh -NoLogo -NoProfile -File tools/Run-ValidationMatrix.ps1",
     "session-index:sample": "tsc -p tsconfig.json && node dist/src/session-index/cli.js --sample",
     "session:teststand:validate": "npm run schema:validate -- --schema docs/schema/generated/teststand-compare-session.schema.json --data fixtures/teststand-session/session-index.json --data tests/results/teststand-session/session-index.json --optional",
     "smoke:vi-history": "pwsh -NoLogo -NoProfile -File tools/Test-PRVIHistorySmoke.ps1",

@@ -171,21 +171,21 @@ function Resolve-ReportTypeInfo {
     'html' {
       return [pscustomobject]@{
         InputType     = 'html'
-        CliReportType = 'HTMLSingleFile'
+        CliReportType = 'html'
         Extension     = 'html'
       }
     }
     'xml' {
       return [pscustomobject]@{
         InputType     = 'xml'
-        CliReportType = 'XML'
+        CliReportType = 'xml'
         Extension     = 'xml'
       }
     }
     'text' {
       return [pscustomobject]@{
         InputType     = 'text'
-        CliReportType = 'Text'
+        CliReportType = 'text'
         Extension     = 'txt'
       }
     }
@@ -310,11 +310,25 @@ $args = @(
   "-VI1", $env:COMPARE_BASE_VI,
   "-VI2", $env:COMPARE_HEAD_VI,
   "-ReportPath", $env:COMPARE_REPORT_PATH,
-  "-ReportType", $env:COMPARE_REPORT_TYPE,
-  "-Headless"
+  "-ReportType", $env:COMPARE_REPORT_TYPE
 )
-if (-not [string]::IsNullOrWhiteSpace($env:COMPARE_LABVIEW_PATH)) {
-  $args += @("-LabVIEWPath", $env:COMPARE_LABVIEW_PATH)
+$resolvedLabVIEWPath = $env:COMPARE_LABVIEW_PATH
+if ([string]::IsNullOrWhiteSpace($resolvedLabVIEWPath) -and -not [string]::IsNullOrWhiteSpace($env:COMPARE_LABVIEW_PATH_B64)) {
+  try {
+    $resolvedLabVIEWPath = [System.Text.Encoding]::UTF8.GetString([Convert]::FromBase64String($env:COMPARE_LABVIEW_PATH_B64))
+  } catch {
+    $resolvedLabVIEWPath = $null
+  }
+}
+$resolvedLabVIEWPathForFs = $null
+if (-not [string]::IsNullOrWhiteSpace($resolvedLabVIEWPath)) {
+  $resolvedLabVIEWPath = $resolvedLabVIEWPath.Trim()
+  if ($resolvedLabVIEWPath.StartsWith('"') -and $resolvedLabVIEWPath.EndsWith('"') -and $resolvedLabVIEWPath.Length -ge 2) {
+    $resolvedLabVIEWPath = $resolvedLabVIEWPath.Substring(1, $resolvedLabVIEWPath.Length - 2)
+  }
+  $resolvedLabVIEWPathForFs = $resolvedLabVIEWPath
+  $resolvedLabVIEWPathForCli = if ($resolvedLabVIEWPath -match '\s') { ('"{0}"' -f $resolvedLabVIEWPath) } else { $resolvedLabVIEWPath }
+  $args += @("-LabVIEWPath", $resolvedLabVIEWPathForCli)
 }
 $flags = @()
 if (-not [string]::IsNullOrWhiteSpace($env:COMPARE_FLAGS_B64)) {
@@ -339,9 +353,8 @@ if ($flags.Count -gt 0) {
 $prelaunchEnabled = -not [string]::Equals($env:COMPARE_PRELAUNCH_ENABLED, '0', [System.StringComparison]::OrdinalIgnoreCase)
 if ($prelaunchEnabled) {
   $lvCandidates = @(
-    $env:COMPARE_LABVIEW_PATH,
-    "C:\Program Files\National Instruments\LabVIEW 2026\LabVIEW.exe",
-    "C:\Program Files\National Instruments\LabVIEW 2025\LabVIEW.exe"
+    $resolvedLabVIEWPathForFs,
+    "C:\Program Files\National Instruments\LabVIEW 2026\LabVIEW.exe"
   ) | Where-Object { -not [string]::IsNullOrWhiteSpace($_) } | Select-Object -Unique
   $lvPath = $lvCandidates | Where-Object { Test-Path -LiteralPath $_ } | Select-Object -First 1
   if ($lvPath) {
@@ -445,19 +458,15 @@ function Get-EffectiveCompareFlags {
     }
   }
 
-  $hasHeadless = $false
+  $normalizedFlags = @()
   foreach ($flag in $flags) {
     if ($flag.Trim().ToLowerInvariant() -eq '-headless') {
-      $hasHeadless = $true
-      break
+      continue
     }
-  }
-  if (-not $hasHeadless) {
-    # Container execution is non-interactive; force headless CLI mode by default.
-    $flags += '-Headless'
+    $normalizedFlags += $flag
   }
 
-  return @($flags)
+  return @($normalizedFlags)
 }
 
 function Convert-ToEncodedCommand {
@@ -1003,7 +1012,8 @@ try {
       }
     }
     if (-not [string]::IsNullOrWhiteSpace($LabVIEWPath)) {
-      $dockerArgs += @('--env', ("COMPARE_LABVIEW_PATH={0}" -f $LabVIEWPath))
+      $labviewPathB64 = [Convert]::ToBase64String([System.Text.Encoding]::UTF8.GetBytes($LabVIEWPath))
+      $dockerArgs += @('--env', ("COMPARE_LABVIEW_PATH_B64={0}" -f $labviewPathB64))
     }
     $dockerArgs += @(
       $Image,

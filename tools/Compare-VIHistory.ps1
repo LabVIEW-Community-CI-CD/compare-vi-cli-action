@@ -33,6 +33,8 @@ param(
   [ValidateSet('html','xml','text')]
   [string]$ReportFormat = 'html',
   [switch]$KeepArtifactsOnNoDiff,
+  [Alias('LabVIEWPath')]
+  [string]$LabVIEWExePath,
   [string]$InvokeScriptPath,
   [Nullable[int]]$CompareTimeoutSeconds,
 
@@ -1410,6 +1412,10 @@ foreach ($modeSpec in $modeSpecs) {
         if (-not [string]::IsNullOrWhiteSpace($InvokeScriptPath)) {
           $compareArgs += "-InvokeScriptPath"
           $compareArgs += $InvokeScriptPath
+        }
+        if (-not [string]::IsNullOrWhiteSpace($LabVIEWExePath)) {
+          $compareArgs += "-LabVIEWExePath"
+          $compareArgs += $LabVIEWExePath
         }
         if ($KeepArtifactsOnNoDiff.IsPresent) {
           $compareArgs += "-KeepArtifactsOnNoDiff"

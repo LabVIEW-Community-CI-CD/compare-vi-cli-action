@@ -2,7 +2,10 @@ param(
   [Parameter(Mandatory = $true)]
   [string]$ViPath,
   [string]$StartRef = 'HEAD',
+  [string]$EndRef,
   [Nullable[int]]$MaxPairs,
+  [Alias('LabVIEWPath')]
+  [string]$LabVIEWExePath,
   [switch]$HtmlReport = $true,
   [switch]$IncludeMergeParents
 )
@@ -178,8 +181,14 @@ try {
     StartRef   = $StartRef
     Detailed   = $true
   }
+  if (-not [string]::IsNullOrWhiteSpace($EndRef)) {
+    $compareArgs['EndRef'] = $EndRef
+  }
   if ($PSBoundParameters.ContainsKey('MaxPairs') -and $MaxPairs -and $MaxPairs -gt 0) {
     $compareArgs['MaxPairs'] = $MaxPairs
+  }
+  if (-not [string]::IsNullOrWhiteSpace($LabVIEWExePath)) {
+    $compareArgs['LabVIEWExePath'] = $LabVIEWExePath
   }
   if ($IncludeMergeParents.IsPresent) {
     $compareArgs['IncludeMergeParents'] = $true
