@@ -45,7 +45,7 @@ Use this section as the canonical phase checklist mirrored in issue #216.
 - [x] Phase 2 — Scenario Strategy as Data
 - [x] Phase 3 — Evidence Producers (OS × Scenario)
 - [x] Phase 4 — Review Index and Reviewer UX
-- [ ] Phase 5 — Policy Gate and Promotion Controls
+- [x] Phase 5 — Policy Gate and Promotion Controls
 - [ ] Phase 6 — Unified Comment Publishing
 - [ ] Phase 7 — Historical Analytics
 - [ ] Phase 8 — Hardening and Migration
@@ -207,7 +207,7 @@ Exit criteria:
 - [x] Release review index artifact + step summary (initial implementation)
 - [x] Canonical review schema + CI contract checks
 - [x] Scenario profile manifest + selector
-- [ ] Policy gate enforcement
+- [x] Policy gate enforcement
 - [ ] Unified comment publishing
 - [ ] Historical trend aggregation
 - [ ] Migration hardening and rollout controls
@@ -221,3 +221,4 @@ Exit criteria:
 - session index schema: `docs/schemas/session-index-v1.schema.json`
 - release review contract: `docs/RELEASE_VI_HISTORY_REVIEW_CONTRACT.md`
 - release profile manifest: `docs/RELEASE_VI_HISTORY_PROFILE_MANIFEST.md`
+- release policy gate: `docs/RELEASE_VI_HISTORY_POLICY_GATE.md`

@@ -1,0 +1,52 @@
+{
+  "schema": "release-vi-history/policy@v1",
+  "requiredOs": [
+    "linux",
+    "windows"
+  ],
+  "allowedGateOutcomes": [
+    "pass"
+  ],
+  "allowedResultClasses": [
+    "success-diff",
+    "success-no-diff",
+    "valid-diff"
+  ],
+  "defaultProfilePolicy": {
+    "mode": "strict",
+    "requiredScenarios": [
+      "baseline",
+      "noattr",
+      "layout-and-position"
+    ]
+  },
+  "profilePolicies": [
+    {
+      "profile": "smoke",
+      "mode": "warn",
+      "requiredScenarios": [
+        "baseline"
+      ]
+    },
+    {
+      "profile": "history-core",
+      "mode": "strict",
+      "requiredScenarios": [
+        "baseline",
+        "noattr",
+        "layout-and-position"
+      ]
+    },
+    {
+      "profile": "full",
+      "mode": "strict",
+      "requiredScenarios": [
+        "baseline",
+        "noattr",
+        "layout-and-position",
+        "front-panel-only",
+        "block-diagram-only"
+      ]
+    }
+  ]
+}

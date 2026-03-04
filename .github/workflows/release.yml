@@ -409,6 +409,11 @@ jobs:
         run: |
           node tools/npm/run-script.mjs release:vi-history:profiles:schema
 
+      - name: Validate release VI history policy schema
+        shell: pwsh
+        run: |
+          node tools/npm/run-script.mjs release:vi-history:policy:schema
+
       - name: Resolve release VI history profile matrix
         id: resolve
         shell: pwsh
@@ -694,7 +699,124 @@ jobs:
       - name: Validate release VI history review schemas
         shell: pwsh
         run: |
+          node tools/npm/run-script.mjs release:vi-history:policy:schema
           node tools/npm/run-script.mjs release:vi-history:schema
+
+      - name: Evaluate release VI history policy gate
+        shell: pwsh
+        run: |
+          $policyPath = 'configs/release-vi-history-policy.json'
+          $indexPath = 'tests/results/release-vi-history-index/release-vi-history-review.json'
+          $policySummaryPath = 'tests/results/release-vi-history-index/release-vi-history-policy.json'
+          $selectedProfile = '${{ needs.release-vi-history-profile.outputs.profile }}'
+
+          if (-not (Test-Path -LiteralPath $policyPath -PathType Leaf)) {
+            throw "Policy file not found: $policyPath"
+          }
+          if (-not (Test-Path -LiteralPath $indexPath -PathType Leaf)) {
+            throw "Review index file not found: $indexPath"
+          }
+
+          $policy = Get-Content -LiteralPath $policyPath -Raw | ConvertFrom-Json -Depth 20
+          $rows = @(Get-Content -LiteralPath $indexPath -Raw | ConvertFrom-Json -Depth 20)
+          $requiredOs = @($policy.requiredOs | ForEach-Object { [string]$_ })
+          $allowedGateOutcomes = @($policy.allowedGateOutcomes | ForEach-Object { [string]$_ })
+          $allowedResultClasses = @($policy.allowedResultClasses | ForEach-Object { [string]$_ })
+
+          $profilePolicy = $null
+          foreach ($candidate in @($policy.profilePolicies)) {
+            if ([string]$candidate.profile -eq $selectedProfile) {
+              $profilePolicy = $candidate
+              break
+            }
+          }
+          if (-not $profilePolicy) {
+            $profilePolicy = $policy.defaultProfilePolicy
+          }
+
+          $mode = [string]$profilePolicy.mode
+          if ($mode -notin @('strict', 'warn')) {
+            throw "Unsupported policy mode '$mode'."
+          }
+          $requiredScenarios = @($profilePolicy.requiredScenarios | ForEach-Object { [string]$_ })
+          if ($requiredScenarios.Count -eq 0) {
+            throw 'Policy requiredScenarios is empty.'
+          }
+
+          $violations = [System.Collections.Generic.List[object]]::new()
+          foreach ($osValue in $requiredOs) {
+            foreach ($scenarioValue in $requiredScenarios) {
+              $matchingRows = @($rows | Where-Object {
+                ([string]$_.os -eq $osValue) -and ([string]$_.scenario -eq $scenarioValue)
+              })
+
+              if ($matchingRows.Count -eq 0) {
+                $violations.Add([ordered]@{
+                  os = $osValue
+                  scenario = $scenarioValue
+                  reason = 'missing-row'
+                  detail = 'No row found for required os/scenario pair.'
+                }) | Out-Null
+                continue
+              }
+
+              foreach ($row in $matchingRows) {
+                $gate = [string]$row.gateOutcome
+                $resultClass = [string]$row.resultClass
+
+                if ($gate -notin $allowedGateOutcomes) {
+                  $violations.Add([ordered]@{
+                    os = $osValue
+                    scenario = $scenarioValue
+                    reason = 'gate-outcome'
+                    detail = "gateOutcome '$gate' is not allowed."
+                  }) | Out-Null
+                }
+
+                if ($resultClass -notin $allowedResultClasses) {
+                  $violations.Add([ordered]@{
+                    os = $osValue
+                    scenario = $scenarioValue
+                    reason = 'result-class'
+                    detail = "resultClass '$resultClass' is not allowed."
+                  }) | Out-Null
+                }
+              }
+            }
+          }
+
+          $outcome = if ($violations.Count -eq 0) { 'pass' } elseif ($mode -eq 'strict') { 'fail' } else { 'warn' }
+          $summary = [ordered]@{
+            schema = 'release-vi-history/policy-result@v1'
+            generatedAt = (Get-Date).ToUniversalTime().ToString('o')
+            profile = $selectedProfile
+            mode = $mode
+            requiredOs = @($requiredOs)
+            requiredScenarios = @($requiredScenarios)
+            allowedGateOutcomes = @($allowedGateOutcomes)
+            allowedResultClasses = @($allowedResultClasses)
+            rowCount = $rows.Count
+            violationCount = $violations.Count
+            outcome = $outcome
+            violations = @($violations)
+          }
+          $summary | ConvertTo-Json -Depth 20 | Set-Content -LiteralPath $policySummaryPath -Encoding utf8
+
+          if ($env:GITHUB_STEP_SUMMARY) {
+            @(
+              '### Release VI History Policy Gate',
+              '',
+              "- Profile: $selectedProfile",
+              "- Mode: $mode",
+              "- Outcome: $outcome",
+              "- Violations: $($violations.Count)",
+              "- Required scenarios: $($requiredScenarios -join ', ')"
+            ) -join "`n" | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8
+          }
+
+          if ($outcome -eq 'fail') {
+            throw "Release VI history policy gate failed with $($violations.Count) violation(s)."
+          }
 
       - name: Upload review index artifact
         if: always()
