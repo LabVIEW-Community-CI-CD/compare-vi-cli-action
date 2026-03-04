@@ -14,6 +14,26 @@ This tracker captures long-tail evidence that stable tags continue to enforce mi
 - include at least one comparable RC proof near the same window when possible,
 - update this file and link evidence in PR/issue discussion.
 
+## Quickstart (3 Commands)
+
+1) Run zero-arg auto monitoring (harvest + tracker update + PR comment when branch PR is detected):
+
+```powershell
+pwsh -NoLogo -NoProfile -File ./tools/Invoke-ReleaseVIHistoryStableMonitoringAuto.ps1
+```
+
+2) Inspect tracker changes locally:
+
+```powershell
+git diff -- docs/RELEASE_VI_HISTORY_STABLE_ENFORCEMENT_MONITORING.md
+```
+
+3) Commit and push tracker update (if you want to persist this cycle evidence):
+
+```powershell
+git add docs/RELEASE_VI_HISTORY_STABLE_ENFORCEMENT_MONITORING.md; git commit -m "docs: update stable monitoring evidence (#216)"; git push
+```
+
 ## Evidence Template
 
 | Date (UTC) | Tag | Tag Class | Run URL | Index Job URL | enforcementSource | enforcementMode | rawOutcome | outcome | Notes |
