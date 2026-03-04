@@ -95,6 +95,18 @@ checked into `tools/priority/policy.json` so `priority:policy` stays authoritati
     -BaselinePolicyPath tools/policy/requirements-verification-baseline.json
   ```
 
+- Adjust the minimum requirements coverage target locally (current baseline target is 40):
+
+  ```powershell
+  npm run requirements:coverage:set -- -Percent 40
+  ```
+
+- Pre-commit now enforces the requirements coverage gate for staged commits:
+
+  ```powershell
+  node tools/hooks/core/pre-commit.mjs
+  ```
+
 - Run focused regression tests for baseline pass/fail logic:
 
   ```powershell
