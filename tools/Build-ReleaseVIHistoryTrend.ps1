@@ -118,8 +118,8 @@ $trend | ConvertTo-Json -Depth 30 | Set-Content -LiteralPath $trendJsonPath -Enc
 $lines = New-Object System.Collections.Generic.List[string]
 $lines.Add('# Release VI History Trend') | Out-Null
 $lines.Add('') | Out-Null
-$lines.Add(("- Current tag: `{0}`" -f $Tag)) | Out-Null
-$lines.Add(("- Profile: `{0}`" -f $Profile)) | Out-Null
+$lines.Add(("- Current tag: {0}" -f $Tag)) | Out-Null
+$lines.Add(("- Profile: {0}" -f $Profile)) | Out-Null
 $lines.Add(("- Policy outcome: **{0}**" -f $summary.policyOutcome)) | Out-Null
 $lines.Add(("- Violations: **{0}**" -f $summary.violationCount)) | Out-Null
 $lines.Add(("- Rows evaluated: **{0}**" -f $summary.rowCount)) | Out-Null
