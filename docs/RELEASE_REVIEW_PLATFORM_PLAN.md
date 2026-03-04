@@ -48,7 +48,7 @@ Use this section as the canonical phase checklist mirrored in issue #216.
 - [x] Phase 5 — Policy Gate and Promotion Controls
 - [x] Phase 6 — Unified Comment Publishing
 - [x] Phase 7 — Historical Analytics
-- [ ] Phase 8 — Hardening and Migration
+- [ ] Phase 8 — Hardening and Migration (started)
 
 ## Phase 1 — Contracts and Foundations
 
@@ -194,12 +194,11 @@ Exit criteria:
 
 ## Immediate Backlog (Fork)
 
-1. Add schema files for release review scenario summaries.
-2. Add schema validation step(s) for release review outputs.
-3. Add profile manifest for release review scenario sets.
-4. Add policy file for required scenario gates.
-5. Wire policy evaluator into release review index job.
-6. Add standardized reviewer comment output for release runs.
+1. Add compatibility normalization adapter for legacy scenario summary aliases.
+2. Add migration rollout config (`observe`/`soft`/`hard`) with schema validation.
+3. Validate migration controls in release and pre-push checks.
+4. Define soft-gate adoption rules for tag classes (RC vs stable).
+5. Add migration runbook/incident playbook updates and rollback verification.
 
 ## Progress Tracker
 
@@ -210,6 +209,7 @@ Exit criteria:
 - [x] Policy gate enforcement
 - [x] Unified comment publishing
 - [x] Historical trend aggregation
+- [x] Phase 8 kickoff: compatibility adapter + migration rollout mode scaffold
 - [ ] Migration hardening and rollout controls
 
 ## References
@@ -224,3 +224,4 @@ Exit criteria:
 - release policy gate: `docs/RELEASE_VI_HISTORY_POLICY_GATE.md`
 - release comment publishing: `docs/RELEASE_VI_HISTORY_COMMENT_PUBLISHING.md`
 - release trends: `docs/RELEASE_VI_HISTORY_TRENDS.md`
+- release migration hardening: `docs/RELEASE_VI_HISTORY_MIGRATION_HARDENING.md`

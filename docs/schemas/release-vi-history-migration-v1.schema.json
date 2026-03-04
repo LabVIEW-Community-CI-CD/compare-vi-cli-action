@@ -1,0 +1,27 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "release-vi-history-migration-v1",
+  "title": "Release VI History Migration Config v1",
+  "type": "object",
+  "required": [
+    "schema",
+    "policyEnforcementMode"
+  ],
+  "properties": {
+    "schema": {
+      "const": "release-vi-history/migration@v1"
+    },
+    "policyEnforcementMode": {
+      "type": "string",
+      "enum": [
+        "observe",
+        "soft",
+        "hard"
+      ]
+    },
+    "notes": {
+      "type": "string"
+    }
+  },
+  "additionalProperties": false
+}

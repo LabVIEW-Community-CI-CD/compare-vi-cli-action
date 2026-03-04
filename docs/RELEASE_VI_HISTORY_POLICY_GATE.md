@@ -19,6 +19,20 @@ Policy mode values:
 - `strict`: policy violations fail the `release-vi-history-review-index` job.
 - `warn`: policy violations are reported in the summary and artifact, but do not fail the job.
 
+## Migration Enforcement Mode (Phase 8)
+
+Migration rollout is controlled by `configs/release-vi-history-migration.json`:
+
+- `hard`: preserve current behavior; policy `fail` fails the job.
+- `soft`: downgrade policy `fail` to warning while preserving violation reporting.
+- `observe`: record-only mode; policy `fail` is reported but does not fail the job.
+
+When migration mode downgrades a fail, the policy summary includes:
+
+- `rawOutcome`: policy result before migration enforcement,
+- `outcome`: effective post-enforcement result,
+- `enforcementMode`: active migration mode.
+
 ## Evaluation Contract
 
 For each required `(os, scenario)` pair:

@@ -70,6 +70,7 @@
     "release:finalize:dry": "node tools/priority/finalize-release.dryrun.mjs",
     "release:vi-history:policy:schema": "npm run schema:validate -- --schema docs/schemas/release-vi-history-policy-v1.schema.json --data configs/release-vi-history-policy.json",
     "release:vi-history:profiles:schema": "npm run schema:validate -- --schema docs/schemas/release-vi-history-profiles-v1.schema.json --data configs/release-vi-history-profiles.json",
+    "release:vi-history:migration:schema": "npm run schema:validate -- --schema docs/schemas/release-vi-history-migration-v1.schema.json --data configs/release-vi-history-migration.json",
     "release:vi-history:trend:schema": "npm run schema:validate -- --schema docs/schemas/release-vi-history-trend-v1.schema.json --data tests/results/release-vi-history-index/release-vi-history-trend.json --optional",
     "release:vi-history:schema": "node tools/npm/run-script.mjs release:vi-history:schema:scenario && node tools/npm/run-script.mjs release:vi-history:schema:index",
     "release:vi-history:schema:index": "npm run schema:validate -- --schema docs/schemas/release-vi-history-review-index-v1.schema.json --data tests/results/release-vi-history-index/release-vi-history-review.json --optional",

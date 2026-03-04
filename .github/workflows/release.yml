@@ -637,6 +637,13 @@ jobs:
           path: vi-history-review
           merge-multiple: false
 
+      - name: Normalize legacy VI history summaries (Phase 8)
+        shell: pwsh
+        run: |
+          pwsh -NoLogo -NoProfile -File ./tools/Normalize-ReleaseVIHistorySummaries.ps1 `
+            -RootPath 'vi-history-review' `
+            -WriteStepSummary
+
       - name: Build review index
         shell: pwsh
         run: |
@@ -700,6 +707,7 @@ jobs:
       - name: Validate release VI history review schemas
         shell: pwsh
         run: |
+          node tools/npm/run-script.mjs release:vi-history:migration:schema
           node tools/npm/run-script.mjs release:vi-history:policy:schema
           node tools/npm/run-script.mjs release:vi-history:schema
 
@@ -707,12 +715,24 @@ jobs:
         shell: pwsh
         run: |
           $policyPath = 'configs/release-vi-history-policy.json'
+          $migrationPath = 'configs/release-vi-history-migration.json'
           $indexPath = 'tests/results/release-vi-history-index/release-vi-history-review.json'
           $policySummaryPath = 'tests/results/release-vi-history-index/release-vi-history-policy.json'
           $selectedProfile = '${{ needs.release-vi-history-profile.outputs.profile }}'
 
           if (-not (Test-Path -LiteralPath $policyPath -PathType Leaf)) {
             throw "Policy file not found: $policyPath"
+          }
+
+          $policyEnforcementMode = 'hard'
+          if (Test-Path -LiteralPath $migrationPath -PathType Leaf) {
+            $migrationConfig = Get-Content -LiteralPath $migrationPath -Raw | ConvertFrom-Json -Depth 20
+            $candidatePolicyEnforcementMode = [string]$migrationConfig.policyEnforcementMode
+            if ($candidatePolicyEnforcementMode -in @('observe', 'soft', 'hard')) {
+              $policyEnforcementMode = $candidatePolicyEnforcementMode
+            } else {
+              throw "Unsupported policyEnforcementMode '$candidatePolicyEnforcementMode' in $migrationPath"
+            }
           }
           if (-not (Test-Path -LiteralPath $indexPath -PathType Leaf)) {
             Write-Host "::warning::Review index file missing at policy step. Rebuilding from downloaded scenario summaries."
@@ -818,18 +838,24 @@ jobs:
             }
           }
 
-          $outcome = if ($violations.Count -eq 0) { 'pass' } elseif ($mode -eq 'strict') { 'fail' } else { 'warn' }
+          $rawOutcome = if ($violations.Count -eq 0) { 'pass' } elseif ($mode -eq 'strict') { 'fail' } else { 'warn' }
+          $outcome = $rawOutcome
+          if ($rawOutcome -eq 'fail' -and $policyEnforcementMode -in @('observe', 'soft')) {
+            $outcome = 'warn'
+          }
           $summary = [ordered]@{
             schema = 'release-vi-history/policy-result@v1'
             generatedAt = (Get-Date).ToUniversalTime().ToString('o')
             profile = $selectedProfile
             mode = $mode
+            enforcementMode = $policyEnforcementMode
             requiredOs = @($requiredOs)
             requiredScenarios = @($requiredScenarios)
             allowedGateOutcomes = @($allowedGateOutcomes)
             allowedResultClasses = @($allowedResultClasses)
             rowCount = $rows.Count
             violationCount = $violations.Count
+            rawOutcome = $rawOutcome
             outcome = $outcome
             violations = @($violations)
           }
@@ -841,14 +867,19 @@ jobs:
               '',
               "- Profile: $selectedProfile",
               "- Mode: $mode",
+              "- Enforcement mode: $policyEnforcementMode",
               "- Outcome: $outcome",
               "- Violations: $($violations.Count)",
               "- Required scenarios: $($requiredScenarios -join ', ')"
             ) -join "`n" | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8
           }
 
-          if ($outcome -eq 'fail') {
+          if ($rawOutcome -eq 'fail' -and $policyEnforcementMode -eq 'hard') {
             throw "Release VI history policy gate failed with $($violations.Count) violation(s)."
+          }
+
+          if ($rawOutcome -eq 'fail' -and $policyEnforcementMode -in @('observe', 'soft')) {
+            Write-Host "::warning::Policy gate produced fail, but enforcement mode '$policyEnforcementMode' downgraded it to warn."
           }
 
       - name: Build unified release review comment body

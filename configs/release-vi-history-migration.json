@@ -1,0 +1,5 @@
+{
+  "schema": "release-vi-history/migration@v1",
+  "policyEnforcementMode": "hard",
+  "notes": "Phase 8 rollout gate: observe|soft|hard. Keep hard until explicit migration approval."
+}

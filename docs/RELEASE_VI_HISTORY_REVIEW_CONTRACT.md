@@ -48,3 +48,11 @@ Each row includes:
 
 - CI: release workflow validates both schemas in the `release-vi-history-review-index` job.
 - Local/pre-push: `tools/PrePush-Checks.ps1` runs `release:vi-history:schema` using the repo npm wrapper.
+
+## Migration Compatibility (Phase 8)
+
+The release index job runs `tools/Normalize-ReleaseVIHistorySummaries.ps1` before index/policy evaluation.
+
+- Purpose: adapt older summary payload aliases to canonical contract fields.
+- Behavior: normalization is additive (missing canonical fields are backfilled; existing canonical values are preserved).
+- Scope: release artifact processing only; source fixtures and harness outputs are unchanged.
