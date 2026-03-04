@@ -197,7 +197,7 @@ Exit criteria:
 1. Add compatibility normalization adapter for legacy scenario summary aliases.
 2. Add migration rollout config (`observe`/`soft`/`hard`) with schema validation.
 3. Validate migration controls in release and pre-push checks.
-4. Validate rollback verification procedure with one additional disposable RC proof.
+4. Continue monitoring stable-tag hard enforcement across subsequent release cycles.
 
 ## Progress Tracker
 
@@ -211,6 +211,7 @@ Exit criteria:
 - [x] Phase 8 kickoff: compatibility adapter + migration rollout mode scaffold
 - [x] Phase 8 slice: tag-class soft-gate adoption (RC soft, stable hard)
 - [x] Phase 8 slice: migration runbook + incident/rollback playbook
+- [x] Phase 8 slice: rollback verification proof run completed
 - [ ] Migration hardening and rollout controls
 
 ## References
