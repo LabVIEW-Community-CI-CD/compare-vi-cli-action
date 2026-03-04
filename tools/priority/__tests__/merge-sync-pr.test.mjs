@@ -39,6 +39,23 @@ test('selectMergeMode maps unknown merge state to unknown reason when queue bran
   });
 });
 
+test('selectMergeMode maps absent merge state with unset mergeable to merge-state-unspecified when queue branch is absent', () => {
+  const selection = selectMergeMode(
+    {
+      state: 'OPEN',
+      isDraft: false,
+      baseRefName: 'develop'
+    },
+    {
+      mergeQueueBranches: new Set(['main'])
+    }
+  );
+  assert.deepEqual(selection, {
+    mode: 'auto',
+    reason: 'merge-state-unspecified'
+  });
+});
+
 test('selectMergeMode maps missing merge state to merge-state-unspecified when queue branch is absent', () => {
   const selection = selectMergeMode(
     {
@@ -136,6 +153,23 @@ test('selectMergeMode preserves queue reason precedence when merge state is unkn
       baseRefName: 'refs/heads/main',
       mergeStateStatus: 'UNKNOWN',
       mergeable: 'MERGEABLE'
+    },
+    {
+      mergeQueueBranches: new Set(['main'])
+    }
+  );
+  assert.deepEqual(selection, {
+    mode: 'auto',
+    reason: 'merge-queue-branch-main'
+  });
+});
+
+test('selectMergeMode preserves queue reason precedence when mergeable is unset and merge state is absent', () => {
+  const selection = selectMergeMode(
+    {
+      state: 'OPEN',
+      isDraft: false,
+      baseRefName: 'refs/heads/main'
     },
     {
       mergeQueueBranches: new Set(['main'])
