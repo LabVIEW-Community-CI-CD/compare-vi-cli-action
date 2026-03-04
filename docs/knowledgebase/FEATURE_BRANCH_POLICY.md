@@ -134,6 +134,12 @@ checked into `tools/priority/policy.json` so `priority:policy` stays authoritati
   node --test tools/priority/__tests__/merge-sync-pr.test.mjs
   ```
 
+- Generate a merge helper dry-run summary with policy trace metadata (`policyTrace.mergeQueueBranches`):
+
+  ```powershell
+  node tools/priority/merge-sync-pr.mjs --pr <number> --repo <owner/repo> --dry-run --summary-path tests/results/_agent/priority/merge-sync-dry-run.json
+  ```
+
 - Optional parity run for non-LV checks using the published tools image:
 
   ```powershell

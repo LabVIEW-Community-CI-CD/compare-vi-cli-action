@@ -142,6 +142,13 @@ export function getMergeQueueBranches(policy) {
   return branches;
 }
 
+export function buildPolicyTrace(mergeQueueBranches = new Set()) {
+  return {
+    manifestPath: 'tools/priority/policy.json',
+    mergeQueueBranches: Array.from(mergeQueueBranches).sort()
+  };
+}
+
 export function selectMergeMode(prInfo, { admin = false, mergeQueueBranches = new Set() } = {}) {
   const state = normalizeUpper(prInfo?.state);
   const mergeState = normalizeUpper(prInfo?.mergeStateStatus);
@@ -358,11 +365,13 @@ export async function runMergeSync({
     finalMode,
     finalReason,
     dryRun: options.dryRun,
+    policyTrace: buildPolicyTrace(mergeQueueBranches),
     attempts,
     prState: {
       state: prInfo.state ?? null,
       mergeStateStatus: prInfo.mergeStateStatus ?? null,
       mergeable: prInfo.mergeable ?? null,
+      baseRefName: prInfo.baseRefName ?? null,
       isDraft: Boolean(prInfo.isDraft)
     },
     prUrl: prInfo.url ?? null

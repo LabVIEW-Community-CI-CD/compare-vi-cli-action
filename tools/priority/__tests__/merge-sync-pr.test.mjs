@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { selectMergeMode, shouldRetryWithAuto, getMergeQueueBranches } from '../merge-sync-pr.mjs';
+import { buildPolicyTrace, selectMergeMode, shouldRetryWithAuto, getMergeQueueBranches } from '../merge-sync-pr.mjs';
 
 test('selectMergeMode chooses auto for policy-blocked merge states', () => {
   const selection = selectMergeMode({
@@ -135,4 +135,12 @@ test('getMergeQueueBranches returns exact queue-managed branches from policy rul
 
   const branches = getMergeQueueBranches(policy);
   assert.deepEqual(Array.from(branches).sort(), ['main']);
+});
+
+test('buildPolicyTrace emits deterministic sorted queue branch metadata', () => {
+  const trace = buildPolicyTrace(new Set(['main', 'develop', 'main']));
+  assert.deepEqual(trace, {
+    manifestPath: 'tools/priority/policy.json',
+    mergeQueueBranches: ['develop', 'main']
+  });
 });
