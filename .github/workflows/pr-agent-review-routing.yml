@@ -19,7 +19,6 @@ jobs:
           script: |
             const pr = context.payload.pull_request;
             const body = pr.body || '';
-            const title = pr.title || '';
             const labels = (pr.labels || []).map((l) => l.name);
 
             const hasAgentMetadata = /Agent-ID\s*:/i.test(body);
@@ -35,6 +34,12 @@ jobs:
             const repo = context.repo.repo;
             const pull_number = pr.number;
             const requiredReviewer = 'svelderrainruiz';
+
+            // Skip if the required reviewer is the PR author (can't request review from yourself)
+            if (pr.user && pr.user.login === requiredReviewer) {
+              core.info(`PR author is @${requiredReviewer}; cannot request self-review. Skipping.`);
+              return;
+            }
 
             const currentReviewRequests = await github.rest.pulls.listRequestedReviewers({
               owner,
