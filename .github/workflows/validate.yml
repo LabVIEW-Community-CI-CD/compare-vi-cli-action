@@ -866,7 +866,7 @@ jobs:
     defaults:
       run:
         shell: pwsh
-    timeout-minutes: 1
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v5
 
