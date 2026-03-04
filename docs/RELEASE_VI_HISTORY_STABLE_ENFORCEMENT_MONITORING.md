@@ -50,6 +50,18 @@ $policy = Get-Content -LiteralPath $policyPath -Raw | ConvertFrom-Json -Depth 20
 } | Format-List
 ```
 
+Helper script equivalent:
+
+```powershell
+pwsh -NoLogo -NoProfile -File ./tools/Get-ReleaseVIHistoryPolicyFields.ps1
+```
+
+One-line step-summary variant (for CI/manual notes):
+
+```powershell
+pwsh -NoLogo -NoProfile -File ./tools/Get-ReleaseVIHistoryPolicyFields.ps1 -AppendStepSummary
+```
+
 ## Exception Handling
 
 If stable mode deviates from `hard`:
