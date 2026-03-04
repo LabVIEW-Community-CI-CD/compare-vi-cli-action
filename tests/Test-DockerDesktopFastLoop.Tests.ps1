@@ -131,6 +131,14 @@ param(
 )
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
+if (-not [string]::IsNullOrWhiteSpace($env:FASTLOOP_WINDOWS_TRACE_PATH)) {
+  $traceDir = Split-Path -Parent $env:FASTLOOP_WINDOWS_TRACE_PATH
+  if ($traceDir -and -not (Test-Path -LiteralPath $traceDir -PathType Container)) {
+    New-Item -ItemType Directory -Path $traceDir -Force | Out-Null
+  }
+  $traceLine = "probe={0};labviewPath={1}" -f $Probe.IsPresent, $LabVIEWPath
+  Add-Content -LiteralPath $env:FASTLOOP_WINDOWS_TRACE_PATH -Value $traceLine -Encoding utf8
+}
 if (-not [string]::IsNullOrWhiteSpace($env:FASTLOOP_WINDOWS_SLEEP_SECONDS)) {
   $sleepSeconds = 0
   if ([int]::TryParse($env:FASTLOOP_WINDOWS_SLEEP_SECONDS, [ref]$sleepSeconds) -and $sleepSeconds -gt 0) {
@@ -623,6 +631,37 @@ if (-not [string]::IsNullOrWhiteSpace($GitHubOutputPath)) {
       }
     } finally {
       Remove-Item Env:FASTLOOP_ASSERT_TRACE_PATH -ErrorAction SilentlyContinue
+      Pop-Location | Out-Null
+    }
+  }
+
+  It 'forwards LabVIEW path from environment to windows history compare' {
+    $repoRoot = Join-Path $TestDrive 'fast-loop-labview-path-forwarding'
+    New-HarnessRepo -RootPath $repoRoot
+
+    Push-Location $repoRoot
+    try {
+      $resultsRoot = Join-Path $repoRoot 'tests/results/local-parity'
+      $tracePath = Join-Path $resultsRoot 'windows-trace.log'
+      $expectedPath = 'C:\Program Files\National Instruments\LabVIEW 2026\LabVIEW.exe'
+      $env:FASTLOOP_WINDOWS_TRACE_PATH = $tracePath
+      $env:LABVIEW_PATH = $expectedPath
+
+      $output = & pwsh -NoLogo -NoProfile -File (Join-Path $repoRoot 'tools' 'Test-DockerDesktopFastLoop.ps1') `
+        -ResultsRoot $resultsRoot `
+        -SkipWindowsProbe `
+        -SkipLinuxProbe `
+        -HistoryScenarioSet history-core 2>&1
+      $LASTEXITCODE | Should -Be 0 -Because ($output -join "`n")
+
+      Test-Path -LiteralPath $tracePath -PathType Leaf | Should -BeTrue
+      $traceLines = @(Get-Content -LiteralPath $tracePath | Where-Object { -not [string]::IsNullOrWhiteSpace($_) })
+      $traceLines.Count | Should -BeGreaterThan 0
+      $traceLines[-1] | Should -Match 'probe=False;labviewPath='
+      ($traceLines[-1] -like "*labviewPath=$expectedPath") | Should -BeTrue
+    } finally {
+      Remove-Item Env:FASTLOOP_WINDOWS_TRACE_PATH -ErrorAction SilentlyContinue
+      Remove-Item Env:LABVIEW_PATH -ErrorAction SilentlyContinue
       Pop-Location | Out-Null
     }
   }
