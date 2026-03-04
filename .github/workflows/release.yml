@@ -530,39 +530,37 @@ jobs:
           }
 
           if ('${{ matrix.os_label }}' -eq 'linux') {
-            $args = @(
-              '-BaseVi', 'fixtures/vi-stage/control-rename/Base.vi',
-              '-HeadVi', 'fixtures/vi-stage/control-rename/Head.vi',
-              '-Image', '${{ matrix.image }}',
-              '-ReportPath', $reportPath,
-              '-TimeoutSeconds', '300',
-              '-AutoRepairRuntime:$true',
-              '-RuntimeEngineReadyTimeoutSeconds', '120',
-              '-RuntimeEngineReadyPollSeconds', '3',
-              '-RuntimeSnapshotPath', $runtimeSnapshot
-            )
+            $args = @{
+              BaseVi = 'fixtures/vi-stage/control-rename/Base.vi'
+              HeadVi = 'fixtures/vi-stage/control-rename/Head.vi'
+              Image = '${{ matrix.image }}'
+              ReportPath = $reportPath
+              TimeoutSeconds = 300
+              AutoRepairRuntime = $true
+              RuntimeEngineReadyTimeoutSeconds = 120
+              RuntimeEngineReadyPollSeconds = 3
+              RuntimeSnapshotPath = $runtimeSnapshot
+            }
             if ($flags.Count -gt 0) {
-              $args += '-Flags'
-              $args += $flags
+              $args.Flags = @($flags)
             }
             & ./tools/Run-NILinuxContainerCompare.ps1 @args
             $compareExit = $LASTEXITCODE
             $capturePath = Join-Path $resultsRoot 'ni-linux-container-capture.json'
           } else {
-            $args = @(
-              '-BaseVi', 'fixtures/vi-stage/control-rename/Base.vi',
-              '-HeadVi', 'fixtures/vi-stage/control-rename/Head.vi',
-              '-Image', '${{ matrix.image }}',
-              '-ReportPath', $reportPath,
-              '-TimeoutSeconds', '300',
-              '-AutoRepairRuntime:$true',
-              '-RuntimeEngineReadyTimeoutSeconds', '120',
-              '-RuntimeEngineReadyPollSeconds', '3',
-              '-RuntimeSnapshotPath', $runtimeSnapshot
-            )
+            $args = @{
+              BaseVi = 'fixtures/vi-stage/control-rename/Base.vi'
+              HeadVi = 'fixtures/vi-stage/control-rename/Head.vi'
+              Image = '${{ matrix.image }}'
+              ReportPath = $reportPath
+              TimeoutSeconds = 300
+              AutoRepairRuntime = $true
+              RuntimeEngineReadyTimeoutSeconds = 120
+              RuntimeEngineReadyPollSeconds = 3
+              RuntimeSnapshotPath = $runtimeSnapshot
+            }
             if ($flags.Count -gt 0) {
-              $args += '-Flags'
-              $args += $flags
+              $args.Flags = @($flags)
             }
             & ./tools/Run-NIWindowsContainerCompare.ps1 @args
             $compareExit = $LASTEXITCODE
