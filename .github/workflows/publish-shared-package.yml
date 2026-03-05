@@ -103,9 +103,11 @@ jobs:
             should_publish="true"
           fi
 
-          echo "version=$version" >> "$GITHUB_OUTPUT"
-          echo "channel=$channel" >> "$GITHUB_OUTPUT"
-          echo "publish=$should_publish" >> "$GITHUB_OUTPUT"
+          {
+            echo "version=$version"
+            echo "channel=$channel"
+            echo "publish=$should_publish"
+          } >> "$GITHUB_OUTPUT"
 
       - name: Restore
         run: dotnet restore src/CompareVi.Shared/CompareVi.Shared.csproj

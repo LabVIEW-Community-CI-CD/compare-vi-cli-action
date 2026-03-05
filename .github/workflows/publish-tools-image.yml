@@ -109,7 +109,9 @@ jobs:
           tags+=("${image_name}:${version}")
 
           if [ "$channel" = "stable" ]; then
-            IFS='.' read -r major minor patch <<< "$version"
+            major="${version%%.*}"
+            minor_version="${version#*.}"
+            minor="${minor_version%%.*}"
             tags+=("${image_name}:comparevi-tools-v${major}.${minor}")
             tags+=("${image_name}:comparevi-tools-v${major}")
             tags+=("${image_name}:latest")
