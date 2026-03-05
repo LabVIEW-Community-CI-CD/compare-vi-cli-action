@@ -19,6 +19,10 @@ on:
     branches:
       - develop
       - 'release/**'
+  merge_group:
+    branches:
+      - develop
+      - 'release/**'
   workflow_dispatch:
 
 jobs:

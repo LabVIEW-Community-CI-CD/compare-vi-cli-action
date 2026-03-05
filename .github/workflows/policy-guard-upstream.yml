@@ -10,9 +10,16 @@ on:
       - main
       - develop
       - release/**
+  merge_group:
+    branches:
+      - main
+      - develop
+  workflow_dispatch:
+  schedule:
+    - cron: '17 3 * * 1'
 
 concurrency:
-  group: policy-guard-upstream-${{ github.event.pull_request.number }}
+  group: policy-guard-upstream-${{ (github.event_name == 'pull_request_target' && github.event.pull_request.number) || github.ref }}
   cancel-in-progress: true
 
 jobs:
@@ -23,12 +30,19 @@ jobs:
       contents: read
     steps:
       - name: Checkout PR head
+        if: github.event_name == 'pull_request_target'
         uses: actions/checkout@v5
         with:
           repository: ${{ github.event.pull_request.head.repo.full_name }}
           ref: ${{ github.event.pull_request.head.ref }}
           fetch-depth: 0
           token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Checkout repository
+        if: github.event_name != 'pull_request_target'
+        uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
 
       - name: Setup Node.js
         uses: actions/setup-node@v5
@@ -38,10 +52,10 @@ jobs:
       - name: Prepare policy guard token
         shell: pwsh
         env:
-          INPUT_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          INPUT_TOKEN: ${{ secrets.GH_TOKEN || secrets.GITHUB_TOKEN }}
         run: |
           if (-not $env:INPUT_TOKEN -or (-not $env:INPUT_TOKEN.Trim())) {
-            throw 'Policy Guard requires secrets.GITHUB_TOKEN to be populated.'
+            throw 'Policy Guard requires secrets.GH_TOKEN or secrets.GITHUB_TOKEN to be populated.'
           }
 
           $token = $env:INPUT_TOKEN.Trim()
@@ -59,4 +73,14 @@ jobs:
         run: pwsh -NoLogo -NoProfile -File tools/Assert-NoAmbiguousRemoteRefs.ps1
 
       - name: Run policy guard
-        run: node tools/priority/check-policy.mjs
+        shell: pwsh
+        run: |
+          pwsh -NoLogo -NoProfile -File tools/priority/Sync-BranchProtectionPolicy.ps1 -ResultsDir tests/results/_agent/policy
+
+      - name: Upload policy drift artifact
+        if: always()
+        uses: actions/upload-artifact@v5
+        with:
+          name: policy-drift-${{ github.run_id }}
+          path: tests/results/_agent/policy/policy-drift-report.json
+          if-no-files-found: error

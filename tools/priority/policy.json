@@ -14,6 +14,7 @@
         "session-index",
         "issue-snapshot",
         "semver",
+        "Policy Guard (Upstream) / policy-guard",
         "Promotion Contract / promotion-contract",
         "hook-parity (windows-latest)",
         "hook-parity (ubuntu-latest)",
@@ -58,12 +59,21 @@
         "session-index",
         "issue-snapshot",
         "semver",
+        "Policy Guard (Upstream) / policy-guard",
         "Promotion Contract / promotion-contract",
         "hook-parity (windows-latest)",
         "hook-parity (ubuntu-latest)",
         "vi-history-scenarios-linux"
       ],
-      "merge_queue": null,
+      "merge_queue": {
+        "merge_method": "SQUASH",
+        "grouping_strategy": "ALLGREEN",
+        "max_entries_to_build": 5,
+        "min_entries_to_merge": 1,
+        "max_entries_to_merge": 5,
+        "min_entries_to_merge_wait_minutes": 5,
+        "check_response_timeout_minutes": 60
+      },
       "pull_request": {
         "required_approving_review_count": 0,
         "dismiss_stale_reviews_on_push": false,
@@ -98,11 +108,15 @@
         "check_response_timeout_minutes": 60
       },
       "pull_request": {
-        "required_approving_review_count": 1,
-        "dismiss_stale_reviews_on_push": true,
+        "required_approving_review_count": 0,
+        "dismiss_stale_reviews_on_push": false,
         "require_code_owner_review": false,
         "require_last_push_approval": false,
-        "required_review_thread_resolution": true
+        "required_review_thread_resolution": false,
+        "allowed_merge_methods": [
+          "squash",
+          "rebase"
+        ]
       }
     },
     "8614172": {

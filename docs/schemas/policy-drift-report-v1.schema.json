@@ -1,0 +1,149 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Policy Drift Report v1",
+  "type": "object",
+  "required": [
+    "schema",
+    "schemaVersion",
+    "generatedAt",
+    "apply",
+    "result",
+    "summary",
+    "diffs",
+    "applied",
+    "errors"
+  ],
+  "properties": {
+    "schema": {
+      "const": "priority/policy-report@v1"
+    },
+    "schemaVersion": {
+      "type": "string"
+    },
+    "generatedAt": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "apply": {
+      "type": "boolean"
+    },
+    "repository": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "authSource": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "forkRun": {
+      "type": "boolean"
+    },
+    "result": {
+      "type": "string",
+      "enum": [
+        "unknown",
+        "pass",
+        "fail",
+        "applied",
+        "skipped",
+        "error"
+      ]
+    },
+    "skippedReason": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "summary": {
+      "type": "object",
+      "required": [
+        "repoDiffCount",
+        "branchDiffCount",
+        "rulesetDiffCount",
+        "totalDiffCount"
+      ],
+      "properties": {
+        "repoDiffCount": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "branchDiffCount": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "rulesetDiffCount": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "totalDiffCount": {
+          "type": "integer",
+          "minimum": 0
+        }
+      },
+      "additionalProperties": false
+    },
+    "diffs": {
+      "type": "object",
+      "required": [
+        "repo",
+        "branch",
+        "ruleset"
+      ],
+      "properties": {
+        "repo": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "branch": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "ruleset": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      },
+      "additionalProperties": false
+    },
+    "applied": {
+      "type": "object",
+      "required": [
+        "branches",
+        "rulesets"
+      ],
+      "properties": {
+        "branches": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "rulesets": {
+          "type": "array",
+          "items": {
+            "type": "integer"
+          }
+        }
+      },
+      "additionalProperties": false
+    },
+    "errors": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    }
+  },
+  "additionalProperties": false
+}

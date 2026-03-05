@@ -6,7 +6,7 @@ on:
   push:
     branches: [main]
   merge_group:
-    branches: [main]
+    branches: [main, develop]
   workflow_dispatch:
     inputs:
       summary-verbose:
@@ -162,7 +162,15 @@ jobs:
         GITHUB_TOKEN: ${{ secrets.GH_TOKEN || secrets.GITHUB_TOKEN }}
         GH_TOKEN: ${{ secrets.GH_TOKEN || secrets.GITHUB_TOKEN }}
       run: |
-        node tools/npm/run-script.mjs priority:policy
+        pwsh -NoLogo -NoProfile -File tools/priority/Sync-BranchProtectionPolicy.ps1 -ResultsDir tests/results/_agent/policy
+
+    - name: Upload policy drift artifact
+      if: ${{ always() && github.event.repository.fork == false }}
+      uses: actions/upload-artifact@v5
+      with:
+        name: policy-drift-validate-${{ github.run_id }}-${{ github.run_attempt }}
+        path: tests/results/_agent/policy/policy-drift-report.json
+        if-no-files-found: error
 
     - name: Lint unanchored dot-sourcing (non-blocking)
       shell: pwsh

@@ -289,8 +289,11 @@ For Docker/Desktop VI history validation, run fast-loop lanes explicitly:
   commits land on `develop`/`main`.
 - Keep PRs focused and include the standing issue reference (`#<number>`) in the commit subject and PR description.
 - Ensure required checks (`validate`, `fixtures`, `session-index`) are green before merging; rerun as needed.
-- Run `node tools/npm/run-script.mjs priority:policy` if you need to audit merge settings locally; the command also runs during
-  `priority:handoff-tests` and fails when repo/branch policy drifts.
+- Run `node tools/npm/run-script.mjs priority:policy` (or `node tools/npm/run-script.mjs priority:policy:sync`) if you
+  need to audit merge settings locally; the command also runs during `priority:handoff-tests` and fails when
+  repo/branch policy drifts.
+- Use `node tools/npm/run-script.mjs priority:policy:apply` only with admin token scope when you intentionally need to
+  sync GitHub protections/rulesets back to `tools/priority/policy.json`.
 - Prefer opening PRs from your fork with `node tools/npm/run-script.mjs priority:pr`; the helper ensures `origin` targets your fork (creating
   it via `gh repo fork` if needed), pushes the current branch, and calls
   `gh pr create --fill --repo <upstream> --base develop --head <fork>:branch`.
