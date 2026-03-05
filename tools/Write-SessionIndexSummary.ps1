@@ -11,12 +11,17 @@ Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 if (-not $env:GITHUB_STEP_SUMMARY) { return }
 
+$readerModule = Join-Path (Split-Path -Parent $PSCommandPath) 'SessionIndex-Readers.psm1'
+Import-Module $readerModule -Force
+
 $path = if ($ResultsDir) { Join-Path $ResultsDir $FileName } else { $FileName }
-if (-not (Test-Path -LiteralPath $path)) {
-  ("### Session`n- File: (missing) {0}" -f $path) | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8
+$preferred = Read-PreferredSessionIndex -ResultsDir $ResultsDir
+if (-not $preferred.Path) {
+  ("### Session`n- File: (missing) {0}`n- Source: missing" -f $path) | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8
   return
 }
-try { $j = Get-Content -LiteralPath $path -Raw | ConvertFrom-Json -ErrorAction Stop } catch { $j = $null }
+$path = $preferred.Path
+$j = $preferred.Data
 
 $lines = @('### Session','')
 if ($j) {
@@ -40,7 +45,17 @@ if ($j) {
   Add-LineIfPresent -Object $j -Property 'errors' -Label 'Errors' -Target ([ref]$lines)
   Add-LineIfPresent -Object $j -Property 'skipped' -Label 'Skipped' -Target ([ref]$lines)
   Add-LineIfPresent -Object $j -Property 'duration_s' -Label 'Duration (s)' -Target ([ref]$lines)
+  $lines += ('- Source: {0}' -f $preferred.Source)
   $lines += ('- File: {0}' -f $path)
+
+  if ($preferred.Source -eq 'v2' -and $j.PSObject.Properties.Name -contains 'tests' -and $j.tests -and $j.tests.PSObject.Properties.Name -contains 'cases') {
+    $cases = @($j.tests.cases)
+    if ($cases.Count -gt 0) {
+      $withRequirement = @($cases | Where-Object { $_ -and $_.PSObject.Properties.Name -contains 'requirement' -and -not [string]::IsNullOrWhiteSpace([string]$_.requirement) }).Count
+      $lines += ('- Requirement-tagged cases: {0}/{1}' -f $withRequirement, $cases.Count)
+    }
+  }
+
   $runContext = $null
   if ($j.PSObject.Properties.Name -contains 'runContext') {
     $runContext = $j.runContext
@@ -100,6 +115,7 @@ if ($j) {
     }
   }
 } else {
+  $lines += ('- Source: {0}' -f $preferred.Source)
   $lines += ('- File: failed to parse: {0}' -f $path)
 }
 

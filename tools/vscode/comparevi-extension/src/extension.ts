@@ -1153,7 +1153,7 @@ export function activate(context: vscode.ExtensionContext) {
     statusBar.show();
     // Initial session-index read if present
     const initialResultsRoot = getConfiguration().get<string>("watch.resultsPath", "tests/results");
-    const initialSessionIndex = path.join(repoRoot, initialResultsRoot, "session-index.json");
+    const initialSessionIndex = resolvePreferredSessionIndexPath(repoRoot, initialResultsRoot);
     void refreshFromSessionIndex(initialSessionIndex, statusBar);
 
     const disposables: vscode.Disposable[] = [];
@@ -1163,7 +1163,7 @@ export function activate(context: vscode.ExtensionContext) {
         void evaluateOutcomeDiagnostics(artifactProvider, diagnosticState);
         // Opportunistically refresh status bar from session index on any results change
         const resultsRoot = getConfiguration().get<string>("watch.resultsPath", "tests/results");
-        const sessionIndex = path.join(repoRoot, resultsRoot, "session-index.json");
+        const sessionIndex = resolvePreferredSessionIndexPath(repoRoot, resultsRoot);
         void refreshFromSessionIndex(sessionIndex, statusBar);
     };
 
@@ -1380,7 +1380,7 @@ export function activate(context: vscode.ExtensionContext) {
                             cp.stdout?.on("data", d => manualOutputChannel?.append(utf8Decoder.decode(d)));
                             cp.stderr?.on("data", d => manualOutputChannel?.append(utf8Decoder.decode(d)));
                             cp.on("close", async () => {
-                                await refreshFromSessionIndex(sessionIndex, statusBar);
+                                await refreshFromSessionIndex(resolvePreferredSessionIndexPath(repoRoot, resultsRoot), statusBar);
                                 resolve();
                             });
                         });
@@ -1394,7 +1394,7 @@ export function activate(context: vscode.ExtensionContext) {
                             cp.stderr?.on("data", d => manualOutputChannel?.append(utf8Decoder.decode(d)));
                             cp.on("close", async () => {
                                 await mergeWatcherIntoSessionIndex(outPath, sessionIndex);
-                                await refreshFromSessionIndex(sessionIndex, statusBar);
+                                await refreshFromSessionIndex(resolvePreferredSessionIndexPath(repoRoot, resultsRoot), statusBar);
                                 resolve();
                             });
                         });
@@ -1423,6 +1423,16 @@ export function activate(context: vscode.ExtensionContext) {
 }
 
 export function deactivate() {}
+
+function resolvePreferredSessionIndexPath(repoRoot: string, resultsRoot: string): string {
+    const dir = path.join(repoRoot, resultsRoot);
+    const v2 = path.join(dir, "session-index-v2.json");
+    const v1 = path.join(dir, "session-index.json");
+    if (fs.existsSync(v2)) {
+        return v2;
+    }
+    return v1;
+}
 
 async function refreshFromSessionIndex(sessionIndexPath: string, statusBar: vscode.StatusBarItem) {
     try {

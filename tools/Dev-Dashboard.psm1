@@ -2,6 +2,8 @@ Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
 $script:repoRoot = Split-Path -Parent $PSScriptRoot
+$sessionIndexReaderModule = Join-Path $PSScriptRoot 'SessionIndex-Readers.psm1'
+Import-Module $sessionIndexReaderModule -Force
 
 function Resolve-PathSafe {
   param([string]$Path)
@@ -510,12 +512,19 @@ function Get-PesterTelemetry {
   if ($summaryInfo.Error) { $errors += "pester-summary.json: $($summaryInfo.Error)" }
   if ($dispatcherInfo.Error) { $errors += "pester-dispatcher.log: $($dispatcherInfo.Error)" }
 
-  $sessionIndexPath = Join-Path $ResultsRoot 'session-index.json'
-  $sessionIndexInfo = Read-JsonFile -Path $sessionIndexPath
-  if ($sessionIndexInfo.Error) { $errors += "session-index.json: $($sessionIndexInfo.Error)" }
+  $sessionPreferred = Read-PreferredSessionIndex -ResultsDir $ResultsRoot
+  $sessionIndexInfo = [pscustomobject]@{
+    Path = $sessionPreferred.Path
+    Data = $sessionPreferred.Data
+    Error = $sessionPreferred.Error
+  }
+  if ($sessionIndexInfo.Error) { $errors += "session-index ($($sessionPreferred.Source)): $($sessionIndexInfo.Error)" }
   $sessionStatus = $null
   $sessionIncludeIntegration = $null
   $runnerInfo = $null
+  $sessionIndexSource = $sessionPreferred.Source
+  $requirementTaggedCases = 0
+  $requirementCaseCount = 0
   if ($sessionIndexInfo.Data) {
     $sessionData = $sessionIndexInfo.Data
     if ($sessionData.PSObject.Properties.Name -contains 'status') {
@@ -568,6 +577,14 @@ function Get-PesterTelemetry {
         $runnerInfo = [pscustomobject]$runnerProps
       }
     }
+
+    if ($sessionPreferred.Source -eq 'v2' -and $sessionData.PSObject.Properties.Name -contains 'tests' -and $sessionData.tests -and $sessionData.tests.PSObject.Properties.Name -contains 'cases') {
+      $cases = @($sessionData.tests.cases)
+      $requirementCaseCount = $cases.Count
+      if ($requirementCaseCount -gt 0) {
+        $requirementTaggedCases = @($cases | Where-Object { $_ -and $_.PSObject.Properties.Name -contains 'requirement' -and -not [string]::IsNullOrWhiteSpace([string]$_.requirement) }).Count
+      }
+    }
   }
 
   return [pscustomobject][ordered]@{
@@ -579,8 +596,11 @@ function Get-PesterTelemetry {
     DispatcherErrors   = $dispatcherErrors
     DispatcherWarnings = $dispatcherWarnings
     SessionIndexPath   = $sessionIndexInfo.Path
+    SessionIndexSource = $sessionIndexSource
     SessionStatus      = $sessionStatus
     SessionIncludeIntegration = $sessionIncludeIntegration
+    RequirementTaggedCases = $requirementTaggedCases
+    RequirementCaseCount = $requirementCaseCount
     Runner             = $runnerInfo
     Errors             = $errors
   }
