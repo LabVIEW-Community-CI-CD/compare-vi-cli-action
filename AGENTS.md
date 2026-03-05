@@ -139,6 +139,8 @@ line buffers).
   - Installs `actionlint` (`vars.ACTIONLINT_VERSION`, default 1.7.7) if missing.
   - Runs `actionlint` across `.github/workflows`.
   - Optionally round-trips YAML with `ruamel.yaml` (if Python available).
+  - Validate safe PR watch task contracts before task/workspace changes:
+    - `node tools/npm/run-script.mjs safe-watch:contract`
   - For mixed WSL/Windows shells, prefer HTTPS fetch + SSH push on `origin` to avoid
     `git ls-remote` auth drift across terminals:
     - `git remote set-url origin https://github.com/<owner>/<repo>.git`
@@ -307,6 +309,12 @@ Use `tools/workflows/update_workflows.py` for mechanical updates (comment-preser
     repaint loops that can destabilize integrated terminals.
   - Smoke-check the watcher behavior (expected: one summary line plus either delta entries or a no-change heartbeat):
     - `node tools/npm/run-script.mjs ci:watch:safe -- --PullRequest <pr-number> -IntervalSeconds 20 -HeartbeatPolls 1 -MaxPolls 2`
+  - If `safe-watch:contract` fails, restore expected task labels/inputs and argument wiring in:
+    - `.vscode/tasks.json`
+    - `compare-vi-cli-action.code-workspace`
+    - `compare-vi-cli-action.command-center.code-workspace`
+    - `compare-vi-cli-action.fork-plane.code-workspace`
+    - `compare-vi-cli-action.upstream-plane.code-workspace`
 
 ## LVCompare observability
 
