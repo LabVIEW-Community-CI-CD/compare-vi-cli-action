@@ -2,7 +2,7 @@
   "$schema": "./schemas/documentation-manifest-v1.schema.json",
   "schema": "documentation-manifest-v1",
   "version": "1.0.0",
-  "updated": "2026-03-05T18:50:00Z",
+  "updated": "2026-03-04T23:30:00Z",
   "entries": [
     {
       "name": "Root Playbooks",
@@ -96,6 +96,7 @@
         "docs/SELFHOSTED_CI_SETUP.md",
         "docs/SESSION_LOCK_HANDOFF.md",
         "docs/SESSION_INDEX_V2_PROMOTION.md",
+        "docs/SESSION_INDEX_V2_CONSUMER_MATRIX.md",
         "docs/session-index/SESSION_INDEX_V2.md",
         "docs/SHARED_LIB.md",
         "docs/TESTING_PATTERNS.md",

@@ -364,12 +364,21 @@ function Write-TerminalReport {
   if ($Snapshot.ResultsRoot) { Write-Host "Results: $($Snapshot.ResultsRoot)" }
   $sessionStatus = $Snapshot.PesterTelemetry.SessionStatus
   $sessionInclude = $Snapshot.PesterTelemetry.SessionIncludeIntegration
+  $sessionSource = $Snapshot.PesterTelemetry.SessionIndexSource
+  $requirementTagged = $Snapshot.PesterTelemetry.RequirementTaggedCases
+  $requirementCount = $Snapshot.PesterTelemetry.RequirementCaseCount
   if ($sessionStatus -or $sessionInclude -ne $null) {
     $statusText = if ($sessionStatus) { $sessionStatus } else { 'unknown' }
     if ($sessionInclude -ne $null) {
       $statusText = "$statusText (include_integration=$sessionInclude)"
     }
+    if ($sessionSource) {
+      $statusText = "$statusText [source=$sessionSource]"
+    }
     Write-Host "Session: $statusText"
+  }
+  if ($requirementCount -and $requirementCount -gt 0) {
+    Write-Host ("Session Requirements: {0}/{1} tagged" -f $requirementTagged, $requirementCount)
   }
   $runnerInfo = $Snapshot.PesterTelemetry.Runner
   if ($runnerInfo) {
@@ -733,6 +742,9 @@ function ConvertTo-HtmlReport {
   }
   $sessionStatusValue = if ($pester.PSObject.Properties.Name -contains 'SessionStatus') { $pester.SessionStatus } else { $null }
   $sessionIncludeRaw = if ($pester.PSObject.Properties.Name -contains 'SessionIncludeIntegration') { $pester.SessionIncludeIntegration } else { $null }
+  $sessionSourceValue = if ($pester.PSObject.Properties.Name -contains 'SessionIndexSource') { $pester.SessionIndexSource } else { $null }
+  $requirementTaggedValue = if ($pester.PSObject.Properties.Name -contains 'RequirementTaggedCases') { $pester.RequirementTaggedCases } else { $null }
+  $requirementCaseCountValue = if ($pester.PSObject.Properties.Name -contains 'RequirementCaseCount') { $pester.RequirementCaseCount } else { $null }
   $sessionIncludeDisplay = ''
   if ($sessionIncludeRaw -ne $null) {
     try { $sessionIncludeDisplay = ([bool]$sessionIncludeRaw) } catch { $sessionIncludeDisplay = $sessionIncludeRaw }
@@ -933,6 +945,8 @@ function ConvertTo-HtmlReport {
     <dl>
       <dt>Status</dt><dd>$(& $encode $sessionStatusValue)</dd>
       <dt>Include Integration</dt><dd>$(& $encode $sessionIncludeDisplay)</dd>
+      @(if ($sessionSourceValue) { "<dt>Index Source</dt><dd>$(& $encode $sessionSourceValue)</dd>" })
+      @(if ($requirementCaseCountValue -ne $null -and $requirementCaseCountValue -gt 0) { "<dt>Requirements</dt><dd>$(& $encode $requirementTaggedValue)/$(& $encode $requirementCaseCountValue) tagged test cases</dd>" })
       @(if ($sessionIndexPathValue) { "<dt>Index Path</dt><dd>$(& $encode $sessionIndexPathValue)</dd>" })
     </dl>
   </section>
