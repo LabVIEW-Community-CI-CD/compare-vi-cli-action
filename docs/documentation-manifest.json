@@ -2,7 +2,7 @@
   "$schema": "./schemas/documentation-manifest-v1.schema.json",
   "schema": "documentation-manifest-v1",
   "version": "1.0.0",
-  "updated": "2026-03-04T23:55:00Z",
+  "updated": "2026-03-05T03:05:00Z",
   "entries": [
     {
       "name": "Root Playbooks",
@@ -70,6 +70,7 @@
         "docs/E2E_TESTING_GUIDE.md",
         "docs/ENVIRONMENT.md",
         "docs/FIXTURE_DRIFT.md",
+        "docs/HEALTH_SNAPSHOT_COMMAND.md",
         "docs/INTEGRATION_RUNBOOK.md",
         "docs/INTEGRATION_TESTS.md",
         "docs/knowledgebase/FEATURE_BRANCH_POLICY.md",
