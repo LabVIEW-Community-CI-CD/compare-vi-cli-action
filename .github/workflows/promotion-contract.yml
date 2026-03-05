@@ -31,9 +31,7 @@ jobs:
       - name: Assert promotion contract alignment
         shell: pwsh
         run: |
-          pwsh -NoLogo -NoProfile -File tools/Assert-PromotionContractAlignment.ps1 \
-            -OutputJsonPath tests/results/promotion-contract/alignment.json \
-            -StepSummaryPath $env:GITHUB_STEP_SUMMARY
+          pwsh -NoLogo -NoProfile -File tools/Assert-PromotionContractAlignment.ps1 -OutputJsonPath tests/results/promotion-contract/alignment.json -StepSummaryPath $env:GITHUB_STEP_SUMMARY
 
       - name: Write promotion evidence ledger
         if: always()
@@ -44,16 +42,7 @@ jobs:
             'cancelled' { 'blocked' }
             default { 'fail' }
           }
-          pwsh -NoLogo -NoProfile -File tools/Write-PromotionEvidenceLedger.ps1 \
-            -OutputPath tests/results/promotion-contract/promotion-contract-ledger.json \
-            -WorkflowName '${{ github.workflow }}' \
-            -Stream 'promotion-contract' \
-            -Channel 'stable' \
-            -Version '${{ github.sha }}' \
-            -GateStatus $gateStatus \
-            -GateReason 'promotion-contract workflow result' \
-            -SummaryPath 'tests/results/promotion-contract/alignment.json' \
-            -StepSummaryPath $env:GITHUB_STEP_SUMMARY
+          pwsh -NoLogo -NoProfile -File tools/Write-PromotionEvidenceLedger.ps1 -OutputPath tests/results/promotion-contract/promotion-contract-ledger.json -WorkflowName '${{ github.workflow }}' -Stream 'promotion-contract' -Channel 'stable' -Version '${{ github.sha }}' -GateStatus $gateStatus -GateReason 'promotion-contract workflow result' -SummaryPath 'tests/results/promotion-contract/alignment.json' -StepSummaryPath $env:GITHUB_STEP_SUMMARY
 
       - name: Upload promotion contract artifacts
         if: always()

@@ -73,9 +73,7 @@ jobs:
       - name: Assert promotion contract alignment
         shell: pwsh
         run: |
-          pwsh -NoLogo -NoProfile -File tools/Assert-PromotionContractAlignment.ps1 \
-            -OutputJsonPath tests/results/promotion-contract/monthly-alignment.json \
-            -StepSummaryPath $env:GITHUB_STEP_SUMMARY
+          pwsh -NoLogo -NoProfile -File tools/Assert-PromotionContractAlignment.ps1 -OutputJsonPath tests/results/promotion-contract/monthly-alignment.json -StepSummaryPath $env:GITHUB_STEP_SUMMARY
 
       - name: Evaluate monthly window and requested dispatches
         id: eval
@@ -228,16 +226,7 @@ jobs:
           }
           $details = "evaluate=$($needs.evaluate); approval=$($needs.approval); tools=$($needs.tools); shared=$($needs.shared)"
           $versionSummary = "tools=${{ needs.evaluate-window.outputs.tools_version }};shared=${{ needs.evaluate-window.outputs.shared_version }}"
-          pwsh -NoLogo -NoProfile -File tools/Write-PromotionEvidenceLedger.ps1 \
-            -OutputPath tests/results/promotion-contract/monthly-ledger.json \
-            -WorkflowName '${{ github.workflow }}' \
-            -Stream 'monthly-stability-release' \
-            -Channel 'mixed' \
-            -Version $versionSummary \
-            -GateStatus $gateStatus \
-            -GateReason $details \
-            -SummaryPath 'tests/results/promotion-contract/monthly-alignment.json' \
-            -StepSummaryPath $env:GITHUB_STEP_SUMMARY
+          pwsh -NoLogo -NoProfile -File tools/Write-PromotionEvidenceLedger.ps1 -OutputPath tests/results/promotion-contract/monthly-ledger.json -WorkflowName '${{ github.workflow }}' -Stream 'monthly-stability-release' -Channel 'mixed' -Version $versionSummary -GateStatus $gateStatus -GateReason $details -SummaryPath 'tests/results/promotion-contract/monthly-alignment.json' -StepSummaryPath $env:GITHUB_STEP_SUMMARY
 
       - name: Upload promotion evidence artifact
         uses: actions/upload-artifact@v5

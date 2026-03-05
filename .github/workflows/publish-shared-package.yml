@@ -38,9 +38,7 @@ jobs:
       - name: Assert promotion contract alignment
         shell: pwsh
         run: |
-          pwsh -NoLogo -NoProfile -File tools/Assert-PromotionContractAlignment.ps1 \
-            -OutputJsonPath tests/results/promotion-contract/publish-shared-alignment.json \
-            -StepSummaryPath $env:GITHUB_STEP_SUMMARY
+          pwsh -NoLogo -NoProfile -File tools/Assert-PromotionContractAlignment.ps1 -OutputJsonPath tests/results/promotion-contract/publish-shared-alignment.json -StepSummaryPath $env:GITHUB_STEP_SUMMARY
 
       - name: Setup .NET
         uses: actions/setup-dotnet@v5
@@ -174,15 +172,7 @@ jobs:
           }
           $channel = if ([string]::IsNullOrWhiteSpace('${{ steps.ctx.outputs.channel }}')) { 'unknown' } else { '${{ steps.ctx.outputs.channel }}' }
           $version = if ([string]::IsNullOrWhiteSpace('${{ steps.ctx.outputs.version }}')) { 'unknown' } else { '${{ steps.ctx.outputs.version }}' }
-          pwsh -NoLogo -NoProfile -File tools/Write-PromotionEvidenceLedger.ps1 \
-            -OutputPath tests/results/promotion-contract/publish-shared-ledger.json \
-            -WorkflowName '${{ github.workflow }}' \
-            -Stream 'CompareVi.Shared' \
-            -Channel $channel \
-            -Version $version \
-            -GateStatus $gateStatus \
-            -GateReason 'publish-shared-package workflow result' \
-            -StepSummaryPath $env:GITHUB_STEP_SUMMARY
+          pwsh -NoLogo -NoProfile -File tools/Write-PromotionEvidenceLedger.ps1 -OutputPath tests/results/promotion-contract/publish-shared-ledger.json -WorkflowName '${{ github.workflow }}' -Stream 'CompareVi.Shared' -Channel $channel -Version $version -GateStatus $gateStatus -GateReason 'publish-shared-package workflow result' -StepSummaryPath $env:GITHUB_STEP_SUMMARY
 
       - name: Upload promotion evidence artifact
         if: always()

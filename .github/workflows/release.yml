@@ -246,9 +246,7 @@ jobs:
       - name: Assert promotion contract alignment
         shell: pwsh
         run: |
-          pwsh -NoLogo -NoProfile -File tools/Assert-PromotionContractAlignment.ps1 \
-            -OutputJsonPath tests/results/promotion-contract/release-alignment.json \
-            -StepSummaryPath $env:GITHUB_STEP_SUMMARY
+          pwsh -NoLogo -NoProfile -File tools/Assert-PromotionContractAlignment.ps1 -OutputJsonPath tests/results/promotion-contract/release-alignment.json -StepSummaryPath $env:GITHUB_STEP_SUMMARY
 
       - name: Download CLI artifacts
         uses: actions/download-artifact@v4
@@ -362,16 +360,7 @@ jobs:
             default { 'fail' }
           }
           $channel = if ('${{ github.ref_name }}' -match '-rc\.') { 'rc' } else { 'stable' }
-          pwsh -NoLogo -NoProfile -File tools/Write-PromotionEvidenceLedger.ps1 \
-            -OutputPath tests/results/promotion-contract/release-ledger.json \
-            -WorkflowName '${{ github.workflow }}' \
-            -Stream 'comparevi-cli' \
-            -Channel $channel \
-            -Version '${{ needs.release.outputs.cli_version }}' \
-            -GateStatus $gateStatus \
-            -GateReason 'release-contract job result' \
-            -SummaryPath 'tests/results/release-contract/review-index.json' \
-            -StepSummaryPath $env:GITHUB_STEP_SUMMARY
+          pwsh -NoLogo -NoProfile -File tools/Write-PromotionEvidenceLedger.ps1 -OutputPath tests/results/promotion-contract/release-ledger.json -WorkflowName '${{ github.workflow }}' -Stream 'comparevi-cli' -Channel $channel -Version '${{ needs.release.outputs.cli_version }}' -GateStatus $gateStatus -GateReason 'release-contract job result' -SummaryPath 'tests/results/release-contract/review-index.json' -StepSummaryPath $env:GITHUB_STEP_SUMMARY
 
       - name: Upload release contract artifacts
         if: always()
