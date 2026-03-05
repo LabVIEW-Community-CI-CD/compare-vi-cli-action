@@ -1,0 +1,18 @@
+{
+  "schema": "release-review-scenario-profiles-v1",
+  "defaultSet": "core",
+  "sets": {
+    "core": {
+      "description": "Minimum release review scenarios required for tag-level validation.",
+      "scenarios": [
+        "checksum",
+        "smoke-cli"
+      ],
+      "supportedOs": [
+        "windows-latest",
+        "ubuntu-latest",
+        "macos-latest"
+      ]
+    }
+  }
+}

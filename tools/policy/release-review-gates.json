@@ -1,0 +1,21 @@
+{
+  "schema": "release-review-gates-v1",
+  "requiredOs": [
+    "windows-latest",
+    "ubuntu-latest",
+    "macos-latest"
+  ],
+  "tagClasses": [
+    {
+      "name": "stable",
+      "pattern": "^v\\d+\\.\\d+\\.\\d+$",
+      "requiredScenarioSet": "core"
+    },
+    {
+      "name": "prerelease",
+      "pattern": "^v\\d+\\.\\d+\\.\\d+[-+]",
+      "requiredScenarioSet": "core"
+    }
+  ],
+  "defaultRequiredScenarioSet": "core"
+}

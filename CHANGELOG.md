@@ -12,6 +12,15 @@ The format is based on Keep a Changelog, and this project adheres to Semantic Ve
 - `tools/Compare-VIHistory.ps1` now walks every reachable commit pair by default. Wrapper scripts and workflows only cap
   history when `-MaxPairs`/`max_pairs` is explicitly supplied, keeping manifests and reports complete without extra flags.
 
+### Added
+
+- Release review platform foundation for standing priority #216: release-review scenario summary schema
+  (`docs/schemas/release-review-scenario-summary-v1.schema.json`), review index schema
+  (`docs/schemas/release-review-index-v1.schema.json`), scenario profile manifest
+  (`tools/release-review/scenario-profiles.json`), gate policy file (`tools/policy/release-review-gates.json`),
+  scenario writer/evaluator scripts under `tools/release-review/`, and `release.yml` wiring that validates schemas,
+  produces a policy decision index, and publishes a standardized reviewer summary artifact per release tag.
+
 ### Documentation
 
 - Updated README, developer guide, and workflow notes to describe the optional `-MaxPairs` cap and refreshed examples to

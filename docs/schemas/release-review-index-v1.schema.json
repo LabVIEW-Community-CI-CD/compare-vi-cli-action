@@ -1,0 +1,121 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Release Review Index",
+  "type": "object",
+  "required": [
+    "schema",
+    "generatedAtUtc",
+    "tag",
+    "tagClass",
+    "scenarioSet",
+    "decision",
+    "requiredOs",
+    "requiredScenarios",
+    "osSummaries"
+  ],
+  "properties": {
+    "schema": {
+      "const": "release-review-index-v1"
+    },
+    "generatedAtUtc": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "tag": {
+      "type": "string"
+    },
+    "tagClass": {
+      "type": "string",
+      "enum": [
+        "stable",
+        "prerelease",
+        "other"
+      ]
+    },
+    "scenarioSet": {
+      "type": "string"
+    },
+    "decision": {
+      "type": "string",
+      "enum": [
+        "pass",
+        "fail"
+      ]
+    },
+    "requiredOs": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "requiredScenarios": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "osSummaries": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "os",
+          "overall",
+          "scenarios"
+        ],
+        "properties": {
+          "os": {
+            "type": "string"
+          },
+          "overall": {
+            "type": "string",
+            "enum": [
+              "pass",
+              "fail",
+              "mixed",
+              "skipped"
+            ]
+          },
+          "scenarios": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": [
+                "id",
+                "status"
+              ],
+              "properties": {
+                "id": {
+                  "type": "string"
+                },
+                "status": {
+                  "type": "string",
+                  "enum": [
+                    "pass",
+                    "fail",
+                    "skipped"
+                  ]
+                }
+              },
+              "additionalProperties": true
+            }
+          }
+        },
+        "additionalProperties": true
+      }
+    },
+    "failures": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "sourceFiles": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    }
+  },
+  "additionalProperties": false
+}

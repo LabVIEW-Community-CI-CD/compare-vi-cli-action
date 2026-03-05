@@ -10,7 +10,8 @@
     }
   ],
   "settings": {
-    "window.title": "[COMMAND_CENTER] ${activeEditorShort}${separator}${rootName}"
+    "window.title": "[COMMAND_CENTER] ${activeEditorShort}${separator}${rootName}",
+    "terminal.integrated.shellIntegration.enabled": true
   },
   "tasks": {
     "version": "2.0.0",
