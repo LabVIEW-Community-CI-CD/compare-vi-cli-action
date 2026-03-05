@@ -277,9 +277,18 @@ For Docker/Desktop VI history validation, run fast-loop lanes explicitly:
   - set `RELEASE_FINALIZE_SKIP_COMPARE_EVIDENCE=1` only for emergency operator overrides.
 - `release:finalize` validates required release PR contexts from `tools/policy/branch-required-checks.json`
   (`release/*`) and blocks on missing/pending/failing required checks.
+- `release:finalize` enforces standing-priority and parity evidence before tag cut:
+  - requires current standing-priority artifacts (`.agent_priority_cache.json`,
+    `tests/results/_agent/issue/router.json`, `tests/results/_agent/issue/<issue>.json`)
+    to match the live standing issue.
+  - enforces origin/upstream parity KPI `tipDiff.fileCount == 0` (default refs:
+    `upstream/develop` vs `origin/develop`).
+  - optional overrides: `RELEASE_FINALIZE_SKIP_PRIORITY_PARITY=1`,
+    `RELEASE_PARITY_BASE_REF`, `RELEASE_PARITY_HEAD_REF`,
+    `RELEASE_PARITY_TIP_DIFF_TARGET`.
 - `tools/priority/verify-release-branch.mjs` enforces release-doc consistency before tag cut by requiring
   `PR_NOTES.md`, `TAG_PREP_CHECKLIST.md`, and `RELEASE_NOTES_<tag>.md` to reference the current release tag.
-  It also requires both `package.json` and `docs/CHANGELOG.md` to change relative to the configured release base ref.
+  It also requires both `package.json` and `CHANGELOG.md` to change relative to the configured release base ref.
 - `tools/priority/validate-semver.mjs` now performs branch-aware integrity checks: on `release/<tag>` heads it enforces
   `package.json` SemVer parity with the branch tag.
 - `priority:sync` surfaces the most recent artifact in the standing-priority step summary and exposes it to downstream
