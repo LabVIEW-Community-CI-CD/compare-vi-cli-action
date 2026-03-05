@@ -8,6 +8,7 @@
   },
   "branches": {
     "develop": {
+      "required_status_checks_strict": true,
       "required_status_checks": [
         "lint",
         "fixtures",
@@ -20,9 +21,19 @@
         "hook-parity (ubuntu-latest)",
         "vi-history-scenarios-linux"
       ],
-      "required_linear_history": true
+      "required_linear_history": true,
+      "enforce_admins": false,
+      "required_pull_request_reviews": null,
+      "restrictions": null,
+      "allow_force_pushes": false,
+      "allow_deletions": false,
+      "block_creations": false,
+      "required_conversation_resolution": false,
+      "lock_branch": false,
+      "allow_fork_syncing": false
     },
     "main": {
+      "required_status_checks_strict": true,
       "required_status_checks": [
         "lint",
         "pester",
@@ -30,7 +41,16 @@
         "vi-compare",
         "Policy Guard (Upstream) / policy-guard"
       ],
-      "required_linear_history": true
+      "required_linear_history": true,
+      "enforce_admins": false,
+      "required_pull_request_reviews": null,
+      "restrictions": null,
+      "allow_force_pushes": false,
+      "allow_deletions": false,
+      "block_creations": false,
+      "required_conversation_resolution": false,
+      "lock_branch": false,
+      "allow_fork_syncing": false
     },
     "release/*": {
       "required_status_checks": [
