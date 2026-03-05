@@ -2,7 +2,7 @@
   "$schema": "./schemas/documentation-manifest-v1.schema.json",
   "schema": "documentation-manifest-v1",
   "version": "1.0.0",
-  "updated": "2026-03-05T04:20:00Z",
+  "updated": "2026-03-05T05:05:00Z",
   "entries": [
     {
       "name": "Root Playbooks",
@@ -84,6 +84,7 @@
         "docs/plans/TRACEABILITY_MATRIX_PLAN.md",
         "docs/plans/VALIDATION_MATRIX.md",
         "docs/QUANTILE_ACCURACY.md",
+        "docs/RUNBOOK_CONTAINER_LANE_PROMOTION_POLICY.md",
         "docs/requirements/DOTNET_CLI_RELEASE_ASSET.md",
         "docs/requirements/DOTNET_CLI_POWERSHELL_MAPPING.md",
         "docs/requirements/DOTNET_CLI_RELEASE_CHECKLIST.md",
