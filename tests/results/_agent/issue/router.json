@@ -1,7 +1,7 @@
 {
   "schema": "agent/priority-router@v1",
-  "issue": 588,
-  "updatedAt": "2025-11-04T04:06:28Z",
+  "issue": 732,
+  "updatedAt": null,
   "actions": [
     {
       "key": "hooks:pre-commit",
@@ -19,6 +19,15 @@
         "node tools/npm/run-script.mjs hooks:schema"
       ],
       "rationale": "ensure parity across planes"
+    },
+    {
+      "key": "ci:parity",
+      "priority": 30,
+      "scripts": [
+        "node tools/npm/run-script.mjs hooks:multi",
+        "node tools/npm/run-script.mjs hooks:schema"
+      ],
+      "rationale": null
     },
     {
       "key": "validate:lint",

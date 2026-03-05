@@ -249,12 +249,24 @@ to confirm each workflow includes both triggers.
    groups.
 4. If the run fails or new commits land, the queue ejects the entry back to the PR. Address the failure, rerun the
    relevant check (`priority:validate`, `Validate` workflow, or manual reruns), and re-enable the queue.
+5. For autonomous queueing, run `node tools/npm/run-script.mjs priority:queue:supervisor -- --dry-run` first, then
+   `--apply` when trunk health is green. The supervisor enforces required checks, dependency ordering, and queue caps.
+
+### PR Metadata Contract (queue supervisor)
+- `Coupling: independent|soft|hard` (default: `independent`)
+- `Depends-On: #<issue-or-pr>[,#<issue-or-pr>]`
+- Exclusion labels:
+  - `do-not-queue`
+  - `queue-blocked`
+  - `queue-quarantine`
 
 ## Troubleshooting
 - **Merge history guard failure** – Rebase the branch (`git fetch origin && git rebase origin/develop`) and force push
   with `--force-with-lease`.
 - **Queue saturation or slow merges** – Review the merge queue page linked above to see pending entries and their
   required checks. Cancel stale queue jobs from the PR if necessary.
+- **No standing-priority issue** – unattended flows should run `priority:sync:strict`; this fails fast and writes
+  `tests/results/_agent/issue/no-standing-priority.json` instead of looping.
 - **Policy drift detected by `priority:policy`** – Align GitHub settings with `tools/priority/policy.json` (update the
   JSON if the new configuration is intentional), then rerun the helper.
 - **Policy guard auth failure (`Authorization unavailable` / `authenticated-no-admin`)** – verify and rotate upstream

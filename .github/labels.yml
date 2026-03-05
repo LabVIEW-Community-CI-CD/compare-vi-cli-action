@@ -46,6 +46,15 @@
 - name: question
   description: Further information is requested
   color: "D876E3"
+- name: queue-blocked
+  description: Queue supervisor blocked this PR due to policy/check/dependency issues
+  color: "B60205"
+- name: queue-quarantine
+  description: Queue supervisor quarantined this PR after repeated enqueue failures
+  color: "D93F0B"
+- name: do-not-queue
+  description: Exclude this PR from autonomous queue supervision
+  color: "5319E7"
 - name: release
   description: Release planning and prep
   color: "5319E7"

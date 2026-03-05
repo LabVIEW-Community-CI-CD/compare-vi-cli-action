@@ -1,0 +1,82 @@
+name: Queue Supervisor
+
+on:
+  workflow_dispatch:
+    inputs:
+      apply:
+        description: 'Apply enqueue actions (false = dry-run only)'
+        required: false
+        default: false
+        type: boolean
+      max_inflight:
+        description: 'Optional inflight cap override'
+        required: false
+        type: string
+  schedule:
+    - cron: '*/10 * * * *'
+
+concurrency:
+  group: queue-supervisor-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  queue-supervisor:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+      actions: read
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: '20'
+
+      - name: Prepare supervisor token
+        shell: pwsh
+        env:
+          INPUT_TOKEN_PRIMARY: ${{ secrets.GH_TOKEN }}
+          INPUT_TOKEN_SECONDARY: ${{ secrets.GITHUB_TOKEN }}
+          INPUT_TOKEN_TERTIARY: ${{ github.token }}
+        run: |
+          pwsh -NoLogo -NoProfile -File tools/priority/Resolve-PolicyToken.ps1 -TokenFileName queue-supervisor-gh-token.txt
+
+      - name: Run queue supervisor
+        shell: pwsh
+        env:
+          QUEUE_AUTOPILOT_PAUSED: ${{ vars.QUEUE_AUTOPILOT_PAUSED || '0' }}
+          QUEUE_AUTOPILOT_MAX_INFLIGHT: ${{ vars.QUEUE_AUTOPILOT_MAX_INFLIGHT || '' }}
+        run: |
+          npm ci --ignore-scripts
+          $reportPath = 'tests/results/_agent/queue/queue-supervisor-report.json'
+          $args = @(
+            'tools/npm/run-script.mjs',
+            'priority:queue:supervisor',
+            '--',
+            '--report',
+            $reportPath
+          )
+
+          if ('${{ github.event_name }}' -eq 'workflow_dispatch' -and '${{ inputs.apply }}' -eq 'true') {
+            $args += '--apply'
+          } else {
+            $args += '--dry-run'
+          }
+
+          $maxInflightInput = '${{ inputs.max_inflight }}'
+          if (-not [string]::IsNullOrWhiteSpace($maxInflightInput)) {
+            $args += @('--max-inflight', $maxInflightInput.Trim())
+          }
+
+          node @args
+
+      - name: Upload queue supervisor artifact
+        if: always()
+        uses: actions/upload-artifact@v5
+        with:
+          name: queue-supervisor-${{ github.run_id }}
+          path: tests/results/_agent/queue/*.json
+          if-no-files-found: error
