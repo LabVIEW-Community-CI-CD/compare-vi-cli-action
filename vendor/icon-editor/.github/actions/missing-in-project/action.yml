@@ -1,0 +1,60 @@
+name: "Missing In Project"
+description: >
+  Executes MissinInProjectCLI.vi (bundled with this action) via g‑cli,
+  pointing at a user‑supplied *.lvproj* (default: lv_icon.lvproj in repo root).
+  Fails instantly on any missing file and exports:
+    • passed        (Boolean)  
+    • missing-files (String)
+
+branding:
+  icon: check-circle
+  color: purple
+
+inputs:
+  lv-ver:
+    description: "LabVIEW version (e.g. '2021')."
+    required: true
+  arch:
+    description: "Bitness (32 or 64)."
+    required: true
+  project-file:
+    description: >
+      Path to the .lvproj to inspect.
+      Defaults to `lv_icon.lvproj` in the repository root.
+    required: false
+    default: lv_icon.lvproj
+
+outputs:
+  passed:
+    description: "True if VI reported success."
+    value: ${{ steps.run_vi.outputs.passed }}
+  missing-files:
+    description: "Comma‑separated list of missing files."
+    value: ${{ steps.run_vi.outputs.missing-files }}
+
+runs:
+  using: composite
+  steps:
+
+    - name: Resolve project file path
+      id: resolve
+      shell: pwsh
+      run: |
+        $pf = '${{ inputs.project-file }}'
+        if (-not [System.IO.Path]::IsPathRooted($pf)) {
+          $pf = Join-Path $Env:GITHUB_WORKSPACE $pf
+        }
+        if (-not (Test-Path $pf)) {
+          throw "Project file not found: $pf"
+        }
+        echo "projFile=$pf" >> $Env:GITHUB_OUTPUT
+        Write-Host "ℹ️  Using project file: $pf"
+
+    - name: Invoke PS1 wrapper
+      id: run_vi
+      shell: pwsh
+      run: |
+        & "$Env:GITHUB_ACTION_PATH\Invoke-MissingInProjectCLI.ps1" `
+          -LVVersion   "${{ inputs.lv-ver }}" `
+          -Arch        "${{ inputs.arch }}" `
+          -ProjectFile "${{ steps.resolve.outputs.projFile }}"

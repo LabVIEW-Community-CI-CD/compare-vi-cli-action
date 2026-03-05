@@ -1,0 +1,115 @@
+name: Icon Editor Prepare Fixture
+description: Generate the icon-editor fixture report/manifest using Update-IconEditorFixtureReport.ps1.
+inputs:
+  results-root:
+    description: Directory where fixture artifacts should be written (matches Update-IconEditorFixtureReport.ps1 -ResultsRoot).
+    required: false
+    default: tests/results/_agent/icon-editor
+  fixture-path:
+    description: Optional path to a specific VIP fixture (defaults to repository fixture when omitted).
+    required: false
+    default: ''
+  manifest-path:
+    description: Optional manifest destination (defaults to tests/fixtures/icon-editor/fixture-manifest.json).
+    required: false
+    default: ''
+  resource-overlay-root:
+    description: Optional overlay directory to mirror into the extracted resource tree.
+    required: false
+    default: ''
+  skip-doc-update:
+    description: Set to true to skip refreshing docs/ICON_EDITOR_PACKAGE.md.
+    required: false
+    default: 'false'
+  no-summary:
+    description: Set to true to suppress the summary object returned by the helper script.
+    required: false
+    default: 'false'
+  working-directory:
+    description: Working directory for the composite run (defaults to repository root).
+    required: false
+    default: '.'
+outputs:
+  report-json:
+    description: Path to the generated fixture-report.json file.
+    value: ${{ steps.paths.outputs.report-json }}
+  report-markdown:
+    description: Path to the generated fixture-report.md file.
+    value: ${{ steps.paths.outputs.report-markdown }}
+  manifest-json:
+    description: Path to the refreshed fixture-manifest.json file.
+    value: ${{ steps.paths.outputs.manifest-json }}
+  results-root:
+    description: Resolved results root that was passed to the helper script.
+    value: ${{ steps.paths.outputs.results-root }}
+runs:
+  using: composite
+  steps:
+    - name: Run Update-IconEditorFixtureReport.ps1
+      shell: pwsh
+      working-directory: ${{ inputs.working-directory }}
+      run: |
+        $ErrorActionPreference = 'Stop'
+        $script = Join-Path 'tools' 'icon-editor' 'Update-IconEditorFixtureReport.ps1'
+        if (-not (Test-Path -LiteralPath $script -PathType Leaf)) {
+          throw "Helper script not found at '$script'."
+        }
+
+        $arguments = @()
+
+        $resultsRoot = '${{ inputs.results-root }}'
+        if (-not [string]::IsNullOrWhiteSpace($resultsRoot)) {
+          $arguments += '-ResultsRoot'
+          $arguments += $resultsRoot
+        }
+
+        $fixturePath = '${{ inputs.fixture-path }}'
+        if (-not [string]::IsNullOrWhiteSpace($fixturePath)) {
+          $arguments += '-FixturePath'
+          $arguments += $fixturePath
+        }
+
+        $manifestPath = '${{ inputs.manifest-path }}'
+        if (-not [string]::IsNullOrWhiteSpace($manifestPath)) {
+          $arguments += '-ManifestPath'
+          $arguments += $manifestPath
+        }
+
+        $overlayRoot = '${{ inputs.resource-overlay-root }}'
+        if (-not [string]::IsNullOrWhiteSpace($overlayRoot)) {
+          $arguments += '-ResourceOverlayRoot'
+          $arguments += $overlayRoot
+        }
+
+        if ('${{ inputs.skip-doc-update }}'.ToLowerInvariant() -eq 'true') {
+          $arguments += '-SkipDocUpdate'
+        }
+
+        if ('${{ inputs.no-summary }}'.ToLowerInvariant() -eq 'true') {
+          $arguments += '-NoSummary'
+        }
+
+        & $script @arguments | Out-Null
+    - id: paths
+      name: Emit fixture paths
+      shell: pwsh
+      working-directory: ${{ inputs.working-directory }}
+      run: |
+        $ErrorActionPreference = 'Stop'
+        $resultsRoot = '${{ inputs.results-root }}'
+        if ([string]::IsNullOrWhiteSpace($resultsRoot)) {
+          $resultsRoot = 'tests/results/_agent/icon-editor'
+        }
+
+        $reportJson = Join-Path $resultsRoot 'fixture-report.json'
+        $reportMarkdown = Join-Path $resultsRoot 'fixture-report.md'
+
+        $manifestPath = '${{ inputs.manifest-path }}'
+        if ([string]::IsNullOrWhiteSpace($manifestPath)) {
+          $manifestPath = 'tests/fixtures/icon-editor/fixture-manifest.json'
+        }
+
+        "report-json=$reportJson" | Out-File -FilePath $Env:GITHUB_OUTPUT -Append -Encoding utf8
+        "report-markdown=$reportMarkdown" | Out-File -FilePath $Env:GITHUB_OUTPUT -Append -Encoding utf8
+        "manifest-json=$manifestPath" | Out-File -FilePath $Env:GITHUB_OUTPUT -Append -Encoding utf8
+        "results-root=$resultsRoot" | Out-File -FilePath $Env:GITHUB_OUTPUT -Append -Encoding utf8

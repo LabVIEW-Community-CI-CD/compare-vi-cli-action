@@ -1,4 +1,4 @@
-#Requires -Version 7.0
+﻿#Requires -Version 7.0
 <#
 .SYNOPSIS
   Local pre-push checks: run actionlint against workflows.
@@ -12,12 +12,14 @@
 #>
 param(
   [string]$ActionlintVersion = '1.7.7',
-  [bool]$InstallIfMissing = $true
+  [bool]$InstallIfMissing = $true,
+  [switch]$SkipIconEditorFixtureChecks
 )
 
 $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version Latest
 Import-Module (Join-Path (Split-Path -Parent $PSCommandPath) 'VendorTools.psm1') -Force
+Import-Module (Join-Path (Split-Path -Parent $PSCommandPath) 'PrePush-IconEditorScope.psm1') -Force
 
 function Write-Info([string]$msg){ Write-Host $msg -ForegroundColor DarkGray }
 
@@ -61,6 +63,22 @@ function Install-Actionlint([string]$repoRoot,[string]$version){
       bash -lc "curl -sSL ${script} | bash -s -- ${version} ${bin}"
     }
   }
+}
+
+function Invoke-NodeTestSanitized {
+  param(
+    [string[]]$Args
+  )
+
+  $output = & node @Args 2>&1
+  $exitCode = $LASTEXITCODE
+  if ($output) {
+    $normalized = $output | ForEach-Object {
+      $_ -replace 'duration_ms: \d+(?:\.\d+)?', 'duration_ms: <sanitized>' -replace '# duration_ms \d+(?:\.\d+)?', '# duration_ms <sanitized>'
+    }
+    $normalized | ForEach-Object { Write-Host $_ }
+  }
+  return $exitCode
 }
 
 function Invoke-Actionlint([string]$repoRoot){
@@ -107,3 +125,148 @@ if ($code -ne 0) {
   exit $code
 }
 Write-Host '[pre-push] actionlint OK' -ForegroundColor Green
+
+Write-Host '[pre-push] Validating safe PR watch task contract' -ForegroundColor Cyan
+$safeWatchContractExit = Invoke-NodeTestSanitized -Args @('--test','tools/priority/__tests__/safe-watch-task-contract.test.mjs')
+if ($safeWatchContractExit -ne 0) {
+  throw "safe-watch task contract validation failed (exit=$safeWatchContractExit)."
+}
+Write-Host '[pre-push] safe-watch task contract OK' -ForegroundColor Green
+
+$verificationContractScript = Join-Path $root 'tools' 'Assert-RequirementsVerificationCheckContract.ps1'
+if (Test-Path -LiteralPath $verificationContractScript -PathType Leaf) {
+  Write-Host '[pre-push] Verifying requirements-verification check naming contract' -ForegroundColor Cyan
+  Push-Location $root
+  try {
+    pwsh -NoLogo -NonInteractive -NoProfile -File $verificationContractScript
+    if ($LASTEXITCODE -ne 0) {
+      throw "Assert-RequirementsVerificationCheckContract.ps1 failed (exit=$LASTEXITCODE)."
+    }
+  } finally {
+    Pop-Location | Out-Null
+  }
+  Write-Host '[pre-push] requirements-verification check contract OK' -ForegroundColor Green
+}
+
+$updateReportScript = Join-Path $root 'tools' 'icon-editor' 'Update-IconEditorFixtureReport.ps1'
+if (Test-Path -LiteralPath $updateReportScript -PathType Leaf) {
+  $skipLegacyFixtureChecks = $SkipIconEditorFixtureChecks `
+    -or ($env:PREPUSH_SKIP_ICON_EDITOR_FIXTURE_CHECKS -match '^(1|true|yes|on)$') `
+    -or ($env:PREPUSH_SKIP_LEGACY_FIXTURE_CHECKS -match '^(1|true|yes|on)$')
+  if ($skipLegacyFixtureChecks) {
+    Write-Host '[pre-push] Skipping legacy fixture freshness checks by request' -ForegroundColor Yellow
+    return
+  }
+  if (-not $IsWindows) {
+    Write-Host '[pre-push] Skipping legacy fixture freshness checks on non-Windows host' -ForegroundColor Yellow
+    return
+  }
+  $refUpdateLines = @()
+  try {
+    if ([Console]::IsInputRedirected) {
+      $rawRefInput = [Console]::In.ReadToEnd()
+      if (-not [string]::IsNullOrWhiteSpace($rawRefInput)) {
+        $refUpdateLines = @($rawRefInput -split "(`r`n|`n)" | Where-Object { -not [string]::IsNullOrWhiteSpace($_) })
+      }
+    }
+  } catch {}
+  $forceIconEditorChecks = ($env:PREPUSH_FORCE_ICON_EDITOR_FIXTURE_CHECKS -match '^(1|true|yes|on)$') `
+    -or ($env:PREPUSH_FORCE_LEGACY_FIXTURE_CHECKS -match '^(1|true|yes|on)$')
+  $changedPaths = Get-PrePushChangedPaths -RepoRoot $root -RefUpdateLines $refUpdateLines
+  $shouldRunIconEditorChecks = Test-IconEditorFixtureCheckRequired -ChangedPaths $changedPaths -Force:$forceIconEditorChecks
+  if (-not $shouldRunIconEditorChecks) {
+    Write-Host '[pre-push] Skipping icon-editor fixture freshness checks (no icon-editor scoped paths changed)' -ForegroundColor Yellow
+    return
+  }
+  Write-Host '[pre-push] Verifying icon-editor fixture report freshness' -ForegroundColor Cyan
+  Push-Location $root
+  try {
+    $updateOutput = pwsh -NoLogo -NoProfile -File $updateReportScript -NoSummary 2>&1
+    $updateExitCode = $LASTEXITCODE
+    if ($updateExitCode -ne 0) {
+      if ($updateOutput) {
+        $updateOutput | ForEach-Object { Write-Error $_ }
+      }
+      throw "Update-IconEditorFixtureReport.ps1 reported issues (exit=$LASTEXITCODE)."
+    }
+    # Surface any non-fatal warnings for optional debugging without breaking parity noise.
+    if ($updateOutput) {
+      Write-Verbose ($updateOutput -join [Environment]::NewLine)
+    }
+    git -C $root diff --quiet -- docs/ICON_EDITOR_PACKAGE.md
+    $docClean = $LASTEXITCODE -eq 0
+    if (-not $docClean) {
+      Write-Host '::notice::docs/ICON_EDITOR_PACKAGE.md differs from HEAD (regenerated); commit or revert as appropriate.' -ForegroundColor Yellow
+    }
+    Write-Host '[pre-push] icon-editor fixture report OK' -ForegroundColor Green
+    Write-Host '[pre-push] Checking icon-editor canonical hashes via node --test' -ForegroundColor Cyan
+    $hashExit = Invoke-NodeTestSanitized -Args @('--test','tools/icon-editor/__tests__/fixture-hashes.test.mjs')
+    if ($hashExit -ne 0) {
+      throw "node --test reported failures (exit=$hashExit)."
+    }
+    Write-Host '[pre-push] icon-editor hash checks OK' -ForegroundColor Green
+    Write-Host '[pre-push] Checking icon-editor fixture manifest vs baseline via node --test' -ForegroundColor Cyan
+    $manifestExit = Invoke-NodeTestSanitized -Args @('--test','tools/icon-editor/__tests__/fixture-manifests.test.mjs')
+    if ($manifestExit -ne 0) {
+      throw "node --test reported failures (exit=$manifestExit)."
+    }
+    Write-Host '[pre-push] icon-editor manifest checks OK' -ForegroundColor Green
+    $reportPath = Join-Path $root 'tests' 'results' '_agent' 'icon-editor' 'fixture-report.json'
+    if (Test-Path -LiteralPath $reportPath -PathType Leaf) {
+      try {
+        $fixtureReport = Get-Content -LiteralPath $reportPath -Raw | ConvertFrom-Json -Depth 8
+        if ($fixtureReport) {
+          $sanitizedSummary = [ordered]@{
+            schema                       = $fixtureReport.schema
+            fixturePackage               = $fixtureReport.fixture.package
+            systemPackage                = $fixtureReport.systemPackage.package
+            artifactHashes               = @()
+            customActions                = @()
+            runnerDependencyHashMatch    = [bool]$fixtureReport.runnerDependencies.hashMatch
+            fixtureAssetCategoryCounts   = @()
+          }
+          foreach ($artifact in ($fixtureReport.artifacts | Sort-Object name)) {
+            $sanitizedSummary.artifactHashes += [ordered]@{
+              name = $artifact.name
+              hash = $artifact.hash
+            }
+          }
+          foreach ($action in ($fixtureReport.customActions | Sort-Object name)) {
+            $sanitizedSummary.customActions += [ordered]@{
+              name      = $action.name
+              hashMatch = [bool]$action.hashMatch
+            }
+          }
+          foreach ($group in ($fixtureReport.fixtureOnlyAssets | Group-Object category | Sort-Object Name)) {
+            $sanitizedSummary.fixtureAssetCategoryCounts += [ordered]@{
+              category = $group.Name
+              count    = $group.Count
+            }
+          }
+          Write-Host '[pre-push] icon-editor fixture summary (sanitized):' -ForegroundColor Cyan
+          Write-Host ($sanitizedSummary | ConvertTo-Json -Depth 5) -ForegroundColor Green
+        }
+      } catch {
+        Write-Warning "Failed to load icon-editor fixture summary: $_"
+      }
+    }
+    if ($docClean) {
+      git checkout -- docs/ICON_EDITOR_PACKAGE.md | Out-Null
+    }
+    $artifactDir = Join-Path $root 'tests' 'results' '_agent' 'icon-editor'
+    $jsonPath = Join-Path $artifactDir 'fixture-report.json'
+    $markdownPath = Join-Path $artifactDir 'fixture-report.md'
+    if (-not ($env:GITHUB_ACTIONS -eq 'true')) {
+      if (Test-Path -LiteralPath $jsonPath) {
+        Remove-Item -LiteralPath $jsonPath -Force -ErrorAction SilentlyContinue
+      }
+      if (Test-Path -LiteralPath $markdownPath) {
+        Remove-Item -LiteralPath $markdownPath -Force -ErrorAction SilentlyContinue
+      }
+    }
+  } finally {
+    Pop-Location | Out-Null
+  }
+}
+
+

@@ -87,6 +87,24 @@
           "description": "Destination path for the comparison report."
         },
         {
+          "id": "labviewPath",
+          "type": "path",
+          "required": false,
+          "description": "Optional LabVIEW.exe path supplied to LabVIEW CLI."
+        },
+        {
+          "id": "headless",
+          "type": "bool",
+          "required": false,
+          "description": "When true, requests headless execution for compatible CLI versions."
+        },
+        {
+          "id": "logToConsole",
+          "type": "bool",
+          "required": false,
+          "description": "When true, enables LabVIEW CLI console logging."
+        },
+        {
           "id": "flags",
           "type": "array",
           "required": false,

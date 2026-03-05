@@ -21,19 +21,24 @@ function createResponse(data, status = 200, statusText = 'OK') {
 
 test('priority:policy --apply updates rulesets for develop/main/release', async () => {
   const expectedDevelopChecks = [
-    'Validate / lint',
-    'Validate / fixtures',
-    'Validate / session-index',
-    'Validate / issue-snapshot',
-    'Policy Guard (Upstream) / policy-guard'
+    'lint',
+    'fixtures',
+    'session-index',
+    'issue-snapshot',
+    'semver',
+    'hook-parity (windows-latest)',
+    'hook-parity (ubuntu-latest)',
+    'vi-history-scenarios-linux'
   ];
   const expectedMainChecks = [
+    'lint',
     'pester',
     'vi-binary-check',
     'vi-compare',
     'Policy Guard (Upstream) / policy-guard'
   ];
   const expectedReleaseChecks = [
+    'lint',
     'pester',
     'publish',
     'vi-binary-check',
@@ -138,6 +143,7 @@ test('priority:policy --apply updates rulesets for develop/main/release', async 
           strict_required_status_checks_policy: true,
           do_not_enforce_on_create: false,
           required_status_checks: [
+            { context: 'lint', integration_id: 15368 },
             { context: 'pester', integration_id: 15368 },
             { context: 'vi-binary-check', integration_id: 15368 },
             { context: 'vi-compare', integration_id: 15368 },
@@ -180,6 +186,7 @@ test('priority:policy --apply updates rulesets for develop/main/release', async 
           strict_required_status_checks_policy: true,
           do_not_enforce_on_create: false,
           required_status_checks: [
+            { context: 'lint', integration_id: 15368 },
             { context: 'pester', integration_id: 15368 },
             { context: 'publish', integration_id: 15368 },
             { context: 'vi-binary-check', integration_id: 15368 },
@@ -194,7 +201,6 @@ test('priority:policy --apply updates rulesets for develop/main/release', async 
 
   const branchDevelopUrl = `${repoUrl}/branches/develop/protection`;
   const branchMainUrl = `${repoUrl}/branches/main/protection`;
-  const branchReleaseUrl = `${repoUrl}/branches/release%2Fv0.5.2/protection`;
 
   let branchDevelopProtection = {
     required_status_checks: {
@@ -227,35 +233,12 @@ test('priority:policy --apply updates rulesets for develop/main/release', async 
   let branchMainProtection = {
     required_status_checks: {
       strict: true,
-      contexts: ['pester', 'vi-binary-check', 'vi-compare'],
+      contexts: ['pester', 'vi-binary-check', 'vi-compare', 'Policy Guard (Upstream) / policy-guard'],
       checks: [
         { context: 'pester', app_id: 15368 },
-        { context: 'vi-binary-check', app_id: 15368 },
-        { context: 'vi-compare', app_id: 15368 }
-      ]
-    },
-    enforce_admins: { enabled: false },
-    required_pull_request_reviews: null,
-    restrictions: null,
-    required_linear_history: { enabled: false },
-    allow_force_pushes: { enabled: false },
-    allow_deletions: { enabled: false },
-    block_creations: { enabled: false },
-    required_conversation_resolution: { enabled: false },
-    lock_branch: { enabled: false },
-    allow_fork_syncing: { enabled: false }
-  };
-
-  let branchReleaseProtection = {
-    required_status_checks: {
-      strict: true,
-      contexts: ['pester', 'publish', 'vi-binary-check', 'vi-compare', 'mock-cli'],
-      checks: [
-        { context: 'pester', app_id: 15368 },
-        { context: 'publish', app_id: 15368 },
         { context: 'vi-binary-check', app_id: 15368 },
         { context: 'vi-compare', app_id: 15368 },
-        { context: 'mock-cli', app_id: 15368 }
+        { context: 'Policy Guard (Upstream) / policy-guard' }
       ]
     },
     enforce_admins: { enabled: false },
@@ -333,34 +316,6 @@ test('priority:policy --apply updates rulesets for develop/main/release', async 
           allow_fork_syncing: wrapEnabled(payload.allow_fork_syncing)
         };
         return createResponse(branchMainProtection);
-      }
-    }
-
-    if (url === branchReleaseUrl) {
-      if (method === 'GET') {
-        return createResponse(branchReleaseProtection);
-      }
-      if (method === 'PUT') {
-        const payload = JSON.parse(options.body);
-        const contexts = payload.required_status_checks?.contexts ?? [];
-        branchReleaseProtection = {
-          enforce_admins: wrapEnabled(payload.enforce_admins),
-          required_pull_request_reviews: payload.required_pull_request_reviews,
-          restrictions: payload.restrictions,
-          required_status_checks: {
-            strict: payload.required_status_checks?.strict ?? true,
-            contexts,
-            checks: contexts.map((context) => ({ context }))
-          },
-          required_linear_history: wrapEnabled(payload.required_linear_history),
-          allow_force_pushes: wrapEnabled(payload.allow_force_pushes),
-          allow_deletions: wrapEnabled(payload.allow_deletions),
-          block_creations: wrapEnabled(payload.block_creations),
-          required_conversation_resolution: wrapEnabled(payload.required_conversation_resolution),
-          lock_branch: wrapEnabled(payload.lock_branch),
-          allow_fork_syncing: wrapEnabled(payload.allow_fork_syncing)
-        };
-        return createResponse(branchReleaseProtection);
       }
     }
 
@@ -442,7 +397,7 @@ test('priority:policy --apply updates rulesets for develop/main/release', async 
   const statusRule = rulesetMain.rules.find((rule) => rule.type === 'required_status_checks');
   assert.deepEqual(
     statusRule.parameters.required_status_checks.map((check) => check.context).sort(),
-    ['pester', 'vi-binary-check', 'vi-compare', 'Policy Guard (Upstream) / policy-guard'].sort()
+    expectedMainChecks.slice().sort()
   );
 
   const pullRule = rulesetMain.rules.find((rule) => rule.type === 'pull_request');
@@ -452,7 +407,13 @@ test('priority:policy --apply updates rulesets for develop/main/release', async 
   const statusRuleRelease = rulesetRelease.rules.find((rule) => rule.type === 'required_status_checks');
   assert.deepEqual(
     statusRuleRelease.parameters.required_status_checks.map((check) => check.context).sort(),
-    ['Policy Guard (Upstream) / policy-guard', 'mock-cli', 'pester', 'publish', 'vi-binary-check', 'vi-compare'].sort()
+    expectedReleaseChecks.slice().sort()
+  );
+  assert.ok(
+    !statusRuleRelease.parameters.required_status_checks.some(
+      (check) => check.context === 'Requirements Verification / requirements-verification'
+    ),
+    'release ruleset should not include requirements-verification check'
   );
 
   assert.ok(
@@ -471,11 +432,6 @@ test('priority:policy --apply updates rulesets for develop/main/release', async 
     requests.some((entry) => entry.method === 'PUT' && entry.url === branchMainUrl),
     'main branch protection put call expected'
   );
-  assert.ok(
-    requests.some((entry) => entry.method === 'PUT' && entry.url === branchReleaseUrl),
-    'release branch protection put call expected'
-  );
-
   const developApplied = branchDevelopProtection.required_status_checks.checks.map((check) => check.context).sort();
   assert.deepEqual(
     developApplied,
@@ -490,12 +446,6 @@ test('priority:policy --apply updates rulesets for develop/main/release', async 
     'main branch contexts should match expectations'
   );
 
-  const releaseApplied = branchReleaseProtection.required_status_checks.checks.map((check) => check.context).sort();
-  assert.deepEqual(
-    releaseApplied,
-    expectedReleaseChecks.slice().sort(),
-    'release branch contexts should match expectations'
-  );
   assert.deepEqual(errorMessages, []);
   assert.ok(
     logMessages.includes('Merge policy apply completed successfully.'),
@@ -588,7 +538,8 @@ test('priority:policy skips when repository settings require admin access', asyn
     argv: ['node', 'check-policy.mjs'],
     env: {
       ...process.env,
-      GITHUB_REPOSITORY: 'test-org/test-repo'
+      GITHUB_REPOSITORY: 'test-org/test-repo',
+      GITHUB_TOKEN: 'fake-token'
     },
     fetchFn: fetchMock,
     execSyncFn: () => {
@@ -602,6 +553,261 @@ test('priority:policy skips when repository settings require admin access', asyn
   assert.ok(
     logMessages.some((msg) => msg.includes('skipping policy check')),
     'skip message expected when admin permissions unavailable'
+  );
+  assert.deepEqual(errorMessages, []);
+});
+
+test('priority:policy keeps GH_TOKEN when valid and does not fallback', async () => {
+  const repoUrl = 'https://api.github.com/repos/test-org/test-repo';
+  const rulesetDevelopUrl = `${repoUrl}/rulesets/8811898`;
+  const rulesetMainUrl = `${repoUrl}/rulesets/8614140`;
+  const rulesetReleaseUrl = `${repoUrl}/rulesets/8614172`;
+  const repoState = {
+    permissions: {
+      admin: false
+    }
+  };
+  const rulesetDevelop = {
+    id: 8811898,
+    name: 'develop',
+    target: 'branch',
+    enforcement: 'active',
+    conditions: { ref_name: { include: ['refs/heads/develop'], exclude: [] } },
+    bypass_actors: [],
+    rules: []
+  };
+  const rulesetMain = {
+    id: 8614140,
+    name: 'main',
+    target: 'branch',
+    enforcement: 'active',
+    conditions: { ref_name: { include: ['refs/heads/main'], exclude: [] } },
+    bypass_actors: [],
+    rules: []
+  };
+  const rulesetRelease = {
+    id: 8614172,
+    name: 'release',
+    target: 'branch',
+    enforcement: 'active',
+    conditions: { ref_name: { include: ['refs/heads/release/*'], exclude: [] } },
+    bypass_actors: [],
+    rules: []
+  };
+
+  const tokensSeen = [];
+  const fetchMock = async (url, options = {}) => {
+    const method = options.method ?? 'GET';
+    const authHeader = options.headers?.Authorization ?? '';
+    const token = String(authHeader).replace(/^Bearer\s+/i, '');
+    tokensSeen.push(token);
+    if (token !== 'gh-valid') {
+      return createResponse({ message: 'Bad credentials', status: '401' }, 401, 'Unauthorized');
+    }
+
+    if (method === 'GET' && url === repoUrl) {
+      return createResponse(repoState);
+    }
+    if (method === 'GET' && url === rulesetDevelopUrl) {
+      return createResponse(rulesetDevelop);
+    }
+    if (method === 'GET' && url === rulesetMainUrl) {
+      return createResponse(rulesetMain);
+    }
+    if (method === 'GET' && url === rulesetReleaseUrl) {
+      return createResponse(rulesetRelease);
+    }
+    throw new Error(`Unexpected request ${method} ${url}`);
+  };
+
+  const logMessages = [];
+  const errorMessages = [];
+  const code = await run({
+    argv: ['node', 'check-policy.mjs'],
+    env: {
+      ...process.env,
+      GITHUB_REPOSITORY: 'test-org/test-repo',
+      GH_TOKEN: 'gh-valid',
+      GITHUB_TOKEN: 'github-valid'
+    },
+    fetchFn: fetchMock,
+    execSyncFn: () => {
+      throw new Error('execSync should not be called when GITHUB_REPOSITORY is set');
+    },
+    log: (msg) => logMessages.push(msg),
+    error: (msg) => errorMessages.push(msg)
+  });
+
+  assert.equal(code, 0, 'run should exit cleanly with valid GH_TOKEN');
+  assert.ok(tokensSeen.length > 0, 'expected at least one authenticated request');
+  assert.ok(tokensSeen.every((token) => token === 'gh-valid'), 'requests should remain on GH_TOKEN');
+  assert.ok(
+    logMessages.some((msg) => msg.includes('auth source: GH_TOKEN')),
+    'auth source log should report GH_TOKEN'
+  );
+  assert.ok(
+    !logMessages.some((msg) => msg.includes('auth fallback:')),
+    'fallback should not occur when GH_TOKEN is valid'
+  );
+  assert.deepEqual(errorMessages, []);
+});
+
+test('priority:policy falls back from GH_TOKEN to GITHUB_TOKEN on 401', async () => {
+  const repoUrl = 'https://api.github.com/repos/test-org/test-repo';
+  const rulesetDevelopUrl = `${repoUrl}/rulesets/8811898`;
+  const rulesetMainUrl = `${repoUrl}/rulesets/8614140`;
+  const rulesetReleaseUrl = `${repoUrl}/rulesets/8614172`;
+  const repoState = {
+    permissions: {
+      admin: false
+    }
+  };
+  const rulesetDevelop = {
+    id: 8811898,
+    name: 'develop',
+    target: 'branch',
+    enforcement: 'active',
+    conditions: { ref_name: { include: ['refs/heads/develop'], exclude: [] } },
+    bypass_actors: [],
+    rules: []
+  };
+  const rulesetMain = {
+    id: 8614140,
+    name: 'main',
+    target: 'branch',
+    enforcement: 'active',
+    conditions: { ref_name: { include: ['refs/heads/main'], exclude: [] } },
+    bypass_actors: [],
+    rules: []
+  };
+  const rulesetRelease = {
+    id: 8614172,
+    name: 'release',
+    target: 'branch',
+    enforcement: 'active',
+    conditions: { ref_name: { include: ['refs/heads/release/*'], exclude: [] } },
+    bypass_actors: [],
+    rules: []
+  };
+
+  const tokensSeen = [];
+  const fetchMock = async (url, options = {}) => {
+    const method = options.method ?? 'GET';
+    const authHeader = options.headers?.Authorization ?? '';
+    const token = String(authHeader).replace(/^Bearer\s+/i, '');
+    tokensSeen.push(token);
+
+    if (token === 'gh-stale') {
+      return createResponse({ message: 'Bad credentials', status: '401' }, 401, 'Unauthorized');
+    }
+    if (token !== 'github-valid') {
+      return createResponse({ message: 'Bad credentials', status: '401' }, 401, 'Unauthorized');
+    }
+
+    if (method === 'GET' && url === repoUrl) {
+      return createResponse(repoState);
+    }
+    if (method === 'GET' && url === rulesetDevelopUrl) {
+      return createResponse(rulesetDevelop);
+    }
+    if (method === 'GET' && url === rulesetMainUrl) {
+      return createResponse(rulesetMain);
+    }
+    if (method === 'GET' && url === rulesetReleaseUrl) {
+      return createResponse(rulesetRelease);
+    }
+    throw new Error(`Unexpected request ${method} ${url}`);
+  };
+
+  const logMessages = [];
+  const errorMessages = [];
+  const code = await run({
+    argv: ['node', 'check-policy.mjs'],
+    env: {
+      ...process.env,
+      GITHUB_REPOSITORY: 'test-org/test-repo',
+      GH_TOKEN: 'gh-stale',
+      GITHUB_TOKEN: 'github-valid'
+    },
+    fetchFn: fetchMock,
+    execSyncFn: () => {
+      throw new Error('execSync should not be called when GITHUB_REPOSITORY is set');
+    },
+    log: (msg) => logMessages.push(msg),
+    error: (msg) => errorMessages.push(msg)
+  });
+
+  assert.equal(code, 0, 'run should succeed after auth fallback');
+  assert.ok(tokensSeen.includes('gh-stale'), 'GH token should be attempted first');
+  assert.ok(tokensSeen.includes('github-valid'), 'GITHUB token should be used as fallback');
+  assert.ok(
+    logMessages.some((msg) => msg.includes('auth fallback: GH_TOKEN -> GITHUB_TOKEN')),
+    'fallback log should report GH_TOKEN -> GITHUB_TOKEN'
+  );
+  assert.deepEqual(errorMessages, []);
+});
+
+test('priority:policy skips non-apply validation when GH_TOKEN 401 has no fallback', async () => {
+  const fetchMock = async () => createResponse({ message: 'Bad credentials', status: '401' }, 401, 'Unauthorized');
+  const logMessages = [];
+  const errorMessages = [];
+
+  const code = await run({
+    argv: ['node', 'check-policy.mjs'],
+    env: {
+      ...process.env,
+      GITHUB_REPOSITORY: 'test-org/test-repo',
+      GH_TOKEN: 'gh-stale',
+      GITHUB_TOKEN: ''
+    },
+    fetchFn: fetchMock,
+    execSyncFn: () => {
+      throw new Error('execSync should not be called when GITHUB_REPOSITORY is set');
+    },
+    log: (msg) => logMessages.push(msg),
+    error: (msg) => errorMessages.push(msg)
+  });
+
+  assert.equal(code, 0, 'non-apply mode should skip on auth-unavailable path');
+  assert.ok(
+    logMessages.some((msg) => msg.includes('auth source: GH_TOKEN')),
+    'auth source log should report GH_TOKEN'
+  );
+  assert.ok(
+    logMessages.some((msg) => msg.includes('Authorization unavailable for policy check')),
+    'skip log should report authorization-unavailable reason'
+  );
+  assert.deepEqual(errorMessages, []);
+});
+
+test('priority:policy --apply fails when GH_TOKEN 401 has no fallback', async () => {
+  const fetchMock = async () => createResponse({ message: 'Bad credentials', status: '401' }, 401, 'Unauthorized');
+  const logMessages = [];
+  const errorMessages = [];
+
+  await assert.rejects(
+    () =>
+      run({
+        argv: ['node', 'check-policy.mjs', '--apply'],
+        env: {
+          ...process.env,
+          GITHUB_REPOSITORY: 'test-org/test-repo',
+          GH_TOKEN: 'gh-stale',
+          GITHUB_TOKEN: ''
+        },
+        fetchFn: fetchMock,
+        execSyncFn: () => {
+          throw new Error('execSync should not be called when GITHUB_REPOSITORY is set');
+        },
+        log: (msg) => logMessages.push(msg),
+        error: (msg) => errorMessages.push(msg)
+      }),
+    /authorization unavailable/i
+  );
+
+  assert.ok(
+    logMessages.some((msg) => msg.includes('auth source: GH_TOKEN')),
+    'auth source log should report GH_TOKEN'
   );
   assert.deepEqual(errorMessages, []);
 });

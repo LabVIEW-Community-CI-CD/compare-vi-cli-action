@@ -1,0 +1,23 @@
+name: "Run Unit Tests"
+description: "Runs RunUnitTests.ps1 to execute LabVIEW unit tests via g-cli."
+runs:
+  using: "composite"
+  steps:
+    - name: Checkout code
+      uses: actions/checkout@v3
+      with:
+        fetch-depth: 0
+
+    - name: Run RunUnitTests.ps1
+      shell: pwsh
+      run: |
+        & "${{ github.action_path }}/RunUnitTests.ps1" `
+          -MinimumSupportedLVVersion ${{ inputs.minimum_supported_lv_version }} `
+          -SupportedBitness ${{ inputs.supported_bitness }}
+inputs:
+  minimum_supported_lv_version:
+    description: 'LabVIEW major version'
+    required: true
+  supported_bitness:
+    description: '32 or 64'
+    required: true

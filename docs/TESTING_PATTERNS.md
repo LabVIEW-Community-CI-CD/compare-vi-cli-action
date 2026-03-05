@@ -10,8 +10,20 @@ Patterns for structuring Pester tests in this repository.
 
 ## Categories & tagging
 
-- Tag describes coverage: `Unit`, `Integration`, `Loop`, etc.
-- Add requirement/ADR tags (`REQ:XYZ`, `ADR:0001`) for traceability matrix.
+- Keep tags concise and meaningful; prefer a small curated set.
+- Common tags by dimension:
+  - Component: `IconEditor`, `CompareVI`, `Watcher`
+  - Feature: `DevMode`, `INI`, `Manifest`, `VIPC`, `Build`
+  - Layer: `Unit`, `Integration`, `E2E`, `Smoke`
+  - Environment: `RequiresGCLI`, `RequiresLabVIEW`, `RequiresLabVIEW2025`, `RequiresVIPM`, `SelfHosted`
+  - Speed: `Slow` (mark long/expensive paths)
+- Traceability: add `REQ:XYZ`, `ADR:0001` when linking to requirements or design records.
+
+Examples (Icon Editor):
+- Suite: `Describe 'IconEditor …' -Tag 'IconEditor'`
+- Unit context (no external tools): `-Tag 'IconEditor','DevMode','Unit'`
+- Package validation (VIP smoke): `-Tag 'IconEditor','Packaging','Unit'`
+- INI round-trip (real installs): `-Tag 'IconEditor','DevMode','INI','Integration','E2E','RequiresGCLI','RequiresLabVIEW'`
 
 ## Dispatcher behaviour
 

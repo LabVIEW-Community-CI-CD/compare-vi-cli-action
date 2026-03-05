@@ -1,0 +1,19 @@
+name: "Set Development Mode"
+description: "Runs Set_Development_Mode.ps1 to configure the repo for development."
+runs:
+  using: "composite"
+  steps:
+    - name: Checkout code
+      uses: actions/checkout@v3
+      with:
+        fetch-depth: 0
+
+    - name: Run Set_Development_Mode.ps1
+      shell: pwsh
+      run: |
+        & "${{ github.action_path }}/Set_Development_Mode.ps1" \
+          -RelativePath "${{ inputs.relative_path }}"
+inputs:
+  relative_path:
+    description: 'Workspace root path'
+    required: true

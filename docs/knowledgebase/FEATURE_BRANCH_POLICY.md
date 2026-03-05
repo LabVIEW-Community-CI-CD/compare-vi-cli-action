@@ -1,7 +1,7 @@
 <!-- markdownlint-disable-next-line MD041 -->
 # Feature Branch Enforcement & Merge Queue
 
-_Last updated: 2025-10-22 (standing priority #293)._ 
+_Last updated: 2026-03-05 (standing priority #283)._ 
 
 ## Purpose
 
@@ -13,8 +13,8 @@ standing GitHub protection rules (including the `main` merge queue).
 | Branch pattern            | Purpose                               | Creation helper                                                 | Merge target |
 |---------------------------|---------------------------------------|-----------------------------------------------------------------|--------------|
 | `issue/<number>-<slug>`   | Standing-priority implementation work | `git checkout -b issue/<...>` (router creates/syncs automatically) | `develop` (squash) |
-| `feature/<slug>`          | Parallel experiments / rehearsals     | `npm run feature:branch:dry -- <slug>` (live helper coming soon) | `develop` (squash) |
-| `release/<version>`       | Release preparation                   | `npm run release:branch -- <version>`                            | PR to `main` |
+| `feature/<slug>`          | Parallel experiments / rehearsals     | `node tools/npm/run-script.mjs feature:branch:dry -- <slug>` (live helper coming soon) | `develop` (squash) |
+| `release/<version>`       | Release preparation                   | `node tools/npm/run-script.mjs release:branch -- <version>`                            | PR to `main` |
 
 - Keep branches short-lived and delete them after merge (repository default).
 - Rebase feature and issue branches on `develop` until the queue is green; avoid merge commits entirely.
@@ -24,9 +24,9 @@ standing GitHub protection rules (including the `main` merge queue).
 ### Local helpers
 - `tools/priority/create-pr.mjs` refuses PRs opened from `develop`/`main`, forcing contributors onto feature/issue
   branches.
-- Dry-run helpers (`npm run feature:branch:dry`, `npm run feature:finalize:dry`) rehearse branch creation/finalization
+- Dry-run helpers (`node tools/npm/run-script.mjs feature:branch:dry`, `node tools/npm/run-script.mjs feature:finalize:dry`) rehearse branch creation/finalization
   and emit metadata under `tests/results/_agent/feature/`.
-- `npm run priority:pr` pushes the current branch to your fork and opens a PR targeting `develop`, keeping the linear
+- `node tools/npm/run-script.mjs priority:pr` pushes the current branch to your fork and opens a PR targeting `develop`, keeping the linear
   history contract intact.
 - `node tools/npm/run-script.mjs priority:validate -- --ref <branch> --push-missing` publishes the branch to the
   upstream remote (when it is absent) before dispatching Validate. The helper refuses to push when the branch is dirty,
@@ -43,7 +43,9 @@ standing GitHub protection rules (including the `main` merge queue).
 - `.github/workflows/policy-guard-upstream.yml` (triggered via `pull_request_target`) checks out the PR head with the
   upstream repository token and re-runs `priority:policy`, guaranteeing that branch protection rules are enforced even
   when the lint job skips in fork contexts. Its status (`Policy Guard (Upstream) / policy-guard`) is required on
-  `develop`, `main`, and `release/*`.
+  `main` and `release/*`.
+- Branch protection verification treats workflow-prefixed and short check contexts as equivalent (for example,
+  `Validate / lint` and `lint`) to avoid false drift when comparing live API contexts against policy mappings.
 - `Validate` runs `priority:handoff-tests` automatically for heads that start with `feature/`, enforcing leak-sensitive
   suites before parallel work merges.
 - **Important:** Required checks for queued branches must run on both the `pull_request` and `merge_group` events;
@@ -58,7 +60,7 @@ standing GitHub protection rules (including the `main` merge queue).
 ### GitHub rulesets
 | Ruleset ID | Scope                | Highlights                                                                                   |
 |------------|----------------------|----------------------------------------------------------------------------------------------|
-| `8811898`  | `refs/heads/develop` | Linear history required, squash-only merges, checks: `Validate / lint`, `Validate / fixtures`, `Validate / session-index`, `Validate / issue-snapshot`, `Policy Guard (Upstream) / policy-guard` |
+| `8811898`  | `refs/heads/develop` | Linear history required, squash-only merges, checks: `lint`, `fixtures`, `session-index`, `issue-snapshot`, `semver`, `hook-parity (windows-latest)`, `hook-parity (ubuntu-latest)`, `vi-history-scenarios-linux` |
 | `8614140`  | `refs/heads/main`    | Merge queue enabled (`merge_method=SQUASH`, `grouping=ALLGREEN`, build queue <=5 entries, 5-minute quiet window). Required checks: `lint`, `pester`, `vi-binary-check`, `vi-compare`, `Policy Guard (Upstream) / policy-guard`. Requires one approving review with resolved threads. |
 | `8614172`  | `refs/heads/release/*` | No merge queue; protects against force-push/deletion. Required checks: `lint`, `pester`, `publish`, `vi-binary-check`, `vi-compare`, `mock-cli`, `Policy Guard (Upstream) / policy-guard`. Requires one approving review with resolved threads. |
 
@@ -76,12 +78,125 @@ checked into `tools/priority/policy.json` so `priority:policy` stays authoritati
 - The Validate workflow runs the verify-only command on every PR targeting `develop`; fix GitHub settings or update
   `tools/priority/policy.json` before re-running CI when it fails.
 
+### Runbook container canary policy note
+
+- The runbook container lane is currently a **non-required canary** and is intentionally excluded from the develop
+  required-check contract until a separate promotion decision is accepted.
+- Promotion/rollback decision criteria and evidence requirements are defined in
+  `docs/RUNBOOK_CONTAINER_LANE_PROMOTION_POLICY.md`.
+
 ### `develop`
 - **Merge strategy**: squash only (enforce linear history, disable merge commits).
-- **Required checks**: `Validate / lint`, `Validate / fixtures`, `Validate / session-index`, `Validate / issue-snapshot`,
-  `Policy Guard (Upstream) / policy-guard`.
+- **Required checks**: `lint`, `fixtures`, `session-index`, `issue-snapshot`, `semver`, `hook-parity (windows-latest)`,
+  `hook-parity (ubuntu-latest)`, `vi-history-scenarios-linux`.
 - **Admin bypass**: leave disabled; administrators should only intervene when `priority:policy` confirms parity.
 - **Reapply**: Use `node tools/npm/run-script.mjs priority:policy -- --apply` to push the manifest configuration when drift is detected.
+
+#### Requirements verification gate (local runbook)
+
+- Generate and evaluate the gate summary locally:
+
+  ```powershell
+  pwsh -NoLogo -NonInteractive -NoProfile -File tools/Verify-RequirementsGate.ps1 \
+    -TestsPath tests \
+    -ResultsRoot tests/results \
+    -OutDir tests/results/_agent/verification \
+    -BaselinePolicyPath tools/policy/requirements-verification-baseline.json
+  ```
+
+- Run focused regression tests for baseline pass/fail logic:
+
+  ```powershell
+  ./Invoke-PesterTests.ps1 -IncludePatterns 'RequirementsVerificationGate.Tests.ps1'
+  ```
+
+- Validate the gate output contract schema explicitly:
+
+  ```powershell
+  pwsh -NoLogo -NonInteractive -NoProfile -File tools/Invoke-JsonSchemaLite.ps1 \
+    -JsonPath tests/results/_agent/verification/verification-summary.json \
+    -SchemaPath docs/schemas/requirements-verification-v1.schema.json
+  ```
+
+- Assert check naming drift guard (workflow + policy contract alignment):
+
+  ```powershell
+  pwsh -NoLogo -NonInteractive -NoProfile -File tools/Assert-RequirementsVerificationCheckContract.ps1
+  ```
+
+- Validate branch-protection helper contract deterministically (uses the canonical
+  `tools/policy/branch-required-checks.json` develop mapping):
+
+  ```powershell
+  pwsh -NoLogo -NoProfile -Command "Invoke-Pester -Path 'tests/SessionIndex.BranchProtection.Tests.ps1','tests/GetBranchProtectionRequiredChecks.Tests.ps1','tests/RequirementsVerificationCheckContract.Tests.ps1' -Output Detailed"
+  ```
+
+- Validate policy helper drift coverage for develop and release required-check contracts:
+
+  ```powershell
+  node --test tools/priority/__tests__/check-policy-apply.test.mjs
+  ```
+
+- Validate merge-mode selection guardrails (`develop` direct merge vs `main` merge-queue/auto):
+
+  ```powershell
+  node --test tools/priority/__tests__/merge-sync-pr.test.mjs
+  ```
+
+- Generate a merge helper dry-run summary with policy trace metadata (`policyTrace.mergeQueueBranches`):
+
+  ```powershell
+  node tools/priority/merge-sync-pr.mjs --pr <number> --repo <owner/repo> --dry-run --summary-path tests/results/_agent/priority/merge-sync-dry-run.json
+  ```
+
+- Inspect stable summary payload fields (`selectedMode`, `finalMode`, `prState.baseRefName`):
+
+  ```powershell
+  pwsh -NoLogo -NoProfile -Command "Get-Content tests/results/_agent/priority/merge-sync-dry-run.json -Raw | ConvertFrom-Json | Select-Object schema,selectedMode,finalMode,@{Name='baseRefName';Expression={$_.prState.baseRefName}},policyTrace | ConvertTo-Json -Depth 6"
+  ```
+
+- Inspect reason diagnostics (`selectedReason`, `finalReason`) for queue/non-queue
+  troubleshooting:
+
+  ```powershell
+  pwsh -NoLogo -NoProfile -Command "Get-Content tests/results/_agent/priority/merge-sync-dry-run.json -Raw | ConvertFrom-Json | Select-Object selectedMode,selectedReason,finalMode,finalReason | ConvertTo-Json -Depth 4"
+  ```
+
+- Inspect unknown-state reason output explicitly:
+
+  ```powershell
+  pwsh -NoLogo -NoProfile -Command "Get-Content tests/results/_agent/priority/merge-sync-dry-run.json -Raw | ConvertFrom-Json | Select-Object selectedMode,selectedReason,@{Name='mergeState';Expression={$_.prState.mergeStateStatus}},@{Name='baseRef';Expression={$_.prState.baseRefName}} | ConvertTo-Json -Depth 4"
+  ```
+
+- Inspect fallback reason mapping output (`merge-state-unspecified`) when merge
+  state is absent:
+
+  ```powershell
+  pwsh -NoLogo -NoProfile -Command "Get-Content tests/results/_agent/priority/merge-sync-dry-run.json -Raw | ConvertFrom-Json | Select-Object selectedMode,selectedReason,@{Name='fallbackExpected';Expression={'merge-state-unspecified'}},@{Name='baseRef';Expression={$_.prState.baseRefName}} | ConvertTo-Json -Depth 4"
+  ```
+
+- Inspect minimal fallback diagnostics fields (reason + mergeability context):
+
+  ```powershell
+  pwsh -NoLogo -NoProfile -Command "Get-Content tests/results/_agent/priority/merge-sync-dry-run.json -Raw | ConvertFrom-Json | Select-Object selectedReason,@{Name='mergeState';Expression={$_.prState.mergeStateStatus}},@{Name='mergeable';Expression={$_.prState.mergeable}},@{Name='baseRef';Expression={$_.prState.baseRefName}} | ConvertTo-Json -Depth 4"
+  ```
+
+`prState.baseRefName` is normalized to lowercase branch names (for example,
+`refs/heads/Main` → `main`) before mode diagnostics are emitted.
+
+- Inspect retry-flow transitions (`selectedMode`, `finalMode`, `attempts`) from the
+  dry-run summary:
+
+  ```powershell
+  pwsh -NoLogo -NoProfile -Command "Get-Content tests/results/_agent/priority/merge-sync-dry-run.json -Raw | ConvertFrom-Json | Select-Object selectedMode,finalMode,finalReason,attempts | ConvertTo-Json -Depth 8"
+  ```
+
+- Optional parity run for non-LV checks using the published tools image:
+
+  ```powershell
+  $env:COMPAREVI_TOOLS_IMAGE = 'ghcr.io/svelderrainruiz/comparevi-tools:latest'
+  pwsh -NoLogo -NoProfile -File tools/Run-NonLVChecksInDocker.ps1 -UseToolsImage
+  ```
 
 ### `main`
 - **Ruleset**: `8614140` (repository ruleset, scope `refs/heads/main`).
@@ -93,7 +208,7 @@ checked into `tools/priority/policy.json` so `priority:policy` stays authoritati
   - `max_entries_to_build=5`, `min_entries_to_merge=1`, `max_entries_to_merge=5`
   - `min_entries_to_merge_wait_minutes=5`
   - `check_response_timeout_minutes=60`
-- **Required checks**: `lint`, `pester`, `vi-binary-check`, `vi-compare`.
+- **Required checks**: `lint`, `pester`, `vi-binary-check`, `vi-compare`, `Policy Guard (Upstream) / policy-guard`.
 - **Workflow triggers**: Ensure those required checks run on both `pull_request` and `merge_group` so queued entries can merge.
 - **Approval policy**: >= 1 review; dismiss stale reviews on push; require thread resolution.
 - **Quick verification**:
@@ -105,7 +220,7 @@ checked into `tools/priority/policy.json` so `priority:policy` stays authoritati
 
 ### `release/*`
 - **Ruleset**: `8614172` (scope `refs/heads/release/*`).
-- **Required checks**: `lint`, `pester`, `publish`, `vi-binary-check`, `vi-compare`, `mock-cli`.
+- **Required checks**: `lint`, `pester`, `publish`, `vi-binary-check`, `vi-compare`, `mock-cli`, `Policy Guard (Upstream) / policy-guard`.
 - **Approvals**: >= 1 review, stale review dismissal enabled, enforce thread resolution.
 - **Merge queue**: intentionally disabled; rely on manual review + required checks.
 - **Maintenance tip**: revisit after each release cycle to ensure the workflow matrix still emits the expected check
@@ -116,7 +231,7 @@ Prereq: All required checks for `main` must execute on both `pull_request` and `
 to confirm each workflow includes both triggers.
 
 1. Ensure the PR targets `main` (typically a release PR) and all required checks (`lint`, `pester`, `vi-binary-check`,
-   `vi-compare`) are green on the latest commit.
+   `vi-compare`, `Policy Guard (Upstream) / policy-guard`) are green on the latest commit.
 2. Click **Merge when ready** (queue-managed **squash**). Ensure >= 1 approval and all review threads are resolved; the
    queue enforces both before merging.
 3. Monitor `https://github.com/LabVIEW-Community-CI-CD/compare-vi-cli-action/queue/main`. GitHub stages entries, reruns

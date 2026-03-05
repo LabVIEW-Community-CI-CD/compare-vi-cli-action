@@ -1,0 +1,118 @@
+name: Icon Editor Invoke VI Diff
+description: Execute VI comparisons for a prepared request set.
+inputs:
+  requests-path:
+    description: Path to vi-diff-requests.json.
+    required: true
+  captures-root:
+    description: Directory where comparison captures should be written.
+    required: true
+  summary-path:
+    description: Destination path for vi-comparison-summary.json.
+    required: true
+  timeout-seconds:
+    description: Timeout (seconds) passed to Invoke-FixtureViDiffs.ps1.
+    required: false
+    default: '900'
+  dry-run:
+    description: Set to true to run comparisons in dry-run mode.
+    required: false
+    default: 'false'
+  working-directory:
+    description: Working directory for the composite (defaults to repository root).
+    required: false
+    default: '.'
+outputs:
+  summary_path:
+    description: Path to the generated vi-comparison-summary.json (if produced).
+    value: ${{ steps.emit.outputs.summary_path }}
+  captures_root:
+    description: Resolved captures directory.
+    value: ${{ steps.emit.outputs.captures_root }}
+  requests_path:
+    description: Resolved requests path (may be absent if file missing).
+    value: ${{ steps.emit.outputs.requests_path }}
+runs:
+  using: composite
+  steps:
+    - name: Invoke VI comparisons
+      shell: pwsh
+      working-directory: ${{ inputs.working-directory }}
+      run: |
+        $ErrorActionPreference = 'Stop'
+        $script = Join-Path 'tools' 'icon-editor' 'Invoke-FixtureViDiffs.ps1'
+        if (-not (Test-Path -LiteralPath $script -PathType Leaf)) {
+          throw "Invoke-FixtureViDiffs.ps1 not found at '$script'."
+        }
+
+        $requestsPath = '${{ inputs.requests-path }}'
+        if ([string]::IsNullOrWhiteSpace($requestsPath)) {
+          throw 'requests-path input is required.'
+        }
+        if (-not (Test-Path -LiteralPath $requestsPath -PathType Leaf)) {
+          Write-Host "::notice::VI diff requests not found at '$requestsPath'; skipping comparisons."
+          exit 0
+        }
+
+        $capturesRoot = '${{ inputs.captures-root }}'
+        if ([string]::IsNullOrWhiteSpace($capturesRoot)) {
+          throw 'captures-root input is required.'
+        }
+
+        $summaryPath = '${{ inputs.summary-path }}'
+        if ([string]::IsNullOrWhiteSpace($summaryPath)) {
+          throw 'summary-path input is required.'
+        }
+
+        $timeout = '${{ inputs.timeout-seconds }}'
+        if (-not [int]::TryParse($timeout, [ref] [int]::new())) {
+          throw "Invalid timeout-seconds value '$timeout'."
+        }
+
+        $arguments = @(
+          '-RequestsPath', $requestsPath,
+          '-CapturesRoot', $capturesRoot,
+          '-SummaryPath', $summaryPath,
+          '-TimeoutSeconds', $timeout
+        )
+
+        if ('${{ inputs.dry-run }}'.ToLowerInvariant() -eq 'true') {
+          $arguments += '-DryRun'
+        }
+
+        & $script @arguments
+
+    - id: emit
+      name: Emit comparison outputs
+      shell: pwsh
+      working-directory: ${{ inputs.working-directory }}
+      run: |
+        $ErrorActionPreference = 'Stop'
+
+        $requestsPath = '${{ inputs.requests-path }}'
+        if (-not [string]::IsNullOrWhiteSpace($requestsPath)) {
+          if (-not [System.IO.Path]::IsPathRooted($requestsPath)) {
+            $requestsPath = Join-Path (Get-Location).Path $requestsPath
+          }
+          $requestsPath = [System.IO.Path]::GetFullPath($requestsPath)
+        }
+
+        $capturesRoot = '${{ inputs.captures-root }}'
+        if (-not [string]::IsNullOrWhiteSpace($capturesRoot)) {
+          if (-not [System.IO.Path]::IsPathRooted($capturesRoot)) {
+            $capturesRoot = Join-Path (Get-Location).Path $capturesRoot
+          }
+          $capturesRoot = [System.IO.Path]::GetFullPath($capturesRoot)
+        }
+
+        $summaryPath = '${{ inputs.summary-path }}'
+        if (-not [string]::IsNullOrWhiteSpace($summaryPath)) {
+          if (-not [System.IO.Path]::IsPathRooted($summaryPath)) {
+            $summaryPath = Join-Path (Get-Location).Path $summaryPath
+          }
+          $summaryPath = [System.IO.Path]::GetFullPath($summaryPath)
+        }
+
+        "summary_path=$summaryPath" | Out-File -FilePath $Env:GITHUB_OUTPUT -Append -Encoding utf8
+        "captures_root=$capturesRoot" | Out-File -FilePath $Env:GITHUB_OUTPUT -Append -Encoding utf8
+        "requests_path=$requestsPath" | Out-File -FilePath $Env:GITHUB_OUTPUT -Append -Encoding utf8

@@ -26,5 +26,5 @@
 - [ ] Tag v0.5.4 on `main`.
 - [ ] Monitor release workflows (`Validate`, `vi-compare-refs`, staging smoke)
   after the tag.
-- [ ] Back-merge `release/v0.5.4` into `develop` via `npm run release:finalize -- 0.5.4`
+- [ ] Back-merge `release/v0.5.4` into `develop` via `node tools/npm/run-script.mjs release:finalize -- 0.5.4`
   and ensure bucket telemetry docs stay in sync.

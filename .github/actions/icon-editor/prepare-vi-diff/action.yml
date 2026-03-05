@@ -1,0 +1,96 @@
+name: Icon Editor Prepare VI Diff
+description: Generate VI diff requests from a fixture report.
+inputs:
+  report-path:
+    description: Path to fixture-report.json.
+    required: true
+  baseline-manifest-path:
+    description: Path to baseline fixture-manifest.json.
+    required: true
+  output-dir:
+    description: Directory where VI diff requests should be written.
+    required: true
+  working-directory:
+    description: Working directory for the composite (defaults to repository root).
+    required: false
+    default: '.'
+outputs:
+  requests_path:
+    description: Path to the generated vi-diff-requests.json (if any).
+    value: ${{ steps.emit.outputs.requests_path }}
+  request_count:
+    description: Number of VI diff requests discovered.
+    value: ${{ steps.emit.outputs.request_count }}
+  has_requests:
+    description: "'true' when the request count is > 0."
+    value: ${{ steps.emit.outputs.has_requests }}
+  output_dir:
+    description: Resolved output directory used for VI diff artifacts.
+    value: ${{ steps.emit.outputs.output_dir }}
+runs:
+  using: composite
+  steps:
+    - name: Prepare VI diff requests
+      shell: pwsh
+      working-directory: ${{ inputs.working-directory }}
+      run: |
+        $ErrorActionPreference = 'Stop'
+        $script = Join-Path 'tools' 'icon-editor' 'Prepare-FixtureViDiffs.ps1'
+        if (-not (Test-Path -LiteralPath $script -PathType Leaf)) {
+          throw "Prepare-FixtureViDiffs.ps1 not found at '$script'."
+        }
+
+        $reportPath = '${{ inputs.report-path }}'
+        $baselineManifest = '${{ inputs.baseline-manifest-path }}'
+        $outputDir = '${{ inputs.output-dir }}'
+
+        if ([string]::IsNullOrWhiteSpace($reportPath)) {
+          throw 'report-path input is required.'
+        }
+        if ([string]::IsNullOrWhiteSpace($baselineManifest)) {
+          throw 'baseline-manifest-path input is required.'
+        }
+        if ([string]::IsNullOrWhiteSpace($outputDir)) {
+          throw 'output-dir input is required.'
+        }
+
+        & $script `
+          -ReportPath $reportPath `
+          -BaselineManifestPath $baselineManifest `
+          -OutputDir $outputDir
+
+    - id: emit
+      name: Emit VI diff metadata
+      shell: pwsh
+      working-directory: ${{ inputs.working-directory }}
+      run: |
+        $ErrorActionPreference = 'Stop'
+        $outputDir = '${{ inputs.output-dir }}'
+        if (-not [System.IO.Path]::IsPathRooted($outputDir)) {
+          $outputDir = Join-Path (Get-Location).Path $outputDir
+        }
+        $outputDir = [System.IO.Path]::GetFullPath($outputDir)
+
+        $requestsPath = Join-Path $outputDir 'vi-diff-requests.json'
+        $requestCount = 0
+        if (Test-Path -LiteralPath $requestsPath -PathType Leaf) {
+          try {
+            $raw = Get-Content -LiteralPath $requestsPath -Raw | ConvertFrom-Json -Depth 6
+            if ($null -ne $raw) {
+              if ($raw.PSObject.Properties['requests']) {
+                $requestCount = @($raw.requests).Count
+              } elseif ($raw.PSObject.Properties['count']) {
+                $requestCount = [int]$raw.count
+              }
+            }
+          } catch {
+            Write-Host "::notice::Failed to parse vi-diff-requests.json: $($_.Exception.Message)"
+          }
+        }
+
+        $hasRequests = if ($requestCount -gt 0) { 'true' } else { 'false' }
+
+        "requests_path=$requestsPath" | Out-File -FilePath $Env:GITHUB_OUTPUT -Append -Encoding utf8
+        "request_count=$requestCount" | Out-File -FilePath $Env:GITHUB_OUTPUT -Append -Encoding utf8
+        "has_requests=$hasRequests" | Out-File -FilePath $Env:GITHUB_OUTPUT -Append -Encoding utf8
+        "output_dir=$outputDir" | Out-File -FilePath $Env:GITHUB_OUTPUT -Append -Encoding utf8

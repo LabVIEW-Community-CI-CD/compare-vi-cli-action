@@ -30,6 +30,7 @@ tmp-orch/
 tmp-rc-pester-results/
 tmp-fast-results/
 tmp-int-results/
+tmp/
 # Root-level transient test artifacts (should not be committed)
 testResults.xml
 tests/results/pester-results.xml

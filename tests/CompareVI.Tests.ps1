@@ -17,7 +17,7 @@ if (-not $script:canonicalCandidates -or $script:canonicalCandidates.Count -eq 0
 $script:canonical = $script:canonicalCandidates[0]
 $script:existingCanonicalPath = $script:canonicalCandidates | Where-Object { Test-Path -LiteralPath $_ -PathType Leaf } | Select-Object -First 1
 
-Describe 'Invoke-CompareVI core behavior' -Tag 'Unit' {
+Describe 'Invoke-CompareVI core behavior' -Tag 'CompareVI','Unit' {
   BeforeAll {
     $modulePath = Join-Path (Resolve-Path (Join-Path $PSScriptRoot '..')) 'scripts/CompareVI.psm1'
     Import-Module $modulePath -Force
@@ -107,7 +107,7 @@ Describe 'Invoke-CompareVI core behavior' -Tag 'Unit' {
   }
 }
 
-Describe 'Resolve-Cli canonical path enforcement' -Tag 'Unit' {
+Describe 'Resolve-Cli canonical path enforcement' -Tag 'CompareVI','Unit' {
   BeforeEach {
     # Use Pester's native TestDrive
     $vis = Join-Path $TestDrive 'vis'

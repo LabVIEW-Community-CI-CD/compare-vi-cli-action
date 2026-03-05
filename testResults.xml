@@ -1,33 +1,28 @@
 ﻿<?xml version="1.0" encoding="utf-8" standalone="no"?>
-<test-results xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="nunit_schema_2.5.xsd" name="Pester" total="10" errors="0" failures="2" not-run="0" inconclusive="0" ignored="0" skipped="2" invalid="0" date="2025-10-23" time="00:13:32">
-  <environment machine-name="USAUSLT-Z7DLW6G" clr-version="9.0.8" user="svelderr" nunit-version="2.5.8.0" os-version="10.0.22631" cwd="C:\codex\home\runner\work\compare-vi-cli-action" user-domain="NI" platform="Microsoft Windows 11 Enterprise|C:\WINDOWS|\Device\Harddisk0\Partition3" />
+<test-results xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="nunit_schema_2.5.xsd" name="Pester" total="3" errors="0" failures="1" not-run="0" inconclusive="0" ignored="0" skipped="0" invalid="0" date="2025-11-02" time="21:05:07">
+  <environment nunit-version="2.5.8.0" clr-version="9.0.8" platform="Microsoft Windows 11 Enterprise|C:\WINDOWS|\Device\Harddisk0\Partition3" machine-name="USAUSLT-Z7DLW6G" cwd="C:\codex\home\runner\work\compare-vi-cli-action" user-domain="NI" user="svelderr" os-version="10.0.22631" />
   <culture-info current-culture="en-US" current-uiculture="en-US" />
-  <test-suite type="TestFixture" name="Pester" executed="True" result="Failure" success="False" time="57.029" asserts="0" description="Pester">
+  <test-suite type="TestFixture" name="Pester" executed="True" result="Failure" success="False" time="14.1926" asserts="0" description="Pester">
     <results>
-      <test-suite type="TestFixture" name="C:\codex\home\runner\work\compare-vi-cli-action\tests\CompareVI.History.Tests.ps1" executed="True" result="Failure" success="False" time="57.029" asserts="0" description="C:\codex\home\runner\work\compare-vi-cli-action\tests\CompareVI.History.Tests.ps1">
+      <test-suite type="TestFixture" name="C:\codex\home\runner\work\compare-vi-cli-action\tests\Prepare-OverlayFromRepo.Tests.ps1" executed="True" result="Success" success="True" time="4.515" asserts="0" description="C:\codex\home\runner\work\compare-vi-cli-action\tests\Prepare-OverlayFromRepo.Tests.ps1">
         <results>
-          <test-suite type="TestFixture" name="Compare-VIHistory helper" executed="True" result="Failure" success="False" time="56.3473" asserts="0" description="Compare-VIHistory helper">
+          <test-suite type="TestFixture" name="Prepare-OverlayFromRepo.ps1" executed="True" result="Success" success="True" time="3.9122" asserts="0" description="Prepare-OverlayFromRepo.ps1">
             <results>
-              <test-case description="produces manifest without artifacts when no diffs detected" name="Compare-VIHistory helper.produces manifest without artifacts when no diffs detected" time="5.1601" asserts="0" success="True" result="Success" executed="True" />
-              <test-case description="retains artifact directory when the stub reports a diff" name="Compare-VIHistory helper.retains artifact directory when the stub reports a diff" time="4.5221" asserts="0" success="True" result="Success" executed="True" />
-              <test-case description="captures xml report when alternate format requested" name="Compare-VIHistory helper.captures xml report when alternate format requested" time="4.2742" asserts="0" success="True" result="Success" executed="True" />
-              <test-case description="shifts start ref to the next change when a more recent commit modified the VI" name="Compare-VIHistory helper.shifts start ref to the next change when a more recent commit modified the VI" time="0.0404" asserts="0" success="False" result="Ignored" executed="False" />
-              <test-case description="falls back to the previous change when no newer commits touched the VI" name="Compare-VIHistory helper.falls back to the previous change when no newer commits touched the VI" time="0.0039" asserts="0" success="False" result="Ignored" executed="False" />
-              <test-case description="exposes attribute-focused mode when requested" name="Compare-VIHistory helper.exposes attribute-focused mode when requested" time="4.4482" asserts="0" success="True" result="Success" executed="True" />
-              <test-case description="drops front panel ignores when front-panel mode is selected" name="Compare-VIHistory helper.drops front panel ignores when front-panel mode is selected" time="4.2795" asserts="0" success="True" result="Success" executed="True" />
-              <test-case description="drops block diagram cosmetic ignore when block-diagram mode is selected" name="Compare-VIHistory helper.drops block diagram cosmetic ignore when block-diagram mode is selected" time="4.922" asserts="0" success="True" result="Success" executed="True" />
-              <test-case description="removes all ignore flags when mode is &quot;all&quot;" name="Compare-VIHistory helper.removes all ignore flags when mode is &quot;all&quot;" time="4.6665" asserts="0" success="False" result="Failure" executed="True">
+              <test-case description="copies only changed files into the overlay" name="Prepare-OverlayFromRepo.ps1.copies only changed files into the overlay" time="1.9924" asserts="0" success="True" result="Success" executed="True" />
+              <test-case description="skips unchanged files even when extensions match" name="Prepare-OverlayFromRepo.ps1.skips unchanged files even when extensions match" time="1.6734" asserts="0" success="True" result="Success" executed="True" />
+            </results>
+          </test-suite>
+        </results>
+      </test-suite>
+      <test-suite type="TestFixture" name="C:\codex\home\runner\work\compare-vi-cli-action\tests\Invoke-IconEditorSnapshotFromRepo.Tests.ps1" executed="True" result="Failure" success="False" time="9.6776" asserts="0" description="C:\codex\home\runner\work\compare-vi-cli-action\tests\Invoke-IconEditorSnapshotFromRepo.Tests.ps1">
+        <results>
+          <test-suite type="TestFixture" name="Invoke-IconEditorSnapshotFromRepo.ps1" executed="True" result="Failure" success="False" time="9.5312" asserts="0" description="Invoke-IconEditorSnapshotFromRepo.ps1">
+            <results>
+              <test-case description="generates a snapshot workspace using changed files from the repo" name="Invoke-IconEditorSnapshotFromRepo.ps1.generates a snapshot workspace using changed files from the repo" time="9.4337" asserts="0" success="False" result="Failure" executed="True">
                 <failure>
-                  <message>Expected $true, but got $false.</message>
-                  <stack-trace>at Test-Path -LiteralPath $suitePath | Should -BeTrue, C:\codex\home\runner\work\compare-vi-cli-action\tests\CompareVI.History.Tests.ps1:497
-at &lt;ScriptBlock&gt;, C:\codex\home\runner\work\compare-vi-cli-action\tests\CompareVI.History.Tests.ps1:497</stack-trace>
-                </failure>
-              </test-case>
-              <test-case description="executes multiple modes and writes per-mode manifests" name="Compare-VIHistory helper.executes multiple modes and writes per-mode manifests" time="4.5472" asserts="0" success="False" result="Failure" executed="True">
-                <failure>
-                  <message>Expected 2, but got 1.</message>
-                  <stack-trace>at $suiteManifest.modes.Count | Should -Be 2, C:\codex\home\runner\work\compare-vi-cli-action\tests\CompareVI.History.Tests.ps1:524
-at &lt;ScriptBlock&gt;, C:\codex\home\runner\work\compare-vi-cli-action\tests\CompareVI.History.Tests.ps1:524</stack-trace>
+                  <message>Expected $true, but got $null.</message>
+                  <stack-trace>at $result.stageExecuted | Should -BeTrue, C:\codex\home\runner\work\compare-vi-cli-action\tests\Invoke-IconEditorSnapshotFromRepo.Tests.ps1:58
+at &lt;ScriptBlock&gt;, C:\codex\home\runner\work\compare-vi-cli-action\tests\Invoke-IconEditorSnapshotFromRepo.Tests.ps1:58</stack-trace>
                 </failure>
               </test-case>
             </results>

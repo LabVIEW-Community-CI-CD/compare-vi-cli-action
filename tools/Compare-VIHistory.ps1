@@ -34,6 +34,7 @@ param(
   [string]$ReportFormat = 'html',
   [switch]$KeepArtifactsOnNoDiff,
   [string]$InvokeScriptPath,
+  [Nullable[int]]$CompareTimeoutSeconds,
 
   [string]$GitHubOutputPath,
   [string]$StepSummaryPath,
@@ -425,6 +426,22 @@ function Invoke-Pwsh {
     StdOut   = $stdout
     StdErr   = $stderr
   }
+}
+
+function Get-ExecDiffEvidence {
+  param(
+    [Parameter(Mandatory = $true)][string]$ExecPath
+  )
+  if (-not (Test-Path -LiteralPath $ExecPath -PathType Leaf)) {
+    return $false
+  }
+  try {
+    $execData = Get-Content -LiteralPath $ExecPath -Raw | ConvertFrom-Json -Depth 8
+    if ($execData -and $execData.PSObject.Properties['diff']) {
+      return [bool]$execData.diff
+    }
+  } catch {}
+  return $false
 }
 
 function Ensure-FileExistsAtRef {
@@ -1323,15 +1340,18 @@ foreach ($modeSpec in $modeSpecs) {
 
     $summaryPath = Join-Path $modeResultsResolved ("{0}-summary.json" -f $comparisonRecord.outName)
     $execPath    = Join-Path $modeResultsResolved ("{0}-exec.json" -f $comparisonRecord.outName)
+    $artifactsPath = Join-Path $modeResultsResolved ("{0}-artifacts" -f $comparisonRecord.outName)
     $summaryJson = $null
     $summaryPreExisting = $false
-    if (Test-Path -LiteralPath $summaryPath -PathType Leaf) {
-      try {
-        $summaryJson = Get-Content -LiteralPath $summaryPath -Raw | ConvertFrom-Json -Depth 8
-        $summaryPreExisting = $true
-      } catch {
-        $summaryJson = $null
-        $summaryPreExisting = $false
+    # Determinism guard: self-hosted workspaces may retain prior run outputs.
+    # Always clear per-pair artifacts so each compare is executed fresh.
+    foreach ($stalePath in @($summaryPath, $execPath, $artifactsPath)) {
+      if (Test-Path -LiteralPath $stalePath) {
+        try {
+          Remove-Item -LiteralPath $stalePath -Recurse -Force -ErrorAction Stop
+        } catch {
+          Write-Warning ("Failed to remove stale comparison output '{0}': {1}" -f $stalePath, $_.Exception.Message)
+        }
       }
     }
 
@@ -1383,6 +1403,10 @@ foreach ($modeSpec in $modeSpecs) {
           $compareArgs += "-LvCompareArgs"
           $compareArgs += ($modeFlags -join ' ')
         }
+        if ($PSBoundParameters.ContainsKey('CompareTimeoutSeconds') -and $CompareTimeoutSeconds -gt 0) {
+          $compareArgs += "-TimeoutSeconds"
+          $compareArgs += [string][int]$CompareTimeoutSeconds
+        }
         if (-not [string]::IsNullOrWhiteSpace($InvokeScriptPath)) {
           $compareArgs += "-InvokeScriptPath"
           $compareArgs += $InvokeScriptPath
@@ -1394,7 +1418,16 @@ foreach ($modeSpec in $modeSpecs) {
         $pwshResult = Invoke-Pwsh -Arguments $compareArgs
         if ($pwshResult.ExitCode -ne 0) {
           if ($pwshResult.ExitCode -eq 1) {
-            Write-Verbose 'Compare-RefsToTemp reported exit code 1 (diff detected); continuing.'
+            $hasSummary = Test-Path -LiteralPath $summaryPath -PathType Leaf
+            $hasDiffEvidence = $hasSummary -or (Get-ExecDiffEvidence -ExecPath $execPath)
+            if ($hasDiffEvidence) {
+              Write-Verbose 'Compare-RefsToTemp reported exit code 1 with diff evidence; continuing.'
+            } else {
+              $msg = "Compare-RefsToTemp.ps1 exited with code 1 without diff evidence."
+              if ($pwshResult.StdErr) { $msg = "$msg`n$($pwshResult.StdErr.Trim())" }
+              if ($pwshResult.StdOut) { $msg = "$msg`n$($pwshResult.StdOut.Trim())" }
+              throw $msg
+            }
           } else {
             $msg = "Compare-RefsToTemp.ps1 exited with code {0}" -f $pwshResult.ExitCode
             if ($pwshResult.StdErr) { $msg = "$msg`n$($pwshResult.StdErr.Trim())" }
@@ -1416,7 +1449,16 @@ foreach ($modeSpec in $modeSpecs) {
           $retryResult = Invoke-Pwsh -Arguments $retryArgs
           if ($retryResult.ExitCode -ne 0) {
             if ($retryResult.ExitCode -eq 1) {
-              Write-Verbose 'Retry Compare-RefsToTemp reported exit code 1 (diff detected); continuing.'
+              $hasSummary = Test-Path -LiteralPath $summaryPath -PathType Leaf
+              $hasDiffEvidence = $hasSummary -or (Get-ExecDiffEvidence -ExecPath $execPath)
+              if ($hasDiffEvidence) {
+                Write-Verbose 'Retry Compare-RefsToTemp reported exit code 1 with diff evidence; continuing.'
+              } else {
+                $msg = "Retry Compare-RefsToTemp.ps1 exited with code 1 without diff evidence."
+                if ($retryResult.StdErr) { $msg = "$msg`n$($retryResult.StdErr.Trim())" }
+                if ($retryResult.StdOut) { $msg = "$msg`n$($retryResult.StdOut.Trim())" }
+                throw $msg
+              }
             } else {
               $msg = "Retry Compare-RefsToTemp.ps1 exited with code {0}" -f $retryResult.ExitCode
               if ($retryResult.StdErr) { $msg = "$msg`n$($retryResult.StdErr.Trim())" }

@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 
-import { mkdir, writeFile } from 'node:fs/promises';
+import { mkdir, writeFile, access } from 'node:fs/promises';
 import path from 'node:path';
 
 const SEMVER_REGEX =
@@ -23,6 +23,22 @@ export async function writeReleaseMetadata(repoRoot, tag, kind, payload) {
   const filePath = path.join(dir, `release-${tag}-${kind}.json`);
   await writeFile(filePath, `${JSON.stringify(payload, null, 2)}\n`, 'utf8');
   return filePath;
+}
+
+export function getReleaseMetadataPath(repoRoot, tag, kind) {
+  return path.join(repoRoot, 'tests', 'results', '_agent', 'release', `release-${tag}-${kind}.json`);
+}
+
+export async function assertReleaseMetadataExists(repoRoot, tag, kind) {
+  const artifactPath = getReleaseMetadataPath(repoRoot, tag, kind);
+  try {
+    await access(artifactPath);
+    return artifactPath;
+  } catch {
+    throw new Error(
+      `[release:metadata] Missing required artifact ${path.relative(repoRoot, artifactPath)}. Run the matching release helper first and retain tests/results/_agent/release/*.`
+    );
+  }
 }
 
 export function summarizeStatusCheckRollup(rollup = []) {

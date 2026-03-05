@@ -1,4 +1,4 @@
-Describe 'CompareVI with Git refs (same path at two commits)' -Tag 'Integration' {
+Describe 'CompareVI with Git refs (same path at two commits)' -Tag 'CompareVI','Integration' {
   BeforeAll {
     $ErrorActionPreference = 'Stop'
     # Require git

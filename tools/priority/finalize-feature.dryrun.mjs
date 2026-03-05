@@ -12,7 +12,7 @@ import {
 } from './lib/branch-utils.mjs';
 
 const USAGE_LINES = [
-  'Usage: npm run feature:finalize:dry -- <slug>',
+  'Usage: node tools/npm/run-script.mjs feature:finalize:dry -- <slug>',
   '',
   'Simulates rebasing feature/<slug> onto develop and writes metadata under tests/results/_agent/feature/.',
   '',

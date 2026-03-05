@@ -13,6 +13,35 @@ Describe "Run-HeadlessCompare.ps1" -Tag "Unit" {
     if (-not (Test-Path -LiteralPath $script:StageScript -PathType Leaf)) {
       throw "Stage-CompareInputs.ps1 not found at $script:StageScript"
     }
+    $script:VendorToolsPath = Join-Path $repoRoot "tools" "VendorTools.psm1"
+  }
+
+  BeforeEach {
+    $script:prevLabVIEWPath = $env:LABVIEW_PATH
+    $script:prevLabVIEWExePath = $env:LABVIEW_EXE_PATH
+    $script:prevLabVIEWCliPath = $env:LABVIEWCLI_PATH
+    $script:prevLVComparePath = $env:LVCOMPARE_PATH
+
+    $script:fakeRoot = Join-Path $TestDrive ([System.Guid]::NewGuid().ToString('n'))
+    $lvDir    = Join-Path $script:fakeRoot 'National Instruments\LabVIEW 2025'
+    $cliDir   = Join-Path $script:fakeRoot 'National Instruments\Shared\LabVIEW CLI'
+    $compareDir = Join-Path $script:fakeRoot 'National Instruments\Shared\LabVIEW Compare'
+    New-Item -ItemType Directory -Path $lvDir, $cliDir, $compareDir -Force | Out-Null
+    Set-Content -LiteralPath (Join-Path $lvDir 'LabVIEW.exe') -Value '' -Encoding utf8
+    Set-Content -LiteralPath (Join-Path $cliDir 'LabVIEWCLI.exe') -Value '' -Encoding utf8
+    Set-Content -LiteralPath (Join-Path $compareDir 'LVCompare.exe') -Value '' -Encoding utf8
+
+    Set-Item Env:LABVIEW_PATH (Join-Path $lvDir 'LabVIEW.exe')
+    Set-Item Env:LABVIEW_EXE_PATH (Join-Path $lvDir 'LabVIEW.exe')
+    Set-Item Env:LABVIEWCLI_PATH (Join-Path $cliDir 'LabVIEWCLI.exe')
+    Set-Item Env:LVCOMPARE_PATH (Join-Path $compareDir 'LVCompare.exe')
+  }
+
+  AfterEach {
+    if ($script:prevLabVIEWPath) { Set-Item Env:LABVIEW_PATH $script:prevLabVIEWPath } else { Remove-Item Env:LABVIEW_PATH -ErrorAction SilentlyContinue }
+    if ($script:prevLabVIEWExePath) { Set-Item Env:LABVIEW_EXE_PATH $script:prevLabVIEWExePath } else { Remove-Item Env:LABVIEW_EXE_PATH -ErrorAction SilentlyContinue }
+    if ($script:prevLabVIEWCliPath) { Set-Item Env:LABVIEWCLI_PATH $script:prevLabVIEWCliPath } else { Remove-Item Env:LABVIEWCLI_PATH -ErrorAction SilentlyContinue }
+    if ($script:prevLVComparePath) { Set-Item Env:LVCOMPARE_PATH $script:prevLVComparePath } else { Remove-Item Env:LVCOMPARE_PATH -ErrorAction SilentlyContinue }
   }
 
   It "defaults to cli-only policy, skips warmup, and forwards timeout" {
@@ -24,6 +53,7 @@ Describe "Run-HeadlessCompare.ps1" -Tag "Unit" {
       New-Item -ItemType Directory -Path "tools" | Out-Null
       Copy-Item -LiteralPath $script:RunHeadlessScript -Destination "tools/Run-HeadlessCompare.ps1"
       Copy-Item -LiteralPath $script:StageScript -Destination "tools/Stage-CompareInputs.ps1"
+      if ($script:VendorToolsPath) { Copy-Item -LiteralPath $script:VendorToolsPath -Destination "tools/VendorTools.psm1" }
 
       $logPath = Join-Path $fsRoot "invoke-log.json"
       $harnessStub = @"
@@ -122,6 +152,7 @@ exit 0
       New-Item -ItemType Directory -Path "tools" | Out-Null
       Copy-Item -LiteralPath $script:RunHeadlessScript -Destination "tools/Run-HeadlessCompare.ps1"
       Copy-Item -LiteralPath $script:StageScript -Destination "tools/Stage-CompareInputs.ps1"
+      if ($script:VendorToolsPath) { Copy-Item -LiteralPath $script:VendorToolsPath -Destination "tools/VendorTools.psm1" }
 
       $logPath = Join-Path $fsRoot "invoke-log.json"
       $harnessStub = @"
@@ -203,6 +234,7 @@ exit 0
       New-Item -ItemType Directory -Path "tools" | Out-Null
       Copy-Item -LiteralPath $script:RunHeadlessScript -Destination "tools/Run-HeadlessCompare.ps1"
       Copy-Item -LiteralPath $script:StageScript -Destination "tools/Stage-CompareInputs.ps1"
+      if ($script:VendorToolsPath) { Copy-Item -LiteralPath $script:VendorToolsPath -Destination "tools/VendorTools.psm1" }
 
       $logPath = Join-Path $fsRoot "invoke-log.json"
       $harnessStub = @"
@@ -280,6 +312,7 @@ exit 0
       New-Item -ItemType Directory -Path "tools" | Out-Null
       Copy-Item -LiteralPath $script:RunHeadlessScript -Destination "tools/Run-HeadlessCompare.ps1"
       Copy-Item -LiteralPath $script:StageScript -Destination "tools/Stage-CompareInputs.ps1"
+      if ($script:VendorToolsPath) { Copy-Item -LiteralPath $script:VendorToolsPath -Destination "tools/VendorTools.psm1" }
 
       $logPath = Join-Path $fsRoot "invoke-log.json"
       $harnessStub = @"
@@ -362,6 +395,71 @@ exit 0
     }
     finally {
       Remove-Item Env:LVCI_COMPARE_POLICY, Env:LVCI_COMPARE_MODE -ErrorAction SilentlyContinue
+      Pop-Location
+    }
+  }
+
+  It "fails when LabVIEW 2025 (64-bit) executable cannot be resolved" {
+    $work = Join-Path $TestDrive "headless-missing-lv"
+    New-Item -ItemType Directory -Path $work | Out-Null
+    Push-Location $work
+    $fsRoot = (Resolve-Path ".").Path
+    try {
+      New-Item -ItemType Directory -Path "tools" | Out-Null
+      Copy-Item -LiteralPath $script:RunHeadlessScript -Destination "tools/Run-HeadlessCompare.ps1"
+      Copy-Item -LiteralPath $script:StageScript -Destination "tools/Stage-CompareInputs.ps1"
+      if ($script:VendorToolsPath) { Copy-Item -LiteralPath $script:VendorToolsPath -Destination "tools/VendorTools.psm1" }
+      Set-Content -LiteralPath "tools/TestStand-CompareHarness.ps1" -Value "param()" -Encoding UTF8
+
+      $baseFs = Join-Path $fsRoot "BaseMissing.vi"
+      $headFs = Join-Path $fsRoot "HeadMissing.vi"
+      Set-Content -LiteralPath $baseFs -Value "base" -Encoding UTF8
+      Set-Content -LiteralPath $headFs -Value "head" -Encoding UTF8
+
+      $missingPath = Join-Path $fsRoot "missing\LabVIEW.exe"
+      $output = & pwsh -NoLogo -NoProfile -File "tools/Run-HeadlessCompare.ps1" `
+        -BaseVi $baseFs `
+        -HeadVi $headFs `
+        -OutputRoot (Join-Path $fsRoot "results") `
+        -LabVIEWExePath $missingPath 2>&1
+      $LASTEXITCODE | Should -Not -Be 0
+      ($output -join "`n") | Should -Match 'not found'
+    }
+    finally {
+      Pop-Location
+    }
+  }
+
+  It "rejects LabVIEW 2025 32-bit installations" {
+    $work = Join-Path $TestDrive "headless-x86"
+    New-Item -ItemType Directory -Path $work | Out-Null
+    Push-Location $work
+    $fsRoot = (Resolve-Path ".").Path
+    try {
+      New-Item -ItemType Directory -Path "tools" | Out-Null
+      Copy-Item -LiteralPath $script:RunHeadlessScript -Destination "tools/Run-HeadlessCompare.ps1"
+      Copy-Item -LiteralPath $script:StageScript -Destination "tools/Stage-CompareInputs.ps1"
+      if ($script:VendorToolsPath) { Copy-Item -LiteralPath $script:VendorToolsPath -Destination "tools/VendorTools.psm1" }
+      Set-Content -LiteralPath "tools/TestStand-CompareHarness.ps1" -Value "param()" -Encoding UTF8
+
+      $x86Exe = Join-Path $fsRoot "Program Files (x86)\National Instruments\LabVIEW 2025\LabVIEW.exe"
+      New-Item -ItemType Directory -Path (Split-Path -Parent $x86Exe) -Force | Out-Null
+      Set-Content -LiteralPath $x86Exe -Value '' -Encoding UTF8
+
+      $baseFs = Join-Path $fsRoot "Base32.vi"
+      $headFs = Join-Path $fsRoot "Head32.vi"
+      Set-Content -LiteralPath $baseFs -Value "base" -Encoding UTF8
+      Set-Content -LiteralPath $headFs -Value "head" -Encoding UTF8
+
+      $output = & pwsh -NoLogo -NoProfile -File "tools/Run-HeadlessCompare.ps1" `
+        -BaseVi $baseFs `
+        -HeadVi $headFs `
+        -OutputRoot (Join-Path $fsRoot "results") `
+        -LabVIEWExePath $x86Exe 2>&1
+      $LASTEXITCODE | Should -Not -Be 0
+      ($output -join "`n") | Should -Match '32-bit'
+    }
+    finally {
       Pop-Location
     }
   }

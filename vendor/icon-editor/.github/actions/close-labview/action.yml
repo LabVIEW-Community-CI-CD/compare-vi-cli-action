@@ -1,0 +1,24 @@
+name: "Close LabVIEW"
+description: "Runs Close_LabVIEW.ps1 to gracefully shut down a LabVIEW instance."
+runs:
+  using: "composite"
+  steps:
+    - name: Checkout code
+      uses: actions/checkout@v3
+      with:
+        fetch-depth: 0
+        clean: false
+
+    - name: Run Close_LabVIEW.ps1
+      shell: pwsh
+      run: |
+        & "${{ github.action_path }}/Close_LabVIEW.ps1" `
+          -MinimumSupportedLVVersion ${{ inputs.minimum_supported_lv_version }} `
+          -SupportedBitness ${{ inputs.supported_bitness }}
+inputs:
+  minimum_supported_lv_version:
+    description: 'LabVIEW major version'
+    required: true
+  supported_bitness:
+    description: '32 or 64'
+    required: true

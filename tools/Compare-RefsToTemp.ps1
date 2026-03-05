@@ -18,6 +18,7 @@ param(
   [switch]$LeakCheck,
   [double]$LeakGraceSeconds = 1.5,
   [string]$LeakJsonPath,
+  [Nullable[int]]$TimeoutSeconds,
   [switch]$FailOnDiff
 )
 
@@ -65,6 +66,19 @@ function Normalize-ExistingPath {
   param([string]$Candidate)
   if ([string]::IsNullOrWhiteSpace($Candidate)) { return $null }
   try { return (Resolve-Path -LiteralPath $Candidate -ErrorAction Stop).Path } catch { return $Candidate }
+}
+
+function Get-PositiveIntFromEnv {
+  param([string[]]$Names)
+  foreach ($name in @($Names | Where-Object { -not [string]::IsNullOrWhiteSpace($_) })) {
+    $raw = [System.Environment]::GetEnvironmentVariable($name, 'Process')
+    if ([string]::IsNullOrWhiteSpace($raw)) { continue }
+    $parsed = 0
+    if ([int]::TryParse($raw.Trim(), [ref]$parsed) -and $parsed -gt 0) {
+      return [int]$parsed
+    }
+  }
+  return $null
 }
 
 function Get-IncludedAttributesFromReport {
@@ -241,7 +255,21 @@ if ($RenderReport.IsPresent -and $reportFormatEffective -ne 'html') {
 }
 $renderReportRequested = ($reportFormatEffective -eq 'html')
 $detailRequested = $Detailed.IsPresent -or $renderReportRequested -or ($reportFormatEffective -ne 'html')
-Write-Host ("[Debug] detailRequested={0} renderReportRequested={1} reportFormat={2}" -f $detailRequested, $renderReportRequested, $reportFormatEffective)
+$timeoutSecondsEffective = $null
+if ($PSBoundParameters.ContainsKey('TimeoutSeconds') -and $TimeoutSeconds -gt 0) {
+  $timeoutSecondsEffective = [int]$TimeoutSeconds
+} else {
+  $timeoutSecondsEffective = Get-PositiveIntFromEnv -Names @(
+    'PR_VI_HISTORY_COMPARE_TIMEOUT_SECONDS',
+    'VI_HISTORY_COMPARE_TIMEOUT_SECONDS',
+    'COMPAREVI_TIMEOUT_SECONDS'
+  )
+}
+if (($timeoutSecondsEffective -eq $null -or $timeoutSecondsEffective -le 0) -and $detailRequested) {
+  # Report generation can exceed the default 300s under real fixture load.
+  $timeoutSecondsEffective = 900
+}
+Write-Host ("[Debug] detailRequested={0} renderReportRequested={1} reportFormat={2} timeoutSeconds={3}" -f $detailRequested, $renderReportRequested, $reportFormatEffective, ($timeoutSecondsEffective ?? 'default'))
 $scriptsRoot = Resolve-CompareVIScriptsRoot -PrimaryRoot $repoRoot
 $flagTokens = Split-ArgString -Value $LvCompareArgs
 $customInvokeProvided = -not [string]::IsNullOrWhiteSpace($InvokeScriptPath)
@@ -313,6 +341,8 @@ $cliCommand = $null
 $cliPath = $null
 $cliDurationSeconds = $null
 $cliDurationNanoseconds = $null
+$cliArtifactImageCount = 0
+$cliArtifactReportSizeBytes = 0
 $cliArgsRecorded = @()
 $cliArtifacts = $null
 $cliHighlights = @()
@@ -323,6 +353,10 @@ $includedAttributes = @()
 if ($detailRequested) {
   $invokeArgs = @('-NoLogo','-NoProfile','-File', $invokeScriptResolved, '-BaseVi', $base, '-HeadVi', $head, '-OutputDir', $artifactDir, '-NoiseProfile', 'full', '-Quiet')
   if ($renderReportRequested) { $invokeArgs += '-RenderReport' }
+  if ($timeoutSecondsEffective -and $timeoutSecondsEffective -gt 0) {
+    $invokeArgs += '-TimeoutSeconds'
+    $invokeArgs += [string]$timeoutSecondsEffective
+  }
   if ($lvComparePathResolved) { $invokeArgs += '-LVComparePath'; $invokeArgs += $lvComparePathResolved }
   if ($labviewExeResolved) { $invokeArgs += '-LabVIEWExePath'; $invokeArgs += $labviewExeResolved }
   if ($customInvokeProvided -and $invokeFlagTokens -and $invokeFlagTokens.Length -gt 0) {
@@ -373,6 +407,9 @@ if ($detailRequested) {
 
   $cliExit = if ($capture.exitCode -ne $null) { [int]$capture.exitCode } else { [int]$invokeResult.ExitCode }
   $cliDiff = ($cliExit -eq 1)
+  if (-not $cliDiff -and $capture.PSObject.Properties['diff']) {
+    try { $cliDiff = [bool]$capture.diff } catch {}
+  }
   $cliCommand = if ($capture.command) { [string]$capture.command } else { $null }
   $cliPath = if ($capture.cliPath) { [string]$capture.cliPath } else { $lvComparePathResolved }
   if ($capture.seconds -ne $null) {
@@ -390,16 +427,39 @@ if ($detailRequested) {
     if ($cliNode.PSObject.Properties['artifacts'] -and $cliNode.artifacts) {
       $artifactSummary = [ordered]@{}
       foreach ($prop in $cliNode.artifacts.PSObject.Properties) {
+        if ($prop.Name -eq 'imageCount' -and $prop.Value -ne $null) {
+          try { $cliArtifactImageCount = [Math]::Max([int]$prop.Value, 0) } catch {}
+        } elseif ($prop.Name -eq 'reportSizeBytes' -and $prop.Value -ne $null) {
+          try { $cliArtifactReportSizeBytes = [Math]::Max([int64]$prop.Value, 0) } catch {}
+        }
         if ($prop.Name -eq 'images' -and $prop.Value) {
           $images = @()
           foreach ($img in @($prop.Value)) {
             if (-not $img) { continue }
-            $images += [ordered]@{
-              index      = $img.index
-              mimeType   = $img.mimeType
-              byteLength = $img.byteLength
-              savedPath  = $img.savedPath
+            $imgIndex = $null
+            $imgMimeType = $null
+            $imgByteLength = $null
+            $imgSavedPath = $null
+            if ($img -is [string]) {
+              $imgSavedPath = [string]$img
+            } elseif ($img.PSObject) {
+              if ($img.PSObject.Properties['index']) { $imgIndex = $img.index }
+              if ($img.PSObject.Properties['mimeType']) { $imgMimeType = $img.mimeType }
+              elseif ($img.PSObject.Properties['mime']) { $imgMimeType = $img.mime }
+              if ($img.PSObject.Properties['byteLength']) { $imgByteLength = $img.byteLength }
+              elseif ($img.PSObject.Properties['bytes']) { $imgByteLength = $img.bytes }
+              if ($img.PSObject.Properties['savedPath']) { $imgSavedPath = $img.savedPath }
+              elseif ($img.PSObject.Properties['path']) { $imgSavedPath = $img.path }
             }
+            $images += [ordered]@{
+              index      = $imgIndex
+              mimeType   = $imgMimeType
+              byteLength = $imgByteLength
+              savedPath  = $imgSavedPath
+            }
+          }
+          if ($images.Count -gt $cliArtifactImageCount) {
+            $cliArtifactImageCount = $images.Count
           }
           if ($images.Count -gt 0) { $artifactSummary.images = $images }
         } else {
@@ -407,6 +467,16 @@ if ($detailRequested) {
         }
       }
       if ($artifactSummary.Count -gt 0) { $cliArtifacts = [pscustomobject]$artifactSummary }
+    }
+  }
+
+  if (-not $cliDiff -and $expectDiff) {
+    if ($cliArtifactImageCount -gt 0) {
+      $cliDiff = $true
+      Write-Verbose ("Treating compare as diff based on artifact image evidence (imageCount={0})." -f $cliArtifactImageCount)
+    } elseif ($cliArtifactReportSizeBytes -gt 0) {
+      $cliDiff = $true
+      Write-Verbose ("Treating compare as diff based on non-empty report artifact (reportSizeBytes={0})." -f $cliArtifactReportSizeBytes)
     }
   }
 
@@ -498,6 +568,7 @@ if ($detailRequested) {
     cwd         = $repoRoot
     duration_s  = $cliDurationSeconds
     duration_ns = $cliDurationNanoseconds
+    timeoutSeconds = $timeoutSecondsEffective
     base        = $capture.base
     head        = $capture.head
   }

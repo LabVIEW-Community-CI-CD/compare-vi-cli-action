@@ -1,0 +1,65 @@
+name: Icon Editor Stage Artifacts
+description: Mirror icon-editor build outputs into structured buckets via Stage-BuildArtifacts.ps1.
+inputs:
+  results-root:
+    description: Source directory that contains icon-editor build outputs.
+    required: true
+  working-directory:
+    description: Working directory for the composite run (defaults to repository root).
+    required: false
+    default: '.'
+outputs:
+  results-root:
+    description: Resolved results root that was passed to the staging helper.
+    value: ${{ steps.emit.outputs.results-root }}
+  packages-path:
+    description: Path to the staged packages bucket.
+    value: ${{ steps.emit.outputs.packages-path }}
+  reports-path:
+    description: Path to the staged reports bucket.
+    value: ${{ steps.emit.outputs.reports-path }}
+  logs-path:
+    description: Path to the staged logs bucket.
+    value: ${{ steps.emit.outputs.logs-path }}
+  summary-json:
+    description: JSON payload returned by Stage-BuildArtifacts.ps1 (bucket metadata).
+    value: ${{ steps.emit.outputs.summary-json }}
+runs:
+  using: composite
+  steps:
+    - id: emit
+      name: Run Stage-BuildArtifacts.ps1
+      shell: pwsh
+      working-directory: ${{ inputs.working-directory }}
+      run: |
+        $ErrorActionPreference = 'Stop'
+        $script = Join-Path 'tools' 'icon-editor' 'Stage-BuildArtifacts.ps1'
+        if (-not (Test-Path -LiteralPath $script -PathType Leaf)) {
+          throw "Helper script not found at '$script'."
+        }
+
+        $resultsRoot = '${{ inputs.results-root }}'
+        if ([string]::IsNullOrWhiteSpace($resultsRoot)) {
+          throw 'results-root input is required.'
+        }
+
+        $output = & $script -ResultsRoot $resultsRoot
+        if (-not $output) {
+          $output = '{}'
+        }
+
+        try {
+          $parsed = $output | ConvertFrom-Json -Depth 6
+        } catch {
+          throw "Failed to parse Stage-BuildArtifacts output as JSON: $($_.Exception.Message)"
+        }
+
+        $packagesPath = $parsed.buckets.packages.path
+        $reportsPath = $parsed.buckets.reports.path
+        $logsPath = $parsed.buckets.logs.path
+
+        "results-root=$resultsRoot" | Out-File -FilePath $Env:GITHUB_OUTPUT -Append -Encoding utf8
+        "packages-path=$packagesPath" | Out-File -FilePath $Env:GITHUB_OUTPUT -Append -Encoding utf8
+        "reports-path=$reportsPath" | Out-File -FilePath $Env:GITHUB_OUTPUT -Append -Encoding utf8
+        "logs-path=$logsPath" | Out-File -FilePath $Env:GITHUB_OUTPUT -Append -Encoding utf8
+        "summary-json=$($output.Trim())" | Out-File -FilePath $Env:GITHUB_OUTPUT -Append -Encoding utf8

@@ -6,7 +6,7 @@ Describe 'Render-CompareReport CLI metadata' -Tag 'Unit' {
     New-Item -ItemType Directory -Force -Path $outRoot | Out-Null
 
     $exec = [ordered]@{
-      command    = 'LabVIEWCLI.exe -OperationName CreateComparisonReport'
+      command    = 'LabVIEWCLI.exe -OperationName CreateComparisonReport -LabVIEWPath "C:\Program Files\National Instruments\LabVIEW 2025\LabVIEW.exe"'
       cliPath    = 'C:\Program Files (x86)\National Instruments\Shared\LabVIEW CLI\LabVIEWCLI.exe'
       exitCode   = 0
       duration_s = 4.321

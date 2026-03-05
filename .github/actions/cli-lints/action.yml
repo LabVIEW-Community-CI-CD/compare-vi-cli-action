@@ -54,9 +54,9 @@ runs:
       run: node tools/npm/cli.mjs install -g markdownlint-cli
 
     - name: Run markdownlint (strict)
-      shell: bash
+      shell: pwsh
       continue-on-error: ${{ inputs.enforce != 'true' }}
-      run: markdownlint "**/*.md" --ignore node_modules
+      run: node tools/npm/run-script.mjs lint:md:changed
 
     - name: Run markdownlint (relaxed path)
       if: ${{ inputs.relaxed-path != '' }}

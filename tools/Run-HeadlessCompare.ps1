@@ -49,7 +49,8 @@ param(
   [int]$TimeoutSeconds = 600,
   [switch]$DisableTimeout,
   [switch]$DisableCleanup,
-  [switch]$UseRawPaths
+  [switch]$UseRawPaths,
+  [string]$LabVIEWExePath
 )
 
 Set-StrictMode -Version Latest
@@ -65,11 +66,45 @@ if (-not $repoRoot) {
 }
 $harness = Join-Path $scriptRoot 'TestStand-CompareHarness.ps1'
 $stageScript = Join-Path $scriptRoot 'Stage-CompareInputs.ps1'
+$vendorModulePath = Join-Path $scriptRoot 'VendorTools.psm1'
+if (Test-Path -LiteralPath $vendorModulePath -PathType Leaf) {
+  Import-Module $vendorModulePath -Force
+}
 if (-not (Test-Path -LiteralPath $harness -PathType Leaf)) {
   throw "TestStand-CompareHarness.ps1 not found at $harness"
 }
 if (-not $UseRawPaths.IsPresent -and -not (Test-Path -LiteralPath $stageScript -PathType Leaf)) {
   throw "Stage-CompareInputs.ps1 not found at $stageScript"
+}
+
+$resolved2025 = $null
+if (Get-Command -Name Resolve-LabVIEW2025Environment -ErrorAction SilentlyContinue) {
+  $resolved2025 = Resolve-LabVIEW2025Environment -ThrowOnMissing:([string]::IsNullOrWhiteSpace($LabVIEWExePath))
+  if (-not $LabVIEWExePath -and $resolved2025) {
+    $LabVIEWExePath = $resolved2025.LabVIEWExePath
+  }
+  if ($resolved2025 -and $resolved2025.LabVIEWCliPath) {
+    [System.Environment]::SetEnvironmentVariable('LABVIEWCLI_PATH', $resolved2025.LabVIEWCliPath, 'Process')
+  }
+  if ($resolved2025 -and $resolved2025.LVComparePath) {
+    [System.Environment]::SetEnvironmentVariable('LVCOMPARE_PATH', $resolved2025.LVComparePath, 'Process')
+  }
+}
+if ($LabVIEWExePath) {
+  [System.Environment]::SetEnvironmentVariable('LABVIEW_PATH', $LabVIEWExePath, 'Process')
+  if (-not (Test-Path -LiteralPath $LabVIEWExePath -PathType Leaf)) {
+    throw "LabVIEW 2025 (64-bit) executable not found at '$LabVIEWExePath'."
+  }
+  if ($LabVIEWExePath -match '(?i)Program Files \(x86\)') {
+    throw "LabVIEW 2025 (64-bit) required. The provided path '$LabVIEWExePath' appears to target the 32-bit installation."
+  }
+} elseif (-not $resolved2025 -or -not $resolved2025.LabVIEWExePath) {
+  throw 'LabVIEW 2025 (64-bit) executable not resolved. Provide -LabVIEWExePath, set LABVIEW_PATH, or configure configs/labview-paths(.local).json.'
+} else {
+  $LabVIEWExePath = $resolved2025.LabVIEWExePath
+  if (-not (Test-Path -LiteralPath $LabVIEWExePath -PathType Leaf)) {
+    throw "LabVIEW 2025 (64-bit) executable not found at '$LabVIEWExePath'."
+  }
 }
 
 function Resolve-AbsolutePath {
@@ -137,6 +172,7 @@ $params = @{
   NoiseProfile  = $NoiseProfile
   TimeoutSeconds = $TimeoutSeconds
 }
+if ($LabVIEWExePath) { $params.LabVIEWExePath = $LabVIEWExePath }
 if (-not $DisableTimeout) { } else { $params.DisableTimeout = $true }
 if ($RenderReport) { $params.RenderReport = $true }
 if (-not $DisableCleanup) {

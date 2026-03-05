@@ -10,6 +10,7 @@ Describe 'Update-SessionIndexBranchProtection' -Tag 'Unit' {
     Set-Variable -Name policy -Scope Script -Value $policyLocal
 
     Set-Variable -Name developExpected -Scope Script -Value @($policyLocal.branches.develop)
+    Set-Variable -Name releaseExpected -Scope Script -Value @($policyLocal.branches.'release/*')
     Set-Variable -Name updateScript -Scope Script -Value (Join-Path $repoRootLocal 'tools/Update-SessionIndexBranchProtection.ps1')
     $newFixture = {
       param([string]$Name)
@@ -32,6 +33,13 @@ Describe 'Update-SessionIndexBranchProtection' -Tag 'Unit' {
       return $resultsDir
     }
     Set-Variable -Name newSessionIndexFixture -Scope Script -Value $newFixture
+  }
+
+  It 'requires develop policy to include core required checks' {
+    $script:developExpected | Should -Contain 'lint'
+    $script:developExpected | Should -Contain 'fixtures'
+    $script:developExpected | Should -Contain 'session-index'
+    $script:developExpected | Should -Contain 'issue-snapshot'
   }
 
   It 'embeds branch protection contract when contexts align' {
@@ -114,6 +122,31 @@ Describe 'Update-SessionIndexBranchProtection' -Tag 'Unit' {
     $bp.notes | Should -Contain ("Missing contexts: {0}" -f $missingContext)
   }
 
+  It 'treats prefixed produced contexts as equivalent to short expected contexts' {
+    $resultsDir = & $script:newSessionIndexFixture 'results-prefixed-produced'
+    $produced = @(
+      'Validate / lint'
+      'Validate / fixtures'
+      'Validate / session-index'
+      'Validate / issue-snapshot'
+      'Validate / semver'
+      'Validate / hook-parity (windows-latest)'
+      'Validate / hook-parity (ubuntu-latest)'
+      'Validate / vi-history-scenarios-linux'
+    )
+
+    & $script:updateScript `
+      -ResultsDir $resultsDir `
+      -PolicyPath $script:policyPath `
+      -Branch 'develop' `
+      -ProducedContexts $produced
+
+    $idx = Get-Content -LiteralPath (Join-Path $resultsDir 'session-index.json') -Raw | ConvertFrom-Json
+    $bp = $idx.branchProtection
+    $bp.result.status | Should -Be 'ok'
+    $bp.result.reason | Should -Be 'aligned'
+  }
+
   It 'escalates to fail when Strict is set and contexts are missing' {
     $resultsDir = & $script:newSessionIndexFixture 'results-missing-strict'
     $missingContext = ($script:developExpected | Where-Object { $_ -match 'lint' } | Select-Object -First 1)
@@ -171,6 +204,102 @@ Describe 'Update-SessionIndexBranchProtection' -Tag 'Unit' {
     $bp.actual.status | Should -Be 'available'
     ($bp.actual.contexts | Sort-Object) | Should -Be ($actual | Sort-Object)
     ($bp.PSObject.Properties.Name -contains 'notes') | Should -BeFalse
+  }
+
+  It 'treats prefixed actual contexts as equivalent to short expected contexts' {
+    $resultsDir = & $script:newSessionIndexFixture 'results-prefixed-actual'
+    $produced = $script:developExpected
+    $actual = @(
+      'Validate / lint'
+      'Validate / fixtures'
+      'Validate / session-index'
+      'Validate / issue-snapshot'
+      'Validate / semver'
+      'Validate / hook-parity (windows-latest)'
+      'Validate / hook-parity (ubuntu-latest)'
+      'Validate / vi-history-scenarios-linux'
+    )
+
+    & $script:updateScript `
+      -ResultsDir $resultsDir `
+      -PolicyPath $script:policyPath `
+      -Branch 'develop' `
+      -ProducedContexts $produced `
+      -ActualContexts $actual
+
+    $idx = Get-Content -LiteralPath (Join-Path $resultsDir 'session-index.json') -Raw | ConvertFrom-Json
+    $bp = $idx.branchProtection
+    $bp.result.status | Should -Be 'ok'
+    $bp.result.reason | Should -Be 'aligned'
+  }
+
+  It 'embeds branch protection contract when release contexts align' {
+    $resultsDir = & $script:newSessionIndexFixture 'results-release-align'
+
+    & $script:updateScript `
+      -ResultsDir $resultsDir `
+      -PolicyPath $script:policyPath `
+      -Branch 'release/v0.6.0' `
+      -ProducedContexts $script:releaseExpected
+
+    $idx = Get-Content -LiteralPath (Join-Path $resultsDir 'session-index.json') -Raw | ConvertFrom-Json
+    $bp = $idx.branchProtection
+    $bp.branch | Should -Be 'release/v0.6.0'
+    ($bp.expected | Sort-Object) | Should -Be ($script:releaseExpected | Sort-Object)
+    ($bp.produced | Sort-Object) | Should -Be ($script:releaseExpected | Sort-Object)
+    $bp.result.status | Should -Be 'ok'
+    $bp.result.reason | Should -Be 'aligned'
+    ($bp.expected -contains 'Requirements Verification / requirements-verification') | Should -BeFalse
+  }
+
+  It 'warns when required release contexts are missing' {
+    $resultsDir = & $script:newSessionIndexFixture 'results-release-missing'
+    $missingContext = ($script:releaseExpected | Where-Object { $_ -match 'publish' } | Select-Object -First 1)
+    if (-not $missingContext) {
+      $missingContext = $script:releaseExpected | Select-Object -First 1
+    }
+    $produced = $script:releaseExpected | Where-Object { $_ -ne $missingContext }
+
+    & $script:updateScript `
+      -ResultsDir $resultsDir `
+      -PolicyPath $script:policyPath `
+      -Branch 'release/v0.6.0' `
+      -ProducedContexts $produced
+
+    $idx = Get-Content -LiteralPath (Join-Path $resultsDir 'session-index.json') -Raw | ConvertFrom-Json
+    $bp = $idx.branchProtection
+    $bp.result.status | Should -Be 'warn'
+    $bp.result.reason | Should -Be 'missing_required'
+    $bp.notes | Should -Contain ("Missing contexts: {0}" -f $missingContext)
+  }
+
+  It 'emits deterministic branch protection output for equivalent context sets' {
+    $resultsDir = & $script:newSessionIndexFixture 'results-deterministic'
+    $firstProduced = @($script:developExpected + $script:developExpected[0])
+    $secondProduced = @($script:developExpected | Sort-Object -Descending)
+
+    & $script:updateScript `
+      -ResultsDir $resultsDir `
+      -PolicyPath $script:policyPath `
+      -Branch 'develop' `
+      -ProducedContexts $firstProduced
+
+    $firstIndex = Get-Content -LiteralPath (Join-Path $resultsDir 'session-index.json') -Raw | ConvertFrom-Json
+    $firstBranchProtection = $firstIndex.branchProtection | ConvertTo-Json -Depth 10 -Compress
+
+    & $script:updateScript `
+      -ResultsDir $resultsDir `
+      -PolicyPath $script:policyPath `
+      -Branch 'develop' `
+      -ProducedContexts $secondProduced
+
+    $secondIndex = Get-Content -LiteralPath (Join-Path $resultsDir 'session-index.json') -Raw | ConvertFrom-Json
+    $secondBranchProtection = $secondIndex.branchProtection | ConvertTo-Json -Depth 10 -Compress
+
+    $secondIndex.branchProtection.result.status | Should -Be 'ok'
+    $secondIndex.branchProtection.result.reason | Should -Be 'aligned'
+    $secondBranchProtection | Should -Be $firstBranchProtection
+    ($secondIndex.branchProtection.expected | Sort-Object) | Should -Be ($script:developExpected | Sort-Object)
   }
 
   It 'flags API errors when live context retrieval fails' {

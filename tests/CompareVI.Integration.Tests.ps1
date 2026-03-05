@@ -4,6 +4,13 @@ Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 Write-Host '[FileStart] CompareVI.Integration.Tests.ps1 loading' -ForegroundColor Magenta
 
+try {
+  $repoRoot = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path
+  Import-Module (Join-Path $repoRoot 'tools' 'VendorTools.psm1') -Force
+} catch {
+  Write-Host "[VendorToolsLoadError] $($_.Exception.Message)" -ForegroundColor Yellow
+}
+
 <#
   Integration test prerequisites initialization is inlined (previous helper function removed)
   to avoid any discovery-time CommandNotFound issues in certain Pester execution contexts.
@@ -84,7 +91,7 @@ BeforeAll {
   }
 }
 
-Describe 'Invoke-CompareVI (real CLI on self-hosted)' -Tag Integration {
+Describe 'Invoke-CompareVI (real CLI on self-hosted)' -Tag 'CompareVI','Integration' {
   It 'prerequisites available (skip remaining if not)' {
     try {
       $prereq = $false
@@ -223,28 +230,33 @@ Describe 'Invoke-CompareVI (real CLI on self-hosted)' -Tag Integration {
   }
 }
 
-Describe 'LabVIEWCLI HTML Comparison Report Generation' -Tag Integration {
+Describe 'LabVIEWCLI HTML Comparison Report Generation' -Tag 'CompareVI','Integration','ReportLane','RequiresLabVIEWCLI','RequiresLabVIEW2025' {
   BeforeAll {
-    # Common paths for LabVIEW 2025
-    $LabVIEWCLI64 = 'C:\Program Files\National Instruments\LabVIEW 2025\LabVIEWCLI.exe'
-    $LabVIEWCLI32 = 'C:\Program Files (x86)\National Instruments\LabVIEW 2025\LabVIEWCLI.exe'
-    
-    # Try to find LabVIEWCLI
     $script:LabVIEWCLI = $null
-    if (Test-Path -LiteralPath $LabVIEWCLI64 -PathType Leaf) {
-      $script:LabVIEWCLI = $LabVIEWCLI64
-    } elseif (Test-Path -LiteralPath $LabVIEWCLI32 -PathType Leaf) {
-      $script:LabVIEWCLI = $LabVIEWCLI32
+    $script:LabVIEW2025 = $null
+
+    if (Get-Command Resolve-LabVIEWCLIPath -ErrorAction SilentlyContinue) {
+      $script:LabVIEWCLI = Resolve-LabVIEWCLIPath -Version 2025 -Bitness 64
+      if (-not $script:LabVIEWCLI) {
+        $script:LabVIEWCLI = Resolve-LabVIEWCLIPath -Version 2025 -Bitness 32
+      }
+      if (-not $script:LabVIEWCLI) {
+        $script:LabVIEWCLI = Resolve-LabVIEWCLIPath
+      }
     }
-    
-    # Flag to skip tests if LabVIEWCLI not available
-    $script:LabVIEWCLIAvailable = $null -ne $script:LabVIEWCLI
+
+    if (Get-Command Find-LabVIEWVersionExePath -ErrorAction SilentlyContinue) {
+      $script:LabVIEW2025 = Find-LabVIEWVersionExePath -Version 2025 -Bitness 64
+    }
+
+    $script:LabVIEWCLIAvailable = ($null -ne $script:LabVIEWCLI) -and ($null -ne $script:LabVIEW2025)
   }
 
   It 'has LabVIEWCLI available (skip remaining tests if not)' {
     if (-not $LabVIEWCLIAvailable) {
-      Write-Host "INFO: LabVIEWCLI.exe not found. Skipping LabVIEWCLI HTML report tests."
-      Write-Host "Install LabVIEW 2025 Q3 or later with LabVIEWCLI to enable these tests."
+      Write-Host "INFO: LabVIEWCLI.exe not found. Skipping LabVIEWCLI HTML report tests." -ForegroundColor Yellow
+      Write-Host "Install LabVIEW 2025 Q3 or later with LabVIEWCLI to enable these tests." -ForegroundColor Yellow
+      Write-Host "Run npm run env:labview:check to inspect lane readiness." -ForegroundColor Yellow
       Set-ItResult -Skipped -Because "LabVIEWCLI not installed"
     }
     $LabVIEWCLIAvailable | Should -BeTrue

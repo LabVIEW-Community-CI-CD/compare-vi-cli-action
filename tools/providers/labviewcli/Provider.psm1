@@ -13,6 +13,36 @@ function Convert-ToBoolString {
   return $script:boolFalse
 }
 
+function Convert-ToCliBoolString {
+  param(
+    [Parameter(Mandatory)][object]$Value,
+    [Parameter(Mandatory)][string]$ParameterName
+  )
+
+  if ($Value -is [bool]) {
+    return (Convert-ToBoolString -Value $Value)
+  }
+  if ($Value -is [byte] -or $Value -is [int16] -or $Value -is [int] -or $Value -is [int64]) {
+    switch ([int64]$Value) {
+      0 { return $script:boolFalse }
+      1 { return $script:boolTrue }
+      default { throw ("Parameter '{0}' only accepts boolean, 0, or 1 values." -f $ParameterName) }
+    }
+  }
+  if ($Value -is [string]) {
+    $normalized = $Value.Trim().ToLowerInvariant()
+    switch ($normalized) {
+      'true' { return $script:boolTrue }
+      'false' { return $script:boolFalse }
+      '1' { return $script:boolTrue }
+      '0' { return $script:boolFalse }
+      default { throw ("Parameter '{0}' string value '{1}' is not a supported boolean token." -f $ParameterName, $Value) }
+    }
+  }
+
+  throw ("Parameter '{0}' value type '{1}' is not supported for boolean conversion." -f $ParameterName, $Value.GetType().FullName)
+}
+
 function Resolve-LabVIEWCliBinaryPath {
   return Resolve-LabVIEWCliPath
 }
@@ -40,7 +70,7 @@ function Get-LabVIEWInstallCandidates {
       $candidates.Add((Join-Path $root ("National Instruments\LabVIEW $Version\LabVIEW.exe")))
     }
   } else {
-    foreach ($root in @($pf, $pf86)) {
+    foreach ($root in @($pf)) {
       if (-not $root) { continue }
       $candidates.Add((Join-Path $root ("National Instruments\LabVIEW $Version\LabVIEW.exe")))
     }
@@ -50,10 +80,29 @@ function Get-LabVIEWInstallCandidates {
 
 function Resolve-LabVIEWPathFromParams {
   param([hashtable]$Params)
+  $Params = $Params ?? @{}
+  $effectiveBitness = if ($Params.ContainsKey('labviewBitness') -and $Params.labviewBitness) {
+    [string]$Params.labviewBitness
+  } else {
+    '64'
+  }
   if ($Params.ContainsKey('labviewPath') -and $Params.labviewPath) {
     $candidate = $Params.labviewPath
     if (Test-Path -LiteralPath $candidate -PathType Leaf) { return (Resolve-Path -LiteralPath $candidate).Path }
     return $candidate
+  }
+  foreach ($envName in @('LABVIEW_PATH','LABVIEW_EXE_PATH')) {
+    $envValue = [System.Environment]::GetEnvironmentVariable($envName)
+    if (-not [string]::IsNullOrWhiteSpace($envValue)) {
+      if (Test-Path -LiteralPath $envValue -PathType Leaf) {
+        $resolvedEnv = (Resolve-Path -LiteralPath $envValue).Path
+        if ($effectiveBitness -eq '64' -and $resolvedEnv -match '(?i)Program Files \(x86\)') {
+          continue
+        }
+        return $resolvedEnv
+      }
+      return $envValue
+    }
   }
   $config = $null
   $root = Get-ProviderRepoRoot
@@ -62,12 +111,13 @@ function Resolve-LabVIEWPathFromParams {
     try { $config = Get-Content -LiteralPath $configPath -Raw | ConvertFrom-Json -Depth 4 } catch {}
   }
   $version = if ($Params.ContainsKey('labviewVersion')) { $Params.labviewVersion } else { '2025' }
-  $bitness = if ($Params.ContainsKey('labviewBitness')) { $Params.labviewBitness } else { '64' }
   $candidates = New-Object System.Collections.Generic.List[string]
-  foreach ($candidate in Get-LabVIEWInstallCandidates -Version $version -Bitness $bitness -Config $config) {
+  foreach ($candidate in Get-LabVIEWInstallCandidates -Version $version -Bitness $effectiveBitness -Config $config) {
     $candidates.Add($candidate)
     if (Test-Path -LiteralPath $candidate -PathType Leaf) {
-      return (Resolve-Path -LiteralPath $candidate).Path
+      $resolvedCandidate = (Resolve-Path -LiteralPath $candidate).Path
+      if ($effectiveBitness -eq '64' -and $resolvedCandidate -match '(?i)Program Files \(x86\)') { continue }
+      return $resolvedCandidate
     }
   }
   Write-Verbose ("LabVIEWCLI provider: LabVIEW candidates -> {0}" -f ($candidates -join '; '))
@@ -106,6 +156,16 @@ function Get-LabVIEWCliArgs {
             $args += [string]$flag
           }
         }
+      }
+      $resolvedLvPath = Resolve-LabVIEWPathFromParams -Params $Params
+      if ($resolvedLvPath) {
+        $args += @('-LabVIEWPath', $resolvedLvPath)
+      }
+      if ($Params.ContainsKey('headless')) {
+        $args += @('-Headless', (Convert-ToCliBoolString -Value $Params.headless -ParameterName 'headless'))
+      }
+      if ($Params.ContainsKey('logToConsole')) {
+        $args += @('-LogToConsole', (Convert-ToCliBoolString -Value $Params.logToConsole -ParameterName 'logToConsole'))
       }
       return $args
     }

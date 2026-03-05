@@ -1,0 +1,120 @@
+#Requires -Version 7.0
+
+param(
+  [string]$RepoPath,
+  [string]$BaseRef,
+  [string]$HeadRef = 'HEAD',
+  [string]$StageName,
+  [string]$WorkspaceRoot,
+  [string]$OverlayRoot,
+  [string]$FixturePath,
+  [string]$BaselineFixture,
+  [string]$BaselineManifest,
+  [switch]$SkipValidate,
+  [switch]$SkipLVCompare,
+  [switch]$DryRun,
+  [switch]$SkipBootstrapForValidate
+)
+
+Set-StrictMode -Version Latest
+$ErrorActionPreference = 'Stop'
+$InformationPreference = 'Continue'
+
+function Resolve-RepoRoot {
+  param([string]$StartPath = (Get-Location).Path)
+  try {
+    return (git -C $StartPath rev-parse --show-toplevel 2>$null).Trim()
+  } catch {
+    return $StartPath
+  }
+}
+
+function Resolve-PathMaybeRelative {
+  param(
+    [string]$Path,
+    [string]$Base
+  )
+  if (-not $Path) { return $null }
+  $anchor = if ($Base) { [System.IO.Path]::GetFullPath($Base) } else { (Get-Location).Path }
+  if ([System.IO.Path]::IsPathRooted($Path)) {
+    return [System.IO.Path]::GetFullPath($Path)
+  }
+  return [System.IO.Path]::GetFullPath((Join-Path $anchor $Path))
+}
+
+$repoRoot = Resolve-RepoRoot
+$prepareOverlayScript = Join-Path $repoRoot 'tools/icon-editor/Prepare-OverlayFromRepo.ps1'
+$stageScript = Join-Path $repoRoot 'tools/icon-editor/Stage-IconEditorSnapshot.ps1'
+
+if (-not (Test-Path -LiteralPath $prepareOverlayScript -PathType Leaf)) {
+  throw "Prepare-OverlayFromRepo.ps1 not found at '$prepareOverlayScript'."
+}
+if (-not (Test-Path -LiteralPath $stageScript -PathType Leaf)) {
+  throw "Stage-IconEditorSnapshot.ps1 not found at '$stageScript'."
+}
+
+$repoPathResolved = Resolve-PathMaybeRelative -Path $RepoPath -Base $repoRoot
+if (-not $repoPathResolved) {
+  throw 'RepoPath is required.'
+}
+
+$workspaceResolved = if ($WorkspaceRoot) {
+  Resolve-PathMaybeRelative -Path $WorkspaceRoot -Base $repoRoot
+} else {
+  Join-Path $repoRoot 'tests/results/_agent/icon-editor/snapshots'
+}
+if (-not (Test-Path -LiteralPath $workspaceResolved -PathType Container)) {
+  [void](New-Item -ItemType Directory -Path $workspaceResolved -Force)
+}
+
+$overlayResolved = if ($OverlayRoot) {
+  Resolve-PathMaybeRelative -Path $OverlayRoot -Base $workspaceResolved
+} else {
+  Join-Path $workspaceResolved '_overlay'
+}
+
+$stageResolvedName = if ($StageName) { $StageName } else { "snapshot-{0}" -f (Get-Date -Format 'yyyyMMddTHHmmss') }
+
+$overlaySummary = & $prepareOverlayScript `
+  -RepoPath $repoPathResolved `
+  -BaseRef $BaseRef `
+  -HeadRef $HeadRef `
+  -OverlayRoot $overlayResolved `
+  -Force
+
+if ($overlaySummary.files.Count -eq 0) {
+  Write-Information 'No resource/test VI changes detected between the specified refs; skipping snapshot staging.'
+  return [pscustomobject]@{
+    overlay       = $overlaySummary.overlayRoot
+    files         = @()
+    stageExecuted = $false
+  }
+}
+
+$defaultFixture = Resolve-PathMaybeRelative -Path 'tests/fixtures/icon-editor/ni_icon_editor-1.4.1.948.vip' -Base $repoRoot
+$defaultBaselineFixture = $defaultFixture
+$defaultBaselineManifest = Resolve-PathMaybeRelative -Path 'tests/fixtures/icon-editor/fixture-manifest.json' -Base $repoRoot
+
+$stageParams = @{
+  SourcePath         = $repoPathResolved
+  ResourceOverlayRoot= $overlaySummary.overlayRoot
+  StageName          = $stageResolvedName
+  WorkspaceRoot      = $workspaceResolved
+  FixturePath        = (Resolve-PathMaybeRelative -Path ($FixturePath ?? $defaultFixture) -Base $repoRoot)
+  BaselineFixture    = (Resolve-PathMaybeRelative -Path ($BaselineFixture ?? $defaultBaselineFixture) -Base $repoRoot)
+  BaselineManifest   = (Resolve-PathMaybeRelative -Path ($BaselineManifest ?? $defaultBaselineManifest) -Base $repoRoot)
+}
+if ($SkipValidate.IsPresent) { $stageParams['SkipValidate'] = $true }
+if ($SkipLVCompare.IsPresent) { $stageParams['SkipLVCompare'] = $true }
+if ($DryRun.IsPresent) { $stageParams['DryRun'] = $true }
+if ($SkipBootstrapForValidate.IsPresent) { $stageParams['SkipBootstrapForValidate'] = $true }
+
+$stageSummary = & $stageScript @stageParams
+
+[pscustomobject]@{
+  overlay       = $overlaySummary.overlayRoot
+  files         = $overlaySummary.files
+  stageRoot     = if ($stageSummary.PSObject.Properties['stageRoot']) { $stageSummary.stageRoot } else { Join-Path $workspaceResolved $stageResolvedName }
+  stageExecuted = $true
+  stageSummary  = $stageSummary
+}

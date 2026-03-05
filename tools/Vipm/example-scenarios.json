@@ -1,0 +1,21 @@
+[
+  {
+    "name": "install-runner-dependencies",
+    "operation": "InstallVipc",
+    "vipcPath": ".github/actions/apply-vipc/runner_dependencies.vipc",
+    "targets": [
+      { "labviewVersion": "2025", "supportedBitness": "64" }
+    ]
+  },
+  {
+    "name": "build-icon-editor-fixture",
+    "operation": "BuildVip",
+    "vipbPath": "Tooling/deployment/SimulatedIconEditor.vipb",
+    "outputDirectory": "tests/results/_agent/icon-editor",
+    "buildVersion": "0.0.0.0",
+    "artifacts": [
+      ".github/builds/VI Package/NI_Icon_editor-0.0.0.0.vip"
+    ],
+    "additionalOptions": [ "-silent" ]
+  }
+]

@@ -216,7 +216,7 @@
     "compile": "tsc -p .",
     "watch": "tsc -p . --watch",
     "package": "vsce package",
-    "test": "npm run compile"
+    "test": "tsc -p ."
   },
   "devDependencies": {
     "@types/glob": "^8.1.0",

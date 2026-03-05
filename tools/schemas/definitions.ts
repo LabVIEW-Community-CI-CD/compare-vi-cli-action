@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { sessionIndexSchema as sessionIndexV2Schema } from '../../src/session-index/schema.js';
 
 const isoString = z.string().min(1);
 const optionalIsoString = isoString.optional();
@@ -711,5 +712,11 @@ export const schemas = [
     fileName: 'pester-invoker-current-run.schema.json',
     description: 'Metadata describing the active RunnerInvoker execution context.',
     schema: invokerCurrentRunSchema,
+  },
+  {
+    id: 'session-index-v2',
+    fileName: 'session-index-v2.schema.json',
+    description: 'Session index v2 schema used as the single source of truth for CI telemetry.',
+    schema: sessionIndexV2Schema,
   },
 ];

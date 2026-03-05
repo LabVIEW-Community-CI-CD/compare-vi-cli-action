@@ -47,7 +47,7 @@ BeforeAll {
   New-Item -ItemType Directory -Path $script:ResultsDir -Force | Out-Null
 }
 
-Describe 'Single real LVCompare invocation (repo VI1.vi vs VI2.vi)' -Tag Integration {
+Describe 'Single real LVCompare invocation (repo VI1.vi vs VI2.vi)' -Tag 'CompareVI','Integration' {
   It 'produces expected diff outputs and HTML report' -Skip:(-not $script:Prereqs) {
   $cliPath = if ($Canonical) { $Canonical } else { $script:Canonical }
   if (-not $cliPath) { Set-ItResult -Skipped -Because 'Canonical path unavailable'; return }

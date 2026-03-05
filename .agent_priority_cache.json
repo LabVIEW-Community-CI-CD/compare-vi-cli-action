@@ -1,20 +1,18 @@
 {
-  "number": 551,
-  "title": "Automate LVCompare config scaffolding for local diff sessions",
-  "url": "https://github.com/LabVIEW-Community-CI-CD/compare-vi-cli-action/issues/551",
+  "number": 588,
+  "title": "Decouple icon editor build steps into composite actions",
+  "url": "https://github.com/LabVIEW-Community-CI-CD/compare-vi-cli-action/issues/588",
   "state": "OPEN",
   "labels": [
-    "ci",
-    "enhancement",
     "standing-priority"
   ],
   "assignees": [],
   "milestone": null,
-  "commentCount": 0,
-  "lastSeenUpdatedAt": "2025-11-01T20:45:21Z",
-  "issueDigest": "155130205596ed77483537aa52b66cc3a229ec5271427a76d6d062f44e5e746c",
-  "bodyDigest": "d98122022b88f77a440f860ec661af51d370e4322e027ed65783e62ec585467a",
-  "cachedAtUtc": "2025-11-01T20:45:34.775Z",
+  "commentCount": 6,
+  "lastSeenUpdatedAt": "2025-11-04T04:06:28Z",
+  "issueDigest": "74eda9ff3d7fdd8090dbcfb37d98dabeeb6ec60f51fa8c5b8dee6ac4036bb737",
+  "bodyDigest": "6b5e2727553071ff27094be41e6f6a290074db2dfbe813fdc8d7209e6ce7e55d",
+  "cachedAtUtc": "2025-11-04T07:14:08.556Z",
   "lastFetchSource": "live",
   "lastFetchError": null
 }

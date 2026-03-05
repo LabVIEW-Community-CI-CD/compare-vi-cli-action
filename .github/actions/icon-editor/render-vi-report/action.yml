@@ -1,0 +1,50 @@
+name: Icon Editor Render VI Report
+description: Render a VI comparison report from a summary JSON file.
+inputs:
+  summary-path:
+    description: Path to vi-comparison-summary.json.
+    required: true
+  output-path:
+    description: Path to vi-comparison-report.md (defaults to summary directory).
+    required: false
+    default: ''
+  working-directory:
+    description: Working directory for the composite (defaults to repository root).
+    required: false
+    default: '.'
+outputs:
+  report_path:
+    description: Path to the generated vi-comparison-report.md.
+    value: ${{ steps.render.outputs.report_path }}
+runs:
+  using: composite
+  steps:
+    - name: Render VI comparison report
+      id: render
+      shell: pwsh
+      working-directory: ${{ inputs.working-directory }}
+      run: |
+        $ErrorActionPreference = 'Stop'
+        $script = Join-Path 'tools' 'icon-editor' 'Render-ViComparisonReport.ps1'
+        if (-not (Test-Path -LiteralPath $script -PathType Leaf)) {
+          throw "Render-ViComparisonReport.ps1 not found at '$script'."
+        }
+
+        $summaryPath = '${{ inputs.summary-path }}'
+        if ([string]::IsNullOrWhiteSpace($summaryPath)) {
+          throw 'summary-path input is required.'
+        }
+        if (-not (Test-Path -LiteralPath $summaryPath -PathType Leaf)) {
+          Write-Host "::notice::VI comparison summary not found at '$summaryPath'; skipping report."
+          "report_path=" | Out-File -FilePath $Env:GITHUB_OUTPUT -Append -Encoding utf8
+          exit 0
+        }
+
+        $outputPath = '${{ inputs.output-path }}'
+        if ([string]::IsNullOrWhiteSpace($outputPath)) {
+          $outputPath = Join-Path (Split-Path -Parent $summaryPath) 'vi-comparison-report.md'
+        }
+
+        & $script -SummaryPath $summaryPath -OutputPath $outputPath | Out-Null
+
+        "report_path=$outputPath" | Out-File -FilePath $Env:GITHUB_OUTPUT -Append -Encoding utf8

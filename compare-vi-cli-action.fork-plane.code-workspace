@@ -1,0 +1,110 @@
+{
+  "folders": [
+    {
+      "name": "PLANE_FORK__compare-vi-cli-action",
+      "path": "."
+    }
+  ],
+  "settings": {
+    "window.title": "[FORK_PLANE] ${activeEditorShort}${separator}${rootName}",
+    "terminal.integrated.shellIntegration.enabled": true
+  },
+  "tasks": {
+    "version": "2.0.0",
+    "tasks": [
+      {
+        "label": "Fork Plane: bootstrap",
+        "type": "process",
+        "command": "node",
+        "args": [
+          "tools/npm/run-script.mjs",
+          "priority:bootstrap"
+        ],
+        "options": {
+          "cwd": "${workspaceFolder:PLANE_FORK__compare-vi-cli-action}"
+        },
+        "problemMatcher": []
+      },
+      {
+        "label": "Fork Plane: pre-push checks",
+        "type": "process",
+        "command": "pwsh",
+        "args": [
+          "-NoLogo",
+          "-NoProfile",
+          "-File",
+          "tools/PrePush-Checks.ps1"
+        ],
+        "options": {
+          "cwd": "${workspaceFolder:PLANE_FORK__compare-vi-cli-action}"
+        },
+        "problemMatcher": []
+      },
+      {
+        "label": "Fork Plane: open or update PR",
+        "type": "process",
+        "command": "node",
+        "args": [
+          "tools/npm/run-script.mjs",
+          "priority:pr"
+        ],
+        "options": {
+          "cwd": "${workspaceFolder:PLANE_FORK__compare-vi-cli-action}"
+        },
+        "problemMatcher": []
+      },
+      {
+        "label": "Fork Plane: dispatch Validate (allow fork)",
+        "type": "process",
+        "command": "node",
+        "args": [
+          "tools/npm/run-script.mjs",
+          "priority:validate",
+          "--",
+          "--allow-fork",
+          "--push-missing",
+          "--ref",
+          "${input:forkValidateRef}"
+        ],
+        "options": {
+          "cwd": "${workspaceFolder:PLANE_FORK__compare-vi-cli-action}"
+        },
+        "problemMatcher": []
+      },
+      {
+        "label": "Fork Plane: watch PR checks (safe)",
+        "type": "process",
+        "command": "node",
+        "args": [
+          "tools/npm/run-script.mjs",
+          "ci:watch:safe",
+          "--",
+          "--PullRequest",
+          "${input:forkWatchPullRequest}",
+          "-IntervalSeconds",
+          "20",
+          "-HeartbeatPolls",
+          "3"
+        ],
+        "options": {
+          "cwd": "${workspaceFolder:PLANE_FORK__compare-vi-cli-action}"
+        },
+        "problemMatcher": []
+      }
+    ],
+    "inputs": [
+      {
+        "id": "forkValidateRef",
+        "type": "promptString",
+        "description": "Branch/ref for Validate dispatch from fork plane",
+        "default": "develop"
+      },
+      {
+        "id": "forkWatchPullRequest",
+        "type": "promptString",
+        "description": "Pull request number to monitor with safe snapshots",
+        "default": "1"
+      }
+    ]
+  }
+}

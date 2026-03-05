@@ -7,8 +7,12 @@ line buffers).
 
 ## Primary directive
 
-- The standing priority is whichever issue carries the `standing-priority`
-  label. Use the sanitized wrappers (`node tools/npm/cli.mjs <command>` /
+- The standing priority is whichever issue carries the active standing-priority
+  label for the current repository context:
+  - canonical/upstream: `standing-priority`
+  - fork repos: `fork-standing-priority` (with fallback to
+    `standing-priority` for compatibility)
+  Use the sanitized wrappers (`node tools/npm/cli.mjs <command>` /
   `node tools/npm/run-script.mjs <script>`) instead of raw `npm` invocations
   (the container exports `npm_config_http_proxy`, which triggers warnings in
   recent npm builds). Run `pwsh -NoLogo -NoProfile -File
@@ -22,6 +26,10 @@ line buffers).
   - Operate inside this repository unless the human asks otherwise.
   - Keep workflows deterministic and green.
   - Reference the current standing-priority issue (e.g., `#<standing-number>`) in commit and PR descriptions.
+  - Treat icon-editor CI/package automation as legacy/manual-only.
+    `ci-composite.yml` is now a manual compatibility stub; do not reintroduce
+    icon-editor fixture freshness checks into required PR gates unless a
+    standing-priority issue explicitly re-enables that scope.
 - First actions in a session:
   1. `pwsh -NoLogo -NoProfile -File tools/priority/bootstrap.ps1` to run hook preflight, refresh the standing-priority
      snapshot/router artifacts, and auto-anchor the workspace to `develop`. When PowerShell + Node aren't available on
@@ -36,7 +44,9 @@ line buffers).
      the working tree is on `develop` before creating a feature branch.
   2. Review `.agent_priority_cache.json` / `tests/results/_agent/issue/` for tasks, acceptance, and
      linked PRs on the standing issue.
-  3. Create or sync a working branch (`issue/<standing-number>-<slug>`), push minimal changes,
+  3. Run `node tools/priority/report-origin-upstream-parity.mjs --base-ref upstream/develop --head-ref origin/develop`
+     and use `tipDiff.fileCount` as the primary origin/upstream alignment KPI (`0` means branch-tip content parity).
+  4. Create or sync a working branch (`issue/<standing-number>-<slug>`), push minimal changes,
      dispatch CI, update the PR (reference `#<standing-number>`), monitor to green, merge when
      acceptance is met.
 
@@ -66,7 +76,7 @@ line buffers).
 - Pattern filter: `./Invoke-PesterTests.ps1 -IncludePatterns 'CompareVI.*'`
 - Staging smoke:
   - `pwsh -File tools/Test-PRVIStagingSmoke.ps1 -DryRun` (plan only)
-  - `npm run smoke:vi-stage` (full run; uses fixtures/vi-attr for a baked-in VI
+  - `node tools/npm/run-script.mjs smoke:vi-stage` (full run; uses fixtures/vi-attr for a baked-in VI
     attribute diff)
   Both flows post artifact links and the updated PR summary comment.
 - Containerized non-LV checks: `pwsh -File tools/Run-NonLVChecksInDocker.ps1`
@@ -74,6 +84,19 @@ line buffers).
   explicitly need the LVCompare UI; otherwise leave it unset to avoid prompts and stuck LabVIEW instances.
   - Note (scope): `LVCI_COMPARE_MODE`/`LVCI_COMPARE_POLICY` apply to harness/workflow helpers only. The composite
     action always invokes LVCompare directly and does not honor these toggles.
+- VI diff discovery quick start:
+  - Run the sweep: `pwsh -File tools/icon-editor/Invoke-VIDiffSweep.ps1 -SummaryCount 10`
+    (defaults to syncing `tmp/icon-editor/repo`, scanning
+    `origin/develop~50..origin/develop`, and writing
+    `tests/results/_agent/icon-editor/vi-changes.json`).
+  - Inspect the JSON / on-screen summary (includes author + subject). To stage a specific
+    commit head-to-head, run
+    `pwsh -File tools/icon-editor/Invoke-VIComparisonFromCommit.ps1 -Commit <hash>`.
+    Optional flags: `[-LabVIEWExePath '<path-to-LabVIEW.exe>']` and
+    `[-SkipLVCompare -SkipValidate]`.
+    This prepares the overlay and snapshot directory; drop the skip flags when you want
+    LVCompare captures.
+  - Full walkthrough lives in `docs/ICON_EDITOR_PACKAGE.md` if you need deeper context.
 
 ## Coding style
 
@@ -109,13 +132,41 @@ line buffers).
 - Keep commits focused; include `#<standing-number>` in subjects.
 - PRs should describe rationale, list affected workflows, and link to artifacts.
 - Ensure CI is green (lint + Pester). Verify no lingering processes on self-hosted runners.
+- For `gh issue create` / `gh issue edit` with multiline Markdown bodies in mixed
+  WSL/Windows shells, prefer `--body-file <path>` (or `-F`) over inline
+  `--body "..."` to avoid backtick command substitution and quoting drift.
+  Example:
+
+  ```bash
+  gh issue create --title "<title>" --body-file issue-body.md
+  gh issue edit <number> --body-file issue-body.md
+  ```
 
 ## Local gates (pre-push)
 
 - Run `tools/PrePush-Checks.ps1` before pushing:
   - Installs `actionlint` (`vars.ACTIONLINT_VERSION`, default 1.7.7) if missing.
   - Runs `actionlint` across `.github/workflows`.
+  - Runs safe PR watch task contract validation (`safe-watch:contract`).
   - Optionally round-trips YAML with `ruamel.yaml` (if Python available).
+  - Validate safe PR watch task contracts manually before task/workspace changes when iterating locally:
+    - `node tools/npm/run-script.mjs safe-watch:contract`
+  - For mixed WSL/Windows shells, prefer HTTPS fetch + SSH push on `origin` to avoid
+    `git ls-remote` auth drift across terminals:
+    - `git remote set-url origin https://github.com/<owner>/<repo>.git`
+    - `git remote set-url --push origin git@github.com:<owner>/<repo>.git`
+- For VI history/container work, run Docker fast-loop before push:
+  - Single-lane strict (recommended first, no runtime auto-repair/engine switching):
+    - `pwsh -NoLogo -NoProfile -File tools/Test-DockerDesktopFastLoop.ps1 -LaneScope linux -StepTimeoutSeconds 600`
+    - `pwsh -NoLogo -NoProfile -File tools/Test-DockerDesktopFastLoop.ps1 -LaneScope windows -StepTimeoutSeconds 600`
+  - Full dual-lane validation:
+    - `pwsh -NoLogo -NoProfile -File tools/Test-DockerDesktopFastLoop.ps1 -LaneScope both -StepTimeoutSeconds 600`
+  - `-ManageDockerEngine` is only allowed with `-LaneScope both`.
+- Markdown lint changed-file contract:
+  - `tools/Lint-Markdown.ps1` and `tools/lint-markdown.mjs` suppress temporary
+    draft files (`.tmp-*.md`, `pr-*-body.md`) during changed-file runs.
+  - Tracked markdown is still linted; temp-file suppression is only for
+    untracked local drafts.
 - Optional hook workflow:
   1. `git config core.hooksPath tools/hooks`
   2. Copy `tools/hooks/pre-push.sample` to `tools/hooks/pre-push`
@@ -133,17 +184,23 @@ line buffers).
 ## Required checks (develop)
 
 - Enforce the required statuses listed in `tools/policy/branch-required-checks.json` (contract source of truth). At
-  present these are: `Validate / lint`, `Validate / fixtures`, and `Validate / session-index`. Optionally apply the
-  same requirement to `main` per repository policy.
+  present these are: `lint`, `fixtures`, `session-index`, `issue-snapshot`, `semver`,
+  `hook-parity (windows-latest)`, `hook-parity (ubuntu-latest)`, and `vi-history-scenarios-linux`.
+  Optionally apply the same requirement to `main` per repository policy.
 - One-time GitHub CLI snippet (admin only):
 
   ```bash
   gh api repos/$REPO/branches/develop/protection \
     -X PUT \
     -f required_status_checks.strict=true \
-    -f required_status_checks.contexts[]='Validate / lint' \
-    -f required_status_checks.contexts[]='Validate / fixtures' \
-    -f required_status_checks.contexts[]='Validate / session-index' \
+    -f required_status_checks.contexts[]='lint' \
+    -f required_status_checks.contexts[]='fixtures' \
+    -f required_status_checks.contexts[]='session-index' \
+    -f required_status_checks.contexts[]='issue-snapshot' \
+    -f required_status_checks.contexts[]='semver' \
+    -f required_status_checks.contexts[]='hook-parity (windows-latest)' \
+    -f required_status_checks.contexts[]='hook-parity (ubuntu-latest)' \
+    -f required_status_checks.contexts[]='vi-history-scenarios-linux' \
     -H "Accept: application/vnd.github+json"
   ```
 
@@ -251,6 +308,28 @@ Use `tools/workflows/update_workflows.py` for mechanical updates (comment-preser
 - `tools/Update-SessionIndexWatcher.ps1` merges `watcher-rest.json` into `session-index.json`, exposing the REST watcher
   status under the `watchers.rest` node. Run it after the watcher step if you update the workflow or run the watcher
   manually.
+- For PR status polling in VS Code terminals, prefer snapshot mode instead of `gh pr checks --watch`:
+  - VS Code task: `CI: Watch PR checks (safe snapshot)`
+  - Workspace tasks:
+    - `Command Center: watch PR checks (safe, fork plane)`
+    - `Fork Plane: watch PR checks (safe)`
+    - `Upstream Plane: watch PR checks (safe)`
+  - CLI equivalent: `node tools/npm/run-script.mjs ci:watch:safe -- --PullRequest <pr-number> -IntervalSeconds 20`
+  - The helper emits delta/heartbeat summaries using repeated `gh pr checks --json` snapshots and avoids high-volume
+    repaint loops that can destabilize integrated terminals.
+  - Smoke-check the watcher behavior (expected: one summary line plus either delta entries or a no-change heartbeat):
+
+    ```bash
+    node tools/npm/run-script.mjs ci:watch:safe -- --PullRequest <pr-number> \
+      -IntervalSeconds 20 -HeartbeatPolls 1 -MaxPolls 2
+    ```
+
+  - If `safe-watch:contract` fails, restore expected task labels/inputs and argument wiring in:
+    - `.vscode/tasks.json`
+    - `compare-vi-cli-action.code-workspace`
+    - `compare-vi-cli-action.command-center.code-workspace`
+    - `compare-vi-cli-action.fork-plane.code-workspace`
+    - `compare-vi-cli-action.upstream-plane.code-workspace`
 
 ## LVCompare observability
 
@@ -272,6 +351,52 @@ Use `tools/workflows/update_workflows.py` for mechanical updates (comment-preser
   ```
 
 - Artifacts land in `tests/results/_agent/`. Summaries update automatically in CI.
+
+## Deterministic orchestration runbook (#683)
+
+- Default operating mode: deterministic handoff with a single active writer.
+- Role windows (SLA targets):
+  - implementer: 0-45 minutes from assignment to first checkpoint.
+  - reviewer: 0-30 minutes from implementer handoff to disposition (approve/request changes).
+  - audit: 0-30 minutes from reviewer disposition to evidence verification and issue/PR log update.
+
+### Machine-readable checkpoint contract
+
+Post checkpoints in the standing issue using this JSON block (inside a fenced `json` code block):
+
+```json
+{
+  "schema": "standing-checkpoint@v1",
+  "issue": 683,
+  "cycle": 1,
+  "role": "implementer",
+  "owner": "<login>",
+  "windowStartUtc": "<ISO-8601>",
+  "windowEndUtc": "<ISO-8601>",
+  "evidence": {
+    "commands": ["<cmd1>", "<cmd2>"],
+    "artifacts": ["<path-or-url>"],
+    "result": "pass|fail|blocked"
+  },
+  "nextOwner": "<login>",
+  "nextRole": "reviewer|audit|implementer"
+}
+```
+
+### Deterministic escalation matrix
+
+- SLA breach (< 15m over window): post checkpoint with `result=blocked`, keep owner, continue execution.
+- SLA breach (>= 15m and < 60m): transfer to next role owner and log transfer reason in checkpoint evidence.
+- SLA breach (>= 60m) or policy deadlock: escalate to repository maintainers,
+  add `admin-override-candidate` note in standing issue, and pause destructive
+  operations until disposition.
+
+### Single-writer protocol (overlapping file scopes)
+
+- One writer per file scope at a time (`.github/workflows/**`, `tools/priority/**`, `docs/**`, etc.).
+- Before edits, announce ownership window in checkpoint JSON (`role=implementer`).
+- Reviewer/audit roles are read-only for owned scopes unless ownership is explicitly transferred in a checkpoint.
+- If overlap is unavoidable, split by disjoint file scopes and record both owners in consecutive checkpoints.
 
 ## Troubleshooting quick links
 
@@ -315,4 +440,3 @@ Guidance:
 - For markdownlint, try `Resolve-MarkdownlintCli2Path`; only fall back to `npx --no-install` when necessary.
 - For LVCompare, continue to enforce the canonical path; pass `-lvpath` to LVCompare and never launch `LabVIEW.exe`.
 - Do not lint or link-check vendor documentation under `bin/`; scope link checks to `docs/` or ignore `bin/**`.
-

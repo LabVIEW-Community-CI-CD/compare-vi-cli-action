@@ -9,16 +9,20 @@
   "branches": {
     "develop": {
       "required_status_checks": [
-        "Validate / lint",
-        "Validate / fixtures",
-        "Validate / session-index",
-        "Validate / issue-snapshot",
-        "Policy Guard (Upstream) / policy-guard"
+        "lint",
+        "fixtures",
+        "session-index",
+        "issue-snapshot",
+        "semver",
+        "hook-parity (windows-latest)",
+        "hook-parity (ubuntu-latest)",
+        "vi-history-scenarios-linux"
       ],
       "required_linear_history": true
     },
     "main": {
       "required_status_checks": [
+        "lint",
         "pester",
         "vi-binary-check",
         "vi-compare",
@@ -26,8 +30,9 @@
       ],
       "required_linear_history": true
     },
-    "release/v0.5.2": {
+    "release/*": {
       "required_status_checks": [
+        "lint",
         "pester",
         "publish",
         "vi-binary-check",
@@ -46,11 +51,14 @@
       ],
       "required_linear_history": true,
       "required_status_checks": [
-        "Validate / lint",
-        "Validate / fixtures",
-        "Validate / session-index",
-        "Validate / issue-snapshot",
-        "Policy Guard (Upstream) / policy-guard"
+        "lint",
+        "fixtures",
+        "session-index",
+        "issue-snapshot",
+        "semver",
+        "hook-parity (windows-latest)",
+        "hook-parity (ubuntu-latest)",
+        "vi-history-scenarios-linux"
       ],
       "merge_queue": null,
       "pull_request": {
@@ -71,6 +79,7 @@
         "refs/heads/main"
       ],
       "required_status_checks": [
+        "lint",
         "pester",
         "vi-binary-check",
         "vi-compare",
@@ -99,6 +108,7 @@
         "refs/heads/release/*"
       ],
       "required_status_checks": [
+        "lint",
         "pester",
         "publish",
         "vi-binary-check",
@@ -120,4 +130,3 @@
     }
   }
 }
-

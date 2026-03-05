@@ -79,6 +79,70 @@ pwsh -File scripts/Render-CompareReport.ps1 `
   -OutputPath compare-report.html
 ```
 
+## NI Windows container compare (local)
+
+Use the local helper when you want deterministic compare execution against NI's Windows image without changing the
+composite action default path.
+
+Preflight Docker mode/image:
+
+```powershell
+node tools/npm/run-script.mjs compare:docker:ni:windows:probe
+```
+
+Expected probe prerequisites:
+
+- Docker Desktop daemon mode is `windows`.
+- Image is present locally (default: `nationalinstruments/labview:2026q1-windows`).
+
+Run compare (base/head provided by environment):
+
+```powershell
+$env:LV_BASE_VI = (Resolve-Path .\VI1.vi).Path
+$env:LV_HEAD_VI = (Resolve-Path .\VI2.vi).Path
+node tools/npm/run-script.mjs compare:docker:ni:windows
+```
+
+Direct invocation with optional overrides:
+
+```powershell
+pwsh -File tools/Run-NIWindowsContainerCompare.ps1 `
+  -BaseVi .\VI1.vi `
+  -HeadVi .\VI2.vi `
+  -Image nationalinstruments/labview:2026q1-windows `
+  -ReportType html `
+  -TimeoutSeconds 600
+```
+
+The helper injects `-Headless` automatically for container runs unless you
+already provide it in `-Flags`.
+
+The helper writes deterministic artifacts beside the report:
+
+- `ni-windows-container-capture.json`
+- `ni-windows-container-stdout.txt`
+- `ni-windows-container-stderr.txt`
+
+Capture diagnostics include:
+
+- `classification` (`ok`, `diff`, `timeout`, `preflight-error`, `labview-cli-connection`, `run-error`)
+- `labviewCliErrorCode` (parsed NI CLI error code when present)
+- `recommendation` (actionable remediation text for known failure classes)
+- `reportExists` (whether the expected report file was produced)
+
+Exit semantics:
+
+- `0`: no differences (or probe success).
+- `1`: differences detected (or CLI-level compare error; inspect capture `status/message`).
+- `2`: preflight/configuration error (mode/image/path).
+- `124`: timeout.
+
+Known runtime issue:
+
+- If capture `classification` is `labview-cli-connection` with `labviewCliErrorCode=-350000`, the NI image runtime on
+  that host could not establish LabVIEW CLI connectivity for the operation. Use the emitted stdout/stderr artifacts for
+  remediation and image validation.
+
 ## Workflow branching
 
 Basic success/failure handling:

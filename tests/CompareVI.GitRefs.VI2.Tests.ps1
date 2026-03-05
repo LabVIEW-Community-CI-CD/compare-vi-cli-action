@@ -1,4 +1,4 @@
-Describe 'CompareVI with Git refs (VI2.vi at two commits)' -Tag 'Integration' {
+Describe 'CompareVI with Git refs (VI2.vi at two commits)' -Tag 'CompareVI','Integration' {
   BeforeAll {
     $ErrorActionPreference = 'Stop'
     try { git --version | Out-Null } catch { throw 'git is required for this test' }

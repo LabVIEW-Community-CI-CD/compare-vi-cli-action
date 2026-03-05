@@ -12,7 +12,7 @@ import {
 } from './lib/branch-utils.mjs';
 
 const USAGE_LINES = [
-  'Usage: npm run release:finalize:dry -- <version>',
+  'Usage: node tools/npm/run-script.mjs release:finalize:dry -- <version>',
   '',
   'Simulates fast-forwarding release/<version> into main/develop and writes metadata under tests/results/_agent/release/.',
   '',

@@ -5,7 +5,8 @@
 [CmdletBinding()]
 param(
   [string]$Dir = 'results/fixture-drift',
-  [string]$SummaryFile = 'drift-summary.json'
+  [string]$SummaryFile = 'drift-summary.json',
+  [string]$DockerRuntimeManagerContextFile = 'docker-runtime-manager-context.json'
 )
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
@@ -32,10 +33,10 @@ function AddCounts($obj){
     $lines += ('- {0}: {1}' -f $k,$v)
   }
 }
-if ($json.summaryCounts) { AddCounts $json.summaryCounts }
-elseif ($json.counts) { AddCounts $json.counts }
+if ($json.PSObject.Properties['summaryCounts'] -and $json.summaryCounts) { AddCounts $json.summaryCounts }
+elseif ($json.PSObject.Properties['counts'] -and $json.counts) { AddCounts $json.counts }
 
-if ($json.notes) {
+if ($json.PSObject.Properties['notes'] -and $json.notes) {
   $n = $json.notes
   if ($n -is [array]) { foreach ($x in $n) { $lines += ('- Note: {0}' -f $x) } }
   else { $lines += ('- Note: {0}' -f $n) }
@@ -108,5 +109,30 @@ try {
     if ($hsLines.Count -gt 0) { $lines += ''; $lines += $hsLines }
   }
 } catch {}
+
+$dockerContextPath = if ([System.IO.Path]::IsPathRooted($DockerRuntimeManagerContextFile)) {
+  $DockerRuntimeManagerContextFile
+} elseif ([string]::IsNullOrWhiteSpace($Dir)) {
+  $DockerRuntimeManagerContextFile
+} else {
+  Join-Path $Dir $DockerRuntimeManagerContextFile
+}
+if (Test-Path -LiteralPath $dockerContextPath -PathType Leaf) {
+  try {
+    $dockerContext = Get-Content -LiteralPath $dockerContextPath -Raw | ConvertFrom-Json -ErrorAction Stop
+    $manager = if ($dockerContext.PSObject.Properties['manager']) { $dockerContext.manager } else { $dockerContext }
+    $lines += ''
+    $lines += '- Docker Runtime Manager:'
+    if ($manager.PSObject.Properties['status']) { $lines += ('  - Status: {0}' -f $manager.status) }
+    if ($manager.PSObject.Properties['startContext']) { $lines += ('  - Start Context: {0}' -f $manager.startContext) }
+    if ($manager.PSObject.Properties['finalContext']) { $lines += ('  - Final Context: {0}' -f $manager.finalContext) }
+    if ($manager.PSObject.Properties['windowsImageDigest']) { $lines += ('  - Windows Digest: {0}' -f $manager.windowsImageDigest) }
+    if ($manager.PSObject.Properties['linuxImageDigest']) { $lines += ('  - Linux Digest: {0}' -f $manager.linuxImageDigest) }
+    if ($manager.PSObject.Properties['summaryPath'] -and $manager.summaryPath) { $lines += ('  - Summary Path: {0}' -f $manager.summaryPath) }
+    $lines += ('  - Context JSON: {0}' -f $dockerContextPath)
+  } catch {
+    $lines += ('- Docker Runtime Manager context parse failed: {0}' -f $dockerContextPath)
+  }
+}
 
 $lines -join "`n" | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8

@@ -4,7 +4,7 @@ if (-not $__testDir) { try { $__testDir = Split-Path -Parent $MyInvocation.MyCom
 if (-not $__testDir) { $__testDir = (Resolve-Path '.').Path }
 . (Join-Path $__testDir '_TestPathHelper.ps1')
 
-Describe 'CompareVI single-run diff details' -Tag 'Unit' {
+Describe 'CompareVI single-run diff details' -Tag 'CompareVI','Unit' {
   BeforeAll {
     $testDir = $null
     try { if ($PSCommandPath) { $testDir = Split-Path -Parent $PSCommandPath } } catch {}

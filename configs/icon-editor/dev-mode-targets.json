@@ -1,0 +1,13 @@
+{
+  "schema": "icon-editor/dev-mode-targets@v1",
+  "operations": {
+    "BuildPackage": {
+      "versions": [2021],
+      "bitness": [32, 64]
+    },
+    "Compare": {
+      "versions": [2025],
+      "bitness": [64]
+    }
+  }
+}

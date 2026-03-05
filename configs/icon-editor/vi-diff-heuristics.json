@@ -1,0 +1,22 @@
+{
+  "schema": "icon-editor/vi-diff-heuristics@v1",
+  "sizeDeltaBytes": 64,
+  "maxComparePerCommit": 20,
+  "prefixRules": [
+    {
+      "prefix": "docs/",
+      "action": "skip",
+      "label": "docs"
+    },
+    {
+      "prefix": "resource/tutorials/",
+      "action": "skip",
+      "label": "tutorials"
+    },
+    {
+      "prefix": "resource/plugins/NIIconEditor/",
+      "action": "compare",
+      "label": "icon-editor-core"
+    }
+  ]
+}

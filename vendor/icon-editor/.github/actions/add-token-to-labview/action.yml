@@ -1,0 +1,27 @@
+name: "Add LabVIEW INI Token"
+description: "Runs AddTokenToLabVIEW.ps1 to add a Localhost.LibraryPaths token to the LabVIEW INI file."
+runs:
+  using: "composite"
+  steps:
+    - name: Checkout code
+      uses: actions/checkout@v3
+      with:
+        fetch-depth: 0
+
+    - name: Run AddTokenToLabVIEW.ps1
+      shell: pwsh
+      run: |
+        & "${{ github.action_path }}/AddTokenToLabVIEW.ps1" \
+          -MinimumSupportedLVVersion ${{ inputs.minimum_supported_lv_version }} \
+          -SupportedBitness ${{ inputs.supported_bitness }} \
+          -RelativePath "${{ inputs.relative_path }}"
+inputs:
+  minimum_supported_lv_version:
+    description: 'LabVIEW major version (e.g. 2021)'
+    required: true
+  supported_bitness:
+    description: '32 or 64'
+    required: true
+  relative_path:
+    description: 'Workspace root path'
+    required: true

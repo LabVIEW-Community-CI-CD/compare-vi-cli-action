@@ -1,7 +1,7 @@
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
-Describe 'Cross-repo history fixtures' {
+Describe 'Cross-repo history fixtures' -Tag 'CompareVI' {
   It 'tracks metadata buckets for labview-icon-editor Settings Init.vi' {
     $repoRoot = Split-Path -Parent $PSScriptRoot
     $fixtureRoot = Join-Path $repoRoot 'fixtures' 'cross-repo' 'labview-icon-editor' 'settings-init'

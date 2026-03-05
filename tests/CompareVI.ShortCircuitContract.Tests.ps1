@@ -3,7 +3,7 @@
 
 Set-StrictMode -Version Latest
 
-Describe 'Invoke-CompareVI result contract' -Tag 'Unit' {
+Describe 'Invoke-CompareVI result contract' -Tag 'CompareVI','Unit' {
   BeforeAll {
     $script:RepoRoot = Split-Path -Parent $PSScriptRoot
     $compareScript = Join-Path $script:RepoRoot 'scripts' 'CompareVI.ps1'

@@ -78,6 +78,10 @@ function parseRemoteUrl(url) {
   return { owner, repo };
 }
 
+function isBranchPattern(branch) {
+  return /[*?[\]]/.test(branch);
+}
+
 function getRepoFromEnv(env = process.env, execSyncFn = execSync) {
   const envRepo = env.GITHUB_REPOSITORY;
   if (envRepo && envRepo.includes('/')) {
@@ -110,43 +114,73 @@ function getRepoFromEnv(env = process.env, execSyncFn = execSync) {
 }
 
 async function resolveToken(env = process.env, { readFileFn = readFile, accessFn = access, logFn = console.log } = {}) {
-  if (env.GH_TOKEN && env.GH_TOKEN.trim()) {
-    logFn('[policy] auth source: GH_TOKEN');
-    return { token: env.GH_TOKEN.trim(), source: 'GH_TOKEN' };
+  const candidates = await resolveTokenCandidates(env, { readFileFn, accessFn });
+  if (candidates.length === 0) {
+    return null;
   }
+  logFn(`[policy] auth source: ${candidates[0].source}`);
+  return candidates[0];
+}
 
-  if (env.GITHUB_TOKEN && env.GITHUB_TOKEN.trim()) {
-    logFn('[policy] auth source: GITHUB_TOKEN');
-    return { token: env.GITHUB_TOKEN.trim(), source: 'GITHUB_TOKEN' };
-  }
+async function resolveTokenCandidates(
+  env = process.env,
+  { readFileFn = readFile, accessFn = access } = {}
+) {
+  const candidates = [];
+  const seen = new Set();
+  const addCandidate = (tokenValue, source) => {
+    if (!tokenValue || !tokenValue.trim()) {
+      return;
+    }
+    const token = tokenValue.trim();
+    const key = `${source}:${token}`;
+    if (seen.has(key)) {
+      return;
+    }
+    candidates.push({ token, source });
+    seen.add(key);
+  };
 
-  if (env.GH_ENTERPRISE_TOKEN && env.GH_ENTERPRISE_TOKEN.trim()) {
-    logFn('[policy] auth source: GH_ENTERPRISE_TOKEN');
-    return { token: env.GH_ENTERPRISE_TOKEN.trim(), source: 'GH_ENTERPRISE_TOKEN' };
-  }
+  addCandidate(env.GH_TOKEN, 'GH_TOKEN');
+  addCandidate(env.GITHUB_TOKEN, 'GITHUB_TOKEN');
+  addCandidate(env.GH_ENTERPRISE_TOKEN, 'GH_ENTERPRISE_TOKEN');
 
-  const candidates = [env.GH_TOKEN_FILE];
+  const fileCandidates = [env.GH_TOKEN_FILE];
   if (process.platform === 'win32') {
-    candidates.push('C:\\github_token.txt');
+    fileCandidates.push('C:\\github_token.txt');
   }
 
-  for (const candidate of candidates) {
+  for (const candidate of fileCandidates) {
     if (!candidate) {
       continue;
     }
     try {
       await accessFn(candidate);
       const fileToken = (await readFileFn(candidate, 'utf8')).trim();
-      if (fileToken) {
-        logFn(`[policy] auth source: file:${candidate}`);
-        return { token: fileToken, source: `file:${candidate}` };
-      }
+      addCandidate(fileToken, `file:${candidate}`);
     } catch {
       // ignore missing/invalid file
     }
   }
 
-  return null;
+  return candidates;
+}
+
+function isUnauthorizedAuthError(error) {
+  if (!error) {
+    return false;
+  }
+  const message = typeof error.message === 'string' ? error.message : String(error);
+  return /401/.test(message) && /unauthorized/i.test(message);
+}
+
+function createAuthUnavailableError(operationName, attemptedSources = [], reason = '') {
+  const chain = attemptedSources.length > 0 ? attemptedSources.join(' -> ') : 'unknown';
+  const suffix = reason && reason.trim() ? ` ${reason.trim()}` : '';
+  const error = new Error(`${operationName} authorization unavailable after sources: ${chain}.${suffix}`);
+  error.code = 'POLICY_AUTH_UNAVAILABLE';
+  error.attemptedSources = attemptedSources;
+  return error;
 }
 
 async function requestJson(url, token, { method = 'GET', body, fetchFn } = {}) {
@@ -577,7 +611,12 @@ async function collectState(manifest, repoUrl, token, fetchFn) {
 
   const branchStates = [];
   for (const [branch, expectations] of Object.entries(manifest.branches ?? {})) {
-    const state = { branch, expectations, protection: null, error: null };
+    const state = { branch, expectations, protection: null, error: null, skipReason: null };
+    if (isBranchPattern(branch)) {
+      state.skipReason = 'pattern';
+      branchStates.push(state);
+      continue;
+    }
     try {
       const protectionUrl = `${repoUrl}/branches/${encodeURIComponent(branch)}/protection`;
       state.protection = await fetchJson(protectionUrl, token, fetchFn);
@@ -594,14 +633,14 @@ async function collectState(manifest, repoUrl, token, fetchFn) {
     if (Number.isNaN(numericId)) {
       state.error = new Error('invalid id');
       rulesetStates.push(state);
-    continue;
-  }
-  try {
-    const rulesetUrl = `${repoUrl}/rulesets/${numericId}`;
-    state.ruleset = await fetchJson(rulesetUrl, token, fetchFn);
-  } catch (error) {
-    state.error = error;
-  }
+      continue;
+    }
+    try {
+      const rulesetUrl = `${repoUrl}/rulesets/${numericId}`;
+      state.ruleset = await fetchJson(rulesetUrl, token, fetchFn);
+    } catch (error) {
+      state.error = error;
+    }
     rulesetStates.push(state);
   }
 
@@ -613,6 +652,9 @@ function evaluateDiffs(manifest, state) {
 
   const branchDiffs = [];
   for (const entry of state.branchStates) {
+    if (entry.skipReason === 'pattern') {
+      continue;
+    }
     if (entry.error) {
       branchDiffs.push(`branch ${entry.branch}: failed to load protection -> ${entry.error.message}`);
       continue;
@@ -654,20 +696,78 @@ export async function run({
 
   const manifest = await loadManifest();
   const forkRun = await detectForkRun(env);
-  const tokenResult = await resolveToken(env);
-  const token = tokenResult?.token;
-  if (!token) {
+  const tokenCandidates = await resolveTokenCandidates(env);
+  if (tokenCandidates.length === 0) {
     throw new Error('GitHub token not found. Set GITHUB_TOKEN, GH_TOKEN, or GH_TOKEN_FILE.');
   }
+  let activeTokenIndex = 0;
+  let activeTokenResult = tokenCandidates[activeTokenIndex];
+  log(`[policy] auth source: ${activeTokenResult.source}`);
+
+  const invokeWithAuthFallback = async (operationName, operationFn) => {
+    const attemptedSources = [activeTokenResult.source];
+    try {
+      return await operationFn(activeTokenResult.token);
+    } catch (initialError) {
+      if (!isUnauthorizedAuthError(initialError)) {
+        throw initialError;
+      }
+
+      const fallback = tokenCandidates.find(
+        (candidate, index) => index > activeTokenIndex && candidate.token !== activeTokenResult.token
+      );
+      if (!fallback) {
+        throw createAuthUnavailableError(
+          operationName,
+          attemptedSources,
+          `No fallback token available. Last error: ${initialError.message}`
+        );
+      }
+
+      log(`[policy] auth fallback: ${activeTokenResult.source} -> ${fallback.source} (401 Unauthorized)`);
+      activeTokenIndex = tokenCandidates.indexOf(fallback);
+      activeTokenResult = fallback;
+      attemptedSources.push(activeTokenResult.source);
+
+      try {
+        return await operationFn(activeTokenResult.token);
+      } catch (fallbackError) {
+        if (isUnauthorizedAuthError(fallbackError)) {
+          throw createAuthUnavailableError(
+            operationName,
+            attemptedSources,
+            `Last error: ${fallbackError.message}`
+          );
+        }
+        throw fallbackError;
+      }
+    }
+  };
 
   const { owner, repo } = getRepoFromEnv(env, execSyncFn);
   dbg(`Resolved repository ${owner}/${repo}`);
-  if (tokenResult?.source) {
-    dbg(`Token source ${tokenResult.source}`);
+  if (activeTokenResult?.source) {
+    dbg(`Token source ${activeTokenResult.source}`);
   }
   const repoUrl = `https://api.github.com/repos/${owner}/${repo}`;
 
-  const initialState = await collectState(manifest, repoUrl, token, fetchFn);
+  let initialState;
+  try {
+    initialState = await invokeWithAuthFallback('collectState', (token) =>
+      collectState(manifest, repoUrl, token, fetchFn)
+    );
+  } catch (authError) {
+    if (!options.apply && authError?.code === 'POLICY_AUTH_UNAVAILABLE') {
+      const attempted = Array.isArray(authError.attemptedSources) && authError.attemptedSources.length > 0
+        ? authError.attemptedSources.join(' -> ')
+        : 'unknown';
+      log(
+        `[policy] Authorization unavailable for policy check (attempted: ${attempted}); skipping non-apply validation. Upstream status "Policy Guard (Upstream) / policy-guard" remains authoritative.`
+      );
+      return 0;
+    }
+    throw authError;
+  }
   if (options.debug) {
     const repoKeys = initialState.repoData ? Object.keys(initialState.repoData) : [];
     dbg(`Repo response keys: ${repoKeys.length ? repoKeys.join(', ') : '(none)'}`);
@@ -711,6 +811,9 @@ export async function run({
 
   if (options.apply) {
     const branchStatesNeedingUpdates = initialState.branchStates.filter((entry, index) => {
+      if (entry.skipReason === 'pattern') {
+        return false;
+      }
       if (entry.error) {
         return isNotFoundError(entry.error);
       }
@@ -723,14 +826,16 @@ export async function run({
     });
 
     for (const entry of branchStatesNeedingUpdates) {
-      await applyBranchProtection(
-        repoUrl,
-        token,
-        entry.branch,
-        entry.expectations,
-        entry.protection,
-        fetchFn,
-        log
+      await invokeWithAuthFallback(`applyBranchProtection(${entry.branch})`, (token) =>
+        applyBranchProtection(
+          repoUrl,
+          token,
+          entry.branch,
+          entry.expectations,
+          entry.protection,
+          fetchFn,
+          log
+        )
       );
     }
 
@@ -743,18 +848,22 @@ export async function run({
     });
 
     for (const entry of rulesetStatesNeedingUpdates) {
-      await applyRuleset(
-        repoUrl,
-        token,
-        entry.id,
-        entry.expectations,
-        entry.ruleset,
-        fetchFn,
-        log
+      await invokeWithAuthFallback(`applyRuleset(${entry.id})`, (token) =>
+        applyRuleset(
+          repoUrl,
+          token,
+          entry.id,
+          entry.expectations,
+          entry.ruleset,
+          fetchFn,
+          log
+        )
       );
     }
 
-    const postState = await collectState(manifest, repoUrl, token, fetchFn);
+    const postState = await invokeWithAuthFallback('collectState(post-apply)', (token) =>
+      collectState(manifest, repoUrl, token, fetchFn)
+    );
     const postDiffs = evaluateDiffs(manifest, postState);
     const remainingDiffs = [
       ...postDiffs.repoDiffs,

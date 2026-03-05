@@ -1,0 +1,257 @@
+#Requires -Version 7.0
+
+<#
+.SYNOPSIS
+Runs a self-hosted Validate flow locally, including fixture report generation,
+VI diff preparation, LVCompare execution, tests, and pre-push checks.
+
+.DESCRIPTION
+Recreates the icon-editor portions of the Validate workflow on a self-hosted
+Windows runner. Expects LabVIEW/LVCompare/TestStand to be available, along with
+GH_TOKEN/GITHUB_TOKEN for API calls. Leaves results under the specified
+ResultsRoot (defaults to tests/results/_agent/icon-editor/local-validate).
+
+.PARAMETER BaselineFixture
+Optional path to the baseline VIP used for comparison prep. Defaults to
+tests/fixtures/icon-editor/ni_icon_editor-1.4.1.794.vip.
+
+.PARAMETER BaselineManifest
+Optional path to the baseline manifest (icon-editor/fixture-manifest@v1). Defaults to
+tests/fixtures/icon-editor/fixture-manifest-1.4.1.794.json.
+
+.PARAMETER SkipLVCompare
+When present, runs comparison tooling in dry-run mode (no LVCompare launch) but still renders reports.
+
+.PARAMETER ResultsRoot
+Root directory for all generated artifacts. Defaults to tests/results/_agent/icon-editor/local-validate.
+
+.PARAMETER KeepWorkspace
+If set, extraction directories are preserved for inspection.
+
+.PARAMETER SkipBootstrap
+Skips priority/bootstrap.ps1 (use only if the session is already bootstrapped).
+
+.PARAMETER IncludeSimulation
+Also run Simulate-IconEditorBuild VIP diff (dry-run compare and report).
+
+#>
+
+param(
+  [string]$BaselineFixture,
+  [string]$BaselineManifest,
+  [string]$ResourceOverlayRoot,
+  [switch]$SkipLVCompare,
+  [string]$ResultsRoot,
+  [switch]$KeepWorkspace,
+  [switch]$SkipBootstrap,
+  [switch]$IncludeSimulation,
+  [switch]$DryRun
+)
+
+Set-StrictMode -Version Latest
+$ErrorActionPreference = 'Stop'
+
+function Resolve-RepoRoot {
+  param([string]$StartPath = (Get-Location).Path)
+  try { return (git -C $StartPath rev-parse --show-toplevel 2>$null).Trim() } catch { return $StartPath }
+}
+
+function Resolve-PathOrDefault {
+  param(
+    [string]$DefaultRelative,
+    [string]$Override
+  )
+  if ($Override) {
+    return (Resolve-Path -LiteralPath $Override).Path
+  }
+  $repoRoot = Resolve-RepoRoot
+  return (Resolve-Path -LiteralPath (Join-Path $repoRoot $DefaultRelative)).Path
+}
+
+$repoRoot = Resolve-RepoRoot
+
+if (-not $SkipBootstrap.IsPresent) {
+  Write-Host '==> Running priority bootstrap'
+  pwsh -NoLogo -NoProfile -File (Join-Path $repoRoot 'tools/priority/bootstrap.ps1') | Out-Null
+}
+
+if (-not $DryRun.IsPresent) {
+  Write-Host '==> Running hook parity (warn-only)'
+  node (Join-Path $repoRoot 'tools/npm/run-script.mjs') hooks:pre-commit | Out-Null
+  node (Join-Path $repoRoot 'tools/npm/run-script.mjs') hooks:multi | Out-Null
+} else {
+  Write-Host '==> Dry run: skipping hook parity checks'
+}
+
+if (-not $ResultsRoot) {
+  $ResultsRoot = Join-Path $repoRoot 'tests/results/_agent/icon-editor/local-validate'
+}
+if (-not (Test-Path -LiteralPath $ResultsRoot -PathType Container)) {
+  [void][System.IO.Directory]::CreateDirectory($ResultsRoot)
+}
+$resultsRootResolved = (Resolve-Path -LiteralPath $ResultsRoot).Path
+
+$fixtureCurrent = Resolve-PathOrDefault -DefaultRelative 'tests/fixtures/icon-editor/ni_icon_editor-1.4.1.948.vip'
+$baselineFixtureResolved = Resolve-PathOrDefault -DefaultRelative 'tests/fixtures/icon-editor/ni_icon_editor-1.4.1.794.vip' -Override $BaselineFixture
+$baselineManifestResolved = Resolve-PathOrDefault -DefaultRelative 'tests/fixtures/icon-editor/fixture-manifest-1.4.1.794.json' -Override $BaselineManifest
+$overlayResolved = $null
+if ($ResourceOverlayRoot) {
+  $overlayResolved = (Resolve-Path -LiteralPath $ResourceOverlayRoot).Path
+} else {
+  $defaultOverlay = Join-Path $repoRoot 'vendor/icon-editor/resource'
+  if (Test-Path -LiteralPath $defaultOverlay -PathType Container) {
+    $overlayResolved = (Resolve-Path -LiteralPath $defaultOverlay).Path
+  }
+}
+
+Write-Host "==> Current fixture: $fixtureCurrent"
+Write-Host "==> Baseline fixture: $baselineFixtureResolved"
+Write-Host "==> Baseline manifest: $baselineManifestResolved"
+Write-Host "==> Results root: $resultsRootResolved"
+if ($overlayResolved) {
+  Write-Host "==> Resource overlay: $overlayResolved"
+}
+
+if (-not $env:GH_TOKEN -and -not $env:GITHUB_TOKEN) {
+  Write-Warning 'GH_TOKEN / GITHUB_TOKEN not set; GitHub API calls may fail.'
+}
+
+$describeOut = Join-Path $resultsRootResolved 'fixture-report.json'
+Write-Host '==> Generating fixture report'
+$describeWork = Join-Path $resultsRootResolved '__describe'
+if ((Test-Path -LiteralPath $describeWork -PathType Container) -and -not $KeepWorkspace.IsPresent) {
+  Remove-Item -LiteralPath $describeWork -Recurse -Force
+}
+$describeParams = @{
+  FixturePath = $fixtureCurrent
+  ResultsRoot = $describeWork
+  OutputPath  = $describeOut
+  KeepWork    = $KeepWorkspace
+}
+if ($overlayResolved) {
+  $describeParams['ResourceOverlayRoot'] = $overlayResolved
+}
+$summary = & (Join-Path $repoRoot 'tools/icon-editor/Describe-IconEditorFixture.ps1') @describeParams
+
+if (-not (Test-Path -LiteralPath $describeOut -PathType Leaf)) {
+  Write-Host '    Report missing after describe; writing summary manually'
+  $summary | ConvertTo-Json -Depth 8 | Set-Content -LiteralPath $describeOut -Encoding utf8
+}
+if (-not $KeepWorkspace.IsPresent -and (Test-Path -LiteralPath $describeWork -PathType Container)) {
+  Remove-Item -LiteralPath $describeWork -Recurse -Force -ErrorAction SilentlyContinue
+}
+
+Write-Host "    Report: $describeOut"
+$manifestCurrent = Join-Path $resultsRootResolved 'manifest.json'
+if (-not (Test-Path -LiteralPath $manifestCurrent -PathType Leaf)) {
+  Write-Warning "Manifest not found at $manifestCurrent"
+}
+
+$viDiffRoot = Join-Path $resultsRootResolved 'vi-diff'
+if (Test-Path -LiteralPath $viDiffRoot) {
+  Remove-Item -LiteralPath $viDiffRoot -Recurse -Force
+}
+$prepareArgs = @{
+  ReportPath          = $describeOut
+  BaselineManifestPath= $baselineManifestResolved
+  BaselineFixturePath = $baselineFixtureResolved
+  OutputDir           = $viDiffRoot
+}
+if ($overlayResolved) {
+  $prepareArgs['ResourceOverlayRoot'] = $overlayResolved
+}
+Write-Host '==> Preparing VI diff requests'
+& (Join-Path $repoRoot 'tools/icon-editor/Prepare-FixtureViDiffs.ps1') @prepareArgs | Out-Null
+
+$requestsPath = Join-Path $viDiffRoot 'vi-diff-requests.json'
+$requestCount = 0
+if (Test-Path -LiteralPath $requestsPath -PathType Leaf) {
+  $raw = Get-Content -LiteralPath $requestsPath -Raw | ConvertFrom-Json
+  $requestCount = $raw.count
+}
+Write-Host "    Requests: $requestCount ($requestsPath)"
+
+$capturesRoot = Join-Path $resultsRootResolved 'vi-diff-captures'
+if (Test-Path -LiteralPath $capturesRoot) {
+  Remove-Item -LiteralPath $capturesRoot -Recurse -Force
+}
+
+$skipCompare = $SkipLVCompare.IsPresent -or ($requestCount -le 0) -or $DryRun.IsPresent
+if ($skipCompare) {
+  Write-Host '==> Skipping LVCompare execution (dry-run)'
+  & (Join-Path $repoRoot 'tools/icon-editor/Invoke-FixtureViDiffs.ps1') `
+    -RequestsPath $requestsPath `
+    -CapturesRoot $capturesRoot `
+    -SummaryPath (Join-Path $capturesRoot 'vi-comparison-summary.json') `
+    -DryRun | Out-Null
+} else {
+  Write-Host '==> Running LVCompare on requests'
+  & (Join-Path $repoRoot 'tools/icon-editor/Invoke-FixtureViDiffs.ps1') `
+    -RequestsPath $requestsPath `
+    -CapturesRoot $capturesRoot `
+    -SummaryPath (Join-Path $capturesRoot 'vi-comparison-summary.json') `
+    -TimeoutSeconds 900 | Out-Null
+}
+
+$summaryPath = Join-Path $capturesRoot 'vi-comparison-summary.json'
+if (Test-Path -LiteralPath $summaryPath -PathType Leaf) {
+  & (Join-Path $repoRoot 'tools/icon-editor/Render-ViComparisonReport.ps1') `
+    -SummaryPath $summaryPath `
+    -OutputPath (Join-Path $capturesRoot 'vi-comparison-report.md') | Out-Null
+}
+
+if ($IncludeSimulation.IsPresent) {
+  Write-Host '==> Running simulation VIP diff (dry-run)'
+  $simRoot = Join-Path $resultsRootResolved 'vip-vi-diff'
+  if (Test-Path -LiteralPath $simRoot) { Remove-Item -LiteralPath $simRoot -Recurse -Force }
+  $simulateParams = @{
+    FixturePath      = $fixtureCurrent
+    ResultsRoot      = $resultsRootResolved
+    VipDiffOutputDir = $simRoot
+    KeepExtract      = $KeepWorkspace
+  }
+  if ($overlayResolved) {
+    $simulateParams['ResourceOverlayRoot'] = $overlayResolved
+  }
+  & (Join-Path $repoRoot 'tools/icon-editor/Simulate-IconEditorBuild.ps1') @simulateParams | Out-Null
+  $simRequests = Join-Path $simRoot 'vi-diff-requests.json'
+  if (Test-Path -LiteralPath $simRequests -PathType Leaf) {
+    & (Join-Path $repoRoot 'tools/icon-editor/Invoke-FixtureViDiffs.ps1') `
+      -RequestsPath $simRequests `
+      -CapturesRoot (Join-Path $resultsRootResolved 'vip-vi-diff-captures') `
+      -SummaryPath (Join-Path $resultsRootResolved 'vip-vi-diff-captures/vi-comparison-summary.json') `
+      -DryRun | Out-Null
+    & (Join-Path $repoRoot 'tools/icon-editor/Render-ViComparisonReport.ps1') `
+      -SummaryPath (Join-Path $resultsRootResolved 'vip-vi-diff-captures/vi-comparison-summary.json') `
+      -OutputPath (Join-Path $resultsRootResolved 'vip-vi-diff-captures/vi-comparison-report.md') | Out-Null
+  }
+}
+
+if (-not $DryRun.IsPresent) {
+  Write-Host '==> Running PrePush checks'
+  pwsh -NoLogo -NoProfile -File (Join-Path $repoRoot 'tools/PrePush-Checks.ps1')
+
+  Write-Host '==> Running targeted Pester suites'
+  $pesterTests = @(
+    'tests/Prepare-FixtureViDiffs.Tests.ps1',
+    'tests/Prepare-VipViDiffRequests.Tests.ps1',
+    'tests/Render-ViComparisonReport.Tests.ps1',
+  'tests/Simulate-IconEditorVipDiff.Tests.ps1',
+  'tests/Invoke-FixtureViDiffs.Tests.ps1',
+  'tests/Simulate-IconEditorBuild.Tests.ps1',
+  'tests/Stage-IconEditorSnapshot.Tests.ps1',
+  'tests/Invoke-ValidateLocal.Tests.ps1'
+)
+  $invokeCmd = "Import-Module Pester -MinimumVersion 5.0; Invoke-Pester -Path {0} -CI -Output Detailed" -f ($pesterTests -join ',')
+  pwsh -NoLogo -NoProfile -Command $invokeCmd
+} else {
+  Write-Host '==> Dry run: skipping PrePush checks and targeted Pester suites'
+}
+
+Write-Host '==> Completed local Validate run'
+Write-Host "    Fixture report : $describeOut"
+Write-Host "    VI diff requests: $requestsPath"
+Write-Host "    Compare captures: $capturesRoot"
+Write-Host "    Compare summary : $summaryPath"
+Write-Host "    PrePush logs    : see execution output"
+Write-Host "    Pester summary  : tests/results/pester-summary.json (if generated)"

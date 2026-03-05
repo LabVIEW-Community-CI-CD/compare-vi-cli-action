@@ -13,7 +13,6 @@
 
 - Notes: `RELEASE_NOTES_v0.6.0.md`
 - Changelog section: `CHANGELOG.md` (`v0.6.0`)
-- Docs mirror: `docs/CHANGELOG.md`
 
 ## Validation
 
@@ -27,6 +26,6 @@
 ## Post-Tag Tasks
 
 - Tag v0.6.0 on `main`.
-- Fast-forward `develop` from `release/v0.6.0` (handled via `npm run release:finalize -- 0.6.0`) and track any follow-up
+- Fast-forward `develop` from `release/v0.6.0` (handled via `node tools/npm/run-script.mjs release:finalize -- 0.6.0`) and track any follow-up
   documentation.
 - Publish GitHub release notes summarising the auto-config flow and new compare defaults.

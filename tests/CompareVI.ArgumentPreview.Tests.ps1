@@ -1,4 +1,4 @@
-Describe 'CompareVI argument preview' -Tag 'Unit' {
+Describe 'CompareVI argument preview' -Tag 'CompareVI','Unit' {
   BeforeAll {
     Import-Module (Join-Path $PSScriptRoot '..' 'scripts' 'CompareVI.psm1') -Force
   }

@@ -1,0 +1,136 @@
+name: "Auto Issue Branch Creator"
+description: "Creates a branch for an issue when all required metadata is present."
+inputs:
+  base_branch:
+    description: "Base branch to create new branches from"
+    required: false
+outputs:
+  branch:
+    description: "Name of the created branch"
+    value: ${{ steps.create_branch.outputs.branch_name }}
+  version_bump:
+    description: "Semantic version bump derived from issue type"
+    value: ${{ steps.check.outputs.version_bump }}
+runs:
+  using: "composite"
+  steps:
+    - name: Gather and validate issue data
+      id: check
+      uses: actions/github-script@v6
+      with:
+        github-token: ${{ github.token }}
+        script: |
+          const issue = context.payload.issue;
+          if (!issue) {
+            core.setFailed('This action only runs on issue events.');
+            return;
+          }
+          core.info(`Processing issue #${issue.number}`);
+          const repo = context.repo;
+          const labels = issue.labels.map(l => l.name.toLowerCase());
+          core.info('Labels: ' + labels.join(', '));
+          const milestoneSet = !!issue.milestone;
+          core.info('Milestone set: ' + milestoneSet);
+          const hasAssignee = issue.assignees && issue.assignees.length > 0;
+          core.info('Has assignee: ' + hasAssignee);
+          const title = issue.title || '';
+          const titleOk = title.length > 0 && title.length <= 30;
+          core.info(`Title: "${title}" (valid: ${titleOk})`);
+          const types = ['feature','bug','task'];
+          const typeLabel = labels.find(l => types.includes(l));
+          core.info('Type label: ' + (typeLabel || 'none'));
+          const { versionBumpFromType } = require(process.env.GITHUB_ACTION_PATH + '/utils.js');
+          const versionBump = versionBumpFromType(typeLabel);
+          core.info('Derived version bump: ' + versionBump);
+          let projectCount = 0;
+          let hasProject = false;
+          try {
+            const data = await github.graphql(
+              `query($owner:String!,$repo:String!,$number:Int!){
+                 repository(owner:$owner,name:$repo){
+                   issue(number:$number){
+                     projectItems(first:1){ totalCount }
+                   }
+                 }
+               }`,
+              {owner: repo.owner, repo: repo.repo, number: issue.number}
+            );
+            projectCount = data.repository.issue.projectItems.totalCount;
+            hasProject = projectCount > 0;
+            core.info('Project items count: ' + projectCount);
+          } catch (e) {
+            core.warning('Failed to verify project assignment: ' + e.stack);
+          }
+          core.info('milestoneSet: ' + milestoneSet);
+          core.info('hasAssignee: ' + hasAssignee);
+          core.info('titleOk: ' + titleOk);
+          core.info('typeLabel: ' + Boolean(typeLabel));
+          core.info('hasProject: ' + hasProject);
+          const conditionsMet = titleOk && milestoneSet && hasAssignee && typeLabel && hasProject;
+          core.setOutput('conditions_met', conditionsMet);
+          core.setOutput('issue_type', typeLabel || '');
+          core.setOutput('version_bump', versionBump);
+          core.info('Condition results: ' + JSON.stringify({titleOk, milestoneSet, hasAssignee, typeLabel: typeLabel || '', hasProject}));
+          if (!conditionsMet) {
+            const missing = [];
+            if (!titleOk) missing.push('title invalid or too long');
+            if (!milestoneSet) missing.push('no milestone');
+            if (!hasAssignee) missing.push('no assignee');
+            if (!typeLabel) missing.push('missing type label');
+            if (!hasProject) missing.push('not assigned to a project');
+            core.info('Conditions not met: ' + missing.join('; '));
+            core.info('Skipping branch creation.');
+          }
+    - name: Create branch
+      id: create_branch
+      if: ${{ steps.check.outputs.conditions_met == 'true' && steps.check.outputs.issue_type != 'task' && github.event.repository.fork != true }}
+      uses: actions/github-script@v6
+      with:
+        github-token: ${{ github.token }}
+        script: |
+          const issue = context.payload.issue;
+          const repo = context.repo;
+          const rawTitle = issue.title;
+          const { buildBranchName } = require(process.env.GITHUB_ACTION_PATH + '/utils.js');
+          const branch = buildBranchName(issue.number, rawTitle);
+          let base = `${{ inputs.base_branch || '' }}`;
+          if (!base) base = context.payload.repository.default_branch;
+          core.info(`Creating branch "${branch}" from base "${base}"`);
+          let baseRef;
+          try {
+            baseRef = await github.rest.git.getRef({
+              owner: repo.owner,
+              repo: repo.repo,
+              ref: `heads/${base}`
+            });
+            core.info('Base SHA: ' + baseRef.data.object.sha);
+          } catch (e) {
+            core.error('Failed to retrieve base ref: ' + e.stack);
+            throw e;
+          }
+          try {
+            await github.rest.git.createRef({
+              owner: repo.owner,
+              repo: repo.repo,
+              ref: `refs/heads/${branch}`,
+              sha: baseRef.data.object.sha
+            });
+          } catch (e) {
+            core.error('Failed to create branch: ' + e.stack);
+            throw e;
+          }
+          core.setOutput('branch_name', branch);
+    - name: Comment on issue
+      if: ${{ steps.check.outputs.conditions_met == 'true' && steps.check.outputs.issue_type != 'task' && github.event.repository.fork != true }}
+      uses: actions/github-script@v6
+      with:
+        github-token: ${{ github.token }}
+        script: |
+          const branch = `${{ steps.create_branch.outputs.branch_name }}`;
+          const issueNum = context.payload.issue.number;
+          await github.rest.issues.createComment({
+            owner: context.repo.owner,
+            repo: context.repo.repo,
+            issue_number: issueNum,
+            body: `A new branch \`${branch}\` has been created for this issue.`
+          });

@@ -1,7 +1,7 @@
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
-Describe 'LVCompare flags (canonical combinations)' -Tag 'Unit' {
+Describe 'LVCompare flags (canonical combinations)' -Tag 'CompareVI','Unit' {
   BeforeAll {
     $here = Split-Path -Parent $PSCommandPath
     $root = Resolve-Path (Join-Path $here '..')

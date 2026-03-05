@@ -41,6 +41,28 @@ workflow uploads two artifacts:
 - `vi-compare-manifests` - aggregate suite manifest and per-mode summaries
 - `vi-compare-diff-artifacts` - only present when LVCompare detects differences
 
+## VS Code Plane Workspaces
+
+Use the primary committed workspace files to keep upstream, fork, and
+command-center operations explicit, while preserving the legacy alias:
+
+- `compare-vi-cli-action.upstream-plane.code-workspace`
+- `compare-vi-cli-action.fork-plane.code-workspace`
+- `compare-vi-cli-action.command-center.code-workspace`
+- `compare-vi-cli-action.code-workspace` (legacy alias for command-center)
+
+Folder names inside those files follow plane prefixes (`PLANE_UPSTREAM__*`,
+`PLANE_FORK__*`) and all included tasks pin `cwd` to a named workspace folder so
+commands run in the intended plane.
+
+See `docs/DUAL_PLANE_WORKSPACES.md` for the expected directory layout and task
+usage, including the WSL distro guardrail (`Ubuntu`/standard distro, not
+`docker-desktop`).
+
+Runbook container canary promotion/rollback policy is tracked in
+`docs/RUNBOOK_CONTAINER_LANE_PROMOTION_POLICY.md` (decision issue `#663`,
+evidence source `#662`).
+
 Each job also emits GitHub outputs pointing at the aggregate manifest, the
 history results directory, the per-mode manifest summary (`mode-manifests-json`),
 and the generated history report paths (`history-report-md` and, when HTML
@@ -68,7 +90,8 @@ the same summary table to a GitHub issue for stakeholders.
   (newline-separated list), and `VI_STAGE_COMPARE_REPLACE_FLAGS` to control LVCompare ignore bundles. Even when filters
   are configured, the workflow also runs an unsuppressed `full` pass so block diagram/front panel edits remain visible;
   both passes and their flag sets appear in the summary's **Flags** column.
-- Smoke coverage: `npm run smoke:vi-stage -- --DryRun` prints the plan; `npm run smoke:vi-stage` pushes a scratch branch
+- Smoke coverage: `node tools/npm/run-script.mjs smoke:vi-stage -- --DryRun` prints the plan;
+  `node tools/npm/run-script.mjs smoke:vi-stage` pushes a scratch branch
   using the baked-in `fixtures/vi-attr` pair so every run produces deterministic LVCompare output.
 
 ### Automatic VI compare for fork pull requests
@@ -81,6 +104,30 @@ the same summary table to a GitHub issue for stakeholders.
   runner (`self-hosted, Windows, X64`) so the same LVCompare install used in CI handles fork PRs.
 - Manual `/vi-stage` and `/vi-history` dispatches accept a `fetch_depth` input (default `20`) when you need to pull a
   deeper history for local tests.
+- `/vi-history` artifacts now include extracted preview assets under
+  `tests/results/pr-vi-history/<target>/previews/history-image-*` plus
+  `tests/results/pr-vi-history/<target>/vi-history-image-index.json`
+  (`schema: pr-vi-history-image-index@v1`) for deterministic image lookup.
+- The history summary/comment renderer adds a `### Mobile Preview` block that inlines a capped set of extracted images
+  so reviewers can scan cosmetic changes on mobile without downloading artifacts first.
+- Comment-size safety guards cap preview/image payload and apply markdown truncation when needed; the summarizer writes
+  this state to totals (`previewImages`, `markdownTruncated`) and emits an explicit truncation note in the PR comment.
+- `pr-vi-history-summary@v1` now carries additive per-pair rows under `pairTimeline[]`:
+  `targetPath`, `baseRef`, `headRef`, `classification`, `diff`, `durationSeconds`, `previewStatus`, `reportPath`,
+  `imageIndexPath`.
+- Run-level KPI envelope (`kpi`) is additive and includes:
+  `signalRecall`, `noisePrecisionMasscompile`, `previewCoverage`, `timingP50Seconds`, `timingP95Seconds`,
+  `commentTruncated`, `truncationReason`.
+- `tools/Test-PRVIHistorySmoke.ps1` now emits explicit hybrid gate policy metadata (`schema: vi-history-policy-gate@v1`):
+  strict (`requireDiff=true`) violations are hard failures, while smoke (`requireDiff=false`) violations are recorded as
+  non-blocking warnings for diagnostics.
+- Smoke runs now emit benchmark artifacts under `tests/results/_agent/smoke/vi-history/benchmarks/`:
+  - `vi-history-benchmark-*.json` (`schema: vi-history-benchmark@v1`)
+  - `vi-history-benchmark-delta-*.json` (`schema: vi-history-benchmark-delta@v1`)
+  - `vi-history-benchmark-delta-*.md` (PR/issue-ready KPI delta comment body)
+- `tools/Test-PRVIHistorySmoke.ps1` can post KPI delta evidence comments automatically:
+  - always to the synthetic PR (before cleanup)
+  - optionally to an issue via `-EvidenceIssueNumber`
 - To rehearse the fork flow locally, run `pwsh -File tools/Test-ForkSimulation.ps1` in three passes: `-DryRun` shows the
   steps, the default run opens a draft PR and validates the automatic compare job, and `-KeepBranch` preserves the
   scratch branch while the staging/history dispatches finish so you can inspect the artifacts.

@@ -1,0 +1,47 @@
+name: "Build Packed Library"
+description: "Runs Build_lvlibp.ps1 to create the editor packed library."
+runs:
+  using: "composite"
+  steps:
+    - name: Checkout code
+      uses: actions/checkout@v3
+      with:
+        fetch-depth: 0
+
+    - name: Run Build_lvlibp.ps1
+      shell: pwsh
+      run: |
+        & "${{ github.action_path }}/Build_lvlibp.ps1" `
+          -MinimumSupportedLVVersion ${{ inputs.minimum_supported_lv_version }} `
+          -SupportedBitness ${{ inputs.supported_bitness }} `
+          -RelativePath "${{ inputs.relative_path }}" `
+          -Major ${{ inputs.major }} `
+          -Minor ${{ inputs.minor }} `
+          -Patch ${{ inputs.patch }} `
+          -Build ${{ inputs.build }} `
+          -Commit "${{ inputs.commit }}"
+inputs:
+  minimum_supported_lv_version:
+    description: 'LabVIEW major version'
+    required: true
+  supported_bitness:
+    description: '32 or 64'
+    required: true
+  relative_path:
+    description: 'Workspace root path'
+    required: true
+  major:
+    description: 'Major version component'
+    required: true
+  minor:
+    description: 'Minor version component'
+    required: true
+  patch:
+    description: 'Patch version component'
+    required: true
+  build:
+    description: 'Build number'
+    required: true
+  commit:
+    description: 'Commit identifier'
+    required: true

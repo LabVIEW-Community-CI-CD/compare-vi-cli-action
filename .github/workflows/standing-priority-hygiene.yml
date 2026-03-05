@@ -1,0 +1,59 @@
+name: Standing Priority Hygiene
+
+on:
+  issues:
+    types:
+      - closed
+  workflow_dispatch:
+    inputs:
+      issue_number:
+        description: "Issue number to evaluate"
+        required: true
+        type: number
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  remove-closed-standing-priority-label:
+    name: Remove Closed Standing-Priority Label
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Fetch parity refs
+        shell: bash
+        run: |
+          git remote add upstream https://github.com/LabVIEW-Community-CI-CD/compare-vi-cli-action.git 2>/dev/null || true
+          git fetch --no-tags --prune --depth=1 origin develop
+          git fetch --no-tags --prune --depth=1 upstream develop
+
+      - name: Report origin/upstream parity
+        run: |
+          node tools/priority/report-origin-upstream-parity.mjs \
+            --base-ref "upstream/develop" \
+            --head-ref "origin/develop" \
+            --sample-limit 20 \
+            --github-output "$GITHUB_OUTPUT" \
+            --step-summary "$GITHUB_STEP_SUMMARY"
+
+      - name: Resolve issue number
+        id: issue
+        shell: bash
+        run: |
+          if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
+            echo "number=${{ inputs.issue_number }}" >> "$GITHUB_OUTPUT"
+          else
+            echo "number=${{ github.event.issue.number }}" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Remove standing-priority label if issue is closed
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          node tools/priority/standing-priority-hygiene.mjs \
+            --issue "${{ steps.issue.outputs.number }}" \
+            --label "standing-priority"

@@ -1,0 +1,15 @@
+name: "Auto Issue Branch"
+
+on:
+  issues:
+    types: [opened, edited, labeled]
+
+jobs:
+  create-branch:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      issues: write
+    steps:
+      - name: Create branch for prepared issue
+        uses: ./.github/actions/auto-issue-branch

@@ -1,4 +1,4 @@
-Describe 'CompareVI directory guard' -Tag 'Unit' {
+Describe 'CompareVI directory guard' -Tag 'CompareVI','Unit' {
   BeforeAll {
     $ErrorActionPreference = 'Stop'
     $repoRoot = Split-Path -Parent $PSScriptRoot
@@ -23,7 +23,7 @@ Describe 'CompareVI directory guard' -Tag 'Unit' {
   }
 }
 
-Describe 'Capture-LVCompare directory guard' -Tag 'Unit' {
+Describe 'Capture-LVCompare directory guard' -Tag 'CompareVI','Unit' {
   It 'throws when Base is a directory (script preflight)' {
     $repoRoot = Split-Path -Parent $PSScriptRoot
     $scriptPath = Join-Path $repoRoot 'scripts' 'Capture-LVCompare.ps1'

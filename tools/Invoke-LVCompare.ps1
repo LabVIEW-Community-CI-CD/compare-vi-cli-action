@@ -528,6 +528,11 @@ function Invoke-LabVIEWCLICompare {
   if ($shouldGenerateReport) {
     $reportPath = Join-Path $OutDir $reportFileName
   }
+  $syntheticReportPath = $false
+  if (-not $reportPath) {
+    $reportPath = Join-Path $OutDir 'cli-compare-report.html'
+    $syntheticReportPath = $true
+  }
 
   $stdoutPath = Join-Path $OutDir 'lvcli-stdout.txt'
   $stderrPath = Join-Path $OutDir 'lvcli-stderr.txt'
@@ -536,6 +541,9 @@ function Invoke-LabVIEWCLICompare {
   $invokeParams = @{
     BaseVi = (Resolve-Path -LiteralPath $Base).Path
     HeadVi = (Resolve-Path -LiteralPath $Head).Path
+  }
+  if ($LabVIEWExePath) {
+    $invokeParams.LabVIEWPath = $LabVIEWExePath
   }
   if ($reportPath) {
     $invokeParams.ReportPath = $reportPath
@@ -615,6 +623,14 @@ function Invoke-LabVIEWCLICompare {
     } catch {}
   }
 
+  if ($syntheticReportPath -and -not $shouldGenerateReport) {
+    if (-not (Test-Path -LiteralPath $reportPath -PathType Leaf)) {
+      if ($cliInfoOrdered.Contains('reportPath')) {
+        $cliInfoOrdered.Remove('reportPath')
+      }
+    }
+  }
+
   $cliInfoObject = [pscustomobject]$cliInfoOrdered
   $envBlockOrdered.cli = $cliInfoObject
   $envBlock = [pscustomobject]$envBlockOrdered
@@ -641,8 +657,12 @@ function Invoke-LabVIEWCLICompare {
     ExitCode   = [int]$cliResult.exitCode
     Seconds    = [double]$cliResult.elapsedSeconds
     CapturePath= $capPath
-    ReportPath = if ($reportPath) { $reportPath } else { $cliInfoOrdered['reportPath'] }
+    ReportPath = if ((Test-Path -LiteralPath $reportPath -PathType Leaf)) { $reportPath } elseif ($cliInfoOrdered.Contains('reportPath')) { $cliInfoOrdered['reportPath'] } else { $null }
     Command    = $cliResult.command
+  }
+
+  if ($syntheticReportPath -and -not $shouldGenerateReport -and -not (Test-Path -LiteralPath $reportPath -PathType Leaf)) {
+    $reportPath = $null
   }
 
   if ($stageCleanupRoot) {

@@ -70,6 +70,41 @@ Notes:
 - Dedicated shim entry points follow the versioned pattern documented in
   [`docs/LabVIEWCliShimPattern.md`](./LabVIEWCliShimPattern.md) (current version: 1.0).
 
+## NI Windows container helper
+
+`tools/Run-NIWindowsContainerCompare.ps1` supports local Docker Desktop compare runs against NI's Windows image.
+
+| Variable | Purpose |
+| -------- | ------- |
+| `LV_BASE_VI`, `LV_HEAD_VI` | Base/head VI paths used by `compare:docker:ni:windows` npm helper |
+
+Notes:
+
+- Default image: `nationalinstruments/labview:2026q1-windows`.
+- Override image explicitly with `tools/Run-NIWindowsContainerCompare.ps1 -Image <tag>`.
+- Docker daemon must run in `windows` mode; `compare:docker:ni:windows:probe` fails fast when mode/image checks fail.
+- Output defaults to `tests/results/ni-windows-container/compare-report.html` with deterministic capture logs.
+- Capture JSON (`ni-windows-container-capture.json`) records machine-readable classification fields
+  (`classification`, `labviewCliErrorCode`, `recommendation`, `reportExists`) for deterministic triage.
+
+### NI 2026 q1 host bootstrap preflight
+
+Use this when the NI Windows image is missing locally or to re-verify host readiness:
+
+```powershell
+node tools/npm/run-script.mjs docker:ni:windows:bootstrap
+```
+
+Default artifact path:
+
+- `tests/results/local-parity/windows-ni-2026q1-host-preflight.json`
+
+Common remediation:
+
+- Docker mode mismatch: switch Docker Desktop to Windows containers (`desktop-windows`) and retry.
+- Image pull failure: verify Docker Hub/GHCR connectivity and authentication, then rerun bootstrap.
+- Runtime probe failure: confirm the host can run Windows containers and that the NI tag is available.
+
 ## Tooling helpers
 
 | Variable | Purpose |

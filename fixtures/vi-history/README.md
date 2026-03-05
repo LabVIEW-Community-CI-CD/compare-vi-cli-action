@@ -23,3 +23,57 @@ PR command and the smoke helper).
 
 Extend the `steps` list when new scenarios are required; tests ensure every referenced
 `source` path exists in the repository.
+
+## `mixed-same-commit.json`
+
+- Schema: `vi-history-mixed-commit@v1`
+- Defines a deterministic single commit that mutates two VI targets:
+  - one strict signal target (`requireDiff: true`)
+  - one non-strict metadata-noise target (`requireDiff: false`)
+- Consumed by `tools/Test-PRVIHistorySmoke.ps1` when
+  `-Scenario mixed-same-commit` is selected.
+
+```jsonc
+{
+  "schema": "vi-history-mixed-commit@v1",
+  "commit": {
+    "changes": [
+      {
+        "targetPath": "fixtures/vi-attr/Head.vi",
+        "requireDiff": true
+      },
+      {
+        "targetPath": "fixtures/vi-attr/Base.vi",
+        "requireDiff": false
+      }
+    ]
+  }
+}
+```
+
+## `sequential-masscompile.json`
+
+- Schema: `vi-history-sequence-matrix@v1`
+- Defines an ordered commit chain that alternates masscompile-like metadata
+  updates with one mixed signal+noise commit.
+- Includes a multi-VI same-commit step (`signal-plus-masscompile`) where at
+  least two VI targets are updated in one commit.
+- Consumed by `tools/Test-PRVIHistorySmoke.ps1` when
+  `-Scenario sequential-masscompile` is selected.
+- Harness summary output records pair-level timeline/timing metadata under
+  `PairTimeline`, `PairClassification`, and `PairTiming`.
+
+## Policy Gate Semantics
+
+`tools/Test-PRVIHistorySmoke.ps1` evaluates each expected target with a hybrid
+policy contract:
+
+- `strict` (`requireDiff: true`):
+  - missing rows, zero comparisons, or missing required diffs are **hard
+    failures** (blocking).
+- `smoke` (`requireDiff: false`):
+  - the same conditions are emitted as **warnings** (non-blocking) so
+    diagnostics stay visible without failing the run.
+
+The smoke summary JSON now includes `Policy` (`vi-history-policy-gate@v1`) with
+separate strict failure and smoke warning buckets.

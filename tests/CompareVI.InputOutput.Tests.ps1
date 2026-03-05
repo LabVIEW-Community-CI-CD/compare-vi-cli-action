@@ -8,7 +8,7 @@ BeforeAll {
   $script:CompareModuleName = $script:CompareModule.Name
 }
 
-Describe 'Invoke-CompareVI input and output validation (no CLI)' {
+Describe 'Invoke-CompareVI input and output validation (no CLI)' -Tag 'CompareVI','Unit' {
   BeforeEach {
     # Use Pester's native TestDrive
     $vis = Join-Path $TestDrive 'vis'

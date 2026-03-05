@@ -1,7 +1,7 @@
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
-Describe 'LVCompare flags (report verifications)' -Tag 'Unit' {
+Describe 'LVCompare flags (report verifications)' -Tag 'CompareVI','Unit' {
   BeforeAll {
     $here = Split-Path -Parent $PSCommandPath
     function Split-CommandTokens([string]$command) {

@@ -19,6 +19,18 @@ on:
       max_pairs:
         description: 'Maximum commit pairs per VI (default 6)'
         required: false
+      history_timeout_minutes:
+        description: 'History job timeout in minutes (default 10)'
+        required: false
+        default: '10'
+      compare_timeout_seconds:
+        description: 'Per-compare timeout in seconds passed to history compare (default 600)'
+        required: false
+        default: '600'
+      labview_path:
+        description: 'LabVIEW.exe path used by headless compare operations'
+        required: false
+        default: 'C:\Program Files\National Instruments\LabVIEW 2026\LabVIEW.exe'
 
 permissions:
   contents: read
@@ -39,10 +51,13 @@ jobs:
         contains('OWNER,MEMBER,COLLABORATOR', github.event.comment.author_association)
       )
     runs-on: [self-hosted, Windows, X64]
+    timeout-minutes: ${{ fromJson(github.event.inputs.history_timeout_minutes || '10') }}
     env:
       NOTE: ${{ inputs.note }}
       MAX_PAIRS: ${{ inputs.max_pairs || '6' }}
       FETCH_DEPTH: ${{ github.event.inputs.fetch_depth || '20' }}
+      COMPARE_TIMEOUT_SECONDS: ${{ github.event.inputs.compare_timeout_seconds || '600' }}
+      LABVIEW_PATH: ${{ github.event.inputs.labview_path || 'C:\Program Files\National Instruments\LabVIEW 2026\LabVIEW.exe' }}
     steps:
       - name: Resolve pull request metadata
         id: pr
@@ -163,6 +178,7 @@ jobs:
           RESULTS_ROOT: ${{ github.workspace }}\tests\results\pr-vi-history
           MAX_PAIRS: ${{ env.MAX_PAIRS }}
           MANIFEST_PATH: ${{ steps.manifest.outputs.manifest_path }}
+          PR_VI_HISTORY_EXTRACT_REPORT_IMAGES: '1'
         run: |
           Set-StrictMode -Version Latest
           $ErrorActionPreference = 'Stop'
@@ -179,6 +195,10 @@ jobs:
           if ($env:MAX_PAIRS) {
             $args += '-MaxPairs'
             $args += $env:MAX_PAIRS
+          }
+          if ($env:COMPARE_TIMEOUT_SECONDS) {
+            $args += '-CompareTimeoutSeconds'
+            $args += $env:COMPARE_TIMEOUT_SECONDS
           }
 
           pwsh -NoLogo -NoProfile @args
@@ -213,7 +233,9 @@ jobs:
           pwsh -NoLogo -NoProfile -File (Join-Path $env:GITHUB_WORKSPACE 'tools' 'Summarize-PRVIHistory.ps1') `
             -SummaryPath $summaryPath `
             -MarkdownPath $markdownPath `
-            -OutputJsonPath $expandedPath
+            -OutputJsonPath $expandedPath `
+            -MaxPreviewImages 6 `
+            -MaxMarkdownLength 55000
 
           "markdown_path=$markdownPath" | Out-File -FilePath $Env:GITHUB_OUTPUT -Encoding utf8 -Append
 
@@ -255,6 +277,12 @@ jobs:
           $markdown = $null
           if ($env:MARKDOWN_ENCODED) {
             $markdown = ($env:MARKDOWN_ENCODED -replace '%0A', "`n")
+            $maxCommentMarkdownLength = 58000
+            if ($markdown.Length -gt $maxCommentMarkdownLength) {
+              $truncationNote = "`n`n> NOTE - Comment body truncated for GitHub size safety."
+              $safeLength = [Math]::Max(0, $maxCommentMarkdownLength - $truncationNote.Length)
+              $markdown = $markdown.Substring(0, $safeLength).TrimEnd() + $truncationNote
+            }
           }
 
           if ($pairCount -le 0) {

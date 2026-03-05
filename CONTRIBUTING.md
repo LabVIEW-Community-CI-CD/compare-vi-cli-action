@@ -17,7 +17,7 @@ Thank you for contributing to `compare-vi-cli-action`!
 - Create a feature branch
 - Run the staging smoke helper before pushing:
   - `pwsh -File tools/Test-PRVIStagingSmoke.ps1 -DryRun` to preview the plan
-  - `npm run smoke:vi-stage` to run end-to-end using the baked-in `fixtures/vi-attr`
+  - `node tools/npm/run-script.mjs smoke:vi-stage` to run end-to-end using the baked-in `fixtures/vi-attr`
     attribute diff
   All staging runs post a summary comment and upload `vi-compare-manifest` /
   `vi-staging-XX.zip` artifacts; check the comment for links.

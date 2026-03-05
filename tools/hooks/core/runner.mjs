@@ -1,8 +1,11 @@
 import { spawnSync } from 'node:child_process';
-import { mkdirSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 
 const SCHEMA = 'comparevi/hooks-summary@v1';
+const MODULE_FILE_PATH = fileURLToPath(import.meta.url);
+const MODULE_REPO_ROOT = path.resolve(path.dirname(MODULE_FILE_PATH), '../../..');
 
 function runCommand(command, args, options = {}) {
   const result = spawnSync(command, args, {
@@ -19,17 +22,55 @@ function runCommand(command, args, options = {}) {
   };
 }
 
-function findGitRoot() {
-  const { status, stdout } = runCommand('git', ['rev-parse', '--show-toplevel']);
-  if (status !== 0) {
-    throw new Error('Unable to resolve git repository root (git rev-parse failed).');
+function formatCommandFailure(command, args, result, cwd) {
+  const parts = [`${command} ${args.join(' ')} failed`];
+  if (Number.isInteger(result?.status)) {
+    parts.push(`status=${result.status}`);
   }
-  return stdout.trim();
+  if (result?.error?.code) {
+    parts.push(`error=${result.error.code}`);
+  }
+  const stderr = (result?.stderr || '').trim();
+  if (stderr) {
+    parts.push(`stderr=${stderr}`);
+  }
+  parts.push(`cwd=${cwd}`);
+  return parts.join(' ');
 }
 
-function which(command) {
-  const exe = process.platform === 'win32' ? 'where' : 'which';
-  const { status, stdout } = runCommand(exe, [command]);
+function hasRepoMarkers(candidateRoot) {
+  if (!candidateRoot) {
+    return false;
+  }
+  return existsSync(path.join(candidateRoot, '.git')) || existsSync(path.join(candidateRoot, 'package.json'));
+}
+
+function findGitRoot(options = {}) {
+  const commandRunner = options.commandRunner ?? runCommand;
+  const cwd = options.cwd ?? process.cwd();
+  const fallbackRoot = options.fallbackRoot ?? MODULE_REPO_ROOT;
+
+  const result = commandRunner('git', ['rev-parse', '--show-toplevel'], { cwd });
+  if (result?.status === 0) {
+    const root = (result.stdout || '').trim();
+    if (root) {
+      return root;
+    }
+  }
+
+  if (hasRepoMarkers(fallbackRoot)) {
+    return fallbackRoot;
+  }
+
+  const detail = formatCommandFailure('git', ['rev-parse', '--show-toplevel'], result, cwd);
+  throw new Error(`Unable to resolve git repository root (${detail}).`);
+}
+
+function which(command, options = {}) {
+  const commandRunner = options.commandRunner ?? runCommand;
+  const platform = options.platform ?? process.platform;
+  const exe = platform === 'win32' ? 'where' : 'which';
+  const { status, stdout } = commandRunner(exe, [command]);
   if (status === 0) {
     const match = stdout.split(/\r?\n/).find(Boolean);
     if (match) {
@@ -91,32 +132,57 @@ function resolveEnforcement(overrides = {}) {
 }
 
 export class HookRunner {
-  constructor(hookName) {
+  constructor(hookName, options = {}) {
     this.hook = hookName;
-    this.repoRoot = findGitRoot();
+    this.commandRunner = options.commandRunner ?? runCommand;
+    this.whichResolver = options.whichResolver ?? ((command) => which(command, { commandRunner: this.commandRunner, platform: options.platform }));
+    this.runtimeEnv = options.env ?? process.env;
+    this.platform = options.platform ?? process.platform;
+    const githubActions = options.githubActions ?? (this.runtimeEnv.GITHUB_ACTIONS === 'true');
+    const gitRootResolver = options.gitRootResolver ?? ((resolverOptions = {}) =>
+      findGitRoot({
+        commandRunner: this.commandRunner,
+        cwd: resolverOptions.cwd,
+        fallbackRoot: resolverOptions.fallbackRoot,
+      }));
+    this.repoRoot =
+      options.repoRoot ??
+      gitRootResolver({
+        cwd: options.cwd,
+        fallbackRoot: options.fallbackRoot,
+      });
     this.steps = [];
     this.notes = [];
     this.status = 'ok';
     this.exitCode = 0;
-    this.plane = detectPlane();
-    this.enforcement = resolveEnforcement();
+    this.plane = detectPlane({
+      env: this.runtimeEnv,
+      platform: this.platform,
+      githubActions,
+      isWsl: options.isWsl,
+    });
+    this.enforcement = resolveEnforcement({
+      env: this.runtimeEnv,
+      githubActions,
+      mode: options.enforcementMode,
+    });
     const enforcementHint =
       this.enforcement === 'fail'
         ? 'Set HOOKS_ENFORCE=warn to treat parity mismatches as warnings during local experiments.'
         : null;
 
     this.environment = {
-      platform: process.platform,
+      platform: this.platform,
       nodeVersion: process.version,
       pwshPath: null,
       plane: this.plane,
       enforcement: this.enforcement,
-      githubActions: process.env.GITHUB_ACTIONS === 'true',
-      runnerName: process.env.RUNNER_NAME || null,
-      runnerOS: process.env.RUNNER_OS || null,
-      runnerArch: process.env.RUNNER_ARCH || null,
-      runnerTrackingId: process.env.RUNNER_TRACKING_ID || null,
-      job: process.env.GITHUB_JOB || null,
+      githubActions,
+      runnerName: this.runtimeEnv.RUNNER_NAME || null,
+      runnerOS: this.runtimeEnv.RUNNER_OS || null,
+      runnerArch: this.runtimeEnv.RUNNER_ARCH || null,
+      runnerTrackingId: this.runtimeEnv.RUNNER_TRACKING_ID || null,
+      job: this.runtimeEnv.GITHUB_JOB || null,
       enforcementHint,
     };
 
@@ -138,22 +204,22 @@ export class HookRunner {
     }
 
     const candidates = [
-      process.env.HOOKS_PWSH,
+      this.runtimeEnv.HOOKS_PWSH,
       'pwsh',
       'pwsh.exe',
       // Common Windows default install location.
-      'C:\\\\Program Files\\\\PowerShell\\\\7\\\\pwsh.exe',
+      'C:\\Program Files\\PowerShell\\7\\pwsh.exe',
     ].filter(Boolean);
 
     for (const candidate of candidates) {
       if (candidate.includes('\\') || candidate.includes('/')) {
-        const { status } = runCommand(candidate, ['-NoLogo', '-NoProfile', '-Command', '$PSVersionTable.PSVersion.ToString()']);
+        const { status } = this.commandRunner(candidate, ['-NoLogo', '-NoProfile', '-Command', '$PSVersionTable.PSVersion.ToString()']);
         if (status === 0) {
           this.environment.pwshPath = candidate;
           return candidate;
         }
       } else {
-        const found = which(candidate);
+        const found = this.whichResolver(candidate);
         if (found) {
           this.environment.pwshPath = found;
           return found;
@@ -225,7 +291,7 @@ export class HookRunner {
           cwd: this.repoRoot,
           encoding: 'utf8',
           env: {
-            ...process.env,
+            ...this.runtimeEnv,
             ...options.env,
           },
         },

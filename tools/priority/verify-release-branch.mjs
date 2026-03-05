@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 
-import { readFileSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import path from 'node:path';
 import process from 'node:process';
 import { run, getRepoRoot } from './lib/branch-utils.mjs';
@@ -29,7 +29,7 @@ function ensureVersionMatches(branchTag, packageVersion) {
 }
 
 function ensureChangelogContains(repoRoot, tag) {
-  const changelogPath = path.join(repoRoot, 'docs', 'CHANGELOG.md');
+  const changelogPath = path.join(repoRoot, 'CHANGELOG.md');
   const contents = readFileSync(changelogPath, 'utf8');
   if (!contents.includes(tag) && !contents.includes(tag.replace(/^v/, ''))) {
     throw new Error(`CHANGELOG.md missing entry for ${tag}`);
@@ -37,9 +37,40 @@ function ensureChangelogContains(repoRoot, tag) {
 }
 
 function ensureChangelogDiff(repoRoot, baseRef) {
-  const diff = run('git', ['diff', `${baseRef}`, '--', 'docs/CHANGELOG.md'], { cwd: repoRoot });
+  const diff = run('git', ['diff', `${baseRef}`, '--', 'CHANGELOG.md'], { cwd: repoRoot });
   if (!diff.trim()) {
-    throw new Error(`docs/CHANGELOG.md not updated relative to ${baseRef}`);
+    throw new Error(`CHANGELOG.md not updated relative to ${baseRef}`);
+  }
+}
+
+function ensurePackageVersionDiff(repoRoot, baseRef) {
+  const diff = run('git', ['diff', `${baseRef}`, '--', 'package.json'], { cwd: repoRoot });
+  if (!diff.trim()) {
+    throw new Error(`package.json not updated relative to ${baseRef}`);
+  }
+}
+
+function fileContainsTag(contents, tag) {
+  const semver = tag.replace(/^v/, '');
+  return contents.includes(tag) || contents.includes(semver);
+}
+
+function ensureReleaseDocsConsistency(repoRoot, tag) {
+  const docs = [
+    { relPath: 'PR_NOTES.md', label: 'PR notes' },
+    { relPath: 'TAG_PREP_CHECKLIST.md', label: 'tag checklist' },
+    { relPath: `RELEASE_NOTES_${tag}.md`, label: 'release notes' }
+  ];
+
+  for (const doc of docs) {
+    const fullPath = path.join(repoRoot, doc.relPath);
+    if (!existsSync(fullPath)) {
+      throw new Error(`Missing ${doc.label} file for ${tag}: ${doc.relPath}`);
+    }
+    const contents = readFileSync(fullPath, 'utf8');
+    if (!fileContainsTag(contents, tag)) {
+      throw new Error(`${doc.relPath} does not reference release tag ${tag}`);
+    }
   }
 }
 
@@ -52,8 +83,10 @@ function main() {
   const packageJson = JSON.parse(readFileSync(path.join(repoRoot, 'package.json'), 'utf8'));
   ensureVersionMatches(branchTag, packageJson.version);
   ensureChangelogContains(repoRoot, branchTag);
+  ensureReleaseDocsConsistency(repoRoot, branchTag);
 
   const baseRef = process.env.RELEASE_VALIDATE_BASE || 'origin/develop';
+  ensurePackageVersionDiff(repoRoot, baseRef);
   ensureChangelogDiff(repoRoot, baseRef);
 
   console.log(`[release:verify] Release branch ${headBranch} validated successfully.`);

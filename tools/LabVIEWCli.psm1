@@ -895,6 +895,7 @@ function Invoke-LVCreateComparisonReport {
     [string[]]$Flags,
     [string]$Provider = 'auto',
     [switch]$Preview,
+    [string]$LabVIEWPath,
     [Nullable[int]]$TimeoutSeconds
   )
 
@@ -910,6 +911,9 @@ function Invoke-LVCreateComparisonReport {
   }
   if ($PSBoundParameters.ContainsKey('Flags') -and $Flags) {
     $params.flags = @($Flags)
+  }
+  if ($PSBoundParameters.ContainsKey('LabVIEWPath') -and $LabVIEWPath) {
+    $params.labviewPath = $LabVIEWPath
   }
   $invokeArgs = @{
     Operation = 'CreateComparisonReport'

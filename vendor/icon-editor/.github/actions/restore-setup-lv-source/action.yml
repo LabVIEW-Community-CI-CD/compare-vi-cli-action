@@ -1,0 +1,35 @@
+name: "Restore LabVIEW Setup"
+description: "Runs RestoreSetupLVSource.ps1 to revert prepared sources back to packaged state."
+runs:
+  using: "composite"
+  steps:
+    - name: Checkout code
+      uses: actions/checkout@v3
+      with:
+        fetch-depth: 0
+
+    - name: Run RestoreSetupLVSource.ps1
+      shell: pwsh
+      run: |
+        & "${{ github.action_path }}/RestoreSetupLVSource.ps1" \
+          -MinimumSupportedLVVersion ${{ inputs.minimum_supported_lv_version }} \
+          -SupportedBitness ${{ inputs.supported_bitness }} \
+          -RelativePath "${{ inputs.relative_path }}" \
+          -LabVIEW_Project "${{ inputs.labview_project }}" \
+          -Build_Spec "${{ inputs.build_spec }}"
+inputs:
+  minimum_supported_lv_version:
+    description: 'LabVIEW major version'
+    required: true
+  supported_bitness:
+    description: '32 or 64'
+    required: true
+  relative_path:
+    description: 'Workspace root path'
+    required: true
+  labview_project:
+    description: 'LabVIEW project name (without extension)'
+    required: true
+  build_spec:
+    description: 'Build specification name'
+    required: true

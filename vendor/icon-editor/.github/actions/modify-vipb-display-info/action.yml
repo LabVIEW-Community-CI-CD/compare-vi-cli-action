@@ -1,0 +1,65 @@
+name: "Modify VIPB Display Info"
+description: "Runs ModifyVIPBDisplayInfo.ps1 to update display information in a VIPB file."
+runs:
+  using: "composite"
+  steps:
+    - name: Checkout code
+      uses: actions/checkout@v3
+      with:
+        fetch-depth: 0
+        clean: false
+
+    - name: Run ModifyVIPBDisplayInfo.ps1
+      shell: pwsh
+      run: |
+        & "${{ github.action_path }}/ModifyVIPBDisplayInfo.ps1" `
+          -SupportedBitness ${{ inputs.supported_bitness }} `
+          -RelativePath "${{ inputs.relative_path }}" `
+          -VIPBPath "${{ inputs.vipb_path }}" `
+          -MinimumSupportedLVVersion ${{ inputs.minimum_supported_lv_version }} `
+          -LabVIEWMinorRevision ${{ inputs.labview_minor_revision }} `
+          -Major ${{ inputs.major }} `
+          -Minor ${{ inputs.minor }} `
+          -Patch ${{ inputs.patch }} `
+          -Build ${{ inputs.build }} `
+          -Commit "${{ inputs.commit }}" `
+          -ReleaseNotesFile "${{ inputs.release_notes_file }}" `
+          -DisplayInformationJSON '${{ inputs.display_information_json }}'
+inputs:
+  supported_bitness:
+    description: '32 or 64'
+    required: true
+  relative_path:
+    description: 'Workspace root path'
+    required: true
+  vipb_path:
+    description: 'Path to the VIPB file (relative to workspace)'
+    required: true
+  minimum_supported_lv_version:
+    description: 'LabVIEW major version'
+    required: true
+  labview_minor_revision:
+    description: 'LabVIEW minor revision (0 or 3)'
+    required: false
+    default: '3'
+  major:
+    description: 'Major version component'
+    required: true
+  minor:
+    description: 'Minor version component'
+    required: true
+  patch:
+    description: 'Patch version component'
+    required: true
+  build:
+    description: 'Build number'
+    required: true
+  commit:
+    description: 'Commit identifier'
+    required: true
+  release_notes_file:
+    description: 'Path to release notes file'
+    required: true
+  display_information_json:
+    description: 'DisplayInformation JSON string'
+    required: true

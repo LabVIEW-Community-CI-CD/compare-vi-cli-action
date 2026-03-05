@@ -1,0 +1,59 @@
+name: Requirements Verification
+
+on:
+  push:
+    branches: [develop]
+  workflow_dispatch:
+    inputs:
+      sample_id:
+        description: 'Optional run sample identifier for provenance'
+        required: false
+        default: ''
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.inputs.sample_id || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  verification:
+    name: requirements-verification
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Assert requirements-verification check contract
+        shell: pwsh
+        run: |
+          pwsh -NoLogo -NonInteractive -NoProfile -File tools/Assert-RequirementsVerificationCheckContract.ps1
+
+      - name: Run requirements verification gate
+        id: gate
+        shell: pwsh
+        run: |
+          pwsh -NoLogo -NonInteractive -NoProfile -File tools/Verify-RequirementsGate.ps1 `
+            -TestsPath tests `
+            -ResultsRoot tests/results `
+            -OutDir tests/results/_agent/verification `
+            -BaselinePolicyPath tools/policy/requirements-verification-baseline.json `
+            -GitHubOutputPath $env:GITHUB_OUTPUT `
+            -StepSummaryPath $env:GITHUB_STEP_SUMMARY
+
+      - name: Validate verification summary schema
+        shell: pwsh
+        run: |
+          pwsh -NoLogo -NonInteractive -NoProfile -File tools/Invoke-JsonSchemaLite.ps1 `
+            -JsonPath tests/results/_agent/verification/verification-summary.json `
+            -SchemaPath docs/schemas/requirements-verification-v1.schema.json
+
+      - name: Upload verification artifacts
+        if: always()
+        uses: actions/upload-artifact@v5
+        with:
+          name: requirements-verification-${{ github.run_id }}
+          path: |
+            tests/results/_agent/verification/trace-matrix.json
+            tests/results/_agent/verification/trace-matrix.html
+            tests/results/_agent/verification/verification-summary.json
+          if-no-files-found: error

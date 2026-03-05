@@ -1,0 +1,24 @@
+# VIPM Provider Comparison
+# Runs the dual-provider VIPM comparison harness weekly to ensure g-cli and LabVIEW CLI remain in sync.
+
+name: vipm-provider-compare
+on:
+  schedule:
+    - cron: '0 6 * * 1'
+  workflow_dispatch:
+
+jobs:
+  compare:
+    runs-on: self-hosted
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Run VIPM provider comparison
+        shell: pwsh
+        run: |
+          pwsh -File tools/Vipm/Invoke-ProviderComparison.ps1 -SkipMissingProviders
+      - name: Validate telemetry
+        shell: pwsh
+        run: |
+          pwsh -File tools/Vipm/Test-ProviderTelemetry.ps1 -TreatMissingAsWarning
+

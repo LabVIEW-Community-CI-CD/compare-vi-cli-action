@@ -1,7 +1,7 @@
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
-Describe 'Invoke-CompareVI staging' -Tag 'Unit' {
+Describe 'Invoke-CompareVI staging' -Tag 'CompareVI','Unit' {
   BeforeAll {
     $repoRoot = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path
     Import-Module (Join-Path $repoRoot 'scripts' 'CompareVI.psm1') -Force

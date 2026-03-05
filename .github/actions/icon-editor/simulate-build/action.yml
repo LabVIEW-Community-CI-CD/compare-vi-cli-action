@@ -1,0 +1,170 @@
+name: Icon Editor Simulate Build
+description: Run the Simulate-IconEditorBuild.ps1 helper and surface manifest metadata.
+inputs:
+  results-root:
+    description: Destination directory for build artifacts (required).
+    required: true
+  fixture-path:
+    description: Optional explicit VIP fixture path (defaults to repository fixture when omitted).
+    required: false
+    default: ''
+  expected-version-json:
+    description: JSON payload describing the expected version object (major/minor/patch/build/commit).
+    required: false
+    default: ''
+  vip-diff-output-dir:
+    description: Output directory for VIP diff staging (defaults to <results-root>/vip-vi-diff).
+    required: false
+    default: ''
+  vip-diff-requests-path:
+    description: File path for the generated VI diff requests JSON (defaults inside the VIP diff output dir).
+    required: false
+    default: ''
+  resource-overlay-root:
+    description: Optional override for the resource overlay directory.
+    required: false
+    default: ''
+  skip-resource-overlay:
+    description: Set to true to skip mirroring the repository resource overlay.
+    required: false
+    default: 'false'
+  keep-extract:
+    description: Set to true to keep the extracted fixture directories after simulation completes.
+    required: false
+    default: 'false'
+  working-directory:
+    description: Working directory for the composite run (defaults to repository root).
+    required: false
+    default: '.'
+outputs:
+  results-root:
+    description: Resolved results root provided to the simulation helper.
+    value: ${{ steps.outputs.outputs.results-root }}
+  manifest-path:
+    description: Path to the generated manifest.json.
+    value: ${{ steps.outputs.outputs.manifest-path }}
+  metadata-path:
+    description: Path to the metadata.json written by the workflow (caller may populate it separately).
+    value: ${{ steps.outputs.outputs.metadata-path }}
+  package-version:
+    description: Detected package version (if manifest.json is available).
+    value: ${{ steps.outputs.outputs.package-version }}
+  vip-diff-root:
+    description: Directory that contains VIP diff requests/captures.
+    value: ${{ steps.outputs.outputs.vip-diff-root }}
+  vip-diff-requests-path:
+    description: Path to the generated vi-diff-requests.json.
+    value: ${{ steps.outputs.outputs.vip-diff-requests-path }}
+runs:
+  using: composite
+  steps:
+    - name: Run Simulate-IconEditorBuild.ps1
+      shell: pwsh
+      working-directory: ${{ inputs.working-directory }}
+      run: |
+        $ErrorActionPreference = 'Stop'
+        $script = Join-Path 'tools' 'icon-editor' 'Simulate-IconEditorBuild.ps1'
+        if (-not (Test-Path -LiteralPath $script -PathType Leaf)) {
+          throw "Helper script not found at '$script'."
+        }
+
+        $resultsRoot = '${{ inputs.results-root }}'
+        if ([string]::IsNullOrWhiteSpace($resultsRoot)) {
+          throw 'results-root input is required.'
+        }
+
+        $vipDiffRoot = '${{ inputs.vip-diff-output-dir }}'
+        if ([string]::IsNullOrWhiteSpace($vipDiffRoot)) {
+          $vipDiffRoot = Join-Path $resultsRoot 'vip-vi-diff'
+        }
+
+        $vipRequestsPath = '${{ inputs.vip-diff-requests-path }}'
+        if ([string]::IsNullOrWhiteSpace($vipRequestsPath)) {
+          $vipRequestsPath = Join-Path $vipDiffRoot 'vi-diff-requests.json'
+        }
+
+        $arguments = @(
+          '-ResultsRoot', $resultsRoot,
+          '-VipDiffOutputDir', $vipDiffRoot,
+          '-VipDiffRequestsPath', $vipRequestsPath
+        )
+
+        $fixturePath = '${{ inputs.fixture-path }}'
+        if (-not [string]::IsNullOrWhiteSpace($fixturePath)) {
+          $arguments += '-FixturePath'
+          $arguments += $fixturePath
+        }
+
+        $expectedVersionJson = '${{ inputs.expected-version-json }}'
+        if (-not [string]::IsNullOrWhiteSpace($expectedVersionJson)) {
+          $arguments += '-ExpectedVersion'
+          $arguments += $expectedVersionJson
+        }
+
+        $overlayRoot = '${{ inputs.resource-overlay-root }}'
+        if (-not [string]::IsNullOrWhiteSpace($overlayRoot)) {
+          $arguments += '-ResourceOverlayRoot'
+          $arguments += $overlayRoot
+        }
+
+        if ('${{ inputs.skip-resource-overlay }}'.ToLowerInvariant() -eq 'true') {
+          $arguments += '-SkipResourceOverlay'
+        }
+
+        if ('${{ inputs.keep-extract }}'.ToLowerInvariant() -eq 'true') {
+          $arguments += '-KeepExtract'
+        }
+
+        & $script @arguments | Out-Null
+    - id: outputs
+      name: Emit simulation outputs
+      shell: pwsh
+      working-directory: ${{ inputs.working-directory }}
+      run: |
+        $ErrorActionPreference = 'Stop'
+        $resultsRoot = '${{ inputs.results-root }}'
+        if ([string]::IsNullOrWhiteSpace($resultsRoot)) {
+          throw 'results-root input is required.'
+        }
+
+        $vipDiffRoot = '${{ inputs.vip-diff-output-dir }}'
+        if ([string]::IsNullOrWhiteSpace($vipDiffRoot)) {
+          $vipDiffRoot = Join-Path $resultsRoot 'vip-vi-diff'
+        }
+
+        $vipRequestsPath = '${{ inputs.vip-diff-requests-path }}'
+        if ([string]::IsNullOrWhiteSpace($vipRequestsPath)) {
+          $vipRequestsPath = Join-Path $vipDiffRoot 'vi-diff-requests.json'
+        }
+
+        $manifestPath = Join-Path $resultsRoot 'manifest.json'
+        $metadataPath = Join-Path $resultsRoot 'metadata.json'
+
+        $packageVersion = ''
+        if (Test-Path -LiteralPath $manifestPath -PathType Leaf) {
+          try {
+            $manifest = Get-Content -LiteralPath $manifestPath -Raw | ConvertFrom-Json -Depth 6
+            if ($manifest.version -and $manifest.version.fixture -and $manifest.version.fixture.raw) {
+              $packageVersion = $manifest.version.fixture.raw
+            } elseif ($manifest.version -and $manifest.version.expected -and $manifest.version.expected.raw) {
+              $packageVersion = $manifest.version.expected.raw
+            }
+            if (-not $packageVersion -and $manifest.version -and $manifest.version.fixture -and $manifest.version.fixture.major) {
+              $raw = '{0}.{1}.{2}.{3}' -f `
+                $manifest.version.fixture.major, `
+                $manifest.version.fixture.minor, `
+                $manifest.version.fixture.patch, `
+                $manifest.version.fixture.build
+              $packageVersion = $raw
+            }
+          } catch {
+            Write-Host "::notice::Failed to parse manifest.json for package version: $($_.Exception.Message)"
+          }
+        }
+
+        "results-root=$resultsRoot" | Out-File -FilePath $Env:GITHUB_OUTPUT -Append -Encoding utf8
+        "manifest-path=$manifestPath" | Out-File -FilePath $Env:GITHUB_OUTPUT -Append -Encoding utf8
+        "metadata-path=$metadataPath" | Out-File -FilePath $Env:GITHUB_OUTPUT -Append -Encoding utf8
+        "package-version=$packageVersion" | Out-File -FilePath $Env:GITHUB_OUTPUT -Append -Encoding utf8
+        "vip-diff-root=$vipDiffRoot" | Out-File -FilePath $Env:GITHUB_OUTPUT -Append -Encoding utf8
+        "vip-diff-requests-path=$vipRequestsPath" | Out-File -FilePath $Env:GITHUB_OUTPUT -Append -Encoding utf8

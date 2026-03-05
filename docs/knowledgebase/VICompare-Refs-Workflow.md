@@ -9,6 +9,9 @@
   alongside per-mode manifests inside `<results>/<mode-slug>/`.
 - Artifacts only include detailed LVCompare output when a difference is detected; runs with no diffs upload the lightweight
   manifest and JSON summaries.
+- Pre-tag release readiness treats both compare evidence lanes as blocking: the latest
+  `vi-compare-refs.yml` and `vi-staging-smoke.yml` runs must both be green and publish artifacts before
+  `release:finalize` can proceed.
 
 ## Pull request staging helper
 
@@ -103,7 +106,17 @@
   pwsh -File tools/Invoke-PRVIHistory.ps1 -ManifestPath vi-history-manifest.json -ResultsRoot tests/results/pr-vi-history
   pwsh -File tools/Summarize-PRVIHistory.ps1 -SummaryPath tests/results/pr-vi-history/vi-history-summary.json -MarkdownPath vi-history-summary.md
   ```
-  For a full end-to-end validation, run the smoke helper (`pwsh -File tools/Test-PRVIHistorySmoke.ps1` or `npm run smoke:vi-history`) to create a scratch PR, dispatch the workflow, and record the results under `tests/results/_agent/smoke/vi-history/`.
+  Mobile preview extraction writes additive artifacts per target:
+  - `tests/results/pr-vi-history/<target>/previews/history-image-*`
+  - `tests/results/pr-vi-history/<target>/vi-history-image-index.json`
+    (`schema: pr-vi-history-image-index@v1`)
+  The rendered summary/comment includes `### Mobile Preview` with inline `<img ...history-image-...>` tags, capped by
+  comment safety limits. Totals expose `previewImages` and `markdownTruncated`; per-target metadata surfaces under
+  `targets[].reportImages` in `pr-vi-history-summary@v1`.
+  For a full end-to-end validation, run the smoke helper (`pwsh -File tools/Test-PRVIHistorySmoke.ps1` or `node tools/npm/run-script.mjs smoke:vi-history`) to create a scratch PR, dispatch the workflow, and record the results under `tests/results/_agent/smoke/vi-history/`.
+  Benchmark/delta evidence is emitted alongside smoke summaries under
+  `tests/results/_agent/smoke/vi-history/benchmarks/` (`vi-history-benchmark@v1` and
+  `vi-history-benchmark-delta@v1`) with a markdown comment body ready for PR/issue posting.
 
 ## Dispatch inputs (GitHub UI or `gh workflow run`)
 
@@ -194,6 +207,46 @@ gh workflow run vi-compare-refs.yml `
   rendering is skipped or fails, the Markdown path still points at the fallback report so consumers always have a
   summary to ingest. A compressed `category-counts-json` blob is also published so downstream automation can react to runs
   dominated by cosmetic noise without re-reading the manifests.
+- History summary JSON (`tests/results/pr-vi-history/vi-history-summary.json`) now adds:
+  - `targets[].reportImages` for per-target extraction metadata.
+  - `pairTimeline[]` with additive per-pair contract fields:
+    `targetPath`, `baseRef`, `headRef`, `classification`, `diff`, `durationSeconds`,
+    `previewStatus`, `reportPath`, `imageIndexPath`.
+  - top-level `kpi` envelope:
+    `signalRecall`, `noisePrecisionMasscompile`, `previewCoverage`,
+    `timingP50Seconds`, `timingP95Seconds`, `commentTruncated`, `truncationReason`.
+  - classification enum for `pairTimeline[].classification`:
+    `signal | noise-masscompile | noise-cosmetic | unknown`.
+  - totals `previewImages` / `markdownTruncated` so downstream checks can verify image extraction and comment-size
+    truncation deterministically.
+- Minimal example (additive fields only):
+  ```json
+  {
+    "schema": "pr-vi-history-summary@v1",
+    "pairTimeline": [
+      {
+        "targetPath": "fixtures/vi-attr/Head.vi",
+        "baseRef": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "headRef": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+        "classification": "signal",
+        "diff": true,
+        "durationSeconds": 1.25,
+        "previewStatus": "present",
+        "reportPath": "tests/results/pr-vi-history/01.../history-report.html",
+        "imageIndexPath": "tests/results/pr-vi-history/01.../vi-history-image-index.json"
+      }
+    ],
+    "kpi": {
+      "signalRecall": 1.0,
+      "noisePrecisionMasscompile": null,
+      "previewCoverage": 1.0,
+      "timingP50Seconds": 1.25,
+      "timingP95Seconds": 1.25,
+      "commentTruncated": false,
+      "truncationReason": "none"
+    }
+  }
+  ```
 - Per-mode manifests live under `tests/results/ref-compare/history/<mode>/manifest.json`
   (`schema: vi-compare/history@v1`) and enumerate the commit pairs, summaries, and LVCompare outcomes.
 - Per-iteration summaries (`*-summary.json`) live beside the mode manifest

@@ -1,0 +1,30 @@
+name: CI Pipeline (Composite)
+
+permissions:
+  contents: read
+
+on:
+  workflow_dispatch:
+
+jobs:
+  legacy-compatibility-notice:
+    name: Legacy Compatibility Notice
+    runs-on: ubuntu-latest
+    steps:
+      - name: Emit deprecation notice
+        shell: bash
+        run: |
+          echo "::notice::ci-composite.yml is a manual compatibility stub."
+          echo "::notice::Use Validate + Fixture Drift Validation for active CI gates."
+
+      - name: Append summary
+        shell: bash
+        run: |
+          {
+            echo "### CI Pipeline (Composite) Status"
+            echo ""
+            echo "- This workflow is intentionally reduced to a manual compatibility stub."
+            echo "- Active branch-protection and standing-priority validation runs in:"
+            echo "  - \`Validate\`"
+            echo "  - \`Fixture Drift Validation\`"
+          } >> "$GITHUB_STEP_SUMMARY"
