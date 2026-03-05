@@ -6,7 +6,7 @@
     },
     {
       "name": "PLANE_UPSTREAM__compare-vi-cli-action",
-      "path": "../compare-vi-cli-action-upstream/compare-vi-cli-action"
+      "path": "../../compare-vi-cli-action-upstream/compare-vi-cli-action"
     }
   ],
   "settings": {
