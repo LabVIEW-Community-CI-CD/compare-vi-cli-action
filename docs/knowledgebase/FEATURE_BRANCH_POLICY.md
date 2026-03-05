@@ -67,9 +67,9 @@ standing GitHub protection rules (including queue-managed `develop` and `main`).
 ### GitHub rulesets
 | Ruleset ID | Scope                | Highlights                                                                                   |
 |------------|----------------------|----------------------------------------------------------------------------------------------|
-| `8811898`  | `refs/heads/develop` | Merge queue enabled (`merge_method=SQUASH`, `grouping=ALLGREEN`, build queue <=5 entries, 5-minute quiet window). Required checks: `lint`, `fixtures`, `session-index`, `issue-snapshot`, `semver`, `Policy Guard (Upstream) / policy-guard`, `Promotion Contract / promotion-contract`, `hook-parity (windows-latest)`, `hook-parity (ubuntu-latest)`, `vi-history-scenarios-linux`. |
+| `8811898`  | `refs/heads/develop` | Merge queue enabled (`merge_method=SQUASH`, `grouping=ALLGREEN`, build queue <=5 entries, 5-minute quiet window). Required checks: `lint`, `fixtures`, `session-index`, `issue-snapshot`, `semver`, `Policy Guard (Upstream) / policy-guard`, `hook-parity (windows-latest)`, `hook-parity (ubuntu-latest)`, `vi-history-scenarios-linux`. |
 | `8614140`  | `refs/heads/main`    | Merge queue enabled (`merge_method=SQUASH`, `grouping=ALLGREEN`, build queue <=5 entries, 5-minute quiet window). Required checks: `lint`, `pester`, `vi-binary-check`, `vi-compare`, `Policy Guard (Upstream) / policy-guard`. Required approving reviews: `0`. |
-| `8614172`  | `refs/heads/release/*` | No merge queue; protects against force-push/deletion. Required checks: `lint`, `pester`, `publish`, `vi-binary-check`, `vi-compare`, `mock-cli`, `Policy Guard (Upstream) / policy-guard`, `Promotion Contract / promotion-contract`. Required approving reviews: `0`. |
+| `8614172`  | `refs/heads/release/*` | No merge queue; protects against force-push/deletion. Required checks: `lint`, `pester`, `publish`, `vi-binary-check`, `vi-compare`, `mock-cli`, `Policy Guard (Upstream) / policy-guard`. Required approving reviews: `0`. |
 
 `node tools/npm/run-script.mjs priority:policy` queries these rulesets and fails if the live configuration drifts from
 `tools/priority/policy.json`; run it whenever you adjust protections.
@@ -98,7 +98,7 @@ checked into `tools/priority/policy.json` so `priority:policy` stays authoritati
 ### `develop`
 - **Merge strategy**: queue-managed squash with linear history enforced; merge commits disabled.
 - **Required checks**: `lint`, `fixtures`, `session-index`, `issue-snapshot`, `semver`,
-  `Policy Guard (Upstream) / policy-guard`, `Promotion Contract / promotion-contract`,
+  `Policy Guard (Upstream) / policy-guard`,
   `hook-parity (windows-latest)`, `hook-parity (ubuntu-latest)`, `vi-history-scenarios-linux`.
 - **Admin bypass**: leave disabled; administrators should only intervene when `priority:policy` confirms parity.
 - **Reapply**: Use `node tools/npm/run-script.mjs priority:policy -- --apply` to push the manifest configuration when drift is detected.
@@ -231,7 +231,7 @@ checked into `tools/priority/policy.json` so `priority:policy` stays authoritati
 
 ### `release/*`
 - **Ruleset**: `8614172` (scope `refs/heads/release/*`).
-- **Required checks**: `lint`, `pester`, `publish`, `vi-binary-check`, `vi-compare`, `mock-cli`, `Policy Guard (Upstream) / policy-guard`, `Promotion Contract / promotion-contract`.
+- **Required checks**: `lint`, `pester`, `publish`, `vi-binary-check`, `vi-compare`, `mock-cli`, `Policy Guard (Upstream) / policy-guard`.
 - **Approvals**: 0 required reviews; stale review dismissal remains enabled.
 - **Merge queue**: intentionally disabled; rely on manual review + required checks.
 - **Maintenance tip**: revisit after each release cycle to ensure the workflow matrix still emits the expected check

@@ -55,6 +55,10 @@ $priorityPolicy = Read-JsonFile -Path $PriorityPolicyPath
 $expectedDevelop = @($contract.required_status_checks.$DevelopBranchName)
 $expectedRelease = @($contract.required_status_checks.$ReleaseBranchName)
 $checkContext = [string]$contract.check_context
+$checkContextRequiredInBranchProtection = $true
+if ($contract.PSObject.Properties.Name -contains 'require_check_context_in_branch_protection') {
+  $checkContextRequiredInBranchProtection = [bool]$contract.require_check_context_in_branch_protection
+}
 
 $developBranchChecks = @($branchPolicy.branches.$DevelopBranchName)
 $releaseBranchChecks = @($branchPolicy.branches.$ReleaseBranchName)
@@ -83,7 +87,7 @@ foreach ($entry in $comparisons.GetEnumerator()) {
 $expectedDevelopNorm = Normalize-CheckList -Value $expectedDevelop
 $expectedReleaseNorm = Normalize-CheckList -Value $expectedRelease
 $checkContextPresent = (($checkContext -in $expectedDevelopNorm) -and ($checkContext -in $expectedReleaseNorm))
-if (-not $checkContextPresent) {
+if ($checkContextRequiredInBranchProtection -and -not $checkContextPresent) {
   $allOk = $false
 }
 
@@ -92,6 +96,7 @@ $summary = [ordered]@{
   generatedAtUtc = (Get-Date).ToUniversalTime().ToString('o')
   contractPath = $ContractPath
   checkContext = $checkContext
+  checkContextRequiredInBranchProtection = $checkContextRequiredInBranchProtection
   checkContextPresent = $checkContextPresent
   result = if ($allOk) { 'ok' } else { 'fail' }
   comparisons = $comparisons
