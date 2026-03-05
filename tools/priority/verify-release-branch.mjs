@@ -29,7 +29,7 @@ function ensureVersionMatches(branchTag, packageVersion) {
 }
 
 function ensureChangelogContains(repoRoot, tag) {
-  const changelogPath = path.join(repoRoot, 'docs', 'CHANGELOG.md');
+  const changelogPath = path.join(repoRoot, 'CHANGELOG.md');
   const contents = readFileSync(changelogPath, 'utf8');
   if (!contents.includes(tag) && !contents.includes(tag.replace(/^v/, ''))) {
     throw new Error(`CHANGELOG.md missing entry for ${tag}`);
@@ -37,9 +37,9 @@ function ensureChangelogContains(repoRoot, tag) {
 }
 
 function ensureChangelogDiff(repoRoot, baseRef) {
-  const diff = run('git', ['diff', `${baseRef}`, '--', 'docs/CHANGELOG.md'], { cwd: repoRoot });
+  const diff = run('git', ['diff', `${baseRef}`, '--', 'CHANGELOG.md'], { cwd: repoRoot });
   if (!diff.trim()) {
-    throw new Error(`docs/CHANGELOG.md not updated relative to ${baseRef}`);
+    throw new Error(`CHANGELOG.md not updated relative to ${baseRef}`);
   }
 }
 

@@ -3,7 +3,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
-import { mkdtemp, writeFile, rm, mkdir } from 'node:fs/promises';
+import { mkdtemp, writeFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 
@@ -39,9 +39,8 @@ test('verify-release-branch succeeds when version/changelog updated', async (t) 
   const repoDir = await mkdtemp(path.join(tmpdir(), 'verify-release-'));
   t.after(() => rm(repoDir, { recursive: true, force: true }));
 
-  await mkdir(path.join(repoDir, 'docs'), { recursive: true });
   await writeFile(
-    path.join(repoDir, 'docs', 'CHANGELOG.md'),
+    path.join(repoDir, 'CHANGELOG.md'),
     '# Changelog\n\n## v0.1.0 - Initial\n- First release\n',
     'utf8'
   );
@@ -66,7 +65,7 @@ test('verify-release-branch succeeds when version/changelog updated', async (t) 
     'utf8'
   );
   await writeFile(
-    path.join(repoDir, 'docs', 'CHANGELOG.md'),
+    path.join(repoDir, 'CHANGELOG.md'),
     '# Changelog\n\n## v0.2.0 - Next\n- Updates\n\n## v0.1.0 - Initial\n- First release\n',
     'utf8'
   );
@@ -83,9 +82,8 @@ test('verify-release-branch fails when changelog missing update', async (t) => {
   const repoDir = await mkdtemp(path.join(tmpdir(), 'verify-release-fail-'));
   t.after(() => rm(repoDir, { recursive: true, force: true }));
 
-  await mkdir(path.join(repoDir, 'docs'), { recursive: true });
   await writeFile(
-    path.join(repoDir, 'docs', 'CHANGELOG.md'),
+    path.join(repoDir, 'CHANGELOG.md'),
     '# Changelog\n\n## v0.1.0 - Initial\n- First release\n',
     'utf8'
   );
@@ -123,9 +121,8 @@ test('verify-release-branch fails when release docs are inconsistent', async (t)
   const repoDir = await mkdtemp(path.join(tmpdir(), 'verify-release-docs-fail-'));
   t.after(() => rm(repoDir, { recursive: true, force: true }));
 
-  await mkdir(path.join(repoDir, 'docs'), { recursive: true });
   await writeFile(
-    path.join(repoDir, 'docs', 'CHANGELOG.md'),
+    path.join(repoDir, 'CHANGELOG.md'),
     '# Changelog\n\n## v0.1.0 - Initial\n- First release\n',
     'utf8'
   );
@@ -150,7 +147,7 @@ test('verify-release-branch fails when release docs are inconsistent', async (t)
     'utf8'
   );
   await writeFile(
-    path.join(repoDir, 'docs', 'CHANGELOG.md'),
+    path.join(repoDir, 'CHANGELOG.md'),
     '# Changelog\n\n## v0.4.0 - Next\n- Updates\n\n## v0.1.0 - Initial\n- First release\n',
     'utf8'
   );
@@ -168,9 +165,8 @@ test('verify-release-branch fails when package.json is not updated relative to b
   const repoDir = await mkdtemp(path.join(tmpdir(), 'verify-release-package-diff-fail-'));
   t.after(() => rm(repoDir, { recursive: true, force: true }));
 
-  await mkdir(path.join(repoDir, 'docs'), { recursive: true });
   await writeFile(
-    path.join(repoDir, 'docs', 'CHANGELOG.md'),
+    path.join(repoDir, 'CHANGELOG.md'),
     '# Changelog\n\n## v0.1.0 - Initial\n- First release\n',
     'utf8'
   );
@@ -190,7 +186,7 @@ test('verify-release-branch fails when package.json is not updated relative to b
 
   runGit(repoDir, ['checkout', '-b', 'release/v0.1.0']);
   await writeFile(
-    path.join(repoDir, 'docs', 'CHANGELOG.md'),
+    path.join(repoDir, 'CHANGELOG.md'),
     '# Changelog\n\n## v0.1.0 - Refresh\n- Notes updated\n',
     'utf8'
   );
