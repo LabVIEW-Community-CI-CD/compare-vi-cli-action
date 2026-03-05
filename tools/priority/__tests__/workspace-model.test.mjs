@@ -107,6 +107,27 @@ test('legacy alias workspace uses expected default folder paths', () => {
   );
 });
 
+test('legacy alias workspace matches command center workspace contract', () => {
+  const commandCenter = readWorkspace(WORKSPACE_FILES.commandCenter).parsed;
+  const legacyAlias = readWorkspace(WORKSPACE_FILES.legacyAlias).parsed;
+
+  assert.deepEqual(
+    legacyAlias.folders,
+    commandCenter.folders,
+    'legacy alias folders must match command center folders'
+  );
+  assert.deepEqual(
+    legacyAlias.settings ?? {},
+    commandCenter.settings ?? {},
+    'legacy alias settings must match command center settings'
+  );
+  assert.deepEqual(
+    legacyAlias?.tasks?.tasks ?? [],
+    commandCenter?.tasks?.tasks ?? [],
+    'legacy alias task definitions must match command center tasks'
+  );
+});
+
 test('workspace tasks pin execution cwd to named workspace folders', () => {
   assertTasksUseNamedWorkspaceCwd(readWorkspace(WORKSPACE_FILES.upstream).parsed);
   assertTasksUseNamedWorkspaceCwd(readWorkspace(WORKSPACE_FILES.fork).parsed);
