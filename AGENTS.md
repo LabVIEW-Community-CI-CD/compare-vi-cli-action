@@ -176,7 +176,7 @@ line buffers).
 
 - Enforce the required statuses listed in `tools/policy/branch-required-checks.json` (contract source of truth). At
   present these are: `lint`, `fixtures`, `session-index`, `issue-snapshot`, `semver`,
-  `Promotion Contract / promotion-contract`, `hook-parity (windows-latest)`,
+  `Policy Guard (Upstream) / policy-guard`, `Promotion Contract / promotion-contract`, `hook-parity (windows-latest)`,
   `hook-parity (ubuntu-latest)`, and `vi-history-scenarios-linux`.
   Optionally apply the same requirement to `main` per repository policy.
 - One-time GitHub CLI snippet (admin only):
@@ -190,6 +190,7 @@ line buffers).
     -f required_status_checks.contexts[]='session-index' \
     -f required_status_checks.contexts[]='issue-snapshot' \
     -f required_status_checks.contexts[]='semver' \
+    -f required_status_checks.contexts[]='Policy Guard (Upstream) / policy-guard' \
     -f required_status_checks.contexts[]='Promotion Contract / promotion-contract' \
     -f required_status_checks.contexts[]='hook-parity (windows-latest)' \
     -f required_status_checks.contexts[]='hook-parity (ubuntu-latest)' \

@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 
-import { readFile, access } from 'node:fs/promises';
+import { readFile, access, writeFile, mkdir } from 'node:fs/promises';
 import { execSync } from 'node:child_process';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -12,10 +12,12 @@ function parseArgs(argv = process.argv) {
   const options = {
     apply: false,
     help: false,
-    debug: false
+    debug: false,
+    report: null
   };
 
-  for (const arg of args) {
+  for (let index = 0; index < args.length; index += 1) {
+    const arg = args[index];
     if (arg === '--apply') {
       options.apply = true;
       continue;
@@ -28,10 +30,30 @@ function parseArgs(argv = process.argv) {
       options.debug = true;
       continue;
     }
+    if (arg === '--report') {
+      const reportPath = args[index + 1];
+      if (!reportPath || reportPath.startsWith('-')) {
+        throw new Error('Missing value for --report.');
+      }
+      options.report = reportPath;
+      index += 1;
+      continue;
+    }
     throw new Error(`Unknown option: ${arg}`);
   }
 
   return options;
+}
+
+async function writeReportIfRequested(reportPath, report, logFn = console.log) {
+  if (!reportPath) {
+    return;
+  }
+
+  const resolvedPath = path.resolve(reportPath);
+  await mkdir(path.dirname(resolvedPath), { recursive: true });
+  await writeFile(resolvedPath, `${JSON.stringify(report, null, 2)}\n`, 'utf8');
+  logFn(`[policy] report written: ${resolvedPath}`);
 }
 
 async function loadManifest() {
@@ -688,216 +710,284 @@ export async function run({
 } = {}) {
   const options = parseArgs(argv);
   if (options.help) {
-    log('Usage: node tools/priority/check-policy.mjs [--apply] [--debug]');
+    log('Usage: node tools/priority/check-policy.mjs [--apply] [--debug] [--report <path>]');
     return 0;
   }
 
-  const dbg = options.debug ? (...args) => log('[policy][debug]', ...args) : () => {};
+  const report = {
+    schema: 'priority/policy-report@v1',
+    schemaVersion: '1.0.0',
+    generatedAt: new Date().toISOString(),
+    apply: options.apply,
+    repository: null,
+    authSource: null,
+    forkRun: false,
+    result: 'unknown',
+    skippedReason: null,
+    summary: {
+      repoDiffCount: 0,
+      branchDiffCount: 0,
+      rulesetDiffCount: 0,
+      totalDiffCount: 0
+    },
+    diffs: {
+      repo: [],
+      branch: [],
+      ruleset: []
+    },
+    applied: {
+      branches: [],
+      rulesets: []
+    },
+    errors: []
+  };
 
-  const manifest = await loadManifest();
-  const forkRun = await detectForkRun(env);
-  const tokenCandidates = await resolveTokenCandidates(env);
-  if (tokenCandidates.length === 0) {
-    throw new Error('GitHub token not found. Set GITHUB_TOKEN, GH_TOKEN, or GH_TOKEN_FILE.');
-  }
-  let activeTokenIndex = 0;
-  let activeTokenResult = tokenCandidates[activeTokenIndex];
-  log(`[policy] auth source: ${activeTokenResult.source}`);
+  const applyDiffsToReport = (diffs) => {
+    report.diffs.repo = [...diffs.repoDiffs];
+    report.diffs.branch = [...diffs.branchDiffs];
+    report.diffs.ruleset = [...diffs.rulesetDiffs];
+    report.summary = {
+      repoDiffCount: report.diffs.repo.length,
+      branchDiffCount: report.diffs.branch.length,
+      rulesetDiffCount: report.diffs.ruleset.length,
+      totalDiffCount: report.diffs.repo.length + report.diffs.branch.length + report.diffs.ruleset.length
+    };
+  };
 
-  const invokeWithAuthFallback = async (operationName, operationFn) => {
-    const attemptedSources = [activeTokenResult.source];
-    try {
-      return await operationFn(activeTokenResult.token);
-    } catch (initialError) {
-      if (!isUnauthorizedAuthError(initialError)) {
-        throw initialError;
-      }
+  const finalize = async ({ code, result, skippedReason = null }) => {
+    report.result = result;
+    report.skippedReason = skippedReason;
+    await writeReportIfRequested(options.report, report, log);
+    return code;
+  };
 
-      const fallback = tokenCandidates.find(
-        (candidate, index) => index > activeTokenIndex && candidate.token !== activeTokenResult.token
-      );
-      if (!fallback) {
-        throw createAuthUnavailableError(
-          operationName,
-          attemptedSources,
-          `No fallback token available. Last error: ${initialError.message}`
-        );
-      }
+  try {
+    const dbg = options.debug ? (...args) => log('[policy][debug]', ...args) : () => {};
 
-      log(`[policy] auth fallback: ${activeTokenResult.source} -> ${fallback.source} (401 Unauthorized)`);
-      activeTokenIndex = tokenCandidates.indexOf(fallback);
-      activeTokenResult = fallback;
-      attemptedSources.push(activeTokenResult.source);
+    const manifest = await loadManifest();
+    const forkRun = await detectForkRun(env);
+    report.forkRun = forkRun;
+    const tokenCandidates = await resolveTokenCandidates(env);
+    if (tokenCandidates.length === 0) {
+      throw new Error('GitHub token not found. Set GITHUB_TOKEN, GH_TOKEN, or GH_TOKEN_FILE.');
+    }
+    let activeTokenIndex = 0;
+    let activeTokenResult = tokenCandidates[activeTokenIndex];
+    report.authSource = activeTokenResult.source;
+    log(`[policy] auth source: ${activeTokenResult.source}`);
 
+    const invokeWithAuthFallback = async (operationName, operationFn) => {
+      const attemptedSources = [activeTokenResult.source];
       try {
         return await operationFn(activeTokenResult.token);
-      } catch (fallbackError) {
-        if (isUnauthorizedAuthError(fallbackError)) {
+      } catch (initialError) {
+        if (!isUnauthorizedAuthError(initialError)) {
+          throw initialError;
+        }
+
+        const fallback = tokenCandidates.find(
+          (candidate, index) => index > activeTokenIndex && candidate.token !== activeTokenResult.token
+        );
+        if (!fallback) {
           throw createAuthUnavailableError(
             operationName,
             attemptedSources,
-            `Last error: ${fallbackError.message}`
+            `No fallback token available. Last error: ${initialError.message}`
           );
         }
-        throw fallbackError;
+
+        log(`[policy] auth fallback: ${activeTokenResult.source} -> ${fallback.source} (401 Unauthorized)`);
+        activeTokenIndex = tokenCandidates.indexOf(fallback);
+        activeTokenResult = fallback;
+        report.authSource = activeTokenResult.source;
+        attemptedSources.push(activeTokenResult.source);
+
+        try {
+          return await operationFn(activeTokenResult.token);
+        } catch (fallbackError) {
+          if (isUnauthorizedAuthError(fallbackError)) {
+            throw createAuthUnavailableError(
+              operationName,
+              attemptedSources,
+              `Last error: ${fallbackError.message}`
+            );
+          }
+          throw fallbackError;
+        }
       }
+    };
+
+    const { owner, repo } = getRepoFromEnv(env, execSyncFn);
+    report.repository = `${owner}/${repo}`;
+    dbg(`Resolved repository ${owner}/${repo}`);
+    if (activeTokenResult?.source) {
+      dbg(`Token source ${activeTokenResult.source}`);
     }
-  };
+    const repoUrl = `https://api.github.com/repos/${owner}/${repo}`;
 
-  const { owner, repo } = getRepoFromEnv(env, execSyncFn);
-  dbg(`Resolved repository ${owner}/${repo}`);
-  if (activeTokenResult?.source) {
-    dbg(`Token source ${activeTokenResult.source}`);
-  }
-  const repoUrl = `https://api.github.com/repos/${owner}/${repo}`;
-
-  let initialState;
-  try {
-    initialState = await invokeWithAuthFallback('collectState', (token) =>
-      collectState(manifest, repoUrl, token, fetchFn)
-    );
-  } catch (authError) {
-    if (!options.apply && authError?.code === 'POLICY_AUTH_UNAVAILABLE') {
-      const attempted = Array.isArray(authError.attemptedSources) && authError.attemptedSources.length > 0
-        ? authError.attemptedSources.join(' -> ')
-        : 'unknown';
-      log(
-        `[policy] Authorization unavailable for policy check (attempted: ${attempted}); skipping non-apply validation. Upstream status "Policy Guard (Upstream) / policy-guard" remains authoritative.`
+    let initialState;
+    try {
+      initialState = await invokeWithAuthFallback('collectState', (token) =>
+        collectState(manifest, repoUrl, token, fetchFn)
       );
-      return 0;
+    } catch (authError) {
+      if (!options.apply && authError?.code === 'POLICY_AUTH_UNAVAILABLE') {
+        const attempted = Array.isArray(authError.attemptedSources) && authError.attemptedSources.length > 0
+          ? authError.attemptedSources.join(' -> ')
+          : 'unknown';
+        const message = `[policy] Authorization unavailable for policy check (attempted: ${attempted}); skipping non-apply validation. Upstream status "Policy Guard (Upstream) / policy-guard" remains authoritative.`;
+        log(message);
+        return finalize({
+          code: 0,
+          result: 'skipped',
+          skippedReason: message
+        });
+      }
+      throw authError;
     }
-    throw authError;
-  }
-  if (options.debug) {
-    const repoKeys = initialState.repoData ? Object.keys(initialState.repoData) : [];
-    dbg(`Repo response keys: ${repoKeys.length ? repoKeys.join(', ') : '(none)'}`);
-    for (const entry of initialState.branchStates) {
-      if (entry.error) {
-        dbg(`Branch ${entry.branch} protection fetch error: ${entry.error.message}`);
-      } else {
-        const protection = entry.protection ?? {};
-        dbg(`Branch ${entry.branch} protection keys: ${Object.keys(protection).join(', ') || '(none)'}`);
+    if (options.debug) {
+      const repoKeys = initialState.repoData ? Object.keys(initialState.repoData) : [];
+      dbg(`Repo response keys: ${repoKeys.length ? repoKeys.join(', ') : '(none)'}`);
+      for (const entry of initialState.branchStates) {
+        if (entry.error) {
+          dbg(`Branch ${entry.branch} protection fetch error: ${entry.error.message}`);
+        } else {
+          const protection = entry.protection ?? {};
+          dbg(`Branch ${entry.branch} protection keys: ${Object.keys(protection).join(', ') || '(none)'}`);
+        }
+      }
+      for (const entry of initialState.rulesetStates) {
+        if (entry.error) {
+          dbg(`Ruleset ${entry.id} fetch error: ${entry.error.message}`);
+        } else {
+          const rule = entry.ruleset ?? {};
+          dbg(`Ruleset ${entry.id} keys: ${Object.keys(rule).join(', ') || '(none)'}`);
+        }
       }
     }
-    for (const entry of initialState.rulesetStates) {
-      if (entry.error) {
-        dbg(`Ruleset ${entry.id} fetch error: ${entry.error.message}`);
-      } else {
-        const rule = entry.ruleset ?? {};
-        dbg(`Ruleset ${entry.id} keys: ${Object.keys(rule).join(', ') || '(none)'}`);
-      }
-    }
-  }
 
-  const initialDiffs = evaluateDiffs(manifest, initialState);
+    const initialDiffs = evaluateDiffs(manifest, initialState);
+    applyDiffsToReport(initialDiffs);
 
-  const allDiffs = [
-    ...initialDiffs.repoDiffs,
-    ...initialDiffs.branchDiffs,
-    ...initialDiffs.rulesetDiffs
-  ];
-
-  const missingRepoFields = initialDiffs.repoDiffs.filter((diff) => diff.includes('actual undefined'));
-  const repoFieldsAllMissing =
-    initialDiffs.repoDiffs.length > 0 && missingRepoFields.length === initialDiffs.repoDiffs.length;
-  const hasAdminPermission = initialState.repoData?.permissions?.admin === true;
-
-  if (!options.apply && repoFieldsAllMissing && (!hasAdminPermission || forkRun)) {
-    log(
-      '[policy] Repository settings unavailable with current token; skipping policy check (admin permissions required). Upstream status "Policy Guard (Upstream) / policy-guard" will enforce branch protection.'
-    );
-    return 0;
-  }
-
-  if (options.apply) {
-    const branchStatesNeedingUpdates = initialState.branchStates.filter((entry, index) => {
-      if (entry.skipReason === 'pattern') {
-        return false;
-      }
-      if (entry.error) {
-        return isNotFoundError(entry.error);
-      }
-      const diffs = compareBranchSettings(
-        entry.branch,
-        entry.expectations,
-        entry.protection
-      );
-      return diffs.length > 0;
-    });
-
-    for (const entry of branchStatesNeedingUpdates) {
-      await invokeWithAuthFallback(`applyBranchProtection(${entry.branch})`, (token) =>
-        applyBranchProtection(
-          repoUrl,
-          token,
-          entry.branch,
-          entry.expectations,
-          entry.protection,
-          fetchFn,
-          log
-        )
-      );
-    }
-
-    const rulesetStatesNeedingUpdates = initialState.rulesetStates.filter((entry) => {
-      if (entry.error) {
-        return false;
-      }
-      const diffs = compareRuleset(entry.id, entry.expectations, entry.ruleset);
-      return diffs.length > 0;
-    });
-
-    for (const entry of rulesetStatesNeedingUpdates) {
-      await invokeWithAuthFallback(`applyRuleset(${entry.id})`, (token) =>
-        applyRuleset(
-          repoUrl,
-          token,
-          entry.id,
-          entry.expectations,
-          entry.ruleset,
-          fetchFn,
-          log
-        )
-      );
-    }
-
-    const postState = await invokeWithAuthFallback('collectState(post-apply)', (token) =>
-      collectState(manifest, repoUrl, token, fetchFn)
-    );
-    const postDiffs = evaluateDiffs(manifest, postState);
-    const remainingDiffs = [
-      ...postDiffs.repoDiffs,
-      ...postDiffs.branchDiffs,
-      ...postDiffs.rulesetDiffs
+    const allDiffs = [
+      ...initialDiffs.repoDiffs,
+      ...initialDiffs.branchDiffs,
+      ...initialDiffs.rulesetDiffs
     ];
 
-    if (remainingDiffs.length > 0) {
-      error('Merge policy mismatches detected after apply:');
-      for (const diff of remainingDiffs) {
+    const missingRepoFields = initialDiffs.repoDiffs.filter((diff) => diff.includes('actual undefined'));
+    const repoFieldsAllMissing =
+      initialDiffs.repoDiffs.length > 0 && missingRepoFields.length === initialDiffs.repoDiffs.length;
+    const hasAdminPermission = initialState.repoData?.permissions?.admin === true;
+
+    if (!options.apply && repoFieldsAllMissing && (!hasAdminPermission || forkRun)) {
+      const message = '[policy] Repository settings unavailable with current token; skipping policy check (admin permissions required). Upstream status "Policy Guard (Upstream) / policy-guard" will enforce branch protection.';
+      log(message);
+      return finalize({
+        code: 0,
+        result: 'skipped',
+        skippedReason: message
+      });
+    }
+
+    if (options.apply) {
+      const branchStatesNeedingUpdates = initialState.branchStates.filter((entry) => {
+        if (entry.skipReason === 'pattern') {
+          return false;
+        }
+        if (entry.error) {
+          return isNotFoundError(entry.error);
+        }
+        const diffs = compareBranchSettings(
+          entry.branch,
+          entry.expectations,
+          entry.protection
+        );
+        return diffs.length > 0;
+      });
+
+      for (const entry of branchStatesNeedingUpdates) {
+        await invokeWithAuthFallback(`applyBranchProtection(${entry.branch})`, (token) =>
+          applyBranchProtection(
+            repoUrl,
+            token,
+            entry.branch,
+            entry.expectations,
+            entry.protection,
+            fetchFn,
+            log
+          )
+        );
+        report.applied.branches.push(entry.branch);
+      }
+
+      const rulesetStatesNeedingUpdates = initialState.rulesetStates.filter((entry) => {
+        if (entry.error) {
+          return false;
+        }
+        const diffs = compareRuleset(entry.id, entry.expectations, entry.ruleset);
+        return diffs.length > 0;
+      });
+
+      for (const entry of rulesetStatesNeedingUpdates) {
+        await invokeWithAuthFallback(`applyRuleset(${entry.id})`, (token) =>
+          applyRuleset(
+            repoUrl,
+            token,
+            entry.id,
+            entry.expectations,
+            entry.ruleset,
+            fetchFn,
+            log
+          )
+        );
+        report.applied.rulesets.push(entry.id);
+      }
+
+      const postState = await invokeWithAuthFallback('collectState(post-apply)', (token) =>
+        collectState(manifest, repoUrl, token, fetchFn)
+      );
+      const postDiffs = evaluateDiffs(manifest, postState);
+      applyDiffsToReport(postDiffs);
+      const remainingDiffs = [
+        ...postDiffs.repoDiffs,
+        ...postDiffs.branchDiffs,
+        ...postDiffs.rulesetDiffs
+      ];
+
+      if (remainingDiffs.length > 0) {
+        error('Merge policy mismatches detected after apply:');
+        for (const diff of remainingDiffs) {
+          error(` - ${diff}`);
+        }
+        return finalize({ code: 1, result: 'fail' });
+      }
+
+      log('Merge policy apply completed successfully.');
+      return finalize({ code: 0, result: 'applied' });
+    }
+
+    if (allDiffs.length > 0) {
+      if (missingRepoFields.length > 0 && !options.debug) {
+        error(
+          '[policy] Repository settings were returned as undefined. Ensure the provided token has admin access to the repository or rerun with --debug for more details.'
+        );
+      }
+      error('Merge policy mismatches detected:');
+      for (const diff of allDiffs) {
         error(` - ${diff}`);
       }
-      return 1;
+      return finalize({ code: 1, result: 'fail' });
     }
 
-    log('Merge policy apply completed successfully.');
-    return 0;
+    log('Merge policy check passed.');
+    return finalize({ code: 0, result: 'pass' });
+  } catch (errObj) {
+    report.result = report.result === 'unknown' ? 'error' : report.result;
+    report.errors.push(errObj?.message ?? String(errObj));
+    await writeReportIfRequested(options.report, report, log);
+    throw errObj;
   }
-
-  if (allDiffs.length > 0) {
-    if (missingRepoFields.length > 0 && !options.debug) {
-      error(
-        '[policy] Repository settings were returned as undefined. Ensure the provided token has admin access to the repository or rerun with --debug for more details.'
-      );
-    }
-    error('Merge policy mismatches detected:');
-    for (const diff of allDiffs) {
-      error(` - ${diff}`);
-    }
-    return 1;
-  }
-
-  log('Merge policy check passed.');
-  return 0;
 }
 
 const modulePath = path.resolve(fileURLToPath(import.meta.url));

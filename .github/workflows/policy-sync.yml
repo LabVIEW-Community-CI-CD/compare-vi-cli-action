@@ -1,0 +1,62 @@
+name: Policy Sync (Admin)
+
+on:
+  workflow_dispatch:
+    inputs:
+      apply:
+        description: 'Apply policy.json settings to GitHub branch protections/rulesets'
+        required: false
+        default: false
+        type: boolean
+
+jobs:
+  policy-sync:
+    name: policy-sync
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v5
+        with:
+          node-version: '20'
+
+      - name: Prepare policy sync token
+        shell: pwsh
+        env:
+          INPUT_TOKEN: ${{ secrets.GH_TOKEN || secrets.GITHUB_TOKEN }}
+        run: |
+          if (-not $env:INPUT_TOKEN -or (-not $env:INPUT_TOKEN.Trim())) {
+            throw 'Policy Sync requires secrets.GH_TOKEN or secrets.GITHUB_TOKEN to be populated.'
+          }
+
+          $token = $env:INPUT_TOKEN.Trim()
+          $tokenFile = Join-Path $env:RUNNER_TEMP 'policy-sync-gh-token.txt'
+          Set-Content -Path $tokenFile -Value $token -Encoding utf8 -NoNewline
+
+          Add-Content -Path $env:GITHUB_ENV -Value "GH_TOKEN=$token"
+          Add-Content -Path $env:GITHUB_ENV -Value "GITHUB_TOKEN=$token"
+          Add-Content -Path $env:GITHUB_ENV -Value "GH_TOKEN_FILE=$tokenFile"
+
+          Write-Host "Policy sync token exported. GH_TOKEN_FILE=$tokenFile"
+
+      - name: Run policy sync/check
+        shell: pwsh
+        run: |
+          if ('${{ inputs.apply }}' -eq 'true') {
+            pwsh -NoLogo -NoProfile -File tools/priority/Sync-BranchProtectionPolicy.ps1 -Apply -ResultsDir tests/results/_agent/policy
+          } else {
+            pwsh -NoLogo -NoProfile -File tools/priority/Sync-BranchProtectionPolicy.ps1 -ResultsDir tests/results/_agent/policy
+          }
+
+      - name: Upload policy sync artifact
+        if: always()
+        uses: actions/upload-artifact@v5
+        with:
+          name: policy-sync-${{ github.run_id }}
+          path: tests/results/_agent/policy/policy-drift-report.json
+          if-no-files-found: error

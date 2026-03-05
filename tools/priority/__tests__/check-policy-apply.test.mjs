@@ -1,5 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { mkdtemp, readFile } from 'node:fs/promises';
+import os from 'node:os';
+import path from 'node:path';
 import { run } from '../check-policy.mjs';
 
 function createResponse(data, status = 200, statusText = 'OK') {
@@ -26,6 +29,7 @@ test('priority:policy --apply updates rulesets for develop/main/release', async 
     'session-index',
     'issue-snapshot',
     'semver',
+    'Policy Guard (Upstream) / policy-guard',
     'Promotion Contract / promotion-contract',
     'hook-parity (windows-latest)',
     'hook-parity (ubuntu-latest)',
@@ -387,6 +391,9 @@ test('priority:policy --apply updates rulesets for develop/main/release', async 
     rulesetDevelop.rules.some((rule) => rule.type === 'required_linear_history'),
     'required_linear_history rule expected on develop'
   );
+  const developMergeQueueRule = rulesetDevelop.rules.find((rule) => rule.type === 'merge_queue');
+  assert.ok(developMergeQueueRule, 'merge_queue rule expected on develop');
+  assert.equal(developMergeQueueRule.parameters.min_entries_to_merge_wait_minutes, 5);
   const developPullRule = rulesetDevelop.rules.find((rule) => rule.type === 'pull_request');
   assert.deepEqual(
     developPullRule.parameters.allowed_merge_methods.sort(),
@@ -403,8 +410,8 @@ test('priority:policy --apply updates rulesets for develop/main/release', async 
   );
 
   const pullRule = rulesetMain.rules.find((rule) => rule.type === 'pull_request');
-  assert.equal(pullRule.parameters.required_approving_review_count, 1);
-  assert.equal(pullRule.parameters.required_review_thread_resolution, true);
+  assert.equal(pullRule.parameters.required_approving_review_count, 0);
+  assert.equal(pullRule.parameters.required_review_thread_resolution, false);
 
   const statusRuleRelease = rulesetRelease.rules.find((rule) => rule.type === 'required_status_checks');
   assert.deepEqual(
@@ -812,4 +819,32 @@ test('priority:policy --apply fails when GH_TOKEN 401 has no fallback', async ()
     'auth source log should report GH_TOKEN'
   );
   assert.deepEqual(errorMessages, []);
+});
+
+test('priority:policy emits machine-readable report when --report is provided', async () => {
+  const tempDir = await mkdtemp(path.join(os.tmpdir(), 'priority-policy-report-'));
+  const reportPath = path.join(tempDir, 'report.json');
+  const fetchMock = async () => createResponse({ message: 'Bad credentials', status: '401' }, 401, 'Unauthorized');
+
+  const code = await run({
+    argv: ['node', 'check-policy.mjs', '--report', reportPath],
+    env: {
+      ...process.env,
+      GITHUB_REPOSITORY: 'test-org/test-repo',
+      GH_TOKEN: 'gh-stale',
+      GITHUB_TOKEN: ''
+    },
+    fetchFn: fetchMock,
+    execSyncFn: () => {
+      throw new Error('execSync should not be called when GITHUB_REPOSITORY is set');
+    },
+    log: () => {},
+    error: () => {}
+  });
+
+  assert.equal(code, 0, 'non-apply mode should still return skip code');
+  const report = JSON.parse(await readFile(reportPath, 'utf8'));
+  assert.equal(report.schema, 'priority/policy-report@v1');
+  assert.equal(report.result, 'skipped');
+  assert.equal(report.apply, false);
 });
