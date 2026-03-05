@@ -7,6 +7,9 @@ LVCompare runs against commits in a LabVIEW project. The primary entrypoint is t
 `Manual VI Compare (refs)` workflow, which walks a branch/ref history, extracts the
 target VI at each commit-parent pair, and invokes LVCompare in headless mode.
 
+Scope boundary: icon editor development is out of scope for this repository. The
+active icon editor project lives at `svelderrainruiz/labview-icon-editor`.
+
 The latest rev streamlines the workflow inputs so SMEs only need to provide:
 
 1. The branch/tag/commit to inspect (`compare_ref`, defaults to `HEAD`)
