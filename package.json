@@ -65,6 +65,7 @@
     "priority:sync": "node tools/priority/sync-standing-priority.mjs",
     "priority:sync:docker": "pwsh -NoLogo -NoProfile -File tools/Run-NonLVChecksInDocker.ps1 -ToolsImageTag comparevi-tools:local -UseToolsImage -PrioritySync -SkipActionlint -SkipMarkdown -SkipDocs -SkipWorkflow -SkipDotnetCliBuild",
     "priority:test": "node --test tools/priority/__tests__/*.mjs",
+    "safe-watch:contract": "node --test tools/priority/__tests__/safe-watch-task-contract.test.mjs",
     "priority:validate": "node tools/priority/dispatch-validate.mjs",
     "publish:cli": "pwsh -NoLogo -NoProfile -File tools/Publish-Cli.ps1",
     "release:branch": "node tools/priority/create-release-branch.mjs",
