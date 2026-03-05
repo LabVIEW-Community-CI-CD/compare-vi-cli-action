@@ -52,6 +52,7 @@
     "priority:branch:rename": "node tools/priority/rename-issue-branch.mjs",
     "priority:handoff": "pwsh -NoLogo -NoProfile -File tools/priority/Import-HandoffState.ps1",
     "priority:handoff-tests": "node tools/priority/run-handoff-tests.mjs",
+    "priority:health-snapshot": "pwsh -NoLogo -NoProfile -File tools/priority/Write-HealthSnapshot.ps1",
     "priority:merge-sync": "node tools/priority/merge-sync-pr.mjs",
     "priority:policy": "node tools/priority/check-policy.mjs",
     "priority:operator-status": "pwsh -NoLogo -NoProfile -File tools/priority/Write-OperatorStatusSummary.ps1",
