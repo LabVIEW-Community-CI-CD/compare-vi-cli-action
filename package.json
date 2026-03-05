@@ -54,6 +54,7 @@
     "priority:handoff-tests": "node tools/priority/run-handoff-tests.mjs",
     "priority:merge-sync": "node tools/priority/merge-sync-pr.mjs",
     "priority:policy": "node tools/priority/check-policy.mjs",
+    "priority:operator-status": "pwsh -NoLogo -NoProfile -File tools/priority/Write-OperatorStatusSummary.ps1",
     "priority:parity": "node tools/priority/report-origin-upstream-parity.mjs",
     "priority:pr": "node tools/priority/create-pr.mjs",
     "priority:release": "pwsh -NoLogo -NoProfile -File tools/priority/Simulate-Release.ps1",
