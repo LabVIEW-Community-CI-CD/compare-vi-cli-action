@@ -6,7 +6,8 @@
     }
   ],
   "settings": {
-    "window.title": "[FORK_PLANE] ${activeEditorShort}${separator}${rootName}"
+    "window.title": "[FORK_PLANE] ${activeEditorShort}${separator}${rootName}",
+    "terminal.integrated.shellIntegration.enabled": true
   },
   "tasks": {
     "version": "2.0.0",
