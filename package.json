@@ -9,6 +9,7 @@
     "ci:status": "pwsh -NoLogo -NoProfile -File tools/Follow-OrchestratedRun.ps1",
     "ci:watch": "pwsh -NoLogo -NoProfile -File tools/Follow-OrchestratedRun.ps1 -Watch",
     "ci:watch:rest": "tsc -p tsconfig.cli.json && node dist/tools/watchers/orchestrated-watch.js",
+    "ci:watch:safe": "pwsh -NoLogo -NoProfile -File tools/Watch-PRChecksSafe.ps1",
     "cli:validate": "tsc -p tsconfig.cli.json && node dist/tools/cli/validate-cli.js",
     "compare:docker:ni:windows": "pwsh -NoLogo -NoProfile -File tools/Run-NIWindowsContainerCompare.ps1 -BaseVi $env:LV_BASE_VI -HeadVi $env:LV_HEAD_VI",
     "compare:docker:ni:windows:probe": "pwsh -NoLogo -NoProfile -File tools/Run-NIWindowsContainerCompare.ps1 -Probe",
