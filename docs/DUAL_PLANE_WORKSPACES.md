@@ -1,11 +1,12 @@
 # Dual-Plane VS Code Workspaces
 
-This repository ships three committed VS Code workspace files for the dual-plane
-operating model:
+This repository ships three primary committed VS Code workspace files for the
+dual-plane operating model, plus a legacy compatibility alias:
 
 - `compare-vi-cli-action.upstream-plane.code-workspace`
 - `compare-vi-cli-action.fork-plane.code-workspace`
 - `compare-vi-cli-action.command-center.code-workspace`
+- `compare-vi-cli-action.code-workspace` (legacy alias; opens command-center)
 
 ## Plane naming convention
 

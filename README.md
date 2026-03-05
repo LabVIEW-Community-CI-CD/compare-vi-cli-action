@@ -43,12 +43,13 @@ workflow uploads two artifacts:
 
 ## VS Code Plane Workspaces
 
-Use the committed workspace files to keep upstream, fork, and command-center
-operations explicit:
+Use the primary committed workspace files to keep upstream, fork, and
+command-center operations explicit, while preserving the legacy alias:
 
 - `compare-vi-cli-action.upstream-plane.code-workspace`
 - `compare-vi-cli-action.fork-plane.code-workspace`
 - `compare-vi-cli-action.command-center.code-workspace`
+- `compare-vi-cli-action.code-workspace` (legacy alias for command-center)
 
 Folder names inside those files follow plane prefixes (`PLANE_UPSTREAM__*`,
 `PLANE_FORK__*`) and all included tasks pin `cwd` to a named workspace folder so
