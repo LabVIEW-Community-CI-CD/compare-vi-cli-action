@@ -224,28 +224,28 @@ For Docker/Desktop VI history validation, run fast-loop lanes explicitly:
 - `main` reflects the latest release. Use release branches to promote changes from `develop` to `main`.
 - For standing-priority work, create `issue/<number>-<slug>` and merge back with squash once checks are green.
 - When the standing-priority issue changes mid-flight, realign the branch name and PR head with  
-  `npm run priority:branch:rename -- --issue <number>`. The helper derives the slug from the issue title, renames the
+  `node tools/npm/run-script.mjs priority:branch:rename -- --issue <number>`. The helper derives the slug from the issue title, renames the
   local branch, pushes the new name to any remotes that carried the old branch, retargets the matching PR, and (unless
   you pass `--keep-remote`) deletes the stale remote ref.
 - Use short-lived `feature/<slug>` branches when parallel threads are needed. Rebase on `develop` frequently and
-  open PRs with `npm run priority:pr`.
+  open PRs with `node tools/npm/run-script.mjs priority:pr`.
 - When preparing a release:
-  1. Create `release/<version>` from `develop` with `npm run release:branch`. The helper bumps `package.json`,
-     pushes the branch to your fork, and opens a PR targeting `main`. Use `npm run release:branch:dry`
+  1. Create `release/<version>` from `develop` with `node tools/npm/run-script.mjs release:branch`. The helper bumps `package.json`,
+    pushes the branch to your fork, and opens a PR targeting `main`. Use `node tools/npm/run-script.mjs release:branch:dry`
      when you want to rehearse the flow without touching remotes.
   2. Finish release-only work on feature branches targeting `release/<version>`.
   3. Merge the release branch into `main`, create the draft release, then fast-forward `develop`
-     with `npm run release:finalize -- <version>`. The helper fast-forwards `main`, creates a draft
+    with `node tools/npm/run-script.mjs release:finalize -- <version>`. The helper fast-forwards `main`, creates a draft
      GitHub release, fast-forwards `develop`, and records metadata under `tests/results/_agent/release/`.
-     Use `npm run release:finalize:dry` to rehearse the flow without pushing.
+    Use `node tools/npm/run-script.mjs release:finalize:dry` to rehearse the flow without pushing.
      - The finalize helper blocks if the release PR has pending or failing checks; set
        `RELEASE_FINALIZE_SKIP_CHECKS=1` (or `RELEASE_FINALIZE_ALLOW_MERGED=1` / `RELEASE_FINALIZE_ALLOW_DIRTY=1`)
        to override in emergencies.
      - If `main` and the release branch no longer share history (for example, after cutting over to a new repository
        baseline), rerun the helper with `RELEASE_FINALIZE_ALLOW_RESET=1` so it can reset `main` to the release tip and
        push with `--force-with-lease`. Leave the variable unset during normal releases so unintended history rewrites are blocked.
-- When rehearsing feature branch work, use `npm run feature:branch:dry -- my-feature` and
-  `npm run feature:finalize:dry -- my-feature` to simulate branch creation and finalization without touching remotes.
+- When rehearsing feature branch work, use `node tools/npm/run-script.mjs feature:branch:dry -- my-feature` and
+  `node tools/npm/run-script.mjs feature:finalize:dry -- my-feature` to simulate branch creation and finalization without touching remotes.
 - Delete branches automatically after merging (GitHub setting) so the standing-priority flow starts clean each time.
 
 ## CI automation secrets
@@ -271,7 +271,7 @@ For Docker/Desktop VI history validation, run fast-loop lanes explicitly:
   - commit divergence from `git rev-list --left-right --count upstream/develop...origin/develop` (telemetry only)
 - Validate `session-index` now embeds parity telemetry under `runContext.parity` and appends an
   `Origin/Upstream Parity Telemetry` block to the step summary.
-- The release router now suggests `npm run release:finalize -- <version>` automatically when the latest branch artifact
+- The release router now suggests `node tools/npm/run-script.mjs release:finalize -- <version>` automatically when the latest branch artifact
   lacks a matching finalize record.
 
 ## Pull request & merge policy
@@ -280,9 +280,9 @@ For Docker/Desktop VI history validation, run fast-loop lanes explicitly:
   commits land on `develop`/`main`.
 - Keep PRs focused and include the standing issue reference (`#<number>`) in the commit subject and PR description.
 - Ensure required checks (`validate`, `fixtures`, `session-index`) are green before merging; rerun as needed.
-- Run `npm run priority:policy` if you need to audit merge settings locally; the command also runs during
+- Run `node tools/npm/run-script.mjs priority:policy` if you need to audit merge settings locally; the command also runs during
   `priority:handoff-tests` and fails when repo/branch policy drifts.
-- Prefer opening PRs from your fork with `npm run priority:pr`; the helper ensures `origin` targets your fork (creating
+- Prefer opening PRs from your fork with `node tools/npm/run-script.mjs priority:pr`; the helper ensures `origin` targets your fork (creating
   it via `gh repo fork` if needed), pushes the current branch, and calls
   `gh pr create --fill --repo <upstream> --base develop --head <fork>:branch`.
 - Detailed enforcement notes (feature-branch guards, merge history workflow,
@@ -300,7 +300,7 @@ For Docker/Desktop VI history validation, run fast-loop lanes explicitly:
 - `scripts/Run-VIHistory.ps1` - regenerates the manual compare suite locally,
   verifies the target VI exists at the selected ref, and prints the Markdown
   summary (attribute coverage included) for issue comments. You can also call it
-  via `npm run history:run -- -ViPath Fixtures/Loop.vi -StartRef HEAD`. Add `-MaxPairs <n>`
+  via `node tools/npm/run-script.mjs history:run -- -ViPath Fixtures/Loop.vi -StartRef HEAD`. Add `-MaxPairs <n>`
   when you intentionally need a cap. Use `-IncludeMergeParents` to traverse merge
   parents as well as the first-parent chain so local artifacts include the same
   lineage metadata the audit automation expects.
@@ -308,7 +308,7 @@ For Docker/Desktop VI history validation, run fast-loop lanes explicitly:
   `vi-compare-refs.yml`, echoes the latest run id/link, and records dispatch
   metadata under `tests/results/_agent/handoff/vi-history-run.json` for
   follow-up. Invoke with
-  `npm run history:dispatch -- -ViPath Fixtures/Loop.vi -CompareRef develop -NotifyIssue 317`.
+  `node tools/npm/run-script.mjs history:dispatch -- -ViPath Fixtures/Loop.vi -CompareRef develop -NotifyIssue 317`.
 - VS Code tasks **VI History: Run local suite** and **VI History: Dispatch
   workflow** prompt for VI path/refs and route through the same scripts so
   editors can trigger the flow without remembering the parameters.
