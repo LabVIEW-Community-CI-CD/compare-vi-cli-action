@@ -122,6 +122,54 @@ function Test-ContextMatch {
   return $false
 }
 
+function Resolve-BranchExpectedContexts {
+  param(
+    [psobject]$Branches,
+    [string]$BranchName
+  )
+
+  if (-not $Branches) {
+    return @()
+  }
+
+  foreach ($prop in $Branches.PSObject.Properties) {
+    if ($prop.Name -eq $BranchName) {
+      return @($prop.Value)
+    }
+  }
+
+  $bestMatch = $null
+  $bestSpecificity = -1
+  foreach ($prop in $Branches.PSObject.Properties) {
+    $pattern = $prop.Name
+    if ($pattern -eq 'default') {
+      continue
+    }
+    if ($pattern -notmatch '[\*\?]') {
+      continue
+    }
+    if ($BranchName -like $pattern) {
+      $specificity = ($pattern -replace '[\*\?]', '').Length
+      if ($specificity -gt $bestSpecificity) {
+        $bestSpecificity = $specificity
+        $bestMatch = @($prop.Value)
+      }
+    }
+  }
+
+  if ($null -ne $bestMatch -and $bestMatch.Count -gt 0) {
+    return $bestMatch
+  }
+
+  foreach ($prop in $Branches.PSObject.Properties) {
+    if ($prop.Name -eq 'default') {
+      return @($prop.Value)
+    }
+  }
+
+  return @()
+}
+
 $rawBranch = $Branch
 if ([string]::IsNullOrWhiteSpace($rawBranch)) {
   $Branch = 'unknown'
@@ -168,21 +216,7 @@ if (-not $branches) {
   throw "Policy file '$PolicyPath' does not contain a 'branches' object."
 }
 
-$expectedRaw = @()
-foreach ($prop in $branches.PSObject.Properties) {
-  if ($prop.Name -eq $Branch) {
-    $expectedRaw = @($prop.Value)
-    break
-  }
-}
-if ($expectedRaw.Count -eq 0) {
-  foreach ($prop in $branches.PSObject.Properties) {
-    if ($prop.Name -eq 'default') {
-      $expectedRaw = @($prop.Value)
-      break
-    }
-  }
-}
+$expectedRaw = @(Resolve-BranchExpectedContexts -Branches $branches -BranchName $Branch)
 $expected = @($expectedRaw | Where-Object { $_ } | Sort-Object -Unique)
 
 $producedRaw = if ($PSBoundParameters.ContainsKey('ProducedContexts')) {

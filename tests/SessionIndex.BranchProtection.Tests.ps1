@@ -10,7 +10,7 @@ Describe 'Update-SessionIndexBranchProtection' -Tag 'Unit' {
     Set-Variable -Name policy -Scope Script -Value $policyLocal
 
     Set-Variable -Name developExpected -Scope Script -Value @($policyLocal.branches.develop)
-    Set-Variable -Name releaseExpected -Scope Script -Value @($policyLocal.branches.'release/v0.5.2')
+    Set-Variable -Name releaseExpected -Scope Script -Value @($policyLocal.branches.'release/*')
     Set-Variable -Name updateScript -Scope Script -Value (Join-Path $repoRootLocal 'tools/Update-SessionIndexBranchProtection.ps1')
     $newFixture = {
       param([string]$Name)
@@ -239,12 +239,12 @@ Describe 'Update-SessionIndexBranchProtection' -Tag 'Unit' {
     & $script:updateScript `
       -ResultsDir $resultsDir `
       -PolicyPath $script:policyPath `
-      -Branch 'release/v0.5.2' `
+      -Branch 'release/v0.6.0' `
       -ProducedContexts $script:releaseExpected
 
     $idx = Get-Content -LiteralPath (Join-Path $resultsDir 'session-index.json') -Raw | ConvertFrom-Json
     $bp = $idx.branchProtection
-    $bp.branch | Should -Be 'release/v0.5.2'
+    $bp.branch | Should -Be 'release/v0.6.0'
     ($bp.expected | Sort-Object) | Should -Be ($script:releaseExpected | Sort-Object)
     ($bp.produced | Sort-Object) | Should -Be ($script:releaseExpected | Sort-Object)
     $bp.result.status | Should -Be 'ok'
@@ -263,7 +263,7 @@ Describe 'Update-SessionIndexBranchProtection' -Tag 'Unit' {
     & $script:updateScript `
       -ResultsDir $resultsDir `
       -PolicyPath $script:policyPath `
-      -Branch 'release/v0.5.2' `
+      -Branch 'release/v0.6.0' `
       -ProducedContexts $produced
 
     $idx = Get-Content -LiteralPath (Join-Path $resultsDir 'session-index.json') -Raw | ConvertFrom-Json

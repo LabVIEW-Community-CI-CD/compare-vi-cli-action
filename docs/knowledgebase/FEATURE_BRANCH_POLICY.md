@@ -1,7 +1,7 @@
 <!-- markdownlint-disable-next-line MD041 -->
 # Feature Branch Enforcement & Merge Queue
 
-_Last updated: 2025-10-22 (standing priority #293)._ 
+_Last updated: 2026-03-05 (standing priority #283)._ 
 
 ## Purpose
 
@@ -43,7 +43,7 @@ standing GitHub protection rules (including the `main` merge queue).
 - `.github/workflows/policy-guard-upstream.yml` (triggered via `pull_request_target`) checks out the PR head with the
   upstream repository token and re-runs `priority:policy`, guaranteeing that branch protection rules are enforced even
   when the lint job skips in fork contexts. Its status (`Policy Guard (Upstream) / policy-guard`) is required on
-  `develop`, `main`, and `release/*`.
+  `main` and `release/*`.
 - Branch protection verification treats workflow-prefixed and short check contexts as equivalent (for example,
   `Validate / lint` and `lint`) to avoid false drift when comparing live API contexts against policy mappings.
 - `Validate` runs `priority:handoff-tests` automatically for heads that start with `feature/`, enforcing leak-sensitive
@@ -60,7 +60,7 @@ standing GitHub protection rules (including the `main` merge queue).
 ### GitHub rulesets
 | Ruleset ID | Scope                | Highlights                                                                                   |
 |------------|----------------------|----------------------------------------------------------------------------------------------|
-| `8811898`  | `refs/heads/develop` | Linear history required, squash-only merges, checks: `Validate / lint`, `Validate / fixtures`, `Validate / session-index`, `Validate / issue-snapshot`, `Requirements Verification / requirements-verification`, `Policy Guard (Upstream) / policy-guard` |
+| `8811898`  | `refs/heads/develop` | Linear history required, squash-only merges, checks: `lint`, `fixtures`, `session-index`, `issue-snapshot`, `semver`, `hook-parity (windows-latest)`, `hook-parity (ubuntu-latest)`, `vi-history-scenarios-linux` |
 | `8614140`  | `refs/heads/main`    | Merge queue enabled (`merge_method=SQUASH`, `grouping=ALLGREEN`, build queue <=5 entries, 5-minute quiet window). Required checks: `lint`, `pester`, `vi-binary-check`, `vi-compare`, `Policy Guard (Upstream) / policy-guard`. Requires one approving review with resolved threads. |
 | `8614172`  | `refs/heads/release/*` | No merge queue; protects against force-push/deletion. Required checks: `lint`, `pester`, `publish`, `vi-binary-check`, `vi-compare`, `mock-cli`, `Policy Guard (Upstream) / policy-guard`. Requires one approving review with resolved threads. |
 
@@ -87,8 +87,8 @@ checked into `tools/priority/policy.json` so `priority:policy` stays authoritati
 
 ### `develop`
 - **Merge strategy**: squash only (enforce linear history, disable merge commits).
-- **Required checks**: `Validate / lint`, `Validate / fixtures`, `Validate / session-index`, `Validate / issue-snapshot`,
-  `Requirements Verification / requirements-verification`, `Policy Guard (Upstream) / policy-guard`.
+- **Required checks**: `lint`, `fixtures`, `session-index`, `issue-snapshot`, `semver`, `hook-parity (windows-latest)`,
+  `hook-parity (ubuntu-latest)`, `vi-history-scenarios-linux`.
 - **Admin bypass**: leave disabled; administrators should only intervene when `priority:policy` confirms parity.
 - **Reapply**: Use `node tools/npm/run-script.mjs priority:policy -- --apply` to push the manifest configuration when drift is detected.
 
@@ -124,8 +124,8 @@ checked into `tools/priority/policy.json` so `priority:policy` stays authoritati
   pwsh -NoLogo -NonInteractive -NoProfile -File tools/Assert-RequirementsVerificationCheckContract.ps1
   ```
 
-- Validate branch-protection helper contract deterministically (explicitly includes
-  `Requirements Verification / requirements-verification` in develop policy):
+- Validate branch-protection helper contract deterministically (uses the canonical
+  `tools/policy/branch-required-checks.json` develop mapping):
 
   ```powershell
   pwsh -NoLogo -NoProfile -Command "Invoke-Pester -Path 'tests/SessionIndex.BranchProtection.Tests.ps1','tests/GetBranchProtectionRequiredChecks.Tests.ps1','tests/RequirementsVerificationCheckContract.Tests.ps1' -Output Detailed"
@@ -208,7 +208,7 @@ checked into `tools/priority/policy.json` so `priority:policy` stays authoritati
   - `max_entries_to_build=5`, `min_entries_to_merge=1`, `max_entries_to_merge=5`
   - `min_entries_to_merge_wait_minutes=5`
   - `check_response_timeout_minutes=60`
-- **Required checks**: `lint`, `pester`, `vi-binary-check`, `vi-compare`.
+- **Required checks**: `lint`, `pester`, `vi-binary-check`, `vi-compare`, `Policy Guard (Upstream) / policy-guard`.
 - **Workflow triggers**: Ensure those required checks run on both `pull_request` and `merge_group` so queued entries can merge.
 - **Approval policy**: >= 1 review; dismiss stale reviews on push; require thread resolution.
 - **Quick verification**:
@@ -220,7 +220,7 @@ checked into `tools/priority/policy.json` so `priority:policy` stays authoritati
 
 ### `release/*`
 - **Ruleset**: `8614172` (scope `refs/heads/release/*`).
-- **Required checks**: `lint`, `pester`, `publish`, `vi-binary-check`, `vi-compare`, `mock-cli`.
+- **Required checks**: `lint`, `pester`, `publish`, `vi-binary-check`, `vi-compare`, `mock-cli`, `Policy Guard (Upstream) / policy-guard`.
 - **Approvals**: >= 1 review, stale review dismissal enabled, enforce thread resolution.
 - **Merge queue**: intentionally disabled; rely on manual review + required checks.
 - **Maintenance tip**: revisit after each release cycle to ensure the workflow matrix still emits the expected check
@@ -231,7 +231,7 @@ Prereq: All required checks for `main` must execute on both `pull_request` and `
 to confirm each workflow includes both triggers.
 
 1. Ensure the PR targets `main` (typically a release PR) and all required checks (`lint`, `pester`, `vi-binary-check`,
-   `vi-compare`) are green on the latest commit.
+   `vi-compare`, `Policy Guard (Upstream) / policy-guard`) are green on the latest commit.
 2. Click **Merge when ready** (queue-managed **squash**). Ensure >= 1 approval and all review threads are resolved; the
    queue enforces both before merging.
 3. Monitor `https://github.com/LabVIEW-Community-CI-CD/compare-vi-cli-action/queue/main`. GitHub stages entries, reruns

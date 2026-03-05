@@ -78,6 +78,10 @@ function parseRemoteUrl(url) {
   return { owner, repo };
 }
 
+function isBranchPattern(branch) {
+  return /[*?[\]]/.test(branch);
+}
+
 function getRepoFromEnv(env = process.env, execSyncFn = execSync) {
   const envRepo = env.GITHUB_REPOSITORY;
   if (envRepo && envRepo.includes('/')) {
@@ -607,7 +611,12 @@ async function collectState(manifest, repoUrl, token, fetchFn) {
 
   const branchStates = [];
   for (const [branch, expectations] of Object.entries(manifest.branches ?? {})) {
-    const state = { branch, expectations, protection: null, error: null };
+    const state = { branch, expectations, protection: null, error: null, skipReason: null };
+    if (isBranchPattern(branch)) {
+      state.skipReason = 'pattern';
+      branchStates.push(state);
+      continue;
+    }
     try {
       const protectionUrl = `${repoUrl}/branches/${encodeURIComponent(branch)}/protection`;
       state.protection = await fetchJson(protectionUrl, token, fetchFn);
@@ -624,14 +633,14 @@ async function collectState(manifest, repoUrl, token, fetchFn) {
     if (Number.isNaN(numericId)) {
       state.error = new Error('invalid id');
       rulesetStates.push(state);
-    continue;
-  }
-  try {
-    const rulesetUrl = `${repoUrl}/rulesets/${numericId}`;
-    state.ruleset = await fetchJson(rulesetUrl, token, fetchFn);
-  } catch (error) {
-    state.error = error;
-  }
+      continue;
+    }
+    try {
+      const rulesetUrl = `${repoUrl}/rulesets/${numericId}`;
+      state.ruleset = await fetchJson(rulesetUrl, token, fetchFn);
+    } catch (error) {
+      state.error = error;
+    }
     rulesetStates.push(state);
   }
 
@@ -643,6 +652,9 @@ function evaluateDiffs(manifest, state) {
 
   const branchDiffs = [];
   for (const entry of state.branchStates) {
+    if (entry.skipReason === 'pattern') {
+      continue;
+    }
     if (entry.error) {
       branchDiffs.push(`branch ${entry.branch}: failed to load protection -> ${entry.error.message}`);
       continue;
@@ -799,6 +811,9 @@ export async function run({
 
   if (options.apply) {
     const branchStatesNeedingUpdates = initialState.branchStates.filter((entry, index) => {
+      if (entry.skipReason === 'pattern') {
+        return false;
+      }
       if (entry.error) {
         return isNotFoundError(entry.error);
       }

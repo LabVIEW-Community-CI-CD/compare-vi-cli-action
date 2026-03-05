@@ -13,12 +13,14 @@
       "vi-history-scenarios-linux"
     ],
     "main": [
+      "lint",
       "pester",
       "vi-binary-check",
       "vi-compare",
       "Policy Guard (Upstream) / policy-guard"
     ],
-    "release/v0.5.2": [
+    "release/*": [
+      "lint",
       "pester",
       "publish",
       "vi-binary-check",
