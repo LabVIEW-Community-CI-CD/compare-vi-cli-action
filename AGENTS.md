@@ -132,6 +132,9 @@ line buffers).
 - Keep commits focused; include `#<standing-number>` in subjects.
 - PRs should describe rationale, list affected workflows, and link to artifacts.
 - Ensure CI is green (lint + Pester). Verify no lingering processes on self-hosted runners.
+- For `gh issue create` / `gh issue edit` with multiline Markdown bodies in mixed
+  WSL/Windows shells, prefer `--body-file <path>` (or `-F`) over inline
+  `--body "..."` to avoid backtick command substitution and quoting drift.
 
 ## Local gates (pre-push)
 
