@@ -30,6 +30,10 @@ import {
   ensureRogueScanClean
 } from './lib/release-hygiene.mjs';
 import { collectBlockingCompareEvidence } from './lib/release-compare-evidence.mjs';
+import {
+  loadReleaseRequiredChecks,
+  assertRequiredReleaseChecksClean
+} from './lib/release-pr-checks.mjs';
 
 const USAGE_LINES = [
   'Usage: node tools/npm/run-script.mjs release:finalize -- <version>',
