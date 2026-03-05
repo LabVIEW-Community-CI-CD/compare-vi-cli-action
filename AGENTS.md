@@ -135,12 +135,6 @@ line buffers).
 - For `gh issue create` / `gh issue edit` with multiline Markdown bodies in mixed
   WSL/Windows shells, prefer `--body-file <path>` (or `-F`) over inline
   `--body "..."` to avoid backtick command substitution and quoting drift.
-  Example:
-
-  ```bash
-  gh issue create --title "<title>" --body-file issue-body.md
-  gh issue edit <number> --body-file issue-body.md
-  ```
 
 ## Local gates (pre-push)
 
