@@ -314,6 +314,27 @@
       },
       "group": "test",
       "problemMatcher": []
+    },
+    {
+      "label": "CI: Watch PR checks (safe snapshot)",
+      "type": "process",
+      "command": "node",
+      "args": [
+        "tools/npm/run-script.mjs",
+        "ci:watch:safe",
+        "--",
+        "--PullRequest",
+        "${input:watchPrNumber}",
+        "-IntervalSeconds",
+        "20",
+        "-HeartbeatPolls",
+        "3"
+      ],
+      "options": {
+        "cwd": "${workspaceFolder}"
+      },
+      "group": "test",
+      "problemMatcher": []
     }
   ],
   "inputs": [
@@ -416,6 +437,12 @@
         }
       ],
       "default": "64"
+    },
+    {
+      "id": "watchPrNumber",
+      "type": "promptString",
+      "description": "Pull request number for safe PR check polling",
+      "default": "1"
     }
   ]
 }
