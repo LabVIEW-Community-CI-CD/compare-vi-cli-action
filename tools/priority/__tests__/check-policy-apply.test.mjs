@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { mkdtemp, readFile } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
-import { run } from '../check-policy.mjs';
+import { run, __test } from '../check-policy.mjs';
 
 function createResponse(data, status = 200, statusText = 'OK') {
   return {
@@ -1182,4 +1182,143 @@ test('priority:policy --fail-on-skip emits fail report when auth-unavailable ski
   assert.equal(report.schema, 'priority/policy-report@v1');
   assert.equal(report.result, 'fail');
   assert.match(report.skippedReason, /Strict mode enabled \(\-\-fail-on-skip\)/);
+});
+
+test('priority:policy branch-protection seams pass when disabled settings are explicitly disabled', () => {
+  const expected = {
+    required_status_checks_strict: true,
+    required_status_checks: ['lint', 'session-index'],
+    required_linear_history: true,
+    enforce_admins: false,
+    required_pull_request_reviews: null,
+    restrictions: null,
+    allow_force_pushes: false,
+    allow_deletions: false,
+    block_creations: false,
+    required_conversation_resolution: false,
+    lock_branch: false,
+    allow_fork_syncing: false
+  };
+
+  const actualProtection = {
+    required_status_checks: {
+      strict: true,
+      checks: expected.required_status_checks.map((context) => ({ context }))
+    },
+    required_linear_history: { enabled: true },
+    enforce_admins: { enabled: false },
+    required_pull_request_reviews: null,
+    restrictions: null,
+    allow_force_pushes: { enabled: false },
+    allow_deletions: { enabled: false },
+    block_creations: { enabled: false },
+    required_conversation_resolution: { enabled: false },
+    lock_branch: { enabled: false },
+    allow_fork_syncing: { enabled: false }
+  };
+
+  const diffs = __test.compareBranchSettings('develop', expected, actualProtection);
+  assert.deepEqual(diffs, []);
+});
+
+test('priority:policy branch-protection seams fail when disabled settings drift to enabled', () => {
+  const expected = {
+    required_status_checks_strict: true,
+    required_status_checks: ['lint', 'session-index'],
+    required_linear_history: true,
+    enforce_admins: false,
+    required_pull_request_reviews: null,
+    restrictions: null,
+    allow_force_pushes: false,
+    allow_deletions: false,
+    block_creations: false,
+    required_conversation_resolution: false,
+    lock_branch: false,
+    allow_fork_syncing: false
+  };
+
+  const actualProtection = {
+    required_status_checks: {
+      strict: true,
+      checks: expected.required_status_checks.map((context) => ({ context }))
+    },
+    required_linear_history: { enabled: true },
+    enforce_admins: { enabled: true },
+    required_pull_request_reviews: {
+      required_approving_review_count: 1
+    },
+    restrictions: {
+      users: ['octocat']
+    },
+    allow_force_pushes: { enabled: true },
+    allow_deletions: { enabled: true },
+    block_creations: { enabled: true },
+    required_conversation_resolution: { enabled: true },
+    lock_branch: { enabled: true },
+    allow_fork_syncing: { enabled: true }
+  };
+
+  const diffs = __test.compareBranchSettings('develop', expected, actualProtection);
+  const requiredFragments = [
+    'enforce_admins expected false, actual true',
+    'required_pull_request_reviews expected null',
+    'restrictions expected null',
+    'allow_force_pushes expected false, actual true',
+    'allow_deletions expected false, actual true',
+    'block_creations expected false, actual true',
+    'required_conversation_resolution expected false, actual true',
+    'lock_branch expected false, actual true',
+    'allow_fork_syncing expected false, actual true'
+  ];
+
+  for (const fragment of requiredFragments) {
+    assert.ok(
+      diffs.some((diff) => diff.includes(fragment)),
+      `expected diff fragment not found: ${fragment}`
+    );
+  }
+});
+
+test('priority:policy build branch-protection payload honors explicit disabled settings', () => {
+  const expected = {
+    required_status_checks_strict: true,
+    required_status_checks: ['lint', 'session-index'],
+    required_linear_history: true,
+    enforce_admins: false,
+    required_pull_request_reviews: null,
+    restrictions: null,
+    allow_force_pushes: false,
+    allow_deletions: false,
+    block_creations: false,
+    required_conversation_resolution: false,
+    lock_branch: false,
+    allow_fork_syncing: false
+  };
+  const actualProtection = {
+    required_status_checks: { strict: false },
+    enforce_admins: { enabled: true },
+    required_pull_request_reviews: { required_approving_review_count: 1 },
+    restrictions: { users: ['octocat'] },
+    required_linear_history: { enabled: false },
+    allow_force_pushes: { enabled: true },
+    allow_deletions: { enabled: true },
+    block_creations: { enabled: true },
+    required_conversation_resolution: { enabled: true },
+    lock_branch: { enabled: true },
+    allow_fork_syncing: { enabled: true }
+  };
+
+  const payload = __test.buildBranchProtectionPayload(expected, actualProtection);
+  assert.equal(payload.required_status_checks.strict, true);
+  assert.deepEqual(payload.required_status_checks.contexts, expected.required_status_checks);
+  assert.equal(payload.enforce_admins, false);
+  assert.equal(payload.required_pull_request_reviews, null);
+  assert.equal(payload.restrictions, null);
+  assert.equal(payload.required_linear_history, true);
+  assert.equal(payload.allow_force_pushes, false);
+  assert.equal(payload.allow_deletions, false);
+  assert.equal(payload.block_creations, false);
+  assert.equal(payload.required_conversation_resolution, false);
+  assert.equal(payload.lock_branch, false);
+  assert.equal(payload.allow_fork_syncing, false);
 });

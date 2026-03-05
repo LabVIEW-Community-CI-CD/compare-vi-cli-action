@@ -261,6 +261,73 @@ function compareRepoSettings(expected, actual) {
   return diffs;
 }
 
+const BRANCH_PROTECTION_BOOLEAN_SETTINGS = [
+  'enforce_admins',
+  'required_linear_history',
+  'allow_force_pushes',
+  'allow_deletions',
+  'block_creations',
+  'required_conversation_resolution',
+  'lock_branch',
+  'allow_fork_syncing'
+];
+
+const BRANCH_PROTECTION_NULLABLE_SETTINGS = ['required_pull_request_reviews', 'restrictions'];
+
+function hasOwnProperty(object, key) {
+  return Object.prototype.hasOwnProperty.call(object ?? {}, key);
+}
+
+function normalizeNullableSetting(value) {
+  return value ?? null;
+}
+
+function stringifyForDiff(value) {
+  if (value === null || value === undefined) {
+    return String(value);
+  }
+  if (typeof value === 'object') {
+    return JSON.stringify(value);
+  }
+  return String(value);
+}
+
+function compareBranchBooleanSetting(branch, setting, expectedValue, actualProtection) {
+  if (expectedValue === undefined) {
+    return null;
+  }
+  const normalizedExpected = Boolean(expectedValue);
+  const normalizedActual = resolveEnabledFlag(actualProtection?.[setting], false);
+  if (normalizedExpected === normalizedActual) {
+    return null;
+  }
+  return `branch ${branch}: ${setting} expected ${normalizedExpected}, actual ${normalizedActual}`;
+}
+
+function compareBranchNullableSetting(branch, setting, expectedValue, actualProtection) {
+  if (expectedValue === undefined) {
+    return null;
+  }
+  const actualValue = normalizeNullableSetting(actualProtection?.[setting]);
+  if (expectedValue === null) {
+    if (actualValue === null) {
+      return null;
+    }
+    return `branch ${branch}: ${setting} expected null, actual ${stringifyForDiff(actualValue)}`;
+  }
+
+  if (actualValue === null) {
+    return `branch ${branch}: ${setting} expected ${stringifyForDiff(expectedValue)}, actual null`;
+  }
+
+  const expectedJson = JSON.stringify(expectedValue);
+  const actualJson = JSON.stringify(actualValue);
+  if (expectedJson === actualJson) {
+    return null;
+  }
+  return `branch ${branch}: ${setting} mismatch (expected ${expectedJson}, actual ${actualJson})`;
+}
+
 function compareBranchSettings(branch, expected, actualProtection) {
   if (!actualProtection) {
     return [`branch ${branch}: protection settings not found`];
@@ -268,11 +335,11 @@ function compareBranchSettings(branch, expected, actualProtection) {
 
   const diffs = [];
 
-  if (expected.required_linear_history !== undefined) {
-    const actualLinear = actualProtection.required_linear_history?.enabled ?? false;
-    if (actualLinear !== expected.required_linear_history) {
+  if (expected.required_status_checks_strict !== undefined) {
+    const actualStrict = actualProtection.required_status_checks?.strict ?? true;
+    if (actualStrict !== Boolean(expected.required_status_checks_strict)) {
       diffs.push(
-        `branch ${branch}: required_linear_history expected ${expected.required_linear_history}, actual ${actualLinear}`
+        `branch ${branch}: required_status_checks.strict expected ${Boolean(expected.required_status_checks_strict)}, actual ${actualStrict}`
       );
     }
   }
@@ -295,6 +362,30 @@ function compareBranchSettings(branch, expected, actualProtection) {
         parts.push(`unexpected [${extra.join(', ')}]`);
       }
       diffs.push(`branch ${branch}: required_status_checks mismatch (${parts.join('; ')})`);
+    }
+  }
+
+  for (const setting of BRANCH_PROTECTION_BOOLEAN_SETTINGS) {
+    const diff = compareBranchBooleanSetting(
+      branch,
+      setting,
+      expected[setting],
+      actualProtection
+    );
+    if (diff) {
+      diffs.push(diff);
+    }
+  }
+
+  for (const setting of BRANCH_PROTECTION_NULLABLE_SETTINGS) {
+    const diff = compareBranchNullableSetting(
+      branch,
+      setting,
+      expected[setting],
+      actualProtection
+    );
+    if (diff) {
+      diffs.push(diff);
     }
   }
 
@@ -460,22 +551,55 @@ function buildBranchProtectionPayload(expected, actual) {
   const expectedChecks = Array.isArray(expected.required_status_checks)
     ? expected.required_status_checks
     : [];
-  const actualStrict = actual?.required_status_checks?.strict ?? true;
+  const strictSetting = hasOwnProperty(expected, 'required_status_checks_strict')
+    ? Boolean(expected.required_status_checks_strict)
+    : actual?.required_status_checks?.strict ?? true;
+  const enforceAdmins = hasOwnProperty(expected, 'enforce_admins')
+    ? Boolean(expected.enforce_admins)
+    : resolveEnabledFlag(actual?.enforce_admins, false);
+  const requiredPullRequestReviews = hasOwnProperty(expected, 'required_pull_request_reviews')
+    ? expected.required_pull_request_reviews
+    : normalizeNullableSetting(actual?.required_pull_request_reviews);
+  const restrictions = hasOwnProperty(expected, 'restrictions')
+    ? expected.restrictions
+    : normalizeNullableSetting(actual?.restrictions);
+  const requiredLinearHistory = hasOwnProperty(expected, 'required_linear_history')
+    ? Boolean(expected.required_linear_history)
+    : resolveEnabledFlag(actual?.required_linear_history, false);
+  const allowForcePushes = hasOwnProperty(expected, 'allow_force_pushes')
+    ? Boolean(expected.allow_force_pushes)
+    : resolveEnabledFlag(actual?.allow_force_pushes, false);
+  const allowDeletions = hasOwnProperty(expected, 'allow_deletions')
+    ? Boolean(expected.allow_deletions)
+    : resolveEnabledFlag(actual?.allow_deletions, false);
+  const blockCreations = hasOwnProperty(expected, 'block_creations')
+    ? Boolean(expected.block_creations)
+    : resolveEnabledFlag(actual?.block_creations, false);
+  const requiredConversationResolution = hasOwnProperty(expected, 'required_conversation_resolution')
+    ? Boolean(expected.required_conversation_resolution)
+    : resolveEnabledFlag(actual?.required_conversation_resolution, false);
+  const lockBranch = hasOwnProperty(expected, 'lock_branch')
+    ? Boolean(expected.lock_branch)
+    : resolveEnabledFlag(actual?.lock_branch, false);
+  const allowForkSyncing = hasOwnProperty(expected, 'allow_fork_syncing')
+    ? Boolean(expected.allow_fork_syncing)
+    : resolveEnabledFlag(actual?.allow_fork_syncing, false);
+
   const payload = {
     required_status_checks: {
-      strict: actualStrict,
+      strict: strictSetting,
       contexts: expectedChecks
     },
-    enforce_admins: resolveEnabledFlag(actual?.enforce_admins, false),
-    required_pull_request_reviews: actual?.required_pull_request_reviews ?? null,
-    restrictions: actual?.restrictions ?? null,
-    required_linear_history: Boolean(expected.required_linear_history ?? false),
-    allow_force_pushes: resolveEnabledFlag(actual?.allow_force_pushes, false),
-    allow_deletions: resolveEnabledFlag(actual?.allow_deletions, false),
-    block_creations: resolveEnabledFlag(actual?.block_creations, false),
-    required_conversation_resolution: resolveEnabledFlag(actual?.required_conversation_resolution, false),
-    lock_branch: resolveEnabledFlag(actual?.lock_branch, false),
-    allow_fork_syncing: resolveEnabledFlag(actual?.allow_fork_syncing, false)
+    enforce_admins: enforceAdmins,
+    required_pull_request_reviews: requiredPullRequestReviews,
+    restrictions,
+    required_linear_history: requiredLinearHistory,
+    allow_force_pushes: allowForcePushes,
+    allow_deletions: allowDeletions,
+    block_creations: blockCreations,
+    required_conversation_resolution: requiredConversationResolution,
+    lock_branch: lockBranch,
+    allow_fork_syncing: allowForkSyncing
   };
 
   return payload;
@@ -1003,6 +1127,14 @@ export async function run({
     throw errObj;
   }
 }
+
+export const __test = Object.freeze({
+  compareBranchSettings,
+  compareBranchBooleanSetting,
+  compareBranchNullableSetting,
+  buildBranchProtectionPayload,
+  resolveEnabledFlag
+});
 
 const modulePath = path.resolve(fileURLToPath(import.meta.url));
 const invokedPath = process.argv[1] ? path.resolve(process.argv[1]) : null;
