@@ -25,14 +25,14 @@ Quick reference for building, testing, and releasing the LVCompare composite act
     Clear the variable or set it back to `build` before release/sign-off runs so
     the real pipeline executes.
   - `pwsh -File tools/icon-editor/Update-IconEditorFixtureReport.ps1` refreshes the fixture report (generates the JSON snapshot and rewrites the section in `docs/ICON_EDITOR_PACKAGE.md`; pre-push guards that it stays current).
-  - `npm run icon-editor:dev:on` / `npm run icon-editor:dev:off` toggle LabVIEW development mode using the vendored helpers (`Set_Development_Mode.ps1` / `RevertDevelopmentMode.ps1`) and persist the current state.
+  - `node tools/npm/run-script.mjs icon-editor:dev:on` / `node tools/npm/run-script.mjs icon-editor:dev:off` toggle LabVIEW development mode using the vendored helpers (`Set_Development_Mode.ps1` / `RevertDevelopmentMode.ps1`) and persist the current state.
   - Validate uploads the `icon-editor-fixture-report` artifact (JSON + Markdown) on each run for stakeholders.
-  - `npm run icon-editor:dev:assert:on` / `npm run icon-editor:dev:assert:off` validate the LabVIEW `LocalHost.LibraryPaths` token so you can confirm dev mode is actually enabled or disabled before continuing.
+  - `node tools/npm/run-script.mjs icon-editor:dev:assert:on` / `node tools/npm/run-script.mjs icon-editor:dev:assert:off` validate the LabVIEW `LocalHost.LibraryPaths` token so you can confirm dev mode is actually enabled or disabled before continuing.
   - Multi-lane tooling:
     - **Source lane (2021 SP1, 32/64-bit)** – dev-mode toggles, VIPC apply/restore, lvlibp builds.
     - **Report lane (2025, 64-bit)** – LabVIEWCLI/HTML compare reports; requires the shared `LabVIEWCLI.exe`.
     - **Packaging lane (2021 SP1, 32-bit + VIPM)** - VI Package Manager builds powered by `tools/Vipm.psm1`; ensure VIPM is installed alongside 2021 and point `VIPM.exe` via `VIPM_PATH`/`VIPM_EXE_PATH` or `configs/labview-paths*.json`.
-    - `npm run env:labview:check` prints the availability of each lane and surfaces missing prerequisites.
+    - `node tools/npm/run-script.mjs env:labview:check` prints the availability of each lane and surfaces missing prerequisites.
   - `g-cli.exe` is expected at `C:\Program Files\G-CLI\bin\g-cli.exe`. Use `configs/labview-paths.local.json` (`GCliExePath`) or set `GCLI_EXE_PATH` only when you need to override the default.
   - Artifacts land in `tests/results/_agent/icon-editor/` (manifest + packaged outputs). Dependency VIPCs (`runner_dependencies.vipc`) apply automatically unless you pass `-InstallDependencies:$false`; the helper mirrors the upstream Build.ps1 (dev-mode enable → apply VIPCs → build lvlibp (32/64) & rename → update VIPB metadata → build the VI package → restore dev mode). Add `-RunUnitTests` to execute the icon editor unit suite. The manifest records the dev-mode state (`developmentMode.*`) and lists both lvlibp + vip artifacts for audit.
   - Need to route packaging through VIPM or a custom g-cli backend? Pass `-BuildToolchain vipm` (default `gcli`) and optionally `-BuildProvider <name>`; the manifest now records `packaging.requestedToolchain`/`packaging.requestedProvider` so downstream diagnostics stay transparent.
