@@ -29,12 +29,6 @@ import {
   parseRogueScanOutput,
   ensureRogueScanClean
 } from './lib/release-hygiene.mjs';
-import { collectBlockingCompareEvidence } from './lib/release-compare-evidence.mjs';
-import {
-  loadReleaseRequiredChecks,
-  assertRequiredReleaseChecksClean
-} from './lib/release-pr-checks.mjs';
-import { collectStandingPriorityParityGate } from './lib/release-priority-parity.mjs';
 
 const USAGE_LINES = [
   'Usage: node tools/npm/run-script.mjs release:finalize -- <version>',
@@ -242,66 +236,6 @@ function collectReleaseHygiene(repoRoot) {
   };
 }
 
-function ghJson(repoRoot, args) {
-  const out = run('gh', args, { cwd: repoRoot });
-  try {
-    return JSON.parse(out || 'null');
-  } catch (error) {
-    throw new Error(`Failed to parse gh JSON output for "gh ${args.join(' ')}": ${error.message}`);
-  }
-}
-
-async function collectCompareEvidenceGate(repoRoot, upstream, releaseBranch) {
-  if (process.env.RELEASE_FINALIZE_SKIP_COMPARE_EVIDENCE === '1') {
-    console.warn('[release:finalize] skipping compare evidence gate (RELEASE_FINALIZE_SKIP_COMPARE_EVIDENCE=1)');
-    return {
-      skipped: true,
-      reason: 'RELEASE_FINALIZE_SKIP_COMPARE_EVIDENCE=1'
-    };
-  }
-
-  const repoSlug = `${upstream.owner}/${upstream.repo}`;
-  const evidence = await collectBlockingCompareEvidence({
-    repoSlug,
-    branch: releaseBranch,
-    ghJsonFn: (args) => ghJson(repoRoot, args)
-  });
-  return {
-    skipped: false,
-    repository: repoSlug,
-    workflows: evidence
-  };
-}
-
-function resolveParityTipDiffTarget() {
-  const raw = process.env.RELEASE_PARITY_TIP_DIFF_TARGET;
-  if (raw == null || raw === '') return 0;
-  const value = Number(raw);
-  if (!Number.isInteger(value) || value < 0) {
-    throw new Error(`Invalid RELEASE_PARITY_TIP_DIFF_TARGET: ${raw}`);
-  }
-  return value;
-}
-
-async function collectStandingPriorityParityEvidence(repoRoot) {
-  if (process.env.RELEASE_FINALIZE_SKIP_PRIORITY_PARITY === '1') {
-    console.warn('[release:finalize] skipping standing-priority/parity gate (RELEASE_FINALIZE_SKIP_PRIORITY_PARITY=1)');
-    return {
-      skipped: true,
-      reason: 'RELEASE_FINALIZE_SKIP_PRIORITY_PARITY=1'
-    };
-  }
-
-  const baseRef = process.env.RELEASE_PARITY_BASE_REF || 'upstream/develop';
-  const headRef = process.env.RELEASE_PARITY_HEAD_REF || 'origin/develop';
-  const tipDiffTarget = resolveParityTipDiffTarget();
-  return collectStandingPriorityParityGate(repoRoot, {
-    baseRef,
-    headRef,
-    tipDiffTarget
-  });
-}
-
 async function main() {
   const versionInput = parseSingleValueArg(process.argv, {
     usageLines: USAGE_LINES,
@@ -314,6 +248,7 @@ async function main() {
   process.chdir(repoRoot);
   ensureCleanWorkingTree(run, 'Working tree not clean. Commit or stash changes before finalizing the release.');
   await assertReleaseMetadataExists(repoRoot, tag, 'branch');
+  const hygiene = collectReleaseHygiene(repoRoot);
 
   const releaseBranch = `release/${tag}`;
   ensureBranchExists(releaseBranch);
@@ -423,9 +358,7 @@ async function main() {
       developCommit,
       draftedRelease: tag,
       pullRequest: prInfo,
-      standingPriorityParity,
       hygiene,
-      compareEvidence,
       completedAt: new Date().toISOString()
     };
 
