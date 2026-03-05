@@ -239,46 +239,77 @@ jobs:
   release-contract:
     name: release-contract
     runs-on: ubuntu-latest
-    needs: [release, validate-cli-artifacts, release-review-index]
-    if: always()
+    needs: [release, validate-cli-artifacts]
     steps:
       - uses: actions/checkout@v5
 
       - name: Download CLI artifacts
-        uses: actions/download-artifact@v5
+        uses: actions/download-artifact@v4
         with:
           name: cli-artifacts
           path: cli-dl
 
-      - name: Download release review index artifacts
-        uses: actions/download-artifact@v5
-        with:
-          name: release-review-index
-          path: tests/results/release-review
-
       - name: Validate release provenance schema
         shell: pwsh
         run: |
-          pwsh -NoLogo -NoProfile -File tools/Invoke-JsonSchemaLite.ps1 `
-            -JsonPath 'cli-dl/provenance.json' `
-            -SchemaPath 'docs/schemas/run-provenance-v1.schema.json'
+          pwsh -NoLogo -NoProfile -File tools/Invoke-JsonSchemaLite.ps1 \
+            -JsonPath cli-dl/provenance.json \
+            -SchemaPath docs/schemas/run-provenance-v1.schema.json
 
-      - name: Validate release-review index schema
+      - name: Contract checksum scenario (Linux)
+        id: checksum_scenario
+        continue-on-error: true
+        shell: bash
+        run: |
+          set -euo pipefail
+          v='${{ needs.release.outputs.cli_version }}'
+          file="comparevi-cli-v${v}-linux-x64-selfcontained.tar.gz"
+          tarball="cli-dl/${file}"
+          [ -f "$tarball" ]
+          expected=$(awk -v file="$file" '$2 ~ file {print tolower($1)}' cli-dl/SHA256SUMS.txt)
+          [ -n "$expected" ]
+          actual=$(sha256sum "$tarball" | awk '{print tolower($1)}')
+          [ "$actual" = "$expected" ]
+
+      - name: Contract smoke scenario (Linux)
+        id: smoke_scenario
+        continue-on-error: true
+        shell: bash
+        run: |
+          set -euo pipefail
+          v='${{ needs.release.outputs.cli_version }}'
+          tarball="cli-dl/comparevi-cli-v${v}-linux-x64-selfcontained.tar.gz"
+          mkdir -p cli-contract
+          tar -xzf "$tarball" -C cli-contract
+          bin="cli-contract/comparevi-cli"
+          chmod +x "$bin" || true
+          ver_json=$($bin version)
+          node -e "const o=JSON.parse(process.argv[1]); if(o.name!=='comparevi-cli') throw new Error('bad name')" "$ver_json"
+          tok_json=$($bin tokenize --input 'foo -x=1 "bar baz"')
+          node -e "const o=JSON.parse(process.argv[1]); if(!o.normalized.includes('-x')||!o.normalized.includes('1')) throw new Error('bad tokenize')" "$tok_json"
+          $bin procs >/dev/null
+
+      - name: Write release-review contract artifacts
         shell: pwsh
         run: |
-          pwsh -NoLogo -NoProfile -File tools/Invoke-JsonSchemaLite.ps1 `
-            -JsonPath 'tests/results/release-review/review-index.json' `
-            -SchemaPath 'docs/schemas/release-review-index-v1.schema.json'
+          $checksumStatus = if ('${{ steps.checksum_scenario.outcome }}' -eq 'success') { 'pass' } else { 'fail' }
+          $smokeStatus = if ('${{ steps.smoke_scenario.outcome }}' -eq 'success') { 'pass' } else { 'fail' }
+          pwsh -NoLogo -NoProfile -File tools/Write-ReleaseReviewContractArtifacts.ps1 \
+            -OutputDir tests/results/release-contract \
+            -Tag '${{ github.ref_name }}' \
+            -Os 'ubuntu-latest' \
+            -ChecksumStatus $checksumStatus \
+            -SmokeStatus $smokeStatus
 
-      - name: Validate release-review scenario schemas
+      - name: Validate release-review artifacts schema
         shell: pwsh
         run: |
-          Get-ChildItem -LiteralPath 'tests/results/release-review/scenarios' -Filter '*.json' -File |
-            ForEach-Object {
-              pwsh -NoLogo -NoProfile -File tools/Invoke-JsonSchemaLite.ps1 `
-                -JsonPath $_.FullName `
-                -SchemaPath 'docs/schemas/release-review-scenario-summary-v1.schema.json'
-            }
+          pwsh -NoLogo -NoProfile -File tools/Invoke-JsonSchemaLite.ps1 \
+            -JsonPath tests/results/release-contract/scenario-summary-ubuntu-latest.json \
+            -SchemaPath docs/schemas/release-review-scenario-summary-v1.schema.json
+          pwsh -NoLogo -NoProfile -File tools/Invoke-JsonSchemaLite.ps1 \
+            -JsonPath tests/results/release-contract/review-index.json \
+            -SchemaPath docs/schemas/release-review-index-v1.schema.json
 
       - name: Assert requirements-verification check contract
         shell: pwsh
@@ -288,34 +319,31 @@ jobs:
       - name: Run requirements verification gate
         shell: pwsh
         run: |
-          pwsh -NoLogo -NoProfile -File tools/Verify-RequirementsGate.ps1 `
-            -TestsPath tests `
-            -ResultsRoot tests/results `
-            -OutDir tests/results/_agent/verification `
-            -BaselinePolicyPath tools/policy/requirements-verification-baseline.json `
+          pwsh -NoLogo -NoProfile -File tools/Verify-RequirementsGate.ps1 \
+            -TestsPath tests \
+            -ResultsRoot tests/results \
+            -OutDir tests/results/_agent/verification \
+            -BaselinePolicyPath tools/policy/requirements-verification-baseline.json \
             -StepSummaryPath $env:GITHUB_STEP_SUMMARY
 
-      - name: Enforce unified release contract
-        shell: pwsh
+      - name: Enforce release contract outcome
+        shell: bash
         run: |
-          $indexPath = 'tests/results/release-review/review-index.json'
-          $index = Get-Content -LiteralPath $indexPath -Raw | ConvertFrom-Json -Depth 20
-          if (-not $index.decision) {
-            throw "release-contract: review-index decision missing in $indexPath"
-          }
-
-          $lines = @(
-            '## Release Contract',
-            '',
-            "- Decision: **$($index.decision)**",
-            "- Provenance: cli-dl/provenance.json",
-            "- Review index: tests/results/release-review/review-index.json"
-          )
-          ($lines -join "`n") | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8
-
-          if ($index.decision -ne 'pass') {
-            throw "release-contract failed because release review decision is '$($index.decision)'"
-          }
+          set -euo pipefail
+          cs='${{ steps.checksum_scenario.outcome }}'
+          sm='${{ steps.smoke_scenario.outcome }}'
+          {
+            echo "## Release Contract";
+            echo "";
+            echo "- Checksum scenario: **${cs}**";
+            echo "- Smoke scenario: **${sm}**";
+            echo "- Artifacts: tests/results/release-contract/scenario-summary-ubuntu-latest.json";
+            echo "- Artifacts: tests/results/release-contract/review-index.json";
+          } >> "$GITHUB_STEP_SUMMARY"
+          if [ "$cs" != "success" ] || [ "$sm" != "success" ]; then
+            echo "release-contract failed: one or more contract scenarios did not pass"
+            exit 1
+          fi
 
       - name: Upload release contract artifacts
         if: always()
@@ -323,9 +351,8 @@ jobs:
         with:
           name: release-contract-${{ github.run_id }}
           path: |
-            cli-dl/provenance.json
-            tests/results/release-review/review-index.json
-            tests/results/release-review/reviewer-comment.md
-            tests/results/release-review/scenarios/*.json
+            tests/results/release-contract/scenario-summary-ubuntu-latest.json
+            tests/results/release-contract/review-index.json
             tests/results/_agent/verification/verification-summary.json
           if-no-files-found: error
+
