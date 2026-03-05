@@ -816,19 +816,28 @@ jobs:
         node tools/priority/report-origin-upstream-parity.mjs --base-ref 'upstream/develop' --head-ref 'origin/develop' --sample-limit 20 --output-path "$parityPath"
         pwsh -File tools/Update-SessionIndexParity.ps1 -ResultsDir $res -ParityReportPath $parityPath -StepSummaryPath $env:GITHUB_STEP_SUMMARY
 
-    - name: Validate session index schema (schema-lite)
+    - name: Validate session index schemas (v1 + optional v2)
       shell: pwsh
       run: |
-        $json = Join-Path $env:RUNNER_TEMP 'sessionindex' 'session-index.json'
-        if (-not (Test-Path $json)) { Write-Error "session-index.json not found at $json"; exit 2 }
-        pwsh -File tools/Invoke-JsonSchemaLite.ps1 -JsonPath $json -SchemaPath docs/schemas/session-index-v1.schema.json
+        $jsonV1 = Join-Path $env:RUNNER_TEMP 'sessionindex' 'session-index.json'
+        $jsonV2 = Join-Path $env:RUNNER_TEMP 'sessionindex' 'session-index-v2.json'
+        if (-not (Test-Path $jsonV1)) { Write-Error "session-index.json not found at $jsonV1"; exit 2 }
+        pwsh -File tools/Invoke-JsonSchemaLite.ps1 -JsonPath $jsonV1 -SchemaPath docs/schemas/session-index-v1.schema.json
+        if (Test-Path $jsonV2) {
+          node tools/schemas/validate-json.js --schema docs/schema/generated/session-index-v2.schema.json --data $jsonV2 --optional
+          if ($LASTEXITCODE -ne 0) { Write-Host "::warning::V2 schema validation returned $LASTEXITCODE for session-index-v2.json" }
+        } else {
+          Write-Host '::notice::session-index-v2.json not found; running in v1 fallback mode.'
+        }
 
     - name: Upload session index artifact
       if: always()
       uses: actions/upload-artifact@v5
       with:
         name: validate-session-index
-        path: ${{ runner.temp }}/sessionindex/session-index.json
+        path: |
+          ${{ runner.temp }}/sessionindex/session-index.json
+          ${{ runner.temp }}/sessionindex/session-index-v2.json
         if-no-files-found: warn
 
   vi-history-scenarios-skip-note:
