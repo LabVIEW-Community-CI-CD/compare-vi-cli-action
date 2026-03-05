@@ -56,7 +56,8 @@ Folder names inside those files follow plane prefixes (`PLANE_UPSTREAM__*`,
 commands run in the intended plane.
 
 See `docs/DUAL_PLANE_WORKSPACES.md` for the expected directory layout and task
-usage.
+usage, including the WSL distro guardrail (`Ubuntu`/standard distro, not
+`docker-desktop`).
 
 Each job also emits GitHub outputs pointing at the aggregate manifest, the
 history results directory, the per-mode manifest summary (`mode-manifests-json`),
