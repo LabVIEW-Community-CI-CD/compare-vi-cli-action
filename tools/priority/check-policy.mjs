@@ -13,7 +13,8 @@ function parseArgs(argv = process.argv) {
     apply: false,
     help: false,
     debug: false,
-    report: null
+    report: null,
+    failOnSkip: false
   };
 
   for (let index = 0; index < args.length; index += 1) {
@@ -37,6 +38,10 @@ function parseArgs(argv = process.argv) {
       }
       options.report = reportPath;
       index += 1;
+      continue;
+    }
+    if (arg === '--fail-on-skip') {
+      options.failOnSkip = true;
       continue;
     }
     throw new Error(`Unknown option: ${arg}`);
@@ -710,7 +715,7 @@ export async function run({
 } = {}) {
   const options = parseArgs(argv);
   if (options.help) {
-    log('Usage: node tools/priority/check-policy.mjs [--apply] [--debug] [--report <path>]');
+    log('Usage: node tools/priority/check-policy.mjs [--apply] [--debug] [--report <path>] [--fail-on-skip]');
     return 0;
   }
 
@@ -759,6 +764,25 @@ export async function run({
     report.skippedReason = skippedReason;
     await writeReportIfRequested(options.report, report, log);
     return code;
+  };
+
+  const finalizeSkip = async (message) => {
+    if (options.failOnSkip) {
+      const strictMessage = `${message} Strict mode enabled (--fail-on-skip), failing.`;
+      error(strictMessage);
+      return finalize({
+        code: 1,
+        result: 'fail',
+        skippedReason: strictMessage
+      });
+    }
+
+    log(message);
+    return finalize({
+      code: 0,
+      result: 'skipped',
+      skippedReason: message
+    });
   };
 
   try {
@@ -836,12 +860,7 @@ export async function run({
           ? authError.attemptedSources.join(' -> ')
           : 'unknown';
         const message = `[policy] Authorization unavailable for policy check (attempted: ${attempted}); skipping non-apply validation. Upstream status "Policy Guard (Upstream) / policy-guard" remains authoritative.`;
-        log(message);
-        return finalize({
-          code: 0,
-          result: 'skipped',
-          skippedReason: message
-        });
+        return finalizeSkip(message);
       }
       throw authError;
     }
@@ -882,12 +901,7 @@ export async function run({
 
     if (!options.apply && repoFieldsAllMissing && (!hasAdminPermission || forkRun)) {
       const message = '[policy] Repository settings unavailable with current token; skipping policy check (admin permissions required). Upstream status "Policy Guard (Upstream) / policy-guard" will enforce branch protection.';
-      log(message);
-      return finalize({
-        code: 0,
-        result: 'skipped',
-        skippedReason: message
-      });
+      return finalizeSkip(message);
     }
 
     if (options.apply) {

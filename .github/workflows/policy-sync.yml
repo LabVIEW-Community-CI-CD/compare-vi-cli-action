@@ -48,9 +48,9 @@ jobs:
         shell: pwsh
         run: |
           if ('${{ inputs.apply }}' -eq 'true') {
-            pwsh -NoLogo -NoProfile -File tools/priority/Sync-BranchProtectionPolicy.ps1 -Apply -ResultsDir tests/results/_agent/policy
+            pwsh -NoLogo -NoProfile -File tools/priority/Sync-BranchProtectionPolicy.ps1 -Apply -FailOnSkip -ResultsDir tests/results/_agent/policy
           } else {
-            pwsh -NoLogo -NoProfile -File tools/priority/Sync-BranchProtectionPolicy.ps1 -ResultsDir tests/results/_agent/policy
+            pwsh -NoLogo -NoProfile -File tools/priority/Sync-BranchProtectionPolicy.ps1 -FailOnSkip -ResultsDir tests/results/_agent/policy
           }
 
       - name: Upload policy sync artifact

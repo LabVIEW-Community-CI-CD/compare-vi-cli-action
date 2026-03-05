@@ -1,6 +1,7 @@
 [CmdletBinding()]
 param(
   [switch]$Apply,
+  [switch]$FailOnSkip,
   [string]$ResultsDir = 'tests/results/_agent/policy',
   [string]$ReportFile = 'policy-drift-report.json',
   [string]$StepSummaryPath = $env:GITHUB_STEP_SUMMARY
@@ -35,6 +36,9 @@ $args = @(
 if ($Apply) {
   $args += '--apply'
 }
+if ($FailOnSkip) {
+  $args += '--fail-on-skip'
+}
 
 Write-Host "[policy-sync] Running: node $($args -join ' ')"
 & node @args
@@ -57,6 +61,7 @@ Write-Host "[policy-sync] Result: $($report.result)"
 Write-Host "[policy-sync] Total diffs: $($report.summary.totalDiffCount)"
 Write-Host "[policy-sync] Branch updates: $branchSummary"
 Write-Host "[policy-sync] Ruleset updates: $rulesetSummary"
+Write-Host "[policy-sync] FailOnSkip: $FailOnSkip"
 Write-Host "[policy-sync] Report: $reportPath"
 
 if ($StepSummaryPath) {
@@ -69,6 +74,7 @@ if ($StepSummaryPath) {
     "- Total diffs: $($report.summary.totalDiffCount)",
     "- Branch updates: $branchSummary",
     "- Ruleset updates: $rulesetSummary",
+    "- Fail on skip: $FailOnSkip",
     "- Report path: $reportPath"
   ) -join "`n"
   $summary | Out-File -FilePath $StepSummaryPath -Append -Encoding utf8

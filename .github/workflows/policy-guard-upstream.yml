@@ -75,7 +75,7 @@ jobs:
       - name: Run policy guard
         shell: pwsh
         run: |
-          pwsh -NoLogo -NoProfile -File tools/priority/Sync-BranchProtectionPolicy.ps1 -ResultsDir tests/results/_agent/policy
+          pwsh -NoLogo -NoProfile -File tools/priority/Sync-BranchProtectionPolicy.ps1 -FailOnSkip -ResultsDir tests/results/_agent/policy
 
       - name: Upload policy drift artifact
         if: always()
