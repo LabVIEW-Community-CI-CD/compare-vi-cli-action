@@ -44,6 +44,8 @@ standing GitHub protection rules (including the `main` merge queue).
   upstream repository token and re-runs `priority:policy`, guaranteeing that branch protection rules are enforced even
   when the lint job skips in fork contexts. Its status (`Policy Guard (Upstream) / policy-guard`) is required on
   `develop`, `main`, and `release/*`.
+- Branch protection verification treats workflow-prefixed and short check contexts as equivalent (for example,
+  `Validate / lint` and `lint`) to avoid false drift when comparing live API contexts against policy mappings.
 - `Validate` runs `priority:handoff-tests` automatically for heads that start with `feature/`, enforcing leak-sensitive
   suites before parallel work merges.
 - **Important:** Required checks for queued branches must run on both the `pull_request` and `merge_group` events;

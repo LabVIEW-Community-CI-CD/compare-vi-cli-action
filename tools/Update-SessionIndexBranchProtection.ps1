@@ -74,6 +74,54 @@ function To-Ordered {
   return $ordered
 }
 
+function Get-ContextAliases {
+  param([string]$Context)
+
+  $aliases = New-Object 'System.Collections.Generic.HashSet[string]' ([System.StringComparer]::OrdinalIgnoreCase)
+  if ([string]::IsNullOrWhiteSpace($Context)) {
+    return @()
+  }
+
+  $normalized = $Context.Trim()
+  [void]$aliases.Add($normalized)
+
+  if ($normalized -match '\s/\s') {
+    $parts = $normalized -split '\s/\s'
+    if ($parts.Count -gt 1) {
+      $suffix = ($parts[-1]).Trim()
+      if (-not [string]::IsNullOrWhiteSpace($suffix)) {
+        [void]$aliases.Add($suffix)
+      }
+    }
+  }
+
+  return @($aliases)
+}
+
+function Test-ContextMatch {
+  param(
+    [string]$Left,
+    [string]$Right
+  )
+
+  if ([string]::IsNullOrWhiteSpace($Left) -or [string]::IsNullOrWhiteSpace($Right)) {
+    return $false
+  }
+
+  $leftAliases = Get-ContextAliases -Context $Left
+  $rightAliases = Get-ContextAliases -Context $Right
+
+  foreach ($leftAlias in $leftAliases) {
+    foreach ($rightAlias in $rightAliases) {
+      if ($leftAlias -eq $rightAlias) {
+        return $true
+      }
+    }
+  }
+
+  return $false
+}
+
 $rawBranch = $Branch
 if ([string]::IsNullOrWhiteSpace($rawBranch)) {
   $Branch = 'unknown'
@@ -143,8 +191,22 @@ $producedRaw = if ($PSBoundParameters.ContainsKey('ProducedContexts')) {
   $expected
 }
 $produced = @($producedRaw | Where-Object { $_ } | Sort-Object -Unique)
-$missing = @($expected | Where-Object { $produced -notcontains $_ } | Sort-Object -Unique)
-$extra   = @($produced | Where-Object { $expected -notcontains $_ } | Sort-Object -Unique)
+$missing = @(
+  $expected |
+    Where-Object {
+      $expectedContext = $_
+      -not ($produced | Where-Object { Test-ContextMatch -Left $expectedContext -Right $_ })
+    } |
+    Sort-Object -Unique
+)
+$extra   = @(
+  $produced |
+    Where-Object {
+      $producedContext = $_
+      -not ($expected | Where-Object { Test-ContextMatch -Left $producedContext -Right $_ })
+    } |
+    Sort-Object -Unique
+)
 
 $expectedCount = @($expected).Count
 $missingCount  = @($missing).Count
@@ -191,8 +253,22 @@ if ($ActualContexts) {
 # Compare live contexts to expected mapping when available
 if ($actualBlock.status -eq 'available' -and $actualBlock.contexts) {
   $actualSorted = @($actualBlock.contexts | Sort-Object -Unique)
-  $actualMissing = @($expected | Where-Object { $actualSorted -notcontains $_ } | Sort-Object -Unique)
-  $actualExtra = @($actualSorted | Where-Object { $expected -notcontains $_ } | Sort-Object -Unique)
+  $actualMissing = @(
+    $expected |
+      Where-Object {
+        $expectedContext = $_
+        -not ($actualSorted | Where-Object { Test-ContextMatch -Left $expectedContext -Right $_ })
+      } |
+      Sort-Object -Unique
+  )
+  $actualExtra = @(
+    $actualSorted |
+      Where-Object {
+        $actualContext = $_
+        -not ($expected | Where-Object { Test-ContextMatch -Left $actualContext -Right $_ })
+      } |
+      Sort-Object -Unique
+  )
   if ($actualMissing.Count -gt 0) {
     $derivedNotes += ("Live branch protection missing contexts: {0}" -f ($actualMissing -join ', '))
     $resultReason = 'missing_required'
