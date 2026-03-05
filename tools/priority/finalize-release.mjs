@@ -24,6 +24,11 @@ import {
   summarizeStatusChecks,
   assertReleaseMetadataExists
 } from './lib/release-utils.mjs';
+import {
+  readSessionIndexHygiene,
+  parseRogueScanOutput,
+  ensureRogueScanClean
+} from './lib/release-hygiene.mjs';
 
 const USAGE_LINES = [
   'Usage: node tools/npm/run-script.mjs release:finalize -- <version>',
@@ -195,6 +200,41 @@ function hasSharedHistory(repoRoot, refA, refB) {
   return result.status === 0 && Boolean((result.stdout ?? '').trim());
 }
 
+function collectReleaseHygiene(repoRoot) {
+  if (process.env.RELEASE_FINALIZE_SKIP_HYGIENE === '1') {
+    console.warn('[release:finalize] skipping session-index/rogue hygiene checks (RELEASE_FINALIZE_SKIP_HYGIENE=1)');
+    return {
+      skipped: true,
+      reason: 'RELEASE_FINALIZE_SKIP_HYGIENE=1'
+    };
+  }
+
+  const sessionIndex = readSessionIndexHygiene(repoRoot);
+  const lookbackSeconds = process.env.RELEASE_ROGUE_LOOKBACK_SECONDS ?? '900';
+  const rogueScan = spawnSync(
+    'pwsh',
+    ['-NoLogo', '-NoProfile', '-File', 'tools/Detect-RogueLV.ps1', '-ResultsDir', 'tests/results', '-LookBackSeconds', lookbackSeconds, '-Quiet'],
+    {
+      cwd: repoRoot,
+      encoding: 'utf8',
+      stdio: ['ignore', 'pipe', 'pipe']
+    }
+  );
+
+  if (rogueScan.status !== 0) {
+    const details = (rogueScan.stderr || rogueScan.stdout || '').trim();
+    throw new Error(`Rogue scan execution failed before finalize (exit ${rogueScan.status}). ${details}`);
+  }
+
+  const rogueReport = parseRogueScanOutput(rogueScan.stdout);
+  const rogueSummary = ensureRogueScanClean(rogueReport);
+  return {
+    skipped: false,
+    sessionIndex,
+    rogueScan: rogueSummary
+  };
+}
+
 async function main() {
   const versionInput = parseSingleValueArg(process.argv, {
     usageLines: USAGE_LINES,
@@ -207,6 +247,7 @@ async function main() {
   process.chdir(repoRoot);
   ensureCleanWorkingTree(run, 'Working tree not clean. Commit or stash changes before finalizing the release.');
   await assertReleaseMetadataExists(repoRoot, tag, 'branch');
+  const hygiene = collectReleaseHygiene(repoRoot);
 
   const releaseBranch = `release/${tag}`;
   ensureBranchExists(releaseBranch);
@@ -315,6 +356,7 @@ async function main() {
       developCommit,
       draftedRelease: tag,
       pullRequest: prInfo,
+      hygiene,
       completedAt: new Date().toISOString()
     };
 

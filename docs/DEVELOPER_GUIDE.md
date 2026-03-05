@@ -267,6 +267,10 @@ For Docker/Desktop VI history validation, run fast-loop lanes explicitly:
 - Running the live helpers writes JSON snapshots under `tests/results/_agent/release/`:
   - `release-<tag>-branch.json` captures the release branch base, commits, and linked PR.
   - `release-<tag>-finalize.json` records the fast-forward results and the GitHub release draft.
+- `release:finalize` now blocks when release hygiene evidence is not clean:
+  - requires `tests/results/session-index.json` with `status=ok` and zero failed/error counts.
+  - runs `tools/Detect-RogueLV.ps1` and blocks if rogue LabVIEW/LVCompare processes are detected.
+  - set `RELEASE_FINALIZE_SKIP_HYGIENE=1` only for emergency operator overrides.
 - `tools/priority/verify-release-branch.mjs` enforces release-doc consistency before tag cut by requiring
   `PR_NOTES.md`, `TAG_PREP_CHECKLIST.md`, and `RELEASE_NOTES_<tag>.md` to reference the current release tag.
 - `priority:sync` surfaces the most recent artifact in the standing-priority step summary and exposes it to downstream
