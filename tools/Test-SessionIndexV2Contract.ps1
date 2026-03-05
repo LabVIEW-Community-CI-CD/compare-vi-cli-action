@@ -4,8 +4,8 @@ param(
 
   [string]$Branch = 'develop',
   [string]$PolicyPath = 'tools/policy/branch-required-checks.json',
-  [string]$Owner = 'LabVIEW-Community-CI-CD',
-  [string]$Repository = 'compare-vi-cli-action',
+  [string]$Owner,
+  [string]$Repository,
   [string]$WorkflowFileName = 'validate.yml',
   [int]$BurnInThreshold = 10,
   [switch]$Enforce
@@ -13,6 +13,70 @@ param(
 
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
+
+function Convert-GitRemoteUrlToSlug {
+  param([string]$RemoteUrl)
+
+  if ([string]::IsNullOrWhiteSpace($RemoteUrl)) {
+    return $null
+  }
+
+  $trimmed = $RemoteUrl.Trim()
+  if ($trimmed -match '^(?:git@|ssh://git@)?github\.com[:/](?<owner>[^/]+)/(?<repo>[^/]+?)(?:\.git)?$') {
+    return "$($Matches.owner)/$($Matches.repo)"
+  }
+
+  if ($trimmed -match '^https://github\.com/(?<owner>[^/]+)/(?<repo>[^/]+?)(?:\.git)?$') {
+    return "$($Matches.owner)/$($Matches.repo)"
+  }
+
+  if ($trimmed -match '^(?<owner>[^/]+)/(?<repo>[^/]+)$') {
+    return "$($Matches.owner)/$($Matches.repo)"
+  }
+
+  return $null
+}
+
+function Resolve-RepositoryContext {
+  param(
+    [string]$Owner,
+    [string]$Repository
+  )
+
+  if (-not [string]::IsNullOrWhiteSpace($Owner) -and -not [string]::IsNullOrWhiteSpace($Repository)) {
+    return [pscustomobject]@{
+      Owner = $Owner
+      Repository = $Repository
+    }
+  }
+
+  $slug = $null
+  if (-not [string]::IsNullOrWhiteSpace($env:GITHUB_REPOSITORY)) {
+    $slug = Convert-GitRemoteUrlToSlug -RemoteUrl $env:GITHUB_REPOSITORY
+  }
+
+  if (-not $slug) {
+    foreach ($remoteName in @('upstream', 'origin')) {
+      $url = (& git remote get-url $remoteName 2>$null | Out-String).Trim()
+      if (-not $url) { continue }
+      $slug = Convert-GitRemoteUrlToSlug -RemoteUrl $url
+      if ($slug) { break }
+    }
+  }
+
+  if ($slug -and $slug -match '/') {
+    $parts = $slug.Split('/', 2)
+    return [pscustomobject]@{
+      Owner = $parts[0]
+      Repository = $parts[1]
+    }
+  }
+
+  return [pscustomobject]@{
+    Owner = if ($Owner) { $Owner } else { 'unknown-owner' }
+    Repository = if ($Repository) { $Repository } else { 'unknown-repository' }
+  }
+}
 
 function Add-Failure {
   param(
@@ -23,6 +87,10 @@ function Add-Failure {
   $Failures.Value += $Message
   Write-Host ("::warning::{0}" -f $Message)
 }
+
+$repoContext = Resolve-RepositoryContext -Owner $Owner -Repository $Repository
+$Owner = $repoContext.Owner
+$Repository = $repoContext.Repository
 
 function Get-ApiHeaders {
   param([string]$Token)

@@ -13,7 +13,6 @@ let GH_AUTH_TOKEN_CACHE;
 let WARNED_NO_GITHUB_TOKEN_FOR_REST = false;
 const DEFAULT_STANDING_PRIORITY_LABEL = 'standing-priority';
 const FORK_STANDING_PRIORITY_LABEL = 'fork-standing-priority';
-const CANONICAL_PRIORITY_OWNER = 'labview-community-ci-cd';
 const MODULE_FILE_PATH = fileURLToPath(import.meta.url);
 const MODULE_REPO_ROOT = path.resolve(path.dirname(MODULE_FILE_PATH), '../..');
 
@@ -641,28 +640,43 @@ function resolveRepositorySlug(repoRoot) {
   return null;
 }
 
-export function resolveUpstreamRepositorySlug(repoRoot, slug) {
-  const resolvedSlug = slug || resolveRepositorySlug(repoRoot);
-  if (!resolvedSlug || !resolvedSlug.includes('/')) {
-    return null;
-  }
+function normalizeRepositorySlug(slug) {
+  return typeof slug === 'string' ? slug.trim().toLowerCase() : '';
+}
 
-  const [owner, repoName] = resolvedSlug.split('/');
-  if (!owner || owner.toLowerCase() === CANONICAL_PRIORITY_OWNER) {
-    return null;
+function resolveConfiguredUpstreamRepositorySlug(env = process.env) {
+  const candidates = [
+    env.AGENT_PRIORITY_UPSTREAM_REPOSITORY,
+    env.AGENT_UPSTREAM_REPOSITORY
+  ];
+  for (const candidate of candidates) {
+    const parsed = parseGitRemoteUrl(candidate);
+    if (parsed) {
+      return parsed;
+    }
+  }
+  return null;
+}
+
+export function resolveUpstreamRepositorySlug(repoRoot, slug, env = process.env) {
+  const resolvedSlug = slug || resolveRepositorySlug(repoRoot);
+  const normalizedResolvedSlug = normalizeRepositorySlug(resolvedSlug);
+
+  const configuredUpstream = resolveConfiguredUpstreamRepositorySlug(env);
+  if (configuredUpstream) {
+    if (normalizeRepositorySlug(configuredUpstream) === normalizedResolvedSlug) {
+      return null;
+    }
+    return configuredUpstream;
   }
 
   const upstreamUrl = resolveGitRemoteUrl(repoRoot, 'upstream');
   const upstreamSlug = parseGitRemoteUrl(upstreamUrl);
-  if (upstreamSlug) {
+  if (upstreamSlug && normalizeRepositorySlug(upstreamSlug) !== normalizedResolvedSlug) {
     return upstreamSlug;
   }
 
-  if (!repoName) {
-    return null;
-  }
-
-  return `${CANONICAL_PRIORITY_OWNER}/${repoName}`;
+  return null;
 }
 
 export function resolveStandingPriorityLabels(repoRoot, slug, env = process.env) {
@@ -678,9 +692,12 @@ export function resolveStandingPriorityLabels(repoRoot, slug, env = process.env)
     return explicitLabels;
   }
 
-  const resolvedSlug = (slug || resolveRepositorySlug(repoRoot) || '').toLowerCase();
-  const owner = resolvedSlug.includes('/') ? resolvedSlug.split('/')[0] : '';
-  if (owner && owner !== CANONICAL_PRIORITY_OWNER) {
+  const resolvedSlug = slug || resolveRepositorySlug(repoRoot);
+  const upstreamSlug = resolveUpstreamRepositorySlug(repoRoot, resolvedSlug, env);
+  if (
+    upstreamSlug &&
+    normalizeRepositorySlug(upstreamSlug) !== normalizeRepositorySlug(resolvedSlug)
+  ) {
     return [FORK_STANDING_PRIORITY_LABEL, DEFAULT_STANDING_PRIORITY_LABEL];
   }
 
@@ -995,18 +1012,21 @@ export async function resolveStandingPriorityLookupPlan({
   }
 
   const resolvedSlug = slug || resolveRepositorySlug(repoRoot);
-  const primaryOwner = (resolvedSlug || '').split('/')[0].toLowerCase();
-  const shouldCheckUpstream = Boolean(primaryOwner) && primaryOwner !== CANONICAL_PRIORITY_OWNER;
+  const upstreamSlug = resolveUpstreamSlug(repoRoot, resolvedSlug);
+  const shouldCheckUpstream = Boolean(
+    upstreamSlug &&
+      normalizeRepositorySlug(upstreamSlug) !== normalizeRepositorySlug(resolvedSlug)
+  );
 
   let cacheSource = primary;
   let cacheLabels = standingPriorityLabels;
   let cacheRepoSlug = primary.repoSlug || resolvedSlug || null;
 
   if (shouldCheckUpstream) {
-    const upstreamSlug = resolveUpstreamSlug(repoRoot, resolvedSlug);
-    if (upstreamSlug && upstreamSlug.toLowerCase() !== (resolvedSlug || '').toLowerCase()) {
+    if (upstreamSlug && normalizeRepositorySlug(upstreamSlug) !== normalizeRepositorySlug(resolvedSlug)) {
       if (didReportNoStandingPriority(primary)) {
-        warn(`[priority] No standing-priority issue found in ${resolvedSlug}; checking upstream ${upstreamSlug}.`);
+        const primaryTarget = resolvedSlug || 'current repository';
+        warn(`[priority] No standing-priority issue found in ${primaryTarget}; checking upstream ${upstreamSlug}.`);
       }
 
       const upstreamAttempt = await resolveForRepo(repoRoot, upstreamSlug, [DEFAULT_STANDING_PRIORITY_LABEL]);

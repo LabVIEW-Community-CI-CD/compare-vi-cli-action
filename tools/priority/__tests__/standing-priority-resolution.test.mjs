@@ -137,13 +137,27 @@ test('buildNoStandingPriorityState clears router/cache deterministically', () =>
   assert.equal(state.result.fetchSource, 'none');
 });
 
-test('resolveStandingPriorityLabels prefers fork-standing-priority for non-canonical owners', () => {
+test('resolveStandingPriorityLabels prefers fork-standing-priority when configured upstream differs', () => {
   const labels = resolveStandingPriorityLabels(
     '/tmp/repo',
-    'svelderrainruiz/compare-vi-cli-action',
-    {}
+    'fork-owner/compare-vi-cli-action',
+    {
+      AGENT_PRIORITY_UPSTREAM_REPOSITORY: 'upstream-owner/compare-vi-cli-action'
+    }
   );
   assert.deepEqual(labels, ['fork-standing-priority', 'standing-priority']);
+});
+
+test('resolveStandingPriorityLabels defaults to standing-priority when upstream matches current repository', () => {
+  const currentSlug = 'repo-owner/compare-vi-cli-action';
+  const labels = resolveStandingPriorityLabels(
+    '/tmp/repo',
+    currentSlug,
+    {
+      AGENT_PRIORITY_UPSTREAM_REPOSITORY: currentSlug
+    }
+  );
+  assert.deepEqual(labels, ['standing-priority']);
 });
 
 test('resolveStandingPriorityLabels honors explicit env override order', () => {
@@ -176,7 +190,7 @@ test('resolveUpstreamRepositorySlug prefers upstream remote when fork slug is ac
   assert.equal(upstream, 'LabVIEW-Community-CI-CD/compare-vi-cli-action');
 });
 
-test('resolveUpstreamRepositorySlug falls back to canonical owner when upstream remote is missing', async (t) => {
+test('resolveUpstreamRepositorySlug returns null when upstream remote is missing', async (t) => {
   const repoRoot = await mkdtemp(path.join(tmpdir(), 'standing-upstream-fallback-'));
   t.after(() => rm(repoRoot, { recursive: true, force: true }));
 
@@ -189,7 +203,19 @@ test('resolveUpstreamRepositorySlug falls back to canonical owner when upstream 
   );
 
   const upstream = resolveUpstreamRepositorySlug(repoRoot, 'svelderrainruiz/compare-vi-cli-action');
-  assert.equal(upstream, 'labview-community-ci-cd/compare-vi-cli-action');
+  assert.equal(upstream, null);
+});
+
+test('resolveUpstreamRepositorySlug honors explicit env override', async (t) => {
+  const repoRoot = await mkdtemp(path.join(tmpdir(), 'standing-upstream-env-'));
+  t.after(() => rm(repoRoot, { recursive: true, force: true }));
+
+  const upstream = resolveUpstreamRepositorySlug(
+    repoRoot,
+    'fork-owner/compare-vi-cli-action',
+    { AGENT_PRIORITY_UPSTREAM_REPOSITORY: 'upstream-owner/compare-vi-cli-action' }
+  );
+  assert.equal(upstream, 'upstream-owner/compare-vi-cli-action');
 });
 
 test('resolveStandingPriorityLookupPlan checks upstream when fork lookup reports empty', async () => {

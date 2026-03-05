@@ -27,7 +27,7 @@ jobs:
       - name: Fetch parity refs
         shell: bash
         run: |
-          git remote add upstream https://github.com/LabVIEW-Community-CI-CD/compare-vi-cli-action.git 2>/dev/null || true
+          git remote add upstream "https://github.com/${GITHUB_REPOSITORY}.git" 2>/dev/null || true
           git fetch --no-tags --prune --depth=1 origin develop
           git fetch --no-tags --prune --depth=1 upstream develop
 
