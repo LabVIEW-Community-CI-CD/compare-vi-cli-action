@@ -74,6 +74,30 @@ function ensureReleaseDocsConsistency(repoRoot, tag) {
   }
 }
 
+function fileContainsTag(contents, tag) {
+  const semver = tag.replace(/^v/, '');
+  return contents.includes(tag) || contents.includes(semver);
+}
+
+function ensureReleaseDocsConsistency(repoRoot, tag) {
+  const docs = [
+    { relPath: 'PR_NOTES.md', label: 'PR notes' },
+    { relPath: 'TAG_PREP_CHECKLIST.md', label: 'tag checklist' },
+    { relPath: `RELEASE_NOTES_${tag}.md`, label: 'release notes' }
+  ];
+
+  for (const doc of docs) {
+    const fullPath = path.join(repoRoot, doc.relPath);
+    if (!existsSync(fullPath)) {
+      throw new Error(`Missing ${doc.label} file for ${tag}: ${doc.relPath}`);
+    }
+    const contents = readFileSync(fullPath, 'utf8');
+    if (!fileContainsTag(contents, tag)) {
+      throw new Error(`${doc.relPath} does not reference release tag ${tag}`);
+    }
+  }
+}
+
 function main() {
   const repoRoot = getRepoRoot();
   const headBranch = getHeadBranch();

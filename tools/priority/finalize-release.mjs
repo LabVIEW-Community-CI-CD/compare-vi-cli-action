@@ -313,10 +313,7 @@ async function main() {
   const repoRoot = getRepoRoot();
   process.chdir(repoRoot);
   ensureCleanWorkingTree(run, 'Working tree not clean. Commit or stash changes before finalizing the release.');
-  ensureGhCli();
   await assertReleaseMetadataExists(repoRoot, tag, 'branch');
-  const standingPriorityParity = await collectStandingPriorityParityEvidence(repoRoot);
-  const hygiene = collectReleaseHygiene(repoRoot);
 
   const releaseBranch = `release/${tag}`;
   ensureBranchExists(releaseBranch);

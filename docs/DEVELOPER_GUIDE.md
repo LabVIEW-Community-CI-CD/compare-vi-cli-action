@@ -234,13 +234,16 @@ For Docker/Desktop VI history validation, run fast-loop lanes explicitly:
     pushes the branch to your fork, and opens a PR targeting `main`. Use `node tools/npm/run-script.mjs release:branch:dry`
      when you want to rehearse the flow without touching remotes.
   2. Finish release-only work on feature branches targeting `release/<version>`.
-  3. Merge the release branch into `main`, create the draft release, then fast-forward `develop`
-    with `node tools/npm/run-script.mjs release:finalize -- <version>`. The helper fast-forwards `main`, creates a draft
-     GitHub release, fast-forwards `develop`, and records metadata under `tests/results/_agent/release/`.
-    Use `node tools/npm/run-script.mjs release:finalize:dry` to rehearse the flow without pushing.
-     - The finalize helper blocks if the release PR has pending or failing checks; set
-       `RELEASE_FINALIZE_SKIP_CHECKS=1` (or `RELEASE_FINALIZE_ALLOW_MERGED=1` / `RELEASE_FINALIZE_ALLOW_DIRTY=1`)
-       to override in emergencies.
+   3. Merge the release branch into `main`, create the draft release, then fast-forward `develop`
+     with `node tools/npm/run-script.mjs release:finalize -- <version>`. The helper fast-forwards `main`, creates a draft
+      GitHub release, fast-forwards `develop`, and records metadata under `tests/results/_agent/release/`.
+     Use `node tools/npm/run-script.mjs release:finalize:dry` to rehearse the flow without pushing.
+      - Finalize now requires the release branch metadata artifact (`release-<tag>-branch.json`) to be present before it
+        cuts a draft tag, and it verifies both branch/finalize artifacts are retained under
+        `tests/results/_agent/release/`.
+      - The finalize helper blocks if the release PR has pending or failing checks; set
+        `RELEASE_FINALIZE_SKIP_CHECKS=1` (or `RELEASE_FINALIZE_ALLOW_MERGED=1` / `RELEASE_FINALIZE_ALLOW_DIRTY=1`)
+        to override in emergencies.
      - If `main` and the release branch no longer share history (for example, after cutting over to a new repository
        baseline), rerun the helper with `RELEASE_FINALIZE_ALLOW_RESET=1` so it can reset `main` to the release tip and
        push with `--force-with-lease`. Leave the variable unset during normal releases so unintended history rewrites are blocked.
@@ -264,30 +267,8 @@ For Docker/Desktop VI history validation, run fast-loop lanes explicitly:
 - Running the live helpers writes JSON snapshots under `tests/results/_agent/release/`:
   - `release-<tag>-branch.json` captures the release branch base, commits, and linked PR.
   - `release-<tag>-finalize.json` records the fast-forward results and the GitHub release draft.
-- `release:finalize` now blocks when release hygiene evidence is not clean:
-  - requires `tests/results/session-index.json` with `status=ok` and zero failed/error counts.
-  - runs `tools/Detect-RogueLV.ps1` and blocks if rogue LabVIEW/LVCompare processes are detected.
-  - set `RELEASE_FINALIZE_SKIP_HYGIENE=1` only for emergency operator overrides.
-- `release:finalize` also blocks when pre-tag compare evidence is incomplete:
-  - requires latest successful `vi-compare-refs.yml` and `vi-staging-smoke.yml` runs for the release branch.
-  - requires both runs to publish artifacts (manifest/staging bundles) before tag cut.
-  - set `RELEASE_FINALIZE_SKIP_COMPARE_EVIDENCE=1` only for emergency operator overrides.
-- `release:finalize` validates required release PR contexts from `tools/policy/branch-required-checks.json`
-  (`release/*`) and blocks on missing/pending/failing required checks.
-- `release:finalize` enforces standing-priority and parity evidence before tag cut:
-  - requires current standing-priority artifacts (`.agent_priority_cache.json`,
-    `tests/results/_agent/issue/router.json`, `tests/results/_agent/issue/<issue>.json`)
-    to match the live standing issue.
-  - enforces origin/upstream parity KPI `tipDiff.fileCount == 0` (default refs:
-    `upstream/develop` vs `origin/develop`).
-  - optional overrides: `RELEASE_FINALIZE_SKIP_PRIORITY_PARITY=1`,
-    `RELEASE_PARITY_BASE_REF`, `RELEASE_PARITY_HEAD_REF`,
-    `RELEASE_PARITY_TIP_DIFF_TARGET`.
 - `tools/priority/verify-release-branch.mjs` enforces release-doc consistency before tag cut by requiring
   `PR_NOTES.md`, `TAG_PREP_CHECKLIST.md`, and `RELEASE_NOTES_<tag>.md` to reference the current release tag.
-  It also requires both `package.json` and `CHANGELOG.md` to change relative to the configured release base ref.
-- `tools/priority/validate-semver.mjs` now performs branch-aware integrity checks: on `release/<tag>` heads it enforces
-  `package.json` SemVer parity with the branch tag.
 - `priority:sync` surfaces the most recent artifact in the standing-priority step summary and exposes it to downstream
   automation via `snapshot.releaseArtifacts`.
 - `priority:parity` reports origin/upstream parity using two metrics:
