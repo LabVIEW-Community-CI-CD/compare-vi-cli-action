@@ -126,6 +126,13 @@ if ($code -ne 0) {
 }
 Write-Host '[pre-push] actionlint OK' -ForegroundColor Green
 
+Write-Host '[pre-push] Validating safe PR watch task contract' -ForegroundColor Cyan
+$safeWatchContractExit = Invoke-NodeTestSanitized -Args @('--test','tools/priority/__tests__/safe-watch-task-contract.test.mjs')
+if ($safeWatchContractExit -ne 0) {
+  throw "safe-watch task contract validation failed (exit=$safeWatchContractExit)."
+}
+Write-Host '[pre-push] safe-watch task contract OK' -ForegroundColor Green
+
 $verificationContractScript = Join-Path $root 'tools' 'Assert-RequirementsVerificationCheckContract.ps1'
 if (Test-Path -LiteralPath $verificationContractScript -PathType Leaf) {
   Write-Host '[pre-push] Verifying requirements-verification check naming contract' -ForegroundColor Cyan
