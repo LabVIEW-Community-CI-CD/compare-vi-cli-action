@@ -76,7 +76,7 @@ line buffers).
 - Pattern filter: `./Invoke-PesterTests.ps1 -IncludePatterns 'CompareVI.*'`
 - Staging smoke:
   - `pwsh -File tools/Test-PRVIStagingSmoke.ps1 -DryRun` (plan only)
-  - `npm run smoke:vi-stage` (full run; uses fixtures/vi-attr for a baked-in VI
+  - `node tools/npm/run-script.mjs smoke:vi-stage` (full run; uses fixtures/vi-attr for a baked-in VI
     attribute diff)
   Both flows post artifact links and the updated PR summary comment.
 - Containerized non-LV checks: `pwsh -File tools/Run-NonLVChecksInDocker.ps1`
