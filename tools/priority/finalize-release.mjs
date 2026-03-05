@@ -30,6 +30,10 @@ import {
   ensureRogueScanClean
 } from './lib/release-hygiene.mjs';
 import { collectBlockingCompareEvidence } from './lib/release-compare-evidence.mjs';
+import {
+  loadReleaseRequiredChecks,
+  assertRequiredReleaseChecksClean
+} from './lib/release-pr-checks.mjs';
 
 const USAGE_LINES = [
   'Usage: node tools/npm/run-script.mjs release:finalize -- <version>',
@@ -61,7 +65,7 @@ function buildReleaseNotes(tag) {
   return `Draft release for ${tag}`;
 }
 
-function ensureReleasePrReady(repoRoot, branch) {
+function ensureReleasePrReady(repoRoot, branch, requiredChecks = []) {
   if (process.env.RELEASE_FINALIZE_SKIP_CHECKS === '1') {
     console.warn('[release:finalize] skipping PR status checks (RELEASE_FINALIZE_SKIP_CHECKS=1)');
     return null;
@@ -157,21 +161,22 @@ function ensureReleasePrReady(repoRoot, branch) {
     );
   }
 
-  const failingChecks = (info.statusCheckRollup || []).filter(
-    (check) => check.status !== 'COMPLETED' || check.conclusion !== 'SUCCESS'
-  );
-  if (failingChecks.length > 0 && process.env.RELEASE_FINALIZE_ALLOW_DIRTY !== '1') {
-    const detail = failingChecks
-      .map((check) => `${check.name} (${check.conclusion ?? check.status ?? 'unknown'})`)
-      .join(', ');
-    throw new Error(`Release PR has failing or pending checks: ${detail}.`);
+  let requiredEvaluation = null;
+  if (process.env.RELEASE_FINALIZE_ALLOW_DIRTY !== '1') {
+    requiredEvaluation = assertRequiredReleaseChecksClean(requiredChecks, info.statusCheckRollup ?? []);
+  } else if (requiredChecks.length > 0) {
+    requiredEvaluation = {
+      skipped: true,
+      reason: 'RELEASE_FINALIZE_ALLOW_DIRTY=1'
+    };
   }
 
   return {
     number: info.number ?? null,
     url: info.url ?? null,
     mergeStateStatus,
-    checks: summarizeStatusChecks(info.statusCheckRollup ?? [])
+    checks: summarizeStatusChecks(info.statusCheckRollup ?? []),
+    requiredChecks: requiredEvaluation
   };
 }
 
@@ -283,13 +288,14 @@ async function main() {
 
   const releaseBranch = `release/${tag}`;
   ensureBranchExists(releaseBranch);
+  const requiredReleaseChecks = loadReleaseRequiredChecks(repoRoot);
 
   ensureGhCli();
   const upstream = resolveUpstream(repoRoot);
   ensureOriginFork(repoRoot, upstream);
   const compareEvidence = await collectCompareEvidenceGate(repoRoot, upstream, releaseBranch);
 
-  const prInfo = ensureReleasePrReady(repoRoot, releaseBranch);
+  const prInfo = ensureReleasePrReady(repoRoot, releaseBranch, requiredReleaseChecks);
 
   run('git', ['fetch', 'origin'], { cwd: repoRoot });
   run('git', ['fetch', 'upstream'], { cwd: repoRoot });
