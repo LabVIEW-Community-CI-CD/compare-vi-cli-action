@@ -132,7 +132,6 @@ jobs:
           Get-ChildItem cli-out | Out-Host
 
       - name: Verify checksum (Windows)
-        id: checksum_windows
         if: runner.os == 'Windows'
         shell: pwsh
         run: |
@@ -166,7 +165,6 @@ jobs:
           ls -la cli-out
 
       - name: Verify checksum (Linux)
-        id: checksum_linux
         if: runner.os == 'Linux'
         shell: bash
         run: |
@@ -196,7 +194,6 @@ jobs:
           ls -la cli-out
 
       - name: Verify checksum (macOS)
-        id: checksum_macos
         if: runner.os == 'macOS'
         shell: bash
         run: |
@@ -215,7 +212,6 @@ jobs:
           echo "Checksum OK for $file"
 
       - name: Smoke run (Windows)
-        id: smoke_windows
         if: runner.os == 'Windows'
         shell: pwsh
         run: |
@@ -227,7 +223,6 @@ jobs:
           & $exe procs | Out-Null
 
       - name: Smoke run (Linux/macOS)
-        id: smoke_unix
         if: runner.os != 'Windows'
         shell: bash
         run: |
@@ -241,92 +236,41 @@ jobs:
           node -e "const o=JSON.parse(process.argv[1]); if(!o.normalized.includes('-x')||!o.normalized.includes('1')) throw new Error('bad tokenize')" "$tok_json"
           "$bin" procs >/dev/null
 
-      - name: Write release review scenario summary
-        if: always()
-        shell: pwsh
-        run: |
-          $os = '${{ matrix.os }}'
-          $tag = '${{ github.ref_name }}'
-          $checksum = 'none'
-          $smoke = 'none'
-
-          switch ($os) {
-            'windows-latest' {
-              $checksum = '${{ steps.checksum_windows.outcome }}'
-              $smoke = '${{ steps.smoke_windows.outcome }}'
-            }
-            'ubuntu-latest' {
-              $checksum = '${{ steps.checksum_linux.outcome }}'
-              $smoke = '${{ steps.smoke_unix.outcome }}'
-            }
-            'macos-latest' {
-              $checksum = '${{ steps.checksum_macos.outcome }}'
-              $smoke = '${{ steps.smoke_unix.outcome }}'
-            }
-          }
-
-          $outDir = 'tests/results/release-review'
-          New-Item -ItemType Directory -Path $outDir -Force | Out-Null
-          $outPath = Join-Path $outDir ("scenario-summary-{0}.json" -f $os)
-
-          pwsh -NoLogo -NoProfile -File tools/release-review/Write-ReleaseReviewScenarioSummary.ps1 `
-            -Os $os `
-            -Tag $tag `
-            -ChecksumOutcome $checksum `
-            -SmokeOutcome $smoke `
-            -OutputPath $outPath
-
-      - name: Validate release review scenario schema
-        if: always()
-        shell: pwsh
-        run: |
-          $os = '${{ matrix.os }}'
-          $jsonPath = Join-Path 'tests/results/release-review' ("scenario-summary-{0}.json" -f $os)
-          pwsh -NoLogo -NoProfile -File tools/Invoke-JsonSchemaLite.ps1 `
-            -JsonPath $jsonPath `
-            -SchemaPath 'docs/schemas/release-review-scenario-summary-v1.schema.json'
-
-      - name: Upload release review scenario summary
-        if: always()
-        uses: actions/upload-artifact@v5
-        with:
-          name: release-review-scenario-${{ matrix.os }}
-          path: tests/results/release-review/scenario-summary-${{ matrix.os }}.json
-          if-no-files-found: error
-
-  release-review-index:
+  release-contract:
+    name: release-contract
     runs-on: ubuntu-latest
-    needs: [release, validate-cli-artifacts]
+    needs: [release, validate-cli-artifacts, release-review-index]
     if: always()
     steps:
       - uses: actions/checkout@v5
 
-      - name: Download release review scenario artifacts
+      - name: Download CLI artifacts
         uses: actions/download-artifact@v5
         with:
-          pattern: release-review-scenario-*
-          merge-multiple: true
-          path: tests/results/release-review/scenarios
+          name: cli-artifacts
+          path: cli-dl
 
-      - name: Evaluate release review policy and build index
+      - name: Download release review index artifacts
+        uses: actions/download-artifact@v5
+        with:
+          name: release-review-index
+          path: tests/results/release-review
+
+      - name: Validate release provenance schema
         shell: pwsh
         run: |
-          pwsh -NoLogo -NoProfile -File tools/release-review/Evaluate-ReleaseReviewPolicy.ps1 `
-            -ScenarioRoot 'tests/results/release-review/scenarios' `
-            -ProfilePath 'tools/release-review/scenario-profiles.json' `
-            -PolicyPath 'tools/policy/release-review-gates.json' `
-            -Tag '${{ github.ref_name }}' `
-            -OutputIndexPath 'tests/results/release-review/review-index.json' `
-            -OutputCommentPath 'tests/results/release-review/reviewer-comment.md'
+          pwsh -NoLogo -NoProfile -File tools/Invoke-JsonSchemaLite.ps1 `
+            -JsonPath 'cli-dl/provenance.json' `
+            -SchemaPath 'docs/schemas/run-provenance-v1.schema.json'
 
-      - name: Validate release review index schema
+      - name: Validate release-review index schema
         shell: pwsh
         run: |
           pwsh -NoLogo -NoProfile -File tools/Invoke-JsonSchemaLite.ps1 `
             -JsonPath 'tests/results/release-review/review-index.json' `
             -SchemaPath 'docs/schemas/release-review-index-v1.schema.json'
 
-      - name: Validate scenario schema set
+      - name: Validate release-review scenario schemas
         shell: pwsh
         run: |
           Get-ChildItem -LiteralPath 'tests/results/release-review/scenarios' -Filter '*.json' -File |
@@ -336,20 +280,52 @@ jobs:
                 -SchemaPath 'docs/schemas/release-review-scenario-summary-v1.schema.json'
             }
 
-      - name: Publish reviewer summary block
-        shell: bash
+      - name: Assert requirements-verification check contract
+        shell: pwsh
         run: |
-          set -euo pipefail
-          if [ -f tests/results/release-review/reviewer-comment.md ]; then
-            cat tests/results/release-review/reviewer-comment.md >> "$GITHUB_STEP_SUMMARY"
-          fi
+          pwsh -NoLogo -NoProfile -File tools/Assert-RequirementsVerificationCheckContract.ps1
 
-      - name: Upload release review index artifacts
+      - name: Run requirements verification gate
+        shell: pwsh
+        run: |
+          pwsh -NoLogo -NoProfile -File tools/Verify-RequirementsGate.ps1 `
+            -TestsPath tests `
+            -ResultsRoot tests/results `
+            -OutDir tests/results/_agent/verification `
+            -BaselinePolicyPath tools/policy/requirements-verification-baseline.json `
+            -StepSummaryPath $env:GITHUB_STEP_SUMMARY
+
+      - name: Enforce unified release contract
+        shell: pwsh
+        run: |
+          $indexPath = 'tests/results/release-review/review-index.json'
+          $index = Get-Content -LiteralPath $indexPath -Raw | ConvertFrom-Json -Depth 20
+          if (-not $index.decision) {
+            throw "release-contract: review-index decision missing in $indexPath"
+          }
+
+          $lines = @(
+            '## Release Contract',
+            '',
+            "- Decision: **$($index.decision)**",
+            "- Provenance: cli-dl/provenance.json",
+            "- Review index: tests/results/release-review/review-index.json"
+          )
+          ($lines -join "`n") | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8
+
+          if ($index.decision -ne 'pass') {
+            throw "release-contract failed because release review decision is '$($index.decision)'"
+          }
+
+      - name: Upload release contract artifacts
+        if: always()
         uses: actions/upload-artifact@v5
         with:
-          name: release-review-index
+          name: release-contract-${{ github.run_id }}
           path: |
+            cli-dl/provenance.json
             tests/results/release-review/review-index.json
             tests/results/release-review/reviewer-comment.md
             tests/results/release-review/scenarios/*.json
+            tests/results/_agent/verification/verification-summary.json
           if-no-files-found: error
