@@ -307,9 +307,16 @@ Use `tools/workflows/update_workflows.py` for mechanical updates (comment-preser
   status under the `watchers.rest` node. Run it after the watcher step if you update the workflow or run the watcher
   manually.
 - For PR status polling in VS Code terminals, prefer snapshot mode instead of `gh pr checks --watch`:
-  - `node tools/npm/run-script.mjs ci:watch:safe -- --PullRequest <pr-number> -IntervalSeconds 20`
+  - VS Code task: `CI: Watch PR checks (safe snapshot)`
+  - Workspace tasks:
+    - `Command Center: watch PR checks (safe, fork plane)`
+    - `Fork Plane: watch PR checks (safe)`
+    - `Upstream Plane: watch PR checks (safe)`
+  - CLI equivalent: `node tools/npm/run-script.mjs ci:watch:safe -- --PullRequest <pr-number> -IntervalSeconds 20`
   - The helper emits delta/heartbeat summaries using repeated `gh pr checks --json` snapshots and avoids high-volume
     repaint loops that can destabilize integrated terminals.
+  - Smoke-check the watcher behavior (expected: one summary line plus either delta entries or a no-change heartbeat):
+    - `node tools/npm/run-script.mjs ci:watch:safe -- --PullRequest <pr-number> -IntervalSeconds 20 -HeartbeatPolls 1 -MaxPolls 2`
 
 ## LVCompare observability
 
