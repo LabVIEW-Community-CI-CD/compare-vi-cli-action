@@ -5,9 +5,22 @@ on:
     types: [published]
   workflow_dispatch:
     inputs:
-      tag:
-        description: Optional tag override (defaults to release tag or branch)
+      version:
+        description: 'Image version (for example: 0.7.0 or 0.7.0-rc.1)'
         required: false
+        type: string
+      channel:
+        description: 'Release channel'
+        required: false
+        default: stable
+        type: choice
+        options:
+          - stable
+          - rc
+      tag:
+        description: 'Optional legacy tag override (deprecated, use version)'
+        required: false
+        type: string
 
 permissions:
   contents: read
@@ -18,14 +31,106 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
-      - name: Compute Image Name
-        id: imagename
+      - name: Resolve image publish context
+        id: context
+        shell: bash
+        env:
+          INPUT_VERSION: ${{ inputs.version || '' }}
+          INPUT_CHANNEL: ${{ inputs.channel || '' }}
+          INPUT_TAG: ${{ inputs.tag || '' }}
+          RELEASE_TAG: ${{ github.event.release.tag_name || '' }}
+          REF_NAME: ${{ github.ref_name }}
+          GITHUB_SHA: ${{ github.sha }}
+          REPOSITORY_OWNER: ${{ github.repository_owner }}
+          SERVER_URL: ${{ github.server_url }}
+          REPOSITORY: ${{ github.repository }}
         run: |
-          owner="${GITHUB_REPOSITORY_OWNER,,}"
-          IMAGE_NAME="ghcr.io/${owner}/comparevi-tools"
-          echo "IMAGE_NAME=${IMAGE_NAME}" >> "$GITHUB_ENV"
+          set -euo pipefail
+
+          owner="$(echo "$REPOSITORY_OWNER" | tr '[:upper:]' '[:lower:]')"
+          image_name="ghcr.io/${owner}/comparevi-tools"
+
+          raw_version="$INPUT_VERSION"
+          if [ -z "$raw_version" ] && [ -n "$INPUT_TAG" ]; then
+            raw_version="$INPUT_TAG"
+          fi
+          if [ -z "$raw_version" ] && [ -n "$RELEASE_TAG" ]; then
+            raw_version="$RELEASE_TAG"
+          fi
+          if [ -z "$raw_version" ]; then
+            raw_version="$REF_NAME"
+          fi
+
+          version="$raw_version"
+          version="${version#comparevi-tools-v}"
+          version="${version#shared-v}"
+          version="${version#v}"
+
+          if [ -z "$version" ]; then
+            echo "Unable to determine version from inputs/release/ref context."
+            exit 1
+          fi
+
+          channel="$INPUT_CHANNEL"
+          if [ -z "$channel" ]; then
+            if [[ "$version" == *"-rc."* ]]; then
+              channel="rc"
+            else
+              channel="stable"
+            fi
+          fi
+
+          if [ "$channel" = "stable" ]; then
+            if ! [[ "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+              echo "Stable channel requires X.Y.Z version. Received: $version"
+              exit 1
+            fi
+          elif [ "$channel" = "rc" ]; then
+            if ! [[ "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+-rc\.[0-9]+$ ]]; then
+              echo "RC channel requires X.Y.Z-rc.N version. Received: $version"
+              exit 1
+            fi
+          else
+            echo "Unsupported channel: $channel"
+            exit 1
+          fi
+
+          declare -a tags
+          tags+=("${image_name}:sha-${GITHUB_SHA:0:7}")
+          tags+=("${image_name}:comparevi-tools-v${version}")
+          tags+=("${image_name}:v${version}")
+          tags+=("${image_name}:${version}")
+
+          if [ "$channel" = "stable" ]; then
+            IFS='.' read -r major minor patch <<< "$version"
+            tags+=("${image_name}:comparevi-tools-v${major}.${minor}")
+            tags+=("${image_name}:comparevi-tools-v${major}")
+            tags+=("${image_name}:latest")
+          fi
+
+          tags_file="${RUNNER_TEMP}/tools-image-tags.txt"
+          : > "$tags_file"
+          printf '%s\n' "${tags[@]}" | awk '!seen[$0]++' > "$tags_file"
+
+          {
+            echo "image_name=$image_name"
+            echo "version=$version"
+            echo "channel=$channel"
+            echo "tags_file=$tags_file"
+            echo "tags<<EOF"
+            cat "$tags_file"
+            echo "EOF"
+          } >> "$GITHUB_OUTPUT"
+
+          {
+            echo "org.opencontainers.image.source=${SERVER_URL}/${REPOSITORY}"
+            echo "org.opencontainers.image.revision=${GITHUB_SHA}"
+            echo "org.opencontainers.image.version=${version}"
+            echo "org.opencontainers.image.title=comparevi-tools"
+          } > "${RUNNER_TEMP}/tools-image-labels.txt"
+          echo "labels_file=${RUNNER_TEMP}/tools-image-labels.txt" >> "$GITHUB_OUTPUT"
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
@@ -37,27 +142,49 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Extract Docker metadata
-        id: meta
-        uses: docker/metadata-action@v5
-        with:
-          images: ${{ env.IMAGE_NAME }}
-          tags: |
-            type=raw,value=latest
-            type=sha
-            type=ref,event=branch
-            type=ref,event=tag
-            type=semver,pattern={{version}}
-            type=raw,value=${{ inputs.tag }},enable=${{ inputs.tag != '' }}
-          labels: |
-            org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
-            org.opencontainers.image.revision=${{ github.sha }}
-
       - name: Build and push tools image
+        id: build
         uses: docker/build-push-action@v6
         with:
           context: .
           file: tools/docker/Dockerfile.tools
           push: true
-          tags: ${{ steps.meta.outputs.tags }}
-          labels: ${{ steps.meta.outputs.labels }}
+          tags: ${{ steps.context.outputs.tags }}
+          labels: |
+            org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
+            org.opencontainers.image.revision=${{ github.sha }}
+            org.opencontainers.image.version=${{ steps.context.outputs.version }}
+            org.opencontainers.image.title=comparevi-tools
+
+      - name: Write release summary artifact
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p tests/results/_agent/release
+          summary_path="tests/results/_agent/release/tools-image-release-summary.md"
+          {
+            echo "# comparevi-tools publish summary"
+            echo ""
+            echo "- Image: \`${{ steps.context.outputs.image_name }}\`"
+            echo "- Version: \`${{ steps.context.outputs.version }}\`"
+            echo "- Channel: \`${{ steps.context.outputs.channel }}\`"
+            echo "- Digest: \`${{ steps.build.outputs.digest }}\`"
+            echo "- Source ref: \`${{ github.ref_name }}\`"
+            echo ""
+            echo "## Published tags"
+            while IFS= read -r tag; do
+              echo "- \`${tag}\`"
+            done < "${{ steps.context.outputs.tags_file }}"
+          } | tee "$summary_path"
+
+      - name: Append summary
+        shell: bash
+        run: |
+          cat tests/results/_agent/release/tools-image-release-summary.md >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload release summary artifact
+        uses: actions/upload-artifact@v5
+        with:
+          name: comparevi-tools-release-summary-${{ github.run_id }}
+          path: tests/results/_agent/release/tools-image-release-summary.md
+          if-no-files-found: error

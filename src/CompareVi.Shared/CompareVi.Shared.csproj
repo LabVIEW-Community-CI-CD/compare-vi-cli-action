@@ -12,12 +12,19 @@
     <Company>LabVIEW Community CI/CD</Company>
     <RepositoryUrl>https://github.com/LabVIEW-Community-CI-CD/compare-vi-cli-action</RepositoryUrl>
     <RepositoryType>git</RepositoryType>
+    <PublishRepositoryUrl>true</PublishRepositoryUrl>
+    <PackageLicenseExpression>MIT</PackageLicenseExpression>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
     <PackageTags>LabVIEW;LVCompare;Pester;CI</PackageTags>
+    <IncludeSymbols>true</IncludeSymbols>
+    <SymbolPackageFormat>snupkg</SymbolPackageFormat>
+    <EmbedUntrackedSources>true</EmbedUntrackedSources>
     <Version>0.1.0</Version>
     <PackageVersion>0.1.0</PackageVersion>
 </PropertyGroup>
 
   <ItemGroup>
+    <None Include="..\..\README.md" Pack="true" PackagePath="/" Link="README.md" />
     <EmbeddedResource Include="..\..\tools\providers\spec\operations.json" Link="Operations\operations.json" />
     <EmbeddedResource Include="..\..\tools\providers\spec\providers.json" Link="Providers\providers.json" />
   </ItemGroup>

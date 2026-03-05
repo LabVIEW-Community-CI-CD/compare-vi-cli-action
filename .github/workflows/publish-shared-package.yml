@@ -1,0 +1,157 @@
+name: Publish CompareVi.Shared Package
+
+on:
+  push:
+    tags:
+      - 'shared-v*'
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Package version (for example: 0.2.0 or 0.2.0-rc.1)'
+        required: false
+        type: string
+      channel:
+        description: 'Release channel'
+        required: false
+        default: stable
+        type: choice
+        options:
+          - stable
+          - rc
+      publish:
+        description: 'Push package to GitHub Packages'
+        required: false
+        default: false
+        type: boolean
+
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  build-pack-publish:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v5
+        with:
+          dotnet-version: '8.0.x'
+
+      - name: Resolve publish context
+        id: ctx
+        shell: bash
+        env:
+          INPUT_VERSION: ${{ inputs.version || '' }}
+          INPUT_CHANNEL: ${{ inputs.channel || '' }}
+          INPUT_PUBLISH: ${{ inputs.publish || false }}
+          REF_NAME: ${{ github.ref_name }}
+          EVENT_NAME: ${{ github.event_name }}
+        run: |
+          set -euo pipefail
+
+          version="$INPUT_VERSION"
+          if [ -z "$version" ]; then
+            case "$REF_NAME" in
+              shared-v*)
+                version="${REF_NAME#shared-v}"
+                ;;
+              v*)
+                version="${REF_NAME#v}"
+                ;;
+            esac
+          fi
+
+          if [ -z "$version" ]; then
+            echo "Unable to determine package version. Provide workflow_dispatch input 'version' or push a shared-v* tag."
+            exit 1
+          fi
+
+          channel="$INPUT_CHANNEL"
+          if [ -z "$channel" ]; then
+            if [[ "$version" == *"-rc."* ]]; then
+              channel="rc"
+            else
+              channel="stable"
+            fi
+          fi
+
+          if [ "$channel" = "stable" ]; then
+            if ! [[ "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+              echo "Stable channel requires X.Y.Z version. Received: $version"
+              exit 1
+            fi
+          elif [ "$channel" = "rc" ]; then
+            if ! [[ "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+-rc\.[0-9]+$ ]]; then
+              echo "RC channel requires X.Y.Z-rc.N version. Received: $version"
+              exit 1
+            fi
+          else
+            echo "Unsupported channel: $channel"
+            exit 1
+          fi
+
+          should_publish="$INPUT_PUBLISH"
+          if [ "$EVENT_NAME" = "push" ] && [[ "$REF_NAME" == shared-v* ]]; then
+            should_publish="true"
+          fi
+
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "channel=$channel" >> "$GITHUB_OUTPUT"
+          echo "publish=$should_publish" >> "$GITHUB_OUTPUT"
+
+      - name: Restore
+        run: dotnet restore src/CompareVi.Shared/CompareVi.Shared.csproj
+
+      - name: Build
+        run: dotnet build -c Release src/CompareVi.Shared/CompareVi.Shared.csproj --no-restore
+
+      - name: Pack
+        run: >
+          dotnet pack -c Release src/CompareVi.Shared/CompareVi.Shared.csproj
+          -o artifacts
+          --no-build
+          -p:PackageVersion=${{ steps.ctx.outputs.version }}
+          -p:Version=${{ steps.ctx.outputs.version }}
+
+      - name: Upload package artifacts
+        uses: actions/upload-artifact@v5
+        with:
+          name: comparevi-shared-package-${{ steps.ctx.outputs.version }}
+          path: |
+            artifacts/*.nupkg
+            artifacts/*.snupkg
+          if-no-files-found: error
+
+      - name: Publish to GitHub Packages NuGet
+        if: steps.ctx.outputs.publish == 'true'
+        shell: bash
+        env:
+          GH_PACKAGES_SOURCE: https://nuget.pkg.github.com/${{ github.repository_owner }}/index.json
+        run: |
+          set -euo pipefail
+          shopt -s nullglob
+          files=(artifacts/*.nupkg artifacts/*.snupkg)
+          if [ ${#files[@]} -eq 0 ]; then
+            echo "No package files found to publish."
+            exit 1
+          fi
+          dotnet nuget push artifacts/*.nupkg --source "$GH_PACKAGES_SOURCE" --api-key "${{ github.token }}" --skip-duplicate
+          if compgen -G "artifacts/*.snupkg" > /dev/null; then
+            dotnet nuget push artifacts/*.snupkg --source "$GH_PACKAGES_SOURCE" --api-key "${{ github.token }}" --skip-duplicate
+          fi
+
+      - name: Append summary
+        shell: bash
+        run: |
+          set -euo pipefail
+          {
+            echo "## CompareVi.Shared publish summary"
+            echo ""
+            echo "- Version: \`${{ steps.ctx.outputs.version }}\`"
+            echo "- Channel: \`${{ steps.ctx.outputs.channel }}\`"
+            echo "- Published: \`${{ steps.ctx.outputs.publish }}\`"
+            echo "- Registry: \`https://nuget.pkg.github.com/${{ github.repository_owner }}/index.json\`"
+          } >> "$GITHUB_STEP_SUMMARY"
