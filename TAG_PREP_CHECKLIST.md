@@ -9,8 +9,6 @@ standing-priority issue (#273). Update or archive once the tag is live.
 - [ ] Work from the release branch (`release/v0.5.2-rc1`, or latest RC) and ensure it contains all changes targeted for
       0.5.2 (history suite, branch guard, release tooling updates).
 - [ ] CI is green on the RC branch (Validate, fixtures, session-index, `vi-compare-refs`, `vi-staging-smoke`, and any integration workflows).
-- [ ] Release PR required contexts are all `COMPLETED/SUCCESS` before finalize: `lint`, `pester`, `publish`,
-      `vi-binary-check`, `vi-compare`, `mock-cli`, and `Policy Guard (Upstream) / policy-guard`.
 - [ ] `node tools/npm/run-script.mjs lint` completes without errors (markdownlint + docs checks) on the RC branch.
 - [ ] Optional: run `pwsh -File tools/PrePush-Checks.ps1` locally for early actionlint / YAML parity.
 - [ ] Verify a clean working tree (`git status`).
