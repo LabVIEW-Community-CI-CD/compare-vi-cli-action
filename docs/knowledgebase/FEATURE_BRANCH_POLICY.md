@@ -44,8 +44,9 @@ standing GitHub protection rules (including queue-managed `develop` and `main`).
   out the PR head with the upstream repository token and re-runs `priority:policy`, guaranteeing that branch protection
   rules are enforced even when the lint job skips in fork contexts. Its status
   (`Policy Guard (Upstream) / policy-guard`) is required on `develop`, `main`, and `release/*`.
-- Branch protection verification treats workflow-prefixed and short check contexts as equivalent (for example,
-  `Validate / lint` and `lint`) to avoid false drift when comparing live API contexts against policy mappings.
+- Upstream policy guard runs in strict mode (`--fail-on-skip`), so reduced token scope is treated as a failing gate
+  rather than a pass-through skip.
+- Branch protection verification requires canonical check context names exactly as declared in policy files.
 - `Validate` runs `priority:handoff-tests` automatically for heads that start with `feature/`, enforcing leak-sensitive
   suites before parallel work merges.
 - **Important:** Required checks for queued branches must run on both the `pull_request` and `merge_group` events;
@@ -77,6 +78,7 @@ checked into `tools/priority/policy.json` so `priority:policy` stays authoritati
 - `node tools/npm/run-script.mjs priority:policy -- --apply` – pushes the manifest configuration back to GitHub (branch
   protections + rulesets); rerun without `--apply` afterward to confirm parity.
 - `node tools/npm/run-script.mjs priority:policy:apply` – apply via the wrapper (`Sync-BranchProtectionPolicy.ps1`) and emit report summary.
+- Policy guard workflows invoke sync in strict mode (`-FailOnSkip`) so permission shortfalls fail CI.
 - The Validate workflow runs the verify-only command on every PR and queue run targeting `develop`; fix GitHub settings or update
   `tools/priority/policy.json` before re-running CI when it fails.
 

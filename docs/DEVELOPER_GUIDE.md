@@ -292,6 +292,8 @@ For Docker/Desktop VI history validation, run fast-loop lanes explicitly:
 - Run `node tools/npm/run-script.mjs priority:policy` (or `node tools/npm/run-script.mjs priority:policy:sync`) if you
   need to audit merge settings locally; the command also runs during `priority:handoff-tests` and fails when
   repo/branch policy drifts.
+- Use strict verification (`node tools/priority/check-policy.mjs --fail-on-skip`) when you need token/permission skips to
+  fail deterministically (for example in upstream policy guard workflows).
 - Use `node tools/npm/run-script.mjs priority:policy:apply` only with admin token scope when you intentionally need to
   sync GitHub protections/rulesets back to `tools/priority/policy.json`.
 - Prefer opening PRs from your fork with `node tools/npm/run-script.mjs priority:pr`; the helper ensures `origin` targets your fork (creating
