@@ -22,6 +22,7 @@ operator dashboards, or developer feedback loops.
 - Required runs for promotion: **10 consecutive successful upstream runs**.
 - Regression guard target: **5 consecutive upstream runs without consumer regressions**.
 - Promotion evidence source: `validate-session-index-v2-contract/session-index-v2-contract.json`.
+- Deprecation policy and v1 cutover checklist: `docs/SESSION_INDEX_V1_DEPRECATION.md`.
 
 ## Remaining non-critical consumers
 
