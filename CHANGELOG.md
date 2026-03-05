@@ -16,6 +16,9 @@ The format is based on Keep a Changelog, and this project adheres to Semantic Ve
 
 - Updated README, developer guide, and workflow notes to describe the optional `-MaxPairs` cap and refreshed examples to
   highlight the new default behaviour.
+- Added Session Index cutover docs (`docs/SESSION_INDEX_V1_DEPRECATION.md`,
+  `docs/SESSION_INDEX_V2_CONSUMER_MATRIX.md`) to formalize v1 freeze rules, deprecation window criteria, and final
+  v2-only evidence expectations.
 
 ## [v0.6.0] - 2025-11-02
 
