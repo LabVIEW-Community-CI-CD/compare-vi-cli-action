@@ -279,6 +279,9 @@ For Docker/Desktop VI history validation, run fast-loop lanes explicitly:
   (`release/*`) and blocks on missing/pending/failing required checks.
 - `tools/priority/verify-release-branch.mjs` enforces release-doc consistency before tag cut by requiring
   `PR_NOTES.md`, `TAG_PREP_CHECKLIST.md`, and `RELEASE_NOTES_<tag>.md` to reference the current release tag.
+  It also requires both `package.json` and `docs/CHANGELOG.md` to change relative to the configured release base ref.
+- `tools/priority/validate-semver.mjs` now performs branch-aware integrity checks: on `release/<tag>` heads it enforces
+  `package.json` SemVer parity with the branch tag.
 - `priority:sync` surfaces the most recent artifact in the standing-priority step summary and exposes it to downstream
   automation via `snapshot.releaseArtifacts`.
 - `priority:parity` reports origin/upstream parity using two metrics:

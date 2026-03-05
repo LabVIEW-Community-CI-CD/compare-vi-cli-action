@@ -74,6 +74,13 @@ function ensureReleaseDocsConsistency(repoRoot, tag) {
   }
 }
 
+function ensurePackageVersionDiff(repoRoot, baseRef) {
+  const diff = run('git', ['diff', `${baseRef}`, '--', 'package.json'], { cwd: repoRoot });
+  if (!diff.trim()) {
+    throw new Error(`package.json not updated relative to ${baseRef}`);
+  }
+}
+
 function fileContainsTag(contents, tag) {
   const semver = tag.replace(/^v/, '');
   return contents.includes(tag) || contents.includes(semver);
