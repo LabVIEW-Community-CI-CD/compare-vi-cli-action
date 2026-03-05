@@ -75,6 +75,7 @@
     "semver:check": "node tools/priority/validate-semver.mjs",
     "session-index:sample": "tsc -p tsconfig.json && node dist/src/session-index/cli.js --sample",
     "session-index:test": "npm run build && node --test src/session-index/__tests__/*.test.mjs",
+    "session-index:v2-contract": "pwsh -NoLogo -NoProfile -File tools/Test-SessionIndexV2Contract.ps1",
     "session-index:validate": "npm run schema:validate -- --schema docs/schema/generated/session-index-v2.schema.json --data tests/results/_agent/session-index-v2-sample.json --optional",
     "session:teststand:validate": "npm run schema:validate -- --schema docs/schema/generated/teststand-compare-session.schema.json --data fixtures/teststand-session/session-index.json --data tests/results/teststand-session/session-index.json --optional",
     "smoke:vi-history": "pwsh -NoLogo -NoProfile -File tools/Test-PRVIHistorySmoke.ps1",

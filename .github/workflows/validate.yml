@@ -840,8 +840,52 @@ jobs:
           ${{ runner.temp }}/sessionindex/session-index-v2.json
         if-no-files-found: warn
 
+  session-index-v2-contract:
+    needs: [smoke-gate, session-index]
+    if: needs.smoke-gate.outputs.skip != 'true'
+    runs-on: ubuntu-latest
+    env:
+      SESSION_INDEX_V2_CONTRACT_ENFORCE: ${{ vars.SESSION_INDEX_V2_CONTRACT_ENFORCE || 'false' }}
+    steps:
+    - uses: actions/checkout@v5
+
+    - name: Download session index artifact
+      uses: actions/download-artifact@v5
+      with:
+        name: validate-session-index
+        path: ${{ runner.temp }}/sessionindex-v2-contract
+
+    - name: Evaluate session index v2 contract (burn-in aware)
+      shell: pwsh
+      env:
+        GITHUB_TOKEN: ${{ secrets.GH_TOKEN || secrets.GITHUB_TOKEN }}
+        GH_TOKEN: ${{ secrets.GH_TOKEN || secrets.GITHUB_TOKEN }}
+      run: |
+        $res = Join-Path $env:RUNNER_TEMP 'sessionindex-v2-contract'
+        $enforceRaw = "$env:SESSION_INDEX_V2_CONTRACT_ENFORCE"
+        $enforce = $false
+        if (-not [string]::IsNullOrWhiteSpace($enforceRaw)) {
+          $enforce = $enforceRaw.Trim().ToLowerInvariant() -eq 'true'
+        }
+
+        if ($enforce) {
+          Write-Host '::notice::session-index-v2 contract is running in enforce mode.'
+          pwsh -File tools/Test-SessionIndexV2Contract.ps1 -ResultsDir $res -Branch 'develop' -BurnInThreshold 10 -Enforce
+        } else {
+          Write-Host '::notice::session-index-v2 contract is running in burn-in mode (non-blocking).'
+          pwsh -File tools/Test-SessionIndexV2Contract.ps1 -ResultsDir $res -Branch 'develop' -BurnInThreshold 10
+        }
+
+    - name: Upload v2 contract report
+      if: always()
+      uses: actions/upload-artifact@v5
+      with:
+        name: validate-session-index-v2-contract
+        path: ${{ runner.temp }}/sessionindex-v2-contract/session-index-v2-contract.json
+        if-no-files-found: warn
+
   vi-history-scenarios-skip-note:
-    needs: [smoke-gate, lint, fixtures, session-index]
+    needs: [smoke-gate, lint, fixtures, session-index, session-index-v2-contract]
     if: >
       needs.smoke-gate.outputs.skip != 'true' &&
       github.event_name == 'workflow_dispatch' &&
