@@ -46,6 +46,9 @@ standing GitHub protection rules (including queue-managed `develop` and `main`).
   (`Policy Guard (Upstream) / policy-guard`) is required on `develop`, `main`, and `release/*`.
 - Upstream policy guard runs in strict mode (`--fail-on-skip`), so reduced token scope is treated as a failing gate
   rather than a pass-through skip.
+- Policy guard/sync workflows now resolve token candidates in order (`secrets.GH_TOKEN`, `secrets.GITHUB_TOKEN`,
+  `github.token`) via `tools/priority/Resolve-PolicyToken.ps1` and require an admin-capable token for deterministic
+  branch-protection checks.
 - Branch protection verification requires canonical check context names exactly as declared in policy files.
 - `Validate` runs `priority:handoff-tests` automatically for heads that start with `feature/`, enforcing leak-sensitive
   suites before parallel work merges.
@@ -251,6 +254,15 @@ to confirm each workflow includes both triggers.
   required checks. Cancel stale queue jobs from the PR if necessary.
 - **Policy drift detected by `priority:policy`** – Align GitHub settings with `tools/priority/policy.json` (update the
   JSON if the new configuration is intentional), then rerun the helper.
+- **Policy guard auth failure (`Authorization unavailable` / `authenticated-no-admin`)** – verify and rotate upstream
+  secrets with an admin-capable token:
+  ```powershell
+  $repo = 'LabVIEW-Community-CI-CD/compare-vi-cli-action'
+  $token = (Get-Content C:\github_token.txt -Raw).Trim()
+  gh api "repos/$repo" -H "Authorization: Bearer $token" --jq '.permissions.admin'
+  $token | gh secret set GH_TOKEN --repo $repo
+  $token | gh secret set GITHUB_TOKEN --repo $repo
+  ```
 - **Release artifacts stale** – For release branches, rerun `priority:release` helpers or the finalize workflow to
   regenerate `tests/results/_agent/release/*` snapshots before broadcasting status updates.
 

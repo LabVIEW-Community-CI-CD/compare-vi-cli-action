@@ -294,6 +294,9 @@ For Docker/Desktop VI history validation, run fast-loop lanes explicitly:
   repo/branch policy drifts.
 - Use strict verification (`node tools/priority/check-policy.mjs --fail-on-skip`) when you need token/permission skips to
   fail deterministically (for example in upstream policy guard workflows).
+- Policy guard workflows resolve token candidates with
+  `tools/priority/Resolve-PolicyToken.ps1` and require an admin-capable token source. If policy guard fails with
+  `Authorization unavailable` or `authenticated-no-admin`, rotate `GH_TOKEN`/`GITHUB_TOKEN` secrets in upstream.
 - Use `node tools/npm/run-script.mjs priority:policy:apply` only with admin token scope when you intentionally need to
   sync GitHub protections/rulesets back to `tools/priority/policy.json`.
 - Prefer opening PRs from your fork with `node tools/npm/run-script.mjs priority:pr`; the helper ensures `origin` targets your fork (creating
