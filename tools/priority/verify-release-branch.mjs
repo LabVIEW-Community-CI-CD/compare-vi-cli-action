@@ -43,6 +43,13 @@ function ensureChangelogDiff(repoRoot, baseRef) {
   }
 }
 
+function ensurePackageVersionDiff(repoRoot, baseRef) {
+  const diff = run('git', ['diff', `${baseRef}`, '--', 'package.json'], { cwd: repoRoot });
+  if (!diff.trim()) {
+    throw new Error(`package.json not updated relative to ${baseRef}`);
+  }
+}
+
 function fileContainsTag(contents, tag) {
   const semver = tag.replace(/^v/, '');
   return contents.includes(tag) || contents.includes(semver);
@@ -79,6 +86,7 @@ function main() {
   ensureReleaseDocsConsistency(repoRoot, branchTag);
 
   const baseRef = process.env.RELEASE_VALIDATE_BASE || 'origin/develop';
+  ensurePackageVersionDiff(repoRoot, baseRef);
   ensureChangelogDiff(repoRoot, baseRef);
 
   console.log(`[release:verify] Release branch ${headBranch} validated successfully.`);
