@@ -32,6 +32,13 @@ Open the upstream-plane workspace from the upstream checkout and the fork-plane
 workspace from the fork checkout. Open the command-center workspace from the
 fork checkout and set/update the upstream path entry as needed for your machine.
 
+## WSL distro guardrail
+
+When using WSL, open this repository from a normal Linux distro (for example
+`Ubuntu`) instead of `docker-desktop`. The `docker-desktop` distro does not use
+the standard `/mnt/<drive>/...` mount layout, which can break terminal cwd
+resolution when workspace tasks launch.
+
 ## Task wiring contract
 
 Each shipped workspace task sets `options.cwd` to a named workspace folder
