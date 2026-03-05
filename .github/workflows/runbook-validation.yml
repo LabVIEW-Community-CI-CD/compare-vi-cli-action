@@ -18,7 +18,7 @@ concurrency:
 
 jobs:
   runbook-check:
-    if: ${{ github.repository_owner == 'LabVIEW-Community-CI-CD' && !startsWith(github.ref, 'refs/tags/') }}
+    if: ${{ github.event.repository.fork != true && !startsWith(github.ref, 'refs/tags/') }}
     runs-on: [self-hosted, Windows, X64]
     timeout-minutes: 3
     steps:
@@ -54,7 +54,7 @@ jobs:
           if (-not $json.phases) { throw 'No phases in runbook output' }
 
   runbook-check-container:
-    if: ${{ github.repository_owner == 'LabVIEW-Community-CI-CD' && !startsWith(github.ref, 'refs/tags/') }}
+    if: ${{ github.event.repository.fork != true && !startsWith(github.ref, 'refs/tags/') }}
     needs: runbook-check
     runs-on: [self-hosted, Windows, X64]
     timeout-minutes: 15

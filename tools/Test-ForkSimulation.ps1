@@ -110,19 +110,28 @@ function Get-RemoteInfo {
     )
 
     if ($DryRun) {
+        $fallbackSlug = if (-not [string]::IsNullOrWhiteSpace($env:GITHUB_REPOSITORY)) {
+            $env:GITHUB_REPOSITORY.Trim()
+        } else {
+            'upstream-owner/compare-vi-cli-action'
+        }
+        $slugParts = $fallbackSlug.Split('/', 2)
+        $fallbackOwner = if ($slugParts.Count -ge 1 -and $slugParts[0]) { $slugParts[0] } else { 'upstream-owner' }
+        $fallbackRepo = if ($slugParts.Count -ge 2 -and $slugParts[1]) { $slugParts[1] } else { 'compare-vi-cli-action' }
+
         switch ($RemoteName) {
             'upstream' {
                 return [PSCustomObject]@{
-                    Owner      = 'LabVIEW-Community-CI-CD'
-                    Repository = 'compare-vi-cli-action'
-                    Slug       = 'LabVIEW-Community-CI-CD/compare-vi-cli-action'
+                    Owner      = $fallbackOwner
+                    Repository = $fallbackRepo
+                    Slug       = "$fallbackOwner/$fallbackRepo"
                 }
             }
             'origin' {
                 return [PSCustomObject]@{
                     Owner      = 'fork-owner'
-                    Repository = 'compare-vi-cli-action'
-                    Slug       = 'fork-owner/compare-vi-cli-action'
+                    Repository = $fallbackRepo
+                    Slug       = "fork-owner/$fallbackRepo"
                 }
             }
             default {

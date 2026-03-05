@@ -819,8 +819,9 @@ jobs:
       run: |
         $res = Join-Path $env:RUNNER_TEMP 'sessionindex'
         $parityPath = Join-Path $res 'origin-upstream-parity.json'
+        $repoSlug = '${{ github.repository }}'
         try {
-          git remote add upstream 'https://github.com/LabVIEW-Community-CI-CD/compare-vi-cli-action.git' 2>$null | Out-Null
+          git remote add upstream ("https://github.com/{0}.git" -f $repoSlug) 2>$null | Out-Null
         } catch { }
         try { git fetch --no-tags --prune --depth=1 origin develop | Out-Null } catch { Write-Host ("::notice::origin/develop fetch skipped: {0}" -f $_.Exception.Message) }
         try { git fetch --no-tags --prune --depth=1 upstream develop | Out-Null } catch { Write-Host ("::notice::upstream/develop fetch skipped: {0}" -f $_.Exception.Message) }
@@ -900,7 +901,7 @@ jobs:
     if: >
       needs.smoke-gate.outputs.skip != 'true' &&
       github.event_name == 'workflow_dispatch' &&
-      github.repository != 'LabVIEW-Community-CI-CD/compare-vi-cli-action' &&
+      github.event.repository.fork == true &&
       github.event.inputs.allow_noncanonical_vi_history != 'true'
     runs-on: ubuntu-latest
     steps:
@@ -923,7 +924,7 @@ jobs:
       needs.smoke-gate.outputs.skip != 'true' &&
       github.event_name == 'workflow_dispatch' &&
       (
-        github.repository == 'LabVIEW-Community-CI-CD/compare-vi-cli-action' ||
+        github.event.repository.fork != true ||
         github.event.inputs.allow_noncanonical_vi_history == 'true'
       )
     runs-on: [self-hosted, Windows, X64, self-hosted-docker-windows]
@@ -972,15 +973,15 @@ jobs:
             throw ("Unsupported history_scenario_set '{0}'. Allowed: {1}" -f $setRaw, ($allowed -join ', '))
           }
           $repo = '${{ github.repository }}'
-          $isCanonical = $repo -eq 'LabVIEW-Community-CI-CD/compare-vi-cli-action'
+          $isForkRepository = '${{ github.event.repository.fork }}' -eq 'true'
           $allowNonCanonical = '${{ github.event.inputs.allow_noncanonical_vi_history }}' -eq 'true'
           $allowNonCanonicalHistoryCore = '${{ github.event.inputs.allow_noncanonical_history_core }}' -eq 'true'
 
-          if (-not $isCanonical -and -not $allowNonCanonical) {
+          if ($isForkRepository -and -not $allowNonCanonical) {
             throw ("vi-history-scenarios non-canonical execution is disabled for '{0}'. Set allow_noncanonical_vi_history=true." -f $repo)
           }
 
-          if (-not $isCanonical -and $set -eq 'history-core' -and -not $allowNonCanonicalHistoryCore) {
+          if ($isForkRepository -and $set -eq 'history-core' -and -not $allowNonCanonicalHistoryCore) {
             Write-Host "::warning::history-core is disabled on non-canonical repos unless allow_noncanonical_history_core=true. Downgrading to smoke."
             $set = 'smoke'
           }
@@ -1058,7 +1059,7 @@ jobs:
       needs.smoke-gate.outputs.skip != 'true' &&
       github.event_name == 'workflow_dispatch' &&
       (
-        github.repository == 'LabVIEW-Community-CI-CD/compare-vi-cli-action' ||
+        github.event.repository.fork != true ||
         github.event.inputs.allow_noncanonical_vi_history == 'true'
       )
     runs-on: ubuntu-latest

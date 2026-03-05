@@ -175,6 +175,12 @@ Quick reference for building, testing, and releasing the LVCompare composite act
   Emits an auto-link snippet (defaults to `Fixes #531`) you can drop into PR descriptions so GitHub auto-closes the issue.
 - `node tools/priority/standing-priority-handoff.mjs [--dry-run] <next-issue>`  
   Removes the `standing-priority` label from the current issue (if any), applies it to `<next-issue>`, and re-runs the cache sync (`tools/priority/sync-standing-priority.mjs`). Use `--dry-run` to preview the actions without mutating labels.
+- Standing-priority repository resolution is owner-agnostic. Order:
+  1. `GITHUB_REPOSITORY`
+  2. git remotes (`upstream`, then `origin`)
+  3. package repository metadata.
+  Use `AGENT_PRIORITY_UPSTREAM_REPOSITORY=<owner/repo>` (or `AGENT_UPSTREAM_REPOSITORY`) when you need to force
+  upstream lookup in deforked or custom-remote environments.
 
 ```bash
 node tools/npm/run-script.mjs build
@@ -406,6 +412,8 @@ pwsh -File scripts/CompareVI.ps1 `
 - Auto-approve still requires `AUTO_APPROVE_TOKEN`, optional `AUTO_APPROVE_LABEL` (defaults to `auto-approve`), and
   optional `AUTO_APPROVE_ALLOWED`. The label lifecycle is now fully automated so contributors do not need to toggle it
   manually.
+- Agent reviewer routing/policy is owner-agnostic: set repository variable `REQUIRED_AGENT_REVIEWER` to pin a specific
+  login; when unset it defaults to `github.repository_owner`.
 - Manual `/vi-stage` and `/vi-history` workflows accept an optional `fetch_depth` input (default `20`). Increase it when
   you need additional commit history before running compares.
 - Use `tools/Test-ForkSimulation.ps1` when validating fork automation. Run it in three passes: `-DryRun` prints the

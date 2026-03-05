@@ -16,6 +16,8 @@ jobs:
     steps:
       - name: Enforce required reviewer for agent-authored PRs
         uses: actions/github-script@v8
+        env:
+          REQUIRED_AGENT_REVIEWER: ${{ vars.REQUIRED_AGENT_REVIEWER || github.repository_owner }}
         with:
           script: |
             const pr = context.payload.pull_request;
@@ -40,7 +42,7 @@ jobs:
             const owner = context.repo.owner;
             const repo = context.repo.repo;
             const pull_number = pr.number;
-            const requiredReviewer = 'svelderrainruiz';
+            const requiredReviewer = (process.env.REQUIRED_AGENT_REVIEWER || owner).trim();
             const prAuthor = pr.user?.login || '';
 
             // GitHub does not allow self-approval, so skip enforcement when the PR author

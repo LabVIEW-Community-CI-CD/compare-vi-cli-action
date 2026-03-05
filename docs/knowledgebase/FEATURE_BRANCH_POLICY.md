@@ -24,6 +24,9 @@ standing GitHub protection rules (including queue-managed `develop` and `main`).
 ### Local helpers
 - `tools/priority/create-pr.mjs` refuses PRs opened from `develop`/`main`, forcing contributors onto feature/issue
   branches.
+- Standing-priority repo/upstream detection is owner-agnostic (uses `GITHUB_REPOSITORY`, then git remotes).
+  Set `AGENT_PRIORITY_UPSTREAM_REPOSITORY=<owner/repo>` (or `AGENT_UPSTREAM_REPOSITORY`) to force upstream lookup
+  when remotes are non-standard.
 - Dry-run helpers (`node tools/npm/run-script.mjs feature:branch:dry`, `node tools/npm/run-script.mjs feature:finalize:dry`) rehearse branch creation/finalization
   and emit metadata under `tests/results/_agent/feature/`.
 - `node tools/npm/run-script.mjs priority:pr` pushes the current branch to your fork and opens a PR targeting `develop`, keeping the linear

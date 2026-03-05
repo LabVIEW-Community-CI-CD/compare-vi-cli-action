@@ -3,8 +3,8 @@
 param(
   [string]$ResultsRoot = 'tests/results',
   [string]$OutputDir = 'tests/results/_agent/health-snapshot',
-  [string]$Owner = 'LabVIEW-Community-CI-CD',
-  [string]$Repository = 'compare-vi-cli-action',
+  [string]$Owner,
+  [string]$Repository,
   [string]$Branch = 'develop',
   [string]$BaseRef = 'upstream/develop',
   [string]$HeadRef = 'origin/develop',
@@ -43,6 +43,78 @@ function Invoke-GitText {
   $output = & git @Arguments 2>$null
   if ($LASTEXITCODE -ne 0) { return $null }
   return ($output | Out-String).Trim()
+}
+
+function Convert-GitRemoteUrlToSlug {
+  param([string]$RemoteUrl)
+
+  if ([string]::IsNullOrWhiteSpace($RemoteUrl)) {
+    return $null
+  }
+
+  $trimmed = $RemoteUrl.Trim()
+  if ($trimmed -match '^(?:git@|ssh://git@)?github\.com[:/](?<owner>[^/]+)/(?<repo>[^/]+?)(?:\.git)?$') {
+    return "$($Matches.owner)/$($Matches.repo)"
+  }
+
+  if ($trimmed -match '^https://github\.com/(?<owner>[^/]+)/(?<repo>[^/]+?)(?:\.git)?$') {
+    return "$($Matches.owner)/$($Matches.repo)"
+  }
+
+  if ($trimmed -match '^(?<owner>[^/]+)/(?<repo>[^/]+)$') {
+    return "$($Matches.owner)/$($Matches.repo)"
+  }
+
+  return $null
+}
+
+function Resolve-RepositoryContext {
+  param(
+    [string]$Owner,
+    [string]$Repository
+  )
+
+  if (-not [string]::IsNullOrWhiteSpace($Owner) -and -not [string]::IsNullOrWhiteSpace($Repository)) {
+    return [pscustomobject]@{
+      Owner = $Owner
+      Repository = $Repository
+      Source = 'parameters'
+    }
+  }
+
+  $slug = $null
+  if (-not [string]::IsNullOrWhiteSpace($env:GITHUB_REPOSITORY)) {
+    $slug = Convert-GitRemoteUrlToSlug -RemoteUrl $env:GITHUB_REPOSITORY
+  }
+
+  if (-not $slug) {
+    foreach ($remoteName in @('upstream', 'origin')) {
+      $remoteUrl = Invoke-GitText -Arguments @('remote', 'get-url', $remoteName)
+      $slug = Convert-GitRemoteUrlToSlug -RemoteUrl $remoteUrl
+      if ($slug) {
+        break
+      }
+    }
+  }
+
+  if (-not $slug -and -not [string]::IsNullOrWhiteSpace($Owner) -and -not [string]::IsNullOrWhiteSpace($Repository)) {
+    $slug = "$Owner/$Repository"
+  }
+
+  if (-not $slug -or $slug -notmatch '/') {
+    return [pscustomobject]@{
+      Owner = if ($Owner) { $Owner } else { 'unknown-owner' }
+      Repository = if ($Repository) { $Repository } else { 'unknown-repository' }
+      Source = 'fallback'
+    }
+  }
+
+  $parts = $slug.Split('/', 2)
+  return [pscustomobject]@{
+    Owner = $parts[0]
+    Repository = $parts[1]
+    Source = 'auto'
+  }
 }
 
 function Get-PreferredSessionIndex {
@@ -296,6 +368,13 @@ if (-not (Test-Path -LiteralPath $OutputDir -PathType Container)) {
 
 $token = Get-Token
 $degradedNotes = @()
+
+$repoContext = Resolve-RepositoryContext -Owner $Owner -Repository $Repository
+$Owner = $repoContext.Owner
+$Repository = $repoContext.Repository
+if ($repoContext.Source -eq 'fallback') {
+  $degradedNotes += 'Repository owner/name auto-resolution failed; using fallback placeholders.'
+}
 
 # Keep refs fresh where possible.
 & git fetch upstream develop --quiet 2>$null | Out-Null
