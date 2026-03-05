@@ -23,23 +23,84 @@ concurrency:
 jobs:
   build:
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        shared_source: [project, package]
     steps:
       - uses: actions/checkout@v5
+
       - name: Setup .NET
         uses: actions/setup-dotnet@v5
         with:
           dotnet-version: '8.0.x'
-      - name: Restore
+
+      - name: Restore shared project
         run: dotnet restore src/CompareVi.Shared/CompareVi.Shared.csproj
-      - name: Build
+
+      - name: Build shared project
         run: dotnet build -c Release src/CompareVi.Shared/CompareVi.Shared.csproj --no-restore
-      - name: Pack
+
+      - name: Pack shared project
         run: dotnet pack -c Release src/CompareVi.Shared/CompareVi.Shared.csproj -o artifacts --no-build
-      - name: Upload package
+
+      - name: Resolve packed shared version
+        id: shared
+        shell: bash
+        run: |
+          set -euo pipefail
+          pkg="$(find artifacts -maxdepth 1 -name 'CompareVi.Shared.*.nupkg' | head -n 1)"
+          if [ -z "$pkg" ]; then
+            echo "No CompareVi.Shared nupkg found in artifacts/"
+            exit 1
+          fi
+          version="$(basename "$pkg" | sed -E 's/^CompareVi\.Shared\.([0-9A-Za-z\.-]+)\.nupkg$/\1/')"
+          if [ -z "$version" ]; then
+            echo "Failed to derive package version from $pkg"
+            exit 1
+          fi
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+
+      - name: Restore CompareVi CLI
+        run: >
+          dotnet restore src/CompareVi.Tools.Cli/CompareVi.Tools.Cli.csproj
+          -p:CompareViSharedSource=${{ matrix.shared_source }}
+          -p:CompareViSharedPackageVersion=${{ steps.shared.outputs.version }}
+          --source "${{ github.workspace }}/artifacts"
+          --source "https://api.nuget.org/v3/index.json"
+
+      - name: Build CompareVi CLI
+        run: >
+          dotnet build -c Release src/CompareVi.Tools.Cli/CompareVi.Tools.Cli.csproj
+          -p:CompareViSharedSource=${{ matrix.shared_source }}
+          -p:CompareViSharedPackageVersion=${{ steps.shared.outputs.version }}
+          --no-restore
+
+      - name: CLI smoke (version/tokenize/procs)
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          run_cli() {
+            dotnet run --project src/CompareVi.Tools.Cli/CompareVi.Tools.Cli.csproj -c Release --no-build \
+              -p:CompareViSharedSource=${{ matrix.shared_source }} \
+              -p:CompareViSharedPackageVersion=${{ steps.shared.outputs.version }} -- "$@"
+          }
+
+          ver_json="$(run_cli version)"
+          node -e "const o=JSON.parse(process.argv[1]); if(o.name!=='comparevi-cli'){throw new Error('unexpected name')}" "$ver_json"
+
+          tok_json="$(run_cli tokenize --input "foo -x=1 bar")"
+          node -e "const o=JSON.parse(process.argv[1]); if(!o.normalized.includes('-x')||!o.normalized.includes('1')||!o.normalized.includes('bar')){throw new Error('tokenize regression')}" "$tok_json"
+
+          run_cli procs >/dev/null
+
+      - name: Upload shared package artifacts
         uses: actions/upload-artifact@v5
         with:
-          name: comparevi-shared-nuget
-          path: artifacts/*.nupkg
+          name: comparevi-shared-nuget-${{ matrix.shared_source }}
+          path: |
+            artifacts/*.nupkg
+            artifacts/*.snupkg
           if-no-files-found: error
-

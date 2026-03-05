@@ -1,0 +1,198 @@
+name: Monthly Stability Release
+
+on:
+  schedule:
+    - cron: '0 18 * * 3'
+  workflow_dispatch:
+    inputs:
+      force:
+        description: 'Allow execution outside the first-Wednesday window'
+        required: false
+        default: false
+        type: boolean
+      ref:
+        description: 'Git ref used when dispatching publish workflows'
+        required: false
+        default: develop
+        type: string
+      publish_tools:
+        description: 'Dispatch comparevi-tools publish workflow'
+        required: false
+        default: false
+        type: boolean
+      tools_version:
+        description: 'comparevi-tools version (for example: 0.7.0 or 0.7.0-rc.1)'
+        required: false
+        type: string
+      tools_channel:
+        description: 'comparevi-tools channel'
+        required: false
+        default: stable
+        type: choice
+        options:
+          - stable
+          - rc
+      publish_shared:
+        description: 'Dispatch CompareVi.Shared package publish workflow'
+        required: false
+        default: false
+        type: boolean
+      shared_version:
+        description: 'CompareVi.Shared version (for example: 0.2.0 or 0.2.0-rc.1)'
+        required: false
+        type: string
+      shared_channel:
+        description: 'CompareVi.Shared channel'
+        required: false
+        default: stable
+        type: choice
+        options:
+          - stable
+          - rc
+
+permissions:
+  actions: write
+  contents: read
+
+jobs:
+  evaluate-window:
+    runs-on: ubuntu-latest
+    outputs:
+      should_run: ${{ steps.eval.outputs.should_run }}
+      publish_requested: ${{ steps.eval.outputs.publish_requested }}
+      publish_tools: ${{ steps.eval.outputs.publish_tools }}
+      publish_shared: ${{ steps.eval.outputs.publish_shared }}
+      ref: ${{ steps.eval.outputs.ref }}
+      tools_version: ${{ steps.eval.outputs.tools_version }}
+      tools_channel: ${{ steps.eval.outputs.tools_channel }}
+      shared_version: ${{ steps.eval.outputs.shared_version }}
+      shared_channel: ${{ steps.eval.outputs.shared_channel }}
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Evaluate monthly window and requested dispatches
+        id: eval
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+
+            const inputs = context.payload.inputs || {};
+            const isDispatch = context.eventName === 'workflow_dispatch';
+            const force = isDispatch && String(inputs.force || 'false') === 'true';
+            const publishTools = isDispatch && String(inputs.publish_tools || 'false') === 'true';
+            const publishShared = isDispatch && String(inputs.publish_shared || 'false') === 'true';
+            const publishRequested = publishTools || publishShared;
+
+            const now = new Date();
+            const isFirstWednesdayUtc = now.getUTCDay() === 3 && now.getUTCDate() <= 7;
+            const shouldRun = force || isFirstWednesdayUtc;
+
+            const ref = String(inputs.ref || 'develop');
+            const toolsChannel = String(inputs.tools_channel || 'stable');
+            const sharedChannel = String(inputs.shared_channel || 'stable');
+
+            let toolsVersion = String(inputs.tools_version || '').trim();
+            if (!toolsVersion) {
+              const pkg = JSON.parse(fs.readFileSync('package.json', 'utf8'));
+              toolsVersion = String(pkg.version || '').trim();
+            }
+
+            let sharedVersion = String(inputs.shared_version || '').trim();
+            if (!sharedVersion) {
+              const csproj = fs.readFileSync('src/CompareVi.Shared/CompareVi.Shared.csproj', 'utf8');
+              const match = csproj.match(/<PackageVersion>([^<]+)<\/PackageVersion>/i) || csproj.match(/<Version>([^<]+)<\/Version>/i);
+              sharedVersion = match ? String(match[1]).trim() : '';
+            }
+
+            const reason = shouldRun
+              ? (force ? 'forced-run' : 'first-wednesday-window')
+              : 'outside-window';
+
+            if (publishRequested && !shouldRun) {
+              core.setFailed('Publish dispatch requested outside first-Wednesday window. Re-run with force=true to override.');
+              return;
+            }
+
+            if (publishTools && !toolsVersion) {
+              core.setFailed('publish_tools=true requires tools_version (or package.json version).');
+              return;
+            }
+            if (publishShared && !sharedVersion) {
+              core.setFailed('publish_shared=true requires shared_version (or CompareVi.Shared PackageVersion).');
+              return;
+            }
+
+            core.setOutput('should_run', String(shouldRun));
+            core.setOutput('publish_requested', String(publishRequested));
+            core.setOutput('publish_tools', String(publishTools));
+            core.setOutput('publish_shared', String(publishShared));
+            core.setOutput('ref', ref);
+            core.setOutput('tools_version', toolsVersion);
+            core.setOutput('tools_channel', toolsChannel);
+            core.setOutput('shared_version', sharedVersion);
+            core.setOutput('shared_channel', sharedChannel);
+
+            await core.summary
+              .addHeading('Monthly Stability Evaluation')
+              .addRaw(`Window reason: \`${reason}\`\n`)
+              .addRaw(`should_run: \`${shouldRun}\`\n`)
+              .addRaw(`publish_requested: \`${publishRequested}\`\n`)
+              .addRaw(`ref: \`${ref}\`\n`)
+              .addRaw(`tools_version: \`${toolsVersion || 'unset'}\` (${toolsChannel})\n`)
+              .addRaw(`shared_version: \`${sharedVersion || 'unset'}\` (${sharedChannel})\n`)
+              .write();
+
+  approval-gate:
+    runs-on: ubuntu-latest
+    needs: evaluate-window
+    if: needs.evaluate-window.outputs.should_run == 'true' && needs.evaluate-window.outputs.publish_requested == 'true'
+    environment:
+      name: monthly-stability-release
+    steps:
+      - name: Approval checkpoint
+        run: |
+          echo "Approval gate passed for monthly stability release dispatches."
+
+  publish-tools:
+    runs-on: ubuntu-latest
+    needs: [evaluate-window, approval-gate]
+    if: needs.evaluate-window.outputs.should_run == 'true' && needs.evaluate-window.outputs.publish_tools == 'true'
+    steps:
+      - name: Dispatch Publish Tools Image workflow
+        uses: actions/github-script@v7
+        with:
+          script: |
+            await github.rest.actions.createWorkflowDispatch({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              workflow_id: 'publish-tools-image.yml',
+              ref: '${{ needs.evaluate-window.outputs.ref }}',
+              inputs: {
+                version: '${{ needs.evaluate-window.outputs.tools_version }}',
+                channel: '${{ needs.evaluate-window.outputs.tools_channel }}'
+              }
+            });
+            core.info('Dispatched publish-tools-image workflow.');
+
+  publish-shared:
+    runs-on: ubuntu-latest
+    needs: [evaluate-window, approval-gate]
+    if: needs.evaluate-window.outputs.should_run == 'true' && needs.evaluate-window.outputs.publish_shared == 'true'
+    steps:
+      - name: Dispatch Publish CompareVi.Shared workflow
+        uses: actions/github-script@v7
+        with:
+          script: |
+            await github.rest.actions.createWorkflowDispatch({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              workflow_id: 'publish-shared-package.yml',
+              ref: '${{ needs.evaluate-window.outputs.ref }}',
+              inputs: {
+                version: '${{ needs.evaluate-window.outputs.shared_version }}',
+                channel: '${{ needs.evaluate-window.outputs.shared_channel }}',
+                publish: 'true'
+              }
+            });
+            core.info('Dispatched publish-shared-package workflow.');
