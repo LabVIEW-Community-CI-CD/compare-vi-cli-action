@@ -13,7 +13,6 @@
 
 - Notes: `RELEASE_NOTES_v0.6.0.md`
 - Changelog section: `CHANGELOG.md` (`v0.6.0`)
-- Docs mirror: `docs/CHANGELOG.md`
 
 ## Validation
 
