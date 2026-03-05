@@ -18,38 +18,6 @@
       "problemMatcher": []
     },
     {
-      "label": "Local: Verify diff session (real, stateless)",
-      "type": "process",
-      "command": "pwsh",
-      "args": [
-        "-NoLogo",
-        "-NoProfile",
-        "-File",
-        "tools/Run-LocalDiffSession.ps1",
-        "-BaseVi",
-        "${input:localDiffBase}",
-        "-HeadVi",
-        "${input:localDiffHead}",
-        "-Mode",
-        "${input:localDiffMode}",
-        "-ResultsRoot",
-        "${input:localDiffResultsReal}",
-        "-ProbeSetup",
-        "-AutoConfig",
-        "-Stateless",
-        "-RenderReport",
-        "-ArchiveDir",
-        "tests/results/_agent/local-diff/latest",
-        "-ArchiveZip",
-        "tests/results/_agent/local-diff/latest.zip"
-      ],
-      "options": {
-        "cwd": "${workspaceFolder}"
-      },
-      "group": "test",
-      "problemMatcher": []
-    },
-    {
       "label": "Smoke: VI staging label",
       "type": "process",
       "command": "pwsh",
