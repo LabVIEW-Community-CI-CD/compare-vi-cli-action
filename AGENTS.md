@@ -314,6 +314,50 @@ Use `tools/workflows/update_workflows.py` for mechanical updates (comment-preser
 
 - Artifacts land in `tests/results/_agent/`. Summaries update automatically in CI.
 
+## Deterministic orchestration runbook (#683)
+
+- Default operating mode: deterministic handoff with a single active writer.
+- Role windows (SLA targets):
+  - implementer: 0-45 minutes from assignment to first checkpoint.
+  - reviewer: 0-30 minutes from implementer handoff to disposition (approve/request changes).
+  - audit: 0-30 minutes from reviewer disposition to evidence verification and issue/PR log update.
+
+### Machine-readable checkpoint contract
+
+Post checkpoints in the standing issue using this JSON block (inside a fenced `json` code block):
+
+```json
+{
+  "schema": "standing-checkpoint@v1",
+  "issue": 683,
+  "cycle": 1,
+  "role": "implementer",
+  "owner": "<login>",
+  "windowStartUtc": "<ISO-8601>",
+  "windowEndUtc": "<ISO-8601>",
+  "evidence": {
+    "commands": ["<cmd1>", "<cmd2>"],
+    "artifacts": ["<path-or-url>"],
+    "result": "pass|fail|blocked"
+  },
+  "nextOwner": "<login>",
+  "nextRole": "reviewer|audit|implementer"
+}
+```
+
+### Deterministic escalation matrix
+
+- SLA breach (< 15m over window): post checkpoint with `result=blocked`, keep owner, continue execution.
+- SLA breach (>= 15m and < 60m): transfer to next role owner and log transfer reason in checkpoint evidence.
+- SLA breach (>= 60m) or policy deadlock: escalate to repository maintainers, add `admin-override-candidate` note in standing issue, and pause destructive operations until disposition.
+
+### Single-writer protocol (overlapping file scopes)
+
+- One writer per file scope at a time (`.github/workflows/**`, `tools/priority/**`, `docs/**`, etc.).
+- Before edits, announce ownership window in checkpoint JSON (`role=implementer`).
+- Reviewer/audit roles are read-only for owned scopes unless ownership is explicitly transferred in a checkpoint.
+- If overlap is unavoidable, split by disjoint file scopes and record both owners in consecutive checkpoints.
+
 ## Troubleshooting quick links
 
 - Rogue LVCompare: `tools/Detect-RogueLV.ps1 -FailOnRogue`
