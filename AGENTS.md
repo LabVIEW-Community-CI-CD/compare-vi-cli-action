@@ -149,7 +149,7 @@ line buffers).
   - Runs `actionlint` across `.github/workflows`.
   - Runs safe PR watch task contract validation (`safe-watch:contract`).
   - Optionally round-trips YAML with `ruamel.yaml` (if Python available).
-  - Validate safe PR watch task contracts before task/workspace changes:
+  - Validate safe PR watch task contracts manually before task/workspace changes when iterating locally:
     - `node tools/npm/run-script.mjs safe-watch:contract`
   - For mixed WSL/Windows shells, prefer HTTPS fetch + SSH push on `origin` to avoid
     `git ls-remote` auth drift across terminals:
