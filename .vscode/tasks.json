@@ -57,7 +57,7 @@
         "-NoLogo",
         "-NoProfile",
         "-Command",
-        "$env:GH_TOKEN = Get-Content -Raw 'C:\\github_token.txt'; npm run smoke:vi-stage"
+        "$env:GH_TOKEN = Get-Content -Raw 'C:\\github_token.txt'; node tools/npm/run-script.mjs smoke:vi-stage"
       ],
       "options": {
         "cwd": "${workspaceFolder}"
@@ -152,9 +152,9 @@
     {
       "label": "VI History: Run local suite",
       "type": "process",
-      "command": "npm",
+      "command": "node",
       "args": [
-        "run",
+        "tools/npm/run-script.mjs",
         "history:run",
         "--",
         "-ViPath",
@@ -172,9 +172,9 @@
     {
       "label": "VI History: Dispatch workflow",
       "type": "process",
-      "command": "npm",
+      "command": "node",
       "args": [
-        "run",
+        "tools/npm/run-script.mjs",
         "history:dispatch",
         "--",
         "-ViPath",
