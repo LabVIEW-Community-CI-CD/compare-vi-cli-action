@@ -76,6 +76,13 @@ checked into `tools/priority/policy.json` so `priority:policy` stays authoritati
 - The Validate workflow runs the verify-only command on every PR targeting `develop`; fix GitHub settings or update
   `tools/priority/policy.json` before re-running CI when it fails.
 
+### Runbook container canary policy note
+
+- The runbook container lane is currently a **non-required canary** and is intentionally excluded from the develop
+  required-check contract until a separate promotion decision is accepted.
+- Promotion/rollback decision criteria and evidence requirements are defined in
+  `docs/RUNBOOK_CONTAINER_LANE_PROMOTION_POLICY.md`.
+
 ### `develop`
 - **Merge strategy**: squash only (enforce linear history, disable merge commits).
 - **Required checks**: `Validate / lint`, `Validate / fixtures`, `Validate / session-index`, `Validate / issue-snapshot`,

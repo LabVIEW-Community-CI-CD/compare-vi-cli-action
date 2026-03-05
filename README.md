@@ -59,6 +59,10 @@ See `docs/DUAL_PLANE_WORKSPACES.md` for the expected directory layout and task
 usage, including the WSL distro guardrail (`Ubuntu`/standard distro, not
 `docker-desktop`).
 
+Runbook container canary promotion/rollback policy is tracked in
+`docs/RUNBOOK_CONTAINER_LANE_PROMOTION_POLICY.md` (decision issue `#663`,
+evidence source `#662`).
+
 Each job also emits GitHub outputs pointing at the aggregate manifest, the
 history results directory, the per-mode manifest summary (`mode-manifests-json`),
 and the generated history report paths (`history-report-md` and, when HTML
