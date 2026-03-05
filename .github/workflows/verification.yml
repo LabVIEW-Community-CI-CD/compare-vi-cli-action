@@ -23,6 +23,11 @@ jobs:
     steps:
       - uses: actions/checkout@v5
 
+      - name: Assert requirements-verification check contract
+        shell: pwsh
+        run: |
+          pwsh -NoLogo -NonInteractive -NoProfile -File tools/Assert-RequirementsVerificationCheckContract.ps1
+
       - name: Run requirements verification gate
         id: gate
         shell: pwsh

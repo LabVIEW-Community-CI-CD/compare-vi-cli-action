@@ -132,7 +132,6 @@ jobs:
           Get-ChildItem cli-out | Out-Host
 
       - name: Verify checksum (Windows)
-        id: checksum_windows
         if: runner.os == 'Windows'
         shell: pwsh
         run: |
@@ -166,7 +165,6 @@ jobs:
           ls -la cli-out
 
       - name: Verify checksum (Linux)
-        id: checksum_linux
         if: runner.os == 'Linux'
         shell: bash
         run: |
@@ -196,7 +194,6 @@ jobs:
           ls -la cli-out
 
       - name: Verify checksum (macOS)
-        id: checksum_macos
         if: runner.os == 'macOS'
         shell: bash
         run: |
@@ -215,7 +212,6 @@ jobs:
           echo "Checksum OK for $file"
 
       - name: Smoke run (Windows)
-        id: smoke_windows
         if: runner.os == 'Windows'
         shell: pwsh
         run: |
@@ -227,7 +223,6 @@ jobs:
           & $exe procs | Out-Null
 
       - name: Smoke run (Linux/macOS)
-        id: smoke_unix
         if: runner.os != 'Windows'
         shell: bash
         run: |
@@ -241,115 +236,123 @@ jobs:
           node -e "const o=JSON.parse(process.argv[1]); if(!o.normalized.includes('-x')||!o.normalized.includes('1')) throw new Error('bad tokenize')" "$tok_json"
           "$bin" procs >/dev/null
 
-      - name: Write release review scenario summary
-        if: always()
-        shell: pwsh
-        run: |
-          $os = '${{ matrix.os }}'
-          $tag = '${{ github.ref_name }}'
-          $checksum = 'none'
-          $smoke = 'none'
-
-          switch ($os) {
-            'windows-latest' {
-              $checksum = '${{ steps.checksum_windows.outcome }}'
-              $smoke = '${{ steps.smoke_windows.outcome }}'
-            }
-            'ubuntu-latest' {
-              $checksum = '${{ steps.checksum_linux.outcome }}'
-              $smoke = '${{ steps.smoke_unix.outcome }}'
-            }
-            'macos-latest' {
-              $checksum = '${{ steps.checksum_macos.outcome }}'
-              $smoke = '${{ steps.smoke_unix.outcome }}'
-            }
-          }
-
-          $outDir = 'tests/results/release-review'
-          New-Item -ItemType Directory -Path $outDir -Force | Out-Null
-          $outPath = Join-Path $outDir ("scenario-summary-{0}.json" -f $os)
-
-          pwsh -NoLogo -NoProfile -File tools/release-review/Write-ReleaseReviewScenarioSummary.ps1 `
-            -Os $os `
-            -Tag $tag `
-            -ChecksumOutcome $checksum `
-            -SmokeOutcome $smoke `
-            -OutputPath $outPath
-
-      - name: Validate release review scenario schema
-        if: always()
-        shell: pwsh
-        run: |
-          $os = '${{ matrix.os }}'
-          $jsonPath = Join-Path 'tests/results/release-review' ("scenario-summary-{0}.json" -f $os)
-          pwsh -NoLogo -NoProfile -File tools/Invoke-JsonSchemaLite.ps1 `
-            -JsonPath $jsonPath `
-            -SchemaPath 'docs/schemas/release-review-scenario-summary-v1.schema.json'
-
-      - name: Upload release review scenario summary
-        if: always()
-        uses: actions/upload-artifact@v5
-        with:
-          name: release-review-scenario-${{ matrix.os }}
-          path: tests/results/release-review/scenario-summary-${{ matrix.os }}.json
-          if-no-files-found: error
-
-  release-review-index:
+  release-contract:
+    name: release-contract
     runs-on: ubuntu-latest
     needs: [release, validate-cli-artifacts]
-    if: always()
     steps:
       - uses: actions/checkout@v5
 
-      - name: Download release review scenario artifacts
-        uses: actions/download-artifact@v5
+      - name: Download CLI artifacts
+        uses: actions/download-artifact@v4
         with:
-          pattern: release-review-scenario-*
-          merge-multiple: true
-          path: tests/results/release-review/scenarios
+          name: cli-artifacts
+          path: cli-dl
 
-      - name: Evaluate release review policy and build index
+      - name: Validate release provenance schema
         shell: pwsh
         run: |
-          pwsh -NoLogo -NoProfile -File tools/release-review/Evaluate-ReleaseReviewPolicy.ps1 `
-            -ScenarioRoot 'tests/results/release-review/scenarios' `
-            -ProfilePath 'tools/release-review/scenario-profiles.json' `
-            -PolicyPath 'tools/policy/release-review-gates.json' `
-            -Tag '${{ github.ref_name }}' `
-            -OutputIndexPath 'tests/results/release-review/review-index.json' `
-            -OutputCommentPath 'tests/results/release-review/reviewer-comment.md'
+          pwsh -NoLogo -NoProfile -File tools/Invoke-JsonSchemaLite.ps1 \
+            -JsonPath cli-dl/provenance.json \
+            -SchemaPath docs/schemas/run-provenance-v1.schema.json
 
-      - name: Validate release review index schema
-        shell: pwsh
-        run: |
-          pwsh -NoLogo -NoProfile -File tools/Invoke-JsonSchemaLite.ps1 `
-            -JsonPath 'tests/results/release-review/review-index.json' `
-            -SchemaPath 'docs/schemas/release-review-index-v1.schema.json'
-
-      - name: Validate scenario schema set
-        shell: pwsh
-        run: |
-          Get-ChildItem -LiteralPath 'tests/results/release-review/scenarios' -Filter '*.json' -File |
-            ForEach-Object {
-              pwsh -NoLogo -NoProfile -File tools/Invoke-JsonSchemaLite.ps1 `
-                -JsonPath $_.FullName `
-                -SchemaPath 'docs/schemas/release-review-scenario-summary-v1.schema.json'
-            }
-
-      - name: Publish reviewer summary block
+      - name: Contract checksum scenario (Linux)
+        id: checksum_scenario
+        continue-on-error: true
         shell: bash
         run: |
           set -euo pipefail
-          if [ -f tests/results/release-review/reviewer-comment.md ]; then
-            cat tests/results/release-review/reviewer-comment.md >> "$GITHUB_STEP_SUMMARY"
+          v='${{ needs.release.outputs.cli_version }}'
+          file="comparevi-cli-v${v}-linux-x64-selfcontained.tar.gz"
+          tarball="cli-dl/${file}"
+          [ -f "$tarball" ]
+          expected=$(awk -v file="$file" '$2 ~ file {print tolower($1)}' cli-dl/SHA256SUMS.txt)
+          [ -n "$expected" ]
+          actual=$(sha256sum "$tarball" | awk '{print tolower($1)}')
+          [ "$actual" = "$expected" ]
+
+      - name: Contract smoke scenario (Linux)
+        id: smoke_scenario
+        continue-on-error: true
+        shell: bash
+        run: |
+          set -euo pipefail
+          v='${{ needs.release.outputs.cli_version }}'
+          tarball="cli-dl/comparevi-cli-v${v}-linux-x64-selfcontained.tar.gz"
+          mkdir -p cli-contract
+          tar -xzf "$tarball" -C cli-contract
+          bin="cli-contract/comparevi-cli"
+          chmod +x "$bin" || true
+          ver_json=$($bin version)
+          node -e "const o=JSON.parse(process.argv[1]); if(o.name!=='comparevi-cli') throw new Error('bad name')" "$ver_json"
+          tok_json=$($bin tokenize --input 'foo -x=1 "bar baz"')
+          node -e "const o=JSON.parse(process.argv[1]); if(!o.normalized.includes('-x')||!o.normalized.includes('1')) throw new Error('bad tokenize')" "$tok_json"
+          $bin procs >/dev/null
+
+      - name: Write release-review contract artifacts
+        shell: pwsh
+        run: |
+          $checksumStatus = if ('${{ steps.checksum_scenario.outcome }}' -eq 'success') { 'pass' } else { 'fail' }
+          $smokeStatus = if ('${{ steps.smoke_scenario.outcome }}' -eq 'success') { 'pass' } else { 'fail' }
+          pwsh -NoLogo -NoProfile -File tools/Write-ReleaseReviewContractArtifacts.ps1 \
+            -OutputDir tests/results/release-contract \
+            -Tag '${{ github.ref_name }}' \
+            -Os 'ubuntu-latest' \
+            -ChecksumStatus $checksumStatus \
+            -SmokeStatus $smokeStatus
+
+      - name: Validate release-review artifacts schema
+        shell: pwsh
+        run: |
+          pwsh -NoLogo -NoProfile -File tools/Invoke-JsonSchemaLite.ps1 \
+            -JsonPath tests/results/release-contract/scenario-summary-ubuntu-latest.json \
+            -SchemaPath docs/schemas/release-review-scenario-summary-v1.schema.json
+          pwsh -NoLogo -NoProfile -File tools/Invoke-JsonSchemaLite.ps1 \
+            -JsonPath tests/results/release-contract/review-index.json \
+            -SchemaPath docs/schemas/release-review-index-v1.schema.json
+
+      - name: Assert requirements-verification check contract
+        shell: pwsh
+        run: |
+          pwsh -NoLogo -NoProfile -File tools/Assert-RequirementsVerificationCheckContract.ps1
+
+      - name: Run requirements verification gate
+        shell: pwsh
+        run: |
+          pwsh -NoLogo -NoProfile -File tools/Verify-RequirementsGate.ps1 \
+            -TestsPath tests \
+            -ResultsRoot tests/results \
+            -OutDir tests/results/_agent/verification \
+            -BaselinePolicyPath tools/policy/requirements-verification-baseline.json \
+            -StepSummaryPath $env:GITHUB_STEP_SUMMARY
+
+      - name: Enforce release contract outcome
+        shell: bash
+        run: |
+          set -euo pipefail
+          cs='${{ steps.checksum_scenario.outcome }}'
+          sm='${{ steps.smoke_scenario.outcome }}'
+          {
+            echo "## Release Contract";
+            echo "";
+            echo "- Checksum scenario: **${cs}**";
+            echo "- Smoke scenario: **${sm}**";
+            echo "- Artifacts: tests/results/release-contract/scenario-summary-ubuntu-latest.json";
+            echo "- Artifacts: tests/results/release-contract/review-index.json";
+          } >> "$GITHUB_STEP_SUMMARY"
+          if [ "$cs" != "success" ] || [ "$sm" != "success" ]; then
+            echo "release-contract failed: one or more contract scenarios did not pass"
+            exit 1
           fi
 
-      - name: Upload release review index artifacts
+      - name: Upload release contract artifacts
+        if: always()
         uses: actions/upload-artifact@v5
         with:
-          name: release-review-index
+          name: release-contract-${{ github.run_id }}
           path: |
-            tests/results/release-review/review-index.json
-            tests/results/release-review/reviewer-comment.md
-            tests/results/release-review/scenarios/*.json
+            tests/results/release-contract/scenario-summary-ubuntu-latest.json
+            tests/results/release-contract/review-index.json
+            tests/results/_agent/verification/verification-summary.json
           if-no-files-found: error
+
