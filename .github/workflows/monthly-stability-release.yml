@@ -70,6 +70,11 @@ jobs:
     steps:
       - uses: actions/checkout@v5
 
+      - name: Assert promotion contract alignment
+        shell: pwsh
+        run: |
+          pwsh -NoLogo -NoProfile -File tools/Assert-PromotionContractAlignment.ps1 -OutputJsonPath tests/results/promotion-contract/monthly-alignment.json -StepSummaryPath $env:GITHUB_STEP_SUMMARY
+
       - name: Evaluate monthly window and requested dispatches
         id: eval
         uses: actions/github-script@v7
@@ -196,3 +201,36 @@ jobs:
               }
             });
             core.info('Dispatched publish-shared-package workflow.');
+
+  promotion-evidence:
+    runs-on: ubuntu-latest
+    needs: [evaluate-window, approval-gate, publish-tools, publish-shared]
+    if: always()
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Write promotion evidence ledger
+        shell: pwsh
+        run: |
+          $needs = @{
+            evaluate = '${{ needs.evaluate-window.result }}'
+            approval = '${{ needs.approval-gate.result }}'
+            tools = '${{ needs.publish-tools.result }}'
+            shared = '${{ needs.publish-shared.result }}'
+          }
+          $gateStatus = 'pass'
+          if ($needs.Values -contains 'failure') {
+            $gateStatus = 'fail'
+          } elseif ($needs.Values -contains 'cancelled') {
+            $gateStatus = 'blocked'
+          }
+          $details = "evaluate=$($needs.evaluate); approval=$($needs.approval); tools=$($needs.tools); shared=$($needs.shared)"
+          $versionSummary = "tools=${{ needs.evaluate-window.outputs.tools_version }};shared=${{ needs.evaluate-window.outputs.shared_version }}"
+          pwsh -NoLogo -NoProfile -File tools/Write-PromotionEvidenceLedger.ps1 -OutputPath tests/results/promotion-contract/monthly-ledger.json -WorkflowName '${{ github.workflow }}' -Stream 'monthly-stability-release' -Channel 'mixed' -Version $versionSummary -GateStatus $gateStatus -GateReason $details -SummaryPath 'tests/results/promotion-contract/monthly-alignment.json' -StepSummaryPath $env:GITHUB_STEP_SUMMARY
+
+      - name: Upload promotion evidence artifact
+        uses: actions/upload-artifact@v5
+        with:
+          name: promotion-evidence-monthly-${{ github.run_id }}
+          path: tests/results/promotion-contract/monthly-ledger.json
+          if-no-files-found: error

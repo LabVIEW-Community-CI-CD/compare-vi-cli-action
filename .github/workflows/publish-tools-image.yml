@@ -33,6 +33,11 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v5
 
+      - name: Assert promotion contract alignment
+        shell: pwsh
+        run: |
+          pwsh -NoLogo -NoProfile -File tools/Assert-PromotionContractAlignment.ps1 -OutputJsonPath tests/results/promotion-contract/publish-tools-alignment.json -StepSummaryPath $env:GITHUB_STEP_SUMMARY
+
       - name: Resolve image publish context
         id: context
         shell: bash
@@ -104,7 +109,9 @@ jobs:
           tags+=("${image_name}:${version}")
 
           if [ "$channel" = "stable" ]; then
-            IFS='.' read -r major minor patch <<< "$version"
+            major="${version%%.*}"
+            minor_version="${version#*.}"
+            minor="${minor_version%%.*}"
             tags+=("${image_name}:comparevi-tools-v${major}.${minor}")
             tags+=("${image_name}:comparevi-tools-v${major}")
             tags+=("${image_name}:latest")
@@ -187,4 +194,25 @@ jobs:
         with:
           name: comparevi-tools-release-summary-${{ github.run_id }}
           path: tests/results/_agent/release/tools-image-release-summary.md
+          if-no-files-found: error
+
+      - name: Write promotion evidence ledger
+        if: always()
+        shell: pwsh
+        run: |
+          $gateStatus = switch ('${{ job.status }}') {
+            'success' { 'pass' }
+            'cancelled' { 'blocked' }
+            default { 'fail' }
+          }
+          $channel = if ([string]::IsNullOrWhiteSpace('${{ steps.context.outputs.channel }}')) { 'unknown' } else { '${{ steps.context.outputs.channel }}' }
+          $version = if ([string]::IsNullOrWhiteSpace('${{ steps.context.outputs.version }}')) { 'unknown' } else { '${{ steps.context.outputs.version }}' }
+          pwsh -NoLogo -NoProfile -File tools/Write-PromotionEvidenceLedger.ps1 -OutputPath tests/results/promotion-contract/publish-tools-ledger.json -WorkflowName '${{ github.workflow }}' -Stream 'comparevi-tools' -Channel $channel -Version $version -GateStatus $gateStatus -GateReason 'publish-tools-image workflow result' -SummaryPath 'tests/results/_agent/release/tools-image-release-summary.md' -StepSummaryPath $env:GITHUB_STEP_SUMMARY
+
+      - name: Upload promotion evidence artifact
+        if: always()
+        uses: actions/upload-artifact@v5
+        with:
+          name: promotion-evidence-tools-${{ github.run_id }}
+          path: tests/results/promotion-contract/publish-tools-ledger.json
           if-no-files-found: error

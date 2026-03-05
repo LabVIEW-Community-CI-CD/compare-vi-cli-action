@@ -1,0 +1,55 @@
+name: Promotion Contract
+
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/promotion-contract.yml'
+      - '.github/workflows/release.yml'
+      - '.github/workflows/publish-tools-image.yml'
+      - '.github/workflows/publish-shared-package.yml'
+      - '.github/workflows/monthly-stability-release.yml'
+      - 'tools/policy/promotion-contract.json'
+      - 'tools/policy/branch-required-checks.json'
+      - 'tools/priority/policy.json'
+      - 'tools/Assert-PromotionContractAlignment.ps1'
+      - 'tools/Write-PromotionEvidenceLedger.ps1'
+      - 'docs/RELEASE_PROMOTION_CONTRACT.md'
+      - 'docs/schemas/promotion-evidence-ledger-v1.schema.json'
+  push:
+    branches:
+      - develop
+      - 'release/**'
+  workflow_dispatch:
+
+jobs:
+  promotion-contract:
+    name: promotion-contract
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Assert promotion contract alignment
+        shell: pwsh
+        run: |
+          pwsh -NoLogo -NoProfile -File tools/Assert-PromotionContractAlignment.ps1 -OutputJsonPath tests/results/promotion-contract/alignment.json -StepSummaryPath $env:GITHUB_STEP_SUMMARY
+
+      - name: Write promotion evidence ledger
+        if: always()
+        shell: pwsh
+        run: |
+          $gateStatus = switch ('${{ job.status }}') {
+            'success' { 'pass' }
+            'cancelled' { 'blocked' }
+            default { 'fail' }
+          }
+          pwsh -NoLogo -NoProfile -File tools/Write-PromotionEvidenceLedger.ps1 -OutputPath tests/results/promotion-contract/promotion-contract-ledger.json -WorkflowName '${{ github.workflow }}' -Stream 'promotion-contract' -Channel 'stable' -Version '${{ github.sha }}' -GateStatus $gateStatus -GateReason 'promotion-contract workflow result' -SummaryPath 'tests/results/promotion-contract/alignment.json' -StepSummaryPath $env:GITHUB_STEP_SUMMARY
+
+      - name: Upload promotion contract artifacts
+        if: always()
+        uses: actions/upload-artifact@v5
+        with:
+          name: promotion-contract-${{ github.run_id }}
+          path: |
+            tests/results/promotion-contract/alignment.json
+            tests/results/promotion-contract/promotion-contract-ledger.json
+          if-no-files-found: error

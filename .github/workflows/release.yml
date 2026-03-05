@@ -243,6 +243,11 @@ jobs:
     steps:
       - uses: actions/checkout@v5
 
+      - name: Assert promotion contract alignment
+        shell: pwsh
+        run: |
+          pwsh -NoLogo -NoProfile -File tools/Assert-PromotionContractAlignment.ps1 -OutputJsonPath tests/results/promotion-contract/release-alignment.json -StepSummaryPath $env:GITHUB_STEP_SUMMARY
+
       - name: Download CLI artifacts
         uses: actions/download-artifact@v4
         with:
@@ -345,6 +350,18 @@ jobs:
             exit 1
           fi
 
+      - name: Write promotion evidence ledger
+        if: always()
+        shell: pwsh
+        run: |
+          $gateStatus = switch ('${{ job.status }}') {
+            'success' { 'pass' }
+            'cancelled' { 'blocked' }
+            default { 'fail' }
+          }
+          $channel = if ('${{ github.ref_name }}' -match '-rc\.') { 'rc' } else { 'stable' }
+          pwsh -NoLogo -NoProfile -File tools/Write-PromotionEvidenceLedger.ps1 -OutputPath tests/results/promotion-contract/release-ledger.json -WorkflowName '${{ github.workflow }}' -Stream 'comparevi-cli' -Channel $channel -Version '${{ needs.release.outputs.cli_version }}' -GateStatus $gateStatus -GateReason 'release-contract job result' -SummaryPath 'tests/results/release-contract/review-index.json' -StepSummaryPath $env:GITHUB_STEP_SUMMARY
+
       - name: Upload release contract artifacts
         if: always()
         uses: actions/upload-artifact@v5
@@ -354,5 +371,6 @@ jobs:
             tests/results/release-contract/scenario-summary-ubuntu-latest.json
             tests/results/release-contract/review-index.json
             tests/results/_agent/verification/verification-summary.json
+            tests/results/promotion-contract/release-alignment.json
+            tests/results/promotion-contract/release-ledger.json
           if-no-files-found: error
-
