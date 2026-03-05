@@ -68,6 +68,8 @@
     "publish:cli": "pwsh -NoLogo -NoProfile -File tools/Publish-Cli.ps1",
     "release:branch": "node tools/priority/create-release-branch.mjs",
     "release:branch:dry": "node tools/priority/create-release-branch.dryrun.mjs",
+    "release-review:evaluate": "pwsh -NoLogo -NoProfile -File tools/release-review/Evaluate-ReleaseReviewPolicy.ps1",
+    "release-review:write-scenario": "pwsh -NoLogo -NoProfile -File tools/release-review/Write-ReleaseReviewScenarioSummary.ps1",
     "release:finalize": "node tools/priority/finalize-release.mjs",
     "release:finalize:dry": "node tools/priority/finalize-release.dryrun.mjs",
     "schema:validate": "tsc -p tsconfig.cli.json && node dist/tools/schemas/validate-json.js",
