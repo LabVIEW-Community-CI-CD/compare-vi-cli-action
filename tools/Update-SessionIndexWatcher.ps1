@@ -7,14 +7,57 @@ param(
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
-if (-not $WatcherJson) {
-  Write-Verbose '[watcher-session] WatcherJson path not provided; skipping.'
-  return
+function Update-SessionIndexWithWatcher {
+  param(
+    [pscustomobject]$SessionIndex,
+    [psobject]$WatcherPayload,
+    [string]$SummaryLine
+  )
+
+  $watchersObject = $null
+  if ($SessionIndex.PSObject.Properties.Name -contains 'watchers') {
+    $watchersObject = $SessionIndex.watchers
+  }
+  if (-not $watchersObject) {
+    $watchersObject = [pscustomobject]@{}
+  }
+  $watchersObject | Add-Member -NotePropertyName 'rest' -NotePropertyValue $WatcherPayload -Force
+  $SessionIndex | Add-Member -NotePropertyName 'watchers' -NotePropertyValue $watchersObject -Force
+
+  if ($SummaryLine -and $SessionIndex.PSObject.Properties.Name -contains 'stepSummary' -and $SessionIndex.stepSummary) {
+    $summaryLines = @($SessionIndex.stepSummary, '', '### Watcher (REST)', $SummaryLine)
+    if ($WatcherPayload.PSObject.Properties.Name -contains 'htmlUrl' -and $WatcherPayload.htmlUrl) {
+      $summaryLines += "- URL: $($WatcherPayload.htmlUrl)"
+    }
+    $SessionIndex.stepSummary = ($summaryLines -join "`n")
+  }
+
+  return $SessionIndex
 }
 
-if (-not (Test-Path -LiteralPath $WatcherJson -PathType Leaf)) {
-  Write-Verbose "[watcher-session] Watcher file not found: $WatcherJson"
-  return
+function New-WatcherFallback {
+  param(
+    [string]$Status,
+    [string]$Reason,
+    [string]$PathHint,
+    [string]$ParseError
+  )
+
+  $payload = [ordered]@{
+    schema      = 'ci-watch/rest-v1'
+    status      = $Status
+    conclusion  = 'watcher-error'
+    polledAtUtc = (Get-Date).ToUniversalTime().ToString('o')
+    jobs        = @()
+    notes       = @($Reason)
+  }
+  if ($PathHint) {
+    $payload['watcherPath'] = $PathHint
+  }
+  if ($ParseError) {
+    $payload['parseError'] = $ParseError
+  }
+  return [pscustomobject]$payload
 }
 
 if (-not (Test-Path -LiteralPath $ResultsDir -PathType Container)) {
@@ -42,28 +85,32 @@ try {
   return
 }
 
-try {
-  $watch = Get-Content -LiteralPath $WatcherJson -Raw | ConvertFrom-Json -ErrorAction Stop
-} catch {
-  Write-Warning "[watcher-session] Failed to parse watcher summary: $_"
-  return
+$watch = $null
+$summaryLine = $null
+
+if (-not $WatcherJson) {
+  Write-Warning '[watcher-session] WatcherJson path not provided; recording watcher status as missing-input.'
+  $watch = New-WatcherFallback -Status 'missing-input' -Reason 'WatcherJson path not provided to Update-SessionIndexWatcher.'
+  $summaryLine = '- Status: missing-input/watcher-error'
+} elseif (-not (Test-Path -LiteralPath $WatcherJson -PathType Leaf)) {
+  Write-Warning "[watcher-session] Watcher file not found: $WatcherJson"
+  $watch = New-WatcherFallback -Status 'missing-file' -Reason 'Watcher summary file was not found.' -PathHint $WatcherJson
+  $summaryLine = '- Status: missing-file/watcher-error'
+} else {
+  try {
+    $watch = Get-Content -LiteralPath $WatcherJson -Raw | ConvertFrom-Json -ErrorAction Stop
+    $status = if ($watch.PSObject.Properties.Name -contains 'status' -and $watch.status) { $watch.status } else { 'unknown' }
+    $conclusion = if ($watch.PSObject.Properties.Name -contains 'conclusion' -and $watch.conclusion) { $watch.conclusion } else { 'unknown' }
+    $summaryLine = "- Status: $status/$conclusion"
+  } catch {
+    $parseError = $_.Exception.Message
+    Write-Warning "[watcher-session] Failed to parse watcher summary: $parseError"
+    $watch = New-WatcherFallback -Status 'invalid-json' -Reason 'Watcher summary JSON could not be parsed.' -PathHint $WatcherJson -ParseError $parseError
+    $summaryLine = '- Status: invalid-json/watcher-error'
+  }
 }
 
-$watchersObject = $null
-if ($idx.PSObject.Properties.Name -contains 'watchers') {
-  $watchersObject = $idx.watchers
-}
-if (-not $watchersObject) {
-  $watchersObject = [pscustomobject]@{}
-}
-$watchersObject | Add-Member -NotePropertyName 'rest' -NotePropertyValue $watch -Force
-$idx | Add-Member -NotePropertyName 'watchers' -NotePropertyValue $watchersObject -Force
-
-if ($idx.PSObject.Properties.Name -contains 'stepSummary' -and $idx.stepSummary) {
-  $summaryLines = @($idx.stepSummary, '', '### Watcher (REST)', "- Status: $($watch.status ?? 'unknown')", "- Conclusion: $($watch.conclusion ?? 'unknown')")
-  if ($watch.htmlUrl) { $summaryLines += "- URL: $($watch.htmlUrl)" }
-  $idx.stepSummary = ($summaryLines -join "`n")
-}
+$idx = Update-SessionIndexWithWatcher -SessionIndex $idx -WatcherPayload $watch -SummaryLine $summaryLine
 
 $idx | ConvertTo-Json -Depth 10 | Out-File -FilePath $idxPath -Encoding utf8
 Write-Verbose "[watcher-session] Updated session index with REST watcher summary."
