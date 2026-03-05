@@ -90,7 +90,8 @@ the same summary table to a GitHub issue for stakeholders.
   (newline-separated list), and `VI_STAGE_COMPARE_REPLACE_FLAGS` to control LVCompare ignore bundles. Even when filters
   are configured, the workflow also runs an unsuppressed `full` pass so block diagram/front panel edits remain visible;
   both passes and their flag sets appear in the summary's **Flags** column.
-- Smoke coverage: `npm run smoke:vi-stage -- --DryRun` prints the plan; `npm run smoke:vi-stage` pushes a scratch branch
+- Smoke coverage: `node tools/npm/run-script.mjs smoke:vi-stage -- --DryRun` prints the plan;
+  `node tools/npm/run-script.mjs smoke:vi-stage` pushes a scratch branch
   using the baked-in `fixtures/vi-attr` pair so every run produces deterministic LVCompare output.
 
 ### Automatic VI compare for fork pull requests
