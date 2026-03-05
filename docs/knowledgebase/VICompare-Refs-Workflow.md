@@ -9,6 +9,9 @@
   alongside per-mode manifests inside `<results>/<mode-slug>/`.
 - Artifacts only include detailed LVCompare output when a difference is detected; runs with no diffs upload the lightweight
   manifest and JSON summaries.
+- Pre-tag release readiness treats both compare evidence lanes as blocking: the latest
+  `vi-compare-refs.yml` and `vi-staging-smoke.yml` runs must both be green and publish artifacts before
+  `release:finalize` can proceed.
 
 ## Pull request staging helper
 
@@ -110,7 +113,7 @@
   The rendered summary/comment includes `### Mobile Preview` with inline `<img ...history-image-...>` tags, capped by
   comment safety limits. Totals expose `previewImages` and `markdownTruncated`; per-target metadata surfaces under
   `targets[].reportImages` in `pr-vi-history-summary@v1`.
-  For a full end-to-end validation, run the smoke helper (`pwsh -File tools/Test-PRVIHistorySmoke.ps1` or `npm run smoke:vi-history`) to create a scratch PR, dispatch the workflow, and record the results under `tests/results/_agent/smoke/vi-history/`.
+  For a full end-to-end validation, run the smoke helper (`pwsh -File tools/Test-PRVIHistorySmoke.ps1` or `node tools/npm/run-script.mjs smoke:vi-history`) to create a scratch PR, dispatch the workflow, and record the results under `tests/results/_agent/smoke/vi-history/`.
   Benchmark/delta evidence is emitted alongside smoke summaries under
   `tests/results/_agent/smoke/vi-history/benchmarks/` (`vi-history-benchmark@v1` and
   `vi-history-benchmark-delta@v1`) with a markdown comment body ready for PR/issue posting.

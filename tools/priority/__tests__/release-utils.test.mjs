@@ -8,7 +8,9 @@ import path from 'node:path';
 import {
   normalizeVersionInput,
   writeReleaseMetadata,
-  summarizeStatusCheckRollup
+  summarizeStatusCheckRollup,
+  getReleaseMetadataPath,
+  assertReleaseMetadataExists
 } from '../lib/release-utils.mjs';
 
 test('normalizeVersionInput handles tagged and untagged semver', () => {
@@ -45,4 +47,31 @@ test('summarizeStatusCheckRollup normalizes check data', () => {
     conclusion: 'SUCCESS',
     url: 'https://example.com/lint'
   });
+});
+
+test('getReleaseMetadataPath returns deterministic release artifact path', () => {
+  const actual = getReleaseMetadataPath('/repo', 'v1.2.3', 'branch');
+  assert.equal(actual, path.join('/repo', 'tests', 'results', '_agent', 'release', 'release-v1.2.3-branch.json'));
+});
+
+test('assertReleaseMetadataExists throws when release artifact is missing', async (t) => {
+  const repoDir = await mkdtemp(path.join(tmpdir(), 'release-utils-'));
+  t.after(() => rm(repoDir, { recursive: true, force: true }));
+
+  await assert.rejects(
+    () => assertReleaseMetadataExists(repoDir, 'v9.9.9', 'branch'),
+    /Missing required artifact/i
+  );
+});
+
+test('assertReleaseMetadataExists succeeds after writing release metadata', async (t) => {
+  const repoDir = await mkdtemp(path.join(tmpdir(), 'release-utils-present-'));
+  t.after(() => rm(repoDir, { recursive: true, force: true }));
+
+  await writeReleaseMetadata(repoDir, 'v1.0.0', 'branch', { schema: 'release/branch@v1' });
+  const artifactPath = await assertReleaseMetadataExists(repoDir, 'v1.0.0', 'branch');
+  assert.equal(
+    artifactPath,
+    path.join(repoDir, 'tests', 'results', '_agent', 'release', 'release-v1.0.0-branch.json')
+  );
 });

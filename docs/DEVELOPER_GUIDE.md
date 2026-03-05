@@ -25,14 +25,14 @@ Quick reference for building, testing, and releasing the LVCompare composite act
     Clear the variable or set it back to `build` before release/sign-off runs so
     the real pipeline executes.
   - `pwsh -File tools/icon-editor/Update-IconEditorFixtureReport.ps1` refreshes the fixture report (generates the JSON snapshot and rewrites the section in `docs/ICON_EDITOR_PACKAGE.md`; pre-push guards that it stays current).
-  - `npm run icon-editor:dev:on` / `npm run icon-editor:dev:off` toggle LabVIEW development mode using the vendored helpers (`Set_Development_Mode.ps1` / `RevertDevelopmentMode.ps1`) and persist the current state.
+  - `node tools/npm/run-script.mjs icon-editor:dev:on` / `node tools/npm/run-script.mjs icon-editor:dev:off` toggle LabVIEW development mode using the vendored helpers (`Set_Development_Mode.ps1` / `RevertDevelopmentMode.ps1`) and persist the current state.
   - Validate uploads the `icon-editor-fixture-report` artifact (JSON + Markdown) on each run for stakeholders.
-  - `npm run icon-editor:dev:assert:on` / `npm run icon-editor:dev:assert:off` validate the LabVIEW `LocalHost.LibraryPaths` token so you can confirm dev mode is actually enabled or disabled before continuing.
+  - `node tools/npm/run-script.mjs icon-editor:dev:assert:on` / `node tools/npm/run-script.mjs icon-editor:dev:assert:off` validate the LabVIEW `LocalHost.LibraryPaths` token so you can confirm dev mode is actually enabled or disabled before continuing.
   - Multi-lane tooling:
     - **Source lane (2021 SP1, 32/64-bit)** – dev-mode toggles, VIPC apply/restore, lvlibp builds.
     - **Report lane (2025, 64-bit)** – LabVIEWCLI/HTML compare reports; requires the shared `LabVIEWCLI.exe`.
     - **Packaging lane (2021 SP1, 32-bit + VIPM)** - VI Package Manager builds powered by `tools/Vipm.psm1`; ensure VIPM is installed alongside 2021 and point `VIPM.exe` via `VIPM_PATH`/`VIPM_EXE_PATH` or `configs/labview-paths*.json`.
-    - `npm run env:labview:check` prints the availability of each lane and surfaces missing prerequisites.
+    - `node tools/npm/run-script.mjs env:labview:check` prints the availability of each lane and surfaces missing prerequisites.
   - `g-cli.exe` is expected at `C:\Program Files\G-CLI\bin\g-cli.exe`. Use `configs/labview-paths.local.json` (`GCliExePath`) or set `GCLI_EXE_PATH` only when you need to override the default.
   - Artifacts land in `tests/results/_agent/icon-editor/` (manifest + packaged outputs). Dependency VIPCs (`runner_dependencies.vipc`) apply automatically unless you pass `-InstallDependencies:$false`; the helper mirrors the upstream Build.ps1 (dev-mode enable → apply VIPCs → build lvlibp (32/64) & rename → update VIPB metadata → build the VI package → restore dev mode). Add `-RunUnitTests` to execute the icon editor unit suite. The manifest records the dev-mode state (`developmentMode.*`) and lists both lvlibp + vip artifacts for audit.
   - Need to route packaging through VIPM or a custom g-cli backend? Pass `-BuildToolchain vipm` (default `gcli`) and optionally `-BuildProvider <name>`; the manifest now records `packaging.requestedToolchain`/`packaging.requestedProvider` so downstream diagnostics stay transparent.
@@ -46,14 +46,14 @@ Quick reference for building, testing, and releasing the LVCompare composite act
 - **Smoke tests**
   - `pwsh -File tools/Test-PRVIStagingSmoke.ps1 -DryRun`
     (planning pass; prints the branch/PR that would be created)
-  - `npm run smoke:vi-stage` (full sweep; requires
+  - `node tools/npm/run-script.mjs smoke:vi-stage` (full sweep; requires
     `GH_TOKEN`/`GITHUB_TOKEN` with push + workflow scopes)
   - `pwsh -File tools/Test-PRVIHistorySmoke.ps1 -DryRun`
     (plan the `/vi-history` entry-point smoke)
   - `pwsh -File tools/Test-PRVIHistorySmoke.ps1 -Scenario sequential -DryRun`
     (plan the sequential multi-category history smoke; steps defined in
     `fixtures/vi-history/sequential.json`)
-  - `npm run smoke:vi-history` (full `/vi-history` dispatch; requires
+  - `node tools/npm/run-script.mjs smoke:vi-history` (full `/vi-history` dispatch; requires
     `GH_TOKEN`/`GITHUB_TOKEN` with repo + workflow scopes)
   - GitHub workflow "Smoke VI Staging" (`.github/workflows/vi-staging-smoke.yml`)
     - Trigger from the Actions UI or `gh workflow run vi-staging-smoke.yml`.
@@ -224,28 +224,31 @@ For Docker/Desktop VI history validation, run fast-loop lanes explicitly:
 - `main` reflects the latest release. Use release branches to promote changes from `develop` to `main`.
 - For standing-priority work, create `issue/<number>-<slug>` and merge back with squash once checks are green.
 - When the standing-priority issue changes mid-flight, realign the branch name and PR head with  
-  `npm run priority:branch:rename -- --issue <number>`. The helper derives the slug from the issue title, renames the
+  `node tools/npm/run-script.mjs priority:branch:rename -- --issue <number>`. The helper derives the slug from the issue title, renames the
   local branch, pushes the new name to any remotes that carried the old branch, retargets the matching PR, and (unless
   you pass `--keep-remote`) deletes the stale remote ref.
 - Use short-lived `feature/<slug>` branches when parallel threads are needed. Rebase on `develop` frequently and
-  open PRs with `npm run priority:pr`.
+  open PRs with `node tools/npm/run-script.mjs priority:pr`.
 - When preparing a release:
-  1. Create `release/<version>` from `develop` with `npm run release:branch`. The helper bumps `package.json`,
-     pushes the branch to your fork, and opens a PR targeting `main`. Use `npm run release:branch:dry`
+  1. Create `release/<version>` from `develop` with `node tools/npm/run-script.mjs release:branch`. The helper bumps `package.json`,
+    pushes the branch to your fork, and opens a PR targeting `main`. Use `node tools/npm/run-script.mjs release:branch:dry`
      when you want to rehearse the flow without touching remotes.
   2. Finish release-only work on feature branches targeting `release/<version>`.
-  3. Merge the release branch into `main`, create the draft release, then fast-forward `develop`
-     with `npm run release:finalize -- <version>`. The helper fast-forwards `main`, creates a draft
-     GitHub release, fast-forwards `develop`, and records metadata under `tests/results/_agent/release/`.
-     Use `npm run release:finalize:dry` to rehearse the flow without pushing.
-     - The finalize helper blocks if the release PR has pending or failing checks; set
-       `RELEASE_FINALIZE_SKIP_CHECKS=1` (or `RELEASE_FINALIZE_ALLOW_MERGED=1` / `RELEASE_FINALIZE_ALLOW_DIRTY=1`)
-       to override in emergencies.
+   3. Merge the release branch into `main`, create the draft release, then fast-forward `develop`
+     with `node tools/npm/run-script.mjs release:finalize -- <version>`. The helper fast-forwards `main`, creates a draft
+      GitHub release, fast-forwards `develop`, and records metadata under `tests/results/_agent/release/`.
+     Use `node tools/npm/run-script.mjs release:finalize:dry` to rehearse the flow without pushing.
+      - Finalize now requires the release branch metadata artifact (`release-<tag>-branch.json`) to be present before it
+        cuts a draft tag, and it verifies both branch/finalize artifacts are retained under
+        `tests/results/_agent/release/`.
+      - The finalize helper blocks if the release PR has pending or failing checks; set
+        `RELEASE_FINALIZE_SKIP_CHECKS=1` (or `RELEASE_FINALIZE_ALLOW_MERGED=1` / `RELEASE_FINALIZE_ALLOW_DIRTY=1`)
+        to override in emergencies.
      - If `main` and the release branch no longer share history (for example, after cutting over to a new repository
        baseline), rerun the helper with `RELEASE_FINALIZE_ALLOW_RESET=1` so it can reset `main` to the release tip and
        push with `--force-with-lease`. Leave the variable unset during normal releases so unintended history rewrites are blocked.
-- When rehearsing feature branch work, use `npm run feature:branch:dry -- my-feature` and
-  `npm run feature:finalize:dry -- my-feature` to simulate branch creation and finalization without touching remotes.
+- When rehearsing feature branch work, use `node tools/npm/run-script.mjs feature:branch:dry -- my-feature` and
+  `node tools/npm/run-script.mjs feature:finalize:dry -- my-feature` to simulate branch creation and finalization without touching remotes.
 - Delete branches automatically after merging (GitHub setting) so the standing-priority flow starts clean each time.
 
 ## CI automation secrets
@@ -264,6 +267,30 @@ For Docker/Desktop VI history validation, run fast-loop lanes explicitly:
 - Running the live helpers writes JSON snapshots under `tests/results/_agent/release/`:
   - `release-<tag>-branch.json` captures the release branch base, commits, and linked PR.
   - `release-<tag>-finalize.json` records the fast-forward results and the GitHub release draft.
+- `release:finalize` now blocks when release hygiene evidence is not clean:
+  - requires `tests/results/session-index.json` with `status=ok` and zero failed/error counts.
+  - runs `tools/Detect-RogueLV.ps1` and blocks if rogue LabVIEW/LVCompare processes are detected.
+  - set `RELEASE_FINALIZE_SKIP_HYGIENE=1` only for emergency operator overrides.
+- `release:finalize` also blocks when pre-tag compare evidence is incomplete:
+  - requires latest successful `vi-compare-refs.yml` and `vi-staging-smoke.yml` runs for the release branch.
+  - requires both runs to publish artifacts (manifest/staging bundles) before tag cut.
+  - set `RELEASE_FINALIZE_SKIP_COMPARE_EVIDENCE=1` only for emergency operator overrides.
+- `release:finalize` validates required release PR contexts from `tools/policy/branch-required-checks.json`
+  (`release/*`) and blocks on missing/pending/failing required checks.
+- `release:finalize` enforces standing-priority and parity evidence before tag cut:
+  - requires current standing-priority artifacts (`.agent_priority_cache.json`,
+    `tests/results/_agent/issue/router.json`, `tests/results/_agent/issue/<issue>.json`)
+    to match the live standing issue.
+  - enforces origin/upstream parity KPI `tipDiff.fileCount == 0` (default refs:
+    `upstream/develop` vs `origin/develop`).
+  - optional overrides: `RELEASE_FINALIZE_SKIP_PRIORITY_PARITY=1`,
+    `RELEASE_PARITY_BASE_REF`, `RELEASE_PARITY_HEAD_REF`,
+    `RELEASE_PARITY_TIP_DIFF_TARGET`.
+- `tools/priority/verify-release-branch.mjs` enforces release-doc consistency before tag cut by requiring
+  `PR_NOTES.md`, `TAG_PREP_CHECKLIST.md`, and `RELEASE_NOTES_<tag>.md` to reference the current release tag.
+  It also requires both `package.json` and `docs/CHANGELOG.md` to change relative to the configured release base ref.
+- `tools/priority/validate-semver.mjs` now performs branch-aware integrity checks: on `release/<tag>` heads it enforces
+  `package.json` SemVer parity with the branch tag.
 - `priority:sync` surfaces the most recent artifact in the standing-priority step summary and exposes it to downstream
   automation via `snapshot.releaseArtifacts`.
 - `priority:parity` reports origin/upstream parity using two metrics:
@@ -271,7 +298,7 @@ For Docker/Desktop VI history validation, run fast-loop lanes explicitly:
   - commit divergence from `git rev-list --left-right --count upstream/develop...origin/develop` (telemetry only)
 - Validate `session-index` now embeds parity telemetry under `runContext.parity` and appends an
   `Origin/Upstream Parity Telemetry` block to the step summary.
-- The release router now suggests `npm run release:finalize -- <version>` automatically when the latest branch artifact
+- The release router now suggests `node tools/npm/run-script.mjs release:finalize -- <version>` automatically when the latest branch artifact
   lacks a matching finalize record.
 
 ## Pull request & merge policy
@@ -280,9 +307,9 @@ For Docker/Desktop VI history validation, run fast-loop lanes explicitly:
   commits land on `develop`/`main`.
 - Keep PRs focused and include the standing issue reference (`#<number>`) in the commit subject and PR description.
 - Ensure required checks (`validate`, `fixtures`, `session-index`) are green before merging; rerun as needed.
-- Run `npm run priority:policy` if you need to audit merge settings locally; the command also runs during
+- Run `node tools/npm/run-script.mjs priority:policy` if you need to audit merge settings locally; the command also runs during
   `priority:handoff-tests` and fails when repo/branch policy drifts.
-- Prefer opening PRs from your fork with `npm run priority:pr`; the helper ensures `origin` targets your fork (creating
+- Prefer opening PRs from your fork with `node tools/npm/run-script.mjs priority:pr`; the helper ensures `origin` targets your fork (creating
   it via `gh repo fork` if needed), pushes the current branch, and calls
   `gh pr create --fill --repo <upstream> --base develop --head <fork>:branch`.
 - Detailed enforcement notes (feature-branch guards, merge history workflow,
@@ -300,7 +327,7 @@ For Docker/Desktop VI history validation, run fast-loop lanes explicitly:
 - `scripts/Run-VIHistory.ps1` - regenerates the manual compare suite locally,
   verifies the target VI exists at the selected ref, and prints the Markdown
   summary (attribute coverage included) for issue comments. You can also call it
-  via `npm run history:run -- -ViPath Fixtures/Loop.vi -StartRef HEAD`. Add `-MaxPairs <n>`
+  via `node tools/npm/run-script.mjs history:run -- -ViPath Fixtures/Loop.vi -StartRef HEAD`. Add `-MaxPairs <n>`
   when you intentionally need a cap. Use `-IncludeMergeParents` to traverse merge
   parents as well as the first-parent chain so local artifacts include the same
   lineage metadata the audit automation expects.
@@ -308,7 +335,7 @@ For Docker/Desktop VI history validation, run fast-loop lanes explicitly:
   `vi-compare-refs.yml`, echoes the latest run id/link, and records dispatch
   metadata under `tests/results/_agent/handoff/vi-history-run.json` for
   follow-up. Invoke with
-  `npm run history:dispatch -- -ViPath Fixtures/Loop.vi -CompareRef develop -NotifyIssue 317`.
+  `node tools/npm/run-script.mjs history:dispatch -- -ViPath Fixtures/Loop.vi -CompareRef develop -NotifyIssue 317`.
 - VS Code tasks **VI History: Run local suite** and **VI History: Dispatch
   workflow** prompt for VI path/refs and route through the same scripts so
   editors can trigger the flow without remembering the parameters.

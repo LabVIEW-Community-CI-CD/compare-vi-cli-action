@@ -200,7 +200,67 @@ function formatJob(job) {
     const suffix = conclusion ? ` (${conclusion})` : '';
     return `- ${job.name}: ${status}${suffix}`;
 }
-async function watchRun(repo, runId, token, pollMs = 15000, errorGraceMs = DEFAULT_ERROR_GRACE_MS, notFoundGraceMs = DEFAULT_NOT_FOUND_GRACE_MS) {
+function buildRunSignature(run) {
+    if (!run) {
+        return 'run:unknown';
+    }
+    return [
+        run.id,
+        run.status ?? '',
+        run.conclusion ?? '',
+        run.head_branch ?? '',
+        run.head_sha ?? '',
+        run.display_title ?? '',
+    ].join('|');
+}
+function buildJobsSignature(jobs) {
+    if (!jobs || jobs.length === 0) {
+        return 'jobs:none';
+    }
+    const items = jobs
+        .map((job) => `${job.id}:${job.name}:${job.status ?? ''}:${job.conclusion ?? ''}`)
+        .sort();
+    return items.join('|');
+}
+function printRunSnapshot(run, jobs) {
+    const title = run.display_title ?? `Run ${run.id}`;
+    const status = run.status ?? 'unknown';
+    const conclusion = run.conclusion ?? '';
+    const branch = run.head_branch ?? '';
+    const sha = run.head_sha ?? '';
+    // eslint-disable-next-line no-console
+    console.log(`\n${title}`);
+    // eslint-disable-next-line no-console
+    console.log(`Status: ${status}  Conclusion: ${conclusion}`.trim());
+    if (branch || sha) {
+        // eslint-disable-next-line no-console
+        console.log(`Ref: ${branch} ${sha}`.trim());
+    }
+    if (run.html_url) {
+        // eslint-disable-next-line no-console
+        console.log(`URL: ${run.html_url}`);
+    }
+    if (jobs.length) {
+        // eslint-disable-next-line no-console
+        console.log('Jobs:');
+        for (const job of jobs) {
+            // eslint-disable-next-line no-console
+            console.log(formatJob(job));
+        }
+    }
+}
+function printHeartbeat(run, jobs, pollMs, pollCount) {
+    const title = run.display_title ?? `Run ${run.id}`;
+    const status = run.status ?? 'unknown';
+    const conclusion = run.conclusion ?? '';
+    const completedJobs = jobs.filter((job) => job.status === 'completed').length;
+    const totalJobs = jobs.length;
+    const elapsedSeconds = Math.max(0, Math.floor((pollCount * pollMs) / 1000));
+    const heartbeat = `[watcher] heartbeat: ${title} status=${status} conclusion=${conclusion || 'n/a'} jobs=${completedJobs}/${totalJobs} elapsed~${elapsedSeconds}s`;
+    // eslint-disable-next-line no-console
+    console.log(heartbeat);
+}
+async function watchRun(repo, runId, token, pollMs = 15000, errorGraceMs = DEFAULT_ERROR_GRACE_MS, notFoundGraceMs = DEFAULT_NOT_FOUND_GRACE_MS, changesOnly = true, heartbeatPolls = 8) {
     // eslint-disable-next-line no-console
     console.log(`Watching run ${runId} in ${repo}...`);
     let latestRun;
@@ -208,46 +268,42 @@ async function watchRun(repo, runId, token, pollMs = 15000, errorGraceMs = DEFAU
     let runDataLoaded = false;
     let errorWindowStart;
     let notFoundStart;
+    const displayState = {
+        pollCount: 0,
+        runSignature: undefined,
+        jobsSignature: undefined,
+        lastPrintedAt: undefined,
+    };
     while (true) {
+        displayState.pollCount += 1;
         try {
             const runUrl = new URL(`https://api.github.com/repos/${repo}/actions/runs/${runId}`);
             latestRun = await fetchJson(runUrl.toString(), token);
-            const title = latestRun.display_title ?? `Run ${latestRun.id}`;
-            const status = latestRun.status ?? 'unknown';
-            const conclusion = latestRun.conclusion ?? '';
-            const branch = latestRun.head_branch ?? '';
-            const sha = latestRun.head_sha ?? '';
-            // eslint-disable-next-line no-console
-            console.log(`\n${title}`);
-            // eslint-disable-next-line no-console
-            console.log(`Status: ${status}  Conclusion: ${conclusion}`.trim());
-            if (branch || sha) {
-                // eslint-disable-next-line no-console
-                console.log(`Ref: ${branch} ${sha}`.trim());
-            }
-            if (latestRun.html_url) {
-                // eslint-disable-next-line no-console
-                console.log(`URL: ${latestRun.html_url}`);
-            }
+            const runStatus = latestRun.status ?? 'unknown';
             const jobsUrl = new URL(`https://api.github.com/repos/${repo}/actions/runs/${runId}/jobs`);
             jobsUrl.searchParams.set('per_page', '100');
             const jobsResp = await fetchJson(jobsUrl.toString(), token);
             latestJobs = jobsResp.jobs ?? [];
-            if (latestJobs.length) {
-                // eslint-disable-next-line no-console
-                console.log('Jobs:');
-                for (const job of latestJobs) {
-                    // eslint-disable-next-line no-console
-                    console.log(formatJob(job));
-                }
+            const runSignature = buildRunSignature(latestRun);
+            const jobsSignature = buildJobsSignature(latestJobs);
+            const hasChanges = runSignature !== displayState.runSignature || jobsSignature !== displayState.jobsSignature;
+            const shouldPrintHeartbeat = heartbeatPolls > 0 && displayState.pollCount % heartbeatPolls === 0;
+            if (!changesOnly || hasChanges) {
+                printRunSnapshot(latestRun, latestJobs);
+                displayState.lastPrintedAt = Date.now();
             }
-            else {
+            else if (shouldPrintHeartbeat) {
+                printHeartbeat(latestRun, latestJobs, pollMs, displayState.pollCount);
+            }
+            displayState.runSignature = runSignature;
+            displayState.jobsSignature = jobsSignature;
+            if (!latestJobs.length) {
                 latestJobs = [];
             }
             runDataLoaded = true;
             errorWindowStart = undefined;
             notFoundStart = undefined;
-            if (status === 'completed') {
+            if (runStatus === 'completed') {
                 return {
                     schema: 'ci-watch/rest-v1',
                     repo,
@@ -330,6 +386,9 @@ async function main() {
     parser.add_argument('--out', { help: 'Optional path to write watcher summary JSON' });
     parser.add_argument('--error-grace-ms', { type: Number, default: DEFAULT_ERROR_GRACE_MS, help: 'Milliseconds of consecutive errors before aborting (default: 120000)' });
     parser.add_argument('--notfound-grace-ms', { type: Number, default: DEFAULT_NOT_FOUND_GRACE_MS, help: 'Milliseconds to wait after repeated 404 responses before aborting (default: 90000)' });
+    parser.add_argument('--changes-only', { action: 'store_true', default: true, help: 'Print run/job details only when values change (default: true).' });
+    parser.add_argument('--no-changes-only', { dest: 'changes_only', action: 'store_false', help: 'Disable delta-only output and print details every poll.' });
+    parser.add_argument('--heartbeat-polls', { type: Number, default: 8, help: 'When --changes-only is active, print a compact heartbeat every N polls (default: 8, use 0 to disable).' });
     const args = parser.parse_args();
     const repo = resolveRepo();
     const token = process.env.GH_TOKEN ?? process.env.GITHUB_TOKEN ?? undefined;
@@ -377,7 +436,7 @@ async function main() {
         return;
     }
     try {
-        const summary = await watchRun(repo, runId, token, args.poll_ms ?? 15000, args.error_grace_ms ?? DEFAULT_ERROR_GRACE_MS, args.notfound_grace_ms ?? DEFAULT_NOT_FOUND_GRACE_MS);
+        const summary = await watchRun(repo, runId, token, args.poll_ms ?? 15000, args.error_grace_ms ?? DEFAULT_ERROR_GRACE_MS, args.notfound_grace_ms ?? DEFAULT_NOT_FOUND_GRACE_MS, args.changes_only ?? true, args.heartbeat_polls ?? 8);
         if (args.out) {
             const outPath = resolve(process.cwd(), args.out);
             mkdirSync(dirname(outPath), { recursive: true });

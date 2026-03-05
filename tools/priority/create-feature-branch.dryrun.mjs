@@ -14,7 +14,7 @@ import {
 } from './lib/branch-utils.mjs';
 
 const USAGE_LINES = [
-  'Usage: npm run feature:branch:dry -- <slug>',
+  'Usage: node tools/npm/run-script.mjs feature:branch:dry -- <slug>',
   '',
   'Creates a feature/<slug> branch (dry-run) and records metadata under tests/results/_agent/feature/.',
   '',

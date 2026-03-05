@@ -6,7 +6,8 @@
     }
   ],
   "settings": {
-    "window.title": "[UPSTREAM_PLANE] ${activeEditorShort}${separator}${rootName}"
+    "window.title": "[UPSTREAM_PLANE] ${activeEditorShort}${separator}${rootName}",
+    "terminal.integrated.shellIntegration.enabled": true
   },
   "tasks": {
     "version": "2.0.0",
@@ -70,6 +71,26 @@
           "cwd": "${workspaceFolder:PLANE_UPSTREAM__compare-vi-cli-action}"
         },
         "problemMatcher": []
+      },
+      {
+        "label": "Upstream Plane: watch PR checks (safe)",
+        "type": "process",
+        "command": "node",
+        "args": [
+          "tools/npm/run-script.mjs",
+          "ci:watch:safe",
+          "--",
+          "--PullRequest",
+          "${input:upstreamWatchPullRequest}",
+          "-IntervalSeconds",
+          "20",
+          "-HeartbeatPolls",
+          "3"
+        ],
+        "options": {
+          "cwd": "${workspaceFolder:PLANE_UPSTREAM__compare-vi-cli-action}"
+        },
+        "problemMatcher": []
       }
     ],
     "inputs": [
@@ -83,6 +104,12 @@
         "id": "mergePrNumber",
         "type": "promptString",
         "description": "PR number to merge with priority:merge-sync"
+      },
+      {
+        "id": "upstreamWatchPullRequest",
+        "type": "promptString",
+        "description": "Pull request number to monitor with safe snapshots",
+        "default": "1"
       }
     ]
   }

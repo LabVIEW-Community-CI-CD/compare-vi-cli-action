@@ -10,7 +10,8 @@
     }
   ],
   "settings": {
-    "window.title": "[COMMAND_CENTER] ${activeEditorShort}${separator}${rootName}"
+    "window.title": "[COMMAND_CENTER] ${activeEditorShort}${separator}${rootName}",
+    "terminal.integrated.shellIntegration.enabled": true
   },
   "tasks": {
     "version": "2.0.0",
@@ -119,6 +120,26 @@
           "cwd": "${workspaceFolder:PLANE_UPSTREAM__compare-vi-cli-action}"
         },
         "problemMatcher": []
+      },
+      {
+        "label": "Command Center: watch PR checks (safe, fork plane)",
+        "type": "process",
+        "command": "node",
+        "args": [
+          "tools/npm/run-script.mjs",
+          "ci:watch:safe",
+          "--",
+          "--PullRequest",
+          "${input:watchPullRequest}",
+          "-IntervalSeconds",
+          "20",
+          "-HeartbeatPolls",
+          "3"
+        ],
+        "options": {
+          "cwd": "${workspaceFolder:PLANE_FORK__compare-vi-cli-action}"
+        },
+        "problemMatcher": []
       }
     ],
     "inputs": [
@@ -133,6 +154,12 @@
         "type": "promptString",
         "description": "Branch name to watch latest Validate run",
         "default": "develop"
+      },
+      {
+        "id": "watchPullRequest",
+        "type": "promptString",
+        "description": "Pull request number for safe check polling",
+        "default": "1"
       }
     ]
   }

@@ -22,6 +22,7 @@
     },
     "main": {
       "required_status_checks": [
+        "lint",
         "pester",
         "vi-binary-check",
         "vi-compare",
@@ -29,8 +30,9 @@
       ],
       "required_linear_history": true
     },
-    "release/v0.5.2": {
+    "release/*": {
       "required_status_checks": [
+        "lint",
         "pester",
         "publish",
         "vi-binary-check",
@@ -77,6 +79,7 @@
         "refs/heads/main"
       ],
       "required_status_checks": [
+        "lint",
         "pester",
         "vi-binary-check",
         "vi-compare",
@@ -105,6 +108,7 @@
         "refs/heads/release/*"
       ],
       "required_status_checks": [
+        "lint",
         "pester",
         "publish",
         "vi-binary-check",
@@ -126,4 +130,3 @@
     }
   }
 }
-

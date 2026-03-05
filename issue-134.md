@@ -26,13 +26,13 @@ further architectural work.
 - [ ] Enhance the panel UI: provider switcher, commit ref inputs with swap, preset CRUD, CLI preview
       (copy/open), image thumbnails, status bar spinner + toggle.
 - [ ] Update unit/integration tests (including multi-root + g-cli warning path) and keep
-      `npm run test:unit`, `npm run test:ext` green via the CLI harness.
+      `node tools/npm/run-script.mjs test:unit`, `node tools/npm/run-script.mjs test:ext` green via the CLI harness.
 - [ ] Update docs (README/CONTRIBUTING) and mark this issue as the standing priority (superseding #127).
 
 ## Testing Guidance
 
-- `npm run test:unit` — provider registry, state builder, telemetry, health check helpers (≥80% coverage).
-- `npm run test:ext` — manual/commit compare, provider switching, status bar toggle, presets, g-cli stub,
+- `node tools/npm/run-script.mjs test:unit` — provider registry, state builder, telemetry, health check helpers (≥80% coverage).
+- `node tools/npm/run-script.mjs test:ext` — manual/commit compare, provider switching, status bar toggle, presets, g-cli stub,
   multi-root behaviour, artifact snapshots.
 - Optional: add a "dry run" flag for the harness if CI needs a quick sanity check.
 

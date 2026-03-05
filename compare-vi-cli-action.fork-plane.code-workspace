@@ -6,7 +6,8 @@
     }
   ],
   "settings": {
-    "window.title": "[FORK_PLANE] ${activeEditorShort}${separator}${rootName}"
+    "window.title": "[FORK_PLANE] ${activeEditorShort}${separator}${rootName}",
+    "terminal.integrated.shellIntegration.enabled": true
   },
   "tasks": {
     "version": "2.0.0",
@@ -69,6 +70,26 @@
           "cwd": "${workspaceFolder:PLANE_FORK__compare-vi-cli-action}"
         },
         "problemMatcher": []
+      },
+      {
+        "label": "Fork Plane: watch PR checks (safe)",
+        "type": "process",
+        "command": "node",
+        "args": [
+          "tools/npm/run-script.mjs",
+          "ci:watch:safe",
+          "--",
+          "--PullRequest",
+          "${input:forkWatchPullRequest}",
+          "-IntervalSeconds",
+          "20",
+          "-HeartbeatPolls",
+          "3"
+        ],
+        "options": {
+          "cwd": "${workspaceFolder:PLANE_FORK__compare-vi-cli-action}"
+        },
+        "problemMatcher": []
       }
     ],
     "inputs": [
@@ -77,6 +98,12 @@
         "type": "promptString",
         "description": "Branch/ref for Validate dispatch from fork plane",
         "default": "develop"
+      },
+      {
+        "id": "forkWatchPullRequest",
+        "type": "promptString",
+        "description": "Pull request number to monitor with safe snapshots",
+        "default": "1"
       }
     ]
   }

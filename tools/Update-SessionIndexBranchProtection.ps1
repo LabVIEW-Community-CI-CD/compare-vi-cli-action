@@ -74,6 +74,102 @@ function To-Ordered {
   return $ordered
 }
 
+function Get-ContextAliases {
+  param([string]$Context)
+
+  $aliases = New-Object 'System.Collections.Generic.HashSet[string]' ([System.StringComparer]::OrdinalIgnoreCase)
+  if ([string]::IsNullOrWhiteSpace($Context)) {
+    return @()
+  }
+
+  $normalized = $Context.Trim()
+  [void]$aliases.Add($normalized)
+
+  if ($normalized -match '\s/\s') {
+    $parts = $normalized -split '\s/\s'
+    if ($parts.Count -gt 1) {
+      $suffix = ($parts[-1]).Trim()
+      if (-not [string]::IsNullOrWhiteSpace($suffix)) {
+        [void]$aliases.Add($suffix)
+      }
+    }
+  }
+
+  return @($aliases)
+}
+
+function Test-ContextMatch {
+  param(
+    [string]$Left,
+    [string]$Right
+  )
+
+  if ([string]::IsNullOrWhiteSpace($Left) -or [string]::IsNullOrWhiteSpace($Right)) {
+    return $false
+  }
+
+  $leftAliases = Get-ContextAliases -Context $Left
+  $rightAliases = Get-ContextAliases -Context $Right
+
+  foreach ($leftAlias in $leftAliases) {
+    foreach ($rightAlias in $rightAliases) {
+      if ($leftAlias -eq $rightAlias) {
+        return $true
+      }
+    }
+  }
+
+  return $false
+}
+
+function Resolve-BranchExpectedContexts {
+  param(
+    [psobject]$Branches,
+    [string]$BranchName
+  )
+
+  if (-not $Branches) {
+    return @()
+  }
+
+  foreach ($prop in $Branches.PSObject.Properties) {
+    if ($prop.Name -eq $BranchName) {
+      return @($prop.Value)
+    }
+  }
+
+  $bestMatch = $null
+  $bestSpecificity = -1
+  foreach ($prop in $Branches.PSObject.Properties) {
+    $pattern = $prop.Name
+    if ($pattern -eq 'default') {
+      continue
+    }
+    if ($pattern -notmatch '[\*\?]') {
+      continue
+    }
+    if ($BranchName -like $pattern) {
+      $specificity = ($pattern -replace '[\*\?]', '').Length
+      if ($specificity -gt $bestSpecificity) {
+        $bestSpecificity = $specificity
+        $bestMatch = @($prop.Value)
+      }
+    }
+  }
+
+  if ($null -ne $bestMatch -and $bestMatch.Count -gt 0) {
+    return $bestMatch
+  }
+
+  foreach ($prop in $Branches.PSObject.Properties) {
+    if ($prop.Name -eq 'default') {
+      return @($prop.Value)
+    }
+  }
+
+  return @()
+}
+
 $rawBranch = $Branch
 if ([string]::IsNullOrWhiteSpace($rawBranch)) {
   $Branch = 'unknown'
@@ -120,21 +216,7 @@ if (-not $branches) {
   throw "Policy file '$PolicyPath' does not contain a 'branches' object."
 }
 
-$expectedRaw = @()
-foreach ($prop in $branches.PSObject.Properties) {
-  if ($prop.Name -eq $Branch) {
-    $expectedRaw = @($prop.Value)
-    break
-  }
-}
-if ($expectedRaw.Count -eq 0) {
-  foreach ($prop in $branches.PSObject.Properties) {
-    if ($prop.Name -eq 'default') {
-      $expectedRaw = @($prop.Value)
-      break
-    }
-  }
-}
+$expectedRaw = @(Resolve-BranchExpectedContexts -Branches $branches -BranchName $Branch)
 $expected = @($expectedRaw | Where-Object { $_ } | Sort-Object -Unique)
 
 $producedRaw = if ($PSBoundParameters.ContainsKey('ProducedContexts')) {
@@ -143,8 +225,22 @@ $producedRaw = if ($PSBoundParameters.ContainsKey('ProducedContexts')) {
   $expected
 }
 $produced = @($producedRaw | Where-Object { $_ } | Sort-Object -Unique)
-$missing = @($expected | Where-Object { $produced -notcontains $_ } | Sort-Object -Unique)
-$extra   = @($produced | Where-Object { $expected -notcontains $_ } | Sort-Object -Unique)
+$missing = @(
+  $expected |
+    Where-Object {
+      $expectedContext = $_
+      -not ($produced | Where-Object { Test-ContextMatch -Left $expectedContext -Right $_ })
+    } |
+    Sort-Object -Unique
+)
+$extra   = @(
+  $produced |
+    Where-Object {
+      $producedContext = $_
+      -not ($expected | Where-Object { Test-ContextMatch -Left $producedContext -Right $_ })
+    } |
+    Sort-Object -Unique
+)
 
 $expectedCount = @($expected).Count
 $missingCount  = @($missing).Count
@@ -191,8 +287,22 @@ if ($ActualContexts) {
 # Compare live contexts to expected mapping when available
 if ($actualBlock.status -eq 'available' -and $actualBlock.contexts) {
   $actualSorted = @($actualBlock.contexts | Sort-Object -Unique)
-  $actualMissing = @($expected | Where-Object { $actualSorted -notcontains $_ } | Sort-Object -Unique)
-  $actualExtra = @($actualSorted | Where-Object { $expected -notcontains $_ } | Sort-Object -Unique)
+  $actualMissing = @(
+    $expected |
+      Where-Object {
+        $expectedContext = $_
+        -not ($actualSorted | Where-Object { Test-ContextMatch -Left $expectedContext -Right $_ })
+      } |
+      Sort-Object -Unique
+  )
+  $actualExtra = @(
+    $actualSorted |
+      Where-Object {
+        $actualContext = $_
+        -not ($expected | Where-Object { Test-ContextMatch -Left $actualContext -Right $_ })
+      } |
+      Sort-Object -Unique
+  )
   if ($actualMissing.Count -gt 0) {
     $derivedNotes += ("Live branch protection missing contexts: {0}" -f ($actualMissing -join ', '))
     $resultReason = 'missing_required'

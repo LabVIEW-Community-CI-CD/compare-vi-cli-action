@@ -31,12 +31,14 @@ test('priority:policy --apply updates rulesets for develop/main/release', async 
     'vi-history-scenarios-linux'
   ];
   const expectedMainChecks = [
+    'lint',
     'pester',
     'vi-binary-check',
     'vi-compare',
     'Policy Guard (Upstream) / policy-guard'
   ];
   const expectedReleaseChecks = [
+    'lint',
     'pester',
     'publish',
     'vi-binary-check',
@@ -141,6 +143,7 @@ test('priority:policy --apply updates rulesets for develop/main/release', async 
           strict_required_status_checks_policy: true,
           do_not_enforce_on_create: false,
           required_status_checks: [
+            { context: 'lint', integration_id: 15368 },
             { context: 'pester', integration_id: 15368 },
             { context: 'vi-binary-check', integration_id: 15368 },
             { context: 'vi-compare', integration_id: 15368 },
@@ -183,6 +186,7 @@ test('priority:policy --apply updates rulesets for develop/main/release', async 
           strict_required_status_checks_policy: true,
           do_not_enforce_on_create: false,
           required_status_checks: [
+            { context: 'lint', integration_id: 15368 },
             { context: 'pester', integration_id: 15368 },
             { context: 'publish', integration_id: 15368 },
             { context: 'vi-binary-check', integration_id: 15368 },
@@ -197,7 +201,6 @@ test('priority:policy --apply updates rulesets for develop/main/release', async 
 
   const branchDevelopUrl = `${repoUrl}/branches/develop/protection`;
   const branchMainUrl = `${repoUrl}/branches/main/protection`;
-  const branchReleaseUrl = `${repoUrl}/branches/release%2Fv0.5.2/protection`;
 
   let branchDevelopProtection = {
     required_status_checks: {
@@ -230,35 +233,12 @@ test('priority:policy --apply updates rulesets for develop/main/release', async 
   let branchMainProtection = {
     required_status_checks: {
       strict: true,
-      contexts: ['pester', 'vi-binary-check', 'vi-compare'],
+      contexts: ['pester', 'vi-binary-check', 'vi-compare', 'Policy Guard (Upstream) / policy-guard'],
       checks: [
         { context: 'pester', app_id: 15368 },
-        { context: 'vi-binary-check', app_id: 15368 },
-        { context: 'vi-compare', app_id: 15368 }
-      ]
-    },
-    enforce_admins: { enabled: false },
-    required_pull_request_reviews: null,
-    restrictions: null,
-    required_linear_history: { enabled: false },
-    allow_force_pushes: { enabled: false },
-    allow_deletions: { enabled: false },
-    block_creations: { enabled: false },
-    required_conversation_resolution: { enabled: false },
-    lock_branch: { enabled: false },
-    allow_fork_syncing: { enabled: false }
-  };
-
-  let branchReleaseProtection = {
-    required_status_checks: {
-      strict: true,
-      contexts: ['pester', 'publish', 'vi-binary-check', 'vi-compare', 'mock-cli'],
-      checks: [
-        { context: 'pester', app_id: 15368 },
-        { context: 'publish', app_id: 15368 },
         { context: 'vi-binary-check', app_id: 15368 },
         { context: 'vi-compare', app_id: 15368 },
-        { context: 'mock-cli', app_id: 15368 }
+        { context: 'Policy Guard (Upstream) / policy-guard' }
       ]
     },
     enforce_admins: { enabled: false },
@@ -336,34 +316,6 @@ test('priority:policy --apply updates rulesets for develop/main/release', async 
           allow_fork_syncing: wrapEnabled(payload.allow_fork_syncing)
         };
         return createResponse(branchMainProtection);
-      }
-    }
-
-    if (url === branchReleaseUrl) {
-      if (method === 'GET') {
-        return createResponse(branchReleaseProtection);
-      }
-      if (method === 'PUT') {
-        const payload = JSON.parse(options.body);
-        const contexts = payload.required_status_checks?.contexts ?? [];
-        branchReleaseProtection = {
-          enforce_admins: wrapEnabled(payload.enforce_admins),
-          required_pull_request_reviews: payload.required_pull_request_reviews,
-          restrictions: payload.restrictions,
-          required_status_checks: {
-            strict: payload.required_status_checks?.strict ?? true,
-            contexts,
-            checks: contexts.map((context) => ({ context }))
-          },
-          required_linear_history: wrapEnabled(payload.required_linear_history),
-          allow_force_pushes: wrapEnabled(payload.allow_force_pushes),
-          allow_deletions: wrapEnabled(payload.allow_deletions),
-          block_creations: wrapEnabled(payload.block_creations),
-          required_conversation_resolution: wrapEnabled(payload.required_conversation_resolution),
-          lock_branch: wrapEnabled(payload.lock_branch),
-          allow_fork_syncing: wrapEnabled(payload.allow_fork_syncing)
-        };
-        return createResponse(branchReleaseProtection);
       }
     }
 
@@ -445,7 +397,7 @@ test('priority:policy --apply updates rulesets for develop/main/release', async 
   const statusRule = rulesetMain.rules.find((rule) => rule.type === 'required_status_checks');
   assert.deepEqual(
     statusRule.parameters.required_status_checks.map((check) => check.context).sort(),
-    ['pester', 'vi-binary-check', 'vi-compare', 'Policy Guard (Upstream) / policy-guard'].sort()
+    expectedMainChecks.slice().sort()
   );
 
   const pullRule = rulesetMain.rules.find((rule) => rule.type === 'pull_request');
@@ -455,7 +407,7 @@ test('priority:policy --apply updates rulesets for develop/main/release', async 
   const statusRuleRelease = rulesetRelease.rules.find((rule) => rule.type === 'required_status_checks');
   assert.deepEqual(
     statusRuleRelease.parameters.required_status_checks.map((check) => check.context).sort(),
-    ['Policy Guard (Upstream) / policy-guard', 'mock-cli', 'pester', 'publish', 'vi-binary-check', 'vi-compare'].sort()
+    expectedReleaseChecks.slice().sort()
   );
   assert.ok(
     !statusRuleRelease.parameters.required_status_checks.some(
@@ -480,11 +432,6 @@ test('priority:policy --apply updates rulesets for develop/main/release', async 
     requests.some((entry) => entry.method === 'PUT' && entry.url === branchMainUrl),
     'main branch protection put call expected'
   );
-  assert.ok(
-    requests.some((entry) => entry.method === 'PUT' && entry.url === branchReleaseUrl),
-    'release branch protection put call expected'
-  );
-
   const developApplied = branchDevelopProtection.required_status_checks.checks.map((check) => check.context).sort();
   assert.deepEqual(
     developApplied,
@@ -499,12 +446,6 @@ test('priority:policy --apply updates rulesets for develop/main/release', async 
     'main branch contexts should match expectations'
   );
 
-  const releaseApplied = branchReleaseProtection.required_status_checks.checks.map((check) => check.context).sort();
-  assert.deepEqual(
-    releaseApplied,
-    expectedReleaseChecks.slice().sort(),
-    'release branch contexts should match expectations'
-  );
   assert.deepEqual(errorMessages, []);
   assert.ok(
     logMessages.includes('Merge policy apply completed successfully.'),

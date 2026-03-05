@@ -140,7 +140,7 @@ test('dry-run helpers create metadata and restore branch context', async (t) => 
   assert.equal(initialBranch, dryrunFeatureBranch);
 
   const helpOutput = run('node', [releaseCreate, '--help'], { cwd: repoDir });
-  assert.match(helpOutput, /Usage: npm run release:branch:dry/);
+  assert.match(helpOutput, /Usage: node tools\/npm\/run-script\.mjs release:branch:dry/);
   const helpBranches = run('git', ['branch', '--list', 'release/--help'], { cwd: repoDir });
   assert.equal(helpBranches, '');
 

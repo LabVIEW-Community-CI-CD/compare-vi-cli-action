@@ -154,7 +154,7 @@ carries the actual LabVIEW payload.
     -BaselineManifest 'D:\vip\fixture-manifest-1.4.1.700.json'
 
   # Run via npm helper (dry-run)
-  npm run icon-editor:validate -- --DryRun --SkipBootstrap --SkipLVCompare
+  node tools/npm/run-script.mjs icon-editor:validate -- --DryRun --SkipBootstrap --SkipLVCompare
   ```
 
 - Outputs land in `tests/results/_agent/icon-editor/local-validate` by default:

@@ -13,7 +13,7 @@ Outputs:
 ## Command
 
 ```bash
-npm run priority:health-snapshot
+node tools/npm/run-script.mjs priority:health-snapshot
 ```
 
 ## Data sources

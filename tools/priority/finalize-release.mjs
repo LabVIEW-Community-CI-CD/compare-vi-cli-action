@@ -21,11 +21,23 @@ import {
 import {
   normalizeVersionInput,
   writeReleaseMetadata,
-  summarizeStatusChecks
+  summarizeStatusChecks,
+  assertReleaseMetadataExists
 } from './lib/release-utils.mjs';
+import {
+  readSessionIndexHygiene,
+  parseRogueScanOutput,
+  ensureRogueScanClean
+} from './lib/release-hygiene.mjs';
+import { collectBlockingCompareEvidence } from './lib/release-compare-evidence.mjs';
+import {
+  loadReleaseRequiredChecks,
+  assertRequiredReleaseChecksClean
+} from './lib/release-pr-checks.mjs';
+import { collectStandingPriorityParityGate } from './lib/release-priority-parity.mjs';
 
 const USAGE_LINES = [
-  'Usage: npm run release:finalize -- <version>',
+  'Usage: node tools/npm/run-script.mjs release:finalize -- <version>',
   '',
   'Fast-forwards main to release/<version>, creates a draft GitHub release, and fast-forwards develop to match.',
   '',
@@ -54,7 +66,7 @@ function buildReleaseNotes(tag) {
   return `Draft release for ${tag}`;
 }
 
-function ensureReleasePrReady(repoRoot, branch) {
+function ensureReleasePrReady(repoRoot, branch, requiredChecks = []) {
   if (process.env.RELEASE_FINALIZE_SKIP_CHECKS === '1') {
     console.warn('[release:finalize] skipping PR status checks (RELEASE_FINALIZE_SKIP_CHECKS=1)');
     return null;
@@ -150,21 +162,22 @@ function ensureReleasePrReady(repoRoot, branch) {
     );
   }
 
-  const failingChecks = (info.statusCheckRollup || []).filter(
-    (check) => check.status !== 'COMPLETED' || check.conclusion !== 'SUCCESS'
-  );
-  if (failingChecks.length > 0 && process.env.RELEASE_FINALIZE_ALLOW_DIRTY !== '1') {
-    const detail = failingChecks
-      .map((check) => `${check.name} (${check.conclusion ?? check.status ?? 'unknown'})`)
-      .join(', ');
-    throw new Error(`Release PR has failing or pending checks: ${detail}.`);
+  let requiredEvaluation = null;
+  if (process.env.RELEASE_FINALIZE_ALLOW_DIRTY !== '1') {
+    requiredEvaluation = assertRequiredReleaseChecksClean(requiredChecks, info.statusCheckRollup ?? []);
+  } else if (requiredChecks.length > 0) {
+    requiredEvaluation = {
+      skipped: true,
+      reason: 'RELEASE_FINALIZE_ALLOW_DIRTY=1'
+    };
   }
 
   return {
     number: info.number ?? null,
     url: info.url ?? null,
     mergeStateStatus,
-    checks: summarizeStatusChecks(info.statusCheckRollup ?? [])
+    checks: summarizeStatusChecks(info.statusCheckRollup ?? []),
+    requiredChecks: requiredEvaluation
   };
 }
 
@@ -194,6 +207,101 @@ function hasSharedHistory(repoRoot, refA, refB) {
   return result.status === 0 && Boolean((result.stdout ?? '').trim());
 }
 
+function collectReleaseHygiene(repoRoot) {
+  if (process.env.RELEASE_FINALIZE_SKIP_HYGIENE === '1') {
+    console.warn('[release:finalize] skipping session-index/rogue hygiene checks (RELEASE_FINALIZE_SKIP_HYGIENE=1)');
+    return {
+      skipped: true,
+      reason: 'RELEASE_FINALIZE_SKIP_HYGIENE=1'
+    };
+  }
+
+  const sessionIndex = readSessionIndexHygiene(repoRoot);
+  const lookbackSeconds = process.env.RELEASE_ROGUE_LOOKBACK_SECONDS ?? '900';
+  const rogueScan = spawnSync(
+    'pwsh',
+    ['-NoLogo', '-NoProfile', '-File', 'tools/Detect-RogueLV.ps1', '-ResultsDir', 'tests/results', '-LookBackSeconds', lookbackSeconds, '-Quiet'],
+    {
+      cwd: repoRoot,
+      encoding: 'utf8',
+      stdio: ['ignore', 'pipe', 'pipe']
+    }
+  );
+
+  if (rogueScan.status !== 0) {
+    const details = (rogueScan.stderr || rogueScan.stdout || '').trim();
+    throw new Error(`Rogue scan execution failed before finalize (exit ${rogueScan.status}). ${details}`);
+  }
+
+  const rogueReport = parseRogueScanOutput(rogueScan.stdout);
+  const rogueSummary = ensureRogueScanClean(rogueReport);
+  return {
+    skipped: false,
+    sessionIndex,
+    rogueScan: rogueSummary
+  };
+}
+
+function ghJson(repoRoot, args) {
+  const out = run('gh', args, { cwd: repoRoot });
+  try {
+    return JSON.parse(out || 'null');
+  } catch (error) {
+    throw new Error(`Failed to parse gh JSON output for "gh ${args.join(' ')}": ${error.message}`);
+  }
+}
+
+async function collectCompareEvidenceGate(repoRoot, upstream, releaseBranch) {
+  if (process.env.RELEASE_FINALIZE_SKIP_COMPARE_EVIDENCE === '1') {
+    console.warn('[release:finalize] skipping compare evidence gate (RELEASE_FINALIZE_SKIP_COMPARE_EVIDENCE=1)');
+    return {
+      skipped: true,
+      reason: 'RELEASE_FINALIZE_SKIP_COMPARE_EVIDENCE=1'
+    };
+  }
+
+  const repoSlug = `${upstream.owner}/${upstream.repo}`;
+  const evidence = await collectBlockingCompareEvidence({
+    repoSlug,
+    branch: releaseBranch,
+    ghJsonFn: (args) => ghJson(repoRoot, args)
+  });
+  return {
+    skipped: false,
+    repository: repoSlug,
+    workflows: evidence
+  };
+}
+
+function resolveParityTipDiffTarget() {
+  const raw = process.env.RELEASE_PARITY_TIP_DIFF_TARGET;
+  if (raw == null || raw === '') return 0;
+  const value = Number(raw);
+  if (!Number.isInteger(value) || value < 0) {
+    throw new Error(`Invalid RELEASE_PARITY_TIP_DIFF_TARGET: ${raw}`);
+  }
+  return value;
+}
+
+async function collectStandingPriorityParityEvidence(repoRoot) {
+  if (process.env.RELEASE_FINALIZE_SKIP_PRIORITY_PARITY === '1') {
+    console.warn('[release:finalize] skipping standing-priority/parity gate (RELEASE_FINALIZE_SKIP_PRIORITY_PARITY=1)');
+    return {
+      skipped: true,
+      reason: 'RELEASE_FINALIZE_SKIP_PRIORITY_PARITY=1'
+    };
+  }
+
+  const baseRef = process.env.RELEASE_PARITY_BASE_REF || 'upstream/develop';
+  const headRef = process.env.RELEASE_PARITY_HEAD_REF || 'origin/develop';
+  const tipDiffTarget = resolveParityTipDiffTarget();
+  return collectStandingPriorityParityGate(repoRoot, {
+    baseRef,
+    headRef,
+    tipDiffTarget
+  });
+}
+
 async function main() {
   const versionInput = parseSingleValueArg(process.argv, {
     usageLines: USAGE_LINES,
@@ -205,15 +313,20 @@ async function main() {
   const repoRoot = getRepoRoot();
   process.chdir(repoRoot);
   ensureCleanWorkingTree(run, 'Working tree not clean. Commit or stash changes before finalizing the release.');
+  ensureGhCli();
+  await assertReleaseMetadataExists(repoRoot, tag, 'branch');
+  const standingPriorityParity = await collectStandingPriorityParityEvidence(repoRoot);
+  const hygiene = collectReleaseHygiene(repoRoot);
 
   const releaseBranch = `release/${tag}`;
   ensureBranchExists(releaseBranch);
+  const requiredReleaseChecks = loadReleaseRequiredChecks(repoRoot);
 
-  ensureGhCli();
   const upstream = resolveUpstream(repoRoot);
   ensureOriginFork(repoRoot, upstream);
+  const compareEvidence = await collectCompareEvidenceGate(repoRoot, upstream, releaseBranch);
 
-  const prInfo = ensureReleasePrReady(repoRoot, releaseBranch);
+  const prInfo = ensureReleasePrReady(repoRoot, releaseBranch, requiredReleaseChecks);
 
   run('git', ['fetch', 'origin'], { cwd: repoRoot });
   run('git', ['fetch', 'upstream'], { cwd: repoRoot });
@@ -313,6 +426,9 @@ async function main() {
       developCommit,
       draftedRelease: tag,
       pullRequest: prInfo,
+      standingPriorityParity,
+      hygiene,
+      compareEvidence,
       completedAt: new Date().toISOString()
     };
 
@@ -337,6 +453,8 @@ async function main() {
 
   if (finalizeMetadata) {
     await writeReleaseMetadata(repoRoot, tag, 'finalize', finalizeMetadata);
+    await assertReleaseMetadataExists(repoRoot, tag, 'branch');
+    await assertReleaseMetadataExists(repoRoot, tag, 'finalize');
     console.log(`[release:finalize] Draft release created for ${tag}. Main and develop fast-forwarded.`);
   }
 }

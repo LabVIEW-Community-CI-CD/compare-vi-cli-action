@@ -76,7 +76,7 @@ line buffers).
 - Pattern filter: `./Invoke-PesterTests.ps1 -IncludePatterns 'CompareVI.*'`
 - Staging smoke:
   - `pwsh -File tools/Test-PRVIStagingSmoke.ps1 -DryRun` (plan only)
-  - `npm run smoke:vi-stage` (full run; uses fixtures/vi-attr for a baked-in VI
+  - `node tools/npm/run-script.mjs smoke:vi-stage` (full run; uses fixtures/vi-attr for a baked-in VI
     attribute diff)
   Both flows post artifact links and the updated PR summary comment.
 - Containerized non-LV checks: `pwsh -File tools/Run-NonLVChecksInDocker.ps1`
@@ -132,13 +132,29 @@ line buffers).
 - Keep commits focused; include `#<standing-number>` in subjects.
 - PRs should describe rationale, list affected workflows, and link to artifacts.
 - Ensure CI is green (lint + Pester). Verify no lingering processes on self-hosted runners.
+- For `gh issue create` / `gh issue edit` with multiline Markdown bodies in mixed
+  WSL/Windows shells, prefer `--body-file <path>` (or `-F`) over inline
+  `--body "..."` to avoid backtick command substitution and quoting drift.
+  Example:
+
+  ```bash
+  gh issue create --title "<title>" --body-file issue-body.md
+  gh issue edit <number> --body-file issue-body.md
+  ```
 
 ## Local gates (pre-push)
 
 - Run `tools/PrePush-Checks.ps1` before pushing:
   - Installs `actionlint` (`vars.ACTIONLINT_VERSION`, default 1.7.7) if missing.
   - Runs `actionlint` across `.github/workflows`.
+  - Runs safe PR watch task contract validation (`safe-watch:contract`).
   - Optionally round-trips YAML with `ruamel.yaml` (if Python available).
+  - Validate safe PR watch task contracts manually before task/workspace changes when iterating locally:
+    - `node tools/npm/run-script.mjs safe-watch:contract`
+  - For mixed WSL/Windows shells, prefer HTTPS fetch + SSH push on `origin` to avoid
+    `git ls-remote` auth drift across terminals:
+    - `git remote set-url origin https://github.com/<owner>/<repo>.git`
+    - `git remote set-url --push origin git@github.com:<owner>/<repo>.git`
 - For VI history/container work, run Docker fast-loop before push:
   - Single-lane strict (recommended first, no runtime auto-repair/engine switching):
     - `pwsh -NoLogo -NoProfile -File tools/Test-DockerDesktopFastLoop.ps1 -LaneScope linux -StepTimeoutSeconds 600`
@@ -292,6 +308,28 @@ Use `tools/workflows/update_workflows.py` for mechanical updates (comment-preser
 - `tools/Update-SessionIndexWatcher.ps1` merges `watcher-rest.json` into `session-index.json`, exposing the REST watcher
   status under the `watchers.rest` node. Run it after the watcher step if you update the workflow or run the watcher
   manually.
+- For PR status polling in VS Code terminals, prefer snapshot mode instead of `gh pr checks --watch`:
+  - VS Code task: `CI: Watch PR checks (safe snapshot)`
+  - Workspace tasks:
+    - `Command Center: watch PR checks (safe, fork plane)`
+    - `Fork Plane: watch PR checks (safe)`
+    - `Upstream Plane: watch PR checks (safe)`
+  - CLI equivalent: `node tools/npm/run-script.mjs ci:watch:safe -- --PullRequest <pr-number> -IntervalSeconds 20`
+  - The helper emits delta/heartbeat summaries using repeated `gh pr checks --json` snapshots and avoids high-volume
+    repaint loops that can destabilize integrated terminals.
+  - Smoke-check the watcher behavior (expected: one summary line plus either delta entries or a no-change heartbeat):
+
+    ```bash
+    node tools/npm/run-script.mjs ci:watch:safe -- --PullRequest <pr-number> \
+      -IntervalSeconds 20 -HeartbeatPolls 1 -MaxPolls 2
+    ```
+
+  - If `safe-watch:contract` fails, restore expected task labels/inputs and argument wiring in:
+    - `.vscode/tasks.json`
+    - `compare-vi-cli-action.code-workspace`
+    - `compare-vi-cli-action.command-center.code-workspace`
+    - `compare-vi-cli-action.fork-plane.code-workspace`
+    - `compare-vi-cli-action.upstream-plane.code-workspace`
 
 ## LVCompare observability
 
@@ -349,7 +387,9 @@ Post checkpoints in the standing issue using this JSON block (inside a fenced `j
 
 - SLA breach (< 15m over window): post checkpoint with `result=blocked`, keep owner, continue execution.
 - SLA breach (>= 15m and < 60m): transfer to next role owner and log transfer reason in checkpoint evidence.
-- SLA breach (>= 60m) or policy deadlock: escalate to repository maintainers, add `admin-override-candidate` note in standing issue, and pause destructive operations until disposition.
+- SLA breach (>= 60m) or policy deadlock: escalate to repository maintainers,
+  add `admin-override-candidate` note in standing issue, and pause destructive
+  operations until disposition.
 
 ### Single-writer protocol (overlapping file scopes)
 

@@ -25,5 +25,5 @@
 
 - [ ] Tag v0.6.0 on `main`.
 - [ ] Monitor release workflows (`Validate`, `vi-compare-refs`, staging smoke) after the tag.
-- [ ] Back-merge `release/v0.6.0` into `develop` via `npm run release:finalize -- 0.6.0`
+- [ ] Back-merge `release/v0.6.0` into `develop` via `node tools/npm/run-script.mjs release:finalize -- 0.6.0`
   and ensure auto-config docs stay in sync.

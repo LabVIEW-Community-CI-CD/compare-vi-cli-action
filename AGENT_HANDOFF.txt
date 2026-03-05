@@ -9,7 +9,7 @@ Progress: Updated `priority:policy` to use PUT for ruleset applies and refreshed
 Tests: `./Invoke-PesterTests.ps1 -TestsPath tests/CompareVI.History.Tests.ps1 -IntegrationMode include` (12/12) and `./Invoke-PesterTests.ps1 -TestsPath tests -IncludePatterns 'DevDashboard.*'` (10/10). `node tools/npm/run-script.mjs priority:handoff-tests` (4/4), `node tools/priority/validate-semver.mjs` (0.5.2 valid), and `node tools/npm/run-script.mjs priority:test`.
 
 ## Status & Known Gaps
-1. `tools/priority/dispatch-validate.mjs` now supports `--push-missing` / `--force-push-ok`; `npm run priority:test` passed (40 tests, ~6.3s) after the update.
+1. `tools/priority/dispatch-validate.mjs` now supports `--push-missing` / `--force-push-ok`; `node tools/npm/run-script.mjs priority:test` passed (40 tests, ~6.3s) after the update.
 2. Validate run 18730978798 (`priority:validate -- --ref issue/293-validate-push --push-missing --allow-fork --force-push-ok`, head `2897467`) completed **success** at 2025-10-22T22:00Z; earlier runs 18730963960 / 18730940250 auto-cancelled after the superseding dispatch.
 3. PR #294 (“feat: auto-publish validate refs (#293)”) is open against `develop`; the latest Validate jobs (`lint`, `fixtures`, `session-index`, `semver`, hook parity matrix) all report success.
 4. `docs/knowledgebase/FEATURE_BRANCH_POLICY.md` documents the auto-publish flag; loop SMEs for tone/accuracy once tests are green.
