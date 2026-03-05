@@ -25,7 +25,7 @@ import {
 } from './lib/release-utils.mjs';
 
 const USAGE_LINES = [
-  'Usage: npm run release:finalize -- <version>',
+  'Usage: node tools/npm/run-script.mjs release:finalize -- <version>',
   '',
   'Fast-forwards main to release/<version>, creates a draft GitHub release, and fast-forwards develop to match.',
   '',

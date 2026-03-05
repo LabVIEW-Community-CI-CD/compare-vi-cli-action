@@ -25,7 +25,7 @@ import {
 } from './lib/release-utils.mjs';
 
 const USAGE_LINES = [
-  'Usage: npm run release:branch -- <version>',
+  'Usage: node tools/npm/run-script.mjs release:branch -- <version>',
   '',
   'Creates a release/<version> branch from upstream/develop, performs the version bump, pushes to your fork,',
   'and opens a PR targeting main.',
@@ -71,7 +71,7 @@ function buildPrBody(tag) {
     `- prepare ${tag} for release`,
     '',
     '## Testing',
-    '- npm run priority:test',
+    '- node tools/npm/run-script.mjs priority:test',
     ''
   ].join('\n');
 }

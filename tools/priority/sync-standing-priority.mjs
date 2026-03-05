@@ -518,7 +518,7 @@ export function buildRouter(issue, policy) {
       addAction({
         key: 'release:branch',
         priority: 38,
-        scripts: ['pwsh -Command "Write-Host Run npm run release:branch -- <version>"'],
+        scripts: ['pwsh -Command "Write-Host Run node tools/npm/run-script.mjs release:branch -- <version>"'],
         rationale: 'release label present but no release branch metadata detected'
       });
     }
