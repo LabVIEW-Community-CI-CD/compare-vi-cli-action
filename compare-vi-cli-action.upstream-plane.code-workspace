@@ -1,0 +1,89 @@
+{
+  "folders": [
+    {
+      "name": "PLANE_UPSTREAM__compare-vi-cli-action",
+      "path": "."
+    }
+  ],
+  "settings": {
+    "window.title": "[UPSTREAM_PLANE] ${activeEditorShort}${separator}${rootName}"
+  },
+  "tasks": {
+    "version": "2.0.0",
+    "tasks": [
+      {
+        "label": "Upstream Plane: bootstrap",
+        "type": "process",
+        "command": "node",
+        "args": [
+          "tools/npm/run-script.mjs",
+          "priority:bootstrap"
+        ],
+        "options": {
+          "cwd": "${workspaceFolder:PLANE_UPSTREAM__compare-vi-cli-action}"
+        },
+        "problemMatcher": []
+      },
+      {
+        "label": "Upstream Plane: pre-push checks",
+        "type": "process",
+        "command": "pwsh",
+        "args": [
+          "-NoLogo",
+          "-NoProfile",
+          "-File",
+          "tools/PrePush-Checks.ps1"
+        ],
+        "options": {
+          "cwd": "${workspaceFolder:PLANE_UPSTREAM__compare-vi-cli-action}"
+        },
+        "problemMatcher": []
+      },
+      {
+        "label": "Upstream Plane: dispatch Validate",
+        "type": "process",
+        "command": "node",
+        "args": [
+          "tools/npm/run-script.mjs",
+          "priority:validate",
+          "--",
+          "--ref",
+          "${input:upstreamValidateRef}"
+        ],
+        "options": {
+          "cwd": "${workspaceFolder:PLANE_UPSTREAM__compare-vi-cli-action}"
+        },
+        "problemMatcher": []
+      },
+      {
+        "label": "Upstream Plane: merge sync PR",
+        "type": "process",
+        "command": "node",
+        "args": [
+          "tools/npm/run-script.mjs",
+          "priority:merge-sync",
+          "--",
+          "--pr",
+          "${input:mergePrNumber}"
+        ],
+        "options": {
+          "cwd": "${workspaceFolder:PLANE_UPSTREAM__compare-vi-cli-action}"
+        },
+        "problemMatcher": []
+      }
+    ],
+    "inputs": [
+      {
+        "id": "upstreamValidateRef",
+        "type": "promptString",
+        "description": "Branch/ref for Validate dispatch from upstream plane",
+        "default": "develop"
+      },
+      {
+        "id": "mergePrNumber",
+        "type": "promptString",
+        "description": "PR number to merge with priority:merge-sync"
+      }
+    ]
+  }
+}
