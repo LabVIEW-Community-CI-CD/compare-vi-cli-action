@@ -312,7 +312,8 @@ Use `tools/workflows/update_workflows.py` for mechanical updates (comment-preser
   - The helper emits delta/heartbeat summaries using repeated `gh pr checks --json` snapshots and avoids high-volume
     repaint loops that can destabilize integrated terminals.
   - Smoke-check the watcher behavior (expected: one summary line plus either delta entries or a no-change heartbeat):
-    - `node tools/npm/run-script.mjs ci:watch:safe -- --PullRequest <pr-number> -IntervalSeconds 20 -HeartbeatPolls 1 -MaxPolls 2`
+    - `node tools/npm/run-script.mjs ci:watch:safe -- --PullRequest <pr-number>`
+      `-IntervalSeconds 20 -HeartbeatPolls 1 -MaxPolls 2`
   - If `safe-watch:contract` fails, restore expected task labels/inputs and argument wiring in:
     - `.vscode/tasks.json`
     - `compare-vi-cli-action.code-workspace`
