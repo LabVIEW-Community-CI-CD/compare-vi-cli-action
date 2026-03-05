@@ -139,6 +139,10 @@ line buffers).
   - Installs `actionlint` (`vars.ACTIONLINT_VERSION`, default 1.7.7) if missing.
   - Runs `actionlint` across `.github/workflows`.
   - Optionally round-trips YAML with `ruamel.yaml` (if Python available).
+  - For mixed WSL/Windows shells, prefer HTTPS fetch + SSH push on `origin` to avoid
+    `git ls-remote` auth drift across terminals:
+    - `git remote set-url origin https://github.com/<owner>/<repo>.git`
+    - `git remote set-url --push origin git@github.com:<owner>/<repo>.git`
 - For VI history/container work, run Docker fast-loop before push:
   - Single-lane strict (recommended first, no runtime auto-repair/engine switching):
     - `pwsh -NoLogo -NoProfile -File tools/Test-DockerDesktopFastLoop.ps1 -LaneScope linux -StepTimeoutSeconds 600`
