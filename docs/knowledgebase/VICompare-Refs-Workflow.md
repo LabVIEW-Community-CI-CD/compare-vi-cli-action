@@ -9,6 +9,9 @@
   alongside per-mode manifests inside `<results>/<mode-slug>/`.
 - Artifacts only include detailed LVCompare output when a difference is detected; runs with no diffs upload the lightweight
   manifest and JSON summaries.
+- Pre-tag release readiness treats both compare evidence lanes as blocking: the latest
+  `vi-compare-refs.yml` and `vi-staging-smoke.yml` runs must both be green and publish artifacts before
+  `release:finalize` can proceed.
 
 ## Pull request staging helper
 
