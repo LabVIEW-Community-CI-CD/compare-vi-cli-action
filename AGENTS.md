@@ -26,10 +26,10 @@ line buffers).
   - Operate inside this repository unless the human asks otherwise.
   - Keep workflows deterministic and green.
   - Reference the current standing-priority issue (e.g., `#<standing-number>`) in commit and PR descriptions.
-  - Treat icon-editor CI/package automation as legacy/manual-only.
-    `ci-composite.yml` is now a manual compatibility stub; do not reintroduce
-    icon-editor fixture freshness checks into required PR gates unless a
-    standing-priority issue explicitly re-enables that scope.
+  - Scope boundary: this repository is for compare-vi CLI action workflows only.
+    LabVIEW icon editor development moved to
+    `svelderrainruiz/labview-icon-editor` and must not be treated as
+    standing-priority scope here.
 - First actions in a session:
   1. `pwsh -NoLogo -NoProfile -File tools/priority/bootstrap.ps1` to run hook preflight, refresh the standing-priority
      snapshot/router artifacts, and auto-anchor the workspace to `develop`. When PowerShell + Node aren't available on
@@ -84,19 +84,10 @@ line buffers).
   explicitly need the LVCompare UI; otherwise leave it unset to avoid prompts and stuck LabVIEW instances.
   - Note (scope): `LVCI_COMPARE_MODE`/`LVCI_COMPARE_POLICY` apply to harness/workflow helpers only. The composite
     action always invokes LVCompare directly and does not honor these toggles.
-- VI diff discovery quick start:
-  - Run the sweep: `pwsh -File tools/icon-editor/Invoke-VIDiffSweep.ps1 -SummaryCount 10`
-    (defaults to syncing `tmp/icon-editor/repo`, scanning
-    `origin/develop~50..origin/develop`, and writing
-    `tests/results/_agent/icon-editor/vi-changes.json`).
-  - Inspect the JSON / on-screen summary (includes author + subject). To stage a specific
-    commit head-to-head, run
-    `pwsh -File tools/icon-editor/Invoke-VIComparisonFromCommit.ps1 -Commit <hash>`.
-    Optional flags: `[-LabVIEWExePath '<path-to-LabVIEW.exe>']` and
-    `[-SkipLVCompare -SkipValidate]`.
-    This prepares the overlay and snapshot directory; drop the skip flags when you want
-    LVCompare captures.
-  - Full walkthrough lives in `docs/ICON_EDITOR_PACKAGE.md` if you need deeper context.
+- Icon editor note:
+  - Icon editor tooling in this repository is historical compatibility material
+    only. Active icon editor development and operational runbooks now live in
+    `svelderrainruiz/labview-icon-editor`.
 
 ## Coding style
 

@@ -1,5 +1,9 @@
 # Icon Editor VI Package Audit
 
+> Scope update (March 5, 2026): icon editor development moved to
+> `svelderrainruiz/labview-icon-editor`. This document is retained as historical
+> reference and is not part of current standing-priority scope in this repository.
+
 This note records what ships inside the committed fixture `tests/fixtures/icon-editor/ni_icon_editor-1.4.1.948.vip`
 and how it maps back to sources in this repository or the upstream `ni/labview-icon-editor` project. Use it as a quick
 reference when verifying future package builds or investigating regressions.
@@ -418,4 +422,3 @@ and surfaces the same telemetry locally so you can investigate VIPM prompts or m
 paths without re-queuing a self-hosted runner. Pass `-SkipExecution` to inspect the
 replay command without running it, or reuse `-LogPath` when you already downloaded the
 job log (`gh run view … --log`).
-
