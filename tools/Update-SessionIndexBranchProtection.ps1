@@ -122,54 +122,6 @@ function Test-ContextMatch {
   return $false
 }
 
-function Resolve-BranchExpectedContexts {
-  param(
-    [psobject]$Branches,
-    [string]$BranchName
-  )
-
-  if (-not $Branches) {
-    return @()
-  }
-
-  foreach ($prop in $Branches.PSObject.Properties) {
-    if ($prop.Name -eq $BranchName) {
-      return @($prop.Value)
-    }
-  }
-
-  $bestMatch = $null
-  $bestSpecificity = -1
-  foreach ($prop in $Branches.PSObject.Properties) {
-    $pattern = $prop.Name
-    if ($pattern -eq 'default') {
-      continue
-    }
-    if ($pattern -notmatch '[\*\?]') {
-      continue
-    }
-    if ($BranchName -like $pattern) {
-      $specificity = ($pattern -replace '[\*\?]', '').Length
-      if ($specificity -gt $bestSpecificity) {
-        $bestSpecificity = $specificity
-        $bestMatch = @($prop.Value)
-      }
-    }
-  }
-
-  if ($null -ne $bestMatch -and $bestMatch.Count -gt 0) {
-    return $bestMatch
-  }
-
-  foreach ($prop in $Branches.PSObject.Properties) {
-    if ($prop.Name -eq 'default') {
-      return @($prop.Value)
-    }
-  }
-
-  return @()
-}
-
 $rawBranch = $Branch
 if ([string]::IsNullOrWhiteSpace($rawBranch)) {
   $Branch = 'unknown'

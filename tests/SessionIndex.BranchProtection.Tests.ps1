@@ -10,7 +10,7 @@ Describe 'Update-SessionIndexBranchProtection' -Tag 'Unit' {
     Set-Variable -Name policy -Scope Script -Value $policyLocal
 
     Set-Variable -Name developExpected -Scope Script -Value @($policyLocal.branches.develop)
-    Set-Variable -Name releaseExpected -Scope Script -Value @($policyLocal.branches.'release/*')
+    Set-Variable -Name releaseExpected -Scope Script -Value @($policyLocal.branches.'release/v0.5.2')
     Set-Variable -Name updateScript -Scope Script -Value (Join-Path $repoRootLocal 'tools/Update-SessionIndexBranchProtection.ps1')
     $newFixture = {
       param([string]$Name)
