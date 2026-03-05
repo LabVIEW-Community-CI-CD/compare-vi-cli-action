@@ -21,7 +21,8 @@ import {
 import {
   normalizeVersionInput,
   writeReleaseMetadata,
-  summarizeStatusChecks
+  summarizeStatusChecks,
+  assertReleaseMetadataExists
 } from './lib/release-utils.mjs';
 
 const USAGE_LINES = [
@@ -205,6 +206,7 @@ async function main() {
   const repoRoot = getRepoRoot();
   process.chdir(repoRoot);
   ensureCleanWorkingTree(run, 'Working tree not clean. Commit or stash changes before finalizing the release.');
+  await assertReleaseMetadataExists(repoRoot, tag, 'branch');
 
   const releaseBranch = `release/${tag}`;
   ensureBranchExists(releaseBranch);
@@ -337,6 +339,8 @@ async function main() {
 
   if (finalizeMetadata) {
     await writeReleaseMetadata(repoRoot, tag, 'finalize', finalizeMetadata);
+    await assertReleaseMetadataExists(repoRoot, tag, 'branch');
+    await assertReleaseMetadataExists(repoRoot, tag, 'finalize');
     console.log(`[release:finalize] Draft release created for ${tag}. Main and develop fast-forwarded.`);
   }
 }
