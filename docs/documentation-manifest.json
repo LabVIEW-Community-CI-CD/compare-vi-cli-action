@@ -78,6 +78,7 @@
         "docs/knowledgebase/DOCKER_TOOLS_PARITY.md",
         "docs/LABVIEW_GATING.md",
         "docs/LINT_BACKLOG_PLAN.md",
+        "docs/OPERATOR_REMEDIATION_PLAYBOOKS.md",
         "docs/plans/TRACEABILITY_MATRIX_PLAN.md",
         "docs/plans/VALIDATION_MATRIX.md",
         "docs/QUANTILE_ACCURACY.md",
