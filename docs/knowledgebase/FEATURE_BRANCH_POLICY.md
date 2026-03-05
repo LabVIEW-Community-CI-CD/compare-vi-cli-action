@@ -13,8 +13,8 @@ standing GitHub protection rules (including the `main` merge queue).
 | Branch pattern            | Purpose                               | Creation helper                                                 | Merge target |
 |---------------------------|---------------------------------------|-----------------------------------------------------------------|--------------|
 | `issue/<number>-<slug>`   | Standing-priority implementation work | `git checkout -b issue/<...>` (router creates/syncs automatically) | `develop` (squash) |
-| `feature/<slug>`          | Parallel experiments / rehearsals     | `npm run feature:branch:dry -- <slug>` (live helper coming soon) | `develop` (squash) |
-| `release/<version>`       | Release preparation                   | `npm run release:branch -- <version>`                            | PR to `main` |
+| `feature/<slug>`          | Parallel experiments / rehearsals     | `node tools/npm/run-script.mjs feature:branch:dry -- <slug>` (live helper coming soon) | `develop` (squash) |
+| `release/<version>`       | Release preparation                   | `node tools/npm/run-script.mjs release:branch -- <version>`                            | PR to `main` |
 
 - Keep branches short-lived and delete them after merge (repository default).
 - Rebase feature and issue branches on `develop` until the queue is green; avoid merge commits entirely.
@@ -24,9 +24,9 @@ standing GitHub protection rules (including the `main` merge queue).
 ### Local helpers
 - `tools/priority/create-pr.mjs` refuses PRs opened from `develop`/`main`, forcing contributors onto feature/issue
   branches.
-- Dry-run helpers (`npm run feature:branch:dry`, `npm run feature:finalize:dry`) rehearse branch creation/finalization
+- Dry-run helpers (`node tools/npm/run-script.mjs feature:branch:dry`, `node tools/npm/run-script.mjs feature:finalize:dry`) rehearse branch creation/finalization
   and emit metadata under `tests/results/_agent/feature/`.
-- `npm run priority:pr` pushes the current branch to your fork and opens a PR targeting `develop`, keeping the linear
+- `node tools/npm/run-script.mjs priority:pr` pushes the current branch to your fork and opens a PR targeting `develop`, keeping the linear
   history contract intact.
 - `node tools/npm/run-script.mjs priority:validate -- --ref <branch> --push-missing` publishes the branch to the
   upstream remote (when it is absent) before dispatching Validate. The helper refuses to push when the branch is dirty,
