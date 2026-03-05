@@ -1,0 +1,70 @@
+<!-- markdownlint-disable-next-line MD041 -->
+# Release Promotion Contract (v1)
+
+This document defines the promotion contract for the Platform v1 standing-priority
+lane (#710). It is the policy source for release/promotion channels, required check
+alignment, and evidence ledger expectations.
+
+## Contract source of truth
+
+- Policy file: `tools/policy/promotion-contract.json`
+- Ledger schema: `docs/schemas/promotion-evidence-ledger-v1.schema.json`
+- Alignment assertion: `tools/Assert-PromotionContractAlignment.ps1`
+- Ledger writer: `tools/Write-PromotionEvidenceLedger.ps1`
+
+## Channels
+
+- `rc`
+  - Version pattern: `X.Y.Z-rc.N`
+  - Approval gate required: yes
+  - `latest` tag allowed: no
+- `stable`
+  - Version pattern: `X.Y.Z`
+  - Approval gate required: yes
+  - `latest` tag allowed: yes
+- `lts`
+  - Version pattern: `X.Y.Z`
+  - Approval gate required: yes
+  - `latest` tag allowed: yes
+
+## Required-check alignment
+
+The context `Promotion Contract / promotion-contract` must remain in sync across:
+
+- `tools/policy/branch-required-checks.json`
+  - `branches.develop`
+  - `branches.release/*`
+- `tools/priority/policy.json`
+  - `branches.develop.required_status_checks`
+  - `branches.release/*.required_status_checks`
+  - `rulesets.8811898.required_status_checks` (develop)
+  - `rulesets.8614172.required_status_checks` (release/*)
+
+Automation enforcement:
+
+- Workflow check: `.github/workflows/promotion-contract.yml`
+- Release/promotion workflows call `tools/Assert-PromotionContractAlignment.ps1`
+  before promotion actions.
+
+## Evidence ledger contract
+
+Each release/promotion workflow writes a JSON ledger artifact with schema:
+
+- `promotion-evidence-ledger/v1`
+
+Required sections:
+
+- `workflow` run metadata (`runId`, `event`, `ref`, `sha`, `url`)
+- `promotion` context (`stream`, `channel`, `version`)
+- `gate` decision (`pass|fail|blocked`) and rationale
+- `contract` hash and required-check snapshot
+
+Default artifact location:
+
+- `tests/results/promotion-contract/*.json`
+
+## Gate outcomes
+
+- `pass`: promotion contract asserted and workflow completed successfully.
+- `fail`: assertion or promotion workflow failed.
+- `blocked`: workflow cancelled or approval gate prevented completion.

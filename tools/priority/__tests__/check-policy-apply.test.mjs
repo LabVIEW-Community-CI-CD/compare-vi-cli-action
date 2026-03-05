@@ -26,6 +26,7 @@ test('priority:policy --apply updates rulesets for develop/main/release', async 
     'session-index',
     'issue-snapshot',
     'semver',
+    'Promotion Contract / promotion-contract',
     'hook-parity (windows-latest)',
     'hook-parity (ubuntu-latest)',
     'vi-history-scenarios-linux'
@@ -44,7 +45,8 @@ test('priority:policy --apply updates rulesets for develop/main/release', async 
     'vi-binary-check',
     'vi-compare',
     'mock-cli',
-    'Policy Guard (Upstream) / policy-guard'
+    'Policy Guard (Upstream) / policy-guard',
+    'Promotion Contract / promotion-contract'
   ];
 
   const repoUrl = 'https://api.github.com/repos/test-org/test-repo';

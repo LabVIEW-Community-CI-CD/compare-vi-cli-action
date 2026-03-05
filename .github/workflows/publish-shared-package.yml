@@ -35,6 +35,13 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v5
 
+      - name: Assert promotion contract alignment
+        shell: pwsh
+        run: |
+          pwsh -NoLogo -NoProfile -File tools/Assert-PromotionContractAlignment.ps1 \
+            -OutputJsonPath tests/results/promotion-contract/publish-shared-alignment.json \
+            -StepSummaryPath $env:GITHUB_STEP_SUMMARY
+
       - name: Setup .NET
         uses: actions/setup-dotnet@v5
         with:
@@ -155,3 +162,32 @@ jobs:
             echo "- Published: \`${{ steps.ctx.outputs.publish }}\`"
             echo "- Registry: \`https://nuget.pkg.github.com/${{ github.repository_owner }}/index.json\`"
           } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Write promotion evidence ledger
+        if: always()
+        shell: pwsh
+        run: |
+          $gateStatus = switch ('${{ job.status }}') {
+            'success' { 'pass' }
+            'cancelled' { 'blocked' }
+            default { 'fail' }
+          }
+          $channel = if ([string]::IsNullOrWhiteSpace('${{ steps.ctx.outputs.channel }}')) { 'unknown' } else { '${{ steps.ctx.outputs.channel }}' }
+          $version = if ([string]::IsNullOrWhiteSpace('${{ steps.ctx.outputs.version }}')) { 'unknown' } else { '${{ steps.ctx.outputs.version }}' }
+          pwsh -NoLogo -NoProfile -File tools/Write-PromotionEvidenceLedger.ps1 \
+            -OutputPath tests/results/promotion-contract/publish-shared-ledger.json \
+            -WorkflowName '${{ github.workflow }}' \
+            -Stream 'CompareVi.Shared' \
+            -Channel $channel \
+            -Version $version \
+            -GateStatus $gateStatus \
+            -GateReason 'publish-shared-package workflow result' \
+            -StepSummaryPath $env:GITHUB_STEP_SUMMARY
+
+      - name: Upload promotion evidence artifact
+        if: always()
+        uses: actions/upload-artifact@v5
+        with:
+          name: promotion-evidence-shared-${{ github.run_id }}
+          path: tests/results/promotion-contract/publish-shared-ledger.json
+          if-no-files-found: error

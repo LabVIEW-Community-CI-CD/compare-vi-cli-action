@@ -1,0 +1,150 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://labview-community-ci-cd.github.io/compare-vi-cli-action/schemas/promotion-evidence-ledger-v1.schema.json",
+  "title": "Promotion Evidence Ledger v1",
+  "type": "object",
+  "required": [
+    "schema",
+    "generatedAtUtc",
+    "workflow",
+    "promotion",
+    "gate",
+    "contract"
+  ],
+  "properties": {
+    "schema": {
+      "type": "string",
+      "const": "promotion-evidence-ledger/v1"
+    },
+    "generatedAtUtc": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "workflow": {
+      "type": "object",
+      "required": [
+        "name",
+        "runId",
+        "runAttempt",
+        "event",
+        "ref",
+        "sha",
+        "url"
+      ],
+      "properties": {
+        "name": {
+          "type": "string"
+        },
+        "runId": {
+          "type": "string"
+        },
+        "runAttempt": {
+          "type": "string"
+        },
+        "event": {
+          "type": "string"
+        },
+        "ref": {
+          "type": "string"
+        },
+        "sha": {
+          "type": "string"
+        },
+        "url": {
+          "type": "string"
+        }
+      }
+    },
+    "promotion": {
+      "type": "object",
+      "required": [
+        "stream",
+        "channel",
+        "version"
+      ],
+      "properties": {
+        "stream": {
+          "type": "string"
+        },
+        "channel": {
+          "type": "string"
+        },
+        "version": {
+          "type": "string"
+        }
+      }
+    },
+    "gate": {
+      "type": "object",
+      "required": [
+        "status",
+        "reason",
+        "checkContext"
+      ],
+      "properties": {
+        "status": {
+          "type": "string",
+          "enum": [
+            "pass",
+            "fail",
+            "blocked"
+          ]
+        },
+        "reason": {
+          "type": "string"
+        },
+        "checkContext": {
+          "type": "string"
+        }
+      }
+    },
+    "contract": {
+      "type": "object",
+      "required": [
+        "path",
+        "sha256",
+        "requiredStatusChecks"
+      ],
+      "properties": {
+        "path": {
+          "type": "string"
+        },
+        "sha256": {
+          "type": "string"
+        },
+        "requiredStatusChecks": {
+          "type": "object",
+          "required": [
+            "develop",
+            "release"
+          ],
+          "properties": {
+            "develop": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "release": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            }
+          }
+        }
+      }
+    },
+    "artifacts": {
+      "type": "object",
+      "properties": {
+        "summaryPath": {
+          "type": "string"
+        },
+        "outputPath": {
+          "type": "string"
+        }
+      }
+    }
+  }
+}
