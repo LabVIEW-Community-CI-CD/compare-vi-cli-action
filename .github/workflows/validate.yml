@@ -373,7 +373,7 @@ jobs:
   fixtures:
     runs-on: [self-hosted, Windows, X64]
     env:
-      FAIL_ON_NEW_STRUCTURAL: 'false' # toggle to 'true' to fail job on new structural fixture issues
+      FAIL_ON_NEW_STRUCTURAL: 'true'
       SUMMARY_VERBOSE: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.summary-verbose || 'false' }}
     steps:
     - uses: actions/checkout@v5
@@ -391,14 +391,19 @@ jobs:
         results-dir: tests/results
     - name: Run fixture validator (JSON)
       shell: pwsh
-      continue-on-error: true
       run: |
         $ErrorActionPreference = 'Stop'
         pwsh -File tools/Validate-Fixtures.ps1 -Json -MinBytes 32 > fixture-validation.json
         $exit = $LASTEXITCODE
-        if ($exit -ne 0) { Write-Host "::warning::Fixture validator exit code: $exit (non-blocking)" }
+        if ($exit -ne 0) {
+          Write-Error "Fixture validator failed with exit code: $exit"
+          exit $exit
+        }
         $data = Get-Content fixture-validation.json -Raw | ConvertFrom-Json
-        if (-not $data.ok) { Write-Host 'Fixture validation issues detected. (Non-fatal: continuing for now)' }
+        if (-not $data.ok) {
+          Write-Error 'Fixture validation reported non-ok status.'
+          exit 1
+        }
     - name: Restore previous fixture validation snapshot (cache)
       id: restore_prev_fixture_validation
       uses: actions/cache/restore@v4
@@ -445,14 +450,12 @@ jobs:
         path: fixture-validation.json
     - name: Lite schema validate (snapshot)
       shell: pwsh
-      continue-on-error: true
       run: |
-        if (Test-Path fixture-validation.json) {
-          try {
-            pwsh -File tools/Invoke-JsonSchemaLite.ps1 -JsonPath fixture-validation.json -SchemaPath docs/schemas/fixture-manifest-v1.schema.json
-            if ($LASTEXITCODE -ne 0) { Write-Host "::notice::Snapshot schema-lite returned $LASTEXITCODE (non-blocking)" }
-          } catch { Write-Host '::notice::Snapshot schema-lite skipped or failed (non-fatal).' }
+        if (-not (Test-Path fixture-validation.json)) {
+          Write-Error 'fixture-validation.json was not produced.'
+          exit 1
         }
+        pwsh -File tools/Invoke-JsonSchemaLite.ps1 -JsonPath fixture-validation.json -SchemaPath docs/schemas/fixture-manifest-v1.schema.json
     - name: Append fixture summary
       shell: pwsh
       run: pwsh -File tools/Write-FixtureValidationSummary.ps1 -ValidationJson fixture-validation.json -DeltaJson fixture-validation-delta.json
