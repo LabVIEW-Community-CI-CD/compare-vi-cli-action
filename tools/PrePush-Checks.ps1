@@ -14,7 +14,8 @@ param(
   [string]$ActionlintVersion = '1.7.7',
   [bool]$InstallIfMissing = $true,
   [switch]$SkipNiImageFlagScenarios,
-  [switch]$SkipIconEditorFixtureChecks
+  [switch]$SkipIconEditorFixtureChecks,
+  [switch]$SkipPSScriptAnalyzer
 )
 
 $ErrorActionPreference = 'Stop'
@@ -107,6 +108,71 @@ function Invoke-Actionlint([string]$repoRoot){
   }
 }
 
+function Get-ChangedPowerShellPaths([string]$repoRoot) {
+  $patterns = @('*.ps1', '*.psm1', '*.psd1')
+  $ranges = @('upstream/develop...HEAD', 'origin/develop...HEAD', 'HEAD~1..HEAD')
+  $seen = [System.Collections.Generic.HashSet[string]]::new([System.StringComparer]::OrdinalIgnoreCase)
+  $files = New-Object System.Collections.Generic.List[string]
+
+  foreach ($range in $ranges) {
+    $diffArgs = @('-C', $repoRoot, 'diff', '--name-only', '--diff-filter=ACMRT', $range, '--') + $patterns
+    $raw = & git @diffArgs 2>$null
+    if ($LASTEXITCODE -ne 0) {
+      continue
+    }
+    foreach ($entry in @($raw | Where-Object { $_ -and $_.Trim() })) {
+      $relative = $entry.Trim()
+      if (-not $seen.Add($relative)) {
+        continue
+      }
+      $absolute = Join-Path $repoRoot $relative
+      if (Test-Path -LiteralPath $absolute -PathType Leaf) {
+        $files.Add($absolute)
+      }
+    }
+    if ($files.Count -gt 0) {
+      break
+    }
+  }
+
+  return $files.ToArray()
+}
+
+function Invoke-PSScriptAnalyzerGate([string]$repoRoot) {
+  $skipAnalyzer = $SkipPSScriptAnalyzer -or ($env:PREPUSH_SKIP_PSSCRIPTANALYZER -match '^(1|true|yes|on)$')
+  if ($skipAnalyzer) {
+    Write-Host '[pre-push] Skipping PSScriptAnalyzer by request' -ForegroundColor Yellow
+    return
+  }
+
+  if (-not (Get-Module -ListAvailable -Name PSScriptAnalyzer)) {
+    Write-Host '[pre-push] PSScriptAnalyzer not installed; skipping analyzer gate' -ForegroundColor Yellow
+    return
+  }
+
+  $paths = @(Get-ChangedPowerShellPaths -repoRoot $repoRoot)
+  if ($paths.Count -eq 0) {
+    Write-Host '[pre-push] No changed PowerShell files detected for analyzer gate' -ForegroundColor DarkGray
+    return
+  }
+
+  Import-Module PSScriptAnalyzer -ErrorAction Stop | Out-Null
+  Write-Host ("[pre-push] Running PSScriptAnalyzer on {0} changed file(s)" -f $paths.Count) -ForegroundColor Cyan
+  $issues = @()
+  foreach ($path in $paths) {
+    $issues += Invoke-ScriptAnalyzer -Path $path -Severity Error,Warning -ErrorAction Stop
+  }
+
+  if ($issues.Count -gt 0) {
+    $issues | ForEach-Object {
+      Write-Host ("[pre-push][pssa] {0}:{1} {2} ({3})" -f $_.ScriptPath, $_.Line, $_.Message, $_.RuleName) -ForegroundColor Red
+    }
+    throw ("PSScriptAnalyzer detected {0} issue(s)." -f $issues.Count)
+  }
+
+  Write-Host '[pre-push] PSScriptAnalyzer gate OK' -ForegroundColor Green
+}
+
 function Invoke-WorkspaceHealthGate([string]$repoRoot){
   $scriptPath = Join-Path $repoRoot 'tools' 'priority' 'check-workspace-health.mjs'
   if (-not (Test-Path -LiteralPath $scriptPath -PathType Leaf)) {
@@ -168,6 +234,7 @@ if ($code -ne 0) {
   exit $code
 }
 Write-Host '[pre-push] actionlint OK' -ForegroundColor Green
+Invoke-PSScriptAnalyzerGate -repoRoot $root
 
 Write-Host '[pre-push] Validating safe PR watch task contract' -ForegroundColor Cyan
 $safeWatchContractExit = Invoke-NodeTestSanitized -Args @('--test','tools/priority/__tests__/safe-watch-task-contract.test.mjs')

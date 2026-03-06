@@ -32,6 +32,14 @@ test('PrePush NI image known-flag scenario uses direct script invocation and exp
   assert.doesNotMatch(content, /pwsh\s+-NoLogo\s+-NoProfile\s+-File\s+\$niCompareScript/);
 });
 
+test('PrePush includes local PSScriptAnalyzer gate for changed PowerShell files', () => {
+  const content = readRepoFile('tools/PrePush-Checks.ps1');
+  assert.match(content, /function Invoke-PSScriptAnalyzerGate/);
+  assert.match(content, /Get-ChangedPowerShellPaths/);
+  assert.match(content, /Invoke-ScriptAnalyzer -Path \$path -Severity Error,Warning/);
+  assert.match(content, /Invoke-PSScriptAnalyzerGate -repoRoot \$root/);
+});
+
 test('policy workflows enforce workspace health gate and publish health artifacts', () => {
   const guardWorkflow = readRepoFile('.github/workflows/policy-guard-upstream.yml');
   assert.match(guardWorkflow, /Workspace health gate/);
