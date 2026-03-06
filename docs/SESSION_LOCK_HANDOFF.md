@@ -27,6 +27,27 @@ tools/SessionLock-Takeover.ps1 -Group pester-selfhosted
 | `SESSION_LOCK_FORCE` | Force takeover when stale |
 | `SESSION_LOCK_STRICT` | Fail run if lock cannot be acquired |
 
+## Agent writer lease (`#733`)
+
+Repository-wide single-writer coordination for agent sessions now uses `tools/priority/agent-writer-lease.mjs`.
+
+```bash
+# Acquire lease for workspace mutations
+node tools/npm/run-script.mjs priority:lease -- --action acquire --scope workspace
+
+# Inspect / heartbeat / release
+node tools/npm/run-script.mjs priority:lease -- --action inspect --scope workspace
+node tools/npm/run-script.mjs priority:lease -- --action heartbeat --scope workspace
+node tools/npm/run-script.mjs priority:lease -- --action release --scope workspace
+```
+
+Default lease root is `.git/agent-writer-leases/` (keeps workspaces clean). Useful controls:
+
+- `AGENT_WRITER_LEASE_ENABLED=0` disables bootstrap acquisition.
+- `AGENT_WRITER_LEASE_STALE_SECONDS=<n>` adjusts stale threshold.
+- `AGENT_WRITER_LEASE_FORCE_TAKEOVER=1` allows stale takeover.
+- `AGENT_WRITER_LEASE_MAX_ATTEMPTS=<n>` + `AGENT_WRITER_LEASE_WAIT_MS=<n>` tune contention retry behavior.
+
 ## Handoff checklist
 
 1. Read `AGENT_HANDOFF.txt` for context.

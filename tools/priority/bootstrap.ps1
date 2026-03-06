@@ -91,6 +91,104 @@ function Invoke-SemVerCheck {
   }
 }
 
+function Invoke-AgentWriterLeaseAcquire {
+  if ($env:AGENT_WRITER_LEASE_ENABLED -eq '0') {
+    Write-Host '[bootstrap] Agent writer lease disabled (AGENT_WRITER_LEASE_ENABLED=0).'
+    return $null
+  }
+
+  if ($env:GITHUB_ACTIONS -eq 'true' -and $env:AGENT_WRITER_LEASE_ALLOW_CI -ne '1') {
+    Write-Host '[bootstrap] Skipping agent writer lease in GitHub Actions context.'
+    return $null
+  }
+
+  $nodeCmd = Get-Command node -ErrorAction SilentlyContinue
+  if (-not $nodeCmd) {
+    Write-Warning 'node not found; skipping agent writer lease.'
+    return $null
+  }
+
+  $leaseScript = Join-Path (Resolve-Path '.').Path 'tools/priority/agent-writer-lease.mjs'
+  if (-not (Test-Path -LiteralPath $leaseScript -PathType Leaf)) {
+    Write-Warning "Agent writer lease script not found at $leaseScript"
+    return $null
+  }
+
+  $owner = $env:AGENT_WRITER_LEASE_OWNER
+  if ([string]::IsNullOrWhiteSpace($owner)) {
+    $user = if (-not [string]::IsNullOrWhiteSpace($env:GITHUB_ACTOR)) { $env:GITHUB_ACTOR } elseif (-not [string]::IsNullOrWhiteSpace($env:USERNAME)) { $env:USERNAME } elseif (-not [string]::IsNullOrWhiteSpace($env:USER)) { $env:USER } else { 'unknown' }
+    $session = if (-not [string]::IsNullOrWhiteSpace($env:AGENT_SESSION_NAME)) { $env:AGENT_SESSION_NAME } elseif (-not [string]::IsNullOrWhiteSpace($env:PS_SESSION_NAME)) { $env:PS_SESSION_NAME } else { 'default' }
+    $owner = "{0}@{1}:{2}" -f $user, [System.Environment]::MachineName, $session
+  }
+
+  $reportPath = Join-Path (Resolve-Path '.').Path 'tests/results/_agent/lease/bootstrap-lease.json'
+  $arguments = @(
+    $leaseScript,
+    '--action', 'acquire',
+    '--scope', 'workspace',
+    '--owner', $owner,
+    '--report', $reportPath
+  )
+
+  if ($env:AGENT_WRITER_LEASE_FORCE_TAKEOVER -eq '1') {
+    $arguments += '--force-takeover'
+  }
+  if ($env:AGENT_WRITER_LEASE_STALE_SECONDS -match '^\d+$') {
+    $arguments += @('--stale-seconds', $env:AGENT_WRITER_LEASE_STALE_SECONDS)
+  }
+  if ($env:AGENT_WRITER_LEASE_WAIT_MS -match '^\d+$') {
+    $arguments += @('--wait-ms', $env:AGENT_WRITER_LEASE_WAIT_MS)
+  }
+  if ($env:AGENT_WRITER_LEASE_MAX_ATTEMPTS -match '^\d+$') {
+    $arguments += @('--max-attempts', $env:AGENT_WRITER_LEASE_MAX_ATTEMPTS)
+  }
+
+  $psi = New-Object System.Diagnostics.ProcessStartInfo
+  $psi.FileName = $nodeCmd.Source
+  foreach ($arg in $arguments) { $psi.ArgumentList.Add([string]$arg) }
+  $psi.WorkingDirectory = (Resolve-Path '.').Path
+  $psi.UseShellExecute = $false
+  $psi.RedirectStandardOutput = $true
+  $psi.RedirectStandardError = $true
+
+  $proc = [System.Diagnostics.Process]::Start($psi)
+  $stdout = $proc.StandardOutput.ReadToEnd()
+  $stderr = $proc.StandardError.ReadToEnd()
+  $proc.WaitForExit()
+
+  if ($stderr) {
+    Write-Warning $stderr.TrimEnd()
+  }
+
+  $result = $null
+  if ($stdout) {
+    try {
+      $result = $stdout | ConvertFrom-Json -ErrorAction Stop
+    } catch {
+      Write-Warning '[bootstrap] Unable to parse agent writer lease JSON output.'
+    }
+  }
+
+  if ($result -and $result.PSObject.Properties['lease'] -and $result.lease -and $result.lease.PSObject.Properties['leaseId']) {
+    $env:AGENT_WRITER_LEASE_ID = [string]$result.lease.leaseId
+  }
+
+  if ($proc.ExitCode -ne 0) {
+    $statusLabel = if ($result -and $result.PSObject.Properties['status']) { [string]$result.status } else { 'unknown' }
+    $message = ("[bootstrap] Agent writer lease acquisition failed (status={0}, exit={1}). " +
+      "Use AGENT_WRITER_LEASE_FORCE_TAKEOVER=1 for stale takeovers or AGENT_WRITER_LEASE_ENABLED=0 to disable.") -f $statusLabel, $proc.ExitCode
+    throw $message
+  }
+
+  if ($result -and $result.PSObject.Properties['status']) {
+    Write-Host ("[bootstrap] Agent writer lease status: {0}" -f [string]$result.status)
+  } else {
+    Write-Host '[bootstrap] Agent writer lease acquired.'
+  }
+
+  return $result
+}
+
 function Invoke-GitCommand {
   param(
     [Parameter(Mandatory=$true)][string[]]$Arguments,
@@ -269,6 +367,9 @@ if ($VerboseHooks) {
 }
 
 if (-not $PreflightOnly) {
+  Write-Host '[bootstrap] Acquiring agent writer lease…'
+  Invoke-AgentWriterLeaseAcquire | Out-Null
+
   Write-Host '[bootstrap] Syncing standing priority snapshot…'
   Invoke-Npm -Script 'priority:sync:lane'
   Write-Host '[bootstrap] Showing router plan…'
