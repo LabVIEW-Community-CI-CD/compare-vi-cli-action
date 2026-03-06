@@ -70,6 +70,11 @@ jobs:
     steps:
       - uses: actions/checkout@v5
 
+      - name: Setup Node 20
+        uses: actions/setup-node@v5
+        with:
+          node-version: '20'
+
       - name: Build release notes from CHANGELOG
         id: notes
         shell: bash
@@ -136,6 +141,37 @@ jobs:
             artifacts/cli/SHA256SUMS.txt
             artifacts/cli/sbom.spdx.json
             artifacts/cli/provenance.json
+
+      - name: Enforce supply-chain trust gate
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          node tools/priority/supply-chain-trust-gate.mjs \
+            --repo "${{ github.repository }}" \
+            --artifacts-root artifacts/cli \
+            --checksums artifacts/cli/SHA256SUMS.txt \
+            --sbom artifacts/cli/sbom.spdx.json \
+            --provenance artifacts/cli/provenance.json \
+            --signer-workflow "${{ github.repository }}/.github/workflows/release.yml" \
+            --report tests/results/_agent/supply-chain/release-trust-gate.json
+
+      - name: Validate supply-chain trust report schema
+        if: always()
+        shell: pwsh
+        run: |
+          pwsh -NoLogo -NoProfile -File tools/Invoke-JsonSchemaLite.ps1 \
+            -JsonPath tests/results/_agent/supply-chain/release-trust-gate.json \
+            -SchemaPath docs/schemas/supply-chain-trust-gate-v1.schema.json
+
+      - name: Upload supply-chain trust artifact
+        if: always()
+        uses: actions/upload-artifact@v5
+        with:
+          name: release-supply-chain-trust-${{ github.run_id }}
+          path: tests/results/_agent/supply-chain/release-trust-gate.json
+          if-no-files-found: error
 
       - name: Create GitHub Release with assets (CHANGELOG)
         if: steps.notes.outputs.fallback == 'false'
@@ -305,6 +341,12 @@ jobs:
           name: certification-matrix-${{ github.run_id }}
           path: tests/results/_agent/certification
 
+      - name: Download supply-chain trust artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: release-supply-chain-trust-${{ github.run_id }}
+          path: tests/results/_agent/supply-chain
+
       - name: Assert promotion contract alignment
         shell: pwsh
         run: |
@@ -449,4 +491,5 @@ jobs:
             tests/results/promotion-contract/release-ledger.json
             tests/results/_agent/slo/release-slo-metrics.json
             tests/results/_agent/certification/release-certification-matrix.json
+            tests/results/_agent/supply-chain/release-trust-gate.json
           if-no-files-found: error

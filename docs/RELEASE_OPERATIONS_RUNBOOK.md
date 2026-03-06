@@ -87,6 +87,25 @@ Configuration path: `Settings -> Environments -> <environment> -> Required revie
    - evidence artifacts are linked
    - follow-up remediation issues are created when needed
 
+## Supply-chain trust remediation classes
+
+When the release trust gate fails, inspect `tests/results/_agent/supply-chain/release-trust-gate.json` and follow the
+matching remediation path:
+
+- `missing-artifacts-root`, `missing-required-file`, `no-distribution-artifacts`
+  - Re-run publish steps and confirm artifacts exist under `artifacts/cli`.
+- `checksum-invalid-line`, `checksum-empty`, `checksum-entry-missing-file`, `checksum-missing-artifact`, `checksum-mismatch`
+  - Regenerate `SHA256SUMS.txt` from fresh artifacts and ensure no post-pack mutation occurred.
+- `sbom-parse-failed`, `sbom-invalid`
+  - Re-run `tools/Generate-ReleaseSbom.ps1` and validate content/coverage for all distribution archives.
+- `provenance-parse-failed`, `provenance-invalid`
+  - Re-run `tools/Generate-ReleaseProvenance.ps1`; verify repository/run/sha identity fields.
+- `attestation-cli-unavailable`
+  - Restore GitHub CLI availability on runner and retry release.
+- `attestation-output-parse-failed`, `attestation-empty-result`, `attestation-unverified`
+  - Re-run attestation and verify with:
+    - `gh attestation verify <artifact> --repo <owner/repo> --signer-workflow <owner/repo/.github/workflows/release.yml>`
+
 ## Rehearsal contract (testable, repeatable)
 
 - Weekly operator rehearsal (non-destructive):
@@ -105,3 +124,4 @@ Configuration path: `Settings -> Environments -> <environment> -> Required revie
 - `tests/results/_agent/release/release-<tag>-finalize.json`
 - `tests/results/_agent/policy/policy-drift-report.json`
 - `tests/results/_agent/health-snapshot/health-snapshot.json`
+- `tests/results/_agent/supply-chain/release-trust-gate.json`

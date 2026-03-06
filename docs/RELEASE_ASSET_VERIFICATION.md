@@ -56,3 +56,12 @@ gh attestation verify <asset-file> \
 ```
 
 The verification must pass before promoting release artifacts.
+
+## Automated trust gate
+
+`Release on tag` enforces these checks through:
+
+- `node tools/priority/supply-chain-trust-gate.mjs`
+- report artifact: `tests/results/_agent/supply-chain/release-trust-gate.json`
+
+The release fails closed if this gate reports any failure class.

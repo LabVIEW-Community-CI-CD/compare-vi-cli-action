@@ -1,0 +1,172 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://labview-community-ci-cd.github.io/compare-vi-cli-action/schemas/supply-chain-trust-gate-v1.schema.json",
+  "title": "Supply Chain Trust Gate v1",
+  "type": "object",
+  "required": [
+    "schema",
+    "generatedAt",
+    "repository",
+    "policy",
+    "artifacts",
+    "attestations",
+    "failures",
+    "summary"
+  ],
+  "properties": {
+    "schema": {
+      "type": "string",
+      "const": "priority/supply-chain-trust-gate@v1"
+    },
+    "generatedAt": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "repository": {
+      "type": "string"
+    },
+    "channel": {
+      "type": "string"
+    },
+    "workflow": {
+      "type": "object"
+    },
+    "policy": {
+      "type": "object",
+      "required": [
+        "signerWorkflow",
+        "verifyAttestations",
+        "attestationAttempts",
+        "attestationRetrySeconds"
+      ],
+      "properties": {
+        "signerWorkflow": {
+          "type": "string"
+        },
+        "verifyAttestations": {
+          "type": "boolean"
+        },
+        "attestationAttempts": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "attestationRetrySeconds": {
+          "type": "integer",
+          "minimum": 0
+        }
+      }
+    },
+    "artifacts": {
+      "type": "object",
+      "required": [
+        "root",
+        "distribution",
+        "checksums",
+        "sbom",
+        "provenance"
+      ],
+      "properties": {
+        "root": {
+          "type": "string"
+        },
+        "distribution": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": [
+              "name",
+              "path",
+              "sizeBytes",
+              "sha256",
+              "checksum"
+            ]
+          }
+        },
+        "checksums": {
+          "type": "object",
+          "required": [
+            "path",
+            "exists",
+            "entryCount",
+            "invalidLineCount"
+          ]
+        },
+        "sbom": {
+          "type": "object",
+          "required": [
+            "path",
+            "exists",
+            "valid",
+            "spdxVersion",
+            "fileCount"
+          ]
+        },
+        "provenance": {
+          "type": "object",
+          "required": [
+            "path",
+            "exists",
+            "valid",
+            "schema",
+            "releaseAssetCount"
+          ]
+        }
+      }
+    },
+    "attestations": {
+      "type": "object",
+      "required": [
+        "enabled",
+        "results"
+      ],
+      "properties": {
+        "enabled": {
+          "type": "boolean"
+        },
+        "results": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": [
+              "artifactPath",
+              "verified",
+              "attempts",
+              "attestationCount",
+              "error"
+            ]
+          }
+        }
+      }
+    },
+    "failures": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "code",
+          "message"
+        ]
+      }
+    },
+    "summary": {
+      "type": "object",
+      "required": [
+        "status",
+        "failureCount",
+        "failureCodes",
+        "artifactCount",
+        "attestationVerifiedCount",
+        "attestationTotal"
+      ],
+      "properties": {
+        "status": {
+          "type": "string",
+          "enum": [
+            "pass",
+            "fail"
+          ]
+        }
+      }
+    }
+  }
+}
