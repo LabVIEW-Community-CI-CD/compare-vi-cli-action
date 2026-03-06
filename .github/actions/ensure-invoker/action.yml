@@ -115,7 +115,7 @@ runs:
               "[$ts] attempt#$i spawn (fallback) pid=$($p.Id) pipe=$pipe" | Out-File -FilePath $boot -Append -Encoding utf8
             } catch {
               $err = $_.Exception.Message
-              Write-Host "::warning::Fallback spawn failed on attempt #$i: $err"
+              Write-Host "::warning::Fallback spawn failed on attempt #${i}: $err"
               "[$ts] attempt#$i spawn error: $err" | Out-File -FilePath $boot -Append -Encoding utf8
             }
           }
