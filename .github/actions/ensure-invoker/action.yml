@@ -143,14 +143,29 @@ runs:
       if: ${{ inputs.mode == 'start' && runner.os == 'Windows' && inputs.require-invoker != 'false' && steps.start.outputs.ready == 'true' }}
       shell: pwsh
       run: |
+        $results = '${{ steps.compute.outputs.results }}'
         $args = @(
           '-PipeName','${{ steps.compute.outputs.pipe_name }}',
-          '-ResultsDir','${{ steps.compute.outputs.results }}',
+          '-ResultsDir',"$results",
           '-TimeoutSeconds','15',
           '-Retries','5',
           '-RetryDelaySeconds','2'
         )
-        pwsh -File tools/RunnerInvoker/Wait-InvokerReady.ps1 @args
+        try {
+          & tools/RunnerInvoker/Wait-InvokerReady.ps1 @args
+        } catch {
+          $invokerDir = Join-Path $results '_invoker'
+          Write-Host "::warning::Invoker ping failed; dumping invoker diagnostics from $invokerDir"
+          foreach ($name in @('boot.log','ready.json','requests-log.ndjson','heartbeat.ndjson','pid.txt')) {
+            $path = Join-Path $invokerDir $name
+            if (Test-Path -LiteralPath $path -PathType Leaf) {
+              Write-Host "::group::invoker/$name"
+              try { Get-Content -LiteralPath $path -Tail 200 } catch {}
+              Write-Host "::endgroup::"
+            }
+          }
+          throw
+        }
 
     - name: Stop invoker (Windows only)
       if: ${{ inputs.mode == 'stop' && runner.os == 'Windows' && inputs.require-invoker != 'false' }}

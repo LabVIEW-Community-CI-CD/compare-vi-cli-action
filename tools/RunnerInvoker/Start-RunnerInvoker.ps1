@@ -16,6 +16,15 @@ function New-ParentDir {
   if ($dir -and -not (Test-Path -LiteralPath $dir)) { New-Item -ItemType Directory -Path $dir -Force | Out-Null }
 }
 
+function Write-BootLog {
+  param(
+    [Parameter(Mandatory)][string]$Path,
+    [Parameter(Mandatory)][string]$Message
+  )
+  $stamp = (Get-Date).ToUniversalTime().ToString('o')
+  "[$stamp] $Message" | Out-File -FilePath $Path -Append -Encoding UTF8
+}
+
 if (-not $PipeName) {
   $PipeName = "lvci.invoker.$([Environment]::GetEnvironmentVariable('GITHUB_RUN_ID')).$([Environment]::GetEnvironmentVariable('GITHUB_JOB')).$([Environment]::GetEnvironmentVariable('GITHUB_RUN_ATTEMPT'))"
 }
@@ -69,37 +78,74 @@ if ($env:LVCI_SINGLE_COMPARE -and -not $env:LVCI_SINGLE_COMPARE_AUTOSTOP) {
 # Touch console-spawns.ndjson (artifact presence guarantee)
 $spawns = Join-Path $ResultsDir '_invoker/console-spawns.ndjson'
 if (-not (Test-Path -LiteralPath $spawns)) { New-Item -ItemType File -Path $spawns -Force | Out-Null }
-
-# Write PID file
-$pidContent = [string]$PID
-Set-Content -LiteralPath $PidFile -Value $pidContent -Encoding ASCII
-
-# Write ready marker
-$now = (Get-Date).ToUniversalTime().ToString('o')
-$readyObj = [pscustomobject]@{ schema='invoker-ready/v1'; pipe=$PipeName; pid=$PID; at=$now }
-if ($trackerLoaded -and $trackerPath) {
-  $trackerReady = [ordered]@{ enabled = $true; path = $trackerPath }
-  if ($trackerState) { $trackerReady['initial'] = $trackerState }
-  if ($trackerContextPath) { $trackerReady['contextPath'] = $trackerContextPath }
-  Add-Member -InputObject $readyObj -MemberType NoteProperty -Name labviewPidTracker -Value ([pscustomobject]$trackerReady)
-} elseif ($trackerError) {
-  Add-Member -InputObject $readyObj -MemberType NoteProperty -Name labviewPidTrackerError -Value $trackerError
-}
-$readyObj | ConvertTo-Json -Depth 6 | Set-Content -LiteralPath $ReadyFile -Encoding UTF8
+$bootLog = Join-Path $invokerDir 'boot.log'
+if (-not (Test-Path -LiteralPath $bootLog)) { New-Item -ItemType File -Path $bootLog -Force | Out-Null }
 
 # Load server module and run loop until sentinel removed
 Import-Module (Join-Path $PSScriptRoot 'RunnerInvoker.psm1') -Force
 $hb = Join-Path $ResultsDir '_invoker/heartbeat.ndjson'
+$loopJob = $null
 try {
   $sw = [Diagnostics.Stopwatch]::StartNew()
   $last = 0
-  $job = Start-Job -ScriptBlock {
+  Write-BootLog -Path $bootLog -Message "starting invoker loop pipe=$PipeName sentinel=$SentinelPath"
+  $loopJob = Start-Job -ScriptBlock {
     param($pn,$sp,$rd,$trackerCtxPath,$trackerEnabled)
     Import-Module (Join-Path $using:PSScriptRoot 'RunnerInvoker.psm1') -Force
     Start-InvokerLoop -PipeName $pn -SentinelPath $sp -ResultsDir $rd -PollIntervalMs 200 -TrackerContextPath $trackerCtxPath -TrackerContextSource 'invoker:loop' -TrackerEnabled:$trackerEnabled
   } -ArgumentList @($PipeName,$SentinelPath,$ResultsDir,$trackerContextPath,$trackerLoaded)
+
+  $readyObserved = $false
+  $lastStartupError = $null
+  $startupDeadline = (Get-Date).AddSeconds(20)
+  while ((Get-Date) -lt $startupDeadline) {
+    if ($loopJob -and $loopJob.State -in @('Completed','Failed','Stopped')) {
+      $jobDetail = $null
+      try { $jobDetail = (Receive-Job -Id $loopJob.Id -Keep -ErrorAction SilentlyContinue | Out-String).Trim() } catch {}
+      $lastStartupError = "loop job exited early with state '$($loopJob.State)'"
+      if ($jobDetail) { $lastStartupError = "$lastStartupError ($jobDetail)" }
+      break
+    }
+    try {
+      $startupPing = Invoke-RunnerRequest -ResultsDir $ResultsDir -Verb 'Ping' -CommandArgs @{ pipe = $PipeName } -TimeoutSeconds 1
+      if ($startupPing -and $startupPing.ok -and $startupPing.result -and $startupPing.result.pong -eq $PipeName) {
+        $readyObserved = $true
+        break
+      }
+      $lastStartupError = 'unexpected startup ping response'
+    } catch {
+      $lastStartupError = $_.Exception.Message
+    }
+    Start-Sleep -Milliseconds 250
+  }
+  if (-not $readyObserved) {
+    if (-not $lastStartupError) { $lastStartupError = 'startup handshake timeout' }
+    Write-BootLog -Path $bootLog -Message "startup handshake failed: $lastStartupError"
+    throw "Invoker startup handshake failed: $lastStartupError"
+  }
+  Write-BootLog -Path $bootLog -Message 'startup handshake succeeded'
+
+  # Write PID file and ready marker only after startup handshake succeeds.
+  $pidContent = [string]$PID
+  Set-Content -LiteralPath $PidFile -Value $pidContent -Encoding ASCII
+  $now = (Get-Date).ToUniversalTime().ToString('o')
+  $readyObj = [pscustomobject]@{ schema='invoker-ready/v1'; pipe=$PipeName; pid=$PID; at=$now }
+  if ($trackerLoaded -and $trackerPath) {
+    $trackerReady = [ordered]@{ enabled = $true; path = $trackerPath }
+    if ($trackerState) { $trackerReady['initial'] = $trackerState }
+    if ($trackerContextPath) { $trackerReady['contextPath'] = $trackerContextPath }
+    Add-Member -InputObject $readyObj -MemberType NoteProperty -Name labviewPidTracker -Value ([pscustomobject]$trackerReady)
+  } elseif ($trackerError) {
+    Add-Member -InputObject $readyObj -MemberType NoteProperty -Name labviewPidTrackerError -Value $trackerError
+  }
+  $readyObj | ConvertTo-Json -Depth 6 | Set-Content -LiteralPath $ReadyFile -Encoding UTF8
+
   while ($true) {
     if ($SentinelPath -and -not (Test-Path -LiteralPath $SentinelPath)) { break }
+    if ($loopJob -and $loopJob.State -in @('Completed','Failed','Stopped')) {
+      Write-BootLog -Path $bootLog -Message "loop job exited unexpectedly with state '$($loopJob.State)'"
+      break
+    }
     if (($sw.ElapsedMilliseconds - $last) -ge 1000) {
       $beat = [pscustomobject]@{ at=(Get-Date).ToUniversalTime().ToString('o'); pid=$PID }
       ($beat | ConvertTo-Json -Compress) | Add-Content -LiteralPath $hb -Encoding UTF8
@@ -109,7 +155,10 @@ try {
   }
 }
 finally {
-  try { Receive-Job * | Out-Null; Remove-Job * -Force -ErrorAction SilentlyContinue } catch {}
+  if ($loopJob) {
+    try { Receive-Job -Id $loopJob.Id -Keep -ErrorAction SilentlyContinue | Out-Null } catch {}
+    try { Remove-Job -Id $loopJob.Id -Force -ErrorAction SilentlyContinue } catch {}
+  }
   $stopStamp = (Get-Date).ToUniversalTime().ToString('o')
   $trackerContextRecord = $null
   if ($trackerLoaded -and $trackerPath) {

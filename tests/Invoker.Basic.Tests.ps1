@@ -1,3 +1,8 @@
+Set-StrictMode -Version Latest
+$ErrorActionPreference = 'Stop'
+. (Join-Path $PSScriptRoot '_Pester5Guard.ps1')
+[void](Assert-PesterV5OrNewer -Caller $PSCommandPath)
+
 Describe 'Invoker (basic)' -Tag 'Unit' {
   It 'starts and stops with markers and responds to Ping' {
     $root = (Get-Location).Path
@@ -14,13 +19,16 @@ Describe 'Invoker (basic)' -Tag 'Unit' {
     $ready = Join-Path $res '_invoker/ready.json'
     $stopped = Join-Path $res '_invoker/stopped.json'
     $spawn = Join-Path $res '_invoker/console-spawns.ndjson'
+    $boot = Join-Path $res '_invoker/boot.log'
     $tracker = Join-Path $res '_invoker/labview-pid.json'
 
     $deadline = (Get-Date).AddSeconds(10)
     do { Start-Sleep -Milliseconds 200 } while (-not (Test-Path -LiteralPath $ready) -and (Get-Date) -lt $deadline)
     (Test-Path -LiteralPath $ready) | Should -BeTrue
     (Test-Path -LiteralPath $spawn) | Should -BeTrue
+    (Test-Path -LiteralPath $boot) | Should -BeTrue
     (Test-Path -LiteralPath $tracker) | Should -BeTrue
+    (Get-Content -LiteralPath $boot -Raw) | Should -Match 'startup handshake succeeded'
 
     $readyPayload = Get-Content -LiteralPath $ready -Raw | ConvertFrom-Json -Depth 6
     $readyPayload.schema | Should -Be 'invoker-ready/v1'
@@ -66,4 +74,3 @@ Describe 'Invoker (basic)' -Tag 'Unit' {
     (Test-Path -LiteralPath $sent) | Should -BeFalse
   }
 }
-
