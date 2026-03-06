@@ -1,0 +1,44 @@
+{
+  "schema": "certification-matrix-policy/v1",
+  "target_branch": "develop",
+  "defaults": {
+    "lookback_days": 45,
+    "max_runs": 50,
+    "max_age_hours": 1080
+  },
+  "lanes": [
+    {
+      "id": "fixture-drift-ubuntu-hosted",
+      "workflow": "fixture-drift.yml",
+      "job_name": "Fixture Drift (Ubuntu)",
+      "branch": "*",
+      "event": "pull_request",
+      "runner": "ubuntu-latest",
+      "os": "linux",
+      "image_tag": "nationalinstruments/labview:2026q1-linux",
+      "scenario": "Hosted fixture drift baseline for compare harness."
+    },
+    {
+      "id": "fixture-drift-ni-linux-container-hosted",
+      "workflow": "fixture-drift.yml",
+      "job_name": "NI Linux Container Compare (Hosted)",
+      "branch": "*",
+      "event": "pull_request",
+      "runner": "ubuntu-latest",
+      "os": "linux",
+      "image_tag": "nationalinstruments/labview:2026q1-linux",
+      "scenario": "Hosted NI Linux container CreateComparisonReport contract run."
+    },
+    {
+      "id": "fixture-drift-windows-docker-desktop-self-hosted",
+      "workflow": "fixture-drift.yml",
+      "job_name": "Fixture Drift (Docker Desktop Host - LabVIEW 2026 q1 windows)",
+      "branch": "*",
+      "event": "pull_request",
+      "runner": "self-hosted-docker-windows",
+      "os": "windows",
+      "image_tag": "nationalinstruments/labview:2026q1-windows",
+      "scenario": "Self-hosted Docker Desktop NI Windows container drift lane."
+    }
+  ]
+}

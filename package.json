@@ -62,6 +62,7 @@
     "priority:develop:sync": "pwsh -NoLogo -NoProfile -File tools/priority/Sync-OriginUpstreamDevelop.ps1",
     "priority:policy": "node tools/priority/check-policy.mjs",
     "priority:policy:snapshot": "node tools/priority/policy-snapshot.mjs",
+    "priority:certification:matrix": "node tools/priority/certification-matrix.mjs",
     "priority:slo": "node tools/priority/slo-metrics.mjs",
     "priority:operator-status": "pwsh -NoLogo -NoProfile -File tools/priority/Write-OperatorStatusSummary.ps1",
     "priority:parity": "node tools/priority/report-origin-upstream-parity.mjs",

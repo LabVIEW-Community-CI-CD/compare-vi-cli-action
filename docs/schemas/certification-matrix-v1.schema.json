@@ -1,0 +1,251 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://labview-community-ci-cd.github.io/compare-vi-cli-action/schemas/certification-matrix-v1.schema.json",
+  "title": "Certification Matrix v1",
+  "type": "object",
+  "required": [
+    "schema",
+    "generatedAt",
+    "repository",
+    "branch",
+    "channel",
+    "policy",
+    "summary",
+    "gate",
+    "lanes"
+  ],
+  "properties": {
+    "schema": {
+      "type": "string",
+      "const": "priority/certification-matrix@v1"
+    },
+    "generatedAt": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "repository": {
+      "type": "string"
+    },
+    "branch": {
+      "type": "string"
+    },
+    "channel": {
+      "type": "string",
+      "enum": [
+        "stable",
+        "rc"
+      ]
+    },
+    "policy": {
+      "type": "object",
+      "required": [
+        "path",
+        "sha256"
+      ],
+      "properties": {
+        "path": {
+          "type": "string"
+        },
+        "sha256": {
+          "type": "string"
+        }
+      }
+    },
+    "summary": {
+      "type": "object",
+      "required": [
+        "laneCount",
+        "requiredLaneCount",
+        "requiredPassing",
+        "passCount",
+        "staleCount",
+        "missingCount",
+        "incompleteCount",
+        "failedCount",
+        "status"
+      ],
+      "properties": {
+        "laneCount": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "requiredLaneCount": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "requiredPassing": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "passCount": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "staleCount": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "missingCount": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "incompleteCount": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "failedCount": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "status": {
+          "type": "string",
+          "enum": [
+            "pass",
+            "warn",
+            "fail"
+          ]
+        }
+      }
+    },
+    "gate": {
+      "type": "object",
+      "required": [
+        "enforced",
+        "mode",
+        "status",
+        "shouldFail",
+        "blockingLaneIds",
+        "reason"
+      ],
+      "properties": {
+        "enforced": {
+          "type": "boolean"
+        },
+        "mode": {
+          "type": "string",
+          "enum": [
+            "none",
+            "stable",
+            "always"
+          ]
+        },
+        "status": {
+          "type": "string",
+          "enum": [
+            "pass",
+            "warn",
+            "fail"
+          ]
+        },
+        "shouldFail": {
+          "type": "boolean"
+        },
+        "blockingLaneIds": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "reason": {
+          "type": "string"
+        }
+      }
+    },
+    "lanes": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "id",
+          "workflow",
+          "jobName",
+          "maxAgeHours",
+          "requiredForStable",
+          "matrix",
+          "status",
+          "complete",
+          "success",
+          "stale",
+          "ageHours",
+          "reason",
+          "latest"
+        ],
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "workflow": {
+            "type": "string"
+          },
+          "jobName": {
+            "type": "string"
+          },
+          "maxAgeHours": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "requiredForStable": {
+            "type": "boolean"
+          },
+          "matrix": {
+            "type": "object",
+            "required": [
+              "runner",
+              "os",
+              "imageTag",
+              "scenario"
+            ],
+            "properties": {
+              "runner": {
+                "type": "string"
+              },
+              "os": {
+                "type": "string"
+              },
+              "imageTag": {
+                "type": "string"
+              },
+              "scenario": {
+                "type": "string"
+              }
+            }
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "pass",
+              "stale",
+              "missing",
+              "incomplete",
+              "failed"
+            ]
+          },
+          "complete": {
+            "type": "boolean"
+          },
+          "success": {
+            "type": "boolean"
+          },
+          "stale": {
+            "type": "boolean"
+          },
+          "ageHours": {
+            "type": [
+              "number",
+              "null"
+            ]
+          },
+          "reason": {
+            "type": "string"
+          },
+          "latest": {
+            "type": [
+              "object",
+              "null"
+            ]
+          }
+        }
+      }
+    }
+  }
+}
