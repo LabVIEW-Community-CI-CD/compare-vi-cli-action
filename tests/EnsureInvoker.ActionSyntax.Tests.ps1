@@ -23,4 +23,13 @@ Describe 'ensure-invoker action syntax guard' -Tag 'Unit' {
       $content | Should -Match $pattern
     }
   }
+
+  It 'invokes Wait-InvokerReady with named splatting to avoid positional binding drift' {
+    $actionPath = Join-Path $PSScriptRoot '..' '.github' 'actions' 'ensure-invoker' 'action.yml'
+    $content = Get-Content -LiteralPath $actionPath -Raw
+
+    $content | Should -Match '\$waitArgs\s*=\s*@\{'
+    $content | Should -Match 'Wait-InvokerReady\.ps1\s+@waitArgs'
+    $content | Should -Not -Match 'Wait-InvokerReady\.ps1\s+@args'
+  }
 }

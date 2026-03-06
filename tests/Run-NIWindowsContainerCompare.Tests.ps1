@@ -23,6 +23,7 @@ Describe 'Run-NIWindowsContainerCompare.ps1' -Tag 'Unit' {
   BeforeAll {
     $repoRoot = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path
     $script:RunnerScript = Join-Path $repoRoot 'tools' 'Run-NIWindowsContainerCompare.ps1'
+    $script:ContainerLabVIEWPath = 'C:\Program Files\National Instruments\LabVIEW 2026\LabVIEW.exe'
     if (-not (Test-Path -LiteralPath $script:RunnerScript -PathType Leaf)) {
       throw "Run-NIWindowsContainerCompare.ps1 not found at $script:RunnerScript"
     }
@@ -216,6 +217,7 @@ exit 0
       }
       return @([string]$parsed)
     }
+
   }
 
   BeforeEach {
@@ -232,7 +234,9 @@ exit 0
       DOCKER_STUB_CP_REPORT_HTML    = $env:DOCKER_STUB_CP_REPORT_HTML
       DOCKER_STUB_CP_FAIL           = $env:DOCKER_STUB_CP_FAIL
       DOCKER_COMMAND_OVERRIDE       = $env:DOCKER_COMMAND_OVERRIDE
+      NI_WINDOWS_LABVIEW_PATH       = $env:NI_WINDOWS_LABVIEW_PATH
     }
+    Set-Item Env:NI_WINDOWS_LABVIEW_PATH $script:ContainerLabVIEWPath
   }
 
   AfterEach {
@@ -311,6 +315,37 @@ exit 0
     ($output -join "`n") | Should -Match 'runtime determinism mismatch|expected os=windows'
   }
 
+  It 'fails compare mode when LabVIEWPath is not supplied to the container contract' {
+    $work = Join-Path $TestDrive 'compare-missing-labview-path'
+    New-Item -ItemType Directory -Path $work | Out-Null
+    & $script:NewDockerStub -WorkRoot $work | Out-Null
+
+    $logPath = Join-Path $work 'docker-log.ndjson'
+    Set-Item Env:DOCKER_STUB_LOG $logPath
+    Set-Item Env:DOCKER_STUB_OSTYPE 'windows'
+    Set-Item Env:DOCKER_STUB_IMAGE_EXISTS '1'
+    Set-Item Env:DOCKER_STUB_CONTEXT 'desktop-windows'
+    Remove-Item Env:NI_WINDOWS_LABVIEW_PATH -ErrorAction SilentlyContinue
+
+    $baseVi = Join-Path $work 'Base.vi'
+    $headVi = Join-Path $work 'Head.vi'
+    Set-Content -LiteralPath $baseVi -Value 'base' -Encoding utf8
+    Set-Content -LiteralPath $headVi -Value 'head' -Encoding utf8
+    $reportPath = Join-Path $work 'out\compare-report.html'
+
+    $output = & pwsh -NoLogo -NoProfile -File $script:RunnerScript `
+      -BaseVi $baseVi `
+      -HeadVi $headVi `
+      -ReportPath $reportPath `
+      -RuntimeEngineReadyTimeoutSeconds 5 `
+      -RuntimeEngineReadyPollSeconds 1 2>&1
+    $LASTEXITCODE | Should -Be 2 -Because ($output -join "`n")
+    ($output -join "`n") | Should -Match 'LabVIEWPath is required'
+
+    $records = & $script:ReadDockerStubLog -Path $logPath
+    (@($records | Where-Object { $_.args[0] -eq 'run' })).Count | Should -Be 0
+  }
+
   It 'writes deterministic capture artifacts for compare execution' {
     $work = Join-Path $TestDrive 'compare-ok'
     New-Item -ItemType Directory -Path $work | Out-Null
@@ -361,6 +396,7 @@ exit 0
     $capture.reportType | Should -Be 'html'
     $capture.reportPath | Should -Be ([System.IO.Path]::GetFullPath($reportPath))
     $capture.image | Should -Be 'nationalinstruments/labview:2026q1-windows'
+    $capture.labviewPath | Should -Be $script:ContainerLabVIEWPath
     $capture.flags | Should -Contain '-noattr'
     $capture.flags | Should -Contain '-Headless'
     $capture.timedOut | Should -BeFalse

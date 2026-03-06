@@ -144,15 +144,15 @@ runs:
       shell: pwsh
       run: |
         $results = '${{ steps.compute.outputs.results }}'
-        $args = @(
-          '-PipeName','${{ steps.compute.outputs.pipe_name }}',
-          '-ResultsDir',"$results",
-          '-TimeoutSeconds','15',
-          '-Retries','5',
-          '-RetryDelaySeconds','2'
-        )
+        $waitArgs = @{
+          PipeName = '${{ steps.compute.outputs.pipe_name }}'
+          ResultsDir = $results
+          TimeoutSeconds = 15
+          Retries = 5
+          RetryDelaySeconds = 2
+        }
         try {
-          & tools/RunnerInvoker/Wait-InvokerReady.ps1 @args
+          & tools/RunnerInvoker/Wait-InvokerReady.ps1 @waitArgs
         } catch {
           $invokerDir = Join-Path $results '_invoker'
           Write-Host "::warning::Invoker ping failed; dumping invoker diagnostics from $invokerDir"

@@ -33,7 +33,8 @@
   Additional CLI flags appended to CreateComparisonReport.
 
 .PARAMETER LabVIEWPath
-  Optional explicit in-container LabVIEW.exe path forwarded as -LabVIEWPath.
+  Required for compare mode (non-probe). Explicit in-container LabVIEW.exe path
+  forwarded to the container as COMPARE_LABVIEW_PATH.
 
 .PARAMETER Probe
   Preflight only (Docker availability, Windows container mode, and image
@@ -810,6 +811,7 @@ $capture = [ordered]@{
   baseVi        = $null
   headVi        = $null
   reportPath    = $null
+  labviewPath   = $null
   flags         = @()
   command       = $null
   stdoutPath    = $null
@@ -949,9 +951,19 @@ try {
     $stdoutPath = Join-Path $reportDirectory 'ni-windows-container-stdout.txt'
     $stderrPath = Join-Path $reportDirectory 'ni-windows-container-stderr.txt'
 
+    $resolvedLabVIEWPath = if ([string]::IsNullOrWhiteSpace($LabVIEWPath)) {
+      if ([string]::IsNullOrWhiteSpace($env:NI_WINDOWS_LABVIEW_PATH)) { '' } else { $env:NI_WINDOWS_LABVIEW_PATH.Trim() }
+    } else {
+      $LabVIEWPath.Trim()
+    }
+    if ([string]::IsNullOrWhiteSpace($resolvedLabVIEWPath)) {
+      throw '-LabVIEWPath is required for NI Windows container compare to guarantee in-container LabVIEW resolution.'
+    }
+
     $capture.baseVi = $baseViPath
     $capture.headVi = $headViPath
     $capture.reportPath = $resolvedReportPath
+    $capture.labviewPath = $resolvedLabVIEWPath
     $capture.stdoutPath = $stdoutPath
     $capture.stderrPath = $stderrPath
 
@@ -1004,9 +1016,7 @@ try {
         $dockerArgs += @('--env', ("{0}={1}" -f $stubVar, $stubValue))
       }
     }
-    if (-not [string]::IsNullOrWhiteSpace($LabVIEWPath)) {
-      $dockerArgs += @('--env', ("COMPARE_LABVIEW_PATH={0}" -f $LabVIEWPath))
-    }
+    $dockerArgs += @('--env', ("COMPARE_LABVIEW_PATH={0}" -f $resolvedLabVIEWPath))
     $dockerArgs += @(
       $Image,
       'powershell',
