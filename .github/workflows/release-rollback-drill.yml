@@ -1,0 +1,67 @@
+name: Release Rollback Drill
+
+on:
+  schedule:
+    - cron: '0 18 * * 1'
+  workflow_dispatch:
+    inputs:
+      stream:
+        description: 'Release stream to evaluate for rollback pointer health'
+        required: false
+        default: stable
+        type: choice
+        options:
+          - stable
+          - rc
+          - lts
+      target_tag:
+        description: 'Optional explicit rollback tag (dry-run pointer override)'
+        required: false
+        type: string
+
+permissions:
+  actions: read
+  contents: read
+
+jobs:
+  rollback-drill:
+    name: rollback-drill
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Run rollback drill (dry-run)
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          stream='${{ inputs.stream || 'stable' }}'
+          targetTag='${{ inputs.target_tag || '' }}'
+          args=(
+            --repo "${{ github.repository }}"
+            --stream "$stream"
+            --policy tools/policy/release-rollback-policy.json
+            --report tests/results/_agent/release/rollback-drill-report.json
+          )
+          if [ -n "$targetTag" ]; then
+            args+=(--target-tag "$targetTag")
+          fi
+          node tools/priority/rollback-release.mjs "${args[@]}"
+
+      - name: Validate rollback drill schema
+        if: always()
+        shell: pwsh
+        run: |
+          pwsh -NoLogo -NoProfile -File tools/Invoke-JsonSchemaLite.ps1 `
+            -JsonPath tests/results/_agent/release/rollback-drill-report.json `
+            -SchemaPath docs/schemas/release-rollback-v1.schema.json
+
+      - name: Upload rollback drill artifact
+        if: always()
+        uses: actions/upload-artifact@v5
+        with:
+          name: rollback-drill-${{ github.run_id }}
+          path: tests/results/_agent/release/rollback-drill-report.json
+          if-no-files-found: error
+

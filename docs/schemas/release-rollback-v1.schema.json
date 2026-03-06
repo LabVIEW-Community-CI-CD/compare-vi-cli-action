@@ -1,0 +1,178 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://labview-community-ci-cd.github.io/compare-vi-cli-action/schemas/release-rollback-v1.schema.json",
+  "title": "Release Rollback v1",
+  "type": "object",
+  "required": [
+    "schema",
+    "generatedAt",
+    "repository",
+    "stream",
+    "mode",
+    "policy",
+    "pointer",
+    "target",
+    "branches",
+    "validation",
+    "failures",
+    "summary"
+  ],
+  "properties": {
+    "schema": {
+      "type": "string",
+      "const": "release/rollback@v1"
+    },
+    "generatedAt": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "repository": {
+      "type": "string"
+    },
+    "stream": {
+      "type": "string",
+      "enum": [
+        "stable",
+        "rc",
+        "lts"
+      ]
+    },
+    "mode": {
+      "type": "string",
+      "enum": [
+        "dry-run",
+        "apply",
+        "error"
+      ]
+    },
+    "policy": {
+      "type": "object",
+      "required": [
+        "path",
+        "schema",
+        "remote",
+        "targetBranches",
+        "minimumHistory"
+      ],
+      "properties": {
+        "targetBranches": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "minimumHistory": {
+          "type": "integer",
+          "minimum": 2
+        }
+      }
+    },
+    "pointer": {
+      "type": "object",
+      "required": [
+        "strategy",
+        "immutable",
+        "targetTag"
+      ],
+      "properties": {
+        "immutable": {
+          "type": "boolean"
+        }
+      }
+    },
+    "target": {
+      "type": "object",
+      "required": [
+        "tag",
+        "commit"
+      ]
+    },
+    "branches": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "name",
+          "remote",
+          "before",
+          "after",
+          "pushed",
+          "matchesTarget"
+        ]
+      }
+    },
+    "originSync": {
+      "type": [
+        "array",
+        "null"
+      ]
+    },
+    "validation": {
+      "type": "object",
+      "required": [
+        "status",
+        "policySync"
+      ],
+      "properties": {
+        "status": {
+          "type": "string",
+          "enum": [
+            "pass",
+            "fail"
+          ]
+        },
+        "policySync": {
+          "type": "object",
+          "required": [
+            "executed",
+            "status",
+            "exitCode",
+            "stdout",
+            "stderr"
+          ]
+        }
+      }
+    },
+    "failures": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "code",
+          "message"
+        ]
+      }
+    },
+    "summary": {
+      "type": "object",
+      "required": [
+        "status",
+        "failureCount",
+        "failureCodes",
+        "shouldPausePromotion"
+      ],
+      "properties": {
+        "status": {
+          "type": "string",
+          "enum": [
+            "pass",
+            "fail"
+          ]
+        },
+        "failureCount": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "failureCodes": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "shouldPausePromotion": {
+          "type": "boolean"
+        }
+      }
+    }
+  }
+}

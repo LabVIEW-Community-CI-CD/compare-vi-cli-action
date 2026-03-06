@@ -16,6 +16,12 @@ alignment, and evidence ledger expectations.
 - Certification runbook: `docs/CERTIFICATION_MATRIX.md`
 - Supply-chain trust gate script: `tools/priority/supply-chain-trust-gate.mjs`
 - Supply-chain trust gate schema: `docs/schemas/supply-chain-trust-gate-v1.schema.json`
+- Rollback policy: `tools/policy/release-rollback-policy.json`
+- Rollback command: `tools/priority/rollback-release.mjs`
+- Rollback drill health gate: `tools/priority/rollback-drill-health.mjs`
+- Rollback report schemas:
+  - `docs/schemas/release-rollback-v1.schema.json`
+  - `docs/schemas/release-rollback-drill-health-v1.schema.json`
 
 ## Channels
 
@@ -97,6 +103,23 @@ Release tags must pass the supply-chain trust gate before GitHub Release publica
   - artifact attestation verification via `gh attestation verify`
 
 If the trust gate fails, release publication is blocked (fail-closed) and the report artifact must be used for remediation.
+
+## Rollback drill health gate
+
+Release tags must pass rollback drill health before GitHub Release publication:
+
+- Weekly drill workflow: `.github/workflows/release-rollback-drill.yml`
+- Health gate script: `node tools/priority/rollback-drill-health.mjs`
+- Health report artifact: `tests/results/_agent/release/rollback-drill-health.json`
+- Drill evidence artifact: `tests/results/_agent/release/rollback-drill-report.json`
+
+Policy thresholds are sourced from `tools/policy/release-rollback-policy.json`:
+
+- lookback runs
+- minimum success rate
+- maximum hours since latest successful drill
+
+If the health gate fails, promotion pauses (fail-closed) until drill health is restored.
 
 ## Gate outcomes
 

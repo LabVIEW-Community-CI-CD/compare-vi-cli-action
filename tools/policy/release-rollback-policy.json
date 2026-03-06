@@ -1,0 +1,32 @@
+{
+  "schema": "release-rollback-policy/v1",
+  "rollback": {
+    "remote": "upstream",
+    "target_branches": [
+      "main",
+      "develop"
+    ],
+    "minimum_history": 2
+  },
+  "streams": {
+    "stable": {
+      "tag_pattern": "^v[0-9]+\\.[0-9]+\\.[0-9]+$",
+      "minimum_history": 2
+    },
+    "rc": {
+      "tag_pattern": "^v[0-9]+\\.[0-9]+\\.[0-9]+-rc\\.[0-9]+$",
+      "minimum_history": 2
+    },
+    "lts": {
+      "tag_pattern": "^v[0-9]+\\.[0-9]+\\.[0-9]+-lts\\.[0-9]+$",
+      "minimum_history": 2
+    }
+  },
+  "drill": {
+    "workflow": "release-rollback-drill.yml",
+    "branch": "develop",
+    "lookback_runs": 10,
+    "minimum_success_rate": 0.8,
+    "max_hours_since_success": 192
+  }
+}

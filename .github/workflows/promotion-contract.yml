@@ -9,12 +9,17 @@ on:
       - '.github/workflows/publish-shared-package.yml'
       - '.github/workflows/monthly-stability-release.yml'
       - 'tools/policy/promotion-contract.json'
+      - 'tools/policy/release-rollback-policy.json'
       - 'tools/policy/branch-required-checks.json'
       - 'tools/priority/policy.json'
+      - 'tools/priority/rollback-release.mjs'
+      - 'tools/priority/rollback-drill-health.mjs'
       - 'tools/Assert-PromotionContractAlignment.ps1'
       - 'tools/Write-PromotionEvidenceLedger.ps1'
       - 'docs/RELEASE_PROMOTION_CONTRACT.md'
       - 'docs/schemas/promotion-evidence-ledger-v1.schema.json'
+      - 'docs/schemas/release-rollback-v1.schema.json'
+      - 'docs/schemas/release-rollback-drill-health-v1.schema.json'
   push:
     branches:
       - develop
