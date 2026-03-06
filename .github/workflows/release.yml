@@ -170,6 +170,7 @@ jobs:
             --checksums artifacts/cli/SHA256SUMS.txt \
             --sbom artifacts/cli/sbom.spdx.json \
             --provenance artifacts/cli/provenance.json \
+            --tag-ref "${{ github.ref_name }}" \
             --signer-workflow "${{ github.repository }}/.github/workflows/release.yml" \
             --report tests/results/_agent/supply-chain/release-trust-gate.json
 

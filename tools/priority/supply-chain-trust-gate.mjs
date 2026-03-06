@@ -27,6 +27,13 @@ const FAILURE_HINTS = {
   'sbom-invalid': 'SBOM content is missing required SPDX fields or artifact references. Regenerate SBOM.',
   'provenance-parse-failed': 'Provenance JSON is unreadable. Re-run Generate-ReleaseProvenance.ps1 and validate output.',
   'provenance-invalid': 'Provenance payload failed contract checks (schema/asset hash/identity). Regenerate provenance.',
+  'tag-ref-missing': 'Release tag ref is unavailable. Ensure trust gate runs from a tag-triggered release event.',
+  'tag-signature-cli-unavailable': 'GitHub CLI is unavailable. Install/enable gh on runner before tag signature verification.',
+  'tag-ref-lookup-failed': 'Unable to resolve release tag via GitHub API. Confirm tag exists and token has repo read access.',
+  'tag-object-lookup-failed': 'Unable to resolve annotated tag object via GitHub API. Confirm tag object availability.',
+  'tag-signature-parse-failed': 'Tag signature payload could not be parsed. Re-run and inspect gh api output.',
+  'tag-not-annotated': 'Release tag is lightweight/non-annotated. Create a signed annotated tag for release.',
+  'tag-signature-unverified': 'Release tag signature is not verified. Sign the tag and re-run the release.',
   'attestation-cli-unavailable': 'GitHub CLI is unavailable. Install/enable gh on runner before trust gate.',
   'attestation-output-parse-failed': 'Attestation verification output was not valid JSON. Re-run verification and inspect gh logs.',
   'attestation-unverified': 'Artifact attestation verification failed. Confirm attest-build-provenance step and signer workflow.',
@@ -42,10 +49,12 @@ export function printUsage() {
   console.log('  --checksums <path>                SHA256SUMS path (default: artifacts/cli/SHA256SUMS.txt).');
   console.log('  --sbom <path>                     SBOM path (default: artifacts/cli/sbom.spdx.json).');
   console.log('  --provenance <path>               Provenance path (default: artifacts/cli/provenance.json).');
+  console.log('  --tag-ref <name>                  Release tag ref name (default: GITHUB_REF_NAME).');
   console.log(`  --report <path>                   Report output path (default: ${DEFAULT_REPORT_PATH}).`);
   console.log('  --signer-workflow <value>         Attestation signer workflow identity.');
   console.log('  --attestation-attempts <n>        Retry attempts for attestation verify (default: 6).');
   console.log('  --attestation-retry-seconds <n>   Retry delay in seconds (default: 10).');
+  console.log('  --skip-tag-signature              Skip release tag signature verification (local/debug only).');
   console.log('  --skip-attestations               Skip gh attestation verification (local/debug only).');
   console.log('  -h, --help                        Show this message and exit.');
 }
@@ -58,10 +67,12 @@ export function parseArgs(argv = process.argv) {
     checksumsPath: path.join('artifacts', 'cli', 'SHA256SUMS.txt'),
     sbomPath: path.join('artifacts', 'cli', 'sbom.spdx.json'),
     provenancePath: path.join('artifacts', 'cli', 'provenance.json'),
+    tagRef: process.env.GITHUB_REF_NAME || null,
     reportPath: DEFAULT_REPORT_PATH,
     signerWorkflow: null,
     attestationAttempts: 6,
     attestationRetrySeconds: 10,
+    verifyTagSignature: true,
     verifyAttestations: true,
     help: false
   };
@@ -77,6 +88,10 @@ export function parseArgs(argv = process.argv) {
       options.verifyAttestations = false;
       continue;
     }
+    if (token === '--skip-tag-signature') {
+      options.verifyTagSignature = false;
+      continue;
+    }
 
     if (
       token === '--repo' ||
@@ -84,6 +99,7 @@ export function parseArgs(argv = process.argv) {
       token === '--checksums' ||
       token === '--sbom' ||
       token === '--provenance' ||
+      token === '--tag-ref' ||
       token === '--report' ||
       token === '--signer-workflow'
     ) {
@@ -96,6 +112,7 @@ export function parseArgs(argv = process.argv) {
       if (token === '--checksums') options.checksumsPath = next;
       if (token === '--sbom') options.sbomPath = next;
       if (token === '--provenance') options.provenancePath = next;
+      if (token === '--tag-ref') options.tagRef = next;
       if (token === '--report') options.reportPath = next;
       if (token === '--signer-workflow') options.signerWorkflow = next;
       continue;
@@ -521,6 +538,116 @@ function defaultCommandRunner(command, args) {
   };
 }
 
+function parseJsonFromCommandPayload(raw, description, failures) {
+  try {
+    return JSON.parse(String(raw || '').trim() || '{}');
+  } catch (error) {
+    addFailure(failures, 'tag-signature-parse-failed', `Failed to parse ${description}: ${error.message}`);
+    return null;
+  }
+}
+
+function formatCommandError(result) {
+  return String(result?.stderr || result?.stdout || `exit code ${result?.status ?? 1}`).trim();
+}
+
+export function createDefaultTagSignatureStatus(tagRef = null, reason = null) {
+  return {
+    refName: tagRef || null,
+    checked: false,
+    exists: false,
+    annotated: false,
+    objectType: null,
+    objectSha: null,
+    verified: false,
+    reason: reason || null,
+    verifiedAt: null
+  };
+}
+
+export async function verifyReleaseTagSignature({ repository, tagRef, runner = defaultCommandRunner }) {
+  const failures = [];
+  const normalizedTagRef = String(tagRef || '').trim();
+  const status = createDefaultTagSignatureStatus(normalizedTagRef || null);
+
+  if (!normalizedTagRef) {
+    addFailure(failures, 'tag-ref-missing', 'Release tag ref is unavailable (GITHUB_REF_NAME/--tag-ref missing).');
+    return { failures, status };
+  }
+
+  const cliCheck = await Promise.resolve(runner('gh', ['--version']));
+  if (cliCheck.status !== 0) {
+    addFailure(failures, 'tag-signature-cli-unavailable', 'Unable to execute gh api for tag signature verification.');
+    return { failures, status };
+  }
+
+  const refPath = `repos/${repository}/git/ref/tags/${encodeURIComponent(normalizedTagRef)}`;
+  const refResult = await Promise.resolve(runner('gh', ['api', refPath]));
+  if (refResult.status !== 0) {
+    addFailure(
+      failures,
+      'tag-ref-lookup-failed',
+      `Failed to query release tag ref '${normalizedTagRef}': ${formatCommandError(refResult)}.`,
+      normalizedTagRef
+    );
+    return { failures, status };
+  }
+
+  const refPayload = parseJsonFromCommandPayload(refResult.stdout, 'tag ref payload', failures);
+  if (!refPayload) {
+    return { failures, status };
+  }
+
+  status.checked = true;
+  status.exists = true;
+  status.objectType = typeof refPayload?.object?.type === 'string' ? refPayload.object.type : null;
+  status.objectSha = typeof refPayload?.object?.sha === 'string' ? refPayload.object.sha : null;
+  if (status.objectType !== 'tag' || !status.objectSha) {
+    status.reason = 'not-annotated';
+    addFailure(
+      failures,
+      'tag-not-annotated',
+      `Release tag '${normalizedTagRef}' is not an annotated tag (object.type=${status.objectType || '<empty>'}).`,
+      normalizedTagRef
+    );
+    return { failures, status };
+  }
+  status.annotated = true;
+
+  const tagPath = `repos/${repository}/git/tags/${status.objectSha}`;
+  const tagResult = await Promise.resolve(runner('gh', ['api', tagPath]));
+  if (tagResult.status !== 0) {
+    addFailure(
+      failures,
+      'tag-object-lookup-failed',
+      `Failed to query tag object for '${normalizedTagRef}': ${formatCommandError(tagResult)}.`,
+      normalizedTagRef
+    );
+    return { failures, status };
+  }
+
+  const tagPayload = parseJsonFromCommandPayload(tagResult.stdout, 'tag object payload', failures);
+  if (!tagPayload) {
+    return { failures, status };
+  }
+
+  const verification = tagPayload?.verification || {};
+  status.verified = verification?.verified === true;
+  status.reason = typeof verification?.reason === 'string' ? verification.reason : null;
+  status.verifiedAt = typeof verification?.verified_at === 'string' ? verification.verified_at : null;
+
+  if (!status.verified) {
+    addFailure(
+      failures,
+      'tag-signature-unverified',
+      `Release tag '${normalizedTagRef}' signature not verified (reason=${status.reason || 'unknown'}).`,
+      normalizedTagRef
+    );
+  }
+
+  return { failures, status };
+}
+
 export function shouldRetryAttestationVerify(message) {
   const text = String(message || '').toLowerCase();
   return (
@@ -677,6 +804,7 @@ function appendSummary(report, reportPath) {
     `- Status: \`${report.summary.status}\``,
     `- Failures: \`${report.summary.failureCount}\``,
     `- Artifacts evaluated: \`${report.summary.artifactCount}\``,
+    `- Tag signature: \`${report.tagSignature.verified ? 'verified' : report.tagSignature.reason || 'unverified'}\` (\`${report.tagSignature.refName || 'n/a'}\`)`,
     `- Attestations verified: \`${report.summary.attestationVerifiedCount}/${report.summary.attestationTotal}\``,
     `- Report: \`${reportPath}\``
   ];
@@ -700,6 +828,17 @@ export async function run(options, dependencies = {}) {
   const repository = resolveRepositorySlug(options.repo);
   const signerWorkflow = options.signerWorkflow || `${repository}/.github/workflows/release.yml`;
   const repoRoot = process.cwd();
+
+  const tagSignature = options.verifyTagSignature
+    ? await verifyReleaseTagSignature({
+        repository,
+        tagRef: options.tagRef || process.env.GITHUB_REF_NAME || null,
+        runner: dependencies.runner || defaultCommandRunner
+      })
+    : {
+        failures: [],
+        status: createDefaultTagSignatureStatus(options.tagRef || process.env.GITHUB_REF_NAME || null, 'skipped')
+      };
 
   const local = evaluateLocalIntegrity({
     repoRoot,
@@ -735,7 +874,7 @@ export async function run(options, dependencies = {}) {
     });
   }
 
-  const failures = [...local.failures, ...attestation.failures];
+  const failures = [...tagSignature.failures, ...local.failures, ...attestation.failures];
   const summary = {
     status: failures.length === 0 ? 'pass' : 'fail',
     failureCount: failures.length,
@@ -759,11 +898,14 @@ export async function run(options, dependencies = {}) {
       sha: process.env.GITHUB_SHA || null
     },
     policy: {
+      verifyTagSignature: options.verifyTagSignature,
+      tagRef: options.tagRef || process.env.GITHUB_REF_NAME || null,
       signerWorkflow,
       verifyAttestations: options.verifyAttestations,
       attestationAttempts: options.attestationAttempts,
       attestationRetrySeconds: options.attestationRetrySeconds
     },
+    tagSignature: tagSignature.status,
     artifacts: {
       root: path.resolve(options.artifactsRoot),
       distribution: local.artifactRecords,
@@ -813,6 +955,7 @@ if (invokedPath && invokedPath === modulePath) {
           attestationVerifiedCount: 0,
           attestationTotal: 0
         },
+        tagSignature: createDefaultTagSignatureStatus(process.env.GITHUB_REF_NAME || null, 'execution-error'),
         failures: [
           {
             code: 'execution-error',

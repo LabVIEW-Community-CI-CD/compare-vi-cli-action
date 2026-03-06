@@ -8,6 +8,7 @@
     "generatedAt",
     "repository",
     "policy",
+    "tagSignature",
     "artifacts",
     "attestations",
     "failures",
@@ -34,12 +35,23 @@
     "policy": {
       "type": "object",
       "required": [
+        "verifyTagSignature",
+        "tagRef",
         "signerWorkflow",
         "verifyAttestations",
         "attestationAttempts",
         "attestationRetrySeconds"
       ],
       "properties": {
+        "verifyTagSignature": {
+          "type": "boolean"
+        },
+        "tagRef": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
         "signerWorkflow": {
           "type": "string"
         },
@@ -55,6 +67,20 @@
           "minimum": 0
         }
       }
+    },
+    "tagSignature": {
+      "type": "object",
+      "required": [
+        "refName",
+        "checked",
+        "exists",
+        "annotated",
+        "objectType",
+        "objectSha",
+        "verified",
+        "reason",
+        "verifiedAt"
+      ]
     },
     "artifacts": {
       "type": "object",
