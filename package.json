@@ -70,6 +70,7 @@
     "priority:release": "pwsh -NoLogo -NoProfile -File tools/priority/Simulate-Release.ps1",
     "priority:schema": "node tools/npm/run-script.mjs schema:validate -- --schema docs/schemas/standing-priority-issue-v1.schema.json --data tests/results/_agent/issue/[0-9]*.json --optional",
     "priority:show": "node -e \"console.log(require('fs').readFileSync('tests/results/_agent/issue/router.json','utf8'))\"",
+    "priority:safe-git:trend": "node tools/priority/summarize-safe-git-telemetry.mjs",
     "priority:sync": "node tools/priority/sync-standing-priority.mjs",
     "priority:sync:strict": "node tools/priority/sync-standing-priority.mjs --fail-on-missing",
     "priority:sync:lane": "node tools/priority/sync-standing-priority.mjs --fail-on-missing --fail-on-multiple",

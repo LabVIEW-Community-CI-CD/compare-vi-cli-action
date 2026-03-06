@@ -125,6 +125,30 @@ function Invoke-WorkspaceHealthGate([string]$repoRoot){
   Write-Host '[pre-push] workspace health gate OK' -ForegroundColor Green
 }
 
+function Invoke-SafeGitReliabilitySummary([string]$repoRoot){
+  $scriptPath = Join-Path $repoRoot 'tools' 'priority' 'summarize-safe-git-telemetry.mjs'
+  if (-not (Test-Path -LiteralPath $scriptPath -PathType Leaf)) {
+    throw ("safe-git reliability summary script not found: {0}" -f $scriptPath)
+  }
+
+  $inputPath = Join-Path $repoRoot 'tests' 'results' '_agent' 'reliability' 'safe-git-events.jsonl'
+  $outputPath = Join-Path $repoRoot 'tests' 'results' '_agent' 'reliability' 'safe-git-trend-summary.json'
+  Write-Host '[pre-push] Summarizing safe-git reliability telemetry' -ForegroundColor Cyan
+  $args = @(
+    $scriptPath,
+    '--input', $inputPath,
+    '--output', $outputPath
+  )
+  if ($env:GITHUB_STEP_SUMMARY) {
+    $args += @('--step-summary', $env:GITHUB_STEP_SUMMARY)
+  }
+  & node @args
+  if ($LASTEXITCODE -ne 0) {
+    throw ("safe-git reliability summary failed (exit={0})." -f $LASTEXITCODE)
+  }
+  Write-Host '[pre-push] safe-git reliability summary OK' -ForegroundColor Green
+}
+
 $root = (Get-RepoRoot).Path
 Invoke-WorkspaceHealthGate -repoRoot $root
 $guardScript = Join-Path (Split-Path -Parent $PSCommandPath) 'Assert-NoAmbiguousRemoteRefs.ps1'
@@ -196,6 +220,8 @@ if (Test-Path -LiteralPath $commitIntegrityContractScript -PathType Leaf) {
   }
   Write-Host '[pre-push] commit-integrity contract OK' -ForegroundColor Green
 }
+
+Invoke-SafeGitReliabilitySummary -repoRoot $root
 
 $skipNiImageChecks = $SkipNiImageFlagScenarios `
   -or $SkipIconEditorFixtureChecks `

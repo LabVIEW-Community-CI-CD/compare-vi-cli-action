@@ -1,10 +1,19 @@
 #!/usr/bin/env node
 
 import { spawnSync } from 'node:child_process';
+import path from 'node:path';
 import process from 'node:process';
 import { isMutatingGitCommand, runGitWithSafety } from './safe-git.mjs';
 
 const IDENTIFIER_REGEX = /^[A-Za-z0-9._-]+$/;
+
+function resolveSafeGitTelemetryPath(cwd) {
+  const explicit = process.env.SAFE_GIT_TELEMETRY_PATH;
+  if (explicit) {
+    return path.isAbsolute(explicit) ? explicit : path.resolve(cwd, explicit);
+  }
+  return path.resolve(cwd, 'tests', 'results', '_agent', 'reliability', 'safe-git-events.jsonl');
+}
 
 export function run(command, args, options = {}) {
   const normalizedOptions = {
@@ -15,7 +24,9 @@ export function run(command, args, options = {}) {
 
   const result =
     command === 'git' && isMutatingGitCommand(args)
-      ? runGitWithSafety(args, normalizedOptions)
+      ? runGitWithSafety(args, normalizedOptions, {
+        telemetryPath: resolveSafeGitTelemetryPath(normalizedOptions.cwd ?? process.cwd())
+      })
       : spawnSync(command, args, normalizedOptions);
 
   if (result.status !== 0) {
