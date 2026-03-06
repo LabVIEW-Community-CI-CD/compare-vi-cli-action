@@ -30,7 +30,26 @@ jobs:
       - name: Append summary
         if: always()
         run: |
-          node -e "const fs=require('fs');const p='tests/results/_agent/security/security-intake-report.json';if(!fs.existsSync(p)){console.log('security intake report missing');process.exit(0)};const r=JSON.parse(fs.readFileSync(p,'utf8'));const lines=['## Security Intake',`- status: \`${r.status}\``,`- breaches: \`${(r.breaches||[]).length}\``,`- open alerts: \`${r.summary?.open?.total ?? 0}\``,'- route action: `'+(r.route?.action||'none')+'`'];if(process.env.GITHUB_STEP_SUMMARY){fs.appendFileSync(process.env.GITHUB_STEP_SUMMARY,lines.join('\n')+'\n');}console.log(lines.join('\n'));"
+          node <<'NODE'
+          const fs = require('fs');
+          const reportPath = 'tests/results/_agent/security/security-intake-report.json';
+          if (!fs.existsSync(reportPath)) {
+            console.log('security intake report missing');
+            process.exit(0);
+          }
+          const report = JSON.parse(fs.readFileSync(reportPath, 'utf8'));
+          const lines = [
+            '## Security Intake',
+            `- status: \`${report.status}\``,
+            `- breaches: \`${Array.isArray(report.breaches) ? report.breaches.length : 0}\``,
+            `- open alerts: \`${report.summary?.open?.total ?? 0}\``,
+            `- route action: \`${report.route?.action ?? 'none'}\``
+          ];
+          if (process.env.GITHUB_STEP_SUMMARY) {
+            fs.appendFileSync(process.env.GITHUB_STEP_SUMMARY, `${lines.join('\n')}\n`);
+          }
+          console.log(lines.join('\n'));
+          NODE
 
       - name: Upload security intake artifact
         if: always()
@@ -39,4 +58,3 @@ jobs:
           name: security-intake-report
           path: tests/results/_agent/security/security-intake-report.json
           if-no-files-found: warn
-
