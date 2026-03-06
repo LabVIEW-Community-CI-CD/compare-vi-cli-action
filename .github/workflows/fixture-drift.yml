@@ -191,6 +191,10 @@ jobs:
         Copy-Item -LiteralPath (Join-Path $env:GITHUB_WORKSPACE 'VI2.vi') -Destination $head -Force
         "base=$base`nhead=$head" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
 
+    - name: Pull NI Linux image
+      shell: bash
+      run: docker pull "${NI_LINUX_IMAGE}"
+
     - name: NI Linux container compare evidence
       id: ni_linux_compare
       shell: pwsh
