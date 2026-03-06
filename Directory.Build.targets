@@ -1,0 +1,22 @@
+<Project>
+  <PropertyGroup>
+    <CompareViSharedResolvedSource Condition="'$(CompareViSharedSource)' == ''">project</CompareViSharedResolvedSource>
+    <CompareViSharedResolvedSource Condition="'$(CompareViSharedSource)' == 'project'">project</CompareViSharedResolvedSource>
+    <CompareViSharedResolvedSource Condition="'$(CompareViSharedSource)' == 'package'">package</CompareViSharedResolvedSource>
+
+    <CompareViSharedPackageCandidate Condition="'$(CompareViSharedPackageFeed)' != '' and '$(CompareViSharedPackageVersion)' != ''">
+      $(CompareViSharedPackageFeed)/CompareVi.Shared.$(CompareViSharedPackageVersion).nupkg
+    </CompareViSharedPackageCandidate>
+    <CompareViSharedPackageAvailable Condition="'$(CompareViSharedPackageCandidate)' != '' and Exists('$(CompareViSharedPackageCandidate)')">true</CompareViSharedPackageAvailable>
+    <CompareViSharedPackageAvailable Condition="'$(CompareViSharedPackageAvailable)' == ''">false</CompareViSharedPackageAvailable>
+
+    <CompareViSharedResolvedSource Condition="'$(CompareViSharedSource)' == 'package-first' and '$(CompareViSharedPackageAvailable)' == 'true'">package</CompareViSharedResolvedSource>
+    <CompareViSharedResolvedSource Condition="'$(CompareViSharedSource)' == 'package-first' and '$(CompareViSharedPackageAvailable)' != 'true'">$(CompareViSharedFallbackSource)</CompareViSharedResolvedSource>
+  </PropertyGroup>
+
+  <Target Name="PrintCompareViSharedSource">
+    <Message
+      Importance="High"
+      Text="CompareViSharedSource=$(CompareViSharedSource);CompareViSharedResolvedSource=$(CompareViSharedResolvedSource);CompareViSharedFallbackSource=$(CompareViSharedFallbackSource);CompareViSharedPackageVersion=$(CompareViSharedPackageVersion);CompareViSharedPackageFeed=$(CompareViSharedPackageFeed);CompareViSharedPackageAvailable=$(CompareViSharedPackageAvailable)" />
+  </Target>
+</Project>

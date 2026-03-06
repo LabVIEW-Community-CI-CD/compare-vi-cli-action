@@ -13,7 +13,8 @@
         "promotion-evidence-ledger",
         "certification-matrix",
         "supply-chain-trust-gate",
-        "rollback-drill-health"
+        "rollback-drill-health",
+        "shared-source-resolution"
       ]
     },
     "stable": {
@@ -25,7 +26,8 @@
         "promotion-evidence-ledger",
         "certification-matrix",
         "supply-chain-trust-gate",
-        "rollback-drill-health"
+        "rollback-drill-health",
+        "shared-source-resolution"
       ]
     },
     "lts": {
@@ -37,7 +39,8 @@
         "promotion-evidence-ledger",
         "certification-matrix",
         "supply-chain-trust-gate",
-        "rollback-drill-health"
+        "rollback-drill-health",
+        "shared-source-resolution"
       ]
     }
   },

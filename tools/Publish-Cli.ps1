@@ -1,8 +1,16 @@
 param(
   [string]$ProjectPath = "src/CompareVi.Tools.Cli/CompareVi.Tools.Cli.csproj",
+  [string]$SharedProjectPath = "src/CompareVi.Shared/CompareVi.Shared.csproj",
   [string]$Configuration = "Release",
   [string[]]$Rids = @("win-x64","linux-x64","osx-x64"),
   [string]$OutputRoot = "artifacts/cli",
+  [ValidateSet("project","package","package-first")]
+  [string]$CompareViSharedSource = "package-first",
+  [string]$CompareViSharedPackageVersion = "",
+  [string]$CompareViSharedPackageFeed = "artifacts/shared-feed",
+  [switch]$PrepareSharedPackageFeed = $true,
+  [switch]$FailOnSharedFallback = $false,
+  [string]$SharedSourceReportPath = "tests/results/_agent/release/shared-source-resolution.json",
   [switch]$FrameworkDependent = $true,
   [switch]$SelfContained = $true,
   [switch]$SingleFile = $true
@@ -16,6 +24,16 @@ function Get-VersionFromProps {
   $ver = $xml.Project.PropertyGroup.Version
   if ([string]::IsNullOrWhiteSpace($ver)) { return '0.0.0' }
   return $ver
+}
+
+function Get-SharedPackageVersion {
+  param([string]$CsprojPath)
+  [xml]$xml = Get-Content -Raw $CsprojPath
+  $packageVersion = $xml.Project.PropertyGroup.PackageVersion | Select-Object -First 1
+  if (-not [string]::IsNullOrWhiteSpace($packageVersion)) { return [string]$packageVersion }
+  $version = $xml.Project.PropertyGroup.Version | Select-Object -First 1
+  if (-not [string]::IsNullOrWhiteSpace($version)) { return [string]$version }
+  throw "Unable to resolve CompareVi.Shared package version from $CsprojPath"
 }
 
 function Ensure-Dir($path) {
@@ -44,19 +62,150 @@ function Copy-Docs($destDir) {
   }
 }
 
+function Resolve-SharedSourceSelection {
+  param(
+    [string]$ProjectFullPath,
+    [string]$RequestedSourceMode,
+    [string]$SharedPackageVersion,
+    [string]$SharedPackageFeedPath
+  )
+
+  $output = dotnet msbuild $ProjectFullPath -nologo -t:PrintCompareViSharedSource `
+    "-p:CompareViSharedSource=$RequestedSourceMode" `
+    "-p:CompareViSharedPackageVersion=$SharedPackageVersion" `
+    "-p:CompareViSharedPackageFeed=$SharedPackageFeedPath" 2>&1
+  if ($LASTEXITCODE -ne 0) {
+    throw "Unable to evaluate CompareVi.Shared source resolution."
+  }
+
+  $text = ($output | Out-String)
+  $resolved = [regex]::Match($text, 'CompareViSharedResolvedSource=([^;]+);').Groups[1].Value
+  $resolved = ($resolved -replace '\s+', '').Trim()
+  $packageAvailable = [regex]::Match($text, 'CompareViSharedPackageAvailable=([A-Za-z0-9._-]+)').Groups[1].Value
+  if ([string]::IsNullOrWhiteSpace($resolved)) {
+    throw "Failed to parse CompareViSharedResolvedSource from msbuild output."
+  }
+
+  return [pscustomobject]@{
+    RequestedSourceMode = $RequestedSourceMode
+    ResolvedSource = $resolved
+    PackageAvailable = $packageAvailable
+    Raw = $text.Trim()
+  }
+}
+
+function Write-JsonReport {
+  param(
+    [string]$Path,
+    [object]$Data
+  )
+
+  $dir = Split-Path -Parent $Path
+  if ($dir) { Ensure-Dir $dir }
+  $Data | ConvertTo-Json -Depth 10 | Set-Content -LiteralPath $Path -Encoding UTF8
+}
+
+function Invoke-CliPublish {
+  param(
+    [string]$ProjectFullPath,
+    [string]$Rid,
+    [string]$OutDir,
+    [bool]$IsSelfContained,
+    [bool]$EnableSingleFile,
+    [string]$BuildConfig,
+    [string]$SharedSourceMode,
+    [string]$SharedPackageVersion,
+    [string]$SharedPackageFeedPath
+  )
+
+  $args = @(
+    'publish',
+    $ProjectFullPath,
+    '-c', $BuildConfig,
+    '-r', $Rid,
+    '--self-contained', ($IsSelfContained ? 'true' : 'false'),
+    '-p:PublishTrimmed=false',
+    "-p:CompareViSharedSource=$SharedSourceMode",
+    "-p:CompareViSharedPackageVersion=$SharedPackageVersion",
+    "-p:CompareViSharedPackageFeed=$SharedPackageFeedPath",
+    '-o', $OutDir
+  )
+  if ($IsSelfContained -and $EnableSingleFile) {
+    $args += '-p:PublishSingleFile=true'
+    $args += '-p:IncludeNativeLibrariesForSelfExtract=true'
+  }
+  if ($SharedSourceMode -ne 'project') {
+    $args += '--source'
+    $args += $SharedPackageFeedPath
+    $args += '--source'
+    $args += 'https://api.nuget.org/v3/index.json'
+  }
+  dotnet @args
+}
+
 $version = Get-VersionFromProps
 Write-Host "Publishing comparevi-cli version $version" -ForegroundColor Cyan
 
 $projFull = Resolve-Path $ProjectPath | Select-Object -ExpandProperty Path
+$sharedProjFull = Resolve-Path $SharedProjectPath | Select-Object -ExpandProperty Path
 $root = Resolve-Path '.' | Select-Object -ExpandProperty Path
 $outRoot = Join-Path $root $OutputRoot
 Ensure-Dir $outRoot
+
+$sharedFeed = if ([System.IO.Path]::IsPathRooted($CompareViSharedPackageFeed)) {
+  $CompareViSharedPackageFeed
+} else {
+  Join-Path $root $CompareViSharedPackageFeed
+}
+Ensure-Dir $sharedFeed
+
+if ([string]::IsNullOrWhiteSpace($CompareViSharedPackageVersion)) {
+  $CompareViSharedPackageVersion = Get-SharedPackageVersion -CsprojPath $sharedProjFull
+}
+
+if ($CompareViSharedSource -ne 'project' -and $PrepareSharedPackageFeed) {
+  Write-Host "Preparing CompareVi.Shared feed at $sharedFeed (version $CompareViSharedPackageVersion)" -ForegroundColor Cyan
+  dotnet restore $sharedProjFull
+  dotnet build -c $Configuration $sharedProjFull --no-restore
+  dotnet pack -c $Configuration $sharedProjFull -o $sharedFeed --no-build `
+    -p:PackageVersion=$CompareViSharedPackageVersion `
+    -p:Version=$CompareViSharedPackageVersion
+}
+
+$sharedSourceSelection = Resolve-SharedSourceSelection -ProjectFullPath $projFull `
+  -RequestedSourceMode $CompareViSharedSource `
+  -SharedPackageVersion $CompareViSharedPackageVersion `
+  -SharedPackageFeedPath $sharedFeed
+
+Write-Host ("CompareVi.Shared source requested={0} resolved={1} packageAvailable={2}" -f
+  $sharedSourceSelection.RequestedSourceMode,
+  $sharedSourceSelection.ResolvedSource,
+  $sharedSourceSelection.PackageAvailable) -ForegroundColor Cyan
+
+$sharedSourceReport = [ordered]@{
+  schema = 'release/shared-source-resolution@v1'
+  generatedAt = (Get-Date).ToUniversalTime().ToString('o')
+  requestedSource = $sharedSourceSelection.RequestedSourceMode
+  resolvedSource = $sharedSourceSelection.ResolvedSource
+  packageAvailable = $sharedSourceSelection.PackageAvailable
+  packageVersion = $CompareViSharedPackageVersion
+  packageFeed = $sharedFeed
+  prepareSharedPackageFeed = [bool]$PrepareSharedPackageFeed
+  failOnSharedFallback = [bool]$FailOnSharedFallback
+}
+Write-JsonReport -Path $SharedSourceReportPath -Data $sharedSourceReport
+
+if ($FailOnSharedFallback -and $CompareViSharedSource -ne 'project' -and $sharedSourceSelection.ResolvedSource -ne 'package') {
+  throw "CompareVi.Shared source fallback detected: requested=$CompareViSharedSource resolved=$($sharedSourceSelection.ResolvedSource)"
+}
 
 foreach ($rid in $Rids) {
   if ($FrameworkDependent) {
     $out = Join-Path $outRoot "fxdependent/$rid"
     Ensure-Dir $out
-    dotnet publish $projFull -c $Configuration -r $rid --self-contained false -p:PublishTrimmed=false -o $out
+    Invoke-CliPublish -ProjectFullPath $projFull -Rid $rid -OutDir $out -IsSelfContained:$false `
+      -EnableSingleFile:$false -BuildConfig $Configuration -SharedSourceMode $CompareViSharedSource `
+      -SharedPackageVersion $CompareViSharedPackageVersion -SharedPackageFeedPath $sharedFeed
     Copy-Docs $out
     if ($rid -like 'win-*') {
       $zip = Join-Path $outRoot ("comparevi-cli-v{0}-{1}-fxdependent.zip" -f $version,$rid)
@@ -70,10 +219,9 @@ foreach ($rid in $Rids) {
   if ($SelfContained) {
     $out = Join-Path $outRoot "selfcontained/$rid"
     Ensure-Dir $out
-    $props = @('PublishTrimmed=false')
-    if ($SingleFile) { $props += 'PublishSingleFile=true'; $props += 'IncludeNativeLibrariesForSelfExtract=true' }
-    $propArgs = $props | ForEach-Object { "-p:$_" }
-    dotnet publish $projFull -c $Configuration -r $rid --self-contained true @propArgs -o $out
+    Invoke-CliPublish -ProjectFullPath $projFull -Rid $rid -OutDir $out -IsSelfContained:$true `
+      -EnableSingleFile:$SingleFile -BuildConfig $Configuration -SharedSourceMode $CompareViSharedSource `
+      -SharedPackageVersion $CompareViSharedPackageVersion -SharedPackageFeedPath $sharedFeed
     Copy-Docs $out
     if ($rid -like 'win-*') {
       $zip = Join-Path $outRoot ("comparevi-cli-v{0}-{1}-selfcontained.zip" -f $version,$rid)
