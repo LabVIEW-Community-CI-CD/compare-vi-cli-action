@@ -36,7 +36,7 @@ Describe 'Run-NIWindowsContainerCompare.ps1' -Tag 'Unit' {
       $pwshPath = (Get-Command pwsh -ErrorAction Stop).Source
 
       $stubPs1 = @'
-param([Parameter(ValueFromRemainingArguments = $true)][string[]]$Args)
+$Args = @($args)
 $logPath = [System.Environment]::GetEnvironmentVariable('DOCKER_STUB_LOG')
 if (-not [string]::IsNullOrWhiteSpace($logPath)) {
   $record = [ordered]@{
@@ -173,7 +173,9 @@ exit 0
       Set-Content -LiteralPath (Join-Path $binDir 'docker.cmd') -Value $stubCmd -Encoding ascii
 
       $env:PATH = "{0};{1}" -f $binDir, $env:PATH
-      $env:DOCKER_COMMAND_OVERRIDE = (Join-Path $binDir 'docker.cmd')
+      # Keep docker.cmd available for generic `& docker` calls while forcing
+      # docker run execution paths to bypass cmd's command-line length limit.
+      $env:DOCKER_COMMAND_OVERRIDE = (Join-Path $binDir 'docker.ps1')
       return $binDir
     }
 
@@ -344,6 +346,56 @@ exit 0
 
     $records = & $script:ReadDockerStubLog -Path $logPath
     (@($records | Where-Object { $_.args[0] -eq 'run' })).Count | Should -Be 0
+  }
+
+  It 'preserves LabVIEWPath env value with spaces when invoking docker shim' {
+    $work = Join-Path $TestDrive 'compare-labview-path-spaces'
+    New-Item -ItemType Directory -Path $work | Out-Null
+    & $script:NewDockerStub -WorkRoot $work | Out-Null
+
+    $logPath = Join-Path $work 'docker-log.ndjson'
+    Set-Item Env:DOCKER_STUB_LOG $logPath
+    Set-Item Env:DOCKER_STUB_OSTYPE 'windows'
+    Set-Item Env:DOCKER_STUB_IMAGE_EXISTS '1'
+    Set-Item Env:DOCKER_STUB_CONTEXT 'desktop-windows'
+    Set-Item Env:DOCKER_STUB_RUN_EXIT_CODE '1'
+    Set-Item Env:DOCKER_STUB_RUN_STDOUT 'CreateComparisonReport completed with diff.'
+
+    $baseVi = Join-Path $work 'Base.vi'
+    $headVi = Join-Path $work 'Head.vi'
+    Set-Content -LiteralPath $baseVi -Value 'base' -Encoding utf8
+    Set-Content -LiteralPath $headVi -Value 'head' -Encoding utf8
+    $reportPath = Join-Path $work 'out\compare-report.html'
+
+    $output = & pwsh -NoLogo -NoProfile -File $script:RunnerScript `
+      -BaseVi $baseVi `
+      -HeadVi $headVi `
+      -ReportPath $reportPath `
+      -LabVIEWPath $script:ContainerLabVIEWPath `
+      -RuntimeEngineReadyTimeoutSeconds 5 `
+      -RuntimeEngineReadyPollSeconds 1 2>&1
+    $LASTEXITCODE | Should -Be 1 -Because ($output -join "`n")
+
+    $records = & $script:ReadDockerStubLog -Path $logPath
+    $runRecord = @(
+      $records | Where-Object {
+        $recordArgs = @($_.args | ForEach-Object { [string]$_ })
+        $recordArgs -contains 'run'
+      } | Select-Object -First 1
+    )
+    $runRecord | Should -Not -BeNullOrEmpty
+    $runArgs = @($runRecord[0].args | ForEach-Object { [string]$_ })
+
+    $labviewEnvArg = $null
+    for ($i = 0; $i -lt ($runArgs.Count - 1); $i++) {
+      if ($runArgs[$i] -eq '--env' -and $runArgs[$i + 1].StartsWith('COMPARE_LABVIEW_PATH=')) {
+        $labviewEnvArg = $runArgs[$i + 1]
+        break
+      }
+    }
+    $labviewEnvArg | Should -Be ("COMPARE_LABVIEW_PATH={0}" -f $script:ContainerLabVIEWPath)
+    $runArgs | Should -Not -Contain 'Files\National'
+    $runArgs | Should -Not -Contain 'Instruments\LabVIEW'
   }
 
   It 'writes deterministic capture artifacts for compare execution' {

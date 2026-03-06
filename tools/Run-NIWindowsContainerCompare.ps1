@@ -91,9 +91,28 @@ function Resolve-DockerCommandSource {
   if (-not [string]::IsNullOrWhiteSpace($override) -and (Test-Path -LiteralPath $override -PathType Leaf)) {
     return [System.IO.Path]::GetFullPath($override)
   }
+
+  $commands = @(Get-Command -Name 'docker' -All -ErrorAction SilentlyContinue)
+  if ($commands.Count -gt 0) {
+    $sourceCandidates = @()
+    foreach ($command in $commands) {
+      if ([string]::IsNullOrWhiteSpace([string]$command.Source)) { continue }
+      $source = [string]$command.Source
+      if (-not (Test-Path -LiteralPath $source -PathType Leaf)) { continue }
+      $sourceCandidates += $source
+    }
+    if ($sourceCandidates.Count -gt 0) {
+      $exe = @($sourceCandidates | Where-Object { [System.StringComparer]::OrdinalIgnoreCase.Equals([System.IO.Path]::GetExtension($_), '.exe') } | Select-Object -First 1)
+      if ($exe.Count -gt 0) { return [System.IO.Path]::GetFullPath($exe[0]) }
+      $ps1 = @($sourceCandidates | Where-Object { [System.StringComparer]::OrdinalIgnoreCase.Equals([System.IO.Path]::GetExtension($_), '.ps1') } | Select-Object -First 1)
+      if ($ps1.Count -gt 0) { return [System.IO.Path]::GetFullPath($ps1[0]) }
+      return [System.IO.Path]::GetFullPath($sourceCandidates[0])
+    }
+  }
+
   $pathSeparator = [System.IO.Path]::PathSeparator
   $pathEntries = @($env:PATH -split [regex]::Escape([string]$pathSeparator))
-  $candidates = @('docker.cmd', 'docker.ps1', 'docker.exe', 'docker.bat', 'docker')
+  $candidates = @('docker.exe', 'docker.ps1', 'docker.cmd', 'docker.bat', 'docker')
   foreach ($entry in $pathEntries) {
     if ([string]::IsNullOrWhiteSpace($entry)) { continue }
     foreach ($name in $candidates) {
@@ -483,7 +502,8 @@ function Invoke-DockerRunWithTimeout {
     $dockerCommandSource = Resolve-DockerCommandSource
     $startFilePath = $dockerCommandSource
     $startArgs = @($DockerArgs)
-    if ([System.StringComparer]::OrdinalIgnoreCase.Equals([System.IO.Path]::GetExtension($dockerCommandSource), '.ps1')) {
+    $dockerSourceExt = [System.IO.Path]::GetExtension($dockerCommandSource)
+    if ([System.StringComparer]::OrdinalIgnoreCase.Equals($dockerSourceExt, '.ps1')) {
       $pwshExe = (Get-Command -Name 'pwsh' -ErrorAction Stop).Source
       $startFilePath = $pwshExe
       $startArgs = @('-NoLogo', '-NoProfile', '-File', $dockerCommandSource) + @($DockerArgs)
@@ -780,8 +800,8 @@ function Get-ReportAnalysis {
   try {
     $html = Get-Content -LiteralPath $ExtractedReportPath -Raw -ErrorAction Stop
     $analysis.htmlParsed = $true
-    $analysis.diffMarkerCount = [regex]::Matches($html, 'summary\.difference-heading', [System.Text.RegularExpressions.RegexOptions]::IgnoreCase).Count
-    $analysis.diffDetailCount = [regex]::Matches($html, 'li\.diff-detail(?:-cosmetic)?', [System.Text.RegularExpressions.RegexOptions]::IgnoreCase).Count
+    $analysis.diffMarkerCount = [regex]::Matches($html, '(summary\.difference-heading|<summary[^>]+class\s*=\s*["''][^"'']*difference-heading)', [System.Text.RegularExpressions.RegexOptions]::IgnoreCase).Count
+    $analysis.diffDetailCount = [regex]::Matches($html, '(li\.diff-detail(?:-cosmetic)?|<li[^>]+class\s*=\s*["''][^"'']*diff-detail(?:-cosmetic)?)', [System.Text.RegularExpressions.RegexOptions]::IgnoreCase).Count
     $analysis.diffImageCount = [regex]::Matches($html, '<img[^>]+class\s*=\s*["''][^"'']*difference-image', [System.Text.RegularExpressions.RegexOptions]::IgnoreCase).Count
     $analysis.hasDiffEvidence = (($analysis.diffMarkerCount + $analysis.diffDetailCount + $analysis.diffImageCount) -gt 0)
   } catch {
@@ -1016,7 +1036,8 @@ try {
         $dockerArgs += @('--env', ("{0}={1}" -f $stubVar, $stubValue))
       }
     }
-    $dockerArgs += @('--env', ("COMPARE_LABVIEW_PATH={0}" -f $resolvedLabVIEWPath))
+    # Quote the complete key/value token so cmd shims preserve spaces in the value.
+    $dockerArgs += @('--env', ('"COMPARE_LABVIEW_PATH={0}"' -f $resolvedLabVIEWPath))
     $dockerArgs += @(
       $Image,
       'powershell',
@@ -1137,8 +1158,12 @@ try {
     -TimedOut:([bool]$capture.timedOut)
 
   $hasHtmlDiffEvidence = $false
-  if ($capture.PSObject.Properties['reportAnalysis'] -and $capture.reportAnalysis -and $capture.reportAnalysis.PSObject.Properties['hasDiffEvidence']) {
-    $hasHtmlDiffEvidence = [bool]$capture.reportAnalysis.hasDiffEvidence
+  if ($null -ne $capture.reportAnalysis) {
+    if ($capture.reportAnalysis -is [System.Collections.IDictionary] -and $capture.reportAnalysis.Contains('hasDiffEvidence')) {
+      $hasHtmlDiffEvidence = [bool]$capture.reportAnalysis['hasDiffEvidence']
+    } elseif ($capture.reportAnalysis.PSObject.Properties['hasDiffEvidence']) {
+      $hasHtmlDiffEvidence = [bool]$capture.reportAnalysis.hasDiffEvidence
+    }
   }
   if (
     $hasHtmlDiffEvidence -and
