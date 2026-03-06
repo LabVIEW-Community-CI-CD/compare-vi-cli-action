@@ -1,0 +1,259 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://labview-community-ci-cd.github.io/schemas/downstream-onboarding-report-v1.schema.json",
+  "title": "Downstream Onboarding Report v1",
+  "type": "object",
+  "required": [
+    "schema",
+    "generatedAt",
+    "upstreamRepository",
+    "actionRepository",
+    "downstreamRepository",
+    "targetBranch",
+    "checklist",
+    "metrics",
+    "summary",
+    "hardeningBacklog"
+  ],
+  "properties": {
+    "schema": {
+      "type": "string",
+      "const": "priority/downstream-onboarding-report@v1"
+    },
+    "generatedAt": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "upstreamRepository": {
+      "type": "string",
+      "pattern": "^[^/]+/[^/]+$"
+    },
+    "actionRepository": {
+      "type": "string",
+      "pattern": "^[^/]+/[^/]+$"
+    },
+    "downstreamRepository": {
+      "type": "string",
+      "pattern": "^[^/]+/[^/]+$"
+    },
+    "targetBranch": {
+      "type": "string",
+      "minLength": 1
+    },
+    "pilot": {
+      "type": "object",
+      "properties": {
+        "startedAt": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "format": "date-time"
+        },
+        "parentIssue": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "minimum": 1
+        }
+      },
+      "additionalProperties": false
+    },
+    "checklist": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "id",
+          "description",
+          "required",
+          "severity",
+          "status",
+          "reason"
+        ],
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "description": {
+            "type": "string"
+          },
+          "required": {
+            "type": "boolean"
+          },
+          "severity": {
+            "type": "string",
+            "enum": [
+              "P1",
+              "P2",
+              "P3"
+            ]
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "pass",
+              "warn",
+              "fail"
+            ]
+          },
+          "reason": {
+            "type": "string"
+          },
+          "recommendation": {
+            "type": "string"
+          },
+          "evidence": {
+            "type": "object"
+          }
+        },
+        "additionalProperties": true
+      }
+    },
+    "metrics": {
+      "type": "object",
+      "required": [
+        "requiredFailures",
+        "warningCount",
+        "frictionScore"
+      ],
+      "properties": {
+        "startedAt": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "format": "date-time"
+        },
+        "firstSuccessfulConsumptionAt": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "format": "date-time"
+        },
+        "onboardingLeadTimeHours": {
+          "type": [
+            "number",
+            "null"
+          ],
+          "minimum": 0
+        },
+        "runAttemptsUntilGreen": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "minimum": 0
+        },
+        "requiredFailures": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "warningCount": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "frictionScore": {
+          "type": "integer",
+          "minimum": 0
+        }
+      },
+      "additionalProperties": false
+    },
+    "summary": {
+      "type": "object",
+      "required": [
+        "status",
+        "totalChecklist",
+        "passCount",
+        "warnCount",
+        "failCount",
+        "requiredFailCount"
+      ],
+      "properties": {
+        "status": {
+          "type": "string",
+          "enum": [
+            "pass",
+            "warn",
+            "fail"
+          ]
+        },
+        "totalChecklist": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "passCount": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "warnCount": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "failCount": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "requiredFailCount": {
+          "type": "integer",
+          "minimum": 0
+        }
+      },
+      "additionalProperties": false
+    },
+    "hardeningBacklog": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "key",
+          "title",
+          "severity",
+          "status",
+          "reason",
+          "recommendation"
+        ],
+        "properties": {
+          "key": {
+            "type": "string"
+          },
+          "title": {
+            "type": "string"
+          },
+          "severity": {
+            "type": "string",
+            "enum": [
+              "P1",
+              "P2",
+              "P3"
+            ]
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "warn",
+              "fail"
+            ]
+          },
+          "reason": {
+            "type": "string"
+          },
+          "recommendation": {
+            "type": "string"
+          }
+        },
+        "additionalProperties": true
+      }
+    },
+    "hardeningIssues": {
+      "type": "array",
+      "items": {
+        "type": "object"
+      }
+    }
+  },
+  "additionalProperties": true
+}
