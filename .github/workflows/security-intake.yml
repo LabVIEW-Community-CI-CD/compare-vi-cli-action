@@ -1,0 +1,42 @@
+name: Security Intake
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '20 6 * * *'
+
+permissions:
+  contents: read
+  issues: write
+  security-events: read
+
+jobs:
+  security-intake:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Run security intake gate
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          node tools/priority/security-intake.mjs \
+            --route-on-breach \
+            --fail-on-breach \
+            --fail-on-skip \
+            --output tests/results/_agent/security/security-intake-report.json
+
+      - name: Append summary
+        if: always()
+        run: |
+          node -e "const fs=require('fs');const p='tests/results/_agent/security/security-intake-report.json';if(!fs.existsSync(p)){console.log('security intake report missing');process.exit(0)};const r=JSON.parse(fs.readFileSync(p,'utf8'));const lines=['## Security Intake',`- status: \`${r.status}\``,`- breaches: \`${(r.breaches||[]).length}\``,`- open alerts: \`${r.summary?.open?.total ?? 0}\``,'- route action: `'+(r.route?.action||'none')+'`'];if(process.env.GITHUB_STEP_SUMMARY){fs.appendFileSync(process.env.GITHUB_STEP_SUMMARY,lines.join('\n')+'\n');}console.log(lines.join('\n'));"
+
+      - name: Upload security intake artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: security-intake-report
+          path: tests/results/_agent/security/security-intake-report.json
+          if-no-files-found: warn
+

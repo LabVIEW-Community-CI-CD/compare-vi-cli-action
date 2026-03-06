@@ -1,0 +1,250 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://comparevi.dev/schemas/security-intake-report-v1.schema.json",
+  "title": "Security Intake Report v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema",
+    "generatedAt",
+    "repository",
+    "flags",
+    "thresholds",
+    "override",
+    "source",
+    "summary",
+    "breaches",
+    "remediation",
+    "route",
+    "status",
+    "errors"
+  ],
+  "properties": {
+    "schema": {
+      "const": "priority/security-intake@v1"
+    },
+    "generatedAt": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "repository": {
+      "type": "string",
+      "pattern": "^[^/]+/[^/]+$"
+    },
+    "flags": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "routeOnBreach",
+        "failOnBreach",
+        "failOnSkip",
+        "lookbackDays",
+        "maxPages"
+      ],
+      "properties": {
+        "routeOnBreach": { "type": "boolean" },
+        "failOnBreach": { "type": "boolean" },
+        "failOnSkip": { "type": "boolean" },
+        "lookbackDays": { "type": "integer", "minimum": 0 },
+        "maxPages": { "type": "integer", "minimum": 0 }
+      }
+    },
+    "thresholds": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "openCriticalMax",
+        "openHighMax",
+        "openModerateMax",
+        "staleOpenDays",
+        "staleOpenCountMax",
+        "mttrDaysMax"
+      ],
+      "properties": {
+        "openCriticalMax": { "type": "integer", "minimum": 0 },
+        "openHighMax": { "type": "integer", "minimum": 0 },
+        "openModerateMax": { "type": "integer", "minimum": 0 },
+        "staleOpenDays": { "type": "integer", "minimum": 0 },
+        "staleOpenCountMax": { "type": "integer", "minimum": 0 },
+        "mttrDaysMax": { "type": "integer", "minimum": 0 }
+      }
+    },
+    "override": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "provided",
+        "active",
+        "owner",
+        "reason",
+        "expiresAt",
+        "ticket",
+        "validationErrors"
+      ],
+      "properties": {
+        "provided": { "type": "boolean" },
+        "active": { "type": "boolean" },
+        "owner": { "type": ["string", "null"] },
+        "reason": { "type": ["string", "null"] },
+        "expiresAt": { "type": ["string", "null"], "format": "date-time" },
+        "ticket": { "type": ["string", "null"] },
+        "validationErrors": {
+          "type": "array",
+          "items": { "type": "string" }
+        }
+      }
+    },
+    "source": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["dependabot"],
+      "properties": {
+        "dependabot": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["sampledStates", "openCount", "resolvedCount"],
+          "properties": {
+            "sampledStates": {
+              "type": "array",
+              "items": { "type": "string" },
+              "minItems": 1
+            },
+            "openCount": { "type": "integer", "minimum": 0 },
+            "resolvedCount": { "type": "integer", "minimum": 0 }
+          }
+        }
+      }
+    },
+    "summary": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["open", "resolved"],
+      "properties": {
+        "open": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "total",
+            "bySeverity",
+            "oldestOpenDays",
+            "staleDaysThreshold",
+            "staleCount",
+            "staleAlertNumbers"
+          ],
+          "properties": {
+            "total": { "type": "integer", "minimum": 0 },
+            "bySeverity": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["critical", "high", "moderate", "low", "unknown"],
+              "properties": {
+                "critical": { "type": "integer", "minimum": 0 },
+                "high": { "type": "integer", "minimum": 0 },
+                "moderate": { "type": "integer", "minimum": 0 },
+                "low": { "type": "integer", "minimum": 0 },
+                "unknown": { "type": "integer", "minimum": 0 }
+              }
+            },
+            "oldestOpenDays": { "type": ["number", "null"] },
+            "staleDaysThreshold": { "type": "integer", "minimum": 0 },
+            "staleCount": { "type": "integer", "minimum": 0 },
+            "staleAlertNumbers": {
+              "type": "array",
+              "items": { "type": "integer", "minimum": 1 }
+            }
+          }
+        },
+        "resolved": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["lookbackDays", "total", "mttrDays"],
+          "properties": {
+            "lookbackDays": { "type": "integer", "minimum": 0 },
+            "total": { "type": "integer", "minimum": 0 },
+            "mttrDays": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["average", "p50", "p90", "max"],
+              "properties": {
+                "average": { "type": ["number", "null"] },
+                "p50": { "type": ["number", "null"] },
+                "p90": { "type": ["number", "null"] },
+                "max": { "type": ["number", "null"] }
+              }
+            }
+          }
+        }
+      }
+    },
+    "breaches": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["code", "message", "actual", "threshold"],
+        "properties": {
+          "code": { "type": "string" },
+          "message": { "type": "string" },
+          "actual": { "type": "number" },
+          "threshold": { "type": "number" }
+        }
+      }
+    },
+    "remediation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["candidateCount", "candidates"],
+      "properties": {
+        "candidateCount": { "type": "integer", "minimum": 0 },
+        "candidates": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["number", "severity", "packageName", "ecosystem", "manifestPath", "ageDays", "url"],
+            "properties": {
+              "number": { "type": ["integer", "null"] },
+              "severity": { "type": "string" },
+              "packageName": { "type": ["string", "null"] },
+              "ecosystem": { "type": ["string", "null"] },
+              "manifestPath": { "type": ["string", "null"] },
+              "ageDays": { "type": ["number", "null"] },
+              "url": { "type": ["string", "null"] }
+            }
+          }
+        }
+      }
+    },
+    "route": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["action", "issueNumber", "issueUrl", "title", "labels"],
+      "properties": {
+        "action": { "enum": ["none", "created", "updated"] },
+        "issueNumber": { "type": ["integer", "null"] },
+        "issueUrl": { "type": ["string", "null"] },
+        "title": { "type": "string" },
+        "labels": {
+          "type": "array",
+          "items": { "type": "string" }
+        }
+      }
+    },
+    "status": {
+      "enum": ["pass", "breach", "overridden", "skip", "error"]
+    },
+    "errors": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": true,
+        "required": ["code", "message"],
+        "properties": {
+          "code": { "type": "string" },
+          "message": { "type": "string" }
+        }
+      }
+    }
+  }
+}
+
