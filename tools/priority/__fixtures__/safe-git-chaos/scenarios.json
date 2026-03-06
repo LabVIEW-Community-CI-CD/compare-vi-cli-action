@@ -1,0 +1,106 @@
+{
+  "schema": "priority/safe-git-chaos-scenarios@v1",
+  "version": "1.0.0",
+  "scenarios": [
+    {
+      "id": "stale-index-lock-recovers",
+      "description": "A stale .git/index.lock is removed and the mutating command succeeds.",
+      "command": ["push", "origin", "feature/x"],
+      "nowMs": 120000,
+      "lockStaleSeconds": 30,
+      "indexWritable": true,
+      "locks": [
+        { "path": "index.lock", "mtimeMs": 0 }
+      ],
+      "markers": [],
+      "activePids": [],
+      "broker": {
+        "expect": "success",
+        "maxRetries": 1,
+        "allowProcessKill": true,
+        "expectedCommandInvocations": 1,
+        "expectedRemovedLocks": ["index.lock"],
+        "expectedKilledPids": []
+      },
+      "health": {
+        "expectedFailureIds": ["stale-lock-file"],
+        "expectedPostStatus": "pass"
+      }
+    },
+    {
+      "id": "active-ref-lock-fails-bounded",
+      "description": "An active refs lock held by a running git process fails with bounded auto-repair guidance.",
+      "command": ["push", "origin", "feature/x"],
+      "nowMs": 120000,
+      "lockStaleSeconds": 30,
+      "indexWritable": true,
+      "locks": [
+        { "path": "refs/heads/develop.lock", "mtimeMs": 119500 }
+      ],
+      "markers": [],
+      "activePids": [4321],
+      "broker": {
+        "expect": "throw",
+        "errorPattern": "Auto-repair is bounded",
+        "maxRetries": 1,
+        "allowProcessKill": false,
+        "expectedCommandInvocations": 0,
+        "expectedRemovedLocks": [],
+        "expectedKilledPids": []
+      },
+      "health": {
+        "expectedFailureIds": ["active-lock-file"],
+        "expectedPostStatus": "fail"
+      }
+    },
+    {
+      "id": "orphaned-rebase-fails-fast",
+      "description": "An orphaned rebase marker blocks mutating git commands until manually resolved.",
+      "command": ["push", "origin", "feature/x"],
+      "nowMs": 120000,
+      "lockStaleSeconds": 30,
+      "indexWritable": true,
+      "locks": [],
+      "markers": ["rebase-merge"],
+      "activePids": [],
+      "broker": {
+        "expect": "throw",
+        "errorPattern": "rebase in progress",
+        "maxRetries": 1,
+        "allowProcessKill": true,
+        "expectedCommandInvocations": 0,
+        "expectedRemovedLocks": [],
+        "expectedKilledPids": []
+      },
+      "health": {
+        "expectedFailureIds": ["git-operation-in-progress"],
+        "expectedPostStatus": "fail"
+      }
+    },
+    {
+      "id": "stale-ref-lock-kills-process-recovers",
+      "description": "A stale refs lock with an orphaned git pid is self-healed by killing the stale process and removing the lock.",
+      "command": ["push", "origin", "feature/x"],
+      "nowMs": 120000,
+      "lockStaleSeconds": 30,
+      "indexWritable": true,
+      "locks": [
+        { "path": "refs/heads/feature/queue.lock", "mtimeMs": 0 }
+      ],
+      "markers": [],
+      "activePids": [9001],
+      "broker": {
+        "expect": "success",
+        "maxRetries": 1,
+        "allowProcessKill": true,
+        "expectedCommandInvocations": 1,
+        "expectedRemovedLocks": ["refs/heads/feature/queue.lock"],
+        "expectedKilledPids": [9001]
+      },
+      "health": {
+        "expectedFailureIds": ["stale-lock-file"],
+        "expectedPostStatus": "pass"
+      }
+    }
+  ]
+}
