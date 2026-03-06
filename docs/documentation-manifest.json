@@ -2,7 +2,7 @@
   "$schema": "./schemas/documentation-manifest-v1.schema.json",
   "schema": "documentation-manifest-v1",
   "version": "1.0.0",
-  "updated": "2026-03-05T05:55:00Z",
+  "updated": "2026-03-06T01:15:00Z",
   "entries": [
     {
       "name": "Root Playbooks",
@@ -61,6 +61,7 @@
         "docs/adr/0003-test-decision.md",
         "docs/adr/README.md",
         "docs/CI_ORCHESTRATION_REDESIGN.md",
+        "docs/COMMIT_INTEGRITY_CHECK.md",
         "docs/COMPARE_LOOP_MODULE.md",
         "docs/COMPARE_REPORT_CAPTURE_PLAN.md",
         "docs/DEV_DASHBOARD_PLAN.md",

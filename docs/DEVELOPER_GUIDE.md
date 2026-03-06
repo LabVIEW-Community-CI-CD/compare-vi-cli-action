@@ -312,6 +312,9 @@ For Docker/Desktop VI history validation, run fast-loop lanes explicitly:
   `Authorization unavailable` or `authenticated-no-admin`, rotate `GH_TOKEN`/`GITHUB_TOKEN` secrets in upstream.
 - Use `node tools/npm/run-script.mjs priority:policy:apply` only with admin token scope when you intentionally need to
   sync GitHub protections/rulesets back to `tools/priority/policy.json`.
+- Run `node tools/npm/run-script.mjs priority:commit-integrity -- --pr <number>` to evaluate commit trust posture
+  locally. Add `--observe-only` to mirror staged rollout mode. See `docs/COMMIT_INTEGRITY_CHECK.md` for full contract
+  and rollout flags (`COMMIT_INTEGRITY_ENFORCE`).
 - Prefer opening PRs from your fork with `node tools/npm/run-script.mjs priority:pr`; the helper ensures `origin` targets your fork (creating
   it via `gh repo fork` if needed), pushes the current branch, and calls
   `gh pr create --fill --repo <upstream> --base develop --head <fork>:branch`.
