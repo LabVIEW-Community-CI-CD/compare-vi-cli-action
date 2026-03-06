@@ -19,6 +19,7 @@ function makeCommit({
     sha,
     url: `https://github.com/example/repo/commit/${sha}`,
     messageHeadline: `commit-${sha}`,
+    trailers: [{ key: 'Issue', value: '#770' }],
     verified,
     verificationReason: reason,
     verificationSignaturePresent: verified,
@@ -65,11 +66,22 @@ test('commit integrity report schema validates generated report payload', async 
         requireUniqueShas: true,
         requireNonEmptyHeadline: true,
         maxHeadlineLength: 120,
-        requireSignatureMaterialForVerified: false
+        requireSignatureMaterialForVerified: false,
+        requireRequiredTrailer: true,
+        requiredTrailerRules: [
+          { key: 'Issue', keyLower: 'issue', valuePattern: '^#\\d+$', valueRegex: /^#\d+$/ },
+          { key: 'Refs', keyLower: 'refs', valuePattern: '^#\\d+$', valueRegex: /^#\d+$/ }
+        ]
       },
       sourceResolution: {
         botLoginRegexes: [/\[bot\]$/i],
         botEmailRegexes: [/\[bot\]@users\.noreply\.github\.com$/i]
+      },
+      trailerContract: {
+        requiredAny: [
+          { key: 'Issue', valuePattern: '^#\\d+$' },
+          { key: 'Refs', valuePattern: '^#\\d+$' }
+        ]
       }
     },
     observeOnly: false,

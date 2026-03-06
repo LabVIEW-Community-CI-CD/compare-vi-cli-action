@@ -35,6 +35,10 @@ const sourceResolution = {
   botLoginRegexes: [/\[bot\]$/i],
   botEmailRegexes: [/\[bot\]@users\.noreply\.github\.com$/i]
 };
+const requiredTrailerRules = [
+  { key: 'Issue', valuePattern: '^#\\d+$' },
+  { key: 'Refs', valuePattern: '^#\\d+$' }
+];
 
 test('parseArgs supports observe-only and pull-request selection', () => {
   const options = parseArgs([
@@ -206,4 +210,60 @@ test('resolveScope supports pull_request and merge_group payloads', () => {
   assert.equal(mergeGroupScope.mode, 'compare');
   assert.equal(mergeGroupScope.baseSha, 'abc123');
   assert.equal(mergeGroupScope.headSha, 'def456');
+});
+
+test('evaluateCommitIntegrity enforces required trailer contract (missing trailer fails)', () => {
+  const commits = normalizeCommitRecords(
+    [createRawCommit({ sha: 'aa03', message: 'feat: add deterministic flow' })],
+    sourceResolution
+  );
+  const evaluation = evaluateCommitIntegrity(commits, {
+    checks: {
+      requireRequiredTrailer: true,
+      requiredTrailerRules
+    }
+  });
+  assert.equal(evaluation.result, 'fail');
+  assert.ok(evaluation.violations.some((violation) => violation.category === 'missing-required-trailer'));
+});
+
+test('evaluateCommitIntegrity passes required trailer contract when Issue trailer matches policy', () => {
+  const commits = normalizeCommitRecords(
+    [createRawCommit({ sha: 'aa04', message: 'feat: add deterministic flow\n\nIssue: #770' })],
+    sourceResolution
+  );
+  const evaluation = evaluateCommitIntegrity(commits, {
+    checks: {
+      requireRequiredTrailer: true,
+      requiredTrailerRules
+    }
+  });
+  assert.equal(evaluation.result, 'pass');
+  assert.ok(!evaluation.violations.some((violation) => violation.category === 'missing-required-trailer'));
+});
+
+test('evaluateCommitIntegrity fails required trailer contract when trailer value is malformed', () => {
+  const commits = normalizeCommitRecords(
+    [createRawCommit({ sha: 'aa05', message: 'feat: add deterministic flow\n\nIssue: 770' })],
+    sourceResolution
+  );
+  const evaluation = evaluateCommitIntegrity(commits, {
+    checks: {
+      requireRequiredTrailer: true,
+      requiredTrailerRules
+    }
+  });
+  assert.equal(evaluation.result, 'fail');
+  assert.ok(evaluation.violations.some((violation) => violation.category === 'invalid-required-trailer-format'));
+});
+
+test('evaluateCommitIntegrity reports empty-range issue deterministically', () => {
+  const evaluation = evaluateCommitIntegrity([], {
+    checks: {
+      requireRequiredTrailer: true,
+      requiredTrailerRules
+    }
+  });
+  assert.equal(evaluation.result, 'fail');
+  assert.ok(evaluation.issues.includes('no-commits-found'));
 });

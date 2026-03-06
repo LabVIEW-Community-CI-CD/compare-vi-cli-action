@@ -78,7 +78,8 @@
         "path",
         "failOnUnverified",
         "checks",
-        "sourceResolution"
+        "sourceResolution",
+        "trailerContract"
       ],
       "properties": {
         "schema": {
@@ -100,7 +101,8 @@
             "requireUniqueShas",
             "requireNonEmptyHeadline",
             "maxHeadlineLength",
-            "requireSignatureMaterialForVerified"
+            "requireSignatureMaterialForVerified",
+            "requireRequiredTrailer"
           ],
           "properties": {
             "requireAuthorAttribution": {
@@ -124,6 +126,9 @@
             },
             "requireSignatureMaterialForVerified": {
               "type": "boolean"
+            },
+            "requireRequiredTrailer": {
+              "type": "boolean"
             }
           }
         },
@@ -142,6 +147,34 @@
             "botEmailPatternCount": {
               "type": "integer",
               "minimum": 0
+            }
+          }
+        },
+        "trailerContract": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "requiredAny"
+          ],
+          "properties": {
+            "requiredAny": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "key",
+                  "valuePattern"
+                ],
+                "properties": {
+                  "key": {
+                    "type": "string"
+                  },
+                  "valuePattern": {
+                    "type": "string"
+                  }
+                }
+              }
             }
           }
         }
@@ -241,6 +274,8 @@
           "authorEmail",
           "committerEmail",
           "sourceKind"
+          ,
+          "trailers"
         ],
         "properties": {
           "sha": {
@@ -296,6 +331,25 @@
               "human",
               "bot"
             ]
+          },
+          "trailers": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "key",
+                "value"
+              ],
+              "properties": {
+                "key": {
+                  "type": "string"
+                },
+                "value": {
+                  "type": "string"
+                }
+              }
+            }
           }
         }
       }
