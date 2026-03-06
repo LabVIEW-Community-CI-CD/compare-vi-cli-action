@@ -67,8 +67,8 @@ standing GitHub protection rules (including queue-managed `develop` and `main`).
 ### GitHub rulesets
 | Ruleset ID | Scope                | Highlights                                                                                   |
 |------------|----------------------|----------------------------------------------------------------------------------------------|
-| `8811898`  | `refs/heads/develop` | Merge queue enabled (`merge_method=SQUASH`, `grouping=ALLGREEN`, build queue <=5 entries, 5-minute quiet window). Required checks: `lint`, `fixtures`, `session-index`, `issue-snapshot`, `semver`, `Policy Guard (Upstream) / policy-guard`, `hook-parity (windows-latest)`, `hook-parity (ubuntu-latest)`, `vi-history-scenarios-linux`. |
-| `8614140`  | `refs/heads/main`    | Merge queue enabled (`merge_method=SQUASH`, `grouping=ALLGREEN`, build queue <=5 entries, 5-minute quiet window). Required checks: `lint`, `pester`, `vi-binary-check`, `vi-compare`, `Policy Guard (Upstream) / policy-guard`. Required approving reviews: `0`. |
+| `8811898`  | `refs/heads/develop` | Merge queue enabled (`merge_method=SQUASH`, `grouping=ALLGREEN`, build queue <=5 entries, 5-minute quiet window). Required checks: `lint`, `fixtures`, `session-index`, `issue-snapshot`, `semver`, `Policy Guard (Upstream) / policy-guard`, `hook-parity (windows-latest)`, `hook-parity (ubuntu-latest)`, `vi-history-scenarios-linux`, `commit-integrity / commit-integrity`. |
+| `8614140`  | `refs/heads/main`    | Merge queue enabled (`merge_method=SQUASH`, `grouping=ALLGREEN`, build queue <=5 entries, 5-minute quiet window). Required checks: `lint`, `pester`, `vi-binary-check`, `vi-compare`, `Policy Guard (Upstream) / policy-guard`, `commit-integrity / commit-integrity`. Required approving reviews: `0`. |
 | `8614172`  | `refs/heads/release/*` | No merge queue; protects against force-push/deletion. Required checks: `lint`, `pester`, `publish`, `vi-binary-check`, `vi-compare`, `mock-cli`, `Policy Guard (Upstream) / policy-guard`. Required approving reviews: `0`. |
 
 `node tools/npm/run-script.mjs priority:policy` queries these rulesets and fails if the live configuration drifts from
@@ -219,7 +219,7 @@ checked into `tools/priority/policy.json` so `priority:policy` stays authoritati
   - `max_entries_to_build=5`, `min_entries_to_merge=1`, `max_entries_to_merge=5`
   - `min_entries_to_merge_wait_minutes=5`
   - `check_response_timeout_minutes=60`
-- **Required checks**: `lint`, `pester`, `vi-binary-check`, `vi-compare`, `Policy Guard (Upstream) / policy-guard`.
+- **Required checks**: `lint`, `pester`, `vi-binary-check`, `vi-compare`, `Policy Guard (Upstream) / policy-guard`, `commit-integrity / commit-integrity`.
 - **Workflow triggers**: Ensure those required checks run on both `pull_request` and `merge_group` so queued entries can merge.
 - **Approval policy**: 0 required reviews; stale review dismissal and thread resolution are not enforced.
 - **Quick verification**:

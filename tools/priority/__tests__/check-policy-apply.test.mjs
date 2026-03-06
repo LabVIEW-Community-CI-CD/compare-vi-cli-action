@@ -32,14 +32,16 @@ test('priority:policy --apply updates rulesets for develop/main/release', async 
     'Policy Guard (Upstream) / policy-guard',
     'hook-parity (windows-latest)',
     'hook-parity (ubuntu-latest)',
-    'vi-history-scenarios-linux'
+    'vi-history-scenarios-linux',
+    'commit-integrity / commit-integrity'
   ];
   const expectedMainChecks = [
     'lint',
     'pester',
     'vi-binary-check',
     'vi-compare',
-    'Policy Guard (Upstream) / policy-guard'
+    'Policy Guard (Upstream) / policy-guard',
+    'commit-integrity / commit-integrity'
   ];
   const expectedReleaseChecks = [
     'lint',
@@ -874,14 +876,16 @@ test('priority:policy verify fails when queue-managed ruleset is missing merge_q
     'Policy Guard (Upstream) / policy-guard',
     'hook-parity (windows-latest)',
     'hook-parity (ubuntu-latest)',
-    'vi-history-scenarios-linux'
+    'vi-history-scenarios-linux',
+    'commit-integrity / commit-integrity'
   ];
   const mainChecks = [
     'lint',
     'pester',
     'vi-binary-check',
     'vi-compare',
-    'Policy Guard (Upstream) / policy-guard'
+    'Policy Guard (Upstream) / policy-guard',
+    'commit-integrity / commit-integrity'
   ];
   const releaseChecks = [
     'lint',
