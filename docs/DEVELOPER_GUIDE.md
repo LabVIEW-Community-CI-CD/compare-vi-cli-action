@@ -239,16 +239,15 @@ For Docker/Desktop VI history validation, run fast-loop lanes explicitly:
   `node tools/npm/run-script.mjs feature:finalize:dry -- my-feature` to simulate branch creation and finalization without touching remotes.
 - Delete branches automatically after merging (GitHub setting) so the standing-priority flow starts clean each time.
 
-## CI automation secrets
+## Deployment approval gates
 
-- `AUTO_APPROVE_TOKEN` - Personal access token (PAT) used by the `PR Auto-approve` workflow to submit an approval once
-  the `Validate` workflow succeeds. The token must belong to an account with review rights on this repository. Grant the
-  token the minimal scopes required (`public_repo` is sufficient for GitHub.com repos). When the secret is unset the
-  workflow quietly skips auto-approval.
-- `AUTO_APPROVE_LABEL` *(optional)* - When set, the auto-approval workflow only acts on PRs carrying this label. The
-  default label is `auto-approve` if the secret is omitted. Set the secret to `none` to disable label gating.
-- `AUTO_APPROVE_ALLOWED` *(optional)* - Comma-separated list of GitHub usernames permitted for auto-approval (e.g.,
-  `svelderrainruiz,octocat`). If omitted, all authors are eligible.
+- Pull-request validation deployments use the GitHub Actions `validation` environment (see `Validate / lint`).
+- Tag releases use the GitHub Actions `production` environment (see `Release on tag / release`).
+- Configure required reviewers in GitHub environment settings so deployment acknowledgement is explicit and review
+  requests can be approved through GitHub web/mobile:
+  Settings -> Environments -> `validation` / `production` -> Required reviewers.
+- `PR Auto-approve` and `PR Auto-approve Label` workflows were retired because branch policy requires `0` approvals.
+- Monthly stability dispatch approvals continue to use the `monthly-stability-release` environment gate.
 
 ### Release metadata
 
@@ -409,15 +408,11 @@ pwsh -File scripts/CompareVI.ps1 `
   uploads artifacts identical to the `/vi-stage` workflow.
 - `/vi-stage` and `/vi-history` commands remain available for both upstream and fork contributions. They now re-use the
   fetch helper so they can operate on fork heads safely.
-- The **PR Auto-approve Label** workflow runs after Validate. When a PR targets `develop`, is not a fork or draft, its
-  checks are green, and (optionally) the author is allowed, the workflow adds the auto-approve label automatically. If
-  any condition fails, the label is removed.
-- When the workflow skips a PR it emits structured outputs (`autoapprove_reason`, `autoapprove_checks`,
-  `autoapprove_detail`) and `::notice::` messages (for example, merge conflicts or failing checks). Downstream
-  automation can inspect those outputs to surface richer status or trigger follow-up actions.
-- Auto-approve still requires `AUTO_APPROVE_TOKEN`, optional `AUTO_APPROVE_LABEL` (defaults to `auto-approve`), and
-  optional `AUTO_APPROVE_ALLOWED`. The label lifecycle is now fully automated so contributors do not need to toggle it
-  manually.
+- PR approval is no longer automated; merge queue admission relies on required checks and repository branch policy
+  (currently `0` required reviewers on queue-managed branches).
+- Deployment acknowledgement now flows through GitHub Actions environment reviewers (`validation`, `production`,
+  `monthly-stability-release`) so approval notifications can be handled through GitHub's built-in deployment review UI
+  (web/mobile).
 - Agent reviewer routing/policy is owner-agnostic: set repository variable `REQUIRED_AGENT_REVIEWER` to pin a specific
   login; when unset it defaults to `github.repository_owner`.
 - Manual `/vi-stage` and `/vi-history` workflows accept an optional `fetch_depth` input (default `20`). Increase it when

@@ -254,9 +254,9 @@ to confirm each workflow includes both triggers.
 6. Autonomous merge tooling now requires upstream-owned PR heads. Fork-headed PRs are intentionally ineligible for
    `priority:queue:supervisor` and `priority:merge-sync`; mirror the branch to upstream and open the PR from the
    upstream-owned branch before queueing.
-7. Validate deployment evidence is now run-scoped: `priority:deployment:assert` verifies the `validation` environment
-   using the current workflow run id and latest active deployment status, and fails if the active deployment resolves to
-   a different run.
+7. Validate deployment evidence is run-scoped: `priority:deployment:assert` verifies the `validation` environment using
+   the current workflow run id, fails when the newest deployment is owned by another run, and tolerates terminal
+   `inactive` statuses only when they follow a successful deployment for the same run.
 
 ### PR Metadata Contract (queue supervisor)
 - `Coupling: independent|soft|hard` (default: `independent`)
