@@ -96,11 +96,37 @@ test('commit integrity report schema validates generated report payload', async 
           { key: 'Issue', valuePattern: '^#\\d+$' },
           { key: 'Refs', valuePattern: '^#\\d+$' }
         ]
+      },
+      exceptionGovernance: {
+        allowBypass: true,
+        requireReasonOwnerExpiry: true,
+        remediationLabels: ['ci', 'governance', 'supply-chain'],
+        remediationTitlePrefix: '[Commit Integrity] Expired bypass remediation',
+        remediationIssueMarker: '<!-- commit-integrity-bypass-remediation@v1 -->'
       }
     },
     observeOnly: false,
     commits,
     evaluation,
+    bypass: {
+      requested: false,
+      status: 'none',
+      active: false,
+      reason: null,
+      owner: null,
+      expiresAt: null,
+      ticket: null,
+      labels: ['ci', 'governance', 'supply-chain'],
+      metadataErrors: []
+    },
+    remediation: { action: 'none' },
+    governance: {
+      issues: [...evaluation.issues],
+      governanceFailure: false,
+      bypassApplied: false,
+      finalResult: evaluation.result,
+      exitCode: 1
+    },
     generatedAt: '2026-03-06T00:00:00.000Z'
   });
 
