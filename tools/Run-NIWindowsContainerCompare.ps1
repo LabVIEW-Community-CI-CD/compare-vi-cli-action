@@ -334,9 +334,6 @@ $args = @(
   "-ReportType", $env:COMPARE_REPORT_TYPE,
   "-Headless"
 )
-if (-not [string]::IsNullOrWhiteSpace($env:COMPARE_LABVIEW_PATH)) {
-  $args += @("-LabVIEWPath", $env:COMPARE_LABVIEW_PATH)
-}
 $flags = @()
 if (-not [string]::IsNullOrWhiteSpace($env:COMPARE_FLAGS_B64)) {
   $rawBytes = [System.Convert]::FromBase64String($env:COMPARE_FLAGS_B64)
