@@ -516,6 +516,61 @@ function comparePullRequestRule(expected, actualRule) {
   return diffs;
 }
 
+function normalizeOptionalRuleExpectation(expected) {
+  if (expected === undefined) {
+    return { mode: 'ignore', parameters: null };
+  }
+  if (expected === null || expected === false) {
+    return { mode: 'absent', parameters: null };
+  }
+  if (expected === true) {
+    return { mode: 'present', parameters: {} };
+  }
+  if (typeof expected !== 'object' || Array.isArray(expected)) {
+    return { mode: 'present', parameters: {} };
+  }
+
+  const enabled = hasOwnProperty(expected, 'enabled') ? Boolean(expected.enabled) : true;
+  if (!enabled) {
+    return { mode: 'absent', parameters: null };
+  }
+
+  const rawParams =
+    expected.parameters && typeof expected.parameters === 'object' && !Array.isArray(expected.parameters)
+      ? expected.parameters
+      : expected;
+  const params = { ...rawParams };
+  delete params.enabled;
+  delete params.parameters;
+  return { mode: 'present', parameters: params };
+}
+
+function compareOptionalParameterizedRule(type, expected, actualRule) {
+  const normalized = normalizeOptionalRuleExpectation(expected);
+  if (normalized.mode === 'ignore') {
+    return [];
+  }
+  if (normalized.mode === 'absent') {
+    return actualRule ? [`${type}: unexpected rule present`] : [];
+  }
+  if (!actualRule) {
+    return [`${type}: rule missing`];
+  }
+
+  const expectedParameters = normalized.parameters ?? {};
+  const actualParameters = actualRule.parameters ?? {};
+  const diffs = [];
+  for (const [key, value] of Object.entries(expectedParameters)) {
+    const actualValue = actualParameters[key];
+    const expectedJson = JSON.stringify(value);
+    const actualJson = JSON.stringify(actualValue);
+    if (expectedJson !== actualJson) {
+      diffs.push(`${type}.${key}: expected ${stringifyForDiff(value)}, actual ${stringifyForDiff(actualValue)}`);
+    }
+  }
+  return diffs;
+}
+
 function compareRulesetIncludes(expected = [], actual = []) {
   const { missing, extra } = compareSets(expected, actual);
   const diffs = [];
@@ -566,6 +621,12 @@ function compareRuleset(id, expected, actual) {
 
   const prRule = findRule(rules, 'pull_request');
   diffs.push(...comparePullRequestRule(expected.pull_request, prRule));
+
+  const codeQualityRule = findRule(rules, 'code_quality');
+  diffs.push(...compareOptionalParameterizedRule('code_quality', expected.code_quality, codeQualityRule));
+
+  const codeScanningRule = findRule(rules, 'code_scanning');
+  diffs.push(...compareOptionalParameterizedRule('code_scanning', expected.code_scanning, codeScanningRule));
 
   return diffs;
 }
@@ -729,6 +790,30 @@ function updatePullRequestRule(rules, expected, actualRule) {
   rule.parameters = parameters;
 }
 
+function updateOptionalParameterizedRule(rules, type, expected, actualRule) {
+  const normalized = normalizeOptionalRuleExpectation(expected);
+  if (normalized.mode === 'ignore') {
+    return;
+  }
+  const idx = rules.findIndex((rule) => rule?.type === type);
+  if (normalized.mode === 'absent') {
+    if (idx !== -1) {
+      rules.splice(idx, 1);
+    }
+    return;
+  }
+
+  const rule = idx === -1 ? ensureRule(rules, type) : ensureRule(rules, type);
+  const expectedParameters = normalized.parameters ?? {};
+  const hasExpectedParameters = Object.keys(expectedParameters).length > 0;
+  rule.parameters = hasExpectedParameters
+    ? {
+        ...(actualRule?.parameters ?? rule.parameters ?? {}),
+        ...structuredClone(expectedParameters)
+      }
+    : (actualRule?.parameters ?? rule.parameters ?? {});
+}
+
 function buildUpdatedRuleset(expectations, actual) {
   if (!actual) {
     throw new Error('Cannot apply ruleset changes: ruleset not found.');
@@ -771,6 +856,12 @@ function buildUpdatedRuleset(expectations, actual) {
 
   const existingPullRequestRule = updated.rules.find((rule) => rule?.type === 'pull_request');
   updatePullRequestRule(updated.rules, expectations.pull_request, existingPullRequestRule);
+
+  const existingCodeQualityRule = updated.rules.find((rule) => rule?.type === 'code_quality');
+  updateOptionalParameterizedRule(updated.rules, 'code_quality', expectations.code_quality, existingCodeQualityRule);
+
+  const existingCodeScanningRule = updated.rules.find((rule) => rule?.type === 'code_scanning');
+  updateOptionalParameterizedRule(updated.rules, 'code_scanning', expectations.code_scanning, existingCodeScanningRule);
 
   return {
     name: updated.name,
@@ -1179,7 +1270,9 @@ export const __test = Object.freeze({
   compareBranchBooleanSetting,
   compareBranchNullableSetting,
   buildBranchProtectionPayload,
-  resolveEnabledFlag
+  resolveEnabledFlag,
+  compareOptionalParameterizedRule,
+  normalizeOptionalRuleExpectation
 });
 
 const modulePath = path.resolve(fileURLToPath(import.meta.url));

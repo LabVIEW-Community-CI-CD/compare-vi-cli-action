@@ -399,6 +399,9 @@ test('priority:policy --apply updates rulesets for develop/main/release', async 
     developPullRule.parameters.allowed_merge_methods.sort(),
     ['rebase', 'squash']
   );
+  const developCodeQualityRule = rulesetDevelop.rules.find((rule) => rule.type === 'code_quality');
+  assert.ok(developCodeQualityRule, 'code_quality rule expected on develop');
+  assert.equal(developCodeQualityRule.parameters.severity, 'warnings');
 
   const mergeQueueRule = rulesetMain.rules.find((rule) => rule.type === 'merge_queue');
   assert.equal(mergeQueueRule.parameters.min_entries_to_merge_wait_minutes, 5);
@@ -443,9 +446,12 @@ test('priority:policy --apply updates rulesets for develop/main/release', async 
   const developCommitIntegrityCheck = developRulesetPayload.rules
     .find((rule) => rule.type === 'required_status_checks')
     .parameters.required_status_checks.find((check) => check.context === 'commit-integrity');
+  const developPayloadCodeQualityRule = developRulesetPayload.rules.find((rule) => rule.type === 'code_quality');
   const mainCommitIntegrityCheck = mainRulesetPayload.rules
     .find((rule) => rule.type === 'required_status_checks')
     .parameters.required_status_checks.find((check) => check.context === 'commit-integrity');
+  assert.ok(developPayloadCodeQualityRule, 'develop payload should include code_quality rule');
+  assert.equal(developPayloadCodeQualityRule.parameters.severity, 'warnings');
   assert.ok(developCommitIntegrityCheck, 'develop ruleset should include commit-integrity required check');
   assert.ok(mainCommitIntegrityCheck, 'main ruleset should include commit-integrity required check');
   assert.equal(
@@ -961,6 +967,12 @@ test('priority:policy verify fails when queue-managed ruleset is missing merge_q
           required_review_thread_resolution: false,
           allowed_merge_methods: ['squash', 'rebase']
         }
+      },
+      {
+        type: 'code_quality',
+        parameters: {
+          severity: 'warnings'
+        }
       }
     ]
   };
@@ -997,6 +1009,12 @@ test('priority:policy verify fails when queue-managed ruleset is missing merge_q
           require_last_push_approval: false,
           required_review_thread_resolution: false,
           allowed_merge_methods: ['squash', 'rebase']
+        }
+      },
+      {
+        type: 'code_quality',
+        parameters: {
+          severity: 'warnings'
         }
       }
     ]
@@ -1202,6 +1220,12 @@ test('priority:policy verify uses queue-managed rulesets as required-check sourc
           required_review_thread_resolution: false,
           allowed_merge_methods: ['squash', 'rebase']
         }
+      },
+      {
+        type: 'code_quality',
+        parameters: {
+          severity: 'warnings'
+        }
       }
     ]
   };
@@ -1302,7 +1326,11 @@ test('priority:policy verify uses queue-managed rulesets as required-check sourc
     error: (msg) => errorMessages.push(msg)
   });
 
-  assert.equal(code, 0, 'verify mode should pass when queue-managed rulesets match policy');
+  assert.equal(
+    code,
+    0,
+    `verify mode should pass when queue-managed rulesets match policy: ${errorMessages.join(' | ')}`
+  );
   assert.deepEqual(errorMessages, []);
   assert.ok(
     logMessages.some((msg) => msg.includes('auth source: GITHUB_TOKEN')),
@@ -1578,3 +1606,26 @@ test('priority:policy build branch-protection payload honors explicit disabled s
   assert.equal(payload.allow_fork_syncing, false);
 });
 
+test('priority:policy optional ruleset seam treats disabled expectation as explicit absence', () => {
+  const normalized = __test.normalizeOptionalRuleExpectation({ enabled: false, severity: 'warnings' });
+  assert.deepEqual(normalized, { mode: 'absent', parameters: null });
+});
+
+test('priority:policy optional ruleset seam detects missing code_quality rule', () => {
+  const diffs = __test.compareOptionalParameterizedRule('code_quality', { severity: 'warnings' }, null);
+  assert.deepEqual(diffs, ['code_quality: rule missing']);
+});
+
+test('priority:policy optional ruleset seam detects code_quality severity drift', () => {
+  const diffs = __test.compareOptionalParameterizedRule(
+    'code_quality',
+    { severity: 'warnings' },
+    {
+      type: 'code_quality',
+      parameters: {
+        severity: 'errors'
+      }
+    }
+  );
+  assert.deepEqual(diffs, ['code_quality.severity: expected warnings, actual errors']);
+});

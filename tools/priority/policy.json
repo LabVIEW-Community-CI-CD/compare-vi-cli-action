@@ -113,6 +113,9 @@
           "squash",
           "rebase"
         ]
+      },
+      "code_quality": {
+        "severity": "warnings"
       }
     },
     "8614140": {
