@@ -12,6 +12,7 @@ import {
   buildNoStandingPriorityReport,
   buildMultipleStandingPriorityReport,
   buildNoStandingPriorityState,
+  shouldRethrowStandingPriorityError,
   determinePrioritySyncExitCode,
   isStandingPriorityCacheCandidate,
   resolveStandingPriorityLabels,
@@ -179,6 +180,26 @@ test('determinePrioritySyncExitCode maps no-standing to success and real errors 
   assert.equal(determinePrioritySyncExitCode({ code: 'MULTIPLE_STANDING_PRIORITY' }), 0);
   assert.equal(determinePrioritySyncExitCode({ code: 'MULTIPLE_STANDING_PRIORITY' }, { failOnMultiple: true }), 1);
   assert.equal(determinePrioritySyncExitCode(new Error('boom')), 1);
+});
+
+test('shouldRethrowStandingPriorityError skips rethrow after successful auto-select resolution', () => {
+  assert.equal(
+    shouldRethrowStandingPriorityError(
+      { code: 'NO_STANDING_PRIORITY', message: 'no standing issue' },
+      { number: 797, repoSlug: 'LabVIEW-Community-CI-CD/compare-vi-cli-action', source: 'auto-select' }
+    ),
+    false
+  );
+
+  assert.equal(
+    shouldRethrowStandingPriorityError({ code: 'NO_STANDING_PRIORITY', message: 'no standing issue' }, null),
+    true
+  );
+
+  assert.equal(
+    shouldRethrowStandingPriorityError(new Error('network failure'), { number: 797 }),
+    true
+  );
 });
 
 test('parseCliArgs enables strict standing-priority flags and help', () => {
