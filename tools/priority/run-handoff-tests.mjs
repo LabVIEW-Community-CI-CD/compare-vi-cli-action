@@ -7,6 +7,11 @@ import { isMutatingGitCommand, runGitWithSafety } from './lib/safe-git.mjs';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const repoRoot = path.resolve(__dirname, '..', '..');
+const safeGitTelemetryPath = process.env.SAFE_GIT_TELEMETRY_PATH
+  ? (path.isAbsolute(process.env.SAFE_GIT_TELEMETRY_PATH)
+    ? process.env.SAFE_GIT_TELEMETRY_PATH
+    : path.resolve(repoRoot, process.env.SAFE_GIT_TELEMETRY_PATH))
+  : path.join(repoRoot, 'tests', 'results', '_agent', 'reliability', 'safe-git-events.jsonl');
 
 const nodeExecPath = process.env.npm_node_execpath || process.execPath;
 const wrapperPath = path.join(repoRoot, 'tools', 'npm', 'run-script.mjs');
@@ -19,6 +24,8 @@ function runGit(args) {
         env: process.env,
         encoding: 'utf8',
         stdio: ['ignore', 'pipe', 'pipe']
+      }, {
+        telemetryPath: safeGitTelemetryPath
       })
       : spawnSync('git', args, {
         cwd: repoRoot,

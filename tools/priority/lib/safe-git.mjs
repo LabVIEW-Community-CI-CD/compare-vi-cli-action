@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 
 import { spawnSync } from 'node:child_process';
-import { existsSync, readdirSync, rmSync, statSync } from 'node:fs';
+import { appendFileSync, existsSync, mkdirSync, readdirSync, rmSync, statSync } from 'node:fs';
 import path from 'node:path';
 import process from 'node:process';
 
@@ -75,6 +75,13 @@ const IN_PROGRESS_PATTERNS = [
 const DEFAULT_MAX_RETRIES = 2;
 const DEFAULT_RETRY_DELAY_MS = 350;
 const DEFAULT_STALE_LOCK_AGE_MS = 30_000;
+const DEFAULT_TELEMETRY_RELATIVE_PATH = path.join(
+  'tests',
+  'results',
+  '_agent',
+  'reliability',
+  'safe-git-events.jsonl'
+);
 
 function parseBooleanEnv(value, fallback = false) {
   if (value == null) {
@@ -454,12 +461,121 @@ function buildDeps(custom = {}) {
     readdirSyncFn: custom.readdirSyncFn ?? readdirSync,
     statSyncFn: custom.statSyncFn ?? statSync,
     rmSyncFn: custom.rmSyncFn ?? rmSync,
+    appendFileSyncFn: custom.appendFileSyncFn ?? appendFileSync,
+    mkdirSyncFn: custom.mkdirSyncFn ?? mkdirSync,
     nowFn: custom.nowFn ?? (() => Date.now()),
     logFn: custom.logFn ?? ((message) => console.warn(message)),
     resolveGitDirFn: custom.resolveGitDirFn,
     listGitProcessesFn: custom.listGitProcessesFn,
     killGitProcessFn: custom.killGitProcessFn
   };
+}
+
+function safeIsoTimestamp(nowMs) {
+  return new Date(Number.isFinite(nowMs) ? nowMs : Date.now()).toISOString();
+}
+
+function resolveTelemetryPath(cwd, spawnOptions, brokerOptions) {
+  const explicitPath = brokerOptions.telemetryPath ?? spawnOptions.env?.SAFE_GIT_TELEMETRY_PATH;
+  if (explicitPath) {
+    return path.isAbsolute(explicitPath) ? explicitPath : path.resolve(cwd, explicitPath);
+  }
+
+  const telemetryEnabled = parseBooleanEnv(
+    brokerOptions.telemetryEnabled ?? spawnOptions.env?.SAFE_GIT_TELEMETRY_ENABLED,
+    false
+  );
+  if (!telemetryEnabled) {
+    return null;
+  }
+
+  return path.resolve(cwd, DEFAULT_TELEMETRY_RELATIVE_PATH);
+}
+
+function buildTelemetryRun(args, cwd, gitDir, maxAttempts, maxRetries, retryDelayMs, staleLockAgeMs, allowProcessKill, deps) {
+  const startedAtMs = deps.nowFn();
+  return {
+    schema: 'priority/safe-git-run-telemetry@v1',
+    startedAt: safeIsoTimestamp(startedAtMs),
+    finishedAt: null,
+    durationMs: 0,
+    status: 'running',
+    reason: null,
+    command: [...args],
+    cwd,
+    gitDir,
+    maxAttempts,
+    maxRetries,
+    retryDelayMs,
+    staleLockAgeMs,
+    allowProcessKill,
+    attemptCount: 0,
+    recoveryElapsedMs: 0,
+    counters: {
+      lockDetections: 0,
+      repairAttempts: 0,
+      repairSuccesses: 0,
+      repairFailures: 0,
+      killedProcessCount: 0,
+      runtimeLockConflicts: 0
+    },
+    events: [],
+    _startedAtMs: startedAtMs,
+    _firstRepairAtMs: null,
+    _lastRepairAtMs: null
+  };
+}
+
+function pushTelemetryEvent(telemetry, deps, type, detail = {}) {
+  telemetry.events.push({
+    type,
+    at: safeIsoTimestamp(deps.nowFn()),
+    ...detail
+  });
+}
+
+function lockDetailsForTelemetry(gitDir, locks, nowMs, staleLockAgeMs) {
+  return locks.map((lock) => {
+    const ageMs = Math.max(0, Math.trunc(nowMs - lock.mtimeMs));
+    return {
+      path: formatGitPath(gitDir, lock.path),
+      ageMs,
+      stale: ageMs >= staleLockAgeMs
+    };
+  });
+}
+
+function finalizeTelemetry(telemetry, deps, status, reason, message = null) {
+  telemetry.status = status;
+  telemetry.reason = reason;
+  telemetry.finishedAt = safeIsoTimestamp(deps.nowFn());
+  const nowMs = deps.nowFn();
+  telemetry.durationMs = Math.max(0, Math.trunc(nowMs - telemetry._startedAtMs));
+  telemetry.recoveryElapsedMs =
+    telemetry._firstRepairAtMs != null && telemetry._lastRepairAtMs != null
+      ? Math.max(0, Math.trunc(telemetry._lastRepairAtMs - telemetry._firstRepairAtMs))
+      : 0;
+  if (message) {
+    telemetry.message = message;
+  }
+  delete telemetry._startedAtMs;
+  delete telemetry._firstRepairAtMs;
+  delete telemetry._lastRepairAtMs;
+}
+
+function persistTelemetry(telemetryPath, telemetry, deps) {
+  if (!telemetryPath) {
+    return;
+  }
+
+  try {
+    deps.mkdirSyncFn(path.dirname(telemetryPath), { recursive: true });
+    deps.appendFileSyncFn(telemetryPath, `${JSON.stringify(telemetry)}\n`, 'utf8');
+  } catch (error) {
+    deps.logFn(
+      `[safe-git] warning: failed to write telemetry to ${telemetryPath}: ${error?.message ?? String(error)}`
+    );
+  }
 }
 
 function shouldMutateTag(args) {
@@ -527,82 +643,219 @@ export function runGitWithSafety(args, spawnOptions = {}, brokerOptions = {}) {
     brokerOptions.allowProcessKill ?? normalizedSpawn.env?.SAFE_GIT_ALLOW_PROCESS_KILL,
     true
   );
-  const gitDir = resolveGitDir(cwd, normalizedSpawn, deps);
   const maxAttempts = Math.max(1, maxRetries + 1);
+  const telemetryPath = resolveTelemetryPath(cwd, normalizedSpawn, brokerOptions);
+  let gitDir = null;
+  let telemetry = buildTelemetryRun(
+    args,
+    cwd,
+    gitDir,
+    maxAttempts,
+    maxRetries,
+    retryDelayMs,
+    staleLockAgeMs,
+    allowProcessKill,
+    deps
+  );
+
+  let attemptCount = 0;
   let lastResult = null;
+  let telemetryFinalized = false;
 
-  for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
-    const nowMs = deps.nowFn();
-    const locks = collectLockFiles(gitDir, deps, nowMs);
-    const inProgressStates = collectInProgressStates(gitDir, deps);
-    const blockedStates = evaluateBlockedStates(command, args, inProgressStates);
+  function finalize(status, reason, message = null) {
+    if (telemetryFinalized) {
+      return;
+    }
+    telemetry.attemptCount = attemptCount;
+    finalizeTelemetry(telemetry, deps, status, reason, message);
+    persistTelemetry(telemetryPath, telemetry, deps);
+    telemetryFinalized = true;
+  }
 
-    if (blockedStates.length > 0) {
-      throw buildStateError(args, blockedStates);
+  try {
+    try {
+      gitDir = resolveGitDir(cwd, normalizedSpawn, deps);
+      telemetry.gitDir = gitDir;
+    } catch (error) {
+      const message = error?.message ?? String(error);
+      pushTelemetryEvent(telemetry, deps, 'git-dir-unresolved', { message });
+      finalize('error', 'git-dir-unresolved', message);
+      throw error;
     }
 
-    if (locks.length > 0) {
-      const repair = repairLocks({
-        commandArgs: args,
-        gitDir,
-        locks,
-        staleLockAgeMs,
-        allowProcessKill,
-        deps,
-        nowMs,
-        logFn: deps.logFn
-      });
+    for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+      attemptCount = attempt;
+      pushTelemetryEvent(telemetry, deps, 'attempt-start', { attempt });
+      const nowMs = deps.nowFn();
+      const locks = collectLockFiles(gitDir, deps, nowMs);
+      const inProgressStates = collectInProgressStates(gitDir, deps);
+      const blockedStates = evaluateBlockedStates(command, args, inProgressStates);
 
-      if (repair.killedPids.length > 0) {
-        deps.logFn(
-          `[safe-git] terminated git process(es) ${repair.killedPids.join(', ')} while repairing lock(s) for git ${args.join(' ')}`
-        );
+      if (blockedStates.length > 0) {
+        pushTelemetryEvent(telemetry, deps, 'state-detected', {
+          attempt,
+          states: blockedStates.map((entry) => entry.description)
+        });
+        const error = buildStateError(args, blockedStates);
+        finalize('fail-fast', 'operation-in-progress', error.message);
+        throw error;
       }
 
-      if (repair.blocked.length > 0) {
-        if (attempt >= maxAttempts) {
-          throw buildLockError(args, repair.blocked, attempt, gitDir);
+      if (locks.length > 0) {
+        const lockDetails = lockDetailsForTelemetry(gitDir, locks, nowMs, staleLockAgeMs);
+        telemetry.counters.lockDetections += lockDetails.length;
+        pushTelemetryEvent(telemetry, deps, 'lock-detected', {
+          attempt,
+          lockCount: lockDetails.length,
+          locks: lockDetails
+        });
+
+        telemetry.counters.repairAttempts += 1;
+        if (telemetry._firstRepairAtMs == null) {
+          telemetry._firstRepairAtMs = nowMs;
         }
+        pushTelemetryEvent(telemetry, deps, 'repair-attempt', {
+          attempt,
+          allowProcessKill,
+          staleLockAgeMs
+        });
+
+        const repair = repairLocks({
+          commandArgs: args,
+          gitDir,
+          locks,
+          staleLockAgeMs,
+          allowProcessKill,
+          deps,
+          nowMs,
+          logFn: deps.logFn
+        });
+        telemetry._lastRepairAtMs = deps.nowFn();
+
+        if (repair.killedPids.length > 0) {
+          telemetry.counters.killedProcessCount += repair.killedPids.length;
+          deps.logFn(
+            `[safe-git] terminated git process(es) ${repair.killedPids.join(', ')} while repairing lock(s) for git ${args.join(' ')}`
+          );
+          for (const pid of repair.killedPids) {
+            pushTelemetryEvent(telemetry, deps, 'repair-result', {
+              attempt,
+              outcome: 'killed-process',
+              pid
+            });
+          }
+        }
+
+        for (const removed of repair.removed) {
+          telemetry.counters.repairSuccesses += 1;
+          pushTelemetryEvent(telemetry, deps, 'repair-result', {
+            attempt,
+            outcome: 'success',
+            lockPath: formatGitPath(gitDir, removed.path),
+            ageMs: removed.ageMs
+          });
+        }
+
+        for (const blocked of repair.blocked) {
+          telemetry.counters.repairFailures += 1;
+          pushTelemetryEvent(telemetry, deps, 'repair-result', {
+            attempt,
+            outcome: 'failure',
+            lockPath: formatGitPath(gitDir, blocked.path),
+            ageMs: blocked.ageMs,
+            reason: blocked.reason
+          });
+        }
+
+        if (repair.blocked.length > 0) {
+          if (attempt >= maxAttempts) {
+            const error = buildLockError(args, repair.blocked, attempt, gitDir);
+            finalize('blocked', 'lock-conflict', error.message);
+            throw error;
+          }
+          pushTelemetryEvent(telemetry, deps, 'retry-scheduled', {
+            attempt,
+            reason: 'lock-repair-incomplete',
+            retryDelayMs
+          });
+          sleepSync(retryDelayMs);
+          continue;
+        }
+      }
+
+      const result = deps.spawnSyncFn('git', args, normalizedSpawn);
+      lastResult = result;
+
+      if (result.status === 0) {
+        pushTelemetryEvent(telemetry, deps, 'command-result', {
+          attempt,
+          status: 'success'
+        });
+        finalize('success', 'ok');
+        return result;
+      }
+
+      if (looksLikeInProgressFailure(result)) {
+        const refreshed = evaluateBlockedStates(command, args, collectInProgressStates(gitDir, deps));
+        pushTelemetryEvent(telemetry, deps, 'command-result', {
+          attempt,
+          status: 'failure',
+          reason: 'operation-in-progress',
+          exitCode: result.status
+        });
+        if (refreshed.length > 0) {
+          const error = buildStateError(args, refreshed);
+          finalize('fail-fast', 'operation-in-progress', error.message);
+          throw error;
+        }
+        const error = new Error(
+          `[safe-git] git ${args.join(' ')} failed due to an in-progress operation state. Resolve the state and retry.`
+        );
+        finalize('fail-fast', 'operation-in-progress', error.message);
+        throw error;
+      }
+
+      if (looksLikeLockConflict(result) && attempt < maxAttempts) {
+        telemetry.counters.runtimeLockConflicts += 1;
+        pushTelemetryEvent(telemetry, deps, 'runtime-lock-conflict', {
+          attempt,
+          exitCode: result.status,
+          retryDelayMs
+        });
         sleepSync(retryDelayMs);
         continue;
       }
-    }
 
-    const result = deps.spawnSyncFn('git', args, normalizedSpawn);
-    lastResult = result;
-
-    if (result.status === 0) {
+      pushTelemetryEvent(telemetry, deps, 'command-result', {
+        attempt,
+        status: 'failure',
+        reason: 'non-zero',
+        exitCode: result.status
+      });
+      finalize('command-error', 'git-nonzero', String(result.stderr ?? '').trim() || null);
       return result;
     }
 
-    if (looksLikeInProgressFailure(result)) {
-      const refreshed = evaluateBlockedStates(command, args, collectInProgressStates(gitDir, deps));
-      if (refreshed.length > 0) {
-        throw buildStateError(args, refreshed);
-      }
-      throw new Error(
-        `[safe-git] git ${args.join(' ')} failed due to an in-progress operation state. Resolve the state and retry.`
-      );
+    if (lastResult) {
+      finalize('command-error', 'last-result-nonzero', String(lastResult.stderr ?? '').trim() || null);
+      return lastResult;
     }
 
-    if (looksLikeLockConflict(result) && attempt < maxAttempts) {
-      sleepSync(retryDelayMs);
-      continue;
+    const error = new Error(`[safe-git] git ${args.join(' ')} failed before execution.`);
+    finalize('error', 'pre-execution', error.message);
+    throw error;
+  } catch (error) {
+    if (!telemetryFinalized) {
+      finalize('error', 'exception', error?.message ?? String(error));
     }
-
-    return result;
+    throw error;
   }
-
-  if (lastResult) {
-    return lastResult;
-  }
-
-  throw new Error(`[safe-git] git ${args.join(' ')} failed before execution.`);
 }
 
 export const __test = {
   parseNumberEnv,
   parseBooleanEnv,
+  resolveTelemetryPath,
   collectLockFiles,
   collectInProgressStates,
   evaluateBlockedStates,
@@ -611,4 +864,3 @@ export const __test = {
   repairLocks,
   resolveGitDir
 };
-

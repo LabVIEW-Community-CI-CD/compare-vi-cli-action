@@ -1,0 +1,127 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://comparevi.dev/schemas/safe-git-reliability-trend-v1.schema.json",
+  "title": "Safe Git Reliability Trend v1",
+  "type": "object",
+  "required": [
+    "schema",
+    "generatedAt",
+    "windowSize",
+    "sampleCount",
+    "metrics",
+    "trend"
+  ],
+  "properties": {
+    "schema": {
+      "const": "priority/safe-git-reliability-trend@v1"
+    },
+    "generatedAt": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "windowSize": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "sampleCount": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "metrics": {
+      "type": "object",
+      "required": [
+        "totalRuns",
+        "successfulRuns",
+        "failedRuns",
+        "failureRatio",
+        "lockDetections",
+        "repairAttempts",
+        "repairSuccesses",
+        "repairFailures",
+        "runtimeLockConflicts",
+        "killedProcessCount",
+        "meanRecoveryMs"
+      ],
+      "properties": {
+        "totalRuns": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "successfulRuns": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "failedRuns": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "failureRatio": {
+          "type": "number",
+          "minimum": 0
+        },
+        "lockDetections": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "repairAttempts": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "repairSuccesses": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "repairFailures": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "runtimeLockConflicts": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "killedProcessCount": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "meanRecoveryMs": {
+          "type": "number",
+          "minimum": 0
+        }
+      },
+      "additionalProperties": false
+    },
+    "trend": {
+      "type": "object",
+      "required": [
+        "previousFailureRatio",
+        "currentFailureRatio",
+        "failureRatioDelta",
+        "previousMeanRecoveryMs",
+        "currentMeanRecoveryMs",
+        "meanRecoveryDeltaMs"
+      ],
+      "properties": {
+        "previousFailureRatio": {
+          "type": "number"
+        },
+        "currentFailureRatio": {
+          "type": "number"
+        },
+        "failureRatioDelta": {
+          "type": "number"
+        },
+        "previousMeanRecoveryMs": {
+          "type": "number"
+        },
+        "currentMeanRecoveryMs": {
+          "type": "number"
+        },
+        "meanRecoveryDeltaMs": {
+          "type": "number"
+        }
+      },
+      "additionalProperties": false
+    }
+  },
+  "additionalProperties": false
+}

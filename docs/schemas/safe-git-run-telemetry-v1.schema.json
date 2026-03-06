@@ -1,0 +1,149 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://comparevi.dev/schemas/safe-git-run-telemetry-v1.schema.json",
+  "title": "Safe Git Run Telemetry v1",
+  "type": "object",
+  "required": [
+    "schema",
+    "startedAt",
+    "finishedAt",
+    "status",
+    "reason",
+    "command",
+    "cwd",
+    "attemptCount",
+    "counters",
+    "events"
+  ],
+  "properties": {
+    "schema": {
+      "const": "priority/safe-git-run-telemetry@v1"
+    },
+    "startedAt": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "finishedAt": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "durationMs": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "status": {
+      "type": "string"
+    },
+    "reason": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "message": {
+      "type": "string"
+    },
+    "command": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "minItems": 1
+    },
+    "cwd": {
+      "type": "string"
+    },
+    "gitDir": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "maxAttempts": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "maxRetries": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "retryDelayMs": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "staleLockAgeMs": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "allowProcessKill": {
+      "type": "boolean"
+    },
+    "attemptCount": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "recoveryElapsedMs": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "counters": {
+      "type": "object",
+      "required": [
+        "lockDetections",
+        "repairAttempts",
+        "repairSuccesses",
+        "repairFailures",
+        "killedProcessCount",
+        "runtimeLockConflicts"
+      ],
+      "properties": {
+        "lockDetections": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "repairAttempts": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "repairSuccesses": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "repairFailures": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "killedProcessCount": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "runtimeLockConflicts": {
+          "type": "integer",
+          "minimum": 0
+        }
+      },
+      "additionalProperties": false
+    },
+    "events": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "type",
+          "at"
+        ],
+        "properties": {
+          "type": {
+            "type": "string"
+          },
+          "at": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "additionalProperties": true
+      }
+    }
+  },
+  "additionalProperties": true
+}

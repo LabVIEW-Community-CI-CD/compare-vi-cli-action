@@ -142,6 +142,50 @@ function Invoke-SemVerCheck {
   }
 }
 
+function Invoke-SafeGitReliabilitySummary {
+  $nodeCmd = Get-Command node -ErrorAction SilentlyContinue
+  if (-not $nodeCmd) {
+    Write-Warning 'node not found; skipping safe-git reliability summary.'
+    return
+  }
+
+  $scriptPath = Join-Path (Resolve-Path '.').Path 'tools/priority/summarize-safe-git-telemetry.mjs'
+  if (-not (Test-Path -LiteralPath $scriptPath -PathType Leaf)) {
+    Write-Warning "safe-git reliability summary script not found at $scriptPath"
+    return
+  }
+
+  $inputPath = Join-Path (Resolve-Path '.').Path 'tests/results/_agent/reliability/safe-git-events.jsonl'
+  $outputPath = Join-Path (Resolve-Path '.').Path 'tests/results/_agent/reliability/safe-git-trend-summary.json'
+  $arguments = @(
+    $scriptPath,
+    '--input', $inputPath,
+    '--output', $outputPath
+  )
+  if ($env:GITHUB_STEP_SUMMARY) {
+    $arguments += @('--step-summary', $env:GITHUB_STEP_SUMMARY)
+  }
+
+  $psi = New-Object System.Diagnostics.ProcessStartInfo
+  $psi.FileName = $nodeCmd.Source
+  foreach ($arg in $arguments) { $psi.ArgumentList.Add([string]$arg) }
+  $psi.WorkingDirectory = (Resolve-Path '.').Path
+  $psi.UseShellExecute = $false
+  $psi.RedirectStandardOutput = $true
+  $psi.RedirectStandardError = $true
+
+  $proc = [System.Diagnostics.Process]::Start($psi)
+  $stdout = $proc.StandardOutput.ReadToEnd()
+  $stderr = $proc.StandardError.ReadToEnd()
+  $proc.WaitForExit()
+
+  if ($stdout) { Write-Host $stdout.TrimEnd() }
+  if ($stderr) { Write-Warning $stderr.TrimEnd() }
+  if ($proc.ExitCode -ne 0) {
+    throw "safe-git reliability summary failed (exit=$($proc.ExitCode))"
+  }
+}
+
 function Invoke-AgentWriterLeaseAcquire {
   if ($env:AGENT_WRITER_LEASE_ENABLED -eq '0') {
     Write-Host '[bootstrap] Agent writer lease disabled (AGENT_WRITER_LEASE_ENABLED=0).'
@@ -452,6 +496,9 @@ if (-not $PreflightOnly) {
     }
     Write-ReleaseSummary -SemVerResult $placeholder | Out-Null
   }
+
+  Write-Host '[bootstrap] Summarizing safe-git reliability telemetry…'
+  Invoke-SafeGitReliabilitySummary
 }
 
 Write-Host '[bootstrap] Bootstrapping complete.'

@@ -176,3 +176,44 @@ test('runGitWithSafety kills stale git process when allowed and proceeds', () =>
   assert.deepEqual(removed, [indexLock]);
 });
 
+test('runGitWithSafety emits deterministic telemetry for repair flow', () => {
+  let lockExists = true;
+  const writes = [];
+  let nowMs = 10_000;
+
+  const result = runGitWithSafety(
+    ['push', 'origin', 'feature/x'],
+    { cwd: repoRoot, env: {} },
+    makeCommonBroker({
+      telemetryPath: path.join(repoRoot, 'tests', 'results', '_agent', 'reliability', 'safe-git-events.jsonl'),
+      nowFn: () => {
+        nowMs += 50;
+        return nowMs;
+      },
+      existsSyncFn: (target) => target === indexLock && lockExists,
+      rmSyncFn: () => {
+        lockExists = false;
+      },
+      spawnSyncFn: () => ({ status: 0, stdout: 'ok', stderr: '' }),
+      mkdirSyncFn: () => {},
+      appendFileSyncFn: (_targetPath, payload) => {
+        writes.push(String(payload));
+      }
+    })
+  );
+
+  assert.equal(result.status, 0);
+  assert.equal(writes.length, 1);
+
+  const telemetry = JSON.parse(writes[0].trim());
+  assert.equal(telemetry.schema, 'priority/safe-git-run-telemetry@v1');
+  assert.equal(telemetry.status, 'success');
+  assert.equal(telemetry.reason, 'ok');
+  assert.equal(telemetry.counters.lockDetections, 1);
+  assert.equal(telemetry.counters.repairAttempts, 1);
+  assert.equal(telemetry.counters.repairSuccesses, 1);
+  assert.ok(Array.isArray(telemetry.events));
+  assert.ok(telemetry.events.some((event) => event.type === 'lock-detected'));
+  assert.ok(telemetry.events.some((event) => event.type === 'repair-attempt'));
+  assert.ok(telemetry.events.some((event) => event.type === 'repair-result' && event.outcome === 'success'));
+});
