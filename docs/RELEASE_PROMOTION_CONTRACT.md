@@ -99,6 +99,7 @@ Release tags must pass the supply-chain trust gate before GitHub Release publica
 - Gate script: `node tools/priority/supply-chain-trust-gate.mjs`
 - Report artifact: `tests/results/_agent/supply-chain/release-trust-gate.json`
 - Enforced checks:
+  - signed annotated release tag verification (GitHub API `git/tags` verification must be `verified=true`)
   - required artifact presence (`*.zip/*.tar.gz`, `SHA256SUMS.txt`, `sbom.spdx.json`, `provenance.json`)
   - checksum integrity
   - SBOM/provenance contract validity

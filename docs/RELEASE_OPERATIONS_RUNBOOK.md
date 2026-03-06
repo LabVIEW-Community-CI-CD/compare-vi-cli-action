@@ -126,6 +126,12 @@ matching remediation path:
 
 - `missing-artifacts-root`, `missing-required-file`, `no-distribution-artifacts`
   - Re-run publish steps and confirm artifacts exist under `artifacts/cli`.
+- `tag-ref-missing`, `tag-ref-lookup-failed`, `tag-object-lookup-failed`, `tag-signature-parse-failed`
+  - Confirm release workflow was triggered from a tag push and rerun with GitHub CLI/API access intact.
+- `tag-signature-cli-unavailable`
+  - Restore GitHub CLI availability on runner and retry release.
+- `tag-not-annotated`, `tag-signature-unverified`
+  - Recreate release tag as a signed annotated tag and rerun release.
 - `checksum-invalid-line`, `checksum-empty`, `checksum-entry-missing-file`, `checksum-missing-artifact`, `checksum-mismatch`
   - Regenerate `SHA256SUMS.txt` from fresh artifacts and ensure no post-pack mutation occurred.
 - `sbom-parse-failed`, `sbom-invalid`

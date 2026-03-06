@@ -10,6 +10,7 @@ import {
   parseArgs,
   parseChecksumManifest,
   shouldRetryAttestationVerify,
+  verifyReleaseTagSignature,
   verifyAttestationForArtifact,
   verifyAttestations
 } from '../supply-chain-trust-gate.mjs';
@@ -27,6 +28,8 @@ test('parseArgs applies defaults and explicit overrides', () => {
   const defaults = parseArgs(['node', 'supply-chain-trust-gate.mjs']);
   assert.equal(defaults.artifactsRoot, path.join('artifacts', 'cli'));
   assert.equal(defaults.reportPath, DEFAULT_REPORT_PATH);
+  assert.equal(defaults.tagRef, process.env.GITHUB_REF_NAME || null);
+  assert.equal(defaults.verifyTagSignature, true);
   assert.equal(defaults.verifyAttestations, true);
   assert.equal(defaults.attestationAttempts, 6);
 
@@ -43,6 +46,8 @@ test('parseArgs applies defaults and explicit overrides', () => {
     'out/release/sbom.json',
     '--provenance',
     'out/release/prov.json',
+    '--tag-ref',
+    'v1.2.3',
     '--report',
     'out/report.json',
     '--signer-workflow',
@@ -51,14 +56,17 @@ test('parseArgs applies defaults and explicit overrides', () => {
     '2',
     '--attestation-retry-seconds',
     '1',
+    '--skip-tag-signature',
     '--skip-attestations'
   ]);
   assert.equal(parsed.repo, 'owner/repo');
   assert.equal(parsed.artifactsRoot, 'out/release');
+  assert.equal(parsed.tagRef, 'v1.2.3');
   assert.equal(parsed.reportPath, 'out/report.json');
   assert.equal(parsed.signerWorkflow, 'owner/repo/.github/workflows/release.yml');
   assert.equal(parsed.attestationAttempts, 2);
   assert.equal(parsed.attestationRetrySeconds, 1);
+  assert.equal(parsed.verifyTagSignature, false);
   assert.equal(parsed.verifyAttestations, false);
 });
 
@@ -221,4 +229,124 @@ test('verifyAttestations reports gh unavailable and retry classifier catches tra
   assert.ok(result.failures.some((failure) => failure.code === 'attestation-cli-unavailable'));
   assert.equal(result.results.length, 1);
   assert.equal(result.results[0].verified, false);
+});
+
+test('verifyReleaseTagSignature passes for verified annotated tag', async () => {
+  const runner = (_command, args) => {
+    if (args[0] === '--version') {
+      return { status: 0, stdout: 'gh version 2.x', stderr: '' };
+    }
+    if (args[0] === 'api' && String(args[1]).includes('/git/ref/tags/')) {
+      return {
+        status: 0,
+        stdout: JSON.stringify({
+          object: {
+            type: 'tag',
+            sha: 'abc123'
+          }
+        }),
+        stderr: ''
+      };
+    }
+    if (args[0] === 'api' && String(args[1]).includes('/git/tags/')) {
+      return {
+        status: 0,
+        stdout: JSON.stringify({
+          verification: {
+            verified: true,
+            reason: 'valid',
+            verified_at: '2026-03-06T00:00:00Z'
+          }
+        }),
+        stderr: ''
+      };
+    }
+    return { status: 1, stdout: '', stderr: 'unexpected' };
+  };
+
+  const result = await verifyReleaseTagSignature({
+    repository: 'owner/repo',
+    tagRef: 'v1.2.3',
+    runner
+  });
+
+  assert.equal(result.failures.length, 0);
+  assert.equal(result.status.checked, true);
+  assert.equal(result.status.annotated, true);
+  assert.equal(result.status.verified, true);
+  assert.equal(result.status.reason, 'valid');
+});
+
+test('verifyReleaseTagSignature fails for unsigned tag', async () => {
+  const runner = (_command, args) => {
+    if (args[0] === '--version') {
+      return { status: 0, stdout: 'gh version 2.x', stderr: '' };
+    }
+    if (args[0] === 'api' && String(args[1]).includes('/git/ref/tags/')) {
+      return {
+        status: 0,
+        stdout: JSON.stringify({
+          object: {
+            type: 'tag',
+            sha: 'abc123'
+          }
+        }),
+        stderr: ''
+      };
+    }
+    if (args[0] === 'api' && String(args[1]).includes('/git/tags/')) {
+      return {
+        status: 0,
+        stdout: JSON.stringify({
+          verification: {
+            verified: false,
+            reason: 'unsigned'
+          }
+        }),
+        stderr: ''
+      };
+    }
+    return { status: 1, stdout: '', stderr: 'unexpected' };
+  };
+
+  const result = await verifyReleaseTagSignature({
+    repository: 'owner/repo',
+    tagRef: 'v1.2.3',
+    runner
+  });
+
+  assert.ok(result.failures.some((failure) => failure.code === 'tag-signature-unverified'));
+  assert.equal(result.status.verified, false);
+  assert.equal(result.status.reason, 'unsigned');
+});
+
+test('verifyReleaseTagSignature fails for lightweight tag', async () => {
+  const runner = (_command, args) => {
+    if (args[0] === '--version') {
+      return { status: 0, stdout: 'gh version 2.x', stderr: '' };
+    }
+    if (args[0] === 'api' && String(args[1]).includes('/git/ref/tags/')) {
+      return {
+        status: 0,
+        stdout: JSON.stringify({
+          object: {
+            type: 'commit',
+            sha: 'deadbeef'
+          }
+        }),
+        stderr: ''
+      };
+    }
+    return { status: 1, stdout: '', stderr: 'unexpected' };
+  };
+
+  const result = await verifyReleaseTagSignature({
+    repository: 'owner/repo',
+    tagRef: 'v1.2.3',
+    runner
+  });
+
+  assert.ok(result.failures.some((failure) => failure.code === 'tag-not-annotated'));
+  assert.equal(result.status.annotated, false);
+  assert.equal(result.status.reason, 'not-annotated');
 });
