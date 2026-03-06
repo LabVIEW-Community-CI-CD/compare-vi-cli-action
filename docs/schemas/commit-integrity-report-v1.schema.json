@@ -16,6 +16,7 @@
     "commits",
     "violations",
     "issues",
+    "bypass",
     "result",
     "errors",
     "exitCode"
@@ -80,7 +81,8 @@
         "checks",
         "sourceResolution",
         "botIdentityPolicy",
-        "trailerContract"
+        "trailerContract",
+        "exceptionGovernance"
       ],
       "properties": {
         "schema": {
@@ -208,6 +210,37 @@
               }
             }
           }
+        },
+        "exceptionGovernance": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "allowBypass",
+            "requireReasonOwnerExpiry",
+            "remediationLabels",
+            "remediationTitlePrefix",
+            "remediationIssueMarker"
+          ],
+          "properties": {
+            "allowBypass": {
+              "type": "boolean"
+            },
+            "requireReasonOwnerExpiry": {
+              "type": "boolean"
+            },
+            "remediationLabels": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "remediationTitlePrefix": {
+              "type": "string"
+            },
+            "remediationIssueMarker": {
+              "type": "string"
+            }
+          }
         }
       }
     },
@@ -216,13 +249,25 @@
       "additionalProperties": false,
       "required": [
         "observeOnly",
-        "blocking"
+        "blocking",
+        "bypassRequested",
+        "bypassApplied",
+        "governanceFailure"
       ],
       "properties": {
         "observeOnly": {
           "type": "boolean"
         },
         "blocking": {
+          "type": "boolean"
+        },
+        "bypassRequested": {
+          "type": "boolean"
+        },
+        "bypassApplied": {
+          "type": "boolean"
+        },
+        "governanceFailure": {
           "type": "boolean"
         }
       }
@@ -437,6 +482,113 @@
       "type": "array",
       "items": {
         "type": "string"
+      }
+    },
+    "bypass": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "requested",
+        "status",
+        "active",
+        "reason",
+        "owner",
+        "expiresAt",
+        "ticket",
+        "labels",
+        "metadataErrors",
+        "remediation"
+      ],
+      "properties": {
+        "requested": {
+          "type": "boolean"
+        },
+        "status": {
+          "enum": [
+            "none",
+            "active",
+            "expired",
+            "invalid"
+          ]
+        },
+        "active": {
+          "type": "boolean"
+        },
+        "reason": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "owner": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "expiresAt": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "ticket": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "labels": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "metadataErrors": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "remediation": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "action"
+          ],
+          "properties": {
+            "action": {
+              "enum": [
+                "none",
+                "create",
+                "comment",
+                "error"
+              ]
+            },
+            "issueNumber": {
+              "type": [
+                "integer",
+                "null"
+              ],
+              "minimum": 1
+            },
+            "issueUrl": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "labels": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "message": {
+              "type": "string"
+            }
+          }
+        }
       }
     },
     "result": {

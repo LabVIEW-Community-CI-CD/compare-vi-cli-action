@@ -28,6 +28,7 @@ jobs:
     permissions:
       contents: read
       pull-requests: read
+      issues: write
 
     steps:
       - uses: actions/checkout@v5
@@ -43,13 +44,20 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ github.token }}
           COMMIT_INTEGRITY_ENFORCE: ${{ vars.COMMIT_INTEGRITY_ENFORCE || '0' }}
+          COMMIT_INTEGRITY_BYPASS_REASON: ${{ vars.COMMIT_INTEGRITY_BYPASS_REASON || '' }}
+          COMMIT_INTEGRITY_BYPASS_OWNER: ${{ vars.COMMIT_INTEGRITY_BYPASS_OWNER || '' }}
+          COMMIT_INTEGRITY_BYPASS_EXPIRES_AT: ${{ vars.COMMIT_INTEGRITY_BYPASS_EXPIRES_AT || '' }}
+          COMMIT_INTEGRITY_BYPASS_TICKET: ${{ vars.COMMIT_INTEGRITY_BYPASS_TICKET || '' }}
+          COMMIT_INTEGRITY_BYPASS_LABELS: ${{ vars.COMMIT_INTEGRITY_BYPASS_LABELS || '' }}
           DISPATCH_PR: ${{ inputs.pull_request || '' }}
           DISPATCH_ENFORCE: ${{ inputs.enforce || false }}
         run: |
           $reportPath = 'tests/results/_agent/commit-integrity/commit-integrity-report.json'
+          $ledgerPath = 'tests/results/_agent/commit-integrity/commit-integrity-bypass-ledger.json'
           $args = @(
             'tools/priority/commit-integrity.mjs',
-            '--report', $reportPath
+            '--report', $reportPath,
+            '--ledger', $ledgerPath
           )
 
           if ('${{ github.event_name }}' -eq 'workflow_dispatch') {
@@ -64,6 +72,22 @@ jobs:
             $args += '--observe-only'
           }
 
+          if (-not [string]::IsNullOrWhiteSpace($env:COMMIT_INTEGRITY_BYPASS_REASON)) {
+            $args += @('--bypass-reason', $env:COMMIT_INTEGRITY_BYPASS_REASON)
+          }
+          if (-not [string]::IsNullOrWhiteSpace($env:COMMIT_INTEGRITY_BYPASS_OWNER)) {
+            $args += @('--bypass-owner', $env:COMMIT_INTEGRITY_BYPASS_OWNER)
+          }
+          if (-not [string]::IsNullOrWhiteSpace($env:COMMIT_INTEGRITY_BYPASS_EXPIRES_AT)) {
+            $args += @('--bypass-expires-at', $env:COMMIT_INTEGRITY_BYPASS_EXPIRES_AT)
+          }
+          if (-not [string]::IsNullOrWhiteSpace($env:COMMIT_INTEGRITY_BYPASS_TICKET)) {
+            $args += @('--bypass-ticket', $env:COMMIT_INTEGRITY_BYPASS_TICKET)
+          }
+          if (-not [string]::IsNullOrWhiteSpace($env:COMMIT_INTEGRITY_BYPASS_LABELS)) {
+            $args += @('--bypass-labels', $env:COMMIT_INTEGRITY_BYPASS_LABELS)
+          }
+
           node @args
 
       - name: Upload commit integrity artifact
@@ -71,5 +95,7 @@ jobs:
         uses: actions/upload-artifact@v5
         with:
           name: commit-integrity-${{ github.run_id }}
-          path: tests/results/_agent/commit-integrity/commit-integrity-report.json
+          path: |
+            tests/results/_agent/commit-integrity/commit-integrity-report.json
+            tests/results/_agent/commit-integrity/commit-integrity-bypass-ledger.json
           if-no-files-found: error

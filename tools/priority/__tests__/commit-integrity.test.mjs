@@ -57,6 +57,33 @@ test('parseArgs supports observe-only and pull-request selection', () => {
   assert.equal(options.observeOnly, true);
 });
 
+test('parseArgs captures bypass metadata options', () => {
+  const options = parseArgs([
+    'node',
+    'tools/priority/commit-integrity.mjs',
+    '--pr',
+    '42',
+    '--ledger',
+    'tests/results/ledger.json',
+    '--bypass-reason',
+    'temporary-incident-mitigation',
+    '--bypass-owner',
+    '@octocat',
+    '--bypass-expires-at',
+    '2026-03-31T00:00:00Z',
+    '--bypass-ticket',
+    '#775',
+    '--bypass-labels',
+    'ci,governance'
+  ]);
+  assert.equal(options.ledgerPath, 'tests/results/ledger.json');
+  assert.equal(options.bypassReason, 'temporary-incident-mitigation');
+  assert.equal(options.bypassOwner, '@octocat');
+  assert.equal(options.bypassExpiresAt, '2026-03-31T00:00:00Z');
+  assert.equal(options.bypassTicket, '#775');
+  assert.deepEqual(options.bypassLabels, ['ci', 'governance']);
+});
+
 test('normalizeCommitRecords applies deterministic sha ordering', () => {
   const commits = normalizeCommitRecords(
     [
@@ -359,4 +386,186 @@ test('evaluateCommitIntegrity fails on non-allowlisted bot identities', () => {
 
   assert.equal(evaluation.result, 'fail');
   assert.ok(evaluation.violations.some((violation) => violation.category === 'unauthorized-bot-identity'));
+});
+
+test('resolveBypassRequest requires explicit metadata when bypass is requested', () => {
+  const bypass = __test.resolveBypassRequest(
+    {
+      bypassReason: 'temporary bypass',
+      bypassOwner: null,
+      bypassExpiresAt: null,
+      bypassTicket: null,
+      bypassLabels: []
+    },
+    {},
+    {
+      exceptionGovernance: {
+        allowBypass: true,
+        remediationLabels: ['ci', 'governance', 'supply-chain']
+      }
+    },
+    new Date('2026-03-06T00:00:00Z')
+  );
+
+  assert.equal(bypass.requested, true);
+  assert.equal(bypass.status, 'invalid');
+  assert.ok(bypass.metadataErrors.includes('missing-bypass-owner'));
+  assert.ok(bypass.metadataErrors.includes('missing-bypass-expiry'));
+});
+
+test('resolveBypassRequest classifies active versus expired metadata deterministically', () => {
+  const expired = __test.resolveBypassRequest(
+    {
+      bypassReason: 'incident',
+      bypassOwner: '@octocat',
+      bypassExpiresAt: '2026-03-01T00:00:00Z',
+      bypassTicket: '#775',
+      bypassLabels: []
+    },
+    {},
+    {
+      exceptionGovernance: {
+        allowBypass: true,
+        remediationLabels: ['ci', 'governance', 'supply-chain']
+      }
+    },
+    new Date('2026-03-06T00:00:00Z')
+  );
+  assert.equal(expired.status, 'expired');
+  assert.equal(expired.active, false);
+
+  const active = __test.resolveBypassRequest(
+    {
+      bypassReason: 'incident',
+      bypassOwner: '@octocat',
+      bypassExpiresAt: '2026-03-20T00:00:00Z',
+      bypassTicket: '#775',
+      bypassLabels: []
+    },
+    {},
+    {
+      exceptionGovernance: {
+        allowBypass: true,
+        remediationLabels: ['ci', 'governance', 'supply-chain']
+      }
+    },
+    new Date('2026-03-06T00:00:00Z')
+  );
+  assert.equal(active.status, 'active');
+  assert.equal(active.active, true);
+});
+
+test('buildBypassLedger records bypass usage and remediation state', () => {
+  const ledger = __test.buildBypassLedger({
+    repository: 'example/repo',
+    scope: {
+      mode: 'pull_request',
+      pullRequest: 775,
+      baseSha: null,
+      headSha: null
+    },
+    policy: {
+      path: 'tools/policy/commit-integrity-policy.json',
+      schema: 'commit-integrity-policy/v1',
+      failOnUnverified: true,
+      exceptionGovernance: {
+        allowBypass: true,
+        requireReasonOwnerExpiry: true,
+        remediationLabels: ['ci', 'governance', 'supply-chain'],
+        remediationTitlePrefix: '[Commit Integrity] Expired bypass remediation',
+        remediationIssueMarker: '<!-- commit-integrity-bypass-remediation@v1 -->'
+      }
+    },
+    observeOnly: false,
+    bypass: {
+      requested: true,
+      status: 'expired',
+      active: false,
+      bypassEnabled: true,
+      reason: 'incident',
+      owner: '@octocat',
+      expiresAt: '2026-03-01T00:00:00.000Z',
+      ticket: '#775',
+      labels: ['ci', 'governance', 'supply-chain'],
+      metadataErrors: []
+    },
+    remediation: {
+      action: 'create',
+      issueNumber: 800
+    },
+    evaluation: {
+      result: 'fail',
+      violations: [{ category: 'unverified-commit' }],
+      issues: ['bypass-expired']
+    },
+    reportPath: 'tests/results/_agent/commit-integrity/commit-integrity-report.json',
+    generatedAt: '2026-03-06T00:00:00.000Z'
+  });
+
+  assert.equal(ledger.schema, 'commit-integrity/bypass-ledger@v1');
+  assert.equal(ledger.bypass.status, 'expired');
+  assert.equal(ledger.remediation.action, 'create');
+  assert.equal(ledger.evaluation.violationCount, 1);
+});
+
+test('routeExpiredBypassRemediationIssue opens remediation issue for expired bypass metadata', async () => {
+  const calls = [];
+  const createResponse = (payload, status = 200, statusText = 'OK') => ({
+    ok: status >= 200 && status < 300,
+    status,
+    statusText,
+    text: async () => (payload === null ? '' : JSON.stringify(payload))
+  });
+  const fetchMock = async (url, options = {}) => {
+    const method = options.method ?? 'GET';
+    calls.push({ url, method, body: options.body ?? null });
+    if (method === 'GET' && String(url).includes('/issues?')) {
+      return createResponse([]);
+    }
+    if (method === 'POST' && String(url).endsWith('/issues')) {
+      return createResponse({
+        number: 901,
+        html_url: 'https://github.com/example/repo/issues/901'
+      });
+    }
+    throw new Error(`Unexpected request: ${method} ${url}`);
+  };
+
+  const route = await __test.routeExpiredBypassRemediationIssue({
+    repository: 'example/repo',
+    token: 'test-token',
+    policy: {
+      exceptionGovernance: {
+        remediationTitlePrefix: '[Commit Integrity] Expired bypass remediation',
+        remediationIssueMarker: '<!-- commit-integrity-bypass-remediation@v1 -->',
+        remediationLabels: ['ci', 'governance', 'supply-chain']
+      }
+    },
+    scope: {
+      mode: 'pull_request',
+      pullRequest: 775,
+      baseSha: null,
+      headSha: null
+    },
+    bypass: {
+      owner: '@octocat',
+      reason: 'incident',
+      expiresAt: '2026-03-01T00:00:00.000Z',
+      ticket: '#775',
+      labels: ['ci', 'governance', 'supply-chain']
+    },
+    evaluation: {
+      violations: [{ category: 'unverified-commit' }],
+      issues: ['bypass-expired']
+    },
+    generatedAt: '2026-03-06T00:00:00.000Z',
+    fetchFn: fetchMock
+  });
+
+  assert.equal(route.action, 'create');
+  assert.equal(route.issueNumber, 901);
+  assert.equal(
+    calls.filter((entry) => entry.method === 'POST' && String(entry.url).endsWith('/issues')).length,
+    1
+  );
 });

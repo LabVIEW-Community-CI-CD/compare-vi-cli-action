@@ -26,6 +26,17 @@
   "verification": {
     "fail_on_unverified": true
   },
+  "exception_governance": {
+    "allow_bypass": true,
+    "require_reason_owner_expiry": true,
+    "remediation_labels": [
+      "ci",
+      "governance",
+      "supply-chain"
+    ],
+    "remediation_title_prefix": "[Commit Integrity] Expired bypass remediation",
+    "remediation_issue_marker": "<!-- commit-integrity-bypass-remediation@v1 -->"
+  },
   "checks": {
     "require_author_attribution": true,
     "require_committer_attribution": true,

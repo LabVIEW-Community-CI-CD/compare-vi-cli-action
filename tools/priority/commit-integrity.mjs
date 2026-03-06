@@ -13,7 +13,17 @@ const DEFAULT_REPORT_PATH = path.join(
   'commit-integrity',
   'commit-integrity-report.json'
 );
+const DEFAULT_BYPASS_LEDGER_PATH = path.join(
+  'tests',
+  'results',
+  '_agent',
+  'commit-integrity',
+  'commit-integrity-bypass-ledger.json'
+);
 const DEFAULT_POLICY_PATH = path.join('tools', 'policy', 'commit-integrity-policy.json');
+const DEFAULT_BYPASS_LABELS = Object.freeze(['ci', 'governance', 'supply-chain']);
+const DEFAULT_BYPASS_REMEDIATION_TITLE_PREFIX = '[Commit Integrity] Expired bypass remediation';
+const DEFAULT_BYPASS_REMEDIATION_MARKER = '<!-- commit-integrity-bypass-remediation@v1 -->';
 const DEFAULT_POLICY_CHECKS = Object.freeze({
   requireBotAllowlist: false,
   allowedBotLogins: Object.freeze([]),
@@ -83,6 +93,12 @@ function printUsage() {
   console.log('  --head-sha <sha>       Head SHA for compare mode.');
   console.log(`  --policy <path>        Policy path (default: ${DEFAULT_POLICY_PATH}).`);
   console.log(`  --report <path>        Report path (default: ${DEFAULT_REPORT_PATH}).`);
+  console.log(`  --ledger <path>        Bypass ledger path (default: ${DEFAULT_BYPASS_LEDGER_PATH}).`);
+  console.log('  --bypass-reason <text> Temporary bypass reason metadata.');
+  console.log('  --bypass-owner <text>  Temporary bypass owner metadata.');
+  console.log('  --bypass-expires-at <iso-date-time>  Temporary bypass expiry metadata.');
+  console.log('  --bypass-ticket <text> Optional ticket/issue identifier for bypass context.');
+  console.log('  --bypass-labels <a,b,c> Labels used for expired bypass remediation issue routing.');
   console.log('  --observe-only         Do not fail the process when violations are present.');
   console.log('  -h, --help             Show usage.');
 }
@@ -108,6 +124,17 @@ function normalizeOptionalString(value) {
   }
   const normalized = String(value).trim();
   return normalized || null;
+}
+
+function parseCsvList(value) {
+  const normalized = normalizeOptionalString(value);
+  if (!normalized) {
+    return [];
+  }
+  return normalized
+    .split(',')
+    .map((entry) => normalizeOptionalString(entry))
+    .filter(Boolean);
 }
 
 function firstLine(value) {
@@ -300,6 +327,12 @@ export function parseArgs(argv = process.argv) {
     headSha: null,
     policyPath: DEFAULT_POLICY_PATH,
     reportPath: DEFAULT_REPORT_PATH,
+    ledgerPath: DEFAULT_BYPASS_LEDGER_PATH,
+    bypassReason: null,
+    bypassOwner: null,
+    bypassExpiresAt: null,
+    bypassTicket: null,
+    bypassLabels: [],
     observeOnly: false
   };
 
@@ -313,7 +346,20 @@ export function parseArgs(argv = process.argv) {
       options.observeOnly = true;
       continue;
     }
-    if (arg === '--repo' || arg === '--pr' || arg === '--base-sha' || arg === '--head-sha' || arg === '--policy' || arg === '--report') {
+    if (
+      arg === '--repo' ||
+      arg === '--pr' ||
+      arg === '--base-sha' ||
+      arg === '--head-sha' ||
+      arg === '--policy' ||
+      arg === '--report' ||
+      arg === '--ledger' ||
+      arg === '--bypass-reason' ||
+      arg === '--bypass-owner' ||
+      arg === '--bypass-expires-at' ||
+      arg === '--bypass-ticket' ||
+      arg === '--bypass-labels'
+    ) {
       const next = args[index + 1];
       if (!next || next.startsWith('-')) {
         throw new Error(`Missing value for ${arg}.`);
@@ -331,6 +377,18 @@ export function parseArgs(argv = process.argv) {
         options.policyPath = next;
       } else if (arg === '--report') {
         options.reportPath = next;
+      } else if (arg === '--ledger') {
+        options.ledgerPath = next;
+      } else if (arg === '--bypass-reason') {
+        options.bypassReason = normalizeOptionalString(next);
+      } else if (arg === '--bypass-owner') {
+        options.bypassOwner = normalizeOptionalString(next);
+      } else if (arg === '--bypass-expires-at') {
+        options.bypassExpiresAt = normalizeOptionalString(next);
+      } else if (arg === '--bypass-ticket') {
+        options.bypassTicket = normalizeOptionalString(next);
+      } else if (arg === '--bypass-labels') {
+        options.bypassLabels = parseCsvList(next);
       }
       continue;
     }
@@ -342,6 +400,142 @@ export function parseArgs(argv = process.argv) {
   }
 
   return options;
+}
+
+function normalizeBypassLabels(values, fallback = DEFAULT_BYPASS_LABELS) {
+  const normalized = Array.from(
+    new Set(
+      (Array.isArray(values) ? values : [])
+        .map((entry) => normalizeOptionalString(entry)?.toLowerCase())
+        .filter(Boolean)
+    )
+  );
+  if (normalized.length > 0) {
+    return normalized;
+  }
+  return [...fallback];
+}
+
+function parseBypassExpiry(value) {
+  const normalized = normalizeOptionalString(value);
+  if (!normalized) {
+    return {
+      iso: null,
+      ms: null,
+      error: 'missing-expiry'
+    };
+  }
+  const ms = Date.parse(normalized);
+  if (!Number.isFinite(ms)) {
+    return {
+      iso: normalized,
+      ms: null,
+      error: 'invalid-expiry'
+    };
+  }
+  return {
+    iso: new Date(ms).toISOString(),
+    ms,
+    error: null
+  };
+}
+
+function resolveBypassRequest(options, env, policy, now = new Date()) {
+  const governance = policy?.exceptionGovernance ?? {};
+  const bypassEnabled = governance.allowBypass === true;
+  const reason = normalizeOptionalString(options.bypassReason) ?? normalizeOptionalString(env.COMMIT_INTEGRITY_BYPASS_REASON);
+  const owner = normalizeOptionalString(options.bypassOwner) ?? normalizeOptionalString(env.COMMIT_INTEGRITY_BYPASS_OWNER);
+  const expiresAtRaw =
+    normalizeOptionalString(options.bypassExpiresAt) ?? normalizeOptionalString(env.COMMIT_INTEGRITY_BYPASS_EXPIRES_AT);
+  const ticket = normalizeOptionalString(options.bypassTicket) ?? normalizeOptionalString(env.COMMIT_INTEGRITY_BYPASS_TICKET);
+  const labelCandidates =
+    options.bypassLabels.length > 0
+      ? options.bypassLabels
+      : parseCsvList(env.COMMIT_INTEGRITY_BYPASS_LABELS ?? governance.remediationLabels?.join(',') ?? '');
+  const labels = normalizeBypassLabels(labelCandidates, governance.remediationLabels ?? DEFAULT_BYPASS_LABELS);
+
+  const requested =
+    reason !== null ||
+    owner !== null ||
+    expiresAtRaw !== null ||
+    ticket !== null ||
+    (options.bypassLabels?.length ?? 0) > 0 ||
+    normalizeOptionalString(env.COMMIT_INTEGRITY_BYPASS_LABELS) !== null;
+
+  if (!requested) {
+    return {
+      requested: false,
+      status: 'none',
+      active: false,
+      bypassEnabled,
+      reason: null,
+      owner: null,
+      expiresAt: null,
+      ticket: null,
+      labels,
+      metadataErrors: []
+    };
+  }
+
+  if (!bypassEnabled) {
+    return {
+      requested: true,
+      status: 'invalid',
+      active: false,
+      bypassEnabled,
+      reason,
+      owner,
+      expiresAt: expiresAtRaw,
+      ticket,
+      labels,
+      metadataErrors: ['bypass-disabled-by-policy']
+    };
+  }
+
+  const requireMetadata = governance.requireReasonOwnerExpiry !== false;
+  const metadataErrors = [];
+  if (requireMetadata && !reason) {
+    metadataErrors.push('missing-bypass-reason');
+  }
+  if (requireMetadata && !owner) {
+    metadataErrors.push('missing-bypass-owner');
+  }
+  const expiry = parseBypassExpiry(expiresAtRaw);
+  if (requireMetadata && expiry.error === 'missing-expiry') {
+    metadataErrors.push('missing-bypass-expiry');
+  } else if (expiry.error === 'invalid-expiry') {
+    metadataErrors.push('invalid-bypass-expiry');
+  }
+  if (metadataErrors.length > 0) {
+    return {
+      requested: true,
+      status: 'invalid',
+      active: false,
+      bypassEnabled,
+      reason,
+      owner,
+      expiresAt: expiry.iso ?? expiresAtRaw,
+      ticket,
+      labels,
+      metadataErrors
+    };
+  }
+
+  const nowMs = now.getTime();
+  const expired = Number.isFinite(expiry.ms) ? expiry.ms <= nowMs : true;
+  return {
+    requested: true,
+    status: expired ? 'expired' : 'active',
+    active: !expired,
+    bypassEnabled,
+    reason,
+    owner,
+    expiresAt: expiry.iso,
+    expiresAtMs: expiry.ms,
+    ticket,
+    labels,
+    metadataErrors: []
+  };
 }
 
 export function classifySourceKind(commit, sourceResolution) {
@@ -815,19 +1009,24 @@ function createHeaders(token) {
   };
 }
 
-async function requestJson(url, token, { fetchFn = globalThis.fetch } = {}) {
+async function requestJson(url, token, { fetchFn = globalThis.fetch, method = 'GET', body = null } = {}) {
   if (typeof fetchFn !== 'function') {
     throw new Error('Global fetch is unavailable.');
   }
   const response = await fetchFn(url, {
-    method: 'GET',
-    headers: createHeaders(token)
+    method,
+    headers: createHeaders(token),
+    body: body ? JSON.stringify(body) : undefined
   });
   if (!response.ok) {
     const text = await response.text();
-    throw new Error(`GitHub API request failed: ${response.status} ${response.statusText} -> ${text}`);
+    throw new Error(`GitHub API request failed: ${response.status} ${response.statusText} (${method} ${url}) -> ${text}`);
   }
-  return response.json();
+  const text = await response.text();
+  if (!text) {
+    return null;
+  }
+  return JSON.parse(text);
 }
 
 async function listPullRequestCommits(repo, pullRequest, token, { fetchFn = globalThis.fetch } = {}) {
@@ -862,6 +1061,7 @@ async function loadPolicy(policyPath) {
   const checkSettings = parsed?.checks ?? {};
   const botIdentityPolicy = parsed?.bot_identity_policy ?? {};
   const trailerContract = parsed?.trailer_contract ?? {};
+  const exceptionGovernance = parsed?.exception_governance ?? {};
   const requiredAnyTrailers = Array.isArray(trailerContract.required_any)
     ? trailerContract.required_any.map((entry) => ({
       key: entry?.key,
@@ -894,6 +1094,17 @@ async function loadPolicy(policyPath) {
       botEmailRegexes: compileRegexList(sourceResolution.bot_email_patterns, {
         label: 'source_resolution.bot_email_patterns'
       })
+    },
+    exceptionGovernance: {
+      allowBypass: exceptionGovernance.allow_bypass === true,
+      requireReasonOwnerExpiry: exceptionGovernance.require_reason_owner_expiry !== false,
+      remediationLabels: normalizeBypassLabels(exceptionGovernance.remediation_labels, DEFAULT_BYPASS_LABELS),
+      remediationTitlePrefix:
+        normalizeOptionalString(exceptionGovernance.remediation_title_prefix) ??
+        DEFAULT_BYPASS_REMEDIATION_TITLE_PREFIX,
+      remediationIssueMarker:
+        normalizeOptionalString(exceptionGovernance.remediation_issue_marker) ??
+        DEFAULT_BYPASS_REMEDIATION_MARKER
     }
   };
   return policy;
@@ -906,6 +1117,171 @@ async function writeReport(reportPath, report) {
   return resolvedPath;
 }
 
+function renderBypassRemediationBody({
+  marker,
+  repository,
+  generatedAt,
+  scope,
+  bypass,
+  evaluation
+}) {
+  const lines = [
+    marker,
+    '',
+    '## Commit Integrity Bypass Expired',
+    '',
+    `- Repository: \`${repository}\``,
+    `- Generated at: \`${generatedAt}\``,
+    `- Owner: \`${bypass.owner ?? 'unknown'}\``,
+    `- Reason: ${bypass.reason ?? 'n/a'}`,
+    `- Expires at: \`${bypass.expiresAt ?? 'unknown'}\``,
+    `- Ticket: ${bypass.ticket ? `\`${bypass.ticket}\`` : 'n/a'}`,
+    `- Scope: \`${scope.mode}\`${scope.pullRequest ? ` (PR #${scope.pullRequest})` : ''}`,
+    `- Violations: \`${evaluation?.violations?.length ?? 0}\``,
+    `- Issues: \`${evaluation?.issues?.length ?? 0}\``,
+    '',
+    '## Remediation',
+    '',
+    '1. Remove or renew bypass metadata with a new expiry after approval.',
+    '2. Fix underlying commit-integrity violations.',
+    '3. Re-run commit-integrity workflow and confirm green status.'
+  ];
+  return `${lines.join('\n')}\n`;
+}
+
+async function routeExpiredBypassRemediationIssue({
+  repository,
+  token,
+  policy,
+  scope,
+  bypass,
+  evaluation,
+  generatedAt,
+  fetchFn = globalThis.fetch
+}) {
+  const titlePrefix = policy.exceptionGovernance.remediationTitlePrefix;
+  const marker = policy.exceptionGovernance.remediationIssueMarker;
+  const labels = normalizeBypassLabels(
+    bypass.labels,
+    policy.exceptionGovernance.remediationLabels
+  );
+  const body = renderBypassRemediationBody({
+    marker,
+    repository,
+    generatedAt,
+    scope,
+    bypass,
+    evaluation
+  });
+
+  try {
+    const listUrl = `https://api.github.com/repos/${repository}/issues?state=open&per_page=100&labels=${encodeURIComponent(labels.join(','))}`;
+    const openIssues = await requestJson(listUrl, token, { fetchFn });
+    const existing = (Array.isArray(openIssues) ? openIssues : []).find(
+      (issue) => !issue.pull_request && normalizeOptionalString(issue.body)?.includes(marker)
+    );
+
+    if (existing?.number) {
+      await requestJson(
+        `https://api.github.com/repos/${repository}/issues/${existing.number}/comments`,
+        token,
+        { fetchFn, method: 'POST', body: { body } }
+      );
+      return {
+        action: 'comment',
+        issueNumber: existing.number,
+        issueUrl: normalizeOptionalString(existing.html_url),
+        labels
+      };
+    }
+
+    const created = await requestJson(
+      `https://api.github.com/repos/${repository}/issues`,
+      token,
+      {
+        fetchFn,
+        method: 'POST',
+        body: {
+          title: `${titlePrefix} (${generatedAt.slice(0, 10)})`,
+          body,
+          labels
+        }
+      }
+    );
+    return {
+      action: 'create',
+      issueNumber: Number.isInteger(created?.number) ? created.number : null,
+      issueUrl: normalizeOptionalString(created?.html_url),
+      labels
+    };
+  } catch (error) {
+    return {
+      action: 'error',
+      message: error?.message ?? String(error),
+      labels
+    };
+  }
+}
+
+function buildBypassLedger({
+  repository,
+  scope,
+  policy,
+  observeOnly,
+  bypass,
+  remediation,
+  evaluation,
+  reportPath,
+  generatedAt = new Date().toISOString()
+}) {
+  return {
+    schema: 'commit-integrity/bypass-ledger@v1',
+    schemaVersion: '1.0.0',
+    generatedAt,
+    repository,
+    scope: {
+      mode: scope.mode,
+      pullRequest: scope.pullRequest ?? null,
+      baseSha: scope.baseSha ?? null,
+      headSha: scope.headSha ?? null
+    },
+    policy: {
+      path: policy.path,
+      schema: policy.schema,
+      exceptionGovernance: {
+        allowBypass: policy.exceptionGovernance.allowBypass,
+        requireReasonOwnerExpiry: policy.exceptionGovernance.requireReasonOwnerExpiry,
+        remediationLabels: policy.exceptionGovernance.remediationLabels,
+        remediationTitlePrefix: policy.exceptionGovernance.remediationTitlePrefix,
+        remediationIssueMarker: policy.exceptionGovernance.remediationIssueMarker
+      }
+    },
+    enforcement: {
+      observeOnly,
+      blocking: !observeOnly && policy.failOnUnverified
+    },
+    bypass: {
+      requested: bypass.requested,
+      status: bypass.status,
+      active: bypass.active === true,
+      bypassEnabled: bypass.bypassEnabled === true,
+      reason: bypass.reason ?? null,
+      owner: bypass.owner ?? null,
+      expiresAt: bypass.expiresAt ?? null,
+      ticket: bypass.ticket ?? null,
+      labels: bypass.labels ?? [],
+      metadataErrors: Array.isArray(bypass.metadataErrors) ? bypass.metadataErrors : []
+    },
+    remediation: remediation ?? { action: 'none' },
+    evaluation: {
+      result: evaluation.result,
+      violationCount: evaluation.violations.length,
+      issueCount: evaluation.issues.length
+    },
+    reportPath
+  };
+}
+
 function buildReport({
   repository,
   scope,
@@ -913,11 +1289,13 @@ function buildReport({
   observeOnly,
   commits,
   evaluation,
+  bypass,
+  remediation,
+  governance,
   errors = [],
   generatedAt = new Date().toISOString()
 }) {
   const blocking = !observeOnly && policy.failOnUnverified;
-  const shouldFailProcess = blocking && evaluation.result === 'fail';
   return {
     schema: 'commit-integrity/report@v1',
     schemaVersion: '1.0.0',
@@ -958,20 +1336,42 @@ function buildReport({
           key: rule.key,
           valuePattern: rule.valuePattern
         }))
+      },
+      exceptionGovernance: {
+        allowBypass: policy.exceptionGovernance.allowBypass,
+        requireReasonOwnerExpiry: policy.exceptionGovernance.requireReasonOwnerExpiry,
+        remediationLabels: policy.exceptionGovernance.remediationLabels,
+        remediationTitlePrefix: policy.exceptionGovernance.remediationTitlePrefix,
+        remediationIssueMarker: policy.exceptionGovernance.remediationIssueMarker
       }
     },
     enforcement: {
       observeOnly,
-      blocking
+      blocking,
+      bypassRequested: bypass?.requested === true,
+      bypassApplied: governance?.bypassApplied === true,
+      governanceFailure: governance?.governanceFailure === true
     },
     checks: evaluation.checks,
     summary: evaluation.summary,
     commits,
     violations: evaluation.violations,
-    issues: evaluation.issues,
-    result: evaluation.result,
+    issues: governance?.issues ?? evaluation.issues,
+    bypass: {
+      requested: bypass?.requested === true,
+      status: bypass?.status ?? 'none',
+      active: bypass?.active === true,
+      reason: bypass?.reason ?? null,
+      owner: bypass?.owner ?? null,
+      expiresAt: bypass?.expiresAt ?? null,
+      ticket: bypass?.ticket ?? null,
+      labels: bypass?.labels ?? [],
+      metadataErrors: bypass?.metadataErrors ?? [],
+      remediation: remediation ?? { action: 'none' }
+    },
+    result: governance?.finalResult ?? evaluation.result,
     errors: Array.isArray(errors) ? errors : [],
-    exitCode: shouldFailProcess ? 1 : 0
+    exitCode: governance?.exitCode ?? (blocking && evaluation.result === 'fail' ? 1 : 0)
   };
 }
 
@@ -986,9 +1386,12 @@ export async function runCommitIntegrity({
   warn = console.warn
 } = {}) {
   let options = {
-    reportPath: DEFAULT_REPORT_PATH
+    reportPath: DEFAULT_REPORT_PATH,
+    ledgerPath: DEFAULT_BYPASS_LEDGER_PATH,
+    observeOnly: false
   };
   let report = null;
+  let ledger = null;
 
   try {
     options = parseArgs(argv);
@@ -1006,6 +1409,52 @@ export async function runCommitIntegrity({
     const evaluation = evaluateCommitIntegrity(commits, {
       checks: policy.checks
     });
+    const generatedAt = new Date().toISOString();
+    const bypass = resolveBypassRequest(options, env, policy, new Date(generatedAt));
+    const blocking = !options.observeOnly && policy.failOnUnverified;
+    const governanceIssues = [...evaluation.issues];
+    let governanceFailure = false;
+    let bypassApplied = false;
+    let remediation = { action: 'none' };
+
+    if (bypass.requested) {
+      if (bypass.status === 'invalid') {
+        governanceIssues.push('bypass-metadata-invalid');
+        for (const metadataError of bypass.metadataErrors) {
+          governanceIssues.push(`bypass:${metadataError}`);
+        }
+        governanceFailure = true;
+      } else if (bypass.status === 'expired') {
+        governanceIssues.push('bypass-expired');
+        governanceFailure = true;
+        remediation = await routeExpiredBypassRemediationIssue({
+          repository,
+          token,
+          policy,
+          scope,
+          bypass,
+          evaluation,
+          generatedAt,
+          fetchFn
+        });
+        if (remediation.action === 'error') {
+          governanceIssues.push('bypass-remediation-route-failed');
+        }
+      } else if (bypass.status === 'active' && blocking && evaluation.result === 'fail') {
+        bypassApplied = true;
+        governanceIssues.push('bypass-applied');
+      }
+    }
+
+    const finalResult = evaluation.result === 'fail' || governanceFailure ? 'fail' : 'pass';
+    const exitCode = governanceFailure ? 1 : (blocking && evaluation.result === 'fail' && !bypassApplied ? 1 : 0);
+    const governance = {
+      issues: Array.from(new Set(governanceIssues)),
+      governanceFailure,
+      bypassApplied,
+      finalResult,
+      exitCode
+    };
 
     report = buildReport({
       repository,
@@ -1013,11 +1462,29 @@ export async function runCommitIntegrity({
       policy,
       observeOnly: options.observeOnly,
       commits,
-      evaluation
+      evaluation,
+      bypass,
+      remediation,
+      governance,
+      generatedAt
+    });
+
+    ledger = buildBypassLedger({
+      repository,
+      scope,
+      policy,
+      observeOnly: options.observeOnly,
+      bypass,
+      remediation,
+      evaluation,
+      reportPath: options.reportPath,
+      generatedAt
     });
 
     const resolvedReportPath = await writeReport(options.reportPath, report);
+    const resolvedLedgerPath = await writeReport(options.ledgerPath, ledger);
     log(`[commit-integrity] report: ${resolvedReportPath}`);
+    log(`[commit-integrity] bypass-ledger: ${resolvedLedgerPath}`);
     if (report.result === 'fail' && report.exitCode === 1) {
       throw new Error(
         `Commit integrity validation failed: ${report.violations.length} violation(s), ${report.issues.length} issue(s).`
@@ -1072,11 +1539,21 @@ export async function runCommitIntegrity({
         },
         trailerContract: {
           requiredAny: []
+        },
+        exceptionGovernance: {
+          allowBypass: false,
+          requireReasonOwnerExpiry: true,
+          remediationLabels: [...DEFAULT_BYPASS_LABELS],
+          remediationTitlePrefix: DEFAULT_BYPASS_REMEDIATION_TITLE_PREFIX,
+          remediationIssueMarker: DEFAULT_BYPASS_REMEDIATION_MARKER
         }
       },
         enforcement: {
           observeOnly: Boolean(options.observeOnly),
-          blocking: true
+          blocking: true,
+          bypassRequested: false,
+          bypassApplied: false,
+          governanceFailure: true
         },
         checks: [],
         summary: {
@@ -1089,15 +1566,65 @@ export async function runCommitIntegrity({
         commits: [],
         violations: [],
         issues: ['runtime-error'],
+        bypass: {
+          requested: false,
+          status: 'none',
+          active: false,
+          reason: null,
+          owner: null,
+          expiresAt: null,
+          ticket: null,
+          labels: [...DEFAULT_BYPASS_LABELS],
+          metadataErrors: [],
+          remediation: { action: 'none' }
+        },
         result: 'fail',
         errors: [],
         exitCode: 1
+      };
+    }
+    if (!ledger) {
+      ledger = {
+        schema: 'commit-integrity/bypass-ledger@v1',
+        schemaVersion: '1.0.0',
+        generatedAt: report.generatedAt,
+        repository: report.repository,
+        scope: report.scope,
+        policy: {
+          path: report.policy.path,
+          schema: report.policy.schema,
+          exceptionGovernance: report.policy.exceptionGovernance
+        },
+        enforcement: {
+          observeOnly: report.enforcement.observeOnly,
+          blocking: report.enforcement.blocking
+        },
+        bypass: {
+          requested: false,
+          status: 'none',
+          active: false,
+          bypassEnabled: false,
+          reason: null,
+          owner: null,
+          expiresAt: null,
+          ticket: null,
+          labels: [...DEFAULT_BYPASS_LABELS],
+          metadataErrors: []
+        },
+        remediation: { action: 'none' },
+        evaluation: {
+          result: 'fail',
+          violationCount: 0,
+          issueCount: 1
+        },
+        reportPath: options.reportPath ?? DEFAULT_REPORT_PATH
       };
     }
     report.errors = [...(Array.isArray(report.errors) ? report.errors : []), error.message ?? String(error)];
     report.result = 'fail';
     report.exitCode = 1;
     await writeReport(options.reportPath ?? DEFAULT_REPORT_PATH, report);
+    await writeReport(options.ledgerPath ?? DEFAULT_BYPASS_LEDGER_PATH, ledger);
     throw error;
   }
 }
@@ -1108,7 +1635,10 @@ export const __test = Object.freeze({
   normalizeCommitRecord,
   normalizeCommitRecords,
   evaluateCommitIntegrity,
-  buildReport
+  buildReport,
+  resolveBypassRequest,
+  buildBypassLedger,
+  routeExpiredBypassRemediationIssue
 });
 
 const modulePath = path.resolve(fileURLToPath(import.meta.url));

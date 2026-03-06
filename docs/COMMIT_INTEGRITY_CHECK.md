@@ -1,6 +1,6 @@
 # Commit Integrity Check
 
-Issues: `#743`, `#774`
+Issues: `#743`, `#774`, `#775`
 
 This document defines the `commit-integrity` contract used to evaluate commit trust posture for PR/queue scopes.
 
@@ -10,6 +10,7 @@ This document defines the `commit-integrity` contract used to evaluate commit tr
 - Job/check target: `commit-integrity`
 - Deterministic artifact:
   - `tests/results/_agent/commit-integrity/commit-integrity-report.json`
+  - `tests/results/_agent/commit-integrity/commit-integrity-bypass-ledger.json`
   - Uploaded on every run via `if: always()`
 - Drift monitor workflow: `.github/workflows/commit-integrity-drift-monitor.yml`
   - Deterministic artifact:
@@ -75,6 +76,12 @@ Policy file: `tools/policy/commit-integrity-policy.json`
   - `bot_identity_policy.require_allowlist_for_bot_commits`
   - `bot_identity_policy.allowed_bot_logins[]`
   - `bot_identity_policy.allowed_bot_email_patterns[]`
+- Bypass governance contract:
+  - `exception_governance.allow_bypass`
+  - `exception_governance.require_reason_owner_expiry`
+  - `exception_governance.remediation_labels[]`
+  - `exception_governance.remediation_title_prefix`
+  - `exception_governance.remediation_issue_marker`
 
 ## Drift Guard
 
@@ -94,6 +101,20 @@ Policy file: `tools/policy/commit-integrity-policy.json`
   - `0` (default): observe-only mode (`report.result` still indicates pass/fail; workflow exit remains non-blocking)
   - `1`: enforcing mode (violations fail the job)
 - `workflow_dispatch` input `enforce` can override mode for manual runs.
+- Temporary bypass metadata variables (all required when bypass is used):
+  - `COMMIT_INTEGRITY_BYPASS_REASON`
+  - `COMMIT_INTEGRITY_BYPASS_OWNER`
+  - `COMMIT_INTEGRITY_BYPASS_EXPIRES_AT` (ISO-8601 UTC recommended)
+- Optional bypass variables:
+  - `COMMIT_INTEGRITY_BYPASS_TICKET`
+  - `COMMIT_INTEGRITY_BYPASS_LABELS` (comma-separated)
+
+## Exception Governance
+
+- Bypass is only accepted when all required metadata exists.
+- Expired bypass metadata forces a failing check and routes remediation by opening/commenting an issue.
+- Remediation issue routing is deterministic (marker-based dedupe) and uses policy-defined labels/title prefix.
+- Every run writes a bypass ledger artifact, including runs where no bypass is requested.
 
 ## Local Usage
 

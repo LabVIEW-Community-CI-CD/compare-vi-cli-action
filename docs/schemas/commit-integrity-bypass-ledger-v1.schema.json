@@ -1,0 +1,272 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "commit-integrity/bypass-ledger@v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema",
+    "schemaVersion",
+    "generatedAt",
+    "repository",
+    "scope",
+    "policy",
+    "enforcement",
+    "bypass",
+    "remediation",
+    "evaluation",
+    "reportPath"
+  ],
+  "properties": {
+    "schema": {
+      "const": "commit-integrity/bypass-ledger@v1"
+    },
+    "schemaVersion": {
+      "type": "string"
+    },
+    "generatedAt": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "repository": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "scope": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "mode",
+        "pullRequest",
+        "baseSha",
+        "headSha"
+      ],
+      "properties": {
+        "mode": {
+          "type": "string"
+        },
+        "pullRequest": {
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "baseSha": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "headSha": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      }
+    },
+    "policy": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "path",
+        "schema",
+        "exceptionGovernance"
+      ],
+      "properties": {
+        "path": {
+          "type": "string"
+        },
+        "schema": {
+          "type": "string"
+        },
+        "exceptionGovernance": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "allowBypass",
+            "requireReasonOwnerExpiry",
+            "remediationLabels",
+            "remediationTitlePrefix",
+            "remediationIssueMarker"
+          ],
+          "properties": {
+            "allowBypass": {
+              "type": "boolean"
+            },
+            "requireReasonOwnerExpiry": {
+              "type": "boolean"
+            },
+            "remediationLabels": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "remediationTitlePrefix": {
+              "type": "string"
+            },
+            "remediationIssueMarker": {
+              "type": "string"
+            }
+          }
+        }
+      }
+    },
+    "enforcement": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "observeOnly",
+        "blocking"
+      ],
+      "properties": {
+        "observeOnly": {
+          "type": "boolean"
+        },
+        "blocking": {
+          "type": "boolean"
+        }
+      }
+    },
+    "bypass": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "requested",
+        "status",
+        "active",
+        "bypassEnabled",
+        "reason",
+        "owner",
+        "expiresAt",
+        "ticket",
+        "labels",
+        "metadataErrors"
+      ],
+      "properties": {
+        "requested": {
+          "type": "boolean"
+        },
+        "status": {
+          "enum": [
+            "none",
+            "active",
+            "expired",
+            "invalid"
+          ]
+        },
+        "active": {
+          "type": "boolean"
+        },
+        "bypassEnabled": {
+          "type": "boolean"
+        },
+        "reason": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "owner": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "expiresAt": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "ticket": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "labels": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "metadataErrors": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "remediation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "action"
+      ],
+      "properties": {
+        "action": {
+          "enum": [
+            "none",
+            "create",
+            "comment",
+            "error"
+          ]
+        },
+        "issueNumber": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "minimum": 1
+        },
+        "issueUrl": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "labels": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "message": {
+          "type": "string"
+        }
+      }
+    },
+    "evaluation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "result",
+        "violationCount",
+        "issueCount"
+      ],
+      "properties": {
+        "result": {
+          "enum": [
+            "pass",
+            "fail"
+          ]
+        },
+        "violationCount": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "issueCount": {
+          "type": "integer",
+          "minimum": 0
+        }
+      }
+    },
+    "reportPath": {
+      "type": "string"
+    }
+  }
+}
