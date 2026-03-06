@@ -39,6 +39,22 @@ Dedicated Windows host lane name:
 
 - `Fixture Drift (Docker Desktop Host - LabVIEW 2026 q1 windows)`
 
+Windows lane container evidence (required for non-docs runs):
+
+- Runs `tools/Run-NIWindowsContainerCompare.ps1` against fixture base/head copies.
+- Enforces image match: `nationalinstruments/labview:2026q1-windows`.
+- Fails the lane if container compare `gateOutcome` is not `pass`.
+- Uploads container artifacts under:
+  - `results/fixture-drift/ni-windows-container/ni-windows-container-capture.json`
+  - `results/fixture-drift/ni-windows-container/compare-report.html`
+  - `results/fixture-drift/ni-windows-container/runtime-determinism.json`
+  - `results/fixture-drift/ni-windows-container/container-export/**`
+
+Invoker lifecycle in the same lane is explicit and ordered:
+
+- `Wire Invoker (start)` then `Ensure Invoker (start)` before drift execution.
+- `Ensure Invoker (stop)` then `Wire Invoker (stop)` during teardown.
+
 Reusable output keys emitted by the manager step:
 
 - `manager_status`
