@@ -810,6 +810,7 @@ $capture = [ordered]@{
   baseVi        = $null
   headVi        = $null
   reportPath    = $null
+  flags         = @()
   command       = $null
   stdoutPath    = $null
   stderrPath    = $null
@@ -955,6 +956,7 @@ try {
     $capture.stderrPath = $stderrPath
 
     $flagsPayload = Get-EffectiveCompareFlags -InputFlags $Flags
+    $capture.flags = @($flagsPayload)
     $flagsJson = $flagsPayload | ConvertTo-Json -Compress
     if ([string]::IsNullOrWhiteSpace($flagsJson)) {
       $flagsJson = '[]'
@@ -1174,4 +1176,3 @@ if ($finalExitCode -ne 0 -and -not [string]::IsNullOrWhiteSpace($capture.message
 }
 
 exit $finalExitCode
-

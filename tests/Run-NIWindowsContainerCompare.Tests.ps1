@@ -1,6 +1,24 @@
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
+$loadedPester = Get-Module -Name Pester | Sort-Object Version -Descending | Select-Object -First 1
+$effectivePesterVersion = $null
+if ($loadedPester -and $loadedPester.Version) {
+  $effectivePesterVersion = [version]$loadedPester.Version
+} else {
+  $pesterModules = @(Get-Module -ListAvailable -Name Pester | Sort-Object Version -Descending)
+  if ($pesterModules.Count -eq 0) {
+    throw ("Pester v5+ is required for {0}, but no Pester module was found." -f (Split-Path -Leaf $PSCommandPath))
+  }
+  $effectivePesterVersion = [version]$pesterModules[0].Version
+}
+if ($null -eq $effectivePesterVersion) {
+  throw ("Pester v5+ is required for {0}, but no Pester module was found." -f (Split-Path -Leaf $PSCommandPath))
+}
+if ($effectivePesterVersion.Major -lt 5) {
+  throw ("Pester v5+ is required for {0}. Detected v{1}. Use Invoke-PesterTests.ps1 or tools/Run-Pester.ps1." -f (Split-Path -Leaf $PSCommandPath), $effectivePesterVersion)
+}
+
 Describe 'Run-NIWindowsContainerCompare.ps1' -Tag 'Unit' {
   BeforeAll {
     $repoRoot = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path
@@ -311,6 +329,7 @@ exit 0
     Set-Content -LiteralPath $baseVi -Value 'base' -Encoding utf8
     Set-Content -LiteralPath $headVi -Value 'head' -Encoding utf8
     $reportPath = Join-Path $work 'out\compare-report.html'
+    $runtimeSnapshotPath = Join-Path $work 'out\runtime-determinism.json'
 
     $output = & pwsh -NoLogo -NoProfile -File $script:RunnerScript `
       -BaseVi $baseVi `
@@ -319,6 +338,7 @@ exit 0
       -ReportType html `
       -RuntimeEngineReadyTimeoutSeconds 5 `
       -RuntimeEngineReadyPollSeconds 1 `
+      -RuntimeSnapshotPath $runtimeSnapshotPath `
       -Flags @('-noattr') 2>&1
     $LASTEXITCODE | Should -Be 1 -Because ($output -join "`n")
 
@@ -328,6 +348,7 @@ exit 0
     Test-Path -LiteralPath $capturePath | Should -BeTrue
     Test-Path -LiteralPath $stdoutPath | Should -BeTrue
     Test-Path -LiteralPath $stderrPath | Should -BeTrue
+    Test-Path -LiteralPath $runtimeSnapshotPath | Should -BeTrue
 
     $capture = Get-Content -LiteralPath $capturePath -Raw | ConvertFrom-Json
     $capture.status | Should -Be 'diff'
@@ -340,16 +361,27 @@ exit 0
     $capture.reportType | Should -Be 'html'
     $capture.reportPath | Should -Be ([System.IO.Path]::GetFullPath($reportPath))
     $capture.image | Should -Be 'nationalinstruments/labview:2026q1-windows'
+    $capture.flags | Should -Contain '-noattr'
+    $capture.flags | Should -Contain '-Headless'
     $capture.timedOut | Should -BeFalse
     $capture.headlessContract.required | Should -BeTrue
     $capture.headlessContract.enforcedCliHeadless | Should -BeTrue
     $capture.headlessContract.lvRteHeadlessEnv | Should -BeTrue
     $capture.runtimeDeterminism.status | Should -Match 'ok|mismatch-repaired'
+    $capture.runtimeDeterminism.snapshotPath | Should -Be ([System.IO.Path]::GetFullPath($runtimeSnapshotPath))
     $capture.startupMitigation | Should -Not -BeNullOrEmpty
     $capture.reportAnalysis.source | Should -Be 'container-export'
     $capture.containerArtifacts.copyStatus | Should -Be 'success'
     $capture.containerArtifacts.exportDir | Should -Not -BeNullOrEmpty
     $capture.containerArtifacts.copiedPaths.Count | Should -BeGreaterThan 0
+    Test-Path -LiteralPath $capture.containerArtifacts.exportDir -PathType Container | Should -BeTrue
+    foreach ($artifactPath in @($capture.containerArtifacts.copiedPaths)) {
+      Test-Path -LiteralPath ([string]$artifactPath) -PathType Leaf | Should -BeTrue
+    }
+    [string]::IsNullOrWhiteSpace([string]$capture.reportAnalysis.reportPathExtracted) | Should -BeFalse
+    Test-Path -LiteralPath ([string]$capture.reportAnalysis.reportPathExtracted) -PathType Leaf | Should -BeTrue
+    $capture.stdoutPath | Should -Be ([System.IO.Path]::GetFullPath($stdoutPath))
+    $capture.stderrPath | Should -Be ([System.IO.Path]::GetFullPath($stderrPath))
 
     $records = & $script:ReadDockerStubLog -Path $logPath
     $cpRecords = @($records | Where-Object { $_.args[0] -eq 'cp' })
@@ -359,6 +391,62 @@ exit 0
     $cpIndex = [array]::IndexOf($records, $cpRecords[0])
     $rmIndex = [array]::IndexOf($records, $rmRecords[0])
     $cpIndex | Should -BeLessThan $rmIndex
+  }
+
+  It 'validates report flag labels against docker compare flags' {
+    $work = Join-Path $TestDrive 'compare-report-flag-labels'
+    New-Item -ItemType Directory -Path $work | Out-Null
+    & $script:NewDockerStub -WorkRoot $work | Out-Null
+
+    $logPath = Join-Path $work 'docker-log.ndjson'
+    Set-Item Env:DOCKER_STUB_LOG $logPath
+    Set-Item Env:DOCKER_STUB_OSTYPE 'windows'
+    Set-Item Env:DOCKER_STUB_IMAGE_EXISTS '1'
+    Set-Item Env:DOCKER_STUB_CONTEXT 'desktop-windows'
+    Set-Item Env:DOCKER_STUB_RUN_EXIT_CODE '1'
+    Set-Item Env:DOCKER_STUB_RUN_STDOUT 'CreateComparisonReport completed with diff.'
+    Set-Item Env:DOCKER_STUB_CP_REPORT_HTML '<summary class=difference-heading></summary><li class=diff-detail>diff</li><img class=difference-image src=x /><ul class=flag-list><li class=flag-token>-noattr</li><li class=flag-token>-Headless</li></ul>'
+
+    $baseVi = Join-Path $work 'Base.vi'
+    $headVi = Join-Path $work 'Head.vi'
+    Set-Content -LiteralPath $baseVi -Value 'base' -Encoding utf8
+    Set-Content -LiteralPath $headVi -Value 'head' -Encoding utf8
+    $reportPath = Join-Path $work 'out\compare-report.html'
+    $requestedFlags = @('-noattr')
+
+    $output = & pwsh -NoLogo -NoProfile -File $script:RunnerScript `
+      -BaseVi $baseVi `
+      -HeadVi $headVi `
+      -ReportPath $reportPath `
+      -RuntimeEngineReadyTimeoutSeconds 5 `
+      -RuntimeEngineReadyPollSeconds 1 `
+      -Flags $requestedFlags 2>&1
+    $LASTEXITCODE | Should -Be 1 -Because ($output -join "`n")
+
+    $capturePath = Join-Path (Split-Path -Parent $reportPath) 'ni-windows-container-capture.json'
+    Test-Path -LiteralPath $capturePath -PathType Leaf | Should -BeTrue
+    $capture = Get-Content -LiteralPath $capturePath -Raw | ConvertFrom-Json
+    $extractedReportPath = [string]$capture.reportAnalysis.reportPathExtracted
+    Test-Path -LiteralPath $extractedReportPath -PathType Leaf | Should -BeTrue
+
+    $reportHtml = Get-Content -LiteralPath $extractedReportPath -Raw
+    $reportFlagLabels = @(
+      [regex]::Matches($reportHtml, '<li[^>]*class\s*=\s*(?:["''][^"'']*flag-token[^"'']*["'']|[^ >]*flag-token[^ >]*)[^>]*>\s*([^<]+)\s*</li>', [System.Text.RegularExpressions.RegexOptions]::IgnoreCase) |
+        ForEach-Object { $_.Groups[1].Value.Trim() } |
+        Where-Object { -not [string]::IsNullOrWhiteSpace($_) }
+    )
+    $reportFlagLabels.Count | Should -BeGreaterThan 0
+
+    $effectiveFlags = @()
+    if ($capture.PSObject.Properties['flags'] -and $capture.flags) {
+      $effectiveFlags = @($capture.flags | ForEach-Object { [string]$_ })
+    }
+    $effectiveFlags.Count | Should -BeGreaterThan 0
+
+    foreach ($flag in @($requestedFlags + '-Headless')) {
+      $effectiveFlags | Should -Contain $flag
+      $reportFlagLabels | Should -Contain $flag
+    }
   }
 
   It 'removes an existing report file before launching compare execution' {
@@ -703,5 +791,3 @@ exit 0
     [string]::IsNullOrWhiteSpace([string]$capture.gateOutcome) | Should -BeFalse
   }
 }
-
-

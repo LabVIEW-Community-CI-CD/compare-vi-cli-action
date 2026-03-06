@@ -173,70 +173,93 @@ if ($skipNiImageChecks) {
   return
 }
 
-$niFlagTests = Join-Path $root 'tests' 'Run-NIWindowsContainerCompare.Tests.ps1'
-if (-not (Test-Path -LiteralPath $niFlagTests -PathType Leaf)) {
-  throw ("NI image flag scenario tests not found: {0}" -f $niFlagTests)
+$niCompareScript = Join-Path $root 'tools' 'Run-NIWindowsContainerCompare.ps1'
+if (-not (Test-Path -LiteralPath $niCompareScript -PathType Leaf)) {
+  throw ("NI image compare script not found: {0}" -f $niCompareScript)
+}
+$baseVi = Join-Path $root 'VI1.vi'
+$headVi = Join-Path $root 'VI2.vi'
+if (-not (Test-Path -LiteralPath $baseVi -PathType Leaf)) {
+  throw ("Base VI not found for NI image known-flag scenario: {0}" -f $baseVi)
+}
+if (-not (Test-Path -LiteralPath $headVi -PathType Leaf)) {
+  throw ("Head VI not found for NI image known-flag scenario: {0}" -f $headVi)
 }
 
-function Get-CachedPesterV5Manifest {
-  param([Parameter(Mandatory)][string]$CacheRoot)
-  $pesterRoot = Join-Path $CacheRoot 'Pester'
-  if (-not (Test-Path -LiteralPath $pesterRoot -PathType Container)) { return $null }
+$expectedImage = 'nationalinstruments/labview:2026q1-windows'
+$knownFlags = @('-noattr', '-nofppos', '-nobdcosm')
+$scenarioDir = Join-Path $root 'tests' 'results' '_agent' 'pre-push-ni-image'
+New-Item -ItemType Directory -Path $scenarioDir -Force | Out-Null
+$reportPath = Join-Path $scenarioDir 'compare-report.html'
+$runtimeSnapshotPath = Join-Path $scenarioDir 'runtime-determinism.json'
 
-  $candidates = @()
-  $manifests = Get-ChildItem -LiteralPath $pesterRoot -Recurse -Filter 'Pester.psd1' -File -ErrorAction SilentlyContinue
-  foreach ($manifest in @($manifests)) {
-    $versionFolder = Split-Path -Leaf (Split-Path -Parent $manifest.FullName)
-    $parsedVersion = [version]'0.0.0'
-    if (-not [version]::TryParse($versionFolder, [ref]$parsedVersion)) { continue }
-    if ($parsedVersion.Major -lt 5) { continue }
-    $candidates += [pscustomobject]@{
-      Version = $parsedVersion
-      Path = $manifest.FullName
-    }
-  }
-
-  return $candidates | Sort-Object Version -Descending | Select-Object -First 1
-}
-
-$pesterCacheRoot = if ($IsWindows -and -not [string]::IsNullOrWhiteSpace($env:LOCALAPPDATA)) {
-  Join-Path $env:LOCALAPPDATA 'compare-vi-cli-action\PowerShell\Modules'
-} else {
-  Join-Path $root '.cache/powershell-modules'
-}
-
-$pesterModule = Get-CachedPesterV5Manifest -CacheRoot $pesterCacheRoot
-if (-not $pesterModule) {
-  if (-not (Get-Command -Name Save-Module -ErrorAction SilentlyContinue)) {
-    throw 'PowerShellGet Save-Module is required to provision Pester 5 for pre-push checks.'
-  }
-  Write-Host ("[pre-push] Caching Pester 5.x under {0}" -f $pesterCacheRoot) -ForegroundColor Cyan
-  New-Item -ItemType Directory -Path $pesterCacheRoot -Force | Out-Null
-  Save-Module -Name Pester -Path $pesterCacheRoot -RequiredVersion 5.7.1 -Force
-  $pesterModule = Get-CachedPesterV5Manifest -CacheRoot $pesterCacheRoot
-}
-if (-not $pesterModule -or $pesterModule.Version.Major -lt 5) {
-  throw 'Pester 5+ is required for NI image known-flag scenario checks.'
-}
-
-Write-Host '[pre-push] Verifying NI image known-flag scenarios' -ForegroundColor Cyan
+Write-Host '[pre-push] Running NI image known-flag scenario (real container compare)' -ForegroundColor Cyan
 Push-Location $root
 try {
-  Import-Module $pesterModule.Path -Force
-  $config = New-PesterConfiguration
-  $config.Run.Path = $niFlagTests
-  $config.Run.PassThru = $true
-  $config.Run.Exit = $false
-  $config.Filter.Tag = @('Unit')
-  $result = Invoke-Pester -Configuration $config
-  if (-not $result) {
-    throw 'Invoke-Pester returned no result object for NI image known-flag scenarios.'
-  }
-  $failedCount = [int]$result.FailedCount
-  if ($failedCount -gt 0) {
-    throw ("NI image known-flag scenarios failed (failed={0})." -f $failedCount)
+  pwsh -NoLogo -NoProfile -File $niCompareScript `
+    -BaseVi $baseVi `
+    -HeadVi $headVi `
+    -Image $expectedImage `
+    -ReportPath $reportPath `
+    -Flags $knownFlags `
+    -TimeoutSeconds 240 `
+    -HeartbeatSeconds 15 `
+    -AutoRepairRuntime:$true `
+    -ManageDockerEngine:$true `
+    -RuntimeEngineReadyTimeoutSeconds 120 `
+    -RuntimeEngineReadyPollSeconds 3 `
+    -RuntimeSnapshotPath $runtimeSnapshotPath
+  $compareExit = $LASTEXITCODE
+  if ($compareExit -ne 0) {
+    throw ("NI image known-flag scenario compare failed (exit={0})." -f $compareExit)
   }
 } finally {
   Pop-Location | Out-Null
+}
+
+$capturePath = Join-Path $scenarioDir 'ni-windows-container-capture.json'
+if (-not (Test-Path -LiteralPath $capturePath -PathType Leaf)) {
+  throw ("NI image known-flag scenario capture missing: {0}" -f $capturePath)
+}
+$capture = Get-Content -LiteralPath $capturePath -Raw | ConvertFrom-Json -Depth 20
+$gateOutcome = if ($capture.PSObject.Properties['gateOutcome']) { [string]$capture.gateOutcome } else { '' }
+$resultClass = if ($capture.PSObject.Properties['resultClass']) { [string]$capture.resultClass } else { '' }
+$imageUsed = if ($capture.PSObject.Properties['image']) { [string]$capture.image } else { '' }
+$commandText = if ($capture.PSObject.Properties['command']) { [string]$capture.command } else { '' }
+$flagsUsed = @()
+if ($capture.PSObject.Properties['flags'] -and $capture.flags) {
+  $flagsUsed = @($capture.flags | ForEach-Object { [string]$_ })
+}
+
+if (-not [string]::Equals($imageUsed, $expectedImage, [System.StringComparison]::OrdinalIgnoreCase)) {
+  throw ("NI image known-flag scenario used unexpected image: {0}" -f $imageUsed)
+}
+if (-not [string]::Equals($gateOutcome, 'pass', [System.StringComparison]::OrdinalIgnoreCase)) {
+  throw ("NI image known-flag scenario did not pass (resultClass={0}, gateOutcome={1})." -f $resultClass, $gateOutcome)
+}
+if ([string]::IsNullOrWhiteSpace($commandText) -or $commandText -notmatch '(?i)docker run') {
+  throw 'NI image known-flag scenario did not emit a docker run command in capture evidence.'
+}
+foreach ($flag in $knownFlags) {
+  if ($flagsUsed -notcontains $flag) {
+    throw ("NI image known-flag scenario missing expected flag in capture: {0}" -f $flag)
+  }
+}
+if ($flagsUsed -notcontains '-Headless') {
+  throw 'NI image known-flag scenario missing enforced -Headless flag in capture.'
+}
+
+if ($env:GITHUB_STEP_SUMMARY) {
+  $lines = @(
+    '### Pre-push NI Image Scenario',
+    '',
+    ('- image: `{0}`' -f $imageUsed),
+    ('- resultClass: `{0}`' -f $resultClass),
+    ('- gateOutcome: `{0}`' -f $gateOutcome),
+    ('- flags: `{0}`' -f [string]::Join(', ', $flagsUsed)),
+    ('- capture: `{0}`' -f $capturePath),
+    ('- report: `{0}`' -f $reportPath)
+  )
+  $lines -join "`n" | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8
 }
 Write-Host '[pre-push] NI image known-flag scenarios OK' -ForegroundColor Green

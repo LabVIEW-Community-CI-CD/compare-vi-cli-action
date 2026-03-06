@@ -1,6 +1,24 @@
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
+$loadedPester = Get-Module -Name Pester | Sort-Object Version -Descending | Select-Object -First 1
+$effectivePesterVersion = $null
+if ($loadedPester -and $loadedPester.Version) {
+  $effectivePesterVersion = [version]$loadedPester.Version
+} else {
+  $pesterModules = @(Get-Module -ListAvailable -Name Pester | Sort-Object Version -Descending)
+  if ($pesterModules.Count -eq 0) {
+    throw ("Pester v5+ is required for {0}, but no Pester module was found." -f (Split-Path -Leaf $PSCommandPath))
+  }
+  $effectivePesterVersion = [version]$pesterModules[0].Version
+}
+if ($null -eq $effectivePesterVersion) {
+  throw ("Pester v5+ is required for {0}, but no Pester module was found." -f (Split-Path -Leaf $PSCommandPath))
+}
+if ($effectivePesterVersion.Major -lt 5) {
+  throw ("Pester v5+ is required for {0}. Detected v{1}. Use Invoke-PesterTests.ps1 or tools/Run-Pester.ps1." -f (Split-Path -Leaf $PSCommandPath), $effectivePesterVersion)
+}
+
 Describe 'Run-NILinuxContainerCompare.ps1' -Tag 'Unit' {
   BeforeAll {
     $repoRoot = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path
