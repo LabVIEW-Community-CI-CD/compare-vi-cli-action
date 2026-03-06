@@ -5,6 +5,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import process from 'node:process';
 import { main as syncStandingPriority } from './sync-standing-priority.mjs';
+import { releaseWriterLease } from './agent-writer-lease.mjs';
 import { assertPresent } from './lib/github-text.mjs';
 
 function defaultGhRunner(args, { quiet = false } = {}) {
@@ -38,11 +39,19 @@ function parseIssueList(input) {
  * Rotate the standing-priority label to a new issue.
  *
  * @param {number|string} nextIssue
- * @param {{ dryRun?: boolean, ghRunner?: Function, syncFn?: Function, logger?: Function }} [options]
+ * @param {{ dryRun?: boolean, ghRunner?: Function, syncFn?: Function, logger?: Function, leaseReleaseFn?: Function, releaseLease?: boolean, leaseScope?: string }} [options]
  */
 export async function handoffStandingPriority(
   nextIssue,
-  { dryRun = false, ghRunner = defaultGhRunner, syncFn = syncStandingPriority, logger = console.log } = {}
+  {
+    dryRun = false,
+    ghRunner = defaultGhRunner,
+    syncFn = syncStandingPriority,
+    logger = console.log,
+    leaseReleaseFn = releaseWriterLease,
+    releaseLease = true,
+    leaseScope = 'workspace'
+  } = {}
 ) {
   const target = String(nextIssue ?? '').trim();
   assertPresent(target, 'Next standing priority issue number is required.');
@@ -69,6 +78,9 @@ export async function handoffStandingPriority(
     } else {
       logger(`[standing-handoff] Issue #${target} already carries the label (no add required).`);
     }
+    if (releaseLease) {
+      logger(`[standing-handoff] Would release writer lease for scope '${leaseScope}'.`);
+    }
     logger('[standing-handoff] Dry run complete – skipping sync.');
     return;
   }
@@ -87,6 +99,17 @@ export async function handoffStandingPriority(
 
   logger('[standing-handoff] Synchronising priority cache...');
   await syncFn();
+  if (releaseLease && typeof leaseReleaseFn === 'function') {
+    logger(`[standing-handoff] Releasing writer lease for scope '${leaseScope}'...`);
+    try {
+      const leaseResult = await leaseReleaseFn({ scope: leaseScope });
+      if (leaseResult?.status) {
+        logger(`[standing-handoff] Writer lease release status: ${leaseResult.status}.`);
+      }
+    } catch (error) {
+      logger(`[standing-handoff] Writer lease release failed: ${error.message}`);
+    }
+  }
   logger('[standing-handoff] Standing priority hand-off completed.');
 }
 

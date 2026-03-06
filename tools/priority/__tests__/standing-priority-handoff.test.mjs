@@ -6,6 +6,7 @@ import { handoffStandingPriority } from '../standing-priority-handoff.mjs';
 
 test('handoffStandingPriority removes old label, adds new, and syncs cache', async () => {
   const calls = [];
+  let leaseReleaseCount = 0;
   const ghRunner = (args) => {
     calls.push(args);
     if (args[0] === 'issue' && args[1] === 'list') {
@@ -17,18 +18,24 @@ test('handoffStandingPriority removes old label, adds new, and syncs cache', asy
   const syncFn = async () => {
     syncCount += 1;
   };
+  const leaseReleaseFn = async () => {
+    leaseReleaseCount += 1;
+    return { status: 'released' };
+  };
 
-  await handoffStandingPriority(529, { ghRunner, syncFn, logger: () => {} });
+  await handoffStandingPriority(529, { ghRunner, syncFn, leaseReleaseFn, logger: () => {} });
 
   assert.deepEqual(calls, [
     ['issue', 'list', '--label', 'standing-priority', '--state', 'open', '--limit', '20', '--json', 'number'],
     ['issue', 'edit', '528', '--remove-label', 'standing-priority']
   ]);
   assert.equal(syncCount, 1);
+  assert.equal(leaseReleaseCount, 1);
 });
 
 test('handoffStandingPriority adds label when none present', async () => {
   const calls = [];
+  let leaseReleaseCount = 0;
   const ghRunner = (args) => {
     calls.push(args);
     if (args[0] === 'issue' && args[1] === 'list') {
@@ -40,18 +47,24 @@ test('handoffStandingPriority adds label when none present', async () => {
   const syncFn = async () => {
     syncCount += 1;
   };
+  const leaseReleaseFn = async () => {
+    leaseReleaseCount += 1;
+    return { status: 'not-found' };
+  };
 
-  await handoffStandingPriority('530', { ghRunner, syncFn, logger: () => {} });
+  await handoffStandingPriority('530', { ghRunner, syncFn, leaseReleaseFn, logger: () => {} });
 
   assert.deepEqual(calls, [
     ['issue', 'list', '--label', 'standing-priority', '--state', 'open', '--limit', '20', '--json', 'number'],
     ['issue', 'edit', '530', '--add-label', 'standing-priority']
   ]);
   assert.equal(syncCount, 1);
+  assert.equal(leaseReleaseCount, 1);
 });
 
 test('dry-run only inspects current issues', async () => {
   const calls = [];
+  let leaseReleaseCount = 0;
   const ghRunner = (args) => {
     calls.push(args);
     if (args[0] === 'issue' && args[1] === 'list') {
@@ -59,10 +72,15 @@ test('dry-run only inspects current issues', async () => {
     }
     return '';
   };
+  const leaseReleaseFn = async () => {
+    leaseReleaseCount += 1;
+    return { status: 'released' };
+  };
 
-  await handoffStandingPriority(532, { ghRunner, dryRun: true, logger: () => {} });
+  await handoffStandingPriority(532, { ghRunner, dryRun: true, leaseReleaseFn, logger: () => {} });
 
   assert.deepEqual(calls, [
     ['issue', 'list', '--label', 'standing-priority', '--state', 'open', '--limit', '20', '--json', 'number']
   ]);
+  assert.equal(leaseReleaseCount, 0);
 });
