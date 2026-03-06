@@ -13,6 +13,7 @@ import {
   buildMultipleStandingPriorityReport,
   buildNoStandingPriorityState,
   shouldRethrowStandingPriorityError,
+  shouldContinueAfterAutoSelectLaneEmpty,
   determinePrioritySyncExitCode,
   isStandingPriorityCacheCandidate,
   resolveStandingPriorityLabels,
@@ -199,6 +200,21 @@ test('shouldRethrowStandingPriorityError skips rethrow after successful auto-sel
   assert.equal(
     shouldRethrowStandingPriorityError(new Error('network failure'), { number: 797 }),
     true
+  );
+});
+
+test('shouldContinueAfterAutoSelectLaneEmpty allows transient empty lane after auto-select', () => {
+  assert.equal(
+    shouldContinueAfterAutoSelectLaneEmpty({ source: 'auto-select', number: 797 }, []),
+    true
+  );
+  assert.equal(
+    shouldContinueAfterAutoSelectLaneEmpty({ source: 'gh', number: 797 }, []),
+    false
+  );
+  assert.equal(
+    shouldContinueAfterAutoSelectLaneEmpty({ source: 'auto-select', number: 797 }, [797]),
+    false
   );
 });
 
