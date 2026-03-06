@@ -66,6 +66,9 @@ Runbook container canary promotion/rollback policy is tracked in
 `docs/RUNBOOK_CONTAINER_LANE_PROMOTION_POLICY.md` (decision issue `#663`,
 evidence source `#662`).
 
+Release operating governance (roles, environment approvals, escalation, and incident/rollback protocol) is documented in
+`docs/RELEASE_OPERATIONS_RUNBOOK.md`.
+
 Each job also emits GitHub outputs pointing at the aggregate manifest, the
 history results directory, the per-mode manifest summary (`mode-manifests-json`),
 and the generated history report paths (`history-report-md` and, when HTML

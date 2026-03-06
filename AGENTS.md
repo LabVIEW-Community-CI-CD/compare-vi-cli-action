@@ -401,6 +401,7 @@ Post checkpoints in the standing issue using this JSON block (inside a fenced `j
 - Rogue LVCompare: `tools/Detect-RogueLV.ps1 -FailOnRogue`
 - Session lock: `docs/SESSION_LOCK_HANDOFF.md`
 - Runbook: `docs/INTEGRATION_RUNBOOK.md`
+- Release ops: `docs/RELEASE_OPERATIONS_RUNBOOK.md`
 - Fixture drift: `docs/FIXTURE_DRIFT.md`
 - Loop mode: `docs/COMPARE_LOOP_MODULE.md`
 

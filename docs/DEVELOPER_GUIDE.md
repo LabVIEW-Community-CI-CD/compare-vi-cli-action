@@ -402,6 +402,7 @@ pwsh -File scripts/CompareVI.ps1 `
 ## References
 
 - [`docs/INTEGRATION_RUNBOOK.md`](./INTEGRATION_RUNBOOK.md)
+- [`docs/RELEASE_OPERATIONS_RUNBOOK.md`](./RELEASE_OPERATIONS_RUNBOOK.md)
 - [`docs/TESTING_PATTERNS.md`](./TESTING_PATTERNS.md)
 - [`docs/SCHEMA_HELPER.md`](./SCHEMA_HELPER.md)
 - [`docs/TROUBLESHOOTING.md`](./TROUBLESHOOTING.md)
