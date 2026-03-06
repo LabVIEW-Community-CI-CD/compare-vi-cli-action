@@ -17,6 +17,7 @@ const MODULE_FILE_PATH = fileURLToPath(import.meta.url);
 const MODULE_REPO_ROOT = path.resolve(path.dirname(MODULE_FILE_PATH), '../..');
 const NO_STANDING_REPORT_FILENAME = 'no-standing-priority.json';
 const MULTIPLE_STANDING_REPORT_FILENAME = 'multiple-standing-priority.json';
+const AUTO_SELECT_EXCLUDED_LABELS = new Set(['duplicate', 'invalid', 'wontfix']);
 
 const CLI_USAGE_LINES = [
   'Usage: node tools/priority/sync-standing-priority.mjs [options]',
@@ -24,6 +25,7 @@ const CLI_USAGE_LINES = [
   'Options:',
   '  --fail-on-missing   Exit non-zero when no standing-priority issue is found.',
   '  --fail-on-multiple  Exit non-zero when multiple open standing-priority issues are found.',
+  '  --auto-select-next  When no standing issue exists, auto-label the next open issue as standing-priority.',
   '  -h, --help          Show this help text and exit.'
 ];
 
@@ -32,6 +34,7 @@ export function parseCliArgs(argv = process.argv) {
   const options = {
     failOnMissing: false,
     failOnMultiple: false,
+    autoSelectNext: false,
     help: false
   };
 
@@ -42,6 +45,10 @@ export function parseCliArgs(argv = process.argv) {
     }
     if (arg === '--fail-on-multiple') {
       options.failOnMultiple = true;
+      continue;
+    }
+    if (arg === '--auto-select-next') {
+      options.autoSelectNext = true;
       continue;
     }
     if (arg === '--help' || arg === '-h') {
@@ -75,6 +82,97 @@ function normalizeStandingPriorityLabels(values) {
 
 function formatStandingPriorityLabels(labels) {
   return (labels || []).map((label) => `\`${label}\``).join(', ');
+}
+
+function normalizeBooleanValue(value) {
+  if (typeof value === 'boolean') {
+    return value;
+  }
+  if (typeof value !== 'string') {
+    return false;
+  }
+  const normalized = value.trim().toLowerCase();
+  return normalized === '1' || normalized === 'true' || normalized === 'yes' || normalized === 'on';
+}
+
+function parsePriorityOrdinal(title) {
+  const match = String(title || '').match(/\[\s*p(?<priority>\d+)\s*\]/i);
+  if (!match?.groups?.priority) {
+    return 9;
+  }
+  const parsed = Number.parseInt(match.groups.priority, 10);
+  if (!Number.isFinite(parsed) || parsed < 0) {
+    return 9;
+  }
+  return parsed;
+}
+
+function isEpicTitle(title) {
+  return /^\s*epic\s*:/i.test(String(title || ''));
+}
+
+function parseDateMs(value) {
+  if (!value) {
+    return Number.POSITIVE_INFINITY;
+  }
+  const parsed = Date.parse(String(value));
+  return Number.isFinite(parsed) ? parsed : Number.POSITIVE_INFINITY;
+}
+
+function normalizeOpenIssueCandidate(entry) {
+  if (!entry) {
+    return null;
+  }
+  const number = Number(entry.number);
+  if (!Number.isInteger(number) || number <= 0) {
+    return null;
+  }
+
+  const labels = normalizeList((entry.labels || []).map((label) => label?.name || label));
+  if (labels.some((label) => AUTO_SELECT_EXCLUDED_LABELS.has(String(label).toLowerCase()))) {
+    return null;
+  }
+
+  const title = typeof entry.title === 'string' ? entry.title.trim() : '';
+  return {
+    number,
+    title,
+    labels,
+    createdAt: entry.createdAt || entry.created_at || null,
+    updatedAt: entry.updatedAt || entry.updated_at || null,
+    url: entry.html_url || entry.url || null,
+    priority: parsePriorityOrdinal(title),
+    epic: isEpicTitle(title)
+  };
+}
+
+export function selectAutoStandingPriorityCandidate(entries = []) {
+  const normalized = entries.map((entry) => normalizeOpenIssueCandidate(entry)).filter(Boolean);
+  if (normalized.length === 0) {
+    return null;
+  }
+
+  const nonEpic = normalized.filter((entry) => !entry.epic);
+  const pool = nonEpic.length > 0 ? nonEpic : normalized;
+
+  pool.sort((left, right) => {
+    if (left.priority !== right.priority) {
+      return left.priority - right.priority;
+    }
+    const leftCreated = parseDateMs(left.createdAt);
+    const rightCreated = parseDateMs(right.createdAt);
+    if (leftCreated !== rightCreated) {
+      return leftCreated - rightCreated;
+    }
+    const leftUpdated = parseDateMs(left.updatedAt);
+    const rightUpdated = parseDateMs(right.updatedAt);
+    if (leftUpdated !== rightUpdated) {
+      return leftUpdated - rightUpdated;
+    }
+    return left.number - right.number;
+  });
+
+  return pool[0];
 }
 
 function toUrl(input) {
@@ -810,25 +908,40 @@ export function resetPrioritySyncTokenStateForTests() {
   WARNED_NO_GITHUB_TOKEN_FOR_REST = false;
 }
 
-async function requestGitHubJson(url, token) {
+async function requestGitHubJson(url, token, options = {}) {
+  const method = (options.method || 'GET').toUpperCase();
+  const body = options.body;
+  const extraHeaders = options.headers || {};
   const headers = {
     'User-Agent': USER_AGENT,
-    Accept: 'application/vnd.github+json'
+    Accept: 'application/vnd.github+json',
+    ...extraHeaders
   };
   if (token) headers.Authorization = `Bearer ${token}`;
+  if (body !== undefined && !headers['Content-Type']) {
+    headers['Content-Type'] = 'application/json';
+  }
 
   if (typeof fetch !== 'function') {
     throw new Error('Global fetch API unavailable in this Node.js runtime');
   }
 
   const dispatcher = getProxyDispatcher(url);
-  const response = await fetch(url, dispatcher ? { headers, dispatcher } : { headers });
+  const requestOptions = dispatcher ? { method, headers, dispatcher } : { method, headers };
+  if (body !== undefined) {
+    requestOptions.body = typeof body === 'string' ? body : JSON.stringify(body);
+  }
+  const response = await fetch(url, requestOptions);
   if (!response.ok) {
     const body = await response.text();
     const details = body?.trim() ? `: ${body.trim()}` : '';
     throw new Error(`GitHub API responded with ${response.status} ${response.statusText}${details}`);
   }
-  return response.json();
+  const text = await response.text();
+  if (!text.trim()) {
+    return null;
+  }
+  return JSON.parse(text);
 }
 
 async function fetchStandingPriorityNumberViaRest(repoRoot, slug, standingPriorityLabels = [DEFAULT_STANDING_PRIORITY_LABEL]) {
@@ -1040,6 +1153,183 @@ async function defaultRunStandingPriorityRestListAll({ repoRoot, slug, standingP
   return {
     status: 'found',
     numbers: Array.from(numbers).sort((left, right) => left - right)
+  };
+}
+
+function defaultRunGhOpenIssueList({ slug }) {
+  const ghArgs = ['issue', 'list', '--state', 'open', '--limit', '100', '--json', 'number,title,labels,createdAt,updatedAt,url'];
+  if (slug) {
+    ghArgs.push('--repo', slug);
+  }
+  return ensureCommand(sh('gh', ghArgs), 'gh');
+}
+
+async function defaultRunRestOpenIssueList({ repoRoot, slug }) {
+  const resolvedSlug = slug ?? resolveRepositorySlug(repoRoot);
+  if (!resolvedSlug) {
+    return { status: 'error', error: 'repository slug unavailable', issues: [] };
+  }
+
+  const token = resolveGitHubToken();
+  if (!token) {
+    warnNoGitHubTokenForRestOnce();
+  }
+
+  try {
+    const url = `https://api.github.com/repos/${resolvedSlug}/issues?state=open&per_page=100`;
+    const data = await requestGitHubJson(url, token);
+    const rows = Array.isArray(data) ? data.filter((entry) => !entry?.pull_request) : [];
+    return { status: 'found', source: 'rest', issues: rows };
+  } catch (error) {
+    return { status: 'error', source: 'rest', error: error?.message || String(error), issues: [] };
+  }
+}
+
+function defaultRunGhAddStandingPriorityLabel({ slug, issueNumber }) {
+  const ghArgs = ['issue', 'edit', String(issueNumber), '--add-label', DEFAULT_STANDING_PRIORITY_LABEL];
+  if (slug) {
+    ghArgs.push('--repo', slug);
+  }
+  return ensureCommand(sh('gh', ghArgs), 'gh');
+}
+
+async function defaultRunRestAddStandingPriorityLabel({ repoRoot, slug, issueNumber }) {
+  const resolvedSlug = slug ?? resolveRepositorySlug(repoRoot);
+  if (!resolvedSlug) {
+    return { status: 'error', source: 'rest', error: 'repository slug unavailable' };
+  }
+
+  const token = resolveGitHubToken();
+  if (!token) {
+    warnNoGitHubTokenForRestOnce();
+    return { status: 'error', source: 'rest', error: 'Authorization unavailable for REST label mutation.' };
+  }
+
+  try {
+    const url = `https://api.github.com/repos/${resolvedSlug}/issues/${Number(issueNumber)}/labels`;
+    await requestGitHubJson(url, token, {
+      method: 'POST',
+      body: { labels: [DEFAULT_STANDING_PRIORITY_LABEL] }
+    });
+    return { status: 'found', source: 'rest' };
+  } catch (error) {
+    return { status: 'error', source: 'rest', error: error?.message || String(error) };
+  }
+}
+
+async function listOpenIssuesForRepo(
+  repoRoot,
+  slug,
+  options = {}
+) {
+  const runGhList = options.runGhList ?? defaultRunGhOpenIssueList;
+  const runRestList = options.runRestList ?? defaultRunRestOpenIssueList;
+  const warn = options.warn ?? ((message) => console.warn(message));
+
+  try {
+    const ghResult = await runGhList({ repoRoot, slug });
+    if (ghResult?.status !== 0) {
+      throw new Error(ghResult?.stderr?.trim() || `gh exited with status ${ghResult?.status}`);
+    }
+    const parsed = ghResult.stdout?.trim() ? JSON.parse(ghResult.stdout) : [];
+    const rows = Array.isArray(parsed) ? parsed : [];
+    return { status: 'found', source: 'gh', issues: rows };
+  } catch (error) {
+    if (error?.code === 'ENOENT') {
+      warn('[priority] gh CLI not found; using REST fallback for open issue listing');
+    } else {
+      warn(`[priority] gh open issue listing failed: ${error?.message || error}`);
+    }
+  }
+
+  return runRestList({ repoRoot, slug });
+}
+
+async function addStandingPriorityLabelToIssue(
+  repoRoot,
+  slug,
+  issueNumber,
+  options = {}
+) {
+  const runGhAddLabel = options.runGhAddLabel ?? defaultRunGhAddStandingPriorityLabel;
+  const runRestAddLabel = options.runRestAddLabel ?? defaultRunRestAddStandingPriorityLabel;
+  const warn = options.warn ?? ((message) => console.warn(message));
+
+  try {
+    const ghResult = await runGhAddLabel({ repoRoot, slug, issueNumber });
+    if (ghResult?.status !== 0) {
+      throw new Error(ghResult?.stderr?.trim() || `gh exited with status ${ghResult?.status}`);
+    }
+    return { status: 'found', source: 'gh' };
+  } catch (error) {
+    if (error?.code === 'ENOENT') {
+      warn('[priority] gh CLI not found; using REST fallback for standing-priority label assignment');
+    } else {
+      warn(`[priority] gh label assignment failed: ${error?.message || error}`);
+    }
+  }
+
+  return runRestAddLabel({ repoRoot, slug, issueNumber });
+}
+
+function resolveAutoSelectRepositorySlug(repoRoot, slug, env = process.env) {
+  const explicit = parseGitRemoteUrl(env.AGENT_PRIORITY_AUTO_SELECT_REPOSITORY);
+  if (explicit) {
+    return explicit;
+  }
+  return (
+    resolveUpstreamRepositorySlug(repoRoot, slug, env) ||
+    slug ||
+    resolveRepositorySlug(repoRoot)
+  );
+}
+
+export async function autoSelectStandingPriorityIssue(
+  repoRoot,
+  slug,
+  options = {}
+) {
+  const warn = options.warn ?? ((message) => console.warn(message));
+  const env = options.env ?? process.env;
+  const targetSlug = options.targetSlug ?? resolveAutoSelectRepositorySlug(repoRoot, slug, env);
+  if (!targetSlug) {
+    return { status: 'error', error: 'repository slug unavailable for auto-select', repoSlug: null };
+  }
+
+  const openIssues = await listOpenIssuesForRepo(repoRoot, targetSlug, options);
+  if (openIssues?.status !== 'found') {
+    return {
+      status: 'error',
+      error: openIssues?.error || 'unable to list open issues',
+      source: openIssues?.source || null,
+      repoSlug: targetSlug
+    };
+  }
+
+  const selected = selectAutoStandingPriorityCandidate(openIssues.issues || []);
+  if (!selected) {
+    return { status: 'empty', source: openIssues.source || null, repoSlug: targetSlug };
+  }
+
+  const labelResult = await addStandingPriorityLabelToIssue(repoRoot, targetSlug, selected.number, options);
+  if (labelResult?.status !== 'found') {
+    return {
+      status: 'error',
+      error: labelResult?.error || 'failed to assign standing-priority label',
+      source: labelResult?.source || null,
+      repoSlug: targetSlug,
+      selected
+    };
+  }
+
+  warn(
+    `[priority] Auto-selected standing issue #${selected.number} in ${targetSlug} (source=${openIssues.source || 'unknown'}).`
+  );
+  return {
+    status: 'selected',
+    source: `${openIssues.source || 'unknown'}+${labelResult.source || 'unknown'}`,
+    repoSlug: targetSlug,
+    issue: selected
   };
 }
 
@@ -1539,6 +1829,9 @@ export function computeNextPriorityCacheState({
 export async function main(options = {}) {
   const failOnMissing = Boolean(options.failOnMissing);
   const failOnMultiple = Boolean(options.failOnMultiple);
+  const autoSelectNext =
+    Boolean(options.autoSelectNext) ||
+    normalizeBooleanValue((options.env || process.env).AGENT_PRIORITY_AUTO_SELECT_NEXT);
   const repoRoot = gitRoot();
   const slug = resolveRepositorySlug(repoRoot);
   const standingPriorityLabels = resolveStandingPriorityLabels(repoRoot, slug);
@@ -1552,40 +1845,65 @@ export async function main(options = {}) {
     standingPriority = await resolveStandingPriorityNumber(repoRoot, slug, standingPriorityLabels);
   } catch (err) {
     if (err?.code === 'NO_STANDING_PRIORITY') {
-      const { clearedRouter, clearedCache, summaryLines, result } = buildNoStandingPriorityState(
-        cache,
-        err.message,
-        undefined,
-        standingPriorityLabels
-      );
-      writeJson(path.join(resultsDir, 'router.json'), clearedRouter);
-
-      if (shouldWriteCache(cache, clearedCache)) {
-        writeJson(cachePath, clearedCache);
+      let noStandingMessage = err.message;
+      if (autoSelectNext) {
+        const autoSelect = await autoSelectStandingPriorityIssue(repoRoot, slug, {
+          env: options.env || process.env
+        });
+        if (autoSelect.status === 'selected' && autoSelect.issue?.number) {
+          standingPriority = {
+            number: autoSelect.issue.number,
+            repoSlug: autoSelect.repoSlug || slug || null,
+            label: DEFAULT_STANDING_PRIORITY_LABEL,
+            source: 'auto-select'
+          };
+        } else if (autoSelect.status === 'error' && autoSelect.error) {
+          noStandingMessage = `${err.message} Auto-select failed: ${autoSelect.error}`;
+        }
       }
 
-      writeNoStandingPriorityReport(
-        resultsDir,
-        buildNoStandingPriorityReport({
-          message: err.message,
-          labels: standingPriorityLabels,
-          repository: slug,
-          failOnMissing
-        })
-      );
-      const multipleReportPath = path.join(resultsDir, MULTIPLE_STANDING_REPORT_FILENAME);
-      if (fs.existsSync(multipleReportPath)) {
-        fs.unlinkSync(multipleReportPath);
-      }
+      if (standingPriority) {
+        console.log(
+          `[priority] Standing issue auto-selected: #${standingPriority.number}${
+            standingPriority.repoSlug ? ` (${standingPriority.repoSlug})` : ''
+          }`
+        );
+      } else {
+        const { clearedRouter, clearedCache, summaryLines, result } = buildNoStandingPriorityState(
+          cache,
+          noStandingMessage,
+          undefined,
+          standingPriorityLabels
+        );
+        writeJson(path.join(resultsDir, 'router.json'), clearedRouter);
 
-      stepSummaryAppend(summaryLines);
-      console.log(`[priority] ${err.message}`);
-      if (failOnMissing) {
-        const strictErr = new Error(err.message);
-        strictErr.code = 'NO_STANDING_PRIORITY';
-        throw strictErr;
+        if (shouldWriteCache(cache, clearedCache)) {
+          writeJson(cachePath, clearedCache);
+        }
+
+        writeNoStandingPriorityReport(
+          resultsDir,
+          buildNoStandingPriorityReport({
+            message: noStandingMessage,
+            labels: standingPriorityLabels,
+            repository: slug,
+            failOnMissing
+          })
+        );
+        const multipleReportPath = path.join(resultsDir, MULTIPLE_STANDING_REPORT_FILENAME);
+        if (fs.existsSync(multipleReportPath)) {
+          fs.unlinkSync(multipleReportPath);
+        }
+
+        stepSummaryAppend(summaryLines);
+        console.log(`[priority] ${noStandingMessage}`);
+        if (failOnMissing) {
+          const strictErr = new Error(noStandingMessage);
+          strictErr.code = 'NO_STANDING_PRIORITY';
+          throw strictErr;
+        }
+        return result;
       }
-      return result;
     }
     throw err;
   }
