@@ -1930,7 +1930,14 @@ export async function main(options = {}) {
     }
     const issueNumbers = Array.isArray(laneState.numbers) ? laneState.numbers : [];
     if (issueNumbers.length === 0) {
-      throw createNoStandingPriorityError(undefined, laneLabels);
+      const laneErr = createNoStandingPriorityError(undefined, laneLabels);
+      if (shouldContinueAfterAutoSelectLaneEmpty(standingPriority, issueNumbers)) {
+        console.warn(
+          `[priority] ${laneErr.message} Auto-select selected #${number}; continuing with resolved standing issue.`
+        );
+      } else {
+        throw laneErr;
+      }
     }
     if (issueNumbers.length > 1) {
       const message = `Multiple open issues found with labels ${formatStandingPriorityLabels(
@@ -1948,7 +1955,7 @@ export async function main(options = {}) {
       );
       throw createMultipleStandingPriorityError(message, laneLabels, issueNumbers);
     }
-    if (issueNumbers[0] !== number) {
+    if (issueNumbers.length > 0 && issueNumbers[0] !== number) {
       throw new Error(
         `Standing-priority lane mismatch: resolved issue #${number} but unique open standing issue is #${issueNumbers[0]}.`
       );
@@ -2077,6 +2084,14 @@ export function shouldRethrowStandingPriorityError(err, standingPriority) {
     return false;
   }
   return true;
+}
+
+export function shouldContinueAfterAutoSelectLaneEmpty(standingPriority, issueNumbers = []) {
+  return Boolean(
+    standingPriority?.source === 'auto-select' &&
+      Array.isArray(issueNumbers) &&
+      issueNumbers.length === 0
+  );
 }
 
 export function determinePrioritySyncExitCode(err, { failOnMissing = false, failOnMultiple = false } = {}) {
