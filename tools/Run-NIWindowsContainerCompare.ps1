@@ -902,6 +902,8 @@ $containerNameForCleanup = ''
 $containerReportPathForExport = ''
 $reportDirectoryForExport = ''
 $additionalExportPaths = @()
+$previousCompareLabVIEWPath = $null
+$restoreCompareLabVIEWPath = $false
 
 try {
   Assert-Tool -Name 'docker'
@@ -1053,7 +1055,12 @@ try {
         $dockerArgs += @('--env', ("{0}={1}" -f $stubVar, $stubValue))
       }
     }
-    $dockerArgs += @('--env', ("COMPARE_LABVIEW_PATH={0}" -f $resolvedLabVIEWPath))
+    # Avoid passing space-heavy path values inline to docker wrappers (.cmd/.ps1).
+    # Export in process env and forward by key only.
+    $previousCompareLabVIEWPath = [Environment]::GetEnvironmentVariable('COMPARE_LABVIEW_PATH', 'Process')
+    [Environment]::SetEnvironmentVariable('COMPARE_LABVIEW_PATH', $resolvedLabVIEWPath, 'Process')
+    $restoreCompareLabVIEWPath = $true
+    $dockerArgs += @('--env', 'COMPARE_LABVIEW_PATH')
     $dockerArgs += @(
       $Image,
       'powershell',
@@ -1150,6 +1157,10 @@ try {
 
   if (-not [string]::IsNullOrWhiteSpace($containerNameForCleanup)) {
     try { & docker rm -f $containerNameForCleanup *> $null } catch {}
+  }
+
+  if ($restoreCompareLabVIEWPath) {
+    [Environment]::SetEnvironmentVariable('COMPARE_LABVIEW_PATH', $previousCompareLabVIEWPath, 'Process')
   }
 
   $runtimeStatusForClassification = ''

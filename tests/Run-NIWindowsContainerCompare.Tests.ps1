@@ -237,6 +237,7 @@ exit 0
       DOCKER_STUB_CP_FAIL           = $env:DOCKER_STUB_CP_FAIL
       DOCKER_COMMAND_OVERRIDE       = $env:DOCKER_COMMAND_OVERRIDE
       NI_WINDOWS_LABVIEW_PATH       = $env:NI_WINDOWS_LABVIEW_PATH
+      COMPARE_LABVIEW_PATH          = $env:COMPARE_LABVIEW_PATH
     }
     Set-Item Env:NI_WINDOWS_LABVIEW_PATH $script:ContainerLabVIEWPath
   }
@@ -387,13 +388,19 @@ exit 0
     $runArgs = @($runRecord[0].args | ForEach-Object { [string]$_ })
 
     $labviewEnvArg = $null
+    $labviewEnvKeyOnly = $false
     for ($i = 0; $i -lt ($runArgs.Count - 1); $i++) {
-      if ($runArgs[$i] -eq '--env' -and $runArgs[$i + 1].StartsWith('COMPARE_LABVIEW_PATH=')) {
+      if ($runArgs[$i] -ne '--env') { continue }
+      if ($runArgs[$i + 1] -eq 'COMPARE_LABVIEW_PATH') {
+        $labviewEnvKeyOnly = $true
+        break
+      }
+      if ($runArgs[$i + 1].StartsWith('COMPARE_LABVIEW_PATH=')) {
         $labviewEnvArg = $runArgs[$i + 1]
         break
       }
     }
-    $labviewEnvArg | Should -Be ("COMPARE_LABVIEW_PATH={0}" -f $script:ContainerLabVIEWPath)
+    ($labviewEnvKeyOnly -or ($labviewEnvArg -eq ("COMPARE_LABVIEW_PATH={0}" -f $script:ContainerLabVIEWPath))) | Should -BeTrue
     $runArgs | Should -Not -Contain 'Files\National'
     $runArgs | Should -Not -Contain 'Instruments\LabVIEW'
   }
