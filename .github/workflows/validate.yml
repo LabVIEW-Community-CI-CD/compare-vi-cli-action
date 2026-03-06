@@ -659,10 +659,10 @@ jobs:
           GH_TOKEN: ${{ secrets.GH_TOKEN || secrets.GITHUB_TOKEN }}
         run: |
           if [ -z "${GH_TOKEN:-${GITHUB_TOKEN:-}}" ]; then
-            echo "::error::GH_TOKEN/GITHUB_TOKEN is required for priority:sync:strict"
+            echo "::error::GH_TOKEN/GITHUB_TOKEN is required for priority:sync:lane"
             exit 1
           fi
-          node tools/npm/run-script.mjs priority:sync:strict
+          node tools/npm/run-script.mjs priority:sync:lane
       - name: Validate snapshot schema (best-effort)
         continue-on-error: true
         run: |
@@ -1084,24 +1084,53 @@ jobs:
 
   vi-history-scenarios-linux:
     needs: [smoke-gate, lint, fixtures, session-index]
-    if: >
-      needs.smoke-gate.outputs.skip != 'true' &&
-      github.event_name == 'workflow_dispatch' &&
-      (
-        github.event.repository.fork != true ||
-        github.event.inputs.allow_noncanonical_vi_history == 'true'
-      )
+    if: needs.smoke-gate.outputs.skip != 'true'
     runs-on: ubuntu-latest
     defaults:
       run:
         shell: pwsh
     steps:
+      - name: Resolve VI history Linux lane execution mode
+        id: lane-mode
+        run: |
+          $eventName = '${{ github.event_name }}'
+          $isWorkflowDispatch = $eventName -eq 'workflow_dispatch'
+          $isForkRepository = '${{ github.event.repository.fork }}' -eq 'true'
+          $allowNonCanonical = '${{ github.event.inputs.allow_noncanonical_vi_history }}' -eq 'true'
+
+          $executeLane = $false
+          $skipReason = 'event-not-workflow-dispatch'
+          if ($isWorkflowDispatch) {
+            if ($isForkRepository -and -not $allowNonCanonical) {
+              $skipReason = 'noncanonical-disabled'
+            } else {
+              $executeLane = $true
+              $skipReason = 'enabled'
+            }
+          }
+
+          "execute_lane=$($executeLane.ToString().ToLowerInvariant())" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
+          "skip_reason=$skipReason" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
+
+          if ($env:GITHUB_STEP_SUMMARY) {
+            $lines = @(
+              '### VI History Scenarios (Linux lane)',
+              '',
+              ('- execute_lane: `{0}`' -f $executeLane.ToString().ToLowerInvariant()),
+              ('- reason: `{0}`' -f $skipReason)
+            )
+            $lines -join "`n" | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Encoding utf8 -Append
+          }
+
       - uses: actions/checkout@v5
+        if: steps.lane-mode.outputs.execute_lane == 'true'
 
       - name: Pull NI Linux image (2026q1-linux)
+        if: steps.lane-mode.outputs.execute_lane == 'true'
         run: docker pull nationalinstruments/labview:2026q1-linux
 
       - name: Manage Docker runtime (Linux preflight)
+        if: steps.lane-mode.outputs.execute_lane == 'true'
         run: |
           $resultsRoot = 'tests/results/local-parity/linux'
           New-Item -ItemType Directory -Path $resultsRoot -Force | Out-Null
@@ -1118,6 +1147,7 @@ jobs:
 
       - name: Run NI Linux create comparison report (fail-fast)
         id: linux-compare
+        if: steps.lane-mode.outputs.execute_lane == 'true'
         run: |
           $resultsRoot = 'tests/results/local-parity/linux'
           New-Item -ItemType Directory -Path $resultsRoot -Force | Out-Null
@@ -1151,7 +1181,7 @@ jobs:
           }
 
       - name: Validate Linux comparison report artifact contract
-        if: always()
+        if: always() && steps.lane-mode.outputs.execute_lane == 'true'
         run: |
           $resultsRoot = 'tests/results/local-parity/linux'
           $reportPath = '${{ steps.linux-compare.outputs.linux_compare_report }}'
@@ -1220,7 +1250,7 @@ jobs:
           }
 
       - name: Upload VI history scenario artifacts (Linux lane)
-        if: always()
+        if: always() && steps.lane-mode.outputs.execute_lane == 'true'
         uses: actions/upload-artifact@v5
         with:
           name: validate-vi-history-scenarios-linux

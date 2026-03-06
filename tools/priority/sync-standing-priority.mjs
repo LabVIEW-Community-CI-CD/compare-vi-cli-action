@@ -16,12 +16,14 @@ const FORK_STANDING_PRIORITY_LABEL = 'fork-standing-priority';
 const MODULE_FILE_PATH = fileURLToPath(import.meta.url);
 const MODULE_REPO_ROOT = path.resolve(path.dirname(MODULE_FILE_PATH), '../..');
 const NO_STANDING_REPORT_FILENAME = 'no-standing-priority.json';
+const MULTIPLE_STANDING_REPORT_FILENAME = 'multiple-standing-priority.json';
 
 const CLI_USAGE_LINES = [
   'Usage: node tools/priority/sync-standing-priority.mjs [options]',
   '',
   'Options:',
   '  --fail-on-missing   Exit non-zero when no standing-priority issue is found.',
+  '  --fail-on-multiple  Exit non-zero when multiple open standing-priority issues are found.',
   '  -h, --help          Show this help text and exit.'
 ];
 
@@ -29,12 +31,17 @@ export function parseCliArgs(argv = process.argv) {
   const args = argv.slice(2);
   const options = {
     failOnMissing: false,
+    failOnMultiple: false,
     help: false
   };
 
   for (const arg of args) {
     if (arg === '--fail-on-missing') {
       options.failOnMissing = true;
+      continue;
+    }
+    if (arg === '--fail-on-multiple') {
+      options.failOnMultiple = true;
       continue;
     }
     if (arg === '--help' || arg === '-h') {
@@ -869,6 +876,16 @@ function createNoStandingPriorityError(message, standingPriorityLabels = [DEFAUL
   return err;
 }
 
+function createMultipleStandingPriorityError(message, standingPriorityLabels = [DEFAULT_STANDING_PRIORITY_LABEL], issueNumbers = []) {
+  const labelText = formatStandingPriorityLabels(standingPriorityLabels);
+  const issueList = (issueNumbers || []).map((value) => Number(value)).filter((value) => Number.isInteger(value) && value > 0);
+  const suffix = issueList.length > 0 ? ` Candidates: ${issueList.join(', ')}.` : '';
+  const err = new Error(message || `Multiple open issues found with labels: ${labelText}.${suffix}`);
+  err.code = 'MULTIPLE_STANDING_PRIORITY';
+  err.issueNumbers = issueList;
+  return err;
+}
+
 function isNoStandingOutcome(outcome) {
   return outcome?.status === 'empty';
 }
@@ -956,6 +973,117 @@ function defaultRunGhStandingPriorityList({ slug, label }) {
 
 function defaultRunStandingPriorityRestLookup({ repoRoot, slug, standingPriorityLabels }) {
   return fetchStandingPriorityNumberViaRest(repoRoot, slug, standingPriorityLabels);
+}
+
+function defaultRunGhStandingPriorityListAll({ slug, label }) {
+  const ghArgs = ['issue', 'list', '--label', label, '--state', 'open', '--limit', '100', '--json', 'number'];
+  if (slug) {
+    ghArgs.push('--repo', slug);
+  }
+  return ensureCommand(sh('gh', ghArgs), 'gh');
+}
+
+async function defaultRunStandingPriorityRestListAll({ repoRoot, slug, standingPriorityLabels }) {
+  const resolvedSlug = slug ?? resolveRepositorySlug(repoRoot);
+  if (!resolvedSlug) {
+    return { status: 'error', error: 'repository slug unavailable', numbers: [] };
+  }
+
+  const token = resolveGitHubToken();
+  if (!token) {
+    warnNoGitHubTokenForRestOnce();
+    return {
+      status: 'error',
+      error: 'Authorization unavailable (set GH_TOKEN/GITHUB_TOKEN for REST fallback).',
+      numbers: []
+    };
+  }
+
+  const numbers = new Set();
+  const errors = [];
+  for (const label of standingPriorityLabels) {
+    const url = `https://api.github.com/repos/${resolvedSlug}/issues?state=open&labels=${encodeURIComponent(label)}&per_page=100`;
+    try {
+      const rows = await requestGitHubJson(url, token);
+      const list = Array.isArray(rows) ? rows : [];
+      for (const item of list) {
+        if (item?.pull_request) {
+          continue;
+        }
+        const number = Number(item?.number);
+        if (Number.isInteger(number) && number > 0) {
+          numbers.add(number);
+        }
+      }
+    } catch (err) {
+      errors.push(`${label}: ${err.message}`);
+    }
+  }
+
+  if (errors.length > 0) {
+    return { status: 'error', error: errors.join(' | '), numbers: [] };
+  }
+
+  return {
+    status: 'found',
+    numbers: Array.from(numbers).sort((left, right) => left - right)
+  };
+}
+
+async function listStandingPriorityIssueNumbersForRepo(
+  repoRoot,
+  slug,
+  standingPriorityLabels = [DEFAULT_STANDING_PRIORITY_LABEL],
+  options = {}
+) {
+  const runGhListAll = options.runGhListAll ?? defaultRunGhStandingPriorityListAll;
+  const runRestListAll = options.runRestListAll ?? defaultRunStandingPriorityRestListAll;
+  const warn = options.warn ?? ((message) => console.warn(message));
+
+  try {
+    const numbers = new Set();
+    for (const label of standingPriorityLabels) {
+      const query = await runGhListAll({ repoRoot, slug, label });
+      if (query?.status !== 0) {
+        throw new Error(query?.stderr?.trim() || `gh exited with status ${query?.status}`);
+      }
+      const parsed = query.stdout?.trim() ? JSON.parse(query.stdout) : [];
+      const rows = Array.isArray(parsed) ? parsed : [];
+      for (const item of rows) {
+        const number = Number(item?.number);
+        if (Number.isInteger(number) && number > 0) {
+          numbers.add(number);
+        }
+      }
+    }
+    return {
+      status: 'found',
+      source: 'gh',
+      numbers: Array.from(numbers).sort((left, right) => left - right)
+    };
+  } catch (err) {
+    if (err?.code === 'ENOENT') {
+      warn('[priority] gh CLI not found; using REST fallback for standing-priority lane checks');
+    } else {
+      warn(`[priority] gh standing-priority lane check failed: ${err?.message || err}`);
+    }
+  }
+
+  const restOutcome = await runRestListAll({ repoRoot, slug, standingPriorityLabels });
+  if (restOutcome?.status === 'found') {
+    return {
+      status: 'found',
+      source: 'rest',
+      numbers: Array.isArray(restOutcome.numbers) ? restOutcome.numbers : []
+    };
+  }
+
+  return {
+    status: 'error',
+    source: 'rest',
+    error: restOutcome?.error || 'standing-priority lane check failed',
+    numbers: []
+  };
 }
 
 export async function resolveStandingPriorityForRepo(
@@ -1295,6 +1423,33 @@ function writeNoStandingPriorityReport(resultsDir, report) {
   writeJson(reportPath, report);
 }
 
+export function buildMultipleStandingPriorityReport({
+  message,
+  labels,
+  repository,
+  issueNumbers,
+  failOnMultiple,
+  generatedAt = new Date().toISOString()
+}) {
+  const numbers = Array.isArray(issueNumbers)
+    ? issueNumbers.map((value) => Number(value)).filter((value) => Number.isInteger(value) && value > 0)
+    : [];
+  return {
+    schema: 'standing-priority/multiple-standing@v1',
+    generatedAt,
+    repository: repository || null,
+    labels: normalizeStandingPriorityLabels(labels),
+    issueNumbers: numbers,
+    message,
+    failOnMultiple: Boolean(failOnMultiple)
+  };
+}
+
+function writeMultipleStandingPriorityReport(resultsDir, report) {
+  const reportPath = path.join(resultsDir, MULTIPLE_STANDING_REPORT_FILENAME);
+  writeJson(reportPath, report);
+}
+
 export function buildNoStandingPriorityState(
   cache,
   message,
@@ -1370,6 +1525,7 @@ export function computeNextPriorityCacheState({
 }
 export async function main(options = {}) {
   const failOnMissing = Boolean(options.failOnMissing);
+  const failOnMultiple = Boolean(options.failOnMultiple);
   const repoRoot = gitRoot();
   const slug = resolveRepositorySlug(repoRoot);
   const standingPriorityLabels = resolveStandingPriorityLabels(repoRoot, slug);
@@ -1404,6 +1560,10 @@ export async function main(options = {}) {
           failOnMissing
         })
       );
+      const multipleReportPath = path.join(resultsDir, MULTIPLE_STANDING_REPORT_FILENAME);
+      if (fs.existsSync(multipleReportPath)) {
+        fs.unlinkSync(multipleReportPath);
+      }
 
       stepSummaryAppend(summaryLines);
       console.log(`[priority] ${err.message}`);
@@ -1419,6 +1579,48 @@ export async function main(options = {}) {
   const number = standingPriority.number;
   const issueRepoSlug = standingPriority.repoSlug || slug || null;
   console.log(`[priority] Standing issue: #${number}${issueRepoSlug ? ` (${issueRepoSlug})` : ''}`);
+
+  if (failOnMultiple) {
+    const normalizedIssueRepoSlug = normalizeRepositorySlug(issueRepoSlug);
+    const normalizedCurrentSlug = normalizeRepositorySlug(slug);
+    const laneLabels =
+      normalizedIssueRepoSlug && normalizedCurrentSlug && normalizedIssueRepoSlug !== normalizedCurrentSlug
+        ? [DEFAULT_STANDING_PRIORITY_LABEL]
+        : standingPriorityLabels;
+    const laneState = await listStandingPriorityIssueNumbersForRepo(repoRoot, issueRepoSlug, laneLabels);
+    if (laneState.status !== 'found') {
+      throw new Error(
+        `Unable to verify standing-priority lane uniqueness for ${
+          issueRepoSlug || 'current repository'
+        }: ${laneState.error || 'unknown error'}`
+      );
+    }
+    const issueNumbers = Array.isArray(laneState.numbers) ? laneState.numbers : [];
+    if (issueNumbers.length === 0) {
+      throw createNoStandingPriorityError(undefined, laneLabels);
+    }
+    if (issueNumbers.length > 1) {
+      const message = `Multiple open issues found with labels ${formatStandingPriorityLabels(
+        laneLabels
+      )} in ${issueRepoSlug || 'current repository'}: ${issueNumbers.join(', ')}.`;
+      writeMultipleStandingPriorityReport(
+        resultsDir,
+        buildMultipleStandingPriorityReport({
+          message,
+          labels: laneLabels,
+          repository: issueRepoSlug || slug || null,
+          issueNumbers,
+          failOnMultiple
+        })
+      );
+      throw createMultipleStandingPriorityError(message, laneLabels, issueNumbers);
+    }
+    if (issueNumbers[0] !== number) {
+      throw new Error(
+        `Standing-priority lane mismatch: resolved issue #${number} but unique open standing issue is #${issueNumbers[0]}.`
+      );
+    }
+  }
 
   let issue;
   let fetchSource = 'live';
@@ -1460,6 +1662,10 @@ export async function main(options = {}) {
   const noStandingReportPath = path.join(resultsDir, NO_STANDING_REPORT_FILENAME);
   if (fs.existsSync(noStandingReportPath)) {
     fs.unlinkSync(noStandingReportPath);
+  }
+  const multipleReportPath = path.join(resultsDir, MULTIPLE_STANDING_REPORT_FILENAME);
+  if (fs.existsSync(multipleReportPath)) {
+    fs.unlinkSync(multipleReportPath);
   }
 
   const newCache = computeNextPriorityCacheState({
@@ -1532,10 +1738,13 @@ export async function closeProxyAgents() {
   }
 }
 
-export function determinePrioritySyncExitCode(err, { failOnMissing = false } = {}) {
+export function determinePrioritySyncExitCode(err, { failOnMissing = false, failOnMultiple = false } = {}) {
   if (!err) return 0;
   if (err?.code === 'NO_STANDING_PRIORITY') {
     return failOnMissing ? 1 : 0;
+  }
+  if (err?.code === 'MULTIPLE_STANDING_PRIORITY') {
+    return failOnMultiple ? 1 : 0;
   }
   return 1;
 }

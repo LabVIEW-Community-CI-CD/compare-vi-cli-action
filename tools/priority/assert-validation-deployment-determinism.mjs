@@ -211,6 +211,15 @@ export function evaluateDeploymentDeterminism(entries = [], { runId, sha = '' } 
   const scopedEntries = targetSha ? entries.filter((entry) => entry.sha === targetSha) : [...entries];
   const issues = [];
 
+  const entryOwnedByRun = (entry) =>
+    Boolean(entry && (entry.latestRunId === targetRunId || entry.runIds.includes(targetRunId)));
+  const hasRunOwnedActiveStatus = (entry) =>
+    Boolean(
+      entry?.statuses?.some(
+        (status) => status.runId === targetRunId && ACTIVE_DEPLOYMENT_STATES.has(String(status.state ?? '').toLowerCase())
+      )
+    );
+
   if (scopedEntries.length === 0) {
     issues.push(targetSha ? `no-deployments-for-sha:${targetSha}` : 'no-deployments-found');
   }
@@ -223,7 +232,15 @@ export function evaluateDeploymentDeterminism(entries = [], { runId, sha = '' } 
   }
 
   const latestRunEntry = [...runEntries].sort(deploymentSortDescending)[0] ?? null;
-  if (latestRunEntry && !ACTIVE_DEPLOYMENT_STATES.has(String(latestRunEntry.latestState ?? '').toLowerCase())) {
+  const latestScoped = [...scopedEntries].sort(deploymentSortDescending)[0] ?? null;
+  if (latestScoped && !entryOwnedByRun(latestScoped)) {
+    issues.push(`latest-deployment-owned-by-other-run:${latestScoped.latestRunId ?? 'unknown'}:deployment:${latestScoped.id}`);
+  }
+
+  const latestRunState = String(latestRunEntry?.latestState ?? '').toLowerCase();
+  const latestRunHasOwnedActiveStatus = hasRunOwnedActiveStatus(latestRunEntry);
+  const latestRunTerminalInactive = latestRunState === 'inactive' && latestRunHasOwnedActiveStatus;
+  if (latestRunEntry && !ACTIVE_DEPLOYMENT_STATES.has(latestRunState) && !latestRunTerminalInactive) {
     issues.push(
       `current-run-latest-state-not-active:${latestRunEntry.latestState ?? 'unknown'}:deployment:${latestRunEntry.id}`
     );
@@ -234,8 +251,10 @@ export function evaluateDeploymentDeterminism(entries = [], { runId, sha = '' } 
   );
   const latestActive = [...activeEntries].sort(deploymentSortDescending)[0] ?? null;
   if (!latestActive) {
-    issues.push('no-active-deployment-found');
-  } else if (latestActive.latestRunId !== targetRunId) {
+    if (!latestRunTerminalInactive) {
+      issues.push('no-active-deployment-found');
+    }
+  } else if (!entryOwnedByRun(latestActive)) {
     issues.push(`latest-active-owned-by-other-run:${latestActive.latestRunId ?? 'unknown'}:deployment:${latestActive.id}`);
   }
 
@@ -244,6 +263,7 @@ export function evaluateDeploymentDeterminism(entries = [], { runId, sha = '' } 
     issues,
     scopedCount: scopedEntries.length,
     runLinkedCount: runEntries.length,
+    latestScoped,
     latestRunEntry,
     latestActive
   };
@@ -274,6 +294,7 @@ function shouldRetryEvaluation(evaluation) {
     issue === 'no-active-deployment-found' ||
     issue.startsWith('no-deployments-for-sha:') ||
     issue.startsWith('no-deployment-linked-to-run:') ||
+    issue.startsWith('latest-deployment-owned-by-other-run:') ||
     issue.startsWith('latest-active-owned-by-other-run:') ||
     issue.startsWith('current-run-latest-state-not-active:')
   );
@@ -327,7 +348,15 @@ export async function runAssertValidationDeploymentDeterminism({
 } = {}) {
   const options = parseArgs(argv);
   let entries = [];
-  let evaluation = { ok: false, issues: ['not-evaluated'], scopedCount: 0, runLinkedCount: 0, latestRunEntry: null, latestActive: null };
+  let evaluation = {
+    ok: false,
+    issues: ['not-evaluated'],
+    scopedCount: 0,
+    runLinkedCount: 0,
+    latestScoped: null,
+    latestRunEntry: null,
+    latestActive: null
+  };
   const attempts = [];
   for (let attempt = 1; attempt <= options.retryAttempts; attempt += 1) {
     const state = collectDeterminismState({ options, cwd, runGhJsonFn });
@@ -341,6 +370,7 @@ export async function runAssertValidationDeploymentDeterminism({
       deploymentCount: entries.length,
       scopedCount: evaluation.scopedCount,
       runLinkedCount: evaluation.runLinkedCount,
+      latestScopedDeploymentId: evaluation.latestScoped?.id ?? null,
       latestRunDeploymentId: evaluation.latestRunEntry?.id ?? null,
       latestActiveDeploymentId: evaluation.latestActive?.id ?? null
     });
@@ -367,11 +397,13 @@ export async function runAssertValidationDeploymentDeterminism({
       scopedCount: evaluation.scopedCount,
       runLinkedCount: evaluation.runLinkedCount,
       attempts: attempts.length,
+      latestScopedDeploymentId: evaluation.latestScoped?.id ?? null,
       latestRunDeploymentId: evaluation.latestRunEntry?.id ?? null,
       latestActiveDeploymentId: evaluation.latestActive?.id ?? null
     },
     attempts,
     issues: evaluation.issues,
+    latestScoped: evaluation.latestScoped,
     latestRunEntry: evaluation.latestRunEntry,
     latestActive: evaluation.latestActive
   };

@@ -86,7 +86,7 @@ test('evaluateDeploymentDeterminism fails when latest active deployment belongs 
   assert.ok(evaluation.issues.some((issue) => issue.startsWith('latest-active-owned-by-other-run:3002')));
 });
 
-test('evaluateDeploymentDeterminism fails when current run latest deployment is inactive', () => {
+test('evaluateDeploymentDeterminism passes when current run latest deployment is terminal inactive after success', () => {
   const deployments = [makeDeployment({ id: 301, sha: 'ghi', createdAt: '2026-03-06T00:13:00Z' })];
   const statusesByDeployment = {
     301: [
@@ -97,6 +97,41 @@ test('evaluateDeploymentDeterminism fails when current run latest deployment is 
   const entries = buildDeploymentEntries(deployments, statusesByDeployment);
   const evaluation = evaluateDeploymentDeterminism(entries, { runId: '4001', sha: 'ghi' });
 
+  assert.equal(evaluation.ok, true);
+  assert.deepEqual(evaluation.issues, []);
+  assert.equal(evaluation.latestRunEntry.id, 301);
+});
+
+test('evaluateDeploymentDeterminism fails when current run only has inactive state without prior active status', () => {
+  const deployments = [makeDeployment({ id: 311, sha: 'ghi2', createdAt: '2026-03-06T00:14:00Z' })];
+  const statusesByDeployment = {
+    311: [makeStatus({ id: 8, state: 'inactive', createdAt: '2026-03-06T00:14:20Z', runId: '4002' })]
+  };
+  const entries = buildDeploymentEntries(deployments, statusesByDeployment);
+  const evaluation = evaluateDeploymentDeterminism(entries, { runId: '4002', sha: 'ghi2' });
+
   assert.equal(evaluation.ok, false);
   assert.ok(evaluation.issues.some((issue) => issue.startsWith('current-run-latest-state-not-active:inactive')));
+});
+
+test('evaluateDeploymentDeterminism fails when newest deployment belongs to another run even if all deployments are inactive', () => {
+  const deployments = [
+    makeDeployment({ id: 401, sha: 'jkl', createdAt: '2026-03-06T00:16:00Z' }),
+    makeDeployment({ id: 400, sha: 'jkl', createdAt: '2026-03-06T00:15:00Z' })
+  ];
+  const statusesByDeployment = {
+    401: [
+      makeStatus({ id: 12, state: 'inactive', createdAt: '2026-03-06T00:16:20Z', runId: '5002' }),
+      makeStatus({ id: 11, state: 'success', createdAt: '2026-03-06T00:16:10Z', runId: '5002' })
+    ],
+    400: [
+      makeStatus({ id: 10, state: 'inactive', createdAt: '2026-03-06T00:15:20Z', runId: '5001' }),
+      makeStatus({ id: 9, state: 'success', createdAt: '2026-03-06T00:15:10Z', runId: '5001' })
+    ]
+  };
+  const entries = buildDeploymentEntries(deployments, statusesByDeployment);
+  const evaluation = evaluateDeploymentDeterminism(entries, { runId: '5001', sha: 'jkl' });
+
+  assert.equal(evaluation.ok, false);
+  assert.ok(evaluation.issues.some((issue) => issue.startsWith('latest-deployment-owned-by-other-run:5002')));
 });

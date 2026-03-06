@@ -43,9 +43,9 @@ standing GitHub protection rules (including queue-managed `develop` and `main`).
 - `Validate` includes a `Policy guard (branch protection)` step that runs `node tools/npm/run-script.mjs priority:policy`
   with the repository token when it is available. On fork PRs the step now detects the reduced token scope, logs that the
   upstream guard will run, and exits cleanly so community contributors are not blocked.
-- `.github/workflows/policy-guard-upstream.yml` (triggered via `pull_request_target`, `merge_group`, and schedule) checks
-  out the PR head with the upstream repository token and re-runs `priority:policy`, guaranteeing that branch protection
-  rules are enforced even when the lint job skips in fork contexts. Its status
+- `.github/workflows/policy-guard-upstream.yml` (triggered via `pull_request`, `pull_request_target`, `merge_group`,
+  and schedule) re-runs `priority:policy` so queue-required policy checks attach to PR heads while still supporting
+  upstream-token enforcement for fork contexts. Its status
   (`Policy Guard (Upstream) / policy-guard`) is required on `develop`, `main`, and `release/*`.
 - Upstream policy guard runs in strict mode (`--fail-on-skip`), so reduced token scope is treated as a failing gate
   rather than a pass-through skip.
@@ -254,9 +254,9 @@ to confirm each workflow includes both triggers.
 6. Autonomous merge tooling now requires upstream-owned PR heads. Fork-headed PRs are intentionally ineligible for
    `priority:queue:supervisor` and `priority:merge-sync`; mirror the branch to upstream and open the PR from the
    upstream-owned branch before queueing.
-7. Validate deployment evidence is now run-scoped: `priority:deployment:assert` verifies the `validation` environment
-   using the current workflow run id and latest active deployment status, and fails if the active deployment resolves to
-   a different run.
+7. Validate deployment evidence is run-scoped: `priority:deployment:assert` verifies the `validation` environment using
+   the current workflow run id, fails when the newest deployment is owned by another run, and tolerates terminal
+   `inactive` statuses only when they follow a successful deployment for the same run.
 
 ### PR Metadata Contract (queue supervisor)
 - `Coupling: independent|soft|hard` (default: `independent`)
@@ -271,8 +271,10 @@ to confirm each workflow includes both triggers.
   with `--force-with-lease`.
 - **Queue saturation or slow merges** – Review the merge queue page linked above to see pending entries and their
   required checks. Cancel stale queue jobs from the PR if necessary.
-- **No standing-priority issue** – unattended flows should run `priority:sync:strict`; this fails fast and writes
-  `tests/results/_agent/issue/no-standing-priority.json` instead of looping.
+- **Standing-priority lane drift** – unattended flows should run `priority:sync:lane`; this fails fast when there is no
+  standing issue or when multiple issues are labeled standing-priority, and writes deterministic diagnostics:
+  `tests/results/_agent/issue/no-standing-priority.json` and
+  `tests/results/_agent/issue/multiple-standing-priority.json`.
 - **Policy drift detected by `priority:policy`** – Align GitHub settings with `tools/priority/policy.json` (update the
   JSON if the new configuration is intentional), then rerun the helper.
 - **Policy guard auth failure (`Authorization unavailable` / `authenticated-no-admin`)** – verify and rotate upstream
