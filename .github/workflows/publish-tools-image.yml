@@ -23,6 +23,7 @@ on:
         type: string
 
 permissions:
+  actions: read
   contents: read
   packages: write
 
@@ -209,10 +210,22 @@ jobs:
           $version = if ([string]::IsNullOrWhiteSpace('${{ steps.context.outputs.version }}')) { 'unknown' } else { '${{ steps.context.outputs.version }}' }
           pwsh -NoLogo -NoProfile -File tools/Write-PromotionEvidenceLedger.ps1 -OutputPath tests/results/promotion-contract/publish-tools-ledger.json -WorkflowName '${{ github.workflow }}' -Stream 'comparevi-tools' -Channel $channel -Version $version -GateStatus $gateStatus -GateReason 'publish-tools-image workflow result' -SummaryPath 'tests/results/_agent/release/tools-image-release-summary.md' -StepSummaryPath $env:GITHUB_STEP_SUMMARY
 
+      - name: Emit SLO metrics
+        if: always()
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          node tools/priority/slo-metrics.mjs \
+            --repo "${{ github.repository }}" \
+            --output tests/results/_agent/slo/publish-tools-slo-metrics.json
+
       - name: Upload promotion evidence artifact
         if: always()
         uses: actions/upload-artifact@v5
         with:
           name: promotion-evidence-tools-${{ github.run_id }}
-          path: tests/results/promotion-contract/publish-tools-ledger.json
+          path: |
+            tests/results/promotion-contract/publish-tools-ledger.json
+            tests/results/_agent/slo/publish-tools-slo-metrics.json
           if-no-files-found: error

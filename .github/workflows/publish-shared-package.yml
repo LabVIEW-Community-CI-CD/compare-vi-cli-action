@@ -25,6 +25,7 @@ on:
         type: boolean
 
 permissions:
+  actions: read
   contents: read
   packages: write
 
@@ -176,10 +177,22 @@ jobs:
           $version = if ([string]::IsNullOrWhiteSpace('${{ steps.ctx.outputs.version }}')) { 'unknown' } else { '${{ steps.ctx.outputs.version }}' }
           pwsh -NoLogo -NoProfile -File tools/Write-PromotionEvidenceLedger.ps1 -OutputPath tests/results/promotion-contract/publish-shared-ledger.json -WorkflowName '${{ github.workflow }}' -Stream 'CompareVi.Shared' -Channel $channel -Version $version -GateStatus $gateStatus -GateReason 'publish-shared-package workflow result' -StepSummaryPath $env:GITHUB_STEP_SUMMARY
 
+      - name: Emit SLO metrics
+        if: always()
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          node tools/priority/slo-metrics.mjs \
+            --repo "${{ github.repository }}" \
+            --output tests/results/_agent/slo/publish-shared-slo-metrics.json
+
       - name: Upload promotion evidence artifact
         if: always()
         uses: actions/upload-artifact@v5
         with:
           name: promotion-evidence-shared-${{ github.run_id }}
-          path: tests/results/promotion-contract/publish-shared-ledger.json
+          path: |
+            tests/results/promotion-contract/publish-shared-ledger.json
+            tests/results/_agent/slo/publish-shared-slo-metrics.json
           if-no-files-found: error

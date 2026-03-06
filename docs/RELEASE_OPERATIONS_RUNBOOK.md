@@ -56,6 +56,20 @@ Configuration path: `Settings -> Environments -> <environment> -> Required revie
 | Deployment approval blocked/misrouted | 15 minutes | Deployment gate approver -> repository admin |
 | Rollback-triggering regression | Immediate | Incident commander triggers rollback flow and pauses promotion |
 
+## SLO thresholds and routing
+
+- SLO metrics are emitted by `node tools/priority/slo-metrics.mjs` in release/promotion workflows under
+  `tests/results/_agent/slo/`.
+- Default breach thresholds:
+  - failure rate > `0.30`
+  - MTTR > `24` hours
+  - stale budget > `1080` hours (45 days)
+  - gate regressions > `3`
+- Breach routing:
+  - release/monthly workflows upsert an issue labeled `slo`, `ci`, `governance`
+  - issue title prefix: `[SLO] ... breach`
+  - escalation follows the matrix above
+
 ## Incident and rollback communication protocol
 
 1. Open or update an incident issue with timestamped status.
@@ -91,4 +105,3 @@ Configuration path: `Settings -> Environments -> <environment> -> Required revie
 - `tests/results/_agent/release/release-<tag>-finalize.json`
 - `tests/results/_agent/policy/policy-drift-report.json`
 - `tests/results/_agent/health-snapshot/health-snapshot.json`
-

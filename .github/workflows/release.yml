@@ -242,6 +242,9 @@ jobs:
     name: release-contract
     runs-on: ubuntu-latest
     needs: [release, validate-cli-artifacts]
+    permissions:
+      contents: read
+      issues: write
     steps:
       - uses: actions/checkout@v5
 
@@ -364,6 +367,18 @@ jobs:
           $channel = if ('${{ github.ref_name }}' -match '-rc\.') { 'rc' } else { 'stable' }
           pwsh -NoLogo -NoProfile -File tools/Write-PromotionEvidenceLedger.ps1 -OutputPath tests/results/promotion-contract/release-ledger.json -WorkflowName '${{ github.workflow }}' -Stream 'comparevi-cli' -Channel $channel -Version '${{ needs.release.outputs.cli_version }}' -GateStatus $gateStatus -GateReason 'release-contract job result' -SummaryPath 'tests/results/release-contract/review-index.json' -StepSummaryPath $env:GITHUB_STEP_SUMMARY
 
+      - name: Emit SLO metrics
+        if: always()
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          node tools/priority/slo-metrics.mjs \
+            --repo "${{ github.repository }}" \
+            --output tests/results/_agent/slo/release-slo-metrics.json \
+            --route-on-breach \
+            --route-title-prefix "[SLO] Release promotion breach"
+
       - name: Upload release contract artifacts
         if: always()
         uses: actions/upload-artifact@v5
@@ -375,4 +390,5 @@ jobs:
             tests/results/_agent/verification/verification-summary.json
             tests/results/promotion-contract/release-alignment.json
             tests/results/promotion-contract/release-ledger.json
+            tests/results/_agent/slo/release-slo-metrics.json
           if-no-files-found: error
