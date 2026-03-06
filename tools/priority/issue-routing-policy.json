@@ -1,0 +1,102 @@
+{
+  "schema": "issue-routing-policy@v1",
+  "schemaVersion": "1.0.0",
+  "description": "Deterministic routing policy for normalized incident-event@v1 payloads.",
+  "queueManagedBranches": [
+    "develop",
+    "main"
+  ],
+  "defaultAction": {
+    "type": "comment",
+    "priority": "P2",
+    "labels": [
+      "ci"
+    ],
+    "owner": null,
+    "titlePrefix": "[Ops Signal]",
+    "reason": "default-fallback"
+  },
+  "rules": [
+    {
+      "id": "required-check-drift-queue",
+      "order": 10,
+      "enabled": true,
+      "match": {
+        "sourceTypes": [
+          "required-check-drift"
+        ],
+        "incidentClasses": [
+          "required-check-drift"
+        ],
+        "requiresQueueManagedBranch": true,
+        "requiresExactCheckNames": true
+      },
+      "action": {
+        "type": "open-issue",
+        "priority": "P0",
+        "labels": [
+          "ci",
+          "governance",
+          "program"
+        ],
+        "owner": "release-platform",
+        "titlePrefix": "[Policy Drift]",
+        "reason": "required-check-drift"
+      }
+    },
+    {
+      "id": "deployment-anomaly",
+      "order": 20,
+      "enabled": true,
+      "match": {
+        "sourceTypes": [
+          "deployment-state"
+        ],
+        "incidentClasses": [
+          "deployment-state-anomaly"
+        ]
+      },
+      "action": {
+        "type": "open-issue",
+        "priority": "P1",
+        "labels": [
+          "ci",
+          "governance"
+        ],
+        "owner": "release-platform",
+        "titlePrefix": "[Deployment Determinism]",
+        "reason": "deployment-anomaly"
+      }
+    },
+    {
+      "id": "workflow-failure",
+      "order": 30,
+      "enabled": true,
+      "match": {
+        "sourceTypes": [
+          "workflow-run"
+        ],
+        "incidentClasses": [
+          "workflow-run-failure",
+          "workflow-run-anomaly",
+          "workflow-run-cancelled"
+        ],
+        "severities": [
+          "critical",
+          "high",
+          "medium"
+        ]
+      },
+      "action": {
+        "type": "open-issue",
+        "priority": "P1",
+        "labels": [
+          "ci"
+        ],
+        "owner": "release-platform",
+        "titlePrefix": "[Workflow Incident]",
+        "reason": "workflow-failure"
+      }
+    }
+  ]
+}

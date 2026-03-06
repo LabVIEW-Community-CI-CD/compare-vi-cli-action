@@ -68,6 +68,7 @@
     "priority:onboard:success": "node tools/priority/downstream-onboarding-success.mjs",
     "priority:develop:sync": "pwsh -NoLogo -NoProfile -File tools/priority/Sync-OriginUpstreamDevelop.ps1",
     "priority:policy": "node tools/priority/check-policy.mjs",
+    "priority:policy:route": "node tools/priority/policy-engine.mjs",
     "priority:policy:snapshot": "node tools/priority/policy-snapshot.mjs",
     "priority:certification:matrix": "node tools/priority/certification-matrix.mjs",
     "priority:trust:gate": "node tools/priority/supply-chain-trust-gate.mjs",

@@ -1,0 +1,312 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "priority/policy-decision-report@v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema",
+    "schemaVersion",
+    "generatedAt",
+    "status",
+    "dryRun",
+    "inputs",
+    "policy",
+    "event",
+    "branchContext",
+    "checkNameGate",
+    "evaluation",
+    "decision",
+    "errors"
+  ],
+  "properties": {
+    "schema": {
+      "const": "priority/policy-decision-report@v1"
+    },
+    "schemaVersion": {
+      "type": "string"
+    },
+    "generatedAt": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "status": {
+      "enum": [
+        "pass",
+        "fail"
+      ]
+    },
+    "dryRun": {
+      "type": "boolean"
+    },
+    "inputs": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "eventPath",
+        "policyPath",
+        "branchPolicyPath"
+      ],
+      "properties": {
+        "eventPath": {
+          "type": "string"
+        },
+        "policyPath": {
+          "type": "string"
+        },
+        "branchPolicyPath": {
+          "type": "string"
+        }
+      }
+    },
+    "policy": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schema",
+        "schemaVersion",
+        "digest",
+        "ruleCount"
+      ],
+      "properties": {
+        "schema": {
+          "type": "string"
+        },
+        "schemaVersion": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "digest": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "ruleCount": {
+          "type": "integer",
+          "minimum": 0
+        }
+      }
+    },
+    "event": {
+      "type": [
+        "object",
+        "null"
+      ],
+      "additionalProperties": false,
+      "required": [
+        "fingerprint",
+        "sourceType",
+        "incidentClass",
+        "severity",
+        "branch",
+        "sha",
+        "signature",
+        "suggestedLabels"
+      ],
+      "properties": {
+        "fingerprint": {
+          "type": "string"
+        },
+        "sourceType": {
+          "type": "string"
+        },
+        "incidentClass": {
+          "type": "string"
+        },
+        "severity": {
+          "type": "string"
+        },
+        "branch": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "sha": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "signature": {
+          "type": "string"
+        },
+        "suggestedLabels": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "branchContext": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "queueManagedBranches",
+        "branch",
+        "queueManagedBranch"
+      ],
+      "properties": {
+        "queueManagedBranches": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "branch": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "queueManagedBranch": {
+          "type": "boolean"
+        }
+      }
+    },
+    "checkNameGate": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "required",
+        "exactMatch",
+        "expected",
+        "observed",
+        "missing",
+        "extra"
+      ],
+      "properties": {
+        "required": {
+          "type": "boolean"
+        },
+        "exactMatch": {
+          "type": "boolean"
+        },
+        "expected": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "observed": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "missing": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "extra": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "evaluation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "selectedRuleId",
+        "ruleEvaluations"
+      ],
+      "properties": {
+        "selectedRuleId": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "ruleEvaluations": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "id",
+              "order",
+              "matched",
+              "reasons"
+            ],
+            "properties": {
+              "id": {
+                "type": "string"
+              },
+              "order": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "matched": {
+                "type": "boolean"
+              },
+              "reasons": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "decision": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "type",
+        "priority",
+        "labels",
+        "owner",
+        "titlePrefix",
+        "reason"
+      ],
+      "properties": {
+        "type": {
+          "type": "string"
+        },
+        "priority": {
+          "type": "string"
+        },
+        "labels": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "owner": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "titlePrefix": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "reason": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      }
+    },
+    "errors": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    }
+  }
+}
