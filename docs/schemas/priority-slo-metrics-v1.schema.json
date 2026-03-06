@@ -1,0 +1,255 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "priority/slo-metrics@v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema",
+    "generatedAt",
+    "repository",
+    "lookbackDays",
+    "thresholds",
+    "workflowSummaries",
+    "summary",
+    "breaches",
+    "route"
+  ],
+  "properties": {
+    "schema": {
+      "const": "priority/slo-metrics@v1"
+    },
+    "generatedAt": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "repository": {
+      "type": "string",
+      "pattern": "^[^/\\s]+/[^/\\s]+$"
+    },
+    "lookbackDays": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "thresholds": {
+      "$ref": "#/$defs/thresholds"
+    },
+    "workflowSummaries": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "workflow",
+          "summary",
+          "runCount"
+        ],
+        "properties": {
+          "workflow": {
+            "type": "string",
+            "minLength": 1
+          },
+          "runCount": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "summary": {
+            "$ref": "#/$defs/summary"
+          }
+        }
+      }
+    },
+    "summary": {
+      "$ref": "#/$defs/summary"
+    },
+    "breaches": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "code",
+          "message"
+        ],
+        "properties": {
+          "code": {
+            "type": "string",
+            "minLength": 1
+          },
+          "message": {
+            "type": "string",
+            "minLength": 1
+          }
+        }
+      }
+    },
+    "route": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "action"
+      ],
+      "properties": {
+        "action": {
+          "type": "string",
+          "enum": [
+            "none",
+            "create",
+            "comment",
+            "error"
+          ]
+        },
+        "issueNumber": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "message": {
+          "type": "string"
+        }
+      }
+    }
+  },
+  "$defs": {
+    "thresholds": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "failureRate",
+        "skipRate",
+        "mttrHours",
+        "staleHours",
+        "gateRegressions"
+      ],
+      "properties": {
+        "failureRate": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        },
+        "skipRate": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        },
+        "mttrHours": {
+          "type": "number",
+          "minimum": 0
+        },
+        "staleHours": {
+          "type": "number",
+          "minimum": 0
+        },
+        "gateRegressions": {
+          "type": "integer",
+          "minimum": 0
+        }
+      }
+    },
+    "totals": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "totalRuns",
+        "observedRuns",
+        "successRuns",
+        "failedRuns",
+        "skippedRuns",
+        "gateRegressions"
+      ],
+      "properties": {
+        "totalRuns": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "observedRuns": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "successRuns": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "failedRuns": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "skippedRuns": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "gateRegressions": {
+          "type": "integer",
+          "minimum": 0
+        }
+      }
+    },
+    "metrics": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "failureRate",
+        "skipRate",
+        "leadTimeP50Seconds",
+        "leadTimeP95Seconds",
+        "mttrSeconds",
+        "staleHours"
+      ],
+      "properties": {
+        "failureRate": {
+          "type": "number",
+          "minimum": 0
+        },
+        "skipRate": {
+          "type": "number",
+          "minimum": 0
+        },
+        "leadTimeP50Seconds": {
+          "type": [
+            "number",
+            "null"
+          ],
+          "minimum": 0
+        },
+        "leadTimeP95Seconds": {
+          "type": [
+            "number",
+            "null"
+          ],
+          "minimum": 0
+        },
+        "mttrSeconds": {
+          "type": [
+            "number",
+            "null"
+          ],
+          "minimum": 0
+        },
+        "staleHours": {
+          "type": [
+            "number",
+            "null"
+          ],
+          "minimum": 0
+        },
+        "unresolvedIncident": {
+          "type": "boolean"
+        }
+      }
+    },
+    "summary": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "totals",
+        "metrics"
+      ],
+      "properties": {
+        "totals": {
+          "$ref": "#/$defs/totals"
+        },
+        "metrics": {
+          "$ref": "#/$defs/metrics"
+        }
+      }
+    }
+  }
+}

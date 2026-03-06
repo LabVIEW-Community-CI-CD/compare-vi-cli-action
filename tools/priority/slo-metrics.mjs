@@ -25,6 +25,7 @@ function printUsage() {
   console.log('  --lookback-days <n>                Lookback window in days (default: 45).');
   console.log('  --max-runs <n>                     Max completed runs fetched per workflow (default: 100).');
   console.log('  --threshold-failure-rate <0..1>    Failure-rate breach threshold (default: 0.3).');
+  console.log('  --threshold-skip-rate <0..1>       Skip-rate breach threshold (default: 1).');
   console.log('  --threshold-mttr-hours <n>         MTTR breach threshold in hours (default: 24).');
   console.log('  --threshold-stale-hours <n>        Stale-budget breach threshold in hours (default: 1080).');
   console.log('  --threshold-gate-regressions <n>   Gate-regression breach threshold (default: 3).');
@@ -43,6 +44,7 @@ export function parseArgs(argv = process.argv) {
     lookbackDays: 45,
     maxRuns: 100,
     thresholdFailureRate: 0.3,
+    thresholdSkipRate: 1,
     thresholdMttrHours: 24,
     thresholdStaleHours: 1080,
     thresholdGateRegressions: 3,
@@ -105,7 +107,7 @@ export function parseArgs(argv = process.argv) {
       continue;
     }
 
-    if (token === '--threshold-failure-rate') {
+    if (token === '--threshold-failure-rate' || token === '--threshold-skip-rate') {
       if (!next || next.startsWith('-')) {
         throw new Error(`Missing value for ${token}.`);
       }
@@ -114,7 +116,11 @@ export function parseArgs(argv = process.argv) {
       if (!Number.isFinite(parsed) || parsed < 0 || parsed > 1) {
         throw new Error(`Invalid value for ${token}: ${next}`);
       }
-      options.thresholdFailureRate = parsed;
+      if (token === '--threshold-failure-rate') {
+        options.thresholdFailureRate = parsed;
+      } else {
+        options.thresholdSkipRate = parsed;
+      }
       continue;
     }
 
@@ -210,7 +216,8 @@ async function requestJson(url, token, method = 'GET', body = null) {
 
 function classifyConclusion(conclusion) {
   if (conclusion === 'success') return 'success';
-  if (!conclusion || conclusion === 'neutral' || conclusion === 'skipped') return 'ignored';
+  if (conclusion === 'neutral' || conclusion === 'skipped') return 'skipped';
+  if (!conclusion) return 'ignored';
   return 'failure';
 }
 
@@ -249,6 +256,8 @@ export function summarizeWorkflowRuns(runs, now = new Date()) {
   const considered = normalized.filter((entry) => entry.outcome !== 'ignored');
   const successes = considered.filter((entry) => entry.outcome === 'success');
   const failures = considered.filter((entry) => entry.outcome === 'failure');
+  const skipped = considered.filter((entry) => entry.outcome === 'skipped');
+  const effectiveRuns = considered.filter((entry) => entry.outcome !== 'skipped');
   const successDurations = successes
     .map((entry) => entry.durationSeconds)
     .filter((value) => Number.isFinite(value) && value >= 0);
@@ -277,13 +286,16 @@ export function summarizeWorkflowRuns(runs, now = new Date()) {
 
   return {
     totals: {
-      totalRuns: considered.length,
+      totalRuns: effectiveRuns.length,
+      observedRuns: considered.length,
       successRuns: successes.length,
       failedRuns: failures.length,
+      skippedRuns: skipped.length,
       gateRegressions: failures.length
     },
     metrics: {
-      failureRate: considered.length > 0 ? failures.length / considered.length : 0,
+      failureRate: effectiveRuns.length > 0 ? failures.length / effectiveRuns.length : 0,
+      skipRate: considered.length > 0 ? skipped.length / considered.length : 0,
       leadTimeP50Seconds: percentile(successDurations, 0.5),
       leadTimeP95Seconds: percentile(successDurations, 0.95),
       mttrSeconds: average(mttrDurations),
@@ -299,6 +311,12 @@ export function evaluateBreaches(summary, thresholds) {
     breaches.push({
       code: 'failure-rate',
       message: `failureRate ${summary.metrics.failureRate.toFixed(3)} exceeds threshold ${thresholds.failureRate}`
+    });
+  }
+  if (summary.metrics.skipRate > thresholds.skipRate) {
+    breaches.push({
+      code: 'skip-rate',
+      message: `skipRate ${summary.metrics.skipRate.toFixed(3)} exceeds threshold ${thresholds.skipRate}`
     });
   }
   if (
@@ -346,6 +364,7 @@ function renderBreachIssueBody(payload) {
     `- Repository: \`${payload.repository}\``,
     `- Generated at: \`${payload.generatedAt}\``,
     `- Failure rate: \`${formatNumber(payload.summary.metrics.failureRate, 3)}\``,
+    `- Skip rate: \`${formatNumber(payload.summary.metrics.skipRate, 3)}\``,
     `- MTTR hours: \`${formatNumber(payload.summary.metrics.mttrSeconds / 3600, 2)}\``,
     `- Stale hours: \`${formatNumber(payload.summary.metrics.staleHours, 2)}\``,
     `- Gate regressions: \`${payload.summary.totals.gateRegressions}\``,
@@ -358,7 +377,10 @@ function renderBreachIssueBody(payload) {
   lines.push('', '### Workflow metrics');
   for (const workflow of payload.workflowSummaries) {
     lines.push(
-      `- \`${workflow.workflow}\`: failureRate=${formatNumber(workflow.summary.metrics.failureRate, 3)}, mttrHours=${formatNumber(
+      `- \`${workflow.workflow}\`: failureRate=${formatNumber(workflow.summary.metrics.failureRate, 3)}, skipRate=${formatNumber(
+        workflow.summary.metrics.skipRate,
+        3
+      )}, mttrHours=${formatNumber(
         workflow.summary.metrics.mttrSeconds / 3600,
         2
       )}, staleHours=${formatNumber(workflow.summary.metrics.staleHours, 2)}, total=${workflow.summary.totals.totalRuns}`
@@ -426,24 +448,30 @@ export function buildSloSummary(workflowSummaries) {
     const summary = entry.summary;
     return {
       total: summary.totals.totalRuns,
+      observed: summary.totals.observedRuns,
       success: summary.totals.successRuns,
       failed: summary.totals.failedRuns,
+      skipped: summary.totals.skippedRuns,
       gateRegressions: summary.totals.gateRegressions,
       leadTimeP50Seconds: summary.metrics.leadTimeP50Seconds,
       leadTimeP95Seconds: summary.metrics.leadTimeP95Seconds,
       mttrSeconds: summary.metrics.mttrSeconds,
-      staleHours: summary.metrics.staleHours
+      staleHours: summary.metrics.staleHours,
+      skipRate: summary.metrics.skipRate
     };
   });
 
   const totals = {
     totalRuns: allRuns.reduce((sum, item) => sum + item.total, 0),
+    observedRuns: allRuns.reduce((sum, item) => sum + item.observed, 0),
     successRuns: allRuns.reduce((sum, item) => sum + item.success, 0),
     failedRuns: allRuns.reduce((sum, item) => sum + item.failed, 0),
+    skippedRuns: allRuns.reduce((sum, item) => sum + item.skipped, 0),
     gateRegressions: allRuns.reduce((sum, item) => sum + item.gateRegressions, 0)
   };
 
   const failureRate = totals.totalRuns > 0 ? totals.failedRuns / totals.totalRuns : 0;
+  const skipRate = totals.observedRuns > 0 ? totals.skippedRuns / totals.observedRuns : 0;
   const leadTimeP50Seconds = percentile(
     allRuns.map((item) => item.leadTimeP50Seconds).filter((value) => Number.isFinite(value)),
     0.5
@@ -463,6 +491,7 @@ export function buildSloSummary(workflowSummaries) {
     totals,
     metrics: {
       failureRate,
+      skipRate,
       leadTimeP50Seconds,
       leadTimeP95Seconds,
       mttrSeconds,
@@ -499,6 +528,7 @@ export async function main(argv = process.argv) {
   const summary = buildSloSummary(workflowSummaries);
   const thresholds = {
     failureRate: options.thresholdFailureRate,
+    skipRate: options.thresholdSkipRate,
     mttrHours: options.thresholdMttrHours,
     staleHours: options.thresholdStaleHours,
     gateRegressions: options.thresholdGateRegressions
@@ -524,6 +554,7 @@ export async function main(argv = process.argv) {
     `- Repository: \`${repository}\``,
     `- Workflows: ${options.workflows.map((entry) => `\`${entry}\``).join(', ')}`,
     `- Failure rate: \`${formatNumber(summary.metrics.failureRate, 3)}\``,
+    `- Skip rate: \`${formatNumber(summary.metrics.skipRate, 3)}\``,
     `- Lead time p50 (s): \`${formatNumber(summary.metrics.leadTimeP50Seconds, 2)}\``,
     `- MTTR (hours): \`${formatNumber(summary.metrics.mttrSeconds / 3600, 2)}\``,
     `- Stale hours (max): \`${formatNumber(summary.metrics.staleHours, 2)}\``,

@@ -1,6 +1,6 @@
 # Commit Integrity Check
 
-Issue: `#743`
+Issues: `#743`, `#774`
 
 This document defines the `commit-integrity` contract used to evaluate commit trust posture for PR/queue scopes.
 
@@ -11,6 +11,10 @@ This document defines the `commit-integrity` contract used to evaluate commit tr
 - Deterministic artifact:
   - `tests/results/_agent/commit-integrity/commit-integrity-report.json`
   - Uploaded on every run via `if: always()`
+- Drift monitor workflow: `.github/workflows/commit-integrity-drift-monitor.yml`
+  - Deterministic artifact:
+    - `tests/results/_agent/commit-integrity/commit-integrity-drift-report.json`
+  - Runs every 6 hours and on manual dispatch.
 
 ## Validation Coverage
 
@@ -100,3 +104,15 @@ node tools/npm/run-script.mjs priority:commit-integrity -- --pr 744 --observe-on
 ```bash
 node tools/npm/run-script.mjs priority:commit-integrity -- --pr 744
 ```
+
+```bash
+node tools/npm/run-script.mjs priority:commit-integrity:drift
+```
+
+## Drift + SLO Monitoring
+
+- Drift/SLO report source: `tools/priority/slo-metrics.mjs` (workflow scoped to `commit-integrity.yml`).
+- Report includes pass/fail/skip telemetry plus MTTR/staleness/gate-regression metrics.
+- Breach routing:
+  - opens/comments an issue with labels `slo`, `ci`, `governance`, `supply-chain`
+  - title prefix: `[SLO] Commit integrity breach`
