@@ -546,11 +546,11 @@ jobs:
           $lines = @(
             '### NI Windows Container Compare',
             '',
-            "- image: `$imageUsed`",
-            "- resultClass: `$resultClass`",
-            "- gateOutcome: `$gateOutcome`",
-            "- capture: `$capturePath`",
-            "- report: `$reportPath`"
+            "- image: $imageUsed",
+            "- resultClass: $resultClass",
+            "- gateOutcome: $gateOutcome",
+            "- capture: $capturePath",
+            "- report: $reportPath"
           )
           $lines -join "`n" | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8
         }
