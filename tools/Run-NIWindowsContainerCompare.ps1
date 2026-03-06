@@ -331,8 +331,7 @@ $args = @(
   "-VI1", $env:COMPARE_BASE_VI,
   "-VI2", $env:COMPARE_HEAD_VI,
   "-ReportPath", $env:COMPARE_REPORT_PATH,
-  "-ReportType", $env:COMPARE_REPORT_TYPE,
-  "-Headless"
+  "-ReportType", $env:COMPARE_REPORT_TYPE
 )
 $flags = @()
 if (-not [string]::IsNullOrWhiteSpace($env:COMPARE_FLAGS_B64)) {
@@ -342,18 +341,26 @@ if (-not [string]::IsNullOrWhiteSpace($env:COMPARE_FLAGS_B64)) {
     $parsed = $rawJson | ConvertFrom-Json -ErrorAction Stop
     if ($parsed -is [System.Collections.IEnumerable] -and -not ($parsed -is [string])) {
       foreach ($flag in $parsed) {
-        if (-not [string]::IsNullOrWhiteSpace([string]$flag)) {
-          $flags += [string]$flag
-        }
+        if ([string]::IsNullOrWhiteSpace([string]$flag)) { continue }
+        $flagText = [string]$flag
+        if ([string]::Equals($flagText.Trim(), '-Headless', [System.StringComparison]::OrdinalIgnoreCase)) { continue }
+        $flags += $flagText
       }
     } elseif (-not [string]::IsNullOrWhiteSpace([string]$parsed)) {
-      $flags += [string]$parsed
+      $flagText = [string]$parsed
+      if (-not [string]::Equals($flagText.Trim(), '-Headless', [System.StringComparison]::OrdinalIgnoreCase)) {
+        $flags += $flagText
+      }
     }
   }
 }
 if ($flags.Count -gt 0) {
   $args += $flags
 }
+if (-not [string]::IsNullOrWhiteSpace($env:COMPARE_LABVIEW_PATH)) {
+  $args += @("-LabVIEWPath", $env:COMPARE_LABVIEW_PATH)
+}
+$args += @("-Headless", "true")
 $prelaunchEnabled = -not [string]::Equals($env:COMPARE_PRELAUNCH_ENABLED, '0', [System.StringComparison]::OrdinalIgnoreCase)
 if ($prelaunchEnabled) {
   $lvCandidates = @(
@@ -394,26 +401,11 @@ function Invoke-CliWithCapturedStreams {
     [Parameter(Mandatory)][string[]]$ArgumentList
   )
 
-  $stdoutPath = Join-Path $env:TEMP ("lvcli-stdout-{0}.log" -f ([guid]::NewGuid().ToString('N')))
-  $stderrPath = Join-Path $env:TEMP ("lvcli-stderr-{0}.log" -f ([guid]::NewGuid().ToString('N')))
-  try {
-    $proc = Start-Process -FilePath $FilePath `
-      -ArgumentList $ArgumentList `
-      -NoNewWindow `
-      -Wait `
-      -PassThru `
-      -RedirectStandardOutput $stdoutPath `
-      -RedirectStandardError $stderrPath
-    $stdoutText = if (Test-Path -LiteralPath $stdoutPath -PathType Leaf) { Get-Content -LiteralPath $stdoutPath -Raw } else { '' }
-    $stderrText = if (Test-Path -LiteralPath $stderrPath -PathType Leaf) { Get-Content -LiteralPath $stderrPath -Raw } else { '' }
-    $combinedText = ((@($stdoutText, $stderrText) | Where-Object { -not [string]::IsNullOrWhiteSpace($_) }) -join [Environment]::NewLine)
-    return [pscustomobject]@{
-      ExitCode = [int]$proc.ExitCode
-      Output = $combinedText
-    }
-  } finally {
-    Remove-Item -LiteralPath $stdoutPath -Force -ErrorAction SilentlyContinue
-    Remove-Item -LiteralPath $stderrPath -Force -ErrorAction SilentlyContinue
+  $outputLines = @(& $FilePath @ArgumentList 2>&1)
+  $outputText = @($outputLines | ForEach-Object { [string]$_ }) -join [Environment]::NewLine
+  return [pscustomobject]@{
+    ExitCode = [int]$LASTEXITCODE
+    Output = $outputText
   }
 }
 

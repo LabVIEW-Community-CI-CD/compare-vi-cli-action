@@ -24,6 +24,14 @@ test('PrePush-Checks invokes workspace health gate in optional lease mode', () =
   assert.match(content, /pre-push-workspace-health\.json/);
 });
 
+test('PrePush NI image known-flag scenario uses direct script invocation and explicit LabVIEWPath', () => {
+  const content = readRepoFile('tools/PrePush-Checks.ps1');
+  assert.match(content, /& \$niCompareScript/);
+  assert.match(content, /-LabVIEWPath \$containerLabVIEWPath/);
+  assert.match(content, /\$knownFlags = @\('-noattr', '-nofppos', '-nobdcosm'\)/);
+  assert.doesNotMatch(content, /pwsh\s+-NoLogo\s+-NoProfile\s+-File\s+\$niCompareScript/);
+});
+
 test('policy workflows enforce workspace health gate and publish health artifacts', () => {
   const guardWorkflow = readRepoFile('.github/workflows/policy-guard-upstream.yml');
   assert.match(guardWorkflow, /Workspace health gate/);
@@ -35,4 +43,3 @@ test('policy workflows enforce workspace health gate and publish health artifact
   assert.match(syncWorkflow, /check-workspace-health\.mjs --repo-root \. --lease-mode ignore --report tests\/results\/_agent\/health\/policy-sync-workspace-health\.json/);
   assert.match(syncWorkflow, /tests\/results\/_agent\/health\/policy-sync-workspace-health\.json/);
 });
-

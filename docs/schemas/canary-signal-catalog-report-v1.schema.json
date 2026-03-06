@@ -1,0 +1,190 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "priority/canary-signal-catalog-report@v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema",
+    "schemaVersion",
+    "generatedAt",
+    "status",
+    "strict",
+    "catalogPath",
+    "catalog",
+    "coverage",
+    "signals",
+    "issues"
+  ],
+  "properties": {
+    "schema": {
+      "const": "priority/canary-signal-catalog-report@v1"
+    },
+    "schemaVersion": {
+      "type": "string"
+    },
+    "generatedAt": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "status": {
+      "enum": [
+        "pass",
+        "warn",
+        "fail"
+      ]
+    },
+    "strict": {
+      "type": "boolean"
+    },
+    "catalogPath": {
+      "type": "string"
+    },
+    "catalog": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schema",
+        "schemaVersion",
+        "signalCount",
+        "uniqueKeyCount",
+        "digest"
+      ],
+      "properties": {
+        "schema": {
+          "type": "string"
+        },
+        "schemaVersion": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "signalCount": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "uniqueKeyCount": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "digest": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      }
+    },
+    "coverage": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "bySourceType",
+        "bySeverity"
+      ],
+      "properties": {
+        "bySourceType": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "integer",
+            "minimum": 0
+          }
+        },
+        "bySeverity": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "integer",
+            "minimum": 0
+          }
+        }
+      }
+    },
+    "signals": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "id",
+          "sourceType",
+          "incidentClass",
+          "branch",
+          "signaturePattern",
+          "severity",
+          "owner",
+          "labels",
+          "expectedRoute",
+          "key",
+          "keyDigest"
+        ],
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "sourceType": {
+            "type": "string"
+          },
+          "incidentClass": {
+            "type": "string"
+          },
+          "branch": {
+            "type": "string"
+          },
+          "signaturePattern": {
+            "type": "string"
+          },
+          "severity": {
+            "type": "string"
+          },
+          "owner": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "labels": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "expectedRoute": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "actionType",
+              "priority",
+              "labels"
+            ],
+            "properties": {
+              "actionType": {
+                "type": "string"
+              },
+              "priority": {
+                "type": "string"
+              },
+              "labels": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "key": {
+            "type": "string"
+          },
+          "keyDigest": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "issues": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    }
+  }
+}

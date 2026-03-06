@@ -1,0 +1,112 @@
+{
+  "schema": "canary-signal-catalog@v1",
+  "schemaVersion": "1.0.0",
+  "description": "Canonical failure-signal canary catalog for deterministic routing coverage.",
+  "signals": [
+    {
+      "id": "ni-known-flag-nofppos",
+      "sourceType": "incident-event",
+      "incidentClass": "ni-known-flag-parameter-mismatch",
+      "branch": "develop",
+      "signaturePattern": "run-niwindowscontainercompare:nofppos",
+      "severity": "high",
+      "owner": "release-platform",
+      "labels": [
+        "ci",
+        "governance"
+      ],
+      "expectedRoute": {
+        "actionType": "open-issue",
+        "priority": "P1",
+        "labels": [
+          "ci",
+          "governance"
+        ]
+      }
+    },
+    {
+      "id": "workflow-validate-failure",
+      "sourceType": "workflow-run",
+      "incidentClass": "workflow-run-failure",
+      "branch": "develop",
+      "signaturePattern": "validate:failure",
+      "severity": "high",
+      "owner": "release-platform",
+      "labels": [
+        "ci"
+      ],
+      "expectedRoute": {
+        "actionType": "open-issue",
+        "priority": "P1",
+        "labels": [
+          "ci"
+        ]
+      }
+    },
+    {
+      "id": "workflow-commit-integrity-failure",
+      "sourceType": "workflow-run",
+      "incidentClass": "workflow-run-failure",
+      "branch": "develop",
+      "signaturePattern": "commit-integrity:failure",
+      "severity": "high",
+      "owner": "release-platform",
+      "labels": [
+        "ci",
+        "governance"
+      ],
+      "expectedRoute": {
+        "actionType": "open-issue",
+        "priority": "P1",
+        "labels": [
+          "ci",
+          "governance"
+        ]
+      }
+    },
+    {
+      "id": "required-check-drift-develop",
+      "sourceType": "required-check-drift",
+      "incidentClass": "required-check-drift",
+      "branch": "develop",
+      "signaturePattern": "fail:*",
+      "severity": "critical",
+      "owner": "release-platform",
+      "labels": [
+        "ci",
+        "governance",
+        "program"
+      ],
+      "expectedRoute": {
+        "actionType": "open-issue",
+        "priority": "P0",
+        "labels": [
+          "ci",
+          "governance",
+          "program"
+        ]
+      }
+    },
+    {
+      "id": "deployment-determinism-validation-no-active",
+      "sourceType": "deployment-state",
+      "incidentClass": "deployment-state-anomaly",
+      "branch": "develop",
+      "signaturePattern": "validation:fail:no-active-deployment-found",
+      "severity": "high",
+      "owner": "release-platform",
+      "labels": [
+        "ci",
+        "governance"
+      ],
+      "expectedRoute": {
+        "actionType": "open-issue",
+        "priority": "P1",
+        "labels": [
+          "ci",
+          "governance"
+        ]
+      }
+    }
+  ]
+}
