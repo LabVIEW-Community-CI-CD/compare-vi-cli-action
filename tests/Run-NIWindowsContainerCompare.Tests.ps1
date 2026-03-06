@@ -474,8 +474,19 @@ exit 0
     $capture.stderrPath | Should -Be ([System.IO.Path]::GetFullPath($stderrPath))
 
     $records = & $script:ReadDockerStubLog -Path $logPath
+    $runRecord = @($records | Where-Object { $_.args[0] -eq 'run' } | Select-Object -First 1)
     $cpRecords = @($records | Where-Object { $_.args[0] -eq 'cp' })
     $rmRecords = @($records | Where-Object { $_.args[0] -eq 'rm' -and $_.args[1] -eq '-f' })
+    $runRecord | Should -Not -BeNullOrEmpty
+    $runArgs = @($runRecord[0].args | ForEach-Object { [string]$_ })
+    $reportTypeEnvArg = $null
+    for ($i = 0; $i -lt ($runArgs.Count - 1); $i++) {
+      if ($runArgs[$i] -eq '--env' -and $runArgs[$i + 1].StartsWith('COMPARE_REPORT_TYPE=')) {
+        $reportTypeEnvArg = $runArgs[$i + 1]
+        break
+      }
+    }
+    $reportTypeEnvArg | Should -Be 'COMPARE_REPORT_TYPE=html'
     $cpRecords.Count | Should -BeGreaterThan 0
     $rmRecords.Count | Should -Be 1
     $cpIndex = [array]::IndexOf($records, $cpRecords[0])

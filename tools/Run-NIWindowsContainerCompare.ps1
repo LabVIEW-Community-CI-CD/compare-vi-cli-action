@@ -192,21 +192,21 @@ function Resolve-ReportTypeInfo {
     'html' {
       return [pscustomobject]@{
         InputType     = 'html'
-        CliReportType = 'HTMLSingleFile'
+        CliReportType = 'html'
         Extension     = 'html'
       }
     }
     'xml' {
       return [pscustomobject]@{
         InputType     = 'xml'
-        CliReportType = 'XML'
+        CliReportType = 'xml'
         Extension     = 'xml'
       }
     }
     'text' {
       return [pscustomobject]@{
         InputType     = 'text'
-        CliReportType = 'Text'
+        CliReportType = 'text'
         Extension     = 'txt'
       }
     }
@@ -512,7 +512,17 @@ function Invoke-DockerRunWithTimeout {
     if ([System.StringComparer]::OrdinalIgnoreCase.Equals($dockerSourceExt, '.ps1')) {
       $pwshExe = (Get-Command -Name 'pwsh' -ErrorAction Stop).Source
       $startFilePath = $pwshExe
-      $startArgs = @('-NoLogo', '-NoProfile', '-File', $dockerCommandSource) + @($DockerArgs)
+      $quotedDockerArgs = @(
+        foreach ($arg in @($DockerArgs)) {
+          $text = [string]$arg
+          if ($text -match '\s') {
+            '"{0}"' -f ($text -replace '"', '\"')
+          } else {
+            $text
+          }
+        }
+      )
+      $startArgs = @('-NoLogo', '-NoProfile', '-File', $dockerCommandSource) + $quotedDockerArgs
     }
 
     $process = Start-Process -FilePath $startFilePath `
@@ -1043,8 +1053,7 @@ try {
         $dockerArgs += @('--env', ("{0}={1}" -f $stubVar, $stubValue))
       }
     }
-    # Quote the complete key/value token so cmd shims preserve spaces in the value.
-    $dockerArgs += @('--env', ('"COMPARE_LABVIEW_PATH={0}"' -f $resolvedLabVIEWPath))
+    $dockerArgs += @('--env', ("COMPARE_LABVIEW_PATH={0}" -f $resolvedLabVIEWPath))
     $dockerArgs += @(
       $Image,
       'powershell',
