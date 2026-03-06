@@ -69,6 +69,7 @@
     "priority:show": "node -e \"console.log(require('fs').readFileSync('tests/results/_agent/issue/router.json','utf8'))\"",
     "priority:sync": "node tools/priority/sync-standing-priority.mjs",
     "priority:sync:strict": "node tools/priority/sync-standing-priority.mjs --fail-on-missing",
+    "priority:sync:lane": "node tools/priority/sync-standing-priority.mjs --fail-on-missing --fail-on-multiple",
     "priority:sync:docker": "pwsh -NoLogo -NoProfile -File tools/Run-NonLVChecksInDocker.ps1 -ToolsImageTag comparevi-tools:local -UseToolsImage -PrioritySync -SkipActionlint -SkipMarkdown -SkipDocs -SkipWorkflow -SkipDotnetCliBuild",
     "priority:test": "node --test tools/priority/__tests__/*.mjs",
     "safe-watch:contract": "node --test tools/priority/__tests__/safe-watch-task-contract.test.mjs",

@@ -659,10 +659,10 @@ jobs:
           GH_TOKEN: ${{ secrets.GH_TOKEN || secrets.GITHUB_TOKEN }}
         run: |
           if [ -z "${GH_TOKEN:-${GITHUB_TOKEN:-}}" ]; then
-            echo "::error::GH_TOKEN/GITHUB_TOKEN is required for priority:sync:strict"
+            echo "::error::GH_TOKEN/GITHUB_TOKEN is required for priority:sync:lane"
             exit 1
           fi
-          node tools/npm/run-script.mjs priority:sync:strict
+          node tools/npm/run-script.mjs priority:sync:lane
       - name: Validate snapshot schema (best-effort)
         continue-on-error: true
         run: |

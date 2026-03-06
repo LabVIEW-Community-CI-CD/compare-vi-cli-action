@@ -270,7 +270,7 @@ if ($VerboseHooks) {
 
 if (-not $PreflightOnly) {
   Write-Host '[bootstrap] Syncing standing priority snapshot…'
-  Invoke-Npm -Script 'priority:sync:strict'
+  Invoke-Npm -Script 'priority:sync:lane'
   Write-Host '[bootstrap] Showing router plan…'
   Invoke-Npm -Script 'priority:show' -AllowFailure:$true
 

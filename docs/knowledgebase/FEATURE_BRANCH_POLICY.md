@@ -271,8 +271,10 @@ to confirm each workflow includes both triggers.
   with `--force-with-lease`.
 - **Queue saturation or slow merges** – Review the merge queue page linked above to see pending entries and their
   required checks. Cancel stale queue jobs from the PR if necessary.
-- **No standing-priority issue** – unattended flows should run `priority:sync:strict`; this fails fast and writes
-  `tests/results/_agent/issue/no-standing-priority.json` instead of looping.
+- **Standing-priority lane drift** – unattended flows should run `priority:sync:lane`; this fails fast when there is no
+  standing issue or when multiple issues are labeled standing-priority, and writes deterministic diagnostics:
+  `tests/results/_agent/issue/no-standing-priority.json` and
+  `tests/results/_agent/issue/multiple-standing-priority.json`.
 - **Policy drift detected by `priority:policy`** – Align GitHub settings with `tools/priority/policy.json` (update the
   JSON if the new configuration is intentional), then rerun the helper.
 - **Policy guard auth failure (`Authorization unavailable` / `authenticated-no-admin`)** – verify and rotate upstream

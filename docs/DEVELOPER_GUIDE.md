@@ -301,8 +301,10 @@ For Docker/Desktop VI history validation, run fast-loop lanes explicitly:
   written to `tests/results/_agent/policy/policy-state-snapshot.json`.
 - Run `node tools/npm/run-script.mjs priority:queue:supervisor -- --dry-run` to preview queue ordering and
   candidate gates, or add `--apply` for guarded autonomous enqueue mode.
-- In unattended flows, use strict standing sync (`node tools/npm/run-script.mjs priority:sync:strict`) so missing
-  standing-priority labels fail fast and emit `tests/results/_agent/issue/no-standing-priority.json`.
+- In unattended flows, use lane-enforced standing sync (`node tools/npm/run-script.mjs priority:sync:lane`) so
+  missing or duplicate standing-priority labels fail fast and emit deterministic diagnostics:
+  - `tests/results/_agent/issue/no-standing-priority.json`
+  - `tests/results/_agent/issue/multiple-standing-priority.json`
 - Use strict verification (`node tools/priority/check-policy.mjs --fail-on-skip`) when you need token/permission skips to
   fail deterministically (for example in upstream policy guard workflows).
 - Policy guard workflows resolve token candidates with
