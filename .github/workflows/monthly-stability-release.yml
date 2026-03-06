@@ -237,6 +237,12 @@ jobs:
     steps:
       - uses: actions/checkout@v5
 
+      - name: Download rollback drill health artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: monthly-rollback-drill-health-${{ github.run_id }}
+          path: tests/results/_agent/release
+
       - name: Write promotion evidence ledger
         shell: pwsh
         run: |
@@ -267,6 +273,28 @@ jobs:
             --route-on-breach \
             --route-title-prefix "[SLO] Monthly stability breach"
 
+      - name: Build monthly release scorecard
+        shell: bash
+        run: |
+          set -euo pipefail
+          node tools/priority/release-scorecard.mjs \
+            --repo "${{ github.repository }}" \
+            --stream monthly-stability-release \
+            --channel mixed \
+            --version "${{ needs.evaluate-window.outputs.tools_version }};${{ needs.evaluate-window.outputs.shared_version }}" \
+            --ledger tests/results/promotion-contract/monthly-ledger.json \
+            --slo tests/results/_agent/slo/monthly-slo-metrics.json \
+            --rollback tests/results/_agent/release/monthly-rollback-drill-health.json \
+            --output tests/results/_agent/release/monthly-release-scorecard.json
+
+      - name: Validate release scorecard schema
+        if: always()
+        shell: pwsh
+        run: |
+          pwsh -NoLogo -NoProfile -File tools/Invoke-JsonSchemaLite.ps1 \
+            -JsonPath tests/results/_agent/release/monthly-release-scorecard.json \
+            -SchemaPath docs/schemas/release-scorecard-v1.schema.json
+
       - name: Upload promotion evidence artifact
         uses: actions/upload-artifact@v5
         with:
@@ -274,4 +302,6 @@ jobs:
           path: |
             tests/results/promotion-contract/monthly-ledger.json
             tests/results/_agent/slo/monthly-slo-metrics.json
+            tests/results/_agent/release/monthly-rollback-drill-health.json
+            tests/results/_agent/release/monthly-release-scorecard.json
           if-no-files-found: error

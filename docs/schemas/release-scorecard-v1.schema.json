@@ -1,0 +1,179 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://comparevi.dev/schemas/release-scorecard-v1.schema.json",
+  "title": "Release Scorecard v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema",
+    "generatedAt",
+    "repository",
+    "release",
+    "inputs",
+    "gates",
+    "summary"
+  ],
+  "properties": {
+    "schema": {
+      "const": "release/scorecard@v1"
+    },
+    "generatedAt": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "repository": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "release": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "stream",
+        "channel",
+        "version",
+        "tagRef"
+      ],
+      "properties": {
+        "stream": { "type": "string" },
+        "channel": { "type": "string" },
+        "version": { "type": ["string", "null"] },
+        "tagRef": { "type": ["string", "null"] }
+      }
+    },
+    "inputs": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "ledger",
+        "slo",
+        "rollback",
+        "trust"
+      ],
+      "properties": {
+        "ledger": { "$ref": "#/$defs/inputRef" },
+        "slo": { "$ref": "#/$defs/inputRef" },
+        "rollback": { "$ref": "#/$defs/inputRef" },
+        "trust": {
+          "anyOf": [
+            { "$ref": "#/$defs/inputRef" },
+            { "type": "null" }
+          ]
+        }
+      }
+    },
+    "gates": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "promotion",
+        "slo",
+        "rollback",
+        "trust",
+        "signedTag"
+      ],
+      "properties": {
+        "promotion": { "$ref": "#/$defs/promotionGate" },
+        "slo": { "$ref": "#/$defs/sloGate" },
+        "rollback": { "$ref": "#/$defs/rollbackGate" },
+        "trust": { "$ref": "#/$defs/trustGate" },
+        "signedTag": { "$ref": "#/$defs/signedTagGate" }
+      }
+    },
+    "summary": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "status",
+        "blockerCount",
+        "blockers"
+      ],
+      "properties": {
+        "status": {
+          "enum": ["pass", "fail"]
+        },
+        "blockerCount": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "blockers": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["code", "message"],
+            "properties": {
+              "code": { "type": "string" },
+              "message": { "type": "string" }
+            }
+          }
+        }
+      }
+    }
+  },
+  "$defs": {
+    "inputRef": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["path", "exists", "error"],
+      "properties": {
+        "path": { "type": "string" },
+        "exists": { "type": "boolean" },
+        "error": { "type": ["string", "null"] }
+      }
+    },
+    "promotionGate": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["status", "reason"],
+      "properties": {
+        "status": { "type": "string" },
+        "reason": { "type": ["string", "null"] }
+      }
+    },
+    "sloGate": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["status", "breachCount"],
+      "properties": {
+        "status": { "type": "string" },
+        "breachCount": { "type": ["integer", "null"] }
+      }
+    },
+    "rollbackGate": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["status", "pausePromotion"],
+      "properties": {
+        "status": { "type": "string" },
+        "pausePromotion": { "type": ["boolean", "null"] }
+      }
+    },
+    "trustGate": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["status", "failureCount", "tagVerified", "tagReason"],
+      "properties": {
+        "status": { "type": "string" },
+        "failureCount": { "type": ["integer", "null"] },
+        "tagVerified": { "type": ["boolean", "null"] },
+        "tagReason": { "type": ["string", "null"] }
+      }
+    },
+    "signedTagGate": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["required", "ref", "verified", "status", "reason"],
+      "properties": {
+        "required": { "type": "boolean" },
+        "ref": { "type": ["string", "null"] },
+        "verified": { "type": ["boolean", "null"] },
+        "status": { "type": "string" },
+        "reason": { "type": ["string", "null"] }
+      }
+    }
+  }
+}
+

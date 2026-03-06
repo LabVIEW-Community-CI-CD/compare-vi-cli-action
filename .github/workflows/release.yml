@@ -534,6 +534,36 @@ jobs:
             --route-on-breach \
             --route-title-prefix "[SLO] Release promotion breach"
 
+      - name: Build release scorecard
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          channel="stable"
+          if printf '%s' "${{ github.ref_name }}" | grep -q -- '-rc\.'; then
+            channel="rc"
+          fi
+          node tools/priority/release-scorecard.mjs \
+            --repo "${{ github.repository }}" \
+            --stream comparevi-cli \
+            --channel "${channel}" \
+            --version "${{ needs.release.outputs.cli_version }}" \
+            --tag-ref "${{ github.ref_name }}" \
+            --require-signed-tag \
+            --ledger tests/results/promotion-contract/release-ledger.json \
+            --slo tests/results/_agent/slo/release-slo-metrics.json \
+            --rollback tests/results/_agent/release/rollback-drill-health.json \
+            --trust tests/results/_agent/supply-chain/release-trust-gate.json \
+            --output tests/results/_agent/release/release-scorecard.json
+
+      - name: Validate release scorecard schema
+        if: always()
+        shell: pwsh
+        run: |
+          pwsh -NoLogo -NoProfile -File tools/Invoke-JsonSchemaLite.ps1 \
+            -JsonPath tests/results/_agent/release/release-scorecard.json \
+            -SchemaPath docs/schemas/release-scorecard-v1.schema.json
+
       - name: Upload release contract artifacts
         if: always()
         uses: actions/upload-artifact@v5
@@ -549,5 +579,6 @@ jobs:
             tests/results/_agent/certification/release-certification-matrix.json
             tests/results/_agent/supply-chain/release-trust-gate.json
             tests/results/_agent/release/rollback-drill-health.json
+            tests/results/_agent/release/release-scorecard.json
             tests/results/_agent/release/shared-source-resolution.json
           if-no-files-found: error
