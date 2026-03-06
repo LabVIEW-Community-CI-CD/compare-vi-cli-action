@@ -205,7 +205,7 @@ checked into `tools/priority/policy.json` so `priority:policy` stays authoritati
 - Optional parity run for non-LV checks using the published tools image:
 
   ```powershell
-  $env:COMPAREVI_TOOLS_IMAGE = 'ghcr.io/svelderrainruiz/comparevi-tools:latest'
+  $env:COMPAREVI_TOOLS_IMAGE = 'ghcr.io/<owner>/comparevi-tools:latest'
   pwsh -NoLogo -NoProfile -File tools/Run-NonLVChecksInDocker.ps1 -UseToolsImage
   ```
 
@@ -254,6 +254,9 @@ to confirm each workflow includes both triggers.
 6. Autonomous merge tooling now requires upstream-owned PR heads. Fork-headed PRs are intentionally ineligible for
    `priority:queue:supervisor` and `priority:merge-sync`; mirror the branch to upstream and open the PR from the
    upstream-owned branch before queueing.
+7. Validate deployment evidence is now run-scoped: `priority:deployment:assert` verifies the `validation` environment
+   using the current workflow run id and latest active deployment status, and fails if the active deployment resolves to
+   a different run.
 
 ### PR Metadata Contract (queue supervisor)
 - `Coupling: independent|soft|hard` (default: `independent`)
@@ -275,7 +278,7 @@ to confirm each workflow includes both triggers.
 - **Policy guard auth failure (`Authorization unavailable` / `authenticated-no-admin`)** – verify and rotate upstream
   secrets with an admin-capable token:
   ```powershell
-  $repo = 'LabVIEW-Community-CI-CD/compare-vi-cli-action'
+  $repo = if ($env:GITHUB_REPOSITORY) { $env:GITHUB_REPOSITORY } else { '<owner>/<repo>' }
   $token = (Get-Content C:\github_token.txt -Raw).Trim()
   gh api "repos/$repo" -H "Authorization: Bearer $token" --jq '.permissions.admin'
   $token | gh secret set GH_TOKEN --repo $repo
