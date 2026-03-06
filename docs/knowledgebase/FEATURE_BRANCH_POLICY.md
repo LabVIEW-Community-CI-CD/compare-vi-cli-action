@@ -43,9 +43,9 @@ standing GitHub protection rules (including queue-managed `develop` and `main`).
 - `Validate` includes a `Policy guard (branch protection)` step that runs `node tools/npm/run-script.mjs priority:policy`
   with the repository token when it is available. On fork PRs the step now detects the reduced token scope, logs that the
   upstream guard will run, and exits cleanly so community contributors are not blocked.
-- `.github/workflows/policy-guard-upstream.yml` (triggered via `pull_request`, `pull_request_target`, `merge_group`,
-  and schedule) re-runs `priority:policy` so queue-required policy checks attach to PR heads while still supporting
-  upstream-token enforcement for fork contexts. Its status
+- `.github/workflows/policy-guard-upstream.yml` (triggered via `pull_request`, `merge_group`, and schedule) re-runs
+  `priority:policy` so queue-required policy checks attach to PR heads and merge-queue merge groups using one canonical
+  status context. Its status
   (`Policy Guard (Upstream) / policy-guard`) is required on `develop`, `main`, and `release/*`.
 - Upstream policy guard runs in strict mode (`--fail-on-skip`), so reduced token scope is treated as a failing gate
   rather than a pass-through skip.

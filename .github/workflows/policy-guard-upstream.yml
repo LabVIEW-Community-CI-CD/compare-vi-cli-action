@@ -10,15 +10,6 @@ on:
       - main
       - develop
       - release/**
-  pull_request_target:
-    types:
-      - opened
-      - synchronize
-      - reopened
-    branches:
-      - main
-      - develop
-      - release/**
   merge_group:
     branches:
       - main
@@ -28,28 +19,17 @@ on:
     - cron: '17 3 * * 1'
 
 concurrency:
-  group: policy-guard-upstream-${{ github.event_name }}-${{ ((github.event_name == 'pull_request' || github.event_name == 'pull_request_target') && github.event.pull_request.number) || github.ref }}
+  group: policy-guard-upstream-${{ github.event_name }}-${{ (github.event_name == 'pull_request' && github.event.pull_request.number) || github.ref }}
   cancel-in-progress: true
 
 jobs:
   policy-guard:
     name: policy-guard
-    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.fork == false
     runs-on: ubuntu-latest
     permissions:
       contents: read
     steps:
-      - name: Checkout PR head
-        if: github.event_name == 'pull_request_target'
-        uses: actions/checkout@v5
-        with:
-          repository: ${{ github.event.pull_request.head.repo.full_name }}
-          ref: ${{ github.event.pull_request.head.ref }}
-          fetch-depth: 0
-          token: ${{ secrets.GITHUB_TOKEN }}
-
       - name: Checkout repository
-        if: github.event_name != 'pull_request_target'
         uses: actions/checkout@v5
         with:
           fetch-depth: 0
