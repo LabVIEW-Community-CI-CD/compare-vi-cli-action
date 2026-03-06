@@ -33,6 +33,11 @@ jobs:
         run: |
           pwsh -NoLogo -NonInteractive -NoProfile -File tools/Assert-RequirementsVerificationCheckContract.ps1
 
+      - name: Assert policy-guard check contract
+        shell: pwsh
+        run: |
+          pwsh -NoLogo -NonInteractive -NoProfile -File tools/Assert-PolicyGuardCheckContract.ps1
+
       - name: Assert commit-integrity contract
         shell: pwsh
         run: |

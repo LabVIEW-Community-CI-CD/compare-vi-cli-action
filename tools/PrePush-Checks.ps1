@@ -148,6 +148,21 @@ if (Test-Path -LiteralPath $verificationContractScript -PathType Leaf) {
   Write-Host '[pre-push] requirements-verification check contract OK' -ForegroundColor Green
 }
 
+$policyGuardContractScript = Join-Path $root 'tools' 'Assert-PolicyGuardCheckContract.ps1'
+if (Test-Path -LiteralPath $policyGuardContractScript -PathType Leaf) {
+  Write-Host '[pre-push] Verifying policy-guard check naming contract' -ForegroundColor Cyan
+  Push-Location $root
+  try {
+    pwsh -NoLogo -NonInteractive -NoProfile -File $policyGuardContractScript
+    if ($LASTEXITCODE -ne 0) {
+      throw "Assert-PolicyGuardCheckContract.ps1 failed (exit=$LASTEXITCODE)."
+    }
+  } finally {
+    Pop-Location | Out-Null
+  }
+  Write-Host '[pre-push] policy-guard check contract OK' -ForegroundColor Green
+}
+
 $commitIntegrityContractScript = Join-Path $root 'tools' 'Assert-CommitIntegrityContract.ps1'
 if (Test-Path -LiteralPath $commitIntegrityContractScript -PathType Leaf) {
   Write-Host '[pre-push] Verifying commit-integrity contract' -ForegroundColor Cyan

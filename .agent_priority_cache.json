@@ -1,22 +1,20 @@
 {
-  "number": 732,
-  "title": "[Program][P0] Agent Runtime Reliability: single-writer + safe-git + self-heal",
-  "url": "https://github.com/LabVIEW-Community-CI-CD/compare-vi-cli-action/issues/732",
+  "number": 734,
+  "title": "[P1] Build safe git broker with lock detection, retries, and auto-repair",
+  "url": "https://github.com/LabVIEW-Community-CI-CD/compare-vi-cli-action/issues/734",
   "state": "open",
   "labels": [
     "ci",
     "governance",
-    "program",
-    "slo",
     "standing-priority"
   ],
   "assignees": [],
   "milestone": "LabVIEW CI Platform v1 (2026Q2)",
   "commentCount": 0,
   "lastSeenUpdatedAt": null,
-  "issueDigest": "5b6c0f3a581217b1ecac30ca605afadcb72b1a964bcd993f4d7305c4f0e6b9c4",
-  "bodyDigest": "55e59ca5c79a8bf13e893f21c7fa6c49a071eca741d026681dd3f80c7f71c38f",
-  "cachedAtUtc": "2026-03-05T22:34:31.888Z",
+  "issueDigest": "b4a5e27d6a5f2b49fd5c616264394003ef3ea0e73cf05e92b7aa7fc88d7be4bd",
+  "bodyDigest": "15127c9d46d8bd048cdf2275714ebf62325bade6293fa4efe0d1b283763bcb2f",
+  "cachedAtUtc": "2026-03-06T05:53:55.060Z",
   "lastFetchSource": "live",
   "lastFetchError": null,
   "repository": "LabVIEW-Community-CI-CD/compare-vi-cli-action"

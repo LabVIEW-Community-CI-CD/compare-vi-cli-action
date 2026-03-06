@@ -2,15 +2,21 @@
 
 import { spawnSync } from 'node:child_process';
 import process from 'node:process';
+import { isMutatingGitCommand, runGitWithSafety } from './safe-git.mjs';
 
 const IDENTIFIER_REGEX = /^[A-Za-z0-9._-]+$/;
 
 export function run(command, args, options = {}) {
-  const result = spawnSync(command, args, {
+  const normalizedOptions = {
     encoding: 'utf8',
     stdio: ['ignore', 'pipe', 'inherit'],
     ...options
-  });
+  };
+
+  const result =
+    command === 'git' && isMutatingGitCommand(args)
+      ? runGitWithSafety(args, normalizedOptions)
+      : spawnSync(command, args, normalizedOptions);
 
   if (result.status !== 0) {
     throw new Error(`${command} ${args.join(' ')} failed with exit code ${result.status}`);

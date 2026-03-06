@@ -24,7 +24,7 @@ concurrency:
 
 jobs:
   policy-guard:
-    name: policy-guard
+    name: Policy Guard (Upstream) / policy-guard
     runs-on: ubuntu-latest
     permissions:
       contents: read
