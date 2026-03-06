@@ -60,7 +60,7 @@ jobs:
     runs-on: [self-hosted, Windows, X64, self-hosted-docker-windows]
     needs:
     - preflight-windows
-    timeout-minutes: 10
+    timeout-minutes: 20
     outputs:
       manager_status: ${{ steps.manager.outputs.manager_status }}
       manager_summary_path: ${{ steps.manager.outputs.manager_summary_path }}
