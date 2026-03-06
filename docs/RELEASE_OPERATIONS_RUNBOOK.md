@@ -6,6 +6,7 @@ Define a deterministic operating model for release and promotion events so execu
 operator.
 
 Related migration playbook: `docs/COMPAREVI_SHARED_PACKAGE_MIGRATION.md`.
+Downstream onboarding runbook: `docs/DOWNSTREAM_RELEASE_TRAIN_ONBOARDING.md`.
 
 ## Scope
 
@@ -63,6 +64,18 @@ When an incident requires rollback, run:
 
 Apply mode resolves the previous-good immutable release tag pointer for the stream, force-updates `main` and
 `develop` using `--force-with-lease`, then validates branch alignment and policy sync evidence.
+
+## Downstream onboarding loop
+
+Use the downstream onboarding commands when validating platform adoption in consumer repositories:
+
+- Bootstrap/evaluate one repository:
+  - `node tools/npm/run-script.mjs priority:onboard:downstream -- --repo <owner/repo> --parent-issue 715`
+- Aggregate success report:
+  - `node tools/npm/run-script.mjs priority:onboard:success -- --report tests/results/_agent/onboarding/downstream-onboarding.json --parent-issue 715`
+
+For unattended cadence, use `.github/workflows/downstream-onboarding-feedback.yml` and set
+`vars.DOWNSTREAM_PILOT_REPO` to the current pilot repository.
 
 ## Escalation matrix
 

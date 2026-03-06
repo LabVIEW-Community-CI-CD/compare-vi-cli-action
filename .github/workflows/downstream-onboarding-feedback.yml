@@ -1,0 +1,120 @@
+name: Downstream Onboarding Feedback
+
+on:
+  workflow_dispatch:
+    inputs:
+      downstream_repo:
+        description: 'Downstream repository slug (owner/repo)'
+        required: false
+        default: ''
+        type: string
+      started_at:
+        description: 'Optional onboarding start timestamp (ISO-8601 UTC)'
+        required: false
+        default: ''
+        type: string
+      create_hardening_issues:
+        description: 'Create hardening issues from report findings'
+        required: false
+        default: false
+        type: boolean
+      fail_on_gap:
+        description: 'Fail run when required onboarding checks are missing'
+        required: false
+        default: false
+        type: boolean
+  schedule:
+    - cron: '0 19 * * 1'
+
+permissions:
+  contents: read
+  actions: read
+  issues: write
+
+jobs:
+  onboarding-feedback:
+    runs-on: ubuntu-latest
+    env:
+      DOWNSTREAM_REPO: ${{ inputs.downstream_repo }}
+      DOWNSTREAM_STARTED_AT: ${{ inputs.started_at }}
+      DOWNSTREAM_CREATE_ISSUES: ${{ inputs.create_hardening_issues || 'false' }}
+      DOWNSTREAM_FAIL_ON_GAP: ${{ inputs.fail_on_gap || 'false' }}
+      DOWNSTREAM_PILOT_REPO: ${{ vars.DOWNSTREAM_PILOT_REPO }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Evaluate downstream onboarding
+        id: evaluate
+        continue-on-error: true
+        run: |
+          set -euo pipefail
+          repo="${DOWNSTREAM_REPO}"
+          if [ -z "$repo" ]; then
+            repo="${DOWNSTREAM_PILOT_REPO:-$GITHUB_REPOSITORY}"
+          fi
+          args=(
+            --repo "$repo"
+            --parent-issue 715
+            --output tests/results/_agent/onboarding/downstream-onboarding.json
+          )
+          if [ -n "${DOWNSTREAM_STARTED_AT}" ]; then
+            args+=(--started-at "${DOWNSTREAM_STARTED_AT}")
+          fi
+          if [ "${DOWNSTREAM_CREATE_ISSUES}" = "true" ]; then
+            args+=(--create-hardening-issues)
+          fi
+          if [ "${DOWNSTREAM_FAIL_ON_GAP}" = "true" ]; then
+            args+=(--fail-on-gap)
+          fi
+          node tools/priority/downstream-onboarding.mjs "${args[@]}"
+
+      - name: Build onboarding success report
+        if: ${{ always() }}
+        run: |
+          set -euo pipefail
+          node tools/priority/downstream-onboarding-success.mjs \
+            --report tests/results/_agent/onboarding/downstream-onboarding.json \
+            --parent-issue 715 \
+            --output tests/results/_agent/onboarding/downstream-onboarding-success.json
+
+      - name: Validate onboarding report schema
+        if: ${{ always() }}
+        run: |
+          set -euo pipefail
+          node tools/npm/run-script.mjs schema:validate -- \
+            --schema docs/schemas/downstream-onboarding-report-v1.schema.json \
+            --data tests/results/_agent/onboarding/downstream-onboarding.json
+
+      - name: Validate success report schema
+        if: ${{ always() }}
+        run: |
+          set -euo pipefail
+          node tools/npm/run-script.mjs schema:validate -- \
+            --schema docs/schemas/downstream-onboarding-success-v1.schema.json \
+            --data tests/results/_agent/onboarding/downstream-onboarding-success.json
+
+      - name: Upload onboarding artifacts
+        if: ${{ always() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: downstream-onboarding-feedback
+          path: |
+            tests/results/_agent/onboarding/downstream-onboarding.json
+            tests/results/_agent/onboarding/downstream-onboarding-success.json
+          if-no-files-found: error
+
+      - name: Enforce onboarding gap failure
+        if: ${{ steps.evaluate.outcome == 'failure' }}
+        run: |
+          echo "Downstream onboarding evaluation reported required gaps."
+          exit 1

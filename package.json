@@ -59,6 +59,8 @@
     "priority:merge-sync": "node tools/priority/merge-sync-pr.mjs",
     "priority:commit-integrity": "node tools/priority/commit-integrity.mjs",
     "priority:deployment:assert": "node tools/priority/assert-validation-deployment-determinism.mjs",
+    "priority:onboard:downstream": "node tools/priority/downstream-onboarding.mjs",
+    "priority:onboard:success": "node tools/priority/downstream-onboarding-success.mjs",
     "priority:develop:sync": "pwsh -NoLogo -NoProfile -File tools/priority/Sync-OriginUpstreamDevelop.ps1",
     "priority:policy": "node tools/priority/check-policy.mjs",
     "priority:policy:snapshot": "node tools/priority/policy-snapshot.mjs",

@@ -1,0 +1,272 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://labview-community-ci-cd.github.io/schemas/downstream-onboarding-success-v1.schema.json",
+  "title": "Downstream Onboarding Success Report v1",
+  "type": "object",
+  "required": [
+    "schema",
+    "generatedAt",
+    "summary",
+    "deltas",
+    "painPoints",
+    "hardeningBacklog",
+    "reports"
+  ],
+  "properties": {
+    "schema": {
+      "type": "string",
+      "const": "priority/downstream-onboarding-success@v1"
+    },
+    "generatedAt": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "parentIssue": {
+      "type": [
+        "integer",
+        "null"
+      ],
+      "minimum": 1
+    },
+    "reports": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "repository",
+          "status",
+          "path"
+        ],
+        "properties": {
+          "repository": {
+            "type": "string",
+            "pattern": "^[^/]+/[^/]+$"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "pass",
+              "warn",
+              "fail"
+            ]
+          },
+          "path": {
+            "type": "string"
+          },
+          "leadTimeHours": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "minimum": 0
+          },
+          "frictionScore": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "minimum": 0
+          }
+        },
+        "additionalProperties": true
+      }
+    },
+    "summary": {
+      "type": "object",
+      "required": [
+        "status",
+        "repositoriesEvaluated",
+        "repositoriesPassing",
+        "repositoriesWarning",
+        "repositoriesFailing",
+        "averageLeadTimeHours",
+        "totalBlockers",
+        "totalWarnings"
+      ],
+      "properties": {
+        "status": {
+          "type": "string",
+          "enum": [
+            "pass",
+            "warn",
+            "fail"
+          ]
+        },
+        "repositoriesEvaluated": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "repositoriesPassing": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "repositoriesWarning": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "repositoriesFailing": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "averageLeadTimeHours": {
+          "type": [
+            "number",
+            "null"
+          ],
+          "minimum": 0
+        },
+        "totalBlockers": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "totalWarnings": {
+          "type": "integer",
+          "minimum": 0
+        }
+      },
+      "additionalProperties": false
+    },
+    "deltas": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "repository",
+          "checklistPassRate",
+          "requiredCompletionRate",
+          "blockers",
+          "warnings",
+          "frictionScore"
+        ],
+        "properties": {
+          "repository": {
+            "type": "string",
+            "pattern": "^[^/]+/[^/]+$"
+          },
+          "checklistPassRate": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 1
+          },
+          "requiredCompletionRate": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 1
+          },
+          "blockers": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "warnings": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "frictionScore": {
+            "type": "integer",
+            "minimum": 0
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+    "painPoints": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "key",
+          "severity",
+          "count",
+          "repositories"
+        ],
+        "properties": {
+          "key": {
+            "type": "string"
+          },
+          "severity": {
+            "type": "string",
+            "enum": [
+              "P1",
+              "P2",
+              "P3"
+            ]
+          },
+          "count": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "repositories": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "pattern": "^[^/]+/[^/]+$"
+            }
+          },
+          "exampleReason": {
+            "type": "string"
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+    "hardeningBacklog": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "key",
+          "title",
+          "severity",
+          "status",
+          "reason",
+          "recommendation",
+          "repositories"
+        ],
+        "properties": {
+          "key": {
+            "type": "string"
+          },
+          "title": {
+            "type": "string"
+          },
+          "severity": {
+            "type": "string",
+            "enum": [
+              "P1",
+              "P2",
+              "P3"
+            ]
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "warn",
+              "fail"
+            ]
+          },
+          "reason": {
+            "type": "string"
+          },
+          "recommendation": {
+            "type": "string"
+          },
+          "repositories": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "pattern": "^[^/]+/[^/]+$"
+            }
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+    "hardeningIssues": {
+      "type": "array",
+      "items": {
+        "type": "object"
+      }
+    }
+  },
+  "additionalProperties": true
+}

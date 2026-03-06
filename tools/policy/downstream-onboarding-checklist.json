@@ -1,0 +1,55 @@
+{
+  "schema": "priority/downstream-onboarding-policy@v1",
+  "requiredEnvironments": [
+    "validation",
+    "production"
+  ],
+  "requiredBranchChecks": [
+    "Policy Guard (Upstream) / policy-guard",
+    "Promotion Contract / promotion-contract"
+  ],
+  "checklist": [
+    {
+      "id": "repository-accessible",
+      "description": "Downstream repository metadata and workflows can be queried.",
+      "required": true,
+      "severity": "P1",
+      "recommendation": "Confirm token scope and repository visibility before onboarding."
+    },
+    {
+      "id": "workflow-reference-present",
+      "description": "At least one workflow references the upstream compare-vi action.",
+      "required": true,
+      "severity": "P1",
+      "recommendation": "Add a workflow lane that consumes the certified compare-vi action ref."
+    },
+    {
+      "id": "certified-reference-pinned",
+      "description": "The downstream workflow pins a certified immutable ref (stable tag or commit SHA).",
+      "required": true,
+      "severity": "P1",
+      "recommendation": "Pin to a stable semver tag or immutable commit SHA from the upstream release train."
+    },
+    {
+      "id": "successful-consumption-run",
+      "description": "A workflow run succeeds while consuming the pinned compare-vi action ref.",
+      "required": true,
+      "severity": "P1",
+      "recommendation": "Run/repair the consumer workflow until at least one successful execution is recorded."
+    },
+    {
+      "id": "protected-environments-configured",
+      "description": "Validation and production environments exist for human-gated promotions.",
+      "required": false,
+      "severity": "P2",
+      "recommendation": "Create validation/production environments and configure required reviewers."
+    },
+    {
+      "id": "required-checks-visible",
+      "description": "Branch protection advertises expected policy checks for queue-managed branches.",
+      "required": false,
+      "severity": "P2",
+      "recommendation": "Align branch protection required checks with platform policy guard and promotion contract."
+    }
+  ]
+}
