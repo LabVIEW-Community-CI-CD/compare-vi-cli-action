@@ -380,12 +380,11 @@ async function main() {
       }
     }
     if (forcePushMain) {
-      const pushResult = spawnSync('git', ['push', '--force-with-lease', 'upstream', 'main'], {
-        cwd: repoRoot,
-        stdio: 'inherit',
-        encoding: 'utf8'
-      });
-      if (pushResult.status !== 0) {
+      try {
+        run('git', ['push', '--force-with-lease', 'upstream', 'main'], {
+          cwd: repoRoot
+        });
+      } catch {
         throw new Error('Failed to push main with --force-with-lease. Resolve the push error above.');
       }
     } else {

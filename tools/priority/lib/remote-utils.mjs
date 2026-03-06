@@ -93,27 +93,21 @@ export function ensureOriginFork(repoRoot, upstream) {
 }
 
 export function pushBranch(repoRoot, branch) {
-  const pushResult = spawnSync(
-    'git',
-    ['push', '--set-upstream', 'origin', branch],
-    {
-      cwd: repoRoot,
-      stdio: 'inherit',
-      encoding: 'utf8'
-    }
-  );
-  if (pushResult.status !== 0) {
+  try {
+    run('git', ['push', '--set-upstream', 'origin', branch], {
+      cwd: repoRoot
+    });
+  } catch {
     throw new Error('Failed to push branch to origin. Resolve the push error above.');
   }
 }
 
 export function pushToRemote(repoRoot, remote, ref) {
-  const result = spawnSync('git', ['push', remote, ref], {
-    cwd: repoRoot,
-    stdio: 'inherit',
-    encoding: 'utf8'
-  });
-  if (result.status !== 0) {
+  try {
+    run('git', ['push', remote, ref], {
+      cwd: repoRoot
+    });
+  } catch {
     throw new Error(`Failed to push ${ref} to ${remote}. Resolve the push error above.`);
   }
 }

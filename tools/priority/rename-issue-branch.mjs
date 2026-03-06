@@ -162,23 +162,19 @@ function pushBranch(repoRoot, remote, branch, { setUpstream = false } = {}) {
   if (setUpstream) {
     args.splice(1, 0, '--set-upstream');
   }
-  const result = spawnSync('git', args, {
-    cwd: repoRoot,
-    stdio: 'inherit',
-    encoding: 'utf8'
-  });
-  if (result.status !== 0) {
-    throw new Error(`git push ${remote} ${branch} failed with exit code ${result.status}`);
+  try {
+    run('git', args, { cwd: repoRoot });
+  } catch {
+    throw new Error(`git push ${remote} ${branch} failed. Resolve the push error above.`);
   }
 }
 
 function deleteRemoteBranch(repoRoot, remote, branch) {
-  const result = spawnSync('git', ['push', remote, `:${branch}`], {
-    cwd: repoRoot,
-    stdio: 'inherit',
-    encoding: 'utf8'
-  });
-  if (result.status !== 0) {
+  try {
+    run('git', ['push', remote, `:${branch}`], {
+      cwd: repoRoot
+    });
+  } catch {
     throw new Error(`Failed to delete ${remote}/${branch}. Resolve the push error above.`);
   }
 }

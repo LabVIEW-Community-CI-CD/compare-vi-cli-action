@@ -2,6 +2,7 @@ import { spawn, spawnSync } from 'node:child_process';
 import { promises as fs } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { isMutatingGitCommand, runGitWithSafety } from './lib/safe-git.mjs';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -11,18 +12,33 @@ const nodeExecPath = process.env.npm_node_execpath || process.execPath;
 const wrapperPath = path.join(repoRoot, 'tools', 'npm', 'run-script.mjs');
 
 function runGit(args) {
-  const result = spawnSync('git', args, {
-    cwd: repoRoot,
-    env: process.env,
-    encoding: 'utf8',
-    stdio: ['ignore', 'pipe', 'pipe']
-  });
+  try {
+    const result = isMutatingGitCommand(args)
+      ? runGitWithSafety(args, {
+        cwd: repoRoot,
+        env: process.env,
+        encoding: 'utf8',
+        stdio: ['ignore', 'pipe', 'pipe']
+      })
+      : spawnSync('git', args, {
+        cwd: repoRoot,
+        env: process.env,
+        encoding: 'utf8',
+        stdio: ['ignore', 'pipe', 'pipe']
+      });
 
-  return {
-    status: result.status ?? (typeof result.signal === 'string' ? 128 : -1),
-    stdout: (result.stdout ?? '').trim(),
-    stderr: (result.stderr ?? '').trim()
-  };
+    return {
+      status: result.status ?? (typeof result.signal === 'string' ? 128 : -1),
+      stdout: (result.stdout ?? '').trim(),
+      stderr: (result.stderr ?? '').trim()
+    };
+  } catch (error) {
+    return {
+      status: 1,
+      stdout: '',
+      stderr: error instanceof Error ? error.message : String(error)
+    };
+  }
 }
 
 function gitRefExists(ref) {
