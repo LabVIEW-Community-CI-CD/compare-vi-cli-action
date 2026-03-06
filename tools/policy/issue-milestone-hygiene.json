@@ -1,0 +1,15 @@
+{
+  "schema": "issue-milestone-hygiene-policy@v1",
+  "required": {
+    "labels": [
+      "standing-priority",
+      "program"
+    ],
+    "titlePriorityPattern": "\\[(P0|P1)\\]",
+    "requireOpenMilestone": true
+  },
+  "defaultMilestone": null,
+  "defaultMilestoneDueOn": null,
+  "warnOnly": false,
+  "createDefaultMilestone": false
+}

@@ -1,0 +1,220 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://comparevi.dev/schemas/issue-milestone-hygiene-report-v1.schema.json",
+  "title": "Issue Milestone Hygiene Report v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema",
+    "schemaVersion",
+    "generatedAt",
+    "repository",
+    "state",
+    "flags",
+    "policy",
+    "milestones",
+    "summary",
+    "violations",
+    "reconciliations"
+  ],
+  "properties": {
+    "schema": {
+      "const": "priority/issue-milestone-hygiene-report@v1"
+    },
+    "schemaVersion": {
+      "type": "string"
+    },
+    "generatedAt": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "repository": {
+      "type": "string",
+      "pattern": "^[^/]+/[^/]+$"
+    },
+    "state": {
+      "enum": ["open", "all"]
+    },
+    "flags": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "applyDefaultMilestone",
+        "warnOnly",
+        "requireOpenMilestone",
+        "createDefaultMilestone"
+      ],
+      "properties": {
+        "applyDefaultMilestone": { "type": "boolean" },
+        "warnOnly": { "type": "boolean" },
+        "requireOpenMilestone": { "type": "boolean" },
+        "createDefaultMilestone": { "type": "boolean" }
+      }
+    },
+    "policy": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "path",
+        "requiredLabels",
+        "titlePriorityPattern",
+        "defaultMilestone",
+        "defaultMilestoneDueOn"
+      ],
+      "properties": {
+        "path": { "type": "string" },
+        "requiredLabels": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "type": "string" }
+        },
+        "titlePriorityPattern": { "type": "string" },
+        "defaultMilestone": { "type": ["string", "null"] },
+        "defaultMilestoneDueOn": {
+          "type": ["string", "null"],
+          "format": "date-time"
+        }
+      }
+    },
+    "milestones": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "totalCount",
+        "openCount",
+        "closedCount",
+        "defaultMilestone",
+        "createdDefaultMilestone"
+      ],
+      "properties": {
+        "totalCount": { "type": "integer", "minimum": 0 },
+        "openCount": { "type": "integer", "minimum": 0 },
+        "closedCount": { "type": "integer", "minimum": 0 },
+        "createdDefaultMilestone": { "type": "boolean" },
+        "defaultMilestone": {
+          "type": ["object", "null"],
+          "additionalProperties": false,
+          "required": ["number", "title", "state", "dueOn"],
+          "properties": {
+            "number": { "type": "integer", "minimum": 1 },
+            "title": { "type": "string" },
+            "state": { "type": ["string", "null"] },
+            "dueOn": { "type": ["string", "null"], "format": "date-time" }
+          }
+        }
+      }
+    },
+    "summary": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "issueCount",
+        "requiredIssueCount",
+        "triggerCounts",
+        "initialViolationCount",
+        "remainingViolationCount",
+        "remainingReasonCounts",
+        "assignedDefaultMilestoneCount",
+        "failedAssignmentsCount"
+      ],
+      "properties": {
+        "issueCount": { "type": "integer", "minimum": 0 },
+        "requiredIssueCount": { "type": "integer", "minimum": 0 },
+        "triggerCounts": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "integer",
+            "minimum": 0
+          }
+        },
+        "initialViolationCount": { "type": "integer", "minimum": 0 },
+        "remainingViolationCount": { "type": "integer", "minimum": 0 },
+        "remainingReasonCounts": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "integer",
+            "minimum": 0
+          }
+        },
+        "assignedDefaultMilestoneCount": { "type": "integer", "minimum": 0 },
+        "failedAssignmentsCount": { "type": "integer", "minimum": 0 }
+      }
+    },
+    "violations": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/issueEvaluation"
+      }
+    },
+    "reconciliations": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "number",
+          "status",
+          "reason",
+          "previousMilestone",
+          "milestone",
+          "milestoneNumber",
+          "triggers"
+        ],
+        "properties": {
+          "number": { "type": "integer", "minimum": 1 },
+          "status": { "enum": ["assigned", "failed"] },
+          "reason": { "type": ["string", "null"] },
+          "previousMilestone": { "type": ["string", "null"] },
+          "milestone": { "type": "string" },
+          "milestoneNumber": { "type": "integer", "minimum": 1 },
+          "triggers": {
+            "type": "array",
+            "items": { "type": "string" }
+          },
+          "error": { "type": "string" }
+        }
+      }
+    }
+  },
+  "$defs": {
+    "issueEvaluation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "number",
+        "title",
+        "url",
+        "labels",
+        "milestone",
+        "milestoneNumber",
+        "milestoneState",
+        "triggers",
+        "requiresMilestone",
+        "isViolation",
+        "reason"
+      ],
+      "properties": {
+        "number": { "type": "integer", "minimum": 1 },
+        "title": { "type": "string" },
+        "url": { "type": ["string", "null"] },
+        "labels": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "milestone": { "type": ["string", "null"] },
+        "milestoneNumber": { "type": ["integer", "null"], "minimum": 1 },
+        "milestoneState": { "type": ["string", "null"] },
+        "triggers": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "requiresMilestone": { "type": "boolean" },
+        "isViolation": { "type": "boolean" },
+        "reason": {
+          "type": ["string", "null"],
+          "enum": ["missing-milestone", "closed-milestone", null]
+        }
+      }
+    }
+  }
+}

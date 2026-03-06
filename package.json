@@ -80,6 +80,7 @@
     "priority:policy:sync": "pwsh -NoLogo -NoProfile -File tools/priority/Sync-BranchProtectionPolicy.ps1",
     "priority:pr": "node tools/priority/create-pr.mjs",
     "priority:release": "pwsh -NoLogo -NoProfile -File tools/priority/Simulate-Release.ps1",
+    "priority:milestone:hygiene": "node tools/priority/check-issue-milestones.mjs",
     "priority:schema": "node tools/npm/run-script.mjs schema:validate -- --schema docs/schemas/standing-priority-issue-v1.schema.json --data tests/results/_agent/issue/[0-9]*.json --optional",
     "priority:show": "node -e \"console.log(require('fs').readFileSync('tests/results/_agent/issue/router.json','utf8'))\"",
     "priority:safe-git:trend": "node tools/priority/summarize-safe-git-telemetry.mjs",

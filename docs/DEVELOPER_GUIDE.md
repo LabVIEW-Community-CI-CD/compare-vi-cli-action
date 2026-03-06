@@ -305,6 +305,11 @@ For Docker/Desktop VI history validation, run fast-loop lanes explicitly:
   missing or duplicate standing-priority labels fail fast and emit deterministic diagnostics:
   - `tests/results/_agent/issue/no-standing-priority.json`
   - `tests/results/_agent/issue/multiple-standing-priority.json`
+- Enforce milestone hygiene for `standing-priority` / `program` / `[P0|P1]` issues with
+  `node tools/npm/run-script.mjs priority:milestone:hygiene -- --repo <owner/repo>`.
+  Use `--apply-default-milestone --default-milestone <title>` for reconciliation and add
+  `--create-default-milestone --default-milestone-due-on <iso-8601>` when the default
+  milestone does not exist yet.
 - Use strict verification (`node tools/priority/check-policy.mjs --fail-on-skip`) when you need token/permission skips to
   fail deterministically (for example in upstream policy guard workflows).
 - Policy guard workflows resolve token candidates with
