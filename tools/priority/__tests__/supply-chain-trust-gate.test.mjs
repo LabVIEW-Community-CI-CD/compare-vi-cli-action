@@ -1,0 +1,224 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import crypto from 'node:crypto';
+import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
+import {
+  DEFAULT_REPORT_PATH,
+  evaluateLocalIntegrity,
+  parseArgs,
+  parseChecksumManifest,
+  shouldRetryAttestationVerify,
+  verifyAttestationForArtifact,
+  verifyAttestations
+} from '../supply-chain-trust-gate.mjs';
+
+function writeFile(filePath, content) {
+  fs.mkdirSync(path.dirname(filePath), { recursive: true });
+  fs.writeFileSync(filePath, content);
+}
+
+function sha256(content) {
+  return crypto.createHash('sha256').update(content).digest('hex');
+}
+
+test('parseArgs applies defaults and explicit overrides', () => {
+  const defaults = parseArgs(['node', 'supply-chain-trust-gate.mjs']);
+  assert.equal(defaults.artifactsRoot, path.join('artifacts', 'cli'));
+  assert.equal(defaults.reportPath, DEFAULT_REPORT_PATH);
+  assert.equal(defaults.verifyAttestations, true);
+  assert.equal(defaults.attestationAttempts, 6);
+
+  const parsed = parseArgs([
+    'node',
+    'supply-chain-trust-gate.mjs',
+    '--repo',
+    'owner/repo',
+    '--artifacts-root',
+    'out/release',
+    '--checksums',
+    'out/release/SHA256SUMS.txt',
+    '--sbom',
+    'out/release/sbom.json',
+    '--provenance',
+    'out/release/prov.json',
+    '--report',
+    'out/report.json',
+    '--signer-workflow',
+    'owner/repo/.github/workflows/release.yml',
+    '--attestation-attempts',
+    '2',
+    '--attestation-retry-seconds',
+    '1',
+    '--skip-attestations'
+  ]);
+  assert.equal(parsed.repo, 'owner/repo');
+  assert.equal(parsed.artifactsRoot, 'out/release');
+  assert.equal(parsed.reportPath, 'out/report.json');
+  assert.equal(parsed.signerWorkflow, 'owner/repo/.github/workflows/release.yml');
+  assert.equal(parsed.attestationAttempts, 2);
+  assert.equal(parsed.attestationRetrySeconds, 1);
+  assert.equal(parsed.verifyAttestations, false);
+});
+
+test('parseChecksumManifest parses valid entries and invalid lines', () => {
+  const a = 'a'.repeat(64);
+  const b = 'b'.repeat(64);
+  const parsed = parseChecksumManifest(
+    `${a}  ./artifacts/cli/file-a.tar.gz\n` +
+      `invalid-line\n` +
+      `${b}  .\\artifacts\\cli\\file-b.zip\n`
+  );
+  assert.equal(parsed.entries.length, 2);
+  assert.equal(parsed.invalidLines.length, 1);
+  assert.equal(parsed.entries[0].name, 'file-a.tar.gz');
+  assert.equal(parsed.entries[1].name, 'file-b.zip');
+});
+
+test('evaluateLocalIntegrity passes for valid release payload', () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'trust-gate-pass-'));
+  const artifactsRoot = path.join(root, 'artifacts', 'cli');
+  fs.mkdirSync(artifactsRoot, { recursive: true });
+
+  const linuxArchive = path.join(artifactsRoot, 'comparevi-cli-v1-linux-x64-selfcontained.tar.gz');
+  const winArchive = path.join(artifactsRoot, 'comparevi-cli-v1-win-x64-selfcontained.zip');
+  writeFile(linuxArchive, 'linux-archive-content');
+  writeFile(winArchive, 'windows-archive-content');
+
+  const linuxHash = sha256('linux-archive-content');
+  const winHash = sha256('windows-archive-content');
+  const checksumText =
+    `${linuxHash}  ./comparevi-cli-v1-linux-x64-selfcontained.tar.gz\n` +
+    `${winHash}  ./comparevi-cli-v1-win-x64-selfcontained.zip\n`;
+  writeFile(path.join(artifactsRoot, 'SHA256SUMS.txt'), checksumText);
+
+  const sbomPayload = {
+    spdxVersion: 'SPDX-2.3',
+    files: [
+      { fileName: './comparevi-cli-v1-linux-x64-selfcontained.tar.gz' },
+      { fileName: './comparevi-cli-v1-win-x64-selfcontained.zip' }
+    ]
+  };
+  writeFile(path.join(artifactsRoot, 'sbom.spdx.json'), JSON.stringify(sbomPayload));
+
+  const checksumHash = sha256(checksumText);
+  const sbomHash = sha256(JSON.stringify(sbomPayload));
+  const provenancePayload = {
+    schema: 'run-provenance/v1',
+    repository: 'owner/repo',
+    runId: '123',
+    headSha: 'abc123',
+    releaseAssets: [
+      { name: path.basename(linuxArchive), sha256: linuxHash },
+      { name: path.basename(winArchive), sha256: winHash },
+      { name: 'SHA256SUMS.txt', sha256: checksumHash },
+      { name: 'sbom.spdx.json', sha256: sbomHash }
+    ]
+  };
+  writeFile(path.join(artifactsRoot, 'provenance.json'), JSON.stringify(provenancePayload));
+
+  const result = evaluateLocalIntegrity({
+    repoRoot: root,
+    artifactsRoot: path.join('artifacts', 'cli'),
+    checksumsPath: path.join('artifacts', 'cli', 'SHA256SUMS.txt'),
+    sbomPath: path.join('artifacts', 'cli', 'sbom.spdx.json'),
+    provenancePath: path.join('artifacts', 'cli', 'provenance.json'),
+    expectedRepository: 'owner/repo',
+    expectedRunId: '123',
+    expectedHeadSha: 'abc123'
+  });
+
+  assert.equal(result.failures.length, 0);
+  assert.equal(result.artifactRecords.length, 2);
+  assert.equal(result.sbom.valid, true);
+  assert.equal(result.provenance.valid, true);
+});
+
+test('evaluateLocalIntegrity reports checksum mismatch failures', () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'trust-gate-fail-'));
+  const artifactsRoot = path.join(root, 'artifacts', 'cli');
+  fs.mkdirSync(artifactsRoot, { recursive: true });
+
+  const archive = path.join(artifactsRoot, 'comparevi-cli-v1-linux-x64-selfcontained.tar.gz');
+  writeFile(archive, 'archive-content');
+  writeFile(path.join(artifactsRoot, 'SHA256SUMS.txt'), `${'0'.repeat(64)}  ./comparevi-cli-v1-linux-x64-selfcontained.tar.gz\n`);
+  writeFile(
+    path.join(artifactsRoot, 'sbom.spdx.json'),
+    JSON.stringify({ spdxVersion: 'SPDX-2.3', files: [{ fileName: './comparevi-cli-v1-linux-x64-selfcontained.tar.gz' }] })
+  );
+  writeFile(
+    path.join(artifactsRoot, 'provenance.json'),
+    JSON.stringify({
+      schema: 'run-provenance/v1',
+      repository: 'owner/repo',
+      runId: '123',
+      headSha: 'abc123',
+      releaseAssets: [{ name: 'comparevi-cli-v1-linux-x64-selfcontained.tar.gz', sha256: sha256('archive-content') }]
+    })
+  );
+
+  const result = evaluateLocalIntegrity({
+    repoRoot: root,
+    artifactsRoot: path.join('artifacts', 'cli'),
+    checksumsPath: path.join('artifacts', 'cli', 'SHA256SUMS.txt'),
+    sbomPath: path.join('artifacts', 'cli', 'sbom.spdx.json'),
+    provenancePath: path.join('artifacts', 'cli', 'provenance.json'),
+    expectedRepository: 'owner/repo',
+    expectedRunId: '123',
+    expectedHeadSha: 'abc123'
+  });
+
+  assert.ok(result.failures.some((failure) => failure.code === 'checksum-mismatch'));
+});
+
+test('verifyAttestationForArtifact retries on transient error and then succeeds', async () => {
+  const calls = [];
+  const runner = (_command, _args) => {
+    calls.push(1);
+    if (calls.length === 1) {
+      return {
+        status: 1,
+        stdout: '',
+        stderr: 'no attestations found for subject'
+      };
+    }
+    return {
+      status: 0,
+      stdout: '[{"verificationResult":{"statement":{"subject":[]}}}]',
+      stderr: ''
+    };
+  };
+  const result = await verifyAttestationForArtifact({
+    artifactPath: '/tmp/file.zip',
+    repository: 'owner/repo',
+    signerWorkflow: 'owner/repo/.github/workflows/release.yml',
+    maxAttempts: 3,
+    retrySeconds: 0,
+    runner,
+    sleepFn: async () => {}
+  });
+  assert.equal(result.verified, true);
+  assert.equal(result.attempts, 2);
+  assert.equal(result.attestationCount, 1);
+});
+
+test('verifyAttestations reports gh unavailable and retry classifier catches transient messages', async () => {
+  assert.equal(shouldRetryAttestationVerify('no attestations found'), true);
+  assert.equal(shouldRetryAttestationVerify('HTTP 429 rate limit exceeded'), true);
+  assert.equal(shouldRetryAttestationVerify('permission denied'), false);
+
+  const result = await verifyAttestations({
+    artifactPaths: ['/tmp/a.zip'],
+    repository: 'owner/repo',
+    signerWorkflow: 'owner/repo/.github/workflows/release.yml',
+    maxAttempts: 1,
+    retrySeconds: 0,
+    runner: () => ({ status: 1, stdout: '', stderr: 'gh missing' }),
+    sleepFn: async () => {}
+  });
+
+  assert.ok(result.failures.some((failure) => failure.code === 'attestation-cli-unavailable'));
+  assert.equal(result.results.length, 1);
+  assert.equal(result.results[0].verified, false);
+});

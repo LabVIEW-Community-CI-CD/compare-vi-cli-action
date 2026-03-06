@@ -11,7 +11,8 @@
       "required_evidence": [
         "contract-alignment",
         "promotion-evidence-ledger",
-        "certification-matrix"
+        "certification-matrix",
+        "supply-chain-trust-gate"
       ]
     },
     "stable": {
@@ -21,7 +22,8 @@
       "required_evidence": [
         "contract-alignment",
         "promotion-evidence-ledger",
-        "certification-matrix"
+        "certification-matrix",
+        "supply-chain-trust-gate"
       ]
     },
     "lts": {
@@ -31,7 +33,8 @@
       "required_evidence": [
         "contract-alignment",
         "promotion-evidence-ledger",
-        "certification-matrix"
+        "certification-matrix",
+        "supply-chain-trust-gate"
       ]
     }
   },

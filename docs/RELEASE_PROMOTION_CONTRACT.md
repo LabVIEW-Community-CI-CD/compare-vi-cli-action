@@ -14,6 +14,8 @@ alignment, and evidence ledger expectations.
 - Certification matrix policy: `tools/policy/certification-matrix.json`
 - Certification matrix schema: `docs/schemas/certification-matrix-v1.schema.json`
 - Certification runbook: `docs/CERTIFICATION_MATRIX.md`
+- Supply-chain trust gate script: `tools/priority/supply-chain-trust-gate.mjs`
+- Supply-chain trust gate schema: `docs/schemas/supply-chain-trust-gate-v1.schema.json`
 
 ## Channels
 
@@ -81,6 +83,20 @@ Release tags must generate a compatibility certification matrix artifact before 
   - `stable`: block when required lanes are stale, missing, incomplete, or failed.
 
 Lane lifecycle (add/remove/update) is documented in `docs/CERTIFICATION_MATRIX.md`.
+
+## Supply-chain trust gate
+
+Release tags must pass the supply-chain trust gate before GitHub Release publication:
+
+- Gate script: `node tools/priority/supply-chain-trust-gate.mjs`
+- Report artifact: `tests/results/_agent/supply-chain/release-trust-gate.json`
+- Enforced checks:
+  - required artifact presence (`*.zip/*.tar.gz`, `SHA256SUMS.txt`, `sbom.spdx.json`, `provenance.json`)
+  - checksum integrity
+  - SBOM/provenance contract validity
+  - artifact attestation verification via `gh attestation verify`
+
+If the trust gate fails, release publication is blocked (fail-closed) and the report artifact must be used for remediation.
 
 ## Gate outcomes
 
