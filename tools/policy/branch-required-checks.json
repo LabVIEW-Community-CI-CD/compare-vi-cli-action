@@ -34,10 +34,10 @@
   },
   "observed": {
     "develop": [
-      "commit-integrity / commit-integrity"
+      "commit-integrity"
     ],
     "main": [
-      "commit-integrity / commit-integrity"
+      "commit-integrity"
     ]
   }
 }
