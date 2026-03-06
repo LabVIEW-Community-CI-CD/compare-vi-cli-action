@@ -95,6 +95,38 @@ test('evaluateCommitIntegrity fails on unverified commits with explicit categori
   );
 });
 
+test('evaluateCommitIntegrity covers verified, unsigned, unknown, and signature-unavailable reasons', () => {
+  const commits = normalizeCommitRecords(
+    [
+      createRawCommit({ sha: 'sig1', verified: true, reason: 'valid', message: 'feat: verified\n\nIssue: #771' }),
+      createRawCommit({ sha: 'sig2', verified: false, reason: 'unsigned', message: 'feat: unsigned\n\nIssue: #771' }),
+      createRawCommit({ sha: 'sig3', verified: false, reason: 'unknown', message: 'feat: unknown\n\nIssue: #771' }),
+      createRawCommit({
+        sha: 'sig4',
+        verified: false,
+        reason: 'gpgverify_unavailable',
+        message: 'feat: service unavailable\n\nIssue: #771'
+      })
+    ],
+    sourceResolution
+  );
+  const evaluation = evaluateCommitIntegrity(commits, {
+    checks: {
+      requireKnownReasonForUnverified: true,
+      requireSignatureVerificationAvailable: true
+    }
+  });
+
+  assert.ok(!evaluation.violations.some((violation) => violation.sha === 'sig1' && violation.category === 'unverified-commit'));
+  assert.ok(evaluation.violations.some((violation) => violation.sha === 'sig2' && violation.category === 'unverified-commit'));
+  assert.ok(evaluation.violations.some((violation) => violation.sha === 'sig3' && violation.category === 'unknown-unverified-reason'));
+  assert.ok(
+    evaluation.violations.some(
+      (violation) => violation.sha === 'sig4' && violation.category === 'signature-verification-unavailable'
+    )
+  );
+});
+
 test('evaluateCommitIntegrity detects attribution and unknown-reason gaps when enabled', () => {
   const commits = normalizeCommitRecords(
     [

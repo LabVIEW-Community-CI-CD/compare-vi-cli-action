@@ -18,6 +18,7 @@ const DEFAULT_POLICY_CHECKS = Object.freeze({
   requireAuthorAttribution: true,
   requireCommitterAttribution: true,
   requireKnownReasonForUnverified: true,
+  requireSignatureVerificationAvailable: true,
   requireUniqueShas: true,
   requireNonEmptyHeadline: true,
   maxHeadlineLength: 120,
@@ -25,6 +26,7 @@ const DEFAULT_POLICY_CHECKS = Object.freeze({
   requireRequiredTrailer: false,
   requiredTrailerRules: Object.freeze([])
 });
+const SIGNATURE_UNAVAILABLE_REASONS = new Set(['gpgverify_error', 'gpgverify_unavailable']);
 
 function extractCommitTrailers(message) {
   const normalizedMessage = normalizeOptionalString(message) ?? '';
@@ -451,6 +453,10 @@ function normalizeChecks(checks = {}) {
       checks.requireKnownReasonForUnverified !== undefined
         ? Boolean(checks.requireKnownReasonForUnverified)
         : DEFAULT_POLICY_CHECKS.requireKnownReasonForUnverified,
+    requireSignatureVerificationAvailable:
+      checks.requireSignatureVerificationAvailable !== undefined
+        ? Boolean(checks.requireSignatureVerificationAvailable)
+        : DEFAULT_POLICY_CHECKS.requireSignatureVerificationAvailable,
     requireUniqueShas:
       checks.requireUniqueShas !== undefined
         ? Boolean(checks.requireUniqueShas)
@@ -581,6 +587,12 @@ export function evaluateCommitIntegrity(commits, { checks = {} } = {}) {
     }
     if (!commit.verified) {
       addViolation(violations, commit, 'unverified-commit', commit.verificationReason);
+      if (
+        effectiveChecks.requireSignatureVerificationAvailable &&
+        SIGNATURE_UNAVAILABLE_REASONS.has(commit.verificationReason)
+      ) {
+        addViolation(violations, commit, 'signature-verification-unavailable', commit.verificationReason);
+      }
       if (effectiveChecks.requireKnownReasonForUnverified && commit.verificationReason === 'unknown') {
         addViolation(violations, commit, 'unknown-unverified-reason', 'unknown verification reason');
       }
@@ -616,6 +628,14 @@ export function evaluateCommitIntegrity(commits, { checks = {} } = {}) {
       !effectiveChecks.requireKnownReasonForUnverified ||
       !violations.some((violation) => violation.category === 'unknown-unverified-reason'),
     failureCount: violations.filter((violation) => violation.category === 'unknown-unverified-reason').length
+  });
+  checkResults.push({
+    name: 'signature-verification-unavailable',
+    enabled: effectiveChecks.requireSignatureVerificationAvailable,
+    passed:
+      !effectiveChecks.requireSignatureVerificationAvailable ||
+      !violations.some((violation) => violation.category === 'signature-verification-unavailable'),
+    failureCount: violations.filter((violation) => violation.category === 'signature-verification-unavailable').length
   });
   checkResults.push({
     name: 'author-attribution',
@@ -771,6 +791,7 @@ async function loadPolicy(policyPath) {
       requireAuthorAttribution: checkSettings.require_author_attribution,
       requireCommitterAttribution: checkSettings.require_committer_attribution,
       requireKnownReasonForUnverified: checkSettings.require_non_unknown_reason_for_unverified,
+      requireSignatureVerificationAvailable: checkSettings.require_signature_verification_available,
       requireUniqueShas: checkSettings.require_unique_shas,
       requireNonEmptyHeadline: checkSettings.require_non_empty_headline,
       maxHeadlineLength: checkSettings.max_headline_length,
@@ -828,6 +849,7 @@ function buildReport({
         requireAuthorAttribution: policy.checks.requireAuthorAttribution,
         requireCommitterAttribution: policy.checks.requireCommitterAttribution,
         requireKnownReasonForUnverified: policy.checks.requireKnownReasonForUnverified,
+        requireSignatureVerificationAvailable: policy.checks.requireSignatureVerificationAvailable,
         requireUniqueShas: policy.checks.requireUniqueShas,
         requireNonEmptyHeadline: policy.checks.requireNonEmptyHeadline,
         maxHeadlineLength: policy.checks.maxHeadlineLength,
@@ -939,6 +961,7 @@ export async function runCommitIntegrity({
             requireAuthorAttribution: DEFAULT_POLICY_CHECKS.requireAuthorAttribution,
             requireCommitterAttribution: DEFAULT_POLICY_CHECKS.requireCommitterAttribution,
           requireKnownReasonForUnverified: DEFAULT_POLICY_CHECKS.requireKnownReasonForUnverified,
+          requireSignatureVerificationAvailable: DEFAULT_POLICY_CHECKS.requireSignatureVerificationAvailable,
           requireUniqueShas: DEFAULT_POLICY_CHECKS.requireUniqueShas,
           requireNonEmptyHeadline: DEFAULT_POLICY_CHECKS.requireNonEmptyHeadline,
           maxHeadlineLength: DEFAULT_POLICY_CHECKS.maxHeadlineLength,

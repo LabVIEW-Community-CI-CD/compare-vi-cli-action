@@ -20,6 +20,9 @@ The checker evaluates all commits in scope and emits explicit violation categori
   - Fails when `commit.verification.verified != true`.
 - `unknown-unverified-reason`
   - Fails when an unverified commit has reason `unknown` and the policy toggle is enabled.
+- `signature-verification-unavailable`
+  - Fails when GitHub reports signature verification service unavailability (`gpgverify_error`,
+    `gpgverify_unavailable`) and strict availability is enabled.
 - `missing-author-attribution`
   - Fails when both author login and author email are absent and the policy toggle is enabled.
 - `missing-committer-attribution`
@@ -52,6 +55,7 @@ Policy file: `tools/policy/commit-integrity-policy.json`
   - `checks.require_author_attribution`
   - `checks.require_committer_attribution`
   - `checks.require_non_unknown_reason_for_unverified`
+  - `checks.require_signature_verification_available`
   - `checks.require_unique_shas`
   - `checks.require_non_empty_headline`
   - `checks.max_headline_length`
