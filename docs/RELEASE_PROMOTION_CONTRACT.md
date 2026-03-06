@@ -24,6 +24,8 @@ alignment, and evidence ledger expectations.
 - Rollback report schemas:
   - `docs/schemas/release-rollback-v1.schema.json`
   - `docs/schemas/release-rollback-drill-health-v1.schema.json`
+- Release scorecard builder: `tools/priority/release-scorecard.mjs`
+- Release scorecard schema: `docs/schemas/release-scorecard-v1.schema.json`
 
 ## Channels
 
@@ -131,6 +133,23 @@ Release tags also emit a CompareVi.Shared source-resolution artifact to prove pa
 - Artifact: `tests/results/_agent/release/shared-source-resolution.json`
 - Source: `tools/Publish-Cli.ps1` (`release/shared-source-resolution@v1`)
 - Policy: `shared-source-resolution` is required evidence for `rc`, `stable`, and `lts`.
+
+## Release scorecard evidence
+
+Release and monthly stability workflows emit a combined scorecard artifact:
+
+- Script: `node tools/priority/release-scorecard.mjs`
+- Schema: `release/scorecard@v1`
+- Release artifact: `tests/results/_agent/release/release-scorecard.json`
+- Monthly artifact: `tests/results/_agent/release/monthly-release-scorecard.json`
+
+Scorecard blockers are fail-closed when any gate regresses:
+
+- promotion ledger gate status not `pass`
+- rollback health status not `pass`
+- SLO breaches present
+- trust gate regressions for release-tag flows
+- signed-tag requirement not met when enabled
 
 ## Gate outcomes
 
