@@ -401,12 +401,33 @@ jobs:
           --run-id "${{ github.run_id }}" \
           --sha "${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}" \
           --report tests/results/_agent/deployments/validation-deployment-determinism.json
+    - name: Normalize deployment determinism canary event
+      if: always()
+      shell: bash
+      run: |
+        set -euo pipefail
+        report_path="tests/results/_agent/deployments/validation-deployment-determinism.json"
+        if [ ! -f "$report_path" ]; then
+          echo "::warning::Deployment determinism report missing at $report_path; skipping canary normalization."
+          exit 0
+        fi
+        node tools/npm/run-script.mjs priority:event:ingest -- \
+          --source-type deployment-state \
+          --input "$report_path" \
+          --report tests/results/_agent/canary/validation-deployment-incident-event.json
     - name: Upload deployment determinism report
       if: always()
       uses: actions/upload-artifact@v5
       with:
         name: validate-deployment-determinism
         path: tests/results/_agent/deployments/validation-deployment-determinism.json
+    - name: Upload deployment determinism canary event report
+      if: always()
+      uses: actions/upload-artifact@v5
+      with:
+        name: validate-deployment-determinism-event
+        path: tests/results/_agent/canary/validation-deployment-incident-event.json
+        if-no-files-found: warn
   fixtures:
     runs-on: [self-hosted, Windows, X64]
     env:
