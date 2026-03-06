@@ -53,7 +53,7 @@ test('normalizePolicy applies defaults and validates required settings', () => {
 test('evaluateIssue marks missing and closed milestone violations', () => {
   const context = {
     requiredLabels: ['standing-priority', 'program'],
-    titlePriorityPattern: String.raw`\[(P0|P1)\]`,
+    titlePriorityTokens: ['P0', 'P1'],
     requireOpenMilestone: true,
     milestonesByNumber: new Map([[7, { number: 7, title: 'Q1', state: 'closed' }]])
   };

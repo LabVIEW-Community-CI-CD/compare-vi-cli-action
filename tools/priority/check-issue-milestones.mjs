@@ -12,6 +12,9 @@ export const DEFAULT_REQUIRED_LABELS = ['standing-priority', 'program'];
 export const DEFAULT_TITLE_PRIORITY_PATTERN = String.raw`\[(P0|P1)\]`;
 export const DEFAULT_REQUIRE_OPEN_MILESTONE = true;
 export const REPORT_SCHEMA = 'priority/issue-milestone-hygiene-report@v1';
+const DEFAULT_TITLE_PRIORITY_TOKENS = ['P0', 'P1'];
+const TITLE_PRIORITY_TOKENS_ESCAPED = /^\\\[\((P\d+(?:\|P\d+)*)\)\\\]$/i;
+const TITLE_PRIORITY_TOKENS_LITERAL = /^\[\((P\d+(?:\|P\d+)*)\)\]$/i;
 
 function normalizeText(value) {
   if (value == null) return null;
@@ -53,6 +56,38 @@ function normalizeMilestoneState(value) {
   const lowered = normalized.toLowerCase();
   if (lowered === 'open' || lowered === 'closed') return lowered;
   return lowered;
+}
+
+function parsePriorityTokens(patternText) {
+  const normalized = normalizeText(patternText);
+  if (!normalized) {
+    throw new Error('Priority pattern is required.');
+  }
+  if (normalized === DEFAULT_TITLE_PRIORITY_PATTERN) {
+    return [...DEFAULT_TITLE_PRIORITY_TOKENS];
+  }
+  const escaped = normalized.match(TITLE_PRIORITY_TOKENS_ESCAPED);
+  const literal = normalized.match(TITLE_PRIORITY_TOKENS_LITERAL);
+  const tokenGroup = escaped?.[1] ?? literal?.[1] ?? null;
+  if (!tokenGroup) {
+    throw new Error(
+      `Unsupported title priority pattern '${normalized}'. Expected escaped form '\\[(P0|P1)\\]' or literal form '[(P0|P1)]'.`
+    );
+  }
+  return tokenGroup
+    .split('|')
+    .map((token) => token.toUpperCase())
+    .filter(Boolean);
+}
+
+function titleHasPriorityMarker(title, priorityTokens) {
+  const normalizedTitle = normalizeText(title)?.toUpperCase() ?? '';
+  for (const token of priorityTokens) {
+    if (normalizedTitle.includes(`[${token}]`)) {
+      return true;
+    }
+  }
+  return false;
 }
 
 function isValidDateTime(value) {
@@ -165,9 +200,7 @@ export function normalizePolicy(rawPolicy) {
 
   const titlePriorityPattern = normalizeText(required.titlePriorityPattern) ?? DEFAULT_TITLE_PRIORITY_PATTERN;
   try {
-    // Validate regex once at policy parse time.
-    // eslint-disable-next-line no-new
-    new RegExp(titlePriorityPattern, 'i');
+    parsePriorityTokens(titlePriorityPattern);
   } catch (error) {
     throw new Error(`Invalid policy required.titlePriorityPattern: ${error.message}`);
   }
@@ -308,7 +341,7 @@ async function writeJsonReport(reportPath, payload) {
 
 export function evaluateIssue(issue, {
   requiredLabels,
-  titlePriorityPattern,
+  titlePriorityTokens,
   requireOpenMilestone,
   milestonesByNumber = new Map()
 }) {
@@ -326,8 +359,7 @@ export function evaluateIssue(issue, {
     }
   }
 
-  const priorityRegex = new RegExp(titlePriorityPattern, 'i');
-  if (priorityRegex.test(title)) {
+  if (titleHasPriorityMarker(title, titlePriorityTokens)) {
     triggers.push('title-priority');
   }
 
@@ -417,6 +449,7 @@ export async function runMilestoneHygiene({
   const policy = await loadPolicyFn(options.policyPath);
   const requiredLabels = options.requiredLabels ?? policy.required.labels;
   const titlePriorityPattern = options.titlePriorityPattern ?? policy.required.titlePriorityPattern;
+  const titlePriorityTokens = parsePriorityTokens(titlePriorityPattern);
   const requireOpenMilestone = options.requireOpenMilestone == null
     ? policy.required.requireOpenMilestone
     : Boolean(options.requireOpenMilestone);
@@ -475,7 +508,7 @@ export async function runMilestoneHygiene({
 
   const evaluations = issues.map((issue) => evaluateIssue(issue, {
     requiredLabels,
-    titlePriorityPattern,
+    titlePriorityTokens,
     requireOpenMilestone,
     milestonesByNumber: milestoneMaps.byNumber
   }));
