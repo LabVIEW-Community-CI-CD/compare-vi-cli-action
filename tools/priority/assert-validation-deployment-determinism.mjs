@@ -23,10 +23,12 @@ function printUsage() {
   console.log('  --repo <owner/repo>       Target repository (default: GITHUB_REPOSITORY).');
   console.log('  --environment <name>      Deployment environment (default: validation).');
   console.log('  --run-id <id>             Workflow run id (default: GITHUB_RUN_ID).');
-  console.log('  --sha <sha>               Optional SHA filter (default: GITHUB_SHA).');
+  console.log('  --sha <sha>               Optional SHA filter (default: unset).');
   console.log(`  --report <path>           Report JSON path (default: ${DEFAULT_REPORT_PATH}).`);
   console.log('  --max-deployments <n>     Number of deployments to scan (default: 30).');
   console.log('  --max-statuses <n>        Number of statuses to scan per deployment (default: 20).');
+  console.log('  --retry-attempts <n>      Poll attempts before failing (default: 6).');
+  console.log('  --retry-delay-ms <n>      Delay between retries in milliseconds (default: 5000).');
   console.log('  -h, --help                Show usage.');
 }
 
@@ -44,10 +46,12 @@ export function parseArgs(argv = process.argv) {
     repo: process.env.GITHUB_REPOSITORY ?? '',
     environment: 'validation',
     runId: process.env.GITHUB_RUN_ID ?? '',
-    sha: process.env.GITHUB_SHA ?? '',
+    sha: '',
     reportPath: DEFAULT_REPORT_PATH,
     maxDeployments: 30,
-    maxStatuses: 20
+    maxStatuses: 20,
+    retryAttempts: 6,
+    retryDelayMs: 5000
   };
 
   for (let index = 0; index < args.length; index += 1) {
@@ -64,7 +68,9 @@ export function parseArgs(argv = process.argv) {
       arg === '--sha' ||
       arg === '--report' ||
       arg === '--max-deployments' ||
-      arg === '--max-statuses'
+      arg === '--max-statuses' ||
+      arg === '--retry-attempts' ||
+      arg === '--retry-delay-ms'
     ) {
       const next = args[index + 1];
       if (!next || next.startsWith('-')) {
@@ -86,6 +92,10 @@ export function parseArgs(argv = process.argv) {
         options.maxDeployments = parsePositiveInteger(next, { label: '--max-deployments' });
       } else if (arg === '--max-statuses') {
         options.maxStatuses = parsePositiveInteger(next, { label: '--max-statuses' });
+      } else if (arg === '--retry-attempts') {
+        options.retryAttempts = parsePositiveInteger(next, { label: '--retry-attempts' });
+      } else if (arg === '--retry-delay-ms') {
+        options.retryDelayMs = parsePositiveInteger(next, { label: '--retry-delay-ms' });
       }
       continue;
     }
@@ -255,19 +265,25 @@ function runGhJson(args, { cwd = process.cwd() } = {}) {
   return JSON.parse(output);
 }
 
-async function writeReport(reportPath, report) {
-  const resolved = path.resolve(reportPath);
-  await mkdir(path.dirname(resolved), { recursive: true });
-  await writeFile(resolved, `${JSON.stringify(report, null, 2)}\n`, 'utf8');
-  return resolved;
+function shouldRetryEvaluation(evaluation) {
+  if (!evaluation || evaluation.ok) {
+    return false;
+  }
+  return evaluation.issues.some((issue) =>
+    issue === 'no-deployments-found' ||
+    issue === 'no-active-deployment-found' ||
+    issue.startsWith('no-deployments-for-sha:') ||
+    issue.startsWith('no-deployment-linked-to-run:') ||
+    issue.startsWith('latest-active-owned-by-other-run:') ||
+    issue.startsWith('current-run-latest-state-not-active:')
+  );
 }
 
-export async function runAssertValidationDeploymentDeterminism({
-  argv = process.argv,
-  cwd = process.cwd(),
-  runGhJsonFn = runGhJson
-} = {}) {
-  const options = parseArgs(argv);
+function sleep(delayMs) {
+  return new Promise((resolve) => setTimeout(resolve, delayMs));
+}
+
+function collectDeterminismState({ options, cwd, runGhJsonFn }) {
   const deployments = runGhJsonFn(
     [
       'api',
@@ -294,6 +310,49 @@ export async function runAssertValidationDeploymentDeterminism({
     runId: options.runId,
     sha: options.sha
   });
+  return { entries, evaluation };
+}
+
+async function writeReport(reportPath, report) {
+  const resolved = path.resolve(reportPath);
+  await mkdir(path.dirname(resolved), { recursive: true });
+  await writeFile(resolved, `${JSON.stringify(report, null, 2)}\n`, 'utf8');
+  return resolved;
+}
+
+export async function runAssertValidationDeploymentDeterminism({
+  argv = process.argv,
+  cwd = process.cwd(),
+  runGhJsonFn = runGhJson
+} = {}) {
+  const options = parseArgs(argv);
+  let entries = [];
+  let evaluation = { ok: false, issues: ['not-evaluated'], scopedCount: 0, runLinkedCount: 0, latestRunEntry: null, latestActive: null };
+  const attempts = [];
+  for (let attempt = 1; attempt <= options.retryAttempts; attempt += 1) {
+    const state = collectDeterminismState({ options, cwd, runGhJsonFn });
+    entries = state.entries;
+    evaluation = state.evaluation;
+    attempts.push({
+      attempt,
+      evaluatedAt: new Date().toISOString(),
+      ok: evaluation.ok,
+      issues: [...evaluation.issues],
+      deploymentCount: entries.length,
+      scopedCount: evaluation.scopedCount,
+      runLinkedCount: evaluation.runLinkedCount,
+      latestRunDeploymentId: evaluation.latestRunEntry?.id ?? null,
+      latestActiveDeploymentId: evaluation.latestActive?.id ?? null
+    });
+    if (evaluation.ok) {
+      break;
+    }
+    if (attempt < options.retryAttempts && shouldRetryEvaluation(evaluation)) {
+      await sleep(options.retryDelayMs);
+      continue;
+    }
+    break;
+  }
 
   const report = {
     schema: 'priority/deployment-determinism@v1',
@@ -307,9 +366,11 @@ export async function runAssertValidationDeploymentDeterminism({
       deploymentCount: entries.length,
       scopedCount: evaluation.scopedCount,
       runLinkedCount: evaluation.runLinkedCount,
+      attempts: attempts.length,
       latestRunDeploymentId: evaluation.latestRunEntry?.id ?? null,
       latestActiveDeploymentId: evaluation.latestActive?.id ?? null
     },
+    attempts,
     issues: evaluation.issues,
     latestRunEntry: evaluation.latestRunEntry,
     latestActive: evaluation.latestActive
