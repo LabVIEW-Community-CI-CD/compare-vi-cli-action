@@ -6,7 +6,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const manifestPath = new URL('./policy.json', import.meta.url);
-const DEFAULT_OUTPUT_PATH = path.join('tests', 'results', '_agent', 'policy', 'policy-state-snapshot.json');
+export const DEFAULT_OUTPUT_PATH = path.join('tests', 'results', '_agent', 'policy', 'policy-state-snapshot.json');
 
 function printUsage() {
   console.log('Usage: node tools/priority/policy-snapshot.mjs [options]');
@@ -17,7 +17,7 @@ function printUsage() {
   console.log('  -h, --help        Show this help text and exit.');
 }
 
-function parseArgs(argv = process.argv) {
+export function parseArgs(argv = process.argv) {
   const args = argv.slice(2);
   const options = {
     outputPath: DEFAULT_OUTPUT_PATH,
@@ -48,7 +48,7 @@ function parseArgs(argv = process.argv) {
   return options;
 }
 
-function parseRemoteUrl(url) {
+export function parseRemoteUrl(url) {
   if (!url) return null;
   const sshMatch = url.match(/:(?<repoPath>[^/]+\/[^/]+)(?:\.git)?$/);
   const httpsMatch = url.match(/github\.com\/(?<repoPath>[^/]+\/[^/]+)(?:\.git)?$/);
@@ -62,20 +62,20 @@ function parseRemoteUrl(url) {
   return `${owner}/${repo}`;
 }
 
-function resolveRepositorySlug(explicitRepo) {
+export function resolveRepositorySlug(explicitRepo, options = {}) {
+  const environment = options.environment ?? process.env;
+  const commandRunner = options.commandRunner ?? ((command) => execSync(command, {
+    stdio: ['ignore', 'pipe', 'ignore']
+  }).toString().trim());
   if (explicitRepo) {
     return explicitRepo;
   }
-  if (process.env.GITHUB_REPOSITORY && process.env.GITHUB_REPOSITORY.includes('/')) {
-    return process.env.GITHUB_REPOSITORY.trim();
+  if (environment.GITHUB_REPOSITORY && environment.GITHUB_REPOSITORY.includes('/')) {
+    return environment.GITHUB_REPOSITORY.trim();
   }
   for (const remoteName of ['upstream', 'origin']) {
     try {
-      const url = execSync(`git config --get remote.${remoteName}.url`, {
-        stdio: ['ignore', 'pipe', 'ignore']
-      })
-        .toString()
-        .trim();
+      const url = commandRunner(`git config --get remote.${remoteName}.url`);
       const parsed = parseRemoteUrl(url);
       if (parsed) return parsed;
     } catch {
@@ -137,13 +137,14 @@ function isBranchPattern(branch) {
   return /[*?[\]]/.test(branch);
 }
 
-async function collectPolicyState({
+export async function collectPolicyState({
   repo,
   token,
-  manifest
+  manifest,
+  requestJsonFn = requestJson
 }) {
   const apiBase = `https://api.github.com/repos/${repo}`;
-  const repoState = await requestJson(apiBase, token);
+  const repoState = await requestJsonFn(apiBase, token);
 
   const branches = {};
   for (const branchName of Object.keys(manifest.branches ?? {})) {
@@ -154,7 +155,7 @@ async function collectPolicyState({
       };
       continue;
     }
-    const protection = await requestJson(`${apiBase}/branches/${encodeURIComponent(branchName)}/protection`, token);
+    const protection = await requestJsonFn(`${apiBase}/branches/${encodeURIComponent(branchName)}/protection`, token);
     branches[branchName] = {
       skipped: false,
       protection
@@ -170,7 +171,7 @@ async function collectPolicyState({
       };
       continue;
     }
-    const ruleset = await requestJson(`${apiBase}/rulesets/${numeric}`, token);
+    const ruleset = await requestJsonFn(`${apiBase}/rulesets/${numeric}`, token);
     rulesets[id] = ruleset;
   }
 
