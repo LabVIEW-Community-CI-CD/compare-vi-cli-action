@@ -11,6 +11,9 @@ alignment, and evidence ledger expectations.
 - Ledger schema: `docs/schemas/promotion-evidence-ledger-v1.schema.json`
 - Alignment assertion: `tools/Assert-PromotionContractAlignment.ps1`
 - Ledger writer: `tools/Write-PromotionEvidenceLedger.ps1`
+- Certification matrix policy: `tools/policy/certification-matrix.json`
+- Certification matrix schema: `docs/schemas/certification-matrix-v1.schema.json`
+- Certification runbook: `docs/CERTIFICATION_MATRIX.md`
 
 ## Channels
 
@@ -66,6 +69,18 @@ Required sections:
 Default artifact location:
 
 - `tests/results/promotion-contract/*.json`
+
+## Certification matrix gate
+
+Release tags must generate a compatibility certification matrix artifact before promotion:
+
+- Artifact: `tests/results/_agent/certification/release-certification-matrix.json`
+- Evaluator: `node tools/priority/certification-matrix.mjs`
+- Enforcement: `stable` channel only
+  - `rc`: publish certification evidence without blocking.
+  - `stable`: block when required lanes are stale, missing, incomplete, or failed.
+
+Lane lifecycle (add/remove/update) is documented in `docs/CERTIFICATION_MATRIX.md`.
 
 ## Gate outcomes
 

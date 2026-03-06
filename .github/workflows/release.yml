@@ -6,8 +6,59 @@ on:
       - 'v*'
 
 jobs:
+  certification-matrix:
+    name: certification-matrix
+    runs-on: ubuntu-latest
+    permissions:
+      actions: read
+      contents: read
+    outputs:
+      channel: ${{ steps.channel.outputs.channel }}
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Resolve release channel
+        id: channel
+        shell: bash
+        run: |
+          set -euo pipefail
+          channel="stable"
+          if [[ "${GITHUB_REF_NAME}" == *"-rc."* ]]; then
+            channel="rc"
+          fi
+          echo "channel=${channel}" >> "$GITHUB_OUTPUT"
+
+      - name: Generate certification matrix
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          node tools/priority/certification-matrix.mjs \
+            --repo "${{ github.repository }}" \
+            --channel "${{ steps.channel.outputs.channel }}" \
+            --enforce stable \
+            --policy tools/policy/certification-matrix.json \
+            --output tests/results/_agent/certification/release-certification-matrix.json
+
+      - name: Validate certification matrix schema
+        shell: pwsh
+        run: |
+          pwsh -NoLogo -NoProfile -File tools/Invoke-JsonSchemaLite.ps1 \
+            -JsonPath tests/results/_agent/certification/release-certification-matrix.json \
+            -SchemaPath docs/schemas/certification-matrix-v1.schema.json
+
+      - name: Upload certification matrix artifact
+        if: always()
+        uses: actions/upload-artifact@v5
+        with:
+          name: certification-matrix-${{ github.run_id }}
+          path: tests/results/_agent/certification/release-certification-matrix.json
+          if-no-files-found: error
+
   release:
     runs-on: ubuntu-latest
+    needs: certification-matrix
     environment:
       name: production
     permissions:
@@ -241,12 +292,18 @@ jobs:
   release-contract:
     name: release-contract
     runs-on: ubuntu-latest
-    needs: [release, validate-cli-artifacts]
+    needs: [certification-matrix, release, validate-cli-artifacts]
     permissions:
       contents: read
       issues: write
     steps:
       - uses: actions/checkout@v5
+
+      - name: Download certification matrix artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: certification-matrix-${{ github.run_id }}
+          path: tests/results/_agent/certification
 
       - name: Assert promotion contract alignment
         shell: pwsh
@@ -391,4 +448,5 @@ jobs:
             tests/results/promotion-contract/release-alignment.json
             tests/results/promotion-contract/release-ledger.json
             tests/results/_agent/slo/release-slo-metrics.json
+            tests/results/_agent/certification/release-certification-matrix.json
           if-no-files-found: error

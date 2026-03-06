@@ -10,7 +10,8 @@
       "allows_latest_tag": false,
       "required_evidence": [
         "contract-alignment",
-        "promotion-evidence-ledger"
+        "promotion-evidence-ledger",
+        "certification-matrix"
       ]
     },
     "stable": {
@@ -19,7 +20,8 @@
       "allows_latest_tag": true,
       "required_evidence": [
         "contract-alignment",
-        "promotion-evidence-ledger"
+        "promotion-evidence-ledger",
+        "certification-matrix"
       ]
     },
     "lts": {
@@ -28,7 +30,8 @@
       "allows_latest_tag": true,
       "required_evidence": [
         "contract-alignment",
-        "promotion-evidence-ledger"
+        "promotion-evidence-ledger",
+        "certification-matrix"
       ]
     }
   },
