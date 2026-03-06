@@ -55,6 +55,7 @@ function Test-CompareStartupConnectivitySignature {
 
   return (
     $combined -match '-350000' -or
+    $combined -match '-350051' -or
     $combined -match '(?i)openappreference' -or
     $combined -match '(?i)afterlaunchopenappreference' -or
     $combined -match '(?i)vi server' -or

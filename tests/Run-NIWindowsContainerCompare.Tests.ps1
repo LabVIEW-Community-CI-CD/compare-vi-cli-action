@@ -704,7 +704,7 @@ exit 0
     Set-Item Env:DOCKER_STUB_IMAGE_EXISTS '1'
     Set-Item Env:DOCKER_STUB_CONTEXT 'desktop-windows'
     Set-Item Env:DOCKER_STUB_RUN_EXIT_CODE '1'
-    Set-Item Env:DOCKER_STUB_RUN_STDERR 'Error code: -350000'
+    Set-Item Env:DOCKER_STUB_RUN_STDERR 'Error code: -350051'
     Set-Item Env:DOCKER_STUB_RUN_STDOUT 'An error occurred while running the LabVIEW CLI'
 
     $baseVi = Join-Path $work 'Base.vi'

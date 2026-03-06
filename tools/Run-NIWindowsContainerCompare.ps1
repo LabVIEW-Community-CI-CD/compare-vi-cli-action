@@ -435,15 +435,20 @@ while ($attempt -lt $maxAttempts) {
   if ($lastExit -eq 0) { break }
   $text = if ([string]::IsNullOrWhiteSpace($output)) { '' } else { [string]$output }
   $isCliFailure = ($text -match 'Error code\s*:' -or $text -match 'An error occurred while running the LabVIEW CLI')
-  if ($lastExit -eq 1 -and -not $isCliFailure) { break }
-  $isStartupTimeout = ($text -match '-350000')
-  if ($isStartupTimeout -and $attempt -lt $maxAttempts) {
+  $isStartupConnectivity = (
+    $lastExit -in @(-350000, -350051) -or
+    $text -match '-350000' -or
+    $text -match '-350051' -or
+    $text -match '(?i)Preparing modules for first use'
+  )
+  if ($isStartupConnectivity -and $attempt -lt $maxAttempts) {
     $meta.retryTriggered = $true
     if ($retryDelay -gt 0) {
       Start-Sleep -Seconds $retryDelay
     }
     continue
   }
+  if ($lastExit -eq 1 -and -not $isCliFailure) { break }
   break
 }
 Write-Output ("[ni-container-meta]retryAttempts={0};retryTriggered={1};prelaunchAttempted={2};iniPath={3};openTimeout={4};afterLaunchTimeout={5}" -f $meta.retryAttempts, ($(if ($meta.retryTriggered) { 1 } else { 0 })), ($(if ($meta.prelaunchAttempted) { 1 } else { 0 })), $meta.iniPath, $meta.openTimeout, $meta.afterLaunchTimeout)
