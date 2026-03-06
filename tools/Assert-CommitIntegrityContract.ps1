@@ -13,7 +13,7 @@ param(
   [string]$MainBranch = 'main',
   [string]$DevelopRulesetId = '8811898',
   [string]$MainRulesetId = '8614140',
-  [string]$ExpectedObservedCheck = 'commit-integrity / commit-integrity',
+  [string]$ExpectedObservedCheck = 'commit-integrity',
   [string]$ExpectedReportPath = 'tests/results/_agent/commit-integrity/commit-integrity-report.json'
 )
 

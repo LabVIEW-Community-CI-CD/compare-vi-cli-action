@@ -22,7 +22,7 @@
         "commit-integrity"
       ],
       "observed_status_checks": [
-        "commit-integrity / commit-integrity"
+        "commit-integrity"
       ],
       "required_linear_history": true,
       "enforce_admins": false,
@@ -46,7 +46,7 @@
         "commit-integrity"
       ],
       "observed_status_checks": [
-        "commit-integrity / commit-integrity"
+        "commit-integrity"
       ],
       "required_linear_history": true,
       "enforce_admins": false,
@@ -92,7 +92,7 @@
         "commit-integrity"
       ],
       "observed_status_checks": [
-        "commit-integrity / commit-integrity"
+        "commit-integrity"
       ],
       "merge_queue": {
         "merge_method": "SQUASH",
@@ -129,7 +129,7 @@
         "commit-integrity"
       ],
       "observed_status_checks": [
-        "commit-integrity / commit-integrity"
+        "commit-integrity"
       ],
       "merge_queue": {
         "merge_method": "SQUASH",

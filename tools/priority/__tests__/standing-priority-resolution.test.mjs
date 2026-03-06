@@ -7,6 +7,8 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import {
   parseCliArgs,
+  selectAutoStandingPriorityCandidate,
+  autoSelectStandingPriorityIssue,
   buildNoStandingPriorityReport,
   buildMultipleStandingPriorityReport,
   buildNoStandingPriorityState,
@@ -183,14 +185,76 @@ test('parseCliArgs enables strict standing-priority flags and help', () => {
   const parsed = parseCliArgs(['node', 'sync-standing-priority.mjs', '--fail-on-missing']);
   assert.equal(parsed.failOnMissing, true);
   assert.equal(parsed.failOnMultiple, false);
+  assert.equal(parsed.autoSelectNext, false);
   assert.equal(parsed.help, false);
 
   const parsedMulti = parseCliArgs(['node', 'sync-standing-priority.mjs', '--fail-on-multiple']);
   assert.equal(parsedMulti.failOnMultiple, true);
   assert.equal(parsedMulti.failOnMissing, false);
 
+  const parsedAuto = parseCliArgs(['node', 'sync-standing-priority.mjs', '--auto-select-next']);
+  assert.equal(parsedAuto.autoSelectNext, true);
+  assert.equal(parsedAuto.failOnMissing, false);
+
   const help = parseCliArgs(['node', 'sync-standing-priority.mjs', '--help']);
   assert.equal(help.help, true);
+});
+
+test('selectAutoStandingPriorityCandidate favors non-epic P0 oldest item', () => {
+  const selected = selectAutoStandingPriorityCandidate([
+    {
+      number: 900,
+      title: 'Epic: umbrella',
+      labels: ['program'],
+      createdAt: '2026-03-06T12:00:00Z'
+    },
+    {
+      number: 901,
+      title: '[P1] follow-up lane',
+      labels: ['ci'],
+      createdAt: '2026-03-06T12:01:00Z'
+    },
+    {
+      number: 902,
+      title: '[P0] first lane',
+      labels: ['ci'],
+      createdAt: '2026-03-06T11:00:00Z'
+    },
+    {
+      number: 903,
+      title: '[P0] duplicate lane',
+      labels: ['duplicate'],
+      createdAt: '2026-03-06T10:00:00Z'
+    }
+  ]);
+
+  assert.equal(selected?.number, 902);
+  assert.equal(selected?.priority, 0);
+});
+
+test('autoSelectStandingPriorityIssue selects and labels next issue via injected transports', async () => {
+  const calls = [];
+  const result = await autoSelectStandingPriorityIssue('/tmp/repo', 'owner/repo', {
+    targetSlug: 'owner/repo',
+    runGhList: () => ({
+      status: 0,
+      stdout: JSON.stringify([
+        { number: 910, title: 'Epic: umbrella', labels: [{ name: 'program' }], createdAt: '2026-03-06T12:00:00Z' },
+        { number: 911, title: '[P0] lane', labels: [{ name: 'ci' }], createdAt: '2026-03-06T10:00:00Z' }
+      ])
+    }),
+    runGhAddLabel: ({ issueNumber }) => {
+      calls.push(issueNumber);
+      return { status: 0, stdout: '' };
+    },
+    runRestList: async () => ({ status: 'error', error: 'not-used' }),
+    runRestAddLabel: async () => ({ status: 'error', error: 'not-used' }),
+    warn: () => {}
+  });
+
+  assert.equal(result.status, 'selected');
+  assert.equal(result.issue?.number, 911);
+  assert.deepEqual(calls, [911]);
 });
 
 test('buildNoStandingPriorityReport emits deterministic schema payload', () => {
