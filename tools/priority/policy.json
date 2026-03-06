@@ -19,7 +19,7 @@
         "hook-parity (windows-latest)",
         "hook-parity (ubuntu-latest)",
         "vi-history-scenarios-linux",
-        "commit-integrity / commit-integrity"
+        "commit-integrity"
       ],
       "observed_status_checks": [
         "commit-integrity / commit-integrity"
@@ -43,7 +43,7 @@
         "vi-binary-check",
         "vi-compare",
         "Policy Guard (Upstream) / policy-guard",
-        "commit-integrity / commit-integrity"
+        "commit-integrity"
       ],
       "observed_status_checks": [
         "commit-integrity / commit-integrity"
@@ -89,7 +89,7 @@
         "hook-parity (windows-latest)",
         "hook-parity (ubuntu-latest)",
         "vi-history-scenarios-linux",
-        "commit-integrity / commit-integrity"
+        "commit-integrity"
       ],
       "observed_status_checks": [
         "commit-integrity / commit-integrity"
@@ -126,7 +126,7 @@
         "vi-binary-check",
         "vi-compare",
         "Policy Guard (Upstream) / policy-guard",
-        "commit-integrity / commit-integrity"
+        "commit-integrity"
       ],
       "observed_status_checks": [
         "commit-integrity / commit-integrity"

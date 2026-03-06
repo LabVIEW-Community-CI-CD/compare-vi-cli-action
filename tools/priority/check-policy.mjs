@@ -109,6 +109,38 @@ function isBranchPattern(branch) {
   return /[*?[\]]/.test(branch);
 }
 
+function normalizeHeadRefToBranchName(value) {
+  if (typeof value !== 'string') {
+    return null;
+  }
+  const trimmed = value.trim();
+  const prefix = 'refs/heads/';
+  if (!trimmed.startsWith(prefix)) {
+    return null;
+  }
+  const branch = trimmed.slice(prefix.length);
+  if (!branch || isBranchPattern(branch)) {
+    return null;
+  }
+  return branch;
+}
+
+function deriveQueueManagedBranches(manifest) {
+  const branches = new Set();
+  for (const expectations of Object.values(manifest?.rulesets ?? {})) {
+    if (!expectations || expectations.merge_queue === null || expectations.merge_queue === undefined) {
+      continue;
+    }
+    for (const include of expectations.includes ?? []) {
+      const branch = normalizeHeadRefToBranchName(include);
+      if (branch) {
+        branches.add(branch);
+      }
+    }
+  }
+  return branches;
+}
+
 function getRepoFromEnv(env = process.env, execSyncFn = execSync) {
   const envRepo = env.GITHUB_REPOSITORY;
   if (envRepo && envRepo.includes('/')) {
@@ -328,14 +360,15 @@ function compareBranchNullableSetting(branch, setting, expectedValue, actualProt
   return `branch ${branch}: ${setting} mismatch (expected ${expectedJson}, actual ${actualJson})`;
 }
 
-function compareBranchSettings(branch, expected, actualProtection) {
+function compareBranchSettings(branch, expected, actualProtection, options = {}) {
   if (!actualProtection) {
     return [`branch ${branch}: protection settings not found`];
   }
 
+  const skipRequiredStatusChecks = options.skipRequiredStatusChecks === true;
   const diffs = [];
 
-  if (expected.required_status_checks_strict !== undefined) {
+  if (!skipRequiredStatusChecks && expected.required_status_checks_strict !== undefined) {
     const actualStrict = actualProtection.required_status_checks?.strict ?? true;
     if (actualStrict !== Boolean(expected.required_status_checks_strict)) {
       diffs.push(
@@ -344,7 +377,7 @@ function compareBranchSettings(branch, expected, actualProtection) {
     }
   }
 
-  if (Array.isArray(expected.required_status_checks)) {
+  if (!skipRequiredStatusChecks && Array.isArray(expected.required_status_checks)) {
     const actualChecks =
       actualProtection.required_status_checks?.checks?.map((check) => check.context).filter(Boolean) ?? [];
     const normalizedExpected = [...new Set(expected.required_status_checks)].sort();
@@ -659,10 +692,16 @@ function updateStatusRule(rules, expected, actualRule) {
     strict_required_status_checks_policy:
       actualRule?.parameters?.strict_required_status_checks_policy ?? true,
     do_not_enforce_on_create: actualRule?.parameters?.do_not_enforce_on_create ?? false,
-    required_status_checks: expected.map((context) => ({
-      context,
-      integration_id: existingMap.get(context) ?? null
-    }))
+    required_status_checks: expected.map((context) => {
+      const integrationId = existingMap.get(context);
+      if (integrationId === null || integrationId === undefined) {
+        return { context };
+      }
+      return {
+        context,
+        integration_id: integrationId
+      };
+    })
   };
 }
 
@@ -800,6 +839,7 @@ async function collectState(manifest, repoUrl, token, fetchFn) {
 
 function evaluateDiffs(manifest, state) {
   const repoDiffs = compareRepoSettings(manifest.repo ?? {}, state.repoData ?? {});
+  const queueManagedBranches = deriveQueueManagedBranches(manifest);
 
   const branchDiffs = [];
   for (const entry of state.branchStates) {
@@ -811,7 +851,9 @@ function evaluateDiffs(manifest, state) {
       continue;
     }
     branchDiffs.push(
-      ...compareBranchSettings(entry.branch, entry.expectations, entry.protection)
+      ...compareBranchSettings(entry.branch, entry.expectations, entry.protection, {
+        skipRequiredStatusChecks: queueManagedBranches.has(entry.branch)
+      })
     );
   }
 
@@ -1010,6 +1052,7 @@ export async function run({
     }
 
     const initialDiffs = evaluateDiffs(manifest, initialState);
+    const queueManagedBranches = deriveQueueManagedBranches(manifest);
     applyDiffsToReport(initialDiffs);
 
     const allDiffs = [
@@ -1039,7 +1082,10 @@ export async function run({
         const diffs = compareBranchSettings(
           entry.branch,
           entry.expectations,
-          entry.protection
+          entry.protection,
+          {
+            skipRequiredStatusChecks: queueManagedBranches.has(entry.branch)
+          }
         );
         return diffs.length > 0;
       });

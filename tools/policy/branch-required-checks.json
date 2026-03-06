@@ -12,7 +12,7 @@
       "hook-parity (windows-latest)",
       "hook-parity (ubuntu-latest)",
       "vi-history-scenarios-linux",
-      "commit-integrity / commit-integrity"
+      "commit-integrity"
     ],
     "main": [
       "lint",
@@ -20,7 +20,7 @@
       "vi-binary-check",
       "vi-compare",
       "Policy Guard (Upstream) / policy-guard",
-      "commit-integrity / commit-integrity"
+      "commit-integrity"
     ],
     "release/*": [
       "lint",
