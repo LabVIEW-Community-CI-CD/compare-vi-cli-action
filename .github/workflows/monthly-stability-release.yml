@@ -53,6 +53,7 @@ on:
 permissions:
   actions: write
   contents: read
+  issues: write
 
 jobs:
   evaluate-window:
@@ -228,9 +229,22 @@ jobs:
           $versionSummary = "tools=${{ needs.evaluate-window.outputs.tools_version }};shared=${{ needs.evaluate-window.outputs.shared_version }}"
           pwsh -NoLogo -NoProfile -File tools/Write-PromotionEvidenceLedger.ps1 -OutputPath tests/results/promotion-contract/monthly-ledger.json -WorkflowName '${{ github.workflow }}' -Stream 'monthly-stability-release' -Channel 'mixed' -Version $versionSummary -GateStatus $gateStatus -GateReason $details -SummaryPath 'tests/results/promotion-contract/monthly-alignment.json' -StepSummaryPath $env:GITHUB_STEP_SUMMARY
 
+      - name: Emit SLO metrics
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          node tools/priority/slo-metrics.mjs \
+            --repo "${{ github.repository }}" \
+            --output tests/results/_agent/slo/monthly-slo-metrics.json \
+            --route-on-breach \
+            --route-title-prefix "[SLO] Monthly stability breach"
+
       - name: Upload promotion evidence artifact
         uses: actions/upload-artifact@v5
         with:
           name: promotion-evidence-monthly-${{ github.run_id }}
-          path: tests/results/promotion-contract/monthly-ledger.json
+          path: |
+            tests/results/promotion-contract/monthly-ledger.json
+            tests/results/_agent/slo/monthly-slo-metrics.json
           if-no-files-found: error
