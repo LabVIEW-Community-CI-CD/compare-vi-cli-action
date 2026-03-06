@@ -220,6 +220,23 @@ exit 0
       return @([string]$parsed)
     }
 
+    $script:GetDecodedContainerCommand = {
+      param([Parameter(Mandatory)]$Record)
+      $args = @($Record.args | ForEach-Object { [string]$_ })
+      $encodedCommand = $null
+      for ($i = 0; $i -lt ($args.Count - 1); $i++) {
+        if ($args[$i] -eq '-EncodedCommand') {
+          $encodedCommand = $args[$i + 1]
+          break
+        }
+      }
+      if ([string]::IsNullOrWhiteSpace($encodedCommand)) {
+        return ''
+      }
+      $decodedBytes = [Convert]::FromBase64String($encodedCommand)
+      return [System.Text.Encoding]::Unicode.GetString($decodedBytes)
+    }
+
   }
 
   BeforeEach {
@@ -403,6 +420,50 @@ exit 0
     ($labviewEnvKeyOnly -or ($labviewEnvArg -eq ("COMPARE_LABVIEW_PATH={0}" -f $script:ContainerLabVIEWPath))) | Should -BeTrue
     $runArgs | Should -Not -Contain 'Files\National'
     $runArgs | Should -Not -Contain 'Instruments\LabVIEW'
+  }
+
+  It 'passes -LabVIEWPath through the in-container LabVIEWCLI invocation' {
+    $work = Join-Path $TestDrive 'compare-labviewpath-cli-arg'
+    New-Item -ItemType Directory -Path $work | Out-Null
+    & $script:NewDockerStub -WorkRoot $work | Out-Null
+
+    $logPath = Join-Path $work 'docker-log.ndjson'
+    Set-Item Env:DOCKER_STUB_LOG $logPath
+    Set-Item Env:DOCKER_STUB_OSTYPE 'windows'
+    Set-Item Env:DOCKER_STUB_IMAGE_EXISTS '1'
+    Set-Item Env:DOCKER_STUB_CONTEXT 'desktop-windows'
+    Set-Item Env:DOCKER_STUB_RUN_EXIT_CODE '1'
+    Set-Item Env:DOCKER_STUB_RUN_STDOUT 'CreateComparisonReport completed with diff.'
+
+    $baseVi = Join-Path $work 'Base.vi'
+    $headVi = Join-Path $work 'Head.vi'
+    Set-Content -LiteralPath $baseVi -Value 'base' -Encoding utf8
+    Set-Content -LiteralPath $headVi -Value 'head' -Encoding utf8
+    $reportPath = Join-Path $work 'out\compare-report.html'
+
+    $output = & pwsh -NoLogo -NoProfile -File $script:RunnerScript `
+      -BaseVi $baseVi `
+      -HeadVi $headVi `
+      -ReportPath $reportPath `
+      -LabVIEWPath $script:ContainerLabVIEWPath `
+      -RuntimeEngineReadyTimeoutSeconds 5 `
+      -RuntimeEngineReadyPollSeconds 1 2>&1
+    $LASTEXITCODE | Should -Be 1 -Because ($output -join "`n")
+
+    $records = & $script:ReadDockerStubLog -Path $logPath
+    $runRecord = @(
+      $records | Where-Object {
+        $recordArgs = @($_.args | ForEach-Object { [string]$_ })
+        $recordArgs -contains 'run'
+      } | Select-Object -First 1
+    )
+    $runRecord | Should -Not -BeNullOrEmpty
+
+    $decodedCommand = & $script:GetDecodedContainerCommand -Record $runRecord[0]
+    [string]::IsNullOrWhiteSpace($decodedCommand) | Should -BeFalse
+    $decodedCommand | Should -Match '\-LabVIEWPath'
+    $decodedCommand | Should -Match '\$env:COMPARE_LABVIEW_PATH'
+    $decodedCommand | Should -Match '"-Headless",\s*"true"'
   }
 
   It 'writes deterministic capture artifacts for compare execution' {

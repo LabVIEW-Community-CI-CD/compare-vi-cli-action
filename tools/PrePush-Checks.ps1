@@ -247,6 +247,11 @@ if (-not (Test-Path -LiteralPath $headVi -PathType Leaf)) {
 }
 
 $expectedImage = 'nationalinstruments/labview:2026q1-windows'
+$containerLabVIEWPath = if ([string]::IsNullOrWhiteSpace($env:NI_WINDOWS_LABVIEW_PATH)) {
+  'C:\Program Files\National Instruments\LabVIEW 2026\LabVIEW.exe'
+} else {
+  $env:NI_WINDOWS_LABVIEW_PATH.Trim()
+}
 $knownFlags = @('-noattr', '-nofppos', '-nobdcosm')
 $scenarioDir = Join-Path $root 'tests' 'results' '_agent' 'pre-push-ni-image'
 New-Item -ItemType Directory -Path $scenarioDir -Force | Out-Null
@@ -256,11 +261,12 @@ $runtimeSnapshotPath = Join-Path $scenarioDir 'runtime-determinism.json'
 Write-Host '[pre-push] Running NI image known-flag scenario (real container compare)' -ForegroundColor Cyan
 Push-Location $root
 try {
-  pwsh -NoLogo -NoProfile -File $niCompareScript `
+  & $niCompareScript `
     -BaseVi $baseVi `
     -HeadVi $headVi `
     -Image $expectedImage `
     -ReportPath $reportPath `
+    -LabVIEWPath $containerLabVIEWPath `
     -Flags $knownFlags `
     -TimeoutSeconds 240 `
     -HeartbeatSeconds 15 `

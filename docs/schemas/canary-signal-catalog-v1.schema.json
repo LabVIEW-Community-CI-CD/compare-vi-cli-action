@@ -1,0 +1,121 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "canary-signal-catalog@v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema",
+    "schemaVersion",
+    "signals"
+  ],
+  "properties": {
+    "schema": {
+      "const": "canary-signal-catalog@v1"
+    },
+    "schemaVersion": {
+      "type": "string"
+    },
+    "description": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "signals": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "id",
+          "sourceType",
+          "incidentClass",
+          "branch",
+          "signaturePattern",
+          "severity",
+          "owner",
+          "labels",
+          "expectedRoute"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "minLength": 1
+          },
+          "sourceType": {
+            "enum": [
+              "incident-event",
+              "workflow-run",
+              "required-check-drift",
+              "deployment-state"
+            ]
+          },
+          "incidentClass": {
+            "type": "string",
+            "minLength": 1
+          },
+          "branch": {
+            "type": "string",
+            "minLength": 1
+          },
+          "signaturePattern": {
+            "type": "string",
+            "minLength": 1
+          },
+          "severity": {
+            "enum": [
+              "critical",
+              "high",
+              "medium",
+              "low",
+              "info"
+            ]
+          },
+          "owner": {
+            "type": "string",
+            "minLength": 1
+          },
+          "labels": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "expectedRoute": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "actionType",
+              "priority",
+              "labels"
+            ],
+            "properties": {
+              "actionType": {
+                "enum": [
+                  "open-issue",
+                  "update-issue",
+                  "comment",
+                  "pause-queue",
+                  "noop"
+                ]
+              },
+              "priority": {
+                "enum": [
+                  "P0",
+                  "P1",
+                  "P2"
+                ]
+              },
+              "labels": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}
