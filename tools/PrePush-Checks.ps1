@@ -215,6 +215,92 @@ function Invoke-SafeGitReliabilitySummary([string]$repoRoot){
   Write-Host '[pre-push] safe-git reliability summary OK' -ForegroundColor Green
 }
 
+function Write-PrePushNIKnownFlagIncidentEvent {
+  param(
+    [string]$repoRoot,
+    [string]$errorMessage,
+    [string]$scenarioDir,
+    [string]$expectedImage,
+    [string]$containerLabVIEWPath,
+    [string[]]$knownFlags,
+    [string]$reportPath,
+    [string]$runtimeSnapshotPath
+  )
+
+  $eventIngestScript = Join-Path $repoRoot 'tools' 'priority' 'event-ingest.mjs'
+  if (-not (Test-Path -LiteralPath $eventIngestScript -PathType Leaf)) {
+    Write-Warning ("[pre-push] event-ingest script missing; cannot emit NI known-flag incident event: {0}" -f $eventIngestScript)
+    return $null
+  }
+
+  $canaryDir = Join-Path $repoRoot 'tests' 'results' '_agent' 'canary'
+  New-Item -ItemType Directory -Path $canaryDir -Force | Out-Null
+  $inputPath = Join-Path $canaryDir 'pre-push-ni-known-flag-incident-input.json'
+  $eventReportPath = Join-Path $canaryDir 'pre-push-ni-known-flag-incident-event.json'
+
+  $capturePath = Join-Path $scenarioDir 'ni-windows-container-capture.json'
+  $repository = if ([string]::IsNullOrWhiteSpace($env:GITHUB_REPOSITORY)) {
+    'local/compare-vi-cli-action'
+  } else {
+    $env:GITHUB_REPOSITORY
+  }
+
+  $branchName = $null
+  $sha = $null
+  try {
+    $branchRaw = & git -C $repoRoot rev-parse --abbrev-ref HEAD 2>$null
+    if ($LASTEXITCODE -eq 0 -and $branchRaw) {
+      $branchName = ($branchRaw | Select-Object -First 1).Trim()
+      if ($branchName -eq 'HEAD') {
+        $branchName = $null
+      }
+    }
+  } catch {}
+  try {
+    $shaRaw = & git -C $repoRoot rev-parse HEAD 2>$null
+    if ($LASTEXITCODE -eq 0 -and $shaRaw) {
+      $sha = ($shaRaw | Select-Object -First 1).Trim()
+    }
+  } catch {}
+
+  $payload = [ordered]@{
+    class = 'pre-push-ni-known-flag-failure'
+    severity = 'high'
+    source = 'pre-push-ni-known-flag'
+    repository = $repository
+    branch = $branchName
+    sha = $sha
+    summary = $errorMessage
+    occurredAt = (Get-Date).ToUniversalTime().ToString('o')
+    labels = @('ci', 'canary')
+    metadata = [ordered]@{
+      scenario = 'ni-known-flag'
+      expectedImage = $expectedImage
+      containerLabVIEWPath = $containerLabVIEWPath
+      knownFlags = @($knownFlags)
+      scenarioDir = $scenarioDir
+      compareReportPath = $reportPath
+      capturePath = $capturePath
+      runtimeSnapshotPath = $runtimeSnapshotPath
+      captureExists = [bool](Test-Path -LiteralPath $capturePath -PathType Leaf)
+      reportExists = [bool](Test-Path -LiteralPath $reportPath -PathType Leaf)
+      runtimeSnapshotExists = [bool](Test-Path -LiteralPath $runtimeSnapshotPath -PathType Leaf)
+    }
+  }
+
+  $payload | ConvertTo-Json -Depth 20 | Set-Content -LiteralPath $inputPath -Encoding utf8
+  & node $eventIngestScript `
+    --source-type incident-event `
+    --input $inputPath `
+    --report $eventReportPath
+  if ($LASTEXITCODE -ne 0) {
+    Write-Warning ("[pre-push] NI known-flag incident normalization failed (exit={0})." -f $LASTEXITCODE)
+    return $null
+  }
+
+  return $eventReportPath
+}
+
 $root = (Get-RepoRoot).Path
 Invoke-WorkspaceHealthGate -repoRoot $root
 $guardScript = Join-Path (Split-Path -Parent $PSCommandPath) 'Assert-NoAmbiguousRemoteRefs.ps1'
@@ -325,74 +411,91 @@ New-Item -ItemType Directory -Path $scenarioDir -Force | Out-Null
 $reportPath = Join-Path $scenarioDir 'compare-report.html'
 $runtimeSnapshotPath = Join-Path $scenarioDir 'runtime-determinism.json'
 
-Write-Host '[pre-push] Running NI image known-flag scenario (real container compare)' -ForegroundColor Cyan
-Push-Location $root
 try {
-  & $niCompareScript `
-    -BaseVi $baseVi `
-    -HeadVi $headVi `
-    -Image $expectedImage `
-    -ReportPath $reportPath `
-    -LabVIEWPath $containerLabVIEWPath `
-    -Flags $knownFlags `
-    -TimeoutSeconds 240 `
-    -HeartbeatSeconds 15 `
-    -AutoRepairRuntime:$true `
-    -ManageDockerEngine:$false `
-    -RuntimeEngineReadyTimeoutSeconds 120 `
-    -RuntimeEngineReadyPollSeconds 3 `
-    -RuntimeSnapshotPath $runtimeSnapshotPath
-  $compareExit = $LASTEXITCODE
-  if ($compareExit -ne 0) {
-    throw ("NI image known-flag scenario compare failed (exit={0})." -f $compareExit)
+  Write-Host '[pre-push] Running NI image known-flag scenario (real container compare)' -ForegroundColor Cyan
+  Push-Location $root
+  try {
+    & $niCompareScript `
+      -BaseVi $baseVi `
+      -HeadVi $headVi `
+      -Image $expectedImage `
+      -ReportPath $reportPath `
+      -LabVIEWPath $containerLabVIEWPath `
+      -Flags $knownFlags `
+      -TimeoutSeconds 240 `
+      -HeartbeatSeconds 15 `
+      -AutoRepairRuntime:$true `
+      -ManageDockerEngine:$false `
+      -RuntimeEngineReadyTimeoutSeconds 120 `
+      -RuntimeEngineReadyPollSeconds 3 `
+      -RuntimeSnapshotPath $runtimeSnapshotPath
+    $compareExit = $LASTEXITCODE
+    if ($compareExit -ne 0) {
+      throw ("NI image known-flag scenario compare failed (exit={0})." -f $compareExit)
+    }
+  } finally {
+    Pop-Location | Out-Null
   }
-} finally {
-  Pop-Location | Out-Null
-}
 
-$capturePath = Join-Path $scenarioDir 'ni-windows-container-capture.json'
-if (-not (Test-Path -LiteralPath $capturePath -PathType Leaf)) {
-  throw ("NI image known-flag scenario capture missing: {0}" -f $capturePath)
-}
-$capture = Get-Content -LiteralPath $capturePath -Raw | ConvertFrom-Json -Depth 20
-$gateOutcome = if ($capture.PSObject.Properties['gateOutcome']) { [string]$capture.gateOutcome } else { '' }
-$resultClass = if ($capture.PSObject.Properties['resultClass']) { [string]$capture.resultClass } else { '' }
-$imageUsed = if ($capture.PSObject.Properties['image']) { [string]$capture.image } else { '' }
-$commandText = if ($capture.PSObject.Properties['command']) { [string]$capture.command } else { '' }
-$flagsUsed = @()
-if ($capture.PSObject.Properties['flags'] -and $capture.flags) {
-  $flagsUsed = @($capture.flags | ForEach-Object { [string]$_ })
-}
-
-if (-not [string]::Equals($imageUsed, $expectedImage, [System.StringComparison]::OrdinalIgnoreCase)) {
-  throw ("NI image known-flag scenario used unexpected image: {0}" -f $imageUsed)
-}
-if (-not [string]::Equals($gateOutcome, 'pass', [System.StringComparison]::OrdinalIgnoreCase)) {
-  throw ("NI image known-flag scenario did not pass (resultClass={0}, gateOutcome={1})." -f $resultClass, $gateOutcome)
-}
-if ([string]::IsNullOrWhiteSpace($commandText) -or $commandText -notmatch '(?i)docker run') {
-  throw 'NI image known-flag scenario did not emit a docker run command in capture evidence.'
-}
-foreach ($flag in $knownFlags) {
-  if ($flagsUsed -notcontains $flag) {
-    throw ("NI image known-flag scenario missing expected flag in capture: {0}" -f $flag)
+  $capturePath = Join-Path $scenarioDir 'ni-windows-container-capture.json'
+  if (-not (Test-Path -LiteralPath $capturePath -PathType Leaf)) {
+    throw ("NI image known-flag scenario capture missing: {0}" -f $capturePath)
   }
-}
-if ($flagsUsed -notcontains '-Headless') {
-  throw 'NI image known-flag scenario missing enforced -Headless flag in capture.'
-}
+  $capture = Get-Content -LiteralPath $capturePath -Raw | ConvertFrom-Json -Depth 20
+  $gateOutcome = if ($capture.PSObject.Properties['gateOutcome']) { [string]$capture.gateOutcome } else { '' }
+  $resultClass = if ($capture.PSObject.Properties['resultClass']) { [string]$capture.resultClass } else { '' }
+  $imageUsed = if ($capture.PSObject.Properties['image']) { [string]$capture.image } else { '' }
+  $commandText = if ($capture.PSObject.Properties['command']) { [string]$capture.command } else { '' }
+  $flagsUsed = @()
+  if ($capture.PSObject.Properties['flags'] -and $capture.flags) {
+    $flagsUsed = @($capture.flags | ForEach-Object { [string]$_ })
+  }
 
-if ($env:GITHUB_STEP_SUMMARY) {
-  $lines = @(
-    '### Pre-push NI Image Scenario',
-    '',
-    ('- image: `{0}`' -f $imageUsed),
-    ('- resultClass: `{0}`' -f $resultClass),
-    ('- gateOutcome: `{0}`' -f $gateOutcome),
-    ('- flags: `{0}`' -f [string]::Join(', ', $flagsUsed)),
-    ('- capture: `{0}`' -f $capturePath),
-    ('- report: `{0}`' -f $reportPath)
-  )
-  $lines -join "`n" | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8
+  if (-not [string]::Equals($imageUsed, $expectedImage, [System.StringComparison]::OrdinalIgnoreCase)) {
+    throw ("NI image known-flag scenario used unexpected image: {0}" -f $imageUsed)
+  }
+  if (-not [string]::Equals($gateOutcome, 'pass', [System.StringComparison]::OrdinalIgnoreCase)) {
+    throw ("NI image known-flag scenario did not pass (resultClass={0}, gateOutcome={1})." -f $resultClass, $gateOutcome)
+  }
+  if ([string]::IsNullOrWhiteSpace($commandText) -or $commandText -notmatch '(?i)docker run') {
+    throw 'NI image known-flag scenario did not emit a docker run command in capture evidence.'
+  }
+  foreach ($flag in $knownFlags) {
+    if ($flagsUsed -notcontains $flag) {
+      throw ("NI image known-flag scenario missing expected flag in capture: {0}" -f $flag)
+    }
+  }
+  if ($flagsUsed -notcontains '-Headless') {
+    throw 'NI image known-flag scenario missing enforced -Headless flag in capture.'
+  }
+
+  if ($env:GITHUB_STEP_SUMMARY) {
+    $lines = @(
+      '### Pre-push NI Image Scenario',
+      '',
+      ('- image: `{0}`' -f $imageUsed),
+      ('- resultClass: `{0}`' -f $resultClass),
+      ('- gateOutcome: `{0}`' -f $gateOutcome),
+      ('- flags: `{0}`' -f [string]::Join(', ', $flagsUsed)),
+      ('- capture: `{0}`' -f $capturePath),
+      ('- report: `{0}`' -f $reportPath)
+    )
+    $lines -join "`n" | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8
+  }
+  Write-Host '[pre-push] NI image known-flag scenarios OK' -ForegroundColor Green
+} catch {
+  $failureMessage = if ($_.Exception -and $_.Exception.Message) { $_.Exception.Message } else { [string]$_ }
+  $eventReportPath = Write-PrePushNIKnownFlagIncidentEvent `
+    -repoRoot $root `
+    -errorMessage $failureMessage `
+    -scenarioDir $scenarioDir `
+    -expectedImage $expectedImage `
+    -containerLabVIEWPath $containerLabVIEWPath `
+    -knownFlags $knownFlags `
+    -reportPath $reportPath `
+    -runtimeSnapshotPath $runtimeSnapshotPath
+  if (-not [string]::IsNullOrWhiteSpace($eventReportPath)) {
+    Write-Host ("[pre-push] NI known-flag incident event report: {0}" -f $eventReportPath) -ForegroundColor Yellow
+  }
+  throw
 }
-Write-Host '[pre-push] NI image known-flag scenarios OK' -ForegroundColor Green

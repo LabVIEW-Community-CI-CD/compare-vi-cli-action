@@ -40,6 +40,15 @@ test('PrePush includes local PSScriptAnalyzer gate for changed PowerShell files'
   assert.match(content, /Invoke-PSScriptAnalyzerGate -repoRoot \$root/);
 });
 
+test('PrePush emits deterministic incident-event report for NI known-flag failures', () => {
+  const content = readRepoFile('tools/PrePush-Checks.ps1');
+  assert.match(content, /function Write-PrePushNIKnownFlagIncidentEvent/);
+  assert.match(content, /--source-type incident-event/);
+  assert.match(content, /pre-push-ni-known-flag-incident-input\.json/);
+  assert.match(content, /pre-push-ni-known-flag-incident-event\.json/);
+  assert.match(content, /\[pre-push\] NI known-flag incident event report:/);
+});
+
 test('policy workflows enforce workspace health gate and publish health artifacts', () => {
   const guardWorkflow = readRepoFile('.github/workflows/policy-guard-upstream.yml');
   assert.match(guardWorkflow, /Workspace health gate/);
