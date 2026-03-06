@@ -15,6 +15,9 @@ const DEFAULT_REPORT_PATH = path.join(
 );
 const DEFAULT_POLICY_PATH = path.join('tools', 'policy', 'commit-integrity-policy.json');
 const DEFAULT_POLICY_CHECKS = Object.freeze({
+  requireBotAllowlist: false,
+  allowedBotLogins: Object.freeze([]),
+  allowedBotEmailPatterns: Object.freeze([]),
   requireAuthorAttribution: true,
   requireCommitterAttribution: true,
   requireKnownReasonForUnverified: true,
@@ -440,7 +443,46 @@ function normalizeChecks(checks = {}) {
     }
   }
 
+  const normalizedAllowedBotLogins = Array.from(
+    new Set(
+      (Array.isArray(checks.allowedBotLogins) ? checks.allowedBotLogins : [])
+        .map((entry) => normalizeOptionalString(entry)?.toLowerCase())
+        .filter(Boolean)
+    )
+  );
+
+  const normalizedAllowedBotEmailPatterns = [];
+  const normalizedAllowedBotEmailRegexes = [];
+  for (const [index, rawPattern] of (Array.isArray(checks.allowedBotEmailPatterns) ? checks.allowedBotEmailPatterns : []).entries()) {
+    const pattern = normalizeOptionalString(rawPattern);
+    if (!pattern) {
+      continue;
+    }
+    try {
+      normalizedAllowedBotEmailPatterns.push(pattern);
+      normalizedAllowedBotEmailRegexes.push(new RegExp(pattern, 'i'));
+    } catch (error) {
+      throw new Error(`Invalid bot email pattern at index ${index}: ${error.message}`);
+    }
+  }
+
   return {
+    requireBotAllowlist:
+      checks.requireBotAllowlist !== undefined
+        ? Boolean(checks.requireBotAllowlist)
+        : DEFAULT_POLICY_CHECKS.requireBotAllowlist,
+    allowedBotLogins:
+      normalizedAllowedBotLogins.length > 0
+        ? normalizedAllowedBotLogins
+        : DEFAULT_POLICY_CHECKS.allowedBotLogins,
+    allowedBotEmailPatterns:
+      normalizedAllowedBotEmailPatterns.length > 0
+        ? normalizedAllowedBotEmailPatterns
+        : DEFAULT_POLICY_CHECKS.allowedBotEmailPatterns,
+    allowedBotEmailRegexes:
+      normalizedAllowedBotEmailRegexes.length > 0
+        ? normalizedAllowedBotEmailRegexes
+        : [],
     requireAuthorAttribution:
       checks.requireAuthorAttribution !== undefined
         ? Boolean(checks.requireAuthorAttribution)
@@ -499,6 +541,36 @@ function addViolation(violations, commit, category, reason) {
     authorLogin: commit.authorLogin,
     committerLogin: commit.committerLogin
   });
+}
+
+function evaluateBotIdentityAllowlist(commit, checks) {
+  if (!checks.requireBotAllowlist || commit.sourceKind !== 'bot') {
+    return {
+      passed: true,
+      reason: null
+    };
+  }
+
+  const loginCandidates = [commit.authorLogin, commit.committerLogin]
+    .map((entry) => normalizeOptionalString(entry)?.toLowerCase())
+    .filter(Boolean);
+  const emailCandidates = [commit.authorEmail, commit.committerEmail]
+    .map((entry) => normalizeOptionalString(entry))
+    .filter(Boolean);
+
+  const loginAllowed = loginCandidates.some((entry) => checks.allowedBotLogins.includes(entry));
+  const emailAllowed = emailCandidates.some((entry) => checks.allowedBotEmailRegexes.some((regex) => regex.test(entry)));
+  if (loginAllowed || emailAllowed) {
+    return {
+      passed: true,
+      reason: null
+    };
+  }
+
+  return {
+    passed: false,
+    reason: `bot identity not allowlisted (logins=${loginCandidates.join('|') || 'none'}, emails=${emailCandidates.join('|') || 'none'})`
+  };
 }
 
 function evaluateRequiredTrailer(commit, requiredTrailerRules) {
@@ -567,6 +639,10 @@ export function evaluateCommitIntegrity(commits, { checks = {} } = {}) {
   }
 
   for (const commit of list) {
+    const botAllowlistEvaluation = evaluateBotIdentityAllowlist(commit, effectiveChecks);
+    if (!botAllowlistEvaluation.passed) {
+      addViolation(violations, commit, 'unauthorized-bot-identity', botAllowlistEvaluation.reason);
+    }
     if (effectiveChecks.requireNonEmptyHeadline && !commit.messageHeadline) {
       addViolation(violations, commit, 'empty-headline', 'commit headline is empty');
     }
@@ -636,6 +712,14 @@ export function evaluateCommitIntegrity(commits, { checks = {} } = {}) {
       !effectiveChecks.requireSignatureVerificationAvailable ||
       !violations.some((violation) => violation.category === 'signature-verification-unavailable'),
     failureCount: violations.filter((violation) => violation.category === 'signature-verification-unavailable').length
+  });
+  checkResults.push({
+    name: 'bot-identity-allowlist',
+    enabled: effectiveChecks.requireBotAllowlist,
+    passed:
+      !effectiveChecks.requireBotAllowlist ||
+      !violations.some((violation) => violation.category === 'unauthorized-bot-identity'),
+    failureCount: violations.filter((violation) => violation.category === 'unauthorized-bot-identity').length
   });
   checkResults.push({
     name: 'author-attribution',
@@ -776,6 +860,7 @@ async function loadPolicy(policyPath) {
 
   const sourceResolution = parsed?.source_resolution ?? {};
   const checkSettings = parsed?.checks ?? {};
+  const botIdentityPolicy = parsed?.bot_identity_policy ?? {};
   const trailerContract = parsed?.trailer_contract ?? {};
   const requiredAnyTrailers = Array.isArray(trailerContract.required_any)
     ? trailerContract.required_any.map((entry) => ({
@@ -788,6 +873,9 @@ async function loadPolicy(policyPath) {
     schema: normalizeOptionalString(parsed?.schema) ?? 'commit-integrity-policy/v1',
     failOnUnverified: parsed?.verification?.fail_on_unverified !== false,
     checks: normalizeChecks({
+      requireBotAllowlist: botIdentityPolicy.require_allowlist_for_bot_commits,
+      allowedBotLogins: botIdentityPolicy.allowed_bot_logins,
+      allowedBotEmailPatterns: botIdentityPolicy.allowed_bot_email_patterns,
       requireAuthorAttribution: checkSettings.require_author_attribution,
       requireCommitterAttribution: checkSettings.require_committer_attribution,
       requireKnownReasonForUnverified: checkSettings.require_non_unknown_reason_for_unverified,
@@ -846,6 +934,7 @@ function buildReport({
       path: policy.path,
       failOnUnverified: policy.failOnUnverified,
       checks: {
+        requireBotAllowlist: policy.checks.requireBotAllowlist,
         requireAuthorAttribution: policy.checks.requireAuthorAttribution,
         requireCommitterAttribution: policy.checks.requireCommitterAttribution,
         requireKnownReasonForUnverified: policy.checks.requireKnownReasonForUnverified,
@@ -859,6 +948,10 @@ function buildReport({
       sourceResolution: {
         botLoginPatternCount: policy.sourceResolution.botLoginRegexes.length,
         botEmailPatternCount: policy.sourceResolution.botEmailRegexes.length
+      },
+      botIdentityPolicy: {
+        allowedBotLogins: policy.checks.allowedBotLogins,
+        allowedBotEmailPatterns: policy.checks.allowedBotEmailPatterns
       },
       trailerContract: {
         requiredAny: policy.checks.requiredTrailerRules.map((rule) => ({
@@ -958,6 +1051,7 @@ export async function runCommitIntegrity({
         path: path.resolve(options.policyPath ?? DEFAULT_POLICY_PATH),
         failOnUnverified: true,
         checks: {
+          requireBotAllowlist: DEFAULT_POLICY_CHECKS.requireBotAllowlist,
             requireAuthorAttribution: DEFAULT_POLICY_CHECKS.requireAuthorAttribution,
             requireCommitterAttribution: DEFAULT_POLICY_CHECKS.requireCommitterAttribution,
           requireKnownReasonForUnverified: DEFAULT_POLICY_CHECKS.requireKnownReasonForUnverified,
@@ -971,6 +1065,10 @@ export async function runCommitIntegrity({
         sourceResolution: {
           botLoginPatternCount: 0,
           botEmailPatternCount: 0
+        },
+        botIdentityPolicy: {
+          allowedBotLogins: [],
+          allowedBotEmailPatterns: []
         },
         trailerContract: {
           requiredAny: []

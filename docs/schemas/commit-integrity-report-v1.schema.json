@@ -79,6 +79,7 @@
         "failOnUnverified",
         "checks",
         "sourceResolution",
+        "botIdentityPolicy",
         "trailerContract"
       ],
       "properties": {
@@ -95,6 +96,7 @@
           "type": "object",
           "additionalProperties": false,
           "required": [
+            "requireBotAllowlist",
             "requireAuthorAttribution",
             "requireCommitterAttribution",
             "requireKnownReasonForUnverified",
@@ -106,6 +108,9 @@
             "requireRequiredTrailer"
           ],
           "properties": {
+            "requireBotAllowlist": {
+              "type": "boolean"
+            },
             "requireAuthorAttribution": {
               "type": "boolean"
             },
@@ -151,6 +156,28 @@
             "botEmailPatternCount": {
               "type": "integer",
               "minimum": 0
+            }
+          }
+        },
+        "botIdentityPolicy": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "allowedBotLogins",
+            "allowedBotEmailPatterns"
+          ],
+          "properties": {
+            "allowedBotLogins": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "allowedBotEmailPatterns": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
             }
           }
         },

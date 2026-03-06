@@ -39,6 +39,11 @@ const requiredTrailerRules = [
   { key: 'Issue', valuePattern: '^#\\d+$' },
   { key: 'Refs', valuePattern: '^#\\d+$' }
 ];
+const allowedBotLogins = ['dependabot[bot]', 'github-actions[bot]'];
+const allowedBotEmailPatterns = [
+  '^[0-9]+\\+dependabot\\[bot\\]@users\\.noreply\\.github\\.com$',
+  '^41898282\\+github-actions\\[bot\\]@users\\.noreply\\.github\\.com$'
+];
 
 test('parseArgs supports observe-only and pull-request selection', () => {
   const options = parseArgs([
@@ -298,4 +303,60 @@ test('evaluateCommitIntegrity reports empty-range issue deterministically', () =
   });
   assert.equal(evaluation.result, 'fail');
   assert.ok(evaluation.issues.includes('no-commits-found'));
+});
+
+test('evaluateCommitIntegrity allows allowlisted bot identities', () => {
+  const commits = normalizeCommitRecords(
+    [
+      createRawCommit({
+        sha: 'bot01',
+        authorLogin: 'dependabot[bot]',
+        committerLogin: 'dependabot[bot]',
+        authorEmail: '49699333+dependabot[bot]@users.noreply.github.com',
+        committerEmail: '49699333+dependabot[bot]@users.noreply.github.com',
+        message: 'chore: update deps\n\nIssue: #772'
+      })
+    ],
+    sourceResolution
+  );
+  const evaluation = evaluateCommitIntegrity(commits, {
+    checks: {
+      requireBotAllowlist: true,
+      allowedBotLogins,
+      allowedBotEmailPatterns,
+      requireRequiredTrailer: true,
+      requiredTrailerRules
+    }
+  });
+
+  assert.equal(evaluation.result, 'pass');
+  assert.ok(!evaluation.violations.some((violation) => violation.category === 'unauthorized-bot-identity'));
+});
+
+test('evaluateCommitIntegrity fails on non-allowlisted bot identities', () => {
+  const commits = normalizeCommitRecords(
+    [
+      createRawCommit({
+        sha: 'bot02',
+        authorLogin: 'renovate[bot]',
+        committerLogin: 'renovate[bot]',
+        authorEmail: 'renovate[bot]@users.noreply.github.com',
+        committerEmail: 'renovate[bot]@users.noreply.github.com',
+        message: 'chore: update deps\n\nIssue: #772'
+      })
+    ],
+    sourceResolution
+  );
+  const evaluation = evaluateCommitIntegrity(commits, {
+    checks: {
+      requireBotAllowlist: true,
+      allowedBotLogins,
+      allowedBotEmailPatterns,
+      requireRequiredTrailer: true,
+      requiredTrailerRules
+    }
+  });
+
+  assert.equal(evaluation.result, 'fail');
+  assert.ok(evaluation.violations.some((violation) => violation.category === 'unauthorized-bot-identity'));
 });
