@@ -1905,7 +1905,9 @@ export async function main(options = {}) {
         return result;
       }
     }
-    throw err;
+    if (shouldRethrowStandingPriorityError(err, standingPriority)) {
+      throw err;
+    }
   }
   const number = standingPriority.number;
   const issueRepoSlug = standingPriority.repoSlug || slug || null;
@@ -2067,6 +2069,14 @@ export async function closeProxyAgents() {
   if (closeOps.length > 0) {
     await Promise.allSettled(closeOps);
   }
+}
+
+export function shouldRethrowStandingPriorityError(err, standingPriority) {
+  if (!err) return false;
+  if (err?.code === 'NO_STANDING_PRIORITY' && standingPriority) {
+    return false;
+  }
+  return true;
 }
 
 export function determinePrioritySyncExitCode(err, { failOnMissing = false, failOnMultiple = false } = {}) {
