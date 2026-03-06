@@ -33,7 +33,8 @@
   Additional CLI flags appended to CreateComparisonReport.
 
 .PARAMETER LabVIEWPath
-  Optional explicit in-container LabVIEW.exe path forwarded as -LabVIEWPath.
+  Required for compare mode (non-probe). Explicit in-container LabVIEW.exe path
+  forwarded to the container as COMPARE_LABVIEW_PATH.
 
 .PARAMETER Probe
   Preflight only (Docker availability, Windows container mode, and image
@@ -56,6 +57,7 @@ param(
   [string]$LabVIEWPath,
   [bool]$AutoRepairRuntime = $true,
   [bool]$ManageDockerEngine = $true,
+  [bool]$AllowHostEngineMutation = $false,
   [int]$RuntimeEngineReadyTimeoutSeconds = 120,
   [int]$RuntimeEngineReadyPollSeconds = 3,
   [string]$RuntimeSnapshotPath,
@@ -90,9 +92,28 @@ function Resolve-DockerCommandSource {
   if (-not [string]::IsNullOrWhiteSpace($override) -and (Test-Path -LiteralPath $override -PathType Leaf)) {
     return [System.IO.Path]::GetFullPath($override)
   }
+
+  $commands = @(Get-Command -Name 'docker' -All -ErrorAction SilentlyContinue)
+  if ($commands.Count -gt 0) {
+    $sourceCandidates = @()
+    foreach ($command in $commands) {
+      if ([string]::IsNullOrWhiteSpace([string]$command.Source)) { continue }
+      $source = [string]$command.Source
+      if (-not (Test-Path -LiteralPath $source -PathType Leaf)) { continue }
+      $sourceCandidates += $source
+    }
+    if ($sourceCandidates.Count -gt 0) {
+      $exe = @($sourceCandidates | Where-Object { [System.StringComparer]::OrdinalIgnoreCase.Equals([System.IO.Path]::GetExtension($_), '.exe') } | Select-Object -First 1)
+      if ($exe.Count -gt 0) { return [System.IO.Path]::GetFullPath($exe[0]) }
+      $ps1 = @($sourceCandidates | Where-Object { [System.StringComparer]::OrdinalIgnoreCase.Equals([System.IO.Path]::GetExtension($_), '.ps1') } | Select-Object -First 1)
+      if ($ps1.Count -gt 0) { return [System.IO.Path]::GetFullPath($ps1[0]) }
+      return [System.IO.Path]::GetFullPath($sourceCandidates[0])
+    }
+  }
+
   $pathSeparator = [System.IO.Path]::PathSeparator
   $pathEntries = @($env:PATH -split [regex]::Escape([string]$pathSeparator))
-  $candidates = @('docker.cmd', 'docker.ps1', 'docker.exe', 'docker.bat', 'docker')
+  $candidates = @('docker.exe', 'docker.ps1', 'docker.cmd', 'docker.bat', 'docker')
   foreach ($entry in $pathEntries) {
     if ([string]::IsNullOrWhiteSpace($entry)) { continue }
     foreach ($name in $candidates) {
@@ -171,21 +192,21 @@ function Resolve-ReportTypeInfo {
     'html' {
       return [pscustomobject]@{
         InputType     = 'html'
-        CliReportType = 'HTMLSingleFile'
+        CliReportType = 'html'
         Extension     = 'html'
       }
     }
     'xml' {
       return [pscustomobject]@{
         InputType     = 'xml'
-        CliReportType = 'XML'
+        CliReportType = 'xml'
         Extension     = 'xml'
       }
     }
     'text' {
       return [pscustomobject]@{
         InputType     = 'text'
-        CliReportType = 'Text'
+        CliReportType = 'text'
         Extension     = 'txt'
       }
     }
@@ -313,9 +334,6 @@ $args = @(
   "-ReportType", $env:COMPARE_REPORT_TYPE,
   "-Headless"
 )
-if (-not [string]::IsNullOrWhiteSpace($env:COMPARE_LABVIEW_PATH)) {
-  $args += @("-LabVIEWPath", $env:COMPARE_LABVIEW_PATH)
-}
 $flags = @()
 if (-not [string]::IsNullOrWhiteSpace($env:COMPARE_FLAGS_B64)) {
   $rawBytes = [System.Convert]::FromBase64String($env:COMPARE_FLAGS_B64)
@@ -415,15 +433,20 @@ while ($attempt -lt $maxAttempts) {
   if ($lastExit -eq 0) { break }
   $text = if ([string]::IsNullOrWhiteSpace($output)) { '' } else { [string]$output }
   $isCliFailure = ($text -match 'Error code\s*:' -or $text -match 'An error occurred while running the LabVIEW CLI')
-  if ($lastExit -eq 1 -and -not $isCliFailure) { break }
-  $isStartupTimeout = ($text -match '-350000')
-  if ($isStartupTimeout -and $attempt -lt $maxAttempts) {
+  $isStartupConnectivity = (
+    $lastExit -in @(-350000, -350051) -or
+    $text -match '-350000' -or
+    $text -match '-350051' -or
+    $text -match '(?i)Preparing modules for first use'
+  )
+  if ($isStartupConnectivity -and $attempt -lt $maxAttempts) {
     $meta.retryTriggered = $true
     if ($retryDelay -gt 0) {
       Start-Sleep -Seconds $retryDelay
     }
     continue
   }
+  if ($lastExit -eq 1 -and -not $isCliFailure) { break }
   break
 }
 Write-Output ("[ni-container-meta]retryAttempts={0};retryTriggered={1};prelaunchAttempted={2};iniPath={3};openTimeout={4};afterLaunchTimeout={5}" -f $meta.retryAttempts, ($(if ($meta.retryTriggered) { 1 } else { 0 })), ($(if ($meta.prelaunchAttempted) { 1 } else { 0 })), $meta.iniPath, $meta.openTimeout, $meta.afterLaunchTimeout)
@@ -482,10 +505,21 @@ function Invoke-DockerRunWithTimeout {
     $dockerCommandSource = Resolve-DockerCommandSource
     $startFilePath = $dockerCommandSource
     $startArgs = @($DockerArgs)
-    if ([System.StringComparer]::OrdinalIgnoreCase.Equals([System.IO.Path]::GetExtension($dockerCommandSource), '.ps1')) {
+    $dockerSourceExt = [System.IO.Path]::GetExtension($dockerCommandSource)
+    if ([System.StringComparer]::OrdinalIgnoreCase.Equals($dockerSourceExt, '.ps1')) {
       $pwshExe = (Get-Command -Name 'pwsh' -ErrorAction Stop).Source
       $startFilePath = $pwshExe
-      $startArgs = @('-NoLogo', '-NoProfile', '-File', $dockerCommandSource) + @($DockerArgs)
+      $quotedDockerArgs = @(
+        foreach ($arg in @($DockerArgs)) {
+          $text = [string]$arg
+          if ($text -match '\s') {
+            '"{0}"' -f ($text -replace '"', '\"')
+          } else {
+            $text
+          }
+        }
+      )
+      $startArgs = @('-NoLogo', '-NoProfile', '-File', $dockerCommandSource) + $quotedDockerArgs
     }
 
     $process = Start-Process -FilePath $startFilePath `
@@ -779,8 +813,8 @@ function Get-ReportAnalysis {
   try {
     $html = Get-Content -LiteralPath $ExtractedReportPath -Raw -ErrorAction Stop
     $analysis.htmlParsed = $true
-    $analysis.diffMarkerCount = [regex]::Matches($html, 'summary\.difference-heading', [System.Text.RegularExpressions.RegexOptions]::IgnoreCase).Count
-    $analysis.diffDetailCount = [regex]::Matches($html, 'li\.diff-detail(?:-cosmetic)?', [System.Text.RegularExpressions.RegexOptions]::IgnoreCase).Count
+    $analysis.diffMarkerCount = [regex]::Matches($html, '(summary\.difference-heading|<summary[^>]+class\s*=\s*["''][^"'']*difference-heading)', [System.Text.RegularExpressions.RegexOptions]::IgnoreCase).Count
+    $analysis.diffDetailCount = [regex]::Matches($html, '(li\.diff-detail(?:-cosmetic)?|<li[^>]+class\s*=\s*["''][^"'']*diff-detail(?:-cosmetic)?)', [System.Text.RegularExpressions.RegexOptions]::IgnoreCase).Count
     $analysis.diffImageCount = [regex]::Matches($html, '<img[^>]+class\s*=\s*["''][^"'']*difference-image', [System.Text.RegularExpressions.RegexOptions]::IgnoreCase).Count
     $analysis.hasDiffEvidence = (($analysis.diffMarkerCount + $analysis.diffDetailCount + $analysis.diffImageCount) -gt 0)
   } catch {
@@ -810,6 +844,8 @@ $capture = [ordered]@{
   baseVi        = $null
   headVi        = $null
   reportPath    = $null
+  labviewPath   = $null
+  flags         = @()
   command       = $null
   stdoutPath    = $null
   stderrPath    = $null
@@ -863,6 +899,8 @@ $containerNameForCleanup = ''
 $containerReportPathForExport = ''
 $reportDirectoryForExport = ''
 $additionalExportPaths = @()
+$previousCompareLabVIEWPath = $null
+$restoreCompareLabVIEWPath = $false
 
 try {
   Assert-Tool -Name 'docker'
@@ -887,6 +925,7 @@ try {
     -ExpectedContext 'desktop-windows' `
     -AutoRepair:$AutoRepairRuntime `
     -ManageDockerEngine:$ManageDockerEngine `
+    -AllowHostEngineMutation:$AllowHostEngineMutation `
     -EngineReadyTimeoutSeconds $RuntimeEngineReadyTimeoutSeconds `
     -EngineReadyPollSeconds $RuntimeEngineReadyPollSeconds `
     -SnapshotPath $runtimeSnapshot `
@@ -948,13 +987,24 @@ try {
     $stdoutPath = Join-Path $reportDirectory 'ni-windows-container-stdout.txt'
     $stderrPath = Join-Path $reportDirectory 'ni-windows-container-stderr.txt'
 
+    $resolvedLabVIEWPath = if ([string]::IsNullOrWhiteSpace($LabVIEWPath)) {
+      if ([string]::IsNullOrWhiteSpace($env:NI_WINDOWS_LABVIEW_PATH)) { '' } else { $env:NI_WINDOWS_LABVIEW_PATH.Trim() }
+    } else {
+      $LabVIEWPath.Trim()
+    }
+    if ([string]::IsNullOrWhiteSpace($resolvedLabVIEWPath)) {
+      throw '-LabVIEWPath is required for NI Windows container compare to guarantee in-container LabVIEW resolution.'
+    }
+
     $capture.baseVi = $baseViPath
     $capture.headVi = $headViPath
     $capture.reportPath = $resolvedReportPath
+    $capture.labviewPath = $resolvedLabVIEWPath
     $capture.stdoutPath = $stdoutPath
     $capture.stderrPath = $stderrPath
 
     $flagsPayload = Get-EffectiveCompareFlags -InputFlags $Flags
+    $capture.flags = @($flagsPayload)
     $flagsJson = $flagsPayload | ConvertTo-Json -Compress
     if ([string]::IsNullOrWhiteSpace($flagsJson)) {
       $flagsJson = '[]'
@@ -1002,9 +1052,12 @@ try {
         $dockerArgs += @('--env', ("{0}={1}" -f $stubVar, $stubValue))
       }
     }
-    if (-not [string]::IsNullOrWhiteSpace($LabVIEWPath)) {
-      $dockerArgs += @('--env', ("COMPARE_LABVIEW_PATH={0}" -f $LabVIEWPath))
-    }
+    # Avoid passing space-heavy path values inline to docker wrappers (.cmd/.ps1).
+    # Export in process env and forward by key only.
+    $previousCompareLabVIEWPath = [Environment]::GetEnvironmentVariable('COMPARE_LABVIEW_PATH', 'Process')
+    [Environment]::SetEnvironmentVariable('COMPARE_LABVIEW_PATH', $resolvedLabVIEWPath, 'Process')
+    $restoreCompareLabVIEWPath = $true
+    $dockerArgs += @('--env', 'COMPARE_LABVIEW_PATH')
     $dockerArgs += @(
       $Image,
       'powershell',
@@ -1103,6 +1156,10 @@ try {
     try { & docker rm -f $containerNameForCleanup *> $null } catch {}
   }
 
+  if ($restoreCompareLabVIEWPath) {
+    [Environment]::SetEnvironmentVariable('COMPARE_LABVIEW_PATH', $previousCompareLabVIEWPath, 'Process')
+  }
+
   $runtimeStatusForClassification = ''
   $runtimeReasonForClassification = ''
   if ($capture.runtimeDeterminism) {
@@ -1125,8 +1182,12 @@ try {
     -TimedOut:([bool]$capture.timedOut)
 
   $hasHtmlDiffEvidence = $false
-  if ($capture.PSObject.Properties['reportAnalysis'] -and $capture.reportAnalysis -and $capture.reportAnalysis.PSObject.Properties['hasDiffEvidence']) {
-    $hasHtmlDiffEvidence = [bool]$capture.reportAnalysis.hasDiffEvidence
+  if ($null -ne $capture.reportAnalysis) {
+    if ($capture.reportAnalysis -is [System.Collections.IDictionary] -and $capture.reportAnalysis.Contains('hasDiffEvidence')) {
+      $hasHtmlDiffEvidence = [bool]$capture.reportAnalysis['hasDiffEvidence']
+    } elseif ($capture.reportAnalysis.PSObject.Properties['hasDiffEvidence']) {
+      $hasHtmlDiffEvidence = [bool]$capture.reportAnalysis.hasDiffEvidence
+    }
   }
   if (
     $hasHtmlDiffEvidence -and
@@ -1174,4 +1235,3 @@ if ($finalExitCode -ne 0 -and -not [string]::IsNullOrWhiteSpace($capture.message
 }
 
 exit $finalExitCode
-

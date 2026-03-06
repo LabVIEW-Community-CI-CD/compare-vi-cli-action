@@ -276,6 +276,38 @@ exit 0
     $snapshot.result.reason | Should -Match 'observed Docker OSType is empty'
   }
 
+  It 'skips host engine mutation actions when AllowHostEngineMutation is false' {
+    $work = Join-Path $TestDrive 'os-mismatch-safe-autorepair'
+    New-Item -ItemType Directory -Path $work -Force | Out-Null
+    & $script:CreateDockerWslStubs -WorkRoot $work
+
+    Set-Item Env:DOCKER_STUB_INFO_MODE 'parsed-linux'
+    Set-Item Env:DOCKER_STUB_CONTEXT 'desktop-linux'
+
+    $snapshotPath = Join-Path $work 'runtime.json'
+    $output = & pwsh -NoLogo -NoProfile -File $script:GuardScript `
+      -ExpectedOsType windows `
+      -ExpectedContext desktop-windows `
+      -AutoRepair:$true `
+      -ManageDockerEngine:$true `
+      -AllowHostEngineMutation:$false `
+      -EngineReadyTimeoutSeconds 5 `
+      -EngineReadyPollSeconds 1 `
+      -SnapshotPath $snapshotPath `
+      -GitHubOutputPath '' 2>&1
+    $LASTEXITCODE | Should -Not -Be 0
+
+    $snapshot = Get-Content -LiteralPath $snapshotPath -Raw | ConvertFrom-Json -Depth 12
+    $snapshot.result.status | Should -Be 'mismatch-failed'
+    $snapshot.expected.allowHostEngineMutation | Should -BeFalse
+    $snapshot.repairActions | Should -Contain 'host engine mutation skipped: AllowHostEngineMutation=false'
+    (($snapshot.repairActions -join "`n") -match 'docker service recovery') | Should -BeFalse
+    (($snapshot.repairActions -join "`n") -match 'docker engine switch') | Should -BeFalse
+    (($snapshot.repairActions -join "`n") -match 'wsl --shutdown') | Should -BeFalse
+    $snapshot.result.failureClass | Should -Be 'context-os-mismatch'
+    $snapshot.result.reason | Should -Match 'Runtime invariant mismatch after repair'
+  }
+
   It 'captures parsed probe details and emits parse-reason output on success' {
     $work = Join-Path $TestDrive 'probe-success'
     New-Item -ItemType Directory -Path $work -Force | Out-Null
@@ -358,5 +390,4 @@ exit 0
     $snapshot.observed.context | Should -Be 'default'
   }
 }
-
 

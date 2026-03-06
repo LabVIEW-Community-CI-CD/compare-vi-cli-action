@@ -163,6 +163,97 @@ jobs:
         artifact-name: fixture-drift-ubuntu
         soft-fail: ${{ steps.docs.outputs.docs_only }}
 
+  ni-linux-container-hosted:
+    name: NI Linux Container Compare (Hosted)
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    env:
+      NI_LINUX_IMAGE: nationalinstruments/labview:2026q1-linux
+    permissions:
+      actions: read
+      contents: read
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v5
+      with:
+        fetch-depth: 0
+
+    - name: Prepare fixture copies (base/head)
+      id: prep
+      shell: pwsh
+      run: |
+        $ErrorActionPreference = 'Stop'
+        $tmp = Join-Path $env:RUNNER_TEMP ("fixtures-linux-" + [guid]::NewGuid().ToString())
+        New-Item -ItemType Directory -Force -Path $tmp | Out-Null
+        $base = Join-Path $tmp 'base.vi'
+        $head = Join-Path $tmp 'head.vi'
+        Copy-Item -LiteralPath (Join-Path $env:GITHUB_WORKSPACE 'VI1.vi') -Destination $base -Force
+        Copy-Item -LiteralPath (Join-Path $env:GITHUB_WORKSPACE 'VI2.vi') -Destination $head -Force
+        "base=$base`nhead=$head" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+
+    - name: Pull NI Linux image
+      shell: bash
+      run: docker pull "${NI_LINUX_IMAGE}"
+
+    - name: NI Linux container compare evidence
+      id: ni_linux_compare
+      shell: pwsh
+      run: |
+        $ErrorActionPreference = 'Stop'
+        $outDir = 'results/fixture-drift/ni-linux-container'
+        New-Item -ItemType Directory -Path $outDir -Force | Out-Null
+        $reportPath = Join-Path $outDir 'compare-report.html'
+        $runtimeSnapshotPath = Join-Path $outDir 'runtime-determinism.json'
+
+        pwsh -NoLogo -NoProfile -File tools/Run-NILinuxContainerCompare.ps1 `
+          -BaseVi '${{ steps.prep.outputs.base }}' `
+          -HeadVi '${{ steps.prep.outputs.head }}' `
+          -Image $env:NI_LINUX_IMAGE `
+          -ReportPath $reportPath `
+          -TimeoutSeconds 180 `
+          -HeartbeatSeconds 15 `
+          -AutoRepairRuntime:$true `
+          -RuntimeEngineReadyTimeoutSeconds 120 `
+          -RuntimeEngineReadyPollSeconds 3 `
+          -RuntimeSnapshotPath $runtimeSnapshotPath
+
+        $capturePath = Join-Path $outDir 'ni-linux-container-capture.json'
+        if (-not (Test-Path -LiteralPath $capturePath -PathType Leaf)) {
+          throw ("NI Linux container capture missing: {0}" -f $capturePath)
+        }
+
+        $capture = Get-Content -LiteralPath $capturePath -Raw | ConvertFrom-Json -Depth 24
+        $gateOutcome = if ($capture.PSObject.Properties['gateOutcome']) { [string]$capture.gateOutcome } else { '' }
+        $resultClass = if ($capture.PSObject.Properties['resultClass']) { [string]$capture.resultClass } else { '' }
+        $imageUsed = if ($capture.PSObject.Properties['image']) { [string]$capture.image } else { '' }
+        if ([string]::IsNullOrWhiteSpace($imageUsed)) {
+          throw 'NI Linux container compare did not report an image tag.'
+        }
+        if (-not [string]::Equals($imageUsed, $env:NI_LINUX_IMAGE, [System.StringComparison]::OrdinalIgnoreCase)) {
+          throw ("Unexpected NI Linux image. expected={0} actual={1}" -f $env:NI_LINUX_IMAGE, $imageUsed)
+        }
+        if (-not [string]::Equals($gateOutcome, 'pass', [System.StringComparison]::OrdinalIgnoreCase)) {
+          throw ("NI Linux container compare gate outcome is not pass (resultClass={0}, gateOutcome={1})" -f $resultClass, $gateOutcome)
+        }
+
+        "capture_path=$capturePath" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+        "report_path=$reportPath" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+        "runtime_snapshot_path=$runtimeSnapshotPath" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+
+    - name: Upload NI Linux container compare artifacts
+      if: always()
+      uses: actions/upload-artifact@v5
+      with:
+        name: fixture-drift-ni-linux-container
+        path: |
+          results/fixture-drift/ni-linux-container/compare-report.html
+          results/fixture-drift/ni-linux-container/ni-linux-container-capture.json
+          results/fixture-drift/ni-linux-container/ni-linux-container-stdout.txt
+          results/fixture-drift/ni-linux-container/ni-linux-container-stderr.txt
+          results/fixture-drift/ni-linux-container/runtime-determinism.json
+          results/fixture-drift/ni-linux-container/container-export/**
+        if-no-files-found: warn
+
   validate-windows:
     name: Fixture Drift (Docker Desktop Host - LabVIEW 2026 q1 windows)
     runs-on: [self-hosted, Windows, X64, self-hosted-docker-windows]
@@ -172,10 +263,12 @@ jobs:
     needs:
     - preflight-windows
     - docker-runtime-manager
-    timeout-minutes: 3
+    timeout-minutes: 12
     env:
-      INVOKER_REQUIRED: '1'
+      INVOKER_REQUIRED: '0'
       UNBLOCK_GUARD: '0'
+      NI_WINDOWS_IMAGE: nationalinstruments/labview:2026q1-windows
+      NI_WINDOWS_LABVIEW_PATH: C:\Program Files\National Instruments\LabVIEW 2026\LabVIEW.exe
       LV_SUPPRESS_UI: ${{ vars.LV_SUPPRESS_UI || '1' }}
       CLEAN_LV_BEFORE: ${{ vars.CLEAN_LV_BEFORE || 'true' }}
       CLEAN_LV_AFTER: ${{ vars.CLEAN_LV_AFTER || 'true' }}
@@ -221,7 +314,7 @@ jobs:
           -ExpectedOsType windows `
           -ExpectedContext desktop-windows `
           -AutoRepair:$true `
-          -ManageDockerEngine:$true `
+          -ManageDockerEngine:$false `
           -SnapshotPath 'results/fixture-drift/windows-runtime-determinism.json' `
           -GitHubOutputPath $env:GITHUB_OUTPUT
     - name: Assert self-hosted-docker-windows runner label
@@ -337,21 +430,31 @@ jobs:
         "docs_only=$docsOnly" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
 
     - name: LV Guard (pre)
+      if: env.INVOKER_REQUIRED == '1'
       uses: ./.github/actions/runner-unblock-guard
       with:
         snapshot-path: results/fixture-drift/lv-guard-pre.json
         cleanup: ${{ env.CLEAN_LV_BEFORE == 'true' }}
         process-names: 'LVCompare,LabVIEW'
     - name: Wire Guard (pre)
+      if: env.INVOKER_REQUIRED == '1'
       uses: ./.github/actions/wire-guard-pre
       with:
         results-dir: results/fixture-drift
     - name: LabVIEW warmup (best-effort)
+      if: env.INVOKER_REQUIRED == '1'
       shell: pwsh
       run: pwsh -File tools/Warmup-LabVIEW.ps1
     - name: Wire Invoker (start)
+      if: env.INVOKER_REQUIRED == '1'
       uses: ./.github/actions/wire-invoker-start
       with:
+        results-dir: results/fixture-drift
+    - name: Ensure Invoker (start)
+      if: env.INVOKER_REQUIRED == '1'
+      uses: ./.github/actions/ensure-invoker
+      with:
+        mode: start
         results-dir: results/fixture-drift
 
     - name: Prepare fixture copies (base/head)
@@ -368,11 +471,13 @@ jobs:
         "base=$base`nhead=$head" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
 
     - name: Wire Probe (C1)
+      if: env.INVOKER_REQUIRED == '1'
       uses: ./.github/actions/wire-probe
       with:
         phase: C1
         results-dir: results/fixture-drift
     - name: Fixture Drift Orchestrator
+      if: env.INVOKER_REQUIRED == '1'
       uses: ./.github/actions/fixture-drift
       with:
         render-report: 'true'
@@ -383,12 +488,101 @@ jobs:
         base-path: ${{ steps.prep.outputs.base }}
         head-path: ${{ steps.prep.outputs.head }}
     - name: Wire Probe (C2)
+      if: env.INVOKER_REQUIRED == '1'
       uses: ./.github/actions/wire-probe
       with:
         phase: C2
         results-dir: results/fixture-drift
 
+    - name: NI Windows container compare evidence
+      id: ni_windows_compare
+      if: steps.docs.outputs.docs_only != 'true'
+      shell: pwsh
+      run: |
+        $ErrorActionPreference = 'Stop'
+        $outDir = 'results/fixture-drift/ni-windows-container'
+        New-Item -ItemType Directory -Path $outDir -Force | Out-Null
+        $reportPath = Join-Path $outDir 'compare-report.html'
+        $runtimeSnapshotPath = Join-Path $outDir 'runtime-determinism.json'
+
+        pwsh -NoLogo -NoProfile -File tools/Run-NIWindowsContainerCompare.ps1 `
+          -BaseVi '${{ steps.prep.outputs.base }}' `
+          -HeadVi '${{ steps.prep.outputs.head }}' `
+          -Image $env:NI_WINDOWS_IMAGE `
+          -LabVIEWPath $env:NI_WINDOWS_LABVIEW_PATH `
+          -ReportPath $reportPath `
+          -TimeoutSeconds 180 `
+          -HeartbeatSeconds 15 `
+          -AutoRepairRuntime:$true `
+          -ManageDockerEngine:$false `
+          -RuntimeEngineReadyTimeoutSeconds 120 `
+          -RuntimeEngineReadyPollSeconds 3 `
+          -RuntimeSnapshotPath $runtimeSnapshotPath
+
+        $capturePath = Join-Path $outDir 'ni-windows-container-capture.json'
+        if (-not (Test-Path -LiteralPath $capturePath -PathType Leaf)) {
+          throw ("NI Windows container capture missing: {0}" -f $capturePath)
+        }
+
+        $capture = Get-Content -LiteralPath $capturePath -Raw | ConvertFrom-Json -Depth 24
+        $gateOutcome = if ($capture.PSObject.Properties['gateOutcome']) { [string]$capture.gateOutcome } else { '' }
+        $resultClass = if ($capture.PSObject.Properties['resultClass']) { [string]$capture.resultClass } else { '' }
+        $imageUsed = if ($capture.PSObject.Properties['image']) { [string]$capture.image } else { '' }
+        if ([string]::IsNullOrWhiteSpace($imageUsed)) {
+          throw 'NI Windows container compare did not report an image tag.'
+        }
+        if (-not [string]::Equals($imageUsed, $env:NI_WINDOWS_IMAGE, [System.StringComparison]::OrdinalIgnoreCase)) {
+          throw ("Unexpected NI Windows image. expected={0} actual={1}" -f $env:NI_WINDOWS_IMAGE, $imageUsed)
+        }
+        if (-not [string]::Equals($gateOutcome, 'pass', [System.StringComparison]::OrdinalIgnoreCase)) {
+          throw ("NI Windows container compare gate outcome is not pass (resultClass={0}, gateOutcome={1})" -f $resultClass, $gateOutcome)
+        }
+
+        "capture_path=$capturePath" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+        "report_path=$reportPath" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+        "runtime_snapshot_path=$runtimeSnapshotPath" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+
+        if ($env:GITHUB_STEP_SUMMARY) {
+          $lines = @(
+            '### NI Windows Container Compare',
+            '',
+            "- image: $imageUsed",
+            "- resultClass: $resultClass",
+            "- gateOutcome: $gateOutcome",
+            "- capture: $capturePath",
+            "- report: $reportPath"
+          )
+          $lines -join "`n" | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8
+        }
+
+    - name: NI Windows container compare skipped (docs-only)
+      if: steps.docs.outputs.docs_only == 'true'
+      shell: pwsh
+      run: |
+        if ($env:GITHUB_STEP_SUMMARY) {
+          @(
+            '### NI Windows Container Compare',
+            '',
+            '- skipped: docs-only pull request'
+          ) -join "`n" | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8
+        }
+
+    - name: Upload NI Windows container compare artifacts
+      if: always()
+      uses: actions/upload-artifact@v5
+      with:
+        name: fixture-drift-ni-windows-container
+        path: |
+          results/fixture-drift/ni-windows-container/compare-report.html
+          results/fixture-drift/ni-windows-container/ni-windows-container-capture.json
+          results/fixture-drift/ni-windows-container/ni-windows-container-stdout.txt
+          results/fixture-drift/ni-windows-container/ni-windows-container-stderr.txt
+          results/fixture-drift/ni-windows-container/runtime-determinism.json
+          results/fixture-drift/ni-windows-container/container-export/**
+        if-no-files-found: warn
+
     - name: Verify fixture vs LVCompare (notice-only)
+      if: env.INVOKER_REQUIRED == '1'
       shell: pwsh
       continue-on-error: true
       run: |
@@ -425,7 +619,7 @@ jobs:
         exit 0
 
     - name: Assert single LVCompare launch
-      if: always()
+      if: always() && env.INVOKER_REQUIRED == '1'
       shell: pwsh
       run: |
         $originalDir = $env:LV_NOTICE_DIR
@@ -486,6 +680,7 @@ jobs:
         }
         Write-Host "Single LVCompare launch verified (post-start=1)"
     - name: Wire Probe (C3)
+      if: env.INVOKER_REQUIRED == '1'
       uses: ./.github/actions/wire-probe
       with:
         phase: C3
@@ -550,6 +745,17 @@ jobs:
           results/fixture-drift/dev-dashboard/dashboard.json
         if-no-files-found: warn
 
+    - name: Ensure Invoker (stop)
+      if: always() && env.INVOKER_REQUIRED == '1'
+      uses: ./.github/actions/ensure-invoker
+      with:
+        mode: stop
+        results-dir: results/fixture-drift
+    - name: Wire Invoker (stop)
+      if: always() && env.INVOKER_REQUIRED == '1'
+      uses: ./.github/actions/wire-invoker-stop
+      with:
+        results-dir: results/fixture-drift
     - name: Runner Unblock Guard
       if: always()
       uses: ./.github/actions/runner-unblock-guard
@@ -557,17 +763,6 @@ jobs:
         snapshot-path: results/fixture-drift/runner-unblock-snapshot.json
         cleanup: ${{ env.UNBLOCK_GUARD == '1' }}
         process-names: 'conhost,pwsh,LabVIEW,LVCompare'
-    - name: Wire Invoker (stop)
-      if: always()
-      uses: ./.github/actions/wire-invoker-stop
-      with:
-        results-dir: results/fixture-drift
-    - name: Ensure Invoker (stop)
-      if: always()
-      uses: ./.github/actions/ensure-invoker
-      with:
-        mode: stop
-        results-dir: results/fixture-drift
 
     - name: Wire Probe (P1)
       if: always()
@@ -610,7 +805,7 @@ jobs:
       if: always()
       shell: pwsh
       run: |
-        $list = 'results/fixture-drift/drift-summary.json;results/fixture-drift/compare-report.html;results/fixture-drift/session-index.json;results/fixture-drift/docker-runtime-manager-context.json;results/fixture-drift/docker-runtime-manager.json;results/fixture-drift/runner-label-contract.json;results/fixture-drift/windows-runtime-determinism.json'
+        $list = 'results/fixture-drift/drift-summary.json;results/fixture-drift/compare-report.html;results/fixture-drift/session-index.json;results/fixture-drift/docker-runtime-manager-context.json;results/fixture-drift/docker-runtime-manager.json;results/fixture-drift/runner-label-contract.json;results/fixture-drift/windows-runtime-determinism.json;results/fixture-drift/ni-windows-container/ni-windows-container-capture.json;results/fixture-drift/ni-windows-container/compare-report.html;results/fixture-drift/ni-windows-container/runtime-determinism.json'
         pwsh -File tools/Write-ArtifactMap.ps1 -PathsList $list -Title 'Artifacts'
 
     - name: Re-run hint
