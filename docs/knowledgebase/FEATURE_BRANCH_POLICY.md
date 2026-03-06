@@ -251,6 +251,9 @@ to confirm each workflow includes both triggers.
    relevant check (`priority:validate`, `Validate` workflow, or manual reruns), and re-enable the queue.
 5. For autonomous queueing, run `node tools/npm/run-script.mjs priority:queue:supervisor -- --dry-run` first, then
    `--apply` when trunk health is green. The supervisor enforces required checks, dependency ordering, and queue caps.
+6. Autonomous merge tooling now requires upstream-owned PR heads. Fork-headed PRs are intentionally ineligible for
+   `priority:queue:supervisor` and `priority:merge-sync`; mirror the branch to upstream and open the PR from the
+   upstream-owned branch before queueing.
 
 ### PR Metadata Contract (queue supervisor)
 - `Coupling: independent|soft|hard` (default: `independent`)

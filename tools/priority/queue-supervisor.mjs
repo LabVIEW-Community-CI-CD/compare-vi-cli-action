@@ -129,6 +129,13 @@ function normalizeLabelName(label) {
   return '';
 }
 
+function normalizeOwner(value) {
+  if (!value) return '';
+  if (typeof value === 'string') return value.trim().toLowerCase();
+  if (typeof value === 'object' && typeof value.login === 'string') return value.login.trim().toLowerCase();
+  return '';
+}
+
 function normalizeIso(value) {
   if (!value) return null;
   const iso = new Date(value);
@@ -299,8 +306,10 @@ export function classifyOpenPullRequests({
   pullRequests,
   requiredChecksByBranch,
   queueManagedBranches,
-  excludedLabels = EXCLUDED_LABELS
+  excludedLabels = EXCLUDED_LABELS,
+  expectedHeadOwner = ''
 }) {
+  const normalizedExpectedHeadOwner = normalizeOwner(expectedHeadOwner);
   const allOpen = new Map();
   const normalized = [];
   for (const pr of pullRequests ?? []) {
@@ -312,6 +321,9 @@ export function classifyOpenPullRequests({
       url: pr.url ?? null,
       updatedAt: normalizeIso(pr.updatedAt) ?? new Date(0).toISOString(),
       baseRefName,
+      headRefName: pr.headRefName ?? null,
+      headRepositoryOwner: normalizeOwner(pr.headRepositoryOwner),
+      isCrossRepository: Boolean(pr.isCrossRepository),
       isDraft: Boolean(pr.isDraft),
       mergeStateStatus: String(pr.mergeStateStatus ?? '').toUpperCase(),
       mergeable: String(pr.mergeable ?? '').toUpperCase(),
@@ -332,6 +344,9 @@ export function classifyOpenPullRequests({
     const reasons = [];
     if (!queueManagedBranches.has(pr.baseRefName)) {
       reasons.push('base-branch-not-queue-managed');
+    }
+    if (normalizedExpectedHeadOwner && pr.headRepositoryOwner !== normalizedExpectedHeadOwner) {
+      reasons.push('head-not-upstream-owned');
     }
     if (pr.isDraft) {
       reasons.push('draft');
@@ -592,6 +607,7 @@ export async function runQueueSupervisor(options = {}) {
   const readOptionalJsonFn = options.readOptionalJsonFn ?? readOptionalJson;
   const writeReportFn = options.writeReportFn ?? writeReport;
   const repository = resolveRepositorySlug(repoRoot, args.repo);
+  const expectedHeadOwner = String(repository).split('/')[0]?.trim().toLowerCase() ?? '';
 
   const branchRequiredChecks = await readJsonFileFn(path.join(repoRoot, 'tools', 'policy', 'branch-required-checks.json'));
   const policyManifest = await readJsonFileFn(path.join(repoRoot, 'tools', 'priority', 'policy.json'));
@@ -608,13 +624,14 @@ export async function runQueueSupervisor(options = {}) {
     '--limit',
     '200',
     '--json',
-    'number,title,body,baseRefName,isDraft,updatedAt,url,labels,statusCheckRollup,mergeStateStatus,mergeable,autoMergeRequest'
+    'number,title,body,baseRefName,headRefName,headRepositoryOwner,isCrossRepository,isDraft,updatedAt,url,labels,statusCheckRollup,mergeStateStatus,mergeable,autoMergeRequest'
   ], { cwd: repoRoot }) ?? [];
 
   const classified = classifyOpenPullRequests({
     pullRequests: allOpenPrs,
     requiredChecksByBranch,
-    queueManagedBranches
+    queueManagedBranches,
+    expectedHeadOwner
   });
 
   const workflowRunsByName = {
@@ -650,7 +667,8 @@ export async function runQueueSupervisor(options = {}) {
     controls: {
       pausedByVariable,
       queueAutopilotPaused: process.env.QUEUE_AUTOPILOT_PAUSED ?? null,
-      queueAutopilotMaxInflight: process.env.QUEUE_AUTOPILOT_MAX_INFLIGHT ?? null
+      queueAutopilotMaxInflight: process.env.QUEUE_AUTOPILOT_MAX_INFLIGHT ?? null,
+      expectedHeadOwner
     },
     queueManagedBranches: [...queueManagedBranches].sort(),
     maxInflight: args.maxInflight,
@@ -674,6 +692,9 @@ export async function runQueueSupervisor(options = {}) {
         title: candidate.title,
         url: candidate.url,
         baseRefName: candidate.baseRefName,
+        headRefName: candidate.headRefName,
+        headRepositoryOwner: candidate.headRepositoryOwner || null,
+        isCrossRepository: candidate.isCrossRepository,
         updatedAt: candidate.updatedAt,
         priority: candidate.priority,
         coupling: candidate.coupling,

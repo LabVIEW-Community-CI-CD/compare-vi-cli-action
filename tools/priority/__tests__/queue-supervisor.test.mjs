@@ -46,6 +46,7 @@ test('classifyOpenPullRequests enforces branch/check/label gates and dependency-
         title: '[P1] foundation',
         body: 'Coupling: independent',
         baseRefName: 'develop',
+        headRepositoryOwner: { login: 'owner' },
         isDraft: false,
         mergeStateStatus: 'CLEAN',
         mergeable: 'MERGEABLE',
@@ -58,6 +59,7 @@ test('classifyOpenPullRequests enforces branch/check/label gates and dependency-
         title: '[P0] depends',
         body: 'Coupling: hard\nDepends-On: #101',
         baseRefName: 'develop',
+        headRepositoryOwner: { login: 'owner' },
         isDraft: false,
         mergeStateStatus: 'CLEAN',
         mergeable: 'MERGEABLE',
@@ -70,6 +72,7 @@ test('classifyOpenPullRequests enforces branch/check/label gates and dependency-
         title: '[P0] independent',
         body: 'Coupling: independent',
         baseRefName: 'develop',
+        headRepositoryOwner: { login: 'owner' },
         isDraft: false,
         mergeStateStatus: 'CLEAN',
         mergeable: 'MERGEABLE',
@@ -82,6 +85,7 @@ test('classifyOpenPullRequests enforces branch/check/label gates and dependency-
         title: '[P0] blocked',
         body: '',
         baseRefName: 'develop',
+        headRepositoryOwner: { login: 'owner' },
         isDraft: false,
         mergeStateStatus: 'CLEAN',
         mergeable: 'MERGEABLE',
@@ -94,6 +98,7 @@ test('classifyOpenPullRequests enforces branch/check/label gates and dependency-
         title: '[P0] missing checks',
         body: '',
         baseRefName: 'develop',
+        headRepositoryOwner: { login: 'owner' },
         isDraft: false,
         mergeStateStatus: 'CLEAN',
         mergeable: 'MERGEABLE',
@@ -105,7 +110,8 @@ test('classifyOpenPullRequests enforces branch/check/label gates and dependency-
     requiredChecksByBranch: {
       develop: ['lint']
     },
-    queueManagedBranches: new Set(['develop'])
+    queueManagedBranches: new Set(['develop']),
+    expectedHeadOwner: 'owner'
   });
 
   const ordered = result.orderedEligible.map((item) => item.number);
@@ -118,6 +124,35 @@ test('classifyOpenPullRequests enforces branch/check/label gates and dependency-
   const missingChecks = result.candidates.find((item) => item.number === 105);
   assert.equal(missingChecks.eligible, false);
   assert.ok(missingChecks.reasons.includes('required-checks-missing'));
+});
+
+test('classifyOpenPullRequests marks fork-headed PRs ineligible when upstream owner is required', () => {
+  const result = classifyOpenPullRequests({
+    pullRequests: [
+      {
+        number: 110,
+        title: '[P0] fork head',
+        body: '',
+        baseRefName: 'develop',
+        headRepositoryOwner: { login: 'fork-owner' },
+        isDraft: false,
+        mergeStateStatus: 'CLEAN',
+        mergeable: 'MERGEABLE',
+        updatedAt: '2026-03-05T20:00:00Z',
+        labels: [],
+        statusCheckRollup: [successCheck('lint')]
+      }
+    ],
+    requiredChecksByBranch: {
+      develop: ['lint']
+    },
+    queueManagedBranches: new Set(['develop']),
+    expectedHeadOwner: 'owner'
+  });
+
+  assert.equal(result.orderedEligible.length, 0);
+  assert.equal(result.candidates[0].eligible, false);
+  assert.ok(result.candidates[0].reasons.includes('head-not-upstream-owned'));
 });
 
 test('evaluateHealthGate pauses when success rate drops or red window exceeds threshold', () => {
@@ -172,6 +207,7 @@ test('runQueueSupervisor apply mode quarantines on second failure within 24h', a
       title: '[P0] Queue managed change',
       body: 'Coupling: independent',
       baseRefName: 'develop',
+      headRepositoryOwner: { login: 'owner' },
       isDraft: false,
       mergeStateStatus: 'BEHIND',
       mergeable: 'MERGEABLE',
