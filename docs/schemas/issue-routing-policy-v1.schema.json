@@ -1,0 +1,157 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "issue-routing-policy@v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema",
+    "schemaVersion",
+    "defaultAction",
+    "rules"
+  ],
+  "properties": {
+    "schema": {
+      "const": "issue-routing-policy@v1"
+    },
+    "schemaVersion": {
+      "type": "string"
+    },
+    "description": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "queueManagedBranches": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "defaultAction": {
+      "$ref": "#/$defs/action"
+    },
+    "rules": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "id",
+          "order",
+          "enabled",
+          "match",
+          "action"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "minLength": 1
+          },
+          "order": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "enabled": {
+            "type": "boolean"
+          },
+          "match": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "sourceTypes": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "incidentClasses": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "severities": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "branches": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "requiresQueueManagedBranch": {
+                "type": "boolean"
+              },
+              "requiresExactCheckNames": {
+                "type": "boolean"
+              }
+            }
+          },
+          "action": {
+            "$ref": "#/$defs/action"
+          }
+        }
+      }
+    }
+  },
+  "$defs": {
+    "action": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "type",
+        "priority",
+        "labels",
+        "owner",
+        "titlePrefix",
+        "reason"
+      ],
+      "properties": {
+        "type": {
+          "enum": [
+            "open-issue",
+            "update-issue",
+            "comment",
+            "pause-queue",
+            "noop"
+          ]
+        },
+        "priority": {
+          "enum": [
+            "P0",
+            "P1",
+            "P2"
+          ]
+        },
+        "labels": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "owner": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "titlePrefix": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "reason": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      }
+    }
+  }
+}
