@@ -4,10 +4,14 @@ on:
   push:
     paths:
       - 'src/**'
+      - 'Directory.Build.props'
+      - 'Directory.Build.targets'
       - '.github/workflows/dotnet-shared.yml'
   pull_request:
     paths:
       - 'src/**'
+      - 'Directory.Build.props'
+      - 'Directory.Build.targets'
       - '.github/workflows/dotnet-shared.yml'
   workflow_dispatch:
     inputs:
@@ -27,7 +31,13 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        shared_source: [project, package]
+        include:
+          - shared_source: package-first
+            expected_resolved: package
+          - shared_source: package
+            expected_resolved: package
+          - shared_source: project
+            expected_resolved: project
     steps:
       - uses: actions/checkout@v5
 
@@ -67,14 +77,29 @@ jobs:
           dotnet restore src/CompareVi.Tools.Cli/CompareVi.Tools.Cli.csproj
           -p:CompareViSharedSource=${{ matrix.shared_source }}
           -p:CompareViSharedPackageVersion=${{ steps.shared.outputs.version }}
+          -p:CompareViSharedPackageFeed=${{ github.workspace }}/artifacts
           --source "${{ github.workspace }}/artifacts"
           --source "https://api.nuget.org/v3/index.json"
+
+      - name: Assert shared-source resolution
+        shell: bash
+        run: |
+          set -euo pipefail
+          output="$(dotnet msbuild src/CompareVi.Tools.Cli/CompareVi.Tools.Cli.csproj \
+            -nologo \
+            -t:PrintCompareViSharedSource \
+            -p:CompareViSharedSource=${{ matrix.shared_source }} \
+            -p:CompareViSharedPackageVersion=${{ steps.shared.outputs.version }} \
+            -p:CompareViSharedPackageFeed=${{ github.workspace }}/artifacts)"
+          echo "$output"
+          echo "$output" | grep -F "CompareViSharedResolvedSource=${{ matrix.expected_resolved }}"
 
       - name: Build CompareVi CLI
         run: >
           dotnet build -c Release src/CompareVi.Tools.Cli/CompareVi.Tools.Cli.csproj
           -p:CompareViSharedSource=${{ matrix.shared_source }}
           -p:CompareViSharedPackageVersion=${{ steps.shared.outputs.version }}
+          -p:CompareViSharedPackageFeed=${{ github.workspace }}/artifacts
           --no-restore
 
       - name: CLI smoke (version/tokenize/procs)
@@ -85,7 +110,8 @@ jobs:
           run_cli() {
             dotnet run --project src/CompareVi.Tools.Cli/CompareVi.Tools.Cli.csproj -c Release --no-build \
               -p:CompareViSharedSource=${{ matrix.shared_source }} \
-              -p:CompareViSharedPackageVersion=${{ steps.shared.outputs.version }} -- "$@"
+              -p:CompareViSharedPackageVersion=${{ steps.shared.outputs.version }} \
+              -p:CompareViSharedPackageFeed=${{ github.workspace }}/artifacts -- "$@"
           }
 
           ver_json="$(run_cli version)"

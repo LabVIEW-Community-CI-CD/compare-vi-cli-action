@@ -19,6 +19,8 @@ alignment, and evidence ledger expectations.
 - Rollback policy: `tools/policy/release-rollback-policy.json`
 - Rollback command: `tools/priority/rollback-release.mjs`
 - Rollback drill health gate: `tools/priority/rollback-drill-health.mjs`
+- CompareVi.Shared migration playbook: `docs/COMPAREVI_SHARED_PACKAGE_MIGRATION.md`
+- Shared-source resolution schema: `docs/schemas/release-shared-source-resolution-v1.schema.json`
 - Rollback report schemas:
   - `docs/schemas/release-rollback-v1.schema.json`
   - `docs/schemas/release-rollback-drill-health-v1.schema.json`
@@ -120,6 +122,14 @@ Policy thresholds are sourced from `tools/policy/release-rollback-policy.json`:
 - maximum hours since latest successful drill
 
 If the health gate fails, promotion pauses (fail-closed) until drill health is restored.
+
+## Shared-source resolution evidence
+
+Release tags also emit a CompareVi.Shared source-resolution artifact to prove package-first selection:
+
+- Artifact: `tests/results/_agent/release/shared-source-resolution.json`
+- Source: `tools/Publish-Cli.ps1` (`release/shared-source-resolution@v1`)
+- Policy: `shared-source-resolution` is required evidence for `rc`, `stable`, and `lts`.
 
 ## Gate outcomes
 

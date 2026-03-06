@@ -12,10 +12,10 @@
 
   <ItemGroup>
     <ProjectReference Include="..\CompareVi.Shared\CompareVi.Shared.csproj"
-                      Condition="'$(CompareViSharedSource)' == 'project'" />
+                      Condition="'$(CompareViSharedResolvedSource)' == 'project'" />
     <PackageReference Include="CompareVi.Shared"
                       Version="$(CompareViSharedPackageVersion)"
-                      Condition="'$(CompareViSharedSource)' == 'package'" />
+                      Condition="'$(CompareViSharedResolvedSource)' == 'package'" />
   </ItemGroup>
 </Project>
 

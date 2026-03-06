@@ -1,0 +1,57 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://labview-community-ci-cd.github.io/compare-vi-cli-action/schemas/release-shared-source-resolution-v1.schema.json",
+  "title": "Release Shared Source Resolution v1",
+  "type": "object",
+  "required": [
+    "schema",
+    "generatedAt",
+    "requestedSource",
+    "resolvedSource",
+    "packageAvailable",
+    "packageVersion",
+    "packageFeed",
+    "prepareSharedPackageFeed",
+    "failOnSharedFallback"
+  ],
+  "properties": {
+    "schema": {
+      "type": "string",
+      "const": "release/shared-source-resolution@v1"
+    },
+    "generatedAt": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "requestedSource": {
+      "type": "string",
+      "enum": [
+        "project",
+        "package",
+        "package-first"
+      ]
+    },
+    "resolvedSource": {
+      "type": "string",
+      "enum": [
+        "project",
+        "package"
+      ]
+    },
+    "packageAvailable": {
+      "type": "string"
+    },
+    "packageVersion": {
+      "type": "string"
+    },
+    "packageFeed": {
+      "type": "string"
+    },
+    "prepareSharedPackageFeed": {
+      "type": "boolean"
+    },
+    "failOnSharedFallback": {
+      "type": "boolean"
+    }
+  }
+}

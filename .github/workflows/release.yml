@@ -110,7 +110,22 @@ jobs:
 
       - name: Publish CLI artifacts
         shell: pwsh
-        run: pwsh -File tools/Publish-Cli.ps1
+        run: pwsh -NoLogo -NoProfile -File tools/Publish-Cli.ps1 -CompareViSharedSource package-first -PrepareSharedPackageFeed -FailOnSharedFallback
+
+      - name: Validate shared-source resolution schema
+        shell: pwsh
+        run: |
+          pwsh -NoLogo -NoProfile -File tools/Invoke-JsonSchemaLite.ps1 \
+            -JsonPath tests/results/_agent/release/shared-source-resolution.json \
+            -SchemaPath docs/schemas/release-shared-source-resolution-v1.schema.json
+
+      - name: Upload shared-source resolution artifact
+        if: always()
+        uses: actions/upload-artifact@v5
+        with:
+          name: release-shared-source-resolution-${{ github.run_id }}
+          path: tests/results/_agent/release/shared-source-resolution.json
+          if-no-files-found: error
 
       - name: Generate SBOM (SPDX)
         shell: pwsh
@@ -130,6 +145,7 @@ jobs:
             artifacts/cli/SHA256SUMS.txt
             artifacts/cli/sbom.spdx.json
             artifacts/cli/provenance.json
+            tests/results/_agent/release/shared-source-resolution.json
           if-no-files-found: error
 
       - name: Attest release assets provenance
@@ -374,6 +390,12 @@ jobs:
           name: release-supply-chain-trust-${{ github.run_id }}
           path: tests/results/_agent/supply-chain
 
+      - name: Download shared-source resolution artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: release-shared-source-resolution-${{ github.run_id }}
+          path: tests/results/_agent/release
+
       - name: Download rollback drill health artifact
         uses: actions/download-artifact@v4
         with:
@@ -526,4 +548,5 @@ jobs:
             tests/results/_agent/certification/release-certification-matrix.json
             tests/results/_agent/supply-chain/release-trust-gate.json
             tests/results/_agent/release/rollback-drill-health.json
+            tests/results/_agent/release/shared-source-resolution.json
           if-no-files-found: error

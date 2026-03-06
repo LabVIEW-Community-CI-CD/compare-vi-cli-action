@@ -5,6 +5,8 @@
 Define a deterministic operating model for release and promotion events so execution does not depend on a single
 operator.
 
+Related migration playbook: `docs/COMPAREVI_SHARED_PACKAGE_MIGRATION.md`.
+
 ## Scope
 
 - Promotion events (`rc -> stable -> lts`) and monthly stability cuts.
@@ -145,3 +147,4 @@ matching remediation path:
 - `tests/results/_agent/supply-chain/release-trust-gate.json`
 - `tests/results/_agent/release/rollback-drill-health.json`
 - `tests/results/_agent/release/rollback-drill-report.json`
+- `tests/results/_agent/release/shared-source-resolution.json`
