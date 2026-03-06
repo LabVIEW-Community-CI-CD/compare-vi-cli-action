@@ -48,6 +48,57 @@ function Invoke-Npm {
   }
 }
 
+function Invoke-WorkspaceHealthGate {
+  param(
+    [ValidateSet('ignore','optional','required')][string]$LeaseMode = 'optional',
+    [Parameter(Mandatory=$true)][string]$ReportName
+  )
+
+  $nodeCmd = Get-Command node -ErrorAction SilentlyContinue
+  if (-not $nodeCmd) {
+    throw 'node not found; cannot run workspace health gate.'
+  }
+
+  $scriptPath = Join-Path (Resolve-Path '.').Path 'tools/priority/check-workspace-health.mjs'
+  if (-not (Test-Path -LiteralPath $scriptPath -PathType Leaf)) {
+    throw "workspace health gate script not found at $scriptPath"
+  }
+
+  $reportPath = Join-Path (Resolve-Path '.').Path ("tests/results/_agent/health/{0}" -f $ReportName)
+  $arguments = @(
+    $scriptPath,
+    '--repo-root', (Resolve-Path '.').Path,
+    '--report', $reportPath,
+    '--lease-mode', $LeaseMode
+  )
+  if (-not [string]::IsNullOrWhiteSpace($env:AGENT_WRITER_LEASE_OWNER)) {
+    $arguments += @('--expected-owner', $env:AGENT_WRITER_LEASE_OWNER)
+  }
+  if ($LeaseMode -eq 'required' -and -not [string]::IsNullOrWhiteSpace($env:AGENT_WRITER_LEASE_ID)) {
+    $arguments += @('--expected-lease-id', $env:AGENT_WRITER_LEASE_ID)
+  }
+
+  $psi = New-Object System.Diagnostics.ProcessStartInfo
+  $psi.FileName = $nodeCmd.Source
+  foreach ($arg in $arguments) { $psi.ArgumentList.Add([string]$arg) }
+  $psi.WorkingDirectory = (Resolve-Path '.').Path
+  $psi.UseShellExecute = $false
+  $psi.RedirectStandardOutput = $true
+  $psi.RedirectStandardError = $true
+
+  $proc = [System.Diagnostics.Process]::Start($psi)
+  $stdout = $proc.StandardOutput.ReadToEnd()
+  $stderr = $proc.StandardError.ReadToEnd()
+  $proc.WaitForExit()
+
+  if ($stdout) { Write-Host $stdout.TrimEnd() }
+  if ($stderr) { Write-Warning $stderr.TrimEnd() }
+
+  if ($proc.ExitCode -ne 0) {
+    throw "Workspace health gate failed (lease-mode=$LeaseMode). See $reportPath"
+  }
+}
+
 function Invoke-SemVerCheck {
   $nodeCmd = Get-Command node -ErrorAction SilentlyContinue
   if (-not $nodeCmd) {
@@ -356,6 +407,9 @@ Write-Host '[bootstrap] Detecting hook plane…'
 Ensure-DevelopBranch
 Invoke-Npm -Script 'hooks:plane' -AllowFailure
 
+Write-Host '[bootstrap] Running workspace health gate (preflight)…'
+Invoke-WorkspaceHealthGate -LeaseMode 'optional' -ReportName 'bootstrap-preflight-workspace-health.json'
+
 Write-Host '[bootstrap] Running hook preflight…'
 Invoke-Npm -Script 'hooks:preflight' -AllowFailure
 
@@ -369,6 +423,9 @@ if ($VerboseHooks) {
 if (-not $PreflightOnly) {
   Write-Host '[bootstrap] Acquiring agent writer lease…'
   Invoke-AgentWriterLeaseAcquire | Out-Null
+
+  Write-Host '[bootstrap] Running workspace health gate (post-lease)…'
+  Invoke-WorkspaceHealthGate -LeaseMode 'required' -ReportName 'bootstrap-postlease-workspace-health.json'
 
   Write-Host '[bootstrap] Syncing standing priority snapshot…'
   Invoke-Npm -Script 'priority:sync:lane'

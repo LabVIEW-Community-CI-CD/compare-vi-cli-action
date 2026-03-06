@@ -107,7 +107,26 @@ function Invoke-Actionlint([string]$repoRoot){
   }
 }
 
+function Invoke-WorkspaceHealthGate([string]$repoRoot){
+  $scriptPath = Join-Path $repoRoot 'tools' 'priority' 'check-workspace-health.mjs'
+  if (-not (Test-Path -LiteralPath $scriptPath -PathType Leaf)) {
+    throw ("workspace health gate script not found: {0}" -f $scriptPath)
+  }
+
+  $reportPath = Join-Path $repoRoot 'tests' 'results' '_agent' 'health' 'pre-push-workspace-health.json'
+  Write-Host '[pre-push] Verifying workspace health gate' -ForegroundColor Cyan
+  & node $scriptPath `
+    --repo-root $repoRoot `
+    --report $reportPath `
+    --lease-mode optional
+  if ($LASTEXITCODE -ne 0) {
+    throw ("workspace health gate failed (exit={0}). See {1}" -f $LASTEXITCODE, $reportPath)
+  }
+  Write-Host '[pre-push] workspace health gate OK' -ForegroundColor Green
+}
+
 $root = (Get-RepoRoot).Path
+Invoke-WorkspaceHealthGate -repoRoot $root
 $guardScript = Join-Path (Split-Path -Parent $PSCommandPath) 'Assert-NoAmbiguousRemoteRefs.ps1'
 
 Push-Location $root

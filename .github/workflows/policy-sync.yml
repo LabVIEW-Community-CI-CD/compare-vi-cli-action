@@ -25,6 +25,10 @@ jobs:
         with:
           node-version: '20'
 
+      - name: Workspace health gate
+        run: |
+          node tools/priority/check-workspace-health.mjs --repo-root . --lease-mode ignore --report tests/results/_agent/health/policy-sync-workspace-health.json
+
       - name: Prepare policy sync token
         shell: pwsh
         env:
@@ -48,5 +52,7 @@ jobs:
         uses: actions/upload-artifact@v5
         with:
           name: policy-sync-${{ github.run_id }}
-          path: tests/results/_agent/policy/policy-drift-report.json
+          path: |
+            tests/results/_agent/policy/policy-drift-report.json
+            tests/results/_agent/health/policy-sync-workspace-health.json
           if-no-files-found: error
