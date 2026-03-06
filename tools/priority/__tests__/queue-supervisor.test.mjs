@@ -5,6 +5,7 @@ import assert from 'node:assert/strict';
 import {
   classifyOpenPullRequests,
   evaluateHealthGate,
+  evaluateRuntimeFleetHealth,
   evaluateRequiredChecks,
   parseArgs,
   runQueueSupervisor
@@ -24,11 +25,29 @@ test('parseArgs defaults to dry-run and supports apply mode', () => {
   assert.equal(defaults.apply, false);
   assert.equal(defaults.dryRun, true);
   assert.equal(defaults.maxInflight, 4);
+  assert.equal(defaults.maxQueuedRuns, 6);
+  assert.equal(defaults.maxInProgressRuns, 8);
+  assert.equal(defaults.stallThresholdMinutes, 45);
 
-  const apply = parseArgs(['node', 'queue-supervisor.mjs', '--apply', '--max-inflight', '6']);
+  const apply = parseArgs([
+    'node',
+    'queue-supervisor.mjs',
+    '--apply',
+    '--max-inflight',
+    '6',
+    '--max-queued-runs',
+    '7',
+    '--max-in-progress-runs',
+    '9',
+    '--stall-threshold-minutes',
+    '50'
+  ]);
   assert.equal(apply.apply, true);
   assert.equal(apply.dryRun, false);
   assert.equal(apply.maxInflight, 6);
+  assert.equal(apply.maxQueuedRuns, 7);
+  assert.equal(apply.maxInProgressRuns, 9);
+  assert.equal(apply.stallThresholdMinutes, 50);
 });
 
 test('evaluateRequiredChecks detects missing and failing contexts', () => {
@@ -197,6 +216,54 @@ test('evaluateHealthGate pauses when success rate drops or red window exceeds th
   assert.ok(redWindow.reasons.includes('trunk-red-window-exceeded'));
 });
 
+test('evaluateRuntimeFleetHealth pauses on saturation and stalled runs', () => {
+  const now = new Date('2026-03-05T22:00:00.000Z');
+  const runtime = evaluateRuntimeFleetHealth({
+    workflowRunsByName: {
+      Validate: [
+        {
+          id: 1,
+          status: 'queued',
+          conclusion: null,
+          created_at: '2026-03-05T21:00:00Z',
+          updated_at: '2026-03-05T21:05:00Z',
+          html_url: 'https://example.test/runs/1'
+        },
+        {
+          id: 2,
+          status: 'queued',
+          conclusion: null,
+          created_at: '2026-03-05T21:55:00Z',
+          updated_at: '2026-03-05T21:56:00Z',
+          html_url: 'https://example.test/runs/2'
+        }
+      ],
+      'Policy Guard (Upstream)': [
+        {
+          id: 3,
+          status: 'in_progress',
+          conclusion: null,
+          created_at: '2026-03-05T21:40:00Z',
+          updated_at: '2026-03-05T21:41:00Z',
+          html_url: 'https://example.test/runs/3'
+        }
+      ]
+    },
+    now,
+    maxQueuedRuns: 1,
+    maxInProgressRuns: 0,
+    stallThresholdMinutes: 30
+  });
+
+  assert.equal(runtime.paused, true);
+  assert.ok(runtime.reasons.includes('queued-runs-threshold-exceeded'));
+  assert.ok(runtime.reasons.includes('in-progress-runs-threshold-exceeded'));
+  assert.ok(runtime.reasons.includes('stalled-runs-detected'));
+  assert.equal(runtime.totals.queued, 2);
+  assert.equal(runtime.totals.inProgress, 1);
+  assert.equal(runtime.totals.stalled >= 1, true);
+});
+
 test('runQueueSupervisor apply mode quarantines on second failure within 24h', async () => {
   const commandCalls = [];
   const writeCalls = [];
@@ -233,6 +300,8 @@ test('runQueueSupervisor apply mode quarantines on second failure within 24h', a
     if (args[0] === 'pr' && args[1] === 'list') return responseMap.get('pr');
     if (args[0] === 'api' && String(args[1]).includes('validate.yml')) return responseMap.get('validate-runs');
     if (args[0] === 'api' && String(args[1]).includes('policy-guard-upstream.yml')) return responseMap.get('policy-runs');
+    if (args[0] === 'api' && String(args[1]).includes('fixture-drift.yml')) return { workflow_runs: [] };
+    if (args[0] === 'api' && String(args[1]).includes('commit-integrity.yml')) return { workflow_runs: [] };
     throw new Error(`Unexpected gh args: ${args.join(' ')}`);
   };
 
@@ -288,6 +357,9 @@ test('runQueueSupervisor apply mode quarantines on second failure within 24h', a
       dryRun: false,
       reportPath: 'tests/results/_agent/queue/queue-supervisor-report.json',
       maxInflight: 4,
+      maxQueuedRuns: 6,
+      maxInProgressRuns: 8,
+      stallThresholdMinutes: 45,
       repo: 'owner/repo',
       baseBranches: ['develop', 'main'],
       healthBranch: 'develop',

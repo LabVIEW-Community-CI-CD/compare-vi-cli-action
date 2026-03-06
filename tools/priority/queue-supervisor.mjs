@@ -15,6 +15,9 @@ const DEFAULT_MAX_INFLIGHT = 4;
 const DEFAULT_HEALTH_SAMPLE = 10;
 const DEFAULT_HEALTH_MIN_SUCCESS_RATE = 0.8;
 const DEFAULT_HEALTH_MAX_RED_MINUTES = 30;
+const DEFAULT_MAX_QUEUED_RUNS = 6;
+const DEFAULT_MAX_IN_PROGRESS_RUNS = 8;
+const DEFAULT_STALL_THRESHOLD_MINUTES = 45;
 const RETRY_WINDOW_HOURS = 24;
 const EXCLUDED_LABELS = new Set(['queue-blocked', 'do-not-queue']);
 const DEFAULT_BASE_BRANCHES = ['develop', 'main'];
@@ -32,6 +35,9 @@ function printUsage() {
   console.log('  --apply                Enqueue PRs (default is dry-run planning mode).');
   console.log(`  --report <path>        Write report JSON (default: ${DEFAULT_REPORT_PATH}).`);
   console.log(`  --max-inflight <n>     Queue target cap (default: ${DEFAULT_MAX_INFLIGHT}, env QUEUE_AUTOPILOT_MAX_INFLIGHT).`);
+  console.log(`  --max-queued-runs <n>  Pause when queued workflow runs exceed this threshold (default: ${DEFAULT_MAX_QUEUED_RUNS}).`);
+  console.log(`  --max-in-progress-runs <n> Pause when in-progress workflow runs exceed this threshold (default: ${DEFAULT_MAX_IN_PROGRESS_RUNS}).`);
+  console.log(`  --stall-threshold-minutes <n> Pause when active runs exceed age threshold (default: ${DEFAULT_STALL_THRESHOLD_MINUTES}).`);
   console.log('  --repo <owner/repo>    Target repository (default: GITHUB_REPOSITORY/upstream remote).');
   console.log(`  --base-branches <csv>  Queue-managed branch allowlist (default: ${DEFAULT_BASE_BRANCHES.join(',')}).`);
   console.log('  --health-branch <name> Branch to evaluate trunk health (default: develop).');
@@ -64,6 +70,9 @@ export function parseArgs(argv = process.argv) {
     repo: null,
     baseBranches: [...DEFAULT_BASE_BRANCHES],
     healthBranch: 'develop',
+    maxQueuedRuns: null,
+    maxInProgressRuns: null,
+    stallThresholdMinutes: null,
     help: false
   };
 
@@ -83,7 +92,16 @@ export function parseArgs(argv = process.argv) {
       options.help = true;
       continue;
     }
-    if (arg === '--report' || arg === '--max-inflight' || arg === '--repo' || arg === '--base-branches' || arg === '--health-branch') {
+    if (
+      arg === '--report' ||
+      arg === '--max-inflight' ||
+      arg === '--repo' ||
+      arg === '--base-branches' ||
+      arg === '--health-branch' ||
+      arg === '--max-queued-runs' ||
+      arg === '--max-in-progress-runs' ||
+      arg === '--stall-threshold-minutes'
+    ) {
       const next = args[index + 1];
       if (!next || next.startsWith('-')) {
         throw new Error(`Missing value for ${arg}.`);
@@ -106,6 +124,12 @@ export function parseArgs(argv = process.argv) {
         options.baseBranches = parsed.map((branch) => branch.toLowerCase());
       } else if (arg === '--health-branch') {
         options.healthBranch = next.trim().toLowerCase();
+      } else if (arg === '--max-queued-runs') {
+        options.maxQueuedRuns = parseIntStrict(next, { label: '--max-queued-runs' });
+      } else if (arg === '--max-in-progress-runs') {
+        options.maxInProgressRuns = parseIntStrict(next, { label: '--max-in-progress-runs' });
+      } else if (arg === '--stall-threshold-minutes') {
+        options.stallThresholdMinutes = parseIntStrict(next, { label: '--stall-threshold-minutes' });
       }
       continue;
     }
@@ -119,6 +143,31 @@ export function parseArgs(argv = process.argv) {
   if (options.maxInflight == null) {
     options.maxInflight = DEFAULT_MAX_INFLIGHT;
   }
+
+  const envMaxQueuedRuns = process.env.QUEUE_AUTOPILOT_MAX_QUEUED_RUNS;
+  if (options.maxQueuedRuns == null && envMaxQueuedRuns && String(envMaxQueuedRuns).trim()) {
+    options.maxQueuedRuns = parseIntStrict(envMaxQueuedRuns, { label: 'QUEUE_AUTOPILOT_MAX_QUEUED_RUNS' });
+  }
+  if (options.maxQueuedRuns == null) {
+    options.maxQueuedRuns = DEFAULT_MAX_QUEUED_RUNS;
+  }
+
+  const envMaxInProgressRuns = process.env.QUEUE_AUTOPILOT_MAX_IN_PROGRESS_RUNS;
+  if (options.maxInProgressRuns == null && envMaxInProgressRuns && String(envMaxInProgressRuns).trim()) {
+    options.maxInProgressRuns = parseIntStrict(envMaxInProgressRuns, { label: 'QUEUE_AUTOPILOT_MAX_IN_PROGRESS_RUNS' });
+  }
+  if (options.maxInProgressRuns == null) {
+    options.maxInProgressRuns = DEFAULT_MAX_IN_PROGRESS_RUNS;
+  }
+
+  const envStallThreshold = process.env.QUEUE_AUTOPILOT_STALL_THRESHOLD_MINUTES;
+  if (options.stallThresholdMinutes == null && envStallThreshold && String(envStallThreshold).trim()) {
+    options.stallThresholdMinutes = parseIntStrict(envStallThreshold, { label: 'QUEUE_AUTOPILOT_STALL_THRESHOLD_MINUTES' });
+  }
+  if (options.stallThresholdMinutes == null) {
+    options.stallThresholdMinutes = DEFAULT_STALL_THRESHOLD_MINUTES;
+  }
+
   return options;
 }
 
@@ -537,6 +586,117 @@ export function evaluateHealthGate({
   };
 }
 
+function normalizeRunStatus(value) {
+  return String(value ?? '').trim().toLowerCase();
+}
+
+function normalizeRunConclusion(value) {
+  return String(value ?? '').trim().toLowerCase();
+}
+
+function runTimestampMs(run) {
+  const updated = Date.parse(run.updatedAt ?? '');
+  if (Number.isFinite(updated)) {
+    return updated;
+  }
+  const created = Date.parse(run.createdAt ?? '');
+  if (Number.isFinite(created)) {
+    return created;
+  }
+  return Number.NaN;
+}
+
+function runAgeMinutes(run, nowMs) {
+  const stamp = runTimestampMs(run);
+  if (!Number.isFinite(stamp)) {
+    return Number.POSITIVE_INFINITY;
+  }
+  return Math.max(0, (nowMs - stamp) / 60000);
+}
+
+function toRuntimeFleetRuns(workflowRunsByName = {}) {
+  const runs = [];
+  for (const [workflow, workflowRuns] of Object.entries(workflowRunsByName)) {
+    for (const run of workflowRuns ?? []) {
+      runs.push({
+        workflow,
+        id: run.id ?? run.run_id ?? null,
+        status: normalizeRunStatus(run.status),
+        conclusion: normalizeRunConclusion(run.conclusion),
+        createdAt: normalizeIso(run.created_at ?? run.createdAt),
+        updatedAt: normalizeIso(run.updated_at ?? run.updatedAt),
+        branch: normalizeBaseBranch(run.head_branch ?? run.headBranch ?? ''),
+        url: run.html_url ?? run.url ?? null
+      });
+    }
+  }
+  return runs;
+}
+
+export function evaluateRuntimeFleetHealth({
+  workflowRunsByName,
+  now = new Date(),
+  maxQueuedRuns = DEFAULT_MAX_QUEUED_RUNS,
+  maxInProgressRuns = DEFAULT_MAX_IN_PROGRESS_RUNS,
+  stallThresholdMinutes = DEFAULT_STALL_THRESHOLD_MINUTES
+}) {
+  const nowMs = now.valueOf();
+  const runs = toRuntimeFleetRuns(workflowRunsByName);
+  const queuedStatuses = new Set(['queued', 'requested', 'waiting', 'pending']);
+  const inProgressStatuses = new Set(['in_progress']);
+
+  const queuedRuns = [];
+  const inProgressRuns = [];
+  const stalledRuns = [];
+
+  for (const run of runs) {
+    if (queuedStatuses.has(run.status)) {
+      const ageMinutes = runAgeMinutes(run, nowMs);
+      queuedRuns.push({ ...run, ageMinutes: Number.isFinite(ageMinutes) ? Number(ageMinutes.toFixed(2)) : ageMinutes });
+      if (ageMinutes > stallThresholdMinutes) {
+        stalledRuns.push({ ...run, ageMinutes: Number.isFinite(ageMinutes) ? Number(ageMinutes.toFixed(2)) : ageMinutes });
+      }
+      continue;
+    }
+    if (inProgressStatuses.has(run.status)) {
+      const ageMinutes = runAgeMinutes(run, nowMs);
+      inProgressRuns.push({ ...run, ageMinutes: Number.isFinite(ageMinutes) ? Number(ageMinutes.toFixed(2)) : ageMinutes });
+      if (ageMinutes > stallThresholdMinutes) {
+        stalledRuns.push({ ...run, ageMinutes: Number.isFinite(ageMinutes) ? Number(ageMinutes.toFixed(2)) : ageMinutes });
+      }
+    }
+  }
+
+  stalledRuns.sort((left, right) => (right.ageMinutes || 0) - (left.ageMinutes || 0));
+  const reasons = [];
+  if (queuedRuns.length > maxQueuedRuns) {
+    reasons.push('queued-runs-threshold-exceeded');
+  }
+  if (inProgressRuns.length > maxInProgressRuns) {
+    reasons.push('in-progress-runs-threshold-exceeded');
+  }
+  if (stalledRuns.length > 0) {
+    reasons.push('stalled-runs-detected');
+  }
+
+  return {
+    paused: reasons.length > 0,
+    reasons,
+    totals: {
+      queued: queuedRuns.length,
+      inProgress: inProgressRuns.length,
+      active: queuedRuns.length + inProgressRuns.length,
+      stalled: stalledRuns.length
+    },
+    thresholds: {
+      maxQueuedRuns,
+      maxInProgressRuns,
+      stallThresholdMinutes
+    },
+    stalledRuns
+  };
+}
+
 function parseQueueManagedBranches(policy, fallbackBranches) {
   const queueManaged = new Set();
   const rulesets = policy?.rulesets ?? {};
@@ -597,6 +757,39 @@ async function writeReport(reportPath, report) {
   return resolved;
 }
 
+const HEALTH_WORKFLOW_SPECS = Object.freeze([
+  { name: 'Validate', file: 'validate.yml' },
+  { name: 'Policy Guard (Upstream)', file: 'policy-guard-upstream.yml' },
+  { name: 'Fixture Drift Validation', file: 'fixture-drift.yml' },
+  { name: 'commit-integrity', file: 'commit-integrity.yml' }
+]);
+
+function fetchWorkflowRunsByName({
+  runGhJsonFn,
+  repository,
+  healthBranch,
+  sampleSize,
+  cwd
+}) {
+  const workflowRunsByName = {};
+  const fetchErrors = [];
+  for (const spec of HEALTH_WORKFLOW_SPECS) {
+    const endpoint = `repos/${repository}/actions/workflows/${spec.file}/runs?branch=${encodeURIComponent(healthBranch)}&per_page=${sampleSize}`;
+    try {
+      const response = runGhJsonFn(['api', endpoint], { cwd }) ?? {};
+      workflowRunsByName[spec.name] = Array.isArray(response.workflow_runs) ? response.workflow_runs : [];
+    } catch (error) {
+      workflowRunsByName[spec.name] = [];
+      fetchErrors.push({
+        workflow: spec.name,
+        file: spec.file,
+        message: error?.message ?? String(error)
+      });
+    }
+  }
+  return { workflowRunsByName, fetchErrors };
+}
+
 export async function runQueueSupervisor(options = {}) {
   const repoRoot = options.repoRoot ?? getRepoRoot();
   const args = options.args ?? parseArgs();
@@ -634,22 +827,29 @@ export async function runQueueSupervisor(options = {}) {
     expectedHeadOwner
   });
 
-  const workflowRunsByName = {
-    Validate: runGhJsonFn(
-      ['api', `repos/${repository}/actions/workflows/validate.yml/runs?branch=${encodeURIComponent(args.healthBranch)}&per_page=${DEFAULT_HEALTH_SAMPLE}`],
-      { cwd: repoRoot }
-    )?.workflow_runs ?? [],
-    'Policy Guard (Upstream)': runGhJsonFn(
-      ['api', `repos/${repository}/actions/workflows/policy-guard-upstream.yml/runs?branch=${encodeURIComponent(args.healthBranch)}&per_page=${DEFAULT_HEALTH_SAMPLE}`],
-      { cwd: repoRoot }
-    )?.workflow_runs ?? []
-  };
+  const { workflowRunsByName, fetchErrors: workflowFetchErrors } = fetchWorkflowRunsByName({
+    runGhJsonFn,
+    repository,
+    healthBranch: args.healthBranch,
+    sampleSize: DEFAULT_HEALTH_SAMPLE,
+    cwd: repoRoot
+  });
 
   const health = evaluateHealthGate({ workflowRunsByName, now });
+  const runtimeFleet = evaluateRuntimeFleetHealth({
+    workflowRunsByName,
+    now,
+    maxQueuedRuns: args.maxQueuedRuns,
+    maxInProgressRuns: args.maxInProgressRuns,
+    stallThresholdMinutes: args.stallThresholdMinutes
+  });
   const pausedByVariable = String(process.env.QUEUE_AUTOPILOT_PAUSED ?? '').trim() === '1';
   const pausedReasons = [];
   if (pausedByVariable) pausedReasons.push('paused-by-variable');
   if (health.paused) pausedReasons.push(...health.reasons);
+  if (runtimeFleet.paused) pausedReasons.push(...runtimeFleet.reasons);
+  if (workflowFetchErrors.length > 0) pausedReasons.push('health-workflow-fetch-errors');
+  const uniquePausedReasons = [...new Set(pausedReasons)];
 
   const inflight = countInflight(classified.candidates.filter((candidate) => queueManagedBranches.has(candidate.baseRefName)));
   const capacity = Math.max(0, args.maxInflight - inflight);
@@ -668,6 +868,9 @@ export async function runQueueSupervisor(options = {}) {
       pausedByVariable,
       queueAutopilotPaused: process.env.QUEUE_AUTOPILOT_PAUSED ?? null,
       queueAutopilotMaxInflight: process.env.QUEUE_AUTOPILOT_MAX_INFLIGHT ?? null,
+      queueAutopilotMaxQueuedRuns: process.env.QUEUE_AUTOPILOT_MAX_QUEUED_RUNS ?? null,
+      queueAutopilotMaxInProgressRuns: process.env.QUEUE_AUTOPILOT_MAX_IN_PROGRESS_RUNS ?? null,
+      queueAutopilotStallThresholdMinutes: process.env.QUEUE_AUTOPILOT_STALL_THRESHOLD_MINUTES ?? null,
       expectedHeadOwner
     },
     queueManagedBranches: [...queueManagedBranches].sort(),
@@ -675,8 +878,10 @@ export async function runQueueSupervisor(options = {}) {
     inflight,
     capacity,
     health,
-    paused: pausedReasons.length > 0,
-    pausedReasons,
+    runtimeFleet,
+    workflowFetchErrors,
+    paused: uniquePausedReasons.length > 0,
+    pausedReasons: uniquePausedReasons,
     summary: {
       openCount: classified.allOpen.length,
       candidateCount: classified.candidates.length,
@@ -847,6 +1052,7 @@ export const __test = Object.freeze({
   evaluateRequiredChecks,
   classifyOpenPullRequests,
   evaluateHealthGate,
+  evaluateRuntimeFleetHealth,
   runQueueSupervisor
 });
 
