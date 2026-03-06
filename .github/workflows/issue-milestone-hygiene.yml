@@ -1,0 +1,154 @@
+name: Issue Milestone Hygiene
+
+on:
+  issues:
+    types:
+      - opened
+      - edited
+      - reopened
+      - labeled
+      - unlabeled
+      - milestoned
+      - demilestoned
+  schedule:
+    - cron: '25 * * * *'
+  workflow_dispatch:
+    inputs:
+      apply_default_milestone:
+        description: 'Assign default milestone to violating issues'
+        required: false
+        default: false
+        type: boolean
+      create_default_milestone:
+        description: 'Create default milestone if missing during apply mode'
+        required: false
+        default: false
+        type: boolean
+      default_milestone:
+        description: 'Default milestone title override'
+        required: false
+        type: string
+      default_milestone_due_on:
+        description: 'ISO-8601 due date when creating default milestone'
+        required: false
+        type: string
+      warn_only:
+        description: 'Warn only (do not fail)'
+        required: false
+        default: false
+        type: boolean
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  issue-milestone-hygiene:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Evaluate milestone hygiene policy
+        shell: bash
+        env:
+          REPO_SLUG: ${{ github.repository }}
+          APPLY_INPUT: ${{ inputs.apply_default_milestone }}
+          CREATE_INPUT: ${{ inputs.create_default_milestone }}
+          DEFAULT_INPUT: ${{ inputs.default_milestone }}
+          DUE_INPUT: ${{ inputs.default_milestone_due_on }}
+          WARN_INPUT: ${{ inputs.warn_only }}
+          APPLY_VAR: ${{ vars.MILESTONE_HYGIENE_APPLY_DEFAULT || '0' }}
+          CREATE_VAR: ${{ vars.MILESTONE_HYGIENE_CREATE_DEFAULT || '0' }}
+          DEFAULT_VAR: ${{ vars.MILESTONE_HYGIENE_DEFAULT_MILESTONE || '' }}
+          DUE_VAR: ${{ vars.MILESTONE_HYGIENE_DEFAULT_MILESTONE_DUE_ON || '' }}
+          WARN_VAR: ${{ vars.MILESTONE_HYGIENE_WARN_ONLY || '0' }}
+        run: |
+          set -euo pipefail
+          args=(
+            "tools/npm/run-script.mjs"
+            "priority:milestone:hygiene"
+            "--"
+            "--repo" "$REPO_SLUG"
+            "--report" "tests/results/_agent/issue/milestone-hygiene-report.json"
+          )
+
+          warn_effective="${WARN_INPUT:-}"
+          if [[ -z "$warn_effective" || "$warn_effective" == "false" ]]; then
+            warn_effective="${WARN_VAR:-0}"
+          fi
+          warn_effective="$(echo "$warn_effective" | tr '[:upper:]' '[:lower:]')"
+          if [[ "$warn_effective" == "1" || "$warn_effective" == "true" || "$warn_effective" == "yes" || "$warn_effective" == "on" ]]; then
+            args+=("--warn-only")
+          fi
+
+          default_effective="${DEFAULT_INPUT:-}"
+          if [[ -z "$default_effective" ]]; then
+            default_effective="${DEFAULT_VAR:-}"
+          fi
+          if [[ -n "$default_effective" ]]; then
+            args+=("--default-milestone" "$default_effective")
+          fi
+
+          due_effective="${DUE_INPUT:-}"
+          if [[ -z "$due_effective" ]]; then
+            due_effective="${DUE_VAR:-}"
+          fi
+          if [[ -n "$due_effective" ]]; then
+            args+=("--default-milestone-due-on" "$due_effective")
+          fi
+
+          apply_effective="${APPLY_INPUT:-}"
+          if [[ -z "$apply_effective" || "$apply_effective" == "false" ]]; then
+            apply_effective="${APPLY_VAR:-0}"
+          fi
+          apply_effective="$(echo "$apply_effective" | tr '[:upper:]' '[:lower:]')"
+          if [[ "$apply_effective" == "1" || "$apply_effective" == "true" || "$apply_effective" == "yes" || "$apply_effective" == "on" ]]; then
+            args+=("--apply-default-milestone")
+          fi
+
+          create_effective="${CREATE_INPUT:-}"
+          if [[ -z "$create_effective" || "$create_effective" == "false" ]]; then
+            create_effective="${CREATE_VAR:-0}"
+          fi
+          create_effective="$(echo "$create_effective" | tr '[:upper:]' '[:lower:]')"
+          if [[ "$create_effective" == "1" || "$create_effective" == "true" || "$create_effective" == "yes" || "$create_effective" == "on" ]]; then
+            args+=("--create-default-milestone")
+          fi
+
+          node "${args[@]}"
+
+      - name: Append summary
+        if: always()
+        shell: bash
+        run: |
+          node <<'NODE'
+          const fs = require('fs');
+          const reportPath = 'tests/results/_agent/issue/milestone-hygiene-report.json';
+          if (!fs.existsSync(reportPath)) {
+            console.log('milestone hygiene report missing');
+            process.exit(0);
+          }
+          const report = JSON.parse(fs.readFileSync(reportPath, 'utf8'));
+          const remaining = report.summary?.remainingViolationCount ?? 0;
+          const lines = [
+            '## Issue Milestone Hygiene',
+            `- remaining violations: \`${remaining}\``,
+            `- required issues evaluated: \`${report.summary?.requiredIssueCount ?? 0}\``,
+            `- auto-assigned this run: \`${report.summary?.assignedDefaultMilestoneCount ?? 0}\``,
+            `- failed assignments: \`${report.summary?.failedAssignmentsCount ?? 0}\``,
+            `- default milestone created this run: \`${report.milestones?.createdDefaultMilestone ?? false}\``
+          ];
+          if (process.env.GITHUB_STEP_SUMMARY) {
+            fs.appendFileSync(process.env.GITHUB_STEP_SUMMARY, `${lines.join('\\n')}\\n`);
+          }
+          console.log(lines.join('\\n'));
+          NODE
+
+      - name: Upload milestone hygiene report
+        if: always()
+        uses: actions/upload-artifact@v5
+        with:
+          name: issue-milestone-hygiene-report
+          path: tests/results/_agent/issue/milestone-hygiene-report.json
+          if-no-files-found: warn
