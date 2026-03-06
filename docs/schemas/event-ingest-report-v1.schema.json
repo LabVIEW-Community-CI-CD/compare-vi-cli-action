@@ -1,0 +1,89 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "priority/event-ingest-report@v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema",
+    "schemaVersion",
+    "generatedAt",
+    "status",
+    "sourceType",
+    "inputPath",
+    "flags",
+    "event",
+    "errors"
+  ],
+  "properties": {
+    "schema": {
+      "const": "priority/event-ingest-report@v1"
+    },
+    "schemaVersion": {
+      "type": "string"
+    },
+    "generatedAt": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "status": {
+      "enum": [
+        "pass",
+        "fail"
+      ]
+    },
+    "sourceType": {
+      "enum": [
+        "incident-event",
+        "workflow-run",
+        "required-check-drift",
+        "deployment-state"
+      ]
+    },
+    "inputPath": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "flags": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "dryRun",
+        "classOverride",
+        "severityOverride",
+        "signatureOverride"
+      ],
+      "properties": {
+        "dryRun": {
+          "type": "boolean"
+        },
+        "classOverride": {
+          "type": "boolean"
+        },
+        "severityOverride": {
+          "type": "boolean"
+        },
+        "signatureOverride": {
+          "type": "boolean"
+        }
+      }
+    },
+    "event": {
+      "anyOf": [
+        {
+          "$ref": "./incident-event-v1.schema.json"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "errors": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    }
+  }
+}

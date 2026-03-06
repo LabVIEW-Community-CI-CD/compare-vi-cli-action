@@ -1,0 +1,123 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "incident-event@v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema",
+    "schemaVersion",
+    "generatedAt",
+    "sourceType",
+    "source",
+    "incidentClass",
+    "severity",
+    "repository",
+    "branch",
+    "sha",
+    "signature",
+    "fingerprint",
+    "fingerprintKey",
+    "inputDigest",
+    "summary",
+    "occurredAt",
+    "suggestedLabels",
+    "metadata",
+    "raw"
+  ],
+  "properties": {
+    "schema": {
+      "const": "incident-event@v1"
+    },
+    "schemaVersion": {
+      "type": "string"
+    },
+    "generatedAt": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "sourceType": {
+      "enum": [
+        "incident-event",
+        "workflow-run",
+        "required-check-drift",
+        "deployment-state"
+      ]
+    },
+    "source": {
+      "type": "string",
+      "minLength": 1
+    },
+    "incidentClass": {
+      "type": "string",
+      "minLength": 1
+    },
+    "severity": {
+      "enum": [
+        "critical",
+        "high",
+        "medium",
+        "low",
+        "info"
+      ]
+    },
+    "repository": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "branch": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "sha": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "signature": {
+      "type": "string",
+      "minLength": 1
+    },
+    "fingerprint": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "fingerprintKey": {
+      "type": "string",
+      "minLength": 1
+    },
+    "inputDigest": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "summary": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "occurredAt": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "format": "date-time"
+    },
+    "suggestedLabels": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "metadata": {
+      "type": "object"
+    },
+    "raw": {
+      "type": "object"
+    }
+  }
+}
