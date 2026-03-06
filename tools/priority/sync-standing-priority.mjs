@@ -360,9 +360,22 @@ function readJson(file) {
   }
 }
 
-function writeJson(file, obj) {
+export function shouldWriteJsonFile(file, nextObject) {
+  const currentObject = readJson(file);
+  if (currentObject == null) {
+    return true;
+  }
+  return !isDeepStrictEqual(currentObject, nextObject);
+}
+
+export function writeJson(file, obj, options = {}) {
+  const force = Boolean(options.force);
+  if (!force && !shouldWriteJsonFile(file, obj)) {
+    return false;
+  }
   fs.mkdirSync(path.dirname(file), { recursive: true });
   fs.writeFileSync(file, JSON.stringify(obj, null, 2) + '\n', 'utf8');
+  return true;
 }
 
 function loadSnapshot(repoRoot, number) {
