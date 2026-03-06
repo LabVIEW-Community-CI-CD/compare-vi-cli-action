@@ -32,14 +32,16 @@ test('priority:policy --apply updates rulesets for develop/main/release', async 
     'Policy Guard (Upstream) / policy-guard',
     'hook-parity (windows-latest)',
     'hook-parity (ubuntu-latest)',
-    'vi-history-scenarios-linux'
+    'vi-history-scenarios-linux',
+    'commit-integrity'
   ];
   const expectedMainChecks = [
     'lint',
     'pester',
     'vi-binary-check',
     'vi-compare',
-    'Policy Guard (Upstream) / policy-guard'
+    'Policy Guard (Upstream) / policy-guard',
+    'commit-integrity'
   ];
   const expectedReleaseChecks = [
     'lint',
@@ -431,6 +433,32 @@ test('priority:policy --apply updates rulesets for develop/main/release', async 
     requests.some((entry) => entry.method === 'PUT' && entry.url === rulesetMainUrl),
     'ruleset put call expected'
   );
+  const developRulesetPut = requests.find((entry) => entry.method === 'PUT' && entry.url === rulesetDevelopUrl);
+  const mainRulesetPut = requests.find((entry) => entry.method === 'PUT' && entry.url === rulesetMainUrl);
+  assert.ok(developRulesetPut?.body, 'develop ruleset payload should be captured');
+  assert.ok(mainRulesetPut?.body, 'main ruleset payload should be captured');
+
+  const developRulesetPayload = JSON.parse(developRulesetPut.body);
+  const mainRulesetPayload = JSON.parse(mainRulesetPut.body);
+  const developCommitIntegrityCheck = developRulesetPayload.rules
+    .find((rule) => rule.type === 'required_status_checks')
+    .parameters.required_status_checks.find((check) => check.context === 'commit-integrity');
+  const mainCommitIntegrityCheck = mainRulesetPayload.rules
+    .find((rule) => rule.type === 'required_status_checks')
+    .parameters.required_status_checks.find((check) => check.context === 'commit-integrity');
+  assert.ok(developCommitIntegrityCheck, 'develop ruleset should include commit-integrity required check');
+  assert.ok(mainCommitIntegrityCheck, 'main ruleset should include commit-integrity required check');
+  assert.equal(
+    Object.prototype.hasOwnProperty.call(developCommitIntegrityCheck, 'integration_id'),
+    false,
+    'new commit-integrity context should omit integration_id in develop ruleset payload'
+  );
+  assert.equal(
+    Object.prototype.hasOwnProperty.call(mainCommitIntegrityCheck, 'integration_id'),
+    false,
+    'new commit-integrity context should omit integration_id in main ruleset payload'
+  );
+
   assert.ok(
     requests.some((entry) => entry.method === 'PUT' && entry.url === branchDevelopUrl),
     'develop branch protection put call expected'
@@ -874,14 +902,16 @@ test('priority:policy verify fails when queue-managed ruleset is missing merge_q
     'Policy Guard (Upstream) / policy-guard',
     'hook-parity (windows-latest)',
     'hook-parity (ubuntu-latest)',
-    'vi-history-scenarios-linux'
+    'vi-history-scenarios-linux',
+    'commit-integrity'
   ];
   const mainChecks = [
     'lint',
     'pester',
     'vi-binary-check',
     'vi-compare',
-    'Policy Guard (Upstream) / policy-guard'
+    'Policy Guard (Upstream) / policy-guard',
+    'commit-integrity'
   ];
   const releaseChecks = [
     'lint',
@@ -1048,6 +1078,235 @@ test('priority:policy verify fails when queue-managed ruleset is missing merge_q
   assert.ok(
     logMessages.some((msg) => msg.includes('auth source: GITHUB_TOKEN')),
     'expected auth source to be logged'
+  );
+});
+
+test('priority:policy verify uses queue-managed rulesets as required-check source of truth', async () => {
+  const repoUrl = 'https://api.github.com/repos/test-org/test-repo';
+  const rulesetDevelopUrl = `${repoUrl}/rulesets/8811898`;
+  const rulesetMainUrl = `${repoUrl}/rulesets/8614140`;
+  const rulesetReleaseUrl = `${repoUrl}/rulesets/8614172`;
+  const branchDevelopUrl = `${repoUrl}/branches/develop/protection`;
+  const branchMainUrl = `${repoUrl}/branches/main/protection`;
+
+  const repoState = {
+    allow_squash_merge: true,
+    allow_merge_commit: false,
+    allow_rebase_merge: true,
+    allow_auto_merge: true,
+    delete_branch_on_merge: true,
+    permissions: {
+      admin: true
+    }
+  };
+
+  const developChecksExpected = [
+    'lint',
+    'fixtures',
+    'session-index',
+    'issue-snapshot',
+    'semver',
+    'Policy Guard (Upstream) / policy-guard',
+    'hook-parity (windows-latest)',
+    'hook-parity (ubuntu-latest)',
+    'vi-history-scenarios-linux',
+    'commit-integrity'
+  ];
+  const mainChecksExpected = [
+    'lint',
+    'pester',
+    'vi-binary-check',
+    'vi-compare',
+    'Policy Guard (Upstream) / policy-guard',
+    'commit-integrity'
+  ];
+  const releaseChecksExpected = [
+    'lint',
+    'pester',
+    'publish',
+    'vi-binary-check',
+    'vi-compare',
+    'mock-cli',
+    'Policy Guard (Upstream) / policy-guard'
+  ];
+
+  const branchDevelopProtection = {
+    required_status_checks: {
+      strict: true,
+      checks: developChecksExpected
+        .filter((context) => context !== 'commit-integrity')
+        .map((context) => ({ context }))
+    },
+    required_linear_history: { enabled: true },
+    enforce_admins: { enabled: false },
+    required_pull_request_reviews: null,
+    restrictions: null,
+    allow_force_pushes: { enabled: false },
+    allow_deletions: { enabled: false },
+    block_creations: { enabled: false },
+    required_conversation_resolution: { enabled: false },
+    lock_branch: { enabled: false },
+    allow_fork_syncing: { enabled: false }
+  };
+
+  const branchMainProtection = {
+    required_status_checks: {
+      strict: true,
+      checks: mainChecksExpected
+        .filter((context) => context !== 'commit-integrity')
+        .map((context) => ({ context }))
+    },
+    required_linear_history: { enabled: true },
+    enforce_admins: { enabled: false },
+    required_pull_request_reviews: null,
+    restrictions: null,
+    allow_force_pushes: { enabled: false },
+    allow_deletions: { enabled: false },
+    block_creations: { enabled: false },
+    required_conversation_resolution: { enabled: false },
+    lock_branch: { enabled: false },
+    allow_fork_syncing: { enabled: false }
+  };
+
+  const mergeQueueParams = {
+    merge_method: 'SQUASH',
+    grouping_strategy: 'ALLGREEN',
+    max_entries_to_build: 5,
+    min_entries_to_merge: 1,
+    max_entries_to_merge: 5,
+    min_entries_to_merge_wait_minutes: 5,
+    check_response_timeout_minutes: 60
+  };
+
+  const rulesetDevelop = {
+    id: 8811898,
+    name: 'develop',
+    target: 'branch',
+    conditions: { ref_name: { include: ['refs/heads/develop'], exclude: [] } },
+    rules: [
+      { type: 'required_linear_history' },
+      { type: 'merge_queue', parameters: mergeQueueParams },
+      {
+        type: 'required_status_checks',
+        parameters: {
+          required_status_checks: developChecksExpected.map((context) => ({ context }))
+        }
+      },
+      {
+        type: 'pull_request',
+        parameters: {
+          required_approving_review_count: 0,
+          dismiss_stale_reviews_on_push: false,
+          require_code_owner_review: false,
+          require_last_push_approval: false,
+          required_review_thread_resolution: false,
+          allowed_merge_methods: ['squash', 'rebase']
+        }
+      }
+    ]
+  };
+
+  const rulesetMain = {
+    id: 8614140,
+    name: 'main',
+    target: 'branch',
+    conditions: { ref_name: { include: ['refs/heads/main'], exclude: [] } },
+    rules: [
+      { type: 'merge_queue', parameters: mergeQueueParams },
+      {
+        type: 'required_status_checks',
+        parameters: {
+          required_status_checks: mainChecksExpected.map((context) => ({ context }))
+        }
+      },
+      {
+        type: 'pull_request',
+        parameters: {
+          required_approving_review_count: 0,
+          dismiss_stale_reviews_on_push: false,
+          require_code_owner_review: false,
+          require_last_push_approval: false,
+          required_review_thread_resolution: false,
+          allowed_merge_methods: ['squash', 'rebase']
+        }
+      }
+    ]
+  };
+
+  const rulesetRelease = {
+    id: 8614172,
+    name: 'release',
+    target: 'branch',
+    conditions: { ref_name: { include: ['refs/heads/release/*'], exclude: [] } },
+    rules: [
+      {
+        type: 'required_status_checks',
+        parameters: {
+          required_status_checks: releaseChecksExpected.map((context) => ({ context }))
+        }
+      },
+      {
+        type: 'pull_request',
+        parameters: {
+          required_approving_review_count: 0,
+          dismiss_stale_reviews_on_push: true,
+          require_code_owner_review: false,
+          require_last_push_approval: false,
+          required_review_thread_resolution: false,
+          allowed_merge_methods: ['rebase']
+        }
+      }
+    ]
+  };
+
+  const fetchMock = async (url, options = {}) => {
+    const method = options.method ?? 'GET';
+    if (method !== 'GET') {
+      throw new Error(`Unexpected request ${method} ${url}`);
+    }
+    if (url === repoUrl) {
+      return createResponse(repoState);
+    }
+    if (url === branchDevelopUrl) {
+      return createResponse(branchDevelopProtection);
+    }
+    if (url === branchMainUrl) {
+      return createResponse(branchMainProtection);
+    }
+    if (url === rulesetDevelopUrl) {
+      return createResponse(rulesetDevelop);
+    }
+    if (url === rulesetMainUrl) {
+      return createResponse(rulesetMain);
+    }
+    if (url === rulesetReleaseUrl) {
+      return createResponse(rulesetRelease);
+    }
+    throw new Error(`Unexpected request ${method} ${url}`);
+  };
+
+  const logMessages = [];
+  const errorMessages = [];
+  const code = await run({
+    argv: ['node', 'check-policy.mjs'],
+    env: {
+      ...process.env,
+      GITHUB_REPOSITORY: 'test-org/test-repo',
+      GITHUB_TOKEN: 'fake-token'
+    },
+    fetchFn: fetchMock,
+    execSyncFn: () => {
+      throw new Error('execSync should not be called when GITHUB_REPOSITORY is set');
+    },
+    log: (msg) => logMessages.push(msg),
+    error: (msg) => errorMessages.push(msg)
+  });
+
+  assert.equal(code, 0, 'verify mode should pass when queue-managed rulesets match policy');
+  assert.deepEqual(errorMessages, []);
+  assert.ok(
+    logMessages.some((msg) => msg.includes('auth source: GITHUB_TOKEN')),
+    'auth source log expected'
   );
 });
 
@@ -1318,3 +1577,4 @@ test('priority:policy build branch-protection payload honors explicit disabled s
   assert.equal(payload.lock_branch, false);
   assert.equal(payload.allow_fork_syncing, false);
 });
+
