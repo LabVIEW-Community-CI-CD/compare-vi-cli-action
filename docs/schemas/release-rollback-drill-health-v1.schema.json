@@ -1,0 +1,142 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://labview-community-ci-cd.github.io/compare-vi-cli-action/schemas/release-rollback-drill-health-v1.schema.json",
+  "title": "Release Rollback Drill Health v1",
+  "type": "object",
+  "required": [
+    "schema",
+    "generatedAt",
+    "repository",
+    "workflow",
+    "branch",
+    "thresholds",
+    "summary",
+    "failures",
+    "runs"
+  ],
+  "properties": {
+    "schema": {
+      "type": "string",
+      "const": "release/rollback-drill-health@v1"
+    },
+    "generatedAt": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "repository": {
+      "type": "string"
+    },
+    "workflow": {
+      "type": "string"
+    },
+    "branch": {
+      "type": "string"
+    },
+    "thresholds": {
+      "type": "object",
+      "required": [
+        "lookbackRuns",
+        "minimumSuccessRate",
+        "maxHoursSinceSuccess"
+      ],
+      "properties": {
+        "lookbackRuns": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "minimumSuccessRate": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        },
+        "maxHoursSinceSuccess": {
+          "type": "integer",
+          "minimum": 1
+        }
+      }
+    },
+    "summary": {
+      "type": "object",
+      "required": [
+        "status",
+        "pausePromotion",
+        "totalRuns",
+        "successCount",
+        "successRate",
+        "latestSuccessId",
+        "latestSuccessCreatedAt",
+        "hoursSinceLatestSuccess"
+      ],
+      "properties": {
+        "status": {
+          "type": "string",
+          "enum": [
+            "pass",
+            "fail"
+          ]
+        },
+        "pausePromotion": {
+          "type": "boolean"
+        },
+        "totalRuns": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "successCount": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "successRate": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        },
+        "latestSuccessId": {
+          "type": [
+            "number",
+            "integer",
+            "null"
+          ]
+        },
+        "latestSuccessCreatedAt": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "hoursSinceLatestSuccess": {
+          "type": [
+            "number",
+            "null"
+          ]
+        }
+      }
+    },
+    "failures": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "code",
+          "message"
+        ]
+      }
+    },
+    "runs": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "id",
+          "runNumber",
+          "status",
+          "conclusion",
+          "event",
+          "createdAt",
+          "updatedAt",
+          "url"
+        ]
+      }
+    }
+  }
+}

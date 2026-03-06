@@ -44,8 +44,23 @@ Configuration path: `Settings -> Environments -> <environment> -> Required revie
    - `node tools/npm/run-script.mjs priority:policy:sync`
 4. Finalize release (draft tag + metadata):
    - `node tools/npm/run-script.mjs release:finalize -- <version>`
-5. Obtain environment approvals for protected deployments from GitHub UI/mobile.
-6. Record evidence links in the governing issue/PR before closure.
+5. Verify rollback drill health:
+   - `node tools/npm/run-script.mjs priority:rollback:drill:health -- --repo <owner/repo>`
+   - confirm `tests/results/_agent/release/rollback-drill-health.json` reports `status=pass`
+6. Obtain environment approvals for protected deployments from GitHub UI/mobile.
+7. Record evidence links in the governing issue/PR before closure.
+
+## One-command rollback
+
+When an incident requires rollback, run:
+
+- Dry-run:
+  - `node tools/npm/run-script.mjs release:rollback -- --stream stable`
+- Apply:
+  - `node tools/npm/run-script.mjs release:rollback:apply -- --stream stable`
+
+Apply mode resolves the previous-good immutable release tag pointer for the stream, force-updates `main` and
+`develop` using `--force-with-lease`, then validates branch alignment and policy sync evidence.
 
 ## Escalation matrix
 
@@ -79,7 +94,9 @@ Configuration path: `Settings -> Environments -> <environment> -> Required revie
    - containment action
    - next update ETA
 3. If rollback is required:
-   - run rollback path (or release-finalize dry-run rehearsal first if diagnosis is uncertain)
+   - run rollback path:
+     - `node tools/npm/run-script.mjs release:rollback -- --stream stable`
+     - `node tools/npm/run-script.mjs release:rollback:apply -- --stream stable`
    - publish rollback evidence artifacts
    - confirm branch/policy parity after rollback
 4. Close incident only after:
@@ -111,6 +128,7 @@ matching remediation path:
 - Weekly operator rehearsal (non-destructive):
   - `node tools/npm/run-script.mjs release:branch:dry -- <version>`
   - `node tools/npm/run-script.mjs release:finalize:dry -- <version>`
+  - scheduled workflow `release-rollback-drill.yml` for rollback pointer drill evidence
 - Monthly governance rehearsal:
   - manual dispatch of `monthly-stability-release` with environment approvals
   - evidence ledger review in promotion-contract artifacts
@@ -125,3 +143,5 @@ matching remediation path:
 - `tests/results/_agent/policy/policy-drift-report.json`
 - `tests/results/_agent/health-snapshot/health-snapshot.json`
 - `tests/results/_agent/supply-chain/release-trust-gate.json`
+- `tests/results/_agent/release/rollback-drill-health.json`
+- `tests/results/_agent/release/rollback-drill-report.json`

@@ -12,7 +12,8 @@
         "contract-alignment",
         "promotion-evidence-ledger",
         "certification-matrix",
-        "supply-chain-trust-gate"
+        "supply-chain-trust-gate",
+        "rollback-drill-health"
       ]
     },
     "stable": {
@@ -23,7 +24,8 @@
         "contract-alignment",
         "promotion-evidence-ledger",
         "certification-matrix",
-        "supply-chain-trust-gate"
+        "supply-chain-trust-gate",
+        "rollback-drill-health"
       ]
     },
     "lts": {
@@ -34,7 +36,8 @@
         "contract-alignment",
         "promotion-evidence-ledger",
         "certification-matrix",
-        "supply-chain-trust-gate"
+        "supply-chain-trust-gate",
+        "rollback-drill-health"
       ]
     }
   },

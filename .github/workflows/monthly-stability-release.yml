@@ -71,6 +71,33 @@ jobs:
     steps:
       - uses: actions/checkout@v5
 
+      - name: Enforce rollback drill health gate
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          node tools/priority/rollback-drill-health.mjs \
+            --repo "${{ github.repository }}" \
+            --policy tools/policy/release-rollback-policy.json \
+            --report tests/results/_agent/release/monthly-rollback-drill-health.json
+
+      - name: Validate rollback drill health schema
+        if: always()
+        shell: pwsh
+        run: |
+          pwsh -NoLogo -NoProfile -File tools/Invoke-JsonSchemaLite.ps1 `
+            -JsonPath tests/results/_agent/release/monthly-rollback-drill-health.json `
+            -SchemaPath docs/schemas/release-rollback-drill-health-v1.schema.json
+
+      - name: Upload rollback drill health artifact
+        if: always()
+        uses: actions/upload-artifact@v5
+        with:
+          name: monthly-rollback-drill-health-${{ github.run_id }}
+          path: tests/results/_agent/release/monthly-rollback-drill-health.json
+          if-no-files-found: error
+
       - name: Assert promotion contract alignment
         shell: pwsh
         run: |
