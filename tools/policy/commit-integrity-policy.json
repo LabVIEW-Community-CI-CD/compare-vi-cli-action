@@ -1,0 +1,25 @@
+{
+  "schema": "commit-integrity-policy/v1",
+  "schemaVersion": "1.0.0",
+  "source_resolution": {
+    "bot_login_patterns": [
+      "\\[bot\\]$"
+    ],
+    "bot_email_patterns": [
+      "\\[bot\\]@users\\.noreply\\.github\\.com$",
+      "@users\\.noreply\\.github\\.com$"
+    ]
+  },
+  "verification": {
+    "fail_on_unverified": true
+  },
+  "checks": {
+    "require_author_attribution": true,
+    "require_committer_attribution": true,
+    "require_non_unknown_reason_for_unverified": true,
+    "require_unique_shas": true,
+    "require_non_empty_headline": true,
+    "max_headline_length": 120,
+    "require_signature_material_for_verified": false
+  }
+}

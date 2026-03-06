@@ -1,0 +1,374 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "commit-integrity/report@v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema",
+    "schemaVersion",
+    "generatedAt",
+    "repository",
+    "scope",
+    "policy",
+    "enforcement",
+    "checks",
+    "summary",
+    "commits",
+    "violations",
+    "issues",
+    "result",
+    "errors",
+    "exitCode"
+  ],
+  "properties": {
+    "schema": {
+      "const": "commit-integrity/report@v1"
+    },
+    "schemaVersion": {
+      "type": "string"
+    },
+    "generatedAt": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "repository": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "scope": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "mode",
+        "pullRequest",
+        "baseSha",
+        "headSha"
+      ],
+      "properties": {
+        "mode": {
+          "type": "string"
+        },
+        "pullRequest": {
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "baseSha": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "headSha": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      }
+    },
+    "policy": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schema",
+        "path",
+        "failOnUnverified",
+        "checks",
+        "sourceResolution"
+      ],
+      "properties": {
+        "schema": {
+          "type": "string"
+        },
+        "path": {
+          "type": "string"
+        },
+        "failOnUnverified": {
+          "type": "boolean"
+        },
+        "checks": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "requireAuthorAttribution",
+            "requireCommitterAttribution",
+            "requireKnownReasonForUnverified",
+            "requireUniqueShas",
+            "requireNonEmptyHeadline",
+            "maxHeadlineLength",
+            "requireSignatureMaterialForVerified"
+          ],
+          "properties": {
+            "requireAuthorAttribution": {
+              "type": "boolean"
+            },
+            "requireCommitterAttribution": {
+              "type": "boolean"
+            },
+            "requireKnownReasonForUnverified": {
+              "type": "boolean"
+            },
+            "requireUniqueShas": {
+              "type": "boolean"
+            },
+            "requireNonEmptyHeadline": {
+              "type": "boolean"
+            },
+            "maxHeadlineLength": {
+              "type": "integer",
+              "minimum": 1
+            },
+            "requireSignatureMaterialForVerified": {
+              "type": "boolean"
+            }
+          }
+        },
+        "sourceResolution": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "botLoginPatternCount",
+            "botEmailPatternCount"
+          ],
+          "properties": {
+            "botLoginPatternCount": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "botEmailPatternCount": {
+              "type": "integer",
+              "minimum": 0
+            }
+          }
+        }
+      }
+    },
+    "enforcement": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "observeOnly",
+        "blocking"
+      ],
+      "properties": {
+        "observeOnly": {
+          "type": "boolean"
+        },
+        "blocking": {
+          "type": "boolean"
+        }
+      }
+    },
+    "checks": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "name",
+          "enabled",
+          "passed",
+          "failureCount"
+        ],
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "enabled": {
+            "type": "boolean"
+          },
+          "passed": {
+            "type": "boolean"
+          },
+          "failureCount": {
+            "type": "integer",
+            "minimum": 0
+          }
+        }
+      }
+    },
+    "summary": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "commitCount",
+        "verifiedCount",
+        "unverifiedCount",
+        "violationCount",
+        "deterministicOrder"
+      ],
+      "properties": {
+        "commitCount": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "verifiedCount": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "unverifiedCount": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "violationCount": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "deterministicOrder": {
+          "const": "sha-asc"
+        }
+      }
+    },
+    "commits": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "sha",
+          "url",
+          "messageHeadline",
+          "verified",
+          "verificationReason",
+          "verificationSignaturePresent",
+          "verificationPayloadPresent",
+          "authorLogin",
+          "committerLogin",
+          "authorEmail",
+          "committerEmail",
+          "sourceKind"
+        ],
+        "properties": {
+          "sha": {
+            "type": "string"
+          },
+          "url": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "messageHeadline": {
+            "type": "string"
+          },
+          "verified": {
+            "type": "boolean"
+          },
+          "verificationReason": {
+            "type": "string"
+          },
+          "verificationSignaturePresent": {
+            "type": "boolean"
+          },
+          "verificationPayloadPresent": {
+            "type": "boolean"
+          },
+          "authorLogin": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "committerLogin": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "authorEmail": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "committerEmail": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "sourceKind": {
+            "enum": [
+              "human",
+              "bot"
+            ]
+          }
+        }
+      }
+    },
+    "violations": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "category",
+          "sha",
+          "reason",
+          "messageHeadline",
+          "sourceKind",
+          "authorLogin",
+          "committerLogin"
+        ],
+        "properties": {
+          "category": {
+            "type": "string"
+          },
+          "sha": {
+            "type": "string"
+          },
+          "reason": {
+            "type": "string"
+          },
+          "messageHeadline": {
+            "type": "string"
+          },
+          "sourceKind": {
+            "enum": [
+              "human",
+              "bot"
+            ]
+          },
+          "authorLogin": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "committerLogin": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        }
+      }
+    },
+    "issues": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "result": {
+      "enum": [
+        "pass",
+        "fail"
+      ]
+    },
+    "errors": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "exitCode": {
+      "type": "integer",
+      "minimum": 0
+    }
+  }
+}

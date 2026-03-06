@@ -148,6 +148,21 @@ if (Test-Path -LiteralPath $verificationContractScript -PathType Leaf) {
   Write-Host '[pre-push] requirements-verification check contract OK' -ForegroundColor Green
 }
 
+$commitIntegrityContractScript = Join-Path $root 'tools' 'Assert-CommitIntegrityContract.ps1'
+if (Test-Path -LiteralPath $commitIntegrityContractScript -PathType Leaf) {
+  Write-Host '[pre-push] Verifying commit-integrity contract' -ForegroundColor Cyan
+  Push-Location $root
+  try {
+    pwsh -NoLogo -NonInteractive -NoProfile -File $commitIntegrityContractScript
+    if ($LASTEXITCODE -ne 0) {
+      throw "Assert-CommitIntegrityContract.ps1 failed (exit=$LASTEXITCODE)."
+    }
+  } finally {
+    Pop-Location | Out-Null
+  }
+  Write-Host '[pre-push] commit-integrity contract OK' -ForegroundColor Green
+}
+
 $updateReportScript = Join-Path $root 'tools' 'icon-editor' 'Update-IconEditorFixtureReport.ps1'
 if (Test-Path -LiteralPath $updateReportScript -PathType Leaf) {
   $skipLegacyFixtureChecks = $SkipIconEditorFixtureChecks `
@@ -268,5 +283,4 @@ if (Test-Path -LiteralPath $updateReportScript -PathType Leaf) {
     Pop-Location | Out-Null
   }
 }
-
 

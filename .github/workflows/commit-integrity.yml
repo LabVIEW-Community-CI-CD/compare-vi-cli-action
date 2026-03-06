@@ -1,0 +1,75 @@
+name: commit-integrity
+
+on:
+  pull_request:
+    branches: [main, develop]
+  merge_group:
+    branches: [main, develop]
+  workflow_dispatch:
+    inputs:
+      pull_request:
+        description: 'Pull request number to evaluate (required for workflow_dispatch)'
+        required: true
+        type: string
+      enforce:
+        description: 'Fail workflow on violations (true) or run observe-only (false)'
+        required: false
+        default: false
+        type: boolean
+
+concurrency:
+  group: commit-integrity-${{ (github.event_name == 'pull_request' && github.event.pull_request.number) || (github.event_name == 'merge_group' && github.event.merge_group.head_sha) || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  commit-integrity:
+    name: commit-integrity
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: read
+
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: '20'
+
+      - name: Run commit integrity checks
+        shell: pwsh
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          COMMIT_INTEGRITY_ENFORCE: ${{ vars.COMMIT_INTEGRITY_ENFORCE || '0' }}
+          DISPATCH_PR: ${{ inputs.pull_request || '' }}
+          DISPATCH_ENFORCE: ${{ inputs.enforce || false }}
+        run: |
+          $reportPath = 'tests/results/_agent/commit-integrity/commit-integrity-report.json'
+          $args = @(
+            'tools/priority/commit-integrity.mjs',
+            '--report', $reportPath
+          )
+
+          if ('${{ github.event_name }}' -eq 'workflow_dispatch') {
+            if ([string]::IsNullOrWhiteSpace($env:DISPATCH_PR)) {
+              throw "workflow_dispatch requires input 'pull_request'."
+            }
+            $args += @('--pr', $env:DISPATCH_PR)
+            if ($env:DISPATCH_ENFORCE -ne 'true') {
+              $args += '--observe-only'
+            }
+          } elseif ($env:COMMIT_INTEGRITY_ENFORCE -ne '1') {
+            $args += '--observe-only'
+          }
+
+          node @args
+
+      - name: Upload commit integrity artifact
+        if: always()
+        uses: actions/upload-artifact@v5
+        with:
+          name: commit-integrity-${{ github.run_id }}
+          path: tests/results/_agent/commit-integrity/commit-integrity-report.json
+          if-no-files-found: error

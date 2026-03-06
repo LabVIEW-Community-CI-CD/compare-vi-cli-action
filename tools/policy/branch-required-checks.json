@@ -29,5 +29,13 @@
       "mock-cli",
       "Policy Guard (Upstream) / policy-guard"
     ]
+  },
+  "observed": {
+    "develop": [
+      "commit-integrity / commit-integrity"
+    ],
+    "main": [
+      "commit-integrity / commit-integrity"
+    ]
   }
 }

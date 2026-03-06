@@ -20,6 +20,9 @@
         "hook-parity (ubuntu-latest)",
         "vi-history-scenarios-linux"
       ],
+      "observed_status_checks": [
+        "commit-integrity / commit-integrity"
+      ],
       "required_linear_history": true,
       "enforce_admins": false,
       "required_pull_request_reviews": null,
@@ -39,6 +42,9 @@
         "vi-binary-check",
         "vi-compare",
         "Policy Guard (Upstream) / policy-guard"
+      ],
+      "observed_status_checks": [
+        "commit-integrity / commit-integrity"
       ],
       "required_linear_history": true,
       "enforce_admins": false,
@@ -82,6 +88,9 @@
         "hook-parity (ubuntu-latest)",
         "vi-history-scenarios-linux"
       ],
+      "observed_status_checks": [
+        "commit-integrity / commit-integrity"
+      ],
       "merge_queue": {
         "merge_method": "SQUASH",
         "grouping_strategy": "ALLGREEN",
@@ -114,6 +123,9 @@
         "vi-binary-check",
         "vi-compare",
         "Policy Guard (Upstream) / policy-guard"
+      ],
+      "observed_status_checks": [
+        "commit-integrity / commit-integrity"
       ],
       "merge_queue": {
         "merge_method": "SQUASH",
