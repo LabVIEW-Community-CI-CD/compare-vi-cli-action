@@ -21,8 +21,52 @@ const DEFAULT_POLICY_CHECKS = Object.freeze({
   requireUniqueShas: true,
   requireNonEmptyHeadline: true,
   maxHeadlineLength: 120,
-  requireSignatureMaterialForVerified: false
+  requireSignatureMaterialForVerified: false,
+  requireRequiredTrailer: false,
+  requiredTrailerRules: Object.freeze([])
 });
+
+function extractCommitTrailers(message) {
+  const normalizedMessage = normalizeOptionalString(message) ?? '';
+  if (!normalizedMessage) {
+    return [];
+  }
+  const lines = normalizedMessage.split(/\r?\n/);
+  if (lines.length < 2) {
+    return [];
+  }
+
+  let index = lines.length - 1;
+  while (index >= 0 && !lines[index].trim()) {
+    index -= 1;
+  }
+  if (index < 0) {
+    return [];
+  }
+
+  const trailers = [];
+  while (index >= 0 && lines[index].trim()) {
+    const line = lines[index].trim();
+    const match = line.match(/^([A-Za-z0-9-]+):\s*(.+)$/);
+    if (!match) {
+      return [];
+    }
+    trailers.unshift({
+      key: match[1],
+      value: match[2].trim()
+    });
+    index -= 1;
+  }
+
+  if (trailers.length === 0) {
+    return [];
+  }
+  // Require the trailer block to be separated from body/headline by a blank line.
+  if (index < 0 || lines[index].trim() !== '') {
+    return [];
+  }
+  return trailers;
+}
 
 function printUsage() {
   console.log('Usage: node tools/priority/commit-integrity.mjs [options]');
@@ -322,12 +366,14 @@ export function normalizeCommitRecord(rawRecord, sourceResolution) {
   }
 
   const commit = rawRecord?.commit ?? {};
+  const fullMessage = normalizeOptionalString(commit?.message) ?? '';
   const verification = commit?.verification ?? {};
   const verificationReason = normalizeOptionalString(verification?.reason) ?? 'unknown';
   const normalized = {
     sha,
     url: normalizeOptionalString(rawRecord?.html_url),
-    messageHeadline: firstLine(commit?.message),
+    messageHeadline: firstLine(fullMessage),
+    trailers: extractCommitTrailers(fullMessage),
     verified: verification?.verified === true,
     verificationReason,
     verificationSignaturePresent: Boolean(normalizeOptionalString(verification?.signature)),
@@ -372,6 +418,26 @@ function normalizeChecks(checks = {}) {
     Number.isInteger(rawMaxHeadlineLength) && rawMaxHeadlineLength > 0
       ? rawMaxHeadlineLength
       : DEFAULT_POLICY_CHECKS.maxHeadlineLength;
+
+  const normalizedRequiredTrailerRules = [];
+  for (const [index, rawRule] of (Array.isArray(checks.requiredTrailerRules) ? checks.requiredTrailerRules : []).entries()) {
+    const key = normalizeOptionalString(rawRule?.key);
+    const valuePattern = normalizeOptionalString(rawRule?.valuePattern);
+    if (!key || !valuePattern) {
+      continue;
+    }
+    try {
+      normalizedRequiredTrailerRules.push({
+        key,
+        keyLower: key.toLowerCase(),
+        valuePattern,
+        valueRegex: new RegExp(valuePattern)
+      });
+    } catch (error) {
+      throw new Error(`Invalid trailer rule at index ${index}: ${error.message}`);
+    }
+  }
+
   return {
     requireAuthorAttribution:
       checks.requireAuthorAttribution !== undefined
@@ -397,7 +463,15 @@ function normalizeChecks(checks = {}) {
     requireSignatureMaterialForVerified:
       checks.requireSignatureMaterialForVerified !== undefined
         ? Boolean(checks.requireSignatureMaterialForVerified)
-        : DEFAULT_POLICY_CHECKS.requireSignatureMaterialForVerified
+        : DEFAULT_POLICY_CHECKS.requireSignatureMaterialForVerified,
+    requireRequiredTrailer:
+      checks.requireRequiredTrailer !== undefined
+        ? Boolean(checks.requireRequiredTrailer)
+        : DEFAULT_POLICY_CHECKS.requireRequiredTrailer,
+    requiredTrailerRules:
+      normalizedRequiredTrailerRules.length > 0
+        ? normalizedRequiredTrailerRules
+        : DEFAULT_POLICY_CHECKS.requiredTrailerRules
   };
 }
 
@@ -421,6 +495,44 @@ function addViolation(violations, commit, category, reason) {
   });
 }
 
+function evaluateRequiredTrailer(commit, requiredTrailerRules) {
+  const trailers = Array.isArray(commit?.trailers) ? commit.trailers : [];
+  if (!Array.isArray(requiredTrailerRules) || requiredTrailerRules.length === 0) {
+    return {
+      passed: false,
+      category: 'required-trailer-rules-empty',
+      reason: 'required trailer rules are empty'
+    };
+  }
+
+  for (const rule of requiredTrailerRules) {
+    const matchingKey = trailers.filter((entry) => String(entry?.key || '').toLowerCase() === rule.keyLower);
+    if (matchingKey.some((entry) => rule.valueRegex.test(String(entry.value ?? '')))) {
+      return {
+        passed: true,
+        category: null,
+        reason: null
+      };
+    }
+  }
+
+  const hasRequiredKey = trailers.some((entry) =>
+    requiredTrailerRules.some((rule) => String(entry?.key || '').toLowerCase() === rule.keyLower)
+  );
+  if (hasRequiredKey) {
+    return {
+      passed: false,
+      category: 'invalid-required-trailer-format',
+      reason: 'required trailer present but value does not match policy'
+    };
+  }
+  return {
+    passed: false,
+    category: 'missing-required-trailer',
+    reason: 'required trailer not found'
+  };
+}
+
 export function evaluateCommitIntegrity(commits, { checks = {} } = {}) {
   const list = Array.isArray(commits) ? commits : [];
   const effectiveChecks = normalizeChecks(checks);
@@ -442,6 +554,10 @@ export function evaluateCommitIntegrity(commits, { checks = {} } = {}) {
       const example = list.find((commit) => commit.sha === duplicateSha);
       addViolation(violations, example ?? { sha: duplicateSha }, 'duplicate-commit-sha', 'duplicate commit SHA in scope');
     }
+  }
+
+  if (effectiveChecks.requireRequiredTrailer && effectiveChecks.requiredTrailerRules.length === 0) {
+    issues.push('required-trailer-rules-empty');
   }
 
   for (const commit of list) {
@@ -474,6 +590,12 @@ export function evaluateCommitIntegrity(commits, { checks = {} } = {}) {
     }
     if (effectiveChecks.requireCommitterAttribution && !hasCommitterAttribution(commit)) {
       addViolation(violations, commit, 'missing-committer-attribution', 'committer login/email missing');
+    }
+    if (effectiveChecks.requireRequiredTrailer && effectiveChecks.requiredTrailerRules.length > 0) {
+      const trailerEvaluation = evaluateRequiredTrailer(commit, effectiveChecks.requiredTrailerRules);
+      if (!trailerEvaluation.passed) {
+        addViolation(violations, commit, trailerEvaluation.category, trailerEvaluation.reason);
+      }
     }
   }
 
@@ -542,6 +664,25 @@ export function evaluateCommitIntegrity(commits, { checks = {} } = {}) {
       !effectiveChecks.requireSignatureMaterialForVerified ||
       !violations.some((violation) => violation.category === 'missing-signature-material'),
     failureCount: violations.filter((violation) => violation.category === 'missing-signature-material').length
+  });
+  checkResults.push({
+    name: 'required-trailer',
+    enabled: effectiveChecks.requireRequiredTrailer,
+    passed:
+      !effectiveChecks.requireRequiredTrailer ||
+      (
+        !violations.some(
+          (violation) =>
+            violation.category === 'missing-required-trailer' ||
+            violation.category === 'invalid-required-trailer-format'
+        ) && !issues.includes('required-trailer-rules-empty')
+      ),
+    failureCount:
+      violations.filter(
+        (violation) =>
+          violation.category === 'missing-required-trailer' ||
+          violation.category === 'invalid-required-trailer-format'
+      ).length + (issues.includes('required-trailer-rules-empty') ? 1 : 0)
   });
 
   const summary = {
@@ -615,6 +756,13 @@ async function loadPolicy(policyPath) {
 
   const sourceResolution = parsed?.source_resolution ?? {};
   const checkSettings = parsed?.checks ?? {};
+  const trailerContract = parsed?.trailer_contract ?? {};
+  const requiredAnyTrailers = Array.isArray(trailerContract.required_any)
+    ? trailerContract.required_any.map((entry) => ({
+      key: entry?.key,
+      valuePattern: entry?.value_pattern
+    }))
+    : [];
   const policy = {
     path: resolved,
     schema: normalizeOptionalString(parsed?.schema) ?? 'commit-integrity-policy/v1',
@@ -626,7 +774,9 @@ async function loadPolicy(policyPath) {
       requireUniqueShas: checkSettings.require_unique_shas,
       requireNonEmptyHeadline: checkSettings.require_non_empty_headline,
       maxHeadlineLength: checkSettings.max_headline_length,
-      requireSignatureMaterialForVerified: checkSettings.require_signature_material_for_verified
+      requireSignatureMaterialForVerified: checkSettings.require_signature_material_for_verified,
+      requireRequiredTrailer: checkSettings.require_required_trailer,
+      requiredTrailerRules: requiredAnyTrailers
     }),
     sourceResolution: {
       botLoginRegexes: compileRegexList(sourceResolution.bot_login_patterns, {
@@ -681,11 +831,18 @@ function buildReport({
         requireUniqueShas: policy.checks.requireUniqueShas,
         requireNonEmptyHeadline: policy.checks.requireNonEmptyHeadline,
         maxHeadlineLength: policy.checks.maxHeadlineLength,
-        requireSignatureMaterialForVerified: policy.checks.requireSignatureMaterialForVerified
+        requireSignatureMaterialForVerified: policy.checks.requireSignatureMaterialForVerified,
+        requireRequiredTrailer: policy.checks.requireRequiredTrailer
       },
       sourceResolution: {
         botLoginPatternCount: policy.sourceResolution.botLoginRegexes.length,
         botEmailPatternCount: policy.sourceResolution.botEmailRegexes.length
+      },
+      trailerContract: {
+        requiredAny: policy.checks.requiredTrailerRules.map((rule) => ({
+          key: rule.key,
+          valuePattern: rule.valuePattern
+        }))
       }
     },
     enforcement: {
@@ -774,24 +931,28 @@ export async function runCommitIntegrity({
           baseSha: null,
           headSha: null
         },
-        policy: {
-          schema: 'commit-integrity-policy/v1',
-          path: path.resolve(options.policyPath ?? DEFAULT_POLICY_PATH),
-          failOnUnverified: true,
-          checks: {
+      policy: {
+        schema: 'commit-integrity-policy/v1',
+        path: path.resolve(options.policyPath ?? DEFAULT_POLICY_PATH),
+        failOnUnverified: true,
+        checks: {
             requireAuthorAttribution: DEFAULT_POLICY_CHECKS.requireAuthorAttribution,
             requireCommitterAttribution: DEFAULT_POLICY_CHECKS.requireCommitterAttribution,
-            requireKnownReasonForUnverified: DEFAULT_POLICY_CHECKS.requireKnownReasonForUnverified,
-            requireUniqueShas: DEFAULT_POLICY_CHECKS.requireUniqueShas,
-            requireNonEmptyHeadline: DEFAULT_POLICY_CHECKS.requireNonEmptyHeadline,
-            maxHeadlineLength: DEFAULT_POLICY_CHECKS.maxHeadlineLength,
-            requireSignatureMaterialForVerified: DEFAULT_POLICY_CHECKS.requireSignatureMaterialForVerified
-          },
-          sourceResolution: {
-            botLoginPatternCount: 0,
-            botEmailPatternCount: 0
-          }
+          requireKnownReasonForUnverified: DEFAULT_POLICY_CHECKS.requireKnownReasonForUnverified,
+          requireUniqueShas: DEFAULT_POLICY_CHECKS.requireUniqueShas,
+          requireNonEmptyHeadline: DEFAULT_POLICY_CHECKS.requireNonEmptyHeadline,
+          maxHeadlineLength: DEFAULT_POLICY_CHECKS.maxHeadlineLength,
+          requireSignatureMaterialForVerified: DEFAULT_POLICY_CHECKS.requireSignatureMaterialForVerified,
+          requireRequiredTrailer: DEFAULT_POLICY_CHECKS.requireRequiredTrailer
         },
+        sourceResolution: {
+          botLoginPatternCount: 0,
+          botEmailPatternCount: 0
+        },
+        trailerContract: {
+          requiredAny: []
+        }
+      },
         enforcement: {
           observeOnly: Boolean(options.observeOnly),
           blocking: true

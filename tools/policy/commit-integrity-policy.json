@@ -20,6 +20,19 @@
     "require_unique_shas": true,
     "require_non_empty_headline": true,
     "max_headline_length": 120,
-    "require_signature_material_for_verified": false
+    "require_signature_material_for_verified": false,
+    "require_required_trailer": true
+  },
+  "trailer_contract": {
+    "required_any": [
+      {
+        "key": "Issue",
+        "value_pattern": "^#\\d+$"
+      },
+      {
+        "key": "Refs",
+        "value_pattern": "^#\\d+$"
+      }
+    ]
   }
 }

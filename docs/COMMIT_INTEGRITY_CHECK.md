@@ -32,6 +32,10 @@ The checker evaluates all commits in scope and emits explicit violation categori
   - Fails when commit headline length exceeds policy maximum.
 - `missing-signature-material`
   - Optional strict mode: fails when a commit is marked verified but signature/payload fields are absent.
+- `missing-required-trailer`
+  - Fails when no required trailer (for example `Issue: #<n>` or `Refs: #<n>`) is present.
+- `invalid-required-trailer-format`
+  - Fails when a required trailer key is present but its value does not match the configured pattern.
 
 The report emits deterministic commit ordering (`sha-asc`) so repeated runs over the same commit set preserve output
 shape and pass/fail decisions.
@@ -52,6 +56,10 @@ Policy file: `tools/policy/commit-integrity-policy.json`
   - `checks.require_non_empty_headline`
   - `checks.max_headline_length`
   - `checks.require_signature_material_for_verified`
+  - `checks.require_required_trailer`
+- Trailer schema contract:
+  - `trailer_contract.required_any[].key`
+  - `trailer_contract.required_any[].value_pattern`
 
 ## Drift Guard
 
