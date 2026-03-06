@@ -57,6 +57,7 @@ param(
   [string]$LabVIEWPath,
   [bool]$AutoRepairRuntime = $true,
   [bool]$ManageDockerEngine = $true,
+  [bool]$AllowHostEngineMutation = $false,
   [int]$RuntimeEngineReadyTimeoutSeconds = 120,
   [int]$RuntimeEngineReadyPollSeconds = 3,
   [string]$RuntimeSnapshotPath,
@@ -915,6 +916,7 @@ try {
     -ExpectedContext 'desktop-windows' `
     -AutoRepair:$AutoRepairRuntime `
     -ManageDockerEngine:$ManageDockerEngine `
+    -AllowHostEngineMutation:$AllowHostEngineMutation `
     -EngineReadyTimeoutSeconds $RuntimeEngineReadyTimeoutSeconds `
     -EngineReadyPollSeconds $RuntimeEngineReadyPollSeconds `
     -SnapshotPath $runtimeSnapshot `

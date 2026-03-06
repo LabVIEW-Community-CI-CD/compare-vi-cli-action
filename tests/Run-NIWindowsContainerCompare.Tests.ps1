@@ -436,6 +436,8 @@ exit 0
     Test-Path -LiteralPath $stdoutPath | Should -BeTrue
     Test-Path -LiteralPath $stderrPath | Should -BeTrue
     Test-Path -LiteralPath $runtimeSnapshotPath | Should -BeTrue
+    $runtimeSnapshot = Get-Content -LiteralPath $runtimeSnapshotPath -Raw | ConvertFrom-Json -Depth 12
+    $runtimeSnapshot.expected.allowHostEngineMutation | Should -BeFalse
 
     $capture = Get-Content -LiteralPath $capturePath -Raw | ConvertFrom-Json
     $capture.status | Should -Be 'diff'

@@ -205,7 +205,7 @@ try {
     -TimeoutSeconds 240 `
     -HeartbeatSeconds 15 `
     -AutoRepairRuntime:$true `
-    -ManageDockerEngine:$true `
+    -ManageDockerEngine:$false `
     -RuntimeEngineReadyTimeoutSeconds 120 `
     -RuntimeEngineReadyPollSeconds 3 `
     -RuntimeSnapshotPath $runtimeSnapshotPath

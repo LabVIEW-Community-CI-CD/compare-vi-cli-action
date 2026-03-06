@@ -314,7 +314,7 @@ jobs:
           -ExpectedOsType windows `
           -ExpectedContext desktop-windows `
           -AutoRepair:$true `
-          -ManageDockerEngine:$true `
+          -ManageDockerEngine:$false `
           -SnapshotPath 'results/fixture-drift/windows-runtime-determinism.json' `
           -GitHubOutputPath $env:GITHUB_OUTPUT
     - name: Assert self-hosted-docker-windows runner label
@@ -514,7 +514,7 @@ jobs:
           -TimeoutSeconds 180 `
           -HeartbeatSeconds 15 `
           -AutoRepairRuntime:$true `
-          -ManageDockerEngine:$true `
+          -ManageDockerEngine:$false `
           -RuntimeEngineReadyTimeoutSeconds 120 `
           -RuntimeEngineReadyPollSeconds 3 `
           -RuntimeSnapshotPath $runtimeSnapshotPath

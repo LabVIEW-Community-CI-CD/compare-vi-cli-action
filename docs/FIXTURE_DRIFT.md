@@ -74,6 +74,13 @@ results per lane (`probes.<lane>.probe`), so evidence includes:
 - local image presence and digest (`probes.<lane>.bootstrap.localDigest`)
 - probe command outcome (`probes.<lane>.probe.status` / `exitCode`)
 
+Safety mode for shared self-hosted runners:
+
+- Fixture Drift runtime checks run in non-mutating mode (`ManageDockerEngine=false`).
+- `tools/Assert-DockerRuntimeDeterminism.ps1` blocks host engine mutation actions unless
+  `-AllowHostEngineMutation` is explicitly set (`Restart-Service`, `DockerCli -Shutdown`,
+  `wsl --shutdown` remain opt-in only).
+
 Quick local host bootstrap command:
 
 ```powershell

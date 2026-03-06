@@ -23,6 +23,11 @@
   When true on Windows hosts, attempts Docker Desktop engine switch to the
   expected lane OS before re-checking invariants.
 
+.PARAMETER AllowHostEngineMutation
+  When true, permits host-level Docker engine mutation actions (service
+  restart/shutdown, engine switch, WSL shutdown) during auto-repair. Defaults
+  to false so shared self-hosted runners are protected from destructive flips.
+
 .PARAMETER EngineReadyTimeoutSeconds
   Maximum wait time after repair actions before failing readiness.
 
@@ -52,6 +57,8 @@ param(
   [bool]$AutoRepair = $true,
 
   [bool]$ManageDockerEngine = $true,
+
+  [bool]$AllowHostEngineMutation = $false,
 
   [int]$EngineReadyTimeoutSeconds = 120,
 
@@ -842,7 +849,11 @@ if (-not $hostAlignmentOk) {
       Write-Host ("[runtime-determinism] mismatch detected expectedContext={0} observedContext={1} expectedOs={2} observedOs={3}" -f $effectiveExpectedContext, ($observedContext ?? '<null>'), $ExpectedOsType, ($observedOsType ?? '<null>')) -ForegroundColor Yellow
       if ($AutoRepair) {
       $daemonUnavailable = (Test-IsDaemonUnavailableProbe -Probe $initialDockerOsProbe) -or (Test-IsDaemonUnavailableProbe -Probe $fallbackDockerOsProbe)
-      if ($ManageDockerEngine -and $hostIsWindows -and $osMismatch -and $daemonUnavailable) {
+      $hostMutationAllowed = ($ManageDockerEngine -and $hostIsWindows -and $AllowHostEngineMutation)
+      if ($ManageDockerEngine -and $hostIsWindows -and $osMismatch -and -not $AllowHostEngineMutation) {
+        $repairActions.Add('host engine mutation skipped: AllowHostEngineMutation=false') | Out-Null
+      }
+      if ($hostMutationAllowed -and $osMismatch -and $daemonUnavailable) {
         Write-Host '[runtime-determinism] attempting docker service recovery' -ForegroundColor DarkGray
         $serviceRecovery = Invoke-DockerServiceRecovery
         if ($serviceRecovery -and $serviceRecovery.PSObject.Properties['steps'] -and $serviceRecovery.steps) {
@@ -859,14 +870,14 @@ if (-not $hostAlignmentOk) {
         $ctxResult = if ($ok) { 'ok' } else { 'failed' }
         $repairActions.Add(("docker context use {0}: {1}" -f $effectiveExpectedContext, $ctxResult)) | Out-Null
       }
-      if ($ManageDockerEngine -and $hostIsWindows -and $osMismatch) {
+      if ($hostMutationAllowed -and $osMismatch) {
         Write-Host ("[runtime-determinism] attempting docker engine switch to {0}" -f $ExpectedOsType) -ForegroundColor DarkGray
         $switchResult = Invoke-DockerEngineSwitch -TargetOsType $ExpectedOsType
         $switchStatus = if ([bool]$switchResult.success) { 'ok' } else { 'failed' }
         $switchMessage = if ([string]::IsNullOrWhiteSpace([string]$switchResult.message)) { '' } else { [string]$switchResult.message }
         $repairActions.Add(("docker engine switch to {0}: {1} {2}" -f $ExpectedOsType, $switchStatus, $switchMessage).Trim()) | Out-Null
       }
-      if ($ExpectedOsType -eq 'windows') {
+      if ($hostMutationAllowed -and $ExpectedOsType -eq 'windows' -and $osMismatch) {
         Write-Host '[runtime-determinism] attempting: wsl --shutdown' -ForegroundColor DarkGray
         $wslOk = Invoke-WslShutdown
         $wslResult = if ($wslOk) { 'ok' } else { 'failed-or-not-applicable' }
@@ -958,6 +969,7 @@ $snapshot = [ordered]@{
     context = $effectiveExpectedContext
     autoRepair = [bool]$AutoRepair
     manageDockerEngine = [bool]$ManageDockerEngine
+    allowHostEngineMutation = [bool]$AllowHostEngineMutation
     engineReadyTimeoutSeconds = [int]$EngineReadyTimeoutSeconds
     engineReadyPollSeconds = [int]$EngineReadyPollSeconds
     commandTimeoutSeconds = [int]$CommandTimeoutSeconds

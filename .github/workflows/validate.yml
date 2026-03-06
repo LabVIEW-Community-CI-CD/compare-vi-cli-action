@@ -985,7 +985,7 @@ jobs:
             -ExpectedOsType windows `
             -ExpectedContext desktop-windows `
             -AutoRepair:$true `
-            -ManageDockerEngine:$true `
+            -ManageDockerEngine:$false `
             -EngineReadyTimeoutSeconds 120 `
             -EngineReadyPollSeconds 3 `
             -SnapshotPath $snapshotPath `
