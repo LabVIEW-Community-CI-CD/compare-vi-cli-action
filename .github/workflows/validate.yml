@@ -62,6 +62,9 @@ jobs:
     environment:
       name: validation
     runs-on: ubuntu-latest
+    concurrency:
+      group: validation-deploy-writer-${{ github.repository }}-validation
+      cancel-in-progress: false
     steps:
     - uses: actions/checkout@v5
     - name: Check PR mergeability
@@ -378,6 +381,32 @@ jobs:
           )
           $lines -join "`n" | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8
         }
+  deployment-determinism:
+    needs: [smoke-gate, lint]
+    if: needs.smoke-gate.outputs.skip != 'true'
+    runs-on: ubuntu-latest
+    concurrency:
+      group: validation-deploy-writer-${{ github.repository }}-validation
+      cancel-in-progress: false
+    steps:
+    - uses: actions/checkout@v5
+    - name: Assert validation deployment determinism
+      shell: bash
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      run: |
+        node tools/npm/run-script.mjs priority:deployment:assert -- \
+          --repo "${{ github.repository }}" \
+          --environment validation \
+          --run-id "${{ github.run_id }}" \
+          --sha "${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}" \
+          --report tests/results/_agent/deployments/validation-deployment-determinism.json
+    - name: Upload deployment determinism report
+      if: always()
+      uses: actions/upload-artifact@v5
+      with:
+        name: validate-deployment-determinism
+        path: tests/results/_agent/deployments/validation-deployment-determinism.json
   fixtures:
     runs-on: [self-hosted, Windows, X64]
     env:
@@ -630,10 +659,10 @@ jobs:
           GH_TOKEN: ${{ secrets.GH_TOKEN || secrets.GITHUB_TOKEN }}
         run: |
           if [ -z "${GH_TOKEN:-${GITHUB_TOKEN:-}}" ]; then
-            echo "::error::GH_TOKEN/GITHUB_TOKEN is required for priority:sync"
+            echo "::error::GH_TOKEN/GITHUB_TOKEN is required for priority:sync:strict"
             exit 1
           fi
-          node tools/npm/run-script.mjs priority:sync
+          node tools/npm/run-script.mjs priority:sync:strict
       - name: Validate snapshot schema (best-effort)
         continue-on-error: true
         run: |

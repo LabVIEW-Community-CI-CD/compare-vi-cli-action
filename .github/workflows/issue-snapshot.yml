@@ -21,7 +21,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           npm ci --ignore-scripts
-          node tools/npm/run-script.mjs priority:sync || true
+          node tools/npm/run-script.mjs priority:sync:strict
       - name: Upload snapshot
         if: always()
         uses: actions/upload-artifact@v5
@@ -30,4 +30,3 @@ jobs:
           path: |
             tests/results/_agent/issue/*.json
             tests/results/_agent/issue/*.digest
-

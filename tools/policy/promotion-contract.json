@@ -2,6 +2,7 @@
   "schema": "promotion-contract/v1",
   "schemaVersion": "1.0.0",
   "check_context": "Promotion Contract / promotion-contract",
+  "require_check_context_in_branch_protection": false,
   "channels": {
     "rc": {
       "version_pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+-rc\\.[0-9]+$",
@@ -39,7 +40,6 @@
       "issue-snapshot",
       "semver",
       "Policy Guard (Upstream) / policy-guard",
-      "Promotion Contract / promotion-contract",
       "hook-parity (windows-latest)",
       "hook-parity (ubuntu-latest)",
       "vi-history-scenarios-linux"
@@ -51,8 +51,7 @@
       "vi-binary-check",
       "vi-compare",
       "mock-cli",
-      "Policy Guard (Upstream) / policy-guard",
-      "Promotion Contract / promotion-contract"
+      "Policy Guard (Upstream) / policy-guard"
     ]
   },
   "artifacts": {

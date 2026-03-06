@@ -293,7 +293,7 @@ python tools/workflows/update_workflows.py --check $targetsText
 }
 
 if ($PrioritySync) {
-  $syncScript = 'git config --global --add safe.directory /work >/dev/null 2>&1 || true; node tools/npm/run-script.mjs priority:sync'
+  $syncScript = 'git config --global --add safe.directory /work >/dev/null 2>&1 || true; node tools/npm/run-script.mjs priority:sync:strict'
   $ran = $false
   if ($UseToolsImage -and $ToolsImageTag) {
     $imageCheck = & docker image inspect $ToolsImageTag 2>$null

@@ -27,9 +27,9 @@ alignment, and evidence ledger expectations.
   - Approval gate required: yes
   - `latest` tag allowed: yes
 
-## Required-check alignment
+## Required-check baseline alignment
 
-The context `Promotion Contract / promotion-contract` must remain in sync across:
+Canonical required-check lists for `develop` and `release/*` must remain in sync across:
 
 - `tools/policy/branch-required-checks.json`
   - `branches.develop`
@@ -39,6 +39,10 @@ The context `Promotion Contract / promotion-contract` must remain in sync across
   - `branches.release/*.required_status_checks`
   - `rulesets.8811898.required_status_checks` (develop)
   - `rulesets.8614172.required_status_checks` (release/*)
+
+The workflow context `Promotion Contract / promotion-contract` remains an operational evidence check, but it is not a
+branch-protection required status on `develop` or `release/*` because the workflow is intentionally path-scoped for
+pull requests.
 
 Automation enforcement:
 

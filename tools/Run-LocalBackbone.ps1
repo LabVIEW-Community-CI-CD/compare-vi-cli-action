@@ -139,7 +139,7 @@ try {
 
   if (-not $SkipPrioritySync) {
     Invoke-BackboneStep -Name 'priority:sync' -Action {
-      & node tools/npm/run-script.mjs priority:sync
+      & node tools/npm/run-script.mjs priority:sync:strict
     }
   } else {
     Write-Host "Skipping priority sync as requested." -ForegroundColor Yellow

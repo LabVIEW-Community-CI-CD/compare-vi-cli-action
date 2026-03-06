@@ -67,9 +67,9 @@ standing GitHub protection rules (including queue-managed `develop` and `main`).
 ### GitHub rulesets
 | Ruleset ID | Scope                | Highlights                                                                                   |
 |------------|----------------------|----------------------------------------------------------------------------------------------|
-| `8811898`  | `refs/heads/develop` | Merge queue enabled (`merge_method=SQUASH`, `grouping=ALLGREEN`, build queue <=5 entries, 5-minute quiet window). Required checks: `lint`, `fixtures`, `session-index`, `issue-snapshot`, `semver`, `Policy Guard (Upstream) / policy-guard`, `Promotion Contract / promotion-contract`, `hook-parity (windows-latest)`, `hook-parity (ubuntu-latest)`, `vi-history-scenarios-linux`. |
+| `8811898`  | `refs/heads/develop` | Merge queue enabled (`merge_method=SQUASH`, `grouping=ALLGREEN`, build queue <=5 entries, 5-minute quiet window). Required checks: `lint`, `fixtures`, `session-index`, `issue-snapshot`, `semver`, `Policy Guard (Upstream) / policy-guard`, `hook-parity (windows-latest)`, `hook-parity (ubuntu-latest)`, `vi-history-scenarios-linux`. |
 | `8614140`  | `refs/heads/main`    | Merge queue enabled (`merge_method=SQUASH`, `grouping=ALLGREEN`, build queue <=5 entries, 5-minute quiet window). Required checks: `lint`, `pester`, `vi-binary-check`, `vi-compare`, `Policy Guard (Upstream) / policy-guard`. Required approving reviews: `0`. |
-| `8614172`  | `refs/heads/release/*` | No merge queue; protects against force-push/deletion. Required checks: `lint`, `pester`, `publish`, `vi-binary-check`, `vi-compare`, `mock-cli`, `Policy Guard (Upstream) / policy-guard`, `Promotion Contract / promotion-contract`. Required approving reviews: `0`. |
+| `8614172`  | `refs/heads/release/*` | No merge queue; protects against force-push/deletion. Required checks: `lint`, `pester`, `publish`, `vi-binary-check`, `vi-compare`, `mock-cli`, `Policy Guard (Upstream) / policy-guard`. Required approving reviews: `0`. |
 
 `node tools/npm/run-script.mjs priority:policy` queries these rulesets and fails if the live configuration drifts from
 `tools/priority/policy.json`; run it whenever you adjust protections.
@@ -98,7 +98,7 @@ checked into `tools/priority/policy.json` so `priority:policy` stays authoritati
 ### `develop`
 - **Merge strategy**: queue-managed squash with linear history enforced; merge commits disabled.
 - **Required checks**: `lint`, `fixtures`, `session-index`, `issue-snapshot`, `semver`,
-  `Policy Guard (Upstream) / policy-guard`, `Promotion Contract / promotion-contract`,
+  `Policy Guard (Upstream) / policy-guard`,
   `hook-parity (windows-latest)`, `hook-parity (ubuntu-latest)`, `vi-history-scenarios-linux`.
 - **Admin bypass**: leave disabled; administrators should only intervene when `priority:policy` confirms parity.
 - **Reapply**: Use `node tools/npm/run-script.mjs priority:policy -- --apply` to push the manifest configuration when drift is detected.
@@ -205,7 +205,7 @@ checked into `tools/priority/policy.json` so `priority:policy` stays authoritati
 - Optional parity run for non-LV checks using the published tools image:
 
   ```powershell
-  $env:COMPAREVI_TOOLS_IMAGE = 'ghcr.io/svelderrainruiz/comparevi-tools:latest'
+  $env:COMPAREVI_TOOLS_IMAGE = 'ghcr.io/<owner>/comparevi-tools:latest'
   pwsh -NoLogo -NoProfile -File tools/Run-NonLVChecksInDocker.ps1 -UseToolsImage
   ```
 
@@ -231,7 +231,7 @@ checked into `tools/priority/policy.json` so `priority:policy` stays authoritati
 
 ### `release/*`
 - **Ruleset**: `8614172` (scope `refs/heads/release/*`).
-- **Required checks**: `lint`, `pester`, `publish`, `vi-binary-check`, `vi-compare`, `mock-cli`, `Policy Guard (Upstream) / policy-guard`, `Promotion Contract / promotion-contract`.
+- **Required checks**: `lint`, `pester`, `publish`, `vi-binary-check`, `vi-compare`, `mock-cli`, `Policy Guard (Upstream) / policy-guard`.
 - **Approvals**: 0 required reviews; stale review dismissal remains enabled.
 - **Merge queue**: intentionally disabled; rely on manual review + required checks.
 - **Maintenance tip**: revisit after each release cycle to ensure the workflow matrix still emits the expected check
@@ -249,18 +249,36 @@ to confirm each workflow includes both triggers.
    groups.
 4. If the run fails or new commits land, the queue ejects the entry back to the PR. Address the failure, rerun the
    relevant check (`priority:validate`, `Validate` workflow, or manual reruns), and re-enable the queue.
+5. For autonomous queueing, run `node tools/npm/run-script.mjs priority:queue:supervisor -- --dry-run` first, then
+   `--apply` when trunk health is green. The supervisor enforces required checks, dependency ordering, and queue caps.
+6. Autonomous merge tooling now requires upstream-owned PR heads. Fork-headed PRs are intentionally ineligible for
+   `priority:queue:supervisor` and `priority:merge-sync`; mirror the branch to upstream and open the PR from the
+   upstream-owned branch before queueing.
+7. Validate deployment evidence is now run-scoped: `priority:deployment:assert` verifies the `validation` environment
+   using the current workflow run id and latest active deployment status, and fails if the active deployment resolves to
+   a different run.
+
+### PR Metadata Contract (queue supervisor)
+- `Coupling: independent|soft|hard` (default: `independent`)
+- `Depends-On: #<issue-or-pr>[,#<issue-or-pr>]`
+- Exclusion labels:
+  - `do-not-queue`
+  - `queue-blocked`
+  - `queue-quarantine`
 
 ## Troubleshooting
 - **Merge history guard failure** – Rebase the branch (`git fetch origin && git rebase origin/develop`) and force push
   with `--force-with-lease`.
 - **Queue saturation or slow merges** – Review the merge queue page linked above to see pending entries and their
   required checks. Cancel stale queue jobs from the PR if necessary.
+- **No standing-priority issue** – unattended flows should run `priority:sync:strict`; this fails fast and writes
+  `tests/results/_agent/issue/no-standing-priority.json` instead of looping.
 - **Policy drift detected by `priority:policy`** – Align GitHub settings with `tools/priority/policy.json` (update the
   JSON if the new configuration is intentional), then rerun the helper.
 - **Policy guard auth failure (`Authorization unavailable` / `authenticated-no-admin`)** – verify and rotate upstream
   secrets with an admin-capable token:
   ```powershell
-  $repo = 'LabVIEW-Community-CI-CD/compare-vi-cli-action'
+  $repo = if ($env:GITHUB_REPOSITORY) { $env:GITHUB_REPOSITORY } else { '<owner>/<repo>' }
   $token = (Get-Content C:\github_token.txt -Raw).Trim()
   gh api "repos/$repo" -H "Authorization: Bearer $token" --jq '.permissions.admin'
   $token | gh secret set GH_TOKEN --repo $repo

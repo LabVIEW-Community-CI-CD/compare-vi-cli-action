@@ -1,8 +1,10 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
+  assertUpstreamOwnedHead,
   buildMergeSummaryPayload,
   buildPolicyTrace,
+  isUpstreamOwnedHead,
   normalizeBaseRefName,
   selectMergeMode,
   shouldRetryWithAuto,
@@ -461,4 +463,39 @@ test('buildMergeSummaryPayload preserves selected/final reason fields for diagno
 
   assert.equal(payload.selectedReason, 'merge-state-unstable');
   assert.equal(payload.finalReason, 'direct-merge-policy-block-retry-auto');
+});
+
+test('isUpstreamOwnedHead returns true only when PR head owner matches repo owner', () => {
+  assert.equal(
+    isUpstreamOwnedHead(
+      {
+        headRepositoryOwner: { login: 'LabVIEW-Community-CI-CD' }
+      },
+      'LabVIEW-Community-CI-CD/compare-vi-cli-action'
+    ),
+    true
+  );
+  assert.equal(
+    isUpstreamOwnedHead(
+      {
+        headRepositoryOwner: { login: 'svelderrainruiz' }
+      },
+      'LabVIEW-Community-CI-CD/compare-vi-cli-action'
+    ),
+    false
+  );
+});
+
+test('assertUpstreamOwnedHead throws for fork-headed PRs', () => {
+  assert.throws(
+    () =>
+      assertUpstreamOwnedHead(
+        {
+          state: 'OPEN',
+          headRepositoryOwner: { login: 'svelderrainruiz' }
+        },
+        'LabVIEW-Community-CI-CD/compare-vi-cli-action'
+      ),
+    /fork-headed PRs are blocked/
+  );
 });

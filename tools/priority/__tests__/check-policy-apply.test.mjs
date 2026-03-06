@@ -30,7 +30,6 @@ test('priority:policy --apply updates rulesets for develop/main/release', async 
     'issue-snapshot',
     'semver',
     'Policy Guard (Upstream) / policy-guard',
-    'Promotion Contract / promotion-contract',
     'hook-parity (windows-latest)',
     'hook-parity (ubuntu-latest)',
     'vi-history-scenarios-linux'
@@ -49,8 +48,7 @@ test('priority:policy --apply updates rulesets for develop/main/release', async 
     'vi-binary-check',
     'vi-compare',
     'mock-cli',
-    'Policy Guard (Upstream) / policy-guard',
-    'Promotion Contract / promotion-contract'
+    'Policy Guard (Upstream) / policy-guard'
   ];
 
   const repoUrl = 'https://api.github.com/repos/test-org/test-repo';
@@ -874,7 +872,6 @@ test('priority:policy verify fails when queue-managed ruleset is missing merge_q
     'issue-snapshot',
     'semver',
     'Policy Guard (Upstream) / policy-guard',
-    'Promotion Contract / promotion-contract',
     'hook-parity (windows-latest)',
     'hook-parity (ubuntu-latest)',
     'vi-history-scenarios-linux'
@@ -893,8 +890,7 @@ test('priority:policy verify fails when queue-managed ruleset is missing merge_q
     'vi-binary-check',
     'vi-compare',
     'mock-cli',
-    'Policy Guard (Upstream) / policy-guard',
-    'Promotion Contract / promotion-contract'
+    'Policy Guard (Upstream) / policy-guard'
   ];
 
   const branchDevelopProtection = {

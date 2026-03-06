@@ -6,6 +6,8 @@ import { mkdtemp, mkdir, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import {
+  parseCliArgs,
+  buildNoStandingPriorityReport,
   buildNoStandingPriorityState,
   determinePrioritySyncExitCode,
   isStandingPriorityCacheCandidate,
@@ -170,7 +172,35 @@ test('resolveStandingPriorityLabels honors explicit env override order', () => {
 test('determinePrioritySyncExitCode maps no-standing to success and real errors to failure', () => {
   assert.equal(determinePrioritySyncExitCode(null), 0);
   assert.equal(determinePrioritySyncExitCode({ code: 'NO_STANDING_PRIORITY' }), 0);
+  assert.equal(determinePrioritySyncExitCode({ code: 'NO_STANDING_PRIORITY' }, { failOnMissing: true }), 1);
   assert.equal(determinePrioritySyncExitCode(new Error('boom')), 1);
+});
+
+test('parseCliArgs enables fail-on-missing and help flags', () => {
+  const parsed = parseCliArgs(['node', 'sync-standing-priority.mjs', '--fail-on-missing']);
+  assert.equal(parsed.failOnMissing, true);
+  assert.equal(parsed.help, false);
+
+  const help = parseCliArgs(['node', 'sync-standing-priority.mjs', '--help']);
+  assert.equal(help.help, true);
+});
+
+test('buildNoStandingPriorityReport emits deterministic schema payload', () => {
+  const report = buildNoStandingPriorityReport({
+    message: 'No open issue found',
+    labels: ['fork-standing-priority', 'standing-priority'],
+    repository: 'owner/repo',
+    failOnMissing: true,
+    generatedAt: '2026-03-05T22:30:00.000Z'
+  });
+  assert.deepEqual(report, {
+    schema: 'standing-priority/no-standing@v1',
+    generatedAt: '2026-03-05T22:30:00.000Z',
+    repository: 'owner/repo',
+    labels: ['fork-standing-priority', 'standing-priority'],
+    message: 'No open issue found',
+    failOnMissing: true
+  });
 });
 
 

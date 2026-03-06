@@ -9,7 +9,6 @@
       "issue-snapshot",
       "semver",
       "Policy Guard (Upstream) / policy-guard",
-      "Promotion Contract / promotion-contract",
       "hook-parity (windows-latest)",
       "hook-parity (ubuntu-latest)",
       "vi-history-scenarios-linux"
@@ -28,8 +27,7 @@
       "vi-binary-check",
       "vi-compare",
       "mock-cli",
-      "Policy Guard (Upstream) / policy-guard",
-      "Promotion Contract / promotion-contract"
+      "Policy Guard (Upstream) / policy-guard"
     ]
   }
 }

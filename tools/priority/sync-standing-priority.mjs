@@ -15,6 +15,43 @@ const DEFAULT_STANDING_PRIORITY_LABEL = 'standing-priority';
 const FORK_STANDING_PRIORITY_LABEL = 'fork-standing-priority';
 const MODULE_FILE_PATH = fileURLToPath(import.meta.url);
 const MODULE_REPO_ROOT = path.resolve(path.dirname(MODULE_FILE_PATH), '../..');
+const NO_STANDING_REPORT_FILENAME = 'no-standing-priority.json';
+
+const CLI_USAGE_LINES = [
+  'Usage: node tools/priority/sync-standing-priority.mjs [options]',
+  '',
+  'Options:',
+  '  --fail-on-missing   Exit non-zero when no standing-priority issue is found.',
+  '  -h, --help          Show this help text and exit.'
+];
+
+export function parseCliArgs(argv = process.argv) {
+  const args = argv.slice(2);
+  const options = {
+    failOnMissing: false,
+    help: false
+  };
+
+  for (const arg of args) {
+    if (arg === '--fail-on-missing') {
+      options.failOnMissing = true;
+      continue;
+    }
+    if (arg === '--help' || arg === '-h') {
+      options.help = true;
+      continue;
+    }
+    throw new Error(`Unknown option: ${arg}`);
+  }
+
+  return options;
+}
+
+function printCliUsage(log = console.log) {
+  for (const line of CLI_USAGE_LINES) {
+    log(line);
+  }
+}
 
 function normalizeStandingPriorityLabels(values) {
   const seen = new Set();
@@ -1236,6 +1273,28 @@ function stepSummaryAppend(lines) {
   fs.appendFileSync(file, lines.join('\n') + '\n');
 }
 
+export function buildNoStandingPriorityReport({
+  message,
+  labels,
+  repository,
+  failOnMissing,
+  generatedAt = new Date().toISOString()
+}) {
+  return {
+    schema: 'standing-priority/no-standing@v1',
+    generatedAt,
+    repository: repository || null,
+    labels: normalizeStandingPriorityLabels(labels),
+    message,
+    failOnMissing: Boolean(failOnMissing)
+  };
+}
+
+function writeNoStandingPriorityReport(resultsDir, report) {
+  const reportPath = path.join(resultsDir, NO_STANDING_REPORT_FILENAME);
+  writeJson(reportPath, report);
+}
+
 export function buildNoStandingPriorityState(
   cache,
   message,
@@ -1309,7 +1368,8 @@ export function computeNextPriorityCacheState({
     lastFetchError: fetchError
   };
 }
-export async function main() {
+export async function main(options = {}) {
+  const failOnMissing = Boolean(options.failOnMissing);
   const repoRoot = gitRoot();
   const slug = resolveRepositorySlug(repoRoot);
   const standingPriorityLabels = resolveStandingPriorityLabels(repoRoot, slug);
@@ -1335,8 +1395,23 @@ export async function main() {
         writeJson(cachePath, clearedCache);
       }
 
+      writeNoStandingPriorityReport(
+        resultsDir,
+        buildNoStandingPriorityReport({
+          message: err.message,
+          labels: standingPriorityLabels,
+          repository: slug,
+          failOnMissing
+        })
+      );
+
       stepSummaryAppend(summaryLines);
       console.log(`[priority] ${err.message}`);
+      if (failOnMissing) {
+        const strictErr = new Error(err.message);
+        strictErr.code = 'NO_STANDING_PRIORITY';
+        throw strictErr;
+      }
       return result;
     }
     throw err;
@@ -1382,6 +1457,10 @@ export async function main() {
   const policy = loadRoutingPolicy(repoRoot);
   const router = buildRouter(snapshot, policy);
   writeJson(path.join(resultsDir, 'router.json'), router);
+  const noStandingReportPath = path.join(resultsDir, NO_STANDING_REPORT_FILENAME);
+  if (fs.existsSync(noStandingReportPath)) {
+    fs.unlinkSync(noStandingReportPath);
+  }
 
   const newCache = computeNextPriorityCacheState({
     cache,
@@ -1453,17 +1532,26 @@ export async function closeProxyAgents() {
   }
 }
 
-export function determinePrioritySyncExitCode(err) {
+export function determinePrioritySyncExitCode(err, { failOnMissing = false } = {}) {
   if (!err) return 0;
-  return err?.code === 'NO_STANDING_PRIORITY' ? 0 : 1;
+  if (err?.code === 'NO_STANDING_PRIORITY') {
+    return failOnMissing ? 1 : 0;
+  }
+  return 1;
 }
 
-export async function runCli() {
+export async function runCli({ argv = process.argv } = {}) {
+  const options = parseCliArgs(argv);
+  if (options.help) {
+    printCliUsage();
+    return 0;
+  }
+
   let exitCode = 0;
   try {
-    await main();
+    await main(options);
   } catch (err) {
-    exitCode = determinePrioritySyncExitCode(err);
+    exitCode = determinePrioritySyncExitCode(err, options);
     if (exitCode === 0) {
       console.warn('[priority] ' + err.message);
     } else {
@@ -1479,7 +1567,7 @@ const modulePath = path.resolve(fileURLToPath(import.meta.url));
 const invokedPath = process.argv[1] ? path.resolve(process.argv[1]) : null;
 if (invokedPath && invokedPath === modulePath) {
   (async () => {
-    const exitCode = await runCli();
+    const exitCode = await runCli({ argv: process.argv });
     process.exitCode = exitCode;
   })();
 }

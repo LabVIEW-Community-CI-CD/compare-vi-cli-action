@@ -118,6 +118,10 @@ function normalizeLower(value) {
   return typeof value === 'string' ? value.toLowerCase() : '';
 }
 
+function normalizeOwner(value) {
+  return typeof value === 'string' ? value.trim().toLowerCase() : '';
+}
+
 export function normalizeBaseRefName(value) {
   const lowered = normalizeLower(value).trim();
   if (!lowered) {
@@ -163,6 +167,47 @@ export function buildPolicyTrace(mergeQueueBranches = new Set()) {
   };
 }
 
+export function resolveHeadRepositoryOwner(prInfo = {}) {
+  const owner = prInfo?.headRepositoryOwner;
+  if (typeof owner === 'string') {
+    return normalizeOwner(owner);
+  }
+  if (owner && typeof owner === 'object' && typeof owner.login === 'string') {
+    return normalizeOwner(owner.login);
+  }
+  return '';
+}
+
+export function isUpstreamOwnedHead(prInfo = {}, repo = '') {
+  const expectedOwner = normalizeOwner(String(repo).split('/')[0] ?? '');
+  if (!expectedOwner) {
+    return false;
+  }
+  return resolveHeadRepositoryOwner(prInfo) === expectedOwner;
+}
+
+export function assertUpstreamOwnedHead(prInfo = {}, repo = '') {
+  const state = normalizeUpper(prInfo?.state);
+  if (state === 'MERGED') {
+    return;
+  }
+
+  const expectedOwner = normalizeOwner(String(repo).split('/')[0] ?? '');
+  if (!expectedOwner) {
+    throw new Error('[priority:merge-sync] Unable to determine expected upstream owner from --repo.');
+  }
+
+  const actualOwner = resolveHeadRepositoryOwner(prInfo);
+  if (actualOwner === expectedOwner) {
+    return;
+  }
+
+  const observedOwner = actualOwner || '(unknown)';
+  throw new Error(
+    `[priority:merge-sync] fork-headed PRs are blocked for automation. Expected head owner '${expectedOwner}', found '${observedOwner}'. Mirror the branch to upstream and use an upstream-owned PR head.`
+  );
+}
+
 export function buildMergeSummaryPayload({
   repo,
   pr,
@@ -178,6 +223,7 @@ export function buildMergeSummaryPayload({
   createdAt = new Date().toISOString()
 }) {
   const normalizedBaseRefName = normalizeBaseRefName(prInfo?.baseRefName);
+  const headRepositoryOwner = resolveHeadRepositoryOwner(prInfo) || null;
   return {
     schema: 'priority/sync-merge@v1',
     createdAt,
@@ -196,7 +242,11 @@ export function buildMergeSummaryPayload({
       mergeStateStatus: prInfo?.mergeStateStatus ?? null,
       mergeable: prInfo?.mergeable ?? null,
       baseRefName: normalizedBaseRefName || null,
-      isDraft: Boolean(prInfo?.isDraft)
+      isDraft: Boolean(prInfo?.isDraft),
+      headRefName: prInfo?.headRefName ?? null,
+      headRepositoryOwner,
+      isCrossRepository: Boolean(prInfo?.isCrossRepository),
+      upstreamHeadOwned: isUpstreamOwnedHead(prInfo, repo)
     },
     prUrl: prInfo?.url ?? null
   };
@@ -266,7 +316,15 @@ function parseJsonOutput(raw, { label }) {
 function readPrInfo({ repoRoot, repo, pr }) {
   const result = spawnSync(
     'gh',
-    ['pr', 'view', String(pr), '--repo', repo, '--json', 'number,state,isDraft,mergeStateStatus,mergeable,baseRefName,url'],
+    [
+      'pr',
+      'view',
+      String(pr),
+      '--repo',
+      repo,
+      '--json',
+      'number,state,isDraft,mergeStateStatus,mergeable,baseRefName,url,headRefName,headRepositoryOwner,isCrossRepository'
+    ],
     {
       cwd: repoRoot,
       encoding: 'utf8',
@@ -344,6 +402,7 @@ export async function runMergeSync({
     repo: resolvedRepo,
     pr: options.pr
   });
+  assertUpstreamOwnedHead(prInfo, resolvedRepo);
   const selection = selectMergeMode(prInfo, { admin: options.admin, mergeQueueBranches });
   console.log(
     `[priority:merge-sync] selected mode=${selection.mode} reason=${selection.reason} mergeState=${prInfo.mergeStateStatus ?? 'n/a'}`
