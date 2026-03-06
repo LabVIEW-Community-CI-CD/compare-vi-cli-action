@@ -60,6 +60,7 @@ test('commit integrity report schema validates generated report payload', async 
       path: path.join(repoRoot, 'tools', 'policy', 'commit-integrity-policy.json'),
       failOnUnverified: true,
       checks: {
+        requireBotAllowlist: true,
         requireAuthorAttribution: true,
         requireCommitterAttribution: true,
         requireKnownReasonForUnverified: true,
@@ -72,11 +73,23 @@ test('commit integrity report schema validates generated report payload', async 
         requiredTrailerRules: [
           { key: 'Issue', keyLower: 'issue', valuePattern: '^#\\d+$', valueRegex: /^#\d+$/ },
           { key: 'Refs', keyLower: 'refs', valuePattern: '^#\\d+$', valueRegex: /^#\d+$/ }
+        ],
+        allowedBotLogins: ['dependabot[bot]', 'github-actions[bot]'],
+        allowedBotEmailPatterns: [
+          '^[0-9]+\\+dependabot\\[bot\\]@users\\.noreply\\.github\\.com$',
+          '^41898282\\+github-actions\\[bot\\]@users\\.noreply\\.github\\.com$'
         ]
       },
       sourceResolution: {
         botLoginRegexes: [/\[bot\]$/i],
         botEmailRegexes: [/\[bot\]@users\.noreply\.github\.com$/i]
+      },
+      botIdentityPolicy: {
+        allowedBotLogins: ['dependabot[bot]', 'github-actions[bot]'],
+        allowedBotEmailPatterns: [
+          '^[0-9]+\\+dependabot\\[bot\\]@users\\.noreply\\.github\\.com$',
+          '^41898282\\+github-actions\\[bot\\]@users\\.noreply\\.github\\.com$'
+        ]
       },
       trailerContract: {
         requiredAny: [

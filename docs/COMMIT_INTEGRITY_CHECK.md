@@ -23,6 +23,8 @@ The checker evaluates all commits in scope and emits explicit violation categori
 - `signature-verification-unavailable`
   - Fails when GitHub reports signature verification service unavailability (`gpgverify_error`,
     `gpgverify_unavailable`) and strict availability is enabled.
+- `unauthorized-bot-identity`
+  - Fails when a bot-authored commit does not match the configured bot allowlist.
 - `missing-author-attribution`
   - Fails when both author login and author email are absent and the policy toggle is enabled.
 - `missing-committer-attribution`
@@ -52,6 +54,7 @@ Policy file: `tools/policy/commit-integrity-policy.json`
   - `source_resolution.bot_login_patterns`
   - `source_resolution.bot_email_patterns`
 - Additional coverage toggles:
+  - `checks.require_bot_allowlist`
   - `checks.require_author_attribution`
   - `checks.require_committer_attribution`
   - `checks.require_non_unknown_reason_for_unverified`
@@ -64,6 +67,10 @@ Policy file: `tools/policy/commit-integrity-policy.json`
 - Trailer schema contract:
   - `trailer_contract.required_any[].key`
   - `trailer_contract.required_any[].value_pattern`
+- Bot identity allowlist contract:
+  - `bot_identity_policy.require_allowlist_for_bot_commits`
+  - `bot_identity_policy.allowed_bot_logins[]`
+  - `bot_identity_policy.allowed_bot_email_patterns[]`
 
 ## Drift Guard
 

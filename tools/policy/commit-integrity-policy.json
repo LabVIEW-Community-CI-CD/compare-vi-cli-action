@@ -10,6 +10,19 @@
       "@users\\.noreply\\.github\\.com$"
     ]
   },
+  "bot_identity_policy": {
+    "require_allowlist_for_bot_commits": true,
+    "allowed_bot_logins": [
+      "dependabot[bot]",
+      "github-actions[bot]",
+      "github-merge-queue[bot]"
+    ],
+    "allowed_bot_email_patterns": [
+      "^[0-9]+\\+dependabot\\[bot\\]@users\\.noreply\\.github\\.com$",
+      "^41898282\\+github-actions\\[bot\\]@users\\.noreply\\.github\\.com$",
+      "^[0-9]+\\+github-merge-queue\\[bot\\]@users\\.noreply\\.github\\.com$"
+    ]
+  },
   "verification": {
     "fail_on_unverified": true
   },
