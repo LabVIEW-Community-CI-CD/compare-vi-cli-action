@@ -17,6 +17,7 @@
     "require_author_attribution": true,
     "require_committer_attribution": true,
     "require_non_unknown_reason_for_unverified": true,
+    "require_signature_verification_available": true,
     "require_unique_shas": true,
     "require_non_empty_headline": true,
     "max_headline_length": 120,

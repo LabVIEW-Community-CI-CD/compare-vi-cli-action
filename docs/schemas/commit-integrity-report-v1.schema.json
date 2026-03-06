@@ -98,6 +98,7 @@
             "requireAuthorAttribution",
             "requireCommitterAttribution",
             "requireKnownReasonForUnverified",
+            "requireSignatureVerificationAvailable",
             "requireUniqueShas",
             "requireNonEmptyHeadline",
             "maxHeadlineLength",
@@ -112,6 +113,9 @@
               "type": "boolean"
             },
             "requireKnownReasonForUnverified": {
+              "type": "boolean"
+            },
+            "requireSignatureVerificationAvailable": {
               "type": "boolean"
             },
             "requireUniqueShas": {

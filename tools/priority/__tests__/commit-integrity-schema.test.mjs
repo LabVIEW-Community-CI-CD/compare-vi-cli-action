@@ -63,6 +63,7 @@ test('commit integrity report schema validates generated report payload', async 
         requireAuthorAttribution: true,
         requireCommitterAttribution: true,
         requireKnownReasonForUnverified: true,
+        requireSignatureVerificationAvailable: true,
         requireUniqueShas: true,
         requireNonEmptyHeadline: true,
         maxHeadlineLength: 120,
