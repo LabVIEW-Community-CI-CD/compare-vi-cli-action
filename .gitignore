@@ -20,6 +20,8 @@ tests/results/**
 tools/dashboard/dashboard.html
 # Root-level CI artifacts (timestamped at runtime; never commit)
 /results/
+# Agent-local standing priority cache (generated at bootstrap/sync)
+.agent_priority_cache.json
 # Local temp workdirs created during ad-hoc runs
 .tmp-smoke/
 tmp-*/

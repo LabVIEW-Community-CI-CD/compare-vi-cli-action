@@ -20,6 +20,7 @@ line buffers).
   `.agent_priority_cache.json` and `tests/results/_agent/issue/` reflect the
   latest snapshot, hook preflight succeeds, and the working tree is anchored to
   `develop`; treat that issue as the top objective for edits, CI runs, and PRs.
+  These generated priority cache/router files are intentionally untracked.
 - The human operator is signed in with an admin GitHub token; assume privileged operations (labels, reruns, merges) are
   allowed when safe.
 - Default behaviour:
