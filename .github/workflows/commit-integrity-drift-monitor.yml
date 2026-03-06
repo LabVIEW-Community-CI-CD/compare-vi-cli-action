@@ -1,0 +1,44 @@
+name: Commit Integrity Drift Monitor
+
+on:
+  schedule:
+    - cron: '17 */6 * * *'
+  workflow_dispatch:
+
+concurrency:
+  group: commit-integrity-drift-monitor
+  cancel-in-progress: false
+
+permissions:
+  actions: read
+  contents: read
+  issues: write
+
+jobs:
+  monitor:
+    name: monitor
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: '20'
+
+      - name: Emit commit-integrity drift report
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          node tools/npm/run-script.mjs priority:commit-integrity:drift -- \
+            --route-on-breach \
+            --route-labels slo,ci,governance,supply-chain \
+            --route-title-prefix "[SLO] Commit integrity breach"
+
+      - name: Upload commit-integrity drift artifact
+        if: always()
+        uses: actions/upload-artifact@v5
+        with:
+          name: commit-integrity-drift-${{ github.run_id }}-${{ github.run_attempt }}
+          path: tests/results/_agent/commit-integrity/commit-integrity-drift-report.json
+          if-no-files-found: error
