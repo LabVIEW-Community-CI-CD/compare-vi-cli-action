@@ -587,6 +587,32 @@ function Build-FlagBundle {
   return @($unique.ToArray())
 }
 
+function Invoke-ProcessCapture {
+  param(
+    [Parameter(Mandatory = $true)][System.Diagnostics.ProcessStartInfo]$StartInfo
+  )
+
+  $proc = [System.Diagnostics.Process]::Start($StartInfo)
+  if ($null -eq $proc) {
+    throw ("Failed to start process: {0}" -f $StartInfo.FileName)
+  }
+
+  try {
+    $stdoutTask = $proc.StandardOutput.ReadToEndAsync()
+    $stderrTask = $proc.StandardError.ReadToEndAsync()
+    [System.Threading.Tasks.Task]::WaitAll(@($stdoutTask, $stderrTask))
+    $proc.WaitForExit()
+
+    return [pscustomobject]@{
+      ExitCode = $proc.ExitCode
+      StdOut   = $stdoutTask.Result
+      StdErr   = $stderrTask.Result
+    }
+  } finally {
+    $proc.Dispose()
+  }
+}
+
 function Invoke-Git {
   param(
     [Parameter(Mandatory = $true)][string[]]$Arguments,
@@ -602,17 +628,14 @@ function Invoke-Git {
   }
   $psi.UseShellExecute = $false
   $psi.CreateNoWindow = $true
-  $proc = [System.Diagnostics.Process]::Start($psi)
-  $stdout = $proc.StandardOutput.ReadToEnd()
-  $stderr = $proc.StandardError.ReadToEnd()
-  $proc.WaitForExit()
-  if ($proc.ExitCode -ne 0) {
-    $msg = "git {0} failed with exit code {1}" -f ($Arguments -join ' '), $proc.ExitCode
-    if ($stderr) { $msg = "$msg`n$stderr" }
+  $result = Invoke-ProcessCapture -StartInfo $psi
+  if ($result.ExitCode -ne 0) {
+    $msg = "git {0} failed with exit code {1}" -f ($Arguments -join ' '), $result.ExitCode
+    if ($result.StdErr) { $msg = "$msg`n$($result.StdErr)" }
     throw $msg
   }
-  if (-not $Quiet -and $stderr) { Write-Verbose $stderr }
-  return $stdout
+  if (-not $Quiet -and $result.StdErr) { Write-Verbose $result.StdErr }
+  return $result.StdOut
 }
 
 function Invoke-Pwsh {
@@ -638,15 +661,7 @@ function Invoke-Pwsh {
       }
     }
   }
-  $proc = [System.Diagnostics.Process]::Start($psi)
-  $stdout = $proc.StandardOutput.ReadToEnd()
-  $stderr = $proc.StandardError.ReadToEnd()
-  $proc.WaitForExit()
-  [pscustomobject]@{
-    ExitCode = $proc.ExitCode
-    StdOut   = $stdout
-    StdErr   = $stderr
-  }
+  return (Invoke-ProcessCapture -StartInfo $psi)
 }
 
 function Get-ExecDiffEvidence {
@@ -686,9 +701,8 @@ function Ensure-FileExistsAtRef {
   }
   $psi.UseShellExecute = $false
   $psi.CreateNoWindow = $true
-  $proc = [System.Diagnostics.Process]::Start($psi)
-  $proc.WaitForExit()
-  if ($proc.ExitCode -ne 0) {
+  $result = Invoke-ProcessCapture -StartInfo $psi
+  if ($result.ExitCode -ne 0) {
     throw ("Target '{0}' not present at {1}" -f $Path, $Ref)
   }
 }
@@ -709,9 +723,8 @@ function Test-FileExistsAtRef {
   }
   $psi.UseShellExecute = $false
   $psi.CreateNoWindow = $true
-  $proc = [System.Diagnostics.Process]::Start($psi)
-  $proc.WaitForExit()
-  return ($proc.ExitCode -eq 0)
+  $result = Invoke-ProcessCapture -StartInfo $psi
+  return ($result.ExitCode -eq 0)
 }
 
 function Test-CommitTouchesPath {
@@ -1032,12 +1045,10 @@ function Test-IsAncestor {
   $psi.RedirectStandardError = $true
   $psi.UseShellExecute = $false
   $psi.CreateNoWindow = $true
-  $proc = [System.Diagnostics.Process]::Start($psi)
-  $proc.WaitForExit()
-  if ($proc.ExitCode -eq 0) { return $true }
-  if ($proc.ExitCode -eq 1) { return $false }
-  $stderr = $proc.StandardError.ReadToEnd()
-  throw ("git merge-base --is-ancestor failed: {0}" -f $stderr)
+  $result = Invoke-ProcessCapture -StartInfo $psi
+  if ($result.ExitCode -eq 0) { return $true }
+  if ($result.ExitCode -eq 1) { return $false }
+  throw ("git merge-base --is-ancestor failed: {0}" -f $result.StdErr)
 }
 
 function Resolve-CommitWithChange {
