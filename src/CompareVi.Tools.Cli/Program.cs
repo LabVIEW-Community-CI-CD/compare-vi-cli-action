@@ -75,9 +75,9 @@ internal static class Program
         Console.WriteLine("  comparevi-cli operations [--name <operation>] [--names-only]");
         Console.WriteLine("  comparevi-cli providers [--name <provider>] [--names-only]");
         Console.WriteLine("  comparevi-cli compare single --input <file> [--dry-run] [--diff] [--exit-code <n>] [--failure-class <name>] [--out-dir <path>] [--non-interactive] [--headless]");
-        Console.WriteLine("  comparevi-cli compare range --base <ref> --head <ref> [--dry-run] [--diff] [--exit-code <n>] [--failure-class <name>] [--max-pairs <n>] [--out-dir <path>] [--non-interactive] [--headless]");
-        Console.WriteLine("  comparevi-cli history run --input <file> [--dry-run] [--diff] [--exit-code <n>] [--failure-class <name>] [--out-dir <path>] [--non-interactive] [--headless]");
-        Console.WriteLine("  comparevi-cli report consolidate --input <file> [--dry-run] [--out-dir <path>] [--non-interactive] [--headless]");
+        Console.WriteLine("  comparevi-cli compare range --base <ref> --head <ref> [--repo <path>] [--vi <path>] [--vi-list <path>[,<path>...]] [--mode <name>] [--max-pairs <n>] [--timeout <seconds>] [--out-dir <path>] [--non-interactive] [--headless] [--dry-run]");
+        Console.WriteLine("  comparevi-cli history run --input <file> [--repo <path>] [--mode <name>] [--max-pairs <n>] [--timeout <seconds>] [--out-dir <path>] [--non-interactive] [--headless] [--dry-run]");
+        Console.WriteLine("  comparevi-cli report consolidate --input <file> [--repo <path>] [--out-dir <path>] [--non-interactive] [--headless] [--dry-run]");
         Console.WriteLine("  comparevi-cli contracts validate --input <file>");
     }
 
@@ -390,6 +390,11 @@ internal static class Program
 
         if (args[1].Equals("range", StringComparison.OrdinalIgnoreCase))
         {
+            if (!HasFlag(args, 2, "--dry-run"))
+            {
+                return HistoryCliBridge.RunCompareRange(args, 2, SerializerOptions);
+            }
+
             return RunDryCompareRangeLane(args, 2);
         }
 
@@ -402,7 +407,7 @@ internal static class Program
         if (!ValidateCommandOptions(
                 args,
                 startIndex: tailStart,
-            valueOptions: new[] { "--base", "--head", "--exit-code", "--failure-class", "--max-pairs", "--out-dir" },
+            valueOptions: new[] { "--base", "--head", "--repo", "--vi", "--vi-list", "--mode", "--exit-code", "--failure-class", "--max-pairs", "--timeout", "--out-dir" },
             flagOptions: new[] { "--dry-run", "--diff", "--non-interactive", "--headless" },
                 out var optionError))
         {
@@ -504,8 +509,13 @@ internal static class Program
     {
         if (args.Length < 2 || !args[1].Equals("run", StringComparison.OrdinalIgnoreCase))
         {
-            Console.Error.WriteLine("Usage: comparevi-cli history run --input <file> [--dry-run] [--diff] [--exit-code <n>] [--failure-class <name>]");
+            Console.Error.WriteLine("Usage: comparevi-cli history run --input <file> [--repo <path>] [--mode <name>] [--max-pairs <n>] [--timeout <seconds>] [--out-dir <path>] [--non-interactive] [--headless] [--dry-run]");
             return 2;
+        }
+
+        if (!HasFlag(args, 2, "--dry-run"))
+        {
+            return HistoryCliBridge.RunHistoryRun(args, 2, SerializerOptions);
         }
 
         return RunDryContractLane(
@@ -521,8 +531,13 @@ internal static class Program
     {
         if (args.Length < 2 || !args[1].Equals("consolidate", StringComparison.OrdinalIgnoreCase))
         {
-            Console.Error.WriteLine("Usage: comparevi-cli report consolidate --input <file> [--dry-run]");
+            Console.Error.WriteLine("Usage: comparevi-cli report consolidate --input <file> [--repo <path>] [--out-dir <path>] [--non-interactive] [--headless] [--dry-run]");
             return 2;
+        }
+
+        if (!HasFlag(args, 2, "--dry-run"))
+        {
+            return HistoryCliBridge.RunReportConsolidate(args, 2, SerializerOptions);
         }
 
         return RunDryContractLane(
@@ -589,7 +604,7 @@ internal static class Program
         if (!ValidateCommandOptions(
                 args,
                 startIndex: tailStart,
-            valueOptions: new[] { "--input", "--exit-code", "--failure-class", "--out-dir" },
+            valueOptions: new[] { "--input", "--in", "--repo", "--mode", "--max-pairs", "--timeout", "--exit-code", "--failure-class", "--out-dir" },
             flagOptions: new[] { "--dry-run", "--diff", "--non-interactive", "--headless" },
                 out var optionError))
         {
@@ -597,7 +612,17 @@ internal static class Program
             return 2;
         }
 
-        if (!TryReadOption(args, tailStart, "--input", out var inputPath) || string.IsNullOrWhiteSpace(inputPath))
+        string? inputPath = null;
+        if (!TryReadOption(args, tailStart, "--input", out inputPath) || string.IsNullOrWhiteSpace(inputPath))
+        {
+            if (!TryReadOption(args, tailStart, "--in", out inputPath) || string.IsNullOrWhiteSpace(inputPath))
+            {
+                Console.Error.WriteLine("Missing required option: --input <file>");
+                return 2;
+            }
+        }
+
+        if (string.IsNullOrWhiteSpace(inputPath))
         {
             Console.Error.WriteLine("Missing required option: --input <file>");
             return 2;

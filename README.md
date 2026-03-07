@@ -44,6 +44,27 @@ workflow uploads two artifacts:
 - `vi-compare-manifests` - aggregate suite manifest and per-mode summaries
 - `vi-compare-diff-artifacts` - only present when LVCompare detects differences
 
+## Host-Native CLI
+
+`comparevi-cli` now executes the real history/report backend for advanced
+commands instead of returning contract-only placeholder payloads:
+
+- `compare range` shells into `tools/Get-PRVIDiffManifest.ps1` and
+  `tools/Invoke-PRVIHistory.ps1`
+- `history run` shells into `tools/Invoke-PRVIHistory.ps1`
+- `report consolidate` shells into `tools/Render-VIHistoryReport.ps1` and
+  `tools/Extract-VIHistoryReportImages.ps1`
+
+Successful runs write versioned JSON plus materialized Markdown/HTML/image-index
+artifacts in the selected `--out-dir`. `--dry-run` remains available when you
+only want the contract envelope without invoking the backend.
+
+When the CLI runs outside a full repository checkout, point it at a helper
+bundle/repo root with `COMPAREVI_CLI_SCRIPTS_ROOT` (or `COMPAREVI_SCRIPTS_ROOT`).
+For local validation and automated tests, `COMPAREVI_CLI_INVOKE_SCRIPT_PATH`
+can override the compare invoker without changing the production workflow
+contract.
+
 ## VS Code Plane Workspaces
 
 Use the primary committed workspace files to keep upstream, fork, and
