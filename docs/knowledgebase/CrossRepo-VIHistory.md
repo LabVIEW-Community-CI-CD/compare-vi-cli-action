@@ -12,7 +12,57 @@ standing issue #527).
 - Access to the Compare-VI tooling (`Compare-VIHistory.ps1`,
   `Compare-RefsToTemp.ps1`, and supporting modules).
 
-## One-off local run (labview-icon-editor example)
+## Preferred release-asset path
+
+The release pipeline publishes an immutable `CompareVI.Tools` zip bundle on
+each tagged release. For cross-repo usage, prefer downloading that asset
+instead of checking out this repository.
+
+1. **Download the pinned release asset**
+
+   ```powershell
+   $tag = 'v1.0.0'
+   $asset = 'CompareVI.Tools-v<module-version>.zip'
+   $uri = "https://github.com/LabVIEW-Community-CI-CD/compare-vi-cli-action/releases/download/$tag/$asset"
+   Invoke-WebRequest -Uri $uri -OutFile $asset
+   ```
+
+2. **Verify the archive**
+
+   Download the matching `SHA256SUMS.txt` from the same release and confirm the
+   hash for the zip before extracting it.
+
+3. **Extract and inspect metadata**
+
+   ```powershell
+   Expand-Archive -Path .\CompareVI.Tools-v<module-version>.zip -DestinationPath .\comparevi-tools
+   Get-Content .\comparevi-tools\CompareVI.Tools-v<module-version>\comparevi-tools-release.json
+   ```
+
+   The embedded metadata records the module version, repository source,
+   source ref/tag, source SHA, and the file closure for the bundle.
+
+4. **Import the module from the extracted bundle**
+
+   ```powershell
+   Import-Module .\comparevi-tools\CompareVI.Tools-v<module-version>\tools\CompareVI.Tools\CompareVI.Tools.psd1 -Force
+   ```
+
+5. **Run the history helper**
+
+   ```powershell
+   Set-Location labview-icon-editor
+   Invoke-CompareVIHistory `
+     -TargetPath "Tooling/deployment/VIP_Post-Install Custom Action.vi" `
+     -RenderReport `
+     -FailOnDiff:$false `
+     -InvokeScriptPath ..\comparevi-tools\CompareVI.Tools-v<module-version>\tools\Invoke-LVCompare.ps1
+   ```
+
+This path replaces whole-repository acquisition for module consumers while
+keeping the integration pinned to a reviewed release tag.
+
+## One-off local run from a source checkout (legacy / maintainer path)
 
 1. **Clone the target repo**
 
@@ -63,8 +113,9 @@ new cross-repo runs.
 
 - With `CompareVI.Tools` we can reuse `Compare-VIHistory` and
   `Compare-RefsToTemp` without copying scripts into the target repository.
-- We should publish a reusable workflow or module so that downstream projects
-  can run Compare-VIHistory end-to-end without cloning this repository.
+- The published `CompareVI.Tools` zip bundle now covers the module acquisition
+  path without cloning this repository.
+- A reusable workflow/facade is still useful for the cleanest `uses:` UX.
 
 ## Packaging decision (2025-10-31)
 
@@ -73,29 +124,28 @@ For issue #527 we will proceed with the **PowerShell module** approach:
 - Create a module (working name `CompareVI.Tools`) that exports
   `Compare-VIHistory`, `Compare-RefsToTemp`, bucket metadata helpers, and the
   vendor resolver.
-- Publish the module as part of the compare-vi-cli-action release process,
-  making it installable via `Install-Module` / `Save-Module`.
+- Publish the module as part of the compare-vi-cli-action release process as a
+  pinned zip bundle.
 - Provide a simple wrapper script so GitHub workflows can import the module and
   invoke `Compare-VIHistory` without copying files.
-- Still generate a zip bundle from the release pipeline for consumers that
-  prefer fixed artifacts (secondary path).
+- Generate a zip bundle from the release pipeline for consumers that prefer
+  fixed artifacts.
 
 ## Next steps (tracked by issue #527)
 
 - **Packaging options**  
-  - *PowerShell module*: publish `Compare-VIHistory`, `Compare-RefsToTemp`,
-    bucket metadata, and vendor resolvers as a module (e.g.,
-    `CompareVI.Tools`). External repos add a `Install-Module` step or pin the
-    package via `Save-Module`.  
-  - *Release bundle*: ship the helper scripts as a zip artifact on each
-    release. Downstream workflows download/unpack into `tools/`.  
+  - *PowerShell module bundle*: publish `Compare-VIHistory`,
+    `Compare-RefsToTemp`, bucket metadata, vendor resolvers, and compare
+    engine dependencies as a self-contained `CompareVI.Tools` zip asset on each
+    release. External repos download/unpack the bundle and import the module
+    directly.  
   - *Reusable workflow/composite action*: wrap the helper in a GitHub Action
     that accepts repo+VI inputs and runs the history capture on a trusted
     runner.
 
 - **Automation gaps to close**
-  - Publish one of the packaging options so consumers do not copy scripts
-    manually.
+  - Keep the release bundle metadata and verification guidance aligned with the
+    published asset names.
   - Provide a sample workflow (e.g., `vi-history-cross-repo.yml`) that
     downloads the helper and runs it against a supplied repo/ref.
   - Clarify access requirements (SAML, LFS, large history impacts) in the docs.

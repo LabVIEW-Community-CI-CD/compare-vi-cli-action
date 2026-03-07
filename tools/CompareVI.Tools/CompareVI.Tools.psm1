@@ -3,6 +3,7 @@ $ErrorActionPreference = 'Stop'
 
 $script:ModuleRoot = Split-Path -Parent $PSCommandPath
 $script:ToolsRoot = Split-Path -Parent $script:ModuleRoot
+$script:BundleRoot = Split-Path -Parent $script:ToolsRoot
 
 function Get-CompareVIScriptPath {
   param(
@@ -60,7 +61,7 @@ function Invoke-CompareVIHistory {
   )
 
   $compareScript = Get-CompareVIScriptPath -Name 'Compare-VIHistory.ps1'
-  $env:COMPAREVI_SCRIPTS_ROOT = $script:ToolsRoot
+  $env:COMPAREVI_SCRIPTS_ROOT = $script:BundleRoot
   try {
     & $compareScript @PSBoundParameters
   } finally {
