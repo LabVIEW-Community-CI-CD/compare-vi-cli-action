@@ -85,6 +85,30 @@ test('parseArgs rejects invalid inflight bounds', () => {
   );
 });
 
+test('parseArgs reads adaptive inflight controls from environment', () => {
+  const previous = {
+    max: process.env.QUEUE_AUTOPILOT_MAX_INFLIGHT,
+    min: process.env.QUEUE_AUTOPILOT_MIN_INFLIGHT,
+    adaptive: process.env.QUEUE_AUTOPILOT_ADAPTIVE_CAP
+  };
+  process.env.QUEUE_AUTOPILOT_MAX_INFLIGHT = '4';
+  process.env.QUEUE_AUTOPILOT_MIN_INFLIGHT = '1';
+  process.env.QUEUE_AUTOPILOT_ADAPTIVE_CAP = '0';
+  try {
+    const parsed = parseArgs(['node', 'queue-supervisor.mjs']);
+    assert.equal(parsed.maxInflight, 4);
+    assert.equal(parsed.minInflight, 1);
+    assert.equal(parsed.adaptiveCap, false);
+  } finally {
+    if (previous.max === undefined) delete process.env.QUEUE_AUTOPILOT_MAX_INFLIGHT;
+    else process.env.QUEUE_AUTOPILOT_MAX_INFLIGHT = previous.max;
+    if (previous.min === undefined) delete process.env.QUEUE_AUTOPILOT_MIN_INFLIGHT;
+    else process.env.QUEUE_AUTOPILOT_MIN_INFLIGHT = previous.min;
+    if (previous.adaptive === undefined) delete process.env.QUEUE_AUTOPILOT_ADAPTIVE_CAP;
+    else process.env.QUEUE_AUTOPILOT_ADAPTIVE_CAP = previous.adaptive;
+  }
+});
+
 test('evaluateAdaptiveInflight applies fixed, degraded, and restricted tiers deterministically', () => {
   const fixed = evaluateAdaptiveInflight({
     maxInflight: 5,

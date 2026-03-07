@@ -253,6 +253,8 @@ to confirm each workflow includes both triggers.
    `--apply` when trunk health is green. The supervisor enforces required checks, dependency ordering, and queue caps.
    Use `QUEUE_AUTOPILOT_MAX_INFLIGHT` for cap tuning and keep `QUEUE_AUTOPILOT_ADAPTIVE_CAP=1`
    (`QUEUE_AUTOPILOT_MIN_INFLIGHT` floor) so enqueue pressure self-throttles under runtime saturation.
+   Hosted cadence runs every 5 minutes, with immediate `--apply` runs triggered by
+   `Validate` / `Policy Guard (Upstream)` completions on `develop`.
 6. Autonomous merge tooling now requires upstream-owned PR heads. Fork-headed PRs are intentionally ineligible for
    `priority:queue:supervisor` and `priority:merge-sync`; mirror the branch to upstream and open the PR from the
    upstream-owned branch before queueing.

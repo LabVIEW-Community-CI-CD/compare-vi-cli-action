@@ -22,7 +22,15 @@ on:
         required: false
         type: string
   schedule:
-    - cron: '*/10 * * * *'
+    - cron: '*/5 * * * *'
+  workflow_run:
+    workflows:
+      - Validate
+      - Policy Guard (Upstream)
+    types:
+      - completed
+    branches:
+      - develop
 
 concurrency:
   group: queue-supervisor-${{ github.ref }}
@@ -71,7 +79,15 @@ jobs:
             $reportPath
           )
 
-          if ('${{ github.event_name }}' -eq 'workflow_dispatch' -and '${{ inputs.apply }}' -eq 'true') {
+          $eventName = '${{ github.event_name }}'
+          $apply = $false
+          if ($eventName -eq 'workflow_dispatch') {
+            $apply = ('${{ inputs.apply }}' -eq 'true')
+          } elseif ($eventName -eq 'workflow_run') {
+            $apply = $true
+          }
+
+          if ($apply) {
             $args += '--apply'
           } else {
             $args += '--dry-run'
