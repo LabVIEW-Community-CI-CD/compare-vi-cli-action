@@ -125,12 +125,12 @@ let lastBusySuspectAt = null;
 
 function info(message) {
   if (!quiet) {
-    console.log(message);
+    console.log(`[info] ${message}`);
   }
 }
 
 function warn(message) {
-  console.warn(message);
+  console.warn(`[warn] ${message}`);
 }
 
 async function ensureDirectory(target) {

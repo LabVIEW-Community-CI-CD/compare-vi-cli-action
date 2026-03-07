@@ -42,6 +42,18 @@ param(
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
+function Write-WatchRestLog {
+  param(
+    [ValidateSet('info','warn','error')]
+    [string]$Level = 'info',
+    [Parameter(Mandatory = $true)]
+    [string]$Message,
+    [ConsoleColor]$ForegroundColor = 'Gray'
+  )
+
+  Write-Host ("[{0}] [watch-rest] {1}" -f $Level.ToLowerInvariant(), $Message) -ForegroundColor $ForegroundColor
+}
+
 function Resolve-RepoRoot { param([string]$Path) if ($Path) { return $Path } $root = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path; return $root }
 $repoRoot = Resolve-RepoRoot
 Push-Location $repoRoot
@@ -52,7 +64,7 @@ try {
 
   $watcherJs = Join-Path $repoRoot 'dist/tools/watchers/orchestrated-watch.js'
   if (-not (Test-Path -LiteralPath $watcherJs -PathType Leaf)) {
-    Write-Host '[watch-rest] Compiling TypeScript watcher (tsc -p tsconfig.cli.json)...' -ForegroundColor DarkGray
+    Write-WatchRestLog -Level info -Message 'Compiling TypeScript watcher (tsc -p tsconfig.cli.json)...' -ForegroundColor DarkGray
     & npx tsc -p tsconfig.cli.json | Out-Null
   }
   if (-not (Test-Path -LiteralPath $watcherJs -PathType Leaf)) {
@@ -68,13 +80,12 @@ try {
     throw 'Provide -RunId or -Branch'
   }
 
-  Write-Host ("[watch-rest] node {0} {1}" -f (Resolve-Path $watcherJs).Path, ($args -join ' ')) -ForegroundColor DarkGray
+  Write-WatchRestLog -Level info -Message ("node {0} {1}" -f (Resolve-Path $watcherJs).Path, ($args -join ' ')) -ForegroundColor DarkGray
   & node $watcherJs @args
   $exit = $LASTEXITCODE
 
-  Write-Host '[watch-rest] Merging watcher summary into session-index.json' -ForegroundColor DarkGray
+  Write-WatchRestLog -Level info -Message 'Merging watcher summary into session-index.json' -ForegroundColor DarkGray
   & pwsh -NoLogo -NoProfile -File (Join-Path $repoRoot 'tools/Update-SessionIndexWatcher.ps1') -ResultsDir (Join-Path $repoRoot 'tests/results') -WatcherJson $outAbs
 
   exit $exit
 } finally { Pop-Location }
-

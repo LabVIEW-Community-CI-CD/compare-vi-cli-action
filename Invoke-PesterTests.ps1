@@ -176,6 +176,18 @@ if (-not $env:PESTER_VERSION -or [string]::IsNullOrWhiteSpace($env:PESTER_VERSIO
   $env:PESTER_VERSION = $PesterPolicyVersion
 }
 
+function Write-DispatcherConsoleLine {
+  param(
+    [ValidateSet('info','warn','error','debug','notice')]
+    [string]$Level = 'info',
+    [Parameter(Mandatory = $true)]
+    [string]$Message,
+    [ConsoleColor]$ForegroundColor = 'Gray'
+  )
+
+  Write-Host ("[{0}] {1}" -f $Level.ToLowerInvariant(), $Message) -ForegroundColor $ForegroundColor
+}
+
 $script:GetPesterInstallGuidance = {
   param([string]$Version)
 
@@ -2019,7 +2031,7 @@ if ($EmitFailuresJsonAlways) { Ensure-FailuresJson -Directory $resultsDir -Force
 Write-Host ""
 
 # Check for required Pester availability (should be pre-installed on self-hosted runner)
-Write-Host "Checking for Pester availability..." -ForegroundColor Yellow
+Write-DispatcherConsoleLine -Level info -Message 'Checking for Pester availability...' -ForegroundColor Yellow
 $pesterVersionRequired = $PesterPolicyVersion
 $pesterVersionParsed = [version]$pesterVersionRequired
 $prependedPesterModuleRoots = @(Prepend-ModuleRootsToPSModulePath -ModuleRoots @(Get-AdditionalPesterModuleRoots))
@@ -2061,7 +2073,7 @@ try {
 Write-Host ""
 
 # Build Pester configuration
-Write-Host "Configuring Pester..." -ForegroundColor Yellow
+Write-DispatcherConsoleLine -Level info -Message 'Configuring Pester...' -ForegroundColor Yellow
 $conf = New-PesterConfiguration
 
 # Set test path
@@ -2112,7 +2124,15 @@ Write-Host ("  Output Verbosity: {0}" -f $verbosity) -ForegroundColor Cyan
 Write-Host "  Result Format: NUnitXml" -ForegroundColor Cyan
 Write-Host ""
 
-Write-Host "Executing Pester tests..." -ForegroundColor Yellow
+Write-DispatcherConsoleLine -Level info -Message 'Executing Pester tests...' -ForegroundColor Yellow
+Write-DispatcherConsoleLine -Level info -Message (
+  "execution-mode: singleInvoker={0} timeoutGuard={1} localDispatcher={2} liveOutput={3} stuckGuard={4}" -f
+    [bool]$script:UseSingleInvoker,
+    [bool]($effectiveTimeoutSeconds -gt 0),
+    [bool]$localDispatcherMode,
+    [bool]$LiveOutput,
+    [bool]$script:stuckGuardEnabled
+) -ForegroundColor DarkGray
 Write-Host "----------------------------------------" -ForegroundColor DarkGray
 
 # Legacy structural pattern retained for dispatcher unit tests expecting historical Push/Pop and try/finally constructs.
@@ -2144,9 +2164,9 @@ if (-not $script:UseSingleInvoker) {
 
     if ($bypassStartJobTimeoutGuard) {
       if ($localDispatcherMode) {
-        Write-Host "::notice::Local dispatcher bypassing Start-Job timeout guard; running inline" -ForegroundColor DarkGray
+        Write-DispatcherConsoleLine -Level notice -Message 'Local dispatcher bypassing Start-Job timeout guard; running inline' -ForegroundColor DarkGray
       } else {
-        Write-Host "::notice::Local non-GitHub run bypassing Start-Job timeout guard; running inline" -ForegroundColor DarkGray
+        Write-DispatcherConsoleLine -Level notice -Message 'Local non-GitHub run bypassing Start-Job timeout guard; running inline' -ForegroundColor DarkGray
       }
       try {
         $rawOutput = & {
@@ -2188,12 +2208,13 @@ if (-not $script:UseSingleInvoker) {
         exit 1
       }
     } else {
-      Write-Host "Executing with timeout guard: $effectiveTimeoutSeconds second(s)" -ForegroundColor Yellow
+      Write-DispatcherConsoleLine -Level info -Message ("Executing with timeout guard: {0} second(s)" -f $effectiveTimeoutSeconds) -ForegroundColor Yellow
       if ($localDispatcherMode) { Write-Host "::warning::Local dispatcher unexpected: entering Start-Job path" -ForegroundColor Yellow }
       $job = Start-Job -ScriptBlock { param($c) Invoke-Pester -Configuration $c } -ArgumentList ($conf)
       $partialLogPath = if ($script:partialLogPath) { $script:partialLogPath } else { Join-Path $resultsDir 'pester-partial.log' }
       $lastWriteLen = 0
       $lastHeartbeat = Get-Date
+      $lastConsoleHeartbeat = Get-Date
       while ($true) {
       if ($job.State -eq 'Completed') { break }
       if ($job.State -eq 'Failed') { break }
@@ -2220,6 +2241,18 @@ if (-not $script:UseSingleInvoker) {
           _Write-HeartbeatLine 'beat'
           $lastHeartbeat = $now
         }
+      }
+      $now = Get-Date
+      if ((($now - $lastConsoleHeartbeat).TotalSeconds) -ge $script:hbSec) {
+        $partialLogState = if ($partialLogPath -and (Test-Path -LiteralPath $partialLogPath -PathType Leaf)) { $partialLogPath } else { 'n/a' }
+        Write-DispatcherConsoleLine -Level info -Message (
+          "pester-progress: state={0} elapsed~{1}s timeout={2}s partialLog={3}" -f
+            $job.State,
+            [int][Math]::Floor($elapsed.TotalSeconds),
+            [int][Math]::Floor($effectiveTimeoutSeconds),
+            $partialLogState
+        ) -ForegroundColor DarkGray
+        $lastConsoleHeartbeat = $now
       }
       if ($elapsed.TotalSeconds -ge $effectiveTimeoutSeconds) {
         Write-Warning "Pester execution exceeded timeout of $effectiveTimeoutSeconds second(s); stopping job." 

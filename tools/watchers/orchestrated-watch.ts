@@ -33,6 +33,8 @@ interface WatcherDisplayState {
   lastPrintedAt?: number;
 }
 
+type WatcherLogLevel = 'info' | 'warn' | 'error';
+
 const DEFAULT_WORKFLOW_FILE = '.github/workflows/ci-orchestrated.yml';
 const DEFAULT_ERROR_GRACE_MS = 120_000;
 const DEFAULT_NOT_FOUND_GRACE_MS = 90_000;
@@ -290,8 +292,24 @@ async function findLatestRun(repo: string, workflow: string, branch: string, tok
 function formatJob(job: WorkflowJobsResponse['jobs'][number]): string {
   const status = job.status ?? 'unknown';
   const conclusion = job.conclusion ?? '';
-  const suffix = conclusion ? ` (${conclusion})` : '';
-  return `- ${job.name}: ${status}${suffix}`;
+  const suffix = conclusion ? ` conclusion=${conclusion}` : '';
+  return `job="${job.name}" status=${status}${suffix}`;
+}
+
+function emitLog(level: WatcherLogLevel, message: string): void {
+  const line = `[${level}] ${message}`;
+  if (level === 'error') {
+    // eslint-disable-next-line no-console
+    console.error(line);
+    return;
+  }
+  if (level === 'warn') {
+    // eslint-disable-next-line no-console
+    console.warn(line);
+    return;
+  }
+  // eslint-disable-next-line no-console
+  console.log(line);
 }
 
 function buildRunSignature(run: WorkflowRun | undefined): string {
@@ -326,25 +344,19 @@ function printRunSnapshot(run: WorkflowRun, jobs: WorkflowJobsResponse['jobs']):
   const branch = run.head_branch ?? '';
   const sha = run.head_sha ?? '';
 
-  // eslint-disable-next-line no-console
-  console.log(`\n${title}`);
-  // eslint-disable-next-line no-console
-  console.log(`Status: ${status}  Conclusion: ${conclusion}`.trim());
+  emitLog('info', `run="${title}"`);
+  emitLog('info', `status=${status} conclusion=${conclusion || 'n/a'}`);
   if (branch || sha) {
-    // eslint-disable-next-line no-console
-    console.log(`Ref: ${branch} ${sha}`.trim());
+    emitLog('info', `ref=${`${branch} ${sha}`.trim()}`);
   }
   if (run.html_url) {
-    // eslint-disable-next-line no-console
-    console.log(`URL: ${run.html_url}`);
+    emitLog('info', `url=${run.html_url}`);
   }
 
   if (jobs.length) {
-    // eslint-disable-next-line no-console
-    console.log('Jobs:');
+    emitLog('info', 'jobs:');
     for (const job of jobs) {
-      // eslint-disable-next-line no-console
-      console.log(formatJob(job));
+      emitLog('info', formatJob(job));
     }
   }
 }
@@ -356,9 +368,10 @@ function printHeartbeat(run: WorkflowRun, jobs: WorkflowJobsResponse['jobs'], po
   const completedJobs = jobs.filter((job) => job.status === 'completed').length;
   const totalJobs = jobs.length;
   const elapsedSeconds = Math.max(0, Math.floor((pollCount * pollMs) / 1000));
-  const heartbeat = `[watcher] heartbeat: ${title} status=${status} conclusion=${conclusion || 'n/a'} jobs=${completedJobs}/${totalJobs} elapsed~${elapsedSeconds}s`;
-  // eslint-disable-next-line no-console
-  console.log(heartbeat);
+  emitLog(
+    'info',
+    `heartbeat run="${title}" status=${status} conclusion=${conclusion || 'n/a'} jobs=${completedJobs}/${totalJobs} elapsed~${elapsedSeconds}s`,
+  );
 }
 
 async function watchRun(
@@ -371,8 +384,7 @@ async function watchRun(
   changesOnly = true,
   heartbeatPolls = 8,
 ): Promise<WatcherSummary> {
-  // eslint-disable-next-line no-console
-  console.log(`Watching run ${runId} in ${repo}...`);
+  emitLog('info', `watching run=${runId} repo=${repo}`);
 
   let latestRun: WorkflowRun | undefined;
   let latestJobs: WorkflowJobsResponse['jobs'] = [];
@@ -443,8 +455,7 @@ async function watchRun(
         };
       }
     } catch (err) {
-      // eslint-disable-next-line no-console
-      console.error(`[watcher] ${((err as Error).message).trim()}`);
+      emitLog('error', ((err as Error).message).trim());
       if (err instanceof GitHubRateLimitError) {
         const summary = buildSummary({
           repo,
@@ -535,8 +546,7 @@ async function main() {
   const isCurrentRun = Number.isFinite(currentRunId) && currentRunId === runId;
 
   if (isCurrentRun) {
-    // eslint-disable-next-line no-console
-    console.log(`[watcher] Run ${runId} matches current workflow; skipping self-watch to avoid deadlock.`);
+    emitLog('warn', `run=${runId} matches current workflow; skipping self-watch to avoid deadlock.`);
     const branch =
       process.env.GITHUB_REF_NAME ?? process.env.GITHUB_HEAD_REF ?? process.env.GITHUB_REF ?? undefined;
     const sha = process.env.GITHUB_SHA ?? undefined;
@@ -590,8 +600,7 @@ async function main() {
     }
   } catch (err) {
     if (err instanceof WatcherAbort) {
-      // eslint-disable-next-line no-console
-      console.error(`[watcher] ${err.message}`);
+      emitLog('error', err.message);
       if (args.out) {
         const outPath = resolve(process.cwd(), args.out as string);
         mkdirSync(dirname(outPath), { recursive: true });
@@ -606,6 +615,6 @@ async function main() {
 }
 
 main().catch((err) => {
-  console.error(`[watcher] fatal: ${(err as Error).message}`);
+  emitLog('error', `fatal: ${(err as Error).message}`);
   process.exitCode = 1;
 });
