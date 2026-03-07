@@ -23,6 +23,7 @@ import {
   resolveStandingPriorityForRepo,
   fetchIssue,
   computeNextPriorityCacheState,
+  shouldPersistCacheUpdate,
   gitRoot
 } from '../sync-standing-priority.mjs';
 
@@ -233,6 +234,9 @@ test('parseCliArgs enables strict standing-priority flags and help', () => {
   assert.equal(parsedAuto.autoSelectNext, true);
   assert.equal(parsedAuto.failOnMissing, false);
 
+  const parsedMaterialize = parseCliArgs(['node', 'sync-standing-priority.mjs', '--materialize-cache']);
+  assert.equal(parsedMaterialize.materializeCache, true);
+
   const help = parseCliArgs(['node', 'sync-standing-priority.mjs', '--help']);
   assert.equal(help.help, true);
 });
@@ -267,6 +271,41 @@ test('selectAutoStandingPriorityCandidate favors non-epic P0 oldest item', () =>
 
   assert.equal(selected?.number, 902);
   assert.equal(selected?.priority, 0);
+});
+
+test('selectAutoStandingPriorityCandidate deprioritizes program labels when actionable issues exist', () => {
+  const selected = selectAutoStandingPriorityCandidate([
+    {
+      number: 799,
+      title: '[P0] Program umbrella',
+      labels: ['program', 'governance'],
+      createdAt: '2026-03-06T08:00:00Z'
+    },
+    {
+      number: 805,
+      title: '[P0] Defork-safe portability hardening',
+      labels: ['governance'],
+      createdAt: '2026-03-06T08:05:00Z'
+    }
+  ]);
+
+  assert.equal(selected?.number, 805);
+});
+
+test('shouldPersistCacheUpdate skips cache materialization by default on fresh clones', () => {
+  const nextCache = {
+    number: 805,
+    state: 'OPEN',
+    labels: ['standing-priority']
+  };
+  assert.equal(
+    shouldPersistCacheUpdate({}, nextCache, { hasCacheFile: false, materializeCache: false }),
+    false
+  );
+  assert.equal(
+    shouldPersistCacheUpdate({}, nextCache, { hasCacheFile: false, materializeCache: true }),
+    true
+  );
 });
 
 test('autoSelectStandingPriorityIssue selects and labels next issue via injected transports', async () => {

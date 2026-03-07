@@ -26,6 +26,7 @@ const CLI_USAGE_LINES = [
   '  --fail-on-missing   Exit non-zero when no standing-priority issue is found.',
   '  --fail-on-multiple  Exit non-zero when multiple open standing-priority issues are found.',
   '  --auto-select-next  When no standing issue exists, auto-label the next open issue as standing-priority.',
+  '  --materialize-cache Persist .agent_priority_cache.json even when absent.',
   '  -h, --help          Show this help text and exit.'
 ];
 
@@ -35,6 +36,7 @@ export function parseCliArgs(argv = process.argv) {
     failOnMissing: false,
     failOnMultiple: false,
     autoSelectNext: false,
+    materializeCache: false,
     help: false
   };
 
@@ -49,6 +51,10 @@ export function parseCliArgs(argv = process.argv) {
     }
     if (arg === '--auto-select-next') {
       options.autoSelectNext = true;
+      continue;
+    }
+    if (arg === '--materialize-cache') {
+      options.materializeCache = true;
       continue;
     }
     if (arg === '--help' || arg === '-h') {
@@ -153,7 +159,8 @@ export function selectAutoStandingPriorityCandidate(entries = []) {
   }
 
   const nonEpic = normalized.filter((entry) => !entry.epic);
-  const pool = nonEpic.length > 0 ? nonEpic : normalized;
+  const nonProgram = nonEpic.filter((entry) => !entry.labels.includes('program'));
+  const pool = nonProgram.length > 0 ? nonProgram : nonEpic.length > 0 ? nonEpic : normalized;
 
   pool.sort((left, right) => {
     if (left.priority !== right.priority) {
@@ -1829,6 +1836,9 @@ export function computeNextPriorityCacheState({
 export async function main(options = {}) {
   const failOnMissing = Boolean(options.failOnMissing);
   const failOnMultiple = Boolean(options.failOnMultiple);
+  const materializeCache =
+    Boolean(options.materializeCache) ||
+    normalizeBooleanValue((options.env || process.env).AGENT_PRIORITY_MATERIALIZE_CACHE);
   const autoSelectNext =
     Boolean(options.autoSelectNext) ||
     normalizeBooleanValue((options.env || process.env).AGENT_PRIORITY_AUTO_SELECT_NEXT);
@@ -1836,6 +1846,7 @@ export async function main(options = {}) {
   const slug = resolveRepositorySlug(repoRoot);
   const standingPriorityLabels = resolveStandingPriorityLabels(repoRoot, slug);
   const cachePath = path.join(repoRoot, '.agent_priority_cache.json');
+  const hasCacheFile = fs.existsSync(cachePath);
   const cache = readJson(cachePath) || {};
   const resultsDir = path.join(repoRoot, 'tests', 'results', '_agent', 'issue');
   fs.mkdirSync(resultsDir, { recursive: true });
@@ -1877,7 +1888,12 @@ export async function main(options = {}) {
         );
         writeJson(path.join(resultsDir, 'router.json'), clearedRouter);
 
-        if (shouldWriteCache(cache, clearedCache)) {
+        if (
+          shouldPersistCacheUpdate(cache, clearedCache, {
+            hasCacheFile,
+            materializeCache
+          })
+        ) {
           writeJson(cachePath, clearedCache);
         }
 
@@ -2016,7 +2032,12 @@ export async function main(options = {}) {
     fetchSource,
     fetchError
   });
-  if (shouldWriteCache(cache, newCache)) {
+  if (
+    shouldPersistCacheUpdate(cache, newCache, {
+      hasCacheFile,
+      materializeCache
+    })
+  ) {
     writeJson(cachePath, newCache);
   }
 
@@ -2059,6 +2080,17 @@ export function shouldWriteCache(previousCache, nextCache) {
   }
 
   return !isDeepStrictEqual(previousCache, normalizedNext);
+}
+
+export function shouldPersistCacheUpdate(
+  previousCache,
+  nextCache,
+  { hasCacheFile = false, materializeCache = false } = {}
+) {
+  if (!hasCacheFile && !materializeCache) {
+    return false;
+  }
+  return shouldWriteCache(previousCache, nextCache);
 }
 
 export async function closeProxyAgents() {

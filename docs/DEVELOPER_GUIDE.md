@@ -311,6 +311,8 @@ For Docker/Desktop VI history validation, run fast-loop lanes explicitly:
   missing or duplicate standing-priority labels fail fast and emit deterministic diagnostics:
   - `tests/results/_agent/issue/no-standing-priority.json`
   - `tests/results/_agent/issue/multiple-standing-priority.json`
+  By default, sync does not create `.agent_priority_cache.json` on fresh clones; pass
+  `--materialize-cache` (or set `AGENT_PRIORITY_MATERIALIZE_CACHE=1`) when you explicitly want cache materialization.
 - Enforce milestone hygiene for `standing-priority` / `program` / `[P0|P1]` issues with
   `node tools/npm/run-script.mjs priority:milestone:hygiene -- --repo <owner/repo>`.
   Use `--apply-default-milestone --default-milestone <title>` for reconciliation and add
