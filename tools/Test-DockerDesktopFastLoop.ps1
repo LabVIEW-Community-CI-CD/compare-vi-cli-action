@@ -79,6 +79,7 @@ function Resolve-DockerLaneLabVIEWPath {
 
   return ''
 }
+
 if (-not (Test-Path -LiteralPath $classifierScriptPath -PathType Leaf)) {
   throw ("Exit-code classifier script not found: {0}" -f $classifierScriptPath)
 }

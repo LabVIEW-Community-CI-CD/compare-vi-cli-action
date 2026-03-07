@@ -117,7 +117,6 @@ Describe 'CompareVI with Git refs (same path at two commits)' -Tag 'CompareVI','
     foreach ($name in @('TEMP','TMP','TMPDIR','RUNNER_TEMP')) {
       [void]$psi.Environment.Remove($name)
     }
-    $psi.Environment['STUB_COMPARE_DIFF'] = '1'
 
     $proc = [System.Diagnostics.Process]::Start($psi)
     $stdout = $proc.StandardOutput.ReadToEnd()

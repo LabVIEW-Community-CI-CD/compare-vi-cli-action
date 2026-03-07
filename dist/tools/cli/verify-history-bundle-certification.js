@@ -40,7 +40,7 @@ function hasUnspecified(entries) {
     return entries.some(([key]) => key.toLowerCase() === 'unspecified');
 }
 function escapeMarkdown(text) {
-    return text.replace(/\|/g, '\\|');
+    return text.replace(/\\/g, '\\\\').replace(/\|/g, '\\|');
 }
 function verifySummary(summary, requiredModes) {
     if (summary.schema !== 'comparevi-history-bundle-certification@v1') {

@@ -97,14 +97,23 @@ function Invoke-CapturedProcess {
     $psi.CreateNoWindow = $true
 
     $process = [System.Diagnostics.Process]::Start($psi)
-    $stdout = $process.StandardOutput.ReadToEnd()
-    $stderr = $process.StandardError.ReadToEnd()
-    $process.WaitForExit()
+    if ($null -eq $process) {
+        throw "Failed to start process: $FilePath"
+    }
 
-    return [pscustomobject]@{
-        ExitCode = $process.ExitCode
-        StdOut = $stdout
-        StdErr = $stderr
+    try {
+        $stdoutTask = $process.StandardOutput.ReadToEndAsync()
+        $stderrTask = $process.StandardError.ReadToEndAsync()
+        [System.Threading.Tasks.Task]::WaitAll(@($stdoutTask, $stderrTask))
+        $process.WaitForExit()
+
+        return [pscustomobject]@{
+            ExitCode = $process.ExitCode
+            StdOut = $stdoutTask.Result
+            StdErr = $stderrTask.Result
+        }
+    } finally {
+        $process.Dispose()
     }
 }
 

@@ -91,7 +91,7 @@ function hasUnspecified(entries: Array<[string, number]>): boolean {
 }
 
 function escapeMarkdown(text: string): string {
-  return text.replace(/\|/g, '\\|');
+  return text.replace(/\\/g, '\\\\').replace(/\|/g, '\\|');
 }
 
 function verifySummary(summary: CertificationSummary, requiredModes: string[]): void {
