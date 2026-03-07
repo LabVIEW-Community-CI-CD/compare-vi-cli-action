@@ -20,7 +20,6 @@ import { getRepoRoot } from './lib/branch-utils.mjs';
 export const REPORT_SCHEMA = 'priority/canary-replay-conformance-report@v1';
 export const DEFAULT_REQUIRED_CHECKS_PATH = path.join('tools', 'policy', 'branch-required-checks.json');
 export const DEFAULT_REPORT_PATH = path.join('tests', 'results', '_agent', 'canary', 'canary-replay-conformance-report.json');
-export const DEFAULT_REPOSITORY = 'LabVIEW-Community-CI-CD/compare-vi-cli-action';
 
 function printUsage() {
   console.log('Usage: node tools/priority/canary-replay-conformance.mjs [options]');
@@ -31,7 +30,7 @@ function printUsage() {
   console.log(`  --branch-policy <path>      Branch policy path (default: ${DEFAULT_BRANCH_POLICY_PATH}).`);
   console.log(`  --required-checks <path>    Required-check mapping path (default: ${DEFAULT_REQUIRED_CHECKS_PATH}).`);
   console.log(`  --report <path>             Output report path (default: ${DEFAULT_REPORT_PATH}).`);
-  console.log(`  --repo <owner/repo>         Repository slug for routing simulation (default: ${DEFAULT_REPOSITORY}).`);
+  console.log('  --repo <owner/repo>         Repository slug for routing simulation (default: env/upstream/origin).');
   console.log('  --strict                    Fail when determinism checks fail (default: true).');
   console.log('  --no-strict                 Emit warning status without non-zero exit.');
   console.log('  -h, --help                  Show help and exit.');
@@ -231,11 +230,56 @@ function writeJsonFile(filePath, payload) {
 }
 
 function normalizeRepoSlug(value) {
-  const slug = normalizeText(value) || DEFAULT_REPOSITORY;
+  const slug = normalizeText(value);
+  if (!slug) {
+    throw new Error('Repository slug is required.');
+  }
   if (!slug.includes('/')) {
     throw new Error(`Invalid repository slug '${slug}'. Expected owner/repo.`);
   }
   return slug;
+}
+
+function parseRemoteUrl(url) {
+  if (!url) return null;
+  const ssh = String(url).match(/:(?<repoPath>[^/]+\/[^/]+?)(?:\.git)?$/);
+  const https = String(url).match(/github\.com\/(?<repoPath>[^/]+\/[^/]+?)(?:\.git)?$/);
+  const repoPath = ssh?.groups?.repoPath ?? https?.groups?.repoPath;
+  if (!repoPath) return null;
+  const [owner, repoRaw] = repoPath.split('/');
+  if (!owner || !repoRaw) return null;
+  const repo = repoRaw.replace(/\.git$/i, '');
+  if (!repo) return null;
+  return `${owner}/${repo}`;
+}
+
+function tryReadRemoteUrl(repoRoot, remoteName) {
+  const configPath = path.join(repoRoot, '.git', 'config');
+  if (!fs.existsSync(configPath)) return null;
+  const config = fs.readFileSync(configPath, 'utf8');
+  const escaped = remoteName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const sectionMatch = config.match(new RegExp(`\\[remote\\s+"${escaped}"\\]([\\s\\S]*?)(?:\\n\\[|$)`, 'i'));
+  const section = sectionMatch?.[1];
+  if (!section) return null;
+  const urlMatch = section.match(/^\s*url\s*=\s*(.+)$/im);
+  return urlMatch?.[1]?.trim() || null;
+}
+
+export function resolveRepositorySlug(repoRoot, explicitRepository, env = process.env) {
+  if (explicitRepository) {
+    return normalizeRepoSlug(explicitRepository);
+  }
+  if (env.GITHUB_REPOSITORY && env.GITHUB_REPOSITORY.includes('/')) {
+    return normalizeRepoSlug(env.GITHUB_REPOSITORY);
+  }
+  for (const remoteName of ['upstream', 'origin']) {
+    const remoteUrl = tryReadRemoteUrl(repoRoot, remoteName);
+    const parsed = parseRemoteUrl(remoteUrl);
+    if (parsed) {
+      return normalizeRepoSlug(parsed);
+    }
+  }
+  throw new Error('Unable to resolve repository slug. Pass --repo <owner/repo> or set GITHUB_REPOSITORY.');
 }
 
 function buildBranchRequiredChecksMap(payload = {}) {
@@ -434,7 +478,7 @@ export function parseArgs(argv = process.argv) {
     branchPolicyPath: DEFAULT_BRANCH_POLICY_PATH,
     requiredChecksPath: DEFAULT_REQUIRED_CHECKS_PATH,
     reportPath: DEFAULT_REPORT_PATH,
-    repository: DEFAULT_REPOSITORY,
+    repository: null,
     strict: true,
     help: false
   };
@@ -477,7 +521,9 @@ export function parseArgs(argv = process.argv) {
     throw new Error(`Unknown option: ${token}`);
   }
 
-  options.repository = normalizeRepoSlug(options.repository);
+  if (options.repository) {
+    options.repository = normalizeRepoSlug(options.repository);
+  }
   return options;
 }
 
@@ -495,6 +541,7 @@ export async function runCanaryReplayConformance({
     return { exitCode: 0, report: null, reportPath: null };
   }
 
+  const repository = resolveRepositorySlug(repoRoot, options.repository);
   const resolvedCatalogPath = path.resolve(repoRoot, options.catalogPath);
   const resolvedPolicyPath = path.resolve(repoRoot, options.policyPath);
   const resolvedBranchPolicyPath = path.resolve(repoRoot, options.branchPolicyPath);
@@ -521,12 +568,12 @@ export async function runCanaryReplayConformance({
     for (const scenario of replayScenarios) {
       const mockApi = buildMockIssueApi({
         now,
-        repository: options.repository
+        repository
       });
       const preparedEntries = scenario.entries.map(({ signal, ordinal }) => ({
         signal,
         ordinal,
-        event: buildDeterministicEvent(signal, requiredChecksByBranch, options.repository)
+        event: buildDeterministicEvent(signal, requiredChecksByBranch, repository)
       }));
       const orderedEntries = [...preparedEntries].sort(deterministicEntryComparator);
       const createCountByFingerprint = new Map();
@@ -585,14 +632,14 @@ export async function runCanaryReplayConformance({
           {
             decisionPath: `replay:${scenario.id}:${entry.signal.id}:decision`,
             reportPath: `replay:${scenario.id}:issue-routing-report`,
-            repo: options.repository,
+            repo: repository,
             dryRun: false
           },
           {
             now,
             readJsonFileFn: async () => decisionReport,
             writeJsonFn: (filePath, payload) => ({ filePath, payload }),
-            resolveRepositorySlugFn: () => options.repository,
+            resolveRepositorySlugFn: () => repository,
             resolveTokenFn: () => 'replay-token',
             requestGitHubJsonFn: mockApi.request
           }
@@ -692,7 +739,7 @@ export async function runCanaryReplayConformance({
       branchPolicyPath: resolvedBranchPolicyPath,
       requiredChecksPath: resolvedRequiredChecksPath,
       reportPath: path.resolve(options.reportPath),
-      repository: options.repository
+      repository
     },
     checks,
     summary: {
