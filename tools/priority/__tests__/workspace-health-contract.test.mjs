@@ -40,6 +40,14 @@ test('PrePush includes local PSScriptAnalyzer gate for changed PowerShell files'
   assert.match(content, /Invoke-PSScriptAnalyzerGate -repoRoot \$root/);
 });
 
+test('PrePush validates watcher telemetry via the sanitized schema wrapper', () => {
+  const content = readRepoFile('tools/PrePush-Checks.ps1');
+  assert.match(content, /function Invoke-WatcherTelemetrySchemaGate/);
+  assert.match(content, /run-script\.mjs/);
+  assert.match(content, /schema:watcher:validate/);
+  assert.match(content, /Invoke-WatcherTelemetrySchemaGate -repoRoot \$root/);
+});
+
 test('PrePush emits deterministic incident-event report for NI known-flag failures', () => {
   const content = readRepoFile('tools/PrePush-Checks.ps1');
   assert.match(content, /function Write-PrePushNIKnownFlagIncidentEvent/);

@@ -215,6 +215,25 @@ function Invoke-SafeGitReliabilitySummary([string]$repoRoot){
   Write-Host '[pre-push] safe-git reliability summary OK' -ForegroundColor Green
 }
 
+function Invoke-WatcherTelemetrySchemaGate([string]$repoRoot) {
+  $runScriptPath = Join-Path $repoRoot 'tools' 'npm' 'run-script.mjs'
+  if (-not (Test-Path -LiteralPath $runScriptPath -PathType Leaf)) {
+    throw ("sanitized npm wrapper not found: {0}" -f $runScriptPath)
+  }
+
+  Write-Host '[pre-push] Validating watcher telemetry schema' -ForegroundColor Cyan
+  Push-Location $repoRoot
+  try {
+    & node $runScriptPath 'schema:watcher:validate'
+    if ($LASTEXITCODE -ne 0) {
+      throw ("watcher telemetry schema validation failed (exit={0})." -f $LASTEXITCODE)
+    }
+  } finally {
+    Pop-Location | Out-Null
+  }
+  Write-Host '[pre-push] watcher telemetry schema OK' -ForegroundColor Green
+}
+
 function Write-PrePushNIKnownFlagIncidentEvent {
   param(
     [string]$repoRoot,
@@ -328,6 +347,7 @@ if ($safeWatchContractExit -ne 0) {
   throw "safe-watch task contract validation failed (exit=$safeWatchContractExit)."
 }
 Write-Host '[pre-push] safe-watch task contract OK' -ForegroundColor Green
+Invoke-WatcherTelemetrySchemaGate -repoRoot $root
 
 $verificationContractScript = Join-Path $root 'tools' 'Assert-RequirementsVerificationCheckContract.ps1'
 if (Test-Path -LiteralPath $verificationContractScript -PathType Leaf) {
