@@ -1318,6 +1318,19 @@ if ($historyScenarioSetNormalized -ne 'none') {
         $baseForStep = $previousHead
         $headForStep = $headPath
 
+        $historyAction = {
+          Invoke-WindowsHistoryCompare `
+            -BaseVi $baseForStep `
+            -HeadVi $headForStep `
+            -ReportPath $reportPath `
+            -LabVIEWPath $effectiveLabVIEWPath `
+            -WindowsImage $WindowsImage `
+            -RuntimeSnapshotPath $windowsSnapshot `
+            -RuntimeAutoRepair:$runtimeAutoRepairEnabled `
+            -ManageDockerEngine:$effectiveManageDockerEngine `
+            -StepTimeoutSeconds $StepTimeoutSeconds
+        }.GetNewClosure()
+
         $stepDefinitions.Add([pscustomobject]@{
           name = $stepName
           allowedExitCodes = @(0, 1)
@@ -1344,18 +1357,7 @@ if ($historyScenarioSetNormalized -ne 'none') {
               containerExportStatus = if ($stepOutput.Capture.PSObject.Properties['containerArtifacts'] -and $stepOutput.Capture.containerArtifacts -and $stepOutput.Capture.containerArtifacts.PSObject.Properties['copyStatus']) { [string]$stepOutput.Capture.containerArtifacts.copyStatus } else { '' }
             }
           }
-          action = {
-            Invoke-WindowsHistoryCompare `
-              -BaseVi $baseForStep `
-              -HeadVi $headForStep `
-              -ReportPath $reportPath `
-              -LabVIEWPath $effectiveLabVIEWPath `
-              -WindowsImage $WindowsImage `
-              -RuntimeSnapshotPath $windowsSnapshot `
-              -RuntimeAutoRepair:$runtimeAutoRepairEnabled `
-              -ManageDockerEngine:$effectiveManageDockerEngine `
-              -StepTimeoutSeconds $StepTimeoutSeconds
-          }
+          action = $historyAction
         }) | Out-Null
 
         $historyScenarioCount++
@@ -1375,6 +1377,19 @@ if ($historyScenarioSetNormalized -ne 'none') {
     $headPath = Resolve-RepoRelativePath -RepoRoot $repoRoot -PathValue ([string]$scenario.source) -Description ("Scenario source '{0}'" -f $scenarioId)
     $reportPath = Join-Path $historyScenariosRoot (Join-Path $safeScenarioId 'windows-compare-report.html')
     $stepName = "windows-history-$safeScenarioId"
+
+    $historyAction = {
+      Invoke-WindowsHistoryCompare `
+        -BaseVi $baselineBase `
+        -HeadVi $headPath `
+        -ReportPath $reportPath `
+        -LabVIEWPath $effectiveLabVIEWPath `
+        -WindowsImage $WindowsImage `
+        -RuntimeSnapshotPath $windowsSnapshot `
+        -RuntimeAutoRepair:$runtimeAutoRepairEnabled `
+        -ManageDockerEngine:$effectiveManageDockerEngine `
+        -StepTimeoutSeconds $StepTimeoutSeconds
+    }.GetNewClosure()
 
     $stepDefinitions.Add([pscustomobject]@{
       name = $stepName
@@ -1402,18 +1417,7 @@ if ($historyScenarioSetNormalized -ne 'none') {
           containerExportStatus = if ($stepOutput.Capture.PSObject.Properties['containerArtifacts'] -and $stepOutput.Capture.containerArtifacts -and $stepOutput.Capture.containerArtifacts.PSObject.Properties['copyStatus']) { [string]$stepOutput.Capture.containerArtifacts.copyStatus } else { '' }
         }
       }
-      action = {
-        Invoke-WindowsHistoryCompare `
-          -BaseVi $baselineBase `
-          -HeadVi $headPath `
-          -ReportPath $reportPath `
-          -LabVIEWPath $effectiveLabVIEWPath `
-          -WindowsImage $WindowsImage `
-          -RuntimeSnapshotPath $windowsSnapshot `
-          -RuntimeAutoRepair:$runtimeAutoRepairEnabled `
-          -ManageDockerEngine:$effectiveManageDockerEngine `
-          -StepTimeoutSeconds $StepTimeoutSeconds
-      }
+      action = $historyAction
     }) | Out-Null
     $historyScenarioCount++
   }
