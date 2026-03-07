@@ -1,0 +1,328 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.comparevi.dev/queue-supervisor-report-v1.schema.json",
+  "title": "Queue Supervisor Report v1",
+  "description": "Deterministic queue supervisor report contract.",
+  "type": "object",
+  "additionalProperties": true,
+  "required": [
+    "schema",
+    "generatedAt",
+    "repository",
+    "mode",
+    "queueManagedBranches",
+    "summary",
+    "paused",
+    "pausedReasons",
+    "actions",
+    "candidates",
+    "orderedEligible",
+    "readiness",
+    "retryHistory"
+  ],
+  "properties": {
+    "schema": {
+      "const": "priority/queue-supervisor-report@v1"
+    },
+    "generatedAt": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "repository": {
+      "type": "string",
+      "pattern": "^[^/\\s]+/[^/\\s]+$"
+    },
+    "mode": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "apply",
+        "dryRun"
+      ],
+      "properties": {
+        "apply": {
+          "type": "boolean"
+        },
+        "dryRun": {
+          "type": "boolean"
+        }
+      }
+    },
+    "queueManagedBranches": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1
+      }
+    },
+    "summary": {
+      "type": "object",
+      "additionalProperties": true,
+      "required": [
+        "openCount",
+        "candidateCount",
+        "eligibleCount",
+        "plannedCount",
+        "enqueuedCount",
+        "quarantinedCount"
+      ],
+      "properties": {
+        "openCount": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "candidateCount": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "eligibleCount": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "plannedCount": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "enqueuedCount": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "quarantinedCount": {
+          "type": "integer",
+          "minimum": 0
+        }
+      }
+    },
+    "paused": {
+      "type": "boolean"
+    },
+    "pausedReasons": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1
+      }
+    },
+    "actions": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/action"
+      }
+    },
+    "candidates": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/candidate"
+      }
+    },
+    "orderedEligible": {
+      "type": "array",
+      "items": {
+        "type": "integer",
+        "minimum": 1
+      }
+    },
+    "readiness": {
+      "type": "object",
+      "additionalProperties": true,
+      "required": [
+        "reportPath",
+        "summary",
+        "readySet"
+      ],
+      "properties": {
+        "reportPath": {
+          "type": "string",
+          "minLength": 1
+        },
+        "summary": {
+          "type": "object",
+          "additionalProperties": true
+        },
+        "readySet": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": true,
+            "required": [
+              "number",
+              "score",
+              "dependencyRank"
+            ],
+            "properties": {
+              "number": {
+                "type": "integer",
+                "minimum": 1
+              },
+              "score": {
+                "type": "number"
+              },
+              "dependencyRank": {
+                "type": "integer",
+                "minimum": 0
+              }
+            }
+          }
+        }
+      }
+    },
+    "retryHistory": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "failures"
+        ],
+        "properties": {
+          "failures": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "format": "date-time"
+            }
+          }
+        }
+      }
+    }
+  },
+  "$defs": {
+    "action": {
+      "type": "object",
+      "additionalProperties": true,
+      "required": [
+        "number",
+        "status",
+        "attempts",
+        "quarantined",
+        "retriedUpdateBranch"
+      ],
+      "properties": {
+        "number": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "status": {
+          "type": "string",
+          "enum": [
+            "pending",
+            "enqueued",
+            "failed"
+          ]
+        },
+        "attempts": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": true,
+            "required": [
+              "type",
+              "status"
+            ],
+            "properties": {
+              "type": {
+                "type": "string",
+                "minLength": 1
+              },
+              "status": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "stderr": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              }
+            }
+          }
+        },
+        "quarantined": {
+          "type": "boolean"
+        },
+        "retriedUpdateBranch": {
+          "type": "boolean"
+        }
+      }
+    },
+    "candidate": {
+      "type": "object",
+      "additionalProperties": true,
+      "required": [
+        "number",
+        "baseRefName",
+        "priority",
+        "coupling",
+        "dependsOn",
+        "eligible",
+        "reasons",
+        "checks"
+      ],
+      "properties": {
+        "number": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "baseRefName": {
+          "type": "string",
+          "minLength": 1
+        },
+        "priority": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "coupling": {
+          "type": "string",
+          "enum": [
+            "independent",
+            "soft",
+            "hard"
+          ]
+        },
+        "dependsOn": {
+          "type": "array",
+          "items": {
+            "type": "integer",
+            "minimum": 1
+          }
+        },
+        "eligible": {
+          "type": "boolean"
+        },
+        "reasons": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "checks": {
+          "type": "object",
+          "additionalProperties": true,
+          "required": [
+            "ok",
+            "missing",
+            "failing"
+          ],
+          "properties": {
+            "ok": {
+              "type": "boolean"
+            },
+            "missing": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "failing": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}
