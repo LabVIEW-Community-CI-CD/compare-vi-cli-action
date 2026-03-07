@@ -5,6 +5,7 @@ import assert from 'node:assert/strict';
 import {
   classifyOpenPullRequests,
   evaluateAdaptiveInflight,
+  evaluateBurstWindow,
   evaluateHealthGate,
   evaluateRuntimeFleetHealth,
   evaluateRequiredChecks,
@@ -28,7 +29,9 @@ test('parseArgs defaults to dry-run and supports apply mode', () => {
     'QUEUE_AUTOPILOT_ADAPTIVE_CAP',
     'QUEUE_AUTOPILOT_MAX_QUEUED_RUNS',
     'QUEUE_AUTOPILOT_MAX_IN_PROGRESS_RUNS',
-    'QUEUE_AUTOPILOT_STALL_THRESHOLD_MINUTES'
+    'QUEUE_AUTOPILOT_STALL_THRESHOLD_MINUTES',
+    'QUEUE_BURST_MODE',
+    'QUEUE_BURST_REFILL_CYCLES'
   ];
   const previous = Object.fromEntries(keys.map((key) => [key, process.env[key]]));
   for (const key of keys) delete process.env[key];
@@ -42,6 +45,8 @@ test('parseArgs defaults to dry-run and supports apply mode', () => {
     assert.equal(defaults.maxQueuedRuns, 6);
     assert.equal(defaults.maxInProgressRuns, 8);
     assert.equal(defaults.stallThresholdMinutes, 45);
+    assert.equal(defaults.burstMode, 'auto');
+    assert.equal(defaults.burstRefillCycles, 3);
     assert.match(defaults.readinessReportPath, /queue-readiness-report\.json$/);
 
     const apply = parseArgs([
@@ -58,7 +63,11 @@ test('parseArgs defaults to dry-run and supports apply mode', () => {
       '--max-in-progress-runs',
       '9',
       '--stall-threshold-minutes',
-      '50'
+      '50',
+      '--burst-mode',
+      'on',
+      '--burst-refill-cycles',
+      '4'
     ]);
     assert.equal(apply.apply, true);
     assert.equal(apply.dryRun, false);
@@ -68,6 +77,8 @@ test('parseArgs defaults to dry-run and supports apply mode', () => {
     assert.equal(apply.maxQueuedRuns, 7);
     assert.equal(apply.maxInProgressRuns, 9);
     assert.equal(apply.stallThresholdMinutes, 50);
+    assert.equal(apply.burstMode, 'on');
+    assert.equal(apply.burstRefillCycles, 4);
   } finally {
     for (const key of keys) {
       if (previous[key] === undefined) {
@@ -90,16 +101,22 @@ test('parseArgs reads adaptive inflight controls from environment', () => {
   const previous = {
     max: process.env.QUEUE_AUTOPILOT_MAX_INFLIGHT,
     min: process.env.QUEUE_AUTOPILOT_MIN_INFLIGHT,
-    adaptive: process.env.QUEUE_AUTOPILOT_ADAPTIVE_CAP
+    adaptive: process.env.QUEUE_AUTOPILOT_ADAPTIVE_CAP,
+    burstMode: process.env.QUEUE_BURST_MODE,
+    burstRefillCycles: process.env.QUEUE_BURST_REFILL_CYCLES
   };
   process.env.QUEUE_AUTOPILOT_MAX_INFLIGHT = '4';
   process.env.QUEUE_AUTOPILOT_MIN_INFLIGHT = '1';
   process.env.QUEUE_AUTOPILOT_ADAPTIVE_CAP = '0';
+  process.env.QUEUE_BURST_MODE = 'on';
+  process.env.QUEUE_BURST_REFILL_CYCLES = '6';
   try {
     const parsed = parseArgs(['node', 'queue-supervisor.mjs']);
     assert.equal(parsed.maxInflight, 4);
     assert.equal(parsed.minInflight, 1);
     assert.equal(parsed.adaptiveCap, false);
+    assert.equal(parsed.burstMode, 'on');
+    assert.equal(parsed.burstRefillCycles, 6);
   } finally {
     if (previous.max === undefined) delete process.env.QUEUE_AUTOPILOT_MAX_INFLIGHT;
     else process.env.QUEUE_AUTOPILOT_MAX_INFLIGHT = previous.max;
@@ -107,6 +124,10 @@ test('parseArgs reads adaptive inflight controls from environment', () => {
     else process.env.QUEUE_AUTOPILOT_MIN_INFLIGHT = previous.min;
     if (previous.adaptive === undefined) delete process.env.QUEUE_AUTOPILOT_ADAPTIVE_CAP;
     else process.env.QUEUE_AUTOPILOT_ADAPTIVE_CAP = previous.adaptive;
+    if (previous.burstMode === undefined) delete process.env.QUEUE_BURST_MODE;
+    else process.env.QUEUE_BURST_MODE = previous.burstMode;
+    if (previous.burstRefillCycles === undefined) delete process.env.QUEUE_BURST_REFILL_CYCLES;
+    else process.env.QUEUE_BURST_REFILL_CYCLES = previous.burstRefillCycles;
   }
 });
 
@@ -171,6 +192,52 @@ test('evaluateAdaptiveInflight applies hysteresis before upgrading from stabiliz
   });
   assert.equal(secondRecovery.tier, 'guarded');
   assert.equal(secondRecovery.hysteresis.transition, 'upgrade-applied');
+});
+
+test('evaluateBurstWindow activates on release triggers and carries refill cycles', () => {
+  const initial = evaluateBurstWindow({
+    burstMode: 'auto',
+    burstRefillCycles: 2,
+    now: new Date('2026-03-04T18:10:00.000Z'),
+    pullRequests: []
+  });
+  assert.equal(initial.active, true);
+  assert.equal(initial.refillCyclesRemaining, 2);
+  assert.ok(initial.reasons.includes('release-window'));
+
+  const refill = evaluateBurstWindow({
+    burstMode: 'auto',
+    burstRefillCycles: 2,
+    now: new Date('2026-03-04T19:10:00.000Z'),
+    pullRequests: [],
+    previousBurst: {
+      refillCyclesRemaining: initial.refillCyclesRemaining
+    }
+  });
+  assert.equal(refill.active, true);
+  assert.equal(refill.refillCyclesRemaining, 1);
+  assert.ok(refill.reasons.includes('refill-cycles'));
+});
+
+test('evaluateBurstWindow applies stabilize backoff and disables burst temporarily', () => {
+  const burst = evaluateBurstWindow({
+    burstMode: 'on',
+    burstRefillCycles: 3,
+    now: new Date('2026-03-06T12:00:00.000Z'),
+    controllerMode: 'stabilize',
+    pullRequests: [
+      {
+        number: 700,
+        baseRefName: 'develop',
+        headRefName: 'release/2026.03'
+      }
+    ]
+  });
+
+  assert.equal(burst.active, false);
+  assert.equal(burst.backoffActive, true);
+  assert.ok(typeof burst.backoffUntil === 'string' && burst.backoffUntil.endsWith('Z'));
+  assert.ok(burst.reasons.includes('stabilize-backoff'));
 });
 
 test('evaluateRequiredChecks detects missing and failing contexts', () => {

@@ -309,6 +309,10 @@ For Docker/Desktop VI history validation, run fast-loop lanes explicitly:
   - `QUEUE_AUTOPILOT_MAX_INFLIGHT` / `--max-inflight` sets the queue target cap.
   - `QUEUE_AUTOPILOT_ADAPTIVE_CAP` (default `1`) and `QUEUE_AUTOPILOT_MIN_INFLIGHT` / `--min-inflight` enable
     adaptive throttling when runtime pressure or trunk-health degradation is detected.
+  - `QUEUE_BURST_MODE` / `--burst-mode` (`auto|on|off`) and
+    `QUEUE_BURST_REFILL_CYCLES` / `--burst-refill-cycles` control release burst behavior.
+    Auto mode activates on release windows, open `release/*` PRs, or `release-burst` labels, and backs off for
+    30 minutes whenever the throughput controller enters `stabilize`.
 - For deterministic incident routing, run the control-plane chain in order:
   - `node tools/npm/run-script.mjs priority:event:ingest -- ...`
   - `node tools/npm/run-script.mjs priority:policy:route -- --event <event-report-or-event-json>`
