@@ -1,0 +1,123 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "priority/weekly-scorecard@v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema",
+    "generatedAt",
+    "repository",
+    "mode",
+    "requireCanary",
+    "inputs",
+    "components",
+    "summary",
+    "routing"
+  ],
+  "properties": {
+    "schema": {
+      "const": "priority/weekly-scorecard@v1"
+    },
+    "generatedAt": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "repository": {
+      "type": "string",
+      "pattern": "^[^/\\s]+/[^/\\s]+$"
+    },
+    "mode": {
+      "type": "string",
+      "enum": ["weekly", "gameday"]
+    },
+    "requireCanary": {
+      "type": "boolean"
+    },
+    "inputs": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["outputPath", "remediationReportPath", "canaryReportPath"],
+      "properties": {
+        "outputPath": { "type": "string" },
+        "remediationReportPath": { "type": "string" },
+        "canaryReportPath": { "type": "string" }
+      }
+    },
+    "components": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["remediation", "canary"],
+      "properties": {
+        "remediation": { "$ref": "#/$defs/component" },
+        "canary": {
+          "allOf": [
+            { "$ref": "#/$defs/component" },
+            {
+              "type": "object",
+              "required": ["required"],
+              "properties": {
+                "required": { "type": "boolean" }
+              }
+            }
+          ]
+        }
+      }
+    },
+    "summary": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "status",
+        "breachCount",
+        "breaches",
+        "previousStatus",
+        "firstBreach",
+        "persistentBreach"
+      ],
+      "properties": {
+        "status": { "type": "string", "enum": ["pass", "warn", "fail"] },
+        "breachCount": { "type": "integer", "minimum": 0 },
+        "breaches": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["key", "status"],
+            "properties": {
+              "key": { "type": "string" },
+              "status": { "type": "string", "enum": ["warn", "fail"] }
+            }
+          }
+        },
+        "previousStatus": { "type": "string", "enum": ["pass", "warn", "fail"] },
+        "firstBreach": { "type": "boolean" },
+        "persistentBreach": { "type": "boolean" }
+      }
+    },
+    "routing": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["enabled", "action", "issueNumber", "issueUrl", "error"],
+      "properties": {
+        "enabled": { "type": "boolean" },
+        "action": { "type": "string" },
+        "issueNumber": { "type": ["integer", "null"] },
+        "issueUrl": { "type": ["string", "null"] },
+        "error": { "type": ["string", "null"] }
+      }
+    }
+  },
+  "$defs": {
+    "component": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["status", "exists", "error"],
+      "properties": {
+        "status": { "type": "string", "enum": ["pass", "warn", "fail", "n/a"] },
+        "exists": { "type": "boolean" },
+        "error": { "type": ["string", "null"] },
+        "required": { "type": "boolean" }
+      }
+    }
+  }
+}

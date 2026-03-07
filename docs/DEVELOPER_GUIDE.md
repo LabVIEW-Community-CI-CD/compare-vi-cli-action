@@ -319,6 +319,10 @@ For Docker/Desktop VI history validation, run fast-loop lanes explicitly:
   Use `node tools/npm/run-script.mjs priority:remediation:slo` to compute remediation SLO governance metrics
   (MTTD, route latency, MTTR by priority, reopen rate, queue/trunk/release signals) and emit
   `tests/results/_agent/slo/remediation-slo-report.json`.
+  Use `node tools/npm/run-script.mjs priority:weekly:scorecard` to build the weekly governance snapshot at
+  `tests/results/_agent/slo/weekly-scorecard.json` (optionally with `--route-on-persistent-breach`).
+  The `Weekly Governance Scorecard` workflow (`.github/workflows/weekly-scorecard.yml`) runs weekly and auto-switches
+  to `gameday` mode on the first Wednesday UTC to replay canary + scorecard governance in one lane.
 - For deterministic incident routing, run the control-plane chain in order:
   - `node tools/npm/run-script.mjs priority:event:ingest -- ...`
   - `node tools/npm/run-script.mjs priority:policy:route -- --event <event-report-or-event-json>`
