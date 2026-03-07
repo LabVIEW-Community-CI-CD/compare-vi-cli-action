@@ -28,6 +28,12 @@ const DEFAULT_HEALTH_MAX_RED_MINUTES = 30;
 const DEFAULT_MAX_QUEUED_RUNS = 6;
 const DEFAULT_MAX_IN_PROGRESS_RUNS = 8;
 const DEFAULT_STALL_THRESHOLD_MINUTES = 45;
+const DEFAULT_BURST_MODE = 'auto';
+const DEFAULT_BURST_REFILL_CYCLES = 3;
+const BURST_BACKOFF_MINUTES = 30;
+const RELEASE_WINDOW_DAY_UTC = 3;
+const RELEASE_WINDOW_MAX_DAY_OF_MONTH = 7;
+const RELEASE_WINDOW_HOUR_UTC = 18;
 const RETRY_WINDOW_HOURS = 24;
 const CONTROLLER_REQUIRED_UPGRADE_STREAK = 2;
 const CONTROLLER_THRESHOLDS = Object.freeze({
@@ -43,6 +49,7 @@ const CONTROLLER_THRESHOLDS = Object.freeze({
 const EXCLUDED_LABELS = new Set(['queue-blocked', 'do-not-queue']);
 const DEFAULT_BASE_BRANCHES = ['develop', 'main'];
 const COUPLING_VALUES = new Set(['independent', 'soft', 'hard']);
+const BURST_MODES = new Set(['auto', 'on', 'off']);
 const COUPLING_PRIORITY = Object.freeze({
   independent: 0,
   soft: 1,
@@ -66,6 +73,8 @@ function printUsage() {
   console.log(`  --max-queued-runs <n>  Pause when queued workflow runs exceed this threshold (default: ${DEFAULT_MAX_QUEUED_RUNS}).`);
   console.log(`  --max-in-progress-runs <n> Pause when in-progress workflow runs exceed this threshold (default: ${DEFAULT_MAX_IN_PROGRESS_RUNS}).`);
   console.log(`  --stall-threshold-minutes <n> Pause when active runs exceed age threshold (default: ${DEFAULT_STALL_THRESHOLD_MINUTES}).`);
+  console.log(`  --burst-mode <auto|on|off> Burst controller mode (default: ${DEFAULT_BURST_MODE}, env QUEUE_BURST_MODE).`);
+  console.log(`  --burst-refill-cycles <n> Keep burst active for N follow-up cycles after trigger (default: ${DEFAULT_BURST_REFILL_CYCLES}, env QUEUE_BURST_REFILL_CYCLES).`);
   console.log('  --repo <owner/repo>    Target repository (default: GITHUB_REPOSITORY/upstream remote).');
   console.log(`  --base-branches <csv>  Queue-managed branch allowlist (default: ${DEFAULT_BASE_BRANCHES.join(',')}).`);
   console.log('  --health-branch <name> Branch to evaluate trunk health (default: develop).');
@@ -95,6 +104,16 @@ function parseCsv(value) {
     .filter(Boolean);
 }
 
+function parseBurstMode(value, { label }) {
+  const normalized = String(value ?? '')
+    .trim()
+    .toLowerCase();
+  if (!BURST_MODES.has(normalized)) {
+    throw new Error(`Invalid ${label} value '${value}'. Expected one of: auto,on,off.`);
+  }
+  return normalized;
+}
+
 export function parseArgs(argv = process.argv) {
   const args = argv.slice(2);
   const options = {
@@ -112,6 +131,8 @@ export function parseArgs(argv = process.argv) {
     maxQueuedRuns: null,
     maxInProgressRuns: null,
     stallThresholdMinutes: null,
+    burstMode: null,
+    burstRefillCycles: null,
     help: false
   };
 
@@ -142,7 +163,9 @@ export function parseArgs(argv = process.argv) {
       arg === '--health-branch' ||
       arg === '--max-queued-runs' ||
       arg === '--max-in-progress-runs' ||
-      arg === '--stall-threshold-minutes'
+      arg === '--stall-threshold-minutes' ||
+      arg === '--burst-mode' ||
+      arg === '--burst-refill-cycles'
     ) {
       const next = args[index + 1];
       if (!next || next.startsWith('-')) {
@@ -178,6 +201,10 @@ export function parseArgs(argv = process.argv) {
         options.maxInProgressRuns = parseIntStrict(next, { label: '--max-in-progress-runs' });
       } else if (arg === '--stall-threshold-minutes') {
         options.stallThresholdMinutes = parseIntStrict(next, { label: '--stall-threshold-minutes' });
+      } else if (arg === '--burst-mode') {
+        options.burstMode = parseBurstMode(next, { label: '--burst-mode' });
+      } else if (arg === '--burst-refill-cycles') {
+        options.burstRefillCycles = parseIntStrict(next, { label: '--burst-refill-cycles' });
       }
       continue;
     }
@@ -242,6 +269,22 @@ export function parseArgs(argv = process.argv) {
   }
   if (options.stallThresholdMinutes == null) {
     options.stallThresholdMinutes = DEFAULT_STALL_THRESHOLD_MINUTES;
+  }
+
+  const envBurstMode = process.env.QUEUE_BURST_MODE;
+  if (options.burstMode == null && envBurstMode && String(envBurstMode).trim()) {
+    options.burstMode = parseBurstMode(envBurstMode, { label: 'QUEUE_BURST_MODE' });
+  }
+  if (options.burstMode == null) {
+    options.burstMode = DEFAULT_BURST_MODE;
+  }
+
+  const envBurstRefillCycles = process.env.QUEUE_BURST_REFILL_CYCLES;
+  if (options.burstRefillCycles == null && envBurstRefillCycles && String(envBurstRefillCycles).trim()) {
+    options.burstRefillCycles = parseIntStrict(envBurstRefillCycles, { label: 'QUEUE_BURST_REFILL_CYCLES' });
+  }
+  if (options.burstRefillCycles == null) {
+    options.burstRefillCycles = DEFAULT_BURST_REFILL_CYCLES;
   }
 
   return options;
@@ -1058,6 +1101,111 @@ export function evaluateAdaptiveInflight({
   };
 }
 
+function hasReleaseBranchPullRequest(pullRequests = []) {
+  return (pullRequests ?? []).some((pr) => {
+    const headRefName = String(pr?.headRefName ?? '')
+      .trim()
+      .toLowerCase();
+    const baseRefName = normalizeBaseBranch(pr?.baseRefName);
+    return headRefName.startsWith('release/') || baseRefName.startsWith('release/');
+  });
+}
+
+function hasReleaseBurstLabel(pullRequests = []) {
+  return (pullRequests ?? []).some((pr) =>
+    (pr?.labels ?? []).some((label) => normalizeLabelName(label) === 'release-burst')
+  );
+}
+
+function isReleaseWindow(now = new Date()) {
+  const utcDay = now.getUTCDay();
+  const utcDate = now.getUTCDate();
+  const utcHour = now.getUTCHours();
+  return utcDay === RELEASE_WINDOW_DAY_UTC && utcDate <= RELEASE_WINDOW_MAX_DAY_OF_MONTH && utcHour === RELEASE_WINDOW_HOUR_UTC;
+}
+
+export function evaluateBurstWindow({
+  burstMode = DEFAULT_BURST_MODE,
+  burstRefillCycles = DEFAULT_BURST_REFILL_CYCLES,
+  pullRequests = [],
+  previousBurst = null,
+  controllerMode = null,
+  now = new Date()
+} = {}) {
+  const mode = parseBurstMode(burstMode, { label: 'burstMode' });
+  const configuredRefillCycles = parseIntStrict(burstRefillCycles, { label: 'burstRefillCycles' });
+  const nowMs = now.valueOf();
+  const previousBackoffUntil = normalizeIso(previousBurst?.backoffUntil);
+  let backoffUntil = previousBackoffUntil;
+  let backoffActive = false;
+  if (previousBackoffUntil) {
+    const backoffUntilMs = Date.parse(previousBackoffUntil);
+    backoffActive = Number.isFinite(backoffUntilMs) && backoffUntilMs > nowMs;
+  }
+
+  const stabilized = normalizeControllerMode(controllerMode) === 'stabilize';
+  if (stabilized) {
+    backoffUntil = new Date(nowMs + BURST_BACKOFF_MINUTES * 60 * 1000).toISOString();
+    backoffActive = true;
+  }
+
+  const triggerSignals = Object.freeze({
+    releaseWindow: isReleaseWindow(now),
+    releaseBranchPullRequest: hasReleaseBranchPullRequest(pullRequests),
+    releaseBurstLabel: hasReleaseBurstLabel(pullRequests)
+  });
+  const triggerReasons = [];
+  if (triggerSignals.releaseWindow) triggerReasons.push('release-window');
+  if (triggerSignals.releaseBranchPullRequest) triggerReasons.push('open-release-branch-pr');
+  if (triggerSignals.releaseBurstLabel) triggerReasons.push('release-burst-label');
+  const triggerActive = triggerReasons.length > 0;
+
+  let refillCyclesRemaining = 0;
+  const previousRefillCycles = Math.max(0, Number(previousBurst?.refillCyclesRemaining) || 0);
+  if (mode === 'auto') {
+    if (triggerActive) {
+      refillCyclesRemaining = configuredRefillCycles;
+    } else if (previousRefillCycles > 0) {
+      refillCyclesRemaining = previousRefillCycles - 1;
+    }
+  } else if (mode === 'on') {
+    refillCyclesRemaining = configuredRefillCycles;
+  }
+
+  const reasons = [];
+  let active = false;
+  if (mode === 'off') {
+    reasons.push('burst-mode-off');
+  } else if (backoffActive) {
+    reasons.push('stabilize-backoff');
+  } else if (mode === 'on') {
+    active = true;
+    reasons.push('burst-mode-on');
+  } else if (triggerActive) {
+    active = true;
+    reasons.push(...triggerReasons);
+  } else if (refillCyclesRemaining > 0) {
+    active = true;
+    reasons.push('refill-cycles');
+  } else {
+    reasons.push('no-burst-trigger');
+  }
+
+  return {
+    mode,
+    active,
+    configuredRefillCycles,
+    refillCyclesRemaining,
+    backoffMinutes: BURST_BACKOFF_MINUTES,
+    backoffUntil,
+    backoffActive,
+    triggerSignals,
+    triggerReasons,
+    reasons: [...new Set(reasons)],
+    stabilized
+  };
+}
+
 function parseQueueManagedBranches(policy, fallbackBranches) {
   const queueManaged = new Set();
   const rulesets = policy?.rulesets ?? {};
@@ -1233,7 +1381,16 @@ export async function runQueueSupervisor(options = {}) {
     retryPressure,
     previousControllerState
   });
-  const effectiveMaxInflight = adaptiveInflight.effectiveMaxInflight;
+  const burst = evaluateBurstWindow({
+    burstMode: args.burstMode,
+    burstRefillCycles: args.burstRefillCycles,
+    pullRequests: allOpenPrs,
+    previousBurst: previousReport?.burst,
+    controllerMode: adaptiveInflight.mode,
+    now
+  });
+  const burstCapApplied = burst.active && args.maxInflight > adaptiveInflight.effectiveMaxInflight;
+  const effectiveMaxInflight = burstCapApplied ? args.maxInflight : adaptiveInflight.effectiveMaxInflight;
   const inflight = countInflight(classified.candidates.filter((candidate) => queueManagedBranches.has(candidate.baseRefName)));
   const capacity = Math.max(0, effectiveMaxInflight - inflight);
 
@@ -1243,9 +1400,12 @@ export async function runQueueSupervisor(options = {}) {
     repository,
     mode: adaptiveInflight.mode,
     desiredMode: adaptiveInflight.desiredMode,
-    targetCap: adaptiveInflight.effectiveMaxInflight,
+    targetCap: effectiveMaxInflight,
     capByMode: adaptiveInflight.capByMode,
     adaptiveEnabled: adaptiveInflight.enabled,
+    burstMode: burst.mode,
+    burstActive: burst.active,
+    burstCapApplied,
     reasons: adaptiveInflight.reasons,
     metrics: adaptiveInflight.metrics,
     thresholds: adaptiveInflight.thresholds,
@@ -1285,6 +1445,8 @@ export async function runQueueSupervisor(options = {}) {
       queueAutopilotMaxQueuedRuns: process.env.QUEUE_AUTOPILOT_MAX_QUEUED_RUNS ?? null,
       queueAutopilotMaxInProgressRuns: process.env.QUEUE_AUTOPILOT_MAX_IN_PROGRESS_RUNS ?? null,
       queueAutopilotStallThresholdMinutes: process.env.QUEUE_AUTOPILOT_STALL_THRESHOLD_MINUTES ?? null,
+      queueBurstMode: process.env.QUEUE_BURST_MODE ?? null,
+      queueBurstRefillCycles: process.env.QUEUE_BURST_REFILL_CYCLES ?? null,
       expectedHeadOwner
     },
     queueManagedBranches: [...queueManagedBranches].sort(),
@@ -1292,6 +1454,8 @@ export async function runQueueSupervisor(options = {}) {
     minInflight: args.minInflight,
     effectiveMaxInflight,
     adaptiveInflight,
+    burst,
+    burstCapApplied,
     inflight,
     capacity,
     health,
@@ -1500,6 +1664,7 @@ export const __test = Object.freeze({
   classifyOpenPullRequests,
   evaluateHealthGate,
   evaluateRuntimeFleetHealth,
+  evaluateBurstWindow,
   computeRetryPressure,
   pruneRetryHistory,
   runQueueSupervisor

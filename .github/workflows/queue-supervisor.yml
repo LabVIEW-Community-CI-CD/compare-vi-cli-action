@@ -21,6 +21,14 @@ on:
         description: 'Optional adaptive inflight floor override'
         required: false
         type: string
+      burst_mode:
+        description: 'Burst mode override (auto|on|off)'
+        required: false
+        type: string
+      burst_refill_cycles:
+        description: 'Burst refill cycles override'
+        required: false
+        type: string
   schedule:
     - cron: '*/5 * * * *'
   workflow_run:
@@ -68,6 +76,8 @@ jobs:
           QUEUE_AUTOPILOT_MAX_INFLIGHT: ${{ vars.QUEUE_AUTOPILOT_MAX_INFLIGHT || '' }}
           QUEUE_AUTOPILOT_MIN_INFLIGHT: ${{ vars.QUEUE_AUTOPILOT_MIN_INFLIGHT || '' }}
           QUEUE_AUTOPILOT_ADAPTIVE_CAP: ${{ vars.QUEUE_AUTOPILOT_ADAPTIVE_CAP || '1' }}
+          QUEUE_BURST_MODE: ${{ vars.QUEUE_BURST_MODE || 'auto' }}
+          QUEUE_BURST_REFILL_CYCLES: ${{ vars.QUEUE_BURST_REFILL_CYCLES || '3' }}
         run: |
           npm ci --ignore-scripts
           $reportPath = 'tests/results/_agent/queue/queue-supervisor-report.json'
@@ -101,6 +111,16 @@ jobs:
           $minInflightInput = '${{ inputs.min_inflight }}'
           if (-not [string]::IsNullOrWhiteSpace($minInflightInput)) {
             $args += @('--min-inflight', $minInflightInput.Trim())
+          }
+
+          $burstModeInput = '${{ inputs.burst_mode }}'
+          if (-not [string]::IsNullOrWhiteSpace($burstModeInput)) {
+            $args += @('--burst-mode', $burstModeInput.Trim().ToLowerInvariant())
+          }
+
+          $burstRefillCyclesInput = '${{ inputs.burst_refill_cycles }}'
+          if (-not [string]::IsNullOrWhiteSpace($burstRefillCyclesInput)) {
+            $args += @('--burst-refill-cycles', $burstRefillCyclesInput.Trim())
           }
 
           if ('${{ github.event_name }}' -eq 'workflow_dispatch' -and '${{ inputs.adaptive_cap }}' -ne 'true') {
