@@ -20,6 +20,21 @@ const USAGE_LINES = [
   '  -h, --help    Show this message and exit'
 ];
 
+function resolveFirstExistingRef(refs) {
+  for (const ref of refs) {
+    try {
+      return {
+        ref,
+        sha: run('git', ['rev-parse', ref])
+      };
+    } catch {
+      // Try the next candidate.
+    }
+  }
+
+  throw new Error(`Unable to resolve any candidate ref from: ${refs.join(', ')}`);
+}
+
 async function main() {
   const version = parseSingleValueArg(process.argv, {
     usageLines: USAGE_LINES,
@@ -33,13 +48,13 @@ async function main() {
   const root = getRepoRoot();
 
   const releaseCommit = run('git', ['rev-parse', branch]);
-  const mainBase = run('git', ['rev-parse', 'upstream/main']);
-  const developBase = run('git', ['rev-parse', 'upstream/develop']);
+  const mainBase = resolveFirstExistingRef(['upstream/main', 'origin/main', 'main', 'HEAD']);
+  const developBase = resolveFirstExistingRef(['upstream/develop', 'origin/develop', 'develop', 'HEAD']);
 
-  console.log(`[dry-run] would fast-forward main to ${releaseCommit} (current upstream/main ${mainBase})`);
+  console.log(`[dry-run] would fast-forward main to ${releaseCommit} (current ${mainBase.ref} ${mainBase.sha})`);
   console.log('[dry-run] git push upstream main');
   console.log(`[dry-run] gh release create --draft ${version}`);
-  console.log(`[dry-run] would fast-forward develop to ${releaseCommit} (current upstream/develop ${developBase})`);
+  console.log(`[dry-run] would fast-forward develop to ${releaseCommit} (current ${developBase.ref} ${developBase.sha})`);
   console.log('[dry-run] git push upstream develop');
 
   const dir = path.join(root, 'tests', 'results', '_agent', 'release');
@@ -48,8 +63,10 @@ async function main() {
     version,
     releaseBranch: branch,
     releaseCommit,
-    mainBase,
-    developBase,
+    mainBase: mainBase.sha,
+    mainBaseRef: mainBase.ref,
+    developBase: developBase.sha,
+    developBaseRef: developBase.ref,
     dryRun: true,
     generatedAt: new Date().toISOString()
   };

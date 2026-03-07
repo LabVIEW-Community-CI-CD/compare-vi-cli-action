@@ -3,7 +3,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
-import { mkdtemp, writeFile, rm } from 'node:fs/promises';
+import { mkdtemp, mkdir, writeFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 
@@ -35,6 +35,59 @@ async function writeReleaseDocs(repoDir, tag, { includeReleaseNotes = true, note
   }
 }
 
+function splitVersion(version) {
+  const normalized = version.startsWith('v') ? version.slice(1) : version;
+  const [withoutBuild] = normalized.split('+', 1);
+  const [core, prerelease = null] = withoutBuild.split('-', 2);
+  return { semver: normalized, core, prerelease };
+}
+
+async function writeReleaseSurfaceFiles(repoDir, version) {
+  const { semver, core, prerelease } = splitVersion(version);
+  await writeFile(
+    path.join(repoDir, 'Directory.Build.props'),
+    `<Project>
+  <PropertyGroup>
+    <Version>${semver}</Version>
+    <AssemblyVersion>${core}.0</AssemblyVersion>
+    <FileVersion>${core}.0</FileVersion>
+    <InformationalVersion>$(Version)+local</InformationalVersion>
+    <CompareViSharedPackageVersion Condition="'$(CompareViSharedPackageVersion)' == ''">$(Version)</CompareViSharedPackageVersion>
+  </PropertyGroup>
+</Project>
+`,
+    'utf8'
+  );
+
+  await mkdir(path.join(repoDir, 'tools', 'CompareVI.Tools'), { recursive: true });
+  await writeFile(
+    path.join(repoDir, 'tools', 'CompareVI.Tools', 'CompareVI.Tools.psd1'),
+    `@{
+  RootModule        = 'CompareVI.Tools.psm1'
+  ModuleVersion     = '${core}'
+  GUID              = '00000000-0000-0000-0000-000000000000'
+  Author            = 'Test'
+  CompanyName       = 'Test'
+  Copyright         = '(c) Test'
+  Description       = 'Test'
+  PowerShellVersion = '5.1'
+  FunctionsToExport = @('Invoke-CompareVIHistory')
+  CmdletsToExport   = @()
+  VariablesToExport = @()
+  AliasesToExport   = @()
+  PrivateData       = @{
+    PSData = @{
+      Tags = @('CompareVI')
+      ProjectUri = 'https://example.com/repo'
+${prerelease ? `      Prerelease = '${prerelease}'` : ''}
+    }
+  }
+}
+`,
+    'utf8'
+  );
+}
+
 test('verify-release-branch succeeds when version/changelog updated', async (t) => {
   const repoDir = await mkdtemp(path.join(tmpdir(), 'verify-release-'));
   t.after(() => rm(repoDir, { recursive: true, force: true }));
@@ -49,6 +102,7 @@ test('verify-release-branch succeeds when version/changelog updated', async (t) 
     JSON.stringify({ name: 'test', version: '0.1.0' }, null, 2) + '\n',
     'utf8'
   );
+  await writeReleaseSurfaceFiles(repoDir, 'v0.1.0');
   await writeReleaseDocs(repoDir, 'v0.1.0');
 
   runGit(repoDir, ['init']);
@@ -64,6 +118,7 @@ test('verify-release-branch succeeds when version/changelog updated', async (t) 
     JSON.stringify({ name: 'test', version: '0.2.0' }, null, 2) + '\n',
     'utf8'
   );
+  await writeReleaseSurfaceFiles(repoDir, 'v0.2.0');
   await writeFile(
     path.join(repoDir, 'CHANGELOG.md'),
     '# Changelog\n\n## v0.2.0 - Next\n- Updates\n\n## v0.1.0 - Initial\n- First release\n',
@@ -92,6 +147,7 @@ test('verify-release-branch fails when changelog missing update', async (t) => {
     JSON.stringify({ name: 'test', version: '0.1.0' }, null, 2) + '\n',
     'utf8'
   );
+  await writeReleaseSurfaceFiles(repoDir, 'v0.1.0');
   await writeReleaseDocs(repoDir, 'v0.1.0');
 
   runGit(repoDir, ['init']);
@@ -107,6 +163,7 @@ test('verify-release-branch fails when changelog missing update', async (t) => {
     JSON.stringify({ name: 'test', version: '0.3.0' }, null, 2) + '\n',
     'utf8'
   );
+  await writeReleaseSurfaceFiles(repoDir, 'v0.3.0');
   await writeReleaseDocs(repoDir, 'v0.3.0');
   runGit(repoDir, ['commit', '-am', 'prepare v0.3.0']);
 
@@ -131,6 +188,7 @@ test('verify-release-branch fails when release docs are inconsistent', async (t)
     JSON.stringify({ name: 'test', version: '0.1.0' }, null, 2) + '\n',
     'utf8'
   );
+  await writeReleaseSurfaceFiles(repoDir, 'v0.1.0');
   await writeReleaseDocs(repoDir, 'v0.1.0');
 
   runGit(repoDir, ['init']);
@@ -146,6 +204,7 @@ test('verify-release-branch fails when release docs are inconsistent', async (t)
     JSON.stringify({ name: 'test', version: '0.4.0' }, null, 2) + '\n',
     'utf8'
   );
+  await writeReleaseSurfaceFiles(repoDir, 'v0.4.0');
   await writeFile(
     path.join(repoDir, 'CHANGELOG.md'),
     '# Changelog\n\n## v0.4.0 - Next\n- Updates\n\n## v0.1.0 - Initial\n- First release\n',
@@ -175,6 +234,7 @@ test('verify-release-branch fails when package.json is not updated relative to b
     JSON.stringify({ name: 'test', version: '0.1.0' }, null, 2) + '\n',
     'utf8'
   );
+  await writeReleaseSurfaceFiles(repoDir, 'v0.1.0');
   await writeReleaseDocs(repoDir, 'v0.1.0');
 
   runGit(repoDir, ['init']);

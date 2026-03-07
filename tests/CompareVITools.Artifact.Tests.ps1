@@ -46,6 +46,16 @@ Describe 'CompareVI.Tools artifact publishing' {
     $schemaPath = Join-Path $repoRoot 'docs' 'schemas' 'comparevi-tools-release-manifest-v1.schema.json'
     $moduleManifest = Import-PowerShellDataFile -LiteralPath $modulePath
     $moduleVersion = [string]$moduleManifest.ModuleVersion
+    $modulePrerelease = if ($moduleManifest.ContainsKey('PrivateData') -and $moduleManifest.PrivateData.PSData.ContainsKey('Prerelease')) {
+      [string]$moduleManifest.PrivateData.PSData.Prerelease
+    } else {
+      ''
+    }
+    $moduleReleaseVersion = if ([string]::IsNullOrWhiteSpace($modulePrerelease)) {
+      $moduleVersion
+    } else {
+      "$moduleVersion-$modulePrerelease"
+    }
   }
 
   It 'writes a self-contained release zip and metadata manifest' {
@@ -68,6 +78,7 @@ Describe 'CompareVI.Tools artifact publishing' {
     $metadata.schema | Should -Be 'comparevi-tools-release-manifest@v1'
     $metadata.module.name | Should -Be 'CompareVI.Tools'
     $metadata.module.version | Should -Be $moduleVersion
+    $metadata.module.releaseVersion | Should -Be $moduleReleaseVersion
     $metadata.source.repository | Should -Be 'owner/repo'
     $metadata.source.ref | Should -Be 'refs/tags/v9.9.9'
     $metadata.source.sha | Should -Be '0123456789abcdef0123456789abcdef01234567'

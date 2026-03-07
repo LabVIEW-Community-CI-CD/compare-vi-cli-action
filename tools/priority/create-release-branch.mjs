@@ -1,7 +1,5 @@
 #!/usr/bin/env node
 
-import { readFile, writeFile } from 'node:fs/promises';
-import path from 'node:path';
 import process from 'node:process';
 import {
   run,
@@ -23,6 +21,7 @@ import {
   writeReleaseMetadata,
   summarizeStatusChecks
 } from './lib/release-utils.mjs';
+import { syncReleaseSurfaceVersions } from './lib/release-surface-versions.mjs';
 
 const USAGE_LINES = [
   'Usage: node tools/npm/run-script.mjs release:branch -- <version>',
@@ -34,18 +33,14 @@ const USAGE_LINES = [
   '  -h, --help    Show this message and exit'
 ];
 
-async function updatePackageVersion(repoRoot, semver) {
-  const pkgPath = path.join(repoRoot, 'package.json');
-  const pkgRaw = await readFile(pkgPath, 'utf8');
-  const pkg = JSON.parse(pkgRaw);
-  const previous = pkg.version;
-  if (previous === semver) {
-    throw new Error(`package.json already set to ${semver}`);
+async function updateReleaseSurfaceVersions(repoRoot, semver) {
+  const update = await syncReleaseSurfaceVersions(repoRoot, semver);
+  if (update.previous.packageVersion === semver && update.previous.propsVersion === semver) {
+    throw new Error(`Release surfaces already set to ${semver}`);
   }
-  pkg.version = semver;
-  await writeFile(pkgPath, `${JSON.stringify(pkg, null, 2)}\n`, 'utf8');
-  run('git', ['add', 'package.json'], { cwd: repoRoot });
-  return previous;
+
+  run('git', ['add', ...update.changedFiles], { cwd: repoRoot });
+  return update;
 }
 
 async function recordMetadata(repoRoot, metadata) {
@@ -125,14 +120,15 @@ async function main() {
     const baseCommit = run('git', ['rev-parse', 'HEAD'], { cwd: repoRoot });
     run('git', ['checkout', '-b', branch], { cwd: repoRoot });
 
-    previousVersion = await updatePackageVersion(repoRoot, semver);
+    const surfaceUpdate = await updateReleaseSurfaceVersions(repoRoot, semver);
+    previousVersion = surfaceUpdate.previous.packageVersion;
 
     const status = run('git', ['status', '--porcelain'], { cwd: repoRoot });
     if (!status.trim()) {
       throw new Error('No changes detected after version update.');
     }
 
-    const commitMessage = process.env.RELEASE_COMMIT_MESSAGE ?? `chore(release): prepare ${tag} (#270)`;
+    const commitMessage = process.env.RELEASE_COMMIT_MESSAGE ?? `chore(release): prepare ${tag}`;
     run('git', ['commit', '-m', commitMessage], { cwd: repoRoot });
     releaseCommit = run('git', ['rev-parse', 'HEAD'], { cwd: repoRoot });
 
@@ -154,6 +150,7 @@ async function main() {
       version: tag,
       semver,
       previousVersion,
+      surfaceVersions: surfaceUpdate.next,
       branch,
       baseBranch: 'develop',
       baseCommit,

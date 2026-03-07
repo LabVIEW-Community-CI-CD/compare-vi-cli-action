@@ -35,6 +35,12 @@
         "version": {
           "type": "string"
         },
+        "releaseVersion": {
+          "type": "string"
+        },
+        "prerelease": {
+          "type": ["string", "null"]
+        },
         "manifestPath": {
           "type": "string"
         },

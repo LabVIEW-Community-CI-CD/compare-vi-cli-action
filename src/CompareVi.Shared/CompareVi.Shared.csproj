@@ -19,9 +19,7 @@
     <IncludeSymbols>true</IncludeSymbols>
     <SymbolPackageFormat>snupkg</SymbolPackageFormat>
     <EmbedUntrackedSources>true</EmbedUntrackedSources>
-    <Version>0.1.0</Version>
-    <PackageVersion>0.1.0</PackageVersion>
-</PropertyGroup>
+  </PropertyGroup>
 
   <ItemGroup>
     <None Include="..\..\README.md" Pack="true" PackagePath="/" Link="README.md" />

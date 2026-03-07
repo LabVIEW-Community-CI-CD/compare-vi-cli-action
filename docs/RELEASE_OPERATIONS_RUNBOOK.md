@@ -42,16 +42,23 @@ Configuration path: `Settings -> Environments -> <environment> -> Required revie
    - `node tools/npm/run-script.mjs priority:develop:sync`
 2. Create release branch:
    - `node tools/npm/run-script.mjs release:branch -- <version>`
+   - this updates the backend release surfaces together (`package.json`,
+     `Directory.Build.props`, and `tools/CompareVI.Tools/CompareVI.Tools.psd1`)
 3. Validate required checks and policy gate:
    - `pwsh -NoLogo -NoProfile -File tools/PrePush-Checks.ps1`
    - `node tools/npm/run-script.mjs priority:policy:sync`
-4. Finalize release (draft tag + metadata):
+4. Record backend/facade coordination:
+   - decide whether the backend release changes the public contract consumed by
+     `comparevi-history`
+   - if yes, link the comparevi-history pin-bump/release work before treating the
+     backend stable release as fully complete
+5. Finalize release (draft tag + metadata):
    - `node tools/npm/run-script.mjs release:finalize -- <version>`
-5. Verify rollback drill health:
+6. Verify rollback drill health:
    - `node tools/npm/run-script.mjs priority:rollback:drill:health -- --repo <owner/repo>`
    - confirm `tests/results/_agent/release/rollback-drill-health.json` reports `status=pass`
-6. Obtain environment approvals for protected deployments from GitHub UI/mobile.
-7. Record evidence links in the governing issue/PR before closure.
+7. Obtain environment approvals for protected deployments from GitHub UI/mobile.
+8. Record evidence links in the governing issue/PR before closure.
 
 ## One-command rollback
 
@@ -72,7 +79,8 @@ Use the downstream onboarding commands when validating platform adoption in cons
 - Bootstrap/evaluate one repository:
   - `node tools/npm/run-script.mjs priority:onboard:downstream -- --repo <owner/repo> --parent-issue 715`
 - Aggregate success report:
-  - `node tools/npm/run-script.mjs priority:onboard:success -- --report tests/results/_agent/onboarding/downstream-onboarding.json --parent-issue 715`
+  - `node tools/npm/run-script.mjs priority:onboard:success -- --report`
+    `tests/results/_agent/onboarding/downstream-onboarding.json --parent-issue 715`
 
 For unattended cadence, use `.github/workflows/downstream-onboarding-feedback.yml` and set
 `vars.DOWNSTREAM_PILOT_REPO` to the current pilot repository.

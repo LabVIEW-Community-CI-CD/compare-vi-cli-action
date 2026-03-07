@@ -234,20 +234,24 @@ jobs:
           path: tests/results/_agent/release/rollback-drill-health.json
           if-no-files-found: error
 
-      - name: Append CompareVI.Tools compatibility notes
+      - name: Append release surface map
         shell: pwsh
         env:
-          MODULE_VERSION: ${{ steps.comparevi_tools.outputs.comparevi_tools_module_version }}
+          RELEASE_TAG: ${{ github.ref_name }}
+          CLI_VERSION: ${{ steps.meta.outputs.cli_version }}
+          MODULE_VERSION: ${{ steps.comparevi_tools.outputs.comparevi_tools_release_version }}
           MODULE_METADATA: tests/results/_agent/release/comparevi-tools-artifact.json
         run: |
           @(
             ''
-            '## CompareVI.Tools compatibility'
+            '## Release surface map'
             ''
-            ('- This release publishes `CompareVI.Tools` bundle version `{0}` as a self-contained zip asset.' -f $env:MODULE_VERSION)
+            ('- Stable backend release tag: `{0}`' -f $env:RELEASE_TAG)
+            ('- `comparevi-cli` release assets and `comparevi-cli version` map to `{0}`.' -f $env:CLI_VERSION)
+            ('- `CompareVI.Tools` bundle version `{0}` is published from the same backend release tag.' -f $env:MODULE_VERSION)
             ('- The bundle metadata is recorded in `{0}` and embedded in the archive as `comparevi-tools-release.json`.' -f $env:MODULE_METADATA)
-            ('- Compatibility expectation: extract the archive and import `tools/CompareVI.Tools/CompareVI.Tools.psd1`; do not mix bundle files across release tags.')
-            ('- Source compatibility: the bundle wraps helper scripts from the same repository ref/tag as this release.')
+            '- Compatibility expectation: extract the archive and import `tools/CompareVI.Tools/CompareVI.Tools.psd1`; do not mix bundle files across release tags.'
+            '- `comparevi-history` is versioned and released separately; backend contract changes require an explicit facade ref bump/release in that repo.'
           ) | Out-File -FilePath RELEASE_NOTES.md -Encoding utf8 -Append
 
       - name: Create GitHub Release with assets (CHANGELOG)

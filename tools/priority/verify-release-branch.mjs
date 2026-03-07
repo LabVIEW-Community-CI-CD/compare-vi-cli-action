@@ -5,6 +5,11 @@ import path from 'node:path';
 import process from 'node:process';
 import { run, getRepoRoot } from './lib/branch-utils.mjs';
 import { normalizeVersionInput } from './lib/release-utils.mjs';
+import {
+  RELEASE_SURFACE_VERSION_FILES,
+  readReleaseSurfaceVersions,
+  evaluateReleaseSurfaceVersionExpectations
+} from './lib/release-surface-versions.mjs';
 
 function getHeadBranch() {
   return (
@@ -16,15 +21,6 @@ function getHeadBranch() {
 function ensureBranchSyntax(branch) {
   if (!branch.startsWith('release/')) {
     throw new Error(`Branch ${branch} is not a release branch (expected prefix release/)`);
-  }
-}
-
-function ensureVersionMatches(branchTag, packageVersion) {
-  const normalizedBranch = normalizeVersionInput(branchTag).semver;
-  if (packageVersion !== normalizedBranch) {
-    throw new Error(
-      `package.json version ${packageVersion} does not match branch tag ${normalizedBranch}`
-    );
   }
 }
 
@@ -43,10 +39,12 @@ function ensureChangelogDiff(repoRoot, baseRef) {
   }
 }
 
-function ensurePackageVersionDiff(repoRoot, baseRef) {
-  const diff = run('git', ['diff', `${baseRef}`, '--', 'package.json'], { cwd: repoRoot });
-  if (!diff.trim()) {
-    throw new Error(`package.json not updated relative to ${baseRef}`);
+function ensureReleaseSurfaceVersionDiffs(repoRoot, baseRef) {
+  for (const relPath of RELEASE_SURFACE_VERSION_FILES) {
+    const diff = run('git', ['diff', `${baseRef}`, '--', relPath], { cwd: repoRoot });
+    if (!diff.trim()) {
+      throw new Error(`${relPath} not updated relative to ${baseRef}`);
+    }
   }
 }
 
@@ -74,26 +72,31 @@ function ensureReleaseDocsConsistency(repoRoot, tag) {
   }
 }
 
-function main() {
+async function main() {
   const repoRoot = getRepoRoot();
   const headBranch = getHeadBranch();
   ensureBranchSyntax(headBranch);
 
   const branchTag = headBranch.slice('release/'.length);
-  const packageJson = JSON.parse(readFileSync(path.join(repoRoot, 'package.json'), 'utf8'));
-  ensureVersionMatches(branchTag, packageJson.version);
+  const expectedSemver = normalizeVersionInput(branchTag).semver;
+  const surfaceVersions = await readReleaseSurfaceVersions(repoRoot);
+  const surfaceEvaluation = evaluateReleaseSurfaceVersionExpectations(expectedSemver, surfaceVersions);
+  if (!surfaceEvaluation.valid) {
+    throw new Error(surfaceEvaluation.issues.join(' '));
+  }
+
   ensureChangelogContains(repoRoot, branchTag);
   ensureReleaseDocsConsistency(repoRoot, branchTag);
 
   const baseRef = process.env.RELEASE_VALIDATE_BASE || 'origin/develop';
-  ensurePackageVersionDiff(repoRoot, baseRef);
+  ensureReleaseSurfaceVersionDiffs(repoRoot, baseRef);
   ensureChangelogDiff(repoRoot, baseRef);
 
   console.log(`[release:verify] Release branch ${headBranch} validated successfully.`);
 }
 
 try {
-  main();
+  await main();
 } catch (error) {
   console.error(`[release:verify] ${error.message}`);
   process.exit(1);

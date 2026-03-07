@@ -217,10 +217,11 @@ if (-not $SkipDotnetCliBuild) {
     }
     $publishLines = @(
       'rm -rf src/CompareVi.Shared/obj src/CompareVi.Tools.Cli/obj || true',
+      'BASE_VERSION=$(grep -oPm1 "(?<=<Version>)[^<]+" Directory.Build.props || echo "0.0.0")',
       'if [ -n "$BUILD_GIT_SHA" ]; then',
-      '  IV="0.1.0+${BUILD_GIT_SHA}"',
+      '  IV="${BASE_VERSION}+${BUILD_GIT_SHA}"',
       'else',
-      '  IV="0.1.0+local"',
+      '  IV="${BASE_VERSION}+local"',
       'fi',
       ('dotnet publish "' + $projectPath + '" -c Release -nologo -o "' + $cliOutput + '" -p:UseAppHost=false -p:InformationalVersion="$IV"')
     )

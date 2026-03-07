@@ -26,14 +26,30 @@ function Get-VersionFromProps {
   return $ver
 }
 
+function Get-SharedPackageVersionFromProps {
+  $propsPath = Join-Path $PSScriptRoot '..' 'Directory.Build.props' | Resolve-Path | Select-Object -ExpandProperty Path
+  [xml]$xml = Get-Content -Raw $propsPath
+  $packageVersion = $xml.Project.PropertyGroup.CompareViSharedPackageVersion | Select-Object -First 1
+  if (-not [string]::IsNullOrWhiteSpace($packageVersion) -and $packageVersion -notmatch '^\$\(.+\)$') {
+    return [string]$packageVersion
+  }
+
+  $version = $xml.Project.PropertyGroup.Version | Select-Object -First 1
+  if (-not [string]::IsNullOrWhiteSpace($version)) {
+    return [string]$version
+  }
+
+  throw "Unable to resolve CompareVi.Shared package version from Directory.Build.props"
+}
+
 function Get-SharedPackageVersion {
   param([string]$CsprojPath)
   [xml]$xml = Get-Content -Raw $CsprojPath
   $packageVersion = $xml.Project.PropertyGroup.PackageVersion | Select-Object -First 1
-  if (-not [string]::IsNullOrWhiteSpace($packageVersion)) { return [string]$packageVersion }
+  if (-not [string]::IsNullOrWhiteSpace($packageVersion) -and $packageVersion -notmatch '^\$\(.+\)$') { return [string]$packageVersion }
   $version = $xml.Project.PropertyGroup.Version | Select-Object -First 1
-  if (-not [string]::IsNullOrWhiteSpace($version)) { return [string]$version }
-  throw "Unable to resolve CompareVi.Shared package version from $CsprojPath"
+  if (-not [string]::IsNullOrWhiteSpace($version) -and $version -notmatch '^\$\(.+\)$') { return [string]$version }
+  return Get-SharedPackageVersionFromProps
 }
 
 function Ensure-Dir($path) {
