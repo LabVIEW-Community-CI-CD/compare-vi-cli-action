@@ -1,6 +1,15 @@
 name: Policy Guard (Upstream)
 
 on:
+  pull_request:
+    types:
+      - opened
+      - synchronize
+      - reopened
+    branches:
+      - main
+      - develop
+      - release/**
   pull_request_target:
     types:
       - opened
@@ -25,6 +34,12 @@ concurrency:
 jobs:
   policy-guard:
     name: Policy Guard (Upstream) / policy-guard
+    if: >-
+      (github.event_name == 'pull_request' &&
+      github.event.pull_request.head.repo.full_name == github.repository) ||
+      (github.event_name == 'pull_request_target' &&
+      github.event.pull_request.head.repo.full_name != github.repository) ||
+      (github.event_name != 'pull_request' && github.event_name != 'pull_request_target')
     runs-on: ubuntu-latest
     permissions:
       contents: read
