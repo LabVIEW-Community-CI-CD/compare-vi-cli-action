@@ -16,10 +16,12 @@ test('orchestrated watcher source keeps explicit log-level prefixes for live con
 
   assert.match(source, /type WatcherLogLevel = 'info' \| 'warn' \| 'error';/);
   assert.match(source, /const line = `\[\$\{level\}\] \$\{message\}`;/);
-  assert.match(source, /emitLog\('info', `watching run=\$\{runId\} repo=\$\{repo\}`\);/);
-  assert.match(source, /emitLog\('info', `status=\$\{status\} conclusion=\$\{conclusion \|\| 'n\/a'\}`\);/);
+  assert.match(source, /schema: 'comparevi\/runtime-event\/v1'/);
+  assert.match(source, /parser\.add_argument\('--events-out'/);
+  assert.match(source, /emitLog\('info', `watching run=\$\{runId\} repo=\$\{repo\}`,/);
+  assert.match(source, /emitLog\('info', `status=\$\{status\} conclusion=\$\{conclusion \|\| 'n\/a'\}`,/);
   assert.ok(source.includes('heartbeat run="${title}" status=${status} conclusion=${conclusion || \'n/a\'} jobs=${completedJobs}/${totalJobs} elapsed~${elapsedSeconds}s'));
-  assert.match(source, /emitLog\('warn', `run=\$\{runId\} matches current workflow; skipping self-watch to avoid deadlock\.`\);/);
+  assert.match(source, /emitLog\('warn', `run=\$\{runId\} matches current workflow; skipping self-watch to avoid deadlock\.`,/);
   assert.match(source, /emitLog\('error', `fatal: \$\{\(err as Error\)\.message\}`\);/);
 });
 
@@ -34,7 +36,8 @@ test('dispatcher source keeps explicit info-level execution and progress lines',
   const source = readRepoFile('Invoke-PesterTests.ps1');
 
   assert.match(source, /function Write-DispatcherConsoleLine/);
-  assert.ok(source.includes("[info] Executing Pester tests...") || source.includes("Write-DispatcherConsoleLine -Level info -Message 'Executing Pester tests...'"));
+  assert.match(source, /schema\s+=\s+'comparevi\/runtime-event\/v1'/);
+  assert.ok(source.includes("[info] Executing Pester tests...") || source.includes("Write-DispatcherConsoleLine -Level info -Phase 'execution' -Message 'Executing Pester tests...'"));
   assert.ok(source.includes('execution-mode: singleInvoker='));
   assert.ok(source.includes('pester-progress: state={0} elapsed~{1}s timeout={2}s partialLog={3}'));
 });

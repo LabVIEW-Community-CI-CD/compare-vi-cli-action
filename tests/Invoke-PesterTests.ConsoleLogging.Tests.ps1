@@ -53,6 +53,16 @@ Describe 'Invoke-PesterTests console logging' -Tag 'Unit' {
       $stdout | Should -Match '\[info\] Configuring Pester'
       $stdout | Should -Match '\[info\] Executing Pester tests'
       $stdout | Should -Match '\[info\] execution-mode: singleInvoker='
+
+      $eventsPath = Join-Path $resultsDir 'dispatcher-events.ndjson'
+      Test-Path -LiteralPath $eventsPath | Should -BeTrue
+      $events = @(Get-Content -LiteralPath $eventsPath | Where-Object { -not [string]::IsNullOrWhiteSpace($_) } | ForEach-Object { $_ | ConvertFrom-Json })
+      $events.Count | Should -BeGreaterThan 0
+      $availabilityEvent = $events | Where-Object { $_.phase -eq 'pester-availability' } | Select-Object -First 1
+      $availabilityEvent.schema | Should -Be 'comparevi/runtime-event/v1'
+      $availabilityEvent.source | Should -Be 'pester-dispatcher'
+      $availabilityEvent.level | Should -Be 'info'
+      $availabilityEvent.message | Should -Be 'Checking for Pester availability...'
     } finally {
       try { $proc.Dispose() } catch {}
     }

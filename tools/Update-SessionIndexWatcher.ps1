@@ -1,7 +1,8 @@
 [CmdletBinding()]
 param(
   [string]$ResultsDir = 'tests/results',
-  [string]$WatcherJson
+  [string]$WatcherJson,
+  [string]$WatcherEvents
 )
 
 Set-StrictMode -Version Latest
@@ -28,6 +29,9 @@ function Update-SessionIndexWithWatcher {
     $summaryLines = @($SessionIndex.stepSummary, '', '### Watcher (REST)', $SummaryLine)
     if ($WatcherPayload.PSObject.Properties.Name -contains 'htmlUrl' -and $WatcherPayload.htmlUrl) {
       $summaryLines += "- URL: $($WatcherPayload.htmlUrl)"
+    }
+    if ($WatcherPayload.PSObject.Properties.Name -contains 'events' -and $WatcherPayload.events) {
+      $summaryLines += ("- Events: {0} ({1} line(s))" -f $WatcherPayload.events.path, $WatcherPayload.events.count)
     }
     $SessionIndex.stepSummary = ($summaryLines -join "`n")
   }
@@ -58,6 +62,33 @@ function New-WatcherFallback {
     $payload['parseError'] = $ParseError
   }
   return [pscustomobject]$payload
+}
+
+function Get-WatcherEventMetadata {
+  param([string]$Path)
+
+  if ([string]::IsNullOrWhiteSpace($Path)) {
+    return $null
+  }
+
+  $metadata = [ordered]@{
+    schema  = 'comparevi/runtime-event/v1'
+    path    = $Path
+    present = $false
+    count   = 0
+  }
+
+  if (-not (Test-Path -LiteralPath $Path -PathType Leaf)) {
+    return [pscustomobject]$metadata
+  }
+
+  $metadata.present = $true
+  try {
+    $lineCount = @(Get-Content -LiteralPath $Path -ErrorAction Stop | Where-Object { -not [string]::IsNullOrWhiteSpace($_) }).Count
+    $metadata.count = $lineCount
+  } catch {}
+
+  return [pscustomobject]$metadata
 }
 
 if (-not (Test-Path -LiteralPath $ResultsDir -PathType Container)) {
@@ -108,6 +139,16 @@ if (-not $WatcherJson) {
     $watch = New-WatcherFallback -Status 'invalid-json' -Reason 'Watcher summary JSON could not be parsed.' -PathHint $WatcherJson -ParseError $parseError
     $summaryLine = '- Status: invalid-json/watcher-error'
   }
+}
+
+$events = $null
+if ($watch -and ($watch.PSObject.Properties.Name -contains 'events') -and $watch.events) {
+  $events = $watch.events
+} elseif ($WatcherEvents) {
+  $events = Get-WatcherEventMetadata -Path $WatcherEvents
+}
+if ($watch -and $events) {
+  $watch | Add-Member -NotePropertyName 'events' -NotePropertyValue $events -Force
 }
 
 $idx = Update-SessionIndexWithWatcher -SessionIndex $idx -WatcherPayload $watch -SummaryLine $summaryLine

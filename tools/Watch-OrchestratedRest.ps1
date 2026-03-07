@@ -36,7 +36,8 @@ param(
   [int]$PollMs = 15000,
   [int]$ErrorGraceMs = 120000,
   [int]$NotFoundGraceMs = 90000,
-  [string]$OutPath = 'tests/results/_agent/watcher-rest.json'
+  [string]$OutPath = 'tests/results/_agent/watcher-rest.json',
+  [string]$EventsPath
 )
 
 Set-StrictMode -Version Latest
@@ -61,6 +62,11 @@ try {
   $outAbs = if ([System.IO.Path]::IsPathRooted($OutPath)) { $OutPath } else { Join-Path $repoRoot $OutPath }
   $outDir = Split-Path -Parent $outAbs
   if ($outDir -and -not (Test-Path -LiteralPath $outDir -PathType Container)) { New-Item -ItemType Directory -Force -Path $outDir | Out-Null }
+  $eventsAbs = if ($EventsPath) {
+    if ([System.IO.Path]::IsPathRooted($EventsPath)) { $EventsPath } else { Join-Path $repoRoot $EventsPath }
+  } else {
+    Join-Path $outDir 'watcher-events.ndjson'
+  }
 
   $watcherJs = Join-Path $repoRoot 'dist/tools/watchers/orchestrated-watch.js'
   if (-not (Test-Path -LiteralPath $watcherJs -PathType Leaf)) {
@@ -71,7 +77,13 @@ try {
     throw 'Watcher binary not found after compile: dist/tools/watchers/orchestrated-watch.js'
   }
 
-  $args = @('--poll-ms', [string]$PollMs, '--error-grace-ms', [string]$ErrorGraceMs, '--notfound-grace-ms', [string]$NotFoundGraceMs, '--out', $outAbs)
+  $args = @(
+    '--poll-ms', [string]$PollMs,
+    '--error-grace-ms', [string]$ErrorGraceMs,
+    '--notfound-grace-ms', [string]$NotFoundGraceMs,
+    '--out', $outAbs,
+    '--events-out', $eventsAbs
+  )
   if ($RunId -gt 0) {
     $args = @('--run-id', [string]$RunId) + $args
   } elseif ($Branch) {
@@ -85,7 +97,7 @@ try {
   $exit = $LASTEXITCODE
 
   Write-WatchRestLog -Level info -Message 'Merging watcher summary into session-index.json' -ForegroundColor DarkGray
-  & pwsh -NoLogo -NoProfile -File (Join-Path $repoRoot 'tools/Update-SessionIndexWatcher.ps1') -ResultsDir (Join-Path $repoRoot 'tests/results') -WatcherJson $outAbs
+  & pwsh -NoLogo -NoProfile -File (Join-Path $repoRoot 'tools/Update-SessionIndexWatcher.ps1') -ResultsDir (Join-Path $repoRoot 'tests/results') -WatcherJson $outAbs -WatcherEvents $eventsAbs
 
   exit $exit
 } finally { Pop-Location }

@@ -34,8 +34,8 @@ function isNotFoundError(error) {
     return message.includes('404') || message.includes('not found');
 }
 function buildSummary(params) {
-    const { repo, runId, run, jobs, status, conclusion } = params;
-    return {
+    const { repo, runId, run, jobs, status, conclusion, events } = params;
+    const summary = {
         schema: 'ci-watch/rest-v1',
         repo,
         runId,
@@ -54,6 +54,51 @@ function buildSummary(params) {
             htmlUrl: job.html_url ?? undefined,
         })),
     };
+    if (events?.outPath) {
+        summary.events = {
+            schema: 'comparevi/runtime-event/v1',
+            source: events.source,
+            path: events.outPath,
+            count: events.count,
+        };
+    }
+    return summary;
+}
+function appendRuntimeEvent(context, params) {
+    if (!context?.outPath) {
+        return;
+    }
+    try {
+        mkdirSync(dirname(context.outPath), { recursive: true });
+        const payload = {
+            schema: 'comparevi/runtime-event/v1',
+            tsUtc: new Date().toISOString(),
+            source: context.source,
+            phase: params.phase,
+            level: params.level,
+            message: params.message,
+        };
+        if (context.repo) {
+            payload.repo = context.repo;
+        }
+        if (typeof context.runId === 'number' && Number.isFinite(context.runId)) {
+            payload.runId = context.runId;
+        }
+        if (context.branch) {
+            payload.branch = context.branch;
+        }
+        if (context.headSha) {
+            payload.headSha = context.headSha;
+        }
+        if (params.data && Object.keys(params.data).length > 0) {
+            payload.data = params.data;
+        }
+        writeFileSync(context.outPath, `${JSON.stringify(payload)}\n`, { encoding: 'utf8', flag: 'a' });
+        context.count += 1;
+    }
+    catch {
+        // Event emission is best-effort and must not break the watcher.
+    }
 }
 function parseGitRemoteUrl(remoteUrl) {
     if (!remoteUrl) {
@@ -200,7 +245,13 @@ function formatJob(job) {
     const suffix = conclusion ? ` conclusion=${conclusion}` : '';
     return `job="${job.name}" status=${status}${suffix}`;
 }
-function emitLog(level, message) {
+function emitLog(level, message, options) {
+    appendRuntimeEvent(options?.context, {
+        level,
+        phase: options?.phase ?? 'console',
+        message,
+        data: options?.data,
+    });
     const line = `[${level}] ${message}`;
     if (level === 'error') {
         // eslint-disable-next-line no-console
@@ -237,38 +288,74 @@ function buildJobsSignature(jobs) {
         .sort();
     return items.join('|');
 }
-function printRunSnapshot(run, jobs) {
+function printRunSnapshot(run, jobs, context) {
     const title = run.display_title ?? `Run ${run.id}`;
     const status = run.status ?? 'unknown';
     const conclusion = run.conclusion ?? '';
     const branch = run.head_branch ?? '';
     const sha = run.head_sha ?? '';
-    emitLog('info', `run="${title}"`);
-    emitLog('info', `status=${status} conclusion=${conclusion || 'n/a'}`);
+    emitLog('info', `run="${title}"`, { context, phase: 'run-snapshot', data: { title } });
+    emitLog('info', `status=${status} conclusion=${conclusion || 'n/a'}`, {
+        context,
+        phase: 'run-snapshot',
+        data: { status, conclusion: conclusion || 'n/a' },
+    });
     if (branch || sha) {
-        emitLog('info', `ref=${`${branch} ${sha}`.trim()}`);
+        emitLog('info', `ref=${`${branch} ${sha}`.trim()}`, {
+            context,
+            phase: 'run-snapshot',
+            data: { branch, headSha: sha },
+        });
     }
     if (run.html_url) {
-        emitLog('info', `url=${run.html_url}`);
+        emitLog('info', `url=${run.html_url}`, {
+            context,
+            phase: 'run-snapshot',
+            data: { htmlUrl: run.html_url },
+        });
     }
     if (jobs.length) {
-        emitLog('info', 'jobs:');
+        emitLog('info', 'jobs:', { context, phase: 'job-snapshot' });
         for (const job of jobs) {
-            emitLog('info', formatJob(job));
+            emitLog('info', formatJob(job), {
+                context,
+                phase: 'job-snapshot',
+                data: {
+                    jobId: job.id,
+                    jobName: job.name,
+                    jobStatus: job.status ?? 'unknown',
+                    jobConclusion: job.conclusion ?? undefined,
+                },
+            });
         }
     }
 }
-function printHeartbeat(run, jobs, pollMs, pollCount) {
+function printHeartbeat(run, jobs, pollMs, pollCount, context) {
     const title = run.display_title ?? `Run ${run.id}`;
     const status = run.status ?? 'unknown';
     const conclusion = run.conclusion ?? '';
     const completedJobs = jobs.filter((job) => job.status === 'completed').length;
     const totalJobs = jobs.length;
     const elapsedSeconds = Math.max(0, Math.floor((pollCount * pollMs) / 1000));
-    emitLog('info', `heartbeat run="${title}" status=${status} conclusion=${conclusion || 'n/a'} jobs=${completedJobs}/${totalJobs} elapsed~${elapsedSeconds}s`);
+    emitLog('info', `heartbeat run="${title}" status=${status} conclusion=${conclusion || 'n/a'} jobs=${completedJobs}/${totalJobs} elapsed~${elapsedSeconds}s`, {
+        context,
+        phase: 'heartbeat',
+        data: {
+            title,
+            status,
+            conclusion: conclusion || 'n/a',
+            completedJobs,
+            totalJobs,
+            elapsedSeconds,
+        },
+    });
 }
-async function watchRun(repo, runId, token, pollMs = 15000, errorGraceMs = DEFAULT_ERROR_GRACE_MS, notFoundGraceMs = DEFAULT_NOT_FOUND_GRACE_MS, changesOnly = true, heartbeatPolls = 8) {
-    emitLog('info', `watching run=${runId} repo=${repo}`);
+async function watchRun(repo, runId, token, events, pollMs = 15000, errorGraceMs = DEFAULT_ERROR_GRACE_MS, notFoundGraceMs = DEFAULT_NOT_FOUND_GRACE_MS, changesOnly = true, heartbeatPolls = 8) {
+    emitLog('info', `watching run=${runId} repo=${repo}`, {
+        context: events,
+        phase: 'watch-start',
+        data: { repo, runId },
+    });
     let latestRun;
     let latestJobs = [];
     let runDataLoaded = false;
@@ -286,6 +373,10 @@ async function watchRun(repo, runId, token, pollMs = 15000, errorGraceMs = DEFAU
             const runUrl = new URL(`https://api.github.com/repos/${repo}/actions/runs/${runId}`);
             latestRun = await fetchJson(runUrl.toString(), token);
             const runStatus = latestRun.status ?? 'unknown';
+            if (events) {
+                events.branch = latestRun.head_branch ?? undefined;
+                events.headSha = latestRun.head_sha ?? undefined;
+            }
             const jobsUrl = new URL(`https://api.github.com/repos/${repo}/actions/runs/${runId}/jobs`);
             jobsUrl.searchParams.set('per_page', '100');
             const jobsResp = await fetchJson(jobsUrl.toString(), token);
@@ -295,11 +386,11 @@ async function watchRun(repo, runId, token, pollMs = 15000, errorGraceMs = DEFAU
             const hasChanges = runSignature !== displayState.runSignature || jobsSignature !== displayState.jobsSignature;
             const shouldPrintHeartbeat = heartbeatPolls > 0 && displayState.pollCount % heartbeatPolls === 0;
             if (!changesOnly || hasChanges) {
-                printRunSnapshot(latestRun, latestJobs);
+                printRunSnapshot(latestRun, latestJobs, events);
                 displayState.lastPrintedAt = Date.now();
             }
             else if (shouldPrintHeartbeat) {
-                printHeartbeat(latestRun, latestJobs, pollMs, displayState.pollCount);
+                printHeartbeat(latestRun, latestJobs, pollMs, displayState.pollCount, events);
             }
             displayState.runSignature = runSignature;
             displayState.jobsSignature = jobsSignature;
@@ -310,29 +401,22 @@ async function watchRun(repo, runId, token, pollMs = 15000, errorGraceMs = DEFAU
             errorWindowStart = undefined;
             notFoundStart = undefined;
             if (runStatus === 'completed') {
-                return {
-                    schema: 'ci-watch/rest-v1',
+                return buildSummary({
                     repo,
                     runId,
-                    branch: latestRun.head_branch ?? undefined,
-                    headSha: latestRun.head_sha ?? undefined,
-                    status: latestRun.status ?? undefined,
-                    conclusion: latestRun.conclusion ?? undefined,
-                    htmlUrl: latestRun.html_url ?? undefined,
-                    displayTitle: latestRun.display_title ?? undefined,
-                    polledAtUtc: new Date().toISOString(),
-                    jobs: latestJobs.map((job) => ({
-                        id: job.id,
-                        name: job.name,
-                        status: job.status,
-                        conclusion: job.conclusion ?? undefined,
-                        htmlUrl: job.html_url ?? undefined,
-                    })),
-                };
+                    run: latestRun,
+                    jobs: latestJobs,
+                    status: latestRun.status ?? 'completed',
+                    conclusion: latestRun.conclusion ?? 'unknown',
+                    events,
+                });
             }
         }
         catch (err) {
-            emitLog('error', (err.message).trim());
+            emitLog('error', (err.message).trim(), {
+                context: events,
+                phase: 'watch-error',
+            });
             if (err instanceof GitHubRateLimitError) {
                 const summary = buildSummary({
                     repo,
@@ -341,6 +425,7 @@ async function watchRun(repo, runId, token, pollMs = 15000, errorGraceMs = DEFAU
                     jobs: latestJobs,
                     status: 'rate_limited',
                     conclusion: 'watcher-error',
+                    events,
                 });
                 throw new WatcherAbort(err.message, summary);
             }
@@ -356,6 +441,7 @@ async function watchRun(repo, runId, token, pollMs = 15000, errorGraceMs = DEFAU
                         jobs: latestJobs,
                         status: 'not_found',
                         conclusion: 'watcher-error',
+                        events,
                     });
                     throw new WatcherAbort(`Run ${runId} in ${repo} was not found after ${Math.round(notFoundGraceMs / 1000)}s.`, summary);
                 }
@@ -372,6 +458,7 @@ async function watchRun(repo, runId, token, pollMs = 15000, errorGraceMs = DEFAU
                         jobs: latestJobs,
                         status: latestRun?.status ?? 'error',
                         conclusion: 'watcher-error',
+                        events,
                     });
                     throw new WatcherAbort(`Aborting watcher for run ${runId} after ${Math.round(errorGraceMs / 1000)}s of consecutive errors.`, summary);
                 }
@@ -389,6 +476,7 @@ async function main() {
     parser.add_argument('--workflow', { default: DEFAULT_WORKFLOW_FILE, help: 'Workflow file name (default: ci-orchestrated)' });
     parser.add_argument('--poll-ms', { type: Number, default: 15000, help: 'Polling interval in milliseconds' });
     parser.add_argument('--out', { help: 'Optional path to write watcher summary JSON' });
+    parser.add_argument('--events-out', { help: 'Optional path to write watcher runtime events NDJSON' });
     parser.add_argument('--error-grace-ms', { type: Number, default: DEFAULT_ERROR_GRACE_MS, help: 'Milliseconds of consecutive errors before aborting (default: 120000)' });
     parser.add_argument('--notfound-grace-ms', { type: Number, default: DEFAULT_NOT_FOUND_GRACE_MS, help: 'Milliseconds to wait after repeated 404 responses before aborting (default: 90000)' });
     parser.add_argument('--changes-only', { action: 'store_true', default: true, help: 'Print run/job details only when values change (default: true).' });
@@ -397,6 +485,12 @@ async function main() {
     const args = parser.parse_args();
     const repo = resolveRepo();
     const token = process.env.GH_TOKEN ?? process.env.GITHUB_TOKEN ?? undefined;
+    const summaryOutPath = args.out ? resolve(process.cwd(), args.out) : undefined;
+    const eventsOutPath = args.events_out
+        ? resolve(process.cwd(), args.events_out)
+        : summaryOutPath
+            ? resolve(dirname(summaryOutPath), 'watcher-events.ndjson')
+            : undefined;
     let runId = args.run_id;
     if (!runId) {
         if (!args.branch) {
@@ -411,8 +505,19 @@ async function main() {
     const currentRunIdRaw = process.env.GITHUB_RUN_ID;
     const currentRunId = currentRunIdRaw ? Number(currentRunIdRaw) : undefined;
     const isCurrentRun = Number.isFinite(currentRunId) && currentRunId === runId;
+    const eventContext = {
+        source: 'rest-watcher',
+        outPath: eventsOutPath,
+        repo,
+        runId,
+        count: 0,
+    };
     if (isCurrentRun) {
-        emitLog('warn', `run=${runId} matches current workflow; skipping self-watch to avoid deadlock.`);
+        emitLog('warn', `run=${runId} matches current workflow; skipping self-watch to avoid deadlock.`, {
+            context: eventContext,
+            phase: 'self-skip',
+            data: { repo, runId },
+        });
         const branch = process.env.GITHUB_REF_NAME ?? process.env.GITHUB_HEAD_REF ?? process.env.GITHUB_REF ?? undefined;
         const sha = process.env.GITHUB_SHA ?? undefined;
         const serverUrl = process.env.GITHUB_SERVER_URL ?? 'https://github.com';
@@ -431,20 +536,19 @@ async function main() {
             jobs: [],
             status: 'skipped',
             conclusion: 'success',
+            events: eventContext,
         });
-        if (args.out) {
-            const outPath = resolve(process.cwd(), args.out);
-            mkdirSync(dirname(outPath), { recursive: true });
-            writeFileSync(outPath, `${JSON.stringify(summary, null, 2)}\n`, 'utf8');
+        if (summaryOutPath) {
+            mkdirSync(dirname(summaryOutPath), { recursive: true });
+            writeFileSync(summaryOutPath, `${JSON.stringify(summary, null, 2)}\n`, 'utf8');
         }
         return;
     }
     try {
-        const summary = await watchRun(repo, runId, token, args.poll_ms ?? 15000, args.error_grace_ms ?? DEFAULT_ERROR_GRACE_MS, args.notfound_grace_ms ?? DEFAULT_NOT_FOUND_GRACE_MS, args.changes_only ?? true, args.heartbeat_polls ?? 8);
-        if (args.out) {
-            const outPath = resolve(process.cwd(), args.out);
-            mkdirSync(dirname(outPath), { recursive: true });
-            writeFileSync(outPath, `${JSON.stringify(summary, null, 2)}\n`, 'utf8');
+        const summary = await watchRun(repo, runId, token, eventContext, args.poll_ms ?? 15000, args.error_grace_ms ?? DEFAULT_ERROR_GRACE_MS, args.notfound_grace_ms ?? DEFAULT_NOT_FOUND_GRACE_MS, args.changes_only ?? true, args.heartbeat_polls ?? 8);
+        if (summaryOutPath) {
+            mkdirSync(dirname(summaryOutPath), { recursive: true });
+            writeFileSync(summaryOutPath, `${JSON.stringify(summary, null, 2)}\n`, 'utf8');
         }
         if (summary.conclusion && summary.conclusion.toLowerCase() !== 'success') {
             process.exitCode = 1;
@@ -453,10 +557,9 @@ async function main() {
     catch (err) {
         if (err instanceof WatcherAbort) {
             emitLog('error', err.message);
-            if (args.out) {
-                const outPath = resolve(process.cwd(), args.out);
-                mkdirSync(dirname(outPath), { recursive: true });
-                writeFileSync(outPath, `${JSON.stringify(err.summary, null, 2)}\n`, 'utf8');
+            if (summaryOutPath) {
+                mkdirSync(dirname(summaryOutPath), { recursive: true });
+                writeFileSync(summaryOutPath, `${JSON.stringify(err.summary, null, 2)}\n`, 'utf8');
             }
             process.exitCode = 1;
             return;
