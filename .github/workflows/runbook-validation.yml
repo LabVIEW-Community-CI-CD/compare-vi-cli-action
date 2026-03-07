@@ -72,13 +72,17 @@ jobs:
       - name: Run Container Canary Fast-Loop (Windows 2026)
         id: canary_fastloop
         shell: pwsh
+        env:
+          NI_WINDOWS_IMAGE: nationalinstruments/labview:2026q1-windows
+          NI_WINDOWS_LABVIEW_PATH: C:\Program Files\National Instruments\LabVIEW 2026\LabVIEW.exe
         run: |
           $resultsRoot = 'tests/results/runbook-container-canary'
           $startedAt = Get-Date
           pwsh -NoLogo -NoProfile -File tools/Test-DockerDesktopFastLoop.ps1 `
             -LaneScope windows `
             -HistoryScenarioSet none `
-            -WindowsImage 'nationalinstruments/labview:2026q1-windows' `
+            -WindowsImage $env:NI_WINDOWS_IMAGE `
+            -WindowsLabVIEWPath $env:NI_WINDOWS_LABVIEW_PATH `
             -StepTimeoutSeconds 600 `
             -ResultsRoot $resultsRoot
 

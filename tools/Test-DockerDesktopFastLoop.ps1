@@ -14,6 +14,8 @@
 param(
   [string]$WindowsImage = 'nationalinstruments/labview:2026q1-windows',
   [string]$LinuxImage = 'nationalinstruments/labview:2026q1-linux',
+  [string]$WindowsLabVIEWPath = '',
+  [string]$LinuxLabVIEWPath = '',
   [string]$LabVIEWPath = '',
   [string]$ResultsRoot = 'tests/results/local-parity',
   [string]$StatusPath = '',
@@ -38,6 +40,45 @@ Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
 $classifierScriptPath = Join-Path (Split-Path -Parent $PSCommandPath) 'Compare-ExitCodeClassifier.ps1'
+
+function Resolve-DockerLaneLabVIEWPath {
+  param(
+    [string]$ExplicitPath,
+    [string]$LegacySharedPath,
+    [string[]]$PreferredEnvNames = @(),
+    [string[]]$SharedEnvNames = @()
+  )
+
+  if (-not [string]::IsNullOrWhiteSpace($ExplicitPath)) {
+    return $ExplicitPath.Trim()
+  }
+
+  foreach ($envName in @($PreferredEnvNames)) {
+    if ([string]::IsNullOrWhiteSpace($envName)) {
+      continue
+    }
+    $candidate = [Environment]::GetEnvironmentVariable($envName, 'Process')
+    if (-not [string]::IsNullOrWhiteSpace($candidate)) {
+      return $candidate.Trim()
+    }
+  }
+
+  if (-not [string]::IsNullOrWhiteSpace($LegacySharedPath)) {
+    return $LegacySharedPath.Trim()
+  }
+
+  foreach ($envName in @($SharedEnvNames)) {
+    if ([string]::IsNullOrWhiteSpace($envName)) {
+      continue
+    }
+    $candidate = [Environment]::GetEnvironmentVariable($envName, 'Process')
+    if (-not [string]::IsNullOrWhiteSpace($candidate)) {
+      return $candidate.Trim()
+    }
+  }
+
+  return ''
+}
 if (-not (Test-Path -LiteralPath $classifierScriptPath -PathType Leaf)) {
   throw ("Exit-code classifier script not found: {0}" -f $classifierScriptPath)
 }
@@ -1055,15 +1096,16 @@ if ($singleLaneMode -and $ManageDockerEngine) {
 }
 $effectiveManageDockerEngine = if ($singleLaneMode) { $false } else { [bool]$ManageDockerEngine }
 $runtimeAutoRepairEnabled = -not $singleLaneMode
-$effectiveLabVIEWPath = $LabVIEWPath
-if ([string]::IsNullOrWhiteSpace($effectiveLabVIEWPath)) {
-  foreach ($candidateLabVIEWPath in @($env:COMPARE_LABVIEW_PATH, $env:LOOP_LABVIEW_PATH, $env:LABVIEW_PATH, $env:LV_LABVIEW_PATH, $env:LABVIEW_EXE)) {
-    if (-not [string]::IsNullOrWhiteSpace($candidateLabVIEWPath)) {
-      $effectiveLabVIEWPath = $candidateLabVIEWPath
-      break
-    }
-  }
-}
+$effectiveWindowsLabVIEWPath = Resolve-DockerLaneLabVIEWPath `
+  -ExplicitPath $WindowsLabVIEWPath `
+  -LegacySharedPath $LabVIEWPath `
+  -PreferredEnvNames @('NI_WINDOWS_LABVIEW_PATH', 'COMPARE_WINDOWS_LABVIEW_PATH') `
+  -SharedEnvNames @('COMPARE_LABVIEW_PATH', 'LOOP_LABVIEW_PATH')
+$effectiveLinuxLabVIEWPath = Resolve-DockerLaneLabVIEWPath `
+  -ExplicitPath $LinuxLabVIEWPath `
+  -LegacySharedPath $LabVIEWPath `
+  -PreferredEnvNames @('NI_LINUX_LABVIEW_PATH', 'COMPARE_LINUX_LABVIEW_PATH') `
+  -SharedEnvNames @('COMPARE_LABVIEW_PATH', 'LOOP_LABVIEW_PATH')
 $effectiveSkipWindowsProbe = [bool]$SkipWindowsProbe
 $effectiveSkipLinuxProbe = [bool]$SkipLinuxProbe
 switch ($laneScopeNormalized) {
@@ -1145,8 +1187,8 @@ if (-not $effectiveSkipWindowsProbe) {
       '-RuntimeEngineReadyPollSeconds', '3',
       '-RuntimeSnapshotPath', $windowsSnapshot
     )
-    if (-not [string]::IsNullOrWhiteSpace($effectiveLabVIEWPath)) {
-      $windowsProbeArgs += @('-LabVIEWPath', $effectiveLabVIEWPath)
+    if (-not [string]::IsNullOrWhiteSpace($effectiveWindowsLabVIEWPath)) {
+      $windowsProbeArgs += @('-LabVIEWPath', $effectiveWindowsLabVIEWPath)
     }
     pwsh @windowsProbeArgs | Out-Null
     }
@@ -1201,19 +1243,26 @@ if (-not $effectiveSkipLinuxProbe) {
     }
   }) | Out-Null
 
-  $stepDefinitions.Add([pscustomobject]@{
+    $stepDefinitions.Add([pscustomobject]@{
     name = 'linux-container-probe'
     allowedExitCodes = @(0)
     hardStopOnRuntimeFailure = $true
     action = {
-    pwsh -NoLogo -NoProfile -File (Join-Path $PSScriptRoot 'Run-NILinuxContainerCompare.ps1') `
-      -Probe `
-      -Image $LinuxImage `
-      -TimeoutSeconds $StepTimeoutSeconds `
-      -AutoRepairRuntime:$runtimeAutoRepairEnabled `
-      -RuntimeEngineReadyTimeoutSeconds $StepTimeoutSeconds `
-      -RuntimeEngineReadyPollSeconds 3 `
-      -RuntimeSnapshotPath $linuxSnapshot | Out-Null
+    $linuxProbeArgs = @(
+      '-NoLogo', '-NoProfile',
+      '-File', (Join-Path $PSScriptRoot 'Run-NILinuxContainerCompare.ps1'),
+      '-Probe',
+      '-Image', $LinuxImage,
+      '-TimeoutSeconds', [string]$StepTimeoutSeconds,
+      "-AutoRepairRuntime:$runtimeAutoRepairEnabled",
+      '-RuntimeEngineReadyTimeoutSeconds', [string]$StepTimeoutSeconds,
+      '-RuntimeEngineReadyPollSeconds', '3',
+      '-RuntimeSnapshotPath', $linuxSnapshot
+    )
+    if (-not [string]::IsNullOrWhiteSpace($effectiveLinuxLabVIEWPath)) {
+      $linuxProbeArgs += @('-LabVIEWPath', $effectiveLinuxLabVIEWPath)
+    }
+    pwsh @linuxProbeArgs | Out-Null
     }
   }) | Out-Null
 
@@ -1323,7 +1372,7 @@ if ($historyScenarioSetNormalized -ne 'none') {
             -BaseVi $baseForStep `
             -HeadVi $headForStep `
             -ReportPath $reportPath `
-            -LabVIEWPath $effectiveLabVIEWPath `
+            -LabVIEWPath $effectiveWindowsLabVIEWPath `
             -WindowsImage $WindowsImage `
             -RuntimeSnapshotPath $windowsSnapshot `
             -RuntimeAutoRepair:$runtimeAutoRepairEnabled `
@@ -1383,7 +1432,7 @@ if ($historyScenarioSetNormalized -ne 'none') {
         -BaseVi $baselineBase `
         -HeadVi $headPath `
         -ReportPath $reportPath `
-        -LabVIEWPath $effectiveLabVIEWPath `
+        -LabVIEWPath $effectiveWindowsLabVIEWPath `
         -WindowsImage $WindowsImage `
         -RuntimeSnapshotPath $windowsSnapshot `
         -RuntimeAutoRepair:$runtimeAutoRepairEnabled `
@@ -1620,6 +1669,10 @@ $summary = [ordered]@{
   generatedAt = (Get-Date).ToUniversalTime().ToString('o')
   windowsImage = $WindowsImage
   linuxImage = $LinuxImage
+  labviewPaths = [ordered]@{
+    windows = $effectiveWindowsLabVIEWPath
+    linux = $effectiveLinuxLabVIEWPath
+  }
   resultsRoot = $root
   snapshots = [ordered]@{
     windows = $windowsSnapshot
