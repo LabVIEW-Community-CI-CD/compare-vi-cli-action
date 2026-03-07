@@ -109,7 +109,7 @@ test('parseArgs reads adaptive inflight controls from environment', () => {
   }
 });
 
-test('evaluateAdaptiveInflight applies fixed, degraded, and restricted tiers deterministically', () => {
+test('evaluateAdaptiveInflight applies fixed/guarded/stabilize controller modes deterministically', () => {
   const fixed = evaluateAdaptiveInflight({
     maxInflight: 5,
     minInflight: 2,
@@ -120,27 +120,56 @@ test('evaluateAdaptiveInflight applies fixed, degraded, and restricted tiers det
   assert.equal(fixed.effectiveMaxInflight, 5);
   assert.equal(fixed.tier, 'fixed');
 
-  const degraded = evaluateAdaptiveInflight({
+  const guarded = evaluateAdaptiveInflight({
     maxInflight: 5,
     minInflight: 2,
     adaptiveCap: true,
     health: { successRate: 0.86, minSuccessRate: 0.8 },
-    runtimeFleet: { totals: { queued: 5, inProgress: 1, stalled: 0 }, thresholds: { maxQueuedRuns: 6, maxInProgressRuns: 8 } }
+    runtimeFleet: { totals: { queued: 4, inProgress: 1, stalled: 0 }, thresholds: { maxQueuedRuns: 6, maxInProgressRuns: 8 } },
+    retryPressure: { retryRatio: 0.05, quarantineRatio: 0 }
   });
-  assert.equal(degraded.effectiveMaxInflight, 3);
-  assert.equal(degraded.tier, 'degraded');
-  assert.ok(degraded.reasons.includes('runtime-near-saturation'));
+  assert.equal(guarded.effectiveMaxInflight, 3);
+  assert.equal(guarded.tier, 'guarded');
+  assert.ok(guarded.reasons.includes('success-rate-warning'));
 
   const restricted = evaluateAdaptiveInflight({
     maxInflight: 5,
     minInflight: 2,
     adaptiveCap: true,
     health: { successRate: 0.78, minSuccessRate: 0.8 },
-    runtimeFleet: { totals: { queued: 1, inProgress: 1, stalled: 1 }, thresholds: { maxQueuedRuns: 6, maxInProgressRuns: 8 } }
+    runtimeFleet: { totals: { queued: 1, inProgress: 1, stalled: 1 }, thresholds: { maxQueuedRuns: 6, maxInProgressRuns: 8 } },
+    retryPressure: { retryRatio: 0.36, quarantineRatio: 0.3 }
   });
   assert.equal(restricted.effectiveMaxInflight, 2);
-  assert.equal(restricted.tier, 'restricted');
+  assert.equal(restricted.tier, 'stabilize');
   assert.ok(restricted.reasons.includes('stalled-runs-detected'));
+});
+
+test('evaluateAdaptiveInflight applies hysteresis before upgrading from stabilize', () => {
+  const firstRecovery = evaluateAdaptiveInflight({
+    maxInflight: 5,
+    minInflight: 2,
+    adaptiveCap: true,
+    health: { successRate: 0.95, minSuccessRate: 0.8 },
+    runtimeFleet: { totals: { queued: 0, inProgress: 0, stalled: 0 }, thresholds: { maxQueuedRuns: 6, maxInProgressRuns: 8 } },
+    retryPressure: { retryRatio: 0, quarantineRatio: 0 },
+    previousControllerState: { mode: 'stabilize', upgradeStreak: 0 }
+  });
+  assert.equal(firstRecovery.tier, 'stabilize');
+  assert.equal(firstRecovery.hysteresis.transition, 'upgrade-pending');
+  assert.equal(firstRecovery.hysteresis.upgradeStreak, 1);
+
+  const secondRecovery = evaluateAdaptiveInflight({
+    maxInflight: 5,
+    minInflight: 2,
+    adaptiveCap: true,
+    health: { successRate: 0.95, minSuccessRate: 0.8 },
+    runtimeFleet: { totals: { queued: 0, inProgress: 0, stalled: 0 }, thresholds: { maxQueuedRuns: 6, maxInProgressRuns: 8 } },
+    retryPressure: { retryRatio: 0, quarantineRatio: 0 },
+    previousControllerState: { mode: 'stabilize', upgradeStreak: 1 }
+  });
+  assert.equal(secondRecovery.tier, 'guarded');
+  assert.equal(secondRecovery.hysteresis.transition, 'upgrade-applied');
 });
 
 test('evaluateRequiredChecks detects missing and failing contexts', () => {
@@ -475,5 +504,6 @@ test('runQueueSupervisor apply mode quarantines on second failure within 24h', a
   assert.equal(report.effectiveMaxInflight, 4);
   assert.equal(report.adaptiveInflight.enabled, false);
   assert.ok(commandCalls.some((call) => call.command === 'gh' && call.args[1] === 'edit'));
-  assert.equal(writeCalls.length, 1);
+  assert.equal(writeCalls.length, 2);
+  assert.ok(writeCalls.some((call) => String(call.reportPath).includes('throughput-controller-state.json')));
 });

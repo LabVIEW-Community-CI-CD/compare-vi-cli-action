@@ -11,6 +11,14 @@ import { getRepoRoot } from './lib/branch-utils.mjs';
 
 const REPORT_SCHEMA = 'priority/queue-supervisor-report@v1';
 const DEFAULT_REPORT_PATH = path.join('tests', 'results', '_agent', 'queue', 'queue-supervisor-report.json');
+const THROUGHPUT_CONTROLLER_SCHEMA = 'ops-throughput-controller-state@v1';
+const DEFAULT_CONTROLLER_STATE_PATH = path.join(
+  'tests',
+  'results',
+  '_agent',
+  'queue',
+  'throughput-controller-state.json'
+);
 const DEFAULT_MAX_INFLIGHT = 5;
 const DEFAULT_MIN_INFLIGHT = 2;
 const DEFAULT_HEALTH_SAMPLE = 10;
@@ -20,6 +28,17 @@ const DEFAULT_MAX_QUEUED_RUNS = 6;
 const DEFAULT_MAX_IN_PROGRESS_RUNS = 8;
 const DEFAULT_STALL_THRESHOLD_MINUTES = 45;
 const RETRY_WINDOW_HOURS = 24;
+const CONTROLLER_REQUIRED_UPGRADE_STREAK = 2;
+const CONTROLLER_THRESHOLDS = Object.freeze({
+  severeSuccessRate: 0.8,
+  warningSuccessRate: 0.9,
+  warningSaturation: 0.75,
+  severeSaturation: 1.0,
+  warningRetryRatio: 0.2,
+  severeRetryRatio: 0.35,
+  warningQuarantineRatio: 0.1,
+  severeQuarantineRatio: 0.2
+});
 const EXCLUDED_LABELS = new Set(['queue-blocked', 'do-not-queue']);
 const DEFAULT_BASE_BRANCHES = ['develop', 'main'];
 const COUPLING_VALUES = new Set(['independent', 'soft', 'hard']);
@@ -35,6 +54,9 @@ function printUsage() {
   console.log('Options:');
   console.log('  --apply                Enqueue PRs (default is dry-run planning mode).');
   console.log(`  --report <path>        Write report JSON (default: ${DEFAULT_REPORT_PATH}).`);
+  console.log(
+    `  --controller-state <path> Write throughput-controller JSON (default: ${DEFAULT_CONTROLLER_STATE_PATH}).`
+  );
   console.log(`  --max-inflight <n>     Queue target cap (default: ${DEFAULT_MAX_INFLIGHT}, env QUEUE_AUTOPILOT_MAX_INFLIGHT).`);
   console.log(`  --min-inflight <n>     Adaptive-cap floor (default: ${DEFAULT_MIN_INFLIGHT}, env QUEUE_AUTOPILOT_MIN_INFLIGHT).`);
   console.log('  --adaptive-cap         Enable adaptive inflight tuning (default, env QUEUE_AUTOPILOT_ADAPTIVE_CAP).');
@@ -77,6 +99,7 @@ export function parseArgs(argv = process.argv) {
     apply: false,
     dryRun: true,
     reportPath: DEFAULT_REPORT_PATH,
+    controllerStatePath: DEFAULT_CONTROLLER_STATE_PATH,
     maxInflight: null,
     minInflight: null,
     adaptiveCap: null,
@@ -107,6 +130,7 @@ export function parseArgs(argv = process.argv) {
     }
     if (
       arg === '--report' ||
+      arg === '--controller-state' ||
       arg === '--max-inflight' ||
       arg === '--min-inflight' ||
       arg === '--repo' ||
@@ -123,6 +147,8 @@ export function parseArgs(argv = process.argv) {
       index += 1;
       if (arg === '--report') {
         options.reportPath = next;
+      } else if (arg === '--controller-state') {
+        options.controllerStatePath = next;
       } else if (arg === '--max-inflight') {
         options.maxInflight = parseIntStrict(next, { label: '--max-inflight' });
       } else if (arg === '--min-inflight') {
@@ -741,18 +767,216 @@ export function evaluateRuntimeFleetHealth({
   };
 }
 
+function normalizeControllerMode(value) {
+  const normalized = String(value ?? '')
+    .trim()
+    .toLowerCase();
+  if (normalized === 'healthy' || normalized === 'guarded' || normalized === 'stabilize' || normalized === 'fixed') {
+    return normalized;
+  }
+  return null;
+}
+
+function modeRank(mode) {
+  if (mode === 'stabilize') return 0;
+  if (mode === 'guarded') return 1;
+  if (mode === 'healthy') return 2;
+  return -1;
+}
+
+function modeFromRank(rank) {
+  if (rank <= 0) return 'stabilize';
+  if (rank === 1) return 'guarded';
+  return 'healthy';
+}
+
+function deriveModeCaps(configuredMax, configuredMin) {
+  const healthy = configuredMax;
+  const stabilize = configuredMin;
+  const guarded = Math.max(stabilize, Math.min(healthy, healthy - 2));
+  return { healthy, guarded, stabilize };
+}
+
+function toFiniteNumber(value, fallback = 0) {
+  const numeric = Number(value);
+  return Number.isFinite(numeric) ? numeric : fallback;
+}
+
+function normalizeRatio(value) {
+  const numeric = toFiniteNumber(value, 0);
+  if (numeric < 0) return 0;
+  return Number(numeric.toFixed(3));
+}
+
+export function computeRetryPressure(retryHistory = {}, candidateCount = 0) {
+  let failureEvents = 0;
+  let activeFailurePrs = 0;
+  let quarantinedPrs = 0;
+
+  for (const entry of Object.values(retryHistory)) {
+    const failures = Array.isArray(entry?.failures) ? entry.failures : [];
+    if (failures.length === 0) {
+      continue;
+    }
+    activeFailurePrs += 1;
+    failureEvents += failures.length;
+    if (failures.length >= 2) {
+      quarantinedPrs += 1;
+    }
+  }
+
+  const denominator = Math.max(1, Number(candidateCount) || 0);
+  const retryRatio = failureEvents / denominator;
+  const quarantineRatio = quarantinedPrs / Math.max(1, activeFailurePrs);
+  return {
+    failureEvents,
+    activeFailurePrs,
+    quarantinedPrs,
+    retryRatio: normalizeRatio(retryRatio),
+    quarantineRatio: normalizeRatio(quarantineRatio)
+  };
+}
+
+export function pruneRetryHistory(retryHistory = {}, nowIso, windowHours = RETRY_WINDOW_HOURS) {
+  const normalized = {};
+  const nowMs = Date.parse(nowIso);
+  const cutoff = nowMs - windowHours * 60 * 60 * 1000;
+
+  for (const [key, entry] of Object.entries(retryHistory)) {
+    const failures = Array.isArray(entry?.failures) ? entry.failures : [];
+    const retained = failures.filter((value) => {
+      const timestamp = Date.parse(value);
+      return Number.isFinite(timestamp) && timestamp >= cutoff;
+    });
+    if (retained.length > 0) {
+      normalized[key] = { failures: retained };
+    }
+  }
+  return normalized;
+}
+
+function evaluateDesiredControllerMode({
+  successRate,
+  saturation,
+  stalled,
+  retryRatio,
+  quarantineRatio,
+  thresholds = CONTROLLER_THRESHOLDS
+}) {
+  const severeReasons = [];
+  const warningReasons = [];
+
+  if (successRate < thresholds.severeSuccessRate) severeReasons.push('success-rate-severe');
+  if (saturation >= thresholds.severeSaturation) severeReasons.push('runtime-saturation-severe');
+  if (stalled > 0) severeReasons.push('stalled-runs-detected');
+  if (retryRatio >= thresholds.severeRetryRatio) severeReasons.push('retry-ratio-severe');
+  if (quarantineRatio >= thresholds.severeQuarantineRatio) severeReasons.push('quarantine-ratio-severe');
+
+  if (severeReasons.length > 0) {
+    return {
+      desiredMode: 'stabilize',
+      reasons: severeReasons
+    };
+  }
+
+  if (successRate < thresholds.warningSuccessRate) warningReasons.push('success-rate-warning');
+  if (saturation >= thresholds.warningSaturation) warningReasons.push('runtime-saturation-warning');
+  if (retryRatio >= thresholds.warningRetryRatio) warningReasons.push('retry-ratio-warning');
+  if (quarantineRatio >= thresholds.warningQuarantineRatio) warningReasons.push('quarantine-ratio-warning');
+
+  return {
+    desiredMode: warningReasons.length > 0 ? 'guarded' : 'healthy',
+    reasons: warningReasons
+  };
+}
+
+function applyControllerHysteresis({
+  desiredMode,
+  previousMode,
+  previousUpgradeStreak,
+  requiredUpgradeStreak = CONTROLLER_REQUIRED_UPGRADE_STREAK
+}) {
+  const normalizedPreviousMode = normalizeControllerMode(previousMode);
+  if (!normalizedPreviousMode || normalizedPreviousMode === 'fixed') {
+    return {
+      mode: desiredMode,
+      desiredMode,
+      transition: 'initialized',
+      upgradeStreak: 0
+    };
+  }
+
+  const previousRank = modeRank(normalizedPreviousMode);
+  let desiredRank = modeRank(desiredMode);
+  if (desiredRank > previousRank + 1) {
+    desiredRank = previousRank + 1;
+  }
+  const cappedDesiredMode = modeFromRank(desiredRank);
+
+  if (desiredRank < previousRank) {
+    return {
+      mode: cappedDesiredMode,
+      desiredMode: cappedDesiredMode,
+      transition: 'downgrade-applied',
+      upgradeStreak: 0
+    };
+  }
+
+  if (desiredRank === previousRank) {
+    return {
+      mode: cappedDesiredMode,
+      desiredMode: cappedDesiredMode,
+      transition: 'unchanged',
+      upgradeStreak: 0
+    };
+  }
+
+  const streak = Math.max(0, Number(previousUpgradeStreak) || 0) + 1;
+  if (streak >= requiredUpgradeStreak) {
+    return {
+      mode: cappedDesiredMode,
+      desiredMode: cappedDesiredMode,
+      transition: 'upgrade-applied',
+      upgradeStreak: 0
+    };
+  }
+
+  return {
+    mode: normalizedPreviousMode,
+    desiredMode: cappedDesiredMode,
+    transition: 'upgrade-pending',
+    upgradeStreak: streak
+  };
+}
+
 export function evaluateAdaptiveInflight({
   maxInflight,
   minInflight = DEFAULT_MIN_INFLIGHT,
   adaptiveCap = true,
   health,
-  runtimeFleet
+  runtimeFleet,
+  retryPressure = null,
+  previousControllerState = null
 }) {
   const configuredMax = parseIntStrict(maxInflight, { label: 'maxInflight' });
   const configuredMin = parseIntStrict(minInflight, { label: 'minInflight' });
   if (configuredMin > configuredMax) {
     throw new Error(`Adaptive inflight floor (${configuredMin}) cannot exceed max inflight (${configuredMax}).`);
   }
+
+  const caps = deriveModeCaps(configuredMax, configuredMin);
+  const successRate = toFiniteNumber(health?.successRate, 0);
+  const queued = toFiniteNumber(runtimeFleet?.totals?.queued, 0);
+  const inProgress = toFiniteNumber(runtimeFleet?.totals?.inProgress, 0);
+  const stalled = toFiniteNumber(runtimeFleet?.totals?.stalled, 0);
+  const maxQueued = Math.max(1, toFiniteNumber(runtimeFleet?.thresholds?.maxQueuedRuns, DEFAULT_MAX_QUEUED_RUNS));
+  const maxInProgress = Math.max(
+    1,
+    toFiniteNumber(runtimeFleet?.thresholds?.maxInProgressRuns, DEFAULT_MAX_IN_PROGRESS_RUNS)
+  );
+  const saturation = Math.max(queued / maxQueued, inProgress / maxInProgress);
+  const retryRatio = normalizeRatio(retryPressure?.retryRatio);
+  const quarantineRatio = normalizeRatio(retryPressure?.quarantineRatio);
 
   if (!adaptiveCap) {
     return {
@@ -761,54 +985,70 @@ export function evaluateAdaptiveInflight({
       minInflight: configuredMin,
       effectiveMaxInflight: configuredMax,
       tier: 'fixed',
-      reasons: []
+      mode: 'fixed',
+      desiredMode: 'fixed',
+      capByMode: caps,
+      reasons: [],
+      metrics: {
+        successRate: normalizeRatio(successRate),
+        saturation: normalizeRatio(saturation),
+        queued,
+        inProgress,
+        stalled,
+        retryRatio,
+        quarantineRatio
+      },
+      thresholds: CONTROLLER_THRESHOLDS,
+      hysteresis: {
+        previousMode: normalizeControllerMode(previousControllerState?.mode),
+        transition: 'fixed-cap-disabled',
+        upgradeStreak: 0,
+        requiredUpgradeStreak: CONTROLLER_REQUIRED_UPGRADE_STREAK
+      }
     };
   }
 
-  let effective = configuredMax;
-  const reasons = [];
-  let tier = 'full';
+  const desired = evaluateDesiredControllerMode({
+    successRate,
+    saturation,
+    stalled,
+    retryRatio,
+    quarantineRatio
+  });
+  const hysteresis = applyControllerHysteresis({
+    desiredMode: desired.desiredMode,
+    previousMode: previousControllerState?.mode,
+    previousUpgradeStreak: previousControllerState?.upgradeStreak,
+    requiredUpgradeStreak: CONTROLLER_REQUIRED_UPGRADE_STREAK
+  });
+  const effectiveMaxInflight = caps[hysteresis.mode] ?? configuredMin;
 
-  const queued = Number(runtimeFleet?.totals?.queued ?? 0);
-  const inProgress = Number(runtimeFleet?.totals?.inProgress ?? 0);
-  const stalled = Number(runtimeFleet?.totals?.stalled ?? 0);
-  const maxQueuedRuns = Number(runtimeFleet?.thresholds?.maxQueuedRuns ?? 0);
-  const maxInProgressRuns = Number(runtimeFleet?.thresholds?.maxInProgressRuns ?? 0);
-  const nearQueuedRuns = Math.max(1, Math.ceil(maxQueuedRuns * 0.75));
-  const nearInProgressRuns = Math.max(1, Math.ceil(maxInProgressRuns * 0.75));
-
-  if (stalled > 0) {
-    effective = Math.min(effective, configuredMin);
-    tier = 'restricted';
-    reasons.push('stalled-runs-detected');
-  } else if (queued >= nearQueuedRuns || inProgress >= nearInProgressRuns) {
-    effective = Math.min(effective, Math.max(configuredMin, configuredMin + 1));
-    tier = 'degraded';
-    reasons.push('runtime-near-saturation');
-  }
-
-  const successRate = Number(health?.successRate ?? 0);
-  const minSuccessRate = Number(health?.minSuccessRate ?? DEFAULT_HEALTH_MIN_SUCCESS_RATE);
-  if (Number.isFinite(successRate) && Number.isFinite(minSuccessRate)) {
-    if (successRate < minSuccessRate + 0.05) {
-      effective = Math.min(effective, Math.max(configuredMin, configuredMax - 2));
-      if (tier !== 'restricted') tier = 'degraded';
-      reasons.push('health-near-threshold');
-    } else if (successRate < minSuccessRate + 0.15) {
-      effective = Math.min(effective, Math.max(configuredMin, configuredMax - 1));
-      if (tier === 'full') tier = 'guarded';
-      reasons.push('health-soft-degradation');
-    }
-  }
-
-  effective = Math.max(configuredMin, effective);
   return {
     enabled: true,
     configuredMaxInflight: configuredMax,
     minInflight: configuredMin,
-    effectiveMaxInflight: effective,
-    tier,
-    reasons: [...new Set(reasons)]
+    effectiveMaxInflight,
+    tier: hysteresis.mode,
+    mode: hysteresis.mode,
+    desiredMode: hysteresis.desiredMode,
+    capByMode: caps,
+    reasons: [...new Set(desired.reasons)],
+    metrics: {
+      successRate: normalizeRatio(successRate),
+      saturation: normalizeRatio(saturation),
+      queued,
+      inProgress,
+      stalled,
+      retryRatio,
+      quarantineRatio
+    },
+    thresholds: CONTROLLER_THRESHOLDS,
+    hysteresis: {
+      previousMode: normalizeControllerMode(previousControllerState?.mode),
+      transition: hysteresis.transition,
+      upgradeStreak: hysteresis.upgradeStreak,
+      requiredUpgradeStreak: CONTROLLER_REQUIRED_UPGRADE_STREAK
+    }
   };
 }
 
@@ -908,6 +1148,7 @@ function fetchWorkflowRunsByName({
 export async function runQueueSupervisor(options = {}) {
   const repoRoot = options.repoRoot ?? getRepoRoot();
   const args = options.args ?? parseArgs();
+  const controllerStatePath = args.controllerStatePath ?? DEFAULT_CONTROLLER_STATE_PATH;
   const now = options.now ?? new Date();
   const runGhJsonFn = options.runGhJsonFn ?? runGhJson;
   const runCommandFn = options.runCommandFn ?? runCommand;
@@ -958,6 +1199,16 @@ export async function runQueueSupervisor(options = {}) {
     maxInProgressRuns: args.maxInProgressRuns,
     stallThresholdMinutes: args.stallThresholdMinutes
   });
+  const nowIso = now.toISOString();
+  const previousReport = await readOptionalJsonFn(path.resolve(repoRoot, args.reportPath));
+  const previousControllerState = await readOptionalJsonFn(path.resolve(repoRoot, controllerStatePath));
+  const retryHistory = pruneRetryHistory(
+    previousReport?.retryHistory && typeof previousReport.retryHistory === 'object'
+      ? structuredClone(previousReport.retryHistory)
+      : {},
+    nowIso
+  );
+  const retryPressure = computeRetryPressure(retryHistory, classified.candidates.length);
   const pausedByVariable = String(process.env.QUEUE_AUTOPILOT_PAUSED ?? '').trim() === '1';
   const pausedReasons = [];
   if (pausedByVariable) pausedReasons.push('paused-by-variable');
@@ -971,13 +1222,33 @@ export async function runQueueSupervisor(options = {}) {
     minInflight: args.minInflight,
     adaptiveCap: args.adaptiveCap,
     health,
-    runtimeFleet
+    runtimeFleet,
+    retryPressure,
+    previousControllerState
   });
   const effectiveMaxInflight = adaptiveInflight.effectiveMaxInflight;
   const inflight = countInflight(classified.candidates.filter((candidate) => queueManagedBranches.has(candidate.baseRefName)));
   const capacity = Math.max(0, effectiveMaxInflight - inflight);
   const planned = classified.orderedEligible.filter((candidate) => !candidate.autoMergeEnabled);
   const toProcess = planned.slice(0, capacity);
+
+  const throughputControllerState = {
+    schema: THROUGHPUT_CONTROLLER_SCHEMA,
+    generatedAt: nowIso,
+    repository,
+    mode: adaptiveInflight.mode,
+    desiredMode: adaptiveInflight.desiredMode,
+    targetCap: adaptiveInflight.effectiveMaxInflight,
+    capByMode: adaptiveInflight.capByMode,
+    adaptiveEnabled: adaptiveInflight.enabled,
+    reasons: adaptiveInflight.reasons,
+    metrics: adaptiveInflight.metrics,
+    thresholds: adaptiveInflight.thresholds,
+    hysteresis: adaptiveInflight.hysteresis,
+    retryPressure,
+    paused: uniquePausedReasons.length > 0,
+    pausedReasons: uniquePausedReasons
+  };
 
   const report = {
     schema: REPORT_SCHEMA,
@@ -1010,6 +1281,7 @@ export async function runQueueSupervisor(options = {}) {
     workflowFetchErrors,
     paused: uniquePausedReasons.length > 0,
     pausedReasons: uniquePausedReasons,
+    throughputController: throughputControllerState,
     summary: {
       openCount: classified.allOpen.length,
       candidateCount: classified.candidates.length,
@@ -1046,15 +1318,16 @@ export async function runQueueSupervisor(options = {}) {
     retryHistory: {}
   };
 
-  const previousReport = await readOptionalJsonFn(path.resolve(repoRoot, args.reportPath));
-  const retryHistory = previousReport?.retryHistory && typeof previousReport.retryHistory === 'object'
-    ? structuredClone(previousReport.retryHistory)
-    : {};
-
   if (report.paused || args.dryRun || !args.apply) {
     report.retryHistory = retryHistory;
     const resolvedPath = await writeReportFn(args.reportPath, report);
-    return { report, reportPath: resolvedPath };
+    const resolvedControllerStatePath = await writeReportFn(controllerStatePath, throughputControllerState);
+    return {
+      report,
+      reportPath: resolvedPath,
+      controllerState: throughputControllerState,
+      controllerStatePath: resolvedControllerStatePath
+    };
   }
 
   for (const candidate of toProcess) {
@@ -1124,7 +1397,6 @@ export async function runQueueSupervisor(options = {}) {
       continue;
     }
 
-    const nowIso = now.toISOString();
     const failureCountWindow = appendFailure(retryHistory, candidate.number, nowIso);
     action.status = 'failed';
     action.failureCount24h = failureCountWindow;
@@ -1155,7 +1427,13 @@ export async function runQueueSupervisor(options = {}) {
 
   report.retryHistory = retryHistory;
   const resolvedPath = await writeReportFn(args.reportPath, report);
-  return { report, reportPath: resolvedPath };
+  const resolvedControllerStatePath = await writeReportFn(controllerStatePath, throughputControllerState);
+  return {
+    report,
+    reportPath: resolvedPath,
+    controllerState: throughputControllerState,
+    controllerStatePath: resolvedControllerStatePath
+  };
 }
 
 export async function main(argv = process.argv) {
@@ -1165,8 +1443,13 @@ export async function main(argv = process.argv) {
     return 0;
   }
 
-  const { report, reportPath } = await runQueueSupervisor({ args });
+  const { report, reportPath, controllerState, controllerStatePath } = await runQueueSupervisor({ args });
   console.log(`[queue-supervisor] report written: ${reportPath}`);
+  if (controllerStatePath) {
+    console.log(
+      `[queue-supervisor] throughput controller: ${controllerStatePath} (mode=${controllerState?.mode ?? 'unknown'}, cap=${controllerState?.targetCap ?? 'n/a'})`
+    );
+  }
   console.log(`[queue-supervisor] paused=${report.paused} eligible=${report.summary.eligibleCount} planned=${report.summary.plannedCount} enqueued=${report.summary.enqueuedCount}`);
   if (report.paused) {
     console.log(`[queue-supervisor] pause reasons: ${report.pausedReasons.join(', ')}`);
@@ -1181,6 +1464,8 @@ export const __test = Object.freeze({
   classifyOpenPullRequests,
   evaluateHealthGate,
   evaluateRuntimeFleetHealth,
+  computeRetryPressure,
+  pruneRetryHistory,
   runQueueSupervisor
 });
 

@@ -1,0 +1,260 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "ops-throughput-controller-state@v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema",
+    "generatedAt",
+    "repository",
+    "mode",
+    "desiredMode",
+    "targetCap",
+    "capByMode",
+    "adaptiveEnabled",
+    "reasons",
+    "metrics",
+    "thresholds",
+    "hysteresis",
+    "retryPressure",
+    "paused",
+    "pausedReasons"
+  ],
+  "properties": {
+    "schema": {
+      "const": "ops-throughput-controller-state@v1"
+    },
+    "generatedAt": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "repository": {
+      "type": "string",
+      "pattern": "^[^/\\s]+/[^/\\s]+$"
+    },
+    "mode": {
+      "type": "string",
+      "enum": [
+        "healthy",
+        "guarded",
+        "stabilize",
+        "fixed"
+      ]
+    },
+    "desiredMode": {
+      "type": "string",
+      "enum": [
+        "healthy",
+        "guarded",
+        "stabilize",
+        "fixed"
+      ]
+    },
+    "targetCap": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "capByMode": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "healthy",
+        "guarded",
+        "stabilize"
+      ],
+      "properties": {
+        "healthy": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "guarded": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "stabilize": {
+          "type": "integer",
+          "minimum": 0
+        }
+      }
+    },
+    "adaptiveEnabled": {
+      "type": "boolean"
+    },
+    "reasons": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "metrics": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "successRate",
+        "saturation",
+        "queued",
+        "inProgress",
+        "stalled",
+        "retryRatio",
+        "quarantineRatio"
+      ],
+      "properties": {
+        "successRate": {
+          "type": "number",
+          "minimum": 0
+        },
+        "saturation": {
+          "type": "number",
+          "minimum": 0
+        },
+        "queued": {
+          "type": "number",
+          "minimum": 0
+        },
+        "inProgress": {
+          "type": "number",
+          "minimum": 0
+        },
+        "stalled": {
+          "type": "number",
+          "minimum": 0
+        },
+        "retryRatio": {
+          "type": "number",
+          "minimum": 0
+        },
+        "quarantineRatio": {
+          "type": "number",
+          "minimum": 0
+        }
+      }
+    },
+    "thresholds": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "severeSuccessRate",
+        "warningSuccessRate",
+        "warningSaturation",
+        "severeSaturation",
+        "warningRetryRatio",
+        "severeRetryRatio",
+        "warningQuarantineRatio",
+        "severeQuarantineRatio"
+      ],
+      "properties": {
+        "severeSuccessRate": {
+          "type": "number",
+          "minimum": 0
+        },
+        "warningSuccessRate": {
+          "type": "number",
+          "minimum": 0
+        },
+        "warningSaturation": {
+          "type": "number",
+          "minimum": 0
+        },
+        "severeSaturation": {
+          "type": "number",
+          "minimum": 0
+        },
+        "warningRetryRatio": {
+          "type": "number",
+          "minimum": 0
+        },
+        "severeRetryRatio": {
+          "type": "number",
+          "minimum": 0
+        },
+        "warningQuarantineRatio": {
+          "type": "number",
+          "minimum": 0
+        },
+        "severeQuarantineRatio": {
+          "type": "number",
+          "minimum": 0
+        }
+      }
+    },
+    "hysteresis": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "previousMode",
+        "transition",
+        "upgradeStreak",
+        "requiredUpgradeStreak"
+      ],
+      "properties": {
+        "previousMode": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "enum": [
+            "healthy",
+            "guarded",
+            "stabilize",
+            "fixed",
+            null
+          ]
+        },
+        "transition": {
+          "type": "string",
+          "minLength": 1
+        },
+        "upgradeStreak": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "requiredUpgradeStreak": {
+          "type": "integer",
+          "minimum": 1
+        }
+      }
+    },
+    "retryPressure": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "failureEvents",
+        "activeFailurePrs",
+        "quarantinedPrs",
+        "retryRatio",
+        "quarantineRatio"
+      ],
+      "properties": {
+        "failureEvents": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "activeFailurePrs": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "quarantinedPrs": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "retryRatio": {
+          "type": "number",
+          "minimum": 0
+        },
+        "quarantineRatio": {
+          "type": "number",
+          "minimum": 0
+        }
+      }
+    },
+    "paused": {
+      "type": "boolean"
+    },
+    "pausedReasons": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    }
+  }
+}
