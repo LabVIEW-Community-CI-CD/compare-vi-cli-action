@@ -1,7 +1,7 @@
 import { execSync } from 'node:child_process';
 import { ArgumentParser } from 'argparse';
 import { setTimeout as sleep } from 'node:timers/promises';
-import { mkdirSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, writeFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 
 interface WorkflowRun {
@@ -59,7 +59,7 @@ interface WatcherSummary {
   }>;
   events?: {
     schema: 'comparevi/runtime-event/v1';
-    path?: string;
+    path: string;
     present: boolean;
     count: number;
   };
@@ -143,7 +143,7 @@ function buildSummary(params: {
     summary.events = {
       schema: 'comparevi/runtime-event/v1',
       path: events.outPath,
-      present: true,
+      present: existsSync(events.outPath),
       count: events.count,
     };
   }

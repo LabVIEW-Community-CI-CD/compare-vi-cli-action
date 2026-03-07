@@ -140,6 +140,56 @@ Describe 'Update-SessionIndexWatcher' -Tag 'Unit' {
     $idx.watchers.rest.events.PSObject.Properties.Name | Should -Not -Contain 'source'
   }
 
+  It 'recomputes normalized event presence from filesystem evidence' {
+    $resultsDir = & $script:newSessionIndexFixture 'watcher-events-fs-presence'
+    $watcherPath = Join-Path $TestDrive 'watcher-events-fs-presence.json'
+    $missingEventsPath = Join-Path $TestDrive 'missing-events.ndjson'
+    $watcher = @{
+      schema = 'ci-watch/rest-v1'
+      status = 'completed'
+      conclusion = 'success'
+      polledAtUtc = (Get-Date).ToUniversalTime().ToString('o')
+      jobs = @()
+      events = @{
+        schema = 'comparevi/runtime-event/v1'
+        path = $missingEventsPath
+        present = $true
+        count = 4
+      }
+    } | ConvertTo-Json -Depth 5
+    Set-Content -LiteralPath $watcherPath -Value $watcher -Encoding UTF8
+
+    & $script:updateScript -ResultsDir $resultsDir -WatcherJson $watcherPath
+
+    $idx = Get-Content -LiteralPath (Join-Path $resultsDir 'session-index.json') -Raw | ConvertFrom-Json
+    $idx.watchers.rest.events.path | Should -Be $missingEventsPath
+    $idx.watchers.rest.events.present | Should -BeFalse
+    $idx.watchers.rest.events.count | Should -Be 4
+  }
+
+  It 'drops summary-embedded event metadata when no event path is available' {
+    $resultsDir = & $script:newSessionIndexFixture 'watcher-events-missing-path'
+    $watcherPath = Join-Path $TestDrive 'watcher-events-missing-path.json'
+    $watcher = @{
+      schema = 'ci-watch/rest-v1'
+      status = 'completed'
+      conclusion = 'success'
+      polledAtUtc = (Get-Date).ToUniversalTime().ToString('o')
+      jobs = @()
+      events = @{
+        schema = 'comparevi/runtime-event/v1'
+        present = $true
+        count = 2
+      }
+    } | ConvertTo-Json -Depth 5
+    Set-Content -LiteralPath $watcherPath -Value $watcher -Encoding UTF8
+
+    & $script:updateScript -ResultsDir $resultsDir -WatcherJson $watcherPath
+
+    $idx = Get-Content -LiteralPath (Join-Path $resultsDir 'session-index.json') -Raw | ConvertFrom-Json
+    $idx.watchers.rest.PSObject.Properties.Name | Should -Not -Contain 'events'
+  }
+
   It 'records missing-file watcher status when watcher json path does not exist' {
     $resultsDir = & $script:newSessionIndexFixture 'watcher-missing'
     $watcherPath = Join-Path $TestDrive 'does-not-exist.json'

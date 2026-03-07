@@ -107,6 +107,9 @@ function ConvertTo-SessionIndexWatcherEvents {
   if ($WatcherEvents.PSObject.Properties.Name -contains 'path' -and $WatcherEvents.path) {
     $eventPath = [string]$WatcherEvents.path
   }
+  if ([string]::IsNullOrWhiteSpace($eventPath)) {
+    return $null
+  }
 
   $count = 0
   if ($WatcherEvents.PSObject.Properties.Name -contains 'count' -and $WatcherEvents.count -ne $null) {
@@ -120,11 +123,10 @@ function ConvertTo-SessionIndexWatcherEvents {
     $count = 0
   }
 
-  $present = $false
+  $presentFromFs = Test-Path -LiteralPath $eventPath -PathType Leaf
+  $present = $presentFromFs
   if ($WatcherEvents.PSObject.Properties.Name -contains 'present' -and $WatcherEvents.present -ne $null) {
-    $present = [bool]$WatcherEvents.present
-  } elseif ($eventPath) {
-    $present = Test-Path -LiteralPath $eventPath -PathType Leaf
+    $present = $presentFromFs -and [bool]$WatcherEvents.present
   }
 
   return [pscustomobject]([ordered]@{
@@ -190,6 +192,9 @@ if ($WatcherEvents) {
   $events = Get-WatcherEventMetadata -Path $WatcherEvents
 } elseif ($watch -and ($watch.PSObject.Properties.Name -contains 'events') -and $watch.events) {
   $events = ConvertTo-SessionIndexWatcherEvents -WatcherEvents $watch.events
+}
+if ($watch -and ($watch.PSObject.Properties.Name -contains 'events') -and -not $events) {
+  [void]$watch.PSObject.Properties.Remove('events')
 }
 if ($watch -and $events) {
   $watch | Add-Member -NotePropertyName 'events' -NotePropertyValue $events -Force
