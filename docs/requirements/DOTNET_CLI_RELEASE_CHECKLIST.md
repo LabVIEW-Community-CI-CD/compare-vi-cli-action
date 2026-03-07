@@ -4,7 +4,7 @@
 ## Status
 
 - Owner: CI/CD maintainers
-- Tracking issue: [#850](https://github.com/LabVIEW-Community-CI-CD/compare-vi-cli-action/issues/850)
+- Tracking issue: [#854](https://github.com/LabVIEW-Community-CI-CD/compare-vi-cli-action/issues/854)
 - Last updated: 2026-03-07
 
 ## Canonical release identity
@@ -56,6 +56,9 @@
 - [ ] `tools/PrePush-Checks.ps1` passes on the release branch.
 - [ ] `dotnet test src/CompareVi.Tools.Cli.Tests/CompareVi.Tools.Cli.Tests.csproj`
       passes on the release branch.
+- [ ] `CompareVI.Tools` bundle certification records `default`, `attributes`,
+      `front-panel`, and `block-diagram` without `Unspecified` category
+      collapse.
 - [ ] `compare range` real execution validation is recorded.
 - [ ] `history run` real execution validation is recorded.
 - [ ] `report consolidate` artifact-path validation is recorded.

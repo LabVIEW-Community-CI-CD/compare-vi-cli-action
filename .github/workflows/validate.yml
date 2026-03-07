@@ -946,6 +946,85 @@ jobs:
         path: ${{ runner.temp }}/sessionindex-v2-contract/session-index-v2-contract.json
         if-no-files-found: warn
 
+  comparevi-history-bundle-certification:
+    needs: [smoke-gate, lint, fixtures, session-index, session-index-v2-contract]
+    if: needs.smoke-gate.outputs.skip != 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    defaults:
+      run:
+        shell: pwsh
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+
+      - name: Setup Node 20
+        uses: actions/setup-node@v5
+        with:
+          node-version: '20'
+
+      - name: Install Node dependencies
+        run: node tools/npm/cli.mjs ci
+
+      - name: Publish CompareVI.Tools bundle for certification
+        id: bundle
+        run: |
+          $resultsRoot = 'tests/results/_agent/comparevi-history-bundle-certification'
+          $bundleOutputRoot = Join-Path $resultsRoot 'bundle-artifacts'
+          $metadataPath = Join-Path $resultsRoot 'comparevi-tools-artifact.json'
+          New-Item -ItemType Directory -Path $resultsRoot -Force | Out-Null
+          pwsh -NoLogo -NoProfile -File tools/Publish-CompareVIToolsArtifact.ps1 `
+            -OutputRoot $bundleOutputRoot `
+            -MetadataReportPath $metadataPath
+          $bundleMetadata = Get-Content -LiteralPath $metadataPath -Raw | ConvertFrom-Json -Depth 12
+          $bundleArchivePath = Join-Path (Resolve-Path -LiteralPath $bundleOutputRoot).Path $bundleMetadata.bundle.archiveName
+          "bundle_archive_path=$bundleArchivePath" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
+          "bundle_metadata_path=$metadataPath" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
+
+      - name: Validate CompareVI.Tools metadata schema
+        run: |
+          node tools/npm/run-script.mjs schema:validate -- `
+            --schema docs/schemas/comparevi-tools-release-manifest-v1.schema.json `
+            --data '${{ steps.bundle.outputs.bundle_metadata_path }}'
+
+      - name: Run CompareVI history bundle certification
+        id: certification
+        run: |
+          $resultsRoot = 'tests/results/_agent/comparevi-history-bundle-certification'
+          $summaryPath = Join-Path $resultsRoot 'comparevi-history-bundle-certification.json'
+          pwsh -NoLogo -NoProfile -File tools/Test-CompareVIHistoryBundleCertification.ps1 `
+            -ResultsDir $resultsRoot `
+            -SummaryJsonPath $summaryPath `
+            -BundleArchivePath '${{ steps.bundle.outputs.bundle_archive_path }}' `
+            -GitHubOutputPath $env:GITHUB_OUTPUT `
+            -StepSummaryPath $env:GITHUB_STEP_SUMMARY
+
+      - name: Validate bundle certification schema
+        run: |
+          node tools/npm/run-script.mjs schema:validate -- `
+            --schema docs/schemas/comparevi-history-bundle-certification-v1.schema.json `
+            --data '${{ steps.certification.outputs.summary-json-path }}'
+
+      - name: Render bundle certification markdown
+        run: |
+          $resultsRoot = 'tests/results/_agent/comparevi-history-bundle-certification'
+          $markdownPath = Join-Path $resultsRoot 'comparevi-history-bundle-certification.md'
+          node tools/npm/run-script.mjs history:bundle:verify -- `
+            --summary '${{ steps.certification.outputs.summary-json-path }}' `
+            --markdown $markdownPath `
+            --step-summary $env:GITHUB_STEP_SUMMARY
+
+      - name: Upload bundle certification artifacts
+        if: always()
+        uses: actions/upload-artifact@v5
+        with:
+          name: validate-comparevi-history-bundle-certification
+          path: |
+            tests/results/_agent/comparevi-history-bundle-certification/**
+          if-no-files-found: error
+
   vi-history-scenarios-skip-note:
     needs: [smoke-gate, lint, fixtures, session-index, session-index-v2-contract]
     if: >
@@ -978,6 +1057,9 @@ jobs:
         github.event.inputs.allow_noncanonical_vi_history == 'true'
       )
     runs-on: [self-hosted, Windows, X64, self-hosted-docker-windows]
+    env:
+      NI_WINDOWS_IMAGE: nationalinstruments/labview:2026q1-windows
+      NI_WINDOWS_LABVIEW_PATH: C:\Program Files\National Instruments\LabVIEW 2026\LabVIEW.exe
     defaults:
       run:
         shell: pwsh
@@ -1047,6 +1129,8 @@ jobs:
             -ResultsRoot $resultsRoot `
             -LaneScope windows `
             -SkipLinuxProbe `
+            -WindowsImage $env:NI_WINDOWS_IMAGE `
+            -WindowsLabVIEWPath $env:NI_WINDOWS_LABVIEW_PATH `
             -HistoryScenarioSet $set
           $exit = $LASTEXITCODE
           $summaryPath = ''
@@ -1107,6 +1191,9 @@ jobs:
     needs: [smoke-gate, lint, fixtures, session-index]
     if: needs.smoke-gate.outputs.skip != 'true'
     runs-on: ubuntu-latest
+    env:
+      NI_LINUX_IMAGE: nationalinstruments/labview:2026q1-linux
+      NI_LINUX_LABVIEW_PATH: /usr/local/natinst/LabVIEW-2026-64/labview
     defaults:
       run:
         shell: pwsh
@@ -1148,7 +1235,7 @@ jobs:
 
       - name: Pull NI Linux image (2026q1-linux)
         if: steps.lane-mode.outputs.execute_lane == 'true'
-        run: docker pull nationalinstruments/labview:2026q1-linux
+        run: docker pull $env:NI_LINUX_IMAGE
 
       - name: Manage Docker runtime (Linux preflight)
         if: steps.lane-mode.outputs.execute_lane == 'true'
@@ -1178,7 +1265,8 @@ jobs:
           pwsh -NoLogo -NoProfile -File tools/Run-NILinuxContainerCompare.ps1 `
             -BaseVi 'fixtures/vi-stage/control-rename/Base.vi' `
             -HeadVi 'fixtures/vi-stage/control-rename/Head.vi' `
-            -Image 'nationalinstruments/labview:2026q1-linux' `
+            -Image $env:NI_LINUX_IMAGE `
+            -LabVIEWPath $env:NI_LINUX_LABVIEW_PATH `
             -ReportPath $reportPath `
             -TimeoutSeconds 300 `
             -AutoRepairRuntime:$true `

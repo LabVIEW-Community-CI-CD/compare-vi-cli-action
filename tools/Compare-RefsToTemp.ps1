@@ -74,6 +74,35 @@ function Normalize-ExistingPath {
   try { return (Resolve-Path -LiteralPath $Candidate -ErrorAction Stop).Path } catch { return $Candidate }
 }
 
+function Resolve-TempRoot {
+  $candidates = @(
+    $env:TEMP,
+    $env:TMP,
+    $env:TMPDIR,
+    $env:RUNNER_TEMP
+  )
+
+  foreach ($candidate in $candidates) {
+    if ([string]::IsNullOrWhiteSpace($candidate)) { continue }
+    try {
+      $resolved = [System.IO.Path]::GetFullPath($candidate)
+      if (-not (Test-Path -LiteralPath $resolved -PathType Container)) {
+        New-Item -ItemType Directory -Path $resolved -Force | Out-Null
+      }
+      return $resolved
+    } catch {}
+  }
+
+  $fallback = [System.IO.Path]::GetTempPath()
+  if ([string]::IsNullOrWhiteSpace($fallback)) {
+    throw 'Unable to resolve a temporary directory for Compare-RefsToTemp.'
+  }
+  if (-not (Test-Path -LiteralPath $fallback -PathType Container)) {
+    New-Item -ItemType Directory -Path $fallback -Force | Out-Null
+  }
+  return $fallback
+}
+
 function Get-PositiveIntFromEnv {
   param([string[]]$Names)
   foreach ($name in @($Names | Where-Object { -not [string]::IsNullOrWhiteSpace($_) })) {
@@ -417,6 +446,12 @@ function Invoke-PwshProcess {
   $psi.UseShellExecute = $false
   $psi.RedirectStandardOutput = $true
   $psi.RedirectStandardError = $true
+  $processTempRoot = Resolve-TempRoot
+  foreach ($tempVar in @('TEMP','TMP','TMPDIR','RUNNER_TEMP')) {
+    if ([string]::IsNullOrWhiteSpace($psi.Environment[$tempVar])) {
+      $psi.Environment[$tempVar] = $processTempRoot
+    }
+  }
   $proc = [System.Diagnostics.Process]::Start($psi)
   $stdout = $proc.StandardOutput.ReadToEnd()
   $stderr = $proc.StandardError.ReadToEnd()
@@ -498,7 +533,8 @@ if ($detailRequested -or $InvokeScriptPath) {
     throw "Invoke-LVCompare script not found: $invokeScriptResolved"
   }
 }
-$tmp = Join-Path $env:TEMP ("refcmp-" + [guid]::NewGuid().ToString('N'))
+$tmpRoot = Resolve-TempRoot
+$tmp = Join-Path $tmpRoot ("refcmp-" + [guid]::NewGuid().ToString('N'))
 New-Item -ItemType Directory -Path $tmp -Force | Out-Null
 $base = Join-Path $tmp 'Base.vi'
 $head = Join-Path $tmp 'Head.vi'

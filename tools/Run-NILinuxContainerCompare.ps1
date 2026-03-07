@@ -942,10 +942,16 @@ try {
     $capturePath = Join-Path $reportDirectory 'ni-linux-container-capture.json'
     $stdoutPath = Join-Path $reportDirectory 'ni-linux-container-stdout.txt'
     $stderrPath = Join-Path $reportDirectory 'ni-linux-container-stderr.txt'
+    $resolvedLabVIEWPath = if ([string]::IsNullOrWhiteSpace($LabVIEWPath)) {
+      if ([string]::IsNullOrWhiteSpace($env:NI_LINUX_LABVIEW_PATH)) { '' } else { $env:NI_LINUX_LABVIEW_PATH.Trim() }
+    } else {
+      $LabVIEWPath.Trim()
+    }
 
     $capture.baseVi = $baseViPath
     $capture.headVi = $headViPath
     $capture.reportPath = $resolvedReportPath
+    $capture.labviewPath = $resolvedLabVIEWPath
     $capture.stdoutPath = $stdoutPath
     $capture.stderrPath = $stderrPath
     if (-not $capture.runtimeDeterminism) {
@@ -1010,8 +1016,8 @@ try {
         $dockerArgs += @('--env', ("{0}={1}" -f $stubVar, $stubValue))
       }
     }
-    if (-not [string]::IsNullOrWhiteSpace($LabVIEWPath)) {
-      $dockerArgs += @('--env', ("COMPARE_LABVIEW_PATH={0}" -f $LabVIEWPath))
+    if (-not [string]::IsNullOrWhiteSpace($resolvedLabVIEWPath)) {
+      $dockerArgs += @('--env', ("COMPARE_LABVIEW_PATH={0}" -f $resolvedLabVIEWPath))
     }
     $dockerArgs += @(
       $Image,

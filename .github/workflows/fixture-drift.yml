@@ -169,6 +169,7 @@ jobs:
     timeout-minutes: 12
     env:
       NI_LINUX_IMAGE: nationalinstruments/labview:2026q1-linux
+      NI_LINUX_LABVIEW_PATH: /usr/local/natinst/LabVIEW-2026-64/labview
     permissions:
       actions: read
       contents: read
@@ -209,6 +210,7 @@ jobs:
           -BaseVi '${{ steps.prep.outputs.base }}' `
           -HeadVi '${{ steps.prep.outputs.head }}' `
           -Image $env:NI_LINUX_IMAGE `
+          -LabVIEWPath $env:NI_LINUX_LABVIEW_PATH `
           -ReportPath $reportPath `
           -TimeoutSeconds 180 `
           -HeartbeatSeconds 15 `

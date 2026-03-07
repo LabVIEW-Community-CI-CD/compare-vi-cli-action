@@ -1,0 +1,311 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://labview-community-ci-cd.github.io/compare-vi-cli-action/schemas/comparevi-history-bundle-certification-v1.schema.json",
+  "title": "CompareVI History Bundle Certification v1",
+  "type": "object",
+  "required": [
+    "schema",
+    "generatedAt",
+    "targetPath",
+    "startRef",
+    "maxPairs",
+    "requestedMode",
+    "resultsDir",
+    "execution",
+    "outputs",
+    "aggregate",
+    "warningText",
+    "modes",
+    "certification"
+  ],
+  "properties": {
+    "schema": {
+      "const": "comparevi-history-bundle-certification@v1"
+    },
+    "generatedAt": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "targetPath": {
+      "type": "string"
+    },
+    "startRef": {
+      "type": "string"
+    },
+    "maxPairs": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "requestedMode": {
+      "type": "string"
+    },
+    "resultsDir": {
+      "type": "string"
+    },
+    "execution": {
+      "type": "object",
+      "required": [
+        "mode",
+        "repoRoot",
+        "bundleRoot",
+        "historyScriptPath",
+        "invokeScriptPath"
+      ],
+      "properties": {
+        "mode": {
+          "enum": [
+            "repo-source",
+            "bundle"
+          ]
+        },
+        "repoRoot": {
+          "type": "string"
+        },
+        "bundleRoot": {
+          "type": "string"
+        },
+        "bundleArchivePath": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "historyScriptPath": {
+          "type": "string"
+        },
+        "invokeScriptPath": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": false
+    },
+    "outputs": {
+      "type": "object",
+      "required": [
+        "aggregateManifestPath",
+        "historyReportMd",
+        "historyReportHtml",
+        "historyGitHubOutputPath",
+        "stdoutPath",
+        "stderrPath",
+        "stepSummaryPath"
+      ],
+      "properties": {
+        "aggregateManifestPath": {
+          "type": "string"
+        },
+        "historyReportMd": {
+          "type": "string"
+        },
+        "historyReportHtml": {
+          "type": "string"
+        },
+        "historyGitHubOutputPath": {
+          "type": "string"
+        },
+        "stdoutPath": {
+          "type": "string"
+        },
+        "stderrPath": {
+          "type": "string"
+        },
+        "stepSummaryPath": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": false
+    },
+    "aggregate": {
+      "$ref": "#/$defs/aggregateStats"
+    },
+    "warningText": {
+      "type": "string"
+    },
+    "modes": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/modeSummary"
+      }
+    },
+    "certification": {
+      "type": "object",
+      "required": [
+        "expectedModes",
+        "actualModes",
+        "missingModes",
+        "unexpectedModes",
+        "noUnspecified",
+        "warningHasUnspecified",
+        "warningHasExplicitCategories",
+        "passed"
+      ],
+      "properties": {
+        "expectedModes": {
+          "$ref": "#/$defs/stringArray"
+        },
+        "actualModes": {
+          "$ref": "#/$defs/stringArray"
+        },
+        "missingModes": {
+          "$ref": "#/$defs/stringArray"
+        },
+        "unexpectedModes": {
+          "$ref": "#/$defs/stringArray"
+        },
+        "noUnspecified": {
+          "type": "boolean"
+        },
+        "warningHasUnspecified": {
+          "type": "boolean"
+        },
+        "warningHasExplicitCategories": {
+          "type": "boolean"
+        },
+        "passed": {
+          "type": "boolean"
+        }
+      },
+      "additionalProperties": false
+    }
+  },
+  "$defs": {
+    "stringArray": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "countMap": {
+      "type": [
+        "object",
+        "null"
+      ],
+      "additionalProperties": {
+        "type": "integer",
+        "minimum": 0
+      }
+    },
+    "aggregateStats": {
+      "type": "object",
+      "required": [
+        "processed",
+        "diffs",
+        "signalDiffs",
+        "noiseCollapsed",
+        "categoryCounts",
+        "bucketCounts"
+      ],
+      "properties": {
+        "processed": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "diffs": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "signalDiffs": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "noiseCollapsed": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "categoryCounts": {
+          "$ref": "#/$defs/countMap"
+        },
+        "bucketCounts": {
+          "$ref": "#/$defs/countMap"
+        }
+      },
+      "additionalProperties": false
+    },
+    "collapsedNoise": {
+      "type": "object",
+      "required": [
+        "count",
+        "categoryCounts",
+        "bucketCounts"
+      ],
+      "properties": {
+        "count": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "categoryCounts": {
+          "$ref": "#/$defs/countMap"
+        },
+        "bucketCounts": {
+          "$ref": "#/$defs/countMap"
+        }
+      },
+      "additionalProperties": false
+    },
+    "modeSummary": {
+      "type": "object",
+      "required": [
+        "name",
+        "slug",
+        "manifestPath",
+        "status",
+        "flags",
+        "processed",
+        "diffs",
+        "signalDiffs",
+        "noiseCollapsed",
+        "stopReason",
+        "categoryCounts",
+        "bucketCounts",
+        "collapsedNoise"
+      ],
+      "properties": {
+        "name": {
+          "type": "string"
+        },
+        "slug": {
+          "type": "string"
+        },
+        "manifestPath": {
+          "type": "string"
+        },
+        "status": {
+          "type": "string"
+        },
+        "flags": {
+          "$ref": "#/$defs/stringArray"
+        },
+        "processed": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "diffs": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "signalDiffs": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "noiseCollapsed": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "stopReason": {
+          "type": "string"
+        },
+        "categoryCounts": {
+          "$ref": "#/$defs/countMap"
+        },
+        "bucketCounts": {
+          "$ref": "#/$defs/countMap"
+        },
+        "collapsedNoise": {
+          "$ref": "#/$defs/collapsedNoise"
+        }
+      },
+      "additionalProperties": false
+    }
+  },
+  "additionalProperties": false
+}

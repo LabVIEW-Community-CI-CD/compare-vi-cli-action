@@ -75,6 +75,10 @@ jobs:
         with:
           node-version: '20'
 
+      - name: Install Node dependencies
+        shell: pwsh
+        run: node tools/npm/cli.mjs ci
+
       - name: Build release notes from CHANGELOG
         id: notes
         shell: bash
@@ -124,6 +128,46 @@ jobs:
             -JsonPath tests/results/_agent/release/comparevi-tools-artifact.json `
             -SchemaPath docs/schemas/comparevi-tools-release-manifest-v1.schema.json
 
+      - name: Run CompareVI.Tools bundle certification
+        id: bundle_certification
+        shell: pwsh
+        run: |
+          $resultsRoot = 'tests/results/_agent/release/comparevi-history-bundle-certification'
+          $summaryPath = Join-Path $resultsRoot 'comparevi-history-bundle-certification.json'
+          pwsh -NoLogo -NoProfile -File tools/Test-CompareVIHistoryBundleCertification.ps1 `
+            -ResultsDir $resultsRoot `
+            -SummaryJsonPath $summaryPath `
+            -BundleArchivePath '${{ steps.comparevi_tools.outputs.comparevi_tools_archive_path }}' `
+            -GitHubOutputPath $env:GITHUB_OUTPUT `
+            -StepSummaryPath $env:GITHUB_STEP_SUMMARY
+
+      - name: Validate bundle certification schema
+        shell: pwsh
+        run: |
+          node tools/npm/run-script.mjs schema:validate -- `
+            --schema docs/schemas/comparevi-history-bundle-certification-v1.schema.json `
+            --data '${{ steps.bundle_certification.outputs.summary-json-path }}'
+
+      - name: Render bundle certification markdown
+        shell: pwsh
+        run: |
+          $resultsRoot = 'tests/results/_agent/release/comparevi-history-bundle-certification'
+          $markdownPath = Join-Path $resultsRoot 'comparevi-history-bundle-certification.md'
+          node tools/npm/run-script.mjs history:bundle:verify -- `
+            --summary '${{ steps.bundle_certification.outputs.summary-json-path }}' `
+            --markdown $markdownPath `
+            --step-summary $env:GITHUB_STEP_SUMMARY
+
+      - name: Append bundle certification summary
+        shell: pwsh
+        run: |
+          $markdownPath = 'tests/results/_agent/release/comparevi-history-bundle-certification/comparevi-history-bundle-certification.md'
+          if (-not (Test-Path -LiteralPath $markdownPath -PathType Leaf)) {
+            throw "Bundle certification markdown not found: $markdownPath"
+          }
+          '' | Out-File -FilePath RELEASE_NOTES.md -Encoding utf8 -Append
+          Get-Content -LiteralPath $markdownPath | Out-File -FilePath RELEASE_NOTES.md -Encoding utf8 -Append
+
       - name: Publish CLI artifacts
         shell: pwsh
         run: pwsh -NoLogo -NoProfile -File tools/Publish-Cli.ps1 -CompareViSharedSource package-first -PrepareSharedPackageFeed -FailOnSharedFallback
@@ -162,6 +206,7 @@ jobs:
             artifacts/cli/sbom.spdx.json
             artifacts/cli/provenance.json
             tests/results/_agent/release/comparevi-tools-artifact.json
+            tests/results/_agent/release/comparevi-history-bundle-certification/**
             tests/results/_agent/release/shared-source-resolution.json
           if-no-files-found: error
 

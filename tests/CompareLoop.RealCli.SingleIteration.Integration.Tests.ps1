@@ -1,4 +1,5 @@
 #Requires -Version 7.0
+# CompareVI-TestPlane: legacy-host-labview
 # Tag: Integration (real loop mode with LVCompare)
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'

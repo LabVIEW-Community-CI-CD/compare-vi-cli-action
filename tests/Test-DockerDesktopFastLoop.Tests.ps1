@@ -635,7 +635,7 @@ if (-not [string]::IsNullOrWhiteSpace($GitHubOutputPath)) {
     }
   }
 
-  It 'forwards LabVIEW path from environment to windows history compare' {
+  It 'prefers NI_WINDOWS_LABVIEW_PATH over host-style LABVIEW_PATH for windows history compare' {
     $repoRoot = Join-Path $TestDrive 'fast-loop-labview-path-forwarding'
     New-HarnessRepo -RootPath $repoRoot
 
@@ -644,8 +644,10 @@ if (-not [string]::IsNullOrWhiteSpace($GitHubOutputPath)) {
       $resultsRoot = Join-Path $repoRoot 'tests/results/local-parity'
       $tracePath = Join-Path $resultsRoot 'windows-trace.log'
       $expectedPath = 'C:\Program Files\National Instruments\LabVIEW 2026\LabVIEW.exe'
+      $hostPath = 'C:\Program Files\National Instruments\LabVIEW 2025\LabVIEW.exe'
       $env:FASTLOOP_WINDOWS_TRACE_PATH = $tracePath
-      $env:LABVIEW_PATH = $expectedPath
+      $env:NI_WINDOWS_LABVIEW_PATH = $expectedPath
+      $env:LABVIEW_PATH = $hostPath
 
       $output = & pwsh -NoLogo -NoProfile -File (Join-Path $repoRoot 'tools' 'Test-DockerDesktopFastLoop.ps1') `
         -ResultsRoot $resultsRoot `
@@ -659,6 +661,38 @@ if (-not [string]::IsNullOrWhiteSpace($GitHubOutputPath)) {
       $traceLines.Count | Should -BeGreaterThan 0
       $traceLines[-1] | Should -Match 'probe=False;labviewPath='
       ($traceLines[-1] -match ("labviewPath={0}(;|$)" -f [regex]::Escape($expectedPath))) | Should -BeTrue
+      ($traceLines[-1] -match ("labviewPath={0}(;|$)" -f [regex]::Escape($hostPath))) | Should -BeFalse
+    } finally {
+      Remove-Item Env:FASTLOOP_WINDOWS_TRACE_PATH -ErrorAction SilentlyContinue
+      Remove-Item Env:NI_WINDOWS_LABVIEW_PATH -ErrorAction SilentlyContinue
+      Remove-Item Env:LABVIEW_PATH -ErrorAction SilentlyContinue
+      Pop-Location | Out-Null
+    }
+  }
+
+  It 'does not forward host-style LABVIEW_PATH when docker-specific windows path is absent' {
+    $repoRoot = Join-Path $TestDrive 'fast-loop-host-labview-ignored'
+    New-HarnessRepo -RootPath $repoRoot
+
+    Push-Location $repoRoot
+    try {
+      $resultsRoot = Join-Path $repoRoot 'tests/results/local-parity'
+      $tracePath = Join-Path $resultsRoot 'windows-trace.log'
+      $hostPath = 'C:\Program Files\National Instruments\LabVIEW 2025\LabVIEW.exe'
+      $env:FASTLOOP_WINDOWS_TRACE_PATH = $tracePath
+      $env:LABVIEW_PATH = $hostPath
+
+      $output = & pwsh -NoLogo -NoProfile -File (Join-Path $repoRoot 'tools' 'Test-DockerDesktopFastLoop.ps1') `
+        -ResultsRoot $resultsRoot `
+        -SkipWindowsProbe `
+        -SkipLinuxProbe `
+        -HistoryScenarioSet history-core 2>&1
+      $LASTEXITCODE | Should -Be 0 -Because ($output -join "`n")
+
+      Test-Path -LiteralPath $tracePath -PathType Leaf | Should -BeTrue
+      $traceLines = @(Get-Content -LiteralPath $tracePath | Where-Object { -not [string]::IsNullOrWhiteSpace($_) })
+      $traceLines.Count | Should -BeGreaterThan 0
+      $traceLines[-1] | Should -Match 'probe=False;labviewPath=(;|$)'
     } finally {
       Remove-Item Env:FASTLOOP_WINDOWS_TRACE_PATH -ErrorAction SilentlyContinue
       Remove-Item Env:LABVIEW_PATH -ErrorAction SilentlyContinue

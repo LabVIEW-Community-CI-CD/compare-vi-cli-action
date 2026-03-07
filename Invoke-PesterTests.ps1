@@ -234,6 +234,69 @@ $script:GetPesterInstallGuidance = {
   return $guidance
 }
 
+function Get-AdditionalPesterModuleRoots {
+  $roots = New-Object System.Collections.Generic.List[string]
+  $candidates = @()
+
+  foreach ($envName in @('COMPAREVI_PESTER_MODULE_ROOT', 'COMPAREVI_POWERSHELL_MODULES')) {
+    $candidate = [System.Environment]::GetEnvironmentVariable($envName, 'Process')
+    if (-not [string]::IsNullOrWhiteSpace($candidate)) {
+      $candidates += $candidate
+    }
+  }
+
+  if (-not [string]::IsNullOrWhiteSpace($env:LOCALAPPDATA)) {
+    $candidates += (Join-Path $env:LOCALAPPDATA 'compare-vi-cli-action\PowerShell\Modules')
+  }
+
+  $repoToolsModules = Join-Path $PSScriptRoot 'tools' 'modules'
+  $candidates += $repoToolsModules
+
+  foreach ($candidate in $candidates) {
+    if ([string]::IsNullOrWhiteSpace($candidate)) { continue }
+    if (-not (Test-Path -LiteralPath $candidate -PathType Container)) { continue }
+    $resolved = (Resolve-Path -LiteralPath $candidate).Path
+    if (-not $roots.Contains($resolved)) {
+      $roots.Add($resolved) | Out-Null
+    }
+  }
+
+  return @($roots.ToArray())
+}
+
+function Prepend-ModuleRootsToPSModulePath {
+  param([string[]]$ModuleRoots)
+
+  if (-not $ModuleRoots -or $ModuleRoots.Count -eq 0) {
+    return @()
+  }
+
+  $separator = [System.IO.Path]::PathSeparator
+  $existing = @(
+    $env:PSModulePath -split $separator |
+      Where-Object { -not [string]::IsNullOrWhiteSpace($_) }
+  )
+
+  $normalizedExisting = New-Object System.Collections.Generic.HashSet[string] ([System.StringComparer]::OrdinalIgnoreCase)
+  foreach ($entry in $existing) {
+    [void]$normalizedExisting.Add($entry)
+  }
+
+  $prepended = New-Object System.Collections.Generic.List[string]
+  foreach ($root in $ModuleRoots) {
+    if ([string]::IsNullOrWhiteSpace($root)) { continue }
+    if ($normalizedExisting.Contains($root)) { continue }
+    $prepended.Add($root) | Out-Null
+    [void]$normalizedExisting.Add($root)
+  }
+
+  if ($prepended.Count -gt 0) {
+    $env:PSModulePath = (@($prepended.ToArray()) + $existing) -join $separator
+  }
+
+  return @($prepended.ToArray())
+}
+
 $labviewPidTrackerModule = Join-Path $PSScriptRoot 'tools' 'LabVIEWPidTracker.psm1'
 $labviewPidTrackerLoaded = $false
 $script:labviewPidContextResolver = $null
@@ -1579,12 +1642,26 @@ if ($limitToSingle) {
     try {
       $entries = @()
       foreach ($f in $testFiles) {
-        $text = try { Get-Content -LiteralPath $f.FullName -Raw -ErrorAction Stop } catch { '' }
-        $isInt = if ($text) { ($text -match '(?im)-Tag\s*(?:''Integration''|"Integration"|Integration\b)') } else { $false }
+        $metadata = Get-DispatcherTestMetadata -File $f
         $entries += [pscustomobject]@{
           path = ($f.FullName.Substring(((Get-Location).Path).Length)).TrimStart('\\','/')
           fullPath = $f.FullName
-          tags = @($isInt ? 'Integration' : @())
+          tags = @($metadata.Tags)
+          executionPlane = [string]$metadata.ExecutionPlane
+          modes = @($metadata.Modes)
+        }
+      }
+      $executionPlaneCounts = [ordered]@{}
+      $modeCoverageCounts = [ordered]@{}
+      foreach ($entry in $entries) {
+        $planeKey = [string]$entry.executionPlane
+        if ([string]::IsNullOrWhiteSpace($planeKey)) { $planeKey = 'host-neutral' }
+        if (-not $executionPlaneCounts.Contains($planeKey)) { $executionPlaneCounts[$planeKey] = 0 }
+        $executionPlaneCounts[$planeKey] = [int]$executionPlaneCounts[$planeKey] + 1
+        foreach ($modeName in @($entry.modes)) {
+          if ([string]::IsNullOrWhiteSpace($modeName)) { continue }
+          if (-not $modeCoverageCounts.Contains($modeName)) { $modeCoverageCounts[$modeName] = 0 }
+          $modeCoverageCounts[$modeName] = [int]$modeCoverageCounts[$modeName] + 1
         }
       }
       $manifest = [pscustomobject]@{
@@ -1596,6 +1673,8 @@ if ($limitToSingle) {
           total = $entries.Count
           integration = @($entries | Where-Object { $_.tags -contains 'Integration' }).Count
           unit = @($entries | Where-Object { $_.tags.Count -eq 0 }).Count
+          executionPlanes = [pscustomobject]$executionPlaneCounts
+          modeCoverage = [pscustomobject]$modeCoverageCounts
         }
         files = $entries
       }
@@ -1734,6 +1813,36 @@ if ($suppressPatternSelfTest)
   }
 }
 
+$allowLegacyHostLabVIEW = Test-EnvTruthy $env:COMPAREVI_ALLOW_LEGACY_HOST_LABVIEW
+$includePatternsAppliedForPlane = $false
+try {
+  if ($patternFilters -and $patternFilters.Include) {
+    $includePatternsAppliedForPlane = [bool]$patternFilters.Include.Applied
+  }
+} catch {
+  $includePatternsAppliedForPlane = $false
+}
+$explicitExecutionSelection = ($limitToSingle -or $includePatternsAppliedForPlane)
+$executionPlaneMetadata = @($testFiles | ForEach-Object { Get-DispatcherTestMetadata -File $_ })
+$executionPlaneResult = Invoke-DispatcherExecutionPlaneFilter `
+  -Metadata $executionPlaneMetadata `
+  -AllowLegacyHostLabVIEW:$allowLegacyHostLabVIEW `
+  -ExplicitSelection:$explicitExecutionSelection
+
+if ($executionPlaneResult.ExcludedCount -gt 0) {
+  $excludedNames = @($executionPlaneResult.Excluded | ForEach-Object { Split-Path -Leaf $_.FullName } | Sort-Object)
+  Write-Host (
+    "[plane] Pre-excluded {0} legacy host-LabVIEW test file(s): {1}" -f
+    $executionPlaneResult.ExcludedCount,
+    ($excludedNames -join ', ')
+  ) -ForegroundColor Yellow
+  $testFiles = @($executionPlaneResult.Files)
+}
+
+if ($executionPlaneResult.ExcludedCount -gt 0 -and -not (Get-Variable -Name originalTestFileCount -Scope Script -ErrorAction SilentlyContinue)) {
+  $originalTestFileCount = $testFiles.Count + $executionPlaneResult.ExcludedCount
+}
+
 if (-not (Get-Variable -Name maxTestFilesApplied -ErrorAction SilentlyContinue)) {
   $maxTestFilesApplied = $false
 }
@@ -1748,6 +1857,17 @@ if ($ExcludePatterns -and $ExcludePatterns.Count -gt 0) { [void]$selectionReason
 if ($maxTestFilesApplied) { [void]$selectionReasons.Add('MaxTestFiles') }
 if ($selectedTestPaths.Count -lt $originalTestFileCount) { [void]$selectionReasons.Add('SelectionReduced') }
 if ($patternSelfTestSuppressed) { [void]$selectionReasons.Add('SuppressPatternSelfTest') }
+if ($executionPlaneResult.ExcludedCount -gt 0) { [void]$selectionReasons.Add('ExecutionPlanePolicy') }
+
+if ($executionPlaneResult.ExplicitBlocked) {
+  $blockedNames = @($executionPlaneResult.Excluded | ForEach-Object { Split-Path -Leaf $_.FullName } | Sort-Object)
+  Write-Error (
+    ("Selected test file(s) require the deprecated host-LabVIEW plane and are blocked: {0}. " +
+    "Use the Docker-backed validation lanes or refactor these tests to container execution.") -f
+    ($blockedNames -join ', ')
+  )
+  exit 1
+}
 
 # Early exit path when zero tests discovered: emit minimal artifacts for stable downstream handling
 if ($testFiles.Count -eq 0) {
@@ -1902,6 +2022,10 @@ Write-Host ""
 Write-Host "Checking for Pester availability..." -ForegroundColor Yellow
 $pesterVersionRequired = $PesterPolicyVersion
 $pesterVersionParsed = [version]$pesterVersionRequired
+$prependedPesterModuleRoots = @(Prepend-ModuleRootsToPSModulePath -ModuleRoots @(Get-AdditionalPesterModuleRoots))
+if ($prependedPesterModuleRoots.Count -gt 0) {
+  Write-Host ("Prepended PSModulePath roots for Pester discovery: {0}" -f ($prependedPesterModuleRoots -join '; ')) -ForegroundColor DarkCyan
+}
 $pesterModule = Get-Module -ListAvailable -Name Pester | Where-Object { $_.Version -eq $pesterVersionParsed } | Select-Object -First 1
 
 if (-not $pesterModule) {
@@ -1914,6 +2038,9 @@ if (-not $pesterModule) {
   Write-Host ("Remediation ({0}):" -f $guidance.OsLabel) -ForegroundColor Yellow
   foreach ($line in $guidance.Lines) {
     Write-Host ("  - {0}" -f $line) -ForegroundColor Cyan
+  }
+  if ($prependedPesterModuleRoots.Count -gt 0) {
+    Write-Host ("Custom module roots searched: {0}" -f ($prependedPesterModuleRoots -join '; ')) -ForegroundColor DarkCyan
   }
   Write-Host ""
   exit 1
@@ -2006,8 +2133,21 @@ try {
 if (-not $script:UseSingleInvoker) {
   if ($script:stuckGuardEnabled) { _Write-HeartbeatLine 'start' }
   if ($effectiveTimeoutSeconds -gt 0) {
-    if ($localDispatcherMode) {
-      Write-Host "::notice::Local dispatcher bypassing Start-Job timeout guard; running inline" -ForegroundColor DarkGray
+    $bypassStartJobTimeoutGuard = $localDispatcherMode
+    if (-not $bypassStartJobTimeoutGuard) {
+      $runningInGitHubActions = _IsTruthyEnv $env:GITHUB_ACTIONS
+      $forcePesterJobTimeout = _IsTruthyEnv $env:FORCE_PESTER_JOB_TIMEOUT
+      if (-not $runningInGitHubActions -and -not $forcePesterJobTimeout) {
+        $bypassStartJobTimeoutGuard = $true
+      }
+    }
+
+    if ($bypassStartJobTimeoutGuard) {
+      if ($localDispatcherMode) {
+        Write-Host "::notice::Local dispatcher bypassing Start-Job timeout guard; running inline" -ForegroundColor DarkGray
+      } else {
+        Write-Host "::notice::Local non-GitHub run bypassing Start-Job timeout guard; running inline" -ForegroundColor DarkGray
+      }
       try {
         $rawOutput = & {
           $InformationPreference = 'Continue'
@@ -3639,9 +3779,3 @@ finally {
     if (-not $released) { Write-Warning "Failed to release session lock '$lockGroup'" }
   }
 }
-
-
-
-
-
-

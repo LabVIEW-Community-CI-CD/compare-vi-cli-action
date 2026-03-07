@@ -94,6 +94,22 @@ Release tags must generate a compatibility certification matrix artifact before 
 
 Lane lifecycle (add/remove/update) is documented in `docs/CERTIFICATION_MATRIX.md`.
 
+## CompareVI.Tools bundle certification
+
+Release tags and Validate runs also certify the extracted `CompareVI.Tools`
+bundle across the public history mode bundle:
+
+- JSON artifact:
+  `tests/results/_agent/release/comparevi-history-bundle-certification/comparevi-history-bundle-certification.json`
+- Markdown artifact:
+  `tests/results/_agent/release/comparevi-history-bundle-certification/comparevi-history-bundle-certification.md`
+- Generator: `tools/Test-CompareVIHistoryBundleCertification.ps1`
+- Verifier/renderer: `node tools/npm/run-script.mjs history:bundle:verify`
+
+The certification must run against the extracted bundle archive, not the source
+checkout, and it must prove `default`, `attributes`, `front-panel`, and
+`block-diagram` without `Unspecified` category collapse.
+
 ## Supply-chain trust gate
 
 Release tags must pass the supply-chain trust gate before GitHub Release publication:

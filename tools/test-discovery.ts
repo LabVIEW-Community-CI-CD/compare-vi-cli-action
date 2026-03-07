@@ -12,6 +12,8 @@ type FileEntry = {
   path: string;       // repo-relative posix path
   fullPath: string;   // absolute
   tags: string[];     // detected tags (at least 'Integration' when present)
+  executionPlane: string;
+  modes: string[];
 };
 
 function walk(dir: string, acc: string[] = []): string[] {
@@ -31,6 +33,36 @@ function hasIntegrationTag(text: string): boolean {
   // Match common patterns: -Tag 'Integration', -Tag "Integration", -Tag Integration
   const re = /-Tag\s*(?:'Integration'|"Integration"|Integration\b)/i;
   return re.test(text);
+}
+
+function getExecutionPlane(text: string): string {
+  const match = text.match(/^\s*#\s*CompareVI-TestPlane\s*:\s*([A-Za-z0-9._-]+)\s*$/im);
+  if (!match?.[1]) {
+    return 'host-neutral';
+  }
+  return match[1].trim().toLowerCase();
+}
+
+function getModeCoverage(text: string): string[] {
+  const match = text.match(/^\s*#\s*CompareVI-TestModes\s*:\s*(.+?)\s*$/im);
+  if (!match?.[1]) {
+    return [];
+  }
+
+  const modes = new Set<string>();
+  for (const token of match[1].split(/[;,]/)) {
+    const mode = token.trim().toLowerCase();
+    if (!mode) {
+      continue;
+    }
+    modes.add(mode);
+  }
+
+  return [...modes];
+}
+
+function incrementCounter(counter: Record<string, number>, key: string): void {
+  counter[key] = (counter[key] ?? 0) + 1;
 }
 
 function toPosix(p: string): string {
@@ -55,9 +87,20 @@ function main() {
     const text = fs.readFileSync(f, 'utf8');
     const tags: string[] = [];
     if (hasIntegrationTag(text)) tags.push('Integration');
+    const executionPlane = getExecutionPlane(text);
+    const modes = getModeCoverage(text);
     const rel = path.relative(repoRoot, f);
-    return { path: toPosix(rel), fullPath: f, tags };
+    return { path: toPosix(rel), fullPath: f, tags, executionPlane, modes };
   });
+
+  const executionPlanes: Record<string, number> = {};
+  const modeCoverage: Record<string, number> = {};
+  for (const entry of entries) {
+    incrementCounter(executionPlanes, entry.executionPlane);
+    for (const mode of entry.modes) {
+      incrementCounter(modeCoverage, mode);
+    }
+  }
 
   const manifest = {
     schema: 'pester-test-manifest/v1',
@@ -67,7 +110,9 @@ function main() {
     counts: {
       total: entries.length,
       integration: entries.filter(e => e.tags.includes('Integration')).length,
-      unit: entries.filter(e => !e.tags.includes('Integration')).length
+      unit: entries.filter(e => !e.tags.includes('Integration')).length,
+      executionPlanes,
+      modeCoverage
     },
     files: entries
   };
@@ -83,4 +128,3 @@ function main() {
 }
 
 main();
-

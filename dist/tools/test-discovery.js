@@ -24,6 +24,31 @@ function hasIntegrationTag(text) {
     const re = /-Tag\s*(?:'Integration'|"Integration"|Integration\b)/i;
     return re.test(text);
 }
+function getExecutionPlane(text) {
+    const match = text.match(/^\s*#\s*CompareVI-TestPlane\s*:\s*([A-Za-z0-9._-]+)\s*$/im);
+    if (!match?.[1]) {
+        return 'host-neutral';
+    }
+    return match[1].trim().toLowerCase();
+}
+function getModeCoverage(text) {
+    const match = text.match(/^\s*#\s*CompareVI-TestModes\s*:\s*(.+?)\s*$/im);
+    if (!match?.[1]) {
+        return [];
+    }
+    const modes = new Set();
+    for (const token of match[1].split(/[;,]/)) {
+        const mode = token.trim().toLowerCase();
+        if (!mode) {
+            continue;
+        }
+        modes.add(mode);
+    }
+    return [...modes];
+}
+function incrementCounter(counter, key) {
+    counter[key] = (counter[key] ?? 0) + 1;
+}
 function toPosix(p) {
     return p.replace(/\\/g, '/');
 }
@@ -50,9 +75,19 @@ function main() {
         const tags = [];
         if (hasIntegrationTag(text))
             tags.push('Integration');
+        const executionPlane = getExecutionPlane(text);
+        const modes = getModeCoverage(text);
         const rel = path.relative(repoRoot, f);
-        return { path: toPosix(rel), fullPath: f, tags };
+        return { path: toPosix(rel), fullPath: f, tags, executionPlane, modes };
     });
+    const executionPlanes = {};
+    const modeCoverage = {};
+    for (const entry of entries) {
+        incrementCounter(executionPlanes, entry.executionPlane);
+        for (const mode of entry.modes) {
+            incrementCounter(modeCoverage, mode);
+        }
+    }
     const manifest = {
         schema: 'pester-test-manifest/v1',
         generatedAt: new Date().toISOString(),
@@ -61,7 +96,9 @@ function main() {
         counts: {
             total: entries.length,
             integration: entries.filter(e => e.tags.includes('Integration')).length,
-            unit: entries.filter(e => !e.tags.includes('Integration')).length
+            unit: entries.filter(e => !e.tags.includes('Integration')).length,
+            executionPlanes,
+            modeCoverage
         },
         files: entries
     };
