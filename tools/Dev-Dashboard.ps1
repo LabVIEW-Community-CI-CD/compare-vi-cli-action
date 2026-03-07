@@ -21,26 +21,20 @@ function Invoke-Git {
   param([string[]]$Arguments)
   $git = Get-Command git -ErrorAction SilentlyContinue
   if (-not $git) { return $null }
-  $psi = New-Object System.Diagnostics.ProcessStartInfo
-  $psi.FileName = $git.Source
-  foreach ($arg in $Arguments) { $psi.ArgumentList.Add($arg) }
-  $psi.WorkingDirectory = $script:repoRoot
-  $psi.UseShellExecute = $false
-  $psi.RedirectStandardOutput = $true
-  $psi.RedirectStandardError = $true
   try {
-    $process = [System.Diagnostics.Process]::Start($psi)
+    Push-Location -LiteralPath $script:repoRoot
     try {
-      $stdout = $process.StandardOutput.ReadToEnd()
-      $process.WaitForExit()
+      $output = & $git.Source @Arguments 2>$null
+      if ($LASTEXITCODE -ne 0) { return $null }
+      $first = @($output | Where-Object { $_ -and $_ -ne '' } | Select-Object -First 1)
+      if ($first.Count -eq 0) { return $null }
+      return ($first[0].ToString()).Trim()
     } finally {
-      $process.Dispose()
+      Pop-Location
     }
   } catch {
     return $null
   }
-  if ($process.ExitCode -ne 0) { return $null }
-  return ($stdout -split "`r?`n" | Where-Object { $_ -ne '' } | Select-Object -First 1).Trim()
 }
 
 function Get-ProcessList {
@@ -462,15 +456,45 @@ function Write-TerminalReport {
   Write-Host ''
 
   $compare = $Snapshot.CompareOutcome
+  $compareExitValue = if ($compare -and $compare.PSObject.Properties.Name -contains 'ExitCode') { $compare.ExitCode } else { $null }
+  $compareDiffValue = if ($compare -and $compare.PSObject.Properties.Name -contains 'Diff') { $compare.Diff } else { $null }
+  $compareDurationValue = if ($compare -and $compare.PSObject.Properties.Name -contains 'DurationMs') { $compare.DurationMs } else { $null }
+  $compareCliPathValue = if ($compare -and $compare.PSObject.Properties.Name -contains 'CliPath') { $compare.CliPath } else { $null }
+  $compareReportPathValue = if ($compare -and $compare.PSObject.Properties.Name -contains 'ReportPath') { $compare.ReportPath } else { $null }
+  $compareCliArtifacts = if ($compare -and $compare.PSObject.Properties.Name -contains 'CliArtifacts') { $compare.CliArtifacts } else { $null }
+  $compareHistory = if ($compare -and $compare.PSObject.Properties.Name -contains 'HistorySuite') { $compare.HistorySuite } else { $null }
+  $compareHistoryManifestValue = if ($compareHistory -and $compareHistory.PSObject.Properties.Name -contains 'ManifestPath') { $compareHistory.ManifestPath } else { $null }
+  $compareHistoryResultsDirValue = if ($compareHistory -and $compareHistory.PSObject.Properties.Name -contains 'ResultsDir') { $compareHistory.ResultsDir } else { $null }
+  $compareHistoryTargetValue = if ($compareHistory -and $compareHistory.PSObject.Properties.Name -contains 'TargetPath') { $compareHistory.TargetPath } else { $null }
+  $compareHistoryStatusValue = if ($compareHistory -and $compareHistory.PSObject.Properties.Name -contains 'Status') { $compareHistory.Status } else { $null }
+  $compareHistoryModeCountValue = if ($compareHistory -and $compareHistory.PSObject.Properties.Name -contains 'ModeCount') { $compareHistory.ModeCount } else { $null }
+  $compareHistoryModeJsonValue = if ($compareHistory -and $compareHistory.PSObject.Properties.Name -contains 'ModeManifestsJson') { $compareHistory.ModeManifestsJson } else { $null }
+  $compareHistoryStatsValue = $null
+  if ($compareHistory -and $compareHistory.PSObject.Properties.Name -contains 'Stats') {
+    $compareHistoryStatsValue = $compareHistory.Stats
+  }
+  $compareHistoryProcessedValue = $null
+  $compareHistoryDiffsValue = $null
+  if ($compareHistoryStatsValue) {
+    if ($compareHistoryStatsValue.PSObject.Properties.Name -contains 'processed') { $compareHistoryProcessedValue = $compareHistoryStatsValue.processed }
+    if ($compareHistoryStatsValue.PSObject.Properties.Name -contains 'diffs') { $compareHistoryDiffsValue = $compareHistoryStatsValue.diffs }
+  }
+  $compareHistoryModes = @()
+  if ($compareHistory -and $compareHistory.PSObject.Properties.Name -contains 'Modes' -and $compareHistory.Modes) {
+    $compareHistoryModes = @($compareHistory.Modes)
+    if ($compareHistoryModeCountValue -eq $null) {
+      $compareHistoryModeCountValue = $compareHistoryModes.Count
+    }
+  }
   Write-Host "Compare Outcome"
   if ($compare) {
-    if ($compare.ExitCode -ne $null) { Write-Host "  ExitCode : $($compare.ExitCode)" }
-    if ($compare.Diff -ne $null) { Write-Host "  Diff     : $($compare.Diff)" }
-    if ($compare.DurationMs -ne $null) { Write-Host "  Duration : $([math]::Round($compare.DurationMs,1)) ms" }
-    if ($compare.CliPath) { Write-Host "  CLI Path : $($compare.CliPath)" }
-    if ($compare.ReportPath) { Write-Host "  Report   : $($compare.ReportPath)" }
-    if ($compare.CliArtifacts) {
-      $cliArtifacts = $compare.CliArtifacts
+    if ($compareExitValue -ne $null) { Write-Host "  ExitCode : $compareExitValue" }
+    if ($compareDiffValue -ne $null) { Write-Host "  Diff     : $compareDiffValue" }
+    if ($compareDurationValue -ne $null) { Write-Host "  Duration : $([math]::Round($compareDurationValue,1)) ms" }
+    if ($compareCliPathValue) { Write-Host "  CLI Path : $compareCliPathValue" }
+    if ($compareReportPathValue) { Write-Host "  Report   : $compareReportPathValue" }
+    if ($compareCliArtifacts) {
+      $cliArtifacts = $compareCliArtifacts
       $reportSizeBytes = $null
       $imageCount = $null
       $exportDir = $null
@@ -489,7 +513,7 @@ function Write-TerminalReport {
       $imgSummary = Get-CompareCliImageSummary `
         -ImageCount $imageCount `
         -ExportDir $exportDir `
-        -ReportPath $compare.ReportPath
+        -ReportPath $compareReportPathValue
       if ($imgSummary) {
         Write-Host "  CLI Images      : $imgSummary"
       }

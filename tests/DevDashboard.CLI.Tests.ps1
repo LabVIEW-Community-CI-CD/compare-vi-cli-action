@@ -14,6 +14,8 @@ Describe 'Dev Dashboard CLI' -Tag 'Unit' {
     $json = $jsonText | ConvertFrom-Json
 
     $json.Group | Should -Be 'pester-selfhosted'
+    $json.Branch | Should -Not -BeNullOrEmpty
+    $json.Commit | Should -Not -BeNullOrEmpty
     $json.SessionLock.QueueWaitSeconds | Should -Be 30
     $json.PesterTelemetry.Totals.Failed | Should -Be 1
     $json.PesterTelemetry.SessionStatus | Should -BeNullOrEmpty
@@ -38,5 +40,9 @@ Describe 'Dev Dashboard CLI' -Tag 'Unit' {
     $content | Should -Match 'Watch Mode'
     $content | Should -Match 'LabVIEW Snapshot'
     $content | Should -Match 'History Suite'
+  }
+
+  It 'renders terminal report without throwing' {
+    { & $script:cliPath -Group 'pester-selfhosted' -ResultsRoot $script:samplesRoot | Out-Null } | Should -Not -Throw
   }
 }
