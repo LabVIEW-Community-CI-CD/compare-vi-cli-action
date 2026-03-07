@@ -69,14 +69,52 @@ function resolvePath(maybeRelative) {
     return resolve(process.cwd(), maybeRelative);
 }
 function runGhJson(args) {
+    const command = `gh ${args.join(' ')}`;
     const result = spawnSync('gh', args, {
         cwd: process.cwd(),
         encoding: 'utf8',
     });
-    if (result.status !== 0) {
-        throw new Error((result.stderr || result.stdout || 'gh command failed').trim());
+    if (result.error) {
+        const errorMessage = result.error instanceof Error ? result.error.message : String(result.error);
+        throw new Error(`Failed to run "${command}": ${errorMessage}`);
     }
-    return JSON.parse(result.stdout);
+    const status = result.status ?? 0;
+    const stdout = result.stdout ?? '';
+    const stderr = result.stderr ?? '';
+    if (status !== 0) {
+        const stderrSnippet = stderr.split('\n').slice(0, 10).join('\n').trim();
+        const stdoutSnippet = stdout.split('\n').slice(0, 10).join('\n').trim();
+        const parts = [
+            `gh command failed: ${command}`,
+            `exit status: ${status}`,
+        ];
+        if (stderrSnippet) {
+            parts.push(`stderr:\n${stderrSnippet}`);
+        }
+        if (stdoutSnippet) {
+            parts.push(`stdout:\n${stdoutSnippet}`);
+        }
+        throw new Error(parts.join('\n\n'));
+    }
+    try {
+        return JSON.parse(stdout);
+    }
+    catch (error) {
+        const stderrSnippet = stderr.split('\n').slice(0, 10).join('\n').trim();
+        const stdoutSnippet = stdout.split('\n').slice(0, 10).join('\n').trim();
+        const parts = [
+            `Failed to parse JSON from gh command: ${command}`,
+            `exit status: ${status}`,
+            `parse error: ${error.message}`,
+        ];
+        if (stderrSnippet) {
+            parts.push(`stderr:\n${stderrSnippet}`);
+        }
+        if (stdoutSnippet) {
+            parts.push(`stdout:\n${stdoutSnippet}`);
+        }
+        throw new Error(parts.join('\n\n'));
+    }
 }
 function loadJsonInput(maybeFile, schema, ghArgs) {
     const payload = maybeFile ? readJsonFile(resolvePath(maybeFile)) : runGhJson(ghArgs);
