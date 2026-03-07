@@ -330,8 +330,13 @@ For Docker/Desktop VI history validation, run fast-loop lanes explicitly:
   - `node tools/npm/run-script.mjs priority:event:ingest -- ...`
   - `node tools/npm/run-script.mjs priority:policy:route -- --event <event-report-or-event-json>`
   - `node tools/npm/run-script.mjs priority:issue:route -- --decision tests/results/_agent/ops/policy-decision-report.json`
+  - `node tools/npm/run-script.mjs priority:decision:ledger -- append --decision tests/results/_agent/ops/policy-decision-report.json`
+  - `node tools/npm/run-script.mjs priority:decision:ledger -- replay --sequence <n>`
   The router dedupes by incident fingerprint marker and emits
   `tests/results/_agent/ops/issue-routing-report.json` (`priority/issue-routing-report@v1`).
+  The decision ledger is append-only (`ops-decision-ledger@v1`) at
+  `tests/results/_agent/ops/ops-decision-ledger.json` with replay output under
+  `tests/results/_agent/ops/ops-decision-replay.json`.
   For canary replay conformance (single/repeated/reordered fixtures with deterministic dedupe assertions), run
   `node tools/npm/run-script.mjs priority:canary:replay`; this emits
   `tests/results/_agent/canary/canary-replay-conformance-report.json`

@@ -59,6 +59,7 @@
     "priority:queue:readiness": "node tools/priority/queue-readiness.mjs",
     "priority:merge-sync": "node tools/priority/merge-sync-pr.mjs",
     "priority:event:ingest": "node tools/priority/event-ingest.mjs",
+    "priority:decision:ledger": "node tools/priority/decision-ledger.mjs",
     "priority:commit-integrity": "node tools/priority/commit-integrity.mjs",
     "priority:commit-integrity:drift": "node tools/priority/slo-metrics.mjs --workflow commit-integrity.yml --lookback-days 30 --max-runs 200 --threshold-failure-rate 0.3 --threshold-skip-rate 0.25 --threshold-mttr-hours 24 --threshold-stale-hours 168 --threshold-gate-regressions 5 --output tests/results/_agent/commit-integrity/commit-integrity-drift-report.json",
     "priority:canary:catalog": "node tools/priority/canary-catalog.mjs",
