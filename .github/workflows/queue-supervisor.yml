@@ -8,8 +8,17 @@ on:
         required: false
         default: false
         type: boolean
+      adaptive_cap:
+        description: 'Enable adaptive inflight cap tuning'
+        required: false
+        default: true
+        type: boolean
       max_inflight:
         description: 'Optional inflight cap override'
+        required: false
+        type: string
+      min_inflight:
+        description: 'Optional adaptive inflight floor override'
         required: false
         type: string
   schedule:
@@ -49,6 +58,8 @@ jobs:
         env:
           QUEUE_AUTOPILOT_PAUSED: ${{ vars.QUEUE_AUTOPILOT_PAUSED || '0' }}
           QUEUE_AUTOPILOT_MAX_INFLIGHT: ${{ vars.QUEUE_AUTOPILOT_MAX_INFLIGHT || '' }}
+          QUEUE_AUTOPILOT_MIN_INFLIGHT: ${{ vars.QUEUE_AUTOPILOT_MIN_INFLIGHT || '' }}
+          QUEUE_AUTOPILOT_ADAPTIVE_CAP: ${{ vars.QUEUE_AUTOPILOT_ADAPTIVE_CAP || '1' }}
         run: |
           npm ci --ignore-scripts
           $reportPath = 'tests/results/_agent/queue/queue-supervisor-report.json'
@@ -69,6 +80,15 @@ jobs:
           $maxInflightInput = '${{ inputs.max_inflight }}'
           if (-not [string]::IsNullOrWhiteSpace($maxInflightInput)) {
             $args += @('--max-inflight', $maxInflightInput.Trim())
+          }
+
+          $minInflightInput = '${{ inputs.min_inflight }}'
+          if (-not [string]::IsNullOrWhiteSpace($minInflightInput)) {
+            $args += @('--min-inflight', $minInflightInput.Trim())
+          }
+
+          if ('${{ github.event_name }}' -eq 'workflow_dispatch' -and '${{ inputs.adaptive_cap }}' -ne 'true') {
+            $args += '--no-adaptive-cap'
           }
 
           node @args

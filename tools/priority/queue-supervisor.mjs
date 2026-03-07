@@ -11,7 +11,8 @@ import { getRepoRoot } from './lib/branch-utils.mjs';
 
 const REPORT_SCHEMA = 'priority/queue-supervisor-report@v1';
 const DEFAULT_REPORT_PATH = path.join('tests', 'results', '_agent', 'queue', 'queue-supervisor-report.json');
-const DEFAULT_MAX_INFLIGHT = 4;
+const DEFAULT_MAX_INFLIGHT = 5;
+const DEFAULT_MIN_INFLIGHT = 2;
 const DEFAULT_HEALTH_SAMPLE = 10;
 const DEFAULT_HEALTH_MIN_SUCCESS_RATE = 0.8;
 const DEFAULT_HEALTH_MAX_RED_MINUTES = 30;
@@ -35,6 +36,9 @@ function printUsage() {
   console.log('  --apply                Enqueue PRs (default is dry-run planning mode).');
   console.log(`  --report <path>        Write report JSON (default: ${DEFAULT_REPORT_PATH}).`);
   console.log(`  --max-inflight <n>     Queue target cap (default: ${DEFAULT_MAX_INFLIGHT}, env QUEUE_AUTOPILOT_MAX_INFLIGHT).`);
+  console.log(`  --min-inflight <n>     Adaptive-cap floor (default: ${DEFAULT_MIN_INFLIGHT}, env QUEUE_AUTOPILOT_MIN_INFLIGHT).`);
+  console.log('  --adaptive-cap         Enable adaptive inflight tuning (default, env QUEUE_AUTOPILOT_ADAPTIVE_CAP).');
+  console.log('  --no-adaptive-cap      Disable adaptive inflight tuning and use fixed max-inflight.');
   console.log(`  --max-queued-runs <n>  Pause when queued workflow runs exceed this threshold (default: ${DEFAULT_MAX_QUEUED_RUNS}).`);
   console.log(`  --max-in-progress-runs <n> Pause when in-progress workflow runs exceed this threshold (default: ${DEFAULT_MAX_IN_PROGRESS_RUNS}).`);
   console.log(`  --stall-threshold-minutes <n> Pause when active runs exceed age threshold (default: ${DEFAULT_STALL_THRESHOLD_MINUTES}).`);
@@ -53,6 +57,13 @@ function parseIntStrict(value, { label }) {
   return parsed;
 }
 
+function parseBooleanStrict(value, { label }) {
+  const normalized = String(value ?? '').trim().toLowerCase();
+  if (['1', 'true', 'yes', 'on'].includes(normalized)) return true;
+  if (['0', 'false', 'no', 'off'].includes(normalized)) return false;
+  throw new Error(`Invalid ${label} value '${value}'. Expected one of: 1,true,yes,on,0,false,no,off.`);
+}
+
 function parseCsv(value) {
   return String(value)
     .split(',')
@@ -67,6 +78,8 @@ export function parseArgs(argv = process.argv) {
     dryRun: true,
     reportPath: DEFAULT_REPORT_PATH,
     maxInflight: null,
+    minInflight: null,
+    adaptiveCap: null,
     repo: null,
     baseBranches: [...DEFAULT_BASE_BRANCHES],
     healthBranch: 'develop',
@@ -95,6 +108,7 @@ export function parseArgs(argv = process.argv) {
     if (
       arg === '--report' ||
       arg === '--max-inflight' ||
+      arg === '--min-inflight' ||
       arg === '--repo' ||
       arg === '--base-branches' ||
       arg === '--health-branch' ||
@@ -111,6 +125,8 @@ export function parseArgs(argv = process.argv) {
         options.reportPath = next;
       } else if (arg === '--max-inflight') {
         options.maxInflight = parseIntStrict(next, { label: '--max-inflight' });
+      } else if (arg === '--min-inflight') {
+        options.minInflight = parseIntStrict(next, { label: '--min-inflight' });
       } else if (arg === '--repo') {
         if (!next.includes('/')) {
           throw new Error(`Invalid --repo '${next}', expected owner/repo.`);
@@ -133,6 +149,14 @@ export function parseArgs(argv = process.argv) {
       }
       continue;
     }
+    if (arg === '--adaptive-cap') {
+      options.adaptiveCap = true;
+      continue;
+    }
+    if (arg === '--no-adaptive-cap') {
+      options.adaptiveCap = false;
+      continue;
+    }
     throw new Error(`Unknown option: ${arg}`);
   }
 
@@ -142,6 +166,26 @@ export function parseArgs(argv = process.argv) {
   }
   if (options.maxInflight == null) {
     options.maxInflight = DEFAULT_MAX_INFLIGHT;
+  }
+  const envAdaptiveCap = process.env.QUEUE_AUTOPILOT_ADAPTIVE_CAP;
+  if (options.adaptiveCap == null && envAdaptiveCap && String(envAdaptiveCap).trim()) {
+    options.adaptiveCap = parseBooleanStrict(envAdaptiveCap, { label: 'QUEUE_AUTOPILOT_ADAPTIVE_CAP' });
+  }
+  if (options.adaptiveCap == null) {
+    options.adaptiveCap = true;
+  }
+
+  const envMinInflight = process.env.QUEUE_AUTOPILOT_MIN_INFLIGHT;
+  if (options.minInflight == null && envMinInflight && String(envMinInflight).trim()) {
+    options.minInflight = parseIntStrict(envMinInflight, { label: 'QUEUE_AUTOPILOT_MIN_INFLIGHT' });
+  }
+  if (options.minInflight == null) {
+    options.minInflight = DEFAULT_MIN_INFLIGHT;
+  }
+  if (options.minInflight > options.maxInflight) {
+    throw new Error(
+      `Invalid inflight bounds: min-inflight (${options.minInflight}) cannot exceed max-inflight (${options.maxInflight}).`
+    );
   }
 
   const envMaxQueuedRuns = process.env.QUEUE_AUTOPILOT_MAX_QUEUED_RUNS;
@@ -697,6 +741,77 @@ export function evaluateRuntimeFleetHealth({
   };
 }
 
+export function evaluateAdaptiveInflight({
+  maxInflight,
+  minInflight = DEFAULT_MIN_INFLIGHT,
+  adaptiveCap = true,
+  health,
+  runtimeFleet
+}) {
+  const configuredMax = parseIntStrict(maxInflight, { label: 'maxInflight' });
+  const configuredMin = parseIntStrict(minInflight, { label: 'minInflight' });
+  if (configuredMin > configuredMax) {
+    throw new Error(`Adaptive inflight floor (${configuredMin}) cannot exceed max inflight (${configuredMax}).`);
+  }
+
+  if (!adaptiveCap) {
+    return {
+      enabled: false,
+      configuredMaxInflight: configuredMax,
+      minInflight: configuredMin,
+      effectiveMaxInflight: configuredMax,
+      tier: 'fixed',
+      reasons: []
+    };
+  }
+
+  let effective = configuredMax;
+  const reasons = [];
+  let tier = 'full';
+
+  const queued = Number(runtimeFleet?.totals?.queued ?? 0);
+  const inProgress = Number(runtimeFleet?.totals?.inProgress ?? 0);
+  const stalled = Number(runtimeFleet?.totals?.stalled ?? 0);
+  const maxQueuedRuns = Number(runtimeFleet?.thresholds?.maxQueuedRuns ?? 0);
+  const maxInProgressRuns = Number(runtimeFleet?.thresholds?.maxInProgressRuns ?? 0);
+  const nearQueuedRuns = Math.max(1, Math.ceil(maxQueuedRuns * 0.75));
+  const nearInProgressRuns = Math.max(1, Math.ceil(maxInProgressRuns * 0.75));
+
+  if (stalled > 0) {
+    effective = Math.min(effective, configuredMin);
+    tier = 'restricted';
+    reasons.push('stalled-runs-detected');
+  } else if (queued >= nearQueuedRuns || inProgress >= nearInProgressRuns) {
+    effective = Math.min(effective, Math.max(configuredMin, configuredMin + 1));
+    tier = 'degraded';
+    reasons.push('runtime-near-saturation');
+  }
+
+  const successRate = Number(health?.successRate ?? 0);
+  const minSuccessRate = Number(health?.minSuccessRate ?? DEFAULT_HEALTH_MIN_SUCCESS_RATE);
+  if (Number.isFinite(successRate) && Number.isFinite(minSuccessRate)) {
+    if (successRate < minSuccessRate + 0.05) {
+      effective = Math.min(effective, Math.max(configuredMin, configuredMax - 2));
+      if (tier !== 'restricted') tier = 'degraded';
+      reasons.push('health-near-threshold');
+    } else if (successRate < minSuccessRate + 0.15) {
+      effective = Math.min(effective, Math.max(configuredMin, configuredMax - 1));
+      if (tier === 'full') tier = 'guarded';
+      reasons.push('health-soft-degradation');
+    }
+  }
+
+  effective = Math.max(configuredMin, effective);
+  return {
+    enabled: true,
+    configuredMaxInflight: configuredMax,
+    minInflight: configuredMin,
+    effectiveMaxInflight: effective,
+    tier,
+    reasons: [...new Set(reasons)]
+  };
+}
+
 function parseQueueManagedBranches(policy, fallbackBranches) {
   const queueManaged = new Set();
   const rulesets = policy?.rulesets ?? {};
@@ -851,8 +966,16 @@ export async function runQueueSupervisor(options = {}) {
   if (workflowFetchErrors.length > 0) pausedReasons.push('health-workflow-fetch-errors');
   const uniquePausedReasons = [...new Set(pausedReasons)];
 
+  const adaptiveInflight = evaluateAdaptiveInflight({
+    maxInflight: args.maxInflight,
+    minInflight: args.minInflight,
+    adaptiveCap: args.adaptiveCap,
+    health,
+    runtimeFleet
+  });
+  const effectiveMaxInflight = adaptiveInflight.effectiveMaxInflight;
   const inflight = countInflight(classified.candidates.filter((candidate) => queueManagedBranches.has(candidate.baseRefName)));
-  const capacity = Math.max(0, args.maxInflight - inflight);
+  const capacity = Math.max(0, effectiveMaxInflight - inflight);
   const planned = classified.orderedEligible.filter((candidate) => !candidate.autoMergeEnabled);
   const toProcess = planned.slice(0, capacity);
 
@@ -868,6 +991,8 @@ export async function runQueueSupervisor(options = {}) {
       pausedByVariable,
       queueAutopilotPaused: process.env.QUEUE_AUTOPILOT_PAUSED ?? null,
       queueAutopilotMaxInflight: process.env.QUEUE_AUTOPILOT_MAX_INFLIGHT ?? null,
+      queueAutopilotMinInflight: process.env.QUEUE_AUTOPILOT_MIN_INFLIGHT ?? null,
+      queueAutopilotAdaptiveCap: process.env.QUEUE_AUTOPILOT_ADAPTIVE_CAP ?? null,
       queueAutopilotMaxQueuedRuns: process.env.QUEUE_AUTOPILOT_MAX_QUEUED_RUNS ?? null,
       queueAutopilotMaxInProgressRuns: process.env.QUEUE_AUTOPILOT_MAX_IN_PROGRESS_RUNS ?? null,
       queueAutopilotStallThresholdMinutes: process.env.QUEUE_AUTOPILOT_STALL_THRESHOLD_MINUTES ?? null,
@@ -875,6 +1000,9 @@ export async function runQueueSupervisor(options = {}) {
     },
     queueManagedBranches: [...queueManagedBranches].sort(),
     maxInflight: args.maxInflight,
+    minInflight: args.minInflight,
+    effectiveMaxInflight,
+    adaptiveInflight,
     inflight,
     capacity,
     health,
