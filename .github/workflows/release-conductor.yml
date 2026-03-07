@@ -1,0 +1,134 @@
+name: Release Conductor
+
+on:
+  workflow_dispatch:
+    inputs:
+      apply:
+        description: 'Apply mode (requires RELEASE_CONDUCTOR_ENABLED=1)'
+        required: false
+        default: false
+        type: boolean
+      channel:
+        description: 'Release channel'
+        required: false
+        default: stable
+        type: choice
+        options:
+          - stable
+          - rc
+      version:
+        description: 'Release version proposal (for example 0.8.0 or 0.8.0-rc.1)'
+        required: false
+        type: string
+      dwell_minutes:
+        description: 'Green dwell minutes (default 60)'
+        required: false
+        type: string
+      quarantine_stale_hours:
+        description: 'Quarantine stale threshold hours (default 24)'
+        required: false
+        type: string
+  schedule:
+    - cron: '*/15 * * * *'
+  workflow_run:
+    workflows:
+      - Queue Supervisor
+    types:
+      - completed
+    branches:
+      - develop
+
+concurrency:
+  group: release-conductor-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  release-conductor:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      actions: read
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: '20'
+
+      - name: Prepare release conductor token
+        shell: pwsh
+        env:
+          INPUT_TOKEN_PRIMARY: ${{ secrets.GH_TOKEN }}
+          INPUT_TOKEN_SECONDARY: ${{ secrets.GITHUB_TOKEN }}
+          INPUT_TOKEN_TERTIARY: ${{ github.token }}
+        run: |
+          pwsh -NoLogo -NoProfile -File tools/priority/Resolve-PolicyToken.ps1 -TokenFileName release-conductor-gh-token.txt
+
+      - name: Run release conductor
+        shell: pwsh
+        env:
+          RELEASE_CONDUCTOR_ENABLED: ${{ vars.RELEASE_CONDUCTOR_ENABLED || '0' }}
+        run: |
+          npm ci --ignore-scripts
+          node tools/npm/run-script.mjs priority:policy:snapshot -- --output tests/results/_agent/policy/policy-state-snapshot.json
+
+          $reportPath = 'tests/results/_agent/release/release-conductor-report.json'
+          $args = @(
+            'tools/npm/run-script.mjs',
+            'priority:release:conductor',
+            '--',
+            '--report',
+            $reportPath,
+            '--queue-report',
+            'tests/results/_agent/queue/queue-supervisor-report.json',
+            '--policy-snapshot',
+            'tests/results/_agent/policy/policy-state-snapshot.json'
+          )
+
+          $eventName = '${{ github.event_name }}'
+          $apply = $false
+          if ($eventName -eq 'workflow_dispatch') {
+            $apply = ('${{ inputs.apply }}' -eq 'true')
+          } elseif ($eventName -eq 'workflow_run') {
+            $apply = $true
+          }
+
+          if ($apply) {
+            $args += '--apply'
+          } else {
+            $args += '--dry-run'
+          }
+
+          $channelInput = '${{ inputs.channel }}'
+          if (-not [string]::IsNullOrWhiteSpace($channelInput)) {
+            $args += @('--channel', $channelInput.Trim().ToLowerInvariant())
+          }
+
+          $versionInput = '${{ inputs.version }}'
+          if (-not [string]::IsNullOrWhiteSpace($versionInput)) {
+            $args += @('--version', $versionInput.Trim())
+          }
+
+          $dwellInput = '${{ inputs.dwell_minutes }}'
+          if (-not [string]::IsNullOrWhiteSpace($dwellInput)) {
+            $args += @('--dwell-minutes', $dwellInput.Trim())
+          }
+
+          $quarantineInput = '${{ inputs.quarantine_stale_hours }}'
+          if (-not [string]::IsNullOrWhiteSpace($quarantineInput)) {
+            $args += @('--quarantine-stale-hours', $quarantineInput.Trim())
+          }
+
+          node @args
+
+      - name: Upload release conductor artifacts
+        if: always()
+        uses: actions/upload-artifact@v5
+        with:
+          name: release-conductor-${{ github.run_id }}
+          path: |
+            tests/results/_agent/release/release-conductor-report.json
+            tests/results/_agent/policy/policy-state-snapshot.json
+          if-no-files-found: error
