@@ -59,6 +59,13 @@ Successful runs write versioned JSON plus materialized Markdown/HTML/image-index
 artifacts in the selected `--out-dir`. `--dry-run` remains available when you
 only want the contract envelope without invoking the backend.
 
+Validate and release lanes now also certify the extracted `CompareVI.Tools`
+bundle across the public history mode bundle
+(`default,attributes,front-panel,block-diagram`). That evidence is emitted as
+`comparevi-history-bundle-certification@v1` JSON plus a rendered Markdown
+summary under `tests/results/_agent/...`, so downstream consumers can inspect
+the exact per-mode categories without relying on collapsed warning text alone.
+
 When the CLI runs outside a full repository checkout, point it at a helper
 bundle/repo root with `COMPAREVI_CLI_SCRIPTS_ROOT` (or `COMPAREVI_SCRIPTS_ROOT`).
 For local validation and automated tests, `COMPAREVI_CLI_INVOKE_SCRIPT_PATH`

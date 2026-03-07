@@ -234,6 +234,69 @@ $script:GetPesterInstallGuidance = {
   return $guidance
 }
 
+function Get-AdditionalPesterModuleRoots {
+  $roots = New-Object System.Collections.Generic.List[string]
+  $candidates = @()
+
+  foreach ($envName in @('COMPAREVI_PESTER_MODULE_ROOT', 'COMPAREVI_POWERSHELL_MODULES')) {
+    $candidate = [System.Environment]::GetEnvironmentVariable($envName, 'Process')
+    if (-not [string]::IsNullOrWhiteSpace($candidate)) {
+      $candidates += $candidate
+    }
+  }
+
+  if (-not [string]::IsNullOrWhiteSpace($env:LOCALAPPDATA)) {
+    $candidates += (Join-Path $env:LOCALAPPDATA 'compare-vi-cli-action\PowerShell\Modules')
+  }
+
+  $repoToolsModules = Join-Path $PSScriptRoot 'tools' 'modules'
+  $candidates += $repoToolsModules
+
+  foreach ($candidate in $candidates) {
+    if ([string]::IsNullOrWhiteSpace($candidate)) { continue }
+    if (-not (Test-Path -LiteralPath $candidate -PathType Container)) { continue }
+    $resolved = (Resolve-Path -LiteralPath $candidate).Path
+    if (-not $roots.Contains($resolved)) {
+      $roots.Add($resolved) | Out-Null
+    }
+  }
+
+  return @($roots.ToArray())
+}
+
+function Prepend-ModuleRootsToPSModulePath {
+  param([string[]]$ModuleRoots)
+
+  if (-not $ModuleRoots -or $ModuleRoots.Count -eq 0) {
+    return @()
+  }
+
+  $separator = [System.IO.Path]::PathSeparator
+  $existing = @(
+    $env:PSModulePath -split $separator |
+      Where-Object { -not [string]::IsNullOrWhiteSpace($_) }
+  )
+
+  $normalizedExisting = New-Object System.Collections.Generic.HashSet[string] ([System.StringComparer]::OrdinalIgnoreCase)
+  foreach ($entry in $existing) {
+    [void]$normalizedExisting.Add($entry)
+  }
+
+  $prepended = New-Object System.Collections.Generic.List[string]
+  foreach ($root in $ModuleRoots) {
+    if ([string]::IsNullOrWhiteSpace($root)) { continue }
+    if ($normalizedExisting.Contains($root)) { continue }
+    $prepended.Add($root) | Out-Null
+    [void]$normalizedExisting.Add($root)
+  }
+
+  if ($prepended.Count -gt 0) {
+    $env:PSModulePath = (@($prepended.ToArray()) + $existing) -join $separator
+  }
+
+  return @($prepended.ToArray())
+}
+
 $labviewPidTrackerModule = Join-Path $PSScriptRoot 'tools' 'LabVIEWPidTracker.psm1'
 $labviewPidTrackerLoaded = $false
 $script:labviewPidContextResolver = $null
@@ -1902,6 +1965,10 @@ Write-Host ""
 Write-Host "Checking for Pester availability..." -ForegroundColor Yellow
 $pesterVersionRequired = $PesterPolicyVersion
 $pesterVersionParsed = [version]$pesterVersionRequired
+$prependedPesterModuleRoots = @(Prepend-ModuleRootsToPSModulePath -ModuleRoots @(Get-AdditionalPesterModuleRoots))
+if ($prependedPesterModuleRoots.Count -gt 0) {
+  Write-Host ("Prepended PSModulePath roots for Pester discovery: {0}" -f ($prependedPesterModuleRoots -join '; ')) -ForegroundColor DarkCyan
+}
 $pesterModule = Get-Module -ListAvailable -Name Pester | Where-Object { $_.Version -eq $pesterVersionParsed } | Select-Object -First 1
 
 if (-not $pesterModule) {
@@ -1914,6 +1981,9 @@ if (-not $pesterModule) {
   Write-Host ("Remediation ({0}):" -f $guidance.OsLabel) -ForegroundColor Yellow
   foreach ($line in $guidance.Lines) {
     Write-Host ("  - {0}" -f $line) -ForegroundColor Cyan
+  }
+  if ($prependedPesterModuleRoots.Count -gt 0) {
+    Write-Host ("Custom module roots searched: {0}" -f ($prependedPesterModuleRoots -join '; ')) -ForegroundColor DarkCyan
   }
   Write-Host ""
   exit 1
@@ -3639,8 +3709,6 @@ finally {
     if (-not $released) { Write-Warning "Failed to release session lock '$lockGroup'" }
   }
 }
-
-
 
 
 

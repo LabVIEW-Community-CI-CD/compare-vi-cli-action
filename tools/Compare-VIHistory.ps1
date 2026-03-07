@@ -617,7 +617,8 @@ function Invoke-Git {
 
 function Invoke-Pwsh {
   param(
-    [Parameter(Mandatory = $true)][string[]]$Arguments
+    [Parameter(Mandatory = $true)][string[]]$Arguments,
+    [hashtable]$Environment
   )
   $psi = [System.Diagnostics.ProcessStartInfo]::new()
   $psi.FileName = 'pwsh'
@@ -627,6 +628,16 @@ function Invoke-Pwsh {
   $psi.UseShellExecute = $false
   $psi.CreateNoWindow = $true
   $psi.WorkingDirectory = $repoRoot
+  if ($Environment) {
+    foreach ($entry in $Environment.GetEnumerator()) {
+      if ([string]::IsNullOrWhiteSpace([string]$entry.Key)) { continue }
+      if ($null -eq $entry.Value) {
+        [void]$psi.Environment.Remove([string]$entry.Key)
+      } else {
+        $psi.Environment[[string]$entry.Key] = [string]$entry.Value
+      }
+    }
+  }
   $proc = [System.Diagnostics.Process]::Start($psi)
   $stdout = $proc.StandardOutput.ReadToEnd()
   $stderr = $proc.StandardError.ReadToEnd()
@@ -1596,6 +1607,12 @@ foreach ($modeSpec in $modeSpecs) {
       }
 
       if (-not $summaryPreExisting) {
+        $modeProcessEnvironment = @{
+          COMPAREVI_HISTORY_MODE = $modeName
+          COMPAREVI_HISTORY_MODE_SLUG = $modeSlug
+          COMPAREVI_HISTORY_MODE_FLAGS = if ($modeFlags -and $modeFlags.Count -gt 0) { $modeFlags -join "`n" } else { '' }
+          COMPAREVI_HISTORY_REPORT_FORMAT = $reportFormatEffective
+        }
         $compareArgs = @("-NoLogo","-NoProfile","-File", $compareScript,
           "-Path", $targetRel,
           "-RefA", $baseCommit,
@@ -1625,7 +1642,7 @@ foreach ($modeSpec in $modeSpecs) {
           $compareArgs += "-KeepArtifactsOnNoDiff"
         }
         $compareArgsOriginal = @($compareArgs)
-        $pwshResult = Invoke-Pwsh -Arguments $compareArgs
+        $pwshResult = Invoke-Pwsh -Arguments $compareArgs -Environment $modeProcessEnvironment
         if ($pwshResult.ExitCode -ne 0) {
           if ($pwshResult.ExitCode -eq 1) {
             $hasSummary = Test-Path -LiteralPath $summaryPath -PathType Leaf
@@ -1656,7 +1673,7 @@ foreach ($modeSpec in $modeSpecs) {
           if (-not ($retryArgsList.Contains("-RenderReport"))) { $retryArgsList.Add("-RenderReport") | Out-Null }
           [void]$retryArgsList.Remove("-Quiet")
           $retryArgs = $retryArgsList.ToArray()
-          $retryResult = Invoke-Pwsh -Arguments $retryArgs
+          $retryResult = Invoke-Pwsh -Arguments $retryArgs -Environment $modeProcessEnvironment
           if ($retryResult.ExitCode -ne 0) {
             if ($retryResult.ExitCode -eq 1) {
               $hasSummary = Test-Path -LiteralPath $summaryPath -PathType Leaf
