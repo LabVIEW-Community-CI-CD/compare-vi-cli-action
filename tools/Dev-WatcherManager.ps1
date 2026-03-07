@@ -33,6 +33,7 @@ function Get-WatcherPaths {
     ErrFile  = Join-Path $watchDir 'watch.err'
     StatusFile = Join-Path $watchDir 'watcher-status.json'
     HeartbeatFile = Join-Path $watchDir 'watcher-self.json'
+    EventsFile = Join-Path $watchDir 'watcher-events.ndjson'
     TrimMetadataFile = Join-Path $watchDir 'watcher-trim.json'
   }
 }
@@ -400,7 +401,8 @@ function Start-DevWatcher {
     '--poll-ms', [string]$PollMs,
     '--no-progress-seconds', [string]$NoProgressSeconds,
     '--status-file', $paths.StatusFile,
-    '--heartbeat-file', $paths.HeartbeatFile
+    '--heartbeat-file', $paths.HeartbeatFile,
+    '--events-file', $paths.EventsFile
   )
   if ($IncludeProgressRegex -and $ProgressRegex) {
     $progressArgument = $ProgressRegex.Replace(' ', '')
@@ -432,6 +434,7 @@ function Start-DevWatcher {
     errFile   = $paths.ErrFile
     statusFile = $paths.StatusFile
     heartbeatFile = $paths.HeartbeatFile
+    eventsFile = $paths.EventsFile
   }
   ($pidObj | ConvertTo-Json -Depth 5) | Out-File -FilePath $paths.PidFile -Encoding utf8
   Write-Host ("Started dev watcher (PID {0})" -f $p.Id)
@@ -476,6 +479,7 @@ function Get-DevWatcherStatus {
   $heartbeatFileExists = Test-Path -LiteralPath $paths.HeartbeatFile
   $statusData = if ($statusFileExists) { Read-JsonFile -Path $paths.StatusFile } else { $null }
   $heartbeatData = if ($heartbeatFileExists) { Read-JsonFile -Path $paths.HeartbeatFile } else { $null }
+  $eventsData = if ($statusData) { Get-PropValue $statusData 'events' } else { $null }
   $heartbeatTimestamp = Get-PropValue $heartbeatData 'timestamp'
   $stateFromStatus = Get-PropValue $statusData 'state'
   $state = if ($stateFromStatus) { $stateFromStatus } elseif ($alive) { 'ok' } else { 'stopped' }
@@ -604,6 +608,16 @@ function Get-DevWatcherStatus {
         timestamp = $heartbeatTimestamp
         ageSeconds = $heartbeatAgeSeconds
         schema = Get-PropValue $heartbeatData 'schema'
+      }
+      events = @{
+        path = $paths.EventsFile
+        exists = (Test-Path -LiteralPath $paths.EventsFile)
+        schema = Get-PropValue $eventsData 'schema'
+        source = Get-PropValue $eventsData 'source'
+        count = Get-PropValue $eventsData 'count'
+        lastEventAt = Get-PropValue $eventsData 'lastEventAt'
+        lastPhase = Get-PropValue $eventsData 'lastPhase'
+        lastLevel = Get-PropValue $eventsData 'lastLevel'
       }
       out = $outInfo
       err = $errInfo

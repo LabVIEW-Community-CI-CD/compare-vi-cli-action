@@ -15,6 +15,9 @@ Describe 'Pester Watcher Live Feed' -Tag 'Unit' {
     $summaryPath = Join-Path $resultsDir 'pester-summary.json'
     $stdoutPath = Join-Path $TestDrive 'watcher.out'
     $stderrPath = Join-Path $TestDrive 'watcher.err'
+    $statusPath = Join-Path $TestDrive 'watcher-status.json'
+    $heartbeatPath = Join-Path $TestDrive 'watcher-heartbeat.json'
+    $eventsPath = Join-Path $TestDrive 'watcher-events.ndjson'
 
     $arguments = @(
       $script:WatcherScript,
@@ -22,7 +25,10 @@ Describe 'Pester Watcher Live Feed' -Tag 'Unit' {
       '--tail', '0',
       '--warn-seconds', '4',
       '--hang-seconds', '6',
-      '--poll-ms', '500'
+      '--poll-ms', '500',
+      '--status-file', $statusPath,
+      '--heartbeat-file', $heartbeatPath,
+      '--events-file', $eventsPath
     )
 
     $proc = Start-Process -FilePath $script:NodePath -ArgumentList $arguments -RedirectStandardOutput $stdoutPath -RedirectStandardError $stderrPath -PassThru -WindowStyle Hidden
@@ -62,6 +68,18 @@ Describe 'Pester Watcher Live Feed' -Tag 'Unit' {
       $stdout | Should -Match '\[log\].*It done'
     }
     $stderr | Should -BeNullOrEmpty
+
+    Test-Path -LiteralPath $eventsPath | Should -BeTrue
+    $events = @(Get-Content -LiteralPath $eventsPath | Where-Object { -not [string]::IsNullOrWhiteSpace($_) } | ForEach-Object { $_ | ConvertFrom-Json })
+    $events.Count | Should -BeGreaterThan 0
+    ($events | Where-Object { $_.source -eq 'pester-artifact-watcher' }).Count | Should -BeGreaterThan 0
+    ($events | Where-Object { $_.phase -eq 'summary-update' }).Count | Should -BeGreaterThan 0
+
+    $status = Get-Content -LiteralPath $statusPath -Raw | ConvertFrom-Json
+    $status.events.schema | Should -Be 'comparevi/runtime-event/v1'
+    $status.events.source | Should -Be 'pester-artifact-watcher'
+    $status.events.path | Should -Be $eventsPath
+    [int]$status.events.count | Should -BeGreaterThan 0
   }
 
   It 'exits with code 2 when fail-fast hang detection triggers' {

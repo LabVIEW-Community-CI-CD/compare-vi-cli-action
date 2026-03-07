@@ -12,6 +12,7 @@ param(
   [Parameter()][int]$PollMs = 10000,
   [Parameter()][int]$NoProgressSeconds = 0,
   [Parameter()][string]$ProgressRegex = '^(?:\s*\[[-+\*]\]|\s*It\s)',
+  [Parameter()][string]$EventsFile = '',
   [Parameter()][switch]$ExitOnHang,
   [Parameter()][switch]$ExitOnNoProgress
 )
@@ -31,6 +32,7 @@ function Invoke-NodeWatcher {
     [int]$PollMs,
     [int]$NoProgressSeconds,
     [string]$ProgressRegex,
+    [string]$EventsFile,
     [switch]$ExitOnHang,
     [switch]$ExitOnNoProgress
   )
@@ -51,6 +53,7 @@ function Invoke-NodeWatcher {
     '--no-progress-seconds', $NoProgressSeconds.ToString(),
     '--progress-regex', $ProgressRegex
   )
+  if ($EventsFile) { $arguments += @('--events-file', $EventsFile) }
   if ($Quiet) { $arguments += '--quiet' }
   if ($ExitOnHang) { $arguments += '--exit-on-hang' }
   if ($ExitOnNoProgress) { $arguments += '--exit-on-no-progress' }
@@ -81,7 +84,7 @@ switch -Regex ($watcherPreference) {
 }
 
 if ($preferNode -and -not $ForcePowerShell) {
-  $exitCode = Invoke-NodeWatcher -ResultsDir $ResultsDir -LogFile $LogFile -SummaryFile $SummaryFile -TailLines $Tail -Quiet:$Quiet -WarnSeconds $WarnSeconds -HangSeconds $HangSeconds -PollMs $PollMs -NoProgressSeconds $NoProgressSeconds -ProgressRegex $ProgressRegex -ExitOnHang:$ExitOnHang -ExitOnNoProgress:$ExitOnNoProgress
+  $exitCode = Invoke-NodeWatcher -ResultsDir $ResultsDir -LogFile $LogFile -SummaryFile $SummaryFile -TailLines $Tail -Quiet:$Quiet -WarnSeconds $WarnSeconds -HangSeconds $HangSeconds -PollMs $PollMs -NoProgressSeconds $NoProgressSeconds -ProgressRegex $ProgressRegex -EventsFile $EventsFile -ExitOnHang:$ExitOnHang -ExitOnNoProgress:$ExitOnNoProgress
   if ($exitCode -ne $null) {
     exit $exitCode
   }

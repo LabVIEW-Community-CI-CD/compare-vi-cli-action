@@ -30,6 +30,10 @@ test('pester artifact watcher prefixes informational and warning lines with seve
 
   assert.match(source, /console\.log\(`\[info\] \$\{message\}`\);/);
   assert.match(source, /console\.warn\(`\[warn\] \$\{message\}`\);/);
+  assert.match(source, /parser\.add_argument\('--events-file'/);
+  assert.match(source, /schema: 'comparevi\/runtime-event\/v1'/);
+  assert.match(source, /source: 'pester-artifact-watcher'/);
+  assert.match(source, /events: getRuntimeEventMetadata\(\)/);
 });
 
 test('dispatcher source keeps explicit info-level execution and progress lines', () => {
