@@ -28,6 +28,25 @@
     "autoTrimExecuted": { "type": "boolean" },
     "outPath": { "type": ["string", "null"] },
     "errPath": { "type": ["string", "null"] },
+    "events": {
+      "type": ["object", "null"],
+      "required": [
+        "schema",
+        "path",
+        "present",
+        "count"
+      ],
+      "properties": {
+        "schema": { "const": "comparevi/runtime-event/v1" },
+        "path": { "type": "string" },
+        "present": { "type": "boolean" },
+        "count": { "type": "integer", "minimum": 0 },
+        "source": { "type": ["string", "null"] },
+        "lastEventAt": { "type": ["string", "null"], "format": "date-time" },
+        "lastPhase": { "type": ["string", "null"] },
+        "lastLevel": { "type": ["string", "null"] }
+      }
+    },
     "autoTrim": {
       "type": ["object", "null"],
       "required": [

@@ -1,0 +1,2 @@
+{"schema":"comparevi/runtime-event/v1","tsUtc":"2026-03-07T22:00:00Z","source":"rest-watcher","phase":"watch-start","level":"info","message":"watch started"}
+{"schema":"comparevi/runtime-event/v1","tsUtc":"2026-03-07T22:01:00Z","source":"rest-watcher","phase":"run-snapshot","level":"info","message":"completed"}

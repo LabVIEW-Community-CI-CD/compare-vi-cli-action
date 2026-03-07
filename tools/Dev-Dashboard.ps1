@@ -455,6 +455,44 @@ function Write-TerminalReport {
   }
   Write-Host ''
 
+  $runtimeEvents = if ($pester -and $pester.PSObject.Properties.Name -contains 'RuntimeEvents') { $pester.RuntimeEvents } else { $null }
+  $dispatcherRuntime = if ($runtimeEvents -and $runtimeEvents.PSObject.Properties.Name -contains 'Dispatcher') { $runtimeEvents.Dispatcher } else { $null }
+  $restWatcherRuntime = if ($runtimeEvents -and $runtimeEvents.PSObject.Properties.Name -contains 'RestWatcher') { $runtimeEvents.RestWatcher } else { $null }
+  if ($dispatcherRuntime -or $restWatcherRuntime) {
+    Write-Host "Runtime Events"
+    if ($dispatcherRuntime) {
+      Write-Host ("  Dispatcher : count={0} present={1}" -f $dispatcherRuntime.Count, $dispatcherRuntime.Present)
+      Write-Host ("    Path     : {0}" -f $dispatcherRuntime.Path)
+      if ($dispatcherRuntime.Source) { Write-Host ("    Source   : {0}" -f $dispatcherRuntime.Source) }
+      if ($dispatcherRuntime.LastEventAt) {
+        $dispatcherLast = $dispatcherRuntime.LastEventAt
+        if ($dispatcherRuntime.LastLevel -or $dispatcherRuntime.LastPhase) {
+          $dispatcherKinds = @($dispatcherRuntime.LastLevel, $dispatcherRuntime.LastPhase) | Where-Object { $_ -and $_ -ne '' }
+          if ($dispatcherKinds.Count -gt 0) {
+            $dispatcherLast = '{0} ({1})' -f $dispatcherRuntime.LastEventAt, ($dispatcherKinds -join '/')
+          }
+        }
+        Write-Host ("    Last     : {0}" -f $dispatcherLast)
+      }
+    }
+    if ($restWatcherRuntime) {
+      Write-Host ("  REST Watcher: count={0} present={1}" -f $restWatcherRuntime.Count, $restWatcherRuntime.Present)
+      Write-Host ("    Path      : {0}" -f $restWatcherRuntime.Path)
+      if ($restWatcherRuntime.Source) { Write-Host ("    Source    : {0}" -f $restWatcherRuntime.Source) }
+      if ($restWatcherRuntime.LastEventAt) {
+        $restLast = $restWatcherRuntime.LastEventAt
+        if ($restWatcherRuntime.LastLevel -or $restWatcherRuntime.LastPhase) {
+          $restKinds = @($restWatcherRuntime.LastLevel, $restWatcherRuntime.LastPhase) | Where-Object { $_ -and $_ -ne '' }
+          if ($restKinds.Count -gt 0) {
+            $restLast = '{0} ({1})' -f $restWatcherRuntime.LastEventAt, ($restKinds -join '/')
+          }
+        }
+        Write-Host ("    Last      : {0}" -f $restLast)
+      }
+    }
+    Write-Host ''
+  }
+
   $compare = $Snapshot.CompareOutcome
   $compareExitValue = if ($compare -and $compare.PSObject.Properties.Name -contains 'ExitCode') { $compare.ExitCode } else { $null }
   $compareDiffValue = if ($compare -and $compare.PSObject.Properties.Name -contains 'Diff') { $compare.Diff } else { $null }
@@ -834,6 +872,32 @@ function ConvertTo-HtmlReport {
   "<ul>$([string]::Join('', $rows))</ul>"
   } else { '<p>None</p>' }
 
+  $runtimeEvents = if ($pester.PSObject.Properties.Name -contains 'RuntimeEvents') { $pester.RuntimeEvents } else { $null }
+  $dispatcherRuntime = if ($runtimeEvents -and $runtimeEvents.PSObject.Properties.Name -contains 'Dispatcher') { $runtimeEvents.Dispatcher } else { $null }
+  $restWatcherRuntime = if ($runtimeEvents -and $runtimeEvents.PSObject.Properties.Name -contains 'RestWatcher') { $runtimeEvents.RestWatcher } else { $null }
+  $runtimeEventRows = [System.Collections.Generic.List[string]]::new()
+  foreach ($eventEntry in @(
+      [pscustomobject]@{ Label = 'Dispatcher'; Data = $dispatcherRuntime },
+      [pscustomobject]@{ Label = 'REST Watcher'; Data = $restWatcherRuntime }
+    )) {
+    if (-not $eventEntry.Data) { continue }
+    $summary = 'present={0} count={1}' -f $eventEntry.Data.Present, $eventEntry.Data.Count
+    if ($eventEntry.Data.Source) { $summary += ' source=' + $eventEntry.Data.Source }
+    $lastDisplay = $eventEntry.Data.LastEventAt
+    if ($lastDisplay -and ($eventEntry.Data.LastLevel -or $eventEntry.Data.LastPhase)) {
+      $lastKinds = @($eventEntry.Data.LastLevel, $eventEntry.Data.LastPhase) | Where-Object { $_ -and $_ -ne '' }
+      if ($lastKinds.Count -gt 0) {
+        $lastDisplay = '{0} ({1})' -f $eventEntry.Data.LastEventAt, ($lastKinds -join '/')
+      }
+    }
+    $runtimeEventRows.Add("<tr><td>$(& $encode $eventEntry.Label)</td><td>$(& $encode $summary)</td><td>$(& $encode $eventEntry.Data.Path)</td><td>$(& $encode $lastDisplay)</td></tr>") | Out-Null
+  }
+  $runtimeEventsHtml = if ($runtimeEventRows.Count -gt 0) {
+    "<table><thead><tr><th>Stream</th><th>Summary</th><th>Path</th><th>Last Event</th></tr></thead><tbody>$([string]::Join('', $runtimeEventRows))</tbody></table>"
+  } else {
+    '<p>No runtime event artifacts.</p>'
+  }
+
   $watchHasLast = ($watch -and $watch.Last)
   $watchStatusValue = $null
   $watchTrendValue = $null
@@ -1012,6 +1076,11 @@ function ConvertTo-HtmlReport {
     </dl>
     <h3>Failed Tests</h3>
     $failedTestsHtml
+  </section>
+
+  <section>
+    <h2>Runtime Events</h2>
+    $runtimeEventsHtml
   </section>
 
   <section>

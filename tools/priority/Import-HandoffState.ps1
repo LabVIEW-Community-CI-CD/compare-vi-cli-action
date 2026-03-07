@@ -68,6 +68,18 @@ if ($hookSummary) {
 
 if ($watcherTelemetry) {
   Write-Host '[handoff] Watcher telemetry available' -ForegroundColor Cyan
+  if ($watcherTelemetry.PSObject.Properties['events'] -and $watcherTelemetry.events) {
+    $eventSource = if ($watcherTelemetry.events.PSObject.Properties['source']) { $watcherTelemetry.events.source } else { $null }
+    $eventLast = if ($watcherTelemetry.events.PSObject.Properties['lastEventAt']) { $watcherTelemetry.events.lastEventAt } else { $null }
+    Write-Host ("  events   : present={0} count={1}" -f (Format-BoolLabel $watcherTelemetry.events.present), (Format-NullableValue $watcherTelemetry.events.count))
+    Write-Host ("  path     : {0}" -f (Format-NullableValue $watcherTelemetry.events.path))
+    if ($eventSource) {
+      Write-Host ("  source   : {0}" -f (Format-NullableValue $eventSource))
+    }
+    if ($eventLast) {
+      Write-Host ("  last     : {0}" -f (Format-NullableValue $eventLast))
+    }
+  }
   Set-Variable -Name WatcherHandoffTelemetry -Scope Global -Value $watcherTelemetry -Force
 }
 

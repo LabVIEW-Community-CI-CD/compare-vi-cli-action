@@ -34,6 +34,45 @@ function Format-BoolLabel {
   return 'unknown'
 }
 
+function New-WatcherEventsTelemetry {
+  param($EventsStatus)
+
+  if (-not $EventsStatus) { return $null }
+
+  $path = if ($EventsStatus.PSObject.Properties['path']) { $EventsStatus.path } else { $null }
+  if ([string]::IsNullOrWhiteSpace($path)) { return $null }
+
+  $present = $false
+  if ($EventsStatus.PSObject.Properties['exists']) {
+    try { $present = [bool]$EventsStatus.exists } catch {}
+  } elseif (Test-Path -LiteralPath $path -PathType Leaf) {
+    $present = $true
+  }
+
+  $count = 0
+  if ($EventsStatus.PSObject.Properties['count'] -and $EventsStatus.count -ne $null) {
+    try { $count = [int]$EventsStatus.count } catch { $count = 0 }
+  }
+  if ($count -lt 0) { $count = 0 }
+
+  $schema = if ($EventsStatus.PSObject.Properties['schema'] -and $EventsStatus.schema) {
+    [string]$EventsStatus.schema
+  } else {
+    'comparevi/runtime-event/v1'
+  }
+
+  return [ordered]@{
+    schema = $schema
+    path = $path
+    present = $present
+    count = $count
+    source = if ($EventsStatus.PSObject.Properties['source']) { $EventsStatus.source } else { $null }
+    lastEventAt = if ($EventsStatus.PSObject.Properties['lastEventAt']) { $EventsStatus.lastEventAt } else { $null }
+    lastPhase = if ($EventsStatus.PSObject.Properties['lastPhase']) { $EventsStatus.lastPhase } else { $null }
+    lastLevel = if ($EventsStatus.PSObject.Properties['lastLevel']) { $EventsStatus.lastLevel } else { $null }
+  }
+}
+
 function Get-RogueLVStatus {
   param(
     [string]$RepoRoot,
@@ -206,7 +245,7 @@ function Get-StandingPriorityContext {
   }
 
   $latestIssue = Get-ChildItem -LiteralPath $issueDir -Filter '*.json' -ErrorAction SilentlyContinue |
-    Where-Object { $_.Name -notlike 'router.json' } |
+    Where-Object { $_.BaseName -match '^\d+$' } |
     Sort-Object LastWriteTime -Descending |
     Select-Object -First 1
 
@@ -712,6 +751,28 @@ function Write-WatcherStatusSummary {
     $hbExists = if ($status.files.heartbeat.exists) { 'present' } else { 'missing' }
     Write-Host ("  heartbeat.json  : {0}" -f $hbExists)
   }
+  $watcherEvents = $null
+  if ($status.files -and $status.files.events) {
+    $watcherEvents = New-WatcherEventsTelemetry -EventsStatus $status.files.events
+    if ($watcherEvents) {
+      Write-Host ("  events.present  : {0}" -f (Format-BoolLabel $watcherEvents.present))
+      Write-Host ("  events.count    : {0}" -f (Format-NullableValue $watcherEvents.count))
+      Write-Host ("  events.path     : {0}" -f (Format-NullableValue $watcherEvents.path))
+      if ($watcherEvents.source) {
+        Write-Host ("  events.source   : {0}" -f (Format-NullableValue $watcherEvents.source))
+      }
+      if ($watcherEvents.lastEventAt) {
+        $eventDetails = $watcherEvents.lastEventAt
+        if ($watcherEvents.lastLevel -or $watcherEvents.lastPhase) {
+          $levelPhase = @($watcherEvents.lastLevel, $watcherEvents.lastPhase) | Where-Object { $_ -and $_ -ne '' }
+          if ($levelPhase.Count -gt 0) {
+            $eventDetails = '{0} ({1})' -f $watcherEvents.lastEventAt, ($levelPhase -join '/')
+          }
+        }
+        Write-Host ("  events.last     : {0}" -f (Format-NullableValue $eventDetails))
+      }
+    }
+  }
   if ($autoTrim) {
     Write-Host ("  autoTrim.eligible           : {0}" -f (Format-BoolLabel $autoTrim.eligible))
     Write-Host ("  autoTrim.cooldownSeconds    : {0}" -f (Format-NullableValue $autoTrim.cooldownSeconds))
@@ -769,6 +830,7 @@ function Write-WatcherStatusSummary {
     autoTrimExecuted = $autoTrimExecuted
     outPath = if ($status.files -and $status.files.out) { $status.files.out.path } else { $null }
     errPath = if ($status.files -and $status.files.err) { $status.files.err.path } else { $null }
+    events = if ($watcherEvents) { $watcherEvents } else { $null }
     autoTrim = if ($autoTrim) {
       [ordered]@{
         eligible = $autoTrim.eligible
@@ -807,6 +869,23 @@ function Write-WatcherStatusSummary {
     $summaryLines += "- Heartbeat Fresh: $(Format-BoolLabel $status.heartbeatFresh)"
     if ($status.heartbeatReason) { $summaryLines += "- Heartbeat Reason: $($status.heartbeatReason)" }
     if ($status.lastHeartbeatAt) { $summaryLines += "- Last Heartbeat: $($status.lastHeartbeatAt) (~$heartbeatAgeLabel s)" }
+    if ($watcherEvents) {
+      $summaryLines += "- Events: $(Format-BoolLabel $watcherEvents.present) ($($watcherEvents.count) line(s))"
+      $summaryLines += "- Events Path: $($watcherEvents.path)"
+      if ($watcherEvents.source) {
+        $summaryLines += "- Events Source: $($watcherEvents.source)"
+      }
+      if ($watcherEvents.lastEventAt) {
+        $eventSummary = $watcherEvents.lastEventAt
+        if ($watcherEvents.lastLevel -or $watcherEvents.lastPhase) {
+          $eventKinds = @($watcherEvents.lastLevel, $watcherEvents.lastPhase) | Where-Object { $_ -and $_ -ne '' }
+          if ($eventKinds.Count -gt 0) {
+            $eventSummary = '{0} ({1})' -f $watcherEvents.lastEventAt, ($eventKinds -join '/')
+          }
+        }
+        $summaryLines += "- Events Last: $eventSummary"
+      }
+    }
     if ($autoTrim) {
       $summaryLines += "- Auto-Trim Eligible: $(Format-BoolLabel $autoTrim.eligible)"
       if ($autoTrim.cooldownRemainingSeconds) {

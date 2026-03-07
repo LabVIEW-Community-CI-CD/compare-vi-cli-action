@@ -428,6 +428,8 @@ pwsh -File tools/Print-AgentHandoff.ps1 -ApplyToggles -AutoTrim
 ``
 
 - Surfaces watcher status inline (alive, verifiedProcess, heartbeatFresh/Reason, needsTrim).
+- Carries forward watcher runtime-event metadata (`events.path`, `events.count`, `events.lastEventAt`)
+  so downstream tools can inspect `watcher-events.ndjson` directly.
 - Emits a compact JSON snapshot to `tests/results/_agent/handoff/watcher-telemetry.json` and, when in CI,
   appends a summary block to the step summary.
 - Auto-trim policy: if `needsTrim=true`, watcher logs are trimmed to the last ~4000 lines when either

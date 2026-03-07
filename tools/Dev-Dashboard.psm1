@@ -81,6 +81,145 @@ function Read-NdjsonFile {
   return [pscustomobject]$info
 }
 
+function Read-LineDelimitedJsonFile {
+  param([string]$Path)
+  $info = [ordered]@{
+    Exists = $false
+    Path   = Resolve-PathSafe -Path $Path
+    Items  = @()
+    Error  = $null
+  }
+  if (-not $info.Path) { return [pscustomobject]$info }
+
+  $info.Exists = $true
+  try {
+    foreach ($line in [System.IO.File]::ReadLines($info.Path)) {
+      if ([string]::IsNullOrWhiteSpace($line)) { continue }
+      $info.Items += ($line | ConvertFrom-Json -ErrorAction Stop)
+    }
+  } catch {
+    $info.Error = $_.Exception.Message
+  }
+  return [pscustomobject]$info
+}
+
+function Resolve-ArtifactPathHint {
+  param(
+    [string]$ArtifactPath,
+    [string]$SessionIndexPath,
+    [string]$ResultsRoot
+  )
+
+  if ([string]::IsNullOrWhiteSpace($ArtifactPath)) { return $null }
+
+  $resolved = Resolve-PathSafe -Path $ArtifactPath
+  if ($resolved) { return $resolved }
+
+  $candidates = @()
+  if (-not [System.IO.Path]::IsPathRooted($ArtifactPath)) {
+    if ($SessionIndexPath) {
+      $candidates += Join-Path (Split-Path -Parent $SessionIndexPath) $ArtifactPath
+    }
+    if ($ResultsRoot) {
+      $candidates += Join-Path $ResultsRoot $ArtifactPath
+    }
+  }
+
+  foreach ($candidate in $candidates) {
+    $resolvedCandidate = Resolve-PathSafe -Path $candidate
+    if ($resolvedCandidate) { return $resolvedCandidate }
+  }
+
+  if ($candidates.Count -gt 0) { return $candidates[0] }
+  return $ArtifactPath
+}
+
+function Get-StructuredEventTimestamp {
+  param($EventRecord)
+
+  if (-not $EventRecord) { return $null }
+  foreach ($name in @('tsUtc', 'timestamp', 'time', 'polledAtUtc')) {
+    if ($EventRecord.PSObject.Properties.Name -contains $name -and $EventRecord.$name) {
+      return $EventRecord.$name
+    }
+  }
+  return $null
+}
+
+function Get-StructuredEventTelemetry {
+  param(
+    [string]$ArtifactPath,
+    [string]$SessionIndexPath,
+    [string]$ResultsRoot,
+    [psobject]$EmbeddedMetadata,
+    [string]$FallbackSource
+  )
+
+  $resolvedPath = Resolve-ArtifactPathHint -ArtifactPath $ArtifactPath -SessionIndexPath $SessionIndexPath -ResultsRoot $ResultsRoot
+  if ([string]::IsNullOrWhiteSpace($resolvedPath)) { return $null }
+
+  $embeddedCount = $null
+  if ($EmbeddedMetadata -and $EmbeddedMetadata.PSObject.Properties.Name -contains 'count' -and $EmbeddedMetadata.count -ne $null) {
+    try { $embeddedCount = [int]$EmbeddedMetadata.count } catch { $embeddedCount = $null }
+  }
+  $embeddedPresent = $null
+  if ($EmbeddedMetadata -and $EmbeddedMetadata.PSObject.Properties.Name -contains 'present' -and $EmbeddedMetadata.present -ne $null) {
+    try { $embeddedPresent = [bool]$EmbeddedMetadata.present } catch { $embeddedPresent = $null }
+  }
+
+  $eventInfo = Read-LineDelimitedJsonFile -Path $resolvedPath
+  $eventItems = @($eventInfo.Items)
+  $lastEvent = if ($eventItems.Count -gt 0) { $eventItems[-1] } else { $null }
+
+  $count = 0
+  if ($eventInfo.Exists -and -not $eventInfo.Error) {
+    $count = $eventItems.Count
+  } elseif ($embeddedCount -ne $null) {
+    $count = $embeddedCount
+  }
+  if ($count -lt 0) { $count = 0 }
+
+  $present = $false
+  if ($eventInfo.Exists) {
+    $present = $true
+  } elseif ($embeddedPresent -ne $null) {
+    $present = [bool]$embeddedPresent
+  }
+
+  $schema = if ($lastEvent -and $lastEvent.PSObject.Properties.Name -contains 'schema' -and $lastEvent.schema) {
+    $lastEvent.schema
+  } elseif ($EmbeddedMetadata -and $EmbeddedMetadata.PSObject.Properties.Name -contains 'schema' -and $EmbeddedMetadata.schema) {
+    $EmbeddedMetadata.schema
+  } else {
+    'comparevi/runtime-event/v1'
+  }
+
+  $source = if ($lastEvent -and $lastEvent.PSObject.Properties.Name -contains 'source' -and $lastEvent.source) {
+    $lastEvent.source
+  } elseif ($EmbeddedMetadata -and $EmbeddedMetadata.PSObject.Properties.Name -contains 'source' -and $EmbeddedMetadata.source) {
+    $EmbeddedMetadata.source
+  } elseif ($FallbackSource) {
+    $FallbackSource
+  } else {
+    $null
+  }
+
+  $errors = @()
+  if ($eventInfo.Error) { $errors += $eventInfo.Error }
+
+  return [pscustomobject][ordered]@{
+    Schema      = $schema
+    Path        = if ($eventInfo.Path) { $eventInfo.Path } else { $resolvedPath }
+    Present     = $present
+    Count       = $count
+    Source      = $source
+    LastEventAt = Get-StructuredEventTimestamp -EventRecord $lastEvent
+    LastPhase   = if ($lastEvent -and $lastEvent.PSObject.Properties.Name -contains 'phase') { $lastEvent.phase } else { $null }
+    LastLevel   = if ($lastEvent -and $lastEvent.PSObject.Properties.Name -contains 'level') { $lastEvent.level } else { $null }
+    Errors      = $errors
+  }
+}
+
 function ConvertTo-DateTime {
   param([string]$Value)
   if ([string]::IsNullOrWhiteSpace($Value)) { return $null }
@@ -525,6 +664,7 @@ function Get-PesterTelemetry {
   $sessionIndexSource = $sessionPreferred.Source
   $requirementTaggedCases = 0
   $requirementCaseCount = 0
+  $runtimeEvents = $null
   if ($sessionIndexInfo.Data) {
     $sessionData = $sessionIndexInfo.Data
     if ($sessionData.PSObject.Properties.Name -contains 'status') {
@@ -585,6 +725,36 @@ function Get-PesterTelemetry {
         $requirementTaggedCases = @($cases | Where-Object { $_ -and $_.PSObject.Properties.Name -contains 'requirement' -and -not [string]::IsNullOrWhiteSpace([string]$_.requirement) }).Count
       }
     }
+
+    $dispatcherEventsTelemetry = $null
+    $restWatcherEventsTelemetry = $null
+    $filesObject = if ($sessionData.PSObject.Properties.Name -contains 'files') { $sessionData.files } else { $null }
+    if ($filesObject -and $filesObject.PSObject.Properties.Name -contains 'dispatcherEventsNdjson' -and $filesObject.dispatcherEventsNdjson) {
+      $dispatcherEventsTelemetry = Get-StructuredEventTelemetry `
+        -ArtifactPath ([string]$filesObject.dispatcherEventsNdjson) `
+        -SessionIndexPath $sessionIndexInfo.Path `
+        -ResultsRoot $ResultsRoot `
+        -FallbackSource 'pester-dispatcher'
+    }
+
+    $watchersObject = if ($sessionData.PSObject.Properties.Name -contains 'watchers') { $sessionData.watchers } else { $null }
+    $restWatcher = if ($watchersObject -and $watchersObject.PSObject.Properties.Name -contains 'rest') { $watchersObject.rest } else { $null }
+    $restEvents = if ($restWatcher -and $restWatcher.PSObject.Properties.Name -contains 'events') { $restWatcher.events } else { $null }
+    if ($restEvents -and $restEvents.PSObject.Properties.Name -contains 'path' -and $restEvents.path) {
+      $restWatcherEventsTelemetry = Get-StructuredEventTelemetry `
+        -ArtifactPath ([string]$restEvents.path) `
+        -SessionIndexPath $sessionIndexInfo.Path `
+        -ResultsRoot $ResultsRoot `
+        -EmbeddedMetadata $restEvents `
+        -FallbackSource 'rest-watcher'
+    }
+
+    if ($dispatcherEventsTelemetry -or $restWatcherEventsTelemetry) {
+      $runtimeEvents = [pscustomobject][ordered]@{
+        Dispatcher  = $dispatcherEventsTelemetry
+        RestWatcher = $restWatcherEventsTelemetry
+      }
+    }
   }
 
   return [pscustomobject][ordered]@{
@@ -601,6 +771,7 @@ function Get-PesterTelemetry {
     SessionIncludeIntegration = $sessionIncludeIntegration
     RequirementTaggedCases = $requirementTaggedCases
     RequirementCaseCount = $requirementCaseCount
+    RuntimeEvents      = $runtimeEvents
     Runner             = $runnerInfo
     Errors             = $errors
   }

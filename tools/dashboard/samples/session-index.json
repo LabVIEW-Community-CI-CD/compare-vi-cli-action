@@ -1,0 +1,24 @@
+{
+  "schema": "session-index/v1",
+  "schemaVersion": "1.0.0",
+  "generatedAtUtc": "2026-03-07T22:00:00Z",
+  "resultsDir": "tools/dashboard/samples",
+  "files": {
+    "dispatcherEventsNdjson": "dispatcher-events.ndjson"
+  },
+  "watchers": {
+    "rest": {
+      "schema": "ci-watch/rest-v1",
+      "repo": "LabVIEW-Community-CI-CD/compare-vi-cli-action",
+      "runId": 123456,
+      "polledAtUtc": "2026-03-07T22:01:00Z",
+      "jobs": [],
+      "events": {
+        "schema": "comparevi/runtime-event/v1",
+        "path": "watcher-events.ndjson",
+        "present": true,
+        "count": 2
+      }
+    }
+  }
+}

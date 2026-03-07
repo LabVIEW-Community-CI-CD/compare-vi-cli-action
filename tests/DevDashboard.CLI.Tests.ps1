@@ -20,6 +20,10 @@ Describe 'Dev Dashboard CLI' -Tag 'Unit' {
     $json.PesterTelemetry.Totals.Failed | Should -Be 1
     $json.PesterTelemetry.SessionStatus | Should -BeNullOrEmpty
     $json.PesterTelemetry.Runner | Should -BeNullOrEmpty
+    $json.PesterTelemetry.RuntimeEvents.Dispatcher.Count | Should -Be 2
+    $json.PesterTelemetry.RuntimeEvents.Dispatcher.Source | Should -Be 'pester-dispatcher'
+    $json.PesterTelemetry.RuntimeEvents.RestWatcher.Count | Should -Be 2
+    $json.PesterTelemetry.RuntimeEvents.RestWatcher.Source | Should -Be 'rest-watcher'
     $json.Stakeholders.Channels | Should -Contain 'slack://#ci-selfhosted'
     $json.WatchTelemetry.Last.status | Should -Be 'FAIL'
     $json.WatchTelemetry.History.Count | Should -Be 2
@@ -39,6 +43,8 @@ Describe 'Dev Dashboard CLI' -Tag 'Unit' {
     $content | Should -Match 'Session Lock'
     $content | Should -Match 'Watch Mode'
     $content | Should -Match 'LabVIEW Snapshot'
+    $content | Should -Match 'Runtime Events'
+    $content | Should -Match 'dispatcher-events.ndjson'
     $content | Should -Match 'History Suite'
   }
 
