@@ -84,11 +84,57 @@ function Get-WatcherEventMetadata {
 
   $metadata.present = $true
   try {
-    $lineCount = @(Get-Content -LiteralPath $Path -ErrorAction Stop | Where-Object { -not [string]::IsNullOrWhiteSpace($_) }).Count
+    $lineCount = 0
+    foreach ($line in [System.IO.File]::ReadLines($Path)) {
+      if (-not [string]::IsNullOrWhiteSpace($line)) {
+        $lineCount++
+      }
+    }
     $metadata.count = $lineCount
   } catch {}
 
   return [pscustomobject]$metadata
+}
+
+function ConvertTo-SessionIndexWatcherEvents {
+  param([psobject]$WatcherEvents)
+
+  if (-not $WatcherEvents) {
+    return $null
+  }
+
+  $eventPath = $null
+  if ($WatcherEvents.PSObject.Properties.Name -contains 'path' -and $WatcherEvents.path) {
+    $eventPath = [string]$WatcherEvents.path
+  }
+  if ([string]::IsNullOrWhiteSpace($eventPath)) {
+    return $null
+  }
+
+  $count = 0
+  if ($WatcherEvents.PSObject.Properties.Name -contains 'count' -and $WatcherEvents.count -ne $null) {
+    try {
+      $count = [int]$WatcherEvents.count
+    } catch {
+      $count = 0
+    }
+  }
+  if ($count -lt 0) {
+    $count = 0
+  }
+
+  $presentFromFs = Test-Path -LiteralPath $eventPath -PathType Leaf
+  $present = $presentFromFs
+  if ($WatcherEvents.PSObject.Properties.Name -contains 'present' -and $WatcherEvents.present -ne $null) {
+    $present = $presentFromFs -and [bool]$WatcherEvents.present
+  }
+
+  return [pscustomobject]([ordered]@{
+      schema  = 'comparevi/runtime-event/v1'
+      path    = $eventPath
+      present = $present
+      count   = $count
+    })
 }
 
 if (-not (Test-Path -LiteralPath $ResultsDir -PathType Container)) {
@@ -142,10 +188,13 @@ if (-not $WatcherJson) {
 }
 
 $events = $null
-if ($watch -and ($watch.PSObject.Properties.Name -contains 'events') -and $watch.events) {
-  $events = $watch.events
-} elseif ($WatcherEvents) {
+if ($WatcherEvents) {
   $events = Get-WatcherEventMetadata -Path $WatcherEvents
+} elseif ($watch -and ($watch.PSObject.Properties.Name -contains 'events') -and $watch.events) {
+  $events = ConvertTo-SessionIndexWatcherEvents -WatcherEvents $watch.events
+}
+if ($watch -and ($watch.PSObject.Properties.Name -contains 'events') -and -not $events) {
+  [void]$watch.PSObject.Properties.Remove('events')
 }
 if ($watch -and $events) {
   $watch | Add-Member -NotePropertyName 'events' -NotePropertyValue $events -Force

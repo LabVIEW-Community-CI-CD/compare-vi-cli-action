@@ -71,7 +71,7 @@ parser.add_argument('--heartbeat-file', {
   default: '',
 });
 parser.add_argument('--events-file', {
-  help: 'Optional NDJSON runtime events file for downstream consumers',
+  help: 'Optional NDJSON runtime events file for downstream consumers (defaults to <results>/pester-watcher-events.ndjson)',
   default: '',
 });
 parser.add_argument('--quiet', {
@@ -535,8 +535,8 @@ async function watch() {
     const idleSec = Math.floor(idleMs / 1000);
 
     if (idleSec >= hangSeconds) {
-        lastHangSuspectAt = Date.now();
-        if (!hangReported) {
+      lastHangSuspectAt = Date.now();
+      if (!hangReported) {
         warn(`[hang-suspect] idle ~${idleSec}s (no new log bytes or summary). live-bytes=${lastStatsSize} consumed-bytes=${logPosition}`, 'hang-suspect', {
           idleSeconds: idleSec,
           liveBytes: lastStatsSize,

@@ -1,7 +1,7 @@
 import { execSync } from 'node:child_process';
 import { ArgumentParser } from 'argparse';
 import { setTimeout as sleep } from 'node:timers/promises';
-import { mkdirSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, writeFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 
 interface WorkflowRun {
@@ -59,8 +59,8 @@ interface WatcherSummary {
   }>;
   events?: {
     schema: 'comparevi/runtime-event/v1';
-    source: string;
-    path?: string;
+    path: string;
+    present: boolean;
     count: number;
   };
 }
@@ -142,8 +142,8 @@ function buildSummary(params: {
   if (events?.outPath) {
     summary.events = {
       schema: 'comparevi/runtime-event/v1',
-      source: events.source,
       path: events.outPath,
+      present: existsSync(events.outPath),
       count: events.count,
     };
   }
@@ -649,7 +649,9 @@ async function main() {
   parser.add_argument('--workflow', { default: DEFAULT_WORKFLOW_FILE, help: 'Workflow file name (default: ci-orchestrated)' });
   parser.add_argument('--poll-ms', { type: Number, default: 15000, help: 'Polling interval in milliseconds' });
   parser.add_argument('--out', { help: 'Optional path to write watcher summary JSON' });
-  parser.add_argument('--events-out', { help: 'Optional path to write watcher runtime events NDJSON' });
+  parser.add_argument('--events-out', {
+    help: 'Optional path to write watcher runtime events NDJSON (defaults to watcher-events.ndjson next to --out)',
+  });
   parser.add_argument('--error-grace-ms', { type: Number, default: DEFAULT_ERROR_GRACE_MS, help: 'Milliseconds of consecutive errors before aborting (default: 120000)' });
   parser.add_argument('--notfound-grace-ms', { type: Number, default: DEFAULT_NOT_FOUND_GRACE_MS, help: 'Milliseconds to wait after repeated 404 responses before aborting (default: 90000)' });
   parser.add_argument('--changes-only', { action: 'store_true', default: true, help: 'Print run/job details only when values change (default: true).' });
