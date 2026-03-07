@@ -101,6 +101,7 @@ Describe 'CompareVI.Tools artifact publishing' {
       'tools/Compare-VIHistory.ps1',
       'tools/Compare-RefsToTemp.ps1',
       'tools/Invoke-LVCompare.ps1',
+      'tools/Render-VIHistoryReport.ps1',
       'tools/Stage-CompareInputs.ps1',
       'tools/VendorTools.psm1',
       'tools/VICategoryBuckets.psm1',
