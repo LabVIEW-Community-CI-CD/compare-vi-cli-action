@@ -74,6 +74,72 @@ Describe 'Update-SessionIndexWatcher' -Tag 'Unit' {
     $idx.watchers.rest.events.count | Should -Be 2
   }
 
+  It 'prefers explicit watcher event metadata over summary-embedded events' {
+    $resultsDir = & $script:newSessionIndexFixture 'watcher-events-explicit'
+    $watcherPath = Join-Path $TestDrive 'watcher-events-explicit.json'
+    $eventsPath = Join-Path $TestDrive 'watcher-events-explicit.ndjson'
+    $watcher = @{
+      schema = 'ci-watch/rest-v1'
+      status = 'completed'
+      conclusion = 'success'
+      polledAtUtc = (Get-Date).ToUniversalTime().ToString('o')
+      jobs = @()
+      events = @{
+        schema = 'comparevi/runtime-event/v1'
+        source = 'rest-watcher'
+        path = 'stale.ndjson'
+        count = 99
+      }
+    } | ConvertTo-Json -Depth 5
+    @(
+      '{"schema":"comparevi/runtime-event/v1","source":"rest-watcher","phase":"watch-start","level":"info","message":"watching run=2 repo=owner/repo"}',
+      '{"schema":"comparevi/runtime-event/v1","source":"rest-watcher","phase":"heartbeat","level":"info","message":"heartbeat"}',
+      '{"schema":"comparevi/runtime-event/v1","source":"rest-watcher","phase":"run-snapshot","level":"info","message":"completed"}'
+    ) | Set-Content -LiteralPath $eventsPath -Encoding UTF8
+    Set-Content -LiteralPath $watcherPath -Value $watcher -Encoding UTF8
+
+    & $script:updateScript -ResultsDir $resultsDir -WatcherJson $watcherPath -WatcherEvents $eventsPath
+
+    $idx = Get-Content -LiteralPath (Join-Path $resultsDir 'session-index.json') -Raw | ConvertFrom-Json
+    $idx.watchers.rest.events.schema | Should -Be 'comparevi/runtime-event/v1'
+    $idx.watchers.rest.events.path | Should -Be $eventsPath
+    $idx.watchers.rest.events.present | Should -BeTrue
+    $idx.watchers.rest.events.count | Should -Be 3
+    $idx.watchers.rest.events.PSObject.Properties.Name | Should -Not -Contain 'source'
+  }
+
+  It 'normalizes summary-embedded event metadata to the session index shape' {
+    $resultsDir = & $script:newSessionIndexFixture 'watcher-events-normalized'
+    $watcherPath = Join-Path $TestDrive 'watcher-events-normalized.json'
+    $eventsPath = Join-Path $TestDrive 'watcher-events-normalized.ndjson'
+    @(
+      '{"schema":"comparevi/runtime-event/v1","source":"rest-watcher","phase":"watch-start","level":"info","message":"watching run=3 repo=owner/repo"}'
+    ) | Set-Content -LiteralPath $eventsPath -Encoding UTF8
+    $watcher = @{
+      schema = 'ci-watch/rest-v1'
+      status = 'completed'
+      conclusion = 'success'
+      polledAtUtc = (Get-Date).ToUniversalTime().ToString('o')
+      jobs = @()
+      events = @{
+        schema = 'comparevi/runtime-event/v1'
+        source = 'rest-watcher'
+        path = $eventsPath
+        count = 1
+      }
+    } | ConvertTo-Json -Depth 5
+    Set-Content -LiteralPath $watcherPath -Value $watcher -Encoding UTF8
+
+    & $script:updateScript -ResultsDir $resultsDir -WatcherJson $watcherPath
+
+    $idx = Get-Content -LiteralPath (Join-Path $resultsDir 'session-index.json') -Raw | ConvertFrom-Json
+    $idx.watchers.rest.events.schema | Should -Be 'comparevi/runtime-event/v1'
+    $idx.watchers.rest.events.path | Should -Be $eventsPath
+    $idx.watchers.rest.events.present | Should -BeTrue
+    $idx.watchers.rest.events.count | Should -Be 1
+    $idx.watchers.rest.events.PSObject.Properties.Name | Should -Not -Contain 'source'
+  }
+
   It 'records missing-file watcher status when watcher json path does not exist' {
     $resultsDir = & $script:newSessionIndexFixture 'watcher-missing'
     $watcherPath = Join-Path $TestDrive 'does-not-exist.json'

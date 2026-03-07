@@ -18,6 +18,9 @@ test('orchestrated watcher source keeps explicit log-level prefixes for live con
   assert.match(source, /const line = `\[\$\{level\}\] \$\{message\}`;/);
   assert.match(source, /schema: 'comparevi\/runtime-event\/v1'/);
   assert.match(source, /parser\.add_argument\('--events-out'/);
+  assert.match(source, /defaults to watcher-events\.ndjson next to --out/);
+  assert.match(source, /present: true,/);
+  assert.doesNotMatch(source, /source: events\.source,/);
   assert.match(source, /emitLog\('info', `watching run=\$\{runId\} repo=\$\{repo\}`,/);
   assert.match(source, /emitLog\('info', `status=\$\{status\} conclusion=\$\{conclusion \|\| 'n\/a'\}`,/);
   assert.ok(source.includes('heartbeat run="${title}" status=${status} conclusion=${conclusion || \'n/a\'} jobs=${completedJobs}/${totalJobs} elapsed~${elapsedSeconds}s'));
@@ -31,6 +34,7 @@ test('pester artifact watcher prefixes informational and warning lines with seve
   assert.match(source, /console\.log\(`\[info\] \$\{message\}`\);/);
   assert.match(source, /console\.warn\(`\[warn\] \$\{message\}`\);/);
   assert.match(source, /parser\.add_argument\('--events-file'/);
+  assert.match(source, /defaults to <results>\/pester-watcher-events\.ndjson/);
   assert.match(source, /schema: 'comparevi\/runtime-event\/v1'/);
   assert.match(source, /source: 'pester-artifact-watcher'/);
   assert.match(source, /events: getRuntimeEventMetadata\(\)/);
