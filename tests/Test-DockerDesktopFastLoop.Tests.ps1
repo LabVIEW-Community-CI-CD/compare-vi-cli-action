@@ -136,7 +136,7 @@ if (-not [string]::IsNullOrWhiteSpace($env:FASTLOOP_WINDOWS_TRACE_PATH)) {
   if ($traceDir -and -not (Test-Path -LiteralPath $traceDir -PathType Container)) {
     New-Item -ItemType Directory -Path $traceDir -Force | Out-Null
   }
-  $traceLine = "probe={0};labviewPath={1}" -f $Probe.IsPresent, $LabVIEWPath
+  $traceLine = "probe={0};labviewPath={1};baseVi={2};headVi={3};reportPath={4}" -f $Probe.IsPresent, $LabVIEWPath, $BaseVi, $HeadVi, $ReportPath
   Add-Content -LiteralPath $env:FASTLOOP_WINDOWS_TRACE_PATH -Value $traceLine -Encoding utf8
 }
 if (-not [string]::IsNullOrWhiteSpace($env:FASTLOOP_WINDOWS_SLEEP_SECONDS)) {
@@ -658,10 +658,94 @@ if (-not [string]::IsNullOrWhiteSpace($GitHubOutputPath)) {
       $traceLines = @(Get-Content -LiteralPath $tracePath | Where-Object { -not [string]::IsNullOrWhiteSpace($_) })
       $traceLines.Count | Should -BeGreaterThan 0
       $traceLines[-1] | Should -Match 'probe=False;labviewPath='
-      ($traceLines[-1] -like "*labviewPath=$expectedPath") | Should -BeTrue
+      ($traceLines[-1] -match ("labviewPath={0}(;|$)" -f [regex]::Escape($expectedPath))) | Should -BeTrue
     } finally {
       Remove-Item Env:FASTLOOP_WINDOWS_TRACE_PATH -ErrorAction SilentlyContinue
       Remove-Item Env:LABVIEW_PATH -ErrorAction SilentlyContinue
+      Pop-Location | Out-Null
+    }
+  }
+
+  It 'binds distinct windows history report paths for each smoke scenario step' {
+    $repoRoot = Join-Path $TestDrive 'fast-loop-history-report-binding'
+    New-HarnessRepo -RootPath $repoRoot
+
+    Set-Content -LiteralPath (Join-Path $repoRoot 'fixtures' 'head-attribute.vi') -Value 'head-attribute' -Encoding utf8
+    Set-Content -LiteralPath (Join-Path $repoRoot 'fixtures' 'head-step-1.vi') -Value 'head-step-1' -Encoding utf8
+    Set-Content -LiteralPath (Join-Path $repoRoot 'fixtures' 'head-step-2.vi') -Value 'head-step-2' -Encoding utf8
+    Set-Content -LiteralPath (Join-Path $repoRoot 'fixtures' 'vi-history' 'pr-harness.json') -Encoding utf8 -Value @'
+{
+  "schema": "vi-history-pr-harness@v1",
+  "scenarios": [
+    {
+      "id": "attribute",
+      "mode": "attribute",
+      "source": "fixtures/head-attribute.vi",
+      "requireDiff": true
+    },
+    {
+      "id": "sequential",
+      "mode": "sequential",
+      "requireDiff": true
+    }
+  ]
+}
+'@
+    Set-Content -LiteralPath (Join-Path $repoRoot 'fixtures' 'vi-history' 'sequential.json') -Encoding utf8 -Value @'
+{
+  "schema": "vi-history-sequence@v1",
+  "steps": [
+    {
+      "id": "step-1",
+      "source": "fixtures/head-step-1.vi",
+      "requireDiff": true
+    },
+    {
+      "id": "step-2",
+      "source": "fixtures/head-step-2.vi",
+      "requireDiff": true
+    }
+  ]
+}
+'@
+
+    Push-Location $repoRoot
+    try {
+      $resultsRoot = Join-Path $repoRoot 'tests/results/local-parity'
+      $tracePath = Join-Path $resultsRoot 'windows-trace.log'
+      $env:FASTLOOP_WINDOWS_TRACE_PATH = $tracePath
+
+      $output = & pwsh -NoLogo -NoProfile -File (Join-Path $repoRoot 'tools' 'Test-DockerDesktopFastLoop.ps1') `
+        -ResultsRoot $resultsRoot `
+        -LaneScope windows `
+        -SkipWindowsProbe `
+        -SkipLinuxProbe `
+        -HistoryScenarioSet smoke 2>&1
+      $LASTEXITCODE | Should -Be 0 -Because ($output -join "`n")
+
+      $summaryPath = Get-LatestFastLoopSummary -ResultsRoot $resultsRoot
+      $summaryPath | Should -Not -BeNullOrEmpty
+      $summary = Get-Content -LiteralPath $summaryPath -Raw | ConvertFrom-Json -Depth 12
+      $historySteps = @($summary.steps | Where-Object { [string]$_.name -like 'windows-history*' })
+      $historySteps.Count | Should -Be 3
+      (@($historySteps | ForEach-Object { [string]$_.capturePath } | Select-Object -Unique)).Count | Should -Be 3
+      @($historySteps | ForEach-Object { [string]$_.capturePath }) | Should -Contain (Join-Path $resultsRoot 'history-scenarios\attribute\ni-windows-container-capture.json')
+      @($historySteps | ForEach-Object { [string]$_.capturePath }) | Should -Contain (Join-Path $resultsRoot 'history-scenarios\sequential\step-1\ni-windows-container-capture.json')
+      @($historySteps | ForEach-Object { [string]$_.capturePath }) | Should -Contain (Join-Path $resultsRoot 'history-scenarios\sequential\step-2\ni-windows-container-capture.json')
+
+      Test-Path -LiteralPath $tracePath -PathType Leaf | Should -BeTrue
+      $traceLines = @(Get-Content -LiteralPath $tracePath | Where-Object { $_ -like 'probe=False*' })
+      $traceLines.Count | Should -Be 3
+      (@($traceLines | ForEach-Object {
+        if ($_ -match 'reportPath=([^;]+)$') { $Matches[1] }
+      } | Select-Object -Unique)).Count | Should -Be 3
+      $traceLines[0] | Should -Match 'headVi=.*head-attribute\.vi'
+      $traceLines[1] | Should -Match 'baseVi=.*fixtures\\vi-attr\\Base\.vi'
+      $traceLines[1] | Should -Match 'headVi=.*head-step-1\.vi'
+      $traceLines[2] | Should -Match 'baseVi=.*head-step-1\.vi'
+      $traceLines[2] | Should -Match 'headVi=.*head-step-2\.vi'
+    } finally {
+      Remove-Item Env:FASTLOOP_WINDOWS_TRACE_PATH -ErrorAction SilentlyContinue
       Pop-Location | Out-Null
     }
   }
