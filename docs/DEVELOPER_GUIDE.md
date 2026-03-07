@@ -307,6 +307,10 @@ For Docker/Desktop VI history validation, run fast-loop lanes explicitly:
   - `node tools/npm/run-script.mjs priority:issue:route -- --decision tests/results/_agent/ops/policy-decision-report.json`
   The router dedupes by incident fingerprint marker and emits
   `tests/results/_agent/ops/issue-routing-report.json` (`priority/issue-routing-report@v1`).
+  For canary replay conformance (single/repeated/reordered fixtures with deterministic dedupe assertions), run
+  `node tools/npm/run-script.mjs priority:canary:replay`; this emits
+  `tests/results/_agent/canary/canary-replay-conformance-report.json`
+  (`priority/canary-replay-conformance-report@v1`).
 - In unattended flows, use lane-enforced standing sync (`node tools/npm/run-script.mjs priority:sync:lane`) so
   missing or duplicate standing-priority labels fail fast and emit deterministic diagnostics:
   - `tests/results/_agent/issue/no-standing-priority.json`
