@@ -11,6 +11,12 @@ The format is based on Keep a Changelog, and this project adheres to Semantic Ve
 
 - `tools/Compare-VIHistory.ps1` now walks every reachable commit pair by default. Wrapper scripts and workflows only cap
   history when `-MaxPairs`/`max_pairs` is explicitly supplied, keeping manifests and reports complete without extra flags.
+- Release branch tooling now synchronizes the backend release surfaces together:
+  `package.json`, `Directory.Build.props`, and
+  `tools/CompareVI.Tools/CompareVI.Tools.psd1`.
+- `comparevi-cli`, `CompareVi.Shared`, and `CompareVI.Tools` now follow the
+  backend release line (`0.6.3` on `develop`) instead of advertising stale
+  `0.1.0` internal versions.
 
 ### Added
 
@@ -28,6 +34,9 @@ The format is based on Keep a Changelog, and this project adheres to Semantic Ve
 - Added Session Index cutover docs (`docs/SESSION_INDEX_V1_DEPRECATION.md`,
   `docs/SESSION_INDEX_V2_CONSUMER_MATRIX.md`) to formalize v1 freeze rules, deprecation window criteria, and final
   v2-only evidence expectations.
+- Clarified the stable backend release surface map and the coordination
+  expectations between backend releases in this repo and facade releases in
+  `comparevi-history`.
 
 ## [v0.6.0] - 2025-11-02
 

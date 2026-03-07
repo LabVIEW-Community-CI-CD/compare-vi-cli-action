@@ -1,7 +1,5 @@
 #!/usr/bin/env node
 
-import { readFile } from 'node:fs/promises';
-import path from 'node:path';
 import { spawnSync } from 'node:child_process';
 import process from 'node:process';
 import {
@@ -35,6 +33,10 @@ import {
   assertRequiredReleaseChecksClean
 } from './lib/release-pr-checks.mjs';
 import { collectStandingPriorityParityGate } from './lib/release-priority-parity.mjs';
+import {
+  readReleaseSurfaceVersions,
+  evaluateReleaseSurfaceVersionExpectations
+} from './lib/release-surface-versions.mjs';
 
 const USAGE_LINES = [
   'Usage: node tools/npm/run-script.mjs release:finalize -- <version>',
@@ -44,16 +46,6 @@ const USAGE_LINES = [
   'Options:',
   '  -h, --help    Show this message and exit'
 ];
-
-async function readPackageVersion(repoRoot) {
-  const pkgPath = path.join(repoRoot, 'package.json');
-  const raw = await readFile(pkgPath, 'utf8');
-  const pkg = JSON.parse(raw);
-  if (!pkg.version) {
-    throw new Error('package.json missing version field');
-  }
-  return String(pkg.version);
-}
 
 function buildReleaseTitle(tag) {
   return process.env.RELEASE_TITLE ?? `Release ${tag}`;
@@ -346,9 +338,10 @@ async function main() {
     }
 
     const releaseCommit = run('git', ['rev-parse', 'HEAD'], { cwd: repoRoot });
-    const pkgVersion = await readPackageVersion(repoRoot);
-    if (pkgVersion !== semver) {
-      throw new Error(`package.json version ${pkgVersion} does not match expected ${semver}`);
+    const surfaceVersions = await readReleaseSurfaceVersions(repoRoot);
+    const surfaceEvaluation = evaluateReleaseSurfaceVersionExpectations(semver, surfaceVersions);
+    if (!surfaceEvaluation.valid) {
+      throw new Error(`Release surface versions are out of sync: ${surfaceEvaluation.issues.join(' ')}`);
     }
 
     run('git', ['checkout', '-B', 'main', 'upstream/main'], { cwd: repoRoot });
@@ -425,6 +418,7 @@ async function main() {
       developCommit,
       draftedRelease: tag,
       pullRequest: prInfo,
+      surfaceVersions,
       standingPriorityParity,
       hygiene,
       compareEvidence,

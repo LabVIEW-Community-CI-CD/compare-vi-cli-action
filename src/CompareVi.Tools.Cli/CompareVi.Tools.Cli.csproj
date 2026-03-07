@@ -7,7 +7,6 @@
     <AssemblyName>comparevi-cli</AssemblyName>
     <RootNamespace>CompareVi.Tools.Cli</RootNamespace>
     <Description>Cross-platform CLI utilities for Compare VI workflows (tokenize, process scans, path utils).</Description>
-    <Version>0.1.0</Version>
   </PropertyGroup>
 
   <ItemGroup>

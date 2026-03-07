@@ -317,10 +317,33 @@ Code task) to restore the previous suppression bundle
 
 ## Release and compatibility
 
-Renaming the workflow inputs breaks compatibility with previous revisions, so the
-next release should cut a new major tag (for example `v1.0.0`). Update downstream
-automation or scheduled triggers to use the new `vi_path` / `compare_ref` inputs
-before adopting the release.
+The backend release tag `vX.Y.Z` (or prerelease `vX.Y.Z-rc.N`) is the canonical
+version for this repository. That one tag/version line governs the stable backend
+surfaces:
+
+- `comparevi-cli` release archives and `comparevi-cli version`
+- `CompareVi.Shared` package version
+- `CompareVI.Tools` bundle metadata and release asset pin
+
+For `CompareVI.Tools`, pin the bundle by backend release tag plus
+`SHA256SUMS.txt`. The embedded PowerShell module manifest is still useful for
+inspection, but consumers should not treat `ModuleVersion` alone as the release
+identity.
+
+Stable support promise:
+
+- stable backend tags publish the CLI archives, `CompareVi.Shared`, and the
+  `CompareVI.Tools` bundle from the same source ref
+- rc tags are preview/backend-validation tags and should not be treated as
+  stable downstream pins unless explicitly called out
+
+Facade coordination:
+
+- `comparevi-history` is a separate repo with its own semver line
+- a backend release here does not automatically imply a facade release there
+- if the backend contract consumed by the facade changes, update the facade's
+  pinned backend ref and cut a facade release separately after its smoke/release
+  workflows pass
 
 Tagged releases also publish a `CompareVI.Tools` zip bundle for cross-repo
 module consumers. Compatibility expectations for that asset are strict:

@@ -140,6 +140,21 @@ $moduleVersion = [string]$moduleManifest.ModuleVersion
 if ([string]::IsNullOrWhiteSpace($moduleVersion)) {
   throw "ModuleVersion was not found in $moduleManifestResolved"
 }
+$modulePrerelease = ''
+if ($moduleManifest.ContainsKey('PrivateData')) {
+  $privateData = $moduleManifest.PrivateData
+  if ($privateData -is [hashtable] -and $privateData.ContainsKey('PSData')) {
+    $psData = $privateData.PSData
+    if ($psData -is [hashtable] -and $psData.ContainsKey('Prerelease') -and -not [string]::IsNullOrWhiteSpace([string]$psData.Prerelease)) {
+      $modulePrerelease = [string]$psData.Prerelease
+    }
+  }
+}
+$moduleReleaseVersion = if ([string]::IsNullOrWhiteSpace($modulePrerelease)) {
+  $moduleVersion
+} else {
+  "$moduleVersion-$modulePrerelease"
+}
 
 $repositorySlug = Resolve-RepositorySlug -Explicit $Repository
 $resolvedSourceRef = Resolve-SourceRef -Explicit $SourceRef
@@ -166,7 +181,7 @@ $metadataReportResolved = if ([System.IO.Path]::IsPathRooted($MetadataReportPath
 }
 Ensure-Directory -Path (Split-Path -Parent $metadataReportResolved)
 
-$bundleFolderName = "CompareVI.Tools-v$moduleVersion"
+$bundleFolderName = "CompareVI.Tools-v$moduleReleaseVersion"
 $archiveName = "$bundleFolderName.zip"
 $archivePath = Join-Path $outputRootResolved $archiveName
 
@@ -218,6 +233,8 @@ try {
   $moduleMetadata = [ordered]@{
     name = 'CompareVI.Tools'
     version = $moduleVersion
+    releaseVersion = $moduleReleaseVersion
+    prerelease = if ([string]::IsNullOrWhiteSpace($modulePrerelease)) { $null } else { $modulePrerelease }
     manifestPath = 'tools/CompareVI.Tools/CompareVI.Tools.psd1'
     importPath = 'tools/CompareVI.Tools/CompareVI.Tools.psd1'
     exportedFunctions = @($moduleManifest.FunctionsToExport)
@@ -280,6 +297,8 @@ try {
 
   if ($EmitGitHubOutputs.IsPresent) {
     Write-GitHubOutputValue -Key 'comparevi_tools_module_version' -Value $moduleVersion
+    Write-GitHubOutputValue -Key 'comparevi_tools_release_version' -Value $moduleReleaseVersion
+    Write-GitHubOutputValue -Key 'comparevi_tools_module_prerelease' -Value $modulePrerelease
     Write-GitHubOutputValue -Key 'comparevi_tools_archive_path' -Value $archivePath
     Write-GitHubOutputValue -Key 'comparevi_tools_metadata_path' -Value $metadataReportResolved
   }

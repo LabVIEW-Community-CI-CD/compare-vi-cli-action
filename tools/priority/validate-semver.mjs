@@ -2,6 +2,11 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import {
+  deriveReleaseSurfaceVersions,
+  readReleaseSurfaceVersionsSync,
+  evaluateReleaseSurfaceVersionExpectations
+} from './lib/release-surface-versions.mjs';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -77,9 +82,11 @@ export function evaluateVersionIntegrity(version, branch = null) {
 export function run({ args = process.argv.slice(2), env = process.env } = {}) {
   const parsed = parseArgs(args, env);
   let version = null;
+  let surfaceVersions = null;
 
   try {
     version = parsed.versionArg ?? readPackageVersion();
+    surfaceVersions = readReleaseSurfaceVersionsSync(repoRoot);
   } catch (err) {
     return {
       code: 1,
@@ -87,6 +94,7 @@ export function run({ args = process.argv.slice(2), env = process.env } = {}) {
         schema: 'priority/semver-check@v1',
         version: null,
         branch: parsed.branch,
+        surfaceVersions: null,
         valid: false,
         issues: [err.message],
         checkedAt: new Date().toISOString()
@@ -95,14 +103,19 @@ export function run({ args = process.argv.slice(2), env = process.env } = {}) {
   }
 
   const evaluated = evaluateVersionIntegrity(version, parsed.branch);
+  const releaseSurfaceEvaluation = evaluateReleaseSurfaceVersionExpectations(version, surfaceVersions);
+  const valid = evaluated.valid && releaseSurfaceEvaluation.valid;
+  const expectedSurfaces = deriveReleaseSurfaceVersions(version);
   return {
-    code: evaluated.valid ? 0 : 1,
+    code: valid ? 0 : 1,
     output: {
       schema: 'priority/semver-check@v1',
       version,
       branch: parsed.branch,
-      valid: evaluated.valid,
-      issues: evaluated.issues,
+      surfaceVersions,
+      expectedSurfaces,
+      valid,
+      issues: [...evaluated.issues, ...releaseSurfaceEvaluation.issues],
       checkedAt: new Date().toISOString()
     }
   };

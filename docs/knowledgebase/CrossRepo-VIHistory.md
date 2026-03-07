@@ -18,11 +18,15 @@ The release pipeline publishes an immutable `CompareVI.Tools` zip bundle on
 each tagged release. For cross-repo usage, prefer downloading that asset
 instead of checking out this repository.
 
+Treat the backend release tag as the authoritative pin. The bundle's embedded
+PowerShell manifest version is informative, but the supported consumer contract
+is the reviewed release tag plus its published checksum/provenance.
+
 1. **Download the pinned release asset**
 
    ```powershell
    $tag = 'v1.0.0'
-   $asset = 'CompareVI.Tools-v<module-version>.zip'
+   $asset = 'CompareVI.Tools-v<release-version>.zip'
    $uri = "https://github.com/LabVIEW-Community-CI-CD/compare-vi-cli-action/releases/download/$tag/$asset"
    Invoke-WebRequest -Uri $uri -OutFile $asset
    ```
@@ -35,8 +39,8 @@ instead of checking out this repository.
 3. **Extract and inspect metadata**
 
    ```powershell
-   Expand-Archive -Path .\CompareVI.Tools-v<module-version>.zip -DestinationPath .\comparevi-tools
-   Get-Content .\comparevi-tools\CompareVI.Tools-v<module-version>\comparevi-tools-release.json
+   Expand-Archive -Path .\CompareVI.Tools-v<release-version>.zip -DestinationPath .\comparevi-tools
+   Get-Content .\comparevi-tools\CompareVI.Tools-v<release-version>\comparevi-tools-release.json
    ```
 
    The embedded metadata records the module version, repository source,
@@ -45,7 +49,7 @@ instead of checking out this repository.
 4. **Import the module from the extracted bundle**
 
    ```powershell
-   Import-Module .\comparevi-tools\CompareVI.Tools-v<module-version>\tools\CompareVI.Tools\CompareVI.Tools.psd1 -Force
+   Import-Module .\comparevi-tools\CompareVI.Tools-v<release-version>\tools\CompareVI.Tools\CompareVI.Tools.psd1 -Force
    ```
 
 5. **Run the history helper**
@@ -56,7 +60,7 @@ instead of checking out this repository.
      -TargetPath "Tooling/deployment/VIP_Post-Install Custom Action.vi" `
      -RenderReport `
      -FailOnDiff:$false `
-     -InvokeScriptPath ..\comparevi-tools\CompareVI.Tools-v<module-version>\tools\Invoke-LVCompare.ps1
+     -InvokeScriptPath ..\comparevi-tools\CompareVI.Tools-v<release-version>\tools\Invoke-LVCompare.ps1
    ```
 
 This path replaces whole-repository acquisition for module consumers while

@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { evaluateVersionIntegrity, parseArgs } from '../validate-semver.mjs';
+import { evaluateVersionIntegrity, parseArgs, run } from '../validate-semver.mjs';
 
 test('evaluateVersionIntegrity accepts valid semver without branch context', () => {
   const result = evaluateVersionIntegrity('1.2.3');
@@ -30,4 +30,14 @@ test('parseArgs resolves branch from cli flag or github env', () => {
 
   const env = parseArgs([], { GITHUB_HEAD_REF: 'release/v2.0.0' });
   assert.equal(env.branch, 'release/v2.0.0');
+});
+
+test('run reports aligned release surface versions for the current repo', () => {
+  const result = run({ args: [] });
+  assert.equal(result.code, 0);
+  assert.equal(result.output.valid, true);
+  assert.ok(result.output.surfaceVersions);
+  assert.equal(result.output.version, result.output.surfaceVersions.packageVersion);
+  assert.equal(result.output.version, result.output.surfaceVersions.propsVersion);
+  assert.equal(result.output.version, result.output.surfaceVersions.moduleReleaseVersion);
 });
