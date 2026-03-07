@@ -1,3 +1,4 @@
+# CompareVI-TestPlane: host-neutral
 Describe 'CompareVI with Git refs (VI2.vi at two commits)' -Tag 'CompareVI','Integration' {
   BeforeAll {
     $ErrorActionPreference = 'Stop'
@@ -29,7 +30,17 @@ Describe 'CompareVI with Git refs (VI2.vi at two commits)' -Tag 'CompareVI','Int
 
     $rd = Join-Path $TestDrive 'ref-compare-vi2'
     New-Item -ItemType Directory -Path $rd -Force | Out-Null
-    & pwsh -NoLogo -NoProfile -File (Join-Path $_repo 'tools/Compare-RefsToTemp.ps1') -Path $_target -RefA $pair.A -RefB $pair.B -ResultsDir $rd -OutName 'vi2' | Out-Null
+    $stubPath = Join-Path $_repo 'tests/stubs/Invoke-LVCompare.stub.ps1'
+    & pwsh -NoLogo -NoProfile -File (Join-Path $_repo 'tools/Compare-RefsToTemp.ps1') `
+      -Path $_target `
+      -RefA $pair.A `
+      -RefB $pair.B `
+      -ResultsDir $rd `
+      -OutName 'vi2' `
+      -Detailed `
+      -RenderReport `
+      -InvokeScriptPath $stubPath `
+      -FailOnDiff:$false | Out-Null
     $exec = Join-Path $rd 'vi2-exec.json'
     $sum  = Join-Path $rd 'vi2-summary.json'
     Test-Path -LiteralPath $exec | Should -BeTrue
@@ -46,4 +57,3 @@ Describe 'CompareVI with Git refs (VI2.vi at two commits)' -Tag 'CompareVI','Int
     "VI2 refs: A=$($pair.A) B=$($pair.B) expectDiff=$($s.computed.expectDiff) cliDiff=$($s.cli.diff) exit=$($s.cli.exitCode)" | Write-Host
   }
 }
-

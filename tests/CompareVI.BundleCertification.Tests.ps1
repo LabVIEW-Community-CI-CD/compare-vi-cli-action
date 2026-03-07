@@ -1,3 +1,5 @@
+# CompareVI-TestPlane: host-neutral
+# CompareVI-TestModes: default, attributes, front-panel, block-diagram
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 

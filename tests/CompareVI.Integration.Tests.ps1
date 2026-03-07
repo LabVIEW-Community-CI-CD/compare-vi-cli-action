@@ -1,4 +1,5 @@
 #Requires -Version 7.0
+# CompareVI-TestPlane: legacy-host-labview
 # Tag: Integration (executes the real CLI on self-hosted)
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'

@@ -27,8 +27,21 @@ Describe "{0}" {{
 }}
 '@
 
-    foreach ($name in @('Alpha.Unit.Tests.ps1', 'Beta.Unit.Tests.ps1', 'Gamma.Helper.ps1')) {
-      $content = [string]::Format($testTemplate, $name)
+    $fixtureContent = @{
+      'Alpha.Unit.Tests.ps1' = @(
+        '# CompareVI-TestPlane: host-neutral',
+        '# CompareVI-TestModes: default, attributes',
+        [string]::Format($testTemplate, 'Alpha.Unit.Tests.ps1')
+      ) -join [Environment]::NewLine
+      'Beta.Unit.Tests.ps1' = @(
+        '# CompareVI-TestPlane: legacy-host-labview',
+        [string]::Format($testTemplate, 'Beta.Unit.Tests.ps1')
+      ) -join [Environment]::NewLine
+      'Gamma.Helper.ps1' = [string]::Format($testTemplate, 'Gamma.Helper.ps1')
+    }
+
+    foreach ($name in $fixtureContent.Keys) {
+      $content = $fixtureContent[$name]
       Set-Content -LiteralPath (Join-Path $script:fixtureTestsRoot $name) -Value $content -Encoding utf8
     }
 
@@ -102,5 +115,62 @@ Describe "{0}" {{
     $suppression.Removed | Should -Be 1
     $suppression.SingleCleared | Should -BeTrue
     ($suppression.Files | ForEach-Object { $_.Name }) | Should -Not -Contain 'Invoke-PesterTests.Patterns.Tests.ps1'
+  }
+
+  It 'parses execution plane and mode metadata' {
+    $skipFlag = $false
+    $skipVar = Get-Variable -Name skipSelfTest -Scope Script -ErrorAction SilentlyContinue
+    if ($skipVar) { $skipFlag = [bool]$skipVar.Value }
+    if ($skipFlag) {
+      $reasonVar = Get-Variable -Name skipReason -Scope Script -ErrorAction SilentlyContinue
+      $reason = if ($reasonVar) { [string]$reasonVar.Value } else { 'Pattern self-test suppressed in nested dispatcher context' }
+      Set-ItResult -Skipped -Because $reason
+      return
+    }
+
+    $alphaMetadata = Get-DispatcherTestMetadata -File (Get-Item -LiteralPath $script:expectedAlpha)
+    $alphaMetadata.ExecutionPlane | Should -Be 'host-neutral'
+    @($alphaMetadata.Modes) | Should -Be @('default', 'attributes')
+
+    $betaMetadata = Get-DispatcherTestMetadata -File (Get-Item -LiteralPath $script:expectedBeta)
+    $betaMetadata.ExecutionPlane | Should -Be 'legacy-host-labview'
+  }
+
+  It 'pre-excludes legacy host LabVIEW tests by default' {
+    $skipFlag = $false
+    $skipVar = Get-Variable -Name skipSelfTest -Scope Script -ErrorAction SilentlyContinue
+    if ($skipVar) { $skipFlag = [bool]$skipVar.Value }
+    if ($skipFlag) {
+      $reasonVar = Get-Variable -Name skipReason -Scope Script -ErrorAction SilentlyContinue
+      $reason = if ($reasonVar) { [string]$reasonVar.Value } else { 'Pattern self-test suppressed in nested dispatcher context' }
+      Set-ItResult -Skipped -Because $reason
+      return
+    }
+
+    $metadata = @(
+      (Get-DispatcherTestMetadata -File (Get-Item -LiteralPath $script:expectedAlpha)),
+      (Get-DispatcherTestMetadata -File (Get-Item -LiteralPath $script:expectedBeta))
+    )
+    $selection = Invoke-DispatcherExecutionPlaneFilter -Metadata $metadata
+    $selection.ExcludedCount | Should -Be 1
+    ($selection.Files | ForEach-Object { $_.FullName }) | Should -Be @($script:expectedAlpha)
+    $selection.ExplicitBlocked | Should -BeFalse
+  }
+
+  It 'blocks an explicit legacy host LabVIEW selection when no allowed files remain' {
+    $skipFlag = $false
+    $skipVar = Get-Variable -Name skipSelfTest -Scope Script -ErrorAction SilentlyContinue
+    if ($skipVar) { $skipFlag = [bool]$skipVar.Value }
+    if ($skipFlag) {
+      $reasonVar = Get-Variable -Name skipReason -Scope Script -ErrorAction SilentlyContinue
+      $reason = if ($reasonVar) { [string]$reasonVar.Value } else { 'Pattern self-test suppressed in nested dispatcher context' }
+      Set-ItResult -Skipped -Because $reason
+      return
+    }
+
+    $metadata = @(Get-DispatcherTestMetadata -File (Get-Item -LiteralPath $script:expectedBeta))
+    $selection = Invoke-DispatcherExecutionPlaneFilter -Metadata $metadata -ExplicitSelection
+    $selection.ExcludedCount | Should -Be 1
+    $selection.ExplicitBlocked | Should -BeTrue
   }
 }

@@ -1,3 +1,4 @@
+# CompareVI-TestPlane: host-neutral
 Describe 'CompareVI with Git refs (same path at two commits)' -Tag 'CompareVI','Integration' {
   BeforeAll {
     $ErrorActionPreference = 'Stop'
@@ -38,7 +39,17 @@ Describe 'CompareVI with Git refs (same path at two commits)' -Tag 'CompareVI','
 
     $rd = Join-Path $TestDrive 'ref-compare'
     New-Item -ItemType Directory -Path $rd -Force | Out-Null
-    & pwsh -NoLogo -NoProfile -File (Join-Path $_repo 'tools/Compare-RefsToTemp.ps1') -Path $_target -RefA $pair.A -RefB $pair.B -ResultsDir $rd -OutName 'test' | Out-Null
+    $stubPath = Join-Path $_repo 'tests/stubs/Invoke-LVCompare.stub.ps1'
+    & pwsh -NoLogo -NoProfile -File (Join-Path $_repo 'tools/Compare-RefsToTemp.ps1') `
+      -Path $_target `
+      -RefA $pair.A `
+      -RefB $pair.B `
+      -ResultsDir $rd `
+      -OutName 'test' `
+      -Detailed `
+      -RenderReport `
+      -InvokeScriptPath $stubPath `
+      -FailOnDiff:$false | Out-Null
     $exec = Join-Path $rd 'test-exec.json'
     $sum  = Join-Path $rd 'test-summary.json'
     Test-Path -LiteralPath $exec | Should -BeTrue
@@ -57,6 +68,75 @@ Describe 'CompareVI with Git refs (same path at two commits)' -Tag 'CompareVI','
 
     # Print brief info for test logs
     "refs: A=$($pair.A) B=$($pair.B) expectDiff=$($s.computed.expectDiff) cliDiff=$($s.cli.diff) exit=$($s.cli.exitCode)" | Write-Host
+  }
+
+  It 'resolves a temp root when TEMP-style environment variables are missing' {
+    $pair = $null
+    foreach ($p in $_pairs) {
+      & git show --no-renames -- "$($p.A):$_target" 1>$null 2>$null
+      $okA = ($LASTEXITCODE -eq 0)
+      & git show --no-renames -- "$($p.B):$_target" 1>$null 2>$null
+      $okB = ($LASTEXITCODE -eq 0)
+      if ($okA -and $okB) { $pair = $p; break }
+    }
+    if (-not $pair) { Set-ItResult -Skipped -Because 'No valid ref pair with content'; return }
+
+    $resultsDir = Join-Path $TestDrive 'ref-compare-temp-fallback'
+    New-Item -ItemType Directory -Path $resultsDir -Force | Out-Null
+    $stubPath = Join-Path $_repo 'tests/stubs/Invoke-LVCompare.stub.ps1'
+
+    $psi = [System.Diagnostics.ProcessStartInfo]::new()
+    $psi.FileName = 'pwsh'
+    foreach ($arg in @(
+      '-NoLogo',
+      '-NoProfile',
+      '-File',
+      (Join-Path $_repo 'tools/Compare-RefsToTemp.ps1'),
+      '-Path',
+      $_target,
+      '-RefA',
+      $pair.A,
+      '-RefB',
+      $pair.B,
+      '-ResultsDir',
+      $resultsDir,
+      '-OutName',
+      'temp-fallback',
+      '-Detailed',
+      '-RenderReport',
+      '-InvokeScriptPath',
+      $stubPath,
+      '-FailOnDiff:$false'
+    )) {
+      [void]$psi.ArgumentList.Add($arg)
+    }
+    $psi.WorkingDirectory = $_repo
+    $psi.UseShellExecute = $false
+    $psi.RedirectStandardOutput = $true
+    $psi.RedirectStandardError = $true
+    foreach ($name in @('TEMP','TMP','TMPDIR','RUNNER_TEMP')) {
+      [void]$psi.Environment.Remove($name)
+    }
+    $psi.Environment['STUB_COMPARE_DIFF'] = '1'
+
+    $proc = [System.Diagnostics.Process]::Start($psi)
+    $stdout = $proc.StandardOutput.ReadToEnd()
+    $stderr = $proc.StandardError.ReadToEnd()
+    $proc.WaitForExit()
+    if ($proc.ExitCode -ne 0) {
+      if ($stdout) { Write-Host $stdout }
+      if ($stderr) { Write-Host $stderr }
+    }
+    $proc.ExitCode | Should -Be 0
+
+    $summaryPath = Join-Path $resultsDir 'temp-fallback-summary.json'
+    $execPath = Join-Path $resultsDir 'temp-fallback-exec.json'
+    Test-Path -LiteralPath $summaryPath | Should -BeTrue
+    Test-Path -LiteralPath $execPath | Should -BeTrue
+
+    $summary = Get-Content -LiteralPath $summaryPath -Raw | ConvertFrom-Json -Depth 12
+    [int]$summary.cli.exitCode | Should -Be 1
+    ($summary.out.reportHtml -as [string]) | Should -Match 'compare-report.html'
   }
 
   It 'supports detailed capture mode with stub LVCompare' {
