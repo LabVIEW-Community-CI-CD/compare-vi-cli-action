@@ -19,13 +19,25 @@ test('project portfolio config tracks the expected schema and repos', () => {
 });
 
 test('project portfolio config item URLs are unique and cover the active programs', () => {
-  const urls = config.items.map((item) => item.url);
-  assert.equal(new Set(urls).size, urls.length);
-  assert.equal(urls.length, 16);
-  assert.ok(urls.includes('https://github.com/LabVIEW-Community-CI-CD/compare-vi-cli-action/issues/854'));
-  assert.ok(urls.includes('https://github.com/LabVIEW-Community-CI-CD/compare-vi-cli-action/issues/861'));
-  assert.ok(urls.includes('https://github.com/LabVIEW-Community-CI-CD/comparevi-history/issues/14'));
-  assert.ok(urls.includes('https://github.com/LabVIEW-Community-CI-CD/comparevi-history/issues/15'));
+  const parsedUrls = config.items.map((item) => new URL(item.url));
+  const urlStrings = parsedUrls.map((item) => item.toString());
+  assert.equal(new Set(urlStrings).size, urlStrings.length);
+  assert.equal(parsedUrls.length, 16);
+
+  const issueCoordinates = new Set(
+    parsedUrls.map((item) => {
+      assert.equal(item.protocol, 'https:');
+      assert.equal(item.host, 'github.com');
+      const [, owner, repo, kind, issueNumber] = item.pathname.split('/');
+      assert.equal(kind, 'issues');
+      return `${owner}/${repo}#${issueNumber}`;
+    }),
+  );
+
+  assert.ok(issueCoordinates.has('LabVIEW-Community-CI-CD/compare-vi-cli-action#854'));
+  assert.ok(issueCoordinates.has('LabVIEW-Community-CI-CD/compare-vi-cli-action#861'));
+  assert.ok(issueCoordinates.has('LabVIEW-Community-CI-CD/comparevi-history#14'));
+  assert.ok(issueCoordinates.has('LabVIEW-Community-CI-CD/comparevi-history#15'));
 });
 
 test('project portfolio config declares the fields future agents need to reason about the board', () => {
