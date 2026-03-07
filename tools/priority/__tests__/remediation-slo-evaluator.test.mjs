@@ -4,6 +4,8 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
   DEFAULT_THRESHOLDS,
+  applyGovernorModeTransition,
+  deriveGovernorDesiredMode,
   evaluateRemediationSlo,
   parseArgs,
   runRemediationSloEvaluator,
@@ -14,6 +16,7 @@ import {
 test('parseArgs applies defaults and explicit overrides', () => {
   const defaults = parseArgs(['node', 'remediation-slo-evaluator.mjs']);
   assert.match(defaults.outputPath, /remediation-slo-report\.json$/);
+  assert.match(defaults.governorStatePath, /ops-governor-state\.json$/);
   assert.match(defaults.issueEventsPath, /incident-events\.json$/);
   assert.equal(defaults.lookbackDays, 30);
 
@@ -22,6 +25,8 @@ test('parseArgs applies defaults and explicit overrides', () => {
     'remediation-slo-evaluator.mjs',
     '--output',
     'tmp/report.json',
+    '--governor-state',
+    'tmp/governor.json',
     '--issue-events',
     'tmp/incidents.json',
     '--lookback-days',
@@ -30,6 +35,7 @@ test('parseArgs applies defaults and explicit overrides', () => {
     'owner/repo'
   ]);
   assert.equal(parsed.outputPath, 'tmp/report.json');
+  assert.equal(parsed.governorStatePath, 'tmp/governor.json');
   assert.equal(parsed.issueEventsPath, 'tmp/incidents.json');
   assert.equal(parsed.lookbackDays, 14);
   assert.equal(parsed.repo, 'owner/repo');
@@ -100,6 +106,54 @@ test('evaluateRemediationSlo emits warn/fail checks and breaches', () => {
   assert.ok(evaluated.breaches.some((entry) => entry.key === 'queue-retry-ratio' && entry.status === 'fail'));
 });
 
+test('deriveGovernorDesiredMode promotes to pause on severe trunk/queue signals', () => {
+  const desired = deriveGovernorDesiredMode({
+    evaluated: { status: 'fail' },
+    operationalMetrics: {
+      trunkRedMinutes: 80,
+      queueRetryRatio: 0.4,
+      queueQuarantineRatio: 0.5
+    }
+  });
+
+  assert.equal(desired.mode, 'pause');
+  assert.ok(desired.reasons.includes('trunk-red-fail-threshold'));
+  assert.ok(desired.reasons.includes('queue-retry-fail-threshold'));
+});
+
+test('applyGovernorModeTransition enforces explicit recovery thresholds', () => {
+  const pauseHold = applyGovernorModeTransition({
+    desiredMode: 'normal',
+    previousMode: 'pause',
+    previousHealthyStreak: 0
+  });
+  assert.equal(pauseHold.mode, 'pause');
+  assert.equal(pauseHold.transitionReason, 'pause-recovery-threshold-pending');
+
+  const pauseStepdown = applyGovernorModeTransition({
+    desiredMode: 'normal',
+    previousMode: 'pause',
+    previousHealthyStreak: 1
+  });
+  assert.equal(pauseStepdown.mode, 'stabilize');
+  assert.equal(pauseStepdown.transitionReason, 'pause-recovery-threshold-met');
+
+  const stabilizeHold = applyGovernorModeTransition({
+    desiredMode: 'normal',
+    previousMode: 'stabilize',
+    previousHealthyStreak: 0
+  });
+  assert.equal(stabilizeHold.mode, 'stabilize');
+  assert.equal(stabilizeHold.transitionReason, 'stabilize-recovery-threshold-pending');
+
+  const stabilizeRecover = applyGovernorModeTransition({
+    desiredMode: 'normal',
+    previousMode: 'stabilize',
+    previousHealthyStreak: 1
+  });
+  assert.equal(stabilizeRecover.mode, 'normal');
+});
+
 test('summarizeOperationalMetrics maps queue/trunk/release signals', () => {
   const metrics = summarizeOperationalMetrics({
     queueReport: {
@@ -135,7 +189,7 @@ test('summarizeOperationalMetrics maps queue/trunk/release signals', () => {
   assert.equal(metrics.releaseStatus, 'fail');
 });
 
-test('runRemediationSloEvaluator sets governor stabilize on first breach transition', async () => {
+test('runRemediationSloEvaluator emits pause governor mode on severe first breach transition', async () => {
   const readJsonOptionalFn = async (filePath) => {
     const normalized = String(filePath);
     if (normalized.endsWith('remediation-slo-report.json')) {
@@ -213,6 +267,18 @@ test('runRemediationSloEvaluator sets governor stabilize on first breach transit
         }
       };
     }
+    if (normalized.includes('ops-governor-state.json')) {
+      return {
+        exists: true,
+        path: filePath,
+        error: null,
+        payload: {
+          schema: 'ops-governor-state@v1',
+          mode: 'normal',
+          healthyStreak: 0
+        }
+      };
+    }
     throw new Error(`Unexpected path: ${filePath}`);
   };
 
@@ -221,6 +287,7 @@ test('runRemediationSloEvaluator sets governor stabilize on first breach transit
     now: new Date('2026-03-06T12:30:00Z'),
     args: {
       outputPath: 'tests/results/_agent/slo/remediation-slo-report.json',
+      governorStatePath: 'tests/results/_agent/slo/ops-governor-state.json',
       issueEventsPath: 'tests/results/_agent/ops/incident-events.json',
       queueReportPath: 'tests/results/_agent/queue/queue-supervisor-report.json',
       sloMetricsPath: 'tests/results/_agent/slo/slo-metrics.json',
@@ -238,7 +305,11 @@ test('runRemediationSloEvaluator sets governor stabilize on first breach transit
 
   assert.equal(exitCode, 0);
   assert.equal(report.summary.status, 'fail');
-  assert.equal(report.governor.intent, 'stabilize');
+  assert.equal(report.governor.intent, 'pause');
+  assert.equal(report.governor.desiredIntent, 'pause');
+  assert.equal(report.governor.modeTransition, 'normal->pause');
+  assert.equal(report.governor.healthyStreak, 0);
   assert.equal(report.governor.firstBreach, true);
+  assert.ok(Array.isArray(report.governor.reasons));
   assert.ok(report.breaches.length > 0);
 });

@@ -18,6 +18,7 @@
     "candidates",
     "orderedEligible",
     "readiness",
+    "governor",
     "retryHistory"
   ],
   "properties": {
@@ -163,6 +164,62 @@
               }
             }
           }
+        }
+      }
+    },
+    "governor": {
+      "type": "object",
+      "additionalProperties": true,
+      "required": [
+        "path",
+        "exists",
+        "error",
+        "mode",
+        "desiredMode",
+        "reasons",
+        "generatedAt",
+        "sourceSchema",
+        "capApplied",
+        "capLimit"
+      ],
+      "properties": {
+        "path": {
+          "type": "string",
+          "minLength": 1
+        },
+        "exists": {
+          "type": "boolean"
+        },
+        "error": {
+          "type": ["string", "null"]
+        },
+        "mode": {
+          "type": "string",
+          "enum": ["normal", "stabilize", "pause"]
+        },
+        "desiredMode": {
+          "type": "string",
+          "enum": ["normal", "stabilize", "pause"]
+        },
+        "reasons": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "generatedAt": {
+          "type": ["string", "null"],
+          "format": "date-time"
+        },
+        "sourceSchema": {
+          "type": ["string", "null"]
+        },
+        "capApplied": {
+          "type": "boolean"
+        },
+        "capLimit": {
+          "type": ["integer", "null"],
+          "minimum": 0
         }
       }
     },

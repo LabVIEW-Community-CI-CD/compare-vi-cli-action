@@ -48,6 +48,7 @@ test('parseArgs defaults to dry-run and supports apply mode', () => {
     assert.equal(defaults.burstMode, 'auto');
     assert.equal(defaults.burstRefillCycles, 3);
     assert.match(defaults.readinessReportPath, /queue-readiness-report\.json$/);
+    assert.match(defaults.governorStatePath, /ops-governor-state\.json$/);
 
     const apply = parseArgs([
       'node',
@@ -64,6 +65,8 @@ test('parseArgs defaults to dry-run and supports apply mode', () => {
       '9',
       '--stall-threshold-minutes',
       '50',
+      '--governor-state',
+      'tests/results/_agent/slo/custom-governor-state.json',
       '--burst-mode',
       'on',
       '--burst-refill-cycles',
@@ -77,6 +80,7 @@ test('parseArgs defaults to dry-run and supports apply mode', () => {
     assert.equal(apply.maxQueuedRuns, 7);
     assert.equal(apply.maxInProgressRuns, 9);
     assert.equal(apply.stallThresholdMinutes, 50);
+    assert.equal(apply.governorStatePath, 'tests/results/_agent/slo/custom-governor-state.json');
     assert.equal(apply.burstMode, 'on');
     assert.equal(apply.burstRefillCycles, 4);
   } finally {
@@ -827,4 +831,233 @@ test('runQueueSupervisor enqueues eligible PRs in dependency-safe deterministic 
     (call) => call.command === 'node' && call.args[0] === 'tools/priority/merge-sync-pr.mjs'
   );
   assert.equal(mergeSyncInvocations.length, 3);
+});
+
+test('runQueueSupervisor respects governor pause mode before enqueue actions', async () => {
+  const commandCalls = [];
+  const runGhJsonFn = (args) => {
+    if (args[0] === 'pr' && args[1] === 'list') {
+      return [
+        {
+          number: 510,
+          title: '[P0] eligible change',
+          body: 'Coupling: independent',
+          baseRefName: 'develop',
+          headRepositoryOwner: { login: 'owner' },
+          isDraft: false,
+          mergeStateStatus: 'CLEAN',
+          mergeable: 'MERGEABLE',
+          updatedAt: '2026-03-05T20:05:00Z',
+          url: 'https://example.test/pr/510',
+          labels: [],
+          statusCheckRollup: [successCheck('lint')],
+          autoMergeRequest: null
+        }
+      ];
+    }
+    if (args[0] === 'api' && String(args[1]).includes('validate.yml')) {
+      return {
+        workflow_runs: [
+          { conclusion: 'success', status: 'completed', created_at: '2026-03-05T20:50:00Z', updated_at: '2026-03-05T20:52:00Z' }
+        ]
+      };
+    }
+    if (args[0] === 'api' && String(args[1]).includes('policy-guard-upstream.yml')) {
+      return {
+        workflow_runs: [
+          { conclusion: 'success', status: 'completed', created_at: '2026-03-05T20:40:00Z', updated_at: '2026-03-05T20:41:00Z' }
+        ]
+      };
+    }
+    if (args[0] === 'api' && String(args[1]).includes('fixture-drift.yml')) return { workflow_runs: [] };
+    if (args[0] === 'api' && String(args[1]).includes('commit-integrity.yml')) return { workflow_runs: [] };
+    throw new Error(`Unexpected gh args: ${args.join(' ')}`);
+  };
+
+  const runCommandFn = (command, args) => {
+    commandCalls.push({ command, args });
+    return { status: 0, stdout: '', stderr: '' };
+  };
+
+  const readJsonFileFn = async (filePath) => {
+    if (String(filePath).endsWith('branch-required-checks.json')) {
+      return { branches: { develop: ['lint'] } };
+    }
+    if (String(filePath).endsWith('policy.json')) {
+      return {
+        rulesets: {
+          develop: {
+            includes: ['refs/heads/develop'],
+            merge_queue: { merge_method: 'SQUASH' }
+          }
+        }
+      };
+    }
+    throw new Error(`Unexpected read path: ${filePath}`);
+  };
+
+  const readOptionalJsonFn = async (filePath) => {
+    if (String(filePath).includes('ops-governor-state.json')) {
+      return {
+        exists: true,
+        path: filePath,
+        error: null,
+        payload: {
+          schema: 'ops-governor-state@v1',
+          mode: 'pause',
+          desiredMode: 'pause',
+          reasons: ['trunk-red-fail-threshold'],
+          generatedAt: '2026-03-05T21:00:00Z'
+        }
+      };
+    }
+    return {};
+  };
+
+  const { report } = await runQueueSupervisor({
+    repoRoot: process.cwd(),
+    args: {
+      apply: true,
+      dryRun: false,
+      reportPath: 'tests/results/_agent/queue/queue-supervisor-report.json',
+      governorStatePath: 'tests/results/_agent/slo/ops-governor-state.json',
+      maxInflight: 5,
+      minInflight: 2,
+      adaptiveCap: false,
+      maxQueuedRuns: 6,
+      maxInProgressRuns: 8,
+      stallThresholdMinutes: 45,
+      repo: 'owner/repo',
+      baseBranches: ['develop', 'main'],
+      healthBranch: 'develop',
+      help: false
+    },
+    now: new Date('2026-03-05T21:30:00.000Z'),
+    runGhJsonFn,
+    runCommandFn,
+    readJsonFileFn,
+    readOptionalJsonFn,
+    writeReportFn: async (reportPath) => reportPath
+  });
+
+  assert.equal(report.governor.mode, 'pause');
+  assert.equal(report.governor.capApplied, true);
+  assert.equal(report.governor.capLimit, 0);
+  assert.equal(report.effectiveMaxInflight, 0);
+  assert.equal(report.paused, true);
+  assert.ok(report.pausedReasons.includes('governor-pause'));
+  assert.equal(report.summary.enqueuedCount, 0);
+  assert.equal(report.actions.length, 0);
+  assert.equal(
+    commandCalls.some((call) => call.command === 'node' && call.args.includes('tools/priority/merge-sync-pr.mjs')),
+    false
+  );
+});
+
+test('runQueueSupervisor applies governor stabilize cap when queue is healthy', async () => {
+  const runGhJsonFn = (args) => {
+    if (args[0] === 'pr' && args[1] === 'list') {
+      return [
+        {
+          number: 520,
+          title: '[P0] eligible change',
+          body: 'Coupling: independent',
+          baseRefName: 'develop',
+          headRepositoryOwner: { login: 'owner' },
+          isDraft: false,
+          mergeStateStatus: 'CLEAN',
+          mergeable: 'MERGEABLE',
+          updatedAt: '2026-03-05T20:05:00Z',
+          url: 'https://example.test/pr/520',
+          labels: [],
+          statusCheckRollup: [successCheck('lint')],
+          autoMergeRequest: null
+        }
+      ];
+    }
+    if (args[0] === 'api' && String(args[1]).includes('validate.yml')) {
+      return {
+        workflow_runs: [
+          { conclusion: 'success', status: 'completed', created_at: '2026-03-05T20:50:00Z', updated_at: '2026-03-05T20:52:00Z' }
+        ]
+      };
+    }
+    if (args[0] === 'api' && String(args[1]).includes('policy-guard-upstream.yml')) {
+      return {
+        workflow_runs: [
+          { conclusion: 'success', status: 'completed', created_at: '2026-03-05T20:40:00Z', updated_at: '2026-03-05T20:41:00Z' }
+        ]
+      };
+    }
+    if (args[0] === 'api' && String(args[1]).includes('fixture-drift.yml')) return { workflow_runs: [] };
+    if (args[0] === 'api' && String(args[1]).includes('commit-integrity.yml')) return { workflow_runs: [] };
+    throw new Error(`Unexpected gh args: ${args.join(' ')}`);
+  };
+
+  const readJsonFileFn = async (filePath) => {
+    if (String(filePath).endsWith('branch-required-checks.json')) {
+      return { branches: { develop: ['lint'] } };
+    }
+    if (String(filePath).endsWith('policy.json')) {
+      return {
+        rulesets: {
+          develop: {
+            includes: ['refs/heads/develop'],
+            merge_queue: { merge_method: 'SQUASH' }
+          }
+        }
+      };
+    }
+    throw new Error(`Unexpected read path: ${filePath}`);
+  };
+
+  const readOptionalJsonFn = async (filePath) => {
+    if (String(filePath).includes('ops-governor-state.json')) {
+      return {
+        exists: true,
+        path: filePath,
+        error: null,
+        payload: {
+          schema: 'ops-governor-state@v1',
+          mode: 'stabilize',
+          desiredMode: 'stabilize',
+          reasons: ['slo-breach'],
+          generatedAt: '2026-03-05T21:00:00Z'
+        }
+      };
+    }
+    return {};
+  };
+
+  const { report } = await runQueueSupervisor({
+    repoRoot: process.cwd(),
+    args: {
+      apply: false,
+      dryRun: true,
+      reportPath: 'tests/results/_agent/queue/queue-supervisor-report.json',
+      governorStatePath: 'tests/results/_agent/slo/ops-governor-state.json',
+      maxInflight: 5,
+      minInflight: 2,
+      adaptiveCap: false,
+      maxQueuedRuns: 6,
+      maxInProgressRuns: 8,
+      stallThresholdMinutes: 45,
+      repo: 'owner/repo',
+      baseBranches: ['develop', 'main'],
+      healthBranch: 'develop',
+      help: false
+    },
+    now: new Date('2026-03-05T21:30:00.000Z'),
+    runGhJsonFn,
+    runCommandFn: () => ({ status: 0, stdout: '', stderr: '' }),
+    readJsonFileFn,
+    readOptionalJsonFn,
+    writeReportFn: async (reportPath) => reportPath
+  });
+
+  assert.equal(report.governor.mode, 'stabilize');
+  assert.equal(report.governor.capApplied, true);
+  assert.equal(report.governor.capLimit, 2);
+  assert.equal(report.effectiveMaxInflight, 2);
+  assert.equal(report.paused, false);
 });

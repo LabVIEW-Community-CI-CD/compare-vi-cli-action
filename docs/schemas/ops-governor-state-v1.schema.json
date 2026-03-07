@@ -1,0 +1,142 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "ops-governor-state@v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema",
+    "generatedAt",
+    "repository",
+    "mode",
+    "desiredMode",
+    "previousMode",
+    "healthyStreak",
+    "recoveryThresholds",
+    "reasons",
+    "transition",
+    "metrics",
+    "operatorSummary"
+  ],
+  "properties": {
+    "schema": {
+      "const": "ops-governor-state@v1"
+    },
+    "generatedAt": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "repository": {
+      "type": "string",
+      "pattern": "^[^/\\s]+/[^/\\s]+$"
+    },
+    "mode": {
+      "type": "string",
+      "enum": ["normal", "stabilize", "pause"]
+    },
+    "desiredMode": {
+      "type": "string",
+      "enum": ["normal", "stabilize", "pause"]
+    },
+    "previousMode": {
+      "type": "string",
+      "enum": ["normal", "stabilize", "pause"]
+    },
+    "healthyStreak": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "recoveryThresholds": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "pauseToStabilizeHealthyCycles",
+        "stabilizeToNormalHealthyCycles"
+      ],
+      "properties": {
+        "pauseToStabilizeHealthyCycles": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "stabilizeToNormalHealthyCycles": {
+          "type": "integer",
+          "minimum": 1
+        }
+      }
+    },
+    "reasons": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "transition": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["from", "to", "reason", "summary"],
+      "properties": {
+        "from": {
+          "type": "string",
+          "enum": ["normal", "stabilize", "pause"]
+        },
+        "to": {
+          "type": "string",
+          "enum": ["normal", "stabilize", "pause"]
+        },
+        "reason": {
+          "type": "string"
+        },
+        "summary": {
+          "type": "string"
+        }
+      }
+    },
+    "metrics": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "summaryStatus",
+        "trunkRedMinutes",
+        "queueRetryRatio",
+        "queueQuarantineRatio",
+        "releaseStatus"
+      ],
+      "properties": {
+        "summaryStatus": {
+          "type": "string",
+          "enum": ["pass", "warn", "fail"]
+        },
+        "trunkRedMinutes": {
+          "type": ["number", "null"],
+          "minimum": 0
+        },
+        "queueRetryRatio": {
+          "type": ["number", "null"],
+          "minimum": 0
+        },
+        "queueQuarantineRatio": {
+          "type": ["number", "null"],
+          "minimum": 0
+        },
+        "releaseStatus": {
+          "type": ["string", "null"]
+        }
+      }
+    },
+    "operatorSummary": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["why", "recovery"],
+      "properties": {
+        "why": {
+          "type": "string"
+        },
+        "recovery": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      }
+    }
+  }
+}

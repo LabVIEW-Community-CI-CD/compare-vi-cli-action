@@ -9,11 +9,17 @@ import { fileURLToPath } from 'node:url';
 
 export const REPORT_SCHEMA = 'priority/remediation-slo-report@v1';
 export const DEFAULT_OUTPUT_PATH = path.join('tests', 'results', '_agent', 'slo', 'remediation-slo-report.json');
+export const GOVERNOR_STATE_SCHEMA = 'ops-governor-state@v1';
+export const DEFAULT_GOVERNOR_STATE_PATH = path.join('tests', 'results', '_agent', 'slo', 'ops-governor-state.json');
 export const DEFAULT_INCIDENT_EVENTS_PATH = path.join('tests', 'results', '_agent', 'ops', 'incident-events.json');
 export const DEFAULT_QUEUE_REPORT_PATH = path.join('tests', 'results', '_agent', 'queue', 'queue-supervisor-report.json');
 export const DEFAULT_SLO_METRICS_PATH = path.join('tests', 'results', '_agent', 'slo', 'slo-metrics.json');
 export const DEFAULT_RELEASE_SCORECARD_PATH = path.join('tests', 'results', '_agent', 'release', 'release-scorecard.json');
 export const DEFAULT_LOOKBACK_DAYS = 30;
+export const GOVERNOR_RECOVERY_THRESHOLDS = Object.freeze({
+  pauseToStabilizeHealthyCycles: 2,
+  stabilizeToNormalHealthyCycles: 2
+});
 
 export const DEFAULT_THRESHOLDS = Object.freeze({
   mttdHours: Object.freeze({ warn: 2, fail: 8 }),
@@ -34,6 +40,7 @@ function printUsage() {
   console.log('');
   console.log('Options:');
   console.log(`  --output <path>            Output report path (default: ${DEFAULT_OUTPUT_PATH}).`);
+  console.log(`  --governor-state <path>    Governor state output path (default: ${DEFAULT_GOVERNOR_STATE_PATH}).`);
   console.log(`  --issue-events <path>      Incident event input path (default: ${DEFAULT_INCIDENT_EVENTS_PATH}).`);
   console.log(`  --queue-report <path>      Queue supervisor report path (default: ${DEFAULT_QUEUE_REPORT_PATH}).`);
   console.log(`  --slo-metrics <path>       SLO metrics input path (default: ${DEFAULT_SLO_METRICS_PATH}).`);
@@ -93,6 +100,7 @@ export function parseArgs(argv = process.argv) {
   const args = argv.slice(2);
   const options = {
     outputPath: DEFAULT_OUTPUT_PATH,
+    governorStatePath: DEFAULT_GOVERNOR_STATE_PATH,
     issueEventsPath: DEFAULT_INCIDENT_EVENTS_PATH,
     queueReportPath: DEFAULT_QUEUE_REPORT_PATH,
     sloMetricsPath: DEFAULT_SLO_METRICS_PATH,
@@ -111,6 +119,7 @@ export function parseArgs(argv = process.argv) {
 
     if (
       token === '--output' ||
+      token === '--governor-state' ||
       token === '--issue-events' ||
       token === '--queue-report' ||
       token === '--slo-metrics' ||
@@ -124,6 +133,7 @@ export function parseArgs(argv = process.argv) {
       }
       index += 1;
       if (token === '--output') options.outputPath = next;
+      if (token === '--governor-state') options.governorStatePath = next;
       if (token === '--issue-events') options.issueEventsPath = next;
       if (token === '--queue-report') options.queueReportPath = next;
       if (token === '--slo-metrics') options.sloMetricsPath = next;
@@ -382,8 +392,101 @@ export function evaluateRemediationSlo({
   };
 }
 
-function toGovernorIntent(status) {
-  return status === 'pass' ? 'normal' : 'stabilize';
+function normalizeGovernorMode(value) {
+  const normalized = String(value ?? '')
+    .trim()
+    .toLowerCase();
+  if (normalized === 'normal' || normalized === 'stabilize' || normalized === 'pause') {
+    return normalized;
+  }
+  return 'normal';
+}
+
+export function deriveGovernorDesiredMode({
+  evaluated,
+  operationalMetrics,
+  thresholds = DEFAULT_THRESHOLDS
+}) {
+  const reasons = [];
+  const trunkRedMinutes = Number(operationalMetrics?.trunkRedMinutes);
+  const queueRetryRatio = Number(operationalMetrics?.queueRetryRatio);
+  const queueQuarantineRatio = Number(operationalMetrics?.queueQuarantineRatio);
+
+  if (Number.isFinite(trunkRedMinutes) && trunkRedMinutes >= thresholds.trunkRedMinutes.fail) {
+    reasons.push('trunk-red-fail-threshold');
+  }
+  if (Number.isFinite(queueRetryRatio) && queueRetryRatio >= thresholds.queueRetryRatio.fail) {
+    reasons.push('queue-retry-fail-threshold');
+  }
+  if (Number.isFinite(queueQuarantineRatio) && queueQuarantineRatio >= thresholds.queueRetryRatio.fail) {
+    reasons.push('queue-quarantine-fail-threshold');
+  }
+
+  if (reasons.length > 0) {
+    return {
+      mode: 'pause',
+      reasons
+    };
+  }
+
+  if (evaluated?.status === 'pass') {
+    return {
+      mode: 'normal',
+      reasons: ['slo-pass']
+    };
+  }
+
+  return {
+    mode: 'stabilize',
+    reasons: ['slo-breach']
+  };
+}
+
+export function applyGovernorModeTransition({
+  desiredMode,
+  previousMode,
+  previousHealthyStreak = 0,
+  recoveryThresholds = GOVERNOR_RECOVERY_THRESHOLDS
+}) {
+  const normalizedDesiredMode = normalizeGovernorMode(desiredMode);
+  const normalizedPreviousMode = normalizeGovernorMode(previousMode);
+  const healthyStreakCandidate = normalizedDesiredMode === 'normal' ? Math.max(0, previousHealthyStreak) + 1 : 0;
+
+  let mode = normalizedDesiredMode;
+  let reason = 'desired-mode';
+
+  if (normalizedDesiredMode === 'pause') {
+    mode = 'pause';
+    reason = 'pause-threshold-breach';
+  } else if (normalizedPreviousMode === 'pause') {
+    if (
+      normalizedDesiredMode === 'normal' &&
+      healthyStreakCandidate >= recoveryThresholds.pauseToStabilizeHealthyCycles
+    ) {
+      mode = 'stabilize';
+      reason = 'pause-recovery-threshold-met';
+    } else {
+      mode = 'pause';
+      reason = normalizedDesiredMode === 'normal' ? 'pause-recovery-threshold-pending' : 'pause-hold-unhealthy';
+    }
+  } else if (normalizedDesiredMode === 'stabilize') {
+    mode = 'stabilize';
+    reason = 'slo-breach';
+  } else if (
+    normalizedPreviousMode === 'stabilize' &&
+    healthyStreakCandidate < recoveryThresholds.stabilizeToNormalHealthyCycles
+  ) {
+    mode = 'stabilize';
+    reason = 'stabilize-recovery-threshold-pending';
+  }
+
+  return {
+    mode,
+    desiredMode: normalizedDesiredMode,
+    previousMode: normalizedPreviousMode,
+    healthyStreak: healthyStreakCandidate,
+    transitionReason: reason
+  };
 }
 
 async function writeJson(filePath, payload) {
@@ -404,6 +507,7 @@ export async function runRemediationSloEvaluator(options = {}) {
   const repository = resolveRepositorySlug(repoRoot, args.repo, environment);
 
   const previousReportEnvelope = await readJsonOptionalFn(path.resolve(repoRoot, args.outputPath));
+  const previousGovernorStateEnvelope = await readJsonOptionalFn(path.resolve(repoRoot, args.governorStatePath));
   const incidentEventsEnvelope = await readJsonOptionalFn(path.resolve(repoRoot, args.issueEventsPath));
   const queueReportEnvelope = await readJsonOptionalFn(path.resolve(repoRoot, args.queueReportPath));
   const sloMetricsEnvelope = await readJsonOptionalFn(path.resolve(repoRoot, args.sloMetricsPath));
@@ -428,7 +532,69 @@ export async function runRemediationSloEvaluator(options = {}) {
 
   const previousStatus = asOptional(previousReportEnvelope.payload?.summary?.status) ?? 'pass';
   const firstBreach = previousStatus === 'pass' && evaluated.status !== 'pass';
-  const governorIntent = toGovernorIntent(evaluated.status);
+  const previousGovernorMode = normalizeGovernorMode(
+    previousGovernorStateEnvelope.payload?.mode ?? previousReportEnvelope.payload?.governor?.intent
+  );
+  const previousGovernorHealthyStreak = Number.isInteger(Number(previousGovernorStateEnvelope.payload?.healthyStreak))
+    ? Number(previousGovernorStateEnvelope.payload.healthyStreak)
+    : 0;
+  const desiredGovernor = deriveGovernorDesiredMode({
+    evaluated,
+    operationalMetrics,
+    thresholds: DEFAULT_THRESHOLDS
+  });
+  const governorTransition = applyGovernorModeTransition({
+    desiredMode: desiredGovernor.mode,
+    previousMode: previousGovernorMode,
+    previousHealthyStreak: previousGovernorHealthyStreak
+  });
+  const governorIntent = governorTransition.mode;
+  const transitionSummary = `${previousGovernorMode}->${governorIntent}`;
+
+  const operatorWhy = desiredGovernor.reasons.length > 0 ? desiredGovernor.reasons.join(', ') : 'slo-pass';
+  const operatorRecovery = [];
+  if (governorIntent === 'pause') {
+    operatorRecovery.push('Restore trunk-red minutes below fail threshold.');
+    operatorRecovery.push('Restore queue retry ratio below fail threshold.');
+    operatorRecovery.push(
+      `Sustain healthy cycles for at least ${GOVERNOR_RECOVERY_THRESHOLDS.pauseToStabilizeHealthyCycles} evaluations.`
+    );
+  } else if (governorIntent === 'stabilize') {
+    operatorRecovery.push(
+      `Sustain healthy cycles for at least ${GOVERNOR_RECOVERY_THRESHOLDS.stabilizeToNormalHealthyCycles} evaluations.`
+    );
+  } else {
+    operatorRecovery.push('Continue monitoring queue and trunk SLO signals.');
+  }
+
+  const governorState = {
+    schema: GOVERNOR_STATE_SCHEMA,
+    generatedAt: now.toISOString(),
+    repository,
+    mode: governorIntent,
+    desiredMode: governorTransition.desiredMode,
+    previousMode: governorTransition.previousMode,
+    healthyStreak: governorTransition.healthyStreak,
+    recoveryThresholds: GOVERNOR_RECOVERY_THRESHOLDS,
+    reasons: desiredGovernor.reasons,
+    transition: {
+      from: governorTransition.previousMode,
+      to: governorIntent,
+      reason: governorTransition.transitionReason,
+      summary: transitionSummary
+    },
+    metrics: {
+      summaryStatus: evaluated.status,
+      trunkRedMinutes: operationalMetrics.trunkRedMinutes,
+      queueRetryRatio: operationalMetrics.queueRetryRatio,
+      queueQuarantineRatio: operationalMetrics.queueQuarantineRatio,
+      releaseStatus: operationalMetrics.releaseStatus
+    },
+    operatorSummary: {
+      why: operatorWhy,
+      recovery: operatorRecovery
+    }
+  };
 
   const report = {
     schema: REPORT_SCHEMA,
@@ -438,6 +604,7 @@ export async function runRemediationSloEvaluator(options = {}) {
       lookbackDays: args.lookbackDays
     },
     inputs: {
+      governorStatePath: args.governorStatePath,
       issueEventsPath: args.issueEventsPath,
       queueReportPath: args.queueReportPath,
       sloMetricsPath: args.sloMetricsPath,
@@ -447,6 +614,10 @@ export async function runRemediationSloEvaluator(options = {}) {
       issueEvents: {
         exists: incidentEventsEnvelope.exists,
         error: incidentEventsEnvelope.error
+      },
+      governorState: {
+        exists: previousGovernorStateEnvelope.exists,
+        error: previousGovernorStateEnvelope.error
       },
       queueReport: {
         exists: queueReportEnvelope.exists,
@@ -475,16 +646,26 @@ export async function runRemediationSloEvaluator(options = {}) {
     breaches: evaluated.breaches,
     governor: {
       intent: governorIntent,
+      desiredIntent: governorTransition.desiredMode,
       firstBreach,
       previousStatus,
-      transition: `${previousStatus}->${evaluated.status}`
+      previousMode: governorTransition.previousMode,
+      transition: `${previousStatus}->${evaluated.status}`,
+      modeTransition: transitionSummary,
+      transitionReason: governorTransition.transitionReason,
+      recoveryThresholds: GOVERNOR_RECOVERY_THRESHOLDS,
+      healthyStreak: governorTransition.healthyStreak,
+      reasons: desiredGovernor.reasons
     }
   };
 
   const outputPath = await writeJsonFn(args.outputPath, report);
+  const governorStatePath = await writeJsonFn(args.governorStatePath, governorState);
   return {
     report,
     outputPath,
+    governorState,
+    governorStatePath,
     exitCode: 0
   };
 }
@@ -496,10 +677,11 @@ export async function main(argv = process.argv) {
     return 0;
   }
 
-  const { report, outputPath } = await runRemediationSloEvaluator({ args });
+  const { report, outputPath, governorStatePath } = await runRemediationSloEvaluator({ args });
   console.log(
     `[remediation-slo] report: ${outputPath} status=${report.summary.status} breaches=${report.summary.breachCount} governor=${report.governor.intent}`
   );
+  console.log(`[remediation-slo] governor-state: ${governorStatePath}`);
   return 0;
 }
 
