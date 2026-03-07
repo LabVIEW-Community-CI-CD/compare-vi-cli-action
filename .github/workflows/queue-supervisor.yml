@@ -60,6 +60,9 @@ jobs:
         with:
           node-version: '20'
 
+      - name: Install Node dependencies
+        run: npm ci --ignore-scripts
+
       - name: Prepare supervisor token
         shell: pwsh
         env:
@@ -68,6 +71,14 @@ jobs:
           INPUT_TOKEN_TERTIARY: ${{ github.token }}
         run: |
           pwsh -NoLogo -NoProfile -File tools/priority/Resolve-PolicyToken.ps1 -TokenFileName queue-supervisor-gh-token.txt
+
+      - name: Evaluate remediation SLO governor state
+        shell: pwsh
+        env:
+          QUEUE_GOVERNOR_STATE_PATH: ${{ vars.QUEUE_GOVERNOR_STATE_PATH || 'tests/results/_agent/slo/ops-governor-state.json' }}
+        run: |
+          $governorStatePath = $env:QUEUE_GOVERNOR_STATE_PATH
+          node tools/npm/run-script.mjs priority:remediation:slo -- --output tests/results/_agent/slo/remediation-slo-report.json --governor-state $governorStatePath
 
       - name: Run queue supervisor
         shell: pwsh
@@ -78,15 +89,18 @@ jobs:
           QUEUE_AUTOPILOT_ADAPTIVE_CAP: ${{ vars.QUEUE_AUTOPILOT_ADAPTIVE_CAP || '1' }}
           QUEUE_BURST_MODE: ${{ vars.QUEUE_BURST_MODE || 'auto' }}
           QUEUE_BURST_REFILL_CYCLES: ${{ vars.QUEUE_BURST_REFILL_CYCLES || '3' }}
+          QUEUE_GOVERNOR_STATE_PATH: ${{ vars.QUEUE_GOVERNOR_STATE_PATH || 'tests/results/_agent/slo/ops-governor-state.json' }}
         run: |
-          npm ci --ignore-scripts
           $reportPath = 'tests/results/_agent/queue/queue-supervisor-report.json'
+          $governorStatePath = $env:QUEUE_GOVERNOR_STATE_PATH
           $args = @(
             'tools/npm/run-script.mjs',
             'priority:queue:supervisor',
             '--',
             '--report',
-            $reportPath
+            $reportPath,
+            '--governor-state',
+            $governorStatePath
           )
 
           $eventName = '${{ github.event_name }}'
@@ -134,5 +148,8 @@ jobs:
         uses: actions/upload-artifact@v5
         with:
           name: queue-supervisor-${{ github.run_id }}
-          path: tests/results/_agent/queue/*.json
+          path: |
+            tests/results/_agent/queue/*.json
+            tests/results/_agent/slo/ops-governor-state.json
+            tests/results/_agent/slo/remediation-slo-report.json
           if-no-files-found: error

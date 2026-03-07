@@ -32,8 +32,9 @@
     "inputs": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["issueEventsPath", "queueReportPath", "sloMetricsPath", "releaseScorecardPath"],
+      "required": ["governorStatePath", "issueEventsPath", "queueReportPath", "sloMetricsPath", "releaseScorecardPath"],
       "properties": {
+        "governorStatePath": { "type": "string" },
         "issueEventsPath": { "type": "string" },
         "queueReportPath": { "type": "string" },
         "sloMetricsPath": { "type": "string" },
@@ -43,9 +44,10 @@
     "sourceState": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["issueEvents", "queueReport", "sloMetrics", "releaseScorecard"],
+      "required": ["issueEvents", "governorState", "queueReport", "sloMetrics", "releaseScorecard"],
       "properties": {
         "issueEvents": { "$ref": "#/$defs/sourceStateEntry" },
+        "governorState": { "$ref": "#/$defs/sourceStateEntry" },
         "queueReport": { "$ref": "#/$defs/sourceStateEntry" },
         "sloMetrics": { "$ref": "#/$defs/sourceStateEntry" },
         "releaseScorecard": { "$ref": "#/$defs/sourceStateEntry" }
@@ -167,12 +169,42 @@
     "governor": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["intent", "firstBreach", "previousStatus", "transition"],
+      "required": [
+        "intent",
+        "desiredIntent",
+        "firstBreach",
+        "previousStatus",
+        "previousMode",
+        "transition",
+        "modeTransition",
+        "transitionReason",
+        "recoveryThresholds",
+        "healthyStreak",
+        "reasons"
+      ],
       "properties": {
-        "intent": { "type": "string", "enum": ["normal", "stabilize"] },
+        "intent": { "type": "string", "enum": ["normal", "stabilize", "pause"] },
+        "desiredIntent": { "type": "string", "enum": ["normal", "stabilize", "pause"] },
         "firstBreach": { "type": "boolean" },
         "previousStatus": { "type": "string", "enum": ["pass", "warn", "fail"] },
-        "transition": { "type": "string" }
+        "previousMode": { "type": "string", "enum": ["normal", "stabilize", "pause"] },
+        "transition": { "type": "string" },
+        "modeTransition": { "type": "string" },
+        "transitionReason": { "type": "string" },
+        "healthyStreak": { "type": "integer", "minimum": 0 },
+        "reasons": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "recoveryThresholds": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["pauseToStabilizeHealthyCycles", "stabilizeToNormalHealthyCycles"],
+          "properties": {
+            "pauseToStabilizeHealthyCycles": { "type": "integer", "minimum": 1 },
+            "stabilizeToNormalHealthyCycles": { "type": "integer", "minimum": 1 }
+          }
+        }
       }
     }
   },

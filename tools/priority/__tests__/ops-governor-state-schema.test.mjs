@@ -1,3 +1,5 @@
+#!/usr/bin/env node
+
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
@@ -9,18 +11,22 @@ import { runRemediationSloEvaluator } from '../remediation-slo-evaluator.mjs';
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..', '..');
 
-test('remediation slo report validates schema', async () => {
-  const schemaPath = path.join(repoRoot, 'docs', 'schemas', 'remediation-slo-report-v1.schema.json');
+test('ops governor state validates schema', async () => {
+  const schemaPath = path.join(repoRoot, 'docs', 'schemas', 'ops-governor-state-v1.schema.json');
   const schema = JSON.parse(await readFile(schemaPath, 'utf8'));
 
   const readJsonOptionalFn = async (filePath) => {
     const normalized = String(filePath);
     if (normalized.endsWith('remediation-slo-report.json')) {
       return {
-        exists: false,
+        exists: true,
         path: filePath,
         error: null,
-        payload: null
+        payload: {
+          summary: {
+            status: 'warn'
+          }
+        }
       };
     }
     if (normalized.includes('incident-events.json')) {
@@ -33,9 +39,9 @@ test('remediation slo report validates schema', async () => {
             id: 'evt-1',
             priority: 'P1',
             occurredAt: '2026-03-06T00:00:00Z',
-            detectedAt: '2026-03-06T01:00:00Z',
-            routedAt: '2026-03-06T02:00:00Z',
-            resolvedAt: '2026-03-06T05:00:00Z',
+            detectedAt: '2026-03-06T02:00:00Z',
+            routedAt: '2026-03-06T03:00:00Z',
+            resolvedAt: '2026-03-06T06:00:00Z',
             reopenedCount: 0
           }
         ]
@@ -49,7 +55,7 @@ test('remediation slo report validates schema', async () => {
         payload: {
           throughputController: {
             retryPressure: {
-              retryRatio: 0.05,
+              retryRatio: 0.1,
               quarantineRatio: 0
             }
           },
@@ -67,7 +73,7 @@ test('remediation slo report validates schema', async () => {
         payload: {
           summary: {
             metrics: {
-              failureRate: 0.05
+              failureRate: 0.1
             }
           }
         }
@@ -93,15 +99,15 @@ test('remediation slo report validates schema', async () => {
         error: null,
         payload: {
           schema: 'ops-governor-state@v1',
-          mode: 'normal',
-          healthyStreak: 2
+          mode: 'stabilize',
+          healthyStreak: 1
         }
       };
     }
     throw new Error(`Unexpected path: ${filePath}`);
   };
 
-  const { report } = await runRemediationSloEvaluator({
+  const { governorState } = await runRemediationSloEvaluator({
     repoRoot,
     now: new Date('2026-03-06T12:00:00Z'),
     args: {
@@ -119,12 +125,12 @@ test('remediation slo report validates schema', async () => {
       GITHUB_REPOSITORY: 'owner/repo'
     },
     readJsonOptionalFn,
-    writeJsonFn: async (reportPath) => reportPath
+    writeJsonFn: async (outputPath) => outputPath
   });
 
   const ajv = new Ajv2020({ allErrors: true, strict: false });
   addFormats(ajv);
   const validate = ajv.compile(schema);
-  const valid = validate(report);
+  const valid = validate(governorState);
   assert.equal(valid, true, JSON.stringify(validate.errors, null, 2));
 });

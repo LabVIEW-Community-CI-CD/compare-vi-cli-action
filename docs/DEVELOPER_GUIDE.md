@@ -304,6 +304,8 @@ For Docker/Desktop VI history validation, run fast-loop lanes explicitly:
   written to `tests/results/_agent/policy/policy-state-snapshot.json`.
 - Run `node tools/npm/run-script.mjs priority:queue:supervisor -- --dry-run` to preview queue ordering and
   candidate gates, or add `--apply` for guarded autonomous enqueue mode.
+  Use `--governor-state <path>` (default `tests/results/_agent/slo/ops-governor-state.json`) to
+  enforce SLO governor mode-switches (`normal|stabilize|pause`) before enqueue actions.
   Use `node tools/npm/run-script.mjs priority:queue:readiness` to materialize the ranked ready-set report
   (`tests/results/_agent/queue/queue-readiness-report.json`) from the latest supervisor snapshot.
   The hosted queue-supervisor workflow runs every 5 minutes and also on `workflow_run` completion for
@@ -321,7 +323,9 @@ For Docker/Desktop VI history validation, run fast-loop lanes explicitly:
   proposal-only and emits evidence without mutating tags.
   Use `node tools/npm/run-script.mjs priority:remediation:slo` to compute remediation SLO governance metrics
   (MTTD, route latency, MTTR by priority, reopen rate, queue/trunk/release signals) and emit
-  `tests/results/_agent/slo/remediation-slo-report.json`.
+  `tests/results/_agent/slo/remediation-slo-report.json` plus governor state
+  `tests/results/_agent/slo/ops-governor-state.json` (`ops-governor-state@v1`).
+  The governor artifact includes transition reasons and operator recovery notes used by queue-supervisor pause hooks.
   Use `node tools/npm/run-script.mjs priority:weekly:scorecard` to build the weekly governance snapshot at
   `tests/results/_agent/slo/weekly-scorecard.json` (optionally with `--route-on-persistent-breach`).
   The `Weekly Governance Scorecard` workflow (`.github/workflows/weekly-scorecard.yml`) runs weekly and auto-switches

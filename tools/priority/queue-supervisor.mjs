@@ -20,6 +20,7 @@ const DEFAULT_CONTROLLER_STATE_PATH = path.join(
   'queue',
   'throughput-controller-state.json'
 );
+const DEFAULT_GOVERNOR_STATE_PATH = path.join('tests', 'results', '_agent', 'slo', 'ops-governor-state.json');
 const DEFAULT_MAX_INFLIGHT = 5;
 const DEFAULT_MIN_INFLIGHT = 2;
 const DEFAULT_HEALTH_SAMPLE = 10;
@@ -66,6 +67,7 @@ function printUsage() {
     `  --controller-state <path> Write throughput-controller JSON (default: ${DEFAULT_CONTROLLER_STATE_PATH}).`
   );
   console.log(`  --readiness-report <path> Write queue readiness JSON (default: ${DEFAULT_READINESS_REPORT_PATH}).`);
+  console.log(`  --governor-state <path>   Read governor-state JSON (default: ${DEFAULT_GOVERNOR_STATE_PATH}).`);
   console.log(`  --max-inflight <n>     Queue target cap (default: ${DEFAULT_MAX_INFLIGHT}, env QUEUE_AUTOPILOT_MAX_INFLIGHT).`);
   console.log(`  --min-inflight <n>     Adaptive-cap floor (default: ${DEFAULT_MIN_INFLIGHT}, env QUEUE_AUTOPILOT_MIN_INFLIGHT).`);
   console.log('  --adaptive-cap         Enable adaptive inflight tuning (default, env QUEUE_AUTOPILOT_ADAPTIVE_CAP).');
@@ -122,6 +124,7 @@ export function parseArgs(argv = process.argv) {
     reportPath: DEFAULT_REPORT_PATH,
     controllerStatePath: DEFAULT_CONTROLLER_STATE_PATH,
     readinessReportPath: DEFAULT_READINESS_REPORT_PATH,
+    governorStatePath: DEFAULT_GOVERNOR_STATE_PATH,
     maxInflight: null,
     minInflight: null,
     adaptiveCap: null,
@@ -156,6 +159,7 @@ export function parseArgs(argv = process.argv) {
       arg === '--report' ||
       arg === '--controller-state' ||
       arg === '--readiness-report' ||
+      arg === '--governor-state' ||
       arg === '--max-inflight' ||
       arg === '--min-inflight' ||
       arg === '--repo' ||
@@ -178,6 +182,8 @@ export function parseArgs(argv = process.argv) {
         options.controllerStatePath = next;
       } else if (arg === '--readiness-report') {
         options.readinessReportPath = next;
+      } else if (arg === '--governor-state') {
+        options.governorStatePath = next;
       } else if (arg === '--max-inflight') {
         options.maxInflight = parseIntStrict(next, { label: '--max-inflight' });
       } else if (arg === '--min-inflight') {
@@ -317,6 +323,16 @@ export function normalizeBaseBranch(value) {
     return normalized.slice('refs/heads/'.length);
   }
   return normalized;
+}
+
+function normalizeGovernorMode(value) {
+  const normalized = String(value ?? '')
+    .trim()
+    .toLowerCase();
+  if (normalized === 'normal' || normalized === 'stabilize' || normalized === 'pause') {
+    return normalized;
+  }
+  return 'normal';
 }
 
 function priorityFromTitle(title = '') {
@@ -1304,6 +1320,7 @@ export async function runQueueSupervisor(options = {}) {
   const args = options.args ?? parseArgs();
   const controllerStatePath = args.controllerStatePath ?? DEFAULT_CONTROLLER_STATE_PATH;
   const readinessReportPath = args.readinessReportPath ?? DEFAULT_READINESS_REPORT_PATH;
+  const governorStatePath = args.governorStatePath ?? DEFAULT_GOVERNOR_STATE_PATH;
   const now = options.now ?? new Date();
   const runGhJsonFn = options.runGhJsonFn ?? runGhJson;
   const runCommandFn = options.runCommandFn ?? runCommand;
@@ -1357,6 +1374,27 @@ export async function runQueueSupervisor(options = {}) {
   const nowIso = now.toISOString();
   const previousReport = await readOptionalJsonFn(path.resolve(repoRoot, args.reportPath));
   const previousControllerState = await readOptionalJsonFn(path.resolve(repoRoot, controllerStatePath));
+  const governorStateEnvelope = await readOptionalJsonFn(path.resolve(repoRoot, governorStatePath));
+  const governorStatePayload =
+    governorStateEnvelope && typeof governorStateEnvelope === 'object' && 'payload' in governorStateEnvelope
+      ? governorStateEnvelope.payload
+      : governorStateEnvelope;
+  const governorState = {
+    path: governorStatePath,
+    exists:
+      governorStateEnvelope && typeof governorStateEnvelope === 'object' && 'exists' in governorStateEnvelope
+        ? Boolean(governorStateEnvelope.exists)
+        : Boolean(governorStatePayload),
+    error:
+      governorStateEnvelope && typeof governorStateEnvelope === 'object' && 'error' in governorStateEnvelope
+        ? governorStateEnvelope.error
+        : null,
+    mode: normalizeGovernorMode(governorStatePayload?.mode ?? governorStatePayload?.intent),
+    desiredMode: normalizeGovernorMode(governorStatePayload?.desiredMode ?? governorStatePayload?.mode),
+    reasons: Array.isArray(governorStatePayload?.reasons) ? [...governorStatePayload.reasons] : [],
+    generatedAt: normalizeIso(governorStatePayload?.generatedAt),
+    sourceSchema: typeof governorStatePayload?.schema === 'string' ? governorStatePayload.schema : null
+  };
   const retryHistory = pruneRetryHistory(
     previousReport?.retryHistory && typeof previousReport.retryHistory === 'object'
       ? structuredClone(previousReport.retryHistory)
@@ -1367,6 +1405,7 @@ export async function runQueueSupervisor(options = {}) {
   const pausedByVariable = String(process.env.QUEUE_AUTOPILOT_PAUSED ?? '').trim() === '1';
   const pausedReasons = [];
   if (pausedByVariable) pausedReasons.push('paused-by-variable');
+  if (governorState.mode === 'pause') pausedReasons.push('governor-pause');
   if (health.paused) pausedReasons.push(...health.reasons);
   if (runtimeFleet.paused) pausedReasons.push(...runtimeFleet.reasons);
   if (workflowFetchErrors.length > 0) pausedReasons.push('health-workflow-fetch-errors');
@@ -1390,7 +1429,22 @@ export async function runQueueSupervisor(options = {}) {
     now
   });
   const burstCapApplied = burst.active && args.maxInflight > adaptiveInflight.effectiveMaxInflight;
-  const effectiveMaxInflight = burstCapApplied ? args.maxInflight : adaptiveInflight.effectiveMaxInflight;
+  let effectiveMaxInflight = burstCapApplied ? args.maxInflight : adaptiveInflight.effectiveMaxInflight;
+  let governorCapApplied = false;
+  let governorCapLimit = null;
+  if (governorState.mode === 'stabilize') {
+    const stabilizeCap = Math.max(0, Math.min(args.minInflight, effectiveMaxInflight));
+    if (stabilizeCap < effectiveMaxInflight) {
+      governorCapApplied = true;
+      governorCapLimit = stabilizeCap;
+      effectiveMaxInflight = stabilizeCap;
+    }
+  }
+  if (governorState.mode === 'pause') {
+    governorCapApplied = true;
+    governorCapLimit = 0;
+    effectiveMaxInflight = 0;
+  }
   const inflight = countInflight(classified.candidates.filter((candidate) => queueManagedBranches.has(candidate.baseRefName)));
   const capacity = Math.max(0, effectiveMaxInflight - inflight);
 
@@ -1406,6 +1460,10 @@ export async function runQueueSupervisor(options = {}) {
     burstMode: burst.mode,
     burstActive: burst.active,
     burstCapApplied,
+    governorMode: governorState.mode,
+    governorDesiredMode: governorState.desiredMode,
+    governorCapApplied,
+    governorCapLimit,
     reasons: adaptiveInflight.reasons,
     metrics: adaptiveInflight.metrics,
     thresholds: adaptiveInflight.thresholds,
@@ -1447,6 +1505,7 @@ export async function runQueueSupervisor(options = {}) {
       queueAutopilotStallThresholdMinutes: process.env.QUEUE_AUTOPILOT_STALL_THRESHOLD_MINUTES ?? null,
       queueBurstMode: process.env.QUEUE_BURST_MODE ?? null,
       queueBurstRefillCycles: process.env.QUEUE_BURST_REFILL_CYCLES ?? null,
+      queueGovernorStatePath: process.env.QUEUE_GOVERNOR_STATE_PATH ?? null,
       expectedHeadOwner
     },
     queueManagedBranches: [...queueManagedBranches].sort(),
@@ -1456,6 +1515,11 @@ export async function runQueueSupervisor(options = {}) {
     adaptiveInflight,
     burst,
     burstCapApplied,
+    governor: {
+      ...governorState,
+      capApplied: governorCapApplied,
+      capLimit: governorCapLimit
+    },
     inflight,
     capacity,
     health,
