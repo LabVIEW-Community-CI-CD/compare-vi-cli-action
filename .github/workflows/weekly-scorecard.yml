@@ -1,0 +1,207 @@
+name: Weekly Governance Scorecard
+
+on:
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: 'Scorecard mode override (auto|weekly|gameday)'
+        required: false
+        default: auto
+        type: choice
+        options:
+          - auto
+          - weekly
+          - gameday
+      require_canary:
+        description: 'Require canary report to pass'
+        required: false
+        default: true
+        type: boolean
+      route_on_persistent_breach:
+        description: 'Upsert governance incident on persistent breach'
+        required: false
+        default: true
+        type: boolean
+      strict_canary:
+        description: 'Fail job when canary replay reports drift'
+        required: false
+        default: true
+        type: boolean
+  schedule:
+    - cron: '20 18 * * 3'
+
+concurrency:
+  group: weekly-governance-scorecard-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  weekly-scorecard:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      actions: read
+      issues: write
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: '20'
+
+      - name: Prepare governance token
+        shell: pwsh
+        env:
+          INPUT_TOKEN_PRIMARY: ${{ secrets.GH_TOKEN }}
+          INPUT_TOKEN_SECONDARY: ${{ secrets.GITHUB_TOKEN }}
+          INPUT_TOKEN_TERTIARY: ${{ github.token }}
+        run: |
+          pwsh -NoLogo -NoProfile -File tools/priority/Resolve-PolicyToken.ps1 `
+            -TokenFileName weekly-scorecard-gh-token.txt `
+            -RequireAdmin:$false
+
+      - name: Resolve scorecard mode
+        id: mode
+        shell: pwsh
+        run: |
+          $manualMode = '${{ inputs.mode }}'.Trim().ToLowerInvariant()
+          if ([string]::IsNullOrWhiteSpace($manualMode)) {
+            $manualMode = 'auto'
+          }
+
+          $selectedMode = $manualMode
+          if ($manualMode -eq 'auto') {
+            $now = [DateTime]::UtcNow
+            $isFirstWednesday = $now.DayOfWeek -eq [System.DayOfWeek]::Wednesday -and $now.Day -le 7
+            if ($isFirstWednesday) {
+              $selectedMode = 'gameday'
+            } else {
+              $selectedMode = 'weekly'
+            }
+          }
+
+          if (@('weekly', 'gameday') -notcontains $selectedMode) {
+            throw "Unsupported mode '$selectedMode'. Expected weekly or gameday."
+          }
+
+          $isScheduled = '${{ github.event_name }}' -eq 'schedule'
+
+          $requireCanary = '${{ inputs.require_canary }}' -eq 'true'
+          if ($isScheduled -or $selectedMode -eq 'gameday') {
+            $requireCanary = $true
+          }
+
+          $routePersistent = '${{ inputs.route_on_persistent_breach }}' -eq 'true'
+          if ($isScheduled) {
+            $routePersistent = $true
+          }
+
+          $strictCanary = '${{ inputs.strict_canary }}' -eq 'true'
+          if ($isScheduled) {
+            $strictCanary = $true
+          }
+
+          Add-Content -Path $env:GITHUB_OUTPUT -Value "mode=$selectedMode"
+          Add-Content -Path $env:GITHUB_OUTPUT -Value "require_canary=$($requireCanary.ToString().ToLowerInvariant())"
+          Add-Content -Path $env:GITHUB_OUTPUT -Value "route_on_persistent_breach=$($routePersistent.ToString().ToLowerInvariant())"
+          Add-Content -Path $env:GITHUB_OUTPUT -Value "strict_canary=$($strictCanary.ToString().ToLowerInvariant())"
+
+          @(
+            '### Weekly Governance Scorecard Mode',
+            '',
+            "- event: `${{ github.event_name }}`",
+            "- selected mode: `$selectedMode`",
+            "- require canary: `$($requireCanary.ToString().ToLowerInvariant())`",
+            "- route on persistent breach: `$($routePersistent.ToString().ToLowerInvariant())`",
+            "- strict canary: `$($strictCanary.ToString().ToLowerInvariant())`"
+          ) -join "`n" | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8
+
+      - name: Install dependencies
+        shell: pwsh
+        run: npm ci --ignore-scripts
+
+      - name: Run canary replay conformance
+        id: canary
+        continue-on-error: true
+        shell: pwsh
+        run: |
+          $args = @(
+            'tools/npm/run-script.mjs',
+            'priority:canary:replay',
+            '--',
+            '--report',
+            'tests/results/_agent/canary/canary-replay-conformance-report.json'
+          )
+
+          if ('${{ steps.mode.outputs.strict_canary }}' -ne 'true') {
+            $args += '--no-strict'
+          }
+
+          node @args
+
+      - name: Build remediation SLO report
+        shell: pwsh
+        run: |
+          node tools/npm/run-script.mjs priority:remediation:slo -- --output tests/results/_agent/slo/remediation-slo-report.json
+
+      - name: Build weekly scorecard
+        shell: pwsh
+        run: |
+          $args = @(
+            'tools/npm/run-script.mjs',
+            'priority:weekly:scorecard',
+            '--',
+            '--output',
+            'tests/results/_agent/slo/weekly-scorecard.json',
+            '--remediation-report',
+            'tests/results/_agent/slo/remediation-slo-report.json',
+            '--canary-report',
+            'tests/results/_agent/canary/canary-replay-conformance-report.json',
+            '--mode',
+            '${{ steps.mode.outputs.mode }}'
+          )
+
+          if ('${{ steps.mode.outputs.require_canary }}' -eq 'true') {
+            $args += '--require-canary'
+          }
+
+          if ('${{ steps.mode.outputs.route_on_persistent_breach }}' -eq 'true') {
+            $args += '--route-on-persistent-breach'
+          }
+
+          node @args
+
+      - name: Validate governance report schemas
+        shell: pwsh
+        run: |
+          node tools/npm/run-script.mjs schema:validate -- --schema docs/schemas/weekly-scorecard-v1.schema.json --data tests/results/_agent/slo/weekly-scorecard.json
+          node tools/npm/run-script.mjs schema:validate -- --schema docs/schemas/remediation-slo-report-v1.schema.json --data tests/results/_agent/slo/remediation-slo-report.json --optional
+          node tools/npm/run-script.mjs schema:validate -- --schema docs/schemas/canary-replay-conformance-report-v1.schema.json --data tests/results/_agent/canary/canary-replay-conformance-report.json --optional
+
+      - name: Enforce strict canary mode
+        if: always()
+        shell: pwsh
+        run: |
+          $strict = '${{ steps.mode.outputs.strict_canary }}' -eq 'true'
+          $outcome = '${{ steps.canary.outcome }}'
+
+          if ($strict -and $outcome -ne 'success') {
+            throw "Canary replay failed in strict mode (outcome=$outcome)."
+          }
+
+      - name: Upload SLO artifacts
+        if: always()
+        uses: actions/upload-artifact@v5
+        with:
+          name: weekly-scorecard-slo-${{ github.run_id }}
+          path: tests/results/_agent/slo/*.json
+          if-no-files-found: warn
+
+      - name: Upload canary artifacts
+        if: always()
+        uses: actions/upload-artifact@v5
+        with:
+          name: weekly-scorecard-canary-${{ github.run_id }}
+          path: tests/results/_agent/canary/*.json
+          if-no-files-found: warn
