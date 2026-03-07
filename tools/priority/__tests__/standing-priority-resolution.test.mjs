@@ -273,18 +273,20 @@ test('selectAutoStandingPriorityCandidate favors non-epic P0 oldest item', () =>
   assert.equal(selected?.priority, 0);
 });
 
-test('selectAutoStandingPriorityCandidate deprioritizes program labels when actionable issues exist', () => {
+test('selectAutoStandingPriorityCandidate deprioritizes umbrella program issues when actionable children exist', () => {
   const selected = selectAutoStandingPriorityCandidate([
     {
       number: 799,
       title: '[P0] Program umbrella',
       labels: ['program', 'governance'],
+      body: '## Child tracks\n1. #805',
       createdAt: '2026-03-06T08:00:00Z'
     },
     {
       number: 805,
       title: '[P0] Defork-safe portability hardening',
-      labels: ['governance'],
+      labels: ['program', 'governance'],
+      body: '## Parent\n- #799',
       createdAt: '2026-03-06T08:05:00Z'
     }
   ]);
