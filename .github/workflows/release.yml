@@ -108,6 +108,22 @@ jobs:
           if (-not $ver) { $ver = '0.0.0' }
           "cli_version=$ver" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
 
+      - name: Publish CompareVI.Tools artifact
+        id: comparevi_tools
+        shell: pwsh
+        run: |
+          pwsh -NoLogo -NoProfile -File tools/Publish-CompareVIToolsArtifact.ps1 `
+            -OutputRoot artifacts/cli `
+            -MetadataReportPath tests/results/_agent/release/comparevi-tools-artifact.json `
+            -EmitGitHubOutputs
+
+      - name: Validate CompareVI.Tools artifact metadata schema
+        shell: pwsh
+        run: |
+          pwsh -NoLogo -NoProfile -File tools/Invoke-JsonSchemaLite.ps1 `
+            -JsonPath tests/results/_agent/release/comparevi-tools-artifact.json `
+            -SchemaPath docs/schemas/comparevi-tools-release-manifest-v1.schema.json
+
       - name: Publish CLI artifacts
         shell: pwsh
         run: pwsh -NoLogo -NoProfile -File tools/Publish-Cli.ps1 -CompareViSharedSource package-first -PrepareSharedPackageFeed -FailOnSharedFallback
@@ -145,6 +161,7 @@ jobs:
             artifacts/cli/SHA256SUMS.txt
             artifacts/cli/sbom.spdx.json
             artifacts/cli/provenance.json
+            tests/results/_agent/release/comparevi-tools-artifact.json
             tests/results/_agent/release/shared-source-resolution.json
           if-no-files-found: error
 
@@ -216,6 +233,22 @@ jobs:
           name: release-rollback-drill-health-${{ github.run_id }}
           path: tests/results/_agent/release/rollback-drill-health.json
           if-no-files-found: error
+
+      - name: Append CompareVI.Tools compatibility notes
+        shell: pwsh
+        env:
+          MODULE_VERSION: ${{ steps.comparevi_tools.outputs.comparevi_tools_module_version }}
+          MODULE_METADATA: tests/results/_agent/release/comparevi-tools-artifact.json
+        run: |
+          @(
+            ''
+            '## CompareVI.Tools compatibility'
+            ''
+            ('- This release publishes `CompareVI.Tools` bundle version `{0}` as a self-contained zip asset.' -f $env:MODULE_VERSION)
+            ('- The bundle metadata is recorded in `{0}` and embedded in the archive as `comparevi-tools-release.json`.' -f $env:MODULE_METADATA)
+            ('- Compatibility expectation: extract the archive and import `tools/CompareVI.Tools/CompareVI.Tools.psd1`; do not mix bundle files across release tags.')
+            ('- Source compatibility: the bundle wraps helper scripts from the same repository ref/tag as this release.')
+          ) | Out-File -FilePath RELEASE_NOTES.md -Encoding utf8 -Append
 
       - name: Create GitHub Release with assets (CHANGELOG)
         if: steps.notes.outputs.fallback == 'false'
@@ -369,6 +402,48 @@ jobs:
           node -e "const o=JSON.parse(process.argv[1]); if(!o.normalized.includes('-x')||!o.normalized.includes('1')) throw new Error('bad tokenize')" "$tok_json"
           "$bin" procs >/dev/null
 
+      - name: Validate CompareVI.Tools bundle
+        if: runner.os == 'Linux'
+        shell: pwsh
+        run: |
+          $zip = Get-ChildItem -Recurse -Path cli-dl -Filter 'CompareVI.Tools-v*.zip' | Select-Object -First 1
+          if (-not $zip) {
+            throw 'CompareVI.Tools release zip was not found in downloaded release artifacts.'
+          }
+
+          $extractRoot = Join-Path $env:RUNNER_TEMP 'comparevi-tools-bundle'
+          if (Test-Path -LiteralPath $extractRoot) {
+            Remove-Item -LiteralPath $extractRoot -Recurse -Force
+          }
+          Expand-Archive -Path $zip.FullName -DestinationPath $extractRoot
+
+          $bundleDir = Get-ChildItem -LiteralPath $extractRoot -Directory | Select-Object -First 1
+          if (-not $bundleDir) {
+            throw 'CompareVI.Tools archive did not contain a top-level bundle directory.'
+          }
+
+          $metadataPath = Join-Path $bundleDir.FullName 'comparevi-tools-release.json'
+          if (-not (Test-Path -LiteralPath $metadataPath -PathType Leaf)) {
+            throw "CompareVI.Tools metadata file was not found: $metadataPath"
+          }
+
+          pwsh -NoLogo -NoProfile -File tools/Invoke-JsonSchemaLite.ps1 `
+            -JsonPath $metadataPath `
+            -SchemaPath docs/schemas/comparevi-tools-release-manifest-v1.schema.json
+
+          foreach ($relativePath in @(
+            'README.md',
+            'tools/CompareVI.Tools/CompareVI.Tools.psd1',
+            'tools/Compare-VIHistory.ps1',
+            'tools/Compare-RefsToTemp.ps1',
+            'scripts/CompareVI.psm1'
+          )) {
+            $candidate = Join-Path $bundleDir.FullName $relativePath
+            if (-not (Test-Path -LiteralPath $candidate)) {
+              throw "CompareVI.Tools bundle missing required file: $relativePath"
+            }
+          }
+
   release-contract:
     name: release-contract
     runs-on: ubuntu-latest
@@ -413,6 +488,18 @@ jobs:
         with:
           name: cli-artifacts
           path: cli-dl
+
+      - name: Validate CompareVI.Tools metadata artifact
+        shell: pwsh
+        run: |
+          $metadataPath = Get-ChildItem -Recurse -Path cli-dl -Filter 'comparevi-tools-artifact.json' | Select-Object -First 1
+          if (-not $metadataPath) {
+            throw 'Downloaded CLI artifacts did not include comparevi-tools-artifact.json.'
+          }
+
+          pwsh -NoLogo -NoProfile -File tools/Invoke-JsonSchemaLite.ps1 `
+            -JsonPath $metadataPath.FullName `
+            -SchemaPath docs/schemas/comparevi-tools-release-manifest-v1.schema.json
 
       - name: Validate release provenance schema
         shell: pwsh
@@ -580,5 +667,6 @@ jobs:
             tests/results/_agent/supply-chain/release-trust-gate.json
             tests/results/_agent/release/rollback-drill-health.json
             tests/results/_agent/release/release-scorecard.json
+            tests/results/_agent/release/comparevi-tools-artifact.json
             tests/results/_agent/release/shared-source-resolution.json
           if-no-files-found: error

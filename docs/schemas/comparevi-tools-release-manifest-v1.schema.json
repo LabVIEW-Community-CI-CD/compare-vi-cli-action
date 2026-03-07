@@ -1,0 +1,158 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://labview-community-ci-cd.github.io/compare-vi-cli-action/schemas/comparevi-tools-release-manifest-v1.schema.json",
+  "title": "CompareVI.Tools Release Manifest v1",
+  "type": "object",
+  "required": [
+    "schema",
+    "generatedAtUtc",
+    "module",
+    "source",
+    "compatibility",
+    "bundle"
+  ],
+  "properties": {
+    "schema": {
+      "const": "comparevi-tools-release-manifest@v1"
+    },
+    "generatedAtUtc": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "module": {
+      "type": "object",
+      "required": [
+        "name",
+        "version",
+        "manifestPath",
+        "importPath",
+        "exportedFunctions"
+      ],
+      "properties": {
+        "name": {
+          "type": "string"
+        },
+        "version": {
+          "type": "string"
+        },
+        "manifestPath": {
+          "type": "string"
+        },
+        "importPath": {
+          "type": "string"
+        },
+        "exportedFunctions": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      },
+      "additionalProperties": false
+    },
+    "source": {
+      "type": "object",
+      "required": [
+        "repository",
+        "ref",
+        "sha",
+        "releaseTag"
+      ],
+      "properties": {
+        "repository": {
+          "type": "string"
+        },
+        "ref": {
+          "type": "string"
+        },
+        "sha": {
+          "type": "string"
+        },
+        "releaseTag": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": false
+    },
+    "compatibility": {
+      "type": "object",
+      "required": [
+        "supportedPaths",
+        "requires",
+        "notes"
+      ],
+      "properties": {
+        "supportedPaths": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "requires": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "notes": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      },
+      "additionalProperties": false
+    },
+    "bundle": {
+      "type": "object",
+      "required": [
+        "folder",
+        "archiveName",
+        "readmePath",
+        "metadataPath",
+        "files"
+      ],
+      "properties": {
+        "folder": {
+          "type": "string"
+        },
+        "archiveName": {
+          "type": "string"
+        },
+        "readmePath": {
+          "type": "string"
+        },
+        "metadataPath": {
+          "type": "string"
+        },
+        "files": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": [
+              "path",
+              "sha256",
+              "sizeBytes"
+            ],
+            "properties": {
+              "path": {
+                "type": "string"
+              },
+              "sha256": {
+                "type": "string",
+                "pattern": "^[0-9a-f]{64}$"
+              },
+              "sizeBytes": {
+                "type": "integer",
+                "minimum": 0
+              }
+            },
+            "additionalProperties": false
+          }
+        }
+      },
+      "additionalProperties": false
+    }
+  },
+  "additionalProperties": false
+}
