@@ -301,6 +301,12 @@ For Docker/Desktop VI history validation, run fast-loop lanes explicitly:
   written to `tests/results/_agent/policy/policy-state-snapshot.json`.
 - Run `node tools/npm/run-script.mjs priority:queue:supervisor -- --dry-run` to preview queue ordering and
   candidate gates, or add `--apply` for guarded autonomous enqueue mode.
+  The hosted queue-supervisor workflow runs every 5 minutes and also on `workflow_run` completion for
+  `Validate`/`Policy Guard (Upstream)` on `develop` so queue refill latency stays low.
+  Throughput controls:
+  - `QUEUE_AUTOPILOT_MAX_INFLIGHT` / `--max-inflight` sets the queue target cap.
+  - `QUEUE_AUTOPILOT_ADAPTIVE_CAP` (default `1`) and `QUEUE_AUTOPILOT_MIN_INFLIGHT` / `--min-inflight` enable
+    adaptive throttling when runtime pressure or trunk-health degradation is detected.
 - For deterministic incident routing, run the control-plane chain in order:
   - `node tools/npm/run-script.mjs priority:event:ingest -- ...`
   - `node tools/npm/run-script.mjs priority:policy:route -- --event <event-report-or-event-json>`
@@ -311,6 +317,9 @@ For Docker/Desktop VI history validation, run fast-loop lanes explicitly:
   `node tools/npm/run-script.mjs priority:canary:replay`; this emits
   `tests/results/_agent/canary/canary-replay-conformance-report.json`
   (`priority/canary-replay-conformance-report@v1`).
+- For defork-safe bootstrap in a fresh repository context, run
+  `node tools/npm/run-script.mjs priority:contracts:bootstrap` to initialize required queue/standing labels and
+  execute policy contract verification (`--apply-policy` applies branch/ruleset policy; `--dry-run` previews only).
 - In unattended flows, use lane-enforced standing sync (`node tools/npm/run-script.mjs priority:sync:lane`) so
   missing or duplicate standing-priority labels fail fast and emit deterministic diagnostics:
   - `tests/results/_agent/issue/no-standing-priority.json`

@@ -1,0 +1,140 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "priority/bootstrap-contracts-report@v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema",
+    "schemaVersion",
+    "generatedAt",
+    "status",
+    "repository",
+    "flags",
+    "inputs",
+    "labels",
+    "operations",
+    "policy",
+    "errors"
+  ],
+  "properties": {
+    "schema": {
+      "const": "priority/bootstrap-contracts-report@v1"
+    },
+    "schemaVersion": {
+      "type": "string"
+    },
+    "generatedAt": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "pass",
+        "warn",
+        "fail"
+      ]
+    },
+    "repository": {
+      "type": "string",
+      "pattern": "^[^/]+/[^/]+$"
+    },
+    "flags": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "dryRun",
+        "skipPolicy",
+        "applyPolicy",
+        "strictPolicy",
+        "policyFailOnSkip"
+      ],
+      "properties": {
+        "dryRun": { "type": "boolean" },
+        "skipPolicy": { "type": "boolean" },
+        "applyPolicy": { "type": "boolean" },
+        "strictPolicy": { "type": "boolean" },
+        "policyFailOnSkip": { "type": "boolean" }
+      }
+    },
+    "inputs": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "labelsPolicyPath",
+        "reportPath",
+        "policyReportPath"
+      ],
+      "properties": {
+        "labelsPolicyPath": { "type": "string", "minLength": 1 },
+        "reportPath": { "type": "string", "minLength": 1 },
+        "policyReportPath": { "type": "string", "minLength": 1 }
+      }
+    },
+    "labels": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "desiredCount",
+        "existingCount",
+        "createdCount",
+        "updatedCount",
+        "unchangedCount"
+      ],
+      "properties": {
+        "desiredCount": { "type": "integer", "minimum": 0 },
+        "existingCount": { "type": "integer", "minimum": 0 },
+        "createdCount": { "type": "integer", "minimum": 0 },
+        "updatedCount": { "type": "integer", "minimum": 0 },
+        "unchangedCount": { "type": "integer", "minimum": 0 }
+      }
+    },
+    "operations": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "type",
+          "name",
+          "wrote"
+        ],
+        "properties": {
+          "type": {
+            "type": "string",
+            "enum": [
+              "label-create",
+              "label-update",
+              "label-noop"
+            ]
+          },
+          "name": { "type": "string", "minLength": 1 },
+          "currentName": { "type": "string" },
+          "wrote": { "type": "boolean" }
+        }
+      }
+    },
+    "policy": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "executed",
+        "mode",
+        "result",
+        "exitCode",
+        "reportPath"
+      ],
+      "properties": {
+        "executed": { "type": "boolean" },
+        "mode": { "type": "string", "enum": ["verify", "apply"] },
+        "result": { "type": "string" },
+        "exitCode": { "type": ["integer", "null"] },
+        "reportPath": { "type": "string", "minLength": 1 }
+      }
+    },
+    "errors": {
+      "type": "array",
+      "items": { "type": "string" }
+    }
+  }
+}

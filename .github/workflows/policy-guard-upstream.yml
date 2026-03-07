@@ -10,6 +10,15 @@ on:
       - main
       - develop
       - release/**
+  pull_request_target:
+    types:
+      - opened
+      - synchronize
+      - reopened
+    branches:
+      - main
+      - develop
+      - release/**
   merge_group:
     branches:
       - main
@@ -19,12 +28,18 @@ on:
     - cron: '17 3 * * 1'
 
 concurrency:
-  group: policy-guard-upstream-${{ github.event_name }}-${{ (github.event_name == 'pull_request' && github.event.pull_request.number) || github.ref }}
+  group: policy-guard-upstream-${{ github.event_name }}-${{ (contains(github.event_name, 'pull_request') && github.event.pull_request.number) || github.ref }}
   cancel-in-progress: true
 
 jobs:
   policy-guard:
     name: Policy Guard (Upstream) / policy-guard
+    if: >-
+      (github.event_name == 'pull_request' &&
+      github.event.pull_request.head.repo.full_name == github.repository) ||
+      (github.event_name == 'pull_request_target' &&
+      github.event.pull_request.head.repo.full_name != github.repository) ||
+      (github.event_name != 'pull_request' && github.event_name != 'pull_request_target')
     runs-on: ubuntu-latest
     permissions:
       contents: read

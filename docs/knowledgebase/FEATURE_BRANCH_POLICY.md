@@ -43,7 +43,7 @@ standing GitHub protection rules (including queue-managed `develop` and `main`).
 - `Validate` includes a `Policy guard (branch protection)` step that runs `node tools/npm/run-script.mjs priority:policy`
   with the repository token when it is available. On fork PRs the step now detects the reduced token scope, logs that the
   upstream guard will run, and exits cleanly so community contributors are not blocked.
-- `.github/workflows/policy-guard-upstream.yml` (triggered via `pull_request`, `merge_group`, and schedule) re-runs
+- `.github/workflows/policy-guard-upstream.yml` (triggered via `pull_request_target`, `merge_group`, and schedule) re-runs
   `priority:policy` so queue-required policy checks attach to PR heads and merge-queue merge groups using one canonical
   status context. Its status
   (`Policy Guard (Upstream) / policy-guard`) is required on `develop`, `main`, and `release/*`.
@@ -55,12 +55,12 @@ standing GitHub protection rules (including queue-managed `develop` and `main`).
 - Branch protection verification requires canonical check context names exactly as declared in policy files.
 - `Validate` runs `priority:handoff-tests` automatically for heads that start with `feature/`, enforcing leak-sensitive
   suites before parallel work merges.
-- **Important:** Required checks for queued branches must run on both the `pull_request` and `merge_group` events;
-  otherwise the merge queue will eject entries. Ensure your workflows include:
+- **Important:** Required checks for queued branches must run on both PR and `merge_group` contexts (for trusted-only
+  checks, use `pull_request_target` + `merge_group`); otherwise the merge queue will eject entries. Ensure your workflows include:
 
   ```yaml
   on:
-    pull_request:
+    pull_request: # or pull_request_target for trusted-only checks
     merge_group:
   ```
 
@@ -251,6 +251,10 @@ to confirm each workflow includes both triggers.
    relevant check (`priority:validate`, `Validate` workflow, or manual reruns), and re-enable the queue.
 5. For autonomous queueing, run `node tools/npm/run-script.mjs priority:queue:supervisor -- --dry-run` first, then
    `--apply` when trunk health is green. The supervisor enforces required checks, dependency ordering, and queue caps.
+   Use `QUEUE_AUTOPILOT_MAX_INFLIGHT` for cap tuning and keep `QUEUE_AUTOPILOT_ADAPTIVE_CAP=1`
+   (`QUEUE_AUTOPILOT_MIN_INFLIGHT` floor) so enqueue pressure self-throttles under runtime saturation.
+   Hosted cadence runs every 5 minutes, with immediate `--apply` runs triggered by
+   `Validate` / `Policy Guard (Upstream)` completions on `develop`.
 6. Autonomous merge tooling now requires upstream-owned PR heads. Fork-headed PRs are intentionally ineligible for
    `priority:queue:supervisor` and `priority:merge-sync`; mirror the branch to upstream and open the PR from the
    upstream-owned branch before queueing.

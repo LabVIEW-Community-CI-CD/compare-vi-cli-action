@@ -8,6 +8,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import {
   parseArgs,
+  resolveRepositorySlug,
   runCanaryReplayConformance,
   stripGeneratedTimestamps
 } from '../canary-replay-conformance.mjs';
@@ -40,6 +41,33 @@ test('parseArgs supports explicit replay inputs', () => {
   assert.equal(parsed.reportPath, 'report.json');
   assert.equal(parsed.repository, 'example/repo');
   assert.equal(parsed.strict, false);
+});
+
+test('resolveRepositorySlug uses explicit, env, then upstream/origin remote fallbacks', () => {
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'canary-replay-repo-'));
+  const gitDir = path.join(tmpDir, '.git');
+  fs.mkdirSync(gitDir, { recursive: true });
+  fs.writeFileSync(
+    path.join(gitDir, 'config'),
+    [
+      '[remote "origin"]',
+      '  url = https://github.com/fork-owner/fork-repo.git',
+      '[remote "upstream"]',
+      '  url = git@github.com:upstream-owner/upstream-repo.git'
+    ].join('\n'),
+    'utf8'
+  );
+
+  assert.equal(resolveRepositorySlug(tmpDir, 'explicit-owner/explicit-repo', {}), 'explicit-owner/explicit-repo');
+  assert.equal(resolveRepositorySlug(tmpDir, null, { GITHUB_REPOSITORY: 'env-owner/env-repo' }), 'env-owner/env-repo');
+  assert.equal(resolveRepositorySlug(tmpDir, null, {}), 'upstream-owner/upstream-repo');
+
+  fs.writeFileSync(
+    path.join(gitDir, 'config'),
+    ['[remote "origin"]', '  url = https://github.com/fork-owner/fork-repo.git'].join('\n'),
+    'utf8'
+  );
+  assert.equal(resolveRepositorySlug(tmpDir, null, {}), 'fork-owner/fork-repo');
 });
 
 test('stripGeneratedTimestamps removes generatedAt fields recursively', () => {

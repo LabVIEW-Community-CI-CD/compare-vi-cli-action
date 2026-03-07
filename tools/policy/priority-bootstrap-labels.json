@@ -1,0 +1,46 @@
+{
+  "schema": "priority-bootstrap-labels@v1",
+  "schemaVersion": "1.0.0",
+  "labels": [
+    {
+      "name": "standing-priority",
+      "description": "Current top objective for automation agents",
+      "color": "FFFFFF"
+    },
+    {
+      "name": "fork-standing-priority",
+      "description": "Fork top objective for automation agents",
+      "color": "0E8A16"
+    },
+    {
+      "name": "queue-blocked",
+      "description": "Queue candidate blocked and awaiting remediation",
+      "color": "D93F0B"
+    },
+    {
+      "name": "queue-quarantine",
+      "description": "Queue candidate quarantined after bounded retries",
+      "color": "B60205"
+    },
+    {
+      "name": "do-not-queue",
+      "description": "Exclude PR from autonomous queue admission",
+      "color": "5319E7"
+    },
+    {
+      "name": "ci",
+      "description": "CI/CD, workflows, and pipeline changes",
+      "color": "0E8A16"
+    },
+    {
+      "name": "governance",
+      "description": "Policy, approvals, and operating model",
+      "color": "B60205"
+    },
+    {
+      "name": "program",
+      "description": "Program-level initiative",
+      "color": "1D76DB"
+    }
+  ]
+}

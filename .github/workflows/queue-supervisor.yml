@@ -8,12 +8,29 @@ on:
         required: false
         default: false
         type: boolean
+      adaptive_cap:
+        description: 'Enable adaptive inflight cap tuning'
+        required: false
+        default: true
+        type: boolean
       max_inflight:
         description: 'Optional inflight cap override'
         required: false
         type: string
+      min_inflight:
+        description: 'Optional adaptive inflight floor override'
+        required: false
+        type: string
   schedule:
-    - cron: '*/10 * * * *'
+    - cron: '*/5 * * * *'
+  workflow_run:
+    workflows:
+      - Validate
+      - Policy Guard (Upstream)
+    types:
+      - completed
+    branches:
+      - develop
 
 concurrency:
   group: queue-supervisor-${{ github.ref }}
@@ -49,6 +66,8 @@ jobs:
         env:
           QUEUE_AUTOPILOT_PAUSED: ${{ vars.QUEUE_AUTOPILOT_PAUSED || '0' }}
           QUEUE_AUTOPILOT_MAX_INFLIGHT: ${{ vars.QUEUE_AUTOPILOT_MAX_INFLIGHT || '' }}
+          QUEUE_AUTOPILOT_MIN_INFLIGHT: ${{ vars.QUEUE_AUTOPILOT_MIN_INFLIGHT || '' }}
+          QUEUE_AUTOPILOT_ADAPTIVE_CAP: ${{ vars.QUEUE_AUTOPILOT_ADAPTIVE_CAP || '1' }}
         run: |
           npm ci --ignore-scripts
           $reportPath = 'tests/results/_agent/queue/queue-supervisor-report.json'
@@ -60,7 +79,15 @@ jobs:
             $reportPath
           )
 
-          if ('${{ github.event_name }}' -eq 'workflow_dispatch' -and '${{ inputs.apply }}' -eq 'true') {
+          $eventName = '${{ github.event_name }}'
+          $apply = $false
+          if ($eventName -eq 'workflow_dispatch') {
+            $apply = ('${{ inputs.apply }}' -eq 'true')
+          } elseif ($eventName -eq 'workflow_run') {
+            $apply = $true
+          }
+
+          if ($apply) {
             $args += '--apply'
           } else {
             $args += '--dry-run'
@@ -69,6 +96,15 @@ jobs:
           $maxInflightInput = '${{ inputs.max_inflight }}'
           if (-not [string]::IsNullOrWhiteSpace($maxInflightInput)) {
             $args += @('--max-inflight', $maxInflightInput.Trim())
+          }
+
+          $minInflightInput = '${{ inputs.min_inflight }}'
+          if (-not [string]::IsNullOrWhiteSpace($minInflightInput)) {
+            $args += @('--min-inflight', $minInflightInput.Trim())
+          }
+
+          if ('${{ github.event_name }}' -eq 'workflow_dispatch' -and '${{ inputs.adaptive_cap }}' -ne 'true') {
+            $args += '--no-adaptive-cap'
           }
 
           node @args

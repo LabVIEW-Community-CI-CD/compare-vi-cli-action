@@ -4,6 +4,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
   classifyOpenPullRequests,
+  evaluateAdaptiveInflight,
   evaluateHealthGate,
   evaluateRuntimeFleetHealth,
   evaluateRequiredChecks,
@@ -21,33 +22,125 @@ function successCheck(name) {
 }
 
 test('parseArgs defaults to dry-run and supports apply mode', () => {
-  const defaults = parseArgs(['node', 'queue-supervisor.mjs']);
-  assert.equal(defaults.apply, false);
-  assert.equal(defaults.dryRun, true);
-  assert.equal(defaults.maxInflight, 4);
-  assert.equal(defaults.maxQueuedRuns, 6);
-  assert.equal(defaults.maxInProgressRuns, 8);
-  assert.equal(defaults.stallThresholdMinutes, 45);
+  const keys = [
+    'QUEUE_AUTOPILOT_MAX_INFLIGHT',
+    'QUEUE_AUTOPILOT_MIN_INFLIGHT',
+    'QUEUE_AUTOPILOT_ADAPTIVE_CAP',
+    'QUEUE_AUTOPILOT_MAX_QUEUED_RUNS',
+    'QUEUE_AUTOPILOT_MAX_IN_PROGRESS_RUNS',
+    'QUEUE_AUTOPILOT_STALL_THRESHOLD_MINUTES'
+  ];
+  const previous = Object.fromEntries(keys.map((key) => [key, process.env[key]]));
+  for (const key of keys) delete process.env[key];
+  try {
+    const defaults = parseArgs(['node', 'queue-supervisor.mjs']);
+    assert.equal(defaults.apply, false);
+    assert.equal(defaults.dryRun, true);
+    assert.equal(defaults.maxInflight, 5);
+    assert.equal(defaults.minInflight, 2);
+    assert.equal(defaults.adaptiveCap, true);
+    assert.equal(defaults.maxQueuedRuns, 6);
+    assert.equal(defaults.maxInProgressRuns, 8);
+    assert.equal(defaults.stallThresholdMinutes, 45);
 
-  const apply = parseArgs([
-    'node',
-    'queue-supervisor.mjs',
-    '--apply',
-    '--max-inflight',
-    '6',
-    '--max-queued-runs',
-    '7',
-    '--max-in-progress-runs',
-    '9',
-    '--stall-threshold-minutes',
-    '50'
-  ]);
-  assert.equal(apply.apply, true);
-  assert.equal(apply.dryRun, false);
-  assert.equal(apply.maxInflight, 6);
-  assert.equal(apply.maxQueuedRuns, 7);
-  assert.equal(apply.maxInProgressRuns, 9);
-  assert.equal(apply.stallThresholdMinutes, 50);
+    const apply = parseArgs([
+      'node',
+      'queue-supervisor.mjs',
+      '--apply',
+      '--max-inflight',
+      '6',
+      '--min-inflight',
+      '3',
+      '--no-adaptive-cap',
+      '--max-queued-runs',
+      '7',
+      '--max-in-progress-runs',
+      '9',
+      '--stall-threshold-minutes',
+      '50'
+    ]);
+    assert.equal(apply.apply, true);
+    assert.equal(apply.dryRun, false);
+    assert.equal(apply.maxInflight, 6);
+    assert.equal(apply.minInflight, 3);
+    assert.equal(apply.adaptiveCap, false);
+    assert.equal(apply.maxQueuedRuns, 7);
+    assert.equal(apply.maxInProgressRuns, 9);
+    assert.equal(apply.stallThresholdMinutes, 50);
+  } finally {
+    for (const key of keys) {
+      if (previous[key] === undefined) {
+        delete process.env[key];
+      } else {
+        process.env[key] = previous[key];
+      }
+    }
+  }
+});
+
+test('parseArgs rejects invalid inflight bounds', () => {
+  assert.throws(
+    () => parseArgs(['node', 'queue-supervisor.mjs', '--max-inflight', '2', '--min-inflight', '3']),
+    /min-inflight/i
+  );
+});
+
+test('parseArgs reads adaptive inflight controls from environment', () => {
+  const previous = {
+    max: process.env.QUEUE_AUTOPILOT_MAX_INFLIGHT,
+    min: process.env.QUEUE_AUTOPILOT_MIN_INFLIGHT,
+    adaptive: process.env.QUEUE_AUTOPILOT_ADAPTIVE_CAP
+  };
+  process.env.QUEUE_AUTOPILOT_MAX_INFLIGHT = '4';
+  process.env.QUEUE_AUTOPILOT_MIN_INFLIGHT = '1';
+  process.env.QUEUE_AUTOPILOT_ADAPTIVE_CAP = '0';
+  try {
+    const parsed = parseArgs(['node', 'queue-supervisor.mjs']);
+    assert.equal(parsed.maxInflight, 4);
+    assert.equal(parsed.minInflight, 1);
+    assert.equal(parsed.adaptiveCap, false);
+  } finally {
+    if (previous.max === undefined) delete process.env.QUEUE_AUTOPILOT_MAX_INFLIGHT;
+    else process.env.QUEUE_AUTOPILOT_MAX_INFLIGHT = previous.max;
+    if (previous.min === undefined) delete process.env.QUEUE_AUTOPILOT_MIN_INFLIGHT;
+    else process.env.QUEUE_AUTOPILOT_MIN_INFLIGHT = previous.min;
+    if (previous.adaptive === undefined) delete process.env.QUEUE_AUTOPILOT_ADAPTIVE_CAP;
+    else process.env.QUEUE_AUTOPILOT_ADAPTIVE_CAP = previous.adaptive;
+  }
+});
+
+test('evaluateAdaptiveInflight applies fixed, degraded, and restricted tiers deterministically', () => {
+  const fixed = evaluateAdaptiveInflight({
+    maxInflight: 5,
+    minInflight: 2,
+    adaptiveCap: false,
+    health: { successRate: 1, minSuccessRate: 0.8 },
+    runtimeFleet: { totals: { queued: 0, inProgress: 0, stalled: 0 }, thresholds: { maxQueuedRuns: 6, maxInProgressRuns: 8 } }
+  });
+  assert.equal(fixed.effectiveMaxInflight, 5);
+  assert.equal(fixed.tier, 'fixed');
+
+  const degraded = evaluateAdaptiveInflight({
+    maxInflight: 5,
+    minInflight: 2,
+    adaptiveCap: true,
+    health: { successRate: 0.86, minSuccessRate: 0.8 },
+    runtimeFleet: { totals: { queued: 5, inProgress: 1, stalled: 0 }, thresholds: { maxQueuedRuns: 6, maxInProgressRuns: 8 } }
+  });
+  assert.equal(degraded.effectiveMaxInflight, 3);
+  assert.equal(degraded.tier, 'degraded');
+  assert.ok(degraded.reasons.includes('runtime-near-saturation'));
+
+  const restricted = evaluateAdaptiveInflight({
+    maxInflight: 5,
+    minInflight: 2,
+    adaptiveCap: true,
+    health: { successRate: 0.78, minSuccessRate: 0.8 },
+    runtimeFleet: { totals: { queued: 1, inProgress: 1, stalled: 1 }, thresholds: { maxQueuedRuns: 6, maxInProgressRuns: 8 } }
+  });
+  assert.equal(restricted.effectiveMaxInflight, 2);
+  assert.equal(restricted.tier, 'restricted');
+  assert.ok(restricted.reasons.includes('stalled-runs-detected'));
 });
 
 test('evaluateRequiredChecks detects missing and failing contexts', () => {
@@ -357,6 +450,8 @@ test('runQueueSupervisor apply mode quarantines on second failure within 24h', a
       dryRun: false,
       reportPath: 'tests/results/_agent/queue/queue-supervisor-report.json',
       maxInflight: 4,
+      minInflight: 1,
+      adaptiveCap: false,
       maxQueuedRuns: 6,
       maxInProgressRuns: 8,
       stallThresholdMinutes: 45,
@@ -376,6 +471,9 @@ test('runQueueSupervisor apply mode quarantines on second failure within 24h', a
   assert.equal(report.summary.quarantinedCount, 1);
   assert.equal(report.actions.length, 1);
   assert.equal(report.actions[0].quarantined, true);
+  assert.equal(report.maxInflight, 4);
+  assert.equal(report.effectiveMaxInflight, 4);
+  assert.equal(report.adaptiveInflight.enabled, false);
   assert.ok(commandCalls.some((call) => call.command === 'gh' && call.args[1] === 'edit'));
   assert.equal(writeCalls.length, 1);
 });
