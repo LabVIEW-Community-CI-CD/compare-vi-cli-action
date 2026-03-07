@@ -70,6 +70,10 @@ parser.add_argument('--heartbeat-file', {
   help: 'Optional JSON heartbeat file for external monitors',
   default: '',
 });
+parser.add_argument('--events-file', {
+  help: 'Optional NDJSON runtime events file for downstream consumers',
+  default: '',
+});
 parser.add_argument('--quiet', {
   help: 'Suppress informational messages',
   action: 'store_true',
@@ -104,6 +108,9 @@ const statusEnabled = Boolean(statusFile);
 const heartbeatFileRaw = args['heartbeat_file'] ?? args.heartbeat_file ?? args['heartbeat-file'] ?? '';
 const heartbeatFile = heartbeatFileRaw ? path.resolve(heartbeatFileRaw) : '';
 const heartbeatEnabled = Boolean(heartbeatFile);
+const eventsFileRaw = args['events_file'] ?? args.events_file ?? args['events-file'] ?? '';
+const eventsFile = eventsFileRaw ? path.resolve(eventsFileRaw) : path.resolve(resultsDir, 'pester-watcher-events.ndjson');
+const eventsEnabled = Boolean(eventsFile);
 const startedAt = new Date();
 
 let logPosition = 0;
@@ -122,15 +129,59 @@ let lastHangWatchAt = null;
 let lastHangSuspectAt = null;
 let lastBusyWatchAt = null;
 let lastBusySuspectAt = null;
+let runtimeEventCount = 0;
+let lastRuntimeEventAt = null;
+let lastRuntimeEventPhase = null;
+let lastRuntimeEventLevel = null;
 
-function info(message) {
-  if (!quiet) {
-    console.log(message);
+function getRuntimeEventMetadata() {
+  return {
+    schema: 'comparevi/runtime-event/v1',
+    source: 'pester-artifact-watcher',
+    path: eventsFile,
+    count: runtimeEventCount,
+    lastEventAt: lastRuntimeEventAt,
+    lastPhase: lastRuntimeEventPhase,
+    lastLevel: lastRuntimeEventLevel,
+  };
+}
+
+function appendRuntimeEvent(level, phase, message, data = undefined) {
+  if (!eventsEnabled) {
+    return;
+  }
+
+  try {
+    fs.mkdirSync(path.dirname(eventsFile), { recursive: true });
+    const payload = {
+      schema: 'comparevi/runtime-event/v1',
+      tsUtc: new Date().toISOString(),
+      source: 'pester-artifact-watcher',
+      phase,
+      level,
+      message,
+      data: data && Object.keys(data).length > 0 ? data : undefined,
+    };
+    fs.appendFileSync(eventsFile, `${JSON.stringify(payload)}\n`, 'utf8');
+    runtimeEventCount += 1;
+    lastRuntimeEventAt = payload.tsUtc;
+    lastRuntimeEventPhase = phase;
+    lastRuntimeEventLevel = level;
+  } catch {
+    // Best-effort only; watcher logging must continue even if event persistence fails.
   }
 }
 
-function warn(message) {
-  console.warn(message);
+function info(message, phase = 'console', data = undefined) {
+  appendRuntimeEvent('info', phase, message, data);
+  if (!quiet) {
+    console.log(`[info] ${message}`);
+  }
+}
+
+function warn(message, phase = 'console', data = undefined) {
+  appendRuntimeEvent('warn', phase, message, data);
+  console.warn(`[warn] ${message}`);
 }
 
 async function ensureDirectory(target) {
@@ -158,12 +209,13 @@ async function writeHeartbeat(state, statusPayload, timestamp) {
       lastProgressAt: new Date(lastProgressAt).toISOString(),
       lastSummaryAt: lastSummaryAt ? new Date(lastSummaryAt).toISOString() : null,
     },
+    events: getRuntimeEventMetadata(),
   };
   try {
     await fsp.mkdir(path.dirname(heartbeatFile), { recursive: true });
     await fsp.writeFile(heartbeatFile, JSON.stringify(heartbeat, null, 2), 'utf8');
   } catch (err) {
-    warn(`[heartbeat] Failed to write heartbeat file: ${err.message ?? err}`);
+    warn(`[heartbeat] Failed to write heartbeat file: ${err.message ?? err}`, 'heartbeat-write-error');
   }
 }
 
@@ -197,13 +249,14 @@ async function writeStatus(state) {
       bytesSinceProgress: Math.max(0, logPosition - lastProgressBytes),
     },
     progressRegex: progressPattern,
+    events: getRuntimeEventMetadata(),
   };
   if (statusEnabled) {
     try {
       await fsp.mkdir(path.dirname(statusFile), { recursive: true });
       await fsp.writeFile(statusFile, JSON.stringify(payload, null, 2), 'utf8');
     } catch (err) {
-      warn(`[status] Failed to write status file: ${err.message ?? err}`);
+      warn(`[status] Failed to write status file: ${err.message ?? err}`, 'status-write-error');
     }
   }
   await writeHeartbeat(state, payload, timestamp);
@@ -222,6 +275,12 @@ async function readFileTail(filePath, lines) {
       }
       console.log(line);
     }
+    if (tail.length > 0) {
+      appendRuntimeEvent('info', 'log-tail', `tail lines=${tail.length}`, {
+        lineCount: tail.length,
+        progressDetected,
+      });
+    }
     const stats = await fsp.stat(filePath);
     logPosition = stats.size;
     lastStatsSize = stats.size;
@@ -239,7 +298,7 @@ async function readFileTail(filePath, lines) {
     if (err.code === 'ENOENT') {
       logPosition = 0;
     } else {
-      warn(`[watch] Failed to read tail for ${filePath}: ${err.message}`);
+      warn(`[watch] Failed to read tail for ${filePath}: ${err.message}`, 'log-tail-error');
     }
   }
 }
@@ -266,13 +325,22 @@ async function readLogDelta(filePath) {
       lastStatsMtimeMs = stats.mtimeMs;
       const text = buffer.toString('utf8');
       let progressDetected = false;
+      let lineCount = 0;
       for (const line of text.split(/\r?\n/)) {
         if (line.trim().length > 0) {
+          lineCount += 1;
           if (progressRegex.test(line)) {
             progressDetected = true;
           }
           console.log(`[log] ${line}`);
         }
+      }
+      if (lineCount > 0) {
+        appendRuntimeEvent('info', 'log-delta', `log lines=${lineCount}`, {
+          lineCount,
+          progressDetected,
+          bytes: length,
+        });
       }
       // Count any appended bytes as activity even if lines were blank/partial
       lastActivityAt = Date.now();
@@ -289,10 +357,10 @@ async function readLogDelta(filePath) {
     }
   } catch (err) {
     if (err.code === 'ENOENT') {
-      warn('[watch] Log file missing; waiting for recreation.');
+      warn('[watch] Log file missing; waiting for recreation.', 'log-missing');
       logPosition = 0;
     } else {
-      warn(`[watch] Failed to read log delta: ${err.message}`);
+      warn(`[watch] Failed to read log delta: ${err.message}`, 'log-delta-error');
     }
   }
 }
@@ -335,6 +403,14 @@ async function emitSummary(filePath) {
       parts.push(`Duration=${duration}`);
     }
     console.log(parts.join(' '));
+    appendRuntimeEvent('info', 'summary-update', 'summary updated', {
+      result: result ?? undefined,
+      tests: tests ?? undefined,
+      passed: passed ?? undefined,
+      failed: failed ?? undefined,
+      skipped: skipped ?? undefined,
+      duration: duration ?? undefined,
+    });
     lastSummaryAt = Date.now();
     lastProgressAt = Date.now();
     lastProgressBytes = logPosition;
@@ -344,7 +420,7 @@ async function emitSummary(filePath) {
     if (err.code === 'ENOENT') {
       return;
     }
-    warn(`[summary] Failed to parse summary: ${err.message}`);
+    warn(`[summary] Failed to parse summary: ${err.message}`, 'summary-parse-error');
   }
 }
 
@@ -352,15 +428,16 @@ async function watch() {
   await ensureDirectory(path.dirname(logPath));
   await ensureDirectory(path.dirname(summaryPath));
 
-  info(`[watch] Results directory: ${resultsDir}`);
-  info(`[watch] Log: ${logPath}`);
-  info(`[watch] Summary: ${summaryPath}`);
+  info(`[watch] Results directory: ${resultsDir}`, 'watch-start', { resultsDir });
+  info(`[watch] Log: ${logPath}`, 'watch-start', { logPath });
+  info(`[watch] Summary: ${summaryPath}`, 'watch-start', { summaryPath });
+  info(`[watch] Events: ${eventsFile}`, 'watch-start', { eventsFile });
 
   if (fs.existsSync(logPath)) {
-    info(`[watch] Initial tail (${tailLines} lines)`);
+    info(`[watch] Initial tail (${tailLines} lines)`, 'tail-init', { tailLines });
     await readFileTail(logPath, tailLines);
   } else {
-    info('[watch] Waiting for log file to appear...');
+    info('[watch] Waiting for log file to appear...', 'watch-start');
   }
 
   const watcherOptions = {
@@ -376,7 +453,7 @@ async function watch() {
 
   logWatcher
     .on('add', () => {
-      info('[watch] Log file created.');
+      info('[watch] Log file created.', 'log-file-created');
       enqueueLogRead(async () => {
         await readFileTail(logPath, tailLines);
       });
@@ -387,7 +464,7 @@ async function watch() {
       });
     })
     .on('unlink', () => {
-      warn('[watch] Log file deleted; resetting position.');
+      warn('[watch] Log file deleted; resetting position.', 'log-file-deleted');
       logPosition = 0;
       lastStatsSize = 0;
       lastStatsMtimeMs = 0;
@@ -396,14 +473,14 @@ async function watch() {
       busyReported = false;
     })
     .on('error', (error) => {
-      warn(`[watch] Log watcher error: ${error.message ?? error}`);
+      warn(`[watch] Log watcher error: ${error.message ?? error}`, 'log-watcher-error');
     });
 
   const summaryWatcher = chokidar.watch(summaryPath, watcherOptions);
 
   summaryWatcher
     .on('add', () => {
-      info('[watch] Summary file created.');
+      info('[watch] Summary file created.', 'summary-file-created');
       emitSummary(summaryPath);
       lastActivityAt = Date.now();
       lastProgressAt = Date.now();
@@ -423,14 +500,14 @@ async function watch() {
       }, 150);
     })
     .on('unlink', () => {
-      info('[watch] Summary file removed.');
+      info('[watch] Summary file removed.', 'summary-file-removed');
       if (summaryTimer) {
         clearTimeout(summaryTimer);
         summaryTimer = null;
       }
     })
     .on('error', (error) => {
-      warn(`[watch] Summary watcher error: ${error.message ?? error}`);
+      warn(`[watch] Summary watcher error: ${error.message ?? error}`, 'summary-watcher-error');
     });
 
   let pollTimer;
@@ -458,9 +535,13 @@ async function watch() {
     const idleSec = Math.floor(idleMs / 1000);
 
     if (idleSec >= hangSeconds) {
-      lastHangSuspectAt = Date.now();
-      if (!hangReported) {
-        warn(`[hang-suspect] idle ~${idleSec}s (no new log bytes or summary). live-bytes=${lastStatsSize} consumed-bytes=${logPosition}`);
+        lastHangSuspectAt = Date.now();
+        if (!hangReported) {
+        warn(`[hang-suspect] idle ~${idleSec}s (no new log bytes or summary). live-bytes=${lastStatsSize} consumed-bytes=${logPosition}`, 'hang-suspect', {
+          idleSeconds: idleSec,
+          liveBytes: lastStatsSize,
+          consumedBytes: logPosition,
+        });
         hangReported = true;
       }
       if (exitOnHang && !shuttingDown) {
@@ -470,7 +551,11 @@ async function watch() {
       state = 'hang-suspect';
     } else if (idleSec >= warnSeconds) {
       lastHangWatchAt = Date.now();
-      info(`[hang-watch] idle ~${idleSec}s (monitoring). live-bytes=${lastStatsSize} consumed-bytes=${logPosition}`);
+      info(`[hang-watch] idle ~${idleSec}s (monitoring). live-bytes=${lastStatsSize} consumed-bytes=${logPosition}`, 'hang-watch', {
+        idleSeconds: idleSec,
+        liveBytes: lastStatsSize,
+        consumedBytes: logPosition,
+      });
       state = 'hang-watch';
       hangReported = false;
     } else {
@@ -487,7 +572,10 @@ async function watch() {
       if (noProgSec >= noProgressSeconds) {
         lastBusySuspectAt = nowTs;
         if (!busyReported) {
-          warn(`[busy-suspect] no-progress ~${noProgSec}s (bytes-changing=${bytesChanging})`);
+          warn(`[busy-suspect] no-progress ~${noProgSec}s (bytes-changing=${bytesChanging})`, 'busy-suspect', {
+            noProgressSeconds: noProgSec,
+            bytesChanging,
+          });
           busyReported = true;
         }
         if (exitOnNoProgress && !shuttingDown) {
@@ -497,7 +585,10 @@ async function watch() {
         state = 'busy-suspect';
       } else if (noProgressWarnSeconds > 0 && noProgSec >= noProgressWarnSeconds) {
         lastBusyWatchAt = nowTs;
-        info(`[busy-watch] no-progress ~${noProgSec}s (bytes-changing=${bytesChanging})`);
+        info(`[busy-watch] no-progress ~${noProgSec}s (bytes-changing=${bytesChanging})`, 'busy-watch', {
+          noProgressSeconds: noProgSec,
+          bytesChanging,
+        });
         if (state === 'ok') {
           state = 'busy-watch';
         }
@@ -531,14 +622,14 @@ async function watch() {
   await runPoll();
   pollTimer = setInterval(() => {
     runPoll().catch((err) => {
-      warn(`[watch] Poll error: ${err.message ?? err}`);
+      warn(`[watch] Poll error: ${err.message ?? err}`, 'poll-error');
     });
   }, pollMs);
 
   function shutdown(signal) {
-    info(`[watch] Received ${signal}; shutting down watchers.`);
+    info(`[watch] Received ${signal}; shutting down watchers.`, 'watch-stop', { signal });
     shutdownWatcher('stopped', 0).catch((err) => {
-      warn(`[watch] Shutdown error: ${err.message ?? err}`);
+      warn(`[watch] Shutdown error: ${err.message ?? err}`, 'watch-stop-error');
       process.exit(0);
     });
   }
@@ -548,6 +639,6 @@ async function watch() {
 }
 
 watch().catch((error) => {
-  warn(`[watch] Fatal error: ${error.message ?? error}`);
+  warn(`[watch] Fatal error: ${error.message ?? error}`, 'watch-fatal');
   writeStatus('error').finally(() => process.exit(1));
 });

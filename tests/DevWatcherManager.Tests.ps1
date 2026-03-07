@@ -27,6 +27,7 @@ Describe 'Dev Watcher Manager' -Tag 'Unit' {
     $status.state | Should -Not -BeNullOrEmpty
     $status.files.status.path | Should -Not -BeNullOrEmpty
     $status.files.heartbeat.path | Should -Not -BeNullOrEmpty
+    $status.files.events.path | Should -Not -BeNullOrEmpty
     $status.thresholds | Should -Not -BeNullOrEmpty
 
     pwsh -NoLogo -NoProfile -File tools/Dev-WatcherManager.ps1 -Stop -ResultsDir $resultsDir | Out-Null

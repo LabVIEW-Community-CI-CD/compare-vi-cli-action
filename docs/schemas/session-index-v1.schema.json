@@ -30,6 +30,7 @@
         "artifactManifestJson": { "type": "string" },
         "artifactTrailJson": { "type": "string" },
         "leakReportJson": { "type": "string" },
+        "dispatcherEventsNdjson": { "type": "string" },
         "compareReportHtml": { "type": "string" },
         "resultsIndexHtml": { "type": "string" }
       }
@@ -126,6 +127,17 @@
                   "conclusion": { "type": ["string", "null"] },
                   "htmlUrl": { "type": ["string", "null"], "format": "uri" }
                 }
+              }
+            },
+            "events": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["schema", "path", "present", "count"],
+              "properties": {
+                "schema": { "const": "comparevi/runtime-event/v1" },
+                "path": { "type": "string" },
+                "present": { "type": "boolean" },
+                "count": { "type": "integer", "minimum": 0 }
               }
             }
           }

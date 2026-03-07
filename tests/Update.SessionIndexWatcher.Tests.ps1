@@ -48,6 +48,32 @@ Describe 'Update-SessionIndexWatcher' -Tag 'Unit' {
     $idx.watchers.rest.schema | Should -Be 'ci-watch/rest-v1'
   }
 
+  It 'records watcher event metadata in session index when NDJSON is available' {
+    $resultsDir = & $script:newSessionIndexFixture 'watcher-events'
+    $watcherPath = Join-Path $TestDrive 'watcher-events.json'
+    $eventsPath = Join-Path $TestDrive 'watcher-events.ndjson'
+    $watcher = @{
+      schema = 'ci-watch/rest-v1'
+      status = 'completed'
+      conclusion = 'success'
+      polledAtUtc = (Get-Date).ToUniversalTime().ToString('o')
+      jobs = @()
+    } | ConvertTo-Json
+    @(
+      '{"schema":"comparevi/runtime-event/v1","source":"rest-watcher","phase":"watch-start","level":"info","message":"watching run=1 repo=owner/repo"}',
+      '{"schema":"comparevi/runtime-event/v1","source":"rest-watcher","phase":"heartbeat","level":"info","message":"heartbeat"}'
+    ) | Set-Content -LiteralPath $eventsPath -Encoding UTF8
+    Set-Content -LiteralPath $watcherPath -Value $watcher -Encoding UTF8
+
+    & $script:updateScript -ResultsDir $resultsDir -WatcherJson $watcherPath -WatcherEvents $eventsPath
+
+    $idx = Get-Content -LiteralPath (Join-Path $resultsDir 'session-index.json') -Raw | ConvertFrom-Json
+    $idx.watchers.rest.events.schema | Should -Be 'comparevi/runtime-event/v1'
+    $idx.watchers.rest.events.path | Should -Be $eventsPath
+    $idx.watchers.rest.events.present | Should -BeTrue
+    $idx.watchers.rest.events.count | Should -Be 2
+  }
+
   It 'records missing-file watcher status when watcher json path does not exist' {
     $resultsDir = & $script:newSessionIndexFixture 'watcher-missing'
     $watcherPath = Join-Path $TestDrive 'does-not-exist.json'
