@@ -9,8 +9,8 @@ This scaffold tracks the six planned mergeable slices so agents can resume deter
 | PR1 | #813 | `codex/pr1-813-adaptive-throughput-controller` | Adaptive throughput controller (2/3/5 + hysteresis) | committed | `tests/results/_agent/queue/throughput-controller-state.json` |
 | PR2 | #814 | `codex/pr2-814-readiness-buffer-admission` | Readiness buffer + admission scoring | committed | `tests/results/_agent/queue/queue-readiness-report.json` |
 | PR3 | #814 | `codex/pr3-814-release-burst-windows` | Burst windows and backoff | committed | `tests/results/_agent/queue/queue-supervisor-report.json` |
-| PR4 | #809 child | `codex/pr4-809-queue-aware-release-conductor` | Queue-aware release conductor (CLI stream) | in-progress | `tests/results/_agent/release/release-conductor-report.json` |
-| PR5 | #813 | `codex/pr5-813-remediation-slo-evaluator` | Remediation SLO evaluator + governance transitions | pending | `tests/results/_agent/slo/remediation-slo-report.json` |
+| PR4 | #809 child | `codex/pr4-809-queue-aware-release-conductor` | Queue-aware release conductor (CLI stream) | committed | `tests/results/_agent/release/release-conductor-report.json` |
+| PR5 | #813 | `codex/pr5-813-remediation-slo-evaluator` | Remediation SLO evaluator + governance transitions | in-progress | `tests/results/_agent/slo/remediation-slo-report.json` |
 | PR6 | #815 | `codex/pr6-815-weekly-scorecards-gameday` | Weekly scorecards + canary game-day | pending | `tests/results/_agent/slo/weekly-scorecard.json` |
 
 ## Sequencing notes

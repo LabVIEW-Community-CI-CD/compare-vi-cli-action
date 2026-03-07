@@ -1,0 +1,190 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "priority/remediation-slo-report@v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema",
+    "generatedAt",
+    "repository",
+    "windows",
+    "inputs",
+    "sourceState",
+    "thresholds",
+    "metrics",
+    "summary",
+    "checks",
+    "breaches",
+    "governor"
+  ],
+  "properties": {
+    "schema": { "const": "priority/remediation-slo-report@v1" },
+    "generatedAt": { "type": "string", "format": "date-time" },
+    "repository": { "type": "string", "pattern": "^[^/\\s]+/[^/\\s]+$" },
+    "windows": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["lookbackDays"],
+      "properties": {
+        "lookbackDays": { "type": "integer", "minimum": 0 }
+      }
+    },
+    "inputs": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["issueEventsPath", "queueReportPath", "sloMetricsPath", "releaseScorecardPath"],
+      "properties": {
+        "issueEventsPath": { "type": "string" },
+        "queueReportPath": { "type": "string" },
+        "sloMetricsPath": { "type": "string" },
+        "releaseScorecardPath": { "type": "string" }
+      }
+    },
+    "sourceState": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["issueEvents", "queueReport", "sloMetrics", "releaseScorecard"],
+      "properties": {
+        "issueEvents": { "$ref": "#/$defs/sourceStateEntry" },
+        "queueReport": { "$ref": "#/$defs/sourceStateEntry" },
+        "sloMetrics": { "$ref": "#/$defs/sourceStateEntry" },
+        "releaseScorecard": { "$ref": "#/$defs/sourceStateEntry" }
+      }
+    },
+    "thresholds": {
+      "type": "object",
+      "additionalProperties": true
+    },
+    "metrics": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["incident", "operations"],
+      "properties": {
+        "incident": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "lookbackDays",
+            "totalIncidents",
+            "reopenedIncidents",
+            "reopenRate",
+            "mttdHours",
+            "routeLatencyHours",
+            "mttrByPriorityHours",
+            "sampleCounts"
+          ],
+          "properties": {
+            "lookbackDays": { "type": "integer", "minimum": 0 },
+            "totalIncidents": { "type": "integer", "minimum": 0 },
+            "reopenedIncidents": { "type": "integer", "minimum": 0 },
+            "reopenRate": { "type": "number", "minimum": 0 },
+            "mttdHours": { "type": ["number", "null"], "minimum": 0 },
+            "routeLatencyHours": { "type": ["number", "null"], "minimum": 0 },
+            "mttrByPriorityHours": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["P0", "P1", "P2"],
+              "properties": {
+                "P0": { "type": ["number", "null"], "minimum": 0 },
+                "P1": { "type": ["number", "null"], "minimum": 0 },
+                "P2": { "type": ["number", "null"], "minimum": 0 }
+              }
+            },
+            "sampleCounts": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["mttd", "routeLatency", "mttrP0", "mttrP1", "mttrP2"],
+              "properties": {
+                "mttd": { "type": "integer", "minimum": 0 },
+                "routeLatency": { "type": "integer", "minimum": 0 },
+                "mttrP0": { "type": "integer", "minimum": 0 },
+                "mttrP1": { "type": "integer", "minimum": 0 },
+                "mttrP2": { "type": "integer", "minimum": 0 }
+              }
+            }
+          }
+        },
+        "operations": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "queueRetryRatio",
+            "queueQuarantineRatio",
+            "trunkRedMinutes",
+            "trunkFailureRate",
+            "releaseBlockerCount",
+            "releaseStatus"
+          ],
+          "properties": {
+            "queueRetryRatio": { "type": ["number", "null"], "minimum": 0 },
+            "queueQuarantineRatio": { "type": ["number", "null"], "minimum": 0 },
+            "trunkRedMinutes": { "type": ["number", "null"], "minimum": 0 },
+            "trunkFailureRate": { "type": ["number", "null"], "minimum": 0 },
+            "releaseBlockerCount": { "type": ["number", "null"], "minimum": 0 },
+            "releaseStatus": { "type": ["string", "null"] }
+          }
+        }
+      }
+    },
+    "summary": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["status", "checkCount", "breachCount"],
+      "properties": {
+        "status": { "type": "string", "enum": ["pass", "warn", "fail"] },
+        "checkCount": { "type": "integer", "minimum": 0 },
+        "breachCount": { "type": "integer", "minimum": 0 }
+      }
+    },
+    "checks": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": true,
+        "required": ["key", "value", "thresholds", "status"],
+        "properties": {
+          "key": { "type": "string" },
+          "value": { "type": ["number", "null"] },
+          "status": { "type": "string", "enum": ["pass", "warn", "fail", "n/a"] },
+          "priority": { "type": ["string", "null"] }
+        }
+      }
+    },
+    "breaches": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": true,
+        "required": ["key", "status", "value", "thresholds", "priority"],
+        "properties": {
+          "key": { "type": "string" },
+          "status": { "type": "string", "enum": ["warn", "fail"] },
+          "value": { "type": ["number", "null"] },
+          "priority": { "type": ["string", "null"] }
+        }
+      }
+    },
+    "governor": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["intent", "firstBreach", "previousStatus", "transition"],
+      "properties": {
+        "intent": { "type": "string", "enum": ["normal", "stabilize"] },
+        "firstBreach": { "type": "boolean" },
+        "previousStatus": { "type": "string", "enum": ["pass", "warn", "fail"] },
+        "transition": { "type": "string" }
+      }
+    }
+  },
+  "$defs": {
+    "sourceStateEntry": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["exists", "error"],
+      "properties": {
+        "exists": { "type": "boolean" },
+        "error": { "type": ["string", "null"] }
+      }
+    }
+  }
+}
