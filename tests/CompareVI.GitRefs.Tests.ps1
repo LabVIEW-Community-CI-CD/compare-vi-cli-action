@@ -119,14 +119,26 @@ Describe 'CompareVI with Git refs (same path at two commits)' -Tag 'CompareVI','
     }
 
     $proc = [System.Diagnostics.Process]::Start($psi)
-    $stdout = $proc.StandardOutput.ReadToEnd()
-    $stderr = $proc.StandardError.ReadToEnd()
-    $proc.WaitForExit()
-    if ($proc.ExitCode -ne 0) {
+    if ($null -eq $proc) {
+      throw 'Failed to start temp-root fallback test process.'
+    }
+    $procExitCode = $null
+    try {
+      $stdoutTask = $proc.StandardOutput.ReadToEndAsync()
+      $stderrTask = $proc.StandardError.ReadToEndAsync()
+      [System.Threading.Tasks.Task]::WaitAll(@($stdoutTask, $stderrTask))
+      $proc.WaitForExit()
+      $procExitCode = $proc.ExitCode
+      $stdout = $stdoutTask.Result
+      $stderr = $stderrTask.Result
+    } finally {
+      $proc.Dispose()
+    }
+    if ($procExitCode -ne 0) {
       if ($stdout) { Write-Host $stdout }
       if ($stderr) { Write-Host $stderr }
     }
-    $proc.ExitCode | Should -Be 0
+    $procExitCode | Should -Be 0
 
     $summaryPath = Join-Path $resultsDir 'temp-fallback-summary.json'
     $execPath = Join-Path $resultsDir 'temp-fallback-exec.json'
