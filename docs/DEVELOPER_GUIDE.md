@@ -301,6 +301,8 @@ For Docker/Desktop VI history validation, run fast-loop lanes explicitly:
   written to `tests/results/_agent/policy/policy-state-snapshot.json`.
 - Run `node tools/npm/run-script.mjs priority:queue:supervisor -- --dry-run` to preview queue ordering and
   candidate gates, or add `--apply` for guarded autonomous enqueue mode.
+  Use `node tools/npm/run-script.mjs priority:queue:readiness` to materialize the ranked ready-set report
+  (`tests/results/_agent/queue/queue-readiness-report.json`) from the latest supervisor snapshot.
   The hosted queue-supervisor workflow runs every 5 minutes and also on `workflow_run` completion for
   `Validate`/`Policy Guard (Upstream)` on `develop` so queue refill latency stays low.
   Throughput controls:

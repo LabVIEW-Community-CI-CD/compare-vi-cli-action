@@ -42,6 +42,7 @@ test('parseArgs defaults to dry-run and supports apply mode', () => {
     assert.equal(defaults.maxQueuedRuns, 6);
     assert.equal(defaults.maxInProgressRuns, 8);
     assert.equal(defaults.stallThresholdMinutes, 45);
+    assert.match(defaults.readinessReportPath, /queue-readiness-report\.json$/);
 
     const apply = parseArgs([
       'node',
@@ -504,6 +505,7 @@ test('runQueueSupervisor apply mode quarantines on second failure within 24h', a
   assert.equal(report.effectiveMaxInflight, 4);
   assert.equal(report.adaptiveInflight.enabled, false);
   assert.ok(commandCalls.some((call) => call.command === 'gh' && call.args[1] === 'edit'));
-  assert.equal(writeCalls.length, 2);
+  assert.equal(writeCalls.length, 3);
   assert.ok(writeCalls.some((call) => String(call.reportPath).includes('throughput-controller-state.json')));
+  assert.ok(writeCalls.some((call) => String(call.reportPath).includes('queue-readiness-report.json')));
 });

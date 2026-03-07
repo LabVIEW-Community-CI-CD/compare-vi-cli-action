@@ -8,6 +8,7 @@ import process from 'node:process';
 import { fileURLToPath } from 'node:url';
 import { parseRemoteUrl } from './lib/remote-utils.mjs';
 import { getRepoRoot } from './lib/branch-utils.mjs';
+import { buildQueueReadinessReport, DEFAULT_READINESS_REPORT_PATH } from './queue-readiness.mjs';
 
 const REPORT_SCHEMA = 'priority/queue-supervisor-report@v1';
 const DEFAULT_REPORT_PATH = path.join('tests', 'results', '_agent', 'queue', 'queue-supervisor-report.json');
@@ -57,6 +58,7 @@ function printUsage() {
   console.log(
     `  --controller-state <path> Write throughput-controller JSON (default: ${DEFAULT_CONTROLLER_STATE_PATH}).`
   );
+  console.log(`  --readiness-report <path> Write queue readiness JSON (default: ${DEFAULT_READINESS_REPORT_PATH}).`);
   console.log(`  --max-inflight <n>     Queue target cap (default: ${DEFAULT_MAX_INFLIGHT}, env QUEUE_AUTOPILOT_MAX_INFLIGHT).`);
   console.log(`  --min-inflight <n>     Adaptive-cap floor (default: ${DEFAULT_MIN_INFLIGHT}, env QUEUE_AUTOPILOT_MIN_INFLIGHT).`);
   console.log('  --adaptive-cap         Enable adaptive inflight tuning (default, env QUEUE_AUTOPILOT_ADAPTIVE_CAP).');
@@ -100,6 +102,7 @@ export function parseArgs(argv = process.argv) {
     dryRun: true,
     reportPath: DEFAULT_REPORT_PATH,
     controllerStatePath: DEFAULT_CONTROLLER_STATE_PATH,
+    readinessReportPath: DEFAULT_READINESS_REPORT_PATH,
     maxInflight: null,
     minInflight: null,
     adaptiveCap: null,
@@ -131,6 +134,7 @@ export function parseArgs(argv = process.argv) {
     if (
       arg === '--report' ||
       arg === '--controller-state' ||
+      arg === '--readiness-report' ||
       arg === '--max-inflight' ||
       arg === '--min-inflight' ||
       arg === '--repo' ||
@@ -149,6 +153,8 @@ export function parseArgs(argv = process.argv) {
         options.reportPath = next;
       } else if (arg === '--controller-state') {
         options.controllerStatePath = next;
+      } else if (arg === '--readiness-report') {
+        options.readinessReportPath = next;
       } else if (arg === '--max-inflight') {
         options.maxInflight = parseIntStrict(next, { label: '--max-inflight' });
       } else if (arg === '--min-inflight') {
@@ -1149,6 +1155,7 @@ export async function runQueueSupervisor(options = {}) {
   const repoRoot = options.repoRoot ?? getRepoRoot();
   const args = options.args ?? parseArgs();
   const controllerStatePath = args.controllerStatePath ?? DEFAULT_CONTROLLER_STATE_PATH;
+  const readinessReportPath = args.readinessReportPath ?? DEFAULT_READINESS_REPORT_PATH;
   const now = options.now ?? new Date();
   const runGhJsonFn = options.runGhJsonFn ?? runGhJson;
   const runCommandFn = options.runCommandFn ?? runCommand;
@@ -1229,8 +1236,6 @@ export async function runQueueSupervisor(options = {}) {
   const effectiveMaxInflight = adaptiveInflight.effectiveMaxInflight;
   const inflight = countInflight(classified.candidates.filter((candidate) => queueManagedBranches.has(candidate.baseRefName)));
   const capacity = Math.max(0, effectiveMaxInflight - inflight);
-  const planned = classified.orderedEligible.filter((candidate) => !candidate.autoMergeEnabled);
-  const toProcess = planned.slice(0, capacity);
 
   const throughputControllerState = {
     schema: THROUGHPUT_CONTROLLER_SCHEMA,
@@ -1249,6 +1254,19 @@ export async function runQueueSupervisor(options = {}) {
     paused: uniquePausedReasons.length > 0,
     pausedReasons: uniquePausedReasons
   };
+
+  const queueReadiness = buildQueueReadinessReport({
+    repository,
+    candidates: classified.candidates,
+    orderedEligible: classified.orderedEligible.map((candidate) => candidate.number),
+    now
+  });
+  const candidateByNumber = new Map(classified.candidates.map((candidate) => [candidate.number, candidate]));
+  const planned = queueReadiness.readySet
+    .map((entry) => candidateByNumber.get(entry.number))
+    .filter(Boolean)
+    .filter((candidate) => !candidate.autoMergeEnabled);
+  const toProcess = planned.slice(0, capacity);
 
   const report = {
     schema: REPORT_SCHEMA,
@@ -1282,6 +1300,15 @@ export async function runQueueSupervisor(options = {}) {
     paused: uniquePausedReasons.length > 0,
     pausedReasons: uniquePausedReasons,
     throughputController: throughputControllerState,
+    readiness: {
+      reportPath: readinessReportPath,
+      summary: queueReadiness.summary,
+      readySet: queueReadiness.readySet.map((entry) => ({
+        number: entry.number,
+        score: entry.score,
+        dependencyRank: entry.dependencyRank
+      }))
+    },
     summary: {
       openCount: classified.allOpen.length,
       candidateCount: classified.candidates.length,
@@ -1322,11 +1349,14 @@ export async function runQueueSupervisor(options = {}) {
     report.retryHistory = retryHistory;
     const resolvedPath = await writeReportFn(args.reportPath, report);
     const resolvedControllerStatePath = await writeReportFn(controllerStatePath, throughputControllerState);
+    const resolvedReadinessPath = await writeReportFn(readinessReportPath, queueReadiness);
     return {
       report,
       reportPath: resolvedPath,
       controllerState: throughputControllerState,
-      controllerStatePath: resolvedControllerStatePath
+      controllerStatePath: resolvedControllerStatePath,
+      readiness: queueReadiness,
+      readinessPath: resolvedReadinessPath
     };
   }
 
@@ -1428,11 +1458,14 @@ export async function runQueueSupervisor(options = {}) {
   report.retryHistory = retryHistory;
   const resolvedPath = await writeReportFn(args.reportPath, report);
   const resolvedControllerStatePath = await writeReportFn(controllerStatePath, throughputControllerState);
+  const resolvedReadinessPath = await writeReportFn(readinessReportPath, queueReadiness);
   return {
     report,
     reportPath: resolvedPath,
     controllerState: throughputControllerState,
-    controllerStatePath: resolvedControllerStatePath
+    controllerStatePath: resolvedControllerStatePath,
+    readiness: queueReadiness,
+    readinessPath: resolvedReadinessPath
   };
 }
 
@@ -1443,12 +1476,15 @@ export async function main(argv = process.argv) {
     return 0;
   }
 
-  const { report, reportPath, controllerState, controllerStatePath } = await runQueueSupervisor({ args });
+  const { report, reportPath, controllerState, controllerStatePath, readinessPath } = await runQueueSupervisor({ args });
   console.log(`[queue-supervisor] report written: ${reportPath}`);
   if (controllerStatePath) {
     console.log(
       `[queue-supervisor] throughput controller: ${controllerStatePath} (mode=${controllerState?.mode ?? 'unknown'}, cap=${controllerState?.targetCap ?? 'n/a'})`
     );
+  }
+  if (readinessPath) {
+    console.log(`[queue-supervisor] readiness report: ${readinessPath}`);
   }
   console.log(`[queue-supervisor] paused=${report.paused} eligible=${report.summary.eligibleCount} planned=${report.summary.plannedCount} enqueued=${report.summary.enqueuedCount}`);
   if (report.paused) {

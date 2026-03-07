@@ -1,0 +1,199 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "priority/queue-readiness-report@v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema",
+    "generatedAt",
+    "repository",
+    "scoring",
+    "summary",
+    "readySet",
+    "candidates"
+  ],
+  "properties": {
+    "schema": {
+      "const": "priority/queue-readiness-report@v1"
+    },
+    "generatedAt": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "repository": {
+      "type": "string",
+      "pattern": "^[^/\\s]+/[^/\\s]+$"
+    },
+    "scoring": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "weights"
+      ],
+      "properties": {
+        "weights": {
+          "type": "object"
+        }
+      }
+    },
+    "summary": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "candidateCount",
+        "readyCount",
+        "ineligibleCount"
+      ],
+      "properties": {
+        "candidateCount": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "readyCount": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "ineligibleCount": {
+          "type": "integer",
+          "minimum": 0
+        }
+      }
+    },
+    "readySet": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/entry"
+      }
+    },
+    "candidates": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/entry"
+      }
+    }
+  },
+  "$defs": {
+    "scoreComponents": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "readinessBase",
+        "checksGreen",
+        "dependencyReady",
+        "priority",
+        "coupling",
+        "riskClass",
+        "flakyExposure",
+        "age"
+      ],
+      "properties": {
+        "readinessBase": { "type": "number" },
+        "checksGreen": { "type": "number" },
+        "dependencyReady": { "type": "number" },
+        "priority": { "type": "number" },
+        "coupling": { "type": "number" },
+        "riskClass": { "type": "number" },
+        "flakyExposure": { "type": "number" },
+        "age": { "type": "number" }
+      }
+    },
+    "entry": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "number",
+        "title",
+        "url",
+        "updatedAt",
+        "eligible",
+        "reasons",
+        "priority",
+        "coupling",
+        "riskClass",
+        "flakyExposure",
+        "dependencyReady",
+        "checksOk",
+        "dependencyRank",
+        "ageHours",
+        "score",
+        "scoreComponents"
+      ],
+      "properties": {
+        "number": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "title": {
+          "type": "string"
+        },
+        "url": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "eligible": {
+          "type": "boolean"
+        },
+        "reasons": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "priority": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "coupling": {
+          "type": "string",
+          "enum": [
+            "independent",
+            "soft",
+            "hard"
+          ]
+        },
+        "riskClass": {
+          "type": "string",
+          "enum": [
+            "low",
+            "medium",
+            "high"
+          ]
+        },
+        "flakyExposure": {
+          "type": "string",
+          "enum": [
+            "none",
+            "medium",
+            "high"
+          ]
+        },
+        "dependencyReady": {
+          "type": "boolean"
+        },
+        "checksOk": {
+          "type": "boolean"
+        },
+        "dependencyRank": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "ageHours": {
+          "type": "number",
+          "minimum": 0
+        },
+        "score": {
+          "type": "number"
+        },
+        "scoreComponents": {
+          "$ref": "#/$defs/scoreComponents"
+        }
+      }
+    }
+  }
+}
