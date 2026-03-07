@@ -246,6 +246,9 @@ For Docker/Desktop VI history validation, run fast-loop lanes explicitly:
 - Configure required reviewers in GitHub environment settings so deployment acknowledgement is explicit and review
   requests can be approved through GitHub web/mobile:
   Settings -> Environments -> `validation` / `production` -> Required reviewers.
+- Run `node tools/npm/run-script.mjs priority:deployment:gate-policy` to verify both environments enforce
+  required reviewers and admin-bypass policy; report path:
+  `tests/results/_agent/deployments/environment-gate-policy.json`.
 - `PR Auto-approve` and `PR Auto-approve Label` workflows were retired because branch policy requires `0` approvals.
 - Monthly stability dispatch approvals continue to use the `monthly-stability-release` environment gate.
 
