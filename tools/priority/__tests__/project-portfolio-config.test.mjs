@@ -1,0 +1,52 @@
+import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
+import path from 'node:path';
+import test from 'node:test';
+import { fileURLToPath } from 'node:url';
+
+const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..', '..');
+const configPath = path.join(repoRoot, 'tools', 'priority', 'project-portfolio.json');
+const config = JSON.parse(readFileSync(configPath, 'utf8'));
+
+test('project portfolio config tracks the expected schema and repos', () => {
+  assert.equal(config.schema, 'project-portfolio-config@v1');
+  assert.equal(config.owner, 'LabVIEW-Community-CI-CD');
+  assert.equal(config.number, 2);
+  assert.deepEqual(config.repositories, [
+    'LabVIEW-Community-CI-CD/compare-vi-cli-action',
+    'LabVIEW-Community-CI-CD/comparevi-history',
+  ]);
+});
+
+test('project portfolio config item URLs are unique and cover the active programs', () => {
+  const parsedUrls = config.items.map((item) => new URL(item.url));
+  const urlStrings = parsedUrls.map((item) => item.toString());
+  assert.equal(new Set(urlStrings).size, urlStrings.length);
+  assert.equal(parsedUrls.length, 16);
+
+  const issueCoordinates = new Set(
+    parsedUrls.map((item) => {
+      assert.equal(item.protocol, 'https:');
+      assert.equal(item.host, 'github.com');
+      const [, owner, repo, kind, issueNumber] = item.pathname.split('/');
+      assert.equal(kind, 'issues');
+      return `${owner}/${repo}#${issueNumber}`;
+    }),
+  );
+
+  assert.ok(issueCoordinates.has('LabVIEW-Community-CI-CD/compare-vi-cli-action#854'));
+  assert.ok(issueCoordinates.has('LabVIEW-Community-CI-CD/compare-vi-cli-action#861'));
+  assert.ok(issueCoordinates.has('LabVIEW-Community-CI-CD/comparevi-history#14'));
+  assert.ok(issueCoordinates.has('LabVIEW-Community-CI-CD/comparevi-history#15'));
+});
+
+test('project portfolio config declares the fields future agents need to reason about the board', () => {
+  for (const item of config.items) {
+    assert.equal(typeof item.status, 'string');
+    assert.equal(typeof item.program, 'string');
+    assert.equal(typeof item.phase, 'string');
+    assert.equal(typeof item.environmentClass, 'string');
+    assert.equal(typeof item.blockingSignal, 'string');
+    assert.equal(typeof item.evidenceState, 'string');
+  }
+});

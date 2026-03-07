@@ -45,10 +45,14 @@ line buffers).
      the working tree is on `develop` before creating a feature branch.
   2. Review `.agent_priority_cache.json` / `tests/results/_agent/issue/` for tasks, acceptance, and
      linked PRs on the standing issue.
-  3. Run `node tools/npm/run-script.mjs priority:develop:sync` to perform locked, sequential
+  3. For cross-issue or cross-repo coordination, run
+     `node tools/npm/run-script.mjs priority:project:portfolio:check` to verify the dashboard state recorded in
+     `tools/priority/project-portfolio.json`. Treat the project board as a visibility layer only; issues, labels, and
+     policy files remain the source of truth.
+  4. Run `node tools/npm/run-script.mjs priority:develop:sync` to perform locked, sequential
      `pull --ff-only upstream/develop` then `push origin/develop` with retry/backoff and remote-head convergence checks;
      this helper also emits the parity report and must be used instead of ad-hoc pull/push command pairs.
-  4. Create or sync a working branch (`issue/<standing-number>-<slug>`), push minimal changes,
+  5. Create or sync a working branch (`issue/<standing-number>-<slug>`), push minimal changes,
      dispatch CI, update the PR (reference `#<standing-number>`), monitor to green, merge when
      acceptance is met.
 

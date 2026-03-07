@@ -85,6 +85,8 @@
     "priority:slo": "node tools/priority/slo-metrics.mjs",
     "priority:operator-status": "pwsh -NoLogo -NoProfile -File tools/priority/Write-OperatorStatusSummary.ps1",
     "priority:parity": "node tools/priority/report-origin-upstream-parity.mjs",
+    "priority:project:portfolio:check": "tsc -p tsconfig.cli.json && node dist/tools/cli/project-portfolio.js check",
+    "priority:project:portfolio:snapshot": "tsc -p tsconfig.cli.json && node dist/tools/cli/project-portfolio.js snapshot",
     "priority:policy:apply": "pwsh -NoLogo -NoProfile -File tools/priority/Sync-BranchProtectionPolicy.ps1 -Apply",
     "priority:policy:sync": "pwsh -NoLogo -NoProfile -File tools/priority/Sync-BranchProtectionPolicy.ps1",
     "priority:pr": "node tools/priority/create-pr.mjs",
