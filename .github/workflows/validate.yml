@@ -950,6 +950,8 @@ jobs:
     needs: [smoke-gate, lint, fixtures, session-index, session-index-v2-contract]
     if: needs.smoke-gate.outputs.skip != 'true'
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
     defaults:
       run:
         shell: pwsh
