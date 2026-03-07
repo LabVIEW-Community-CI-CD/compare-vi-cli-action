@@ -8,8 +8,18 @@ test('normalizeSummary zeroes timestamp and duration and sorts steps', () => {
     hook: 'pre-commit',
     timestamp: '2025-10-13T12:34:56Z',
     steps: [
-      { name: 'b-step', durationMs: 42, status: 'ok' },
-      { name: 'a-step', durationMs: 5, status: 'ok' },
+      {
+        name: 'b-step',
+        durationMs: 42,
+        status: 'ok',
+        stdout: '[ni-container-compare] running container=ni-compare-a elapsed=15.7s timeout=240s\r\nkeep-me',
+      },
+      {
+        name: 'a-step',
+        durationMs: 5,
+        status: 'ok',
+        stderr: '[ni-linux-container-compare] running container=ni-linux elapsed=31s timeout=240s\r\nwarn-me',
+      },
     ],
   };
 
@@ -19,8 +29,8 @@ test('normalizeSummary zeroes timestamp and duration and sorts steps', () => {
   assert.deepEqual(
     normalized.steps,
     [
-      { name: 'a-step', durationMs: 0, status: 'ok' },
-      { name: 'b-step', durationMs: 0, status: 'ok' },
+      { name: 'a-step', durationMs: 0, status: 'ok', stderr: 'warn-me', stdout: undefined },
+      { name: 'b-step', durationMs: 0, status: 'ok', stdout: 'keep-me', stderr: undefined },
     ],
   );
 

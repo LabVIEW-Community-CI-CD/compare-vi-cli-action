@@ -200,17 +200,6 @@ function Get-StandingPriorityContext {
     $RepoRoot = (Resolve-Path '.').Path
   }
 
-  $cachePath = Join-Path $RepoRoot '.agent_priority_cache.json'
-  if (-not (Test-Path -LiteralPath $cachePath -PathType Leaf)) {
-    throw "Standing priority cache not found at $cachePath. Run 'node tools/npm/run-script.mjs priority:sync'."
-  }
-
-  try {
-    $cacheJson = Get-Content -LiteralPath $cachePath -Raw | ConvertFrom-Json -ErrorAction Stop
-  } catch {
-    throw ("Standing priority cache parse failed: {0}" -f $_.Exception.Message)
-  }
-
   $issueDir = Join-Path $RepoRoot 'tests/results/_agent/issue'
   if (-not (Test-Path -LiteralPath $issueDir -PathType Container)) {
     throw "Standing priority snapshots missing under $issueDir. Run 'node tools/npm/run-script.mjs priority:sync'."
@@ -235,18 +224,50 @@ function Get-StandingPriorityContext {
     throw "Standing priority snapshot missing issue number. Run 'node tools/npm/run-script.mjs priority:sync'."
   }
 
-  $cacheNumber = $cacheJson.PSObject.Properties['number'] ? $cacheJson.number : $null
-  if ($cacheNumber -ne $snapshot.number) {
-    throw ("Standing priority mismatch: cache #{0} vs snapshot #{1}. Run 'node tools/npm/run-script.mjs priority:sync'." -f $cacheNumber, $snapshot.number)
-  }
-
-  $cacheDigest = $cacheJson.PSObject.Properties['issueDigest'] ? $cacheJson.issueDigest : $null
   $snapshotDigest = $snapshot.PSObject.Properties['digest'] ? $snapshot.digest : $null
-  if ([string]::IsNullOrWhiteSpace($cacheDigest) -or [string]::IsNullOrWhiteSpace($snapshotDigest)) {
+  if ([string]::IsNullOrWhiteSpace($snapshotDigest)) {
     throw "Standing priority digest missing. Run 'node tools/npm/run-script.mjs priority:sync'."
   }
-  if ($cacheDigest -ne $snapshotDigest) {
-    throw ("Standing priority digest mismatch for issue #{0}. Run 'node tools/npm/run-script.mjs priority:sync'." -f $snapshot.number)
+
+  $cachePath = Join-Path $RepoRoot '.agent_priority_cache.json'
+  $cacheExists = Test-Path -LiteralPath $cachePath -PathType Leaf
+  $cacheJson = $null
+  if ($cacheExists) {
+    try {
+      $cacheJson = Get-Content -LiteralPath $cachePath -Raw | ConvertFrom-Json -ErrorAction Stop
+    } catch {
+      throw ("Standing priority cache parse failed: {0}" -f $_.Exception.Message)
+    }
+
+    $cacheNumber = $cacheJson.PSObject.Properties['number'] ? $cacheJson.number : $null
+    if ($cacheNumber -ne $snapshot.number) {
+      throw ("Standing priority mismatch: cache #{0} vs snapshot #{1}. Run 'node tools/npm/run-script.mjs priority:sync'." -f $cacheNumber, $snapshot.number)
+    }
+
+    $cacheDigest = $cacheJson.PSObject.Properties['issueDigest'] ? $cacheJson.issueDigest : $null
+    if ([string]::IsNullOrWhiteSpace($cacheDigest)) {
+      throw "Standing priority digest missing. Run 'node tools/npm/run-script.mjs priority:sync'."
+    }
+    if ($cacheDigest -ne $snapshotDigest) {
+      throw ("Standing priority digest mismatch for issue #{0}. Run 'node tools/npm/run-script.mjs priority:sync'." -f $snapshot.number)
+    }
+  } else {
+    $cacheJson = [pscustomobject][ordered]@{
+      number = $snapshot.number
+      title = if ($snapshot.PSObject.Properties['title']) { $snapshot.title } else { $null }
+      url = if ($snapshot.PSObject.Properties['url']) { $snapshot.url } else { $null }
+      state = if ($snapshot.PSObject.Properties['state']) { $snapshot.state } else { $null }
+      labels = if ($snapshot.PSObject.Properties['labels']) { @($snapshot.labels) } else { @() }
+      assignees = if ($snapshot.PSObject.Properties['assignees']) { @($snapshot.assignees) } else { @() }
+      milestone = if ($snapshot.PSObject.Properties['milestone']) { $snapshot.milestone } else { $null }
+      commentCount = if ($snapshot.PSObject.Properties['commentCount']) { $snapshot.commentCount } else { $null }
+      lastSeenUpdatedAt = if ($snapshot.PSObject.Properties['updatedAt']) { $snapshot.updatedAt } else { $null }
+      issueDigest = $snapshotDigest
+      bodyDigest = if ($snapshot.PSObject.Properties['bodyDigest']) { $snapshot.bodyDigest } else { $null }
+      cachedAtUtc = $null
+      lastFetchSource = 'snapshot-only'
+      lastFetchError = 'cache-missing'
+    }
   }
 
   $routerPath = Join-Path $issueDir 'router.json'
@@ -260,7 +281,7 @@ function Get-StandingPriorityContext {
   }
 
   return [ordered]@{
-    cachePath = $cachePath
+    cachePath = if ($cacheExists) { $cachePath } else { $null }
     cache = $cacheJson
     snapshotPath = $latestIssue.FullName
     snapshot = $snapshot
