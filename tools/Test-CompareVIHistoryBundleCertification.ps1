@@ -263,13 +263,11 @@ if (-not (Test-Path -LiteralPath $stubPath -PathType Leaf)) {
 
 $previousModeFixtureMap = [System.Environment]::GetEnvironmentVariable('STUB_COMPARE_MODE_FIXTURE_MAP_JSON', 'Process')
 $previousExplicitFixture = [System.Environment]::GetEnvironmentVariable('STUB_COMPARE_REPORT_FIXTURE', 'Process')
-$previousDiff = [System.Environment]::GetEnvironmentVariable('STUB_COMPARE_DIFF', 'Process')
 $previousStubRepoRoot = [System.Environment]::GetEnvironmentVariable('STUB_COMPARE_REPO_ROOT', 'Process')
 
 try {
     [System.Environment]::SetEnvironmentVariable('STUB_COMPARE_MODE_FIXTURE_MAP_JSON', ($fixtureMap | ConvertTo-Json -Depth 4 -Compress), 'Process')
     [System.Environment]::SetEnvironmentVariable('STUB_COMPARE_REPORT_FIXTURE', $null, 'Process')
-    [System.Environment]::SetEnvironmentVariable('STUB_COMPARE_DIFF', '1', 'Process')
     [System.Environment]::SetEnvironmentVariable('STUB_COMPARE_REPO_ROOT', $repoRoot, 'Process')
 
     $historyResult = Invoke-CapturedProcess -FilePath 'pwsh' -Arguments @(
@@ -291,7 +289,6 @@ try {
 } finally {
     [System.Environment]::SetEnvironmentVariable('STUB_COMPARE_MODE_FIXTURE_MAP_JSON', $previousModeFixtureMap, 'Process')
     [System.Environment]::SetEnvironmentVariable('STUB_COMPARE_REPORT_FIXTURE', $previousExplicitFixture, 'Process')
-    [System.Environment]::SetEnvironmentVariable('STUB_COMPARE_DIFF', $previousDiff, 'Process')
     [System.Environment]::SetEnvironmentVariable('STUB_COMPARE_REPO_ROOT', $previousStubRepoRoot, 'Process')
 }
 
