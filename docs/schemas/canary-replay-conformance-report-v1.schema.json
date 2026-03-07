@@ -1,0 +1,463 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "priority/canary-replay-conformance-report@v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema",
+    "schemaVersion",
+    "generatedAt",
+    "status",
+    "strict",
+    "inputs",
+    "checks",
+    "summary",
+    "scenarios",
+    "drifts",
+    "mismatches",
+    "errors"
+  ],
+  "properties": {
+    "schema": {
+      "const": "priority/canary-replay-conformance-report@v1"
+    },
+    "schemaVersion": {
+      "type": "string"
+    },
+    "generatedAt": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "pass",
+        "warn",
+        "fail"
+      ]
+    },
+    "strict": {
+      "type": "boolean"
+    },
+    "inputs": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "catalogPath",
+        "policyPath",
+        "branchPolicyPath",
+        "requiredChecksPath",
+        "reportPath",
+        "repository"
+      ],
+      "properties": {
+        "catalogPath": {
+          "type": "string",
+          "minLength": 1
+        },
+        "policyPath": {
+          "type": "string",
+          "minLength": 1
+        },
+        "branchPolicyPath": {
+          "type": "string",
+          "minLength": 1
+        },
+        "requiredChecksPath": {
+          "type": "string",
+          "minLength": 1
+        },
+        "reportPath": {
+          "type": "string",
+          "minLength": 1
+        },
+        "repository": {
+          "type": "string",
+          "pattern": "^[^/]+/[^/]+$"
+        }
+      }
+    },
+    "checks": {
+      "$ref": "#/$defs/checks"
+    },
+    "summary": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "scenarioCount",
+        "decisionDriftCount",
+        "orderingDriftCount",
+        "routeMismatchCount"
+      ],
+      "properties": {
+        "scenarioCount": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "decisionDriftCount": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "orderingDriftCount": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "routeMismatchCount": {
+          "type": "integer",
+          "minimum": 0
+        }
+      }
+    },
+    "scenarios": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/scenario"
+      }
+    },
+    "drifts": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "decision",
+        "ordering"
+      ],
+      "properties": {
+        "decision": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/decisionDrift"
+          }
+        },
+        "ordering": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/orderingDrift"
+          }
+        }
+      }
+    },
+    "mismatches": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "route"
+      ],
+      "properties": {
+        "route": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/routeMismatch"
+          }
+        }
+      }
+    },
+    "errors": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    }
+  },
+  "$defs": {
+    "checks": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "noDuplicateIssueIntents",
+        "byteStableDecisions",
+        "deterministicOrdering",
+        "routeExpectationMatch"
+      ],
+      "properties": {
+        "noDuplicateIssueIntents": {
+          "type": "boolean"
+        },
+        "byteStableDecisions": {
+          "type": "boolean"
+        },
+        "deterministicOrdering": {
+          "type": "boolean"
+        },
+        "routeExpectationMatch": {
+          "type": "boolean"
+        }
+      }
+    },
+    "scenario": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "description",
+        "inputSignalOrder",
+        "replaySignalOrder",
+        "eventCount",
+        "uniqueFingerprints",
+        "multisetKey",
+        "orderingDigest",
+        "duplicateCreateFingerprints",
+        "checks",
+        "decisionDrifts",
+        "routeMismatches",
+        "operations",
+        "decisionSnapshots"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "description": {
+          "type": "string",
+          "minLength": 1
+        },
+        "inputSignalOrder": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "replaySignalOrder": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "eventCount": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "uniqueFingerprints": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "multisetKey": {
+          "type": "string",
+          "minLength": 1
+        },
+        "orderingDigest": {
+          "type": "string",
+          "minLength": 1
+        },
+        "duplicateCreateFingerprints": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "checks": {
+          "$ref": "#/$defs/checks"
+        },
+        "decisionDrifts": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/decisionDrift"
+          }
+        },
+        "routeMismatches": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/routeMismatch"
+          }
+        },
+        "operations": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/operation"
+          }
+        },
+        "decisionSnapshots": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/decisionSnapshot"
+          }
+        }
+      }
+    },
+    "decisionDrift": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "scenario",
+        "signalId",
+        "fingerprint",
+        "expectedDigest",
+        "actualDigest"
+      ],
+      "properties": {
+        "scenario": {
+          "type": "string"
+        },
+        "signalId": {
+          "type": "string"
+        },
+        "fingerprint": {
+          "type": "string"
+        },
+        "expectedDigest": {
+          "type": "string"
+        },
+        "actualDigest": {
+          "type": "string"
+        }
+      }
+    },
+    "orderingDrift": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "scenario",
+        "multisetKey",
+        "expectedOrderingDigest",
+        "actualOrderingDigest"
+      ],
+      "properties": {
+        "scenario": {
+          "type": "string"
+        },
+        "multisetKey": {
+          "type": "string"
+        },
+        "expectedOrderingDigest": {
+          "type": "string"
+        },
+        "actualOrderingDigest": {
+          "type": "string"
+        }
+      }
+    },
+    "routeMismatch": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "scenario",
+        "signalId",
+        "fingerprint",
+        "expected",
+        "actual"
+      ],
+      "properties": {
+        "scenario": {
+          "type": "string"
+        },
+        "signalId": {
+          "type": "string"
+        },
+        "fingerprint": {
+          "type": "string"
+        },
+        "expected": {
+          "$ref": "#/$defs/expectedRoute"
+        },
+        "actual": {
+          "$ref": "#/$defs/expectedRoute"
+        }
+      }
+    },
+    "expectedRoute": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "actionType",
+        "priority",
+        "labels"
+      ],
+      "properties": {
+        "actionType": {
+          "type": "string",
+          "minLength": 1
+        },
+        "priority": {
+          "type": "string",
+          "enum": [
+            "P0",
+            "P1",
+            "P2"
+          ]
+        },
+        "labels": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "operation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "signalId",
+        "fingerprint",
+        "action",
+        "issueNumber",
+        "candidateCount"
+      ],
+      "properties": {
+        "signalId": {
+          "type": "string"
+        },
+        "fingerprint": {
+          "type": "string"
+        },
+        "action": {
+          "type": "string"
+        },
+        "issueNumber": {
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "candidateCount": {
+          "type": "integer",
+          "minimum": 0
+        }
+      }
+    },
+    "decisionSnapshot": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "signalId",
+        "fingerprint",
+        "digest",
+        "digestWithoutGeneratedAt",
+        "policyDecision"
+      ],
+      "properties": {
+        "signalId": {
+          "type": "string"
+        },
+        "fingerprint": {
+          "type": "string"
+        },
+        "digest": {
+          "type": "string"
+        },
+        "digestWithoutGeneratedAt": {
+          "type": "string"
+        },
+        "policyDecision": {
+          "type": "object",
+          "required": [
+            "schema",
+            "decision",
+            "event"
+          ],
+          "properties": {
+            "schema": {
+              "const": "priority/policy-decision-report@v1"
+            },
+            "decision": {
+              "type": "object"
+            },
+            "event": {
+              "type": "object"
+            }
+          }
+        }
+      }
+    }
+  }
+}
