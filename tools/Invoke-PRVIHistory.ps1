@@ -44,6 +44,10 @@
 
 .PARAMETER EndRef
   Optional Compare-VIHistory `-EndRef` override.
+
+.PARAMETER InvokeScriptPath
+  Optional Compare-VIHistory `-InvokeScriptPath` override used to supply a
+  stub compare invoker for local validation or automated tests.
 #>
 [CmdletBinding()]
 param(
@@ -68,6 +72,8 @@ param(
     [string]$StartRef,
 
     [string]$EndRef,
+
+    [string]$InvokeScriptPath,
 
     [switch]$IncludeMergeParents
 )
@@ -1013,6 +1019,7 @@ for ($i = 0; $i -lt $targets.Count; $i++) {
     if ($maxPairsRequested) { $compareArgs.MaxPairs = $maxPairsValue }
     if ($compareTimeoutRequested) { $compareArgs.CompareTimeoutSeconds = [int]$compareTimeoutValue }
     if ($Mode) { $compareArgs.Mode = $Mode }
+    if (-not [string]::IsNullOrWhiteSpace($InvokeScriptPath)) { $compareArgs.InvokeScriptPath = $InvokeScriptPath }
     if (-not [string]::IsNullOrWhiteSpace($StartRef)) { $compareArgs.StartRef = $StartRef }
     if (-not [string]::IsNullOrWhiteSpace($EndRef)) { $compareArgs.EndRef = $EndRef }
     if (-not $SkipRenderReport.IsPresent) { $compareArgs.RenderReport = $true }

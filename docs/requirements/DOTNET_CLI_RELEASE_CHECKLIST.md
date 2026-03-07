@@ -39,7 +39,7 @@
 
 - [ ] `preflight` passes on a Windows host with LabVIEW 2026 installed.
 - [ ] `compare single` pass-class and fail-class cases validated.
-- [ ] `compare range` with `--max-pairs` truncation telemetry validated.
+- [x] `compare range` with `--max-pairs` truncation telemetry validated.
 - [x] `report consolidate` artifact paths validated.
 - [ ] `contracts validate` detects schema drift.
 
