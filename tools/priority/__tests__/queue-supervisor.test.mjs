@@ -576,3 +576,255 @@ test('runQueueSupervisor apply mode quarantines on second failure within 24h', a
   assert.ok(writeCalls.some((call) => String(call.reportPath).includes('throughput-controller-state.json')));
   assert.ok(writeCalls.some((call) => String(call.reportPath).includes('queue-readiness-report.json')));
 });
+
+test('runQueueSupervisor does not enqueue when pause control is active', async () => {
+  const priorPause = process.env.QUEUE_AUTOPILOT_PAUSED;
+  process.env.QUEUE_AUTOPILOT_PAUSED = '1';
+  const commandCalls = [];
+
+  try {
+    const runGhJsonFn = (args) => {
+      if (args[0] === 'pr' && args[1] === 'list') {
+        return [
+          {
+            number: 301,
+            title: '[P0] eligible change',
+            body: 'Coupling: independent',
+            baseRefName: 'develop',
+            headRepositoryOwner: { login: 'owner' },
+            isDraft: false,
+            mergeStateStatus: 'CLEAN',
+            mergeable: 'MERGEABLE',
+            updatedAt: '2026-03-05T21:00:00Z',
+            url: 'https://example.test/pr/301',
+            labels: [],
+            statusCheckRollup: [successCheck('lint')],
+            autoMergeRequest: null
+          }
+        ];
+      }
+      if (args[0] === 'api' && String(args[1]).includes('validate.yml')) {
+        return {
+          workflow_runs: [
+            { conclusion: 'success', status: 'completed', created_at: '2026-03-05T20:50:00Z', updated_at: '2026-03-05T20:52:00Z' }
+          ]
+        };
+      }
+      if (args[0] === 'api' && String(args[1]).includes('policy-guard-upstream.yml')) {
+        return {
+          workflow_runs: [
+            { conclusion: 'success', status: 'completed', created_at: '2026-03-05T20:40:00Z', updated_at: '2026-03-05T20:41:00Z' }
+          ]
+        };
+      }
+      if (args[0] === 'api' && String(args[1]).includes('fixture-drift.yml')) return { workflow_runs: [] };
+      if (args[0] === 'api' && String(args[1]).includes('commit-integrity.yml')) return { workflow_runs: [] };
+      throw new Error(`Unexpected gh args: ${args.join(' ')}`);
+    };
+
+    const runCommandFn = (command, args) => {
+      commandCalls.push({ command, args });
+      return { status: 0, stdout: '', stderr: '' };
+    };
+
+    const readJsonFileFn = async (filePath) => {
+      if (String(filePath).endsWith('branch-required-checks.json')) {
+        return { branches: { develop: ['lint'] } };
+      }
+      if (String(filePath).endsWith('policy.json')) {
+        return {
+          rulesets: {
+            develop: {
+              includes: ['refs/heads/develop'],
+              merge_queue: { merge_method: 'SQUASH' }
+            }
+          }
+        };
+      }
+      throw new Error(`Unexpected read path: ${filePath}`);
+    };
+
+    const { report } = await runQueueSupervisor({
+      repoRoot: process.cwd(),
+      args: {
+        apply: true,
+        dryRun: false,
+        reportPath: 'tests/results/_agent/queue/queue-supervisor-report.json',
+        maxInflight: 4,
+        minInflight: 1,
+        adaptiveCap: false,
+        maxQueuedRuns: 6,
+        maxInProgressRuns: 8,
+        stallThresholdMinutes: 45,
+        repo: 'owner/repo',
+        baseBranches: ['develop', 'main'],
+        healthBranch: 'develop',
+        help: false
+      },
+      now: new Date('2026-03-05T21:30:00.000Z'),
+      runGhJsonFn,
+      runCommandFn,
+      readJsonFileFn,
+      readOptionalJsonFn: async () => ({}),
+      writeReportFn: async (reportPath) => reportPath
+    });
+
+    assert.equal(report.paused, true);
+    assert.ok(report.pausedReasons.includes('paused-by-variable'));
+    assert.equal(report.summary.eligibleCount, 1);
+    assert.equal(report.summary.enqueuedCount, 0);
+    assert.equal(report.actions.length, 0);
+    assert.equal(
+      commandCalls.some((call) => call.command === 'node' && call.args.includes('tools/priority/merge-sync-pr.mjs')),
+      false
+    );
+  } finally {
+    if (priorPause === undefined) {
+      delete process.env.QUEUE_AUTOPILOT_PAUSED;
+    } else {
+      process.env.QUEUE_AUTOPILOT_PAUSED = priorPause;
+    }
+  }
+});
+
+test('runQueueSupervisor enqueues eligible PRs in dependency-safe deterministic order', async () => {
+  const commandCalls = [];
+  const runGhJsonFn = (args) => {
+    if (args[0] === 'pr' && args[1] === 'list') {
+      return [
+        {
+          number: 401,
+          title: '[P1] foundational change',
+          body: 'Coupling: independent',
+          baseRefName: 'develop',
+          headRepositoryOwner: { login: 'owner' },
+          isDraft: false,
+          mergeStateStatus: 'CLEAN',
+          mergeable: 'MERGEABLE',
+          updatedAt: '2026-03-05T20:05:00Z',
+          url: 'https://example.test/pr/401',
+          labels: [],
+          statusCheckRollup: [successCheck('lint')],
+          autoMergeRequest: null
+        },
+        {
+          number: 402,
+          title: '[P0] follow-up dependent change',
+          body: 'Coupling: hard\nDepends-On: #401',
+          baseRefName: 'develop',
+          headRepositoryOwner: { login: 'owner' },
+          isDraft: false,
+          mergeStateStatus: 'CLEAN',
+          mergeable: 'MERGEABLE',
+          updatedAt: '2026-03-05T20:10:00Z',
+          url: 'https://example.test/pr/402',
+          labels: [],
+          statusCheckRollup: [successCheck('lint')],
+          autoMergeRequest: null
+        },
+        {
+          number: 403,
+          title: '[P0] independent urgent change',
+          body: 'Coupling: independent',
+          baseRefName: 'develop',
+          headRepositoryOwner: { login: 'owner' },
+          isDraft: false,
+          mergeStateStatus: 'CLEAN',
+          mergeable: 'MERGEABLE',
+          updatedAt: '2026-03-05T20:00:00Z',
+          url: 'https://example.test/pr/403',
+          labels: [],
+          statusCheckRollup: [successCheck('lint')],
+          autoMergeRequest: null
+        }
+      ];
+    }
+    if (args[0] === 'api' && String(args[1]).includes('validate.yml')) {
+      return {
+        workflow_runs: [
+          { conclusion: 'success', status: 'completed', created_at: '2026-03-05T20:50:00Z', updated_at: '2026-03-05T20:52:00Z' }
+        ]
+      };
+    }
+    if (args[0] === 'api' && String(args[1]).includes('policy-guard-upstream.yml')) {
+      return {
+        workflow_runs: [
+          { conclusion: 'success', status: 'completed', created_at: '2026-03-05T20:40:00Z', updated_at: '2026-03-05T20:41:00Z' }
+        ]
+      };
+    }
+    if (args[0] === 'api' && String(args[1]).includes('fixture-drift.yml')) return { workflow_runs: [] };
+    if (args[0] === 'api' && String(args[1]).includes('commit-integrity.yml')) return { workflow_runs: [] };
+    throw new Error(`Unexpected gh args: ${args.join(' ')}`);
+  };
+
+  const runCommandFn = (command, args) => {
+    commandCalls.push({ command, args });
+    if (command === 'node' && args[0] === 'tools/priority/merge-sync-pr.mjs') {
+      return { status: 0, stdout: '', stderr: '' };
+    }
+    if (command === 'gh' && args[0] === 'pr' && args[1] === 'edit') {
+      return { status: 0, stdout: '', stderr: '' };
+    }
+    return { status: 0, stdout: '', stderr: '' };
+  };
+
+  const readJsonFileFn = async (filePath) => {
+    if (String(filePath).endsWith('branch-required-checks.json')) {
+      return { branches: { develop: ['lint'] } };
+    }
+    if (String(filePath).endsWith('policy.json')) {
+      return {
+        rulesets: {
+          develop: {
+            includes: ['refs/heads/develop'],
+            merge_queue: { merge_method: 'SQUASH' }
+          }
+        }
+      };
+    }
+    throw new Error(`Unexpected read path: ${filePath}`);
+  };
+
+  const { report } = await runQueueSupervisor({
+    repoRoot: process.cwd(),
+    args: {
+      apply: true,
+      dryRun: false,
+      reportPath: 'tests/results/_agent/queue/queue-supervisor-report.json',
+      maxInflight: 5,
+      minInflight: 1,
+      adaptiveCap: false,
+      maxQueuedRuns: 6,
+      maxInProgressRuns: 8,
+      stallThresholdMinutes: 45,
+      repo: 'owner/repo',
+      baseBranches: ['develop', 'main'],
+      healthBranch: 'develop',
+      help: false
+    },
+    now: new Date('2026-03-05T21:30:00.000Z'),
+    runGhJsonFn,
+    runCommandFn,
+    readJsonFileFn,
+    readOptionalJsonFn: async () => ({}),
+    writeReportFn: async (reportPath) => reportPath
+  });
+
+  const actionNumbers = report.actions.map((action) => action.number);
+  assert.deepEqual(actionNumbers, [403, 401, 402]);
+  assert.equal(actionNumbers.indexOf(401) < actionNumbers.indexOf(402), true);
+  assert.equal(report.summary.enqueuedCount, 3);
+  assert.equal(report.summary.quarantinedCount, 0);
+  assert.equal(report.readiness.readySet[0].number, 403);
+  assert.equal(report.readiness.readySet[1].number, 401);
+  assert.equal(report.readiness.readySet[2].number, 402);
+  for (const action of report.actions) {
+    assert.equal(action.status, 'enqueued');
+    assert.ok(action.attempts.some((attempt) => attempt.type === 'merge-sync' && attempt.status === 0));
+  }
+  const mergeSyncInvocations = commandCalls.filter(
+    (call) => call.command === 'node' && call.args[0] === 'tools/priority/merge-sync-pr.mjs'
+  );
+  assert.equal(mergeSyncInvocations.length, 3);
+});
