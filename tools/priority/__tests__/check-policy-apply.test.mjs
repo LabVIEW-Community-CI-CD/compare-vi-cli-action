@@ -393,7 +393,7 @@ test('priority:policy --apply updates rulesets for develop/main/release', async 
   );
   const developMergeQueueRule = rulesetDevelop.rules.find((rule) => rule.type === 'merge_queue');
   assert.ok(developMergeQueueRule, 'merge_queue rule expected on develop');
-  assert.equal(developMergeQueueRule.parameters.min_entries_to_merge_wait_minutes, 5);
+  assert.equal(developMergeQueueRule.parameters.min_entries_to_merge_wait_minutes, 1);
   const developPullRule = rulesetDevelop.rules.find((rule) => rule.type === 'pull_request');
   assert.deepEqual(
     developPullRule.parameters.allowed_merge_methods.sort(),
@@ -404,7 +404,7 @@ test('priority:policy --apply updates rulesets for develop/main/release', async 
   assert.equal(developCodeQualityRule.parameters.severity, 'warnings');
 
   const mergeQueueRule = rulesetMain.rules.find((rule) => rule.type === 'merge_queue');
-  assert.equal(mergeQueueRule.parameters.min_entries_to_merge_wait_minutes, 5);
+  assert.equal(mergeQueueRule.parameters.min_entries_to_merge_wait_minutes, 1);
 
   const statusRule = rulesetMain.rules.find((rule) => rule.type === 'required_status_checks');
   assert.deepEqual(
@@ -990,7 +990,7 @@ test('priority:policy verify fails when queue-managed ruleset is missing merge_q
           max_entries_to_build: 5,
           min_entries_to_merge: 1,
           max_entries_to_merge: 5,
-          min_entries_to_merge_wait_minutes: 5,
+          min_entries_to_merge_wait_minutes: 1,
           check_response_timeout_minutes: 60
         }
       },
@@ -1192,7 +1192,7 @@ test('priority:policy verify uses queue-managed rulesets as required-check sourc
     max_entries_to_build: 5,
     min_entries_to_merge: 1,
     max_entries_to_merge: 5,
-    min_entries_to_merge_wait_minutes: 5,
+    min_entries_to_merge_wait_minutes: 1,
     check_response_timeout_minutes: 60
   };
 

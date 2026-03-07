@@ -117,6 +117,10 @@ function isEpicTitle(title) {
   return /^\s*epic\s*:/i.test(String(title || ''));
 }
 
+function hasChildTracksSection(body) {
+  return /(^|\n)##\s*child\s*tracks\b/i.test(String(body || ''));
+}
+
 function parseDateMs(value) {
   if (!value) {
     return Number.POSITIVE_INFINITY;
@@ -140,15 +144,18 @@ function normalizeOpenIssueCandidate(entry) {
   }
 
   const title = typeof entry.title === 'string' ? entry.title.trim() : '';
+  const body = typeof entry.body === 'string' ? entry.body : '';
   return {
     number,
     title,
     labels,
+    body,
     createdAt: entry.createdAt || entry.created_at || null,
     updatedAt: entry.updatedAt || entry.updated_at || null,
     url: entry.html_url || entry.url || null,
     priority: parsePriorityOrdinal(title),
-    epic: isEpicTitle(title)
+    epic: isEpicTitle(title),
+    umbrella: hasChildTracksSection(body)
   };
 }
 
@@ -159,8 +166,16 @@ export function selectAutoStandingPriorityCandidate(entries = []) {
   }
 
   const nonEpic = normalized.filter((entry) => !entry.epic);
-  const nonProgram = nonEpic.filter((entry) => !entry.labels.includes('program'));
-  const pool = nonProgram.length > 0 ? nonProgram : nonEpic.length > 0 ? nonEpic : normalized;
+  const nonUmbrella = nonEpic.filter((entry) => !entry.umbrella);
+  const nonProgram = nonUmbrella.filter((entry) => !entry.labels.includes('program'));
+  const pool =
+    nonProgram.length > 0
+      ? nonProgram
+      : nonUmbrella.length > 0
+        ? nonUmbrella
+        : nonEpic.length > 0
+          ? nonEpic
+          : normalized;
 
   pool.sort((left, right) => {
     if (left.priority !== right.priority) {
@@ -1164,7 +1179,7 @@ async function defaultRunStandingPriorityRestListAll({ repoRoot, slug, standingP
 }
 
 function defaultRunGhOpenIssueList({ slug }) {
-  const ghArgs = ['issue', 'list', '--state', 'open', '--limit', '100', '--json', 'number,title,labels,createdAt,updatedAt,url'];
+  const ghArgs = ['issue', 'list', '--state', 'open', '--limit', '100', '--json', 'number,title,body,labels,createdAt,updatedAt,url'];
   if (slug) {
     ghArgs.push('--repo', slug);
   }
