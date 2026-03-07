@@ -53,6 +53,9 @@ test('policy workflows enforce workspace health gate and publish health artifact
   const guardWorkflow = readRepoFile('.github/workflows/policy-guard-upstream.yml');
   assert.match(guardWorkflow, /Workspace health gate/);
   assert.match(guardWorkflow, /check-workspace-health\.mjs --repo-root \. --lease-mode ignore --report tests\/results\/_agent\/health\/policy-guard-workspace-health\.json/);
+  assert.match(guardWorkflow, /Verify deployment environment gate policy/);
+  assert.match(guardWorkflow, /priority:deployment:gate-policy/);
+  assert.match(guardWorkflow, /tests\/results\/_agent\/deployments\/environment-gate-policy\.json/);
   assert.match(guardWorkflow, /tests\/results\/_agent\/health\/policy-guard-workspace-health\.json/);
 
   const syncWorkflow = readRepoFile('.github/workflows/policy-sync.yml');

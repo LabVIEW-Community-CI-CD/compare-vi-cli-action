@@ -1,0 +1,104 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "priority/environment-gate-policy@v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema", "generatedAt", "repository", "options", "summary", "environments"],
+  "properties": {
+    "schema": {
+      "const": "priority/environment-gate-policy@v1"
+    },
+    "generatedAt": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "repository": {
+      "type": "string",
+      "pattern": "^[^/\\s]+/[^/\\s]+$"
+    },
+    "options": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["failOnAdminBypass", "failOnMissingReviewers", "environments"],
+      "properties": {
+        "failOnAdminBypass": { "type": "boolean" },
+        "failOnMissingReviewers": { "type": "boolean" },
+        "environments": {
+          "type": "array",
+          "items": { "type": "string" }
+        }
+      }
+    },
+    "summary": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["status", "environmentCount", "failingEnvironmentCount", "failingEnvironments"],
+      "properties": {
+        "status": { "type": "string", "enum": ["pass", "fail"] },
+        "environmentCount": { "type": "integer", "minimum": 0 },
+        "failingEnvironmentCount": { "type": "integer", "minimum": 0 },
+        "failingEnvironments": {
+          "type": "array",
+          "items": { "type": "string" }
+        }
+      }
+    },
+    "environments": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["name", "exists", "status", "checks", "reviewers", "reasons"],
+        "properties": {
+          "name": { "type": "string" },
+          "exists": { "type": "boolean" },
+          "status": { "type": "string", "enum": ["pass", "fail"] },
+          "checks": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["requiredReviewers", "adminBypassDisabled"],
+            "properties": {
+              "requiredReviewers": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": ["status", "reviewerCount", "preventSelfReview"],
+                "properties": {
+                  "status": { "type": "string", "enum": ["pass", "fail"] },
+                  "reviewerCount": { "type": "integer", "minimum": 0 },
+                  "preventSelfReview": { "type": "boolean" }
+                }
+              },
+              "adminBypassDisabled": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": ["status", "canAdminsBypass"],
+                "properties": {
+                  "status": { "type": "string", "enum": ["pass", "fail"] },
+                  "canAdminsBypass": { "type": ["boolean", "null"] }
+                }
+              }
+            }
+          },
+          "reviewers": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["type", "login", "id"],
+              "properties": {
+                "type": { "type": ["string", "null"] },
+                "login": { "type": ["string", "null"] },
+                "id": { "type": ["integer", "null"] }
+              }
+            }
+          },
+          "reasons": {
+            "type": "array",
+            "items": { "type": "string" }
+          },
+          "error": { "type": "string" }
+        }
+      }
+    }
+  }
+}

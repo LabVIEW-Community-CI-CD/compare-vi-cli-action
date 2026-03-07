@@ -76,6 +76,11 @@ jobs:
         run: |
           pwsh -NoLogo -NoProfile -File tools/priority/Sync-BranchProtectionPolicy.ps1 -FailOnSkip -ResultsDir tests/results/_agent/policy
 
+      - name: Verify deployment environment gate policy
+        shell: pwsh
+        run: |
+          node tools/npm/run-script.mjs priority:deployment:gate-policy -- --report tests/results/_agent/deployments/environment-gate-policy.json
+
       - name: Upload policy drift artifact
         if: always()
         uses: actions/upload-artifact@v5
@@ -84,4 +89,5 @@ jobs:
           path: |
             tests/results/_agent/policy/policy-drift-report.json
             tests/results/_agent/health/policy-guard-workspace-health.json
+            tests/results/_agent/deployments/environment-gate-policy.json
           if-no-files-found: error

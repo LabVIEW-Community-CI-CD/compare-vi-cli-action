@@ -65,6 +65,7 @@
     "priority:canary:replay": "node tools/priority/canary-replay-conformance.mjs",
     "priority:contracts:bootstrap": "node tools/priority/bootstrap-contracts.mjs",
     "priority:deployment:assert": "node tools/priority/assert-validation-deployment-determinism.mjs",
+    "priority:deployment:gate-policy": "node tools/priority/check-deployment-gates.mjs",
     "priority:release:scorecard": "node tools/priority/release-scorecard.mjs",
     "priority:release:conductor": "node tools/priority/release-conductor.mjs",
     "priority:remediation:slo": "node tools/priority/remediation-slo-evaluator.mjs",
