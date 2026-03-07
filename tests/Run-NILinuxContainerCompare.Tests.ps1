@@ -115,12 +115,17 @@ if ($Args[0] -eq 'image' -and $Args.Count -ge 2 -and $Args[1] -eq 'inspect') {
 }
 
 if ($Args[0] -eq 'cp') {
-  $failCopy = Get-StubEnvValue -Name 'DOCKER_STUB_CP_FAIL'
-  if ([string]::Equals($failCopy, '1', [System.StringComparison]::OrdinalIgnoreCase)) {
-    [Console]::Error.WriteLine('docker cp failed')
-    exit 1
+  $copyExitCode = 0
+  $exitRaw = Get-StubEnvValue -Name 'DOCKER_STUB_CP_EXIT_CODE'
+  if (-not [string]::IsNullOrWhiteSpace($exitRaw)) {
+    $copyExitCode = [int]$exitRaw
   }
-  if ($Args.Count -ge 3) {
+  $failCopy = Get-StubEnvValue -Name 'DOCKER_STUB_CP_FAIL'
+  if ($copyExitCode -eq 0 -and [string]::Equals($failCopy, '1', [System.StringComparison]::OrdinalIgnoreCase)) {
+    $copyExitCode = 1
+  }
+  $writeOnFail = Get-StubEnvValue -Name 'DOCKER_STUB_CP_WRITE_ON_FAIL'
+  if ($Args.Count -ge 3 -and ($copyExitCode -eq 0 -or [string]::Equals($writeOnFail, '1', [System.StringComparison]::OrdinalIgnoreCase))) {
     $destination = $Args[2]
     $destDir = Split-Path -Parent $destination
     if (-not [string]::IsNullOrWhiteSpace($destDir) -and -not (Test-Path -LiteralPath $destDir -PathType Container)) {
@@ -132,6 +137,10 @@ if ($Args[0] -eq 'cp') {
     }
     Set-Content -LiteralPath $destination -Value $reportHtml -Encoding utf8
   }
+  if ($copyExitCode -ne 0) {
+    [Console]::Error.WriteLine('docker cp failed')
+    exit $copyExitCode
+  }
   exit 0
 }
 
@@ -141,6 +150,15 @@ if ($Args[0] -eq 'rm') {
 }
 
 if ($Args[0] -eq 'run') {
+  $writeReport = Get-StubEnvValue -Name 'DOCKER_STUB_RUN_WRITE_REPORT'
+  if ([string]::Equals($writeReport, '1', [System.StringComparison]::OrdinalIgnoreCase) -and $stubEnv.ContainsKey('COMPARE_REPORT_PATH')) {
+    $reportPath = [string]$stubEnv['COMPARE_REPORT_PATH']
+    $reportDir = Split-Path -Parent $reportPath
+    if (-not [string]::IsNullOrWhiteSpace($reportDir) -and -not (Test-Path -LiteralPath $reportDir -PathType Container)) {
+      New-Item -ItemType Directory -Path $reportDir -Force | Out-Null
+    }
+    Set-Content -LiteralPath $reportPath -Value '<html><body>host report</body></html>' -Encoding utf8
+  }
   $sleepSecondsRaw = Get-StubEnvValue -Name 'DOCKER_STUB_RUN_SLEEP_SECONDS'
   if (-not [string]::IsNullOrWhiteSpace($sleepSecondsRaw)) {
     Start-Sleep -Seconds ([int]$sleepSecondsRaw)
@@ -201,6 +219,9 @@ exit 0
       DOCKER_STUB_CONTEXT           = $env:DOCKER_STUB_CONTEXT
       DOCKER_STUB_CP_REPORT_HTML    = $env:DOCKER_STUB_CP_REPORT_HTML
       DOCKER_STUB_CP_FAIL           = $env:DOCKER_STUB_CP_FAIL
+      DOCKER_STUB_CP_EXIT_CODE      = $env:DOCKER_STUB_CP_EXIT_CODE
+      DOCKER_STUB_CP_WRITE_ON_FAIL  = $env:DOCKER_STUB_CP_WRITE_ON_FAIL
+      DOCKER_STUB_RUN_WRITE_REPORT  = $env:DOCKER_STUB_RUN_WRITE_REPORT
       DOCKER_COMMAND_OVERRIDE       = $env:DOCKER_COMMAND_OVERRIDE
       TEMP                          = $env:TEMP
       TMP                           = $env:TMP
@@ -457,6 +478,82 @@ exit 0
     $capture.diffEvidenceSource | Should -Be 'exit-code'
     $capture.containerArtifacts.copyStatus | Should -Be 'failed'
     $capture.reportAnalysis.hasDiffEvidence | Should -BeFalse
+  }
+
+  It 'treats extracted artifacts as exported when docker cp exits non-zero after writing the file' {
+    $work = Join-Path $TestDrive 'compare-export-recovered'
+    New-Item -ItemType Directory -Path $work | Out-Null
+    & $script:NewDockerStub -WorkRoot $work | Out-Null
+
+    Set-Item Env:DOCKER_STUB_LOG (Join-Path $work 'docker-log.ndjson')
+    Set-Item Env:DOCKER_STUB_OSTYPE 'linux'
+    Set-Item Env:DOCKER_STUB_CONTEXT 'desktop-linux'
+    Set-Item Env:DOCKER_STUB_IMAGE_EXISTS '1'
+    Set-Item Env:DOCKER_STUB_RUN_EXIT_CODE '0'
+    Set-Item Env:DOCKER_STUB_RUN_STDOUT 'CreateComparisonReport completed.'
+    Set-Item Env:DOCKER_STUB_CP_EXIT_CODE '1'
+    Set-Item Env:DOCKER_STUB_CP_WRITE_ON_FAIL '1'
+
+    $baseVi = Join-Path $work 'Base.vi'
+    $headVi = Join-Path $work 'Head.vi'
+    Set-Content -LiteralPath $baseVi -Value 'base' -Encoding utf8
+    Set-Content -LiteralPath $headVi -Value 'head' -Encoding utf8
+    $reportPath = Join-Path $work 'out\compare-report.html'
+
+    $output = & pwsh -NoLogo -NoProfile -File $script:RunnerScript `
+      -BaseVi $baseVi `
+      -HeadVi $headVi `
+      -ReportPath $reportPath `
+      -RuntimeEngineReadyTimeoutSeconds 5 `
+      -RuntimeEngineReadyPollSeconds 1 2>&1
+    $LASTEXITCODE | Should -Be 0 -Because ($output -join "`n")
+
+    $capturePath = Join-Path (Split-Path -Parent $reportPath) 'ni-linux-container-capture.json'
+    $capture = Get-Content -LiteralPath $capturePath -Raw | ConvertFrom-Json
+    $capture.containerArtifacts.copyStatus | Should -Be 'success'
+    $capture.containerArtifacts.recoveredCopyCount | Should -Be 1
+    $capture.containerArtifacts.copiedPaths.Count | Should -Be 1
+    $capture.containerArtifacts.copyAttempts.Count | Should -Be 1
+    $capture.containerArtifacts.copyAttempts[0].recoveredFromNonZeroExit | Should -BeTrue
+    $capture.containerArtifacts.copyAttempts[0].recoveryKind | Should -Be 'nonzero-exit'
+    Test-Path -LiteralPath ([string]$capture.reportAnalysis.reportPathExtracted) -PathType Leaf | Should -BeTrue
+  }
+
+  It 'falls back to the mounted host report when docker cp cannot export it' {
+    $work = Join-Path $TestDrive 'compare-export-host-report'
+    New-Item -ItemType Directory -Path $work | Out-Null
+    & $script:NewDockerStub -WorkRoot $work | Out-Null
+
+    Set-Item Env:DOCKER_STUB_LOG (Join-Path $work 'docker-log.ndjson')
+    Set-Item Env:DOCKER_STUB_OSTYPE 'linux'
+    Set-Item Env:DOCKER_STUB_CONTEXT 'desktop-linux'
+    Set-Item Env:DOCKER_STUB_IMAGE_EXISTS '1'
+    Set-Item Env:DOCKER_STUB_RUN_EXIT_CODE '0'
+    Set-Item Env:DOCKER_STUB_RUN_STDOUT 'CreateComparisonReport completed.'
+    Set-Item Env:DOCKER_STUB_RUN_WRITE_REPORT '1'
+    Set-Item Env:DOCKER_STUB_CP_FAIL '1'
+
+    $baseVi = Join-Path $work 'Base.vi'
+    $headVi = Join-Path $work 'Head.vi'
+    Set-Content -LiteralPath $baseVi -Value 'base' -Encoding utf8
+    Set-Content -LiteralPath $headVi -Value 'head' -Encoding utf8
+    $reportPath = Join-Path $work 'out\compare-report.html'
+
+    $output = & pwsh -NoLogo -NoProfile -File $script:RunnerScript `
+      -BaseVi $baseVi `
+      -HeadVi $headVi `
+      -ReportPath $reportPath `
+      -RuntimeEngineReadyTimeoutSeconds 5 `
+      -RuntimeEngineReadyPollSeconds 1 2>&1
+    $LASTEXITCODE | Should -Be 0 -Because ($output -join "`n")
+
+    $capturePath = Join-Path (Split-Path -Parent $reportPath) 'ni-linux-container-capture.json'
+    $capture = Get-Content -LiteralPath $capturePath -Raw | ConvertFrom-Json
+    $capture.containerArtifacts.copyStatus | Should -Be 'success'
+    $capture.containerArtifacts.recoveredCopyCount | Should -Be 1
+    $capture.containerArtifacts.copyAttempts[0].recoveredFromHostReport | Should -BeTrue
+    $capture.containerArtifacts.copyAttempts[0].recoveryKind | Should -Be 'host-report'
+    Test-Path -LiteralPath ([string]$capture.reportAnalysis.reportPathExtracted) -PathType Leaf | Should -BeTrue
   }
 
   It 'classifies exit 1 with CLI error signature as failure-tool' {

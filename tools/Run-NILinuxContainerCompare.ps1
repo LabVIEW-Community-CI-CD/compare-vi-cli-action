@@ -623,6 +623,7 @@ function Export-ContainerArtifacts {
   param(
     [Parameter(Mandatory)][string]$ContainerName,
     [AllowNull()][string]$ContainerReportPath,
+    [AllowNull()][string]$HostReportPath,
     [Parameter(Mandatory)][string]$ReportDirectory,
     [AllowEmptyCollection()][string[]]$AdditionalContainerPaths = @()
   )
@@ -633,8 +634,10 @@ function Export-ContainerArtifacts {
   }
 
   $copiedPaths = New-Object System.Collections.Generic.List[string]
+  $copyAttempts = New-Object System.Collections.Generic.List[object]
   $attemptCount = 0
   $successCount = 0
+  $recoveredCopyCount = 0
   $reportPathExtracted = ''
 
   if (-not [string]::IsNullOrWhiteSpace($ContainerReportPath)) {
@@ -644,11 +647,51 @@ function Export-ContainerArtifacts {
       $reportLeaf = 'linux-compare-report.html'
     }
     $reportPathExtracted = Join-Path $exportDir $reportLeaf
+    if (Test-Path -LiteralPath $reportPathExtracted -PathType Leaf -ErrorAction SilentlyContinue) {
+      Remove-Item -LiteralPath $reportPathExtracted -Force -ErrorAction SilentlyContinue
+    }
     $sourceSpec = '{0}:{1}' -f $ContainerName, $ContainerReportPath
     & docker cp $sourceSpec $reportPathExtracted *> $null
-    if ($LASTEXITCODE -eq 0 -and (Test-Path -LiteralPath $reportPathExtracted -PathType Leaf)) {
+    $copyExitCode = if ($null -eq $LASTEXITCODE) { 1 } else { [int]$LASTEXITCODE }
+    $artifactPresent = Test-Path -LiteralPath $reportPathExtracted -PathType Leaf -ErrorAction SilentlyContinue
+    $recoveredFromNonZeroExit = ($copyExitCode -ne 0 -and $artifactPresent)
+    $recoveredFromHostReport = $false
+    if (
+      -not $artifactPresent -and
+      -not [string]::IsNullOrWhiteSpace($HostReportPath) -and
+      (Test-Path -LiteralPath $HostReportPath -PathType Leaf -ErrorAction SilentlyContinue)
+    ) {
+      Copy-Item -LiteralPath $HostReportPath -Destination $reportPathExtracted -Force -ErrorAction Stop
+      $hostReportLeaf = [System.IO.Path]::GetFileNameWithoutExtension($HostReportPath)
+      $hostAssetDir = Join-Path (Split-Path -Parent $HostReportPath) ("{0}_files" -f $hostReportLeaf)
+      if (Test-Path -LiteralPath $hostAssetDir -PathType Container -ErrorAction SilentlyContinue) {
+        $assetDestination = Join-Path $exportDir (Split-Path -Leaf $hostAssetDir)
+        if (Test-Path -LiteralPath $assetDestination -PathType Container -ErrorAction SilentlyContinue) {
+          Remove-Item -LiteralPath $assetDestination -Recurse -Force -ErrorAction SilentlyContinue
+        }
+        Copy-Item -LiteralPath $hostAssetDir -Destination $assetDestination -Recurse -Force -ErrorAction Stop
+      }
+      $artifactPresent = Test-Path -LiteralPath $reportPathExtracted -PathType Leaf -ErrorAction SilentlyContinue
+      $recoveredFromHostReport = [bool]$artifactPresent
+    }
+    if ($artifactPresent) {
       $successCount++
       $copiedPaths.Add($reportPathExtracted) | Out-Null
+    }
+    if ($recoveredFromNonZeroExit -or $recoveredFromHostReport) {
+      $recoveredCopyCount++
+    }
+    $copyAttempts.Add([ordered]@{
+      sourcePath = $ContainerReportPath
+      destinationPath = $reportPathExtracted
+      exitCode = [int]$copyExitCode
+      artifactPresent = [bool]$artifactPresent
+      recoveredFromNonZeroExit = [bool]$recoveredFromNonZeroExit
+      recoveredFromHostReport = [bool]$recoveredFromHostReport
+      recoveryKind = if ($recoveredFromHostReport) { 'host-report' } elseif ($recoveredFromNonZeroExit) { 'nonzero-exit' } else { 'none' }
+    }) | Out-Null
+    if (-not $artifactPresent) {
+      $reportPathExtracted = ''
     }
   }
 
@@ -660,12 +703,30 @@ function Export-ContainerArtifacts {
       $safeLeaf = ($containerPath -replace '[^a-zA-Z0-9._-]', '_')
     }
     $destinationPath = Join-Path $exportDir $safeLeaf
+    if (Test-Path -LiteralPath $destinationPath -PathType Leaf -ErrorAction SilentlyContinue) {
+      Remove-Item -LiteralPath $destinationPath -Force -ErrorAction SilentlyContinue
+    }
     $sourceSpec = '{0}:{1}' -f $ContainerName, $containerPath
     & docker cp $sourceSpec $destinationPath *> $null
-    if ($LASTEXITCODE -eq 0 -and (Test-Path -LiteralPath $destinationPath -PathType Leaf -ErrorAction SilentlyContinue)) {
+    $copyExitCode = if ($null -eq $LASTEXITCODE) { 1 } else { [int]$LASTEXITCODE }
+    $artifactPresent = Test-Path -LiteralPath $destinationPath -PathType Leaf -ErrorAction SilentlyContinue
+    $recoveredFromNonZeroExit = ($copyExitCode -ne 0 -and $artifactPresent)
+    if ($artifactPresent) {
       $successCount++
       $copiedPaths.Add($destinationPath) | Out-Null
     }
+    if ($recoveredFromNonZeroExit) {
+      $recoveredCopyCount++
+    }
+    $copyAttempts.Add([ordered]@{
+      sourcePath = $containerPath
+      destinationPath = $destinationPath
+      exitCode = [int]$copyExitCode
+      artifactPresent = [bool]$artifactPresent
+      recoveredFromNonZeroExit = [bool]$recoveredFromNonZeroExit
+      recoveredFromHostReport = $false
+      recoveryKind = if ($recoveredFromNonZeroExit) { 'nonzero-exit' } else { 'none' }
+    }) | Out-Null
   }
 
   $copyStatus = 'not-attempted'
@@ -682,7 +743,9 @@ function Export-ContainerArtifacts {
   return [ordered]@{
     exportDir = $exportDir
     copiedPaths = @($copiedPaths.ToArray())
+    copyAttempts = @($copyAttempts.ToArray())
     copyStatus = $copyStatus
+    recoveredCopyCount = [int]$recoveredCopyCount
     reportPathExtracted = $reportPathExtracted
   }
 }
@@ -773,7 +836,9 @@ $capture = [ordered]@{
   containerArtifacts = [ordered]@{
     exportDir = ''
     copiedPaths = @()
+    copyAttempts = @()
     copyStatus = 'not-attempted'
+    recoveredCopyCount = 0
   }
   diffEvidenceSource = 'fallback'
   resultClass = 'failure-preflight'
@@ -1011,12 +1076,15 @@ try {
     $exportResult = Export-ContainerArtifacts `
       -ContainerName $containerNameForCleanup `
       -ContainerReportPath $containerReportPathForExport `
+      -HostReportPath $resolvedReportPath `
       -ReportDirectory $reportDirectoryForExport `
       -AdditionalContainerPaths $additionalExportPaths
     $capture.containerArtifacts = [ordered]@{
       exportDir = [string]$exportResult.exportDir
       copiedPaths = @($exportResult.copiedPaths)
+      copyAttempts = @($exportResult.copyAttempts)
       copyStatus = [string]$exportResult.copyStatus
+      recoveredCopyCount = [int]$exportResult.recoveredCopyCount
     }
     $capture.reportAnalysis = Get-ReportAnalysis -ExtractedReportPath ([string]$exportResult.reportPathExtracted)
   }
