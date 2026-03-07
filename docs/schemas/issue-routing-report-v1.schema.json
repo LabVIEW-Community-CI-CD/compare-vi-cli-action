@@ -1,0 +1,384 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "priority/issue-routing-report@v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema",
+    "schemaVersion",
+    "generatedAt",
+    "status",
+    "flags",
+    "inputs",
+    "policyDecision",
+    "event",
+    "route",
+    "errors"
+  ],
+  "properties": {
+    "schema": {
+      "const": "priority/issue-routing-report@v1"
+    },
+    "schemaVersion": {
+      "type": "string"
+    },
+    "generatedAt": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "status": {
+      "enum": [
+        "pass",
+        "fail"
+      ]
+    },
+    "flags": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "dryRun",
+        "apply",
+        "eventOverride",
+        "repoOverride"
+      ],
+      "properties": {
+        "dryRun": {
+          "type": "boolean"
+        },
+        "apply": {
+          "type": "boolean"
+        },
+        "eventOverride": {
+          "type": "boolean"
+        },
+        "repoOverride": {
+          "type": "boolean"
+        }
+      }
+    },
+    "inputs": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "decisionPath",
+        "eventPath",
+        "reportPath",
+        "repo"
+      ],
+      "properties": {
+        "decisionPath": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "eventPath": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "reportPath": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "repo": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      }
+    },
+    "policyDecision": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schema",
+        "selectedRuleId",
+        "actionType",
+        "priority",
+        "reason"
+      ],
+      "properties": {
+        "schema": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "selectedRuleId": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "actionType": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "priority": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "reason": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      }
+    },
+    "event": {
+      "type": [
+        "object",
+        "null"
+      ],
+      "additionalProperties": false,
+      "required": [
+        "fingerprint",
+        "sourceType",
+        "incidentClass",
+        "severity",
+        "branch",
+        "sha",
+        "signature"
+      ],
+      "properties": {
+        "fingerprint": {
+          "type": "string"
+        },
+        "sourceType": {
+          "type": "string"
+        },
+        "incidentClass": {
+          "type": "string"
+        },
+        "severity": {
+          "type": "string"
+        },
+        "branch": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "sha": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "signature": {
+          "type": "string"
+        }
+      }
+    },
+    "route": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "fingerprint",
+        "marker",
+        "title",
+        "dedupe",
+        "labels",
+        "idempotence",
+        "operation"
+      ],
+      "properties": {
+        "fingerprint": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "marker": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "title": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "dedupe": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "strategy",
+            "candidateCount",
+            "candidateIssueNumbers",
+            "canonicalIssueNumber",
+            "canonicalIssueState"
+          ],
+          "properties": {
+            "strategy": {
+              "type": "string"
+            },
+            "candidateCount": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "candidateIssueNumbers": {
+              "type": "array",
+              "items": {
+                "type": "integer",
+                "minimum": 1
+              }
+            },
+            "canonicalIssueNumber": {
+              "type": [
+                "integer",
+                "null"
+              ],
+              "minimum": 1
+            },
+            "canonicalIssueState": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          }
+        },
+        "labels": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "desired",
+            "observed",
+            "added",
+            "removed",
+            "unchanged",
+            "exactMatch"
+          ],
+          "properties": {
+            "desired": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "observed": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "added": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "removed": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "unchanged": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "exactMatch": {
+              "type": "boolean"
+            }
+          }
+        },
+        "idempotence": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "matchedExisting",
+            "noOp",
+            "bodyDigest",
+            "writeActions"
+          ],
+          "properties": {
+            "matchedExisting": {
+              "type": "boolean"
+            },
+            "noOp": {
+              "type": "boolean"
+            },
+            "bodyDigest": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "writeActions": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            }
+          }
+        },
+        "operation": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "action",
+            "issueNumber",
+            "issueUrl",
+            "wrote"
+          ],
+          "properties": {
+            "action": {
+              "type": "string"
+            },
+            "issueNumber": {
+              "type": [
+                "integer",
+                "null"
+              ],
+              "minimum": 1
+            },
+            "issueUrl": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "wrote": {
+              "type": "boolean"
+            }
+          }
+        }
+      }
+    },
+    "errors": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": true,
+        "required": [
+          "code",
+          "message"
+        ],
+        "properties": {
+          "code": {
+            "type": "string"
+          },
+          "message": {
+            "type": "string"
+          }
+        }
+      }
+    }
+  }
+}
