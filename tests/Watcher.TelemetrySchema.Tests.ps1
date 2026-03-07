@@ -7,6 +7,7 @@ Describe 'Watcher Telemetry - Handoff Snapshot' {
     New-Item -ItemType Directory -Force -Path $resultsRoot | Out-Null
 
     pwsh -File tools/Print-AgentHandoff.ps1 -ApplyToggles -ResultsRoot $resultsRoot | Out-Null
+    $LASTEXITCODE | Should -Be 0
 
     $path = Join-Path $resultsRoot '_agent/handoff/watcher-telemetry.json'
     Test-Path -LiteralPath $path | Should -BeTrue
@@ -21,4 +22,3 @@ Describe 'Watcher Telemetry - Handoff Snapshot' {
     $json.needsTrim | Should -BeOfType ([bool])
   }
 }
-
