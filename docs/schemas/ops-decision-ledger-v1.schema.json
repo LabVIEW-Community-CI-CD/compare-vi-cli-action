@@ -1,0 +1,51 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "ops-decision-ledger@v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema", "generatedAt", "entryCount", "entries"],
+  "properties": {
+    "schema": {
+      "const": "ops-decision-ledger@v1"
+    },
+    "generatedAt": {
+      "type": ["string", "null"],
+      "format": "date-time"
+    },
+    "entryCount": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "entries": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["sequence", "appendedAt", "source", "decisionDigest", "decision", "fingerprint"],
+        "properties": {
+          "sequence": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "appendedAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "source": {
+            "type": "string"
+          },
+          "decisionDigest": {
+            "type": "string",
+            "pattern": "^[a-f0-9]{64}$"
+          },
+          "fingerprint": {
+            "type": ["string", "null"]
+          },
+          "decision": {
+            "type": "object"
+          }
+        }
+      }
+    }
+  }
+}
