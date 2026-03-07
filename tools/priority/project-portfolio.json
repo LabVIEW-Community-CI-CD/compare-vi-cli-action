@@ -1,0 +1,160 @@
+{
+  "schema": "project-portfolio-config@v1",
+  "owner": "LabVIEW-Community-CI-CD",
+  "number": 2,
+  "title": "compare-vi-cli-action Portfolio",
+  "shortDescription": "Portfolio dashboard for compare-vi-cli-action programs and privileged approval work.",
+  "readme": "# compare-vi-cli-action Portfolio\n\nThis project is a dashboard layer over the repository's existing issue-and-policy system.\n\nSource of truth remains:\n\n- issue bodies and checklists\n- labels, especially `standing-priority`\n- `tools/policy/*.json`\n- `tools/priority/*`\n\nProject fields are for portfolio visibility only.",
+  "public": false,
+  "allowAdditionalItems": false,
+  "repositories": [
+    "LabVIEW-Community-CI-CD/compare-vi-cli-action",
+    "LabVIEW-Community-CI-CD/comparevi-history"
+  ],
+  "items": [
+    {
+      "url": "https://github.com/LabVIEW-Community-CI-CD/compare-vi-cli-action/issues/853",
+      "status": "In Progress",
+      "program": "Multi-Mode Diagnostics",
+      "phase": "Sustain",
+      "environmentClass": "Diagnostics",
+      "blockingSignal": "CI",
+      "evidenceState": "Partial"
+    },
+    {
+      "url": "https://github.com/LabVIEW-Community-CI-CD/compare-vi-cli-action/issues/854",
+      "status": "In Progress",
+      "program": "Multi-Mode Diagnostics",
+      "phase": "Sustain",
+      "environmentClass": "Diagnostics",
+      "blockingSignal": "CI",
+      "evidenceState": "Partial"
+    },
+    {
+      "url": "https://github.com/LabVIEW-Community-CI-CD/compare-vi-cli-action/issues/855",
+      "status": "Todo",
+      "program": "Multi-Mode Diagnostics",
+      "phase": "Sustain",
+      "environmentClass": "Diagnostics",
+      "blockingSignal": "Scope",
+      "evidenceState": "None"
+    },
+    {
+      "url": "https://github.com/LabVIEW-Community-CI-CD/compare-vi-cli-action/issues/856",
+      "status": "Todo",
+      "program": "Multi-Mode Diagnostics",
+      "phase": "Sustain",
+      "environmentClass": "Diagnostics",
+      "blockingSignal": "Scope",
+      "evidenceState": "None"
+    },
+    {
+      "url": "https://github.com/LabVIEW-Community-CI-CD/compare-vi-cli-action/issues/858",
+      "status": "Todo",
+      "program": "Multi-Mode Diagnostics",
+      "phase": "Sustain",
+      "environmentClass": "Infra",
+      "blockingSignal": "Scope",
+      "evidenceState": "None"
+    },
+    {
+      "url": "https://github.com/LabVIEW-Community-CI-CD/compare-vi-cli-action/issues/859",
+      "status": "Todo",
+      "program": "Multi-Mode Diagnostics",
+      "phase": "Sustain",
+      "environmentClass": "Infra",
+      "blockingSignal": "Scope",
+      "evidenceState": "None"
+    },
+    {
+      "url": "https://github.com/LabVIEW-Community-CI-CD/compare-vi-cli-action/issues/860",
+      "status": "Todo",
+      "program": "Multi-Mode Diagnostics",
+      "phase": "Sustain",
+      "environmentClass": "Validation",
+      "blockingSignal": "Docker",
+      "evidenceState": "None"
+    },
+    {
+      "url": "https://github.com/LabVIEW-Community-CI-CD/compare-vi-cli-action/issues/861",
+      "status": "In Progress",
+      "program": "Approval Control Plane",
+      "phase": "Policy",
+      "environmentClass": "Validation",
+      "blockingSignal": "Policy",
+      "evidenceState": "Partial"
+    },
+    {
+      "url": "https://github.com/LabVIEW-Community-CI-CD/compare-vi-cli-action/issues/862",
+      "status": "Todo",
+      "program": "Approval Control Plane",
+      "phase": "Policy",
+      "environmentClass": "Validation",
+      "blockingSignal": "Policy",
+      "evidenceState": "Ready"
+    },
+    {
+      "url": "https://github.com/LabVIEW-Community-CI-CD/compare-vi-cli-action/issues/863",
+      "status": "Todo",
+      "program": "Approval Control Plane",
+      "phase": "Signals",
+      "environmentClass": "Validation",
+      "blockingSignal": "Review",
+      "evidenceState": "None"
+    },
+    {
+      "url": "https://github.com/LabVIEW-Community-CI-CD/compare-vi-cli-action/issues/864",
+      "status": "Todo",
+      "program": "Approval Control Plane",
+      "phase": "Signals",
+      "environmentClass": "Validation",
+      "blockingSignal": "Policy",
+      "evidenceState": "None"
+    },
+    {
+      "url": "https://github.com/LabVIEW-Community-CI-CD/compare-vi-cli-action/issues/865",
+      "status": "Todo",
+      "program": "Approval Control Plane",
+      "phase": "Shadow Mode",
+      "environmentClass": "Validation",
+      "blockingSignal": "Scope",
+      "evidenceState": "None"
+    },
+    {
+      "url": "https://github.com/LabVIEW-Community-CI-CD/compare-vi-cli-action/issues/866",
+      "status": "Todo",
+      "program": "Approval Control Plane",
+      "phase": "Helper Workflow",
+      "environmentClass": "Validation",
+      "blockingSignal": "Scope",
+      "evidenceState": "None"
+    },
+    {
+      "url": "https://github.com/LabVIEW-Community-CI-CD/compare-vi-cli-action/issues/867",
+      "status": "Todo",
+      "program": "Approval Control Plane",
+      "phase": "Apply Mode",
+      "environmentClass": "Validation",
+      "blockingSignal": "Scope",
+      "evidenceState": "None"
+    },
+    {
+      "url": "https://github.com/LabVIEW-Community-CI-CD/comparevi-history/issues/14",
+      "status": "Todo",
+      "program": "Multi-Mode Diagnostics",
+      "phase": "Sustain",
+      "environmentClass": "Cross-Repo",
+      "blockingSignal": "Docker",
+      "evidenceState": "None"
+    },
+    {
+      "url": "https://github.com/LabVIEW-Community-CI-CD/comparevi-history/issues/15",
+      "status": "Todo",
+      "program": "Multi-Mode Diagnostics",
+      "phase": "Sustain",
+      "environmentClass": "Cross-Repo",
+      "blockingSignal": "Scope",
+      "evidenceState": "None"
+    }
+  ]
+}
