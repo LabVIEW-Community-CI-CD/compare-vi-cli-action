@@ -1,0 +1,234 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "release/release-conductor-report@v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema",
+    "generatedAt",
+    "repository",
+    "mode",
+    "release",
+    "inputs",
+    "gates",
+    "workflowFetchErrors",
+    "decision"
+  ],
+  "properties": {
+    "schema": {
+      "const": "release/release-conductor-report@v1"
+    },
+    "generatedAt": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "repository": {
+      "type": "string",
+      "pattern": "^[^/\\s]+/[^/\\s]+$"
+    },
+    "mode": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["apply", "dryRun", "releaseConductorEnabled"],
+      "properties": {
+        "apply": { "type": "boolean" },
+        "dryRun": { "type": "boolean" },
+        "releaseConductorEnabled": { "type": "boolean" }
+      }
+    },
+    "release": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "stream",
+        "channel",
+        "version",
+        "targetTag",
+        "proposalOnly",
+        "tagCreated",
+        "tagError",
+        "signingMaterial"
+      ],
+      "properties": {
+        "stream": { "type": "string" },
+        "channel": { "type": "string", "enum": ["stable", "rc"] },
+        "version": { "type": ["string", "null"] },
+        "targetTag": { "type": ["string", "null"] },
+        "proposalOnly": { "type": "boolean" },
+        "tagCreated": { "type": "boolean" },
+        "tagError": { "type": ["string", "null"] },
+        "signingMaterial": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["available", "signingKey", "source"],
+          "properties": {
+            "available": { "type": "boolean" },
+            "signingKey": { "type": ["string", "null"] },
+            "source": { "type": "string" }
+          }
+        }
+      }
+    },
+    "inputs": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "reportPath",
+        "queueReportPath",
+        "policySnapshotPath",
+        "dwellMinutes",
+        "quarantineStaleHours"
+      ],
+      "properties": {
+        "reportPath": { "type": "string" },
+        "queueReportPath": { "type": "string" },
+        "policySnapshotPath": { "type": "string" },
+        "dwellMinutes": { "type": "integer", "minimum": 0 },
+        "quarantineStaleHours": { "type": "integer", "minimum": 0 }
+      }
+    },
+    "gates": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["greenDwell", "queueHealth", "policySnapshot", "quarantine"],
+      "properties": {
+        "greenDwell": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["status", "dwellMinutes", "evaluatedAt", "reasons", "workflows"],
+          "properties": {
+            "status": { "type": "string", "enum": ["pass", "fail"] },
+            "dwellMinutes": { "type": "integer", "minimum": 0 },
+            "evaluatedAt": { "type": "string", "format": "date-time" },
+            "reasons": {
+              "type": "array",
+              "items": { "type": "string" }
+            },
+            "workflows": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "name",
+                  "file",
+                  "runCount",
+                  "inWindowCount",
+                  "successInWindow",
+                  "failureInWindow",
+                  "latestSuccessAt"
+                ],
+                "properties": {
+                  "name": { "type": "string" },
+                  "file": { "type": "string" },
+                  "runCount": { "type": "integer", "minimum": 0 },
+                  "inWindowCount": { "type": "integer", "minimum": 0 },
+                  "successInWindow": { "type": "boolean" },
+                  "failureInWindow": { "type": "boolean" },
+                  "latestSuccessAt": { "type": ["string", "null"] }
+                }
+              }
+            }
+          }
+        },
+        "queueHealth": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["status", "reasons", "paused", "controllerMode"],
+          "properties": {
+            "status": { "type": "string", "enum": ["pass", "fail"] },
+            "reasons": {
+              "type": "array",
+              "items": { "type": "string" }
+            },
+            "paused": { "type": ["boolean", "null"] },
+            "controllerMode": { "type": ["string", "null"] }
+          }
+        },
+        "policySnapshot": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["status", "reasons", "schema", "generatedAt"],
+          "properties": {
+            "status": { "type": "string", "enum": ["pass", "fail"] },
+            "reasons": {
+              "type": "array",
+              "items": { "type": "string" }
+            },
+            "schema": { "type": ["string", "null"] },
+            "generatedAt": { "type": ["string", "null"] }
+          }
+        },
+        "quarantine": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "status",
+            "reasons",
+            "staleHours",
+            "staleCount",
+            "activeCount",
+            "staleEntries"
+          ],
+          "properties": {
+            "status": { "type": "string", "enum": ["pass", "fail"] },
+            "reasons": {
+              "type": "array",
+              "items": { "type": "string" }
+            },
+            "staleHours": { "type": "integer", "minimum": 0 },
+            "staleCount": { "type": ["integer", "null"], "minimum": 0 },
+            "activeCount": { "type": ["integer", "null"], "minimum": 0 },
+            "staleEntries": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": ["number", "latestFailureAt", "failureCount"],
+                "properties": {
+                  "number": { "type": "integer", "minimum": 1 },
+                  "latestFailureAt": { "type": ["string", "null"] },
+                  "failureCount": { "type": "integer", "minimum": 0 }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "workflowFetchErrors": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["workflow", "file", "message"],
+        "properties": {
+          "workflow": { "type": "string" },
+          "file": { "type": "string" },
+          "message": { "type": "string" }
+        }
+      }
+    },
+    "decision": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["status", "blockerCount", "blockers"],
+      "properties": {
+        "status": { "type": "string", "enum": ["pass", "fail"] },
+        "blockerCount": { "type": "integer", "minimum": 0 },
+        "blockers": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["code", "message"],
+            "properties": {
+              "code": { "type": "string" },
+              "message": { "type": "string" }
+            }
+          }
+        }
+      }
+    }
+  }
+}

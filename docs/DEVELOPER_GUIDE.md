@@ -313,6 +313,9 @@ For Docker/Desktop VI history validation, run fast-loop lanes explicitly:
     `QUEUE_BURST_REFILL_CYCLES` / `--burst-refill-cycles` control release burst behavior.
     Auto mode activates on release windows, open `release/*` PRs, or `release-burst` labels, and backs off for
     30 minutes whenever the throughput controller enters `stabilize`.
+  For queue-aware release proposals, run `node tools/npm/run-script.mjs priority:release:conductor -- --dry-run`.
+  Apply mode requires `RELEASE_CONDUCTOR_ENABLED=1`; if signing material is unavailable, the conductor remains
+  proposal-only and emits evidence without mutating tags.
 - For deterministic incident routing, run the control-plane chain in order:
   - `node tools/npm/run-script.mjs priority:event:ingest -- ...`
   - `node tools/npm/run-script.mjs priority:policy:route -- --event <event-report-or-event-json>`
