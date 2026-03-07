@@ -28,6 +28,12 @@ $ErrorActionPreference = 'Stop'
 try { git --version | Out-Null } catch { throw 'git is required on PATH to fetch file content at refs.' }
 
 $repoRoot = (Get-Location).Path
+try {
+  $categoryModule = Join-Path $repoRoot 'tools' 'VICategoryBuckets.psm1'
+  if (Test-Path -LiteralPath $categoryModule -PathType Leaf) {
+    Import-Module $categoryModule -Force
+  }
+} catch {}
 
 function Resolve-CompareVIScriptsRoot {
   param([string]$PrimaryRoot)
@@ -103,6 +109,202 @@ function Get-IncludedAttributesFromReport {
     }
   }
   return $results
+}
+
+function Parse-DiffHeadings {
+  param([string]$Html)
+
+  $headings = New-Object System.Collections.Generic.List[string]
+  if ([string]::IsNullOrWhiteSpace($Html)) { return @() }
+
+  $regexOptions = [System.Text.RegularExpressions.RegexOptions]::IgnoreCase -bor `
+                  [System.Text.RegularExpressions.RegexOptions]::Singleline
+
+  $patterns = @(
+    '<summary\b[^>]*class="[^"]*\bdifference-heading\b[^"]*"[^>]*>\s*(?<text>.*?)\s*</summary>',
+    '<summary\b[^>]*class="[^"]*\bvi-difference-heading\b[^"]*"[^>]*>\s*(?<text>.*?)\s*</summary>',
+    '<summary\b[^>]*class="[^"]*\bdifference-cosmetic-heading\b[^"]*"[^>]*>\s*(?<text>.*?)\s*</summary>',
+    '<h[1-6]\b[^>]*class="[^"]*\bdifference-heading\b[^"]*"[^>]*>\s*(?<text>.*?)\s*</h[1-6]>',
+    '<details\b[^>]*data-diff-(?:category|heading)="(?<text>[^"]+)"[^>]*>'
+  )
+
+  foreach ($pattern in $patterns) {
+    foreach ($match in [System.Text.RegularExpressions.Regex]::Matches($Html, $pattern, $regexOptions)) {
+      $raw = $match.Groups['text'].Value
+      if ([string]::IsNullOrWhiteSpace($raw)) { continue }
+
+      $decoded = [System.Net.WebUtility]::HtmlDecode($raw.Trim())
+      $decoded = ($decoded -replace '^\s*\d+[\.\)]\s*', '')
+      if ([string]::IsNullOrWhiteSpace($decoded)) { continue }
+      if (-not $headings.Contains($decoded)) {
+        $headings.Add($decoded) | Out-Null
+      }
+    }
+  }
+
+  return @($headings.ToArray())
+}
+
+function Parse-DiffDetails {
+  param([string]$Html)
+
+  $details = New-Object System.Collections.Generic.List[string]
+  if ([string]::IsNullOrWhiteSpace($Html)) { return @() }
+
+  $pattern = '<li\s+class="[^"]*\bdiff-detail(?:-cosmetic)?\b[^"]*">\s*(?<text>.*?)\s*</li>'
+  foreach ($match in [System.Text.RegularExpressions.Regex]::Matches($Html, $pattern, 'IgnoreCase')) {
+    $raw = $match.Groups['text'].Value
+    if ([string]::IsNullOrWhiteSpace($raw)) { continue }
+    $decoded = [System.Net.WebUtility]::HtmlDecode($raw.Trim())
+    if ($decoded) {
+      $details.Add($decoded) | Out-Null
+    }
+  }
+
+  return @($details.ToArray())
+}
+
+function Infer-DiffCategoriesFromDetails {
+  param([System.Collections.IEnumerable]$Details)
+
+  $inferred = New-Object System.Collections.Generic.List[string]
+  if (-not $Details) { return @() }
+
+  function Add-Category {
+    param([string]$Name)
+    if ([string]::IsNullOrWhiteSpace($Name)) { return }
+    if (-not $inferred.Contains($Name)) {
+      $inferred.Add($Name) | Out-Null
+    }
+  }
+
+  foreach ($detail in $Details) {
+    if ([string]::IsNullOrWhiteSpace($detail)) { continue }
+    $token = $detail.ToLowerInvariant()
+
+    $hasBlockDiagram = $token -match 'block diagram'
+    $hasFrontPanel   = $token -match 'front panel'
+    $hasConnector    = $token -match 'connector pane'
+    $hasWindow       = $token -match 'window'
+    $hasIcon         = $token -match 'icon'
+    $hasAttribute    = $token -match 'vi attribute' -or $token -match 'attributes'
+    $hasCosmetic     = $token -match 'cosmetic'
+
+    if ($hasBlockDiagram) {
+      if ($hasCosmetic) {
+        Add-Category 'Block Diagram Cosmetic'
+      } elseif ($token -match 'functional') {
+        Add-Category 'Block Diagram Functional'
+      } else {
+        Add-Category 'Block Diagram'
+      }
+    } elseif ($hasCosmetic) {
+      Add-Category 'Cosmetic'
+    }
+
+    if ($hasConnector) {
+      Add-Category 'Connector Pane'
+    }
+
+    if ($hasFrontPanel -or $token -match 'control' -or $token -match 'indicator' -or $token -match 'terminal') {
+      Add-Category 'Front Panel'
+    }
+
+    if ($hasWindow -or $token -match 'position/size' -or $token -match 'window size' -or $token -match 'panel position') {
+      Add-Category 'Front Panel Position/Size'
+    }
+
+    if ($hasIcon -or $hasAttribute -or $token -match 'documentation' -or $token -match 'execution') {
+      if ($hasIcon) { Add-Category 'Icon' }
+      Add-Category 'VI Attribute'
+    }
+  }
+
+  return @($inferred.ToArray())
+}
+
+function Get-ReportCategoryMetadata {
+  param([string]$ReportPath)
+
+  $empty = [pscustomobject]@{
+    categories           = @()
+    headings             = @()
+    details              = @()
+    categoryDetails      = @()
+    categoryBuckets      = @()
+    categoryBucketDetails= @()
+  }
+
+  if ([string]::IsNullOrWhiteSpace($ReportPath)) { return $empty }
+  if (-not (Test-Path -LiteralPath $ReportPath -PathType Leaf)) { return $empty }
+
+  try {
+    $html = Get-Content -LiteralPath $ReportPath -Raw -ErrorAction Stop
+  } catch {
+    return $empty
+  }
+
+  $headings = @(Parse-DiffHeadings -Html $html)
+  $details = @(Parse-DiffDetails -Html $html)
+  $categories = New-Object System.Collections.Generic.List[string]
+
+  foreach ($heading in $headings) {
+    if ([string]::IsNullOrWhiteSpace($heading)) { continue }
+    $primary = $heading
+    $splitIdx = $heading.IndexOf(' - ')
+    if ($splitIdx -gt 0) {
+      $primary = $heading.Substring(0, $splitIdx)
+    }
+    $primary = $primary.Trim()
+    if ([string]::IsNullOrWhiteSpace($primary)) { continue }
+    if (-not $categories.Contains($primary)) {
+      $categories.Add($primary) | Out-Null
+    }
+  }
+
+  $hasBlockDiagramCosmetic = $false
+  $patternCosmeticHeading = '<summary\s+class="[^"]*\bdifference-cosmetic-heading\b[^"]*"\s*>'
+  if ([System.Text.RegularExpressions.Regex]::IsMatch($html, $patternCosmeticHeading, 'IgnoreCase')) {
+    $hasBlockDiagramCosmetic = $true
+  } else {
+    $patternCosmeticDetail = '<li\s+class="[^"]*\bdiff-detail-cosmetic\b[^"]*"\s*>'
+    if ([System.Text.RegularExpressions.Regex]::IsMatch($html, $patternCosmeticDetail, 'IgnoreCase')) {
+      $hasBlockDiagramCosmetic = $true
+    }
+  }
+  if ($hasBlockDiagramCosmetic -and -not $categories.Contains('Block Diagram Cosmetic')) {
+    $categories.Add('Block Diagram Cosmetic') | Out-Null
+  }
+
+  if ($categories.Count -eq 0 -and $details.Count -gt 0) {
+    foreach ($name in @(Infer-DiffCategoriesFromDetails -Details $details)) {
+      if ([string]::IsNullOrWhiteSpace($name)) { continue }
+      if (-not $categories.Contains($name)) {
+        $categories.Add($name) | Out-Null
+      }
+    }
+  }
+
+  $categoryDetails = @()
+  $categoryBuckets = @()
+  $categoryBucketDetails = @()
+  if ($categories.Count -gt 0 -and (Get-Command -Name Get-VICategoryBuckets -ErrorAction SilentlyContinue)) {
+    $categoryInfo = Get-VICategoryBuckets -Names @($categories.ToArray())
+    if ($categoryInfo) {
+      if ($categoryInfo.Details) { $categoryDetails = @($categoryInfo.Details) }
+      if ($categoryInfo.BucketSlugs) { $categoryBuckets = @($categoryInfo.BucketSlugs) }
+      if ($categoryInfo.BucketDetails) { $categoryBucketDetails = @($categoryInfo.BucketDetails) }
+    }
+  }
+
+  return [pscustomobject]@{
+    categories            = @($categories.ToArray())
+    headings              = $headings
+    details               = $details
+    categoryDetails       = $categoryDetails
+    categoryBuckets       = $categoryBuckets
+    categoryBucketDetails = $categoryBucketDetails
+  }
 }
 
 function Resolve-ViRelativePath {
@@ -349,6 +551,7 @@ $cliHighlights = @()
 $cliStdoutPreview = @()
 $detailPaths = [ordered]@{}
 $includedAttributes = @()
+$reportMetadata = $null
 
 if ($detailRequested) {
   $invokeArgs = @('-NoLogo','-NoProfile','-File', $invokeScriptResolved, '-BaseVi', $base, '-HeadVi', $head, '-OutputDir', $artifactDir, '-NoiseProfile', 'full', '-Quiet')
@@ -555,7 +758,18 @@ if ($detailRequested) {
     }
   }
   if (Test-Path -LiteralPath $imagesDir)   { $detailPaths.imagesDir    = (Resolve-Path -LiteralPath $imagesDir).Path }
-  if ($reportFormatEffective -eq 'html' -and $reportResolved) { $includedAttributes = Get-IncludedAttributesFromReport -ReportPath $reportResolved }
+  if ($reportFormatEffective -eq 'html' -and $reportResolved) {
+    $includedAttributes = Get-IncludedAttributesFromReport -ReportPath $reportResolved
+    $reportMetadata = Get-ReportCategoryMetadata -ReportPath $reportResolved
+    if ($reportMetadata) {
+      if ($reportMetadata.headings -and $reportMetadata.headings.Count -gt 0) {
+        $cliHighlights += @($reportMetadata.headings)
+      } elseif ($reportMetadata.details -and $reportMetadata.details.Count -gt 0) {
+        $cliHighlights += @($reportMetadata.details | Select-Object -First 10)
+      }
+      $cliHighlights = @($cliHighlights | Select-Object -Unique | Select-Object -First 20)
+    }
+  }
 
   $execObject = [ordered]@{
     schema      = 'compare-exec/v1'
@@ -613,6 +827,20 @@ if ($cliHighlights -and $cliHighlights.Length -gt 0) { $cliSummary.highlights = 
 if ($cliStdoutPreview -and $cliStdoutPreview.Length -gt 0) { $cliSummary.stdoutPreview = $cliStdoutPreview }
 if ($cliArtifacts) { $cliSummary.artifacts = $cliArtifacts }
 if ($includedAttributes -and $includedAttributes.Count -gt 0) { $cliSummary.includedAttributes = $includedAttributes }
+if ($reportMetadata) {
+  if ($reportMetadata.categories -and $reportMetadata.categories.Count -gt 0) {
+    $cliSummary.categories = @($reportMetadata.categories)
+  }
+  if ($reportMetadata.categoryDetails -and $reportMetadata.categoryDetails.Count -gt 0) {
+    $cliSummary.categoryDetails = @($reportMetadata.categoryDetails)
+  }
+  if ($reportMetadata.categoryBuckets -and $reportMetadata.categoryBuckets.Count -gt 0) {
+    $cliSummary.categoryBuckets = @($reportMetadata.categoryBuckets)
+  }
+  if ($reportMetadata.categoryBucketDetails -and $reportMetadata.categoryBucketDetails.Count -gt 0) {
+    $cliSummary.categoryBucketDetails = @($reportMetadata.categoryBucketDetails)
+  }
+}
 
 $sum = [ordered]@{
   schema = 'ref-compare-summary/v1'

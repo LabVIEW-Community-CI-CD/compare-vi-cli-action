@@ -234,6 +234,201 @@ function Get-ComparisonCategories {
   return @($categories.ToArray())
 }
 
+function Parse-ReportDiffHeadings {
+  param([string]$Html)
+
+  $headings = New-Object System.Collections.Generic.List[string]
+  if ([string]::IsNullOrWhiteSpace($Html)) { return @() }
+
+  $regexOptions = [System.Text.RegularExpressions.RegexOptions]::IgnoreCase -bor `
+                  [System.Text.RegularExpressions.RegexOptions]::Singleline
+
+  $patterns = @(
+    '<summary\b[^>]*class="[^"]*\bdifference-heading\b[^"]*"[^>]*>\s*(?<text>.*?)\s*</summary>',
+    '<summary\b[^>]*class="[^"]*\bvi-difference-heading\b[^"]*"[^>]*>\s*(?<text>.*?)\s*</summary>',
+    '<summary\b[^>]*class="[^"]*\bdifference-cosmetic-heading\b[^"]*"[^>]*>\s*(?<text>.*?)\s*</summary>',
+    '<h[1-6]\b[^>]*class="[^"]*\bdifference-heading\b[^"]*"[^>]*>\s*(?<text>.*?)\s*</h[1-6]>',
+    '<details\b[^>]*data-diff-(?:category|heading)="(?<text>[^"]+)"[^>]*>'
+  )
+
+  foreach ($pattern in $patterns) {
+    foreach ($match in [System.Text.RegularExpressions.Regex]::Matches($Html, $pattern, $regexOptions)) {
+      $raw = $match.Groups['text'].Value
+      if ([string]::IsNullOrWhiteSpace($raw)) { continue }
+      $decoded = [System.Net.WebUtility]::HtmlDecode($raw.Trim())
+      $decoded = ($decoded -replace '^\s*\d+[\.\)]\s*', '')
+      if ([string]::IsNullOrWhiteSpace($decoded)) { continue }
+      if (-not $headings.Contains($decoded)) {
+        $headings.Add($decoded) | Out-Null
+      }
+    }
+  }
+
+  return @($headings.ToArray())
+}
+
+function Parse-ReportDiffDetails {
+  param([string]$Html)
+
+  $details = New-Object System.Collections.Generic.List[string]
+  if ([string]::IsNullOrWhiteSpace($Html)) { return @() }
+
+  $pattern = '<li\s+class="[^"]*\bdiff-detail(?:-cosmetic)?\b[^"]*">\s*(?<text>.*?)\s*</li>'
+  foreach ($match in [System.Text.RegularExpressions.Regex]::Matches($Html, $pattern, 'IgnoreCase')) {
+    $raw = $match.Groups['text'].Value
+    if ([string]::IsNullOrWhiteSpace($raw)) { continue }
+    $decoded = [System.Net.WebUtility]::HtmlDecode($raw.Trim())
+    if ($decoded) {
+      $details.Add($decoded) | Out-Null
+    }
+  }
+
+  return @($details.ToArray())
+}
+
+function Infer-ComparisonCategoriesFromReportDetails {
+  param([System.Collections.IEnumerable]$Details)
+
+  $inferred = New-Object System.Collections.Generic.List[string]
+  if (-not $Details) { return @() }
+
+  function Add-Category {
+    param([string]$Name)
+    if ([string]::IsNullOrWhiteSpace($Name)) { return }
+    if (-not $inferred.Contains($Name)) {
+      $inferred.Add($Name) | Out-Null
+    }
+  }
+
+  foreach ($detail in $Details) {
+    if ([string]::IsNullOrWhiteSpace($detail)) { continue }
+    $token = $detail.ToLowerInvariant()
+
+    $hasBlockDiagram = $token -match 'block diagram'
+    $hasFrontPanel   = $token -match 'front panel'
+    $hasConnector    = $token -match 'connector pane'
+    $hasWindow       = $token -match 'window'
+    $hasIcon         = $token -match 'icon'
+    $hasAttribute    = $token -match 'vi attribute' -or $token -match 'attributes'
+    $hasCosmetic     = $token -match 'cosmetic'
+
+    if ($hasBlockDiagram) {
+      if ($hasCosmetic) {
+        Add-Category 'Block Diagram Cosmetic'
+      } elseif ($token -match 'functional') {
+        Add-Category 'Block Diagram Functional'
+      } else {
+        Add-Category 'Block Diagram'
+      }
+    } elseif ($hasCosmetic) {
+      Add-Category 'Cosmetic'
+    }
+
+    if ($hasConnector) {
+      Add-Category 'Connector Pane'
+    }
+
+    if ($hasFrontPanel -or $token -match 'control' -or $token -match 'indicator' -or $token -match 'terminal') {
+      Add-Category 'Front Panel'
+    }
+
+    if ($hasWindow -or $token -match 'position/size' -or $token -match 'window size' -or $token -match 'panel position') {
+      Add-Category 'Front Panel Position/Size'
+    }
+
+    if ($hasIcon -or $hasAttribute -or $token -match 'documentation' -or $token -match 'execution') {
+      if ($hasIcon) { Add-Category 'Icon' }
+      Add-Category 'VI Attribute'
+    }
+  }
+
+  return @($inferred.ToArray())
+}
+
+function Get-ComparisonCategoriesFromReport {
+  param([string]$ReportPath)
+
+  $empty = [pscustomobject]@{
+    categories            = @()
+    headings              = @()
+    details               = @()
+    categoryDetails       = @()
+    categoryBuckets       = @()
+    categoryBucketDetails = @()
+  }
+
+  if ([string]::IsNullOrWhiteSpace($ReportPath)) { return $empty }
+  if (-not (Test-Path -LiteralPath $ReportPath -PathType Leaf)) { return $empty }
+
+  try {
+    $html = Get-Content -LiteralPath $ReportPath -Raw -ErrorAction Stop
+  } catch {
+    return $empty
+  }
+
+  $headings = @(Parse-ReportDiffHeadings -Html $html)
+  $details = @(Parse-ReportDiffDetails -Html $html)
+  $categories = New-Object System.Collections.Generic.List[string]
+
+  foreach ($heading in $headings) {
+    if ([string]::IsNullOrWhiteSpace($heading)) { continue }
+    $primary = $heading
+    $splitIdx = $heading.IndexOf(' - ')
+    if ($splitIdx -gt 0) {
+      $primary = $heading.Substring(0, $splitIdx)
+    }
+    $primary = $primary.Trim()
+    if ([string]::IsNullOrWhiteSpace($primary)) { continue }
+    if (-not $categories.Contains($primary)) {
+      $categories.Add($primary) | Out-Null
+    }
+  }
+
+  $hasBlockDiagramCosmetic = $false
+  $patternCosmeticHeading = '<summary\s+class="[^"]*\bdifference-cosmetic-heading\b[^"]*"\s*>'
+  if ([System.Text.RegularExpressions.Regex]::IsMatch($html, $patternCosmeticHeading, 'IgnoreCase')) {
+    $hasBlockDiagramCosmetic = $true
+  } else {
+    $patternCosmeticDetail = '<li\s+class="[^"]*\bdiff-detail-cosmetic\b[^"]*"\s*>'
+    if ([System.Text.RegularExpressions.Regex]::IsMatch($html, $patternCosmeticDetail, 'IgnoreCase')) {
+      $hasBlockDiagramCosmetic = $true
+    }
+  }
+  if ($hasBlockDiagramCosmetic -and -not $categories.Contains('Block Diagram Cosmetic')) {
+    $categories.Add('Block Diagram Cosmetic') | Out-Null
+  }
+
+  if ($categories.Count -eq 0 -and $details.Count -gt 0) {
+    foreach ($name in @(Infer-ComparisonCategoriesFromReportDetails -Details $details)) {
+      if ([string]::IsNullOrWhiteSpace($name)) { continue }
+      if (-not $categories.Contains($name)) {
+        $categories.Add($name) | Out-Null
+      }
+    }
+  }
+
+  $categoryDetails = @()
+  $categoryBuckets = @()
+  $categoryBucketDetails = @()
+  if ($categories.Count -gt 0) {
+    $categoryInfo = Get-VICategoryBuckets -Names @($categories.ToArray())
+    if ($categoryInfo) {
+      if ($categoryInfo.Details) { $categoryDetails = @($categoryInfo.Details) }
+      if ($categoryInfo.BucketSlugs) { $categoryBuckets = @($categoryInfo.BucketSlugs) }
+      if ($categoryInfo.BucketDetails) { $categoryBucketDetails = @($categoryInfo.BucketDetails) }
+    }
+  }
+
+  return [pscustomobject]@{
+    categories            = @($categories.ToArray())
+    headings              = $headings
+    details               = $details
+    categoryDetails       = $categoryDetails
+    categoryBuckets       = $categoryBuckets
+    categoryBucketDetails = $categoryBucketDetails
+  }
+}
+
 function Get-ComparisonClassification {
   param(
     $CategoryDetails,
@@ -265,6 +460,21 @@ function Get-ComparisonClassification {
   if ($hasSignal) { return 'signal' }
   if ($hasOther)  { return 'noise' }
   return 'unknown'
+}
+
+function Get-ComparisonCategoryDisplayName {
+  param([string]$Name)
+
+  if ([string]::IsNullOrWhiteSpace($Name)) { return $Name }
+
+  try {
+    $meta = Get-VICategoryMetadata -Name $Name
+    if ($meta -and -not [string]::IsNullOrWhiteSpace($meta.label)) {
+      return [string]$meta.label
+    }
+  } catch {}
+
+  return $Name
 }
 
 function Update-TallyFromDetails {
@@ -1529,8 +1739,24 @@ foreach ($modeSpec in $modeSpecs) {
         command     = $summaryJson.cli.command
       }
       $highlights = @()
+      $cliCategories = @()
+      $cliCategoryDetails = @()
+      $cliCategoryBuckets = @()
+      $cliCategoryBucketDetails = @()
       if ($summaryJson.cli -and $summaryJson.cli.PSObject.Properties['highlights'] -and $summaryJson.cli.highlights) {
         $highlights += @($summaryJson.cli.highlights | Where-Object { -not [string]::IsNullOrWhiteSpace($_) })
+      }
+      if ($summaryJson.cli -and $summaryJson.cli.PSObject.Properties['categories'] -and $summaryJson.cli.categories) {
+        $cliCategories += @($summaryJson.cli.categories | Where-Object { -not [string]::IsNullOrWhiteSpace($_) })
+      }
+      if ($summaryJson.cli -and $summaryJson.cli.PSObject.Properties['categoryDetails'] -and $summaryJson.cli.categoryDetails) {
+        $cliCategoryDetails += @($summaryJson.cli.categoryDetails)
+      }
+      if ($summaryJson.cli -and $summaryJson.cli.PSObject.Properties['categoryBuckets'] -and $summaryJson.cli.categoryBuckets) {
+        $cliCategoryBuckets += @($summaryJson.cli.categoryBuckets | Where-Object { -not [string]::IsNullOrWhiteSpace($_) })
+      }
+      if ($summaryJson.cli -and $summaryJson.cli.PSObject.Properties['categoryBucketDetails'] -and $summaryJson.cli.categoryBucketDetails) {
+        $cliCategoryBucketDetails += @($summaryJson.cli.categoryBucketDetails)
       }
       if ($summaryJson.cli -and $summaryJson.cli.PSObject.Properties['includedAttributes'] -and $summaryJson.cli.includedAttributes) {
         $includedNames = @()
@@ -1550,25 +1776,90 @@ foreach ($modeSpec in $modeSpecs) {
           $highlights += ("Attributes: {0}" -f ([string]::Join(', ', ($includedNames | Select-Object -Unique))))
         }
       }
+
+      $outNode = $summaryJson.out
+      if ((@($cliCategories).Count -eq 0 -or @($cliCategoryDetails).Count -eq 0) -and $outNode) {
+        $reportCandidate = $null
+        if ($outNode.PSObject.Properties['reportHtml'] -and $outNode.reportHtml) {
+          $reportCandidate = [string]$outNode.reportHtml
+        } elseif ($outNode.PSObject.Properties['reportPath'] -and $outNode.reportPath) {
+          $reportCandidate = [string]$outNode.reportPath
+        }
+
+        if (-not [string]::IsNullOrWhiteSpace($reportCandidate)) {
+          $reportCategoryMetadata = Get-ComparisonCategoriesFromReport -ReportPath $reportCandidate
+          if ($reportCategoryMetadata) {
+            if (@($cliCategories).Count -eq 0 -and @($reportCategoryMetadata.categories).Count -gt 0) {
+              $cliCategories += @($reportCategoryMetadata.categories)
+            }
+            if (@($cliCategoryDetails).Count -eq 0 -and @($reportCategoryMetadata.categoryDetails).Count -gt 0) {
+              $cliCategoryDetails += @($reportCategoryMetadata.categoryDetails)
+            }
+            if (@($cliCategoryBuckets).Count -eq 0 -and @($reportCategoryMetadata.categoryBuckets).Count -gt 0) {
+              $cliCategoryBuckets += @($reportCategoryMetadata.categoryBuckets)
+            }
+            if (@($cliCategoryBucketDetails).Count -eq 0 -and @($reportCategoryMetadata.categoryBucketDetails).Count -gt 0) {
+              $cliCategoryBucketDetails += @($reportCategoryMetadata.categoryBucketDetails)
+            }
+            if (@($reportCategoryMetadata.headings).Count -gt 0) {
+              $highlights += @($reportCategoryMetadata.headings)
+            } elseif (@($reportCategoryMetadata.details).Count -gt 0) {
+              $highlights += @($reportCategoryMetadata.details | Select-Object -First 10)
+            }
+          }
+        }
+      }
+
       if ($highlights.Count -gt 0) {
         $comparisonRecord.result.highlights = @($highlights | Select-Object -Unique)
       }
-      $categories = @(
-        Get-ComparisonCategories -Highlights $highlights -HasDiff:$diff |
-          Select-Object -Unique
-      )
+
+      $categories = @()
+      if (@($cliCategories).Count -gt 0) {
+        $categories = @($cliCategories | Select-Object -Unique)
+      } else {
+        $categories = @(
+          Get-ComparisonCategories -Highlights $highlights -HasDiff:$diff |
+            Select-Object -Unique
+        )
+      }
+
       $categoryInfo = $null
-      if ($categories -and $categories.Count -gt 0) {
-        $comparisonRecord.result.categories = $categories
+      if (@($categories).Count -gt 0) {
         $categoryInfo = Get-VICategoryBuckets -Names $categories
-        if ($categoryInfo -and $categoryInfo.Details) {
-          $comparisonRecord.result.categoryDetails = $categoryInfo.Details
+      }
+      $resolvedCategoryDetails = if (@($cliCategoryDetails).Count -gt 0) {
+        @($cliCategoryDetails)
+      } elseif ($categoryInfo -and $categoryInfo.Details) {
+        @($categoryInfo.Details)
+      } else {
+        @()
+      }
+      $resolvedCategoryBuckets = if (@($cliCategoryBuckets).Count -gt 0) {
+        @($cliCategoryBuckets | Select-Object -Unique)
+      } elseif ($categoryInfo -and $categoryInfo.BucketSlugs) {
+        @($categoryInfo.BucketSlugs)
+      } else {
+        @()
+      }
+      $resolvedCategoryBucketDetails = if (@($cliCategoryBucketDetails).Count -gt 0) {
+        @($cliCategoryBucketDetails)
+      } elseif ($categoryInfo -and $categoryInfo.BucketDetails) {
+        @($categoryInfo.BucketDetails)
+      } else {
+        @()
+      }
+
+      if (@($categories).Count -gt 0) {
+        $comparisonRecord.result.categories = $categories
+        if (@($resolvedCategoryDetails).Count -gt 0) {
+          $comparisonRecord.result.categoryDetails = $resolvedCategoryDetails
         }
-        if ($categoryInfo -and $categoryInfo.BucketSlugs) {
-          $comparisonRecord.result.categoryBuckets = $categoryInfo.BucketSlugs
+        if (@($resolvedCategoryBuckets).Count -gt 0) {
+          $comparisonRecord.result.categoryBuckets = $resolvedCategoryBuckets
         }
-        if ($categoryInfo -and $categoryInfo.BucketDetails) {
-          $comparisonRecord.result.categoryBucketDetails = $categoryInfo.BucketDetails
+        if (@($resolvedCategoryBucketDetails).Count -gt 0) {
+          $comparisonRecord.result.categoryBucketDetails = $resolvedCategoryBucketDetails
         }
         foreach ($category in $categories) {
           $categoryKey = [string]$category
@@ -1578,8 +1869,8 @@ foreach ($modeSpec in $modeSpecs) {
           }
           $modeCategoryCounts[$categoryKey]++
         }
-        if ($categoryInfo -and $categoryInfo.BucketSlugs) {
-          foreach ($bucketSlug in $categoryInfo.BucketSlugs) {
+        if (@($resolvedCategoryBuckets).Count -gt 0) {
+          foreach ($bucketSlug in $resolvedCategoryBuckets) {
             $bucketKey = [string]$bucketSlug
             if ([string]::IsNullOrWhiteSpace($bucketKey)) { continue }
             if (-not $modeBucketCounts.Contains($bucketKey)) {
@@ -1592,7 +1883,6 @@ foreach ($modeSpec in $modeSpecs) {
       if ($summaryJson.cli.PSObject.Properties['reportFormat']) {
         $comparisonRecord.reportFormat = $summaryJson.cli.reportFormat
       }
-      $outNode = $summaryJson.out
       if ($outNode -and $outNode.PSObject.Properties['reportHtml'] -and $outNode.reportHtml) {
         $comparisonRecord.result.reportHtml = $outNode.reportHtml
       }
@@ -1609,15 +1899,11 @@ foreach ($modeSpec in $modeSpecs) {
           $comparisonRecord.result.artifactDir = (Resolve-Path -LiteralPath $artifactDir).Path
         }
       }
-      if ($summaryJson.cli -and $summaryJson.cli.PSObject.Properties['highlights'] -and $summaryJson.cli.highlights) {
-        $comparisonRecord.result.highlights = $summaryJson.cli.highlights
-      }
-
       $categoryDetails = $null
       if ($comparisonRecord.result.PSObject.Properties['categoryDetails']) {
         $categoryDetails = $comparisonRecord.result.categoryDetails
-      } elseif ($categoryInfo -and $categoryInfo.Details) {
-        $categoryDetails = $categoryInfo.Details
+      } elseif (@($resolvedCategoryDetails).Count -gt 0) {
+        $categoryDetails = $resolvedCategoryDetails
       }
 
       $classification = Get-ComparisonClassification -CategoryDetails $categoryDetails -HasDiff:$diff
@@ -1649,8 +1935,8 @@ foreach ($modeSpec in $modeSpecs) {
           if ($categoryDetails) {
             Update-TallyFromDetails -Target $collapsedCategoryCounts -Details $categoryDetails
           }
-          if ($categoryInfo -and $categoryInfo.BucketDetails) {
-            Update-TallyFromDetails -Target $collapsedBucketCounts -Details $categoryInfo.BucketDetails
+          if (@($resolvedCategoryBucketDetails).Count -gt 0) {
+            Update-TallyFromDetails -Target $collapsedBucketCounts -Details $resolvedCategoryBucketDetails
           }
         }
       }
@@ -1672,6 +1958,11 @@ foreach ($modeSpec in $modeSpecs) {
 
       if ($appendComparison) {
         $modeManifest.comparisons += $comparisonRecordObject
+      }
+
+      if (-not $stopReason -and $isSignalDiff -and $signalBudgetRequested -and $signalDiffCount -ge $maxSignalBudget) {
+        $stopReason = 'max-signal'
+        break
       }
     }
     catch {
@@ -1769,7 +2060,7 @@ foreach ($modeSpec in $modeSpecs) {
             $k = $_
             $v = $collapsedNoiseStats.categoryCounts[$k]
             if ($v -isnot [int]) { $v = [int]$v }
-            "{0} ({1})" -f $k, $v
+            "{0} ({1})" -f (Get-ComparisonCategoryDisplayName -Name $k), $v
         }) -join ', '
         if ($collapsedCategorySummary) {
           $summaryLines += "  - Collapsed categories: $collapsedCategorySummary"
@@ -1824,7 +2115,7 @@ foreach ($modeSpec in $modeSpecs) {
         $slug = $_
         $countValue = $collapsedNoiseStats.categoryCounts[$slug]
         if ($countValue -isnot [int]) { $countValue = [int]$countValue }
-        "{0} ({1})" -f $slug, $countValue
+        "{0} ({1})" -f (Get-ComparisonCategoryDisplayName -Name $slug), $countValue
       }) -join ', '
     }
     $noiseHighlight = "{0}: {1} noise diff{2} {3}" -f $modeName, $noiseCollapsedCount, $noisePlural, $action

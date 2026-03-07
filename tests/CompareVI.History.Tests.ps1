@@ -476,6 +476,7 @@ exit 0
       $env:STUB_COMPARE_REPORT_FIXTURE = Join-Path $_repoRoot 'fixtures' 'vi-report' 'vi-attribute'
       $pair = $_pairs[0]
       $rd = Join-Path $TestDrive 'history-noise-collapse'
+      $summaryPath = Join-Path $TestDrive 'history-noise-collapse-summary.md'
       $runParams = @{
         TargetPath       = $_target
         StartRef         = $pair.Head
@@ -484,11 +485,14 @@ exit 0
         ResultsDir       = $rd
         Mode             = 'default'
         FailOnDiff       = $false
+        StepSummaryPath  = $summaryPath
       }
-      & $script:InvokeCompareHistory -Parameters $runParams | Out-Null
+      $output = & $script:InvokeCompareHistory -Parameters $runParams 2>&1
+      $outputText = (($output | ForEach-Object { "$_" }) -join [Environment]::NewLine)
 
       $suitePath = Join-Path $rd 'manifest.json'
       Test-Path -LiteralPath $suitePath | Should -BeTrue
+      Test-Path -LiteralPath $summaryPath | Should -BeTrue
       $aggregate = Get-Content -LiteralPath $suitePath -Raw | ConvertFrom-Json
       $modeEntry = $aggregate.modes | Where-Object { $_.slug -eq 'default' }
       $modeEntry | Should -Not -BeNullOrEmpty
@@ -500,11 +504,20 @@ exit 0
       $modeManifest.stats.noiseCollapsed | Should -BeGreaterThan 0
       @($modeManifest.comparisons).Count | Should -Be 0
       $modeManifest.stats.collapsedNoise.count | Should -Be $modeManifest.stats.noiseCollapsed
+      $modeManifest.stats.collapsedNoise.categoryCounts.PSObject.Properties.Name | Should -Contain 'vi-attribute'
+      $modeManifest.stats.collapsedNoise.categoryCounts.PSObject.Properties.Name | Should -Not -Contain 'unspecified'
+      [int]$modeManifest.stats.collapsedNoise.bucketCounts.metadata | Should -BeGreaterThan 0
 
       $aggregate.maxSignalPairs | Should -Be 2
       $aggregate.noisePolicy | Should -Be 'collapse'
       $aggregate.stats.signalDiffs | Should -Be 0
       $aggregate.stats.noiseCollapsed | Should -BeGreaterThan 0
+      $aggregate.stats.categoryCounts.PSObject.Properties.Name | Should -Contain 'VI Attribute'
+      $aggregate.stats.categoryCounts.PSObject.Properties.Name | Should -Not -Contain 'unspecified'
+      [int]$aggregate.stats.bucketCounts.metadata | Should -BeGreaterThan 0
+      $outputText | Should -Match 'LVCompare detected differences'
+      $outputText | Should -Match 'VI attribute \(\d+\)'
+      $outputText | Should -Not -Match 'unspecified'
     } finally {
       if ($null -eq $previousDiff) {
         Remove-Item Env:STUB_COMPARE_DIFF -ErrorAction SilentlyContinue
@@ -1486,6 +1499,3 @@ Describe 'Compare-VIHistory source control handling' -Tag 'Integration' {
     $iniProvider | Should -Be 'False'
   }
 }
-
-
-

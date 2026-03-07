@@ -194,4 +194,125 @@ exit 1
     $s.cli.artifacts.graceSeconds | Should -Be 2.5
     $s.cli.artifacts.PSObject.Properties.Name | Should -Contain 'processes'
   }
+
+  It 'derives explicit diff categories from HTML reports when stdout lacks category hints' {
+    $pair = $null
+    foreach ($p in $_pairs) {
+      & git show --no-renames -- "$($p.A):$_target" 1>$null 2>$null
+      $okA = ($LASTEXITCODE -eq 0)
+      & git show --no-renames -- "$($p.B):$_target" 1>$null 2>$null
+      $okB = ($LASTEXITCODE -eq 0)
+      if ($okA -and $okB) { $pair = $p; break }
+    }
+    if (-not $pair) { Set-ItResult -Skipped -Because 'No valid ref pair with content'; return }
+
+    $stub = Join-Path $TestDrive 'Invoke-LVCompare.report-only.stub.ps1'
+    $stubContent = @'
+param(
+  [Parameter(Mandatory=$true)][string]$BaseVi,
+  [Parameter(Mandatory=$true)][string]$HeadVi,
+  [string]$OutputDir,
+  [string]$LabVIEWExePath,
+  [string]$LVComparePath,
+  [string[]]$Flags,
+  [switch]$RenderReport,
+  [switch]$Quiet,
+  [string]$LeakJsonPath,
+  [Parameter(ValueFromRemainingArguments = $true)][string[]]$PassThru
+)
+Set-StrictMode -Version Latest
+$ErrorActionPreference = 'Stop'
+if (-not $OutputDir) { $OutputDir = Join-Path $env:TEMP ("stub-report-only-" + [guid]::NewGuid().ToString('N')) }
+New-Item -ItemType Directory -Path $OutputDir -Force | Out-Null
+
+$stdoutPath = Join-Path $OutputDir 'lvcompare-stdout.txt'
+$stderrPath = Join-Path $OutputDir 'lvcompare-stderr.txt'
+$capturePath= Join-Path $OutputDir 'lvcompare-capture.json'
+$reportPath = Join-Path $OutputDir 'compare-report.html'
+$imagesDir  = Join-Path $OutputDir 'cli-images'
+
+'Stub LVCompare run with report-only categories.' | Set-Content -LiteralPath $stdoutPath -Encoding utf8
+'' | Set-Content -LiteralPath $stderrPath -Encoding utf8
+
+$reportHtml = @"
+<!DOCTYPE html>
+<html>
+<body>
+  <div class="included-attributes">
+    <ul class="inclusion-list">
+      <li class="checked">Block Diagram Cosmetic</li>
+    </ul>
+  </div>
+  <details open>
+    <summary class="difference-cosmetic-heading">1. Block Diagram Cosmetic - Wiring</summary>
+    <ol class="detailed-description-list">
+      <li class="diff-detail-cosmetic">Wire adjusted</li>
+    </ol>
+  </details>
+</body>
+</html>
+"@
+    $reportHtml | Set-Content -LiteralPath $reportPath -Encoding utf8
+
+New-Item -ItemType Directory -Path $imagesDir -Force | Out-Null
+[System.IO.File]::WriteAllBytes((Join-Path $imagesDir 'cli-image-00.png'), @(0x01,0x02,0x03))
+if (-not $LVComparePath) { $LVComparePath = 'C:\Stub\LVCompare.exe' }
+
+$capture = [ordered]@{
+  schema    = 'lvcompare-capture-v1'
+  timestamp = (Get-Date).ToString('o')
+  base      = $BaseVi
+  head      = $HeadVi
+  cliPath   = $LVComparePath
+  args      = $Flags
+  exitCode  = 1
+  seconds   = 0.15
+  stdoutLen = 1
+  stderrLen = 0
+  command   = ("LVCompare.exe ""{0}"" ""{1}""" -f $BaseVi,$HeadVi)
+  environment = [ordered]@{
+    cli = [ordered]@{
+      artifacts = [ordered]@{
+        reportSizeBytes = 256
+        imageCount      = 1
+        exportDir       = $imagesDir
+        images          = @(
+          [ordered]@{
+            index      = 0
+            mimeType   = 'image/png'
+            byteLength = 3
+            savedPath  = (Join-Path $imagesDir 'cli-image-00.png')
+          }
+        )
+      }
+    }
+  }
+}
+$capture | ConvertTo-Json -Depth 6 | Set-Content -LiteralPath $capturePath -Encoding utf8
+exit 1
+'@
+    Set-Content -LiteralPath $stub -Value $stubContent -Encoding utf8
+
+    $resultsDir = Join-Path $TestDrive 'ref-compare-report-derived'
+    New-Item -ItemType Directory -Path $resultsDir -Force | Out-Null
+    & pwsh -NoLogo -NoProfile -File (Join-Path $_repo 'tools/Compare-RefsToTemp.ps1') `
+      -ViName (Split-Path -Leaf $_target) `
+      -RefA $pair.A `
+      -RefB $pair.B `
+      -ResultsDir $resultsDir `
+      -OutName 'report-derived' `
+      -Detailed `
+      -RenderReport `
+      -InvokeScriptPath $stub `
+      -FailOnDiff:$false | Out-Null
+
+    $sum = Join-Path $resultsDir 'report-derived-summary.json'
+    Test-Path -LiteralPath $sum | Should -BeTrue
+
+    $summary = Get-Content -LiteralPath $sum -Raw | ConvertFrom-Json -Depth 10
+    $summary.cli.categories | Should -Contain 'Block Diagram Cosmetic'
+    (($summary.cli.categoryDetails | Where-Object { $_.slug -eq 'block-diagram-cosmetic' }).Count) | Should -Be 1
+    $summary.cli.categoryBuckets | Should -Contain 'ui-visual'
+    $summary.cli.highlights | Should -Contain 'Block Diagram Cosmetic - Wiring'
+  }
 }
