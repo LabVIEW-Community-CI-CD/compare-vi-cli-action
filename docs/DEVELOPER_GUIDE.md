@@ -301,6 +301,12 @@ For Docker/Desktop VI history validation, run fast-loop lanes explicitly:
   written to `tests/results/_agent/policy/policy-state-snapshot.json`.
 - Run `node tools/npm/run-script.mjs priority:queue:supervisor -- --dry-run` to preview queue ordering and
   candidate gates, or add `--apply` for guarded autonomous enqueue mode.
+- For deterministic incident routing, run the control-plane chain in order:
+  - `node tools/npm/run-script.mjs priority:event:ingest -- ...`
+  - `node tools/npm/run-script.mjs priority:policy:route -- --event <event-report-or-event-json>`
+  - `node tools/npm/run-script.mjs priority:issue:route -- --decision tests/results/_agent/ops/policy-decision-report.json`
+  The router dedupes by incident fingerprint marker and emits
+  `tests/results/_agent/ops/issue-routing-report.json` (`priority/issue-routing-report@v1`).
 - In unattended flows, use lane-enforced standing sync (`node tools/npm/run-script.mjs priority:sync:lane`) so
   missing or duplicate standing-priority labels fail fast and emit deterministic diagnostics:
   - `tests/results/_agent/issue/no-standing-priority.json`
