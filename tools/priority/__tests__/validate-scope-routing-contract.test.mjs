@@ -26,7 +26,9 @@ test('validate workflow resolves change scope before heavy fan-out and publishes
 test('validate heavy jobs consume scoped lane decisions without skipping required checks', () => {
   const workflow = readRepoFile('.github/workflows/validate.yml');
 
+  assert.match(workflow, /validate-scope-plan:\s*\r?\n\s+needs:\s+smoke-gate\r?\n\s+if:\s+needs\.smoke-gate\.outputs\.skip != 'true'\r?\n\s+runs-on:\s+ubuntu-latest\r?\n\s+permissions:\s*\r?\n\s+contents:\s+read\r?\n\s+pull-requests:\s+read/ms);
   assert.match(workflow, /fixtures:\s*\r?\n\s+needs:\s*\[smoke-gate, lint, validate-scope-plan\]\r?\n\s+if:\s+needs\.smoke-gate\.outputs\.skip != 'true'/);
+  assert.match(workflow, /fixtures:\s*\r?\n\s+needs:\s*\[smoke-gate, lint, validate-scope-plan\]\r?\n\s+if:\s+needs\.smoke-gate\.outputs\.skip != 'true'\r?\n\s+runs-on:\s+\[self-hosted, Windows, X64\]\r?\n\s+permissions:\s*\r?\n\s+contents:\s+read/ms);
   assert.match(workflow, /VALIDATE_SCOPE_RUN_FIXTURES:\s+\$\{\{\s*needs\.validate-scope-plan\.outputs\.run_fixtures\s*\}\}/);
   assert.match(workflow, /Append fixture lane plan/);
   assert.match(workflow, /if:\s+env\.VALIDATE_SCOPE_RUN_FIXTURES == 'true'/);

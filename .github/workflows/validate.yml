@@ -380,6 +380,9 @@ jobs:
     needs: smoke-gate
     if: needs.smoke-gate.outputs.skip != 'true'
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: read
     outputs:
       scope_mode: ${{ steps.plan.outputs.scope_mode }}
       scope_category: ${{ steps.plan.outputs.scope_category }}
@@ -434,6 +437,8 @@ jobs:
     needs: [smoke-gate, lint, validate-scope-plan]
     if: needs.smoke-gate.outputs.skip != 'true'
     runs-on: [self-hosted, Windows, X64]
+    permissions:
+      contents: read
     env:
       FAIL_ON_NEW_STRUCTURAL: 'true'
       SUMMARY_VERBOSE: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.summary-verbose || 'false' }}
