@@ -1029,6 +1029,8 @@ jobs:
     needs: [smoke-gate, lint, fixtures, session-index, session-index-v2-contract]
     if: needs.smoke-gate.outputs.skip != 'true'
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
     outputs:
       execute_lanes: ${{ steps.plan.outputs.execute_lanes }}
       skip_reason: ${{ steps.plan.outputs.skip_reason }}
@@ -1080,6 +1082,8 @@ jobs:
       needs.smoke-gate.outputs.skip != 'true' &&
       needs.vi-history-scenarios-plan.outputs.execute_lanes == 'true'
     runs-on: [self-hosted, Windows, X64, self-hosted-docker-windows]
+    permissions:
+      contents: read
     env:
       NI_WINDOWS_IMAGE: nationalinstruments/labview:2026q1-windows
       NI_WINDOWS_LABVIEW_PATH: C:\Program Files\National Instruments\LabVIEW 2026\LabVIEW.exe
@@ -1188,6 +1192,8 @@ jobs:
     needs: [smoke-gate, lint, fixtures, session-index, session-index-v2-contract, vi-history-scenarios-plan]
     if: needs.smoke-gate.outputs.skip != 'true'
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
     env:
       NI_LINUX_IMAGE: nationalinstruments/labview:2026q1-linux
       NI_LINUX_LABVIEW_PATH: /usr/local/natinst/LabVIEW-2026-64/labview
