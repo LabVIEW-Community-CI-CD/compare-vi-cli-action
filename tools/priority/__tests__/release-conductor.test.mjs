@@ -196,6 +196,158 @@ test('runReleaseConductor blocks apply when release conductor flag is disabled',
   assert.equal(commandCalls.some((entry) => entry.command === 'git' && entry.args[0] === 'tag'), false);
 });
 
+test('runReleaseConductor keeps dry-run proposal-only when queue evidence is missing and no recent success exists', async () => {
+  const readJsonOptionalFn = async (filePath) => {
+    const normalized = String(filePath);
+    if (normalized.includes('queue-supervisor-report.json')) {
+      return {
+        exists: false,
+        error: null,
+        path: filePath,
+        payload: null
+      };
+    }
+    return {
+      exists: true,
+      error: null,
+      path: filePath,
+      payload: {
+        schema: 'priority/policy-live-state@v1',
+        generatedAt: '2026-03-06T10:00:00Z',
+        state: {}
+      }
+    };
+  };
+
+  const runGhJsonFn = (args) => {
+    if (args[0] !== 'api') {
+      throw new Error(`unexpected gh args: ${args.join(' ')}`);
+    }
+    return {
+      workflow_runs: [
+        {
+          id: 1,
+          status: 'completed',
+          conclusion: 'success',
+          updated_at: '2026-03-06T09:00:00Z'
+        }
+      ]
+    };
+  };
+
+  const { report, exitCode } = await runReleaseConductor({
+    repoRoot: process.cwd(),
+    now: new Date('2026-03-06T12:00:00.000Z'),
+    args: {
+      apply: false,
+      dryRun: true,
+      reportPath: 'tests/results/_agent/release/release-conductor-report.json',
+      queueReportPath: 'tests/results/_agent/queue/queue-supervisor-report.json',
+      policySnapshotPath: 'tests/results/_agent/policy/policy-state-snapshot.json',
+      repo: 'owner/repo',
+      stream: 'comparevi-cli',
+      channel: 'stable',
+      version: '0.8.0',
+      dwellMinutes: 60,
+      quarantineStaleHours: 24,
+      help: false
+    },
+    environment: {
+      GITHUB_REPOSITORY: 'owner/repo',
+      RELEASE_CONDUCTOR_ENABLED: '0'
+    },
+    runGhJsonFn,
+    runCommandFn: () => ({ status: 0, stdout: '', stderr: '' }),
+    readJsonOptionalFn,
+    writeReportFn: async (reportPath) => reportPath
+  });
+
+  assert.equal(exitCode, 0);
+  assert.equal(report.decision.status, 'pass');
+  assert.equal(report.release.proposalOnly, true);
+  assert.equal(report.gates.greenDwell.status, 'fail');
+  assert.equal(report.gates.queueHealth.status, 'fail');
+  assert.equal(report.gates.quarantine.status, 'fail');
+  assert.equal(report.decision.blockerCount, 0);
+  assert.ok(report.decision.advisories.some((entry) => entry.code === 'green-dwell-no-recent-success'));
+  assert.ok(report.decision.advisories.some((entry) => entry.code === 'queue-report-unavailable-dry-run'));
+});
+
+test('runReleaseConductor still blocks dry-run when the dwell window contains workflow failures', async () => {
+  const readJsonOptionalFn = async (filePath) => {
+    const normalized = String(filePath);
+    if (normalized.includes('queue-supervisor-report.json')) {
+      return {
+        exists: true,
+        error: null,
+        path: filePath,
+        payload: {
+          paused: false,
+          throughputController: { mode: 'healthy' },
+          retryHistory: {}
+        }
+      };
+    }
+    return {
+      exists: true,
+      error: null,
+      path: filePath,
+      payload: {
+        schema: 'priority/policy-live-state@v1',
+        generatedAt: '2026-03-06T10:00:00Z',
+        state: {}
+      }
+    };
+  };
+
+  const runGhJsonFn = (args) => {
+    if (args[0] !== 'api') {
+      throw new Error(`unexpected gh args: ${args.join(' ')}`);
+    }
+    return {
+      workflow_runs: [
+        {
+          id: 1,
+          status: 'completed',
+          conclusion: 'failure',
+          updated_at: '2026-03-06T11:45:00Z'
+        }
+      ]
+    };
+  };
+
+  const { report, exitCode } = await runReleaseConductor({
+    repoRoot: process.cwd(),
+    now: new Date('2026-03-06T12:00:00.000Z'),
+    args: {
+      apply: false,
+      dryRun: true,
+      reportPath: 'tests/results/_agent/release/release-conductor-report.json',
+      queueReportPath: 'tests/results/_agent/queue/queue-supervisor-report.json',
+      policySnapshotPath: 'tests/results/_agent/policy/policy-state-snapshot.json',
+      repo: 'owner/repo',
+      stream: 'comparevi-cli',
+      channel: 'stable',
+      version: '0.8.0',
+      dwellMinutes: 60,
+      quarantineStaleHours: 24,
+      help: false
+    },
+    environment: {
+      GITHUB_REPOSITORY: 'owner/repo',
+      RELEASE_CONDUCTOR_ENABLED: '0'
+    },
+    runGhJsonFn,
+    runCommandFn: () => ({ status: 0, stdout: '', stderr: '' }),
+    readJsonOptionalFn,
+    writeReportFn: async (reportPath) => reportPath
+  });
+
+  assert.equal(exitCode, 1);
+  assert.equal(report.decision.status, 'fail');
+  assert.ok(report.decision.blockers.some((entry) => entry.code === 'green-dwell-failed'));
+});
+
 test('runReleaseConductor creates signed tag when apply is enabled and signing key is available', async () => {
   const readJsonOptionalFn = async (filePath) => {
     const normalized = String(filePath);

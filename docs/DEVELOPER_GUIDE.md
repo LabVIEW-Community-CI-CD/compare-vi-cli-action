@@ -342,6 +342,9 @@ For Docker/Desktop VI history validation, run fast-loop lanes explicitly:
   For queue-aware release proposals, run `node tools/npm/run-script.mjs priority:release:conductor -- --dry-run`.
   Apply mode requires `RELEASE_CONDUCTOR_ENABLED=1`; if signing material is unavailable, the conductor remains
   proposal-only and emits evidence without mutating tags.
+  Hosted `schedule` and `workflow_run` conductor lanes stay proposal-only when apply mode is disabled, and dry-runs
+  record advisory-only queue-evidence / no-recent-success diagnostics instead of failing for missing queue artifacts or
+  idle dwell windows.
   Use `node tools/npm/run-script.mjs priority:remediation:slo` to compute remediation SLO governance metrics
   (MTTD, route latency, MTTR by priority, reopen rate, queue/trunk/release signals) and emit
   `tests/results/_agent/slo/remediation-slo-report.json` plus governor state
