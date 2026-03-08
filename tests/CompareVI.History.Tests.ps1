@@ -1108,6 +1108,8 @@ exit 0
     $summaryContent = Get-Content -LiteralPath $summaryPath -Raw
     $summaryContent | Should -Match 'VI history report'
     $summaryContent | Should -Match 'history-report.md'
+    $summaryContent | Should -Match '## Observed interpretation'
+    $summaryContent | Should -Match '\| Coverage Class \| `catalog-aligned` \|'
     $summaryContent | Should -Match '## Mode overview'
     $summaryContent | Should -Match '\| Mode \| Processed \| Diffs \| Signal \| Collapsed Noise \| Missing \| Categories \| Buckets \| Flags \|'
     $summaryContent | Should -Match '\| default \| 1 \| 0 \| 0 \| 0 \|'
@@ -1140,6 +1142,8 @@ exit 0
       $historyMd | Should -Match 'Executed Modes: `default`'
       $historyMd | Should -Match '\| Metric \| Value \|'
       $historyMd | Should -Match '\| Signal Diffs \|'
+      $historyMd | Should -Match '## Observed interpretation'
+      $historyMd | Should -Match '\| Coverage Class \| `catalog-aligned` \|'
       $historyMd | Should -Match '## Mode overview'
       $historyMd | Should -Match '\| Mode \| Processed \| Diffs \| Signal \| Collapsed Noise \| Missing \| Categories \| Buckets \| Flags \|'
       $historyMd | Should -Match '## Attribute coverage'
@@ -1147,8 +1151,11 @@ exit 0
 
       $historyHtml = Get-Content -LiteralPath (Join-Path $rd 'history-report.html') -Raw
       $historyHtml | Should -Match '<h1>VI History Report</h1>'
+      $historyHtml | Should -Match 'Observed interpretation'
       $historyHtml | Should -Match 'Requested modes'
       $historyHtml | Should -Match 'Executed modes'
+      $historyHtml | Should -Match 'Coverage Class'
+      $historyHtml | Should -Match 'catalog-aligned'
       $historyHtml | Should -Match '<h2>Summary</h2>'
       $historyHtml | Should -Match '<th>Signal</th>'
       $historyHtml | Should -Match '<th>Collapsed Noise</th>'

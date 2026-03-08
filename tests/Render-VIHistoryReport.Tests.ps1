@@ -29,7 +29,7 @@ Describe 'Render-VIHistoryReport.ps1' -Tag 'Unit' {
             startRef          = 'HEAD'
             maxPairs          = 2
             resultsDir        = $resultsRoot
-            requestedModes    = @('default')
+            requestedModes    = @('default', 'attributes')
             executedModes     = @('default')
             status            = 'ok'
             modes             = @(
@@ -96,6 +96,40 @@ Describe 'Render-VIHistoryReport.ps1' -Tag 'Unit' {
                     mode  = 'default'
                     index = 1
                     base  = @{
+                        full   = 'aaa111111111'
+                        short  = 'aaa1111'
+                        subject= 'Clean base commit'
+                    }
+                    head  = @{
+                        full   = 'bbb222222222'
+                        short  = 'bbb2222'
+                        subject= 'Clean head commit'
+                    }
+                    lineage = [ordered]@{
+                        type        = 'mainline'
+                        parentIndex = 1
+                        parentCount = 1
+                        mergeCommit = $null
+                        branchHead  = $null
+                        depth       = 0
+                    }
+                    lineageLabel = 'Mainline'
+                    result = [ordered]@{
+                        diff                   = $false
+                        duration_s             = 0.45
+                        status                 = 'completed'
+                        reportPath             = $reportPath
+                        categories             = @()
+                        categoryDetails        = @()
+                        categoryBuckets        = @()
+                        categoryBucketDetails  = @()
+                    }
+                    highlights = @()
+                }
+                [ordered]@{
+                    mode  = 'default'
+                    index = 2
+                    base  = @{
                         full   = 'abc123456789'
                         short  = 'abc1234'
                         subject= 'Base commit'
@@ -160,19 +194,30 @@ Describe 'Render-VIHistoryReport.ps1' -Tag 'Unit' {
         Test-Path -LiteralPath $stepSummaryPath | Should -BeTrue
 
         $markdown = Get-Content -LiteralPath $markdownPath -Raw
-        $markdown | Should -Match 'Requested Modes: `default`'
+        $markdown | Should -Match 'Requested Modes: `default, attributes`'
         $markdown | Should -Match 'Executed Modes: `default`'
         $markdown | Should -Match '\| Metric \| Value \|'
         $markdown | Should -Match '\| Signal Diffs \|'
         $markdown | Should -Match '\| Buckets \|'
         $markdown | Should -Match 'Functional behavior'
         $markdown | Should -Match 'Metadata'
+        $markdown | Should -Match '## Observed interpretation'
+        $markdown | Should -Match '\| Coverage Class \| `catalog-partial` \|'
+        $markdown | Should -Match '\| Mode Sensitivity \| `single-mode-observed` \|'
+        $markdown | Should -Match '\| Outcome Labels \| `clean`, `signal-diff` \|'
         $markdown | Should -Match '\| Mode \| Processed \| Diffs \| Signal \| Collapsed Noise \| Missing \| Categories \| Buckets \| Flags \|'
         $markdown | Should -Match '\| Mode \| Pair \| Lineage \| Base \| Head \| Diff \| Duration \(s\) \| Categories \| Buckets \| Report \| Highlights \|'
 
         $html = Get-Content -LiteralPath $htmlPath -Raw
+        $html | Should -Match 'Observed interpretation'
         $html | Should -Match 'Requested modes'
         $html | Should -Match 'Executed modes'
+        $html | Should -Match 'Coverage Class'
+        $html | Should -Match 'catalog-partial'
+        $html | Should -Match 'Mode Sensitivity'
+        $html | Should -Match 'single-mode-observed'
+        $html | Should -Match 'Outcome Labels'
+        $html | Should -Match '<code>clean</code>, <code>signal-diff</code>'
         $html | Should -Match '<th>Signal</th>'
         $html | Should -Match '<th>Collapsed Noise</th>'
         $html | Should -Match '<th>Lineage</th>'
@@ -182,6 +227,10 @@ Describe 'Render-VIHistoryReport.ps1' -Tag 'Unit' {
         $html | Should -Match 'Functional behavior \(1\)'
 
         $stepSummary = Get-Content -LiteralPath $stepSummaryPath -Raw
+        $stepSummary | Should -Match '## Observed interpretation'
+        $stepSummary | Should -Match '\| Coverage Class \| `catalog-partial` \|'
+        $stepSummary | Should -Match '\| Mode Sensitivity \| `single-mode-observed` \|'
+        $stepSummary | Should -Match '\| Outcome Labels \| `clean`, `signal-diff` \|'
         $stepSummary | Should -Match '## Mode overview'
         $stepSummary | Should -Match '\| Mode \| Processed \| Diffs \| Signal \| Collapsed Noise \| Missing \| Categories \| Buckets \| Flags \|'
         $stepSummary | Should -Match 'Functional behavior \(1\)'
