@@ -432,28 +432,44 @@ jobs:
         if-no-files-found: error
   fixtures:
     needs: [smoke-gate, lint, validate-scope-plan]
-    if: >
-      needs.smoke-gate.outputs.skip != 'true' &&
-      needs.validate-scope-plan.outputs.run_fixtures == 'true'
+    if: needs.smoke-gate.outputs.skip != 'true'
     runs-on: [self-hosted, Windows, X64]
     env:
       FAIL_ON_NEW_STRUCTURAL: 'true'
       SUMMARY_VERBOSE: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.summary-verbose || 'false' }}
+      VALIDATE_SCOPE_RUN_FIXTURES: ${{ needs.validate-scope-plan.outputs.run_fixtures }}
+      VALIDATE_SCOPE_FIXTURES_REASON: ${{ needs.validate-scope-plan.outputs.fixtures_reason }}
+      VALIDATE_SCOPE_CATEGORY: ${{ needs.validate-scope-plan.outputs.scope_category }}
     steps:
+    - name: Append fixture lane plan
+      shell: pwsh
+      run: |
+        if ($env:GITHUB_STEP_SUMMARY) {
+          $lines = @(
+            '### Fixtures',
+            '',
+            ('- scope_category: `{0}`' -f $env:VALIDATE_SCOPE_CATEGORY),
+            ('- run_fixtures: `{0}`' -f $env:VALIDATE_SCOPE_RUN_FIXTURES),
+            ('- fixtures_reason: `{0}`' -f $env:VALIDATE_SCOPE_FIXTURES_REASON)
+          )
+          $lines -join "`n" | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8
+        }
     - uses: actions/checkout@v5
+      if: env.VALIDATE_SCOPE_RUN_FIXTURES == 'true'
     - name: Wire Probe (J1)
-      if: '${{ vars.WIRE_PROBES != ''0'' }}'
+      if: env.VALIDATE_SCOPE_RUN_FIXTURES == 'true' && vars.WIRE_PROBES != '0'
       uses: ./.github/actions/wire-probe
       with:
         phase: J1
         results-dir: tests/results
     - name: Wire Probe (J2)
-      if: '${{ vars.WIRE_PROBES != ''0'' }}'
+      if: env.VALIDATE_SCOPE_RUN_FIXTURES == 'true' && vars.WIRE_PROBES != '0'
       uses: ./.github/actions/wire-probe
       with:
         phase: J2
         results-dir: tests/results
     - name: Run fixture validator (JSON)
+      if: env.VALIDATE_SCOPE_RUN_FIXTURES == 'true'
       shell: pwsh
       run: |
         $ErrorActionPreference = 'Stop'
@@ -469,6 +485,7 @@ jobs:
           exit 1
         }
     - name: Restore previous fixture validation snapshot (cache)
+      if: env.VALIDATE_SCOPE_RUN_FIXTURES == 'true'
       id: restore_prev_fixture_validation
       uses: actions/cache/restore@v4
       with:
@@ -477,7 +494,7 @@ jobs:
         restore-keys: |
           fixture-validation-
     - name: Compute delta vs previous snapshot
-      if: steps.restore_prev_fixture_validation.outputs.cache-hit == 'true'
+      if: env.VALIDATE_SCOPE_RUN_FIXTURES == 'true' && steps.restore_prev_fixture_validation.outputs.cache-hit == 'true'
       shell: pwsh
       run: |
         Write-Host 'Previous snapshot restored. Computing delta.'
@@ -492,27 +509,29 @@ jobs:
           }
         }
     - name: Validate delta JSON schema (basic)
-      if: steps.restore_prev_fixture_validation.outputs.cache-hit == 'true' && hashFiles('fixture-validation-delta.json') != ''
+      if: env.VALIDATE_SCOPE_RUN_FIXTURES == 'true' && steps.restore_prev_fixture_validation.outputs.cache-hit == 'true' && hashFiles('fixture-validation-delta.json') != ''
       shell: pwsh
       run: |
         pwsh -File tools/Test-FixtureValidationDeltaSchema.ps1 -DeltaJsonPath fixture-validation-delta.json
     - name: Lite schema validate (delta)
-      if: steps.restore_prev_fixture_validation.outputs.cache-hit == 'true' && hashFiles('fixture-validation-delta.json') != ''
+      if: env.VALIDATE_SCOPE_RUN_FIXTURES == 'true' && steps.restore_prev_fixture_validation.outputs.cache-hit == 'true' && hashFiles('fixture-validation-delta.json') != ''
       shell: pwsh
       run: |
         pwsh -File tools/Invoke-JsonSchemaLite.ps1 -JsonPath fixture-validation-delta.json -SchemaPath docs/schemas/fixture-validation-delta-v1.schema.json
     - name: Upload fixture validation delta JSON
-      if: steps.restore_prev_fixture_validation.outputs.cache-hit == 'true' && hashFiles('fixture-validation-delta.json') != ''
+      if: env.VALIDATE_SCOPE_RUN_FIXTURES == 'true' && steps.restore_prev_fixture_validation.outputs.cache-hit == 'true' && hashFiles('fixture-validation-delta.json') != ''
       uses: actions/upload-artifact@v5
       with:
         name: validate-fixture-validation-delta-json
         path: fixture-validation-delta.json
     - name: Upload fixture validation JSON
+      if: env.VALIDATE_SCOPE_RUN_FIXTURES == 'true'
       uses: actions/upload-artifact@v5
       with:
         name: validate-fixture-validation-json
         path: fixture-validation.json
     - name: Lite schema validate (snapshot)
+      if: env.VALIDATE_SCOPE_RUN_FIXTURES == 'true'
       shell: pwsh
       run: |
         if (-not (Test-Path fixture-validation.json)) {
@@ -521,29 +540,32 @@ jobs:
         }
         pwsh -File tools/Invoke-JsonSchemaLite.ps1 -JsonPath fixture-validation.json -SchemaPath docs/schemas/fixture-manifest-v1.schema.json
     - name: Append fixture summary
+      if: env.VALIDATE_SCOPE_RUN_FIXTURES == 'true'
       shell: pwsh
       run: pwsh -File tools/Write-FixtureValidationSummary.ps1 -ValidationJson fixture-validation.json -DeltaJson fixture-validation-delta.json
     - name: Write fixture summary file
-      if: always()
+      if: always() && env.VALIDATE_SCOPE_RUN_FIXTURES == 'true'
       shell: pwsh
       run: pwsh -File tools/Write-FixtureValidationSummary.ps1 -ValidationJson fixture-validation.json -DeltaJson fixture-validation-delta.json -SummaryPath fixture-summary.md
     - name: Upload fixture summary artifact
-      if: always() && hashFiles('fixture-summary.md') != ''
+      if: always() && env.VALIDATE_SCOPE_RUN_FIXTURES == 'true' && hashFiles('fixture-summary.md') != ''
       uses: actions/upload-artifact@v5
       with:
         name: fixture-validation-summary
         path: fixture-summary.md
     - name: Save current snapshot to cache
+      if: env.VALIDATE_SCOPE_RUN_FIXTURES == 'true'
       uses: actions/cache/save@v4
       with:
         path: fixture-validation.json
         key: fixture-validation-${{ github.sha }}
     - name: Copy snapshot for next run reference
+      if: env.VALIDATE_SCOPE_RUN_FIXTURES == 'true'
       shell: pwsh
       run: Copy-Item -LiteralPath fixture-validation.json -Destination fixture-validation-prev.json -Force
 
     - name: Agent wait summary (notice-only)
-      if: always()
+      if: always() && env.VALIDATE_SCOPE_RUN_FIXTURES == 'true'
       uses: ./.github/actions/agent-wait-post
       with:
         results-dir: tests/results
@@ -1204,9 +1226,7 @@ jobs:
 
   vi-history-scenarios-linux:
     needs: [smoke-gate, lint, session-index, session-index-v2-contract, vi-history-scenarios-plan]
-    if: >
-      needs.smoke-gate.outputs.skip != 'true' &&
-      needs.vi-history-scenarios-plan.outputs.execute_lanes == 'true'
+    if: needs.smoke-gate.outputs.skip != 'true'
     runs-on: ubuntu-latest
     permissions:
       contents: read

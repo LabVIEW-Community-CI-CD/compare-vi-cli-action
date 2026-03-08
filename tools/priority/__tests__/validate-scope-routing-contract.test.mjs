@@ -23,11 +23,13 @@ test('validate workflow resolves change scope before heavy fan-out and publishes
   assert.match(workflow, /run_vi_history:\s+\$\{\{\s*steps\.plan\.outputs\.run_vi_history\s*\}\}/);
 });
 
-test('validate heavy jobs consume scoped lane decisions instead of running unconditionally', () => {
+test('validate heavy jobs consume scoped lane decisions without skipping required checks', () => {
   const workflow = readRepoFile('.github/workflows/validate.yml');
 
-  assert.match(workflow, /fixtures:\s*\r?\n\s+needs:\s*\[smoke-gate, lint, validate-scope-plan\]/);
-  assert.match(workflow, /needs\.validate-scope-plan\.outputs\.run_fixtures == 'true'/);
+  assert.match(workflow, /fixtures:\s*\r?\n\s+needs:\s*\[smoke-gate, lint, validate-scope-plan\]\r?\n\s+if:\s+needs\.smoke-gate\.outputs\.skip != 'true'/);
+  assert.match(workflow, /VALIDATE_SCOPE_RUN_FIXTURES:\s+\$\{\{\s*needs\.validate-scope-plan\.outputs\.run_fixtures\s*\}\}/);
+  assert.match(workflow, /Append fixture lane plan/);
+  assert.match(workflow, /if:\s+env\.VALIDATE_SCOPE_RUN_FIXTURES == 'true'/);
   assert.match(workflow, /comparevi-history-bundle-certification:\s*\r?\n\s+needs:\s*\[smoke-gate, lint, validate-scope-plan, session-index, session-index-v2-contract\]/);
   assert.match(workflow, /needs\.validate-scope-plan\.outputs\.run_bundle_certification == 'true'/);
   assert.match(workflow, /VALIDATE_SCOPE_RUN_VI_HISTORY:\s+\$\{\{\s*needs\.validate-scope-plan\.outputs\.run_vi_history\s*\}\}/);

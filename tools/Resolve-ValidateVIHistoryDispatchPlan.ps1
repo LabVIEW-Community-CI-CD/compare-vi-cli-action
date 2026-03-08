@@ -39,6 +39,11 @@ $resolvedHistoryScenarioSet = $requestedHistoryScenarioSet
 $executeLanes = $false
 $skipReason = 'event-not-workflow-dispatch'
 $downgradedHistoryCore = $false
+$normalizedScopedSkipReason = if ([string]::IsNullOrWhiteSpace($ScopedSkipReason)) {
+  ''
+} else {
+  $ScopedSkipReason.Trim()
+}
 
 if ($EventName -eq 'workflow_dispatch') {
   if ($IsForkRepository -and -not $AllowNonCanonical) {
@@ -59,13 +64,21 @@ if ($EventName -eq 'workflow_dispatch') {
 } elseif ($EnableScopedExecution) {
   $resolvedHistoryScenarioSet = Normalize-HistoryScenarioSet -Value $ScopedHistoryScenarioSet
   if ($resolvedHistoryScenarioSet -eq 'none') {
-    $skipReason = 'scoped-history-scenario-set-none'
+    if ([string]::IsNullOrWhiteSpace($normalizedScopedSkipReason)) {
+      $skipReason = 'scoped-history-scenario-set-none'
+    } else {
+      $skipReason = $normalizedScopedSkipReason
+    }
   } else {
     $executeLanes = $true
-    $skipReason = 'scoped-change'
+    if ([string]::IsNullOrWhiteSpace($normalizedScopedSkipReason)) {
+      $skipReason = 'scoped-change'
+    } else {
+      $skipReason = $normalizedScopedSkipReason
+    }
   }
-} elseif (-not [string]::IsNullOrWhiteSpace($ScopedSkipReason)) {
-  $skipReason = $ScopedSkipReason.Trim()
+} elseif (-not [string]::IsNullOrWhiteSpace($normalizedScopedSkipReason)) {
+  $skipReason = $normalizedScopedSkipReason
 }
 
 $plan = [ordered]@{
@@ -82,7 +95,7 @@ $plan = [ordered]@{
   allowNonCanonical = [bool]$AllowNonCanonical
   allowNonCanonicalHistoryCore = [bool]$AllowNonCanonicalHistoryCore
   enableScopedExecution = [bool]$EnableScopedExecution
-  scopedSkipReason = if ([string]::IsNullOrWhiteSpace($ScopedSkipReason)) { $null } else { $ScopedSkipReason.Trim() }
+  scopedSkipReason = if ([string]::IsNullOrWhiteSpace($normalizedScopedSkipReason)) { $null } else { $normalizedScopedSkipReason }
 }
 
 if (-not [string]::IsNullOrWhiteSpace($JsonPath)) {

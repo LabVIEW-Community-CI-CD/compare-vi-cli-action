@@ -300,11 +300,13 @@ For Docker/Desktop VI history validation, run fast-loop lanes explicitly:
 - Ensure required checks (`validate`, `fixtures`, `session-index`) are green before merging; rerun as needed.
 - `Validate` now computes a `validate-scope-plan` artifact before the heavy lanes fan out.
   Standard `pull_request` and `merge_group` runs classify changed paths with an allow-list into:
-  `docs-metadata-only`, `tools-policy-only`, `ci-control-plane`, `compare-engine-history`,
+  `docs-metadata-only`, `tests-only`, `tools-policy-only`, `ci-control-plane`, `mixed-lightweight`, `compare-engine-history`,
   `docker-vi-history`, plus conservative fallbacks (`mixed-runtime`, `unclassified`).
   Manual `workflow_dispatch` stays explicit (`manual-full`) and `push` keeps the default post-merge full validation shape.
 - Scoped skip surfaces:
-  `fixtures` only runs for `compare-engine-history`, `mixed-runtime`, `unclassified`, and explicit full-validation modes.
+  Required checks stay deterministic: `fixtures` and `vi-history-scenarios-linux` still report status for lightweight
+  scopes, but their expensive steps no-op when routing says the lane is out of scope.
+  `fixtures` heavy work only runs for `compare-engine-history`, `mixed-runtime`, `unclassified`, and explicit full-validation modes.
   `comparevi-history-bundle-certification` follows the same routing.
   `vi-history-scenarios-*` runs for `compare-engine-history`, `docker-vi-history`, `mixed-runtime`, `unclassified`, and
   explicit manual dispatches; the final VI-history plan still honors `history_scenario_set`.

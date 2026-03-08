@@ -334,6 +334,14 @@ function New-ScopeDefinitions {
       )
     }
     [pscustomobject]@{
+      Label    = 'tests-only'
+      Matchers = New-PathMatchers -Patterns @(
+        'tests/*',
+        'tools/hooks/__tests__/*',
+        'tools/priority/__tests__/*'
+      )
+    }
+    [pscustomobject]@{
       Label    = 'tools-policy'
       Matchers = New-PathMatchers -Patterns @(
         'tools/Assert-LineEndingDeterminism.ps1',
@@ -350,14 +358,6 @@ function New-ScopeDefinitions {
         'tools/Test-SessionIndexV2Contract.ps1',
         'tools/Update-SessionIndex*.ps1',
         'tools/Write-RunProvenance.ps1'
-      )
-    }
-    [pscustomobject]@{
-      Label    = 'tests-only'
-      Matchers = New-PathMatchers -Patterns @(
-        'tests/*',
-        'tools/hooks/__tests__/*',
-        'tools/priority/__tests__/*'
       )
     }
     [pscustomobject]@{
@@ -468,12 +468,15 @@ function Build-ScopePlan {
     } elseif ($distinctLabels.Count -eq 1 -and $distinctLabels[0] -eq 'tests-only') {
       $scopeCategory = 'tests-only'
       $reason = 'tests-only'
-    } elseif (@($distinctLabels | Where-Object { $_ -eq 'tools-policy' }).Count -gt 0 -and @($distinctLabels | Where-Object { $_ -eq 'ci-control-plane' }).Count -eq 0) {
+    } elseif ($distinctLabels.Count -eq 1 -and $distinctLabels[0] -eq 'tools-policy') {
       $scopeCategory = 'tools-policy-only'
       $reason = 'tools-policy-only'
-    } else {
+    } elseif ($distinctLabels.Count -eq 1 -and $distinctLabels[0] -eq 'ci-control-plane') {
       $scopeCategory = 'ci-control-plane'
       $reason = 'ci-control-plane-only'
+    } else {
+      $scopeCategory = 'mixed-lightweight'
+      $reason = 'mixed-lightweight'
     }
 
     $lanes.fixtures = New-LaneDecision -Run $false -Reason $reason

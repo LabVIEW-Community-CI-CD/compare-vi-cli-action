@@ -30,6 +30,17 @@ Describe 'Resolve-ValidateScopePlan' -Tag 'Unit' {
     $plan.lanes.viHistory.run | Should -BeFalse
   }
 
+  It 'classifies tool-owned contract tests as tests-only before tools-policy' {
+    $plan = & $scriptPath `
+      -EventName 'pull_request' `
+      -Repository 'LabVIEW-Community-CI-CD/compare-vi-cli-action' `
+      -ChangedFile @('tools/priority/__tests__/validate-scope-routing-contract.test.mjs') | ConvertFrom-Json -Depth 10
+
+    $plan.scopeCategory | Should -Be 'tests-only'
+    $plan.classifiedPaths[0].label | Should -Be 'tests-only'
+    $plan.lanes.fixtures.reason | Should -Be 'tests-only'
+  }
+
   It 'classifies workflow or CI control-plane changes separately from runtime changes' {
     $plan = & $scriptPath `
       -EventName 'pull_request' `
@@ -38,6 +49,19 @@ Describe 'Resolve-ValidateScopePlan' -Tag 'Unit' {
 
     $plan.scopeCategory | Should -Be 'ci-control-plane'
     $plan.lanes.fixtures.run | Should -BeFalse
+    $plan.lanes.bundleCertification.run | Should -BeFalse
+    $plan.lanes.viHistory.run | Should -BeFalse
+  }
+
+  It 'uses mixed-lightweight for multi-label lightweight-only changes' {
+    $plan = & $scriptPath `
+      -EventName 'pull_request' `
+      -Repository 'LabVIEW-Community-CI-CD/compare-vi-cli-action' `
+      -ChangedFile @('.github/workflows/validate.yml', 'docs/FIXTURE_DRIFT.md', 'tools/policy/branch-required-checks.json') | ConvertFrom-Json -Depth 10
+
+    $plan.scopeCategory | Should -Be 'mixed-lightweight'
+    $plan.lanes.fixtures.run | Should -BeFalse
+    $plan.lanes.fixtures.reason | Should -Be 'mixed-lightweight'
     $plan.lanes.bundleCertification.run | Should -BeFalse
     $plan.lanes.viHistory.run | Should -BeFalse
   }
