@@ -1,0 +1,267 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://labview-community-ci-cd.github.io/compare-vi-cli-action/schemas/comparevi-tools-history-facade-v1.schema.json",
+  "title": "CompareVI.Tools History Facade v1",
+  "type": "object",
+  "required": [
+    "schema",
+    "generatedAtUtc",
+    "target",
+    "execution",
+    "observedInterpretation",
+    "summary",
+    "reports",
+    "modes"
+  ],
+  "properties": {
+    "schema": {
+      "const": "comparevi-tools/history-facade@v1"
+    },
+    "generatedAtUtc": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "target": {
+      "type": "object",
+      "required": [
+        "path",
+        "requestedStartRef",
+        "effectiveStartRef"
+      ],
+      "properties": {
+        "path": {
+          "type": "string"
+        },
+        "requestedStartRef": {
+          "type": "string"
+        },
+        "effectiveStartRef": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": false
+    },
+    "execution": {
+      "type": "object",
+      "required": [
+        "status",
+        "reportFormat",
+        "resultsDir",
+        "manifestPath",
+        "requestedModes",
+        "executedModes"
+      ],
+      "properties": {
+        "status": {
+          "type": "string"
+        },
+        "reportFormat": {
+          "type": "string"
+        },
+        "resultsDir": {
+          "type": "string"
+        },
+        "manifestPath": {
+          "type": "string"
+        },
+        "requestedModes": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "executedModes": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      },
+      "additionalProperties": false
+    },
+    "observedInterpretation": {
+      "type": "object",
+      "required": [
+        "coverageClass",
+        "coverageDetail",
+        "modeSensitivity",
+        "outcomeLabels"
+      ],
+      "properties": {
+        "coverageClass": {
+          "type": "string"
+        },
+        "coverageDetail": {
+          "type": "string"
+        },
+        "modeSensitivity": {
+          "type": "string"
+        },
+        "outcomeLabels": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      },
+      "additionalProperties": false
+    },
+    "summary": {
+      "type": "object",
+      "required": [
+        "modes",
+        "comparisons",
+        "diffs",
+        "signalDiffs",
+        "noiseCollapsed",
+        "missing",
+        "errors",
+        "categories",
+        "bucketProfile",
+        "categoryCountKeys",
+        "bucketCountKeys"
+      ],
+      "properties": {
+        "modes": {
+          "type": "integer"
+        },
+        "comparisons": {
+          "type": "integer"
+        },
+        "diffs": {
+          "type": "integer"
+        },
+        "signalDiffs": {
+          "type": "integer"
+        },
+        "noiseCollapsed": {
+          "type": "integer"
+        },
+        "missing": {
+          "type": "integer"
+        },
+        "errors": {
+          "type": "integer"
+        },
+        "categories": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "bucketProfile": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "categoryCountKeys": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "bucketCountKeys": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      },
+      "additionalProperties": false
+    },
+    "reports": {
+      "type": "object",
+      "required": [
+        "markdownPath",
+        "htmlPath"
+      ],
+      "properties": {
+        "markdownPath": {
+          "type": "string"
+        },
+        "htmlPath": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": false
+    },
+    "modes": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "name",
+          "slug",
+          "status",
+          "processed",
+          "diffs",
+          "signalDiffs",
+          "noiseCollapsed",
+          "missing",
+          "errors",
+          "categories",
+          "bucketProfile",
+          "flags",
+          "manifestPath",
+          "resultsDir"
+        ],
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "slug": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string"
+          },
+          "processed": {
+            "type": "integer"
+          },
+          "diffs": {
+            "type": "integer"
+          },
+          "signalDiffs": {
+            "type": "integer"
+          },
+          "noiseCollapsed": {
+            "type": "integer"
+          },
+          "missing": {
+            "type": "integer"
+          },
+          "errors": {
+            "type": "integer"
+          },
+          "categories": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "bucketProfile": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "flags": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "manifestPath": {
+            "type": "string"
+          },
+          "resultsDir": {
+            "type": "string"
+          }
+        },
+        "additionalProperties": false
+      }
+    }
+  },
+  "additionalProperties": false
+}

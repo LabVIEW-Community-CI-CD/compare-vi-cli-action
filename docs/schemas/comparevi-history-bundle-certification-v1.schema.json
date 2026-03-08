@@ -83,6 +83,7 @@
       "type": "object",
       "required": [
         "aggregateManifestPath",
+        "historySummaryJson",
         "historyReportMd",
         "historyReportHtml",
         "historyGitHubOutputPath",
@@ -92,6 +93,9 @@
       ],
       "properties": {
         "aggregateManifestPath": {
+          "type": "string"
+        },
+        "historySummaryJson": {
           "type": "string"
         },
         "historyReportMd": {
@@ -118,6 +122,9 @@
     "aggregate": {
       "$ref": "#/$defs/aggregateStats"
     },
+    "historyFacade": {
+      "$ref": "#/$defs/historyFacade"
+    },
     "warningText": {
       "type": "string"
     },
@@ -137,6 +144,11 @@
         "noUnspecified",
         "warningHasUnspecified",
         "warningHasExplicitCategories",
+        "historyFacadeSchemaMatches",
+        "historyFacadeRequestedModesMatch",
+        "historyFacadeExecutedModesMatch",
+        "historyFacadeModeListMatch",
+        "historyFacadeCoverageAligned",
         "passed"
       ],
       "properties": {
@@ -159,6 +171,21 @@
           "type": "boolean"
         },
         "warningHasExplicitCategories": {
+          "type": "boolean"
+        },
+        "historyFacadeSchemaMatches": {
+          "type": "boolean"
+        },
+        "historyFacadeRequestedModesMatch": {
+          "type": "boolean"
+        },
+        "historyFacadeExecutedModesMatch": {
+          "type": "boolean"
+        },
+        "historyFacadeModeListMatch": {
+          "type": "boolean"
+        },
+        "historyFacadeCoverageAligned": {
           "type": "boolean"
         },
         "passed": {
@@ -217,6 +244,34 @@
         },
         "bucketCounts": {
           "$ref": "#/$defs/countMap"
+        }
+      },
+      "additionalProperties": false
+    },
+    "historyFacade": {
+      "type": "object",
+      "required": [
+        "schema",
+        "requestedModes",
+        "executedModes",
+        "coverageClass",
+        "outcomeLabels"
+      ],
+      "properties": {
+        "schema": {
+          "type": "string"
+        },
+        "requestedModes": {
+          "$ref": "#/$defs/stringArray"
+        },
+        "executedModes": {
+          "$ref": "#/$defs/stringArray"
+        },
+        "coverageClass": {
+          "type": "string"
+        },
+        "outcomeLabels": {
+          "$ref": "#/$defs/stringArray"
         }
       },
       "additionalProperties": false

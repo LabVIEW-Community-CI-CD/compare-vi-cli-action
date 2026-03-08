@@ -9,6 +9,7 @@
   PowerShellVersion = '5.1'
   FunctionsToExport = @(
     'Invoke-CompareVIHistory',
+    'Invoke-CompareVIHistoryFacade',
     'Invoke-CompareRefsToTemp'
   )
   CmdletsToExport   = @()

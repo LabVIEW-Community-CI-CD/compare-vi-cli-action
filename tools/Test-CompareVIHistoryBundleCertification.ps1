@@ -307,12 +307,17 @@ $aggregateManifestPath = if ($historyOutputs.ContainsKey('manifest-path')) {
 }
 $historyReportMd = if ($historyOutputs.ContainsKey('history-report-md')) { [string]$historyOutputs['history-report-md'] } else { Join-Path $historyResultsDir 'history-report.md' }
 $historyReportHtml = if ($historyOutputs.ContainsKey('history-report-html')) { [string]$historyOutputs['history-report-html'] } else { Join-Path $historyResultsDir 'history-report.html' }
+$historySummaryJson = if ($historyOutputs.ContainsKey('history-summary-json')) { [string]$historyOutputs['history-summary-json'] } else { Join-Path $historyResultsDir 'history-summary.json' }
 
 if (-not (Test-Path -LiteralPath $aggregateManifestPath -PathType Leaf)) {
     throw "Aggregate certification manifest was not produced: $aggregateManifestPath"
 }
+if (-not (Test-Path -LiteralPath $historySummaryJson -PathType Leaf)) {
+    throw "History facade summary was not produced: $historySummaryJson"
+}
 
 $aggregateManifest = Get-Content -LiteralPath $aggregateManifestPath -Raw | ConvertFrom-Json -Depth 12
+$historySummary = Get-Content -LiteralPath $historySummaryJson -Raw | ConvertFrom-Json -Depth 12
 $expectedModes = @('default', 'attributes', 'front-panel', 'block-diagram')
 $actualModes = @($aggregateManifest.modes | ForEach-Object { [string]$_.slug })
 $missingModes = @($expectedModes | Where-Object { $actualModes -notcontains $_ })
@@ -374,7 +379,16 @@ if ($aggregateManifest.stats.categoryCounts) {
 
 $warningHasUnspecified = -not [string]::IsNullOrWhiteSpace($warningLine) -and ($warningLine -match '(?i)unspecified')
 $warningHasExplicitCategories = -not [string]::IsNullOrWhiteSpace($warningLine) -and ($warningLine -match '(?i)vi attribute|front panel|block diagram')
-$passed = ($missingModes.Count -eq 0) -and ($unexpectedModes.Count -eq 0) -and ($unspecifiedHits.Count -eq 0) -and (-not $warningHasUnspecified) -and $warningHasExplicitCategories
+$summaryRequestedModes = @($historySummary.execution.requestedModes | ForEach-Object { [string]$_ })
+$summaryExecutedModes = @($historySummary.execution.executedModes | ForEach-Object { [string]$_ })
+$summaryModeSlugs = @($historySummary.modes | ForEach-Object { [string]$_.slug })
+$summaryCoverageClass = [string]$historySummary.observedInterpretation.coverageClass
+$summarySchemaMatches = [string]$historySummary.schema -eq 'comparevi-tools/history-facade@v1'
+$summaryRequestedMatches = (($summaryRequestedModes.Count -eq $expectedModes.Count) -and (@($summaryRequestedModes | Where-Object { $expectedModes -notcontains $_ }).Count -eq 0))
+$summaryExecutedMatches = (($summaryExecutedModes.Count -eq $expectedModes.Count) -and (@($summaryExecutedModes | Where-Object { $expectedModes -notcontains $_ }).Count -eq 0))
+$summaryModeListMatches = (($summaryModeSlugs.Count -eq $expectedModes.Count) -and (@($summaryModeSlugs | Where-Object { $expectedModes -notcontains $_ }).Count -eq 0))
+$summaryCoverageAligned = $summaryCoverageClass -eq 'catalog-aligned'
+$passed = ($missingModes.Count -eq 0) -and ($unexpectedModes.Count -eq 0) -and ($unspecifiedHits.Count -eq 0) -and (-not $warningHasUnspecified) -and $warningHasExplicitCategories -and $summarySchemaMatches -and $summaryRequestedMatches -and $summaryExecutedMatches -and $summaryModeListMatches -and $summaryCoverageAligned
 
 if (-not $warningLine) {
     throw 'Certification run did not emit an LVCompare detected differences warning line.'
@@ -397,6 +411,21 @@ if (-not $passed) {
     if (-not $warningHasExplicitCategories) {
         $failureReasons.Add('warning line did not include explicit category labels') | Out-Null
     }
+    if (-not $summarySchemaMatches) {
+        $failureReasons.Add('history facade schema mismatch') | Out-Null
+    }
+    if (-not $summaryRequestedMatches) {
+        $failureReasons.Add(("history facade requested modes mismatch: {0}" -f ($summaryRequestedModes -join ', '))) | Out-Null
+    }
+    if (-not $summaryExecutedMatches) {
+        $failureReasons.Add(("history facade executed modes mismatch: {0}" -f ($summaryExecutedModes -join ', '))) | Out-Null
+    }
+    if (-not $summaryModeListMatches) {
+        $failureReasons.Add(("history facade mode list mismatch: {0}" -f ($summaryModeSlugs -join ', '))) | Out-Null
+    }
+    if (-not $summaryCoverageAligned) {
+        $failureReasons.Add(("history facade coverage class mismatch: {0}" -f $summaryCoverageClass)) | Out-Null
+    }
     throw ("Multi-mode history bundle certification failed: {0}" -f ($failureReasons -join '; '))
 }
 
@@ -418,6 +447,7 @@ $summaryObject = [ordered]@{
     }
     outputs = [ordered]@{
         aggregateManifestPath = $aggregateManifestPath
+        historySummaryJson = $historySummaryJson
         historyReportMd = $historyReportMd
         historyReportHtml = $historyReportHtml
         historyGitHubOutputPath = $historyGitHubOutputPath
@@ -433,6 +463,13 @@ $summaryObject = [ordered]@{
         categoryCounts = $aggregateManifest.stats.categoryCounts
         bucketCounts = $aggregateManifest.stats.bucketCounts
     }
+    historyFacade = [ordered]@{
+        schema = [string]$historySummary.schema
+        requestedModes = $summaryRequestedModes
+        executedModes = $summaryExecutedModes
+        coverageClass = $summaryCoverageClass
+        outcomeLabels = @($historySummary.observedInterpretation.outcomeLabels)
+    }
     warningText = $warningLine
     modes = $modeSummaries
     certification = [ordered]@{
@@ -443,6 +480,11 @@ $summaryObject = [ordered]@{
         noUnspecified = ($unspecifiedHits.Count -eq 0)
         warningHasUnspecified = $warningHasUnspecified
         warningHasExplicitCategories = $warningHasExplicitCategories
+        historyFacadeSchemaMatches = $summarySchemaMatches
+        historyFacadeRequestedModesMatch = $summaryRequestedMatches
+        historyFacadeExecutedModesMatch = $summaryExecutedMatches
+        historyFacadeModeListMatch = $summaryModeListMatches
+        historyFacadeCoverageAligned = $summaryCoverageAligned
         passed = $true
     }
 }
@@ -458,6 +500,8 @@ $summaryLines += ('- Modes: `{0}`' -f ($actualModes -join ', '))
 $summaryLines += ('- Warning: `{0}`' -f $warningLine)
 $summaryLines += ('- Summary JSON: `{0}`' -f $summaryPath)
 $summaryLines += ('- Aggregate manifest: `{0}`' -f $aggregateManifestPath)
+$summaryLines += ('- History facade JSON: `{0}`' -f $historySummaryJson)
+$summaryLines += ('- History facade coverage: `{0}`' -f $summaryCoverageClass)
 $summaryLines += ''
 $summaryLines += '| Mode | Processed | Diffs | Signal | Collapsed Noise | Stop Reason |'
 $summaryLines += '| --- | ---: | ---: | ---: | ---: | --- |'

@@ -53,9 +53,19 @@ Describe 'CompareVI history bundle certification' -Tag 'CompareVI' {
         $summary.certification.noUnspecified | Should -BeTrue
         $summary.certification.warningHasUnspecified | Should -BeFalse
         $summary.certification.warningHasExplicitCategories | Should -BeTrue
+        $summary.certification.historyFacadeSchemaMatches | Should -BeTrue
+        $summary.certification.historyFacadeRequestedModesMatch | Should -BeTrue
+        $summary.certification.historyFacadeExecutedModesMatch | Should -BeTrue
+        $summary.certification.historyFacadeModeListMatch | Should -BeTrue
+        $summary.certification.historyFacadeCoverageAligned | Should -BeTrue
         $summary.warningText | Should -Match 'LVCompare detected differences'
         $summary.warningText | Should -Not -Match 'unspecified'
         @($summary.certification.actualModes) | Should -Be @('default', 'attributes', 'front-panel', 'block-diagram')
+        $summary.historyFacade.schema | Should -Be 'comparevi-tools/history-facade@v1'
+        @($summary.historyFacade.requestedModes) | Should -Be @('default', 'attributes', 'front-panel', 'block-diagram')
+        @($summary.historyFacade.executedModes) | Should -Be @('default', 'attributes', 'front-panel', 'block-diagram')
+        $summary.historyFacade.coverageClass | Should -Be 'catalog-aligned'
+        Test-Path -LiteralPath $summary.outputs.historySummaryJson -PathType Leaf | Should -BeTrue
 
         $modeIndex = @{}
         foreach ($mode in @($summary.modes)) {

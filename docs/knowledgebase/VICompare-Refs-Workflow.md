@@ -209,12 +209,13 @@ gh workflow run vi-compare-refs.yml `
 - GitHub outputs include `manifest_path` (suite manifest), `results_dir` (root history directory), `mode_manifests_json`
   (JSON array enumerating each mode's manifest path, results directory, and stable summary stats including
   `processed`, `diffs`, `signalDiffs`, `noiseCollapsed`, `errors`, `missing`, `categoryCounts`, `bucketCounts`,
-  `stopReason`, and `status`), plus `requested-mode-list`, `executed-mode-list`, and the history report pointers. The
-  compare step emits `history-report-md` / `history-report-html`, and the workflow surfaces those as job outputs
-  `history_report_md` / `history_report_html` for downstream jobs, dashboards, or PR comments. When HTML rendering is
-  skipped or fails, the Markdown path still points at the fallback report so consumers always have a summary to ingest.
-  A compressed `category-counts-json` blob is also published so downstream automation can react to runs dominated by
-  cosmetic noise without re-reading the manifests.
+  `stopReason`, and `status`), plus `requested-mode-list`, `executed-mode-list`, the history report pointers, and
+  `history-summary-json`. The compare step emits `history-report-md` / `history-report-html` plus
+  `history-summary-json`, and the workflow surfaces the report paths for downstream jobs, dashboards, or PR comments.
+  `history-summary.json` is the stabilized downstream facade (`comparevi-tools/history-facade@v1`) used by
+  `Invoke-CompareVIHistoryFacade`. When HTML rendering is skipped or fails, the Markdown path still points at the
+  fallback report so consumers always have a summary to ingest. A compressed `category-counts-json` blob is also
+  published so downstream automation can react to runs dominated by cosmetic noise without re-reading the manifests.
 - History summary JSON (`tests/results/pr-vi-history/vi-history-summary.json`) now adds:
   - `targets[].reportImages` for per-target extraction metadata.
   - `pairTimeline[]` with additive per-pair contract fields:

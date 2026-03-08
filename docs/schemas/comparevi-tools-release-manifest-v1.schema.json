@@ -9,6 +9,7 @@
     "module",
     "source",
     "compatibility",
+    "consumerContract",
     "bundle"
   ],
   "properties": {
@@ -105,6 +106,53 @@
           "items": {
             "type": "string"
           }
+        }
+      },
+      "additionalProperties": false
+    },
+    "consumerContract": {
+      "type": "object",
+      "required": [
+        "historyFacade"
+      ],
+      "properties": {
+        "historyFacade": {
+          "type": "object",
+          "required": [
+            "schema",
+            "schemaUrl",
+            "exportedFunction",
+            "resultsRelativePath",
+            "stableFields",
+            "notes"
+          ],
+          "properties": {
+            "schema": {
+              "type": "string"
+            },
+            "schemaUrl": {
+              "type": "string"
+            },
+            "exportedFunction": {
+              "type": "string"
+            },
+            "resultsRelativePath": {
+              "type": "string"
+            },
+            "stableFields": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "notes": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            }
+          },
+          "additionalProperties": false
         }
       },
       "additionalProperties": false

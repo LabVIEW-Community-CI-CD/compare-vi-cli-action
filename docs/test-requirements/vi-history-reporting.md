@@ -44,6 +44,8 @@ real LVCompare artifacts are captured in CI. Current tests verify flag wiring vi
    count, category counts, bucket counts, and status).
 1. `steps.history.outputs['requested-mode-list']` and `steps.history.outputs['executed-mode-list']` shall emit the
    normalized mode bundle as comma-separated mode slugs in execution order.
+1. `steps.history.outputs['history-summary-json']` shall resolve to the stabilized
+   `comparevi-tools/history-facade@v1` summary artifact.
 1. `steps.history.outputs['results-dir']` shall equal the root history directory.
 1. Step summary shall report target, requested/resolved start refs, processed pairs, stop reason, last diff, and active
    mode for each iteration, and render a per-mode Markdown table covering processed/diff/signal/collapsed-noise/missing
@@ -58,5 +60,7 @@ real LVCompare artifacts are captured in CI. Current tests verify flag wiring vi
 1. `docs/knowledgebase/VICompare-Refs-Workflow.md` shall describe the `modes` input and multi-mode dispatch examples.
 1. Documentation shall explain helper usage with `-Mode`, how `requestedModes[]` / `executedModes[]` map to the mode
    bundle, and how the stable `mode-manifests-json` payload exposes per-mode stats.
+1. Documentation shall describe the supported `Invoke-CompareVIHistoryFacade`
+   helper and `history-summary.json` contract for downstream bundle consumers.
 1. Documentation shall note that artifacts are partitioned per mode and that report-format tests will be enriched with
    real LVCompare outputs.
