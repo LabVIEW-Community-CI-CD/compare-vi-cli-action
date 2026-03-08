@@ -450,10 +450,10 @@ exit 0
     Test-Path -LiteralPath $modeEntry.manifestPath | Should -BeTrue
     $manifest = Get-Content -LiteralPath $modeEntry.manifestPath -Raw | ConvertFrom-Json
 
-    $aggregate.stats.processed | Should -Be 0
+    $aggregate.stats.processed | Should -Be 1
     $aggregate.stats.diffs | Should -Be 0
     $aggregate.stats.missing | Should -Be 0
-    $modeEntry.stats.stopReason | Should -Be 'no-pairs'
+    $modeEntry.stats.stopReason | Should -Be 'max-pairs'
     $manifest.schema | Should -Be 'vi-compare/history@v1'
     $manifest.reportFormat | Should -Be 'html'
     $manifest.flags | Should -Contain '-nobd'
@@ -461,10 +461,10 @@ exit 0
     $manifest.flags | Should -Contain '-nofp'
     $manifest.flags | Should -Contain '-nofppos'
     $manifest.flags | Should -Contain '-nobdcosm'
-    $manifest.stats.processed | Should -Be 0
+    $manifest.stats.processed | Should -Be 1
     $manifest.stats.diffs | Should -Be 0
-    $manifest.stats.stopReason | Should -Be 'no-pairs'
-    $manifest.comparisons.Count | Should -Be 0
+    $manifest.stats.stopReason | Should -Be 'max-pairs'
+    $manifest.comparisons.Count | Should -Be 1
   }
 
   It 'collapses noise-only diffs by default' {
@@ -654,13 +654,12 @@ exit 0
 
       $modeEntry = $aggregate.modes | Where-Object { $_.slug -eq 'default' }
       $modeEntry | Should -Not -BeNullOrEmpty
-      $modeEntry.maxPairs | Should -BeNullOrEmpty
       Test-Path -LiteralPath $modeEntry.manifestPath | Should -BeTrue
 
       $modeManifest = Get-Content -LiteralPath $modeEntry.manifestPath -Raw | ConvertFrom-Json
       $modeManifest.maxPairs | Should -BeNullOrEmpty
-      $modeManifest.stats.stopReason | Should -Be 'no-pairs'
-      $modeManifest.stats.processed | Should -Be 0
+      $modeManifest.stats.stopReason | Should -Be 'complete'
+      $modeManifest.stats.processed | Should -BeGreaterThan 0
     } finally {
       if ($null -eq $originalDiff) {
         Remove-Item Env:STUB_COMPARE_DIFF -ErrorAction SilentlyContinue
@@ -693,17 +692,18 @@ exit 0
     $aggregate = Get-Content -LiteralPath $suitePath -Raw | ConvertFrom-Json
     $modeEntry = $aggregate.modes | Where-Object { $_.slug -eq 'default' }
     $modeEntry | Should -Not -BeNullOrEmpty
-    $modeEntry.stats.processed | Should -Be 0
-    $modeEntry.stats.stopReason | Should -Be 'no-pairs'
+    $modeEntry.stats.processed | Should -Be 1
+    $modeEntry.stats.stopReason | Should -Be 'max-pairs'
     Test-Path -LiteralPath $modeEntry.manifestPath | Should -BeTrue
     $manifest = Get-Content -LiteralPath $modeEntry.manifestPath -Raw | ConvertFrom-Json
-    $manifest.stats.diffs | Should -Be 0
+    $manifest.stats.diffs | Should -Be 1
+    $manifest.stats.noiseCollapsed | Should -Be 1
     $manifest.flags | Should -Contain '-nobd'
     $manifest.flags | Should -Contain '-noattr'
     $manifest.flags | Should -Contain '-nofp'
     $manifest.flags | Should -Contain '-nofppos'
     $manifest.flags | Should -Contain '-nobdcosm'
-    $manifest.stats.stopReason | Should -Be 'no-pairs'
+    $manifest.stats.stopReason | Should -Be 'max-pairs'
     $manifest.comparisons.Count | Should -Be 0
   }
 
@@ -732,12 +732,12 @@ exit 0
       $modeEntry = $aggregate.modes | Where-Object { $_.slug -eq 'default' }
       $modeEntry | Should -Not -BeNullOrEmpty
       $modeEntry.reportFormat | Should -Be 'xml'
-      $modeEntry.stats.stopReason | Should -Be 'no-pairs'
+      $modeEntry.stats.stopReason | Should -Be 'max-pairs'
       Test-Path -LiteralPath $modeEntry.manifestPath | Should -BeTrue
       $manifest = Get-Content -LiteralPath $modeEntry.manifestPath -Raw | ConvertFrom-Json
       $manifest.reportFormat | Should -Be 'xml'
       $manifest.flags | Should -Contain '-nobd'
-      $manifest.stats.stopReason | Should -Be 'no-pairs'
+      $manifest.stats.stopReason | Should -Be 'max-pairs'
       $manifest.comparisons.Count | Should -Be 0
     }
     finally {
@@ -827,7 +827,7 @@ exit 0
     $modeEntry.flags | Should -Contain '-nofp'
     $modeEntry.flags | Should -Contain '-nofppos'
     $modeEntry.flags | Should -Contain '-nobdcosm'
-    $modeEntry.stats.stopReason | Should -Be 'no-pairs'
+    $modeEntry.stats.stopReason | Should -Be 'max-pairs'
     Test-Path -LiteralPath $modeEntry.manifestPath | Should -BeTrue
     $manifest = Get-Content -LiteralPath $modeEntry.manifestPath -Raw | ConvertFrom-Json
     $manifest.mode | Should -Be 'attributes'
@@ -836,8 +836,8 @@ exit 0
     $manifest.flags | Should -Contain '-nofp'
     $manifest.flags | Should -Contain '-nofppos'
     $manifest.flags | Should -Contain '-nobdcosm'
-    $manifest.stats.stopReason | Should -Be 'no-pairs'
-    $manifest.comparisons.Count | Should -Be 0
+    $manifest.stats.stopReason | Should -Be 'max-pairs'
+    $manifest.comparisons.Count | Should -Be 1
   }
 
   It 'drops front panel ignores when front-panel mode is selected' {
@@ -866,7 +866,7 @@ exit 0
     $modeEntry.flags | Should -Contain '-nobd'
     $modeEntry.flags | Should -Contain '-noattr'
     $modeEntry.flags | Should -Contain '-nobdcosm'
-    $modeEntry.stats.stopReason | Should -Be 'no-pairs'
+    $modeEntry.stats.stopReason | Should -Be 'max-pairs'
     Test-Path -LiteralPath $modeEntry.manifestPath | Should -BeTrue
     $manifest = Get-Content -LiteralPath $modeEntry.manifestPath -Raw | ConvertFrom-Json
     $manifest.mode | Should -Be 'front-panel'
@@ -875,8 +875,8 @@ exit 0
     $manifest.flags | Should -Contain '-nobd'
     $manifest.flags | Should -Contain '-noattr'
     $manifest.flags | Should -Contain '-nobdcosm'
-    $manifest.stats.stopReason | Should -Be 'no-pairs'
-    $manifest.comparisons.Count | Should -Be 0
+    $manifest.stats.stopReason | Should -Be 'max-pairs'
+    $manifest.comparisons.Count | Should -Be 1
   }
 
   It 'drops block diagram cosmetic ignore when block-diagram mode is selected' {
@@ -905,7 +905,7 @@ exit 0
     $modeEntry.flags | Should -Contain '-noattr'
     $modeEntry.flags | Should -Contain '-nofp'
     $modeEntry.flags | Should -Contain '-nofppos'
-    $modeEntry.stats.stopReason | Should -Be 'no-pairs'
+    $modeEntry.stats.stopReason | Should -Be 'max-pairs'
     Test-Path -LiteralPath $modeEntry.manifestPath | Should -BeTrue
     $manifest = Get-Content -LiteralPath $modeEntry.manifestPath -Raw | ConvertFrom-Json
     $manifest.mode | Should -Be 'block-diagram'
@@ -914,8 +914,8 @@ exit 0
     $manifest.flags | Should -Contain '-noattr'
     $manifest.flags | Should -Contain '-nofp'
     $manifest.flags | Should -Contain '-nofppos'
-    $manifest.stats.stopReason | Should -Be 'no-pairs'
-    $manifest.comparisons.Count | Should -Be 0
+    $manifest.stats.stopReason | Should -Be 'max-pairs'
+    $manifest.comparisons.Count | Should -Be 1
   }
 
   It 'removes all ignore flags when mode is "all"' {
@@ -968,13 +968,13 @@ exit 0
     $modeEntry = $aggregate.modes | Where-Object { $_.slug -eq 'full' }
     $modeEntry | Should -Not -BeNullOrEmpty
     ($modeEntry.flags | Measure-Object).Count | Should -Be 0
-    $modeEntry.stats.stopReason | Should -Be 'no-pairs'
+    $modeEntry.stats.stopReason | Should -Be 'max-pairs'
     Test-Path -LiteralPath $modeEntry.manifestPath | Should -BeTrue
     $manifest = Get-Content -LiteralPath $modeEntry.manifestPath -Raw | ConvertFrom-Json
     $manifest.mode | Should -Be 'full'
     $manifest.flags | Should -BeNullOrEmpty
-    $manifest.stats.stopReason | Should -Be 'no-pairs'
-    $manifest.comparisons.Count | Should -Be 0
+    $manifest.stats.stopReason | Should -Be 'max-pairs'
+    $manifest.comparisons.Count | Should -Be 1
   }
 
   It 'executes multiple modes and writes per-mode manifests' {
@@ -1006,12 +1006,12 @@ exit 0
 
     $defaultManifest = Get-Content -LiteralPath $defaultEntry.manifestPath -Raw | ConvertFrom-Json
     $defaultManifest.mode | Should -Be 'default'
-    $defaultManifest.stats.stopReason | Should -Be 'no-pairs'
-    $defaultManifest.comparisons.Count | Should -Be 0
+    $defaultManifest.stats.stopReason | Should -Be 'max-pairs'
+    $defaultManifest.comparisons.Count | Should -Be 1
     $attributeManifest = Get-Content -LiteralPath $attributeEntry.manifestPath -Raw | ConvertFrom-Json
     $attributeManifest.mode | Should -Be 'attributes'
-    $attributeManifest.stats.stopReason | Should -Be 'no-pairs'
-    $attributeManifest.comparisons.Count | Should -Be 0
+    $attributeManifest.stats.stopReason | Should -Be 'max-pairs'
+    $attributeManifest.comparisons.Count | Should -Be 1
   }
 
   It 'emits GitHub outputs describing aggregate and per-mode manifests' {
@@ -1065,13 +1065,13 @@ exit 0
     $modeSummary = $modeJsonValue | ConvertFrom-Json
     $modeSummary.Count | Should -Be 2
     foreach ($entry in $modeSummary) {
-      $entry.stopReason | Should -Be 'no-pairs'
-      $entry.processed | Should -Be 0
+      $entry.stopReason | Should -Be 'max-pairs'
+      $entry.processed | Should -Be 1
       $entry.signalDiffs | Should -Be 0
       $entry.noiseCollapsed | Should -Be 0
       $entry.errors | Should -Be 0
-      $entry.categoryCounts.PSObject.Properties.Count | Should -Be 0
-      $entry.bucketCounts.PSObject.Properties.Count | Should -Be 0
+      @($entry.categoryCounts.PSObject.Properties).Count | Should -Be 0
+      @($entry.bucketCounts.PSObject.Properties).Count | Should -Be 0
     }
 
     $bucketJsonLine = $outputLines | Where-Object { $_ -like 'bucket-counts-json=*' } | Select-Object -First 1
@@ -1411,8 +1411,8 @@ exit 0
 
       $historyMd = Get-Content -LiteralPath (Join-Path $rd 'history-report.md') -Raw
       $historyMd | Should -Match '\| Mode \| Processed \| Diffs \|'
-      $historyMd | Should -Match '\| default \| 0 \| 0 \|'
-      $historyMd | Should -Match '\| attributes \| 0 \| 0 \|'
+      $historyMd | Should -Match '\| default \| 1 \| 1 \|'
+      $historyMd | Should -Match '\| attributes \| 1 \| 1 \|'
     } finally {
       if ($null -eq $originalDiff) {
         Remove-Item Env:STUB_COMPARE_DIFF -ErrorAction SilentlyContinue

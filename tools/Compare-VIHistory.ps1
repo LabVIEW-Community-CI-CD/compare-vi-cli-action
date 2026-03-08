@@ -2135,7 +2135,7 @@ foreach ($modeSpec in $modeSpecs) {
     $diffHighlights.Add($highlight)
   } elseif ($diffCount -gt 0 -and $noisePolicyEffective -eq 'include') {
     $diffPlural = if ($diffCount -eq 1) { '' } else { 's' }
-    $diffHighlights.Add("{0}: {1} diff{2}" -f $modeName, $diffCount, $diffPlural)
+    $diffHighlights.Add(("{0}: {1} diff{2}" -f $modeName, $diffCount, $diffPlural))
   }
   if ($noiseCollapsedCount -gt 0 -and $noisePolicyEffective -ne 'include') {
     $noisePlural = if ($noiseCollapsedCount -eq 1) { '' } else { 's' }
