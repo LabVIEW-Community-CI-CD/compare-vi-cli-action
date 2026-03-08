@@ -342,3 +342,177 @@ test('copilot-review-gate can evaluate the current-head state from the collected
   assert.equal(reviewsCalled, false);
   assert.equal(threadsCalled, false);
 });
+
+test('copilot-review-gate reports an error when loading reviews fails', async () => {
+  const { runCopilotReviewGate } = await loadModule();
+
+  const result = await runCopilotReviewGate({
+    argv: createArgv([
+      '--event-name',
+      'pull_request_target',
+      '--repo',
+      'LabVIEW-Community-CI-CD/compare-vi-cli-action',
+      '--pr',
+      '885',
+      '--head-sha',
+      '9999999999999999999999999999999999999999',
+      '--base-ref',
+      'develop',
+      '--draft',
+      'false',
+    ]),
+    // Simulate a failure while loading reviews; the gate should catch this
+    // and produce a failure report with gateState 'error'.
+    loadReviewsFn: async () => {
+      throw new Error('simulated loadReviews failure');
+    },
+    loadThreadsFn: async () => {
+      return [];
+    },
+    writeReportFn: () => 'memory://copilot-review-gate-error.json',
+    appendStepSummaryFn: () => {},
+  });
+
+  assert.notEqual(result.exitCode, 0);
+  assert.equal(result.report?.gateState, 'error');
+});
+
+test('copilot-review-gate fails when signal includes thread pagination errors', async () => {
+  const { runCopilotReviewGate } = await loadModule();
+  let reviewsCalled = false;
+  let threadsCalled = false;
+
+  const result = await runCopilotReviewGate({
+    argv: createArgv([
+      '--event-name',
+      'pull_request_target',
+      '--repo',
+      'LabVIEW-Community-CI-CD/compare-vi-cli-action',
+      '--pr',
+      '885',
+      '--head-sha',
+      '9999999999999999999999999999999999999999',
+      '--base-ref',
+      'develop',
+      '--draft',
+      'false',
+      '--signal',
+      'tests/results/_agent/reviews/copilot-review-signal-pagination-error.json',
+    ]),
+    readSignalFn: () => ({
+      schema: 'priority/copilot-review-signal@v1',
+      repository: 'LabVIEW-Community-CI-CD/compare-vi-cli-action',
+      pullRequest: {
+        number: 885,
+        url: 'https://github.com/LabVIEW-Community-CI-CD/compare-vi-cli-action/pull/885',
+        draft: false,
+        headSha: '9999999999999999999999999999999999999999',
+        baseRef: 'develop',
+      },
+      latestCopilotReview: {
+        id: '15',
+        state: 'COMMENTED',
+        commitId: '9999999999999999999999999999999999999999',
+        submittedAt: '2026-03-08T06:05:00Z',
+        url: 'https://github.com/example/review/15',
+        isCurrentHead: true,
+        bodySummary: 'Current-head Copilot review.',
+      },
+      staleReviews: [],
+      unresolvedThreads: [],
+      actionableComments: [],
+      // Simulate errors produced by detectThreadPaginationErrors, e.g., when
+      // hasNextPage is true and threads are truncated.
+      errors: [
+        {
+          scope: 'threads',
+          code: 'pagination-truncated',
+          message: 'Review threads were truncated due to pagination; unable to safely evaluate gate.',
+        },
+      ],
+    }),
+    loadReviewsFn: async () => {
+      reviewsCalled = true;
+      return [];
+    },
+    loadThreadsFn: async () => {
+      threadsCalled = true;
+      return [];
+    },
+    writeReportFn: () => 'memory://copilot-review-gate-pagination-error.json',
+    appendStepSummaryFn: () => {},
+  });
+
+  assert.notEqual(result.exitCode, 0);
+  assert.equal(result.report?.source.mode, 'signal');
+  assert.equal(result.report?.gateState, 'error');
+  assert.equal(reviewsCalled, false);
+  assert.equal(threadsCalled, false);
+});
+
+test('copilot-review-gate skips when the base ref is not gated', async () => {
+  const { runCopilotReviewGate } = await loadModule();
+  let reviewsCalled = false;
+  let threadsCalled = false;
+
+  const result = await runCopilotReviewGate({
+    argv: createArgv([
+      '--event-name',
+      'pull_request_target',
+      '--repo',
+      'LabVIEW-Community-CI-CD/compare-vi-cli-action',
+      '--pr',
+      '885',
+      '--head-sha',
+      '9999999999999999999999999999999999999999',
+      '--base-ref',
+      'main',
+      '--gated-base-refs',
+      'develop',
+      '--draft',
+      'false',
+      '--signal',
+      'tests/results/_agent/reviews/copilot-review-signal-base-ref-not-gated.json',
+    ]),
+    readSignalFn: () => ({
+      schema: 'priority/copilot-review-signal@v1',
+      repository: 'LabVIEW-Community-CI-CD/compare-vi-cli-action',
+      pullRequest: {
+        number: 885,
+        url: 'https://github.com/LabVIEW-Community-CI-CD/compare-vi-cli-action/pull/885',
+        draft: false,
+        headSha: '9999999999999999999999999999999999999999',
+        baseRef: 'main',
+      },
+      latestCopilotReview: {
+        id: '15',
+        state: 'COMMENTED',
+        commitId: '9999999999999999999999999999999999999999',
+        submittedAt: '2026-03-08T06:05:00Z',
+        url: 'https://github.com/example/review/15',
+        isCurrentHead: true,
+        bodySummary: 'Current-head Copilot review on an ungated base ref.',
+      },
+      staleReviews: [],
+      unresolvedThreads: [],
+      actionableComments: [],
+      errors: [],
+    }),
+    loadReviewsFn: async () => {
+      reviewsCalled = true;
+      return [];
+    },
+    loadThreadsFn: async () => {
+      threadsCalled = true;
+      return [];
+    },
+    writeReportFn: () => 'memory://copilot-review-gate-base-ref-not-gated.json',
+    appendStepSummaryFn: () => {},
+  });
+
+  assert.equal(result.exitCode, 0);
+  assert.equal(result.report?.source.mode, 'signal');
+  assert.equal(result.report?.gateState, 'skipped');
+  assert.equal(reviewsCalled, false);
+  assert.equal(threadsCalled, false);
+});
