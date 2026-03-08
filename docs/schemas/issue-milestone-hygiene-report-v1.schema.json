@@ -10,6 +10,7 @@
     "generatedAt",
     "repository",
     "state",
+    "execution",
     "flags",
     "policy",
     "milestones",
@@ -34,6 +35,21 @@
     },
     "state": {
       "enum": ["open", "all"]
+    },
+    "execution": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["status", "errors"],
+      "properties": {
+        "status": {
+          "type": "string",
+          "enum": ["pass", "warn", "fail", "error"]
+        },
+        "errors": {
+          "type": "array",
+          "items": { "type": "string" }
+        }
+      }
     },
     "flags": {
       "type": "object",

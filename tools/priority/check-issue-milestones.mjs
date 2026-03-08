@@ -339,6 +339,89 @@ async function writeJsonReport(reportPath, payload) {
   return resolved;
 }
 
+function findOptionValue(argv, optionName) {
+  const args = Array.isArray(argv) ? argv : [];
+  for (let index = 0; index < args.length; index += 1) {
+    if (args[index] !== optionName) {
+      continue;
+    }
+    const next = args[index + 1];
+    if (!next || String(next).startsWith('-')) {
+      return null;
+    }
+    return String(next);
+  }
+  return null;
+}
+
+function buildExecutionState(status, errors = []) {
+  return {
+    status,
+    errors: Array.isArray(errors) ? errors.filter(Boolean).map((entry) => String(entry)) : []
+  };
+}
+
+function buildFallbackFailureReport({
+  now = new Date(),
+  options = {},
+  policy = null,
+  error
+} = {}) {
+  const normalizedError = normalizeText(error?.message ?? error) ?? 'unknown error';
+  const requiredLabels = options.requiredLabels ?? policy?.required?.labels ?? [...DEFAULT_REQUIRED_LABELS];
+  const titlePriorityPattern =
+    options.titlePriorityPattern ?? policy?.required?.titlePriorityPattern ?? DEFAULT_TITLE_PRIORITY_PATTERN;
+  const requireOpenMilestone =
+    options.requireOpenMilestone == null
+      ? (policy?.required?.requireOpenMilestone ?? DEFAULT_REQUIRE_OPEN_MILESTONE)
+      : Boolean(options.requireOpenMilestone);
+  const warnOnly = options.warnOnly == null ? Boolean(policy?.warnOnly) : Boolean(options.warnOnly);
+  const defaultMilestoneTitle = options.defaultMilestone ?? policy?.defaultMilestone ?? null;
+  const defaultMilestoneDueOn = options.defaultMilestoneDueOn ?? policy?.defaultMilestoneDueOn ?? null;
+  const createDefaultMilestone = Boolean(options.createDefaultMilestone || policy?.createDefaultMilestone);
+
+  return {
+    schema: REPORT_SCHEMA,
+    schemaVersion: '1.0.0',
+    generatedAt: now.toISOString(),
+    repository: options.repo,
+    state: options.state ?? 'open',
+    execution: buildExecutionState('error', [normalizedError]),
+    flags: {
+      applyDefaultMilestone: Boolean(options.applyDefaultMilestone),
+      warnOnly,
+      requireOpenMilestone,
+      createDefaultMilestone
+    },
+    policy: {
+      path: policy?.path ?? path.resolve(options.policyPath ?? DEFAULT_POLICY_PATH),
+      requiredLabels,
+      titlePriorityPattern,
+      defaultMilestone: defaultMilestoneTitle,
+      defaultMilestoneDueOn
+    },
+    milestones: {
+      totalCount: 0,
+      openCount: 0,
+      closedCount: 0,
+      defaultMilestone: null,
+      createdDefaultMilestone: false
+    },
+    summary: {
+      issueCount: 0,
+      requiredIssueCount: 0,
+      triggerCounts: {},
+      initialViolationCount: 0,
+      remainingViolationCount: 0,
+      remainingReasonCounts: {},
+      assignedDefaultMilestoneCount: 0,
+      failedAssignmentsCount: 0
+    },
+    violations: [],
+    reconciliations: []
+  };
+}
+
 export function evaluateIssue(issue, {
   requiredLabels,
   titlePriorityTokens,
@@ -569,6 +652,7 @@ export async function runMilestoneHygiene({
     acc[key] = (acc[key] ?? 0) + 1;
     return acc;
   }, {});
+  const status = remainingViolations.length === 0 ? 'pass' : (warnOnly ? 'warn' : 'fail');
 
   const report = {
     schema: REPORT_SCHEMA,
@@ -576,6 +660,7 @@ export async function runMilestoneHygiene({
     generatedAt: now.toISOString(),
     repository: options.repo,
     state: options.state,
+    execution: buildExecutionState(status),
     flags: {
       applyDefaultMilestone: options.applyDefaultMilestone,
       warnOnly,
@@ -616,7 +701,6 @@ export async function runMilestoneHygiene({
   };
 
   const reportPath = await writeJsonReportFn(options.reportPath, report);
-  const status = remainingViolations.length === 0 ? 'pass' : (warnOnly ? 'warn' : 'fail');
   console.log(`[milestone-hygiene] report: ${reportPath}`);
   console.log(
     `[milestone-hygiene] status=${status} issues=${report.summary.issueCount} required=${report.summary.requiredIssueCount} remaining=${report.summary.remainingViolationCount}`
@@ -640,6 +724,76 @@ export async function runMilestoneHygiene({
 
   const exitCode = remainingViolations.length === 0 || warnOnly ? 0 : 1;
   return { exitCode, report, reportPath, help: false };
+}
+
+export async function runMilestoneHygieneWithFailureReport({
+  argv = process.argv.slice(2),
+  env = process.env,
+  now = new Date(),
+  runGhJsonFn = runGhJson,
+  runGhFn = runGh,
+  loadPolicyFn = loadPolicy,
+  writeJsonReportFn = writeJsonReport
+} = {}) {
+  try {
+    return await runMilestoneHygiene({
+      argv,
+      env,
+      now,
+      runGhJsonFn,
+      runGhFn,
+      loadPolicyFn,
+      writeJsonReportFn
+    });
+  } catch (error) {
+    const rawArgs = Array.isArray(argv) ? argv : [];
+    const repo = normalizeText(findOptionValue(rawArgs, '--repo')) ?? normalizeText(env.GITHUB_REPOSITORY);
+    const reportPath = findOptionValue(rawArgs, '--report') ?? DEFAULT_REPORT_PATH;
+    const state = normalizeText(findOptionValue(rawArgs, '--state')) ?? 'open';
+    const policyPath = findOptionValue(rawArgs, '--policy') ?? DEFAULT_POLICY_PATH;
+
+    if (!repo) {
+      throw error;
+    }
+
+    let policy = null;
+    try {
+      policy = await loadPolicyFn(policyPath);
+    } catch {
+      policy = null;
+    }
+
+    const fallbackRequiredLabels = parseList(findOptionValue(rawArgs, '--required-labels'));
+    const fallbackOptions = {
+      repo,
+      state,
+      policyPath,
+      reportPath,
+      requiredLabels: fallbackRequiredLabels.length > 0 ? fallbackRequiredLabels : null,
+      titlePriorityPattern: normalizeText(findOptionValue(rawArgs, '--title-priority-pattern')),
+      defaultMilestone: normalizeText(findOptionValue(rawArgs, '--default-milestone')),
+      defaultMilestoneDueOn: normalizeText(findOptionValue(rawArgs, '--default-milestone-due-on')),
+      applyDefaultMilestone: rawArgs.includes('--apply-default-milestone'),
+      createDefaultMilestone: rawArgs.includes('--create-default-milestone'),
+      warnOnly: rawArgs.includes('--warn-only') ? true : null,
+      requireOpenMilestone: rawArgs.includes('--allow-closed-milestone') ? false : null
+    };
+
+    const report = buildFallbackFailureReport({
+      now,
+      options: fallbackOptions,
+      policy,
+      error
+    });
+    const writtenReportPath = await writeJsonReportFn(reportPath, report);
+
+    console.log(`[milestone-hygiene] report: ${writtenReportPath}`);
+    console.error(
+      `[milestone-hygiene] status=error issues=${report.summary.issueCount} required=${report.summary.requiredIssueCount} remaining=${report.summary.remainingViolationCount}`
+    );
+    console.error(`[milestone-hygiene] ${report.execution.errors.join('; ')}`);
+    return { exitCode: 1, report, reportPath: writtenReportPath, help: false };
+  }
 }
 
 function printHelp() {
@@ -666,7 +820,7 @@ Options:
 const modulePath = path.resolve(fileURLToPath(import.meta.url));
 const invokedPath = process.argv[1] ? path.resolve(process.argv[1]) : null;
 if (invokedPath && invokedPath === modulePath) {
-  runMilestoneHygiene()
+  runMilestoneHygieneWithFailureReport()
     .then(({ exitCode, help }) => {
       if (help) {
         printHelp();

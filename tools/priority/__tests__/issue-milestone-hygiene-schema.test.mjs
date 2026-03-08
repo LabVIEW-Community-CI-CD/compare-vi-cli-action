@@ -9,7 +9,7 @@ import { readFile } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
 import Ajv2020 from 'ajv/dist/2020.js';
 import addFormats from 'ajv-formats';
-import { runMilestoneHygiene } from '../check-issue-milestones.mjs';
+import { runMilestoneHygiene, runMilestoneHygieneWithFailureReport } from '../check-issue-milestones.mjs';
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..', '..');
 
@@ -93,7 +93,47 @@ test('issue milestone hygiene schema validates generated report and asserts labe
 
   assert.equal(report.flags.createDefaultMilestone, true);
   assert.equal(report.flags.applyDefaultMilestone, true);
+  assert.equal(report.execution.status, 'pass');
   assert.equal(report.policy.requiredLabels.includes('program'), true);
   assert.equal(report.reconciliations[0].triggers.includes('label:program'), true);
   assert.equal(report.summary.triggerCounts['label:program'], 1);
+});
+
+test('issue milestone hygiene schema validates generated error report when evaluation aborts early', async () => {
+  const schemaPath = path.join(repoRoot, 'docs', 'schemas', 'issue-milestone-hygiene-report-v1.schema.json');
+  const schema = JSON.parse(await readFile(schemaPath, 'utf8'));
+
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'milestone-hygiene-error-schema-'));
+  const outputPath = path.join(tmpDir, 'report.json');
+
+  const result = await runMilestoneHygieneWithFailureReport({
+    argv: ['--repo', 'example/repo', '--report', outputPath],
+    now: new Date('2026-03-06T12:00:00Z'),
+    loadPolicyFn: async () => ({
+      path: path.join(repoRoot, 'tools', 'policy', 'issue-milestone-hygiene.json'),
+      required: {
+        labels: ['standing-priority', 'program'],
+        titlePriorityPattern: String.raw`\[(P0|P1)\]`,
+        requireOpenMilestone: true
+      },
+      defaultMilestone: null,
+      defaultMilestoneDueOn: null,
+      warnOnly: false,
+      createDefaultMilestone: false
+    }),
+    runGhJsonFn: () => {
+      throw new Error('gh issue list failed: gh: To use GitHub CLI in a GitHub Actions workflow, set the GH_TOKEN environment variable.');
+    }
+  });
+
+  assert.equal(result.exitCode, 1);
+
+  const report = JSON.parse(await readFile(outputPath, 'utf8'));
+  const ajv = new Ajv2020({ allErrors: true, strict: false });
+  addFormats(ajv);
+  const validate = ajv.compile(schema);
+  const valid = validate(report);
+  assert.equal(valid, true, JSON.stringify(validate.errors, null, 2));
+  assert.equal(report.execution.status, 'error');
+  assert.equal(report.summary.issueCount, 0);
 });

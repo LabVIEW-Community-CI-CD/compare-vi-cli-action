@@ -38,6 +38,10 @@ on:
         default: false
         type: boolean
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event_name }}-${{ github.event.issue.number || github.ref || github.run_id }}
+  cancel-in-progress: true
+
 permissions:
   contents: read
   issues: write
@@ -53,6 +57,8 @@ jobs:
         shell: bash
         env:
           REPO_SLUG: ${{ github.repository }}
+          GITHUB_TOKEN: ${{ secrets.GH_TOKEN || secrets.GITHUB_TOKEN || github.token }}
+          GH_TOKEN: ${{ secrets.GH_TOKEN || secrets.GITHUB_TOKEN || github.token }}
           APPLY_INPUT: ${{ inputs.apply_default_milestone }}
           CREATE_INPUT: ${{ inputs.create_default_milestone }}
           DEFAULT_INPUT: ${{ inputs.default_milestone }}
@@ -133,12 +139,17 @@ jobs:
           const remaining = report.summary?.remainingViolationCount ?? 0;
           const lines = [
             '## Issue Milestone Hygiene',
+            `- execution status: \`${report.execution?.status ?? 'unknown'}\``,
             `- remaining violations: \`${remaining}\``,
             `- required issues evaluated: \`${report.summary?.requiredIssueCount ?? 0}\``,
             `- auto-assigned this run: \`${report.summary?.assignedDefaultMilestoneCount ?? 0}\``,
             `- failed assignments: \`${report.summary?.failedAssignmentsCount ?? 0}\``,
             `- default milestone created this run: \`${report.milestones?.createdDefaultMilestone ?? false}\``
           ];
+          const errors = Array.isArray(report.execution?.errors) ? report.execution.errors : [];
+          if (errors.length > 0) {
+            lines.push(`- execution errors: \`${errors.length}\``);
+          }
           if (process.env.GITHUB_STEP_SUMMARY) {
             fs.appendFileSync(process.env.GITHUB_STEP_SUMMARY, `${lines.join('\\n')}\\n`);
           }
@@ -151,4 +162,4 @@ jobs:
         with:
           name: issue-milestone-hygiene-report
           path: tests/results/_agent/issue/milestone-hygiene-report.json
-          if-no-files-found: warn
+          if-no-files-found: error
