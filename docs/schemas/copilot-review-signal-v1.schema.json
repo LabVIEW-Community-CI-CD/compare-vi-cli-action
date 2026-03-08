@@ -1,0 +1,280 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "priority/copilot-review-signal@v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema",
+    "schemaVersion",
+    "generatedAt",
+    "status",
+    "repository",
+    "source",
+    "reviewState",
+    "pullRequest",
+    "summary",
+    "signals",
+    "latestCopilotReview",
+    "staleReviews",
+    "unresolvedThreads",
+    "actionableComments",
+    "errors"
+  ],
+  "properties": {
+    "schema": {
+      "const": "priority/copilot-review-signal@v1"
+    },
+    "schemaVersion": {
+      "type": "string"
+    },
+    "generatedAt": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "status": {
+      "type": "string",
+      "enum": ["pass", "fail"]
+    },
+    "repository": {
+      "type": ["string", "null"],
+      "pattern": "^[^/\\s]+/[^/\\s]+$"
+    },
+    "source": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["pull", "reviews", "threads"],
+      "properties": {
+        "pull": { "type": "string", "enum": ["file", "gh"] },
+        "reviews": { "type": "string", "enum": ["file", "gh"] },
+        "threads": { "type": "string", "enum": ["file", "gh"] }
+      }
+    },
+    "reviewState": {
+      "type": "string",
+      "enum": ["clean", "attention", "error"]
+    },
+    "pullRequest": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "number",
+        "url",
+        "state",
+        "draft",
+        "headSha",
+        "headRef",
+        "baseRef",
+        "author",
+        "updatedAt"
+      ],
+      "properties": {
+        "number": { "type": ["integer", "null"] },
+        "url": { "type": ["string", "null"] },
+        "state": { "type": ["string", "null"] },
+        "draft": { "type": ["boolean", "null"] },
+        "headSha": { "$ref": "#/$defs/nullableString" },
+        "headRef": { "$ref": "#/$defs/nullableString" },
+        "baseRef": { "$ref": "#/$defs/nullableString" },
+        "author": { "$ref": "#/$defs/nullableString" },
+        "updatedAt": { "type": ["string", "null"], "format": "date-time" }
+      }
+    },
+    "summary": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "copilotReviewCount",
+        "currentHeadReviewCount",
+        "staleReviewCount",
+        "unresolvedThreadCount",
+        "actionableThreadCount",
+        "actionableCommentCount",
+        "staleThreadCount",
+        "suppressedNotesObservedInLatestReview",
+        "suppressedNoteCountInLatestReview"
+      ],
+      "properties": {
+        "copilotReviewCount": { "type": "integer", "minimum": 0 },
+        "currentHeadReviewCount": { "type": "integer", "minimum": 0 },
+        "staleReviewCount": { "type": "integer", "minimum": 0 },
+        "unresolvedThreadCount": { "type": "integer", "minimum": 0 },
+        "actionableThreadCount": { "type": "integer", "minimum": 0 },
+        "actionableCommentCount": { "type": "integer", "minimum": 0 },
+        "staleThreadCount": { "type": "integer", "minimum": 0 },
+        "suppressedNotesObservedInLatestReview": { "type": "boolean" },
+        "suppressedNoteCountInLatestReview": { "type": ["integer", "null"], "minimum": 0 }
+      }
+    },
+    "signals": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "hasCopilotReview",
+        "hasCurrentHeadReview",
+        "hasStaleReview",
+        "hasUnresolvedThreads",
+        "hasActionableComments",
+        "hasSuppressedNotesInLatestReview"
+      ],
+      "properties": {
+        "hasCopilotReview": { "type": "boolean" },
+        "hasCurrentHeadReview": { "type": "boolean" },
+        "hasStaleReview": { "type": "boolean" },
+        "hasUnresolvedThreads": { "type": "boolean" },
+        "hasActionableComments": { "type": "boolean" },
+        "hasSuppressedNotesInLatestReview": { "type": "boolean" }
+      }
+    },
+    "latestCopilotReview": {
+      "anyOf": [
+        { "$ref": "#/$defs/latestReview" },
+        { "type": "null" }
+      ]
+    },
+    "staleReviews": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/staleReview" }
+    },
+    "unresolvedThreads": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/unresolvedThread" }
+    },
+    "actionableComments": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/actionableComment" }
+    },
+    "errors": {
+      "type": "array",
+      "items": { "type": "string" }
+    }
+  },
+  "$defs": {
+    "nullableString": {
+      "type": ["string", "null"]
+    },
+    "normalizedComment": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "url",
+        "publishedAt",
+        "commitId",
+        "reviewId",
+        "reviewState",
+        "isCurrentHead",
+        "snippet"
+      ],
+      "properties": {
+        "id": { "type": "string", "minLength": 1 },
+        "url": { "$ref": "#/$defs/nullableString" },
+        "publishedAt": { "type": ["string", "null"], "format": "date-time" },
+        "commitId": { "$ref": "#/$defs/nullableString" },
+        "reviewId": { "$ref": "#/$defs/nullableString" },
+        "reviewState": { "$ref": "#/$defs/nullableString" },
+        "isCurrentHead": { "type": "boolean" },
+        "snippet": { "$ref": "#/$defs/nullableString" }
+      }
+    },
+    "latestReview": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "state",
+        "commitId",
+        "submittedAt",
+        "url",
+        "isCurrentHead",
+        "suppressedNotesObserved",
+        "suppressedNoteCount",
+        "bodySummary"
+      ],
+      "properties": {
+        "id": { "type": "string", "minLength": 1 },
+        "state": { "$ref": "#/$defs/nullableString" },
+        "commitId": { "$ref": "#/$defs/nullableString" },
+        "submittedAt": { "type": ["string", "null"], "format": "date-time" },
+        "url": { "$ref": "#/$defs/nullableString" },
+        "isCurrentHead": { "type": "boolean" },
+        "suppressedNotesObserved": { "type": "boolean" },
+        "suppressedNoteCount": { "type": ["integer", "null"], "minimum": 0 },
+        "bodySummary": { "$ref": "#/$defs/nullableString" }
+      }
+    },
+    "staleReview": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "state", "commitId", "submittedAt", "url", "bodySummary"],
+      "properties": {
+        "id": { "type": "string", "minLength": 1 },
+        "state": { "$ref": "#/$defs/nullableString" },
+        "commitId": { "$ref": "#/$defs/nullableString" },
+        "submittedAt": { "type": ["string", "null"], "format": "date-time" },
+        "url": { "$ref": "#/$defs/nullableString" },
+        "bodySummary": { "$ref": "#/$defs/nullableString" }
+      }
+    },
+    "unresolvedThread": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "threadId",
+        "path",
+        "line",
+        "originalLine",
+        "isOutdated",
+        "actionable",
+        "copilotCommentCount",
+        "currentHeadCommentCount",
+        "staleCommentCount",
+        "latestComment"
+      ],
+      "properties": {
+        "threadId": { "type": "string", "minLength": 1 },
+        "path": { "$ref": "#/$defs/nullableString" },
+        "line": { "type": ["integer", "null"] },
+        "originalLine": { "type": ["integer", "null"] },
+        "isOutdated": { "type": "boolean" },
+        "actionable": { "type": "boolean" },
+        "copilotCommentCount": { "type": "integer", "minimum": 0 },
+        "currentHeadCommentCount": { "type": "integer", "minimum": 0 },
+        "staleCommentCount": { "type": "integer", "minimum": 0 },
+        "latestComment": {
+          "anyOf": [
+            { "$ref": "#/$defs/normalizedComment" },
+            { "type": "null" }
+          ]
+        }
+      }
+    },
+    "actionableComment": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "threadId",
+        "path",
+        "line",
+        "url",
+        "publishedAt",
+        "commitId",
+        "reviewId",
+        "reviewState",
+        "snippet"
+      ],
+      "properties": {
+        "id": { "type": "string", "minLength": 1 },
+        "threadId": { "type": "string", "minLength": 1 },
+        "path": { "$ref": "#/$defs/nullableString" },
+        "line": { "type": ["integer", "null"] },
+        "url": { "$ref": "#/$defs/nullableString" },
+        "publishedAt": { "type": ["string", "null"], "format": "date-time" },
+        "commitId": { "$ref": "#/$defs/nullableString" },
+        "reviewId": { "$ref": "#/$defs/nullableString" },
+        "reviewState": { "$ref": "#/$defs/nullableString" },
+        "snippet": { "$ref": "#/$defs/nullableString" }
+      }
+    }
+  }
+}
