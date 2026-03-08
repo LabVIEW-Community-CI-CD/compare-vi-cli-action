@@ -67,7 +67,9 @@ Describe 'Invoke-OfflineRealHistoryCorpusEvaluation.ps1' -Tag 'Unit' {
 
   It 'detects drift when corpus expectations no longer match the rendered report' {
     $corpus = Get-Content -LiteralPath $script:CorpusPath -Raw | ConvertFrom-Json -Depth 20
-    $corpus.targets[0].annotations.coverageClass = 'catalog-aligned'
+    $corpusTarget = @($corpus.targets | Where-Object { [string]$_.id -eq 'icon-editor-settings-init' } | Select-Object -First 1)
+    $corpusTarget | Should -Not -BeNullOrEmpty
+    $corpusTarget.annotations.coverageClass = 'catalog-aligned'
     $driftCorpusPath = Join-Path $TestDrive 'offline-corpus.drift.json'
     $corpus | ConvertTo-Json -Depth 20 | Set-Content -LiteralPath $driftCorpusPath -Encoding utf8
 
