@@ -628,6 +628,15 @@ function compareRuleset(id, expected, actual) {
   const codeScanningRule = findRule(rules, 'code_scanning');
   diffs.push(...compareOptionalParameterizedRule('code_scanning', expected.code_scanning, codeScanningRule));
 
+  const copilotCodeReviewRule = findRule(rules, 'copilot_code_review');
+  diffs.push(
+    ...compareOptionalParameterizedRule(
+      'copilot_code_review',
+      expected.copilot_code_review,
+      copilotCodeReviewRule
+    )
+  );
+
   return diffs;
 }
 
@@ -862,6 +871,14 @@ function buildUpdatedRuleset(expectations, actual) {
 
   const existingCodeScanningRule = updated.rules.find((rule) => rule?.type === 'code_scanning');
   updateOptionalParameterizedRule(updated.rules, 'code_scanning', expectations.code_scanning, existingCodeScanningRule);
+
+  const existingCopilotCodeReviewRule = updated.rules.find((rule) => rule?.type === 'copilot_code_review');
+  updateOptionalParameterizedRule(
+    updated.rules,
+    'copilot_code_review',
+    expectations.copilot_code_review,
+    existingCopilotCodeReviewRule
+  );
 
   return {
     name: updated.name,
