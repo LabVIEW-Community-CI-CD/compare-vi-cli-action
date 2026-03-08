@@ -71,3 +71,18 @@ test('policy workflows enforce workspace health gate and publish health artifact
   assert.match(syncWorkflow, /check-workspace-health\.mjs --repo-root \. --lease-mode ignore --report tests\/results\/_agent\/health\/policy-sync-workspace-health\.json/);
   assert.match(syncWorkflow, /tests\/results\/_agent\/health\/policy-sync-workspace-health\.json/);
 });
+
+test('session index v2 validation uses schema-lite call sites available on clean runners', () => {
+  const sessionIndexPostAction = readRepoFile('.github/actions/session-index-post/action.yml');
+  assert.match(sessionIndexPostAction, /Invoke-JsonSchemaLite\.ps1 -JsonPath \$idxV2 -SchemaPath docs\/schema\/generated\/session-index-v2\.schema\.json/);
+  assert.doesNotMatch(sessionIndexPostAction, /tools\/schemas\/validate-json\.js/);
+
+  const validateWorkflow = readRepoFile('.github/workflows/validate.yml');
+  assert.match(validateWorkflow, /Invoke-JsonSchemaLite\.ps1 -JsonPath \$jsonV2 -SchemaPath docs\/schema\/generated\/session-index-v2\.schema\.json/);
+  assert.doesNotMatch(validateWorkflow, /tools\/schemas\/validate-json\.js/);
+
+  const sessionIndexContract = readRepoFile('tools/Test-SessionIndexV2Contract.ps1');
+  assert.match(sessionIndexContract, /\$schemaLiteValidatorPath = Join-Path \$PSScriptRoot 'Invoke-JsonSchemaLite\.ps1'/);
+  assert.match(sessionIndexContract, /& \$schemaLiteValidatorPath -JsonPath \$v2Path -SchemaPath \$schemaPath/);
+  assert.doesNotMatch(sessionIndexContract, /tools\/schemas\/validate-json\.js/);
+});

@@ -68,7 +68,7 @@ runs:
         } else { Write-Host '::notice::session-index.json not present for validation.' }
 
         if (Test-Path $idxV2) {
-          node tools/schemas/validate-json.js --schema docs/schema/generated/session-index-v2.schema.json --data $idxV2 --optional
+          pwsh -File tools/Invoke-JsonSchemaLite.ps1 -JsonPath $idxV2 -SchemaPath docs/schema/generated/session-index-v2.schema.json
           if ($LASTEXITCODE -ne 0) { Write-Host "::warning::V2 schema validation returned $LASTEXITCODE for session-index-v2.json" }
         } else {
           Write-Host '::notice::session-index-v2.json not present for validation.'
