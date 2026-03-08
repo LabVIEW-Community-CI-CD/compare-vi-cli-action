@@ -40,11 +40,16 @@ test('parseCliOptions respects env override', () => {
   const opts = parseCliOptions(['node', 'script'], {
     VALIDATE_DISPATCH_ALLOW_FORK: '1',
     VALIDATE_DISPATCH_PUSH: '1',
-    VALIDATE_DISPATCH_FORCE_PUSH: '1'
+    VALIDATE_DISPATCH_FORCE_PUSH: '1',
+    VALIDATE_DISPATCH_ALLOW_NONCANONICAL_VI_HISTORY: '1',
+    VALIDATE_DISPATCH_ALLOW_NONCANONICAL_HISTORY_CORE: '1',
   });
   assert.equal(opts.allowFork, true);
   assert.equal(opts.pushMissing, true);
   assert.equal(opts.forcePushOk, true);
+  assert.equal(opts.historyScenarioSet, 'smoke');
+  assert.equal(opts.allowNonCanonicalViHistory, true);
+  assert.equal(opts.allowNonCanonicalHistoryCore, true);
   assert.equal(opts.ref, null);
 });
 
@@ -54,12 +59,22 @@ test('parseCliOptions accepts cli flags', () => {
     'script',
     '--ref',
     'feature/x',
+    '--sample-id',
+    'ts-20260308-000000-abcd',
+    '--history-scenario-set',
+    'history-core',
     '--push-missing',
-    '--force-push-ok'
+    '--force-push-ok',
+    '--allow-noncanonical-vi-history',
+    '--allow-noncanonical-history-core',
   ]);
   assert.equal(opts.ref, 'feature/x');
+  assert.equal(opts.sampleId, 'ts-20260308-000000-abcd');
+  assert.equal(opts.historyScenarioSet, 'history-core');
   assert.equal(opts.pushMissing, true);
   assert.equal(opts.forcePushOk, true);
+  assert.equal(opts.allowNonCanonicalViHistory, true);
+  assert.equal(opts.allowNonCanonicalHistoryCore, true);
 });
 
 test('dispatchValidate blocks fork by default', () => {
@@ -84,7 +99,19 @@ test('dispatchValidate blocks fork by default', () => {
 test('dispatchValidate allows fork when override set', () => {
   const runStub = createRunStub();
   const result = dispatchValidate({
-    argv: ['node', 'script', '--allow-fork', '--ref', 'feature/x'],
+    argv: [
+      'node',
+      'script',
+      '--allow-fork',
+      '--ref',
+      'feature/x',
+      '--sample-id',
+      'ts-20260308-000000-abcd',
+      '--history-scenario-set',
+      'history-core',
+      '--allow-noncanonical-vi-history',
+      '--allow-noncanonical-history-core',
+    ],
     env: {},
     getRepoRootFn: () => 'repo',
     resolveContextFn: () => ({
@@ -106,10 +133,47 @@ test('dispatchValidate allows fork when override set', () => {
         call.cmd === 'gh' &&
         call.args[0] === 'workflow' &&
         call.args[1] === 'run' &&
-        call.args.includes('validate.yml')
+        call.args.includes('validate.yml') &&
+        call.args.includes('sample_id=ts-20260308-000000-abcd') &&
+        call.args.includes('history_scenario_set=history-core') &&
+        call.args.includes('allow_noncanonical_vi_history=true') &&
+        call.args.includes('allow_noncanonical_history_core=true')
     ),
     'should dispatch validate workflow via gh'
   );
+});
+
+test('dispatchValidate generates and forwards a sample_id when not provided', () => {
+  const runStub = createRunStub();
+
+  const result = dispatchValidate({
+    argv: ['node', 'script', '--allow-fork', '--ref', 'feature/x'],
+    env: {},
+    getRepoRootFn: () => 'repo',
+    resolveContextFn: () => ({
+      upstream: { owner: 'LabVIEW-Community-CI-CD', repo: 'compare-vi-cli-action' },
+      isFork: false
+    }),
+    getCurrentBranchFn: () => 'feature/x',
+    findRemoteRefFn: () => ({ pattern: 'refs/heads/feature/x', sha: 'abc1234' }),
+    ensureRemoteHasRefFn: () => ({ pattern: 'refs/heads/feature/x', sha: 'abc1234' }),
+    ensureCleanWorkingTreeFn: () => {},
+    runFn: runStub,
+    ensureGhCliFn: () => {}
+  });
+
+  assert.equal(result.dispatched, true);
+  assert.match(result.sampleId, /^ts-\d{8}-\d{6}-[0-9a-z]{4}$/);
+  const workflowCall = runStub.calls.find(
+    (call) => call.cmd === 'gh' && call.args[0] === 'workflow' && call.args[1] === 'run'
+  );
+  assert.ok(workflowCall, 'should invoke gh workflow run');
+  const sampleArg = workflowCall.args.find((arg) => arg.startsWith('sample_id='));
+  assert.ok(sampleArg, 'should pass sample_id input');
+  assert.equal(sampleArg, `sample_id=${result.sampleId}`);
+  assert.ok(workflowCall.args.includes('history_scenario_set=smoke'));
+  assert.ok(workflowCall.args.includes('allow_noncanonical_vi_history=false'));
+  assert.ok(workflowCall.args.includes('allow_noncanonical_history_core=false'));
 });
 
 test('dispatchValidate fails when ref missing on remote without auto-push', () => {
@@ -238,4 +302,3 @@ test('dispatchValidate force pushes when override present', () => {
     runStub.calls.some((call) => call.cmd === 'gh' && call.args[0] === 'workflow' && call.args[1] === 'run')
   );
 });
-

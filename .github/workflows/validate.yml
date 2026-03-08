@@ -1025,37 +1025,60 @@ jobs:
             tests/results/_agent/comparevi-history-bundle-certification/**
           if-no-files-found: error
 
-  vi-history-scenarios-skip-note:
+  vi-history-scenarios-plan:
     needs: [smoke-gate, lint, fixtures, session-index, session-index-v2-contract]
-    if: >
-      needs.smoke-gate.outputs.skip != 'true' &&
-      github.event_name == 'workflow_dispatch' &&
-      github.event.repository.fork == true &&
-      github.event.inputs.allow_noncanonical_vi_history != 'true'
+    if: needs.smoke-gate.outputs.skip != 'true'
     runs-on: ubuntu-latest
+    outputs:
+      execute_lanes: ${{ steps.plan.outputs.execute_lanes }}
+      skip_reason: ${{ steps.plan.outputs.skip_reason }}
+      history_scenario_set: ${{ steps.plan.outputs.history_scenario_set }}
+      requested_history_scenario_set: ${{ steps.plan.outputs.requested_history_scenario_set }}
+      downgraded_history_core: ${{ steps.plan.outputs.downgraded_history_core }}
     steps:
-      - name: Append canonical guard skip note
-        shell: bash
+      - uses: actions/checkout@v5
+
+      - name: Resolve VI history dispatch plan
+        id: plan
+        shell: pwsh
+        env:
+          VALIDATE_EVENT_NAME: ${{ github.event_name }}
+          VALIDATE_REPOSITORY: ${{ github.repository }}
+          VALIDATE_IS_FORK: ${{ github.event.repository.fork }}
+          VALIDATE_HISTORY_SCENARIO_SET: ${{ github.event.inputs.history_scenario_set }}
+          VALIDATE_ALLOW_NONCANONICAL: ${{ github.event.inputs.allow_noncanonical_vi_history }}
+          VALIDATE_ALLOW_NONCANONICAL_HISTORY_CORE: ${{ github.event.inputs.allow_noncanonical_history_core }}
         run: |
-          {
-            echo "### VI History Scenarios Guard"
-            echo ""
-            echo "- Skipped on non-canonical repository: \`${GITHUB_REPOSITORY}\`."
-            echo "- To run on origin/fork, dispatch Validate with:"
-            echo "  - \`allow_noncanonical_vi_history=true\`"
-            echo "- For \`history-core\` on origin/fork also set:"
-            echo "  - \`allow_noncanonical_history_core=true\`"
-          } >> "$GITHUB_STEP_SUMMARY"
+          $resultsRoot = 'tests/results/_agent/vi-history-dispatch'
+          New-Item -ItemType Directory -Path $resultsRoot -Force | Out-Null
+          $planPath = Join-Path $resultsRoot 'validate-vi-history-dispatch-plan.json'
+          $isForkRepository = "$env:VALIDATE_IS_FORK" -eq 'true'
+          $allowNonCanonical = "$env:VALIDATE_ALLOW_NONCANONICAL" -eq 'true'
+          $allowNonCanonicalHistoryCore = "$env:VALIDATE_ALLOW_NONCANONICAL_HISTORY_CORE" -eq 'true'
+          pwsh -NoLogo -NoProfile -File tools/Resolve-ValidateVIHistoryDispatchPlan.ps1 `
+            -EventName $env:VALIDATE_EVENT_NAME `
+            -Repository $env:VALIDATE_REPOSITORY `
+            -IsForkRepository:$isForkRepository `
+            -HistoryScenarioSet $env:VALIDATE_HISTORY_SCENARIO_SET `
+            -AllowNonCanonical:$allowNonCanonical `
+            -AllowNonCanonicalHistoryCore:$allowNonCanonicalHistoryCore `
+            -GitHubOutputPath $env:GITHUB_OUTPUT `
+            -StepSummaryPath $env:GITHUB_STEP_SUMMARY `
+            -JsonPath $planPath
+
+      - name: Upload VI history dispatch plan artifact
+        if: always()
+        uses: actions/upload-artifact@v5
+        with:
+          name: validate-vi-history-dispatch-plan
+          path: tests/results/_agent/vi-history-dispatch/validate-vi-history-dispatch-plan.json
+          if-no-files-found: error
 
   vi-history-scenarios-windows:
-    needs: [smoke-gate, lint, fixtures, session-index, vi-history-scenarios-linux]
+    needs: [smoke-gate, lint, fixtures, session-index, session-index-v2-contract, vi-history-scenarios-plan, vi-history-scenarios-linux]
     if: >
       needs.smoke-gate.outputs.skip != 'true' &&
-      github.event_name == 'workflow_dispatch' &&
-      (
-        github.event.repository.fork != true ||
-        github.event.inputs.allow_noncanonical_vi_history == 'true'
-      )
+      needs.vi-history-scenarios-plan.outputs.execute_lanes == 'true'
     runs-on: [self-hosted, Windows, X64, self-hosted-docker-windows]
     env:
       NI_WINDOWS_IMAGE: nationalinstruments/labview:2026q1-windows
@@ -1094,36 +1117,10 @@ jobs:
             -SnapshotPath $snapshotPath `
             -GitHubOutputPath ''
 
-      - name: Resolve VI history scenario set
-        id: resolve
-        run: |
-          $setRaw = '${{ github.event.inputs.history_scenario_set }}'
-          if ([string]::IsNullOrWhiteSpace($setRaw)) { $setRaw = 'smoke' }
-          $set = $setRaw.Trim().ToLowerInvariant()
-          $allowed = @('none', 'smoke', 'history-core')
-          if ($allowed -notcontains $set) {
-            throw ("Unsupported history_scenario_set '{0}'. Allowed: {1}" -f $setRaw, ($allowed -join ', '))
-          }
-          $repo = '${{ github.repository }}'
-          $isForkRepository = '${{ github.event.repository.fork }}' -eq 'true'
-          $allowNonCanonical = '${{ github.event.inputs.allow_noncanonical_vi_history }}' -eq 'true'
-          $allowNonCanonicalHistoryCore = '${{ github.event.inputs.allow_noncanonical_history_core }}' -eq 'true'
-
-          if ($isForkRepository -and -not $allowNonCanonical) {
-            throw ("vi-history-scenarios non-canonical execution is disabled for '{0}'. Set allow_noncanonical_vi_history=true." -f $repo)
-          }
-
-          if ($isForkRepository -and $set -eq 'history-core' -and -not $allowNonCanonicalHistoryCore) {
-            Write-Host "::warning::history-core is disabled on non-canonical repos unless allow_noncanonical_history_core=true. Downgrading to smoke."
-            $set = 'smoke'
-          }
-
-          "history_scenario_set=$set" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
-
       - name: Run Docker Desktop fast-loop (Windows VI history lane, self-hosted only)
         id: loop
         run: |
-          $set = '${{ steps.resolve.outputs.history_scenario_set }}'
+          $set = '${{ needs.vi-history-scenarios-plan.outputs.history_scenario_set }}'
           $resultsRoot = 'tests/results/local-parity/windows'
           $summaryOutput = pwsh -NoLogo -NoProfile -File tools/Test-DockerDesktopFastLoop.ps1 `
             -ResultsRoot $resultsRoot `
@@ -1188,7 +1185,7 @@ jobs:
           if-no-files-found: warn
 
   vi-history-scenarios-linux:
-    needs: [smoke-gate, lint, fixtures, session-index]
+    needs: [smoke-gate, lint, fixtures, session-index, session-index-v2-contract, vi-history-scenarios-plan]
     if: needs.smoke-gate.outputs.skip != 'true'
     runs-on: ubuntu-latest
     env:
@@ -1198,47 +1195,30 @@ jobs:
       run:
         shell: pwsh
     steps:
-      - name: Resolve VI history Linux lane execution mode
-        id: lane-mode
+      - name: Append VI history Linux lane plan
         run: |
-          $eventName = '${{ github.event_name }}'
-          $isWorkflowDispatch = $eventName -eq 'workflow_dispatch'
-          $isForkRepository = '${{ github.event.repository.fork }}' -eq 'true'
-          $allowNonCanonical = '${{ github.event.inputs.allow_noncanonical_vi_history }}' -eq 'true'
-
-          $executeLane = $false
-          $skipReason = 'event-not-workflow-dispatch'
-          if ($isWorkflowDispatch) {
-            if ($isForkRepository -and -not $allowNonCanonical) {
-              $skipReason = 'noncanonical-disabled'
-            } else {
-              $executeLane = $true
-              $skipReason = 'enabled'
-            }
-          }
-
-          "execute_lane=$($executeLane.ToString().ToLowerInvariant())" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
-          "skip_reason=$skipReason" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
-
           if ($env:GITHUB_STEP_SUMMARY) {
             $lines = @(
               '### VI History Scenarios (Linux lane)',
               '',
-              ('- execute_lane: `{0}`' -f $executeLane.ToString().ToLowerInvariant()),
-              ('- reason: `{0}`' -f $skipReason)
+              ('- execute_lanes: `{0}`' -f '${{ needs.vi-history-scenarios-plan.outputs.execute_lanes }}'),
+              ('- skip_reason: `{0}`' -f '${{ needs.vi-history-scenarios-plan.outputs.skip_reason }}'),
+              ('- requested_history_scenario_set: `{0}`' -f '${{ needs.vi-history-scenarios-plan.outputs.requested_history_scenario_set }}'),
+              ('- history_scenario_set: `{0}`' -f '${{ needs.vi-history-scenarios-plan.outputs.history_scenario_set }}'),
+              ('- downgraded_history_core: `{0}`' -f '${{ needs.vi-history-scenarios-plan.outputs.downgraded_history_core }}')
             )
             $lines -join "`n" | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Encoding utf8 -Append
           }
 
       - uses: actions/checkout@v5
-        if: steps.lane-mode.outputs.execute_lane == 'true'
+        if: needs.vi-history-scenarios-plan.outputs.execute_lanes == 'true'
 
       - name: Pull NI Linux image (2026q1-linux)
-        if: steps.lane-mode.outputs.execute_lane == 'true'
+        if: needs.vi-history-scenarios-plan.outputs.execute_lanes == 'true'
         run: docker pull $env:NI_LINUX_IMAGE
 
       - name: Manage Docker runtime (Linux preflight)
-        if: steps.lane-mode.outputs.execute_lane == 'true'
+        if: needs.vi-history-scenarios-plan.outputs.execute_lanes == 'true'
         run: |
           $resultsRoot = 'tests/results/local-parity/linux'
           New-Item -ItemType Directory -Path $resultsRoot -Force | Out-Null
@@ -1255,7 +1235,7 @@ jobs:
 
       - name: Run NI Linux create comparison report (fail-fast)
         id: linux-compare
-        if: steps.lane-mode.outputs.execute_lane == 'true'
+        if: needs.vi-history-scenarios-plan.outputs.execute_lanes == 'true'
         run: |
           $resultsRoot = 'tests/results/local-parity/linux'
           New-Item -ItemType Directory -Path $resultsRoot -Force | Out-Null
@@ -1290,7 +1270,7 @@ jobs:
           }
 
       - name: Validate Linux comparison report artifact contract
-        if: always() && steps.lane-mode.outputs.execute_lane == 'true'
+        if: always() && needs.vi-history-scenarios-plan.outputs.execute_lanes == 'true'
         run: |
           $resultsRoot = 'tests/results/local-parity/linux'
           $reportPath = '${{ steps.linux-compare.outputs.linux_compare_report }}'
@@ -1359,7 +1339,7 @@ jobs:
           }
 
       - name: Upload VI history scenario artifacts (Linux lane)
-        if: always() && steps.lane-mode.outputs.execute_lane == 'true'
+        if: always() && needs.vi-history-scenarios-plan.outputs.execute_lanes == 'true'
         uses: actions/upload-artifact@v5
         with:
           name: validate-vi-history-scenarios-linux

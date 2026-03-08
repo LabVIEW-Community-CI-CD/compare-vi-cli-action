@@ -9,15 +9,18 @@ import { resolveRepoContext } from './lib/git-context.mjs';
 import { ensureGhCli } from './lib/remote-utils.mjs';
 
 const USAGE = [
-  'Usage: node tools/priority/dispatch-validate.mjs [--ref <branch>] [--allow-fork] [--push-missing] [--force-push-ok]',
+  'Usage: node tools/priority/dispatch-validate.mjs [--ref <branch>] [--sample-id <id>] [--history-scenario-set <none|smoke|history-core>] [--allow-fork] [--push-missing] [--force-push-ok] [--allow-noncanonical-vi-history] [--allow-noncanonical-history-core]',
   '',
   'Dispatches the Validate workflow on the upstream repository after ensuring the',
   'target ref exists on that remote. Fails fast when executed from a fork clone,',
   'unless --allow-fork (or VALIDATE_DISPATCH_ALLOW_FORK=1) is provided.',
   '',
   '--push-missing (or VALIDATE_DISPATCH_PUSH=1) will publish the local branch to the upstream remote when missing.',
-  '--force-push-ok (or VALIDATE_DISPATCH_FORCE_PUSH=1) allows overwriting the upstream branch when combined with auto-push.'
+  '--force-push-ok (or VALIDATE_DISPATCH_FORCE_PUSH=1) allows overwriting the upstream branch when combined with auto-push.',
+  '--allow-noncanonical-vi-history and --allow-noncanonical-history-core forward the matching workflow_dispatch overrides.'
 ];
+
+const historyScenarioSetValues = new Set(['none', 'smoke', 'history-core']);
 
 function printUsage() {
   for (const line of USAGE) {
@@ -25,23 +28,81 @@ function printUsage() {
   }
 }
 
+function normalizeHistoryScenarioSet(value) {
+  const normalized = String(value ?? '').trim().toLowerCase();
+  if (!historyScenarioSetValues.has(normalized)) {
+    throw new Error(`Unsupported --history-scenario-set value '${value}'. Allowed: none, smoke, history-core.`);
+  }
+  return normalized;
+}
+
+function generateSampleId() {
+  const now = new Date();
+  const pad = (value) => String(value).padStart(2, '0');
+  const timestamp = [
+    now.getUTCFullYear(),
+    pad(now.getUTCMonth() + 1),
+    pad(now.getUTCDate()),
+  ].join('') + '-' + [
+    pad(now.getUTCHours()),
+    pad(now.getUTCMinutes()),
+    pad(now.getUTCSeconds()),
+  ].join('');
+  const alphabet = '0123456789abcdefghijklmnopqrstuvwxyz';
+  let suffix = '';
+  for (let i = 0; i < 4; i += 1) {
+    suffix += alphabet[Math.floor(Math.random() * alphabet.length)];
+  }
+  return `ts-${timestamp}-${suffix}`;
+}
+
 export function parseCliOptions(argv = process.argv, env = process.env) {
   const args = Array.isArray(argv) ? argv.slice(2) : [];
   let ref = null;
+  let sampleId = null;
+  let historyScenarioSet = 'smoke';
   let allowFork = env.VALIDATE_DISPATCH_ALLOW_FORK === '1';
   let pushMissing = env.VALIDATE_DISPATCH_PUSH === '1';
   let forcePushOk = env.VALIDATE_DISPATCH_FORCE_PUSH === '1';
+  let allowNonCanonicalViHistory = env.VALIDATE_DISPATCH_ALLOW_NONCANONICAL_VI_HISTORY === '1';
+  let allowNonCanonicalHistoryCore = env.VALIDATE_DISPATCH_ALLOW_NONCANONICAL_HISTORY_CORE === '1';
 
   for (let i = 0; i < args.length; i += 1) {
     const arg = args[i];
     if (arg === '--help' || arg === '-h') {
-      return { help: true, ref, allowFork, pushMissing, forcePushOk };
+      return {
+        help: true,
+        ref,
+        sampleId,
+        historyScenarioSet,
+        allowFork,
+        pushMissing,
+        forcePushOk,
+        allowNonCanonicalViHistory,
+        allowNonCanonicalHistoryCore,
+      };
     }
     if (arg === '--ref') {
       if (i + 1 >= args.length) {
         throw new Error('--ref requires a value');
       }
       ref = args[i + 1];
+      i += 1;
+      continue;
+    }
+    if (arg === '--sample-id') {
+      if (i + 1 >= args.length) {
+        throw new Error('--sample-id requires a value');
+      }
+      sampleId = args[i + 1];
+      i += 1;
+      continue;
+    }
+    if (arg === '--history-scenario-set') {
+      if (i + 1 >= args.length) {
+        throw new Error('--history-scenario-set requires a value');
+      }
+      historyScenarioSet = normalizeHistoryScenarioSet(args[i + 1]);
       i += 1;
       continue;
     }
@@ -57,10 +118,28 @@ export function parseCliOptions(argv = process.argv, env = process.env) {
       forcePushOk = true;
       continue;
     }
+    if (arg === '--allow-noncanonical-vi-history') {
+      allowNonCanonicalViHistory = true;
+      continue;
+    }
+    if (arg === '--allow-noncanonical-history-core') {
+      allowNonCanonicalHistoryCore = true;
+      continue;
+    }
     throw new Error(`Unknown option: ${arg}`);
   }
 
-  return { help: false, ref, allowFork, pushMissing, forcePushOk };
+  return {
+    help: false,
+    ref,
+    sampleId,
+    historyScenarioSet,
+    allowFork,
+    pushMissing,
+    forcePushOk,
+    allowNonCanonicalViHistory,
+    allowNonCanonicalHistoryCore,
+  };
 }
 
 export function ensureRemoteHasRef(repoRoot, remoteName, ref) {
@@ -143,9 +222,13 @@ export function dispatchValidate({
   const {
     help,
     ref: refArg,
+    sampleId: sampleIdArg,
+    historyScenarioSet,
     allowFork,
     pushMissing,
-    forcePushOk
+    forcePushOk,
+    allowNonCanonicalViHistory,
+    allowNonCanonicalHistoryCore,
   } = parseCliOptions(argv, env);
   if (help) {
     printUsage();
@@ -265,9 +348,27 @@ export function dispatchValidate({
   }
 
   const slug = `${context.upstream.owner}/${context.upstream.repo}`;
+  const sampleId = sampleIdArg ?? generateSampleId();
+  const workflowArgs = [
+    'workflow',
+    'run',
+    'validate.yml',
+    '--repo',
+    slug,
+    '--ref',
+    ref,
+    '-f',
+    `sample_id=${sampleId}`,
+    '-f',
+    `history_scenario_set=${historyScenarioSet}`,
+    '-f',
+    `allow_noncanonical_vi_history=${allowNonCanonicalViHistory ? 'true' : 'false'}`,
+    '-f',
+    `allow_noncanonical_history_core=${allowNonCanonicalHistoryCore ? 'true' : 'false'}`
+  ];
   runFn(
     'gh',
-    ['workflow', 'run', 'validate.yml', '--repo', slug, '--ref', ref],
+    workflowArgs,
     { cwd: repoRoot }
   );
 
@@ -282,6 +383,8 @@ export function dispatchValidate({
         slug,
         '--workflow',
         'Validate',
+        '--event',
+        'workflow_dispatch',
         '--branch',
         ref,
         '--json',
@@ -301,13 +404,18 @@ export function dispatchValidate({
     console.warn(`[validate] Warning: unable to query latest Validate run: ${err.message}`);
   }
 
-  const message = `[validate] Dispatched Validate on ${slug} @ ${ref}` + (runSummary?.databaseId ? ` (run ${runSummary.databaseId})` : '');
+  const message = `[validate] Dispatched Validate on ${slug} @ ${ref} (sample_id=${sampleId})` +
+    (runSummary?.databaseId ? ` (run ${runSummary.databaseId})` : '');
   console.log(message);
 
   return {
     dispatched: true,
     repo: slug,
     ref,
+    sampleId,
+    historyScenarioSet,
+    allowNonCanonicalViHistory,
+    allowNonCanonicalHistoryCore,
     run: runSummary
   };
 }
