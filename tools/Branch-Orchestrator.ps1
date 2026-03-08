@@ -12,18 +12,14 @@ param(
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
+Import-Module (Join-Path $PSScriptRoot 'GitHubIntake.psm1') -Force
+
 function Get-RepoRoot {
   (Resolve-Path '.').Path
 }
 
 function Get-GitDefaultBranch {
   try { (& git symbolic-ref refs/remotes/origin/HEAD).Split('/')[-1] } catch { 'develop' }
-}
-
-function New-BranchName([int]$Number,[string]$Title) {
-  $slug = ($Title -replace '[^a-zA-Z0-9\- ]','' -replace '\s+','-' ).ToLowerInvariant()
-  if (-not $slug) { $slug = 'work' }
-  return '{0}/{1}-{2}' -f $BranchPrefix,$Number,$slug
 }
 
 function Ensure-Branch([string]$Name,[string]$Base) {
@@ -93,7 +89,8 @@ $defaultBase = Get-GitDefaultBranch
 if (-not $Base) { $Base = $defaultBase }
 Write-Host ("[orchestrator] Base: {0}" -f $Base)
 
-$branchName = New-BranchName -Number $Issue -Title $title
+$currentBranch = (& git rev-parse --abbrev-ref HEAD).Trim()
+$branchName = Resolve-IssueBranchName -Number $Issue -Title $title -BranchPrefix $BranchPrefix -CurrentBranch $currentBranch
 Write-Host ("[orchestrator] Branch: {0}" -f $branchName)
 Write-Host ("[orchestrator] PR template: {0}" -f $PRTemplate)
 
@@ -107,13 +104,14 @@ if ($Execute) {
   if ($gh) {
     $bodyPath = $null
     try {
+      $prTitle = Resolve-PullRequestTitle -Issue $Issue -IssueTitle $title -Base $Base
       $bodyPath = New-RenderedPRBody -Repo $repo -Issue $Issue -Snapshot $snap -Base $Base -Branch $branchName -Template $PRTemplate
       $existingJson = & $gh.Source 'pr' 'view' '--json' 'number' '--head' $branchName 2>$null
       if ($LASTEXITCODE -eq 0 -and $existingJson) {
         $pr = $existingJson | ConvertFrom-Json
         & $gh.Source 'pr' 'edit' $pr.number '--body-file' $bodyPath | Out-Host
       } else {
-        & $gh.Source 'pr' 'create' '--fill' '--base' $Base '--head' $branchName '--body-file' $bodyPath | Out-Host
+        & $gh.Source 'pr' 'create' '--title' $prTitle '--base' $Base '--head' $branchName '--body-file' $bodyPath | Out-Host
       }
     } catch {
       Write-Warning 'PR create/edit failed.'

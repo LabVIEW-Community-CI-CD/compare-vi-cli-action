@@ -390,9 +390,13 @@ For Docker/Desktop VI history validation, run fast-loop lanes explicitly:
 - Run `node tools/npm/run-script.mjs priority:commit-integrity -- --pr <number>` to evaluate commit trust posture
   locally. Add `--observe-only` to mirror staged rollout mode. See `docs/COMMIT_INTEGRITY_CHECK.md` for full contract
   and rollout flags (`COMMIT_INTEGRITY_ENFORCE`).
-- Prefer opening PRs from your fork with `node tools/npm/run-script.mjs priority:pr`; the helper ensures `origin` targets your fork (creating
-  it via `gh repo fork` if needed), pushes the current branch, and calls
-  `gh pr create --fill --repo <upstream> --base develop --head <fork>:branch`.
+- Prefer opening PRs from your fork with `node tools/npm/run-script.mjs priority:pr`; the helper ensures `origin`
+  targets your fork (creating it via `gh repo fork` if needed), pushes the current branch, and calls
+  `gh pr create --title <derived-title> --body <rendered-body> --repo <upstream> --base develop --head <fork>:branch`.
+- When you need the repository's richer intake metadata blocks and template variants, prefer
+  `pwsh -File tools/Branch-Orchestrator.ps1 -Issue <number> -Execute [-PRTemplate <variant>]` or
+  `pwsh -File tools/New-PullRequestBody.ps1 ... -OutputPath pr-body.md` plus `gh pr create --title <title> --body-file
+  pr-body.md`.
 - Detailed enforcement notes (feature-branch guards, merge history workflow,
   merge queue parameters) live in
   [`docs/knowledgebase/FEATURE_BRANCH_POLICY.md`](./knowledgebase/FEATURE_BRANCH_POLICY.md).

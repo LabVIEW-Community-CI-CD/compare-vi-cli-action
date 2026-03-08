@@ -59,12 +59,20 @@ test('github intake docs and manifest reference the new helper layer', () => {
   const agents = readText('AGENTS.md');
   const manifest = JSON.parse(readText('docs/documentation-manifest.json'));
   const intakeGuide = readText('docs/knowledgebase/GitHub-Intake-Layer.md');
+  const orchestrator = readText('tools/Branch-Orchestrator.ps1');
+  const intakeModule = readText('tools/GitHubIntake.psm1');
 
   assert.match(snippets, /New-IssueBody\.ps1/);
   assert.match(snippets, /Branch-Orchestrator\.ps1/);
   assert.match(agents, /New-IssueBody\.ps1/);
   assert.match(agents, /-PRTemplate workflow-policy\|human-change/);
   assert.match(intakeGuide, /New-PullRequestBody\.ps1/);
+  assert.match(intakeGuide, /gh pr create --title "<title>" --body-file pr-body\.md/);
+  assert.match(orchestrator, /Import-Module \(Join-Path \$PSScriptRoot 'GitHubIntake\.psm1'\)/);
+  assert.match(orchestrator, /'pr'\s+'create'\s+'--title'/);
+  assert.doesNotMatch(orchestrator, /'pr'\s+'create'\s+'--fill(?:-first)?'/);
+  assert.match(intakeModule, /function Resolve-IssueBranchName/);
+  assert.match(intakeModule, /function Resolve-PullRequestTitle/);
 
   const templateEntry = manifest.entries.find((entry) => entry.name === 'GitHub Templates');
   assert.ok(templateEntry);

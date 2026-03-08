@@ -41,8 +41,9 @@ hand-written ad-hoc text.
   pwsh -File tools/Branch-Orchestrator.ps1 -Issue 875 -Execute -PRTemplate workflow-policy
   ```
 
-The helper script keeps `gh pr create --fill` for title derivation, but replaces the free-form PR body path with a
-rendered intake document that includes issue linkage, standing-priority context, and template selection.
+The helper script derives the PR title from linked issue metadata when available, falls back to the current branch's
+head commit subject when necessary, and then calls `gh pr create --title ... --body-file ...` with the rendered intake
+document.
 
 ## Agent Metadata Contract
 
@@ -65,6 +66,8 @@ Human-authored PRs should use the `human-change` template so they do not acciden
   reviewer-routing semantics.
 - Use the `human-change` PR template when the PR is not automation-authored and should not carry the agent metadata
   contract.
+- Prefer explicit `--title` plus `--body-file` over `gh pr create --fill`; the title/body contract stays deterministic
+  and avoids GitHub CLI flag conflicts.
 
 ## Mixed-Shell Guidance
 
