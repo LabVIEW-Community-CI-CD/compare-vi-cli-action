@@ -36,6 +36,15 @@ function normalizeHistoryScenarioSet(value) {
   return normalized;
 }
 
+function normalizeSampleId(value) {
+  if (value === null || value === undefined) {
+    return null;
+  }
+
+  const normalized = String(value).trim();
+  return normalized.length > 0 ? normalized : null;
+}
+
 function generateSampleId() {
   const now = new Date();
   const pad = (value) => String(value).padStart(2, '0');
@@ -94,7 +103,7 @@ export function parseCliOptions(argv = process.argv, env = process.env) {
       if (i + 1 >= args.length) {
         throw new Error('--sample-id requires a value');
       }
-      sampleId = args[i + 1];
+      sampleId = normalizeSampleId(args[i + 1]);
       i += 1;
       continue;
     }
@@ -348,7 +357,7 @@ export function dispatchValidate({
   }
 
   const slug = `${context.upstream.owner}/${context.upstream.repo}`;
-  const sampleId = sampleIdArg ?? generateSampleId();
+  const sampleId = normalizeSampleId(sampleIdArg) ?? generateSampleId();
   const workflowArgs = [
     'workflow',
     'run',

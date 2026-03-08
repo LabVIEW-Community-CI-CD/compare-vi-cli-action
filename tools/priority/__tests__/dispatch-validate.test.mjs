@@ -77,6 +77,17 @@ test('parseCliOptions accepts cli flags', () => {
   assert.equal(opts.allowNonCanonicalHistoryCore, true);
 });
 
+test('parseCliOptions trims non-empty sample ids', () => {
+  const opts = parseCliOptions([
+    'node',
+    'script',
+    '--sample-id',
+    '  ts-20260308-000000-abcd  ',
+  ]);
+
+  assert.equal(opts.sampleId, 'ts-20260308-000000-abcd');
+});
+
 test('dispatchValidate blocks fork by default', () => {
   assert.throws(
     () =>
@@ -174,6 +185,37 @@ test('dispatchValidate generates and forwards a sample_id when not provided', ()
   assert.ok(workflowCall.args.includes('history_scenario_set=smoke'));
   assert.ok(workflowCall.args.includes('allow_noncanonical_vi_history=false'));
   assert.ok(workflowCall.args.includes('allow_noncanonical_history_core=false'));
+});
+
+test('dispatchValidate generates a sample_id when --sample-id is blank', () => {
+  const runStub = createRunStub();
+
+  const result = dispatchValidate({
+    argv: ['node', 'script', '--allow-fork', '--ref', 'feature/x', '--sample-id', '   '],
+    env: {},
+    getRepoRootFn: () => 'repo',
+    resolveContextFn: () => ({
+      upstream: { owner: 'LabVIEW-Community-CI-CD', repo: 'compare-vi-cli-action' },
+      isFork: false
+    }),
+    getCurrentBranchFn: () => 'feature/x',
+    findRemoteRefFn: () => ({ pattern: 'refs/heads/feature/x', sha: 'abc1234' }),
+    ensureRemoteHasRefFn: () => ({ pattern: 'refs/heads/feature/x', sha: 'abc1234' }),
+    ensureCleanWorkingTreeFn: () => {},
+    runFn: runStub,
+    ensureGhCliFn: () => {}
+  });
+
+  assert.equal(result.dispatched, true);
+  assert.match(result.sampleId, /^ts-\d{8}-\d{6}-[0-9a-z]{4}$/);
+  const workflowCall = runStub.calls.find(
+    (call) => call.cmd === 'gh' && call.args[0] === 'workflow' && call.args[1] === 'run'
+  );
+  assert.ok(workflowCall, 'should invoke gh workflow run');
+  const sampleArg = workflowCall.args.find((arg) => arg.startsWith('sample_id='));
+  assert.ok(sampleArg, 'should pass sample_id input');
+  assert.equal(sampleArg, `sample_id=${result.sampleId}`);
+  assert.notEqual(sampleArg, 'sample_id=');
 });
 
 test('dispatchValidate fails when ref missing on remote without auto-push', () => {
