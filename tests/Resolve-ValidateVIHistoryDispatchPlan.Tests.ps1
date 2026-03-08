@@ -96,4 +96,42 @@ Describe 'Resolve-ValidateVIHistoryDispatchPlan' -Tag 'Unit' {
     $plan.skipReason | Should -Be 'history-scenario-set-none'
     $plan.historyScenarioSet | Should -Be 'none'
   }
+
+  It 'enables scoped PR execution with a deterministic smoke scenario set' {
+    $plan = pwsh -NoLogo -NoProfile -File $scriptPath `
+      -EventName 'pull_request' `
+      -Repository 'LabVIEW-Community-CI-CD/compare-vi-cli-action' `
+      -EnableScopedExecution:$true `
+      -ScopedHistoryScenarioSet 'smoke' | ConvertFrom-Json -Depth 8
+
+    $plan.enableScopedExecution | Should -BeTrue
+    $plan.executeLanes | Should -BeTrue
+    $plan.skipReason | Should -Be 'scoped-change'
+    $plan.historyScenarioSet | Should -Be 'smoke'
+  }
+
+  It 'preserves scoped skip reasons when scoped execution is enabled' {
+    $plan = pwsh -NoLogo -NoProfile -File $scriptPath `
+      -EventName 'pull_request' `
+      -Repository 'LabVIEW-Community-CI-CD/compare-vi-cli-action' `
+      -EnableScopedExecution:$true `
+      -ScopedSkipReason 'docker-vi-history-scope' `
+      -ScopedHistoryScenarioSet 'smoke' | ConvertFrom-Json -Depth 8
+
+    $plan.enableScopedExecution | Should -BeTrue
+    $plan.executeLanes | Should -BeTrue
+    $plan.skipReason | Should -Be 'docker-vi-history-scope'
+    $plan.scopedSkipReason | Should -Be 'docker-vi-history-scope'
+  }
+
+  It 'preserves scoped skip reasons when path routing disables VI history lanes' {
+    $plan = pwsh -NoLogo -NoProfile -File $scriptPath `
+      -EventName 'pull_request' `
+      -Repository 'LabVIEW-Community-CI-CD/compare-vi-cli-action' `
+      -ScopedSkipReason 'tools-policy-only' | ConvertFrom-Json -Depth 8
+
+    $plan.enableScopedExecution | Should -BeFalse
+    $plan.executeLanes | Should -BeFalse
+    $plan.skipReason | Should -Be 'tools-policy-only'
+  }
 }

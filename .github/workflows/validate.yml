@@ -376,26 +376,105 @@ jobs:
           )
           $lines -join "`n" | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8
         }
+  validate-scope-plan:
+    needs: smoke-gate
+    if: needs.smoke-gate.outputs.skip != 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: read
+    outputs:
+      scope_mode: ${{ steps.plan.outputs.scope_mode }}
+      scope_category: ${{ steps.plan.outputs.scope_category }}
+      run_fixtures: ${{ steps.plan.outputs.run_fixtures }}
+      fixtures_reason: ${{ steps.plan.outputs.fixtures_reason }}
+      run_bundle_certification: ${{ steps.plan.outputs.run_bundle_certification }}
+      bundle_certification_reason: ${{ steps.plan.outputs.bundle_certification_reason }}
+      run_vi_history: ${{ steps.plan.outputs.run_vi_history }}
+      vi_history_reason: ${{ steps.plan.outputs.vi_history_reason }}
+    steps:
+    - uses: actions/checkout@v5
+      with:
+        fetch-depth: 0
+
+    - name: Resolve Validate scope plan
+      id: plan
+      shell: pwsh
+      env:
+        VALIDATE_EVENT_NAME: ${{ github.event_name }}
+        VALIDATE_REPOSITORY: ${{ github.repository }}
+        VALIDATE_PR_NUMBER: ${{ github.event.pull_request.number || '' }}
+        VALIDATE_BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.merge_group.base_sha || github.event.before || '' }}
+        VALIDATE_HEAD_SHA: ${{ github.event.pull_request.head.sha || github.event.merge_group.head_sha || github.sha }}
+        VALIDATE_BASE_REF: ${{ github.base_ref || github.event.merge_group.base_ref || '' }}
+        VALIDATE_HEAD_REF: ${{ github.head_ref || '' }}
+        GITHUB_TOKEN: ${{ secrets.GH_TOKEN || secrets.GITHUB_TOKEN }}
+        GH_TOKEN: ${{ secrets.GH_TOKEN || secrets.GITHUB_TOKEN }}
+      run: |
+        $resultsRoot = 'tests/results/_agent/validate-scope-plan'
+        New-Item -ItemType Directory -Path $resultsRoot -Force | Out-Null
+        $planPath = Join-Path $resultsRoot 'validate-scope-plan.json'
+        pwsh -NoLogo -NoProfile -File tools/Resolve-ValidateScopePlan.ps1 `
+          -EventName $env:VALIDATE_EVENT_NAME `
+          -Repository $env:VALIDATE_REPOSITORY `
+          -PullRequestNumber $env:VALIDATE_PR_NUMBER `
+          -BaseSha $env:VALIDATE_BASE_SHA `
+          -HeadSha $env:VALIDATE_HEAD_SHA `
+          -BaseRef $env:VALIDATE_BASE_REF `
+          -HeadRef $env:VALIDATE_HEAD_REF `
+          -GitHubOutputPath $env:GITHUB_OUTPUT `
+          -StepSummaryPath $env:GITHUB_STEP_SUMMARY `
+          -JsonPath $planPath
+
+    - name: Upload Validate scope plan artifact
+      if: always()
+      uses: actions/upload-artifact@v5
+      with:
+        name: validate-scope-plan
+        path: tests/results/_agent/validate-scope-plan/validate-scope-plan.json
+        if-no-files-found: error
   fixtures:
+    needs: [smoke-gate, lint, validate-scope-plan]
+    if: needs.smoke-gate.outputs.skip != 'true'
     runs-on: [self-hosted, Windows, X64]
+    permissions:
+      contents: read
     env:
       FAIL_ON_NEW_STRUCTURAL: 'true'
       SUMMARY_VERBOSE: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.summary-verbose || 'false' }}
+      VALIDATE_SCOPE_RUN_FIXTURES: ${{ needs.validate-scope-plan.outputs.run_fixtures }}
+      VALIDATE_SCOPE_FIXTURES_REASON: ${{ needs.validate-scope-plan.outputs.fixtures_reason }}
+      VALIDATE_SCOPE_CATEGORY: ${{ needs.validate-scope-plan.outputs.scope_category }}
     steps:
+    - name: Append fixture lane plan
+      shell: pwsh
+      run: |
+        if ($env:GITHUB_STEP_SUMMARY) {
+          $lines = @(
+            '### Fixtures',
+            '',
+            ('- scope_category: `{0}`' -f $env:VALIDATE_SCOPE_CATEGORY),
+            ('- run_fixtures: `{0}`' -f $env:VALIDATE_SCOPE_RUN_FIXTURES),
+            ('- fixtures_reason: `{0}`' -f $env:VALIDATE_SCOPE_FIXTURES_REASON)
+          )
+          $lines -join "`n" | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8
+        }
     - uses: actions/checkout@v5
+      if: env.VALIDATE_SCOPE_RUN_FIXTURES == 'true'
     - name: Wire Probe (J1)
-      if: '${{ vars.WIRE_PROBES != ''0'' }}'
+      if: env.VALIDATE_SCOPE_RUN_FIXTURES == 'true' && vars.WIRE_PROBES != '0'
       uses: ./.github/actions/wire-probe
       with:
         phase: J1
         results-dir: tests/results
     - name: Wire Probe (J2)
-      if: '${{ vars.WIRE_PROBES != ''0'' }}'
+      if: env.VALIDATE_SCOPE_RUN_FIXTURES == 'true' && vars.WIRE_PROBES != '0'
       uses: ./.github/actions/wire-probe
       with:
         phase: J2
         results-dir: tests/results
     - name: Run fixture validator (JSON)
+      if: env.VALIDATE_SCOPE_RUN_FIXTURES == 'true'
       shell: pwsh
       run: |
         $ErrorActionPreference = 'Stop'
@@ -411,6 +490,7 @@ jobs:
           exit 1
         }
     - name: Restore previous fixture validation snapshot (cache)
+      if: env.VALIDATE_SCOPE_RUN_FIXTURES == 'true'
       id: restore_prev_fixture_validation
       uses: actions/cache/restore@v4
       with:
@@ -419,7 +499,7 @@ jobs:
         restore-keys: |
           fixture-validation-
     - name: Compute delta vs previous snapshot
-      if: steps.restore_prev_fixture_validation.outputs.cache-hit == 'true'
+      if: env.VALIDATE_SCOPE_RUN_FIXTURES == 'true' && steps.restore_prev_fixture_validation.outputs.cache-hit == 'true'
       shell: pwsh
       run: |
         Write-Host 'Previous snapshot restored. Computing delta.'
@@ -434,27 +514,29 @@ jobs:
           }
         }
     - name: Validate delta JSON schema (basic)
-      if: steps.restore_prev_fixture_validation.outputs.cache-hit == 'true' && hashFiles('fixture-validation-delta.json') != ''
+      if: env.VALIDATE_SCOPE_RUN_FIXTURES == 'true' && steps.restore_prev_fixture_validation.outputs.cache-hit == 'true' && hashFiles('fixture-validation-delta.json') != ''
       shell: pwsh
       run: |
         pwsh -File tools/Test-FixtureValidationDeltaSchema.ps1 -DeltaJsonPath fixture-validation-delta.json
     - name: Lite schema validate (delta)
-      if: steps.restore_prev_fixture_validation.outputs.cache-hit == 'true' && hashFiles('fixture-validation-delta.json') != ''
+      if: env.VALIDATE_SCOPE_RUN_FIXTURES == 'true' && steps.restore_prev_fixture_validation.outputs.cache-hit == 'true' && hashFiles('fixture-validation-delta.json') != ''
       shell: pwsh
       run: |
         pwsh -File tools/Invoke-JsonSchemaLite.ps1 -JsonPath fixture-validation-delta.json -SchemaPath docs/schemas/fixture-validation-delta-v1.schema.json
     - name: Upload fixture validation delta JSON
-      if: steps.restore_prev_fixture_validation.outputs.cache-hit == 'true' && hashFiles('fixture-validation-delta.json') != ''
+      if: env.VALIDATE_SCOPE_RUN_FIXTURES == 'true' && steps.restore_prev_fixture_validation.outputs.cache-hit == 'true' && hashFiles('fixture-validation-delta.json') != ''
       uses: actions/upload-artifact@v5
       with:
         name: validate-fixture-validation-delta-json
         path: fixture-validation-delta.json
     - name: Upload fixture validation JSON
+      if: env.VALIDATE_SCOPE_RUN_FIXTURES == 'true'
       uses: actions/upload-artifact@v5
       with:
         name: validate-fixture-validation-json
         path: fixture-validation.json
     - name: Lite schema validate (snapshot)
+      if: env.VALIDATE_SCOPE_RUN_FIXTURES == 'true'
       shell: pwsh
       run: |
         if (-not (Test-Path fixture-validation.json)) {
@@ -463,29 +545,32 @@ jobs:
         }
         pwsh -File tools/Invoke-JsonSchemaLite.ps1 -JsonPath fixture-validation.json -SchemaPath docs/schemas/fixture-manifest-v1.schema.json
     - name: Append fixture summary
+      if: env.VALIDATE_SCOPE_RUN_FIXTURES == 'true'
       shell: pwsh
       run: pwsh -File tools/Write-FixtureValidationSummary.ps1 -ValidationJson fixture-validation.json -DeltaJson fixture-validation-delta.json
     - name: Write fixture summary file
-      if: always()
+      if: always() && env.VALIDATE_SCOPE_RUN_FIXTURES == 'true'
       shell: pwsh
       run: pwsh -File tools/Write-FixtureValidationSummary.ps1 -ValidationJson fixture-validation.json -DeltaJson fixture-validation-delta.json -SummaryPath fixture-summary.md
     - name: Upload fixture summary artifact
-      if: always() && hashFiles('fixture-summary.md') != ''
+      if: always() && env.VALIDATE_SCOPE_RUN_FIXTURES == 'true' && hashFiles('fixture-summary.md') != ''
       uses: actions/upload-artifact@v5
       with:
         name: fixture-validation-summary
         path: fixture-summary.md
     - name: Save current snapshot to cache
+      if: env.VALIDATE_SCOPE_RUN_FIXTURES == 'true'
       uses: actions/cache/save@v4
       with:
         path: fixture-validation.json
         key: fixture-validation-${{ github.sha }}
     - name: Copy snapshot for next run reference
+      if: env.VALIDATE_SCOPE_RUN_FIXTURES == 'true'
       shell: pwsh
       run: Copy-Item -LiteralPath fixture-validation.json -Destination fixture-validation-prev.json -Force
 
     - name: Agent wait summary (notice-only)
-      if: always()
+      if: always() && env.VALIDATE_SCOPE_RUN_FIXTURES == 'true'
       uses: ./.github/actions/agent-wait-post
       with:
         results-dir: tests/results
@@ -895,8 +980,10 @@ jobs:
         if-no-files-found: warn
 
   comparevi-history-bundle-certification:
-    needs: [smoke-gate, lint, fixtures, session-index, session-index-v2-contract]
-    if: needs.smoke-gate.outputs.skip != 'true'
+    needs: [smoke-gate, lint, validate-scope-plan, session-index, session-index-v2-contract]
+    if: >
+      needs.smoke-gate.outputs.skip != 'true' &&
+      needs.validate-scope-plan.outputs.run_bundle_certification == 'true'
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -974,7 +1061,7 @@ jobs:
           if-no-files-found: error
 
   vi-history-scenarios-plan:
-    needs: [smoke-gate, lint, fixtures, session-index, session-index-v2-contract]
+    needs: [smoke-gate, lint, validate-scope-plan, session-index, session-index-v2-contract]
     if: needs.smoke-gate.outputs.skip != 'true'
     runs-on: ubuntu-latest
     permissions:
@@ -998,6 +1085,8 @@ jobs:
           VALIDATE_HISTORY_SCENARIO_SET: ${{ github.event.inputs.history_scenario_set }}
           VALIDATE_ALLOW_NONCANONICAL: ${{ github.event.inputs.allow_noncanonical_vi_history }}
           VALIDATE_ALLOW_NONCANONICAL_HISTORY_CORE: ${{ github.event.inputs.allow_noncanonical_history_core }}
+          VALIDATE_SCOPE_RUN_VI_HISTORY: ${{ needs.validate-scope-plan.outputs.run_vi_history }}
+          VALIDATE_SCOPE_VI_HISTORY_REASON: ${{ needs.validate-scope-plan.outputs.vi_history_reason }}
         run: |
           $resultsRoot = 'tests/results/_agent/vi-history-dispatch'
           New-Item -ItemType Directory -Path $resultsRoot -Force | Out-Null
@@ -1005,6 +1094,7 @@ jobs:
           $isForkRepository = "$env:VALIDATE_IS_FORK" -eq 'true'
           $allowNonCanonical = "$env:VALIDATE_ALLOW_NONCANONICAL" -eq 'true'
           $allowNonCanonicalHistoryCore = "$env:VALIDATE_ALLOW_NONCANONICAL_HISTORY_CORE" -eq 'true'
+          $enableScopedExecution = "$env:VALIDATE_SCOPE_RUN_VI_HISTORY" -eq 'true'
           pwsh -NoLogo -NoProfile -File tools/Resolve-ValidateVIHistoryDispatchPlan.ps1 `
             -EventName $env:VALIDATE_EVENT_NAME `
             -Repository $env:VALIDATE_REPOSITORY `
@@ -1012,6 +1102,9 @@ jobs:
             -HistoryScenarioSet $env:VALIDATE_HISTORY_SCENARIO_SET `
             -AllowNonCanonical:$allowNonCanonical `
             -AllowNonCanonicalHistoryCore:$allowNonCanonicalHistoryCore `
+            -EnableScopedExecution:$enableScopedExecution `
+            -ScopedSkipReason $env:VALIDATE_SCOPE_VI_HISTORY_REASON `
+            -ScopedHistoryScenarioSet 'smoke' `
             -GitHubOutputPath $env:GITHUB_OUTPUT `
             -StepSummaryPath $env:GITHUB_STEP_SUMMARY `
             -JsonPath $planPath
@@ -1025,7 +1118,7 @@ jobs:
           if-no-files-found: error
 
   vi-history-scenarios-windows:
-    needs: [smoke-gate, lint, fixtures, session-index, session-index-v2-contract, vi-history-scenarios-plan, vi-history-scenarios-linux]
+    needs: [smoke-gate, lint, session-index, session-index-v2-contract, vi-history-scenarios-plan, vi-history-scenarios-linux]
     if: >
       needs.smoke-gate.outputs.skip != 'true' &&
       needs.vi-history-scenarios-plan.outputs.execute_lanes == 'true'
@@ -1137,7 +1230,7 @@ jobs:
           if-no-files-found: warn
 
   vi-history-scenarios-linux:
-    needs: [smoke-gate, lint, fixtures, session-index, session-index-v2-contract, vi-history-scenarios-plan]
+    needs: [smoke-gate, lint, session-index, session-index-v2-contract, vi-history-scenarios-plan]
     if: needs.smoke-gate.outputs.skip != 'true'
     runs-on: ubuntu-latest
     permissions:
