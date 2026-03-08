@@ -1,0 +1,580 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://labview-community-ci-cd.github.io/compare-vi-cli-action/schemas/validation-approval-decision-v1.schema.json",
+  "title": "validation-approval-decision@v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema",
+    "schemaVersion",
+    "generatedAt",
+    "status",
+    "mode",
+    "repository",
+    "environment",
+    "pullRequest",
+    "policy",
+    "providers",
+    "decision",
+    "artifacts"
+  ],
+  "properties": {
+    "schema": {
+      "const": "validation-approval-decision@v1"
+    },
+    "schemaVersion": {
+      "type": "string"
+    },
+    "generatedAt": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "pass",
+        "fail"
+      ]
+    },
+    "mode": {
+      "type": "string",
+      "const": "evaluate"
+    },
+    "repository": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "environment": {
+      "type": "string"
+    },
+    "pullRequest": {
+      "$ref": "#/$defs/pullRequest"
+    },
+    "policy": {
+      "$ref": "#/$defs/policy"
+    },
+    "providers": {
+      "$ref": "#/$defs/providers"
+    },
+    "decision": {
+      "$ref": "#/$defs/decision"
+    },
+    "artifacts": {
+      "$ref": "#/$defs/artifacts"
+    }
+  },
+  "$defs": {
+    "nullableString": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "pullRequest": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "number",
+        "url",
+        "isDraft",
+        "headSha",
+        "headRefName",
+        "baseRefName",
+        "headRepositoryOwner",
+        "isCrossRepository",
+        "mergeStateStatus"
+      ],
+      "properties": {
+        "number": {
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "url": {
+          "$ref": "#/$defs/nullableString"
+        },
+        "isDraft": {
+          "type": [
+            "boolean",
+            "null"
+          ]
+        },
+        "headSha": {
+          "$ref": "#/$defs/nullableString"
+        },
+        "headRefName": {
+          "$ref": "#/$defs/nullableString"
+        },
+        "baseRefName": {
+          "$ref": "#/$defs/nullableString"
+        },
+        "headRepositoryOwner": {
+          "$ref": "#/$defs/nullableString"
+        },
+        "isCrossRepository": {
+          "type": [
+            "boolean",
+            "null"
+          ]
+        },
+        "mergeStateStatus": {
+          "$ref": "#/$defs/nullableString"
+        }
+      }
+    },
+    "policy": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schema",
+        "schemaVersion",
+        "path",
+        "shadowMode",
+        "allowedBaseRefs",
+        "trust",
+        "providers",
+        "attestation"
+      ],
+      "properties": {
+        "schema": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "schemaVersion": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "path": {
+          "type": "string"
+        },
+        "shadowMode": {
+          "type": "boolean"
+        },
+        "allowedBaseRefs": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "trust": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "requireRepositoryMatch",
+            "allowCrossRepository",
+            "allowedHeadOwners"
+          ],
+          "properties": {
+            "requireRepositoryMatch": {
+              "type": "boolean"
+            },
+            "allowCrossRepository": {
+              "type": "boolean"
+            },
+            "allowedHeadOwners": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            }
+          }
+        },
+        "providers": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "requireReviewSignal",
+            "requireAgentAttestation",
+            "requireDeploymentDeterminism",
+            "requireRequiredChecks"
+          ],
+          "properties": {
+            "requireReviewSignal": {
+              "type": "boolean"
+            },
+            "requireAgentAttestation": {
+              "type": "boolean"
+            },
+            "requireDeploymentDeterminism": {
+              "type": "boolean"
+            },
+            "requireRequiredChecks": {
+              "type": "boolean"
+            }
+          }
+        },
+        "attestation": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "requireValidationEvidencePass",
+            "requireDispositionsForActionableComments",
+            "requireDispositionsForUnresolvedThreads"
+          ],
+          "properties": {
+            "requireValidationEvidencePass": {
+              "type": "boolean"
+            },
+            "requireDispositionsForActionableComments": {
+              "type": "boolean"
+            },
+            "requireDispositionsForUnresolvedThreads": {
+              "type": "boolean"
+            }
+          }
+        }
+      }
+    },
+    "reviewSignalProvider": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "path",
+        "available",
+        "status",
+        "reviewState",
+        "headSha",
+        "pullRequestNumber",
+        "hasCurrentHeadReview",
+        "actionableCommentCount",
+        "unresolvedThreadCount",
+        "staleReviewCount",
+        "errorCount"
+      ],
+      "properties": {
+        "path": {
+          "type": "string"
+        },
+        "available": {
+          "type": "boolean"
+        },
+        "status": {
+          "type": "string"
+        },
+        "reviewState": {
+          "type": "string"
+        },
+        "headSha": {
+          "$ref": "#/$defs/nullableString"
+        },
+        "pullRequestNumber": {
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "hasCurrentHeadReview": {
+          "type": "boolean"
+        },
+        "actionableCommentCount": {
+          "type": "integer"
+        },
+        "unresolvedThreadCount": {
+          "type": "integer"
+        },
+        "staleReviewCount": {
+          "type": "integer"
+        },
+        "errorCount": {
+          "type": "integer"
+        },
+        "error": {
+          "$ref": "#/$defs/nullableString"
+        }
+      }
+    },
+    "agentAttestationProvider": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "path",
+        "available",
+        "repository",
+        "pullRequestNumber",
+        "headSha",
+        "reviewSignalActionableCommentCount",
+        "reviewSignalUnresolvedThreadCount",
+        "threadDispositionCount",
+        "commentDispositionCount",
+        "failedEvidenceCount",
+        "commandFailureCount",
+        "checkFailureCount"
+      ],
+      "properties": {
+        "path": {
+          "type": "string"
+        },
+        "available": {
+          "type": "boolean"
+        },
+        "repository": {
+          "$ref": "#/$defs/nullableString"
+        },
+        "pullRequestNumber": {
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "headSha": {
+          "$ref": "#/$defs/nullableString"
+        },
+        "reviewSignalActionableCommentCount": {
+          "type": "integer"
+        },
+        "reviewSignalUnresolvedThreadCount": {
+          "type": "integer"
+        },
+        "threadDispositionCount": {
+          "type": "integer"
+        },
+        "commentDispositionCount": {
+          "type": "integer"
+        },
+        "failedEvidenceCount": {
+          "type": "integer"
+        },
+        "commandFailureCount": {
+          "type": "integer"
+        },
+        "checkFailureCount": {
+          "type": "integer"
+        }
+      }
+    },
+    "deploymentProvider": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "path",
+        "available",
+        "environment",
+        "result",
+        "issueCount",
+        "issues",
+        "runId"
+      ],
+      "properties": {
+        "path": {
+          "type": "string"
+        },
+        "available": {
+          "type": "boolean"
+        },
+        "environment": {
+          "$ref": "#/$defs/nullableString"
+        },
+        "result": {
+          "type": "string"
+        },
+        "issueCount": {
+          "type": "integer"
+        },
+        "issues": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "runId": {
+          "$ref": "#/$defs/nullableString"
+        }
+      }
+    },
+    "trustContextProvider": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "trusted",
+        "repository",
+        "targetOwner",
+        "baseRef",
+        "headOwner",
+        "isCrossRepository",
+        "denialReasons"
+      ],
+      "properties": {
+        "trusted": {
+          "type": "boolean"
+        },
+        "repository": {
+          "$ref": "#/$defs/nullableString"
+        },
+        "targetOwner": {
+          "$ref": "#/$defs/nullableString"
+        },
+        "baseRef": {
+          "$ref": "#/$defs/nullableString"
+        },
+        "headOwner": {
+          "$ref": "#/$defs/nullableString"
+        },
+        "isCrossRepository": {
+          "type": [
+            "boolean",
+            "null"
+          ]
+        },
+        "denialReasons": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "requiredChecksProvider": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "policyPath",
+        "baseRef",
+        "mergeStateStatus",
+        "required",
+        "missing",
+        "failing",
+        "ready",
+        "available"
+      ],
+      "properties": {
+        "policyPath": {
+          "type": "string"
+        },
+        "baseRef": {
+          "$ref": "#/$defs/nullableString"
+        },
+        "mergeStateStatus": {
+          "type": "string"
+        },
+        "required": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "missing": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "failing": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "ready": {
+          "type": "boolean"
+        },
+        "available": {
+          "type": "boolean"
+        }
+      }
+    },
+    "providers": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "reviewSignal",
+        "agentAttestation",
+        "deploymentDeterminism",
+        "trustContext",
+        "requiredChecks"
+      ],
+      "properties": {
+        "reviewSignal": {
+          "$ref": "#/$defs/reviewSignalProvider"
+        },
+        "agentAttestation": {
+          "$ref": "#/$defs/agentAttestationProvider"
+        },
+        "deploymentDeterminism": {
+          "$ref": "#/$defs/deploymentProvider"
+        },
+        "trustContext": {
+          "$ref": "#/$defs/trustContextProvider"
+        },
+        "requiredChecks": {
+          "$ref": "#/$defs/requiredChecksProvider"
+        }
+      }
+    },
+    "decision": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "state",
+        "ready",
+        "blockers",
+        "denials",
+        "reasons",
+        "notes",
+        "summary"
+      ],
+      "properties": {
+        "state": {
+          "type": "string",
+          "enum": [
+            "ready",
+            "blocked",
+            "denied"
+          ]
+        },
+        "ready": {
+          "type": "boolean"
+        },
+        "blockers": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "denials": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "reasons": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "notes": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "summary": {
+          "type": "string"
+        }
+      }
+    },
+    "artifacts": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "decisionPath",
+        "eventsPath"
+      ],
+      "properties": {
+        "decisionPath": {
+          "type": "string"
+        },
+        "eventsPath": {
+          "type": "string"
+        }
+      }
+    }
+  }
+}
