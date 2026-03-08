@@ -97,6 +97,8 @@ $defaultManifest = [ordered]@{
   stats = [ordered]@{
     processed = 1
     diffs = 1
+    signalDiffs = 1
+    noiseCollapsed = 0
     errors = 0
     missing = 0
     stopReason = 'complete'
@@ -107,6 +109,13 @@ $defaultManifest = [ordered]@{
     }
     bucketCounts = [ordered]@{
       'functional-behavior' = 1
+    }
+    collapsedNoise = [ordered]@{
+      count = 0
+      indices = @()
+      commits = @()
+      categoryCounts = [ordered]@{}
+      bucketCounts = [ordered]@{}
     }
   }
   status = 'ok'
@@ -170,6 +179,8 @@ $attributesManifest = [ordered]@{
   stats = [ordered]@{
     processed = 1
     diffs = 0
+    signalDiffs = 0
+    noiseCollapsed = 0
     errors = 0
     missing = 0
     stopReason = 'complete'
@@ -180,6 +191,13 @@ $attributesManifest = [ordered]@{
     }
     bucketCounts = [ordered]@{
       'metadata' = 1
+    }
+    collapsedNoise = [ordered]@{
+      count = 0
+      indices = @()
+      commits = @()
+      categoryCounts = [ordered]@{}
+      bucketCounts = [ordered]@{}
     }
   }
   status = 'ok'
@@ -237,10 +255,14 @@ $suiteManifest = [ordered]@{
   startRef = 'HEAD'
   endRef = ''
   maxPairs = 2
+  maxSignalPairs = 2
+  noisePolicy = 'collapse'
   failFast = $false
   failOnDiff = $false
   reportFormat = 'html'
   resultsDir = $resultsDir
+  requestedModes = @('default', 'attributes')
+  executedModes = @('default', 'attributes')
   modes = @(
     [ordered]@{
       name = 'default'
@@ -267,6 +289,8 @@ $suiteManifest = [ordered]@{
     modes = 2
     processed = 2
     diffs = 1
+    signalDiffs = 1
+    noiseCollapsed = 0
     errors = 0
     missing = 0
     categoryCounts = [ordered]@{
@@ -290,6 +314,8 @@ $historyContext = [ordered]@{
   requestedStartRef = 'HEAD^'
   startRef = 'HEAD'
   maxPairs = 2
+  requestedModes = @('default', 'attributes')
+  executedModes = @('default', 'attributes')
   comparisons = @(
     [ordered]@{
       mode = 'default'

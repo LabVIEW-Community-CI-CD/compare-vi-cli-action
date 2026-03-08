@@ -1043,6 +1043,21 @@ exit 0
     $manifestValue = (($manifestLine -split '=', 2)[1]).Trim()
     $manifestValue | Should -Match 'manifest\.json$'
     Test-Path -LiteralPath $manifestValue | Should -BeTrue
+    $suiteManifest = Get-Content -LiteralPath $manifestValue -Raw | ConvertFrom-Json -Depth 12
+    @($suiteManifest.requestedModes) | Should -Be @('default', 'attributes')
+    @($suiteManifest.executedModes) | Should -Be @('default', 'attributes')
+
+    $suiteSchemaPath = Join-Path $_repoRoot 'docs' 'schemas' 'vi-compare-history-suite-v1.schema.json'
+    $schemaValidation = & node (Join-Path $_repoRoot 'tools' 'npm' 'run-script.mjs') 'schema:validate' '--' '--schema' $suiteSchemaPath '--data' $manifestValue 2>&1
+    $LASTEXITCODE | Should -Be 0 -Because (($schemaValidation | ForEach-Object { "$_" }) -join [Environment]::NewLine)
+
+    $requestedModeLine = $outputLines | Where-Object { $_ -like 'requested-mode-list=*' } | Select-Object -First 1
+    $requestedModeLine | Should -Not -BeNullOrEmpty
+    ((($requestedModeLine -split '=', 2)[1]).Trim()) | Should -Be 'default, attributes'
+
+    $executedModeLine = $outputLines | Where-Object { $_ -like 'executed-mode-list=*' } | Select-Object -First 1
+    $executedModeLine | Should -Not -BeNullOrEmpty
+    ((($executedModeLine -split '=', 2)[1]).Trim()) | Should -Be 'default, attributes'
 
     $modeJsonLine = $outputLines | Where-Object { $_ -like 'mode-manifests-json=*' } | Select-Object -First 1
     $modeJsonLine | Should -Not -BeNullOrEmpty
@@ -1052,6 +1067,11 @@ exit 0
     foreach ($entry in $modeSummary) {
       $entry.stopReason | Should -Be 'no-pairs'
       $entry.processed | Should -Be 0
+      $entry.signalDiffs | Should -Be 0
+      $entry.noiseCollapsed | Should -Be 0
+      $entry.errors | Should -Be 0
+      $entry.categoryCounts.PSObject.Properties.Count | Should -Be 0
+      $entry.bucketCounts.PSObject.Properties.Count | Should -Be 0
     }
 
     $bucketJsonLine = $outputLines | Where-Object { $_ -like 'bucket-counts-json=*' } | Select-Object -First 1
@@ -1113,14 +1133,22 @@ exit 0
       & $script:InvokeCompareHistory -Parameters $runParams | Out-Null
 
       $historyMd = Get-Content -LiteralPath (Join-Path $rd 'history-report.md') -Raw
+      $historyMd | Should -Match 'Requested Modes: `default`'
+      $historyMd | Should -Match 'Executed Modes: `default`'
       $historyMd | Should -Match '\| Metric \| Value \|'
+      $historyMd | Should -Match '\| Signal Diffs \|'
       $historyMd | Should -Match '## Mode overview'
+      $historyMd | Should -Match '\| Mode \| Processed \| Diffs \| Signal \| Collapsed Noise \| Missing \| Categories \| Buckets \| Flags \|'
       $historyMd | Should -Match '## Attribute coverage'
       $historyMd | Should -Match 'History manifest:'
 
       $historyHtml = Get-Content -LiteralPath (Join-Path $rd 'history-report.html') -Raw
       $historyHtml | Should -Match '<h1>VI History Report</h1>'
+      $historyHtml | Should -Match 'Requested modes'
+      $historyHtml | Should -Match 'Executed modes'
       $historyHtml | Should -Match '<h2>Summary</h2>'
+      $historyHtml | Should -Match '<th>Signal</th>'
+      $historyHtml | Should -Match '<th>Collapsed Noise</th>'
       $historyHtml | Should -Match '<h2>Commit pairs</h2>'
       $historyHtml | Should -Match 'No commit pairs were captured'
       $historyHtml | Should -Match '<h2>Attribute coverage</h2>'

@@ -193,20 +193,28 @@ gh workflow run vi-compare-refs.yml `
 ## Outputs & artifacts
 
 - The compare step writes `tests/results/ref-compare/history/manifest.json`, an aggregate manifest with
-  `schema: vi-compare/history-suite@v1`. Each `modes[]` entry captures the mode slug, resolved flag bundle,
-  stats, and the `manifestPath` for that mode's detailed results.
+  `schema: vi-compare/history-suite@v1`. The public contract is described in
+  `docs/schemas/vi-compare-history-suite-v1.schema.json`: top-level `requestedModes[]` records the normalized requested
+  mode bundle, `executedModes[]` records the modes that actually ran, and each `modes[]` entry captures the mode slug,
+  resolved flag bundle, stable per-mode stats, and the `manifestPath` for that mode's detailed results.
 - `scripts/Run-VIHistory.ps1` also writes `tests/results/ref-compare/history/history-context.json` (`schema: vi-compare/history-context@v1`) summarising the commit pairs whenever the upstream context file is present. If the context cannot be read, the renderer falls back to the per-mode manifests and enriches them with commit metadata pulled from `git`, ensuring the generated `history-report.md` / `history-report.html` still lists every pair with author/date context, explicit diff outcome, run duration, and-when differences exist-relative links to the LVCompare report and preserved artifact directory.
 - The Markdown/HTML history reports include a `Categories` column that surfaces the same badge set as staging (`cat-signal`, `cat-noise`, `cat-neutral`). Each comparison record in the per-mode manifests carries the raw category slug list so tooling can distinguish signal vs cosmetic diffs without re-scraping the HTML.
-- Reports now add a `Buckets` column and aggregate bucket totals so reviewers can immediately see whether a run touched
+- Reports now surface the normalized requested/executed mode bundle directly in both Markdown and HTML, and the
+  per-mode overview tables include `Diffs`, `Signal`, `Collapsed Noise`, `Missing`, `Categories`, `Buckets`, and
+  `Flags`. Reviewers should treat `Signal` as the high-value mode-specific diff count and `Collapsed Noise` as the
+  count of diffs hidden by the configured noise policy.
+- Reports also add a `Buckets` column and aggregate bucket totals so reviewers can immediately see whether a run touched
   functional behaviour, UI/visual changes, or metadata-only adjustments. The GitHub outputs ship both `category-counts-json`
   and `bucket-counts-json`, keeping dashboards in sync with the human-readable summaries.
 - GitHub outputs include `manifest_path` (suite manifest), `results_dir` (root history directory), `mode_manifests_json`
-  (JSON array enumerating each mode's manifest path, results directory, and summary stats), plus the history report
-  pointers. The compare step emits `history-report-md` / `history-report-html`, and the workflow surfaces those as job
-  outputs `history_report_md` / `history_report_html` for downstream jobs, dashboards, or PR comments. When HTML
-  rendering is skipped or fails, the Markdown path still points at the fallback report so consumers always have a
-  summary to ingest. A compressed `category-counts-json` blob is also published so downstream automation can react to runs
-  dominated by cosmetic noise without re-reading the manifests.
+  (JSON array enumerating each mode's manifest path, results directory, and stable summary stats including
+  `processed`, `diffs`, `signalDiffs`, `noiseCollapsed`, `errors`, `missing`, `categoryCounts`, `bucketCounts`,
+  `stopReason`, and `status`), plus `requested-mode-list`, `executed-mode-list`, and the history report pointers. The
+  compare step emits `history-report-md` / `history-report-html`, and the workflow surfaces those as job outputs
+  `history_report_md` / `history_report_html` for downstream jobs, dashboards, or PR comments. When HTML rendering is
+  skipped or fails, the Markdown path still points at the fallback report so consumers always have a summary to ingest.
+  A compressed `category-counts-json` blob is also published so downstream automation can react to runs dominated by
+  cosmetic noise without re-reading the manifests.
 - History summary JSON (`tests/results/pr-vi-history/vi-history-summary.json`) now adds:
   - `targets[].reportImages` for per-target extraction metadata.
   - `pairTimeline[]` with additive per-pair contract fields:

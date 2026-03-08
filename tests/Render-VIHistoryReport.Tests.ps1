@@ -29,6 +29,8 @@ Describe 'Render-VIHistoryReport.ps1' -Tag 'Unit' {
             startRef          = 'HEAD'
             maxPairs          = 2
             resultsDir        = $resultsRoot
+            requestedModes    = @('default')
+            executedModes     = @('default')
             status            = 'ok'
             modes             = @(
                 [ordered]@{
@@ -42,6 +44,8 @@ Describe 'Render-VIHistoryReport.ps1' -Tag 'Unit' {
                     stats        = [ordered]@{
                         processed     = 2
                         diffs         = 1
+                        signalDiffs   = 1
+                        noiseCollapsed= 0
                         missing       = 0
                         categoryCounts= [ordered]@{ 'block-diagram' = 1 }
                         bucketCounts  = [ordered]@{ 'functional-behavior' = 1 }
@@ -52,6 +56,8 @@ Describe 'Render-VIHistoryReport.ps1' -Tag 'Unit' {
                 modes          = 1
                 processed      = 2
                 diffs          = 1
+                signalDiffs    = 1
+                noiseCollapsed = 0
                 missing        = 0
                 errors         = 0
                 categoryCounts = [ordered]@{
@@ -151,13 +157,21 @@ Describe 'Render-VIHistoryReport.ps1' -Tag 'Unit' {
         Test-Path -LiteralPath $htmlPath | Should -BeTrue
 
         $markdown = Get-Content -LiteralPath $markdownPath -Raw
+        $markdown | Should -Match 'Requested Modes: `default`'
+        $markdown | Should -Match 'Executed Modes: `default`'
         $markdown | Should -Match '\| Metric \| Value \|'
+        $markdown | Should -Match '\| Signal Diffs \|'
         $markdown | Should -Match '\| Buckets \|'
         $markdown | Should -Match 'Functional behavior'
         $markdown | Should -Match 'Metadata'
+        $markdown | Should -Match '\| Mode \| Processed \| Diffs \| Signal \| Collapsed Noise \| Missing \| Categories \| Buckets \| Flags \|'
         $markdown | Should -Match '\| Mode \| Pair \| Lineage \| Base \| Head \| Diff \| Duration \(s\) \| Categories \| Buckets \| Report \| Highlights \|'
 
         $html = Get-Content -LiteralPath $htmlPath -Raw
+        $html | Should -Match 'Requested modes'
+        $html | Should -Match 'Executed modes'
+        $html | Should -Match '<th>Signal</th>'
+        $html | Should -Match '<th>Collapsed Noise</th>'
         $html | Should -Match '<th>Lineage</th>'
         $html | Should -Match '<th>Categories</th>'
         $html | Should -Match '<th>Buckets</th>'

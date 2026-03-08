@@ -1,0 +1,321 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://labview-community-ci-cd.github.io/compare-vi-cli-action/schemas/vi-compare-history-suite-v1.schema.json",
+  "title": "VI Compare History Suite v1",
+  "description": "Stable aggregate contract emitted by tools/Compare-VIHistory.ps1 for multi-mode history sweeps.",
+  "type": "object",
+  "required": [
+    "schema",
+    "generatedAt",
+    "targetPath",
+    "requestedStartRef",
+    "startRef",
+    "endRef",
+    "maxPairs",
+    "maxSignalPairs",
+    "noisePolicy",
+    "failFast",
+    "failOnDiff",
+    "reportFormat",
+    "resultsDir",
+    "requestedModes",
+    "executedModes",
+    "modes",
+    "stats",
+    "status"
+  ],
+  "properties": {
+    "schema": {
+      "const": "vi-compare/history-suite@v1"
+    },
+    "generatedAt": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "targetPath": {
+      "type": "string"
+    },
+    "requestedStartRef": {
+      "type": "string"
+    },
+    "startRef": {
+      "type": "string"
+    },
+    "endRef": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "maxPairs": {
+      "type": [
+        "integer",
+        "null"
+      ],
+      "minimum": 1
+    },
+    "maxSignalPairs": {
+      "type": [
+        "integer",
+        "null"
+      ],
+      "minimum": 1
+    },
+    "noisePolicy": {
+      "enum": [
+        "include",
+        "collapse",
+        "skip"
+      ]
+    },
+    "failFast": {
+      "type": "boolean"
+    },
+    "failOnDiff": {
+      "type": "boolean"
+    },
+    "reportFormat": {
+      "type": "string"
+    },
+    "resultsDir": {
+      "type": "string"
+    },
+    "requestedModes": {
+      "$ref": "#/$defs/modeSlugArray"
+    },
+    "executedModes": {
+      "$ref": "#/$defs/modeSlugArray"
+    },
+    "modes": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/modeEntry"
+      }
+    },
+    "stats": {
+      "$ref": "#/$defs/aggregateStats"
+    },
+    "status": {
+      "type": "string"
+    }
+  },
+  "$defs": {
+    "modeSlugArray": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1
+      }
+    },
+    "countMap": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "integer",
+        "minimum": 0
+      }
+    },
+    "collapsedNoiseStats": {
+      "type": "object",
+      "required": [
+        "count",
+        "indices",
+        "commits",
+        "categoryCounts",
+        "bucketCounts"
+      ],
+      "properties": {
+        "count": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "indices": {
+          "type": "array",
+          "items": {
+            "type": "integer",
+            "minimum": 1
+          }
+        },
+        "commits": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "categoryCounts": {
+          "$ref": "#/$defs/countMap"
+        },
+        "bucketCounts": {
+          "$ref": "#/$defs/countMap"
+        }
+      },
+      "additionalProperties": false
+    },
+    "modeStats": {
+      "type": "object",
+      "required": [
+        "processed",
+        "diffs",
+        "signalDiffs",
+        "noiseCollapsed",
+        "lastDiffIndex",
+        "lastDiffCommit",
+        "stopReason",
+        "errors",
+        "missing",
+        "categoryCounts",
+        "bucketCounts",
+        "collapsedNoise"
+      ],
+      "properties": {
+        "processed": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "diffs": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "signalDiffs": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "noiseCollapsed": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "lastDiffIndex": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "minimum": 1
+        },
+        "lastDiffCommit": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "stopReason": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "errors": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "missing": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "categoryCounts": {
+          "$ref": "#/$defs/countMap"
+        },
+        "bucketCounts": {
+          "$ref": "#/$defs/countMap"
+        },
+        "collapsedNoise": {
+          "$ref": "#/$defs/collapsedNoiseStats"
+        }
+      },
+      "additionalProperties": false
+    },
+    "modeEntry": {
+      "type": "object",
+      "required": [
+        "name",
+        "slug",
+        "reportFormat",
+        "flags",
+        "manifestPath",
+        "resultsDir",
+        "stats",
+        "status"
+      ],
+      "properties": {
+        "name": {
+          "type": "string"
+        },
+        "slug": {
+          "type": "string"
+        },
+        "reportFormat": {
+          "type": "string"
+        },
+        "flags": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "manifestPath": {
+          "type": "string"
+        },
+        "resultsDir": {
+          "type": "string"
+        },
+        "stats": {
+          "$ref": "#/$defs/modeStats"
+        },
+        "status": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": false
+    },
+    "aggregateStats": {
+      "type": "object",
+      "required": [
+        "modes",
+        "processed",
+        "diffs",
+        "signalDiffs",
+        "noiseCollapsed",
+        "errors",
+        "missing",
+        "categoryCounts",
+        "bucketCounts"
+      ],
+      "properties": {
+        "modes": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "processed": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "diffs": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "signalDiffs": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "noiseCollapsed": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "errors": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "missing": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "categoryCounts": {
+          "$ref": "#/$defs/countMap"
+        },
+        "bucketCounts": {
+          "$ref": "#/$defs/countMap"
+        }
+      },
+      "additionalProperties": false
+    }
+  },
+  "additionalProperties": false
+}

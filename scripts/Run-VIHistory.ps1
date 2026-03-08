@@ -332,6 +332,8 @@ try {
     requestedStartRef  = $manifest.requestedStartRef
     startRef           = $manifest.startRef
     maxPairs           = $manifest.maxPairs
+    requestedModes     = if ($manifest.PSObject.Properties['requestedModes']) { @($manifest.requestedModes) } else { @($manifest.modes | ForEach-Object { $_.name }) }
+    executedModes      = if ($manifest.PSObject.Properties['executedModes']) { @($manifest.executedModes) } else { @($manifest.modes | ForEach-Object { $_.name }) }
     comparisons        = $comparisonDetails
   }
   $contextPayload | ConvertTo-Json -Depth 6 | Out-File -FilePath $contextPath -Encoding utf8

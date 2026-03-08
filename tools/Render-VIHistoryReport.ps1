@@ -209,6 +209,21 @@ function Coalesce {
   return $Fallback
 }
 
+function Get-StringArray {
+  param([object]$Value)
+
+  if ($null -eq $Value) { return @() }
+
+  $items = @()
+  if ($Value -is [System.Collections.IEnumerable] -and -not ($Value -is [string])) {
+    $items = @($Value)
+  } else {
+    $items = @($Value)
+  }
+
+  return @($items | ForEach-Object { [string]$_ } | Where-Object { -not [string]::IsNullOrWhiteSpace($_) })
+}
+
 function Get-CategoryMetadata {
   param([string]$Name)
 
@@ -542,6 +557,8 @@ function Build-FallbackHistoryContext {
     requestedStartRef = $Manifest.requestedStartRef
     startRef          = $Manifest.startRef
     maxPairs          = $Manifest.maxPairs
+    requestedModes    = if ($Manifest.PSObject.Properties['requestedModes']) { @($Manifest.requestedModes) } else { @($Manifest.modes | ForEach-Object { $_.name }) }
+    executedModes     = if ($Manifest.PSObject.Properties['executedModes']) { @($Manifest.executedModes) } else { @($Manifest.modes | ForEach-Object { $_.name }) }
     comparisons       = $comparisons.ToArray()
   }
 }
@@ -563,6 +580,16 @@ $startRef = $manifest.startRef
 $requestedStart = $manifest.requestedStartRef
 $stats = $manifest.stats
 $modeEntries = @($manifest.modes)
+$requestedModes = @(Get-StringArray -Value $(if ($manifest.PSObject.Properties['requestedModes']) { $manifest.requestedModes } else { $null }))
+if ($requestedModes.Count -eq 0 -and $modeEntries.Count -gt 0) {
+  $requestedModes = @($modeEntries | ForEach-Object { [string]$_.name } | Where-Object { -not [string]::IsNullOrWhiteSpace($_) })
+}
+$executedModes = @(Get-StringArray -Value $(if ($manifest.PSObject.Properties['executedModes']) { $manifest.executedModes } else { $null }))
+if ($executedModes.Count -eq 0 -and $modeEntries.Count -gt 0) {
+  $executedModes = @($modeEntries | ForEach-Object { [string]$_.name } | Where-Object { -not [string]::IsNullOrWhiteSpace($_) })
+}
+$requestedModeDisplay = if ($requestedModes.Count -gt 0) { [string]::Join(', ', $requestedModes) } else { 'n/a' }
+$executedModeDisplay = if ($executedModes.Count -gt 0) { [string]::Join(', ', $executedModes) } else { 'n/a' }
 
 $summaryLines = New-Object System.Collections.Generic.List[string]
 $summaryLines.Add('# VI History Report')
@@ -570,6 +597,8 @@ $summaryLines.Add('')
 $summaryLines.Add(('Target: `{0}`' -f (Coalesce $targetPath 'unknown')))
 $summaryLines.Add(('Requested Start Ref: `{0}`' -f (Coalesce $requestedStart 'n/a')))
 $summaryLines.Add(('Effective Start Ref: `{0}`' -f (Coalesce $startRef 'n/a')))
+$summaryLines.Add(('Requested Modes: `{0}`' -f $requestedModeDisplay))
+$summaryLines.Add(('Executed Modes: `{0}`' -f $executedModeDisplay))
 
 if ($stats) {
   $summaryLines.Add('')
@@ -578,6 +607,12 @@ if ($stats) {
   $summaryLines.Add(('| Modes | {0} |' -f (Coalesce $stats.modes $modeEntries.Count)))
   $summaryLines.Add(('| Comparisons | {0} |' -f (Coalesce $stats.processed 'n/a')))
   $summaryLines.Add(('| Diffs | {0} |' -f (Coalesce $stats.diffs 'n/a')))
+  if ($stats.signalDiffs -ne $null) {
+    $summaryLines.Add(('| Signal Diffs | {0} |' -f $stats.signalDiffs))
+  }
+  if ($stats.noiseCollapsed -ne $null) {
+    $summaryLines.Add(('| Collapsed Noise | {0} |' -f $stats.noiseCollapsed))
+  }
   $summaryLines.Add(('| Missing | {0} |' -f (Coalesce $stats.missing 'n/a')))
   if ($stats.errors -ne $null) {
     $summaryLines.Add(('| Errors | {0} |' -f $stats.errors))
@@ -612,8 +647,8 @@ if ($modeEntries.Count -gt 0) {
   $summaryLines.Add('')
   $summaryLines.Add('## Mode overview')
   $summaryLines.Add('')
-  $summaryLines.Add('| Mode | Processed | Diffs | Categories | Buckets | Flags |')
-  $summaryLines.Add('| --- | --- | --- | --- | --- | --- |')
+  $summaryLines.Add('| Mode | Processed | Diffs | Signal | Collapsed Noise | Missing | Categories | Buckets | Flags |')
+  $summaryLines.Add('| --- | --- | --- | --- | --- | --- | --- | --- | --- |')
   foreach ($mode in $modeEntries) {
     $flagDisplay = '_none_'
     if ($mode.flags) {
@@ -656,7 +691,16 @@ if ($modeEntries.Count -gt 0) {
         $bucketDisplay = $bucketParts -join '<br>'
       }
     }
-    $summaryLines.Add(('| {0} | {1} | {2} | {3} | {4} | {5} |' -f (Coalesce $mode.name 'unknown'), (Coalesce $mode.stats.processed 'n/a'), (Coalesce $mode.stats.diffs 'n/a'), $categoryDisplay, $bucketDisplay, $flagDisplay))
+    $summaryLines.Add(('| {0} | {1} | {2} | {3} | {4} | {5} | {6} | {7} | {8} |' -f `
+        (Coalesce $mode.name 'unknown'),
+        (Coalesce $mode.stats.processed 'n/a'),
+        (Coalesce $mode.stats.diffs 'n/a'),
+        (Coalesce $mode.stats.signalDiffs 'n/a'),
+        (Coalesce $mode.stats.noiseCollapsed 'n/a'),
+        (Coalesce $mode.stats.missing 'n/a'),
+        $categoryDisplay,
+        $bucketDisplay,
+        $flagDisplay))
   }
 }
 
@@ -842,6 +886,8 @@ if ($emitHtml -and $HtmlPath) {
     @{ Label = 'Modes'; Value = Coalesce $stats.modes $modeEntries.Count },
     @{ Label = 'Comparisons'; Value = Coalesce $stats.processed $comparisons.Count },
     @{ Label = 'Diffs'; Value = $stats.diffs },
+    @{ Label = 'Signal Diffs'; Value = $stats.signalDiffs },
+    @{ Label = 'Collapsed Noise'; Value = $stats.noiseCollapsed },
     @{ Label = 'Missing'; Value = $stats.missing },
     @{ Label = 'Errors'; Value = $stats.errors }
   )
@@ -882,6 +928,8 @@ if ($emitHtml -and $HtmlPath) {
   [void]$htmlBuilder.AppendLine(('    <dt>Target</dt><dd><code>{0}</code></dd>' -f (ConvertTo-HtmlSafe $targetPath)))
   [void]$htmlBuilder.AppendLine(('    <dt>Requested start</dt><dd><code>{0}</code></dd>' -f (ConvertTo-HtmlSafe (Coalesce $requestedStart 'n/a'))))
   [void]$htmlBuilder.AppendLine(('    <dt>Effective start</dt><dd><code>{0}</code></dd>' -f (ConvertTo-HtmlSafe (Coalesce $startRef 'n/a'))))
+  [void]$htmlBuilder.AppendLine(('    <dt>Requested modes</dt><dd><code>{0}</code></dd>' -f (ConvertTo-HtmlSafe $requestedModeDisplay)))
+  [void]$htmlBuilder.AppendLine(('    <dt>Executed modes</dt><dd><code>{0}</code></dd>' -f (ConvertTo-HtmlSafe $executedModeDisplay)))
   if ($manifest.maxPairs) {
     [void]$htmlBuilder.AppendLine(('    <dt>Max pairs</dt><dd>{0}</dd>' -f (ConvertTo-HtmlSafe $manifest.maxPairs)))
   }
@@ -910,13 +958,47 @@ if ($emitHtml -and $HtmlPath) {
   if ($modeEntries.Count -gt 0) {
     [void]$htmlBuilder.AppendLine('  <h2>Mode overview</h2>')
     [void]$htmlBuilder.AppendLine('  <table>')
-    [void]$htmlBuilder.AppendLine('    <thead><tr><th>Mode</th><th>Processed</th><th>Diffs</th><th>Missing</th><th>Flags</th></tr></thead>')
+    [void]$htmlBuilder.AppendLine('    <thead><tr><th>Mode</th><th>Processed</th><th>Diffs</th><th>Signal</th><th>Collapsed Noise</th><th>Missing</th><th>Categories</th><th>Buckets</th><th>Flags</th></tr></thead>')
     [void]$htmlBuilder.AppendLine('    <tbody>')
     foreach ($mode in $modeEntries) {
       $modeName = ConvertTo-HtmlSafe (Coalesce $mode.name 'unknown')
       $processed = ConvertTo-HtmlSafe (Coalesce $mode.stats.processed 'n/a')
       $diffCount = ConvertTo-HtmlSafe (Coalesce $mode.stats.diffs 'n/a')
+      $signalDiffCount = ConvertTo-HtmlSafe (Coalesce $mode.stats.signalDiffs 'n/a')
+      $noiseCollapsedCount = ConvertTo-HtmlSafe (Coalesce $mode.stats.noiseCollapsed 'n/a')
       $missingCount = ConvertTo-HtmlSafe (Coalesce $mode.stats.missing 'n/a')
+      $categoryHtml = '<span class="muted">none</span>'
+      $modeCategoryEntries = Get-CategoryCountEntries -CategoryCounts $mode.stats.categoryCounts
+      if ($modeCategoryEntries -and $modeCategoryEntries.Count -gt 0) {
+        $categoryRows = New-Object System.Collections.Generic.List[string]
+        foreach ($modeCategoryEntry in $modeCategoryEntries) {
+          $labelText = [string]$modeCategoryEntry.label
+          switch ($modeCategoryEntry.classification) {
+            'noise'   { $labelText = '{0} (noise)' -f $labelText }
+            'neutral' { $labelText = '{0} (neutral)' -f $labelText }
+          }
+          $categoryRows.Add(('{0} ({1})' -f (ConvertTo-HtmlSafe $labelText), $modeCategoryEntry.count)) | Out-Null
+        }
+        if ($categoryRows.Count -gt 0) {
+          $categoryHtml = [string]::Join('<br />', $categoryRows)
+        }
+      }
+      $bucketHtml = '<span class="muted">none</span>'
+      $modeBucketEntries = Get-BucketCountEntries -BucketCounts $mode.stats.bucketCounts
+      if ($modeBucketEntries -and $modeBucketEntries.Count -gt 0) {
+        $bucketRows = New-Object System.Collections.Generic.List[string]
+        foreach ($modeBucketEntry in $modeBucketEntries) {
+          $labelText = [string]$modeBucketEntry.label
+          switch ($modeBucketEntry.classification) {
+            'noise'   { $labelText = '{0} (noise)' -f $labelText }
+            'neutral' { $labelText = '{0} (neutral)' -f $labelText }
+          }
+          $bucketRows.Add(('{0} ({1})' -f (ConvertTo-HtmlSafe $labelText), $modeBucketEntry.count)) | Out-Null
+        }
+        if ($bucketRows.Count -gt 0) {
+          $bucketHtml = [string]::Join('<br />', $bucketRows)
+        }
+      }
       $flags = @($mode.flags | Where-Object { -not [string]::IsNullOrWhiteSpace($_) })
       if ($flags.Count -gt 0) {
         $flagCells = $flags | ForEach-Object { "<code>{0}</code>" -f (ConvertTo-HtmlSafe $_) }
@@ -924,7 +1006,7 @@ if ($emitHtml -and $HtmlPath) {
       } else {
         $flagHtml = '<span class="muted">none</span>'
       }
-      [void]$htmlBuilder.AppendLine(("      <tr><td>{0}</td><td>{1}</td><td>{2}</td><td>{3}</td><td>{4}</td></tr>" -f $modeName, $processed, $diffCount, $missingCount, $flagHtml))
+      [void]$htmlBuilder.AppendLine(("      <tr><td>{0}</td><td>{1}</td><td>{2}</td><td>{3}</td><td>{4}</td><td>{5}</td><td>{6}</td><td>{7}</td><td>{8}</td></tr>" -f $modeName, $processed, $diffCount, $signalDiffCount, $noiseCollapsedCount, $missingCount, $categoryHtml, $bucketHtml, $flagHtml))
     }
     [void]$htmlBuilder.AppendLine('    </tbody>')
     [void]$htmlBuilder.AppendLine('  </table>')
