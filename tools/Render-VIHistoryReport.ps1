@@ -690,7 +690,7 @@ function Get-CountMapKeys {
       if ([string]::IsNullOrWhiteSpace([string]$key)) { continue }
       $keys.Add([string]$key) | Out-Null
     }
-  } elseif ($CountMap.PSObject) {
+  } elseif ($CountMap -and $CountMap.PSObject) {
     foreach ($prop in $CountMap.PSObject.Properties) {
       if (-not $prop) { continue }
       if ([string]::IsNullOrWhiteSpace([string]$prop.Name)) { continue }
