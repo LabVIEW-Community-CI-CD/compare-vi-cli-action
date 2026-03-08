@@ -142,6 +142,12 @@ function createRunGhJsonStub({
   prNumber = 866,
   runHeadSha = 'a'.repeat(40),
   prHeadSha = runHeadSha,
+  runHeadBranch = `issue/${prNumber}-test`,
+  prHeadRefName = runHeadBranch,
+  baseRefName = 'develop',
+  headRepositoryOwner = 'labview-community-ci-cd',
+  headRepositoryName = 'compare-vi-cli-action',
+  isCrossRepository = false,
   pendingDeployments = [{ environment: { id: 9667872140, name: 'validation' }, current_user_can_approve: true }],
   runName = 'Validate',
 }) {
@@ -154,7 +160,7 @@ function createRunGhJsonStub({
         name: runName,
         path: '.github/workflows/validate.yml',
         html_url: `https://github.com/LabVIEW-Community-CI-CD/compare-vi-cli-action/actions/runs/${runId}`,
-        head_branch: `issue/${prNumber}-test`,
+        head_branch: runHeadBranch,
         head_sha: runHeadSha,
         status: 'waiting',
         conclusion: null,
@@ -170,7 +176,11 @@ function createRunGhJsonStub({
         state: 'OPEN',
         isDraft: false,
         headRefOid: prHeadSha,
-        headRefName: `issue/${prNumber}-test`,
+        headRefName: prHeadRefName,
+        baseRefName,
+        headRepositoryOwner: { login: headRepositoryOwner },
+        headRepository: { name: headRepositoryName },
+        isCrossRepository,
       };
     }
     if (args[0] === 'api' && args[1] === `repos/LabVIEW-Community-CI-CD/compare-vi-cli-action/actions/runs/${runId}/pending_deployments` && args.includes('--method')) {
@@ -357,4 +367,77 @@ test('validation approval helper can evaluate the broker before checking the tar
     brokerCalls.some((args) => args.includes('--signal') && args.includes('--attestation') && args.includes('--deployment-determinism')),
   );
   assert.ok(brokerCalls.some((args) => args.includes('--environment') && args.includes('validation')));
+});
+
+test('validation approval helper recomputes live trust and denies cross-repository contexts in consume mode', async (t) => {
+  const { runValidationApprovalHelper } = await loadModule();
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'validation-helper-trust-'));
+  t.after(() => fs.rmSync(tmpDir, { recursive: true, force: true }));
+
+  const decisionPath = path.join(tmpDir, 'incoming-decision.json');
+  writeJson(decisionPath, createReadyDecision());
+
+  const gh = createRunGhJsonStub({
+    headRepositoryOwner: 'svelderrainruiz',
+    headRepositoryName: 'compare-vi-cli-action',
+    isCrossRepository: true,
+  });
+  const result = await runValidationApprovalHelper({
+    argv: [
+      'node',
+      'validation-approval-helper.mjs',
+      '--repo',
+      'LabVIEW-Community-CI-CD/compare-vi-cli-action',
+      '--run-id',
+      '12345',
+      '--decision',
+      decisionPath,
+      '--out',
+      path.join(tmpDir, 'helper-report.json'),
+      '--approve',
+    ],
+    now: new Date('2026-03-08T08:35:00Z'),
+    runGhJsonFn: gh.fn,
+    appendStepSummaryFn: async () => {},
+  });
+
+  assert.equal(result.exitCode, 1);
+  assert.equal(result.report?.decision.state, 'denied');
+  assert.ok(result.report?.decision.reasons.includes('cross-repository-disallowed'));
+  assert.equal(result.report?.approval.performed, false);
+});
+
+test('validation approval helper blocks mismatched target run branches', async (t) => {
+  const { runValidationApprovalHelper } = await loadModule();
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'validation-helper-branch-'));
+  t.after(() => fs.rmSync(tmpDir, { recursive: true, force: true }));
+
+  const decisionPath = path.join(tmpDir, 'incoming-decision.json');
+  writeJson(decisionPath, createReadyDecision());
+
+  const gh = createRunGhJsonStub({
+    runHeadBranch: 'feature/other-branch',
+    prHeadRefName: 'issue/866-validation-approval-helper',
+  });
+  const result = await runValidationApprovalHelper({
+    argv: [
+      'node',
+      'validation-approval-helper.mjs',
+      '--repo',
+      'LabVIEW-Community-CI-CD/compare-vi-cli-action',
+      '--run-id',
+      '12345',
+      '--decision',
+      decisionPath,
+      '--out',
+      path.join(tmpDir, 'helper-report.json'),
+    ],
+    now: new Date('2026-03-08T08:36:00Z'),
+    runGhJsonFn: gh.fn,
+    appendStepSummaryFn: async () => {},
+  });
+
+  assert.equal(result.exitCode, 1);
+  assert.equal(result.report?.decision.state, 'blocked');
+  assert.ok(result.report?.decision.reasons.includes('run-head-branch-mismatch'));
 });

@@ -29,6 +29,17 @@ const GH_JSON_MAX_BUFFER_BYTES = 32 * 1024 * 1024;
 const NODE_JSON_MAX_BUFFER_BYTES = 16 * 1024 * 1024;
 const BLOCKED_ENVIRONMENT_KEYWORDS = ['production', 'release', 'publish'];
 
+function environmentAllowed(environmentName) {
+  const normalized = normalizeText(environmentName)?.toLowerCase();
+  if (!normalized) {
+    return false;
+  }
+  if (normalized !== DEFAULT_ENVIRONMENT) {
+    return false;
+  }
+  return !isBlockedEnvironmentName(normalized);
+}
+
 function printUsage() {
   const lines = [
     'Usage: node tools/priority/validation-approval-helper.mjs [options]',
@@ -368,6 +379,12 @@ function normalizePullContext(raw) {
     isDraft: normalizeBoolean(raw?.isDraft ?? raw?.draft) ?? false,
     headSha: normalizeSha(raw?.headRefOid ?? raw?.headSha ?? raw?.head?.sha),
     headRefName: normalizeText(raw?.headRefName ?? raw?.head?.ref),
+    baseRefName: normalizeText(raw?.baseRefName ?? raw?.base?.ref),
+    headRepositoryOwner:
+      normalizeText(raw?.headRepositoryOwner?.login ?? raw?.headRepositoryOwner) ?? null,
+    headRepositoryName:
+      normalizeText(raw?.headRepository?.name ?? raw?.headRepositoryName) ?? null,
+    isCrossRepository: normalizeBoolean(raw?.isCrossRepository) ?? false,
   };
 }
 
@@ -391,6 +408,16 @@ function normalizeDecision(raw, decisionPath) {
     pullRequestUrl: normalizeText(raw?.pullRequest?.url),
     headSha: normalizeSha(raw?.pullRequest?.headSha),
     trustTrusted: raw?.providers?.trustContext?.trusted === true,
+    policy: {
+      allowedBaseRefs: uniqueStrings(raw?.policy?.allowedBaseRefs).map((entry) => String(entry).toLowerCase()),
+      trust: {
+        requireRepositoryMatch: raw?.policy?.trust?.requireRepositoryMatch !== false,
+        allowCrossRepository: raw?.policy?.trust?.allowCrossRepository === true,
+        allowedHeadOwners: uniqueStrings(raw?.policy?.trust?.allowedHeadOwners).map((entry) =>
+          String(entry).toLowerCase(),
+        ),
+      },
+    },
     hasCurrentHeadReview: raw?.providers?.reviewSignal?.hasCurrentHeadReview === true,
     staleReviewCount: normalizeInteger(raw?.providers?.reviewSignal?.staleReviewCount) ?? 0,
     actionableCommentCount:
@@ -439,6 +466,9 @@ function resolvePendingValidationDeployments(entries, requestedEnvironment) {
 }
 
 function buildFailureReport(options, now, errorMessage) {
+  const isEnvironmentError = /validation environment/i.test(errorMessage);
+  const reason = isEnvironmentError ? 'environment-not-allowed' : 'helper-runtime-error';
+  const decisionState = isEnvironmentError ? 'denied' : 'error';
   return {
     schema: VALIDATION_APPROVAL_HELPER_SCHEMA,
     generatedAt: now.toISOString(),
@@ -476,9 +506,9 @@ function buildFailureReport(options, now, errorMessage) {
     },
     decision: {
       path: normalizeText(options.decisionPath) ?? options.decisionOutPath,
-      state: 'error',
+      state: decisionState,
       ready: false,
-      reasons: ['helper-runtime-error'],
+      reasons: [reason],
       summary: errorMessage,
       repository: normalizeText(options.repo),
       environment: normalizeText(options.environment)?.toLowerCase() ?? DEFAULT_ENVIRONMENT,
@@ -492,7 +522,7 @@ function buildFailureReport(options, now, errorMessage) {
       unresolvedThreadCount: 0,
       requiredChecksReady: false,
     },
-    reasons: ['helper-runtime-error'],
+    reasons: [reason],
     summary: errorMessage,
     approval: {
       requested: options.approve === true,
@@ -501,6 +531,40 @@ function buildFailureReport(options, now, errorMessage) {
       comment: normalizeText(options.comment),
       environmentIds: [],
     },
+  };
+}
+
+function evaluateLiveTrustContext(policy, repository, pullRequest) {
+  const denialReasons = [];
+  const normalizedRepository = normalizeRepositorySlug(repository).toLowerCase();
+  const allowedBaseRefs = Array.isArray(policy?.allowedBaseRefs) ? policy.allowedBaseRefs : [];
+  const allowedHeadOwners = Array.isArray(policy?.trust?.allowedHeadOwners)
+    ? policy.trust.allowedHeadOwners
+    : [];
+  const baseRef = normalizeText(pullRequest.baseRefName)?.toLowerCase();
+  const headOwner = normalizeText(pullRequest.headRepositoryOwner)?.toLowerCase();
+  const headRepositoryName = normalizeText(pullRequest.headRepositoryName);
+  const headRepositorySlug =
+    headOwner && headRepositoryName
+      ? normalizeRepositorySlug(`${headOwner}/${headRepositoryName}`).toLowerCase()
+      : null;
+
+  if (allowedBaseRefs.length > 0 && (!baseRef || !allowedBaseRefs.includes(baseRef))) {
+    denialReasons.push('unsupported-base-ref');
+  }
+  if (policy?.trust?.requireRepositoryMatch !== false && headRepositorySlug && headRepositorySlug !== normalizedRepository) {
+    denialReasons.push('repository-mismatch');
+  }
+  if (pullRequest.isCrossRepository && policy?.trust?.allowCrossRepository !== true) {
+    denialReasons.push('cross-repository-disallowed');
+  }
+  if (allowedHeadOwners.length > 0 && (!headOwner || !allowedHeadOwners.includes(headOwner))) {
+    denialReasons.push(headOwner ? 'untrusted-head-owner' : 'unknown-head-owner');
+  }
+
+  return {
+    trusted: denialReasons.length === 0,
+    denialReasons: uniqueStrings(denialReasons),
   };
 }
 
@@ -579,8 +643,10 @@ function evaluateHelperState({
   if (decision.environment !== normalizedRequestedEnvironment) {
     denials.push('decision-environment-mismatch');
   }
-  if (!decision.trustTrusted) {
+  const liveTrust = evaluateLiveTrustContext(decision.policy, repository, pullRequest);
+  if (!decision.trustTrusted || !liveTrust.trusted) {
     denials.push('untrusted-context');
+    denials.push(...liveTrust.denialReasons);
   }
   if (decision.state === 'denied') {
     denials.push(...decision.reasons);
@@ -609,6 +675,9 @@ function evaluateHelperState({
   }
   if (targetRun.headSha && decision.headSha && targetRun.headSha !== decision.headSha) {
     blockers.push('run-head-mismatch');
+  }
+  if (targetRun.headBranch && pullRequest.headRefName && targetRun.headBranch !== pullRequest.headRefName) {
+    blockers.push('run-head-branch-mismatch');
   }
   if (pullRequest.headSha && decision.headSha && pullRequest.headSha !== decision.headSha) {
     blockers.push('pull-request-head-mismatch');
@@ -663,7 +732,7 @@ function fetchPullRequest(repository, prNumber, runGhJsonFn) {
     '--repo',
     repository,
     '--json',
-    'number,url,state,isDraft,headRefOid,headRefName',
+    'number,url,state,isDraft,headRefOid,headRefName,baseRefName,headRepository,headRepositoryOwner,isCrossRepository',
   ]);
   return normalizePullContext(payload);
 }
@@ -761,6 +830,9 @@ export async function runValidationApprovalHelper({
     if (options.help) {
       printUsage();
       return { exitCode: 0, report: null, reportPath: null, decisionPath: null };
+    }
+    if (!environmentAllowed(options.environment)) {
+      throw new Error('Validation approval helper only supports the validation environment.');
     }
 
     const repository = resolveRepository(options);
