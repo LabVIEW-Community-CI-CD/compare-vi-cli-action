@@ -3,6 +3,20 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { ArgumentParser } from 'argparse';
 import { z } from 'zod';
+const reportSchemaId = 'project-portfolio-report@v2';
+const configFieldKeys = [
+    'status',
+    'program',
+    'phase',
+    'environmentClass',
+    'blockingSignal',
+    'evidenceState',
+    'portfolioTrack',
+];
+const singleSelectFieldSchema = z.object({
+    name: z.string().min(1),
+    options: z.array(z.string().min(1)).min(1),
+});
 const configItemSchema = z.object({
     url: z.string().url(),
     status: z.string().min(1),
@@ -11,6 +25,7 @@ const configItemSchema = z.object({
     environmentClass: z.string().min(1),
     blockingSignal: z.string().min(1),
     evidenceState: z.string().min(1),
+    portfolioTrack: z.string().min(1),
 });
 const configSchema = z.object({
     schema: z.literal('project-portfolio-config@v1'),
@@ -22,7 +37,30 @@ const configSchema = z.object({
     public: z.boolean(),
     allowAdditionalItems: z.boolean().default(false),
     repositories: z.array(z.string().min(1)).min(1),
+    fieldCatalog: z.object({
+        status: singleSelectFieldSchema,
+        program: singleSelectFieldSchema,
+        phase: singleSelectFieldSchema,
+        environmentClass: singleSelectFieldSchema,
+        blockingSignal: singleSelectFieldSchema,
+        evidenceState: singleSelectFieldSchema,
+        portfolioTrack: singleSelectFieldSchema,
+    }),
     items: z.array(configItemSchema).min(1),
+}).superRefine((config, ctx) => {
+    for (const [itemIndex, item] of config.items.entries()) {
+        for (const fieldKey of configFieldKeys) {
+            const fieldCatalog = config.fieldCatalog[fieldKey];
+            const fieldValue = item[fieldKey];
+            if (!fieldCatalog.options.includes(fieldValue)) {
+                ctx.addIssue({
+                    code: z.ZodIssueCode.custom,
+                    path: ['items', itemIndex, fieldKey],
+                    message: `Invalid ${fieldKey} '${fieldValue}'. Expected one of [${fieldCatalog.options.join(', ')}].`,
+                });
+            }
+        }
+    }
 });
 const viewSchema = z.object({
     id: z.string().min(1),
@@ -124,7 +162,18 @@ function fieldValue(item, name) {
     const match = Object.entries(item).find(([key]) => key.trim().toLowerCase() === name.trim().toLowerCase());
     return typeof match?.[1] === 'string' ? match[1] : null;
 }
-function normalizeItem(item) {
+function buildFieldNameMap(config) {
+    return {
+        status: config.fieldCatalog.status.name,
+        program: config.fieldCatalog.program.name,
+        phase: config.fieldCatalog.phase.name,
+        environmentClass: config.fieldCatalog.environmentClass.name,
+        blockingSignal: config.fieldCatalog.blockingSignal.name,
+        evidenceState: config.fieldCatalog.evidenceState.name,
+        portfolioTrack: config.fieldCatalog.portfolioTrack.name,
+    };
+}
+function normalizeItem(item, fieldNames) {
     const content = item.content ?? {};
     return {
         id: item.id,
@@ -132,15 +181,16 @@ function normalizeItem(item) {
         title: typeof item.title === 'string' ? item.title : typeof content.title === 'string' ? content.title : item.id,
         repository: typeof content.repository === 'string' ? content.repository : null,
         labels: Array.isArray(item.labels) ? item.labels.filter((value) => typeof value === 'string') : [],
-        status: fieldValue(item, 'Status'),
-        program: fieldValue(item, 'Program'),
-        phase: fieldValue(item, 'Phase'),
-        environmentClass: fieldValue(item, 'Environment Class'),
-        blockingSignal: fieldValue(item, 'Blocking Signal'),
-        evidenceState: fieldValue(item, 'Evidence State'),
+        status: fieldValue(item, fieldNames.status),
+        program: fieldValue(item, fieldNames.program),
+        phase: fieldValue(item, fieldNames.phase),
+        environmentClass: fieldValue(item, fieldNames.environmentClass),
+        blockingSignal: fieldValue(item, fieldNames.blockingSignal),
+        evidenceState: fieldValue(item, fieldNames.evidenceState),
+        portfolioTrack: fieldValue(item, fieldNames.portfolioTrack),
     };
 }
-function compareProject(config, view, items) {
+function compareProject(config, view, fields, items) {
     const actualByUrl = new Map(items.map((item) => [item.url, item]));
     const expectedByUrl = new Map(config.items.map((item) => [item.url, item]));
     const metadata = [];
@@ -155,6 +205,29 @@ function compareProject(config, view, items) {
     }
     if (view.public !== config.public) {
         metadata.push({ field: 'public', expected: config.public, actual: view.public });
+    }
+    const actualFieldByName = new Map(fields.fields.map((field) => [field.name, field]));
+    const fieldCatalogMismatches = [];
+    for (const fieldKey of configFieldKeys) {
+        const expectedField = config.fieldCatalog[fieldKey];
+        const actualField = actualFieldByName.get(expectedField.name);
+        const actualOptions = Array.isArray(actualField?.options)
+            ? actualField.options
+                .map((option) => option?.name)
+                .filter((value) => typeof value === 'string')
+            : [];
+        const missingOptions = expectedField.options.filter((option) => !actualOptions.includes(option));
+        const unexpectedOptions = actualOptions.filter((option) => !expectedField.options.includes(option));
+        if (!actualField || missingOptions.length > 0 || unexpectedOptions.length > 0) {
+            fieldCatalogMismatches.push({
+                field: fieldKey,
+                expectedName: expectedField.name,
+                actualName: actualField?.name ?? null,
+                missing: !actualField,
+                missingOptions,
+                unexpectedOptions,
+            });
+        }
     }
     const missingItems = config.items
         .filter((item) => !actualByUrl.has(item.url))
@@ -195,6 +268,9 @@ function compareProject(config, view, items) {
         if (actual.evidenceState !== expected.evidenceState) {
             drifts.push({ field: 'evidenceState', expected: expected.evidenceState, actual: actual.evidenceState });
         }
+        if (actual.portfolioTrack !== expected.portfolioTrack) {
+            drifts.push({ field: 'portfolioTrack', expected: expected.portfolioTrack, actual: actual.portfolioTrack });
+        }
         if (drifts.length > 0) {
             fieldMismatches.push({ url: expected.url, drifts });
         }
@@ -208,12 +284,14 @@ function compareProject(config, view, items) {
         .sort((a, b) => a.localeCompare(b));
     return {
         ok: metadata.length === 0 &&
+            fieldCatalogMismatches.length === 0 &&
             missingItems.length === 0 &&
             extraItems.length === 0 &&
             fieldMismatches.length === 0 &&
             missingRepositories.length === 0 &&
             unexpectedRepositories.length === 0,
         metadata,
+        fieldCatalogMismatches,
         missingItems,
         extraItems,
         fieldMismatches,
@@ -273,12 +351,13 @@ function main() {
     const view = loadJsonInput(args.view_file, viewSchema, ['project', 'view', String(number), '--owner', owner, '--format', 'json']);
     const fields = loadJsonInput(args.fields_file, fieldsSchema, ['project', 'field-list', String(number), '--owner', owner, '--format', 'json']);
     const itemList = loadJsonInput(args.item_file, itemListSchema, ['project', 'item-list', String(number), '--owner', owner, '--limit', '100', '--format', 'json']);
+    const fieldNames = buildFieldNameMap(config);
     const normalizedItems = itemList.items
-        .map(normalizeItem)
+        .map((item) => normalizeItem(item, fieldNames))
         .sort((a, b) => a.url.localeCompare(b.url));
-    const drift = compareProject(config, view, normalizedItems);
+    const drift = compareProject(config, view, fields, normalizedItems);
     const report = {
-        schema: 'project-portfolio-report@v1',
+        schema: reportSchemaId,
         generatedAt: new Date().toISOString(),
         mode: args.mode,
         configPath,

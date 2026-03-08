@@ -22,7 +22,7 @@ test('project portfolio config item URLs are unique and cover the active program
   const parsedUrls = config.items.map((item) => new URL(item.url));
   const urlStrings = parsedUrls.map((item) => item.toString());
   assert.equal(new Set(urlStrings).size, urlStrings.length);
-  assert.equal(parsedUrls.length, 16);
+  assert.equal(parsedUrls.length, 18);
 
   const issueCoordinates = new Set(
     parsedUrls.map((item) => {
@@ -36,11 +36,29 @@ test('project portfolio config item URLs are unique and cover the active program
 
   assert.ok(issueCoordinates.has('LabVIEW-Community-CI-CD/compare-vi-cli-action#854'));
   assert.ok(issueCoordinates.has('LabVIEW-Community-CI-CD/compare-vi-cli-action#861'));
+  assert.ok(issueCoordinates.has('LabVIEW-Community-CI-CD/compare-vi-cli-action#875'));
+  assert.ok(issueCoordinates.has('LabVIEW-Community-CI-CD/compare-vi-cli-action#876'));
   assert.ok(issueCoordinates.has('LabVIEW-Community-CI-CD/comparevi-history#14'));
   assert.ok(issueCoordinates.has('LabVIEW-Community-CI-CD/comparevi-history#15'));
 });
 
 test('project portfolio config declares the fields future agents need to reason about the board', () => {
+  assert.deepEqual(Object.keys(config.fieldCatalog).sort(), [
+    'blockingSignal',
+    'environmentClass',
+    'evidenceState',
+    'phase',
+    'portfolioTrack',
+    'program',
+    'status',
+  ]);
+  assert.deepEqual(config.fieldCatalog.portfolioTrack.options, [
+    'Diagnostics',
+    'Approvals',
+    'Agent UX',
+    'Corpus & Facade',
+  ]);
+
   for (const item of config.items) {
     assert.equal(typeof item.status, 'string');
     assert.equal(typeof item.program, 'string');
@@ -48,5 +66,13 @@ test('project portfolio config declares the fields future agents need to reason 
     assert.equal(typeof item.environmentClass, 'string');
     assert.equal(typeof item.blockingSignal, 'string');
     assert.equal(typeof item.evidenceState, 'string');
+    assert.equal(typeof item.portfolioTrack, 'string');
+    assert.ok(config.fieldCatalog.status.options.includes(item.status));
+    assert.ok(config.fieldCatalog.program.options.includes(item.program));
+    assert.ok(config.fieldCatalog.phase.options.includes(item.phase));
+    assert.ok(config.fieldCatalog.environmentClass.options.includes(item.environmentClass));
+    assert.ok(config.fieldCatalog.blockingSignal.options.includes(item.blockingSignal));
+    assert.ok(config.fieldCatalog.evidenceState.options.includes(item.evidenceState));
+    assert.ok(config.fieldCatalog.portfolioTrack.options.includes(item.portfolioTrack));
   }
 });

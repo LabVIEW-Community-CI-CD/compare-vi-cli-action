@@ -5,6 +5,22 @@ import { ArgumentParser } from 'argparse';
 import { z } from 'zod';
 
 type Mode = 'snapshot' | 'check';
+const reportSchemaId = 'project-portfolio-report@v2';
+const configFieldKeys = [
+  'status',
+  'program',
+  'phase',
+  'environmentClass',
+  'blockingSignal',
+  'evidenceState',
+  'portfolioTrack',
+] as const;
+type ConfigFieldKey = typeof configFieldKeys[number];
+
+const singleSelectFieldSchema = z.object({
+  name: z.string().min(1),
+  options: z.array(z.string().min(1)).min(1),
+});
 
 const configItemSchema = z.object({
   url: z.string().url(),
@@ -14,6 +30,7 @@ const configItemSchema = z.object({
   environmentClass: z.string().min(1),
   blockingSignal: z.string().min(1),
   evidenceState: z.string().min(1),
+  portfolioTrack: z.string().min(1),
 });
 
 const configSchema = z.object({
@@ -26,7 +43,30 @@ const configSchema = z.object({
   public: z.boolean(),
   allowAdditionalItems: z.boolean().default(false),
   repositories: z.array(z.string().min(1)).min(1),
+  fieldCatalog: z.object({
+    status: singleSelectFieldSchema,
+    program: singleSelectFieldSchema,
+    phase: singleSelectFieldSchema,
+    environmentClass: singleSelectFieldSchema,
+    blockingSignal: singleSelectFieldSchema,
+    evidenceState: singleSelectFieldSchema,
+    portfolioTrack: singleSelectFieldSchema,
+  }),
   items: z.array(configItemSchema).min(1),
+}).superRefine((config, ctx) => {
+  for (const [itemIndex, item] of config.items.entries()) {
+    for (const fieldKey of configFieldKeys) {
+      const fieldCatalog = config.fieldCatalog[fieldKey];
+      const fieldValue = item[fieldKey];
+      if (!fieldCatalog.options.includes(fieldValue)) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ['items', itemIndex, fieldKey],
+          message: `Invalid ${fieldKey} '${fieldValue}'. Expected one of [${fieldCatalog.options.join(', ')}].`,
+        });
+      }
+    }
+  }
 });
 
 const viewSchema = z.object({
@@ -95,6 +135,7 @@ interface NormalizedItem {
   environmentClass: string | null;
   blockingSignal: string | null;
   evidenceState: string | null;
+  portfolioTrack: string | null;
 }
 
 interface DriftEntry {
@@ -102,6 +143,17 @@ interface DriftEntry {
   expected: string | boolean;
   actual: string | boolean | null;
 }
+
+interface FieldCatalogDriftEntry {
+  field: ConfigFieldKey;
+  expectedName: string;
+  actualName: string | null;
+  missing: boolean;
+  missingOptions: string[];
+  unexpectedOptions: string[];
+}
+
+type FieldNameMap = Record<ConfigFieldKey, string>;
 
 function readJsonFile<T>(filePath: string): T {
   return JSON.parse(readFileSync(filePath, 'utf8')) as T;
@@ -186,7 +238,19 @@ function fieldValue(item: RawProjectItem, name: string): string | null {
   return typeof match?.[1] === 'string' ? match[1] : null;
 }
 
-function normalizeItem(item: RawProjectItem): NormalizedItem {
+function buildFieldNameMap(config: PortfolioConfig): FieldNameMap {
+  return {
+    status: config.fieldCatalog.status.name,
+    program: config.fieldCatalog.program.name,
+    phase: config.fieldCatalog.phase.name,
+    environmentClass: config.fieldCatalog.environmentClass.name,
+    blockingSignal: config.fieldCatalog.blockingSignal.name,
+    evidenceState: config.fieldCatalog.evidenceState.name,
+    portfolioTrack: config.fieldCatalog.portfolioTrack.name,
+  };
+}
+
+function normalizeItem(item: RawProjectItem, fieldNames: FieldNameMap): NormalizedItem {
   const content = item.content ?? {};
   return {
     id: item.id,
@@ -194,16 +258,22 @@ function normalizeItem(item: RawProjectItem): NormalizedItem {
     title: typeof item.title === 'string' ? item.title : typeof content.title === 'string' ? content.title : item.id,
     repository: typeof content.repository === 'string' ? content.repository : null,
     labels: Array.isArray(item.labels) ? item.labels.filter((value): value is string => typeof value === 'string') : [],
-    status: fieldValue(item, 'Status'),
-    program: fieldValue(item, 'Program'),
-    phase: fieldValue(item, 'Phase'),
-    environmentClass: fieldValue(item, 'Environment Class'),
-    blockingSignal: fieldValue(item, 'Blocking Signal'),
-    evidenceState: fieldValue(item, 'Evidence State'),
+    status: fieldValue(item, fieldNames.status),
+    program: fieldValue(item, fieldNames.program),
+    phase: fieldValue(item, fieldNames.phase),
+    environmentClass: fieldValue(item, fieldNames.environmentClass),
+    blockingSignal: fieldValue(item, fieldNames.blockingSignal),
+    evidenceState: fieldValue(item, fieldNames.evidenceState),
+    portfolioTrack: fieldValue(item, fieldNames.portfolioTrack),
   };
 }
 
-function compareProject(config: PortfolioConfig, view: ProjectView, items: NormalizedItem[]) {
+function compareProject(
+  config: PortfolioConfig,
+  view: ProjectView,
+  fields: ProjectFields,
+  items: NormalizedItem[],
+) {
   const actualByUrl = new Map(items.map((item) => [item.url, item]));
   const expectedByUrl = new Map(config.items.map((item) => [item.url, item]));
   const metadata: DriftEntry[] = [];
@@ -219,6 +289,30 @@ function compareProject(config: PortfolioConfig, view: ProjectView, items: Norma
   }
   if (view.public !== config.public) {
     metadata.push({ field: 'public', expected: config.public, actual: view.public });
+  }
+
+  const actualFieldByName = new Map(fields.fields.map((field) => [field.name, field]));
+  const fieldCatalogMismatches: FieldCatalogDriftEntry[] = [];
+  for (const fieldKey of configFieldKeys) {
+    const expectedField = config.fieldCatalog[fieldKey];
+    const actualField = actualFieldByName.get(expectedField.name);
+    const actualOptions = Array.isArray(actualField?.options)
+      ? actualField.options
+          .map((option) => option?.name)
+          .filter((value): value is string => typeof value === 'string')
+      : [];
+    const missingOptions = expectedField.options.filter((option) => !actualOptions.includes(option));
+    const unexpectedOptions = actualOptions.filter((option) => !expectedField.options.includes(option));
+    if (!actualField || missingOptions.length > 0 || unexpectedOptions.length > 0) {
+      fieldCatalogMismatches.push({
+        field: fieldKey,
+        expectedName: expectedField.name,
+        actualName: actualField?.name ?? null,
+        missing: !actualField,
+        missingOptions,
+        unexpectedOptions,
+      });
+    }
   }
 
   const missingItems = config.items
@@ -263,6 +357,9 @@ function compareProject(config: PortfolioConfig, view: ProjectView, items: Norma
     if (actual.evidenceState !== expected.evidenceState) {
       drifts.push({ field: 'evidenceState', expected: expected.evidenceState, actual: actual.evidenceState });
     }
+    if (actual.portfolioTrack !== expected.portfolioTrack) {
+      drifts.push({ field: 'portfolioTrack', expected: expected.portfolioTrack, actual: actual.portfolioTrack });
+    }
 
     if (drifts.length > 0) {
       fieldMismatches.push({ url: expected.url, drifts });
@@ -280,12 +377,14 @@ function compareProject(config: PortfolioConfig, view: ProjectView, items: Norma
   return {
     ok:
       metadata.length === 0 &&
+      fieldCatalogMismatches.length === 0 &&
       missingItems.length === 0 &&
       extraItems.length === 0 &&
       fieldMismatches.length === 0 &&
       missingRepositories.length === 0 &&
       unexpectedRepositories.length === 0,
     metadata,
+    fieldCatalogMismatches,
     missingItems,
     extraItems,
     fieldMismatches,
@@ -363,13 +462,14 @@ function main(): void {
     ['project', 'item-list', String(number), '--owner', owner, '--limit', '100', '--format', 'json'],
   );
 
+  const fieldNames = buildFieldNameMap(config);
   const normalizedItems = itemList.items
-    .map(normalizeItem)
+    .map((item) => normalizeItem(item, fieldNames))
     .sort((a, b) => a.url.localeCompare(b.url));
 
-  const drift = compareProject(config, view, normalizedItems);
+  const drift = compareProject(config, view, fields, normalizedItems);
   const report = {
-    schema: 'project-portfolio-report@v1',
+    schema: reportSchemaId,
     generatedAt: new Date().toISOString(),
     mode: args.mode,
     configPath,
