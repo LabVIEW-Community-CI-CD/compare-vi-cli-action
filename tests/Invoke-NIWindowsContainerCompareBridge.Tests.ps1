@@ -68,15 +68,15 @@ switch ($ReportType) {
 
 $capture = [ordered]@{
   schema = 'ni-windows-container-compare/v1'
-  status = if ($exitCode -eq 1) { 'diff' } elseif ($exitCode -eq 0) { 'ok' } else { 'error' }
+  status = if ($env:BRIDGE_STUB_EMPTY_STATUS -eq '1') { '' } elseif ($exitCode -eq 1) { 'diff' } elseif ($exitCode -eq 0) { 'ok' } else { 'error' }
   classification = if ($exitCode -eq 1) { 'diff' } elseif ($exitCode -eq 0) { 'ok' } else { 'run-error' }
   exitCode = $exitCode
   timedOut = $false
   image = $Image
   reportPath = $ReportPath
   labviewPath = $LabVIEWPath
-  command = 'docker run stub'
-  message = 'stub'
+  command = if ($env:BRIDGE_STUB_EMPTY_COMMAND -eq '1') { '' } else { 'docker run stub' }
+  message = if ($env:BRIDGE_STUB_EMPTY_MESSAGE -eq '1') { '' } else { 'stub' }
   resultClass = if ($exitCode -eq 1) { 'success-diff' } elseif ($exitCode -eq 0) { 'success-no-diff' } else { 'failure-tool' }
   isDiff = ($exitCode -eq 1)
   gateOutcome = if ($exitCode -in @(0, 1)) { 'pass' } else { 'fail' }
@@ -108,6 +108,9 @@ exit $exitCode
       'COMPAREVI_NI_WINDOWS_LABVIEW_PATH',
       'COMPAREVI_NI_WINDOWS_CLI_PATH',
       'COMPAREVI_NI_WINDOWS_COMPARE_POLICY',
+      'BRIDGE_STUB_EMPTY_COMMAND',
+      'BRIDGE_STUB_EMPTY_STATUS',
+      'BRIDGE_STUB_EMPTY_MESSAGE',
       'BRIDGE_STUB_EXIT',
       'BRIDGE_STUB_LOG'
     )) {
@@ -146,10 +149,13 @@ exit $exitCode
     $capture.schema | Should -Be 'lvcompare-capture-v1'
     $capture.diff | Should -BeTrue
     $capture.cliPath | Should -Be 'C:\Program Files\National Instruments\Shared\LabVIEW CLI\LabVIEWCLI.exe'
+    $capture.command | Should -Be 'docker run stub'
     $capture.environment.comparePolicy | Should -Be 'cli-only'
     $capture.environment.container.image | Should -Be 'nationalinstruments/labview:2026q1-windows'
     $capture.environment.container.labviewVersion | Should -Be '2026'
     $capture.environment.cli.reportPath | Should -Match 'compare-report\.html$'
+    $capture.environment.cli.status | Should -Be 'diff'
+    $capture.environment.cli.message | Should -Be 'stub'
     ($capture.args | Measure-Object).Count | Should -Be 1
     ((Get-Content -LiteralPath $stdoutPath -Raw).Trim()) | Should -Be 'stub stdout'
     ((Get-Content -LiteralPath $stderrPath -Raw).Trim()) | Should -Be 'stub stderr'
@@ -195,5 +201,44 @@ exit $exitCode
     $runnerLog.reportPath | Should -Match 'compare-report\.xml$'
     $runnerLog.timeoutSeconds | Should -Be 123
     $runnerLog.labviewPath | Should -Be 'C:\Program Files\National Instruments\LabVIEW 2027\LabVIEW.exe'
+  }
+
+  It 'synthesizes a non-empty command, omits empty CLI strings, and appends NDJSON logs' {
+    $workRoot = Join-Path $TestDrive 'bridge-fallbacks'
+    $toolsDir = Join-Path $workRoot 'tools'
+    New-Item -ItemType Directory -Path $toolsDir -Force | Out-Null
+    Copy-Item -LiteralPath $script:BridgeScript -Destination (Join-Path $toolsDir 'Invoke-NIWindowsContainerCompareBridge.ps1') -Force
+    Set-Content -LiteralPath (Join-Path $toolsDir 'Run-NIWindowsContainerCompare.ps1') -Value $script:RunnerStub -Encoding utf8
+
+    $outputDir = Join-Path $workRoot 'out'
+    $jsonLogPath = Join-Path $workRoot 'prime-lvcompare.ndjson'
+    $env:BRIDGE_STUB_EXIT = '0'
+    $env:BRIDGE_STUB_EMPTY_COMMAND = '1'
+    $env:BRIDGE_STUB_EMPTY_STATUS = '1'
+    $env:BRIDGE_STUB_EMPTY_MESSAGE = '1'
+
+    $runOutput = & pwsh -NoLogo -NoProfile -File (Join-Path $toolsDir 'Invoke-NIWindowsContainerCompareBridge.ps1') `
+      -BaseVi 'base.vi' `
+      -HeadVi 'head.vi' `
+      -OutputDir $outputDir `
+      -JsonLogPath $jsonLogPath 2>&1
+    $LASTEXITCODE | Should -Be 0 -Because (($runOutput | ForEach-Object { [string]$_ }) -join [Environment]::NewLine)
+
+    $capturePath = Join-Path $outputDir 'lvcompare-capture.json'
+    $capture = Get-Content -LiteralPath $capturePath -Raw | ConvertFrom-Json -Depth 10
+    ([string]$capture.command).Trim().Length | Should -BeGreaterThan 0
+    $capture.command | Should -Match 'Run-NIWindowsContainerCompare\.ps1'
+    $capture.environment.cli.PSObject.Properties.Name | Should -Contain 'path'
+    $capture.environment.cli.PSObject.Properties.Name | Should -Not -Contain 'status'
+    $capture.environment.cli.PSObject.Properties.Name | Should -Not -Contain 'message'
+
+    $logLines = @(Get-Content -LiteralPath $jsonLogPath | Where-Object { -not [string]::IsNullOrWhiteSpace($_) })
+    ($logLines | Measure-Object).Count | Should -Be 1
+    $logEntry = $logLines[0] | ConvertFrom-Json -Depth 8
+    $logEntry.schema | Should -Be 'prime-lvcompare-v1'
+    $logEntry.type | Should -Be 'result'
+    $logEntry.timestamp | Should -Not -BeNullOrEmpty
+    $logEntry.PSObject.Properties.Name | Should -Not -Contain 'event'
+    $logEntry.PSObject.Properties.Name | Should -Not -Contain 'generatedAt'
   }
 }

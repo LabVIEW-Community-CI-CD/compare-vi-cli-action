@@ -83,6 +83,20 @@ function Write-TextArtifact {
   Set-Content -LiteralPath $Path -Value ($Content ?? '') -Encoding utf8
 }
 
+function Add-NdjsonArtifact {
+  param(
+    [Parameter(Mandatory)][string]$Path,
+    [Parameter(Mandatory)]$Payload
+  )
+
+  $dir = Split-Path -Parent $Path
+  if ($dir) {
+    Ensure-Directory -Path $dir
+  }
+
+  ($Payload | ConvertTo-Json -Compress) | Add-Content -LiteralPath $Path -Encoding utf8
+}
+
 function Copy-OrWriteArtifact {
   param(
     [AllowNull()][string]$SourcePath,
@@ -139,7 +153,7 @@ function New-FallbackCapture {
     image = $ImageValue
     reportPath = $ReportPathValue
     labviewPath = $LabVIEWPathValue
-    command = ''
+    command = ('Run-NIWindowsContainerCompare.ps1 -Image "{0}" -ReportPath "{1}"' -f $ImageValue, $ReportPathValue)
     message = $Message
     resultClass = 'failure-preflight'
     isDiff = $false
@@ -156,6 +170,49 @@ function New-FallbackCapture {
       copyStatus = 'not-attempted'
     }
   }
+}
+
+function Get-OptionalSourceCaptureText {
+  param(
+    [Parameter(Mandatory)]$SourceCapture,
+    [Parameter(Mandatory)][string]$PropertyName
+  )
+
+  if (-not $SourceCapture.PSObject.Properties[$PropertyName]) {
+    return $null
+  }
+
+  $value = [string]$SourceCapture.$PropertyName
+  if ([string]::IsNullOrWhiteSpace($value)) {
+    return $null
+  }
+
+  return $value
+}
+
+function Resolve-TranslatedCommand {
+  param(
+    [Parameter(Mandatory)]$SourceCapture,
+    [Parameter(Mandatory)][string]$EffectiveImage,
+    [Parameter(Mandatory)][string]$BaseViPath,
+    [Parameter(Mandatory)][string]$HeadViPath,
+    [Parameter(Mandatory)][string]$NormalizedReportFormat,
+    [Parameter(Mandatory)][string]$ResolvedReportPath
+  )
+
+  $sourceCommand = Get-OptionalSourceCaptureText -SourceCapture $SourceCapture -PropertyName 'command'
+  if ($sourceCommand) {
+    return $sourceCommand
+  }
+
+  return (
+    'Run-NIWindowsContainerCompare.ps1 -Image "{0}" -BaseVi "{1}" -HeadVi "{2}" -ReportType "{3}" -ReportPath "{4}"' -f
+    $EffectiveImage,
+    $BaseViPath,
+    $HeadViPath,
+    $NormalizedReportFormat,
+    $ResolvedReportPath
+  )
 }
 
 function Convert-ToTranslatedCapture {
@@ -208,11 +265,17 @@ function Convert-ToTranslatedCapture {
   }
 
   $cliNode = [ordered]@{
-    path = $EffectiveCliPath
+    path       = $EffectiveCliPath
     reportType = $NormalizedReportFormat
     reportPath = $ResolvedReportPath
-    status = if ($SourceCapture.PSObject.Properties['status']) { [string]$SourceCapture.status } else { '' }
-    message = if ($SourceCapture.PSObject.Properties['message']) { [string]$SourceCapture.message } else { '' }
+  }
+  $cliStatus = Get-OptionalSourceCaptureText -SourceCapture $SourceCapture -PropertyName 'status'
+  if ($cliStatus) {
+    $cliNode['status'] = $cliStatus
+  }
+  $cliMessage = Get-OptionalSourceCaptureText -SourceCapture $SourceCapture -PropertyName 'message'
+  if ($cliMessage) {
+    $cliNode['message'] = $cliMessage
   }
   if ($artifacts.Count -gt 0) {
     $cliNode['artifacts'] = $artifacts
@@ -229,7 +292,13 @@ function Convert-ToTranslatedCapture {
     seconds = [math]::Round($ElapsedSeconds, 3)
     stdoutLen = 0
     stderrLen = 0
-    command = if ($SourceCapture.PSObject.Properties['command']) { [string]$SourceCapture.command } else { '' }
+    command = Resolve-TranslatedCommand `
+      -SourceCapture $SourceCapture `
+      -EffectiveImage $EffectiveImage `
+      -BaseViPath $BaseViPath `
+      -HeadViPath $HeadViPath `
+      -NormalizedReportFormat $NormalizedReportFormat `
+      -ResolvedReportPath $ResolvedReportPath
     diff = [bool]$isDiff
     labviewExePath = $EffectiveLabVIEWPath
     labviewBitness = $Bitness
@@ -367,15 +436,15 @@ $translatedCapture | ConvertTo-Json -Depth 8 | Set-Content -LiteralPath $lvCaptu
 if (-not [string]::IsNullOrWhiteSpace($JsonLogPath)) {
   $logPathResolved = Resolve-AbsolutePath -Path $JsonLogPath
   $logEntry = [ordered]@{
-    schema = 'prime-lvcompare-v1'
-    event = 'result'
-    generatedAt = (Get-Date).ToUniversalTime().ToString('o')
-    exitCode = $exitCode
-    reportPath = $reportPath
+    timestamp   = (Get-Date).ToUniversalTime().ToString('o')
+    type        = 'result'
+    schema      = 'prime-lvcompare-v1'
+    exitCode    = $exitCode
+    reportPath  = $reportPath
     capturePath = $lvCapturePath
-    image = $effectiveImage
+    image       = $effectiveImage
   }
-  Write-TextArtifact -Path $logPathResolved -Content ($logEntry | ConvertTo-Json -Compress)
+  Add-NdjsonArtifact -Path $logPathResolved -Payload $logEntry
 }
 
 if ($Summary.IsPresent) {
