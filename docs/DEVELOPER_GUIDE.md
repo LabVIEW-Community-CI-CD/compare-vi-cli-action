@@ -299,7 +299,8 @@ For Docker/Desktop VI history validation, run fast-loop lanes explicitly:
 - Keep PRs focused and include the standing issue reference (`#<number>`) in the commit subject and PR description.
 - Ensure required checks (`validate`, `fixtures`, `session-index`) are green before merging; rerun as needed.
 - On `develop`, Copilot review is expected on ready PRs. Use **Draft PR** state as the explicit escape hatch when you do
-  not want Copilot review to run yet.
+  not want Copilot review to run yet. Ready `develop` PRs also need the `agent-review-policy` check to turn green after
+  the latest Copilot review lands on the current head.
 - Run `node tools/npm/run-script.mjs priority:policy` (or `node tools/npm/run-script.mjs priority:policy:sync`) if you
   need to audit merge settings locally; the command also runs during `priority:handoff-tests` and fails when
   repo/branch policy drifts.
