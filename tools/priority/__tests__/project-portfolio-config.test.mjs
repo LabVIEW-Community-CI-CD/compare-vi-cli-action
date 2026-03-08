@@ -67,5 +67,12 @@ test('project portfolio config declares the fields future agents need to reason 
     assert.equal(typeof item.blockingSignal, 'string');
     assert.equal(typeof item.evidenceState, 'string');
     assert.equal(typeof item.portfolioTrack, 'string');
+    assert.ok(config.fieldCatalog.status.options.includes(item.status));
+    assert.ok(config.fieldCatalog.program.options.includes(item.program));
+    assert.ok(config.fieldCatalog.phase.options.includes(item.phase));
+    assert.ok(config.fieldCatalog.environmentClass.options.includes(item.environmentClass));
+    assert.ok(config.fieldCatalog.blockingSignal.options.includes(item.blockingSignal));
+    assert.ok(config.fieldCatalog.evidenceState.options.includes(item.evidenceState));
+    assert.ok(config.fieldCatalog.portfolioTrack.options.includes(item.portfolioTrack));
   }
 });

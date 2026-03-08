@@ -3,6 +3,16 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { ArgumentParser } from 'argparse';
 import { z } from 'zod';
+const reportSchemaId = 'project-portfolio-report@v2';
+const configFieldKeys = [
+    'status',
+    'program',
+    'phase',
+    'environmentClass',
+    'blockingSignal',
+    'evidenceState',
+    'portfolioTrack',
+];
 const singleSelectFieldSchema = z.object({
     name: z.string().min(1),
     options: z.array(z.string().min(1)).min(1),
@@ -37,6 +47,20 @@ const configSchema = z.object({
         portfolioTrack: singleSelectFieldSchema,
     }),
     items: z.array(configItemSchema).min(1),
+}).superRefine((config, ctx) => {
+    for (const [itemIndex, item] of config.items.entries()) {
+        for (const fieldKey of configFieldKeys) {
+            const fieldCatalog = config.fieldCatalog[fieldKey];
+            const fieldValue = item[fieldKey];
+            if (!fieldCatalog.options.includes(fieldValue)) {
+                ctx.addIssue({
+                    code: z.ZodIssueCode.custom,
+                    path: ['items', itemIndex, fieldKey],
+                    message: `Invalid ${fieldKey} '${fieldValue}'. Expected one of [${fieldCatalog.options.join(', ')}].`,
+                });
+            }
+        }
+    }
 });
 const viewSchema = z.object({
     id: z.string().min(1),
@@ -173,7 +197,8 @@ function compareProject(config, view, fields, items) {
     }
     const actualFieldByName = new Map(fields.fields.map((field) => [field.name, field]));
     const fieldCatalogMismatches = [];
-    for (const [fieldKey, expectedField] of Object.entries(config.fieldCatalog)) {
+    for (const fieldKey of configFieldKeys) {
+        const expectedField = config.fieldCatalog[fieldKey];
         const actualField = actualFieldByName.get(expectedField.name);
         const actualOptions = Array.isArray(actualField?.options)
             ? actualField.options
@@ -320,7 +345,7 @@ function main() {
         .sort((a, b) => a.url.localeCompare(b.url));
     const drift = compareProject(config, view, fields, normalizedItems);
     const report = {
-        schema: 'project-portfolio-report@v1',
+        schema: reportSchemaId,
         generatedAt: new Date().toISOString(),
         mode: args.mode,
         configPath,
