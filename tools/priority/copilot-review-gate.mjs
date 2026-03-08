@@ -14,6 +14,8 @@ export const DEFAULT_REPORT_PATH = path.join(
   'copilot-review-gate.json',
 );
 const DEFAULT_GATED_BASE_REFS = ['develop'];
+const DEFAULT_POLL_ATTEMPTS = 1;
+const DEFAULT_POLL_DELAY_MS = 10000;
 const GITHUB_API_URL = 'https://api.github.com';
 
 const COPILOT_LOGINS = new Set([
@@ -105,6 +107,14 @@ function normalizeInteger(value) {
     return Number.isInteger(parsed) ? parsed : null;
   }
   return null;
+}
+
+function parsePositiveInteger(value, { label }) {
+  const parsed = normalizeInteger(value);
+  if (!Number.isInteger(parsed) || parsed <= 0) {
+    throw new Error(`Invalid ${label} value '${value}'. Expected a positive integer.`);
+  }
+  return parsed;
 }
 
 function normalizeIso(value) {
@@ -204,6 +214,8 @@ function printUsage() {
     '  --base-ref <branch>        Pull request base ref or merge-group base ref.',
     '  --draft <true|false>       Whether the pull request is currently a draft.',
     '  --signal <path>            Optional Copilot review signal report produced on pull_request_target.',
+    `  --poll-attempts <n>        Live poll attempts when the initial Copilot review is missing (default: ${DEFAULT_POLL_ATTEMPTS}).`,
+    `  --poll-delay-ms <n>        Delay between live poll attempts in milliseconds (default: ${DEFAULT_POLL_DELAY_MS}).`,
     `  --out <path>               Output JSON path (default: ${DEFAULT_REPORT_PATH}).`,
     '  --step-summary <path>      Optional GitHub step summary path.',
     `  --gated-base-refs <csv>    Branches that require the queue gate (default: ${DEFAULT_GATED_BASE_REFS.join(',')}).`,
@@ -226,6 +238,8 @@ export function parseCliArgs(argv = process.argv) {
     baseRef: null,
     draft: null,
     signalPath: null,
+    pollAttempts: DEFAULT_POLL_ATTEMPTS,
+    pollDelayMs: DEFAULT_POLL_DELAY_MS,
     outPath: DEFAULT_REPORT_PATH,
     stepSummaryPath: null,
     gatedBaseRefs: [...DEFAULT_GATED_BASE_REFS],
@@ -247,6 +261,8 @@ export function parseCliArgs(argv = process.argv) {
       token === '--base-ref' ||
       token === '--draft' ||
       token === '--signal' ||
+      token === '--poll-attempts' ||
+      token === '--poll-delay-ms' ||
       token === '--out' ||
       token === '--step-summary' ||
       token === '--gated-base-refs'
@@ -262,6 +278,8 @@ export function parseCliArgs(argv = process.argv) {
       if (token === '--base-ref') options.baseRef = normalizeBaseRef(next);
       if (token === '--draft') options.draft = normalizeBoolean(next);
       if (token === '--signal') options.signalPath = normalizeText(next);
+      if (token === '--poll-attempts') options.pollAttempts = parsePositiveInteger(next, { label: '--poll-attempts' });
+      if (token === '--poll-delay-ms') options.pollDelayMs = parsePositiveInteger(next, { label: '--poll-delay-ms' });
       if (token === '--out') options.outPath = next;
       if (token === '--step-summary') options.stepSummaryPath = next;
       if (token === '--gated-base-refs') options.gatedBaseRefs = normalizeBaseRefList(next);
@@ -524,6 +542,10 @@ function buildPullRequest(options, signalReport = null) {
   };
 }
 
+function sleep(delayMs) {
+  return new Promise((resolve) => setTimeout(resolve, delayMs));
+}
+
 function evaluateGateOutcome({
   eventName,
   repository,
@@ -578,6 +600,13 @@ function evaluateGateOutcome({
       staleCommentCount: thread.staleCommentCount,
       latestComment: thread.latestComment,
     }));
+  const staleReviewCleanFollowup =
+    Boolean(latestCopilotReview) &&
+    latestCopilotReview.isCurrentHead === false &&
+    summary.currentHeadReviewCount === 0 &&
+    summary.staleReviewCount > 0 &&
+    summary.actionableThreadCount === 0 &&
+    summary.actionableCommentCount === 0;
 
   let status = 'pass';
   let gateState = 'ready';
@@ -600,11 +629,15 @@ function evaluateGateOutcome({
     gateState = 'blocked';
     reasons.push('copilot-review-missing');
   } else if (!latestCopilotReview.isCurrentHead || summary.currentHeadReviewCount === 0) {
-    status = 'fail';
-    gateState = 'blocked';
-    reasons.push('current-head-review-missing');
-    if (!latestCopilotReview.isCurrentHead) {
-      reasons.push('latest-review-stale');
+    if (staleReviewCleanFollowup) {
+      reasons.push('stale-review-clean-followup');
+    } else {
+      status = 'fail';
+      gateState = 'blocked';
+      reasons.push('current-head-review-missing');
+      if (!latestCopilotReview.isCurrentHead) {
+        reasons.push('latest-review-stale');
+      }
     }
   } else if (summary.actionableThreadCount > 0 || summary.actionableCommentCount > 0) {
     status = 'fail';
@@ -639,6 +672,7 @@ function evaluateGateOutcome({
       hasCurrentHeadReview: summary.currentHeadReviewCount > 0,
       latestReviewIsCurrentHead: latestCopilotReview?.isCurrentHead ?? false,
       hasActionableCurrentHeadComments: summary.actionableCommentCount > 0,
+      staleReviewCleanFollowup,
     },
     latestCopilotReview,
     actionableThreads,
@@ -802,6 +836,7 @@ function buildFailureReport(options, now, error) {
       hasCurrentHeadReview: false,
       latestReviewIsCurrentHead: false,
       hasActionableCurrentHeadComments: false,
+      staleReviewCleanFollowup: false,
     },
     latestCopilotReview: null,
     actionableThreads: [],
@@ -840,8 +875,14 @@ function appendStepSummary(stepSummaryPath, report) {
     `- current_head_review_count: \`${report.summary.currentHeadReviewCount}\``,
     `- actionable_current_head_threads: \`${report.summary.actionableThreadCount}\``,
     `- actionable_current_head_comments: \`${report.summary.actionableCommentCount}\``,
+    `- stale_review_clean_followup: \`${report.signals.staleReviewCleanFollowup}\``,
     `- reasons: \`${report.reasons.join(', ') || 'none'}\``,
   ];
+
+  if (report.poll) {
+    lines.push(`- poll_attempts_used: \`${report.poll.attemptsUsed}/${report.poll.attemptsRequested}\``);
+    lines.push(`- poll_delay_ms: \`${report.poll.delayMs}\``);
+  }
 
   if (report.latestCopilotReview) {
     lines.push(`- latest_review_commit: \`${report.latestCopilotReview.commitId ?? 'unknown'}\``);
@@ -870,6 +911,17 @@ function appendStepSummary(stepSummaryPath, report) {
   }
 
   writeFileSync(resolved, `${lines.join('\n')}\n`, { encoding: 'utf8', flag: 'a' });
+}
+
+function shouldPollForInitialCopilotReview(report, options) {
+  return (
+    options.eventName === 'pull_request_target' &&
+    options.pollAttempts > 1 &&
+    report?.status === 'fail' &&
+    Array.isArray(report?.reasons) &&
+    report.reasons.length === 1 &&
+    report.reasons[0] === 'copilot-review-missing'
+  );
 }
 
 export async function runCopilotReviewGate({
@@ -922,6 +974,29 @@ export async function runCopilotReviewGate({
       const reviews = await loadReviewsFn(options);
       const threads = await loadThreadsFn(options);
       report = buildReportFromLiveData(options, reviews, threads, now);
+    }
+
+    if (shouldPollForInitialCopilotReview(report, options)) {
+      let attemptsUsed = 1;
+      while (attemptsUsed < options.pollAttempts) {
+        attemptsUsed += 1;
+        await sleep(options.pollDelayMs);
+        const reviews = await loadReviewsFn(options);
+        const threads = await loadThreadsFn(options);
+        report = buildReportFromLiveData(options, reviews, threads, now);
+        if (!shouldPollForInitialCopilotReview(report, { ...options, pollAttempts: DEFAULT_POLL_ATTEMPTS })) {
+          break;
+        }
+      }
+
+      report = {
+        ...report,
+        poll: {
+          attemptsRequested: options.pollAttempts,
+          attemptsUsed,
+          delayMs: options.pollDelayMs,
+        },
+      };
     }
 
     if (report.status !== 'pass') {
