@@ -55,6 +55,7 @@
       "hook-parity (windows-latest)",
       "hook-parity (ubuntu-latest)",
       "vi-history-scenarios-linux",
+      "agent-review-policy",
       "commit-integrity"
     ],
     "release/*": [

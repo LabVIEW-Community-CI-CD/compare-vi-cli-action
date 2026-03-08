@@ -19,9 +19,11 @@
         "hook-parity (windows-latest)",
         "hook-parity (ubuntu-latest)",
         "vi-history-scenarios-linux",
+        "agent-review-policy",
         "commit-integrity"
       ],
       "observed_status_checks": [
+        "agent-review-policy",
         "commit-integrity"
       ],
       "required_linear_history": true,
@@ -89,9 +91,11 @@
         "hook-parity (windows-latest)",
         "hook-parity (ubuntu-latest)",
         "vi-history-scenarios-linux",
+        "agent-review-policy",
         "commit-integrity"
       ],
       "observed_status_checks": [
+        "agent-review-policy",
         "commit-integrity"
       ],
       "merge_queue": {

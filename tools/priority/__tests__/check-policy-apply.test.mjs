@@ -33,6 +33,7 @@ test('priority:policy --apply updates rulesets for develop/main/release', async 
     'hook-parity (windows-latest)',
     'hook-parity (ubuntu-latest)',
     'vi-history-scenarios-linux',
+    'agent-review-policy',
     'commit-integrity'
   ];
   const expectedMainChecks = [
@@ -924,6 +925,7 @@ test('priority:policy verify fails when queue-managed ruleset is missing merge_q
     'hook-parity (windows-latest)',
     'hook-parity (ubuntu-latest)',
     'vi-history-scenarios-linux',
+    'agent-review-policy',
     'commit-integrity'
   ];
   const mainChecks = [
@@ -1157,6 +1159,7 @@ test('priority:policy verify uses queue-managed rulesets as required-check sourc
     'hook-parity (windows-latest)',
     'hook-parity (ubuntu-latest)',
     'vi-history-scenarios-linux',
+    'agent-review-policy',
     'commit-integrity'
   ];
   const mainChecksExpected = [
