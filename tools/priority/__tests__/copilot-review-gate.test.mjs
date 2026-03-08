@@ -1,4 +1,6 @@
 import assert from 'node:assert/strict';
+import fs from 'node:fs';
+import os from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
 import { fileURLToPath, pathToFileURL } from 'node:url';
@@ -17,6 +19,14 @@ async function loadModule() {
 
 function createArgv(argvExtras) {
   return ['node', 'copilot-review-gate.mjs', ...argvExtras];
+}
+
+function createSignalFixture(t, fileName = 'copilot-review-signal.json') {
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'copilot-review-gate-signal-'));
+  t.after(() => fs.rmSync(tmpDir, { recursive: true, force: true }));
+  const signalPath = path.join(tmpDir, fileName);
+  fs.writeFileSync(signalPath, '{}\n', 'utf8');
+  return signalPath;
 }
 
 test('parseRepoSlug trims whitespace and rejects slugs with extra segments', async () => {
@@ -95,7 +105,7 @@ test('copilot-review-gate skips merge-group runs while keeping the required stat
   assert.deepEqual(result.report?.reasons, ['merge-group-skip']);
 });
 
-test('copilot-review-gate blocks when the latest Copilot review is stale for the current head', async () => {
+test('copilot-review-gate passes stale but clean follow-up heads after an earlier Copilot review', async () => {
   const { runCopilotReviewGate } = await loadModule();
   const currentHead = 'cccccccccccccccccccccccccccccccccccccccc';
   const staleHead = 'dddddddddddddddddddddddddddddddddddddddd';
@@ -141,10 +151,11 @@ test('copilot-review-gate blocks when the latest Copilot review is stale for the
     appendStepSummaryFn: () => {},
   });
 
-  assert.equal(result.exitCode, 1);
-  assert.equal(result.report?.gateState, 'blocked');
-  assert.equal(result.report?.status, 'fail');
-  assert.deepEqual(result.report?.reasons, ['current-head-review-missing', 'latest-review-stale']);
+  assert.equal(result.exitCode, 0);
+  assert.equal(result.report?.gateState, 'ready');
+  assert.equal(result.report?.status, 'pass');
+  assert.deepEqual(result.report?.reasons, ['stale-review-clean-followup']);
+  assert.equal(result.report?.signals.staleReviewCleanFollowup, true);
 });
 
 test('copilot-review-gate blocks unresolved current-head Copilot threads', async () => {
@@ -278,10 +289,11 @@ test('copilot-review-gate passes when the latest Copilot review is current-head 
   assert.equal(result.report?.signals.hasCurrentHeadReview, true);
 });
 
-test('copilot-review-gate can evaluate the current-head state from the collected signal artifact', async () => {
+test('copilot-review-gate can evaluate the current-head state from the collected signal artifact', async (t) => {
   const { runCopilotReviewGate } = await loadModule();
   let reviewsCalled = false;
   let threadsCalled = false;
+  const signalPath = createSignalFixture(t, 'copilot-review-signal.json');
 
   const result = await runCopilotReviewGate({
     argv: createArgv([
@@ -298,7 +310,7 @@ test('copilot-review-gate can evaluate the current-head state from the collected
       '--draft',
       'false',
       '--signal',
-      'tests/results/_agent/reviews/copilot-review-signal.json',
+      signalPath,
     ]),
     readSignalFn: () => ({
       schema: 'priority/copilot-review-signal@v1',
@@ -377,10 +389,214 @@ test('copilot-review-gate reports an error when loading reviews fails', async ()
   assert.equal(result.report?.gateState, 'error');
 });
 
-test('copilot-review-gate fails when signal includes thread pagination errors', async () => {
+test('copilot-review-gate polls live data until the first Copilot review lands', async () => {
+  const { runCopilotReviewGate } = await loadModule();
+  let reviewsCallCount = 0;
+  let threadsCallCount = 0;
+
+  const result = await runCopilotReviewGate({
+    argv: createArgv([
+      '--event-name',
+      'pull_request_target',
+      '--repo',
+      'LabVIEW-Community-CI-CD/compare-vi-cli-action',
+      '--pr',
+      '885',
+      '--head-sha',
+      'abababababababababababababababababababab',
+      '--base-ref',
+      'develop',
+      '--draft',
+      'false',
+      '--poll-attempts',
+      '3',
+      '--poll-delay-ms',
+      '1',
+    ]),
+    loadReviewsFn: async () => {
+      reviewsCallCount += 1;
+      if (reviewsCallCount === 1) {
+        return [];
+      }
+      return [
+        {
+          id: 21,
+          user: { login: 'copilot-pull-request-reviewer[bot]' },
+          state: 'COMMENTED',
+          body: 'Current-head review arrived during polling.',
+          html_url: 'https://github.com/example/review/21',
+          submitted_at: '2026-03-08T06:06:00Z',
+          commit_id: 'abababababababababababababababababababab',
+        },
+      ];
+    },
+    loadThreadsFn: async () => {
+      threadsCallCount += 1;
+      return {
+        data: {
+          repository: {
+            pullRequest: {
+              reviewThreads: {
+                nodes: [],
+              },
+            },
+          },
+        },
+      };
+    },
+    writeReportFn: () => 'memory://copilot-review-gate-poll.json',
+    appendStepSummaryFn: () => {},
+  });
+
+  assert.equal(result.exitCode, 0);
+  assert.equal(result.report?.status, 'pass');
+  assert.equal(result.report?.gateState, 'ready');
+  assert.deepEqual(result.report?.reasons, ['current-head-review-clean']);
+  assert.deepEqual(result.report?.poll, {
+    attemptsRequested: 3,
+    attemptsUsed: 2,
+    delayMs: 1,
+  });
+  assert.equal(reviewsCallCount, 2);
+  assert.equal(threadsCallCount, 2);
+});
+
+test('copilot-review-gate polls across multiple attempts until the first Copilot review lands', async () => {
+  const { runCopilotReviewGate } = await loadModule();
+  let reviewsCallCount = 0;
+  let threadsCallCount = 0;
+
+  const result = await runCopilotReviewGate({
+    argv: createArgv([
+      '--event-name',
+      'pull_request_target',
+      '--repo',
+      'LabVIEW-Community-CI-CD/compare-vi-cli-action',
+      '--pr',
+      '885',
+      '--head-sha',
+      'bcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbc',
+      '--base-ref',
+      'develop',
+      '--draft',
+      'false',
+      '--poll-attempts',
+      '3',
+      '--poll-delay-ms',
+      '1',
+    ]),
+    loadReviewsFn: async () => {
+      reviewsCallCount += 1;
+      if (reviewsCallCount < 3) {
+        return [];
+      }
+      return [
+        {
+          id: 31,
+          user: { login: 'copilot-pull-request-reviewer[bot]' },
+          state: 'COMMENTED',
+          body: 'Current-head review arrived on the final polling attempt.',
+          html_url: 'https://github.com/example/review/31',
+          submitted_at: '2026-03-08T06:07:00Z',
+          commit_id: 'bcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbc',
+        },
+      ];
+    },
+    loadThreadsFn: async () => {
+      threadsCallCount += 1;
+      return {
+        data: {
+          repository: {
+            pullRequest: {
+              reviewThreads: {
+                nodes: [],
+              },
+            },
+          },
+        },
+      };
+    },
+    writeReportFn: () => 'memory://copilot-review-gate-poll-multi-attempt.json',
+    appendStepSummaryFn: () => {},
+  });
+
+  assert.equal(result.exitCode, 0);
+  assert.equal(result.report?.status, 'pass');
+  assert.equal(result.report?.gateState, 'ready');
+  assert.deepEqual(result.report?.reasons, ['current-head-review-clean']);
+  assert.deepEqual(result.report?.poll, {
+    attemptsRequested: 3,
+    attemptsUsed: 3,
+    delayMs: 1,
+  });
+  assert.equal(reviewsCallCount, 3);
+  assert.equal(threadsCallCount, 3);
+});
+
+test('copilot-review-gate reports exhausted polling when the first Copilot review never lands', async () => {
+  const { runCopilotReviewGate } = await loadModule();
+  let reviewsCallCount = 0;
+  let threadsCallCount = 0;
+
+  const result = await runCopilotReviewGate({
+    argv: createArgv([
+      '--event-name',
+      'pull_request_target',
+      '--repo',
+      'LabVIEW-Community-CI-CD/compare-vi-cli-action',
+      '--pr',
+      '885',
+      '--head-sha',
+      'cdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcd',
+      '--base-ref',
+      'develop',
+      '--draft',
+      'false',
+      '--poll-attempts',
+      '3',
+      '--poll-delay-ms',
+      '1',
+    ]),
+    loadReviewsFn: async () => {
+      reviewsCallCount += 1;
+      return [];
+    },
+    loadThreadsFn: async () => {
+      threadsCallCount += 1;
+      return {
+        data: {
+          repository: {
+            pullRequest: {
+              reviewThreads: {
+                nodes: [],
+              },
+            },
+          },
+        },
+      };
+    },
+    writeReportFn: () => 'memory://copilot-review-gate-poll-exhausted.json',
+    appendStepSummaryFn: () => {},
+  });
+
+  assert.equal(result.exitCode, 1);
+  assert.equal(result.report?.status, 'fail');
+  assert.equal(result.report?.gateState, 'blocked');
+  assert.deepEqual(result.report?.reasons, ['copilot-review-missing']);
+  assert.deepEqual(result.report?.poll, {
+    attemptsRequested: 3,
+    attemptsUsed: 3,
+    delayMs: 1,
+  });
+  assert.equal(reviewsCallCount, 3);
+  assert.equal(threadsCallCount, 3);
+});
+
+test('copilot-review-gate fails when signal includes thread pagination errors', async (t) => {
   const { runCopilotReviewGate } = await loadModule();
   let reviewsCalled = false;
   let threadsCalled = false;
+  const signalPath = createSignalFixture(t, 'copilot-review-signal-pagination-error.json');
 
   const result = await runCopilotReviewGate({
     argv: createArgv([
@@ -397,7 +613,7 @@ test('copilot-review-gate fails when signal includes thread pagination errors', 
       '--draft',
       'false',
       '--signal',
-      'tests/results/_agent/reviews/copilot-review-signal-pagination-error.json',
+      signalPath,
     ]),
     readSignalFn: () => ({
       schema: 'priority/copilot-review-signal@v1',
@@ -450,10 +666,11 @@ test('copilot-review-gate fails when signal includes thread pagination errors', 
   assert.equal(threadsCalled, false);
 });
 
-test('copilot-review-gate skips when the base ref is not gated', async () => {
+test('copilot-review-gate skips when the base ref is not gated', async (t) => {
   const { runCopilotReviewGate } = await loadModule();
   let reviewsCalled = false;
   let threadsCalled = false;
+  const signalPath = createSignalFixture(t, 'copilot-review-signal-base-ref-not-gated.json');
 
   const result = await runCopilotReviewGate({
     argv: createArgv([
@@ -472,7 +689,7 @@ test('copilot-review-gate skips when the base ref is not gated', async () => {
       '--draft',
       'false',
       '--signal',
-      'tests/results/_agent/reviews/copilot-review-signal-base-ref-not-gated.json',
+      signalPath,
     ]),
     readSignalFn: () => ({
       schema: 'priority/copilot-review-signal@v1',
@@ -511,7 +728,7 @@ test('copilot-review-gate skips when the base ref is not gated', async () => {
   });
 
   assert.equal(result.exitCode, 0);
-  assert.equal(result.report?.source.mode, 'signal');
+  assert.equal(result.report?.source.mode, 'metadata');
   assert.equal(result.report?.gateState, 'skipped');
   assert.equal(reviewsCalled, false);
   assert.equal(threadsCalled, false);
