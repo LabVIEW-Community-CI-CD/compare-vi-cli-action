@@ -10,6 +10,8 @@ Design notes describing how automation (agents, scripts, CI summaries) should su
   responses or summaries.
 - Highlight the minimum telemetry fields required for quick triage (state, verification, heartbeat,
   trim hints).
+- Preserve structured runtime-event metadata so downstream consumers can reference event files
+  without scraping console output.
 - Capture fallback behaviour when watcher artefacts are missing or stale.
 
 ## Telemetry Sources
@@ -20,6 +22,7 @@ Design notes describing how automation (agents, scripts, CI summaries) should su
 - Artefact paths (when present):
   - `tests/results/_agent/watcher/watcher-status.json`
   - `tests/results/_agent/watcher/watcher-self.json`
+  - `tests/results/_agent/watcher/watcher-events.ndjson`
   - `tests/results/_agent/watcher/watch.out`
   - `tests/results/_agent/watcher/watch.err`
   - `tests/results/_agent/watcher/watcher-trim.json`
@@ -31,6 +34,8 @@ Design notes describing how automation (agents, scripts, CI summaries) should su
     - `state` (e.g., `running`, `stopped`, `busy-suspect`).
     - `alive` and `verifiedProcess` (true/false flags).
     - `heartbeatFresh` and `heartbeatReason`.
+    - `events.present`, `events.count`, and `events.path`.
+    - When available, `events.source`, `events.lastEventAt`, `events.lastLevel`, and `events.lastPhase`.
     - `needsTrim` (true/false) and whether a trim was performed.
     - When available, `lastHeartbeatAt` or a friendly age string.
   - Mention missing artefacts explicitly (e.g., "status JSON absent") to avoid ambiguity.
@@ -40,6 +45,8 @@ Design notes describing how automation (agents, scripts, CI summaries) should su
   - Include artefact presence lines for `status.json` and `heartbeat.json` (present/missing).
 - **Handoff JSON snapshot**
   - Persist the raw status payload to `tests/results/_agent/handoff/watcher-telemetry.json`.
+  - Include the `events` block so downstream tools can link watcher summaries to
+    `watcher-events.ndjson`.
   - Include the command timestamp and any trim action metadata for downstream tools.
   - Validate against `docs/schemas/watcher-telemetry.v1.schema.json` when running schema checks.
 
@@ -52,6 +59,7 @@ Automation should adapt this outline when composing replies:
 - state: `stopped` (alive=false, verifiedProcess=false)
 - heartbeat: fresh=`false` (`[heartbeat] missing`)
 - trim: performed=`no`, needsTrim=`false`
+- events: present=`false`, count=`0`, path=`tests/results/_agent/watcher/watcher-events.ndjson`
 - artefacts: status=`missing`, heartbeat=`missing`
 ````
 
@@ -71,9 +79,11 @@ Optional additions:
 3. Execute `node tools/npm/run-script.mjs dev:watcher:status` (or call `tools/Dev-WatcherManager.ps1 -Status`
    in-process) and capture the output.
 4. Summarise the required fields in the reply (or step summary) using the template above.
-5. If `needsTrim=true`, call `node tools/npm/run-script.mjs dev:watcher:trim` (or
+5. Copy through runtime-event metadata from `status.files.events` so downstream automation can
+   open the NDJSON file directly.
+6. If `needsTrim=true`, call `node tools/npm/run-script.mjs dev:watcher:trim` (or
    `Print-AgentHandoff.ps1 -AutoTrim`) and mention the trim result; otherwise note that no trim was necessary.
-6. Record anomalies: missing artefacts, schema mismatches, stale timestamps, or command failures.
+7. Record anomalies: missing artefacts, schema mismatches, stale timestamps, or command failures.
 
 ## Edge Cases
 

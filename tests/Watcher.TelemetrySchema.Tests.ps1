@@ -20,5 +20,10 @@ Describe 'Watcher Telemetry - Handoff Snapshot' {
     $json.verifiedProcess | Should -BeOfType ([bool])
     $json.heartbeatFresh | Should -BeOfType ([bool])
     $json.needsTrim | Should -BeOfType ([bool])
+    $json.events | Should -Not -BeNullOrEmpty
+    $json.events.schema | Should -Be 'comparevi/runtime-event/v1'
+    $json.events.path | Should -Not -BeNullOrEmpty
+    $json.events.present | Should -BeOfType ([bool])
+    ([int]$json.events.count -ge 0) | Should -BeTrue
   }
 }
