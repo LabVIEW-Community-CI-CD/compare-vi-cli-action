@@ -22,6 +22,43 @@ function Get-GitDefaultBranch {
   try { (& git symbolic-ref refs/remotes/origin/HEAD).Split('/')[-1] } catch { 'develop' }
 }
 
+function Read-JsonFile {
+  param([string]$Path)
+
+  if (-not (Test-Path -LiteralPath $Path -PathType Leaf)) {
+    return $null
+  }
+
+  try {
+    return Get-Content -LiteralPath $Path -Raw | ConvertFrom-Json -ErrorAction Stop
+  } catch {
+    return $null
+  }
+}
+
+function Get-NoStandingReason {
+  param([string]$RepoRoot)
+
+  $cachePath = Join-Path $RepoRoot '.agent_priority_cache.json'
+  $cache = Read-JsonFile -Path $cachePath
+  if ($cache -and
+    ($cache.PSObject.Properties.Name -contains 'state') -and
+    ([string]$cache.state).Trim().ToUpperInvariant() -eq 'NONE' -and
+    ($cache.PSObject.Properties.Name -contains 'noStandingReason')) {
+    $reason = ([string]$cache.noStandingReason).Trim().ToLowerInvariant()
+    if ($reason) { return $reason }
+  }
+
+  $reportPath = Join-Path $RepoRoot 'tests/results/_agent/issue/no-standing-priority.json'
+  $report = Read-JsonFile -Path $reportPath
+  if ($report -and ($report.PSObject.Properties.Name -contains 'reason')) {
+    $reason = ([string]$report.reason).Trim().ToLowerInvariant()
+    if ($reason) { return $reason }
+  }
+
+  return $null
+}
+
 function Ensure-Branch([string]$Name,[string]$Base) {
   $current = (& git rev-parse --abbrev-ref HEAD).Trim()
   if ($current -eq $Name) { return $true }
@@ -67,13 +104,34 @@ $repo = Get-RepoRoot
 if (-not $Issue) {
   # Try resolve from router/snapshot
   $snapDir = Join-Path $repo 'tests/results/_agent/issue'
+  $router = $null
   $latest = $null
   if (Test-Path -LiteralPath $snapDir -PathType Container) {
-    $latest = Get-ChildItem -LiteralPath $snapDir -Filter '*.json' | Sort-Object LastWriteTime -Descending | Select-Object -First 1
+    $router = Read-JsonFile -Path (Join-Path $snapDir 'router.json')
+    if ($router -and ($router.PSObject.Properties.Name -contains 'issue')) {
+      [int]$routerIssue = 0
+      if ([int]::TryParse([string]$router.issue, [ref]$routerIssue) -and $routerIssue -gt 0) {
+        $Issue = $routerIssue
+      }
+    }
+    if (-not $Issue) {
+      $latest = Get-ChildItem -LiteralPath $snapDir -Filter '*.json' |
+        Where-Object { $_.BaseName -match '^\d+$' } |
+        Sort-Object LastWriteTime -Descending |
+        Select-Object -First 1
+    }
   }
-  if (-not $latest) { throw 'Issue not specified and no snapshot found.' }
-  $snap = Get-Content -LiteralPath $latest.FullName -Raw | ConvertFrom-Json -ErrorAction Stop
-  $Issue = [int]$snap.number
+  if (-not $Issue -and -not $latest) {
+    $noStandingReason = Get-NoStandingReason -RepoRoot $repo
+    if ($noStandingReason -eq 'queue-empty') {
+      throw 'Standing-priority queue is empty; create or label the next issue before running Branch-Orchestrator.'
+    }
+    throw 'Issue not specified and no snapshot found.'
+  }
+  if (-not $Issue) {
+    $snap = Get-Content -LiteralPath $latest.FullName -Raw | ConvertFrom-Json -ErrorAction Stop
+    $Issue = [int]$snap.number
+  }
 }
 
 Write-Host ("[orchestrator] Issue: #{0}" -f $Issue)

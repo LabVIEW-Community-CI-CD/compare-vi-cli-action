@@ -55,6 +55,21 @@ The helper script derives the PR title from linked issue metadata when available
 head commit subject when necessary, and then calls `gh pr create --title ... --body-file ...` with the rendered intake
 document.
 
+## Idle Repository Mode
+
+The standing-priority intake layer now distinguishes between:
+
+- a real standing issue
+- a misconfigured standing lane (missing/duplicate labels)
+- an intentionally idle repository with zero open issues
+
+When sync writes `tests/results/_agent/issue/no-standing-priority.json` with
+`reason = queue-empty`, treat that as a first-class idle state. Bootstrap should
+complete, the router should expose `issue = null`, and helpers that open new
+standing-priority branches/PRs should stop with a clear message instead of
+inventing a null issue context. The correct next action is to create or label
+the next tracked issue, then rerun bootstrap.
+
 ## Agent Metadata Contract
 
 Automation-authored PRs still use the `Agent Metadata` block:

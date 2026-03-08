@@ -18,6 +18,7 @@ import {
 
 const ROUTER_RELATIVE_PATH = path.join('tests', 'results', '_agent', 'issue', 'router.json');
 const CACHE_RELATIVE_PATH = '.agent_priority_cache.json';
+const NO_STANDING_REPORT_RELATIVE_PATH = path.join('tests', 'results', '_agent', 'issue', 'no-standing-priority.json');
 const STANDING_PRIORITY_LABELS = new Set(['standing-priority', 'fork-standing-priority']);
 
 export function ensurePrSourceBranch(branch) {
@@ -101,19 +102,51 @@ export function parseCacheIssueNumber(cache) {
   return number;
 }
 
+export function parseCacheNoStandingReason(cache) {
+  if (!cache || typeof cache !== 'object') {
+    return null;
+  }
+
+  const state = String(cache.state ?? cache.issue?.state ?? '').trim().toUpperCase();
+  if (state !== 'NONE') {
+    return null;
+  }
+
+  const reason = String(cache.noStandingReason ?? cache.issue?.noStandingReason ?? '').trim().toLowerCase();
+  return reason || null;
+}
+
+export function parseNoStandingReasonFromReport(report) {
+  if (!report || typeof report !== 'object') {
+    return null;
+  }
+
+  const schema = String(report.schema ?? '').trim().toLowerCase();
+  if (schema && schema !== 'standing-priority/no-standing@v1') {
+    return null;
+  }
+
+  const reason = String(report.reason ?? '').trim().toLowerCase();
+  return reason || null;
+}
+
 export function resolveStandingIssueNumberForPr(repoRoot, { readJsonFn = readJsonFile } = {}) {
   const router = readJsonFn(path.join(repoRoot, ROUTER_RELATIVE_PATH));
+  const cache = readJsonFn(path.join(repoRoot, CACHE_RELATIVE_PATH));
+  const noStandingReport = readJsonFn(path.join(repoRoot, NO_STANDING_REPORT_RELATIVE_PATH));
+  const noStandingReason = parseCacheNoStandingReason(cache) || parseNoStandingReasonFromReport(noStandingReport);
   if (router && Object.prototype.hasOwnProperty.call(router, 'issue')) {
     return {
       issueNumber: parseRouterIssueNumber(router),
-      source: 'router'
+      source: 'router',
+      noStandingReason
     };
   }
 
-  const cache = readJsonFn(path.join(repoRoot, CACHE_RELATIVE_PATH));
   return {
     issueNumber: parseCacheIssueNumber(cache),
-    source: 'cache'
+    source: 'cache',
+    noStandingReason
   };
 }
 
@@ -179,6 +212,9 @@ export function createPriorityPr({
 
   const resolvedIssue = resolveStandingIssueNumberFn(repoRoot);
   const issueNumber = resolvedIssue?.issueNumber ?? null;
+  if (!issueNumber && resolvedIssue?.noStandingReason === 'queue-empty') {
+    throw new Error('Standing-priority queue is empty; create or label the next issue before opening a priority PR.');
+  }
   assertBranchMatchesIssue(branch, issueNumber);
   const base = env.PR_BASE || 'develop';
   const title = buildTitle(branch, issueNumber, env);

@@ -9,6 +9,7 @@ import {
   parseCliArgs,
   selectAutoStandingPriorityCandidate,
   autoSelectStandingPriorityIssue,
+  classifyNoStandingPriorityCondition,
   buildNoStandingPriorityReport,
   buildMultipleStandingPriorityReport,
   buildNoStandingPriorityState,
@@ -142,7 +143,9 @@ test('buildNoStandingPriorityState clears router/cache deterministically', () =>
     state.clearedCache.lastFetchError,
     'No open issue found with labels: `fork-standing-priority`, `standing-priority`.'
   );
+  assert.equal(state.clearedCache.noStandingReason, 'label-missing');
   assert.equal(state.result.fetchSource, 'none');
+  assert.equal(state.result.noStandingReason, 'label-missing');
 });
 
 test('resolveStandingPriorityLabels prefers fork-standing-priority when configured upstream differs', () => {
@@ -340,6 +343,8 @@ test('buildNoStandingPriorityReport emits deterministic schema payload', () => {
     message: 'No open issue found',
     labels: ['fork-standing-priority', 'standing-priority'],
     repository: 'owner/repo',
+    reason: 'label-missing',
+    openIssueCount: 3,
     failOnMissing: true,
     generatedAt: '2026-03-05T22:30:00.000Z'
   });
@@ -349,8 +354,48 @@ test('buildNoStandingPriorityReport emits deterministic schema payload', () => {
     repository: 'owner/repo',
     labels: ['fork-standing-priority', 'standing-priority'],
     message: 'No open issue found',
+    reason: 'label-missing',
+    openIssueCount: 3,
     failOnMissing: true
   });
+});
+
+test('classifyNoStandingPriorityCondition detects queue-empty repositories', async () => {
+  const result = await classifyNoStandingPriorityCondition('/tmp/repo', 'owner/repo', ['standing-priority'], {
+    targetSlug: 'owner/repo',
+    runGhList: () => ({
+      status: 0,
+      stdout: '[]'
+    }),
+    runRestList: async () => ({ status: 'error', error: 'not-used' }),
+    warn: () => {}
+  });
+
+  assert.deepEqual(result, {
+    status: 'classified',
+    reason: 'queue-empty',
+    repository: 'owner/repo',
+    openIssueCount: 0,
+    message: 'No open issues remain in owner/repo; the standing-priority queue is empty.'
+  });
+});
+
+test('classifyNoStandingPriorityCondition distinguishes label-missing from queue-empty', async () => {
+  const result = await classifyNoStandingPriorityCondition('/tmp/repo', 'owner/repo', ['standing-priority'], {
+    targetSlug: 'owner/repo',
+    runGhList: () => ({
+      status: 0,
+      stdout: JSON.stringify([{ number: 911, title: 'follow-up', labels: [{ name: 'bug' }] }])
+    }),
+    runRestList: async () => ({ status: 'error', error: 'not-used' }),
+    warn: () => {}
+  });
+
+  assert.equal(result.status, 'classified');
+  assert.equal(result.reason, 'label-missing');
+  assert.equal(result.repository, 'owner/repo');
+  assert.equal(result.openIssueCount, 1);
+  assert.match(result.message, /none carry the checked standing-priority labels/i);
 });
 
 test('buildMultipleStandingPriorityReport emits deterministic schema payload', () => {
