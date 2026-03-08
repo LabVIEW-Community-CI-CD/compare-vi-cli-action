@@ -113,6 +113,14 @@ the recorded metadata bucket counts (2 entries in the `metadata` bucket) stay
 in sync with the documentation. Use the fixture as a template when capturing
 new cross-repo runs.
 
+## Offline corpus harness
+
+For the seeded offline real-history corpus path added under issue `#894`, use
+[`Offline-RealHistory-Corpus.md`](./Offline-RealHistory-Corpus.md). That flow
+wraps `Compare-VIHistory` with the NI Windows container bridge and writes
+generated evidence under `tests/results/offline-real-history/` instead of
+committing bulky raw reports.
+
 ## Observations / gaps
 
 - With `CompareVI.Tools` we can reuse `Compare-VIHistory` and

@@ -1,0 +1,172 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://labview-community-ci-cd.github.io/compare-vi-cli-action/schemas/offline-real-history-corpus-targets-v1.schema.json",
+  "title": "Offline Real-History Corpus Targets v1",
+  "description": "Checked-in seed catalog for offline real-history corpus capture runs.",
+  "type": "object",
+  "required": [
+    "schema",
+    "generatedAt",
+    "defaultWindowsImage",
+    "defaultLabVIEWPath",
+    "defaultCliPath",
+    "defaultComparePolicy",
+    "storagePolicy",
+    "targets"
+  ],
+  "properties": {
+    "schema": {
+      "const": "vi-history/offline-real-history-targets@v1"
+    },
+    "generatedAt": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "description": {
+      "type": "string"
+    },
+    "defaultWindowsImage": {
+      "type": "string",
+      "minLength": 1
+    },
+    "defaultLabVIEWPath": {
+      "type": "string",
+      "minLength": 1
+    },
+    "defaultCliPath": {
+      "type": "string",
+      "minLength": 1
+    },
+    "defaultComparePolicy": {
+      "enum": [
+        "cli-only",
+        "cli-first",
+        "lv-first",
+        "lv-only"
+      ]
+    },
+    "storagePolicy": {
+      "type": "object",
+      "required": [
+        "checkedInCatalogPath",
+        "generatedRoot",
+        "rawArtifactsInGit"
+      ],
+      "properties": {
+        "checkedInCatalogPath": {
+          "type": "string",
+          "minLength": 1
+        },
+        "generatedRoot": {
+          "type": "string",
+          "minLength": 1
+        },
+        "rawArtifactsInGit": {
+          "const": false
+        }
+      },
+      "additionalProperties": false
+    },
+    "targets": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "$ref": "#/$defs/target"
+      }
+    }
+  },
+  "$defs": {
+    "repo": {
+      "type": "object",
+      "required": [
+        "slug",
+        "localPathHints",
+        "startRef"
+      ],
+      "properties": {
+        "slug": {
+          "type": "string",
+          "minLength": 1
+        },
+        "localPathHints": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "startRef": {
+          "type": "string",
+          "minLength": 1
+        },
+        "endRef": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "additionalProperties": false
+    },
+    "target": {
+      "type": "object",
+      "required": [
+        "id",
+        "label",
+        "repo",
+        "targetPath",
+        "requestedModes",
+        "maxPairs",
+        "reportFormat",
+        "notes"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^[a-z0-9][a-z0-9._-]*$"
+        },
+        "label": {
+          "type": "string",
+          "minLength": 1
+        },
+        "repo": {
+          "$ref": "#/$defs/repo"
+        },
+        "targetPath": {
+          "type": "string",
+          "minLength": 1
+        },
+        "requestedModes": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "maxPairs": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "reportFormat": {
+          "enum": [
+            "html",
+            "xml",
+            "text"
+          ]
+        },
+        "notes": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        }
+      },
+      "additionalProperties": false
+    }
+  },
+  "additionalProperties": false
+}
