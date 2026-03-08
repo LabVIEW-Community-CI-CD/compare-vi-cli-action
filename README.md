@@ -22,6 +22,8 @@ tuning.
 
 Use the [GitHub wiki](https://github.com/LabVIEW-Community-CI-CD/compare-vi-cli-action/wiki) as the public entry
 portal for this repository. It is curated for fast navigation and links outward to the detailed checked-in docs.
+The published wiki pages themselves live in GitHub's separate wiki backing repo,
+`LabVIEW-Community-CI-CD/compare-vi-cli-action.wiki.git`.
 
 The authoritative documentation still lives in this repository:
 

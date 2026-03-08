@@ -6,6 +6,8 @@ This repository uses the GitHub wiki as a curated public portal into the checked
 
 - The wiki is for summaries, navigation, and audience-focused entry points.
 - Checked-in repo docs remain the source of truth for runbooks, policy, technical contracts, and maintenance details.
+- Published wiki page content lives in GitHub's dedicated wiki backing repo,
+  `LabVIEW-Community-CI-CD/compare-vi-cli-action.wiki.git`.
 - No critical operational rule should exist only in the wiki.
 
 ## Audience

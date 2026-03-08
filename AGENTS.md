@@ -134,6 +134,9 @@ line buffers).
     `.github/PULL_REQUEST_TEMPLATE/`.
   - Documentation discovery should treat the GitHub wiki as a curated portal only; checked-in repo docs remain
     authoritative and wiki pages must point back to them.
+  - Published wiki page content lives in the separate GitHub wiki repo
+    `LabVIEW-Community-CI-CD/compare-vi-cli-action.wiki.git`; repo PRs here can govern the contract and entry points,
+    but not the wiki page history itself.
   - CLI issue creation should use `pwsh -File tools/New-IssueBody.ps1 -Template <...> -OutputPath issue-body.md`
     followed by `gh issue create --body-file issue-body.md`.
   - CLI PR creation should prefer `pwsh -File tools/Branch-Orchestrator.ps1 -Issue <number> -Execute` and switch

@@ -17,6 +17,8 @@ separate ad-hoc markdown fragments.
 
 - The GitHub wiki is the public docs portal: <https://github.com/LabVIEW-Community-CI-CD/compare-vi-cli-action/wiki>
 - The wiki is for navigation and summaries; checked-in repo docs remain authoritative.
+- The published wiki pages live in the separate wiki backing repo:
+  <https://github.com/LabVIEW-Community-CI-CD/compare-vi-cli-action.wiki.git>
 - Every wiki page should include an `Authoritative repo docs` section pointing back to the repo.
 - The maintained contract for this split lives in
   [`docs/knowledgebase/GitHub-Wiki-Portal.md`](./GitHub-Wiki-Portal.md).
