@@ -61,6 +61,7 @@ test('github intake docs and manifest reference the new helper layer', () => {
   const intakeGuide = readText('docs/knowledgebase/GitHub-Intake-Layer.md');
   const orchestrator = readText('tools/Branch-Orchestrator.ps1');
   const intakeModule = readText('tools/GitHubIntake.psm1');
+  const oneButtonValidate = readText('tools/Run-OneButtonValidate.ps1');
 
   assert.match(snippets, /New-IssueBody\.ps1/);
   assert.match(snippets, /Branch-Orchestrator\.ps1/);
@@ -70,7 +71,11 @@ test('github intake docs and manifest reference the new helper layer', () => {
   assert.match(intakeGuide, /gh pr create --title "<title>" --body-file pr-body\.md/);
   assert.match(orchestrator, /Import-Module \(Join-Path \$PSScriptRoot 'GitHubIntake\.psm1'\)/);
   assert.match(orchestrator, /'pr'\s+'create'\s+'--title'/);
+  assert.match(orchestrator, /'pr'\s+'view'\s+\$branchName\s+'--json'\s+'number'/);
   assert.doesNotMatch(orchestrator, /'pr'\s+'create'\s+'--fill(?:-first)?'/);
+  assert.doesNotMatch(orchestrator, /'pr'\s+'view'\s+'--json'\s+'number'\s+'--head'/);
+  assert.match(oneButtonValidate, /gh pr view \$branch --json number/);
+  assert.doesNotMatch(oneButtonValidate, /gh pr view --json number --head/);
   assert.match(intakeModule, /function Resolve-IssueBranchName/);
   assert.match(intakeModule, /function Resolve-PullRequestTitle/);
 

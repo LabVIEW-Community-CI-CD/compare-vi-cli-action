@@ -106,7 +106,7 @@ if ($Execute) {
     try {
       $prTitle = Resolve-PullRequestTitle -Issue $Issue -IssueTitle $title -Base $Base
       $bodyPath = New-RenderedPRBody -Repo $repo -Issue $Issue -Snapshot $snap -Base $Base -Branch $branchName -Template $PRTemplate
-      $existingJson = & $gh.Source 'pr' 'view' '--json' 'number' '--head' $branchName 2>$null
+      $existingJson = & $gh.Source 'pr' 'view' $branchName '--json' 'number' 2>$null
       if ($LASTEXITCODE -eq 0 -and $existingJson) {
         $pr = $existingJson | ConvertFrom-Json
         & $gh.Source 'pr' 'edit' $pr.number '--body-file' $bodyPath | Out-Host
