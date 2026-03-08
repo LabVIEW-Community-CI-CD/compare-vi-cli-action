@@ -1,0 +1,164 @@
+name: Validation Approval Helper
+
+on:
+  workflow_dispatch:
+    inputs:
+      run_id:
+        description: 'Target workflow run id waiting on validation approval'
+        required: true
+        type: string
+      broker_mode:
+        description: 'Use an existing decision receipt or reevaluate the broker from artifacts'
+        required: true
+        default: consume
+        type: choice
+        options:
+          - consume
+          - evaluate
+      pull_request_number:
+        description: 'Pull request number for broker reevaluation'
+        required: false
+        type: string
+      artifact_run_id:
+        description: 'Artifact source run id (defaults to target run id when blank)'
+        required: false
+        type: string
+      decision_artifact_name:
+        description: 'Decision artifact name when broker_mode=consume'
+        required: false
+        default: validation-approval-decision
+        type: string
+      attestation_artifact_name:
+        description: 'Validation attestation artifact name when broker_mode=evaluate'
+        required: false
+        default: validation-agent-attestation
+        type: string
+      deployment_determinism_artifact_name:
+        description: 'Deployment determinism artifact name when broker_mode=evaluate'
+        required: false
+        default: validation-deployment-determinism
+        type: string
+      approve:
+        description: 'Approve the pending validation deployment when the helper reports ready'
+        required: true
+        default: false
+        type: boolean
+
+permissions:
+  contents: read
+  actions: read
+  deployments: write
+  pull-requests: read
+
+jobs:
+  validation-approval-helper:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install Node dependencies
+        run: node tools/npm/cli.mjs ci --ignore-scripts
+
+      - name: Build TypeScript utilities
+        run: node tools/npm/run-script.mjs build
+
+      - name: Require pull request number for broker reevaluation
+        if: inputs.broker_mode == 'evaluate'
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ -z "${{ inputs.pull_request_number }}" ]]; then
+            echo "::error::pull_request_number is required when broker_mode=evaluate."
+            exit 1
+          fi
+
+      - name: Collect Copilot review signal
+        if: inputs.broker_mode == 'evaluate'
+        env:
+          GITHUB_TOKEN: ${{ secrets.GH_TOKEN || secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ secrets.GH_TOKEN || secrets.GITHUB_TOKEN }}
+        run: |
+          node dist/tools/priority/copilot-review-signal.js \
+            --repo "${{ github.repository }}" \
+            --pr "${{ inputs.pull_request_number }}" \
+            --out tests/results/_agent/reviews/copilot-review-signal.json \
+            --step-summary "$GITHUB_STEP_SUMMARY"
+
+      - name: Download existing broker decision artifact
+        if: inputs.broker_mode == 'consume'
+        uses: actions/download-artifact@v5
+        with:
+          github-token: ${{ secrets.GH_TOKEN || secrets.GITHUB_TOKEN }}
+          run-id: ${{ inputs.artifact_run_id || inputs.run_id }}
+          name: ${{ inputs.decision_artifact_name }}
+          path: tests/results/_agent/approvals/source-decision
+
+      - name: Download validation attestation artifact
+        if: inputs.broker_mode == 'evaluate'
+        uses: actions/download-artifact@v5
+        with:
+          github-token: ${{ secrets.GH_TOKEN || secrets.GITHUB_TOKEN }}
+          run-id: ${{ inputs.artifact_run_id || inputs.run_id }}
+          name: ${{ inputs.attestation_artifact_name }}
+          path: tests/results/_agent/reviews/source-attestation
+
+      - name: Download validation deployment determinism artifact
+        if: inputs.broker_mode == 'evaluate'
+        uses: actions/download-artifact@v5
+        with:
+          github-token: ${{ secrets.GH_TOKEN || secrets.GITHUB_TOKEN }}
+          run-id: ${{ inputs.artifact_run_id || inputs.run_id }}
+          name: ${{ inputs.deployment_determinism_artifact_name }}
+          path: tests/results/_agent/deployments/source-determinism
+
+      - name: Run validation approval helper
+        env:
+          GITHUB_TOKEN: ${{ secrets.GH_TOKEN || secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ secrets.GH_TOKEN || secrets.GITHUB_TOKEN }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          args=(
+            "tools/priority/validation-approval-helper.mjs"
+            "--repo" "${{ github.repository }}"
+            "--run-id" "${{ inputs.run_id }}"
+            "--environment" "validation"
+            "--decision-out" "tests/results/_agent/approvals/validation-approval-decision.json"
+            "--out" "tests/results/_agent/approvals/validation-approval-helper.json"
+            "--step-summary" "$GITHUB_STEP_SUMMARY"
+          )
+
+          if [[ "${{ inputs.approve }}" == 'true' ]]; then
+            args+=("--approve")
+          fi
+
+          if [[ "${{ inputs.broker_mode }}" == 'consume' ]]; then
+            args+=(
+              "--decision"
+              "tests/results/_agent/approvals/source-decision/validation-approval-decision.json"
+            )
+          else
+            args+=(
+              "--pr" "${{ inputs.pull_request_number }}"
+              "--signal" "tests/results/_agent/reviews/copilot-review-signal.json"
+              "--attestation" "tests/results/_agent/reviews/source-attestation/validation-agent-attestation.json"
+              "--deployment-determinism" "tests/results/_agent/deployments/source-determinism/validation-deployment-determinism.json"
+            )
+          fi
+
+          node "${args[@]}"
+
+      - name: Upload validation approval artifacts
+        if: always()
+        uses: actions/upload-artifact@v5
+        with:
+          name: validation-approval-helper-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            tests/results/_agent/approvals/validation-approval-decision.json
+            tests/results/_agent/approvals/validation-approval-helper.json
+          if-no-files-found: error
