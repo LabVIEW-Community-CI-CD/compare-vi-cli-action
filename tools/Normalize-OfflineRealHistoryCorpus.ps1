@@ -35,12 +35,16 @@ function Convert-ToRepoRelativePath {
 
   $resolved = Resolve-AbsolutePath -BasePath $RepoRoot -PathValue $PathValue
   $normalizedRoot = [System.IO.Path]::GetFullPath($RepoRoot).TrimEnd('\', '/')
-  if ($resolved.StartsWith($normalizedRoot, [System.StringComparison]::OrdinalIgnoreCase)) {
-    $relative = $resolved.Substring($normalizedRoot.Length).TrimStart('\', '/')
-    return ($relative -replace '\\', '/')
+  $relative = [System.IO.Path]::GetRelativePath($normalizedRoot, $resolved)
+  if ($relative -eq '..' -or $relative -match '^\.\.(\\|/)') {
+    return ($resolved -replace '\\', '/')
   }
 
-  return ($resolved -replace '\\', '/')
+  if ($relative -eq '.') {
+    return ''
+  }
+
+  return ($relative -replace '\\', '/')
 }
 
 function Ensure-Directory {
@@ -378,7 +382,7 @@ function Resolve-ComparisonOutcomeClass {
 function Resolve-ModeOutcomeClass {
   param(
     [AllowNull()][object]$Stats,
-    [Parameter(Mandatory)][string[]]$ComparisonClasses
+    [AllowEmptyCollection()][string[]]$ComparisonClasses = @()
   )
 
   if ([int](Get-PropertyValue -InputObject $Stats -Name 'errors' -Default 0) -gt 0 -or $ComparisonClasses -contains 'error') {

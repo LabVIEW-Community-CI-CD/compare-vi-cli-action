@@ -271,4 +271,132 @@ Describe 'Normalize-OfflineRealHistoryCorpus.ps1' -Tag 'Unit' {
     $attributesMode.annotations.outcomeClass | Should -Be 'error'
     @($attributesMode.comparisons | ForEach-Object { [string]$_.annotations.outcomeClass }) | Should -Be @('error')
   }
+
+  It 'preserves absolute capture paths outside the repo root when they only share a prefix' {
+    $harnessRoot = Join-Path $TestDrive 'normalize-prefix'
+    $externalRoot = Join-Path $TestDrive 'normalize-prefix-external'
+    $toolsDir = Join-Path $harnessRoot 'tools'
+    $fixturesDir = Join-Path $harnessRoot 'fixtures' 'real-history'
+    $syntheticFixtureDir = Join-Path $harnessRoot 'fixtures' 'cross-repo' 'prefix'
+    $externalCaptureDir = Join-Path $externalRoot 'captures'
+    New-Item -ItemType Directory -Path $toolsDir -Force | Out-Null
+    New-Item -ItemType Directory -Path $fixturesDir -Force | Out-Null
+    New-Item -ItemType Directory -Path $syntheticFixtureDir -Force | Out-Null
+    New-Item -ItemType Directory -Path $externalCaptureDir -Force | Out-Null
+
+    Copy-Item -LiteralPath $script:NormalizeScript -Destination (Join-Path $toolsDir 'Normalize-OfflineRealHistoryCorpus.ps1') -Force
+
+    $catalog = [ordered]@{
+      '$schema' = '../../docs/schemas/offline-real-history-corpus-targets-v1.schema.json'
+      schema = 'vi-history/offline-real-history-targets@v1'
+      generatedAt = '2026-03-08T00:00:00Z'
+      defaultWindowsImage = 'nationalinstruments/labview:2026q1-windows'
+      defaultLabVIEWPath = 'C:\Program Files\National Instruments\LabVIEW 2026\LabVIEW.exe'
+      defaultCliPath = 'C:\Program Files\National Instruments\Shared\LabVIEW CLI\LabVIEWCLI.exe'
+      defaultComparePolicy = 'cli-only'
+      storagePolicy = [ordered]@{
+        checkedInCatalogPath = 'fixtures/real-history/offline-corpus.targets.json'
+        checkedInNormalizedPath = 'fixtures/real-history/offline-corpus.normalized.json'
+        generatedRoot = 'tests/results/offline-real-history'
+        rawArtifactsInGit = $false
+      }
+      targets = @(
+        [ordered]@{
+          id = 'prefix-target'
+          label = 'Prefix target'
+          repo = [ordered]@{
+            slug = 'example/prefix'
+            localPathHints = @('..')
+            startRef = 'HEAD'
+            endRef = $null
+          }
+          seedFixture = [ordered]@{
+            historySuitePath = 'fixtures/cross-repo/prefix/manifest.json'
+            captureRoots = @($externalCaptureDir)
+          }
+          targetPath = 'Prefix.vi'
+          requestedModes = @('default')
+          maxPairs = 1
+          reportFormat = 'html'
+          notes = @('prefix target')
+        }
+      )
+    }
+    $catalog | ConvertTo-Json -Depth 20 | Set-Content -LiteralPath (Join-Path $fixturesDir 'offline-corpus.targets.json') -Encoding utf8
+
+    $modeManifest = [ordered]@{
+      schema = 'vi-compare/history@v1'
+      generatedAt = '2026-03-08T00:00:01Z'
+      mode = 'default'
+      flags = @('-nobd')
+      stats = [ordered]@{
+        processed = 1
+        diffs = 0
+        signalDiffs = 0
+        noiseCollapsed = 0
+        errors = 0
+        missing = 0
+        categoryCounts = [ordered]@{}
+        bucketCounts = [ordered]@{}
+      }
+      comparisons = @()
+      status = 'ok'
+    }
+    $modeManifest | ConvertTo-Json -Depth 20 | Set-Content -LiteralPath (Join-Path $syntheticFixtureDir 'default-manifest.json') -Encoding utf8
+
+    $suiteManifest = [ordered]@{
+      schema = 'vi-compare/history-suite@v1'
+      generatedAt = '2026-03-08T00:00:02Z'
+      targetPath = 'Prefix.vi'
+      requestedModes = @('default')
+      executedModes = @('default')
+      modes = @(
+        [ordered]@{
+          name = 'default'
+          slug = 'default'
+          reportFormat = 'html'
+          flags = @('-nobd')
+          manifestPath = 'fixtures/cross-repo/prefix/default-manifest.json'
+          resultsDir = 'fixtures/cross-repo/prefix/default'
+          stats = $modeManifest.stats
+          status = 'ok'
+        }
+      )
+      stats = [ordered]@{
+        processed = 1
+        diffs = 0
+        signalDiffs = 0
+        noiseCollapsed = 0
+        errors = 0
+        missing = 0
+        categoryCounts = [ordered]@{}
+        bucketCounts = [ordered]@{}
+      }
+      status = 'ok'
+    }
+    $suiteManifest | ConvertTo-Json -Depth 20 | Set-Content -LiteralPath (Join-Path $syntheticFixtureDir 'manifest.json') -Encoding utf8
+
+    ([ordered]@{
+      schema = 'lvcompare-capture-v1'
+      timestamp = '2026-03-08T00:00:03Z'
+      cli = [ordered]@{
+        diff = $false
+        exitCode = 0
+      }
+    } | ConvertTo-Json -Depth 10) | Set-Content -LiteralPath (Join-Path $externalCaptureDir 'lvcompare-capture.json') -Encoding utf8
+
+    $outputPath = Join-Path $harnessRoot 'fixtures' 'real-history' 'offline-corpus.normalized.json'
+    $runOutput = & pwsh -NoLogo -NoProfile -File (Join-Path $toolsDir 'Normalize-OfflineRealHistoryCorpus.ps1') `
+      -CatalogPath 'fixtures/real-history/offline-corpus.targets.json' `
+      -OutputPath 'fixtures/real-history/offline-corpus.normalized.json' `
+      -SkipSchemaValidation 2>&1
+    $LASTEXITCODE | Should -Be 0 -Because (($runOutput | ForEach-Object { [string]$_ }) -join [Environment]::NewLine)
+
+    $output = Get-Content -LiteralPath $outputPath -Raw | ConvertFrom-Json -Depth 32 -DateKind String
+    $target = @($output.targets | Where-Object { [string]$_.id -eq 'prefix-target' })[0]
+    $capturePath = @($target.provenance.lvcompareCapturePaths)[0]
+
+    $capturePath | Should -Match '^[A-Za-z]:/'
+    $capturePath | Should -Match '/normalize-prefix-external/'
+  }
 }
