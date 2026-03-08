@@ -6,6 +6,7 @@ import {
   parseRouterIssueNumber,
   parseCacheIssueNumber,
   parseCacheNoStandingReason,
+  parseNoStandingReasonFromReport,
   resolveStandingIssueNumberForPr,
   parseIssueNumberFromBranch,
   assertBranchMatchesIssue,
@@ -76,6 +77,23 @@ test('parseCacheNoStandingReason exposes queue-empty idle cache state', () => {
   );
 });
 
+test('parseNoStandingReasonFromReport exposes queue-empty from the no-standing artifact', () => {
+  assert.equal(
+    parseNoStandingReasonFromReport({
+      schema: 'standing-priority/no-standing@v1',
+      reason: 'queue-empty'
+    }),
+    'queue-empty'
+  );
+  assert.equal(
+    parseNoStandingReasonFromReport({
+      schema: 'other/schema',
+      reason: 'queue-empty'
+    }),
+    null
+  );
+});
+
 test('resolveStandingIssueNumberForPr prefers router over cache', () => {
   const result = resolveStandingIssueNumberForPr('/tmp/repo', {
     readJsonFn: (filePath) => {
@@ -99,11 +117,16 @@ test('resolveStandingIssueNumberForPr treats explicit empty router issue as auth
       if (filePath.endsWith('router.json')) {
         return { issue: null };
       }
+      if (filePath.endsWith('no-standing-priority.json')) {
+        return {
+          schema: 'standing-priority/no-standing@v1',
+          reason: 'queue-empty'
+        };
+      }
       return {
         number: 680,
         state: 'NONE',
-        labels: [],
-        noStandingReason: 'queue-empty'
+        labels: []
       };
     }
   });

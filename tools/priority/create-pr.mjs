@@ -18,6 +18,7 @@ import {
 
 const ROUTER_RELATIVE_PATH = path.join('tests', 'results', '_agent', 'issue', 'router.json');
 const CACHE_RELATIVE_PATH = '.agent_priority_cache.json';
+const NO_STANDING_REPORT_RELATIVE_PATH = path.join('tests', 'results', '_agent', 'issue', 'no-standing-priority.json');
 const STANDING_PRIORITY_LABELS = new Set(['standing-priority', 'fork-standing-priority']);
 
 export function ensurePrSourceBranch(branch) {
@@ -115,21 +116,37 @@ export function parseCacheNoStandingReason(cache) {
   return reason || null;
 }
 
+export function parseNoStandingReasonFromReport(report) {
+  if (!report || typeof report !== 'object') {
+    return null;
+  }
+
+  const schema = String(report.schema ?? '').trim().toLowerCase();
+  if (schema && schema !== 'standing-priority/no-standing@v1') {
+    return null;
+  }
+
+  const reason = String(report.reason ?? '').trim().toLowerCase();
+  return reason || null;
+}
+
 export function resolveStandingIssueNumberForPr(repoRoot, { readJsonFn = readJsonFile } = {}) {
   const router = readJsonFn(path.join(repoRoot, ROUTER_RELATIVE_PATH));
   const cache = readJsonFn(path.join(repoRoot, CACHE_RELATIVE_PATH));
+  const noStandingReport = readJsonFn(path.join(repoRoot, NO_STANDING_REPORT_RELATIVE_PATH));
+  const noStandingReason = parseCacheNoStandingReason(cache) || parseNoStandingReasonFromReport(noStandingReport);
   if (router && Object.prototype.hasOwnProperty.call(router, 'issue')) {
     return {
       issueNumber: parseRouterIssueNumber(router),
       source: 'router',
-      noStandingReason: parseCacheNoStandingReason(cache)
+      noStandingReason
     };
   }
 
   return {
     issueNumber: parseCacheIssueNumber(cache),
     source: 'cache',
-    noStandingReason: parseCacheNoStandingReason(cache)
+    noStandingReason
   };
 }
 

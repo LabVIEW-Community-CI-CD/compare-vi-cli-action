@@ -90,6 +90,8 @@ test('github intake docs and manifest reference the new helper layer', () => {
   assert.match(orchestrator, /'pr'\s+'view'\s+\$branchName\s+'--json'\s+'number'/);
   assert.match(orchestrator, /'pr'\s+'edit'\s+\$pr\.number\s+'--title'\s+\$prTitle\s+'--body-file'/);
   assert.match(orchestrator, /Standing-priority queue is empty/);
+  assert.match(orchestrator, /router\.json/);
+  assert.match(orchestrator, /no-standing-priority\.json/);
   assert.match(getStandingPriority, /Standing priority not set \(queue empty\)/);
   assert.doesNotMatch(orchestrator, /'pr'\s+'create'\s+'--fill(?:-first)?'/);
   assert.doesNotMatch(orchestrator, /'pr'\s+'view'\s+'--json'\s+'number'\s+'--head'/);
