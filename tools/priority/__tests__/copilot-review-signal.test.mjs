@@ -209,3 +209,56 @@ test('copilot review signal records suppressed notes from the latest review body
   assert.equal(report.signals.hasSuppressedNotesInLatestReview, true);
   assert.equal(report.latestCopilotReview?.suppressedNoteCount, 2);
 });
+
+test('parseRepoSlug rejects repository slugs that do not have exactly two path segments', async () => {
+  const { parseRepoSlug } = await loadModule();
+
+  assert.throws(
+    () => parseRepoSlug('LabVIEW-Community-CI-CD/compare-vi-cli-action/extra'),
+    /Expected <owner>\/<repo>/,
+  );
+  assert.deepEqual(parseRepoSlug(' LabVIEW-Community-CI-CD / compare-vi-cli-action '), {
+    owner: 'LabVIEW-Community-CI-CD',
+    repo: 'compare-vi-cli-action',
+  });
+});
+
+test('copilot review signal fails when the review-thread payload is truncated', async () => {
+  const { analyzeCopilotReviewSignal } = await loadModule();
+  const headSha = 'abababababababababababababababababababab';
+  const report = analyzeCopilotReviewSignal({
+    repository: 'LabVIEW-Community-CI-CD/compare-vi-cli-action',
+    pull: makePull(headSha),
+    reviews: [
+      {
+        id: 5,
+        user: { login: 'copilot-pull-request-reviewer[bot]' },
+        state: 'COMMENTED',
+        body: 'Current-head review body.',
+        html_url: 'https://github.com/example/review/5',
+        submitted_at: '2026-03-08T05:31:00Z',
+        commit_id: headSha,
+      },
+    ],
+    threads: {
+      data: {
+        repository: {
+          pullRequest: {
+            reviewThreads: {
+              pageInfo: {
+                hasNextPage: true,
+                endCursor: 'cursor:threads:100',
+              },
+              nodes: [],
+            },
+          },
+        },
+      },
+    },
+    now: new Date('2026-03-08T05:32:00Z'),
+  });
+
+  assert.equal(report.status, 'fail');
+  assert.equal(report.reviewState, 'error');
+  assert.match(report.errors[0] ?? '', /Pagination is required/);
+});

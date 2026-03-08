@@ -14,6 +14,7 @@ export const DEFAULT_REPORT_PATH = path.join(
   'reviews',
   'copilot-review-signal.json',
 );
+export const GH_JSON_MAX_BUFFER_BYTES = 32 * 1024 * 1024;
 
 const COPILOT_LOGINS = new Set([
   'copilot',
@@ -26,6 +27,10 @@ const REVIEW_THREADS_QUERY = [
   'repository(owner:$owner,name:$repo){',
   'pullRequest(number:$number){',
   'reviewThreads(first:100){',
+  'pageInfo{',
+  'hasNextPage',
+  'endCursor',
+  '}',
   'nodes{',
   'id',
   'isResolved',
@@ -34,6 +39,10 @@ const REVIEW_THREADS_QUERY = [
   'line',
   'originalLine',
   'comments(first:100){',
+  'pageInfo{',
+  'hasNextPage',
+  'endCursor',
+  '}',
   'nodes{',
   'id',
   'body',
@@ -128,6 +137,16 @@ interface ReviewThreadCommentPayload {
   };
 }
 
+interface GraphQlPageInfoPayload {
+  hasNextPage?: boolean;
+  endCursor?: string | null;
+}
+
+interface ReviewThreadCommentConnectionPayload {
+  pageInfo?: GraphQlPageInfoPayload;
+  nodes?: ReviewThreadCommentPayload[];
+}
+
 interface ReviewThreadPayload {
   id?: string;
   isResolved?: boolean;
@@ -135,18 +154,19 @@ interface ReviewThreadPayload {
   path?: string;
   line?: number;
   originalLine?: number;
-  comments?: {
-    nodes?: ReviewThreadCommentPayload[];
-  };
+  comments?: ReviewThreadCommentConnectionPayload;
+}
+
+interface ReviewThreadsConnectionPayload {
+  pageInfo?: GraphQlPageInfoPayload;
+  nodes?: ReviewThreadPayload[];
 }
 
 interface ReviewThreadsGraphQlPayload {
   data?: {
     repository?: {
       pullRequest?: {
-        reviewThreads?: {
-          nodes?: ReviewThreadPayload[];
-        };
+        reviewThreads?: ReviewThreadsConnectionPayload;
       };
     };
   };
@@ -394,16 +414,17 @@ function summarizeBody(body: unknown, maxLength = 200): string | null {
   return `${collapsed.slice(0, maxLength - 3)}...`;
 }
 
-function parseRepoSlug(repo: string): { owner: string; repo: string } {
+export function parseRepoSlug(repo: string): { owner: string; repo: string } {
   const normalized = normalizeText(repo);
-  if (!normalized || !normalized.includes('/')) {
+  if (!normalized) {
     throw new Error(`Invalid repository slug '${repo}'. Expected <owner>/<repo>.`);
   }
 
-  const [owner, repoName] = normalized.split('/');
-  if (!owner || !repoName) {
+  const segments = normalized.split('/').map((segment) => segment.trim());
+  if (segments.length !== 2 || segments.some((segment) => segment.length === 0)) {
     throw new Error(`Invalid repository slug '${repo}'. Expected <owner>/<repo>.`);
   }
+  const [owner, repoName] = segments;
   return { owner, repo: repoName };
 }
 
@@ -453,7 +474,8 @@ function runGhJson(args: string[]): unknown {
   const result = spawnSync('gh', args, {
     cwd: process.cwd(),
     encoding: 'utf8',
-  });
+    maxBuffer: GH_JSON_MAX_BUFFER_BYTES,
+  } as Parameters<typeof spawnSync>[2] & { maxBuffer: number });
 
   if (result.error) {
     const message = result.error instanceof Error ? result.error.message : String(result.error);
@@ -611,6 +633,34 @@ function extractThreadNodes(
 
   const nodes = payload.data?.repository?.pullRequest?.reviewThreads?.nodes;
   return Array.isArray(nodes) ? nodes : [];
+}
+
+function detectThreadPaginationErrors(
+  payload: ReviewThreadsGraphQlPayload | ReviewThreadPayload[],
+): string[] {
+  if (Array.isArray(payload)) {
+    return [];
+  }
+
+  const errors: string[] = [];
+  const reviewThreads = payload.data?.repository?.pullRequest?.reviewThreads;
+  if (reviewThreads?.pageInfo?.hasNextPage) {
+    errors.push(
+      'Review-thread payload exceeded the first 100 threads. Pagination is required before this report can be trusted.',
+    );
+  }
+
+  const nodes = Array.isArray(reviewThreads?.nodes) ? reviewThreads.nodes : [];
+  for (const thread of nodes) {
+    if (thread.comments?.pageInfo?.hasNextPage) {
+      const threadId = normalizeText(thread.id) ?? 'thread:unknown';
+      errors.push(
+        `Review-thread comments for ${threadId} exceeded the first 100 comments. Pagination is required before this report can be trusted.`,
+      );
+    }
+  }
+
+  return errors;
 }
 
 function normalizeComment(
@@ -779,6 +829,7 @@ export function analyzeCopilotReviewSignal({
   const normalizedThreads = extractThreadNodes(threads)
     .map((thread) => normalizeThread(thread, headSha))
     .filter((thread): thread is NormalizedThread => thread !== null);
+  const errors = detectThreadPaginationErrors(threads);
 
   const unresolvedThreads = normalizedThreads.filter((thread) => !thread.isResolved);
   const actionableThreads = unresolvedThreads.filter((thread) => thread.actionable);
@@ -824,14 +875,14 @@ export function analyzeCopilotReviewSignal({
     schema: REVIEW_SIGNAL_SCHEMA,
     schemaVersion: '1.0.0',
     generatedAt: now.toISOString(),
-    status: 'pass',
+    status: errors.length > 0 ? 'fail' : 'pass',
     repository: resolvedRepository,
     source: {
       pull: source.pull ?? 'gh',
       reviews: source.reviews ?? 'gh',
       threads: source.threads ?? 'gh',
     },
-    reviewState: determineReviewState(signals),
+    reviewState: errors.length > 0 ? 'error' : determineReviewState(signals),
     pullRequest,
     summary,
     signals,
@@ -869,7 +920,7 @@ export function analyzeCopilotReviewSignal({
       latestComment: thread.latestComment,
     })),
     actionableComments,
-    errors: [],
+    errors,
   };
 }
 
@@ -1011,6 +1062,9 @@ export function runCopilotReviewSignal({
       source: buildSource(options),
       headShaOverride: options.headSha,
     });
+    if (report.status !== 'pass') {
+      exitCode = 1;
+    }
   } catch (error) {
     exitCode = 1;
     report = buildFailureReport(

@@ -15,19 +15,24 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
+        if: github.event_name == 'pull_request_target'
 
       - uses: actions/setup-node@v5
+        if: github.event_name == 'pull_request_target'
         with:
           node-version: '20'
           cache: 'npm'
 
       - name: Install Node dependencies
+        if: github.event_name == 'pull_request_target'
         run: npm ci --ignore-scripts
 
       - name: Build TypeScript utilities
+        if: github.event_name == 'pull_request_target'
         run: node tools/npm/run-script.mjs build
 
       - name: Collect Copilot review signal
+        if: github.event_name == 'pull_request_target'
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -40,10 +45,11 @@ jobs:
             --step-summary "$GITHUB_STEP_SUMMARY"
 
       - name: Validate Copilot review signal schema
+        if: github.event_name == 'pull_request_target'
         run: node tools/npm/run-script.mjs schema:copilot-review-signal:validate
 
       - name: Upload Copilot review signal artifact
-        if: always()
+        if: always() && github.event_name == 'pull_request_target'
         uses: actions/upload-artifact@v5
         with:
           name: copilot-review-signal-${{ github.event.pull_request.number }}

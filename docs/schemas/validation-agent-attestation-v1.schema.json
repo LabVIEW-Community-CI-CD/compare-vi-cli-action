@@ -1,0 +1,318 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "validation-agent-attestation@v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema",
+    "schemaVersion",
+    "generatedAt",
+    "repository",
+    "pullRequest",
+    "copilotReview",
+    "reviewSignal",
+    "dispositions",
+    "validationEvidence",
+    "commentPost",
+    "source"
+  ],
+  "properties": {
+    "schema": {
+      "const": "validation-agent-attestation@v1"
+    },
+    "schemaVersion": {
+      "type": "string"
+    },
+    "generatedAt": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "repository": {
+      "type": "string",
+      "pattern": "^[^/\\s]+/[^/\\s]+$"
+    },
+    "pullRequest": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["number", "url", "headSha"],
+      "properties": {
+        "number": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "url": {
+          "$ref": "#/$defs/nullableString"
+        },
+        "headSha": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{40}$"
+        }
+      }
+    },
+    "copilotReview": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "url", "submittedAt", "state", "isCurrentHead"],
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "url": {
+          "$ref": "#/$defs/nullableString"
+        },
+        "submittedAt": {
+          "type": ["string", "null"],
+          "format": "date-time"
+        },
+        "state": {
+          "$ref": "#/$defs/nullableString"
+        },
+        "isCurrentHead": {
+          "type": ["boolean", "null"]
+        }
+      }
+    },
+    "reviewSignal": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "artifactPath",
+        "status",
+        "reviewState",
+        "unresolvedThreadCount",
+        "actionableCommentCount",
+        "staleReviewCount"
+      ],
+      "properties": {
+        "artifactPath": {
+          "type": "string",
+          "minLength": 1
+        },
+        "status": {
+          "$ref": "#/$defs/nullableString"
+        },
+        "reviewState": {
+          "$ref": "#/$defs/nullableString"
+        },
+        "unresolvedThreadCount": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "actionableCommentCount": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "staleReviewCount": {
+          "type": "integer",
+          "minimum": 0
+        }
+      }
+    },
+    "dispositions": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["threads", "comments"],
+      "properties": {
+        "threads": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/threadDisposition"
+          }
+        },
+        "comments": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/commentDisposition"
+          }
+        }
+      }
+    },
+    "validationEvidence": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["summary", "commands", "checks", "artifacts", "notes"],
+      "properties": {
+        "summary": {
+          "$ref": "#/$defs/nullableString"
+        },
+        "commands": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/validationCommand"
+          }
+        },
+        "checks": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/validationCheck"
+          }
+        },
+        "artifacts": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "notes": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        }
+      }
+    },
+    "commentPost": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["requested", "posted", "actorLogin", "postedAt"],
+      "properties": {
+        "requested": {
+          "type": "boolean"
+        },
+        "posted": {
+          "type": "boolean"
+        },
+        "actorLogin": {
+          "$ref": "#/$defs/nullableString"
+        },
+        "postedAt": {
+          "type": ["string", "null"],
+          "format": "date-time"
+        }
+      }
+    },
+    "source": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["signalPath", "dispositionsPath", "validationEvidencePath"],
+      "properties": {
+        "signalPath": {
+          "type": "string",
+          "minLength": 1
+        },
+        "dispositionsPath": {
+          "type": "string",
+          "minLength": 1
+        },
+        "validationEvidencePath": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    }
+  },
+  "$defs": {
+    "nullableString": {
+      "type": ["string", "null"]
+    },
+    "disposition": {
+      "type": "string",
+      "enum": ["addressed", "accepted", "dismissed", "noted", "deferred"]
+    },
+    "threadDisposition": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "threadId",
+        "disposition",
+        "note",
+        "path",
+        "line",
+        "latestCommentId",
+        "latestCommentReviewId"
+      ],
+      "properties": {
+        "threadId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "disposition": {
+          "$ref": "#/$defs/disposition"
+        },
+        "note": {
+          "$ref": "#/$defs/nullableString"
+        },
+        "path": {
+          "$ref": "#/$defs/nullableString"
+        },
+        "line": {
+          "type": ["integer", "null"]
+        },
+        "latestCommentId": {
+          "$ref": "#/$defs/nullableString"
+        },
+        "latestCommentReviewId": {
+          "$ref": "#/$defs/nullableString"
+        }
+      }
+    },
+    "commentDisposition": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["commentId", "threadId", "reviewId", "disposition", "note"],
+      "properties": {
+        "commentId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "threadId": {
+          "$ref": "#/$defs/nullableString"
+        },
+        "reviewId": {
+          "$ref": "#/$defs/nullableString"
+        },
+        "disposition": {
+          "$ref": "#/$defs/disposition"
+        },
+        "note": {
+          "$ref": "#/$defs/nullableString"
+        }
+      }
+    },
+    "validationCommand": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["command", "status", "exitCode", "details", "artifactPath"],
+      "properties": {
+        "command": {
+          "type": "string",
+          "minLength": 1
+        },
+        "status": {
+          "type": "string",
+          "enum": ["passed", "failed", "skipped"]
+        },
+        "exitCode": {
+          "type": ["integer", "null"]
+        },
+        "details": {
+          "$ref": "#/$defs/nullableString"
+        },
+        "artifactPath": {
+          "$ref": "#/$defs/nullableString"
+        }
+      }
+    },
+    "validationCheck": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "status", "details"],
+      "properties": {
+        "name": {
+          "type": "string",
+          "minLength": 1
+        },
+        "status": {
+          "type": "string",
+          "enum": ["passed", "failed", "skipped"]
+        },
+        "details": {
+          "$ref": "#/$defs/nullableString"
+        }
+      }
+    }
+  }
+}
