@@ -8,7 +8,8 @@ import {
   parseArgs,
   normalizePolicy,
   evaluateIssue,
-  runMilestoneHygiene
+  runMilestoneHygiene,
+  runMilestoneHygieneWithFailureReport
 } from '../check-issue-milestones.mjs';
 
 function makeRunGhJson({ issues = [], milestones = [], createdMilestone = null, calls = [] } = {}) {
@@ -124,6 +125,8 @@ test('runMilestoneHygiene fails when required issues have no milestone and emits
   });
 
   assert.equal(result.exitCode, 1);
+  assert.equal(result.report.execution.status, 'fail');
+  assert.deepEqual(result.report.execution.errors, []);
   assert.equal(result.report.flags.requireOpenMilestone, true);
   assert.equal(result.report.summary.remainingViolationCount, 1);
   assert.equal(result.report.summary.triggerCounts['title-priority'], 1);
@@ -173,6 +176,7 @@ test('runMilestoneHygiene assigns default milestone in apply mode', async () => 
   });
 
   assert.equal(result.exitCode, 0);
+  assert.equal(result.report.execution.status, 'pass');
   assert.equal(result.report.summary.initialViolationCount, 1);
   assert.equal(result.report.summary.remainingViolationCount, 0);
   assert.equal(result.report.summary.assignedDefaultMilestoneCount, 1);
@@ -242,6 +246,7 @@ test('runMilestoneHygiene creates missing default milestone when requested', asy
   });
 
   assert.equal(result.exitCode, 0);
+  assert.equal(result.report.execution.status, 'pass');
   assert.equal(result.report.milestones.createdDefaultMilestone, true);
   assert.equal(result.report.policy.defaultMilestoneDueOn, '2026-06-30T00:00:00Z');
   assert.equal(result.report.summary.assignedDefaultMilestoneCount, 1);
@@ -278,4 +283,74 @@ test('runMilestoneHygiene rejects closed default milestone in strict mode', asyn
     }),
     /closed/
   );
+});
+
+test('runMilestoneHygieneWithFailureReport emits an error report when gh evaluation fails early', async () => {
+  const writes = [];
+  const result = await runMilestoneHygieneWithFailureReport({
+    argv: ['--repo', 'example/repo', '--report', 'tests/results/_agent/issue/milestone-hygiene-report.json'],
+    loadPolicyFn: async () => ({
+      path: path.join(process.cwd(), 'tools', 'policy', 'issue-milestone-hygiene.json'),
+      required: {
+        labels: ['standing-priority', 'program'],
+        titlePriorityPattern: String.raw`\[(P0|P1)\]`,
+        requireOpenMilestone: true
+      },
+      defaultMilestone: null,
+      defaultMilestoneDueOn: null,
+      warnOnly: false,
+      createDefaultMilestone: false
+    }),
+    runGhJsonFn: () => {
+      throw new Error(
+        'gh issue list --repo example/repo failed: gh: To use GitHub CLI in a GitHub Actions workflow, set the GH_TOKEN environment variable.'
+      );
+    },
+    writeJsonReportFn: async (reportPath, payload) => {
+      writes.push({ reportPath, payload });
+      return reportPath;
+    }
+  });
+
+  assert.equal(result.exitCode, 1);
+  assert.equal(result.report.execution.status, 'error');
+  assert.match(result.report.execution.errors[0], /GH_TOKEN environment variable/i);
+  assert.equal(result.report.summary.issueCount, 0);
+  assert.equal(writes.length, 1);
+});
+
+test('runMilestoneHygieneWithFailureReport normalizes invalid fallback state and due date values', async () => {
+  const result = await runMilestoneHygieneWithFailureReport({
+    argv: [
+      '--repo',
+      'example/repo',
+      '--report',
+      'tests/results/_agent/issue/milestone-hygiene-report.json',
+      '--state',
+      'All',
+      '--default-milestone-due-on',
+      'not-a-date'
+    ],
+    loadPolicyFn: async () => ({
+      path: path.join(process.cwd(), 'tools', 'policy', 'issue-milestone-hygiene.json'),
+      required: {
+        labels: ['standing-priority', 'program'],
+        titlePriorityPattern: String.raw`\[(P0|P1)\]`,
+        requireOpenMilestone: true
+      },
+      defaultMilestone: null,
+      defaultMilestoneDueOn: null,
+      warnOnly: false,
+      createDefaultMilestone: false
+    }),
+    runGhJsonFn: () => {
+      throw new Error('simulated gh auth failure');
+    },
+    writeJsonReportFn: async (reportPath, payload) => ({ reportPath, payload })
+  });
+
+  assert.equal(result.exitCode, 1);
+  assert.equal(result.report.state, 'all');
+  assert.equal(result.report.policy.defaultMilestoneDueOn, null);
+  assert.ok(result.report.execution.errors.some((entry) => /default milestone due date/i.test(entry)));
 });
