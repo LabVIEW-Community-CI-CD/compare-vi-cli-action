@@ -318,3 +318,39 @@ test('runMilestoneHygieneWithFailureReport emits an error report when gh evaluat
   assert.equal(result.report.summary.issueCount, 0);
   assert.equal(writes.length, 1);
 });
+
+test('runMilestoneHygieneWithFailureReport normalizes invalid fallback state and due date values', async () => {
+  const result = await runMilestoneHygieneWithFailureReport({
+    argv: [
+      '--repo',
+      'example/repo',
+      '--report',
+      'tests/results/_agent/issue/milestone-hygiene-report.json',
+      '--state',
+      'All',
+      '--default-milestone-due-on',
+      'not-a-date'
+    ],
+    loadPolicyFn: async () => ({
+      path: path.join(process.cwd(), 'tools', 'policy', 'issue-milestone-hygiene.json'),
+      required: {
+        labels: ['standing-priority', 'program'],
+        titlePriorityPattern: String.raw`\[(P0|P1)\]`,
+        requireOpenMilestone: true
+      },
+      defaultMilestone: null,
+      defaultMilestoneDueOn: null,
+      warnOnly: false,
+      createDefaultMilestone: false
+    }),
+    runGhJsonFn: () => {
+      throw new Error('simulated gh auth failure');
+    },
+    writeJsonReportFn: async (reportPath, payload) => ({ reportPath, payload })
+  });
+
+  assert.equal(result.exitCode, 1);
+  assert.equal(result.report.state, 'all');
+  assert.equal(result.report.policy.defaultMilestoneDueOn, null);
+  assert.ok(result.report.execution.errors.some((entry) => /default milestone due date/i.test(entry)));
+});

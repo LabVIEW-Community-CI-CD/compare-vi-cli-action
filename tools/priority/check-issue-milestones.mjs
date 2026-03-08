@@ -365,9 +365,11 @@ function buildFallbackFailureReport({
   now = new Date(),
   options = {},
   policy = null,
-  error
+  error,
+  additionalErrors = []
 } = {}) {
   const normalizedError = normalizeText(error?.message ?? error) ?? 'unknown error';
+  const executionErrors = [normalizedError, ...additionalErrors.map((entry) => normalizeText(entry)).filter(Boolean)];
   const requiredLabels = options.requiredLabels ?? policy?.required?.labels ?? [...DEFAULT_REQUIRED_LABELS];
   const titlePriorityPattern =
     options.titlePriorityPattern ?? policy?.required?.titlePriorityPattern ?? DEFAULT_TITLE_PRIORITY_PATTERN;
@@ -386,7 +388,7 @@ function buildFallbackFailureReport({
     generatedAt: now.toISOString(),
     repository: options.repo,
     state: options.state ?? 'open',
-    execution: buildExecutionState('error', [normalizedError]),
+    execution: buildExecutionState('error', executionErrors),
     flags: {
       applyDefaultMilestone: Boolean(options.applyDefaultMilestone),
       warnOnly,
@@ -749,7 +751,6 @@ export async function runMilestoneHygieneWithFailureReport({
     const rawArgs = Array.isArray(argv) ? argv : [];
     const repo = normalizeText(findOptionValue(rawArgs, '--repo')) ?? normalizeText(env.GITHUB_REPOSITORY);
     const reportPath = findOptionValue(rawArgs, '--report') ?? DEFAULT_REPORT_PATH;
-    const state = normalizeText(findOptionValue(rawArgs, '--state')) ?? 'open';
     const policyPath = findOptionValue(rawArgs, '--policy') ?? DEFAULT_POLICY_PATH;
 
     if (!repo) {
@@ -763,7 +764,26 @@ export async function runMilestoneHygieneWithFailureReport({
       policy = null;
     }
 
+    const additionalErrors = [];
+    const rawState = normalizeText(findOptionValue(rawArgs, '--state'));
+    let state = 'open';
+    if (rawState) {
+      const normalizedState = rawState.toLowerCase();
+      if (normalizedState === 'open' || normalizedState === 'all') {
+        state = normalizedState;
+      } else {
+        additionalErrors.push(`Invalid state option '${rawState}' (expected 'open' or 'all').`);
+      }
+    }
+
     const fallbackRequiredLabels = parseList(findOptionValue(rawArgs, '--required-labels'));
+    let defaultMilestoneDueOn = normalizeText(findOptionValue(rawArgs, '--default-milestone-due-on'));
+    if (!isValidDateTime(defaultMilestoneDueOn)) {
+      additionalErrors.push(
+        `Invalid default milestone due date '${defaultMilestoneDueOn}' in failure-report fallback; omitting invalid value from report.`
+      );
+      defaultMilestoneDueOn = null;
+    }
     const fallbackOptions = {
       repo,
       state,
@@ -772,7 +792,7 @@ export async function runMilestoneHygieneWithFailureReport({
       requiredLabels: fallbackRequiredLabels.length > 0 ? fallbackRequiredLabels : null,
       titlePriorityPattern: normalizeText(findOptionValue(rawArgs, '--title-priority-pattern')),
       defaultMilestone: normalizeText(findOptionValue(rawArgs, '--default-milestone')),
-      defaultMilestoneDueOn: normalizeText(findOptionValue(rawArgs, '--default-milestone-due-on')),
+      defaultMilestoneDueOn,
       applyDefaultMilestone: rawArgs.includes('--apply-default-milestone'),
       createDefaultMilestone: rawArgs.includes('--create-default-milestone'),
       warnOnly: rawArgs.includes('--warn-only') ? true : null,
@@ -783,7 +803,8 @@ export async function runMilestoneHygieneWithFailureReport({
       now,
       options: fallbackOptions,
       policy,
-      error
+      error,
+      additionalErrors
     });
     const writtenReportPath = await writeJsonReportFn(reportPath, report);
 
