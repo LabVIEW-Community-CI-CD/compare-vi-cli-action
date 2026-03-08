@@ -1,14 +1,18 @@
 <!-- markdownlint-disable-next-line MD041 -->
 # Offline Real-History Corpus
 
-This note defines the phase-1 contract for the offline real-history corpus
-seeded by issue `#894`.
+This note defines the phase-2 contract for the offline real-history corpus
+seeded by issues `#894` and `#895`.
 
 ## Checked-in inputs
 
 - Target catalog: `fixtures/real-history/offline-corpus.targets.json`
 - Catalog schema:
   `docs/schemas/offline-real-history-corpus-targets-v1.schema.json`
+- Normalized committed subset:
+  `fixtures/real-history/offline-corpus.normalized.json`
+- Normalized corpus schema:
+  `docs/schemas/offline-real-history-corpus-v1.schema.json`
 - Run envelope schema:
   `docs/schemas/offline-real-history-corpus-run-v1.schema.json`
 - Seed target: `icon-editor-settings-init`
@@ -19,6 +23,19 @@ seeded by issue `#894`.
 
 The checked-in catalog is intentionally small. It captures the seed slice and
 the storage policy, not bulky raw reports.
+
+The normalized corpus file is also checked in. It is derived from the seed
+fixture manifests plus any tiny checked-in capture summaries and carries the
+deterministic review labels used for local regression tests:
+
+- outcome labels: `clean`, `signal-diff`, `noise-diff`, `error`, `missing`
+- mode sensitivity labels:
+  `none-observed`, `single-mode-observed`,
+  `all-observed-modes-clean`, `all-observed-modes-diff`,
+  `mixed-observed-modes`
+- coverage labels:
+  `catalog-aligned`, `catalog-partial`, `catalog-extra`,
+  `catalog-mismatch`
 
 ## Generated outputs
 
@@ -47,6 +64,12 @@ Entry point:
 
 ```powershell
 node tools/npm/run-script.mjs history:corpus:offline -- --PlanOnly
+```
+
+Normalization refresh entry point:
+
+```powershell
+node tools/npm/run-script.mjs history:corpus:normalize
 ```
 
 The harness:
@@ -96,11 +119,23 @@ Useful overrides:
 The harness does not clone or pull the external repository. Refresh is
 explicitly local/offline once the repo and image already exist on disk.
 
+The normalizer does not run LabVIEW or Docker. It rebuilds the checked-in
+normalized subset from the catalog's `seedFixture.historySuitePath` entries and
+any checked-in capture JSON summaries found under the referenced fixture roots.
+
 ## Storage boundary
 
-- Commit: the seed catalog and schemas
-- Keep local-only: raw HTML/XML/text reports, translated capture JSON, raw
-  NI-container capture JSON, stdout/stderr, and per-run history bundles
+- Commit:
+  - the seed catalog
+  - the normalized corpus subset
+  - schemas for the catalog, normalized subset, and run envelope
+  - tiny seed capture summaries that are intentionally curated for fixture
+    lineage and regression coverage
+- Keep local-only:
+  - raw HTML/XML/text reports from offline refresh runs
+  - translated capture JSON from generated runs
+  - raw NI-container capture JSON from generated runs
+  - stdout/stderr and per-run history bundles
 
 That boundary keeps the repository deterministic while still preserving real
 execution evidence on the operator machine.

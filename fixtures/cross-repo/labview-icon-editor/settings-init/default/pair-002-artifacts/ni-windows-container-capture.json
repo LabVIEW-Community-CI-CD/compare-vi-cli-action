@@ -1,0 +1,29 @@
+{
+  "schema": "ni-windows-container-compare/v1",
+  "generatedAt": "2025-10-30T23:59:20Z",
+  "image": "nationalinstruments/labview:2026q1-windows",
+  "reportType": "html",
+  "timeoutSeconds": 240,
+  "probe": false,
+  "status": "diff",
+  "classification": "ok",
+  "exitCode": 0,
+  "timedOut": false,
+  "dockerServerOs": "windows",
+  "dockerContext": "desktop-windows",
+  "labviewPath": "C:\\Program Files\\National Instruments\\LabVIEW 2026\\LabVIEW.exe",
+  "flags": [
+    "-nobd",
+    "-noattr",
+    "-nofp",
+    "-nofppos",
+    "-nobdcosm"
+  ],
+  "reportPath": "../../history-report.html",
+  "diffEvidenceSource": "html",
+  "resultClass": "success-diff",
+  "isDiff": true,
+  "gateOutcome": "pass",
+  "failureClass": "none",
+  "message": null
+}

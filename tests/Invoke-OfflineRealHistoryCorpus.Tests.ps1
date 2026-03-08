@@ -185,6 +185,7 @@ $suiteManifest | ConvertTo-Json -Depth 10 | Set-Content -LiteralPath (Join-Path 
   "defaultComparePolicy": "cli-only",
   "storagePolicy": {
     "checkedInCatalogPath": "fixtures/real-history/offline-corpus.targets.json",
+    "checkedInNormalizedPath": "fixtures/real-history/offline-corpus.normalized.json",
     "generatedRoot": "tests/results/offline-real-history",
     "rawArtifactsInGit": false
   },
@@ -199,6 +200,9 @@ $suiteManifest | ConvertTo-Json -Depth 10 | Set-Content -LiteralPath (Join-Path 
         ],
         "startRef": "HEAD",
         "endRef": null
+      },
+      "seedFixture": {
+        "historySuitePath": "fixtures/cross-repo/labview-icon-editor/settings-init/manifest.json"
       },
       "targetPath": "resource/plugins/NIIconEditor/Miscellaneous/Settings Init.vi",
       "requestedModes": [

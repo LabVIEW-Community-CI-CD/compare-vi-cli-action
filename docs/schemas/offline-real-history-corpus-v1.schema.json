@@ -1,0 +1,534 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://labview-community-ci-cd.github.io/compare-vi-cli-action/schemas/offline-real-history-corpus-v1.schema.json",
+  "title": "Offline Real-History Corpus v1",
+  "description": "Normalized checked-in subset derived from offline real-history fixtures and optional capture summaries.",
+  "type": "object",
+  "required": [
+    "$schema",
+    "schema",
+    "generatedAt",
+    "storageBoundary",
+    "targets"
+  ],
+  "properties": {
+    "$schema": {
+      "const": "../../docs/schemas/offline-real-history-corpus-v1.schema.json"
+    },
+    "schema": {
+      "const": "vi-history/offline-real-history-corpus@v1"
+    },
+    "generatedAt": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "storageBoundary": {
+      "type": "object",
+      "required": [
+        "catalogPath",
+        "normalizedPath",
+        "generatedRoot",
+        "rawArtifactsInGit"
+      ],
+      "properties": {
+        "catalogPath": {
+          "type": "string",
+          "minLength": 1
+        },
+        "normalizedPath": {
+          "type": "string",
+          "minLength": 1
+        },
+        "generatedRoot": {
+          "type": "string",
+          "minLength": 1
+        },
+        "rawArtifactsInGit": {
+          "const": false
+        }
+      },
+      "additionalProperties": false
+    },
+    "targets": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "$ref": "#/$defs/target"
+      }
+    }
+  },
+  "$defs": {
+    "capturePresence": {
+      "enum": [
+        "none",
+        "lvcompare-only",
+        "ni-container-only",
+        "dual-capture"
+      ]
+    },
+    "comparisonOutcomeClass": {
+      "enum": [
+        "clean",
+        "signal-diff",
+        "noise-diff",
+        "error",
+        "missing"
+      ]
+    },
+    "countMap": {
+      "type": "object",
+      "propertyNames": {
+        "minLength": 1
+      },
+      "additionalProperties": {
+        "type": "integer",
+        "minimum": 1
+      }
+    },
+    "intArray": {
+      "type": "array",
+      "items": {
+        "type": "integer"
+      }
+    },
+    "nullableString": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "pathArray": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1
+      }
+    },
+    "stats": {
+      "type": "object",
+      "required": [
+        "processed",
+        "diffs",
+        "signalDiffs",
+        "noiseCollapsed",
+        "errors",
+        "missing",
+        "categoryCounts",
+        "bucketCounts"
+      ],
+      "properties": {
+        "processed": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "diffs": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "signalDiffs": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "noiseCollapsed": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "errors": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "missing": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "categoryCounts": {
+          "$ref": "#/$defs/countMap"
+        },
+        "bucketCounts": {
+          "$ref": "#/$defs/countMap"
+        }
+      },
+      "additionalProperties": false
+    },
+    "stringArray": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1
+      }
+    },
+    "targetAnnotations": {
+      "type": "object",
+      "required": [
+        "outcomeLabels",
+        "modeSensitivity",
+        "coverageClass",
+        "bucketProfile",
+        "capturePresence"
+      ],
+      "properties": {
+        "outcomeLabels": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/comparisonOutcomeClass"
+          }
+        },
+        "modeSensitivity": {
+          "enum": [
+            "none-observed",
+            "single-mode-observed",
+            "all-observed-modes-clean",
+            "all-observed-modes-diff",
+            "mixed-observed-modes"
+          ]
+        },
+        "coverageClass": {
+          "enum": [
+            "catalog-aligned",
+            "catalog-partial",
+            "catalog-extra",
+            "catalog-mismatch"
+          ]
+        },
+        "bucketProfile": {
+          "$ref": "#/$defs/stringArray"
+        },
+        "capturePresence": {
+          "$ref": "#/$defs/capturePresence"
+        }
+      },
+      "additionalProperties": false
+    },
+    "targetCaptureSummary": {
+      "type": "object",
+      "required": [
+        "presence",
+        "lvcompareCount",
+        "niContainerCount",
+        "lvcompareExitCodes",
+        "lvcompareDiffStates",
+        "niStatuses",
+        "niImages"
+      ],
+      "properties": {
+        "presence": {
+          "$ref": "#/$defs/capturePresence"
+        },
+        "lvcompareCount": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "niContainerCount": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "lvcompareExitCodes": {
+          "$ref": "#/$defs/intArray"
+        },
+        "lvcompareDiffStates": {
+          "$ref": "#/$defs/stringArray"
+        },
+        "niStatuses": {
+          "$ref": "#/$defs/stringArray"
+        },
+        "niImages": {
+          "$ref": "#/$defs/stringArray"
+        }
+      },
+      "additionalProperties": false
+    },
+    "modeAnnotations": {
+      "type": "object",
+      "required": [
+        "outcomeClass",
+        "comparisonClasses",
+        "bucketProfile",
+        "capturePresence"
+      ],
+      "properties": {
+        "outcomeClass": {
+          "$ref": "#/$defs/comparisonOutcomeClass"
+        },
+        "comparisonClasses": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/comparisonOutcomeClass"
+          }
+        },
+        "bucketProfile": {
+          "$ref": "#/$defs/stringArray"
+        },
+        "capturePresence": {
+          "$ref": "#/$defs/capturePresence"
+        }
+      },
+      "additionalProperties": false
+    },
+    "modeCaptureSummary": {
+      "type": "object",
+      "required": [
+        "presence",
+        "lvcompareCount",
+        "niContainerCount",
+        "lvcompareExitCodes",
+        "lvcompareDiffStates",
+        "niStatuses",
+        "niImages",
+        "latestCaptureAt",
+        "lvcomparePaths",
+        "niContainerPaths"
+      ],
+      "properties": {
+        "presence": {
+          "$ref": "#/$defs/capturePresence"
+        },
+        "lvcompareCount": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "niContainerCount": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "lvcompareExitCodes": {
+          "$ref": "#/$defs/intArray"
+        },
+        "lvcompareDiffStates": {
+          "$ref": "#/$defs/stringArray"
+        },
+        "niStatuses": {
+          "$ref": "#/$defs/stringArray"
+        },
+        "niImages": {
+          "$ref": "#/$defs/stringArray"
+        },
+        "latestCaptureAt": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "format": "date-time"
+        },
+        "lvcomparePaths": {
+          "$ref": "#/$defs/pathArray"
+        },
+        "niContainerPaths": {
+          "$ref": "#/$defs/pathArray"
+        }
+      },
+      "additionalProperties": false
+    },
+    "comparisonAnnotations": {
+      "type": "object",
+      "required": [
+        "outcomeClass"
+      ],
+      "properties": {
+        "outcomeClass": {
+          "$ref": "#/$defs/comparisonOutcomeClass"
+        }
+      },
+      "additionalProperties": false
+    },
+    "comparison": {
+      "type": "object",
+      "required": [
+        "index",
+        "baseRef",
+        "headRef",
+        "status",
+        "diff",
+        "bucket",
+        "categories",
+        "message",
+        "annotations"
+      ],
+      "properties": {
+        "index": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "baseRef": {
+          "$ref": "#/$defs/nullableString"
+        },
+        "headRef": {
+          "$ref": "#/$defs/nullableString"
+        },
+        "status": {
+          "$ref": "#/$defs/nullableString"
+        },
+        "diff": {
+          "type": [
+            "boolean",
+            "null"
+          ]
+        },
+        "bucket": {
+          "$ref": "#/$defs/nullableString"
+        },
+        "categories": {
+          "$ref": "#/$defs/stringArray"
+        },
+        "message": {
+          "$ref": "#/$defs/nullableString"
+        },
+        "annotations": {
+          "$ref": "#/$defs/comparisonAnnotations"
+        }
+      },
+      "additionalProperties": false
+    },
+    "mode": {
+      "type": "object",
+      "required": [
+        "mode",
+        "status",
+        "flags",
+        "stats",
+        "annotations",
+        "captureSummary",
+        "comparisons"
+      ],
+      "properties": {
+        "mode": {
+          "type": "string",
+          "minLength": 1
+        },
+        "status": {
+          "type": "string",
+          "minLength": 1
+        },
+        "flags": {
+          "$ref": "#/$defs/stringArray"
+        },
+        "stats": {
+          "$ref": "#/$defs/stats"
+        },
+        "annotations": {
+          "$ref": "#/$defs/modeAnnotations"
+        },
+        "captureSummary": {
+          "$ref": "#/$defs/modeCaptureSummary"
+        },
+        "comparisons": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/comparison"
+          }
+        }
+      },
+      "additionalProperties": false
+    },
+    "provenance": {
+      "type": "object",
+      "required": [
+        "suiteGeneratedAt",
+        "suiteManifestPath",
+        "modeManifestPaths",
+        "historyReportMarkdownPath",
+        "historyReportHtmlPath",
+        "latestCaptureAt",
+        "lvcompareCapturePaths",
+        "niContainerCapturePaths"
+      ],
+      "properties": {
+        "suiteGeneratedAt": {
+          "$ref": "#/$defs/nullableString"
+        },
+        "suiteManifestPath": {
+          "type": "string",
+          "minLength": 1
+        },
+        "modeManifestPaths": {
+          "$ref": "#/$defs/pathArray"
+        },
+        "historyReportMarkdownPath": {
+          "$ref": "#/$defs/nullableString"
+        },
+        "historyReportHtmlPath": {
+          "$ref": "#/$defs/nullableString"
+        },
+        "latestCaptureAt": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "format": "date-time"
+        },
+        "lvcompareCapturePaths": {
+          "$ref": "#/$defs/pathArray"
+        },
+        "niContainerCapturePaths": {
+          "$ref": "#/$defs/pathArray"
+        }
+      },
+      "additionalProperties": false
+    },
+    "target": {
+      "type": "object",
+      "required": [
+        "id",
+        "label",
+        "repoSlug",
+        "targetPath",
+        "requestedModes",
+        "executedModes",
+        "status",
+        "stats",
+        "annotations",
+        "provenance",
+        "captureSummary",
+        "modes"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^[a-z0-9][a-z0-9._-]*$"
+        },
+        "label": {
+          "type": "string",
+          "minLength": 1
+        },
+        "repoSlug": {
+          "type": "string",
+          "minLength": 1
+        },
+        "targetPath": {
+          "type": "string",
+          "minLength": 1
+        },
+        "requestedModes": {
+          "$ref": "#/$defs/stringArray"
+        },
+        "executedModes": {
+          "$ref": "#/$defs/stringArray"
+        },
+        "status": {
+          "type": "string",
+          "minLength": 1
+        },
+        "stats": {
+          "$ref": "#/$defs/stats"
+        },
+        "annotations": {
+          "$ref": "#/$defs/targetAnnotations"
+        },
+        "provenance": {
+          "$ref": "#/$defs/provenance"
+        },
+        "captureSummary": {
+          "$ref": "#/$defs/targetCaptureSummary"
+        },
+        "modes": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "$ref": "#/$defs/mode"
+          }
+        }
+      },
+      "additionalProperties": false
+    }
+  },
+  "additionalProperties": false
+}

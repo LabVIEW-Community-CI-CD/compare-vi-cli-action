@@ -35,6 +35,7 @@
     "history:dispatch": "pwsh -NoLogo -NoProfile -File scripts/Dispatch-VIHistoryWorkflow.ps1",
     "history:bundle:verify": "tsc -p tsconfig.cli.json && node dist/tools/cli/verify-history-bundle-certification.js",
     "history:corpus:offline": "pwsh -NoLogo -NoProfile -File tools/Invoke-OfflineRealHistoryCorpus.ps1",
+    "history:corpus:normalize": "pwsh -NoLogo -NoProfile -File tools/Normalize-OfflineRealHistoryCorpus.ps1",
     "history:run": "pwsh -NoLogo -NoProfile -File scripts/Run-VIHistory.ps1",
     "hooks:multi": "node tools/hooks/core/run-multi.mjs",
     "hooks:plane": "node tools/hooks/core/plane-info.mjs",
