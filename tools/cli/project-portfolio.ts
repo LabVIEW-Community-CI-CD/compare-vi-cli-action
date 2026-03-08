@@ -6,6 +6,11 @@ import { z } from 'zod';
 
 type Mode = 'snapshot' | 'check';
 
+const singleSelectFieldSchema = z.object({
+  name: z.string().min(1),
+  options: z.array(z.string().min(1)).min(1),
+});
+
 const configItemSchema = z.object({
   url: z.string().url(),
   status: z.string().min(1),
@@ -14,6 +19,7 @@ const configItemSchema = z.object({
   environmentClass: z.string().min(1),
   blockingSignal: z.string().min(1),
   evidenceState: z.string().min(1),
+  portfolioTrack: z.string().min(1),
 });
 
 const configSchema = z.object({
@@ -26,6 +32,15 @@ const configSchema = z.object({
   public: z.boolean(),
   allowAdditionalItems: z.boolean().default(false),
   repositories: z.array(z.string().min(1)).min(1),
+  fieldCatalog: z.object({
+    status: singleSelectFieldSchema,
+    program: singleSelectFieldSchema,
+    phase: singleSelectFieldSchema,
+    environmentClass: singleSelectFieldSchema,
+    blockingSignal: singleSelectFieldSchema,
+    evidenceState: singleSelectFieldSchema,
+    portfolioTrack: singleSelectFieldSchema,
+  }),
   items: z.array(configItemSchema).min(1),
 });
 
@@ -95,12 +110,22 @@ interface NormalizedItem {
   environmentClass: string | null;
   blockingSignal: string | null;
   evidenceState: string | null;
+  portfolioTrack: string | null;
 }
 
 interface DriftEntry {
   field: string;
   expected: string | boolean;
   actual: string | boolean | null;
+}
+
+interface FieldCatalogDriftEntry {
+  field: keyof PortfolioConfig['fieldCatalog'];
+  expectedName: string;
+  actualName: string | null;
+  missing: boolean;
+  missingOptions: string[];
+  unexpectedOptions: string[];
 }
 
 function readJsonFile<T>(filePath: string): T {
@@ -200,10 +225,16 @@ function normalizeItem(item: RawProjectItem): NormalizedItem {
     environmentClass: fieldValue(item, 'Environment Class'),
     blockingSignal: fieldValue(item, 'Blocking Signal'),
     evidenceState: fieldValue(item, 'Evidence State'),
+    portfolioTrack: fieldValue(item, 'Portfolio Track'),
   };
 }
 
-function compareProject(config: PortfolioConfig, view: ProjectView, items: NormalizedItem[]) {
+function compareProject(
+  config: PortfolioConfig,
+  view: ProjectView,
+  fields: ProjectFields,
+  items: NormalizedItem[],
+) {
   const actualByUrl = new Map(items.map((item) => [item.url, item]));
   const expectedByUrl = new Map(config.items.map((item) => [item.url, item]));
   const metadata: DriftEntry[] = [];
@@ -219,6 +250,31 @@ function compareProject(config: PortfolioConfig, view: ProjectView, items: Norma
   }
   if (view.public !== config.public) {
     metadata.push({ field: 'public', expected: config.public, actual: view.public });
+  }
+
+  const actualFieldByName = new Map(fields.fields.map((field) => [field.name, field]));
+  const fieldCatalogMismatches: FieldCatalogDriftEntry[] = [];
+  for (const [fieldKey, expectedField] of Object.entries(config.fieldCatalog) as Array<
+    [keyof PortfolioConfig['fieldCatalog'], PortfolioConfig['fieldCatalog'][keyof PortfolioConfig['fieldCatalog']]]
+  >) {
+    const actualField = actualFieldByName.get(expectedField.name);
+    const actualOptions = Array.isArray(actualField?.options)
+      ? actualField.options
+          .map((option) => option?.name)
+          .filter((value): value is string => typeof value === 'string')
+      : [];
+    const missingOptions = expectedField.options.filter((option) => !actualOptions.includes(option));
+    const unexpectedOptions = actualOptions.filter((option) => !expectedField.options.includes(option));
+    if (!actualField || missingOptions.length > 0 || unexpectedOptions.length > 0) {
+      fieldCatalogMismatches.push({
+        field: fieldKey,
+        expectedName: expectedField.name,
+        actualName: actualField?.name ?? null,
+        missing: !actualField,
+        missingOptions,
+        unexpectedOptions,
+      });
+    }
   }
 
   const missingItems = config.items
@@ -263,6 +319,9 @@ function compareProject(config: PortfolioConfig, view: ProjectView, items: Norma
     if (actual.evidenceState !== expected.evidenceState) {
       drifts.push({ field: 'evidenceState', expected: expected.evidenceState, actual: actual.evidenceState });
     }
+    if (actual.portfolioTrack !== expected.portfolioTrack) {
+      drifts.push({ field: 'portfolioTrack', expected: expected.portfolioTrack, actual: actual.portfolioTrack });
+    }
 
     if (drifts.length > 0) {
       fieldMismatches.push({ url: expected.url, drifts });
@@ -280,12 +339,14 @@ function compareProject(config: PortfolioConfig, view: ProjectView, items: Norma
   return {
     ok:
       metadata.length === 0 &&
+      fieldCatalogMismatches.length === 0 &&
       missingItems.length === 0 &&
       extraItems.length === 0 &&
       fieldMismatches.length === 0 &&
       missingRepositories.length === 0 &&
       unexpectedRepositories.length === 0,
     metadata,
+    fieldCatalogMismatches,
     missingItems,
     extraItems,
     fieldMismatches,
@@ -367,7 +428,7 @@ function main(): void {
     .map(normalizeItem)
     .sort((a, b) => a.url.localeCompare(b.url));
 
-  const drift = compareProject(config, view, normalizedItems);
+  const drift = compareProject(config, view, fields, normalizedItems);
   const report = {
     schema: 'project-portfolio-report@v1',
     generatedAt: new Date().toISOString(),
