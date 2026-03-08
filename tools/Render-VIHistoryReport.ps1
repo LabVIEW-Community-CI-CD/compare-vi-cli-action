@@ -2,6 +2,7 @@ param(
   [Parameter(Mandatory = $true)]
   [string]$ManifestPath,
   [string]$HistoryContextPath,
+  [string[]]$RequestedModesOverride,
   [string]$OutputDir,
   [string]$MarkdownPath,
   [string]$HtmlPath,
@@ -209,6 +210,29 @@ function Coalesce {
   return $Fallback
 }
 
+function Get-IntPropertyValue {
+  param(
+    [AllowNull()][object]$InputObject,
+    [Parameter(Mandatory)][string]$Name,
+    [int]$Default = 0
+  )
+
+  if ($null -eq $InputObject) { return $Default }
+
+  if ($InputObject -is [System.Collections.IDictionary]) {
+    if ($InputObject.Contains($Name)) {
+      try { return [int]$InputObject[$Name] } catch { return $Default }
+    }
+    return $Default
+  }
+
+  if ($InputObject.PSObject.Properties[$Name]) {
+    try { return [int]$InputObject.$Name } catch { return $Default }
+  }
+
+  return $Default
+}
+
 function Get-StringArray {
   param([object]$Value)
 
@@ -222,6 +246,261 @@ function Get-StringArray {
   }
 
   return @($items | ForEach-Object { [string]$_ } | Where-Object { -not [string]::IsNullOrWhiteSpace($_) })
+}
+
+function Get-SortedUniqueStringArray {
+  param([object]$Value)
+
+  $items = @(Get-StringArray -Value $Value)
+  if ($items.Count -eq 0) { return @() }
+  return @($items | Sort-Object -Unique)
+}
+
+function Get-ComparisonClassificationValue {
+  param([AllowNull()][object]$Comparison)
+
+  if (-not $Comparison) { return $null }
+
+  $resultNode = if ($Comparison.PSObject.Properties['result']) { $Comparison.result } else { $null }
+  foreach ($candidate in @(
+    $(if ($resultNode -and $resultNode.PSObject.Properties['classification']) { [string]$resultNode.classification } else { $null }),
+    $(if ($Comparison.PSObject.Properties['classification']) { [string]$Comparison.classification } else { $null })
+  )) {
+    if (-not [string]::IsNullOrWhiteSpace($candidate)) {
+      return $candidate.Trim().ToLowerInvariant()
+    }
+  }
+
+  $classificationEntries = New-Object System.Collections.Generic.List[object]
+  if ($resultNode) {
+    if ($resultNode.PSObject.Properties['categoryDetails'] -and $resultNode.categoryDetails) {
+      foreach ($entry in @($resultNode.categoryDetails)) {
+        $classificationEntries.Add($entry) | Out-Null
+      }
+    }
+    if ($resultNode.PSObject.Properties['categoryBucketDetails'] -and $resultNode.categoryBucketDetails) {
+      foreach ($entry in @($resultNode.categoryBucketDetails)) {
+        $classificationEntries.Add($entry) | Out-Null
+      }
+    }
+  }
+
+  $hasSignal = $false
+  $hasOther = $false
+  foreach ($entry in @($classificationEntries.ToArray())) {
+    if (-not $entry -or -not $entry.PSObject.Properties['classification']) { continue }
+    $classification = [string]$entry.classification
+    if ([string]::IsNullOrWhiteSpace($classification)) { continue }
+    switch ($classification.Trim().ToLowerInvariant()) {
+      'signal' {
+        $hasSignal = $true
+      }
+      'noise' {
+        $hasOther = $true
+      }
+      'neutral' {
+        $hasOther = $true
+      }
+    }
+  }
+
+  if ($hasSignal) { return 'signal' }
+  if ($hasOther) { return 'noise' }
+  return $null
+}
+
+function Resolve-ComparisonOutcomeClass {
+  param([AllowNull()][object]$Comparison)
+
+  if (-not $Comparison) { return 'clean' }
+
+  $resultNode = if ($Comparison.PSObject.Properties['result']) { $Comparison.result } else { $null }
+  $statusValue = $null
+  foreach ($candidate in @(
+    $(if ($resultNode -and $resultNode.PSObject.Properties['status']) { [string]$resultNode.status } else { $null }),
+    $(if ($Comparison.PSObject.Properties['status']) { [string]$Comparison.status } else { $null })
+  )) {
+    if (-not [string]::IsNullOrWhiteSpace($candidate)) {
+      $statusValue = $candidate.Trim()
+      break
+    }
+  }
+
+  if ($statusValue -eq 'error') {
+    return 'error'
+  }
+
+  if (-not [string]::IsNullOrWhiteSpace($statusValue) -and $statusValue.StartsWith('missing-', [System.StringComparison]::OrdinalIgnoreCase)) {
+    return 'missing'
+  }
+
+  $hasDiffValue = $false
+  $diffValue = $false
+  foreach ($candidate in @(
+    $(if ($resultNode -and $resultNode.PSObject.Properties['diff']) { $resultNode.diff } else { $null }),
+    $(if ($Comparison.PSObject.Properties['diff']) { $Comparison.diff } else { $null })
+  )) {
+    if ($candidate -ne $null) {
+      $hasDiffValue = $true
+      $diffValue = [bool]$candidate
+      break
+    }
+  }
+
+  $classification = Get-ComparisonClassificationValue -Comparison $Comparison
+  if ($hasDiffValue) {
+    if ($diffValue) {
+      if ($classification -eq 'noise') {
+        return 'noise-diff'
+      }
+      return 'signal-diff'
+    }
+    return 'clean'
+  }
+
+  if ($classification -eq 'noise') {
+    return 'noise-diff'
+  }
+
+  if ($classification -eq 'signal') {
+    return 'signal-diff'
+  }
+
+  return 'clean'
+}
+
+function Resolve-ModeOutcomeClass {
+  param(
+    [AllowNull()][object]$Stats,
+    [AllowEmptyCollection()][string[]]$ComparisonClasses = @()
+  )
+
+  if ((Get-IntPropertyValue -InputObject $Stats -Name 'errors') -gt 0 -or $ComparisonClasses -contains 'error') {
+    return 'error'
+  }
+
+  if ((Get-IntPropertyValue -InputObject $Stats -Name 'missing') -gt 0 -or $ComparisonClasses -contains 'missing') {
+    return 'missing'
+  }
+
+  if ((Get-IntPropertyValue -InputObject $Stats -Name 'signalDiffs') -gt 0 -or $ComparisonClasses -contains 'signal-diff') {
+    return 'signal-diff'
+  }
+
+  if ((Get-IntPropertyValue -InputObject $Stats -Name 'noiseCollapsed') -gt 0 -or $ComparisonClasses -contains 'noise-diff') {
+    return 'noise-diff'
+  }
+
+  if ((Get-IntPropertyValue -InputObject $Stats -Name 'diffs') -gt 0) {
+    return 'signal-diff'
+  }
+
+  return 'clean'
+}
+
+function Resolve-CoverageClass {
+  param(
+    [Parameter(Mandatory)][string[]]$RequestedModes,
+    [Parameter(Mandatory)][string[]]$ExecutedModes
+  )
+
+  $requested = @(Get-SortedUniqueStringArray -Value $RequestedModes)
+  $executed = @(Get-SortedUniqueStringArray -Value $ExecutedModes)
+
+  $missing = @($requested | Where-Object { $_ -notin $executed })
+  $extra = @($executed | Where-Object { $_ -notin $requested })
+
+  if ($missing.Count -eq 0 -and $extra.Count -eq 0) {
+    return 'catalog-aligned'
+  }
+
+  if ($missing.Count -gt 0 -and $extra.Count -eq 0) {
+    return 'catalog-partial'
+  }
+
+  if ($missing.Count -eq 0 -and $extra.Count -gt 0) {
+    return 'catalog-extra'
+  }
+
+  return 'catalog-mismatch'
+}
+
+function Resolve-ModeSensitivity {
+  param(
+    [Parameter(Mandatory)][int]$ObservedModeCount,
+    [AllowEmptyCollection()][string[]]$ModeOutcomeClasses = @()
+  )
+
+  if ($ObservedModeCount -le 0) {
+    return 'none-observed'
+  }
+
+  if ($ObservedModeCount -eq 1) {
+    return 'single-mode-observed'
+  }
+
+  $outcomes = @(Get-SortedUniqueStringArray -Value $ModeOutcomeClasses)
+  if ($outcomes.Count -eq 0) {
+    return 'mixed-observed-modes'
+  }
+
+  if (@($ModeOutcomeClasses | Where-Object { $_ -ne 'clean' }).Count -eq 0) {
+    return 'all-observed-modes-clean'
+  }
+
+  if (@($ModeOutcomeClasses | Where-Object { $_ -notin @('signal-diff', 'noise-diff') }).Count -eq 0) {
+    return 'all-observed-modes-diff'
+  }
+
+  return 'mixed-observed-modes'
+}
+
+function Get-CoverageClassDetail {
+  param(
+    [Parameter(Mandatory)][string[]]$RequestedModes,
+    [Parameter(Mandatory)][string[]]$ExecutedModes
+  )
+
+  $requested = @(Get-SortedUniqueStringArray -Value $RequestedModes)
+  $executed = @(Get-SortedUniqueStringArray -Value $ExecutedModes)
+  $missing = @(Get-SortedUniqueStringArray -Value @($requested | Where-Object { $_ -notin $executed }))
+  $extra = @(Get-SortedUniqueStringArray -Value @($executed | Where-Object { $_ -notin $requested }))
+
+  if ($missing.Count -eq 0 -and $extra.Count -eq 0) {
+    return 'Requested and executed modes match.'
+  }
+
+  $parts = New-Object System.Collections.Generic.List[string]
+  $parts.Add(('requested: {0}; executed: {1}' -f $requested.Count, $executed.Count)) | Out-Null
+  if ($missing.Count -gt 0) {
+    $parts.Add(('missing: {0}' -f ([string]::Join(', ', $missing)))) | Out-Null
+  }
+  if ($extra.Count -gt 0) {
+    $parts.Add(('extra: {0}' -f ([string]::Join(', ', $extra)))) | Out-Null
+  }
+  return [string]::Join('; ', $parts)
+}
+
+function Format-MarkdownCodeList {
+  param([AllowEmptyCollection()][string[]]$Values = @())
+
+  $items = @(Get-SortedUniqueStringArray -Value $Values)
+  if ($items.Count -eq 0) {
+    return 'n/a'
+  }
+
+  return (($items | ForEach-Object { ('`{0}`' -f $_) }) -join ', ')
+}
+
+function Format-HtmlCodeList {
+  param([AllowEmptyCollection()][string[]]$Values = @())
+
+  $items = @(Get-SortedUniqueStringArray -Value $Values)
+  if ($items.Count -eq 0) {
+    return '<span class="muted">n/a</span>'
+  }
+
+  return (($items | ForEach-Object { ('<code>{0}</code>' -f (ConvertTo-HtmlSafe $_)) }) -join ', ')
 }
 
 function Get-CategoryMetadata {
@@ -494,15 +773,30 @@ function Build-FallbackHistoryContext {
         if ($resultNode.PSObject.Properties['message']) {
           $resultPayload.message = $resultNode.message
         }
+        if ($resultNode.PSObject.Properties['classification'] -and $resultNode.classification) {
+          $resultPayload.classification = $resultNode.classification
+        }
         if ($resultNode.PSObject.Properties['artifactDir'] -and $resultNode.artifactDir) {
           $resultPayload.artifactDir = $resultNode.artifactDir
         }
         if ($resultNode.PSObject.Properties['execPath'] -and $resultNode.execPath) {
           $resultPayload.execPath = $resultNode.execPath
         }
-      if ($resultNode.PSObject.Properties['command'] -and $resultNode.command) {
-        $resultPayload.command = $resultNode.command
-      }
+        if ($resultNode.PSObject.Properties['command'] -and $resultNode.command) {
+          $resultPayload.command = $resultNode.command
+        }
+        if ($resultNode.PSObject.Properties['categories'] -and $resultNode.categories) {
+          $resultPayload.categories = @($resultNode.categories)
+        }
+        if ($resultNode.PSObject.Properties['categoryDetails'] -and $resultNode.categoryDetails) {
+          $resultPayload.categoryDetails = @($resultNode.categoryDetails)
+        }
+        if ($resultNode.PSObject.Properties['categoryBuckets'] -and $resultNode.categoryBuckets) {
+          $resultPayload.categoryBuckets = @($resultNode.categoryBuckets)
+        }
+        if ($resultNode.PSObject.Properties['categoryBucketDetails'] -and $resultNode.categoryBucketDetails) {
+          $resultPayload.categoryBucketDetails = @($resultNode.categoryBucketDetails)
+        }
         $highlightSet = @()
         if ($resultNode.PSObject.Properties['highlights'] -and $resultNode.highlights) {
           $highlightSet += @($resultNode.highlights | Where-Object { -not [string]::IsNullOrWhiteSpace($_) })
@@ -542,13 +836,28 @@ function Build-FallbackHistoryContext {
         $lineageNode = $comparison.lineage
       }
 
+      $baseShortRef = if ($baseNode -and $baseNode.PSObject.Properties['short'] -and $baseNode.short) {
+        [string]$baseNode.short
+      } elseif ($baseNode -and $baseNode.PSObject.Properties['ref'] -and $baseNode.ref) {
+        Get-ShortSha -Value ([string]$baseNode.ref) -Length 7
+      } else {
+        $null
+      }
+      $headShortRef = if ($headNode -and $headNode.PSObject.Properties['short'] -and $headNode.short) {
+        [string]$headNode.short
+      } elseif ($headNode -and $headNode.PSObject.Properties['ref'] -and $headNode.ref) {
+        Get-ShortSha -Value ([string]$headNode.ref) -Length 7
+      } else {
+        $null
+      }
+
       $comparisons.Add([pscustomobject]@{
         mode  = [string](Coalesce $modeName 'unknown')
         index = $comparison.index
-        report = $comparison.outName
+        report = if ($comparison.PSObject.Properties['outName']) { $comparison.outName } else { $null }
         base  = [pscustomobject]@{
           full    = $baseNode.ref
-          short   = $baseNode.short
+          short   = $baseShortRef
           author  = if ($baseMeta) { $baseMeta.authorName } else { $null }
           authorEmail = if ($baseMeta) { $baseMeta.authorEmail } else { $null }
           date    = if ($baseMeta) { $baseMeta.authorDate } else { $null }
@@ -556,7 +865,7 @@ function Build-FallbackHistoryContext {
         }
         head  = [pscustomobject]@{
           full    = $headNode.ref
-          short   = $headNode.short
+          short   = $headShortRef
           author  = if ($headMeta) { $headMeta.authorName } else { $null }
           authorEmail = if ($headMeta) { $headMeta.authorEmail } else { $null }
           date    = if ($headMeta) { $headMeta.authorDate } else { $null }
@@ -604,12 +913,40 @@ $requestedModes = @(Get-StringArray -Value $(if ($manifest.PSObject.Properties['
 if ($requestedModes.Count -eq 0 -and $modeEntries.Count -gt 0) {
   $requestedModes = @($modeEntries | ForEach-Object { [string]$_.name } | Where-Object { -not [string]::IsNullOrWhiteSpace($_) })
 }
+$requestedModesOverrideValues = @(Get-StringArray -Value $RequestedModesOverride)
+if ($requestedModesOverrideValues.Count -gt 0) {
+  $requestedModes = @($requestedModesOverrideValues)
+}
 $executedModes = @(Get-StringArray -Value $(if ($manifest.PSObject.Properties['executedModes']) { $manifest.executedModes } else { $null }))
 if ($executedModes.Count -eq 0 -and $modeEntries.Count -gt 0) {
   $executedModes = @($modeEntries | ForEach-Object { [string]$_.name } | Where-Object { -not [string]::IsNullOrWhiteSpace($_) })
 }
 $requestedModeDisplay = if ($requestedModes.Count -gt 0) { [string]::Join(', ', $requestedModes) } else { 'n/a' }
 $executedModeDisplay = if ($executedModes.Count -gt 0) { [string]::Join(', ', $executedModes) } else { 'n/a' }
+$comparisons = @($historyContext.comparisons)
+
+$modeOutcomeClasses = New-Object System.Collections.Generic.List[string]
+foreach ($mode in $modeEntries) {
+  $modeName = [string](Coalesce $mode.name $mode.slug)
+  $modeComparisonClasses = @()
+  if (-not [string]::IsNullOrWhiteSpace($modeName)) {
+    $modeComparisonClasses = @(
+      $comparisons |
+        Where-Object {
+          $comparisonMode = if ($_.PSObject.Properties['mode']) { [string]$_.mode } else { '' }
+          $comparisonMode -eq $modeName
+        } |
+        ForEach-Object { Resolve-ComparisonOutcomeClass -Comparison $_ }
+    )
+  }
+  $modeOutcomeClasses.Add((Resolve-ModeOutcomeClass -Stats $mode.stats -ComparisonClasses $modeComparisonClasses)) | Out-Null
+}
+
+$comparisonOutcomeClasses = @($comparisons | ForEach-Object { Resolve-ComparisonOutcomeClass -Comparison $_ })
+$coverageClass = Resolve-CoverageClass -RequestedModes $requestedModes -ExecutedModes $executedModes
+$coverageClassDetail = Get-CoverageClassDetail -RequestedModes $requestedModes -ExecutedModes $executedModes
+$modeSensitivity = Resolve-ModeSensitivity -ObservedModeCount $modeEntries.Count -ModeOutcomeClasses @($modeOutcomeClasses.ToArray())
+$outcomeLabels = @(Get-SortedUniqueStringArray -Value @($comparisonOutcomeClasses + @($modeOutcomeClasses.ToArray())))
 
 $summaryLines = New-Object System.Collections.Generic.List[string]
 $summaryLines.Add('# VI History Report')
@@ -662,6 +999,16 @@ if ($stats) {
     $summaryLines.Add(('| Buckets | {0} |' -f ($bucketParts -join '<br>')))
   }
 }
+
+$summaryLines.Add('')
+$summaryLines.Add('## Observed interpretation')
+$summaryLines.Add('')
+$summaryLines.Add('| Signal | Value |')
+$summaryLines.Add('| --- | --- |')
+$summaryLines.Add(('| Coverage Class | {0} |' -f (Format-MarkdownCodeList -Values @($coverageClass))))
+$summaryLines.Add(('| Coverage Detail | {0} |' -f $coverageClassDetail))
+$summaryLines.Add(('| Mode Sensitivity | {0} |' -f (Format-MarkdownCodeList -Values @($modeSensitivity))))
+$summaryLines.Add(('| Outcome Labels | {0} |' -f (Format-MarkdownCodeList -Values $outcomeLabels)))
 
 if ($modeEntries.Count -gt 0) {
   $summaryLines.Add('')
@@ -727,7 +1074,6 @@ if ($modeEntries.Count -gt 0) {
 $stepSummaryLines = @($summaryLines)
 
 $comparisonHtmlRows = New-Object System.Collections.Generic.List[object]
-$comparisons = @($historyContext.comparisons)
 if ($comparisons.Count -gt 0) {
   $summaryLines.Add('')
   $summaryLines.Add('## Commit pairs')
@@ -976,6 +1322,17 @@ if ($emitHtml -and $HtmlPath) {
     [void]$htmlBuilder.AppendLine('    </tbody>')
     [void]$htmlBuilder.AppendLine('  </table>')
   }
+
+  [void]$htmlBuilder.AppendLine('  <h2>Observed interpretation</h2>')
+  [void]$htmlBuilder.AppendLine('  <table>')
+  [void]$htmlBuilder.AppendLine('    <thead><tr><th>Signal</th><th>Value</th></tr></thead>')
+  [void]$htmlBuilder.AppendLine('    <tbody>')
+  [void]$htmlBuilder.AppendLine(('      <tr><th scope="row">Coverage Class</th><td>{0}</td></tr>' -f (Format-HtmlCodeList -Values @($coverageClass))))
+  [void]$htmlBuilder.AppendLine(('      <tr><th scope="row">Coverage Detail</th><td>{0}</td></tr>' -f (ConvertTo-HtmlSafe $coverageClassDetail)))
+  [void]$htmlBuilder.AppendLine(('      <tr><th scope="row">Mode Sensitivity</th><td>{0}</td></tr>' -f (Format-HtmlCodeList -Values @($modeSensitivity))))
+  [void]$htmlBuilder.AppendLine(('      <tr><th scope="row">Outcome Labels</th><td>{0}</td></tr>' -f (Format-HtmlCodeList -Values $outcomeLabels)))
+  [void]$htmlBuilder.AppendLine('    </tbody>')
+  [void]$htmlBuilder.AppendLine('  </table>')
 
   if ($modeEntries.Count -gt 0) {
     [void]$htmlBuilder.AppendLine('  <h2>Mode overview</h2>')

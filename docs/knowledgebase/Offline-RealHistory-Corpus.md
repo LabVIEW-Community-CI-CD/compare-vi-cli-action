@@ -72,6 +72,12 @@ Normalization refresh entry point:
 node tools/npm/run-script.mjs history:corpus:normalize
 ```
 
+Offline evaluation entry point:
+
+```powershell
+node tools/npm/run-script.mjs history:corpus:evaluate
+```
+
 The harness:
 
 1. Loads the checked-in target catalog.
@@ -122,6 +128,19 @@ explicitly local/offline once the repo and image already exist on disk.
 The normalizer does not run LabVIEW or Docker. It rebuilds the checked-in
 normalized subset from the catalog's `seedFixture.historySuitePath` entries and
 any checked-in capture JSON summaries found under the referenced fixture roots.
+
+The evaluator also stays offline. It re-renders the current
+`Render-VIHistoryReport.ps1` output from the checked-in suite manifests and
+fails if the report or step summary stops surfacing the interpretation labels
+the normalized corpus already proved relevant:
+
+- `Coverage Class`
+- `Mode Sensitivity`
+- `Outcome Labels`
+
+That contract is the first corpus-backed report refinement added in `#896`:
+operators no longer need to infer partial requested-mode coverage only from the
+raw requested/executed mode lists.
 
 ## Storage boundary
 
