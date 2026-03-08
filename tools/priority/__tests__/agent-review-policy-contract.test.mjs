@@ -10,12 +10,13 @@ const workflowPath = path.join(repoRoot, '.github', 'workflows', 'agent-review-p
 test('agent-review-policy emits and validates the Copilot review signal artifact', () => {
   const workflow = readFileSync(workflowPath, 'utf8');
 
-  assert.match(workflow, /actions\/checkout@v5/);
-  assert.match(workflow, /actions\/setup-node@v5/);
-  assert.match(workflow, /npm ci --ignore-scripts/);
-  assert.match(workflow, /node tools\/npm\/run-script\.mjs build/);
+  assert.match(workflow, /actions\/checkout@v5\s+if: github\.event_name == 'pull_request_target'/);
+  assert.match(workflow, /actions\/setup-node@v5\s+if: github\.event_name == 'pull_request_target'/);
+  assert.match(workflow, /name: Install Node dependencies\s+if: github\.event_name == 'pull_request_target'\s+run: npm ci --ignore-scripts/);
+  assert.match(workflow, /name: Build TypeScript utilities\s+if: github\.event_name == 'pull_request_target'\s+run: node tools\/npm\/run-script\.mjs build/);
+  assert.match(workflow, /name: Collect Copilot review signal\s+if: github\.event_name == 'pull_request_target'/);
   assert.match(workflow, /node dist\/tools\/priority\/copilot-review-signal\.js/);
-  assert.match(workflow, /schema:copilot-review-signal:validate/);
+  assert.match(workflow, /name: Validate Copilot review signal schema\s+if: github\.event_name == 'pull_request_target'/);
   assert.match(workflow, /tests\/results\/_agent\/reviews\/copilot-review-signal\.json/);
-  assert.match(workflow, /actions\/upload-artifact@v5/);
+  assert.match(workflow, /if: always\(\) && github\.event_name == 'pull_request_target'\s+uses: actions\/upload-artifact@v5/);
 });
