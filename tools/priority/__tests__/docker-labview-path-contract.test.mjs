@@ -35,6 +35,16 @@ test('fixture-drift hosted Linux lane passes an explicit linux container LabVIEW
   assert.match(workflow, /-LabVIEWPath \$env:NI_LINUX_LABVIEW_PATH/);
 });
 
+test('fixture-drift windows docker lane uses an explicit in-container LabVIEW path without host executable env fallback', () => {
+  const workflow = readRepoFile('.github/workflows/fixture-drift.yml');
+
+  assert.match(workflow, /NI_WINDOWS_IMAGE:\s*nationalinstruments\/labview:2026q1-windows/);
+  assert.match(workflow, /NI_WINDOWS_LABVIEW_PATH:\s*C:\\Program Files\\National Instruments\\LabVIEW 2026\\LabVIEW\.exe/);
+  assert.match(workflow, /-Image \$env:NI_WINDOWS_IMAGE/);
+  assert.match(workflow, /-LabVIEWPath \$env:NI_WINDOWS_LABVIEW_PATH/);
+  assert.doesNotMatch(workflow, /LABVIEW_EXE:/);
+});
+
 test('runbook validation canary uses an explicit Windows container LabVIEW path', () => {
   const workflow = readRepoFile('.github/workflows/runbook-validation.yml');
 
@@ -42,4 +52,14 @@ test('runbook validation canary uses an explicit Windows container LabVIEW path'
   assert.match(workflow, /NI_WINDOWS_LABVIEW_PATH:\s*C:\\Program Files\\National Instruments\\LabVIEW 2026\\LabVIEW\.exe/);
   assert.match(workflow, /-WindowsImage \$env:NI_WINDOWS_IMAGE/);
   assert.match(workflow, /-WindowsLabVIEWPath \$env:NI_WINDOWS_LABVIEW_PATH/);
+});
+
+test('docker desktop fast-loop only accepts lane-specific LabVIEW path contracts', () => {
+  const script = readRepoFile('tools/Test-DockerDesktopFastLoop.ps1');
+
+  assert.doesNotMatch(script, /\[string\]\$LabVIEWPath\s*=/);
+  assert.match(script, /PreferredEnvNames @\('NI_WINDOWS_LABVIEW_PATH', 'COMPARE_WINDOWS_LABVIEW_PATH'\)/);
+  assert.match(script, /PreferredEnvNames @\('NI_LINUX_LABVIEW_PATH', 'COMPARE_LINUX_LABVIEW_PATH'\)/);
+  assert.doesNotMatch(script, /COMPARE_LABVIEW_PATH/);
+  assert.doesNotMatch(script, /LOOP_LABVIEW_PATH/);
 });

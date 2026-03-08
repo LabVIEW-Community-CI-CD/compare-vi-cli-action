@@ -16,7 +16,6 @@ param(
   [string]$LinuxImage = 'nationalinstruments/labview:2026q1-linux',
   [string]$WindowsLabVIEWPath = '',
   [string]$LinuxLabVIEWPath = '',
-  [string]$LabVIEWPath = '',
   [string]$ResultsRoot = 'tests/results/local-parity',
   [string]$StatusPath = '',
   [string]$ReadinessJsonPath = '',
@@ -44,9 +43,7 @@ $classifierScriptPath = Join-Path (Split-Path -Parent $PSCommandPath) 'Compare-E
 function Resolve-DockerLaneLabVIEWPath {
   param(
     [string]$ExplicitPath,
-    [string]$LegacySharedPath,
-    [string[]]$PreferredEnvNames = @(),
-    [string[]]$SharedEnvNames = @()
+    [string[]]$PreferredEnvNames = @()
   )
 
   if (-not [string]::IsNullOrWhiteSpace($ExplicitPath)) {
@@ -54,20 +51,6 @@ function Resolve-DockerLaneLabVIEWPath {
   }
 
   foreach ($envName in @($PreferredEnvNames)) {
-    if ([string]::IsNullOrWhiteSpace($envName)) {
-      continue
-    }
-    $candidate = [Environment]::GetEnvironmentVariable($envName, 'Process')
-    if (-not [string]::IsNullOrWhiteSpace($candidate)) {
-      return $candidate.Trim()
-    }
-  }
-
-  if (-not [string]::IsNullOrWhiteSpace($LegacySharedPath)) {
-    return $LegacySharedPath.Trim()
-  }
-
-  foreach ($envName in @($SharedEnvNames)) {
     if ([string]::IsNullOrWhiteSpace($envName)) {
       continue
     }
@@ -1099,14 +1082,10 @@ $effectiveManageDockerEngine = if ($singleLaneMode) { $false } else { [bool]$Man
 $runtimeAutoRepairEnabled = -not $singleLaneMode
 $effectiveWindowsLabVIEWPath = Resolve-DockerLaneLabVIEWPath `
   -ExplicitPath $WindowsLabVIEWPath `
-  -LegacySharedPath $LabVIEWPath `
-  -PreferredEnvNames @('NI_WINDOWS_LABVIEW_PATH', 'COMPARE_WINDOWS_LABVIEW_PATH') `
-  -SharedEnvNames @('COMPARE_LABVIEW_PATH', 'LOOP_LABVIEW_PATH')
+  -PreferredEnvNames @('NI_WINDOWS_LABVIEW_PATH', 'COMPARE_WINDOWS_LABVIEW_PATH')
 $effectiveLinuxLabVIEWPath = Resolve-DockerLaneLabVIEWPath `
   -ExplicitPath $LinuxLabVIEWPath `
-  -LegacySharedPath $LabVIEWPath `
-  -PreferredEnvNames @('NI_LINUX_LABVIEW_PATH', 'COMPARE_LINUX_LABVIEW_PATH') `
-  -SharedEnvNames @('COMPARE_LABVIEW_PATH', 'LOOP_LABVIEW_PATH')
+  -PreferredEnvNames @('NI_LINUX_LABVIEW_PATH', 'COMPARE_LINUX_LABVIEW_PATH')
 $effectiveSkipWindowsProbe = [bool]$SkipWindowsProbe
 $effectiveSkipLinuxProbe = [bool]$SkipLinuxProbe
 switch ($laneScopeNormalized) {

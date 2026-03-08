@@ -277,7 +277,6 @@ jobs:
       CLEAN_LV_INCLUDE_COMPARE: ${{ vars.CLEAN_LV_INCLUDE_COMPARE || vars.CLEAN_LVCOMPARE || 'true' }}
       LVCI_SINGLE_COMPARE: '1'
       WATCH_CONSOLE: '1'
-      LABVIEW_EXE: 'C:\\Program Files\\National Instruments\\LabVIEW 2025\\LabVIEW.exe'
       LV_NOTICE_DIR: 'results/fixture-drift/_lv'
       LV_NO_ACTIVATE: ${{ vars.LV_NO_ACTIVATE || '1' }}
       LV_CURSOR_RESTORE: ${{ vars.LV_CURSOR_RESTORE || '1' }}
