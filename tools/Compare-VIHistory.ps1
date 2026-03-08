@@ -1356,6 +1356,7 @@ $outPrefixToken = if ($OutPrefix) { $OutPrefix } else { $targetLeaf -replace '[^
 if ([string]::IsNullOrWhiteSpace($outPrefixToken)) { $outPrefixToken = 'vi-history' }
 
 $modeNames = @($modeSpecs | ForEach-Object { $_.Name })
+$requestedModeListValue = if ($modeNames.Count -gt 0) { $modeNames -join ', ' } else { 'none' }
 $stepSummaryDest = if (-not [string]::IsNullOrWhiteSpace($StepSummaryPath)) {
   $StepSummaryPath
 } elseif (-not [string]::IsNullOrWhiteSpace($env:GITHUB_STEP_SUMMARY)) {
@@ -1373,7 +1374,7 @@ if ($requestedStartRef -ne $startRef) {
   $summaryLines += "- Start ref: $startRef"
 }
 if ($endRef) { $summaryLines += "- End ref: $endRef" }
-$summaryLines += "- Modes: $($modeNames -join ', ')"
+$summaryLines += "- Requested modes: $requestedModeListValue"
 $summaryLines += "- Report format: $reportFormatEffective"
 $signalBudgetDisplay = if ($maxSignalBudget) { $maxSignalBudget } else { 'unlimited' }
 $summaryLines += "- Max signal pairs: $signalBudgetDisplay"
@@ -1393,6 +1394,8 @@ $aggregate = [ordered]@{
   failOnDiff  = [bool]$FailOnDiff.IsPresent
   reportFormat = $reportFormatEffective
   resultsDir  = $resultsRootResolved
+  requestedModes = @($modeNames)
+  executedModes  = @()
   modes       = @()
   stats       = [ordered]@{
     modes     = $modeSpecs.Count
@@ -2132,7 +2135,7 @@ foreach ($modeSpec in $modeSpecs) {
     $diffHighlights.Add($highlight)
   } elseif ($diffCount -gt 0 -and $noisePolicyEffective -eq 'include') {
     $diffPlural = if ($diffCount -eq 1) { '' } else { 's' }
-    $diffHighlights.Add("{0}: {1} diff{2}" -f $modeName, $diffCount, $diffPlural)
+    $diffHighlights.Add(("{0}: {1} diff{2}" -f $modeName, $diffCount, $diffPlural))
   }
   if ($noiseCollapsedCount -gt 0 -and $noisePolicyEffective -ne 'include') {
     $noisePlural = if ($noiseCollapsedCount -eq 1) { '' } else { 's' }
@@ -2334,12 +2337,15 @@ $aggregate.stats.signalDiffs = $totalSignalDiffs
 $aggregate.stats.noiseCollapsed = $totalNoiseCollapsed
 $aggregate.stats.errors = $totalErrors
 $aggregate.stats.missing = $totalMissing
+$executedModeNames = @($aggregate.modes | ForEach-Object { [string]$_.name } | Where-Object { -not [string]::IsNullOrWhiteSpace($_) })
+$aggregate.executedModes = @($executedModeNames)
 $aggregate.status = if ($aggregate.modes | Where-Object { $_.status -eq 'failed' }) { 'failed' } else { 'ok' }
+if ($executedModeNames.Count -gt 0) {
+  $summaryLines += "- Executed modes: $($executedModeNames -join ', ')"
+}
 
 $aggregate | ConvertTo-Json -Depth 8 | Out-File -FilePath $aggregateManifestPath -Encoding utf8
 $aggregateManifestResolved = (Resolve-Path -LiteralPath $aggregateManifestPath).Path
-
-Write-StepSummary -Lines $summaryLines -DestPath $StepSummaryPath
 Write-GitHubOutput -Key 'manifest-path' -Value $aggregateManifestResolved -DestPath $GitHubOutputPath
 Write-GitHubOutput -Key 'results-dir' -Value $resultsRootResolved -DestPath $GitHubOutputPath
 Write-GitHubOutput -Key 'mode-count' -Value $aggregate.modes.Count -DestPath $GitHubOutputPath
@@ -2348,6 +2354,7 @@ Write-GitHubOutput -Key 'total-diffs' -Value $totalDiffs -DestPath $GitHubOutput
 $aggregateStopReason = if ($aggregate.status -eq 'ok') { 'complete' } else { 'failed' }
 Write-GitHubOutput -Key 'stop-reason' -Value $aggregateStopReason -DestPath $GitHubOutputPath
 Write-GitHubOutput -Key 'target-path' -Value $targetRel -DestPath $GitHubOutputPath
+Write-GitHubOutput -Key 'requested-mode-list' -Value $requestedModeListValue -DestPath $GitHubOutputPath
 if ($aggregateCategoryCounts.Count -gt 0) {
   $categoryJson = ConvertTo-Json $aggregateCategoryCounts -Depth 4 -Compress
   Write-GitHubOutput -Key 'category-counts-json' -Value $categoryJson -DestPath $GitHubOutputPath
@@ -2368,7 +2375,12 @@ $modeManifestSummary = $aggregate.modes | ForEach-Object {
     flags     = $_.flags
     processed = $_.stats.processed
     diffs     = $_.stats.diffs
+    signalDiffs = $_.stats.signalDiffs
+    noiseCollapsed = $_.stats.noiseCollapsed
+    errors    = $_.stats.errors
     missing   = $_.stats.missing
+    categoryCounts = $_.stats.categoryCounts
+    bucketCounts = $_.stats.bucketCounts
     lastDiffIndex = $_.stats.lastDiffIndex
     lastDiffCommit = $_.stats.lastDiffCommit
     stopReason = $_.stats.stopReason
@@ -2389,6 +2401,10 @@ foreach ($modeEntry in $aggregate.modes) {
 if ($modeNameBuffer.Count -gt 0) {
   $modeListValue = ($modeNameBuffer | Sort-Object -Unique) -join ', '
 Write-GitHubOutput -Key 'mode-list' -Value $modeListValue -DestPath $GitHubOutputPath
+}
+if ($executedModeNames.Count -gt 0) {
+  $executedModeListValue = $executedModeNames -join ', '
+  Write-GitHubOutput -Key 'executed-mode-list' -Value $executedModeListValue -DestPath $GitHubOutputPath
 }
 $flagArray = [System.Linq.Enumerable]::ToArray($flagSet)
 if ($flagArray -and $flagArray.Count -gt 0) {
@@ -2430,6 +2446,7 @@ if (Test-Path -LiteralPath $rendererScript -PathType Leaf) {
 }
 
 if (-not $renderSucceeded) {
+  Write-StepSummary -Lines $summaryLines -DestPath $StepSummaryPath
   try {
     $fallbackLines = @(
       '# VI history report'

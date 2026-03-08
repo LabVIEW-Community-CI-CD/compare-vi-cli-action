@@ -886,7 +886,7 @@ jobs:
         if (-not (Test-Path $jsonV1)) { Write-Error "session-index.json not found at $jsonV1"; exit 2 }
         pwsh -File tools/Invoke-JsonSchemaLite.ps1 -JsonPath $jsonV1 -SchemaPath docs/schemas/session-index-v1.schema.json
         if (Test-Path $jsonV2) {
-          node tools/schemas/validate-json.js --schema docs/schema/generated/session-index-v2.schema.json --data $jsonV2 --optional
+          pwsh -File tools/Invoke-JsonSchemaLite.ps1 -JsonPath $jsonV2 -SchemaPath docs/schema/generated/session-index-v2.schema.json
           if ($LASTEXITCODE -ne 0) { Write-Host "::warning::V2 schema validation returned $LASTEXITCODE for session-index-v2.json" }
         } else {
           Write-Host '::notice::session-index-v2.json not found; running in v1 fallback mode.'

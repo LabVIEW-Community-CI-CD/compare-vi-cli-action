@@ -6,10 +6,18 @@
   "startRef": "8e3f56a41ce7f06519f77dd021d7f0b91234abcd",
   "endRef": "",
   "maxPairs": 3,
+  "maxSignalPairs": 2,
+  "noisePolicy": "collapse",
   "failFast": false,
   "failOnDiff": false,
   "reportFormat": "html",
   "resultsDir": "fixtures/cross-repo/labview-icon-editor/settings-init",
+  "requestedModes": [
+    "default"
+  ],
+  "executedModes": [
+    "default"
+  ],
   "modes": [
     {
       "name": "default",
@@ -27,6 +35,8 @@
       "stats": {
         "processed": 2,
         "diffs": 1,
+        "signalDiffs": 1,
+        "noiseCollapsed": 0,
         "lastDiffIndex": 2,
         "lastDiffCommit": "1f2d3c4b5a6e70918273645abcedf0123456789a",
         "stopReason": "complete",
@@ -37,6 +47,13 @@
         },
         "bucketCounts": {
           "metadata": 2
+        },
+        "collapsedNoise": {
+          "count": 0,
+          "indices": [],
+          "commits": [],
+          "categoryCounts": {},
+          "bucketCounts": {}
         }
       },
       "status": "ok"
@@ -46,6 +63,8 @@
     "modes": 1,
     "processed": 2,
     "diffs": 1,
+    "signalDiffs": 1,
+    "noiseCollapsed": 0,
     "errors": 0,
     "missing": 0,
     "categoryCounts": {

@@ -6,10 +6,20 @@
   "startRef": "HEAD",
   "endRef": "",
   "maxPairs": 3,
+  "maxSignalPairs": 2,
+  "noisePolicy": "collapse",
   "failFast": false,
   "failOnDiff": false,
   "reportFormat": "html",
   "resultsDir": "tools/dashboard/samples/ref-compare/history",
+  "requestedModes": [
+    "default",
+    "attributes"
+  ],
+  "executedModes": [
+    "default",
+    "attributes"
+  ],
   "modes": [
     {
       "name": "default",
@@ -27,11 +37,26 @@
       "stats": {
         "processed": 2,
         "diffs": 1,
+        "signalDiffs": 1,
+        "noiseCollapsed": 0,
         "lastDiffIndex": 2,
         "lastDiffCommit": "9f4a1c2d3e4f5a6b7c8d9e0f1a2b3c4d5e6f7a8b",
         "stopReason": "complete",
         "errors": 0,
-        "missing": 0
+        "missing": 0,
+        "categoryCounts": {
+          "block-diagram": 1
+        },
+        "bucketCounts": {
+          "functional-behavior": 1
+        },
+        "collapsedNoise": {
+          "count": 0,
+          "indices": [],
+          "commits": [],
+          "categoryCounts": {},
+          "bucketCounts": {}
+        }
       },
       "status": "ok"
     },
@@ -50,11 +75,22 @@
       "stats": {
         "processed": 1,
         "diffs": 0,
+        "signalDiffs": 0,
+        "noiseCollapsed": 0,
         "lastDiffIndex": null,
         "lastDiffCommit": null,
         "stopReason": "complete",
         "errors": 0,
-        "missing": 0
+        "missing": 0,
+        "categoryCounts": {},
+        "bucketCounts": {},
+        "collapsedNoise": {
+          "count": 0,
+          "indices": [],
+          "commits": [],
+          "categoryCounts": {},
+          "bucketCounts": {}
+        }
       },
       "status": "ok"
     }
@@ -63,8 +99,16 @@
     "modes": 2,
     "processed": 3,
     "diffs": 1,
+    "signalDiffs": 1,
+    "noiseCollapsed": 0,
     "errors": 0,
-    "missing": 0
+    "missing": 0,
+    "categoryCounts": {
+      "block-diagram": 1
+    },
+    "bucketCounts": {
+      "functional-behavior": 1
+    }
   },
   "status": "ok"
 }

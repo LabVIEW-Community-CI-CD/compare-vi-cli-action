@@ -181,6 +181,7 @@ $v1Path = Join-Path $ResultsDir 'session-index.json'
 $v2Path = Join-Path $ResultsDir 'session-index-v2.json'
 $reportPath = Join-Path $ResultsDir 'session-index-v2-contract.json'
 $schemaPath = Join-Path (Get-Location) 'docs/schema/generated/session-index-v2.schema.json'
+$schemaLiteValidatorPath = Join-Path $PSScriptRoot 'Invoke-JsonSchemaLite.ps1'
 
 $failures = @()
 $notes = @()
@@ -195,7 +196,7 @@ if (-not (Test-Path -LiteralPath $v2Path -PathType Leaf)) {
 $v2 = $null
 if (Test-Path -LiteralPath $v2Path -PathType Leaf) {
   try {
-    & node tools/schemas/validate-json.js --schema $schemaPath --data $v2Path
+    & $schemaLiteValidatorPath -JsonPath $v2Path -SchemaPath $schemaPath
     if ($LASTEXITCODE -ne 0) {
       Add-Failure -Failures ([ref]$failures) -Message "Schema validation failed for session-index-v2.json (exit $LASTEXITCODE)."
     }

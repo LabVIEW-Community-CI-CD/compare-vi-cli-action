@@ -12,7 +12,13 @@ Describe 'Cross-repo history fixtures' -Tag 'CompareVI' {
     $manifest = Get-Content -LiteralPath $manifestPath -Raw | ConvertFrom-Json
     $manifest.schema | Should -Be 'vi-compare/history-suite@v1'
     $manifest.targetPath | Should -Be 'resource/plugins/NIIconEditor/Miscellaneous/Settings Init.vi'
+    @($manifest.requestedModes) | Should -Be @('default')
+    @($manifest.executedModes) | Should -Be @('default')
     $manifest.stats.bucketCounts.metadata | Should -Be 2
+
+    $schemaPath = Join-Path $repoRoot 'docs' 'schemas' 'vi-compare-history-suite-v1.schema.json'
+    $schemaValidation = & node (Join-Path $repoRoot 'tools' 'npm' 'run-script.mjs') 'schema:validate' '--' '--schema' $schemaPath '--data' $manifestPath 2>&1
+    $LASTEXITCODE | Should -Be 0 -Because (($schemaValidation | ForEach-Object { "$_" }) -join [Environment]::NewLine)
 
     $defaultManifestPath = Join-Path $fixtureRoot 'default-manifest.json'
     $defaultManifestPath | Should -Exist

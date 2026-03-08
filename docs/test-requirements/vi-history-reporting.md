@@ -38,12 +38,16 @@ real LVCompare artifacts are captured in CI. Current tests verify flag wiring vi
 1. `modes` input shall accept comma/semicolon separated tokens (case-insensitive) and default to `default`.
 1. Workflow shall invoke the helper once per mode, writing outputs to `tests/results/ref-compare/history/<mode>`.
 1. `steps.history.outputs['manifest-path']` shall resolve to the aggregate history suite manifest.
+1. The aggregate suite manifest shall record normalized `requestedModes[]` and `executedModes[]` arrays so consumers can distinguish the requested mode bundle from the modes that actually ran.
 1. `steps.history.outputs['mode-manifests-json']` shall emit a JSON array describing each requested mode (slug,
-   manifest path, results directory, processed count, diff count, status).
+   manifest path, results directory, processed count, diff count, signal diff count, collapsed noise count, error
+   count, category counts, bucket counts, and status).
+1. `steps.history.outputs['requested-mode-list']` and `steps.history.outputs['executed-mode-list']` shall emit the
+   normalized mode bundle as comma-separated mode slugs in execution order.
 1. `steps.history.outputs['results-dir']` shall equal the root history directory.
 1. Step summary shall report target, requested/resolved start refs, processed pairs, stop reason, last diff, and active
-   mode for each iteration, and render a per-mode Markdown table covering processed/diff/missing counts (including
-   last diff details).
+   mode for each iteration, and render a per-mode Markdown table covering processed/diff/signal/collapsed-noise/missing
+   counts (including last diff details).
 1. `vi-compare-manifests` artifact shall include the aggregate history suite manifest and each mode's `manifest.json`
    and `*-summary.json` files; execution traces (`*-exec.json`) remain local to keep the upload lean.
 1. Single-mode (`default`) runs shall produce the same layout as the legacy workflow.
@@ -52,7 +56,7 @@ real LVCompare artifacts are captured in CI. Current tests verify flag wiring vi
 ## Documentation
 
 1. `docs/knowledgebase/VICompare-Refs-Workflow.md` shall describe the `modes` input and multi-mode dispatch examples.
-1. Documentation shall explain helper usage with `-Mode` and how manifest fields map to modes and flag bundles.
+1. Documentation shall explain helper usage with `-Mode`, how `requestedModes[]` / `executedModes[]` map to the mode
+   bundle, and how the stable `mode-manifests-json` payload exposes per-mode stats.
 1. Documentation shall note that artifacts are partitioned per mode and that report-format tests will be enriched with
    real LVCompare outputs.
-
