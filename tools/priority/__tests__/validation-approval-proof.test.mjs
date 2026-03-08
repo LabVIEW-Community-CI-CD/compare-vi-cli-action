@@ -58,7 +58,7 @@ function createSignalFixture({ prNumber, headSha, currentHeadReview, actionableC
       updatedAt: '2026-03-08T08:00:00.000Z',
     },
     summary: {
-      copilotReviewCount: currentHeadReview ? 1 : 1,
+      copilotReviewCount: 1,
       currentHeadReviewCount: currentHeadReview ? 1 : 0,
       staleReviewCount,
       unresolvedThreadCount,
