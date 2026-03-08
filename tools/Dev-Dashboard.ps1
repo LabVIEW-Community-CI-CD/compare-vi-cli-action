@@ -474,6 +474,9 @@ function Write-TerminalReport {
         }
         Write-Host ("    Last     : {0}" -f $dispatcherLast)
       }
+      foreach ($runtimeError in @($dispatcherRuntime.Errors | Where-Object { $_ -and $_ -ne '' })) {
+        Write-Host ("    Error    : {0}" -f $runtimeError)
+      }
     }
     if ($restWatcherRuntime) {
       Write-Host ("  REST Watcher: count={0} present={1}" -f $restWatcherRuntime.Count, $restWatcherRuntime.Present)
@@ -488,6 +491,9 @@ function Write-TerminalReport {
           }
         }
         Write-Host ("    Last      : {0}" -f $restLast)
+      }
+      foreach ($runtimeError in @($restWatcherRuntime.Errors | Where-Object { $_ -and $_ -ne '' })) {
+        Write-Host ("    Error     : {0}" -f $runtimeError)
       }
     }
     Write-Host ''
@@ -876,6 +882,7 @@ function ConvertTo-HtmlReport {
   $dispatcherRuntime = if ($runtimeEvents -and $runtimeEvents.PSObject.Properties.Name -contains 'Dispatcher') { $runtimeEvents.Dispatcher } else { $null }
   $restWatcherRuntime = if ($runtimeEvents -and $runtimeEvents.PSObject.Properties.Name -contains 'RestWatcher') { $runtimeEvents.RestWatcher } else { $null }
   $runtimeEventRows = [System.Collections.Generic.List[string]]::new()
+  $runtimeEventWarnings = [System.Collections.Generic.List[string]]::new()
   foreach ($eventEntry in @(
       [pscustomobject]@{ Label = 'Dispatcher'; Data = $dispatcherRuntime },
       [pscustomobject]@{ Label = 'REST Watcher'; Data = $restWatcherRuntime }
@@ -883,6 +890,14 @@ function ConvertTo-HtmlReport {
     if (-not $eventEntry.Data) { continue }
     $summary = 'present={0} count={1}' -f $eventEntry.Data.Present, $eventEntry.Data.Count
     if ($eventEntry.Data.Source) { $summary += ' source=' + $eventEntry.Data.Source }
+    $eventErrors = @()
+    if ($eventEntry.Data.PSObject.Properties.Name -contains 'Errors' -and $eventEntry.Data.Errors) {
+      $eventErrors = @($eventEntry.Data.Errors | Where-Object { $_ -and $_ -ne '' })
+    }
+    if ($eventErrors.Count -gt 0) {
+      $summary += ' errors=' + $eventErrors.Count
+      $runtimeEventWarnings.Add(('{0}: {1}' -f $eventEntry.Label, ([string]::Join('; ', $eventErrors)))) | Out-Null
+    }
     $lastDisplay = $eventEntry.Data.LastEventAt
     if ($lastDisplay -and ($eventEntry.Data.LastLevel -or $eventEntry.Data.LastPhase)) {
       $lastKinds = @($eventEntry.Data.LastLevel, $eventEntry.Data.LastPhase) | Where-Object { $_ -and $_ -ne '' }
@@ -892,10 +907,15 @@ function ConvertTo-HtmlReport {
     }
     $runtimeEventRows.Add("<tr><td>$(& $encode $eventEntry.Label)</td><td>$(& $encode $summary)</td><td>$(& $encode $eventEntry.Data.Path)</td><td>$(& $encode $lastDisplay)</td></tr>") | Out-Null
   }
-  $runtimeEventsHtml = if ($runtimeEventRows.Count -gt 0) {
-    "<table><thead><tr><th>Stream</th><th>Summary</th><th>Path</th><th>Last Event</th></tr></thead><tbody>$([string]::Join('', $runtimeEventRows))</tbody></table>"
+  $runtimeEventWarningsHtml = if ($runtimeEventWarnings.Count -gt 0) {
+    "<p class='severity-warning'>Runtime event warnings: $(& $encode ([string]::Join(' | ', $runtimeEventWarnings)))</p>"
   } else {
-    '<p>No runtime event artifacts.</p>'
+    ''
+  }
+  $runtimeEventsHtml = if ($runtimeEventRows.Count -gt 0) {
+    "<table><thead><tr><th>Stream</th><th>Summary</th><th>Path</th><th>Last Event</th></tr></thead><tbody>$([string]::Join('', $runtimeEventRows))</tbody></table>$runtimeEventWarningsHtml"
+  } else {
+    "<p>No runtime event artifacts.</p>$runtimeEventWarningsHtml"
   }
 
   $watchHasLast = ($watch -and $watch.Last)

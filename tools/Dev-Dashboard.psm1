@@ -1074,6 +1074,36 @@ function Get-ActionItems {
         Message  = "Unable to parse Pester artifact ($error)."
       }
     }
+
+    $runtimeEvents = if ($PesterTelemetry.PSObject.Properties.Name -contains 'RuntimeEvents') { $PesterTelemetry.RuntimeEvents } else { $null }
+    foreach ($eventStream in @(
+        [pscustomobject]@{
+          Label = 'Dispatcher'
+          Data = if ($runtimeEvents -and $runtimeEvents.PSObject.Properties.Name -contains 'Dispatcher') { $runtimeEvents.Dispatcher } else { $null }
+        },
+        [pscustomobject]@{
+          Label = 'REST Watcher'
+          Data = if ($runtimeEvents -and $runtimeEvents.PSObject.Properties.Name -contains 'RestWatcher') { $runtimeEvents.RestWatcher } else { $null }
+        }
+      )) {
+      if (-not $eventStream.Data) { continue }
+      $streamErrors = @()
+      if ($eventStream.Data.PSObject.Properties.Name -contains 'Errors' -and $eventStream.Data.Errors) {
+        $streamErrors = @($eventStream.Data.Errors | Where-Object { $_ -and $_ -ne '' })
+      }
+      foreach ($streamError in $streamErrors) {
+        $pathHint = if ($eventStream.Data.PSObject.Properties.Name -contains 'Path' -and $eventStream.Data.Path) {
+          $eventStream.Data.Path
+        } else {
+          'runtime-event artifact'
+        }
+        $items += [pscustomobject]@{
+          Category = 'RuntimeEvents'
+          Severity = 'warning'
+          Message  = "Runtime event stream '$($eventStream.Label)' could not be fully parsed ($streamError). Inspect $pathHint."
+        }
+      }
+    }
   }
 
   if ($AgentWait) {

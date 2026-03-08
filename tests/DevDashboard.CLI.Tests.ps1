@@ -51,4 +51,28 @@ Describe 'Dev Dashboard CLI' -Tag 'Unit' {
   It 'renders terminal report without throwing' {
     { & $script:cliPath -Group 'pester-selfhosted' -ResultsRoot $script:samplesRoot | Out-Null } | Should -Not -Throw
   }
+
+  It 'surfaces runtime event parse warnings to JSON, action items, terminal, and HTML' {
+    $resultsRoot = Join-Path $TestDrive 'samples-invalid-events'
+    Copy-Item -LiteralPath $script:samplesRoot -Destination $resultsRoot -Recurse -Force
+    Add-Content -LiteralPath (Join-Path $resultsRoot 'watcher-events.ndjson') -Value '{ invalid json' -Encoding utf8
+
+    $jsonOutput = & $script:cliPath -Group 'pester-selfhosted' -ResultsRoot $resultsRoot -Quiet -Json
+    $json = (($jsonOutput | Out-String) | ConvertFrom-Json)
+
+    $json.PesterTelemetry.RuntimeEvents.RestWatcher.Errors.Count | Should -BeGreaterThan 0
+    ($json.ActionItems | Where-Object { $_.Category -eq 'RuntimeEvents' }).Count | Should -BeGreaterThan 0
+    (($json.ActionItems | Where-Object { $_.Category -eq 'RuntimeEvents' } | Select-Object -ExpandProperty Message) -join "`n") | Should -Match 'REST Watcher'
+
+    $terminalOutput = (& $script:cliPath -Group 'pester-selfhosted' -ResultsRoot $resultsRoot 6>&1 | Out-String)
+    $terminalOutput | Should -Match 'Runtime Events'
+    $terminalOutput | Should -Match 'REST Watcher: count=2 present=True'
+    $terminalOutput | Should -Match 'Error\s+:'
+
+    $htmlPath = Join-Path $TestDrive 'dashboard-invalid-events.html'
+    & $script:cliPath -Group 'pester-selfhosted' -ResultsRoot $resultsRoot -Quiet -Html -HtmlPath $htmlPath | Out-Null
+    $html = Get-Content -LiteralPath $htmlPath -Raw
+    $html | Should -Match 'Runtime event warnings:'
+    $html | Should -Match 'errors=1'
+  }
 }
