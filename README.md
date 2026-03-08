@@ -18,6 +18,20 @@ The latest rev streamlines the workflow inputs so SMEs only need to provide:
 Additional knobs remain available but defaulted so most runs require no extra
 tuning.
 
+## Documentation portal
+
+Use the [GitHub wiki](https://github.com/LabVIEW-Community-CI-CD/compare-vi-cli-action/wiki) as the public entry
+portal for this repository. It is curated for fast navigation and links outward to the detailed checked-in docs.
+The published wiki pages themselves live in GitHub's separate wiki backing repo,
+`LabVIEW-Community-CI-CD/compare-vi-cli-action.wiki.git`.
+
+The authoritative documentation still lives in this repository:
+
+- `docs/` for runbooks, policy, and technical contracts
+- `AGENTS.md` for future-agent operating rules
+- `docs/knowledgebase/GitHub-Intake-Layer.md` for issue/PR intake guidance
+- `docs/knowledgebase/GitHub-Wiki-Portal.md` for the wiki-vs-repo-docs contract
+
 ## Quick start
 
 ### GitHub UI

@@ -3,6 +3,9 @@ contact_links:
   - name: Agent Handbook
     url: https://github.com/LabVIEW-Community-CI-CD/compare-vi-cli-action/blob/develop/AGENTS.md
     about: Standing-priority policy, CLI guidance, and repository operating rules for future agents.
+  - name: GitHub Wiki Portal
+    url: https://github.com/LabVIEW-Community-CI-CD/compare-vi-cli-action/wiki
+    about: Curated public navigation for getting started, runbooks, and contribution guidance.
   - name: GitHub Intake Layer Guide
     url: https://github.com/LabVIEW-Community-CI-CD/compare-vi-cli-action/blob/develop/docs/knowledgebase/GitHub-Intake-Layer.md
     about: Template strategy, helper scripts, and when to use each issue or PR intake path.

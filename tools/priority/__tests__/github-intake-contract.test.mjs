@@ -44,6 +44,7 @@ test('github intake layer issue forms are structured and blank issues are disabl
   assert.equal(config.blank_issues_enabled, false);
   assert.ok(Array.isArray(config.contact_links));
   assert.ok(config.contact_links.some((link) => String(link.url).includes('GitHub-Intake-Layer.md')));
+  assert.ok(config.contact_links.some((link) => String(link.url).includes('/wiki')));
 
   const featureIds = featureForm.body.filter((item) => item.id).map((item) => item.id);
   assert.ok(featureIds.includes('problem'));
@@ -57,8 +58,10 @@ test('github intake layer issue forms are structured and blank issues are disabl
 test('github intake docs and manifest reference the new helper layer', () => {
   const snippets = readText('.github/PR_COMMENT_SNIPPETS.md');
   const agents = readText('AGENTS.md');
+  const readme = readText('README.md');
   const manifest = JSON.parse(readText('docs/documentation-manifest.json'));
   const intakeGuide = readText('docs/knowledgebase/GitHub-Intake-Layer.md');
+  const wikiGuide = readText('docs/knowledgebase/GitHub-Wiki-Portal.md');
   const orchestrator = readText('tools/Branch-Orchestrator.ps1');
   const intakeModule = readText('tools/GitHubIntake.psm1');
   const oneButtonValidate = readText('tools/Run-OneButtonValidate.ps1');
@@ -66,9 +69,14 @@ test('github intake docs and manifest reference the new helper layer', () => {
   assert.match(snippets, /New-IssueBody\.ps1/);
   assert.match(snippets, /Branch-Orchestrator\.ps1/);
   assert.match(agents, /New-IssueBody\.ps1/);
+  assert.match(agents, /GitHub wiki as a curated portal only/);
+  assert.match(readme, /compare-vi-cli-action\/wiki/);
   assert.match(agents, /-PRTemplate workflow-policy\|human-change/);
   assert.match(intakeGuide, /New-PullRequestBody\.ps1/);
+  assert.match(intakeGuide, /GitHub-Wiki-Portal\.md/);
   assert.match(intakeGuide, /gh pr create --title "<title>" --body-file pr-body\.md/);
+  assert.match(wikiGuide, /Authoritative repo docs/);
+  assert.match(wikiGuide, /README\.md/);
   assert.match(orchestrator, /Import-Module \(Join-Path \$PSScriptRoot 'GitHubIntake\.psm1'\)/);
   assert.match(orchestrator, /'pr'\s+'create'\s+'--title'/);
   assert.match(orchestrator, /'pr'\s+'view'\s+\$branchName\s+'--json'\s+'number'/);
@@ -88,4 +96,5 @@ test('github intake docs and manifest reference the new helper layer', () => {
   const docsEntry = manifest.entries.find((entry) => entry.name === 'Docs Tree');
   assert.ok(docsEntry);
   assert.ok(docsEntry.files.includes('docs/knowledgebase/GitHub-Intake-Layer.md'));
+  assert.ok(docsEntry.files.includes('docs/knowledgebase/GitHub-Wiki-Portal.md'));
 });
