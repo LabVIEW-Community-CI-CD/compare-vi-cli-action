@@ -37,3 +37,10 @@ test('validate heavy jobs consume scoped lane decisions without skipping require
   assert.match(workflow, /VALIDATE_SCOPE_RUN_VI_HISTORY:\s+\$\{\{\s*needs\.validate-scope-plan\.outputs\.run_vi_history\s*\}\}/);
   assert.match(workflow, /VALIDATE_SCOPE_VI_HISTORY_REASON:\s+\$\{\{\s*needs\.validate-scope-plan\.outputs\.vi_history_reason\s*\}\}/);
 });
+
+test('validate lint job runs release conductor contract coverage for issue branches', () => {
+  const workflow = readRepoFile('.github/workflows/validate.yml');
+
+  assert.match(workflow, /name:\s+Release conductor contract tests/);
+  assert.match(workflow, /node tools\/npm\/run-script\.mjs priority:release:conductor:test/);
+});

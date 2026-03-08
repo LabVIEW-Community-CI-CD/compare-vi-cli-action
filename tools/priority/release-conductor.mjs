@@ -396,6 +396,28 @@ export function evaluateQuarantineGate({
   };
 }
 
+function isQueueReportUnavailableGate(gate) {
+  if (gate?.status !== 'fail') {
+    return false;
+  }
+  const reasons = Array.isArray(gate?.reasons) ? gate.reasons : [];
+  return reasons.length > 0 && reasons.every((reason) => reason === 'queue-report-unavailable');
+}
+
+function isDryRunGreenDwellAdvisory(gate) {
+  if (gate?.status !== 'fail') {
+    return false;
+  }
+  const reasons = Array.isArray(gate?.reasons) ? gate.reasons : [];
+  return reasons.length > 0 && reasons.every((reason) => reason.startsWith('no-success-'));
+}
+
+function pushUniqueDecisionEntry(entries, entry) {
+  if (!entries.some((candidate) => candidate.code === entry.code)) {
+    entries.push(entry);
+  }
+}
+
 function fetchWorkflowRunsByName({ runGhJsonFn, repository, branch, sampleSize, cwd }) {
   const workflowRunsByName = {};
   const fetchErrors = [];
@@ -482,7 +504,9 @@ export async function runReleaseConductor(options = {}) {
     staleHours: args.quarantineStaleHours
   });
 
+  const applyRequested = Boolean(args.apply && !args.dryRun);
   const blockers = [];
+  const advisories = [];
   if (fetchErrors.length > 0) {
     blockers.push({
       code: 'workflow-fetch-failed',
@@ -490,16 +514,30 @@ export async function runReleaseConductor(options = {}) {
     });
   }
   if (greenDwellGate.status !== 'pass') {
-    blockers.push({
-      code: 'green-dwell-failed',
-      message: `Required workflows were not continuously green for ${args.dwellMinutes} minutes.`
-    });
+    if (!applyRequested && isDryRunGreenDwellAdvisory(greenDwellGate)) {
+      pushUniqueDecisionEntry(advisories, {
+        code: 'green-dwell-no-recent-success',
+        message: `No successful required workflow run was observed in the last ${args.dwellMinutes} minutes; dry-run remains proposal-only.`
+      });
+    } else {
+      blockers.push({
+        code: 'green-dwell-failed',
+        message: `Required workflows were not continuously green for ${args.dwellMinutes} minutes.`
+      });
+    }
   }
   if (queueHealthGate.status !== 'pass') {
-    blockers.push({
-      code: 'queue-health-failed',
-      message: 'Queue supervisor reported paused/stabilize state.'
-    });
+    if (!applyRequested && isQueueReportUnavailableGate(queueHealthGate)) {
+      pushUniqueDecisionEntry(advisories, {
+        code: 'queue-report-unavailable-dry-run',
+        message: 'Queue supervisor evidence is unavailable; queue health and quarantine checks remain advisory while release conductor stays proposal-only.'
+      });
+    } else {
+      blockers.push({
+        code: 'queue-health-failed',
+        message: 'Queue supervisor reported paused/stabilize state.'
+      });
+    }
   }
   if (policySnapshotGate.status !== 'pass') {
     blockers.push({
@@ -508,13 +546,19 @@ export async function runReleaseConductor(options = {}) {
     });
   }
   if (quarantineGate.status !== 'pass') {
-    blockers.push({
-      code: 'stale-quarantine-failed',
-      message: 'Queue quarantine has stale entries that require manual remediation.'
-    });
+    if (!applyRequested && isQueueReportUnavailableGate(quarantineGate)) {
+      pushUniqueDecisionEntry(advisories, {
+        code: 'queue-report-unavailable-dry-run',
+        message: 'Queue supervisor evidence is unavailable; queue health and quarantine checks remain advisory while release conductor stays proposal-only.'
+      });
+    } else {
+      blockers.push({
+        code: 'stale-quarantine-failed',
+        message: 'Queue quarantine has stale entries that require manual remediation.'
+      });
+    }
   }
 
-  const applyRequested = Boolean(args.apply && !args.dryRun);
   const conductorEnabled = String(environment.RELEASE_CONDUCTOR_ENABLED ?? '').trim() === '1';
   if (applyRequested && !conductorEnabled) {
     blockers.push({
@@ -590,7 +634,9 @@ export async function runReleaseConductor(options = {}) {
     decision: {
       status,
       blockerCount: blockers.length,
-      blockers
+      blockers,
+      advisoryCount: advisories.length,
+      advisories
     }
   };
 
@@ -611,7 +657,7 @@ export async function main(argv = process.argv) {
 
   const { report, reportPath, exitCode } = await runReleaseConductor({ args });
   console.log(
-    `[release-conductor] report: ${reportPath} status=${report.decision.status} blockers=${report.decision.blockerCount}`
+    `[release-conductor] report: ${reportPath} status=${report.decision.status} blockers=${report.decision.blockerCount} advisories=${report.decision.advisoryCount}`
   );
   if (report.release.targetTag) {
     console.log(`[release-conductor] targetTag=${report.release.targetTag} proposalOnly=${report.release.proposalOnly}`);

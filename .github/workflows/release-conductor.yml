@@ -89,10 +89,14 @@ jobs:
 
           $eventName = '${{ github.event_name }}'
           $apply = $false
+          $conductorEnabled = ($env:RELEASE_CONDUCTOR_ENABLED -eq '1')
           if ($eventName -eq 'workflow_dispatch') {
             $apply = ('${{ inputs.apply }}' -eq 'true')
           } elseif ($eventName -eq 'workflow_run') {
-            $apply = $true
+            $apply = $conductorEnabled
+            if (-not $apply) {
+              Write-Host 'Release conductor apply mode disabled; workflow_run will remain proposal-only.'
+            }
           }
 
           if ($apply) {

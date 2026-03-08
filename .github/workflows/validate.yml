@@ -153,6 +153,11 @@ jobs:
       run: |
         pwsh -File tools/PrePush-Checks.ps1
 
+    - name: Release conductor contract tests
+      shell: bash
+      run: |
+        node tools/npm/run-script.mjs priority:release:conductor:test
+
     - name: Policy guard (branch protection)
       if: ${{ github.event.repository.fork == false }}
       shell: pwsh

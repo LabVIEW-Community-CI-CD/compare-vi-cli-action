@@ -62,6 +62,7 @@
     "priority:queue:supervisor": "node tools/priority/queue-supervisor.mjs",
     "priority:queue:readiness": "node tools/priority/queue-readiness.mjs",
     "priority:review:signal": "tsc -p tsconfig.json && node dist/tools/priority/copilot-review-signal.js",
+    "priority:release:conductor:test": "node --test tools/priority/__tests__/release-conductor.test.mjs tools/priority/__tests__/release-conductor-schema.test.mjs tools/priority/__tests__/release-conductor-workflow-contract.test.mjs",
     "priority:validation:attestation": "tsc -p tsconfig.json && node dist/tools/priority/validation-agent-attestation.js",
     "priority:validation:broker": "node tools/priority/validation-approval-broker.mjs",
     "priority:validation:helper": "node tools/priority/validation-approval-helper.mjs",
