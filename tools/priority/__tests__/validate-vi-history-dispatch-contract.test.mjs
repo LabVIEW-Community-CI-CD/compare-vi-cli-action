@@ -17,6 +17,8 @@ test('validate workflow centralizes VI-history dispatch planning before Linux an
   assert.match(workflow, /vi-history-scenarios-plan:/);
   assert.match(workflow, /Resolve VI history dispatch plan/);
   assert.match(workflow, /tools\/Resolve-ValidateVIHistoryDispatchPlan\.ps1/);
+  assert.match(workflow, /-EnableScopedExecution:\$enableScopedExecution/);
+  assert.match(workflow, /-ScopedSkipReason \$env:VALIDATE_SCOPE_VI_HISTORY_REASON/);
   assert.match(workflow, /execute_lanes:\s+\$\{\{\s*steps\.plan\.outputs\.execute_lanes\s*\}\}/);
   assert.match(workflow, /history_scenario_set:\s+\$\{\{\s*steps\.plan\.outputs\.history_scenario_set\s*\}\}/);
 });
@@ -24,7 +26,7 @@ test('validate workflow centralizes VI-history dispatch planning before Linux an
 test('validate workflow Linux and Windows VI-history lanes consume the shared dispatch-plan outputs', () => {
   const workflow = readRepoFile('.github/workflows/validate.yml');
 
-  assert.match(workflow, /needs:\s*\[smoke-gate, lint, fixtures, session-index, session-index-v2-contract, vi-history-scenarios-plan\]/);
+  assert.match(workflow, /needs:\s*\[smoke-gate, lint, session-index, session-index-v2-contract, vi-history-scenarios-plan\]/);
   assert.match(workflow, /needs\.vi-history-scenarios-plan\.outputs\.execute_lanes == 'true'/);
   assert.match(workflow, /needs\.vi-history-scenarios-plan\.outputs\.history_scenario_set/);
   assert.doesNotMatch(workflow, /Resolve VI history Linux lane execution mode/);

@@ -298,6 +298,19 @@ For Docker/Desktop VI history validation, run fast-loop lanes explicitly:
   commits land on `develop`/`main`.
 - Keep PRs focused and include the standing issue reference (`#<number>`) in the commit subject and PR description.
 - Ensure required checks (`validate`, `fixtures`, `session-index`) are green before merging; rerun as needed.
+- `Validate` now computes a `validate-scope-plan` artifact before the heavy lanes fan out.
+  Standard `pull_request` and `merge_group` runs classify changed paths with an allow-list into:
+  `docs-metadata-only`, `tools-policy-only`, `ci-control-plane`, `compare-engine-history`,
+  `docker-vi-history`, plus conservative fallbacks (`mixed-runtime`, `unclassified`).
+  Manual `workflow_dispatch` stays explicit (`manual-full`) and `push` keeps the default post-merge full validation shape.
+- Scoped skip surfaces:
+  `fixtures` only runs for `compare-engine-history`, `mixed-runtime`, `unclassified`, and explicit full-validation modes.
+  `comparevi-history-bundle-certification` follows the same routing.
+  `vi-history-scenarios-*` runs for `compare-engine-history`, `docker-vi-history`, `mixed-runtime`, `unclassified`, and
+  explicit manual dispatches; the final VI-history plan still honors `history_scenario_set`.
+- Machine-readable routing evidence is written to
+  `tests/results/_agent/validate-scope-plan/validate-scope-plan.json` and summarized in the Validate step summary so
+  reviewers can see why heavy lanes were bypassed.
 - On `develop`, Copilot review is expected on ready PRs. Use **Draft PR** state as the explicit escape hatch when you do
   not want Copilot review to run yet. Ready `develop` PRs also need the `agent-review-policy` check to turn green after
   either:

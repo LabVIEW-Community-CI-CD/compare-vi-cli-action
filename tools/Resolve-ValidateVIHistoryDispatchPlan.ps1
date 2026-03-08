@@ -7,6 +7,9 @@ param(
   [string]$HistoryScenarioSet = 'smoke',
   [bool]$AllowNonCanonical = $false,
   [bool]$AllowNonCanonicalHistoryCore = $false,
+  [bool]$EnableScopedExecution = $false,
+  [string]$ScopedSkipReason = '',
+  [string]$ScopedHistoryScenarioSet = 'smoke',
   [string]$GitHubOutputPath = '',
   [string]$StepSummaryPath = '',
   [string]$JsonPath = ''
@@ -53,6 +56,16 @@ if ($EventName -eq 'workflow_dispatch') {
       $skipReason = 'enabled'
     }
   }
+} elseif ($EnableScopedExecution) {
+  $resolvedHistoryScenarioSet = Normalize-HistoryScenarioSet -Value $ScopedHistoryScenarioSet
+  if ($resolvedHistoryScenarioSet -eq 'none') {
+    $skipReason = 'scoped-history-scenario-set-none'
+  } else {
+    $executeLanes = $true
+    $skipReason = 'scoped-change'
+  }
+} elseif (-not [string]::IsNullOrWhiteSpace($ScopedSkipReason)) {
+  $skipReason = $ScopedSkipReason.Trim()
 }
 
 $plan = [ordered]@{
@@ -68,6 +81,8 @@ $plan = [ordered]@{
   downgradedHistoryCore = [bool]$downgradedHistoryCore
   allowNonCanonical = [bool]$AllowNonCanonical
   allowNonCanonicalHistoryCore = [bool]$AllowNonCanonicalHistoryCore
+  enableScopedExecution = [bool]$EnableScopedExecution
+  scopedSkipReason = if ([string]::IsNullOrWhiteSpace($ScopedSkipReason)) { $null } else { $ScopedSkipReason.Trim() }
 }
 
 if (-not [string]::IsNullOrWhiteSpace($JsonPath)) {
@@ -97,7 +112,8 @@ if (-not [string]::IsNullOrWhiteSpace($StepSummaryPath)) {
     ('- history_scenario_set: `{0}`' -f $plan.historyScenarioSet),
     ('- execute_lanes: `{0}`' -f $plan.executeLanes.ToString().ToLowerInvariant()),
     ('- skip_reason: `{0}`' -f $plan.skipReason),
-    ('- downgraded_history_core: `{0}`' -f $plan.downgradedHistoryCore.ToString().ToLowerInvariant())
+    ('- downgraded_history_core: `{0}`' -f $plan.downgradedHistoryCore.ToString().ToLowerInvariant()),
+    ('- scoped_execution: `{0}`' -f $plan.enableScopedExecution.ToString().ToLowerInvariant())
   )
   if ($plan.skipReason -eq 'noncanonical-disabled') {
     $lines += ''
