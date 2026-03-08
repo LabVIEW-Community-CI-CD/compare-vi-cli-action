@@ -71,7 +71,25 @@ if (-not $Issue) {
   if (Test-Path -LiteralPath $snapDir -PathType Container) {
     $latest = Get-ChildItem -LiteralPath $snapDir -Filter '*.json' | Sort-Object LastWriteTime -Descending | Select-Object -First 1
   }
-  if (-not $latest) { throw 'Issue not specified and no snapshot found.' }
+  if (-not $latest) {
+    $cachePath = Join-Path $repo '.agent_priority_cache.json'
+    if (Test-Path -LiteralPath $cachePath -PathType Leaf) {
+      try {
+        $cache = Get-Content -LiteralPath $cachePath -Raw | ConvertFrom-Json -ErrorAction Stop
+        if (($cache.PSObject.Properties.Name -contains 'state') -and
+          ([string]$cache.state).Trim().ToUpperInvariant() -eq 'NONE' -and
+          ($cache.PSObject.Properties.Name -contains 'noStandingReason') -and
+          ([string]$cache.noStandingReason).Trim().ToLowerInvariant() -eq 'queue-empty') {
+          throw 'Standing-priority queue is empty; create or label the next issue before running Branch-Orchestrator.'
+        }
+      } catch {
+        if ($_.Exception.Message -match 'Standing-priority queue is empty') {
+          throw
+        }
+      }
+    }
+    throw 'Issue not specified and no snapshot found.'
+  }
   $snap = Get-Content -LiteralPath $latest.FullName -Raw | ConvertFrom-Json -ErrorAction Stop
   $Issue = [int]$snap.number
 }

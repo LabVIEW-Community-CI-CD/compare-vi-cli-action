@@ -376,6 +376,10 @@ For Docker/Desktop VI history validation, run fast-loop lanes explicitly:
   missing or duplicate standing-priority labels fail fast and emit deterministic diagnostics:
   - `tests/results/_agent/issue/no-standing-priority.json`
   - `tests/results/_agent/issue/multiple-standing-priority.json`
+  When the repository has zero open issues, the no-standing report now records
+  `reason = queue-empty` plus `openIssueCount = 0`; that is an idle-repository
+  state, not label drift, so bootstrap and lane sync should complete without
+  forcing a synthetic standing issue.
   By default, sync does not create `.agent_priority_cache.json` on fresh clones; pass
   `--materialize-cache` (or set `AGENT_PRIORITY_MATERIALIZE_CACHE=1`) when you explicitly want cache materialization.
 - Enforce milestone hygiene for `standing-priority` / `program` / `[P0|P1]` issues with

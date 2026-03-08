@@ -311,7 +311,7 @@
     },
     {
       "url": "https://github.com/LabVIEW-Community-CI-CD/compare-vi-cli-action/issues/904",
-      "status": "In Progress",
+      "status": "Done",
       "program": "Shared Infra",
       "phase": "Policy",
       "environmentClass": "Infra",
@@ -321,7 +321,7 @@
     },
     {
       "url": "https://github.com/LabVIEW-Community-CI-CD/compare-vi-cli-action/issues/906",
-      "status": "Todo",
+      "status": "Done",
       "program": "Shared Infra",
       "phase": "Sustain",
       "environmentClass": "Infra",
@@ -331,11 +331,21 @@
     },
     {
       "url": "https://github.com/LabVIEW-Community-CI-CD/compare-vi-cli-action/issues/907",
-      "status": "Todo",
+      "status": "Done",
       "program": "Shared Infra",
       "phase": "Sustain",
       "environmentClass": "Infra",
       "blockingSignal": "CI",
+      "evidenceState": "Ready",
+      "portfolioTrack": "Agent UX"
+    },
+    {
+      "url": "https://github.com/LabVIEW-Community-CI-CD/compare-vi-cli-action/issues/911",
+      "status": "In Progress",
+      "program": "Shared Infra",
+      "phase": "Sustain",
+      "environmentClass": "Infra",
+      "blockingSignal": "Scope",
       "evidenceState": "Ready",
       "portfolioTrack": "Agent UX"
     },

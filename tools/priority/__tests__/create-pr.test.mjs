@@ -5,6 +5,7 @@ import assert from 'node:assert/strict';
 import {
   parseRouterIssueNumber,
   parseCacheIssueNumber,
+  parseCacheNoStandingReason,
   resolveStandingIssueNumberForPr,
   parseIssueNumberFromBranch,
   assertBranchMatchesIssue,
@@ -58,6 +59,23 @@ test('parseCacheIssueNumber rejects closed or non-standing cache entries', () =>
   );
 });
 
+test('parseCacheNoStandingReason exposes queue-empty idle cache state', () => {
+  assert.equal(
+    parseCacheNoStandingReason({
+      state: 'NONE',
+      noStandingReason: 'queue-empty'
+    }),
+    'queue-empty'
+  );
+  assert.equal(
+    parseCacheNoStandingReason({
+      state: 'OPEN',
+      noStandingReason: 'queue-empty'
+    }),
+    null
+  );
+});
+
 test('resolveStandingIssueNumberForPr prefers router over cache', () => {
   const result = resolveStandingIssueNumberForPr('/tmp/repo', {
     readJsonFn: (filePath) => {
@@ -72,7 +90,7 @@ test('resolveStandingIssueNumberForPr prefers router over cache', () => {
     }
   });
 
-  assert.deepEqual(result, { issueNumber: 680, source: 'router' });
+  assert.deepEqual(result, { issueNumber: 680, source: 'router', noStandingReason: null });
 });
 
 test('resolveStandingIssueNumberForPr treats explicit empty router issue as authoritative', () => {
@@ -83,13 +101,14 @@ test('resolveStandingIssueNumberForPr treats explicit empty router issue as auth
       }
       return {
         number: 680,
-        state: 'open',
-        labels: ['standing-priority']
+        state: 'NONE',
+        labels: [],
+        noStandingReason: 'queue-empty'
       };
     }
   });
 
-  assert.deepEqual(result, { issueNumber: null, source: 'router' });
+  assert.deepEqual(result, { issueNumber: null, source: 'router', noStandingReason: 'queue-empty' });
 });
 
 test('resolveStandingIssueNumberForPr falls back to cache when router is unavailable', () => {
@@ -106,7 +125,27 @@ test('resolveStandingIssueNumberForPr falls back to cache when router is unavail
     }
   });
 
-  assert.deepEqual(result, { issueNumber: 680, source: 'cache' });
+  assert.deepEqual(result, { issueNumber: 680, source: 'cache', noStandingReason: null });
+});
+
+test('createPriorityPr refuses to open a priority PR when the standing queue is empty', () => {
+  assert.throws(
+    () =>
+      createPriorityPr({
+        env: {},
+        getRepoRootFn: () => '/tmp/repo',
+        getCurrentBranchFn: () => 'feature/manual-follow-up',
+        ensureGhCliFn: () => {},
+        resolveUpstreamFn: () => ({ owner: 'upstream-owner', repo: 'repo' }),
+        ensureOriginForkFn: () => ({ owner: 'fork-owner', repo: 'repo' }),
+        pushBranchFn: () => {},
+        runGhPrCreateFn: () => {
+          throw new Error('should not create PR');
+        },
+        resolveStandingIssueNumberFn: () => ({ issueNumber: null, source: 'router', noStandingReason: 'queue-empty' })
+      }),
+    /Standing-priority queue is empty/i
+  );
 });
 
 test('parseIssueNumberFromBranch extracts issue numbers from issue/* branches', () => {

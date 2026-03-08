@@ -283,7 +283,10 @@ to confirm each workflow includes both triggers.
 - **Standing-priority lane drift** – unattended flows should run `priority:sync:lane`; this fails fast when there is no
   standing issue or when multiple issues are labeled standing-priority, and writes deterministic diagnostics:
   `tests/results/_agent/issue/no-standing-priority.json` and
-  `tests/results/_agent/issue/multiple-standing-priority.json`.
+  `tests/results/_agent/issue/multiple-standing-priority.json`. When the
+  repository is truly idle, the no-standing report uses `reason = queue-empty`
+  and `openIssueCount = 0`; agents should treat that as an intake gap, not as a
+  mislabeled standing issue.
 - **Policy drift detected by `priority:policy`** – Align GitHub settings with `tools/priority/policy.json` (update the
   JSON if the new configuration is intentional), then rerun the helper.
 - **Policy guard auth failure (`Authorization unavailable` / `authenticated-no-admin`)** – verify and rotate upstream

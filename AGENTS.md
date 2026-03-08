@@ -20,6 +20,10 @@ line buffers).
   `.agent_priority_cache.json` and `tests/results/_agent/issue/` reflect the
   latest snapshot, hook preflight succeeds, and the working tree is anchored to
   `develop`; treat that issue as the top objective for edits, CI runs, and PRs.
+  If bootstrap reports `tests/results/_agent/issue/no-standing-priority.json`
+  with `reason = queue-empty`, treat the repository as intentionally idle
+  rather than misconfigured: do not create a work branch or PR until a new
+  tracked issue exists.
   These generated priority cache/router files are intentionally untracked.
 - The human operator is signed in with an admin GitHub token; assume privileged operations (labels, reruns, merges) are
   allowed when safe.
@@ -44,7 +48,9 @@ line buffers).
      to use the published tools image instead of building locally. After the Docker fallback completes, manually verify
      the working tree is on `develop` before creating a feature branch.
   2. Review `.agent_priority_cache.json` / `tests/results/_agent/issue/` for tasks, acceptance, and
-     linked PRs on the standing issue.
+     linked PRs on the standing issue. If the cache state is `NONE` with
+     `noStandingReason = queue-empty`, stop normal standing-priority execution
+     and restore intake first by creating or labeling the next tracked issue.
   3. For cross-issue or cross-repo coordination, run
      `node tools/npm/run-script.mjs priority:project:portfolio:check` to verify the dashboard state recorded in
      `tools/priority/project-portfolio.json`. Treat the project board as a visibility layer only; issues, labels, and

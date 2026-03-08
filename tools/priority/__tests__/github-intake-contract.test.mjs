@@ -64,6 +64,7 @@ test('github intake docs and manifest reference the new helper layer', () => {
   const automationGuide = readText('docs/knowledgebase/GitHub-Wiki-Portal-Automation-Evaluation.md');
   const wikiGuide = readText('docs/knowledgebase/GitHub-Wiki-Portal.md');
   const orchestrator = readText('tools/Branch-Orchestrator.ps1');
+  const getStandingPriority = readText('tools/Get-StandingPriority.ps1');
   const intakeModule = readText('tools/GitHubIntake.psm1');
   const oneButtonValidate = readText('tools/Run-OneButtonValidate.ps1');
 
@@ -71,10 +72,13 @@ test('github intake docs and manifest reference the new helper layer', () => {
   assert.match(snippets, /Branch-Orchestrator\.ps1/);
   assert.match(agents, /New-IssueBody\.ps1/);
   assert.match(agents, /GitHub wiki as a curated portal only/);
+  assert.match(agents, /queue-empty/);
   assert.match(readme, /compare-vi-cli-action\/wiki/);
   assert.match(agents, /-PRTemplate workflow-policy\|human-change/);
   assert.match(intakeGuide, /New-PullRequestBody\.ps1/);
   assert.match(intakeGuide, /GitHub-Wiki-Portal\.md/);
+  assert.match(intakeGuide, /Idle Repository Mode/);
+  assert.match(intakeGuide, /reason = queue-empty/);
   assert.match(intakeGuide, /gh pr create --title "<title>" --body-file pr-body\.md/);
   assert.match(automationGuide, /Keep manual curation for now/);
   assert.match(automationGuide, /compare-vi-cli-action\.wiki\.git/);
@@ -85,6 +89,8 @@ test('github intake docs and manifest reference the new helper layer', () => {
   assert.match(orchestrator, /'pr'\s+'create'\s+'--title'/);
   assert.match(orchestrator, /'pr'\s+'view'\s+\$branchName\s+'--json'\s+'number'/);
   assert.match(orchestrator, /'pr'\s+'edit'\s+\$pr\.number\s+'--title'\s+\$prTitle\s+'--body-file'/);
+  assert.match(orchestrator, /Standing-priority queue is empty/);
+  assert.match(getStandingPriority, /Standing priority not set \(queue empty\)/);
   assert.doesNotMatch(orchestrator, /'pr'\s+'create'\s+'--fill(?:-first)?'/);
   assert.doesNotMatch(orchestrator, /'pr'\s+'view'\s+'--json'\s+'number'\s+'--head'/);
   assert.match(oneButtonValidate, /gh pr view \$branch --json number/);

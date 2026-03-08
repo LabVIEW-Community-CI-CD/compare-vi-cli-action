@@ -1267,6 +1267,57 @@ async function listOpenIssuesForRepo(
   return runRestList({ repoRoot, slug });
 }
 
+export async function classifyNoStandingPriorityCondition(
+  repoRoot,
+  slug,
+  standingPriorityLabels = [DEFAULT_STANDING_PRIORITY_LABEL],
+  options = {}
+) {
+  const env = options.env ?? process.env;
+  const targetSlug = options.targetSlug ?? resolveAutoSelectRepositorySlug(repoRoot, slug, env);
+  if (!targetSlug) {
+    return {
+      status: 'error',
+      reason: 'unknown',
+      repository: null,
+      openIssueCount: null,
+      message: 'repository slug unavailable for open issue classification'
+    };
+  }
+
+  const openIssues = await listOpenIssuesForRepo(repoRoot, targetSlug, options);
+  if (openIssues?.status !== 'found') {
+    return {
+      status: 'error',
+      reason: 'unknown',
+      repository: targetSlug,
+      openIssueCount: null,
+      message: openIssues?.error || 'unable to list open issues'
+    };
+  }
+
+  const openIssueCount = Array.isArray(openIssues.issues) ? openIssues.issues.length : 0;
+  if (openIssueCount === 0) {
+    return {
+      status: 'classified',
+      reason: 'queue-empty',
+      repository: targetSlug,
+      openIssueCount,
+      message: `No open issues remain in ${targetSlug}; the standing-priority queue is empty.`
+    };
+  }
+
+  return {
+    status: 'classified',
+    reason: 'label-missing',
+    repository: targetSlug,
+    openIssueCount,
+    message:
+      `${targetSlug} has ${openIssueCount} open issue${openIssueCount === 1 ? '' : 's'}, ` +
+      `but none carry the checked standing-priority labels (${formatStandingPriorityLabels(standingPriorityLabels)}).`
+  };
+}
+
 async function addStandingPriorityLabelToIssue(
   repoRoot,
   slug,
@@ -1731,6 +1782,8 @@ export function buildNoStandingPriorityReport({
   labels,
   repository,
   failOnMissing,
+  reason = 'label-missing',
+  openIssueCount = null,
   generatedAt = new Date().toISOString()
 }) {
   return {
@@ -1739,6 +1792,8 @@ export function buildNoStandingPriorityReport({
     repository: repository || null,
     labels: normalizeStandingPriorityLabels(labels),
     message,
+    reason,
+    openIssueCount: Number.isInteger(openIssueCount) && openIssueCount >= 0 ? openIssueCount : null,
     failOnMissing: Boolean(failOnMissing)
   };
 }
@@ -1779,7 +1834,9 @@ export function buildNoStandingPriorityState(
   cache,
   message,
   clearedAt = new Date().toISOString(),
-  standingPriorityLabels = [DEFAULT_STANDING_PRIORITY_LABEL]
+  standingPriorityLabels = [DEFAULT_STANDING_PRIORITY_LABEL],
+  reason = 'label-missing',
+  openIssueCount = null
 ) {
   const clearedRouter = {
     schema: 'agent/priority-router@v1',
@@ -1802,11 +1859,17 @@ export function buildNoStandingPriorityState(
     bodyDigest: null,
     cachedAtUtc: clearedAt,
     lastFetchSource: 'none',
-    lastFetchError: message
+    lastFetchError: message,
+    noStandingReason: reason,
+    noStandingOpenIssueCount: Number.isInteger(openIssueCount) && openIssueCount >= 0 ? openIssueCount : null
   };
   const summaryLines = [
     '### Standing Priority Snapshot',
     `- Issue: none found (labels checked: ${formatStandingPriorityLabels(standingPriorityLabels)})`,
+    `- Reason: ${reason}`,
+    `- Open issues in target repo: ${
+      Number.isInteger(openIssueCount) && openIssueCount >= 0 ? openIssueCount : 'unknown'
+    }`,
     `- Status: ${message}`,
     '- Top actions: n/a'
   ];
@@ -1814,7 +1877,9 @@ export function buildNoStandingPriorityState(
     snapshot: null,
     router: clearedRouter,
     fetchSource: 'none',
-    fetchError: message
+    fetchError: message,
+    noStandingReason: reason,
+    openIssueCount: Number.isInteger(openIssueCount) && openIssueCount >= 0 ? openIssueCount : null
   };
 
   return { clearedRouter, clearedCache, summaryLines, result };
@@ -1872,19 +1937,38 @@ export async function main(options = {}) {
   } catch (err) {
     if (err?.code === 'NO_STANDING_PRIORITY') {
       let noStandingMessage = err.message;
+      let noStandingReason = 'label-missing';
+      let noStandingOpenIssueCount = null;
+      const noStandingClassification = await classifyNoStandingPriorityCondition(
+        repoRoot,
+        slug,
+        standingPriorityLabels,
+        options
+      );
+      if (noStandingClassification?.status === 'classified') {
+        noStandingMessage = noStandingClassification.message;
+        noStandingReason = noStandingClassification.reason;
+        noStandingOpenIssueCount = noStandingClassification.openIssueCount;
+      }
       if (autoSelectNext) {
-        const autoSelect = await autoSelectStandingPriorityIssue(repoRoot, slug, {
-          env: options.env || process.env
-        });
-        if (autoSelect.status === 'selected' && autoSelect.issue?.number) {
-          standingPriority = {
-            number: autoSelect.issue.number,
-            repoSlug: autoSelect.repoSlug || slug || null,
-            label: DEFAULT_STANDING_PRIORITY_LABEL,
-            source: 'auto-select'
-          };
-        } else if (autoSelect.status === 'error' && autoSelect.error) {
-          noStandingMessage = `${err.message} Auto-select failed: ${autoSelect.error}`;
+        if (noStandingReason !== 'queue-empty') {
+          const autoSelect = await autoSelectStandingPriorityIssue(repoRoot, slug, {
+            env: options.env || process.env
+          });
+          if (autoSelect.status === 'selected' && autoSelect.issue?.number) {
+            standingPriority = {
+              number: autoSelect.issue.number,
+              repoSlug: autoSelect.repoSlug || slug || null,
+              label: DEFAULT_STANDING_PRIORITY_LABEL,
+              source: 'auto-select'
+            };
+          } else if (autoSelect.status === 'empty') {
+            noStandingReason = 'queue-empty';
+            noStandingOpenIssueCount = 0;
+            noStandingMessage = `No open issues remain in ${autoSelect.repoSlug || slug || 'current repository'}; the standing-priority queue is empty.`;
+          } else if (autoSelect.status === 'error' && autoSelect.error) {
+            noStandingMessage = `${noStandingMessage} Auto-select failed: ${autoSelect.error}`;
+          }
         }
       }
 
@@ -1899,7 +1983,9 @@ export async function main(options = {}) {
           cache,
           noStandingMessage,
           undefined,
-          standingPriorityLabels
+          standingPriorityLabels,
+          noStandingReason,
+          noStandingOpenIssueCount
         );
         writeJson(path.join(resultsDir, 'router.json'), clearedRouter);
 
@@ -1918,6 +2004,8 @@ export async function main(options = {}) {
             message: noStandingMessage,
             labels: standingPriorityLabels,
             repository: slug,
+            reason: noStandingReason,
+            openIssueCount: noStandingOpenIssueCount,
             failOnMissing
           })
         );
@@ -1928,7 +2016,7 @@ export async function main(options = {}) {
 
         stepSummaryAppend(summaryLines);
         console.log(`[priority] ${noStandingMessage}`);
-        if (failOnMissing) {
+        if (failOnMissing && noStandingReason !== 'queue-empty') {
           const strictErr = new Error(noStandingMessage);
           strictErr.code = 'NO_STANDING_PRIORITY';
           throw strictErr;

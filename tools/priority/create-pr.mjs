@@ -101,19 +101,35 @@ export function parseCacheIssueNumber(cache) {
   return number;
 }
 
+export function parseCacheNoStandingReason(cache) {
+  if (!cache || typeof cache !== 'object') {
+    return null;
+  }
+
+  const state = String(cache.state ?? cache.issue?.state ?? '').trim().toUpperCase();
+  if (state !== 'NONE') {
+    return null;
+  }
+
+  const reason = String(cache.noStandingReason ?? cache.issue?.noStandingReason ?? '').trim().toLowerCase();
+  return reason || null;
+}
+
 export function resolveStandingIssueNumberForPr(repoRoot, { readJsonFn = readJsonFile } = {}) {
   const router = readJsonFn(path.join(repoRoot, ROUTER_RELATIVE_PATH));
+  const cache = readJsonFn(path.join(repoRoot, CACHE_RELATIVE_PATH));
   if (router && Object.prototype.hasOwnProperty.call(router, 'issue')) {
     return {
       issueNumber: parseRouterIssueNumber(router),
-      source: 'router'
+      source: 'router',
+      noStandingReason: parseCacheNoStandingReason(cache)
     };
   }
 
-  const cache = readJsonFn(path.join(repoRoot, CACHE_RELATIVE_PATH));
   return {
     issueNumber: parseCacheIssueNumber(cache),
-    source: 'cache'
+    source: 'cache',
+    noStandingReason: parseCacheNoStandingReason(cache)
   };
 }
 
@@ -179,6 +195,9 @@ export function createPriorityPr({
 
   const resolvedIssue = resolveStandingIssueNumberFn(repoRoot);
   const issueNumber = resolvedIssue?.issueNumber ?? null;
+  if (!issueNumber && resolvedIssue?.noStandingReason === 'queue-empty') {
+    throw new Error('Standing-priority queue is empty; create or label the next issue before opening a priority PR.');
+  }
   assertBranchMatchesIssue(branch, issueNumber);
   const base = env.PR_BASE || 'develop';
   const title = buildTitle(branch, issueNumber, env);

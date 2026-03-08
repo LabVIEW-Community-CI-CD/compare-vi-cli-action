@@ -20,7 +20,12 @@ function Write-OutputObject {
       $title = if ($Priority.title) { $Priority.title } else { '(no title)' }
       Write-Output ("#{0} — {1}" -f $Priority.number, $title)
     } else {
-      Write-Output 'Standing priority not set'
+      $reason = if ($Priority.PSObject.Properties.Name -contains 'reason') { [string]$Priority.reason } else { $null }
+      if ($reason -eq 'queue-empty') {
+        Write-Output 'Standing priority not set (queue empty)'
+      } else {
+        Write-Output 'Standing priority not set'
+      }
     }
   } else {
     $Priority | ConvertTo-Json -Depth 5 | Write-Output
@@ -33,6 +38,8 @@ function Normalize-PriorityObject {
     [string]$Title,
     [string]$Url,
     [string]$Source,
+    [string]$State,
+    [string]$Reason,
     [object]$Sequence,
     [object]$Next
   )
@@ -46,6 +53,8 @@ function Normalize-PriorityObject {
     title = $cleanTitle
     url = $cleanUrl
     source = $Source
+    state = $State
+    reason = $Reason
     retrievedAtUtc = (Get-Date -AsUTC).ToString('o')
   }
   if ($null -ne $Sequence) { $obj.sequence = $Sequence }
@@ -76,7 +85,7 @@ function Parse-OverrideValue {
       $url = if ($obj.PSObject.Properties.Name -contains 'url') { [string]$obj.url } else { $null }
       $seq = if ($obj.PSObject.Properties.Name -contains 'sequence') { $obj.sequence } else { $null }
       $nxt = if ($obj.PSObject.Properties.Name -contains 'next') { $obj.next } else { $null }
-      return Normalize-PriorityObject -Number $num -Title $title -Url $url -Source 'override' -Sequence $seq -Next $nxt
+      return Normalize-PriorityObject -Number $num -Title $title -Url $url -Source 'override' -State $null -Reason $null -Sequence $seq -Next $nxt
     } catch {
       return $null
     }
@@ -88,7 +97,7 @@ function Parse-OverrideValue {
   $number = [int]$rawNumber
   $title = if ($parts.Count -gt 1 -and $parts[1]) { $parts[1].Trim() } else { $null }
   $url = if ($parts.Count -gt 2 -and $parts[2]) { $parts[2].Trim() } else { $null }
-  return Normalize-PriorityObject -Number $number -Title $title -Url $url -Source 'override'
+  return Normalize-PriorityObject -Number $number -Title $title -Url $url -Source 'override' -State $null -Reason $null
 }
 
 function Try-LoadCache {
@@ -125,7 +134,9 @@ function Try-LoadCache {
 
       $seq = $null; if ($cacheObj.PSObject.Properties.Name -contains 'sequence') { $seq = $cacheObj.sequence }
       $nxt = $null; if ($cacheObj.PSObject.Properties.Name -contains 'next') { $nxt = $cacheObj.next }
-      return Normalize-PriorityObject -Number $cacheNumber -Title $cacheTitle -Url $cacheUrl -Source 'cache' -Sequence $seq -Next $nxt
+      $cacheState = if ($cacheObj.PSObject.Properties.Name -contains 'state') { [string]$cacheObj.state } else { $null }
+      $cacheReason = if ($cacheObj.PSObject.Properties.Name -contains 'noStandingReason') { [string]$cacheObj.noStandingReason } else { $null }
+      return Normalize-PriorityObject -Number $cacheNumber -Title $cacheTitle -Url $cacheUrl -Source 'cache' -State $cacheState -Reason $cacheReason -Sequence $seq -Next $nxt
     }
   } catch {}
   return $null
@@ -200,7 +211,7 @@ function Try-GitHubPriority {
     }
     $title = if ($chosen.PSObject.Properties.Name -contains 'title') { [string]$chosen.title } else { $null }
     $url = if ($chosen.PSObject.Properties.Name -contains 'url') { [string]$chosen.url } else { $null }
-    return Normalize-PriorityObject -Number $num -Title $title -Url $url -Source 'github' -Sequence $Sequence
+    return Normalize-PriorityObject -Number $num -Title $title -Url $url -Source 'github' -State 'OPEN' -Reason $null -Sequence $Sequence
   } catch {
     return $null
   }
@@ -216,7 +227,7 @@ if ($overrideValue) {
   $priority = Parse-OverrideValue -Override $overrideValue
   # If override didn't include sequence but cache has one, carry it along
   if ($priority -and -not ($priority.PSObject.Properties.Name -contains 'sequence') -and $cacheCandidate -and ($cacheCandidate.PSObject.Properties.Name -contains 'sequence')) {
-    $priority = Normalize-PriorityObject -Number $priority.number -Title $priority.title -Url $priority.url -Source $priority.source -Sequence $cacheCandidate.sequence -Next ($cacheCandidate.next)
+    $priority = Normalize-PriorityObject -Number $priority.number -Title $priority.title -Url $priority.url -Source $priority.source -State $priority.state -Reason $priority.reason -Sequence $cacheCandidate.sequence -Next ($cacheCandidate.next)
   }
 }
 
