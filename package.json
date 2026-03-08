@@ -61,6 +61,7 @@
     "priority:review:signal": "tsc -p tsconfig.json && node dist/tools/priority/copilot-review-signal.js",
     "priority:validation:attestation": "tsc -p tsconfig.json && node dist/tools/priority/validation-agent-attestation.js",
     "priority:validation:broker": "node tools/priority/validation-approval-broker.mjs",
+    "priority:validation:helper": "node tools/priority/validation-approval-helper.mjs",
     "priority:merge-sync": "node tools/priority/merge-sync-pr.mjs",
     "priority:event:ingest": "node tools/priority/event-ingest.mjs",
     "priority:decision:ledger": "node tools/priority/decision-ledger.mjs",
