@@ -332,7 +332,7 @@ gh workflow run vi-compare-refs.yml `
 - The command-driven workflows (pr-vi-staging.yml, pr-vi-history.yml) now reuse the helper so they operate on fork commits safely without bespoke checkout logic.
 - Manual `/vi-stage` and `/vi-history` dispatches accept an optional `fetch_depth` input (default `20`) so you can deepen history when needed.
 - PRs no longer use auto-approval labels; queue admission depends on required checks and branch policy while deployment
-  acknowledgement uses environment reviewers (`validation` / `production`).
+  acknowledgement for protected promotion flows uses environment reviewers (`production` / `monthly-stability-release`).
 
 ### Acceptance checklist (bucket coverage)
 

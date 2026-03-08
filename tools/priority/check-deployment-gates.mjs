@@ -15,7 +15,7 @@ export const DEFAULT_REPORT_PATH = path.join(
   'deployments',
   'environment-gate-policy.json'
 );
-export const DEFAULT_ENVIRONMENTS = ['validation', 'production'];
+export const DEFAULT_ENVIRONMENTS = ['production', 'monthly-stability-release'];
 
 function printUsage() {
   console.log('Usage: node tools/priority/check-deployment-gates.mjs [options]');

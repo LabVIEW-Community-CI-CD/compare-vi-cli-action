@@ -6,7 +6,7 @@ import { evaluateEnvironmentGatePolicy, parseArgs, runDeploymentGatePolicy } fro
 
 function makeEnvironment(payload = {}) {
   return {
-    name: 'validation',
+    name: 'production',
     can_admins_bypass: false,
     protection_rules: [
       {
@@ -30,7 +30,7 @@ function makeEnvironment(payload = {}) {
 test('parseArgs applies defaults and explicit flags', () => {
   const defaults = parseArgs(['node', 'check-deployment-gates.mjs']);
   assert.equal(defaults.reportPath.endsWith('environment-gate-policy.json'), true);
-  assert.deepEqual(defaults.environments, ['validation', 'production']);
+  assert.deepEqual(defaults.environments, ['production', 'monthly-stability-release']);
   assert.equal(defaults.failOnAdminBypass, true);
   assert.equal(defaults.failOnMissingReviewers, true);
 
@@ -42,13 +42,13 @@ test('parseArgs applies defaults and explicit flags', () => {
     '--repo',
     'owner/repo',
     '--environments',
-    'validation',
+    'production',
     '--allow-admin-bypass',
     '--allow-no-reviewers'
   ]);
   assert.equal(parsed.reportPath, 'out.json');
   assert.equal(parsed.repo, 'owner/repo');
-  assert.deepEqual(parsed.environments, ['validation']);
+  assert.deepEqual(parsed.environments, ['production']);
   assert.equal(parsed.failOnAdminBypass, false);
   assert.equal(parsed.failOnMissingReviewers, false);
 });
@@ -75,8 +75,8 @@ test('evaluateEnvironmentGatePolicy fails when reviewer rule missing or admin by
 
 test('runDeploymentGatePolicy emits fail when an environment is missing', async () => {
   const requestGitHubJsonFn = async (url) => {
-    if (String(url).endsWith('/environments/validation')) {
-      return makeEnvironment({ name: 'validation' });
+    if (String(url).endsWith('/environments/production')) {
+      return makeEnvironment({ name: 'production' });
     }
     const error = new Error('missing');
     error.statusCode = 404;
@@ -88,7 +88,7 @@ test('runDeploymentGatePolicy emits fail when an environment is missing', async 
     args: {
       reportPath: 'tests/results/_agent/deployments/environment-gate-policy.json',
       repo: 'owner/repo',
-      environments: ['validation', 'production'],
+      environments: ['production', 'monthly-stability-release'],
       failOnAdminBypass: true,
       failOnMissingReviewers: true,
       help: false
@@ -100,16 +100,16 @@ test('runDeploymentGatePolicy emits fail when an environment is missing', async 
 
   assert.equal(exitCode, 1);
   assert.equal(report.summary.status, 'fail');
-  assert.deepEqual(report.summary.failingEnvironments, ['production']);
+  assert.deepEqual(report.summary.failingEnvironments, ['monthly-stability-release']);
 });
 
 test('runDeploymentGatePolicy passes when all environments are protected', async () => {
   const requestGitHubJsonFn = async (url) => {
-    if (String(url).endsWith('/environments/validation')) {
-      return makeEnvironment({ name: 'validation' });
-    }
     if (String(url).endsWith('/environments/production')) {
       return makeEnvironment({ name: 'production' });
+    }
+    if (String(url).endsWith('/environments/monthly-stability-release')) {
+      return makeEnvironment({ name: 'monthly-stability-release' });
     }
     throw new Error(`unexpected url: ${url}`);
   };
@@ -119,7 +119,7 @@ test('runDeploymentGatePolicy passes when all environments are protected', async
     args: {
       reportPath: 'tests/results/_agent/deployments/environment-gate-policy.json',
       repo: 'owner/repo',
-      environments: ['validation', 'production'],
+      environments: ['production', 'monthly-stability-release'],
       failOnAdminBypass: true,
       failOnMissingReviewers: true,
       help: false

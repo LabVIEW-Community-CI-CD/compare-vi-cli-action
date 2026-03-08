@@ -93,7 +93,7 @@ test('classifyActionReference identifies stable, rc, and commit refs', () => {
 
 test('checklist evaluation and summary classify required failures', () => {
   const policy = {
-    requiredEnvironments: ['validation', 'production'],
+    requiredEnvironments: ['production'],
     requiredBranchChecks: ['Policy Guard (Upstream) / policy-guard'],
     checklist: [
       {
@@ -147,7 +147,7 @@ test('checklist evaluation and summary classify required failures', () => {
     referenceVerifications: [],
     successfulRuns: [],
     firstSuccessfulRunAt: null,
-    environments: { observable: true, configured: ['validation'], missing: ['production'] },
+    environments: { observable: true, configured: [], missing: ['production'] },
     branchProtection: { observable: false, error: 'branch-protection-api-403', contexts: [], missingChecks: ['Policy Guard (Upstream) / policy-guard'] }
   });
   const summary = summarizeChecklist(checklist);

@@ -15,4 +15,11 @@ Describe 'Validate workflow guard (delta integration)' -Tag 'Unit' {
     ($wf -match 'Append fixture summary') | Should -BeTrue
     ($wf -match 'Upload fixture summary artifact') | Should -BeTrue
   }
+
+  It 'keeps the standard Validate path free of validation environment approvals' {
+    $wf = Get-Content -LiteralPath (Join-Path $PSScriptRoot '..' '.github' 'workflows' 'validate.yml') -Raw
+    ($wf -match '(?ms)^\s*environment:\s*\r?\n\s*name:\s*validation\b') | Should -BeFalse
+    ($wf -match '(?m)^\s*deployment-determinism:\s*$') | Should -BeFalse
+    ($wf -match 'priority:deployment:assert') | Should -BeFalse
+  }
 }

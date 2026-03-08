@@ -46,7 +46,7 @@ What it evaluates:
 - workflow reference to the upstream compare-vi action
 - immutable certified ref pinning (stable semver tag or full commit SHA)
 - successful workflow consumption run
-- validation/production environment presence
+- protected production environment presence
 - visibility of policy-required branch checks
 
 ## Pilot stabilization loop

@@ -11,7 +11,7 @@ Downstream onboarding runbook: `docs/DOWNSTREAM_RELEASE_TRAIN_ONBOARDING.md`.
 ## Scope
 
 - Promotion events (`rc -> stable -> lts`) and monthly stability cuts.
-- Deployment approval gates (`validation`, `production`, `monthly-stability-release`).
+- Deployment approval gates (`production`, `monthly-stability-release`).
 - Incident triage, escalation, and rollback communication.
 
 ## Roles and ownership
@@ -29,7 +29,6 @@ Configure these roles as required reviewers in GitHub repository environment set
 
 | Environment | Workflow entrypoints | Required reviewer role |
 | --- | --- | --- |
-| `validation` | PR validation flows (`Validate / lint`, deployment-backed PR checks) | Deployment gate approver |
 | `production` | Tag release flow (`Release on tag / release`) | Deployment gate approver |
 | `monthly-stability-release` | Scheduled/manual monthly stability cut | Deployment gate approver + incident commander (on exceptions) |
 

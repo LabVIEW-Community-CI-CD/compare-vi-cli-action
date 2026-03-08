@@ -1,7 +1,6 @@
 {
   "schema": "priority/downstream-onboarding-policy@v1",
   "requiredEnvironments": [
-    "validation",
     "production"
   ],
   "requiredBranchChecks": [
@@ -39,10 +38,10 @@
     },
     {
       "id": "protected-environments-configured",
-      "description": "Validation and production environments exist for human-gated promotions.",
+      "description": "A protected production environment exists for human-gated promotions.",
       "required": false,
       "severity": "P2",
-      "recommendation": "Create validation/production environments and configure required reviewers."
+      "recommendation": "Create a production environment and configure required reviewers."
     },
     {
       "id": "required-checks-visible",
