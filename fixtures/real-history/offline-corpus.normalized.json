@@ -1,0 +1,180 @@
+{
+  "$schema": "../../docs/schemas/offline-real-history-corpus-v1.schema.json",
+  "schema": "vi-history/offline-real-history-corpus@v1",
+  "generatedAt": "2026-03-08T00:00:00.0000000+00:00",
+  "storageBoundary": {
+    "catalogPath": "fixtures/real-history/offline-corpus.targets.json",
+    "normalizedPath": "fixtures/real-history/offline-corpus.normalized.json",
+    "generatedRoot": "tests/results/offline-real-history",
+    "rawArtifactsInGit": false
+  },
+  "targets": [
+    {
+      "id": "icon-editor-settings-init",
+      "label": "labview-icon-editor Settings Init.vi",
+      "repoSlug": "svelderrainruiz/labview-icon-editor",
+      "targetPath": "resource/plugins/NIIconEditor/Miscellaneous/Settings Init.vi",
+      "requestedModes": [
+        "default",
+        "attributes"
+      ],
+      "executedModes": [
+        "default"
+      ],
+      "status": "ok",
+      "stats": {
+        "processed": 2,
+        "diffs": 1,
+        "signalDiffs": 1,
+        "noiseCollapsed": 0,
+        "errors": 0,
+        "missing": 0,
+        "categoryCounts": {
+          "vi-attribute": 2
+        },
+        "bucketCounts": {
+          "metadata": 2
+        }
+      },
+      "annotations": {
+        "outcomeLabels": [
+          "clean",
+          "signal-diff"
+        ],
+        "modeSensitivity": "single-mode-observed",
+        "coverageClass": "catalog-partial",
+        "bucketProfile": [
+          "metadata"
+        ],
+        "capturePresence": "dual-capture"
+      },
+      "provenance": {
+        "suiteGeneratedAt": "2025-10-30T23:59:00Z",
+        "suiteManifestPath": "fixtures/cross-repo/labview-icon-editor/settings-init/manifest.json",
+        "modeManifestPaths": [
+          "fixtures/cross-repo/labview-icon-editor/settings-init/default-manifest.json"
+        ],
+        "historyReportMarkdownPath": "fixtures/cross-repo/labview-icon-editor/settings-init/history-report.md",
+        "historyReportHtmlPath": "fixtures/cross-repo/labview-icon-editor/settings-init/history-report.html",
+        "latestCaptureAt": "2025-10-30T23:59:20.0000000+00:00",
+        "lvcompareCapturePaths": [
+          "fixtures/cross-repo/labview-icon-editor/settings-init/default/pair-002-artifacts/lvcompare-capture.json"
+        ],
+        "niContainerCapturePaths": [
+          "fixtures/cross-repo/labview-icon-editor/settings-init/default/pair-002-artifacts/ni-windows-container-capture.json"
+        ]
+      },
+      "captureSummary": {
+        "presence": "dual-capture",
+        "lvcompareCount": 1,
+        "niContainerCount": 1,
+        "lvcompareExitCodes": [
+          1
+        ],
+        "lvcompareDiffStates": [
+          "diff"
+        ],
+        "niStatuses": [
+          "diff"
+        ],
+        "niImages": [
+          "nationalinstruments/labview:2026q1-windows"
+        ]
+      },
+      "modes": [
+        {
+          "mode": "default",
+          "status": "ok",
+          "flags": [
+            "-nobd",
+            "-noattr",
+            "-nofp",
+            "-nofppos",
+            "-nobdcosm"
+          ],
+          "stats": {
+            "processed": 2,
+            "diffs": 1,
+            "signalDiffs": 0,
+            "noiseCollapsed": 0,
+            "errors": 0,
+            "missing": 0,
+            "categoryCounts": {
+              "vi-attribute": 2
+            },
+            "bucketCounts": {
+              "metadata": 2
+            }
+          },
+          "annotations": {
+            "outcomeClass": "signal-diff",
+            "comparisonClasses": [
+              "clean",
+              "signal-diff"
+            ],
+            "bucketProfile": [
+              "metadata"
+            ],
+            "capturePresence": "dual-capture"
+          },
+          "captureSummary": {
+            "presence": "dual-capture",
+            "lvcompareCount": 1,
+            "niContainerCount": 1,
+            "lvcompareExitCodes": [
+              1
+            ],
+            "lvcompareDiffStates": [
+              "diff"
+            ],
+            "niStatuses": [
+              "diff"
+            ],
+            "niImages": [
+              "nationalinstruments/labview:2026q1-windows"
+            ],
+            "latestCaptureAt": "2025-10-30T23:59:20.0000000+00:00",
+            "lvcomparePaths": [
+              "fixtures/cross-repo/labview-icon-editor/settings-init/default/pair-002-artifacts/lvcompare-capture.json"
+            ],
+            "niContainerPaths": [
+              "fixtures/cross-repo/labview-icon-editor/settings-init/default/pair-002-artifacts/ni-windows-container-capture.json"
+            ]
+          },
+          "comparisons": [
+            {
+              "index": 1,
+              "baseRef": "6c5d77b9e120",
+              "headRef": "9a8728f4d0bb",
+              "status": null,
+              "diff": false,
+              "bucket": "metadata",
+              "categories": [
+                "VI Attribute - Window Size/Appearance"
+              ],
+              "message": null,
+              "annotations": {
+                "outcomeClass": "clean"
+              }
+            },
+            {
+              "index": 2,
+              "baseRef": "9a8728f4d0bb",
+              "headRef": "1f2d3c4b5a6e",
+              "status": null,
+              "diff": true,
+              "bucket": "metadata",
+              "categories": [
+                "VI Attribute - Miscellaneous"
+              ],
+              "message": null,
+              "annotations": {
+                "outcomeClass": "signal-diff"
+              }
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

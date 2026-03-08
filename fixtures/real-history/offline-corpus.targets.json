@@ -9,6 +9,7 @@
   "defaultComparePolicy": "cli-only",
   "storagePolicy": {
     "checkedInCatalogPath": "fixtures/real-history/offline-corpus.targets.json",
+    "checkedInNormalizedPath": "fixtures/real-history/offline-corpus.normalized.json",
     "generatedRoot": "tests/results/offline-real-history",
     "rawArtifactsInGit": false
   },
@@ -25,6 +26,9 @@
         ],
         "startRef": "HEAD",
         "endRef": null
+      },
+      "seedFixture": {
+        "historySuitePath": "fixtures/cross-repo/labview-icon-editor/settings-init/manifest.json"
       },
       "targetPath": "resource/plugins/NIIconEditor/Miscellaneous/Settings Init.vi",
       "requestedModes": [

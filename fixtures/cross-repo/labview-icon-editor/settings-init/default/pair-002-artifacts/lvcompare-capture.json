@@ -1,0 +1,17 @@
+{
+  "schema": "lvcompare-capture-v1",
+  "timestamp": "2025-10-30T23:59:10Z",
+  "base": "resource/plugins/NIIconEditor/Miscellaneous/Settings Init.vi",
+  "head": "resource/plugins/NIIconEditor/Miscellaneous/Settings Init.vi",
+  "cli": {
+    "diff": true,
+    "exitCode": 1,
+    "reportFormat": "html",
+    "reportPath": "../../history-report.html",
+    "duration_s": 0.05
+  },
+  "out": {
+    "reportHtml": "../../history-report.html",
+    "reportPath": "../../history-report.html"
+  }
+}

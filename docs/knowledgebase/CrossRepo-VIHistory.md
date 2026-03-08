@@ -119,7 +119,10 @@ For the seeded offline real-history corpus path added under issue `#894`, use
 [`Offline-RealHistory-Corpus.md`](./Offline-RealHistory-Corpus.md). That flow
 wraps `Compare-VIHistory` with the NI Windows container bridge and writes
 generated evidence under `tests/results/offline-real-history/` instead of
-committing bulky raw reports.
+committing bulky raw reports. Issue `#895` adds the deterministic committed
+subset at `fixtures/real-history/offline-corpus.normalized.json`, which is
+rebuilt from the checked-in seed fixture and tiny capture summaries instead of
+from local run artifacts.
 
 ## Observations / gaps
 
