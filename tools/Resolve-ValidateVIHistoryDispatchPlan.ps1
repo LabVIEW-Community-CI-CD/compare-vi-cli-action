@@ -99,6 +99,14 @@ if (-not [string]::IsNullOrWhiteSpace($StepSummaryPath)) {
     ('- skip_reason: `{0}`' -f $plan.skipReason),
     ('- downgraded_history_core: `{0}`' -f $plan.downgradedHistoryCore.ToString().ToLowerInvariant())
   )
+  if ($plan.skipReason -eq 'noncanonical-disabled') {
+    $lines += ''
+    $lines += '- hint: rerun `workflow_dispatch` with `allow_noncanonical_vi_history=true` to enable non-canonical VI history lanes.'
+  }
+  if ($plan.downgradedHistoryCore) {
+    $lines += ''
+    $lines += '- hint: rerun `workflow_dispatch` with `allow_noncanonical_history_core=true` to preserve the requested `history-core` scenario set on a non-canonical repository.'
+  }
   $lines -join "`n" | Out-File -FilePath $StepSummaryPath -Append -Encoding utf8
 }
 

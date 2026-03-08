@@ -42,6 +42,20 @@ Describe 'Resolve-ValidateVIHistoryDispatchPlan' -Tag 'Unit' {
     $plan.historyScenarioSet | Should -Be 'smoke'
   }
 
+  It 'adds a summary hint for noncanonical dispatch without override' {
+    $summaryPath = Join-Path $TestDrive 'summary-noncanonical.md'
+    $plan = pwsh -NoLogo -NoProfile -File $scriptPath `
+      -EventName 'workflow_dispatch' `
+      -Repository 'someone/forked-compare-vi-cli-action' `
+      -IsForkRepository:$true `
+      -HistoryScenarioSet 'smoke' `
+      -StepSummaryPath $summaryPath | ConvertFrom-Json -Depth 8
+
+    $plan.skipReason | Should -Be 'noncanonical-disabled'
+    $summary = Get-Content -LiteralPath $summaryPath -Raw
+    $summary | Should -Match 'allow_noncanonical_vi_history=true'
+  }
+
   It 'downgrades noncanonical history-core to smoke when core override is absent' {
     $plan = pwsh -NoLogo -NoProfile -File $scriptPath `
       -EventName 'workflow_dispatch' `
@@ -55,6 +69,21 @@ Describe 'Resolve-ValidateVIHistoryDispatchPlan' -Tag 'Unit' {
     $plan.requestedHistoryScenarioSet | Should -Be 'history-core'
     $plan.historyScenarioSet | Should -Be 'smoke'
     $plan.downgradedHistoryCore | Should -BeTrue
+  }
+
+  It 'adds a summary hint when noncanonical history-core is downgraded' {
+    $summaryPath = Join-Path $TestDrive 'summary-downgraded.md'
+    $plan = pwsh -NoLogo -NoProfile -File $scriptPath `
+      -EventName 'workflow_dispatch' `
+      -Repository 'someone/forked-compare-vi-cli-action' `
+      -IsForkRepository:$true `
+      -AllowNonCanonical:$true `
+      -HistoryScenarioSet 'history-core' `
+      -StepSummaryPath $summaryPath | ConvertFrom-Json -Depth 8
+
+    $plan.downgradedHistoryCore | Should -BeTrue
+    $summary = Get-Content -LiteralPath $summaryPath -Raw
+    $summary | Should -Match 'allow_noncanonical_history_core=true'
   }
 
   It 'treats history_scenario_set=none as an explicit no-op reason' {

@@ -29,7 +29,14 @@ function printUsage() {
 }
 
 function normalizeHistoryScenarioSet(value) {
+  if (value === null || value === undefined) {
+    return 'smoke';
+  }
+
   const normalized = String(value ?? '').trim().toLowerCase();
+  if (normalized.length === 0) {
+    return 'smoke';
+  }
   if (!historyScenarioSetValues.has(normalized)) {
     throw new Error(`Unsupported --history-scenario-set value '${value}'. Allowed: none, smoke, history-core.`);
   }

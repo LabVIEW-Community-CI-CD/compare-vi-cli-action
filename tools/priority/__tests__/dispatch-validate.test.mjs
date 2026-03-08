@@ -77,6 +77,17 @@ test('parseCliOptions accepts cli flags', () => {
   assert.equal(opts.allowNonCanonicalHistoryCore, true);
 });
 
+test('parseCliOptions treats blank history scenario input as smoke', () => {
+  const opts = parseCliOptions([
+    'node',
+    'script',
+    '--history-scenario-set',
+    '   ',
+  ]);
+
+  assert.equal(opts.historyScenarioSet, 'smoke');
+});
+
 test('parseCliOptions trims non-empty sample ids', () => {
   const opts = parseCliOptions([
     'node',
