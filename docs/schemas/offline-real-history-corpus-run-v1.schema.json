@@ -1,0 +1,237 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://labview-community-ci-cd.github.io/compare-vi-cli-action/schemas/offline-real-history-corpus-run-v1.schema.json",
+  "title": "Offline Real-History Corpus Run v1",
+  "description": "Generated capture envelope for an offline real-history corpus run.",
+  "type": "object",
+  "required": [
+    "schema",
+    "generatedAt",
+    "status",
+    "planOnly",
+    "runId",
+    "target",
+    "source",
+    "capture",
+    "container",
+    "outputs",
+    "storage"
+  ],
+  "properties": {
+    "schema": {
+      "const": "vi-history/offline-real-history-run@v1"
+    },
+    "generatedAt": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "status": {
+      "enum": [
+        "planned",
+        "captured",
+        "failed"
+      ]
+    },
+    "planOnly": {
+      "type": "boolean"
+    },
+    "runId": {
+      "type": "string",
+      "minLength": 1
+    },
+    "message": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "target": {
+      "type": "object",
+      "required": [
+        "id",
+        "label",
+        "targetPath",
+        "requestedModes",
+        "executedModes",
+        "maxPairs",
+        "reportFormat"
+      ],
+      "properties": {
+        "id": { "type": "string" },
+        "label": { "type": "string" },
+        "targetPath": { "type": "string" },
+        "requestedModes": { "$ref": "#/$defs/stringArray" },
+        "executedModes": { "$ref": "#/$defs/stringArray" },
+        "maxPairs": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "reportFormat": { "type": "string" },
+        "notes": { "$ref": "#/$defs/stringArray" }
+      },
+      "additionalProperties": false
+    },
+    "source": {
+      "type": "object",
+      "required": [
+        "repoSlug",
+        "repoPath",
+        "requestedStartRef",
+        "requestedEndRef",
+        "resolvedStartRef"
+      ],
+      "properties": {
+        "repoSlug": { "type": "string" },
+        "repoPath": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "requestedStartRef": { "type": "string" },
+        "requestedEndRef": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "resolvedStartRef": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "resolvedHeadRef": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "additionalProperties": false
+    },
+    "capture": {
+      "type": "object",
+      "required": [
+        "comparePolicy",
+        "compareTimeoutSeconds",
+        "invokeScriptPath"
+      ],
+      "properties": {
+        "comparePolicy": { "type": "string" },
+        "compareTimeoutSeconds": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "minimum": 1
+        },
+        "invokeScriptPath": { "type": "string" },
+        "historySuiteStatus": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "historySuiteStats": {
+          "type": [
+            "object",
+            "null"
+          ]
+        }
+      },
+      "additionalProperties": false
+    },
+    "container": {
+      "type": "object",
+      "required": [
+        "lane",
+        "image",
+        "labviewPath",
+        "labviewVersion",
+        "cliPath",
+        "runnerScriptPath"
+      ],
+      "properties": {
+        "lane": {
+          "const": "windows-ni"
+        },
+        "image": { "type": "string" },
+        "labviewPath": { "type": "string" },
+        "labviewVersion": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "cliPath": { "type": "string" },
+        "runnerScriptPath": { "type": "string" }
+      },
+      "additionalProperties": false
+    },
+    "outputs": {
+      "type": "object",
+      "required": [
+        "runRoot",
+        "historyResultsDir",
+        "aggregateManifestPath",
+        "historyReportMarkdownPath",
+        "historyReportHtmlPath",
+        "modeManifestPaths",
+        "lvcompareCapturePaths",
+        "niContainerCapturePaths"
+      ],
+      "properties": {
+        "runRoot": { "type": "string" },
+        "historyResultsDir": { "type": "string" },
+        "aggregateManifestPath": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "historyReportMarkdownPath": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "historyReportHtmlPath": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "modeManifestPaths": { "$ref": "#/$defs/stringArray" },
+        "lvcompareCapturePaths": { "$ref": "#/$defs/stringArray" },
+        "niContainerCapturePaths": { "$ref": "#/$defs/stringArray" }
+      },
+      "additionalProperties": false
+    },
+    "storage": {
+      "type": "object",
+      "required": [
+        "catalogPath",
+        "generatedRoot",
+        "rawArtifactsInGit"
+      ],
+      "properties": {
+        "catalogPath": { "type": "string" },
+        "generatedRoot": { "type": "string" },
+        "rawArtifactsInGit": {
+          "const": false
+        }
+      },
+      "additionalProperties": false
+    }
+  },
+  "$defs": {
+    "stringArray": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    }
+  },
+  "additionalProperties": false
+}

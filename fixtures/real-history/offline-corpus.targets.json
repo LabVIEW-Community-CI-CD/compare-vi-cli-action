@@ -1,0 +1,42 @@
+{
+  "$schema": "../../docs/schemas/offline-real-history-corpus-targets-v1.schema.json",
+  "schema": "vi-history/offline-real-history-targets@v1",
+  "generatedAt": "2026-03-08T00:00:00Z",
+  "description": "Seed targets for offline real-history corpus capture against local external consumer checkouts.",
+  "defaultWindowsImage": "nationalinstruments/labview:2026q1-windows",
+  "defaultLabVIEWPath": "C:\\Program Files\\National Instruments\\LabVIEW 2026\\LabVIEW.exe",
+  "defaultCliPath": "C:\\Program Files\\National Instruments\\Shared\\LabVIEW CLI\\LabVIEWCLI.exe",
+  "defaultComparePolicy": "cli-only",
+  "storagePolicy": {
+    "checkedInCatalogPath": "fixtures/real-history/offline-corpus.targets.json",
+    "generatedRoot": "tests/results/offline-real-history",
+    "rawArtifactsInGit": false
+  },
+  "targets": [
+    {
+      "id": "icon-editor-settings-init",
+      "label": "labview-icon-editor Settings Init.vi",
+      "repo": {
+        "slug": "svelderrainruiz/labview-icon-editor",
+        "localPathHints": [
+          "tmp/icon-editor/repo",
+          "../labview-icon-editor",
+          "../svelderrainruiz-labview-icon-editor"
+        ],
+        "startRef": "HEAD",
+        "endRef": null
+      },
+      "targetPath": "resource/plugins/NIIconEditor/Miscellaneous/Settings Init.vi",
+      "requestedModes": [
+        "default",
+        "attributes"
+      ],
+      "maxPairs": 3,
+      "reportFormat": "html",
+      "notes": [
+        "Matches the checked-in fixture lineage under fixtures/cross-repo/labview-icon-editor/settings-init.",
+        "Use a local checkout only; bulky raw reports stay under tests/results/offline-real-history."
+      ]
+    }
+  ]
+}
