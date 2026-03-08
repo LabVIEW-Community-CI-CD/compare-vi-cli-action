@@ -13,6 +13,14 @@ separate ad-hoc markdown fragments.
   - `workflow-policy.md`
   - `human-change.md`
 
+## Wiki Portal
+
+- The GitHub wiki is the public docs portal: <https://github.com/LabVIEW-Community-CI-CD/compare-vi-cli-action/wiki>
+- The wiki is for navigation and summaries; checked-in repo docs remain authoritative.
+- Every wiki page should include an `Authoritative repo docs` section pointing back to the repo.
+- The maintained contract for this split lives in
+  [`docs/knowledgebase/GitHub-Wiki-Portal.md`](./GitHub-Wiki-Portal.md).
+
 ## CLI Intake
 
 When agents or operators create issues and PRs from the terminal, the repository favors generated markdown bodies over
@@ -68,6 +76,7 @@ Human-authored PRs should use the `human-change` template so they do not acciden
   contract.
 - Prefer explicit `--title` plus `--body-file` over `gh pr create --fill`; the title/body contract stays deterministic
   and avoids GitHub CLI flag conflicts.
+- Use the wiki as a public portal for discoverability, not as a substitute for checked-in docs.
 
 ## Mixed-Shell Guidance
 

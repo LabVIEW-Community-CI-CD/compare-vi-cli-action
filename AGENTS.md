@@ -132,6 +132,8 @@ line buffers).
   - Web issues should use the structured forms under `.github/ISSUE_TEMPLATE/`.
   - Web PRs default to `.github/pull_request_template.md`; specialized variants live under
     `.github/PULL_REQUEST_TEMPLATE/`.
+  - Documentation discovery should treat the GitHub wiki as a curated portal only; checked-in repo docs remain
+    authoritative and wiki pages must point back to them.
   - CLI issue creation should use `pwsh -File tools/New-IssueBody.ps1 -Template <...> -OutputPath issue-body.md`
     followed by `gh issue create --body-file issue-body.md`.
   - CLI PR creation should prefer `pwsh -File tools/Branch-Orchestrator.ps1 -Issue <number> -Execute` and switch

@@ -300,6 +300,26 @@
       "portfolioTrack": "Corpus & Facade"
     },
     {
+      "url": "https://github.com/LabVIEW-Community-CI-CD/compare-vi-cli-action/issues/903",
+      "status": "In Progress",
+      "program": "Shared Infra",
+      "phase": "Policy",
+      "environmentClass": "Infra",
+      "blockingSignal": "Scope",
+      "evidenceState": "None",
+      "portfolioTrack": "Agent UX"
+    },
+    {
+      "url": "https://github.com/LabVIEW-Community-CI-CD/compare-vi-cli-action/issues/904",
+      "status": "Todo",
+      "program": "Shared Infra",
+      "phase": "Policy",
+      "environmentClass": "Infra",
+      "blockingSignal": "Scope",
+      "evidenceState": "None",
+      "portfolioTrack": "Agent UX"
+    },
+    {
       "url": "https://github.com/LabVIEW-Community-CI-CD/comparevi-history/issues/14",
       "status": "Todo",
       "program": "Multi-Mode Diagnostics",
