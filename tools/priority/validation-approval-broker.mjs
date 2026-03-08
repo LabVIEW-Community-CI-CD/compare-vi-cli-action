@@ -53,7 +53,30 @@ export const DEFAULT_EVENTS_PATH = path.join(
 );
 
 const GH_JSON_MAX_BUFFER_BYTES = 32 * 1024 * 1024;
-const DENIED_STATES = new Set(['denied']);
+const BUILTIN_FAIL_CLOSED_POLICY_PATH = 'builtin:validation-approval-policy';
+const BUILTIN_FAIL_CLOSED_POLICY = Object.freeze({
+  schema: VALIDATION_APPROVAL_POLICY_SCHEMA,
+  schemaVersion: '1.0.0',
+  environment: 'validation',
+  shadowMode: true,
+  allowedBaseRefs: ['develop'],
+  trust: {
+    requireRepositoryMatch: true,
+    allowCrossRepository: false,
+    allowedHeadOwners: [],
+  },
+  providers: {
+    requireReviewSignal: true,
+    requireAgentAttestation: true,
+    requireDeploymentDeterminism: true,
+    requireRequiredChecks: true,
+  },
+  attestation: {
+    requireValidationEvidencePass: true,
+    requireDispositionsForActionableComments: true,
+    requireDispositionsForUnresolvedThreads: true,
+  },
+});
 
 function printUsage() {
   const lines = [
@@ -360,6 +383,10 @@ function normalizePolicy(policy, policyPath) {
         policy?.attestation?.requireDispositionsForUnresolvedThreads !== false,
     },
   };
+}
+
+function getBuiltinFailClosedPolicy(policyPath = BUILTIN_FAIL_CLOSED_POLICY_PATH) {
+  return normalizePolicy(BUILTIN_FAIL_CLOSED_POLICY, policyPath);
 }
 
 function normalizePullContext(raw, repository) {
@@ -682,13 +709,13 @@ function evaluateDecision({
         reviewSignal.available &&
         attestation.reviewSignalActionableCommentCount !== reviewSignal.actionableCommentCount
       ) {
-        blockers.push('attestation-review-signal-mismatch');
+        blockers.push('attestation-actionable-comment-count-mismatch');
       }
       if (
         reviewSignal.available &&
         attestation.reviewSignalUnresolvedThreadCount !== reviewSignal.unresolvedThreadCount
       ) {
-        blockers.push('attestation-review-signal-mismatch');
+        blockers.push('attestation-unresolved-thread-count-mismatch');
       }
       if (
         policy.attestation.requireValidationEvidencePass &&
@@ -1039,7 +1066,54 @@ export async function runValidationApprovalBroker({
           error: message,
         }),
       );
-      policy = normalizePolicy(readJsonFn(DEFAULT_POLICY_PATH), DEFAULT_POLICY_PATH);
+
+      const policyPathMatchesDefault =
+        path.resolve(process.cwd(), options.policyPath) ===
+        path.resolve(process.cwd(), DEFAULT_POLICY_PATH);
+      if (!policyPathMatchesDefault) {
+        try {
+          policy = normalizePolicy(readJsonFn(DEFAULT_POLICY_PATH), DEFAULT_POLICY_PATH);
+          events.push(
+            createRuntimeEvent(now, 'load', 'warning', 'Loaded default approval policy fallback.', {
+              path: DEFAULT_POLICY_PATH,
+              requestedPath: options.policyPath,
+            }),
+          );
+        } catch (fallbackError) {
+          const fallbackMessage =
+            fallbackError instanceof Error ? fallbackError.message : String(fallbackError);
+          providerErrors.push({ code: 'default-policy-unavailable', message: fallbackMessage });
+          events.push(
+            createRuntimeEvent(
+              now,
+              'load',
+              'error',
+              'Failed to load default approval policy fallback.',
+              {
+                path: DEFAULT_POLICY_PATH,
+                requestedPath: options.policyPath,
+                error: fallbackMessage,
+              },
+            ),
+          );
+        }
+      }
+
+      if (!policy) {
+        policy = getBuiltinFailClosedPolicy();
+        events.push(
+          createRuntimeEvent(
+            now,
+            'load',
+            'warning',
+            'Using built-in fail-closed approval policy fallback.',
+            {
+              path: BUILTIN_FAIL_CLOSED_POLICY_PATH,
+              requestedPath: options.policyPath,
+            },
+          ),
+        );
+      }
     }
 
     let branchRequiredChecksPolicy = null;
@@ -1226,7 +1300,7 @@ export async function runValidationApprovalBroker({
       createRuntimeEvent(
         now,
         'decision',
-        decision.ready ? 'info' : DENIED_STATES.has(decision.state) ? 'error' : 'warning',
+        decision.ready ? 'info' : decision.state === 'denied' ? 'error' : 'warning',
         'Completed validation approval broker evaluation.',
         {
           decision: decision.state,

@@ -334,3 +334,129 @@ test('validation approval broker fails closed when a required provider is unavai
   assert.ok(result.report?.decision.reasons.includes('agent-attestation-unavailable'));
   assert.equal(result.report?.providers.agentAttestation.available, false);
 });
+
+test('validation approval broker reports specific attestation review-signal mismatch blockers', async (t) => {
+  const { runValidationApprovalBroker } = await loadModule();
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'validation-broker-mismatch-'));
+  t.after(() => fs.rmSync(tmpDir, { recursive: true, force: true }));
+
+  const headSha = 'eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee';
+  const prNumber = 869;
+  const signalPath = path.join(tmpDir, 'signal.json');
+  const attestationPath = path.join(tmpDir, 'attestation.json');
+  const deploymentPath = path.join(tmpDir, 'deployment.json');
+  const pullPath = path.join(tmpDir, 'pull.json');
+
+  writeJson(signalPath, {
+    ...createSignal(headSha, prNumber),
+    summary: {
+      actionableCommentCount: 2,
+      unresolvedThreadCount: 1,
+      staleReviewCount: 0,
+    },
+  });
+  writeJson(attestationPath, createAttestation(headSha, prNumber, 1, 0));
+  writeJson(deploymentPath, createDeploymentDeterminism());
+  writeJson(
+    pullPath,
+    createPullContext({
+      headSha,
+      prNumber,
+      statusCheckRollup: createSuccessRollup(readDevelopRequiredChecks()),
+    }),
+  );
+
+  const result = await runValidationApprovalBroker({
+    argv: [
+      'node',
+      'validation-approval-broker.mjs',
+      '--repo',
+      'LabVIEW-Community-CI-CD/compare-vi-cli-action',
+      '--pr',
+      String(prNumber),
+      '--signal',
+      signalPath,
+      '--attestation',
+      attestationPath,
+      '--deployment-determinism',
+      deploymentPath,
+      '--pull-file',
+      pullPath,
+    ],
+    now: new Date('2026-03-08T08:04:00Z'),
+  });
+
+  assert.equal(result.exitCode, 1);
+  assert.equal(result.report?.decision.state, 'blocked');
+  assert.ok(result.report?.decision.reasons.includes('attestation-actionable-comment-count-mismatch'));
+  assert.ok(result.report?.decision.reasons.includes('attestation-unresolved-thread-count-mismatch'));
+  assert.equal(result.report?.decision.reasons.includes('attestation-review-signal-mismatch'), false);
+});
+
+test('validation approval broker uses built-in fail-closed policy when requested and default policy loads both fail', async (t) => {
+  const { DEFAULT_POLICY_PATH, runValidationApprovalBroker } = await loadModule();
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'validation-broker-policy-fallback-'));
+  t.after(() => fs.rmSync(tmpDir, { recursive: true, force: true }));
+
+  const headSha = 'ffffffffffffffffffffffffffffffffffffffff';
+  const prNumber = 870;
+  const signalPath = path.join(tmpDir, 'signal.json');
+  const attestationPath = path.join(tmpDir, 'attestation.json');
+  const deploymentPath = path.join(tmpDir, 'deployment.json');
+  const pullPath = path.join(tmpDir, 'pull.json');
+  const requestedPolicyPath = path.join(tmpDir, 'missing-policy.json');
+
+  writeJson(signalPath, createSignal(headSha, prNumber));
+  writeJson(attestationPath, createAttestation(headSha, prNumber));
+  writeJson(deploymentPath, createDeploymentDeterminism());
+  writeJson(
+    pullPath,
+    createPullContext({
+      headSha,
+      prNumber,
+      statusCheckRollup: createSuccessRollup(readDevelopRequiredChecks()),
+    }),
+  );
+
+  const readJsonFn = (filePath) => {
+    if (filePath === requestedPolicyPath) {
+      throw new Error('requested policy missing');
+    }
+    if (filePath === DEFAULT_POLICY_PATH) {
+      throw new Error('default policy missing');
+    }
+    return JSON.parse(fs.readFileSync(path.resolve(filePath), 'utf8'));
+  };
+
+  const result = await runValidationApprovalBroker({
+    argv: [
+      'node',
+      'validation-approval-broker.mjs',
+      '--repo',
+      'LabVIEW-Community-CI-CD/compare-vi-cli-action',
+      '--pr',
+      String(prNumber),
+      '--policy',
+      requestedPolicyPath,
+      '--signal',
+      signalPath,
+      '--attestation',
+      attestationPath,
+      '--deployment-determinism',
+      deploymentPath,
+      '--pull-file',
+      pullPath,
+    ],
+    now: new Date('2026-03-08T08:05:00Z'),
+    readJsonFn,
+  });
+
+  assert.equal(result.exitCode, 1);
+  assert.equal(result.report?.decision.state, 'blocked');
+  assert.ok(result.report?.decision.reasons.includes('policy-unavailable'));
+  assert.ok(result.report?.decision.reasons.includes('default-policy-unavailable'));
+  assert.equal(result.report?.policy.path, 'builtin:validation-approval-policy');
+  assert.equal(result.report?.policy.shadowMode, true);
+  assert.ok(result.report?.decision.notes.includes('requested policy missing'));
+  assert.ok(result.report?.decision.notes.includes('default policy missing'));
+});
