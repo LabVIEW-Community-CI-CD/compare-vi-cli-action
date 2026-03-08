@@ -61,6 +61,7 @@ test('github intake docs and manifest reference the new helper layer', () => {
   const readme = readText('README.md');
   const manifest = JSON.parse(readText('docs/documentation-manifest.json'));
   const intakeGuide = readText('docs/knowledgebase/GitHub-Intake-Layer.md');
+  const automationGuide = readText('docs/knowledgebase/GitHub-Wiki-Portal-Automation-Evaluation.md');
   const wikiGuide = readText('docs/knowledgebase/GitHub-Wiki-Portal.md');
   const orchestrator = readText('tools/Branch-Orchestrator.ps1');
   const intakeModule = readText('tools/GitHubIntake.psm1');
@@ -75,7 +76,10 @@ test('github intake docs and manifest reference the new helper layer', () => {
   assert.match(intakeGuide, /New-PullRequestBody\.ps1/);
   assert.match(intakeGuide, /GitHub-Wiki-Portal\.md/);
   assert.match(intakeGuide, /gh pr create --title "<title>" --body-file pr-body\.md/);
+  assert.match(automationGuide, /Keep manual curation for now/);
+  assert.match(automationGuide, /compare-vi-cli-action\.wiki\.git/);
   assert.match(wikiGuide, /Authoritative repo docs/);
+  assert.match(wikiGuide, /GitHub-Wiki-Portal-Automation-Evaluation\.md/);
   assert.match(wikiGuide, /README\.md/);
   assert.match(orchestrator, /Import-Module \(Join-Path \$PSScriptRoot 'GitHubIntake\.psm1'\)/);
   assert.match(orchestrator, /'pr'\s+'create'\s+'--title'/);
@@ -96,5 +100,6 @@ test('github intake docs and manifest reference the new helper layer', () => {
   const docsEntry = manifest.entries.find((entry) => entry.name === 'Docs Tree');
   assert.ok(docsEntry);
   assert.ok(docsEntry.files.includes('docs/knowledgebase/GitHub-Intake-Layer.md'));
+  assert.ok(docsEntry.files.includes('docs/knowledgebase/GitHub-Wiki-Portal-Automation-Evaluation.md'));
   assert.ok(docsEntry.files.includes('docs/knowledgebase/GitHub-Wiki-Portal.md'));
 });
