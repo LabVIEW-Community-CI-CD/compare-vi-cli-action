@@ -1,0 +1,77 @@
+name: Investigation or anomaly
+description: Capture an incident, unexplained failure pattern, or environment anomaly for structured follow-up.
+title: "[investigation]: "
+labels:
+  - bug
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Use this form for mysteries: intermittent failures, host-specific anomalies, or cases where the next step is
+        investigation rather than immediate implementation.
+  - type: dropdown
+    id: anomaly_surface
+    attributes:
+      label: Anomaly surface
+      options:
+        - PowerShell host or test runner
+        - GitHub Actions workflow behavior
+        - Docker or NI image runtime
+        - Compare rendering or artifact generation
+        - Environment setup or machine-specific behavior
+        - Other
+    validations:
+      required: true
+  - type: textarea
+    id: summary
+    attributes:
+      label: Summary
+      description: State the anomaly and why it matters.
+      placeholder: A persistent parameter binding error occurs only in the test host when ...
+    validations:
+      required: true
+  - type: textarea
+    id: impact
+    attributes:
+      label: Impact
+      description: Explain what work is blocked, quarantined, or made risky.
+      placeholder: |
+        - Test suite quarantined
+        - Workflow run nondeterministic
+    validations:
+      required: true
+  - type: textarea
+    id: observations
+    attributes:
+      label: Observed symptoms and mitigations attempted
+      description: Capture the strongest evidence already gathered.
+      placeholder: |
+        Symptoms:
+        - ...
+
+        Mitigations attempted:
+        - ...
+    validations:
+      required: true
+  - type: textarea
+    id: next_steps
+    attributes:
+      label: Working hypotheses and next steps
+      description: Record the next diagnostic path and the exit criteria.
+      placeholder: |
+        Hypotheses:
+        1. ...
+
+        Next steps:
+        - ...
+
+        Exit criteria:
+        - ...
+    validations:
+      required: true
+  - type: textarea
+    id: evidence
+    attributes:
+      label: Evidence and artifacts
+      description: Link the commands, logs, workflow runs, or artifact paths future agents should start from.
+      placeholder: tests/results/_agent/... or workflow URLs

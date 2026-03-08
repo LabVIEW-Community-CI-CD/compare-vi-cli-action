@@ -4,7 +4,9 @@ param(
   [int]$Issue,
   [switch]$Execute,
   [string]$Base = 'develop',
-  [string]$BranchPrefix = 'issue'
+  [string]$BranchPrefix = 'issue',
+  [ValidateSet('default', 'agent-maintenance', 'workflow-policy', 'human-change')]
+  [string]$PRTemplate = 'default'
 )
 
 Set-StrictMode -Version Latest
@@ -38,13 +40,31 @@ function Ensure-Branch([string]$Name,[string]$Base) {
   return $true
 }
 
-function Update-PRBodyWithDigest([int]$Number,[string]$Digest,[string]$SnapshotPath) {
-  $gh = Get-Command gh -ErrorAction SilentlyContinue
-  if (-not $gh) { Write-Warning 'gh not found; skipping PR update'; return }
-  try {
-    $body = "Standing priority snapshot digest: `$`$Digest`nSnapshot: $SnapshotPath"
-    & $gh.Source 'pr' 'edit' '--body' $body | Out-Null
-  } catch { Write-Warning "Failed to update PR body: $($_.Exception.Message)" }
+function New-RenderedPRBody([string]$Repo,[int]$Issue,[pscustomobject]$Snapshot,[string]$Base,[string]$Branch,[string]$Template) {
+  $rendererPath = Join-Path $Repo 'tools' 'New-PullRequestBody.ps1'
+  if (-not (Test-Path -LiteralPath $rendererPath -PathType Leaf)) {
+    throw "PR body renderer not found: $rendererPath"
+  }
+
+  $tempPath = Join-Path ([System.IO.Path]::GetTempPath()) ("comparevi-pr-body-{0}.md" -f $Issue)
+  $isStandingPriority = $false
+  if ($Snapshot -and $Snapshot.PSObject.Properties.Match('labels').Count -gt 0 -and $Snapshot.labels) {
+    $isStandingPriority = @($Snapshot.labels) -contains 'standing-priority'
+  }
+
+  $params = @{
+    Template   = $Template
+    Issue      = $Issue
+    IssueTitle = if ($Snapshot -and $Snapshot.PSObject.Properties.Match('title').Count -gt 0) { [string]$Snapshot.title } else { '' }
+    IssueUrl   = if ($Snapshot -and $Snapshot.PSObject.Properties.Match('url').Count -gt 0) { [string]$Snapshot.url } else { '' }
+    Base       = $Base
+    Branch     = $Branch
+    OutputPath = $tempPath
+  }
+  if ($isStandingPriority) { $params['StandingPriority'] = $true }
+
+  & $rendererPath @params
+  return $tempPath
 }
 
 $repo = Get-RepoRoot
@@ -62,12 +82,11 @@ if (-not $Issue) {
 
 Write-Host ("[orchestrator] Issue: #{0}" -f $Issue)
 
-# Read snapshot for title/digest
+# Read snapshot for title/URL context
 $snapPath = Join-Path $repo 'tests/results/_agent/issue' ("{0}.json" -f $Issue)
-$digestPath = Join-Path $repo 'tests/results/_agent/issue' ("{0}.digest" -f $Issue)
+$snap = $null
 $title = 'work'
-$digest = $null
-try { $snap = Get-Content -LiteralPath $snapPath -Raw | ConvertFrom-Json -ErrorAction Stop; $title = $snap.title; $digest = $snap.digest } catch {}
+try { $snap = Get-Content -LiteralPath $snapPath -Raw | ConvertFrom-Json -ErrorAction Stop; $title = $snap.title } catch {}
 if (-not $title) { $title = 'work' }
 
 $defaultBase = Get-GitDefaultBranch
@@ -76,6 +95,7 @@ Write-Host ("[orchestrator] Base: {0}" -f $Base)
 
 $branchName = New-BranchName -Number $Issue -Title $title
 Write-Host ("[orchestrator] Branch: {0}" -f $branchName)
+Write-Host ("[orchestrator] PR template: {0}" -f $PRTemplate)
 
 $ok = Ensure-Branch -Name $branchName -Base $Base
 if (-not $ok) { throw 'Failed to ensure branch' }
@@ -85,12 +105,27 @@ if ($Execute) {
   try { & git push -u origin $branchName } catch { Write-Warning 'Push failed.' }
   $gh = Get-Command gh -ErrorAction SilentlyContinue
   if ($gh) {
-    try { & $gh.Source 'pr' 'create' '--fill' '--base' $Base '--head' $branchName | Out-Host } catch { Write-Warning 'PR create failed or already exists.' }
-    if ($digest) { Update-PRBodyWithDigest -Number $Issue -Digest $digest -SnapshotPath $snapPath }
+    $bodyPath = $null
+    try {
+      $bodyPath = New-RenderedPRBody -Repo $repo -Issue $Issue -Snapshot $snap -Base $Base -Branch $branchName -Template $PRTemplate
+      $existingJson = & $gh.Source 'pr' 'view' '--json' 'number' '--head' $branchName 2>$null
+      if ($LASTEXITCODE -eq 0 -and $existingJson) {
+        $pr = $existingJson | ConvertFrom-Json
+        & $gh.Source 'pr' 'edit' $pr.number '--body-file' $bodyPath | Out-Host
+      } else {
+        & $gh.Source 'pr' 'create' '--fill' '--base' $Base '--head' $branchName '--body-file' $bodyPath | Out-Host
+      }
+    } catch {
+      Write-Warning 'PR create/edit failed.'
+      Write-Warning $_.Exception.Message
+    } finally {
+      if ($bodyPath -and (Test-Path -LiteralPath $bodyPath -PathType Leaf)) {
+        Remove-Item -LiteralPath $bodyPath -Force -ErrorAction SilentlyContinue
+      }
+    }
   } else {
     Write-Warning 'gh not found; cannot open PR automatically.'
   }
 } else {
   Write-Host '[orchestrator] Dry run — no remote operations performed.'
 }
-

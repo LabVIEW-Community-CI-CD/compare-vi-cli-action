@@ -128,6 +128,16 @@ line buffers).
 
 - Keep commits focused; include `#<standing-number>` in subjects.
 - PRs should describe rationale, list affected workflows, and link to artifacts.
+- Default GitHub intake strategy:
+  - Web issues should use the structured forms under `.github/ISSUE_TEMPLATE/`.
+  - Web PRs default to `.github/pull_request_template.md`; specialized variants live under
+    `.github/PULL_REQUEST_TEMPLATE/`.
+  - CLI issue creation should use `pwsh -File tools/New-IssueBody.ps1 -Template <...> -OutputPath issue-body.md`
+    followed by `gh issue create --body-file issue-body.md`.
+  - CLI PR creation should prefer `pwsh -File tools/Branch-Orchestrator.ps1 -Issue <number> -Execute` and switch
+    templates with `-PRTemplate workflow-policy|human-change` when the review surface differs from default maintenance
+    work.
+- Automation-authored PRs must keep the `Agent Metadata` block in the body so reviewer routing remains deterministic.
 - Ensure CI is green (lint + Pester). Verify no lingering processes on self-hosted runners.
 - For `gh issue create` / `gh issue edit` with multiline Markdown bodies in mixed
   WSL/Windows shells, prefer `--body-file <path>` (or `-F`) over inline

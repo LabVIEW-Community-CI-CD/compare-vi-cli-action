@@ -1,0 +1,72 @@
+name: Workflow, policy, or agent UX request
+description: Intake for workflow contracts, review policy, queue behavior, or future-agent experience changes.
+title: "[workflow-policy]: "
+labels:
+  - enhancement
+  - ci
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Use this form when the main change is about how agents, reviewers, or GitHub automation interact with the
+        repository.
+  - type: dropdown
+    id: lane
+    attributes:
+      label: Primary lane
+      options:
+        - Workflow behavior
+        - Required checks or branch protection
+        - Reviewer routing or approval flow
+        - Merge queue or deployment gate
+        - Templates or issue/PR intake
+        - Agent UX or documentation
+    validations:
+      required: true
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem
+      description: Explain the operational gap, policy drift, or UX pain.
+      placeholder: Agents need to hand-edit the PR body because ...
+    validations:
+      required: true
+  - type: textarea
+    id: desired_behavior
+    attributes:
+      label: Desired behavior
+      description: Describe the deterministic behavior we want after the change.
+      placeholder: Workflow and policy changes should ship with a dedicated PR template and helper path.
+    validations:
+      required: true
+  - type: textarea
+    id: affected_contracts
+    attributes:
+      label: Affected contracts
+      description: List workflows, job names, labels, rulesets, templates, or helper scripts affected.
+      placeholder: |
+        - .github/workflows/...
+        - tools/policy/...
+        - .github/pull_request_template.md
+    validations:
+      required: true
+  - type: textarea
+    id: validation
+    attributes:
+      label: Validation and rollback expectations
+      description: Capture the checks that must pass and the rollback path if the change misbehaves.
+      placeholder: |
+        Validation:
+        - `./bin/actionlint -color`
+        - `node --test ...`
+
+        Rollback:
+        - revert template/helper changes
+    validations:
+      required: true
+  - type: textarea
+    id: review_focus
+    attributes:
+      label: Reviewer focus
+      description: Call out anything subtle that policy or workflow reviewers should inspect closely.
+      placeholder: Required-check name drift, permissions scope, merge-queue behavior, etc.

@@ -1,0 +1,78 @@
+name: Feature or program intake
+description: Propose a new delivery slice, epic, or repository improvement.
+title: "[intake]: "
+labels:
+  - enhancement
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Use this form for new feature work, programs, or backlog shaping. Keep the body deterministic so future agents
+        can pick the issue up without reverse-engineering the intent.
+  - type: dropdown
+    id: work_type
+    attributes:
+      label: Work type
+      options:
+        - Feature slice
+        - Epic or program
+        - Workflow or policy change
+        - Documentation or agent UX improvement
+        - Cross-repo integration
+    validations:
+      required: true
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem
+      description: What hurts today and why is it worth changing now?
+      placeholder: Current agents still need manual PR body cleanup because ...
+    validations:
+      required: true
+  - type: textarea
+    id: goal
+    attributes:
+      label: Goal
+      description: State the end condition in one short paragraph.
+      placeholder: Modernize the GitHub intake layer so ...
+    validations:
+      required: true
+  - type: textarea
+    id: scope
+    attributes:
+      label: Scope
+      description: List the surfaces that are in-scope and any key boundaries.
+      placeholder: |
+        - .github templates
+        - CLI helper scripts
+        - AGENTS/docs updates
+        - Not in scope: ...
+    validations:
+      required: true
+  - type: textarea
+    id: acceptance
+    attributes:
+      label: Acceptance criteria
+      description: Define what must be true before the issue is complete.
+      placeholder: |
+        - ...
+        - ...
+    validations:
+      required: true
+  - type: textarea
+    id: evidence_expectations
+    attributes:
+      label: Evidence expectations
+      description: What commands, artifacts, or workflow proof should a future PR include?
+      placeholder: |
+        - `./bin/actionlint -color`
+        - `node --test ...`
+        - `tests/results/...`
+    validations:
+      required: true
+  - type: textarea
+    id: related_work
+    attributes:
+      label: Related issues, repos, or rollout notes
+      description: Link adjacent issues, downstream repos, or follow-up work.
+      placeholder: "#875, comparevi-history#14"
