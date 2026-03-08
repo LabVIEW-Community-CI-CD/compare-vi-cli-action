@@ -51,8 +51,11 @@ function Get-PropertyValue {
     [string]$Property
   )
   if ($null -eq $Object) { return $null }
-  if (-not ($Object.PSObject.Properties.Name -contains $Property)) { return $null }
-  return $Object.$Property
+  try {
+    $member = $Object.PSObject.Properties[$Property]
+    if ($member) { return $member.Value }
+  } catch {}
+  return $null
 }
 
 function Get-CompareOutcomeTelemetry {
@@ -455,9 +458,9 @@ function Write-TerminalReport {
   }
   Write-Host ''
 
-  $runtimeEvents = if ($pester -and $pester.PSObject.Properties.Name -contains 'RuntimeEvents') { $pester.RuntimeEvents } else { $null }
-  $dispatcherRuntime = if ($runtimeEvents -and $runtimeEvents.PSObject.Properties.Name -contains 'Dispatcher') { $runtimeEvents.Dispatcher } else { $null }
-  $restWatcherRuntime = if ($runtimeEvents -and $runtimeEvents.PSObject.Properties.Name -contains 'RestWatcher') { $runtimeEvents.RestWatcher } else { $null }
+  $runtimeEvents = Get-PropertyValue -Object $pester -Property 'RuntimeEvents'
+  $dispatcherRuntime = Get-PropertyValue -Object $runtimeEvents -Property 'Dispatcher'
+  $restWatcherRuntime = Get-PropertyValue -Object $runtimeEvents -Property 'RestWatcher'
   if ($dispatcherRuntime -or $restWatcherRuntime) {
     Write-Host "Runtime Events"
     if ($dispatcherRuntime) {
@@ -878,9 +881,9 @@ function ConvertTo-HtmlReport {
   "<ul>$([string]::Join('', $rows))</ul>"
   } else { '<p>None</p>' }
 
-  $runtimeEvents = if ($pester.PSObject.Properties.Name -contains 'RuntimeEvents') { $pester.RuntimeEvents } else { $null }
-  $dispatcherRuntime = if ($runtimeEvents -and $runtimeEvents.PSObject.Properties.Name -contains 'Dispatcher') { $runtimeEvents.Dispatcher } else { $null }
-  $restWatcherRuntime = if ($runtimeEvents -and $runtimeEvents.PSObject.Properties.Name -contains 'RestWatcher') { $runtimeEvents.RestWatcher } else { $null }
+  $runtimeEvents = Get-PropertyValue -Object $pester -Property 'RuntimeEvents'
+  $dispatcherRuntime = Get-PropertyValue -Object $runtimeEvents -Property 'Dispatcher'
+  $restWatcherRuntime = Get-PropertyValue -Object $runtimeEvents -Property 'RestWatcher'
   $runtimeEventRows = [System.Collections.Generic.List[string]]::new()
   $runtimeEventWarnings = [System.Collections.Generic.List[string]]::new()
   foreach ($eventEntry in @(

@@ -75,4 +75,21 @@ Describe 'Dev Dashboard CLI' -Tag 'Unit' {
     $html | Should -Match 'Runtime event warnings:'
     $html | Should -Match 'errors=1'
   }
+
+  It 'handles empty session-index watcher and file containers without throwing' {
+    $resultsRoot = Join-Path $TestDrive 'samples-empty-runtime-containers'
+    Copy-Item -LiteralPath $script:samplesRoot -Destination $resultsRoot -Recurse -Force
+
+    $sessionIndexPath = Join-Path $resultsRoot 'session-index.json'
+    $sessionIndex = Get-Content -LiteralPath $sessionIndexPath -Raw | ConvertFrom-Json
+    $sessionIndex.files = [pscustomobject]@{}
+    $sessionIndex.watchers = [pscustomobject]@{}
+    $sessionIndex | ConvertTo-Json -Depth 8 | Set-Content -LiteralPath $sessionIndexPath -Encoding utf8
+
+    { & $script:cliPath -Group 'pester-selfhosted' -ResultsRoot $resultsRoot -Quiet -Json | Out-Null } | Should -Not -Throw
+
+    $jsonOutput = & $script:cliPath -Group 'pester-selfhosted' -ResultsRoot $resultsRoot -Quiet -Json
+    $json = (($jsonOutput | Out-String) | ConvertFrom-Json)
+    $json.PesterTelemetry.RuntimeEvents | Should -BeNullOrEmpty
+  }
 }
