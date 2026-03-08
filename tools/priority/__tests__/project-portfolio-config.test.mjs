@@ -22,7 +22,7 @@ test('project portfolio config item URLs are unique and cover the tracked portfo
   const parsedUrls = config.items.map((item) => new URL(item.url));
   const urlStrings = parsedUrls.map((item) => item.toString());
   assert.equal(new Set(urlStrings).size, urlStrings.length);
-  assert.equal(parsedUrls.length, 26);
+  assert.equal(parsedUrls.length, 28);
 
   const issueCoordinates = new Set(
     parsedUrls.map((item) => {
@@ -46,6 +46,8 @@ test('project portfolio config item URLs are unique and cover the tracked portfo
   assert.ok(issueCoordinates.has('LabVIEW-Community-CI-CD/compare-vi-cli-action#897'));
   assert.ok(issueCoordinates.has('LabVIEW-Community-CI-CD/compare-vi-cli-action#903'));
   assert.ok(issueCoordinates.has('LabVIEW-Community-CI-CD/compare-vi-cli-action#904'));
+  assert.ok(issueCoordinates.has('LabVIEW-Community-CI-CD/compare-vi-cli-action#906'));
+  assert.ok(issueCoordinates.has('LabVIEW-Community-CI-CD/compare-vi-cli-action#907'));
   assert.ok(issueCoordinates.has('LabVIEW-Community-CI-CD/comparevi-history#14'));
   assert.ok(issueCoordinates.has('LabVIEW-Community-CI-CD/comparevi-history#15'));
 });

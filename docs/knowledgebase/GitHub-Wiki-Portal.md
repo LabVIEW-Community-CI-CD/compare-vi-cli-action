@@ -53,6 +53,13 @@ These repo surfaces should point readers at the wiki when discoverability matter
 - Do not make the wiki the primary authoring location.
 - Do not add sync automation or parity enforcement in the initial rollout.
 
+## Deferred automation
+
+Automation evaluation is tracked in
+[`docs/knowledgebase/GitHub-Wiki-Portal-Automation-Evaluation.md`](./GitHub-Wiki-Portal-Automation-Evaluation.md).
+The current recommendation is to keep manual curation and only consider narrow helpers such as read-only route/link
+reporting or navigation export if repeated maintenance toil justifies them.
+
 ## Maintenance note
 
 When a wiki page needs a detail-heavy update, prefer improving the checked-in repo doc first, then refresh the wiki
