@@ -46,7 +46,7 @@ function createReadyDecision({ prNumber = 866, headSha = 'a'.repeat(40), reposit
       schema: 'validation-approval-policy/v1',
       schemaVersion: '1.0.0',
       path: 'tools/policy/validation-approval-policy.json',
-      shadowMode: true,
+      shadowMode: false,
       allowedBaseRefs: ['develop'],
       trust: {
         requireRepositoryMatch: true,
@@ -126,9 +126,9 @@ function createReadyDecision({ prNumber = 866, headSha = 'a'.repeat(40), reposit
       ready: true,
       blockers: [],
       denials: [],
-      reasons: ['approval-ready-shadow-mode'],
+      reasons: ['approval-ready'],
       notes: [],
-      summary: 'All required broker inputs are trusted and ready. Shadow mode only; no approval was performed.',
+      summary: 'All required broker inputs are trusted and ready for validation apply mode.',
     },
     artifacts: {
       decisionPath: 'tests/results/_agent/approvals/validation-approval-decision.json',
