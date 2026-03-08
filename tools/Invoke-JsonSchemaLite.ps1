@@ -10,6 +10,137 @@ if (-not (Test-Path -LiteralPath $SchemaPath)) { Write-Error "Schema file not fo
 try { $data = Get-Content -LiteralPath $JsonPath -Raw | ConvertFrom-Json -ErrorAction Stop } catch { Write-Error "Failed to parse JSON: $($_.Exception.Message)"; exit 2 }
 try { $schema = Get-Content -LiteralPath $SchemaPath -Raw | ConvertFrom-Json -ErrorAction Stop } catch { Write-Error "Failed to parse schema: $($_.Exception.Message)"; exit 2 }
 
+function Get-SchemaObjectPropertyValue {
+  param(
+    [Parameter()]$Object,
+    [Parameter(Mandatory)][string]$Name
+  )
+
+  if ($null -eq $Object) { return $null }
+  if ($Object -is [System.Collections.IDictionary]) {
+    if ($Object.Contains($Name)) {
+      return $Object[$Name]
+    }
+    return $null
+  }
+  if ($Object.PSObject) {
+    $prop = $Object.PSObject.Properties[$Name]
+    if ($prop) {
+      return $prop.Value
+    }
+  }
+  return $null
+}
+
+function Copy-SchemaNode {
+  param([Parameter()]$Node)
+
+  if ($null -eq $Node) { return $null }
+  if ($Node -isnot [psobject] -and $Node -isnot [System.Collections.IDictionary]) {
+    return $Node
+  }
+
+  $clone = [ordered]@{}
+  if ($Node -is [System.Collections.IDictionary]) {
+    foreach ($key in $Node.Keys) {
+      $clone[$key] = $Node[$key]
+    }
+  } else {
+    foreach ($prop in $Node.PSObject.Properties) {
+      $clone[$prop.Name] = $prop.Value
+    }
+  }
+
+  return [pscustomobject]$clone
+}
+
+function Resolve-JsonPointer {
+  param(
+    [Parameter(Mandatory)]$Document,
+    [Parameter(Mandatory)][string]$Pointer
+  )
+
+  if ([string]::IsNullOrWhiteSpace($Pointer) -or $Pointer -eq '#') {
+    return $Document
+  }
+  if (-not $Pointer.StartsWith('#/')) {
+    throw "Unsupported schema pointer '$Pointer'. Only internal JSON pointers are supported."
+  }
+
+  $segments = $Pointer.Substring(2).Split('/')
+  $current = $Document
+  foreach ($rawSegment in $segments) {
+    $segment = $rawSegment.Replace('~1', '/').Replace('~0', '~')
+    if ($current -is [System.Collections.IDictionary]) {
+      if (-not $current.Contains($segment)) {
+        throw "Schema pointer '$Pointer' not found at segment '$segment'."
+      }
+      $current = $current[$segment]
+      continue
+    }
+    if ($current -is [System.Array] -or $current -is [System.Collections.IList]) {
+      $index = 0
+      if (-not [int]::TryParse($segment, [ref]$index)) {
+        throw "Schema pointer '$Pointer' uses non-numeric array index '$segment'."
+      }
+      if ($index -lt 0 -or $index -ge $current.Count) {
+        throw "Schema pointer '$Pointer' index '$segment' is out of range."
+      }
+      $current = $current[$index]
+      continue
+    }
+    if ($current -and $current.PSObject) {
+      $prop = $current.PSObject.Properties[$segment]
+      if (-not $prop) {
+        throw "Schema pointer '$Pointer' not found at segment '$segment'."
+      }
+      $current = $prop.Value
+      continue
+    }
+    throw "Schema pointer '$Pointer' cannot traverse segment '$segment'."
+  }
+
+  return $current
+}
+
+function Resolve-SchemaNode {
+  param(
+    [Parameter(Mandatory)]$SchemaRoot,
+    [Parameter()]$SchemaNode,
+    [string[]]$RefStack = @()
+  )
+
+  $resolved = $SchemaNode
+  while ($resolved -is [psobject] -or $resolved -is [System.Collections.IDictionary]) {
+    $refValue = Get-SchemaObjectPropertyValue -Object $resolved -Name '$ref'
+    if ([string]::IsNullOrWhiteSpace([string]$refValue)) {
+      break
+    }
+    $refString = [string]$refValue
+    if ($RefStack -contains $refString) {
+      throw "Schema reference cycle detected: $(([string[]]($RefStack + $refString)) -join ' -> ')"
+    }
+
+    $targetNode = Resolve-JsonPointer -Document $SchemaRoot -Pointer $refString
+    $mergedNode = Copy-SchemaNode -Node $targetNode
+    if ($resolved -is [System.Collections.IDictionary]) {
+      foreach ($key in $resolved.Keys) {
+        if ($key -eq '$ref') { continue }
+        $mergedNode | Add-Member -NotePropertyName $key -NotePropertyValue $resolved[$key] -Force
+      }
+    } else {
+      foreach ($prop in $resolved.PSObject.Properties) {
+        if ($prop.Name -eq '$ref') { continue }
+        $mergedNode | Add-Member -NotePropertyName $prop.Name -NotePropertyValue $prop.Value -Force
+      }
+    }
+    $resolved = $mergedNode
+    $RefStack = @($RefStack + $refString)
+  }
+
+  return $resolved
+}
+
 # When the supplied schema declares a const value that does not match the JSON payload's
 # declared schema identifier, attempt to locate a sibling schema definition whose file
 # name matches the payload's identifier ("<schema>.schema.json"). This keeps historical
@@ -18,8 +149,9 @@ try { $schema = Get-Content -LiteralPath $SchemaPath -Raw | ConvertFrom-Json -Er
 # snapshots). The fallback only applies when both schema and payload expose a concrete
 # identifier and the alternate file exists next to the requested schema path.
 $schemaConst = $null
-if ($schema -is [psobject]) {
-  $schemaPropertiesProp = $schema.PSObject.Properties['properties']
+$resolvedSchemaNode = Resolve-SchemaNode -SchemaRoot $schema -SchemaNode $schema
+if ($resolvedSchemaNode -is [psobject]) {
+  $schemaPropertiesProp = $resolvedSchemaNode.PSObject.Properties['properties']
   if ($schemaPropertiesProp -and $schemaPropertiesProp.Value -is [psobject]) {
     $schemaProperties = $schemaPropertiesProp.Value
     $schemaNodeProp = $schemaProperties.PSObject.Properties['schema']
@@ -54,6 +186,7 @@ if ($schemaConst -and $payloadSchemaId -and $schemaConst -ne $payloadSchemaId) {
       try {
         $schema = Get-Content -LiteralPath $altSchemaPath -Raw | ConvertFrom-Json -ErrorAction Stop
         $SchemaPath = $altSchemaPath
+        $resolvedSchemaNode = Resolve-SchemaNode -SchemaRoot $schema -SchemaNode $schema
       } catch {
         $warning = [string]::Format(
           '[schema-lite] fallback schema load failed for {0}: {1}',
@@ -89,6 +222,7 @@ function Test-TypeMatch {
 function Invoke-ValidateNode {
   param($node,$schemaNode,[string]$path)
   $errs = @()
+  $schemaNode = Resolve-SchemaNode -SchemaRoot $schema -SchemaNode $schemaNode
   if ($schemaNode -isnot [psobject]) { return $errs }
   $nodeProps = @()
   if ($node -is [psobject]) { $nodeProps = $node.PSObject.Properties.Name }
@@ -103,6 +237,7 @@ function Invoke-ValidateNode {
       $name = $p.Name; $spec = $p.Value; $childPath = "$path$name."
       if ($nodeProps -contains $name) {
         $val = $node.$name
+        $spec = Resolve-SchemaNode -SchemaRoot $schema -SchemaNode $spec
         if ($spec -is [psobject]) {
           if (($spec | Get-Member -Name type -MemberType NoteProperty -ErrorAction SilentlyContinue) -and $spec.type) {
             $tm = Test-TypeMatch -val $val -type $spec.type -path ("$path$name"); if ($tm) { $errs += $tm; continue }
@@ -117,12 +252,13 @@ function Invoke-ValidateNode {
           if (($spec | Get-Member -Name type -MemberType NoteProperty -ErrorAction SilentlyContinue) -and $spec.type -eq 'object' -and ($spec | Get-Member -Name properties -MemberType NoteProperty -ErrorAction SilentlyContinue) -and $spec.properties) {
             $errs += Invoke-ValidateNode -node $val -schemaNode $spec -path $childPath
           } elseif (($spec | Get-Member -Name type -MemberType NoteProperty -ErrorAction SilentlyContinue) -and $spec.type -eq 'array' -and ($spec | Get-Member -Name items -MemberType NoteProperty -ErrorAction SilentlyContinue) -and $spec.items -and ($val -is [System.Array])) {
+            $itemsSpec = Resolve-SchemaNode -SchemaRoot $schema -SchemaNode $spec.items
             for ($i=0; $i -lt $val.Count; $i++) {
               $itemVal = $val[$i]; $tm2 = $null
-              if ($spec.items -is [psobject] -and ($spec.items | Get-Member -Name type -MemberType NoteProperty -ErrorAction SilentlyContinue) -and $spec.items.type) { $tm2 = Test-TypeMatch -val $itemVal -type $spec.items.type -path ("$path$name[$i]") }
+              if ($itemsSpec -is [psobject] -and ($itemsSpec | Get-Member -Name type -MemberType NoteProperty -ErrorAction SilentlyContinue) -and $itemsSpec.type) { $tm2 = Test-TypeMatch -val $itemVal -type $itemsSpec.type -path ("$path$name[$i]") }
               if ($tm2) { $errs += $tm2; continue }
-              if ($spec.items -is [psobject] -and ($spec.items | Get-Member -Name type -MemberType NoteProperty -ErrorAction SilentlyContinue) -and $spec.items.type -eq 'object' -and ($spec.items | Get-Member -Name properties -MemberType NoteProperty -ErrorAction SilentlyContinue) -and $spec.items.properties) {
-                $errs += Invoke-ValidateNode -node $itemVal -schemaNode $spec.items -path ("$path$name[$i].")
+              if ($itemsSpec -is [psobject] -and ($itemsSpec | Get-Member -Name type -MemberType NoteProperty -ErrorAction SilentlyContinue) -and $itemsSpec.type -eq 'object' -and ($itemsSpec | Get-Member -Name properties -MemberType NoteProperty -ErrorAction SilentlyContinue) -and $itemsSpec.properties) {
+                $errs += Invoke-ValidateNode -node $itemVal -schemaNode $itemsSpec -path ("$path$name[$i].")
               }
             }
           }
@@ -136,7 +272,7 @@ function Invoke-ValidateNode {
     if (($schemaNode | Get-Member -Name additionalProperties -MemberType NoteProperty -ErrorAction SilentlyContinue) -and $schemaNode.additionalProperties -eq $false -and $hasProperties) {
       foreach ($actual in $nodeProps) { if ($schemaNode.properties.PSObject.Properties.Name -notcontains $actual) { $errs += "Unexpected field '${path}$actual'" } }
     } elseif ($schemaNode.additionalProperties -is [psobject]) {
-      $apSpec = $schemaNode.additionalProperties
+      $apSpec = Resolve-SchemaNode -SchemaRoot $schema -SchemaNode $schemaNode.additionalProperties
       foreach ($actual in $nodeProps) {
         if (-not $hasProperties -or $schemaNode.properties.PSObject.Properties.Name -notcontains $actual) {
           $val = $node.$actual
