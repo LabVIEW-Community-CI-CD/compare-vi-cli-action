@@ -1104,9 +1104,29 @@ exit 0
     $historyHtmlPath = (($historyHtmlLine -split '=', 2)[1]).Trim()
     Test-Path -LiteralPath $historyHtmlPath | Should -BeTrue
 
+    $historySummaryLine = $outputLines | Where-Object { $_ -like 'history-summary-json=*' } | Select-Object -First 1
+    $historySummaryLine | Should -Not -BeNullOrEmpty
+    $historySummaryPath = (($historySummaryLine -split '=', 2)[1]).Trim()
+    Test-Path -LiteralPath $historySummaryPath | Should -BeTrue
+
+    $historySummarySchemaPath = Join-Path $_repoRoot 'docs' 'schemas' 'comparevi-tools-history-facade-v1.schema.json'
+    $schemaLitePath = Join-Path $_repoRoot 'tools' 'Invoke-JsonSchemaLite.ps1'
+    & pwsh -NoLogo -NoProfile -File $schemaLitePath -JsonPath $historySummaryPath -SchemaPath $historySummarySchemaPath | Out-Null
+    $LASTEXITCODE | Should -Be 0
+
+    $historySummary = Get-Content -LiteralPath $historySummaryPath -Raw | ConvertFrom-Json -Depth 12
+    $historySummary.schema | Should -Be 'comparevi-tools/history-facade@v1'
+    @($historySummary.execution.requestedModes) | Should -Be @('default', 'attributes')
+    @($historySummary.execution.executedModes) | Should -Be @('default', 'attributes')
+    $historySummary.observedInterpretation.coverageClass | Should -Be 'catalog-aligned'
+    $historySummary.reports.markdownPath | Should -Be $historyMdPath
+    $historySummary.reports.htmlPath | Should -Be $historyHtmlPath
+    @($historySummary.modes | ForEach-Object { [string]$_.slug }) | Should -Be @('default', 'attributes')
+
     Test-Path -LiteralPath $summaryPath | Should -BeTrue
     $summaryContent = Get-Content -LiteralPath $summaryPath -Raw
     $summaryContent | Should -Match 'VI history report'
+    $summaryContent | Should -Match 'history-summary.json'
     $summaryContent | Should -Match 'history-report.md'
     $summaryContent | Should -Match '## Observed interpretation'
     $summaryContent | Should -Match '\| Coverage Class \| `catalog-aligned` \|'
@@ -1136,6 +1156,13 @@ exit 0
         FailOnDiff       = $false
       }
       & $script:InvokeCompareHistory -Parameters $runParams | Out-Null
+
+      $historySummaryPath = Join-Path $rd 'history-summary.json'
+      Test-Path -LiteralPath $historySummaryPath | Should -BeTrue
+      $historySummary = Get-Content -LiteralPath $historySummaryPath -Raw | ConvertFrom-Json -Depth 12
+      $historySummary.observedInterpretation.coverageClass | Should -Be 'catalog-aligned'
+      @($historySummary.execution.requestedModes) | Should -Be @('default')
+      @($historySummary.execution.executedModes) | Should -Be @('default')
 
       $historyMd = Get-Content -LiteralPath (Join-Path $rd 'history-report.md') -Raw
       $historyMd | Should -Match 'Requested Modes: `default`'

@@ -1,9 +1,10 @@
 <!-- markdownlint-disable-next-line MD041 -->
 # Cross-Repo VI History Capture
 
-This note records the steps I took to exercise the Compare-VIHistory tooling
-against an external repository (`LabVIEW-Community-CI-CD/labview-icon-editor`,
-standing issue #527).
+This note records the supported steps for exercising the Compare-VIHistory
+tooling against an external repository. The pinned sample below uses
+`svelderrainruiz/labview-icon-editor`, which is the active downstream icon
+editor repository.
 
 ## Prerequisites
 
@@ -44,7 +45,9 @@ is the reviewed release tag plus its published checksum/provenance.
    ```
 
    The embedded metadata records the module version, repository source,
-   source ref/tag, source SHA, and the file closure for the bundle.
+   source ref/tag, source SHA, the file closure for the bundle, and the
+   supported downstream facade contract under
+   `consumerContract.historyFacade`.
 
 4. **Import the module from the extracted bundle**
 
@@ -52,26 +55,48 @@ is the reviewed release tag plus its published checksum/provenance.
    Import-Module .\comparevi-tools\CompareVI.Tools-v<release-version>\tools\CompareVI.Tools\CompareVI.Tools.psd1 -Force
    ```
 
-5. **Run the history helper**
+5. **Run the facade helper**
 
    ```powershell
    Set-Location labview-icon-editor
-   Invoke-CompareVIHistory `
-     -TargetPath "Tooling/deployment/VIP_Post-Install Custom Action.vi" `
+   $history = Invoke-CompareVIHistoryFacade `
+     -TargetPath "resource/plugins/NIIconEditor/Miscellaneous/Settings Init.vi" `
+     -Mode default,attributes `
      -RenderReport `
      -FailOnDiff:$false `
      -InvokeScriptPath ..\comparevi-tools\CompareVI.Tools-v<release-version>\tools\Invoke-LVCompare.ps1
+
+   $history.observedInterpretation.coverageClass
+   $history.execution.requestedModes
+   $history.execution.executedModes
+   $history.reports.markdownPath
    ```
 
 This path replaces whole-repository acquisition for module consumers while
-keeping the integration pinned to a reviewed release tag.
+keeping the integration pinned to a reviewed release tag. The returned facade
+object is the supported downstream summary surface: requested/executed modes,
+coverage and outcome interpretation, report paths, and per-mode tallies without
+the raw backend comparison payloads.
+
+## Pinned sample flow
+
+Use this exact sample when you need a documented cross-repo consumer reference:
+
+- Backend pin: reviewed `compare-vi-cli-action` release tag plus
+  `comparevi-tools-release.json`
+- Downstream repo: `svelderrainruiz/labview-icon-editor`
+- Target VI:
+  `resource/plugins/NIIconEditor/Miscellaneous/Settings Init.vi`
+- Recommended modes: `default,attributes`
+- Supported module entry point: `Invoke-CompareVIHistoryFacade`
+- Runtime summary artifact: `history-summary.json`
 
 ## One-off local run from a source checkout (legacy / maintainer path)
 
 1. **Clone the target repo**
 
    ```powershell
-   git clone https://github.com/LabVIEW-Community-CI-CD/labview-icon-editor.git
+   git clone https://github.com/svelderrainruiz/labview-icon-editor.git
    ```
 
 2. **Import the module**
@@ -82,8 +107,9 @@ keeping the integration pinned to a reviewed release tag.
    Import-Module (Join-Path $PWD 'tools/CompareVI.Tools/CompareVI.Tools.psd1') -Force
    ```
 
-   The module exposes `Invoke-CompareVIHistory` and redirects all helper lookups
-   back to this repository.
+   The module exposes both `Invoke-CompareVIHistory` and
+   `Invoke-CompareVIHistoryFacade`, and redirects all helper lookups back to
+   this repository.
 
 3. **Run the history helper**
 

@@ -6,6 +6,7 @@ param(
   [string]$OutputDir,
   [string]$MarkdownPath,
   [string]$HtmlPath,
+  [string]$SummaryJsonPath,
   [switch]$EmitHtml,
   [string]$GitHubOutputPath,
   [string]$StepSummaryPath
@@ -678,6 +679,28 @@ function Get-BucketCountEntries {
   return @($map.Values | Sort-Object -Property label, slug)
 }
 
+function Get-CountMapKeys {
+  param([object]$CountMap)
+
+  if ($null -eq $CountMap) { return @() }
+
+  $keys = New-Object System.Collections.Generic.List[string]
+  if ($CountMap -is [System.Collections.IDictionary]) {
+    foreach ($key in $CountMap.Keys) {
+      if ([string]::IsNullOrWhiteSpace([string]$key)) { continue }
+      $keys.Add([string]$key) | Out-Null
+    }
+  } elseif ($CountMap.PSObject) {
+    foreach ($prop in $CountMap.PSObject.Properties) {
+      if (-not $prop) { continue }
+      if ([string]::IsNullOrWhiteSpace([string]$prop.Name)) { continue }
+      $keys.Add([string]$prop.Name) | Out-Null
+    }
+  }
+
+  return @($keys | Sort-Object -Unique)
+}
+
 $manifestResolved = Resolve-ExistingPath -Path $ManifestPath -Description 'Manifest'
 if (-not $HistoryContextPath) {
   $HistoryContextPath = Join-Path (Split-Path -Parent $manifestResolved) 'history-context.json'
@@ -702,6 +725,11 @@ $HtmlPath = if ($HtmlPath) { Resolve-FullPath $HtmlPath } else { $null }
 if ($emitHtml -and $HtmlPath) {
   $htmlDir = Split-Path -Parent $HtmlPath
   if ($htmlDir) { [void](Ensure-Directory -Path $htmlDir) }
+}
+$SummaryJsonPath = if ($SummaryJsonPath) { Resolve-FullPath $SummaryJsonPath } else { Join-Path $outputResolved 'history-summary.json' }
+$summaryJsonDir = Split-Path -Parent $SummaryJsonPath
+if ($summaryJsonDir) {
+  [void](Ensure-Directory -Path $summaryJsonDir)
 }
 
 try {
@@ -1606,7 +1634,79 @@ if ($emitHtml -and $HtmlPath) {
   Write-GitHubOutput -Key 'history-report-html' -Value $htmlOutPath -DestPath $GitHubOutputPath
 }
 
+$summaryResultsDir = if ($outputResolved) { $outputResolved } else { Split-Path -Parent $markdownOutPath }
+$aggregateCategoryCountSource = if ($stats -and $stats.PSObject.Properties['categoryCounts']) { $stats.categoryCounts } else { $null }
+$aggregateBucketCountSource = if ($stats -and $stats.PSObject.Properties['bucketCounts']) { $stats.bucketCounts } else { $null }
+$aggregateCategoryEntries = @(Get-CategoryCountEntries -CategoryCounts $aggregateCategoryCountSource)
+$aggregateBucketEntries = @(Get-BucketCountEntries -BucketCounts $aggregateBucketCountSource)
+$modeFacadeEntries = @(
+  foreach ($mode in @($modeEntries)) {
+    $modeCategoryEntries = @(Get-CategoryCountEntries -CategoryCounts $mode.stats.categoryCounts)
+    $modeBucketEntries = @(Get-BucketCountEntries -BucketCounts $mode.stats.bucketCounts)
+    [ordered]@{
+      name = [string](Coalesce $mode.name $mode.slug)
+      slug = [string](Coalesce $mode.slug $mode.name)
+      status = [string](Coalesce $mode.status 'unknown')
+      processed = Get-IntPropertyValue -InputObject $mode.stats -Name 'processed'
+      diffs = Get-IntPropertyValue -InputObject $mode.stats -Name 'diffs'
+      signalDiffs = Get-IntPropertyValue -InputObject $mode.stats -Name 'signalDiffs'
+      noiseCollapsed = Get-IntPropertyValue -InputObject $mode.stats -Name 'noiseCollapsed'
+      missing = Get-IntPropertyValue -InputObject $mode.stats -Name 'missing'
+      errors = Get-IntPropertyValue -InputObject $mode.stats -Name 'errors'
+      categories = @($modeCategoryEntries | ForEach-Object { [string]$_.label })
+      bucketProfile = @($modeBucketEntries | ForEach-Object { [string]$_.slug })
+      flags = @(Get-StringArray -Value $mode.flags)
+      manifestPath = [string](Coalesce $mode.manifestPath '')
+      resultsDir = [string](Coalesce $mode.resultsDir '')
+    }
+  }
+)
+$historySummary = [ordered]@{
+  schema = 'comparevi-tools/history-facade@v1'
+  generatedAtUtc = (Get-Date).ToUniversalTime().ToString('o')
+  target = [ordered]@{
+    path = [string](Coalesce $targetPath '')
+    requestedStartRef = [string](Coalesce $requestedStart '')
+    effectiveStartRef = [string](Coalesce $startRef '')
+  }
+  execution = [ordered]@{
+    status = [string](Coalesce $manifest.status 'unknown')
+    reportFormat = [string](Coalesce $manifest.reportFormat '')
+    resultsDir = [string](Coalesce $summaryResultsDir '')
+    manifestPath = [string]$manifestResolved
+    requestedModes = @(Get-StringArray -Value $requestedModes)
+    executedModes = @(Get-StringArray -Value $executedModes)
+  }
+  observedInterpretation = [ordered]@{
+    coverageClass = [string]$coverageClass
+    coverageDetail = [string]$coverageClassDetail
+    modeSensitivity = [string]$modeSensitivity
+    outcomeLabels = @(Get-SortedUniqueStringArray -Value $outcomeLabels)
+  }
+  summary = [ordered]@{
+    modes = if ($stats -and $stats.PSObject.Properties['modes']) { [int]$stats.modes } else { [int]$modeEntries.Count }
+    comparisons = Get-IntPropertyValue -InputObject $stats -Name 'processed'
+    diffs = Get-IntPropertyValue -InputObject $stats -Name 'diffs'
+    signalDiffs = Get-IntPropertyValue -InputObject $stats -Name 'signalDiffs'
+    noiseCollapsed = Get-IntPropertyValue -InputObject $stats -Name 'noiseCollapsed'
+    missing = Get-IntPropertyValue -InputObject $stats -Name 'missing'
+    errors = Get-IntPropertyValue -InputObject $stats -Name 'errors'
+    categories = @($aggregateCategoryEntries | ForEach-Object { [string]$_.label })
+    bucketProfile = @($aggregateBucketEntries | ForEach-Object { [string]$_.slug })
+    categoryCountKeys = @(Get-CountMapKeys -CountMap $aggregateCategoryCountSource)
+    bucketCountKeys = @(Get-CountMapKeys -CountMap $aggregateBucketCountSource)
+  }
+  reports = [ordered]@{
+    markdownPath = [string]$markdownOutPath
+    htmlPath = if ($htmlOutPath) { [string]$htmlOutPath } else { '' }
+  }
+  modes = @($modeFacadeEntries)
+}
+$historySummary | ConvertTo-Json -Depth 8 | Set-Content -LiteralPath $SummaryJsonPath -Encoding utf8
+$summaryJsonOutPath = (Resolve-Path -LiteralPath $SummaryJsonPath).Path
+
 Write-GitHubOutput -Key 'history-report-md' -Value $markdownOutPath -DestPath $GitHubOutputPath
+Write-GitHubOutput -Key 'history-summary-json' -Value $summaryJsonOutPath -DestPath $GitHubOutputPath
 
 $stepLines = New-Object System.Collections.Generic.List[string]
 foreach ($line in @($stepSummaryLines)) {
@@ -1615,6 +1715,7 @@ foreach ($line in @($stepSummaryLines)) {
 $stepLines.Add('') | Out-Null
 $stepLines.Add('## Artifacts') | Out-Null
 $stepLines.Add('') | Out-Null
+$stepLines.Add(('- History facade JSON: `{0}`' -f $summaryJsonOutPath)) | Out-Null
 $stepLines.Add(('- Markdown report: `{0}`' -f $markdownOutPath)) | Out-Null
 if ($htmlOutPath) {
   $stepLines.Add(('- HTML report: `{0}`' -f $htmlOutPath)) | Out-Null

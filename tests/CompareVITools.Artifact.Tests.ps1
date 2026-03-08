@@ -79,10 +79,14 @@ Describe 'CompareVI.Tools artifact publishing' {
     $metadata.module.name | Should -Be 'CompareVI.Tools'
     $metadata.module.version | Should -Be $moduleVersion
     $metadata.module.releaseVersion | Should -Be $moduleReleaseVersion
+    @($metadata.module.exportedFunctions) | Should -Contain 'Invoke-CompareVIHistoryFacade'
     $metadata.source.repository | Should -Be 'owner/repo'
     $metadata.source.ref | Should -Be 'refs/tags/v9.9.9'
     $metadata.source.sha | Should -Be '0123456789abcdef0123456789abcdef01234567'
     $metadata.source.releaseTag | Should -Be 'v9.9.9'
+    $metadata.consumerContract.historyFacade.schema | Should -Be 'comparevi-tools/history-facade@v1'
+    $metadata.consumerContract.historyFacade.exportedFunction | Should -Be 'Invoke-CompareVIHistoryFacade'
+    $metadata.consumerContract.historyFacade.resultsRelativePath | Should -Be 'history-summary.json'
 
     $archivePath = Join-Path $outDir $metadata.bundle.archiveName
     Test-Path -LiteralPath $archivePath | Should -BeTrue
@@ -145,6 +149,116 @@ Set-Content -LiteralPath $env:COMPAREVI_CAPTURE_PATH -Value $env:COMPAREVI_SCRIP
       Remove-Item Env:COMPAREVI_CAPTURE_PATH -ErrorAction SilentlyContinue
       Remove-Item Env:COMPAREVI_SCRIPTS_ROOT -ErrorAction SilentlyContinue
     }
+
+    Test-Path -LiteralPath $capturePath | Should -BeTrue
+    $capturedRoot = (Get-Content -LiteralPath $capturePath -Raw).Trim()
+    $capturedRoot | Should -Be $bundleRoot
+  }
+
+  It 'returns the stabilized history facade when invoking the module facade wrapper' {
+    $bundleRoot = Join-Path $TestDrive 'bundle-facade'
+    $moduleRoot = Join-Path $bundleRoot 'tools' 'CompareVI.Tools'
+    $toolsRoot = Join-Path $bundleRoot 'tools'
+    New-Item -ItemType Directory -Path $moduleRoot -Force | Out-Null
+
+    Copy-Item -LiteralPath (Join-Path $repoRoot 'tools' 'CompareVI.Tools' 'CompareVI.Tools.psd1') -Destination (Join-Path $moduleRoot 'CompareVI.Tools.psd1')
+    Copy-Item -LiteralPath (Join-Path $repoRoot 'tools' 'CompareVI.Tools' 'CompareVI.Tools.psm1') -Destination (Join-Path $moduleRoot 'CompareVI.Tools.psm1')
+
+    $capturePath = Join-Path $TestDrive 'facade-scripts-root.txt'
+    @'
+param(
+  [string]$TargetPath,
+  [string[]]$Mode = @('default'),
+  [string]$ResultsDir = 'tests/results/ref-compare/history',
+  [string]$GitHubOutputPath
+)
+Set-StrictMode -Version Latest
+$ErrorActionPreference = 'Stop'
+Set-Content -LiteralPath $env:COMPAREVI_CAPTURE_PATH -Value $env:COMPAREVI_SCRIPTS_ROOT -Encoding utf8
+New-Item -ItemType Directory -Path $ResultsDir -Force | Out-Null
+$resolvedResultsDir = (Resolve-Path -LiteralPath $ResultsDir).Path
+$summaryPath = Join-Path $resolvedResultsDir 'history-summary.json'
+$summary = [ordered]@{
+  schema = 'comparevi-tools/history-facade@v1'
+  generatedAtUtc = '2026-03-08T00:00:00Z'
+  target = [ordered]@{
+    path = $TargetPath
+    requestedStartRef = 'HEAD'
+    effectiveStartRef = 'HEAD'
+  }
+  execution = [ordered]@{
+    status = 'ok'
+    reportFormat = 'html'
+    resultsDir = $resolvedResultsDir
+    manifestPath = (Join-Path $resolvedResultsDir 'manifest.json')
+    requestedModes = @('default', 'attributes')
+    executedModes = @('default')
+  }
+  observedInterpretation = [ordered]@{
+    coverageClass = 'catalog-partial'
+    coverageDetail = 'requested: 2; executed: 1; missing: attributes'
+    modeSensitivity = 'single-mode-observed'
+    outcomeLabels = @('clean', 'signal-diff')
+  }
+  summary = [ordered]@{
+    modes = 1
+    comparisons = 2
+    diffs = 1
+    signalDiffs = 1
+    noiseCollapsed = 0
+    missing = 0
+    errors = 0
+    categories = @('VI Attribute')
+    bucketProfile = @('metadata')
+    categoryCountKeys = @('vi-attribute')
+    bucketCountKeys = @('metadata')
+  }
+  reports = [ordered]@{
+    markdownPath = (Join-Path $resolvedResultsDir 'history-report.md')
+    htmlPath = (Join-Path $resolvedResultsDir 'history-report.html')
+  }
+  modes = @(
+    [ordered]@{
+      name = 'default'
+      slug = 'default'
+      status = 'ok'
+      processed = 2
+      diffs = 1
+      signalDiffs = 1
+      noiseCollapsed = 0
+      missing = 0
+      errors = 0
+      categories = @('VI Attribute')
+      bucketProfile = @('metadata')
+      flags = @('-nobd')
+      manifestPath = (Join-Path $resolvedResultsDir 'default' 'manifest.json')
+      resultsDir = (Join-Path $resolvedResultsDir 'default')
+    }
+  )
+}
+$summary | ConvertTo-Json -Depth 8 | Set-Content -LiteralPath $summaryPath -Encoding utf8
+if ($GitHubOutputPath) {
+  "history-summary-json=$summaryPath" | Out-File -FilePath $GitHubOutputPath -Encoding utf8 -Append
+}
+'@ | Set-Content -LiteralPath (Join-Path $toolsRoot 'Compare-VIHistory.ps1') -Encoding utf8
+
+    $env:COMPAREVI_CAPTURE_PATH = $capturePath
+    try {
+      Import-Module (Join-Path $moduleRoot 'CompareVI.Tools.psd1') -Force
+      $result = Invoke-CompareVIHistoryFacade -TargetPath 'Dummy.vi' -ResultsDir (Join-Path $TestDrive 'facade-results')
+    } finally {
+      Remove-Module CompareVI.Tools -Force -ErrorAction SilentlyContinue
+      Remove-Item Env:COMPAREVI_CAPTURE_PATH -ErrorAction SilentlyContinue
+      Remove-Item Env:COMPAREVI_SCRIPTS_ROOT -ErrorAction SilentlyContinue
+    }
+
+    $result | Should -Not -BeNullOrEmpty
+    $result.schema | Should -Be 'comparevi-tools/history-facade@v1'
+    @($result.execution.requestedModes) | Should -Be @('default', 'attributes')
+    @($result.execution.executedModes) | Should -Be @('default')
+    $result.observedInterpretation.coverageClass | Should -Be 'catalog-partial'
+    @($result.observedInterpretation.outcomeLabels) | Should -Be @('clean', 'signal-diff')
+    @($result.modes | ForEach-Object { [string]$_.slug }) | Should -Be @('default')
 
     Test-Path -LiteralPath $capturePath | Should -BeTrue
     $capturedRoot = (Get-Content -LiteralPath $capturePath -Raw).Trim()

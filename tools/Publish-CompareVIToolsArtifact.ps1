@@ -221,6 +221,8 @@ try {
     ''
     '- Keep all files from this bundle together; do not mix files across tags.'
     '- For cross-repo VI history, extract the archive and import the module from this bundle instead of checking out the full repository.'
+    '- Prefer `Invoke-CompareVIHistoryFacade` when downstream tooling needs a stable summary object plus the generated report paths.'
+    '- The runtime facade JSON is written to `history-summary.json` under the selected results directory.'
     '- Real compare execution still requires the same LVCompare/LabVIEW prerequisites as the source repository.'
   ) | Set-Content -LiteralPath $bundleReadmePath -Encoding utf8
 
@@ -251,7 +253,8 @@ try {
   $compatibilityMetadata = [ordered]@{
     supportedPaths = @(
       'extract-archive-and-import-module',
-      'cross-repo-vi-history-via-module'
+      'cross-repo-vi-history-via-module',
+      'cross-repo-vi-history-via-facade'
     )
     requires = @(
       'git-history-in-target-repo',
@@ -261,6 +264,34 @@ try {
       'The bundle is self-contained for CompareVI.Tools module usage.',
       'Do not mix files from different release tags.'
     )
+  }
+
+  $consumerContractMetadata = [ordered]@{
+    historyFacade = [ordered]@{
+      schema = 'comparevi-tools/history-facade@v1'
+      schemaUrl = 'https://labview-community-ci-cd.github.io/compare-vi-cli-action/schemas/comparevi-tools-history-facade-v1.schema.json'
+      exportedFunction = 'Invoke-CompareVIHistoryFacade'
+      resultsRelativePath = 'history-summary.json'
+      stableFields = @(
+        'target.path',
+        'target.requestedStartRef',
+        'target.effectiveStartRef',
+        'execution.requestedModes',
+        'execution.executedModes',
+        'execution.reportFormat',
+        'execution.status',
+        'observedInterpretation.coverageClass',
+        'observedInterpretation.modeSensitivity',
+        'observedInterpretation.outcomeLabels',
+        'summary',
+        'reports',
+        'modes'
+      )
+      notes = @(
+        'Use the reviewed release tag and bundle metadata as the supported downstream pin.',
+        'The facade omits raw per-comparison backend payloads so downstream consumers only depend on the stabilized summary surface.'
+      )
+    }
   }
 
   $bundleMetadata = [ordered]@{
@@ -276,6 +307,7 @@ try {
     module = $moduleMetadata
     source = $sourceMetadata
     compatibility = $compatibilityMetadata
+    consumerContract = $consumerContractMetadata
     bundle = $bundleMetadata
   }
 
