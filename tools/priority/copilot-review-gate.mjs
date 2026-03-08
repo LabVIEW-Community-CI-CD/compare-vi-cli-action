@@ -913,14 +913,20 @@ function appendStepSummary(stepSummaryPath, report) {
   writeFileSync(resolved, `${lines.join('\n')}\n`, { encoding: 'utf8', flag: 'a' });
 }
 
-function shouldPollForInitialCopilotReview(report, options) {
+function isMissingInitialCopilotReview(report) {
   return (
-    options.eventName === 'pull_request_target' &&
-    options.pollAttempts > 1 &&
     report?.status === 'fail' &&
     Array.isArray(report?.reasons) &&
     report.reasons.length === 1 &&
     report.reasons[0] === 'copilot-review-missing'
+  );
+}
+
+function shouldPollForInitialCopilotReview(report, options) {
+  return (
+    options.eventName === 'pull_request_target' &&
+    options.pollAttempts > 1 &&
+    isMissingInitialCopilotReview(report)
   );
 }
 
@@ -984,7 +990,7 @@ export async function runCopilotReviewGate({
         const reviews = await loadReviewsFn(options);
         const threads = await loadThreadsFn(options);
         report = buildReportFromLiveData(options, reviews, threads, now);
-        if (!shouldPollForInitialCopilotReview(report, { ...options, pollAttempts: DEFAULT_POLL_ATTEMPTS })) {
+        if (!isMissingInitialCopilotReview(report)) {
           break;
         }
       }

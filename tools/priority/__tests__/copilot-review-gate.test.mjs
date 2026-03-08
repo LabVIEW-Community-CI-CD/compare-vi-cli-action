@@ -461,6 +461,137 @@ test('copilot-review-gate polls live data until the first Copilot review lands',
   assert.equal(threadsCallCount, 2);
 });
 
+test('copilot-review-gate polls across multiple attempts until the first Copilot review lands', async () => {
+  const { runCopilotReviewGate } = await loadModule();
+  let reviewsCallCount = 0;
+  let threadsCallCount = 0;
+
+  const result = await runCopilotReviewGate({
+    argv: createArgv([
+      '--event-name',
+      'pull_request_target',
+      '--repo',
+      'LabVIEW-Community-CI-CD/compare-vi-cli-action',
+      '--pr',
+      '885',
+      '--head-sha',
+      'bcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbc',
+      '--base-ref',
+      'develop',
+      '--draft',
+      'false',
+      '--poll-attempts',
+      '3',
+      '--poll-delay-ms',
+      '1',
+    ]),
+    loadReviewsFn: async () => {
+      reviewsCallCount += 1;
+      if (reviewsCallCount < 3) {
+        return [];
+      }
+      return [
+        {
+          id: 31,
+          user: { login: 'copilot-pull-request-reviewer[bot]' },
+          state: 'COMMENTED',
+          body: 'Current-head review arrived on the final polling attempt.',
+          html_url: 'https://github.com/example/review/31',
+          submitted_at: '2026-03-08T06:07:00Z',
+          commit_id: 'bcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbc',
+        },
+      ];
+    },
+    loadThreadsFn: async () => {
+      threadsCallCount += 1;
+      return {
+        data: {
+          repository: {
+            pullRequest: {
+              reviewThreads: {
+                nodes: [],
+              },
+            },
+          },
+        },
+      };
+    },
+    writeReportFn: () => 'memory://copilot-review-gate-poll-multi-attempt.json',
+    appendStepSummaryFn: () => {},
+  });
+
+  assert.equal(result.exitCode, 0);
+  assert.equal(result.report?.status, 'pass');
+  assert.equal(result.report?.gateState, 'ready');
+  assert.deepEqual(result.report?.reasons, ['current-head-review-clean']);
+  assert.deepEqual(result.report?.poll, {
+    attemptsRequested: 3,
+    attemptsUsed: 3,
+    delayMs: 1,
+  });
+  assert.equal(reviewsCallCount, 3);
+  assert.equal(threadsCallCount, 3);
+});
+
+test('copilot-review-gate reports exhausted polling when the first Copilot review never lands', async () => {
+  const { runCopilotReviewGate } = await loadModule();
+  let reviewsCallCount = 0;
+  let threadsCallCount = 0;
+
+  const result = await runCopilotReviewGate({
+    argv: createArgv([
+      '--event-name',
+      'pull_request_target',
+      '--repo',
+      'LabVIEW-Community-CI-CD/compare-vi-cli-action',
+      '--pr',
+      '885',
+      '--head-sha',
+      'cdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcd',
+      '--base-ref',
+      'develop',
+      '--draft',
+      'false',
+      '--poll-attempts',
+      '3',
+      '--poll-delay-ms',
+      '1',
+    ]),
+    loadReviewsFn: async () => {
+      reviewsCallCount += 1;
+      return [];
+    },
+    loadThreadsFn: async () => {
+      threadsCallCount += 1;
+      return {
+        data: {
+          repository: {
+            pullRequest: {
+              reviewThreads: {
+                nodes: [],
+              },
+            },
+          },
+        },
+      };
+    },
+    writeReportFn: () => 'memory://copilot-review-gate-poll-exhausted.json',
+    appendStepSummaryFn: () => {},
+  });
+
+  assert.equal(result.exitCode, 1);
+  assert.equal(result.report?.status, 'fail');
+  assert.equal(result.report?.gateState, 'blocked');
+  assert.deepEqual(result.report?.reasons, ['copilot-review-missing']);
+  assert.deepEqual(result.report?.poll, {
+    attemptsRequested: 3,
+    attemptsUsed: 3,
+    delayMs: 1,
+  });
+  assert.equal(reviewsCallCount, 3);
+  assert.equal(threadsCallCount, 3);
+});
+
 test('copilot-review-gate fails when signal includes thread pagination errors', async (t) => {
   const { runCopilotReviewGate } = await loadModule();
   let reviewsCalled = false;
