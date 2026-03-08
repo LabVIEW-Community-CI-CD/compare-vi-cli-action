@@ -1,0 +1,318 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://labview-community-ci-cd.github.io/compare-vi-cli-action/schemas/validation-approval-proof-v1.schema.json",
+  "title": "validation-approval-proof@v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema",
+    "schemaVersion",
+    "generatedAt",
+    "status",
+    "strict",
+    "inputs",
+    "proofWindow",
+    "summary",
+    "verdict",
+    "samples",
+    "skipped",
+    "errors"
+  ],
+  "properties": {
+    "schema": {
+      "const": "validation-approval-proof@v1"
+    },
+    "schemaVersion": {
+      "type": "string"
+    },
+    "generatedAt": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "status": {
+      "type": "string",
+      "enum": ["pass", "warn", "fail"]
+    },
+    "strict": {
+      "type": "boolean"
+    },
+    "inputs": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "repository",
+        "environment",
+        "policyPath",
+        "maxDeployments",
+        "minSamples",
+        "lookbackDays",
+        "artifactsDir",
+        "reportPath"
+      ],
+      "properties": {
+        "repository": {
+          "type": "string",
+          "pattern": "^[^/\\s]+/[^/\\s]+$"
+        },
+        "environment": {
+          "type": "string",
+          "minLength": 1
+        },
+        "policyPath": {
+          "type": "string",
+          "minLength": 1
+        },
+        "maxDeployments": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "minSamples": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "lookbackDays": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "artifactsDir": {
+          "type": "string",
+          "minLength": 1
+        },
+        "reportPath": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "proofWindow": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["startedAt", "endedAt"],
+      "properties": {
+        "startedAt": {
+          "$ref": "#/$defs/nullableDateTime"
+        },
+        "endedAt": {
+          "$ref": "#/$defs/nullableDateTime"
+        }
+      }
+    },
+    "summary": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "deploymentsFetched",
+        "samplesEvaluated",
+        "skippedCount",
+        "errorCount",
+        "readyCount",
+        "approvedCount",
+        "falseReadyCount",
+        "falseBlockedCount"
+      ],
+      "properties": {
+        "deploymentsFetched": { "type": "integer", "minimum": 0 },
+        "samplesEvaluated": { "type": "integer", "minimum": 0 },
+        "skippedCount": { "type": "integer", "minimum": 0 },
+        "errorCount": { "type": "integer", "minimum": 0 },
+        "readyCount": { "type": "integer", "minimum": 0 },
+        "approvedCount": { "type": "integer", "minimum": 0 },
+        "falseReadyCount": { "type": "integer", "minimum": 0 },
+        "falseBlockedCount": { "type": "integer", "minimum": 0 }
+      }
+    },
+    "verdict": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["policyFlipRecommended", "reasons", "summary"],
+      "properties": {
+        "policyFlipRecommended": {
+          "type": "boolean"
+        },
+        "reasons": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "summary": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "samples": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/sample"
+      }
+    },
+    "skipped": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/skippedSample"
+      }
+    },
+    "errors": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/errorSample"
+      }
+    }
+  },
+  "$defs": {
+    "nullableString": {
+      "type": ["string", "null"]
+    },
+    "nullableDateTime": {
+      "type": ["string", "null"],
+      "format": "date-time"
+    },
+    "sample": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "deploymentId",
+        "runId",
+        "runUrl",
+        "pullRequestNumber",
+        "pullRequestUrl",
+        "ref",
+        "sha",
+        "createdAt",
+        "latestStatusAt",
+        "finalState",
+        "waitedForApproval",
+        "actualDecision",
+        "brokerState",
+        "brokerReady",
+        "comparison",
+        "reasons",
+        "notes",
+        "reviewSignal",
+        "deploymentDeterminism",
+        "artifacts"
+      ],
+      "properties": {
+        "deploymentId": { "type": "integer", "minimum": 1 },
+        "runId": { "type": ["integer", "null"], "minimum": 1 },
+        "runUrl": { "$ref": "#/$defs/nullableString" },
+        "pullRequestNumber": { "type": "integer", "minimum": 1 },
+        "pullRequestUrl": { "$ref": "#/$defs/nullableString" },
+        "ref": { "$ref": "#/$defs/nullableString" },
+        "sha": {
+          "type": ["string", "null"],
+          "pattern": "^[0-9a-f]{40}$"
+        },
+        "createdAt": { "$ref": "#/$defs/nullableDateTime" },
+        "latestStatusAt": { "$ref": "#/$defs/nullableDateTime" },
+        "finalState": { "$ref": "#/$defs/nullableString" },
+        "waitedForApproval": { "type": "boolean" },
+        "actualDecision": {
+          "type": "string",
+          "enum": ["approved", "not-approved"]
+        },
+        "brokerState": {
+          "type": "string",
+          "enum": ["ready", "blocked", "denied", "error"]
+        },
+        "brokerReady": { "type": "boolean" },
+        "comparison": {
+          "type": "string",
+          "enum": ["match-ready", "match-not-ready", "false-ready", "false-blocked"]
+        },
+        "reasons": {
+          "type": "array",
+          "items": { "type": "string", "minLength": 1 }
+        },
+        "notes": {
+          "type": "array",
+          "items": { "type": "string", "minLength": 1 }
+        },
+        "reviewSignal": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "status",
+            "reviewState",
+            "hasCurrentHeadReview",
+            "actionableCommentCount",
+            "unresolvedThreadCount",
+            "staleReviewCount"
+          ],
+          "properties": {
+            "status": { "$ref": "#/$defs/nullableString" },
+            "reviewState": { "$ref": "#/$defs/nullableString" },
+            "hasCurrentHeadReview": { "type": "boolean" },
+            "actionableCommentCount": { "type": "integer", "minimum": 0 },
+            "unresolvedThreadCount": { "type": "integer", "minimum": 0 },
+            "staleReviewCount": { "type": "integer", "minimum": 0 }
+          }
+        },
+        "deploymentDeterminism": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["source", "result", "issueCount", "artifactPath"],
+          "properties": {
+            "source": {
+              "type": "string",
+              "enum": ["artifact", "fallback"]
+            },
+            "result": { "$ref": "#/$defs/nullableString" },
+            "issueCount": { "type": "integer", "minimum": 0 },
+            "artifactPath": { "type": "string", "minLength": 1 }
+          }
+        },
+        "artifacts": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "sampleDir",
+            "signalPath",
+            "pullPath",
+            "attestationPath",
+            "decisionPath",
+            "eventsPath",
+            "deploymentDeterminismPath"
+          ],
+          "properties": {
+            "sampleDir": { "type": "string", "minLength": 1 },
+            "signalPath": { "type": "string", "minLength": 1 },
+            "pullPath": { "type": "string", "minLength": 1 },
+            "attestationPath": { "type": "string", "minLength": 1 },
+            "decisionPath": { "type": "string", "minLength": 1 },
+            "eventsPath": { "type": "string", "minLength": 1 },
+            "deploymentDeterminismPath": { "type": "string", "minLength": 1 }
+          }
+        }
+      }
+    },
+    "skippedSample": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["deploymentId", "reason", "ref", "sha"],
+      "properties": {
+        "deploymentId": { "type": ["integer", "null"], "minimum": 1 },
+        "runId": { "type": ["integer", "null"], "minimum": 1 },
+        "reason": { "type": "string", "minLength": 1 },
+        "ref": { "$ref": "#/$defs/nullableString" },
+        "sha": {
+          "type": ["string", "null"],
+          "pattern": "^[0-9a-f]{40}$"
+        }
+      }
+    },
+    "errorSample": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["deploymentId", "runId", "pullRequestNumber", "message"],
+      "properties": {
+        "deploymentId": { "type": ["integer", "null"], "minimum": 1 },
+        "runId": { "type": ["integer", "null"], "minimum": 1 },
+        "pullRequestNumber": { "type": ["integer", "null"], "minimum": 1 },
+        "message": { "type": "string", "minLength": 1 }
+      }
+    }
+  }
+}

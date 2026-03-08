@@ -188,7 +188,7 @@ test('validation approval broker returns ready for trusted clean inputs', async 
 
   assert.equal(result.exitCode, 0);
   assert.equal(result.report?.decision.state, 'ready');
-  assert.deepEqual(result.report?.decision.reasons, ['approval-ready-shadow-mode']);
+  assert.deepEqual(result.report?.decision.reasons, ['approval-ready']);
 
   const lines = (await readFile(eventsPath, 'utf8')).trim().split(/\r?\n/);
   assert.ok(lines.length >= 2);

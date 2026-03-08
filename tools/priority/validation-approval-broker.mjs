@@ -796,12 +796,16 @@ function evaluateDecision({
   }
 
   const state = denials.length > 0 ? 'denied' : blockers.length > 0 ? 'blocked' : 'ready';
+  const readyReason = policy.shadowMode ? 'approval-ready-shadow-mode' : 'approval-ready';
+  const readySummary = policy.shadowMode
+    ? 'All required broker inputs are trusted and ready. Shadow mode only; no approval was performed.'
+    : 'All required broker inputs are trusted and ready for validation apply mode.';
   const reasons =
     state === 'denied'
       ? denials
       : state === 'blocked'
         ? blockers
-        : ['approval-ready-shadow-mode'];
+        : [readyReason];
 
   return {
     state,
@@ -812,7 +816,7 @@ function evaluateDecision({
     notes: uniqueStrings(notes),
     summary:
       state === 'ready'
-        ? 'All required broker inputs are trusted and ready. Shadow mode only; no approval was performed.'
+        ? readySummary
         : state === 'denied'
           ? `Approval denied by trust policy: ${uniqueStrings(reasons).join(', ')}`
           : `Approval blocked: ${uniqueStrings(reasons).join(', ')}`,
