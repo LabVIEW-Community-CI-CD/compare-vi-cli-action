@@ -241,16 +241,17 @@ For Docker/Desktop VI history validation, run fast-loop lanes explicitly:
 
 ## Deployment approval gates
 
-- Pull-request validation deployments use the GitHub Actions `validation` environment (see `Validate / lint`).
+- Standard pull-request and merge-queue `Validate` runs are machine-gated only and do not target a protected
+  environment.
 - Tag releases use the GitHub Actions `production` environment (see `Release on tag / release`).
+- Monthly stability dispatch approvals use the `monthly-stability-release` environment gate.
 - Configure required reviewers in GitHub environment settings so deployment acknowledgement is explicit and review
   requests can be approved through GitHub web/mobile:
-  Settings -> Environments -> `validation` / `production` -> Required reviewers.
-- Run `node tools/npm/run-script.mjs priority:deployment:gate-policy` to verify both environments enforce
+  Settings -> Environments -> `production` / `monthly-stability-release` -> Required reviewers.
+- Run `node tools/npm/run-script.mjs priority:deployment:gate-policy` to verify the protected promotion environments enforce
   required reviewers and admin-bypass policy; report path:
   `tests/results/_agent/deployments/environment-gate-policy.json`.
 - `PR Auto-approve` and `PR Auto-approve Label` workflows were retired because branch policy requires `0` approvals.
-- Monthly stability dispatch approvals continue to use the `monthly-stability-release` environment gate.
 
 ### Release metadata
 
@@ -474,9 +475,9 @@ pwsh -File scripts/CompareVI.ps1 `
   fetch helper so they can operate on fork heads safely.
 - PR approval is no longer automated; merge queue admission relies on required checks and repository branch policy
   (currently `0` required reviewers on queue-managed branches).
-- Deployment acknowledgement now flows through GitHub Actions environment reviewers (`validation`, `production`,
-  `monthly-stability-release`) so approval notifications can be handled through GitHub's built-in deployment review UI
-  (web/mobile).
+- Deployment acknowledgement for protected promotion flows now uses GitHub Actions environment reviewers
+  (`production`, `monthly-stability-release`) so approval notifications can be handled through GitHub's built-in
+  deployment review UI (web/mobile).
 - Agent reviewer routing/policy is owner-agnostic: set repository variable `REQUIRED_AGENT_REVIEWER` to pin a specific
   login; when unset it defaults to `github.repository_owner`.
 - Manual `/vi-stage` and `/vi-history` workflows accept an optional `fetch_depth` input (default `20`). Increase it when

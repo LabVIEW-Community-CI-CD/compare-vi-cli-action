@@ -16,9 +16,9 @@ test('environment gate policy report validates schema', async () => {
   const schema = JSON.parse(await readFile(schemaPath, 'utf8'));
 
   const requestGitHubJsonFn = async (url) => {
-    if (String(url).endsWith('/environments/validation')) {
+    if (String(url).endsWith('/environments/production')) {
       return {
-        name: 'validation',
+        name: 'production',
         can_admins_bypass: false,
         protection_rules: [
           {
@@ -38,7 +38,7 @@ test('environment gate policy report validates schema', async () => {
       };
     }
     return {
-      name: 'production',
+      name: 'monthly-stability-release',
       can_admins_bypass: false,
       protection_rules: [
         {
@@ -64,7 +64,7 @@ test('environment gate policy report validates schema', async () => {
     args: {
       reportPath: 'tests/results/_agent/deployments/environment-gate-policy.json',
       repo: 'owner/repo',
-      environments: ['validation', 'production'],
+      environments: ['production', 'monthly-stability-release'],
       failOnAdminBypass: true,
       failOnMissingReviewers: true,
       help: false
