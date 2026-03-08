@@ -128,6 +128,119 @@ test('project portfolio CLI emits v2 report schema for the expanded payload', as
   assert.deepEqual(report.drift.fieldCatalogMismatches, []);
 });
 
+test('project portfolio CLI normalizes item values using fieldCatalog display names', async (t) => {
+  const tempRoot = await mkdtemp(path.join(tmpdir(), 'project-portfolio-renamed-fields-'));
+  t.after(async () => {
+    await rm(tempRoot, { recursive: true, force: true });
+  });
+
+  const configPath = path.join(tempRoot, 'config-renamed.json');
+  const viewPath = path.join(tempRoot, 'view-renamed.json');
+  const fieldsPath = path.join(tempRoot, 'fields-renamed.json');
+  const itemsPath = path.join(tempRoot, 'items-renamed.json');
+  const outPath = path.join(tempRoot, 'report-renamed.json');
+
+  await writeJson(configPath, {
+    schema: 'project-portfolio-config@v1',
+    owner: 'example-owner',
+    number: 9,
+    title: 'Renamed Fields Portfolio',
+    shortDescription: 'Renamed field labels',
+    readme: 'Renamed field readme',
+    public: false,
+    allowAdditionalItems: false,
+    repositories: ['example/repo'],
+    fieldCatalog: {
+      status: { name: 'Workflow Status', options: ['Todo'] },
+      program: { name: 'Program Lane', options: ['Shared Infra'] },
+      phase: { name: 'Execution Phase', options: ['Policy'] },
+      environmentClass: { name: 'Runtime Class', options: ['Infra'] },
+      blockingSignal: { name: 'Gate Signal', options: ['Scope'] },
+      evidenceState: { name: 'Evidence Readiness', options: ['Ready'] },
+      portfolioTrack: { name: 'Track Label', options: ['Agent UX'] },
+    },
+    items: [
+      {
+        url: 'https://github.com/example/repo/issues/3',
+        status: 'Todo',
+        program: 'Shared Infra',
+        phase: 'Policy',
+        environmentClass: 'Infra',
+        blockingSignal: 'Scope',
+        evidenceState: 'Ready',
+        portfolioTrack: 'Agent UX',
+      },
+    ],
+  });
+
+  await writeJson(viewPath, {
+    id: 'PVT_renamed',
+    number: 9,
+    title: 'Renamed Fields Portfolio',
+    shortDescription: 'Renamed field labels',
+    readme: 'Renamed field readme',
+    public: false,
+    url: 'https://github.com/orgs/example/projects/9',
+    items: { totalCount: 1 },
+    fields: { totalCount: 7 },
+    owner: { login: 'example-owner', type: 'Organization' },
+  });
+
+  await writeJson(fieldsPath, {
+    totalCount: 7,
+    fields: [
+      { id: 'status', name: 'Workflow Status', type: 'ProjectV2SingleSelectField', options: [{ id: 'a', name: 'Todo' }] },
+      { id: 'program', name: 'Program Lane', type: 'ProjectV2SingleSelectField', options: [{ id: 'b', name: 'Shared Infra' }] },
+      { id: 'phase', name: 'Execution Phase', type: 'ProjectV2SingleSelectField', options: [{ id: 'c', name: 'Policy' }] },
+      { id: 'environment', name: 'Runtime Class', type: 'ProjectV2SingleSelectField', options: [{ id: 'd', name: 'Infra' }] },
+      { id: 'blocking', name: 'Gate Signal', type: 'ProjectV2SingleSelectField', options: [{ id: 'e', name: 'Scope' }] },
+      { id: 'evidence', name: 'Evidence Readiness', type: 'ProjectV2SingleSelectField', options: [{ id: 'f', name: 'Ready' }] },
+      { id: 'track', name: 'Track Label', type: 'ProjectV2SingleSelectField', options: [{ id: 'g', name: 'Agent UX' }] },
+    ],
+  });
+
+  await writeJson(itemsPath, {
+    totalCount: 1,
+    items: [
+      {
+        id: 'item-3',
+        'Workflow Status': 'Todo',
+        'Program Lane': 'Shared Infra',
+        'Execution Phase': 'Policy',
+        'Runtime Class': 'Infra',
+        'Gate Signal': 'Scope',
+        'Evidence Readiness': 'Ready',
+        'Track Label': 'Agent UX',
+        content: {
+          url: 'https://github.com/example/repo/issues/3',
+          title: 'Renamed fields issue',
+          repository: 'example/repo',
+        },
+      },
+    ],
+  });
+
+  const result = runCli([
+    'snapshot',
+    '--config', configPath,
+    '--view-file', viewPath,
+    '--fields-file', fieldsPath,
+    '--item-file', itemsPath,
+    '--out', outPath,
+  ]);
+
+  assert.equal(result.status, 0, result.stderr);
+  const report = JSON.parse(await readFile(outPath, 'utf8'));
+  assert.equal(report.items[0].status, 'Todo');
+  assert.equal(report.items[0].program, 'Shared Infra');
+  assert.equal(report.items[0].phase, 'Policy');
+  assert.equal(report.items[0].environmentClass, 'Infra');
+  assert.equal(report.items[0].blockingSignal, 'Scope');
+  assert.equal(report.items[0].evidenceState, 'Ready');
+  assert.equal(report.items[0].portfolioTrack, 'Agent UX');
+  assert.deepEqual(report.drift.fieldMismatches, []);
+});
+
 test('project portfolio CLI rejects config field values outside fieldCatalog options', async (t) => {
   const tempRoot = await mkdtemp(path.join(tmpdir(), 'project-portfolio-invalid-config-'));
   t.after(async () => {

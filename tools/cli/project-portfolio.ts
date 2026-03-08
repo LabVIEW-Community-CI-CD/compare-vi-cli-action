@@ -153,6 +153,8 @@ interface FieldCatalogDriftEntry {
   unexpectedOptions: string[];
 }
 
+type FieldNameMap = Record<ConfigFieldKey, string>;
+
 function readJsonFile<T>(filePath: string): T {
   return JSON.parse(readFileSync(filePath, 'utf8')) as T;
 }
@@ -236,7 +238,19 @@ function fieldValue(item: RawProjectItem, name: string): string | null {
   return typeof match?.[1] === 'string' ? match[1] : null;
 }
 
-function normalizeItem(item: RawProjectItem): NormalizedItem {
+function buildFieldNameMap(config: PortfolioConfig): FieldNameMap {
+  return {
+    status: config.fieldCatalog.status.name,
+    program: config.fieldCatalog.program.name,
+    phase: config.fieldCatalog.phase.name,
+    environmentClass: config.fieldCatalog.environmentClass.name,
+    blockingSignal: config.fieldCatalog.blockingSignal.name,
+    evidenceState: config.fieldCatalog.evidenceState.name,
+    portfolioTrack: config.fieldCatalog.portfolioTrack.name,
+  };
+}
+
+function normalizeItem(item: RawProjectItem, fieldNames: FieldNameMap): NormalizedItem {
   const content = item.content ?? {};
   return {
     id: item.id,
@@ -244,13 +258,13 @@ function normalizeItem(item: RawProjectItem): NormalizedItem {
     title: typeof item.title === 'string' ? item.title : typeof content.title === 'string' ? content.title : item.id,
     repository: typeof content.repository === 'string' ? content.repository : null,
     labels: Array.isArray(item.labels) ? item.labels.filter((value): value is string => typeof value === 'string') : [],
-    status: fieldValue(item, 'Status'),
-    program: fieldValue(item, 'Program'),
-    phase: fieldValue(item, 'Phase'),
-    environmentClass: fieldValue(item, 'Environment Class'),
-    blockingSignal: fieldValue(item, 'Blocking Signal'),
-    evidenceState: fieldValue(item, 'Evidence State'),
-    portfolioTrack: fieldValue(item, 'Portfolio Track'),
+    status: fieldValue(item, fieldNames.status),
+    program: fieldValue(item, fieldNames.program),
+    phase: fieldValue(item, fieldNames.phase),
+    environmentClass: fieldValue(item, fieldNames.environmentClass),
+    blockingSignal: fieldValue(item, fieldNames.blockingSignal),
+    evidenceState: fieldValue(item, fieldNames.evidenceState),
+    portfolioTrack: fieldValue(item, fieldNames.portfolioTrack),
   };
 }
 
@@ -448,8 +462,9 @@ function main(): void {
     ['project', 'item-list', String(number), '--owner', owner, '--limit', '100', '--format', 'json'],
   );
 
+  const fieldNames = buildFieldNameMap(config);
   const normalizedItems = itemList.items
-    .map(normalizeItem)
+    .map((item) => normalizeItem(item, fieldNames))
     .sort((a, b) => a.url.localeCompare(b.url));
 
   const drift = compareProject(config, view, fields, normalizedItems);

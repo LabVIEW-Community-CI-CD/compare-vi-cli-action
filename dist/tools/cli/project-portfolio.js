@@ -162,7 +162,18 @@ function fieldValue(item, name) {
     const match = Object.entries(item).find(([key]) => key.trim().toLowerCase() === name.trim().toLowerCase());
     return typeof match?.[1] === 'string' ? match[1] : null;
 }
-function normalizeItem(item) {
+function buildFieldNameMap(config) {
+    return {
+        status: config.fieldCatalog.status.name,
+        program: config.fieldCatalog.program.name,
+        phase: config.fieldCatalog.phase.name,
+        environmentClass: config.fieldCatalog.environmentClass.name,
+        blockingSignal: config.fieldCatalog.blockingSignal.name,
+        evidenceState: config.fieldCatalog.evidenceState.name,
+        portfolioTrack: config.fieldCatalog.portfolioTrack.name,
+    };
+}
+function normalizeItem(item, fieldNames) {
     const content = item.content ?? {};
     return {
         id: item.id,
@@ -170,13 +181,13 @@ function normalizeItem(item) {
         title: typeof item.title === 'string' ? item.title : typeof content.title === 'string' ? content.title : item.id,
         repository: typeof content.repository === 'string' ? content.repository : null,
         labels: Array.isArray(item.labels) ? item.labels.filter((value) => typeof value === 'string') : [],
-        status: fieldValue(item, 'Status'),
-        program: fieldValue(item, 'Program'),
-        phase: fieldValue(item, 'Phase'),
-        environmentClass: fieldValue(item, 'Environment Class'),
-        blockingSignal: fieldValue(item, 'Blocking Signal'),
-        evidenceState: fieldValue(item, 'Evidence State'),
-        portfolioTrack: fieldValue(item, 'Portfolio Track'),
+        status: fieldValue(item, fieldNames.status),
+        program: fieldValue(item, fieldNames.program),
+        phase: fieldValue(item, fieldNames.phase),
+        environmentClass: fieldValue(item, fieldNames.environmentClass),
+        blockingSignal: fieldValue(item, fieldNames.blockingSignal),
+        evidenceState: fieldValue(item, fieldNames.evidenceState),
+        portfolioTrack: fieldValue(item, fieldNames.portfolioTrack),
     };
 }
 function compareProject(config, view, fields, items) {
@@ -340,8 +351,9 @@ function main() {
     const view = loadJsonInput(args.view_file, viewSchema, ['project', 'view', String(number), '--owner', owner, '--format', 'json']);
     const fields = loadJsonInput(args.fields_file, fieldsSchema, ['project', 'field-list', String(number), '--owner', owner, '--format', 'json']);
     const itemList = loadJsonInput(args.item_file, itemListSchema, ['project', 'item-list', String(number), '--owner', owner, '--limit', '100', '--format', 'json']);
+    const fieldNames = buildFieldNameMap(config);
     const normalizedItems = itemList.items
-        .map(normalizeItem)
+        .map((item) => normalizeItem(item, fieldNames))
         .sort((a, b) => a.url.localeCompare(b.url));
     const drift = compareProject(config, view, fields, normalizedItems);
     const report = {
