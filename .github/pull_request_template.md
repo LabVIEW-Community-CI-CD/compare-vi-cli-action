@@ -1,6 +1,7 @@
 # Summary
 
-Briefly describe the changes.
+Describe the outcome in 2-4 sentences. Lead with reviewer-visible behavior or operator impact, not implementation
+chronology.
 
 ## Agent Metadata (required for automation-authored PRs)
 
@@ -9,34 +10,33 @@ Briefly describe the changes.
 - Reviewer-Required: `@svelderrainruiz`
 - Emergency-Bypass-Label: `AllowCIBypass`
 
-> For automation-authored PRs, keep this block populated. Policy checks use it to route reviewer requests and enforce approval. Human-authored PRs may delete this section.
+> Keep this block for automation-authored PRs. Human-authored PRs should switch to
+> `.github/PULL_REQUEST_TEMPLATE/human-change.md` or delete this section before requesting review.
 
-## Changes
+## Change Surface
 
-- [ ] Updated action.yml logic
-- [ ] Updated README/docs
-- [ ] Updated workflows
+- Primary issue or standing-priority context:
+- Files, tools, workflows, or policies touched:
+- Cross-repo or external-consumer impact:
+- Required checks, merge-queue behavior, or approval flows affected:
 
-## Testing
+## Validation Evidence
 
-- [ ] Unit tests passed (Pester tests workflow)
-- [ ] Ran Test (mock) on windows-latest and it passed
-- [ ] Ran Smoke on self-hosted Windows and recorded exit codes
-- [ ] Verified outputs (`diff`, `exitCode`, `cliPath`, `command`) and step summary
+- Commands run:
+  - `node tools/npm/run-script.mjs <script>`
+- Key artifacts, logs, or workflow runs:
+  - `tests/results/...`
+- Risk-based checks not run:
+  - None or explain why
 
-## Documentation
+## Risks and Follow-ups
 
-- [ ] README updated (usage, args, troubleshooting)
-- [ ] CHANGELOG updated (user-facing changes)
-- [ ] Copilot instructions updated if behavior changed
+- Residual risks:
+- Follow-up issues or deferred work:
+- Deployment, approval, or rollback notes:
 
-## Checklist
+## Reviewer Focus
 
-- [ ] CI green (Validate, Pester tests, Test (mock))
-- [ ] Tag plan prepared (if releasing)
-
-## Smoke test (optional guidance)
-
-- If you have access to the self-hosted runner with LabVIEW, run `.github/workflows/smoke.yml`.
-- Provide inputs, or ensure repo variables exist:
-  - `LV_BASE_VI` (no-diff), `LV_HEAD_VI` (diff), `LVCOMPARE_PATH`
+- Please verify:
+- Areas where the reasoning is subtle:
+- Manual spot checks requested:

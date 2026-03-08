@@ -78,6 +78,7 @@
         "docs/knowledgebase/FEATURE_BRANCH_POLICY.md",
         "docs/knowledgebase/LVCompare-Git-CLI-Guide_Windows-LabVIEW-2025Q3.md",
         "docs/knowledgebase/CrossRepo-VIHistory.md",
+        "docs/knowledgebase/GitHub-Intake-Layer.md",
         "docs/knowledgebase/Offline-RealHistory-Corpus.md",
         "docs/knowledgebase/DOCKER_TOOLS_PARITY.md",
         "docs/LABVIEW_GATING.md",
@@ -118,11 +119,16 @@
       "name": "GitHub Templates",
       "category": "supporting",
       "status": "reference",
-      "description": "Issue and pull request templates stored under the .github directory.",
+      "description": "Issue forms, pull request templates, and intake snippets stored under the .github directory.",
       "files": [
-        ".github/ISSUE_TEMPLATE/bug_report.md",
-        ".github/ISSUE_TEMPLATE/feature_request.md",
-        ".github/ISSUE_TEMPLATE/runsummary-binding-anomaly.md",
+        ".github/ISSUE_TEMPLATE/01-bug-report.yml",
+        ".github/ISSUE_TEMPLATE/02-feature-program-intake.yml",
+        ".github/ISSUE_TEMPLATE/03-workflow-policy-agent-ux.yml",
+        ".github/ISSUE_TEMPLATE/04-investigation-anomaly.yml",
+        ".github/ISSUE_TEMPLATE/config.yml",
+        ".github/PULL_REQUEST_TEMPLATE/agent-maintenance.md",
+        ".github/PULL_REQUEST_TEMPLATE/human-change.md",
+        ".github/PULL_REQUEST_TEMPLATE/workflow-policy.md",
         ".github/PR_COMMENT_SNIPPETS.md",
         ".github/pull_request_template.md"
       ]

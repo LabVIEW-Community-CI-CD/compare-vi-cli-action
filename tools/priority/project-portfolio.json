@@ -221,7 +221,7 @@
     },
     {
       "url": "https://github.com/LabVIEW-Community-CI-CD/compare-vi-cli-action/issues/875",
-      "status": "Todo",
+      "status": "In Progress",
       "program": "Shared Infra",
       "phase": "Policy",
       "environmentClass": "Infra",
@@ -231,7 +231,7 @@
     },
     {
       "url": "https://github.com/LabVIEW-Community-CI-CD/compare-vi-cli-action/issues/876",
-      "status": "In Progress",
+      "status": "Done",
       "program": "Multi-Mode Diagnostics",
       "phase": "Sustain",
       "environmentClass": "Cross-Repo",
@@ -261,7 +261,7 @@
     },
     {
       "url": "https://github.com/LabVIEW-Community-CI-CD/compare-vi-cli-action/issues/894",
-      "status": "In Progress",
+      "status": "Done",
       "program": "Multi-Mode Diagnostics",
       "phase": "Sustain",
       "environmentClass": "Cross-Repo",
@@ -271,7 +271,7 @@
     },
     {
       "url": "https://github.com/LabVIEW-Community-CI-CD/compare-vi-cli-action/issues/895",
-      "status": "Todo",
+      "status": "Done",
       "program": "Multi-Mode Diagnostics",
       "phase": "Sustain",
       "environmentClass": "Cross-Repo",
@@ -281,7 +281,7 @@
     },
     {
       "url": "https://github.com/LabVIEW-Community-CI-CD/compare-vi-cli-action/issues/896",
-      "status": "Todo",
+      "status": "Done",
       "program": "Multi-Mode Diagnostics",
       "phase": "Sustain",
       "environmentClass": "Diagnostics",
@@ -291,7 +291,7 @@
     },
     {
       "url": "https://github.com/LabVIEW-Community-CI-CD/compare-vi-cli-action/issues/897",
-      "status": "Todo",
+      "status": "Done",
       "program": "Multi-Mode Diagnostics",
       "phase": "Sustain",
       "environmentClass": "Cross-Repo",

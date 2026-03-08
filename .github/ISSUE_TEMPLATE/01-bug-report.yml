@@ -1,0 +1,74 @@
+name: Bug report
+description: Report a deterministic failure in workflows, tooling, or compare behavior.
+title: "[bug]: "
+labels:
+  - bug
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Use this form for reproducible failures in GitHub Actions, compare tooling, or agent/operator workflows.
+        Link the smallest reproducible commands, logs, or workflow runs you have.
+  - type: dropdown
+    id: impacted_surface
+    attributes:
+      label: Impacted surface
+      description: Pick the closest surface first; add nuance in the details below.
+      options:
+        - GitHub workflow or required check
+        - PowerShell or Node tooling
+        - Compare CLI or report rendering
+        - Docker or NI image lane
+        - Reviewer or operator workflow
+        - Other
+    validations:
+      required: true
+  - type: textarea
+    id: summary
+    attributes:
+      label: Summary
+      description: Describe the failure in one short paragraph.
+      placeholder: Validate started skipping the wrong heavy lane after a mixed lightweight change set.
+    validations:
+      required: true
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Reproduction
+      description: Provide the minimal commands, workflow inputs, or repository state needed to reproduce the problem.
+      placeholder: |
+        1. Check out develop
+        2. Run `node tools/npm/run-script.mjs priority:validate -- --ref <branch>`
+        3. Observe ...
+      render: bash
+    validations:
+      required: true
+  - type: textarea
+    id: environment
+    attributes:
+      label: Environment and evidence
+      description: Include runner plane, OS, Docker/LabVIEW details, and the most useful artifact paths or workflow links.
+      placeholder: |
+        - Plane: windows-pwsh
+        - Runner: self-hosted Windows 11
+        - Docker image: ...
+        - Artifact: tests/results/_agent/...
+    validations:
+      required: true
+  - type: textarea
+    id: expected_actual
+    attributes:
+      label: Expected vs actual behavior
+      description: Capture the expected behavior, the actual behavior, and any exit codes or required checks involved.
+      placeholder: |
+        Expected:
+        Actual:
+        Exit code / check impact:
+    validations:
+      required: true
+  - type: textarea
+    id: additional_context
+    attributes:
+      label: Additional context
+      description: Add screenshots, references, or follow-up ideas if they help.
+      placeholder: Related issue, PR, or docs links.

@@ -1,7 +1,44 @@
-# PR Comment Snippets
+# GitHub Intake Snippets
 
-Use these snippets in PR comments to (re)run workflows with explicit, reproducible inputs. Replace placeholders in angle
-brackets.
+Use these snippets to bootstrap issues, PR bodies, and PR comments with deterministic structure. Replace placeholders in
+angle brackets.
+
+## Open An Issue With The CLI Intake Helpers
+
+- Feature or program intake:
+
+```text
+pwsh -File tools/New-IssueBody.ps1 -Template feature-program -StandingPriority -OutputPath issue-body.md
+gh issue create --title "<title>" --body-file issue-body.md
+```
+
+- Workflow, policy, or template work:
+
+```text
+pwsh -File tools/New-IssueBody.ps1 -Template workflow-policy-agent-ux -OutputPath issue-body.md
+gh issue create --title "<title>" --body-file issue-body.md
+```
+
+## Open A PR With The Template Helpers
+
+- Default agent-maintenance flow:
+
+```text
+pwsh -File tools/Branch-Orchestrator.ps1 -Issue <number> -Execute
+```
+
+- Workflow or policy change flow:
+
+```text
+pwsh -File tools/Branch-Orchestrator.ps1 -Issue <number> -Execute -PRTemplate workflow-policy
+```
+
+- Manual body generation without opening the PR yet:
+
+```text
+pwsh -File tools/New-PullRequestBody.ps1 -Template human-change -Issue <number> -OutputPath pr-body.md
+gh pr create --title "<title>" --body-file pr-body.md
+```
 
 ## Re-run Orchestrated With Same Inputs
 
@@ -32,4 +69,3 @@ Notes:
 ```text
 /run orchestrated strategy=matrix include_integration=true sample_id=<id>
 ```
-

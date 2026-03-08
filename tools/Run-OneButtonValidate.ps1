@@ -138,7 +138,7 @@ if ($Push) {
     }
       $title = 'Normalize workflows and local Validate mirrors (#127)'
       $body = 'Automated workflow normalization and Validate task updates for #127.'
-    $existingJson = gh pr view --json number --head $branch 2>$null
+    $existingJson = gh pr view $branch --json number 2>$null
     if ($LASTEXITCODE -eq 0 -and $existingJson) {
       $pr = $existingJson | ConvertFrom-Json
       gh pr edit $pr.number --title $title --body $body | Out-Host
