@@ -14,6 +14,42 @@ jobs:
   agent-review-policy:
     runs-on: ubuntu-latest
     steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install Node dependencies
+        run: npm ci --ignore-scripts
+
+      - name: Build TypeScript utilities
+        run: node tools/npm/run-script.mjs build
+
+      - name: Collect Copilot review signal
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          node dist/tools/priority/copilot-review-signal.js \
+            --repo "${{ github.repository }}" \
+            --pr "${{ github.event.pull_request.number }}" \
+            --head-sha "${{ github.event.pull_request.head.sha }}" \
+            --out tests/results/_agent/reviews/copilot-review-signal.json \
+            --step-summary "$GITHUB_STEP_SUMMARY"
+
+      - name: Validate Copilot review signal schema
+        run: node tools/npm/run-script.mjs schema:copilot-review-signal:validate
+
+      - name: Upload Copilot review signal artifact
+        if: always()
+        uses: actions/upload-artifact@v5
+        with:
+          name: copilot-review-signal-${{ github.event.pull_request.number }}
+          path: tests/results/_agent/reviews/copilot-review-signal.json
+          if-no-files-found: error
+
       - name: Enforce required reviewer for agent-authored PRs
         uses: actions/github-script@v8
         env:
