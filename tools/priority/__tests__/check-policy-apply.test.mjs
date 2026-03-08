@@ -103,6 +103,13 @@ test('priority:policy --apply updates rulesets for develop/main/release', async 
           required_review_thread_resolution: false,
           allowed_merge_methods: ['merge']
         }
+      },
+      {
+        type: 'copilot_code_review',
+        parameters: {
+          review_on_push: false,
+          review_draft_pull_requests: true
+        }
       }
     ]
   };
@@ -402,6 +409,10 @@ test('priority:policy --apply updates rulesets for develop/main/release', async 
   const developCodeQualityRule = rulesetDevelop.rules.find((rule) => rule.type === 'code_quality');
   assert.ok(developCodeQualityRule, 'code_quality rule expected on develop');
   assert.equal(developCodeQualityRule.parameters.severity, 'warnings');
+  const developCopilotRule = rulesetDevelop.rules.find((rule) => rule.type === 'copilot_code_review');
+  assert.ok(developCopilotRule, 'copilot_code_review rule expected on develop');
+  assert.equal(developCopilotRule.parameters.review_on_push, true);
+  assert.equal(developCopilotRule.parameters.review_draft_pull_requests, false);
 
   const mergeQueueRule = rulesetMain.rules.find((rule) => rule.type === 'merge_queue');
   assert.equal(mergeQueueRule.parameters.min_entries_to_merge_wait_minutes, 1);
@@ -447,11 +458,15 @@ test('priority:policy --apply updates rulesets for develop/main/release', async 
     .find((rule) => rule.type === 'required_status_checks')
     .parameters.required_status_checks.find((check) => check.context === 'commit-integrity');
   const developPayloadCodeQualityRule = developRulesetPayload.rules.find((rule) => rule.type === 'code_quality');
+  const developPayloadCopilotRule = developRulesetPayload.rules.find((rule) => rule.type === 'copilot_code_review');
   const mainCommitIntegrityCheck = mainRulesetPayload.rules
     .find((rule) => rule.type === 'required_status_checks')
     .parameters.required_status_checks.find((check) => check.context === 'commit-integrity');
   assert.ok(developPayloadCodeQualityRule, 'develop payload should include code_quality rule');
   assert.equal(developPayloadCodeQualityRule.parameters.severity, 'warnings');
+  assert.ok(developPayloadCopilotRule, 'develop payload should include copilot_code_review rule');
+  assert.equal(developPayloadCopilotRule.parameters.review_on_push, true);
+  assert.equal(developPayloadCopilotRule.parameters.review_draft_pull_requests, false);
   assert.ok(developCommitIntegrityCheck, 'develop ruleset should include commit-integrity required check');
   assert.ok(mainCommitIntegrityCheck, 'main ruleset should include commit-integrity required check');
   assert.equal(
@@ -973,6 +988,13 @@ test('priority:policy verify fails when queue-managed ruleset is missing merge_q
         parameters: {
           severity: 'warnings'
         }
+      },
+      {
+        type: 'copilot_code_review',
+        parameters: {
+          review_on_push: true,
+          review_draft_pull_requests: false
+        }
       }
     ]
   };
@@ -1015,6 +1037,13 @@ test('priority:policy verify fails when queue-managed ruleset is missing merge_q
         type: 'code_quality',
         parameters: {
           severity: 'warnings'
+        }
+      },
+      {
+        type: 'copilot_code_review',
+        parameters: {
+          review_on_push: true,
+          review_draft_pull_requests: false
         }
       }
     ]
@@ -1225,6 +1254,13 @@ test('priority:policy verify uses queue-managed rulesets as required-check sourc
         type: 'code_quality',
         parameters: {
           severity: 'warnings'
+        }
+      },
+      {
+        type: 'copilot_code_review',
+        parameters: {
+          review_on_push: true,
+          review_draft_pull_requests: false
         }
       }
     ]
@@ -1628,4 +1664,31 @@ test('priority:policy optional ruleset seam detects code_quality severity drift'
     }
   );
   assert.deepEqual(diffs, ['code_quality.severity: expected warnings, actual errors']);
+});
+
+test('priority:policy optional ruleset seam detects missing copilot review rule', () => {
+  const diffs = __test.compareOptionalParameterizedRule(
+    'copilot_code_review',
+    { review_on_push: true, review_draft_pull_requests: false },
+    null
+  );
+  assert.deepEqual(diffs, ['copilot_code_review: rule missing']);
+});
+
+test('priority:policy optional ruleset seam detects copilot review parameter drift', () => {
+  const diffs = __test.compareOptionalParameterizedRule(
+    'copilot_code_review',
+    { review_on_push: true, review_draft_pull_requests: false },
+    {
+      type: 'copilot_code_review',
+      parameters: {
+        review_on_push: false,
+        review_draft_pull_requests: true
+      }
+    }
+  );
+  assert.deepEqual(diffs, [
+    'copilot_code_review.review_on_push: expected true, actual false',
+    'copilot_code_review.review_draft_pull_requests: expected false, actual true'
+  ]);
 });

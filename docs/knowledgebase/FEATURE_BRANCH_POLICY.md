@@ -67,7 +67,7 @@ standing GitHub protection rules (including queue-managed `develop` and `main`).
 ### GitHub rulesets
 | Ruleset ID | Scope                | Highlights                                                                                   |
 |------------|----------------------|----------------------------------------------------------------------------------------------|
-| `8811898`  | `refs/heads/develop` | Merge queue enabled (`merge_method=SQUASH`, `grouping=ALLGREEN`, build queue <=5 entries, 5-minute quiet window). Required checks: `lint`, `fixtures`, `session-index`, `issue-snapshot`, `semver`, `Policy Guard (Upstream) / policy-guard`, `hook-parity (windows-latest)`, `hook-parity (ubuntu-latest)`, `vi-history-scenarios-linux`, `commit-integrity`. |
+| `8811898`  | `refs/heads/develop` | Merge queue enabled (`merge_method=SQUASH`, `grouping=ALLGREEN`, build queue <=5 entries, 5-minute quiet window). Required checks: `lint`, `fixtures`, `session-index`, `issue-snapshot`, `semver`, `Policy Guard (Upstream) / policy-guard`, `hook-parity (windows-latest)`, `hook-parity (ubuntu-latest)`, `vi-history-scenarios-linux`, `commit-integrity`. Copilot review is enabled with `review_on_push=true` and `review_draft_pull_requests=false`. |
 | `8614140`  | `refs/heads/main`    | Merge queue enabled (`merge_method=SQUASH`, `grouping=ALLGREEN`, build queue <=5 entries, 5-minute quiet window). Required checks: `lint`, `pester`, `vi-binary-check`, `vi-compare`, `Policy Guard (Upstream) / policy-guard`, `commit-integrity`. Required approving reviews: `0`. |
 | `8614172`  | `refs/heads/release/*` | No merge queue; protects against force-push/deletion. Required checks: `lint`, `pester`, `publish`, `vi-binary-check`, `vi-compare`, `mock-cli`, `Policy Guard (Upstream) / policy-guard`. Required approving reviews: `0`. |
 
@@ -243,6 +243,8 @@ to confirm each workflow includes both triggers.
 
 1. Ensure the PR targets a queue-managed branch (`develop` or `main`) and all required checks for that branch are green
    on the latest commit.
+   For `develop`, keep the PR in **Draft** if you need the explicit escape hatch from Copilot review while iterating;
+   ready PRs are expected to receive Copilot review on push.
 2. Click **Merge when ready** (queue-managed **squash**). No reviewer approval is required under the current policy.
 3. Monitor the corresponding queue page (`/queue/develop` or `/queue/main`). GitHub stages entries, reruns the required
    checks on the merge group tip, and waits up to your configured minimum group size wait time before merging smaller
