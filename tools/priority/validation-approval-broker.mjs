@@ -169,6 +169,26 @@ function normalizeBaseRef(value) {
     : normalized;
 }
 
+function normalizeRepositorySlug(value) {
+  if (typeof value === 'string') {
+    const normalized = normalizeText(value)?.toLowerCase() ?? null;
+    if (!normalized) {
+      return null;
+    }
+    parseRepoSlug(normalized);
+    return normalized;
+  }
+  if (value && typeof value === 'object') {
+    if (typeof value.nameWithOwner === 'string') {
+      return normalizeRepositorySlug(value.nameWithOwner);
+    }
+    if (typeof value.owner?.login === 'string' && typeof value.name === 'string') {
+      return normalizeRepositorySlug(`${value.owner.login}/${value.name}`);
+    }
+  }
+  return null;
+}
+
 function uniqueStrings(values) {
   return [...new Set(values.filter(Boolean))];
 }
@@ -402,6 +422,10 @@ function normalizePullContext(raw, repository) {
       normalizeOwner(raw?.headRepositoryOwner) ||
       normalizeOwner(raw?.head?.repo?.owner) ||
       normalizeOwner(raw?.headRepoOwner),
+    headRepository:
+      normalizeRepositorySlug(raw?.headRepository) ||
+      normalizeRepositorySlug(raw?.head?.repo) ||
+      normalizeRepositorySlug(raw?.headRepositoryNameWithOwner),
     isCrossRepository: normalizeBoolean(raw?.isCrossRepository) ?? false,
     mergeStateStatus: normalizeText(raw?.mergeStateStatus),
     statusCheckRollup: Array.isArray(raw?.statusCheckRollup) ? raw.statusCheckRollup : [],
@@ -610,6 +634,7 @@ function evaluateRequiredChecks(requiredChecks, statusCheckRollup) {
 
 function evaluateTrustContext(policy, repository, pull) {
   const denialReasons = [];
+  const normalizedRepository = normalizeRepositorySlug(repository);
   const { owner } = parseRepoSlug(repository);
   const headOwner = normalizeOwner(pull.headRepositoryOwner);
   const baseRefAllowed = policy.allowedBaseRefs.includes(normalizeBaseRef(pull.baseRefName));
@@ -617,7 +642,11 @@ function evaluateTrustContext(policy, repository, pull) {
   if (!baseRefAllowed) {
     denialReasons.push('unsupported-base-ref');
   }
-  if (policy.trust.requireRepositoryMatch && normalizeText(pull.repository) && pull.repository !== repository) {
+  if (
+    policy.trust.requireRepositoryMatch &&
+    normalizeRepositorySlug(pull.headRepository) &&
+    pull.headRepository !== normalizedRepository
+  ) {
     denialReasons.push('repository-mismatch');
   }
   if (pull.isCrossRepository && !policy.trust.allowCrossRepository) {

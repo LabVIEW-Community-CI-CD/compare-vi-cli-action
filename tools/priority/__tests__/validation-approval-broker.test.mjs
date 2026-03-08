@@ -109,7 +109,14 @@ function createDeploymentDeterminism(result = 'pass', issues = []) {
   };
 }
 
-function createPullContext({ headSha, prNumber, headOwner = 'labview-community-ci-cd', isCrossRepository = false, statusCheckRollup }) {
+function createPullContext({
+  headSha,
+  prNumber,
+  headOwner = 'labview-community-ci-cd',
+  headRepository = 'LabVIEW-Community-CI-CD/compare-vi-cli-action',
+  isCrossRepository = false,
+  statusCheckRollup,
+}) {
   return {
     number: prNumber,
     url: `https://github.com/LabVIEW-Community-CI-CD/compare-vi-cli-action/pull/${prNumber}`,
@@ -117,6 +124,9 @@ function createPullContext({ headSha, prNumber, headOwner = 'labview-community-c
     headRefOid: headSha,
     headRefName: `issue/${prNumber}-test`,
     baseRefName: 'develop',
+    headRepository: {
+      nameWithOwner: headRepository,
+    },
     headRepositoryOwner: {
       login: headOwner,
     },
@@ -285,6 +295,84 @@ test('validation approval broker denies untrusted cross-repository contexts', as
   assert.equal(result.exitCode, 1);
   assert.equal(result.report?.decision.state, 'denied');
   assert.ok(result.report?.decision.reasons.includes('cross-repository-disallowed'));
+});
+
+test('validation approval broker denies repository mismatch when cross-repository heads are otherwise allowed', async (t) => {
+  const { runValidationApprovalBroker } = await loadModule();
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'validation-broker-repository-mismatch-'));
+  t.after(() => fs.rmSync(tmpDir, { recursive: true, force: true }));
+
+  const headSha = 'edededededededededededededededededededed';
+  const prNumber = 869;
+  const signalPath = path.join(tmpDir, 'signal.json');
+  const attestationPath = path.join(tmpDir, 'attestation.json');
+  const deploymentPath = path.join(tmpDir, 'deployment.json');
+  const pullPath = path.join(tmpDir, 'pull.json');
+  const policyPath = path.join(tmpDir, 'policy.json');
+
+  writeJson(signalPath, createSignal(headSha, prNumber));
+  writeJson(attestationPath, createAttestation(headSha, prNumber));
+  writeJson(deploymentPath, createDeploymentDeterminism());
+  writeJson(
+    pullPath,
+    createPullContext({
+      headSha,
+      prNumber,
+      headRepository: 'LabVIEW-Community-CI-CD/comparevi-history',
+      isCrossRepository: true,
+      statusCheckRollup: createSuccessRollup(readDevelopRequiredChecks()),
+    }),
+  );
+  writeJson(policyPath, {
+    schema: 'validation-approval-policy/v1',
+    schemaVersion: '1.0.0',
+    environment: 'validation',
+    shadowMode: true,
+    allowedBaseRefs: ['develop'],
+    trust: {
+      requireRepositoryMatch: true,
+      allowCrossRepository: true,
+      allowedHeadOwners: ['labview-community-ci-cd'],
+    },
+    providers: {
+      requireReviewSignal: true,
+      requireAgentAttestation: true,
+      requireDeploymentDeterminism: true,
+      requireRequiredChecks: true,
+    },
+    attestation: {
+      requireValidationEvidencePass: true,
+      requireDispositionsForActionableComments: true,
+      requireDispositionsForUnresolvedThreads: true,
+    },
+  });
+
+  const result = await runValidationApprovalBroker({
+    argv: [
+      'node',
+      'validation-approval-broker.mjs',
+      '--repo',
+      'LabVIEW-Community-CI-CD/compare-vi-cli-action',
+      '--pr',
+      String(prNumber),
+      '--policy',
+      policyPath,
+      '--signal',
+      signalPath,
+      '--attestation',
+      attestationPath,
+      '--deployment-determinism',
+      deploymentPath,
+      '--pull-file',
+      pullPath,
+    ],
+    now: new Date('2026-03-08T08:02:30Z'),
+  });
+
+  assert.equal(result.exitCode, 1);
+  assert.equal(result.report?.decision.state, 'denied');
+  assert.ok(result.report?.decision.reasons.includes('repository-mismatch'));
+  assert.deepEqual(result.report?.providers.trustContext.denialReasons, ['repository-mismatch']);
 });
 
 test('validation approval broker fails closed when a required provider is unavailable', async (t) => {
