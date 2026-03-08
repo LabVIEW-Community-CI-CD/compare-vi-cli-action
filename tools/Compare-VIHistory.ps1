@@ -2346,8 +2346,6 @@ if ($executedModeNames.Count -gt 0) {
 
 $aggregate | ConvertTo-Json -Depth 8 | Out-File -FilePath $aggregateManifestPath -Encoding utf8
 $aggregateManifestResolved = (Resolve-Path -LiteralPath $aggregateManifestPath).Path
-
-Write-StepSummary -Lines $summaryLines -DestPath $StepSummaryPath
 Write-GitHubOutput -Key 'manifest-path' -Value $aggregateManifestResolved -DestPath $GitHubOutputPath
 Write-GitHubOutput -Key 'results-dir' -Value $resultsRootResolved -DestPath $GitHubOutputPath
 Write-GitHubOutput -Key 'mode-count' -Value $aggregate.modes.Count -DestPath $GitHubOutputPath
@@ -2448,6 +2446,7 @@ if (Test-Path -LiteralPath $rendererScript -PathType Leaf) {
 }
 
 if (-not $renderSucceeded) {
+  Write-StepSummary -Lines $summaryLines -DestPath $StepSummaryPath
   try {
     $fallbackLines = @(
       '# VI history report'

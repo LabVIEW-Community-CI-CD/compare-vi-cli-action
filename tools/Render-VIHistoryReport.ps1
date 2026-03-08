@@ -374,6 +374,26 @@ function Get-BucketCountEntries {
         $map[$meta.slug].count = ($map[$meta.slug].count + [int]$value)
       }
     }
+  } elseif ($BucketCounts -and $BucketCounts.PSObject) {
+    foreach ($prop in $BucketCounts.PSObject.Properties) {
+      if (-not $prop) { continue }
+      $meta = Get-VIBucketMetadata -BucketSlug $prop.Name
+      if (-not $meta) { continue }
+      if (-not $map.ContainsKey($meta.slug)) {
+        $map[$meta.slug] = [pscustomobject]@{
+          slug           = $meta.slug
+          label          = $meta.label
+          classification = $meta.classification
+          count          = 0
+        }
+      }
+      $value = $prop.Value
+      try {
+        $map[$meta.slug].count += [int]$value
+      } catch {
+        $map[$meta.slug].count += 0
+      }
+    }
   }
 
   return @($map.Values | Sort-Object -Property label, slug)
@@ -700,9 +720,11 @@ if ($modeEntries.Count -gt 0) {
         (Coalesce $mode.stats.missing 'n/a'),
         $categoryDisplay,
         $bucketDisplay,
-        $flagDisplay))
+      $flagDisplay))
   }
 }
+
+$stepSummaryLines = @($summaryLines)
 
 $comparisonHtmlRows = New-Object System.Collections.Generic.List[object]
 $comparisons = @($historyContext.comparisons)
@@ -1229,17 +1251,17 @@ if ($emitHtml -and $HtmlPath) {
 
 Write-GitHubOutput -Key 'history-report-md' -Value $markdownOutPath -DestPath $GitHubOutputPath
 
-$stepLines = @(
-  '### VI history report',
-  '',
-  ('- Target: `{0}`' -f (Coalesce $targetPath 'unknown')),
-  ('- Total comparisons: {0}' -f (Coalesce $stats.processed $comparisons.Count)),
-  ('- Diffs: {0}' -f (Coalesce $stats.diffs 'n/a')),
-  ('- Report: `{0}`' -f $markdownOutPath)
-)
-if ($htmlOutPath) {
-  $stepLines += ('- HTML: `{0}`' -f $htmlOutPath)
+$stepLines = New-Object System.Collections.Generic.List[string]
+foreach ($line in @($stepSummaryLines)) {
+  $stepLines.Add([string]$line) | Out-Null
 }
-Write-StepSummary -Lines $stepLines -DestPath $StepSummaryPath
+$stepLines.Add('') | Out-Null
+$stepLines.Add('## Artifacts') | Out-Null
+$stepLines.Add('') | Out-Null
+$stepLines.Add(('- Markdown report: `{0}`' -f $markdownOutPath)) | Out-Null
+if ($htmlOutPath) {
+  $stepLines.Add(('- HTML report: `{0}`' -f $htmlOutPath)) | Out-Null
+}
+Write-StepSummary -Lines @($stepLines) -DestPath $StepSummaryPath
 
 Write-Host ("History report generated at {0}" -f $markdownOutPath)

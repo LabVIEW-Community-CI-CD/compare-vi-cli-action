@@ -1108,7 +1108,10 @@ exit 0
     $summaryContent = Get-Content -LiteralPath $summaryPath -Raw
     $summaryContent | Should -Match 'VI history report'
     $summaryContent | Should -Match 'history-report.md'
-    $summaryContent | Should -Match 'Bucket counts: none'
+    $summaryContent | Should -Match '## Mode overview'
+    $summaryContent | Should -Match '\| Mode \| Processed \| Diffs \| Signal \| Collapsed Noise \| Missing \| Categories \| Buckets \| Flags \|'
+    $summaryContent | Should -Match '\| default \| 1 \| 0 \| 0 \| 0 \|'
+    $summaryContent | Should -Match '\| attributes \| 1 \| 0 \| 0 \| 0 \|'
   }
 
   It 'renders enriched history report with commit metadata and artifact links' {

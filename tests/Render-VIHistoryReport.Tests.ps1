@@ -143,6 +143,7 @@ Describe 'Render-VIHistoryReport.ps1' -Tag 'Unit' {
         $markdownPath = Join-Path $resultsRoot 'history-report.md'
         $htmlPath = Join-Path $resultsRoot 'history-report.html'
         $githubOutputPath = Join-Path $TestDrive 'github-output.txt'
+        $stepSummaryPath = Join-Path $TestDrive 'github-summary.md'
 
         & $script:scriptPath `
             -ManifestPath $manifestPath `
@@ -151,10 +152,12 @@ Describe 'Render-VIHistoryReport.ps1' -Tag 'Unit' {
             -MarkdownPath $markdownPath `
             -EmitHtml `
             -HtmlPath $htmlPath `
-            -GitHubOutputPath $githubOutputPath | Out-Null
+            -GitHubOutputPath $githubOutputPath `
+            -StepSummaryPath $stepSummaryPath | Out-Null
 
         Test-Path -LiteralPath $markdownPath | Should -BeTrue
         Test-Path -LiteralPath $htmlPath | Should -BeTrue
+        Test-Path -LiteralPath $stepSummaryPath | Should -BeTrue
 
         $markdown = Get-Content -LiteralPath $markdownPath -Raw
         $markdown | Should -Match 'Requested Modes: `default`'
@@ -176,6 +179,15 @@ Describe 'Render-VIHistoryReport.ps1' -Tag 'Unit' {
         $html | Should -Match '<th>Categories</th>'
         $html | Should -Match '<th>Buckets</th>'
         $html | Should -Match 'data-buckets='
+        $html | Should -Match 'Functional behavior \(1\)'
+
+        $stepSummary = Get-Content -LiteralPath $stepSummaryPath -Raw
+        $stepSummary | Should -Match '## Mode overview'
+        $stepSummary | Should -Match '\| Mode \| Processed \| Diffs \| Signal \| Collapsed Noise \| Missing \| Categories \| Buckets \| Flags \|'
+        $stepSummary | Should -Match 'Functional behavior \(1\)'
+        $stepSummary | Should -Match 'Metadata _\(neutral\)_ \(1\)'
+        $stepSummary | Should -Match '## Artifacts'
+        $stepSummary | Should -Match 'history-report\.md'
 
         $outputLines = Get-Content -LiteralPath $githubOutputPath
     }
