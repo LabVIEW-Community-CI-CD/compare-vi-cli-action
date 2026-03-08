@@ -109,7 +109,7 @@ if ($Execute) {
       $existingJson = & $gh.Source 'pr' 'view' $branchName '--json' 'number' 2>$null
       if ($LASTEXITCODE -eq 0 -and $existingJson) {
         $pr = $existingJson | ConvertFrom-Json
-        & $gh.Source 'pr' 'edit' $pr.number '--body-file' $bodyPath | Out-Host
+        & $gh.Source 'pr' 'edit' $pr.number '--title' $prTitle '--body-file' $bodyPath | Out-Host
       } else {
         & $gh.Source 'pr' 'create' '--title' $prTitle '--base' $Base '--head' $branchName '--body-file' $bodyPath | Out-Host
       }
