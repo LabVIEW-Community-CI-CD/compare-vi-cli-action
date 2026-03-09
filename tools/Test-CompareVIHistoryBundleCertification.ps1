@@ -4,7 +4,7 @@ param(
     [string]$StartRef = 'HEAD',
     [ValidateRange(1, 1000)]
     [int]$MaxPairs = 1,
-    [string]$Mode = 'default,attributes,front-panel,block-diagram',
+    [string]$Mode = 'attributes,front-panel,block-diagram',
     [string]$ResultsDir = 'tests/results/_agent/comparevi-history-bundle-certification',
     [string]$SummaryJsonPath,
     [string]$BundleArchivePath,
@@ -241,7 +241,6 @@ foreach ($stalePath in @($historyGitHubOutputPath, $stdoutPath, $stderrPath)) {
 Ensure-NonShallowGitHistory -RepoRoot $repoRoot
 
 $fixtureMap = [ordered]@{
-    default = Join-Path $repoRoot 'fixtures' 'vi-report' 'vi-attribute'
     attributes = Join-Path $repoRoot 'fixtures' 'vi-report' 'vi-attribute'
     'front-panel' = Join-Path $repoRoot 'fixtures' 'vi-report' 'front-panel'
     'block-diagram' = Join-Path $repoRoot 'fixtures' 'vi-report' 'block-diagram'
@@ -318,7 +317,7 @@ if (-not (Test-Path -LiteralPath $historySummaryJson -PathType Leaf)) {
 
 $aggregateManifest = Get-Content -LiteralPath $aggregateManifestPath -Raw | ConvertFrom-Json -Depth 12
 $historySummary = Get-Content -LiteralPath $historySummaryJson -Raw | ConvertFrom-Json -Depth 12
-$expectedModes = @('default', 'attributes', 'front-panel', 'block-diagram')
+$expectedModes = @('attributes', 'front-panel', 'block-diagram')
 $actualModes = @($aggregateManifest.modes | ForEach-Object { [string]$_.slug })
 $missingModes = @($expectedModes | Where-Object { $actualModes -notcontains $_ })
 $unexpectedModes = @($actualModes | Where-Object { $expectedModes -notcontains $_ })

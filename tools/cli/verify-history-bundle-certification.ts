@@ -55,7 +55,7 @@ function readJson<T>(path: string): T {
 
 function normalizeModeList(input?: string[]): string[] {
   if (!input || input.length === 0) {
-    return ['default', 'attributes', 'front-panel', 'block-diagram'];
+    return ['attributes', 'front-panel', 'block-diagram'];
   }
 
   const values = input

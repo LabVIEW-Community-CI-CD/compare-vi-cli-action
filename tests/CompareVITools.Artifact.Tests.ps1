@@ -88,6 +88,11 @@ Describe 'CompareVI.Tools artifact publishing' {
     $metadata.consumerContract.historyFacade.schema | Should -Be 'comparevi-tools/history-facade@v1'
     $metadata.consumerContract.historyFacade.exportedFunction | Should -Be 'Invoke-CompareVIHistoryFacade'
     $metadata.consumerContract.historyFacade.resultsRelativePath | Should -Be 'history-summary.json'
+    $metadata.consumerContract.diagnosticsCommentRenderer.entryScriptPath | Should -Be 'tools/New-CompareVIHistoryDiagnosticsBody.ps1'
+    @($metadata.consumerContract.diagnosticsCommentRenderer.variants) | Should -Be @(
+      'comment-gated',
+      'manual'
+    )
     $metadata.consumerContract.hostedNiLinuxRunner.entryScriptPath | Should -Be 'tools/Run-NILinuxContainerCompare.ps1'
     @($metadata.consumerContract.hostedNiLinuxRunner.supportScriptPaths) | Should -Be @(
       'tools/Assert-DockerRuntimeDeterminism.ps1',
@@ -115,6 +120,7 @@ Describe 'CompareVI.Tools artifact publishing' {
       'tools/Compare-VIHistory.ps1',
       'tools/Compare-RefsToTemp.ps1',
       'tools/Invoke-LVCompare.ps1',
+      'tools/New-CompareVIHistoryDiagnosticsBody.ps1',
       'tools/Render-VIHistoryReport.ps1',
       'tools/Run-NILinuxContainerCompare.ps1',
       'tools/Stage-CompareInputs.ps1',
@@ -277,5 +283,46 @@ if ($GitHubOutputPath) {
     Test-Path -LiteralPath $capturePath | Should -BeTrue
     $capturedRoot = (Get-Content -LiteralPath $capturePath -Raw).Trim()
     $capturedRoot | Should -Be $bundleRoot
+  }
+
+  It 'ships the reusable comparevi-history diagnostics body helper in the published bundle' {
+    $outDir = Join-Path $TestDrive 'artifacts-helper'
+    $metadataPath = Join-Path $TestDrive 'comparevi-tools-helper-artifact.json'
+
+    & $publishScript `
+      -OutputRoot $outDir `
+      -MetadataReportPath $metadataPath `
+      -Repository 'owner/repo' `
+      -SourceRef 'refs/tags/v9.9.9' `
+      -SourceSha '0123456789abcdef0123456789abcdef01234567' `
+      -ReleaseTag 'v9.9.9'
+
+    $metadata = Get-Content -LiteralPath $metadataPath -Raw | ConvertFrom-Json
+    $archivePath = Join-Path $outDir $metadata.bundle.archiveName
+    $extractRoot = Join-Path $TestDrive 'extracted-helper'
+    Expand-Archive -Path $archivePath -DestinationPath $extractRoot
+
+    $bundleRoot = Join-Path $extractRoot $metadata.bundle.folder
+    $helperPath = Join-Path $bundleRoot 'tools' 'New-CompareVIHistoryDiagnosticsBody.ps1'
+    Test-Path -LiteralPath $helperPath | Should -BeTrue
+
+    $body = & $helperPath `
+      -Variant comment-gated `
+      -ActionRef 'LabVIEW-Community-CI-CD/comparevi-history@v1.0.4' `
+      -IssueNumber '2' `
+      -TargetPath 'Tooling/deployment/VIP_Post-Install Custom Action.vi' `
+      -ContainerImage 'nationalinstruments/labview:2026q1-linux' `
+      -RequestedModes 'attributes,front-panel,block-diagram' `
+      -ExecutedModes 'attributes,front-panel,block-diagram' `
+      -TotalProcessed '3' `
+      -TotalDiffs '2' `
+      -StepConclusion 'success' `
+      -IsFork 'True' `
+      -RunUrl 'https://github.com/example/repo/actions/runs/123' `
+      -ModeSummaryMarkdown '| Mode | Diffs |'
+
+    $body | Should -Match 'comparevi-history diagnostics finished for PR #2\.'
+    $body | Should -Match 'Requested modes: `attributes,front-panel,block-diagram`'
+    $body | Should -Not -Match '\$env:ACTION_REF|\$env:REQUESTED_MODES'
   }
 }

@@ -12,7 +12,7 @@ function readJson(path) {
 }
 function normalizeModeList(input) {
     if (!input || input.length === 0) {
-        return ['default', 'attributes', 'front-panel', 'block-diagram'];
+        return ['attributes', 'front-panel', 'block-diagram'];
     }
     const values = input
         .flatMap((entry) => entry.split(','))

@@ -154,6 +154,32 @@
           },
           "additionalProperties": false
         },
+        "diagnosticsCommentRenderer": {
+          "type": "object",
+          "required": [
+            "entryScriptPath",
+            "variants",
+            "notes"
+          ],
+          "properties": {
+            "entryScriptPath": {
+              "type": "string"
+            },
+            "variants": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "notes": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            }
+          },
+          "additionalProperties": false
+        },
         "hostedNiLinuxRunner": {
           "type": "object",
           "required": [
