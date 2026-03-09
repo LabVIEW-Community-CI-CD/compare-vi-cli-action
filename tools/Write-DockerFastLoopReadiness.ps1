@@ -16,12 +16,16 @@ param(
   [string]$OutputJsonPath = '',
   [string]$OutputMarkdownPath = '',
   [int]$HistoryRuns = 25,
+  [bool]$PrintDifferentiatedDiagnostics = $true,
   [string]$GitHubOutputPath = $env:GITHUB_OUTPUT,
   [string]$StepSummaryPath = $env:GITHUB_STEP_SUMMARY
 )
 
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
+
+Import-Module (Join-Path $PSScriptRoot 'DockerFastLoopDiagnostics.psm1') -Force
+Import-Module (Join-Path $PSScriptRoot 'LabVIEW2026HostPlaneDiagnostics.psm1') -Force
 
 function Resolve-AbsolutePath {
   param([Parameter(Mandatory)][string]$Path)
@@ -42,6 +46,19 @@ function Ensure-ParentDirectory {
 function Convert-ToSecondsString {
   param([double]$Milliseconds)
   return ([math]::Round(($Milliseconds / 1000.0), 3)).ToString('0.###')
+}
+
+function Convert-PairSetToText {
+  param(
+    [AllowNull()]$PairSet,
+    [string]$Separator = '+'
+  )
+
+  if ($null -eq $PairSet -or -not $PairSet.PSObject.Properties['pairs']) {
+    return ''
+  }
+
+  return (@($PairSet.pairs | ForEach-Object { '{0}{1}{2}' -f [string]$_.left, $Separator, [string]$_.right }) -join ', ')
 }
 
 function Get-StepLane {
@@ -517,8 +534,29 @@ $diffLaneCount = 0
 if ([bool]$lane.windows.diffDetected) { $diffLaneCount++ }
 if ([bool]$lane.linux.diffDetected) { $diffLaneCount++ }
 
+$hostPlane = if ($summary.PSObject.Properties['hostPlane']) { $summary.hostPlane } else { $null }
+$hostPlaneReportPath = if ($summary.PSObject.Properties['hostPlaneReportPath']) { [string]$summary.hostPlaneReportPath } else { '' }
+if ($null -eq $hostPlane -and -not [string]::IsNullOrWhiteSpace($hostPlaneReportPath)) {
+  $hostPlane = Read-JsonOrNull -Path $hostPlaneReportPath
+}
+$hostPlanes = if ($summary.PSObject.Properties['hostPlanes']) {
+  $summary.hostPlanes
+} elseif ($hostPlane -and $hostPlane.PSObject.Properties['native'] -and $hostPlane.native -and $hostPlane.native.PSObject.Properties['planes']) {
+  $hostPlane.native.planes
+} else {
+  $null
+}
+$hostExecutionPolicy = if ($summary.PSObject.Properties['hostExecutionPolicy']) {
+  $summary.hostExecutionPolicy
+} elseif ($hostPlane -and $hostPlane.PSObject.Properties['executionPolicy']) {
+  $hostPlane.executionPolicy
+} else {
+  $null
+}
+
 $readiness = [ordered]@{
   schema = 'vi-history/docker-fast-loop-readiness@v1'
+  loopLabel = Get-DockerFastLoopLabel -ContextObject $summary
   generatedAt = (Get-Date).ToUniversalTime().ToString('o')
   diffStepCount = [int]$classification.diffStepCount
   diffEvidenceSteps = [int]$classification.diffEvidenceSteps
@@ -537,6 +575,7 @@ $readiness = [ordered]@{
     summaryPath = $summaryResolved
     statusPath = if (Test-Path -LiteralPath $statusResolved -PathType Leaf) { $statusResolved } else { '' }
     resultsRoot = $resultsRootResolved
+    hostPlaneReportPath = $hostPlaneReportPath
   }
   verdict = $verdict
   recommendation = $statusRecommendation
@@ -584,6 +623,9 @@ $readiness = [ordered]@{
     }
   }
   history = $historical
+  hostPlane = $hostPlane
+  hostPlanes = $hostPlanes
+  hostExecutionPolicy = $hostExecutionPolicy
   steps = @($steps)
 }
 
@@ -614,6 +656,47 @@ $mdLines.Add(('| Tool Failure Count | `{0}` |' -f $readiness.toolFailureCount)) 
 $mdLines.Add(('| Runtime Manager Transitions | `{0}` |' -f $readiness.runtimeManagerTransitionCount)) | Out-Null
 $mdLines.Add(('| Runtime Manager Daemon-Unavailable Count | `{0}` |' -f $readiness.runtimeManagerDaemonUnavailableCount)) | Out-Null
 $mdLines.Add(('| Runtime Manager Parse-Defect Count | `{0}` |' -f $readiness.runtimeManagerParseDefectCount)) | Out-Null
+if (-not [string]::IsNullOrWhiteSpace($hostPlaneReportPath)) {
+  $mdLines.Add(('| Host Plane Report | `{0}` |' -f $hostPlaneReportPath)) | Out-Null
+}
+if ($hostPlane -and $hostPlane.PSObject.Properties['host'] -and $hostPlane.host -and $hostPlane.host.PSObject.Properties['os']) {
+  $mdLines.Add(('| Host OS | `{0}` |' -f [string]$hostPlane.host.os)) | Out-Null
+}
+if ($hostPlane -and $hostPlane.PSObject.Properties['runner'] -and $hostPlane.runner) {
+  $mdLines.Add(('| Host Is Runner | `{0}` |' -f [bool]$hostPlane.runner.hostIsRunner)) | Out-Null
+  $mdLines.Add(('| Runner Name | `{0}` |' -f [string]$hostPlane.runner.runnerName)) | Out-Null
+  $mdLines.Add(('| GitHub Actions Runner | `{0}` |' -f [bool]$hostPlane.runner.githubActions)) | Out-Null
+}
+if ($hostPlane -and $hostPlane.PSObject.Properties['docker'] -and $hostPlane.docker -and $hostPlane.docker.PSObject.Properties['operatorLabels']) {
+  $dockerLabels = @($hostPlane.docker.operatorLabels | ForEach-Object { [string]$_ }) -join ', '
+  if (-not [string]::IsNullOrWhiteSpace($dockerLabels)) {
+    $mdLines.Add(('| Docker Operator Labels | `{0}` |' -f $dockerLabels)) | Out-Null
+  }
+}
+if ($hostPlanes -and $hostPlanes.PSObject.Properties['x64']) {
+  $mdLines.Add(('| Native 64 Plane | `{0}` |' -f [string]$hostPlanes.x64.status)) | Out-Null
+}
+if ($hostPlanes -and $hostPlanes.PSObject.Properties['x32']) {
+  $mdLines.Add(('| Native 32 Plane | `{0}` |' -f [string]$hostPlanes.x32.status)) | Out-Null
+}
+if ($hostExecutionPolicy -and $hostExecutionPolicy.PSObject.Properties['mutuallyExclusivePairs']) {
+  $exclusivePairs = Convert-PairSetToText -PairSet $hostExecutionPolicy.mutuallyExclusivePairs -Separator '<->'
+  if (-not [string]::IsNullOrWhiteSpace($exclusivePairs)) {
+    $mdLines.Add(('| Mutually Exclusive Pairs | `{0}` |' -f $exclusivePairs)) | Out-Null
+  }
+}
+if ($hostExecutionPolicy -and $hostExecutionPolicy.PSObject.Properties['provenParallelPairs']) {
+  $provenPairs = Convert-PairSetToText -PairSet $hostExecutionPolicy.provenParallelPairs
+  if (-not [string]::IsNullOrWhiteSpace($provenPairs)) {
+    $mdLines.Add(('| Proven Parallel Pairs | `{0}` |' -f $provenPairs)) | Out-Null
+  }
+}
+if ($hostExecutionPolicy -and $hostExecutionPolicy.PSObject.Properties['candidateParallelPairs'] -and $hostExecutionPolicy.candidateParallelPairs) {
+  $candidatePairs = Convert-PairSetToText -PairSet $hostExecutionPolicy.candidateParallelPairs
+  if (-not [string]::IsNullOrWhiteSpace($candidatePairs)) {
+    $mdLines.Add(('| Candidate Parallel Pairs | `{0}` |' -f $candidatePairs)) | Out-Null
+  }
+}
 $mdLines.Add(('| Timeout Failure Count | `{0}` |' -f $readiness.run.timeoutFailureCount)) | Out-Null
 $mdLines.Add(('| Preflight Failure Count | `{0}` |' -f $readiness.run.preflightFailureCount)) | Out-Null
 $mdLines.Add(('| Completed Steps | `{0}` |' -f @($steps).Count)) | Out-Null
@@ -699,7 +782,14 @@ Write-GitHubOutput -Key 'readiness-markdown-path' -Value $mdOutResolved -Path $G
 Write-GitHubOutput -Key 'readiness-verdict' -Value $verdict -Path $GitHubOutputPath
 Write-GitHubOutput -Key 'readiness-recommendation' -Value $statusRecommendation -Path $GitHubOutputPath
 
-Write-Host ("[docker-fast-loop][readiness] verdict={0} recommendation={1}" -f $verdict, $statusRecommendation)
-Write-Host ("[docker-fast-loop][readiness] json={0}" -f $jsonOutResolved)
-Write-Host ("[docker-fast-loop][readiness] markdown={0}" -f $mdOutResolved)
+$loopPrefix = Get-DockerFastLoopLogPrefix -ContextObject $readiness
+Write-Host ("{0}[readiness] verdict={1} recommendation={2}" -f $loopPrefix, $verdict, $statusRecommendation)
+Write-Host ("{0}[readiness] json={1}" -f $loopPrefix, $jsonOutResolved)
+Write-Host ("{0}[readiness] markdown={1}" -f $loopPrefix, $mdOutResolved)
+if ($PrintDifferentiatedDiagnostics) {
+  if ($hostPlane) {
+    Write-LabVIEW2026HostPlaneConsole -Report $hostPlane
+  }
+  Write-DockerFastLoopDifferentiatedDiagnostics -Readiness $readiness -ResultsRoot $resultsRootResolved | Out-Null
+}
 Write-Output $jsonOutResolved

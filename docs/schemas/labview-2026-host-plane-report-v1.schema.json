@@ -1,0 +1,152 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://labview-community-ci-cd.github.io/schemas/labview-2026-host-plane-report-v1.schema.json",
+  "title": "LabVIEW 2026 Host Plane Report",
+  "type": "object",
+  "required": [
+    "schema",
+    "generatedAt",
+    "host",
+    "runner",
+    "docker",
+    "native",
+    "executionPolicy"
+  ],
+  "properties": {
+    "schema": {
+      "const": "labview-2026-host-plane-report@v1"
+    },
+    "generatedAt": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "host": {
+      "type": "object",
+      "required": ["os", "computerName"],
+      "properties": {
+        "os": { "type": "string" },
+        "computerName": { "type": "string" }
+      },
+      "additionalProperties": false
+    },
+    "runner": {
+      "type": "object",
+      "required": ["hostIsRunner", "runnerName", "githubActions"],
+      "properties": {
+        "hostIsRunner": { "type": "boolean" },
+        "runnerName": { "type": "string" },
+        "githubActions": { "type": "boolean" }
+      },
+      "additionalProperties": false
+    },
+    "docker": {
+      "type": "object",
+      "required": ["operatorLabels"],
+      "properties": {
+        "operatorLabels": {
+          "type": "array",
+          "items": { "type": "string" },
+          "minItems": 3
+        }
+      },
+      "additionalProperties": false
+    },
+    "native": {
+      "type": "object",
+      "required": ["parallelLabVIEWSupported", "sharedCliAcrossNativePlanes", "recommendedParallelPlanes", "planes"],
+      "properties": {
+        "parallelLabVIEWSupported": { "type": "boolean" },
+        "sharedCliAcrossNativePlanes": { "type": "boolean" },
+        "recommendedParallelPlanes": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "planes": {
+          "type": "object",
+          "required": ["x64", "x32"],
+          "properties": {
+            "x64": { "$ref": "#/definitions/plane" },
+            "x32": { "$ref": "#/definitions/plane" }
+          },
+          "additionalProperties": false
+        }
+      },
+      "additionalProperties": false
+    },
+    "executionPolicy": {
+      "type": "object",
+      "required": ["mutuallyExclusivePairs", "provenParallelPairs", "candidateParallelPairs"],
+      "properties": {
+        "mutuallyExclusivePairs": { "$ref": "#/definitions/pairSet" },
+        "provenParallelPairs": { "$ref": "#/definitions/pairSet" },
+        "candidateParallelPairs": { "$ref": "#/definitions/pairSet" }
+      },
+      "additionalProperties": false
+    }
+  },
+  "definitions": {
+    "plane": {
+      "type": "object",
+      "required": [
+        "plane",
+        "operatorLabel",
+        "architecture",
+        "requestedLabVIEWPath",
+        "requestedCliPath",
+        "requestedComparePath",
+        "labviewPath",
+        "cliPath",
+        "comparePath",
+        "labviewPresent",
+        "cliPresent",
+        "comparePresent",
+        "status",
+        "issues"
+      ],
+      "properties": {
+        "plane": { "type": "string" },
+        "operatorLabel": { "type": "string" },
+        "architecture": { "type": "string" },
+        "requestedLabVIEWPath": { "type": "string" },
+        "requestedCliPath": { "type": "string" },
+        "requestedComparePath": { "type": "string" },
+        "labviewPath": { "type": "string" },
+        "cliPath": { "type": "string" },
+        "comparePath": { "type": "string" },
+        "labviewPresent": { "type": "boolean" },
+        "cliPresent": { "type": "boolean" },
+        "comparePresent": { "type": "boolean" },
+        "status": {
+          "type": "string",
+          "enum": ["ready", "partial", "missing"]
+        },
+        "issues": {
+          "type": "array",
+          "items": { "type": "string" }
+        }
+      },
+      "additionalProperties": false
+    },
+    "pair": {
+      "type": "object",
+      "required": ["left", "right"],
+      "properties": {
+        "left": { "type": "string" },
+        "right": { "type": "string" }
+      },
+      "additionalProperties": false
+    },
+    "pairSet": {
+      "type": "object",
+      "required": ["pairs"],
+      "properties": {
+        "pairs": {
+          "type": "array",
+          "items": { "$ref": "#/definitions/pair" }
+        }
+      },
+      "additionalProperties": false
+    }
+  },
+  "additionalProperties": false
+}

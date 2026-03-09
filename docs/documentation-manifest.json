@@ -2,7 +2,7 @@
   "$schema": "./schemas/documentation-manifest-v1.schema.json",
   "schema": "documentation-manifest-v1",
   "version": "1.0.0",
-  "updated": "2026-03-09T00:00:00Z",
+  "updated": "2026-03-09T22:45:00Z",
   "entries": [
     {
       "name": "Root Playbooks",
@@ -152,6 +152,17 @@
         "tools/Write-GitHubIntakeAtlas.ps1",
         "tools/priority/create-pr.mjs",
         "tools/priority/github-intake-catalog.json"
+      ]
+    },
+    {
+      "name": "Host Plane Diagnostics Contracts",
+      "category": "supporting",
+      "status": "reference",
+      "description": "Machine-readable report contract and helper entrypoints for the LabVIEW 2026 native host-plane split.",
+      "files": [
+        "docs/schemas/labview-2026-host-plane-report-v1.schema.json",
+        "tools/LabVIEW2026HostPlaneDiagnostics.psm1",
+        "tools/Write-LabVIEW2026HostPlaneDiagnostics.ps1"
       ]
     },
     {

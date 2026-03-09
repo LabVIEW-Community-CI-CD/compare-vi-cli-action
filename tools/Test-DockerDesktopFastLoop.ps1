@@ -38,12 +38,17 @@ param(
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
+Import-Module (Join-Path $PSScriptRoot 'DockerFastLoopDiagnostics.psm1') -Force
+Import-Module (Join-Path $PSScriptRoot 'LabVIEW2026HostPlaneDiagnostics.psm1') -Force
+Import-Module (Join-Path $PSScriptRoot 'VendorTools.psm1') -Force
+
 $classifierScriptPath = Join-Path (Split-Path -Parent $PSCommandPath) 'Compare-ExitCodeClassifier.ps1'
 
 function Resolve-DockerLaneLabVIEWPath {
   param(
     [string]$ExplicitPath,
-    [string[]]$PreferredEnvNames = @()
+    [string[]]$PreferredEnvNames = @(),
+    [AllowEmptyString()][string]$FallbackPath = ''
   )
 
   if (-not [string]::IsNullOrWhiteSpace($ExplicitPath)) {
@@ -58,6 +63,96 @@ function Resolve-DockerLaneLabVIEWPath {
     if (-not [string]::IsNullOrWhiteSpace($candidate)) {
       return $candidate.Trim()
     }
+  }
+
+  if (-not [string]::IsNullOrWhiteSpace($FallbackPath)) {
+    return $FallbackPath.Trim()
+  }
+
+  return ''
+}
+
+function Resolve-NativeHostPlanePath {
+  param(
+    [string[]]$PreferredEnvNames = @(),
+    [AllowEmptyString()][string]$FallbackPath = '',
+    [int]$Version = 2026,
+    [ValidateSet(32,64)][int]$Bitness = 64
+  )
+
+  foreach ($envName in @($PreferredEnvNames)) {
+    if ([string]::IsNullOrWhiteSpace($envName)) {
+      continue
+    }
+
+    $candidate = [Environment]::GetEnvironmentVariable($envName, 'Process')
+    if (-not [string]::IsNullOrWhiteSpace($candidate)) {
+      return $candidate.Trim()
+    }
+  }
+
+  if (-not [string]::IsNullOrWhiteSpace($FallbackPath)) {
+    return $FallbackPath.Trim()
+  }
+
+  $resolved = Find-LabVIEWVersionExePath -Version $Version -Bitness $Bitness
+  if (-not [string]::IsNullOrWhiteSpace($resolved)) {
+    return $resolved
+  }
+
+  return ''
+}
+
+function Resolve-NativeHostPlaneCliPath {
+  param(
+    [string[]]$PreferredEnvNames = @(),
+    [AllowEmptyString()][string]$FallbackPath = '',
+    [int]$Version = 2026,
+    [ValidateSet(32,64)][int]$Bitness = 64
+  )
+
+  foreach ($envName in @($PreferredEnvNames)) {
+    if ([string]::IsNullOrWhiteSpace($envName)) {
+      continue
+    }
+
+    $candidate = [Environment]::GetEnvironmentVariable($envName, 'Process')
+    if (-not [string]::IsNullOrWhiteSpace($candidate)) {
+      return $candidate.Trim()
+    }
+  }
+
+  if (-not [string]::IsNullOrWhiteSpace($FallbackPath)) {
+    return $FallbackPath.Trim()
+  }
+
+  $resolved = Resolve-LabVIEWCLIPath -Version $Version -Bitness $Bitness
+  if (-not [string]::IsNullOrWhiteSpace($resolved)) {
+    return $resolved
+  }
+
+  return ''
+}
+
+function Resolve-NativeComparePath {
+  param(
+    [string[]]$PreferredEnvNames = @()
+  )
+
+  foreach ($envName in @($PreferredEnvNames)) {
+    if ([string]::IsNullOrWhiteSpace($envName)) {
+      continue
+    }
+
+    $candidate = [Environment]::GetEnvironmentVariable($envName, 'Process')
+    if (-not [string]::IsNullOrWhiteSpace($candidate)) {
+      return $candidate.Trim()
+    }
+  }
+
+  $resolved = Resolve-LVComparePath
+  if (-not [string]::IsNullOrWhiteSpace($resolved)) {
+    return $resolved
   }
 
   return ''
@@ -712,6 +807,7 @@ function Write-SemiLiveStatus {
     [Parameter(Mandatory)][hashtable]$HistoricalStepMedians,
     [bool]$HardStopTriggered = $false,
     [AllowEmptyString()][string]$HardStopReason = '',
+    [AllowEmptyString()][string]$LoopLabel = '',
     [AllowEmptyString()][string]$SummaryPath,
     [AllowNull()]$RuntimeManagerTelemetry = $null
   )
@@ -736,6 +832,7 @@ function Write-SemiLiveStatus {
     schema = 'docker-desktop-fast-loop-status@v1'
     generatedAt = (Get-Date).ToUniversalTime().ToString('o')
     startedAt = $StartedAt
+    loopLabel = if ([string]::IsNullOrWhiteSpace($LoopLabel)) { Get-DockerFastLoopLabel -ContextObject @{ laneScope = $LaneScope } } else { $LoopLabel }
     phase = $Phase
     status = $RunStatus
     currentStep = ($CurrentStep ?? '')
@@ -1067,6 +1164,7 @@ $readinessMarkdownResolved = if ([string]::IsNullOrWhiteSpace($ReadinessMarkdown
 } else {
   Resolve-AbsolutePath -Path $ReadinessMarkdownPath
 }
+$hostPlaneReportPath = Join-Path $root 'labview-2026-host-plane-report.json'
 $windowsSnapshot = Join-Path $root 'windows-runtime-determinism.json'
 $linuxSnapshot = Join-Path $root 'linux-runtime-determinism.json'
 $linuxSmokeRoot = Join-Path $root 'linux-smoke'
@@ -1074,18 +1172,52 @@ $historyScenariosRoot = Join-Path $root 'history-scenarios'
 $repoRoot = Get-RepoRootFromToolsScript
 $historyScenarioSetNormalized = if ([string]::IsNullOrWhiteSpace($HistoryScenarioSet)) { 'none' } else { $HistoryScenarioSet.Trim().ToLowerInvariant() }
 $laneScopeNormalized = if ([string]::IsNullOrWhiteSpace($LaneScope)) { 'both' } else { $LaneScope.Trim().ToLowerInvariant() }
+$loopLabel = Get-DockerFastLoopLabel -ContextObject @{ laneScope = $laneScopeNormalized }
+$loopPrefix = ('[{0}]' -f $loopLabel)
 $singleLaneMode = $laneScopeNormalized -ne 'both'
 if ($singleLaneMode -and $ManageDockerEngine) {
   throw ("LaneScope '{0}' does not allow -ManageDockerEngine`:$true. Use LaneScope 'both' for managed engine switching." -f $laneScopeNormalized)
 }
 $effectiveManageDockerEngine = if ($singleLaneMode) { $false } else { [bool]$ManageDockerEngine }
 $runtimeAutoRepairEnabled = -not $singleLaneMode
+$defaultWindowsDockerLabVIEWPath = 'C:\Program Files\National Instruments\LabVIEW 2026\LabVIEW.exe'
+$defaultLinuxDockerLabVIEWPath = '/usr/local/natinst/LabVIEW-2026-64/labview'
 $effectiveWindowsLabVIEWPath = Resolve-DockerLaneLabVIEWPath `
   -ExplicitPath $WindowsLabVIEWPath `
-  -PreferredEnvNames @('NI_WINDOWS_LABVIEW_PATH', 'COMPARE_WINDOWS_LABVIEW_PATH')
+  -PreferredEnvNames @('NI_WINDOWS_LABVIEW_PATH', 'COMPARE_WINDOWS_LABVIEW_PATH') `
+  -FallbackPath $defaultWindowsDockerLabVIEWPath
 $effectiveLinuxLabVIEWPath = Resolve-DockerLaneLabVIEWPath `
   -ExplicitPath $LinuxLabVIEWPath `
-  -PreferredEnvNames @('NI_LINUX_LABVIEW_PATH', 'COMPARE_LINUX_LABVIEW_PATH')
+  -PreferredEnvNames @('NI_LINUX_LABVIEW_PATH', 'COMPARE_LINUX_LABVIEW_PATH') `
+  -FallbackPath $defaultLinuxDockerLabVIEWPath
+$nativeHostLabVIEW64Path = Resolve-NativeHostPlanePath `
+  -PreferredEnvNames @('COMPAREVI_NATIVE_LABVIEW_2026_64_PATH', 'NI_HOST_LABVIEW_2026_64_PATH') `
+  -FallbackPath $effectiveWindowsLabVIEWPath `
+  -Version 2026 `
+  -Bitness 64
+$nativeHostLabVIEW32Path = Resolve-NativeHostPlanePath `
+  -PreferredEnvNames @('COMPAREVI_NATIVE_LABVIEW_2026_32_PATH', 'NI_HOST_LABVIEW_2026_32_PATH') `
+  -Version 2026 `
+  -Bitness 32
+$nativeHostCli64Path = Resolve-NativeHostPlaneCliPath `
+  -PreferredEnvNames @('COMPAREVI_NATIVE_LABVIEWCLI_2026_64_PATH', 'NI_HOST_LABVIEWCLI_2026_64_PATH') `
+  -Version 2026 `
+  -Bitness 64
+$nativeHostCli32Path = Resolve-NativeHostPlaneCliPath `
+  -PreferredEnvNames @('COMPAREVI_NATIVE_LABVIEWCLI_2026_32_PATH', 'NI_HOST_LABVIEWCLI_2026_32_PATH') `
+  -FallbackPath $nativeHostCli64Path `
+  -Version 2026 `
+  -Bitness 32
+$nativeHostComparePath = Resolve-NativeComparePath `
+  -PreferredEnvNames @('COMPAREVI_NATIVE_LVCOMPARE_PATH', 'NI_HOST_LVCOMPARE_PATH')
+$hostPlaneReport = Get-LabVIEW2026HostPlaneReport `
+  -LabVIEW64Path $nativeHostLabVIEW64Path `
+  -LabVIEW32Path $nativeHostLabVIEW32Path `
+  -LabVIEWCli64Path $nativeHostCli64Path `
+  -LabVIEWCli32Path $nativeHostCli32Path `
+  -LVComparePath $nativeHostComparePath
+$hostPlaneReport | ConvertTo-Json -Depth 10 | Set-Content -LiteralPath $hostPlaneReportPath -Encoding utf8
+Write-LabVIEW2026HostPlaneConsole -Report $hostPlaneReport
 $effectiveSkipWindowsProbe = [bool]$SkipWindowsProbe
 $effectiveSkipLinuxProbe = [bool]$SkipLinuxProbe
 switch ($laneScopeNormalized) {
@@ -1295,7 +1427,7 @@ if ($historyScenarioSetNormalized -ne 'none') {
   foreach ($diagnostic in @($scenarioSelection.diagnostics)) {
     if ([string]::IsNullOrWhiteSpace([string]$diagnostic)) { continue }
     $historyScenarioFilterDiagnostics.Add([string]$diagnostic) | Out-Null
-    Write-Host ("[docker-fast-loop][history-filter] {0}" -f [string]$diagnostic) -ForegroundColor DarkYellow
+    Write-Host ("{0}[history-filter] {1}" -f $loopPrefix, [string]$diagnostic) -ForegroundColor DarkYellow
   }
   if ($scenarioIds.Count -gt 0 -and -not (Test-Path -LiteralPath $historyScenariosRoot -PathType Container)) {
     New-Item -ItemType Directory -Path $historyScenariosRoot -Force | Out-Null
@@ -1337,7 +1469,7 @@ if ($historyScenarioSetNormalized -ne 'none') {
         if (-not $requireStepDiff) {
           $skipMessage = ("Sequential step '{0}' skipped because requireDiff=true is required for diff-only history execution." -f $seqIdRaw)
           $historyScenarioFilterDiagnostics.Add($skipMessage) | Out-Null
-          Write-Host ("[docker-fast-loop][history-filter] {0}" -f $skipMessage) -ForegroundColor DarkYellow
+          Write-Host ("{0}[history-filter] {1}" -f $loopPrefix, $skipMessage) -ForegroundColor DarkYellow
           continue
         }
         $safeSeqId = $seqIdRaw -replace '[^a-zA-Z0-9._-]', '-'
@@ -1362,6 +1494,10 @@ if ($historyScenarioSetNormalized -ne 'none') {
 
         $stepDefinitions.Add([pscustomobject]@{
           name = $stepName
+          historyLane = 'windows'
+          historySequence = 'sequential'
+          historyMode = $seqIdRaw
+          historyScenarioId = $scenarioId
           allowedExitCodes = @(0, 1)
           hardStopOnRuntimeFailure = $true
           captureValidator = {
@@ -1422,6 +1558,10 @@ if ($historyScenarioSetNormalized -ne 'none') {
 
     $stepDefinitions.Add([pscustomobject]@{
       name = $stepName
+      historyLane = 'windows'
+      historySequence = 'direct'
+      historyMode = $scenarioMode
+      historyScenarioId = $scenarioId
       allowedExitCodes = @(0, 1)
       hardStopOnRuntimeFailure = $true
       captureValidator = {
@@ -1485,6 +1625,12 @@ if ($stepDefinitions.Count -gt 1) {
   }
 }
 
+$loopLabel = Get-DockerFastLoopLabel -ContextObject @{
+  laneScope = $laneScopeNormalized
+  steps = $stepDefinitions.ToArray()
+}
+$loopPrefix = ('[{0}]' -f $loopLabel)
+
 $totalSteps = $stepDefinitions.Count
 $stepPlan = @($stepDefinitions.ToArray() | ForEach-Object { [string]$_.name })
 $historicalStepMedians = Get-HistoricalStepDurationMedians -ResultsDir $root
@@ -1501,11 +1647,12 @@ Write-SemiLiveStatus `
   -HistoricalStepMedians $historicalStepMedians `
   -HardStopTriggered:$hardStopTriggered `
   -HardStopReason $hardStopReason `
+  -LoopLabel $loopLabel `
   -SummaryPath ''
 
 foreach ($definition in $stepDefinitions.ToArray()) {
   $stepName = [string]$definition.name
-  Write-Host ("[docker-fast-loop] start: {0}" -f $stepName)
+  Write-Host ("{0} start: {1}" -f $loopPrefix, $stepName)
   Write-SemiLiveStatus `
     -Path $statusResolved `
     -StartedAt $runStartedAt `
@@ -1519,6 +1666,7 @@ foreach ($definition in $stepDefinitions.ToArray()) {
     -HistoricalStepMedians $historicalStepMedians `
     -HardStopTriggered:$hardStopTriggered `
     -HardStopReason $hardStopReason `
+    -LoopLabel $loopLabel `
     -SummaryPath ''
 
   $allowedExitCodes = @(0)
@@ -1540,6 +1688,14 @@ foreach ($definition in $stepDefinitions.ToArray()) {
     -HardStopOnRuntimeFailure:$hardStopOnRuntimeFailure `
     -CaptureValidator $captureValidator `
     -TimeoutSeconds $StepTimeoutSeconds
+  foreach ($metadataName in @('historyLane', 'historySequence', 'historyMode', 'historyScenarioId')) {
+    if ($definition.PSObject.Properties[$metadataName]) {
+      $metadataValue = [string]$definition.PSObject.Properties[$metadataName].Value
+      if (-not [string]::IsNullOrWhiteSpace($metadataValue)) {
+        $stepResult | Add-Member -NotePropertyName $metadataName -NotePropertyValue $metadataValue -Force
+      }
+    }
+  }
   $results.Add($stepResult) | Out-Null
   $durationText = if ($stepResult.PSObject.Properties['durationMs']) { [string]$stepResult.durationMs } else { '0' }
   $stepStatusText = [string]$stepResult.status
@@ -1551,10 +1707,10 @@ foreach ($definition in $stepDefinitions.ToArray()) {
     }
   }
   if ($stepStatusText -eq 'success') {
-    Write-Host ("[docker-fast-loop] done: {0} ({1} ms) class={2} diff={3} exit={4}{5}" -f $stepName, $durationText, [string]$stepResult.resultClass, [bool]$stepResult.isDiff, [int]$stepResult.exitCode, $diffEvidenceText) -ForegroundColor Green
+    Write-Host ("{0} done: {1} ({2} ms) class={3} diff={4} exit={5}{6}" -f $loopPrefix, $stepName, $durationText, [string]$stepResult.resultClass, [bool]$stepResult.isDiff, [int]$stepResult.exitCode, $diffEvidenceText) -ForegroundColor Green
   } else {
     $failureMessage = [string]$stepResult.message
-    Write-Host ("[docker-fast-loop] failed: {0} ({1} ms) class={2} failureClass={3} exit={4}: {5}" -f $stepName, $durationText, [string]$stepResult.resultClass, [string]$stepResult.failureClass, [int]$stepResult.exitCode, $failureMessage) -ForegroundColor Red
+    Write-Host ("{0} failed: {1} ({2} ms) class={3} failureClass={4} exit={5}: {6}" -f $loopPrefix, $stepName, $durationText, [string]$stepResult.resultClass, [string]$stepResult.failureClass, [int]$stepResult.exitCode, $failureMessage) -ForegroundColor Red
     if ($stepResult.PSObject.Properties['hardStopTriggered'] -and [bool]$stepResult.hardStopTriggered) {
       $hardStopTriggered = $true
       $failureClassText = [string]$stepResult.failureClass
@@ -1566,7 +1722,7 @@ foreach ($definition in $stepDefinitions.ToArray()) {
         default { 'Tool failure detected' }
       }
       $hardStopReason = ("{0} at step '{1}' (failureClass={2}, exit={3}): {4}" -f $reasonPrefix, $stepName, $failureClassText, [int]$stepResult.exitCode, $failureMessage)
-      Write-Host ("[docker-fast-loop] hard-stop: {0}" -f $hardStopReason) -ForegroundColor Red
+      Write-Host ("{0} hard-stop: {1}" -f $loopPrefix, $hardStopReason) -ForegroundColor Red
     }
   }
   Write-SemiLiveStatus `
@@ -1582,6 +1738,7 @@ foreach ($definition in $stepDefinitions.ToArray()) {
     -HistoricalStepMedians $historicalStepMedians `
     -HardStopTriggered:$hardStopTriggered `
     -HardStopReason $hardStopReason `
+    -LoopLabel $loopLabel `
     -SummaryPath ''
 
   if ($hardStopTriggered) {
@@ -1647,6 +1804,7 @@ foreach ($entry in $results.ToArray()) {
 $summary = [ordered]@{
   schema = 'docker-desktop-fast-loop@v1'
   generatedAt = (Get-Date).ToUniversalTime().ToString('o')
+  loopLabel = $loopLabel
   windowsImage = $WindowsImage
   linuxImage = $LinuxImage
   labviewPaths = [ordered]@{
@@ -1658,6 +1816,8 @@ $summary = [ordered]@{
     windows = $windowsSnapshot
     linux = $linuxSnapshot
   }
+  hostPlane = $hostPlaneReport
+  hostPlaneReportPath = $hostPlaneReportPath
   statusPath = $statusResolved
   readinessJsonPath = $readinessJsonResolved
   readinessMarkdownPath = $readinessMarkdownResolved
@@ -1683,6 +1843,8 @@ $summary = [ordered]@{
   stepTimeoutSeconds = [int]$StepTimeoutSeconds
   manageDockerEngine = [bool]$effectiveManageDockerEngine
   laneOrder = $LaneOrder
+  hostPlanes = $hostPlaneReport.native.planes
+  hostExecutionPolicy = $hostPlaneReport.executionPolicy
   runtimeManager = (Get-RuntimeManagerTelemetry -WindowsSnapshotPath $windowsSnapshot -LinuxSnapshotPath $linuxSnapshot)
   laneLifecycle = (Get-LaneLifecycleFromPlan `
     -StepPlan $stepPlan `
@@ -1694,7 +1856,7 @@ $summary = [ordered]@{
   status = if ($failed.Count -eq 0) { 'success' } else { 'failure' }
 }
 $summary | ConvertTo-Json -Depth 8 | Set-Content -LiteralPath $summaryPath -Encoding utf8
-Write-Host ("[docker-fast-loop] summary: {0}" -f $summaryPath)
+Write-Host ("{0} summary: {1}" -f $loopPrefix, $summaryPath)
 
 Write-SemiLiveStatus `
   -Path $statusResolved `
@@ -1709,6 +1871,7 @@ Write-SemiLiveStatus `
   -HistoricalStepMedians $historicalStepMedians `
   -HardStopTriggered:$hardStopTriggered `
   -HardStopReason $hardStopReason `
+  -LoopLabel $loopLabel `
   -SummaryPath $summaryPath `
   -RuntimeManagerTelemetry $summary.runtimeManager
 
@@ -1718,14 +1881,27 @@ pwsh -NoLogo -NoProfile -File (Join-Path $PSScriptRoot 'Write-DockerFastLoopRead
   -StatusPath $statusResolved `
   -OutputJsonPath $readinessJsonResolved `
   -OutputMarkdownPath $readinessMarkdownResolved `
+  -PrintDifferentiatedDiagnostics:$false `
   -GitHubOutputPath '' `
   -StepSummaryPath '' | Out-Null
+
+$readinessEnvelope = $null
+if (Test-Path -LiteralPath $readinessJsonResolved -PathType Leaf) {
+  try {
+    $readinessEnvelope = Get-Content -LiteralPath $readinessJsonResolved -Raw | ConvertFrom-Json -Depth 16
+  } catch {
+    $readinessEnvelope = $null
+  }
+}
+if ($readinessEnvelope) {
+  Write-DockerFastLoopDifferentiatedDiagnostics -Readiness $readinessEnvelope -ResultsRoot $root | Out-Null
+}
 
 if ($failed.Count -gt 0) {
   foreach ($step in $failed.ToArray()) {
     $nameValue = if ($step -is [System.Collections.IDictionary]) { [string]$step['name'] } elseif ($step -and $step.PSObject.Properties['name']) { [string]$step.name } else { '<unknown-step>' }
     $messageValue = if ($step -is [System.Collections.IDictionary]) { [string]$step['message'] } elseif ($step -and $step.PSObject.Properties['message']) { [string]$step.message } else { 'no details' }
-    Write-Host ("[docker-fast-loop] failed: {0}: {1}" -f $nameValue, $messageValue) -ForegroundColor Red
+    Write-Host ("{0} failed: {1}: {2}" -f $loopPrefix, $nameValue, $messageValue) -ForegroundColor Red
   }
   if ($hardStopTriggered -and -not [string]::IsNullOrWhiteSpace($hardStopReason)) {
     throw ("Docker fast loop hard-stopped: {0}" -f $hardStopReason)
