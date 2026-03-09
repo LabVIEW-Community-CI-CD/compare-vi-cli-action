@@ -96,6 +96,27 @@ instead of inferring the correct path from prose alone.
   just to reason about intake state. Use this instead of ad hoc `gh project item-add` plus repeated
   `gh project item-edit` sequences.
 
+- Canonical GitHub metadata application:
+
+  ```powershell
+  node tools/npm/run-script.mjs priority:github:metadata:apply -- `
+    --url https://github.com/LabVIEW-Community-CI-CD/compare-vi-cli-action/issues/949 `
+    --issue-type Feature `
+    --milestone "LabVIEW CI Platform v1 (2026Q2)"
+
+  node tools/npm/run-script.mjs priority:github:metadata:apply -- `
+    --url https://github.com/LabVIEW-Community-CI-CD/compare-vi-cli-action/pull/950 `
+    --assignee svelderrainruiz `
+    --reviewer copilot-swe-agent `
+    --reviewer LabVIEW-Community-CI-CD/maintainers
+  ```
+
+  This helper mutates the real issue/PR metadata future agents actually reason about: issue type, milestone,
+  assignees, requested reviewers, parent issue linkage, and sub-issue linkage. It writes
+  `tests/results/_agent/issue/github-metadata-apply-report.json` with requested, resolved, projected, observed, and
+  verification state. Inputs are explicit by design: passing assignees/reviewers/sub-issues means the full desired set
+  for that surface, while `--clear-*` flags intentionally drive the empty state.
+
 - Issue bodies:
 
   ```powershell
@@ -175,6 +196,9 @@ Human-authored PRs should use the `human-change` template so they do not acciden
 - Prefer `priority:project:portfolio:apply` when you need deterministic project-field stamping for issues or PRs; the
   board remains a visibility layer, but the helper removes the manual CLI mutation seam and emits richer built-in board
   metadata for future-agent routing.
+- Prefer `priority:github:metadata:apply` when the source of truth must change on the issue or PR itself. Use it for
+  issue type, milestone, assignee, reviewer, parent, and sub-issue mutations; do not try to treat project board fields
+  as a substitute for those canonical surfaces.
 - Use `Write-GitHubIntakeAtlas.ps1` when you need a single human-readable and machine-readable snapshot of the entire
   intake layer.
 

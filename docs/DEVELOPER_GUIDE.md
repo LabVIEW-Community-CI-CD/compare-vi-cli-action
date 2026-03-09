@@ -178,6 +178,12 @@ Quick reference for building, testing, and releasing the LVCompare composite act
   fields, and writes `tests/results/_agent/project/portfolio-apply-report.json`. The report also carries normalized
   built-in board metadata (`Type`, `Milestone`, `Reviewers`, linked PRs, parent issue, `Sub-issues progress`) so
   future agents can reason about intake state without a second `gh project item-list` scrape.
+- `node tools/npm/run-script.mjs priority:github:metadata:apply -- --url <issue-or-pr-url> ...`  
+  Applies canonical GitHub metadata directly on the issue or PR: issue type, milestone, assignees, requested
+  reviewers, parent issue, and sub-issue linkage. The helper writes
+  `tests/results/_agent/issue/github-metadata-apply-report.json` and verifies the post-apply state against the
+  projected target state. Use this when the issue/PR metadata itself is the source of truth; use the project helper
+  only for board fields.
 - `node tools/priority/standing-priority-handoff.mjs [--dry-run] <next-issue>`  
   Removes the `standing-priority` label from the current issue (if any), applies it to `<next-issue>`, and re-runs the cache sync (`tools/priority/sync-standing-priority.mjs`). Use `--dry-run` to preview the actions without mutating labels.
 - Standing-priority repository resolution is owner-agnostic. Order:
