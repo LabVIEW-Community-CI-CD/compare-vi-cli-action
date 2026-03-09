@@ -22,5 +22,7 @@ Describe 'Resolve-GitHubIntakeRoute.ps1' {
     $route.targetKey | Should -Be 'default'
     $route.helperPath | Should -Be 'tools/New-GitHubIntakeDraft.ps1'
     $route.executeCommand | Should -Be 'pwsh -NoLogo -NoProfile -File tools/Branch-Orchestrator.ps1 -Issue <number> -Execute'
+    $route.executionKind | Should -Be 'branch-orchestrator'
+    $route.execution.pullRequestTemplate | Should -Be 'default'
   }
 }

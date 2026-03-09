@@ -50,6 +50,17 @@ instead of inferring the correct path from prose alone.
   the current issue snapshot under `tests/results/_agent/issue/`, so future agents do not need to restate that context
   after bootstrap has already synced it.
 
+- Default dry-run execution plan:
+
+  ```powershell
+  pwsh -File tools/Invoke-GitHubIntakeScenario.ps1 -Scenario workflow-policy -Title "GitHub Intake: execution planner"
+  pwsh -File tools/Invoke-GitHubIntakeScenario.ps1 -Scenario human-pr -Issue 923 -AsJson
+  ```
+
+  This helper reads the new machine-readable `execution` block from the catalog and emits a default dry-run execution
+  plan before anything mutates GitHub state. Use `-Apply` only when the plan is correct. Issue routes still require an
+  explicit title input, while PR routes can derive issue context from the current snapshot and branch state.
+
 - Atlas report generation:
 
   ```powershell
@@ -132,6 +143,9 @@ Human-authored PRs should use the `human-change` template so they do not acciden
   surface to use.
 - Prefer `New-GitHubIntakeDraft.ps1` when you want a single scenario-led entrypoint that renders the correct issue or
   PR draft from the catalog.
+- Prefer `Invoke-GitHubIntakeScenario.ps1` when you want the planner/apply surface for future agents; it emits a
+  structured execution plan, keeps dry-run as the default mode, and only performs the route's GitHub mutation when
+  `-Apply` is explicit.
 - Use `Write-GitHubIntakeAtlas.ps1` when you need a single human-readable and machine-readable snapshot of the entire
   intake layer.
 

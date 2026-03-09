@@ -25,7 +25,7 @@ Describe 'Write-GitHubIntakeAtlas.ps1' {
 
     $markdown = Get-Content -LiteralPath $markdownPath -Raw
     $markdown | Should -Match '# GitHub Intake Atlas'
-    $markdown | Should -Match '\| Scenario \| Route Type \| Target \| Helper \| Draft Command \| Execute Command \|'
-    $markdown | Should -Match '\| bug \| issue-template \| `bug-report` \|'
+    $markdown | Should -Match '\| Scenario \| Route Type \| Target \| Execution \| Helper \| Draft Command \| Execute Command \|'
+    $markdown | Should -Match '\| bug \| issue-template \| `bug-report` \| `gh-issue-create` \|'
   }
 }

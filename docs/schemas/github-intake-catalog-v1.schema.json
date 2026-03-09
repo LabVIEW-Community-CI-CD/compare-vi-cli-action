@@ -4,6 +4,82 @@
   "title": "GitHub Intake Catalog v1",
   "type": "object",
   "additionalProperties": false,
+  "$defs": {
+    "execution": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "kind"
+      ],
+      "properties": {
+        "kind": {
+          "type": "string",
+          "enum": [
+            "gh-issue-create",
+            "gh-pr-create",
+            "branch-orchestrator",
+            "open-link"
+          ]
+        },
+        "titleSource": {
+          "type": "string",
+          "enum": [
+            "input",
+            "issue-derived",
+            "none"
+          ]
+        },
+        "bodySource": {
+          "type": "string",
+          "enum": [
+            "draft-output",
+            "none"
+          ]
+        },
+        "labelSource": {
+          "type": "string",
+          "enum": [
+            "issue-template",
+            "none"
+          ]
+        },
+        "baseSource": {
+          "type": "string",
+          "enum": [
+            "input-or-default",
+            "none"
+          ]
+        },
+        "branchSource": {
+          "type": "string",
+          "enum": [
+            "current-or-input",
+            "derived-or-current",
+            "none"
+          ]
+        },
+        "issueSource": {
+          "type": "string",
+          "enum": [
+            "input-or-snapshot",
+            "input",
+            "none"
+          ]
+        },
+        "pullRequestTemplate": {
+          "type": "string",
+          "minLength": 1
+        },
+        "urlSource": {
+          "type": "string",
+          "enum": [
+            "target-url",
+            "none"
+          ]
+        }
+      }
+    }
+  },
   "required": [
     "schema",
     "repository",
@@ -146,6 +222,7 @@
           "targetKey",
           "helperPath",
           "command",
+          "execution",
           "summary"
         ],
         "properties": {
@@ -176,6 +253,9 @@
           "executeCommand": {
             "type": "string",
             "minLength": 1
+          },
+          "execution": {
+            "$ref": "#/$defs/execution"
           },
           "summary": {
             "type": "string",

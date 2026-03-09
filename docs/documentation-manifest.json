@@ -144,7 +144,9 @@
       "files": [
         "docs/schemas/github-intake-atlas-v1.schema.json",
         "docs/schemas/github-intake-catalog-v1.schema.json",
+        "docs/schemas/github-intake-execution-plan-v1.schema.json",
         "tools/GitHubIntake.psm1",
+        "tools/Invoke-GitHubIntakeScenario.ps1",
         "tools/New-GitHubIntakeDraft.ps1",
         "tools/Resolve-GitHubIntakeRoute.ps1",
         "tools/Write-GitHubIntakeAtlas.ps1",

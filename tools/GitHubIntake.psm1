@@ -58,6 +58,26 @@ function Get-GitHubIntakeScenarios {
   @((Get-GitHubIntakeCatalog).routes | ForEach-Object { [string]$_.scenario })
 }
 
+function Resolve-GitHubIntakeExecutionMetadata {
+  param([pscustomobject]$Route)
+
+  if (-not $Route -or -not ($Route.PSObject.Properties.Name -contains 'execution') -or -not $Route.execution) {
+    return $null
+  }
+
+  [pscustomobject]@{
+    kind                = [string]$Route.execution.kind
+    titleSource         = if ($Route.execution.PSObject.Properties.Name -contains 'titleSource') { [string]$Route.execution.titleSource } else { $null }
+    bodySource          = if ($Route.execution.PSObject.Properties.Name -contains 'bodySource') { [string]$Route.execution.bodySource } else { $null }
+    labelSource         = if ($Route.execution.PSObject.Properties.Name -contains 'labelSource') { [string]$Route.execution.labelSource } else { $null }
+    baseSource          = if ($Route.execution.PSObject.Properties.Name -contains 'baseSource') { [string]$Route.execution.baseSource } else { $null }
+    branchSource        = if ($Route.execution.PSObject.Properties.Name -contains 'branchSource') { [string]$Route.execution.branchSource } else { $null }
+    issueSource         = if ($Route.execution.PSObject.Properties.Name -contains 'issueSource') { [string]$Route.execution.issueSource } else { $null }
+    pullRequestTemplate = if ($Route.execution.PSObject.Properties.Name -contains 'pullRequestTemplate') { [string]$Route.execution.pullRequestTemplate } else { $null }
+    urlSource           = if ($Route.execution.PSObject.Properties.Name -contains 'urlSource') { [string]$Route.execution.urlSource } else { $null }
+  }
+}
+
 function Resolve-GitHubIssueSnapshot {
   param([int]$Issue)
 
@@ -190,17 +210,21 @@ function Resolve-GitHubIntakeRoute {
     }
   }
 
+  $execution = Resolve-GitHubIntakeExecutionMetadata -Route $route
+
   [pscustomobject]@{
-    scenario   = [string]$route.scenario
-    routeType  = [string]$route.routeType
-    targetKey  = [string]$route.targetKey
-    targetName = $targetName
-    targetPath = $targetPath
-    targetUrl  = $targetUrl
-    helperPath = [string]$route.helperPath
-    command    = [string]$route.command
+    scenario       = [string]$route.scenario
+    routeType      = [string]$route.routeType
+    targetKey      = [string]$route.targetKey
+    targetName     = $targetName
+    targetPath     = $targetPath
+    targetUrl      = $targetUrl
+    helperPath     = [string]$route.helperPath
+    command        = [string]$route.command
     executeCommand = if ($route.PSObject.Properties.Name -contains 'executeCommand') { [string]$route.executeCommand } else { $null }
-    summary    = [string]$route.summary
+    execution      = $execution
+    executionKind  = if ($execution) { [string]$execution.kind } else { $null }
+    summary        = [string]$route.summary
   }
 }
 
@@ -257,12 +281,390 @@ function Resolve-GitHubIntakeDraftContext {
     helperPath         = [string]$route.helperPath
     command            = [string]$route.command
     executeCommand     = if ($route.PSObject.Properties.Name -contains 'executeCommand') { $route.executeCommand } else { $null }
+    execution          = $route.execution
+    executionKind      = $route.executionKind
     issue              = $resolvedIssue
     issueTitle         = $resolvedIssueTitle
     issueUrl           = $resolvedIssueUrl
     branch             = $resolvedBranch
     standingPriority   = $resolvedStandingPriority
     snapshotResolved   = $snapshotResolved
+  }
+}
+
+function Resolve-GitHubIntakeDraftOutputPath {
+  param(
+    [string]$RouteType,
+    [string]$OutputPath
+  )
+
+  if (-not [string]::IsNullOrWhiteSpace($OutputPath)) {
+    return $OutputPath
+  }
+
+  switch ([string]$RouteType) {
+    'issue-template' { return 'issue-body.md' }
+    'pull-request-template' { return 'pr-body.md' }
+    default { return 'intake-body.md' }
+  }
+}
+
+function Format-GitHubIntakeCommandLine {
+  param(
+    [string]$Command,
+    [string[]]$Arguments
+  )
+
+  $parts = [System.Collections.Generic.List[string]]::new()
+  if (-not [string]::IsNullOrWhiteSpace($Command)) {
+    $parts.Add($Command)
+  }
+
+  foreach ($argument in @($Arguments)) {
+    if ($null -eq $argument) {
+      continue
+    }
+
+    $text = [string]$argument
+    if ($text -match '[\s'']|"') {
+      $escaped = $text -replace "'", "''"
+      $parts.Add(("'{0}'" -f $escaped))
+    } else {
+      $parts.Add($text)
+    }
+  }
+
+  return ($parts -join ' ').Trim()
+}
+
+function New-GitHubIntakeExecutionPlan {
+  param(
+    [string]$Scenario,
+    [string]$Title,
+    [int]$Issue,
+    [string]$IssueTitle,
+    [string]$IssueUrl,
+    [string]$Base = 'develop',
+    [string]$Branch,
+    [bool]$StandingPriority = $false,
+    [string]$RelatedIssues,
+    [string]$RepositoryContext = 'LabVIEW-Community-CI-CD/compare-vi-cli-action',
+    [string]$DraftOutputPath,
+    [string]$CurrentBranch,
+    [string]$GeneratedAtUtc
+  )
+
+  if ([string]::IsNullOrWhiteSpace($Scenario)) {
+    throw 'Scenario is required for GitHub intake execution planning.'
+  }
+
+  if ([string]::IsNullOrWhiteSpace($GeneratedAtUtc)) {
+    $GeneratedAtUtc = [DateTime]::UtcNow.ToString('o')
+  }
+
+  $route = Resolve-GitHubIntakeRoute -Scenario $Scenario
+  $context = Resolve-GitHubIntakeDraftContext `
+    -Scenario $Scenario `
+    -Issue $Issue `
+    -IssueTitle $IssueTitle `
+    -IssueUrl $IssueUrl `
+    -Branch $Branch `
+    -StandingPriority:$StandingPriority `
+    -CurrentBranch $CurrentBranch
+
+  $draftOutput = Resolve-GitHubIntakeDraftOutputPath -RouteType $route.routeType -OutputPath $DraftOutputPath
+  $executionKind = [string]$route.executionKind
+  $issueTemplate = $null
+  if ([string]$route.routeType -eq 'issue-template') {
+    $issueTemplate = Resolve-GitHubIssueTemplate -TemplateName ([string]$context.templateKey)
+  }
+
+  $resolvedTitle = $null
+  $labels = @()
+  $arguments = [System.Collections.Generic.List[string]]::new()
+  $missing = [System.Collections.Generic.List[string]]::new()
+  $titleRequired = $false
+  $issueRequired = $false
+  $branchRequired = $false
+  $draftWriteOnApply = $true
+
+  switch ($executionKind) {
+    'gh-issue-create' {
+      $titleRequired = $true
+      $resolvedTitle = if ([string]::IsNullOrWhiteSpace($Title)) { $null } else { $Title.Trim() }
+      if (-not $resolvedTitle) {
+        $missing.Add('title')
+      }
+
+      if ($issueTemplate -and $issueTemplate.PSObject.Properties.Name -contains 'labels') {
+        $labels = @($issueTemplate.labels | ForEach-Object { [string]$_ })
+      }
+
+      $arguments.Add('issue')
+      $arguments.Add('create')
+      $arguments.Add('--repo')
+      $arguments.Add($RepositoryContext)
+      $arguments.Add('--title')
+      $arguments.Add($(if ($resolvedTitle) { $resolvedTitle } else { '<title-required>' }))
+      $arguments.Add('--body-file')
+      $arguments.Add($draftOutput)
+      foreach ($label in $labels) {
+        $arguments.Add('--label')
+        $arguments.Add($label)
+      }
+    }
+    'gh-pr-create' {
+      $issueRequired = $true
+      $branchRequired = $true
+      $resolvedTitle = Resolve-PullRequestTitle -Issue $context.issue -IssueTitle $context.issueTitle -Base $Base
+      if ($context.issue -le 0) {
+        $missing.Add('issue')
+      }
+      if ([string]::IsNullOrWhiteSpace($context.branch)) {
+        $missing.Add('branch')
+      }
+
+      $arguments.Add('pr')
+      $arguments.Add('create')
+      $arguments.Add('--repo')
+      $arguments.Add($RepositoryContext)
+      $arguments.Add('--title')
+      $arguments.Add($resolvedTitle)
+      $arguments.Add('--body-file')
+      $arguments.Add($draftOutput)
+      $arguments.Add('--base')
+      $arguments.Add($Base)
+      if (-not [string]::IsNullOrWhiteSpace($context.branch)) {
+        $arguments.Add('--head')
+        $arguments.Add($context.branch)
+      }
+    }
+    'branch-orchestrator' {
+      $issueRequired = $true
+      $draftWriteOnApply = $false
+      $resolvedTitle = Resolve-PullRequestTitle -Issue $context.issue -IssueTitle $context.issueTitle -Base $Base
+      if ($context.issue -le 0) {
+        $missing.Add('issue')
+      }
+
+      $arguments.Add('-NoLogo')
+      $arguments.Add('-NoProfile')
+      $arguments.Add('-File')
+      $arguments.Add('tools/Branch-Orchestrator.ps1')
+      $arguments.Add('-Issue')
+      $arguments.Add([string]$context.issue)
+      $arguments.Add('-Execute')
+      if (-not [string]::IsNullOrWhiteSpace($Base)) {
+        $arguments.Add('-Base')
+        $arguments.Add($Base)
+      }
+      $templateName = if ($route.execution -and -not [string]::IsNullOrWhiteSpace([string]$route.execution.pullRequestTemplate)) {
+        [string]$route.execution.pullRequestTemplate
+      } else {
+        'default'
+      }
+      if ($templateName -ne 'default') {
+        $arguments.Add('-PRTemplate')
+        $arguments.Add($templateName)
+      }
+    }
+    'open-link' {
+      if ([string]::IsNullOrWhiteSpace($route.targetUrl)) {
+        $missing.Add('targetUrl')
+      }
+
+      $arguments.Add($(if ([string]::IsNullOrWhiteSpace($route.targetUrl)) { '<target-url>' } else { [string]$route.targetUrl }))
+    }
+    default {
+      throw "Unsupported GitHub intake execution kind '$executionKind'."
+    }
+  }
+
+  $displayCommand = switch ($executionKind) {
+    'branch-orchestrator' { Format-GitHubIntakeCommandLine -Command 'pwsh' -Arguments $arguments.ToArray() }
+    'open-link' { Format-GitHubIntakeCommandLine -Command 'start' -Arguments $arguments.ToArray() }
+    default { Format-GitHubIntakeCommandLine -Command 'gh' -Arguments $arguments.ToArray() }
+  }
+
+  [pscustomobject]@{
+    schema            = 'github-intake/execution-plan@v1'
+    generatedAtUtc    = $GeneratedAtUtc
+    repositoryContext = $RepositoryContext
+    scenario          = [string]$route.scenario
+    routeType         = [string]$route.routeType
+    targetKey         = [string]$route.targetKey
+    targetName        = [string]$route.targetName
+    summary           = [string]$route.summary
+    route             = [pscustomobject]@{
+      helperPath     = [string]$route.helperPath
+      command        = [string]$route.command
+      executeCommand = if ($null -eq $route.executeCommand) { $null } else { [string]$route.executeCommand }
+      execution      = $route.execution
+    }
+    draft             = [pscustomobject]@{
+      outputPath        = $draftOutput
+      writeOnApply      = $draftWriteOnApply
+      issue             = [int]$context.issue
+      issueTitle        = if ([string]::IsNullOrWhiteSpace($context.issueTitle)) { $null } else { [string]$context.issueTitle }
+      issueUrl          = if ([string]::IsNullOrWhiteSpace($context.issueUrl)) { $null } else { [string]$context.issueUrl }
+      base              = if ([string]::IsNullOrWhiteSpace($Base)) { $null } else { $Base }
+      branch            = if ([string]::IsNullOrWhiteSpace($context.branch)) { $null } else { [string]$context.branch }
+      standingPriority  = [bool]$context.standingPriority
+      relatedIssues     = if ([string]::IsNullOrWhiteSpace($RelatedIssues)) { $null } else { $RelatedIssues }
+      repositoryContext = $RepositoryContext
+      snapshotResolved  = [bool]$context.snapshotResolved
+    }
+    execution         = [pscustomobject]@{
+      kind                = $executionKind
+      title               = if ([string]::IsNullOrWhiteSpace($resolvedTitle)) { $null } else { $resolvedTitle }
+      labels              = @($labels)
+      base                = if ([string]::IsNullOrWhiteSpace($Base)) { $null } else { $Base }
+      branch              = if ([string]::IsNullOrWhiteSpace($context.branch)) { $null } else { [string]$context.branch }
+      pullRequestTemplate = if ($route.execution -and -not [string]::IsNullOrWhiteSpace([string]$route.execution.pullRequestTemplate)) { [string]$route.execution.pullRequestTemplate } else { $null }
+      arguments           = @($arguments)
+      displayCommand      = $displayCommand
+    }
+    requirements      = [pscustomobject]@{
+      defaultMode   = 'plan'
+      titleRequired = $titleRequired
+      issueRequired = $issueRequired
+      branchRequired = $branchRequired
+      canApply      = (@($missing).Count -eq 0)
+      missing       = @($missing)
+    }
+  }
+}
+
+function Invoke-GitHubIntakeExecutionPlan {
+  param(
+    [pscustomobject]$Plan,
+    [scriptblock]$DraftRenderer,
+    [scriptblock]$NativeInvoker,
+    [scriptblock]$BranchOrchestratorInvoker
+  )
+
+  if (-not $Plan) {
+    throw 'GitHub intake execution plan is required.'
+  }
+
+  if ([string]$Plan.schema -ne 'github-intake/execution-plan@v1') {
+    throw "Unsupported execution plan schema '$($Plan.schema)'."
+  }
+
+  $missing = @($Plan.requirements.missing)
+  if ($missing.Count -gt 0) {
+    throw ('Execution plan is missing required inputs: {0}' -f ($missing -join ', '))
+  }
+
+  if (-not $DraftRenderer) {
+    $draftScriptPath = Join-Path $PSScriptRoot 'New-GitHubIntakeDraft.ps1'
+    $DraftRenderer = {
+      param([hashtable]$DraftParameters)
+      & $draftScriptPath @DraftParameters | Out-Null
+      return $DraftParameters.OutputPath
+    }.GetNewClosure()
+  }
+
+  if (-not $NativeInvoker) {
+    $NativeInvoker = {
+      param([string]$FilePath, [string[]]$Arguments)
+      $output = & $FilePath @Arguments 2>&1
+      if ($LASTEXITCODE -ne 0) {
+        throw ('Command failed ({0}): {1}' -f $LASTEXITCODE, ((@($output) | Out-String).Trim()))
+      }
+
+      return ((@($output) | Out-String).Trim())
+    }.GetNewClosure()
+  }
+
+  if (-not $BranchOrchestratorInvoker) {
+    $orchestratorPath = Join-Path $PSScriptRoot 'Branch-Orchestrator.ps1'
+    $BranchOrchestratorInvoker = {
+      param([hashtable]$Parameters)
+      & $orchestratorPath @Parameters | Out-Null
+      return $true
+    }.GetNewClosure()
+  }
+
+  $draftWritten = $false
+  if ($Plan.draft.writeOnApply) {
+    $draftParameters = @{
+      Scenario          = [string]$Plan.scenario
+      Issue             = [int]$Plan.draft.issue
+      IssueTitle        = if ($null -eq $Plan.draft.issueTitle) { '' } else { [string]$Plan.draft.issueTitle }
+      IssueUrl          = if ($null -eq $Plan.draft.issueUrl) { '' } else { [string]$Plan.draft.issueUrl }
+      Base              = if ($null -eq $Plan.draft.base) { '' } else { [string]$Plan.draft.base }
+      Branch            = if ($null -eq $Plan.draft.branch) { '' } else { [string]$Plan.draft.branch }
+      RepositoryContext = [string]$Plan.draft.repositoryContext
+      OutputPath        = [string]$Plan.draft.outputPath
+    }
+    if ([bool]$Plan.draft.standingPriority) { $draftParameters['StandingPriority'] = $true }
+    if ($null -ne $Plan.draft.relatedIssues -and -not [string]::IsNullOrWhiteSpace([string]$Plan.draft.relatedIssues)) {
+      $draftParameters['RelatedIssues'] = [string]$Plan.draft.relatedIssues
+    }
+
+    & $DraftRenderer $draftParameters | Out-Null
+    $draftWritten = $true
+  }
+
+  $output = $null
+  $commandFilePath = $null
+  $commandArguments = @()
+
+  switch ([string]$Plan.execution.kind) {
+    'gh-issue-create' {
+      $commandFilePath = 'gh'
+      $commandArguments = @($Plan.execution.arguments)
+      $output = & $NativeInvoker $commandFilePath $commandArguments
+    }
+    'gh-pr-create' {
+      $commandFilePath = 'gh'
+      $commandArguments = @($Plan.execution.arguments)
+      $output = & $NativeInvoker $commandFilePath $commandArguments
+    }
+    'branch-orchestrator' {
+      $commandFilePath = Join-Path $PSScriptRoot 'Branch-Orchestrator.ps1'
+      $orchestratorParameters = @{
+        Issue   = [int]$Plan.draft.issue
+        Execute = $true
+      }
+      if ($null -ne $Plan.execution.base -and -not [string]::IsNullOrWhiteSpace([string]$Plan.execution.base)) {
+        $orchestratorParameters['Base'] = [string]$Plan.execution.base
+      }
+      if ($null -ne $Plan.execution.pullRequestTemplate -and -not [string]::IsNullOrWhiteSpace([string]$Plan.execution.pullRequestTemplate)) {
+        $orchestratorParameters['PRTemplate'] = [string]$Plan.execution.pullRequestTemplate
+      }
+
+      $commandArguments = @('-Issue', [string]$orchestratorParameters.Issue, '-Execute')
+      if ($orchestratorParameters.ContainsKey('Base')) {
+        $commandArguments += @('-Base', [string]$orchestratorParameters.Base)
+      }
+      if ($orchestratorParameters.ContainsKey('PRTemplate')) {
+        $commandArguments += @('-PRTemplate', [string]$orchestratorParameters.PRTemplate)
+      }
+
+      $output = & $BranchOrchestratorInvoker $orchestratorParameters
+    }
+    'open-link' {
+      $commandFilePath = $null
+      $commandArguments = @()
+      $output = if ($Plan.execution.arguments -and $Plan.execution.arguments.Count -gt 0) { [string]$Plan.execution.arguments[0] } else { $null }
+    }
+    default {
+      throw "Unsupported execution kind '$($Plan.execution.kind)'."
+    }
+  }
+
+  [pscustomobject]@{
+    schema          = 'github-intake/execution-result@v1'
+    appliedAtUtc    = [DateTime]::UtcNow.ToString('o')
+    scenario        = [string]$Plan.scenario
+    executionKind   = [string]$Plan.execution.kind
+    draftWritten    = $draftWritten
+    draftOutputPath = [string]$Plan.draft.outputPath
+    commandFilePath = $commandFilePath
+    arguments       = @($commandArguments)
+    output          = $output
   }
 }
 
@@ -344,11 +746,12 @@ function ConvertTo-GitHubIntakeAtlasMarkdown {
   $lines.Add('')
   $lines.Add('## Scenario Routes')
   $lines.Add('')
-  $lines.Add('| Scenario | Route Type | Target | Helper | Draft Command | Execute Command |')
-  $lines.Add('| --- | --- | --- | --- | --- | --- |')
+  $lines.Add('| Scenario | Route Type | Target | Execution | Helper | Draft Command | Execute Command |')
+  $lines.Add('| --- | --- | --- | --- | --- | --- | --- |')
   foreach ($route in @($Report.routes)) {
     $executeCommand = if ([string]::IsNullOrWhiteSpace([string]$route.executeCommand)) { '(none)' } else { [string]$route.executeCommand }
-    $lines.Add(('| {0} | {1} | `{2}` | `{3}` | `{4}` | `{5}` |' -f $route.scenario, $route.routeType, $route.targetKey, $route.helperPath, $route.command, $executeCommand))
+    $executionKind = if ([string]::IsNullOrWhiteSpace([string]$route.executionKind)) { '(none)' } else { [string]$route.executionKind }
+    $lines.Add(('| {0} | {1} | `{2}` | `{3}` | `{4}` | `{5}` | `{6}` |' -f $route.scenario, $route.routeType, $route.targetKey, $executionKind, $route.helperPath, $route.command, $executeCommand))
   }
 
   $lines.Add('')
@@ -365,6 +768,7 @@ function ConvertTo-GitHubIntakeAtlasMarkdown {
   $lines.Add('')
   $lines.Add('- Use `Resolve-GitHubIntakeRoute.ps1` to inspect one scenario at a time.')
   $lines.Add('- Use `New-GitHubIntakeDraft.ps1` to render the correct issue or PR body from the scenario catalog.')
+  $lines.Add('- Use `Invoke-GitHubIntakeScenario.ps1` for a default dry-run execution plan and explicit `-Apply` mode.')
   $lines.Add('- Repo docs remain authoritative; the GitHub wiki is a curated navigation portal only.')
 
   return ($lines -join [Environment]::NewLine) + [Environment]::NewLine
@@ -486,8 +890,11 @@ Export-ModuleMember -Function `
   Get-GitHubIntakeScenarios, `
   Get-SupportedGitHubIssueTemplates, `
   Get-SupportedGitHubPullRequestTemplates, `
+  Invoke-GitHubIntakeExecutionPlan, `
   New-GitHubIntakeAtlasReport, `
+  New-GitHubIntakeExecutionPlan, `
   Resolve-GitHubIntakeDraftContext, `
+  Resolve-GitHubIntakeDraftOutputPath, `
   Resolve-GitHubIssueSnapshot, `
   Resolve-GitHubIssueTemplate, `
   Resolve-GitHubPullRequestTemplate, `

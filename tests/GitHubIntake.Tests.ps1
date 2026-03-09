@@ -57,6 +57,8 @@ Describe 'GitHubIntake.psm1' {
     $route.targetKey | Should -Be 'workflow-policy-agent-ux'
     $route.targetPath | Should -Be '.github/ISSUE_TEMPLATE/03-workflow-policy-agent-ux.yml'
     $route.helperPath | Should -Be 'tools/New-GitHubIntakeDraft.ps1'
+    $route.executionKind | Should -Be 'gh-issue-create'
+    $route.execution.labelSource | Should -Be 'issue-template'
   }
 
   It 'resolves human-pr intake to the human-change PR template' {
@@ -67,6 +69,8 @@ Describe 'GitHubIntake.psm1' {
     $route.targetPath | Should -Be '.github/PULL_REQUEST_TEMPLATE/human-change.md'
     $route.helperPath | Should -Be 'tools/New-GitHubIntakeDraft.ps1'
     $route.executeCommand | Should -Be 'gh pr create --title "<title>" --body-file pr-body.md'
+    $route.executionKind | Should -Be 'gh-pr-create'
+    $route.execution.branchSource | Should -Be 'current-or-input'
   }
 
   It 'resolves an issue snapshot from the override directory when present' {
@@ -142,6 +146,7 @@ Describe 'GitHubIntake.psm1' {
     $report.schema | Should -Be 'github-intake/atlas@v1'
     $report.counts.issueTemplates | Should -BeGreaterThan 0
     $report.routes.scenario | Should -Contain 'automation-pr'
+    (@($report.routes | Where-Object { $_.executionKind -eq 'branch-orchestrator' })).Count | Should -BeGreaterThan 0
   }
 
   It 'renders atlas markdown from the report' {
@@ -150,7 +155,7 @@ Describe 'GitHubIntake.psm1' {
 
     $markdown | Should -Match '# GitHub Intake Atlas'
     $markdown | Should -Match '## Scenario Routes'
-    $markdown | Should -Match '\| automation-pr \| pull-request-template \|'
+    $markdown | Should -Match '\| automation-pr \| pull-request-template \| `default` \| `branch-orchestrator` \|'
   }
 
   It 'resolves draft context for PR scenarios from snapshot and current branch' {
@@ -223,5 +228,49 @@ Describe 'GitHubIntake.psm1' {
     $context.templateKey | Should -Be 'default'
     $context.executeCommand | Should -Be $null
     $context.branch | Should -Be 'issue/921-work'
+  }
+
+  It 'builds an execution plan for workflow-policy issue intake that requires a title' {
+    $plan = New-GitHubIntakeExecutionPlan -Scenario 'workflow-policy'
+
+    $plan.schema | Should -Be 'github-intake/execution-plan@v1'
+    $plan.execution.kind | Should -Be 'gh-issue-create'
+    $plan.execution.labels | Should -Contain 'enhancement'
+    $plan.requirements.titleRequired | Should -BeTrue
+    $plan.requirements.canApply | Should -BeFalse
+    $plan.requirements.missing | Should -Contain 'title'
+    $plan.draft.outputPath | Should -Be 'issue-body.md'
+  }
+
+  It 'quotes whitespace and embedded quotes in the execution display command' {
+    $plan = New-GitHubIntakeExecutionPlan -Scenario 'workflow-policy' -Title 'Say "hello" now'
+
+    $plan.execution.displayCommand | Should -Match ([regex]::Escape("--title 'Say ""hello"" now'"))
+  }
+
+  It 'builds a branch-orchestrator plan for workflow-policy PR intake from snapshot context' {
+    $snapshotDir = Join-Path $TestDrive 'issue'
+    New-Item -ItemType Directory -Path $snapshotDir -Force | Out-Null
+    '{"number":923,"title":"Execution planner issue","url":"https://example.test/issues/923","labels":["standing-priority"]}' |
+      Set-Content -LiteralPath (Join-Path $snapshotDir '923.json') -Encoding utf8
+
+    $previous = $env:COMPAREVI_GITHUB_INTAKE_SNAPSHOT_DIR
+    try {
+      $env:COMPAREVI_GITHUB_INTAKE_SNAPSHOT_DIR = $snapshotDir
+      $plan = New-GitHubIntakeExecutionPlan -Scenario 'workflow-policy-pr' -Issue 923 -CurrentBranch 'issue/923-work'
+    } finally {
+      if ($null -eq $previous) {
+        Remove-Item Env:COMPAREVI_GITHUB_INTAKE_SNAPSHOT_DIR -ErrorAction SilentlyContinue
+      } else {
+        $env:COMPAREVI_GITHUB_INTAKE_SNAPSHOT_DIR = $previous
+      }
+    }
+
+    $plan.execution.kind | Should -Be 'branch-orchestrator'
+    $plan.execution.pullRequestTemplate | Should -Be 'workflow-policy'
+    $plan.execution.title | Should -Be 'Execution planner issue (#923)'
+    $plan.draft.writeOnApply | Should -BeFalse
+    $plan.requirements.issueRequired | Should -BeTrue
+    $plan.requirements.canApply | Should -BeTrue
   }
 }

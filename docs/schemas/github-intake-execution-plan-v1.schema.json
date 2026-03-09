@@ -1,0 +1,328 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://comparevi.dev/schemas/github-intake-execution-plan-v1.schema.json",
+  "title": "GitHub Intake Execution Plan v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema",
+    "generatedAtUtc",
+    "repositoryContext",
+    "scenario",
+    "routeType",
+    "targetKey",
+    "targetName",
+    "summary",
+    "route",
+    "draft",
+    "execution",
+    "requirements"
+  ],
+  "properties": {
+    "schema": {
+      "type": "string",
+      "const": "github-intake/execution-plan@v1"
+    },
+    "generatedAtUtc": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "repositoryContext": {
+      "type": "string",
+      "minLength": 1
+    },
+    "scenario": {
+      "type": "string",
+      "minLength": 1
+    },
+    "routeType": {
+      "type": "string",
+      "enum": [
+        "issue-template",
+        "pull-request-template",
+        "contact-link"
+      ]
+    },
+    "targetKey": {
+      "type": "string",
+      "minLength": 1
+    },
+    "targetName": {
+      "type": "string",
+      "minLength": 1
+    },
+    "summary": {
+      "type": "string",
+      "minLength": 1
+    },
+    "route": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "helperPath",
+        "command",
+        "executeCommand",
+        "execution"
+      ],
+      "properties": {
+        "helperPath": {
+          "type": "string",
+          "minLength": 1
+        },
+        "command": {
+          "type": "string",
+          "minLength": 1
+        },
+        "executeCommand": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "execution": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "kind"
+          ],
+          "properties": {
+            "kind": {
+              "type": "string",
+              "enum": [
+                "gh-issue-create",
+                "gh-pr-create",
+                "branch-orchestrator",
+                "open-link"
+              ]
+            },
+            "titleSource": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "bodySource": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "labelSource": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "baseSource": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "branchSource": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "issueSource": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "pullRequestTemplate": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "urlSource": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          }
+        }
+      }
+    },
+    "draft": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "outputPath",
+        "writeOnApply",
+        "issue",
+        "issueTitle",
+        "issueUrl",
+        "base",
+        "branch",
+        "standingPriority",
+        "relatedIssues",
+        "repositoryContext",
+        "snapshotResolved"
+      ],
+      "properties": {
+        "outputPath": {
+          "type": "string",
+          "minLength": 1
+        },
+        "writeOnApply": {
+          "type": "boolean"
+        },
+        "issue": {
+          "type": "integer"
+        },
+        "issueTitle": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "issueUrl": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "base": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "branch": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "standingPriority": {
+          "type": "boolean"
+        },
+        "relatedIssues": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "repositoryContext": {
+          "type": "string",
+          "minLength": 1
+        },
+        "snapshotResolved": {
+          "type": "boolean"
+        }
+      }
+    },
+    "execution": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "kind",
+        "title",
+        "labels",
+        "base",
+        "branch",
+        "pullRequestTemplate",
+        "arguments",
+        "displayCommand"
+      ],
+      "properties": {
+        "kind": {
+          "type": "string",
+          "enum": [
+            "gh-issue-create",
+            "gh-pr-create",
+            "branch-orchestrator",
+            "open-link"
+          ]
+        },
+        "title": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "labels": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "base": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "branch": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "pullRequestTemplate": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "arguments": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "displayCommand": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "requirements": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "defaultMode",
+        "titleRequired",
+        "issueRequired",
+        "branchRequired",
+        "canApply",
+        "missing"
+      ],
+      "properties": {
+        "defaultMode": {
+          "type": "string",
+          "const": "plan"
+        },
+        "titleRequired": {
+          "type": "boolean"
+        },
+        "issueRequired": {
+          "type": "boolean"
+        },
+        "branchRequired": {
+          "type": "boolean"
+        },
+        "canApply": {
+          "type": "boolean"
+        },
+        "missing": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "enum": [
+              "title",
+              "issue",
+              "branch",
+              "targetUrl"
+            ]
+          }
+        }
+      }
+    }
+  }
+}
