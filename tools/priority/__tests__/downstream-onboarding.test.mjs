@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
+  buildInfrastructureFailureReport,
   DEFAULT_OUTPUT_PATH,
   DEFAULT_POLICY_PATH,
   parseArgs,
@@ -192,4 +193,78 @@ test('computeRunAttemptsUntilGreen and computeOnboardingMetrics derive lead time
   assert.equal(metrics.requiredFailures, 1);
   assert.equal(metrics.warningCount, 2);
   assert.equal(metrics.frictionScore, 6);
+});
+
+test('buildInfrastructureFailureReport produces a schema-valid fail envelope', () => {
+  const report = buildInfrastructureFailureReport({
+    options: {
+      downstreamRepo: 'owner/downstream',
+      upstreamRepo: 'owner/upstream',
+      actionRepo: 'owner/action',
+      targetBranch: 'develop',
+      startedAt: null,
+      parentIssue: 715
+    },
+    policy: {
+      requiredEnvironments: ['production'],
+      requiredBranchChecks: ['Policy Guard (Upstream) / policy-guard'],
+      checklist: [
+        {
+          id: 'repository-accessible',
+          description: 'repo',
+          required: true,
+          severity: 'P1',
+          recommendation: 'fix repo'
+        },
+        {
+          id: 'workflow-reference-present',
+          description: 'workflow',
+          required: true,
+          severity: 'P1',
+          recommendation: 'add workflow'
+        },
+        {
+          id: 'certified-reference-pinned',
+          description: 'ref',
+          required: true,
+          severity: 'P1',
+          recommendation: 'pin ref'
+        },
+        {
+          id: 'successful-consumption-run',
+          description: 'run',
+          required: true,
+          severity: 'P1',
+          recommendation: 'run workflow'
+        },
+        {
+          id: 'protected-environments-configured',
+          description: 'envs',
+          required: false,
+          severity: 'P2',
+          recommendation: 'configure envs'
+        },
+        {
+          id: 'required-checks-visible',
+          description: 'checks',
+          required: false,
+          severity: 'P2',
+          recommendation: 'configure checks'
+        }
+      ]
+    },
+    generatedAt: '2026-03-09T19:16:18Z',
+    upstreamRepository: 'owner/upstream',
+    actionRepository: 'owner/action',
+    downstreamRepository: 'owner/downstream',
+    error: new Error('GitHub token not found.'),
+    stage: 'runtime'
+  });
+
+  assert.equal(report.schema, 'priority/downstream-onboarding-report@v1');
+  assert.equal(report.summary.status, 'fail');
+  assert.equal(report.repository.ok, false);
+  assert.equal(report.infrastructureFailure.stage, 'runtime');
+  assert.match(report.infrastructureFailure.message, /GitHub token not found/);
+  assert.equal(report.hardeningBacklog.length > 0, true);
 });

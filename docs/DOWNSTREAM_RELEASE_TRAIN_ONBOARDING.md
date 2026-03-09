@@ -15,6 +15,9 @@ This runbook defines the controlled onboarding path for issue `#715`:
 - Success report:
   - `tests/results/_agent/onboarding/downstream-onboarding-success.json`
   - schema: `docs/schemas/downstream-onboarding-success-v1.schema.json`
+- Feedback status report:
+  - `tests/results/_agent/onboarding/downstream-onboarding-feedback.json`
+  - schema: `docs/schemas/downstream-onboarding-feedback-v1.schema.json`
 - Checklist policy:
   - `tools/policy/downstream-onboarding-checklist.json`
 
@@ -106,4 +109,17 @@ node tools/priority/downstream-onboarding-success.mjs \
 ## CI feedback loop
 
 Workflow `.github/workflows/downstream-onboarding-feedback.yml` runs this loop on manual dispatch and weekly schedule.
-It always uploads onboarding + success artifacts for auditability.
+It now uses a single checked-in feedback harness so the local/manual and hosted paths share the same sequencing
+contract:
+
+```bash
+node tools/npm/run-script.mjs priority:onboard:feedback -- \
+  --repo <owner/downstream-repo> \
+  --parent-issue 715 \
+  --report tests/results/_agent/onboarding/downstream-onboarding.json \
+  --success-output tests/results/_agent/onboarding/downstream-onboarding-success.json \
+  --feedback-output tests/results/_agent/onboarding/downstream-onboarding-feedback.json
+```
+
+The hosted workflow exports `GH_TOKEN`, attempts to leave behind a valid onboarding report even on infrastructure
+failures, validates all report schemas that were produced, and uploads the resulting JSON artifacts for auditability.

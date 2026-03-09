@@ -35,6 +35,7 @@ jobs:
   onboarding-feedback:
     runs-on: ubuntu-latest
     env:
+      GH_TOKEN: ${{ github.token }}
       DOWNSTREAM_REPO: ${{ inputs.downstream_repo }}
       DOWNSTREAM_STARTED_AT: ${{ inputs.started_at }}
       DOWNSTREAM_CREATE_ISSUES: ${{ inputs.create_hardening_issues || 'false' }}
@@ -53,8 +54,8 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      - name: Evaluate downstream onboarding
-        id: evaluate
+      - name: Run downstream onboarding feedback harness
+        id: feedback
         continue-on-error: true
         run: |
           set -euo pipefail
@@ -65,7 +66,9 @@ jobs:
           args=(
             --repo "$repo"
             --parent-issue 715
-            --output tests/results/_agent/onboarding/downstream-onboarding.json
+            --report tests/results/_agent/onboarding/downstream-onboarding.json
+            --success-output tests/results/_agent/onboarding/downstream-onboarding-success.json
+            --feedback-output tests/results/_agent/onboarding/downstream-onboarding-feedback.json
           )
           if [ -n "${DOWNSTREAM_STARTED_AT}" ]; then
             args+=(--started-at "${DOWNSTREAM_STARTED_AT}")
@@ -76,19 +79,10 @@ jobs:
           if [ "${DOWNSTREAM_FAIL_ON_GAP}" = "true" ]; then
             args+=(--fail-on-gap)
           fi
-          node tools/priority/downstream-onboarding.mjs "${args[@]}"
-
-      - name: Build onboarding success report
-        if: ${{ always() }}
-        run: |
-          set -euo pipefail
-          node tools/priority/downstream-onboarding-success.mjs \
-            --report tests/results/_agent/onboarding/downstream-onboarding.json \
-            --parent-issue 715 \
-            --output tests/results/_agent/onboarding/downstream-onboarding-success.json
+          node tools/priority/downstream-onboarding-feedback.mjs "${args[@]}"
 
       - name: Validate onboarding report schema
-        if: ${{ always() }}
+        if: ${{ always() && hashFiles('tests/results/_agent/onboarding/downstream-onboarding.json') != '' }}
         run: |
           set -euo pipefail
           node tools/npm/run-script.mjs schema:validate -- \
@@ -96,25 +90,31 @@ jobs:
             --data tests/results/_agent/onboarding/downstream-onboarding.json
 
       - name: Validate success report schema
-        if: ${{ always() }}
+        if: ${{ always() && hashFiles('tests/results/_agent/onboarding/downstream-onboarding-success.json') != '' }}
         run: |
           set -euo pipefail
           node tools/npm/run-script.mjs schema:validate -- \
             --schema docs/schemas/downstream-onboarding-success-v1.schema.json \
             --data tests/results/_agent/onboarding/downstream-onboarding-success.json
 
+      - name: Validate feedback report schema
+        if: ${{ always() && hashFiles('tests/results/_agent/onboarding/downstream-onboarding-feedback.json') != '' }}
+        run: |
+          set -euo pipefail
+          node tools/npm/run-script.mjs schema:validate -- \
+            --schema docs/schemas/downstream-onboarding-feedback-v1.schema.json \
+            --data tests/results/_agent/onboarding/downstream-onboarding-feedback.json
+
       - name: Upload onboarding artifacts
-        if: ${{ always() }}
+        if: ${{ always() && hashFiles('tests/results/_agent/onboarding/*.json') != '' }}
         uses: actions/upload-artifact@v4
         with:
           name: downstream-onboarding-feedback
-          path: |
-            tests/results/_agent/onboarding/downstream-onboarding.json
-            tests/results/_agent/onboarding/downstream-onboarding-success.json
+          path: tests/results/_agent/onboarding/*.json
           if-no-files-found: error
 
       - name: Enforce onboarding gap failure
-        if: ${{ steps.evaluate.outcome == 'failure' }}
+        if: ${{ steps.feedback.outcome == 'failure' }}
         run: |
-          echo "Downstream onboarding evaluation reported required gaps."
+          echo "Downstream onboarding feedback reported a failure."
           exit 1

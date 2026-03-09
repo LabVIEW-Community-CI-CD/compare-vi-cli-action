@@ -20,18 +20,23 @@ test('downstream onboarding policy defines required checklist seams', () => {
 
 test('workflow executes onboarding + success scripts with schema validation', () => {
   const workflow = read('.github/workflows/downstream-onboarding-feedback.yml');
-  assert.match(workflow, /downstream-onboarding\.mjs/);
-  assert.match(workflow, /downstream-onboarding-success\.mjs/);
+  assert.match(workflow, /GH_TOKEN:\s*\$\{\{\s*github\.token\s*\}\}/);
+  assert.match(workflow, /downstream-onboarding-feedback\.mjs/);
   assert.match(workflow, /downstream-onboarding-report-v1\.schema\.json/);
   assert.match(workflow, /downstream-onboarding-success-v1\.schema\.json/);
+  assert.match(workflow, /downstream-onboarding-feedback-v1\.schema\.json/);
+  assert.match(workflow, /hashFiles\('tests\/results\/_agent\/onboarding\/downstream-onboarding\.json'\)/);
+  assert.match(workflow, /hashFiles\('tests\/results\/_agent\/onboarding\/\*\.json'\)/);
 });
 
 test('runbook and package scripts expose downstream onboarding commands', () => {
   const packageJson = JSON.parse(read('package.json'));
   assert.equal(packageJson.scripts['priority:onboard:downstream'], 'node tools/priority/downstream-onboarding.mjs');
+  assert.equal(packageJson.scripts['priority:onboard:feedback'], 'node tools/priority/downstream-onboarding-feedback.mjs');
   assert.equal(packageJson.scripts['priority:onboard:success'], 'node tools/priority/downstream-onboarding-success.mjs');
 
   const runbook = read('docs/DOWNSTREAM_RELEASE_TRAIN_ONBOARDING.md');
   assert.match(runbook, /priority:onboard:downstream/);
+  assert.match(runbook, /priority:onboard:feedback/);
   assert.match(runbook, /priority:onboard:success/);
 });
