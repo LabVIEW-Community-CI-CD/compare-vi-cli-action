@@ -195,6 +195,41 @@ Describe 'GitHubIntake.psm1' {
     Should -Invoke Resolve-GitHubIssueSnapshotFromGitHub -ModuleName GitHubIntake -Times 1 -Exactly
   }
 
+  It 'does not hydrate an explicit issue from router or latest fork snapshots when the exact snapshot is absent' {
+    Mock -ModuleName GitHubIntake Resolve-GitHubIssueSnapshotFromGitHub {
+      param([int]$Issue)
+      [pscustomobject]@{
+        number = $Issue
+        title  = 'Dual fork rollout epic'
+        url    = 'https://example.test/issues/967'
+        labels = @('enhancement')
+      }
+    }
+
+    $snapshotDir = Join-Path $TestDrive 'issue'
+    New-Item -ItemType Directory -Path $snapshotDir -Force | Out-Null
+    '{"issue":1}' | Set-Content -LiteralPath (Join-Path $snapshotDir 'router.json') -Encoding utf8
+    '{"number":1,"title":"Fork mirror issue","url":"https://example.test/fork/issues/1","labels":["fork-standing-priority"]}' |
+      Set-Content -LiteralPath (Join-Path $snapshotDir '1.json') -Encoding utf8
+
+    $previous = $env:COMPAREVI_GITHUB_INTAKE_SNAPSHOT_DIR
+    try {
+      $env:COMPAREVI_GITHUB_INTAKE_SNAPSHOT_DIR = $snapshotDir
+      $snapshot = Resolve-GitHubIssueSnapshot -Issue 967
+    } finally {
+      if ($null -eq $previous) {
+        Remove-Item Env:COMPAREVI_GITHUB_INTAKE_SNAPSHOT_DIR -ErrorAction SilentlyContinue
+      } else {
+        $env:COMPAREVI_GITHUB_INTAKE_SNAPSHOT_DIR = $previous
+      }
+    }
+
+    $snapshot.number | Should -Be 967
+    $snapshot.title | Should -Be 'Dual fork rollout epic'
+    $snapshot.url | Should -Be 'https://example.test/issues/967'
+    Should -Invoke Resolve-GitHubIssueSnapshotFromGitHub -ModuleName GitHubIntake -Times 1 -Exactly
+  }
+
   It 'loads the intake catalog from the override path when present' {
     $catalogPath = Join-Path $TestDrive 'github-intake-catalog.json'
     @'

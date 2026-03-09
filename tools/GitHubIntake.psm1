@@ -120,6 +120,8 @@ function Resolve-GitHubIssueSnapshot {
     if ($snapshot) {
       return $snapshot
     }
+
+    return Resolve-GitHubIssueSnapshotFromGitHub -Issue $Issue
   }
 
   $router = Read-GitHubIntakeJsonFile -Path (Join-Path $issueDir 'router.json')
