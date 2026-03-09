@@ -12,7 +12,6 @@ import {
   ensureGhCli,
   resolveUpstream,
   ensureForkRemote,
-  ensureOriginFork,
   resolveActiveForkRemoteName,
   pushBranch,
   runGhPrCreate,
@@ -330,7 +329,6 @@ export function createPriorityPr({
   ensureGhCliFn = ensureGhCli,
   resolveUpstreamFn = resolveUpstream,
   ensureForkRemoteFn = ensureForkRemote,
-  ensureOriginForkFn = ensureOriginFork,
   pushBranchFn = pushBranch,
   runGhPrCreateFn = runGhPrCreate,
   resolveStandingIssueNumberFn = resolveStandingIssueNumberForPr
@@ -358,8 +356,7 @@ export function createPriorityPr({
   assertBranchMatchesIssue(branch, localIssueNumber);
   const upstream = options.repository ? parseRepositorySlug(options.repository) : resolveUpstreamFn(repoRoot);
   const headRemote = options.headRemote || env.PR_HEAD_REMOTE || resolveActiveForkRemoteName(env);
-  const ensureHeadRepositoryFn = ensureForkRemoteFn ?? ((root, repo, remote) => ensureOriginForkFn(root, repo, remote));
-  const headRepository = ensureHeadRepositoryFn(repoRoot, upstream, headRemote);
+  const headRepository = ensureForkRemoteFn(repoRoot, upstream, headRemote);
 
   pushBranchFn(repoRoot, branch, headRemote);
   const base = options.base || env.PR_BASE || 'develop';

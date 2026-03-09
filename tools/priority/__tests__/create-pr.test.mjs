@@ -250,7 +250,7 @@ test('createPriorityPr refuses to open a priority PR when the standing queue is 
         getCurrentBranchFn: () => 'feature/manual-follow-up',
         ensureGhCliFn: () => {},
         resolveUpstreamFn: () => ({ owner: 'upstream-owner', repo: 'repo' }),
-        ensureOriginForkFn: () => ({ owner: 'fork-owner', repo: 'repo' }),
+        ensureForkRemoteFn: () => ({ owner: 'fork-owner', repo: 'repo' }),
         pushBranchFn: () => {},
         runGhPrCreateFn: () => {
           throw new Error('should not create PR');

@@ -179,6 +179,13 @@ test('resolveStandingPriorityLabels honors explicit env override order', () => {
   assert.deepEqual(labels, ['custom-one', 'custom-two']);
 });
 
+test('resolveUpstreamRepositorySlug rejects unsupported active fork remotes consistently', () => {
+  assert.throws(
+    () => resolveUpstreamRepositorySlug('/tmp/repo', null, { AGENT_PRIORITY_ACTIVE_FORK_REMOTE: 'invalid-remote' }),
+    /Unsupported fork remote/i
+  );
+});
+
 test('parseUpstreamIssuePointerFromBody extracts the mirrored upstream issue contract', () => {
   const pointer = parseUpstreamIssuePointerFromBody(
     '<!-- upstream-issue-url: https://github.com/LabVIEW-Community-CI-CD/compare-vi-cli-action/issues/966 -->\n\nBody'

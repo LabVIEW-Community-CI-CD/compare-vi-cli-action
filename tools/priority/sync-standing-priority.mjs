@@ -6,6 +6,7 @@ import crypto from 'node:crypto';
 import { fileURLToPath } from 'node:url';
 import { isDeepStrictEqual } from 'node:util';
 import { ProxyAgent } from 'undici';
+import { resolveActiveForkRemoteName } from './lib/remote-utils.mjs';
 
 const USER_AGENT = 'compare-vi-cli-action/priority-sync';
 const PROXY_AGENT_CACHE = new Map();
@@ -18,7 +19,6 @@ const MODULE_REPO_ROOT = path.resolve(path.dirname(MODULE_FILE_PATH), '../..');
 const NO_STANDING_REPORT_FILENAME = 'no-standing-priority.json';
 const MULTIPLE_STANDING_REPORT_FILENAME = 'multiple-standing-priority.json';
 const AUTO_SELECT_EXCLUDED_LABELS = new Set(['duplicate', 'invalid', 'wontfix']);
-const SUPPORTED_FORK_REMOTES = new Set(['origin', 'personal']);
 
 const CLI_USAGE_LINES = [
   'Usage: node tools/priority/sync-standing-priority.mjs [options]',
@@ -804,16 +804,6 @@ export function parseUpstreamIssuePointerFromBody(body) {
     number,
     url: match[1]
   };
-}
-
-function resolveActiveForkRemoteName(env = process.env) {
-  const normalized = String(env.AGENT_PRIORITY_ACTIVE_FORK_REMOTE ?? '')
-    .trim()
-    .toLowerCase();
-  if (!normalized || !SUPPORTED_FORK_REMOTES.has(normalized)) {
-    return 'origin';
-  }
-  return normalized;
 }
 
 function resolveRepositorySlug(repoRoot, env = process.env) {
