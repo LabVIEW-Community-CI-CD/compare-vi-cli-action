@@ -486,16 +486,15 @@ test('isUpstreamOwnedHead returns true only when PR head owner matches repo owne
   );
 });
 
-test('assertUpstreamOwnedHead throws for fork-headed PRs', () => {
-  assert.throws(
-    () =>
-      assertUpstreamOwnedHead(
-        {
-          state: 'OPEN',
-          headRepositoryOwner: { login: 'svelderrainruiz' }
-        },
-        'LabVIEW-Community-CI-CD/compare-vi-cli-action'
-      ),
-    /fork-headed PRs are blocked/
+test('assertUpstreamOwnedHead returns false for fork-headed PRs without blocking merge automation', () => {
+  assert.equal(
+    assertUpstreamOwnedHead(
+      {
+        state: 'OPEN',
+        headRepositoryOwner: { login: 'svelderrainruiz' }
+      },
+      'LabVIEW-Community-CI-CD/compare-vi-cli-action'
+    ),
+    false
   );
 });

@@ -8,6 +8,8 @@ import {
   isSameRepository,
   isSameOwnerForkRepository,
   isRepositoryForkOfUpstream,
+  resolveActiveForkRemoteName,
+  ensureForkRemote,
   loadRepositoryGraphMetadata,
   ensureOriginFork,
   buildGhPrCreateArgs,
@@ -23,6 +25,11 @@ test('repository helpers normalize and compare repository coordinates', () => {
   assert.equal(buildRepositorySlug({ owner: 'example', repo: 'repo' }), 'example/repo');
   assert.equal(isSameRepository({ owner: 'a', repo: 'b' }, { owner: 'a', repo: 'b' }), true);
   assert.equal(isSameOwnerForkRepository({ owner: 'a', repo: 'fork' }, { owner: 'a', repo: 'upstream' }), true);
+});
+
+test('resolveActiveForkRemoteName defaults to origin and honors personal override', () => {
+  assert.equal(resolveActiveForkRemoteName({}), 'origin');
+  assert.equal(resolveActiveForkRemoteName({ AGENT_PRIORITY_ACTIVE_FORK_REMOTE: 'personal' }), 'personal');
 });
 
 test('repository fork matching requires the upstream network relationship', () => {
@@ -104,9 +111,25 @@ test('ensureOriginFork accepts a same-owner renamed fork when metadata proves it
   assert.deepEqual(origin, {
     owner: 'LabVIEW-Community-CI-CD',
     repo: 'compare-vi-cli-action-fork',
+    remoteName: 'origin',
     sameOwnerFork: true,
     repositoryId: 'R_fork'
   });
+});
+
+test('ensureForkRemote rejects a non-origin fork remote when it is missing', () => {
+  assert.throws(
+    () =>
+      ensureForkRemote(
+        '/tmp/repo',
+        { owner: 'LabVIEW-Community-CI-CD', repo: 'compare-vi-cli-action' },
+        'personal',
+        {
+          tryResolveRemoteFn: () => null
+        }
+      ),
+    /Configure that remote before opening a PR from it/i
+  );
 });
 
 test('ensureOriginFork rejects a same-owner repository that is not an upstream fork', () => {

@@ -40,6 +40,23 @@ Describe 'GitHubIntake.psm1' {
       Should -Be 'issue/875-modernize-the-github-intake-layer-for-future-agents'
   }
 
+  It 'supports fork-qualified issue branches without breaking current-branch reuse' {
+    Resolve-IssueBranchName `
+      -Number 875 `
+      -Title 'Epic: modernize the GitHub intake layer for future agents' `
+      -CurrentBranch 'issue/personal-875-modernize-github-intake-layer' `
+      -ForkRemote 'personal' |
+      Should -Be 'issue/personal-875-modernize-github-intake-layer'
+  }
+
+  It 'generates fork-qualified issue branches when a fork remote is supplied' {
+    Resolve-IssueBranchName `
+      -Number 875 `
+      -Title 'Epic: modernize the GitHub intake layer for future agents' `
+      -ForkRemote 'origin' |
+      Should -Be 'issue/origin-875-modernize-the-github-intake-layer-for-future-agents'
+  }
+
   It 'loads the checked-in intake catalog with issue and PR templates' {
     $catalog = Get-GitHubIntakeCatalog
 

@@ -43,6 +43,7 @@ test('parseArgs accepts explicit PR helper overrides', () => {
     title: 'Explicit title',
     body: null,
     bodyFile: 'pr-body.md',
+    headRemote: null,
     help: false
   });
 });
@@ -78,6 +79,11 @@ test('parseArgs accepts body values that begin with a dash', () => {
   ]);
 
   assert.equal(options.body, '- follow-up fix for current-head review');
+});
+
+test('parseArgs accepts an explicit head remote override', () => {
+  const options = parseArgs(['node', 'create-pr.mjs', '--head-remote', 'personal']);
+  assert.equal(options.headRemote, 'personal');
 });
 
 test('parseRouterIssueNumber returns positive integer issue values', () => {
@@ -173,7 +179,13 @@ test('resolveStandingIssueNumberForPr prefers router over cache', () => {
     }
   });
 
-  assert.deepEqual(result, { issueNumber: 680, source: 'router', noStandingReason: null });
+  assert.deepEqual(result, {
+    issueNumber: 680,
+    localIssueNumber: 680,
+    source: 'router',
+    noStandingReason: null,
+    mirrorOf: null
+  });
 });
 
 test('resolveStandingIssueNumberForPr treats explicit empty router issue as authoritative', () => {
@@ -196,7 +208,13 @@ test('resolveStandingIssueNumberForPr treats explicit empty router issue as auth
     }
   });
 
-  assert.deepEqual(result, { issueNumber: null, source: 'router', noStandingReason: 'queue-empty' });
+  assert.deepEqual(result, {
+    issueNumber: null,
+    localIssueNumber: null,
+    source: 'router',
+    noStandingReason: 'queue-empty',
+    mirrorOf: null
+  });
 });
 
 test('resolveStandingIssueNumberForPr falls back to cache when router is unavailable', () => {
@@ -213,7 +231,13 @@ test('resolveStandingIssueNumberForPr falls back to cache when router is unavail
     }
   });
 
-  assert.deepEqual(result, { issueNumber: 680, source: 'cache', noStandingReason: null });
+  assert.deepEqual(result, {
+    issueNumber: 680,
+    localIssueNumber: 680,
+    source: 'cache',
+    noStandingReason: null,
+    mirrorOf: null
+  });
 });
 
 test('createPriorityPr refuses to open a priority PR when the standing queue is empty', () => {
@@ -239,6 +263,7 @@ test('createPriorityPr refuses to open a priority PR when the standing queue is 
 
 test('parseIssueNumberFromBranch extracts issue numbers from issue/* branches', () => {
   assert.equal(parseIssueNumberFromBranch('issue/680-sync-standing-priority'), 680);
+  assert.equal(parseIssueNumberFromBranch('issue/personal-680-sync-standing-priority'), 680);
   assert.equal(parseIssueNumberFromBranch('feature/something'), null);
 });
 
@@ -280,9 +305,9 @@ test('createPriorityPr builds PR metadata from resolved standing issue', () => {
     getCurrentBranchFn: () => 'issue/680-sync-standing-priority',
     ensureGhCliFn: () => {},
     resolveUpstreamFn: () => ({ owner: 'upstream-owner', repo: 'repo' }),
-    ensureOriginForkFn: () => ({ owner: 'fork-owner', repo: 'repo' }),
-    pushBranchFn: (_repoRoot, branch) => {
-      pushedBranch = branch;
+    ensureForkRemoteFn: (_repoRoot, _upstream, remote) => ({ owner: 'fork-owner', repo: 'repo', remoteName: remote }),
+    pushBranchFn: (_repoRoot, branch, remote) => {
+      pushedBranch = `${remote}:${branch}`;
     },
     runGhPrCreateFn: (payload) => {
       prPayload = payload;
@@ -291,7 +316,7 @@ test('createPriorityPr builds PR metadata from resolved standing issue', () => {
     resolveStandingIssueNumberFn: () => ({ issueNumber: 680, source: 'router' })
   });
 
-  assert.equal(pushedBranch, 'issue/680-sync-standing-priority');
+  assert.equal(pushedBranch, 'origin:issue/680-sync-standing-priority');
   assert.ok(prPayload);
   assert.equal(prPayload.base, 'develop');
   assert.equal(prPayload.title, 'Update for standing priority #680');
@@ -320,7 +345,7 @@ test('createPriorityPr honors explicit CLI overrides and body files', () => {
     resolveUpstreamFn: () => {
       throw new Error('should not resolve upstream when --repo is explicit');
     },
-    ensureOriginForkFn: () => ({ owner: 'LabVIEW-Community-CI-CD', repo: 'compare-vi-cli-action-fork', sameOwnerFork: true }),
+    ensureForkRemoteFn: (_repoRoot, _upstream, remote) => ({ owner: 'LabVIEW-Community-CI-CD', repo: 'compare-vi-cli-action-fork', sameOwnerFork: true, remoteName: remote }),
     pushBranchFn: () => {},
     runGhPrCreateFn: (payload) => {
       prPayload = payload;
@@ -333,6 +358,7 @@ test('createPriorityPr honors explicit CLI overrides and body files', () => {
 
   assert.equal(prPayload.upstream.owner, 'example');
   assert.equal(prPayload.upstream.repo, 'upstream');
+  assert.equal(prPayload.headRepository.remoteName, 'origin');
   assert.equal(prPayload.branch, 'issue/963-org-owned-fork-pr-helper');
   assert.equal(prPayload.base, 'main');
   assert.equal(prPayload.title, 'Explicit helper title');
@@ -353,7 +379,7 @@ test('createPriorityPr fails before PR creation when branch issue mismatches sta
         getCurrentBranchFn: () => 'issue/588-closed',
         ensureGhCliFn: () => {},
         resolveUpstreamFn: () => ({ owner: 'upstream-owner', repo: 'repo' }),
-        ensureOriginForkFn: () => ({ owner: 'fork-owner', repo: 'repo' }),
+        ensureForkRemoteFn: () => ({ owner: 'fork-owner', repo: 'repo' }),
         pushBranchFn: () => {},
         runGhPrCreateFn: () => {
           prCreated = true;
@@ -363,4 +389,37 @@ test('createPriorityPr fails before PR creation when branch issue mismatches sta
     /maps to #588, but standing priority resolves to #680/i
   );
   assert.equal(prCreated, false);
+});
+
+test('createPriorityPr uses mirror metadata for PR closing references while matching the local mirror branch', () => {
+  let observedTitle = null;
+  let observedBody = null;
+  createPriorityPr({
+    env: { AGENT_PRIORITY_ACTIVE_FORK_REMOTE: 'personal' },
+    options: {},
+    getRepoRootFn: () => '/tmp/repo',
+    getCurrentBranchFn: () => 'issue/personal-1-artifact-download-helper',
+    ensureGhCliFn: () => {},
+    resolveUpstreamFn: () => ({ owner: 'upstream-owner', repo: 'repo' }),
+    ensureForkRemoteFn: (_repoRoot, _upstream, remote) => ({ owner: 'fork-owner', repo: 'repo', remoteName: remote }),
+    pushBranchFn: () => {},
+    runGhPrCreateFn: (payload) => {
+      observedTitle = payload.title;
+      observedBody = payload.body;
+      return { strategy: 'gh-pr-create' };
+    },
+    resolveStandingIssueNumberFn: () => ({
+      issueNumber: 966,
+      localIssueNumber: 1,
+      source: 'router',
+      mirrorOf: {
+        number: 966,
+        repository: 'upstream-owner/repo',
+        url: 'https://github.com/upstream-owner/repo/issues/966'
+      }
+    })
+  });
+
+  assert.match(observedTitle, /#966/);
+  assert.match(observedBody, /Closes #966/);
 });

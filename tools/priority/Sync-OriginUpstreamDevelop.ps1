@@ -3,6 +3,7 @@ param(
   [string]$BaseRemote = 'upstream',
   [string]$HeadRemote = 'origin',
   [string]$Branch = 'develop',
+  [string]$ParityReportPath,
   [switch]$KeepCurrentBranch,
   [ValidateRange(1, 20)]
   [int]$MaxAttempts = 3,
@@ -146,7 +147,15 @@ if ([string]::IsNullOrWhiteSpace($repoRoot)) {
 
 $baseRef = '{0}/{1}' -f $BaseRemote, $Branch
 $headRef = '{0}/{1}' -f $HeadRemote, $Branch
-$parityReportPath = Join-Path $repoRoot 'tests/results/_agent/issue/origin-upstream-parity.json'
+$parityReportPath = if ([string]::IsNullOrWhiteSpace($ParityReportPath)) {
+  Join-Path $repoRoot ("tests/results/_agent/issue/{0}-upstream-parity.json" -f $HeadRemote)
+} else {
+  if ([System.IO.Path]::IsPathRooted($ParityReportPath)) {
+    $ParityReportPath
+  } else {
+    Join-Path $repoRoot $ParityReportPath
+  }
+}
 $lockName = ('priority-sync-{0}-{1}-{2}.lock' -f $BaseRemote, $HeadRemote, $Branch) -replace '[^A-Za-z0-9._-]', '_'
 $lockPath = Join-Path (Join-Path $repoRoot '.git') $lockName
 $lockStream = $null

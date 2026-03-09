@@ -145,8 +145,10 @@ The helper script derives the PR title from linked issue metadata when available
 head commit subject when necessary, and then calls `priority:pr` with the rendered intake document. For user-owned
 forks, the helper still routes through `gh pr create`. For same-owner renamed forks, it switches to GitHub GraphQL
 `createPullRequest` with `headRepositoryId` so future agents do not need an upstream-mirror workaround just to open
-the PR. When the branch is tied to a non-standing issue, pass `--issue <number>` so the helper does not need to infer
-intent from the standing-priority cache.
+the PR. Use `--head-remote origin|personal` (or `AGENT_PRIORITY_ACTIVE_FORK_REMOTE`) when the local clone can push to
+multiple forks, and use `priority:issue:mirror` when you need a fork-local standing issue that still points back to the
+upstream child issue. When the branch is tied to a non-standing issue, pass `--issue <number>` so the helper does not
+need to infer intent from the standing-priority cache.
 
 ## Idle Repository Mode
 

@@ -8,6 +8,8 @@ const DEFAULT_GH_OPTIONS = {
   encoding: 'utf8',
   stdio: ['ignore', 'pipe', 'pipe']
 };
+const DEFAULT_FORK_REMOTE = 'origin';
+const SUPPORTED_FORK_REMOTES = new Set(['origin', 'personal']);
 
 export function parseRemoteUrl(url) {
   if (!url) {
@@ -39,6 +41,23 @@ export function parseRepositorySlug(value) {
   }
 
   return { owner, repo };
+}
+
+export function normalizeForkRemoteName(value, { fallback = DEFAULT_FORK_REMOTE } = {}) {
+  const normalized = String(value ?? '').trim().toLowerCase();
+  if (!normalized) {
+    return fallback;
+  }
+  if (!SUPPORTED_FORK_REMOTES.has(normalized)) {
+    throw new Error(
+      `Unsupported fork remote '${value}'. Expected one of: ${Array.from(SUPPORTED_FORK_REMOTES).join(', ')}.`
+    );
+  }
+  return normalized;
+}
+
+export function resolveActiveForkRemoteName(env = process.env, { fallback = DEFAULT_FORK_REMOTE } = {}) {
+  return normalizeForkRemoteName(env.AGENT_PRIORITY_ACTIVE_FORK_REMOTE, { fallback });
 }
 
 export function buildRepositorySlug(repository) {
@@ -185,26 +204,33 @@ export function resolveUpstream(repoRoot) {
   );
 }
 
-export function ensureOriginFork(
+export function ensureForkRemote(
   repoRoot,
   upstream,
+  remoteName = DEFAULT_FORK_REMOTE,
   {
     tryResolveRemoteFn = tryResolveRemote,
     spawnSyncFn = spawnSync,
     loadRepositoryGraphMetadataFn = loadRepositoryGraphMetadata
   } = {}
 ) {
-  let origin = tryResolveRemoteFn(repoRoot, 'origin');
+  const selectedRemote = normalizeForkRemoteName(remoteName);
+  let remote = tryResolveRemoteFn(repoRoot, selectedRemote);
 
-  if (!origin?.parsed || isSameRepository(origin.parsed, upstream)) {
-    console.log('[priority] origin remote missing or points to upstream. Creating fork via gh...');
+  if (!remote?.parsed || isSameRepository(remote.parsed, upstream)) {
+    if (selectedRemote !== DEFAULT_FORK_REMOTE) {
+      throw new Error(
+        `Fork remote '${selectedRemote}' is missing or points to upstream. Configure that remote before opening a PR from it.`
+      );
+    }
+    console.log(`[priority] ${selectedRemote} remote missing or points to upstream. Creating fork via gh...`);
     const args = [
       'repo',
       'fork',
       `${upstream.owner}/${upstream.repo}`,
       '--remote',
       '--remote-name',
-      'origin'
+      selectedRemote
     ];
     const forkResult = spawnSyncFn('gh', args, {
       cwd: repoRoot,
@@ -212,50 +238,57 @@ export function ensureOriginFork(
       encoding: 'utf8'
     });
     if (forkResult.status !== 0) {
-      throw new Error('Failed to fork repository or set origin remote.');
+      throw new Error(`Failed to fork repository or set ${selectedRemote} remote.`);
     }
-    origin = tryResolveRemoteFn(repoRoot, 'origin');
+    remote = tryResolveRemoteFn(repoRoot, selectedRemote);
   }
 
-  if (!origin?.parsed) {
-    throw new Error('Unable to determine origin remote after attempting to fork.');
+  if (!remote?.parsed) {
+    throw new Error(`Unable to determine ${selectedRemote} remote after attempting to configure it.`);
   }
 
-  if (isSameRepository(origin.parsed, upstream)) {
+  if (isSameRepository(remote.parsed, upstream)) {
     throw new Error(
-      'Origin remote still points to upstream after attempting to fork. Confirm you have permission and rerun.'
+      `${selectedRemote} remote still points to upstream after attempting to configure it. Confirm you have permission and rerun.`
     );
   }
 
-  if (isSameOwnerForkRepository(origin.parsed, upstream)) {
-    const metadata = loadRepositoryGraphMetadataFn(repoRoot, origin.parsed, { spawnSyncFn });
+  if (isSameOwnerForkRepository(remote.parsed, upstream)) {
+    const metadata = loadRepositoryGraphMetadataFn(repoRoot, remote.parsed, { spawnSyncFn });
     if (!isRepositoryForkOfUpstream(metadata, upstream)) {
       throw new Error(
-        `Origin remote ${buildRepositorySlug(origin.parsed)} shares the upstream owner but is not a fork of ${buildRepositorySlug(upstream)}.`
+        `${selectedRemote} remote ${buildRepositorySlug(remote.parsed)} shares the upstream owner but is not a fork of ${buildRepositorySlug(upstream)}.`
       );
     }
 
     return {
-      ...origin.parsed,
+      ...remote.parsed,
+      remoteName: selectedRemote,
       sameOwnerFork: true,
       repositoryId: metadata.id
     };
   }
 
   return {
-    ...origin.parsed,
+    ...remote.parsed,
+    remoteName: selectedRemote,
     sameOwnerFork: false,
     repositoryId: null
   };
 }
 
-export function pushBranch(repoRoot, branch) {
+export function ensureOriginFork(repoRoot, upstream, options = {}) {
+  return ensureForkRemote(repoRoot, upstream, DEFAULT_FORK_REMOTE, options);
+}
+
+export function pushBranch(repoRoot, branch, remote = DEFAULT_FORK_REMOTE) {
+  const selectedRemote = normalizeForkRemoteName(remote);
   try {
-    run('git', ['push', '--set-upstream', 'origin', branch], {
+    run('git', ['push', '--set-upstream', selectedRemote, branch], {
       cwd: repoRoot
     });
   } catch {
-    throw new Error('Failed to push branch to origin. Resolve the push error above.');
+    throw new Error(`Failed to push branch to ${selectedRemote}. Resolve the push error above.`);
   }
 }
 
@@ -269,7 +302,8 @@ export function pushToRemote(repoRoot, remote, ref) {
   }
 }
 
-export function buildGhPrCreateArgs({ upstream, origin, branch, base, title, body }) {
+export function buildGhPrCreateArgs({ upstream, origin, headRepository, branch, base, title, body }) {
+  const resolvedHeadRepository = headRepository ?? origin;
   return [
     'pr',
     'create',
@@ -278,7 +312,7 @@ export function buildGhPrCreateArgs({ upstream, origin, branch, base, title, bod
     '--base',
     base,
     '--head',
-    `${origin.owner}:${branch}`,
+    `${resolvedHeadRepository.owner}:${branch}`,
     '--title',
     title,
     '--body',
@@ -286,8 +320,12 @@ export function buildGhPrCreateArgs({ upstream, origin, branch, base, title, bod
   ];
 }
 
-export function selectPullRequestCreateStrategy({ upstream, origin }) {
-  if (origin?.sameOwnerFork || isSameOwnerForkRepository(origin, upstream)) {
+export function selectPullRequestCreateStrategy({ upstream, origin, headRepository }) {
+  const resolvedHeadRepository = headRepository ?? origin;
+  if (
+    resolvedHeadRepository?.sameOwnerFork ||
+    isSameOwnerForkRepository(resolvedHeadRepository, upstream)
+  ) {
     return 'graphql-same-owner-fork';
   }
 
@@ -350,14 +388,15 @@ export function extractPullRequestFromMutation(payload) {
 }
 
 export function runGhPrCreate(
-  { repoRoot, upstream, origin, branch, base, title, body },
+  { repoRoot, upstream, origin, headRepository, branch, base, title, body },
   {
     spawnSyncFn = spawnSync,
     loadRepositoryGraphMetadataFn = loadRepositoryGraphMetadata,
     runGhGraphqlFn = runGhGraphql
   } = {}
 ) {
-  const strategy = selectPullRequestCreateStrategy({ upstream, origin });
+  const resolvedHeadRepository = headRepository ?? origin;
+  const strategy = selectPullRequestCreateStrategy({ upstream, headRepository: resolvedHeadRepository });
 
   if (strategy === 'graphql-same-owner-fork') {
     const upstreamMetadata = loadRepositoryGraphMetadataFn(repoRoot, upstream, {
@@ -365,15 +404,15 @@ export function runGhPrCreate(
       runGhGraphqlFn
     });
     const originMetadata =
-      origin?.repositoryId && origin?.sameOwnerFork
-        ? { id: origin.repositoryId }
-        : loadRepositoryGraphMetadataFn(repoRoot, origin, {
+      resolvedHeadRepository?.repositoryId && resolvedHeadRepository?.sameOwnerFork
+        ? { id: resolvedHeadRepository.repositoryId }
+        : loadRepositoryGraphMetadataFn(repoRoot, resolvedHeadRepository, {
           spawnSyncFn,
           runGhGraphqlFn
         });
     const failures = [];
 
-    for (const headRefName of buildSameOwnerForkHeadRefCandidates(origin, branch)) {
+    for (const headRefName of buildSameOwnerForkHeadRefCandidates(resolvedHeadRepository, branch)) {
       try {
         const request = buildCreatePullRequestMutation({
           repositoryId: upstreamMetadata.id,
@@ -405,7 +444,14 @@ export function runGhPrCreate(
     throw new Error(`Failed to create PR for same-owner fork via GraphQL. ${details}`);
   }
 
-  const args = buildGhPrCreateArgs({ upstream, origin, branch, base, title, body });
+  const args = buildGhPrCreateArgs({
+    upstream,
+    headRepository: resolvedHeadRepository,
+    branch,
+    base,
+    title,
+    body
+  });
   const result = spawnSyncFn('gh', args, {
     cwd: repoRoot,
     stdio: 'inherit',

@@ -14,6 +14,7 @@ test('project portfolio config tracks the expected schema and repos', () => {
   assert.equal(config.number, 2);
   assert.deepEqual(config.repositories, [
     'LabVIEW-Community-CI-CD/compare-vi-cli-action',
+    'LabVIEW-Community-CI-CD/compare-vi-cli-action-fork',
     'LabVIEW-Community-CI-CD/comparevi-history',
   ]);
 });
@@ -22,7 +23,7 @@ test('project portfolio config item URLs are unique and cover the tracked portfo
   const parsedUrls = config.items.map((item) => new URL(item.url));
   const urlStrings = parsedUrls.map((item) => item.toString());
   assert.equal(new Set(urlStrings).size, urlStrings.length);
-  assert.equal(parsedUrls.length, 47);
+  assert.equal(parsedUrls.length, 51);
 
   const issueCoordinates = new Set(
     parsedUrls.map((item) => {
@@ -67,6 +68,10 @@ test('project portfolio config item URLs are unique and cover the tracked portfo
   assert.ok(issueCoordinates.has('LabVIEW-Community-CI-CD/compare-vi-cli-action#959'));
   assert.ok(issueCoordinates.has('LabVIEW-Community-CI-CD/compare-vi-cli-action#960'));
   assert.ok(issueCoordinates.has('LabVIEW-Community-CI-CD/compare-vi-cli-action#963'));
+  assert.ok(issueCoordinates.has('LabVIEW-Community-CI-CD/compare-vi-cli-action#964'));
+  assert.ok(issueCoordinates.has('LabVIEW-Community-CI-CD/compare-vi-cli-action#966'));
+  assert.ok(issueCoordinates.has('LabVIEW-Community-CI-CD/compare-vi-cli-action#967'));
+  assert.ok(issueCoordinates.has('LabVIEW-Community-CI-CD/compare-vi-cli-action-fork#1'));
   assert.ok(issueCoordinates.has('LabVIEW-Community-CI-CD/comparevi-history#14'));
   assert.ok(issueCoordinates.has('LabVIEW-Community-CI-CD/comparevi-history#15'));
 });

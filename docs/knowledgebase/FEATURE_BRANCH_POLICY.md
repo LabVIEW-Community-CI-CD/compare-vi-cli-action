@@ -260,9 +260,10 @@ to confirm each workflow includes both triggers.
    (`QUEUE_AUTOPILOT_MIN_INFLIGHT` floor) so enqueue pressure self-throttles under runtime saturation.
    Hosted cadence runs every 5 minutes, with immediate `--apply` runs triggered by
    `Validate` / `Policy Guard (Upstream)` completions on `develop`.
-6. Autonomous merge tooling now requires upstream-owned PR heads. Fork-headed PRs are intentionally ineligible for
-   `priority:queue:supervisor` and `priority:merge-sync`; mirror the branch to upstream and open the PR from the
-   upstream-owned branch before queueing.
+6. Autonomous merge tooling accepts clean PRs from approved fork planes as well as upstream-owned branches. Use
+   `AGENT_PRIORITY_ACTIVE_FORK_REMOTE=origin|personal` (or `priority:pr -- --head-remote ...`) so the PR head owner is
+   explicit, then let `priority:queue:supervisor` / `priority:merge-sync` enqueue the upstream PR directly instead of
+   mirroring branches back to upstream first.
 7. Standard `Validate` PR and merge-queue runs are machine-gated only: they do not use a protected `validation`
    deployment or require environment approval. Protected environment approvals are reserved for release/promotion
    flows (`production`, `monthly-stability-release`).
