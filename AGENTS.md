@@ -292,6 +292,10 @@ Use `tools/workflows/update_workflows.py` for mechanical updates (comment-preser
       and appends notes to the GitHub Step Summary when available.
     - Each invocation also drops a session capsule under `tests/results/_agent/sessions/`
       (schema `agent-handoff/session@v1`) capturing branch/head/status snapshots for determinism.
+    - When the standing-priority queue is intentionally empty, the helper should
+      emit an idle summary (`issue: none (queue empty)`) and copy the
+      `standing-priority/no-standing@v1` summary instead of failing on stale
+      numeric snapshot files from the previously active issue.
 - Capture quick regression coverage with `node tools/npm/run-script.mjs priority:handoff-tests`; the script runs
   `priority:test`, `hooks:test`, and `semver:check`, then writes `tests/results/_agent/handoff/test-summary.json` so
   subsequent agents (or CI summaries) can replay the outcomes.

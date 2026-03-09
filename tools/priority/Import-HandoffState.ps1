@@ -42,11 +42,19 @@ $testSummary = Read-HandoffJson -Name 'test-summary.json'
 
 if ($issueSummary) {
   Write-Host '[handoff] Standing priority snapshot' -ForegroundColor Cyan
-  Write-Host ("  issue    : #{0}" -f $issueSummary.number)
-  Write-Host ("  title    : {0}" -f ($issueSummary.title ?? '(none)'))
-  Write-Host ("  state    : {0}" -f ($issueSummary.state ?? 'n/a'))
-  Write-Host ("  updated  : {0}" -f ($issueSummary.updatedAt ?? 'n/a'))
-  Write-Host ("  digest   : {0}" -f ($issueSummary.digest ?? 'n/a'))
+  if (($issueSummary.PSObject.Properties['schema'] -and $issueSummary.schema -eq 'standing-priority/no-standing@v1') -or
+      ($issueSummary.PSObject.Properties['reason'] -and $issueSummary.reason -eq 'queue-empty')) {
+    Write-Host '  issue    : none (queue empty)'
+    Write-Host ("  reason   : {0}" -f ($issueSummary.reason ?? 'queue-empty'))
+    Write-Host ("  open     : {0}" -f (Format-NullableValue $issueSummary.openIssueCount))
+    Write-Host ("  message  : {0}" -f (Format-NullableValue $issueSummary.message))
+  } else {
+    Write-Host ("  issue    : #{0}" -f $issueSummary.number)
+    Write-Host ("  title    : {0}" -f ($issueSummary.title ?? '(none)'))
+    Write-Host ("  state    : {0}" -f ($issueSummary.state ?? 'n/a'))
+    Write-Host ("  updated  : {0}" -f ($issueSummary.updatedAt ?? 'n/a'))
+    Write-Host ("  digest   : {0}" -f ($issueSummary.digest ?? 'n/a'))
+  }
   Set-Variable -Name StandingPrioritySnapshot -Scope Global -Value $issueSummary -Force
 }
 

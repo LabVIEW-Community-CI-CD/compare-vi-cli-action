@@ -244,6 +244,84 @@ function Get-StandingPriorityContext {
     throw "Standing priority snapshots missing under $issueDir. Run 'node tools/npm/run-script.mjs priority:sync'."
   }
 
+  $cachePath = Join-Path $RepoRoot '.agent_priority_cache.json'
+  $cacheExists = Test-Path -LiteralPath $cachePath -PathType Leaf
+  $cacheJson = $null
+  if ($cacheExists) {
+    try {
+      $cacheJson = Get-Content -LiteralPath $cachePath -Raw | ConvertFrom-Json -ErrorAction Stop
+    } catch {
+      throw ("Standing priority cache parse failed: {0}" -f $_.Exception.Message)
+    }
+
+  }
+
+  $noStandingPath = Join-Path $issueDir 'no-standing-priority.json'
+  $noStanding = $null
+  if (Test-Path -LiteralPath $noStandingPath -PathType Leaf) {
+    try {
+      $noStanding = Get-Content -LiteralPath $noStandingPath -Raw | ConvertFrom-Json -ErrorAction Stop
+    } catch {
+      throw ("Standing priority no-standing report parse failed: {0}" -f $_.Exception.Message)
+    }
+  }
+
+  $routerPath = Join-Path $issueDir 'router.json'
+  $router = $null
+  if (Test-Path -LiteralPath $routerPath -PathType Leaf) {
+    try {
+      $router = Get-Content -LiteralPath $routerPath -Raw | ConvertFrom-Json -ErrorAction Stop
+    } catch {
+      $router = $null
+    }
+  }
+
+  $cacheState = if ($cacheJson -and $cacheJson.PSObject.Properties['state']) { [string]$cacheJson.state } else { $null }
+  $cacheNumber = if ($cacheJson -and $cacheJson.PSObject.Properties['number']) { $cacheJson.number } else { $null }
+  $cacheNoStandingReason = if ($cacheJson -and $cacheJson.PSObject.Properties['noStandingReason']) { [string]$cacheJson.noStandingReason } else { $null }
+  $noStandingReason = if ($noStanding -and $noStanding.PSObject.Properties['reason']) { [string]$noStanding.reason } else { $null }
+  $isQueueEmpty = (
+    $null -eq $cacheNumber -and
+    $cacheState -eq 'NONE' -and
+    ($cacheNoStandingReason -eq 'queue-empty' -or $noStandingReason -eq 'queue-empty')
+  )
+
+  if (-not $isQueueEmpty -and -not $cacheExists -and $noStandingReason -eq 'queue-empty') {
+    $isQueueEmpty = $true
+  }
+
+  if ($isQueueEmpty) {
+    if (-not $noStanding) {
+      $openIssueCount = if ($cacheJson -and $cacheJson.PSObject.Properties['noStandingOpenIssueCount']) {
+        [int]$cacheJson.noStandingOpenIssueCount
+      } else {
+        0
+      }
+      $noStanding = [pscustomobject][ordered]@{
+        schema = 'standing-priority/no-standing@v1'
+        generatedAt = if ($cacheJson -and $cacheJson.PSObject.Properties['cachedAtUtc']) { $cacheJson.cachedAtUtc } else { $null }
+        repository = if ($cacheJson -and $cacheJson.PSObject.Properties['repository']) { $cacheJson.repository } else { $null }
+        labels = @()
+        message = if ($cacheJson -and $cacheJson.PSObject.Properties['lastFetchError']) { $cacheJson.lastFetchError } else { 'Standing-priority queue is empty.' }
+        reason = 'queue-empty'
+        openIssueCount = $openIssueCount
+        failOnMissing = $false
+      }
+    }
+
+    return [ordered]@{
+      mode = 'queue-empty'
+      reason = if ($noStanding.PSObject.Properties['reason']) { $noStanding.reason } else { 'queue-empty' }
+      openIssueCount = if ($noStanding.PSObject.Properties['openIssueCount']) { [int]$noStanding.openIssueCount } else { 0 }
+      cachePath = if ($cacheExists) { $cachePath } else { $null }
+      cache = $cacheJson
+      snapshotPath = if (Test-Path -LiteralPath $noStandingPath -PathType Leaf) { $noStandingPath } else { $null }
+      snapshot = $noStanding
+      routerPath = if (Test-Path -LiteralPath $routerPath -PathType Leaf) { $routerPath } else { $null }
+      router = $router
+    }
+  }
+
   $latestIssue = Get-ChildItem -LiteralPath $issueDir -Filter '*.json' -ErrorAction SilentlyContinue |
     Where-Object { $_.BaseName -match '^\d+$' } |
     Sort-Object LastWriteTime -Descending |
@@ -268,17 +346,7 @@ function Get-StandingPriorityContext {
     throw "Standing priority digest missing. Run 'node tools/npm/run-script.mjs priority:sync'."
   }
 
-  $cachePath = Join-Path $RepoRoot '.agent_priority_cache.json'
-  $cacheExists = Test-Path -LiteralPath $cachePath -PathType Leaf
-  $cacheJson = $null
   if ($cacheExists) {
-    try {
-      $cacheJson = Get-Content -LiteralPath $cachePath -Raw | ConvertFrom-Json -ErrorAction Stop
-    } catch {
-      throw ("Standing priority cache parse failed: {0}" -f $_.Exception.Message)
-    }
-
-    $cacheNumber = $cacheJson.PSObject.Properties['number'] ? $cacheJson.number : $null
     if ($cacheNumber -ne $snapshot.number) {
       throw ("Standing priority mismatch: cache #{0} vs snapshot #{1}. Run 'node tools/npm/run-script.mjs priority:sync'." -f $cacheNumber, $snapshot.number)
     }
@@ -309,17 +377,10 @@ function Get-StandingPriorityContext {
     }
   }
 
-  $routerPath = Join-Path $issueDir 'router.json'
-  $router = $null
-  if (Test-Path -LiteralPath $routerPath -PathType Leaf) {
-    try {
-      $router = Get-Content -LiteralPath $routerPath -Raw | ConvertFrom-Json -ErrorAction Stop
-    } catch {
-      $router = $null
-    }
-  }
-
   return [ordered]@{
+    mode = 'issue'
+    reason = $null
+    openIssueCount = $null
     cachePath = if ($cacheExists) { $cachePath } else { $null }
     cache = $cacheJson
     snapshotPath = $latestIssue.FullName
@@ -537,28 +598,57 @@ function Write-AgentSessionCapsule {
       $topActions = @($priorityContext.router.actions | Select-Object -First 5 | ForEach-Object { $_.key })
     }
 
-    $capsule.standingPriority = [ordered]@{
-      issue = [ordered]@{
-        number = $priorityContext.snapshot.number
-        title = $priorityContext.snapshot.title
-        state = $priorityContext.snapshot.state
-        updatedAt = $priorityContext.snapshot.updatedAt
-        digest = $priorityContext.snapshot.digest
-        path = $priorityContext.snapshotPath
-      }
-      cache = [ordered]@{
-        path = $priorityContext.cachePath
-        cachedAtUtc = $priorityContext.cache.cachedAtUtc
-        lastSeenUpdatedAt = $priorityContext.cache.lastSeenUpdatedAt
-        issueDigest = $priorityContext.cache.issueDigest
-      }
-      router = if ($priorityContext.routerPath) {
-        [ordered]@{
-          path = $priorityContext.routerPath
-          topActions = $topActions
+    if ($priorityContext.mode -eq 'queue-empty') {
+      $capsule.standingPriority = [ordered]@{
+        mode = 'queue-empty'
+        reason = $priorityContext.reason
+        openIssueCount = $priorityContext.openIssueCount
+        summary = [ordered]@{
+          schema = if ($priorityContext.snapshot.PSObject.Properties['schema']) { $priorityContext.snapshot.schema } else { $null }
+          path = $priorityContext.snapshotPath
+          generatedAt = if ($priorityContext.snapshot.PSObject.Properties['generatedAt']) { $priorityContext.snapshot.generatedAt } else { $null }
+          message = if ($priorityContext.snapshot.PSObject.Properties['message']) { $priorityContext.snapshot.message } else { $null }
         }
-      } else {
-        $null
+        cache = [ordered]@{
+          path = $priorityContext.cachePath
+          cachedAtUtc = if ($priorityContext.cache) { $priorityContext.cache.cachedAtUtc } else { $null }
+          lastSeenUpdatedAt = if ($priorityContext.cache) { $priorityContext.cache.lastSeenUpdatedAt } else { $null }
+          issueDigest = if ($priorityContext.cache) { $priorityContext.cache.issueDigest } else { $null }
+        }
+        router = if ($priorityContext.routerPath) {
+          [ordered]@{
+            path = $priorityContext.routerPath
+            topActions = $topActions
+          }
+        } else {
+          $null
+        }
+      }
+    } else {
+      $capsule.standingPriority = [ordered]@{
+        mode = 'issue'
+        issue = [ordered]@{
+          number = $priorityContext.snapshot.number
+          title = $priorityContext.snapshot.title
+          state = $priorityContext.snapshot.state
+          updatedAt = $priorityContext.snapshot.updatedAt
+          digest = $priorityContext.snapshot.digest
+          path = $priorityContext.snapshotPath
+        }
+        cache = [ordered]@{
+          path = $priorityContext.cachePath
+          cachedAtUtc = $priorityContext.cache.cachedAtUtc
+          lastSeenUpdatedAt = $priorityContext.cache.lastSeenUpdatedAt
+          issueDigest = $priorityContext.cache.issueDigest
+        }
+        router = if ($priorityContext.routerPath) {
+          [ordered]@{
+            path = $priorityContext.routerPath
+            topActions = $topActions
+          }
+        } else {
+          $null
+        }
       }
     }
   }
@@ -938,26 +1028,47 @@ try {
 try {
   $priorityContext = Ensure-StandingPriorityContext -RepoRoot (Resolve-Path '.').Path -ResultsRoot $ResultsRoot
   if ($priorityContext) {
-    $issueSnap = $priorityContext.snapshot
     Write-Host ''
     Write-Host '[Standing Priority]' -ForegroundColor Cyan
-    Write-Host ("  issue    : #{0}" -f (Format-NullableValue $issueSnap.number))
-    Write-Host ("  title    : {0}" -f (Format-NullableValue $issueSnap.title))
-    Write-Host ("  state    : {0}" -f (Format-NullableValue $issueSnap.state))
-    Write-Host ("  updated  : {0}" -f (Format-NullableValue $issueSnap.updatedAt))
-    Write-Host ("  digest   : {0}" -f (Format-NullableValue $issueSnap.digest))
-    Write-Host ("  merge    : use Squash and Merge (linear history required)") -ForegroundColor DarkGray
+    if ($priorityContext.mode -eq 'queue-empty') {
+      $noStanding = $priorityContext.snapshot
+      Write-Host '  issue    : none (queue empty)'
+      Write-Host ("  reason   : {0}" -f (Format-NullableValue $priorityContext.reason))
+      Write-Host ("  open     : {0}" -f (Format-NullableValue $priorityContext.openIssueCount))
+      Write-Host ("  message  : {0}" -f (Format-NullableValue $noStanding.message))
+      Write-Host ("  merge    : n/a (idle repository)") -ForegroundColor DarkGray
 
-    if ($env:GITHUB_STEP_SUMMARY) {
-      $priorityLines = @(
-        '### Standing Priority',
-        '',
-        ('- Issue: #{0} - {1}' -f (Format-NullableValue $issueSnap.number), (Format-NullableValue $issueSnap.title)),
-        ('- State: {0}  Updated: {1}' -f (Format-NullableValue $issueSnap.state), (Format-NullableValue $issueSnap.updatedAt)),
-        ('- Digest: `{0}`' -f (Format-NullableValue $issueSnap.digest)),
-        '- Merge: Use Squash and Merge (linear history required)'
-      )
-      ($priorityLines -join "`n") | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8
+      if ($env:GITHUB_STEP_SUMMARY) {
+        $priorityLines = @(
+          '### Standing Priority',
+          '',
+          '- Issue: none (queue empty)',
+          ('- Reason: {0}  Open issues: {1}' -f (Format-NullableValue $priorityContext.reason), (Format-NullableValue $priorityContext.openIssueCount)),
+          ('- Message: {0}' -f (Format-NullableValue $noStanding.message)),
+          '- Merge: n/a (idle repository)'
+        )
+        ($priorityLines -join "`n") | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8
+      }
+    } else {
+      $issueSnap = $priorityContext.snapshot
+      Write-Host ("  issue    : #{0}" -f (Format-NullableValue $issueSnap.number))
+      Write-Host ("  title    : {0}" -f (Format-NullableValue $issueSnap.title))
+      Write-Host ("  state    : {0}" -f (Format-NullableValue $issueSnap.state))
+      Write-Host ("  updated  : {0}" -f (Format-NullableValue $issueSnap.updatedAt))
+      Write-Host ("  digest   : {0}" -f (Format-NullableValue $issueSnap.digest))
+      Write-Host ("  merge    : use Squash and Merge (linear history required)") -ForegroundColor DarkGray
+
+      if ($env:GITHUB_STEP_SUMMARY) {
+        $priorityLines = @(
+          '### Standing Priority',
+          '',
+          ('- Issue: #{0} - {1}' -f (Format-NullableValue $issueSnap.number), (Format-NullableValue $issueSnap.title)),
+          ('- State: {0}  Updated: {1}' -f (Format-NullableValue $issueSnap.state), (Format-NullableValue $issueSnap.updatedAt)),
+          ('- Digest: `{0}`' -f (Format-NullableValue $issueSnap.digest)),
+          '- Merge: Use Squash and Merge (linear history required)'
+        )
+        ($priorityLines -join "`n") | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8
+      }
     }
 
     $handoffDir = Join-Path $ResultsRoot '_agent/handoff'

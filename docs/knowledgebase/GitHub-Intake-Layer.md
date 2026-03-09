@@ -68,7 +68,10 @@ When sync writes `tests/results/_agent/issue/no-standing-priority.json` with
 complete, the router should expose `issue = null`, and helpers that open new
 standing-priority branches/PRs should stop with a clear message instead of
 inventing a null issue context. The correct next action is to create or label
-the next tracked issue, then rerun bootstrap.
+the next tracked issue, then rerun bootstrap. Future-agent handoff helpers
+should also honor this mode: `tools/Print-AgentHandoff.ps1` should emit an idle
+summary and copy the queue-empty report instead of treating stale numeric
+snapshots as a cache mismatch.
 
 ## Agent Metadata Contract
 
