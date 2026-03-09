@@ -84,9 +84,17 @@ Describe 'CompareVI.Tools artifact publishing' {
     $metadata.source.ref | Should -Be 'refs/tags/v9.9.9'
     $metadata.source.sha | Should -Be '0123456789abcdef0123456789abcdef01234567'
     $metadata.source.releaseTag | Should -Be 'v9.9.9'
+    @($metadata.compatibility.supportedPaths) | Should -Contain 'cross-repo-vi-history-via-hosted-ni-linux-runner'
     $metadata.consumerContract.historyFacade.schema | Should -Be 'comparevi-tools/history-facade@v1'
     $metadata.consumerContract.historyFacade.exportedFunction | Should -Be 'Invoke-CompareVIHistoryFacade'
     $metadata.consumerContract.historyFacade.resultsRelativePath | Should -Be 'history-summary.json'
+    $metadata.consumerContract.hostedNiLinuxRunner.entryScriptPath | Should -Be 'tools/Run-NILinuxContainerCompare.ps1'
+    @($metadata.consumerContract.hostedNiLinuxRunner.supportScriptPaths) | Should -Be @(
+      'tools/Assert-DockerRuntimeDeterminism.ps1',
+      'tools/Compare-ExitCodeClassifier.ps1'
+    )
+    $metadata.consumerContract.hostedNiLinuxRunner.captureFileName | Should -Be 'ni-linux-container-capture.json'
+    $metadata.consumerContract.hostedNiLinuxRunner.defaultImage | Should -Be 'nationalinstruments/labview:2026q1-linux'
 
     $archivePath = Join-Path $outDir $metadata.bundle.archiveName
     Test-Path -LiteralPath $archivePath | Should -BeTrue
@@ -102,10 +110,13 @@ Describe 'CompareVI.Tools artifact publishing' {
       'README.md',
       'tools/CompareVI.Tools/CompareVI.Tools.psd1',
       'tools/CompareVI.Tools/CompareVI.Tools.psm1',
+      'tools/Assert-DockerRuntimeDeterminism.ps1',
+      'tools/Compare-ExitCodeClassifier.ps1',
       'tools/Compare-VIHistory.ps1',
       'tools/Compare-RefsToTemp.ps1',
       'tools/Invoke-LVCompare.ps1',
       'tools/Render-VIHistoryReport.ps1',
+      'tools/Run-NILinuxContainerCompare.ps1',
       'tools/Stage-CompareInputs.ps1',
       'tools/VendorTools.psm1',
       'tools/VICategoryBuckets.psm1',
@@ -121,6 +132,9 @@ Describe 'CompareVI.Tools artifact publishing' {
     $archiveMetadata = Get-Content -LiteralPath $archiveMetadataPath -Raw | ConvertFrom-Json
     $archiveMetadata.bundle.metadataPath | Should -Be 'comparevi-tools-release.json'
     $archiveMetadata.bundle.files.Count | Should -BeGreaterThan 5
+    @($archiveMetadata.bundle.files.path) | Should -Contain 'tools/Run-NILinuxContainerCompare.ps1'
+    @($archiveMetadata.bundle.files.path) | Should -Contain 'tools/Assert-DockerRuntimeDeterminism.ps1'
+    @($archiveMetadata.bundle.files.path) | Should -Contain 'tools/Compare-ExitCodeClassifier.ps1'
   }
 
   It 'exports the bundle root through COMPAREVI_SCRIPTS_ROOT when invoking the module wrapper' {

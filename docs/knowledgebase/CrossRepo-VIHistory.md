@@ -11,7 +11,10 @@ editor repository.
 - Git history with the target VI available locally.
 - LVCompare/LabVIEW installed (the same requirements as the action repo).
 - Access to the Compare-VI tooling (`Compare-VIHistory.ps1`,
-  `Compare-RefsToTemp.ps1`, and supporting modules).
+  `Compare-RefsToTemp.ps1`, and supporting modules.
+- Hosted GitHub runner flows that use the bundle-backed NI Linux adapter also
+  rely on `Run-NILinuxContainerCompare.ps1` plus its adjacent runtime support
+  scripts from the same bundle.
 
 ## Preferred release-asset path
 
@@ -46,8 +49,9 @@ is the reviewed release tag plus its published checksum/provenance.
 
    The embedded metadata records the module version, repository source,
    source ref/tag, source SHA, the file closure for the bundle, and the
-   supported downstream facade contract under
-   `consumerContract.historyFacade`.
+   supported downstream consumer contracts under
+   `consumerContract.historyFacade` and
+   `consumerContract.hostedNiLinuxRunner`.
 
 4. **Import the module from the extracted bundle**
 
@@ -77,6 +81,13 @@ keeping the integration pinned to a reviewed release tag. The returned facade
 object is the supported downstream summary surface: requested/executed modes,
 coverage and outcome interpretation, report paths, and per-mode tallies without
 the raw backend comparison payloads.
+
+For hosted GitHub runner diagnostics, use the same extracted bundle root as
+`COMPAREVI_SCRIPTS_ROOT` and resolve the NI Linux runner from
+`tools/Run-NILinuxContainerCompare.ps1`. Keep its adjacent support scripts
+(`Assert-DockerRuntimeDeterminism.ps1` and
+`Compare-ExitCodeClassifier.ps1`) in the extracted bundle; do not copy the
+runner by itself.
 
 ## Pinned sample flow
 
@@ -156,6 +167,9 @@ from local run artifacts.
   `Compare-RefsToTemp` without copying scripts into the target repository.
 - The published `CompareVI.Tools` zip bundle now covers the module acquisition
   path without cloning this repository.
+- The bundle now also carries the hosted NI Linux runner surface needed by
+  comparevi-history consumers that stage `nationalinstruments/labview:2026q1-linux`
+  on hosted runners.
 - A reusable workflow/facade is still useful for the cleanest `uses:` UX.
 
 ## Packaging decision (2025-10-31)

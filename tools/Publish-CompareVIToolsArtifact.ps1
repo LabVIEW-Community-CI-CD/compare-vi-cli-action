@@ -118,10 +118,13 @@ $toolsRoot = Split-Path -Parent $moduleRoot
 $requiredRelativePaths = @(
   'tools/CompareVI.Tools/CompareVI.Tools.psd1',
   'tools/CompareVI.Tools/CompareVI.Tools.psm1',
+  'tools/Assert-DockerRuntimeDeterminism.ps1',
+  'tools/Compare-ExitCodeClassifier.ps1',
   'tools/Compare-VIHistory.ps1',
   'tools/Compare-RefsToTemp.ps1',
   'tools/Invoke-LVCompare.ps1',
   'tools/Render-VIHistoryReport.ps1',
+  'tools/Run-NILinuxContainerCompare.ps1',
   'tools/VendorTools.psm1',
   'tools/VICategoryBuckets.psm1',
   'tools/Stage-CompareInputs.ps1',
@@ -254,7 +257,8 @@ try {
     supportedPaths = @(
       'extract-archive-and-import-module',
       'cross-repo-vi-history-via-module',
-      'cross-repo-vi-history-via-facade'
+      'cross-repo-vi-history-via-facade',
+      'cross-repo-vi-history-via-hosted-ni-linux-runner'
     )
     requires = @(
       'git-history-in-target-repo',
@@ -290,6 +294,19 @@ try {
       notes = @(
         'Use the reviewed release tag and bundle metadata as the supported downstream pin.',
         'The facade omits raw per-comparison backend payloads so downstream consumers only depend on the stabilized summary surface.'
+      )
+    }
+    hostedNiLinuxRunner = [ordered]@{
+      entryScriptPath = 'tools/Run-NILinuxContainerCompare.ps1'
+      supportScriptPaths = @(
+        'tools/Assert-DockerRuntimeDeterminism.ps1',
+        'tools/Compare-ExitCodeClassifier.ps1'
+      )
+      captureFileName = 'ni-linux-container-capture.json'
+      defaultImage = 'nationalinstruments/labview:2026q1-linux'
+      notes = @(
+        'Hosted Linux consumers can resolve the runner from COMPAREVI_SCRIPTS_ROOT without a full backend checkout.',
+        'Keep the entry script and support scripts adjacent inside the extracted bundle so runtime guard and exit-code classification remain available.'
       )
     }
   }
