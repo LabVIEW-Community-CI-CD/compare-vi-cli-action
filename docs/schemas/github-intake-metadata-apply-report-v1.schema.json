@@ -1,0 +1,261 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://comparevi.dev/schemas/github-intake-metadata-apply-report-v1.schema.json",
+  "title": "GitHub Intake Metadata Apply Report v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema",
+    "schemaVersion",
+    "generatedAt",
+    "dryRun",
+    "target",
+    "requested",
+    "resolved",
+    "observed",
+    "operations",
+    "verification",
+    "summary",
+    "execution"
+  ],
+  "properties": {
+    "schema": {
+      "const": "github-intake/metadata-apply-report@v1"
+    },
+    "schemaVersion": {
+      "type": "string"
+    },
+    "generatedAt": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "dryRun": {
+      "type": "boolean"
+    },
+    "target": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["url", "number", "title", "contentType", "repository", "id"],
+      "properties": {
+        "url": { "type": "string", "format": "uri" },
+        "number": { "type": "integer", "minimum": 1 },
+        "title": { "type": ["string", "null"] },
+        "contentType": { "enum": ["Issue", "PullRequest"] },
+        "repository": { "type": "string", "pattern": "^[^/]+/[^/]+$" },
+        "id": { "type": "string" }
+      }
+    },
+    "requested": { "$ref": "#/$defs/surfaceGroup" },
+    "resolved": { "$ref": "#/$defs/surfaceGroup" },
+    "observed": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["before", "projectedAfter", "after"],
+      "properties": {
+        "before": { "$ref": "#/$defs/observedSnapshot" },
+        "projectedAfter": { "$ref": "#/$defs/observedSnapshot" },
+        "after": {
+          "anyOf": [
+            { "$ref": "#/$defs/observedSnapshot" },
+            { "type": "null" }
+          ]
+        }
+      }
+    },
+    "operations": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/operation" }
+    },
+    "verification": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["ok", "attempts", "delayMs", "maxAttempts", "fields", "skipped"],
+      "properties": {
+        "ok": { "type": "boolean" },
+        "attempts": { "type": "integer", "minimum": 0 },
+        "delayMs": { "type": "integer", "minimum": 0 },
+        "maxAttempts": { "type": "integer", "minimum": 0 },
+        "skipped": { "type": "boolean" },
+        "fields": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["surface", "ok", "expected", "actual"],
+            "properties": {
+              "surface": { "$ref": "#/$defs/surfaceName" },
+              "ok": { "type": "boolean" },
+              "expected": {},
+              "actual": {}
+            }
+          }
+        }
+      }
+    },
+    "summary": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "requestedCount",
+        "appliedCount",
+        "plannedCount",
+        "unchangedCount",
+        "unsupportedCount",
+        "failedCount",
+        "skippedCount"
+      ],
+      "properties": {
+        "requestedCount": { "type": "integer", "minimum": 0 },
+        "appliedCount": { "type": "integer", "minimum": 0 },
+        "plannedCount": { "type": "integer", "minimum": 0 },
+        "unchangedCount": { "type": "integer", "minimum": 0 },
+        "unsupportedCount": { "type": "integer", "minimum": 0 },
+        "failedCount": { "type": "integer", "minimum": 0 },
+        "skippedCount": { "type": "integer", "minimum": 0 }
+      }
+    },
+    "execution": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["status", "errors"],
+      "properties": {
+        "status": {
+          "enum": ["planned", "pass", "fail", "error"]
+        },
+        "errors": {
+          "type": "array",
+          "items": { "type": "string" }
+        }
+      }
+    }
+  },
+  "$defs": {
+    "surfaceName": {
+      "enum": ["issueType", "milestone", "assignees", "reviewers", "parentIssue", "subIssues"]
+    },
+    "surfaceState": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["active", "clear", "value"],
+      "properties": {
+        "active": { "type": "boolean" },
+        "clear": { "type": "boolean" },
+        "value": {}
+      }
+    },
+    "surfaceGroup": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["issueType", "milestone", "assignees", "reviewers", "parentIssue", "subIssues"],
+      "properties": {
+        "issueType": { "$ref": "#/$defs/surfaceState" },
+        "milestone": { "$ref": "#/$defs/surfaceState" },
+        "assignees": { "$ref": "#/$defs/surfaceState" },
+        "reviewers": { "$ref": "#/$defs/surfaceState" },
+        "parentIssue": { "$ref": "#/$defs/surfaceState" },
+        "subIssues": { "$ref": "#/$defs/surfaceState" }
+      }
+    },
+    "observedSnapshot": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "url",
+        "number",
+        "title",
+        "contentType",
+        "repository",
+        "assignees",
+        "reviewers",
+        "milestone",
+        "issueType",
+        "parentIssue",
+        "subIssues"
+      ],
+      "properties": {
+        "id": { "type": "string" },
+        "url": { "type": "string", "format": "uri" },
+        "number": { "type": "integer", "minimum": 1 },
+        "title": { "type": ["string", "null"] },
+        "contentType": { "enum": ["Issue", "PullRequest"] },
+        "repository": { "type": "string", "pattern": "^[^/]+/[^/]+$" },
+        "assignees": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "reviewers": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "milestone": {
+          "type": ["object", "null"],
+          "additionalProperties": true
+        },
+        "issueType": {
+          "type": ["object", "null"],
+          "additionalProperties": true
+        },
+        "parentIssue": {
+          "type": ["object", "null"],
+          "additionalProperties": true
+        },
+        "subIssues": {
+          "type": "array",
+          "items": {
+            "type": ["object", "null"],
+            "additionalProperties": true
+          }
+        }
+      }
+    },
+    "mutationAction": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "status", "summary", "details", "error"],
+      "properties": {
+        "kind": {
+          "enum": [
+            "update-issue",
+            "update-pull-request",
+            "replace-assignees",
+            "add-reviewers",
+            "remove-reviewers",
+            "add-sub-issue",
+            "remove-sub-issue"
+          ]
+        },
+        "status": {
+          "enum": ["planned", "applied", "failed", "skipped"]
+        },
+        "summary": { "type": "string" },
+        "details": {
+          "type": "object",
+          "additionalProperties": true
+        },
+        "error": { "type": ["string", "null"] }
+      }
+    },
+    "operation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["surface", "status", "applicable", "requested", "reason", "before", "desired", "after", "actions"],
+      "properties": {
+        "surface": { "$ref": "#/$defs/surfaceName" },
+        "status": {
+          "enum": ["not-requested", "planned", "unchanged", "applied", "skipped", "unsupported", "failed"]
+        },
+        "applicable": { "type": "boolean" },
+        "requested": { "type": "boolean" },
+        "reason": { "type": ["string", "null"] },
+        "before": {},
+        "desired": {},
+        "after": {},
+        "actions": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/mutationAction" }
+        }
+      }
+    }
+  }
+}
