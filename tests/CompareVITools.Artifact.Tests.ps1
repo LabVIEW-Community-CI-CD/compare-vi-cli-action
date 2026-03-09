@@ -143,6 +143,39 @@ Describe 'CompareVI.Tools artifact publishing' {
     @($archiveMetadata.bundle.files.path) | Should -Contain 'tools/Compare-ExitCodeClassifier.ps1'
   }
 
+  It 'emits an empty prerelease GitHub output for stable CompareVI.Tools bundles' {
+    $outDir = Join-Path $TestDrive 'artifacts-github-output'
+    $metadataPath = Join-Path $TestDrive 'comparevi-tools-artifact-github-output.json'
+    $githubOutputPath = Join-Path $TestDrive 'github-output.txt'
+
+    $originalGitHubOutput = $env:GITHUB_OUTPUT
+    try {
+      $env:GITHUB_OUTPUT = $githubOutputPath
+
+      & $publishScript `
+        -OutputRoot $outDir `
+        -MetadataReportPath $metadataPath `
+        -Repository 'owner/repo' `
+        -SourceRef 'refs/tags/v9.9.9' `
+        -SourceSha '0123456789abcdef0123456789abcdef01234567' `
+        -ReleaseTag 'v9.9.9' `
+        -EmitGitHubOutputs
+    } finally {
+      if ($null -ne $originalGitHubOutput) {
+        $env:GITHUB_OUTPUT = $originalGitHubOutput
+      } else {
+        Remove-Item Env:GITHUB_OUTPUT -ErrorAction SilentlyContinue
+      }
+    }
+
+    Test-Path -LiteralPath $githubOutputPath | Should -BeTrue
+    $outputLines = Get-Content -LiteralPath $githubOutputPath
+    $outputLines | Should -Contain "comparevi_tools_module_version=$moduleVersion"
+    $outputLines | Should -Contain "comparevi_tools_release_version=$moduleReleaseVersion"
+    $outputLines | Should -Contain 'comparevi_tools_module_prerelease='
+    ($outputLines | Where-Object { $_ -like 'comparevi_tools_module_prerelease=*' }).Count | Should -Be 1
+  }
+
   It 'exports the bundle root through COMPAREVI_SCRIPTS_ROOT when invoking the module wrapper' {
     $bundleRoot = Join-Path $TestDrive 'bundle'
     $moduleRoot = Join-Path $bundleRoot 'tools' 'CompareVI.Tools'
