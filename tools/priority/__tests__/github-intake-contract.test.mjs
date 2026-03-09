@@ -49,6 +49,9 @@ test('github intake catalog matches schema and routes the supported scenarios', 
   assert.ok(catalog.routes.some((entry) => entry.scenario === 'human-pr' && entry.targetKey === 'human-change'));
   assert.ok(catalog.routes.every((entry) => String(entry.helperPath).includes('New-GitHubIntakeDraft.ps1')));
   assert.ok(catalog.routes.every((entry) => typeof entry.executeCommand === 'string' && entry.executeCommand.length > 0));
+  assert.ok(catalog.routes.every((entry) => entry.execution && typeof entry.execution.kind === 'string' && entry.execution.kind.length > 0));
+  assert.ok(catalog.routes.some((entry) => entry.scenario === 'workflow-policy-pr' && entry.execution.kind === 'branch-orchestrator'));
+  assert.ok(catalog.routes.some((entry) => entry.scenario === 'human-pr' && entry.execution.kind === 'gh-pr-create'));
 });
 
 test('github intake layer ships the expected PR template variants', () => {
@@ -105,6 +108,7 @@ test('github intake docs and manifest reference the new helper layer', () => {
   const agents = readText('AGENTS.md');
   const readme = readText('README.md');
   const manifest = JSON.parse(readText('docs/documentation-manifest.json'));
+  const pkg = readJson('package.json');
   const intakeGuide = readText('docs/knowledgebase/GitHub-Intake-Layer.md');
   const automationGuide = readText('docs/knowledgebase/GitHub-Wiki-Portal-Automation-Evaluation.md');
   const wikiGuide = readText('docs/knowledgebase/GitHub-Wiki-Portal.md');
@@ -114,15 +118,18 @@ test('github intake docs and manifest reference the new helper layer', () => {
   const intakeResolver = readText('tools/Resolve-GitHubIntakeRoute.ps1');
   const intakeDraft = readText('tools/New-GitHubIntakeDraft.ps1');
   const intakeAtlas = readText('tools/Write-GitHubIntakeAtlas.ps1');
+  const intakeInvoke = readText('tools/Invoke-GitHubIntakeScenario.ps1');
   const oneButtonValidate = readText('tools/Run-OneButtonValidate.ps1');
 
   assert.match(snippets, /New-IssueBody\.ps1/);
   assert.match(snippets, /New-GitHubIntakeDraft\.ps1/);
+  assert.match(snippets, /Invoke-GitHubIntakeScenario\.ps1/);
   assert.match(snippets, /Write-GitHubIntakeAtlas\.ps1/);
   assert.match(snippets, /Resolve-GitHubIntakeRoute\.ps1/);
   assert.match(snippets, /Branch-Orchestrator\.ps1/);
   assert.match(agents, /New-IssueBody\.ps1/);
   assert.match(agents, /New-GitHubIntakeDraft\.ps1/);
+  assert.match(agents, /Invoke-GitHubIntakeScenario\.ps1/);
   assert.match(agents, /Write-GitHubIntakeAtlas\.ps1/);
   assert.match(agents, /Resolve-GitHubIntakeRoute\.ps1/);
   assert.match(agents, /GitHub wiki as a curated portal only/);
@@ -130,8 +137,10 @@ test('github intake docs and manifest reference the new helper layer', () => {
   assert.match(readme, /compare-vi-cli-action\/wiki/);
   assert.match(agents, /-PRTemplate workflow-policy\|human-change/);
   assert.match(intakeGuide, /New-GitHubIntakeDraft\.ps1/);
+  assert.match(intakeGuide, /Invoke-GitHubIntakeScenario\.ps1/);
   assert.match(intakeGuide, /Write-GitHubIntakeAtlas\.ps1/);
   assert.match(intakeGuide, /github-intake-catalog\.json/);
+  assert.match(intakeGuide, /default dry-run execution plan/i);
   assert.match(intakeGuide, /issue snapshot/i);
   assert.match(intakeGuide, /Resolve-GitHubIntakeRoute\.ps1/);
   assert.match(intakeGuide, /New-PullRequestBody\.ps1/);
@@ -160,15 +169,20 @@ test('github intake docs and manifest reference the new helper layer', () => {
   assert.match(intakeModule, /function Resolve-GitHubIntakeDraftContext/);
   assert.match(intakeModule, /function Resolve-GitHubIssueSnapshot/);
   assert.match(intakeModule, /function Resolve-GitHubIntakeRoute/);
+  assert.match(intakeModule, /function New-GitHubIntakeExecutionPlan/);
+  assert.match(intakeModule, /function Invoke-GitHubIntakeExecutionPlan/);
   assert.match(intakeModule, /function Resolve-IssueBranchName/);
   assert.match(intakeModule, /function Resolve-PullRequestTitle/);
   assert.match(intakeResolver, /-ListScenarios/);
   assert.match(intakeDraft, /Resolve-GitHubIntakeDraftContext/);
   assert.match(intakeDraft, /New-PullRequestBody\.ps1/);
+  assert.match(intakeInvoke, /New-GitHubIntakeExecutionPlan/);
+  assert.match(intakeInvoke, /Invoke-GitHubIntakeExecutionPlan/);
   assert.match(intakeModule, /function New-GitHubIntakeAtlasReport/);
   assert.match(intakeModule, /function ConvertTo-GitHubIntakeAtlasMarkdown/);
   assert.match(intakeAtlas, /New-GitHubIntakeAtlasReport/);
   assert.match(intakeAtlas, /ConvertTo-GitHubIntakeAtlasMarkdown/);
+  assert.equal(pkg.scripts['intake:invoke'], 'pwsh -NoLogo -NoProfile -File tools/Invoke-GitHubIntakeScenario.ps1');
 
   const templateEntry = manifest.entries.find((entry) => entry.name === 'GitHub Templates');
   assert.ok(templateEntry);
@@ -180,7 +194,9 @@ test('github intake docs and manifest reference the new helper layer', () => {
   assert.ok(intakeEntry.files.includes('tools/priority/github-intake-catalog.json'));
   assert.ok(intakeEntry.files.includes('docs/schemas/github-intake-atlas-v1.schema.json'));
   assert.ok(intakeEntry.files.includes('docs/schemas/github-intake-catalog-v1.schema.json'));
+  assert.ok(intakeEntry.files.includes('docs/schemas/github-intake-execution-plan-v1.schema.json'));
   assert.ok(intakeEntry.files.includes('tools/New-GitHubIntakeDraft.ps1'));
+  assert.ok(intakeEntry.files.includes('tools/Invoke-GitHubIntakeScenario.ps1'));
   assert.ok(intakeEntry.files.includes('tools/Resolve-GitHubIntakeRoute.ps1'));
   assert.ok(intakeEntry.files.includes('tools/Write-GitHubIntakeAtlas.ps1'));
 

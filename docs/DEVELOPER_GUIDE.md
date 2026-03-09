@@ -411,6 +411,10 @@ For Docker/Desktop VI history validation, run fast-loop lanes explicitly:
   `gh issue create` / `gh pr create`. For PR scenarios, the helper can hydrate
   issue title/URL and standing-priority state from the existing issue snapshot
   under `tests/results/_agent/issue/`.
+- For a machine-readable execution planner and explicit apply helper, use
+  `pwsh -File tools/Invoke-GitHubIntakeScenario.ps1 -Scenario <name> -AsJson`.
+  This stays in dry-run mode by default, emits the structured execution plan,
+  and only mutates GitHub when you add `-Apply`.
 - For the whole-surface report, use `pwsh -File tools/Write-GitHubIntakeAtlas.ps1`;
   it emits Markdown + JSON intake atlas artifacts under
   `tests/results/_agent/intake/`.

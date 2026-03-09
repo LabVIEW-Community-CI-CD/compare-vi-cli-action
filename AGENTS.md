@@ -151,11 +151,15 @@ line buffers).
     `New-IssueBody.ps1` / `New-PullRequestBody.ps1` when you intentionally need the lower-level template call.
     For PR scenarios, the draft helper can auto-fill issue title/URL and standing-priority state from
     `tests/results/_agent/issue/` when bootstrap has already refreshed the issue snapshot.
+  - For a machine-readable execution plan, prefer
+    `pwsh -File tools/Invoke-GitHubIntakeScenario.ps1 -Scenario <name> -AsJson`; it stays in dry-run mode by default
+    and requires explicit `-Apply` before mutating GitHub state.
   - When you need the whole intake surface summarized in one artifact, use
     `pwsh -File tools/Write-GitHubIntakeAtlas.ps1`; it writes JSON/Markdown atlas outputs under
     `tests/results/_agent/intake/`.
-  - CLI issue creation should use `pwsh -File tools/New-IssueBody.ps1 -Template <...> -OutputPath issue-body.md`
-    followed by `gh issue create --body-file issue-body.md`.
+  - CLI issue creation should use the planner/apply helper first:
+    `pwsh -File tools/Invoke-GitHubIntakeScenario.ps1 -Scenario workflow-policy -Title "<title>"`,
+    then add `-Apply` only when the plan is correct.
   - CLI PR creation should prefer `pwsh -File tools/Branch-Orchestrator.ps1 -Issue <number> -Execute` and switch
     templates with `-PRTemplate workflow-policy|human-change` when the review surface differs from default maintenance
     work.

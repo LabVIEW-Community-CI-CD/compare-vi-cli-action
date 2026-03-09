@@ -100,6 +100,15 @@
       "helperPath": "tools/New-GitHubIntakeDraft.ps1",
       "command": "pwsh -NoLogo -NoProfile -File tools/New-GitHubIntakeDraft.ps1 -Scenario bug -OutputPath issue-body.md",
       "executeCommand": "gh issue create --title \"<title>\" --body-file issue-body.md",
+      "execution": {
+        "kind": "gh-issue-create",
+        "titleSource": "input",
+        "bodySource": "draft-output",
+        "labelSource": "issue-template",
+        "baseSource": "none",
+        "branchSource": "none",
+        "issueSource": "none"
+      },
       "summary": "Use the bug issue body when the next step is a reproducible repository failure."
     },
     {
@@ -109,6 +118,15 @@
       "helperPath": "tools/New-GitHubIntakeDraft.ps1",
       "command": "pwsh -NoLogo -NoProfile -File tools/New-GitHubIntakeDraft.ps1 -Scenario feature-program -OutputPath issue-body.md",
       "executeCommand": "gh issue create --title \"<title>\" --body-file issue-body.md",
+      "execution": {
+        "kind": "gh-issue-create",
+        "titleSource": "input",
+        "bodySource": "draft-output",
+        "labelSource": "issue-template",
+        "baseSource": "none",
+        "branchSource": "none",
+        "issueSource": "none"
+      },
       "summary": "Use the feature/program intake body for new delivery slices, epics, or backlog shaping."
     },
     {
@@ -118,6 +136,15 @@
       "helperPath": "tools/New-GitHubIntakeDraft.ps1",
       "command": "pwsh -NoLogo -NoProfile -File tools/New-GitHubIntakeDraft.ps1 -Scenario workflow-policy -OutputPath issue-body.md",
       "executeCommand": "gh issue create --title \"<title>\" --body-file issue-body.md",
+      "execution": {
+        "kind": "gh-issue-create",
+        "titleSource": "input",
+        "bodySource": "draft-output",
+        "labelSource": "issue-template",
+        "baseSource": "none",
+        "branchSource": "none",
+        "issueSource": "none"
+      },
       "summary": "Use the workflow/policy intake body when the main change is about GitHub automation, review flow, or agent UX."
     },
     {
@@ -127,6 +154,15 @@
       "helperPath": "tools/New-GitHubIntakeDraft.ps1",
       "command": "pwsh -NoLogo -NoProfile -File tools/New-GitHubIntakeDraft.ps1 -Scenario investigation -OutputPath issue-body.md",
       "executeCommand": "gh issue create --title \"<title>\" --body-file issue-body.md",
+      "execution": {
+        "kind": "gh-issue-create",
+        "titleSource": "input",
+        "bodySource": "draft-output",
+        "labelSource": "issue-template",
+        "baseSource": "none",
+        "branchSource": "none",
+        "issueSource": "none"
+      },
       "summary": "Use the investigation body when the next step is diagnosis rather than direct implementation."
     },
     {
@@ -136,6 +172,15 @@
       "helperPath": "tools/New-GitHubIntakeDraft.ps1",
       "command": "pwsh -NoLogo -NoProfile -File tools/New-GitHubIntakeDraft.ps1 -Scenario automation-pr -Issue <number> -OutputPath pr-body.md",
       "executeCommand": "pwsh -NoLogo -NoProfile -File tools/Branch-Orchestrator.ps1 -Issue <number> -Execute",
+      "execution": {
+        "kind": "branch-orchestrator",
+        "titleSource": "issue-derived",
+        "bodySource": "draft-output",
+        "baseSource": "input-or-default",
+        "branchSource": "derived-or-current",
+        "issueSource": "input-or-snapshot",
+        "pullRequestTemplate": "default"
+      },
       "summary": "Use the default automation-authored PR template for normal standing-priority changes."
     },
     {
@@ -145,6 +190,15 @@
       "helperPath": "tools/New-GitHubIntakeDraft.ps1",
       "command": "pwsh -NoLogo -NoProfile -File tools/New-GitHubIntakeDraft.ps1 -Scenario workflow-policy-pr -Issue <number> -OutputPath pr-body.md",
       "executeCommand": "pwsh -NoLogo -NoProfile -File tools/Branch-Orchestrator.ps1 -Issue <number> -Execute -PRTemplate workflow-policy",
+      "execution": {
+        "kind": "branch-orchestrator",
+        "titleSource": "issue-derived",
+        "bodySource": "draft-output",
+        "baseSource": "input-or-default",
+        "branchSource": "derived-or-current",
+        "issueSource": "input-or-snapshot",
+        "pullRequestTemplate": "workflow-policy"
+      },
       "summary": "Use the workflow-policy PR template when the review focus is permissions, checks, queue behavior, or policy."
     },
     {
@@ -154,6 +208,14 @@
       "helperPath": "tools/New-GitHubIntakeDraft.ps1",
       "command": "pwsh -NoLogo -NoProfile -File tools/New-GitHubIntakeDraft.ps1 -Scenario agent-maintenance-pr -Issue <number> -OutputPath pr-body.md",
       "executeCommand": "gh pr create --title \"<title>\" --body-file pr-body.md",
+      "execution": {
+        "kind": "gh-pr-create",
+        "titleSource": "issue-derived",
+        "bodySource": "draft-output",
+        "baseSource": "input-or-default",
+        "branchSource": "current-or-input",
+        "issueSource": "input-or-snapshot"
+      },
       "summary": "Use the agent-maintenance PR template when queue state and follow-up notes need more space than the default template."
     },
     {
@@ -163,6 +225,14 @@
       "helperPath": "tools/New-GitHubIntakeDraft.ps1",
       "command": "pwsh -NoLogo -NoProfile -File tools/New-GitHubIntakeDraft.ps1 -Scenario human-pr -Issue <number> -OutputPath pr-body.md",
       "executeCommand": "gh pr create --title \"<title>\" --body-file pr-body.md",
+      "execution": {
+        "kind": "gh-pr-create",
+        "titleSource": "issue-derived",
+        "bodySource": "draft-output",
+        "baseSource": "input-or-default",
+        "branchSource": "current-or-input",
+        "issueSource": "input-or-snapshot"
+      },
       "summary": "Use the human-change PR template when the PR is not automation-authored and should not trigger the agent metadata flow."
     }
   ]
