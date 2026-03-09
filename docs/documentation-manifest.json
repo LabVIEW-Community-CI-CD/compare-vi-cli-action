@@ -2,7 +2,7 @@
   "$schema": "./schemas/documentation-manifest-v1.schema.json",
   "schema": "documentation-manifest-v1",
   "version": "1.0.0",
-  "updated": "2026-03-08T00:00:00Z",
+  "updated": "2026-03-09T00:00:00Z",
   "entries": [
     {
       "name": "Root Playbooks",
@@ -75,6 +75,7 @@
         "docs/HEALTH_SNAPSHOT_COMMAND.md",
         "docs/INTEGRATION_RUNBOOK.md",
         "docs/INTEGRATION_TESTS.md",
+        "docs/knowledgebase/Agent-Handoff-Surfaces.md",
         "docs/knowledgebase/FEATURE_BRANCH_POLICY.md",
         "docs/knowledgebase/LVCompare-Git-CLI-Guide_Windows-LabVIEW-2025Q3.md",
         "docs/knowledgebase/CrossRepo-VIHistory.md",

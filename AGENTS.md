@@ -272,6 +272,8 @@ Use `tools/workflows/update_workflows.py` for mechanical updates (comment-preser
 
 - Keyword **handoff**:
   1. Read `AGENT_HANDOFF.txt`, confirm plan.
+     The checked-in file should stay evergreen and bounded; live state belongs
+     in the generated handoff/issue artifacts, not appended historical logs.
   2. Set safe env toggles:
      - `LV_SUPPRESS_UI=1`
      - `LV_NO_ACTIVATE=1`
@@ -282,12 +284,15 @@ Use `tools/workflows/update_workflows.py` for mechanical updates (comment-preser
      -AppendToStepSummary`
   4. Sweep LVCompare (only) if rogues found and human approves.
   5. Honour pause etiquette (“brief delay (~90 seconds)”) and log waits.
-  6. Execute “First Actions for the Next Agent” from `AGENT_HANDOFF.txt`.
+  6. Execute “First Actions” from `AGENT_HANDOFF.txt`.
 - Convenience helpers:
   - `pwsh -File tools/Print-AgentHandoff.ps1 -ApplyToggles`
   - `pwsh -File tools/Print-AgentHandoff.ps1 -ApplyToggles -AutoTrim`
     - Prints a concise watcher summary (state, heartbeatFresh, needsTrim) and
       emits a compact JSON block to `tests/results/_agent/handoff/watcher-telemetry.json`.
+    - Refreshes `tests/results/_agent/handoff/entrypoint-status.json` so the
+      standard handoff command also leaves behind the canonical machine-readable
+      entrypoint index.
     - When `-AutoTrim` (or `HANDOFF_AUTOTRIM=1`) is set, trims oversized watcher logs if eligible
       and appends notes to the GitHub Step Summary when available.
     - Each invocation also drops a session capsule under `tests/results/_agent/sessions/`
@@ -296,9 +301,17 @@ Use `tools/workflows/update_workflows.py` for mechanical updates (comment-preser
       emit an idle summary (`issue: none (queue empty)`) and copy the
       `standing-priority/no-standing@v1` summary instead of failing on stale
       numeric snapshot files from the previously active issue.
+  - `node tools/npm/run-script.mjs handoff:entrypoint:check`
+    - Validates that `AGENT_HANDOFF.txt` remains a bounded evergreen entrypoint and writes
+      `tests/results/_agent/handoff/entrypoint-status.json`, a machine-readable index of the canonical handoff
+      commands and artifact paths.
+  - `node tools/npm/run-script.mjs priority:handoff`
+    - Imports the current handoff bundle and prints the entrypoint index, standing-priority snapshot, and handoff
+      summaries in one readable console view.
 - Capture quick regression coverage with `node tools/npm/run-script.mjs priority:handoff-tests`; the script runs
-  `priority:test`, `hooks:test`, and `semver:check`, then writes `tests/results/_agent/handoff/test-summary.json` so
-  subsequent agents (or CI summaries) can replay the outcomes.
+  `priority:test`, `hooks:test`, the handoff entrypoint contract, and `semver:check` (plus `priority:policy` when
+  token permissions allow), then writes `tests/results/_agent/handoff/test-summary.json` so subsequent agents (or CI
+  summaries) can replay the outcomes.
 
 ## Fast path for standing-priority flows (historical: #127)
 

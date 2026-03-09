@@ -1,0 +1,114 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Agent handoff entrypoint status",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema",
+    "generatedAt",
+    "handoffPath",
+    "maxLines",
+    "actualLineCount",
+    "status",
+    "checks",
+    "commands",
+    "artifacts",
+    "violations"
+  ],
+  "properties": {
+    "schema": {
+      "const": "agent-handoff/entrypoint-status-v1"
+    },
+    "generatedAt": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "handoffPath": {
+      "type": "string",
+      "minLength": 1
+    },
+    "maxLines": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "actualLineCount": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "pass",
+        "fail"
+      ]
+    },
+    "checks": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "primaryHeading",
+        "lineBudget",
+        "requiredHeadings",
+        "liveArtifactGuidance",
+        "stableEntrypointGuidance",
+        "noStatusLogGuidance",
+        "machineGeneratedArtifactGuidance",
+        "noDatedHistorySections"
+      ],
+      "properties": {
+        "primaryHeading": { "type": "boolean" },
+        "lineBudget": { "type": "boolean" },
+        "requiredHeadings": { "type": "boolean" },
+        "liveArtifactGuidance": { "type": "boolean" },
+        "stableEntrypointGuidance": { "type": "boolean" },
+        "noStatusLogGuidance": { "type": "boolean" },
+        "machineGeneratedArtifactGuidance": { "type": "boolean" },
+        "noDatedHistorySections": { "type": "boolean" }
+      }
+    },
+    "commands": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "bootstrap",
+        "standingPriority",
+        "printHandoff",
+        "projectPortfolio",
+        "developSync"
+      ],
+      "properties": {
+        "bootstrap": { "type": "string", "minLength": 1 },
+        "standingPriority": { "type": "string", "minLength": 1 },
+        "printHandoff": { "type": "string", "minLength": 1 },
+        "projectPortfolio": { "type": "string", "minLength": 1 },
+        "developSync": { "type": "string", "minLength": 1 }
+      }
+    },
+    "artifacts": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "priorityCache",
+        "router",
+        "noStandingPriority",
+        "entrypointStatus",
+        "handoffGlob",
+        "sessionGlob"
+      ],
+      "properties": {
+        "priorityCache": { "type": "string", "minLength": 1 },
+        "router": { "type": "string", "minLength": 1 },
+        "noStandingPriority": { "type": "string", "minLength": 1 },
+        "entrypointStatus": { "type": "string", "minLength": 1 },
+        "handoffGlob": { "type": "string", "minLength": 1 },
+        "sessionGlob": { "type": "string", "minLength": 1 }
+      }
+    },
+    "violations": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    }
+  }
+}

@@ -1032,6 +1032,15 @@ if ($script:HandoffFirstLine -and $handoffLines.Count -gt 0) {
 }
 $handoffLines | ForEach-Object { Write-Output $_ }
 
+$entrypointCheck = Join-Path $PSScriptRoot 'Test-AgentHandoffEntryPoint.ps1'
+if (Test-Path -LiteralPath $entrypointCheck -PathType Leaf) {
+  try {
+    & $entrypointCheck -HandoffPath $handoff -ResultsRoot $ResultsRoot -Quiet
+  } catch {
+    Write-Warning ("Handoff entrypoint contract failed: {0}" -f $_.Exception.Message)
+  }
+}
+
 try {
   Ensure-StandingPriorityContext -RepoRoot (Resolve-Path '.').Path -ResultsRoot $ResultsRoot | Out-Null
 } catch {

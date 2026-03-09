@@ -29,6 +29,7 @@
     "feature:branch:dry": "node tools/priority/create-feature-branch.dryrun.mjs",
     "feature:finalize:dry": "node tools/priority/finalize-feature.dryrun.mjs",
     "generate:outputs": "node dist/generate-action-outputs.js",
+    "handoff:entrypoint:check": "pwsh -NoLogo -NoProfile -File tools/Test-AgentHandoffEntryPoint.ps1",
     "handoff:release-schema": "node tools/npm/run-script.mjs schema:validate -- --schema docs/schemas/handoff-release-v1.schema.json --data tests/results/_agent/handoff/release-summary.json --optional",
     "handoff:schema": "node tools/npm/run-script.mjs schema:validate -- --schema docs/schemas/handoff-hook-summary-v1.schema.json --data tests/results/_agent/handoff/hook-summary.json --optional",
     "handoff:session-schema": "node tools/npm/run-script.mjs schema:validate -- --schema docs/schemas/handoff-session-v1.schema.json --data tests/results/_agent/sessions/*.json --optional",

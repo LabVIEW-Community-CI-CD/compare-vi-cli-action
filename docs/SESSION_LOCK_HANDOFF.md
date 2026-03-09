@@ -50,10 +50,14 @@ Default lease root is `.git/agent-writer-leases/` (keeps workspaces clean). Usef
 
 ## Handoff checklist
 
-1. Read `AGENT_HANDOFF.txt` for context.
+1. Read `AGENT_HANDOFF.txt` for evergreen context, then use
+   `tools/Print-AgentHandoff.ps1` for current state.
 2. Confirm lock owner in `status.md` before starting a run.
 3. Use `-AutoTrim` hand-off script to print watcher summary and trim logs.
 4. Release lock after run (`SessionLock-Release.ps1` or run completion).
+
+See [`docs/knowledgebase/Agent-Handoff-Surfaces.md`](./knowledgebase/Agent-Handoff-Surfaces.md) for the contract
+between the evergreen handoff entrypoint and the machine-generated live artifacts.
 
 ## Troubleshooting
 

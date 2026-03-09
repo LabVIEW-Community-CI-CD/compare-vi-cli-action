@@ -39,6 +39,7 @@ $hookSummary  = Read-HandoffJson -Name 'hook-summary.json'
 $watcherTelemetry = Read-HandoffJson -Name 'watcher-telemetry.json'
 $releaseSummary = Read-HandoffJson -Name 'release-summary.json'
 $testSummary = Read-HandoffJson -Name 'test-summary.json'
+$entrypointStatus = Read-HandoffJson -Name 'entrypoint-status.json'
 
 if ($issueSummary) {
   Write-Host '[handoff] Standing priority snapshot' -ForegroundColor Cyan
@@ -147,4 +148,30 @@ if ($testSummary) {
     Write-Host ("  {0} => exit {1}" -f ($entry.command ?? '(unknown)'), (Format-NullableValue $entry.exitCode))
   }
   Set-Variable -Name TestHandoffSummary -Scope Global -Value $testSummary -Force
+}
+
+if ($entrypointStatus) {
+  Write-Host '[handoff] Entrypoint index' -ForegroundColor Cyan
+  Write-Host ("  status   : {0}" -f (Format-NullableValue $entrypointStatus.status))
+  Write-Host ("  lines    : {0}/{1}" -f (Format-NullableValue $entrypointStatus.actualLineCount), (Format-NullableValue $entrypointStatus.maxLines))
+  if ($entrypointStatus.PSObject.Properties['commands'] -and $entrypointStatus.commands) {
+    foreach ($commandName in @('bootstrap', 'standingPriority', 'printHandoff', 'projectPortfolio', 'developSync')) {
+      if ($entrypointStatus.commands.PSObject.Properties[$commandName]) {
+        Write-Host ("  command.{0} : {1}" -f $commandName, (Format-NullableValue $entrypointStatus.commands.$commandName))
+      }
+    }
+  }
+  if ($entrypointStatus.PSObject.Properties['artifacts'] -and $entrypointStatus.artifacts) {
+    foreach ($artifactName in @('priorityCache', 'router', 'noStandingPriority', 'entrypointStatus', 'handoffGlob', 'sessionGlob')) {
+      if ($entrypointStatus.artifacts.PSObject.Properties[$artifactName]) {
+        Write-Host ("  artifact.{0} : {1}" -f $artifactName, (Format-NullableValue $entrypointStatus.artifacts.$artifactName))
+      }
+    }
+  }
+  if ($entrypointStatus.PSObject.Properties['violations'] -and $entrypointStatus.violations) {
+    foreach ($violation in @($entrypointStatus.violations)) {
+      Write-Host ("  violation: {0}" -f (Format-NullableValue $violation))
+    }
+  }
+  Set-Variable -Name HandoffEntrypointStatus -Scope Global -Value $entrypointStatus -Force
 }
