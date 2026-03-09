@@ -3,8 +3,10 @@ import assert from 'node:assert/strict';
 import os from 'node:os';
 import path from 'node:path';
 import fs from 'node:fs';
+import { pathToFileURL } from 'node:url';
 import {
   buildImageTags,
+  isDirectExecution,
   normalizeRequestedVersion,
   parseArgs,
   parseVersionShape,
@@ -181,4 +183,13 @@ test('writeOutputs persists GitHub outputs, tag file, and label file', () => {
   assert.match(githubOutput, /stable_family_version=0\.6\.3/);
   assert.match(githubOutput, /is_tools_tag=true/);
   assert.match(githubOutput, /tags<<EOF/);
+});
+
+test('isDirectExecution follows the repo standard for filesystem path comparison', () => {
+  const modulePath = path.join('D:', 'workspace', 'compare-vi-cli-action', 'compare-vi-cli-action', 'tools', 'priority', 'resolve-tools-image-publish-context.mjs');
+  const moduleUrl = pathToFileURL(modulePath).href;
+
+  assert.equal(isDirectExecution(modulePath, moduleUrl), true);
+  assert.equal(isDirectExecution(path.join('D:', 'workspace', 'compare-vi-cli-action', 'compare-vi-cli-action', 'tools', 'priority', 'other-script.mjs'), moduleUrl), false);
+  assert.equal(isDirectExecution('', moduleUrl), false);
 });

@@ -3,6 +3,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import process from 'node:process';
+import { fileURLToPath } from 'node:url';
 
 export const STABLE_SEMVER_PATTERN = /^\d+\.\d+\.\d+$/;
 export const STABLE_TOOLS_PATTERN = /^(\d+\.\d+\.\d+)-tools\.(\d+)$/;
@@ -318,6 +319,15 @@ export function writeOutputs(context, options = {}) {
   };
 }
 
+export function isDirectExecution(scriptPath, moduleUrl = import.meta.url) {
+  const normalizedScriptPath = trimToNull(scriptPath);
+  if (!normalizedScriptPath) {
+    return false;
+  }
+
+  return path.resolve(normalizedScriptPath) === path.resolve(fileURLToPath(moduleUrl));
+}
+
 function main() {
   const options = parseArgs(process.argv);
   if (options.help) {
@@ -343,7 +353,7 @@ function main() {
   );
 }
 
-if (import.meta.url === `file://${process.argv[1]}`) {
+if (isDirectExecution(process.argv[1])) {
   try {
     main();
   } catch (error) {
