@@ -113,8 +113,7 @@
     "consumerContract": {
       "type": "object",
       "required": [
-        "historyFacade",
-        "hostedNiLinuxRunner"
+        "historyFacade"
       ],
       "properties": {
         "historyFacade": {

@@ -11,7 +11,7 @@ editor repository.
 - Git history with the target VI available locally.
 - LVCompare/LabVIEW installed (the same requirements as the action repo).
 - Access to the Compare-VI tooling (`Compare-VIHistory.ps1`,
-  `Compare-RefsToTemp.ps1`, and supporting modules.
+  `Compare-RefsToTemp.ps1`, and supporting modules).
 - Hosted GitHub runner flows that use the bundle-backed NI Linux adapter also
   rely on `Run-NILinuxContainerCompare.ps1` plus its adjacent runtime support
   scripts from the same bundle.
