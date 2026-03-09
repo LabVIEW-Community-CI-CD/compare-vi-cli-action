@@ -1,0 +1,111 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://labview-community-ci-cd.github.io/schemas/downstream-onboarding-feedback-v1.schema.json",
+  "title": "Downstream Onboarding Feedback v1",
+  "type": "object",
+  "required": [
+    "schema",
+    "generatedAt",
+    "inputs",
+    "outputs",
+    "execution"
+  ],
+  "properties": {
+    "schema": {
+      "type": "string",
+      "const": "priority/downstream-onboarding-feedback@v1"
+    },
+    "generatedAt": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "inputs": {
+      "type": "object",
+      "required": [
+        "downstreamRepository",
+        "startedAt",
+        "parentIssue",
+        "createHardeningIssues",
+        "failOnGap"
+      ],
+      "properties": {
+        "downstreamRepository": {
+          "type": "string",
+          "pattern": "^[^/]+/[^/]+$"
+        },
+        "startedAt": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "format": "date-time"
+        },
+        "parentIssue": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "minimum": 1
+        },
+        "createHardeningIssues": {
+          "type": "boolean"
+        },
+        "failOnGap": {
+          "type": "boolean"
+        }
+      },
+      "additionalProperties": false
+    },
+    "outputs": {
+      "type": "object",
+      "required": [
+        "onboardingReportPath",
+        "successReportPath",
+        "onboardingReportExists",
+        "successReportExists"
+      ],
+      "properties": {
+        "onboardingReportPath": {
+          "type": "string"
+        },
+        "successReportPath": {
+          "type": "string"
+        },
+        "onboardingReportExists": {
+          "type": "boolean"
+        },
+        "successReportExists": {
+          "type": "boolean"
+        }
+      },
+      "additionalProperties": false
+    },
+    "execution": {
+      "type": "object",
+      "required": [
+        "evaluateExitCode",
+        "successExitCode",
+        "status"
+      ],
+      "properties": {
+        "evaluateExitCode": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "successExitCode": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "status": {
+          "type": "string",
+          "enum": [
+            "pass",
+            "fail"
+          ]
+        }
+      },
+      "additionalProperties": false
+    }
+  },
+  "additionalProperties": false
+}

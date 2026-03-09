@@ -798,6 +798,118 @@ function writeJson(filePath, payload) {
   return resolvedPath;
 }
 
+export function buildInfrastructureFailureReport({
+  options,
+  policy,
+  generatedAt,
+  upstreamRepository,
+  actionRepository,
+  downstreamRepository,
+  error,
+  stage = 'runtime'
+}) {
+  const repositoryContext = {
+    ok: false,
+    error: error?.message || String(error),
+    defaultBranch: options.targetBranch || 'develop',
+    htmlUrl: null
+  };
+  const environments = {
+    observable: false,
+    error: 'not-evaluated',
+    configured: [],
+    missing: [...policy.requiredEnvironments]
+  };
+  const branchProtection = {
+    observable: false,
+    error: 'not-evaluated',
+    contexts: [],
+    missingChecks: [...policy.requiredBranchChecks]
+  };
+  const checklist = evaluateChecklist(policy, {
+    repository: repositoryContext,
+    references: [],
+    referenceVerifications: [],
+    successfulRuns: [],
+    firstSuccessfulRunAt: null,
+    environments,
+    branchProtection
+  });
+  const summary = summarizeChecklist(checklist);
+  const metrics = computeOnboardingMetrics({
+    startedAt: options.startedAt,
+    allRuns: [],
+    summary
+  });
+
+  return {
+    schema: 'priority/downstream-onboarding-report@v1',
+    generatedAt,
+    upstreamRepository,
+    actionRepository,
+    downstreamRepository,
+    targetBranch: repositoryContext.defaultBranch,
+    pilot: {
+      startedAt: options.startedAt ?? null,
+      parentIssue: options.parentIssue ?? null
+    },
+    repository: repositoryContext,
+    workflowDiscovery: {
+      scannedWorkflowCount: 0,
+      referencedWorkflowCount: 0
+    },
+    workflowReferences: [],
+    runs: {
+      total: 0,
+      successful: 0,
+      firstSuccessfulRunAt: null
+    },
+    environments,
+    branchProtection,
+    checklist,
+    metrics,
+    summary,
+    hardeningBacklog: buildHardeningBacklog(checklist, downstreamRepository),
+    hardeningIssues: [],
+    infrastructureFailure: {
+      stage,
+      message: error?.message || String(error),
+      stack: error?.stack || null
+    }
+  };
+}
+
+export function tryWriteInfrastructureFailureReport(options, error) {
+  try {
+    const generatedAt = new Date().toISOString();
+    const policy = normalizePolicy(readJson(path.resolve(options.policyPath)));
+    const upstreamRepository = resolveRepositorySlug(options.upstreamRepo);
+    const actionRepository = normalizeRepositorySlug(options.actionRepo || upstreamRepository);
+    const downstreamRepository = normalizeRepositorySlug(options.downstreamRepo);
+    const report = buildInfrastructureFailureReport({
+      options,
+      policy,
+      generatedAt,
+      upstreamRepository,
+      actionRepository,
+      downstreamRepository,
+      error
+    });
+    const resolvedOutputPath = writeJson(options.outputPath, report);
+    appendStepSummary(report, options.outputPath);
+    return {
+      ok: true,
+      outputPath: resolvedOutputPath,
+      report
+    };
+  } catch (writeError) {
+    return {
+      ok: false,
+      error: writeError
+    };
+  }
+}
+
 function buildHardeningIssueBody(entry, report, parentIssue) {
   const lines = [
     `<!-- downstream-onboarding:${report.downstreamRepository}:${entry.key} -->`,
@@ -897,39 +1009,39 @@ export async function main(argv = process.argv) {
     return 0;
   }
 
-  const upstreamRepository = resolveRepositorySlug(options.upstreamRepo);
-  const actionRepository = normalizeRepositorySlug(options.actionRepo || upstreamRepository);
-  const downstreamRepository = normalizeRepositorySlug(options.downstreamRepo);
-  const issueRepository = normalizeRepositorySlug(options.issueRepo || upstreamRepository);
-  const token = resolveToken();
-  const generatedAt = new Date().toISOString();
-  const policy = normalizePolicy(readJson(path.resolve(options.policyPath)));
-
-  const repositoryContext = {
-    ok: false,
-    error: null,
-    defaultBranch: options.targetBranch || null,
-    htmlUrl: null
-  };
-
-  let workflowEntries = [];
-  const references = [];
-  const referenceVerifications = [];
-  const workflowRuns = [];
-  let environments = {
-    observable: false,
-    error: 'not-evaluated',
-    configured: [],
-    missing: [...policy.requiredEnvironments]
-  };
-  let branchProtection = {
-    observable: false,
-    error: 'not-evaluated',
-    contexts: [],
-    missingChecks: [...policy.requiredBranchChecks]
-  };
-
   try {
+    const upstreamRepository = resolveRepositorySlug(options.upstreamRepo);
+    const actionRepository = normalizeRepositorySlug(options.actionRepo || upstreamRepository);
+    const downstreamRepository = normalizeRepositorySlug(options.downstreamRepo);
+    const issueRepository = normalizeRepositorySlug(options.issueRepo || upstreamRepository);
+    const token = resolveToken();
+    const generatedAt = new Date().toISOString();
+    const policy = normalizePolicy(readJson(path.resolve(options.policyPath)));
+
+    const repositoryContext = {
+      ok: false,
+      error: null,
+      defaultBranch: options.targetBranch || null,
+      htmlUrl: null
+    };
+
+    let workflowEntries = [];
+    const references = [];
+    const referenceVerifications = [];
+    const workflowRuns = [];
+    let environments = {
+      observable: false,
+      error: 'not-evaluated',
+      configured: [],
+      missing: [...policy.requiredEnvironments]
+    };
+    let branchProtection = {
+      observable: false,
+      error: 'not-evaluated',
+      contexts: [],
+      missingChecks: [...policy.requiredBranchChecks]
+    };
+
     const repoMetadata = await fetchRepositoryMetadata(downstreamRepository, token);
     repositoryContext.ok = true;
     repositoryContext.defaultBranch = options.targetBranch || repoMetadata?.default_branch || 'develop';
@@ -972,80 +1084,86 @@ export async function main(argv = process.argv) {
       token,
       policy.requiredBranchChecks
     );
+    const successfulRuns = workflowRuns.filter((entry) => String(entry.conclusion || '').toLowerCase() === 'success');
+    const firstSuccessfulRun = earliestSuccessRun(successfulRuns);
+    const checklist = evaluateChecklist(policy, {
+      repository: repositoryContext,
+      references,
+      referenceVerifications,
+      successfulRuns,
+      firstSuccessfulRunAt: firstSuccessfulRun?.updatedAt || firstSuccessfulRun?.createdAt || null,
+      environments,
+      branchProtection
+    });
+    const summary = summarizeChecklist(checklist);
+    const hardeningBacklog = buildHardeningBacklog(checklist, downstreamRepository);
+    const metrics = computeOnboardingMetrics({
+      startedAt: options.startedAt,
+      allRuns: workflowRuns,
+      summary
+    });
+
+    const report = {
+      schema: 'priority/downstream-onboarding-report@v1',
+      generatedAt,
+      upstreamRepository,
+      actionRepository,
+      downstreamRepository,
+      targetBranch: repositoryContext.defaultBranch || options.targetBranch || 'develop',
+      pilot: {
+        startedAt: options.startedAt ?? null,
+        parentIssue: options.parentIssue ?? null
+      },
+      repository: repositoryContext,
+      workflowDiscovery: {
+        scannedWorkflowCount: workflowEntries.length,
+        referencedWorkflowCount: [...new Set(references.map((entry) => entry.workflowPath))].length
+      },
+      workflowReferences: referenceVerifications.map((entry) => ({
+        workflowPath: entry.reference.workflowPath,
+        lineNumber: entry.reference.lineNumber,
+        ref: entry.reference.ref,
+        verified: entry.verified
+      })),
+      runs: {
+        total: workflowRuns.length,
+        successful: successfulRuns.length,
+        firstSuccessfulRunAt: firstSuccessfulRun?.updatedAt || firstSuccessfulRun?.createdAt || null
+      },
+      environments,
+      branchProtection,
+      checklist,
+      metrics,
+      summary,
+      hardeningBacklog,
+      hardeningIssues: []
+    };
+
+    report.hardeningIssues = await createHardeningIssues(
+      report,
+      {
+        ...options,
+        issueRepo: issueRepository
+      },
+      token
+    );
+
+    const resolvedOutputPath = writeJson(options.outputPath, report);
+    appendStepSummary(report, options.outputPath);
+    console.log(
+      `[downstream-onboarding] wrote ${resolvedOutputPath} (status=${summary.status}, backlog=${hardeningBacklog.length})`
+    );
+    return options.failOnGap && summary.requiredFailCount > 0 ? 1 : 0;
   } catch (error) {
-    repositoryContext.error = error?.message || String(error);
+    const failureReport = tryWriteInfrastructureFailureReport(options, error);
+    if (failureReport.ok) {
+      console.error(
+        `[downstream-onboarding] wrote infrastructure-failure report ${failureReport.outputPath} before exiting`
+      );
+    }
+    console.error(error?.stack ?? error?.message ?? String(error));
+    return 1;
   }
-
-  const successfulRuns = workflowRuns.filter((entry) => String(entry.conclusion || '').toLowerCase() === 'success');
-  const firstSuccessfulRun = earliestSuccessRun(successfulRuns);
-  const checklist = evaluateChecklist(policy, {
-    repository: repositoryContext,
-    references,
-    referenceVerifications,
-    successfulRuns,
-    firstSuccessfulRunAt: firstSuccessfulRun?.updatedAt || firstSuccessfulRun?.createdAt || null,
-    environments,
-    branchProtection
-  });
-  const summary = summarizeChecklist(checklist);
-  const hardeningBacklog = buildHardeningBacklog(checklist, downstreamRepository);
-  const metrics = computeOnboardingMetrics({
-    startedAt: options.startedAt,
-    allRuns: workflowRuns,
-    summary
-  });
-
-  const report = {
-    schema: 'priority/downstream-onboarding-report@v1',
-    generatedAt,
-    upstreamRepository,
-    actionRepository,
-    downstreamRepository,
-    targetBranch: repositoryContext.defaultBranch || options.targetBranch || 'develop',
-    pilot: {
-      startedAt: options.startedAt ?? null,
-      parentIssue: options.parentIssue ?? null
-    },
-    repository: repositoryContext,
-    workflowDiscovery: {
-      scannedWorkflowCount: workflowEntries.length,
-      referencedWorkflowCount: [...new Set(references.map((entry) => entry.workflowPath))].length
-    },
-    workflowReferences: referenceVerifications.map((entry) => ({
-      workflowPath: entry.reference.workflowPath,
-      lineNumber: entry.reference.lineNumber,
-      ref: entry.reference.ref,
-      verified: entry.verified
-    })),
-    runs: {
-      total: workflowRuns.length,
-      successful: successfulRuns.length,
-      firstSuccessfulRunAt: firstSuccessfulRun?.updatedAt || firstSuccessfulRun?.createdAt || null
-    },
-    environments,
-    branchProtection,
-    checklist,
-    metrics,
-    summary,
-    hardeningBacklog,
-    hardeningIssues: []
-  };
-
-  report.hardeningIssues = await createHardeningIssues(
-    report,
-    {
-      ...options,
-      issueRepo: issueRepository
-    },
-    token
-  );
-
-  const resolvedOutputPath = writeJson(options.outputPath, report);
-  appendStepSummary(report, options.outputPath);
-  console.log(
-    `[downstream-onboarding] wrote ${resolvedOutputPath} (status=${summary.status}, backlog=${hardeningBacklog.length})`
-  );
-  return options.failOnGap && summary.requiredFailCount > 0 ? 1 : 0;
 }
 
 const modulePath = path.resolve(fileURLToPath(import.meta.url));

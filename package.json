@@ -90,6 +90,7 @@
     "priority:security:intake": "node tools/priority/security-intake.mjs",
     "priority:security:gate": "node tools/priority/security-intake.mjs --route-on-breach --fail-on-breach --fail-on-skip",
     "priority:onboard:downstream": "node tools/priority/downstream-onboarding.mjs",
+    "priority:onboard:feedback": "node tools/priority/downstream-onboarding-feedback.mjs",
     "priority:onboard:success": "node tools/priority/downstream-onboarding-success.mjs",
     "priority:develop:sync": "pwsh -NoLogo -NoProfile -File tools/priority/Sync-OriginUpstreamDevelop.ps1",
     "priority:github:metadata:apply": "tsc -p tsconfig.cli.json && node dist/tools/cli/github-metadata.js",

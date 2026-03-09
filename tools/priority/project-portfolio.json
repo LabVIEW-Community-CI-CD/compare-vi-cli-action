@@ -441,7 +441,7 @@
     },
     {
       "url": "https://github.com/LabVIEW-Community-CI-CD/compare-vi-cli-action/issues/949",
-      "status": "In Progress",
+      "status": "Done",
       "program": "Shared Infra",
       "phase": "Apply Mode",
       "environmentClass": "Infra",
@@ -457,6 +457,56 @@
       "environmentClass": "Infra",
       "blockingSignal": "Scope",
       "evidenceState": "Partial",
+      "portfolioTrack": "Agent UX"
+    },
+    {
+      "url": "https://github.com/LabVIEW-Community-CI-CD/compare-vi-cli-action/issues/953",
+      "status": "Todo",
+      "program": "Shared Infra",
+      "phase": "Sustain",
+      "environmentClass": "Infra",
+      "blockingSignal": "Scope",
+      "evidenceState": "Partial",
+      "portfolioTrack": "Agent UX"
+    },
+    {
+      "url": "https://github.com/LabVIEW-Community-CI-CD/compare-vi-cli-action/issues/954",
+      "status": "Todo",
+      "program": "Approval Control Plane",
+      "phase": "Policy",
+      "environmentClass": "Infra",
+      "blockingSignal": "Review",
+      "evidenceState": "Ready",
+      "portfolioTrack": "Approvals"
+    },
+    {
+      "url": "https://github.com/LabVIEW-Community-CI-CD/compare-vi-cli-action/issues/956",
+      "status": "Todo",
+      "program": "Shared Infra",
+      "phase": "Signals",
+      "environmentClass": "Infra",
+      "blockingSignal": "CI",
+      "evidenceState": "Ready",
+      "portfolioTrack": "Agent UX"
+    },
+    {
+      "url": "https://github.com/LabVIEW-Community-CI-CD/compare-vi-cli-action/issues/958",
+      "status": "Todo",
+      "program": "Shared Infra",
+      "phase": "Helper Workflow",
+      "environmentClass": "Cross-Repo",
+      "blockingSignal": "Scope",
+      "evidenceState": "Partial",
+      "portfolioTrack": "Corpus & Facade"
+    },
+    {
+      "url": "https://github.com/LabVIEW-Community-CI-CD/compare-vi-cli-action/issues/959",
+      "status": "In Progress",
+      "program": "Shared Infra",
+      "phase": "Signals",
+      "environmentClass": "Cross-Repo",
+      "blockingSignal": "CI",
+      "evidenceState": "Ready",
       "portfolioTrack": "Agent UX"
     },
     {
