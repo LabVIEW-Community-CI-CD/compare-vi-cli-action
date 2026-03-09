@@ -349,31 +349,47 @@ jobs:
       matrix:
         os: [windows-latest, ubuntu-latest, macos-latest]
     steps:
+      - uses: actions/checkout@v5
+
       - name: Download CLI artifacts
         uses: actions/download-artifact@v4
         with:
           name: cli-artifacts
           path: cli-dl
 
+      - name: Resolve validation artifact paths
+        id: artifact_paths
+        shell: pwsh
+        run: |
+          $v = '${{ needs.release.outputs.cli_version }}'
+          $archiveName = switch ('${{ runner.os }}') {
+            'Windows' { "comparevi-cli-v$($v)-win-x64-selfcontained.zip" }
+            'Linux' { "comparevi-cli-v$($v)-linux-x64-selfcontained.tar.gz" }
+            'macOS' { "comparevi-cli-v$($v)-osx-x64-selfcontained.tar.gz" }
+            default { throw "Unsupported runner.os: ${{ runner.os }}" }
+          }
+          $resolver = Join-Path $PWD 'tools' 'Resolve-DownloadedArtifactPath.ps1'
+          $archivePath = & $resolver -SearchRoot 'cli-dl' -FileName $archiveName
+          $checksumPath = & $resolver -SearchRoot 'cli-dl' -FileName 'SHA256SUMS.txt'
+          "archive_name=$archiveName" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
+          "archive_path=$archivePath" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
+          "checksum_path=$checksumPath" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
+
       - name: Extract artifact (Windows)
         if: runner.os == 'Windows'
         shell: pwsh
         run: |
-          $v = '${{ needs.release.outputs.cli_version }}'
-          $zip = Get-ChildItem -Recurse -Path cli-dl -Filter "comparevi-cli-v$($v)-win-x64-selfcontained.zip" | Select-Object -First 1
-          if (-not $zip) { throw "Artifact not found for Windows" }
-          Expand-Archive -Path $zip.FullName -DestinationPath cli-out
+          $zipPath = '${{ steps.artifact_paths.outputs.archive_path }}'
+          Expand-Archive -Path $zipPath -DestinationPath cli-out
           Get-ChildItem cli-out | Out-Host
 
       - name: Verify checksum (Windows)
         if: runner.os == 'Windows'
         shell: pwsh
         run: |
-          $v = '${{ needs.release.outputs.cli_version }}'
-          $zip = Get-ChildItem -Recurse -Path cli-dl -Filter "comparevi-cli-v$($v)-win-x64-selfcontained.zip" | Select-Object -First 1
-          if (-not $zip) { throw "Artifact not found for Windows" }
-          $sumPath = Join-Path 'cli-dl' 'SHA256SUMS.txt'
-          if (-not (Test-Path $sumPath)) { throw "Missing SHA256SUMS.txt" }
+          $zipPath = '${{ steps.artifact_paths.outputs.archive_path }}'
+          $zip = Get-Item -LiteralPath $zipPath
+          $sumPath = '${{ steps.artifact_paths.outputs.checksum_path }}'
           $entries = @()
           foreach ($line in Get-Content $sumPath) {
             if ($line -match '^([0-9a-fA-F]{64})\s+(.+)$') {
@@ -392,8 +408,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          v='${{ needs.release.outputs.cli_version }}'
-          tarball=$(ls -1 cli-dl/comparevi-cli-v${v}-linux-x64-selfcontained.tar.gz)
+          tarball='${{ steps.artifact_paths.outputs.archive_path }}'
           mkdir -p cli-out
           tar -xzf "$tarball" -C cli-out
           ls -la cli-out
@@ -403,11 +418,11 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          v='${{ needs.release.outputs.cli_version }}'
-          file="comparevi-cli-v${v}-linux-x64-selfcontained.tar.gz"
-          tarball="cli-dl/${file}"
+          file='${{ steps.artifact_paths.outputs.archive_name }}'
+          tarball='${{ steps.artifact_paths.outputs.archive_path }}'
+          sum_path='${{ steps.artifact_paths.outputs.checksum_path }}'
           [ -f "$tarball" ]
-          expected=$(awk -v file="$file" '$2 ~ file {print tolower($1)}' cli-dl/SHA256SUMS.txt)
+          expected=$(awk -v file="$file" '$2 ~ file {print tolower($1)}' "$sum_path")
           [ -n "$expected" ]
           actual=$(sha256sum "$tarball" | awk '{print tolower($1)}')
           if [ "$actual" != "$expected" ]; then
@@ -421,8 +436,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          v='${{ needs.release.outputs.cli_version }}'
-          tarball=$(ls -1 cli-dl/comparevi-cli-v${v}-osx-x64-selfcontained.tar.gz)
+          tarball='${{ steps.artifact_paths.outputs.archive_path }}'
           mkdir -p cli-out
           tar -xzf "$tarball" -C cli-out
           ls -la cli-out
@@ -432,11 +446,11 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          v='${{ needs.release.outputs.cli_version }}'
-          file="comparevi-cli-v${v}-osx-x64-selfcontained.tar.gz"
-          tarball="cli-dl/${file}"
+          file='${{ steps.artifact_paths.outputs.archive_name }}'
+          tarball='${{ steps.artifact_paths.outputs.archive_path }}'
+          sum_path='${{ steps.artifact_paths.outputs.checksum_path }}'
           [ -f "$tarball" ]
-          expected=$(awk -v file="$file" '$2 ~ file {print tolower($1)}' cli-dl/SHA256SUMS.txt)
+          expected=$(awk -v file="$file" '$2 ~ file {print tolower($1)}' "$sum_path")
           [ -n "$expected" ]
           actual=$(shasum -a 256 "$tarball" | awk '{print tolower($1)}')
           if [ "$actual" != "$expected" ]; then
@@ -557,23 +571,35 @@ jobs:
           name: cli-artifacts
           path: cli-dl
 
+      - name: Resolve release-contract artifact paths
+        id: contract_artifacts
+        shell: pwsh
+        run: |
+          $v = '${{ needs.release.outputs.cli_version }}'
+          $resolver = Join-Path $PWD 'tools' 'Resolve-DownloadedArtifactPath.ps1'
+          $linuxTarballName = "comparevi-cli-v$($v)-linux-x64-selfcontained.tar.gz"
+          $metadataPath = & $resolver -SearchRoot 'cli-dl' -FileName 'comparevi-tools-artifact.json'
+          $provenancePath = & $resolver -SearchRoot 'cli-dl' -FileName 'provenance.json'
+          $checksumPath = & $resolver -SearchRoot 'cli-dl' -FileName 'SHA256SUMS.txt'
+          $linuxTarballPath = & $resolver -SearchRoot 'cli-dl' -FileName $linuxTarballName
+          "metadata_path=$metadataPath" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
+          "provenance_path=$provenancePath" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
+          "checksum_path=$checksumPath" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
+          "linux_tarball_name=$linuxTarballName" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
+          "linux_tarball_path=$linuxTarballPath" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
+
       - name: Validate CompareVI.Tools metadata artifact
         shell: pwsh
         run: |
-          $metadataPath = Get-ChildItem -Recurse -Path cli-dl -Filter 'comparevi-tools-artifact.json' | Select-Object -First 1
-          if (-not $metadataPath) {
-            throw 'Downloaded CLI artifacts did not include comparevi-tools-artifact.json.'
-          }
-
           pwsh -NoLogo -NoProfile -File tools/Invoke-JsonSchemaLite.ps1 `
-            -JsonPath $metadataPath.FullName `
+            -JsonPath '${{ steps.contract_artifacts.outputs.metadata_path }}' `
             -SchemaPath docs/schemas/comparevi-tools-release-manifest-v1.schema.json
 
       - name: Validate release provenance schema
         shell: pwsh
         run: |
           pwsh -NoLogo -NoProfile -File tools/Invoke-JsonSchemaLite.ps1 `
-            -JsonPath cli-dl/provenance.json `
+            -JsonPath '${{ steps.contract_artifacts.outputs.provenance_path }}' `
             -SchemaPath docs/schemas/run-provenance-v1.schema.json
 
       - name: Contract checksum scenario (Linux)
@@ -582,11 +608,11 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          v='${{ needs.release.outputs.cli_version }}'
-          file="comparevi-cli-v${v}-linux-x64-selfcontained.tar.gz"
-          tarball="cli-dl/${file}"
+          file='${{ steps.contract_artifacts.outputs.linux_tarball_name }}'
+          tarball='${{ steps.contract_artifacts.outputs.linux_tarball_path }}'
+          sum_path='${{ steps.contract_artifacts.outputs.checksum_path }}'
           [ -f "$tarball" ]
-          expected=$(awk -v file="$file" '$2 ~ file {print tolower($1)}' cli-dl/SHA256SUMS.txt)
+          expected=$(awk -v file="$file" '$2 ~ file {print tolower($1)}' "$sum_path")
           [ -n "$expected" ]
           actual=$(sha256sum "$tarball" | awk '{print tolower($1)}')
           [ "$actual" = "$expected" ]
@@ -597,8 +623,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          v='${{ needs.release.outputs.cli_version }}'
-          tarball="cli-dl/comparevi-cli-v${v}-linux-x64-selfcontained.tar.gz"
+          tarball='${{ steps.contract_artifacts.outputs.linux_tarball_path }}'
           mkdir -p cli-contract
           tar -xzf "$tarball" -C cli-contract
           bin="cli-contract/comparevi-cli"
