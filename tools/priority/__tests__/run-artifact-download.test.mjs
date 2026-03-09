@@ -135,3 +135,95 @@ test('downloadNamedArtifacts records missing artifact requests without invoking 
   assert.equal(result.report.downloads[0].failureClass, 'artifact-not-found');
   assert.equal(processCallCount, 0);
 });
+
+test('downloadNamedArtifacts paginates artifact discovery until a later page contains the requested artifact', async (t) => {
+  const { downloadNamedArtifacts } = await loadModule();
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'run-artifact-download-pagination-'));
+  t.after(() => fs.rmSync(tmpDir, { recursive: true, force: true }));
+
+  const seenCommands = [];
+  const result = downloadNamedArtifacts({
+    repository: 'LabVIEW-Community-CI-CD/compare-vi-cli-action',
+    runId: '22879026878',
+    artifactNames: ['page-two-artifact'],
+    destinationRoot: path.join(tmpDir, 'artifacts'),
+    reportPath: path.join(tmpDir, 'report.json'),
+    runGhJsonFn(args) {
+      seenCommands.push(args.at(-1));
+      if (String(args.at(-1)).endsWith('page=1')) {
+        return {
+          total_count: 101,
+          artifacts: Array.from({ length: 100 }, (_, index) => ({
+            id: index + 1,
+            name: `artifact-${index + 1}`,
+            size_in_bytes: 1,
+            expired: false,
+          })),
+        };
+      }
+      return {
+        total_count: 101,
+        artifacts: [
+          {
+            id: 101,
+            name: 'page-two-artifact',
+            size_in_bytes: 2,
+            expired: false,
+          },
+        ],
+      };
+    },
+    runProcessFn(_command, args) {
+      const destinationIndex = args.indexOf('-D');
+      const destination = args[destinationIndex + 1];
+      writeFile(path.join(destination, 'artifact.txt'), 'ok\n');
+      return { status: 0, stdout: '', stderr: '', error: null };
+    },
+  });
+
+  assert.equal(result.report.status, 'pass');
+  assert.equal(result.report.summary.availableArtifactCount, 101);
+  assert.equal(result.report.summary.downloadedCount, 1);
+  assert.deepEqual(seenCommands, [
+    'repos/LabVIEW-Community-CI-CD/compare-vi-cli-action/actions/runs/22879026878/artifacts?per_page=100&page=1',
+    'repos/LabVIEW-Community-CI-CD/compare-vi-cli-action/actions/runs/22879026878/artifacts?per_page=100&page=2',
+  ]);
+});
+
+test('downloadNamedArtifacts sanitizes artifact names before building destination paths', async (t) => {
+  const { downloadNamedArtifacts } = await loadModule();
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'run-artifact-download-sanitize-'));
+  t.after(() => fs.rmSync(tmpDir, { recursive: true, force: true }));
+
+  let destination = null;
+  const result = downloadNamedArtifacts({
+    repository: 'LabVIEW-Community-CI-CD/compare-vi-cli-action',
+    runId: '22879026878',
+    artifactNames: ['../dangerous/path'],
+    destinationRoot: path.join(tmpDir, 'artifacts'),
+    reportPath: path.join(tmpDir, 'report.json'),
+    runGhJsonFn() {
+      return {
+        artifacts: [
+          {
+            id: 1,
+            name: '../dangerous/path',
+            size_in_bytes: 1,
+            expired: false,
+          },
+        ],
+      };
+    },
+    runProcessFn(_command, args) {
+      const destinationIndex = args.indexOf('-D');
+      destination = args[destinationIndex + 1];
+      writeFile(path.join(destination, 'artifact.txt'), 'ok\n');
+      return { status: 0, stdout: '', stderr: '', error: null };
+    },
+  });
+
+  assert.equal(result.report.status, 'pass');
+  assert.ok(destination);
+  assert.equal(path.relative(path.join(tmpDir, 'artifacts'), destination), '..%2Fdangerous%2Fpath');
+  assert.deepEqual(result.report.downloads[0].files, ['artifact.txt']);
+});

@@ -14,6 +14,8 @@ export const DEFAULT_REPORT_PATH = path.join(
 );
 
 const GH_JSON_MAX_BUFFER_BYTES = 32 * 1024 * 1024;
+const ARTIFACTS_PER_PAGE = 100;
+const MAX_ARTIFACT_PAGES = 100;
 
 function normalizeText(value) {
   if (value === null || value === undefined) {
@@ -86,6 +88,11 @@ function formatGhCommand(args) {
   return ['gh', ...args].join(' ');
 }
 
+export function sanitizeArtifactDestinationSegment(artifactName) {
+  const normalized = normalizeText(artifactName) ?? 'artifact';
+  return encodeURIComponent(normalized);
+}
+
 export function isPolicyWrapperRejection(message) {
   const normalized = normalizeText(message)?.toLowerCase();
   if (!normalized) {
@@ -138,7 +145,8 @@ function runProcess(command, args) {
   });
 
   return {
-    status: result.status ?? 0,
+    status: typeof result.status === 'number' ? result.status : null,
+    signal: normalizeText(result.signal),
     stdout: result.stdout ?? '',
     stderr: result.stderr ?? '',
     error: result.error ?? null,
@@ -163,11 +171,29 @@ function runGhJson(args) {
 }
 
 export function listRunArtifacts({ repository, runId, runGhJsonFn = runGhJson }) {
-  const commandArgs = ['api', `repos/${repository}/actions/runs/${runId}/artifacts?per_page=100`];
-  const payload = runGhJsonFn(commandArgs);
-  const artifacts = Array.isArray(payload?.artifacts) ? payload.artifacts : [];
+  const commands = [];
+  const artifacts = [];
+  let page = 1;
+  let expectedTotal = null;
+
+  while (page <= MAX_ARTIFACT_PAGES) {
+    const commandArgs = ['api', `repos/${repository}/actions/runs/${runId}/artifacts?per_page=${ARTIFACTS_PER_PAGE}&page=${page}`];
+    commands.push(formatGhCommand(commandArgs));
+    const payload = runGhJsonFn(commandArgs);
+    const pageArtifacts = Array.isArray(payload?.artifacts) ? payload.artifacts : [];
+    expectedTotal = normalizeInteger(payload?.total_count) ?? expectedTotal;
+    artifacts.push(...pageArtifacts);
+    if (pageArtifacts.length < ARTIFACTS_PER_PAGE) {
+      break;
+    }
+    if (expectedTotal !== null && artifacts.length >= expectedTotal) {
+      break;
+    }
+    page += 1;
+  }
+
   return {
-    command: formatGhCommand(commandArgs),
+    command: commands.join(' ; '),
     artifacts: artifacts.map((artifact) => ({
       id: normalizeInteger(artifact?.id),
       name: normalizeText(artifact?.name),
@@ -251,7 +277,7 @@ export function downloadNamedArtifacts({
 
   for (const artifactName of requestedArtifacts) {
     const artifact = artifactsByName.get(artifactName) ?? null;
-    const destination = path.join(destinationRoot, artifactName);
+    const destination = path.join(destinationRoot, sanitizeArtifactDestinationSegment(artifactName));
     const commandArgs = [
       'run',
       'download',
@@ -308,7 +334,7 @@ export function downloadNamedArtifacts({
         normalizeText(result.stderr) ??
         normalizeText(result.stdout) ??
         (result.error instanceof Error ? result.error.message : normalizeText(result.error)) ??
-        `gh run download exited with code ${result.status ?? 'unknown'}`;
+        `gh run download exited with code ${result.status ?? 'unknown'}${result.signal ? ` (signal: ${result.signal})` : ''}`;
       entry.status = 'failed';
       entry.failureClass = classifyArtifactDownloadFailure(message);
       entry.errorMessage = message;

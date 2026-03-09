@@ -261,9 +261,13 @@
           "type": "string"
         },
         "artifact": {
-          "type": [
-            "object",
-            "null"
+          "anyOf": [
+            {
+              "$ref": "#/definitions/artifact"
+            },
+            {
+              "type": "null"
+            }
           ]
         },
         "files": {

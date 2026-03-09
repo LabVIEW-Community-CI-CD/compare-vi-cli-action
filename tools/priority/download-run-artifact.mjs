@@ -1,6 +1,8 @@
 #!/usr/bin/env node
 
+import path from 'node:path';
 import process from 'node:process';
+import { fileURLToPath } from 'node:url';
 import {
   DEFAULT_DESTINATION_ROOT,
   DEFAULT_REPORT_PATH,
@@ -113,8 +115,13 @@ export async function main(argv = process.argv) {
   return result.report.status === 'pass' ? 0 : 1;
 }
 
-const isDirectExecution = process.argv[1] && import.meta.url === new URL(`file://${process.argv[1].replace(/\\/g, '/')}`).href;
-if (isDirectExecution) {
+export function isDirectExecution(argv = process.argv, metaUrl = import.meta.url) {
+  const modulePath = path.resolve(fileURLToPath(metaUrl));
+  const invokedPath = argv[1] ? path.resolve(argv[1]) : null;
+  return Boolean(invokedPath && invokedPath === modulePath);
+}
+
+if (isDirectExecution(process.argv, import.meta.url)) {
   const exitCode = await main(process.argv);
   process.exitCode = exitCode;
 }
