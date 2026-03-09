@@ -284,7 +284,7 @@ Use `tools/workflows/update_workflows.py` for mechanical updates (comment-preser
      -AppendToStepSummary`
   4. Sweep LVCompare (only) if rogues found and human approves.
   5. Honour pause etiquette (“brief delay (~90 seconds)”) and log waits.
-  6. Execute “First Actions for the Next Agent” from `AGENT_HANDOFF.txt`.
+  6. Execute “First Actions” from `AGENT_HANDOFF.txt`.
 - Convenience helpers:
   - `pwsh -File tools/Print-AgentHandoff.ps1 -ApplyToggles`
   - `pwsh -File tools/Print-AgentHandoff.ps1 -ApplyToggles -AutoTrim`

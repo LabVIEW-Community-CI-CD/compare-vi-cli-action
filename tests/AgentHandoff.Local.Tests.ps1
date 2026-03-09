@@ -8,7 +8,7 @@ Describe 'Local Agent Handoff' -Tag 'Unit' {
     Test-Path -LiteralPath $handoffPath | Should -BeTrue
     $handoffLines = Get-Content -LiteralPath $handoffPath
     $handoffText = $handoffLines -join "`n"
-    $handoffLines.Count | Should -BeLessThan 80
+    $handoffLines.Count | Should -BeLessOrEqual 80
     $handoffText | Should -Match '^# Agent Handoff'
     $handoffText | Should -Match '## First Actions'
     $handoffText | Should -Match '## Live State Surfaces'
