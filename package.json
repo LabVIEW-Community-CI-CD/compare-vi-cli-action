@@ -83,6 +83,7 @@
     "priority:deployment:assert": "node tools/priority/assert-validation-deployment-determinism.mjs",
     "priority:deployment:gate-policy": "node tools/priority/check-deployment-gates.mjs",
     "priority:release:scorecard": "node tools/priority/release-scorecard.mjs",
+    "priority:release:cadence": "node tools/priority/release-cadence-check.mjs",
     "priority:release:conductor": "node tools/priority/release-conductor.mjs",
     "priority:remediation:slo": "node tools/priority/remediation-slo-evaluator.mjs",
     "priority:weekly:scorecard": "node tools/priority/weekly-scorecard.mjs",

@@ -133,9 +133,19 @@ jobs:
 
             let sharedVersion = String(inputs.shared_version || '').trim();
             if (!sharedVersion) {
-              const csproj = fs.readFileSync('src/CompareVi.Shared/CompareVi.Shared.csproj', 'utf8');
-              const match = csproj.match(/<PackageVersion>([^<]+)<\/PackageVersion>/i) || csproj.match(/<Version>([^<]+)<\/Version>/i);
-              sharedVersion = match ? String(match[1]).trim() : '';
+              const props = fs.readFileSync('Directory.Build.props', 'utf8');
+              const propsVersionMatch = props.match(/<Version>([^<]+)<\/Version>/i);
+              const packageVersionMatch = props.match(/<CompareViSharedPackageVersion\b[^>]*>([^<]+)<\/CompareViSharedPackageVersion>/i);
+              const propsVersion = propsVersionMatch ? String(propsVersionMatch[1]).trim() : '';
+              const configuredPackageVersion = packageVersionMatch ? String(packageVersionMatch[1]).trim() : '';
+
+              if (configuredPackageVersion === '$(Version)') {
+                sharedVersion = propsVersion;
+              } else if (configuredPackageVersion) {
+                sharedVersion = configuredPackageVersion.replace(/\$\(Version\)/g, propsVersion).trim();
+              } else {
+                sharedVersion = propsVersion;
+              }
             }
 
             const reason = shouldRun
@@ -152,7 +162,7 @@ jobs:
               return;
             }
             if (publishShared && !sharedVersion) {
-              core.setFailed('publish_shared=true requires shared_version (or CompareVi.Shared PackageVersion).');
+              core.setFailed('publish_shared=true requires shared_version (or Directory.Build.props CompareViSharedPackageVersion/Version).');
               return;
             }
 

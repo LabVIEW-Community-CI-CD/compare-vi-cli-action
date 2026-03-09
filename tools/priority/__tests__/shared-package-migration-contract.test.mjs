@@ -36,3 +36,12 @@ test('dotnet-shared workflow enforces package-first parity lane', () => {
   assert.match(workflow, /expected_resolved:\s*package/i);
   assert.match(workflow, /Assert shared-source resolution/i);
 });
+
+test('monthly stability workflow derives CompareVi.Shared version from Directory.Build.props', () => {
+  const workflow = read('.github/workflows/monthly-stability-release.yml');
+  assert.match(workflow, /fs\.readFileSync\('Directory\.Build\.props', 'utf8'\)/);
+  assert.match(workflow, /<CompareViSharedPackageVersion\\b\[\^>\]\*>\(\[\^<\]\+\)<\\\/CompareViSharedPackageVersion>/);
+  assert.match(workflow, /configuredPackageVersion === '\$\(Version\)'/);
+  assert.match(workflow, /publish_shared=true requires shared_version \(or Directory\.Build\.props CompareViSharedPackageVersion\/Version\)\./);
+  assert.doesNotMatch(workflow, /fs\.readFileSync\('src\/CompareVi\.Shared\/CompareVi\.Shared\.csproj', 'utf8'\)/);
+});
