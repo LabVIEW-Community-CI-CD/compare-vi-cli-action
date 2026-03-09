@@ -56,6 +56,26 @@ test('parseArgs applies defaults and explicit values', () => {
   assert.equal(parsed.tagsFilePath, 'tags.txt');
 });
 
+test('parseArgs treats quoted blank workflow inputs as null instead of missing', () => {
+  const parsed = parseArgs([
+    'node',
+    'resolve-tools-image-publish-context.mjs',
+    '--version',
+    '',
+    '--channel',
+    '',
+    '--tag',
+    '',
+    '--release-tag',
+    'v0.6.3-tools.4'
+  ]);
+
+  assert.equal(parsed.version, null);
+  assert.equal(parsed.channel, null);
+  assert.equal(parsed.tag, null);
+  assert.equal(parsed.releaseTag, 'v0.6.3-tools.4');
+});
+
 test('normalizeRequestedVersion strips supported prefixes', () => {
   assert.equal(normalizeRequestedVersion('comparevi-tools-v0.6.3-tools.4'), '0.6.3-tools.4');
   assert.equal(normalizeRequestedVersion('v0.6.3'), '0.6.3');

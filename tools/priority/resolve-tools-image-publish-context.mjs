@@ -38,7 +38,7 @@ function printUsage() {
 
 function readOptionValue(args, index, token) {
   const next = args[index + 1];
-  if (!next || next.startsWith('-')) {
+  if (typeof next === 'undefined' || (next.startsWith('-') && next.length > 0)) {
     throw new Error(`Missing value for ${token}.`);
   }
   return next;
