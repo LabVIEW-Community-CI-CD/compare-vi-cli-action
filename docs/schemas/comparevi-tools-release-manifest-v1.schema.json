@@ -153,6 +153,40 @@
             }
           },
           "additionalProperties": false
+        },
+        "hostedNiLinuxRunner": {
+          "type": "object",
+          "required": [
+            "entryScriptPath",
+            "supportScriptPaths",
+            "captureFileName",
+            "defaultImage",
+            "notes"
+          ],
+          "properties": {
+            "entryScriptPath": {
+              "type": "string"
+            },
+            "supportScriptPaths": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "captureFileName": {
+              "type": "string"
+            },
+            "defaultImage": {
+              "type": "string"
+            },
+            "notes": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            }
+          },
+          "additionalProperties": false
         }
       },
       "additionalProperties": false

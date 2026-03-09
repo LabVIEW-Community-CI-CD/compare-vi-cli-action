@@ -373,3 +373,6 @@ module consumers. Compatibility expectations for that asset are strict:
 - verify the zip against the release `SHA256SUMS.txt`
 - import `tools/CompareVI.Tools/CompareVI.Tools.psd1` from the extracted bundle
   instead of mixing helper files from multiple tags
+- when a downstream repo uses hosted NI Linux diagnostics, resolve
+  `tools/Run-NILinuxContainerCompare.ps1` from the extracted bundle root and
+  keep its adjacent support scripts in place
