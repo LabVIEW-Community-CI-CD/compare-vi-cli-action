@@ -561,6 +561,26 @@
       "portfolioTrack": "Approvals"
     },
     {
+      "url": "https://github.com/LabVIEW-Community-CI-CD/compare-vi-cli-action/issues/969",
+      "status": "Todo",
+      "program": "Approval Control Plane",
+      "phase": "Helper Workflow",
+      "environmentClass": "Infra",
+      "blockingSignal": "Scope",
+      "evidenceState": "Partial",
+      "portfolioTrack": "Approvals"
+    },
+    {
+      "url": "https://github.com/LabVIEW-Community-CI-CD/compare-vi-cli-action/issues/970",
+      "status": "Todo",
+      "program": "Approval Control Plane",
+      "phase": "Policy",
+      "environmentClass": "Infra",
+      "blockingSignal": "Review",
+      "evidenceState": "Partial",
+      "portfolioTrack": "Approvals"
+    },
+    {
       "url": "https://github.com/LabVIEW-Community-CI-CD/compare-vi-cli-action-fork/issues/1",
       "status": "Todo",
       "program": "Shared Infra",
