@@ -8,6 +8,7 @@ import {
   isSameRepository,
   isSameOwnerForkRepository,
   isRepositoryForkOfUpstream,
+  loadRepositoryGraphMetadata,
   ensureOriginFork,
   buildGhPrCreateArgs,
   selectPullRequestCreateStrategy,
@@ -47,6 +48,40 @@ test('repository fork matching requires the upstream network relationship', () =
     ),
     false
   );
+});
+
+test('loadRepositoryGraphMetadata queries only supported repository fields and maps the parent fork lineage', () => {
+  let observedQuery = null;
+  const metadata = loadRepositoryGraphMetadata(
+    '/tmp/repo',
+    { owner: 'LabVIEW-Community-CI-CD', repo: 'compare-vi-cli-action-fork' },
+    {
+      runGhGraphqlFn: (_repoRoot, query) => {
+        observedQuery = query;
+        return {
+          data: {
+            repository: {
+              id: 'R_fork',
+              nameWithOwner: 'LabVIEW-Community-CI-CD/compare-vi-cli-action-fork',
+              isFork: true,
+              parent: {
+                nameWithOwner: 'LabVIEW-Community-CI-CD/compare-vi-cli-action'
+              }
+            }
+          }
+        };
+      }
+    }
+  );
+
+  assert.match(observedQuery, /parent \{ nameWithOwner \}/);
+  assert.doesNotMatch(observedQuery, /source \{/);
+  assert.deepEqual(metadata, {
+    id: 'R_fork',
+    nameWithOwner: 'LabVIEW-Community-CI-CD/compare-vi-cli-action-fork',
+    isFork: true,
+    parentNameWithOwner: 'LabVIEW-Community-CI-CD/compare-vi-cli-action'
+  });
 });
 
 test('ensureOriginFork accepts a same-owner renamed fork when metadata proves it belongs to the upstream network', () => {

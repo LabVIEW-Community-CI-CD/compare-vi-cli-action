@@ -143,7 +143,6 @@ export function loadRepositoryGraphMetadata(
         nameWithOwner
         isFork
         parent { nameWithOwner }
-        source { nameWithOwner }
       }
     }
   `;
@@ -166,8 +165,7 @@ export function loadRepositoryGraphMetadata(
     id: repoNode.id,
     nameWithOwner: repoNode.nameWithOwner ?? buildRepositorySlug(repository),
     isFork: repoNode.isFork === true,
-    parentNameWithOwner: repoNode.parent?.nameWithOwner ?? null,
-    sourceNameWithOwner: repoNode.source?.nameWithOwner ?? null
+    parentNameWithOwner: repoNode.parent?.nameWithOwner ?? null
   };
 }
 
