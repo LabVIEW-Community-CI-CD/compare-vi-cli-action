@@ -1,0 +1,21 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://labview-community-ci-cd.github.io/compare-vi-cli-action/schemas/standing-priority-no-standing-v1.schema.json",
+  "title": "Standing Priority Queue Empty Snapshot",
+  "type": "object",
+  "required": ["schema", "message", "reason", "openIssueCount"],
+  "properties": {
+    "schema": { "type": "string", "const": "standing-priority/no-standing@v1" },
+    "generatedAt": { "type": ["string", "null"], "format": "date-time" },
+    "repository": { "type": ["string", "null"] },
+    "labels": {
+      "type": "array",
+      "items": { "type": "string" }
+    },
+    "message": { "type": "string", "minLength": 1 },
+    "reason": { "type": "string", "minLength": 1 },
+    "openIssueCount": { "type": "integer", "minimum": 0 },
+    "failOnMissing": { "type": ["boolean", "null"] }
+  },
+  "additionalProperties": true
+}

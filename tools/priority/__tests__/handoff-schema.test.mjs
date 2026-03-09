@@ -38,8 +38,20 @@ test('handoff issue summary matches schema', () => {
   validateFixture('issue summary', 'docs/schemas/standing-priority-issue-v1.schema.json', 'tools/priority/__fixtures__/handoff/issue-summary.json');
 });
 
+test('handoff no-standing issue summary matches schema', () => {
+  validateFixture(
+    'no-standing issue summary',
+    'docs/schemas/standing-priority-no-standing-v1.schema.json',
+    'tools/priority/__fixtures__/handoff/issue-summary-no-standing.json'
+  );
+});
+
 test('handoff router matches schema', () => {
   validateFixture('router', 'docs/schemas/handoff-router-v1.schema.json', 'tools/priority/__fixtures__/handoff/router.json');
+});
+
+test('handoff idle router matches schema', () => {
+  validateFixture('idle router', 'docs/schemas/handoff-router-v1.schema.json', 'tools/priority/__fixtures__/handoff/router-idle.json');
 });
 
 test('handoff hook summary matches schema', () => {

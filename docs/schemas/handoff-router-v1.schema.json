@@ -14,7 +14,7 @@
       "const": "agent/priority-router@v1"
     },
     "issue": {
-      "type": "integer"
+      "type": ["integer", "null"]
     },
     "updatedAt": {
       "type": ["string", "null"],

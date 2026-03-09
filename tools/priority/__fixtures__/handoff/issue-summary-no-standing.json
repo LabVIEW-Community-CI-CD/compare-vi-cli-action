@@ -1,0 +1,10 @@
+{
+  "schema": "standing-priority/no-standing@v1",
+  "generatedAt": "2026-03-08T23:51:50.543Z",
+  "repository": "LabVIEW-Community-CI-CD/compare-vi-cli-action",
+  "labels": ["standing-priority"],
+  "message": "No open issues remain in LabVIEW-Community-CI-CD/compare-vi-cli-action; the standing-priority queue is empty.",
+  "reason": "queue-empty",
+  "openIssueCount": 0,
+  "failOnMissing": true
+}
