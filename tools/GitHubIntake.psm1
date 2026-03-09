@@ -326,9 +326,9 @@ function Format-GitHubIntakeCommandLine {
     }
 
     $text = [string]$argument
-    if ($text -match '\s') {
-      $escaped = $text.Replace('"', '\"')
-      $parts.Add(('"{0}"' -f $escaped))
+    if ($text -match '[\s'']|"') {
+      $escaped = $text -replace "'", "''"
+      $parts.Add(("'{0}'" -f $escaped))
     } else {
       $parts.Add($text)
     }
@@ -375,11 +375,8 @@ function New-GitHubIntakeExecutionPlan {
   $draftOutput = Resolve-GitHubIntakeDraftOutputPath -RouteType $route.routeType -OutputPath $DraftOutputPath
   $executionKind = [string]$route.executionKind
   $issueTemplate = $null
-  $pullRequestTemplate = $null
   if ([string]$route.routeType -eq 'issue-template') {
     $issueTemplate = Resolve-GitHubIssueTemplate -TemplateName ([string]$context.templateKey)
-  } elseif ([string]$route.routeType -eq 'pull-request-template') {
-    $pullRequestTemplate = Resolve-GitHubPullRequestTemplate -TemplateName ([string]$context.templateKey)
   }
 
   $resolvedTitle = $null
@@ -626,8 +623,7 @@ function Invoke-GitHubIntakeExecutionPlan {
       $output = & $NativeInvoker $commandFilePath $commandArguments
     }
     'branch-orchestrator' {
-      $commandFilePath = 'pwsh'
-      $commandArguments = @($Plan.execution.arguments)
+      $commandFilePath = Join-Path $PSScriptRoot 'Branch-Orchestrator.ps1'
       $orchestratorParameters = @{
         Issue   = [int]$Plan.draft.issue
         Execute = $true
@@ -639,12 +635,20 @@ function Invoke-GitHubIntakeExecutionPlan {
         $orchestratorParameters['PRTemplate'] = [string]$Plan.execution.pullRequestTemplate
       }
 
+      $commandArguments = @('-Issue', [string]$orchestratorParameters.Issue, '-Execute')
+      if ($orchestratorParameters.ContainsKey('Base')) {
+        $commandArguments += @('-Base', [string]$orchestratorParameters.Base)
+      }
+      if ($orchestratorParameters.ContainsKey('PRTemplate')) {
+        $commandArguments += @('-PRTemplate', [string]$orchestratorParameters.PRTemplate)
+      }
+
       $output = & $BranchOrchestratorInvoker $orchestratorParameters
     }
     'open-link' {
-      $commandFilePath = 'start'
-      $commandArguments = @($Plan.execution.arguments)
-      $output = if ($commandArguments.Count -gt 0) { [string]$commandArguments[0] } else { $null }
+      $commandFilePath = $null
+      $commandArguments = @()
+      $output = if ($Plan.execution.arguments -and $Plan.execution.arguments.Count -gt 0) { [string]$Plan.execution.arguments[0] } else { $null }
     }
     default {
       throw "Unsupported execution kind '$($Plan.execution.kind)'."

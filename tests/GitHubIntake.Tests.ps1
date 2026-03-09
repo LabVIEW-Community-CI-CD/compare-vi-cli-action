@@ -242,6 +242,12 @@ Describe 'GitHubIntake.psm1' {
     $plan.draft.outputPath | Should -Be 'issue-body.md'
   }
 
+  It 'quotes whitespace and embedded quotes in the execution display command' {
+    $plan = New-GitHubIntakeExecutionPlan -Scenario 'workflow-policy' -Title 'Say "hello" now'
+
+    $plan.execution.displayCommand | Should -Match ([regex]::Escape("--title 'Say ""hello"" now'"))
+  }
+
   It 'builds a branch-orchestrator plan for workflow-policy PR intake from snapshot context' {
     $snapshotDir = Join-Path $TestDrive 'issue'
     New-Item -ItemType Directory -Path $snapshotDir -Force | Out-Null

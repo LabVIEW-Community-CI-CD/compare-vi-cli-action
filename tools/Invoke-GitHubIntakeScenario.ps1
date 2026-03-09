@@ -49,7 +49,7 @@ function Write-JsonFile {
     New-Item -ItemType Directory -Path $parent -Force | Out-Null
   }
 
-  $Value | ConvertTo-Json -Depth 10 | Set-Content -LiteralPath $Path -NoNewline
+  $Value | ConvertTo-Json -Depth 10 | Set-Content -LiteralPath $Path -NoNewline -Encoding utf8
 }
 
 $currentBranch = $null

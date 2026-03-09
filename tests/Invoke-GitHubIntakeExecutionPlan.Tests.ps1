@@ -64,6 +64,9 @@ Describe 'Invoke-GitHubIntakeExecutionPlan' {
 
     $result.executionKind | Should -Be 'branch-orchestrator'
     $result.draftWritten | Should -BeFalse
+    $result.commandFilePath | Should -Match 'Branch-Orchestrator\.ps1$'
+    $result.arguments | Should -Contain '-Issue'
+    $result.arguments | Should -Contain '-PRTemplate'
     $state.DraftCalled | Should -BeFalse
     $state.Invocation.Issue | Should -Be 923
     $state.Invocation.Execute | Should -BeTrue
