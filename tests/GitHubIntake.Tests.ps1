@@ -68,9 +68,63 @@ Describe 'GitHubIntake.psm1' {
     $route.targetKey | Should -Be 'human-change'
     $route.targetPath | Should -Be '.github/PULL_REQUEST_TEMPLATE/human-change.md'
     $route.helperPath | Should -Be 'tools/New-GitHubIntakeDraft.ps1'
-    $route.executeCommand | Should -Be 'gh pr create --title "<title>" --body-file pr-body.md'
-    $route.executionKind | Should -Be 'gh-pr-create'
+    $route.executeCommand | Should -Be 'node tools/npm/run-script.mjs priority:pr -- --issue <number> --repo <owner/repo> --branch <branch> --base <base> --title "<title>" --body-file pr-body.md'
+    $route.executionKind | Should -Be 'priority-pr-create'
     $route.execution.branchSource | Should -Be 'current-or-input'
+  }
+
+  It 'normalizes legacy gh-pr-create execution kinds to the priority helper contract' {
+    $catalogPath = Join-Path $TestDrive 'github-intake-catalog.json'
+    @'
+{
+  "schema": "github-intake/catalog@v1",
+  "issueTemplates": [],
+  "pullRequestTemplates": [
+    {
+      "key": "human-change",
+      "path": ".github/PULL_REQUEST_TEMPLATE/human-change.md",
+      "templateLabel": "human-change",
+      "metadataMode": "human",
+      "summary": "Human-authored PR template."
+    }
+  ],
+  "contactLinks": [],
+  "routes": [
+    {
+      "scenario": "legacy-human-pr",
+      "routeType": "pull-request-template",
+      "targetKey": "human-change",
+      "helperPath": "tools/New-GitHubIntakeDraft.ps1",
+      "command": "pwsh -File tools/New-GitHubIntakeDraft.ps1 -Scenario legacy-human-pr -OutputPath pr-body.md",
+      "executeCommand": "gh pr create --title \"<title>\" --body-file pr-body.md",
+      "execution": {
+        "kind": "gh-pr-create",
+        "titleSource": "issue-derived",
+        "bodySource": "draft-output",
+        "baseSource": "input-or-default",
+        "branchSource": "current-or-input",
+        "issueSource": "input-or-snapshot"
+      },
+      "summary": "Legacy route."
+    }
+  ]
+}
+'@ | Set-Content -LiteralPath $catalogPath -Encoding utf8
+
+    $previous = $env:COMPAREVI_GITHUB_INTAKE_CATALOG_PATH
+    try {
+      $env:COMPAREVI_GITHUB_INTAKE_CATALOG_PATH = $catalogPath
+      $route = Resolve-GitHubIntakeRoute -Scenario 'legacy-human-pr'
+    } finally {
+      if ($null -eq $previous) {
+        Remove-Item Env:COMPAREVI_GITHUB_INTAKE_CATALOG_PATH -ErrorAction SilentlyContinue
+      } else {
+        $env:COMPAREVI_GITHUB_INTAKE_CATALOG_PATH = $previous
+      }
+    }
+
+    $route.executionKind | Should -Be 'priority-pr-create'
+    $route.execution.kind | Should -Be 'priority-pr-create'
   }
 
   It 'resolves an issue snapshot from the override directory when present' {
@@ -93,6 +147,35 @@ Describe 'GitHubIntake.psm1' {
 
     $snapshot.number | Should -Be 921
     $snapshot.title | Should -Be 'Catalog issue'
+  }
+
+  It 'falls back to GitHub issue lookup when no local snapshot exists for an explicit issue' {
+    Mock -ModuleName GitHubIntake Resolve-GitHubIssueSnapshotFromGitHub {
+      param([int]$Issue)
+      [pscustomobject]@{
+        number = $Issue
+        title  = 'Live catalog issue'
+        url    = 'https://example.test/issues/963'
+        labels = @('enhancement')
+      }
+    }
+
+    $snapshotDir = Join-Path $TestDrive 'missing-issue-dir'
+    $previous = $env:COMPAREVI_GITHUB_INTAKE_SNAPSHOT_DIR
+    try {
+      $env:COMPAREVI_GITHUB_INTAKE_SNAPSHOT_DIR = $snapshotDir
+      $snapshot = Resolve-GitHubIssueSnapshot -Issue 963
+    } finally {
+      if ($null -eq $previous) {
+        Remove-Item Env:COMPAREVI_GITHUB_INTAKE_SNAPSHOT_DIR -ErrorAction SilentlyContinue
+      } else {
+        $env:COMPAREVI_GITHUB_INTAKE_SNAPSHOT_DIR = $previous
+      }
+    }
+
+    $snapshot.number | Should -Be 963
+    $snapshot.title | Should -Be 'Live catalog issue'
+    Should -Invoke Resolve-GitHubIssueSnapshotFromGitHub -ModuleName GitHubIntake -Times 1 -Exactly
   }
 
   It 'loads the intake catalog from the override path when present' {
@@ -180,6 +263,24 @@ Describe 'GitHubIntake.psm1' {
     $context.issueTitle | Should -Be 'Catalog issue'
     $context.issueUrl | Should -Be 'https://example.test/issues/921'
     $context.branch | Should -Be 'issue/921-work'
+    $context.standingPriority | Should -BeTrue
+    $context.snapshotResolved | Should -BeTrue
+  }
+
+  It 'treats label objects from live snapshots as standing-priority markers' {
+    Mock -ModuleName GitHubIntake Resolve-GitHubIssueSnapshot {
+      [pscustomobject]@{
+        number = 963
+        title  = 'Live GH issue'
+        url    = 'https://example.test/issues/963'
+        labels = @([pscustomobject]@{ name = 'standing-priority' })
+      }
+    }
+
+    $context = Resolve-GitHubIntakeDraftContext -Scenario 'human-pr' -Issue 963 -CurrentBranch 'issue/963-org-owned-fork-pr-helper'
+
+    $context.issueTitle | Should -Be 'Live GH issue'
+    $context.issueUrl | Should -Be 'https://example.test/issues/963'
     $context.standingPriority | Should -BeTrue
     $context.snapshotResolved | Should -BeTrue
   }

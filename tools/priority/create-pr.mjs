@@ -13,13 +13,100 @@ import {
   resolveUpstream,
   ensureOriginFork,
   pushBranch,
-  runGhPrCreate
+  runGhPrCreate,
+  parseRepositorySlug
 } from './lib/remote-utils.mjs';
 
 const ROUTER_RELATIVE_PATH = path.join('tests', 'results', '_agent', 'issue', 'router.json');
 const CACHE_RELATIVE_PATH = '.agent_priority_cache.json';
 const NO_STANDING_REPORT_RELATIVE_PATH = path.join('tests', 'results', '_agent', 'issue', 'no-standing-priority.json');
 const STANDING_PRIORITY_LABELS = new Set(['standing-priority', 'fork-standing-priority']);
+const USAGE_LINES = [
+  'Usage: node tools/npm/run-script.mjs priority:pr -- [options]',
+  '',
+  'Opens a pull request for the current branch (or an explicit branch), using the fork-aware helper contract.',
+  '',
+  'Options:',
+  '  --repo <owner/repo>     Upstream repository override.',
+  '  --issue <number>        Explicit issue number override.',
+  '  --branch <name>         Branch to open instead of the current checkout.',
+  '  --base <name>           Base branch (default: develop).',
+  '  --title <text>          Explicit pull request title.',
+  '  --body <text>           Explicit pull request body.',
+  '  --body-file <path>      Read the pull request body from a file.',
+  '  -h, --help              Show this message and exit.'
+];
+
+export function printUsage(lines = USAGE_LINES) {
+  for (const line of lines) {
+    console.log(line);
+  }
+}
+
+export function parseArgs(argv = process.argv) {
+  const args = argv.slice(2);
+  const options = {
+    repository: null,
+    issue: null,
+    branch: null,
+    base: null,
+    title: null,
+    body: null,
+    bodyFile: null,
+    help: false
+  };
+
+  const tokensRequiringValue = new Set([
+    '--repo',
+    '--issue',
+    '--branch',
+    '--base',
+    '--title',
+    '--body',
+    '--body-file'
+  ]);
+
+  for (let index = 0; index < args.length; index += 1) {
+    const token = args[index];
+    const next = args[index + 1];
+
+    if (token === '-h' || token === '--help') {
+      options.help = true;
+      continue;
+    }
+
+    if (tokensRequiringValue.has(token)) {
+      if (next === undefined) {
+        throw new Error(`Missing value for ${token}.`);
+      }
+      if (token !== '--body' && next.startsWith('-')) {
+        throw new Error(`Missing value for ${token}.`);
+      }
+      index += 1;
+      if (token === '--repo') options.repository = next;
+      if (token === '--issue') {
+        options.issue = toPositiveInteger(next);
+        if (!options.issue) {
+          throw new Error(`Invalid issue number for ${token}: ${next}`);
+        }
+      }
+      if (token === '--branch') options.branch = next;
+      if (token === '--base') options.base = next;
+      if (token === '--title') options.title = next;
+      if (token === '--body') options.body = next;
+      if (token === '--body-file') options.bodyFile = next;
+      continue;
+    }
+
+    throw new Error(`Unknown option: ${token}`);
+  }
+
+  if (options.body && options.bodyFile) {
+    throw new Error('Use either --body or --body-file, not both.');
+  }
+
+  return options;
+}
 
 export function ensurePrSourceBranch(branch) {
   if (!branch || branch === 'HEAD') {
@@ -41,6 +128,14 @@ export function readJsonFile(filePath, readFileSyncFn = readFileSync) {
   } catch {
     return null;
   }
+}
+
+export function readBodyFromFile(filePath, readFileSyncFn = readFileSync) {
+  const body = readFileSyncFn(filePath, 'utf8');
+  if (!String(body || '').trim()) {
+    throw new Error(`Pull request body file '${filePath}' is empty.`);
+  }
+  return body;
 }
 
 function toPositiveInteger(value) {
@@ -189,8 +284,23 @@ export function buildBody(issueNumber, env = process.env) {
   return `## Summary\n- (fill in summary)\n\n## Testing\n- (document testing)${suffix}`;
 }
 
+export function resolveBody({ options, issueNumber, env = process.env, readFileSyncFn = readFileSync }) {
+  if (options.bodyFile) {
+    return readBodyFromFile(options.bodyFile, readFileSyncFn);
+  }
+  if (env.PR_BODY_FILE) {
+    return readBodyFromFile(env.PR_BODY_FILE, readFileSyncFn);
+  }
+  if (options.body) {
+    return options.body;
+  }
+  return buildBody(issueNumber, env);
+}
+
 export function createPriorityPr({
   env = process.env,
+  options = {},
+  readFileSyncFn = readFileSync,
   getRepoRootFn = getRepoRoot,
   getCurrentBranchFn = detectCurrentBranch,
   ensureGhCliFn = ensureGhCli,
@@ -201,26 +311,30 @@ export function createPriorityPr({
   resolveStandingIssueNumberFn = resolveStandingIssueNumberForPr
 } = {}) {
   const repoRoot = getRepoRootFn();
-  const branch = ensurePrSourceBranch(getCurrentBranchFn(repoRoot));
+  const branch = ensurePrSourceBranch(options.branch || getCurrentBranchFn(repoRoot));
 
   ensureGhCliFn();
 
-  const upstream = resolveUpstreamFn(repoRoot);
+  const upstream = options.repository ? parseRepositorySlug(options.repository) : resolveUpstreamFn(repoRoot);
   const origin = ensureOriginForkFn(repoRoot, upstream);
 
   pushBranchFn(repoRoot, branch);
 
-  const resolvedIssue = resolveStandingIssueNumberFn(repoRoot);
+  const resolvedIssue =
+    options.issue && toPositiveInteger(options.issue)
+      ? { issueNumber: toPositiveInteger(options.issue), source: 'cli', noStandingReason: null }
+      : resolveStandingIssueNumberFn(repoRoot);
   const issueNumber = resolvedIssue?.issueNumber ?? null;
   if (!issueNumber && resolvedIssue?.noStandingReason === 'queue-empty') {
     throw new Error('Standing-priority queue is empty; create or label the next issue before opening a priority PR.');
   }
   assertBranchMatchesIssue(branch, issueNumber);
-  const base = env.PR_BASE || 'develop';
-  const title = buildTitle(branch, issueNumber, env);
-  const body = buildBody(issueNumber, env);
+  const base = options.base || env.PR_BASE || 'develop';
+  const title = options.title || buildTitle(branch, issueNumber, env);
+  const body = resolveBody({ options, issueNumber, env, readFileSyncFn });
 
-  runGhPrCreateFn({
+  const prResult = runGhPrCreateFn({
+    repoRoot,
     upstream,
     origin,
     branch,
@@ -236,19 +350,36 @@ export function createPriorityPr({
     issueNumber,
     issueSource: resolvedIssue?.source ?? null,
     title,
-    body
+    body,
+    upstream,
+    origin,
+    strategy: prResult?.strategy ?? null,
+    pullRequest: prResult?.pullRequest ?? null
   };
 }
 
-export function main() {
-  return createPriorityPr();
+export function main(argv = process.argv) {
+  const options = parseArgs(argv);
+  if (options.help) {
+    printUsage();
+    return 0;
+  }
+
+  const result = createPriorityPr({ options });
+  if (result?.strategy) {
+    console.log(`[priority:create-pr] strategy=${result.strategy}`);
+  }
+  return 0;
 }
 
 const modulePath = path.resolve(fileURLToPath(import.meta.url));
 const invokedPath = process.argv[1] ? path.resolve(process.argv[1]) : null;
 if (invokedPath && invokedPath === modulePath) {
   try {
-    main();
+    const code = main(process.argv);
+    if (code !== 0) {
+      process.exitCode = code;
+    }
   } catch (error) {
     console.error(`[priority:create-pr] ${error.message}`);
     process.exitCode = 1;

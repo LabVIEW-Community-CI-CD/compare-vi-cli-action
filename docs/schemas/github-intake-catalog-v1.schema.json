@@ -16,6 +16,7 @@
           "type": "string",
           "enum": [
             "gh-issue-create",
+            "priority-pr-create",
             "gh-pr-create",
             "branch-orchestrator",
             "open-link"

@@ -73,6 +73,45 @@ Describe 'Invoke-GitHubIntakeExecutionPlan' {
     $state.Invocation.PRTemplate | Should -Be 'workflow-policy'
   }
 
+  It 'dispatches priority-pr-create plans through node after rendering the draft' {
+    $plan = New-GitHubIntakeExecutionPlan `
+      -Scenario human-pr `
+      -Issue 963 `
+      -IssueTitle 'Support org-owned fork PR creation without upstream mirroring' `
+      -Branch 'issue/963-org-owned-fork-pr-helper' `
+      -DraftOutputPath (Join-Path $TestDrive 'pr-body.md')
+
+    $calls = [System.Collections.Generic.List[object]]::new()
+    $result = Invoke-GitHubIntakeExecutionPlan `
+      -Plan $plan `
+      -DraftRenderer {
+        param([hashtable]$DraftParameters)
+        $calls.Add([pscustomobject]@{ kind = 'draft'; outputPath = $DraftParameters.OutputPath; scenario = $DraftParameters.Scenario }) | Out-Null
+        Set-Content -LiteralPath $DraftParameters.OutputPath -Value '# pr draft' -NoNewline
+        return $DraftParameters.OutputPath
+      } `
+      -NativeInvoker {
+        param([string]$FilePath, [string[]]$Arguments)
+        $calls.Add([pscustomobject]@{ kind = 'native'; filePath = $FilePath; arguments = @($Arguments) }) | Out-Null
+        return 'https://example.test/pull/963'
+      }
+
+    $result.executionKind | Should -Be 'priority-pr-create'
+    $result.draftWritten | Should -BeTrue
+    $result.commandFilePath | Should -Be 'node'
+    $calls.Count | Should -Be 2
+    $calls[0].kind | Should -Be 'draft'
+    $calls[1].kind | Should -Be 'native'
+    $calls[1].filePath | Should -Be 'node'
+    $calls[1].arguments | Should -Contain 'tools/npm/run-script.mjs'
+    $calls[1].arguments | Should -Contain 'priority:pr'
+    $calls[1].arguments | Should -Contain '--issue'
+    $calls[1].arguments | Should -Contain '963'
+    $calls[1].arguments | Should -Contain '--branch'
+    $calls[1].arguments | Should -Contain 'issue/963-org-owned-fork-pr-helper'
+    $calls[1].arguments | Should -Contain '--body-file'
+  }
+
   It 'refuses to apply a plan with missing required inputs' {
     $plan = New-GitHubIntakeExecutionPlan -Scenario bug
 

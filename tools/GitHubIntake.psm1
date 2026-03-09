@@ -28,6 +28,23 @@ function Read-GitHubIntakeJsonFile {
   }
 }
 
+function Get-GitHubIntakeRepositoryContext {
+  $envRepo = [Environment]::GetEnvironmentVariable('GITHUB_REPOSITORY')
+  if (-not [string]::IsNullOrWhiteSpace($envRepo)) {
+    return $envRepo.Trim()
+  }
+
+  $catalog = Get-GitHubIntakeCatalog
+  if ($catalog -and ($catalog.PSObject.Properties.Name -contains 'repository')) {
+    $repository = ([string]$catalog.repository).Trim()
+    if ($repository) {
+      return $repository
+    }
+  }
+
+  return 'LabVIEW-Community-CI-CD/compare-vi-cli-action'
+}
+
 function Get-GitHubIssueSnapshotDirectory {
   $override = [Environment]::GetEnvironmentVariable('COMPAREVI_GITHUB_INTAKE_SNAPSHOT_DIR')
   if (-not [string]::IsNullOrWhiteSpace($override)) {
@@ -58,6 +75,15 @@ function Get-GitHubIntakeScenarios {
   @((Get-GitHubIntakeCatalog).routes | ForEach-Object { [string]$_.scenario })
 }
 
+function Normalize-GitHubIntakeExecutionKind {
+  param([string]$Kind)
+
+  switch ([string]$Kind) {
+    'gh-pr-create' { return 'priority-pr-create' }
+    default { return $Kind }
+  }
+}
+
 function Resolve-GitHubIntakeExecutionMetadata {
   param([pscustomobject]$Route)
 
@@ -66,7 +92,7 @@ function Resolve-GitHubIntakeExecutionMetadata {
   }
 
   [pscustomobject]@{
-    kind                = [string]$Route.execution.kind
+    kind                = Normalize-GitHubIntakeExecutionKind -Kind ([string]$Route.execution.kind)
     titleSource         = if ($Route.execution.PSObject.Properties.Name -contains 'titleSource') { [string]$Route.execution.titleSource } else { $null }
     bodySource          = if ($Route.execution.PSObject.Properties.Name -contains 'bodySource') { [string]$Route.execution.bodySource } else { $null }
     labelSource         = if ($Route.execution.PSObject.Properties.Name -contains 'labelSource') { [string]$Route.execution.labelSource } else { $null }
@@ -83,6 +109,9 @@ function Resolve-GitHubIssueSnapshot {
 
   $issueDir = Get-GitHubIssueSnapshotDirectory
   if (-not (Test-Path -LiteralPath $issueDir -PathType Container)) {
+    if ($Issue -gt 0) {
+      return Resolve-GitHubIssueSnapshotFromGitHub -Issue $Issue
+    }
     return $null
   }
 
@@ -109,10 +138,75 @@ function Resolve-GitHubIssueSnapshot {
     Sort-Object LastWriteTime -Descending |
     Select-Object -First 1
   if (-not $latest) {
+    if ($Issue -gt 0) {
+      return Resolve-GitHubIssueSnapshotFromGitHub -Issue $Issue
+    }
     return $null
   }
 
   Read-GitHubIntakeJsonFile -Path $latest.FullName
+}
+
+function Resolve-GitHubIssueSnapshotFromGitHub {
+  param([int]$Issue)
+
+  if ($Issue -le 0) {
+    return $null
+  }
+
+  $gh = Get-Command gh -ErrorAction SilentlyContinue
+  if (-not $gh) {
+    return $null
+  }
+
+  $repositoryContext = Get-GitHubIntakeRepositoryContext
+  try {
+    $json = & $gh.Source 'issue' 'view' ([string]$Issue) '--repo' $repositoryContext '--json' 'number,title,url,labels,state' 2>$null
+    if ($LASTEXITCODE -ne 0 -or [string]::IsNullOrWhiteSpace($json)) {
+      return $null
+    }
+
+    $snapshot = $json | ConvertFrom-Json -ErrorAction Stop
+    if (-not $snapshot) {
+      return $null
+    }
+
+    $normalizedLabels = @()
+    if ($snapshot.PSObject.Properties.Name -contains 'labels' -and $snapshot.labels) {
+      $normalizedLabels = @($snapshot.labels | ForEach-Object {
+        if ($_ -is [string]) { return [string]$_ }
+        if ($_ -and ($_.PSObject.Properties.Name -contains 'name')) { return [string]$_.name }
+        return $null
+      } | Where-Object { -not [string]::IsNullOrWhiteSpace($_) })
+    }
+
+    [pscustomobject]@{
+      number = [int]$snapshot.number
+      title  = if ($snapshot.PSObject.Properties.Name -contains 'title') { [string]$snapshot.title } else { $null }
+      url    = if ($snapshot.PSObject.Properties.Name -contains 'url') { [string]$snapshot.url } else { $null }
+      state  = if ($snapshot.PSObject.Properties.Name -contains 'state') { [string]$snapshot.state } else { $null }
+      labels = $normalizedLabels
+    }
+  } catch {
+    return $null
+  }
+}
+
+function Test-GitHubIssueHasStandingPriorityLabel {
+  param([object[]]$Labels)
+
+  foreach ($label in @($Labels)) {
+    if ($label -is [string]) {
+      if ([string]$label -eq 'standing-priority') { return $true }
+      continue
+    }
+
+    if ($label -and ($label.PSObject.Properties.Name -contains 'name')) {
+      if ([string]$label.name -eq 'standing-priority') { return $true }
+    }
+  }
+
+  return $false
 }
 
 function Resolve-GitHubIssueTemplate {
@@ -265,7 +359,7 @@ function Resolve-GitHubIntakeDraftContext {
       }
 
       if (-not $resolvedStandingPriority -and ($snapshot.PSObject.Properties.Name -contains 'labels')) {
-        $resolvedStandingPriority = @($snapshot.labels) -contains 'standing-priority'
+        $resolvedStandingPriority = Test-GitHubIssueHasStandingPriorityLabel -Labels @($snapshot.labels)
       }
     }
 
@@ -413,7 +507,7 @@ function New-GitHubIntakeExecutionPlan {
         $arguments.Add($label)
       }
     }
-    'gh-pr-create' {
+    'priority-pr-create' {
       $issueRequired = $true
       $branchRequired = $true
       $resolvedTitle = Resolve-PullRequestTitle -Issue $context.issue -IssueTitle $context.issueTitle -Base $Base
@@ -424,20 +518,25 @@ function New-GitHubIntakeExecutionPlan {
         $missing.Add('branch')
       }
 
-      $arguments.Add('pr')
-      $arguments.Add('create')
+      $arguments.Add('tools/npm/run-script.mjs')
+      $arguments.Add('priority:pr')
+      $arguments.Add('--')
+      if ($context.issue -gt 0) {
+        $arguments.Add('--issue')
+        $arguments.Add([string]$context.issue)
+      }
       $arguments.Add('--repo')
       $arguments.Add($RepositoryContext)
+      if (-not [string]::IsNullOrWhiteSpace($context.branch)) {
+        $arguments.Add('--branch')
+        $arguments.Add($context.branch)
+      }
+      $arguments.Add('--base')
+      $arguments.Add($Base)
       $arguments.Add('--title')
       $arguments.Add($resolvedTitle)
       $arguments.Add('--body-file')
       $arguments.Add($draftOutput)
-      $arguments.Add('--base')
-      $arguments.Add($Base)
-      if (-not [string]::IsNullOrWhiteSpace($context.branch)) {
-        $arguments.Add('--head')
-        $arguments.Add($context.branch)
-      }
     }
     'branch-orchestrator' {
       $issueRequired = $true
@@ -482,6 +581,7 @@ function New-GitHubIntakeExecutionPlan {
 
   $displayCommand = switch ($executionKind) {
     'branch-orchestrator' { Format-GitHubIntakeCommandLine -Command 'pwsh' -Arguments $arguments.ToArray() }
+    'priority-pr-create' { Format-GitHubIntakeCommandLine -Command 'node' -Arguments $arguments.ToArray() }
     'open-link' { Format-GitHubIntakeCommandLine -Command 'start' -Arguments $arguments.ToArray() }
     default { Format-GitHubIntakeCommandLine -Command 'gh' -Arguments $arguments.ToArray() }
   }
@@ -617,8 +717,8 @@ function Invoke-GitHubIntakeExecutionPlan {
       $commandArguments = @($Plan.execution.arguments)
       $output = & $NativeInvoker $commandFilePath $commandArguments
     }
-    'gh-pr-create' {
-      $commandFilePath = 'gh'
+    'priority-pr-create' {
+      $commandFilePath = 'node'
       $commandArguments = @($Plan.execution.arguments)
       $output = & $NativeInvoker $commandFilePath $commandArguments
     }

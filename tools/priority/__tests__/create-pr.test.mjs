@@ -3,6 +3,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
+  parseArgs,
   parseRouterIssueNumber,
   parseCacheIssueNumber,
   parseCacheNoStandingReason,
@@ -12,8 +13,72 @@ import {
   assertBranchMatchesIssue,
   buildTitle,
   buildBody,
+  resolveBody,
   createPriorityPr
 } from '../create-pr.mjs';
+
+test('parseArgs accepts explicit PR helper overrides', () => {
+  const options = parseArgs([
+    'node',
+    'create-pr.mjs',
+    '--repo',
+    'example/repo',
+    '--issue',
+    '963',
+    '--branch',
+    'issue/680-test',
+    '--base',
+    'main',
+    '--title',
+    'Explicit title',
+    '--body-file',
+    'pr-body.md'
+  ]);
+
+  assert.deepEqual(options, {
+    repository: 'example/repo',
+    issue: 963,
+    branch: 'issue/680-test',
+    base: 'main',
+    title: 'Explicit title',
+    body: null,
+    bodyFile: 'pr-body.md',
+    help: false
+  });
+});
+
+test('parseArgs rejects conflicting body inputs', () => {
+  assert.throws(
+    () =>
+      parseArgs([
+        'node',
+        'create-pr.mjs',
+        '--body',
+        'inline body',
+        '--body-file',
+        'pr-body.md'
+      ]),
+    /Use either --body or --body-file/i
+  );
+});
+
+test('parseArgs rejects non-numeric issue overrides', () => {
+  assert.throws(
+    () => parseArgs(['node', 'create-pr.mjs', '--issue', 'abc']),
+    /Invalid issue number/i
+  );
+});
+
+test('parseArgs accepts body values that begin with a dash', () => {
+  const options = parseArgs([
+    'node',
+    'create-pr.mjs',
+    '--body',
+    '- follow-up fix for current-head review'
+  ]);
+
+  assert.equal(options.body, '- follow-up fix for current-head review');
+});
 
 test('parseRouterIssueNumber returns positive integer issue values', () => {
   assert.equal(parseRouterIssueNumber({ issue: 680 }), 680);
@@ -156,6 +221,7 @@ test('createPriorityPr refuses to open a priority PR when the standing queue is 
     () =>
       createPriorityPr({
         env: {},
+        options: {},
         getRepoRootFn: () => '/tmp/repo',
         getCurrentBranchFn: () => 'feature/manual-follow-up',
         ensureGhCliFn: () => {},
@@ -194,11 +260,22 @@ test('buildTitle and buildBody honor env overrides', () => {
   );
 });
 
+test('resolveBody prefers explicit body-file content over env defaults', () => {
+  const body = resolveBody({
+    options: { bodyFile: 'pr-body.md' },
+    issueNumber: 680,
+    readFileSyncFn: () => '## Summary\n- explicit\n'
+  });
+
+  assert.equal(body, '## Summary\n- explicit\n');
+});
+
 test('createPriorityPr builds PR metadata from resolved standing issue', () => {
   let pushedBranch = null;
   let prPayload = null;
   const result = createPriorityPr({
     env: {},
+    options: {},
     getRepoRootFn: () => '/tmp/repo',
     getCurrentBranchFn: () => 'issue/680-sync-standing-priority',
     ensureGhCliFn: () => {},
@@ -209,6 +286,7 @@ test('createPriorityPr builds PR metadata from resolved standing issue', () => {
     },
     runGhPrCreateFn: (payload) => {
       prPayload = payload;
+      return { strategy: 'gh-pr-create' };
     },
     resolveStandingIssueNumberFn: () => ({ issueNumber: 680, source: 'router' })
   });
@@ -220,6 +298,48 @@ test('createPriorityPr builds PR metadata from resolved standing issue', () => {
   assert.match(prPayload.body, /Closes #680/);
   assert.equal(result.issueNumber, 680);
   assert.equal(result.issueSource, 'router');
+  assert.equal(result.strategy, 'gh-pr-create');
+});
+
+test('createPriorityPr honors explicit CLI overrides and body files', () => {
+  let prPayload = null;
+  const result = createPriorityPr({
+    env: {},
+    options: {
+      repository: 'example/upstream',
+      issue: 963,
+      branch: 'issue/963-org-owned-fork-pr-helper',
+      base: 'main',
+      title: 'Explicit helper title',
+      bodyFile: 'pr-body.md'
+    },
+    readFileSyncFn: () => '## Summary\n- helper body\n',
+    getRepoRootFn: () => '/tmp/repo',
+    getCurrentBranchFn: () => 'issue/000-ignored',
+    ensureGhCliFn: () => {},
+    resolveUpstreamFn: () => {
+      throw new Error('should not resolve upstream when --repo is explicit');
+    },
+    ensureOriginForkFn: () => ({ owner: 'LabVIEW-Community-CI-CD', repo: 'compare-vi-cli-action-fork', sameOwnerFork: true }),
+    pushBranchFn: () => {},
+    runGhPrCreateFn: (payload) => {
+      prPayload = payload;
+      return { strategy: 'graphql-same-owner-fork' };
+    },
+    resolveStandingIssueNumberFn: () => {
+      throw new Error('should not resolve standing priority when --issue is explicit');
+    }
+  });
+
+  assert.equal(prPayload.upstream.owner, 'example');
+  assert.equal(prPayload.upstream.repo, 'upstream');
+  assert.equal(prPayload.branch, 'issue/963-org-owned-fork-pr-helper');
+  assert.equal(prPayload.base, 'main');
+  assert.equal(prPayload.title, 'Explicit helper title');
+  assert.equal(prPayload.body, '## Summary\n- helper body\n');
+  assert.equal(result.strategy, 'graphql-same-owner-fork');
+  assert.equal(result.issueNumber, 963);
+  assert.equal(result.issueSource, 'cli');
 });
 
 test('createPriorityPr fails before PR creation when branch issue mismatches standing issue', () => {
@@ -228,6 +348,7 @@ test('createPriorityPr fails before PR creation when branch issue mismatches sta
     () =>
       createPriorityPr({
         env: {},
+        options: {},
         getRepoRootFn: () => '/tmp/repo',
         getCurrentBranchFn: () => 'issue/588-closed',
         ensureGhCliFn: () => {},
