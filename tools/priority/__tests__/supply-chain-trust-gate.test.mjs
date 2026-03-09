@@ -421,3 +421,46 @@ test('run skips tag signature verification for tools helper tags', async () => {
     process.chdir(originalCwd);
   }
 });
+
+test('run derives channel from resolved tagRef when environment is unset', async () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'trust-gate-channel-'));
+  createValidReleasePayload(root);
+
+  const originalCwd = process.cwd();
+  const originalRefName = process.env.GITHUB_REF_NAME;
+  delete process.env.GITHUB_REF_NAME;
+  process.chdir(root);
+  try {
+    const report = await run(
+      {
+        repo: 'owner/repo',
+        artifactsRoot: path.join('artifacts', 'cli'),
+        checksumsPath: path.join('artifacts', 'cli', 'SHA256SUMS.txt'),
+        sbomPath: path.join('artifacts', 'cli', 'sbom.spdx.json'),
+        provenancePath: path.join('artifacts', 'cli', 'provenance.json'),
+        tagRef: 'v1.2.3-rc.1',
+        reportPath: path.join(root, 'report.json'),
+        signerWorkflow: 'owner/repo/.github/workflows/release.yml',
+        attestationAttempts: 1,
+        attestationRetrySeconds: 0,
+        verifyTagSignature: false,
+        verifyAttestations: false
+      },
+      {
+        runner: () => {
+          throw new Error('runner should not be called when trust verifiers are disabled');
+        }
+      }
+    );
+
+    assert.equal(report.channel, 'rc');
+    assert.equal(report.policy.tagRef, 'v1.2.3-rc.1');
+  } finally {
+    process.chdir(originalCwd);
+    if (originalRefName === undefined) {
+      delete process.env.GITHUB_REF_NAME;
+    } else {
+      process.env.GITHUB_REF_NAME = originalRefName;
+    }
+  }
+});

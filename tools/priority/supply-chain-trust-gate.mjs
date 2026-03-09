@@ -905,7 +905,7 @@ export async function run(options, dependencies = {}) {
     schema: 'priority/supply-chain-trust-gate@v1',
     generatedAt: new Date().toISOString(),
     repository,
-    channel: /-rc\./i.test(process.env.GITHUB_REF_NAME || '') ? 'rc' : 'stable',
+    channel: /-rc\./i.test(tagRef || '') ? 'rc' : 'stable',
     workflow: {
       name: process.env.GITHUB_WORKFLOW || null,
       runId: process.env.GITHUB_RUN_ID || null,
