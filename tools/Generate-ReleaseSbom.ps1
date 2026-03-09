@@ -90,6 +90,7 @@ $sbom = [ordered]@{
 }
 
 $json = $sbom | ConvertTo-Json -Depth 10
-[System.IO.File]::WriteAllText($sbomPath, $json + [Environment]::NewLine, [System.Text.Encoding]::UTF8)
+$utf8NoBom = [System.Text.UTF8Encoding]::new($false)
+[System.IO.File]::WriteAllText($sbomPath, $json + [Environment]::NewLine, $utf8NoBom)
 
 Write-Host "SBOM written to $sbomPath"

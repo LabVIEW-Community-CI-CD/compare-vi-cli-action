@@ -40,6 +40,8 @@ const FAILURE_HINTS = {
   'attestation-empty-result': 'No attestation records were returned. Confirm attestation publication and retry.'
 };
 
+const TOOLS_TAG_PATTERN = /^v?\d+\.\d+\.\d+-tools\.\d+$/i;
+
 export function printUsage() {
   console.log('Usage: node tools/priority/supply-chain-trust-gate.mjs [options]');
   console.log('');
@@ -173,6 +175,18 @@ export function resolveRepositorySlug(explicitRepo) {
 function normalizePathValue(value) {
   if (!value) return '';
   return String(value).replace(/\\/g, '/').replace(/^\.\/+/, '').replace(/^\/+/, '');
+}
+
+function stripUtf8Bom(text) {
+  return String(text ?? '').replace(/^\uFEFF/, '');
+}
+
+function parseJsonText(text) {
+  return JSON.parse(stripUtf8Bom(text));
+}
+
+function isToolsReleaseTag(tagRef) {
+  return TOOLS_TAG_PATTERN.test(String(tagRef || '').trim());
 }
 
 function hashFileSha256(filePath) {
@@ -465,7 +479,7 @@ export function evaluateLocalIntegrity({
   let sbomStatus = { path: resolvedSbom, exists: fs.existsSync(resolvedSbom), valid: false, spdxVersion: null, fileCount: 0 };
   if (fs.existsSync(resolvedSbom)) {
     try {
-      const payload = JSON.parse(fs.readFileSync(resolvedSbom, 'utf8'));
+      const payload = parseJsonText(fs.readFileSync(resolvedSbom, 'utf8'));
       const validation = validateSbomPayload(payload, archiveFiles, failures);
       sbomStatus = {
         path: resolvedSbom,
@@ -488,7 +502,7 @@ export function evaluateLocalIntegrity({
   };
   if (fs.existsSync(resolvedProvenance)) {
     try {
-      const payload = JSON.parse(fs.readFileSync(resolvedProvenance, 'utf8'));
+      const payload = parseJsonText(fs.readFileSync(resolvedProvenance, 'utf8'));
       const validation = validateProvenancePayload(
         payload,
         {
@@ -540,7 +554,7 @@ function defaultCommandRunner(command, args) {
 
 function parseJsonFromCommandPayload(raw, description, failures) {
   try {
-    return JSON.parse(String(raw || '').trim() || '{}');
+    return parseJsonText(String(raw || '').trim() || '{}');
   } catch (error) {
     addFailure(failures, 'tag-signature-parse-failed', `Failed to parse ${description}: ${error.message}`);
     return null;
@@ -828,16 +842,19 @@ export async function run(options, dependencies = {}) {
   const repository = resolveRepositorySlug(options.repo);
   const signerWorkflow = options.signerWorkflow || `${repository}/.github/workflows/release.yml`;
   const repoRoot = process.cwd();
+  const tagRef = options.tagRef || process.env.GITHUB_REF_NAME || null;
+  const effectiveVerifyTagSignature = options.verifyTagSignature && !isToolsReleaseTag(tagRef);
+  const skippedTagSignatureReason = options.verifyTagSignature && isToolsReleaseTag(tagRef) ? 'skipped-tools-tag' : 'skipped';
 
-  const tagSignature = options.verifyTagSignature
+  const tagSignature = effectiveVerifyTagSignature
     ? await verifyReleaseTagSignature({
         repository,
-        tagRef: options.tagRef || process.env.GITHUB_REF_NAME || null,
+        tagRef,
         runner: dependencies.runner || defaultCommandRunner
       })
     : {
         failures: [],
-        status: createDefaultTagSignatureStatus(options.tagRef || process.env.GITHUB_REF_NAME || null, 'skipped')
+        status: createDefaultTagSignatureStatus(tagRef, skippedTagSignatureReason)
       };
 
   const local = evaluateLocalIntegrity({
@@ -888,7 +905,7 @@ export async function run(options, dependencies = {}) {
     schema: 'priority/supply-chain-trust-gate@v1',
     generatedAt: new Date().toISOString(),
     repository,
-    channel: /-rc\./i.test(process.env.GITHUB_REF_NAME || '') ? 'rc' : 'stable',
+    channel: /-rc\./i.test(tagRef || '') ? 'rc' : 'stable',
     workflow: {
       name: process.env.GITHUB_WORKFLOW || null,
       runId: process.env.GITHUB_RUN_ID || null,
@@ -898,8 +915,8 @@ export async function run(options, dependencies = {}) {
       sha: process.env.GITHUB_SHA || null
     },
     policy: {
-      verifyTagSignature: options.verifyTagSignature,
-      tagRef: options.tagRef || process.env.GITHUB_REF_NAME || null,
+      verifyTagSignature: effectiveVerifyTagSignature,
+      tagRef,
       signerWorkflow,
       verifyAttestations: options.verifyAttestations,
       attestationAttempts: options.attestationAttempts,
