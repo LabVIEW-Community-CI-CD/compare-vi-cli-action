@@ -15,6 +15,14 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const repoRoot = path.resolve(__dirname, '..', '..');
 
+export function isDirectExecution(entryPath = process.argv[1]) {
+  if (!entryPath) {
+    return false;
+  }
+
+  return path.resolve(entryPath) === path.resolve(__filename);
+}
+
 function parseInteger(value, fallback) {
   if (value === null || value === undefined || value === '') {
     return fallback;
@@ -627,20 +635,24 @@ export function runReleaseCadenceCheck(options, dependencies = {}) {
   return finalReport;
 }
 
-function printUsage() {
-  console.log(`Usage: node tools/priority/release-cadence-check.mjs [options]
+export function buildUsageText() {
+  return `Usage: node tools/priority/release-cadence-check.mjs [options]
 
 Options:
   --repo <owner/repo>         Repository slug (defaults to GITHUB_REPOSITORY)
   --threshold-days <n>        Stale threshold in days (default: ${DEFAULT_THRESHOLD_DAYS})
-  --max-runs <n>              Maximum successful workflow runs to inspect per stream (default: ${DEFAULT_MAX_RUNS})
+  --max-runs <n>              Maximum workflow runs to fetch per stream (default: ${DEFAULT_MAX_RUNS})
   --out <path>                Write JSON report to this path
   --step-summary <path>       Append a Markdown summary to this file
   --marker <text>             Marker used to find/update the cadence issue
   --issue-title <title>       Title for the cadence issue
   --gh-path <path>            gh executable path (default: gh)
   --dry-run                   Evaluate and report without mutating issues
-  --help                      Show this help text`);
+  --help                      Show this help text`;
+}
+
+function printUsage() {
+  console.log(buildUsageText());
 }
 
 export function main(argv = process.argv.slice(2)) {
@@ -672,6 +684,6 @@ export function main(argv = process.argv.slice(2)) {
   }
 }
 
-if (process.argv[1] && path.resolve(process.argv[1]) === __filename) {
+if (isDirectExecution()) {
   process.exitCode = main();
 }

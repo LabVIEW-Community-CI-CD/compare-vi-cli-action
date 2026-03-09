@@ -1,9 +1,13 @@
 import assert from 'node:assert/strict';
+import path from 'node:path';
 import test from 'node:test';
+import { fileURLToPath } from 'node:url';
 
 import {
+  buildUsageText,
   buildIssueBody,
   evaluateReleaseCadence,
+  isDirectExecution,
   parseCompareviToolsPublishLog,
   parseCompareViSharedPublishLog,
 } from '../release-cadence-check.mjs';
@@ -133,4 +137,19 @@ test('buildIssueBody reports latest observed non-stable evidence instead of clai
   assert.match(body, /comparevi-tools \| `v0\.6\.3` \| 2026-03-09T10:04:30Z \| 0 \| fresh/);
   assert.match(body, /CompareVi\.Shared \| `none` \| missing \| n\/a \| stale \| no stable publish; latest observed `0\.2\.0-rc\.1` \(rc, published=true\)/);
   assert.match(body, /Evidence source: successful publish workflow logs, not package-registry enumeration\./);
+});
+
+test('buildUsageText describes --max-runs as the fetch limit per stream', () => {
+  const usage = buildUsageText();
+
+  assert.match(usage, /--max-runs <n>\s+Maximum workflow runs to fetch per stream/);
+});
+
+test('isDirectExecution resolves both sides of the module path comparison', () => {
+  const modulePath = fileURLToPath(new URL('../release-cadence-check.mjs', import.meta.url));
+  const relativeModulePath = path.relative(process.cwd(), modulePath);
+
+  assert.equal(isDirectExecution(modulePath), true);
+  assert.equal(isDirectExecution(relativeModulePath), true);
+  assert.equal(isDirectExecution(path.join('tools', 'priority', 'not-this-module.mjs')), false);
 });
