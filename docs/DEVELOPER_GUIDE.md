@@ -434,7 +434,7 @@ For Docker/Desktop VI history validation, run fast-loop lanes explicitly:
 - When you need the repository's richer intake metadata blocks and template variants, prefer
   `pwsh -File tools/Branch-Orchestrator.ps1 -Issue <number> -Execute [-PRTemplate <variant>]` or
   `pwsh -File tools/New-PullRequestBody.ps1 ... -OutputPath pr-body.md` plus
-  `node tools/npm/run-script.mjs priority:pr -- --repo <owner/repo> --branch <branch> --base <base> --title <title> --body-file pr-body.md`.
+  `node tools/npm/run-script.mjs priority:pr -- --issue <number> --repo <owner/repo> --branch <branch> --base <base> --title <title> --body-file pr-body.md`.
 - Detailed enforcement notes (feature-branch guards, merge history workflow,
   merge queue parameters) live in
   [`docs/knowledgebase/FEATURE_BRANCH_POLICY.md`](./knowledgebase/FEATURE_BRANCH_POLICY.md).

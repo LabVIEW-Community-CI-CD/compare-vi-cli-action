@@ -436,6 +436,10 @@ function New-GitHubIntakeExecutionPlan {
       $arguments.Add('tools/npm/run-script.mjs')
       $arguments.Add('priority:pr')
       $arguments.Add('--')
+      if ($context.issue -gt 0) {
+        $arguments.Add('--issue')
+        $arguments.Add([string]$context.issue)
+      }
       $arguments.Add('--repo')
       $arguments.Add($RepositoryContext)
       if (-not [string]::IsNullOrWhiteSpace($context.branch)) {

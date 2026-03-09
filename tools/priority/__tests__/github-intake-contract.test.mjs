@@ -147,7 +147,7 @@ test('github intake docs and manifest reference the new helper layer', () => {
   assert.match(intakeGuide, /GitHub-Wiki-Portal\.md/);
   assert.match(intakeGuide, /Idle Repository Mode/);
   assert.match(intakeGuide, /reason = queue-empty/);
-  assert.match(intakeGuide, /node tools\/npm\/run-script\.mjs priority:pr -- --repo <owner\/repo> --branch <branch> --base <base> --title "<title>" --body-file pr-body\.md/);
+  assert.match(intakeGuide, /node tools\/npm\/run-script\.mjs priority:pr -- --issue <number> --repo <owner\/repo> --branch <branch> --base <base> --title "<title>" --body-file pr-body\.md/);
   assert.match(intakeGuide, /headRepositoryId/);
   assert.match(automationGuide, /Keep manual curation for now/);
   assert.match(automationGuide, /compare-vi-cli-action\.wiki\.git/);
@@ -156,6 +156,7 @@ test('github intake docs and manifest reference the new helper layer', () => {
   assert.match(wikiGuide, /README\.md/);
   assert.match(orchestrator, /Import-Module \(Join-Path \$PSScriptRoot 'GitHubIntake\.psm1'\)/);
   assert.match(orchestrator, /'priority:pr'/);
+  assert.match(orchestrator, /'--issue'/);
   assert.match(orchestrator, /'pr'\s+'view'\s+\$branchName\s+'--json'\s+'number'/);
   assert.match(orchestrator, /'pr'\s+'edit'\s+\$pr\.number\s+'--title'\s+\$prTitle\s+'--body-file'/);
   assert.match(orchestrator, /Standing-priority queue is empty/);
@@ -167,6 +168,7 @@ test('github intake docs and manifest reference the new helper layer', () => {
   assert.doesNotMatch(orchestrator, /'pr'\s+'view'\s+'--json'\s+'number'\s+'--head'/);
   assert.match(oneButtonValidate, /gh pr view \$branch --json number/);
   assert.match(oneButtonValidate, /priority:pr/);
+  assert.match(oneButtonValidate, /--issue 127/);
   assert.doesNotMatch(oneButtonValidate, /gh pr view --json number --head/);
   assert.match(intakeModule, /function Get-GitHubIntakeCatalog/);
   assert.match(intakeModule, /function Resolve-GitHubIntakeDraftContext/);

@@ -68,7 +68,7 @@ Describe 'GitHubIntake.psm1' {
     $route.targetKey | Should -Be 'human-change'
     $route.targetPath | Should -Be '.github/PULL_REQUEST_TEMPLATE/human-change.md'
     $route.helperPath | Should -Be 'tools/New-GitHubIntakeDraft.ps1'
-    $route.executeCommand | Should -Be 'node tools/npm/run-script.mjs priority:pr -- --repo <owner/repo> --branch <branch> --base <base> --title "<title>" --body-file pr-body.md'
+    $route.executeCommand | Should -Be 'node tools/npm/run-script.mjs priority:pr -- --issue <number> --repo <owner/repo> --branch <branch> --base <base> --title "<title>" --body-file pr-body.md'
     $route.executionKind | Should -Be 'priority-pr-create'
     $route.execution.branchSource | Should -Be 'current-or-input'
   }

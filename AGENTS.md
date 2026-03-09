@@ -172,7 +172,8 @@ line buffers).
     work.
   - The lower-level PR helper is `node tools/npm/run-script.mjs priority:pr`; prefer it over raw `gh pr create`
     because it keeps user forks and same-owner org forks on one deterministic path, including the GraphQL
-    `headRepositoryId` flow when `origin` and `upstream` share the same owner.
+    `headRepositoryId` flow when `origin` and `upstream` share the same owner. Pass `--issue <number>` when the branch
+    belongs to a non-standing issue and the helper should not infer intent from the standing-priority cache.
 - Automation-authored PRs must keep the `Agent Metadata` block in the body so reviewer routing remains deterministic.
 - Ensure CI is green (lint + Pester). Verify no lingering processes on self-hosted runners.
 - For `gh issue create` / `gh issue edit` with multiline Markdown bodies in mixed

@@ -23,6 +23,8 @@ test('parseArgs accepts explicit PR helper overrides', () => {
     'create-pr.mjs',
     '--repo',
     'example/repo',
+    '--issue',
+    '963',
     '--branch',
     'issue/680-test',
     '--base',
@@ -35,6 +37,7 @@ test('parseArgs accepts explicit PR helper overrides', () => {
 
   assert.deepEqual(options, {
     repository: 'example/repo',
+    issue: 963,
     branch: 'issue/680-test',
     base: 'main',
     title: 'Explicit title',
@@ -56,6 +59,13 @@ test('parseArgs rejects conflicting body inputs', () => {
         'pr-body.md'
       ]),
     /Use either --body or --body-file/i
+  );
+});
+
+test('parseArgs rejects non-numeric issue overrides', () => {
+  assert.throws(
+    () => parseArgs(['node', 'create-pr.mjs', '--issue', 'abc']),
+    /Invalid issue number/i
   );
 });
 
@@ -286,6 +296,7 @@ test('createPriorityPr honors explicit CLI overrides and body files', () => {
     env: {},
     options: {
       repository: 'example/upstream',
+      issue: 963,
       branch: 'issue/963-org-owned-fork-pr-helper',
       base: 'main',
       title: 'Explicit helper title',
@@ -304,7 +315,9 @@ test('createPriorityPr honors explicit CLI overrides and body files', () => {
       prPayload = payload;
       return { strategy: 'graphql-same-owner-fork' };
     },
-    resolveStandingIssueNumberFn: () => ({ issueNumber: 963, source: 'router' })
+    resolveStandingIssueNumberFn: () => {
+      throw new Error('should not resolve standing priority when --issue is explicit');
+    }
   });
 
   assert.equal(prPayload.upstream.owner, 'example');
@@ -314,6 +327,8 @@ test('createPriorityPr honors explicit CLI overrides and body files', () => {
   assert.equal(prPayload.title, 'Explicit helper title');
   assert.equal(prPayload.body, '## Summary\n- helper body\n');
   assert.equal(result.strategy, 'graphql-same-owner-fork');
+  assert.equal(result.issueNumber, 963);
+  assert.equal(result.issueSource, 'cli');
 });
 
 test('createPriorityPr fails before PR creation when branch issue mismatches standing issue', () => {

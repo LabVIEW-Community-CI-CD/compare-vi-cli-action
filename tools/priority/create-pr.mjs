@@ -28,6 +28,7 @@ const USAGE_LINES = [
   '',
   'Options:',
   '  --repo <owner/repo>     Upstream repository override.',
+  '  --issue <number>       Explicit issue number override.',
   '  --branch <name>         Branch to open instead of the current checkout.',
   '  --base <name>           Base branch (default: develop).',
   '  --title <text>          Explicit pull request title.',
@@ -46,6 +47,7 @@ export function parseArgs(argv = process.argv) {
   const args = argv.slice(2);
   const options = {
     repository: null,
+    issue: null,
     branch: null,
     base: null,
     title: null,
@@ -65,6 +67,7 @@ export function parseArgs(argv = process.argv) {
 
     if (
       token === '--repo' ||
+      token === '--issue' ||
       token === '--branch' ||
       token === '--base' ||
       token === '--title' ||
@@ -76,6 +79,12 @@ export function parseArgs(argv = process.argv) {
       }
       index += 1;
       if (token === '--repo') options.repository = next;
+      if (token === '--issue') {
+        options.issue = toPositiveInteger(next);
+        if (!options.issue) {
+          throw new Error(`Invalid issue number for ${token}: ${next}`);
+        }
+      }
       if (token === '--branch') options.branch = next;
       if (token === '--base') options.base = next;
       if (token === '--title') options.title = next;
@@ -306,7 +315,10 @@ export function createPriorityPr({
 
   pushBranchFn(repoRoot, branch);
 
-  const resolvedIssue = resolveStandingIssueNumberFn(repoRoot);
+  const resolvedIssue =
+    options.issue && toPositiveInteger(options.issue)
+      ? { issueNumber: toPositiveInteger(options.issue), source: 'cli', noStandingReason: null }
+      : resolveStandingIssueNumberFn(repoRoot);
   const issueNumber = resolvedIssue?.issueNumber ?? null;
   if (!issueNumber && resolvedIssue?.noStandingReason === 'queue-empty') {
     throw new Error('Standing-priority queue is empty; create or label the next issue before opening a priority PR.');

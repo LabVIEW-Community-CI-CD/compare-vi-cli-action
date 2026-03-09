@@ -131,7 +131,7 @@ instead of inferring the correct path from prose alone.
     -IssueTitle "Epic: modernize the GitHub intake layer for future agents" `
     -IssueUrl "https://github.com/LabVIEW-Community-CI-CD/compare-vi-cli-action/issues/875" `
     -Base develop -Branch issue/875-modernize-github-intake-layer -OutputPath pr-body.md
-  node tools/npm/run-script.mjs priority:pr -- --repo <owner/repo> --branch <branch> --base <base> --title "<title>" --body-file pr-body.md
+  node tools/npm/run-script.mjs priority:pr -- --issue <number> --repo <owner/repo> --branch <branch> --base <base> --title "<title>" --body-file pr-body.md
   ```
 
 - Branch + PR bootstrap:
@@ -144,7 +144,8 @@ The helper script derives the PR title from linked issue metadata when available
 head commit subject when necessary, and then calls `priority:pr` with the rendered intake document. For user-owned
 forks, the helper still routes through `gh pr create`. For same-owner renamed forks, it switches to GitHub GraphQL
 `createPullRequest` with `headRepositoryId` so future agents do not need an upstream-mirror workaround just to open
-the PR.
+the PR. When the branch is tied to a non-standing issue, pass `--issue <number>` so the helper does not need to infer
+intent from the standing-priority cache.
 
 ## Idle Repository Mode
 

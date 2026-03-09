@@ -207,7 +207,7 @@
       "targetKey": "agent-maintenance",
       "helperPath": "tools/New-GitHubIntakeDraft.ps1",
       "command": "pwsh -NoLogo -NoProfile -File tools/New-GitHubIntakeDraft.ps1 -Scenario agent-maintenance-pr -Issue <number> -OutputPath pr-body.md",
-      "executeCommand": "node tools/npm/run-script.mjs priority:pr -- --repo <owner/repo> --branch <branch> --base <base> --title \"<title>\" --body-file pr-body.md",
+      "executeCommand": "node tools/npm/run-script.mjs priority:pr -- --issue <number> --repo <owner/repo> --branch <branch> --base <base> --title \"<title>\" --body-file pr-body.md",
       "execution": {
         "kind": "priority-pr-create",
         "titleSource": "issue-derived",
@@ -224,7 +224,7 @@
       "targetKey": "human-change",
       "helperPath": "tools/New-GitHubIntakeDraft.ps1",
       "command": "pwsh -NoLogo -NoProfile -File tools/New-GitHubIntakeDraft.ps1 -Scenario human-pr -Issue <number> -OutputPath pr-body.md",
-      "executeCommand": "node tools/npm/run-script.mjs priority:pr -- --repo <owner/repo> --branch <branch> --base <base> --title \"<title>\" --body-file pr-body.md",
+      "executeCommand": "node tools/npm/run-script.mjs priority:pr -- --issue <number> --repo <owner/repo> --branch <branch> --base <base> --title \"<title>\" --body-file pr-body.md",
       "execution": {
         "kind": "priority-pr-create",
         "titleSource": "issue-derived",

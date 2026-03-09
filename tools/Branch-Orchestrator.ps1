@@ -173,6 +173,8 @@ if ($Execute) {
           (Join-Path $repo 'tools' 'npm' 'run-script.mjs'),
           'priority:pr',
           '--',
+          '--issue',
+          [string]$Issue,
           '--branch',
           $branchName,
           '--base',

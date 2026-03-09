@@ -105,6 +105,8 @@ Describe 'Invoke-GitHubIntakeExecutionPlan' {
     $calls[1].filePath | Should -Be 'node'
     $calls[1].arguments | Should -Contain 'tools/npm/run-script.mjs'
     $calls[1].arguments | Should -Contain 'priority:pr'
+    $calls[1].arguments | Should -Contain '--issue'
+    $calls[1].arguments | Should -Contain '963'
     $calls[1].arguments | Should -Contain '--branch'
     $calls[1].arguments | Should -Contain 'issue/963-org-owned-fork-pr-helper'
     $calls[1].arguments | Should -Contain '--body-file'
