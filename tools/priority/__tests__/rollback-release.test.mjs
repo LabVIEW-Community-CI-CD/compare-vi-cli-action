@@ -4,7 +4,9 @@ import {
   parseArgs,
   filterReleasesForStream,
   resolveRollbackPointer,
-  evaluateRollbackValidation
+  evaluateRollbackValidation,
+  resolveRollbackRemoteName,
+  runRollback
 } from '../rollback-release.mjs';
 import { normalizeReleaseRollbackPolicy } from '../lib/release-rollback-policy.mjs';
 
@@ -116,3 +118,141 @@ test('evaluateRollbackValidation reports branch and policy failures', () => {
   assert.ok(validation.failures.some((failure) => failure.code === 'policy-sync-failed'));
 });
 
+test('resolveRollbackRemoteName falls back to origin when it matches the repository slug', () => {
+  const resolution = resolveRollbackRemoteName({
+    repoRoot: '/repo',
+    preferredRemote: 'upstream',
+    repository: 'LabVIEW-Community-CI-CD/compare-vi-cli-action',
+    tryResolveRemoteFn: (_repoRoot, remoteName) => {
+      if (remoteName === 'origin') {
+        return {
+          parsed: {
+            owner: 'LabVIEW-Community-CI-CD',
+            repo: 'compare-vi-cli-action'
+          }
+        };
+      }
+      return null;
+    }
+  });
+
+  assert.equal(resolution.configuredRemote, 'upstream');
+  assert.equal(resolution.effectiveRemote, 'origin');
+  assert.match(resolution.fallbackReason, /using origin/i);
+});
+
+test('resolveRollbackRemoteName rejects missing configured remote when origin is a fork', () => {
+  assert.throws(
+    () =>
+      resolveRollbackRemoteName({
+        repoRoot: '/repo',
+        preferredRemote: 'upstream',
+        repository: 'LabVIEW-Community-CI-CD/compare-vi-cli-action',
+        tryResolveRemoteFn: (_repoRoot, remoteName) => {
+          if (remoteName === 'origin') {
+            return {
+              parsed: {
+                owner: 'fork-owner',
+                repo: 'compare-vi-cli-action'
+              }
+            };
+          }
+          return null;
+        }
+      }),
+    /origin does not match repository/i
+  );
+});
+
+test('runRollback uses origin fallback for dry-run planning when upstream is unavailable', async () => {
+  const policy = normalizeReleaseRollbackPolicy({});
+  const fetchCalls = [];
+  const resolution = await runRollback(
+    {
+      ...parseArgs(['node', 'rollback-release.mjs']),
+      repo: 'LabVIEW-Community-CI-CD/compare-vi-cli-action'
+    },
+    {
+      repoRoot: '/repo',
+      policy,
+      fetchReleaseRecords: () => [
+        { tag_name: 'v1.2.3', draft: false, prerelease: false, published_at: '2026-03-05T00:00:00Z' },
+        { tag_name: 'v1.2.2', draft: false, prerelease: false, published_at: '2026-03-01T00:00:00Z' }
+      ],
+      remoteResolver: () => ({
+        configuredRemote: 'upstream',
+        effectiveRemote: 'origin',
+        fallbackReason: 'Configured rollback remote is missing; using origin.'
+      }),
+      fetchRemoteRefs: (_repoRoot, remote, branches) => {
+        fetchCalls.push({ remote, branches });
+      },
+      resolveTagCommit: () => 'deadbeef',
+      tryResolveRef: (_repoRoot, ref) => `sha-for:${ref}`
+    }
+  );
+
+  assert.equal(fetchCalls.length, 1);
+  assert.equal(fetchCalls[0].remote, 'origin');
+  assert.deepEqual(fetchCalls[0].branches, ['main', 'develop']);
+  assert.equal(resolution.policy.configuredRemote, 'upstream');
+  assert.equal(resolution.policy.remote, 'origin');
+  assert.match(resolution.policy.remoteFallbackReason, /using origin/i);
+  assert.equal(resolution.branches[0].remote, 'origin');
+  assert.equal(resolution.summary.status, 'pass');
+});
+
+test('runRollback uses injected ref resolver throughout apply and sync-origin flows', async () => {
+  const policy = normalizeReleaseRollbackPolicy({});
+  const seenRefs = [];
+  const forcePushCalls = [];
+  const refCounts = new Map();
+  const targetCommit = 'deadbeef';
+
+  const resolution = await runRollback(
+    {
+      ...parseArgs(['node', 'rollback-release.mjs']),
+      repo: 'LabVIEW-Community-CI-CD/compare-vi-cli-action',
+      apply: true,
+      syncOrigin: true
+    },
+    {
+      repoRoot: '/repo',
+      policy,
+      fetchReleaseRecords: () => [
+        { tag_name: 'v1.2.3', draft: false, prerelease: false, published_at: '2026-03-05T00:00:00Z' },
+        { tag_name: 'v1.2.2', draft: false, prerelease: false, published_at: '2026-03-01T00:00:00Z' }
+      ],
+      remoteResolver: () => ({
+        configuredRemote: 'upstream',
+        effectiveRemote: 'mirror',
+        fallbackReason: null
+      }),
+      fetchRemoteRefs: () => {},
+      resolveTagCommit: () => targetCommit,
+      tryResolveRef: (_repoRoot, ref) => {
+        seenRefs.push(ref);
+        const count = (refCounts.get(ref) || 0) + 1;
+        refCounts.set(ref, count);
+        return count === 1 ? `lease:${ref}` : targetCommit;
+      },
+      forcePushBranch: (_repoRoot, remote, branch, commit, leaseCommit) => {
+        forcePushCalls.push({ remote, branch, commit, leaseCommit });
+      },
+      policySync: () => ({
+        executed: true,
+        status: 'pass',
+        exitCode: 0,
+        stdout: '',
+        stderr: ''
+      })
+    }
+  );
+
+  assert.ok(seenRefs.includes('mirror/main'));
+  assert.ok(seenRefs.includes('mirror/develop'));
+  assert.ok(seenRefs.includes('origin/main'));
+  assert.ok(seenRefs.includes('origin/develop'));
+  assert.equal(forcePushCalls.length, 4);
+  assert.equal(resolution.summary.status, 'pass');
+});
