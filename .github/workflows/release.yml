@@ -349,6 +349,8 @@ jobs:
       matrix:
         os: [windows-latest, ubuntu-latest, macos-latest]
     steps:
+      - uses: actions/checkout@v5
+
       - name: Download CLI artifacts
         uses: actions/download-artifact@v4
         with:
@@ -369,9 +371,9 @@ jobs:
           $resolver = Join-Path $PWD 'tools' 'Resolve-DownloadedArtifactPath.ps1'
           $archivePath = & $resolver -SearchRoot 'cli-dl' -FileName $archiveName
           $checksumPath = & $resolver -SearchRoot 'cli-dl' -FileName 'SHA256SUMS.txt'
-          "archive_name=$archiveName" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
-          "archive_path=$archivePath" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
-          "checksum_path=$checksumPath" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
+          "archive_name=$archiveName" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
+          "archive_path=$archivePath" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
+          "checksum_path=$checksumPath" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
 
       - name: Extract artifact (Windows)
         if: runner.os == 'Windows'
@@ -580,11 +582,11 @@ jobs:
           $provenancePath = & $resolver -SearchRoot 'cli-dl' -FileName 'provenance.json'
           $checksumPath = & $resolver -SearchRoot 'cli-dl' -FileName 'SHA256SUMS.txt'
           $linuxTarballPath = & $resolver -SearchRoot 'cli-dl' -FileName $linuxTarballName
-          "metadata_path=$metadataPath" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
-          "provenance_path=$provenancePath" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
-          "checksum_path=$checksumPath" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
-          "linux_tarball_name=$linuxTarballName" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
-          "linux_tarball_path=$linuxTarballPath" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
+          "metadata_path=$metadataPath" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
+          "provenance_path=$provenancePath" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
+          "checksum_path=$checksumPath" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
+          "linux_tarball_name=$linuxTarballName" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
+          "linux_tarball_path=$linuxTarballPath" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
 
       - name: Validate CompareVI.Tools metadata artifact
         shell: pwsh

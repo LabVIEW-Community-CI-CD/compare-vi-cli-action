@@ -80,16 +80,23 @@ test('release workflow explicitly dispatches publish-tools-image with actions wr
 
 test('release workflow resolves downloaded artifacts through the shared helper before validation', () => {
   const workflowPath = path.join(workflowsRoot, 'release.yml');
-  const workflow = readFileSync(workflowPath, 'utf8');
+  const workflowRaw = readFileSync(workflowPath, 'utf8');
+  const workflow = yaml.load(workflowRaw);
+  const validateSteps = workflow?.jobs?.['validate-cli-artifacts']?.steps ?? [];
+  const checkoutIndex = validateSteps.findIndex((step) => step?.uses === 'actions/checkout@v5');
+  const resolveIndex = validateSteps.findIndex((step) => step?.name === 'Resolve validation artifact paths');
 
-  assert.match(workflow, /name: Resolve validation artifact paths/);
-  assert.match(workflow, /Resolve-DownloadedArtifactPath\.ps1/);
-  assert.match(workflow, /steps\.artifact_paths\.outputs\.archive_path/);
-  assert.match(workflow, /steps\.artifact_paths\.outputs\.checksum_path/);
-  assert.match(workflow, /name: Resolve release-contract artifact paths/);
-  assert.match(workflow, /steps\.contract_artifacts\.outputs\.provenance_path/);
-  assert.match(workflow, /steps\.contract_artifacts\.outputs\.linux_tarball_path/);
-  assert.doesNotMatch(workflow, /ls -1 cli-dl\/comparevi-cli-v\$\{v\}-linux-x64-selfcontained\.tar\.gz/);
-  assert.doesNotMatch(workflow, /tarball=\"cli-dl\/comparevi-cli-v\$\{v\}-linux-x64-selfcontained\.tar\.gz\"/);
-  assert.doesNotMatch(workflow, /cli-dl\/SHA256SUMS\.txt/);
+  assert.ok(checkoutIndex >= 0, 'validate-cli-artifacts should check out the repository before helper-backed steps');
+  assert.ok(resolveIndex > checkoutIndex, 'validate-cli-artifacts should resolve artifact paths after checkout');
+  assert.match(workflowRaw, /name: Resolve validation artifact paths/);
+  assert.match(workflowRaw, /Resolve-DownloadedArtifactPath\.ps1/);
+  assert.match(workflowRaw, /steps\.artifact_paths\.outputs\.archive_path/);
+  assert.match(workflowRaw, /steps\.artifact_paths\.outputs\.checksum_path/);
+  assert.match(workflowRaw, /name: Resolve release-contract artifact paths/);
+  assert.match(workflowRaw, /steps\.contract_artifacts\.outputs\.provenance_path/);
+  assert.match(workflowRaw, /steps\.contract_artifacts\.outputs\.linux_tarball_path/);
+  assert.match(workflowRaw, /Out-File -FilePath \$env:GITHUB_OUTPUT -Encoding utf8 -Append/);
+  assert.doesNotMatch(workflowRaw, /ls -1 cli-dl\/comparevi-cli-v\$\{v\}-linux-x64-selfcontained\.tar\.gz/);
+  assert.doesNotMatch(workflowRaw, /tarball=\"cli-dl\/comparevi-cli-v\$\{v\}-linux-x64-selfcontained\.tar\.gz\"/);
+  assert.doesNotMatch(workflowRaw, /cli-dl\/SHA256SUMS\.txt/);
 });
