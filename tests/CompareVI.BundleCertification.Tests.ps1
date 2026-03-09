@@ -1,5 +1,5 @@
 # CompareVI-TestPlane: host-neutral
-# CompareVI-TestModes: default, attributes, front-panel, block-diagram
+# CompareVI-TestModes: attributes, front-panel, block-diagram
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
@@ -60,10 +60,10 @@ Describe 'CompareVI history bundle certification' -Tag 'CompareVI' {
         $summary.certification.historyFacadeCoverageAligned | Should -BeTrue
         $summary.warningText | Should -Match 'LVCompare detected differences'
         $summary.warningText | Should -Not -Match 'unspecified'
-        @($summary.certification.actualModes) | Should -Be @('default', 'attributes', 'front-panel', 'block-diagram')
+        @($summary.certification.actualModes) | Should -Be @('attributes', 'front-panel', 'block-diagram')
         $summary.historyFacade.schema | Should -Be 'comparevi-tools/history-facade@v1'
-        @($summary.historyFacade.requestedModes) | Should -Be @('default', 'attributes', 'front-panel', 'block-diagram')
-        @($summary.historyFacade.executedModes) | Should -Be @('default', 'attributes', 'front-panel', 'block-diagram')
+        @($summary.historyFacade.requestedModes) | Should -Be @('attributes', 'front-panel', 'block-diagram')
+        @($summary.historyFacade.executedModes) | Should -Be @('attributes', 'front-panel', 'block-diagram')
         $summary.historyFacade.coverageClass | Should -Be 'catalog-aligned'
         Test-Path -LiteralPath $summary.outputs.historySummaryJson -PathType Leaf | Should -BeTrue
 
@@ -72,12 +72,10 @@ Describe 'CompareVI history bundle certification' -Tag 'CompareVI' {
             $modeIndex[[string]$mode.slug] = $mode
         }
 
-        $modeIndex.ContainsKey('default') | Should -BeTrue
         $modeIndex.ContainsKey('attributes') | Should -BeTrue
         $modeIndex.ContainsKey('front-panel') | Should -BeTrue
         $modeIndex.ContainsKey('block-diagram') | Should -BeTrue
 
-        @($modeIndex['default'].collapsedNoise.categoryCounts.PSObject.Properties.Name) | Should -Contain 'vi-attribute'
         @($modeIndex['attributes'].collapsedNoise.categoryCounts.PSObject.Properties.Name) | Should -Contain 'vi-attribute'
         @($modeIndex['front-panel'].categoryCounts.PSObject.Properties.Name) | Should -Contain 'Control Changes'
         @($modeIndex['block-diagram'].categoryCounts.PSObject.Properties.Name) | Should -Contain 'Block Diagram'

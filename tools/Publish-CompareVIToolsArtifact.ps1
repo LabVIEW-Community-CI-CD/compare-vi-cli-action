@@ -123,6 +123,7 @@ $requiredRelativePaths = @(
   'tools/Compare-VIHistory.ps1',
   'tools/Compare-RefsToTemp.ps1',
   'tools/Invoke-LVCompare.ps1',
+  'tools/New-CompareVIHistoryDiagnosticsBody.ps1',
   'tools/Render-VIHistoryReport.ps1',
   'tools/Run-NILinuxContainerCompare.ps1',
   'tools/VendorTools.psm1',
@@ -225,6 +226,7 @@ try {
     '- Keep all files from this bundle together; do not mix files across tags.'
     '- For cross-repo VI history, extract the archive and import the module from this bundle instead of checking out the full repository.'
     '- Prefer `Invoke-CompareVIHistoryFacade` when downstream tooling needs a stable summary object plus the generated report paths.'
+    '- For comparevi-history comment/summary rendering, resolve `tools/New-CompareVIHistoryDiagnosticsBody.ps1` from this bundle or from the workflow `tooling-path` output instead of copying inline PowerShell helpers.'
     '- The runtime facade JSON is written to `history-summary.json` under the selected results directory.'
     '- Real compare execution still requires the same LVCompare/LabVIEW prerequisites as the source repository.'
   ) | Set-Content -LiteralPath $bundleReadmePath -Encoding utf8
@@ -258,7 +260,8 @@ try {
       'extract-archive-and-import-module',
       'cross-repo-vi-history-via-module',
       'cross-repo-vi-history-via-facade',
-      'cross-repo-vi-history-via-hosted-ni-linux-runner'
+      'cross-repo-vi-history-via-hosted-ni-linux-runner',
+      'comparevi-history-comment-rendering-via-tooling-path'
     )
     requires = @(
       'git-history-in-target-repo',
@@ -266,7 +269,8 @@ try {
     )
     notes = @(
       'The bundle is self-contained for CompareVI.Tools module usage.',
-      'Do not mix files from different release tags.'
+      'Do not mix files from different release tags.',
+      'Downstream comparevi-history consumers can resolve the diagnostics body renderer from the tooling root instead of copying inline PowerShell helpers.'
     )
   }
 
@@ -294,6 +298,17 @@ try {
       notes = @(
         'Use the reviewed release tag and bundle metadata as the supported downstream pin.',
         'The facade omits raw per-comparison backend payloads so downstream consumers only depend on the stabilized summary surface.'
+      )
+    }
+    diagnosticsCommentRenderer = [ordered]@{
+      entryScriptPath = 'tools/New-CompareVIHistoryDiagnosticsBody.ps1'
+      variants = @(
+        'comment-gated',
+        'manual'
+      )
+      notes = @(
+        'Resolve the renderer from the extracted bundle root or comparevi-history tooling-path output instead of copying inline PowerShell comment bodies into downstream repositories.',
+        'The renderer consumes stabilized facade outputs and mode summary markdown so downstream callers can publish deterministic PR comments and step summaries.'
       )
     }
     hostedNiLinuxRunner = [ordered]@{

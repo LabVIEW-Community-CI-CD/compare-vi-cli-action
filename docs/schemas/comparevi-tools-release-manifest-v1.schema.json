@@ -113,7 +113,8 @@
     "consumerContract": {
       "type": "object",
       "required": [
-        "historyFacade"
+        "historyFacade",
+        "diagnosticsCommentRenderer"
       ],
       "properties": {
         "historyFacade": {
@@ -140,6 +141,32 @@
               "type": "string"
             },
             "stableFields": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "notes": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            }
+          },
+          "additionalProperties": false
+        },
+        "diagnosticsCommentRenderer": {
+          "type": "object",
+          "required": [
+            "entryScriptPath",
+            "variants",
+            "notes"
+          ],
+          "properties": {
+            "entryScriptPath": {
+              "type": "string"
+            },
+            "variants": {
               "type": "array",
               "items": {
                 "type": "string"

@@ -107,8 +107,9 @@ bundle across the public history mode bundle:
 - Verifier/renderer: `node tools/npm/run-script.mjs history:bundle:verify`
 
 The certification must run against the extracted bundle archive, not the source
-checkout, and it must prove `default`, `attributes`, `front-panel`, and
-`block-diagram` without `Unspecified` category collapse.
+checkout, and it must prove the explicit public diagnostics bundle
+`attributes`, `front-panel`, and `block-diagram` without `Unspecified`
+category collapse.
 
 ## Supply-chain trust gate
 

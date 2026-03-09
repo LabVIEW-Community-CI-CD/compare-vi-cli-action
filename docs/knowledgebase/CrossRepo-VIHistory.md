@@ -65,7 +65,7 @@ is the reviewed release tag plus its published checksum/provenance.
    Set-Location labview-icon-editor
    $history = Invoke-CompareVIHistoryFacade `
      -TargetPath "resource/plugins/NIIconEditor/Miscellaneous/Settings Init.vi" `
-     -Mode default,attributes `
+     -Mode attributes,front-panel,block-diagram `
      -RenderReport `
      -FailOnDiff:$false `
      -InvokeScriptPath ..\comparevi-tools\CompareVI.Tools-v<release-version>\tools\Invoke-LVCompare.ps1
@@ -98,9 +98,16 @@ Use this exact sample when you need a documented cross-repo consumer reference:
 - Downstream repo: `svelderrainruiz/labview-icon-editor`
 - Target VI:
   `resource/plugins/NIIconEditor/Miscellaneous/Settings Init.vi`
-- Recommended modes: `default,attributes`
+- Recommended modes: `attributes,front-panel,block-diagram`
 - Supported module entry point: `Invoke-CompareVIHistoryFacade`
 - Runtime summary artifact: `history-summary.json`
+
+For reviewer-facing diagnostics surfaces, prefer explicit scoped modes instead
+of aggregate lanes such as `default` or `full`. The bundle metadata now also
+advertises `consumerContract.diagnosticsCommentRenderer.entryScriptPath =
+tools/New-CompareVIHistoryDiagnosticsBody.ps1`, which comparevi-history
+consumers can resolve from the extracted tooling root or workflow
+`tooling-path` output instead of copying inline PowerShell comment renderers.
 
 ## One-off local run from a source checkout (legacy / maintainer path)
 
