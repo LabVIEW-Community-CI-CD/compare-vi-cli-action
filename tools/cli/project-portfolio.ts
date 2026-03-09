@@ -787,8 +787,10 @@ function verifyAppliedFields(
   itemId: string,
   updates: ResolvedApplyField[],
 ): ApplyVerificationResult {
-  const maxAttempts = Math.max(1, Number.parseInt(process.env.COMPAREVI_PROJECT_PORTFOLIO_VERIFY_ATTEMPTS ?? '5', 10) || 5);
-  const delayMs = Math.max(0, Number.parseInt(process.env.COMPAREVI_PROJECT_PORTFOLIO_VERIFY_DELAY_MS ?? '500', 10) || 500);
+  const parsedMaxAttempts = Number.parseInt(process.env.COMPAREVI_PROJECT_PORTFOLIO_VERIFY_ATTEMPTS ?? '5', 10);
+  const parsedDelayMs = Number.parseInt(process.env.COMPAREVI_PROJECT_PORTFOLIO_VERIFY_DELAY_MS ?? '500', 10);
+  const maxAttempts = Math.max(1, Number.isNaN(parsedMaxAttempts) ? 5 : parsedMaxAttempts);
+  const delayMs = Math.max(0, Number.isNaN(parsedDelayMs) ? 500 : parsedDelayMs);
 
   let lastFieldStates: VerifiedApplyFieldState[] = [];
   for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {

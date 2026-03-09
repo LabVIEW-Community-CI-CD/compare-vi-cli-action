@@ -461,7 +461,10 @@ test('project portfolio CLI apply mode adds a missing item and seeds fields from
     '--url', targetUrl,
     '--use-config',
   ], {
-    env: fakeGh.env,
+    env: {
+      ...fakeGh.env,
+      COMPAREVI_PROJECT_PORTFOLIO_VERIFY_DELAY_MS: '0',
+    },
   });
 
   assert.equal(result.status, 0, result.stderr);
@@ -479,6 +482,7 @@ test('project portfolio CLI apply mode adds a missing item and seeds fields from
   assert.ok(report.appliedFields.every((field) => field.source === 'config'));
   assert.equal(report.verification.ok, true);
   assert.equal(report.verification.attempts, 1);
+  assert.equal(report.verification.delayMs, 0);
   assert.deepEqual(fakeGhState.addCalls, [
     {
       projectId: 'PVT_example',
