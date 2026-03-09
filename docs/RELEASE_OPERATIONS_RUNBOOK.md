@@ -84,6 +84,16 @@ Use the downstream onboarding commands when validating platform adoption in cons
 For unattended cadence, use `.github/workflows/downstream-onboarding-feedback.yml` and set
 `vars.DOWNSTREAM_PILOT_REPO` to the current pilot repository.
 
+## Package cadence signal
+
+- `.github/workflows/release-cadence-check.yml` is the package-stream freshness monitor for `comparevi-tools` and
+  `CompareVi.Shared`.
+- The cadence workflow derives freshness from successful publish workflow evidence (`Publish Tools Image` and
+  `Publish CompareVi.Shared Package`) instead of direct package-registry enumeration. This avoids false stale alerts
+  when package discovery returns `Not Found` under repository-scoped tokens.
+- Each cadence run writes `tests/results/_agent/release/release-cadence-check-report.json` and uploads it as an
+  artifact. The report is the deterministic source for the generated issue body and Step Summary.
+
 ## Escalation matrix
 
 | Condition | Initial response window | Escalation path |
