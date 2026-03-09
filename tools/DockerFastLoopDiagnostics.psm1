@@ -31,7 +31,7 @@ function Convert-ToTrimmedString {
   if ($null -eq $Value) {
     return ''
   }
-  return [string]$Value
+  return ([string]$Value).Trim()
 }
 
 function Convert-ToBoolean {
