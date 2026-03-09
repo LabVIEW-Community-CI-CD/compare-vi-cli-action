@@ -510,6 +510,16 @@
       "portfolioTrack": "Agent UX"
     },
     {
+      "url": "https://github.com/LabVIEW-Community-CI-CD/compare-vi-cli-action/issues/960",
+      "status": "Todo",
+      "program": "Shared Infra",
+      "phase": "Signals",
+      "environmentClass": "Infra",
+      "blockingSignal": "CI",
+      "evidenceState": "Ready",
+      "portfolioTrack": "Agent UX"
+    },
+    {
       "url": "https://github.com/LabVIEW-Community-CI-CD/comparevi-history/issues/14",
       "status": "Done",
       "program": "Multi-Mode Diagnostics",
