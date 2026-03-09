@@ -2,7 +2,7 @@
   "$schema": "./schemas/documentation-manifest-v1.schema.json",
   "schema": "documentation-manifest-v1",
   "version": "1.0.0",
-  "updated": "2026-03-09T22:45:00Z",
+  "updated": "2026-03-09T23:10:00Z",
   "entries": [
     {
       "name": "Root Playbooks",
@@ -163,6 +163,18 @@
         "docs/schemas/labview-2026-host-plane-report-v1.schema.json",
         "tools/LabVIEW2026HostPlaneDiagnostics.psm1",
         "tools/Write-LabVIEW2026HostPlaneDiagnostics.ps1"
+      ]
+    },
+    {
+      "name": "Workflow Artifact Download Contracts",
+      "category": "supporting",
+      "status": "reference",
+      "description": "Checked-in helper contract for deterministic workflow artifact discovery and download during live triage.",
+      "files": [
+        "docs/schemas/run-artifact-download-report-v1.schema.json",
+        "tools/priority/download-run-artifact.mjs",
+        "tools/priority/lib/run-artifact-download.mjs",
+        "tools/priority/validation-approval-proof.mjs"
       ]
     },
     {
