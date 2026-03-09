@@ -103,11 +103,12 @@ Use this exact sample when you need a documented cross-repo consumer reference:
 - Runtime summary artifact: `history-summary.json`
 
 For reviewer-facing diagnostics surfaces, prefer explicit scoped modes instead
-of aggregate lanes such as `default` or `full`. The bundle metadata now also
-advertises `consumerContract.diagnosticsCommentRenderer.entryScriptPath =
-tools/New-CompareVIHistoryDiagnosticsBody.ps1`, which comparevi-history
-consumers can resolve from the extracted tooling root or workflow
-`tooling-path` output instead of copying inline PowerShell comment renderers.
+of aggregate lanes such as `default` or `full`. The embedded bundle metadata
+also advertises
+`consumerContract.diagnosticsCommentRenderer.entryScriptPath = tools/New-CompareVIHistoryDiagnosticsBody.ps1`,
+which comparevi-history consumers can resolve from the extracted tooling root
+or workflow `tooling-path` output instead of copying inline PowerShell comment
+renderers.
 
 ## One-off local run from a source checkout (legacy / maintainer path)
 
