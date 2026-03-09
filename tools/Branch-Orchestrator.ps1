@@ -5,7 +5,6 @@ param(
   [switch]$Execute,
   [string]$Base = 'develop',
   [string]$BranchPrefix = 'issue',
-  [ValidateSet('default', 'agent-maintenance', 'workflow-policy', 'human-change')]
   [string]$PRTemplate = 'default'
 )
 
@@ -101,6 +100,7 @@ function New-RenderedPRBody([string]$Repo,[int]$Issue,[pscustomobject]$Snapshot,
 }
 
 $repo = Get-RepoRoot
+$null = Resolve-GitHubPullRequestTemplate -TemplateName $PRTemplate
 if (-not $Issue) {
   # Try resolve from router/snapshot
   $snapDir = Join-Path $repo 'tests/results/_agent/issue'

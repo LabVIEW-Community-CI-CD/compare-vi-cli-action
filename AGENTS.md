@@ -143,6 +143,17 @@ line buffers).
   - Published wiki page content lives in the separate GitHub wiki repo
     `LabVIEW-Community-CI-CD/compare-vi-cli-action.wiki.git`; repo PRs here can govern the contract and entry points,
     but not the wiki page history itself.
+  - CLI or future-agent template discovery should start from
+    `tools/priority/github-intake-catalog.json`; use `pwsh -File tools/Resolve-GitHubIntakeRoute.ps1 -ListScenarios`
+    or `-Scenario <name>` before choosing an issue form or PR template by hand.
+  - For scenario-driven draft generation, prefer
+    `pwsh -File tools/New-GitHubIntakeDraft.ps1 -Scenario <name> -OutputPath <body-file>` and only drop to
+    `New-IssueBody.ps1` / `New-PullRequestBody.ps1` when you intentionally need the lower-level template call.
+    For PR scenarios, the draft helper can auto-fill issue title/URL and standing-priority state from
+    `tests/results/_agent/issue/` when bootstrap has already refreshed the issue snapshot.
+  - When you need the whole intake surface summarized in one artifact, use
+    `pwsh -File tools/Write-GitHubIntakeAtlas.ps1`; it writes JSON/Markdown atlas outputs under
+    `tests/results/_agent/intake/`.
   - CLI issue creation should use `pwsh -File tools/New-IssueBody.ps1 -Template <...> -OutputPath issue-body.md`
     followed by `gh issue create --body-file issue-body.md`.
   - CLI PR creation should prefer `pwsh -File tools/Branch-Orchestrator.ps1 -Issue <number> -Execute` and switch

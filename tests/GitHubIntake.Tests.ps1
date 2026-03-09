@@ -39,4 +39,98 @@ Describe 'GitHubIntake.psm1' {
     Resolve-IssueBranchName -Number 875 -Title 'Epic: modernize the GitHub intake layer for future agents' |
       Should -Be 'issue/875-modernize-the-github-intake-layer-for-future-agents'
   }
+
+  It 'loads the checked-in intake catalog with issue and PR templates' {
+    $catalog = Get-GitHubIntakeCatalog
+
+    $catalog.schema | Should -Be 'github-intake/catalog@v1'
+    $catalog.issueTemplates.key | Should -Contain 'workflow-policy-agent-ux'
+    $catalog.pullRequestTemplates.key | Should -Contain 'human-change'
+    $catalog.routes.scenario | Should -Contain 'workflow-policy'
+    $catalog.routes.scenario | Should -Contain 'human-pr'
+  }
+
+  It 'resolves workflow-policy intake to the workflow-policy issue template' {
+    $route = Resolve-GitHubIntakeRoute -Scenario 'workflow-policy'
+
+    $route.routeType | Should -Be 'issue-template'
+    $route.targetKey | Should -Be 'workflow-policy-agent-ux'
+    $route.targetPath | Should -Be '.github/ISSUE_TEMPLATE/03-workflow-policy-agent-ux.yml'
+    $route.helperPath | Should -Be 'tools/New-GitHubIntakeDraft.ps1'
+  }
+
+  It 'resolves human-pr intake to the human-change PR template' {
+    $route = Resolve-GitHubIntakeRoute -Scenario 'human-pr'
+
+    $route.routeType | Should -Be 'pull-request-template'
+    $route.targetKey | Should -Be 'human-change'
+    $route.targetPath | Should -Be '.github/PULL_REQUEST_TEMPLATE/human-change.md'
+    $route.helperPath | Should -Be 'tools/New-GitHubIntakeDraft.ps1'
+    $route.executeCommand | Should -Be 'gh pr create --title "<title>" --body-file pr-body.md'
+  }
+
+  It 'resolves an issue snapshot from the override directory when present' {
+    $snapshotDir = Join-Path $TestDrive 'issue'
+    New-Item -ItemType Directory -Path $snapshotDir -Force | Out-Null
+    '{"number":921,"title":"Catalog issue","url":"https://example.test/issues/921","labels":["standing-priority"]}' |
+      Set-Content -LiteralPath (Join-Path $snapshotDir '921.json') -Encoding utf8
+
+    $previous = $env:COMPAREVI_GITHUB_INTAKE_SNAPSHOT_DIR
+    try {
+      $env:COMPAREVI_GITHUB_INTAKE_SNAPSHOT_DIR = $snapshotDir
+      $snapshot = Resolve-GitHubIssueSnapshot -Issue 921
+    } finally {
+      if ($null -eq $previous) {
+        Remove-Item Env:COMPAREVI_GITHUB_INTAKE_SNAPSHOT_DIR -ErrorAction SilentlyContinue
+      } else {
+        $env:COMPAREVI_GITHUB_INTAKE_SNAPSHOT_DIR = $previous
+      }
+    }
+
+    $snapshot.number | Should -Be 921
+    $snapshot.title | Should -Be 'Catalog issue'
+  }
+
+  It 'builds an atlas report from the intake catalog' {
+    $report = New-GitHubIntakeAtlasReport -GeneratedAtUtc '2026-03-09T00:00:00Z'
+
+    $report.schema | Should -Be 'github-intake/atlas@v1'
+    $report.counts.issueTemplates | Should -BeGreaterThan 0
+    $report.routes.scenario | Should -Contain 'automation-pr'
+  }
+
+  It 'renders atlas markdown from the report' {
+    $report = New-GitHubIntakeAtlasReport -GeneratedAtUtc '2026-03-09T00:00:00Z'
+    $markdown = ConvertTo-GitHubIntakeAtlasMarkdown -Report $report
+
+    $markdown | Should -Match '# GitHub Intake Atlas'
+    $markdown | Should -Match '## Scenario Routes'
+    $markdown | Should -Match '\| automation-pr \| pull-request-template \|'
+  }
+
+  It 'resolves draft context for PR scenarios from snapshot and current branch' {
+    $snapshotDir = Join-Path $TestDrive 'issue'
+    New-Item -ItemType Directory -Path $snapshotDir -Force | Out-Null
+    '{"number":921,"title":"Catalog issue","url":"https://example.test/issues/921","labels":["standing-priority"]}' |
+      Set-Content -LiteralPath (Join-Path $snapshotDir '921.json') -Encoding utf8
+
+    $previous = $env:COMPAREVI_GITHUB_INTAKE_SNAPSHOT_DIR
+    try {
+      $env:COMPAREVI_GITHUB_INTAKE_SNAPSHOT_DIR = $snapshotDir
+      $context = Resolve-GitHubIntakeDraftContext -Scenario 'automation-pr' -Issue 921 -CurrentBranch 'issue/921-work'
+    } finally {
+      if ($null -eq $previous) {
+        Remove-Item Env:COMPAREVI_GITHUB_INTAKE_SNAPSHOT_DIR -ErrorAction SilentlyContinue
+      } else {
+        $env:COMPAREVI_GITHUB_INTAKE_SNAPSHOT_DIR = $previous
+      }
+    }
+
+    $context.templateKey | Should -Be 'default'
+    $context.issueTitle | Should -Be 'Catalog issue'
+    $context.issueUrl | Should -Be 'https://example.test/issues/921'
+    $context.branch | Should -Be 'issue/921-work'
+    $context.standingPriority | Should -BeTrue
+    $context.snapshotResolved | Should -BeTrue
+  }
 }

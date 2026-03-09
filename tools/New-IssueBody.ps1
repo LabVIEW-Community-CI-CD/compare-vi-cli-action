@@ -1,7 +1,6 @@
 #Requires -Version 7.0
 [CmdletBinding()]
 param(
-  [ValidateSet('bug-report', 'feature-program', 'workflow-policy-agent-ux', 'investigation-anomaly')]
   [string]$Template = 'feature-program',
   [switch]$StandingPriority,
   [string]$RelatedIssues,
@@ -11,11 +10,14 @@ param(
 
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
+Import-Module (Join-Path $PSScriptRoot 'GitHubIntake.psm1') -Force
 
 function Get-TemplateBody {
   param([string]$TemplateName)
 
-  switch ($TemplateName) {
+  $templateEntry = Resolve-GitHubIssueTemplate -TemplateName $TemplateName
+
+  switch ([string]$templateEntry.key) {
     'bug-report' {
       return @'
 ## Summary

@@ -3,6 +3,15 @@
 Use these snippets to bootstrap issues, PR bodies, and PR comments with deterministic structure. Replace placeholders in
 angle brackets.
 
+## Discover The Supported Intake Route
+
+```text
+pwsh -File tools/Resolve-GitHubIntakeRoute.ps1 -ListScenarios
+pwsh -File tools/Resolve-GitHubIntakeRoute.ps1 -Scenario workflow-policy
+pwsh -File tools/New-GitHubIntakeDraft.ps1 -Scenario workflow-policy -OutputPath issue-body.md
+pwsh -File tools/Write-GitHubIntakeAtlas.ps1
+```
+
 ## Open An Issue With The CLI Intake Helpers
 
 - Feature or program intake:
