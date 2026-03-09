@@ -45,6 +45,7 @@ $payload = [ordered]@{
 }
 
 $json = $payload | ConvertTo-Json -Depth 10
-[System.IO.File]::WriteAllText($provenancePath, $json + [Environment]::NewLine, [System.Text.Encoding]::UTF8)
+$utf8NoBom = [System.Text.UTF8Encoding]::new($false)
+[System.IO.File]::WriteAllText($provenancePath, $json + [Environment]::NewLine, $utf8NoBom)
 
 Write-Host "Provenance metadata written to $provenancePath"
