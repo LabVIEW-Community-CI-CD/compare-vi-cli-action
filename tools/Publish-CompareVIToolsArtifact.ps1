@@ -100,7 +100,7 @@ function Resolve-SourceRef {
 function Write-GitHubOutputValue {
   param(
     [Parameter(Mandatory = $true)][string]$Key,
-    [Parameter(Mandatory = $true)][string]$Value
+    [Parameter(Mandatory = $true)][AllowEmptyString()][string]$Value
   )
 
   if ([string]::IsNullOrWhiteSpace($env:GITHUB_OUTPUT)) {
