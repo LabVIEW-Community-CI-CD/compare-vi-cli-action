@@ -1,0 +1,169 @@
+{
+  "$schema": "../../docs/schemas/github-intake-catalog-v1.schema.json",
+  "schema": "github-intake/catalog@v1",
+  "repository": "LabVIEW-Community-CI-CD/compare-vi-cli-action",
+  "issueTemplates": [
+    {
+      "key": "bug-report",
+      "name": "Bug report",
+      "path": ".github/ISSUE_TEMPLATE/01-bug-report.yml",
+      "titlePrefix": "[bug]: ",
+      "labels": [
+        "bug"
+      ],
+      "summary": "Report a deterministic failure in workflows, tooling, or compare behavior."
+    },
+    {
+      "key": "feature-program",
+      "name": "Feature or program intake",
+      "path": ".github/ISSUE_TEMPLATE/02-feature-program-intake.yml",
+      "titlePrefix": "[intake]: ",
+      "labels": [
+        "enhancement"
+      ],
+      "summary": "Propose a new delivery slice, epic, or repository improvement."
+    },
+    {
+      "key": "workflow-policy-agent-ux",
+      "name": "Workflow, policy, or agent UX request",
+      "path": ".github/ISSUE_TEMPLATE/03-workflow-policy-agent-ux.yml",
+      "titlePrefix": "[workflow-policy]: ",
+      "labels": [
+        "enhancement",
+        "ci"
+      ],
+      "summary": "Intake for workflow contracts, review policy, queue behavior, or future-agent experience changes."
+    },
+    {
+      "key": "investigation-anomaly",
+      "name": "Investigation or anomaly",
+      "path": ".github/ISSUE_TEMPLATE/04-investigation-anomaly.yml",
+      "titlePrefix": "[investigation]: ",
+      "labels": [
+        "bug"
+      ],
+      "summary": "Capture an incident, unexplained failure pattern, or environment anomaly for structured follow-up."
+    }
+  ],
+  "pullRequestTemplates": [
+    {
+      "key": "default",
+      "path": ".github/pull_request_template.md",
+      "templateLabel": "default-agent-template",
+      "metadataMode": "agent",
+      "summary": "Default automation-authored PR template for standing-priority maintenance work."
+    },
+    {
+      "key": "agent-maintenance",
+      "path": ".github/PULL_REQUEST_TEMPLATE/agent-maintenance.md",
+      "templateLabel": "agent-maintenance",
+      "metadataMode": "agent",
+      "summary": "Expanded automation-authored PR template for maintenance-heavy changes with queue and follow-up detail."
+    },
+    {
+      "key": "workflow-policy",
+      "path": ".github/PULL_REQUEST_TEMPLATE/workflow-policy.md",
+      "templateLabel": "workflow-policy",
+      "metadataMode": "agent",
+      "summary": "Automation-authored PR template for workflow, permissions, required checks, and approval-flow changes."
+    },
+    {
+      "key": "human-change",
+      "path": ".github/PULL_REQUEST_TEMPLATE/human-change.md",
+      "templateLabel": "human-change",
+      "metadataMode": "human",
+      "summary": "Human-authored PR template without the agent metadata contract."
+    }
+  ],
+  "contactLinks": [
+    {
+      "name": "Agent Handbook",
+      "url": "https://github.com/LabVIEW-Community-CI-CD/compare-vi-cli-action/blob/develop/AGENTS.md",
+      "about": "Standing-priority policy, CLI guidance, and repository operating rules for future agents."
+    },
+    {
+      "name": "GitHub Wiki Portal",
+      "url": "https://github.com/LabVIEW-Community-CI-CD/compare-vi-cli-action/wiki",
+      "about": "Curated public navigation for getting started, runbooks, and contribution guidance."
+    },
+    {
+      "name": "GitHub Intake Layer Guide",
+      "url": "https://github.com/LabVIEW-Community-CI-CD/compare-vi-cli-action/blob/develop/docs/knowledgebase/GitHub-Intake-Layer.md",
+      "about": "Template strategy, helper scripts, and when to use each issue or PR intake path."
+    }
+  ],
+  "routes": [
+    {
+      "scenario": "bug",
+      "routeType": "issue-template",
+      "targetKey": "bug-report",
+      "helperPath": "tools/New-GitHubIntakeDraft.ps1",
+      "command": "pwsh -NoLogo -NoProfile -File tools/New-GitHubIntakeDraft.ps1 -Scenario bug -OutputPath issue-body.md",
+      "executeCommand": "gh issue create --title \"<title>\" --body-file issue-body.md",
+      "summary": "Use the bug issue body when the next step is a reproducible repository failure."
+    },
+    {
+      "scenario": "feature-program",
+      "routeType": "issue-template",
+      "targetKey": "feature-program",
+      "helperPath": "tools/New-GitHubIntakeDraft.ps1",
+      "command": "pwsh -NoLogo -NoProfile -File tools/New-GitHubIntakeDraft.ps1 -Scenario feature-program -OutputPath issue-body.md",
+      "executeCommand": "gh issue create --title \"<title>\" --body-file issue-body.md",
+      "summary": "Use the feature/program intake body for new delivery slices, epics, or backlog shaping."
+    },
+    {
+      "scenario": "workflow-policy",
+      "routeType": "issue-template",
+      "targetKey": "workflow-policy-agent-ux",
+      "helperPath": "tools/New-GitHubIntakeDraft.ps1",
+      "command": "pwsh -NoLogo -NoProfile -File tools/New-GitHubIntakeDraft.ps1 -Scenario workflow-policy -OutputPath issue-body.md",
+      "executeCommand": "gh issue create --title \"<title>\" --body-file issue-body.md",
+      "summary": "Use the workflow/policy intake body when the main change is about GitHub automation, review flow, or agent UX."
+    },
+    {
+      "scenario": "investigation",
+      "routeType": "issue-template",
+      "targetKey": "investigation-anomaly",
+      "helperPath": "tools/New-GitHubIntakeDraft.ps1",
+      "command": "pwsh -NoLogo -NoProfile -File tools/New-GitHubIntakeDraft.ps1 -Scenario investigation -OutputPath issue-body.md",
+      "executeCommand": "gh issue create --title \"<title>\" --body-file issue-body.md",
+      "summary": "Use the investigation body when the next step is diagnosis rather than direct implementation."
+    },
+    {
+      "scenario": "automation-pr",
+      "routeType": "pull-request-template",
+      "targetKey": "default",
+      "helperPath": "tools/New-GitHubIntakeDraft.ps1",
+      "command": "pwsh -NoLogo -NoProfile -File tools/New-GitHubIntakeDraft.ps1 -Scenario automation-pr -Issue <number> -OutputPath pr-body.md",
+      "executeCommand": "pwsh -NoLogo -NoProfile -File tools/Branch-Orchestrator.ps1 -Issue <number> -Execute",
+      "summary": "Use the default automation-authored PR template for normal standing-priority changes."
+    },
+    {
+      "scenario": "workflow-policy-pr",
+      "routeType": "pull-request-template",
+      "targetKey": "workflow-policy",
+      "helperPath": "tools/New-GitHubIntakeDraft.ps1",
+      "command": "pwsh -NoLogo -NoProfile -File tools/New-GitHubIntakeDraft.ps1 -Scenario workflow-policy-pr -Issue <number> -OutputPath pr-body.md",
+      "executeCommand": "pwsh -NoLogo -NoProfile -File tools/Branch-Orchestrator.ps1 -Issue <number> -Execute -PRTemplate workflow-policy",
+      "summary": "Use the workflow-policy PR template when the review focus is permissions, checks, queue behavior, or policy."
+    },
+    {
+      "scenario": "agent-maintenance-pr",
+      "routeType": "pull-request-template",
+      "targetKey": "agent-maintenance",
+      "helperPath": "tools/New-GitHubIntakeDraft.ps1",
+      "command": "pwsh -NoLogo -NoProfile -File tools/New-GitHubIntakeDraft.ps1 -Scenario agent-maintenance-pr -Issue <number> -OutputPath pr-body.md",
+      "executeCommand": "gh pr create --title \"<title>\" --body-file pr-body.md",
+      "summary": "Use the agent-maintenance PR template when queue state and follow-up notes need more space than the default template."
+    },
+    {
+      "scenario": "human-pr",
+      "routeType": "pull-request-template",
+      "targetKey": "human-change",
+      "helperPath": "tools/New-GitHubIntakeDraft.ps1",
+      "command": "pwsh -NoLogo -NoProfile -File tools/New-GitHubIntakeDraft.ps1 -Scenario human-pr -Issue <number> -OutputPath pr-body.md",
+      "executeCommand": "gh pr create --title \"<title>\" --body-file pr-body.md",
+      "summary": "Use the human-change PR template when the PR is not automation-authored and should not trigger the agent metadata flow."
+    }
+  ]
+}

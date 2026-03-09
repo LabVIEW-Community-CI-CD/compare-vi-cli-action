@@ -137,6 +137,21 @@
       ]
     },
     {
+      "name": "GitHub Intake Contracts",
+      "category": "supporting",
+      "status": "reference",
+      "description": "Machine-readable catalog, schema, and helper entrypoints for GitHub issue/PR intake routing.",
+      "files": [
+        "docs/schemas/github-intake-atlas-v1.schema.json",
+        "docs/schemas/github-intake-catalog-v1.schema.json",
+        "tools/GitHubIntake.psm1",
+        "tools/New-GitHubIntakeDraft.ps1",
+        "tools/Resolve-GitHubIntakeRoute.ps1",
+        "tools/Write-GitHubIntakeAtlas.ps1",
+        "tools/priority/github-intake-catalog.json"
+      ]
+    },
+    {
       "name": "Issue Drafts",
       "category": "drafts",
       "status": "draft",

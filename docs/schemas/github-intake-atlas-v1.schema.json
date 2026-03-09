@@ -1,0 +1,76 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://comparevi.dev/schemas/github-intake-atlas-v1.schema.json",
+  "title": "GitHub Intake Atlas v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema",
+    "generatedAtUtc",
+    "repository",
+    "catalogPath",
+    "counts",
+    "issueTemplates",
+    "pullRequestTemplates",
+    "contactLinks",
+    "routes"
+  ],
+  "properties": {
+    "schema": {
+      "type": "string",
+      "const": "github-intake/atlas@v1"
+    },
+    "generatedAtUtc": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "repository": {
+      "type": "string",
+      "minLength": 1
+    },
+    "catalogPath": {
+      "type": "string",
+      "const": "tools/priority/github-intake-catalog.json"
+    },
+    "counts": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "issueTemplates",
+        "pullRequestTemplates",
+        "contactLinks",
+        "scenarios"
+      ],
+      "properties": {
+        "issueTemplates": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "pullRequestTemplates": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "contactLinks": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "scenarios": {
+          "type": "integer",
+          "minimum": 0
+        }
+      }
+    },
+    "issueTemplates": {
+      "type": "array"
+    },
+    "pullRequestTemplates": {
+      "type": "array"
+    },
+    "contactLinks": {
+      "type": "array"
+    },
+    "routes": {
+      "type": "array"
+    }
+  }
+}

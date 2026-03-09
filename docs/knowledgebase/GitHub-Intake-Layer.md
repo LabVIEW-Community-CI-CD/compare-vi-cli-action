@@ -28,6 +28,37 @@ separate ad-hoc markdown fragments.
 When agents or operators create issues and PRs from the terminal, the repository favors generated markdown bodies over
 hand-written ad-hoc text.
 
+The supported issue forms, PR templates, contact links, and common route recommendations now live in the
+machine-readable catalog `tools/priority/github-intake-catalog.json`. Future agents should consult that catalog first
+instead of inferring the correct path from prose alone.
+
+- Route discovery:
+
+  ```powershell
+  pwsh -File tools/Resolve-GitHubIntakeRoute.ps1 -ListScenarios
+  pwsh -File tools/Resolve-GitHubIntakeRoute.ps1 -Scenario workflow-policy
+  ```
+
+- Scenario-driven draft generation:
+
+  ```powershell
+  pwsh -File tools/New-GitHubIntakeDraft.ps1 -Scenario workflow-policy -OutputPath issue-body.md
+  pwsh -File tools/New-GitHubIntakeDraft.ps1 -Scenario human-pr -Issue 921 -OutputPath pr-body.md
+  ```
+
+  For PR scenarios, the draft helper can auto-populate the issue title, issue URL, and standing-priority marker from
+  the current issue snapshot under `tests/results/_agent/issue/`, so future agents do not need to restate that context
+  after bootstrap has already synced it.
+
+- Atlas report generation:
+
+  ```powershell
+  pwsh -File tools/Write-GitHubIntakeAtlas.ps1
+  ```
+
+  This writes a Markdown and JSON atlas under `tests/results/_agent/intake/` so humans and future agents can inspect
+  the entire supported intake surface from one artifact instead of opening each template file individually.
+
 - Issue bodies:
 
   ```powershell
@@ -97,6 +128,12 @@ Human-authored PRs should use the `human-change` template so they do not acciden
 - Prefer explicit `--title` plus `--body-file` over `gh pr create --fill`; the title/body contract stays deterministic
   and avoids GitHub CLI flag conflicts.
 - Use the wiki as a public portal for discoverability, not as a substitute for checked-in docs.
+- Prefer the checked-in intake catalog plus `Resolve-GitHubIntakeRoute.ps1` when deciding which supported issue or PR
+  surface to use.
+- Prefer `New-GitHubIntakeDraft.ps1` when you want a single scenario-led entrypoint that renders the correct issue or
+  PR draft from the catalog.
+- Use `Write-GitHubIntakeAtlas.ps1` when you need a single human-readable and machine-readable snapshot of the entire
+  intake layer.
 
 ## Mixed-Shell Guidance
 

@@ -400,6 +400,20 @@ For Docker/Desktop VI history validation, run fast-loop lanes explicitly:
 - Prefer opening PRs from your fork with `node tools/npm/run-script.mjs priority:pr`; the helper ensures `origin`
   targets your fork (creating it via `gh repo fork` if needed), pushes the current branch, and calls
   `gh pr create --title <derived-title> --body <rendered-body> --repo <upstream> --base develop --head <fork>:branch`.
+- The machine-readable GitHub intake source of truth lives in
+  `tools/priority/github-intake-catalog.json`. Use
+  `pwsh -File tools/Resolve-GitHubIntakeRoute.ps1 -ListScenarios` or
+  `pwsh -File tools/Resolve-GitHubIntakeRoute.ps1 -Scenario <name>` to choose
+  the supported issue/PR path before drafting custom Markdown.
+- For the higher-level scenario facade, use
+  `pwsh -File tools/New-GitHubIntakeDraft.ps1 -Scenario <name> -OutputPath <body-file>`
+  to render the correct issue or PR body from the catalog before invoking
+  `gh issue create` / `gh pr create`. For PR scenarios, the helper can hydrate
+  issue title/URL and standing-priority state from the existing issue snapshot
+  under `tests/results/_agent/issue/`.
+- For the whole-surface report, use `pwsh -File tools/Write-GitHubIntakeAtlas.ps1`;
+  it emits Markdown + JSON intake atlas artifacts under
+  `tests/results/_agent/intake/`.
 - When you need the repository's richer intake metadata blocks and template variants, prefer
   `pwsh -File tools/Branch-Orchestrator.ps1 -Issue <number> -Execute [-PRTemplate <variant>]` or
   `pwsh -File tools/New-PullRequestBody.ps1 ... -OutputPath pr-body.md` plus `gh pr create --title <title> --body-file

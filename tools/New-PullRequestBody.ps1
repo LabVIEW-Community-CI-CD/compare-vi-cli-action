@@ -1,7 +1,6 @@
 #Requires -Version 7.0
 [CmdletBinding()]
 param(
-  [ValidateSet('default', 'agent-maintenance', 'workflow-policy', 'human-change')]
   [string]$Template = 'default',
   [int]$Issue,
   [string]$IssueTitle,
@@ -14,37 +13,14 @@ param(
 
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
+Import-Module (Join-Path $PSScriptRoot 'GitHubIntake.psm1') -Force
 
 function Get-RepoRoot {
   Split-Path -Parent $PSScriptRoot
 }
 
-function Resolve-TemplatePath {
-  param([string]$TemplateName)
-
-  $repoRoot = Get-RepoRoot
-  switch ($TemplateName) {
-    'default' { return Join-Path $repoRoot '.github/pull_request_template.md' }
-    'agent-maintenance' { return Join-Path $repoRoot '.github/PULL_REQUEST_TEMPLATE/agent-maintenance.md' }
-    'workflow-policy' { return Join-Path $repoRoot '.github/PULL_REQUEST_TEMPLATE/workflow-policy.md' }
-    'human-change' { return Join-Path $repoRoot '.github/PULL_REQUEST_TEMPLATE/human-change.md' }
-    default { throw "Unsupported PR template '$TemplateName'." }
-  }
-}
-
-function Get-TemplateLabel {
-  param([string]$TemplateName)
-
-  switch ($TemplateName) {
-    'default' { return 'default-agent-template' }
-    'agent-maintenance' { return 'agent-maintenance' }
-    'workflow-policy' { return 'workflow-policy' }
-    'human-change' { return 'human-change' }
-    default { throw "Unsupported PR template '$TemplateName'." }
-  }
-}
-
-$templatePath = Resolve-TemplatePath -TemplateName $Template
+$templateEntry = Resolve-GitHubPullRequestTemplate -TemplateName $Template
+$templatePath = Join-Path (Get-RepoRoot) ([string]$templateEntry.path)
 if (-not (Test-Path -LiteralPath $templatePath -PathType Leaf)) {
   throw "PR template not found: $templatePath"
 }
@@ -62,7 +38,7 @@ $baseText = if ([string]::IsNullOrWhiteSpace($Base)) { '(not supplied)' } else {
 $branchText = if ([string]::IsNullOrWhiteSpace($Branch)) { '(not supplied)' } else { "``$Branch``" }
 $issueUrlText = if ([string]::IsNullOrWhiteSpace($IssueUrl)) { '(not supplied)' } else { $IssueUrl }
 $issueTitleText = if ([string]::IsNullOrWhiteSpace($IssueTitle)) { '(not supplied)' } else { $IssueTitle }
-$templateLabel = Get-TemplateLabel -TemplateName $Template
+$templateLabel = [string]$templateEntry.templateLabel
 
 $preamble = @(
   '## Issue Linkage',
