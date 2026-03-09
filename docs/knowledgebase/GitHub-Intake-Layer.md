@@ -48,7 +48,8 @@ instead of inferring the correct path from prose alone.
 
   For PR scenarios, the draft helper can auto-populate the issue title, issue URL, and standing-priority marker from
   the current issue snapshot under `tests/results/_agent/issue/`, so future agents do not need to restate that context
-  after bootstrap has already synced it.
+  after bootstrap has already synced it. When an explicit issue is outside the standing-priority cache, the helper also
+  falls back to `gh issue view` so non-standing issue PRs still hydrate title/URL cleanly on a fresh clone.
 
 - Default dry-run execution plan:
 

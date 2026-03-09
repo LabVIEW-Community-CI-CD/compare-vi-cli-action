@@ -28,6 +28,23 @@ function Read-GitHubIntakeJsonFile {
   }
 }
 
+function Get-GitHubIntakeRepositoryContext {
+  $envRepo = [Environment]::GetEnvironmentVariable('GITHUB_REPOSITORY')
+  if (-not [string]::IsNullOrWhiteSpace($envRepo)) {
+    return $envRepo.Trim()
+  }
+
+  $catalog = Get-GitHubIntakeCatalog
+  if ($catalog -and ($catalog.PSObject.Properties.Name -contains 'repository')) {
+    $repository = ([string]$catalog.repository).Trim()
+    if ($repository) {
+      return $repository
+    }
+  }
+
+  return 'LabVIEW-Community-CI-CD/compare-vi-cli-action'
+}
+
 function Get-GitHubIssueSnapshotDirectory {
   $override = [Environment]::GetEnvironmentVariable('COMPAREVI_GITHUB_INTAKE_SNAPSHOT_DIR')
   if (-not [string]::IsNullOrWhiteSpace($override)) {
@@ -92,6 +109,9 @@ function Resolve-GitHubIssueSnapshot {
 
   $issueDir = Get-GitHubIssueSnapshotDirectory
   if (-not (Test-Path -LiteralPath $issueDir -PathType Container)) {
+    if ($Issue -gt 0) {
+      return Resolve-GitHubIssueSnapshotFromGitHub -Issue $Issue
+    }
     return $null
   }
 
@@ -118,10 +138,75 @@ function Resolve-GitHubIssueSnapshot {
     Sort-Object LastWriteTime -Descending |
     Select-Object -First 1
   if (-not $latest) {
+    if ($Issue -gt 0) {
+      return Resolve-GitHubIssueSnapshotFromGitHub -Issue $Issue
+    }
     return $null
   }
 
   Read-GitHubIntakeJsonFile -Path $latest.FullName
+}
+
+function Resolve-GitHubIssueSnapshotFromGitHub {
+  param([int]$Issue)
+
+  if ($Issue -le 0) {
+    return $null
+  }
+
+  $gh = Get-Command gh -ErrorAction SilentlyContinue
+  if (-not $gh) {
+    return $null
+  }
+
+  $repositoryContext = Get-GitHubIntakeRepositoryContext
+  try {
+    $json = & $gh.Source 'issue' 'view' ([string]$Issue) '--repo' $repositoryContext '--json' 'number,title,url,labels,state' 2>$null
+    if ($LASTEXITCODE -ne 0 -or [string]::IsNullOrWhiteSpace($json)) {
+      return $null
+    }
+
+    $snapshot = $json | ConvertFrom-Json -ErrorAction Stop
+    if (-not $snapshot) {
+      return $null
+    }
+
+    $normalizedLabels = @()
+    if ($snapshot.PSObject.Properties.Name -contains 'labels' -and $snapshot.labels) {
+      $normalizedLabels = @($snapshot.labels | ForEach-Object {
+        if ($_ -is [string]) { return [string]$_ }
+        if ($_ -and ($_.PSObject.Properties.Name -contains 'name')) { return [string]$_.name }
+        return $null
+      } | Where-Object { -not [string]::IsNullOrWhiteSpace($_) })
+    }
+
+    [pscustomobject]@{
+      number = [int]$snapshot.number
+      title  = if ($snapshot.PSObject.Properties.Name -contains 'title') { [string]$snapshot.title } else { $null }
+      url    = if ($snapshot.PSObject.Properties.Name -contains 'url') { [string]$snapshot.url } else { $null }
+      state  = if ($snapshot.PSObject.Properties.Name -contains 'state') { [string]$snapshot.state } else { $null }
+      labels = $normalizedLabels
+    }
+  } catch {
+    return $null
+  }
+}
+
+function Test-GitHubIssueHasStandingPriorityLabel {
+  param([object[]]$Labels)
+
+  foreach ($label in @($Labels)) {
+    if ($label -is [string]) {
+      if ([string]$label -eq 'standing-priority') { return $true }
+      continue
+    }
+
+    if ($label -and ($label.PSObject.Properties.Name -contains 'name')) {
+      if ([string]$label.name -eq 'standing-priority') { return $true }
+    }
+  }
+
+  return $false
 }
 
 function Resolve-GitHubIssueTemplate {
@@ -274,7 +359,7 @@ function Resolve-GitHubIntakeDraftContext {
       }
 
       if (-not $resolvedStandingPriority -and ($snapshot.PSObject.Properties.Name -contains 'labels')) {
-        $resolvedStandingPriority = @($snapshot.labels) -contains 'standing-priority'
+        $resolvedStandingPriority = Test-GitHubIssueHasStandingPriorityLabel -Labels @($snapshot.labels)
       }
     }
 

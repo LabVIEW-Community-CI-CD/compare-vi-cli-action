@@ -149,6 +149,35 @@ Describe 'GitHubIntake.psm1' {
     $snapshot.title | Should -Be 'Catalog issue'
   }
 
+  It 'falls back to GitHub issue lookup when no local snapshot exists for an explicit issue' {
+    Mock -ModuleName GitHubIntake Resolve-GitHubIssueSnapshotFromGitHub {
+      param([int]$Issue)
+      [pscustomobject]@{
+        number = $Issue
+        title  = 'Live catalog issue'
+        url    = 'https://example.test/issues/963'
+        labels = @('enhancement')
+      }
+    }
+
+    $snapshotDir = Join-Path $TestDrive 'missing-issue-dir'
+    $previous = $env:COMPAREVI_GITHUB_INTAKE_SNAPSHOT_DIR
+    try {
+      $env:COMPAREVI_GITHUB_INTAKE_SNAPSHOT_DIR = $snapshotDir
+      $snapshot = Resolve-GitHubIssueSnapshot -Issue 963
+    } finally {
+      if ($null -eq $previous) {
+        Remove-Item Env:COMPAREVI_GITHUB_INTAKE_SNAPSHOT_DIR -ErrorAction SilentlyContinue
+      } else {
+        $env:COMPAREVI_GITHUB_INTAKE_SNAPSHOT_DIR = $previous
+      }
+    }
+
+    $snapshot.number | Should -Be 963
+    $snapshot.title | Should -Be 'Live catalog issue'
+    Should -Invoke Resolve-GitHubIssueSnapshotFromGitHub -ModuleName GitHubIntake -Times 1 -Exactly
+  }
+
   It 'loads the intake catalog from the override path when present' {
     $catalogPath = Join-Path $TestDrive 'github-intake-catalog.json'
     @'
@@ -234,6 +263,24 @@ Describe 'GitHubIntake.psm1' {
     $context.issueTitle | Should -Be 'Catalog issue'
     $context.issueUrl | Should -Be 'https://example.test/issues/921'
     $context.branch | Should -Be 'issue/921-work'
+    $context.standingPriority | Should -BeTrue
+    $context.snapshotResolved | Should -BeTrue
+  }
+
+  It 'treats label objects from live snapshots as standing-priority markers' {
+    Mock -ModuleName GitHubIntake Resolve-GitHubIssueSnapshot {
+      [pscustomobject]@{
+        number = 963
+        title  = 'Live GH issue'
+        url    = 'https://example.test/issues/963'
+        labels = @([pscustomobject]@{ name = 'standing-priority' })
+      }
+    }
+
+    $context = Resolve-GitHubIntakeDraftContext -Scenario 'human-pr' -Issue 963 -CurrentBranch 'issue/963-org-owned-fork-pr-helper'
+
+    $context.issueTitle | Should -Be 'Live GH issue'
+    $context.issueUrl | Should -Be 'https://example.test/issues/963'
     $context.standingPriority | Should -BeTrue
     $context.snapshotResolved | Should -BeTrue
   }

@@ -137,11 +137,12 @@ if (-not $Issue) {
 Write-Host ("[orchestrator] Issue: #{0}" -f $Issue)
 
 # Read snapshot for title/URL context
-$snapPath = Join-Path $repo 'tests/results/_agent/issue' ("{0}.json" -f $Issue)
-$snap = $null
-$title = 'work'
-try { $snap = Get-Content -LiteralPath $snapPath -Raw | ConvertFrom-Json -ErrorAction Stop; $title = $snap.title } catch {}
-if (-not $title) { $title = 'work' }
+$snap = Resolve-GitHubIssueSnapshot -Issue $Issue
+$title = if ($snap -and ($snap.PSObject.Properties.Name -contains 'title') -and -not [string]::IsNullOrWhiteSpace([string]$snap.title)) {
+  [string]$snap.title
+} else {
+  'work'
+}
 
 $defaultBase = Get-GitDefaultBranch
 if (-not $Base) { $Base = $defaultBase }
