@@ -203,12 +203,12 @@ jobs:
       continue-on-error: true
       run: |
         python -m pip install --user ruamel.yaml
-        python tools/workflows/update_workflows.py --check \
-          .github/workflows/pester-selfhosted.yml \
-          .github/workflows/fixture-drift.yml \
-          .github/workflows/ci-orchestrated.yml \
-          .github/workflows/pester-integration-on-label.yml \
-          .github/workflows/smoke.yml \
+        python tools/workflows/update_workflows.py --check `
+          .github/workflows/pester-selfhosted.yml `
+          .github/workflows/fixture-drift.yml `
+          .github/workflows/ci-orchestrated.yml `
+          .github/workflows/pester-integration-on-label.yml `
+          .github/workflows/smoke.yml `
           .github/workflows/compare-artifacts.yml
         if ($LASTEXITCODE -eq 3) { Write-Host '::notice::Workflow drift detected (develop). See ruamel updater output.' }
 
@@ -217,12 +217,12 @@ jobs:
       shell: pwsh
       run: |
         python -m pip install --user ruamel.yaml
-        python tools/workflows/update_workflows.py --check \
-          .github/workflows/pester-selfhosted.yml \
-          .github/workflows/fixture-drift.yml \
-          .github/workflows/ci-orchestrated.yml \
-          .github/workflows/pester-integration-on-label.yml \
-          .github/workflows/smoke.yml \
+        python tools/workflows/update_workflows.py --check `
+          .github/workflows/pester-selfhosted.yml `
+          .github/workflows/fixture-drift.yml `
+          .github/workflows/ci-orchestrated.yml `
+          .github/workflows/pester-integration-on-label.yml `
+          .github/workflows/smoke.yml `
           .github/workflows/compare-artifacts.yml
 
     - name: Lint loop determinism (notice only on non-main)

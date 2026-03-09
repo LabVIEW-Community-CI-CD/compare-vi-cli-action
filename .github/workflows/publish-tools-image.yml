@@ -54,91 +54,19 @@ jobs:
           REPOSITORY: ${{ github.repository }}
         run: |
           set -euo pipefail
-
-          owner="$(echo "$REPOSITORY_OWNER" | tr '[:upper:]' '[:lower:]')"
-          image_name="ghcr.io/${owner}/comparevi-tools"
-
-          raw_version="$INPUT_VERSION"
-          if [ -z "$raw_version" ] && [ -n "$INPUT_TAG" ]; then
-            raw_version="$INPUT_TAG"
-          fi
-          if [ -z "$raw_version" ] && [ -n "$RELEASE_TAG" ]; then
-            raw_version="$RELEASE_TAG"
-          fi
-          if [ -z "$raw_version" ]; then
-            raw_version="$REF_NAME"
-          fi
-
-          version="$raw_version"
-          version="${version#comparevi-tools-v}"
-          version="${version#shared-v}"
-          version="${version#v}"
-
-          if [ -z "$version" ]; then
-            echo "Unable to determine version from inputs/release/ref context."
-            exit 1
-          fi
-
-          channel="$INPUT_CHANNEL"
-          if [ -z "$channel" ]; then
-            if [[ "$version" == *"-rc."* ]]; then
-              channel="rc"
-            else
-              channel="stable"
-            fi
-          fi
-
-          if [ "$channel" = "stable" ]; then
-            if ! [[ "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
-              echo "Stable channel requires X.Y.Z version. Received: $version"
-              exit 1
-            fi
-          elif [ "$channel" = "rc" ]; then
-            if ! [[ "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+-rc\.[0-9]+$ ]]; then
-              echo "RC channel requires X.Y.Z-rc.N version. Received: $version"
-              exit 1
-            fi
-          else
-            echo "Unsupported channel: $channel"
-            exit 1
-          fi
-
-          declare -a tags
-          tags+=("${image_name}:sha-${GITHUB_SHA:0:7}")
-          tags+=("${image_name}:comparevi-tools-v${version}")
-          tags+=("${image_name}:v${version}")
-          tags+=("${image_name}:${version}")
-
-          if [ "$channel" = "stable" ]; then
-            major="${version%%.*}"
-            minor_version="${version#*.}"
-            minor="${minor_version%%.*}"
-            tags+=("${image_name}:comparevi-tools-v${major}.${minor}")
-            tags+=("${image_name}:comparevi-tools-v${major}")
-            tags+=("${image_name}:latest")
-          fi
-
-          tags_file="${RUNNER_TEMP}/tools-image-tags.txt"
-          : > "$tags_file"
-          printf '%s\n' "${tags[@]}" | awk '!seen[$0]++' > "$tags_file"
-
-          {
-            echo "image_name=$image_name"
-            echo "version=$version"
-            echo "channel=$channel"
-            echo "tags_file=$tags_file"
-            echo "tags<<EOF"
-            cat "$tags_file"
-            echo "EOF"
-          } >> "$GITHUB_OUTPUT"
-
-          {
-            echo "org.opencontainers.image.source=${SERVER_URL}/${REPOSITORY}"
-            echo "org.opencontainers.image.revision=${GITHUB_SHA}"
-            echo "org.opencontainers.image.version=${version}"
-            echo "org.opencontainers.image.title=comparevi-tools"
-          } > "${RUNNER_TEMP}/tools-image-labels.txt"
-          echo "labels_file=${RUNNER_TEMP}/tools-image-labels.txt" >> "$GITHUB_OUTPUT"
+          node tools/priority/resolve-tools-image-publish-context.mjs \
+            --version "$INPUT_VERSION" \
+            --channel "$INPUT_CHANNEL" \
+            --tag "$INPUT_TAG" \
+            --release-tag "$RELEASE_TAG" \
+            --ref-name "$REF_NAME" \
+            --sha "$GITHUB_SHA" \
+            --owner "$REPOSITORY_OWNER" \
+            --repo "$REPOSITORY" \
+            --server-url "$SERVER_URL" \
+            --github-output "$GITHUB_OUTPUT" \
+            --tags-file "$RUNNER_TEMP/tools-image-tags.txt" \
+            --labels-file "$RUNNER_TEMP/tools-image-labels.txt"
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
@@ -176,6 +104,10 @@ jobs:
             echo "- Image: \`${{ steps.context.outputs.image_name }}\`"
             echo "- Version: \`${{ steps.context.outputs.version }}\`"
             echo "- Channel: \`${{ steps.context.outputs.channel }}\`"
+            if [ "${{ steps.context.outputs.is_tools_tag }}" = "true" ]; then
+              echo "- Stable family version: \`${{ steps.context.outputs.stable_family_version }}\`"
+              echo "- Bundle tag class: \`tools-tag\`"
+            fi
             echo "- Digest: \`${{ steps.build.outputs.digest }}\`"
             echo "- Source ref: \`${{ github.ref_name }}\`"
             echo ""
