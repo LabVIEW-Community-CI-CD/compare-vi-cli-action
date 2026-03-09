@@ -465,6 +465,19 @@ function Invoke-Git {
   }
 }
 
+function Get-NonEmptyStringValues {
+  param([object]$InputObject)
+
+  $values = @()
+  foreach ($entry in @($InputObject)) {
+    if ($null -eq $entry) { continue }
+    $text = $entry.ToString()
+    if ([string]::IsNullOrWhiteSpace($text)) { continue }
+    $values += $text
+  }
+  return $values
+}
+
 function Write-AgentSessionCapsule {
   param(
     [string]$ResultsRoot
@@ -484,7 +497,7 @@ function Write-AgentSessionCapsule {
 
   $gitInfo = [ordered]@{}
   $head = Invoke-Git -Arguments @('rev-parse','--verify','HEAD')
-  $headValues = @($head)
+  $headValues = @(Get-NonEmptyStringValues -InputObject $head)
   if ($headValues.Count -gt 0) {
     $headSha = ($headValues[0]).Trim()
     if ($headSha) {
@@ -494,26 +507,26 @@ function Write-AgentSessionCapsule {
   }
 
   $branch = Invoke-Git -Arguments @('rev-parse','--abbrev-ref','HEAD')
-  $branchValues = @($branch)
+  $branchValues = @(Get-NonEmptyStringValues -InputObject $branch)
   if ($branchValues.Count -gt 0) {
     $branchName = ($branchValues[0]).Trim()
     if ($branchName -and $branchName -ne 'HEAD') { $gitInfo.branch = $branchName }
   }
 
   $statusShort = Invoke-Git -Arguments @('status','--short','--branch')
-  $statusShortValues = @($statusShort)
+  $statusShortValues = @(Get-NonEmptyStringValues -InputObject $statusShort)
   if ($statusShortValues.Count -gt 0) {
     $gitInfo.statusShort = ($statusShortValues -join "`n")
   }
 
   $statusPorcelain = Invoke-Git -Arguments @('status','--porcelain')
-  $statusPorcelainValues = @($statusPorcelain)
+  $statusPorcelainValues = @(Get-NonEmptyStringValues -InputObject $statusPorcelain)
   if ($statusPorcelainValues.Count -gt 0) {
     $gitInfo.porcelain = @($statusPorcelainValues | ForEach-Object { $_ })
   }
 
   $diffStat = Invoke-Git -Arguments @('diff','--stat')
-  $diffStatValues = @($diffStat)
+  $diffStatValues = @(Get-NonEmptyStringValues -InputObject $diffStat)
   if ($diffStatValues.Count -gt 0) {
     $gitInfo.diffStat = ($diffStatValues -join "`n")
   }
@@ -1073,8 +1086,11 @@ try {
 
     $handoffDir = Join-Path $ResultsRoot '_agent/handoff'
     New-Item -ItemType Directory -Force -Path $handoffDir | Out-Null
+    $issueSummaryDestination = Join-Path $handoffDir 'issue-summary.json'
     if ($priorityContext.snapshotPath) {
       Copy-Item -LiteralPath $priorityContext.snapshotPath -Destination (Join-Path $handoffDir 'issue-summary.json') -Force
+    } elseif ($priorityContext.snapshot) {
+      ($priorityContext.snapshot | ConvertTo-Json -Depth 6) | Out-File -FilePath $issueSummaryDestination -Encoding utf8
     }
     if ($priorityContext.routerPath) {
       Copy-Item -LiteralPath $priorityContext.routerPath -Destination (Join-Path $handoffDir 'issue-router.json') -Force

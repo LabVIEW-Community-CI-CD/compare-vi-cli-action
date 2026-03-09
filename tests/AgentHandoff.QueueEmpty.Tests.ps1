@@ -4,28 +4,25 @@ $ErrorActionPreference = 'Stop'
 Describe 'Agent Handoff queue-empty mode' -Tag 'Unit' {
   It 'tolerates a queue-empty cache even when a stale numeric snapshot is still present' {
     $repoRoot = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path
-    $scriptPath = Join-Path $repoRoot 'tools' 'Print-AgentHandoff.ps1'
-    $issueDir = Join-Path $repoRoot 'tests' 'results' '_agent' 'issue'
-    $cachePath = Join-Path $repoRoot '.agent_priority_cache.json'
+    $workspaceRoot = Join-Path $TestDrive 'repo'
+    $toolsDir = Join-Path $workspaceRoot 'tools'
+    $scriptPath = Join-Path $toolsDir 'Print-AgentHandoff.ps1'
+    $issueDir = Join-Path $workspaceRoot 'tests' 'results' '_agent' 'issue'
+    $cachePath = Join-Path $workspaceRoot '.agent_priority_cache.json'
     $resultsRoot = Join-Path $TestDrive 'results'
-    $backupRoot = Join-Path $TestDrive 'priority-backup'
-    $backupIssueDir = Join-Path $backupRoot 'issue'
-    $backupCachePath = Join-Path $backupRoot 'agent_priority_cache.json'
-
-    New-Item -ItemType Directory -Force -Path $backupRoot | Out-Null
-    if (Test-Path -LiteralPath $issueDir -PathType Container) {
-      Copy-Item -LiteralPath $issueDir -Destination $backupIssueDir -Recurse -Force
-    }
-    if (Test-Path -LiteralPath $cachePath -PathType Leaf) {
-      Copy-Item -LiteralPath $cachePath -Destination $backupCachePath -Force
-    }
+    New-Item -ItemType Directory -Force -Path $toolsDir | Out-Null
+    Copy-Item -LiteralPath (Join-Path $repoRoot 'tools' 'Print-AgentHandoff.ps1') -Destination $scriptPath -Force
 
     try {
-      if (Test-Path -LiteralPath $issueDir) {
-        Remove-Item -LiteralPath $issueDir -Recurse -Force
-      }
       New-Item -ItemType Directory -Force -Path $issueDir | Out-Null
       New-Item -ItemType Directory -Force -Path $resultsRoot | Out-Null
+      Set-Content -LiteralPath (Join-Path $workspaceRoot 'AGENT_HANDOFF.txt') -Value @(
+        '# Agent Handoff'
+        ''
+        'Synthetic queue-empty handoff workspace for test coverage.'
+      ) -Encoding utf8
+
+      Push-Location $workspaceRoot
 
       [pscustomobject][ordered]@{
         schema = 'standing-priority/issue@v1'
@@ -105,18 +102,8 @@ Describe 'Agent Handoff queue-empty mode' -Tag 'Unit' {
       $session.standingPriority.reason | Should -Be 'queue-empty'
       $session.standingPriority.openIssueCount | Should -Be 0
     } finally {
-      if (Test-Path -LiteralPath $issueDir) {
-        Remove-Item -LiteralPath $issueDir -Recurse -Force
-      }
-      if (Test-Path -LiteralPath $backupIssueDir -PathType Container) {
-        Copy-Item -LiteralPath $backupIssueDir -Destination $issueDir -Recurse -Force
-      }
-
-      if (Test-Path -LiteralPath $cachePath -PathType Leaf) {
-        Remove-Item -LiteralPath $cachePath -Force
-      }
-      if (Test-Path -LiteralPath $backupCachePath -PathType Leaf) {
-        Copy-Item -LiteralPath $backupCachePath -Destination $cachePath -Force
+      if ((Get-Location).Path -eq $workspaceRoot) {
+        Pop-Location
       }
     }
   }
