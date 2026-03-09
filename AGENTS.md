@@ -210,6 +210,16 @@ line buffers).
     - `pwsh -NoLogo -NoProfile -File tools/Test-DockerDesktopFastLoop.ps1 -LaneScope windows -StepTimeoutSeconds 600`
   - Full dual-lane validation:
     - `pwsh -NoLogo -NoProfile -File tools/Test-DockerDesktopFastLoop.ps1 -LaneScope both -StepTimeoutSeconds 600`
+  - Replay the differentiated mode diagnostics from a local or downloaded readiness artifact:
+    - `node tools/npm/run-script.mjs history:diagnostics:show -- --ResultsRoot tests/results/local-parity/windows`
+    - The replay now prints the host/runner plane split first, then the differentiated mode lines.
+  - Diagnose the native host split for LabVIEW 2026:
+    - `node tools/npm/run-script.mjs env:labview:2026:host-planes`
+  - Treat the Windows host as the execution runner for these diagnostics; the host-plane report records that explicitly.
+  - Treat the operator-facing loop labels as stable contract surfaces:
+    - `linux-docker-fast-loop`
+    - `windows-docker-fast-loop`
+    - `dual-docker-fast-loop`
   - `-ManageDockerEngine` is only allowed with `-LaneScope both`.
 - Markdown lint changed-file contract:
   - `tools/Lint-Markdown.ps1` and `tools/lint-markdown.mjs` suppress temporary

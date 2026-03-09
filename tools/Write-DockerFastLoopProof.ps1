@@ -15,6 +15,8 @@ param(
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
+Import-Module (Join-Path $PSScriptRoot 'DockerFastLoopDiagnostics.psm1') -Force
+
 function Resolve-AbsolutePath {
   param([Parameter(Mandatory = $true)][string]$Path)
   if ([System.IO.Path]::IsPathRooted($Path)) {
@@ -197,10 +199,37 @@ $runtimeManagerParseDefectCount = if ($readiness.PSObject.Properties['runtimeMan
 } else {
   0
 }
+$hostPlaneReportPath = if ($readiness.PSObject.Properties['source'] -and $readiness.source -and $readiness.source.PSObject.Properties['hostPlaneReportPath']) {
+  [string]$readiness.source.hostPlaneReportPath
+} else {
+  ''
+}
+$hostPlane = if ($readiness.PSObject.Properties['hostPlane']) {
+  $readiness.hostPlane
+} elseif (-not [string]::IsNullOrWhiteSpace($hostPlaneReportPath)) {
+  Read-JsonOrNull -Path $hostPlaneReportPath
+} else {
+  $null
+}
+$hostPlanes = if ($readiness.PSObject.Properties['hostPlanes']) {
+  $readiness.hostPlanes
+} elseif ($hostPlane -and $hostPlane.PSObject.Properties['native'] -and $hostPlane.native -and $hostPlane.native.PSObject.Properties['planes']) {
+  $hostPlane.native.planes
+} else {
+  $null
+}
+$hostExecutionPolicy = if ($readiness.PSObject.Properties['hostExecutionPolicy']) {
+  $readiness.hostExecutionPolicy
+} elseif ($hostPlane -and $hostPlane.PSObject.Properties['executionPolicy']) {
+  $hostPlane.executionPolicy
+} else {
+  $null
+}
 
 $proof = [ordered]@{
   schema = 'vi-history/docker-fast-loop-proof@v1'
   generatedAt = (Get-Date).ToUniversalTime().ToString('o')
+  loopLabel = Get-DockerFastLoopLabel -ContextObject $readiness
   verdict = if ($readiness.PSObject.Properties['verdict']) { [string]$readiness.verdict } else { 'unknown' }
   recommendation = if ($readiness.PSObject.Properties['recommendation']) { [string]$readiness.recommendation } else { 'unknown' }
   diffStepCount = [int]$diffStepCount
@@ -219,6 +248,7 @@ $proof = [ordered]@{
   readinessPath = $readinessResolved
   summaryPath = $summaryResolved
   statusPath = $statusResolved
+  hostPlaneReportPath = $hostPlaneReportPath
   hashes = [ordered]@{
     readinessSha256 = Get-FileHashOrNull -Path $readinessResolved
     summarySha256 = Get-FileHashOrNull -Path $summaryResolved
@@ -226,9 +256,13 @@ $proof = [ordered]@{
   }
   laneLifecycle = if ($readiness.PSObject.Properties['laneLifecycle']) { $readiness.laneLifecycle } elseif ($summary -and $summary.PSObject.Properties['laneLifecycle']) { $summary.laneLifecycle } else { $null }
   lanes = if ($readiness.PSObject.Properties['lanes']) { $readiness.lanes } else { $null }
+  hostPlane = $hostPlane
+  hostPlanes = $hostPlanes
+  hostExecutionPolicy = $hostExecutionPolicy
 }
 
 $proof | ConvertTo-Json -Depth 16 | Set-Content -LiteralPath $outputResolved -Encoding utf8
-Write-Host ("[docker-fast-loop][proof] {0}" -f $outputResolved)
+$loopPrefix = Get-DockerFastLoopLogPrefix -ContextObject $proof
+Write-Host ("{0}[proof] {1}" -f $loopPrefix, $outputResolved)
 Write-GitHubOutput -Key 'docker-fast-loop-proof-path' -Value $outputResolved -Path $GitHubOutputPath
 Write-Output $outputResolved

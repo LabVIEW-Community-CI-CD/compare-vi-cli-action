@@ -57,6 +57,22 @@ Describe 'Write-DockerFastLoopProof.ps1' -Tag 'Unit' {
       source = [ordered]@{
         summaryPath = $summaryPath
         statusPath = $statusPath
+        hostPlaneReportPath = (Join-Path $work 'labview-2026-host-plane-report.json')
+      }
+      hostPlane = [ordered]@{
+        schema = 'labview-2026-host-plane-report@v1'
+        host = [ordered]@{
+          os = 'windows'
+          computerName = 'GHOST'
+        }
+        runner = [ordered]@{
+          hostIsRunner = $true
+          runnerName = 'GHOST'
+          githubActions = $false
+        }
+        docker = [ordered]@{
+          operatorLabels = @('linux-docker-fast-loop', 'windows-docker-fast-loop', 'dual-docker-fast-loop')
+        }
       }
       laneLifecycle = [ordered]@{
         windows = [ordered]@{
@@ -77,6 +93,18 @@ Describe 'Write-DockerFastLoopProof.ps1' -Tag 'Unit' {
       lanes = [ordered]@{
         windows = [ordered]@{ status = 'success'; diffDetected = $true; failureClass = 'none' }
         linux = [ordered]@{ status = 'success'; diffDetected = $true; failureClass = 'none' }
+      }
+      hostPlanes = [ordered]@{
+        x64 = [ordered]@{ status = 'ready' }
+        x32 = [ordered]@{ status = 'ready' }
+      }
+      hostExecutionPolicy = [ordered]@{
+        candidateParallelPairs = [ordered]@{
+          pairs = @(
+            [ordered]@{ left = 'docker-desktop/windows-container-2026'; right = 'native-labview-2026-64' },
+            [ordered]@{ left = 'native-labview-2026-64'; right = 'native-labview-2026-32' }
+          )
+        }
       }
     } | ConvertTo-Json -Depth 10) | Set-Content -LiteralPath $readinessPath -Encoding utf8
 
@@ -105,6 +133,11 @@ Describe 'Write-DockerFastLoopProof.ps1' -Tag 'Unit' {
     $proof.runtimeManagerDaemonUnavailableCount | Should -Be 1
     $proof.runtimeManagerParseDefectCount | Should -Be 0
     $proof.runtimeManager.transitionCount | Should -Be 2
+    $proof.hostPlaneReportPath | Should -Match 'labview-2026-host-plane-report\.json'
+    $proof.hostPlane.runner.hostIsRunner | Should -BeTrue
+    $proof.hostPlane.runner.runnerName | Should -Be 'GHOST'
+    $proof.hostPlanes.x64.status | Should -Be 'ready'
+    $proof.hostExecutionPolicy.candidateParallelPairs.pairs.Count | Should -Be 2
     $proof.hashes.readinessSha256 | Should -Not -BeNullOrEmpty
     $proof.hashes.summarySha256 | Should -Not -BeNullOrEmpty
     $proof.hashes.statusSha256 | Should -Not -BeNullOrEmpty

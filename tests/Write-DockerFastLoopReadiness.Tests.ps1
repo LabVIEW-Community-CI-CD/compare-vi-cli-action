@@ -23,6 +23,7 @@ Describe 'Write-DockerFastLoopReadiness.ps1' -Tag 'Unit' {
     $summary = [ordered]@{
       schema = 'docker-desktop-fast-loop@v1'
       generatedAt = (Get-Date).ToUniversalTime().ToString('o')
+      laneScope = 'both'
       status = 'success'
       hardStopTriggered = $false
       runtimeManager = [ordered]@{
@@ -30,6 +31,46 @@ Describe 'Write-DockerFastLoopReadiness.ps1' -Tag 'Unit' {
         transitionCount = 3
         daemonUnavailableCount = 1
         parseDefectCount = 0
+      }
+      hostPlane = [ordered]@{
+        schema = 'labview-2026-host-plane-report@v1'
+        host = [ordered]@{
+          os = 'windows'
+          computerName = 'GHOST'
+        }
+        runner = [ordered]@{
+          hostIsRunner = $true
+          runnerName = 'GHOST'
+          githubActions = $false
+        }
+        docker = [ordered]@{
+          operatorLabels = @('linux-docker-fast-loop', 'windows-docker-fast-loop', 'dual-docker-fast-loop')
+        }
+        native = [ordered]@{
+          parallelLabVIEWSupported = $true
+          planes = [ordered]@{
+            x64 = [ordered]@{ status = 'ready' }
+            x32 = [ordered]@{ status = 'ready' }
+          }
+        }
+        executionPolicy = [ordered]@{
+          mutuallyExclusivePairs = [ordered]@{
+            pairs = @(
+              [ordered]@{ left = 'docker-desktop/linux-container-2026'; right = 'docker-desktop/windows-container-2026' }
+            )
+          }
+          provenParallelPairs = [ordered]@{
+            pairs = @(
+              [ordered]@{ left = 'docker-desktop/windows-container-2026'; right = 'native-labview-2026-64' }
+            )
+          }
+          candidateParallelPairs = [ordered]@{
+            pairs = @(
+              [ordered]@{ left = 'docker-desktop/windows-container-2026'; right = 'native-labview-2026-64' },
+              [ordered]@{ left = 'native-labview-2026-64'; right = 'native-labview-2026-32' }
+            )
+          }
+        }
       }
       steps = @(
         [ordered]@{
@@ -81,10 +122,13 @@ Describe 'Write-DockerFastLoopReadiness.ps1' -Tag 'Unit' {
       -OutputJsonPath $jsonOut `
       -OutputMarkdownPath $mdOut `
       -GitHubOutputPath '' `
-      -StepSummaryPath '' 2>&1
+      -StepSummaryPath '' *>&1
     $LASTEXITCODE | Should -Be 0 -Because ($output -join "`n")
+    ($output -join "`n") | Should -Match '\[dual-docker-fast-loop\]\[diagnostics\] scenarioSet=none differentiatedSteps=1 evidenceSteps=1 reports=1'
+    ($output -join "`n") | Should -Match 'lane=windows sequence=direct mode=attribute images=2'
 
     $readiness = Get-Content -LiteralPath $jsonOut -Raw | ConvertFrom-Json -Depth 16
+    $readiness.loopLabel | Should -Be 'dual-docker-fast-loop'
     $readiness.verdict | Should -Be 'ready-to-push'
     $readiness.recommendation | Should -Be 'push'
     $readiness.diffStepCount | Should -Be 1
@@ -98,6 +142,10 @@ Describe 'Write-DockerFastLoopReadiness.ps1' -Tag 'Unit' {
     $readiness.runtimeManagerDaemonUnavailableCount | Should -Be 1
     $readiness.runtimeManagerParseDefectCount | Should -Be 0
     $readiness.runtimeManager.transitionCount | Should -Be 3
+    $readiness.hostPlane.runner.hostIsRunner | Should -BeTrue
+    $readiness.hostPlane.runner.runnerName | Should -Be 'GHOST'
+    $readiness.hostPlane.host.os | Should -Be 'windows'
+    $readiness.hostExecutionPolicy.candidateParallelPairs.pairs.Count | Should -Be 2
     $readiness.lanes.windows.diffDetected | Should -BeTrue
     $readiness.lanes.windows.failureClass | Should -Be 'none'
     $readiness.lanes.linux.diffDetected | Should -BeFalse
@@ -105,6 +153,10 @@ Describe 'Write-DockerFastLoopReadiness.ps1' -Tag 'Unit' {
     $readiness.laneLifecycle.windows.stopClass | Should -Be 'completed'
     $readiness.laneLifecycle.windows.startStep | Should -Be 'windows-runtime-preflight'
     $readiness.laneLifecycle.windows.endStep | Should -Be 'windows-history-attribute'
+    $markdown = Get-Content -LiteralPath $mdOut -Raw
+    $markdown | Should -Match '\| Host Is Runner \| `True` \|'
+    $markdown | Should -Match '\| Runner Name \| `GHOST` \|'
+    $markdown | Should -Match '\| Mutually Exclusive Pairs \| `docker-desktop/linux-container-2026<->docker-desktop/windows-container-2026` \|'
   }
 
   It 'marks tool failure runs not-ready' {
@@ -118,6 +170,7 @@ Describe 'Write-DockerFastLoopReadiness.ps1' -Tag 'Unit' {
     $summary = [ordered]@{
       schema = 'docker-desktop-fast-loop@v1'
       generatedAt = (Get-Date).ToUniversalTime().ToString('o')
+      laneScope = 'both'
       status = 'failure'
       hardStopTriggered = $false
       steps = @(

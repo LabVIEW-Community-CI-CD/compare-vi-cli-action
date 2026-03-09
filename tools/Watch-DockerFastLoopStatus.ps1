@@ -13,6 +13,8 @@ param(
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
+Import-Module (Join-Path $PSScriptRoot 'DockerFastLoopDiagnostics.psm1') -Force
+
 function Resolve-AbsolutePath {
   param([Parameter(Mandatory)][string]$Path)
   if ([System.IO.Path]::IsPathRooted($Path)) {
@@ -46,6 +48,7 @@ while ((Get-Date) -lt $deadline) {
   $stamp = [string]$status.generatedAt
   if ($stamp -ne $lastStamp) {
     $lastStamp = $stamp
+    $statusPrefix = Get-DockerFastLoopLogPrefix -ContextObject $status
     $phase = [string]$status.phase
     $runStatus = [string]$status.status
     $current = if ([string]::IsNullOrWhiteSpace([string]$status.currentStep)) { '-' } else { [string]$status.currentStep }
@@ -55,8 +58,8 @@ while ((Get-Date) -lt $deadline) {
     $eta = if ($status.telemetry -and $status.telemetry.PSObject.Properties['etaSeconds']) { [double]$status.telemetry.etaSeconds } else { 0.0 }
     $recommendation = if ($status.telemetry -and $status.telemetry.PSObject.Properties['pushRecommendation']) { [string]$status.telemetry.pushRecommendation } else { 'hold' }
 
-    $line = "[docker-fast-loop][status] phase={0} status={1} step={2} progress={3}/{4} ({5}%) eta={6}s recommendation={7}" -f `
-      $phase, $runStatus, $current, $completed, $total, $percent, $eta, $recommendation
+    $line = "{0}[status] phase={1} status={2} step={3} progress={4}/{5} ({6}%) eta={7}s recommendation={8}" -f `
+      $statusPrefix, $phase, $runStatus, $current, $completed, $total, $percent, $eta, $recommendation
     if ($runStatus -eq 'success' -and $phase -eq 'completed') {
       Write-Host $line -ForegroundColor Green
     } elseif ($runStatus -eq 'failure' -and $phase -eq 'completed') {
@@ -82,9 +85,11 @@ while ((Get-Date) -lt $deadline) {
       try {
         $readiness = Get-Content -LiteralPath $readinessPath -Raw | ConvertFrom-Json -Depth 10
         if ($readiness) {
+          $readinessPrefix = Get-DockerFastLoopLogPrefix -ContextObject $readiness
           $verdict = if ($readiness.PSObject.Properties['verdict']) { [string]$readiness.verdict } else { 'unknown' }
           $recommendation = if ($readiness.PSObject.Properties['recommendation']) { [string]$readiness.recommendation } else { 'unknown' }
-          Write-Host ("[docker-fast-loop][readiness] verdict={0} recommendation={1} path={2}" -f $verdict, $recommendation, $readinessPath) -ForegroundColor Cyan
+          Write-Host ("{0}[readiness] verdict={1} recommendation={2} path={3}" -f $readinessPrefix, $verdict, $recommendation, $readinessPath) -ForegroundColor Cyan
+          Write-DockerFastLoopDifferentiatedDiagnostics -Readiness $readiness -ResultsRoot $resultsRoot | Out-Null
         }
       } catch {
         Write-Warning ("Failed to parse readiness envelope: {0}" -f $_.Exception.Message)

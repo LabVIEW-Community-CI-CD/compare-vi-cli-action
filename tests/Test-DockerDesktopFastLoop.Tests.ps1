@@ -8,9 +8,12 @@ Describe 'Test-DockerDesktopFastLoop.ps1' -Tag 'Unit' {
     $script:RepoRoot = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path
     $script:FastLoopScript = Join-Path $script:RepoRoot 'tools' 'Test-DockerDesktopFastLoop.ps1'
     $script:ReadinessScript = Join-Path $script:RepoRoot 'tools' 'Write-DockerFastLoopReadiness.ps1'
+    $script:DiagnosticsModule = Join-Path $script:RepoRoot 'tools' 'DockerFastLoopDiagnostics.psm1'
+    $script:HostPlaneModule = Join-Path $script:RepoRoot 'tools' 'LabVIEW2026HostPlaneDiagnostics.psm1'
+    $script:VendorToolsModule = Join-Path $script:RepoRoot 'tools' 'VendorTools.psm1'
     $script:ClassifierScript = Join-Path $script:RepoRoot 'tools' 'Compare-ExitCodeClassifier.ps1'
 
-    foreach ($path in @($script:FastLoopScript, $script:ReadinessScript, $script:ClassifierScript)) {
+    foreach ($path in @($script:FastLoopScript, $script:ReadinessScript, $script:DiagnosticsModule, $script:HostPlaneModule, $script:VendorToolsModule, $script:ClassifierScript)) {
       if (-not (Test-Path -LiteralPath $path -PathType Leaf)) {
         throw "Required script not found: $path"
       }
@@ -32,6 +35,9 @@ Describe 'Test-DockerDesktopFastLoop.ps1' -Tag 'Unit' {
 
       Copy-Item -LiteralPath $script:FastLoopScript -Destination (Join-Path $toolsDir 'Test-DockerDesktopFastLoop.ps1') -Force
       Copy-Item -LiteralPath $script:ReadinessScript -Destination (Join-Path $toolsDir 'Write-DockerFastLoopReadiness.ps1') -Force
+      Copy-Item -LiteralPath $script:DiagnosticsModule -Destination (Join-Path $toolsDir 'DockerFastLoopDiagnostics.psm1') -Force
+      Copy-Item -LiteralPath $script:HostPlaneModule -Destination (Join-Path $toolsDir 'LabVIEW2026HostPlaneDiagnostics.psm1') -Force
+      Copy-Item -LiteralPath $script:VendorToolsModule -Destination (Join-Path $toolsDir 'VendorTools.psm1') -Force
       Copy-Item -LiteralPath $script:ClassifierScript -Destination (Join-Path $toolsDir 'Compare-ExitCodeClassifier.ps1') -Force
 
       Set-Content -LiteralPath (Join-Path $toolsDir 'Assert-DockerRuntimeDeterminism.ps1') -Encoding utf8 -Value @'
@@ -380,17 +386,22 @@ if (-not [string]::IsNullOrWhiteSpace($GitHubOutputPath)) {
         -ResultsRoot $resultsRoot `
         -SkipWindowsProbe `
         -SkipLinuxProbe `
-        -HistoryScenarioSet history-core 2>&1
+        -HistoryScenarioSet history-core *>&1
       $LASTEXITCODE | Should -Be 0 -Because ($output -join "`n")
+      ($output -join "`n") | Should -Match '\[windows-docker-fast-loop\]\[diagnostics\] scenarioSet=history-core differentiatedSteps=1 evidenceSteps=0 reports=0'
+      ($output -join "`n") | Should -Match 'lane=windows sequence=direct mode=attribute'
       $summaryPath = Get-LatestFastLoopSummary -ResultsRoot $resultsRoot
       $summaryPath | Should -Not -BeNullOrEmpty
       $summary = Get-Content -LiteralPath $summaryPath -Raw | ConvertFrom-Json -Depth 12
+      $summary.loopLabel | Should -Be 'windows-docker-fast-loop'
       $summary.status | Should -Be 'success'
       $summary.historyScenarioCount | Should -Be 1
       $summary.diffStepCount | Should -Be 1
       $summary.diffLaneCount | Should -Be 1
       $summary.steps.Count | Should -Be 1
       $summary.steps[0].name | Should -Match '^windows-history-'
+      $summary.steps[0].historyMode | Should -Be 'attribute'
+      $summary.steps[0].historySequence | Should -Be 'direct'
       $summary.steps[0].status | Should -Be 'success'
       $summary.steps[0].exitCode | Should -BeIn @(0, 1)
       $summary.steps[0].resultClass | Should -Be 'success-diff'
@@ -399,10 +410,67 @@ if (-not [string]::IsNullOrWhiteSpace($GitHubOutputPath)) {
 
       $readinessPath = Join-Path $resultsRoot 'docker-runtime-fastloop-readiness.json'
       $readiness = Get-Content -LiteralPath $readinessPath -Raw | ConvertFrom-Json -Depth 12
+      $readiness.loopLabel | Should -Be 'windows-docker-fast-loop'
       $readiness.verdict | Should -Be 'ready-to-push'
       $readiness.diffStepCount | Should -Be 1
       $readiness.diffLaneCount | Should -Be 1
     } finally {
+      Pop-Location | Out-Null
+    }
+  }
+
+  It 'captures host-plane diagnostics in summary and readiness artifacts' {
+    $repoRoot = Join-Path $TestDrive 'fast-loop-host-plane-report'
+    New-HarnessRepo -RootPath $repoRoot
+
+    $native64 = Join-Path $repoRoot 'native64\LabVIEW.exe'
+    $native32 = Join-Path $repoRoot 'native32\LabVIEW.exe'
+    $sharedCli = Join-Path $repoRoot 'shared\LabVIEWCLI.exe'
+    $lvCompare = Join-Path $repoRoot 'shared\LVCompare.exe'
+    foreach ($path in @($native64, $native32, $sharedCli, $lvCompare)) {
+      $dir = Split-Path -Parent $path
+      New-Item -ItemType Directory -Path $dir -Force | Out-Null
+      Set-Content -LiteralPath $path -Encoding ascii -Value ''
+    }
+
+    Push-Location $repoRoot
+    try {
+      $resultsRoot = Join-Path $repoRoot 'tests/results/local-parity'
+      $env:COMPAREVI_NATIVE_LABVIEW_2026_64_PATH = $native64
+      $env:COMPAREVI_NATIVE_LABVIEW_2026_32_PATH = $native32
+      $env:COMPAREVI_NATIVE_LABVIEWCLI_2026_64_PATH = $sharedCli
+      $env:COMPAREVI_NATIVE_LABVIEWCLI_2026_32_PATH = $sharedCli
+      $env:COMPAREVI_NATIVE_LVCOMPARE_PATH = $lvCompare
+
+      $output = & pwsh -NoLogo -NoProfile -File (Join-Path $repoRoot 'tools' 'Test-DockerDesktopFastLoop.ps1') `
+        -ResultsRoot $resultsRoot `
+        -SkipWindowsProbe `
+        -SkipLinuxProbe *>&1
+      $LASTEXITCODE | Should -Be 0 -Because ($output -join "`n")
+      ($output -join "`n") | Should -Match '\[host-plane-split\]\[runner\] hostIsRunner=True'
+
+      $summaryPath = Get-LatestFastLoopSummary -ResultsRoot $resultsRoot
+      $summary = Get-Content -LiteralPath $summaryPath -Raw | ConvertFrom-Json -Depth 16
+      $summary.hostPlaneReportPath | Should -Not -BeNullOrEmpty
+      Test-Path -LiteralPath $summary.hostPlaneReportPath -PathType Leaf | Should -BeTrue
+      $summary.hostPlane.runner.hostIsRunner | Should -BeTrue
+      $summary.hostPlane.runner.runnerName | Should -Not -BeNullOrEmpty
+      $summary.hostExecutionPolicy.mutuallyExclusivePairs.pairs.Count | Should -Be 1
+      $summary.hostExecutionPolicy.candidateParallelPairs.pairs.Count | Should -Be 2
+
+      $readinessPath = Join-Path $resultsRoot 'docker-runtime-fastloop-readiness.json'
+      $readiness = Get-Content -LiteralPath $readinessPath -Raw | ConvertFrom-Json -Depth 16
+      $readiness.source.hostPlaneReportPath | Should -Be $summary.hostPlaneReportPath
+      $readiness.hostPlane.runner.hostIsRunner | Should -BeTrue
+      $readiness.hostExecutionPolicy.candidateParallelPairs.pairs.Count | Should -Be 2
+      $readiness.hostPlanes.x64.status | Should -Be 'ready'
+      $readiness.hostPlanes.x32.status | Should -Be 'ready'
+    } finally {
+      Remove-Item Env:COMPAREVI_NATIVE_LABVIEW_2026_64_PATH -ErrorAction SilentlyContinue
+      Remove-Item Env:COMPAREVI_NATIVE_LABVIEW_2026_32_PATH -ErrorAction SilentlyContinue
+      Remove-Item Env:COMPAREVI_NATIVE_LABVIEWCLI_2026_64_PATH -ErrorAction SilentlyContinue
+      Remove-Item Env:COMPAREVI_NATIVE_LABVIEWCLI_2026_32_PATH -ErrorAction SilentlyContinue
+      Remove-Item Env:COMPAREVI_NATIVE_LVCOMPARE_PATH -ErrorAction SilentlyContinue
       Pop-Location | Out-Null
     }
   }
@@ -678,7 +746,7 @@ if (-not [string]::IsNullOrWhiteSpace($GitHubOutputPath)) {
     }
   }
 
-  It 'does not forward host-style LABVIEW_PATH when docker-specific windows path is absent' {
+  It 'falls back to the default windows container LabVIEW path when docker-specific overrides are absent' {
     $repoRoot = Join-Path $TestDrive 'fast-loop-host-labview-ignored'
     New-HarnessRepo -RootPath $repoRoot
 
@@ -686,6 +754,7 @@ if (-not [string]::IsNullOrWhiteSpace($GitHubOutputPath)) {
     try {
       $resultsRoot = Join-Path $repoRoot 'tests/results/local-parity'
       $tracePath = Join-Path $resultsRoot 'windows-trace.log'
+      $expectedPath = 'C:\Program Files\National Instruments\LabVIEW 2026\LabVIEW.exe'
       $hostPath = 'C:\Program Files\National Instruments\LabVIEW 2025\LabVIEW.exe'
       $env:FASTLOOP_WINDOWS_TRACE_PATH = $tracePath
       $env:LABVIEW_PATH = $hostPath
@@ -700,7 +769,8 @@ if (-not [string]::IsNullOrWhiteSpace($GitHubOutputPath)) {
       Test-Path -LiteralPath $tracePath -PathType Leaf | Should -BeTrue
       $traceLines = @(Get-Content -LiteralPath $tracePath | Where-Object { -not [string]::IsNullOrWhiteSpace($_) })
       $traceLines.Count | Should -BeGreaterThan 0
-      $traceLines[-1] | Should -Match 'probe=False;labviewPath=(;|$)'
+      ($traceLines[-1] -match ("labviewPath={0}(;|$)" -f [regex]::Escape($expectedPath))) | Should -BeTrue
+      ($traceLines[-1] -match ("labviewPath={0}(;|$)" -f [regex]::Escape($hostPath))) | Should -BeFalse
     } finally {
       Remove-Item Env:FASTLOOP_WINDOWS_TRACE_PATH -ErrorAction SilentlyContinue
       Remove-Item Env:LABVIEW_PATH -ErrorAction SilentlyContinue
@@ -708,7 +778,7 @@ if (-not [string]::IsNullOrWhiteSpace($GitHubOutputPath)) {
     }
   }
 
-  It 'does not forward shared compare path envs when docker-specific windows path is absent' {
+  It 'ignores shared compare path envs and still uses the default windows container LabVIEW path' {
     $repoRoot = Join-Path $TestDrive 'fast-loop-shared-windows-labview-ignored'
     New-HarnessRepo -RootPath $repoRoot
 
@@ -716,7 +786,8 @@ if (-not [string]::IsNullOrWhiteSpace($GitHubOutputPath)) {
     try {
       $resultsRoot = Join-Path $repoRoot 'tests/results/local-parity'
       $tracePath = Join-Path $resultsRoot 'windows-trace.log'
-      $sharedPath = 'C:\Program Files\National Instruments\LabVIEW 2026\LabVIEW.exe'
+      $expectedPath = 'C:\Program Files\National Instruments\LabVIEW 2026\LabVIEW.exe'
+      $sharedPath = 'C:\Program Files\National Instruments\LabVIEW 2027\LabVIEW.exe'
       $loopPath = 'C:\Program Files\National Instruments\LabVIEW 2025\LabVIEW.exe'
       $env:FASTLOOP_WINDOWS_TRACE_PATH = $tracePath
       $env:COMPARE_LABVIEW_PATH = $sharedPath
@@ -732,7 +803,9 @@ if (-not [string]::IsNullOrWhiteSpace($GitHubOutputPath)) {
       Test-Path -LiteralPath $tracePath -PathType Leaf | Should -BeTrue
       $traceLines = @(Get-Content -LiteralPath $tracePath | Where-Object { -not [string]::IsNullOrWhiteSpace($_) })
       $traceLines.Count | Should -BeGreaterThan 0
-      $traceLines[-1] | Should -Match 'probe=False;labviewPath=(;|$)'
+      ($traceLines[-1] -match ("labviewPath={0}(;|$)" -f [regex]::Escape($expectedPath))) | Should -BeTrue
+      ($traceLines[-1] -match ("labviewPath={0}(;|$)" -f [regex]::Escape($sharedPath))) | Should -BeFalse
+      ($traceLines[-1] -match ("labviewPath={0}(;|$)" -f [regex]::Escape($loopPath))) | Should -BeFalse
     } finally {
       Remove-Item Env:FASTLOOP_WINDOWS_TRACE_PATH -ErrorAction SilentlyContinue
       Remove-Item Env:COMPARE_LABVIEW_PATH -ErrorAction SilentlyContinue
@@ -775,7 +848,7 @@ if (-not [string]::IsNullOrWhiteSpace($GitHubOutputPath)) {
     }
   }
 
-  It 'does not forward shared compare path envs when docker-specific linux path is absent' {
+  It 'ignores shared compare path envs and falls back to the default linux container LabVIEW path' {
     $repoRoot = Join-Path $TestDrive 'fast-loop-shared-linux-labview-ignored'
     New-HarnessRepo -RootPath $repoRoot
 
@@ -783,7 +856,8 @@ if (-not [string]::IsNullOrWhiteSpace($GitHubOutputPath)) {
     try {
       $resultsRoot = Join-Path $repoRoot 'tests/results/local-parity'
       $tracePath = Join-Path $resultsRoot 'linux-trace.log'
-      $sharedPath = '/usr/local/natinst/LabVIEW-2026-64/labview'
+      $expectedPath = '/usr/local/natinst/LabVIEW-2026-64/labview'
+      $sharedPath = '/usr/local/natinst/LabVIEW-2027-64/labview'
       $loopPath = '/usr/local/natinst/LabVIEW-2025-64/labview'
       $env:FASTLOOP_LINUX_TRACE_PATH = $tracePath
       $env:COMPARE_LABVIEW_PATH = $sharedPath
@@ -798,7 +872,9 @@ if (-not [string]::IsNullOrWhiteSpace($GitHubOutputPath)) {
       Test-Path -LiteralPath $tracePath -PathType Leaf | Should -BeTrue
       $traceLines = @(Get-Content -LiteralPath $tracePath | Where-Object { -not [string]::IsNullOrWhiteSpace($_) })
       $traceLines.Count | Should -BeGreaterThan 0
-      $traceLines[-1] | Should -Match 'probe=True;labviewPath=(;|$)'
+      ($traceLines[-1] -match ("labviewPath={0}(;|$)" -f [regex]::Escape($expectedPath))) | Should -BeTrue
+      ($traceLines[-1] -match ("labviewPath={0}(;|$)" -f [regex]::Escape($sharedPath))) | Should -BeFalse
+      ($traceLines[-1] -match ("labviewPath={0}(;|$)" -f [regex]::Escape($loopPath))) | Should -BeFalse
     } finally {
       Remove-Item Env:FASTLOOP_LINUX_TRACE_PATH -ErrorAction SilentlyContinue
       Remove-Item Env:COMPARE_LABVIEW_PATH -ErrorAction SilentlyContinue

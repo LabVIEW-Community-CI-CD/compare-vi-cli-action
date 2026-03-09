@@ -207,6 +207,16 @@ For Docker/Desktop VI history validation, run fast-loop lanes explicitly:
   - `pwsh -NoLogo -NoProfile -File tools/Test-DockerDesktopFastLoop.ps1 -LaneScope windows -StepTimeoutSeconds 600`
 - Full dual-lane loop:
   - `pwsh -NoLogo -NoProfile -File tools/Test-DockerDesktopFastLoop.ps1 -LaneScope both -StepTimeoutSeconds 600`
+- Native LabVIEW 2026 host split diagnostics:
+  - `node tools/npm/run-script.mjs env:labview:2026:host-planes`
+  - The Windows host is treated as the execution runner; the generated report records `runner.hostIsRunner=true`.
+- Differentiated history readback:
+  - `node tools/npm/run-script.mjs history:diagnostics:show -- --ResultsRoot tests/results/local-parity/windows`
+  - The replay prints the host/runner plane split before the differentiated mode diagnostics.
+- Stable operator-facing loop labels:
+  - `linux-docker-fast-loop`
+  - `windows-docker-fast-loop`
+  - `dual-docker-fast-loop`
 - `-ManageDockerEngine` is permitted only when `-LaneScope both`.
 
 ## Release checklist
