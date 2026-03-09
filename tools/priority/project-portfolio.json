@@ -431,7 +431,7 @@
     },
     {
       "url": "https://github.com/LabVIEW-Community-CI-CD/compare-vi-cli-action/issues/948",
-      "status": "Todo",
+      "status": "In Progress",
       "program": "Shared Infra",
       "phase": "Helper Workflow",
       "environmentClass": "Infra",

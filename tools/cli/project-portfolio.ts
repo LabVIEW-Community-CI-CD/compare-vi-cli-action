@@ -518,24 +518,24 @@ function resolveConfigItemByUrl(config: PortfolioConfig, url: string): ConfigIte
   return config.items.find((item) => normalizeComparableUrl(item.url) === normalizedTargetUrl) ?? null;
 }
 
-function normalizeArgumentValue(value: string): string {
-  const trimmedValue = value.trim();
-  if (process.platform === 'win32' && trimmedValue.includes('^')) {
-    // npm/cmd on Windows can surface spaced script arguments as caret-escaped tokens.
-    return trimmedValue.replace(/\^/g, '').trim();
-  }
-
-  return trimmedValue;
-}
-
 function getArgumentString(args: Args, key: keyof Args): string | null {
   const value = args[key];
   if (typeof value !== 'string') {
     return null;
   }
 
-  const normalizedValue = normalizeArgumentValue(value);
-  return normalizedValue.length > 0 ? normalizedValue : null;
+  const trimmedValue = value.trim();
+  return trimmedValue.length > 0 ? trimmedValue : null;
+}
+
+function normalizeExplicitFieldValue(value: string, allowedValues: string[]): string {
+  const trimmedValue = value.trim();
+  if (!trimmedValue.includes('^')) {
+    return trimmedValue;
+  }
+
+  const normalizedValue = trimmedValue.replace(/\^/g, '').trim();
+  return allowedValues.includes(normalizedValue) ? normalizedValue : trimmedValue;
 }
 
 function resolveRequestedApplyFields(args: Args, config: PortfolioConfig, targetUrl: string): RequestedApplyField[] {
@@ -547,11 +547,12 @@ function resolveRequestedApplyFields(args: Args, config: PortfolioConfig, target
 
   const resolved: RequestedApplyField[] = [];
   for (const fieldKey of configFieldKeys) {
+    const allowedValues = config.fieldCatalog[fieldKey].options;
     const explicitValue = getArgumentString(args, configFieldArgumentMap[fieldKey]);
     if (explicitValue) {
       resolved.push({
         key: fieldKey,
-        value: explicitValue,
+        value: normalizeExplicitFieldValue(explicitValue, allowedValues),
         source: 'explicit',
       });
       continue;
@@ -571,9 +572,9 @@ function resolveRequestedApplyFields(args: Args, config: PortfolioConfig, target
   }
 
   for (const field of resolved) {
-    const allowedValues = config.fieldCatalog[field.key].options;
-    if (!allowedValues.includes(field.value)) {
-      throw new Error(`Invalid ${field.key} '${field.value}'. Expected one of [${allowedValues.join(', ')}].`);
+    const fieldAllowedValues = config.fieldCatalog[field.key].options;
+    if (!fieldAllowedValues.includes(field.value)) {
+      throw new Error(`Invalid ${field.key} '${field.value}'. Expected one of [${fieldAllowedValues.join(', ')}].`);
     }
   }
 

@@ -13,7 +13,7 @@ export function resolveWindowsNpmCliPath(nodeExecPath = process.execPath, pathEx
 
 export function createNpmLaunchSpec(
   npmArgs,
-  env = process.env,
+  _env = process.env,
   platform = process.platform,
   nodeExecPath = process.execPath,
   pathExists = existsSync,

@@ -323,21 +323,21 @@ function resolveConfigItemByUrl(config, url) {
     const normalizedTargetUrl = normalizeComparableUrl(url);
     return config.items.find((item) => normalizeComparableUrl(item.url) === normalizedTargetUrl) ?? null;
 }
-function normalizeArgumentValue(value) {
-    const trimmedValue = value.trim();
-    if (process.platform === 'win32' && trimmedValue.includes('^')) {
-        // npm/cmd on Windows can surface spaced script arguments as caret-escaped tokens.
-        return trimmedValue.replace(/\^/g, '').trim();
-    }
-    return trimmedValue;
-}
 function getArgumentString(args, key) {
     const value = args[key];
     if (typeof value !== 'string') {
         return null;
     }
-    const normalizedValue = normalizeArgumentValue(value);
-    return normalizedValue.length > 0 ? normalizedValue : null;
+    const trimmedValue = value.trim();
+    return trimmedValue.length > 0 ? trimmedValue : null;
+}
+function normalizeExplicitFieldValue(value, allowedValues) {
+    const trimmedValue = value.trim();
+    if (!trimmedValue.includes('^')) {
+        return trimmedValue;
+    }
+    const normalizedValue = trimmedValue.replace(/\^/g, '').trim();
+    return allowedValues.includes(normalizedValue) ? normalizedValue : trimmedValue;
 }
 function resolveRequestedApplyFields(args, config, targetUrl) {
     const configItem = resolveConfigItemByUrl(config, targetUrl);
@@ -347,11 +347,12 @@ function resolveRequestedApplyFields(args, config, targetUrl) {
     }
     const resolved = [];
     for (const fieldKey of configFieldKeys) {
+        const allowedValues = config.fieldCatalog[fieldKey].options;
         const explicitValue = getArgumentString(args, configFieldArgumentMap[fieldKey]);
         if (explicitValue) {
             resolved.push({
                 key: fieldKey,
-                value: explicitValue,
+                value: normalizeExplicitFieldValue(explicitValue, allowedValues),
                 source: 'explicit',
             });
             continue;
@@ -368,9 +369,9 @@ function resolveRequestedApplyFields(args, config, targetUrl) {
         throw new Error('No apply fields were requested. Pass --use-config and/or explicit field flags such as --status or --program.');
     }
     for (const field of resolved) {
-        const allowedValues = config.fieldCatalog[field.key].options;
-        if (!allowedValues.includes(field.value)) {
-            throw new Error(`Invalid ${field.key} '${field.value}'. Expected one of [${allowedValues.join(', ')}].`);
+        const fieldAllowedValues = config.fieldCatalog[field.key].options;
+        if (!fieldAllowedValues.includes(field.value)) {
+            throw new Error(`Invalid ${field.key} '${field.value}'. Expected one of [${fieldAllowedValues.join(', ')}].`);
         }
     }
     return resolved;
