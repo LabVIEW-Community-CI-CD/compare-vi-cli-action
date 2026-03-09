@@ -1,0 +1,34 @@
+{
+  "schema": "agent-handoff/entrypoint-status-v1",
+  "generatedAt": "2026-03-09T01:01:55.8630446Z",
+  "handoffPath": "D:\\workspace\\compare-vi-cli-action\\compare-vi-cli-action\\AGENT_HANDOFF.txt",
+  "maxLines": 80,
+  "actualLineCount": 53,
+  "status": "pass",
+  "checks": {
+    "primaryHeading": true,
+    "lineBudget": true,
+    "requiredHeadings": true,
+    "liveArtifactGuidance": true,
+    "stableEntrypointGuidance": true,
+    "noStatusLogGuidance": true,
+    "machineGeneratedArtifactGuidance": true,
+    "noDatedHistorySections": true
+  },
+  "commands": {
+    "bootstrap": "pwsh -NoLogo -NoProfile -File tools/priority/bootstrap.ps1",
+    "standingPriority": "pwsh -NoLogo -NoProfile -File tools/Get-StandingPriority.ps1 -Plain",
+    "printHandoff": "pwsh -NoLogo -NoProfile -File tools/Print-AgentHandoff.ps1 -ApplyToggles -AutoTrim",
+    "projectPortfolio": "node tools/npm/run-script.mjs priority:project:portfolio:check",
+    "developSync": "node tools/npm/run-script.mjs priority:develop:sync"
+  },
+  "artifacts": {
+    "priorityCache": ".agent_priority_cache.json",
+    "router": "tests/results/_agent/issue/router.json",
+    "noStandingPriority": "tests/results/_agent/issue/no-standing-priority.json",
+    "entrypointStatus": "tests/results/_agent/handoff/entrypoint-status.json",
+    "handoffGlob": "tests/results/_agent/handoff/*.json",
+    "sessionGlob": "tests/results/_agent/sessions/*.json"
+  },
+  "violations": []
+}

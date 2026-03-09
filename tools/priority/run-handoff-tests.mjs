@@ -183,7 +183,7 @@ async function run() {
   if (!available) {
     notes.push(availabilityMessage || 'npm wrapper check failed');
   } else {
-    const scripts = ['priority:test', 'hooks:test', 'semver:check', 'priority:policy'];
+    const scripts = ['priority:test', 'hooks:test', 'handoff:entrypoint:check', 'semver:check', 'priority:policy'];
     const rawSkipPolicyEnv = process.env.PRIORITY_HANDOFF_SKIP_POLICY;
     const skipPolicyEnv = rawSkipPolicyEnv || '';
     const normalizedSkipPolicy = skipPolicyEnv.trim().toLowerCase();

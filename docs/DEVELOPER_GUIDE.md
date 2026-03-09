@@ -464,9 +464,26 @@ pwsh -File tools/Print-AgentHandoff.ps1 -ApplyToggles -AutoTrim
   so downstream tools can inspect `watcher-events.ndjson` directly.
 - Emits a compact JSON snapshot to `tests/results/_agent/handoff/watcher-telemetry.json` and, when in CI,
   appends a summary block to the step summary.
+- Refreshes `tests/results/_agent/handoff/entrypoint-status.json` so the
+  standard handoff command also writes the canonical machine-readable entrypoint
+  index for future agents.
 - Auto-trim policy: if `needsTrim=true`, watcher logs are trimmed to the last ~4000 lines when either
   `-AutoTrim` is passed or `HANDOFF_AUTOTRIM=1` is set. Dev watcher also trims on start.
 - Trim thresholds: ~5MB per log file; only oversized logs are trimmed.
+- `AGENT_HANDOFF.txt` is the evergreen entrypoint only. Do not use it as a
+  rolling execution log; current state should come from the generated handoff
+  and standing-priority artifacts.
+- Validate the checked-in handoff entrypoint with
+  `node tools/npm/run-script.mjs handoff:entrypoint:check`. The helper writes
+  `tests/results/_agent/handoff/entrypoint-status.json`, which acts as a
+  machine-readable index of the canonical handoff commands and artifact paths,
+  and fails when the file drifts back into historical-log mode.
+- Read that same machine-readable index back through
+  `node tools/npm/run-script.mjs priority:handoff`, which now prints the
+  entrypoint index alongside the standing-priority snapshot and other handoff
+  summaries.
+- The overall future-agent handoff contract is summarized in
+  [`docs/knowledgebase/Agent-Handoff-Surfaces.md`](./knowledgebase/Agent-Handoff-Surfaces.md).
 - See [`WATCHER_TELEMETRY_DX.md`](./WATCHER_TELEMETRY_DX.md) for automation response expectations.
 
 ## Quick verification

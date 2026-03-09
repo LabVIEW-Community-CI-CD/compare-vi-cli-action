@@ -69,3 +69,11 @@ test('handoff test summary matches schema', () => {
 test('handoff session capsule matches schema', () => {
   validateFixture('session capsule', 'docs/schemas/handoff-session-v1.schema.json', 'tools/priority/__fixtures__/handoff/session-capsule.json');
 });
+
+test('handoff entrypoint status matches schema', () => {
+  validateFixture(
+    'entrypoint status',
+    'docs/schemas/handoff-entrypoint-status-v1.schema.json',
+    'tools/priority/__fixtures__/handoff/entrypoint-status.json'
+  );
+});
