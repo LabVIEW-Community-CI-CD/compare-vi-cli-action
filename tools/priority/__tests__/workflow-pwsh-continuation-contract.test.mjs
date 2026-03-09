@@ -77,3 +77,19 @@ test('release workflow explicitly dispatches publish-tools-image with actions wr
   );
   assert.match(dispatchStep.with.script, /const releaseChannel = releaseVersion\.includes\('-rc\.'\) \? 'rc' : 'stable';/);
 });
+
+test('release workflow resolves downloaded artifacts through the shared helper before validation', () => {
+  const workflowPath = path.join(workflowsRoot, 'release.yml');
+  const workflow = readFileSync(workflowPath, 'utf8');
+
+  assert.match(workflow, /name: Resolve validation artifact paths/);
+  assert.match(workflow, /Resolve-DownloadedArtifactPath\.ps1/);
+  assert.match(workflow, /steps\.artifact_paths\.outputs\.archive_path/);
+  assert.match(workflow, /steps\.artifact_paths\.outputs\.checksum_path/);
+  assert.match(workflow, /name: Resolve release-contract artifact paths/);
+  assert.match(workflow, /steps\.contract_artifacts\.outputs\.provenance_path/);
+  assert.match(workflow, /steps\.contract_artifacts\.outputs\.linux_tarball_path/);
+  assert.doesNotMatch(workflow, /ls -1 cli-dl\/comparevi-cli-v\$\{v\}-linux-x64-selfcontained\.tar\.gz/);
+  assert.doesNotMatch(workflow, /tarball=\"cli-dl\/comparevi-cli-v\$\{v\}-linux-x64-selfcontained\.tar\.gz\"/);
+  assert.doesNotMatch(workflow, /cli-dl\/SHA256SUMS\.txt/);
+});
