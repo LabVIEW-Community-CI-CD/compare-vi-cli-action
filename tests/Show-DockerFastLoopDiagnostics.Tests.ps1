@@ -115,6 +115,44 @@ Describe 'Show-DockerFastLoopDiagnostics.ps1' -Tag 'Unit' {
     $outputText | Should -Match 'capture=history-scenarios\\sequential\\block-diagram\\ni-windows-container-capture.json'
   }
 
+  It 'trims space-padded history metadata before rendering differentiated diagnostics' {
+    $resultsRoot = Join-Path $TestDrive 'trimmed-metadata'
+    New-Item -ItemType Directory -Path $resultsRoot -Force | Out-Null
+    $historyRoot = Join-Path $resultsRoot 'history-scenarios'
+    New-Item -ItemType Directory -Path (Join-Path $historyRoot 'attribute\container-export') -Force | Out-Null
+    $readinessPath = Join-Path $resultsRoot 'docker-runtime-fastloop-readiness.json'
+    ([ordered]@{
+        schema = 'vi-history/docker-fast-loop-readiness@v1'
+        historyScenarioSet = ' smoke '
+        source = [ordered]@{
+          resultsRoot = $resultsRoot
+        }
+        steps = @(
+          [ordered]@{
+            name = ' windows-history-attribute '
+            historyLane = ' windows '
+            historyMode = ' attribute '
+            historySequence = ' direct '
+            isDiff = $true
+            diffImageCount = 3
+            durationMs = 1500
+            diffEvidenceSource = ' html '
+            containerExportStatus = ' success '
+            extractedReportPath = " $(Join-Path $historyRoot 'attribute\container-export\windows-compare-report.html') "
+            capturePath = " $(Join-Path $historyRoot 'attribute\ni-windows-container-capture.json') "
+          }
+        )
+      } | ConvertTo-Json -Depth 8) | Set-Content -LiteralPath $readinessPath -Encoding utf8
+
+    $output = & pwsh -NoLogo -NoProfile -File $script:ShowScript -ReadinessPath $readinessPath *>&1
+    $LASTEXITCODE | Should -Be 0 -Because ($output -join "`n")
+
+    $outputText = $output -join "`n"
+    $outputText | Should -Match '\[windows-docker-fast-loop\]\[diagnostics\] scenarioSet=smoke differentiatedSteps=1 evidenceSteps=0 reports=0'
+    $outputText | Should -Match 'lane=windows sequence=direct mode=attribute images=3'
+    $outputText | Should -Match 'report=history-scenarios\\attribute\\container-export\\windows-compare-report.html'
+  }
+
   It 'prints an explicit no-diagnostics message when no history diff steps exist' {
     $resultsRoot = Join-Path $TestDrive 'no-diff'
     New-Item -ItemType Directory -Path $resultsRoot -Force | Out-Null
