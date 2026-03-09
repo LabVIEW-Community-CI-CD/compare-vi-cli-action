@@ -201,3 +201,58 @@ test('runRollback uses origin fallback for dry-run planning when upstream is una
   assert.equal(resolution.branches[0].remote, 'origin');
   assert.equal(resolution.summary.status, 'pass');
 });
+
+test('runRollback uses injected ref resolver throughout apply and sync-origin flows', async () => {
+  const policy = normalizeReleaseRollbackPolicy({});
+  const seenRefs = [];
+  const forcePushCalls = [];
+  const refCounts = new Map();
+  const targetCommit = 'deadbeef';
+
+  const resolution = await runRollback(
+    {
+      ...parseArgs(['node', 'rollback-release.mjs']),
+      repo: 'LabVIEW-Community-CI-CD/compare-vi-cli-action',
+      apply: true,
+      syncOrigin: true
+    },
+    {
+      repoRoot: '/repo',
+      policy,
+      fetchReleaseRecords: () => [
+        { tag_name: 'v1.2.3', draft: false, prerelease: false, published_at: '2026-03-05T00:00:00Z' },
+        { tag_name: 'v1.2.2', draft: false, prerelease: false, published_at: '2026-03-01T00:00:00Z' }
+      ],
+      remoteResolver: () => ({
+        configuredRemote: 'upstream',
+        effectiveRemote: 'mirror',
+        fallbackReason: null
+      }),
+      fetchRemoteRefs: () => {},
+      resolveTagCommit: () => targetCommit,
+      tryResolveRef: (_repoRoot, ref) => {
+        seenRefs.push(ref);
+        const count = (refCounts.get(ref) || 0) + 1;
+        refCounts.set(ref, count);
+        return count === 1 ? `lease:${ref}` : targetCommit;
+      },
+      forcePushBranch: (_repoRoot, remote, branch, commit, leaseCommit) => {
+        forcePushCalls.push({ remote, branch, commit, leaseCommit });
+      },
+      policySync: () => ({
+        executed: true,
+        status: 'pass',
+        exitCode: 0,
+        stdout: '',
+        stderr: ''
+      })
+    }
+  );
+
+  assert.ok(seenRefs.includes('mirror/main'));
+  assert.ok(seenRefs.includes('mirror/develop'));
+  assert.ok(seenRefs.includes('origin/main'));
+  assert.ok(seenRefs.includes('origin/develop'));
+  assert.equal(forcePushCalls.length, 4);
+  assert.equal(resolution.summary.status, 'pass');
+});

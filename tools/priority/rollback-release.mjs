@@ -450,7 +450,7 @@ export async function runRollback(options, dependencies = {}) {
     const originBranches = targetBranches.map((name) => ({
       name,
       remote: 'origin',
-      before: tryResolveRef(repoRoot, `origin/${name}`),
+      before: tryResolveRefFn(repoRoot, `origin/${name}`),
       after: null,
       pushed: false,
       matchesTarget: false
