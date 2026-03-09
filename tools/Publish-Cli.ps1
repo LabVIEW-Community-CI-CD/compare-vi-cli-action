@@ -18,10 +18,35 @@ param(
 
 $ErrorActionPreference = 'Stop'
 
+function Get-XmlNodeText {
+  param([AllowNull()]$Node)
+
+  if ($null -eq $Node) {
+    return ''
+  }
+
+  if ($Node -is [System.Collections.IEnumerable] -and -not ($Node -is [string]) -and -not ($Node -is [System.Xml.XmlNode])) {
+    foreach ($candidate in $Node) {
+      $text = Get-XmlNodeText -Node $candidate
+      if (-not [string]::IsNullOrWhiteSpace($text)) {
+        return $text
+      }
+    }
+
+    return ''
+  }
+
+  if ($Node -is [System.Xml.XmlNode]) {
+    return $Node.InnerText.Trim()
+  }
+
+  return ([string]$Node).Trim()
+}
+
 function Get-VersionFromProps {
   $propsPath = Join-Path $PSScriptRoot '..' 'Directory.Build.props' | Resolve-Path | Select-Object -ExpandProperty Path
   [xml]$xml = Get-Content -Raw $propsPath
-  $ver = $xml.Project.PropertyGroup.Version
+  $ver = Get-XmlNodeText -Node ($xml.Project.PropertyGroup.Version | Select-Object -First 1)
   if ([string]::IsNullOrWhiteSpace($ver)) { return '0.0.0' }
   return $ver
 }
@@ -29,14 +54,14 @@ function Get-VersionFromProps {
 function Get-SharedPackageVersionFromProps {
   $propsPath = Join-Path $PSScriptRoot '..' 'Directory.Build.props' | Resolve-Path | Select-Object -ExpandProperty Path
   [xml]$xml = Get-Content -Raw $propsPath
-  $packageVersion = $xml.Project.PropertyGroup.CompareViSharedPackageVersion | Select-Object -First 1
+  $packageVersion = Get-XmlNodeText -Node ($xml.Project.PropertyGroup.CompareViSharedPackageVersion | Select-Object -First 1)
   if (-not [string]::IsNullOrWhiteSpace($packageVersion) -and $packageVersion -notmatch '^\$\(.+\)$') {
-    return [string]$packageVersion
+    return $packageVersion
   }
 
-  $version = $xml.Project.PropertyGroup.Version | Select-Object -First 1
+  $version = Get-XmlNodeText -Node ($xml.Project.PropertyGroup.Version | Select-Object -First 1)
   if (-not [string]::IsNullOrWhiteSpace($version)) {
-    return [string]$version
+    return $version
   }
 
   throw "Unable to resolve CompareVi.Shared package version from Directory.Build.props"
@@ -45,10 +70,10 @@ function Get-SharedPackageVersionFromProps {
 function Get-SharedPackageVersion {
   param([string]$CsprojPath)
   [xml]$xml = Get-Content -Raw $CsprojPath
-  $packageVersion = $xml.Project.PropertyGroup.PackageVersion | Select-Object -First 1
-  if (-not [string]::IsNullOrWhiteSpace($packageVersion) -and $packageVersion -notmatch '^\$\(.+\)$') { return [string]$packageVersion }
-  $version = $xml.Project.PropertyGroup.Version | Select-Object -First 1
-  if (-not [string]::IsNullOrWhiteSpace($version) -and $version -notmatch '^\$\(.+\)$') { return [string]$version }
+  $packageVersion = Get-XmlNodeText -Node ($xml.Project.PropertyGroup.PackageVersion | Select-Object -First 1)
+  if (-not [string]::IsNullOrWhiteSpace($packageVersion) -and $packageVersion -notmatch '^\$\(.+\)$') { return $packageVersion }
+  $version = Get-XmlNodeText -Node ($xml.Project.PropertyGroup.Version | Select-Object -First 1)
+  if (-not [string]::IsNullOrWhiteSpace($version) -and $version -notmatch '^\$\(.+\)$') { return $version }
   return Get-SharedPackageVersionFromProps
 }
 
@@ -165,7 +190,11 @@ Write-Host "Publishing comparevi-cli version $version" -ForegroundColor Cyan
 $projFull = Resolve-Path $ProjectPath | Select-Object -ExpandProperty Path
 $sharedProjFull = Resolve-Path $SharedProjectPath | Select-Object -ExpandProperty Path
 $root = Resolve-Path '.' | Select-Object -ExpandProperty Path
-$outRoot = Join-Path $root $OutputRoot
+$outRoot = if ([System.IO.Path]::IsPathRooted($OutputRoot)) {
+  $OutputRoot
+} else {
+  Join-Path $root $OutputRoot
+}
 Ensure-Dir $outRoot
 
 $sharedFeed = if ([System.IO.Path]::IsPathRooted($CompareViSharedPackageFeed)) {
