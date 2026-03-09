@@ -104,18 +104,11 @@ function ghApi(repoRoot, endpoint, method, payload) {
 }
 
 function ensureLabel(repoRoot, repoSlug, labelName) {
-  const probe = spawnSync(
-    'gh',
-    ['label', 'view', labelName, '--repo', repoSlug],
-    {
-      cwd: repoRoot,
-      encoding: 'utf8',
-      stdio: ['ignore', 'pipe', 'ignore']
-    }
-  );
-  if (probe.status === 0) {
+  const existingLabels = listForkLabels(repoRoot, repoSlug).map((entry) => String(entry).trim().toLowerCase());
+  if (existingLabels.includes(String(labelName).trim().toLowerCase())) {
     return;
   }
+
   const create = spawnSync(
     'gh',
     ['label', 'create', labelName, '--repo', repoSlug, '--color', '1d76db', '--description', 'Fork standing priority lane'],
