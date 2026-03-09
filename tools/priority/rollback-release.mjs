@@ -6,7 +6,7 @@ import process from 'node:process';
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { ensureCleanWorkingTree, getRepoRoot, run } from './lib/branch-utils.mjs';
-import { ensureGhCli, resolveUpstream } from './lib/remote-utils.mjs';
+import { ensureGhCli, resolveUpstream, tryResolveRemote } from './lib/remote-utils.mjs';
 import {
   DEFAULT_RELEASE_ROLLBACK_POLICY_PATH,
   loadReleaseRollbackPolicy,
@@ -220,6 +220,45 @@ function resolveRepositorySlug(explicitRepo, repoRoot) {
   return `${upstream.owner}/${upstream.repo}`;
 }
 
+function toRepositorySlug(parsedRemote) {
+  if (!parsedRemote?.owner || !parsedRemote?.repo) {
+    return null;
+  }
+  return `${parsedRemote.owner}/${parsedRemote.repo}`.toLowerCase();
+}
+
+export function resolveRollbackRemoteName({
+  repoRoot,
+  preferredRemote,
+  repository,
+  tryResolveRemoteFn = tryResolveRemote
+}) {
+  const configuredRemote = String(preferredRemote || 'upstream').trim() || 'upstream';
+  const configured = tryResolveRemoteFn(repoRoot, configuredRemote);
+  if (configured?.parsed) {
+    return {
+      configuredRemote,
+      effectiveRemote: configuredRemote,
+      fallbackReason: null
+    };
+  }
+
+  const repositorySlug = String(repository || '').trim().toLowerCase();
+  const origin = configuredRemote === 'origin' ? configured : tryResolveRemoteFn(repoRoot, 'origin');
+  const originSlug = toRepositorySlug(origin?.parsed);
+  if (originSlug && repositorySlug && originSlug === repositorySlug) {
+    return {
+      configuredRemote,
+      effectiveRemote: 'origin',
+      fallbackReason: `Configured rollback remote '${configuredRemote}' is missing; using origin because it matches ${repository}.`
+    };
+  }
+
+  throw new Error(
+    `Rollback remote '${configuredRemote}' is not configured and origin does not match repository '${repository || '<unknown>'}'.`
+  );
+}
+
 function fetchReleaseRecords(repoRoot, repository, maxReleases) {
   const perPage = Math.min(100, Math.max(2, maxReleases));
   const payload = runGhApiJson(
@@ -352,7 +391,15 @@ export async function runRollback(options, dependencies = {}) {
   const policy = dependencies.policy || loadReleaseRollbackPolicy(options.policyPath);
   const streamPolicy = getReleaseRollbackStreamPolicy(policy, options.stream);
   const repository = resolveRepositorySlug(options.repo, repoRoot);
-  const rollbackRemote = options.remote || policy.rollback.remote || 'upstream';
+  const remoteResolver =
+    dependencies.remoteResolver ||
+    ((args) => resolveRollbackRemoteName({ ...args, tryResolveRemoteFn: dependencies.tryResolveRemote || tryResolveRemote }));
+  const rollbackRemoteResolution = remoteResolver({
+    repoRoot,
+    preferredRemote: options.remote || policy.rollback.remote || 'upstream',
+    repository
+  });
+  const rollbackRemote = rollbackRemoteResolution.effectiveRemote;
   const targetBranches = [options.mainBranch, options.developBranch];
 
   const failures = [];
@@ -368,13 +415,18 @@ export async function runRollback(options, dependencies = {}) {
     targetTag: options.targetTag
   });
 
-  fetchRemoteRefs(repoRoot, rollbackRemote, targetBranches);
-  const targetCommit = resolveTagCommit(repoRoot, pointer.target.tag);
+  const fetchRemoteRefsFn = dependencies.fetchRemoteRefs || fetchRemoteRefs;
+  const resolveTagCommitFn = dependencies.resolveTagCommit || resolveTagCommit;
+  const tryResolveRefFn = dependencies.tryResolveRef || tryResolveRef;
+  const forcePushBranchFn = dependencies.forcePushBranch || forcePushBranch;
+
+  fetchRemoteRefsFn(repoRoot, rollbackRemote, targetBranches);
+  const targetCommit = resolveTagCommitFn(repoRoot, pointer.target.tag);
 
   const branches = targetBranches.map((name) => ({
     name,
     remote: rollbackRemote,
-    before: tryResolveRef(repoRoot, `${rollbackRemote}/${name}`),
+    before: tryResolveRefFn(repoRoot, `${rollbackRemote}/${name}`),
     after: null,
     pushed: false,
     matchesTarget: false
@@ -382,14 +434,14 @@ export async function runRollback(options, dependencies = {}) {
 
   if (options.apply) {
     for (const branch of branches) {
-      forcePushBranch(repoRoot, rollbackRemote, branch.name, targetCommit, branch.before);
+      forcePushBranchFn(repoRoot, rollbackRemote, branch.name, targetCommit, branch.before);
       branch.pushed = true;
     }
-    fetchRemoteRefs(repoRoot, rollbackRemote, targetBranches);
+    fetchRemoteRefsFn(repoRoot, rollbackRemote, targetBranches);
   }
 
   for (const branch of branches) {
-    branch.after = tryResolveRef(repoRoot, `${rollbackRemote}/${branch.name}`);
+    branch.after = tryResolveRefFn(repoRoot, `${rollbackRemote}/${branch.name}`);
     branch.matchesTarget = options.apply ? branch.after === targetCommit : false;
   }
 
@@ -408,12 +460,12 @@ export async function runRollback(options, dependencies = {}) {
         addFailure(failures, 'origin-branch-missing', `origin/${branch.name} does not exist for sync-origin.`);
         continue;
       }
-      forcePushBranch(repoRoot, 'origin', branch.name, targetCommit, branch.before);
+      forcePushBranchFn(repoRoot, 'origin', branch.name, targetCommit, branch.before);
       branch.pushed = true;
     }
-    fetchRemoteRefs(repoRoot, 'origin', targetBranches);
+    fetchRemoteRefsFn(repoRoot, 'origin', targetBranches);
     for (const branch of originBranches) {
-      branch.after = tryResolveRef(repoRoot, `origin/${branch.name}`);
+      branch.after = tryResolveRefFn(repoRoot, `origin/${branch.name}`);
       branch.matchesTarget = branch.after === targetCommit;
     }
     originSync = originBranches;
@@ -461,7 +513,9 @@ export async function runRollback(options, dependencies = {}) {
     policy: {
       path: options.policyPath,
       schema: policy.schema,
+      configuredRemote: rollbackRemoteResolution.configuredRemote,
       remote: rollbackRemote,
+      remoteFallbackReason: rollbackRemoteResolution.fallbackReason,
       targetBranches,
       minimumHistory: streamPolicy.minimumHistory
     },
@@ -559,4 +613,3 @@ if (invokedPath && invokedPath === modulePath) {
       process.exitCode = 1;
     });
 }
-
