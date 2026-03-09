@@ -150,6 +150,7 @@
         "tools/New-GitHubIntakeDraft.ps1",
         "tools/Resolve-GitHubIntakeRoute.ps1",
         "tools/Write-GitHubIntakeAtlas.ps1",
+        "tools/priority/create-pr.mjs",
         "tools/priority/github-intake-catalog.json"
       ]
     },

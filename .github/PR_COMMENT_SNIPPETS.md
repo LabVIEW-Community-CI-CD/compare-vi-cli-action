@@ -47,7 +47,7 @@ pwsh -File tools/Branch-Orchestrator.ps1 -Issue <number> -Execute -PRTemplate wo
 
 ```text
 pwsh -File tools/New-PullRequestBody.ps1 -Template human-change -Issue <number> -OutputPath pr-body.md
-gh pr create --title "<title>" --body-file pr-body.md
+node tools/npm/run-script.mjs priority:pr -- --repo <owner/repo> --branch <branch> --base <base> --title "<title>" --body-file pr-body.md
 ```
 
 ## Re-run Orchestrated With Same Inputs

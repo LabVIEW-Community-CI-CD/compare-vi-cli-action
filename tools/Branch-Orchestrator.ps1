@@ -169,7 +169,21 @@ if ($Execute) {
         $pr = $existingJson | ConvertFrom-Json
         & $gh.Source 'pr' 'edit' $pr.number '--title' $prTitle '--body-file' $bodyPath | Out-Host
       } else {
-        & $gh.Source 'pr' 'create' '--title' $prTitle '--base' $Base '--head' $branchName '--body-file' $bodyPath | Out-Host
+        $priorityPrArgs = @(
+          (Join-Path $repo 'tools' 'npm' 'run-script.mjs'),
+          'priority:pr',
+          '--',
+          '--branch',
+          $branchName,
+          '--base',
+          $Base,
+          '--title',
+          $prTitle,
+          '--body-file',
+          $bodyPath
+        )
+        & node @priorityPrArgs | Out-Host
+        if ($LASTEXITCODE -ne 0) { throw "priority:pr failed ($LASTEXITCODE)" }
       }
     } catch {
       Write-Warning 'PR create/edit failed.'

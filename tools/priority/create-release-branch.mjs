@@ -135,6 +135,7 @@ async function main() {
     pushBranch(repoRoot, branch);
 
     runGhPrCreate({
+      repoRoot,
       upstream,
       origin,
       branch,

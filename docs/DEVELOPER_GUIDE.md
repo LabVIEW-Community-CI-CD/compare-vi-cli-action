@@ -409,8 +409,10 @@ For Docker/Desktop VI history validation, run fast-loop lanes explicitly:
   locally. Add `--observe-only` to mirror staged rollout mode. See `docs/COMMIT_INTEGRITY_CHECK.md` for full contract
   and rollout flags (`COMMIT_INTEGRITY_ENFORCE`).
 - Prefer opening PRs from your fork with `node tools/npm/run-script.mjs priority:pr`; the helper ensures `origin`
-  targets your fork (creating it via `gh repo fork` if needed), pushes the current branch, and calls
-  `gh pr create --title <derived-title> --body <rendered-body> --repo <upstream> --base develop --head <fork>:branch`.
+  targets your fork (creating it via `gh repo fork` if needed), pushes the current branch, and opens the PR through one
+  fork-aware contract. User-owned forks still flow through `gh pr create`; same-owner renamed forks switch to GitHub
+  GraphQL `createPullRequest` with `headRepositoryId` so agents do not need to mirror branches back to upstream just to
+  create the PR.
 - The machine-readable GitHub intake source of truth lives in
   `tools/priority/github-intake-catalog.json`. Use
   `pwsh -File tools/Resolve-GitHubIntakeRoute.ps1 -ListScenarios` or
@@ -419,7 +421,7 @@ For Docker/Desktop VI history validation, run fast-loop lanes explicitly:
 - For the higher-level scenario facade, use
   `pwsh -File tools/New-GitHubIntakeDraft.ps1 -Scenario <name> -OutputPath <body-file>`
   to render the correct issue or PR body from the catalog before invoking
-  `gh issue create` / `gh pr create`. For PR scenarios, the helper can hydrate
+  `gh issue create` / `node tools/npm/run-script.mjs priority:pr`. For PR scenarios, the helper can hydrate
   issue title/URL and standing-priority state from the existing issue snapshot
   under `tests/results/_agent/issue/`.
 - For a machine-readable execution planner and explicit apply helper, use
@@ -431,8 +433,8 @@ For Docker/Desktop VI history validation, run fast-loop lanes explicitly:
   `tests/results/_agent/intake/`.
 - When you need the repository's richer intake metadata blocks and template variants, prefer
   `pwsh -File tools/Branch-Orchestrator.ps1 -Issue <number> -Execute [-PRTemplate <variant>]` or
-  `pwsh -File tools/New-PullRequestBody.ps1 ... -OutputPath pr-body.md` plus `gh pr create --title <title> --body-file
-  pr-body.md`.
+  `pwsh -File tools/New-PullRequestBody.ps1 ... -OutputPath pr-body.md` plus
+  `node tools/npm/run-script.mjs priority:pr -- --repo <owner/repo> --branch <branch> --base <base> --title <title> --body-file pr-body.md`.
 - Detailed enforcement notes (feature-branch guards, merge history workflow,
   merge queue parameters) live in
   [`docs/knowledgebase/FEATURE_BRANCH_POLICY.md`](./knowledgebase/FEATURE_BRANCH_POLICY.md).

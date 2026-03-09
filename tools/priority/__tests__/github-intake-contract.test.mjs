@@ -51,7 +51,7 @@ test('github intake catalog matches schema and routes the supported scenarios', 
   assert.ok(catalog.routes.every((entry) => typeof entry.executeCommand === 'string' && entry.executeCommand.length > 0));
   assert.ok(catalog.routes.every((entry) => entry.execution && typeof entry.execution.kind === 'string' && entry.execution.kind.length > 0));
   assert.ok(catalog.routes.some((entry) => entry.scenario === 'workflow-policy-pr' && entry.execution.kind === 'branch-orchestrator'));
-  assert.ok(catalog.routes.some((entry) => entry.scenario === 'human-pr' && entry.execution.kind === 'gh-pr-create'));
+  assert.ok(catalog.routes.some((entry) => entry.scenario === 'human-pr' && entry.execution.kind === 'priority-pr-create'));
 });
 
 test('github intake layer ships the expected PR template variants', () => {
@@ -147,23 +147,26 @@ test('github intake docs and manifest reference the new helper layer', () => {
   assert.match(intakeGuide, /GitHub-Wiki-Portal\.md/);
   assert.match(intakeGuide, /Idle Repository Mode/);
   assert.match(intakeGuide, /reason = queue-empty/);
-  assert.match(intakeGuide, /gh pr create --title "<title>" --body-file pr-body\.md/);
+  assert.match(intakeGuide, /node tools\/npm\/run-script\.mjs priority:pr -- --repo <owner\/repo> --branch <branch> --base <base> --title "<title>" --body-file pr-body\.md/);
+  assert.match(intakeGuide, /headRepositoryId/);
   assert.match(automationGuide, /Keep manual curation for now/);
   assert.match(automationGuide, /compare-vi-cli-action\.wiki\.git/);
   assert.match(wikiGuide, /Authoritative repo docs/);
   assert.match(wikiGuide, /GitHub-Wiki-Portal-Automation-Evaluation\.md/);
   assert.match(wikiGuide, /README\.md/);
   assert.match(orchestrator, /Import-Module \(Join-Path \$PSScriptRoot 'GitHubIntake\.psm1'\)/);
-  assert.match(orchestrator, /'pr'\s+'create'\s+'--title'/);
+  assert.match(orchestrator, /'priority:pr'/);
   assert.match(orchestrator, /'pr'\s+'view'\s+\$branchName\s+'--json'\s+'number'/);
   assert.match(orchestrator, /'pr'\s+'edit'\s+\$pr\.number\s+'--title'\s+\$prTitle\s+'--body-file'/);
   assert.match(orchestrator, /Standing-priority queue is empty/);
   assert.match(orchestrator, /router\.json/);
   assert.match(orchestrator, /no-standing-priority\.json/);
   assert.match(getStandingPriority, /Standing priority not set \(queue empty\)/);
+  assert.doesNotMatch(orchestrator, /'pr'\s+'create'\s+'--title'/);
   assert.doesNotMatch(orchestrator, /'pr'\s+'create'\s+'--fill(?:-first)?'/);
   assert.doesNotMatch(orchestrator, /'pr'\s+'view'\s+'--json'\s+'number'\s+'--head'/);
   assert.match(oneButtonValidate, /gh pr view \$branch --json number/);
+  assert.match(oneButtonValidate, /priority:pr/);
   assert.doesNotMatch(oneButtonValidate, /gh pr view --json number --head/);
   assert.match(intakeModule, /function Get-GitHubIntakeCatalog/);
   assert.match(intakeModule, /function Resolve-GitHubIntakeDraftContext/);
@@ -199,6 +202,7 @@ test('github intake docs and manifest reference the new helper layer', () => {
   assert.ok(intakeEntry.files.includes('tools/Invoke-GitHubIntakeScenario.ps1'));
   assert.ok(intakeEntry.files.includes('tools/Resolve-GitHubIntakeRoute.ps1'));
   assert.ok(intakeEntry.files.includes('tools/Write-GitHubIntakeAtlas.ps1'));
+  assert.ok(intakeEntry.files.includes('tools/priority/create-pr.mjs'));
 
   const docsEntry = manifest.entries.find((entry) => entry.name === 'Docs Tree');
   assert.ok(docsEntry);

@@ -45,7 +45,7 @@ Describe 'Invoke-GitHubIntakeScenario.ps1' {
     }
 
     $plan = $json | ConvertFrom-Json -Depth 10
-    $plan.execution.kind | Should -Be 'gh-pr-create'
+    $plan.execution.kind | Should -Be 'priority-pr-create'
     $plan.execution.branch | Should -Be 'issue/923-work'
     $plan.execution.title | Should -Be 'Execution planner issue (#923)'
     $plan.requirements.canApply | Should -BeTrue

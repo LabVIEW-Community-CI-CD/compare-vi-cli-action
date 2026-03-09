@@ -144,8 +144,8 @@ if ($Push) {
       gh pr edit $pr.number --title $title --body $body | Out-Host
       if ($LASTEXITCODE -ne 0) { throw "gh pr edit failed ($LASTEXITCODE)" }
     } else {
-      gh pr create --base develop --head $branch --title $title --body $body | Out-Host
-      if ($LASTEXITCODE -ne 0) { throw "gh pr create failed ($LASTEXITCODE)" }
+      node tools/npm/run-script.mjs priority:pr -- --branch $branch --base develop --title $title --body $body | Out-Host
+      if ($LASTEXITCODE -ne 0) { throw "priority:pr failed ($LASTEXITCODE)" }
     }
   }
 }

@@ -131,7 +131,7 @@ instead of inferring the correct path from prose alone.
     -IssueTitle "Epic: modernize the GitHub intake layer for future agents" `
     -IssueUrl "https://github.com/LabVIEW-Community-CI-CD/compare-vi-cli-action/issues/875" `
     -Base develop -Branch issue/875-modernize-github-intake-layer -OutputPath pr-body.md
-  gh pr create --title "<title>" --body-file pr-body.md
+  node tools/npm/run-script.mjs priority:pr -- --repo <owner/repo> --branch <branch> --base <base> --title "<title>" --body-file pr-body.md
   ```
 
 - Branch + PR bootstrap:
@@ -141,8 +141,10 @@ instead of inferring the correct path from prose alone.
   ```
 
 The helper script derives the PR title from linked issue metadata when available, falls back to the current branch's
-head commit subject when necessary, and then calls `gh pr create --title ... --body-file ...` with the rendered intake
-document.
+head commit subject when necessary, and then calls `priority:pr` with the rendered intake document. For user-owned
+forks, the helper still routes through `gh pr create`. For same-owner renamed forks, it switches to GitHub GraphQL
+`createPullRequest` with `headRepositoryId` so future agents do not need an upstream-mirror workaround just to open
+the PR.
 
 ## Idle Repository Mode
 
@@ -183,8 +185,9 @@ Human-authored PRs should use the `human-change` template so they do not acciden
   reviewer-routing semantics.
 - Use the `human-change` PR template when the PR is not automation-authored and should not carry the agent metadata
   contract.
-- Prefer explicit `--title` plus `--body-file` over `gh pr create --fill`; the title/body contract stays deterministic
-  and avoids GitHub CLI flag conflicts.
+- Prefer `priority:pr` with explicit `--title` plus `--body-file` over raw `gh pr create --fill`; the title/body
+  contract stays deterministic, avoids GitHub CLI flag conflicts, and keeps same-owner fork PR creation on one helper
+  path.
 - Use the wiki as a public portal for discoverability, not as a substitute for checked-in docs.
 - Prefer the checked-in intake catalog plus `Resolve-GitHubIntakeRoute.ps1` when deciding which supported issue or PR
   surface to use.

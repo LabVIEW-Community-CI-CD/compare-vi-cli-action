@@ -58,6 +58,15 @@ function Get-GitHubIntakeScenarios {
   @((Get-GitHubIntakeCatalog).routes | ForEach-Object { [string]$_.scenario })
 }
 
+function Normalize-GitHubIntakeExecutionKind {
+  param([string]$Kind)
+
+  switch ([string]$Kind) {
+    'gh-pr-create' { return 'priority-pr-create' }
+    default { return $Kind }
+  }
+}
+
 function Resolve-GitHubIntakeExecutionMetadata {
   param([pscustomobject]$Route)
 
@@ -66,7 +75,7 @@ function Resolve-GitHubIntakeExecutionMetadata {
   }
 
   [pscustomobject]@{
-    kind                = [string]$Route.execution.kind
+    kind                = Normalize-GitHubIntakeExecutionKind -Kind ([string]$Route.execution.kind)
     titleSource         = if ($Route.execution.PSObject.Properties.Name -contains 'titleSource') { [string]$Route.execution.titleSource } else { $null }
     bodySource          = if ($Route.execution.PSObject.Properties.Name -contains 'bodySource') { [string]$Route.execution.bodySource } else { $null }
     labelSource         = if ($Route.execution.PSObject.Properties.Name -contains 'labelSource') { [string]$Route.execution.labelSource } else { $null }
@@ -413,7 +422,7 @@ function New-GitHubIntakeExecutionPlan {
         $arguments.Add($label)
       }
     }
-    'gh-pr-create' {
+    'priority-pr-create' {
       $issueRequired = $true
       $branchRequired = $true
       $resolvedTitle = Resolve-PullRequestTitle -Issue $context.issue -IssueTitle $context.issueTitle -Base $Base
@@ -424,20 +433,21 @@ function New-GitHubIntakeExecutionPlan {
         $missing.Add('branch')
       }
 
-      $arguments.Add('pr')
-      $arguments.Add('create')
+      $arguments.Add('tools/npm/run-script.mjs')
+      $arguments.Add('priority:pr')
+      $arguments.Add('--')
       $arguments.Add('--repo')
       $arguments.Add($RepositoryContext)
+      if (-not [string]::IsNullOrWhiteSpace($context.branch)) {
+        $arguments.Add('--branch')
+        $arguments.Add($context.branch)
+      }
+      $arguments.Add('--base')
+      $arguments.Add($Base)
       $arguments.Add('--title')
       $arguments.Add($resolvedTitle)
       $arguments.Add('--body-file')
       $arguments.Add($draftOutput)
-      $arguments.Add('--base')
-      $arguments.Add($Base)
-      if (-not [string]::IsNullOrWhiteSpace($context.branch)) {
-        $arguments.Add('--head')
-        $arguments.Add($context.branch)
-      }
     }
     'branch-orchestrator' {
       $issueRequired = $true
@@ -482,6 +492,7 @@ function New-GitHubIntakeExecutionPlan {
 
   $displayCommand = switch ($executionKind) {
     'branch-orchestrator' { Format-GitHubIntakeCommandLine -Command 'pwsh' -Arguments $arguments.ToArray() }
+    'priority-pr-create' { Format-GitHubIntakeCommandLine -Command 'node' -Arguments $arguments.ToArray() }
     'open-link' { Format-GitHubIntakeCommandLine -Command 'start' -Arguments $arguments.ToArray() }
     default { Format-GitHubIntakeCommandLine -Command 'gh' -Arguments $arguments.ToArray() }
   }
@@ -617,8 +628,8 @@ function Invoke-GitHubIntakeExecutionPlan {
       $commandArguments = @($Plan.execution.arguments)
       $output = & $NativeInvoker $commandFilePath $commandArguments
     }
-    'gh-pr-create' {
-      $commandFilePath = 'gh'
+    'priority-pr-create' {
+      $commandFilePath = 'node'
       $commandArguments = @($Plan.execution.arguments)
       $output = & $NativeInvoker $commandFilePath $commandArguments
     }

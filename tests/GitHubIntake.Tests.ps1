@@ -68,9 +68,63 @@ Describe 'GitHubIntake.psm1' {
     $route.targetKey | Should -Be 'human-change'
     $route.targetPath | Should -Be '.github/PULL_REQUEST_TEMPLATE/human-change.md'
     $route.helperPath | Should -Be 'tools/New-GitHubIntakeDraft.ps1'
-    $route.executeCommand | Should -Be 'gh pr create --title "<title>" --body-file pr-body.md'
-    $route.executionKind | Should -Be 'gh-pr-create'
+    $route.executeCommand | Should -Be 'node tools/npm/run-script.mjs priority:pr -- --repo <owner/repo> --branch <branch> --base <base> --title "<title>" --body-file pr-body.md'
+    $route.executionKind | Should -Be 'priority-pr-create'
     $route.execution.branchSource | Should -Be 'current-or-input'
+  }
+
+  It 'normalizes legacy gh-pr-create execution kinds to the priority helper contract' {
+    $catalogPath = Join-Path $TestDrive 'github-intake-catalog.json'
+    @'
+{
+  "schema": "github-intake/catalog@v1",
+  "issueTemplates": [],
+  "pullRequestTemplates": [
+    {
+      "key": "human-change",
+      "path": ".github/PULL_REQUEST_TEMPLATE/human-change.md",
+      "templateLabel": "human-change",
+      "metadataMode": "human",
+      "summary": "Human-authored PR template."
+    }
+  ],
+  "contactLinks": [],
+  "routes": [
+    {
+      "scenario": "legacy-human-pr",
+      "routeType": "pull-request-template",
+      "targetKey": "human-change",
+      "helperPath": "tools/New-GitHubIntakeDraft.ps1",
+      "command": "pwsh -File tools/New-GitHubIntakeDraft.ps1 -Scenario legacy-human-pr -OutputPath pr-body.md",
+      "executeCommand": "gh pr create --title \"<title>\" --body-file pr-body.md",
+      "execution": {
+        "kind": "gh-pr-create",
+        "titleSource": "issue-derived",
+        "bodySource": "draft-output",
+        "baseSource": "input-or-default",
+        "branchSource": "current-or-input",
+        "issueSource": "input-or-snapshot"
+      },
+      "summary": "Legacy route."
+    }
+  ]
+}
+'@ | Set-Content -LiteralPath $catalogPath -Encoding utf8
+
+    $previous = $env:COMPAREVI_GITHUB_INTAKE_CATALOG_PATH
+    try {
+      $env:COMPAREVI_GITHUB_INTAKE_CATALOG_PATH = $catalogPath
+      $route = Resolve-GitHubIntakeRoute -Scenario 'legacy-human-pr'
+    } finally {
+      if ($null -eq $previous) {
+        Remove-Item Env:COMPAREVI_GITHUB_INTAKE_CATALOG_PATH -ErrorAction SilentlyContinue
+      } else {
+        $env:COMPAREVI_GITHUB_INTAKE_CATALOG_PATH = $previous
+      }
+    }
+
+    $route.executionKind | Should -Be 'priority-pr-create'
+    $route.execution.kind | Should -Be 'priority-pr-create'
   }
 
   It 'resolves an issue snapshot from the override directory when present' {
