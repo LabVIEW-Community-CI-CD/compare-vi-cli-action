@@ -370,8 +370,88 @@
       "portfolioTrack": "Agent UX"
     },
     {
-      "url": "https://github.com/LabVIEW-Community-CI-CD/comparevi-history/issues/14",
+      "url": "https://github.com/LabVIEW-Community-CI-CD/compare-vi-cli-action/issues/930",
+      "status": "In Progress",
+      "program": "Shared Infra",
+      "phase": "Helper Workflow",
+      "environmentClass": "Cross-Repo",
+      "blockingSignal": "Scope",
+      "evidenceState": "Partial",
+      "portfolioTrack": "Corpus & Facade"
+    },
+    {
+      "url": "https://github.com/LabVIEW-Community-CI-CD/compare-vi-cli-action/issues/931",
+      "status": "Done",
+      "program": "Shared Infra",
+      "phase": "Helper Workflow",
+      "environmentClass": "Cross-Repo",
+      "blockingSignal": "Scope",
+      "evidenceState": "Partial",
+      "portfolioTrack": "Corpus & Facade"
+    },
+    {
+      "url": "https://github.com/LabVIEW-Community-CI-CD/compare-vi-cli-action/issues/932",
+      "status": "Done",
+      "program": "Shared Infra",
+      "phase": "Helper Workflow",
+      "environmentClass": "Cross-Repo",
+      "blockingSignal": "Scope",
+      "evidenceState": "Partial",
+      "portfolioTrack": "Corpus & Facade"
+    },
+    {
+      "url": "https://github.com/LabVIEW-Community-CI-CD/compare-vi-cli-action/issues/934",
+      "status": "Done",
+      "program": "Shared Infra",
+      "phase": "Helper Workflow",
+      "environmentClass": "Cross-Repo",
+      "blockingSignal": "Scope",
+      "evidenceState": "Partial",
+      "portfolioTrack": "Corpus & Facade"
+    },
+    {
+      "url": "https://github.com/LabVIEW-Community-CI-CD/compare-vi-cli-action/issues/946",
+      "status": "In Progress",
+      "program": "Shared Infra",
+      "phase": "Helper Workflow",
+      "environmentClass": "Cross-Repo",
+      "blockingSignal": "Scope",
+      "evidenceState": "Partial",
+      "portfolioTrack": "Corpus & Facade"
+    },
+    {
+      "url": "https://github.com/LabVIEW-Community-CI-CD/compare-vi-cli-action/issues/947",
       "status": "Todo",
+      "program": "Shared Infra",
+      "phase": "Helper Workflow",
+      "environmentClass": "Cross-Repo",
+      "blockingSignal": "Scope",
+      "evidenceState": "Partial",
+      "portfolioTrack": "Corpus & Facade"
+    },
+    {
+      "url": "https://github.com/LabVIEW-Community-CI-CD/compare-vi-cli-action/issues/948",
+      "status": "In Progress",
+      "program": "Shared Infra",
+      "phase": "Helper Workflow",
+      "environmentClass": "Infra",
+      "blockingSignal": "Scope",
+      "evidenceState": "Ready",
+      "portfolioTrack": "Agent UX"
+    },
+    {
+      "url": "https://github.com/LabVIEW-Community-CI-CD/compare-vi-cli-action/issues/949",
+      "status": "Todo",
+      "program": "Shared Infra",
+      "phase": "Apply Mode",
+      "environmentClass": "Infra",
+      "blockingSignal": "Scope",
+      "evidenceState": "Partial",
+      "portfolioTrack": "Agent UX"
+    },
+    {
+      "url": "https://github.com/LabVIEW-Community-CI-CD/comparevi-history/issues/14",
+      "status": "Done",
       "program": "Multi-Mode Diagnostics",
       "phase": "Sustain",
       "environmentClass": "Cross-Repo",
@@ -381,7 +461,7 @@
     },
     {
       "url": "https://github.com/LabVIEW-Community-CI-CD/comparevi-history/issues/15",
-      "status": "Todo",
+      "status": "Done",
       "program": "Multi-Mode Diagnostics",
       "phase": "Sustain",
       "environmentClass": "Cross-Repo",

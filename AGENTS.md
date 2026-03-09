@@ -54,7 +54,14 @@ line buffers).
   3. For cross-issue or cross-repo coordination, run
      `node tools/npm/run-script.mjs priority:project:portfolio:check` to verify the dashboard state recorded in
      `tools/priority/project-portfolio.json`. Treat the project board as a visibility layer only; issues, labels, and
-     policy files remain the source of truth.
+     policy files remain the source of truth. When you need to add an issue/PR to project `#2` or apply the standard
+     single-select fields, use
+     `node tools/npm/run-script.mjs priority:project:portfolio:apply -- --url <issue-or-pr-url> --use-config`
+     (or pass explicit `--status`, `--program`, `--phase`, `--environment-class`, `--blocking-signal`,
+     `--evidence-state`, `--portfolio-track` values) instead of hand-stitching `gh project item-add` /
+     `gh project item-edit` calls. The helper also writes a normalized project-board context report so future agents can
+     see built-in metadata such as `Type`, `Milestone`, `Reviewers`, linked PRs, and `Sub-issues progress` without a
+     second board scrape.
   4. Run `node tools/npm/run-script.mjs priority:develop:sync` to perform locked, sequential
      `pull --ff-only upstream/develop` then `push origin/develop` with retry/backoff and remote-head convergence checks;
      this helper also emits the parity report and must be used instead of ad-hoc pull/push command pairs.

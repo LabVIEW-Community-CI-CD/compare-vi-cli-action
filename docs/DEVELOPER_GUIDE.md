@@ -173,6 +173,11 @@ Quick reference for building, testing, and releasing the LVCompare composite act
   Doubles backslashes and normalises line endings so literal sequences (for example `\t`, `\tools`) survive `gh issue create/edit`. Omit `--output` to print to STDOUT.
 - `node tools/priority/github-helper.mjs snippet --issue 531 --prefix Fixes`  
   Emits an auto-link snippet (defaults to `Fixes #531`) you can drop into PR descriptions so GitHub auto-closes the issue.
+- `node tools/npm/run-script.mjs priority:project:portfolio:apply -- --url <issue-or-pr-url> --use-config`  
+  Adds the issue/PR to project `LabVIEW-Community-CI-CD#2` when missing, applies the tracked single-select portfolio
+  fields, and writes `tests/results/_agent/project/portfolio-apply-report.json`. The report also carries normalized
+  built-in board metadata (`Type`, `Milestone`, `Reviewers`, linked PRs, parent issue, `Sub-issues progress`) so
+  future agents can reason about intake state without a second `gh project item-list` scrape.
 - `node tools/priority/standing-priority-handoff.mjs [--dry-run] <next-issue>`  
   Removes the `standing-priority` label from the current issue (if any), applies it to `<next-issue>`, and re-runs the cache sync (`tools/priority/sync-standing-priority.mjs`). Use `--dry-run` to preview the actions without mutating labels.
 - Standing-priority repository resolution is owner-agnostic. Order:
