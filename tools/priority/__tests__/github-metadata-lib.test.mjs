@@ -198,12 +198,12 @@ function makeRunGhJson({ targets, issueTypes, milestones, calls = [] }) {
 
       if (query.includes('updateIssue(input:')) {
         const target = byId.get(variables.id);
-        const issueTypeId = variables.issueTypeId || null;
-        const milestoneId = variables.milestoneId || null;
-        if (issueTypeId !== undefined) {
+        if (Object.prototype.hasOwnProperty.call(variables, 'issueTypeId')) {
+          const issueTypeId = variables.issueTypeId;
           target.issueType = issueTypeId ? issueTypes.find((entry) => entry.id === issueTypeId) ?? null : null;
         }
-        if (milestoneId !== undefined) {
+        if (Object.prototype.hasOwnProperty.call(variables, 'milestoneId')) {
+          const milestoneId = variables.milestoneId;
           target.milestone = milestoneId ? milestones.find((entry) => entry.id === milestoneId) ?? null : null;
         }
         return { data: { updateIssue: { issue: { id: target.id } } } };
@@ -434,6 +434,110 @@ test('runMetadataApply clears issue type and milestone during live issue apply',
   assert.ok(milestoneMutation);
   assert.equal(parseGraphqlArgs(issueTypeMutation).variables.issueTypeId, null);
   assert.equal(parseGraphqlArgs(milestoneMutation).variables.milestoneId, null);
+});
+
+test('runMetadataApply updates issue type without clearing the existing milestone', () => {
+  const target = createIssue({
+    id: 'ISSUE_TARGET',
+    url: 'https://github.com/example/repo/issues/950',
+    number: 950,
+    title: 'Metadata helper issue',
+    issueType: { id: 'IT_TASK', name: 'Task' },
+    milestone: { id: 'MS_Q2', title: 'LabVIEW CI Platform v1 (2026Q2)', number: 2, state: 'OPEN' },
+  });
+  const calls = [];
+  const runGhJsonFn = makeRunGhJson({
+    targets: { target },
+    issueTypes: [
+      { id: 'IT_FEATURE', name: 'Feature' },
+      { id: 'IT_TASK', name: 'Task' },
+    ],
+    milestones: [
+      { id: 'MS_Q2', title: 'LabVIEW CI Platform v1 (2026Q2)', number: 2, state: 'OPEN' },
+    ],
+    calls,
+  });
+
+  const result = metadataLib.runMetadataApply({
+    argv: [
+      '--url', target.url,
+      '--issue-type', 'Feature',
+      '--out', 'tests/results/_agent/issue/github-metadata-lib-issue-type-only.json',
+    ],
+    now: new Date('2026-03-09T18:06:15Z'),
+    env: {
+      COMPAREVI_GITHUB_METADATA_VERIFY_ATTEMPTS: '1',
+      COMPAREVI_GITHUB_METADATA_VERIFY_DELAY_MS: '0',
+    },
+    runGhJsonFn,
+  });
+
+  assert.equal(result.exitCode, 0);
+  assert.equal(result.report.execution.status, 'pass');
+  assert.equal(result.report.observed.after.issueType.name, 'Feature');
+  assert.equal(result.report.observed.after.milestone.title, 'LabVIEW CI Platform v1 (2026Q2)');
+
+  const issueTypeMutation = calls.find((args) => {
+    const { query, variables } = parseGraphqlArgs(args);
+    return query.includes('updateIssue(input:') && Object.prototype.hasOwnProperty.call(variables, 'issueTypeId');
+  });
+  assert.ok(issueTypeMutation);
+  const parsed = parseGraphqlArgs(issueTypeMutation);
+  assert.match(parsed.query, /issueTypeId: \$issueTypeId/);
+  assert.doesNotMatch(parsed.query, /milestoneId: \$milestoneId/);
+  assert.equal(Object.prototype.hasOwnProperty.call(parsed.variables, 'milestoneId'), false);
+});
+
+test('runMetadataApply updates milestone without clearing the existing issue type', () => {
+  const target = createIssue({
+    id: 'ISSUE_TARGET',
+    url: 'https://github.com/example/repo/issues/951',
+    number: 951,
+    title: 'Metadata helper issue',
+    issueType: { id: 'IT_FEATURE', name: 'Feature' },
+    milestone: null,
+  });
+  const calls = [];
+  const runGhJsonFn = makeRunGhJson({
+    targets: { target },
+    issueTypes: [
+      { id: 'IT_FEATURE', name: 'Feature' },
+      { id: 'IT_TASK', name: 'Task' },
+    ],
+    milestones: [
+      { id: 'MS_Q2', title: 'LabVIEW CI Platform v1 (2026Q2)', number: 2, state: 'OPEN' },
+    ],
+    calls,
+  });
+
+  const result = metadataLib.runMetadataApply({
+    argv: [
+      '--url', target.url,
+      '--milestone', 'LabVIEW CI Platform v1 (2026Q2)',
+      '--out', 'tests/results/_agent/issue/github-metadata-lib-milestone-only.json',
+    ],
+    now: new Date('2026-03-09T18:06:20Z'),
+    env: {
+      COMPAREVI_GITHUB_METADATA_VERIFY_ATTEMPTS: '1',
+      COMPAREVI_GITHUB_METADATA_VERIFY_DELAY_MS: '0',
+    },
+    runGhJsonFn,
+  });
+
+  assert.equal(result.exitCode, 0);
+  assert.equal(result.report.execution.status, 'pass');
+  assert.equal(result.report.observed.after.issueType.name, 'Feature');
+  assert.equal(result.report.observed.after.milestone.title, 'LabVIEW CI Platform v1 (2026Q2)');
+
+  const milestoneMutation = calls.find((args) => {
+    const { query, variables } = parseGraphqlArgs(args);
+    return query.includes('updateIssue(input:') && Object.prototype.hasOwnProperty.call(variables, 'milestoneId');
+  });
+  assert.ok(milestoneMutation);
+  const parsed = parseGraphqlArgs(milestoneMutation);
+  assert.match(parsed.query, /milestoneId: \$milestoneId/);
+  assert.doesNotMatch(parsed.query, /issueTypeId: \$issueTypeId/);
+  assert.equal(Object.prototype.hasOwnProperty.call(parsed.variables, 'issueTypeId'), false);
 });
 
 test('runMetadataApply clears milestone during live pull-request apply', () => {

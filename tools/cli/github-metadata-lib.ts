@@ -1170,27 +1170,32 @@ function updateIssueMutation(
   input: { issueTypeId?: string | null; milestoneId?: string | null },
   runGhJsonFn: (args: string[]) => unknown,
 ): void {
-  const query = `
-    mutation($id: ID!, $issueTypeId: ID, $milestoneId: ID) {
+  const variableDeclarations = ['$id: ID!'];
+  const inputFields = ['id: $id'];
+
+  const variables = { id: issueId } as Record<string, string | null>;
+  if (Object.prototype.hasOwnProperty.call(input, 'issueTypeId')) {
+    variableDeclarations.push('$issueTypeId: ID');
+    inputFields.push('issueTypeId: $issueTypeId');
+    variables.issueTypeId = input.issueTypeId ?? null;
+  }
+  if (Object.prototype.hasOwnProperty.call(input, 'milestoneId')) {
+    variableDeclarations.push('$milestoneId: ID');
+    inputFields.push('milestoneId: $milestoneId');
+    variables.milestoneId = input.milestoneId ?? null;
+  }
+
+  const materializedQuery = `
+    mutation(${variableDeclarations.join(', ')}) {
       updateIssue(input: {
-        id: $id,
-        issueTypeId: $issueTypeId,
-        milestoneId: $milestoneId
+        ${inputFields.join(',\n        ')}
       }) {
         issue { id }
       }
     }
   `;
 
-  const variables = { id: issueId } as Record<string, string | null>;
-  if (Object.prototype.hasOwnProperty.call(input, 'issueTypeId')) {
-    variables.issueTypeId = input.issueTypeId ?? null;
-  }
-  if (Object.prototype.hasOwnProperty.call(input, 'milestoneId')) {
-    variables.milestoneId = input.milestoneId ?? null;
-  }
-
-  runGhGraphql(query, variables, issueMutationSchema, runGhJsonFn);
+  runGhGraphql(materializedQuery, variables, issueMutationSchema, runGhJsonFn);
 }
 
 function updatePullRequestMutation(
