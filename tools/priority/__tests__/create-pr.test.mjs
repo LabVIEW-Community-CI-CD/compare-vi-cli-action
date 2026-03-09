@@ -69,6 +69,17 @@ test('parseArgs rejects non-numeric issue overrides', () => {
   );
 });
 
+test('parseArgs accepts body values that begin with a dash', () => {
+  const options = parseArgs([
+    'node',
+    'create-pr.mjs',
+    '--body',
+    '- follow-up fix for current-head review'
+  ]);
+
+  assert.equal(options.body, '- follow-up fix for current-head review');
+});
+
 test('parseRouterIssueNumber returns positive integer issue values', () => {
   assert.equal(parseRouterIssueNumber({ issue: 680 }), 680);
   assert.equal(parseRouterIssueNumber({ issue: '681' }), 681);

@@ -28,7 +28,7 @@ const USAGE_LINES = [
   '',
   'Options:',
   '  --repo <owner/repo>     Upstream repository override.',
-  '  --issue <number>       Explicit issue number override.',
+  '  --issue <number>        Explicit issue number override.',
   '  --branch <name>         Branch to open instead of the current checkout.',
   '  --base <name>           Base branch (default: develop).',
   '  --title <text>          Explicit pull request title.',
@@ -56,6 +56,16 @@ export function parseArgs(argv = process.argv) {
     help: false
   };
 
+  const tokensRequiringValue = new Set([
+    '--repo',
+    '--issue',
+    '--branch',
+    '--base',
+    '--title',
+    '--body',
+    '--body-file'
+  ]);
+
   for (let index = 0; index < args.length; index += 1) {
     const token = args[index];
     const next = args[index + 1];
@@ -65,16 +75,11 @@ export function parseArgs(argv = process.argv) {
       continue;
     }
 
-    if (
-      token === '--repo' ||
-      token === '--issue' ||
-      token === '--branch' ||
-      token === '--base' ||
-      token === '--title' ||
-      token === '--body' ||
-      token === '--body-file'
-    ) {
-      if (!next || next.startsWith('-')) {
+    if (tokensRequiringValue.has(token)) {
+      if (next === undefined) {
+        throw new Error(`Missing value for ${token}.`);
+      }
+      if (token !== '--body' && next.startsWith('-')) {
         throw new Error(`Missing value for ${token}.`);
       }
       index += 1;
