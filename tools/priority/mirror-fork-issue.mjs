@@ -1,0 +1,247 @@
+#!/usr/bin/env node
+
+import { mkdirSync, writeFileSync } from 'node:fs';
+import path from 'node:path';
+import process from 'node:process';
+import { fileURLToPath } from 'node:url';
+import { spawnSync } from 'node:child_process';
+import { getRepoRoot } from './lib/branch-utils.mjs';
+import { buildRepositorySlug, ensureForkRemote, resolveActiveForkRemoteName, resolveUpstream, runGhJson } from './lib/remote-utils.mjs';
+
+const POINTER_PREFIX = '<!-- upstream-issue-url: ';
+const DEFAULT_REPORT_DIR = path.join('tests', 'results', '_agent', 'issue');
+const STANDING_LABELS = new Set(['standing-priority', 'fork-standing-priority']);
+
+function printUsage() {
+  console.log('Usage: node tools/priority/mirror-fork-issue.mjs --issue <number> [options]');
+  console.log('');
+  console.log('Options:');
+  console.log('  --issue <number>              Upstream issue number to mirror (required).');
+  console.log('  --fork-remote <origin|personal>  Target fork remote (default: AGENT_PRIORITY_ACTIVE_FORK_REMOTE or origin).');
+  console.log(`  --report-dir <path>           Report directory (default: ${DEFAULT_REPORT_DIR}).`);
+  console.log('  -h, --help                    Show this help text and exit.');
+}
+
+export function parseArgs(argv = process.argv) {
+  const args = argv.slice(2);
+  const options = {
+    issue: null,
+    forkRemote: null,
+    reportDir: DEFAULT_REPORT_DIR,
+    help: false
+  };
+
+  for (let index = 0; index < args.length; index += 1) {
+    const arg = args[index];
+    if (arg === '--help' || arg === '-h') {
+      options.help = true;
+      continue;
+    }
+    if (arg === '--issue' || arg === '--fork-remote' || arg === '--report-dir') {
+      const next = args[index + 1];
+      if (!next || next.startsWith('-')) {
+        throw new Error(`Missing value for ${arg}.`);
+      }
+      index += 1;
+      if (arg === '--issue') {
+        const number = Number(next);
+        if (!Number.isInteger(number) || number <= 0) {
+          throw new Error(`Invalid --issue '${next}'.`);
+        }
+        options.issue = number;
+      } else if (arg === '--fork-remote') {
+        options.forkRemote = next;
+      } else {
+        options.reportDir = next;
+      }
+      continue;
+    }
+    throw new Error(`Unknown option: ${arg}`);
+  }
+
+  return options;
+}
+
+function stripExistingPointer(body) {
+  return String(body || '').replace(/^<!--\s*upstream-issue-url:[\s\S]*?-->\s*/i, '').trim();
+}
+
+export function buildMirrorBody(upstreamIssue) {
+  const pointer = `${POINTER_PREFIX}${upstreamIssue.url} -->`;
+  const strippedBody = stripExistingPointer(upstreamIssue.body);
+  return strippedBody ? `${pointer}\n\n${strippedBody}\n` : `${pointer}\n`;
+}
+
+export function buildDesiredLabels(upstreamLabels = [], existingForkLabels = []) {
+  const existing = new Set(existingForkLabels.map((entry) => String(entry).trim().toLowerCase()).filter(Boolean));
+  const labels = new Set(['fork-standing-priority']);
+  for (const label of upstreamLabels) {
+    const normalized = String(label || '').trim().toLowerCase();
+    if (!normalized || STANDING_LABELS.has(normalized)) {
+      continue;
+    }
+    if (existing.has(normalized)) {
+      labels.add(normalized);
+    }
+  }
+  return Array.from(labels).sort();
+}
+
+function ghApi(repoRoot, endpoint, method, payload) {
+  const args = ['api', endpoint, '--method', method, '--input', '-'];
+  const result = spawnSync('gh', args, {
+    cwd: repoRoot,
+    encoding: 'utf8',
+    input: JSON.stringify(payload),
+    stdio: ['pipe', 'pipe', 'pipe']
+  });
+  if (result.status !== 0) {
+    const message = String(result.stderr || result.stdout || '').trim() || `gh api failed (${result.status})`;
+    throw new Error(message);
+  }
+  const text = String(result.stdout || '').trim();
+  return text ? JSON.parse(text) : null;
+}
+
+function ensureLabel(repoRoot, repoSlug, labelName) {
+  const existingLabels = listForkLabels(repoRoot, repoSlug).map((entry) => String(entry).trim().toLowerCase());
+  if (existingLabels.includes(String(labelName).trim().toLowerCase())) {
+    return;
+  }
+
+  const create = spawnSync(
+    'gh',
+    ['label', 'create', labelName, '--repo', repoSlug, '--color', '1d76db', '--description', 'Fork standing priority lane'],
+    {
+      cwd: repoRoot,
+      encoding: 'utf8',
+      stdio: ['ignore', 'pipe', 'pipe']
+    }
+  );
+  if (create.status !== 0) {
+    const message = String(create.stderr || create.stdout || '').trim() || 'Unable to create label.';
+    throw new Error(message);
+  }
+}
+
+function listForkLabels(repoRoot, repoSlug) {
+  const labels = runGhJson(
+    repoRoot,
+    ['label', 'list', '--repo', repoSlug, '--limit', '200', '--json', 'name']
+  ) ?? [];
+  return labels.map((entry) => entry?.name).filter(Boolean);
+}
+
+function findMirrorIssue(issues, upstreamUrl) {
+  const pointer = `${POINTER_PREFIX}${upstreamUrl} -->`;
+  return (issues || []).find((issue) => String(issue?.body || '').includes(pointer)) ?? null;
+}
+
+export function runMirrorForkIssue({
+  repoRoot = getRepoRoot(),
+  options = parseArgs(),
+  env = process.env
+} = {}) {
+  if (!options.issue) {
+    throw new Error('Missing required --issue option.');
+  }
+
+  const upstream = resolveUpstream(repoRoot);
+  const forkRemote = options.forkRemote || resolveActiveForkRemoteName(env);
+  const forkRepository = ensureForkRemote(repoRoot, upstream, forkRemote);
+  const upstreamSlug = buildRepositorySlug(upstream);
+  const forkSlug = buildRepositorySlug(forkRepository);
+
+  const upstreamIssue = runGhJson(
+    repoRoot,
+    [
+      'issue',
+      'view',
+      String(options.issue),
+      '--repo',
+      upstreamSlug,
+      '--json',
+      'number,title,body,url,labels,state'
+    ]
+  );
+  if (!upstreamIssue?.number) {
+    throw new Error(`Unable to load upstream issue #${options.issue} from ${upstreamSlug}.`);
+  }
+
+  ensureLabel(repoRoot, forkSlug, 'fork-standing-priority');
+  const existingForkLabels = listForkLabels(repoRoot, forkSlug);
+  const desiredLabels = buildDesiredLabels(
+    (upstreamIssue.labels || []).map((entry) => entry?.name || entry),
+    existingForkLabels
+  );
+  const desiredBody = buildMirrorBody(upstreamIssue);
+  const forkIssues = runGhJson(
+    repoRoot,
+    ['issue', 'list', '--repo', forkSlug, '--state', 'all', '--limit', '200', '--json', 'number,title,body,url,labels,state']
+  ) ?? [];
+  const existingMirror = findMirrorIssue(forkIssues, upstreamIssue.url);
+
+  let forkIssue;
+  if (existingMirror?.number) {
+    forkIssue = ghApi(repoRoot, `repos/${forkSlug}/issues/${existingMirror.number}`, 'PATCH', {
+      title: upstreamIssue.title,
+      body: desiredBody,
+      labels: desiredLabels
+    });
+  } else {
+    forkIssue = ghApi(repoRoot, `repos/${forkSlug}/issues`, 'POST', {
+      title: upstreamIssue.title,
+      body: desiredBody,
+      labels: desiredLabels
+    });
+  }
+
+  const reportDir = path.isAbsolute(options.reportDir) ? options.reportDir : path.join(repoRoot, options.reportDir);
+  const reportPath = path.join(reportDir, `fork-issue-mirror-${forkRemote}-${options.issue}.json`);
+  const report = {
+    schema: 'priority/fork-issue-mirror@v1',
+    generatedAt: new Date().toISOString(),
+    upstream: {
+      repository: upstreamSlug,
+      issueNumber: upstreamIssue.number,
+      issueUrl: upstreamIssue.url
+    },
+    fork: {
+      remote: forkRemote,
+      repository: forkSlug,
+      issueNumber: forkIssue.number,
+      issueUrl: forkIssue.html_url ?? forkIssue.url ?? null
+    },
+    labels: desiredLabels,
+    action: existingMirror?.number ? 'updated' : 'created'
+  };
+  mkdirSync(reportDir, { recursive: true });
+  writeFileSync(reportPath, `${JSON.stringify(report, null, 2)}\n`, 'utf8');
+
+  console.log(`[priority:fork-issue-mirror] ${report.action} ${forkSlug}#${report.fork.issueNumber} for ${upstreamSlug}#${upstreamIssue.number}`);
+  return { report, reportPath };
+}
+
+export function main(argv = process.argv) {
+  const options = parseArgs(argv);
+  if (options.help) {
+    printUsage();
+    return 0;
+  }
+  runMirrorForkIssue({ options });
+  return 0;
+}
+
+const modulePath = path.resolve(fileURLToPath(import.meta.url));
+const invokedPath = process.argv[1] ? path.resolve(process.argv[1]) : null;
+if (invokedPath && invokedPath === modulePath) {
+  try {
+    const code = main(process.argv);
+    if (code !== 0) {
+      process.exitCode = code;
+    }
+  } catch (error) {
+    console.error(`[priority:fork-issue-mirror] ${error.message}`);
+    process.exitCode = 1;
+  }
+}

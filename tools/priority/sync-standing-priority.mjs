@@ -6,6 +6,7 @@ import crypto from 'node:crypto';
 import { fileURLToPath } from 'node:url';
 import { isDeepStrictEqual } from 'node:util';
 import { ProxyAgent } from 'undici';
+import { resolveActiveForkRemoteName } from './lib/remote-utils.mjs';
 
 const USER_AGENT = 'compare-vi-cli-action/priority-sync';
 const PROXY_AGENT_CACHE = new Map();
@@ -549,6 +550,7 @@ export function createSnapshot(issue) {
   const milestone = issue.milestone != null ? String(issue.milestone) : null;
   const commentCount = issue.commentCount != null ? Number(issue.commentCount) : null;
   const bodyDigest = issue.body ? hashObject(String(issue.body)) : null;
+  const mirrorOf = parseUpstreamIssuePointerFromBody(issue.body);
   const digestInput = {
     number: issue.number,
     title: issue.title ?? null,
@@ -557,7 +559,8 @@ export function createSnapshot(issue) {
     labels,
     assignees,
     milestone: milestone ? milestone.toLowerCase() : null,
-    commentCount
+    commentCount,
+    mirrorOf
   };
   const digest = hashObject(digestInput);
   return {
@@ -572,6 +575,7 @@ export function createSnapshot(issue) {
     milestone,
     commentCount,
     bodyDigest,
+    mirrorOf,
     digest
   };
 }
@@ -784,16 +788,36 @@ function parseGitHubIssueUrlSlug(issueUrl) {
   }
 }
 
-function resolveRepositorySlug(repoRoot) {
-  if (process.env.GITHUB_REPOSITORY) {
-    const slug = process.env.GITHUB_REPOSITORY.trim();
+export function parseUpstreamIssuePointerFromBody(body) {
+  const match = String(body || '').match(
+    /<!--\s*upstream-issue-url:\s*(https:\/\/github\.com\/(?<slug>[^/\s]+\/[^/\s]+)\/issues\/(?<number>\d+))\s*-->/i
+  );
+  if (!match?.groups?.slug || !match?.groups?.number) {
+    return null;
+  }
+  const number = Number(match.groups.number);
+  if (!Number.isInteger(number) || number <= 0) {
+    return null;
+  }
+  return {
+    repository: match.groups.slug,
+    number,
+    url: match[1]
+  };
+}
+
+function resolveRepositorySlug(repoRoot, env = process.env) {
+  if (env.GITHUB_REPOSITORY) {
+    const slug = env.GITHUB_REPOSITORY.trim();
     if (slug) return slug;
   }
 
-  const originUrl = resolveGitRemoteUrl(repoRoot, 'origin');
-  if (originUrl) {
-    const slug = parseGitRemoteUrl(originUrl);
-    if (slug) return slug;
+  for (const remoteName of [resolveActiveForkRemoteName(env), 'origin', 'personal']) {
+    const remoteUrl = resolveGitRemoteUrl(repoRoot, remoteName);
+    if (remoteUrl) {
+      const slug = parseGitRemoteUrl(remoteUrl);
+      if (slug) return slug;
+    }
   }
 
   const packagePath = path.join(repoRoot, 'package.json');
@@ -836,7 +860,7 @@ function resolveConfiguredUpstreamRepositorySlug(env = process.env) {
 }
 
 export function resolveUpstreamRepositorySlug(repoRoot, slug, env = process.env) {
-  const resolvedSlug = slug || resolveRepositorySlug(repoRoot);
+  const resolvedSlug = slug || resolveRepositorySlug(repoRoot, env);
   const normalizedResolvedSlug = normalizeRepositorySlug(resolvedSlug);
 
   const configuredUpstream = resolveConfiguredUpstreamRepositorySlug(env);
@@ -869,7 +893,7 @@ export function resolveStandingPriorityLabels(repoRoot, slug, env = process.env)
     return explicitLabels;
   }
 
-  const resolvedSlug = slug || resolveRepositorySlug(repoRoot);
+  const resolvedSlug = slug || resolveRepositorySlug(repoRoot, env);
   const upstreamSlug = resolveUpstreamRepositorySlug(repoRoot, resolvedSlug, env);
   if (
     upstreamSlug &&
@@ -1857,6 +1881,7 @@ export function buildNoStandingPriorityState(
     lastSeenUpdatedAt: null,
     issueDigest: null,
     bodyDigest: null,
+    mirrorOf: null,
     cachedAtUtc: clearedAt,
     lastFetchSource: 'none',
     lastFetchError: message,
@@ -1908,6 +1933,7 @@ export function computeNextPriorityCacheState({
     lastSeenUpdatedAt: snapshot.updatedAt || cache.lastSeenUpdatedAt || null,
     issueDigest: snapshot.digest,
     bodyDigest: snapshot.bodyDigest ?? cache.bodyDigest ?? null,
+    mirrorOf: snapshot.mirrorOf ?? cache.mirrorOf ?? null,
     cachedAtUtc,
     lastFetchSource: fetchSource,
     lastFetchError: fetchError
@@ -1923,7 +1949,7 @@ export async function main(options = {}) {
     Boolean(options.autoSelectNext) ||
     normalizeBooleanValue((options.env || process.env).AGENT_PRIORITY_AUTO_SELECT_NEXT);
   const repoRoot = gitRoot();
-  const slug = resolveRepositorySlug(repoRoot);
+  const slug = resolveRepositorySlug(repoRoot, options.env || process.env);
   const standingPriorityLabels = resolveStandingPriorityLabels(repoRoot, slug);
   const cachePath = path.join(repoRoot, '.agent_priority_cache.json');
   const hasCacheFile = fs.existsSync(cachePath);

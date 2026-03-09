@@ -339,7 +339,7 @@ test('classifyOpenPullRequests enforces branch/check/label gates and dependency-
   assert.ok(missingChecks.reasons.includes('required-checks-missing'));
 });
 
-test('classifyOpenPullRequests marks fork-headed PRs ineligible when upstream owner is required', () => {
+test('classifyOpenPullRequests keeps fork-headed PRs eligible when checks and queue rules are clean', () => {
   const result = classifyOpenPullRequests({
     pullRequests: [
       {
@@ -359,13 +359,12 @@ test('classifyOpenPullRequests marks fork-headed PRs ineligible when upstream ow
     requiredChecksByBranch: {
       develop: ['lint']
     },
-    queueManagedBranches: new Set(['develop']),
-    expectedHeadOwner: 'owner'
+    queueManagedBranches: new Set(['develop'])
   });
 
-  assert.equal(result.orderedEligible.length, 0);
-  assert.equal(result.candidates[0].eligible, false);
-  assert.ok(result.candidates[0].reasons.includes('head-not-upstream-owned'));
+  assert.equal(result.orderedEligible.length, 1);
+  assert.equal(result.candidates[0].eligible, true);
+  assert.deepEqual(result.candidates[0].reasons, []);
 });
 
 test('evaluateHealthGate pauses when success rate drops or red window exceeds threshold', () => {

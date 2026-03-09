@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 
 import process from 'node:process';
-import { resolveUpstream, tryResolveRemote } from './remote-utils.mjs';
+import { resolveActiveForkRemoteName, resolveUpstream, tryResolveRemote } from './remote-utils.mjs';
 
 function parseEnvRepository(env) {
   const slug = env.GITHUB_REPOSITORY ?? '';
@@ -31,12 +31,20 @@ export function resolveRepoContext(repoRoot, options = {}) {
   const upstream = resolveUpstreamFn(repoRoot);
   const upstreamRemote = resolveRemoteFn(repoRoot, 'upstream');
   const originRemote = resolveRemoteFn(repoRoot, 'origin');
+  const personalRemote = resolveRemoteFn(repoRoot, 'personal');
+  const activeForkRemote = resolveActiveForkRemoteName(env);
   const envRepo = parseEnvRepository(env);
 
   const origin = originRemote?.parsed ?? null;
+  const personal = personalRemote?.parsed ?? null;
   const upstreamSlug = upstreamRemote?.parsed ?? upstream ?? null;
+  const activeFork =
+    (activeForkRemote === 'personal' ? personal : origin) ??
+    origin ??
+    personal ??
+    null;
 
-  const working = origin ?? envRepo ?? upstreamSlug;
+  const working = activeFork ?? envRepo ?? upstreamSlug;
 
   const isFork =
     Boolean(working?.owner) &&
@@ -47,8 +55,10 @@ export function resolveRepoContext(repoRoot, options = {}) {
     upstream,
     upstreamRemote: upstreamRemote?.parsed ?? null,
     origin,
+    personal,
+    activeForkRemote,
+    activeFork,
     working,
     isFork
   };
 }
-

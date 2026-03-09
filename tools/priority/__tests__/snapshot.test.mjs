@@ -35,6 +35,27 @@ test('createSnapshot normalizes lists and produces stable digest', () => {
   assert.equal(snap1.digest, snap2.digest);
 });
 
+test('createSnapshot captures an upstream issue mirror pointer when present', () => {
+  const snapshot = createSnapshot({
+    number: 1,
+    title: 'Fork mirror',
+    state: 'open',
+    updatedAt: '2026-03-09T00:00:00Z',
+    url: 'https://github.com/LabVIEW-Community-CI-CD/compare-vi-cli-action-fork/issues/1',
+    labels: ['fork-standing-priority'],
+    assignees: [],
+    milestone: null,
+    commentCount: 0,
+    body: '<!-- upstream-issue-url: https://github.com/LabVIEW-Community-CI-CD/compare-vi-cli-action/issues/966 -->\n\nMirror body'
+  });
+
+  assert.deepEqual(snapshot.mirrorOf, {
+    repository: 'LabVIEW-Community-CI-CD/compare-vi-cli-action',
+    number: 966,
+    url: 'https://github.com/LabVIEW-Community-CI-CD/compare-vi-cli-action/issues/966'
+  });
+});
+
 test('buildRouter honours policy map and default actions', () => {
   const policy = loadRoutingPolicy(repoRoot);
   assert.ok(policy, 'routing policy should load');
@@ -80,4 +101,3 @@ test('buildRouter adds fallback validation action when needed', () => {
   assert.ok(keys.includes('validate:lint'));
   assert.ok(keys.includes('validate:dispatch'));
 });
-

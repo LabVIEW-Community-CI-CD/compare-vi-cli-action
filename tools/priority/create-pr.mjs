@@ -11,7 +11,8 @@ import {
 import {
   ensureGhCli,
   resolveUpstream,
-  ensureOriginFork,
+  ensureForkRemote,
+  resolveActiveForkRemoteName,
   pushBranch,
   runGhPrCreate,
   parseRepositorySlug
@@ -34,6 +35,7 @@ const USAGE_LINES = [
   '  --title <text>          Explicit pull request title.',
   '  --body <text>           Explicit pull request body.',
   '  --body-file <path>      Read the pull request body from a file.',
+  '  --head-remote <name>    Fork remote to push/open from (default: AGENT_PRIORITY_ACTIVE_FORK_REMOTE or origin).',
   '  -h, --help              Show this message and exit.'
 ];
 
@@ -53,6 +55,7 @@ export function parseArgs(argv = process.argv) {
     title: null,
     body: null,
     bodyFile: null,
+    headRemote: null,
     help: false
   };
 
@@ -63,7 +66,8 @@ export function parseArgs(argv = process.argv) {
     '--base',
     '--title',
     '--body',
-    '--body-file'
+    '--body-file',
+    '--head-remote'
   ]);
 
   for (let index = 0; index < args.length; index += 1) {
@@ -95,6 +99,7 @@ export function parseArgs(argv = process.argv) {
       if (token === '--title') options.title = next;
       if (token === '--body') options.body = next;
       if (token === '--body-file') options.bodyFile = next;
+      if (token === '--head-remote') options.headRemote = next;
       continue;
     }
 
@@ -230,23 +235,41 @@ export function resolveStandingIssueNumberForPr(repoRoot, { readJsonFn = readJso
   const cache = readJsonFn(path.join(repoRoot, CACHE_RELATIVE_PATH));
   const noStandingReport = readJsonFn(path.join(repoRoot, NO_STANDING_REPORT_RELATIVE_PATH));
   const noStandingReason = parseCacheNoStandingReason(cache) || parseNoStandingReasonFromReport(noStandingReport);
+  const mirrorOf =
+    cache?.mirrorOf &&
+    Number.isInteger(Number(cache.mirrorOf.number)) &&
+    Number(cache.mirrorOf.number) > 0
+      ? {
+          number: Number(cache.mirrorOf.number),
+          repository: typeof cache.mirrorOf.repository === 'string' ? cache.mirrorOf.repository : null,
+          url: typeof cache.mirrorOf.url === 'string' ? cache.mirrorOf.url : null
+        }
+      : null;
+  const localIssueNumber =
+    router && Object.prototype.hasOwnProperty.call(router, 'issue')
+      ? parseRouterIssueNumber(router)
+      : parseCacheIssueNumber(cache);
   if (router && Object.prototype.hasOwnProperty.call(router, 'issue')) {
     return {
-      issueNumber: parseRouterIssueNumber(router),
+      issueNumber: mirrorOf?.number ?? localIssueNumber,
+      localIssueNumber,
       source: 'router',
-      noStandingReason
+      noStandingReason,
+      mirrorOf
     };
   }
 
   return {
-    issueNumber: parseCacheIssueNumber(cache),
+    issueNumber: mirrorOf?.number ?? localIssueNumber,
+    localIssueNumber,
     source: 'cache',
-    noStandingReason
+    noStandingReason,
+    mirrorOf
   };
 }
 
 export function parseIssueNumberFromBranch(branch) {
-  const match = String(branch || '').match(/^issue\/(?<issue>\d+)(?:-|$)/i);
+  const match = String(branch || '').match(/^issue\/(?:(?<fork>[a-z0-9._-]+)-)?(?<issue>\d+)(?:-|$)/i);
   if (!match?.groups?.issue) {
     return null;
   }
@@ -305,7 +328,7 @@ export function createPriorityPr({
   getCurrentBranchFn = detectCurrentBranch,
   ensureGhCliFn = ensureGhCli,
   resolveUpstreamFn = resolveUpstream,
-  ensureOriginForkFn = ensureOriginFork,
+  ensureForkRemoteFn = ensureForkRemote,
   pushBranchFn = pushBranch,
   runGhPrCreateFn = runGhPrCreate,
   resolveStandingIssueNumberFn = resolveStandingIssueNumberForPr
@@ -315,20 +338,27 @@ export function createPriorityPr({
 
   ensureGhCliFn();
 
-  const upstream = options.repository ? parseRepositorySlug(options.repository) : resolveUpstreamFn(repoRoot);
-  const origin = ensureOriginForkFn(repoRoot, upstream);
-
-  pushBranchFn(repoRoot, branch);
-
   const resolvedIssue =
     options.issue && toPositiveInteger(options.issue)
-      ? { issueNumber: toPositiveInteger(options.issue), source: 'cli', noStandingReason: null }
+      ? {
+          issueNumber: toPositiveInteger(options.issue),
+          localIssueNumber: toPositiveInteger(options.issue),
+          source: 'cli',
+          noStandingReason: null,
+          mirrorOf: null
+        }
       : resolveStandingIssueNumberFn(repoRoot);
   const issueNumber = resolvedIssue?.issueNumber ?? null;
+  const localIssueNumber = resolvedIssue?.localIssueNumber ?? issueNumber;
   if (!issueNumber && resolvedIssue?.noStandingReason === 'queue-empty') {
     throw new Error('Standing-priority queue is empty; create or label the next issue before opening a priority PR.');
   }
-  assertBranchMatchesIssue(branch, issueNumber);
+  assertBranchMatchesIssue(branch, localIssueNumber);
+  const upstream = options.repository ? parseRepositorySlug(options.repository) : resolveUpstreamFn(repoRoot);
+  const headRemote = options.headRemote || env.PR_HEAD_REMOTE || resolveActiveForkRemoteName(env);
+  const headRepository = ensureForkRemoteFn(repoRoot, upstream, headRemote);
+
+  pushBranchFn(repoRoot, branch, headRemote);
   const base = options.base || env.PR_BASE || 'develop';
   const title = options.title || buildTitle(branch, issueNumber, env);
   const body = resolveBody({ options, issueNumber, env, readFileSyncFn });
@@ -336,7 +366,7 @@ export function createPriorityPr({
   const prResult = runGhPrCreateFn({
     repoRoot,
     upstream,
-    origin,
+    headRepository,
     branch,
     base,
     title,
@@ -348,11 +378,13 @@ export function createPriorityPr({
     branch,
     base,
     issueNumber,
+    localIssueNumber,
     issueSource: resolvedIssue?.source ?? null,
     title,
     body,
     upstream,
-    origin,
+    headRemote,
+    headRepository,
     strategy: prResult?.strategy ?? null,
     pullRequest: prResult?.pullRequest ?? null
   };

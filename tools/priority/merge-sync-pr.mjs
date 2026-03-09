@@ -187,25 +187,7 @@ export function isUpstreamOwnedHead(prInfo = {}, repo = '') {
 }
 
 export function assertUpstreamOwnedHead(prInfo = {}, repo = '') {
-  const state = normalizeUpper(prInfo?.state);
-  if (state === 'MERGED') {
-    return;
-  }
-
-  const expectedOwner = normalizeOwner(String(repo).split('/')[0] ?? '');
-  if (!expectedOwner) {
-    throw new Error('[priority:merge-sync] Unable to determine expected upstream owner from --repo.');
-  }
-
-  const actualOwner = resolveHeadRepositoryOwner(prInfo);
-  if (actualOwner === expectedOwner) {
-    return;
-  }
-
-  const observedOwner = actualOwner || '(unknown)';
-  throw new Error(
-    `[priority:merge-sync] fork-headed PRs are blocked for automation. Expected head owner '${expectedOwner}', found '${observedOwner}'. Mirror the branch to upstream and use an upstream-owned PR head.`
-  );
+  return isUpstreamOwnedHead(prInfo, repo);
 }
 
 export function buildMergeSummaryPayload({
@@ -402,7 +384,6 @@ export async function runMergeSync({
     repo: resolvedRepo,
     pr: options.pr
   });
-  assertUpstreamOwnedHead(prInfo, resolvedRepo);
   const selection = selectMergeMode(prInfo, { admin: options.admin, mergeQueueBranches });
   console.log(
     `[priority:merge-sync] selected mode=${selection.mode} reason=${selection.reason} mergeState=${prInfo.mergeStateStatus ?? 'n/a'}`

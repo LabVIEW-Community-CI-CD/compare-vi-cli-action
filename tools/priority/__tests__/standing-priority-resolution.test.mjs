@@ -22,6 +22,7 @@ import {
   resolveUpstreamRepositorySlug,
   resolveStandingPriorityLookupPlan,
   resolveStandingPriorityForRepo,
+  parseUpstreamIssuePointerFromBody,
   fetchIssue,
   computeNextPriorityCacheState,
   shouldPersistCacheUpdate,
@@ -176,6 +177,24 @@ test('resolveStandingPriorityLabels honors explicit env override order', () => {
     AGENT_STANDING_PRIORITY_LABELS: 'custom-one, custom-two, custom-one'
   });
   assert.deepEqual(labels, ['custom-one', 'custom-two']);
+});
+
+test('resolveUpstreamRepositorySlug rejects unsupported active fork remotes consistently', () => {
+  assert.throws(
+    () => resolveUpstreamRepositorySlug('/tmp/repo', null, { AGENT_PRIORITY_ACTIVE_FORK_REMOTE: 'invalid-remote' }),
+    /Unsupported fork remote/i
+  );
+});
+
+test('parseUpstreamIssuePointerFromBody extracts the mirrored upstream issue contract', () => {
+  const pointer = parseUpstreamIssuePointerFromBody(
+    '<!-- upstream-issue-url: https://github.com/LabVIEW-Community-CI-CD/compare-vi-cli-action/issues/966 -->\n\nBody'
+  );
+  assert.deepEqual(pointer, {
+    repository: 'LabVIEW-Community-CI-CD/compare-vi-cli-action',
+    number: 966,
+    url: 'https://github.com/LabVIEW-Community-CI-CD/compare-vi-cli-action/issues/966'
+  });
 });
 
 test('determinePrioritySyncExitCode maps no-standing to success and real errors to failure', () => {
@@ -630,7 +649,12 @@ test('computeNextPriorityCacheState returns deterministic cache projection', () 
       commentCount: 3,
       updatedAt: '2026-03-03T00:00:00Z',
       digest: 'digest',
-      bodyDigest: 'body-digest'
+      bodyDigest: 'body-digest',
+      mirrorOf: {
+        repository: 'upstream/repo',
+        number: 966,
+        url: 'https://github.com/upstream/repo/issues/966'
+      }
     },
     fetchSource: 'cache',
     fetchError: 'none',
@@ -642,4 +666,5 @@ test('computeNextPriorityCacheState returns deterministic cache projection', () 
   assert.deepEqual(next.labels, ['standing-priority']);
   assert.equal(next.lastFetchSource, 'cache');
   assert.equal(next.cachedAtUtc, '2026-03-04T00:00:00Z');
+  assert.equal(next.mirrorOf.number, 966);
 });

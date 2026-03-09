@@ -502,7 +502,7 @@ function runGhJson(args: string[], env: Record<string, string | undefined> = pro
 
 function runGhGraphql<T>(
   query: string,
-  variables: Record<string, string | null>,
+  variables: Record<string, string | number | boolean | null>,
   schema: z.ZodType<T>,
   runGhJsonFn: (args: string[]) => unknown,
 ): T {
@@ -512,6 +512,12 @@ function runGhGraphql<T>(
       args.push('-F', `${key}=null`);
       continue;
     }
+
+    if (typeof value === 'boolean' || typeof value === 'number') {
+      args.push('-F', `${key}=${value}`);
+      continue;
+    }
+
     args.push('-f', `${key}=${value}`);
   }
 
@@ -1290,7 +1296,7 @@ function addSubIssueMutation(
   runGhGraphql(query, {
     issueId,
     subIssueId,
-    replaceParent: replaceParent ? 'true' : 'false',
+    replaceParent,
   }, addSubIssueMutationSchema, runGhJsonFn);
 }
 

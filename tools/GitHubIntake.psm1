@@ -120,6 +120,8 @@ function Resolve-GitHubIssueSnapshot {
     if ($snapshot) {
       return $snapshot
     }
+
+    return Resolve-GitHubIssueSnapshotFromGitHub -Issue $Issue
   }
 
   $router = Read-GitHubIntakeJsonFile -Path (Join-Path $issueDir 'router.json')
@@ -921,17 +923,26 @@ function Resolve-IssueBranchName {
     [int]$Number,
     [string]$Title,
     [string]$BranchPrefix = 'issue',
-    [string]$CurrentBranch
+    [string]$CurrentBranch,
+    [string]$ForkRemote
   )
 
   if ($Number -gt 0 -and -not [string]::IsNullOrWhiteSpace($CurrentBranch)) {
-    $pattern = '^{0}/{1}(?:-|$)' -f [regex]::Escape($BranchPrefix), $Number
+    $remotePattern = if ([string]::IsNullOrWhiteSpace($ForkRemote)) {
+      '(?:(?:[A-Za-z0-9._-]+)-)?'
+    } else {
+      '(?:{0}-)?' -f [regex]::Escape($ForkRemote)
+    }
+    $pattern = '^{0}/{1}{2}(?:-|$)' -f [regex]::Escape($BranchPrefix), $remotePattern, $Number
     if ($CurrentBranch -match $pattern) {
       return $CurrentBranch
     }
   }
 
   $slug = ConvertTo-IntakeSlug -Title $Title
+  if (-not [string]::IsNullOrWhiteSpace($ForkRemote)) {
+    return '{0}/{1}-{2}-{3}' -f $BranchPrefix, $ForkRemote.ToLowerInvariant(), $Number, $slug
+  }
   return '{0}/{1}-{2}' -f $BranchPrefix, $Number, $slug
 }
 

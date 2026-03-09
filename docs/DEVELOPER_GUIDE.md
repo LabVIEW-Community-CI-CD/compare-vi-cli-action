@@ -408,11 +408,14 @@ For Docker/Desktop VI history validation, run fast-loop lanes explicitly:
 - Run `node tools/npm/run-script.mjs priority:commit-integrity -- --pr <number>` to evaluate commit trust posture
   locally. Add `--observe-only` to mirror staged rollout mode. See `docs/COMMIT_INTEGRITY_CHECK.md` for full contract
   and rollout flags (`COMMIT_INTEGRITY_ENFORCE`).
-- Prefer opening PRs from your fork with `node tools/npm/run-script.mjs priority:pr`; the helper ensures `origin`
-  targets your fork (creating it via `gh repo fork` if needed), pushes the current branch, and opens the PR through one
-  fork-aware contract. User-owned forks still flow through `gh pr create`; same-owner renamed forks switch to GitHub
-  GraphQL `createPullRequest` with `headRepositoryId` so agents do not need to mirror branches back to upstream just to
-  create the PR.
+- Prefer opening PRs from your fork with `node tools/npm/run-script.mjs priority:pr`; the helper respects
+  `AGENT_PRIORITY_ACTIVE_FORK_REMOTE` (or `--head-remote origin|personal`) so future agents can open upstream PRs from
+  either the org fork or the personal fork without changing clones. User-owned forks still flow through
+  `gh pr create`; same-owner renamed forks switch to GitHub GraphQL `createPullRequest` with `headRepositoryId`, so
+  agents do not need to mirror branches back to upstream just to create the PR.
+- Use `node tools/npm/run-script.mjs priority:issue:mirror -- --issue <number> --fork-remote origin|personal` to
+  materialize or refresh a fork-lane mirror issue. The helper writes a machine-readable upstream pointer comment into
+  the fork issue body so bootstrap can route locally while PR helpers still close the upstream issue.
 - The machine-readable GitHub intake source of truth lives in
   `tools/priority/github-intake-catalog.json`. Use
   `pwsh -File tools/Resolve-GitHubIntakeRoute.ps1 -ListScenarios` or

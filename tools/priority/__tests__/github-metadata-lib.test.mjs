@@ -92,7 +92,19 @@ function parseGraphqlArgs(args) {
           variables[normalized] ??= [];
           variables[normalized].push(value);
         } else {
-          variables[key] = token === '-F' && value === 'null' ? null : value;
+          if (token === '-F') {
+            if (value === 'null') {
+              variables[key] = null;
+            } else if (value === 'true') {
+              variables[key] = true;
+            } else if (value === 'false') {
+              variables[key] = false;
+            } else {
+              variables[key] = value;
+            }
+          } else {
+            variables[key] = value;
+          }
         }
       }
       index += 1;
@@ -225,7 +237,7 @@ function makeRunGhJson({ targets, issueTypes, milestones, calls = [] }) {
       if (query.includes('addSubIssue(input:')) {
         const parent = byId.get(variables.issueId);
         const child = byId.get(variables.subIssueId);
-        if (variables.replaceParent === 'true' && child.parentIssue && child.parentIssue.id !== parent.id) {
+        if (variables.replaceParent === true && child.parentIssue && child.parentIssue.id !== parent.id) {
           const previousParent = byId.get(child.parentIssue.id);
           previousParent.subIssues = previousParent.subIssues.filter((entry) => entry.id !== child.id);
         }
@@ -371,6 +383,55 @@ test('runMetadataApply applies pull-request milestone, assignee, and reviewer ch
   assert.deepEqual(result.report.observed.after.assignees, ['svelderrainruiz']);
   assert.deepEqual(result.report.observed.after.reviewers, ['copilot-swe-agent', 'example/reviewers']);
   assert.equal(result.report.observed.after.milestone.number, 2);
+});
+
+test('runMetadataApply applies parent issue linkage with typed GraphQL boolean variables', () => {
+  const parent = createIssue({
+    id: 'ISSUE_PARENT',
+    url: 'https://github.com/example/repo/issues/967',
+    number: 967,
+    title: 'Dual fork epic',
+  });
+  const target = createIssue({
+    id: 'ISSUE_TARGET',
+    url: 'https://github.com/example/repo/issues/969',
+    number: 969,
+    title: 'Personal fork dogfood',
+  });
+  const calls = [];
+  const runGhJsonFn = makeRunGhJson({
+    targets: { parent, target },
+    issueTypes: [
+      { id: 'IT_TASK', name: 'Task' },
+    ],
+    milestones: [],
+    calls,
+  });
+
+  const result = metadataLib.runMetadataApply({
+    argv: [
+      '--url', target.url,
+      '--parent', parent.url,
+      '--out', 'tests/results/_agent/issue/github-metadata-lib-parent.json',
+    ],
+    now: new Date('2026-03-09T21:10:00Z'),
+    env: {
+      COMPAREVI_GITHUB_METADATA_VERIFY_ATTEMPTS: '1',
+      COMPAREVI_GITHUB_METADATA_VERIFY_DELAY_MS: '0',
+    },
+    runGhJsonFn,
+  });
+
+  assert.equal(result.exitCode, 0);
+  assert.equal(result.report.execution.status, 'pass');
+  assert.equal(result.report.observed.after.parentIssue.url, parent.url);
+
+  const subIssueMutation = calls.find((args) => {
+    const { query } = parseGraphqlArgs(args);
+    return query.includes('addSubIssue(input:');
+  });
+  assert.ok(subIssueMutation);
+  assert.equal(parseGraphqlArgs(subIssueMutation).variables.replaceParent, true);
 });
 
 test('runMetadataApply clears issue type and milestone during live issue apply', () => {

@@ -5,7 +5,9 @@ param(
   [switch]$Execute,
   [string]$Base = 'develop',
   [string]$BranchPrefix = 'issue',
-  [string]$PRTemplate = 'default'
+  [string]$PRTemplate = 'default',
+  [string]$ForkRemote = $env:AGENT_PRIORITY_ACTIVE_FORK_REMOTE,
+  [string]$HeadRemote
 )
 
 Set-StrictMode -Version Latest
@@ -19,6 +21,20 @@ function Get-RepoRoot {
 
 function Get-GitDefaultBranch {
   try { (& git symbolic-ref refs/remotes/origin/HEAD).Split('/')[-1] } catch { 'develop' }
+}
+
+function Resolve-SelectedForkRemote {
+  param(
+    [string]$RequestedForkRemote,
+    [string]$RequestedHeadRemote
+  )
+
+  $selectedForkRemote = if ([string]::IsNullOrWhiteSpace($RequestedForkRemote)) { 'origin' } else { $RequestedForkRemote.Trim().ToLowerInvariant() }
+  $selectedHeadRemote = if ([string]::IsNullOrWhiteSpace($RequestedHeadRemote)) { $selectedForkRemote } else { $RequestedHeadRemote.Trim().ToLowerInvariant() }
+  return [pscustomobject]@{
+    ForkRemote = $selectedForkRemote
+    HeadRemote = $selectedHeadRemote
+  }
 }
 
 function Read-JsonFile {
@@ -147,9 +163,17 @@ $title = if ($snap -and ($snap.PSObject.Properties.Name -contains 'title') -and 
 $defaultBase = Get-GitDefaultBranch
 if (-not $Base) { $Base = $defaultBase }
 Write-Host ("[orchestrator] Base: {0}" -f $Base)
+$forkSelection = Resolve-SelectedForkRemote -RequestedForkRemote $ForkRemote -RequestedHeadRemote $HeadRemote
+Write-Host ("[orchestrator] Fork remote: {0}" -f $forkSelection.ForkRemote)
+Write-Host ("[orchestrator] Head remote: {0}" -f $forkSelection.HeadRemote)
 
 $currentBranch = (& git rev-parse --abbrev-ref HEAD).Trim()
-$branchName = Resolve-IssueBranchName -Number $Issue -Title $title -BranchPrefix $BranchPrefix -CurrentBranch $currentBranch
+$branchName = Resolve-IssueBranchName `
+  -Number $Issue `
+  -Title $title `
+  -BranchPrefix $BranchPrefix `
+  -CurrentBranch $currentBranch `
+  -ForkRemote $forkSelection.ForkRemote
 Write-Host ("[orchestrator] Branch: {0}" -f $branchName)
 Write-Host ("[orchestrator] PR template: {0}" -f $PRTemplate)
 
@@ -158,7 +182,7 @@ if (-not $ok) { throw 'Failed to ensure branch' }
 
 if ($Execute) {
   Write-Host '[orchestrator] Executing remote ops (push/PR)…'
-  try { & git push -u origin $branchName } catch { Write-Warning 'Push failed.' }
+  try { & git push -u $forkSelection.HeadRemote $branchName } catch { Write-Warning 'Push failed.' }
   $gh = Get-Command gh -ErrorAction SilentlyContinue
   if ($gh) {
     $bodyPath = $null
@@ -180,6 +204,8 @@ if ($Execute) {
           $branchName,
           '--base',
           $Base,
+          '--head-remote',
+          $forkSelection.HeadRemote,
           '--title',
           $prTitle,
           '--body-file',

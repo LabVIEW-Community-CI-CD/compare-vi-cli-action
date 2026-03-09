@@ -63,9 +63,12 @@ line buffers).
      see built-in metadata such as `Type`, `Milestone`, `Reviewers`, linked PRs, and `Sub-issues progress` without a
      second board scrape.
   4. Run `node tools/npm/run-script.mjs priority:develop:sync` to perform locked, sequential
-     `pull --ff-only upstream/develop` then `push origin/develop` with retry/backoff and remote-head convergence checks;
-     this helper also emits the parity report and must be used instead of ad-hoc pull/push command pairs.
-  5. Create or sync a working branch (`issue/<standing-number>-<slug>`), push minimal changes,
+     `pull --ff-only upstream/develop` then `push <fork-remote>/develop` with retry/backoff and remote-head
+     convergence checks. Use `-- --fork-remote origin|personal|all` when you need to target a specific fork plane or
+     bring both forks back to parity before parallel child-issue work. The helper also emits per-remote parity reports
+     and must be used instead of ad-hoc pull/push command pairs.
+  5. Create or sync a working branch (`issue/<fork-remote>-<standing-number>-<slug>` for fork lanes, or the legacy
+     `issue/<standing-number>-<slug>` shape when no fork lane is involved), push minimal changes,
      dispatch CI, update the PR (reference `#<standing-number>`), monitor to green, merge when
      acceptance is met.
 

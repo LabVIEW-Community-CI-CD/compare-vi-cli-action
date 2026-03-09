@@ -490,10 +490,8 @@ export function classifyOpenPullRequests({
   pullRequests,
   requiredChecksByBranch,
   queueManagedBranches,
-  excludedLabels = EXCLUDED_LABELS,
-  expectedHeadOwner = ''
+  excludedLabels = EXCLUDED_LABELS
 }) {
-  const normalizedExpectedHeadOwner = normalizeOwner(expectedHeadOwner);
   const allOpen = new Map();
   const normalized = [];
   for (const pr of pullRequests ?? []) {
@@ -528,9 +526,6 @@ export function classifyOpenPullRequests({
     const reasons = [];
     if (!queueManagedBranches.has(pr.baseRefName)) {
       reasons.push('base-branch-not-queue-managed');
-    }
-    if (normalizedExpectedHeadOwner && pr.headRepositoryOwner !== normalizedExpectedHeadOwner) {
-      reasons.push('head-not-upstream-owned');
     }
     if (pr.isDraft) {
       reasons.push('draft');
@@ -1328,7 +1323,7 @@ export async function runQueueSupervisor(options = {}) {
   const readOptionalJsonFn = options.readOptionalJsonFn ?? readOptionalJson;
   const writeReportFn = options.writeReportFn ?? writeReport;
   const repository = resolveRepositorySlug(repoRoot, args.repo);
-  const expectedHeadOwner = String(repository).split('/')[0]?.trim().toLowerCase() ?? '';
+  const repositoryOwner = String(repository).split('/')[0]?.trim().toLowerCase() ?? '';
 
   const branchRequiredChecks = await readJsonFileFn(path.join(repoRoot, 'tools', 'policy', 'branch-required-checks.json'));
   const policyManifest = await readJsonFileFn(path.join(repoRoot, 'tools', 'priority', 'policy.json'));
@@ -1351,8 +1346,7 @@ export async function runQueueSupervisor(options = {}) {
   const classified = classifyOpenPullRequests({
     pullRequests: allOpenPrs,
     requiredChecksByBranch,
-    queueManagedBranches,
-    expectedHeadOwner
+    queueManagedBranches
   });
 
   const { workflowRunsByName, fetchErrors: workflowFetchErrors } = fetchWorkflowRunsByName({
@@ -1506,7 +1500,7 @@ export async function runQueueSupervisor(options = {}) {
       queueBurstMode: process.env.QUEUE_BURST_MODE ?? null,
       queueBurstRefillCycles: process.env.QUEUE_BURST_REFILL_CYCLES ?? null,
       queueGovernorStatePath: process.env.QUEUE_GOVERNOR_STATE_PATH ?? null,
-      expectedHeadOwner
+      repositoryOwner
     },
     queueManagedBranches: [...queueManagedBranches].sort(),
     maxInflight: args.maxInflight,
