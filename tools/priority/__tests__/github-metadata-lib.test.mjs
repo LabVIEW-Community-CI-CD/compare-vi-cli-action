@@ -92,7 +92,7 @@ function parseGraphqlArgs(args) {
           variables[normalized] ??= [];
           variables[normalized].push(value);
         } else {
-          variables[key] = value;
+          variables[key] = token === '-F' && value === 'null' ? null : value;
         }
       }
       index += 1;
@@ -371,6 +371,112 @@ test('runMetadataApply applies pull-request milestone, assignee, and reviewer ch
   assert.deepEqual(result.report.observed.after.assignees, ['svelderrainruiz']);
   assert.deepEqual(result.report.observed.after.reviewers, ['copilot-swe-agent', 'example/reviewers']);
   assert.equal(result.report.observed.after.milestone.number, 2);
+});
+
+test('runMetadataApply clears issue type and milestone during live issue apply', () => {
+  const target = createIssue({
+    id: 'ISSUE_TARGET',
+    url: 'https://github.com/example/repo/issues/949',
+    number: 949,
+    title: 'Metadata helper',
+    issueType: { id: 'IT_FEATURE', name: 'Feature' },
+    milestone: { id: 'MS_Q2', title: 'LabVIEW CI Platform v1 (2026Q2)', number: 2, state: 'OPEN' },
+  });
+  const calls = [];
+  const runGhJsonFn = makeRunGhJson({
+    targets: { target },
+    issueTypes: [
+      { id: 'IT_FEATURE', name: 'Feature' },
+      { id: 'IT_TASK', name: 'Task' },
+    ],
+    milestones: [
+      { id: 'MS_Q2', title: 'LabVIEW CI Platform v1 (2026Q2)', number: 2, state: 'OPEN' },
+    ],
+    calls,
+  });
+
+  const result = metadataLib.runMetadataApply({
+    argv: [
+      '--url', target.url,
+      '--clear-issue-type',
+      '--clear-milestone',
+      '--out', 'tests/results/_agent/issue/github-metadata-lib-clear-issue.json',
+    ],
+    now: new Date('2026-03-09T18:06:00Z'),
+    env: {
+      COMPAREVI_GITHUB_METADATA_VERIFY_ATTEMPTS: '1',
+      COMPAREVI_GITHUB_METADATA_VERIFY_DELAY_MS: '0',
+    },
+    runGhJsonFn,
+  });
+
+  assert.equal(result.exitCode, 0);
+  assert.equal(result.report.execution.status, 'pass');
+  assert.equal(result.report.observed.after.issueType, null);
+  assert.equal(result.report.observed.after.milestone, null);
+
+  const issueMutationCalls = calls.filter((args) => {
+    const { query } = parseGraphqlArgs(args);
+    return query.includes('updateIssue(input:');
+  });
+  assert.equal(issueMutationCalls.length, 2);
+
+  const issueTypeMutation = issueMutationCalls.find((args) => {
+    const { variables } = parseGraphqlArgs(args);
+    return Object.prototype.hasOwnProperty.call(variables, 'issueTypeId');
+  });
+  const milestoneMutation = issueMutationCalls.find((args) => {
+    const { variables } = parseGraphqlArgs(args);
+    return Object.prototype.hasOwnProperty.call(variables, 'milestoneId');
+  });
+
+  assert.ok(issueTypeMutation);
+  assert.ok(milestoneMutation);
+  assert.equal(parseGraphqlArgs(issueTypeMutation).variables.issueTypeId, null);
+  assert.equal(parseGraphqlArgs(milestoneMutation).variables.milestoneId, null);
+});
+
+test('runMetadataApply clears milestone during live pull-request apply', () => {
+  const target = createPullRequest({
+    id: 'PR_TARGET',
+    url: 'https://github.com/example/repo/pull/42',
+    number: 42,
+    title: 'Metadata helper PR',
+    milestone: { id: 'MS_Q2', title: 'LabVIEW CI Platform v1 (2026Q2)', number: 2, state: 'OPEN' },
+  });
+  const calls = [];
+  const runGhJsonFn = makeRunGhJson({
+    targets: { target },
+    issueTypes: [{ id: 'IT_FEATURE', name: 'Feature' }],
+    milestones: [{ id: 'MS_Q2', title: 'LabVIEW CI Platform v1 (2026Q2)', number: 2, state: 'OPEN' }],
+    calls,
+  });
+
+  const result = metadataLib.runMetadataApply({
+    argv: [
+      '--url', target.url,
+      '--clear-milestone',
+      '--out', 'tests/results/_agent/issue/github-metadata-lib-clear-pr.json',
+    ],
+    now: new Date('2026-03-09T18:06:30Z'),
+    env: {
+      COMPAREVI_GITHUB_METADATA_VERIFY_ATTEMPTS: '1',
+      COMPAREVI_GITHUB_METADATA_VERIFY_DELAY_MS: '0',
+    },
+    runGhJsonFn,
+  });
+
+  assert.equal(result.exitCode, 0);
+  assert.equal(result.report.execution.status, 'pass');
+  assert.equal(result.report.observed.after.milestone, null);
+
+  const pullRequestMutationCall = calls.find((args) => {
+    const { query } = parseGraphqlArgs(args);
+    return query.includes('updatePullRequest(input:');
+  });
+  const { variables } = parseGraphqlArgs(pullRequestMutationCall);
+  assert.ok(Object.prototype.hasOwnProperty.call(variables, 'milestoneId'));
+  assert.equal(variables.milestoneId, null);
 });
 
 test('runMetadataApply normalizes Windows caret-escaped milestone values from the npm wrapper', () => {

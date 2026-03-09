@@ -502,12 +502,16 @@ function runGhJson(args: string[], env: Record<string, string | undefined> = pro
 
 function runGhGraphql<T>(
   query: string,
-  variables: Record<string, string>,
+  variables: Record<string, string | null>,
   schema: z.ZodType<T>,
   runGhJsonFn: (args: string[]) => unknown,
 ): T {
   const args = ['api', 'graphql', '-f', `query=${query}`];
   for (const [key, value] of Object.entries(variables)) {
+    if (value === null) {
+      args.push('-F', `${key}=null`);
+      continue;
+    }
     args.push('-f', `${key}=${value}`);
   }
 
@@ -1178,12 +1182,12 @@ function updateIssueMutation(
     }
   `;
 
-  const variables = { id: issueId } as Record<string, string>;
-  if (Object.prototype.hasOwnProperty.call(input, 'issueTypeId') && input.issueTypeId) {
-    variables.issueTypeId = input.issueTypeId;
+  const variables = { id: issueId } as Record<string, string | null>;
+  if (Object.prototype.hasOwnProperty.call(input, 'issueTypeId')) {
+    variables.issueTypeId = input.issueTypeId ?? null;
   }
-  if (Object.prototype.hasOwnProperty.call(input, 'milestoneId') && input.milestoneId) {
-    variables.milestoneId = input.milestoneId;
+  if (Object.prototype.hasOwnProperty.call(input, 'milestoneId')) {
+    variables.milestoneId = input.milestoneId ?? null;
   }
 
   runGhGraphql(query, variables, issueMutationSchema, runGhJsonFn);
@@ -1205,10 +1209,7 @@ function updatePullRequestMutation(
     }
   `;
 
-  const variables = { pullRequestId } as Record<string, string>;
-  if (milestoneId) {
-    variables.milestoneId = milestoneId;
-  }
+  const variables = { pullRequestId, milestoneId } as Record<string, string | null>;
 
   runGhGraphql(query, variables, pullRequestMutationSchema, runGhJsonFn);
 }
