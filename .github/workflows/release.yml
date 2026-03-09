@@ -44,8 +44,8 @@ jobs:
       - name: Validate certification matrix schema
         shell: pwsh
         run: |
-          pwsh -NoLogo -NoProfile -File tools/Invoke-JsonSchemaLite.ps1 \
-            -JsonPath tests/results/_agent/certification/release-certification-matrix.json \
+          pwsh -NoLogo -NoProfile -File tools/Invoke-JsonSchemaLite.ps1 `
+            -JsonPath tests/results/_agent/certification/release-certification-matrix.json `
             -SchemaPath docs/schemas/certification-matrix-v1.schema.json
 
       - name: Upload certification matrix artifact
@@ -175,8 +175,8 @@ jobs:
       - name: Validate shared-source resolution schema
         shell: pwsh
         run: |
-          pwsh -NoLogo -NoProfile -File tools/Invoke-JsonSchemaLite.ps1 \
-            -JsonPath tests/results/_agent/release/shared-source-resolution.json \
+          pwsh -NoLogo -NoProfile -File tools/Invoke-JsonSchemaLite.ps1 `
+            -JsonPath tests/results/_agent/release/shared-source-resolution.json `
             -SchemaPath docs/schemas/release-shared-source-resolution-v1.schema.json
 
       - name: Upload shared-source resolution artifact
@@ -240,8 +240,8 @@ jobs:
         if: always()
         shell: pwsh
         run: |
-          pwsh -NoLogo -NoProfile -File tools/Invoke-JsonSchemaLite.ps1 \
-            -JsonPath tests/results/_agent/supply-chain/release-trust-gate.json \
+          pwsh -NoLogo -NoProfile -File tools/Invoke-JsonSchemaLite.ps1 `
+            -JsonPath tests/results/_agent/supply-chain/release-trust-gate.json `
             -SchemaPath docs/schemas/supply-chain-trust-gate-v1.schema.json
 
       - name: Upload supply-chain trust artifact
@@ -267,8 +267,8 @@ jobs:
         if: always()
         shell: pwsh
         run: |
-          pwsh -NoLogo -NoProfile -File tools/Invoke-JsonSchemaLite.ps1 \
-            -JsonPath tests/results/_agent/release/rollback-drill-health.json \
+          pwsh -NoLogo -NoProfile -File tools/Invoke-JsonSchemaLite.ps1 `
+            -JsonPath tests/results/_agent/release/rollback-drill-health.json `
             -SchemaPath docs/schemas/release-rollback-drill-health-v1.schema.json
 
       - name: Upload rollback drill health artifact
@@ -553,8 +553,8 @@ jobs:
       - name: Validate release provenance schema
         shell: pwsh
         run: |
-          pwsh -NoLogo -NoProfile -File tools/Invoke-JsonSchemaLite.ps1 \
-            -JsonPath cli-dl/provenance.json \
+          pwsh -NoLogo -NoProfile -File tools/Invoke-JsonSchemaLite.ps1 `
+            -JsonPath cli-dl/provenance.json `
             -SchemaPath docs/schemas/run-provenance-v1.schema.json
 
       - name: Contract checksum scenario (Linux)
@@ -595,21 +595,21 @@ jobs:
         run: |
           $checksumStatus = if ('${{ steps.checksum_scenario.outcome }}' -eq 'success') { 'pass' } else { 'fail' }
           $smokeStatus = if ('${{ steps.smoke_scenario.outcome }}' -eq 'success') { 'pass' } else { 'fail' }
-          pwsh -NoLogo -NoProfile -File tools/Write-ReleaseReviewContractArtifacts.ps1 \
-            -OutputDir tests/results/release-contract \
-            -Tag '${{ github.ref_name }}' \
-            -Os 'ubuntu-latest' \
-            -ChecksumStatus $checksumStatus \
+          pwsh -NoLogo -NoProfile -File tools/Write-ReleaseReviewContractArtifacts.ps1 `
+            -OutputDir tests/results/release-contract `
+            -Tag '${{ github.ref_name }}' `
+            -Os 'ubuntu-latest' `
+            -ChecksumStatus $checksumStatus `
             -SmokeStatus $smokeStatus
 
       - name: Validate release-review artifacts schema
         shell: pwsh
         run: |
-          pwsh -NoLogo -NoProfile -File tools/Invoke-JsonSchemaLite.ps1 \
-            -JsonPath tests/results/release-contract/scenario-summary-ubuntu-latest.json \
+          pwsh -NoLogo -NoProfile -File tools/Invoke-JsonSchemaLite.ps1 `
+            -JsonPath tests/results/release-contract/scenario-summary-ubuntu-latest.json `
             -SchemaPath docs/schemas/release-review-scenario-summary-v1.schema.json
-          pwsh -NoLogo -NoProfile -File tools/Invoke-JsonSchemaLite.ps1 \
-            -JsonPath tests/results/release-contract/review-index.json \
+          pwsh -NoLogo -NoProfile -File tools/Invoke-JsonSchemaLite.ps1 `
+            -JsonPath tests/results/release-contract/review-index.json `
             -SchemaPath docs/schemas/release-review-index-v1.schema.json
 
       - name: Assert requirements-verification check contract
@@ -620,11 +620,11 @@ jobs:
       - name: Run requirements verification gate
         shell: pwsh
         run: |
-          pwsh -NoLogo -NoProfile -File tools/Verify-RequirementsGate.ps1 \
-            -TestsPath tests \
-            -ResultsRoot tests/results \
-            -OutDir tests/results/_agent/verification \
-            -BaselinePolicyPath tools/policy/requirements-verification-baseline.json \
+          pwsh -NoLogo -NoProfile -File tools/Verify-RequirementsGate.ps1 `
+            -TestsPath tests `
+            -ResultsRoot tests/results `
+            -OutDir tests/results/_agent/verification `
+            -BaselinePolicyPath tools/policy/requirements-verification-baseline.json `
             -StepSummaryPath $env:GITHUB_STEP_SUMMARY
 
       - name: Enforce release contract outcome
@@ -696,8 +696,8 @@ jobs:
         if: always()
         shell: pwsh
         run: |
-          pwsh -NoLogo -NoProfile -File tools/Invoke-JsonSchemaLite.ps1 \
-            -JsonPath tests/results/_agent/release/release-scorecard.json \
+          pwsh -NoLogo -NoProfile -File tools/Invoke-JsonSchemaLite.ps1 `
+            -JsonPath tests/results/_agent/release/release-scorecard.json `
             -SchemaPath docs/schemas/release-scorecard-v1.schema.json
 
       - name: Upload release contract artifacts

@@ -291,8 +291,8 @@ jobs:
         if: always()
         shell: pwsh
         run: |
-          pwsh -NoLogo -NoProfile -File tools/Invoke-JsonSchemaLite.ps1 \
-            -JsonPath tests/results/_agent/release/monthly-release-scorecard.json \
+          pwsh -NoLogo -NoProfile -File tools/Invoke-JsonSchemaLite.ps1 `
+            -JsonPath tests/results/_agent/release/monthly-release-scorecard.json `
             -SchemaPath docs/schemas/release-scorecard-v1.schema.json
 
       - name: Upload promotion evidence artifact
