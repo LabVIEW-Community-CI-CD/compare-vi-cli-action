@@ -221,7 +221,15 @@ try {
     throw ("Sync failed after {0} attempt(s)." -f $MaxAttempts)
   }
 
-  Invoke-Node -Arguments @('tools/priority/report-origin-upstream-parity.mjs', '--base-ref', $baseRef, '--head-ref', $headRef)
+  Invoke-Node -Arguments @(
+    'tools/priority/report-origin-upstream-parity.mjs',
+    '--base-ref',
+    $baseRef,
+    '--head-ref',
+    $headRef,
+    '--output-path',
+    $parityReportPath
+  )
 
   if (-not (Test-Path -LiteralPath $parityReportPath -PathType Leaf)) {
     throw ("Parity report not found: {0}" -f $parityReportPath)
