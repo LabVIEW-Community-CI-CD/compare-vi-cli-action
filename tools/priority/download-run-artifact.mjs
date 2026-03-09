@@ -62,7 +62,13 @@ export function parseArgs(argv = process.argv) {
       index += 1;
       if (token === '--repo') options.repo = normalizeText(next);
       if (token === '--run-id') options.runId = normalizeText(next);
-      if (token === '--artifact') options.artifactNames.push(next);
+      if (token === '--artifact') {
+        const artifactName = normalizeText(next);
+        if (!artifactName) {
+          throw new Error('Artifact name is required for --artifact.');
+        }
+        options.artifactNames.push(artifactName);
+      }
       if (token === '--destination-root') options.destinationRoot = next;
       if (token === '--report') options.reportPath = next;
       continue;

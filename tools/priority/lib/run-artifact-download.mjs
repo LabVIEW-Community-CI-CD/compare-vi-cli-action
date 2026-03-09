@@ -251,6 +251,17 @@ export function downloadNamedArtifacts({
     errors: [],
   };
 
+  if (requestedArtifacts.length === 0) {
+    const message = 'At least one non-empty artifact name is required.';
+    report.status = 'fail';
+    report.discovery.status = 'fail';
+    report.discovery.failureClass = 'invalid-request';
+    report.discovery.errorMessage = message;
+    report.errors.push(message);
+    const resolvedReportPath = writeJsonFile(reportPath, report);
+    return { report, reportPath: resolvedReportPath };
+  }
+
   let availableArtifacts = [];
   try {
     const discovery = listRunArtifacts({

@@ -136,6 +136,33 @@ test('downloadNamedArtifacts records missing artifact requests without invoking 
   assert.equal(processCallCount, 0);
 });
 
+test('downloadNamedArtifacts fails fast when all requested artifact names normalize to empty values', async (t) => {
+  const { downloadNamedArtifacts } = await loadModule();
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'run-artifact-download-invalid-request-'));
+  t.after(() => fs.rmSync(tmpDir, { recursive: true, force: true }));
+
+  let discoveryCallCount = 0;
+  const result = downloadNamedArtifacts({
+    repository: 'LabVIEW-Community-CI-CD/compare-vi-cli-action',
+    runId: '22872590273',
+    artifactNames: ['   ', null, undefined],
+    destinationRoot: path.join(tmpDir, 'artifacts'),
+    reportPath: path.join(tmpDir, 'report.json'),
+    runGhJsonFn() {
+      discoveryCallCount += 1;
+      return { artifacts: [] };
+    },
+  });
+
+  assert.equal(result.report.status, 'fail');
+  assert.equal(result.report.discovery.status, 'fail');
+  assert.equal(result.report.discovery.failureClass, 'invalid-request');
+  assert.match(result.report.discovery.errorMessage, /non-empty artifact name/i);
+  assert.equal(result.report.summary.requestedArtifactCount, 0);
+  assert.equal(result.report.downloads.length, 0);
+  assert.equal(discoveryCallCount, 0);
+});
+
 test('downloadNamedArtifacts paginates artifact discovery until a later page contains the requested artifact', async (t) => {
   const { downloadNamedArtifacts } = await loadModule();
   const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'run-artifact-download-pagination-'));
