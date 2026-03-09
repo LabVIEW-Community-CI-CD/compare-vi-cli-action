@@ -91,6 +91,51 @@ Describe 'GitHubIntake.psm1' {
     $snapshot.title | Should -Be 'Catalog issue'
   }
 
+  It 'loads the intake catalog from the override path when present' {
+    $catalogPath = Join-Path $TestDrive 'github-intake-catalog.json'
+    @'
+{
+  "schema": "github-intake/catalog@v1",
+  "issueTemplates": [],
+  "pullRequestTemplates": [
+    {
+      "key": "default",
+      "path": ".github/pull_request_template.md",
+      "templateLabel": "default-agent-template",
+      "metadataMode": "agent",
+      "summary": "Default automation-authored PR template."
+    }
+  ],
+  "contactLinks": [],
+  "routes": [
+    {
+      "scenario": "custom-pr",
+      "routeType": "pull-request-template",
+      "targetKey": "default",
+      "helperPath": "tools/New-GitHubIntakeDraft.ps1",
+      "command": "pwsh -File tools/New-GitHubIntakeDraft.ps1 -Scenario custom-pr -OutputPath pr-body.md",
+      "summary": "Custom route without an execute command."
+    }
+  ]
+}
+'@ | Set-Content -LiteralPath $catalogPath -Encoding utf8
+
+    $previous = $env:COMPAREVI_GITHUB_INTAKE_CATALOG_PATH
+    try {
+      $env:COMPAREVI_GITHUB_INTAKE_CATALOG_PATH = $catalogPath
+      $catalog = Get-GitHubIntakeCatalog
+    } finally {
+      if ($null -eq $previous) {
+        Remove-Item Env:COMPAREVI_GITHUB_INTAKE_CATALOG_PATH -ErrorAction SilentlyContinue
+      } else {
+        $env:COMPAREVI_GITHUB_INTAKE_CATALOG_PATH = $previous
+      }
+    }
+
+    $catalog.routes.scenario | Should -Contain 'custom-pr'
+    $catalog.pullRequestTemplates.key | Should -Contain 'default'
+  }
+
   It 'builds an atlas report from the intake catalog' {
     $report = New-GitHubIntakeAtlasReport -GeneratedAtUtc '2026-03-09T00:00:00Z'
 
@@ -132,5 +177,51 @@ Describe 'GitHubIntake.psm1' {
     $context.branch | Should -Be 'issue/921-work'
     $context.standingPriority | Should -BeTrue
     $context.snapshotResolved | Should -BeTrue
+  }
+
+  It 'preserves a null execute command when the catalog route omits it' {
+    $catalogPath = Join-Path $TestDrive 'github-intake-catalog.json'
+    @'
+{
+  "schema": "github-intake/catalog@v1",
+  "issueTemplates": [],
+  "pullRequestTemplates": [
+    {
+      "key": "default",
+      "path": ".github/pull_request_template.md",
+      "templateLabel": "default-agent-template",
+      "metadataMode": "agent",
+      "summary": "Default automation-authored PR template."
+    }
+  ],
+  "contactLinks": [],
+  "routes": [
+    {
+      "scenario": "custom-pr",
+      "routeType": "pull-request-template",
+      "targetKey": "default",
+      "helperPath": "tools/New-GitHubIntakeDraft.ps1",
+      "command": "pwsh -File tools/New-GitHubIntakeDraft.ps1 -Scenario custom-pr -OutputPath pr-body.md",
+      "summary": "Custom route without an execute command."
+    }
+  ]
+}
+'@ | Set-Content -LiteralPath $catalogPath -Encoding utf8
+
+    $previous = $env:COMPAREVI_GITHUB_INTAKE_CATALOG_PATH
+    try {
+      $env:COMPAREVI_GITHUB_INTAKE_CATALOG_PATH = $catalogPath
+      $context = Resolve-GitHubIntakeDraftContext -Scenario 'custom-pr' -CurrentBranch 'issue/921-work'
+    } finally {
+      if ($null -eq $previous) {
+        Remove-Item Env:COMPAREVI_GITHUB_INTAKE_CATALOG_PATH -ErrorAction SilentlyContinue
+      } else {
+        $env:COMPAREVI_GITHUB_INTAKE_CATALOG_PATH = $previous
+      }
+    }
+
+    $context.templateKey | Should -Be 'default'
+    $context.executeCommand | Should -Be $null
+    $context.branch | Should -Be 'issue/921-work'
   }
 }

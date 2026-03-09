@@ -28,9 +28,9 @@ separate ad-hoc markdown fragments.
 When agents or operators create issues and PRs from the terminal, the repository favors generated markdown bodies over
 hand-written ad-hoc text.
 
-The supported issue forms, PR templates, contact links, and common route recommendations now live in the machine-
-readable catalog `tools/priority/github-intake-catalog.json`. Future agents should consult that catalog first instead
-of inferring the correct path from prose alone.
+The supported issue forms, PR templates, contact links, and common route recommendations now live in the
+machine-readable catalog `tools/priority/github-intake-catalog.json`. Future agents should consult that catalog first
+instead of inferring the correct path from prose alone.
 
 - Route discovery:
 

@@ -6,6 +6,11 @@ function Get-GitHubIntakeRepoRoot {
 }
 
 function Get-GitHubIntakeCatalogPath {
+  $override = [Environment]::GetEnvironmentVariable('COMPAREVI_GITHUB_INTAKE_CATALOG_PATH')
+  if (-not [string]::IsNullOrWhiteSpace($override)) {
+    return $override
+  }
+
   Join-Path (Get-GitHubIntakeRepoRoot) 'tools' 'priority' 'github-intake-catalog.json'
 }
 
@@ -251,7 +256,7 @@ function Resolve-GitHubIntakeDraftContext {
     templateKey        = [string]$route.targetKey
     helperPath         = [string]$route.helperPath
     command            = [string]$route.command
-    executeCommand     = [string]$route.executeCommand
+    executeCommand     = if ($route.PSObject.Properties.Name -contains 'executeCommand') { $route.executeCommand } else { $null }
     issue              = $resolvedIssue
     issueTitle         = $resolvedIssueTitle
     issueUrl           = $resolvedIssueUrl
