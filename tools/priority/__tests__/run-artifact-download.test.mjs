@@ -163,6 +163,28 @@ test('downloadNamedArtifacts fails fast when all requested artifact names normal
   assert.equal(discoveryCallCount, 0);
 });
 
+test('downloadNamedArtifacts keeps discovery 404 failures classified as discovery-failed', async (t) => {
+  const { downloadNamedArtifacts } = await loadModule();
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'run-artifact-download-discovery-404-'));
+  t.after(() => fs.rmSync(tmpDir, { recursive: true, force: true }));
+
+  const result = downloadNamedArtifacts({
+    repository: 'LabVIEW-Community-CI-CD/compare-vi-cli-action',
+    runId: '99999999999',
+    artifactNames: ['copilot-review-signal-975'],
+    destinationRoot: path.join(tmpDir, 'artifacts'),
+    reportPath: path.join(tmpDir, 'report.json'),
+    runGhJsonFn() {
+      throw new Error('GitHub API request failed: 404 Not Found');
+    },
+  });
+
+  assert.equal(result.report.status, 'fail');
+  assert.equal(result.report.discovery.status, 'fail');
+  assert.equal(result.report.discovery.failureClass, 'discovery-failed');
+  assert.match(result.report.discovery.errorMessage, /404 Not Found/);
+});
+
 test('downloadNamedArtifacts paginates artifact discovery until a later page contains the requested artifact', async (t) => {
   const { downloadNamedArtifacts } = await loadModule();
   const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'run-artifact-download-pagination-'));

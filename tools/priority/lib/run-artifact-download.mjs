@@ -109,11 +109,12 @@ export function isPolicyWrapperRejection(message) {
   );
 }
 
-export function classifyArtifactDownloadFailure(message, fallback = 'download-failed') {
+export function classifyArtifactDownloadFailure(message, fallback = 'download-failed', options = {}) {
   const normalized = normalizeText(message);
   if (!normalized) {
     return fallback;
   }
+  const notFoundClass = normalizeText(options?.notFoundClass) ?? 'artifact-not-found';
   const lower = normalized.toLowerCase();
   if (isPolicyWrapperRejection(lower)) {
     return 'policy-wrapper-rejected';
@@ -132,7 +133,7 @@ export function classifyArtifactDownloadFailure(message, fallback = 'download-fa
     return 'artifact-expired';
   }
   if (lower.includes('not found') || lower.includes('404')) {
-    return 'artifact-not-found';
+    return notFoundClass;
   }
   return fallback;
 }
@@ -277,7 +278,9 @@ export function downloadNamedArtifacts({
     const message = error instanceof Error ? error.message : String(error);
     report.status = 'fail';
     report.discovery.status = 'fail';
-    report.discovery.failureClass = classifyArtifactDownloadFailure(message, 'discovery-failed');
+    report.discovery.failureClass = classifyArtifactDownloadFailure(message, 'discovery-failed', {
+      notFoundClass: 'discovery-failed',
+    });
     report.discovery.errorMessage = message;
     report.errors.push(message);
     const resolvedReportPath = writeJsonFile(reportPath, report);
