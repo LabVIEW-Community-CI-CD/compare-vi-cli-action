@@ -58,3 +58,22 @@ test('publish-tools-image workflow resolves context through the dedicated helper
   assert.match(workflow, /steps\.context\.outputs\.stable_family_version/);
   assert.match(workflow, /steps\.context\.outputs\.is_tools_tag/);
 });
+
+test('release workflow explicitly dispatches publish-tools-image with actions write permission', () => {
+  const workflowPath = path.join(workflowsRoot, 'release.yml');
+  const workflowRaw = readFileSync(workflowPath, 'utf8');
+  const workflow = yaml.load(workflowRaw);
+  const releaseJob = workflow?.jobs?.release;
+  const dispatchStep = releaseJob?.steps?.find((step) => step?.name === 'Dispatch Publish Tools Image workflow');
+
+  assert.equal(releaseJob?.permissions?.actions, 'write');
+  assert.ok(dispatchStep, 'release workflow should dispatch publish-tools-image explicitly');
+  assert.equal(dispatchStep.uses, 'actions/github-script@v7');
+  assert.match(dispatchStep.with.script, /workflow_id:\s*'publish-tools-image\.yml'/);
+  assert.match(dispatchStep.with.script, /ref:\s*'\$\{\{\s*github\.ref_name\s*\}\}'/);
+  assert.match(
+    dispatchStep.with.script,
+    /const releaseVersion = '\$\{\{\s*steps\.comparevi_tools\.outputs\.comparevi_tools_release_version\s*\}\}';/
+  );
+  assert.match(dispatchStep.with.script, /const releaseChannel = releaseVersion\.includes\('-rc\.'\) \? 'rc' : 'stable';/);
+});
