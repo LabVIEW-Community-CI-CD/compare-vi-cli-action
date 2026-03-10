@@ -31,3 +31,43 @@ test('human go/no-go decision schema validates the contract fixture', async () =
   assert.equal(payload.decision.value, 'nogo');
   assert.equal(payload.nextIteration.recommendedAction, 'revise');
 });
+
+test('human go/no-go decision schema rejects malformed URI fields', async () => {
+  const schema = JSON.parse(
+    await readFile(
+      path.join(repoRoot, 'docs', 'schemas', 'human-go-no-go-decision-v1.schema.json'),
+      'utf8',
+    ),
+  );
+  const payload = JSON.parse(
+    await readFile(
+      path.join(repoRoot, 'tools', 'priority', '__fixtures__', 'handoff', 'human-go-no-go-decision.json'),
+      'utf8',
+    ),
+  );
+
+  payload.target.issueUrl = 'not-a-uri';
+  payload.links.runUrl = 'still-not-a-uri';
+
+  const ajv = new Ajv2020({ allErrors: true, strict: false });
+  addFormats(ajv);
+  const validate = ajv.compile(schema);
+
+  assert.equal(validate(payload), false);
+  assert.ok(
+    validate.errors?.some(
+      (error) =>
+        error.instancePath === '/target/issueUrl' &&
+        error.keyword === 'format' &&
+        error.message === 'must match format "uri"',
+    ),
+  );
+  assert.ok(
+    validate.errors?.some(
+      (error) =>
+        error.instancePath === '/links/runUrl' &&
+        error.keyword === 'format' &&
+        error.message === 'must match format "uri"',
+    ),
+  );
+});

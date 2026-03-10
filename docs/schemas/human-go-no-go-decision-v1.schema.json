@@ -52,6 +52,13 @@
         "null"
       ]
     },
+    "nullableUri": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "format": "uri"
+    },
     "workflow": {
       "type": "object",
       "additionalProperties": false,
@@ -98,12 +105,10 @@
           "$ref": "#/$defs/nullableString"
         },
         "issueUrl": {
-          "$ref": "#/$defs/nullableString",
-          "format": "uri"
+          "$ref": "#/$defs/nullableUri"
         },
         "pullRequestUrl": {
-          "$ref": "#/$defs/nullableString",
-          "format": "uri"
+          "$ref": "#/$defs/nullableUri"
         }
       }
     },
@@ -145,12 +150,10 @@
       ],
       "properties": {
         "runUrl": {
-          "$ref": "#/$defs/nullableString",
-          "format": "uri"
+          "$ref": "#/$defs/nullableUri"
         },
         "evidenceUrl": {
-          "$ref": "#/$defs/nullableString",
-          "format": "uri"
+          "$ref": "#/$defs/nullableUri"
         }
       }
     },

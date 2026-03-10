@@ -1,4 +1,4 @@
-# Human Go-NoGo Decision Contract
+# Human Go/No-Go Decision Contract
 
 Issue [#981](https://github.com/LabVIEW-Community-CI-CD/compare-vi-cli-action/issues/981)
 defines the contract slice for epic

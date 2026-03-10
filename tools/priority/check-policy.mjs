@@ -1345,7 +1345,7 @@ export async function run({
 
     const relaxRulesetsForRepo = shouldRelaxRulesetEnforcement(initialState.repoData);
     if (relaxRulesetsForRepo) {
-      log('[policy] User-owned throughput fork detected; skipping queue-managed ruleset enforcement.');
+      log('[policy] User-owned throughput fork detected; skipping fork-local ruleset enforcement because queue-managed rulesets are not portable to user-owned forks.');
     }
 
     const initialDiffs = evaluateDiffs(manifest, initialState, {
