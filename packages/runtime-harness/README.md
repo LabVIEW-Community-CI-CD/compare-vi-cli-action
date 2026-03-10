@@ -36,7 +36,10 @@ The adapter owns repository-specific policy:
   `tools/priority/Start-RuntimeDaemonInDocker.ps1`
 - Docker Desktop lifecycle control lives at
   `tools/priority/Manage-RuntimeDaemonInDocker.ps1`
-- publication is blocked on stabilizing the adapter surface
+- org-fork release rehearsal now stages and verifies the package through
+  `tools/priority/js-package-release.mjs` and
+  `.github/workflows/runtime-harness-package-rehearsal.yml`
+- upstream is still the only final ship authority for the package surface
 
 ## Adapter contract
 
