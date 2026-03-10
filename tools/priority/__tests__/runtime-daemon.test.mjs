@@ -248,3 +248,39 @@ test('comparevi worker bootstrap marks an allocated checkout ready after bootstr
   assert.equal(ready.checkoutPath, checkoutPath);
   assert.equal(calls[0].command, 'pwsh');
 });
+
+test('comparevi worker bootstrap includes stderr in blocked bootstrap diagnostics', async () => {
+  const repoRoot = await mkdtemp(path.join(os.tmpdir(), 'runtime-daemon-worker-ready-stderr-'));
+  const { checkoutPath } = compareviRuntimeTest.resolveCompareviWorkerCheckoutPath({
+    repoRoot,
+    repository: 'example/repo',
+    laneId: 'personal-997'
+  });
+  await mkdir(path.join(checkoutPath, 'tools', 'priority'), { recursive: true });
+  await writeFile(path.join(checkoutPath, 'tools', 'priority', 'bootstrap.ps1'), '# mocked bootstrap', 'utf8');
+
+  const blocked = await compareviRuntimeTest.bootstrapCompareviWorkerCheckout({
+    schedulerDecision: {
+      activeLane: {
+        laneId: 'personal-997'
+      }
+    },
+    preparedWorker: {
+      generatedAt: '2026-03-10T18:00:00.000Z',
+      checkoutPath
+    },
+    deps: {
+      execFileFn: async () => {
+        const error = new Error('bootstrap failed');
+        error.stderr = 'bootstrap stderr';
+        error.code = 7;
+        throw error;
+      }
+    }
+  });
+
+  assert.equal(blocked.status, 'blocked');
+  assert.equal(blocked.bootstrapExitCode, 7);
+  assert.match(blocked.reason, /bootstrap failed/);
+  assert.match(blocked.reason, /bootstrap stderr/);
+});

@@ -733,9 +733,44 @@ export async function runRuntimeObserverLoop(options = {}, deps = {}) {
           report.repository
         );
       } catch (error) {
+        const heartbeatNow = nowFactory();
+        await writeJson(heartbeatPath, {
+          schema: OBSERVER_HEARTBEAT_SCHEMA,
+          generatedAt: toIso(heartbeatNow),
+          runtimeAdapter: adapter.name,
+          repository: report.repository,
+          platform,
+          cyclesCompleted: report.cyclesCompleted,
+          outcome: 'worker-bootstrap-failed',
+          stopRequested: false,
+          activeLane: {
+            ...(schedulerDecision.activeLane ?? {}),
+            worker: preparedWorker
+          },
+          schedulerDecision: report.lastDecision,
+          artifacts: {
+            statePath: null,
+            eventsPath: null,
+            stopRequestPath: null,
+            workerCheckoutPath: workerArtifacts.latestPath,
+            workerLanePath: workerArtifacts.lanePath,
+            workerReadyPath: null,
+            workerReadyLanePath: null,
+            schedulerDecisionPath: schedulerArtifacts.latestPath,
+            schedulerDecisionHistoryPath: schedulerArtifacts.historyPath
+          }
+        });
         report.status = 'blocked';
         report.outcome = 'worker-bootstrap-failed';
         report.message = error?.message || String(error);
+        report.lastStep = {
+          exitCode: 14,
+          outcome: 'worker-bootstrap-failed',
+          statePath: null,
+          turnPath: null,
+          worker: preparedWorker,
+          workerReady: null
+        };
         return { exitCode: 14, report };
       }
       if (workerReady) {

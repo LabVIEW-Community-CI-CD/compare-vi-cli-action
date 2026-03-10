@@ -36,6 +36,15 @@ async function pathExists(filePath) {
   }
 }
 
+function formatBootstrapFailure(error) {
+  const message = normalizeText(error?.message || error);
+  const stderr = normalizeText(error?.stderr);
+  if (!stderr) {
+    return message;
+  }
+  return `${message}\n\nstderr:\n${stderr}`;
+}
+
 export function resolveCompareviWorkerCheckoutRoot({ repoRoot, repository }) {
   const rawRepoKey = normalizeText(repository)?.replace(/\//g, '--') || path.basename(repoRoot);
   const repoKey = sanitizeSegment(rawRepoKey);
@@ -131,7 +140,7 @@ export async function bootstrapCompareviWorkerCheckout({
       checkoutPath: preparedWorker.checkoutPath,
       status: 'blocked',
       source: 'comparevi-bootstrap',
-      reason: error?.message || String(error),
+      reason: formatBootstrapFailure(error),
       bootstrapCommand,
       bootstrapExitCode: Number.isInteger(error?.code) ? error.code : 1,
       preparedAt: preparedWorker.generatedAt ?? null
