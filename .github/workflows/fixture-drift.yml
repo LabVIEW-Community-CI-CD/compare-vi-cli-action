@@ -202,6 +202,12 @@ jobs:
       run: |
         $ErrorActionPreference = 'Stop'
         $outDir = 'results/fixture-drift/ni-linux-container'
+        $historyBranchRef = '${{ github.sha }}'
+        $historyBaselineRef = ''
+        if ('${{ github.event_name }}' -eq 'pull_request') {
+          $historyBranchRef = '${{ github.event.pull_request.head.sha }}'
+          $historyBaselineRef = '${{ github.event.pull_request.base.sha }}'
+        }
         New-Item -ItemType Directory -Path $outDir -Force | Out-Null
 
         pwsh -NoLogo -NoProfile -File tools/Invoke-NILinuxReviewSuite.ps1 `
@@ -211,7 +217,8 @@ jobs:
           -Image $env:NI_LINUX_IMAGE `
           -LabVIEWPath $env:NI_LINUX_LABVIEW_PATH `
           -HistoryTargetPath 'fixtures/vi-attr/Head.vi' `
-          -HistoryBranchRef 'HEAD' `
+          -HistoryBranchRef $historyBranchRef `
+          -HistoryBaselineRef $historyBaselineRef `
           -TimeoutSeconds 240 `
           -HeartbeatSeconds 15 `
           -RuntimeEngineReadyTimeoutSeconds 120 `

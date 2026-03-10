@@ -16,6 +16,8 @@ param(
   [string]$HistoryBaselineRef = '',
   [ValidateRange(1, 64)]
   [int]$HistoryMaxPairs = 2,
+  [ValidateRange(1, 4096)]
+  [int]$HistoryMaxCommitCount = 64,
   [ValidateRange(30, 900)]
   [int]$TimeoutSeconds = 240,
   [ValidateRange(5, 120)]
@@ -71,6 +73,59 @@ function Get-RelativeArtifactPath {
   )
 
   return [System.IO.Path]::GetRelativePath($RootPath, $Path).Replace('\', '/')
+}
+
+function Resolve-HistoryRefSelection {
+  param(
+    [AllowEmptyString()][string]$RequestedBranchRef,
+    [AllowEmptyString()][string]$RequestedBaselineRef
+  )
+
+  $effectiveBranchRef = $RequestedBranchRef
+  $effectiveBaselineRef = $RequestedBaselineRef
+  $selectionSource = 'parameters'
+  $branchRefNeedsResolution = [string]::IsNullOrWhiteSpace($effectiveBranchRef) -or
+    [string]::Equals($effectiveBranchRef, 'HEAD', [System.StringComparison]::OrdinalIgnoreCase)
+  $baselineRefNeedsResolution = [string]::IsNullOrWhiteSpace($effectiveBaselineRef)
+
+  if ($branchRefNeedsResolution -or $baselineRefNeedsResolution) {
+    $eventPath = $env:GITHUB_EVENT_PATH
+    $eventName = $env:GITHUB_EVENT_NAME
+    if (
+      -not [string]::IsNullOrWhiteSpace($eventPath) -and
+      -not [string]::IsNullOrWhiteSpace($eventName) -and
+      [string]::Equals($eventName, 'pull_request', [System.StringComparison]::OrdinalIgnoreCase) -and
+      (Test-Path -LiteralPath $eventPath -PathType Leaf)
+    ) {
+      try {
+        $eventPayload = Get-Content -LiteralPath $eventPath -Raw | ConvertFrom-Json -Depth 32
+        if ($eventPayload -and $eventPayload.pull_request) {
+          if ($branchRefNeedsResolution -and $eventPayload.pull_request.head -and -not [string]::IsNullOrWhiteSpace([string]$eventPayload.pull_request.head.sha)) {
+            $effectiveBranchRef = [string]$eventPayload.pull_request.head.sha
+            $selectionSource = 'github-pull-request'
+          }
+          if ($baselineRefNeedsResolution -and $eventPayload.pull_request.base -and -not [string]::IsNullOrWhiteSpace([string]$eventPayload.pull_request.base.sha)) {
+            $effectiveBaselineRef = [string]$eventPayload.pull_request.base.sha
+            $selectionSource = 'github-pull-request'
+          }
+        }
+      } catch {
+        Write-Warning ("Unable to resolve GitHub pull_request refs from GITHUB_EVENT_PATH '{0}': {1}" -f $eventPath, $_.Exception.Message)
+      }
+    }
+  }
+
+  if ([string]::IsNullOrWhiteSpace($effectiveBranchRef)) {
+    $effectiveBranchRef = 'HEAD'
+  }
+
+  return [pscustomobject]@{
+    requestedBranchRef = [string]$RequestedBranchRef
+    requestedBaselineRef = [string]$RequestedBaselineRef
+    effectiveBranchRef = [string]$effectiveBranchRef
+    effectiveBaselineRef = [string]$effectiveBaselineRef
+    source = [string]$selectionSource
+  }
 }
 
 function New-FlagScenarioDefinitions {
@@ -219,8 +274,10 @@ $summaryMarkdownPath = Join-Path $resultsRootResolved 'review-suite-summary.md'
 $summaryHtmlPath = Join-Path $resultsRootResolved 'review-suite-summary.html'
 $scenarioResults = @()
 $knownFlagScenarios = New-FlagScenarioDefinitions
+$historyRefSelection = Resolve-HistoryRefSelection -RequestedBranchRef $HistoryBranchRef -RequestedBaselineRef $HistoryBaselineRef
 
 Write-Host ("[ni-linux-review-suite] resultsRoot={0}" -f $resultsRootResolved) -ForegroundColor Cyan
+Write-Host ("[ni-linux-review-suite] historyRefSource={0} requestedBranchRef={1} requestedBaselineRef={2} effectiveBranchRef={3} effectiveBaselineRef={4} maxCommitCount={5}" -f $historyRefSelection.source, ($(if ([string]::IsNullOrWhiteSpace($historyRefSelection.requestedBranchRef)) { '(default)' } else { $historyRefSelection.requestedBranchRef })), ($(if ([string]::IsNullOrWhiteSpace($historyRefSelection.requestedBaselineRef)) { '(default)' } else { $historyRefSelection.requestedBaselineRef })), $historyRefSelection.effectiveBranchRef, ($(if ([string]::IsNullOrWhiteSpace($historyRefSelection.effectiveBaselineRef)) { '(default)' } else { $historyRefSelection.effectiveBaselineRef })), $HistoryMaxCommitCount) -ForegroundColor DarkCyan
 
 foreach ($scenario in $knownFlagScenarios) {
   $scenarioName = [string]$scenario.name
@@ -302,20 +359,27 @@ $historyInspectionHtmlPath = Join-Path $historyResultsDir 'history-suite-inspect
 $historyContract = [ordered]@{
   schema = 'ni-linux-runtime-bootstrap/v1'
   mode = 'vi-history-suite-smoke'
-  branchRef = $HistoryBranchRef
-  maxCommitCount = 64
+  branchRef = $historyRefSelection.effectiveBranchRef
+  maxCommitCount = [int]$HistoryMaxCommitCount
+  historyRef = [ordered]@{
+    source = [string]$historyRefSelection.source
+    requestedBranchRef = [string]$historyRefSelection.requestedBranchRef
+    requestedBaselineRef = [string]$historyRefSelection.requestedBaselineRef
+    effectiveBranchRef = [string]$historyRefSelection.effectiveBranchRef
+    effectiveBaselineRef = [string]$historyRefSelection.effectiveBaselineRef
+  }
   scriptPath = $viHistoryBootstrapScript
   viHistory = [ordered]@{
     repoPath = $repoRootResolved
     targetPath = (Get-RelativeArtifactPath -RootPath $repoRootResolved -Path $historyTargetResolved)
     resultsPath = $historyResultsDir
-    baselineRef = $HistoryBaselineRef
+    baselineRef = $historyRefSelection.effectiveBaselineRef
     maxPairs = [int]$HistoryMaxPairs
   }
 }
 $historyContract | ConvertTo-Json -Depth 12 | Set-Content -LiteralPath $historyContractPath -Encoding utf8
 
-Write-Host ("[ni-linux-review-suite] scenario=vi-history-report branchRef={0} target={1}" -f $HistoryBranchRef, $historyContract.viHistory.targetPath) -ForegroundColor Cyan
+Write-Host ("[ni-linux-review-suite] scenario=vi-history-report branchRef={0} baselineRef={1} target={2}" -f $historyRefSelection.effectiveBranchRef, ($(if ([string]::IsNullOrWhiteSpace($historyRefSelection.effectiveBaselineRef)) { '(default)' } else { $historyRefSelection.effectiveBaselineRef })), $historyContract.viHistory.targetPath) -ForegroundColor Cyan
 Push-Location $repoRootResolved
 try {
   & $compareScriptPath `
@@ -429,6 +493,14 @@ $summaryPayload = [ordered]@{
   image = $Image
   labviewPath = $LabVIEWPath
   resultsRoot = $resultsRootResolved
+  historyRef = [ordered]@{
+    source = [string]$historyRefSelection.source
+    requestedBranchRef = [string]$historyRefSelection.requestedBranchRef
+    requestedBaselineRef = [string]$historyRefSelection.requestedBaselineRef
+    effectiveBranchRef = [string]$historyRefSelection.effectiveBranchRef
+    effectiveBaselineRef = [string]$historyRefSelection.effectiveBaselineRef
+    maxCommitCount = [int]$HistoryMaxCommitCount
+  }
   baselineCompareReportPath = $baselineTopLevelReportPath
   scenarios = @($summaryRows)
 }
@@ -440,6 +512,12 @@ $markdownLines = @(
   ('- Image: `{0}`' -f $Image),
   ('- LabVIEW path: `{0}`' -f $LabVIEWPath),
   ('- Results root: `{0}`' -f $resultsRootResolved),
+  ('- History ref source: `{0}`' -f $historyRefSelection.source),
+  ('- History requested branch ref: `{0}`' -f $(if ([string]::IsNullOrWhiteSpace($historyRefSelection.requestedBranchRef)) { '(default)' } else { $historyRefSelection.requestedBranchRef })),
+  ('- History requested baseline ref: `{0}`' -f $(if ([string]::IsNullOrWhiteSpace($historyRefSelection.requestedBaselineRef)) { '(default)' } else { $historyRefSelection.requestedBaselineRef })),
+  ('- History effective branch ref: `{0}`' -f $historyRefSelection.effectiveBranchRef),
+  ('- History effective baseline ref: `{0}`' -f $(if ([string]::IsNullOrWhiteSpace($historyRefSelection.effectiveBaselineRef)) { '(default)' } else { $historyRefSelection.effectiveBaselineRef })),
+  ('- History max commit count: `{0}`' -f $HistoryMaxCommitCount),
   '',
   '| Scenario | Kind | Requested Flags | Result | Report | Extra |',
   '| --- | --- | --- | --- | --- | --- |'
@@ -456,7 +534,7 @@ $markdownLines -join "`n" | Set-Content -LiteralPath $summaryMarkdownPath -Encod
 
 $htmlLines = @(
   '<html><body><h1>NI Linux review suite</h1>',
-  ('<p>Image: <code>{0}</code><br/>LabVIEW path: <code>{1}</code></p>' -f $Image, $LabVIEWPath),
+  ('<p>Image: <code>{0}</code><br/>LabVIEW path: <code>{1}</code><br/>History ref source: <code>{2}</code><br/>History requested branch ref: <code>{3}</code><br/>History requested baseline ref: <code>{4}</code><br/>History effective branch ref: <code>{5}</code><br/>History effective baseline ref: <code>{6}</code><br/>History max commit count: <code>{7}</code></p>' -f $Image, $LabVIEWPath, $historyRefSelection.source, $(if ([string]::IsNullOrWhiteSpace($historyRefSelection.requestedBranchRef)) { '(default)' } else { $historyRefSelection.requestedBranchRef }), $(if ([string]::IsNullOrWhiteSpace($historyRefSelection.requestedBaselineRef)) { '(default)' } else { $historyRefSelection.requestedBaselineRef }), $historyRefSelection.effectiveBranchRef, $(if ([string]::IsNullOrWhiteSpace($historyRefSelection.effectiveBaselineRef)) { '(default)' } else { $historyRefSelection.effectiveBaselineRef }), $HistoryMaxCommitCount),
   '<table border="1" cellspacing="0" cellpadding="4">',
   '<thead><tr><th>Scenario</th><th>Kind</th><th>Requested Flags</th><th>Result</th><th>Report</th><th>Extra</th></tr></thead>',
   '<tbody>'
@@ -488,6 +566,11 @@ Write-GitHubOutput -Key 'summary_json_path' -Value $summaryJsonPath -Path $GitHu
 Write-GitHubOutput -Key 'summary_markdown_path' -Value $summaryMarkdownPath -Path $GitHubOutputPath
 Write-GitHubOutput -Key 'summary_html_path' -Value $summaryHtmlPath -Path $GitHubOutputPath
 Write-GitHubOutput -Key 'baseline_report_path' -Value $baselineTopLevelReportPath -Path $GitHubOutputPath
+Write-GitHubOutput -Key 'history_ref_source' -Value ([string]$historyRefSelection.source) -Path $GitHubOutputPath
+Write-GitHubOutput -Key 'history_requested_branch_ref' -Value ([string]$historyRefSelection.requestedBranchRef) -Path $GitHubOutputPath
+Write-GitHubOutput -Key 'history_requested_baseline_ref' -Value ([string]$historyRefSelection.requestedBaselineRef) -Path $GitHubOutputPath
+Write-GitHubOutput -Key 'history_effective_branch_ref' -Value ([string]$historyRefSelection.effectiveBranchRef) -Path $GitHubOutputPath
+Write-GitHubOutput -Key 'history_effective_baseline_ref' -Value ([string]$historyRefSelection.effectiveBaselineRef) -Path $GitHubOutputPath
 Write-GitHubOutput -Key 'vi_history_markdown_path' -Value $historyMarkdownPath -Path $GitHubOutputPath
 Write-GitHubOutput -Key 'vi_history_html_path' -Value $historyHtmlPath -Path $GitHubOutputPath
 Write-GitHubOutput -Key 'vi_history_summary_path' -Value $historySummaryPath -Path $GitHubOutputPath

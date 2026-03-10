@@ -35,6 +35,11 @@ test('fixture-drift hosted Linux lane passes an explicit linux container LabVIEW
   assert.match(workflow, /-LabVIEWPath \$env:NI_LINUX_LABVIEW_PATH/);
   assert.match(workflow, /Invoke-NILinuxReviewSuite\.ps1/);
   assert.match(workflow, /-HistoryTargetPath 'fixtures\/vi-attr\/Head\.vi'/);
+  assert.match(workflow, /\$historyBranchRef = '\$\{\{ github\.sha \}\}'/);
+  assert.match(workflow, /\$\{\{ github\.event\.pull_request\.head\.sha \}\}/);
+  assert.match(workflow, /\$\{\{ github\.event\.pull_request\.base\.sha \}\}/);
+  assert.match(workflow, /-HistoryBranchRef \$historyBranchRef/);
+  assert.match(workflow, /-HistoryBaselineRef \$historyBaselineRef/);
   assert.match(workflow, /path: results\/fixture-drift\/ni-linux-container\/\*\*/);
 });
 
@@ -53,6 +58,10 @@ test('hosted NI Linux review suite helper includes flag combinations and VI hist
   assert.match(script, /history-suite-inspection\.html/);
   assert.match(script, /history-suite-inspection\.json/);
   assert.match(script, /review-suite-summary\.json/);
+  assert.match(script, /Resolve-HistoryRefSelection/);
+  assert.match(script, /requestedBranchRef/);
+  assert.match(script, /effectiveBranchRef/);
+  assert.match(script, /HistoryMaxCommitCount/);
 });
 
 test('fixture-drift windows docker lane uses an explicit in-container LabVIEW path without host executable env fallback', () => {
