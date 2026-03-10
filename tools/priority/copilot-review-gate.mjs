@@ -17,6 +17,7 @@ const DEFAULT_GATED_BASE_REFS = ['develop'];
 const DEFAULT_POLL_ATTEMPTS = 1;
 const DEFAULT_POLL_DELAY_MS = 10000;
 const GITHUB_API_URL = 'https://api.github.com';
+const CANONICAL_REPOSITORY = 'LabVIEW-Community-CI-CD/compare-vi-cli-action';
 
 const COPILOT_LOGINS = new Set([
   'copilot',
@@ -193,6 +194,11 @@ export function parseRepoSlug(repo) {
 
   const [owner, repoName] = segments;
   return { owner, repo: repoName };
+}
+
+function isCanonicalRepository(repo) {
+  const normalized = normalizeText(repo)?.toLowerCase();
+  return normalized === CANONICAL_REPOSITORY.toLowerCase();
 }
 
 function isCopilotLogin(login) {
@@ -559,10 +565,11 @@ function evaluateGateOutcome({
 }) {
   const reasons = [];
   const normalizedBaseRef = normalizeBaseRef(pullRequest.baseRef)?.toLowerCase() ?? null;
+  const canonicalRepository = isCanonicalRepository(repository);
   const gateApplies =
     eventName !== 'merge_group' &&
     pullRequest.draft !== true &&
-    Boolean(normalizedBaseRef && gatedBaseRefs.includes(normalizedBaseRef));
+    Boolean(normalizedBaseRef && gatedBaseRefs.includes(normalizedBaseRef) && canonicalRepository);
 
   const summary = {
     copilotReviewCount: reviews.length,
@@ -620,6 +627,9 @@ function evaluateGateOutcome({
   } else if (!normalizedBaseRef || !gatedBaseRefs.includes(normalizedBaseRef)) {
     gateState = 'skipped';
     reasons.push('base-ref-not-gated');
+  } else if (!canonicalRepository) {
+    gateState = 'skipped';
+    reasons.push('throughput-fork-skip');
   } else if (errors.length > 0) {
     status = 'fail';
     gateState = 'error';
@@ -953,18 +963,24 @@ export async function runCopilotReviewGate({
   let report;
 
   try {
-    const preflightPullRequest = buildPullRequest(options);
+    const signalPathExists = options.signalPath && existsSync(path.resolve(process.cwd(), options.signalPath));
+    const signalReport = signalPathExists ? readSignalFn(options.signalPath) : null;
+    const preflightPullRequest = buildPullRequest(options, signalReport);
     const preflightBaseRef = normalizeBaseRef(preflightPullRequest.baseRef)?.toLowerCase() ?? null;
+    const preflightRepository =
+      normalizeText(signalReport?.repository) ??
+      normalizeText(options.repo);
     const shouldSkipWithoutLookup =
       options.eventName === 'merge_group' ||
       preflightPullRequest.draft === true ||
       !preflightBaseRef ||
-      !options.gatedBaseRefs.includes(preflightBaseRef);
+      !options.gatedBaseRefs.includes(preflightBaseRef) ||
+      (preflightRepository !== null && !isCanonicalRepository(preflightRepository));
 
     if (shouldSkipWithoutLookup) {
       report = evaluateGateOutcome({
         eventName: options.eventName,
-        repository: normalizeText(options.repo),
+        repository: preflightRepository,
         sourceMode: options.eventName === 'merge_group' ? 'merge-group' : 'metadata',
         pullRequest: preflightPullRequest,
         reviews: [],
@@ -973,8 +989,7 @@ export async function runCopilotReviewGate({
         gatedBaseRefs: options.gatedBaseRefs,
         now,
       });
-    } else if (options.signalPath && existsSync(path.resolve(process.cwd(), options.signalPath))) {
-      const signalReport = readSignalFn(options.signalPath);
+    } else if (signalReport) {
       report = buildReportFromSignal(options, signalReport, now);
     } else {
       const reviews = await loadReviewsFn(options);
