@@ -72,6 +72,11 @@ test('PrePush validates watcher telemetry via the sanitized schema wrapper', () 
   assert.match(content, /Invoke-WatcherTelemetrySchemaGate -repoRoot \$root/);
 });
 
+test('PrePush log tail helper uses streaming tail reads for large CLI logs', () => {
+  const content = readRepoFile('tools/PrePush-Checks.ps1');
+  assert.match(content, /Get-Content -LiteralPath \$Path -Tail \$TailLines -ErrorAction SilentlyContinue/);
+});
+
 test('PrePush emits deterministic incident-event report for NI known-flag failures', () => {
   const content = readRepoFile('tools/PrePush-Checks.ps1');
   assert.match(content, /function Write-PrePushNIKnownFlagIncidentEvent/);

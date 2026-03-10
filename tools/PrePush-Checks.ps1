@@ -71,7 +71,7 @@ function Get-LogTailText {
     return ''
   }
 
-  $lines = @(Get-Content -LiteralPath $Path -ErrorAction SilentlyContinue | Select-Object -Last $TailLines)
+  $lines = @(Get-Content -LiteralPath $Path -Tail $TailLines -ErrorAction SilentlyContinue)
   if ($lines.Count -eq 0) {
     return ''
   }
