@@ -808,6 +808,7 @@ test('priority:policy --apply updates fork-local rulesets resolved by stable ide
     main: 99102,
     release: 99103
   });
+  rulesets.develop.conditions.ref_name.include = ['refs/heads/develop-drifted'];
   rulesets.develop.rules = rulesets.develop.rules.filter(
     (rule) => !['required_linear_history', 'merge_queue', 'code_quality', 'copilot_code_review'].includes(rule.type)
   );
@@ -910,6 +911,11 @@ test('priority:policy --apply updates fork-local rulesets resolved by stable ide
     !requests.some((entry) => entry.method === 'PUT' && entry.url === expectedRulesetUrls.develop),
     'develop ruleset should not use the upstream manifest id once identity is resolved'
   );
+  assert.deepEqual(
+    rulesets.develop.conditions.ref_name.include,
+    ['refs/heads/develop'],
+    'develop ruleset should repair include drift on the existing fork-local ruleset'
+  );
   assert.ok(
     rulesets.develop.rules.some((rule) => rule.type === 'required_linear_history'),
     'develop ruleset should restore required_linear_history'
@@ -941,6 +947,87 @@ test('priority:policy --apply updates fork-local rulesets resolved by stable ide
       .sort(),
     EXPECTED_RELEASE_CHECKS.slice().sort(),
     'release ruleset should restore required checks'
+  );
+});
+
+test('priority:policy diagnostics use resolved fork-local ruleset ids after stable-identity resolution', async () => {
+  const repoUrl = 'https://api.github.com/repos/test-org/test-repo';
+  const listUrl = `${repoUrl}/rulesets`;
+  const branchDevelopUrl = `${repoUrl}/branches/develop/protection`;
+  const branchMainUrl = `${repoUrl}/branches/main/protection`;
+  const expectedRulesetUrls = {
+    develop: `${repoUrl}/rulesets/8811898`,
+    main: `${repoUrl}/rulesets/8614140`,
+    release: `${repoUrl}/rulesets/8614172`
+  };
+  const rulesets = createAlignedRulesets({
+    develop: 99301,
+    main: 99302,
+    release: 99303
+  });
+  rulesets.develop.rules.find((rule) => rule.type === 'required_status_checks').parameters.required_status_checks =
+    EXPECTED_DEVELOP_CHECKS.filter((context) => context !== 'commit-integrity').map((context) => ({ context }));
+
+  const errorMessages = [];
+  const fetchMock = async (url, options = {}) => {
+    const method = options.method ?? 'GET';
+    if (method !== 'GET') {
+      throw new Error(`Unexpected request ${method} ${url}`);
+    }
+    if (url === repoUrl) {
+      return createResponse(createAlignedRepoState());
+    }
+    if (url === branchDevelopUrl) {
+      return createResponse(createAlignedBranchProtection(EXPECTED_DEVELOP_CHECKS));
+    }
+    if (url === branchMainUrl) {
+      return createResponse(createAlignedBranchProtection(EXPECTED_MAIN_CHECKS));
+    }
+    if (url === expectedRulesetUrls.develop || url === expectedRulesetUrls.main || url === expectedRulesetUrls.release) {
+      return createResponse({ message: 'Not Found', status: '404' }, 404, 'Not Found');
+    }
+    if (url === listUrl) {
+      return createResponse([
+        toRulesetSummary(rulesets.develop),
+        toRulesetSummary(rulesets.main),
+        toRulesetSummary(rulesets.release)
+      ]);
+    }
+    if (url === `${repoUrl}/rulesets/${rulesets.develop.id}`) {
+      return createResponse(rulesets.develop);
+    }
+    if (url === `${repoUrl}/rulesets/${rulesets.main.id}`) {
+      return createResponse(rulesets.main);
+    }
+    if (url === `${repoUrl}/rulesets/${rulesets.release.id}`) {
+      return createResponse(rulesets.release);
+    }
+    throw new Error(`Unexpected request ${method} ${url}`);
+  };
+
+  const code = await run({
+    argv: ['node', 'check-policy.mjs'],
+    env: {
+      ...process.env,
+      GITHUB_REPOSITORY: 'test-org/test-repo',
+      GITHUB_TOKEN: 'fake-token'
+    },
+    fetchFn: fetchMock,
+    execSyncFn: () => {
+      throw new Error('execSync should not be called when GITHUB_REPOSITORY is set');
+    },
+    log: () => {},
+    error: (msg) => errorMessages.push(msg)
+  });
+
+  assert.equal(code, 1, 'verify mode should fail when the resolved fork-local ruleset still drifts');
+  assert.ok(
+    errorMessages.some((msg) => msg.includes('ruleset 99301: required_status_checks: missing [commit-integrity]')),
+    'diff output should reference the resolved fork-local ruleset id'
+  );
+  assert.ok(
+    !errorMessages.some((msg) => msg.includes('ruleset 8811898: required_status_checks: missing [commit-integrity]')),
+    'diff output should not keep referring to the manifest id after identity resolution'
   );
 });
 

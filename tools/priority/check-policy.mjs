@@ -304,6 +304,16 @@ function normalizeRulesetIncludes(values = []) {
   )].sort();
 }
 
+function rulesetIncludesMatch(expectations, actual) {
+  if (!Array.isArray(expectations?.includes)) {
+    return true;
+  }
+
+  const expectedIncludes = normalizeRulesetIncludes(expectations.includes);
+  const actualIncludes = normalizeRulesetIncludes(actual?.conditions?.ref_name?.include ?? []);
+  return JSON.stringify(expectedIncludes) === JSON.stringify(actualIncludes);
+}
+
 function rulesetIdentityMatches(expectations, actual) {
   if (!actual || typeof actual !== 'object') {
     return false;
@@ -317,15 +327,7 @@ function rulesetIdentityMatches(expectations, actual) {
     return false;
   }
 
-  if (Array.isArray(expectations?.includes)) {
-    const expectedIncludes = normalizeRulesetIncludes(expectations.includes);
-    const actualIncludes = normalizeRulesetIncludes(actual.conditions?.ref_name?.include ?? []);
-    if (JSON.stringify(expectedIncludes) !== JSON.stringify(actualIncludes)) {
-      return false;
-    }
-  }
-
-  return true;
+  return rulesetIncludesMatch(expectations, actual);
 }
 
 function rulesetSummaryMatches(expectations, actual) {
@@ -342,6 +344,46 @@ function rulesetSummaryMatches(expectations, actual) {
   }
 
   return true;
+}
+
+function selectRulesetIdentityCandidate(expectations, candidates = []) {
+  const matchingCandidates = (Array.isArray(candidates) ? candidates : []).filter((candidate) =>
+    rulesetSummaryMatches(expectations, candidate)
+  );
+  if (matchingCandidates.length === 0) {
+    return { match: null, resolution: 'missing', error: null };
+  }
+
+  const exactMatches = matchingCandidates.filter((candidate) => rulesetIdentityMatches(expectations, candidate));
+  if (exactMatches.length === 1) {
+    return { match: exactMatches[0], resolution: 'exact', error: null };
+  }
+  if (exactMatches.length > 1) {
+    return {
+      match: null,
+      resolution: 'ambiguous',
+      error: new Error(
+        `multiple rulesets matched stable identity exactly (${exactMatches
+          .map((candidate) => candidate?.id ?? 'unknown')
+          .join(', ')})`
+      )
+    };
+  }
+
+  if (matchingCandidates.length === 1) {
+    return { match: matchingCandidates[0], resolution: 'summary', error: null };
+  }
+
+  const includeSummary = Array.isArray(expectations?.includes)
+    ? normalizeRulesetIncludes(expectations.includes).join(', ') || '(empty)'
+    : '(unspecified)';
+  return {
+    match: null,
+    resolution: 'ambiguous',
+    error: new Error(
+      `multiple rulesets matched stable identity by name/target and includes ${includeSummary} did not disambiguate`
+    )
+  };
 }
 
 async function listRulesets(repoUrl, token, fetchFn) {
@@ -647,6 +689,12 @@ function compareRulesetIncludes(expected = [], actual = []) {
     diffs.push(`conditions.ref_name.include: unexpected [${extra.join(', ')}]`);
   }
   return diffs;
+}
+
+function prefixRulesetDiffs(id, diffs = []) {
+  return (Array.isArray(diffs) ? diffs : []).map((diff) =>
+    typeof diff === 'string' && diff.startsWith('ruleset ') ? diff : `ruleset ${id}: ${diff}`
+  );
 }
 
 function compareRuleset(id, expected, actual) {
@@ -1025,7 +1073,7 @@ async function collectState(manifest, repoUrl, token, fetchFn, logFn = console.l
       if (isNotFoundError(error)) {
         try {
           const rulesets = await loadRulesets();
-          let matchedRuleset = null;
+          const detailedMatches = [];
           for (const candidate of rulesets) {
             if (!rulesetSummaryMatches(expectations, candidate)) {
               continue;
@@ -1033,18 +1081,23 @@ async function collectState(manifest, repoUrl, token, fetchFn, logFn = console.l
             const detailedRuleset = candidate.id
               ? await fetchJson(`${repoUrl}/rulesets/${candidate.id}`, token, fetchFn)
               : candidate;
-            if (rulesetIdentityMatches(expectations, detailedRuleset)) {
-              matchedRuleset = detailedRuleset;
-              break;
-            }
+            detailedMatches.push(detailedRuleset);
           }
+          const selection = selectRulesetIdentityCandidate(expectations, detailedMatches);
+          const matchedRuleset = selection.match;
           if (matchedRuleset) {
             state.resolvedId = matchedRuleset.id ?? numericId;
             state.resolvedBy = 'identity';
             if (matchedRuleset.id && matchedRuleset.id !== numericId) {
-              logFn(`[policy] ruleset ${numericId}: resolved by stable identity to ${matchedRuleset.id}.`);
+              const driftNote =
+                selection.resolution === 'summary'
+                  ? ' via name/target; include drift will be corrected during apply.'
+                  : '.';
+              logFn(`[policy] ruleset ${numericId}: resolved by stable identity to ${matchedRuleset.id}${driftNote}`);
             }
             state.ruleset = matchedRuleset;
+          } else if (selection.error) {
+            state.error = selection.error;
           } else {
             state.error = error;
           }
@@ -1089,7 +1142,12 @@ function evaluateDiffs(manifest, state) {
       );
       continue;
     }
-    rulesetDiffs.push(...compareRuleset(entry.id, entry.expectations, entry.ruleset));
+    rulesetDiffs.push(
+      ...prefixRulesetDiffs(
+        entry.resolvedId ?? entry.id,
+        compareRuleset(entry.resolvedId ?? entry.id, entry.expectations, entry.ruleset)
+      )
+    );
   }
 
   return { repoDiffs, branchDiffs, rulesetDiffs };
@@ -1336,7 +1394,7 @@ export async function run({
         if (entry.error) {
           return isNotFoundError(entry.error);
         }
-        const diffs = compareRuleset(entry.id, entry.expectations, entry.ruleset);
+        const diffs = compareRuleset(entry.resolvedId ?? entry.id, entry.expectations, entry.ruleset);
         return diffs.length > 0;
       });
 
@@ -1421,7 +1479,10 @@ export const __test = Object.freeze({
   normalizeOptionalRuleExpectation,
   normalizeRulesetListResponse,
   normalizeRulesetIncludes,
-  rulesetIdentityMatches
+  prefixRulesetDiffs,
+  rulesetIncludesMatch,
+  rulesetIdentityMatches,
+  selectRulesetIdentityCandidate
 });
 
 const modulePath = path.resolve(fileURLToPath(import.meta.url));
