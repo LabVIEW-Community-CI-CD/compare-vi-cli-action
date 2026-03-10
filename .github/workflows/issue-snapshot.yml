@@ -16,6 +16,7 @@ jobs:
           node-version: '20'
       - name: Sync standing-priority snapshot
         env:
+          AGENT_PRIORITY_UPSTREAM_REPOSITORY: LabVIEW-Community-CI-CD/compare-vi-cli-action
           GITHUB_REPOSITORY: ${{ github.repository }}
           GITHUB_TOKEN: ${{ github.token }}
           GH_TOKEN: ${{ github.token }}
