@@ -17,6 +17,7 @@ const DEFAULT_GATED_BASE_REFS = ['develop'];
 const DEFAULT_POLL_ATTEMPTS = 1;
 const DEFAULT_POLL_DELAY_MS = 10000;
 const GITHUB_API_URL = 'https://api.github.com';
+const CANONICAL_REPOSITORY = 'LabVIEW-Community-CI-CD/compare-vi-cli-action';
 
 const COPILOT_LOGINS = new Set([
   'copilot',
@@ -193,6 +194,11 @@ export function parseRepoSlug(repo) {
 
   const [owner, repoName] = segments;
   return { owner, repo: repoName };
+}
+
+function isCanonicalRepository(repo) {
+  const normalized = normalizeText(repo)?.toLowerCase();
+  return normalized === CANONICAL_REPOSITORY.toLowerCase();
 }
 
 function isCopilotLogin(login) {
@@ -620,6 +626,9 @@ function evaluateGateOutcome({
   } else if (!normalizedBaseRef || !gatedBaseRefs.includes(normalizedBaseRef)) {
     gateState = 'skipped';
     reasons.push('base-ref-not-gated');
+  } else if (!isCanonicalRepository(repository)) {
+    gateState = 'skipped';
+    reasons.push('throughput-fork-skip');
   } else if (errors.length > 0) {
     status = 'fail';
     gateState = 'error';
@@ -959,7 +968,8 @@ export async function runCopilotReviewGate({
       options.eventName === 'merge_group' ||
       preflightPullRequest.draft === true ||
       !preflightBaseRef ||
-      !options.gatedBaseRefs.includes(preflightBaseRef);
+      !options.gatedBaseRefs.includes(preflightBaseRef) ||
+      !isCanonicalRepository(options.repo);
 
     if (shouldSkipWithoutLookup) {
       report = evaluateGateOutcome({

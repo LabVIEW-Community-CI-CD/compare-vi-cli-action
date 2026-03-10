@@ -105,6 +105,46 @@ test('copilot-review-gate skips merge-group runs while keeping the required stat
   assert.deepEqual(result.report?.reasons, ['merge-group-skip']);
 });
 
+test('copilot-review-gate skips throughput fork repos before any live lookup', async () => {
+  const { runCopilotReviewGate } = await loadModule();
+  let reviewsCalled = false;
+  let threadsCalled = false;
+
+  const result = await runCopilotReviewGate({
+    argv: createArgv([
+      '--event-name',
+      'pull_request_target',
+      '--repo',
+      'svelderrainruiz/compare-vi-cli-action',
+      '--pr',
+      '304',
+      '--head-sha',
+      'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
+      '--base-ref',
+      'develop',
+      '--draft',
+      'false',
+    ]),
+    loadReviewsFn: async () => {
+      reviewsCalled = true;
+      return [];
+    },
+    loadThreadsFn: async () => {
+      threadsCalled = true;
+      return [];
+    },
+    writeReportFn: () => 'memory://copilot-review-gate-throughput-fork.json',
+    appendStepSummaryFn: () => {},
+  });
+
+  assert.equal(result.exitCode, 0);
+  assert.equal(result.report?.status, 'pass');
+  assert.equal(result.report?.gateState, 'skipped');
+  assert.deepEqual(result.report?.reasons, ['throughput-fork-skip']);
+  assert.equal(reviewsCalled, false);
+  assert.equal(threadsCalled, false);
+});
+
 test('copilot-review-gate passes stale but clean follow-up heads after an earlier Copilot review', async () => {
   const { runCopilotReviewGate } = await loadModule();
   const currentHead = 'cccccccccccccccccccccccccccccccccccccccc';
