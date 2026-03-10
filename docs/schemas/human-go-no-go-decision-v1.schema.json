@@ -1,0 +1,204 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://labview-community-ci-cd.github.io/compare-vi-cli-action/schemas/human-go-no-go-decision-v1.schema.json",
+  "title": "human-go-no-go-decision@v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema",
+    "schemaVersion",
+    "generatedAt",
+    "workflow",
+    "target",
+    "decision",
+    "links",
+    "artifacts",
+    "nextIteration"
+  ],
+  "properties": {
+    "schema": {
+      "const": "human-go-no-go-decision@v1"
+    },
+    "schemaVersion": {
+      "type": "string"
+    },
+    "generatedAt": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "workflow": {
+      "$ref": "#/$defs/workflow"
+    },
+    "target": {
+      "$ref": "#/$defs/target"
+    },
+    "decision": {
+      "$ref": "#/$defs/decision"
+    },
+    "links": {
+      "$ref": "#/$defs/links"
+    },
+    "artifacts": {
+      "$ref": "#/$defs/artifacts"
+    },
+    "nextIteration": {
+      "$ref": "#/$defs/nextIteration"
+    }
+  },
+  "$defs": {
+    "nullableString": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "nullableUri": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "format": "uri"
+    },
+    "workflow": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "name",
+        "path"
+      ],
+      "properties": {
+        "name": {
+          "type": "string",
+          "minLength": 1
+        },
+        "path": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "target": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "repository",
+        "context",
+        "ref",
+        "runId",
+        "issueUrl",
+        "pullRequestUrl"
+      ],
+      "properties": {
+        "repository": {
+          "type": "string",
+          "minLength": 1
+        },
+        "context": {
+          "type": "string",
+          "minLength": 1
+        },
+        "ref": {
+          "type": "string",
+          "minLength": 1
+        },
+        "runId": {
+          "$ref": "#/$defs/nullableString"
+        },
+        "issueUrl": {
+          "$ref": "#/$defs/nullableUri"
+        },
+        "pullRequestUrl": {
+          "$ref": "#/$defs/nullableUri"
+        }
+      }
+    },
+    "decision": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "value",
+        "feedback",
+        "recordedBy",
+        "transcribedFor"
+      ],
+      "properties": {
+        "value": {
+          "type": "string",
+          "enum": [
+            "go",
+            "nogo"
+          ]
+        },
+        "feedback": {
+          "type": "string",
+          "minLength": 1
+        },
+        "recordedBy": {
+          "$ref": "#/$defs/nullableString"
+        },
+        "transcribedFor": {
+          "$ref": "#/$defs/nullableString"
+        }
+      }
+    },
+    "links": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "runUrl",
+        "evidenceUrl"
+      ],
+      "properties": {
+        "runUrl": {
+          "$ref": "#/$defs/nullableUri"
+        },
+        "evidenceUrl": {
+          "$ref": "#/$defs/nullableUri"
+        }
+      }
+    },
+    "artifacts": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "artifactName",
+        "decisionPath",
+        "eventsPath"
+      ],
+      "properties": {
+        "artifactName": {
+          "type": "string",
+          "minLength": 1
+        },
+        "decisionPath": {
+          "type": "string",
+          "minLength": 1
+        },
+        "eventsPath": {
+          "$ref": "#/$defs/nullableString"
+        }
+      }
+    },
+    "nextIteration": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "recommendedAction",
+        "seed"
+      ],
+      "properties": {
+        "recommendedAction": {
+          "type": "string",
+          "enum": [
+            "continue",
+            "revise",
+            "pause"
+          ]
+        },
+        "seed": {
+          "$ref": "#/$defs/nullableString"
+        }
+      }
+    }
+  }
+}

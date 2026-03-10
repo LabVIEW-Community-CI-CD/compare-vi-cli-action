@@ -1115,6 +1115,130 @@ test('priority:policy --apply creates missing fork-local rulesets when no identi
   );
 });
 
+test('priority:policy verify passes on user-owned throughput forks without queue-managed rulesets', async () => {
+  const repoUrl = 'https://api.github.com/repos/test-user/test-repo';
+  const listUrl = `${repoUrl}/rulesets`;
+  const branchDevelopUrl = `${repoUrl}/branches/develop/protection`;
+  const branchMainUrl = `${repoUrl}/branches/main/protection`;
+
+  const fetchMock = async (url, options = {}) => {
+    const method = options.method ?? 'GET';
+    if (method === 'GET' && url === repoUrl) {
+      return createResponse({
+        ...createAlignedRepoState(),
+        fork: true,
+        owner: { type: 'User', login: 'test-user' },
+        permissions: { admin: true }
+      });
+    }
+    if (method === 'GET' && url === branchDevelopUrl) {
+      return createResponse(createAlignedBranchProtection(EXPECTED_DEVELOP_CHECKS));
+    }
+    if (method === 'GET' && url === branchMainUrl) {
+      return createResponse(createAlignedBranchProtection(EXPECTED_MAIN_CHECKS));
+    }
+    if (method === 'GET' && url === `${repoUrl}/rulesets/8811898`) {
+      return createResponse({ message: 'Not Found', status: '404' }, 404, 'Not Found');
+    }
+    if (method === 'GET' && url === `${repoUrl}/rulesets/8614140`) {
+      return createResponse({ message: 'Not Found', status: '404' }, 404, 'Not Found');
+    }
+    if (method === 'GET' && url === `${repoUrl}/rulesets/8614172`) {
+      return createResponse({ message: 'Not Found', status: '404' }, 404, 'Not Found');
+    }
+    if (method === 'GET' && url === listUrl) {
+      return createResponse([]);
+    }
+    throw new Error(`Unexpected request ${method} ${url}`);
+  };
+
+  const logMessages = [];
+  const errorMessages = [];
+  const code = await run({
+    argv: ['node', 'check-policy.mjs'],
+    env: {
+      ...process.env,
+      GITHUB_REPOSITORY: 'test-user/test-repo',
+      GITHUB_TOKEN: 'fake-token'
+    },
+    fetchFn: fetchMock,
+    execSyncFn: () => {
+      throw new Error('execSync should not be called when GITHUB_REPOSITORY is set');
+    },
+    log: (msg) => logMessages.push(msg),
+    error: (msg) => errorMessages.push(msg)
+  });
+
+  assert.equal(code, 0, 'verify mode should pass on user-owned throughput forks without rulesets');
+  assert.ok(
+    logMessages.some((msg) => msg.includes('User-owned throughput fork detected')),
+    'expected throughput-fork relaxation log'
+  );
+  assert.deepEqual(errorMessages, []);
+});
+
+test('priority:policy --apply does not create queue-managed rulesets on user-owned throughput forks', async () => {
+  const repoUrl = 'https://api.github.com/repos/test-user/test-repo';
+  const listUrl = `${repoUrl}/rulesets`;
+  const branchDevelopUrl = `${repoUrl}/branches/develop/protection`;
+  const branchMainUrl = `${repoUrl}/branches/main/protection`;
+  const requests = [];
+
+  const fetchMock = async (url, options = {}) => {
+    const method = options.method ?? 'GET';
+    requests.push({ method, url });
+    if (method === 'GET' && url === repoUrl) {
+      return createResponse({
+        ...createAlignedRepoState(),
+        fork: true,
+        owner: { type: 'User', login: 'test-user' },
+        permissions: { admin: true }
+      });
+    }
+    if (method === 'GET' && url === branchDevelopUrl) {
+      return createResponse(createAlignedBranchProtection(EXPECTED_DEVELOP_CHECKS));
+    }
+    if (method === 'GET' && url === branchMainUrl) {
+      return createResponse(createAlignedBranchProtection(EXPECTED_MAIN_CHECKS));
+    }
+    if (method === 'GET' && url === `${repoUrl}/rulesets/8811898`) {
+      return createResponse({ message: 'Not Found', status: '404' }, 404, 'Not Found');
+    }
+    if (method === 'GET' && url === `${repoUrl}/rulesets/8614140`) {
+      return createResponse({ message: 'Not Found', status: '404' }, 404, 'Not Found');
+    }
+    if (method === 'GET' && url === `${repoUrl}/rulesets/8614172`) {
+      return createResponse({ message: 'Not Found', status: '404' }, 404, 'Not Found');
+    }
+    if (method === 'GET' && url === listUrl) {
+      return createResponse([]);
+    }
+    throw new Error(`Unexpected request ${method} ${url}`);
+  };
+
+  const code = await run({
+    argv: ['node', 'check-policy.mjs', '--apply'],
+    env: {
+      ...process.env,
+      GITHUB_REPOSITORY: 'test-user/test-repo',
+      GITHUB_TOKEN: 'fake-token'
+    },
+    fetchFn: fetchMock,
+    execSyncFn: () => {
+      throw new Error('execSync should not be called when GITHUB_REPOSITORY is set');
+    },
+    log: () => {},
+    error: () => {}
+  });
+
+  assert.equal(code, 0, 'apply mode should succeed on user-owned throughput forks without rulesets');
+  assert.equal(
+    requests.some((entry) => entry.method === 'POST' && entry.url === listUrl),
+    false,
+    'apply mode should not create rulesets for user-owned throughput forks'
+  );
+});
+
 test('priority:policy skips when repository settings require admin access', async () => {
   const repoUrl = 'https://api.github.com/repos/test-org/test-repo';
   const rulesetDevelopUrl = `${repoUrl}/rulesets/8811898`;

@@ -1114,9 +1114,14 @@ async function collectState(manifest, repoUrl, token, fetchFn, logFn = console.l
   return { repoData, branchStates, rulesetStates };
 }
 
-function evaluateDiffs(manifest, state) {
+function shouldRelaxRulesetEnforcement(repoData) {
+  return repoData?.fork === true && String(repoData?.owner?.type ?? '').toLowerCase() === 'user';
+}
+
+function evaluateDiffs(manifest, state, options = {}) {
   const repoDiffs = compareRepoSettings(manifest.repo ?? {}, state.repoData ?? {});
   const queueManagedBranches = deriveQueueManagedBranches(manifest);
+  const ignoreRulesetDiffs = options.ignoreRulesetDiffs === true;
 
   const branchDiffs = [];
   for (const entry of state.branchStates) {
@@ -1135,19 +1140,21 @@ function evaluateDiffs(manifest, state) {
   }
 
   const rulesetDiffs = [];
-  for (const entry of state.rulesetStates) {
-    if (entry.error) {
+  if (!ignoreRulesetDiffs) {
+    for (const entry of state.rulesetStates) {
+      if (entry.error) {
+        rulesetDiffs.push(
+          `ruleset ${entry.id}: failed to load -> ${entry.error.message}`
+        );
+        continue;
+      }
       rulesetDiffs.push(
-        `ruleset ${entry.id}: failed to load -> ${entry.error.message}`
+        ...prefixRulesetDiffs(
+          entry.resolvedId ?? entry.id,
+          compareRuleset(entry.resolvedId ?? entry.id, entry.expectations, entry.ruleset)
+        )
       );
-      continue;
     }
-    rulesetDiffs.push(
-      ...prefixRulesetDiffs(
-        entry.resolvedId ?? entry.id,
-        compareRuleset(entry.resolvedId ?? entry.id, entry.expectations, entry.ruleset)
-      )
-    );
   }
 
   return { repoDiffs, branchDiffs, rulesetDiffs };
@@ -1336,7 +1343,14 @@ export async function run({
       }
     }
 
-    const initialDiffs = evaluateDiffs(manifest, initialState);
+    const relaxRulesetsForRepo = shouldRelaxRulesetEnforcement(initialState.repoData);
+    if (relaxRulesetsForRepo) {
+      log('[policy] User-owned throughput fork detected; skipping fork-local ruleset enforcement because queue-managed rulesets are not portable to user-owned forks.');
+    }
+
+    const initialDiffs = evaluateDiffs(manifest, initialState, {
+      ignoreRulesetDiffs: relaxRulesetsForRepo
+    });
     const queueManagedBranches = deriveQueueManagedBranches(manifest);
     applyDiffsToReport(initialDiffs);
 
@@ -1390,13 +1404,15 @@ export async function run({
         report.applied.branches.push(entry.branch);
       }
 
-      const rulesetStatesNeedingUpdates = initialState.rulesetStates.filter((entry) => {
-        if (entry.error) {
-          return isNotFoundError(entry.error);
-        }
-        const diffs = compareRuleset(entry.resolvedId ?? entry.id, entry.expectations, entry.ruleset);
-        return diffs.length > 0;
-      });
+      const rulesetStatesNeedingUpdates = relaxRulesetsForRepo
+        ? []
+        : initialState.rulesetStates.filter((entry) => {
+            if (entry.error) {
+              return isNotFoundError(entry.error);
+            }
+            const diffs = compareRuleset(entry.resolvedId ?? entry.id, entry.expectations, entry.ruleset);
+            return diffs.length > 0;
+          });
 
       for (const entry of rulesetStatesNeedingUpdates) {
         if (entry.error && isNotFoundError(entry.error)) {
@@ -1425,7 +1441,9 @@ export async function run({
       const postState = await invokeWithAuthFallback('collectState(post-apply)', (token) =>
         collectState(manifest, repoUrl, token, fetchFn, log)
       );
-      const postDiffs = evaluateDiffs(manifest, postState);
+      const postDiffs = evaluateDiffs(manifest, postState, {
+        ignoreRulesetDiffs: relaxRulesetsForRepo
+      });
       applyDiffsToReport(postDiffs);
       const remainingDiffs = [
         ...postDiffs.repoDiffs,

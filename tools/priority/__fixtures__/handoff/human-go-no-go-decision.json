@@ -1,0 +1,36 @@
+{
+  "schema": "human-go-no-go-decision@v1",
+  "schemaVersion": "1.0.0",
+  "generatedAt": "2026-03-10T02:15:00.000Z",
+  "workflow": {
+    "name": "Human Go/No-Go Feedback",
+    "path": ".github/workflows/human-go-no-go-feedback.yml"
+  },
+  "target": {
+    "repository": "LabVIEW-Community-CI-CD/compare-vi-cli-action",
+    "context": "issue/personal-981-go-no-go-contract",
+    "ref": "issue/personal-981-go-no-go-contract",
+    "runId": "22890012345",
+    "issueUrl": "https://github.com/LabVIEW-Community-CI-CD/compare-vi-cli-action/issues/981",
+    "pullRequestUrl": null
+  },
+  "decision": {
+    "value": "nogo",
+    "feedback": "Tighten latest-decision discovery before the next implementation pass.",
+    "recordedBy": "svelderrainruiz",
+    "transcribedFor": null
+  },
+  "links": {
+    "runUrl": "https://github.com/LabVIEW-Community-CI-CD/compare-vi-cli-action/actions/runs/22890012345",
+    "evidenceUrl": "https://github.com/LabVIEW-Community-CI-CD/compare-vi-cli-action/issues/964#issuecomment-1"
+  },
+  "artifacts": {
+    "artifactName": "human-go-no-go-decision",
+    "decisionPath": "tests/results/_agent/handoff/human-go-no-go-decision.json",
+    "eventsPath": "tests/results/_agent/handoff/human-go-no-go-events.ndjson"
+  },
+  "nextIteration": {
+    "recommendedAction": "revise",
+    "seed": "Rework the contract so future helpers can resolve the latest decision without scraping comments."
+  }
+}
