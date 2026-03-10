@@ -49,3 +49,5 @@ entrypoint and machine-generated live state.
 - Add current state to generated artifacts, issue comments, or repo docs as
   appropriate.
 - Do not append dated execution history back into `AGENT_HANDOFF.txt`.
+- For the persistent supervisor design that consumes these surfaces, see
+  [`External-Agent-Runtime.md`](./External-Agent-Runtime.md).
