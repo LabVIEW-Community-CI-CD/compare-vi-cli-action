@@ -106,6 +106,43 @@ test('runRuntimeSupervisor executes through an injected adapter', async () => {
         status: 'attached',
         trackingRef: 'origin/issue/origin-977-fork-policy-portability'
       },
+      taskPacket: {
+        schema: 'priority/runtime-worker-task-packet@v1',
+        generatedAt: '2026-03-10T15:00:00.000Z',
+        cycle: 1,
+        laneId: 'origin-977',
+        status: 'ready',
+        source: 'test-adapter',
+        objective: {
+          summary: 'Advance issue #977',
+          source: 'test-adapter'
+        },
+        branch: {
+          name: 'issue/origin-977-fork-policy-portability',
+          forkRemote: 'origin',
+          status: 'attached',
+          trackingRef: 'origin/issue/origin-977-fork-policy-portability',
+          checkoutPath: path.join(repoRoot, 'workers', 'origin-977')
+        },
+        pullRequest: {
+          url: 'https://example.test/pr/7',
+          status: 'linked'
+        },
+        checks: {
+          status: 'blocked',
+          blockerClass: 'ci'
+        },
+        helperSurface: {
+          preferred: ['node tools/npm/run-script.mjs priority:pr'],
+          fallbacks: ['gh pr create --body-file <path>']
+        },
+        recentEvents: [],
+        evidence: {},
+        artifacts: {
+          latestPath: path.join(repoRoot, 'tests', 'results', '_agent', 'runtime', 'task-packet.json'),
+          historyPath: path.join(repoRoot, 'tests', 'results', '_agent', 'runtime', 'task-packets', '2026-03-10T15-00-00-000Z-0001.json')
+        }
+      },
       blockerClass: 'ci',
       reason: 'hosted checks are red'
     },
@@ -125,6 +162,8 @@ test('runRuntimeSupervisor executes through an injected adapter', async () => {
   assert.equal(result.report.workerReady.status, 'ready');
   assert.equal(state.activeLane.workerBranch.status, 'attached');
   assert.equal(result.report.workerBranch.branch, 'issue/origin-977-fork-policy-portability');
+  assert.equal(state.activeLane.taskPacket.objective.summary, 'Advance issue #977');
+  assert.equal(result.report.taskPacket.status, 'ready');
   assert.deepEqual(
     adapterCalls.map((entry) => entry.type),
     ['acquire', 'release']

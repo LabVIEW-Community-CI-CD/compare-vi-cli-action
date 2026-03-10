@@ -351,6 +351,10 @@ Initial extraction note:
   deterministic issue branch and persists `worker-branch.json` plus
   `workers-branch/*.json` metadata so later turns can resume from a real lane
   workspace instead of a detached checkout
+- the worker/observer seam now also compiles a bounded per-cycle task packet
+  from durable runtime state, persists `task-packet.json` plus
+  `task-packets/*.json`, and leaves an adapter hook for repo-specific
+  objective/helper context before the execution layer is added
 - the compare-vi repository wrapper remains at
   `tools/priority/runtime-supervisor.mjs`
 - that wrapper now includes the first compare-vi scheduler cut: when no manual
