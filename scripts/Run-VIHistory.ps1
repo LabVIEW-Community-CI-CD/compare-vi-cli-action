@@ -25,7 +25,7 @@ if ($ShowHelp.IsPresent) {
 }
 
 if ([string]::IsNullOrWhiteSpace($ViPath)) {
-  throw 'ViPath is required. Use --help for usage.'
+  throw 'ViPath is required. Use -ShowHelp (or -help / -h) for usage.'
 }
 
 try {

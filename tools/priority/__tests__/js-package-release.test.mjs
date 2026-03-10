@@ -82,6 +82,42 @@ test('resolveJsPackageReleaseContext rejects org publish rehearsal on a non-org 
   );
 });
 
+test('resolveJsPackageReleaseContext rejects package publish entries that escape the package directory', async () => {
+  const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'runtime-harness-malicious-pkg-'));
+  const packageDir = path.join(tempRoot, 'package');
+  fs.mkdirSync(packageDir, { recursive: true });
+  fs.writeFileSync(
+    path.join(packageDir, 'package.json'),
+    JSON.stringify(
+      {
+        name: '@labview-community-ci-cd/runtime-harness-malicious',
+        version: '0.1.0',
+        files: ['../.git/config']
+      },
+      null,
+      2
+    ),
+    'utf8'
+  );
+
+  await assert.rejects(
+    () =>
+      resolveJsPackageReleaseContext(
+        {
+          action: 'resolve',
+          packageDir,
+          version: '0.1.0',
+          publish: false,
+          repository: 'LabVIEW-Community-CI-CD/compare-vi-cli-action-fork',
+          owner: 'LabVIEW-Community-CI-CD',
+          serverUrl: 'https://github.com'
+        },
+        { repoRoot, now: new Date('2026-03-10T08:02:00Z') }
+      ),
+    /must stay within the package directory/i
+  );
+});
+
 test('stageJsPackageRelease creates a tarball candidate with staged publish metadata', async () => {
   const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'runtime-harness-stage-'));
   const report = await stageJsPackageRelease(
@@ -109,6 +145,52 @@ test('stageJsPackageRelease creates a tarball candidate with staged publish meta
   assert.ok(fs.existsSync(report.outputs.tarballPath));
   assert.ok(fs.existsSync(path.join(report.outputs.stagingDir, 'LICENSE')));
   assert.deepEqual(stagedPackageJson.files, ['index.mjs', 'worker.mjs', 'observer.mjs', 'README.md']);
+});
+
+test('stageJsPackageRelease rejects unsafe staging and tarball directories', async () => {
+  const safeTempRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'runtime-harness-stage-guard-'));
+
+  await assert.rejects(
+    () =>
+      stageJsPackageRelease(
+        {
+          action: 'stage',
+          packageDir: 'packages/runtime-harness',
+          version: '0.1.0',
+          channel: 'stable',
+          publish: false,
+          repository: 'LabVIEW-Community-CI-CD/compare-vi-cli-action-fork',
+          owner: 'LabVIEW-Community-CI-CD',
+          serverUrl: 'https://github.com',
+          stagingDir: repoRoot,
+          tarballDir: path.join(safeTempRoot, 'tarballs'),
+          copyLicenseFrom: 'LICENSE'
+        },
+        { repoRoot, now: new Date('2026-03-10T08:05:00Z') }
+      ),
+    /--staging-dir.*safe managed directory target|--staging-dir.*managed directory root/i
+  );
+
+  await assert.rejects(
+    () =>
+      stageJsPackageRelease(
+        {
+          action: 'stage',
+          packageDir: 'packages/runtime-harness',
+          version: '0.1.0',
+          channel: 'stable',
+          publish: false,
+          repository: 'LabVIEW-Community-CI-CD/compare-vi-cli-action-fork',
+          owner: 'LabVIEW-Community-CI-CD',
+          serverUrl: 'https://github.com',
+          stagingDir: path.join(safeTempRoot, 'staging'),
+          tarballDir: os.tmpdir(),
+          copyLicenseFrom: 'LICENSE'
+        },
+        { repoRoot, now: new Date('2026-03-10T08:05:30Z') }
+      ),
+    /--tarball-dir.*safe managed directory target|--tarball-dir.*managed directory root/i
+  );
 });
 
 test('verifyJsPackageRelease imports the packed runtime-harness candidate from a clean consumer', async () => {
@@ -160,6 +242,28 @@ test('verifyJsPackageRelease imports the packed runtime-harness candidate from a
   assert.equal(verified.execution.installAttempts, 1);
 });
 
+test('verifyJsPackageRelease rejects unsafe consumer directories', async () => {
+  await assert.rejects(
+    () =>
+      verifyJsPackageRelease(
+        {
+          action: 'verify',
+          packageDir: 'packages/runtime-harness',
+          version: '0.1.0',
+          channel: 'stable',
+          publish: false,
+          repository: 'LabVIEW-Community-CI-CD/compare-vi-cli-action-fork',
+          owner: 'LabVIEW-Community-CI-CD',
+          serverUrl: 'https://github.com',
+          sourceSpec: path.join(os.tmpdir(), 'runtime-harness-0.1.0.tgz'),
+          consumerDir: repoRoot
+        },
+        { repoRoot, now: new Date('2026-03-10T08:11:00Z') }
+      ),
+    /--consumer-dir.*safe managed directory target|--consumer-dir.*managed directory root/i
+  );
+});
+
 test('helper utilities classify release modes deterministically', () => {
   assert.equal(__test.defaultDistTag('stable'), 'latest');
   assert.equal(__test.defaultDistTag('rc'), 'rc');
@@ -167,4 +271,8 @@ test('helper utilities classify release modes deterministically', () => {
   assert.equal(__test.detectSourceMode('dist/runtime-harness-0.1.0.tgz'), 'tarball');
   assert.equal(__test.looksLikeRegistryPackageSpec('@labview-community-ci-cd/runtime-harness@0.1.0'), true);
   assert.equal(__test.detectSourceMode('@labview-community-ci-cd/runtime-harness@0.1.0'), 'registry');
+  assert.throws(
+    () => __test.normalizePackageRelativePath(repoRoot, '../.git/config', 'package.json files entry'),
+    /must stay within the package directory/i
+  );
 });

@@ -5,6 +5,10 @@ Describe 'Run-VIHistory guidance helper' {
     . $script:RunVIHistoryScriptPath -ViPath $tempVi -StartRef 'HEAD' -MaxPairs 1 -HtmlReport:$false
   }
 
+  It 'points missing ViPath guidance at the PowerShell help switches' {
+    { & $script:RunVIHistoryScriptPath -StartRef 'HEAD' } | Should -Throw '*Use -ShowHelp (or -help / -h) for usage.*'
+  }
+
   It 'keeps npm alias wired for history:run -- --help' {
     Push-Location (Get-Location)
     try {
@@ -154,4 +158,3 @@ Describe 'Run-VIHistory guidance helper' {
     }
   }
 }
-

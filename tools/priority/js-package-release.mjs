@@ -2,6 +2,7 @@
 
 import fs from 'node:fs';
 import { cp, mkdir, readFile, readdir, rm, stat, writeFile } from 'node:fs/promises';
+import os from 'node:os';
 import path from 'node:path';
 import process from 'node:process';
 import { spawn } from 'node:child_process';
@@ -110,6 +111,11 @@ function resolvePath(repoRoot, value) {
   return path.isAbsolute(normalized) ? normalized : path.join(repoRoot, normalized);
 }
 
+function isPathWithin(basePath, candidatePath) {
+  const relativePath = path.relative(basePath, candidatePath);
+  return relativePath === '' || (!relativePath.startsWith('..') && !path.isAbsolute(relativePath));
+}
+
 function ensureArray(value) {
   return Array.isArray(value) ? value : [];
 }
@@ -126,6 +132,10 @@ function unique(values) {
     result.push(normalized);
   }
   return result;
+}
+
+function uniqueResolvedPaths(values) {
+  return unique(values.map((value) => path.resolve(String(value))));
 }
 
 function sanitizeExportTarget(target) {
@@ -277,13 +287,78 @@ async function findCaseInsensitiveMatch(dirPath, basename) {
   }
 }
 
+function normalizePackageRelativePath(packageDir, entry, label = 'package publish entry') {
+  const normalizedValue = normalizeText(entry).replace(/\\/g, '/');
+  if (!normalizedValue) {
+    return null;
+  }
+
+  const withoutDotPrefix = normalizedValue.replace(/^\.\/+/, '');
+  if (!withoutDotPrefix) {
+    return null;
+  }
+
+  if (path.isAbsolute(withoutDotPrefix) || /^[A-Za-z]:/.test(withoutDotPrefix)) {
+    throw new Error(`${label} '${entry}' must be relative to the package directory.`);
+  }
+
+  const segments = withoutDotPrefix.split('/').filter((segment) => segment && segment !== '.');
+  if (segments.length === 0) {
+    return null;
+  }
+  if (segments.includes('..')) {
+    throw new Error(`${label} '${entry}' must stay within the package directory.`);
+  }
+
+  const normalizedPath = segments.join('/');
+  const resolvedPath = path.resolve(packageDir, normalizedPath);
+  if (!isPathWithin(path.resolve(packageDir), resolvedPath)) {
+    throw new Error(`${label} '${entry}' must stay within the package directory.`);
+  }
+
+  return normalizedPath;
+}
+
+function resolveManagedDirectoryRoots(repoRoot) {
+  return uniqueResolvedPaths([
+    path.join(repoRoot, 'tests', 'results'),
+    path.join(repoRoot, '.tmp'),
+    os.tmpdir()
+  ]);
+}
+
+function assertSafeManagedDirectory(targetPath, { label, allowedRoots, repoRoot }) {
+  const normalizedLabel = normalizeText(label) || 'managed directory';
+  const resolvedTargetPath = path.resolve(String(targetPath));
+  const resolvedRepoRoot = path.resolve(repoRoot);
+  const resolvedHomeDir = path.resolve(os.homedir());
+  const filesystemRoot = path.parse(resolvedTargetPath).root;
+
+  if (
+    resolvedTargetPath === filesystemRoot ||
+    resolvedTargetPath === resolvedRepoRoot ||
+    resolvedTargetPath === resolvedHomeDir
+  ) {
+    throw new Error(`${normalizedLabel} '${targetPath}' is not a safe managed directory target.`);
+  }
+
+  const withinAllowedRoot = allowedRoots
+    .map((rootPath) => path.resolve(rootPath))
+    .some((rootPath) => isPathWithin(rootPath, resolvedTargetPath) && path.relative(rootPath, resolvedTargetPath) !== '');
+  if (!withinAllowedRoot) {
+    throw new Error(`${normalizedLabel} '${targetPath}' must stay within a managed directory root.`);
+  }
+
+  return resolvedTargetPath;
+}
+
 async function resolvePackagePublishEntries(packageDir, packageJson) {
   const explicitFiles = ensureArray(packageJson?.files);
   const entries = [];
 
   if (explicitFiles.length > 0) {
     for (const value of explicitFiles) {
-      const normalized = normalizeText(value);
+      const normalized = normalizePackageRelativePath(packageDir, value, 'package.json files entry');
       if (!normalized) {
         continue;
       }
@@ -299,7 +374,7 @@ async function resolvePackagePublishEntries(packageDir, packageJson) {
       packageJson?.types,
       ...collectExportTargets(packageJson?.exports)
     ]) {
-      const normalized = normalizeText(candidate).replace(/^\.\//, '');
+      const normalized = normalizePackageRelativePath(packageDir, candidate, 'package export entry');
       if (normalized) {
         entries.push(normalized);
       }
@@ -314,10 +389,10 @@ async function resolvePackagePublishEntries(packageDir, packageJson) {
   return unique(entries);
 }
 
-function createCopyPlan(entries) {
+function createCopyPlan(packageDir, entries) {
   const plan = [];
   for (const relativePath of entries) {
-    const normalized = normalizeText(relativePath).replace(/^\.\/+/, '');
+    const normalized = normalizePackageRelativePath(packageDir, relativePath);
     if (!normalized || normalized === 'package.json') {
       continue;
     }
@@ -722,21 +797,32 @@ function buildGithubOutputs(report, reportPath) {
 export async function stageJsPackageRelease(options = {}, deps = {}) {
   const context = await resolveJsPackageReleaseContext(options, deps);
   const repoRoot = deps.repoRoot ?? resolveRepoRoot();
-  const stagingDir = resolvePath(repoRoot, options.stagingDir);
-  const tarballDir = resolvePath(repoRoot, options.tarballDir);
-  if (!stagingDir) {
+  const stagingDirInput = resolvePath(repoRoot, options.stagingDir);
+  const tarballDirInput = resolvePath(repoRoot, options.tarballDir);
+  if (!stagingDirInput) {
     throw new Error('--staging-dir is required for --action stage.');
   }
-  if (!tarballDir) {
+  if (!tarballDirInput) {
     throw new Error('--tarball-dir is required for --action stage.');
   }
+  const allowedRoots = resolveManagedDirectoryRoots(repoRoot);
+  const stagingDir = assertSafeManagedDirectory(stagingDirInput, {
+    label: '--staging-dir',
+    allowedRoots,
+    repoRoot
+  });
+  const tarballDir = assertSafeManagedDirectory(tarballDirInput, {
+    label: '--tarball-dir',
+    allowedRoots,
+    repoRoot
+  });
 
   await rm(stagingDir, { recursive: true, force: true });
   await rm(tarballDir, { recursive: true, force: true });
   await mkdir(stagingDir, { recursive: true });
   await mkdir(tarballDir, { recursive: true });
 
-  const copyPlan = createCopyPlan(context.source.publishEntries);
+  const copyPlan = createCopyPlan(context.package.packageDir, context.source.publishEntries);
   const copiedFiles = await copyPlanEntries(context.package.packageDir, stagingDir, copyPlan);
   const licensePath = await ensureLicenseFile({
     packageDir: context.package.packageDir,
@@ -852,14 +938,19 @@ async function installPackageCandidate({
 export async function verifyJsPackageRelease(options = {}, deps = {}) {
   const context = await resolveJsPackageReleaseContext(options, deps);
   const repoRoot = deps.repoRoot ?? resolveRepoRoot();
-  const consumerDir = resolvePath(repoRoot, options.consumerDir);
+  const consumerDirInput = resolvePath(repoRoot, options.consumerDir);
   const sourceSpec = trimToNull(options.sourceSpec);
-  if (!consumerDir) {
+  if (!consumerDirInput) {
     throw new Error('--consumer-dir is required for --action verify.');
   }
   if (!sourceSpec) {
     throw new Error('--source-spec is required for --action verify.');
   }
+  const consumerDir = assertSafeManagedDirectory(consumerDirInput, {
+    label: '--consumer-dir',
+    allowedRoots: resolveManagedDirectoryRoots(repoRoot),
+    repoRoot
+  });
 
   await rm(consumerDir, { recursive: true, force: true });
   await mkdir(consumerDir, { recursive: true });
@@ -971,13 +1062,16 @@ export function isDirectExecution(scriptPath, moduleUrl = import.meta.url) {
 }
 
 export const __test = {
+  assertSafeManagedDirectory,
   buildScopedNpmrc,
   createCopyPlan,
   defaultDistTag,
   detectSourceMode,
   looksLikeRegistryPackageSpec,
+  normalizePackageRelativePath,
   deriveExportSpecifiers,
   parsePackageName,
+  resolveManagedDirectoryRoots,
   validateVersion
 };
 
