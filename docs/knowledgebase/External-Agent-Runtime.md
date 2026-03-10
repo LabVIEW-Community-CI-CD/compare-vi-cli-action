@@ -132,7 +132,9 @@ Worker bootstrap sequence:
    `node tools/npm/run-script.mjs priority:develop:sync -- --fork-remote <remote>`
 3. check out or reattach the lane branch
 4. run `pwsh -NoLogo -NoProfile -File tools/priority/bootstrap.ps1`
-5. refresh local handoff and standing-priority artifacts
+5. record the worker as `ready`
+6. attach the ready checkout onto the deterministic lane branch
+7. refresh local handoff and standing-priority artifacts
 
 ## Model Turn Contract
 
@@ -345,6 +347,10 @@ Initial extraction note:
 - the next worker lifecycle seam now bootstraps an allocated checkout into a
   ready lane state and persists `worker-ready.json` plus
   `workers-ready/*.json` metadata for resumed daemon turns
+- the next daemon seam now also attaches that ready checkout onto the lane's
+  deterministic issue branch and persists `worker-branch.json` plus
+  `workers-branch/*.json` metadata so later turns can resume from a real lane
+  workspace instead of a detached checkout
 - the compare-vi repository wrapper remains at
   `tools/priority/runtime-supervisor.mjs`
 - that wrapper now includes the first compare-vi scheduler cut: when no manual

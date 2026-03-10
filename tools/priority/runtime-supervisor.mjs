@@ -28,6 +28,7 @@ import { acquireWriterLease, defaultOwner, releaseWriterLease } from './agent-wr
 import { getRepoRoot } from './lib/branch-utils.mjs';
 import {
   bootstrapCompareviWorkerCheckout,
+  activateCompareviWorkerLane,
   prepareCompareviWorkerCheckout,
   resolveCompareviWorkerCheckoutPath
 } from './runtime-worker-checkout.mjs';
@@ -58,6 +59,24 @@ const PRIORITY_ISSUE_DIR = path.join('tests', 'results', '_agent', 'issue');
 function normalizeText(value) {
   if (value == null) return '';
   return String(value).trim();
+}
+
+function resolveCompareviIssueSlug(title) {
+  const normalized = normalizeText(title)
+    .normalize('NFKD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[^A-Za-z0-9]+/g, ' ')
+    .replace(/\s+/g, '-')
+    .replace(/-+/g, '-')
+    .toLowerCase()
+    .trim();
+  return normalized.replace(/^-+|-+$/g, '') || 'work';
+}
+
+function resolveCompareviIssueBranchName({ issueNumber, title, forkRemote, branchPrefix = 'issue' }) {
+  const slug = resolveCompareviIssueSlug(title);
+  const remotePrefix = normalizeText(forkRemote) ? `${normalizeText(forkRemote).toLowerCase()}-` : '';
+  return `${branchPrefix}/${remotePrefix}${issueNumber}-${slug}`;
 }
 
 async function readJsonIfPresent(filePath) {
@@ -126,6 +145,11 @@ function buildSchedulerDecisionFromSnapshot({
 
   const forkRemote = resolveForkRemoteForRepository(standingRepository, upstreamRepository);
   const laneId = [forkRemote, selectedIssue].filter(Boolean).join('-') || `issue-${selectedIssue}`;
+  const branch = resolveCompareviIssueBranchName({
+    issueNumber: selectedIssue,
+    title: snapshot.title,
+    forkRemote
+  });
   const reason =
     Number.isInteger(snapshot.mirrorOf?.number) && snapshot.mirrorOf.number !== snapshot.number
       ? `standing mirror #${snapshot.number} routes to upstream issue #${snapshot.mirrorOf.number}`
@@ -138,7 +162,8 @@ function buildSchedulerDecisionFromSnapshot({
     stepOptions: {
       lane: laneId,
       issue: selectedIssue,
-      forkRemote
+      forkRemote,
+      branch
     },
     artifacts: artifactPaths
   };
@@ -204,14 +229,17 @@ export const compareviRuntimeAdapter = createRuntimeAdapter({
   releaseLease: (leaseOptions) => releaseWriterLease(leaseOptions),
   planStep: (context) => planCompareviRuntimeStep(context),
   prepareWorker: (context) => prepareCompareviWorkerCheckout(context),
-  bootstrapWorker: (context) => bootstrapCompareviWorkerCheckout(context)
+  bootstrapWorker: (context) => bootstrapCompareviWorkerCheckout(context),
+  activateWorker: (context) => activateCompareviWorkerLane(context)
 });
 
 export const compareviRuntimeTest = {
+  activateCompareviWorkerLane,
   buildSchedulerDecisionFromSnapshot,
   bootstrapCompareviWorkerCheckout,
   planCompareviRuntimeStep,
   prepareCompareviWorkerCheckout,
+  resolveCompareviIssueBranchName,
   resolveCompareviWorkerCheckoutPath,
   resolveForkRemoteForRepository
 };

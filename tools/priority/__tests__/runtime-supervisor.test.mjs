@@ -5,7 +5,7 @@ import assert from 'node:assert/strict';
 import { mkdtemp, readFile, stat } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
-import { parseArgs, runRuntimeSupervisor } from '../runtime-supervisor.mjs';
+import { compareviRuntimeTest, parseArgs, runRuntimeSupervisor } from '../runtime-supervisor.mjs';
 
 async function readJson(filePath) {
   return JSON.parse(await readFile(filePath, 'utf8'));
@@ -103,6 +103,16 @@ test('parseArgs accepts runtime action, lane metadata, and lease options', () =>
   assert.equal(parsed.leaseScope, 'workspace');
   assert.equal(parsed.leaseRoot, '.tmp/leases');
   assert.equal(parsed.owner, 'agent@example');
+});
+
+test('comparevi branch resolver matches the repo issue branch naming contract', () => {
+  const branch = compareviRuntimeTest.resolveCompareviIssueBranchName({
+    issueNumber: 998,
+    title: 'Attach ready worker checkouts onto deterministic lane branches',
+    forkRemote: 'personal'
+  });
+
+  assert.equal(branch, 'issue/personal-998-attach-ready-worker-checkouts-onto-deterministic-lane-branches');
 });
 
 test('runRuntimeSupervisor step writes runtime state, lane, turn, event, and blocker artifacts', async () => {

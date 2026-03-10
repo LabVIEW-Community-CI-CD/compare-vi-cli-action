@@ -62,6 +62,16 @@ function makeAdapter(repoRoot, calls, options = {}) {
         bootstrapCommand: ['pwsh', '-NoLogo', '-NoProfile', '-File', 'tools/priority/bootstrap.ps1']
       };
     },
+    activateWorker: async ({ workerReady, schedulerDecision }) => ({
+      laneId: schedulerDecision.activeLane?.laneId,
+      checkoutPath: workerReady.checkoutPath,
+      branch: schedulerDecision.activeLane?.branch,
+      forkRemote: schedulerDecision.activeLane?.forkRemote,
+      status: 'attached',
+      source: 'test-adapter',
+      trackingRef: `${schedulerDecision.activeLane?.forkRemote}/${schedulerDecision.activeLane?.branch}`,
+      fetchedRemotes: ['upstream', 'origin']
+    }),
     acquireLease: async (leaseOptions) => {
       calls.push({ type: 'acquire', leaseOptions });
       return {
@@ -203,6 +213,8 @@ test('runRuntimeObserverLoop writes heartbeat and state across bounded linux cyc
   const workerHistory = await readdir(path.join(runtimeDir, 'workers'));
   const workerReady = await readJson(path.join(runtimeDir, 'worker-ready.json'));
   const workerReadyHistory = await readdir(path.join(runtimeDir, 'workers-ready'));
+  const workerBranch = await readJson(path.join(runtimeDir, 'worker-branch.json'));
+  const workerBranchHistory = await readdir(path.join(runtimeDir, 'workers-branch'));
   const state = await readJson(path.join(runtimeDir, 'runtime-state.json'));
 
   assert.equal(result.exitCode, 0);
@@ -226,15 +238,22 @@ test('runRuntimeObserverLoop writes heartbeat and state across bounded linux cyc
   assert.equal(workerReady.schema, 'priority/runtime-worker-ready@v1');
   assert.equal(workerReady.status, 'ready');
   assert.equal(workerReadyHistory.length, 1);
+  assert.equal(workerBranch.schema, 'priority/runtime-worker-branch@v1');
+  assert.equal(workerBranch.status, 'attached');
+  assert.equal(workerBranch.branch, 'issue/origin-977-fork-policy-portability');
+  assert.equal(workerBranchHistory.length, 1);
   assert.equal(heartbeat.activeLane.issue, 977);
   assert.equal(heartbeat.activeLane.worker.status, 'created');
   assert.equal(heartbeat.activeLane.workerReady.status, 'ready');
+  assert.equal(heartbeat.activeLane.workerBranch.status, 'attached');
   assert.equal(state.lifecycle.cycle, 2);
   assert.equal(state.activeLane.issue, 977);
   assert.equal(state.activeLane.worker.status, 'created');
   assert.equal(state.activeLane.workerReady.status, 'ready');
+  assert.equal(state.activeLane.workerBranch.status, 'attached');
   assert.equal(result.report.lastStep.worker.status, 'created');
   assert.equal(result.report.lastStep.workerReady.status, 'ready');
+  assert.equal(result.report.lastStep.workerBranch.status, 'attached');
   assert.equal(sleepCalls, 1);
   assert.deepEqual(
     calls.map((entry) => entry.type),

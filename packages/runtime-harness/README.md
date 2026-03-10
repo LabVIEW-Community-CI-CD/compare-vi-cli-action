@@ -55,6 +55,8 @@ Adapters may also provide:
   for the selected lane before the worker step runs
 - `bootstrapWorker(context)` to bootstrap that allocated checkout into a ready
   lane state before later worker cycles reuse it
+- `activateWorker(context)` to attach that ready checkout onto its deterministic
+  lane branch before real repo-native work runs
 
 The observer persists scheduler evidence under the runtime directory:
 
@@ -65,6 +67,8 @@ The observer persists scheduler evidence under the runtime directory:
 - `workers/*.json` for per-lane worker checkout state
 - `worker-ready.json` for the latest worker readiness state
 - `workers-ready/*.json` for per-lane worker readiness history
+- `worker-branch.json` for the latest worker branch-activation state
+- `workers-branch/*.json` for per-lane worker branch attachment history
 
 The compare-vi repository is the first adapter implementation.
 
