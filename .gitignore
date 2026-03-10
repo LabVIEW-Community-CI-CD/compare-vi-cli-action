@@ -61,6 +61,7 @@ tests/tmp-*/
 tests/tmp/
 tests/tmp-*.yml
 tests/results-*/
+.runtime-worktrees/
 home/
 delta.json
 

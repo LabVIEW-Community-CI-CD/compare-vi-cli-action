@@ -51,12 +51,16 @@ Adapters may also provide:
 
 - `planStep(context)` to turn repo-native backlog state into the next worker
   step before each daemon cycle
+- `prepareWorker(context)` to create or reuse a deterministic worker checkout
+  for the selected lane before the worker step runs
 
 The observer persists scheduler evidence under the runtime directory:
 
 - `scheduler-decision.json` for the latest decision
 - `scheduler-decisions/*.json` for per-cycle decision history
 - `observer-heartbeat.json` now includes the latest scheduler decision summary
+- `worker-checkout.json` for the latest prepared worker checkout
+- `workers/*.json` for per-lane worker checkout state
 
 The compare-vi repository is the first adapter implementation.
 

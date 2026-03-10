@@ -339,6 +339,9 @@ Initial extraction note:
 - the observer now calls an adapter scheduler hook before each worker turn and
   persists `scheduler-decision.json` plus per-cycle
   `scheduler-decisions/*.json` artifacts under the runtime directory
+- the observer/adapter surface now also has a worker preparation hook so the
+  daemon can create or reuse one deterministic checkout per selected lane and
+  persist `worker-checkout.json` plus `workers/*.json` metadata
 - the compare-vi repository wrapper remains at
   `tools/priority/runtime-supervisor.mjs`
 - that wrapper now includes the first compare-vi scheduler cut: when no manual

@@ -85,6 +85,13 @@ test('runRuntimeSupervisor executes through an injected adapter', async () => {
       epic: 967,
       forkRemote: 'origin',
       branch: 'issue/origin-977-fork-policy-portability',
+      worker: {
+        laneId: 'origin-977',
+        checkoutPath: path.join(repoRoot, 'workers', 'origin-977'),
+        checkoutRoot: path.join(repoRoot, 'workers'),
+        status: 'created',
+        ref: 'upstream/develop'
+      },
       blockerClass: 'ci',
       reason: 'hosted checks are red'
     },
@@ -98,6 +105,8 @@ test('runRuntimeSupervisor executes through an injected adapter', async () => {
   assert.equal(result.exitCode, 0);
   assert.equal(result.report.runtimeAdapter, 'test-adapter');
   assert.equal(state.runtimeAdapter, 'test-adapter');
+  assert.equal(state.activeLane.worker.checkoutPath, path.join(repoRoot, 'workers', 'origin-977'));
+  assert.equal(result.report.worker.status, 'created');
   assert.deepEqual(
     adapterCalls.map((entry) => entry.type),
     ['acquire', 'release']
