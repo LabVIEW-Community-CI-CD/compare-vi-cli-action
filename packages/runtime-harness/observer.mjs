@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 
-import { mkdir, readFile, writeFile } from 'node:fs/promises';
+import { mkdir, open, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import process from 'node:process';
 import {
@@ -20,6 +20,8 @@ export const OBSERVER_HEARTBEAT_SCHEMA = 'priority/runtime-observer-heartbeat@v1
 export const DEFAULT_POLL_INTERVAL_SECONDS = 60;
 export const SCHEDULER_DECISION_OUTCOMES = new Set(['selected', 'idle', 'blocked']);
 const SCHEDULER_STEP_OPTION_KEYS = ['lane', 'issue', 'epic', 'forkRemote', 'branch', 'prUrl', 'blockerClass', 'reason'];
+const DEFAULT_RECENT_EVENTS_LIMIT = 5;
+const MAX_RECENT_EVENTS_BYTES = 64 * 1024;
 
 function printUsage() {
   console.log('Usage: node runtime-daemon [options]');
@@ -158,18 +160,42 @@ async function writeJson(filePath, payload) {
   return resolved;
 }
 
-async function readRecentEvents(eventsPath, limit = 5) {
+async function readRecentEvents(eventsPath, limit = DEFAULT_RECENT_EVENTS_LIMIT) {
+  let handle;
   try {
-    const raw = await readFile(path.resolve(eventsPath), 'utf8');
-    const events = raw
-      .split(/\r?\n/)
-      .map((line) => line.trim())
-      .filter(Boolean)
-      .map((line) => JSON.parse(line));
-    return events.slice(Math.max(0, events.length - limit));
+    handle = await open(path.resolve(eventsPath), 'r');
+    const stats = await handle.stat();
+    if (!Number.isFinite(stats.size) || stats.size <= 0) {
+      return [];
+    }
+
+    const bytesToRead = Math.min(stats.size, MAX_RECENT_EVENTS_BYTES);
+    const startOffset = Math.max(0, stats.size - bytesToRead);
+    const buffer = Buffer.alloc(bytesToRead);
+    const { bytesRead } = await handle.read(buffer, 0, bytesToRead, startOffset);
+    const raw = buffer.toString('utf8', 0, bytesRead);
+    const lines = raw.split(/\r?\n/);
+    if (startOffset > 0) {
+      lines.shift();
+    }
+
+    const events = [];
+    for (let index = lines.length - 1; index >= 0 && events.length < limit; index -= 1) {
+      const line = lines[index]?.trim();
+      if (!line) continue;
+      try {
+        events.push(JSON.parse(line));
+      } catch {
+        continue;
+      }
+    }
+
+    return events.reverse();
   } catch (error) {
     if (error?.code === 'ENOENT') return [];
     throw error;
+  } finally {
+    await handle?.close();
   }
 }
 
@@ -1299,42 +1325,6 @@ export async function runRuntimeObserverLoop(options = {}, deps = {}) {
           lanePath: workerBranchArtifacts.lanePath
         };
       }
-      if (workerBranch?.status === 'blocked') {
-        const heartbeatNow = nowFactory();
-        await writeJson(heartbeatPath, {
-          schema: OBSERVER_HEARTBEAT_SCHEMA,
-          generatedAt: toIso(heartbeatNow),
-          runtimeAdapter: adapter.name,
-          repository: report.repository,
-          platform,
-          cyclesCompleted: report.cyclesCompleted,
-          outcome: 'worker-branch-blocked',
-          stopRequested: false,
-          activeLane: buildObservedActiveLane(schedulerDecision, preparedWorker, workerReady, workerBranch, taskPacket),
-          schedulerDecision: report.lastDecision,
-          artifacts: buildObserverArtifacts({
-            runtimeArtifactPaths,
-            workerArtifacts,
-            workerReadyArtifacts,
-            workerBranchArtifacts,
-            schedulerArtifacts,
-            taskPacketArtifacts
-          })
-        });
-        report.status = 'blocked';
-        report.outcome = 'worker-branch-blocked';
-        report.lastStep = {
-          exitCode: 15,
-          outcome: 'worker-branch-blocked',
-          statePath: null,
-          turnPath: null,
-          worker: preparedWorker,
-          workerReady,
-          workerBranch,
-          taskPacket
-        };
-        return { exitCode: 15, report };
-      }
     }
 
     if (schedulerDecision.outcome === 'selected') {
@@ -1366,6 +1356,43 @@ export async function runRuntimeObserverLoop(options = {}, deps = {}) {
         latestPath: persistedTaskPacket.latestPath,
         historyPath: persistedTaskPacket.historyPath
       };
+    }
+
+    if (workerBranch?.status === 'blocked') {
+      const heartbeatNow = nowFactory();
+      await writeJson(heartbeatPath, {
+        schema: OBSERVER_HEARTBEAT_SCHEMA,
+        generatedAt: toIso(heartbeatNow),
+        runtimeAdapter: adapter.name,
+        repository: report.repository,
+        platform,
+        cyclesCompleted: report.cyclesCompleted,
+        outcome: 'worker-branch-blocked',
+        stopRequested: false,
+        activeLane: buildObservedActiveLane(schedulerDecision, preparedWorker, workerReady, workerBranch, taskPacket),
+        schedulerDecision: report.lastDecision,
+        artifacts: buildObserverArtifacts({
+          runtimeArtifactPaths,
+          workerArtifacts,
+          workerReadyArtifacts,
+          workerBranchArtifacts,
+          schedulerArtifacts,
+          taskPacketArtifacts
+        })
+      });
+      report.status = 'blocked';
+      report.outcome = 'worker-branch-blocked';
+      report.lastStep = {
+        exitCode: 15,
+        outcome: 'worker-branch-blocked',
+        statePath: null,
+        turnPath: null,
+        worker: preparedWorker,
+        workerReady,
+        workerBranch,
+        taskPacket
+      };
+      return { exitCode: 15, report };
     }
 
     const stepResult = await runRuntimeWorkerStep(

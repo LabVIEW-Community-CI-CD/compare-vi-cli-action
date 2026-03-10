@@ -2,7 +2,7 @@
 
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { access, mkdtemp, readFile, readdir } from 'node:fs/promises';
+import { access, mkdtemp, readFile, readdir, writeFile } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import { createRuntimeAdapter } from '../index.mjs';
@@ -25,6 +25,7 @@ async function pathExists(filePath) {
 function makeAdapter(repoRoot, calls, options = {}) {
   const bootstrapMode = options.bootstrapMode ?? 'ready';
   const plannerMode = options.plannerMode ?? 'manual';
+  const activateMode = options.activateMode ?? 'attached';
   return createRuntimeAdapter({
     name: 'test-adapter',
     resolveRepoRoot: () => repoRoot,
@@ -86,16 +87,29 @@ function makeAdapter(repoRoot, calls, options = {}) {
         bootstrapCommand: ['pwsh', '-NoLogo', '-NoProfile', '-File', 'tools/priority/bootstrap.ps1']
       };
     },
-    activateWorker: async ({ workerReady, schedulerDecision }) => ({
-      laneId: schedulerDecision.activeLane?.laneId,
-      checkoutPath: workerReady.checkoutPath,
-      branch: schedulerDecision.activeLane?.branch,
-      forkRemote: schedulerDecision.activeLane?.forkRemote,
-      status: 'attached',
-      source: 'test-adapter',
-      trackingRef: `${schedulerDecision.activeLane?.forkRemote}/${schedulerDecision.activeLane?.branch}`,
-      fetchedRemotes: ['upstream', 'origin']
-    }),
+    activateWorker: async ({ workerReady, schedulerDecision }) => {
+      if (activateMode === 'blocked') {
+        return {
+          laneId: schedulerDecision.activeLane?.laneId,
+          checkoutPath: workerReady.checkoutPath,
+          branch: schedulerDecision.activeLane?.branch,
+          forkRemote: schedulerDecision.activeLane?.forkRemote,
+          status: 'blocked',
+          source: 'test-adapter',
+          reason: 'activation blocked'
+        };
+      }
+      return {
+        laneId: schedulerDecision.activeLane?.laneId,
+        checkoutPath: workerReady.checkoutPath,
+        branch: schedulerDecision.activeLane?.branch,
+        forkRemote: schedulerDecision.activeLane?.forkRemote,
+        status: 'attached',
+        source: 'test-adapter',
+        trackingRef: `${schedulerDecision.activeLane?.forkRemote}/${schedulerDecision.activeLane?.branch}`,
+        fetchedRemotes: ['upstream', 'origin']
+      };
+    },
     buildTaskPacket: async ({ schedulerDecision, cycle, recentEvents }) => ({
       source: 'test-adapter',
       objective: {
@@ -432,6 +446,54 @@ test('runRuntimeObserverLoop records worker-ready-blocked when bootstrap returns
   assert.deepEqual(calls, []);
 });
 
+test('runRuntimeObserverLoop still writes a task packet when worker branch activation blocks', async () => {
+  const runtimeDir = await mkdtemp(path.join(os.tmpdir(), 'runtime-observer-branch-blocked-'));
+  const repoRoot = await mkdtemp(path.join(os.tmpdir(), 'runtime-observer-branch-blocked-root-'));
+  const calls = [];
+  let tick = 0;
+
+  const result = await runRuntimeObserverLoop(
+    {
+      repo: 'example/repo',
+      runtimeDir,
+      lane: 'origin-1005',
+      issue: 1005,
+      epic: 958,
+      forkRemote: 'origin',
+      branch: 'issue/origin-1005-runtime-task-packets',
+      owner: 'agent@example',
+      pollIntervalSeconds: 0,
+      maxCycles: 1
+    },
+    {
+      platform: 'linux',
+      adapter: makeAdapter(repoRoot, calls, { activateMode: 'blocked' }),
+      nowFactory: () => new Date(Date.UTC(2026, 2, 10, 16, 35, tick++)),
+      sleepFn: async () => {
+        throw new Error('sleep should not run when worker branch activation is blocked');
+      }
+    }
+  );
+
+  const heartbeat = await readJson(path.join(runtimeDir, 'observer-heartbeat.json'));
+  const workerBranch = await readJson(path.join(runtimeDir, 'worker-branch.json'));
+  const taskPacket = await readJson(path.join(runtimeDir, 'task-packet.json'));
+  const taskPacketHistory = await readdir(path.join(runtimeDir, 'task-packets'));
+
+  assert.equal(result.exitCode, 15);
+  assert.equal(result.report.status, 'blocked');
+  assert.equal(result.report.outcome, 'worker-branch-blocked');
+  assert.equal(result.report.lastStep.workerBranch.status, 'blocked');
+  assert.equal(taskPacket.status, 'blocked');
+  assert.equal(taskPacket.objective.summary, 'Execute issue #1005');
+  assert.equal(taskPacketHistory.length, 1);
+  assert.equal(heartbeat.outcome, 'worker-branch-blocked');
+  assert.equal(heartbeat.activeLane.workerBranch.status, 'blocked');
+  assert.equal(heartbeat.activeLane.taskPacket.objective.summary, 'Execute issue #1005');
+  assert.equal(heartbeat.artifacts.taskPacketPath, path.join(runtimeDir, 'task-packet.json'));
+  assert.equal(workerBranch.status, 'blocked');
+});
+
 test('runRuntimeObserverLoop records worker-bootstrap-failed heartbeat when bootstrap throws', async () => {
   const runtimeDir = await mkdtemp(path.join(os.tmpdir(), 'runtime-observer-bootstrap-failed-'));
   const repoRoot = await mkdtemp(path.join(os.tmpdir(), 'runtime-observer-bootstrap-failed-root-'));
@@ -476,4 +538,56 @@ test('runRuntimeObserverLoop records worker-bootstrap-failed heartbeat when boot
   assert.equal(workerCheckout.status, 'created');
   assert.equal(await pathExists(workerReadyPath), false);
   assert.deepEqual(calls, []);
+});
+
+test('runRuntimeObserverLoop reads only the recent valid event tail', async () => {
+  const runtimeDir = await mkdtemp(path.join(os.tmpdir(), 'runtime-observer-recent-events-'));
+  const repoRoot = await mkdtemp(path.join(os.tmpdir(), 'runtime-observer-recent-events-root-'));
+  const calls = [];
+  let tick = 0;
+  const eventsPath = path.join(runtimeDir, 'runtime-events.ndjson');
+  const largePayload = 'x'.repeat(256);
+  const lines = [];
+  for (let index = 0; index < 300; index += 1) {
+    lines.push(JSON.stringify({
+      sequence: index,
+      kind: 'info',
+      message: `event-${index}`,
+      payload: largePayload
+    }));
+  }
+  lines.splice(10, 0, '{"sequence": "bad"');
+  await writeFile(eventsPath, `${lines.join('\n')}\n`, 'utf8');
+
+  const result = await runRuntimeObserverLoop(
+    {
+      repo: 'example/repo',
+      runtimeDir,
+      lane: 'origin-1006',
+      issue: 1006,
+      epic: 958,
+      forkRemote: 'origin',
+      branch: 'issue/origin-1006-runtime-events-tail',
+      owner: 'agent@example',
+      pollIntervalSeconds: 0,
+      maxCycles: 1
+    },
+    {
+      platform: 'linux',
+      adapter: makeAdapter(repoRoot, calls),
+      nowFactory: () => new Date(Date.UTC(2026, 2, 10, 16, 45, tick++)),
+      sleepFn: async () => {
+        throw new Error('sleep should not run when maxCycles=1');
+      }
+    }
+  );
+
+  const taskPacket = await readJson(path.join(runtimeDir, 'task-packet.json'));
+
+  assert.equal(result.exitCode, 0);
+  assert.deepEqual(
+    taskPacket.recentEvents.map((event) => event.sequence),
+    [295, 296, 297, 298, 299]
+  );
+  assert.equal(taskPacket.evidence.adapter.recentEventCount, 5);
 });
