@@ -1457,6 +1457,84 @@ if (-not [string]::IsNullOrWhiteSpace($GitHubOutputPath)) {
     }
   }
 
+  It 'does not claim develop as the VI history baseline when the repo uses main' {
+    $repoRoot = Join-Path $TestDrive 'fast-loop-linux-main-guard'
+    New-HarnessRepo -RootPath $repoRoot
+
+    Push-Location $repoRoot
+    try {
+      & git init --initial-branch=main | Out-Null
+      & git config user.email 'agent@example.com'
+      & git config user.name 'Agent Runner'
+      & git add .
+      & git commit -m 'initial harness' | Out-Null
+      & git switch -c 'consumer/feature-history' | Out-Null
+      Set-Content -LiteralPath (Join-Path $repoRoot 'branch-history.txt') -Value 'feature-1' -Encoding utf8
+      & git add branch-history.txt
+      & git commit -m 'branch commit 1' | Out-Null
+
+      $resultsRoot = Join-Path $repoRoot 'tests/results/local-parity'
+      $tracePath = Join-Path $resultsRoot 'linux-trace.log'
+      $env:FASTLOOP_LINUX_TRACE_PATH = $tracePath
+
+      $output = & pwsh -NoLogo -NoProfile -File (Join-Path $repoRoot 'tools' 'Test-DockerDesktopFastLoop.ps1') `
+        -ResultsRoot $resultsRoot `
+        -LaneScope linux `
+        -HistoryScenarioSet none `
+        -VIHistorySourceBranch 'consumer/feature-history' `
+        -VIHistorySourceBranchCommitLimit 4 2>&1
+      $LASTEXITCODE | Should -Be 0 -Because ($output -join "`n")
+
+      Test-Path -LiteralPath $tracePath -PathType Leaf | Should -BeTrue
+      $summaryPath = Get-LatestFastLoopSummary -ResultsRoot $resultsRoot
+      $summary = Get-Content -LiteralPath $summaryPath -Raw | ConvertFrom-Json -Depth 12
+      $summary.viHistorySourceBranch.guard.branchRef | Should -Be 'consumer/feature-history'
+      $summary.viHistorySourceBranch.guard.baselineRef | Should -BeNullOrEmpty
+      $summary.viHistorySourceBranch.guard.commitCount | Should -Be 2
+      $summary.viHistorySourceBranch.guard.status | Should -Be 'ok'
+    } finally {
+      Remove-Item Env:FASTLOOP_LINUX_TRACE_PATH -ErrorAction SilentlyContinue
+      Pop-Location | Out-Null
+    }
+  }
+
+  It 'skips the VI history branch guard when only the windows lane is requested' {
+    $repoRoot = Join-Path $TestDrive 'fast-loop-windows-skip-history-guard'
+    New-HarnessRepo -RootPath $repoRoot
+
+    Push-Location $repoRoot
+    try {
+      & git init --initial-branch=develop | Out-Null
+      & git config user.email 'agent@example.com'
+      & git config user.name 'Agent Runner'
+      & git add .
+      & git commit -m 'initial harness' | Out-Null
+      & git switch -c 'consumer/feature-history' | Out-Null
+      1..3 | ForEach-Object {
+        Set-Content -LiteralPath (Join-Path $repoRoot 'branch-history.txt') -Value ("feature-{0}" -f $_) -Encoding utf8
+        & git add branch-history.txt
+        & git commit -m ("branch commit {0}" -f $_) | Out-Null
+      }
+
+      $resultsRoot = Join-Path $repoRoot 'tests/results/local-parity'
+      $output = & pwsh -NoLogo -NoProfile -File (Join-Path $repoRoot 'tools' 'Test-DockerDesktopFastLoop.ps1') `
+        -ResultsRoot $resultsRoot `
+        -LaneScope windows `
+        -HistoryScenarioSet none `
+        -VIHistorySourceBranch 'consumer/feature-history' `
+        -VIHistorySourceBranchCommitLimit 2 2>&1
+      $LASTEXITCODE | Should -Be 0 -Because ($output -join "`n")
+
+      $summaryPath = Get-LatestFastLoopSummary -ResultsRoot $resultsRoot
+      $summary = Get-Content -LiteralPath $summaryPath -Raw | ConvertFrom-Json -Depth 12
+      $summary.viHistorySourceBranch.guard.status | Should -Be 'skipped'
+      $summary.viHistorySourceBranch.guard.reason | Should -Be 'linux-lane-disabled'
+      $summary.viHistorySourceBranch.guard.commitCount | Should -BeNullOrEmpty
+    } finally {
+      Pop-Location | Out-Null
+    }
+  }
+
   It 'binds distinct windows history report paths for each smoke scenario step' {
     $repoRoot = Join-Path $TestDrive 'fast-loop-history-report-binding'
     New-HarnessRepo -RootPath $repoRoot

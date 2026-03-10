@@ -821,6 +821,11 @@ exit 0
     $capture.runtimeInjection.viHistory.maxPairs | Should -Be 2
     $capture.runtimeInjection.viHistory.branchBudget.commitCount | Should -Be 1
     $capture.runtimeInjection.viHistory.branchBudget.status | Should -Be 'ok'
+    $capture.runtimeInjection.viHistory.gitInjection.enabled | Should -BeTrue
+    $capture.runtimeInjection.viHistory.gitInjection.strategy | Should -Be 'git-directory'
+    $capture.runtimeInjection.viHistory.gitInjection.dotGitHostPath | Should -Be (Resolve-Path -LiteralPath (Join-Path $repoRoot '.git')).Path
+    $capture.runtimeInjection.viHistory.gitInjection.gitDirContainerPath | Should -Be '/opt/comparevi/source/.git'
+    $capture.runtimeInjection.viHistory.gitInjection.gitWorkTreeContainerPath | Should -Be '/opt/comparevi/source'
     $capture.containerName | Should -Match '^ni-lnx-compare-single-container-smoke-[a-f0-9]{8}$'
 
     Test-Path -LiteralPath ([string]$capture.reportAnalysis.reportPathExtracted) -PathType Leaf | Should -BeTrue
@@ -830,6 +835,8 @@ exit 0
     @($capture.runtimeInjection.envNames) | Should -Contain 'COMPAREVI_VI_HISTORY_SUITE_MANIFEST'
     @($capture.runtimeInjection.envNames) | Should -Contain 'COMPAREVI_VI_HISTORY_CONTEXT'
     @($capture.runtimeInjection.envNames) | Should -Contain 'COMPAREVI_VI_HISTORY_BOOTSTRAP_MARKER'
+    @($capture.runtimeInjection.envNames) | Should -Contain 'COMPAREVI_VI_HISTORY_GIT_DIR'
+    @($capture.runtimeInjection.envNames) | Should -Contain 'COMPAREVI_VI_HISTORY_GIT_WORK_TREE'
     $capture.runtimeInjection.mounts.Count | Should -BeGreaterThan 1
 
   }
@@ -913,6 +920,91 @@ exit 0
     $capture.runtimeInjection.viHistory.branchBudget.status | Should -Be 'ok'
 
     $capture.runtimeInjection.viHistory.resultsHostPath | Should -Be (Resolve-Path -LiteralPath $resultsDir).Path
+  }
+
+  It 'preserves linked-worktree git injection for viHistory bootstrap contracts' {
+    $work = Join-Path $TestDrive 'compare-runtime-vi-history-worktree'
+    New-Item -ItemType Directory -Path $work | Out-Null
+    & $script:NewDockerStub -WorkRoot $work | Out-Null
+
+    Set-Item Env:DOCKER_STUB_LOG (Join-Path $work 'docker-log.ndjson')
+    Set-Item Env:DOCKER_STUB_OSTYPE 'linux'
+    Set-Item Env:DOCKER_STUB_CONTEXT 'desktop-linux'
+    Set-Item Env:DOCKER_STUB_IMAGE_EXISTS '1'
+    Set-Item Env:DOCKER_STUB_RUN_EXIT_CODE '1'
+    Set-Item Env:DOCKER_STUB_RUN_STDOUT 'CreateComparisonReport completed with diff.'
+    Set-Item Env:DOCKER_STUB_RUN_WRITE_REPORT '1'
+    Set-Item Env:DOCKER_STUB_RUN_WRITE_HISTORY_SUITE '1'
+
+    $primaryRepoRoot = Join-Path $work 'primary-repo'
+    $linkedWorktreeRoot = Join-Path $work 'linked-worktree'
+    $baselineSha = ''
+    New-Item -ItemType Directory -Path $primaryRepoRoot -Force | Out-Null
+    Push-Location $primaryRepoRoot
+    try {
+      & git init --initial-branch=develop | Out-Null
+      & git config user.email 'agent@example.com'
+      & git config user.name 'Agent Runner'
+      $targetDir = Join-Path $primaryRepoRoot 'src'
+      New-Item -ItemType Directory -Path $targetDir -Force | Out-Null
+      $targetPath = Join-Path $targetDir 'Sample.vi'
+      Set-Content -LiteralPath $targetPath -Value 'base' -Encoding utf8
+      & git add .
+      & git commit -m 'initial history repo' | Out-Null
+      $baselineSha = [string](& git rev-parse HEAD | Select-Object -Last 1)
+      & git worktree add -b 'consumer/branch' $linkedWorktreeRoot | Out-Null
+    } finally {
+      Pop-Location | Out-Null
+    }
+
+    Push-Location $linkedWorktreeRoot
+    try {
+      $linkedTargetPath = Join-Path $linkedWorktreeRoot 'src' 'Sample.vi'
+      Set-Content -LiteralPath $linkedTargetPath -Value 'head' -Encoding utf8
+      & git add src/Sample.vi
+      & git commit -m 'update sample vi' | Out-Null
+    } finally {
+      Pop-Location | Out-Null
+    }
+
+    $resultsDir = Join-Path $work 'vi-history-results'
+    $runtimeContract = Join-Path $work 'runtime-bootstrap.json'
+    $bootstrapScript = Join-Path (Split-Path -Parent $script:RunnerScript) 'NILinux-VIHistorySuiteBootstrap.sh'
+    $contract = [ordered]@{
+      schema = 'ni-linux-runtime-bootstrap/v1'
+      mode = 'single-container-smoke'
+      branchRef = 'consumer/branch'
+      maxCommitCount = 4
+      scriptPath = $bootstrapScript
+      viHistory = [ordered]@{
+        repoPath = $linkedWorktreeRoot
+        targetPath = 'src/Sample.vi'
+        resultsPath = $resultsDir
+        baselineRef = $baselineSha
+        maxPairs = 2
+      }
+    }
+    $contract | ConvertTo-Json -Depth 8 | Set-Content -LiteralPath $runtimeContract -Encoding utf8
+
+    $output = & pwsh -NoLogo -NoProfile -File $script:RunnerScript `
+      -RuntimeEngineReadyTimeoutSeconds 5 `
+      -RuntimeEngineReadyPollSeconds 1 `
+      -RuntimeBootstrapContractPath $runtimeContract 2>&1
+    $LASTEXITCODE | Should -Be 1 -Because ($output -join "`n")
+
+    $capturePath = Join-Path $resultsDir 'ni-linux-container-capture.json'
+    Test-Path -LiteralPath $capturePath -PathType Leaf | Should -BeTrue
+    $capture = Get-Content -LiteralPath $capturePath -Raw | ConvertFrom-Json -Depth 12
+    $capture.runtimeInjection.viHistory.gitInjection.enabled | Should -BeTrue
+    $capture.runtimeInjection.viHistory.gitInjection.strategy | Should -Be 'git-worktree-file'
+    $capture.runtimeInjection.viHistory.gitInjection.dotGitHostPath | Should -Be (Resolve-Path -LiteralPath (Join-Path $linkedWorktreeRoot '.git')).Path
+    $capture.runtimeInjection.viHistory.gitInjection.commonGitHostPath | Should -Be (Resolve-Path -LiteralPath (Join-Path $primaryRepoRoot '.git')).Path
+    $capture.runtimeInjection.viHistory.gitInjection.commonGitContainerPath | Should -Be '/opt/comparevi/git/common'
+    $capture.runtimeInjection.viHistory.gitInjection.gitDirContainerPath | Should -Match '^/opt/comparevi/git/common/worktrees/.+$'
+    $capture.runtimeInjection.viHistory.gitInjection.gitWorkTreeContainerPath | Should -Be '/opt/comparevi/source'
+    @($capture.runtimeInjection.envNames) | Should -Contain 'COMPAREVI_VI_HISTORY_GIT_DIR'
+    @($capture.runtimeInjection.envNames) | Should -Contain 'COMPAREVI_VI_HISTORY_GIT_WORK_TREE'
+    @($capture.runtimeInjection.mounts | Where-Object { $_.hostPath -eq (Resolve-Path -LiteralPath (Join-Path $primaryRepoRoot '.git')).Path }).Count | Should -Be 1
   }
 
   It 'emits head-first refs for direct single-pair bootstrap finalization' {

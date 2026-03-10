@@ -8,6 +8,9 @@ comparevi_vi_history_json_escape() {
 }
 
 comparevi_vi_history_git() {
+  if [ -n "${COMPAREVI_VI_HISTORY_REPO_PATH:-}" ]; then
+    set -- -c "safe.directory=${COMPAREVI_VI_HISTORY_REPO_PATH}" "$@"
+  fi
   if [ -n "${COMPAREVI_VI_HISTORY_GIT_DIR:-}" ]; then
     git --git-dir="${COMPAREVI_VI_HISTORY_GIT_DIR}" --work-tree="${COMPAREVI_VI_HISTORY_GIT_WORK_TREE:-${COMPAREVI_VI_HISTORY_REPO_PATH}}" "$@"
     return $?

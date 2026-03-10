@@ -263,4 +263,87 @@ Describe 'Render-VIHistoryReport.ps1' -Tag 'Unit' {
         $historySummary.target.branchBudget.maxCommitCount | Should -Be 64
         $historySummary.target.branchBudget.commitCount | Should -Be 3
     }
+
+    It 'preserves branch budget numeric fields when the source object is a hashtable' {
+        $resultsRoot = Join-Path $TestDrive 'history-results-hashtable'
+        New-Item -ItemType Directory -Path $resultsRoot -Force | Out-Null
+        $manifestPath = Join-Path $resultsRoot 'aggregate-manifest.json'
+        $contextPath = Join-Path $resultsRoot 'history-context.json'
+        @'
+{
+  "schema": "vi-compare/history-suite@v1",
+  "generatedAt": "2026-03-10T00:00:00Z",
+  "targetPath": "fixtures/vi-attr/Base.vi",
+  "requestedStartRef": "HEAD^",
+  "startRef": "HEAD",
+  "requestedModes": ["default"],
+  "executedModes": ["default"],
+  "stats": {
+    "modes": 1,
+    "processed": 0,
+    "diffs": 0,
+    "signalDiffs": 0,
+    "noiseCollapsed": 0,
+    "missing": 0,
+    "errors": 0,
+    "categoryCounts": {},
+    "bucketCounts": {}
+  },
+  "modes": [
+    {
+      "name": "default",
+      "slug": "default",
+      "status": "ok",
+      "flags": [],
+      "manifestPath": "default/manifest.json",
+      "resultsDir": "default",
+      "stats": {
+        "processed": 0,
+        "diffs": 0,
+        "signalDiffs": 0,
+        "noiseCollapsed": 0,
+        "missing": 0,
+        "errors": 0,
+        "categoryCounts": {},
+        "bucketCounts": {}
+      }
+    }
+  ],
+  "status": "ok"
+}
+'@ | Set-Content -LiteralPath $manifestPath -Encoding utf8
+        @'
+{
+  "schema": "vi-compare/history-context@v1",
+  "generatedAt": "2026-03-10T00:00:00Z",
+  "targetPath": "fixtures/vi-attr/Base.vi",
+  "requestedStartRef": "HEAD^",
+  "startRef": "HEAD",
+  "comparisons": []
+}
+'@ | Set-Content -LiteralPath $contextPath -Encoding utf8
+        $markdownPath = Join-Path $resultsRoot 'history-report.md'
+
+        . $script:scriptPath `
+            -ManifestPath $manifestPath `
+            -HistoryContextPath $contextPath `
+            -OutputDir $resultsRoot `
+            -MarkdownPath $markdownPath
+
+        $facade = New-BranchBudgetFacade -BranchBudget @{
+            sourceBranchRef = 'feature/history-source'
+            baselineRef = 'main'
+            maxCommitCount = 64
+            commitCount = 3
+            status = 'ok'
+            reason = 'within-limit'
+        }
+
+        $facade.sourceBranchRef | Should -Be 'feature/history-source'
+        $facade.baselineRef | Should -Be 'main'
+        $facade.maxCommitCount | Should -Be 64
+        $facade.commitCount | Should -Be 3
+        $facade.status | Should -Be 'ok'
+        $facade.reason | Should -Be 'within-limit'
+    }
 }

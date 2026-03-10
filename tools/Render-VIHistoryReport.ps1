@@ -258,6 +258,39 @@ function Get-IntPropertyValue {
   return $Default
 }
 
+function Get-NullableIntPropertyValue {
+  param(
+    [AllowNull()][object]$InputObject,
+    [Parameter(Mandatory)][string]$Name
+  )
+
+  $value = Get-ObjectPropertyValue -InputObject $InputObject -Name $Name -Default $null
+  if ($null -eq $value) { return $null }
+
+  try {
+    return [int]$value
+  } catch {
+    return $null
+  }
+}
+
+function New-BranchBudgetFacade {
+  param([AllowNull()][object]$BranchBudget)
+
+  if ($null -eq $BranchBudget) {
+    return $null
+  }
+
+  return [ordered]@{
+    sourceBranchRef = [string](Coalesce (Get-ObjectPropertyValue -InputObject $BranchBudget -Name 'sourceBranchRef') '')
+    baselineRef = Get-ObjectPropertyValue -InputObject $BranchBudget -Name 'baselineRef'
+    maxCommitCount = Get-NullableIntPropertyValue -InputObject $BranchBudget -Name 'maxCommitCount'
+    commitCount = Get-NullableIntPropertyValue -InputObject $BranchBudget -Name 'commitCount'
+    status = [string](Coalesce (Get-ObjectPropertyValue -InputObject $BranchBudget -Name 'status') '')
+    reason = [string](Coalesce (Get-ObjectPropertyValue -InputObject $BranchBudget -Name 'reason') '')
+  }
+}
+
 function Get-StringArray {
   param([object]$Value)
 
@@ -978,17 +1011,7 @@ $executedModeDisplay = if ($executedModes.Count -gt 0) { [string]::Join(', ', $e
 $comparisons = @($historyContext.comparisons)
 $branchBudget = Get-ObjectPropertyValue -InputObject $manifest -Name 'branchBudget'
 $sourceBranchRef = [string](Coalesce (Get-ObjectPropertyValue -InputObject $branchBudget -Name 'sourceBranchRef') '')
-$branchBudgetFacade = $null
-if ($branchBudget) {
-  $branchBudgetFacade = [ordered]@{
-    sourceBranchRef = $sourceBranchRef
-    baselineRef = Get-ObjectPropertyValue -InputObject $branchBudget -Name 'baselineRef'
-    maxCommitCount = if ($branchBudget.PSObject.Properties['maxCommitCount'] -and $null -ne $branchBudget.maxCommitCount) { [int]$branchBudget.maxCommitCount } else { $null }
-    commitCount = if ($branchBudget.PSObject.Properties['commitCount'] -and $null -ne $branchBudget.commitCount) { [int]$branchBudget.commitCount } else { $null }
-    status = [string](Coalesce (Get-ObjectPropertyValue -InputObject $branchBudget -Name 'status') '')
-    reason = [string](Coalesce (Get-ObjectPropertyValue -InputObject $branchBudget -Name 'reason') '')
-  }
-}
+$branchBudgetFacade = New-BranchBudgetFacade -BranchBudget $branchBudget
 $branchBudgetDisplay = $null
 if ($branchBudgetFacade) {
   $branchBudgetParts = New-Object System.Collections.Generic.List[string]

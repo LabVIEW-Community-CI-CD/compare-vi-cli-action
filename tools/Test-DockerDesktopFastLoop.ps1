@@ -205,7 +205,7 @@ function Get-VIHistorySourceBranchGuard {
 
   $result = [ordered]@{
     branchRef = $BranchRef
-    baselineRef = 'develop'
+    baselineRef = $null
     maxCommitCount = [int]$MaxCommitCount
     commitCount = $null
     status = 'skipped'
@@ -243,6 +243,7 @@ function Get-VIHistorySourceBranchGuard {
     }
 
     if ($hasDevelopBaseline) {
+      $result.baselineRef = 'develop'
       if ([string]::Equals($BranchRef, 'develop', [System.StringComparison]::OrdinalIgnoreCase)) {
         $range = 'develop..develop'
       } else {
@@ -1552,10 +1553,6 @@ $repoRoot = Get-RepoRootFromToolsScript
 $linuxSmokeBaseVi = Resolve-RepoRelativePath -RepoRoot $repoRoot -PathValue 'fixtures/vi-attr/Base.vi' -Description 'Linux smoke base VI'
 $linuxSmokeHeadVi = Resolve-RepoRelativePath -RepoRoot $repoRoot -PathValue 'fixtures/vi-attr/Head.vi' -Description 'Linux smoke head VI'
 $linuxSmokeBootstrapScript = Resolve-RepoRelativePath -RepoRoot $repoRoot -PathValue 'tools/NILinux-VIHistorySuiteBootstrap.sh' -Description 'NI Linux VI history bootstrap script'
-$viHistorySourceBranchGuard = Get-VIHistorySourceBranchGuard `
-  -RepoRoot $repoRoot `
-  -BranchRef $VIHistorySourceBranch `
-  -MaxCommitCount $VIHistorySourceBranchCommitLimit
 $historyScenarioSetNormalized = if ([string]::IsNullOrWhiteSpace($HistoryScenarioSet)) { 'none' } else { $HistoryScenarioSet.Trim().ToLowerInvariant() }
 $laneScopeNormalized = if ([string]::IsNullOrWhiteSpace($LaneScope)) { 'both' } else { $LaneScope.Trim().ToLowerInvariant() }
 $windowsLaneEnabled = $laneScopeNormalized -ne 'linux'
@@ -1612,6 +1609,20 @@ switch ($laneScopeNormalized) {
   'windows' { $effectiveSkipLinuxProbe = $true }
   'linux' { $effectiveSkipWindowsProbe = $true }
   default { }
+}
+$viHistorySourceBranchGuard = [pscustomobject]@{
+  branchRef = $VIHistorySourceBranch
+  baselineRef = $null
+  maxCommitCount = [int]$VIHistorySourceBranchCommitLimit
+  commitCount = $null
+  status = 'skipped'
+  reason = if (-not $linuxLaneEnabled) { 'linux-lane-disabled' } elseif ($effectiveSkipLinuxProbe) { 'linux-probe-skipped' } else { 'branch-guard-not-evaluated' }
+}
+if ($linuxLaneEnabled -and -not $effectiveSkipLinuxProbe) {
+  $viHistorySourceBranchGuard = Get-VIHistorySourceBranchGuard `
+    -RepoRoot $repoRoot `
+    -BranchRef $VIHistorySourceBranch `
+    -MaxCommitCount $VIHistorySourceBranchCommitLimit
 }
 $historyScenarioCount = 0
 $historyScenarioFilterDiagnostics = New-Object System.Collections.Generic.List[string]

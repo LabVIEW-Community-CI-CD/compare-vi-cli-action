@@ -638,6 +638,8 @@ function Resolve-GitWorkTreeInjection {
 
   $empty = [pscustomobject]@{
     enabled = $false
+    strategy = 'none'
+    dotGitHostPath = ''
     commonGitHostPath = ''
     commonGitContainerPath = ''
     gitDirContainerPath = ''
@@ -647,6 +649,28 @@ function Resolve-GitWorkTreeInjection {
   }
 
   $dotGitPath = Join-Path $RepoHostPath '.git'
+  if (-not (Test-Path -LiteralPath $dotGitPath)) {
+    return $empty
+  }
+
+  $resolvedDotGitHostPath = (Resolve-Path -LiteralPath $dotGitPath).Path
+  if (Test-Path -LiteralPath $dotGitPath -PathType Container) {
+    $gitDirContainerPath = '{0}/.git' -f $RepoContainerPath.TrimEnd('/')
+    return [pscustomobject]@{
+      enabled = $true
+      strategy = 'git-directory'
+      dotGitHostPath = $resolvedDotGitHostPath
+      commonGitHostPath = $resolvedDotGitHostPath
+      commonGitContainerPath = $gitDirContainerPath
+      gitDirContainerPath = $gitDirContainerPath
+      gitWorkTreeContainerPath = $RepoContainerPath
+      env = @(
+        [pscustomobject]@{ name = 'COMPAREVI_VI_HISTORY_GIT_DIR'; value = $gitDirContainerPath },
+        [pscustomobject]@{ name = 'COMPAREVI_VI_HISTORY_GIT_WORK_TREE'; value = $RepoContainerPath }
+      )
+      mounts = @()
+    }
+  }
   if (-not (Test-Path -LiteralPath $dotGitPath -PathType Leaf)) {
     return $empty
   }
@@ -680,6 +704,8 @@ function Resolve-GitWorkTreeInjection {
 
   return [pscustomobject]@{
     enabled = $true
+    strategy = 'git-worktree-file'
+    dotGitHostPath = $resolvedDotGitHostPath
     commonGitHostPath = $commonGitHostPath
     commonGitContainerPath = $commonGitContainerPath
     gitDirContainerPath = $gitDirContainerPath
@@ -724,6 +750,8 @@ function Resolve-RuntimeBootstrapViHistory {
     branchBudget = $null
     gitInjection = [pscustomobject]@{
       enabled = $false
+      strategy = 'none'
+      dotGitHostPath = ''
       commonGitHostPath = ''
       commonGitContainerPath = ''
       gitDirContainerPath = ''
@@ -862,6 +890,8 @@ function Resolve-RuntimeBootstrapViHistory {
     branchBudget = $branchBudget
     gitInjection = [pscustomobject]@{
       enabled = [bool]$gitInjection.enabled
+      strategy = [string]$gitInjection.strategy
+      dotGitHostPath = [string]$gitInjection.dotGitHostPath
       commonGitHostPath = [string]$gitInjection.commonGitHostPath
       commonGitContainerPath = [string]$gitInjection.commonGitContainerPath
       gitDirContainerPath = [string]$gitInjection.gitDirContainerPath
@@ -901,6 +931,8 @@ function Resolve-RuntimeBootstrapContract {
         branchBudget = $null
         gitInjection = [pscustomobject]@{
           enabled = $false
+          strategy = 'none'
+          dotGitHostPath = ''
           commonGitHostPath = ''
           commonGitContainerPath = ''
           gitDirContainerPath = ''
@@ -1760,6 +1792,8 @@ $capture = [ordered]@{
       branchBudget = $null
       gitInjection = [ordered]@{
         enabled = $false
+        strategy = 'none'
+        dotGitHostPath = ''
         commonGitHostPath = ''
         commonGitContainerPath = ''
         gitDirContainerPath = ''
@@ -2026,6 +2060,8 @@ try {
         gitInjection = if ($viHistoryEnabled) {
           [ordered]@{
             enabled = [bool]$resolvedRuntimeBootstrap.viHistory.gitInjection.enabled
+            strategy = [string]$resolvedRuntimeBootstrap.viHistory.gitInjection.strategy
+            dotGitHostPath = [string]$resolvedRuntimeBootstrap.viHistory.gitInjection.dotGitHostPath
             commonGitHostPath = [string]$resolvedRuntimeBootstrap.viHistory.gitInjection.commonGitHostPath
             commonGitContainerPath = [string]$resolvedRuntimeBootstrap.viHistory.gitInjection.commonGitContainerPath
             gitDirContainerPath = [string]$resolvedRuntimeBootstrap.viHistory.gitInjection.gitDirContainerPath
@@ -2034,6 +2070,8 @@ try {
         } else {
           [ordered]@{
             enabled = $false
+            strategy = 'none'
+            dotGitHostPath = ''
             commonGitHostPath = ''
             commonGitContainerPath = ''
             gitDirContainerPath = ''
