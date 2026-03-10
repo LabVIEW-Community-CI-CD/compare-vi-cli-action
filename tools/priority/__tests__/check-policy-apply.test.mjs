@@ -22,6 +22,204 @@ function createResponse(data, status = 200, statusText = 'OK') {
   };
 }
 
+const EXPECTED_DEVELOP_CHECKS = [
+  'lint',
+  'fixtures',
+  'session-index',
+  'issue-snapshot',
+  'semver',
+  'Policy Guard (Upstream) / policy-guard',
+  'hook-parity (windows-latest)',
+  'hook-parity (ubuntu-latest)',
+  'vi-history-scenarios-linux',
+  'agent-review-policy',
+  'commit-integrity'
+];
+
+const EXPECTED_MAIN_CHECKS = [
+  'lint',
+  'pester',
+  'vi-binary-check',
+  'vi-compare',
+  'Policy Guard (Upstream) / policy-guard',
+  'commit-integrity'
+];
+
+const EXPECTED_RELEASE_CHECKS = [
+  'lint',
+  'pester',
+  'publish',
+  'vi-binary-check',
+  'vi-compare',
+  'mock-cli',
+  'Policy Guard (Upstream) / policy-guard'
+];
+
+const EXPECTED_MERGE_QUEUE_PARAMS = {
+  merge_method: 'SQUASH',
+  grouping_strategy: 'ALLGREEN',
+  max_entries_to_build: 5,
+  min_entries_to_merge: 1,
+  max_entries_to_merge: 5,
+  min_entries_to_merge_wait_minutes: 1,
+  check_response_timeout_minutes: 60
+};
+
+function createAlignedRepoState(overrides = {}) {
+  return {
+    allow_squash_merge: true,
+    allow_merge_commit: false,
+    allow_rebase_merge: true,
+    allow_auto_merge: true,
+    delete_branch_on_merge: true,
+    ...overrides
+  };
+}
+
+function createAlignedBranchProtection(requiredChecks) {
+  return {
+    required_status_checks: {
+      strict: true,
+      contexts: [...requiredChecks],
+      checks: requiredChecks.map((context) => ({ context }))
+    },
+    enforce_admins: { enabled: false },
+    required_pull_request_reviews: null,
+    restrictions: null,
+    required_linear_history: { enabled: true },
+    allow_force_pushes: { enabled: false },
+    allow_deletions: { enabled: false },
+    block_creations: { enabled: false },
+    required_conversation_resolution: { enabled: false },
+    lock_branch: { enabled: false },
+    allow_fork_syncing: { enabled: false }
+  };
+}
+
+function createPullRequestRule({
+  dismissStaleReviewsOnPush = false,
+  requiredReviewThreadResolution = false,
+  allowedMergeMethods = ['squash', 'rebase']
+} = {}) {
+  return {
+    required_approving_review_count: 0,
+    dismiss_stale_reviews_on_push: dismissStaleReviewsOnPush,
+    require_code_owner_review: false,
+    require_last_push_approval: false,
+    required_review_thread_resolution: requiredReviewThreadResolution,
+    allowed_merge_methods: [...allowedMergeMethods]
+  };
+}
+
+function createRuleset({
+  id,
+  name,
+  includes,
+  requiredStatusChecks,
+  mergeQueue = null,
+  requiredLinearHistory = false,
+  pullRequestRule,
+  codeQuality = null,
+  copilotCodeReview = null
+}) {
+  const rules = [];
+  if (requiredLinearHistory) {
+    rules.push({ type: 'required_linear_history' });
+  }
+  if (mergeQueue) {
+    rules.push({ type: 'merge_queue', parameters: structuredClone(mergeQueue) });
+  }
+  if (requiredStatusChecks) {
+    rules.push({
+      type: 'required_status_checks',
+      parameters: {
+        strict_required_status_checks_policy: true,
+        do_not_enforce_on_create: false,
+        required_status_checks: requiredStatusChecks.map((context) => ({ context }))
+      }
+    });
+  }
+  if (pullRequestRule) {
+    rules.push({
+      type: 'pull_request',
+      parameters: structuredClone(pullRequestRule)
+    });
+  }
+  if (codeQuality) {
+    rules.push({
+      type: 'code_quality',
+      parameters: structuredClone(codeQuality)
+    });
+  }
+  if (copilotCodeReview) {
+    rules.push({
+      type: 'copilot_code_review',
+      parameters: structuredClone(copilotCodeReview)
+    });
+  }
+
+  return {
+    id,
+    name,
+    target: 'branch',
+    enforcement: 'active',
+    conditions: {
+      ref_name: {
+        include: [...includes],
+        exclude: []
+      }
+    },
+    bypass_actors: [],
+    rules
+  };
+}
+
+function createAlignedRulesets(ids = { develop: 8811898, main: 8614140, release: 8614172 }) {
+  return {
+    develop: createRuleset({
+      id: ids.develop,
+      name: 'develop',
+      includes: ['refs/heads/develop'],
+      requiredStatusChecks: EXPECTED_DEVELOP_CHECKS,
+      mergeQueue: EXPECTED_MERGE_QUEUE_PARAMS,
+      requiredLinearHistory: true,
+      pullRequestRule: createPullRequestRule(),
+      codeQuality: { severity: 'warnings' },
+      copilotCodeReview: {
+        review_on_push: true,
+        review_draft_pull_requests: false
+      }
+    }),
+    main: createRuleset({
+      id: ids.main,
+      name: 'main',
+      includes: ['refs/heads/main'],
+      requiredStatusChecks: EXPECTED_MAIN_CHECKS,
+      mergeQueue: EXPECTED_MERGE_QUEUE_PARAMS,
+      pullRequestRule: createPullRequestRule()
+    }),
+    release: createRuleset({
+      id: ids.release,
+      name: 'release',
+      includes: ['refs/heads/release/*'],
+      requiredStatusChecks: EXPECTED_RELEASE_CHECKS,
+      pullRequestRule: createPullRequestRule({
+        dismissStaleReviewsOnPush: true,
+        allowedMergeMethods: ['rebase']
+      })
+    })
+  };
+}
+
+function toRulesetSummary(ruleset) {
+  return {
+    id: ruleset.id,
+    name: ruleset.name,
+    target: ruleset.target,
+    enforcement: ruleset.enforcement
+  };
+}
+
 test('priority:policy --apply updates rulesets for develop/main/release', async () => {
   const expectedDevelopChecks = [
     'lint',
@@ -507,6 +705,326 @@ test('priority:policy --apply updates rulesets for develop/main/release', async 
   assert.ok(
     logMessages.includes('Merge policy apply completed successfully.'),
     'apply success message expected'
+  );
+});
+
+test('priority:policy verifies fork-local rulesets by stable identity when manifest ids are missing', async () => {
+  const repoUrl = 'https://api.github.com/repos/test-org/test-repo';
+  const listUrl = `${repoUrl}/rulesets`;
+  const branchDevelopUrl = `${repoUrl}/branches/develop/protection`;
+  const branchMainUrl = `${repoUrl}/branches/main/protection`;
+  const expectedRulesetUrls = {
+    develop: `${repoUrl}/rulesets/8811898`,
+    main: `${repoUrl}/rulesets/8614140`,
+    release: `${repoUrl}/rulesets/8614172`
+  };
+  const rulesets = createAlignedRulesets({
+    develop: 99001,
+    main: 99002,
+    release: 99003
+  });
+
+  const fetchMock = async (url, options = {}) => {
+    const method = options.method ?? 'GET';
+    if (method !== 'GET') {
+      throw new Error(`Unexpected request ${method} ${url}`);
+    }
+    if (url === repoUrl) {
+      return createResponse(createAlignedRepoState());
+    }
+    if (url === branchDevelopUrl) {
+      return createResponse(createAlignedBranchProtection(EXPECTED_DEVELOP_CHECKS));
+    }
+    if (url === branchMainUrl) {
+      return createResponse(createAlignedBranchProtection(EXPECTED_MAIN_CHECKS));
+    }
+    if (url === expectedRulesetUrls.develop || url === expectedRulesetUrls.main || url === expectedRulesetUrls.release) {
+      return createResponse({ message: 'Not Found', status: '404' }, 404, 'Not Found');
+    }
+    if (url === listUrl) {
+      return createResponse([
+        toRulesetSummary(rulesets.develop),
+        toRulesetSummary(rulesets.main),
+        toRulesetSummary(rulesets.release)
+      ]);
+    }
+    if (url === `${repoUrl}/rulesets/${rulesets.develop.id}`) {
+      return createResponse(rulesets.develop);
+    }
+    if (url === `${repoUrl}/rulesets/${rulesets.main.id}`) {
+      return createResponse(rulesets.main);
+    }
+    if (url === `${repoUrl}/rulesets/${rulesets.release.id}`) {
+      return createResponse(rulesets.release);
+    }
+    throw new Error(`Unexpected request ${method} ${url}`);
+  };
+
+  const logMessages = [];
+  const errorMessages = [];
+  const code = await run({
+    argv: ['node', 'check-policy.mjs'],
+    env: {
+      ...process.env,
+      GITHUB_REPOSITORY: 'test-org/test-repo',
+      GITHUB_TOKEN: 'fake-token'
+    },
+    fetchFn: fetchMock,
+    execSyncFn: () => {
+      throw new Error('execSync should not be called when GITHUB_REPOSITORY is set');
+    },
+    log: (msg) => logMessages.push(msg),
+    error: (msg) => errorMessages.push(msg)
+  });
+
+  assert.equal(code, 0, 'verify mode should pass with fork-local ruleset ids');
+  assert.deepEqual(errorMessages, []);
+  assert.ok(
+    logMessages.some((msg) => msg.includes('ruleset 8811898: resolved by stable identity to 99001')),
+    'develop ruleset should resolve by identity'
+  );
+  assert.ok(
+    logMessages.some((msg) => msg.includes('ruleset 8614140: resolved by stable identity to 99002')),
+    'main ruleset should resolve by identity'
+  );
+  assert.ok(
+    logMessages.some((msg) => msg.includes('ruleset 8614172: resolved by stable identity to 99003')),
+    'release ruleset should resolve by identity'
+  );
+});
+
+test('priority:policy --apply updates fork-local rulesets resolved by stable identity', async () => {
+  const repoUrl = 'https://api.github.com/repos/test-org/test-repo';
+  const listUrl = `${repoUrl}/rulesets`;
+  const branchDevelopUrl = `${repoUrl}/branches/develop/protection`;
+  const branchMainUrl = `${repoUrl}/branches/main/protection`;
+  const expectedRulesetUrls = {
+    develop: `${repoUrl}/rulesets/8811898`,
+    main: `${repoUrl}/rulesets/8614140`,
+    release: `${repoUrl}/rulesets/8614172`
+  };
+  const rulesets = createAlignedRulesets({
+    develop: 99101,
+    main: 99102,
+    release: 99103
+  });
+  rulesets.develop.rules = rulesets.develop.rules.filter(
+    (rule) => !['required_linear_history', 'merge_queue', 'code_quality', 'copilot_code_review'].includes(rule.type)
+  );
+  rulesets.develop.rules.find((rule) => rule.type === 'required_status_checks').parameters.required_status_checks =
+    EXPECTED_DEVELOP_CHECKS.filter((context) => context !== 'commit-integrity').map((context) => ({ context }));
+  rulesets.develop.rules.find((rule) => rule.type === 'pull_request').parameters.allowed_merge_methods = ['merge'];
+
+  rulesets.main.rules.find((rule) => rule.type === 'required_status_checks').parameters.required_status_checks =
+    EXPECTED_MAIN_CHECKS.filter((context) => context !== 'commit-integrity').map((context) => ({ context }));
+  rulesets.main.rules.find((rule) => rule.type === 'pull_request').parameters.allowed_merge_methods = ['merge'];
+
+  rulesets.release.rules.find((rule) => rule.type === 'required_status_checks').parameters.required_status_checks =
+    EXPECTED_RELEASE_CHECKS.filter((context) => context !== 'mock-cli').map((context) => ({ context }));
+  rulesets.release.rules.find((rule) => rule.type === 'pull_request').parameters.allowed_merge_methods = ['merge'];
+
+  const requests = [];
+  const updateRuleset = (current, payload) => ({
+    ...current,
+    name: payload.name,
+    target: payload.target,
+    enforcement: payload.enforcement,
+    conditions: structuredClone(payload.conditions),
+    bypass_actors: structuredClone(payload.bypass_actors),
+    rules: structuredClone(payload.rules)
+  });
+
+  const fetchMock = async (url, options = {}) => {
+    const method = options.method ?? 'GET';
+    requests.push({ method, url, body: options.body });
+    if (method === 'GET' && url === repoUrl) {
+      return createResponse(createAlignedRepoState());
+    }
+    if (method === 'GET' && url === branchDevelopUrl) {
+      return createResponse(createAlignedBranchProtection(EXPECTED_DEVELOP_CHECKS));
+    }
+    if (method === 'GET' && url === branchMainUrl) {
+      return createResponse(createAlignedBranchProtection(EXPECTED_MAIN_CHECKS));
+    }
+    if (method === 'GET' && (url === expectedRulesetUrls.develop || url === expectedRulesetUrls.main || url === expectedRulesetUrls.release)) {
+      return createResponse({ message: 'Not Found', status: '404' }, 404, 'Not Found');
+    }
+    if (method === 'GET' && url === listUrl) {
+      return createResponse([
+        toRulesetSummary(rulesets.develop),
+        toRulesetSummary(rulesets.main),
+        toRulesetSummary(rulesets.release)
+      ]);
+    }
+    if (url === `${repoUrl}/rulesets/${rulesets.develop.id}`) {
+      if (method === 'GET') {
+        return createResponse(rulesets.develop);
+      }
+      if (method === 'PUT') {
+        rulesets.develop = updateRuleset(rulesets.develop, JSON.parse(options.body));
+        return createResponse(rulesets.develop);
+      }
+    }
+    if (url === `${repoUrl}/rulesets/${rulesets.main.id}`) {
+      if (method === 'GET') {
+        return createResponse(rulesets.main);
+      }
+      if (method === 'PUT') {
+        rulesets.main = updateRuleset(rulesets.main, JSON.parse(options.body));
+        return createResponse(rulesets.main);
+      }
+    }
+    if (url === `${repoUrl}/rulesets/${rulesets.release.id}`) {
+      if (method === 'GET') {
+        return createResponse(rulesets.release);
+      }
+      if (method === 'PUT') {
+        rulesets.release = updateRuleset(rulesets.release, JSON.parse(options.body));
+        return createResponse(rulesets.release);
+      }
+    }
+    throw new Error(`Unexpected request ${method} ${url}`);
+  };
+
+  const code = await run({
+    argv: ['node', 'check-policy.mjs', '--apply'],
+    env: {
+      ...process.env,
+      GITHUB_REPOSITORY: 'test-org/test-repo',
+      GITHUB_TOKEN: 'fake-token'
+    },
+    fetchFn: fetchMock,
+    execSyncFn: () => {
+      throw new Error('execSync should not be called when GITHUB_REPOSITORY is set');
+    },
+    log: () => {},
+    error: () => {}
+  });
+
+  assert.equal(code, 0, 'apply mode should update fork-local rulesets resolved by identity');
+  assert.ok(
+    requests.some((entry) => entry.method === 'PUT' && entry.url === `${repoUrl}/rulesets/${rulesets.develop.id}`),
+    'develop ruleset should be updated using the fork-local id'
+  );
+  assert.ok(
+    !requests.some((entry) => entry.method === 'PUT' && entry.url === expectedRulesetUrls.develop),
+    'develop ruleset should not use the upstream manifest id once identity is resolved'
+  );
+  assert.ok(
+    rulesets.develop.rules.some((rule) => rule.type === 'required_linear_history'),
+    'develop ruleset should restore required_linear_history'
+  );
+  assert.ok(
+    rulesets.develop.rules.some((rule) => rule.type === 'merge_queue'),
+    'develop ruleset should restore merge_queue'
+  );
+  assert.ok(
+    rulesets.develop.rules.some((rule) => rule.type === 'code_quality'),
+    'develop ruleset should restore code_quality'
+  );
+  assert.ok(
+    rulesets.develop.rules.some((rule) => rule.type === 'copilot_code_review'),
+    'develop ruleset should restore copilot_code_review'
+  );
+  assert.deepEqual(
+    rulesets.main.rules
+      .find((rule) => rule.type === 'required_status_checks')
+      .parameters.required_status_checks.map((item) => item.context)
+      .sort(),
+    EXPECTED_MAIN_CHECKS.slice().sort(),
+    'main ruleset should restore required checks'
+  );
+  assert.deepEqual(
+    rulesets.release.rules
+      .find((rule) => rule.type === 'required_status_checks')
+      .parameters.required_status_checks.map((item) => item.context)
+      .sort(),
+    EXPECTED_RELEASE_CHECKS.slice().sort(),
+    'release ruleset should restore required checks'
+  );
+});
+
+test('priority:policy --apply creates missing fork-local rulesets when no identity match exists', async () => {
+  const repoUrl = 'https://api.github.com/repos/test-org/test-repo';
+  const listUrl = `${repoUrl}/rulesets`;
+  const branchDevelopUrl = `${repoUrl}/branches/develop/protection`;
+  const branchMainUrl = `${repoUrl}/branches/main/protection`;
+  const createdRulesets = [];
+  let nextRulesetId = 99200;
+
+  const fetchMock = async (url, options = {}) => {
+    const method = options.method ?? 'GET';
+    if (method === 'GET' && url === repoUrl) {
+      return createResponse(createAlignedRepoState());
+    }
+    if (method === 'GET' && url === branchDevelopUrl) {
+      return createResponse(createAlignedBranchProtection(EXPECTED_DEVELOP_CHECKS));
+    }
+    if (method === 'GET' && url === branchMainUrl) {
+      return createResponse(createAlignedBranchProtection(EXPECTED_MAIN_CHECKS));
+    }
+    if (method === 'GET' && url === `${repoUrl}/rulesets/8811898`) {
+      return createResponse({ message: 'Not Found', status: '404' }, 404, 'Not Found');
+    }
+    if (method === 'GET' && url === `${repoUrl}/rulesets/8614140`) {
+      return createResponse({ message: 'Not Found', status: '404' }, 404, 'Not Found');
+    }
+    if (method === 'GET' && url === `${repoUrl}/rulesets/8614172`) {
+      return createResponse({ message: 'Not Found', status: '404' }, 404, 'Not Found');
+    }
+    if (method === 'GET' && url === listUrl) {
+      return createResponse(createdRulesets.map((ruleset) => toRulesetSummary(ruleset)));
+    }
+    if (method === 'GET' && url.startsWith(`${repoUrl}/rulesets/`)) {
+      const id = Number(url.split('/').at(-1));
+      const match = createdRulesets.find((ruleset) => ruleset.id === id);
+      if (!match) {
+        return createResponse({ message: 'Not Found', status: '404' }, 404, 'Not Found');
+      }
+      return createResponse(match);
+    }
+    if (method === 'POST' && url === listUrl) {
+      const payload = JSON.parse(options.body);
+      const created = {
+        id: ++nextRulesetId,
+        ...payload
+      };
+      createdRulesets.push(created);
+      return createResponse(created);
+    }
+    throw new Error(`Unexpected request ${method} ${url}`);
+  };
+
+  const code = await run({
+    argv: ['node', 'check-policy.mjs', '--apply'],
+    env: {
+      ...process.env,
+      GITHUB_REPOSITORY: 'test-org/test-repo',
+      GITHUB_TOKEN: 'fake-token'
+    },
+    fetchFn: fetchMock,
+    execSyncFn: () => {
+      throw new Error('execSync should not be called when GITHUB_REPOSITORY is set');
+    },
+    log: () => {},
+    error: () => {}
+  });
+
+  assert.equal(code, 0, 'apply mode should create missing fork-local rulesets');
+  assert.equal(createdRulesets.length, 3, 'three fork-local rulesets should be created');
+  assert.deepEqual(
+    createdRulesets.map((ruleset) => ruleset.name).sort(),
+    ['develop', 'main', 'release'],
+    'created rulesets should cover develop/main/release identities'
+  );
+  const createdDevelopRuleset = createdRulesets.find((ruleset) => ruleset.name === 'develop');
+  assert.ok(
+    createdDevelopRuleset.rules.some((rule) => rule.type === 'merge_queue'),
+    'created develop ruleset should include merge_queue'
+  );
+  assert.ok(
+    createdDevelopRuleset.rules.some((rule) => rule.type === 'copilot_code_review'),
+    'created develop ruleset should include copilot_code_review'
   );
 });
 

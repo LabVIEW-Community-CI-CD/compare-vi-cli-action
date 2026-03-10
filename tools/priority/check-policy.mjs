@@ -283,6 +283,72 @@ async function fetchJson(url, token, fetchFn) {
   return requestJson(url, token, { fetchFn });
 }
 
+function normalizeRulesetListResponse(response) {
+  if (Array.isArray(response)) {
+    return response;
+  }
+  if (Array.isArray(response?.rulesets)) {
+    return response.rulesets;
+  }
+  if (Array.isArray(response?.items)) {
+    return response.items;
+  }
+  return [];
+}
+
+function normalizeRulesetIncludes(values = []) {
+  return [...new Set(
+    (Array.isArray(values) ? values : [])
+      .map((value) => (typeof value === 'string' ? value.trim() : ''))
+      .filter(Boolean)
+  )].sort();
+}
+
+function rulesetIdentityMatches(expectations, actual) {
+  if (!actual || typeof actual !== 'object') {
+    return false;
+  }
+
+  if (expectations?.name && actual.name !== expectations.name) {
+    return false;
+  }
+
+  if (expectations?.target && actual.target !== expectations.target) {
+    return false;
+  }
+
+  if (Array.isArray(expectations?.includes)) {
+    const expectedIncludes = normalizeRulesetIncludes(expectations.includes);
+    const actualIncludes = normalizeRulesetIncludes(actual.conditions?.ref_name?.include ?? []);
+    if (JSON.stringify(expectedIncludes) !== JSON.stringify(actualIncludes)) {
+      return false;
+    }
+  }
+
+  return true;
+}
+
+function rulesetSummaryMatches(expectations, actual) {
+  if (!actual || typeof actual !== 'object') {
+    return false;
+  }
+
+  if (expectations?.name && actual.name !== expectations.name) {
+    return false;
+  }
+
+  if (expectations?.target && actual.target !== expectations.target) {
+    return false;
+  }
+
+  return true;
+}
+
+async function listRulesets(repoUrl, token, fetchFn) {
+  const response = await fetchJson(`${repoUrl}/rulesets`, token, fetchFn);
+  return normalizeRulesetListResponse(response);
+}
+
 function compareRepoSettings(expected, actual) {
   const diffs = [];
   for (const [key, value] of Object.entries(expected)) {
@@ -823,18 +889,14 @@ function updateOptionalParameterizedRule(rules, type, expected, actualRule) {
     : (actualRule?.parameters ?? rule.parameters ?? {});
 }
 
-function buildUpdatedRuleset(expectations, actual) {
-  if (!actual) {
-    throw new Error('Cannot apply ruleset changes: ruleset not found.');
-  }
-
+function buildRulesetPayload(expectations, actual = null) {
   const updated = {
-    name: actual.name,
-    target: actual.target,
-    enforcement: actual.enforcement,
-    conditions: structuredClone(actual.conditions ?? {}),
-    bypass_actors: sanitizeBypassActors(actual.bypass_actors),
-    rules: structuredClone(actual.rules ?? [])
+    name: actual?.name ?? expectations.name ?? 'ruleset',
+    target: actual?.target ?? expectations.target ?? 'branch',
+    enforcement: actual?.enforcement ?? 'active',
+    conditions: structuredClone(actual?.conditions ?? {}),
+    bypass_actors: sanitizeBypassActors(actual?.bypass_actors),
+    rules: structuredClone(actual?.rules ?? [])
   };
 
   if (Array.isArray(expectations.includes)) {
@@ -899,12 +961,21 @@ async function applyBranchProtection(repoUrl, token, branch, expected, actual, f
 
 async function applyRuleset(repoUrl, token, id, expectations, actual, fetchFn, logFn = console.log) {
   const rulesetUrl = `${repoUrl}/rulesets/${id}`;
-  const payload = buildUpdatedRuleset(expectations, actual);
+  const payload = buildRulesetPayload(expectations, actual);
   await requestJson(rulesetUrl, token, { method: 'PUT', body: payload, fetchFn });
   logFn(`[policy] ruleset ${id}: applied configuration.`);
 }
 
-async function collectState(manifest, repoUrl, token, fetchFn) {
+async function createRuleset(repoUrl, token, expectations, fetchFn, logFn = console.log) {
+  const rulesetUrl = `${repoUrl}/rulesets`;
+  const payload = buildRulesetPayload(expectations);
+  const created = await requestJson(rulesetUrl, token, { method: 'POST', body: payload, fetchFn });
+  const suffix = created?.id ? ` as ${created.id}` : '';
+  logFn(`[policy] ruleset ${expectations?.name ?? 'unknown'}: created${suffix}.`);
+  return created;
+}
+
+async function collectState(manifest, repoUrl, token, fetchFn, logFn = console.log) {
   const repoData = await fetchJson(repoUrl, token, fetchFn);
 
   const branchStates = [];
@@ -925,9 +996,23 @@ async function collectState(manifest, repoUrl, token, fetchFn) {
   }
 
   const rulesetStates = [];
+  let rulesetListPromise = null;
+  const loadRulesets = async () => {
+    if (!rulesetListPromise) {
+      rulesetListPromise = listRulesets(repoUrl, token, fetchFn);
+    }
+    return rulesetListPromise;
+  };
   for (const [rulesetId, expectations] of Object.entries(manifest.rulesets ?? {})) {
     const numericId = Number(rulesetId);
-    const state = { id: numericId, expectations, ruleset: null, error: null };
+    const state = {
+      id: numericId,
+      expectations,
+      ruleset: null,
+      error: null,
+      resolvedId: Number.isNaN(numericId) ? null : numericId,
+      resolvedBy: 'id'
+    };
     if (Number.isNaN(numericId)) {
       state.error = new Error('invalid id');
       rulesetStates.push(state);
@@ -937,7 +1022,38 @@ async function collectState(manifest, repoUrl, token, fetchFn) {
       const rulesetUrl = `${repoUrl}/rulesets/${numericId}`;
       state.ruleset = await fetchJson(rulesetUrl, token, fetchFn);
     } catch (error) {
-      state.error = error;
+      if (isNotFoundError(error)) {
+        try {
+          const rulesets = await loadRulesets();
+          let matchedRuleset = null;
+          for (const candidate of rulesets) {
+            if (!rulesetSummaryMatches(expectations, candidate)) {
+              continue;
+            }
+            const detailedRuleset = candidate.id
+              ? await fetchJson(`${repoUrl}/rulesets/${candidate.id}`, token, fetchFn)
+              : candidate;
+            if (rulesetIdentityMatches(expectations, detailedRuleset)) {
+              matchedRuleset = detailedRuleset;
+              break;
+            }
+          }
+          if (matchedRuleset) {
+            state.resolvedId = matchedRuleset.id ?? numericId;
+            state.resolvedBy = 'identity';
+            if (matchedRuleset.id && matchedRuleset.id !== numericId) {
+              logFn(`[policy] ruleset ${numericId}: resolved by stable identity to ${matchedRuleset.id}.`);
+            }
+            state.ruleset = matchedRuleset;
+          } else {
+            state.error = error;
+          }
+        } catch (lookupError) {
+          state.error = lookupError;
+        }
+      } else {
+        state.error = error;
+      }
     }
     rulesetStates.push(state);
   }
@@ -1126,7 +1242,7 @@ export async function run({
     let initialState;
     try {
       initialState = await invokeWithAuthFallback('collectState', (token) =>
-        collectState(manifest, repoUrl, token, fetchFn)
+        collectState(manifest, repoUrl, token, fetchFn, log)
       );
     } catch (authError) {
       if (!options.apply && authError?.code === 'POLICY_AUTH_UNAVAILABLE') {
@@ -1154,7 +1270,10 @@ export async function run({
           dbg(`Ruleset ${entry.id} fetch error: ${entry.error.message}`);
         } else {
           const rule = entry.ruleset ?? {};
-          dbg(`Ruleset ${entry.id} keys: ${Object.keys(rule).join(', ') || '(none)'}`);
+          dbg(
+            `Ruleset ${entry.id} keys: ${Object.keys(rule).join(', ') || '(none)'} ` +
+            `(resolvedId=${entry.resolvedId ?? 'n/a'}, via=${entry.resolvedBy})`
+          );
         }
       }
     }
@@ -1215,29 +1334,38 @@ export async function run({
 
       const rulesetStatesNeedingUpdates = initialState.rulesetStates.filter((entry) => {
         if (entry.error) {
-          return false;
+          return isNotFoundError(entry.error);
         }
         const diffs = compareRuleset(entry.id, entry.expectations, entry.ruleset);
         return diffs.length > 0;
       });
 
       for (const entry of rulesetStatesNeedingUpdates) {
-        await invokeWithAuthFallback(`applyRuleset(${entry.id})`, (token) =>
+        if (entry.error && isNotFoundError(entry.error)) {
+          const created = await invokeWithAuthFallback(`createRuleset(${entry.id})`, (token) =>
+            createRuleset(repoUrl, token, entry.expectations, fetchFn, log)
+          );
+          report.applied.rulesets.push(created?.id ?? entry.id);
+          continue;
+        }
+
+        const appliedRulesetId = entry.resolvedId ?? entry.id;
+        await invokeWithAuthFallback(`applyRuleset(${appliedRulesetId})`, (token) =>
           applyRuleset(
             repoUrl,
             token,
-            entry.id,
+            appliedRulesetId,
             entry.expectations,
             entry.ruleset,
             fetchFn,
             log
           )
         );
-        report.applied.rulesets.push(entry.id);
+        report.applied.rulesets.push(appliedRulesetId);
       }
 
       const postState = await invokeWithAuthFallback('collectState(post-apply)', (token) =>
-        collectState(manifest, repoUrl, token, fetchFn)
+        collectState(manifest, repoUrl, token, fetchFn, log)
       );
       const postDiffs = evaluateDiffs(manifest, postState);
       applyDiffsToReport(postDiffs);
@@ -1287,9 +1415,13 @@ export const __test = Object.freeze({
   compareBranchBooleanSetting,
   compareBranchNullableSetting,
   buildBranchProtectionPayload,
+  buildRulesetPayload,
   resolveEnabledFlag,
   compareOptionalParameterizedRule,
-  normalizeOptionalRuleExpectation
+  normalizeOptionalRuleExpectation,
+  normalizeRulesetListResponse,
+  normalizeRulesetIncludes,
+  rulesetIdentityMatches
 });
 
 const modulePath = path.resolve(fileURLToPath(import.meta.url));
