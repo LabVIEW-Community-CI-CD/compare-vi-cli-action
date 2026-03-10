@@ -100,29 +100,42 @@ processed=0
 diffs=0
 errors=0
 overall_exit=0
+index_rows=""
 
 for i in "\${!scenario_names[@]}"; do
   name="\${scenario_names[\$i]}"
   flags_text="\${scenario_flags[\$i]}"
   scenario_report="\${RESULTS_DIR}/\${name}-report.html"
+  scenario_report_assets_dir="\${RESULTS_DIR}/\${name}-report_files"
+  scenario_log="\${RESULTS_DIR}/\${name}-cli-output.log"
   run_args=("\${COMMON_ARGS[@]}" "-VI1" "\${BASE_VI}" "-VI2" "\${HEAD_VI}" "-ReportPath" "\${scenario_report}")
   if [ -n "\${flags_text}" ]; then
     read -r -a flag_array <<< "\${flags_text}"
     run_args+=("\${flag_array[@]}")
   fi
 
-  "\${REAL_CLI_PATH}" "\${run_args[@]}"
+  rm -f "\${scenario_report}" || exit 2
+  rm -rf "\${scenario_report_assets_dir}" || exit 2
+  cli_output="\$("\${REAL_CLI_PATH}" "\${run_args[@]}" 2>&1)"
   exit_code=\$?
+  printf '%s\n' "\${cli_output}" > "\${scenario_log}" || exit 2
   status="completed"
   diff="false"
-  if [ "\${exit_code}" = "1" ]; then
-    diff="true"
-  elif [ "\${exit_code}" != "0" ]; then
-    status="error"
-  fi
+  has_diff_markers="false"
 
   if [ -f "\${scenario_report}" ] && grep -Eiq 'difference-image|difference-heading|diff-detail' "\${scenario_report}"; then
+    has_diff_markers="true"
     diff="true"
+  fi
+
+  if [ "\${exit_code}" = "1" ]; then
+    if [ "\${has_diff_markers}" != "true" ]; then
+      status="error"
+      diff="false"
+    fi
+  elif [ "\${exit_code}" != "0" ]; then
+    status="error"
+    diff="false"
   fi
 
   processed=\$((processed + 1))
@@ -137,7 +150,9 @@ for i in "\${!scenario_names[@]}"; do
     overall_exit=2
   fi
 
-  printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\n' "\$((i + 1))" "\${name}" "\${flags_text}" "\${exit_code}" "\${status}" "\${diff}" "\${scenario_report}" >> "\${LEDGER_PATH}" || exit 2
+  printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n' "\$((i + 1))" "\${name}" "\${flags_text}" "\${exit_code}" "\${status}" "\${diff}" "\${scenario_report}" "\${scenario_log}" >> "\${LEDGER_PATH}" || exit 2
+  index_rows="\${index_rows}  <li>\${name}: status=\${status}; diff=\${diff}; <a href=\"\${name}-report.html\">report</a>; <a href=\"\${name}-cli-output.log\">cli-log</a></li>
+"
 done
 
 cat > "\${REPORT_PATH}" <<INDEX
@@ -145,7 +160,8 @@ cat > "\${REPORT_PATH}" <<INDEX
   <li>processed=\${processed}</li>
   <li>diffs=\${diffs}</li>
   <li>errors=\${errors}</li>
-</ul></body></html>
+</ul><ul>
+\${index_rows}</ul></body></html>
 INDEX
 
 cat > "\${MARKER_PATH}" <<MARKER

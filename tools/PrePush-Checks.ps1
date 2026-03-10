@@ -61,6 +61,24 @@ function Resolve-ContainerMountedHostPath {
   return $Path
 }
 
+function Get-LogTailText {
+  param(
+    [string]$Path,
+    [int]$TailLines = 20
+  )
+
+  if ([string]::IsNullOrWhiteSpace($Path) -or -not (Test-Path -LiteralPath $Path -PathType Leaf)) {
+    return ''
+  }
+
+  $lines = @(Get-Content -LiteralPath $Path -ErrorAction SilentlyContinue | Select-Object -Last $TailLines)
+  if ($lines.Count -eq 0) {
+    return ''
+  }
+
+  return (($lines | ForEach-Object { [string]$_ }) -join [Environment]::NewLine).Trim()
+}
+
 function Get-RepoRoot {
   $here = Split-Path -Parent $PSCommandPath
   return (Resolve-Path -LiteralPath (Join-Path $here '..'))
@@ -688,6 +706,7 @@ try {
         status = if ($parts.Count -gt 4) { [string]$parts[4] } else { '' }
         diff = if ($parts.Count -gt 5) { [string]$parts[5] } else { '' }
         reportPath = if ($parts.Count -gt 6) { [string]$parts[6] } else { '' }
+        logPath = if ($parts.Count -gt 7) { [string]$parts[7] } else { '' }
       }
     }
   )
@@ -698,8 +717,22 @@ try {
     throw ("NI image flag scenario '{0}' ledger names did not match the expected combination set." -f $activeScenarioName)
   }
   foreach ($entry in $ledgerEntries) {
+    $resolvedEntryLogPath = Resolve-ContainerMountedHostPath -Path $entry.logPath -Mounts @($capture.runtimeInjection.mounts)
+    if ([string]::IsNullOrWhiteSpace($resolvedEntryLogPath) -or -not (Test-Path -LiteralPath $resolvedEntryLogPath -PathType Leaf)) {
+      throw ("NI image flag scenario '{0}' missing single-container CLI log for {1}: {2} (resolved: {3})" -f $activeScenarioName, $entry.name, $entry.logPath, $resolvedEntryLogPath)
+    }
+    $entryLogText = Get-Content -LiteralPath $resolvedEntryLogPath -Raw -ErrorAction SilentlyContinue
     if (-not [string]::Equals($entry.status, 'completed', [System.StringComparison]::OrdinalIgnoreCase)) {
-      throw ("NI image flag scenario '{0}' recorded non-completed ledger status for {1}: {2}" -f $activeScenarioName, $entry.name, $entry.status)
+      $entryLogTail = Get-LogTailText -Path $resolvedEntryLogPath
+      throw ("NI image flag scenario '{0}' recorded non-completed ledger status for {1}: {2}`nlog={3}`n{4}" -f $activeScenarioName, $entry.name, $entry.status, $resolvedEntryLogPath, $entryLogTail)
+    }
+    if (
+      $entryLogText -match 'Report path already exists:' -or
+      $entryLogText -match 'Use -o to overwrite existing report\.' -or
+      $entryLogText -match 'CreateComparisonReport operation failed\.'
+    ) {
+      $entryLogTail = Get-LogTailText -Path $resolvedEntryLogPath
+      throw ("NI image flag scenario '{0}' detected wrapper/tool failure text for {1}`nlog={2}`n{3}" -f $activeScenarioName, $entry.name, $resolvedEntryLogPath, $entryLogTail)
     }
     $resolvedEntryReportPath = Resolve-ContainerMountedHostPath -Path $entry.reportPath -Mounts @($capture.runtimeInjection.mounts)
     if (-not (Test-Path -LiteralPath $resolvedEntryReportPath -PathType Leaf)) {

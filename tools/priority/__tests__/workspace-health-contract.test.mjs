@@ -37,9 +37,23 @@ test('PrePush NI image known-flag scenario uses the Linux runner with explicit L
   assert.match(content, /-LabVIEWPath \$containerLabVIEWPath/);
   assert.match(content, /-ContainerNameLabel \$activeScenarioName/);
   assert.match(content, /history-summary\.json/);
+  assert.match(content, /logPath = if \(\$parts.Count -gt 7\)/);
+  assert.match(content, /Report path already exists:/);
   assert.match(content, /VI Comparison Report flag combination scenarios OK/);
   assert.doesNotMatch(content, /pwsh\s+-NoLogo\s+-NoProfile\s+-File\s+\$niCompareScript/);
   assert.doesNotMatch(content, /Render-VIHistoryReport\.ps1/);
+});
+
+test('single-container flag matrix bootstrap clears stale reports and writes per-scenario CLI logs', () => {
+  const content = readRepoFile('tools/NILinux-FlagMatrixBootstrap.sh');
+  assert.ok(content.includes('scenario_log="\\${RESULTS_DIR}/\\${name}-cli-output.log"'));
+  assert.ok(content.includes('rm -f "\\${scenario_report}"'));
+  assert.ok(content.includes('rm -rf "\\${scenario_report_assets_dir}"'));
+  assert.ok(content.includes('printf \'%s\\n\' "\\${cli_output}" > "\\${scenario_log}"'));
+  assert.ok(content.includes('printf \'%s\\t%s\\t%s\\t%s\\t%s\\t%s\\t%s\\t%s\\n\''));
+  assert.ok(content.includes('<a href=\\"\\${name}-cli-output.log\\">cli-log</a>'));
+  assert.ok(content.includes('if [ "\\${exit_code}" = "1" ]; then'));
+  assert.ok(content.includes('if [ "\\${has_diff_markers}" != "true" ]; then'));
 });
 
 test('PrePush includes local PSScriptAnalyzer gate for changed PowerShell files', () => {
