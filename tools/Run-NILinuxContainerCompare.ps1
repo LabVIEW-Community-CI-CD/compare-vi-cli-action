@@ -584,6 +584,7 @@ function Resolve-RuntimeBootstrapViHistory {
   param(
     [AllowNull()]$ViHistory,
     [Parameter(Mandatory)][string]$ContractDirectory,
+    [AllowEmptyString()][string]$Mode,
     [AllowEmptyString()][string]$BranchRef,
     [AllowNull()][int]$MaxCommitCount
   )
@@ -594,6 +595,7 @@ function Resolve-RuntimeBootstrapViHistory {
     repoContainerPath = ''
     targetPath = ''
     baselineRef = ''
+    bootstrapMode = ''
     resultsHostPath = ''
     resultsContainerPath = ''
     suiteManifestContainerPath = ''
@@ -676,8 +678,16 @@ function Resolve-RuntimeBootstrapViHistory {
     $branchBudget = Get-HostGitBranchBudget -RepoPath $repoHostPath -BranchRef $BranchRef -MaxCommitCount $MaxCommitCount
   }
 
+  $bootstrapMode = if (-not [string]::IsNullOrWhiteSpace($Mode)) {
+    [string]$Mode
+  } elseif (-not [string]::IsNullOrWhiteSpace($env:COMPAREVI_VI_HISTORY_BOOTSTRAP_MODE)) {
+    [string]$env:COMPAREVI_VI_HISTORY_BOOTSTRAP_MODE
+  } else {
+    'vi-history-suite-smoke'
+  }
+
   $env = @(
-    [pscustomobject]@{ name = 'COMPAREVI_VI_HISTORY_BOOTSTRAP_MODE'; value = 'vi-history-suite-smoke' },
+    [pscustomobject]@{ name = 'COMPAREVI_VI_HISTORY_BOOTSTRAP_MODE'; value = $bootstrapMode },
     [pscustomobject]@{ name = 'COMPAREVI_VI_HISTORY_REPO_PATH'; value = $repoContainerPath },
     [pscustomobject]@{ name = 'COMPAREVI_VI_HISTORY_TARGET_PATH'; value = $targetPath },
     [pscustomobject]@{ name = 'COMPAREVI_VI_HISTORY_BASELINE_REF'; value = $baselineRef },
@@ -723,6 +733,7 @@ function Resolve-RuntimeBootstrapViHistory {
     repoContainerPath = $repoContainerPath
     targetPath = $targetPath
     baselineRef = $baselineRef
+    bootstrapMode = [string]$bootstrapMode
     resultsHostPath = [string]$resultsHostPath
     resultsContainerPath = $resultsContainerPath
     suiteManifestContainerPath = $suiteManifestContainerPath
@@ -890,6 +901,7 @@ function Resolve-RuntimeBootstrapContract {
   $resolvedViHistory = Resolve-RuntimeBootstrapViHistory `
     -ViHistory $(if ($contract.PSObject.Properties['viHistory']) { $contract.viHistory } else { $null }) `
     -ContractDirectory $contractDirectory `
+    -Mode $mode `
     -BranchRef $branchRef `
     -MaxCommitCount $maxCommitCount
   $resolvedEnv = @($resolvedViHistory.env) + @($resolvedEnv)
@@ -1877,6 +1889,7 @@ try {
         repoContainerPath = if ($viHistoryEnabled) { [string]$resolvedRuntimeBootstrap.viHistory.repoContainerPath } else { '' }
         targetPath = if ($viHistoryEnabled) { [string]$resolvedRuntimeBootstrap.viHistory.targetPath } else { '' }
         baselineRef = if ($viHistoryEnabled) { [string]$resolvedRuntimeBootstrap.viHistory.baselineRef } else { '' }
+        bootstrapMode = if ($viHistoryEnabled) { [string]$resolvedRuntimeBootstrap.viHistory.bootstrapMode } else { '' }
         resultsHostPath = if ($viHistoryEnabled) { [string]$resolvedRuntimeBootstrap.viHistory.resultsHostPath } else { '' }
         resultsContainerPath = if ($viHistoryEnabled) { [string]$resolvedRuntimeBootstrap.viHistory.resultsContainerPath } else { '' }
         suiteManifestContainerPath = if ($viHistoryEnabled) { [string]$resolvedRuntimeBootstrap.viHistory.suiteManifestContainerPath } else { '' }

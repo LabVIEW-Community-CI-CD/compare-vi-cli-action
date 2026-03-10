@@ -425,10 +425,14 @@ if ($Args[0] -eq 'run') {
           }
         }
         default {
+          $bootstrapMode = Get-StubEnvValue -Name 'COMPAREVI_VI_HISTORY_BOOTSTRAP_MODE'
+          if ([string]::IsNullOrWhiteSpace($bootstrapMode)) {
+            $bootstrapMode = 'vi-history-suite-smoke'
+          }
           [ordered]@{
             schema = 'ni-linux-runtime-bootstrap-receipt@v1'
             generatedAt = (Get-Date).ToString('o')
-            mode = 'vi-history-suite-smoke'
+            mode = $bootstrapMode
             sourceBranchRef = $branchRef
             targetPath = $targetPath
             resultsDir = $resultsDir
@@ -773,7 +777,7 @@ exit 0
     $bootstrapScript = Join-Path (Split-Path -Parent $script:RunnerScript) 'NILinux-VIHistorySuiteBootstrap.sh'
     $contract = [ordered]@{
       schema = 'ni-linux-runtime-bootstrap/v1'
-      mode = 'vi-history-suite-smoke'
+      mode = 'single-container-smoke'
       branchRef = 'consumer/branch'
       maxCommitCount = 32
       scriptPath = $bootstrapScript
@@ -800,12 +804,13 @@ exit 0
     $capture.headVi | Should -BeNullOrEmpty
     $capture.reportPath | Should -Be (Join-Path $resultsDir 'linux-compare-report.html')
     $capture.runtimeInjection.enabled | Should -BeTrue
-    $capture.runtimeInjection.contractMode | Should -Be 'vi-history-suite-smoke'
+    $capture.runtimeInjection.contractMode | Should -Be 'single-container-smoke'
     $capture.runtimeInjection.branchRef | Should -Be 'consumer/branch'
     $capture.runtimeInjection.viHistory.enabled | Should -BeTrue
     $capture.runtimeInjection.viHistory.repoHostPath | Should -Be (Resolve-Path -LiteralPath $repoRoot).Path
     $capture.runtimeInjection.viHistory.resultsHostPath | Should -Be (Resolve-Path -LiteralPath $resultsDir).Path
     $capture.runtimeInjection.viHistory.targetPath | Should -Be 'src/Sample.vi'
+    $capture.runtimeInjection.viHistory.bootstrapMode | Should -Be 'single-container-smoke'
     $capture.runtimeInjection.viHistory.maxPairs | Should -Be 2
     $capture.runtimeInjection.viHistory.branchBudget.commitCount | Should -Be 1
     $capture.runtimeInjection.viHistory.branchBudget.status | Should -Be 'ok'
@@ -819,6 +824,105 @@ exit 0
     @($capture.runtimeInjection.envNames) | Should -Contain 'COMPAREVI_VI_HISTORY_BOOTSTRAP_MARKER'
     $capture.runtimeInjection.mounts.Count | Should -BeGreaterThan 1
 
+  }
+
+  It 'emits head-first refs for direct single-pair bootstrap finalization' {
+    if (-not $IsWindows) {
+      Set-ItResult -Skipped -Because 'WSL bash path conversion is only exercised on Windows hosts.'
+      return
+    }
+
+    $bashPath = (Get-Command bash -ErrorAction SilentlyContinue).Source
+    if ([string]::IsNullOrWhiteSpace($bashPath)) {
+      Set-ItResult -Skipped -Because 'bash is unavailable on this host.'
+      return
+    }
+
+    function Convert-TestPathToWsl {
+      param([Parameter(Mandatory)][string]$Path)
+
+      $fullPath = [System.IO.Path]::GetFullPath($Path)
+      if ($fullPath -notmatch '^(?<drive>[A-Za-z]):(?<rest>.*)$') {
+        throw ("Cannot translate Windows path to WSL path: {0}" -f $fullPath)
+      }
+
+      $drive = $Matches['drive'].ToLowerInvariant()
+      $rest = $Matches['rest'].Replace('\', '/')
+      return "/mnt/$drive$rest"
+    }
+
+    $work = Join-Path $TestDrive 'bootstrap-single-pair'
+    New-Item -ItemType Directory -Path $work -Force | Out-Null
+    $repoRoot = Join-Path $work 'consumer-repo'
+    New-Item -ItemType Directory -Path $repoRoot -Force | Out-Null
+    Push-Location $repoRoot
+    try {
+      & git init --initial-branch=develop | Out-Null
+      & git config user.email 'agent@example.com'
+      & git config user.name 'Agent Runner'
+      $targetDir = Join-Path $repoRoot 'src'
+      New-Item -ItemType Directory -Path $targetDir -Force | Out-Null
+      $targetPath = Join-Path $targetDir 'Sample.vi'
+      Set-Content -LiteralPath $targetPath -Value 'base' -Encoding utf8
+      & git add .
+      & git commit -m 'initial history repo' | Out-Null
+      $baseRef = [string](& git rev-parse HEAD).Trim()
+      & git switch -c 'consumer/branch' | Out-Null
+      Set-Content -LiteralPath $targetPath -Value 'head' -Encoding utf8
+      & git add src/Sample.vi
+      & git commit -m 'update sample vi' | Out-Null
+      $headRef = [string](& git rev-parse HEAD).Trim()
+    } finally {
+      Pop-Location | Out-Null
+    }
+
+    $resultsDir = Join-Path $work 'results'
+    New-Item -ItemType Directory -Path $resultsDir -Force | Out-Null
+    $suiteManifestPath = Join-Path $resultsDir 'suite-manifest.json'
+    $historyContextPath = Join-Path $resultsDir 'history-context.json'
+    $receiptPath = Join-Path $resultsDir 'vi-history-bootstrap-receipt.json'
+    $markerPath = Join-Path $resultsDir 'vi-history-bootstrap-ran.txt'
+    $reportPath = Join-Path $resultsDir 'linux-compare-report.html'
+    Set-Content -LiteralPath $suiteManifestPath -Value '{}' -Encoding utf8
+    Set-Content -LiteralPath $historyContextPath -Value '{}' -Encoding utf8
+    Set-Content -LiteralPath $reportPath -Value '<html><body>pair-001</body></html>' -Encoding utf8
+
+    $bootstrapScript = Join-Path (Split-Path -Parent $script:RunnerScript) 'NILinux-VIHistorySuiteBootstrap.sh'
+    $bashCommand = @"
+set -euo pipefail
+export COMPAREVI_VI_HISTORY_RESULTS_DIR='$(Convert-TestPathToWsl -Path $resultsDir)'
+export COMPAREVI_VI_HISTORY_SUITE_MANIFEST='$(Convert-TestPathToWsl -Path $suiteManifestPath)'
+export COMPAREVI_VI_HISTORY_CONTEXT='$(Convert-TestPathToWsl -Path $historyContextPath)'
+export COMPAREVI_VI_HISTORY_BOOTSTRAP_MODE='single-container-smoke'
+export COMPAREVI_VI_HISTORY_GIT_DIR='$(Convert-TestPathToWsl -Path (Join-Path $repoRoot '.git'))'
+export COMPAREVI_VI_HISTORY_GIT_WORK_TREE='$(Convert-TestPathToWsl -Path $repoRoot)'
+. '$(Convert-TestPathToWsl -Path $bootstrapScript)'
+export COMPAREVI_VI_HISTORY_BOOTSTRAP_RECEIPT='$(Convert-TestPathToWsl -Path $receiptPath)'
+export COMPAREVI_VI_HISTORY_BOOTSTRAP_MARKER='$(Convert-TestPathToWsl -Path $markerPath)'
+export COMPAREVI_VI_HISTORY_TARGET_PATH='src/Sample.vi'
+export COMPAREVI_VI_HISTORY_SOURCE_BRANCH='consumer/branch'
+export COMPAREVI_VI_HISTORY_BASELINE_REF='develop'
+export COMPAREVI_VI_HISTORY_BASE_REF='$baseRef'
+export COMPAREVI_VI_HISTORY_HEAD_REF='$headRef'
+export COMPAREVI_VI_HISTORY_EMIT_SUITE_BUNDLE=1
+comparevi_vi_history_emit_suite_bundle 1 '$(Convert-TestPathToWsl -Path $reportPath)' '2026-03-10T00:00:00Z'
+"@
+
+    $output = & $bashPath -lc $bashCommand 2>&1
+    $LASTEXITCODE | Should -Be 0 -Because ($output -join "`n")
+
+    $suiteManifest = Get-Content -LiteralPath $suiteManifestPath -Raw | ConvertFrom-Json -Depth 12
+    $suiteManifest.requestedStartRef | Should -Be $headRef
+    $suiteManifest.startRef | Should -Be $headRef
+    $suiteManifest.endRef | Should -Be $baseRef
+
+    $historyContext = Get-Content -LiteralPath $historyContextPath -Raw | ConvertFrom-Json -Depth 12
+    $historyContext.requestedStartRef | Should -Be $headRef
+    $historyContext.startRef | Should -Be $headRef
+    $historyContext.endRef | Should -Be $baseRef
+
+    $receipt = Get-Content -LiteralPath $receiptPath -Raw | ConvertFrom-Json -Depth 12
+    $receipt.mode | Should -Be 'single-container-smoke'
   }
 
   It 'blocks viHistory bootstrap when the source branch exceeds the commit safeguard before docker run' {
