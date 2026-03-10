@@ -13,6 +13,7 @@ export const LANE_SCHEMA = 'priority/runtime-lane@v1';
 export const STOP_REQUEST_SCHEMA = 'priority/runtime-stop-request@v1';
 export const BLOCKER_SCHEMA = 'priority/runtime-blocker@v1';
 export const SCHEDULER_DECISION_SCHEMA = 'priority/runtime-scheduler-decision@v1';
+export const WORKER_CHECKOUT_SCHEMA = 'priority/runtime-worker-checkout@v1';
 export const DEFAULT_RUNTIME_DIR = path.join('tests', 'results', '_agent', 'runtime');
 export const DEFAULT_LEASE_SCOPE = 'workspace';
 export const ACTIONS = new Set(['status', 'step', 'stop', 'resume']);
@@ -278,6 +279,7 @@ export function createRuntimeAdapter(adapter = {}) {
     acquireLease: adapter.acquireLease,
     releaseLease: adapter.releaseLease,
     planStep: typeof adapter.planStep === 'function' ? adapter.planStep : null,
+    prepareWorker: typeof adapter.prepareWorker === 'function' ? adapter.prepareWorker : null,
     resolveRepository:
       typeof adapter.resolveRepository === 'function'
         ? adapter.resolveRepository
@@ -293,6 +295,48 @@ export function createRuntimeAdapter(adapter = {}) {
   return normalized;
 }
 
+function summarizeWorker(workerRecord) {
+  if (!workerRecord) return null;
+  return {
+    laneId: workerRecord.laneId,
+    checkoutPath: workerRecord.checkoutPath,
+    checkoutRoot: workerRecord.checkoutRoot,
+    status: workerRecord.status,
+    ref: workerRecord.ref,
+    requestedBranch: workerRecord.requestedBranch,
+    preparedAt: workerRecord.preparedAt,
+    reused: Boolean(workerRecord.reused)
+  };
+}
+
+function normalizeWorkerRecord(worker, now) {
+  if (!worker || typeof worker !== 'object') return null;
+  const checkoutPath = normalizeText(worker.checkoutPath) || null;
+  const checkoutRoot = normalizeText(worker.checkoutRoot) || (checkoutPath ? path.dirname(checkoutPath) : null);
+  const status = normalizeText(worker.status).toLowerCase() || 'prepared';
+  const laneId = normalizeText(worker.laneId) || null;
+  const ref = normalizeText(worker.ref) || null;
+  const requestedBranch = normalizeText(worker.requestedBranch) || null;
+  const source = normalizeText(worker.source) || null;
+  const reason = normalizeText(worker.reason) || null;
+  const preparedAt = normalizeText(worker.preparedAt) || toIso(now);
+  const artifacts = worker.artifacts && typeof worker.artifacts === 'object' ? worker.artifacts : {};
+  return {
+    schema: WORKER_CHECKOUT_SCHEMA,
+    laneId,
+    checkoutPath,
+    checkoutRoot,
+    status,
+    ref,
+    requestedBranch,
+    source,
+    reason,
+    preparedAt,
+    reused: worker.reused === true || status === 'reused',
+    artifacts
+  };
+}
+
 function buildActiveLaneSummary(laneRecord) {
   if (!laneRecord) return null;
   return {
@@ -303,6 +347,7 @@ function buildActiveLaneSummary(laneRecord) {
     branch: laneRecord.branch,
     prUrl: laneRecord.prUrl,
     blockerClass: laneRecord.blocker?.blockerClass ?? 'none',
+    worker: summarizeWorker(laneRecord.worker),
     updatedAt: laneRecord.updatedAt
   };
 }
@@ -388,6 +433,7 @@ function buildLaneRecord(options, now) {
     [options.forkRemote, options.issue].filter(Boolean).join('-') ||
     `lane-${sanitizeSegment(options.branch || 'active')}`;
   const blockerClass = options.blockerClass || 'none';
+  const worker = normalizeWorkerRecord(options.worker, now);
   return {
     schema: LANE_SCHEMA,
     laneId,
@@ -405,6 +451,7 @@ function buildLaneRecord(options, now) {
             reason: normalizeText(options.reason) || null,
             observedAt: toIso(now)
           },
+    worker,
     createdAt: toIso(now),
     updatedAt: toIso(now)
   };
@@ -633,6 +680,8 @@ async function runStepAction(context) {
       artifacts: {
         lanePath,
         blockerPath,
+        workerPath: laneRecord?.worker?.checkoutPath ?? null,
+        workerArtifactPath: laneRecord?.worker?.artifacts?.lanePath ?? null,
         statePath: runtimePaths.statePath,
         eventsPath: runtimePaths.eventsPath
       }
@@ -655,6 +704,7 @@ async function runStepAction(context) {
 
     report.outcome = outcome;
     report.turnPath = turnPath;
+    report.worker = summarizeWorker(laneRecord?.worker);
     report.state = state;
   } finally {
     const leaseId = report.lease?.acquire?.leaseId ?? null;

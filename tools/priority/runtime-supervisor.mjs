@@ -16,6 +16,7 @@ import {
   STATE_SCHEMA,
   STOP_REQUEST_SCHEMA,
   TURN_SCHEMA,
+  WORKER_CHECKOUT_SCHEMA,
   __test,
   createRuntimeAdapter,
   parseArgs,
@@ -24,6 +25,10 @@ import {
 } from '../../packages/runtime-harness/index.mjs';
 import { acquireWriterLease, defaultOwner, releaseWriterLease } from './agent-writer-lease.mjs';
 import { getRepoRoot } from './lib/branch-utils.mjs';
+import {
+  prepareCompareviWorkerCheckout,
+  resolveCompareviWorkerCheckoutPath
+} from './runtime-worker-checkout.mjs';
 
 export {
   ACTIONS,
@@ -37,6 +42,7 @@ export {
   STATE_SCHEMA,
   STOP_REQUEST_SCHEMA,
   TURN_SCHEMA,
+  WORKER_CHECKOUT_SCHEMA,
   __test,
   createRuntimeAdapter,
   parseArgs
@@ -193,12 +199,15 @@ export const compareviRuntimeAdapter = createRuntimeAdapter({
   resolveOwner: ({ options }) => String(options.owner || '').trim() || defaultOwner(),
   acquireLease: (leaseOptions) => acquireWriterLease(leaseOptions),
   releaseLease: (leaseOptions) => releaseWriterLease(leaseOptions),
-  planStep: (context) => planCompareviRuntimeStep(context)
+  planStep: (context) => planCompareviRuntimeStep(context),
+  prepareWorker: (context) => prepareCompareviWorkerCheckout(context)
 });
 
 export const compareviRuntimeTest = {
   buildSchedulerDecisionFromSnapshot,
   planCompareviRuntimeStep,
+  prepareCompareviWorkerCheckout,
+  resolveCompareviWorkerCheckoutPath,
   resolveForkRemoteForRepository
 };
 
