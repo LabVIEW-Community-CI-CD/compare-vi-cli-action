@@ -163,6 +163,33 @@ test('downloadNamedArtifacts fails fast when all requested artifact names normal
   assert.equal(discoveryCallCount, 0);
 });
 
+test('downloadNamedArtifacts fails fast when repository or run id are missing', async (t) => {
+  const { downloadNamedArtifacts } = await loadModule();
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'run-artifact-download-missing-request-'));
+  t.after(() => fs.rmSync(tmpDir, { recursive: true, force: true }));
+
+  let discoveryCallCount = 0;
+  const result = downloadNamedArtifacts({
+    repository: '   ',
+    runId: null,
+    artifactNames: ['copilot-review-signal-975'],
+    destinationRoot: path.join(tmpDir, 'artifacts'),
+    reportPath: path.join(tmpDir, 'report.json'),
+    runGhJsonFn() {
+      discoveryCallCount += 1;
+      return { artifacts: [] };
+    },
+  });
+
+  assert.equal(result.report.status, 'fail');
+  assert.equal(result.report.discovery.status, 'fail');
+  assert.equal(result.report.discovery.failureClass, 'invalid-request');
+  assert.match(result.report.discovery.errorMessage, /Repository is required\./);
+  assert.match(result.report.discovery.errorMessage, /Run id is required\./);
+  assert.deepEqual(result.report.errors, ['Repository is required.', 'Run id is required.']);
+  assert.equal(discoveryCallCount, 0);
+});
+
 test('downloadNamedArtifacts keeps discovery 404 failures classified as discovery-failed', async (t) => {
   const { downloadNamedArtifacts } = await loadModule();
   const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'run-artifact-download-discovery-404-'));
@@ -239,6 +266,40 @@ test('downloadNamedArtifacts paginates artifact discovery until a later page con
   ]);
 });
 
+test('downloadNamedArtifacts treats null gh exit status as a failed download', async (t) => {
+  const { downloadNamedArtifacts } = await loadModule();
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'run-artifact-download-null-status-'));
+  t.after(() => fs.rmSync(tmpDir, { recursive: true, force: true }));
+
+  const result = downloadNamedArtifacts({
+    repository: 'LabVIEW-Community-CI-CD/compare-vi-cli-action',
+    runId: '22879026878',
+    artifactNames: ['copilot-review-signal-975'],
+    destinationRoot: path.join(tmpDir, 'artifacts'),
+    reportPath: path.join(tmpDir, 'report.json'),
+    runGhJsonFn() {
+      return {
+        artifacts: [
+          {
+            id: 1,
+            name: 'copilot-review-signal-975',
+            size_in_bytes: 1,
+            expired: false,
+          },
+        ],
+      };
+    },
+    runProcessFn() {
+      return { status: null, signal: 'SIGTERM', stdout: '', stderr: '', error: null };
+    },
+  });
+
+  assert.equal(result.report.status, 'fail');
+  assert.equal(result.report.summary.failedCount, 1);
+  assert.equal(result.report.downloads[0].status, 'failed');
+  assert.match(result.report.downloads[0].errorMessage, /exited with code unknown \(signal: SIGTERM\)/);
+});
+
 test('downloadNamedArtifacts sanitizes artifact names before building destination paths', async (t) => {
   const { downloadNamedArtifacts } = await loadModule();
   const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'run-artifact-download-sanitize-'));
@@ -273,6 +334,12 @@ test('downloadNamedArtifacts sanitizes artifact names before building destinatio
 
   assert.equal(result.report.status, 'pass');
   assert.ok(destination);
-  assert.equal(path.relative(path.join(tmpDir, 'artifacts'), destination), '..%2Fdangerous%2Fpath');
+  assert.equal(path.relative(path.join(tmpDir, 'artifacts'), destination), '%2E%2E%2Fdangerous%2Fpath');
   assert.deepEqual(result.report.downloads[0].files, ['artifact.txt']);
+});
+
+test('sanitizeArtifactDestinationSegment encodes dot-only path segments safely', async () => {
+  const { sanitizeArtifactDestinationSegment } = await loadModule();
+  assert.equal(sanitizeArtifactDestinationSegment('..'), '%2E%2E');
+  assert.equal(sanitizeArtifactDestinationSegment('.'), '%2E');
 });

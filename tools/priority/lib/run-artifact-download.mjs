@@ -90,7 +90,9 @@ function formatGhCommand(args) {
 
 export function sanitizeArtifactDestinationSegment(artifactName) {
   const normalized = normalizeText(artifactName) ?? 'artifact';
-  return encodeURIComponent(normalized);
+  // Encode dots too so "." and ".." cannot survive as filesystem path segments.
+  const encoded = encodeURIComponent(normalized).replaceAll('.', '%2E');
+  return encoded.length > 0 ? encoded : 'artifact';
 }
 
 export function isPolicyWrapperRejection(message) {
@@ -224,13 +226,14 @@ export function downloadNamedArtifacts({
   runProcessFn = runProcess,
 }) {
   const requestedArtifacts = uniqueStrings(artifactNames);
-  const normalizedRunId = String(runId);
+  const normalizedRepository = normalizeText(repository);
+  const normalizedRunId = normalizeText(runId);
   const report = {
     schema: REPORT_SCHEMA,
     schemaVersion: '1.0.0',
     generatedAt: new Date(now).toISOString(),
     status: 'pass',
-    repository,
+    repository: normalizedRepository,
     runId: normalizedRunId,
     destinationRoot,
     requestedArtifacts,
@@ -252,13 +255,24 @@ export function downloadNamedArtifacts({
     errors: [],
   };
 
+  const invalidRequestErrors = [];
+  if (!normalizedRepository) {
+    invalidRequestErrors.push('Repository is required.');
+  }
+  if (!normalizedRunId) {
+    invalidRequestErrors.push('Run id is required.');
+  }
   if (requestedArtifacts.length === 0) {
-    const message = 'At least one non-empty artifact name is required.';
+    invalidRequestErrors.push('At least one non-empty artifact name is required.');
+  }
+
+  if (invalidRequestErrors.length > 0) {
+    const message = invalidRequestErrors.join(' ');
     report.status = 'fail';
     report.discovery.status = 'fail';
     report.discovery.failureClass = 'invalid-request';
     report.discovery.errorMessage = message;
-    report.errors.push(message);
+    report.errors.push(...invalidRequestErrors);
     const resolvedReportPath = writeJsonFile(reportPath, report);
     return { report, reportPath: resolvedReportPath };
   }
@@ -266,7 +280,7 @@ export function downloadNamedArtifacts({
   let availableArtifacts = [];
   try {
     const discovery = listRunArtifacts({
-      repository,
+      repository: normalizedRepository,
       runId: normalizedRunId,
       runGhJsonFn,
     });
@@ -297,7 +311,7 @@ export function downloadNamedArtifacts({
       'download',
       normalizedRunId,
       '--repo',
-      repository,
+      normalizedRepository,
       '-n',
       artifactName,
       '-D',
