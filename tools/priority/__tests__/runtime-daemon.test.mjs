@@ -198,3 +198,15 @@ test('comparevi worker checkout allocator reuses an existing lane worktree path'
   assert.equal(prepared.status, 'reused');
   assert.equal(prepared.checkoutPath, checkoutPath);
 });
+
+test('comparevi worker checkout path sanitizes traversal-only segments and keeps the root under repoRoot', async () => {
+  const repoRoot = await mkdtemp(path.join(os.tmpdir(), 'runtime-daemon-worker-sanitize-'));
+  const { checkoutRoot, checkoutPath } = compareviRuntimeTest.resolveCompareviWorkerCheckoutPath({
+    repoRoot,
+    repository: '',
+    laneId: '..'
+  });
+
+  assert.equal(checkoutRoot, path.join(repoRoot, '.runtime-worktrees', path.basename(repoRoot)));
+  assert.equal(checkoutPath, path.join(checkoutRoot, 'runtime'));
+});

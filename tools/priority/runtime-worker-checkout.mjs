@@ -14,10 +14,15 @@ function normalizeText(value) {
 }
 
 function sanitizeSegment(value) {
-  return String(value || '')
-    .trim()
-    .replace(/[^A-Za-z0-9._-]+/g, '-')
-    .replace(/^-+|-+$/g, '') || 'runtime';
+  const segment =
+    String(value ?? '')
+      .trim()
+      .replace(/[^A-Za-z0-9._-]+/g, '-')
+      .replace(/^-+|-+$/g, '');
+  if (!segment || segment === '.' || segment === '..') {
+    return 'runtime';
+  }
+  return segment;
 }
 
 async function pathExists(filePath) {
@@ -31,9 +36,9 @@ async function pathExists(filePath) {
 }
 
 export function resolveCompareviWorkerCheckoutRoot({ repoRoot, repository }) {
-  const repoKey =
-    sanitizeSegment(normalizeText(repository).replace(/\//g, '--')) || sanitizeSegment(path.basename(repoRoot));
-  return path.join(path.dirname(repoRoot), '.runtime-worktrees', repoKey);
+  const rawRepoKey = normalizeText(repository)?.replace(/\//g, '--') || path.basename(repoRoot);
+  const repoKey = sanitizeSegment(rawRepoKey);
+  return path.join(repoRoot, '.runtime-worktrees', repoKey);
 }
 
 export function resolveCompareviWorkerCheckoutPath({ repoRoot, repository, laneId }) {
