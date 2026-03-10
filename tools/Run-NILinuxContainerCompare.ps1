@@ -524,13 +524,17 @@ function Get-HostGitBranchBudget {
   param(
     [Parameter(Mandatory)][string]$RepoPath,
     [Parameter(Mandatory)][string]$BranchRef,
+    [AllowEmptyString()][string]$BaselineRef,
     [Parameter(Mandatory)][int]$MaxCommitCount
   )
 
   $normalizedBranchRef = $BranchRef.Trim()
   $result = [ordered]@{
     sourceBranchRef = $normalizedBranchRef
+    requestedBaselineRef = if ([string]::IsNullOrWhiteSpace($BaselineRef)) { $null } else { [string]$BaselineRef.Trim() }
     baselineRef = $null
+    mergeBaseRef = $null
+    commitRange = $null
     maxCommitCount = [int]$MaxCommitCount
     commitCount = $null
     status = 'pending'
@@ -552,22 +556,49 @@ function Get-HostGitBranchBudget {
       return [pscustomobject]$result
     }
 
-    $baselineRef = $null
-    & git rev-parse --verify develop *> $null
-    if ($LASTEXITCODE -eq 0) {
-      $baselineRef = 'develop'
+    $effectiveBaselineRef = $null
+    if (-not [string]::IsNullOrWhiteSpace($BaselineRef)) {
+      $requestedBaselineRef = $BaselineRef.Trim()
+      & git rev-parse --verify $requestedBaselineRef *> $null
+      if ($LASTEXITCODE -ne 0) {
+        $result.status = 'invalid'
+        $result.reason = 'baseline-ref-not-found'
+        return [pscustomobject]$result
+      }
+      $effectiveBaselineRef = $requestedBaselineRef
+    } else {
+      & git rev-parse --verify develop *> $null
+      if ($LASTEXITCODE -eq 0) {
+        $effectiveBaselineRef = 'develop'
+      }
     }
-    $result.baselineRef = $baselineRef
+    $result.baselineRef = $effectiveBaselineRef
 
-    $range = if ($baselineRef) {
-      if ([string]::Equals($normalizedBranchRef, $baselineRef, [System.StringComparison]::OrdinalIgnoreCase)) {
-        ('{0}..{0}' -f $baselineRef)
+    $range = if ($effectiveBaselineRef) {
+      if ([string]::Equals($normalizedBranchRef, $effectiveBaselineRef, [System.StringComparison]::OrdinalIgnoreCase)) {
+        ('{0}..{0}' -f $effectiveBaselineRef)
       } else {
-        ('{0}..{1}' -f $baselineRef, $normalizedBranchRef)
+        $mergeBaseOutput = & git merge-base $effectiveBaselineRef $normalizedBranchRef
+        if ($LASTEXITCODE -ne 0) {
+          $result.status = 'error'
+          $result.reason = 'merge-base-query-failed'
+          return [pscustomobject]$result
+        }
+
+        $mergeBaseRef = [string]($mergeBaseOutput | Select-Object -Last 1)
+        if ([string]::IsNullOrWhiteSpace($mergeBaseRef)) {
+          $result.status = 'error'
+          $result.reason = 'merge-base-empty'
+          return [pscustomobject]$result
+        }
+
+        $result.mergeBaseRef = $mergeBaseRef
+        ('{0}..{1}' -f $mergeBaseRef, $normalizedBranchRef)
       }
     } else {
       $normalizedBranchRef
     }
+    $result.commitRange = $range
 
     $countOutput = & git rev-list --count --first-parent $range
     if ($LASTEXITCODE -ne 0) {
@@ -762,7 +793,7 @@ function Resolve-RuntimeBootstrapViHistory {
 
   $branchBudget = $null
   if (-not [string]::IsNullOrWhiteSpace($BranchRef) -and $null -ne $MaxCommitCount) {
-    $branchBudget = Get-HostGitBranchBudget -RepoPath $repoHostPath -BranchRef $BranchRef -MaxCommitCount $MaxCommitCount
+    $branchBudget = Get-HostGitBranchBudget -RepoPath $repoHostPath -BranchRef $BranchRef -BaselineRef $baselineRef -MaxCommitCount $MaxCommitCount
   }
 
   $bootstrapMode = if (-not [string]::IsNullOrWhiteSpace($Mode)) {

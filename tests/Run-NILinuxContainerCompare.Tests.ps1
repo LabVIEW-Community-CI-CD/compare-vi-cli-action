@@ -834,6 +834,87 @@ exit 0
 
   }
 
+  It 'honors an explicit viHistory baseline ref when develop is absent locally' {
+    $work = Join-Path $TestDrive 'compare-runtime-vi-history-explicit-baseline'
+    New-Item -ItemType Directory -Path $work | Out-Null
+    & $script:NewDockerStub -WorkRoot $work | Out-Null
+
+    Set-Item Env:DOCKER_STUB_LOG (Join-Path $work 'docker-log.ndjson')
+    Set-Item Env:DOCKER_STUB_OSTYPE 'linux'
+    Set-Item Env:DOCKER_STUB_CONTEXT 'desktop-linux'
+    Set-Item Env:DOCKER_STUB_IMAGE_EXISTS '1'
+    Set-Item Env:DOCKER_STUB_RUN_EXIT_CODE '1'
+    Set-Item Env:DOCKER_STUB_RUN_STDOUT 'CreateComparisonReport completed with diff.'
+    Set-Item Env:DOCKER_STUB_RUN_WRITE_REPORT '1'
+    Set-Item Env:DOCKER_STUB_RUN_WRITE_HISTORY_SUITE '1'
+
+    $repoRoot = Join-Path $work 'consumer-repo'
+    New-Item -ItemType Directory -Path $repoRoot -Force | Out-Null
+    $baselineSha = ''
+    $headSha = ''
+    Push-Location $repoRoot
+    try {
+      & git init --initial-branch=main | Out-Null
+      & git config user.email 'agent@example.com'
+      & git config user.name 'Agent Runner'
+      $targetDir = Join-Path $repoRoot 'src'
+      New-Item -ItemType Directory -Path $targetDir -Force | Out-Null
+      $targetPath = Join-Path $targetDir 'Sample.vi'
+      Set-Content -LiteralPath $targetPath -Value 'base' -Encoding utf8
+      & git add .
+      & git commit -m 'initial history repo' | Out-Null
+      $baselineSha = [string](& git rev-parse HEAD | Select-Object -Last 1)
+
+      & git switch -c 'consumer/branch' | Out-Null
+      1..2 | ForEach-Object {
+        Set-Content -LiteralPath $targetPath -Value ("head-{0}" -f $_) -Encoding utf8
+        & git add src/Sample.vi
+        & git commit -m ("update sample vi {0}" -f $_) | Out-Null
+      }
+      $headSha = [string](& git rev-parse HEAD | Select-Object -Last 1)
+    } finally {
+      Pop-Location | Out-Null
+    }
+
+    $resultsDir = Join-Path $work 'vi-history-results'
+    $runtimeContract = Join-Path $work 'runtime-bootstrap.json'
+    $bootstrapScript = Join-Path (Split-Path -Parent $script:RunnerScript) 'NILinux-VIHistorySuiteBootstrap.sh'
+    $contract = [ordered]@{
+      schema = 'ni-linux-runtime-bootstrap/v1'
+      mode = 'single-container-smoke'
+      branchRef = $headSha
+      maxCommitCount = 2
+      scriptPath = $bootstrapScript
+      viHistory = [ordered]@{
+        repoPath = $repoRoot
+        targetPath = 'src/Sample.vi'
+        resultsPath = $resultsDir
+        baselineRef = $baselineSha
+        maxPairs = 2
+      }
+    }
+    $contract | ConvertTo-Json -Depth 8 | Set-Content -LiteralPath $runtimeContract -Encoding utf8
+
+    $output = & pwsh -NoLogo -NoProfile -File $script:RunnerScript `
+      -RuntimeEngineReadyTimeoutSeconds 5 `
+      -RuntimeEngineReadyPollSeconds 1 `
+      -RuntimeBootstrapContractPath $runtimeContract 2>&1
+    $LASTEXITCODE | Should -Be 1 -Because ($output -join "`n")
+
+    $capturePath = Join-Path $resultsDir 'ni-linux-container-capture.json'
+    Test-Path -LiteralPath $capturePath -PathType Leaf | Should -BeTrue
+    $capture = Get-Content -LiteralPath $capturePath -Raw | ConvertFrom-Json -Depth 12
+    $capture.runtimeInjection.viHistory.branchBudget.sourceBranchRef | Should -Be $headSha
+    $capture.runtimeInjection.viHistory.branchBudget.requestedBaselineRef | Should -Be $baselineSha
+    $capture.runtimeInjection.viHistory.branchBudget.baselineRef | Should -Be $baselineSha
+    $capture.runtimeInjection.viHistory.branchBudget.mergeBaseRef | Should -Be $baselineSha
+    $capture.runtimeInjection.viHistory.branchBudget.commitRange | Should -Be ('{0}..{1}' -f $baselineSha, $headSha)
+    $capture.runtimeInjection.viHistory.branchBudget.commitCount | Should -Be 2
+    $capture.runtimeInjection.viHistory.branchBudget.status | Should -Be 'ok'
+
+    $capture.runtimeInjection.viHistory.resultsHostPath | Should -Be (Resolve-Path -LiteralPath $resultsDir).Path
+  }
+
   It 'emits head-first refs for direct single-pair bootstrap finalization' {
     if (-not $IsWindows) {
       Set-ItResult -Skipped -Because 'WSL bash path conversion is only exercised on Windows hosts.'
