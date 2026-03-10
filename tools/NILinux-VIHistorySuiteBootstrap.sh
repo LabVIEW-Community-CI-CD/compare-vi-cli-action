@@ -23,6 +23,10 @@ comparevi_vi_history_git_field() {
   comparevi_vi_history_git show -s --format="$2" "$1" 2>/dev/null | head -n 1
 }
 
+comparevi_vi_history_has_blob() {
+  comparevi_vi_history_git cat-file -e "${1}:${2}" 2>/dev/null
+}
+
 comparevi_vi_history_ensure_git() {
   if command -v git >/dev/null 2>&1; then
     export COMPAREVI_VI_HISTORY_GIT_BOOTSTRAP_STATUS="${COMPAREVI_VI_HISTORY_GIT_BOOTSTRAP_STATUS:-present}"
@@ -63,6 +67,431 @@ comparevi_vi_history_count_lines() {
     return 0
   fi
   awk 'END { print NR + 0 }' "$1"
+}
+
+comparevi_vi_history_flatten_text() {
+  printf '%s' "$1" | tr '\t\r\n' '   '
+}
+
+comparevi_vi_history_markdown_escape() {
+  comparevi_vi_history_flatten_text "$1" | sed \
+    -e 's/|/\\|/g'
+}
+
+comparevi_vi_history_html_escape() {
+  comparevi_vi_history_flatten_text "$1" | sed \
+    -e 's/&/\&amp;/g' \
+    -e 's/</\&lt;/g' \
+    -e 's/>/\&gt;/g' \
+    -e 's/"/\&quot;/g' \
+    -e "s/'/\&#39;/g"
+}
+
+comparevi_vi_history_write_report_bundle() {
+  local results_dir="$1"
+  local suite_manifest="$2"
+  local history_context="$3"
+  local mode_manifest="$4"
+  local mode_results_dir="$5"
+  local generated_at="$6"
+  local requested_start_ref="$7"
+  local start_ref="$8"
+  local end_ref="$9"
+  local processed="${10}"
+  local diffs="${11}"
+  local signal_diffs="${12}"
+  local error_count="${13}"
+  local suite_status="${14}"
+  local row_table_path="${15}"
+  local markdown_path="${results_dir}/history-report.md"
+  local html_path="${results_dir}/history-report.html"
+  local summary_path="${results_dir}/history-summary.json"
+  local source_branch="${COMPAREVI_VI_HISTORY_SOURCE_BRANCH:-HEAD}"
+  local baseline_ref="${COMPAREVI_VI_HISTORY_BASELINE_REF:-}"
+  local target_path_escaped
+  local results_dir_escaped
+  local suite_manifest_escaped
+  local history_context_escaped
+  local mode_manifest_escaped
+  local mode_results_dir_escaped
+  local markdown_path_escaped
+  local html_path_escaped
+  local summary_path_escaped
+  local requested_start_ref_escaped
+  local start_ref_escaped
+  local end_ref_json="null"
+  local source_branch_escaped
+  local branch_budget_json=""
+  local branch_budget_markdown=""
+  local branch_budget_html=""
+  local coverage_class='catalog-partial'
+  local coverage_detail='default-only'
+  local mode_sensitivity='single-mode-observed'
+  local comparison_rows_markdown=""
+  local comparison_rows_html=""
+  local has_rows=0
+  local has_clean=0
+  local has_signal_diff=0
+  local has_error=0
+  local outcome_labels_json=""
+  local outcome_labels_markdown=""
+  local outcome_labels_html=""
+  local mode_status="${suite_status}"
+  local mode_overview_row=""
+
+  target_path_escaped="$(comparevi_vi_history_json_escape "${COMPAREVI_VI_HISTORY_TARGET_PATH}")"
+  results_dir_escaped="$(comparevi_vi_history_json_escape "${results_dir}")"
+  suite_manifest_escaped="$(comparevi_vi_history_json_escape "${suite_manifest}")"
+  history_context_escaped="$(comparevi_vi_history_json_escape "${history_context}")"
+  mode_manifest_escaped="$(comparevi_vi_history_json_escape "${mode_manifest}")"
+  mode_results_dir_escaped="$(comparevi_vi_history_json_escape "${mode_results_dir}")"
+  markdown_path_escaped="$(comparevi_vi_history_json_escape "${markdown_path}")"
+  html_path_escaped="$(comparevi_vi_history_json_escape "${html_path}")"
+  summary_path_escaped="$(comparevi_vi_history_json_escape "${summary_path}")"
+  requested_start_ref_escaped="$(comparevi_vi_history_json_escape "${requested_start_ref}")"
+  start_ref_escaped="$(comparevi_vi_history_json_escape "${start_ref}")"
+  if [ -n "${end_ref}" ]; then
+    end_ref_json="\"$(comparevi_vi_history_json_escape "${end_ref}")\""
+  fi
+  source_branch_escaped="$(comparevi_vi_history_json_escape "${source_branch}")"
+
+  if [ -n "${COMPAREVI_VI_HISTORY_MAX_BRANCH_COMMITS:-}" ]; then
+    local baseline_json="null"
+    local branch_commit_count_json="null"
+    local branch_commit_count_display="n/a"
+    local baseline_display="n/a"
+    if [ -n "${baseline_ref}" ]; then
+      baseline_json="\"$(comparevi_vi_history_json_escape "${baseline_ref}")\""
+      baseline_display="${baseline_ref}"
+    fi
+    if [ -n "${COMPAREVI_VI_HISTORY_BRANCH_COMMIT_COUNT:-}" ]; then
+      branch_commit_count_json="${COMPAREVI_VI_HISTORY_BRANCH_COMMIT_COUNT}"
+      branch_commit_count_display="${COMPAREVI_VI_HISTORY_BRANCH_COMMIT_COUNT}"
+    fi
+    branch_budget_json=$(
+      cat <<EOF
+,
+    "branchBudget": {
+      "sourceBranchRef": "${source_branch_escaped}",
+      "baselineRef": ${baseline_json},
+      "maxCommitCount": ${COMPAREVI_VI_HISTORY_MAX_BRANCH_COMMITS},
+      "commitCount": ${branch_commit_count_json},
+      "status": "ok",
+      "reason": "within-limit"
+    }
+EOF
+    )
+    branch_budget_markdown="- Source Branch Budget: \`${branch_commit_count_display}/${COMPAREVI_VI_HISTORY_MAX_BRANCH_COMMITS}; baseline: ${baseline_display}; status: ok\`"
+    branch_budget_html="<dt>Source branch budget</dt><dd><code>$(comparevi_vi_history_html_escape "${branch_commit_count_display}/${COMPAREVI_VI_HISTORY_MAX_BRANCH_COMMITS}; baseline: ${baseline_display}; status: ok")</code></dd>"
+  fi
+
+  if [ -f "${row_table_path}" ]; then
+    while IFS="$(printf '\t')" read -r row_index row_lineage row_base row_head row_diff_label row_status row_diff_value row_report row_highlights; do
+      local md_report='`missing`'
+      local md_highlights='_none_'
+      local html_report='<span class="muted">missing</span>'
+      local html_highlights='<span class="muted">none</span>'
+      local html_diff_class='clean'
+      local row_lineage_md
+      local row_base_md
+      local row_head_md
+      local row_diff_md
+      local row_lineage_html
+      local row_base_html
+      local row_head_html
+      local row_diff_html
+
+      [ -z "${row_index}" ] && continue
+      has_rows=1
+
+      case "${row_status}" in
+        error)
+          has_error=1
+          html_diff_class='error'
+          ;;
+        *)
+          if [ "${row_diff_value}" = "true" ]; then
+            has_signal_diff=1
+            html_diff_class='signal-diff'
+          else
+            has_clean=1
+          fi
+          ;;
+      esac
+
+      row_lineage_md="$(comparevi_vi_history_markdown_escape "${row_lineage}")"
+      row_base_md="$(comparevi_vi_history_markdown_escape "${row_base}")"
+      row_head_md="$(comparevi_vi_history_markdown_escape "${row_head}")"
+      row_diff_md="$(comparevi_vi_history_markdown_escape "${row_diff_label}")"
+      row_lineage_html="$(comparevi_vi_history_html_escape "${row_lineage}")"
+      row_base_html="$(comparevi_vi_history_html_escape "${row_base}")"
+      row_head_html="$(comparevi_vi_history_html_escape "${row_head}")"
+      row_diff_html="$(comparevi_vi_history_html_escape "${row_diff_label}")"
+
+      if [ -n "${row_report}" ]; then
+        md_report="\`$(comparevi_vi_history_markdown_escape "${row_report}")\`"
+        html_report="<code>$(comparevi_vi_history_html_escape "${row_report}")</code>"
+      fi
+      if [ -n "${row_highlights}" ]; then
+        md_highlights="$(comparevi_vi_history_markdown_escape "${row_highlights}")"
+        html_highlights="$(comparevi_vi_history_html_escape "${row_highlights}")"
+      fi
+
+      comparison_rows_markdown="${comparison_rows_markdown}| default | ${row_index} | ${row_lineage_md} | ${row_base_md} | ${row_head_md} | ${row_diff_md} | 0 | _none_ | _none_ | ${md_report} | ${md_highlights} |
+"
+      comparison_rows_html="${comparison_rows_html}        <tr><td>default</td><td>$(comparevi_vi_history_html_escape "${row_index}")</td><td>${row_lineage_html}</td><td>${row_base_html}</td><td>${row_head_html}</td><td class=\"${html_diff_class}\">${row_diff_html}</td><td>0</td><td><span class=\"muted\">none</span></td><td><span class=\"muted\">none</span></td><td>${html_report}</td><td>${html_highlights}</td></tr>
+"
+    done < "${row_table_path}"
+  fi
+
+  if [ "${has_clean}" = "1" ]; then
+    outcome_labels_json="\"clean\""
+    outcome_labels_markdown="\`clean\`"
+    outcome_labels_html="<code>clean</code>"
+  fi
+  if [ "${has_signal_diff}" = "1" ]; then
+    if [ -n "${outcome_labels_json}" ]; then
+      outcome_labels_json="${outcome_labels_json}, "
+      outcome_labels_markdown="${outcome_labels_markdown}, "
+      outcome_labels_html="${outcome_labels_html}, "
+    fi
+    outcome_labels_json="${outcome_labels_json}\"signal-diff\""
+    outcome_labels_markdown="${outcome_labels_markdown}\`signal-diff\`"
+    outcome_labels_html="${outcome_labels_html}<code>signal-diff</code>"
+  fi
+  if [ "${has_error}" = "1" ]; then
+    if [ -n "${outcome_labels_json}" ]; then
+      outcome_labels_json="${outcome_labels_json}, "
+      outcome_labels_markdown="${outcome_labels_markdown}, "
+      outcome_labels_html="${outcome_labels_html}, "
+    fi
+    outcome_labels_json="${outcome_labels_json}\"error\""
+    outcome_labels_markdown="${outcome_labels_markdown}\`error\`"
+    outcome_labels_html="${outcome_labels_html}<code>error</code>"
+  fi
+  if [ -z "${outcome_labels_json}" ]; then
+    outcome_labels_json="\"clean\""
+    outcome_labels_markdown="\`clean\`"
+    outcome_labels_html="<code>clean</code>"
+  fi
+  if [ "${error_count}" -gt 0 ]; then
+    mode_status='failed'
+  fi
+
+  mode_overview_row="| default | ${processed} | ${diffs} | ${signal_diffs} | 0 | 0 | _none_ | _none_ | _none_ |"
+
+  cat > "${markdown_path}" <<EOF
+# VI history report
+
+- Target Path: \`$(comparevi_vi_history_markdown_escape "${COMPAREVI_VI_HISTORY_TARGET_PATH}")\`
+- Requested Start Ref: \`$(comparevi_vi_history_markdown_escape "${requested_start_ref}")\`
+- Effective Start Ref: \`$(comparevi_vi_history_markdown_escape "${start_ref}")\`
+- End Ref: \`$(comparevi_vi_history_markdown_escape "${end_ref:-n/a}")\`
+- Source Branch: \`$(comparevi_vi_history_markdown_escape "${source_branch}")\`
+${branch_budget_markdown}
+- Requested Modes: \`default\`
+- Executed Modes: \`default\`
+
+## Summary
+
+| Metric | Value |
+| --- | --- |
+| Modes | 1 |
+| Comparisons | ${processed} |
+| Diffs | ${diffs} |
+| Signal Diffs | ${signal_diffs} |
+| Collapsed Noise | 0 |
+| Missing | 0 |
+| Errors | ${error_count} |
+| Categories | _none_ |
+| Buckets | _none_ |
+
+## Observed interpretation
+
+| Metric | Value |
+| --- | --- |
+| Coverage Class | \`${coverage_class}\` |
+| Coverage Detail | \`${coverage_detail}\` |
+| Mode Sensitivity | \`${mode_sensitivity}\` |
+| Outcome Labels | ${outcome_labels_markdown} |
+
+## Mode overview
+
+| Mode | Processed | Diffs | Signal | Collapsed Noise | Missing | Categories | Buckets | Flags |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- |
+${mode_overview_row}
+
+## Commit comparisons
+
+| Mode | Pair | Lineage | Base | Head | Diff | Duration (s) | Categories | Buckets | Report | Highlights |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+${comparison_rows_markdown}
+
+## Artifacts
+
+- Suite Manifest: \`$(comparevi_vi_history_markdown_escape "${suite_manifest}")\`
+- History Context: \`$(comparevi_vi_history_markdown_escape "${history_context}")\`
+- History Summary JSON: \`$(comparevi_vi_history_markdown_escape "${summary_path}")\`
+- HTML Report: \`$(comparevi_vi_history_markdown_escape "${html_path}")\`
+EOF
+
+  cat > "${html_path}" <<EOF
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>VI history report</title>
+  <style>
+    body { font-family: Segoe UI, Arial, sans-serif; margin: 24px; color: #1f2933; background: #f8fafc; }
+    article { background: #ffffff; border: 1px solid #d9e2ec; border-radius: 12px; padding: 24px; }
+    h1, h2 { margin-top: 0; }
+    dl { display: grid; grid-template-columns: 220px 1fr; gap: 8px 16px; }
+    dt { font-weight: 700; }
+    dd { margin: 0; }
+    table { width: 100%; border-collapse: collapse; margin: 16px 0; }
+    th, td { border: 1px solid #d9e2ec; padding: 8px 10px; text-align: left; vertical-align: top; }
+    th { background: #eef2f7; }
+    code { background: #f3f4f6; padding: 1px 4px; border-radius: 4px; }
+    .muted { color: #6b7280; }
+    .signal-diff { color: #8b1e3f; font-weight: 700; }
+    .clean { color: #1f7a4d; font-weight: 700; }
+    .error { color: #b42318; font-weight: 700; }
+  </style>
+</head>
+<body>
+<article>
+  <h1>VI history report</h1>
+  <dl>
+    <dt>Target path</dt><dd><code>$(comparevi_vi_history_html_escape "${COMPAREVI_VI_HISTORY_TARGET_PATH}")</code></dd>
+    <dt>Requested start ref</dt><dd><code>$(comparevi_vi_history_html_escape "${requested_start_ref}")</code></dd>
+    <dt>Effective start ref</dt><dd><code>$(comparevi_vi_history_html_escape "${start_ref}")</code></dd>
+    <dt>End ref</dt><dd><code>$(comparevi_vi_history_html_escape "${end_ref:-n/a}")</code></dd>
+    <dt>Source branch</dt><dd><code>$(comparevi_vi_history_html_escape "${source_branch}")</code></dd>
+    ${branch_budget_html}
+    <dt>Requested modes</dt><dd><code>default</code></dd>
+    <dt>Executed modes</dt><dd><code>default</code></dd>
+  </dl>
+
+  <h2>Summary</h2>
+  <table>
+    <tbody>
+      <tr><th>Modes</th><td>1</td></tr>
+      <tr><th>Comparisons</th><td>${processed}</td></tr>
+      <tr><th>Diffs</th><td>${diffs}</td></tr>
+      <tr><th>Signal Diffs</th><td>${signal_diffs}</td></tr>
+      <tr><th>Collapsed Noise</th><td>0</td></tr>
+      <tr><th>Missing</th><td>0</td></tr>
+      <tr><th>Errors</th><td>${error_count}</td></tr>
+      <tr><th>Categories</th><td><span class="muted">none</span></td></tr>
+      <tr><th>Buckets</th><td><span class="muted">none</span></td></tr>
+    </tbody>
+  </table>
+
+  <h2>Observed interpretation</h2>
+  <table>
+    <tbody>
+      <tr><th>Coverage Class</th><td><code>${coverage_class}</code></td></tr>
+      <tr><th>Coverage Detail</th><td><code>${coverage_detail}</code></td></tr>
+      <tr><th>Mode Sensitivity</th><td><code>${mode_sensitivity}</code></td></tr>
+      <tr><th>Outcome Labels</th><td>${outcome_labels_html}</td></tr>
+    </tbody>
+  </table>
+
+  <h2>Mode overview</h2>
+  <table>
+    <thead>
+      <tr><th>Mode</th><th>Processed</th><th>Diffs</th><th>Signal</th><th>Collapsed Noise</th><th>Missing</th><th>Categories</th><th>Buckets</th><th>Flags</th></tr>
+    </thead>
+    <tbody>
+      <tr><td>default</td><td>${processed}</td><td>${diffs}</td><td>${signal_diffs}</td><td>0</td><td>0</td><td><span class="muted">none</span></td><td><span class="muted">none</span></td><td><span class="muted">none</span></td></tr>
+    </tbody>
+  </table>
+
+  <h2>Commit comparisons</h2>
+  <table>
+    <thead>
+      <tr><th>Mode</th><th>Pair</th><th>Lineage</th><th>Base</th><th>Head</th><th>Diff</th><th>Duration (s)</th><th>Categories</th><th>Buckets</th><th>Report</th><th>Highlights</th></tr>
+    </thead>
+    <tbody>
+${comparison_rows_html}
+    </tbody>
+  </table>
+
+  <h2>Artifacts</h2>
+  <ul>
+    <li>Suite Manifest: <code>${suite_manifest_escaped}</code></li>
+    <li>History Context: <code>${history_context_escaped}</code></li>
+    <li>History Summary JSON: <code>${summary_path_escaped}</code></li>
+    <li>Markdown report: <code>${markdown_path_escaped}</code></li>
+  </ul>
+</article>
+</body>
+</html>
+EOF
+
+  cat > "${summary_path}" <<EOF
+{
+  "schema": "comparevi-tools/history-facade@v1",
+  "generatedAtUtc": "${generated_at}",
+  "target": {
+    "path": "${target_path_escaped}",
+    "requestedStartRef": "${requested_start_ref_escaped}",
+    "effectiveStartRef": "${start_ref_escaped}",
+    "sourceBranchRef": "${source_branch_escaped}"${branch_budget_json}
+  },
+  "execution": {
+    "status": "$(comparevi_vi_history_json_escape "${suite_status}")",
+    "reportFormat": "html",
+    "resultsDir": "${results_dir_escaped}",
+    "manifestPath": "${suite_manifest_escaped}",
+    "requestedModes": ["default"],
+    "executedModes": ["default"]
+  },
+  "observedInterpretation": {
+    "coverageClass": "${coverage_class}",
+    "coverageDetail": "${coverage_detail}",
+    "modeSensitivity": "${mode_sensitivity}",
+    "outcomeLabels": [${outcome_labels_json}]
+  },
+  "summary": {
+    "modes": 1,
+    "comparisons": ${processed},
+    "diffs": ${diffs},
+    "signalDiffs": ${signal_diffs},
+    "noiseCollapsed": 0,
+    "missing": 0,
+    "errors": ${error_count},
+    "categories": [],
+    "bucketProfile": [],
+    "categoryCountKeys": [],
+    "bucketCountKeys": []
+  },
+  "reports": {
+    "markdownPath": "${markdown_path_escaped}",
+    "htmlPath": "${html_path_escaped}"
+  },
+  "modes": [
+    {
+      "name": "default",
+      "slug": "default",
+      "status": "$(comparevi_vi_history_json_escape "${mode_status}")",
+      "processed": ${processed},
+      "diffs": ${diffs},
+      "signalDiffs": ${signal_diffs},
+      "noiseCollapsed": 0,
+      "missing": 0,
+      "errors": ${error_count},
+      "categories": [],
+      "bucketProfile": [],
+      "flags": [],
+      "manifestPath": "${mode_manifest_escaped}",
+      "resultsDir": "${mode_results_dir_escaped}"
+    }
+  ]
+}
+EOF
+
+  printf '%s\t%s\t%s\n' "${markdown_path}" "${html_path}" "${summary_path}"
 }
 
 comparevi_vi_history_prepare_pair_plan() {
@@ -124,10 +553,6 @@ comparevi_vi_history_prepare_pair_plan() {
       break
     fi
 
-    selected_pairs=$((selected_pairs + 1))
-    pair_index="$(printf '%03d' "${selected_pairs}")"
-    pair_label="pair-${pair_index}"
-    pair_dir="${work_root}/${pair_label}"
     base_ref="$(comparevi_vi_history_git rev-parse "${head_ref}^" 2>/dev/null | head -n 1)"
     if [ -z "${base_ref}" ] && [ -n "${resolved_baseline}" ] && [ "${head_ref}" != "$(comparevi_vi_history_resolve_ref "${resolved_baseline}")" ]; then
       base_ref="$(comparevi_vi_history_resolve_ref "${resolved_baseline}")"
@@ -137,6 +562,19 @@ comparevi_vi_history_prepare_pair_plan() {
       return 2
     fi
 
+    if ! comparevi_vi_history_has_blob "${base_ref}" "${COMPAREVI_VI_HISTORY_TARGET_PATH}"; then
+      echo "Skipping VI history candidate ${head_ref} because ${COMPAREVI_VI_HISTORY_TARGET_PATH} is absent at base ref ${base_ref}." 1>&2
+      continue
+    fi
+    if ! comparevi_vi_history_has_blob "${head_ref}" "${COMPAREVI_VI_HISTORY_TARGET_PATH}"; then
+      echo "Skipping VI history candidate ${head_ref} because ${COMPAREVI_VI_HISTORY_TARGET_PATH} is absent at head ref ${head_ref}." 1>&2
+      continue
+    fi
+
+    selected_pairs=$((selected_pairs + 1))
+    pair_index="$(printf '%03d' "${selected_pairs}")"
+    pair_label="pair-${pair_index}"
+    pair_dir="${work_root}/${pair_label}"
     mkdir -p "${pair_dir}" || return 2
     base_vi_path="${pair_dir}/base-${target_leaf}"
     head_vi_path="${pair_dir}/head-${target_leaf}"
@@ -206,6 +644,7 @@ comparevi_vi_history_emit_suite_bundle() {
     local requested_start_ref="${COMPAREVI_VI_HISTORY_REQUESTED_START_REF:-${COMPAREVI_VI_HISTORY_HEAD_REF}}"
     local start_ref="${COMPAREVI_VI_HISTORY_START_REF:-${COMPAREVI_VI_HISTORY_HEAD_REF}}"
     local end_ref="${COMPAREVI_VI_HISTORY_END_REF:-}"
+    local row_table_path="${results_dir}/history-report-rows.tsv"
     local max_pairs_json="null"
     local max_signal_pairs_json="null"
     local selected_pair_total
@@ -229,6 +668,10 @@ comparevi_vi_history_emit_suite_bundle() {
     local end_ref_json="null"
     local branch_ref_escaped
     local branch_budget_json=""
+    local report_bundle_paths=""
+    local markdown_path=""
+    local html_path=""
+    local summary_path=""
 
     if [ -n "${COMPAREVI_VI_HISTORY_MAX_PAIRS:-}" ]; then
       max_pairs_json="${COMPAREVI_VI_HISTORY_MAX_PAIRS}"
@@ -268,8 +711,10 @@ comparevi_vi_history_emit_suite_bundle() {
     "reason": "within-limit"
   }
 EOF
-      )
+        )
     fi
+
+    : > "${row_table_path}" || return 2
 
     exec 3< "${ledger_path}"
     while IFS="$(printf '\t')" read -r plan_index base_ref head_ref base_vi_path head_vi_path pair_report_path out_name; do
@@ -294,6 +739,9 @@ EOF
       local base_date
       local head_date
       local depth_value
+      local base_label
+      local head_label
+      local diff_label
 
       IFS="$(printf '\t')" read -r ledger_index pair_exit_code pair_status pair_diff ledger_report_path pair_generated_at <&3 || break
       [ -z "${plan_index}" ] && continue
@@ -325,6 +773,26 @@ EOF
       base_date="$(comparevi_vi_history_git_field "${base_ref}" '%cI')"
       head_date="$(comparevi_vi_history_git_field "${head_ref}" '%cI')"
       depth_value=$((processed - 1))
+      base_label="$(comparevi_vi_history_flatten_text "${base_short} ${base_subject}")"
+      head_label="$(comparevi_vi_history_flatten_text "${head_short} ${head_subject}")"
+      if [ "${result_status}" = "error" ]; then
+        diff_label="error"
+      elif [ "${diff_value}" = "true" ]; then
+        diff_label="signal-diff"
+      else
+        diff_label="clean"
+      fi
+
+      printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n' \
+        "${processed}" \
+        "Mainline" \
+        "${base_label}" \
+        "${head_label}" \
+        "${diff_label}" \
+        "${result_status}" \
+        "${diff_value}" \
+        "${effective_report_path}" \
+        "" >> "${row_table_path}" || return 2
 
       comparisons_json="${comparisons_json}${comparison_separator}
     {
@@ -533,6 +1001,26 @@ EOF
 }
 EOF
 
+    report_bundle_paths="$(comparevi_vi_history_write_report_bundle \
+      "${results_dir}" \
+      "${suite_manifest}" \
+      "${history_context}" \
+      "${mode_manifest}" \
+      "${mode_results_dir}" \
+      "${generated_at}" \
+      "${requested_start_ref}" \
+      "${start_ref}" \
+      "${end_ref}" \
+      "${processed}" \
+      "${mode_diffs}" \
+      "${signal_diffs}" \
+      "${error_count}" \
+      "${suite_status}" \
+      "${row_table_path}")" || return 2
+    IFS="$(printf '\t')" read -r markdown_path html_path summary_path <<EOF
+${report_bundle_paths}
+EOF
+
     cat > "${receipt_path}" <<EOF
 {
   "schema": "ni-linux-runtime-bootstrap-receipt@v1",
@@ -549,6 +1037,9 @@ EOF
   "resultsDir": "${results_dir_escaped}",
   "suiteManifestPath": "$(comparevi_vi_history_json_escape "${suite_manifest}")",
   "historyContextPath": "$(comparevi_vi_history_json_escape "${history_context}")",
+  "historyReportMarkdownPath": "$(comparevi_vi_history_json_escape "${markdown_path}")",
+  "historyReportHtmlPath": "$(comparevi_vi_history_json_escape "${html_path}")",
+  "historySummaryPath": "$(comparevi_vi_history_json_escape "${summary_path}")",
   "pairPlanPath": "$(comparevi_vi_history_json_escape "${plan_path}")",
   "resultLedgerPath": "$(comparevi_vi_history_json_escape "${ledger_path}")",
   "processedPairs": ${processed},
@@ -624,6 +1115,14 @@ EOF
   local branch_ref_escaped
   branch_ref_escaped="$(comparevi_vi_history_json_escape "${COMPAREVI_VI_HISTORY_SOURCE_BRANCH:-HEAD}")"
   local branch_budget_json=""
+  local row_table_path="${results_dir}/history-report-rows.tsv"
+  local base_label
+  local head_label
+  local diff_label
+  local report_bundle_paths=""
+  local markdown_path=""
+  local html_path=""
+  local summary_path=""
 
   if [ -n "${COMPAREVI_VI_HISTORY_MAX_BRANCH_COMMITS:-}" ]; then
     local baseline_json="null"
@@ -646,8 +1145,28 @@ EOF
     "reason": "within-limit"
   }
 EOF
-    )
+      )
   fi
+
+  base_label="$(comparevi_vi_history_flatten_text "${base_short} ${base_subject}")"
+  head_label="$(comparevi_vi_history_flatten_text "${head_short} ${head_subject}")"
+  if [ "${result_status}" = "error" ]; then
+    diff_label="error"
+  elif [ "${diff_value}" = "true" ]; then
+    diff_label="signal-diff"
+  else
+    diff_label="clean"
+  fi
+  printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n' \
+    "1" \
+    "Mainline" \
+    "${base_label}" \
+    "${head_label}" \
+    "${diff_label}" \
+    "${result_status}" \
+    "${diff_value}" \
+    "${report_path}" \
+    "" > "${row_table_path}" || return 2
 
   cat > "${mode_manifest}" <<EOF
 {
@@ -841,6 +1360,26 @@ EOF
 }
 EOF
 
+  report_bundle_paths="$(comparevi_vi_history_write_report_bundle \
+    "${results_dir}" \
+    "${suite_manifest}" \
+    "${history_context}" \
+    "${mode_manifest}" \
+    "${results_dir}" \
+    "${generated_at}" \
+    "${COMPAREVI_VI_HISTORY_HEAD_REF}" \
+    "${COMPAREVI_VI_HISTORY_HEAD_REF}" \
+    "${COMPAREVI_VI_HISTORY_BASE_REF}" \
+    "1" \
+    "${mode_diffs}" \
+    "${signal_diffs}" \
+    "${error_count}" \
+    "${suite_status}" \
+    "${row_table_path}")" || return 2
+  IFS="$(printf '\t')" read -r markdown_path html_path summary_path <<EOF
+${report_bundle_paths}
+EOF
+
   cat > "${receipt_path}" <<EOF
 {
   "schema": "ni-linux-runtime-bootstrap-receipt@v1",
@@ -856,6 +1395,9 @@ EOF
   "resultsDir": "${results_dir_escaped}",
   "suiteManifestPath": "$(comparevi_vi_history_json_escape "${suite_manifest}")",
   "historyContextPath": "$(comparevi_vi_history_json_escape "${history_context}")",
+  "historyReportMarkdownPath": "$(comparevi_vi_history_json_escape "${markdown_path}")",
+  "historyReportHtmlPath": "$(comparevi_vi_history_json_escape "${html_path}")",
+  "historySummaryPath": "$(comparevi_vi_history_json_escape "${summary_path}")",
   "reportPath": "${report_path_escaped}",
   "compareExitCode": ${exit_code}
 }

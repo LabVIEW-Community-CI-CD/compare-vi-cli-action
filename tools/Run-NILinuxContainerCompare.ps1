@@ -37,6 +37,11 @@
   Optional explicit in-container LabVIEW executable path forwarded as
   -LabVIEWPath and used for prelaunch.
 
+.PARAMETER ContainerNameLabel
+  Optional deterministic label used when composing the Docker container name.
+  The helper sanitizes the label and appends a short stable suffix so parallel
+  runs do not collide on shared Docker hosts.
+
 .PARAMETER Probe
   Preflight only (Docker availability, Linux container mode, and image
   presence). Does not require BaseVi/HeadVi.
@@ -91,6 +96,7 @@ param(
   [int]$HeartbeatSeconds = 15,
   [string[]]$Flags,
   [string]$LabVIEWPath,
+  [string]$ContainerNameLabel,
   [switch]$Probe,
   [bool]$AutoRepairRuntime = $true,
   [int]$RuntimeEngineReadyTimeoutSeconds = 120,
@@ -151,6 +157,87 @@ function Resolve-DockerCommandSource {
     throw 'Unable to resolve docker command source path.'
   }
   return [string]$command.Source
+}
+
+function Get-EffectiveCompareFlags {
+  param(
+    [AllowNull()][string[]]$InputFlags
+  )
+
+  $flags = @()
+  if ($InputFlags) {
+    foreach ($flag in $InputFlags) {
+      if (-not [string]::IsNullOrWhiteSpace([string]$flag)) {
+        $flags += [string]$flag
+      }
+    }
+  }
+
+  $hasHeadless = $false
+  foreach ($flag in $flags) {
+    if ($flag.Trim().ToLowerInvariant() -eq '-headless') {
+      $hasHeadless = $true
+      break
+    }
+  }
+  if (-not $hasHeadless) {
+    $flags += '-Headless'
+  }
+
+  return @($flags)
+}
+
+function ConvertTo-ContainerNameSegment {
+  param(
+    [AllowEmptyString()][string]$Value,
+    [int]$MaxLength = 40
+  )
+
+  if ([string]::IsNullOrWhiteSpace($Value)) {
+    return ''
+  }
+
+  $segment = $Value.Trim().ToLowerInvariant()
+  $segment = [regex]::Replace($segment, '[^a-z0-9_.-]+', '-')
+  $segment = [regex]::Replace($segment, '[-_.]{2,}', '-')
+  $segment = $segment.Trim('-', '_', '.')
+  if ([string]::IsNullOrWhiteSpace($segment)) {
+    return ''
+  }
+  if ($segment.Length -gt $MaxLength) {
+    $segment = $segment.Substring(0, $MaxLength).TrimEnd('-', '_', '.')
+  }
+  return $segment
+}
+
+function Get-DeterministicContainerSuffix {
+  param([Parameter(Mandatory)][string]$Seed)
+
+  $bytes = [System.Text.Encoding]::UTF8.GetBytes($Seed)
+  $hasher = [System.Security.Cryptography.MD5]::Create()
+  try {
+    $hash = $hasher.ComputeHash($bytes)
+  } finally {
+    $hasher.Dispose()
+  }
+  return ((($hash | ForEach-Object { $_.ToString('x2') }) -join '').Substring(0, 8))
+}
+
+function New-CompareContainerName {
+  param(
+    [AllowEmptyString()][string]$Label,
+    [AllowEmptyString()][string]$HashSeed
+  )
+
+  $prefix = 'ni-lnx-compare'
+  $segment = ConvertTo-ContainerNameSegment -Value $Label
+  if ([string]::IsNullOrWhiteSpace($segment)) {
+    return ('{0}-{1}' -f $prefix, ([guid]::NewGuid().ToString('N').Substring(0, 12)))
+  }
+
+  $seed = if ([string]::IsNullOrWhiteSpace($HashSeed)) { $segment } else { $HashSeed }
+  $suffix = Get-DeterministicContainerSuffix -Seed $seed
+  return ('{0}-{1}-{2}' -f $prefix, $segment, $suffix)
 }
 
 function Resolve-EnvTokenValue {
@@ -1607,6 +1694,7 @@ $capture = [ordered]@{
   baseVi         = $null
   headVi         = $null
   reportPath     = $null
+  containerName  = $null
   command        = $null
   stdoutPath     = $null
   stderrPath     = $null
@@ -1936,10 +2024,8 @@ try {
       $capture.runtimeDeterminism.snapshotPath = $runtimeSnapshot
     }
 
-    [string[]]$flagsPayload = @()
-    if ($Flags) {
-      $flagsPayload = @($Flags | Where-Object { -not [string]::IsNullOrWhiteSpace([string]$_) } | ForEach-Object { [string]$_ })
-    }
+    [string[]]$flagsPayload = @(Get-EffectiveCompareFlags -InputFlags $Flags)
+    $capture.flags = @($flagsPayload)
     $flagsJoined = ''
     if ($null -ne $flagsPayload -and $flagsPayload.Length -gt 0) {
       $flagsJoined = [string]::Join("`n", [string[]]$flagsPayload)
@@ -1961,8 +2047,18 @@ try {
     }
     $containerReportPath = Convert-HostFileToContainerPath -HostFilePath $resolvedReportPath -MountMap $mounts -MountIndex $mountRef
 
-    $containerName = 'ni-lnx-compare-{0}' -f ([guid]::NewGuid().ToString('N').Substring(0, 12))
+    $effectiveContainerLabel = if ([string]::IsNullOrWhiteSpace($ContainerNameLabel)) {
+      if ($viHistoryEnabled -and -not [string]::IsNullOrWhiteSpace([string]$resolvedRuntimeBootstrap.mode)) {
+        [string]$resolvedRuntimeBootstrap.mode
+      } else {
+        ''
+      }
+    } else {
+      $ContainerNameLabel
+    }
+    $containerName = New-CompareContainerName -Label $effectiveContainerLabel -HashSeed $reportDirectory
     $containerNameForCleanup = $containerName
+    $capture.containerName = $containerName
     $containerReportPathForExport = $containerReportPath
     $reportDirectoryForExport = $reportDirectory
     $containerCommand = New-ContainerCommand

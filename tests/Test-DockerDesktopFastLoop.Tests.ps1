@@ -1541,6 +1541,94 @@ if (-not [string]::IsNullOrWhiteSpace($GitHubOutputPath)) {
     }
   }
 
+  It 'adds a linux sequential multi-pair history step for smoke scenario runs' {
+    $repoRoot = Join-Path $TestDrive 'fast-loop-linux-sequential-scenario'
+    New-HarnessRepo -RootPath $repoRoot
+
+    Set-Content -LiteralPath (Join-Path $repoRoot 'fixtures' 'head-step-1.vi') -Value 'head-step-1' -Encoding utf8
+    Set-Content -LiteralPath (Join-Path $repoRoot 'fixtures' 'head-step-2.vi') -Value 'head-step-2' -Encoding utf8
+    Set-Content -LiteralPath (Join-Path $repoRoot 'fixtures' 'vi-history' 'pr-harness.json') -Encoding utf8 -Value @'
+{
+  "schema": "vi-history-pr-harness@v1",
+  "scenarios": [
+    {
+      "id": "sequential",
+      "mode": "sequential",
+      "requireDiff": true
+    }
+  ]
+}
+'@
+    Set-Content -LiteralPath (Join-Path $repoRoot 'fixtures' 'vi-history' 'sequential.json') -Encoding utf8 -Value @'
+{
+  "schema": "vi-history-sequence@v1",
+  "targetPath": "fixtures/vi-attr/Head.vi",
+  "maxPairs": 2,
+  "steps": [
+    {
+      "id": "step-1",
+      "source": "fixtures/head-step-1.vi",
+      "requireDiff": true,
+      "message": "chore: sequential step 1"
+    },
+    {
+      "id": "step-2",
+      "source": "fixtures/head-step-2.vi",
+      "requireDiff": true,
+      "message": "chore: sequential step 2"
+    }
+  ]
+}
+'@
+
+    Push-Location $repoRoot
+    try {
+      $resultsRoot = Join-Path $repoRoot 'tests/results/local-parity'
+      $tracePath = Join-Path $resultsRoot 'linux-trace.log'
+      $sourceBranch = 'consumer/sequential-smoke'
+      $env:FASTLOOP_LINUX_TRACE_PATH = $tracePath
+
+      $output = & pwsh -NoLogo -NoProfile -File (Join-Path $repoRoot 'tools' 'Test-DockerDesktopFastLoop.ps1') `
+        -ResultsRoot $resultsRoot `
+        -LaneScope linux `
+        -SkipWindowsProbe `
+        -SkipLinuxProbe `
+        -VIHistorySourceBranch $sourceBranch `
+        -HistoryScenarioSet smoke 2>&1
+      $LASTEXITCODE | Should -Be 0 -Because ($output -join "`n")
+
+      $summaryPath = Get-LatestFastLoopSummary -ResultsRoot $resultsRoot
+      $summaryPath | Should -Not -BeNullOrEmpty
+      $summary = Get-Content -LiteralPath $summaryPath -Raw | ConvertFrom-Json -Depth 12
+      $historySteps = @($summary.steps | Where-Object { [string]$_.historyLane -eq 'linux' -and [string]$_.historySequence -eq 'sequential' })
+      $historySteps.Count | Should -Be 1
+      $historySteps[0].name | Should -Be 'linux-history-sequential'
+      $historySteps[0].resultClass | Should -Be 'success-no-diff'
+      $historySteps[0].gateOutcome | Should -Be 'pass'
+      $historySteps[0].capturePath | Should -Be (Join-Path $resultsRoot 'history-scenarios\sequential\linux-suite\results\ni-linux-container-capture.json')
+
+      $capture = Get-Content -LiteralPath $historySteps[0].capturePath -Raw | ConvertFrom-Json -Depth 12
+      $capture.runtimeInjection.contractMode | Should -Be 'vi-history-sequential-smoke'
+      $capture.runtimeInjection.branchRef | Should -Be $sourceBranch
+      $capture.runtimeInjection.viHistory.targetPath | Should -Be 'fixtures/vi-attr/Head.vi'
+      $capture.runtimeInjection.viHistory.maxPairs | Should -Be 2
+
+      $suiteManifestPath = Join-Path $resultsRoot 'history-scenarios\sequential\linux-suite\results\suite-manifest.json'
+      Test-Path -LiteralPath $suiteManifestPath -PathType Leaf | Should -BeTrue
+      $suiteManifest = Get-Content -LiteralPath $suiteManifestPath -Raw | ConvertFrom-Json -Depth 12
+      $suiteManifest.maxPairs | Should -Be 2
+      $suiteManifest.stats.processed | Should -Be 2
+
+      Test-Path -LiteralPath $tracePath -PathType Leaf | Should -BeTrue
+      $traceLines = @(Get-Content -LiteralPath $tracePath | Where-Object { $_ -like 'probe=False*' })
+      $traceLines.Count | Should -BeGreaterThan 0
+      ($traceLines -join "`n") | Should -Match 'bootstrapContract=.*history-scenarios\\sequential\\linux-suite\\runtime-bootstrap\.json'
+    } finally {
+      Remove-Item Env:FASTLOOP_LINUX_TRACE_PATH -ErrorAction SilentlyContinue
+      Pop-Location | Out-Null
+    }
+  }
+
   It 'fails early when single-lane mode enables managed engine switching' {
     $repoRoot = Join-Path $TestDrive 'fast-loop-single-lane-manage-engine'
     New-HarnessRepo -RootPath $repoRoot

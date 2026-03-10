@@ -24,12 +24,22 @@ test('PrePush-Checks invokes workspace health gate in optional lease mode', () =
   assert.match(content, /pre-push-workspace-health\.json/);
 });
 
-test('PrePush NI image known-flag scenario uses direct script invocation and explicit LabVIEWPath', () => {
+test('PrePush NI image known-flag scenario uses the Linux runner with explicit LabVIEWPath', () => {
   const content = readRepoFile('tools/PrePush-Checks.ps1');
+  assert.match(content, /Run-NILinuxContainerCompare\.ps1/);
+  assert.match(content, /nationalinstruments\/labview:2026q1-linux/);
+  assert.match(content, /NI_LINUX_LABVIEW_PATH/);
+  assert.match(content, /name = if \(\$scenarioLabels\.Count -eq 0\) \{ 'baseline' \}/);
+  assert.match(content, /label = 'noattr'; flag = '-noattr'/);
+  assert.match(content, /label = 'nofppos'; flag = '-nofppos'/);
+  assert.match(content, /label = 'nobdcosm'; flag = '-nobdcosm'/);
   assert.match(content, /& \$niCompareScript/);
   assert.match(content, /-LabVIEWPath \$containerLabVIEWPath/);
-  assert.match(content, /\$knownFlags = @\('-noattr', '-nofppos', '-nobdcosm'\)/);
+  assert.match(content, /-ContainerNameLabel \$activeScenarioName/);
+  assert.match(content, /history-summary\.json/);
+  assert.match(content, /VI Comparison Report flag combination scenarios OK/);
   assert.doesNotMatch(content, /pwsh\s+-NoLogo\s+-NoProfile\s+-File\s+\$niCompareScript/);
+  assert.doesNotMatch(content, /Render-VIHistoryReport\.ps1/);
 });
 
 test('PrePush includes local PSScriptAnalyzer gate for changed PowerShell files', () => {

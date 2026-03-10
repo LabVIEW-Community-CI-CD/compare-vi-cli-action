@@ -450,6 +450,142 @@ function Get-HistoryScenarioIdsForSet {
   }
 }
 
+function Invoke-GitInRepo {
+  param(
+    [Parameter(Mandatory)][string]$RepoPath,
+    [Parameter(Mandatory)][string[]]$Arguments
+  )
+
+  Push-Location $RepoPath
+  try {
+    $output = & git @Arguments 2>&1
+    if ($LASTEXITCODE -ne 0) {
+      $text = @($output | ForEach-Object { [string]$_ }) -join "`n"
+      throw ("git {0} failed in {1}: {2}" -f ($Arguments -join ' '), $RepoPath, $text)
+    }
+    return @($output | ForEach-Object { [string]$_ })
+  } finally {
+    Pop-Location | Out-Null
+  }
+}
+
+function Get-SequentialHistoryFixtureDefinition {
+  param(
+    [Parameter(Mandatory)][string]$RepoRoot,
+    [Parameter(Mandatory)][string]$FixturePath
+  )
+
+  $fixturePathResolved = Resolve-RepoRelativePath -RepoRoot $RepoRoot -PathValue $FixturePath -Description 'Sequential history fixture'
+  $fixture = Get-Content -LiteralPath $fixturePathResolved -Raw | ConvertFrom-Json -Depth 8
+  if (-not $fixture -or [string]$fixture.schema -ne 'vi-history-sequence@v1') {
+    throw ("Unsupported sequential fixture schema in {0}" -f $fixturePathResolved)
+  }
+  if ([string]::IsNullOrWhiteSpace([string]$fixture.targetPath)) {
+    throw ("Sequential fixture must declare targetPath: {0}" -f $fixturePathResolved)
+  }
+  if (-not $fixture.steps -or @($fixture.steps).Count -eq 0) {
+    throw ("Sequential fixture contains no steps: {0}" -f $fixturePathResolved)
+  }
+
+  $steps = New-Object System.Collections.Generic.List[object]
+  foreach ($step in @($fixture.steps)) {
+    $requireDiff = $false
+    if ($step.PSObject.Properties['requireDiff']) {
+      $requireDiff = [bool]$step.requireDiff
+    }
+    if (-not $requireDiff) {
+      continue
+    }
+    if (-not $step.PSObject.Properties['source'] -or [string]::IsNullOrWhiteSpace([string]$step.source)) {
+      throw ("Sequential fixture step missing source path in {0}" -f $fixturePathResolved)
+    }
+    $resolvedSource = Resolve-RepoRelativePath -RepoRoot $RepoRoot -PathValue ([string]$step.source) -Description ("Sequential step source '{0}'" -f [string]$step.id)
+    $steps.Add([pscustomobject]@{
+      id = if ($step.PSObject.Properties['id']) { [string]$step.id } else { '' }
+      title = if ($step.PSObject.Properties['title']) { [string]$step.title } else { '' }
+      message = if ($step.PSObject.Properties['message']) { [string]$step.message } else { '' }
+      source = [string]$step.source
+      resolvedSource = $resolvedSource
+    }) | Out-Null
+  }
+
+  if ($steps.Count -eq 0) {
+    throw ("Sequential fixture resolved to empty after requireDiff=true filtering in {0}." -f $fixturePathResolved)
+  }
+
+  return [pscustomobject]@{
+    path = $fixturePathResolved
+    targetPath = [string]$fixture.targetPath
+    baselineSourcePath = Resolve-RepoRelativePath -RepoRoot $RepoRoot -PathValue ([string]$fixture.targetPath) -Description 'Sequential history target baseline'
+    maxPairs = if ($fixture.PSObject.Properties['maxPairs'] -and $null -ne $fixture.maxPairs) { [int]$fixture.maxPairs } else { $steps.Count }
+    steps = @($steps.ToArray())
+  }
+}
+
+function New-LinuxSequentialHistoryScenarioRepo {
+  param(
+    [Parameter(Mandatory)][string]$RepoRoot,
+    [Parameter(Mandatory)][string]$FixturePath,
+    [Parameter(Mandatory)][string]$OutputRoot,
+    [Parameter(Mandatory)][string]$BranchRef
+  )
+
+  $fixture = Get-SequentialHistoryFixtureDefinition -RepoRoot $RepoRoot -FixturePath $FixturePath
+  $scratchRepoRoot = Join-Path $OutputRoot 'repo'
+  if (Test-Path -LiteralPath $scratchRepoRoot) {
+    Remove-Item -LiteralPath $scratchRepoRoot -Recurse -Force
+  }
+  New-Item -ItemType Directory -Path $scratchRepoRoot -Force | Out-Null
+
+  Invoke-GitInRepo -RepoPath $scratchRepoRoot -Arguments @('init', '--initial-branch=develop') | Out-Null
+  Invoke-GitInRepo -RepoPath $scratchRepoRoot -Arguments @('config', 'user.email', 'agent@example.com') | Out-Null
+  Invoke-GitInRepo -RepoPath $scratchRepoRoot -Arguments @('config', 'user.name', 'Agent Runner') | Out-Null
+
+  $targetPath = Join-Path $scratchRepoRoot $fixture.targetPath
+  $targetDir = Split-Path -Parent $targetPath
+  if ($targetDir -and -not (Test-Path -LiteralPath $targetDir -PathType Container)) {
+    New-Item -ItemType Directory -Path $targetDir -Force | Out-Null
+  }
+  Copy-Item -LiteralPath $fixture.baselineSourcePath -Destination $targetPath -Force
+  Invoke-GitInRepo -RepoPath $scratchRepoRoot -Arguments @('add', '--', $fixture.targetPath) | Out-Null
+  Invoke-GitInRepo -RepoPath $scratchRepoRoot -Arguments @('commit', '-m', 'chore: linux sequential history baseline') | Out-Null
+
+  $effectiveBranchRef = if ([string]::IsNullOrWhiteSpace($BranchRef)) { 'develop' } else { $BranchRef.Trim() }
+  if (-not [string]::Equals($effectiveBranchRef, 'develop', [System.StringComparison]::OrdinalIgnoreCase)) {
+    Invoke-GitInRepo -RepoPath $scratchRepoRoot -Arguments @('switch', '-c', $effectiveBranchRef) | Out-Null
+  }
+
+  $appliedSteps = 0
+  foreach ($step in @($fixture.steps)) {
+    Copy-Item -LiteralPath $step.resolvedSource -Destination $targetPath -Force
+    $status = @(Invoke-GitInRepo -RepoPath $scratchRepoRoot -Arguments @('status', '--porcelain', '--', $fixture.targetPath))
+    if ($status.Count -eq 0) {
+      continue
+    }
+    Invoke-GitInRepo -RepoPath $scratchRepoRoot -Arguments @('add', '--', $fixture.targetPath) | Out-Null
+    $commitMessage = if ([string]::IsNullOrWhiteSpace($step.message)) {
+      "chore: linux sequential history step $($appliedSteps + 1)"
+    } else {
+      [string]$step.message
+    }
+    Invoke-GitInRepo -RepoPath $scratchRepoRoot -Arguments @('commit', '-m', $commitMessage) | Out-Null
+    $appliedSteps++
+  }
+
+  if ($appliedSteps -le 0) {
+    throw ("Sequential fixture produced no materialized commits for linux fast-loop in {0}." -f $fixture.path)
+  }
+
+  return [pscustomobject]@{
+    repoPath = $scratchRepoRoot
+    branchRef = $effectiveBranchRef
+    targetPath = $fixture.targetPath
+    maxPairs = [Math]::Max(1, [int]$fixture.maxPairs)
+    appliedSteps = [int]$appliedSteps
+    fixturePath = $fixture.path
+  }
+}
+
 function Invoke-WindowsHistoryCompare {
   param(
     [Parameter(Mandatory)][string]$BaseVi,
@@ -1422,6 +1558,8 @@ $viHistorySourceBranchGuard = Get-VIHistorySourceBranchGuard `
   -MaxCommitCount $VIHistorySourceBranchCommitLimit
 $historyScenarioSetNormalized = if ([string]::IsNullOrWhiteSpace($HistoryScenarioSet)) { 'none' } else { $HistoryScenarioSet.Trim().ToLowerInvariant() }
 $laneScopeNormalized = if ([string]::IsNullOrWhiteSpace($LaneScope)) { 'both' } else { $LaneScope.Trim().ToLowerInvariant() }
+$windowsLaneEnabled = $laneScopeNormalized -ne 'linux'
+$linuxLaneEnabled = $laneScopeNormalized -ne 'windows'
 $loopLabel = Get-DockerFastLoopLabel -ContextObject @{ laneScope = $laneScopeNormalized }
 $loopPrefix = ('[{0}]' -f $loopLabel)
 $singleLaneMode = $laneScopeNormalized -ne 'both'
@@ -1789,54 +1927,69 @@ if ($historyScenarioSetNormalized -ne 'none') {
       if (-not $sequential.steps -or @($sequential.steps).Count -eq 0) {
         throw ("Sequential fixture contains no steps: {0}" -f $sequentialPathResolved)
       }
-      $previousHead = $baselineBase
-      $stepIndex = 0
-      $addedSequentialSteps = 0
-      foreach ($sequenceStep in @($sequential.steps)) {
-        $stepIndex++
-        $seqIdRaw = if ($sequenceStep.PSObject.Properties['id']) { [string]$sequenceStep.id } else { ("step-{0:000}" -f $stepIndex) }
-        $requireStepDiff = $false
-        if ($sequenceStep.PSObject.Properties['requireDiff']) {
-          $requireStepDiff = [bool]$sequenceStep.requireDiff
-        }
-        if (-not $requireStepDiff) {
-          $skipMessage = ("Sequential step '{0}' skipped because requireDiff=true is required for diff-only history execution." -f $seqIdRaw)
-          $historyScenarioFilterDiagnostics.Add($skipMessage) | Out-Null
-          Write-Host ("{0}[history-filter] {1}" -f $loopPrefix, $skipMessage) -ForegroundColor DarkYellow
-          continue
-        }
-        $safeSeqId = $seqIdRaw -replace '[^a-zA-Z0-9._-]', '-'
-        $headPath = Resolve-RepoRelativePath -RepoRoot $repoRoot -PathValue ([string]$sequenceStep.source) -Description ("Sequential step source '{0}'" -f $seqIdRaw)
-        $reportPath = Join-Path $historyScenariosRoot (Join-Path 'sequential' (Join-Path $safeSeqId 'windows-compare-report.html'))
-        $stepName = "windows-history-sequential-$safeSeqId"
-        $baseForStep = $previousHead
-        $headForStep = $headPath
 
-        $historyAction = {
-          Invoke-WindowsHistoryCompare `
-            -BaseVi $baseForStep `
-            -HeadVi $headForStep `
+      if ($linuxLaneEnabled) {
+        $linuxSequentialRoot = Join-Path $historyScenariosRoot (Join-Path 'sequential' 'linux-suite')
+        $linuxHistoryAction = {
+          if (-not (Test-Path -LiteralPath $linuxSequentialRoot -PathType Container)) {
+            New-Item -ItemType Directory -Path $linuxSequentialRoot -Force | Out-Null
+          }
+
+          $materialized = New-LinuxSequentialHistoryScenarioRepo `
+            -RepoRoot $repoRoot `
+            -FixturePath $SequentialFixturePath `
+            -OutputRoot $linuxSequentialRoot `
+            -BranchRef $VIHistorySourceBranch
+
+          $resultsDir = Join-Path $linuxSequentialRoot 'results'
+          if (-not (Test-Path -LiteralPath $resultsDir -PathType Container)) {
+            New-Item -ItemType Directory -Path $resultsDir -Force | Out-Null
+          }
+
+          $bootstrapMarker = Join-Path $resultsDir 'vi-history-bootstrap-ran.txt'
+          $contractPath = Join-Path $linuxSequentialRoot 'runtime-bootstrap.json'
+          $contract = [ordered]@{
+            schema = 'ni-linux-runtime-bootstrap/v1'
+            mode = 'vi-history-sequential-smoke'
+            branchRef = $materialized.branchRef
+            maxCommitCount = $VIHistorySourceBranchCommitLimit
+            scriptPath = $linuxSmokeBootstrapScript
+            viHistory = [ordered]@{
+              repoPath = $materialized.repoPath
+              targetPath = $materialized.targetPath
+              resultsPath = $resultsDir
+              baselineRef = 'develop'
+              maxPairs = $materialized.maxPairs
+            }
+          }
+          $contract | ConvertTo-Json -Depth 8 | Set-Content -LiteralPath $contractPath -Encoding utf8
+
+          $reportPath = Join-Path $resultsDir 'linux-compare-report.html'
+          Invoke-LinuxContainerSmokeCompare `
             -ReportPath $reportPath `
-            -LabVIEWPath $effectiveWindowsLabVIEWPath `
-            -WindowsImage $WindowsImage `
-            -RuntimeSnapshotPath $windowsSnapshot `
+            -LabVIEWPath $effectiveLinuxLabVIEWPath `
+            -LinuxImage $LinuxImage `
+            -RuntimeSnapshotPath $linuxSnapshot `
             -RuntimeAutoRepair:$runtimeAutoRepairEnabled `
-            -ManageDockerEngine:$effectiveManageDockerEngine `
-            -StepTimeoutSeconds $StepTimeoutSeconds
+            -StepTimeoutSeconds $StepTimeoutSeconds `
+            -BootstrapContractPath $contractPath `
+            -ExpectedBootstrapMode 'vi-history-sequential-smoke' `
+            -ExpectedBranchRef $materialized.branchRef `
+            -ExpectedBootstrapMarkerPath $bootstrapMarker
         }.GetNewClosure()
 
         $stepDefinitions.Add([pscustomobject]@{
-          name = $stepName
-          historyLane = 'windows'
+          name = 'linux-history-sequential'
+          historyLane = 'linux'
           historySequence = 'sequential'
-          historyMode = $seqIdRaw
+          historyMode = 'sequential'
           historyScenarioId = $scenarioId
           allowedExitCodes = @(0, 1)
           hardStopOnRuntimeFailure = $true
           captureValidator = {
             param($stepOutput, $stepExitCode)
             if (-not $stepOutput -or -not $stepOutput.PSObject.Properties['Classification']) {
-              throw ("Missing compare classification for step output (exit={0})." -f $stepExitCode)
+              throw ("Missing compare classification for linux sequential history output (exit={0})." -f $stepExitCode)
             }
             $classification = $stepOutput.Classification
             $validatorMessage = ''
@@ -1855,14 +2008,87 @@ if ($historyScenarioSetNormalized -ne 'none') {
               containerExportStatus = if ($stepOutput.Capture.PSObject.Properties['containerArtifacts'] -and $stepOutput.Capture.containerArtifacts -and $stepOutput.Capture.containerArtifacts.PSObject.Properties['copyStatus']) { [string]$stepOutput.Capture.containerArtifacts.copyStatus } else { '' }
             }
           }
-          action = $historyAction
+          action = $linuxHistoryAction
         }) | Out-Null
-
         $historyScenarioCount++
-        $addedSequentialSteps++
-        $previousHead = $headPath
       }
-      if ($addedSequentialSteps -eq 0) {
+
+      $previousHead = $baselineBase
+      $stepIndex = 0
+      $addedSequentialSteps = 0
+      if ($windowsLaneEnabled) {
+        foreach ($sequenceStep in @($sequential.steps)) {
+          $stepIndex++
+          $seqIdRaw = if ($sequenceStep.PSObject.Properties['id']) { [string]$sequenceStep.id } else { ("step-{0:000}" -f $stepIndex) }
+          $requireStepDiff = $false
+          if ($sequenceStep.PSObject.Properties['requireDiff']) {
+            $requireStepDiff = [bool]$sequenceStep.requireDiff
+          }
+          if (-not $requireStepDiff) {
+            $skipMessage = ("Sequential step '{0}' skipped because requireDiff=true is required for diff-only history execution." -f $seqIdRaw)
+            $historyScenarioFilterDiagnostics.Add($skipMessage) | Out-Null
+            Write-Host ("{0}[history-filter] {1}" -f $loopPrefix, $skipMessage) -ForegroundColor DarkYellow
+            continue
+          }
+          $safeSeqId = $seqIdRaw -replace '[^a-zA-Z0-9._-]', '-'
+          $headPath = Resolve-RepoRelativePath -RepoRoot $repoRoot -PathValue ([string]$sequenceStep.source) -Description ("Sequential step source '{0}'" -f $seqIdRaw)
+          $reportPath = Join-Path $historyScenariosRoot (Join-Path 'sequential' (Join-Path $safeSeqId 'windows-compare-report.html'))
+          $stepName = "windows-history-sequential-$safeSeqId"
+          $baseForStep = $previousHead
+          $headForStep = $headPath
+
+          $historyAction = {
+            Invoke-WindowsHistoryCompare `
+              -BaseVi $baseForStep `
+              -HeadVi $headForStep `
+              -ReportPath $reportPath `
+              -LabVIEWPath $effectiveWindowsLabVIEWPath `
+              -WindowsImage $WindowsImage `
+              -RuntimeSnapshotPath $windowsSnapshot `
+              -RuntimeAutoRepair:$runtimeAutoRepairEnabled `
+              -ManageDockerEngine:$effectiveManageDockerEngine `
+              -StepTimeoutSeconds $StepTimeoutSeconds
+          }.GetNewClosure()
+
+          $stepDefinitions.Add([pscustomobject]@{
+            name = $stepName
+            historyLane = 'windows'
+            historySequence = 'sequential'
+            historyMode = $seqIdRaw
+            historyScenarioId = $scenarioId
+            allowedExitCodes = @(0, 1)
+            hardStopOnRuntimeFailure = $true
+            captureValidator = {
+              param($stepOutput, $stepExitCode)
+              if (-not $stepOutput -or -not $stepOutput.PSObject.Properties['Classification']) {
+                throw ("Missing compare classification for step output (exit={0})." -f $stepExitCode)
+              }
+              $classification = $stepOutput.Classification
+              $validatorMessage = ''
+              if ($stepOutput.PSObject.Properties['Message']) {
+                $validatorMessage = [string]$stepOutput.Message
+              }
+              [pscustomobject]@{
+                resultClass = [string]$classification.resultClass
+                isDiff = [bool]$classification.isDiff
+                gateOutcome = [string]$classification.gateOutcome
+                failureClass = [string]$classification.failureClass
+                message = $validatorMessage
+                diffEvidenceSource = if ($stepOutput.Capture.PSObject.Properties['diffEvidenceSource']) { [string]$stepOutput.Capture.diffEvidenceSource } else { '' }
+                diffImageCount = if ($stepOutput.Capture.PSObject.Properties['reportAnalysis'] -and $stepOutput.Capture.reportAnalysis -and $stepOutput.Capture.reportAnalysis.PSObject.Properties['diffImageCount']) { [int]$stepOutput.Capture.reportAnalysis.diffImageCount } else { 0 }
+                extractedReportPath = if ($stepOutput.Capture.PSObject.Properties['reportAnalysis'] -and $stepOutput.Capture.reportAnalysis -and $stepOutput.Capture.reportAnalysis.PSObject.Properties['reportPathExtracted']) { [string]$stepOutput.Capture.reportAnalysis.reportPathExtracted } else { '' }
+                containerExportStatus = if ($stepOutput.Capture.PSObject.Properties['containerArtifacts'] -and $stepOutput.Capture.containerArtifacts -and $stepOutput.Capture.containerArtifacts.PSObject.Properties['copyStatus']) { [string]$stepOutput.Capture.containerArtifacts.copyStatus } else { '' }
+              }
+            }
+            action = $historyAction
+          }) | Out-Null
+
+          $historyScenarioCount++
+          $addedSequentialSteps++
+          $previousHead = $headPath
+        }
+      }
+      if ($windowsLaneEnabled -and $addedSequentialSteps -eq 0) {
         throw ("History sequential scenario '{0}' resolved to empty after requireDiff=true filtering in {1}." -f $scenarioId, $sequentialPathResolved)
       }
       continue
@@ -1870,6 +2096,9 @@ if ($historyScenarioSetNormalized -ne 'none') {
 
     if (-not $scenario.PSObject.Properties['source'] -or [string]::IsNullOrWhiteSpace([string]$scenario.source)) {
       throw ("History scenario '{0}' requires a source path." -f $scenarioId)
+    }
+    if (-not $windowsLaneEnabled) {
+      continue
     }
     $safeScenarioId = $scenarioId -replace '[^a-zA-Z0-9._-]', '-'
     $headPath = Resolve-RepoRelativePath -RepoRoot $repoRoot -PathValue ([string]$scenario.source) -Description ("Scenario source '{0}'" -f $scenarioId)
