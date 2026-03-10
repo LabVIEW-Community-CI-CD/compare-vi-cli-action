@@ -1254,6 +1254,7 @@ if [ -n "${PAIR_PLAN_PATH}" ] && [ -s "${PAIR_PLAN_PATH}" ]; then
     local_pair_exit_code=0
     local_pair_status="completed"
     local_pair_diff="false"
+    compare_report_asset_dir="${COMPARE_REPORT_PATH%.*}_files"
 
     [ -z "${pair_index:-}" ] && continue
     require_compare_input "COMPARE_BASE_VI" "${pair_base_vi:-}"
@@ -1261,8 +1262,10 @@ if [ -n "${PAIR_PLAN_PATH}" ] && [ -s "${PAIR_PLAN_PATH}" ]; then
     TOTAL_PROCESSED_PAIRS=$((TOTAL_PROCESSED_PAIRS + 1))
 
     rm -f "${COMPARE_REPORT_PATH}"
+    rm -rf "${compare_report_asset_dir}"
     if [ -n "${pair_report_path:-}" ] && [ "${pair_report_path}" != "${COMPARE_REPORT_PATH}" ]; then
       rm -f "${pair_report_path}"
+      rm -rf "$(dirname "${pair_report_path}")/$(basename "${pair_report_path%.*}")_files"
     fi
 
     run_compare_with_retry "${pair_base_vi}" "${pair_head_vi}" "${COMPARE_REPORT_PATH}"
@@ -1284,6 +1287,9 @@ if [ -n "${PAIR_PLAN_PATH}" ] && [ -s "${PAIR_PLAN_PATH}" ]; then
       fi
       if [ "${pair_report_path}" != "${COMPARE_REPORT_PATH}" ]; then
         cp -f "${COMPARE_REPORT_PATH}" "${pair_report_path}" || exit 2
+      fi
+      if declare -F comparevi_vi_history_stage_pair_report_bundle >/dev/null 2>&1; then
+        comparevi_vi_history_stage_pair_report_bundle "${COMPARE_REPORT_PATH}" "${pair_report_path}" || exit 2
       fi
     fi
 

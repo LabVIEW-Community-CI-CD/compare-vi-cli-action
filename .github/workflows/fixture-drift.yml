@@ -166,7 +166,7 @@ jobs:
   ni-linux-container-hosted:
     name: NI Linux Container Compare (Hosted)
     runs-on: ubuntu-latest
-    timeout-minutes: 12
+    timeout-minutes: 20
     env:
       NI_LINUX_IMAGE: nationalinstruments/labview:2026q1-linux
       NI_LINUX_LABVIEW_PATH: /usr/local/natinst/LabVIEW-2026-64/labview
@@ -196,64 +196,35 @@ jobs:
       shell: bash
       run: docker pull "${NI_LINUX_IMAGE}"
 
-    - name: NI Linux container compare evidence
-      id: ni_linux_compare
+    - name: NI Linux review suite artifacts
+      id: ni_linux_review_suite
       shell: pwsh
       run: |
         $ErrorActionPreference = 'Stop'
         $outDir = 'results/fixture-drift/ni-linux-container'
         New-Item -ItemType Directory -Path $outDir -Force | Out-Null
-        $reportPath = Join-Path $outDir 'compare-report.html'
-        $runtimeSnapshotPath = Join-Path $outDir 'runtime-determinism.json'
 
-        pwsh -NoLogo -NoProfile -File tools/Run-NILinuxContainerCompare.ps1 `
+        pwsh -NoLogo -NoProfile -File tools/Invoke-NILinuxReviewSuite.ps1 `
           -BaseVi '${{ steps.prep.outputs.base }}' `
           -HeadVi '${{ steps.prep.outputs.head }}' `
+          -ResultsRoot $outDir `
           -Image $env:NI_LINUX_IMAGE `
           -LabVIEWPath $env:NI_LINUX_LABVIEW_PATH `
-          -ReportPath $reportPath `
-          -TimeoutSeconds 180 `
+          -HistoryTargetPath 'fixtures/vi-attr/Head.vi' `
+          -HistoryBranchRef 'HEAD' `
+          -TimeoutSeconds 240 `
           -HeartbeatSeconds 15 `
-          -AutoRepairRuntime:$true `
           -RuntimeEngineReadyTimeoutSeconds 120 `
           -RuntimeEngineReadyPollSeconds 3 `
-          -RuntimeSnapshotPath $runtimeSnapshotPath
-
-        $capturePath = Join-Path $outDir 'ni-linux-container-capture.json'
-        if (-not (Test-Path -LiteralPath $capturePath -PathType Leaf)) {
-          throw ("NI Linux container capture missing: {0}" -f $capturePath)
-        }
-
-        $capture = Get-Content -LiteralPath $capturePath -Raw | ConvertFrom-Json -Depth 24
-        $gateOutcome = if ($capture.PSObject.Properties['gateOutcome']) { [string]$capture.gateOutcome } else { '' }
-        $resultClass = if ($capture.PSObject.Properties['resultClass']) { [string]$capture.resultClass } else { '' }
-        $imageUsed = if ($capture.PSObject.Properties['image']) { [string]$capture.image } else { '' }
-        if ([string]::IsNullOrWhiteSpace($imageUsed)) {
-          throw 'NI Linux container compare did not report an image tag.'
-        }
-        if (-not [string]::Equals($imageUsed, $env:NI_LINUX_IMAGE, [System.StringComparison]::OrdinalIgnoreCase)) {
-          throw ("Unexpected NI Linux image. expected={0} actual={1}" -f $env:NI_LINUX_IMAGE, $imageUsed)
-        }
-        if (-not [string]::Equals($gateOutcome, 'pass', [System.StringComparison]::OrdinalIgnoreCase)) {
-          throw ("NI Linux container compare gate outcome is not pass (resultClass={0}, gateOutcome={1})" -f $resultClass, $gateOutcome)
-        }
-
-        "capture_path=$capturePath" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
-        "report_path=$reportPath" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
-        "runtime_snapshot_path=$runtimeSnapshotPath" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+          -GitHubOutputPath $env:GITHUB_OUTPUT `
+          -GitHubStepSummaryPath $env:GITHUB_STEP_SUMMARY
 
     - name: Upload NI Linux container compare artifacts
       if: always()
       uses: actions/upload-artifact@v5
       with:
         name: fixture-drift-ni-linux-container
-        path: |
-          results/fixture-drift/ni-linux-container/compare-report.html
-          results/fixture-drift/ni-linux-container/ni-linux-container-capture.json
-          results/fixture-drift/ni-linux-container/ni-linux-container-stdout.txt
-          results/fixture-drift/ni-linux-container/ni-linux-container-stderr.txt
-          results/fixture-drift/ni-linux-container/runtime-determinism.json
-          results/fixture-drift/ni-linux-container/container-export/**
+        path: results/fixture-drift/ni-linux-container/**
         if-no-files-found: warn
 
   validate-windows:

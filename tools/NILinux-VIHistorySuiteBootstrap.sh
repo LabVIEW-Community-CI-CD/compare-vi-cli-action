@@ -87,6 +87,122 @@ comparevi_vi_history_html_escape() {
     -e "s/'/\&#39;/g"
 }
 
+comparevi_vi_history_results_relative_path() {
+  local results_dir="$1"
+  local target_path="$2"
+
+  if [ -z "${target_path}" ]; then
+    return 0
+  fi
+
+  case "${target_path}" in
+    "${results_dir}/"*)
+      printf '%s' "${target_path#${results_dir}/}"
+      ;;
+    "${results_dir}")
+      printf '.'
+      ;;
+    *)
+      printf '%s' "${target_path}"
+      ;;
+  esac
+}
+
+comparevi_vi_history_stage_pair_report_bundle() {
+  local source_report_path="$1"
+  local pair_report_path="$2"
+
+  if [ -z "${source_report_path}" ] || [ -z "${pair_report_path}" ] || [ ! -f "${pair_report_path}" ]; then
+    return 0
+  fi
+
+  local source_report_dir
+  local source_report_stem
+  local source_asset_dir
+  local pair_report_dir
+  local pair_report_stem
+  local pair_asset_dir
+  local temp_report_path
+
+  source_report_dir="$(dirname "${source_report_path}")"
+  source_report_stem="$(basename "${source_report_path%.*}")"
+  source_asset_dir="${source_report_dir}/${source_report_stem}_files"
+  pair_report_dir="$(dirname "${pair_report_path}")"
+  pair_report_stem="$(basename "${pair_report_path%.*}")"
+  pair_asset_dir="${pair_report_dir}/${pair_report_stem}_files"
+
+  if [ -d "${source_asset_dir}" ]; then
+    rm -rf "${pair_asset_dir}"
+    cp -R "${source_asset_dir}" "${pair_asset_dir}" || return 2
+  fi
+
+  if [ "${source_report_stem}" != "${pair_report_stem}" ]; then
+    temp_report_path="${pair_report_path}.tmp.$$"
+    sed "s#${source_report_stem}_files/#${pair_report_stem}_files/#g" "${pair_report_path}" > "${temp_report_path}" || return 2
+    mv -f "${temp_report_path}" "${pair_report_path}" || return 2
+  fi
+
+  return 0
+}
+
+comparevi_vi_history_build_preview_cells() {
+  local results_dir="$1"
+  local report_path="$2"
+  local report_relative_path=""
+  local report_relative_dir=""
+  local report_stem=""
+  local asset_relative_dir=""
+  local preview_markdown=""
+  local preview_html=""
+  local preview_count=0
+  local preview_name=""
+
+  if [ -z "${report_path}" ]; then
+    printf '_none_\t<span class="muted">none</span>\t0'
+    return 0
+  fi
+
+  report_relative_path="$(comparevi_vi_history_results_relative_path "${results_dir}" "${report_path}")"
+  if [ -z "${report_relative_path}" ] || [ "${report_relative_path}" = "${report_path}" ]; then
+    printf '_none_\t<span class="muted">none</span>\t0'
+    return 0
+  fi
+
+  report_relative_dir="$(dirname "${report_relative_path}")"
+  if [ "${report_relative_dir}" = "." ]; then
+    report_relative_dir=""
+  fi
+  report_stem="$(basename "${report_relative_path%.*}")"
+  asset_relative_dir="${report_stem}_files"
+  if [ -n "${report_relative_dir}" ]; then
+    asset_relative_dir="${report_relative_dir}/${asset_relative_dir}"
+  fi
+
+  for preview_name in fp_1.png fp_2.png bd_1.png bd_2.png; do
+    local preview_relative_path="${asset_relative_dir}/${preview_name}"
+    local preview_absolute_path="${results_dir}/${preview_relative_path}"
+    if [ ! -f "${preview_absolute_path}" ]; then
+      continue
+    fi
+
+    preview_count=$((preview_count + 1))
+    if [ -n "${preview_markdown}" ]; then
+      preview_markdown="${preview_markdown}, "
+    fi
+    preview_markdown="${preview_markdown}[${preview_name}](./${preview_relative_path})"
+    preview_html="${preview_html}<img src=\"./$(comparevi_vi_history_html_escape "${preview_relative_path}")\" alt=\"$(comparevi_vi_history_html_escape "${preview_name}")\" class=\"preview-image\" />"
+  done
+
+  if [ -z "${preview_markdown}" ]; then
+    preview_markdown="_none_"
+  fi
+  if [ -z "${preview_html}" ]; then
+    preview_html='<span class="muted">none</span>'
+  fi
+
+  printf '%s\t%s\t%s' "${preview_markdown}" "${preview_html}" "${preview_count}"
+}
+
 comparevi_vi_history_write_report_bundle() {
   local results_dir="$1"
   local suite_manifest="$2"
@@ -188,8 +304,10 @@ EOF
   if [ -f "${row_table_path}" ]; then
     while IFS="$(printf '\t')" read -r row_index row_lineage row_base row_head row_diff_label row_status row_diff_value row_report row_highlights; do
       local md_report='`missing`'
+      local md_preview='_none_'
       local md_highlights='_none_'
       local html_report='<span class="muted">missing</span>'
+      local html_preview='<span class="muted">none</span>'
       local html_highlights='<span class="muted">none</span>'
       local html_diff_class='clean'
       local row_lineage_md
@@ -200,6 +318,10 @@ EOF
       local row_base_html
       local row_head_html
       local row_diff_html
+      local row_report_relative_path=""
+      local row_report_display=""
+      local preview_bundle=""
+      local preview_count=0
 
       [ -z "${row_index}" ] && continue
       has_rows=1
@@ -229,17 +351,28 @@ EOF
       row_diff_html="$(comparevi_vi_history_html_escape "${row_diff_label}")"
 
       if [ -n "${row_report}" ]; then
-        md_report="\`$(comparevi_vi_history_markdown_escape "${row_report}")\`"
-        html_report="<code>$(comparevi_vi_history_html_escape "${row_report}")</code>"
+        row_report_relative_path="$(comparevi_vi_history_results_relative_path "${results_dir}" "${row_report}")"
+        row_report_display="$(basename "${row_report}")"
+        if [ -n "${row_report_relative_path}" ] && [ "${row_report_relative_path}" != "${row_report}" ]; then
+          md_report="[${row_report_display}](./${row_report_relative_path})"
+          html_report="<a href=\"./$(comparevi_vi_history_html_escape "${row_report_relative_path}")\"><code>$(comparevi_vi_history_html_escape "${row_report_display}")</code></a>"
+        else
+          md_report="\`$(comparevi_vi_history_markdown_escape "${row_report}")\`"
+          html_report="<code>$(comparevi_vi_history_html_escape "${row_report}")</code>"
+        fi
+        preview_bundle="$(comparevi_vi_history_build_preview_cells "${results_dir}" "${row_report}")"
+        IFS="$(printf '\t')" read -r md_preview html_preview preview_count <<EOF
+${preview_bundle}
+EOF
       fi
       if [ -n "${row_highlights}" ]; then
         md_highlights="$(comparevi_vi_history_markdown_escape "${row_highlights}")"
         html_highlights="$(comparevi_vi_history_html_escape "${row_highlights}")"
       fi
 
-      comparison_rows_markdown="${comparison_rows_markdown}| default | ${row_index} | ${row_lineage_md} | ${row_base_md} | ${row_head_md} | ${row_diff_md} | 0 | _none_ | _none_ | ${md_report} | ${md_highlights} |
+      comparison_rows_markdown="${comparison_rows_markdown}| default | ${row_index} | ${row_lineage_md} | ${row_base_md} | ${row_head_md} | ${row_diff_md} | 0 | _none_ | _none_ | ${md_report} | ${md_preview} | ${md_highlights} |
 "
-      comparison_rows_html="${comparison_rows_html}        <tr><td>default</td><td>$(comparevi_vi_history_html_escape "${row_index}")</td><td>${row_lineage_html}</td><td>${row_base_html}</td><td>${row_head_html}</td><td class=\"${html_diff_class}\">${row_diff_html}</td><td>0</td><td><span class=\"muted\">none</span></td><td><span class=\"muted\">none</span></td><td>${html_report}</td><td>${html_highlights}</td></tr>
+      comparison_rows_html="${comparison_rows_html}        <tr><td>default</td><td>$(comparevi_vi_history_html_escape "${row_index}")</td><td>${row_lineage_html}</td><td>${row_base_html}</td><td>${row_head_html}</td><td class=\"${html_diff_class}\">${row_diff_html}</td><td>0</td><td><span class=\"muted\">none</span></td><td><span class=\"muted\">none</span></td><td>${html_report}</td><td><div class=\"preview-strip\" data-preview-count=\"${preview_count}\">${html_preview}</div></td><td>${html_highlights}</td></tr>
 "
     done < "${row_table_path}"
   fi
@@ -323,8 +456,8 @@ ${mode_overview_row}
 
 ## Commit comparisons
 
-| Mode | Pair | Lineage | Base | Head | Diff | Duration (s) | Categories | Buckets | Report | Highlights |
-| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| Mode | Pair | Lineage | Base | Head | Diff | Duration (s) | Categories | Buckets | Report | Preview | Highlights |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 ${comparison_rows_markdown}
 
 ## Artifacts
@@ -356,6 +489,8 @@ EOF
     .signal-diff { color: #8b1e3f; font-weight: 700; }
     .clean { color: #1f7a4d; font-weight: 700; }
     .error { color: #b42318; font-weight: 700; }
+    .preview-strip { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+    .preview-image { max-width: 160px; max-height: 120px; border: 1px solid #d9e2ec; border-radius: 6px; background: #ffffff; padding: 2px; }
   </style>
 </head>
 <body>
@@ -410,7 +545,7 @@ EOF
   <h2>Commit comparisons</h2>
   <table>
     <thead>
-      <tr><th>Mode</th><th>Pair</th><th>Lineage</th><th>Base</th><th>Head</th><th>Diff</th><th>Duration (s)</th><th>Categories</th><th>Buckets</th><th>Report</th><th>Highlights</th></tr>
+      <tr><th>Mode</th><th>Pair</th><th>Lineage</th><th>Base</th><th>Head</th><th>Diff</th><th>Duration (s)</th><th>Categories</th><th>Buckets</th><th>Report</th><th>Preview</th><th>Highlights</th></tr>
     </thead>
     <tbody>
 ${comparison_rows_html}

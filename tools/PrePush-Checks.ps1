@@ -765,6 +765,8 @@ try {
   $viHistoryMarkdownPath = Join-Path $viHistoryResultsDir 'history-report.md'
   $viHistoryHtmlPath = Join-Path $viHistoryResultsDir 'history-report.html'
   $viHistorySummaryJsonPath = Join-Path $viHistoryResultsDir 'history-summary.json'
+  $viHistoryInspectionJsonPath = Join-Path $viHistoryResultsDir 'history-suite-inspection.json'
+  $viHistoryInspectionHtmlPath = Join-Path $viHistoryResultsDir 'history-suite-inspection.html'
   $viHistoryContract = [ordered]@{
     schema = 'ni-linux-runtime-bootstrap/v1'
     mode = 'vi-history-suite-smoke'
@@ -864,6 +866,20 @@ try {
   }
   if (-not $viHistorySummary.reports -or [string]::IsNullOrWhiteSpace([string]$viHistorySummary.reports.htmlPath)) {
     throw ("NI image flag scenario '{0}' missing HTML report path in VI history summary facade." -f $activeScenarioName)
+  }
+  & (Join-Path $root 'tools' 'Inspect-VIHistorySuiteArtifacts.ps1') `
+    -ResultsDir $viHistoryResultsDir `
+    -HistoryReportPath $viHistoryHtmlPath `
+    -HistorySummaryPath $viHistorySummaryJsonPath `
+    -OutputJsonPath $viHistoryInspectionJsonPath `
+    -OutputHtmlPath $viHistoryInspectionHtmlPath `
+    -GitHubOutputPath '' `
+    -GitHubStepSummaryPath ''
+  if (-not (Test-Path -LiteralPath $viHistoryInspectionJsonPath -PathType Leaf)) {
+    throw ("NI image flag scenario '{0}' missing VI history inspection JSON: {1}" -f $activeScenarioName, $viHistoryInspectionJsonPath)
+  }
+  if (-not (Test-Path -LiteralPath $viHistoryInspectionHtmlPath -PathType Leaf)) {
+    throw ("NI image flag scenario '{0}' missing VI history inspection HTML: {1}" -f $activeScenarioName, $viHistoryInspectionHtmlPath)
   }
 
   $scenarioResults.Add([pscustomobject]@{
