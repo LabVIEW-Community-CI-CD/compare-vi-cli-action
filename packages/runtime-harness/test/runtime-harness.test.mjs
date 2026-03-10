@@ -92,6 +92,12 @@ test('runRuntimeSupervisor executes through an injected adapter', async () => {
         status: 'created',
         ref: 'upstream/develop'
       },
+      workerReady: {
+        laneId: 'origin-977',
+        checkoutPath: path.join(repoRoot, 'workers', 'origin-977'),
+        status: 'ready',
+        bootstrapCommand: ['pwsh', '-NoLogo', '-NoProfile', '-File', 'tools/priority/bootstrap.ps1']
+      },
       blockerClass: 'ci',
       reason: 'hosted checks are red'
     },
@@ -107,6 +113,8 @@ test('runRuntimeSupervisor executes through an injected adapter', async () => {
   assert.equal(state.runtimeAdapter, 'test-adapter');
   assert.equal(state.activeLane.worker.checkoutPath, path.join(repoRoot, 'workers', 'origin-977'));
   assert.equal(result.report.worker.status, 'created');
+  assert.equal(state.activeLane.workerReady.status, 'ready');
+  assert.equal(result.report.workerReady.status, 'ready');
   assert.deepEqual(
     adapterCalls.map((entry) => entry.type),
     ['acquire', 'release']

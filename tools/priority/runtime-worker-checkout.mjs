@@ -7,6 +7,7 @@ import { promisify } from 'node:util';
 
 const execFileAsync = promisify(execFile);
 const DEFAULT_WORKER_REF = 'upstream/develop';
+const BOOTSTRAP_RELATIVE_PATH = path.join('tools', 'priority', 'bootstrap.ps1');
 
 function normalizeText(value) {
   if (value == null) return '';
@@ -33,6 +34,15 @@ async function pathExists(filePath) {
     if (error?.code === 'ENOENT') return false;
     throw error;
   }
+}
+
+function formatBootstrapFailure(error) {
+  const message = normalizeText(error?.message || error);
+  const stderr = normalizeText(error?.stderr);
+  if (!stderr) {
+    return message;
+  }
+  return `${message}\n\nstderr:\n${stderr}`;
 }
 
 export function resolveCompareviWorkerCheckoutRoot({ repoRoot, repository }) {
@@ -107,6 +117,48 @@ export async function prepareCompareviWorkerCheckout({
   };
 }
 
+export async function bootstrapCompareviWorkerCheckout({
+  schedulerDecision,
+  preparedWorker,
+  deps = {}
+}) {
+  if (!preparedWorker?.checkoutPath || !schedulerDecision?.activeLane?.laneId) {
+    return null;
+  }
+
+  const execFileFn = deps.execFileFn ?? execFileAsync;
+  const bootstrapPath = path.join(preparedWorker.checkoutPath, BOOTSTRAP_RELATIVE_PATH);
+  const bootstrapCommand = ['pwsh', '-NoLogo', '-NoProfile', '-File', bootstrapPath];
+
+  try {
+    await execFileFn(bootstrapCommand[0], bootstrapCommand.slice(1), {
+      cwd: preparedWorker.checkoutPath
+    });
+  } catch (error) {
+    return {
+      laneId: schedulerDecision.activeLane.laneId,
+      checkoutPath: preparedWorker.checkoutPath,
+      status: 'blocked',
+      source: 'comparevi-bootstrap',
+      reason: formatBootstrapFailure(error),
+      bootstrapCommand,
+      bootstrapExitCode: Number.isInteger(error?.code) ? error.code : 1,
+      preparedAt: preparedWorker.generatedAt ?? null
+    };
+  }
+
+  return {
+    laneId: schedulerDecision.activeLane.laneId,
+    checkoutPath: preparedWorker.checkoutPath,
+    status: 'ready',
+    source: 'comparevi-bootstrap',
+    bootstrapCommand,
+    bootstrapExitCode: 0,
+    preparedAt: preparedWorker.generatedAt ?? null
+  };
+}
+
 export const __test = {
+  BOOTSTRAP_RELATIVE_PATH,
   DEFAULT_WORKER_REF
 };

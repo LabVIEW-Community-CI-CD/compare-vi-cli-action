@@ -2,7 +2,7 @@
 
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtemp, readFile, readdir } from 'node:fs/promises';
+import { access, mkdtemp, readFile, readdir } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import { createRuntimeAdapter } from '../index.mjs';
@@ -12,7 +12,18 @@ async function readJson(filePath) {
   return JSON.parse(await readFile(filePath, 'utf8'));
 }
 
-function makeAdapter(repoRoot, calls) {
+async function pathExists(filePath) {
+  try {
+    await access(filePath);
+    return true;
+  } catch (error) {
+    if (error?.code === 'ENOENT') return false;
+    throw error;
+  }
+}
+
+function makeAdapter(repoRoot, calls, options = {}) {
+  const bootstrapMode = options.bootstrapMode ?? 'ready';
   return createRuntimeAdapter({
     name: 'test-adapter',
     resolveRepoRoot: () => repoRoot,
@@ -26,6 +37,31 @@ function makeAdapter(repoRoot, calls) {
       ref: 'upstream/develop',
       source: 'test-adapter'
     }),
+    bootstrapWorker: async ({ preparedWorker, schedulerDecision }) => {
+      if (bootstrapMode === 'throw') {
+        const error = new Error('bootstrap exploded');
+        error.stderr = 'mocked stderr';
+        throw error;
+      }
+      if (bootstrapMode === 'blocked') {
+        return {
+          laneId: schedulerDecision.activeLane?.laneId,
+          checkoutPath: preparedWorker.checkoutPath,
+          status: 'blocked',
+          source: 'test-adapter',
+          reason: 'bootstrap blocked',
+          bootstrapCommand: ['pwsh', '-NoLogo', '-NoProfile', '-File', 'tools/priority/bootstrap.ps1'],
+          bootstrapExitCode: 1
+        };
+      }
+      return {
+        laneId: schedulerDecision.activeLane?.laneId,
+        checkoutPath: preparedWorker.checkoutPath,
+        status: 'ready',
+        source: 'test-adapter',
+        bootstrapCommand: ['pwsh', '-NoLogo', '-NoProfile', '-File', 'tools/priority/bootstrap.ps1']
+      };
+    },
     acquireLease: async (leaseOptions) => {
       calls.push({ type: 'acquire', leaseOptions });
       return {
@@ -165,6 +201,8 @@ test('runRuntimeObserverLoop writes heartbeat and state across bounded linux cyc
   const schedulerHistory = await readdir(path.join(runtimeDir, 'scheduler-decisions'));
   const workerCheckout = await readJson(path.join(runtimeDir, 'worker-checkout.json'));
   const workerHistory = await readdir(path.join(runtimeDir, 'workers'));
+  const workerReady = await readJson(path.join(runtimeDir, 'worker-ready.json'));
+  const workerReadyHistory = await readdir(path.join(runtimeDir, 'workers-ready'));
   const state = await readJson(path.join(runtimeDir, 'runtime-state.json'));
 
   assert.equal(result.exitCode, 0);
@@ -185,15 +223,108 @@ test('runRuntimeObserverLoop writes heartbeat and state across bounded linux cyc
   assert.equal(workerCheckout.schema, 'priority/runtime-worker-checkout@v1');
   assert.equal(workerCheckout.status, 'created');
   assert.equal(workerHistory.length, 1);
+  assert.equal(workerReady.schema, 'priority/runtime-worker-ready@v1');
+  assert.equal(workerReady.status, 'ready');
+  assert.equal(workerReadyHistory.length, 1);
   assert.equal(heartbeat.activeLane.issue, 977);
   assert.equal(heartbeat.activeLane.worker.status, 'created');
+  assert.equal(heartbeat.activeLane.workerReady.status, 'ready');
   assert.equal(state.lifecycle.cycle, 2);
   assert.equal(state.activeLane.issue, 977);
   assert.equal(state.activeLane.worker.status, 'created');
+  assert.equal(state.activeLane.workerReady.status, 'ready');
   assert.equal(result.report.lastStep.worker.status, 'created');
+  assert.equal(result.report.lastStep.workerReady.status, 'ready');
   assert.equal(sleepCalls, 1);
   assert.deepEqual(
     calls.map((entry) => entry.type),
     ['acquire', 'release', 'acquire', 'release']
   );
+});
+
+test('runRuntimeObserverLoop records worker-ready-blocked when bootstrap returns a blocked result', async () => {
+  const runtimeDir = await mkdtemp(path.join(os.tmpdir(), 'runtime-observer-bootstrap-blocked-'));
+  const repoRoot = await mkdtemp(path.join(os.tmpdir(), 'runtime-observer-bootstrap-blocked-root-'));
+  const calls = [];
+  let tick = 0;
+
+  const result = await runRuntimeObserverLoop(
+    {
+      repo: 'example/repo',
+      runtimeDir,
+      lane: 'origin-997',
+      issue: 997,
+      forkRemote: 'origin',
+      branch: 'issue/origin-997-runtime-worker-ready-state',
+      owner: 'agent@example',
+      pollIntervalSeconds: 0,
+      maxCycles: 1
+    },
+    {
+      platform: 'linux',
+      adapter: makeAdapter(repoRoot, calls, { bootstrapMode: 'blocked' }),
+      nowFactory: () => new Date(Date.UTC(2026, 2, 10, 16, 30, tick++)),
+      sleepFn: async () => {
+        throw new Error('sleep should not run when bootstrap is blocked');
+      }
+    }
+  );
+
+  const heartbeat = await readJson(path.join(runtimeDir, 'observer-heartbeat.json'));
+  const workerReady = await readJson(path.join(runtimeDir, 'worker-ready.json'));
+
+  assert.equal(result.exitCode, 14);
+  assert.equal(result.report.status, 'blocked');
+  assert.equal(result.report.outcome, 'worker-ready-blocked');
+  assert.equal(result.report.lastStep.workerReady.status, 'blocked');
+  assert.equal(heartbeat.outcome, 'worker-ready-blocked');
+  assert.equal(heartbeat.activeLane.workerReady.status, 'blocked');
+  assert.equal(workerReady.status, 'blocked');
+  assert.deepEqual(calls, []);
+});
+
+test('runRuntimeObserverLoop records worker-bootstrap-failed heartbeat when bootstrap throws', async () => {
+  const runtimeDir = await mkdtemp(path.join(os.tmpdir(), 'runtime-observer-bootstrap-failed-'));
+  const repoRoot = await mkdtemp(path.join(os.tmpdir(), 'runtime-observer-bootstrap-failed-root-'));
+  const calls = [];
+  let tick = 0;
+
+  const result = await runRuntimeObserverLoop(
+    {
+      repo: 'example/repo',
+      runtimeDir,
+      lane: 'origin-997',
+      issue: 997,
+      forkRemote: 'origin',
+      branch: 'issue/origin-997-runtime-worker-ready-state',
+      owner: 'agent@example',
+      pollIntervalSeconds: 0,
+      maxCycles: 1
+    },
+    {
+      platform: 'linux',
+      adapter: makeAdapter(repoRoot, calls, { bootstrapMode: 'throw' }),
+      nowFactory: () => new Date(Date.UTC(2026, 2, 10, 16, 45, tick++)),
+      sleepFn: async () => {
+        throw new Error('sleep should not run when bootstrap throws');
+      }
+    }
+  );
+
+  const heartbeat = await readJson(path.join(runtimeDir, 'observer-heartbeat.json'));
+  const workerCheckout = await readJson(path.join(runtimeDir, 'worker-checkout.json'));
+  const workerReadyPath = path.join(runtimeDir, 'worker-ready.json');
+
+  assert.equal(result.exitCode, 14);
+  assert.equal(result.report.status, 'blocked');
+  assert.equal(result.report.outcome, 'worker-bootstrap-failed');
+  assert.equal(result.report.lastStep.worker.status, 'created');
+  assert.equal(result.report.lastStep.workerReady, null);
+  assert.equal(heartbeat.outcome, 'worker-bootstrap-failed');
+  assert.equal(heartbeat.activeLane.worker.status, 'created');
+  assert.equal(heartbeat.artifacts.workerCheckoutPath, path.join(runtimeDir, 'worker-checkout.json'));
+  assert.equal(heartbeat.artifacts.workerReadyPath, null);
+  assert.equal(workerCheckout.status, 'created');
+  assert.equal(await pathExists(workerReadyPath), false);
+  assert.deepEqual(calls, []);
 });

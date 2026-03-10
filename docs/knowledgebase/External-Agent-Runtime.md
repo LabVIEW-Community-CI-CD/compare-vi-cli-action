@@ -342,6 +342,9 @@ Initial extraction note:
 - the observer/adapter surface now also has a worker preparation hook so the
   daemon can create or reuse one deterministic checkout per selected lane and
   persist `worker-checkout.json` plus `workers/*.json` metadata
+- the next worker lifecycle seam now bootstraps an allocated checkout into a
+  ready lane state and persists `worker-ready.json` plus
+  `workers-ready/*.json` metadata for resumed daemon turns
 - the compare-vi repository wrapper remains at
   `tools/priority/runtime-supervisor.mjs`
 - that wrapper now includes the first compare-vi scheduler cut: when no manual

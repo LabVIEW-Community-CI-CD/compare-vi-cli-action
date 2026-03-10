@@ -53,9 +53,11 @@ function makeExecDeps() {
     calls,
     execFileFn: async (command, args, options) => {
       calls.push({ command, args, options });
-      const checkoutPath = args[3];
-      await mkdir(checkoutPath, { recursive: true });
-      await writeFile(path.join(checkoutPath, '.git'), 'gitdir: mocked\n', 'utf8');
+      if (command === 'git') {
+        const checkoutPath = args[3];
+        await mkdir(checkoutPath, { recursive: true });
+        await writeFile(path.join(checkoutPath, '.git'), 'gitdir: mocked\n', 'utf8');
+      }
       return { stdout: '', stderr: '' };
     }
   };
@@ -98,7 +100,8 @@ test('runtime-daemon wrapper defaults to the comparevi adapter', async () => {
   assert.equal(heartbeat.runtimeAdapter, 'comparevi');
   assert.equal(heartbeat.cyclesCompleted, 1);
   assert.equal(heartbeat.activeLane.worker.status, 'created');
-  assert.equal(execDeps.calls.length, 1);
+  assert.equal(heartbeat.activeLane.workerReady.status, 'ready');
+  assert.equal(execDeps.calls.length, 2);
   assert.deepEqual(
     deps.calls.map((entry) => entry.type),
     ['acquire', 'release']
@@ -162,7 +165,8 @@ test('runtime-daemon wrapper schedules from the comparevi standing-priority cach
   assert.equal(heartbeat.activeLane.issue, 982);
   assert.equal(heartbeat.activeLane.forkRemote, 'origin');
   assert.equal(heartbeat.activeLane.worker.status, 'created');
-  assert.equal(execDeps.calls.length, 1);
+  assert.equal(heartbeat.activeLane.workerReady.status, 'ready');
+  assert.equal(execDeps.calls.length, 2);
   assert.deepEqual(
     deps.calls.map((entry) => entry.type),
     ['acquire', 'release']
@@ -209,4 +213,74 @@ test('comparevi worker checkout path sanitizes traversal-only segments and keeps
 
   assert.equal(checkoutRoot, path.join(repoRoot, '.runtime-worktrees', path.basename(repoRoot)));
   assert.equal(checkoutPath, path.join(checkoutRoot, 'runtime'));
+});
+
+test('comparevi worker bootstrap marks an allocated checkout ready after bootstrap passes', async () => {
+  const repoRoot = await mkdtemp(path.join(os.tmpdir(), 'runtime-daemon-worker-ready-'));
+  const { checkoutPath } = compareviRuntimeTest.resolveCompareviWorkerCheckoutPath({
+    repoRoot,
+    repository: 'example/repo',
+    laneId: 'personal-997'
+  });
+  await mkdir(path.join(checkoutPath, 'tools', 'priority'), { recursive: true });
+  await writeFile(path.join(checkoutPath, 'tools', 'priority', 'bootstrap.ps1'), '# mocked bootstrap', 'utf8');
+
+  const calls = [];
+  const ready = await compareviRuntimeTest.bootstrapCompareviWorkerCheckout({
+    schedulerDecision: {
+      activeLane: {
+        laneId: 'personal-997'
+      }
+    },
+    preparedWorker: {
+      generatedAt: '2026-03-10T18:00:00.000Z',
+      checkoutPath
+    },
+    deps: {
+      execFileFn: async (command, args, options) => {
+        calls.push({ command, args, options });
+        return { stdout: '', stderr: '' };
+      }
+    }
+  });
+
+  assert.equal(ready.status, 'ready');
+  assert.equal(ready.checkoutPath, checkoutPath);
+  assert.equal(calls[0].command, 'pwsh');
+});
+
+test('comparevi worker bootstrap includes stderr in blocked bootstrap diagnostics', async () => {
+  const repoRoot = await mkdtemp(path.join(os.tmpdir(), 'runtime-daemon-worker-ready-stderr-'));
+  const { checkoutPath } = compareviRuntimeTest.resolveCompareviWorkerCheckoutPath({
+    repoRoot,
+    repository: 'example/repo',
+    laneId: 'personal-997'
+  });
+  await mkdir(path.join(checkoutPath, 'tools', 'priority'), { recursive: true });
+  await writeFile(path.join(checkoutPath, 'tools', 'priority', 'bootstrap.ps1'), '# mocked bootstrap', 'utf8');
+
+  const blocked = await compareviRuntimeTest.bootstrapCompareviWorkerCheckout({
+    schedulerDecision: {
+      activeLane: {
+        laneId: 'personal-997'
+      }
+    },
+    preparedWorker: {
+      generatedAt: '2026-03-10T18:00:00.000Z',
+      checkoutPath
+    },
+    deps: {
+      execFileFn: async () => {
+        const error = new Error('bootstrap failed');
+        error.stderr = 'bootstrap stderr';
+        error.code = 7;
+        throw error;
+      }
+    }
+  });
+
+  assert.equal(blocked.status, 'blocked');
+  assert.equal(blocked.bootstrapExitCode, 7);
+  assert.match(blocked.reason, /bootstrap failed/);
+  assert.match(blocked.reason, /bootstrap stderr/);
 });
