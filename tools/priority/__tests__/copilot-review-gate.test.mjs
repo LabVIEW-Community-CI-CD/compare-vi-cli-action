@@ -141,6 +141,7 @@ test('copilot-review-gate skips throughput fork repos before any live lookup', a
   assert.equal(result.report?.status, 'pass');
   assert.equal(result.report?.gateState, 'skipped');
   assert.deepEqual(result.report?.reasons, ['throughput-fork-skip']);
+  assert.equal(result.report?.signals.gateApplies, false);
   assert.equal(reviewsCalled, false);
   assert.equal(threadsCalled, false);
 });
@@ -391,6 +392,72 @@ test('copilot-review-gate can evaluate the current-head state from the collected
   assert.equal(result.exitCode, 0);
   assert.equal(result.report?.source.mode, 'signal');
   assert.equal(result.report?.gateState, 'ready');
+  assert.equal(reviewsCalled, false);
+  assert.equal(threadsCalled, false);
+});
+
+test('copilot-review-gate reads the signal artifact before throughput-fork preflight skipping', async (t) => {
+  const { runCopilotReviewGate } = await loadModule();
+  let reviewsCalled = false;
+  let threadsCalled = false;
+  const signalPath = createSignalFixture(t, 'copilot-review-signal-signal-only.json');
+
+  const result = await runCopilotReviewGate({
+    argv: createArgv([
+      '--event-name',
+      'pull_request_target',
+      '--pr',
+      '885',
+      '--head-sha',
+      '9999999999999999999999999999999999999999',
+      '--base-ref',
+      'develop',
+      '--draft',
+      'false',
+      '--signal',
+      signalPath,
+    ]),
+    readSignalFn: () => ({
+      schema: 'priority/copilot-review-signal@v1',
+      repository: 'LabVIEW-Community-CI-CD/compare-vi-cli-action',
+      pullRequest: {
+        number: 885,
+        url: 'https://github.com/LabVIEW-Community-CI-CD/compare-vi-cli-action/pull/885',
+        draft: false,
+        headSha: '9999999999999999999999999999999999999999',
+        baseRef: 'develop',
+      },
+      latestCopilotReview: {
+        id: '15',
+        state: 'COMMENTED',
+        commitId: '9999999999999999999999999999999999999999',
+        submittedAt: '2026-03-08T06:05:00Z',
+        url: 'https://github.com/example/review/15',
+        isCurrentHead: true,
+        bodySummary: 'Current-head Copilot review.',
+      },
+      staleReviews: [],
+      unresolvedThreads: [],
+      actionableComments: [],
+      errors: [],
+    }),
+    loadReviewsFn: async () => {
+      reviewsCalled = true;
+      return [];
+    },
+    loadThreadsFn: async () => {
+      threadsCalled = true;
+      return [];
+    },
+    writeReportFn: () => 'memory://copilot-review-gate-signal-only.json',
+    appendStepSummaryFn: () => {},
+  });
+
+  assert.equal(result.exitCode, 0);
+  assert.equal(result.report?.source.mode, 'signal');
+  assert.equal(result.report?.status, 'pass');
+  assert.equal(result.report?.gateState, 'ready');
+  assert.deepEqual(result.report?.reasons, ['current-head-review-clean']);
   assert.equal(reviewsCalled, false);
   assert.equal(threadsCalled, false);
 });
