@@ -8,7 +8,8 @@ import {
   createRuntimeAdapter,
   DEFAULT_RUNTIME_DIR,
   SCHEDULER_DECISION_SCHEMA,
-  WORKER_CHECKOUT_SCHEMA
+  WORKER_CHECKOUT_SCHEMA,
+  WORKER_READY_SCHEMA
 } from './index.mjs';
 import { runRuntimeWorkerStep } from './worker.mjs';
 
@@ -122,7 +123,9 @@ function resolveWorkerPaths(options, repoRoot) {
   const runtimeDir = resolvePath(repoRoot, options.runtimeDir || DEFAULT_RUNTIME_DIR);
   return {
     latestPath: path.join(runtimeDir, 'worker-checkout.json'),
-    workersDir: path.join(runtimeDir, 'workers')
+    workersDir: path.join(runtimeDir, 'workers'),
+    readyLatestPath: path.join(runtimeDir, 'worker-ready.json'),
+    readyDir: path.join(runtimeDir, 'workers-ready')
   };
 }
 
@@ -217,6 +220,48 @@ async function writeWorkerCheckout(workerPaths, workerCheckout) {
   await writeJson(lanePath, workerCheckout);
   return {
     latestPath: workerPaths.latestPath,
+    lanePath
+  };
+}
+
+function normalizeWorkerReady(rawWorkerReady, decision, workerCheckout, now, adapter, repository) {
+  if (!rawWorkerReady || typeof rawWorkerReady !== 'object') return null;
+  const laneId =
+    normalizeText(rawWorkerReady.laneId) || workerCheckout?.laneId || decision?.activeLane?.laneId || null;
+  const checkoutPath = normalizeText(rawWorkerReady.checkoutPath) || workerCheckout?.checkoutPath || null;
+  const status = normalizeText(rawWorkerReady.status).toLowerCase() || 'ready';
+  const bootstrapCommand = Array.isArray(rawWorkerReady.bootstrapCommand)
+    ? rawWorkerReady.bootstrapCommand.map((entry) => String(entry))
+    : [];
+  return {
+    schema: WORKER_READY_SCHEMA,
+    generatedAt: toIso(now),
+    runtimeAdapter: adapter.name,
+    repository,
+    laneId,
+    issue: decision?.activeLane?.issue ?? null,
+    epic: decision?.activeLane?.epic ?? null,
+    forkRemote: decision?.activeLane?.forkRemote ?? null,
+    branch: decision?.activeLane?.branch ?? null,
+    checkoutPath,
+    status,
+    source: normalizeText(rawWorkerReady.source) || adapter.name,
+    reason: normalizeText(rawWorkerReady.reason) || null,
+    bootstrapCommand,
+    bootstrapExitCode: Number.isInteger(rawWorkerReady.bootstrapExitCode) ? rawWorkerReady.bootstrapExitCode : 0,
+    preparedAt: normalizeText(rawWorkerReady.preparedAt) || workerCheckout?.generatedAt || toIso(now),
+    readyAt: normalizeText(rawWorkerReady.readyAt) || toIso(now),
+    refreshed: rawWorkerReady.refreshed === true || status === 'reused'
+  };
+}
+
+async function writeWorkerReady(workerPaths, workerReady) {
+  await mkdir(workerPaths.readyDir, { recursive: true });
+  await writeJson(workerPaths.readyLatestPath, workerReady);
+  const lanePath = path.join(workerPaths.readyDir, `${sanitizeSegment(workerReady.laneId || 'runtime')}.json`);
+  await writeJson(lanePath, workerReady);
+  return {
+    latestPath: workerPaths.readyLatestPath,
     lanePath
   };
 }
@@ -489,7 +534,9 @@ export async function runRuntimeObserverLoop(options = {}, deps = {}) {
     },
     worker: {
       latestPath: workerPaths.latestPath,
-      workersDir: workerPaths.workersDir
+      workersDir: workerPaths.workersDir,
+      readyLatestPath: workerPaths.readyLatestPath,
+      readyDir: workerPaths.readyDir
     },
     status: 'pass',
     outcome: 'idle',
@@ -554,6 +601,8 @@ export async function runRuntimeObserverLoop(options = {}, deps = {}) {
           stopRequestPath: null,
           workerCheckoutPath: null,
           workerLanePath: null,
+          workerReadyPath: null,
+          workerReadyLanePath: null,
           schedulerDecisionPath: schedulerArtifacts.latestPath,
           schedulerDecisionHistoryPath: schedulerArtifacts.historyPath
         }
@@ -565,6 +614,11 @@ export async function runRuntimeObserverLoop(options = {}, deps = {}) {
 
     let preparedWorker = null;
     let workerArtifacts = {
+      latestPath: null,
+      lanePath: null
+    };
+    let workerReady = null;
+    let workerReadyArtifacts = {
       latestPath: null,
       lanePath: null
     };
@@ -630,6 +684,8 @@ export async function runRuntimeObserverLoop(options = {}, deps = {}) {
             stopRequestPath: null,
             workerCheckoutPath: workerArtifacts.latestPath,
             workerLanePath: workerArtifacts.lanePath,
+            workerReadyPath: null,
+            workerReadyLanePath: null,
             schedulerDecisionPath: schedulerArtifacts.latestPath,
             schedulerDecisionHistoryPath: schedulerArtifacts.historyPath
           }
@@ -647,10 +703,96 @@ export async function runRuntimeObserverLoop(options = {}, deps = {}) {
       }
     }
 
+    const bootstrapWorkerFn =
+      typeof deps.bootstrapWorkerFn === 'function'
+        ? deps.bootstrapWorkerFn
+        : (typeof adapter.bootstrapWorker === 'function' ? (context) => adapter.bootstrapWorker(context) : null);
+    if (bootstrapWorkerFn && preparedWorker?.status && preparedWorker.status !== 'blocked') {
+      try {
+        workerReady = normalizeWorkerReady(
+          await bootstrapWorkerFn({
+            options,
+            env: process.env,
+            repoRoot,
+            deps,
+            adapter,
+            repository: report.repository,
+            cycle,
+            heartbeatPath,
+            schedulerPaths,
+            workerPaths,
+            schedulerDecision,
+            preparedWorker,
+            previousDecision,
+            previousStep
+          }),
+          schedulerDecision,
+          preparedWorker,
+          stepNow,
+          adapter,
+          report.repository
+        );
+      } catch (error) {
+        report.status = 'blocked';
+        report.outcome = 'worker-bootstrap-failed';
+        report.message = error?.message || String(error);
+        return { exitCode: 14, report };
+      }
+      if (workerReady) {
+        workerReadyArtifacts = await writeWorkerReady(workerPaths, workerReady);
+        workerReady.artifacts = {
+          latestPath: workerReadyArtifacts.latestPath,
+          lanePath: workerReadyArtifacts.lanePath
+        };
+      }
+      if (workerReady?.status === 'blocked') {
+        const heartbeatNow = nowFactory();
+        await writeJson(heartbeatPath, {
+          schema: OBSERVER_HEARTBEAT_SCHEMA,
+          generatedAt: toIso(heartbeatNow),
+          runtimeAdapter: adapter.name,
+          repository: report.repository,
+          platform,
+          cyclesCompleted: report.cyclesCompleted,
+          outcome: 'worker-ready-blocked',
+          stopRequested: false,
+          activeLane: {
+            ...(schedulerDecision.activeLane ?? {}),
+            worker: preparedWorker,
+            workerReady
+          },
+          schedulerDecision: report.lastDecision,
+          artifacts: {
+            statePath: null,
+            eventsPath: null,
+            stopRequestPath: null,
+            workerCheckoutPath: workerArtifacts.latestPath,
+            workerLanePath: workerArtifacts.lanePath,
+            workerReadyPath: workerReadyArtifacts.latestPath,
+            workerReadyLanePath: workerReadyArtifacts.lanePath,
+            schedulerDecisionPath: schedulerArtifacts.latestPath,
+            schedulerDecisionHistoryPath: schedulerArtifacts.historyPath
+          }
+        });
+        report.status = 'blocked';
+        report.outcome = 'worker-ready-blocked';
+        report.lastStep = {
+          exitCode: 14,
+          outcome: 'worker-ready-blocked',
+          statePath: null,
+          turnPath: null,
+          worker: preparedWorker,
+          workerReady
+        };
+        return { exitCode: 14, report };
+      }
+    }
+
     const stepResult = await runRuntimeWorkerStep(
       {
         ...buildWorkerStepOptions(options, schedulerDecision),
-        worker: preparedWorker
+        worker: preparedWorker,
+        workerReady
       },
       {
         ...deps,
@@ -666,7 +808,8 @@ export async function runRuntimeObserverLoop(options = {}, deps = {}) {
       outcome: stepResult.report.outcome,
       statePath: stepResult.report.runtime?.statePath ?? null,
       turnPath: stepResult.report.turnPath ?? null,
-      worker: stepResult.report.worker ?? preparedWorker
+      worker: stepResult.report.worker ?? preparedWorker,
+      workerReady: stepResult.report.workerReady ?? workerReady
     };
     previousDecision = schedulerDecision;
     previousStep = report.lastStep;
@@ -689,6 +832,8 @@ export async function runRuntimeObserverLoop(options = {}, deps = {}) {
         stopRequestPath: stepResult.report.runtime?.stopRequestPath ?? null,
         workerCheckoutPath: workerArtifacts.latestPath,
         workerLanePath: workerArtifacts.lanePath,
+        workerReadyPath: workerReadyArtifacts.latestPath,
+        workerReadyLanePath: workerReadyArtifacts.lanePath,
         schedulerDecisionPath: schedulerArtifacts.latestPath,
         schedulerDecisionHistoryPath: schedulerArtifacts.historyPath
       }

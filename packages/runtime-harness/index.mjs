@@ -14,6 +14,7 @@ export const STOP_REQUEST_SCHEMA = 'priority/runtime-stop-request@v1';
 export const BLOCKER_SCHEMA = 'priority/runtime-blocker@v1';
 export const SCHEDULER_DECISION_SCHEMA = 'priority/runtime-scheduler-decision@v1';
 export const WORKER_CHECKOUT_SCHEMA = 'priority/runtime-worker-checkout@v1';
+export const WORKER_READY_SCHEMA = 'priority/runtime-worker-ready@v1';
 export const DEFAULT_RUNTIME_DIR = path.join('tests', 'results', '_agent', 'runtime');
 export const DEFAULT_LEASE_SCOPE = 'workspace';
 export const ACTIONS = new Set(['status', 'step', 'stop', 'resume']);
@@ -280,6 +281,7 @@ export function createRuntimeAdapter(adapter = {}) {
     releaseLease: adapter.releaseLease,
     planStep: typeof adapter.planStep === 'function' ? adapter.planStep : null,
     prepareWorker: typeof adapter.prepareWorker === 'function' ? adapter.prepareWorker : null,
+    bootstrapWorker: typeof adapter.bootstrapWorker === 'function' ? adapter.bootstrapWorker : null,
     resolveRepository:
       typeof adapter.resolveRepository === 'function'
         ? adapter.resolveRepository
@@ -306,6 +308,19 @@ function summarizeWorker(workerRecord) {
     requestedBranch: workerRecord.requestedBranch,
     preparedAt: workerRecord.preparedAt,
     reused: Boolean(workerRecord.reused)
+  };
+}
+
+function summarizeWorkerReady(workerReadyRecord) {
+  if (!workerReadyRecord) return null;
+  return {
+    laneId: workerReadyRecord.laneId,
+    checkoutPath: workerReadyRecord.checkoutPath,
+    status: workerReadyRecord.status,
+    bootstrapCommand: workerReadyRecord.bootstrapCommand,
+    preparedAt: workerReadyRecord.preparedAt,
+    readyAt: workerReadyRecord.readyAt,
+    refreshed: Boolean(workerReadyRecord.refreshed)
   };
 }
 
@@ -337,6 +352,36 @@ function normalizeWorkerRecord(worker, now) {
   };
 }
 
+function normalizeWorkerReadyRecord(workerReady, now) {
+  if (!workerReady || typeof workerReady !== 'object') return null;
+  const laneId = normalizeText(workerReady.laneId) || null;
+  const checkoutPath = normalizeText(workerReady.checkoutPath) || null;
+  const status = normalizeText(workerReady.status).toLowerCase() || 'ready';
+  const source = normalizeText(workerReady.source) || null;
+  const reason = normalizeText(workerReady.reason) || null;
+  const bootstrapCommand = Array.isArray(workerReady.bootstrapCommand)
+    ? workerReady.bootstrapCommand.map((entry) => String(entry))
+    : [];
+  const bootstrapExitCode = Number.isInteger(workerReady.bootstrapExitCode) ? workerReady.bootstrapExitCode : 0;
+  const preparedAt = normalizeText(workerReady.preparedAt) || toIso(now);
+  const readyAt = normalizeText(workerReady.readyAt) || toIso(now);
+  const artifacts = workerReady.artifacts && typeof workerReady.artifacts === 'object' ? workerReady.artifacts : {};
+  return {
+    schema: WORKER_READY_SCHEMA,
+    laneId,
+    checkoutPath,
+    status,
+    source,
+    reason,
+    bootstrapCommand,
+    bootstrapExitCode,
+    preparedAt,
+    readyAt,
+    refreshed: workerReady.refreshed === true || status === 'reused',
+    artifacts
+  };
+}
+
 function buildActiveLaneSummary(laneRecord) {
   if (!laneRecord) return null;
   return {
@@ -348,6 +393,7 @@ function buildActiveLaneSummary(laneRecord) {
     prUrl: laneRecord.prUrl,
     blockerClass: laneRecord.blocker?.blockerClass ?? 'none',
     worker: summarizeWorker(laneRecord.worker),
+    workerReady: summarizeWorkerReady(laneRecord.workerReady),
     updatedAt: laneRecord.updatedAt
   };
 }
@@ -434,6 +480,7 @@ function buildLaneRecord(options, now) {
     `lane-${sanitizeSegment(options.branch || 'active')}`;
   const blockerClass = options.blockerClass || 'none';
   const worker = normalizeWorkerRecord(options.worker, now);
+  const workerReady = normalizeWorkerReadyRecord(options.workerReady, now);
   return {
     schema: LANE_SCHEMA,
     laneId,
@@ -452,6 +499,7 @@ function buildLaneRecord(options, now) {
             observedAt: toIso(now)
           },
     worker,
+    workerReady,
     createdAt: toIso(now),
     updatedAt: toIso(now)
   };
@@ -682,6 +730,8 @@ async function runStepAction(context) {
         blockerPath,
         workerPath: laneRecord?.worker?.checkoutPath ?? null,
         workerArtifactPath: laneRecord?.worker?.artifacts?.lanePath ?? null,
+        workerReadyPath: laneRecord?.workerReady?.artifacts?.latestPath ?? null,
+        workerReadyArtifactPath: laneRecord?.workerReady?.artifacts?.lanePath ?? null,
         statePath: runtimePaths.statePath,
         eventsPath: runtimePaths.eventsPath
       }
@@ -705,6 +755,7 @@ async function runStepAction(context) {
     report.outcome = outcome;
     report.turnPath = turnPath;
     report.worker = summarizeWorker(laneRecord?.worker);
+    report.workerReady = summarizeWorkerReady(laneRecord?.workerReady);
     report.state = state;
   } finally {
     const leaseId = report.lease?.acquire?.leaseId ?? null;

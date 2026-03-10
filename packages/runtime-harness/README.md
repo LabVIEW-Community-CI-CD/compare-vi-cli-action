@@ -53,6 +53,8 @@ Adapters may also provide:
   step before each daemon cycle
 - `prepareWorker(context)` to create or reuse a deterministic worker checkout
   for the selected lane before the worker step runs
+- `bootstrapWorker(context)` to bootstrap that allocated checkout into a ready
+  lane state before later worker cycles reuse it
 
 The observer persists scheduler evidence under the runtime directory:
 
@@ -61,6 +63,8 @@ The observer persists scheduler evidence under the runtime directory:
 - `observer-heartbeat.json` now includes the latest scheduler decision summary
 - `worker-checkout.json` for the latest prepared worker checkout
 - `workers/*.json` for per-lane worker checkout state
+- `worker-ready.json` for the latest worker readiness state
+- `workers-ready/*.json` for per-lane worker readiness history
 
 The compare-vi repository is the first adapter implementation.
 

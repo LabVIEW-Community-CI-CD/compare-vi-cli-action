@@ -5,6 +5,7 @@ import path from 'node:path';
 import process from 'node:process';
 import { fileURLToPath } from 'node:url';
 import {
+  WORKER_READY_SCHEMA,
   ACTIONS,
   BLOCKER_CLASSES,
   BLOCKER_SCHEMA,
@@ -26,6 +27,7 @@ import {
 import { acquireWriterLease, defaultOwner, releaseWriterLease } from './agent-writer-lease.mjs';
 import { getRepoRoot } from './lib/branch-utils.mjs';
 import {
+  bootstrapCompareviWorkerCheckout,
   prepareCompareviWorkerCheckout,
   resolveCompareviWorkerCheckoutPath
 } from './runtime-worker-checkout.mjs';
@@ -43,6 +45,7 @@ export {
   STOP_REQUEST_SCHEMA,
   TURN_SCHEMA,
   WORKER_CHECKOUT_SCHEMA,
+  WORKER_READY_SCHEMA,
   __test,
   createRuntimeAdapter,
   parseArgs
@@ -200,11 +203,13 @@ export const compareviRuntimeAdapter = createRuntimeAdapter({
   acquireLease: (leaseOptions) => acquireWriterLease(leaseOptions),
   releaseLease: (leaseOptions) => releaseWriterLease(leaseOptions),
   planStep: (context) => planCompareviRuntimeStep(context),
-  prepareWorker: (context) => prepareCompareviWorkerCheckout(context)
+  prepareWorker: (context) => prepareCompareviWorkerCheckout(context),
+  bootstrapWorker: (context) => bootstrapCompareviWorkerCheckout(context)
 });
 
 export const compareviRuntimeTest = {
   buildSchedulerDecisionFromSnapshot,
+  bootstrapCompareviWorkerCheckout,
   planCompareviRuntimeStep,
   prepareCompareviWorkerCheckout,
   resolveCompareviWorkerCheckoutPath,

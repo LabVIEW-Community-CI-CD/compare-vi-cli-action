@@ -26,6 +26,13 @@ function makeAdapter(repoRoot, calls) {
       ref: 'upstream/develop',
       source: 'test-adapter'
     }),
+    bootstrapWorker: async ({ preparedWorker, schedulerDecision }) => ({
+      laneId: schedulerDecision.activeLane?.laneId,
+      checkoutPath: preparedWorker.checkoutPath,
+      status: 'ready',
+      source: 'test-adapter',
+      bootstrapCommand: ['pwsh', '-NoLogo', '-NoProfile', '-File', 'tools/priority/bootstrap.ps1']
+    }),
     acquireLease: async (leaseOptions) => {
       calls.push({ type: 'acquire', leaseOptions });
       return {
@@ -165,6 +172,8 @@ test('runRuntimeObserverLoop writes heartbeat and state across bounded linux cyc
   const schedulerHistory = await readdir(path.join(runtimeDir, 'scheduler-decisions'));
   const workerCheckout = await readJson(path.join(runtimeDir, 'worker-checkout.json'));
   const workerHistory = await readdir(path.join(runtimeDir, 'workers'));
+  const workerReady = await readJson(path.join(runtimeDir, 'worker-ready.json'));
+  const workerReadyHistory = await readdir(path.join(runtimeDir, 'workers-ready'));
   const state = await readJson(path.join(runtimeDir, 'runtime-state.json'));
 
   assert.equal(result.exitCode, 0);
@@ -185,12 +194,18 @@ test('runRuntimeObserverLoop writes heartbeat and state across bounded linux cyc
   assert.equal(workerCheckout.schema, 'priority/runtime-worker-checkout@v1');
   assert.equal(workerCheckout.status, 'created');
   assert.equal(workerHistory.length, 1);
+  assert.equal(workerReady.schema, 'priority/runtime-worker-ready@v1');
+  assert.equal(workerReady.status, 'ready');
+  assert.equal(workerReadyHistory.length, 1);
   assert.equal(heartbeat.activeLane.issue, 977);
   assert.equal(heartbeat.activeLane.worker.status, 'created');
+  assert.equal(heartbeat.activeLane.workerReady.status, 'ready');
   assert.equal(state.lifecycle.cycle, 2);
   assert.equal(state.activeLane.issue, 977);
   assert.equal(state.activeLane.worker.status, 'created');
+  assert.equal(state.activeLane.workerReady.status, 'ready');
   assert.equal(result.report.lastStep.worker.status, 'created');
+  assert.equal(result.report.lastStep.workerReady.status, 'ready');
   assert.equal(sleepCalls, 1);
   assert.deepEqual(
     calls.map((entry) => entry.type),
