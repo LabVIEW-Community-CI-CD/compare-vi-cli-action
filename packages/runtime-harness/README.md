@@ -11,6 +11,7 @@ It is intentionally not the `compare-vi-cli-action` adapter. The core owns:
 - worker step/status/stop/resume execution
 - observer/daemon loop orchestration
 - scheduler decision artifacts and planner handoff
+- bounded worker task-packet artifacts and adapter handoff
 - lease-aware turn execution
 - deterministic event, lane, blocker, and turn artifacts
 
@@ -57,6 +58,8 @@ Adapters may also provide:
   lane state before later worker cycles reuse it
 - `activateWorker(context)` to attach that ready checkout onto its deterministic
   lane branch before real repo-native work runs
+- `buildTaskPacket(context)` to compile the one-turn worker packet that the next
+  execution seam should consume from durable runtime state
 
 The observer persists scheduler evidence under the runtime directory:
 
@@ -69,6 +72,8 @@ The observer persists scheduler evidence under the runtime directory:
 - `workers-ready/*.json` for per-lane worker readiness history
 - `worker-branch.json` for the latest worker branch-activation state
 - `workers-branch/*.json` for per-lane worker branch attachment history
+- `task-packet.json` for the latest bounded worker packet
+- `task-packets/*.json` for per-cycle task-packet history
 
 The compare-vi repository is the first adapter implementation.
 

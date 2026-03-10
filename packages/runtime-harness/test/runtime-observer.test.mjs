@@ -24,11 +24,35 @@ async function pathExists(filePath) {
 
 function makeAdapter(repoRoot, calls, options = {}) {
   const bootstrapMode = options.bootstrapMode ?? 'ready';
+  const plannerMode = options.plannerMode ?? 'manual';
   return createRuntimeAdapter({
     name: 'test-adapter',
     resolveRepoRoot: () => repoRoot,
     resolveOwner: () => 'agent@example',
     resolveRepository: () => 'example/repo',
+    planStep: async ({ explicitStepOptions }) => {
+      if (plannerMode === 'idle') {
+        return {
+          source: 'test-planner',
+          outcome: 'idle',
+          reason: 'queue empty'
+        };
+      }
+      if (plannerMode === 'blocked') {
+        return {
+          source: 'test-planner',
+          outcome: 'blocked',
+          reason: 'review blocked on current lane',
+          stepOptions: explicitStepOptions
+        };
+      }
+      return {
+        source: 'manual',
+        outcome: 'selected',
+        reason: 'using explicit observer lane input',
+        stepOptions: explicitStepOptions
+      };
+    },
     prepareWorker: async ({ schedulerDecision }) => ({
       laneId: schedulerDecision.activeLane?.laneId,
       checkoutRoot: path.join(repoRoot, '.runtime-worktrees', 'example-repo'),
@@ -71,6 +95,25 @@ function makeAdapter(repoRoot, calls, options = {}) {
       source: 'test-adapter',
       trackingRef: `${schedulerDecision.activeLane?.forkRemote}/${schedulerDecision.activeLane?.branch}`,
       fetchedRemotes: ['upstream', 'origin']
+    }),
+    buildTaskPacket: async ({ schedulerDecision, cycle, recentEvents }) => ({
+      source: 'test-adapter',
+      objective: {
+        summary: schedulerDecision.activeLane?.issue
+          ? `Execute issue #${schedulerDecision.activeLane.issue}`
+          : 'Observe idle runtime state',
+        source: 'test-adapter'
+      },
+      helperSurface: {
+        preferred: ['node tools/npm/run-script.mjs priority:pr'],
+        fallbacks: ['gh pr create --body-file <path>']
+      },
+      evidence: {
+        adapter: {
+          cycle,
+          recentEventCount: recentEvents.length
+        }
+      }
     }),
     acquireLease: async (leaseOptions) => {
       calls.push({ type: 'acquire', leaseOptions });
@@ -215,6 +258,8 @@ test('runRuntimeObserverLoop writes heartbeat and state across bounded linux cyc
   const workerReadyHistory = await readdir(path.join(runtimeDir, 'workers-ready'));
   const workerBranch = await readJson(path.join(runtimeDir, 'worker-branch.json'));
   const workerBranchHistory = await readdir(path.join(runtimeDir, 'workers-branch'));
+  const taskPacket = await readJson(path.join(runtimeDir, 'task-packet.json'));
+  const taskPacketHistory = await readdir(path.join(runtimeDir, 'task-packets'));
   const state = await readJson(path.join(runtimeDir, 'runtime-state.json'));
 
   assert.equal(result.exitCode, 0);
@@ -242,23 +287,108 @@ test('runRuntimeObserverLoop writes heartbeat and state across bounded linux cyc
   assert.equal(workerBranch.status, 'attached');
   assert.equal(workerBranch.branch, 'issue/origin-977-fork-policy-portability');
   assert.equal(workerBranchHistory.length, 1);
+  assert.equal(taskPacket.schema, 'priority/runtime-worker-task-packet@v1');
+  assert.equal(taskPacket.objective.summary, 'Execute issue #977');
+  assert.equal(taskPacket.helperSurface.preferred[0], 'node tools/npm/run-script.mjs priority:pr');
+  assert.equal(taskPacket.recentEvents.length, 1);
+  assert.equal(taskPacketHistory.length, 2);
   assert.equal(heartbeat.activeLane.issue, 977);
   assert.equal(heartbeat.activeLane.worker.status, 'created');
   assert.equal(heartbeat.activeLane.workerReady.status, 'ready');
   assert.equal(heartbeat.activeLane.workerBranch.status, 'attached');
+  assert.equal(heartbeat.activeLane.taskPacket.objective.summary, 'Execute issue #977');
+  assert.equal(heartbeat.artifacts.taskPacketPath, path.join(runtimeDir, 'task-packet.json'));
   assert.equal(state.lifecycle.cycle, 2);
   assert.equal(state.activeLane.issue, 977);
   assert.equal(state.activeLane.worker.status, 'created');
   assert.equal(state.activeLane.workerReady.status, 'ready');
   assert.equal(state.activeLane.workerBranch.status, 'attached');
+  assert.equal(state.activeLane.taskPacket.objective.summary, 'Execute issue #977');
   assert.equal(result.report.lastStep.worker.status, 'created');
   assert.equal(result.report.lastStep.workerReady.status, 'ready');
   assert.equal(result.report.lastStep.workerBranch.status, 'attached');
+  assert.equal(result.report.lastStep.taskPacket.objective.summary, 'Execute issue #977');
   assert.equal(sleepCalls, 1);
   assert.deepEqual(
     calls.map((entry) => entry.type),
     ['acquire', 'release', 'acquire', 'release']
   );
+});
+
+test('runRuntimeObserverLoop emits an idle task packet when the planner returns idle', async () => {
+  const runtimeDir = await mkdtemp(path.join(os.tmpdir(), 'runtime-observer-idle-'));
+  const repoRoot = await mkdtemp(path.join(os.tmpdir(), 'runtime-observer-idle-root-'));
+  const calls = [];
+  let tick = 0;
+
+  const result = await runRuntimeObserverLoop(
+    {
+      repo: 'example/repo',
+      runtimeDir,
+      owner: 'agent@example',
+      pollIntervalSeconds: 0,
+      maxCycles: 1
+    },
+    {
+      platform: 'linux',
+      adapter: makeAdapter(repoRoot, calls, { plannerMode: 'idle' }),
+      nowFactory: () => new Date(Date.UTC(2026, 2, 10, 16, 15, tick++)),
+      sleepFn: async () => {
+        throw new Error('sleep should not run when maxCycles=1');
+      }
+    }
+  );
+
+  const taskPacket = await readJson(path.join(runtimeDir, 'task-packet.json'));
+
+  assert.equal(result.exitCode, 0);
+  assert.equal(result.report.lastDecision.outcome, 'idle');
+  assert.equal(result.report.lastStep.outcome, 'idle');
+  assert.equal(taskPacket.status, 'idle');
+  assert.equal(taskPacket.objective.summary, 'Observe idle runtime state');
+  assert.equal(taskPacket.laneId, null);
+  assert.equal(taskPacket.evidence.adapter.cycle, 1);
+});
+
+test('runRuntimeObserverLoop emits a blocked task packet when the planner blocks the lane', async () => {
+  const runtimeDir = await mkdtemp(path.join(os.tmpdir(), 'runtime-observer-task-blocked-'));
+  const repoRoot = await mkdtemp(path.join(os.tmpdir(), 'runtime-observer-task-blocked-root-'));
+  const calls = [];
+  let tick = 0;
+
+  const result = await runRuntimeObserverLoop(
+    {
+      repo: 'example/repo',
+      runtimeDir,
+      lane: 'origin-1002',
+      issue: 1002,
+      epic: 958,
+      forkRemote: 'personal',
+      branch: 'issue/personal-1002-runtime-daemon-task-packets',
+      owner: 'agent@example',
+      pollIntervalSeconds: 0,
+      maxCycles: 1
+    },
+    {
+      platform: 'linux',
+      adapter: makeAdapter(repoRoot, calls, { plannerMode: 'blocked' }),
+      nowFactory: () => new Date(Date.UTC(2026, 2, 10, 16, 20, tick++)),
+      sleepFn: async () => {
+        throw new Error('sleep should not run when planner blocks');
+      }
+    }
+  );
+
+  const taskPacket = await readJson(path.join(runtimeDir, 'task-packet.json'));
+  const heartbeat = await readJson(path.join(runtimeDir, 'observer-heartbeat.json'));
+
+  assert.equal(result.exitCode, 12);
+  assert.equal(result.report.outcome, 'scheduler-blocked');
+  assert.equal(taskPacket.status, 'blocked');
+  assert.equal(taskPacket.laneId, 'origin-1002');
+  assert.equal(taskPacket.objective.summary, 'Execute issue #1002');
+  assert.equal(heartbeat.artifacts.taskPacketPath, path.join(runtimeDir, 'task-packet.json'));
+  assert.equal(heartbeat.activeLane.taskPacket.objective.summary, 'Execute issue #1002');
 });
 
 test('runRuntimeObserverLoop records worker-ready-blocked when bootstrap returns a blocked result', async () => {

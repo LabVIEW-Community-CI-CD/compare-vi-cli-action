@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 
-import { mkdir, writeFile } from 'node:fs/promises';
+import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import process from 'node:process';
 import {
@@ -8,6 +8,7 @@ import {
   createRuntimeAdapter,
   DEFAULT_RUNTIME_DIR,
   SCHEDULER_DECISION_SCHEMA,
+  TASK_PACKET_SCHEMA,
   WORKER_BRANCH_SCHEMA,
   WORKER_CHECKOUT_SCHEMA,
   WORKER_READY_SCHEMA
@@ -120,6 +121,16 @@ function resolveSchedulerPaths(options, repoRoot) {
   };
 }
 
+function resolveRuntimeArtifactPaths(options, repoRoot) {
+  const runtimeDir = resolvePath(repoRoot, options.runtimeDir || DEFAULT_RUNTIME_DIR);
+  return {
+    runtimeDir,
+    statePath: path.join(runtimeDir, 'runtime-state.json'),
+    eventsPath: path.join(runtimeDir, 'runtime-events.ndjson'),
+    stopRequestPath: path.join(runtimeDir, 'stop-request.json')
+  };
+}
+
 function resolveWorkerPaths(options, repoRoot) {
   const runtimeDir = resolvePath(repoRoot, options.runtimeDir || DEFAULT_RUNTIME_DIR);
   return {
@@ -132,11 +143,34 @@ function resolveWorkerPaths(options, repoRoot) {
   };
 }
 
+function resolveTaskPacketPaths(options, repoRoot) {
+  const runtimeDir = resolvePath(repoRoot, options.runtimeDir || DEFAULT_RUNTIME_DIR);
+  return {
+    latestPath: path.join(runtimeDir, 'task-packet.json'),
+    historyDir: path.join(runtimeDir, 'task-packets')
+  };
+}
+
 async function writeJson(filePath, payload) {
   const resolved = path.resolve(filePath);
   await mkdir(path.dirname(resolved), { recursive: true });
   await writeFile(resolved, `${JSON.stringify(payload, null, 2)}\n`, 'utf8');
   return resolved;
+}
+
+async function readRecentEvents(eventsPath, limit = 5) {
+  try {
+    const raw = await readFile(path.resolve(eventsPath), 'utf8');
+    const events = raw
+      .split(/\r?\n/)
+      .map((line) => line.trim())
+      .filter(Boolean)
+      .map((line) => JSON.parse(line));
+    return events.slice(Math.max(0, events.length - limit));
+  } catch (error) {
+    if (error?.code === 'ENOENT') return [];
+    throw error;
+  }
 }
 
 function normalizeStepOptions(stepOptions = {}) {
@@ -445,6 +479,292 @@ function buildDecisionSummary(decision, artifacts) {
   };
 }
 
+function normalizeHelperCommands(list) {
+  return Array.isArray(list)
+    ? list.map((entry) => normalizeText(entry)).filter(Boolean)
+    : [];
+}
+
+function determineTaskPacketStatus({ schedulerDecision, preparedWorker, workerReady, workerBranch }) {
+  if (
+    preparedWorker?.status === 'blocked' ||
+    workerReady?.status === 'blocked' ||
+    workerBranch?.status === 'blocked' ||
+    schedulerDecision?.outcome === 'blocked'
+  ) {
+    return 'blocked';
+  }
+  if (schedulerDecision?.outcome === 'idle') {
+    return 'idle';
+  }
+  if (workerBranch?.status) {
+    return 'ready';
+  }
+  if (workerReady?.status) {
+    return 'prepared';
+  }
+  if (preparedWorker?.status) {
+    return 'selected';
+  }
+  return normalizeText(schedulerDecision?.outcome) || 'idle';
+}
+
+function buildDefaultTaskObjective(schedulerDecision) {
+  const activeLane = schedulerDecision?.activeLane ?? null;
+  if (Number.isInteger(activeLane?.issue)) {
+    const branch = normalizeText(activeLane.branch);
+    const laneTarget = branch || normalizeText(activeLane.laneId) || `issue-${activeLane.issue}`;
+    return {
+      summary: `Advance issue #${activeLane.issue} on ${laneTarget}`,
+      source: normalizeText(schedulerDecision?.source) || 'runtime-harness'
+    };
+  }
+  return {
+    summary: normalizeText(schedulerDecision?.reason) || 'No active lane selected for this worker cycle.',
+    source: normalizeText(schedulerDecision?.source) || 'runtime-harness'
+  };
+}
+
+function buildObservedActiveLane(schedulerDecision, preparedWorker, workerReady, workerBranch, taskPacket) {
+  if (!schedulerDecision?.activeLane) return null;
+  const activeLane = {
+    ...schedulerDecision.activeLane
+  };
+  if (preparedWorker) {
+    activeLane.worker = preparedWorker;
+  }
+  if (workerReady) {
+    activeLane.workerReady = workerReady;
+  }
+  if (workerBranch) {
+    activeLane.workerBranch = workerBranch;
+  }
+  if (taskPacket) {
+    activeLane.taskPacket = {
+      cycle: taskPacket.cycle,
+      status: taskPacket.status,
+      objective: taskPacket.objective,
+      generatedAt: taskPacket.generatedAt,
+      artifacts: taskPacket.artifacts ?? {}
+    };
+  }
+  return activeLane;
+}
+
+function buildObserverArtifacts({
+  runtimeArtifactPaths,
+  workerArtifacts,
+  workerReadyArtifacts,
+  workerBranchArtifacts,
+  schedulerArtifacts,
+  taskPacketArtifacts,
+  includeRuntimeState = false
+}) {
+  return {
+    statePath: includeRuntimeState ? runtimeArtifactPaths.statePath : null,
+    eventsPath: includeRuntimeState ? runtimeArtifactPaths.eventsPath : null,
+    stopRequestPath: includeRuntimeState ? runtimeArtifactPaths.stopRequestPath : null,
+    workerCheckoutPath: workerArtifacts.latestPath,
+    workerLanePath: workerArtifacts.lanePath,
+    workerReadyPath: workerReadyArtifacts.latestPath,
+    workerReadyLanePath: workerReadyArtifacts.lanePath,
+    workerBranchPath: workerBranchArtifacts.latestPath,
+    workerBranchLanePath: workerBranchArtifacts.lanePath,
+    schedulerDecisionPath: schedulerArtifacts.latestPath,
+    schedulerDecisionHistoryPath: schedulerArtifacts.historyPath,
+    taskPacketPath: taskPacketArtifacts.latestPath,
+    taskPacketHistoryPath: taskPacketArtifacts.historyPath
+  };
+}
+
+async function buildTaskPacket({
+  options,
+  deps,
+  adapter,
+  repoRoot,
+  repository,
+  cycle,
+  heartbeatPath,
+  runtimeArtifactPaths,
+  schedulerArtifacts,
+  taskPacketPaths,
+  schedulerDecision,
+  preparedWorker,
+  workerReady,
+  workerBranch,
+  workerArtifacts,
+  workerReadyArtifacts,
+  workerBranchArtifacts,
+  previousDecision,
+  previousStep,
+  now
+}) {
+  const activeLane = schedulerDecision?.activeLane ?? null;
+  const taskPacketHook =
+    typeof deps.buildTaskPacketFn === 'function'
+      ? deps.buildTaskPacketFn
+      : (typeof adapter.buildTaskPacket === 'function' ? (context) => adapter.buildTaskPacket(context) : null);
+  const recentEvents = await readRecentEvents(runtimeArtifactPaths.eventsPath, 5);
+  const packet = {
+    schema: TASK_PACKET_SCHEMA,
+    generatedAt: toIso(now),
+    cycle,
+    runtimeAdapter: adapter.name,
+    repository,
+    laneId: activeLane?.laneId ?? null,
+    status: determineTaskPacketStatus({
+      schedulerDecision,
+      preparedWorker,
+      workerReady,
+      workerBranch
+    }),
+    source: normalizeText(schedulerDecision?.source) || adapter.name,
+    objective: buildDefaultTaskObjective(schedulerDecision),
+    branch: {
+      name: normalizeText(workerBranch?.branch) || normalizeText(activeLane?.branch) || null,
+      forkRemote: normalizeText(workerBranch?.forkRemote) || normalizeText(activeLane?.forkRemote) || null,
+      status:
+        normalizeText(workerBranch?.status) ||
+        normalizeText(workerReady?.status) ||
+        normalizeText(preparedWorker?.status) ||
+        (activeLane ? 'selected' : 'idle'),
+      trackingRef: normalizeText(workerBranch?.trackingRef) || null,
+      checkoutPath:
+        normalizeText(workerBranch?.checkoutPath) ||
+        normalizeText(workerReady?.checkoutPath) ||
+        normalizeText(preparedWorker?.checkoutPath) ||
+        null
+    },
+    pullRequest: {
+      url: normalizeText(activeLane?.prUrl) || null,
+      status: normalizeText(activeLane?.prUrl) ? 'linked' : 'none'
+    },
+    checks: {
+      status: activeLane?.blockerClass === 'ci' ? 'blocked' : normalizeText(activeLane?.prUrl) ? 'pending-or-unknown' : 'not-linked',
+      blockerClass: normalizeText(activeLane?.blockerClass) || 'none'
+    },
+    helperSurface: {
+      preferred: [],
+      fallbacks: []
+    },
+    recentEvents,
+    evidence: {
+      runtime: {
+        runtimeDir: runtimeArtifactPaths.runtimeDir,
+        heartbeatPath,
+        statePath: runtimeArtifactPaths.statePath,
+        eventsPath: runtimeArtifactPaths.eventsPath,
+        stopRequestPath: runtimeArtifactPaths.stopRequestPath
+      },
+      scheduler: {
+        latestPath: schedulerArtifacts.latestPath,
+        historyPath: schedulerArtifacts.historyPath,
+        sourceArtifacts: schedulerDecision?.artifacts ?? {}
+      },
+      worker: {
+        checkoutPath: workerArtifacts.latestPath,
+        checkoutLanePath: workerArtifacts.lanePath,
+        readyPath: workerReadyArtifacts.latestPath,
+        readyLanePath: workerReadyArtifacts.lanePath,
+        branchPath: workerBranchArtifacts.latestPath,
+        branchLanePath: workerBranchArtifacts.lanePath
+      }
+    },
+    artifacts: {}
+  };
+
+  if (taskPacketHook) {
+    const adapterPacket = await taskPacketHook({
+      options,
+      env: process.env,
+      repoRoot,
+      deps,
+      adapter,
+      repository,
+      cycle,
+      heartbeatPath,
+      runtimeArtifactPaths,
+      schedulerArtifacts,
+      taskPacketPaths,
+      schedulerDecision,
+      preparedWorker,
+      workerReady,
+      workerBranch,
+      workerArtifacts,
+      workerReadyArtifacts,
+      workerBranchArtifacts,
+      previousDecision,
+      previousStep,
+      now,
+      recentEvents
+    });
+    if (adapterPacket && typeof adapterPacket === 'object') {
+      const objective = adapterPacket.objective && typeof adapterPacket.objective === 'object' ? adapterPacket.objective : {};
+      const branch = adapterPacket.branch && typeof adapterPacket.branch === 'object' ? adapterPacket.branch : {};
+      const pullRequest =
+        adapterPacket.pullRequest && typeof adapterPacket.pullRequest === 'object' ? adapterPacket.pullRequest : {};
+      const checks = adapterPacket.checks && typeof adapterPacket.checks === 'object' ? adapterPacket.checks : {};
+      const evidence = adapterPacket.evidence && typeof adapterPacket.evidence === 'object' ? adapterPacket.evidence : {};
+      packet.source = normalizeText(adapterPacket.source) || packet.source;
+      packet.status = normalizeText(adapterPacket.status).toLowerCase() || packet.status;
+      packet.objective = {
+        summary: normalizeText(objective.summary) || packet.objective.summary,
+        source: normalizeText(objective.source) || packet.objective.source
+      };
+      packet.branch = {
+        ...packet.branch,
+        name: normalizeText(branch.name) || packet.branch.name,
+        forkRemote: normalizeText(branch.forkRemote) || packet.branch.forkRemote,
+        status: normalizeText(branch.status) || packet.branch.status,
+        trackingRef: normalizeText(branch.trackingRef) || packet.branch.trackingRef,
+        checkoutPath: normalizeText(branch.checkoutPath) || packet.branch.checkoutPath
+      };
+      packet.pullRequest = {
+        url: normalizeText(pullRequest.url) || packet.pullRequest.url,
+        status: normalizeText(pullRequest.status) || packet.pullRequest.status
+      };
+      packet.checks = {
+        status: normalizeText(checks.status) || packet.checks.status,
+        blockerClass: normalizeText(checks.blockerClass) || packet.checks.blockerClass
+      };
+      packet.helperSurface = {
+        preferred: normalizeHelperCommands(adapterPacket.helperSurface?.preferred),
+        fallbacks: normalizeHelperCommands(adapterPacket.helperSurface?.fallbacks)
+      };
+      packet.recentEvents = Array.isArray(adapterPacket.recentEvents) ? adapterPacket.recentEvents : packet.recentEvents;
+      packet.evidence = {
+        ...packet.evidence,
+        ...evidence
+      };
+    }
+  }
+
+  return packet;
+}
+
+async function writeTaskPacket(taskPacketPaths, taskPacket) {
+  await mkdir(taskPacketPaths.historyDir, { recursive: true });
+  const historyPath = path.join(
+    taskPacketPaths.historyDir,
+    makeDecisionFileName(new Date(taskPacket.generatedAt), taskPacket.cycle ?? 0)
+  );
+  const persistedTaskPacket = {
+    ...taskPacket,
+    artifacts: {
+      ...(taskPacket.artifacts ?? {}),
+      latestPath: taskPacketPaths.latestPath,
+      historyPath
+    }
+  };
+  await writeJson(taskPacketPaths.latestPath, persistedTaskPacket);
+  await writeJson(historyPath, persistedTaskPacket);
+  return {
+    latestPath: taskPacketPaths.latestPath,
+    historyPath,
+    taskPacket: persistedTaskPacket
+  };
+}
+
 export function parseObserverArgs(argv = process.argv) {
   const args = argv.slice(2);
   const options = {
@@ -561,8 +881,10 @@ export async function runRuntimeObserverLoop(options = {}, deps = {}) {
   const adapter = createRuntimeAdapter(deps.adapter ?? {});
   const repoRoot = resolveRepoRoot(options, deps, adapter);
   const heartbeatPath = resolveHeartbeatPath(options, repoRoot);
+  const runtimeArtifactPaths = resolveRuntimeArtifactPaths(options, repoRoot);
   const schedulerPaths = resolveSchedulerPaths(options, repoRoot);
   const workerPaths = resolveWorkerPaths(options, repoRoot);
+  const taskPacketPaths = resolveTaskPacketPaths(options, repoRoot);
   const nowFactory = deps.nowFactory ?? (() => deps.now ?? new Date());
   const sleepFn = deps.sleepFn ?? sleep;
 
@@ -586,6 +908,10 @@ export async function runRuntimeObserverLoop(options = {}, deps = {}) {
       readyDir: workerPaths.readyDir,
       branchLatestPath: workerPaths.branchLatestPath,
       branchDir: workerPaths.branchDir
+    },
+    taskPackets: {
+      latestPath: taskPacketPaths.latestPath,
+      historyDir: taskPacketPaths.historyDir
     },
     status: 'pass',
     outcome: 'idle',
@@ -630,6 +956,51 @@ export async function runRuntimeObserverLoop(options = {}, deps = {}) {
 
     const schedulerArtifacts = await writeSchedulerDecision(schedulerPaths, schedulerDecision);
     report.lastDecision = buildDecisionSummary(schedulerDecision, schedulerArtifacts);
+    let taskPacket = null;
+    let taskPacketArtifacts = {
+      latestPath: null,
+      historyPath: null
+    };
+
+    if (schedulerDecision.outcome !== 'selected') {
+      const taskPacketRecord = await buildTaskPacket({
+        options,
+        deps,
+        adapter,
+        repoRoot,
+        repository: report.repository,
+        cycle,
+        heartbeatPath,
+        runtimeArtifactPaths,
+        schedulerArtifacts,
+        taskPacketPaths,
+        schedulerDecision,
+        preparedWorker: null,
+        workerReady: null,
+        workerBranch: null,
+        workerArtifacts: {
+          latestPath: null,
+          lanePath: null
+        },
+        workerReadyArtifacts: {
+          latestPath: null,
+          lanePath: null
+        },
+        workerBranchArtifacts: {
+          latestPath: null,
+          lanePath: null
+        },
+        previousDecision,
+        previousStep,
+        now: stepNow
+      });
+      const persistedTaskPacket = await writeTaskPacket(taskPacketPaths, taskPacketRecord);
+      taskPacket = persistedTaskPacket.taskPacket;
+      taskPacketArtifacts = {
+        latestPath: persistedTaskPacket.latestPath,
+        historyPath: persistedTaskPacket.historyPath
+      };
+    }
 
     if (schedulerDecision.outcome === 'blocked') {
       const heartbeatNow = nowFactory();
@@ -642,24 +1013,26 @@ export async function runRuntimeObserverLoop(options = {}, deps = {}) {
         cyclesCompleted: report.cyclesCompleted,
         outcome: 'scheduler-blocked',
         stopRequested: false,
-        activeLane: schedulerDecision.activeLane,
+        activeLane: buildObservedActiveLane(schedulerDecision, null, null, null, taskPacket),
         schedulerDecision: report.lastDecision,
-        artifacts: {
-          statePath: null,
-          eventsPath: null,
-          stopRequestPath: null,
-          workerCheckoutPath: null,
-          workerLanePath: null,
-          workerReadyPath: null,
-          workerReadyLanePath: null,
-          workerBranchPath: null,
-          workerBranchLanePath: null,
-          schedulerDecisionPath: schedulerArtifacts.latestPath,
-          schedulerDecisionHistoryPath: schedulerArtifacts.historyPath
-        }
+        artifacts: buildObserverArtifacts({
+          runtimeArtifactPaths,
+          workerArtifacts: { latestPath: null, lanePath: null },
+          workerReadyArtifacts: { latestPath: null, lanePath: null },
+          workerBranchArtifacts: { latestPath: null, lanePath: null },
+          schedulerArtifacts,
+          taskPacketArtifacts
+        })
       });
       report.status = 'blocked';
       report.outcome = 'scheduler-blocked';
+      report.lastStep = {
+        exitCode: 12,
+        outcome: 'scheduler-blocked',
+        statePath: null,
+        turnPath: null,
+        taskPacket
+      };
       return { exitCode: 12, report };
     }
 
@@ -937,26 +1310,16 @@ export async function runRuntimeObserverLoop(options = {}, deps = {}) {
           cyclesCompleted: report.cyclesCompleted,
           outcome: 'worker-branch-blocked',
           stopRequested: false,
-          activeLane: {
-            ...(schedulerDecision.activeLane ?? {}),
-            worker: preparedWorker,
-            workerReady,
-            workerBranch
-          },
+          activeLane: buildObservedActiveLane(schedulerDecision, preparedWorker, workerReady, workerBranch, taskPacket),
           schedulerDecision: report.lastDecision,
-          artifacts: {
-            statePath: null,
-            eventsPath: null,
-            stopRequestPath: null,
-            workerCheckoutPath: workerArtifacts.latestPath,
-            workerLanePath: workerArtifacts.lanePath,
-            workerReadyPath: workerReadyArtifacts.latestPath,
-            workerReadyLanePath: workerReadyArtifacts.lanePath,
-            workerBranchPath: workerBranchArtifacts.latestPath,
-            workerBranchLanePath: workerBranchArtifacts.lanePath,
-            schedulerDecisionPath: schedulerArtifacts.latestPath,
-            schedulerDecisionHistoryPath: schedulerArtifacts.historyPath
-          }
+          artifacts: buildObserverArtifacts({
+            runtimeArtifactPaths,
+            workerArtifacts,
+            workerReadyArtifacts,
+            workerBranchArtifacts,
+            schedulerArtifacts,
+            taskPacketArtifacts
+          })
         });
         report.status = 'blocked';
         report.outcome = 'worker-branch-blocked';
@@ -967,10 +1330,42 @@ export async function runRuntimeObserverLoop(options = {}, deps = {}) {
           turnPath: null,
           worker: preparedWorker,
           workerReady,
-          workerBranch
+          workerBranch,
+          taskPacket
         };
         return { exitCode: 15, report };
       }
+    }
+
+    if (schedulerDecision.outcome === 'selected') {
+      const taskPacketRecord = await buildTaskPacket({
+        options,
+        deps,
+        adapter,
+        repoRoot,
+        repository: report.repository,
+        cycle,
+        heartbeatPath,
+        runtimeArtifactPaths,
+        schedulerArtifacts,
+        taskPacketPaths,
+        schedulerDecision,
+        preparedWorker,
+        workerReady,
+        workerBranch,
+        workerArtifacts,
+        workerReadyArtifacts,
+        workerBranchArtifacts,
+        previousDecision,
+        previousStep,
+        now: stepNow
+      });
+      const persistedTaskPacket = await writeTaskPacket(taskPacketPaths, taskPacketRecord);
+      taskPacket = persistedTaskPacket.taskPacket;
+      taskPacketArtifacts = {
+        latestPath: persistedTaskPacket.latestPath,
+        historyPath: persistedTaskPacket.historyPath
+      };
     }
 
     const stepResult = await runRuntimeWorkerStep(
@@ -978,7 +1373,8 @@ export async function runRuntimeObserverLoop(options = {}, deps = {}) {
         ...buildWorkerStepOptions(options, schedulerDecision),
         worker: preparedWorker,
         workerReady,
-        workerBranch
+        workerBranch,
+        taskPacket
       },
       {
         ...deps,
@@ -996,7 +1392,8 @@ export async function runRuntimeObserverLoop(options = {}, deps = {}) {
       turnPath: stepResult.report.turnPath ?? null,
       worker: stepResult.report.worker ?? preparedWorker,
       workerReady: stepResult.report.workerReady ?? workerReady,
-      workerBranch: stepResult.report.workerBranch ?? workerBranch
+      workerBranch: stepResult.report.workerBranch ?? workerBranch,
+      taskPacket: stepResult.report.taskPacket ?? taskPacket
     };
     previousDecision = schedulerDecision;
     previousStep = report.lastStep;
@@ -1013,19 +1410,15 @@ export async function runRuntimeObserverLoop(options = {}, deps = {}) {
       stopRequested: Boolean(stepResult.report.state?.lifecycle?.stopRequested),
       activeLane: stepResult.report.state?.activeLane ?? null,
       schedulerDecision: report.lastDecision,
-      artifacts: {
-        statePath: stepResult.report.runtime?.statePath ?? null,
-        eventsPath: stepResult.report.runtime?.eventsPath ?? null,
-        stopRequestPath: stepResult.report.runtime?.stopRequestPath ?? null,
-        workerCheckoutPath: workerArtifacts.latestPath,
-        workerLanePath: workerArtifacts.lanePath,
-        workerReadyPath: workerReadyArtifacts.latestPath,
-        workerReadyLanePath: workerReadyArtifacts.lanePath,
-        workerBranchPath: workerBranchArtifacts.latestPath,
-        workerBranchLanePath: workerBranchArtifacts.lanePath,
-        schedulerDecisionPath: schedulerArtifacts.latestPath,
-        schedulerDecisionHistoryPath: schedulerArtifacts.historyPath
-      }
+      artifacts: buildObserverArtifacts({
+        runtimeArtifactPaths,
+        workerArtifacts,
+        workerReadyArtifacts,
+        workerBranchArtifacts,
+        schedulerArtifacts,
+        taskPacketArtifacts,
+        includeRuntimeState: true
+      })
     });
 
     if (stepResult.exitCode !== 0) {

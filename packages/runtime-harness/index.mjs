@@ -16,6 +16,7 @@ export const SCHEDULER_DECISION_SCHEMA = 'priority/runtime-scheduler-decision@v1
 export const WORKER_CHECKOUT_SCHEMA = 'priority/runtime-worker-checkout@v1';
 export const WORKER_READY_SCHEMA = 'priority/runtime-worker-ready@v1';
 export const WORKER_BRANCH_SCHEMA = 'priority/runtime-worker-branch@v1';
+export const TASK_PACKET_SCHEMA = 'priority/runtime-worker-task-packet@v1';
 export const DEFAULT_RUNTIME_DIR = path.join('tests', 'results', '_agent', 'runtime');
 export const DEFAULT_LEASE_SCOPE = 'workspace';
 export const ACTIONS = new Set(['status', 'step', 'stop', 'resume']);
@@ -284,6 +285,7 @@ export function createRuntimeAdapter(adapter = {}) {
     prepareWorker: typeof adapter.prepareWorker === 'function' ? adapter.prepareWorker : null,
     bootstrapWorker: typeof adapter.bootstrapWorker === 'function' ? adapter.bootstrapWorker : null,
     activateWorker: typeof adapter.activateWorker === 'function' ? adapter.activateWorker : null,
+    buildTaskPacket: typeof adapter.buildTaskPacket === 'function' ? adapter.buildTaskPacket : null,
     resolveRepository:
       typeof adapter.resolveRepository === 'function'
         ? adapter.resolveRepository
@@ -336,6 +338,41 @@ function summarizeWorkerBranch(workerBranchRecord) {
     trackingRef: workerBranchRecord.trackingRef,
     activatedAt: workerBranchRecord.activatedAt,
     reused: Boolean(workerBranchRecord.reused)
+  };
+}
+
+function summarizeTaskPacket(taskPacketRecord) {
+  if (!taskPacketRecord) return null;
+  return {
+    laneId: taskPacketRecord.laneId,
+    cycle: taskPacketRecord.cycle,
+    status: taskPacketRecord.status,
+    objective: {
+      summary: taskPacketRecord.objective?.summary ?? null,
+      source: taskPacketRecord.objective?.source ?? null
+    },
+    branch: {
+      name: taskPacketRecord.branch?.name ?? null,
+      status: taskPacketRecord.branch?.status ?? null
+    },
+    pullRequest: {
+      url: taskPacketRecord.pullRequest?.url ?? null,
+      status: taskPacketRecord.pullRequest?.status ?? null
+    },
+    checks: {
+      status: taskPacketRecord.checks?.status ?? null,
+      blockerClass: taskPacketRecord.checks?.blockerClass ?? null
+    },
+    helperSurface: {
+      preferredCount: Array.isArray(taskPacketRecord.helperSurface?.preferred)
+        ? taskPacketRecord.helperSurface.preferred.length
+        : 0,
+      fallbackCount: Array.isArray(taskPacketRecord.helperSurface?.fallbacks)
+        ? taskPacketRecord.helperSurface.fallbacks.length
+        : 0
+    },
+    generatedAt: taskPacketRecord.generatedAt ?? null,
+    artifacts: taskPacketRecord.artifacts ?? {}
   };
 }
 
@@ -433,6 +470,56 @@ function normalizeWorkerBranchRecord(workerBranch, now) {
   };
 }
 
+function normalizeTaskPacketRecord(taskPacket, now) {
+  if (!taskPacket || typeof taskPacket !== 'object') return null;
+  const objective = taskPacket.objective && typeof taskPacket.objective === 'object' ? taskPacket.objective : {};
+  const branch = taskPacket.branch && typeof taskPacket.branch === 'object' ? taskPacket.branch : {};
+  const pullRequest = taskPacket.pullRequest && typeof taskPacket.pullRequest === 'object' ? taskPacket.pullRequest : {};
+  const checks = taskPacket.checks && typeof taskPacket.checks === 'object' ? taskPacket.checks : {};
+  const helperSurface = taskPacket.helperSurface && typeof taskPacket.helperSurface === 'object' ? taskPacket.helperSurface : {};
+  const recentEvents = Array.isArray(taskPacket.recentEvents) ? taskPacket.recentEvents : [];
+  const evidence = taskPacket.evidence && typeof taskPacket.evidence === 'object' ? taskPacket.evidence : {};
+  const artifacts = taskPacket.artifacts && typeof taskPacket.artifacts === 'object' ? taskPacket.artifacts : {};
+  return {
+    schema: TASK_PACKET_SCHEMA,
+    generatedAt: normalizeText(taskPacket.generatedAt) || toIso(now),
+    cycle: Number.isInteger(taskPacket.cycle) ? taskPacket.cycle : null,
+    laneId: normalizeText(taskPacket.laneId) || null,
+    status: normalizeText(taskPacket.status).toLowerCase() || 'ready',
+    source: normalizeText(taskPacket.source) || null,
+    objective: {
+      summary: normalizeText(objective.summary) || null,
+      source: normalizeText(objective.source) || null
+    },
+    branch: {
+      name: normalizeText(branch.name) || null,
+      forkRemote: normalizeText(branch.forkRemote) || null,
+      status: normalizeText(branch.status) || null,
+      trackingRef: normalizeText(branch.trackingRef) || null,
+      checkoutPath: normalizeText(branch.checkoutPath) || null
+    },
+    pullRequest: {
+      url: normalizeText(pullRequest.url) || null,
+      status: normalizeText(pullRequest.status) || null
+    },
+    checks: {
+      status: normalizeText(checks.status) || null,
+      blockerClass: normalizeText(checks.blockerClass) || null
+    },
+    helperSurface: {
+      preferred: Array.isArray(helperSurface.preferred)
+        ? helperSurface.preferred.map((entry) => String(entry))
+        : [],
+      fallbacks: Array.isArray(helperSurface.fallbacks)
+        ? helperSurface.fallbacks.map((entry) => String(entry))
+        : []
+    },
+    recentEvents,
+    evidence,
+    artifacts
+  };
+}
+
 function buildActiveLaneSummary(laneRecord) {
   if (!laneRecord) return null;
   return {
@@ -446,6 +533,7 @@ function buildActiveLaneSummary(laneRecord) {
     worker: summarizeWorker(laneRecord.worker),
     workerReady: summarizeWorkerReady(laneRecord.workerReady),
     workerBranch: summarizeWorkerBranch(laneRecord.workerBranch),
+    taskPacket: summarizeTaskPacket(laneRecord.taskPacket),
     updatedAt: laneRecord.updatedAt
   };
 }
@@ -534,6 +622,7 @@ function buildLaneRecord(options, now) {
   const worker = normalizeWorkerRecord(options.worker, now);
   const workerReady = normalizeWorkerReadyRecord(options.workerReady, now);
   const workerBranch = normalizeWorkerBranchRecord(options.workerBranch, now);
+  const taskPacket = normalizeTaskPacketRecord(options.taskPacket, now);
   return {
     schema: LANE_SCHEMA,
     laneId,
@@ -554,6 +643,7 @@ function buildLaneRecord(options, now) {
     worker,
     workerReady,
     workerBranch,
+    taskPacket,
     createdAt: toIso(now),
     updatedAt: toIso(now)
   };
@@ -788,6 +878,8 @@ async function runStepAction(context) {
         workerReadyArtifactPath: laneRecord?.workerReady?.artifacts?.lanePath ?? null,
         workerBranchPath: laneRecord?.workerBranch?.artifacts?.latestPath ?? null,
         workerBranchArtifactPath: laneRecord?.workerBranch?.artifacts?.lanePath ?? null,
+        taskPacketPath: laneRecord?.taskPacket?.artifacts?.latestPath ?? null,
+        taskPacketHistoryPath: laneRecord?.taskPacket?.artifacts?.historyPath ?? null,
         statePath: runtimePaths.statePath,
         eventsPath: runtimePaths.eventsPath
       }
@@ -813,6 +905,7 @@ async function runStepAction(context) {
     report.worker = summarizeWorker(laneRecord?.worker);
     report.workerReady = summarizeWorkerReady(laneRecord?.workerReady);
     report.workerBranch = summarizeWorkerBranch(laneRecord?.workerBranch);
+    report.taskPacket = summarizeTaskPacket(laneRecord?.taskPacket);
     report.state = state;
   } finally {
     const leaseId = report.lease?.acquire?.leaseId ?? null;

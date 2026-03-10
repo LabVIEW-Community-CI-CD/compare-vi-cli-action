@@ -16,6 +16,7 @@ import {
   REPORT_SCHEMA,
   STATE_SCHEMA,
   STOP_REQUEST_SCHEMA,
+  TASK_PACKET_SCHEMA,
   TURN_SCHEMA,
   WORKER_CHECKOUT_SCHEMA,
   __test,
@@ -44,6 +45,7 @@ export {
   REPORT_SCHEMA,
   STATE_SCHEMA,
   STOP_REQUEST_SCHEMA,
+  TASK_PACKET_SCHEMA,
   TURN_SCHEMA,
   WORKER_CHECKOUT_SCHEMA,
   WORKER_READY_SCHEMA,
@@ -55,6 +57,18 @@ export {
 const COMPAREVI_UPSTREAM_REPOSITORY = 'LabVIEW-Community-CI-CD/compare-vi-cli-action';
 const PRIORITY_CACHE_FILENAME = '.agent_priority_cache.json';
 const PRIORITY_ISSUE_DIR = path.join('tests', 'results', '_agent', 'issue');
+const COMPAREVI_PREFERRED_HELPERS = [
+  'pwsh -NoLogo -NoProfile -File tools/priority/bootstrap.ps1',
+  'node tools/npm/run-script.mjs priority:develop:sync',
+  'node tools/npm/run-script.mjs priority:github:metadata:apply',
+  'node tools/npm/run-script.mjs priority:project:portfolio:apply',
+  'node tools/npm/run-script.mjs priority:pr'
+];
+const COMPAREVI_FALLBACK_HELPERS = [
+  'gh issue create --body-file <path>',
+  'gh pr create --body-file <path>',
+  'gh pr merge --match-head-commit <sha>'
+];
 
 function normalizeText(value) {
   if (value == null) return '';
@@ -220,6 +234,71 @@ async function planCompareviRuntimeStep({ repoRoot, env, explicitStepOptions }) 
   });
 }
 
+async function resolveCompareviTaskPacketSnapshot({ repoRoot, schedulerDecision }) {
+  const artifactPaths = schedulerDecision?.artifacts ?? {};
+  for (const candidate of [artifactPaths.issuePath, artifactPaths.cachePath]) {
+    const resolved = normalizeText(candidate);
+    if (!resolved) {
+      continue;
+    }
+    const snapshot = await readJsonIfPresent(resolved);
+    if (snapshot) {
+      return snapshot;
+    }
+  }
+
+  const issueNumber = schedulerDecision?.activeLane?.issue;
+  if (!Number.isInteger(issueNumber)) {
+    return null;
+  }
+  return readJsonIfPresent(path.join(repoRoot, PRIORITY_ISSUE_DIR, `${issueNumber}.json`));
+}
+
+async function buildCompareviTaskPacket({ repoRoot, schedulerDecision, preparedWorker, workerReady, workerBranch }) {
+  const activeLane = schedulerDecision?.activeLane ?? null;
+  const snapshot = await resolveCompareviTaskPacketSnapshot({ repoRoot, schedulerDecision });
+  const issueNumber = activeLane?.issue;
+  const issueTitle = normalizeText(snapshot?.title);
+  const branchName = normalizeText(workerBranch?.branch) || normalizeText(activeLane?.branch);
+  const objectiveSummary = Number.isInteger(issueNumber)
+    ? `Advance issue #${issueNumber}${issueTitle ? `: ${issueTitle}` : ''}${branchName ? ` on ${branchName}` : ''}`
+    : normalizeText(schedulerDecision?.reason) || 'No compare-vi lane selected.';
+
+  return {
+    source: 'comparevi-runtime',
+    objective: {
+      summary: objectiveSummary,
+      source: issueTitle ? 'comparevi-issue-snapshot' : 'comparevi-runtime'
+    },
+    pullRequest: {
+      url: normalizeText(activeLane?.prUrl) || null,
+      status: normalizeText(activeLane?.prUrl) ? 'linked' : 'none'
+    },
+    checks: {
+      status: activeLane?.blockerClass === 'ci' ? 'blocked' : normalizeText(activeLane?.prUrl) ? 'pending-or-unknown' : 'not-linked',
+      blockerClass: normalizeText(activeLane?.blockerClass) || 'none'
+    },
+    helperSurface: {
+      preferred: COMPAREVI_PREFERRED_HELPERS,
+      fallbacks: COMPAREVI_FALLBACK_HELPERS
+    },
+    evidence: {
+      priority: {
+        cachePath: normalizeText(schedulerDecision?.artifacts?.cachePath) || null,
+        routerPath: normalizeText(schedulerDecision?.artifacts?.routerPath) || null,
+        issuePath: normalizeText(schedulerDecision?.artifacts?.issuePath) || null
+      },
+      lane: {
+        workerCheckoutPath:
+          normalizeText(workerBranch?.checkoutPath) ||
+          normalizeText(workerReady?.checkoutPath) ||
+          normalizeText(preparedWorker?.checkoutPath) ||
+          null
+      }
+    }
+  };
+}
+
 export const compareviRuntimeAdapter = createRuntimeAdapter({
   name: 'comparevi',
   resolveRepoRoot: () => getRepoRoot(),
@@ -230,12 +309,14 @@ export const compareviRuntimeAdapter = createRuntimeAdapter({
   planStep: (context) => planCompareviRuntimeStep(context),
   prepareWorker: (context) => prepareCompareviWorkerCheckout(context),
   bootstrapWorker: (context) => bootstrapCompareviWorkerCheckout(context),
-  activateWorker: (context) => activateCompareviWorkerLane(context)
+  activateWorker: (context) => activateCompareviWorkerLane(context),
+  buildTaskPacket: (context) => buildCompareviTaskPacket(context)
 });
 
 export const compareviRuntimeTest = {
   activateCompareviWorkerLane,
   buildSchedulerDecisionFromSnapshot,
+  buildCompareviTaskPacket,
   bootstrapCompareviWorkerCheckout,
   planCompareviRuntimeStep,
   prepareCompareviWorkerCheckout,

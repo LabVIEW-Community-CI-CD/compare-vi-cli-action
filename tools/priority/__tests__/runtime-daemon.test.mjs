@@ -117,6 +117,7 @@ test('runtime-daemon wrapper defaults to the comparevi adapter', async () => {
   );
 
   const heartbeat = await readJson(path.join(runtimeDir, 'observer-heartbeat.json'));
+  const taskPacket = await readJson(path.join(runtimeDir, 'task-packet.json'));
 
   assert.equal(result.exitCode, 0);
   assert.equal(result.report.runtimeAdapter, 'comparevi');
@@ -127,6 +128,8 @@ test('runtime-daemon wrapper defaults to the comparevi adapter', async () => {
   assert.equal(heartbeat.activeLane.workerReady.status, 'ready');
   assert.equal(heartbeat.activeLane.workerBranch.status, 'attached');
   assert.equal(heartbeat.activeLane.workerBranch.branch, 'issue/origin-977-fork-policy-portability');
+  assert.equal(taskPacket.objective.summary, 'Advance issue #977 on issue/origin-977-fork-policy-portability');
+  assert.equal(taskPacket.helperSurface.preferred[0], 'pwsh -NoLogo -NoProfile -File tools/priority/bootstrap.ps1');
   assert.ok(execDeps.calls.some((entry) => entry.command === 'pwsh'));
   assert.ok(execDeps.calls.some((entry) => entry.command === 'git' && entry.args[0] === 'checkout'));
   assert.deepEqual(
@@ -184,6 +187,7 @@ test('runtime-daemon wrapper schedules from the comparevi standing-priority cach
   );
 
   const heartbeat = await readJson(path.join(repoRoot, runtimeDir, 'observer-heartbeat.json'));
+  const taskPacket = await readJson(path.join(repoRoot, runtimeDir, 'task-packet.json'));
 
   assert.equal(result.exitCode, 0);
   assert.equal(result.report.outcome, 'max-cycles-reached');
@@ -197,6 +201,8 @@ test('runtime-daemon wrapper schedules from the comparevi standing-priority cach
   assert.equal(heartbeat.activeLane.worker.status, 'created');
   assert.equal(heartbeat.activeLane.workerReady.status, 'ready');
   assert.equal(heartbeat.activeLane.workerBranch.status, 'attached');
+  assert.equal(taskPacket.objective.summary, 'Advance issue #982: Human go/no-go workflow on issue/origin-982-human-go-no-go-workflow');
+  assert.equal(taskPacket.evidence.priority.cachePath, path.join(repoRoot, '.agent_priority_cache.json'));
   assert.ok(execDeps.calls.some((entry) => entry.command === 'git' && entry.args[0] === 'checkout'));
   assert.deepEqual(
     deps.calls.map((entry) => entry.type),
