@@ -86,6 +86,46 @@
     "executedModes": {
       "$ref": "#/$defs/modeSlugArray"
     },
+    "branchBudget": {
+      "type": "object",
+      "required": [
+        "sourceBranchRef",
+        "baselineRef",
+        "maxCommitCount",
+        "commitCount",
+        "status",
+        "reason"
+      ],
+      "properties": {
+        "sourceBranchRef": {
+          "type": "string"
+        },
+        "baselineRef": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "maxCommitCount": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "commitCount": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "minimum": 0
+        },
+        "status": {
+          "type": "string"
+        },
+        "reason": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": false
+    },
     "modes": {
       "type": "array",
       "items": {

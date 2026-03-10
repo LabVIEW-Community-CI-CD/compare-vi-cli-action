@@ -1026,6 +1026,8 @@ exit 0
       TargetPath        = $_target
       StartRef          = $pair.Head
       MaxPairs          = 1
+      SourceBranchRef   = 'develop'
+      MaxBranchCommits  = 1
       InvokeScriptPath  = $_stubPath
       ResultsDir        = $rd
       Mode              = 'default,attributes'
@@ -1046,6 +1048,10 @@ exit 0
     $suiteManifest = Get-Content -LiteralPath $manifestValue -Raw | ConvertFrom-Json -Depth 12
     @($suiteManifest.requestedModes) | Should -Be @('default', 'attributes')
     @($suiteManifest.executedModes) | Should -Be @('default', 'attributes')
+    $suiteManifest.branchBudget.sourceBranchRef | Should -Be 'develop'
+    $suiteManifest.branchBudget.maxCommitCount | Should -Be 1
+    $suiteManifest.branchBudget.commitCount | Should -Be 0
+    $suiteManifest.branchBudget.status | Should -Be 'ok'
 
     $suiteSchemaPath = Join-Path $_repoRoot 'docs' 'schemas' 'vi-compare-history-suite-v1.schema.json'
     $schemaValidation = & node (Join-Path $_repoRoot 'tools' 'npm' 'run-script.mjs') 'schema:validate' '--' '--schema' $suiteSchemaPath '--data' $manifestValue 2>&1
@@ -1119,6 +1125,9 @@ exit 0
     @($historySummary.execution.requestedModes) | Should -Be @('default', 'attributes')
     @($historySummary.execution.executedModes) | Should -Be @('default', 'attributes')
     $historySummary.observedInterpretation.coverageClass | Should -Be 'catalog-aligned'
+    $historySummary.target.sourceBranchRef | Should -Be 'develop'
+    $historySummary.target.branchBudget.maxCommitCount | Should -Be 1
+    $historySummary.target.branchBudget.commitCount | Should -Be 0
     $historySummary.reports.markdownPath | Should -Be $historyMdPath
     $historySummary.reports.htmlPath | Should -Be $historyHtmlPath
     @($historySummary.modes | ForEach-Object { [string]$_.slug }) | Should -Be @('default', 'attributes')
@@ -1128,6 +1137,8 @@ exit 0
     $summaryContent | Should -Match 'VI history report'
     $summaryContent | Should -Match 'history-summary.json'
     $summaryContent | Should -Match 'history-report.md'
+    $summaryContent | Should -Match 'Source Branch: `develop`'
+    $summaryContent | Should -Match 'Source Branch Budget: `0/1; baseline: develop; status: ok`'
     $summaryContent | Should -Match '## Observed interpretation'
     $summaryContent | Should -Match '\| Coverage Class \| `catalog-aligned` \|'
     $summaryContent | Should -Match '## Mode overview'

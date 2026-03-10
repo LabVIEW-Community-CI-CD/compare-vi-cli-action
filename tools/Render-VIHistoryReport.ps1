@@ -211,6 +211,30 @@ function Coalesce {
   return $Fallback
 }
 
+function Get-ObjectPropertyValue {
+  param(
+    [AllowNull()][object]$InputObject,
+    [Parameter(Mandatory)][string]$Name,
+    $Default = $null
+  )
+
+  if ($null -eq $InputObject) { return $Default }
+
+  if ($InputObject -is [System.Collections.IDictionary]) {
+    if ($InputObject.Contains($Name)) {
+      return $InputObject[$Name]
+    }
+    return $Default
+  }
+
+  $property = $InputObject.PSObject.Properties[$Name]
+  if ($property) {
+    return $property.Value
+  }
+
+  return $Default
+}
+
 function Get-IntPropertyValue {
   param(
     [AllowNull()][object]$InputObject,
@@ -952,6 +976,37 @@ if ($executedModes.Count -eq 0 -and $modeEntries.Count -gt 0) {
 $requestedModeDisplay = if ($requestedModes.Count -gt 0) { [string]::Join(', ', $requestedModes) } else { 'n/a' }
 $executedModeDisplay = if ($executedModes.Count -gt 0) { [string]::Join(', ', $executedModes) } else { 'n/a' }
 $comparisons = @($historyContext.comparisons)
+$branchBudget = Get-ObjectPropertyValue -InputObject $manifest -Name 'branchBudget'
+$sourceBranchRef = [string](Coalesce (Get-ObjectPropertyValue -InputObject $branchBudget -Name 'sourceBranchRef') '')
+$branchBudgetFacade = $null
+if ($branchBudget) {
+  $branchBudgetFacade = [ordered]@{
+    sourceBranchRef = $sourceBranchRef
+    baselineRef = Get-ObjectPropertyValue -InputObject $branchBudget -Name 'baselineRef'
+    maxCommitCount = if ($branchBudget.PSObject.Properties['maxCommitCount'] -and $null -ne $branchBudget.maxCommitCount) { [int]$branchBudget.maxCommitCount } else { $null }
+    commitCount = if ($branchBudget.PSObject.Properties['commitCount'] -and $null -ne $branchBudget.commitCount) { [int]$branchBudget.commitCount } else { $null }
+    status = [string](Coalesce (Get-ObjectPropertyValue -InputObject $branchBudget -Name 'status') '')
+    reason = [string](Coalesce (Get-ObjectPropertyValue -InputObject $branchBudget -Name 'reason') '')
+  }
+}
+$branchBudgetDisplay = $null
+if ($branchBudgetFacade) {
+  $branchBudgetParts = New-Object System.Collections.Generic.List[string]
+  if ($null -ne $branchBudgetFacade.commitCount -and $null -ne $branchBudgetFacade.maxCommitCount) {
+    [void]$branchBudgetParts.Add(('{0}/{1}' -f $branchBudgetFacade.commitCount, $branchBudgetFacade.maxCommitCount))
+  } elseif ($null -ne $branchBudgetFacade.maxCommitCount) {
+    [void]$branchBudgetParts.Add(('max {0}' -f $branchBudgetFacade.maxCommitCount))
+  }
+  if (-not [string]::IsNullOrWhiteSpace([string]$branchBudgetFacade.baselineRef)) {
+    [void]$branchBudgetParts.Add(('baseline: {0}' -f $branchBudgetFacade.baselineRef))
+  }
+  if (-not [string]::IsNullOrWhiteSpace([string]$branchBudgetFacade.status)) {
+    [void]$branchBudgetParts.Add(('status: {0}' -f $branchBudgetFacade.status))
+  }
+  if ($branchBudgetParts.Count -gt 0) {
+    $branchBudgetDisplay = [string]::Join('; ', @($branchBudgetParts.ToArray()))
+  }
+}
 
 $modeOutcomeClasses = New-Object System.Collections.Generic.List[string]
 foreach ($mode in $modeEntries) {
@@ -982,6 +1037,12 @@ $summaryLines.Add('')
 $summaryLines.Add(('Target: `{0}`' -f (Coalesce $targetPath 'unknown')))
 $summaryLines.Add(('Requested Start Ref: `{0}`' -f (Coalesce $requestedStart 'n/a')))
 $summaryLines.Add(('Effective Start Ref: `{0}`' -f (Coalesce $startRef 'n/a')))
+if (-not [string]::IsNullOrWhiteSpace($sourceBranchRef)) {
+  $summaryLines.Add(('Source Branch: `{0}`' -f $sourceBranchRef))
+}
+if (-not [string]::IsNullOrWhiteSpace([string]$branchBudgetDisplay)) {
+  $summaryLines.Add(('Source Branch Budget: `{0}`' -f $branchBudgetDisplay))
+}
 $summaryLines.Add(('Requested Modes: `{0}`' -f $requestedModeDisplay))
 $summaryLines.Add(('Executed Modes: `{0}`' -f $executedModeDisplay))
 
@@ -1324,6 +1385,12 @@ if ($emitHtml -and $HtmlPath) {
   [void]$htmlBuilder.AppendLine(('    <dt>Target</dt><dd><code>{0}</code></dd>' -f (ConvertTo-HtmlSafe $targetPath)))
   [void]$htmlBuilder.AppendLine(('    <dt>Requested start</dt><dd><code>{0}</code></dd>' -f (ConvertTo-HtmlSafe (Coalesce $requestedStart 'n/a'))))
   [void]$htmlBuilder.AppendLine(('    <dt>Effective start</dt><dd><code>{0}</code></dd>' -f (ConvertTo-HtmlSafe (Coalesce $startRef 'n/a'))))
+  if (-not [string]::IsNullOrWhiteSpace($sourceBranchRef)) {
+    [void]$htmlBuilder.AppendLine(('    <dt>Source branch</dt><dd><code>{0}</code></dd>' -f (ConvertTo-HtmlSafe $sourceBranchRef)))
+  }
+  if (-not [string]::IsNullOrWhiteSpace([string]$branchBudgetDisplay)) {
+    [void]$htmlBuilder.AppendLine(('    <dt>Source branch budget</dt><dd><code>{0}</code></dd>' -f (ConvertTo-HtmlSafe $branchBudgetDisplay)))
+  }
   [void]$htmlBuilder.AppendLine(('    <dt>Requested modes</dt><dd><code>{0}</code></dd>' -f (ConvertTo-HtmlSafe $requestedModeDisplay)))
   [void]$htmlBuilder.AppendLine(('    <dt>Executed modes</dt><dd><code>{0}</code></dd>' -f (ConvertTo-HtmlSafe $executedModeDisplay)))
   if ($manifest.maxPairs) {
@@ -1661,17 +1728,25 @@ $modeFacadeEntries = @(
     }
   }
 )
+$historySummaryTarget = [ordered]@{
+  path = [string](Coalesce $targetPath '')
+  requestedStartRef = [string](Coalesce $requestedStart '')
+  effectiveStartRef = [string](Coalesce $startRef '')
+}
+if (-not [string]::IsNullOrWhiteSpace($sourceBranchRef)) {
+  $historySummaryTarget.sourceBranchRef = [string]$sourceBranchRef
+}
+if ($branchBudgetFacade) {
+  $historySummaryTarget.branchBudget = $branchBudgetFacade
+}
+
 $historySummary = [ordered]@{
   schema = 'comparevi-tools/history-facade@v1'
   generatedAtUtc = (Get-Date).ToUniversalTime().ToString('o')
-  target = [ordered]@{
-    path = [string](Coalesce $targetPath '')
-    requestedStartRef = [string](Coalesce $requestedStart '')
-    effectiveStartRef = [string](Coalesce $startRef '')
-  }
+  target = $historySummaryTarget
   execution = [ordered]@{
-    status = [string](Coalesce $manifest.status 'unknown')
-    reportFormat = [string](Coalesce $manifest.reportFormat '')
+    status = [string](Coalesce (Get-ObjectPropertyValue -InputObject $manifest -Name 'status') 'unknown')
+    reportFormat = [string](Coalesce (Get-ObjectPropertyValue -InputObject $manifest -Name 'reportFormat') '')
     resultsDir = [string](Coalesce $summaryResultsDir '')
     manifestPath = [string]$manifestResolved
     requestedModes = @(Get-StringArray -Value $requestedModes)

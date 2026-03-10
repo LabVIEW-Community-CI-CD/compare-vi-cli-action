@@ -143,6 +143,8 @@ function Invoke-CompareVIHistory {
     [string]$StartRef = 'HEAD',
     [string]$EndRef,
     [int]$MaxPairs,
+    [string]$SourceBranchRef,
+    [Nullable[int]]$MaxBranchCommits,
 
     [bool]$FlagNoAttr = $true,
     [bool]$FlagNoFp = $true,
@@ -193,6 +195,8 @@ function Invoke-CompareVIHistoryFacade {
     [string]$StartRef = 'HEAD',
     [string]$EndRef,
     [int]$MaxPairs,
+    [string]$SourceBranchRef,
+    [Nullable[int]]$MaxBranchCommits,
 
     [bool]$FlagNoAttr = $true,
     [bool]$FlagNoFp = $true,

@@ -28,6 +28,14 @@ Describe 'Render-VIHistoryReport.ps1' -Tag 'Unit' {
             requestedStartRef = 'HEAD^'
             startRef          = 'HEAD'
             maxPairs          = 2
+            branchBudget      = [ordered]@{
+                sourceBranchRef = 'feature/history-source'
+                baselineRef     = 'develop'
+                maxCommitCount  = 64
+                commitCount     = 3
+                status          = 'ok'
+                reason          = 'within-limit'
+            }
             resultsDir        = $resultsRoot
             requestedModes    = @('default', 'attributes')
             executedModes     = @('default')
@@ -91,6 +99,7 @@ Describe 'Render-VIHistoryReport.ps1' -Tag 'Unit' {
             requestedStartRef = $aggregateManifest.requestedStartRef
             startRef          = $aggregateManifest.startRef
             maxPairs          = 2
+            branchBudget      = $aggregateManifest.branchBudget
             comparisons       = @(
                 [ordered]@{
                     mode  = 'default'
@@ -194,6 +203,8 @@ Describe 'Render-VIHistoryReport.ps1' -Tag 'Unit' {
         Test-Path -LiteralPath $stepSummaryPath | Should -BeTrue
 
         $markdown = Get-Content -LiteralPath $markdownPath -Raw
+        $markdown | Should -Match 'Source Branch: `feature/history-source`'
+        $markdown | Should -Match 'Source Branch Budget: `3/64; baseline: develop; status: ok`'
         $markdown | Should -Match 'Requested Modes: `default, attributes`'
         $markdown | Should -Match 'Executed Modes: `default`'
         $markdown | Should -Match '\| Metric \| Value \|'
@@ -209,6 +220,10 @@ Describe 'Render-VIHistoryReport.ps1' -Tag 'Unit' {
         $markdown | Should -Match '\| Mode \| Pair \| Lineage \| Base \| Head \| Diff \| Duration \(s\) \| Categories \| Buckets \| Report \| Highlights \|'
 
         $html = Get-Content -LiteralPath $htmlPath -Raw
+        $html | Should -Match 'Source branch'
+        $html | Should -Match 'feature/history-source'
+        $html | Should -Match 'Source branch budget'
+        $html | Should -Match '3/64; baseline: develop; status: ok'
         $html | Should -Match 'Observed interpretation'
         $html | Should -Match 'Requested modes'
         $html | Should -Match 'Executed modes'
@@ -239,5 +254,13 @@ Describe 'Render-VIHistoryReport.ps1' -Tag 'Unit' {
         $stepSummary | Should -Match 'history-report\.md'
 
         $outputLines = Get-Content -LiteralPath $githubOutputPath
+        $historySummaryLine = $outputLines | Where-Object { $_ -like 'history-summary-json=*' } | Select-Object -First 1
+        $historySummaryLine | Should -Not -BeNullOrEmpty
+        $historySummaryPath = (($historySummaryLine -split '=', 2)[1]).Trim()
+        Test-Path -LiteralPath $historySummaryPath | Should -BeTrue
+        $historySummary = Get-Content -LiteralPath $historySummaryPath -Raw | ConvertFrom-Json -Depth 12
+        $historySummary.target.sourceBranchRef | Should -Be 'feature/history-source'
+        $historySummary.target.branchBudget.maxCommitCount | Should -Be 64
+        $historySummary.target.branchBudget.commitCount | Should -Be 3
     }
 }

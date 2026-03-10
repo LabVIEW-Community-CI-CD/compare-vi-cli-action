@@ -88,6 +88,8 @@ Describe 'CompareVI.Tools artifact publishing' {
     $metadata.consumerContract.historyFacade.schema | Should -Be 'comparevi-tools/history-facade@v1'
     $metadata.consumerContract.historyFacade.exportedFunction | Should -Be 'Invoke-CompareVIHistoryFacade'
     $metadata.consumerContract.historyFacade.resultsRelativePath | Should -Be 'history-summary.json'
+    @($metadata.consumerContract.historyFacade.stableFields) | Should -Contain 'target.sourceBranchRef'
+    @($metadata.consumerContract.historyFacade.stableFields) | Should -Contain 'target.branchBudget'
     $metadata.consumerContract.diagnosticsCommentRenderer.entryScriptPath | Should -Be 'tools/New-CompareVIHistoryDiagnosticsBody.ps1'
     @($metadata.consumerContract.diagnosticsCommentRenderer.variants) | Should -Be @(
       'comment-gated',

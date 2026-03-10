@@ -127,6 +127,20 @@ Describe 'Run-VIHistory guidance helper' {
       $result | Should -Match 'default is `default`'
     }
 
+    It 'advises narrowing the branch when the branch commit safeguard trips' {
+      $msg = "VI history source branch 'feature/history' exceeds the commit safeguard (90 > 64). Narrow the branch or raise -MaxBranchCommits."
+      $result = Get-CompareHistoryGuidance -ErrorMessage $msg -RepoRelativePath 'VI1.vi' -StartRef 'HEAD' -MaxPairs 3 -ResultsDir 'outDir'
+      $result | Should -Match 'source branch exceeded the configured commit budget'
+      $result | Should -Match '-MaxBranchCommits'
+    }
+
+    It 'suggests passing a branch ref when the branch budget cannot be evaluated' {
+      $msg = "Unable to evaluate VI history source branch commit budget for 'HEAD^' (branch ref was not found). Specify a valid branch via -SourceBranchRef or choose a branch-like -StartRef."
+      $result = Get-CompareHistoryGuidance -ErrorMessage $msg -RepoRelativePath 'VI1.vi' -StartRef 'HEAD^' -MaxPairs 3 -ResultsDir 'outDir'
+      $result | Should -Match 'source branch budget could not be evaluated'
+      $result | Should -Match '-SourceBranchRef'
+    }
+
     It 'warns when git is unavailable' {
       $msg = 'git must be available on PATH.'
       $result = Get-CompareHistoryGuidance -ErrorMessage $msg -RepoRelativePath 'VI1.vi' -StartRef 'HEAD' -MaxPairs 3 -ResultsDir 'outDir'
@@ -140,5 +154,4 @@ Describe 'Run-VIHistory guidance helper' {
     }
   }
 }
-
 
