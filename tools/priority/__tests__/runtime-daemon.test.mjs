@@ -49,14 +49,37 @@ function makeLeaseDeps() {
 
 function makeExecDeps() {
   const calls = [];
+  const currentBranches = new Map();
   return {
     calls,
     execFileFn: async (command, args, options) => {
       calls.push({ command, args, options });
       if (command === 'git') {
-        const checkoutPath = args[3];
-        await mkdir(checkoutPath, { recursive: true });
-        await writeFile(path.join(checkoutPath, '.git'), 'gitdir: mocked\n', 'utf8');
+        if (args[0] === 'worktree' && args[1] === 'add') {
+          const checkoutPath = args[3];
+          await mkdir(checkoutPath, { recursive: true });
+          await writeFile(path.join(checkoutPath, '.git'), 'gitdir: mocked\n', 'utf8');
+          return { stdout: '', stderr: '' };
+        }
+        if (args[0] === 'remote') {
+          return { stdout: 'upstream\norigin\npersonal\n', stderr: '' };
+        }
+        if (args[0] === 'fetch') {
+          return { stdout: '', stderr: '' };
+        }
+        if (args[0] === 'branch' && args[1] === '--show-current') {
+          return { stdout: currentBranches.get(options.cwd) ?? '', stderr: '' };
+        }
+        if (args[0] === 'show-ref') {
+          return { stdout: '', stderr: '' };
+        }
+        if (args[0] === 'checkout' && args[1] === '-B') {
+          currentBranches.set(options.cwd, args[2]);
+          return { stdout: '', stderr: '' };
+        }
+        if (args[0] === 'branch' && args[1] === '--set-upstream-to') {
+          return { stdout: '', stderr: '' };
+        }
       }
       return { stdout: '', stderr: '' };
     }
@@ -76,6 +99,7 @@ test('runtime-daemon wrapper defaults to the comparevi adapter', async () => {
       lane: 'origin-977',
       issue: 977,
       forkRemote: 'origin',
+      branch: 'issue/origin-977-fork-policy-portability',
       owner: 'agent@example',
       pollIntervalSeconds: 0,
       maxCycles: 1
@@ -101,7 +125,10 @@ test('runtime-daemon wrapper defaults to the comparevi adapter', async () => {
   assert.equal(heartbeat.cyclesCompleted, 1);
   assert.equal(heartbeat.activeLane.worker.status, 'created');
   assert.equal(heartbeat.activeLane.workerReady.status, 'ready');
-  assert.equal(execDeps.calls.length, 2);
+  assert.equal(heartbeat.activeLane.workerBranch.status, 'attached');
+  assert.equal(heartbeat.activeLane.workerBranch.branch, 'issue/origin-977-fork-policy-portability');
+  assert.ok(execDeps.calls.some((entry) => entry.command === 'pwsh'));
+  assert.ok(execDeps.calls.some((entry) => entry.command === 'git' && entry.args[0] === 'checkout'));
   assert.deepEqual(
     deps.calls.map((entry) => entry.type),
     ['acquire', 'release']
@@ -119,6 +146,7 @@ test('runtime-daemon wrapper schedules from the comparevi standing-priority cach
     `${JSON.stringify(
       {
         number: 2,
+        title: 'Human go/no-go workflow',
         repository: 'LabVIEW-Community-CI-CD/compare-vi-cli-action-fork',
         url: 'https://github.com/LabVIEW-Community-CI-CD/compare-vi-cli-action-fork/issues/2',
         state: 'open',
@@ -161,12 +189,15 @@ test('runtime-daemon wrapper schedules from the comparevi standing-priority cach
   assert.equal(result.report.outcome, 'max-cycles-reached');
   assert.equal(result.report.lastDecision.source, 'comparevi-standing-priority-cache');
   assert.equal(result.report.lastDecision.activeLane.issue, 982);
+  assert.equal(result.report.lastDecision.activeLane.branch, 'issue/origin-982-human-go-no-go-workflow');
   assert.equal(heartbeat.schedulerDecision.source, 'comparevi-standing-priority-cache');
   assert.equal(heartbeat.activeLane.issue, 982);
   assert.equal(heartbeat.activeLane.forkRemote, 'origin');
+  assert.equal(heartbeat.activeLane.branch, 'issue/origin-982-human-go-no-go-workflow');
   assert.equal(heartbeat.activeLane.worker.status, 'created');
   assert.equal(heartbeat.activeLane.workerReady.status, 'ready');
-  assert.equal(execDeps.calls.length, 2);
+  assert.equal(heartbeat.activeLane.workerBranch.status, 'attached');
+  assert.ok(execDeps.calls.some((entry) => entry.command === 'git' && entry.args[0] === 'checkout'));
   assert.deepEqual(
     deps.calls.map((entry) => entry.type),
     ['acquire', 'release']
@@ -283,4 +314,83 @@ test('comparevi worker bootstrap includes stderr in blocked bootstrap diagnostic
   assert.equal(blocked.bootstrapExitCode, 7);
   assert.match(blocked.reason, /bootstrap failed/);
   assert.match(blocked.reason, /bootstrap stderr/);
+});
+
+test('comparevi worker activation attaches a ready checkout onto the deterministic lane branch', async () => {
+  const repoRoot = await mkdtemp(path.join(os.tmpdir(), 'runtime-daemon-worker-branch-'));
+  const { checkoutPath } = compareviRuntimeTest.resolveCompareviWorkerCheckoutPath({
+    repoRoot,
+    repository: 'example/repo',
+    laneId: 'personal-998'
+  });
+  await mkdir(checkoutPath, { recursive: true });
+  await writeFile(path.join(checkoutPath, '.git'), 'gitdir: mocked\n', 'utf8');
+
+  const calls = [];
+  const attached = await compareviRuntimeTest.activateCompareviWorkerLane({
+    schedulerDecision: {
+      activeLane: {
+        laneId: 'personal-998',
+        forkRemote: 'personal',
+        branch: 'issue/personal-998-runtime-worker-branch-activation'
+      },
+      stepOptions: {
+        branch: 'issue/personal-998-runtime-worker-branch-activation'
+      }
+    },
+    preparedWorker: {
+      checkoutPath
+    },
+    workerReady: {
+      readyAt: '2026-03-10T18:30:00.000Z',
+      checkoutPath
+    },
+    deps: {
+      execFileFn: async (command, args, options) => {
+        calls.push({ command, args, options });
+        if (command !== 'git') {
+          return { stdout: '', stderr: '' };
+        }
+        if (args[0] === 'remote') {
+          return { stdout: 'upstream\norigin\npersonal\n', stderr: '' };
+        }
+        if (args[0] === 'branch' && args[1] === '--show-current') {
+          return { stdout: '', stderr: '' };
+        }
+        return { stdout: '', stderr: '' };
+      }
+    }
+  });
+
+  assert.equal(attached.status, 'attached');
+  assert.equal(attached.branch, 'issue/personal-998-runtime-worker-branch-activation');
+  assert.equal(attached.trackingRef, 'personal/issue/personal-998-runtime-worker-branch-activation');
+  assert.deepEqual(attached.fetchedRemotes, ['upstream', 'origin', 'personal']);
+  assert.ok(calls.some((entry) => entry.command === 'git' && entry.args[0] === 'checkout'));
+});
+
+test('comparevi worker activation blocks when the scheduler does not resolve a branch name', async () => {
+  const blocked = await compareviRuntimeTest.activateCompareviWorkerLane({
+    schedulerDecision: {
+      activeLane: {
+        laneId: 'origin-998',
+        forkRemote: 'origin'
+      },
+      stepOptions: {}
+    },
+    preparedWorker: {
+      checkoutPath: 'D:/tmp/runtime-worker'
+    },
+    workerReady: {
+      checkoutPath: 'D:/tmp/runtime-worker'
+    },
+    deps: {
+      execFileFn: async () => {
+        throw new Error('git should not run without a branch name');
+      }
+    }
+  });
+
+  assert.equal(blocked.status, 'blocked');
+  assert.match(blocked.reason, /branch name/i);
 });

@@ -98,6 +98,14 @@ test('runRuntimeSupervisor executes through an injected adapter', async () => {
         status: 'ready',
         bootstrapCommand: ['pwsh', '-NoLogo', '-NoProfile', '-File', 'tools/priority/bootstrap.ps1']
       },
+      workerBranch: {
+        laneId: 'origin-977',
+        checkoutPath: path.join(repoRoot, 'workers', 'origin-977'),
+        branch: 'issue/origin-977-fork-policy-portability',
+        forkRemote: 'origin',
+        status: 'attached',
+        trackingRef: 'origin/issue/origin-977-fork-policy-portability'
+      },
       blockerClass: 'ci',
       reason: 'hosted checks are red'
     },
@@ -115,6 +123,8 @@ test('runRuntimeSupervisor executes through an injected adapter', async () => {
   assert.equal(result.report.worker.status, 'created');
   assert.equal(state.activeLane.workerReady.status, 'ready');
   assert.equal(result.report.workerReady.status, 'ready');
+  assert.equal(state.activeLane.workerBranch.status, 'attached');
+  assert.equal(result.report.workerBranch.branch, 'issue/origin-977-fork-policy-portability');
   assert.deepEqual(
     adapterCalls.map((entry) => entry.type),
     ['acquire', 'release']
