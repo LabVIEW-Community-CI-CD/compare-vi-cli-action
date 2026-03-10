@@ -164,5 +164,7 @@ test('helper utilities classify release modes deterministically', () => {
   assert.equal(__test.defaultDistTag('stable'), 'latest');
   assert.equal(__test.defaultDistTag('rc'), 'rc');
   assert.equal(__test.detectSourceMode('D:\\tmp\\runtime-harness-0.1.0.tgz'), 'tarball');
+  assert.equal(__test.detectSourceMode('dist/runtime-harness-0.1.0.tgz'), 'tarball');
+  assert.equal(__test.looksLikeRegistryPackageSpec('@labview-community-ci-cd/runtime-harness@0.1.0'), true);
   assert.equal(__test.detectSourceMode('@labview-community-ci-cd/runtime-harness@0.1.0'), 'registry');
 });

@@ -448,6 +448,10 @@ async function sleep(ms) {
   await new Promise((resolve) => setTimeout(resolve, ms));
 }
 
+function looksLikeRegistryPackageSpec(sourceSpec) {
+  return /^(?:@[^/]+\/)?[^/@]+(?:@[^/]+)?$/.test(sourceSpec);
+}
+
 function detectSourceMode(sourceSpec) {
   const normalized = normalizeText(sourceSpec);
   if (!normalized) {
@@ -456,7 +460,15 @@ function detectSourceMode(sourceSpec) {
   if (normalized.endsWith('.tgz') || normalized.endsWith('.tar.gz')) {
     return 'tarball';
   }
-  if (path.isAbsolute(normalized) || normalized.startsWith('.') || normalized.includes(path.sep)) {
+  if (looksLikeRegistryPackageSpec(normalized)) {
+    return 'registry';
+  }
+  if (
+    path.isAbsolute(normalized) ||
+    normalized.startsWith('.') ||
+    normalized.includes(path.sep) ||
+    normalized.includes('/')
+  ) {
     return 'tarball';
   }
   return 'registry';
@@ -963,6 +975,7 @@ export const __test = {
   createCopyPlan,
   defaultDistTag,
   detectSourceMode,
+  looksLikeRegistryPackageSpec,
   deriveExportSpecifiers,
   parsePackageName,
   validateVersion
