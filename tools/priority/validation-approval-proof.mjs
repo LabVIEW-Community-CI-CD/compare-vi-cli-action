@@ -6,6 +6,7 @@ import path from 'node:path';
 import process from 'node:process';
 import { fileURLToPath } from 'node:url';
 import { runValidationApprovalBroker } from './validation-approval-broker.mjs';
+import { downloadNamedArtifacts } from './lib/run-artifact-download.mjs';
 
 export const REPORT_SCHEMA = 'validation-approval-proof@v1';
 export const DEFAULT_POLICY_PATH = path.join('tools', 'policy', 'validation-approval-policy.json');
@@ -481,22 +482,21 @@ function defaultRunSignalCollector({ repository, prNumber, outPath }) {
 }
 
 function defaultDownloadArtifact({ repository, runId, artifactName, destination }) {
-  const result = runProcess('gh', [
-    'run',
-    'download',
-    String(runId),
-    '--repo',
+  const downloadResult = downloadNamedArtifacts({
     repository,
-    '-n',
-    artifactName,
-    '-D',
-    destination,
-  ]);
-  if (result.error) {
-    const message = result.error instanceof Error ? result.error.message : String(result.error);
-    throw new Error(`Failed to download artifact ${artifactName} from run ${runId}: ${message}`);
+    runId: String(runId),
+    artifactNames: [artifactName],
+    destinationRoot: destination,
+    reportPath: null,
+  });
+  if (downloadResult.report.discovery.status !== 'pass') {
+    throw new Error(downloadResult.report.discovery.errorMessage ?? `Failed to discover artifacts for run ${runId}.`);
   }
-  return result.status === 0;
+  const entry = downloadResult.report.downloads[0];
+  if (!entry || entry.status !== 'downloaded') {
+    throw new Error(entry?.errorMessage ?? `Failed to download artifact ${artifactName} from run ${runId}.`);
+  }
+  return true;
 }
 
 function findFirstJsonFile(directory) {

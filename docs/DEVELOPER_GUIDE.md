@@ -178,6 +178,11 @@ Quick reference for building, testing, and releasing the LVCompare composite act
   fields, and writes `tests/results/_agent/project/portfolio-apply-report.json`. The report also carries normalized
   built-in board metadata (`Type`, `Milestone`, `Reviewers`, linked PRs, parent issue, `Sub-issues progress`) so
   future agents can reason about intake state without a second `gh project item-list` scrape.
+- `node tools/npm/run-script.mjs priority:artifact:download -- --repo <owner/repo> --run-id <id> --artifact <name>`  
+  Downloads named workflow artifacts through the checked-in helper path instead of raw `gh run download`, writing a
+  deterministic report at `tests/results/_agent/reviews/run-artifact-download.json` (or `--report <path>`). Use this
+  during live triage when you need a machine-readable distinction between `policy-wrapper-rejected`,
+  `artifact-not-found`, `artifact-expired`, and `auth-failed`.
 - `node tools/npm/run-script.mjs priority:github:metadata:apply -- --url <issue-or-pr-url> ...`  
   Applies canonical GitHub metadata directly on the issue or PR: issue type, milestone, assignees, requested
   reviewers, parent issue, and sub-issue linkage. The helper writes

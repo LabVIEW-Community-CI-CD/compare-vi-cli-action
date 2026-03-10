@@ -384,6 +384,10 @@ Use `tools/workflows/update_workflows.py` for mechanical updates (comment-preser
   error window.
 - Use the Docker watcher (`tools/Watch-InDocker.ps1`) when you need dispatcher logs or artifact download mirrors. Both
   watchers honor `GH_TOKEN`/`GITHUB_TOKEN` and fall back to `C:\github_token.txt` on Windows.
+- For direct workflow artifact retrieval during live triage, prefer the checked-in helper over raw `gh run download`:
+  - `node tools/npm/run-script.mjs priority:artifact:download -- --repo <owner/repo> --run-id <id> --artifact <name>`
+  - The helper writes `tests/results/_agent/reviews/run-artifact-download.json` (or `--report <path>`) and classifies
+    `policy-wrapper-rejected`, `artifact-not-found`, `artifact-expired`, and `auth-failed` separately.
 - Keep watcher summaries in `tests/results/_agent/` up to date so downstream agents inherit telemetry context.
 - `tools/Update-SessionIndexWatcher.ps1` merges `watcher-rest.json` into `session-index.json`, exposing the REST watcher
   status under the `watchers.rest` node. Run it after the watcher step if you update the workflow or run the watcher
