@@ -11,6 +11,8 @@ param(
   [int]$StartGraceSeconds = 180,
   [int]$PollIntervalSeconds = 60,
   [int]$MaxCycles = 0,
+  [switch]$StopOnIdle,
+  [switch]$ExecuteTurn,
   [int]$SwitchTimeoutSeconds = 120,
   [int]$SwitchRetryCount = 3,
   [int]$SwitchRetryDelaySeconds = 4,
@@ -24,39 +26,49 @@ Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
 $managerPath = Join-Path $PSScriptRoot 'Manage-RuntimeDaemonInDocker.ps1'
-$invokeArgs = @(
-  '-Action', 'start',
-  '-RuntimeDir', $RuntimeDir,
-  '-LinuxContext', $LinuxContext,
-  '-HeartbeatFreshSeconds', "$HeartbeatFreshSeconds",
-  '-StartGraceSeconds', "$StartGraceSeconds",
-  '-PollIntervalSeconds', "$PollIntervalSeconds",
-  '-MaxCycles', "$MaxCycles",
-  '-SwitchTimeoutSeconds', "$SwitchTimeoutSeconds",
-  '-SwitchRetryCount', "$SwitchRetryCount",
-  '-SwitchRetryDelaySeconds', "$SwitchRetryDelaySeconds",
-  '-LockWaitSeconds', "$LockWaitSeconds",
-  '-DockerCommand', $DockerCommand
-)
+$invokeArgs = @{
+  Action = 'start'
+  RuntimeDir = $RuntimeDir
+  LinuxContext = $LinuxContext
+  HeartbeatFreshSeconds = $HeartbeatFreshSeconds
+  StartGraceSeconds = $StartGraceSeconds
+  PollIntervalSeconds = $PollIntervalSeconds
+  MaxCycles = $MaxCycles
+  SwitchTimeoutSeconds = $SwitchTimeoutSeconds
+  SwitchRetryCount = $SwitchRetryCount
+  SwitchRetryDelaySeconds = $SwitchRetryDelaySeconds
+  LockWaitSeconds = $LockWaitSeconds
+  DockerCommand = $DockerCommand
+}
+
+if ($StopOnIdle) {
+  $invokeArgs.StopOnIdle = $true
+}
+if ($ExecuteTurn) {
+  $invokeArgs.ExecuteTurn = $true
+}
 
 if (-not [string]::IsNullOrWhiteSpace($Repo)) {
-  $invokeArgs += @('-Repo', $Repo)
+  $invokeArgs.Repo = $Repo
 }
 if (-not [string]::IsNullOrWhiteSpace($HeartbeatPath)) {
-  $invokeArgs += @('-HeartbeatPath', $HeartbeatPath)
+  $invokeArgs.HeartbeatPath = $HeartbeatPath
 }
 if (-not [string]::IsNullOrWhiteSpace($Image)) {
-  $invokeArgs += @('-Image', $Image)
+  $invokeArgs.Image = $Image
 }
 if (-not [string]::IsNullOrWhiteSpace($ContainerName)) {
-  $invokeArgs += @('-ContainerName', $ContainerName)
+  $invokeArgs.ContainerName = $ContainerName
 }
 if (-not $Detach) {
-  $invokeArgs += '-Foreground'
+  $invokeArgs.Foreground = $true
 }
 if ($DryRun) {
-  $invokeArgs += '-DryRun'
+  $invokeArgs.DryRun = $true
 }
 
 & $managerPath @invokeArgs
-exit $LASTEXITCODE
+if (Get-Variable -Name LASTEXITCODE -Scope Global -ErrorAction SilentlyContinue) {
+  exit [int]$global:LASTEXITCODE
+}
+exit 0

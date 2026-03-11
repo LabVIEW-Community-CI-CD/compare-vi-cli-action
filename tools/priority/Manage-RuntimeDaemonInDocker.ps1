@@ -13,6 +13,8 @@ param(
   [int]$StartGraceSeconds = 180,
   [int]$PollIntervalSeconds = 60,
   [int]$MaxCycles = 0,
+  [switch]$StopOnIdle,
+  [switch]$ExecuteTurn,
   [int]$TailLines = 200,
   [ValidateRange(5, 900)]
   [int]$SwitchTimeoutSeconds = 120,
@@ -1215,6 +1217,12 @@ try {
       '--max-cycles',
       "$MaxCycles"
     )
+    if ($StopOnIdle) {
+      $containerArgs += '--stop-on-idle'
+    }
+    if ($ExecuteTurn) {
+      $containerArgs += '--execute-turn'
+    }
     if (-not [string]::IsNullOrWhiteSpace($HeartbeatPath)) {
       $containerArgs += @('--heartbeat-path', $HeartbeatPath)
     }
@@ -1245,6 +1253,11 @@ try {
       $dockerArgs += @('-e', "GH_TOKEN=$resolvedGitHubToken")
       $dockerArgs += @('-e', "GITHUB_TOKEN=$resolvedGitHubToken")
     }
+
+    # Mark the bind-mounted workspace as trusted for git inside the container.
+    $dockerArgs += @('-e', 'GIT_CONFIG_COUNT=1')
+    $dockerArgs += @('-e', 'GIT_CONFIG_KEY_0=safe.directory')
+    $dockerArgs += @('-e', 'GIT_CONFIG_VALUE_0=/work')
 
     if ($detached) {
       $dockerArgs += '--detach'

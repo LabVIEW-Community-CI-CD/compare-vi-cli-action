@@ -177,6 +177,12 @@ test('runtime-daemon wrapper schedules from the comparevi standing-priority cach
     {
       platform: 'linux',
       resolveRepoRootFn: () => repoRoot,
+      resolveStandingPriorityForRepoFn: async () => ({
+        found: null
+      }),
+      classifyNoStandingPriorityConditionFn: async () => ({
+        status: 'error'
+      }),
       nowFactory: () => new Date(Date.UTC(2026, 2, 10, 17, 30, tick++)),
       sleepFn: async () => {
         throw new Error('sleep should not run when maxCycles=1');
@@ -210,7 +216,7 @@ test('runtime-daemon wrapper schedules from the comparevi standing-priority cach
   );
 });
 
-test('comparevi worker checkout allocator reuses an existing lane worktree path', async () => {
+test('comparevi worker checkout allocator refreshes and reuses an existing lane worktree path', async () => {
   const repoRoot = await mkdtemp(path.join(os.tmpdir(), 'runtime-daemon-worker-reuse-'));
   const { checkoutPath } = compareviRuntimeTest.resolveCompareviWorkerCheckoutPath({
     repoRoot,
@@ -219,6 +225,7 @@ test('comparevi worker checkout allocator reuses an existing lane worktree path'
   });
   await mkdir(checkoutPath, { recursive: true });
   await writeFile(path.join(checkoutPath, '.git'), 'gitdir: reused\n', 'utf8');
+  const calls = [];
 
   const prepared = await compareviRuntimeTest.prepareCompareviWorkerCheckout({
     repoRoot,
@@ -230,14 +237,31 @@ test('comparevi worker checkout allocator reuses an existing lane worktree path'
       stepOptions: {}
     },
     deps: {
-      execFileFn: async () => {
-        throw new Error('execFileFn should not run for reused worktrees');
+      execFileFn: async (command, args, options) => {
+        calls.push({ command, args, options });
+        if (command !== 'git') {
+          throw new Error(`unexpected command: ${command}`);
+        }
+        if (args[0] === 'remote') {
+          return { stdout: 'upstream\norigin\n', stderr: '' };
+        }
+        if (args[0] === 'fetch' && args[1] === 'upstream' && args[2] === '--prune') {
+          return { stdout: '', stderr: '' };
+        }
+        if (args[0] === 'checkout' && args[1] === '--detach' && args[2] === 'upstream/develop') {
+          return { stdout: '', stderr: '' };
+        }
+        throw new Error(`unexpected git args: ${args.join(' ')}`);
       }
     }
   });
 
   assert.equal(prepared.status, 'reused');
   assert.equal(prepared.checkoutPath, checkoutPath);
+  assert.equal(prepared.ref, 'upstream/develop');
+  assert.deepEqual(prepared.fetchedRemotes, ['upstream']);
+  assert.ok(calls.some((entry) => entry.command === 'git' && entry.args[0] === 'fetch' && entry.args[1] === 'upstream'));
+  assert.ok(calls.some((entry) => entry.command === 'git' && entry.args[0] === 'checkout' && entry.args[1] === '--detach'));
 });
 
 test('comparevi worker checkout path sanitizes traversal-only segments and keeps the root under repoRoot', async () => {
@@ -399,4 +423,176 @@ test('comparevi worker activation blocks when the scheduler does not resolve a b
 
   assert.equal(blocked.status, 'blocked');
   assert.match(blocked.reason, /branch name/i);
+});
+
+test('comparevi planner prefers live standing issue data for the target repository', async () => {
+  const decision = await compareviRuntimeTest.planCompareviRuntimeStep({
+    repoRoot: '/tmp/repo',
+    env: {
+      AGENT_PRIORITY_UPSTREAM_REPOSITORY: 'LabVIEW-Community-CI-CD/compare-vi-cli-action'
+    },
+    options: {
+      repo: 'svelderrainruiz/compare-vi-cli-action'
+    },
+    explicitStepOptions: {},
+    deps: {
+      resolveStandingPriorityForRepoFn: async () => ({
+        found: {
+          number: 315,
+          label: 'fork-standing-priority',
+          repoSlug: 'svelderrainruiz/compare-vi-cli-action',
+          source: 'gh'
+        }
+      }),
+      ghIssueFetcher: async () => ({
+        number: 315,
+        title: 'Runtime daemon: consume task packets through a bounded worker-turn receipt seam',
+        state: 'open',
+        updatedAt: '2026-03-10T00:00:00Z',
+        url: 'https://github.com/svelderrainruiz/compare-vi-cli-action/issues/315',
+        labels: [{ name: 'fork-standing-priority' }],
+        assignees: [],
+        milestone: null,
+        comments: 0,
+        body:
+          '<!-- upstream-issue-url: https://github.com/LabVIEW-Community-CI-CD/compare-vi-cli-action/issues/1004 -->\n\nBody'
+      }),
+      restIssueFetcher: async () => null
+    }
+  });
+
+  assert.equal(decision.source, 'comparevi-standing-priority-live');
+  assert.equal(decision.outcome, 'selected');
+  assert.equal(decision.stepOptions.issue, 1004);
+  assert.equal(decision.stepOptions.forkRemote, 'personal');
+  assert.equal(decision.artifacts.standingIssueNumber, 315);
+  assert.equal(decision.artifacts.mirrorOf.number, 1004);
+});
+
+test('comparevi execution closes the fork mirror and advances to the next development issue', async () => {
+  const handoffCalls = [];
+  const closeCalls = [];
+  const execution = await compareviRuntimeTest.executeCompareviTurn({
+    options: {
+      repo: 'svelderrainruiz/compare-vi-cli-action'
+    },
+    env: {
+      AGENT_PRIORITY_UPSTREAM_REPOSITORY: 'LabVIEW-Community-CI-CD/compare-vi-cli-action'
+    },
+    repoRoot: '/tmp/repo',
+    schedulerDecision: {
+      activeLane: {
+        laneId: 'personal-1004',
+        issue: 1004
+      },
+      artifacts: {
+        standingRepository: 'svelderrainruiz/compare-vi-cli-action',
+        standingIssueNumber: 315,
+        mirrorOf: {
+          repository: 'LabVIEW-Community-CI-CD/compare-vi-cli-action',
+          number: 1004,
+          url: 'https://github.com/LabVIEW-Community-CI-CD/compare-vi-cli-action/issues/1004'
+        },
+        cadence: false
+      }
+    },
+    deps: {
+      listRepoOpenIssuesFn: async () => [
+        {
+          number: 315,
+          title: '[P1] Current mirror',
+          body: 'body',
+          labels: [{ name: 'fork-standing-priority' }],
+          createdAt: '2026-03-10T00:00:00Z'
+        },
+        {
+          number: 313,
+          title: '[P1] Next development issue',
+          body: 'body',
+          labels: [],
+          createdAt: '2026-03-09T00:00:00Z'
+        },
+        {
+          number: 299,
+          title: '[cadence] Package stream freshness alert',
+          body: '<!-- cadence-check:package-staleness -->',
+          labels: [],
+          createdAt: '2026-03-01T00:00:00Z'
+        }
+      ],
+      handoffGhRunner: (args) => {
+        handoffCalls.push(args);
+        if (args[0] === 'issue' && args[1] === 'list' && args.includes('--label')) {
+          if (args.includes('fork-standing-priority')) {
+            return JSON.stringify([{ number: 315, labels: [{ name: 'fork-standing-priority' }] }]);
+          }
+          return '[]';
+        }
+        return '';
+      },
+      handoffSyncFn: async () => {},
+      closeIssueFn: async (payload) => {
+        closeCalls.push(payload);
+      }
+    }
+  });
+
+  assert.equal(execution.outcome, 'mirror-closed-advanced');
+  assert.equal(execution.stopLoop, false);
+  assert.equal(execution.details.nextStandingIssueNumber, 313);
+  assert.deepEqual(handoffCalls.slice(-2), [
+    ['issue', 'edit', '315', '--remove-label', 'fork-standing-priority'],
+    ['issue', 'edit', '313', '--add-label', 'fork-standing-priority']
+  ]);
+  assert.equal(closeCalls[0].repository, 'svelderrainruiz/compare-vi-cli-action');
+  assert.equal(closeCalls[0].issueNumber, 315);
+});
+
+test('comparevi execution stops when the standing issue is cadence-only work', async () => {
+  const execution = await compareviRuntimeTest.executeCompareviTurn({
+    options: {
+      repo: 'svelderrainruiz/compare-vi-cli-action'
+    },
+    env: {
+      AGENT_PRIORITY_UPSTREAM_REPOSITORY: 'LabVIEW-Community-CI-CD/compare-vi-cli-action'
+    },
+    repoRoot: '/tmp/repo',
+    schedulerDecision: {
+      activeLane: {
+        laneId: 'personal-299',
+        issue: 299
+      },
+      artifacts: {
+        standingRepository: 'svelderrainruiz/compare-vi-cli-action',
+        standingIssueNumber: 299,
+        cadence: true
+      }
+    },
+    deps: {}
+  });
+
+  assert.equal(execution.status, 'completed');
+  assert.equal(execution.outcome, 'cadence-only');
+  assert.equal(execution.stopLoop, true);
+});
+
+test('comparevi cadence detection tolerates compact cadence markers', () => {
+  assert.equal(
+    compareviRuntimeTest.isCadenceAlertIssue('Maintenance queue', '<!--cadence-check:package-staleness -->'),
+    true
+  );
+  assert.equal(
+    compareviRuntimeTest.isCadenceAlertIssue('Maintenance queue', '<!--  cadence-check:package-staleness -->'),
+    true
+  );
+});
+
+test('comparevi issue row parser throws clear diagnostics for malformed JSON', () => {
+  assert.throws(
+    () =>
+      compareviRuntimeTest.parseIssueRows('warning: noisy output\nnot-json', {
+        source: 'gh issue list --repo example/repo --json number,title'
+      }),
+    /Unable to parse issue rows from gh issue list --repo example\/repo --json number,title/
+  );
 });

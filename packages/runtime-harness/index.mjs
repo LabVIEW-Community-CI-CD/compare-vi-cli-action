@@ -17,6 +17,7 @@ export const WORKER_CHECKOUT_SCHEMA = 'priority/runtime-worker-checkout@v1';
 export const WORKER_READY_SCHEMA = 'priority/runtime-worker-ready@v1';
 export const WORKER_BRANCH_SCHEMA = 'priority/runtime-worker-branch@v1';
 export const TASK_PACKET_SCHEMA = 'priority/runtime-worker-task-packet@v1';
+export const EXECUTION_RECEIPT_SCHEMA = 'priority/runtime-execution-receipt@v1';
 export const DEFAULT_RUNTIME_DIR = path.join('tests', 'results', '_agent', 'runtime');
 export const DEFAULT_LEASE_SCOPE = 'workspace';
 export const ACTIONS = new Set(['status', 'step', 'stop', 'resume']);
@@ -286,6 +287,7 @@ export function createRuntimeAdapter(adapter = {}) {
     bootstrapWorker: typeof adapter.bootstrapWorker === 'function' ? adapter.bootstrapWorker : null,
     activateWorker: typeof adapter.activateWorker === 'function' ? adapter.activateWorker : null,
     buildTaskPacket: typeof adapter.buildTaskPacket === 'function' ? adapter.buildTaskPacket : null,
+    executeTurn: typeof adapter.executeTurn === 'function' ? adapter.executeTurn : null,
     resolveRepository:
       typeof adapter.resolveRepository === 'function'
         ? adapter.resolveRepository

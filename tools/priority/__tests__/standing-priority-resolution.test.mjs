@@ -316,6 +316,40 @@ test('selectAutoStandingPriorityCandidate deprioritizes umbrella program issues 
   assert.equal(selected?.number, 805);
 });
 
+test('selectAutoStandingPriorityCandidate skips excluded standing issues and deprioritizes cadence alerts', () => {
+  const selected = selectAutoStandingPriorityCandidate(
+    [
+      {
+        number: 299,
+        title: '[cadence] Package stream freshness alert',
+        body: '<!-- cadence-check:package-staleness -->',
+        labels: ['ci'],
+        createdAt: '2026-03-01T00:00:00Z'
+      },
+      {
+        number: 315,
+        title: '[P1] Real development issue',
+        body: 'Implement the helper workflow',
+        labels: ['ci'],
+        createdAt: '2026-03-02T00:00:00Z'
+      },
+      {
+        number: 317,
+        title: '[P0] Current standing issue',
+        body: 'Already assigned',
+        labels: ['fork-standing-priority'],
+        createdAt: '2026-03-03T00:00:00Z'
+      }
+    ],
+    {
+      excludeIssueNumbers: [317]
+    }
+  );
+
+  assert.equal(selected?.number, 315);
+  assert.equal(selected?.cadence, false);
+});
+
 test('shouldPersistCacheUpdate skips cache materialization by default on fresh clones', () => {
   const nextCache = {
     number: 805,

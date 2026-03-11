@@ -7,6 +7,7 @@ import {
   BLOCKER_CLASSES,
   createRuntimeAdapter,
   DEFAULT_RUNTIME_DIR,
+  EXECUTION_RECEIPT_SCHEMA,
   SCHEDULER_DECISION_SCHEMA,
   TASK_PACKET_SCHEMA,
   WORKER_BRANCH_SCHEMA,
@@ -45,6 +46,8 @@ function printUsage() {
   console.log('  --owner <value>                   Runtime owner identity.');
   console.log(`  --poll-interval-seconds <number>  Delay between worker cycles (default: ${DEFAULT_POLL_INTERVAL_SECONDS}).`);
   console.log('  --max-cycles <number>             Stop after N cycles (0 = run until stop request).');
+  console.log('  --stop-on-idle                    Exit cleanly when the planner reports idle/no actionable work.');
+  console.log('  --execute-turn                    Invoke the adapter execution hook after each successful worker step.');
   console.log('  --quiet                           Suppress stdout JSON output.');
   console.log('  -h, --help                        Show this help text and exit.');
 }
@@ -150,6 +153,14 @@ function resolveTaskPacketPaths(options, repoRoot) {
   return {
     latestPath: path.join(runtimeDir, 'task-packet.json'),
     historyDir: path.join(runtimeDir, 'task-packets')
+  };
+}
+
+function resolveExecutionPaths(options, repoRoot) {
+  const runtimeDir = resolvePath(repoRoot, options.runtimeDir || DEFAULT_RUNTIME_DIR);
+  return {
+    latestPath: path.join(runtimeDir, 'execution-receipt.json'),
+    historyDir: path.join(runtimeDir, 'execution-receipts')
   };
 }
 
@@ -551,7 +562,70 @@ function buildDefaultTaskObjective(schedulerDecision) {
   };
 }
 
-function buildObservedActiveLane(schedulerDecision, preparedWorker, workerReady, workerBranch, taskPacket) {
+function summarizeExecutionReceipt(executionReceipt) {
+  if (!executionReceipt) return null;
+  return {
+    cycle: executionReceipt.cycle ?? null,
+    status: executionReceipt.status ?? null,
+    outcome: executionReceipt.outcome ?? null,
+    generatedAt: executionReceipt.generatedAt ?? null,
+    stopLoop: executionReceipt.stopLoop === true,
+    details: executionReceipt.details ?? {},
+    artifacts: executionReceipt.artifacts ?? {}
+  };
+}
+
+function normalizeExecutionReceipt(executionReceipt, { now, adapter, repository, cycle, schedulerDecision }) {
+  if (!executionReceipt || typeof executionReceipt !== 'object') {
+    return null;
+  }
+  const details =
+    executionReceipt.details && typeof executionReceipt.details === 'object' ? executionReceipt.details : {};
+  return {
+    schema: EXECUTION_RECEIPT_SCHEMA,
+    generatedAt: normalizeText(executionReceipt.generatedAt) || toIso(now),
+    cycle: Number.isInteger(executionReceipt.cycle) ? executionReceipt.cycle : cycle,
+    runtimeAdapter: adapter.name,
+    repository,
+    laneId: normalizeText(executionReceipt.laneId) || schedulerDecision?.activeLane?.laneId || null,
+    issue:
+      coercePositiveInteger(executionReceipt.issue) ??
+      coercePositiveInteger(schedulerDecision?.activeLane?.issue) ??
+      null,
+    status: normalizeText(executionReceipt.status).toLowerCase() || 'completed',
+    outcome: normalizeText(executionReceipt.outcome) || 'completed',
+    reason: normalizeText(executionReceipt.reason) || null,
+    source: normalizeText(executionReceipt.source) || adapter.name,
+    stopLoop: executionReceipt.stopLoop === true,
+    details,
+    artifacts: executionReceipt.artifacts && typeof executionReceipt.artifacts === 'object' ? executionReceipt.artifacts : {}
+  };
+}
+
+async function writeExecutionReceipt(executionPaths, executionReceipt) {
+  await mkdir(executionPaths.historyDir, { recursive: true });
+  const historyPath = path.join(
+    executionPaths.historyDir,
+    makeDecisionFileName(new Date(executionReceipt.generatedAt), executionReceipt.cycle ?? 0)
+  );
+  const persistedExecutionReceipt = {
+    ...executionReceipt,
+    artifacts: {
+      ...(executionReceipt.artifacts ?? {}),
+      latestPath: executionPaths.latestPath,
+      historyPath
+    }
+  };
+  await writeJson(executionPaths.latestPath, persistedExecutionReceipt);
+  await writeJson(historyPath, persistedExecutionReceipt);
+  return {
+    latestPath: executionPaths.latestPath,
+    historyPath,
+    executionReceipt: persistedExecutionReceipt
+  };
+}
+
+function buildObservedActiveLane(schedulerDecision, preparedWorker, workerReady, workerBranch, taskPacket, executionReceipt) {
   if (!schedulerDecision?.activeLane) return null;
   const activeLane = {
     ...schedulerDecision.activeLane
@@ -574,6 +648,9 @@ function buildObservedActiveLane(schedulerDecision, preparedWorker, workerReady,
       artifacts: taskPacket.artifacts ?? {}
     };
   }
+  if (executionReceipt) {
+    activeLane.execution = summarizeExecutionReceipt(executionReceipt);
+  }
   return activeLane;
 }
 
@@ -584,6 +661,7 @@ function buildObserverArtifacts({
   workerBranchArtifacts,
   schedulerArtifacts,
   taskPacketArtifacts,
+  executionArtifacts,
   includeRuntimeState = false
 }) {
   return {
@@ -599,7 +677,9 @@ function buildObserverArtifacts({
     schedulerDecisionPath: schedulerArtifacts.latestPath,
     schedulerDecisionHistoryPath: schedulerArtifacts.historyPath,
     taskPacketPath: taskPacketArtifacts.latestPath,
-    taskPacketHistoryPath: taskPacketArtifacts.historyPath
+    taskPacketHistoryPath: taskPacketArtifacts.historyPath,
+    executionReceiptPath: executionArtifacts.latestPath,
+    executionReceiptHistoryPath: executionArtifacts.historyPath
   };
 }
 
@@ -812,6 +892,8 @@ export function parseObserverArgs(argv = process.argv) {
     owner: '',
     pollIntervalSeconds: DEFAULT_POLL_INTERVAL_SECONDS,
     maxCycles: 0,
+    stopOnIdle: false,
+    executeTurn: false,
     quiet: false,
     help: false
   };
@@ -824,6 +906,14 @@ export function parseObserverArgs(argv = process.argv) {
     }
     if (token === '--quiet') {
       options.quiet = true;
+      continue;
+    }
+    if (token === '--stop-on-idle') {
+      options.stopOnIdle = true;
+      continue;
+    }
+    if (token === '--execute-turn') {
+      options.executeTurn = true;
       continue;
     }
 
@@ -911,6 +1001,7 @@ export async function runRuntimeObserverLoop(options = {}, deps = {}) {
   const schedulerPaths = resolveSchedulerPaths(options, repoRoot);
   const workerPaths = resolveWorkerPaths(options, repoRoot);
   const taskPacketPaths = resolveTaskPacketPaths(options, repoRoot);
+  const executionPaths = resolveExecutionPaths(options, repoRoot);
   const nowFactory = deps.nowFactory ?? (() => deps.now ?? new Date());
   const sleepFn = deps.sleepFn ?? sleep;
 
@@ -938,6 +1029,10 @@ export async function runRuntimeObserverLoop(options = {}, deps = {}) {
     taskPackets: {
       latestPath: taskPacketPaths.latestPath,
       historyDir: taskPacketPaths.historyDir
+    },
+    execution: {
+      latestPath: executionPaths.latestPath,
+      historyDir: executionPaths.historyDir
     },
     status: 'pass',
     outcome: 'idle',
@@ -987,6 +1082,11 @@ export async function runRuntimeObserverLoop(options = {}, deps = {}) {
       latestPath: null,
       historyPath: null
     };
+    let executionReceipt = null;
+    let executionArtifacts = {
+      latestPath: null,
+      historyPath: null
+    };
 
     if (schedulerDecision.outcome !== 'selected') {
       const taskPacketRecord = await buildTaskPacket({
@@ -1026,6 +1126,40 @@ export async function runRuntimeObserverLoop(options = {}, deps = {}) {
         latestPath: persistedTaskPacket.latestPath,
         historyPath: persistedTaskPacket.historyPath
       };
+
+      if (options.stopOnIdle && schedulerDecision.outcome === 'idle') {
+        const heartbeatNow = nowFactory();
+        report.lastStep = {
+          exitCode: 0,
+          outcome: 'idle',
+          statePath: null,
+          turnPath: null,
+          taskPacket
+        };
+        await writeJson(heartbeatPath, {
+          schema: OBSERVER_HEARTBEAT_SCHEMA,
+          generatedAt: toIso(heartbeatNow),
+          runtimeAdapter: adapter.name,
+          repository: report.repository,
+          platform,
+          cyclesCompleted: report.cyclesCompleted,
+          outcome: 'idle-stop',
+          stopRequested: false,
+          activeLane: buildObservedActiveLane(schedulerDecision, null, null, null, taskPacket, null),
+          schedulerDecision: report.lastDecision,
+          artifacts: buildObserverArtifacts({
+            runtimeArtifactPaths,
+            workerArtifacts: { latestPath: null, lanePath: null },
+            workerReadyArtifacts: { latestPath: null, lanePath: null },
+            workerBranchArtifacts: { latestPath: null, lanePath: null },
+            schedulerArtifacts,
+            taskPacketArtifacts,
+            executionArtifacts
+          })
+        });
+        report.outcome = 'idle-stop';
+        return { exitCode: 0, report };
+      }
     }
 
     if (schedulerDecision.outcome === 'blocked') {
@@ -1039,7 +1173,7 @@ export async function runRuntimeObserverLoop(options = {}, deps = {}) {
         cyclesCompleted: report.cyclesCompleted,
         outcome: 'scheduler-blocked',
         stopRequested: false,
-        activeLane: buildObservedActiveLane(schedulerDecision, null, null, null, taskPacket),
+        activeLane: buildObservedActiveLane(schedulerDecision, null, null, null, taskPacket, null),
         schedulerDecision: report.lastDecision,
         artifacts: buildObserverArtifacts({
           runtimeArtifactPaths,
@@ -1047,7 +1181,8 @@ export async function runRuntimeObserverLoop(options = {}, deps = {}) {
           workerReadyArtifacts: { latestPath: null, lanePath: null },
           workerBranchArtifacts: { latestPath: null, lanePath: null },
           schedulerArtifacts,
-          taskPacketArtifacts
+          taskPacketArtifacts,
+          executionArtifacts
         })
       });
       report.status = 'blocked';
@@ -1369,7 +1504,7 @@ export async function runRuntimeObserverLoop(options = {}, deps = {}) {
         cyclesCompleted: report.cyclesCompleted,
         outcome: 'worker-branch-blocked',
         stopRequested: false,
-        activeLane: buildObservedActiveLane(schedulerDecision, preparedWorker, workerReady, workerBranch, taskPacket),
+        activeLane: buildObservedActiveLane(schedulerDecision, preparedWorker, workerReady, workerBranch, taskPacket, null),
         schedulerDecision: report.lastDecision,
         artifacts: buildObserverArtifacts({
           runtimeArtifactPaths,
@@ -1377,7 +1512,8 @@ export async function runRuntimeObserverLoop(options = {}, deps = {}) {
           workerReadyArtifacts,
           workerBranchArtifacts,
           schedulerArtifacts,
-          taskPacketArtifacts
+          taskPacketArtifacts,
+          executionArtifacts
         })
       });
       report.status = 'blocked';
@@ -1422,6 +1558,129 @@ export async function runRuntimeObserverLoop(options = {}, deps = {}) {
       workerBranch: stepResult.report.workerBranch ?? workerBranch,
       taskPacket: stepResult.report.taskPacket ?? taskPacket
     };
+
+    const executeTurnFn =
+      options.executeTurn
+        ? typeof deps.executeTurnFn === 'function'
+          ? deps.executeTurnFn
+          : (typeof adapter.executeTurn === 'function' ? (context) => adapter.executeTurn(context) : null)
+        : null;
+    if (stepResult.exitCode === 0 && executeTurnFn) {
+      try {
+        const rawExecutionReceipt = await executeTurnFn({
+          options,
+          env: process.env,
+          repoRoot,
+          deps,
+          adapter,
+          repository: report.repository,
+          cycle,
+          heartbeatPath,
+          runtimeArtifactPaths,
+          schedulerPaths,
+          workerPaths,
+          taskPacketPaths,
+          executionPaths,
+          schedulerDecision,
+          schedulerArtifacts,
+          preparedWorker,
+          workerReady,
+          workerBranch,
+          taskPacket,
+          taskPacketArtifacts,
+          stepResult,
+          previousDecision,
+          previousStep,
+          now: stepNow
+        });
+        executionReceipt = normalizeExecutionReceipt(rawExecutionReceipt, {
+          now: stepNow,
+          adapter,
+          repository: report.repository,
+          cycle,
+          schedulerDecision
+        });
+      } catch (error) {
+        const executionErrorMessage = error?.message || String(error);
+        report.status = 'blocked';
+        report.outcome = 'execution-failed';
+        report.message = executionErrorMessage;
+
+        try {
+          executionReceipt = normalizeExecutionReceipt(
+            {
+              status: 'blocked',
+              outcome: 'execution-failed',
+              reason: executionErrorMessage
+            },
+            {
+              now: stepNow,
+              adapter,
+              repository: report.repository,
+              cycle,
+              schedulerDecision
+            }
+          );
+          const persistedExecutionReceipt = await writeExecutionReceipt(executionPaths, executionReceipt);
+          executionReceipt = persistedExecutionReceipt.executionReceipt;
+          executionArtifacts = {
+            latestPath: persistedExecutionReceipt.latestPath,
+            historyPath: persistedExecutionReceipt.historyPath
+          };
+          report.lastStep.execution = summarizeExecutionReceipt(executionReceipt);
+        } catch {
+          // Ignore receipt persistence failures and preserve the execution error as the primary failure.
+        }
+
+        try {
+          const heartbeatNow = nowFactory();
+          await writeJson(heartbeatPath, {
+            schema: OBSERVER_HEARTBEAT_SCHEMA,
+            generatedAt: toIso(heartbeatNow),
+            runtimeAdapter: adapter.name,
+            repository: report.repository,
+            platform,
+            cyclesCompleted: report.cyclesCompleted,
+            outcome: executionReceipt?.outcome || report.outcome,
+            stopRequested: Boolean(stepResult.report.state?.lifecycle?.stopRequested),
+            activeLane:
+              buildObservedActiveLane(
+                schedulerDecision,
+                stepResult.report.worker ?? preparedWorker,
+                stepResult.report.workerReady ?? workerReady,
+                stepResult.report.workerBranch ?? workerBranch,
+                stepResult.report.taskPacket ?? taskPacket,
+                executionReceipt
+              ) ?? stepResult.report.state?.activeLane ?? null,
+            schedulerDecision: report.lastDecision,
+            artifacts: buildObserverArtifacts({
+              runtimeArtifactPaths,
+              workerArtifacts,
+              workerReadyArtifacts,
+              workerBranchArtifacts,
+              schedulerArtifacts,
+              taskPacketArtifacts,
+              executionArtifacts,
+              includeRuntimeState: true
+            })
+          });
+        } catch {
+          // Ignore heartbeat persistence failures and preserve the execution error as the primary failure.
+        }
+
+        return { exitCode: 16, report };
+      }
+
+      if (executionReceipt) {
+        const persistedExecutionReceipt = await writeExecutionReceipt(executionPaths, executionReceipt);
+        executionReceipt = persistedExecutionReceipt.executionReceipt;
+        executionArtifacts = {
+          latestPath: persistedExecutionReceipt.latestPath,
+          historyPath: persistedExecutionReceipt.historyPath
+        };
+        report.lastStep.execution = summarizeExecutionReceipt(executionReceipt);
+      }
+    }
     previousDecision = schedulerDecision;
     previousStep = report.lastStep;
 
@@ -1433,9 +1692,17 @@ export async function runRuntimeObserverLoop(options = {}, deps = {}) {
       repository: report.repository,
       platform,
       cyclesCompleted: report.cyclesCompleted,
-      outcome: stepResult.report.outcome,
+      outcome: executionReceipt?.outcome || stepResult.report.outcome,
       stopRequested: Boolean(stepResult.report.state?.lifecycle?.stopRequested),
-      activeLane: stepResult.report.state?.activeLane ?? null,
+      activeLane:
+        buildObservedActiveLane(
+          schedulerDecision,
+          stepResult.report.worker ?? preparedWorker,
+          stepResult.report.workerReady ?? workerReady,
+          stepResult.report.workerBranch ?? workerBranch,
+          stepResult.report.taskPacket ?? taskPacket,
+          executionReceipt
+        ) ?? stepResult.report.state?.activeLane ?? null,
       schedulerDecision: report.lastDecision,
       artifacts: buildObserverArtifacts({
         runtimeArtifactPaths,
@@ -1444,6 +1711,7 @@ export async function runRuntimeObserverLoop(options = {}, deps = {}) {
         workerBranchArtifacts,
         schedulerArtifacts,
         taskPacketArtifacts,
+        executionArtifacts,
         includeRuntimeState: true
       })
     });
@@ -1456,6 +1724,17 @@ export async function runRuntimeObserverLoop(options = {}, deps = {}) {
 
     if (stepResult.report.state?.lifecycle?.stopRequested) {
       report.outcome = 'stop-requested';
+      return { exitCode: 0, report };
+    }
+
+    if (executionReceipt?.status === 'blocked') {
+      report.status = 'blocked';
+      report.outcome = executionReceipt.outcome || 'execution-blocked';
+      return { exitCode: 16, report };
+    }
+
+    if (executionReceipt?.stopLoop) {
+      report.outcome = executionReceipt.outcome || 'execution-stop';
       return { exitCode: 0, report };
     }
 

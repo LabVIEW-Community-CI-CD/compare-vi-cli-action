@@ -102,17 +102,53 @@ export async function prepareCompareviWorkerCheckout({
     repository,
     laneId: activeLane.laneId
   });
+  const execFileFn = deps.execFileFn ?? execFileAsync;
   const gitMarkerPath = path.join(checkoutPath, '.git');
   if (await pathExists(gitMarkerPath)) {
-    return {
-      laneId: activeLane.laneId,
-      checkoutRoot,
-      checkoutPath,
-      status: 'reused',
-      ref: DEFAULT_WORKER_REF,
-      requestedBranch: normalizeText(schedulerDecision?.stepOptions?.branch) || null,
-      source: 'comparevi-worktree'
-    };
+    const fetchedRemotes = [];
+    try {
+      const availableRemotes = (await tryReadGitStdout(execFileFn, ['remote'], { cwd: checkoutPath }))
+        .split(/\r?\n/)
+        .map((entry) => normalizeText(entry))
+        .filter(Boolean);
+      if (availableRemotes.includes('upstream')) {
+        await execFileFn('git', ['fetch', 'upstream', '--prune'], { cwd: checkoutPath });
+        fetchedRemotes.push('upstream');
+      } else if (availableRemotes.includes('origin')) {
+        await execFileFn('git', ['fetch', 'origin', '--prune'], { cwd: checkoutPath });
+        fetchedRemotes.push('origin');
+      }
+      let resolvedRef = DEFAULT_WORKER_REF;
+      try {
+        await execFileFn('git', ['checkout', '--detach', DEFAULT_WORKER_REF], { cwd: checkoutPath });
+      } catch {
+        resolvedRef = 'develop';
+        await execFileFn('git', ['checkout', '--detach', resolvedRef], { cwd: checkoutPath });
+      }
+      return {
+        laneId: activeLane.laneId,
+        checkoutRoot,
+        checkoutPath,
+        status: 'reused',
+        ref: resolvedRef,
+        requestedBranch: normalizeText(schedulerDecision?.stepOptions?.branch) || null,
+        source: 'comparevi-worktree',
+        fetchedRemotes
+      };
+    } catch (error) {
+      return {
+        laneId: activeLane.laneId,
+        checkoutRoot,
+        checkoutPath,
+        status: 'blocked',
+        ref: DEFAULT_WORKER_REF,
+        requestedBranch: normalizeText(schedulerDecision?.stepOptions?.branch) || null,
+        reason: `failed to refresh existing worker checkout: ${formatExecError(error)}`,
+        source: 'comparevi-worktree',
+        fetchedRemotes
+      };
+    }
+
   }
 
   if (await pathExists(checkoutPath)) {
@@ -129,7 +165,6 @@ export async function prepareCompareviWorkerCheckout({
   }
 
   await mkdir(checkoutRoot, { recursive: true });
-  const execFileFn = deps.execFileFn ?? execFileAsync;
   await execFileFn('git', ['worktree', 'add', '--detach', checkoutPath, DEFAULT_WORKER_REF], {
     cwd: repoRoot
   });
