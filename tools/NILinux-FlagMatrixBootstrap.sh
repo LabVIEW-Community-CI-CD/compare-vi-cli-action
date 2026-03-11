@@ -47,6 +47,20 @@ HEAD_VI=""
 REPORT_PATH=""
 COMMON_ARGS=()
 
+comparevi_flag_matrix_arg_has_value() {
+  if [ "\$#" -lt 2 ]; then
+    return 1
+  fi
+  case "\$2" in
+    ""|-*)
+      return 1
+      ;;
+    *)
+      return 0
+      ;;
+  esac
+}
+
 while [ "\$#" -gt 0 ]; do
   case "\$1" in
     -VI1)
@@ -61,9 +75,19 @@ while [ "\$#" -gt 0 ]; do
       REPORT_PATH="\${2:-}"
       shift 2
       ;;
-    -OperationName|-ReportType|-LabVIEWPath|-Headless)
+    -OperationName|-ReportType|-LabVIEWPath)
       COMMON_ARGS+=("\$1" "\${2:-}")
       shift 2
+      ;;
+    -Headless)
+      COMMON_ARGS+=("\$1")
+      if comparevi_flag_matrix_arg_has_value "\$@"; then
+        COMMON_ARGS+=("\${2}")
+        shift 2
+      else
+        COMMON_ARGS+=("true")
+        shift
+      fi
       ;;
     *)
       COMMON_ARGS+=("\$1")

@@ -49,12 +49,15 @@ test('PrePush NI image known-flag scenario uses the Linux runner with explicit L
 test('single-container flag matrix bootstrap clears stale reports and writes per-scenario CLI logs', () => {
   const content = readRepoFile('tools/NILinux-FlagMatrixBootstrap.sh');
   assert.ok(content.includes('command -v LabVIEWCLI.sh'));
+  assert.ok(content.includes('comparevi_flag_matrix_arg_has_value() {'));
   assert.ok(content.includes('scenario_log="\\${RESULTS_DIR}/\\${name}-cli-output.log"'));
   assert.ok(content.includes('rm -f "\\${scenario_report}"'));
   assert.ok(content.includes('rm -rf "\\${scenario_report_assets_dir}"'));
   assert.ok(content.includes('printf \'%s\\n\' "\\${cli_output}" > "\\${scenario_log}"'));
   assert.ok(content.includes('printf \'%s\\t%s\\t%s\\t%s\\t%s\\t%s\\t%s\\t%s\\n\''));
   assert.ok(content.includes('<a href=\\"\\${name}-cli-output.log\\">cli-log</a>'));
+  assert.ok(content.includes('if comparevi_flag_matrix_arg_has_value "\\$@"; then'));
+  assert.ok(content.includes('COMMON_ARGS+=("true")'));
   assert.ok(content.includes('if [ "\\${exit_code}" = "1" ]; then'));
   assert.ok(content.includes('if [ "\\${has_diff_markers}" != "true" ]; then'));
 });
