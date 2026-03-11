@@ -40,6 +40,9 @@ function Resolve-ContainerMountedHostPath {
 
   $normalizedCandidate = $Path.Replace('\', '/')
   foreach ($mount in @($Mounts)) {
+    if ($null -eq $mount) {
+      continue
+    }
     $hostPath = if ($mount.PSObject.Properties['hostPath']) { [string]$mount.hostPath } else { '' }
     $containerPath = if ($mount.PSObject.Properties['containerPath']) { [string]$mount.containerPath } else { '' }
     if ([string]::IsNullOrWhiteSpace($hostPath) -or [string]::IsNullOrWhiteSpace($containerPath)) {

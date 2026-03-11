@@ -10,6 +10,11 @@ comparevi_flag_matrix_find_cli() {
     printf '%s\n' "${cli_path}"
     return 0
   fi
+  cli_path="$(command -v LabVIEWCLI.sh 2>/dev/null || true)"
+  if [ -n "${cli_path}" ]; then
+    printf '%s\n' "${cli_path}"
+    return 0
+  fi
   return 1
 }
 

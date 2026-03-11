@@ -296,7 +296,9 @@ if ($UseToolsImage -and -not $ToolsImageTag -and $env:COMPAREVI_TOOLS_IMAGE) {
 $pesterRequested = $PSBoundParameters.ContainsKey('PesterPath') -or
   $PSBoundParameters.ContainsKey('PesterFullName') -or
   $PSBoundParameters.ContainsKey('PesterTag') -or
-  $PSBoundParameters.ContainsKey('PesterExcludeTag')
+  $PSBoundParameters.ContainsKey('PesterExcludeTag') -or
+  $PSBoundParameters.ContainsKey('PesterIncludeIntegration') -or
+  $PSBoundParameters.ContainsKey('PesterResultsDir')
 
 if ($pesterRequested -and -not $UseToolsImage) {
   $UseToolsImage = $true

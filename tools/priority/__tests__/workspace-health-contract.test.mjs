@@ -22,6 +22,7 @@ test('PrePush-Checks invokes workspace health gate in optional lease mode', () =
   assert.match(content, /check-workspace-health\.mjs/);
   assert.match(content, /--lease-mode optional/);
   assert.match(content, /pre-push-workspace-health\.json/);
+  assert.match(content, /if \(\$null -eq \$mount\) \{\s*continue\s*\}/);
 });
 
 test('PrePush NI image known-flag scenario uses the Linux runner with explicit LabVIEWPath', () => {
@@ -47,6 +48,7 @@ test('PrePush NI image known-flag scenario uses the Linux runner with explicit L
 
 test('single-container flag matrix bootstrap clears stale reports and writes per-scenario CLI logs', () => {
   const content = readRepoFile('tools/NILinux-FlagMatrixBootstrap.sh');
+  assert.ok(content.includes('command -v LabVIEWCLI.sh'));
   assert.ok(content.includes('scenario_log="\\${RESULTS_DIR}/\\${name}-cli-output.log"'));
   assert.ok(content.includes('rm -f "\\${scenario_report}"'));
   assert.ok(content.includes('rm -rf "\\${scenario_report_assets_dir}"'));
@@ -94,6 +96,12 @@ test('NI Linux VI history bootstrap preserves mainline lineage semantics on erro
   assert.match(content, /\\"parentIndex\\": 1/);
   assert.match(content, /suite_status="failed"/);
   assert.doesNotMatch(content, /suite_status="error"/);
+});
+
+test('Run-NonLVChecksInDocker honors explicit containerized Pester requests without filters', () => {
+  const content = readRepoFile('tools/Run-NonLVChecksInDocker.ps1');
+  assert.match(content, /\$PSBoundParameters\.ContainsKey\('PesterIncludeIntegration'\)/);
+  assert.match(content, /\$PSBoundParameters\.ContainsKey\('PesterResultsDir'\)/);
 });
 
 test('PrePush emits deterministic incident-event report for NI known-flag failures', () => {
