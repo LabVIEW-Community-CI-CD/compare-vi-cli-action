@@ -32,9 +32,11 @@ import { acquireWriterLease, defaultOwner, releaseWriterLease } from './agent-wr
 import { getRepoRoot } from './lib/branch-utils.mjs';
 import { handoffStandingPriority } from './standing-priority-handoff.mjs';
 import {
+  __test as workerCheckoutTest,
   bootstrapCompareviWorkerCheckout,
   activateCompareviWorkerLane,
   prepareCompareviWorkerCheckout,
+  repairRegisteredWorktreeGitPointers,
   resolveCompareviWorkerCheckoutPath
 } from './runtime-worker-checkout.mjs';
 import {
@@ -890,10 +892,12 @@ export const compareviRuntimeTest = {
   bootstrapCompareviWorkerCheckout,
   executeCompareviTurn,
   isCadenceAlertIssue,
+  isPathWithin: workerCheckoutTest.isPathWithin,
   parseIssueRows,
   planCompareviRuntimeStep,
   planCompareviRuntimeStepFromLiveStanding,
   prepareCompareviWorkerCheckout,
+  repairRegisteredWorktreeGitPointers,
   resolveCompareviIssueBranchName,
   resolveCompareviWorkerCheckoutPath,
   resolveForkRemoteForRepository

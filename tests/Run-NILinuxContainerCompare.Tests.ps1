@@ -106,6 +106,11 @@ if ($Args.Count -ge 3 -and $Args[0] -eq '--context') {
 }
 
 if ($Args[0] -eq 'info') {
+  $infoJson = Get-StubEnvValue -Name 'DOCKER_STUB_INFO_JSON'
+  if ($Args -contains '{{json .}}' -and -not [string]::IsNullOrWhiteSpace($infoJson)) {
+    Write-Output $infoJson
+    exit 0
+  }
   $osType = [System.Environment]::GetEnvironmentVariable('DOCKER_STUB_OSTYPE')
   if ([string]::IsNullOrWhiteSpace($osType)) { $osType = 'linux' }
   Write-Output $osType
@@ -604,7 +609,12 @@ exec "__PWSH__" -NoLogo -NoProfile -File "${script_dir}/docker.ps1" "$@"
       DOCKER_STUB_CP_WRITE_ON_FAIL  = $env:DOCKER_STUB_CP_WRITE_ON_FAIL
       DOCKER_STUB_RUN_WRITE_REPORT  = $env:DOCKER_STUB_RUN_WRITE_REPORT
       DOCKER_STUB_RUN_WRITE_HISTORY_SUITE = $env:DOCKER_STUB_RUN_WRITE_HISTORY_SUITE
+      DOCKER_STUB_INFO_JSON         = $env:DOCKER_STUB_INFO_JSON
       DOCKER_COMMAND_OVERRIDE       = $env:DOCKER_COMMAND_OVERRIDE
+      COMPAREVI_DOCKER_RUNTIME_PROVIDER = $env:COMPAREVI_DOCKER_RUNTIME_PROVIDER
+      COMPAREVI_DOCKER_EXPECTED_CONTEXT = $env:COMPAREVI_DOCKER_EXPECTED_CONTEXT
+      COMPAREVI_DOCKER_EXPECTED_DOCKER_HOST = $env:COMPAREVI_DOCKER_EXPECTED_DOCKER_HOST
+      DOCKER_HOST                   = $env:DOCKER_HOST
       NI_LINUX_LABVIEW_PATH         = $env:NI_LINUX_LABVIEW_PATH
       RUNTIME_INJECTION_TOKEN      = $env:RUNTIME_INJECTION_TOKEN
       TEMP                          = $env:TEMP
@@ -642,6 +652,37 @@ exec "__PWSH__" -NoLogo -NoProfile -File "${script_dir}/docker.ps1" "$@"
     $LASTEXITCODE | Should -Be 0 -Because ($output -join "`n")
   }
 
+  It 'uses the native-wsl runtime contract instead of hardcoding desktop-linux when daemon mode is active' {
+    $work = Join-Path $TestDrive 'probe-native-wsl'
+    New-Item -ItemType Directory -Path $work | Out-Null
+    & $script:NewDockerStub -WorkRoot $work | Out-Null
+
+    Set-Item Env:DOCKER_STUB_LOG (Join-Path $work 'docker-log.ndjson')
+    Set-Item Env:DOCKER_STUB_OSTYPE 'linux'
+    Set-Item Env:DOCKER_STUB_CONTEXT 'default'
+    Set-Item Env:DOCKER_STUB_INFO_JSON '{"OSType":"linux","OperatingSystem":"Ubuntu 24.04.1 LTS","Name":"ubuntu-native","Platform":{"Name":"Docker Engine - Community"},"Labels":["maintainer=comparevi"]}'
+    Set-Item Env:DOCKER_STUB_IMAGE_EXISTS '1'
+    Set-Item Env:COMPAREVI_DOCKER_RUNTIME_PROVIDER 'native-wsl'
+    Set-Item Env:COMPAREVI_DOCKER_EXPECTED_CONTEXT ''
+    Set-Item Env:COMPAREVI_DOCKER_EXPECTED_DOCKER_HOST 'unix:///var/run/docker.sock'
+    Set-Item Env:DOCKER_HOST 'unix:///var/run/docker.sock'
+
+    $output = & pwsh -NoLogo -NoProfile -File $script:RunnerScript `
+      -RuntimeEngineReadyTimeoutSeconds 5 `
+      -RuntimeEngineReadyPollSeconds 1 `
+      -Probe 2>&1
+    $LASTEXITCODE | Should -Be 0 -Because ($output -join "`n")
+
+    $runtimeSnapshot = Join-Path (Join-Path (Resolve-Path '.').Path 'tests/results/ni-linux-container') 'runtime-determinism.json'
+    Test-Path -LiteralPath $runtimeSnapshot | Should -BeTrue
+    $snapshot = Get-Content -LiteralPath $runtimeSnapshot -Raw | ConvertFrom-Json -Depth 12
+    $snapshot.expected.provider | Should -Be 'native-wsl'
+    $snapshot.expected.context | Should -Be ''
+    $snapshot.expected.dockerHost | Should -Be 'unix:///var/run/docker.sock'
+    $snapshot.observed.desktopBacked | Should -BeFalse
+    $snapshot.result.status | Should -Be 'ok'
+  }
+
   It 'fails probe with remediation when Docker is not in Linux mode' {
     $work = Join-Path $TestDrive 'probe-win-mode'
     New-Item -ItemType Directory -Path $work | Out-Null
@@ -657,7 +698,7 @@ exec "__PWSH__" -NoLogo -NoProfile -File "${script_dir}/docker.ps1" "$@"
       -RuntimeEngineReadyPollSeconds 1 `
       -Probe 2>&1
     $LASTEXITCODE | Should -Not -Be 0
-    ($output -join "`n") | Should -Match 'runtime determinism mismatch|expected os=linux'
+    ($output -join "`n") | Should -Match 'Runtime invariant mismatch|expectedOs=linux|expected os=linux'
   }
 
   It 'writes deterministic capture artifacts for Linux compare execution' {

@@ -320,9 +320,9 @@ function readPrInfo({ repoRoot, repo, pr }) {
   return parseJsonOutput(result.stdout ?? '{}', { label: 'gh pr view output' });
 }
 
-function buildMergeArgs({ pr, repo, method, mode, keepBranch }) {
+export function buildMergeArgs({ pr, repo, method, mode, keepBranch }) {
   const args = ['pr', 'merge', String(pr), '--repo', repo, `--${method}`];
-  if (!keepBranch) {
+  if (!keepBranch && mode !== 'auto') {
     args.push('--delete-branch');
   }
   if (mode === 'auto') {

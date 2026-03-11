@@ -1,0 +1,131 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://labview-community-ci-cd.github.io/compare-vi-cli-action/schemas/delivery-memory-v1.schema.json",
+  "title": "Delivery Memory v1",
+  "type": "object",
+  "additionalProperties": true,
+  "required": ["schema", "generatedAt", "runtimeDir", "summary", "pullRequests"],
+  "properties": {
+    "schema": { "const": "priority/delivery-memory-report@v1" },
+    "generatedAt": { "type": "string", "format": "date-time" },
+    "repository": { "type": ["string", "null"] },
+    "runtimeDir": { "type": "string" },
+    "summary": {
+      "type": "object",
+      "additionalProperties": true,
+      "required": [
+        "totalTerminalPullRequestCount",
+        "mergedPullRequestCount",
+        "closedPullRequestCount",
+        "poisonedBranchClosureCount",
+        "lowEffortCount",
+        "mediumEffortCount",
+        "highEffortCount",
+        "recentTerminalPullRequests"
+      ],
+      "properties": {
+        "totalTerminalPullRequestCount": { "type": "integer", "minimum": 0 },
+        "mergedPullRequestCount": { "type": "integer", "minimum": 0 },
+        "closedPullRequestCount": { "type": "integer", "minimum": 0 },
+        "poisonedBranchClosureCount": { "type": "integer", "minimum": 0 },
+        "lowEffortCount": { "type": "integer", "minimum": 0 },
+        "mediumEffortCount": { "type": "integer", "minimum": 0 },
+        "highEffortCount": { "type": "integer", "minimum": 0 },
+        "viHistorySuitePullRequestCount": { "type": "integer", "minimum": 0 },
+        "viHistorySuiteMergedPullRequestCount": { "type": "integer", "minimum": 0 },
+        "viHistorySuiteClosedPullRequestCount": { "type": "integer", "minimum": 0 },
+        "runnerPreemptionCount": { "type": "integer", "minimum": 0 },
+        "runnerRestoreCount": { "type": "integer", "minimum": 0 },
+        "dockerDriftIncidentCount": { "type": "integer", "minimum": 0 },
+        "nativeDaemonRepairCount": { "type": "integer", "minimum": 0 },
+        "cyclesBlockedByHostRuntimeConflict": { "type": "integer", "minimum": 0 },
+        "recentTerminalPullRequests": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": true,
+            "required": ["terminalDisposition", "poisonedBranch", "effortLevel", "effortScore"],
+            "properties": {
+              "laneId": { "type": ["string", "null"] },
+              "issue": { "type": ["integer", "null"], "minimum": 1 },
+              "pullRequestNumber": { "type": ["integer", "null"], "minimum": 1 },
+              "pullRequestUrl": { "type": ["string", "null"], "format": "uri-reference" },
+              "deliveryTrack": { "enum": ["general", "vi-history-suite"] },
+              "terminalDisposition": { "enum": ["merged", "closed"] },
+              "closeReasonClass": { "type": ["string", "null"] },
+              "poisonedBranch": { "type": "boolean" },
+              "terminalAt": { "type": ["string", "null"], "format": "date-time" },
+              "effortLevel": { "enum": ["low", "medium", "high"] },
+              "effortScore": { "type": "integer", "minimum": 0 }
+            }
+          }
+        }
+      }
+    },
+    "hostIsolation": {
+      "type": ["object", "null"],
+      "additionalProperties": true
+    },
+    "pullRequests": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": true,
+        "required": ["terminalDisposition", "poisonedBranch", "effort"],
+        "properties": {
+          "laneId": { "type": ["string", "null"] },
+          "issue": { "type": ["integer", "null"], "minimum": 1 },
+          "branch": { "type": ["string", "null"] },
+          "objective": { "type": ["string", "null"] },
+          "repository": { "type": ["string", "null"] },
+          "pullRequestUrl": { "type": ["string", "null"], "format": "uri-reference" },
+          "pullRequestNumber": { "type": ["integer", "null"], "minimum": 1 },
+          "firstObservedAt": { "type": ["string", "null"], "format": "date-time" },
+          "lastObservedAt": { "type": ["string", "null"], "format": "date-time" },
+          "terminalAt": { "type": ["string", "null"], "format": "date-time" },
+          "terminalDisposition": { "enum": ["merged", "closed"] },
+          "closeReasonClass": { "type": ["string", "null"] },
+          "poisonedBranch": { "type": "boolean" },
+          "terminalOutcome": { "type": ["string", "null"] },
+          "terminalReason": { "type": ["string", "null"] },
+          "deliveryTrack": { "enum": ["general", "vi-history-suite"] },
+          "filesTouchedSample": {
+            "type": "array",
+            "items": { "type": "string" }
+          },
+          "effort": {
+            "type": "object",
+            "additionalProperties": true,
+            "required": [
+              "level",
+              "score",
+              "turnCount",
+              "codingTurnCount",
+              "blockedTurnCount",
+              "waitingReviewTurnCount",
+              "waitingCiTurnCount",
+              "mergeAttemptCount",
+              "closeAttemptCount",
+              "helperCallCount",
+              "filesTouchedCount"
+            ],
+            "properties": {
+              "level": { "enum": ["low", "medium", "high"] },
+              "score": { "type": "integer", "minimum": 0 },
+              "turnCount": { "type": "integer", "minimum": 0 },
+              "codingTurnCount": { "type": "integer", "minimum": 0 },
+              "blockedTurnCount": { "type": "integer", "minimum": 0 },
+              "waitingReviewTurnCount": { "type": "integer", "minimum": 0 },
+              "waitingCiTurnCount": { "type": "integer", "minimum": 0 },
+              "mergeAttemptCount": { "type": "integer", "minimum": 0 },
+              "closeAttemptCount": { "type": "integer", "minimum": 0 },
+              "helperCallCount": { "type": "integer", "minimum": 0 },
+              "filesTouchedCount": { "type": "integer", "minimum": 0 },
+              "durationMinutes": { "type": ["number", "null"], "minimum": 0 }
+            }
+          }
+        }
+      }
+    }
+  }
+}

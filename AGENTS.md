@@ -1,528 +1,110 @@
 <!-- markdownlint-disable-next-line MD041 -->
 # Agent Handbook
 
-This document summarizes the expectations for automation agents working in the `compare-vi-cli-action` repository. The
-style mirrors the reflowed `README.md` so `markdownlint` remains quiet (120-column guideline, explicit headings, blank-
-line buffers).
+This file is the bounded agent entrypoint for `compare-vi-cli-action`.
+Keep it short, stable, and focused on the contract every session needs.
+Deep runbook material belongs in the referenced docs and machine-generated
+artifacts under `tests/results/_agent/`.
 
-## Primary directive
+## Primary Directive
 
-- The standing priority is whichever issue carries the active standing-priority
-  label for the current repository context:
+- The top objective is the issue carrying the active standing-priority label for
+  the current repository context:
   - canonical/upstream: `standing-priority`
-  - fork repos: `fork-standing-priority` (with fallback to
-    `standing-priority` for compatibility)
-  Use the sanitized wrappers (`node tools/npm/cli.mjs <command>` /
-  `node tools/npm/run-script.mjs <script>`) instead of raw `npm` invocations
-  (the container exports `npm_config_http_proxy`, which triggers warnings in
-  recent npm builds). Run `pwsh -NoLogo -NoProfile -File
-  tools/priority/bootstrap.ps1` at session start so
-  `.agent_priority_cache.json` and `tests/results/_agent/issue/` reflect the
-  latest snapshot, hook preflight succeeds, and the working tree is anchored to
-  `develop`; treat that issue as the top objective for edits, CI runs, and PRs.
-  If bootstrap reports `tests/results/_agent/issue/no-standing-priority.json`
-  with `reason = queue-empty`, treat the repository as intentionally idle
-  rather than misconfigured: do not create a work branch or PR until a new
-  tracked issue exists.
-  These generated priority cache/router files are intentionally untracked.
-- The human operator is signed in with an admin GitHub token; assume privileged operations (labels, reruns, merges) are
-  allowed when safe.
-- Default behaviour:
-  - Operate inside this repository unless the human asks otherwise.
-  - Keep workflows deterministic and green.
-  - Reference the current standing-priority issue (e.g., `#<standing-number>`) in commit and PR descriptions.
-  - Scope boundary: this repository is for compare-vi CLI action workflows only.
-    LabVIEW icon editor development moved to
-    `svelderrainruiz/labview-icon-editor` and must not be treated as
-    standing-priority scope here.
-- First actions in a session:
-  1. `pwsh -NoLogo -NoProfile -File tools/priority/bootstrap.ps1` to run hook preflight, refresh the standing-priority
-     snapshot/router artifacts, and auto-anchor the workspace to `develop`. When PowerShell + Node aren't available on
-     the host plane, use the Docker fallback:
-     - `pwsh -NoLogo -NoProfile -File tools/Run-NonLVChecksInDocker.ps1 -ToolsImageTag comparevi-tools:local
-       -UseToolsImage -PrioritySync -SkipActionlint -SkipMarkdown -SkipDocs -SkipWorkflow -SkipDotnetCliBuild`
-     - `node tools/npm/run-script.mjs priority:sync:docker`
-     Ensure a GitHub token is supplied via `GH_TOKEN`/`GITHUB_TOKEN` or `GH_TOKEN_FILE`
-     (default `C:\github_token.txt`). The helper injects the token into the container
-     without writing it to logs. Set `COMPAREVI_TOOLS_IMAGE=ghcr.io/labview-community-ci-cd/comparevi-tools:latest`
-     to use the published tools image instead of building locally. After the Docker fallback completes, manually verify
-     the working tree is on `develop` before creating a feature branch.
-  2. Review `.agent_priority_cache.json` / `tests/results/_agent/issue/` for tasks, acceptance, and
-     linked PRs on the standing issue. If the cache state is `NONE` with
-     `noStandingReason = queue-empty`, stop normal standing-priority execution
-     and restore intake first by creating or labeling the next tracked issue.
-  3. For cross-issue or cross-repo coordination, run
-     `node tools/npm/run-script.mjs priority:project:portfolio:check` to verify the dashboard state recorded in
-     `tools/priority/project-portfolio.json`. Treat the project board as a visibility layer only; issues, labels, and
-     policy files remain the source of truth. When you need to add an issue/PR to project `#2` or apply the standard
-     single-select fields, use
-     `node tools/npm/run-script.mjs priority:project:portfolio:apply -- --url <issue-or-pr-url> --use-config`
-     (or pass explicit `--status`, `--program`, `--phase`, `--environment-class`, `--blocking-signal`,
-     `--evidence-state`, `--portfolio-track` values) instead of hand-stitching `gh project item-add` /
-     `gh project item-edit` calls. The helper also writes a normalized project-board context report so future agents can
-     see built-in metadata such as `Type`, `Milestone`, `Reviewers`, linked PRs, and `Sub-issues progress` without a
-     second board scrape.
-  4. Run `node tools/npm/run-script.mjs priority:develop:sync` to perform locked, sequential
-     `pull --ff-only upstream/develop` then `push <fork-remote>/develop` with retry/backoff and remote-head
-     convergence checks. Use `-- --fork-remote origin|personal|all` when you need to target a specific fork plane or
-     bring both forks back to parity before parallel child-issue work. The helper also emits per-remote parity reports
-     and must be used instead of ad-hoc pull/push command pairs.
-  5. Create or sync a working branch (`issue/<fork-remote>-<standing-number>-<slug>` for fork lanes, or the legacy
-     `issue/<standing-number>-<slug>` shape when no fork lane is involved), push minimal changes,
-     dispatch CI, update the PR (reference `#<standing-number>`), monitor to green, merge when
-     acceptance is met.
-
-## Streaming guardrails
-
-- Heavy log archives and binary fixtures previously pushed this workspace over Codex streaming limits. We trimmed the
-  checked-in payloads (`logs/2025-10-09`, `job-*.log`, `tmp-win-drift.log`, `tmp_predefined.html`, drift artifact zips)
-  so future agents start below the ceiling.
-- Keep bulky diagnostics out of source. When capturing long logs, prefer short repro snippets or attach artifacts to
-  issues instead of committing them.
-- `.openai-ignore` enumerates directories/files Codex should skip to stay under streaming limits. Update that list if
-  new large assets appear (and remove the assets from git when possible).
-
-## Repository layout
-
-- `scripts/` – PowerShell modules and shims (prefer `Import-Module`, avoid dot-sourcing).
-- `tools/` – local/CI utilities; telemetry collectors; workflow helpers.
-- `tests/` – Pester v5 suites (`Unit`, `Integration`); use `$TestDrive` for temp files.
-- `.github/workflows/` – self-hosted and hosted pipelines; see README for highlights.
-- `Invoke-PesterTests.ps1` – entry point for local runs and CI orchestration.
-
-## Build / test / develop
-
-- Unit tests: `./Invoke-PesterTests.ps1`
-- Integration: `./Invoke-PesterTests.ps1 -IntegrationMode include`
-- Custom paths: `./Invoke-PesterTests.ps1 -TestsPath tests -ResultsPath tests/results`
-- Pattern filter: `./Invoke-PesterTests.ps1 -IncludePatterns 'CompareVI.*'`
-- Staging smoke:
-  - `pwsh -File tools/Test-PRVIStagingSmoke.ps1 -DryRun` (plan only)
-  - `node tools/npm/run-script.mjs smoke:vi-stage` (full run; uses fixtures/vi-attr for a baked-in VI
-    attribute diff)
-  Both flows post artifact links and the updated PR summary comment.
-- Containerized non-LV checks: `pwsh -File tools/Run-NonLVChecksInDocker.ps1`
-- Compare harnesses default to headless CLI runs (`LVCI_COMPARE_POLICY=cli-only`). Override with `lv-only` only when you
-  explicitly need the LVCompare UI; otherwise leave it unset to avoid prompts and stuck LabVIEW instances.
-  - Note (scope): `LVCI_COMPARE_MODE`/`LVCI_COMPARE_POLICY` apply to harness/workflow helpers only. The composite
-    action always invokes LVCompare directly and does not honor these toggles.
-- Icon editor note:
-  - Icon editor tooling in this repository is historical compatibility material
-    only. Active icon editor development and operational runbooks now live in
-    `svelderrainruiz/labview-icon-editor`.
-
-## Coding style
-
-- PowerShell 7+, Pester v5+. Match surrounding indentation (2–4 spaces).
-- Avoid nested `pwsh`; use in-process execution or `ProcessStartInfo` with `UseShellExecute=false`.
-- For local scripts and non-harness flows, call **LVCompare** (canonical path under Program Files). Do not launch
-  `LabVIEW.exe` directly. The automation defaults to the LabVIEW CLI path for headless capture; avoid starting the
-  LabVIEW UI.
-- CI is non-interactive; avoid prompts and pop-ups.
-
-## Testing guidelines
-
-- Shadow helpers inline inside `It {}` blocks, then remove.
-- Keep integration tests isolated; unit tests should be fast.
-- Standard results live under `tests/results/` (summary JSON, XML, session index).
-
-## Wire probes (Long-Wire v2)
-
-- Probes are injected by `tools/workflows/update_workflows.py`.
-- Toggle with repo variable `WIRE_PROBES=0` (default enabled).
-- Phase markers (`_wire/phase.json`):
-  - `J1` / `J2` – before/after checkout.
-  - `T1` – before Pester categories.
-  - `C1` / `C2` – fixture drift job.
-  - `I1` / `I2` – invoker start/stop.
-  - `S1` – session index post.
-  - `G0` / `G1` – runner unblock guard.
-  - `P1` – final summary append.
-- Inspect `_wire` directories or step summaries for timing markers.
-
-## Commits & PRs
-
-- Keep commits focused; include `#<standing-number>` in subjects.
-- PRs should describe rationale, list affected workflows, and link to artifacts.
-- Default GitHub intake strategy:
-  - Web issues should use the structured forms under `.github/ISSUE_TEMPLATE/`.
-  - Web PRs default to `.github/pull_request_template.md`; specialized variants live under
-    `.github/PULL_REQUEST_TEMPLATE/`.
-  - Documentation discovery should treat the GitHub wiki as a curated portal only; checked-in repo docs remain
-    authoritative and wiki pages must point back to them.
-  - Published wiki page content lives in the separate GitHub wiki repo
-    `LabVIEW-Community-CI-CD/compare-vi-cli-action.wiki.git`; repo PRs here can govern the contract and entry points,
-    but not the wiki page history itself.
-  - CLI or future-agent template discovery should start from
-    `tools/priority/github-intake-catalog.json`; use `pwsh -File tools/Resolve-GitHubIntakeRoute.ps1 -ListScenarios`
-    or `-Scenario <name>` before choosing an issue form or PR template by hand.
-  - For scenario-driven draft generation, prefer
-    `pwsh -File tools/New-GitHubIntakeDraft.ps1 -Scenario <name> -OutputPath <body-file>` and only drop to
-    `New-IssueBody.ps1` / `New-PullRequestBody.ps1` when you intentionally need the lower-level template call.
-    For PR scenarios, the draft helper can auto-fill issue title/URL and standing-priority state from
-    `tests/results/_agent/issue/` when bootstrap has already refreshed the issue snapshot.
-  - For a machine-readable execution plan, prefer
-    `pwsh -File tools/Invoke-GitHubIntakeScenario.ps1 -Scenario <name> -AsJson`; it stays in dry-run mode by default
-    and requires explicit `-Apply` before mutating GitHub state.
-  - When you need the whole intake surface summarized in one artifact, use
-    `pwsh -File tools/Write-GitHubIntakeAtlas.ps1`; it writes JSON/Markdown atlas outputs under
-    `tests/results/_agent/intake/`.
-  - CLI issue creation should use the planner/apply helper first:
-    `pwsh -File tools/Invoke-GitHubIntakeScenario.ps1 -Scenario workflow-policy -Title "<title>"`,
-    then add `-Apply` only when the plan is correct.
-  - CLI PR creation should prefer `pwsh -File tools/Branch-Orchestrator.ps1 -Issue <number> -Execute` and switch
-    templates with `-PRTemplate workflow-policy|human-change` when the review surface differs from default maintenance
-    work.
-  - The lower-level PR helper is `node tools/npm/run-script.mjs priority:pr`; prefer it over raw `gh pr create`
-    because it keeps user forks and same-owner org forks on one deterministic path, including the GraphQL
-    `headRepositoryId` flow when `origin` and `upstream` share the same owner. Pass `--issue <number>` when the branch
-    belongs to a non-standing issue and the helper should not infer intent from the standing-priority cache.
-- Automation-authored PRs must keep the `Agent Metadata` block in the body so reviewer routing remains deterministic.
-- Ensure CI is green (lint + Pester). Verify no lingering processes on self-hosted runners.
-- For `gh issue create` / `gh issue edit` with multiline Markdown bodies in mixed
-  WSL/Windows shells, prefer `--body-file <path>` (or `-F`) over inline
-  `--body "..."` to avoid backtick command substitution and quoting drift.
-  Example:
-
-  ```bash
-  gh issue create --title "<title>" --body-file issue-body.md
-  gh issue edit <number> --body-file issue-body.md
-  ```
-
-## Local gates (pre-push)
-
-- Run `tools/PrePush-Checks.ps1` before pushing:
-  - Installs `actionlint` (`vars.ACTIONLINT_VERSION`, default 1.7.7) if missing.
-  - Runs `actionlint` across `.github/workflows`.
-  - Runs safe PR watch task contract validation (`safe-watch:contract`).
-  - Runs the NI Linux image flag-combination matrix via `tools/Run-NILinuxContainerCompare.ps1`, covering the no-flags
-    baseline plus every combination of `-noattr`, `-nofppos`, and `-nobdcosm`.
-  - Runs the VI history suite smoke inside the same Linux container contract so `history-report.md`,
-    `history-report.html`, and `history-summary.json` are generated in-container before push.
-  - Optionally round-trips YAML with `ruamel.yaml` (if Python available).
-  - Validate safe PR watch task contracts manually before task/workspace changes when iterating locally:
-    - `node tools/npm/run-script.mjs safe-watch:contract`
-  - For mixed WSL/Windows shells, prefer HTTPS fetch + SSH push on `origin` to avoid
-    `git ls-remote` auth drift across terminals:
-    - `git remote set-url origin https://github.com/<owner>/<repo>.git`
-    - `git remote set-url --push origin git@github.com:<owner>/<repo>.git`
-- For VI history/container work, run Docker fast-loop before push:
-  - Single-lane strict (recommended first, no runtime auto-repair/engine switching):
-    - `pwsh -NoLogo -NoProfile -File tools/Test-DockerDesktopFastLoop.ps1 -LaneScope linux -StepTimeoutSeconds 600`
-    - `pwsh -NoLogo -NoProfile -File tools/Test-DockerDesktopFastLoop.ps1 -LaneScope windows -StepTimeoutSeconds 600`
-  - Full dual-lane validation:
-    - `pwsh -NoLogo -NoProfile -File tools/Test-DockerDesktopFastLoop.ps1 -LaneScope both -StepTimeoutSeconds 600`
-  - Replay the differentiated mode diagnostics from a local or downloaded readiness artifact:
-    - `node tools/npm/run-script.mjs history:diagnostics:show -- --ResultsRoot tests/results/local-parity/windows`
-    - The replay now prints the host/runner plane split first, then the differentiated mode lines.
-  - Diagnose the native host split for LabVIEW 2026:
-    - `node tools/npm/run-script.mjs env:labview:2026:host-planes`
-  - Treat the Windows host as the execution runner for these diagnostics; the host-plane report records that explicitly.
-  - Treat the operator-facing loop labels as stable contract surfaces:
-    - `linux-docker-fast-loop`
-    - `windows-docker-fast-loop`
-    - `dual-docker-fast-loop`
-  - `-ManageDockerEngine` is only allowed with `-LaneScope both`.
-- Markdown lint changed-file contract:
-  - `tools/Lint-Markdown.ps1` and `tools/lint-markdown.mjs` suppress temporary
-    draft files (`.tmp-*.md`, `pr-*-body.md`) during changed-file runs.
-  - Tracked markdown is still linted; temp-file suppression is only for
-    untracked local drafts.
-- Optional hook workflow:
-  1. `git config core.hooksPath tools/hooks`
-  2. Copy `tools/hooks/pre-push.sample` to `tools/hooks/pre-push`
-  3. The hook runs the script and blocks on failure.
-
-## Optional hooks (developer opt-in)
-
-- `tools/hooks/pre-commit.sample`
-  - Runs PSScriptAnalyzer (if installed) on staged PS files.
-  - Warns on inline `-f` and dot-sourcing.
-  - Blocks on analyzer errors.
-- `tools/hooks/commit-msg.sample`
-  - Enforces subject ≤100 characters and an issue reference (e.g., `(#123)`) unless `WIP`.
-
-## Required checks (develop)
-
-- Enforce the required statuses listed in `tools/policy/branch-required-checks.json` (contract source of truth). At
-  present these are: `lint`, `fixtures`, `session-index`, `issue-snapshot`, `semver`,
-  `Policy Guard (Upstream) / policy-guard`,
-  `hook-parity (ubuntu-latest)`, `vi-history-scenarios-linux`, `agent-review-policy`, and `commit-integrity`.
-  Optionally apply the same requirement to `main` per repository policy.
-- One-time GitHub CLI snippet (admin only):
-
-  ```bash
-  gh api repos/$REPO/branches/develop/protection \
-    -X PUT \
-    -f required_status_checks.strict=true \
-    -f required_status_checks.contexts[]='lint' \
-    -f required_status_checks.contexts[]='fixtures' \
-    -f required_status_checks.contexts[]='session-index' \
-    -f required_status_checks.contexts[]='issue-snapshot' \
-    -f required_status_checks.contexts[]='semver' \
-    -f required_status_checks.contexts[]='Policy Guard (Upstream) / policy-guard' \
-    -f required_status_checks.contexts[]='hook-parity (ubuntu-latest)' \
-    -f required_status_checks.contexts[]='vi-history-scenarios-linux' \
-    -f required_status_checks.contexts[]='agent-review-policy' \
-    -f required_status_checks.contexts[]='commit-integrity' \
-    -H "Accept: application/vnd.github+json"
-  ```
-
-## Branch protection contract (#118)
-
-- Canonical required-status mapping lives in `tools/policy/branch-required-checks.json` (hash = contract digest).
-- `tools/Update-SessionIndexBranchProtection.ps1` injects the verification block into `session-index.json` and emits a
-  step-summary entry.
-- When validating Branch Protection locally:
-
-  ```powershell
-  pwsh -File tools/Quick-DispatcherSmoke.ps1 -PreferWorkspace -ResultsPath .tmp/sessionindex
-  pwsh -File tools/Update-SessionIndexBranchProtection.ps1 -ResultsDir .tmp/sessionindex `
-    -PolicyPath tools/policy/branch-required-checks.json `
-    -Branch (git branch --show-current)
-  ```
-
-Staging smoke runs use the dedicated helper (`Test-PRVIStagingSmoke.ps1`) so staged VI bundles and LVCompare outputs
-are exercised end-to-end.
-
-- Confirm `session-index.json` contains `branchProtection.result.status = "ok"`; mismatches should be logged in
-  `branchProtection.notes`.
-- If CI reports `warn`/`fail`, inspect the Step Summary and the session index artifact from that job. Update branch
-  protection or the mapping file as needed to realign.
-
-## Workflow maintenance
-
-Use `tools/workflows/update_workflows.py` for mechanical updates (comment-preserving).
-
-- Suitable tasks:
-  - Add hosted Windows notes.
-  - Inject `session-index-post` steps.
-  - Normalize Runner Unblock Guard placement.
-  - Adjust pre-init `force_run` gates.
-- Avoid for logical edits (needs graphs, job logic). Modify manually, then run `actionlint`.
-- Usage:
-
-  ```bash
-  python tools/workflows/update_workflows.py --check .github/workflows/ci-orchestrated.yml
-  python tools/workflows/update_workflows.py --write .github/workflows/ci-orchestrated.yml
-  ./bin/actionlint -color
-  ```
-
-## Agent hand-off & telemetry
-
-- Keyword **handoff**:
-  1. Read `AGENT_HANDOFF.txt`, confirm plan.
-     The checked-in file should stay evergreen and bounded; live state belongs
-     in the generated handoff/issue artifacts, not appended historical logs.
-  2. Set safe env toggles:
-     - `LV_SUPPRESS_UI=1`
-     - `LV_NO_ACTIVATE=1`
-     - `LV_CURSOR_RESTORE=1`
-     - `LV_IDLE_WAIT_SECONDS=2`
-     - `LV_IDLE_MAX_WAIT_SECONDS=5`
-  3. Rogue scan: `pwsh -File tools/Detect-RogueLV.ps1 -ResultsDir tests/results -LookBackSeconds 900
-     -AppendToStepSummary`
-  4. Sweep LVCompare (only) if rogues found and human approves.
-  5. Honour pause etiquette (“brief delay (~90 seconds)”) and log waits.
-  6. Execute “First Actions” from `AGENT_HANDOFF.txt`.
-- Convenience helpers:
-  - `pwsh -File tools/Print-AgentHandoff.ps1 -ApplyToggles`
-  - `pwsh -File tools/Print-AgentHandoff.ps1 -ApplyToggles -AutoTrim`
-    - Prints a concise watcher summary (state, heartbeatFresh, needsTrim) and
-      emits a compact JSON block to `tests/results/_agent/handoff/watcher-telemetry.json`.
-    - Refreshes `tests/results/_agent/handoff/entrypoint-status.json` so the
-      standard handoff command also leaves behind the canonical machine-readable
-      entrypoint index.
-    - When `-AutoTrim` (or `HANDOFF_AUTOTRIM=1`) is set, trims oversized watcher logs if eligible
-      and appends notes to the GitHub Step Summary when available.
-    - Each invocation also drops a session capsule under `tests/results/_agent/sessions/`
-      (schema `agent-handoff/session@v1`) capturing branch/head/status snapshots for determinism.
-    - When the standing-priority queue is intentionally empty, the helper should
-      emit an idle summary (`issue: none (queue empty)`) and copy the
-      `standing-priority/no-standing@v1` summary instead of failing on stale
-      numeric snapshot files from the previously active issue.
-  - `node tools/npm/run-script.mjs handoff:entrypoint:check`
-    - Validates that `AGENT_HANDOFF.txt` remains a bounded evergreen entrypoint and writes
-      `tests/results/_agent/handoff/entrypoint-status.json`, a machine-readable index of the canonical handoff
-      commands and artifact paths.
-  - `node tools/npm/run-script.mjs priority:handoff`
-    - Imports the current handoff bundle and prints the entrypoint index, standing-priority snapshot, and handoff
-      summaries in one readable console view.
-- Capture quick regression coverage with `node tools/npm/run-script.mjs priority:handoff-tests`; the script runs
-  `priority:test`, `hooks:test`, the handoff entrypoint contract, and `semver:check` (plus `priority:policy` when
-  token permissions allow), then writes `tests/results/_agent/handoff/test-summary.json` so subsequent agents (or CI
-  summaries) can replay the outcomes.
-
-## Fast path for standing-priority flows (historical: #127)
-
-- PR comment dispatch: `/run orchestrated single include_integration=true sample_id=<id>`
-- CLI dispatch: `pwsh -File tools/Dispatch-WithSample.ps1 ci-orchestrated.yml -Ref develop -IncludeIntegration true`
-- Merge policy: once required checks pass and acceptance criteria satisfied, merge (admin token available).
-
-## Single-strategy fallback
-
-- `probe` job detects interactivity.
-- `windows-single` runs only when `probe.ok == true`.
-- If `strategy=single` but `probe.ok == false`, fall back to `pester-category`.
-- Hosted preflight remains notice-only for LVCompare presence.
-
-## Re-run with same inputs
-
-- Summaries include a copy/pastable `gh workflow run` command.
-- Use `node tools/npm/run-script.mjs priority:validate -- --ref <branch>` to dispatch
-  Validate from upstream; the helper blocks fork refs unless you pass `--allow-fork`
-  (or `VALIDATE_DISPATCH_ALLOW_FORK=1`).
-- Comment snippets documented in `.github/PR_COMMENT_SNIPPETS.md`.
-
-## Watching orchestrated runs
-
-- Prefer the REST watcher when monitoring workflows: `node tools/npm/run-script.mjs ci:watch:rest -- --run-id <id>`
-  streams job status and exits non-zero if the run fails. Passing `--branch <name>` auto-selects the latest run. The VS
-  Code task “CI Watch (REST)” prompts for a run id.
-- The watcher now aborts with `conclusion: watcher-error` after repeated 404s or other API failures (90s / 120s grace by
-  default), still writing `watcher-rest.json` so session-index telemetry isn’t lost. Explicit rate-limit responses
-  short-circuit with instructions to supply `GH_TOKEN`/`GITHUB_TOKEN` (or wait for the reset) instead of waiting out the
-  error window.
-- Use the Docker watcher (`tools/Watch-InDocker.ps1`) when you need dispatcher logs or artifact download mirrors. Both
-  watchers honor `GH_TOKEN`/`GITHUB_TOKEN` and fall back to `C:\github_token.txt` on Windows.
-- For direct workflow artifact retrieval during live triage, prefer the checked-in helper over raw `gh run download`:
-  - `node tools/npm/run-script.mjs priority:artifact:download -- --repo <owner/repo> --run-id <id> --artifact <name>`
-  - The helper writes `tests/results/_agent/reviews/run-artifact-download.json` (or `--report <path>`) and classifies
-    `policy-wrapper-rejected`, `artifact-not-found`, `artifact-expired`, and `auth-failed` separately.
-- Keep watcher summaries in `tests/results/_agent/` up to date so downstream agents inherit telemetry context.
-- `tools/Update-SessionIndexWatcher.ps1` merges `watcher-rest.json` into `session-index.json`, exposing the REST watcher
-  status under the `watchers.rest` node. Run it after the watcher step if you update the workflow or run the watcher
-  manually.
-- For PR status polling in VS Code terminals, prefer snapshot mode instead of `gh pr checks --watch`:
-  - VS Code task: `CI: Watch PR checks (safe snapshot)`
-  - Workspace tasks:
-    - `Command Center: watch PR checks (safe, fork plane)`
-    - `Fork Plane: watch PR checks (safe)`
-    - `Upstream Plane: watch PR checks (safe)`
-  - CLI equivalent: `node tools/npm/run-script.mjs ci:watch:safe -- --PullRequest <pr-number> -IntervalSeconds 20`
-  - The helper emits delta/heartbeat summaries using repeated `gh pr checks --json` snapshots and avoids high-volume
-    repaint loops that can destabilize integrated terminals.
-  - Smoke-check the watcher behavior (expected: one summary line plus either delta entries or a no-change heartbeat):
-
-    ```bash
-    node tools/npm/run-script.mjs ci:watch:safe -- --PullRequest <pr-number> \
-      -IntervalSeconds 20 -HeartbeatPolls 1 -MaxPolls 2
-    ```
-
-  - If `safe-watch:contract` fails, restore expected task labels/inputs and argument wiring in:
-    - `.vscode/tasks.json`
-    - `compare-vi-cli-action.code-workspace`
-    - `compare-vi-cli-action.command-center.code-workspace`
-    - `compare-vi-cli-action.fork-plane.code-workspace`
-    - `compare-vi-cli-action.upstream-plane.code-workspace`
-
-## LVCompare observability
-
-- Notices are written to `tests/results/_lvcompare_notice/notice-*.json` (phases: pre-launch, post-start, completed,
-  post-complete).
-- `tools/Detect-RogueLV.ps1` checks for untracked LVCompare/LabVIEW processes.
-- Environment safeguards: `LV_NO_ACTIVATE=1`, `LV_CURSOR_RESTORE=1`, `LV_IDLE_WAIT_SECONDS=2`,
-  `LV_IDLE_MAX_WAIT_SECONDS=5`.
-
-## Telemetry & wait etiquette
-
-- Use `tools/Agent-Wait.ps1` to record wait windows:
-
-  ```powershell
-  . ./tools/Agent-Wait.ps1
-  Start-AgentWait -Reason 'workflow propagation' -ExpectedSeconds 90
-  # ... after human responds
-  End-AgentWait
-  ```
-
-- Artifacts land in `tests/results/_agent/`. Summaries update automatically in CI.
-
-## Deterministic orchestration runbook (#683)
-
-- Default operating mode: deterministic handoff with a single active writer.
-- Role windows (SLA targets):
-  - implementer: 0-45 minutes from assignment to first checkpoint.
-  - reviewer: 0-30 minutes from implementer handoff to disposition (approve/request changes).
-  - audit: 0-30 minutes from reviewer disposition to evidence verification and issue/PR log update.
-
-### Machine-readable checkpoint contract
-
-Post checkpoints in the standing issue using this JSON block (inside a fenced `json` code block):
-
-```json
-{
-  "schema": "standing-checkpoint@v1",
-  "issue": 683,
-  "cycle": 1,
-  "role": "implementer",
-  "owner": "<login>",
-  "windowStartUtc": "<ISO-8601>",
-  "windowEndUtc": "<ISO-8601>",
-  "evidence": {
-    "commands": ["<cmd1>", "<cmd2>"],
-    "artifacts": ["<path-or-url>"],
-    "result": "pass|fail|blocked"
-  },
-  "nextOwner": "<login>",
-  "nextRole": "reviewer|audit|implementer"
-}
-```
-
-### Deterministic escalation matrix
-
-- SLA breach (< 15m over window): post checkpoint with `result=blocked`, keep owner, continue execution.
-- SLA breach (>= 15m and < 60m): transfer to next role owner and log transfer reason in checkpoint evidence.
-- SLA breach (>= 60m) or policy deadlock: escalate to repository maintainers,
-  add `admin-override-candidate` note in standing issue, and pause destructive
-  operations until disposition.
-
-### Single-writer protocol (overlapping file scopes)
-
-- One writer per file scope at a time (`.github/workflows/**`, `tools/priority/**`, `docs/**`, etc.).
-- Before edits, announce ownership window in checkpoint JSON (`role=implementer`).
-- Reviewer/audit roles are read-only for owned scopes unless ownership is explicitly transferred in a checkpoint.
-- If overlap is unavoidable, split by disjoint file scopes and record both owners in consecutive checkpoints.
-
-## Troubleshooting quick links
-
-- Rogue LVCompare: `tools/Detect-RogueLV.ps1 -FailOnRogue`
-- Session lock: `docs/SESSION_LOCK_HANDOFF.md`
-- Runbook: `docs/INTEGRATION_RUNBOOK.md`
-- Release ops: `docs/RELEASE_OPERATIONS_RUNBOOK.md`
-- Fixture drift: `docs/FIXTURE_DRIFT.md`
-- Loop mode: `docs/COMPARE_LOOP_MODULE.md`
-
-## Vendor tool resolvers
-
-Use the shared resolver module to locate vendor CLIs consistently across OSes and self-hosted runners. This avoids PATH
-drift and issues like picking a non-Windows binary on Windows.
-
-- Module: `tools/VendorTools.psm1`
-- Functions:
-  - `Resolve-ActionlintPath` – returns `bin/actionlint.exe` on Windows or `bin/actionlint` elsewhere.
-  - `Resolve-MarkdownlintCli2Path` – returns local CLI from `node_modules/.bin` (cmd/ps1 on Windows).
-  - `Get-MarkdownlintCli2Version` – reads installed or declared version (no network).
-  - `Resolve-LVComparePath` – returns canonical `LVCompare.exe` under Program Files (Windows only).
-
-Examples:
-
-```powershell
-# In tools/* scripts
-Import-Module (Join-Path (Split-Path -Parent $PSCommandPath) 'VendorTools.psm1') -Force
-$alPath = Resolve-ActionlintPath
-$mdCli  = Resolve-MarkdownlintCli2Path
-$mdVer  = Get-MarkdownlintCli2Version
-```
-
-```powershell
-# In scripts/* modules (one directory up from tools/)
-Import-Module (Join-Path (Split-Path -Parent $PSScriptRoot) 'tools' 'VendorTools.psm1') -Force
-$lvCompare = Resolve-LVComparePath
-```
-
-Guidance:
-
-- Prefer resolvers over hardcoded paths or PATH lookups in local scripts.
-- For markdownlint, try `Resolve-MarkdownlintCli2Path`; only fall back to `npx --no-install` when necessary.
-- For LVCompare, continue to enforce the canonical path; pass `-lvpath` to LVCompare and never launch `LabVIEW.exe`.
-- Do not lint or link-check vendor documentation under `bin/`; scope link checks to `docs/` or ignore `bin/**`.
+  - forks: `fork-standing-priority` with fallback to `standing-priority`
+- Start with `pwsh -NoLogo -NoProfile -File tools/priority/bootstrap.ps1` so the
+  workspace is anchored to `develop` and the standing-priority cache/router are
+  refreshed.
+- Treat `queue-empty` as a valid idle state. If bootstrap emits
+  `tests/results/_agent/issue/no-standing-priority.json` with
+  `reason = queue-empty`, do not invent new work.
+- The operator is signed in with an admin GitHub token. Privileged operations
+  are allowed when they are safe and within repo policy.
+- Reference `#<standing-number>` in automation-authored commits and PRs.
+- Scope boundary: this repository is for compare-vi CLI action workflows only.
+  LabVIEW icon editor development now lives in
+  `svelderrainruiz/labview-icon-editor`.
+
+## First Actions
+
+1. Run `pwsh -NoLogo -NoProfile -File tools/priority/bootstrap.ps1`.
+2. Inspect `.agent_priority_cache.json` and `tests/results/_agent/issue/`.
+3. Run `node tools/npm/run-script.mjs priority:project:portfolio:check` when
+   project-board visibility matters.
+4. Run `node tools/npm/run-script.mjs priority:develop:sync` before creating or
+   refreshing a work lane.
+5. Work from a branch shaped like
+   `issue/<fork-remote>-<standing-number>-<slug>` when a fork lane is involved.
+
+## Core Commands
+
+- Prefer sanitized wrappers:
+  - `node tools/npm/cli.mjs <command>`
+  - `node tools/npm/run-script.mjs <script>`
+- Prefer `node tools/npm/run-script.mjs priority:pr` over raw `gh pr create`.
+- Prefer `node tools/npm/run-script.mjs priority:validate -- --ref <branch>`
+  over manual Validate dispatches.
+- Detached unattended delivery surfaces:
+  - `node tools/npm/run-script.mjs priority:delivery:agent:ensure`
+  - `node tools/npm/run-script.mjs priority:delivery:agent:status`
+  - `node tools/npm/run-script.mjs priority:delivery:agent:stop`
+- Codex state hygiene surfaces:
+  - `node tools/npm/run-script.mjs priority:codex:state:hygiene`
+  - `node tools/npm/run-script.mjs priority:codex:state:hygiene:apply`
+
+## Intake And PR Flow
+
+- Use the GitHub intake catalog in
+  `tools/priority/github-intake-catalog.json` before selecting issue forms or
+  PR templates by hand.
+- Prefer these helpers over ad-hoc GitHub CLI calls:
+  - `pwsh -File tools/Resolve-GitHubIntakeRoute.ps1 -ListScenarios`
+  - `pwsh -File tools/New-GitHubIntakeDraft.ps1 -Scenario <name> -OutputPath <path>`
+  - `pwsh -File tools/Invoke-GitHubIntakeScenario.ps1 -Scenario <name> -AsJson`
+  - `pwsh -File tools/Write-GitHubIntakeAtlas.ps1`
+- Use `pwsh -File tools/Branch-Orchestrator.ps1 -Issue <number> -Execute` for
+  branch + PR orchestration and switch templates with
+  `-PRTemplate workflow-policy|human-change` when needed.
+- `New-IssueBody.ps1` and `New-PullRequestBody.ps1` remain the lower-level body
+  helpers; prefer the scenario-driven layer first.
+- Treat the GitHub wiki as a curated portal only. Checked-in repo docs remain
+  authoritative, and published wiki history lives in
+  `LabVIEW-Community-CI-CD/compare-vi-cli-action.wiki.git`.
+
+## Working Rules
+
+- Issues, labels, policy files, and checked-in docs are the source of truth.
+  The project board is visibility only.
+- Keep workflows deterministic and green. Required status contexts are defined
+  in `tools/policy/branch-required-checks.json`.
+- Use safe repo helpers instead of hand-rolled git mutation flows whenever a
+  helper exists.
+- Keep bulky diagnostics out of source. Large logs and artifacts belong in
+  issue attachments or generated artifact folders, not in committed history.
+- Use vendor resolvers from `tools/VendorTools.psm1` rather than ad-hoc PATH
+  lookups for `actionlint`, markdownlint, and LVCompare.
+- For multiline GitHub bodies in mixed Windows/WSL shells, use `--body-file`.
+
+## Handoff And Live State
+
+- `AGENT_HANDOFF.txt` is the stable handoff entrypoint.
+- `node tools/npm/run-script.mjs handoff:entrypoint:check` validates the
+  handoff entrypoint and refreshes the machine-readable index at
+  `tests/results/_agent/handoff/entrypoint-status.json`.
+- `node tools/npm/run-script.mjs priority:handoff` prints the current handoff
+  bundle, including that machine-readable index.
+- Primary live-state artifacts:
+  - `.agent_priority_cache.json`
+  - `tests/results/_agent/issue/router.json`
+  - `tests/results/_agent/issue/no-standing-priority.json`
+  - `tests/results/_agent/handoff/entrypoint-status.json`
+  - `tests/results/_agent/runtime/`
+
+## References
+
+- `docs/DEVELOPER_GUIDE.md`
+- `docs/SESSION_LOCK_HANDOFF.md`
+- `docs/INTEGRATION_RUNBOOK.md`
+- `docs/RELEASE_OPERATIONS_RUNBOOK.md`
+- `docs/knowledgebase/GitHub-Intake-Layer.md`
+- `docs/knowledgebase/Agent-Handoff-Surfaces.md`

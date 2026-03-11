@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
   assertUpstreamOwnedHead,
+  buildMergeArgs,
   buildMergeSummaryPayload,
   buildPolicyTrace,
   isUpstreamOwnedHead,
@@ -264,6 +265,24 @@ test('shouldRetryWithAuto detects policy-blocked direct merge failures', () => {
     }),
     false
   );
+});
+
+test('buildMergeArgs omits --delete-branch for auto merges so merge-queue branches can enqueue cleanly', () => {
+  assert.deepEqual(buildMergeArgs({
+    pr: 1017,
+    repo: 'LabVIEW-Community-CI-CD/compare-vi-cli-action',
+    method: 'squash',
+    mode: 'auto',
+    keepBranch: false
+  }), [
+    'pr',
+    'merge',
+    '1017',
+    '--repo',
+    'LabVIEW-Community-CI-CD/compare-vi-cli-action',
+    '--squash',
+    '--auto'
+  ]);
 });
 
 test('getMergeQueueBranches returns exact queue-managed branches from policy rulesets', () => {

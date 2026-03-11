@@ -87,6 +87,11 @@ if ($Args[0] -eq 'context' -and $Args.Count -ge 3 -and $Args[1] -eq 'use') {
 if ($Args[0] -eq 'ps') { exit 0 }
 
 if ($Args[0] -eq 'info') {
+  $infoJson = [Environment]::GetEnvironmentVariable('DOCKER_STUB_INFO_JSON')
+  if ($Args -contains '{{json .}}' -and -not [string]::IsNullOrWhiteSpace($infoJson)) {
+    Write-Output $infoJson
+    exit 0
+  }
   $failInfoContext = [Environment]::GetEnvironmentVariable('DOCKER_STUB_INFO_FAIL_CONTEXT')
   if (-not [string]::IsNullOrWhiteSpace($failInfoContext) -and $requestedContext -eq $failInfoContext) {
     Write-Output ("unable to resolve docker endpoint: context `"{0}`" not found" -f $requestedContext)
@@ -162,9 +167,11 @@ exit 0
       DOCKER_STUB_INFO_MODE = $env:DOCKER_STUB_INFO_MODE
       DOCKER_STUB_INFO_EXIT_CODE = $env:DOCKER_STUB_INFO_EXIT_CODE
       DOCKER_STUB_INFO_FAIL_CONTEXT = $env:DOCKER_STUB_INFO_FAIL_CONTEXT
+      DOCKER_STUB_INFO_JSON = $env:DOCKER_STUB_INFO_JSON
       DOCKER_STUB_CONTEXT = $env:DOCKER_STUB_CONTEXT
       DOCKER_STUB_CONTEXT_SHOW_EMPTY = $env:DOCKER_STUB_CONTEXT_SHOW_EMPTY
       DOCKER_STUB_CONTEXT_USE_FAIL_TARGET = $env:DOCKER_STUB_CONTEXT_USE_FAIL_TARGET
+      DOCKER_HOST = $env:DOCKER_HOST
     }
   }
 
@@ -389,5 +396,62 @@ exit 0
     $snapshot.observed.osType | Should -Be 'windows'
     $snapshot.observed.context | Should -Be 'default'
   }
-}
 
+  It 'accepts native-wsl provider when the pinned DOCKER_HOST resolves to a distro-owned linux daemon' {
+    $work = Join-Path $TestDrive 'native-wsl-ok'
+    New-Item -ItemType Directory -Path $work -Force | Out-Null
+    & $script:CreateDockerWslStubs -WorkRoot $work
+
+    Set-Item Env:DOCKER_STUB_INFO_MODE 'parsed-linux'
+    Set-Item Env:DOCKER_STUB_INFO_JSON '{"OSType":"linux","OperatingSystem":"Ubuntu 24.04.1 LTS","Name":"ubuntu-native","Platform":{"Name":"Docker Engine - Community"},"Labels":["maintainer=comparevi"]}'
+    Set-Item Env:DOCKER_HOST 'unix:///var/run/docker.sock'
+
+    $snapshotPath = Join-Path $work 'runtime.json'
+    $output = & pwsh -NoLogo -NoProfile -File $script:GuardScript `
+      -ExpectedOsType linux `
+      -RuntimeProvider native-wsl `
+      -ExpectedDockerHost 'unix:///var/run/docker.sock' `
+      -AutoRepair:$true `
+      -SnapshotPath $snapshotPath `
+      -GitHubOutputPath '' 2>&1
+    $LASTEXITCODE | Should -Be 0 -Because ($output -join "`n")
+
+    $snapshot = Get-Content -LiteralPath $snapshotPath -Raw | ConvertFrom-Json -Depth 12
+    $snapshot.expected.provider | Should -Be 'native-wsl'
+    $snapshot.expected.context | Should -Be ''
+    $snapshot.expected.dockerHost | Should -Be 'unix:///var/run/docker.sock'
+    $snapshot.result.status | Should -Be 'ok'
+    $snapshot.result.failureClass | Should -Be 'none'
+    $snapshot.observed.osType | Should -Be 'linux'
+    $snapshot.observed.dockerHost | Should -Be 'unix:///var/run/docker.sock'
+    $snapshot.observed.desktopBacked | Should -BeFalse
+  }
+
+  It 'rejects native-wsl provider when the pinned DOCKER_HOST still resolves to Docker Desktop' {
+    $work = Join-Path $TestDrive 'native-wsl-desktop-backed'
+    New-Item -ItemType Directory -Path $work -Force | Out-Null
+    & $script:CreateDockerWslStubs -WorkRoot $work
+
+    Set-Item Env:DOCKER_STUB_INFO_MODE 'parsed-linux'
+    Set-Item Env:DOCKER_STUB_INFO_JSON '{"OSType":"linux","OperatingSystem":"Docker Desktop","Name":"docker-desktop","Platform":{"Name":"Docker Desktop 4.41.0"},"Labels":["com.docker.desktop.address=npipe://"]}'
+    Set-Item Env:DOCKER_HOST 'unix:///var/run/docker.sock'
+
+    $snapshotPath = Join-Path $work 'runtime.json'
+    $output = & pwsh -NoLogo -NoProfile -File $script:GuardScript `
+      -ExpectedOsType linux `
+      -RuntimeProvider native-wsl `
+      -ExpectedDockerHost 'unix:///var/run/docker.sock' `
+      -AutoRepair:$true `
+      -SnapshotPath $snapshotPath `
+      -GitHubOutputPath '' 2>&1
+    $LASTEXITCODE | Should -Not -Be 0
+
+    $snapshot = Get-Content -LiteralPath $snapshotPath -Raw | ConvertFrom-Json -Depth 12
+    $snapshot.result.status | Should -Be 'mismatch-failed'
+    $snapshot.result.failureClass | Should -Be 'provider-mismatch'
+    $snapshot.observed.desktopBacked | Should -BeTrue
+    (($snapshot.repairActions -join "`n") -match 'docker context use') | Should -BeFalse
+    (($snapshot.repairActions -join "`n") -match 'docker engine switch') | Should -BeFalse
+    $snapshot.result.reason | Should -Match 'provider=native-wsl'
+  }
+}

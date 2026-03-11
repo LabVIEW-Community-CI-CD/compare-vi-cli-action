@@ -25,6 +25,29 @@
     "allowPolicyMutations": { "type": "boolean" },
     "allowReleaseAdmin": { "type": "boolean" },
     "stopWhenNoOpenEpics": { "type": "boolean" },
+    "hostIsolation": {
+      "type": "object",
+      "additionalProperties": true,
+      "properties": {
+        "mode": { "enum": ["hard-cutover", "phased-fallback", "guard-only"] },
+        "wslDistro": { "type": "string" },
+        "runnerServicePolicy": { "enum": ["stop-all-actions-runner-services", "detect-only", "best-effort"] },
+        "restoreRunnerServicesOnExit": { "type": "boolean" },
+        "pauseOnFingerprintDrift": { "type": "boolean" }
+      }
+    },
+    "dockerRuntime": {
+      "type": "object",
+      "additionalProperties": true,
+      "properties": {
+        "provider": { "enum": ["native-wsl", "desktop"] },
+        "dockerHost": { "type": "string" },
+        "expectedOsType": { "enum": ["linux", "windows"] },
+        "expectedContext": { "type": "string" },
+        "manageDockerEngine": { "type": "boolean" },
+        "allowHostEngineMutation": { "type": "boolean" }
+      }
+    },
     "turnBudget": {
       "type": "object",
       "additionalProperties": true,

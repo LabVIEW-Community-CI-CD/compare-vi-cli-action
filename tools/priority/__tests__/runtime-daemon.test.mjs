@@ -260,6 +260,9 @@ test('comparevi worker checkout allocator refreshes and reuses an existing lane 
           }
           return { stdout: 'upstream\norigin\n', stderr: '' };
         }
+        if (args[0] === 'status' && args[1] === '--porcelain' && args[2] === '--untracked-files=all') {
+          return { stdout: '', stderr: '' };
+        }
         if (args[0] === 'fetch' && args[1] === 'upstream' && args[2] === '--prune') {
           return { stdout: '', stderr: '' };
         }
@@ -276,13 +279,14 @@ test('comparevi worker checkout allocator refreshes and reuses an existing lane 
   assert.equal(prepared.ref, 'upstream/develop');
   assert.deepEqual(prepared.fetchedRemotes, ['upstream']);
   assert.deepEqual(prepared.pushRemotesNormalized, ['origin']);
+  assert.deepEqual(prepared.worktreeStateRepair, { repaired: false, dirtyEntries: [] });
   assert.equal(
     await readFile(path.join(checkoutPath, '.git'), 'utf8'),
-    `gitdir: ${path.join(repoRoot, '.git', 'worktrees', 'personal-995').replace(/\\/g, '/')}\n`
+    `gitdir: ${path.relative(checkoutPath, path.join(repoRoot, '.git', 'worktrees', 'personal-995')).replace(/\\/g, '/')}\n`
   );
   assert.equal(
     await readFile(path.join(worktreeAdminDir, 'gitdir'), 'utf8'),
-    `${path.join(checkoutPath, '.git').replace(/\\/g, '/')}\n`
+    `${path.relative(worktreeAdminDir, path.join(checkoutPath, '.git')).replace(/\\/g, '/')}\n`
   );
   assert.ok(calls.some((entry) => entry.command === 'git' && entry.args[0] === 'fetch' && entry.args[1] === 'upstream'));
   assert.ok(
@@ -306,6 +310,258 @@ test('comparevi worker checkout allocator refreshes and reuses an existing lane 
   );
 });
 
+test('comparevi worker checkout allocator stashes stale runtime drift before reusing a lane worktree', async () => {
+  const repoRoot = await mkdtemp(path.join(os.tmpdir(), 'runtime-daemon-worker-repair-'));
+  const laneId = 'origin-959';
+  const { checkoutPath } = compareviRuntimeTest.resolveCompareviWorkerCheckoutPath({
+    repoRoot,
+    repository: 'example/repo',
+    laneId
+  });
+  const worktreeAdminDir = path.join(repoRoot, '.git', 'worktrees', laneId);
+  await mkdir(checkoutPath, { recursive: true });
+  await mkdir(worktreeAdminDir, { recursive: true });
+  await writeFile(path.join(checkoutPath, '.git'), 'gitdir: C:/stale/windows/path\n', 'utf8');
+  await writeFile(path.join(worktreeAdminDir, 'gitdir'), '/mnt/c/stale/linux/path/.git\n', 'utf8');
+
+  const calls = [];
+  let statusCalls = 0;
+  const prepared = await compareviRuntimeTest.prepareCompareviWorkerCheckout({
+    repoRoot,
+    repository: 'example/repo',
+    schedulerDecision: {
+      activeLane: {
+        laneId
+      },
+      stepOptions: {}
+    },
+    deps: {
+      platform: 'linux',
+      execFileFn: async (command, args, options) => {
+        calls.push({ command, args, options });
+        if (command !== 'git') {
+          throw new Error(`unexpected command: ${command}`);
+        }
+        if (args[0] === 'status' && args[1] === '--porcelain' && args[2] === '--untracked-files=all') {
+          statusCalls += 1;
+          return {
+            stdout: statusCalls === 1 ? 'M  tools/priority/delivery-agent.mjs\n' : '',
+            stderr: ''
+          };
+        }
+        if (args[0] === 'stash' && args[1] === 'push') {
+          return { stdout: 'Saved working directory and index state', stderr: '' };
+        }
+        if (args[0] === 'remote') {
+          if (args[1] === 'get-url' && args[2] === 'origin') {
+            return { stdout: 'https://github.com/example/repo-fork\n', stderr: '' };
+          }
+          if (args[1] === 'get-url' && args[2] === '--push' && args[3] === 'origin') {
+            return { stdout: 'https://github.com/example/repo-fork\n', stderr: '' };
+          }
+          if (args[1] === 'set-url' && args[2] === '--push' && args[3] === 'origin') {
+            return { stdout: '', stderr: '' };
+          }
+          return { stdout: 'upstream\norigin\n', stderr: '' };
+        }
+        if (args[0] === 'fetch' && args[1] === 'upstream' && args[2] === '--prune') {
+          return { stdout: '', stderr: '' };
+        }
+        if (args[0] === 'checkout' && args[1] === '--force' && args[2] === '--detach' && args[3] === 'upstream/develop') {
+          return { stdout: '', stderr: '' };
+        }
+        throw new Error(`unexpected git args: ${args.join(' ')}`);
+      }
+    }
+  });
+
+  assert.equal(prepared.status, 'reused');
+  assert.equal(prepared.worktreeStateRepair.repaired, true);
+  assert.deepEqual(prepared.worktreeStateRepair.dirtyEntries, ['M  tools/priority/delivery-agent.mjs']);
+  assert.match(prepared.worktreeStateRepair.stashMessage, /^priority-runtime-worktree-repair:origin-959:/);
+  assert.ok(
+    calls.some(
+      (entry) =>
+        entry.command === 'git' &&
+        entry.args[0] === 'stash' &&
+        entry.args[1] === 'push' &&
+        entry.args.includes('--include-untracked')
+    )
+  );
+});
+
+test('comparevi worker checkout allocator rewrites new WSL worktree pointers into cross-plane relative metadata', async () => {
+  const repoRoot = await mkdtemp(path.join(os.tmpdir(), 'runtime-daemon-worker-create-relative-'));
+  const laneId = 'origin-1201';
+  const { checkoutPath } = compareviRuntimeTest.resolveCompareviWorkerCheckoutPath({
+    repoRoot,
+    repository: 'example/repo',
+    laneId
+  });
+  const worktreeAdminDir = path.join(repoRoot, '.git', 'worktrees', laneId);
+
+  const prepared = await compareviRuntimeTest.prepareCompareviWorkerCheckout({
+    repoRoot,
+    repository: 'example/repo',
+    schedulerDecision: {
+      activeLane: {
+        laneId
+      },
+      stepOptions: {}
+    },
+    deps: {
+      platform: 'linux',
+      execFileFn: async (command, args, options) => {
+        if (command !== 'git') {
+          throw new Error(`unexpected command: ${command}`);
+        }
+        if (args[0] === 'rev-parse' && args[1] === '--git-common-dir') {
+          return { stdout: '.git\n', stderr: '' };
+        }
+        if (args[0] === 'worktree' && args[1] === 'add') {
+          await mkdir(checkoutPath, { recursive: true });
+          await mkdir(worktreeAdminDir, { recursive: true });
+          await writeFile(path.join(checkoutPath, '.git'), `gitdir: /mnt/c/mock/.git/worktrees/${laneId}\n`, 'utf8');
+          await writeFile(path.join(worktreeAdminDir, 'gitdir'), `/mnt/c/mock/.runtime-worktrees/example-repo/${laneId}/.git\n`, 'utf8');
+          return { stdout: '', stderr: '' };
+        }
+        if (args[0] === 'remote') {
+          if (args[1] === 'set-url' && args[2] === '--push' && args[3] === 'origin') {
+            return { stdout: '', stderr: '' };
+          }
+          if (args[1] === 'get-url' && args[2] === 'origin') {
+            return { stdout: 'https://github.com/example/repo-fork\n', stderr: '' };
+          }
+          if (args[1] === 'get-url' && args[2] === '--push' && args[3] === 'origin') {
+            return { stdout: 'git@github.com:example/repo-fork.git\n', stderr: '' };
+          }
+          return { stdout: 'upstream\norigin\n', stderr: '' };
+        }
+        throw new Error(`unexpected git args: ${args.join(' ')}`);
+      }
+    }
+  });
+
+  assert.equal(prepared.status, 'created');
+  assert.equal(
+    await readFile(path.join(checkoutPath, '.git'), 'utf8'),
+    `gitdir: ${path.relative(checkoutPath, worktreeAdminDir).replace(/\\/g, '/')}\n`
+  );
+  assert.equal(
+    await readFile(path.join(worktreeAdminDir, 'gitdir'), 'utf8'),
+    `${path.relative(worktreeAdminDir, path.join(checkoutPath, '.git')).replace(/\\/g, '/')}\n`
+  );
+});
+
+test('comparevi worktree scrub repairs stale /work registrations and clears initializing locks', async () => {
+  const repoRoot = await mkdtemp(path.join(os.tmpdir(), 'runtime-daemon-worktree-scrub-'));
+  const runtimeRoot = path.join(repoRoot, '.runtime-worktrees', 'example-repo-fork');
+  const laneId = 'origin-10';
+  const checkoutPath = path.join(runtimeRoot, laneId);
+  const worktreeAdminDir = path.join(repoRoot, '.git', 'worktrees', laneId);
+
+  await mkdir(checkoutPath, { recursive: true });
+  await mkdir(worktreeAdminDir, { recursive: true });
+  await writeFile(path.join(checkoutPath, '.git'), `gitdir: /work/.git/worktrees/${laneId}\n`, 'utf8');
+  await writeFile(path.join(worktreeAdminDir, 'gitdir'), `/work/.runtime-worktrees/example-repo-fork/${laneId}/.git\n`, 'utf8');
+  await writeFile(path.join(worktreeAdminDir, 'locked'), 'initializing\n', 'utf8');
+
+  const pruneCalls = [];
+  const report = await compareviRuntimeTest.repairRegisteredWorktreeGitPointers({
+    repoRoot,
+    deps: {
+      execFileFn: async (command, args) => {
+        if (command === 'git' && args[0] === 'rev-parse' && args[1] === '--git-common-dir') {
+          return { stdout: '.git\n', stderr: '' };
+        }
+        pruneCalls.push({ command, args });
+        return { stdout: '', stderr: '' };
+      }
+    }
+  });
+
+  assert.deepEqual(report.unresolved, []);
+  assert.equal(report.repaired.length, 1);
+  assert.equal(report.repaired[0].laneSegment, laneId);
+  assert.equal(report.repaired[0].checkoutPath, checkoutPath);
+  assert.equal(report.unlocked.length, 1);
+  assert.equal(
+    await readFile(path.join(checkoutPath, '.git'), 'utf8'),
+    `gitdir: ${path.relative(checkoutPath, worktreeAdminDir).replace(/\\/g, '/')}\n`
+  );
+  assert.equal(
+    await readFile(path.join(worktreeAdminDir, 'gitdir'), 'utf8'),
+    `${path.relative(worktreeAdminDir, path.join(checkoutPath, '.git')).replace(/\\/g, '/')}\n`
+  );
+  await assert.rejects(readFile(path.join(worktreeAdminDir, 'locked'), 'utf8'));
+  assert.deepEqual(pruneCalls, [{ command: 'git', args: ['worktree', 'prune', '--verbose', '--expire', 'now'] }]);
+});
+
+test('comparevi worker checkout allocator reuses runtime worktrees from a clean worktree root via the git common dir', async () => {
+  const commonRepoRoot = await mkdtemp(path.join(os.tmpdir(), 'runtime-daemon-worker-common-root-'));
+  const repoRoot = path.join(commonRepoRoot, 'repair');
+  const laneId = 'origin-959';
+  const { checkoutPath } = compareviRuntimeTest.resolveCompareviWorkerCheckoutPath({
+    repoRoot,
+    repository: 'example/repo',
+    laneId
+  });
+  const worktreeAdminDir = path.join(commonRepoRoot, '.git', 'worktrees', laneId);
+
+  await mkdir(checkoutPath, { recursive: true });
+  await mkdir(worktreeAdminDir, { recursive: true });
+  await writeFile(path.join(checkoutPath, '.git'), `gitdir: /mnt/c/mock/.git/worktrees/${laneId}\n`, 'utf8');
+  await writeFile(path.join(worktreeAdminDir, 'gitdir'), `/mnt/c/mock/.runtime-worktrees/example-repo/${laneId}/.git\n`, 'utf8');
+
+  const prepared = await compareviRuntimeTest.prepareCompareviWorkerCheckout({
+    repoRoot,
+    repository: 'example/repo',
+    schedulerDecision: {
+      activeLane: {
+        laneId
+      },
+      stepOptions: {}
+    },
+    deps: {
+      platform: 'linux',
+      execFileFn: async (command, args) => {
+        if (command !== 'git') {
+          throw new Error(`unexpected command: ${command}`);
+        }
+        if (args[0] === 'rev-parse' && args[1] === '--git-common-dir') {
+          return { stdout: `${path.join(commonRepoRoot, '.git')}\n`, stderr: '' };
+        }
+        if (args[0] === 'status') {
+          return { stdout: '', stderr: '' };
+        }
+        if (args[0] === 'remote') {
+          if (args[1] === 'get-url' && args[2] === 'origin') {
+            return { stdout: 'https://github.com/example/repo-fork\n', stderr: '' };
+          }
+          if (args[1] === 'get-url' && args[2] === '--push' && args[3] === 'origin') {
+            return { stdout: 'git@github.com:example/repo-fork.git\n', stderr: '' };
+          }
+          return { stdout: 'upstream\norigin\n', stderr: '' };
+        }
+        if (args[0] === 'fetch' || (args[0] === 'checkout' && args[1] === '--force' && args[2] === '--detach')) {
+          return { stdout: '', stderr: '' };
+        }
+        throw new Error(`unexpected git args: ${args.join(' ')}`);
+      }
+    }
+  });
+
+  assert.equal(prepared.status, 'reused');
+  assert.equal(
+    await readFile(path.join(checkoutPath, '.git'), 'utf8'),
+    `gitdir: ${path.relative(checkoutPath, worktreeAdminDir).replace(/\\/g, '/')}\n`
+  );
+  assert.equal(
+    await readFile(path.join(worktreeAdminDir, 'gitdir'), 'utf8'),
+    `${path.relative(worktreeAdminDir, path.join(checkoutPath, '.git')).replace(/\\/g, '/')}\n`
+  );
+});
+
 test('comparevi worker checkout path sanitizes traversal-only segments and keeps the root under repoRoot', async () => {
   const repoRoot = await mkdtemp(path.join(os.tmpdir(), 'runtime-daemon-worker-sanitize-'));
   const { checkoutRoot, checkoutPath } = compareviRuntimeTest.resolveCompareviWorkerCheckoutPath({
@@ -316,6 +572,11 @@ test('comparevi worker checkout path sanitizes traversal-only segments and keeps
 
   assert.equal(checkoutRoot, path.join(repoRoot, '.runtime-worktrees', path.basename(repoRoot)));
   assert.equal(checkoutPath, path.join(checkoutRoot, 'runtime'));
+});
+
+test('comparevi worker path containment helper treats the root itself as within scope', () => {
+  const runtimeRoot = path.join('C:', 'repo', '.runtime-worktrees');
+  assert.equal(compareviRuntimeTest.isPathWithin(runtimeRoot, runtimeRoot), true);
 });
 
 test('comparevi worker bootstrap marks an allocated checkout ready after bootstrap passes', async () => {

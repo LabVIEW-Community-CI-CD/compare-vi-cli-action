@@ -4,6 +4,11 @@ import { spawnSync } from 'node:child_process';
 import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
+import { handoffStandingPriority } from './standing-priority-handoff.mjs';
+import {
+  resolveStandingPriorityLabels,
+  selectAutoStandingPriorityCandidate
+} from './sync-standing-priority.mjs';
 
 export const DELIVERY_AGENT_POLICY_SCHEMA = 'priority/delivery-agent-policy@v1';
 export const DELIVERY_AGENT_RUNTIME_STATE_SCHEMA = 'priority/delivery-agent-runtime-state@v1';
@@ -33,6 +38,21 @@ const DEFAULT_POLICY = {
   allowPolicyMutations: false,
   allowReleaseAdmin: false,
   stopWhenNoOpenEpics: true,
+  hostIsolation: {
+    mode: 'hard-cutover',
+    wslDistro: 'Ubuntu',
+    runnerServicePolicy: 'stop-all-actions-runner-services',
+    restoreRunnerServicesOnExit: true,
+    pauseOnFingerprintDrift: true,
+  },
+  dockerRuntime: {
+    provider: 'native-wsl',
+    dockerHost: 'unix:///var/run/docker.sock',
+    expectedOsType: 'linux',
+    expectedContext: '',
+    manageDockerEngine: false,
+    allowHostEngineMutation: false,
+  },
   turnBudget: {
     maxMinutes: 20,
     maxToolCalls: 12
@@ -73,6 +93,14 @@ function sanitizeSegment(value) {
 
 function resolvePath(repoRoot, filePath) {
   return path.isAbsolute(filePath) ? filePath : path.join(repoRoot, filePath);
+}
+
+function resolveExecutionRoot(repoRoot, taskPacket) {
+  const workerCheckoutPath =
+    normalizeText(taskPacket?.evidence?.lane?.workerCheckoutPath) ||
+    normalizeText(taskPacket?.branch?.checkoutPath) ||
+    '';
+  return workerCheckoutPath ? resolvePath(repoRoot, workerCheckoutPath) : repoRoot;
 }
 
 async function readJsonIfPresent(filePath) {
@@ -250,6 +278,17 @@ export function classifyPullRequestWork(pr = {}) {
   const reviewDecision = normalizeText(pr.reviewDecision).toUpperCase();
   const isDraft = pr.isDraft === true;
 
+  if (mergeStateStatus === 'BEHIND') {
+    return {
+      laneLifecycle: 'waiting-ci',
+      blockerClass: 'ci',
+      checksStatus: checks.status,
+      readyToMerge: false,
+      retryable: true,
+      nextWakeCondition: 'branch-synced',
+      syncRequired: true
+    };
+  }
   if (isDraft || reviewDecision === 'REVIEW_REQUIRED' || reviewDecision === 'CHANGES_REQUESTED') {
     return {
       laneLifecycle: 'waiting-review',
@@ -257,7 +296,8 @@ export function classifyPullRequestWork(pr = {}) {
       checksStatus: checks.status,
       readyToMerge: false,
       retryable: true,
-      nextWakeCondition: 'review-disposition-updated'
+      nextWakeCondition: 'review-disposition-updated',
+      syncRequired: false
     };
   }
   if (mergeStateStatus === 'DIRTY' || mergeable === 'CONFLICTING' || mergeable === 'UNMERGEABLE') {
@@ -267,7 +307,8 @@ export function classifyPullRequestWork(pr = {}) {
       checksStatus: checks.status,
       readyToMerge: false,
       retryable: false,
-      nextWakeCondition: 'manual-conflict-resolution'
+      nextWakeCondition: 'manual-conflict-resolution',
+      syncRequired: false
     };
   }
   if (checks.blockerClass === 'ci') {
@@ -277,7 +318,8 @@ export function classifyPullRequestWork(pr = {}) {
       checksStatus: checks.status,
       readyToMerge: false,
       retryable: true,
-      nextWakeCondition: 'checks-green'
+      nextWakeCondition: 'checks-green',
+      syncRequired: false
     };
   }
   return {
@@ -286,22 +328,25 @@ export function classifyPullRequestWork(pr = {}) {
     checksStatus: checks.status,
     readyToMerge: true,
     retryable: false,
-    nextWakeCondition: 'merge-attempt'
+    nextWakeCondition: 'merge-attempt',
+    syncRequired: false
   };
 }
 
-function prLifecyclePriority(lifecycle) {
+function prLifecyclePriority(status) {
+  const lifecycle = typeof status === 'string' ? status : normalizeText(status?.laneLifecycle).toLowerCase();
+  const syncRequired = status && typeof status === 'object' ? status.syncRequired === true : false;
   switch (lifecycle) {
     case 'ready-merge':
       return 0;
-    case 'waiting-review':
-      return 1;
     case 'waiting-ci':
+      return syncRequired ? 1 : 3;
+    case 'waiting-review':
       return 2;
     case 'blocked':
-      return 3;
-    default:
       return 4;
+    default:
+      return 5;
   }
 }
 
@@ -392,7 +437,7 @@ function selectCanonicalCandidate({ issueGraph, implementationRemote }) {
   )
     .map((pullRequest) => pullRequest._candidate)
     .sort((left, right) => {
-      const lifecycleDelta = prLifecyclePriority(left.prStatus.laneLifecycle) - prLifecyclePriority(right.prStatus.laneLifecycle);
+      const lifecycleDelta = prLifecyclePriority(left.prStatus) - prLifecyclePriority(right.prStatus);
       if (lifecycleDelta !== 0) return lifecycleDelta;
       return compareIssueRank(left.issue, right.issue);
     });
@@ -512,6 +557,14 @@ export async function loadDeliveryAgentPolicy(repoRoot, deps = {}) {
     retry: {
       ...DEFAULT_POLICY.retry,
       ...(filePolicy?.retry && typeof filePolicy.retry === 'object' ? filePolicy.retry : {})
+    },
+    hostIsolation: {
+      ...DEFAULT_POLICY.hostIsolation,
+      ...(filePolicy?.hostIsolation && typeof filePolicy.hostIsolation === 'object' ? filePolicy.hostIsolation : {})
+    },
+    dockerRuntime: {
+      ...DEFAULT_POLICY.dockerRuntime,
+      ...(filePolicy?.dockerRuntime && typeof filePolicy.dockerRuntime === 'object' ? filePolicy.dockerRuntime : {})
     },
     codingTurnCommand: normalizeCommandList(filePolicy?.codingTurnCommand)
   };
@@ -772,6 +825,7 @@ export async function buildCanonicalDeliveryDecision({
               reviewDecision: pullRequest.reviewDecision,
               mergeStateStatus: pullRequest.mergeStateStatus,
               mergeable: pullRequest.mergeable,
+              syncRequired: pullRequestStatus?.syncRequired === true,
               checks: {
                 status: pullRequestStatus?.checksStatus ?? 'not-linked',
                 blockerClass: pullRequestStatus?.blockerClass ?? 'none'
@@ -961,6 +1015,208 @@ async function runCommand(command, args, { cwd, env }, deps = {}) {
   };
 }
 
+async function listOpenIssues({ repository, repoRoot, deps = {} }) {
+  if (typeof deps.listOpenIssuesFn === 'function') {
+    const result = await deps.listOpenIssuesFn({ repository, repoRoot });
+    return Array.isArray(result) ? result : [];
+  }
+
+  const result = await runCommand(
+    'gh',
+    [
+      'issue',
+      'list',
+      '--repo',
+      repository,
+      '--state',
+      'open',
+      '--limit',
+      '100',
+      '--json',
+      'number,title,body,labels,createdAt,updatedAt,url'
+    ],
+    { cwd: repoRoot, env: process.env },
+    deps
+  );
+  if (result.status !== 0) {
+    throw new Error(normalizeText(result.stderr) || normalizeText(result.stdout) || 'gh issue list failed');
+  }
+
+  let parsed = [];
+  try {
+    parsed = JSON.parse(result.stdout || '[]');
+  } catch (error) {
+    throw new Error(`Unable to parse gh issue list output: ${error.message}`);
+  }
+
+  return Array.isArray(parsed)
+    ? parsed
+        .map((entry) => normalizeIssueLike({ ...entry, repository }))
+        .filter((entry) => entry && entry.state === 'OPEN')
+    : [];
+}
+
+async function editIssueLabels({ repository, issueNumber, repoRoot, removeLabels = [], addLabels = [], deps = {} }) {
+  if (typeof deps.editIssueLabelsFn === 'function') {
+    return deps.editIssueLabelsFn({ repository, issueNumber, repoRoot, removeLabels, addLabels });
+  }
+
+  const args = ['issue', 'edit', String(issueNumber), '--repo', repository];
+  for (const label of removeLabels.map((entry) => normalizeText(entry)).filter(Boolean)) {
+    args.push('--remove-label', label);
+  }
+  for (const label of addLabels.map((entry) => normalizeText(entry)).filter(Boolean)) {
+    args.push('--add-label', label);
+  }
+
+  if (args.length === 5) {
+    return { status: 0, stdout: '', stderr: '' };
+  }
+
+  const result = await runCommand('gh', args, { cwd: repoRoot, env: process.env }, deps);
+  if (result.status !== 0) {
+    throw new Error(normalizeText(result.stderr) || normalizeText(result.stdout) || 'gh issue edit failed');
+  }
+  return result;
+}
+
+async function closeIssueWithComment({ repository, issueNumber, repoRoot, comment, deps = {} }) {
+  if (typeof deps.closeIssueWithCommentFn === 'function') {
+    return deps.closeIssueWithCommentFn({ repository, issueNumber, repoRoot, comment });
+  }
+
+  const args = ['issue', 'close', String(issueNumber), '--repo', repository];
+  if (normalizeText(comment)) {
+    args.push('--comment', normalizeText(comment));
+  }
+
+  const result = await runCommand('gh', args, { cwd: repoRoot, env: process.env }, deps);
+  if (result.status !== 0) {
+    throw new Error(normalizeText(result.stderr) || normalizeText(result.stdout) || 'gh issue close failed');
+  }
+  return result;
+}
+
+function buildMergedIssueCloseComment({ issueNumber, pullRequestNumber, pullRequestUrl, nextStandingIssueNumber }) {
+  const prReference = pullRequestUrl
+    ? `PR #${pullRequestNumber} (${pullRequestUrl})`
+    : pullRequestNumber
+      ? `PR #${pullRequestNumber}`
+      : 'the merged pull request';
+  if (nextStandingIssueNumber) {
+    return `Completed by ${prReference}. Standing priority has advanced from #${issueNumber} to #${nextStandingIssueNumber}.`;
+  }
+  return `Completed by ${prReference}. No next standing-priority issue is currently labeled, so the queue is now idle until a new issue is promoted.`;
+}
+
+async function finalizeMergedPullRequest({ taskPacket, mergeResult, repoRoot, deps = {} }) {
+  if (typeof deps.finalizeMergedPullRequestFn === 'function') {
+    return deps.finalizeMergedPullRequestFn({ taskPacket, mergeResult, repoRoot });
+  }
+
+  const repository = normalizeText(taskPacket?.repository);
+  const delivery = taskPacket?.evidence?.delivery ?? {};
+  const selectedIssue = delivery.selectedIssue ?? delivery.standingIssue ?? null;
+  const standingIssue = delivery.standingIssue ?? null;
+  const pullRequest = delivery.pullRequest ?? taskPacket?.pullRequest ?? null;
+  const selectedIssueNumber = coercePositiveInteger(selectedIssue?.number);
+  const standingIssueNumber = coercePositiveInteger(standingIssue?.number);
+  const pullRequestNumber = coercePositiveInteger(pullRequest?.number) ?? extractPullRequestNumberFromUrl(pullRequest?.url);
+
+  if (!repository || !selectedIssueNumber) {
+    return {
+      selectedIssueNumber: null,
+      standingIssueNumber,
+      nextStandingIssueNumber: null,
+      helperCallsExecuted: []
+    };
+  }
+
+  const helperCallsExecuted = [];
+  let nextStandingIssueNumber = null;
+  if (standingIssueNumber && standingIssueNumber === selectedIssueNumber) {
+    const openIssues = await listOpenIssues({ repository, repoRoot, deps });
+    const nextCandidate = selectAutoStandingPriorityCandidate(openIssues, {
+      excludeIssueNumbers: [standingIssueNumber]
+    });
+    if (nextCandidate?.number) {
+      const handoffFn = deps.handoffStandingPriorityFn ?? handoffStandingPriority;
+      await handoffFn(nextCandidate.number, {
+        repoSlug: repository,
+        repoRoot,
+        env: {
+          ...process.env,
+          GITHUB_REPOSITORY: repository
+        },
+        logger: deps.handoffLogger ?? (() => {}),
+        releaseLease: false
+      });
+      nextStandingIssueNumber = nextCandidate.number;
+      helperCallsExecuted.push('node tools/priority/standing-priority-handoff.mjs --auto');
+    } else {
+      const standingLabels = resolveStandingPriorityLabels(repoRoot, repository, process.env);
+      if (standingLabels.length > 0) {
+        await editIssueLabels({
+          repository,
+          issueNumber: standingIssueNumber,
+          repoRoot,
+          removeLabels: standingLabels,
+          deps
+        });
+        helperCallsExecuted.push(`gh issue edit ${standingIssueNumber} --remove-label ${standingLabels.join(',')}`);
+      }
+      if (typeof deps.syncStandingPriorityFn === 'function') {
+        await deps.syncStandingPriorityFn({
+          env: {
+            ...process.env,
+            GITHUB_REPOSITORY: repository
+          }
+        });
+      } else {
+        const syncResult = await runCommand(
+          'node',
+          ['tools/priority/sync-standing-priority.mjs'],
+          {
+            cwd: repoRoot,
+            env: {
+              ...process.env,
+              GITHUB_REPOSITORY: repository
+            }
+          },
+          deps
+        );
+        if (syncResult.status !== 0) {
+          throw new Error(
+            normalizeText(syncResult.stderr) || normalizeText(syncResult.stdout) || 'priority sync failed after merge finalization'
+          );
+        }
+      }
+      helperCallsExecuted.push('node tools/priority/sync-standing-priority.mjs');
+    }
+  }
+
+  await closeIssueWithComment({
+    repository,
+    issueNumber: selectedIssueNumber,
+    repoRoot,
+    comment: buildMergedIssueCloseComment({
+      issueNumber: selectedIssueNumber,
+      pullRequestNumber,
+      pullRequestUrl: normalizeText(pullRequest?.url) || null,
+      nextStandingIssueNumber
+    }),
+    deps
+  });
+  helperCallsExecuted.push(`gh issue close ${selectedIssueNumber}`);
+
+  return {
+    selectedIssueNumber,
+    standingIssueNumber,
+    nextStandingIssueNumber,
+    helperCallsExecuted
+  };
+}
+
 async function autoSliceIssue({ taskPacket, repoRoot, deps = {} }) {
   if (typeof deps.autoSliceIssueFn === 'function') {
     return deps.autoSliceIssueFn({ taskPacket, repoRoot });
@@ -1115,9 +1371,243 @@ async function mergePullRequest({ taskPacket, repoRoot, deps = {} }) {
   };
 }
 
-async function invokeCodingTurnCommand({ taskPacket, policy, repoRoot, policyPath, deps = {} }) {
+async function updatePullRequestBranch({ taskPacket, repoRoot, executionRoot = repoRoot, deps = {} }) {
+  if (typeof deps.updatePullRequestBranchFn === 'function') {
+    return deps.updatePullRequestBranchFn({ taskPacket, repoRoot, executionRoot });
+  }
+  const pullRequest = taskPacket?.evidence?.delivery?.pullRequest ?? null;
+  const repository = normalizeText(taskPacket?.repository);
+  const prNumber = coercePositiveInteger(pullRequest?.number) ?? extractPullRequestNumberFromUrl(pullRequest?.url);
+  const branchName =
+    normalizeText(pullRequest?.headRefName) ||
+    normalizeText(taskPacket?.branch?.name) ||
+    normalizeText(taskPacket?.evidence?.lane?.branch) ||
+    null;
+  const baseRefName = normalizeText(pullRequest?.baseRefName) || 'develop';
+  if (!repository || !prNumber) {
+    throw new Error('Branch sync action requires repository and pull request number.');
+  }
+  const result = await runCommand(
+    'gh',
+    ['pr', 'update-branch', String(prNumber), '--repo', repository],
+    { cwd: executionRoot, env: process.env },
+    deps
+  );
+  if (result.status !== 0) {
+    const message = normalizeText(result.stderr) || normalizeText(result.stdout) || `pr update-branch failed (${result.status})`;
+    const mergeBlocked = /conflict|rebase|merge/i.test(message);
+    const helperCallsExecuted = ['gh pr update-branch'];
+    if (!isRateLimitMessage(message) && !mergeBlocked && branchName) {
+      const workspaceStatus = await runCommand(
+        'git',
+        ['status', '--porcelain'],
+        { cwd: executionRoot, env: process.env },
+        deps
+      );
+      if (workspaceStatus.status === 0 && !normalizeText(workspaceStatus.stdout)) {
+        const upstreamFetchResult = await runCommand(
+          'git',
+          ['fetch', 'upstream', baseRefName],
+          { cwd: executionRoot, env: process.env },
+          deps
+        );
+        helperCallsExecuted.push(`git fetch upstream ${baseRefName}`);
+        if (upstreamFetchResult.status !== 0) {
+          const upstreamFetchMessage =
+            normalizeText(upstreamFetchResult.stderr) ||
+            normalizeText(upstreamFetchResult.stdout) ||
+            `git fetch upstream failed (${upstreamFetchResult.status})`;
+          return {
+            status: 'blocked',
+            outcome: isRateLimitMessage(upstreamFetchMessage) ? 'rate-limit' : 'branch-sync-failed',
+            reason: upstreamFetchMessage,
+            source: 'delivery-agent-broker',
+            details: {
+              actionType: 'sync-pr-branch',
+              laneLifecycle: 'waiting-ci',
+              blockerClass: isRateLimitMessage(upstreamFetchMessage) ? 'rate-limit' : 'ci',
+              retryable: true,
+              nextWakeCondition: isRateLimitMessage(upstreamFetchMessage) ? 'github-rate-limit-reset' : 'branch-sync-retry',
+              helperCallsExecuted,
+              filesTouched: []
+            }
+          };
+        }
+        const originFetchResult = await runCommand(
+          'git',
+          ['fetch', 'origin', branchName],
+          { cwd: executionRoot, env: process.env },
+          deps
+        );
+        helperCallsExecuted.push(`git fetch origin ${branchName}`);
+        if (originFetchResult.status !== 0) {
+          const originFetchMessage =
+            normalizeText(originFetchResult.stderr) ||
+            normalizeText(originFetchResult.stdout) ||
+            `git fetch origin failed (${originFetchResult.status})`;
+          return {
+            status: 'blocked',
+            outcome: isRateLimitMessage(originFetchMessage) ? 'rate-limit' : 'branch-sync-failed',
+            reason: originFetchMessage,
+            source: 'delivery-agent-broker',
+            details: {
+              actionType: 'sync-pr-branch',
+              laneLifecycle: 'waiting-ci',
+              blockerClass: isRateLimitMessage(originFetchMessage) ? 'rate-limit' : 'ci',
+              retryable: true,
+              nextWakeCondition: isRateLimitMessage(originFetchMessage) ? 'github-rate-limit-reset' : 'branch-sync-retry',
+              helperCallsExecuted,
+              filesTouched: []
+            }
+          };
+        }
+        const checkoutResult = await runCommand('git', ['checkout', branchName], { cwd: executionRoot, env: process.env }, deps);
+        helperCallsExecuted.push(`git checkout ${branchName}`);
+        if (checkoutResult.status !== 0) {
+          const checkoutMessage =
+            normalizeText(checkoutResult.stderr) ||
+            normalizeText(checkoutResult.stdout) ||
+            `git checkout failed (${checkoutResult.status})`;
+          return {
+            status: 'blocked',
+            outcome: isRateLimitMessage(checkoutMessage) ? 'rate-limit' : 'branch-sync-failed',
+            reason: checkoutMessage,
+            source: 'delivery-agent-broker',
+            details: {
+              actionType: 'sync-pr-branch',
+              laneLifecycle: 'waiting-ci',
+              blockerClass: isRateLimitMessage(checkoutMessage) ? 'rate-limit' : 'ci',
+              retryable: true,
+              nextWakeCondition: isRateLimitMessage(checkoutMessage) ? 'github-rate-limit-reset' : 'branch-sync-retry',
+              helperCallsExecuted,
+              filesTouched: []
+            }
+          };
+        }
+        const rebaseResult = await runCommand(
+          'git',
+          ['rebase', `upstream/${baseRefName}`],
+          { cwd: executionRoot, env: process.env },
+          deps
+        );
+        helperCallsExecuted.push(`git rebase upstream/${baseRefName}`);
+        if (rebaseResult.status === 0) {
+          const pushResult = await runCommand(
+            'git',
+            ['push', '--force-with-lease', 'origin', `HEAD:${branchName}`],
+            { cwd: executionRoot, env: process.env },
+            deps
+          );
+          helperCallsExecuted.push(`git push --force-with-lease origin HEAD:${branchName}`);
+          if (pushResult.status === 0) {
+            return {
+              status: 'completed',
+              outcome: 'branch-updated',
+              reason: `Updated PR #${prNumber} with the latest base branch.`,
+              source: 'delivery-agent-broker',
+              details: {
+                actionType: 'sync-pr-branch',
+                laneLifecycle: 'waiting-ci',
+                blockerClass: 'ci',
+                retryable: true,
+                nextWakeCondition: 'checks-green',
+                helperCallsExecuted,
+                filesTouched: []
+              }
+            };
+          }
+          const pushMessage =
+            normalizeText(pushResult.stderr) || normalizeText(pushResult.stdout) || `git push failed (${pushResult.status})`;
+          return {
+            status: 'blocked',
+            outcome: isRateLimitMessage(pushMessage) ? 'rate-limit' : 'branch-sync-failed',
+            reason: pushMessage,
+            source: 'delivery-agent-broker',
+            details: {
+              actionType: 'sync-pr-branch',
+              laneLifecycle: 'waiting-ci',
+              blockerClass: isRateLimitMessage(pushMessage) ? 'rate-limit' : 'ci',
+              retryable: true,
+              nextWakeCondition: isRateLimitMessage(pushMessage) ? 'github-rate-limit-reset' : 'branch-sync-retry',
+              helperCallsExecuted,
+              filesTouched: []
+            }
+          };
+        }
+        const rebaseMessage =
+          normalizeText(rebaseResult.stderr) || normalizeText(rebaseResult.stdout) || `git rebase failed (${rebaseResult.status})`;
+        if (/conflict|could not apply|resolve all conflicts/i.test(rebaseMessage)) {
+          const abortResult = await runCommand(
+            'git',
+            ['rebase', '--abort'],
+            { cwd: executionRoot, env: process.env },
+            deps
+          );
+          if (abortResult.status === 0) {
+            helperCallsExecuted.push('git rebase --abort');
+          }
+        }
+        return {
+          status: 'blocked',
+          outcome: /conflict|could not apply|resolve all conflicts/i.test(rebaseMessage)
+            ? 'branch-sync-blocked'
+            : 'branch-sync-failed',
+          reason: rebaseMessage,
+          source: 'delivery-agent-broker',
+          details: {
+            actionType: 'sync-pr-branch',
+            laneLifecycle: /conflict|could not apply|resolve all conflicts/i.test(rebaseMessage) ? 'blocked' : 'waiting-ci',
+            blockerClass: /conflict|could not apply|resolve all conflicts/i.test(rebaseMessage) ? 'merge' : 'ci',
+            retryable: /conflict|could not apply|resolve all conflicts/i.test(rebaseMessage) ? false : true,
+            nextWakeCondition: /conflict|could not apply|resolve all conflicts/i.test(rebaseMessage)
+              ? 'manual-conflict-resolution'
+              : 'branch-sync-retry',
+            helperCallsExecuted,
+            filesTouched: []
+          }
+        };
+      }
+    }
+    return {
+      status: 'blocked',
+      outcome: isRateLimitMessage(message) ? 'rate-limit' : mergeBlocked ? 'branch-sync-blocked' : 'branch-sync-failed',
+      reason: message,
+      source: 'delivery-agent-broker',
+      details: {
+        actionType: 'sync-pr-branch',
+        laneLifecycle: mergeBlocked ? 'blocked' : 'waiting-ci',
+        blockerClass: isRateLimitMessage(message) ? 'rate-limit' : mergeBlocked ? 'merge' : 'ci',
+        retryable: isRateLimitMessage(message) || !mergeBlocked,
+        nextWakeCondition: isRateLimitMessage(message)
+          ? 'github-rate-limit-reset'
+          : mergeBlocked
+            ? 'manual-conflict-resolution'
+            : 'branch-sync-retry',
+        helperCallsExecuted,
+        filesTouched: []
+      }
+    };
+  }
+  return {
+    status: 'completed',
+    outcome: 'branch-updated',
+    reason: `Updated PR #${prNumber} with the latest base branch.`,
+    source: 'delivery-agent-broker',
+    details: {
+      actionType: 'sync-pr-branch',
+      laneLifecycle: 'waiting-ci',
+      blockerClass: 'ci',
+      retryable: true,
+      nextWakeCondition: 'checks-green',
+      helperCallsExecuted: ['gh pr update-branch'],
+      filesTouched: []
+    }
+  };
+}
+
+async function invokeCodingTurnCommand({ taskPacket, policy, repoRoot, executionRoot = repoRoot, policyPath, deps = {} }) {
   if (typeof deps.invokeCodingTurnFn === 'function') {
-    return deps.invokeCodingTurnFn({ taskPacket, policy, repoRoot, policyPath });
+    return deps.invokeCodingTurnFn({ taskPacket, policy, repoRoot, executionRoot, policyPath });
   }
 
   const command = normalizeCommandList(policy?.codingTurnCommand);
@@ -1147,9 +1637,10 @@ async function invokeCodingTurnCommand({ taskPacket, policy, repoRoot, policyPat
       COMPAREVI_DELIVERY_TASK_PACKET_PATH: taskPacket.__taskPacketPath || '',
       COMPAREVI_DELIVERY_RECEIPT_PATH: receiptPath,
       COMPAREVI_DELIVERY_POLICY_PATH: policyPath || '',
-      COMPAREVI_DELIVERY_REPO_ROOT: repoRoot
+      COMPAREVI_DELIVERY_REPO_ROOT: executionRoot,
+      COMPAREVI_DELIVERY_CONTROL_ROOT: repoRoot
     };
-    const result = await runCommand(command[0], command.slice(1), { cwd: repoRoot, env }, deps);
+    const result = await runCommand(command[0], command.slice(1), { cwd: executionRoot, env }, deps);
     const fileReceipt = await readJsonIfPresent(receiptPath);
     if (result.status !== 0) {
       const message = normalizeText(result.stderr) || normalizeText(result.stdout) || `${command[0]} failed (${result.status})`;
@@ -1229,6 +1720,12 @@ export function planDeliveryBrokerAction(taskPacket = {}) {
     };
   }
   if (pullRequest?.url) {
+    if (pullRequest.syncRequired === true || normalizeText(pullRequest.mergeStateStatus).toUpperCase() === 'BEHIND') {
+      return {
+        actionType: 'sync-pr-branch',
+        laneLifecycle: 'waiting-ci'
+      };
+    }
     if (pullRequest.readyToMerge === true) {
       return {
         actionType: 'merge-pr',
@@ -1278,6 +1775,7 @@ export async function runDeliveryTurnBroker({
     ...taskPacket,
     __taskPacketPath: taskPacketPath
   };
+  const executionRoot = resolveExecutionRoot(repoRoot, enrichedPacket);
   const planned = planDeliveryBrokerAction(enrichedPacket);
 
   if (planned.actionType === 'idle') {
@@ -1319,12 +1817,70 @@ export async function runDeliveryTurnBroker({
     };
   }
 
+  if (planned.actionType === 'sync-pr-branch') {
+    return updatePullRequestBranch({
+      taskPacket: enrichedPacket,
+      repoRoot,
+      executionRoot,
+      deps
+    });
+  }
+
   if (planned.actionType === 'merge-pr') {
-    return mergePullRequest({
+    const mergeResult = await mergePullRequest({
       taskPacket: enrichedPacket,
       repoRoot,
       deps
     });
+    if (mergeResult.status !== 'completed' || mergeResult.outcome !== 'merged') {
+      return mergeResult;
+    }
+
+    try {
+      const finalization = await finalizeMergedPullRequest({
+        taskPacket: enrichedPacket,
+        mergeResult,
+        repoRoot,
+        deps
+      });
+      return {
+        ...mergeResult,
+        reason:
+          finalization.selectedIssueNumber && finalization.nextStandingIssueNumber
+            ? `Merged PR and closed issue #${finalization.selectedIssueNumber}; standing priority advanced to #${finalization.nextStandingIssueNumber}.`
+            : finalization.selectedIssueNumber
+              ? `Merged PR and closed issue #${finalization.selectedIssueNumber}.`
+              : mergeResult.reason,
+        details: {
+          ...mergeResult.details,
+          helperCallsExecuted: [
+            ...(Array.isArray(mergeResult.details?.helperCallsExecuted) ? mergeResult.details.helperCallsExecuted : []),
+            ...(Array.isArray(finalization.helperCallsExecuted) ? finalization.helperCallsExecuted : [])
+          ],
+          finalizedIssueNumber: finalization.selectedIssueNumber,
+          standingIssueNumber: finalization.standingIssueNumber,
+          nextStandingIssueNumber: finalization.nextStandingIssueNumber ?? null
+        }
+      };
+    } catch (error) {
+      return {
+        status: 'blocked',
+        outcome: 'merged-finalization-blocked',
+        reason: `${mergeResult.reason} Finalization failed: ${error.message}`,
+        source: 'delivery-agent-broker',
+        details: {
+          actionType: 'merge-pr',
+          laneLifecycle: 'blocked',
+          blockerClass: 'helperbug',
+          retryable: true,
+          nextWakeCondition: 'merged-lane-finalization-retry',
+          helperCallsExecuted: Array.isArray(mergeResult.details?.helperCallsExecuted)
+            ? mergeResult.details.helperCallsExecuted
+            : [],
+          filesTouched: []
+        }
+      };
+    }
   }
 
   if (planned.actionType === 'reshape-backlog') {
@@ -1357,6 +1913,7 @@ export async function runDeliveryTurnBroker({
     taskPacket: enrichedPacket,
     policy,
     repoRoot,
+    executionRoot,
     policyPath: effectivePolicyPath,
     deps
   });
