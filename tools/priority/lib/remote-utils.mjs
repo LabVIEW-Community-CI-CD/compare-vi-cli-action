@@ -281,13 +281,45 @@ export function ensureOriginFork(repoRoot, upstream, options = {}) {
   return ensureForkRemote(repoRoot, upstream, DEFAULT_FORK_REMOTE, options);
 }
 
-export function pushBranch(repoRoot, branch, remote = DEFAULT_FORK_REMOTE) {
-  const selectedRemote = normalizeForkRemoteName(remote);
+export function remoteBranchExists(repoRoot, remote, branch, { runFn = run } = {}) {
   try {
-    run('git', ['push', '--set-upstream', selectedRemote, branch], {
+    const output = runFn('git', ['ls-remote', '--heads', remote, branch], {
       cwd: repoRoot
     });
+    return Boolean(String(output || '').trim());
   } catch {
+    return false;
+  }
+}
+
+export function pushBranch(
+  repoRoot,
+  branch,
+  remote = DEFAULT_FORK_REMOTE,
+  {
+    runFn = run,
+    remoteBranchExistsFn = remoteBranchExists
+  } = {}
+) {
+  const selectedRemote = normalizeForkRemoteName(remote);
+  try {
+    runFn('git', ['push', '--set-upstream', selectedRemote, branch], {
+      cwd: repoRoot
+    });
+    return {
+      status: 'pushed',
+      remote: selectedRemote,
+      branch
+    };
+  } catch {
+    if (remoteBranchExistsFn(repoRoot, selectedRemote, branch, { runFn })) {
+      return {
+        status: 'already-published',
+        remote: selectedRemote,
+        branch,
+        recoveredFromPushFailure: true
+      };
+    }
     throw new Error(`Failed to push branch to ${selectedRemote}. Resolve the push error above.`);
   }
 }
