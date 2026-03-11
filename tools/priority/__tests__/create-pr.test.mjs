@@ -423,3 +423,52 @@ test('createPriorityPr uses mirror metadata for PR closing references while matc
   assert.match(observedTitle, /#966/);
   assert.match(observedBody, /Closes #966/);
 });
+
+test('createPriorityPr preserves an already-published human-drafted PR so a later ready-for-review transition can trigger a fresh Copilot review', () => {
+  const result = createPriorityPr({
+    env: {},
+    options: {
+      repository: 'example/upstream',
+      issue: 963,
+      branch: 'issue/963-org-owned-fork-pr-helper',
+      base: 'develop',
+      title: 'Explicit helper title',
+      body: 'Body'
+    },
+    getRepoRootFn: () => '/tmp/repo',
+    getCurrentBranchFn: () => 'issue/000-ignored',
+    ensureGhCliFn: () => {},
+    resolveUpstreamFn: () => {
+      throw new Error('should not resolve upstream when --repo is explicit');
+    },
+    ensureForkRemoteFn: (_repoRoot, _upstream, remote) => ({
+      owner: 'LabVIEW-Community-CI-CD',
+      repo: 'compare-vi-cli-action-fork',
+      sameOwnerFork: true,
+      remoteName: remote
+    }),
+    pushBranchFn: () => ({
+      status: 'already-published',
+      remote: 'origin',
+      branch: 'issue/963-org-owned-fork-pr-helper',
+      recoveredFromPushFailure: true
+    }),
+    runGhPrCreateFn: () => ({
+      strategy: 'graphql-same-owner-fork',
+      reusedExisting: true,
+      pullRequest: {
+        number: 963,
+        url: 'https://github.com/LabVIEW-Community-CI-CD/compare-vi-cli-action/pull/963',
+        isDraft: true
+      }
+    }),
+    resolveStandingIssueNumberFn: () => {
+      throw new Error('should not resolve standing priority when --issue is explicit');
+    }
+  });
+
+  assert.equal(result.pushStatus, 'already-published');
+  assert.equal(result.reusedExistingPullRequest, true);
+  assert.equal(result.pullRequest.number, 963);
+  assert.equal(result.pullRequest.isDraft, true);
+});

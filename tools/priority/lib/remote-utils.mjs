@@ -352,6 +352,23 @@ export function buildGhPrCreateArgs({ upstream, origin, headRepository, branch, 
   ];
 }
 
+export function buildGhPrListArgs({ upstream, branch, base }) {
+  return [
+    'pr',
+    'list',
+    '--repo',
+    buildRepositorySlug(upstream),
+    '--state',
+    'open',
+    '--base',
+    base,
+    '--head',
+    branch,
+    '--json',
+    'number,url,state,isDraft,headRefName,baseRefName,headRepositoryOwner,isCrossRepository'
+  ];
+}
+
 export function selectPullRequestCreateStrategy({ upstream, origin, headRepository }) {
   const resolvedHeadRepository = headRepository ?? origin;
   if (
@@ -419,12 +436,57 @@ export function extractPullRequestFromMutation(payload) {
   return payload?.data?.createPullRequest?.pullRequest ?? null;
 }
 
+export function isExistingPullRequestError(error) {
+  return /a pull request already exists/i.test(String(error?.message ?? error ?? ''));
+}
+
+export function findExistingPullRequest(
+  repoRoot,
+  { upstream, origin, headRepository, branch, base },
+  {
+    runGhJsonFn = runGhJson,
+    spawnSyncFn = spawnSync
+  } = {}
+) {
+  const resolvedHeadRepository = headRepository ?? origin;
+  const expectedOwner = String(resolvedHeadRepository?.owner ?? '')
+    .trim()
+    .toLowerCase();
+  const pulls =
+    runGhJsonFn(repoRoot, buildGhPrListArgs({ upstream, branch, base }), {
+      spawnSyncFn
+    }) ?? [];
+  if (!Array.isArray(pulls) || pulls.length === 0) {
+    return null;
+  }
+
+  return (
+    pulls.find((pull) => {
+      const headRefName = String(pull?.headRefName ?? '').trim();
+      const baseRefName = String(pull?.baseRefName ?? '').trim();
+      const headOwner = String(pull?.headRepositoryOwner?.login ?? '')
+        .trim()
+        .toLowerCase();
+
+      if (headRefName !== branch || baseRefName !== base) {
+        return false;
+      }
+      if (!expectedOwner) {
+        return true;
+      }
+      return !headOwner || headOwner === expectedOwner;
+    }) ?? null
+  );
+}
+
 export function runGhPrCreate(
   { repoRoot, upstream, origin, headRepository, branch, base, title, body },
   {
     spawnSyncFn = spawnSync,
     loadRepositoryGraphMetadataFn = loadRepositoryGraphMetadata,
-    runGhGraphqlFn = runGhGraphql
+    runGhGraphqlFn = runGhGraphql,
+    runGhJsonFn = runGhJson,
+    findExistingPullRequestFn = findExistingPullRequest
   } = {}
 ) {
   const resolvedHeadRepository = headRepository ?? origin;
@@ -466,6 +528,30 @@ export function runGhPrCreate(
           pullRequest
         };
       } catch (error) {
+        if (isExistingPullRequestError(error)) {
+          const pullRequest = findExistingPullRequestFn(
+            repoRoot,
+            {
+              upstream,
+              origin,
+              headRepository: resolvedHeadRepository,
+              branch,
+              base
+            },
+            {
+              runGhJsonFn,
+              spawnSyncFn
+            }
+          );
+          if (pullRequest?.url) {
+            console.log(pullRequest.url);
+            return {
+              strategy,
+              pullRequest,
+              reusedExisting: true
+            };
+          }
+        }
         failures.push({ headRefName, error });
       }
     }
@@ -486,11 +572,35 @@ export function runGhPrCreate(
   });
   const result = spawnSyncFn('gh', args, {
     cwd: repoRoot,
-    stdio: 'inherit',
-    encoding: 'utf8'
+    ...DEFAULT_GH_OPTIONS
   });
   if (result.status !== 0) {
-    throw new Error('gh pr create failed. Review the messages above.');
+    const error = new Error(buildGhCommandError(args, result, `exit ${result.status}`));
+    if (isExistingPullRequestError(error)) {
+      const pullRequest = findExistingPullRequestFn(
+        repoRoot,
+        {
+          upstream,
+          origin,
+          headRepository: resolvedHeadRepository,
+          branch,
+          base
+        },
+        {
+          runGhJsonFn,
+          spawnSyncFn
+        }
+      );
+      if (pullRequest?.url) {
+        console.log(pullRequest.url);
+        return {
+          strategy,
+          pullRequest,
+          reusedExisting: true
+        };
+      }
+    }
+    throw error;
   }
 
   return {
