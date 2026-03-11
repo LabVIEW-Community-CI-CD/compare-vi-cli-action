@@ -92,6 +92,8 @@ test('delivery-agent manager and run scripts target the WSL runtime daemon inste
   assert.match(manager, /delivery-host-signal\.js/);
   assert.match(manager, /wsl\.exe/);
   assert.match(manager, /heartbeatDiagnostics/);
+  assert.match(manager, /RuntimeStatePath/);
+  assert.match(manager, /TaskPacketPath/);
   assert.match(manager, /logTail/);
   assert.match(manager, /function Write-LogTailTrace/);
   assert.match(manager, /EventType 'log-tail'/);
@@ -145,7 +147,10 @@ test('delivery-agent manager status synthesizes the active lane from the freshes
 
   assert.match(manager, /function Resolve-DeliveryStateForStatus/);
   assert.match(manager, /derivedFromHeartbeat/);
+  assert.match(manager, /derivedFromRuntimeState/);
   assert.match(manager, /Read-JsonFile -Path \$Paths\.ObserverHeartbeatPath/);
+  assert.match(manager, /Read-JsonFile -Path \$Paths\.RuntimeStatePath/);
+  assert.match(manager, /Read-JsonFile -Path \$Paths\.TaskPacketPath/);
 });
 
 test('delivery-agent manager status ignores stale heartbeat state from before the current manager start', async (t) => {
@@ -254,6 +259,137 @@ test('delivery-agent manager status derives from a fresh heartbeat when no deliv
   assert.equal(status.heartbeatDiagnostics.usedHeartbeat, true);
   assert.equal(status.heartbeatDiagnostics.reason, 'fresh-heartbeat');
   assert.ok(Array.isArray(status.logTail.daemon));
+});
+
+test('delivery-agent manager status prefers a fresher runtime state and task packet over stale delivery and heartbeat artifacts', async (t) => {
+  const runtimeDirPath = await mkdtemp(path.join(repoRoot, 'tests', 'results', '_agent', 'tmp-manager-status-runtime-'));
+  const relativeRuntimeDir = path.relative(repoRoot, runtimeDirPath);
+  t.after(async () => {
+    await rm(runtimeDirPath, { recursive: true, force: true });
+  });
+
+  const now = Date.now();
+  const deliveryGeneratedAt = new Date(now - 300_000).toISOString();
+  const heartbeatGeneratedAt = new Date(now - 240_000).toISOString();
+  const runtimeGeneratedAt = new Date(now - 30_000).toISOString();
+  const taskPacketGeneratedAt = new Date(now - 15_000).toISOString();
+  const managerStartedAt = new Date(now - 180_000).toISOString();
+  const daemonStartedAt = new Date(now - 180_000).toISOString();
+
+  await writeJson(path.join(runtimeDirPath, 'delivery-agent-state.json'), {
+    schema: 'priority/delivery-agent-runtime-state@v1',
+    generatedAt: deliveryGeneratedAt,
+    repository: 'LabVIEW-Community-CI-CD/compare-vi-cli-action',
+    runtimeDir: runtimeDirPath,
+    status: 'blocked',
+    laneLifecycle: 'blocked',
+    activeCodingLanes: 0,
+    activeLane: {
+      schema: 'priority/delivery-agent-lane-state@v1',
+      generatedAt: deliveryGeneratedAt,
+      laneId: 'origin-959',
+      issue: 959,
+      branch: 'issue/origin-959-example',
+      forkRemote: 'origin',
+      blockerClass: 'validation-failure',
+      laneLifecycle: 'blocked'
+    }
+  });
+  await writeJson(path.join(runtimeDirPath, 'observer-heartbeat.json'), {
+    schema: 'priority/runtime-observer-heartbeat@v1',
+    generatedAt: heartbeatGeneratedAt,
+    repository: 'LabVIEW-Community-CI-CD/compare-vi-cli-action',
+    outcome: 'lane-tracked',
+    activeLane: {
+      laneId: 'origin-959',
+      issue: 959,
+      branch: 'issue/origin-959-example',
+      forkRemote: 'origin',
+      blockerClass: 'none',
+      taskPacket: {
+        status: 'coding'
+      }
+    }
+  });
+  await writeJson(path.join(runtimeDirPath, 'runtime-state.json'), {
+    schema: 'priority/runtime-supervisor-state@v1',
+    generatedAt: runtimeGeneratedAt,
+    repository: 'LabVIEW-Community-CI-CD/compare-vi-cli-action',
+    lifecycle: {
+      status: 'blocked',
+      lastAction: 'step'
+    },
+    activeLane: {
+      laneId: 'origin-962',
+      issue: 962,
+      branch: 'issue/origin-962-example',
+      forkRemote: 'origin',
+      blockerClass: 'none',
+      taskPacket: {
+        generatedAt: runtimeGeneratedAt,
+        status: 'coding',
+        branch: {
+          name: 'issue/origin-962-example',
+          forkRemote: 'origin'
+        },
+        pullRequest: {
+          url: null
+        },
+        evidence: {
+          delivery: {
+            selectedActionType: 'advance-standing-issue',
+            laneLifecycle: 'coding'
+          }
+        }
+      }
+    }
+  });
+  await writeJson(path.join(runtimeDirPath, 'task-packet.json'), {
+    schema: 'priority/runtime-worker-task-packet@v1',
+    generatedAt: taskPacketGeneratedAt,
+    repository: 'LabVIEW-Community-CI-CD/compare-vi-cli-action',
+    laneId: 'origin-962',
+    status: 'coding',
+    branch: {
+      name: 'issue/origin-962-example',
+      forkRemote: 'origin'
+    },
+    pullRequest: {
+      url: null
+    },
+    checks: {
+      blockerClass: 'none'
+    },
+    evidence: {
+      delivery: {
+        selectedActionType: 'advance-standing-issue',
+        laneLifecycle: 'coding'
+      }
+    }
+  });
+  await writeJson(path.join(runtimeDirPath, 'delivery-agent-manager-pid.json'), {
+    schema: 'priority/unattended-delivery-agent-manager-pid@v1',
+    startedAt: managerStartedAt,
+    pid: 0
+  });
+  await writeJson(path.join(runtimeDirPath, 'delivery-agent-wsl-daemon-pid.json'), {
+    schema: 'priority/unattended-delivery-agent-wsl-daemon-pid@v1',
+    startedAt: daemonStartedAt,
+    pid: 0
+  });
+
+  const status = await invokeManagerStatus(relativeRuntimeDir);
+
+  assert.equal(status.delivery.activeLane.issue, 962);
+  assert.equal(status.delivery.activeLane.branch, 'issue/origin-962-example');
+  assert.equal(status.delivery.laneLifecycle, 'coding');
+  assert.equal(status.delivery.activeCodingLanes, 1);
+  assert.equal(status.delivery.derivedFromRuntimeState, true);
+  assert.equal(status.heartbeatDiagnostics.usedHeartbeat, false);
+  assert.equal(status.heartbeatDiagnostics.usedRuntimeState, true);
+  assert.equal(status.heartbeatDiagnostics.reason, 'runtime-state-current');
+  assert.equal(path.basename(status.delivery.artifacts.statePath), 'runtime-state.json');
+  assert.equal(path.basename(status.delivery.artifacts.lanePath), 'task-packet.json');
 });
 
 test('delivery-agent manager status emits bounded log-tail trace events for daemon and manager logs', async (t) => {

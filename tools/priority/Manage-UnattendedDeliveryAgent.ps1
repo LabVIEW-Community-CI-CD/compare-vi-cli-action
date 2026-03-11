@@ -146,6 +146,8 @@ function Get-ArtifactPaths {
     StopRequestPath = Join-Path $runtimeDirPath 'delivery-agent-manager-stop.json'
     ObserverHeartbeatPath = Join-Path $runtimeDirPath 'observer-heartbeat.json'
     DeliveryStatePath = Join-Path $runtimeDirPath 'delivery-agent-state.json'
+    RuntimeStatePath = Join-Path $runtimeDirPath 'runtime-state.json'
+    TaskPacketPath = Join-Path $runtimeDirPath 'task-packet.json'
     DeliveryMemoryPath = Join-Path $runtimeDirPath 'delivery-memory.json'
     WslDaemonPidPath = Join-Path $runtimeDirPath 'delivery-agent-wsl-daemon-pid.json'
     CodexStateHygienePath = Join-Path $runtimeDirPath 'codex-state-hygiene.json'
@@ -305,10 +307,131 @@ function Write-LogTailTrace {
   }
 }
 
+function Convert-ToDeliveryLifecycle {
+  param(
+    [AllowNull()][string]$Value,
+    [string]$Fallback = 'planning',
+    [bool]$Blocked = $false
+  )
+
+  $text = if ([string]::IsNullOrWhiteSpace($Value)) { $null } else { $Value.Trim().ToLowerInvariant() }
+  $allowed = @('planning', 'reshaping-backlog', 'coding', 'waiting-ci', 'waiting-review', 'ready-merge', 'blocked', 'complete', 'idle')
+  if ($text -and $text -in $allowed) {
+    return $text
+  }
+  if ($Blocked) {
+    return 'blocked'
+  }
+  return $Fallback
+}
+
+function Convert-RuntimeArtifactsToDeliveryState {
+  param(
+    [AllowNull()][object]$RuntimeState,
+    [AllowNull()][object]$TaskPacket,
+    [Parameter(Mandatory)][object]$Paths
+  )
+
+  if ($null -eq $RuntimeState -or -not $RuntimeState.PSObject.Properties['activeLane']) {
+    return $null
+  }
+
+  $activeLane = $RuntimeState.activeLane
+  $issue = Get-OptionalIntProperty -InputObject $activeLane -Name 'issue'
+  if ($issue -le 0) {
+    return $null
+  }
+
+  $runtimeGeneratedAt = Get-OptionalDateTimeProperty -InputObject $RuntimeState -Name 'generatedAt'
+  $embeddedTaskPacket = Get-OptionalProperty -InputObject $activeLane -Name 'taskPacket'
+  $embeddedTaskPacketGeneratedAt = Get-OptionalDateTimeProperty -InputObject $embeddedTaskPacket -Name 'generatedAt'
+  $taskPacketGeneratedAt = Get-OptionalDateTimeProperty -InputObject $TaskPacket -Name 'generatedAt'
+  $effectiveTaskPacket = $embeddedTaskPacket
+  if ($TaskPacket -and (($null -eq $embeddedTaskPacket) -or ($taskPacketGeneratedAt -and ((-not $embeddedTaskPacketGeneratedAt) -or ($taskPacketGeneratedAt -gt $embeddedTaskPacketGeneratedAt))))) {
+    $effectiveTaskPacket = $TaskPacket
+  }
+
+  $runtimeLifecycle = Get-OptionalStringProperty -InputObject (Get-OptionalProperty -InputObject $RuntimeState -Name 'lifecycle') -Name 'status'
+  $runtimeDelivery = Get-OptionalProperty -InputObject (Get-OptionalProperty -InputObject $effectiveTaskPacket -Name 'evidence') -Name 'delivery'
+  $taskLifecycle = Get-OptionalStringProperty -InputObject $effectiveTaskPacket -Name 'status'
+  if (-not $taskLifecycle) {
+    $taskLifecycle = Get-OptionalStringProperty -InputObject $runtimeDelivery -Name 'laneLifecycle'
+  }
+  $laneLifecycleFallback = if ($runtimeLifecycle -eq 'idle') {
+    'idle'
+  } elseif ($runtimeLifecycle -eq 'blocked') {
+    'blocked'
+  } else {
+    'planning'
+  }
+  $blockerClass =
+    (Get-OptionalStringProperty -InputObject $activeLane -Name 'blockerClass') ??
+    (Get-OptionalStringProperty -InputObject (Get-OptionalProperty -InputObject $effectiveTaskPacket -Name 'checks') -Name 'blockerClass') ??
+    'none'
+  $laneLifecycle = Convert-ToDeliveryLifecycle `
+    -Value $taskLifecycle `
+    -Fallback $laneLifecycleFallback `
+    -Blocked:($blockerClass -ne 'none')
+  $status = if ($laneLifecycle -eq 'idle') {
+    'idle'
+  } elseif ($laneLifecycle -eq 'blocked') {
+    'blocked'
+  } else {
+    'running'
+  }
+  $generatedAt = if ($taskPacketGeneratedAt -and ((-not $runtimeGeneratedAt) -or ($taskPacketGeneratedAt -gt $runtimeGeneratedAt))) {
+    $taskPacketGeneratedAt
+  } else {
+    $runtimeGeneratedAt
+  }
+
+  return [ordered]@{
+    schema = 'priority/delivery-agent-runtime-state@v1'
+    generatedAt = if ($generatedAt) { $generatedAt.ToString('o') } else { [DateTime]::UtcNow.ToString('o') }
+    repository = $Repo
+    runtimeDir = $RuntimeDir
+    status = $status
+    laneLifecycle = $laneLifecycle
+    activeCodingLanes = if ($laneLifecycle -eq 'coding') { 1 } else { 0 }
+    derivedFromRuntimeState = $true
+    activeLane = [ordered]@{
+      schema = 'priority/delivery-agent-lane-state@v1'
+      generatedAt = if ($generatedAt) { $generatedAt.ToString('o') } else { [DateTime]::UtcNow.ToString('o') }
+      laneId = Get-OptionalStringProperty -InputObject $activeLane -Name 'laneId'
+      issue = $issue
+      epic = Get-OptionalIntProperty -InputObject $activeLane -Name 'epic'
+      branch =
+        (Get-OptionalStringProperty -InputObject $activeLane -Name 'branch') ??
+        (Get-OptionalStringProperty -InputObject (Get-OptionalProperty -InputObject $effectiveTaskPacket -Name 'branch') -Name 'name')
+      forkRemote =
+        (Get-OptionalStringProperty -InputObject $activeLane -Name 'forkRemote') ??
+        (Get-OptionalStringProperty -InputObject (Get-OptionalProperty -InputObject $effectiveTaskPacket -Name 'branch') -Name 'forkRemote')
+      prUrl =
+        (Get-OptionalStringProperty -InputObject $activeLane -Name 'prUrl') ??
+        (Get-OptionalStringProperty -InputObject (Get-OptionalProperty -InputObject $effectiveTaskPacket -Name 'pullRequest') -Name 'url')
+      blockerClass = $blockerClass
+      laneLifecycle = $laneLifecycle
+      actionType =
+        (Get-OptionalStringProperty -InputObject $runtimeDelivery -Name 'selectedActionType') ??
+        (Get-OptionalStringProperty -InputObject (Get-OptionalProperty -InputObject $RuntimeState -Name 'lifecycle') -Name 'lastAction')
+      outcome = Get-OptionalStringProperty -InputObject (Get-OptionalProperty -InputObject $RuntimeState -Name 'lifecycle') -Name 'status'
+      reason = Get-OptionalStringProperty -InputObject (Get-OptionalProperty -InputObject $RuntimeState -Name 'lifecycle') -Name 'status'
+      retryable = $false
+      nextWakeCondition = $null
+    }
+    artifacts = [ordered]@{
+      statePath = $Paths.RuntimeStatePath
+      lanePath = $Paths.TaskPacketPath
+    }
+  }
+}
+
 function Resolve-DeliveryStateForStatus {
   param(
     [AllowNull()][object]$DeliveryState,
     [AllowNull()][object]$Heartbeat,
+    [AllowNull()][object]$RuntimeState,
+    [AllowNull()][object]$TaskPacket,
     [Parameter(Mandatory)][object]$Paths,
     [Nullable[DateTime]]$ManagerStartedAt = $null,
     [Nullable[DateTime]]$DaemonStartedAt = $null,
@@ -318,19 +441,47 @@ function Resolve-DeliveryStateForStatus {
 
   $deliveryGeneratedAt = Get-OptionalDateTimeProperty -InputObject $DeliveryState -Name 'generatedAt'
   $heartbeatGeneratedAt = Get-OptionalDateTimeProperty -InputObject $Heartbeat -Name 'generatedAt'
+  $runtimeGeneratedAt = Get-OptionalDateTimeProperty -InputObject $RuntimeState -Name 'generatedAt'
+  $taskPacketGeneratedAt = Get-OptionalDateTimeProperty -InputObject $TaskPacket -Name 'generatedAt'
   $diagnostics = [ordered]@{
     usedHeartbeat = $false
+    usedRuntimeState = $false
     reason = 'delivery-state-missing'
     heartbeatGeneratedAt = if ($heartbeatGeneratedAt) { $heartbeatGeneratedAt.ToString('o') } else { $null }
     deliveryGeneratedAt = if ($deliveryGeneratedAt) { $deliveryGeneratedAt.ToString('o') } else { $null }
+    runtimeGeneratedAt = if ($runtimeGeneratedAt) { $runtimeGeneratedAt.ToString('o') } else { $null }
+    taskPacketGeneratedAt = if ($taskPacketGeneratedAt) { $taskPacketGeneratedAt.ToString('o') } else { $null }
     managerStartedAt = if ($ManagerStartedAt) { $ManagerStartedAt.ToString('o') } else { $null }
     daemonStartedAt = if ($DaemonStartedAt) { $DaemonStartedAt.ToString('o') } else { $null }
     daemonAlive = [bool]$DaemonAlive
     heartbeatFreshnessSeconds = [int]$HeartbeatFreshnessSeconds
     heartbeatRepository = Get-OptionalStringProperty -InputObject $Heartbeat -Name 'repository'
+    runtimeRepository = Get-OptionalStringProperty -InputObject $RuntimeState -Name 'repository'
+  }
+
+  $runtimeDeliveryState = $null
+  $runtimeIssue = 0
+  $runtimeRepo = Get-OptionalStringProperty -InputObject $RuntimeState -Name 'repository'
+  if ($RuntimeState) {
+    if (-not [string]::IsNullOrWhiteSpace($runtimeRepo) -and $runtimeRepo -ne $Repo) {
+      $diagnostics.reason = 'runtime-state-repository-mismatch'
+    } else {
+      $runtimeDeliveryState = Convert-RuntimeArtifactsToDeliveryState -RuntimeState $RuntimeState -TaskPacket $TaskPacket -Paths $Paths
+      if ($runtimeDeliveryState -and $runtimeDeliveryState.PSObject.Properties['activeLane']) {
+        $runtimeIssue = Get-OptionalIntProperty -InputObject $runtimeDeliveryState.activeLane -Name 'issue'
+      }
+    }
   }
 
   if ($null -eq $Heartbeat -or $null -eq $Heartbeat.activeLane) {
+    if ($runtimeDeliveryState -and ((-not $deliveryGeneratedAt) -or ($runtimeGeneratedAt -gt $deliveryGeneratedAt) -or (($DeliveryState -and $DeliveryState.PSObject.Properties['activeLane']) -and ((Get-OptionalIntProperty -InputObject $DeliveryState.activeLane -Name 'issue') -ne $runtimeIssue)))) {
+      $diagnostics.reason = 'runtime-state-current'
+      $diagnostics.usedRuntimeState = $true
+      return [ordered]@{
+        state = $runtimeDeliveryState
+        diagnostics = $diagnostics
+      }
+    }
     if ($null -ne $DeliveryState) {
       $diagnostics.reason = 'delivery-state-current'
     }
@@ -341,8 +492,20 @@ function Resolve-DeliveryStateForStatus {
   }
 
   $heartbeatLane = $Heartbeat.activeLane
+  $deliveryIssue = 0
+  if ($DeliveryState -and $DeliveryState.PSObject.Properties['activeLane']) {
+    $deliveryIssue = Get-OptionalIntProperty -InputObject $DeliveryState.activeLane -Name 'issue'
+  }
   $heartbeatIssue = Get-OptionalIntProperty -InputObject $heartbeatLane -Name 'issue'
   if ($heartbeatIssue -le 0) {
+    if ($runtimeDeliveryState -and ((-not $deliveryGeneratedAt) -or ($runtimeGeneratedAt -gt $deliveryGeneratedAt) -or ($deliveryIssue -ne $runtimeIssue))) {
+      $diagnostics.reason = 'runtime-state-current'
+      $diagnostics.usedRuntimeState = $true
+      return [ordered]@{
+        state = $runtimeDeliveryState
+        diagnostics = $diagnostics
+      }
+    }
     $diagnostics.reason = 'heartbeat-missing-issue'
     return [ordered]@{
       state = $DeliveryState
@@ -350,13 +513,16 @@ function Resolve-DeliveryStateForStatus {
     }
   }
 
-  $deliveryIssue = 0
-  if ($DeliveryState -and $DeliveryState.PSObject.Properties['activeLane']) {
-    $deliveryIssue = Get-OptionalIntProperty -InputObject $DeliveryState.activeLane -Name 'issue'
-  }
-
   $heartbeatRepo = Get-OptionalStringProperty -InputObject $Heartbeat -Name 'repository'
   if (-not [string]::IsNullOrWhiteSpace($heartbeatRepo) -and $heartbeatRepo -ne $Repo) {
+    if ($runtimeDeliveryState -and ((-not $deliveryGeneratedAt) -or ($runtimeGeneratedAt -gt $deliveryGeneratedAt) -or ($deliveryIssue -ne $runtimeIssue))) {
+      $diagnostics.reason = 'runtime-state-current'
+      $diagnostics.usedRuntimeState = $true
+      return [ordered]@{
+        state = $runtimeDeliveryState
+        diagnostics = $diagnostics
+      }
+    }
     $diagnostics.reason = 'heartbeat-repository-mismatch'
     return [ordered]@{
       state = $DeliveryState
@@ -372,6 +538,14 @@ function Resolve-DeliveryStateForStatus {
   $beforeCurrentManager = $ManagerStartedAt -and $heartbeatGeneratedAt -and ($heartbeatGeneratedAt.ToUniversalTime() -lt $ManagerStartedAt.ToUniversalTime())
   $beforeCurrentDaemon = $DaemonStartedAt -and $heartbeatGeneratedAt -and ($heartbeatGeneratedAt.ToUniversalTime() -lt $DaemonStartedAt.ToUniversalTime())
   if (-not $DaemonAlive -and ($beforeCurrentManager -or $beforeCurrentDaemon)) {
+    if ($runtimeDeliveryState -and ((-not $deliveryGeneratedAt) -or ($runtimeGeneratedAt -gt $deliveryGeneratedAt) -or ($deliveryIssue -ne $runtimeIssue))) {
+      $diagnostics.reason = 'runtime-state-current'
+      $diagnostics.usedRuntimeState = $true
+      return [ordered]@{
+        state = $runtimeDeliveryState
+        diagnostics = $diagnostics
+      }
+    }
     $diagnostics.reason = 'stale-before-current-manager'
     return [ordered]@{
       state = $DeliveryState
@@ -379,6 +553,14 @@ function Resolve-DeliveryStateForStatus {
     }
   }
   if (-not $DaemonAlive -and $heartbeatTooOld) {
+    if ($runtimeDeliveryState -and ((-not $deliveryGeneratedAt) -or ($runtimeGeneratedAt -gt $deliveryGeneratedAt) -or ($deliveryIssue -ne $runtimeIssue))) {
+      $diagnostics.reason = 'runtime-state-current'
+      $diagnostics.usedRuntimeState = $true
+      return [ordered]@{
+        state = $runtimeDeliveryState
+        diagnostics = $diagnostics
+      }
+    }
     $diagnostics.reason = 'stale-heartbeat-daemon-dead'
     return [ordered]@{
       state = $DeliveryState
@@ -386,9 +568,22 @@ function Resolve-DeliveryStateForStatus {
     }
   }
 
-  $heartbeatNewer = $heartbeatGeneratedAt -and ((-not $deliveryGeneratedAt) -or ($heartbeatGeneratedAt -gt $deliveryGeneratedAt))
-  $issueDrift = $deliveryIssue -ne $heartbeatIssue
+  $freshestBaseGeneratedAt = $deliveryGeneratedAt
+  if ($runtimeGeneratedAt -and ((-not $freshestBaseGeneratedAt) -or ($runtimeGeneratedAt -gt $freshestBaseGeneratedAt))) {
+    $freshestBaseGeneratedAt = $runtimeGeneratedAt
+  }
+  $currentBaseIssue = if ($runtimeIssue -gt 0) { $runtimeIssue } else { $deliveryIssue }
+  $heartbeatNewer = $heartbeatGeneratedAt -and ((-not $freshestBaseGeneratedAt) -or ($heartbeatGeneratedAt -gt $freshestBaseGeneratedAt))
+  $issueDrift = $currentBaseIssue -ne $heartbeatIssue
   if (-not $heartbeatNewer -and -not $issueDrift) {
+    if ($runtimeDeliveryState -and ((-not $deliveryGeneratedAt) -or ($runtimeGeneratedAt -gt $deliveryGeneratedAt) -or ($deliveryIssue -ne $runtimeIssue))) {
+      $diagnostics.reason = 'runtime-state-current'
+      $diagnostics.usedRuntimeState = $true
+      return [ordered]@{
+        state = $runtimeDeliveryState
+        diagnostics = $diagnostics
+      }
+    }
     $diagnostics.reason = 'delivery-state-current'
     return [ordered]@{
       state = $DeliveryState
@@ -523,9 +718,13 @@ function Emit-Status {
   $daemonAlive = Test-WslProcessAlive -Distro $WslDistro -ProcessId (Get-OptionalIntProperty -InputObject $daemonState -Name 'pid')
   $daemonStartedAt = Get-OptionalDateTimeProperty -InputObject $daemonState -Name 'startedAt'
   $heartbeat = Read-JsonFile -Path $Paths.ObserverHeartbeatPath
+  $runtimeState = Read-JsonFile -Path $Paths.RuntimeStatePath
+  $taskPacket = Read-JsonFile -Path $Paths.TaskPacketPath
   $resolvedDelivery = Resolve-DeliveryStateForStatus `
     -DeliveryState (Read-JsonFile -Path $Paths.DeliveryStatePath) `
     -Heartbeat $heartbeat `
+    -RuntimeState $runtimeState `
+    -TaskPacket $taskPacket `
     -Paths $Paths `
     -ManagerStartedAt $managerStartedAt `
     -DaemonStartedAt $daemonStartedAt `
@@ -584,6 +783,8 @@ function Emit-Status {
       stopRequestPath = $Paths.StopRequestPath
       observerHeartbeatPath = $Paths.ObserverHeartbeatPath
       deliveryStatePath = $Paths.DeliveryStatePath
+      runtimeStatePath = $Paths.RuntimeStatePath
+      taskPacketPath = $Paths.TaskPacketPath
       deliveryMemoryPath = $Paths.DeliveryMemoryPath
       wslDaemonPidPath = $Paths.WslDaemonPidPath
       codexStateHygienePath = $Paths.CodexStateHygienePath
