@@ -49,7 +49,7 @@ function formatRelativeGitPointer(fromDir, toPath) {
 
 function isPathWithin(parentPath, childPath) {
   const relativePath = path.relative(parentPath, childPath);
-  return Boolean(relativePath) && !relativePath.startsWith('..') && !path.isAbsolute(relativePath);
+  return relativePath === '' || (!relativePath.startsWith('..') && !path.isAbsolute(relativePath));
 }
 
 function isWindowsAbsolutePath(value) {
@@ -153,9 +153,10 @@ async function clearStaleInitializingLock(worktreeAdminDir) {
   return true;
 }
 
-async function repairExistingWorktreeGitPointers({ repoRoot, checkoutPath, laneSegment }) {
+async function repairExistingWorktreeGitPointers({ repoRoot, checkoutPath, laneSegment, gitCommonDir }) {
   const resolvedLaneSegment = sanitizeSegment(laneSegment || path.basename(checkoutPath));
-  const worktreeAdminDir = path.join(repoRoot, '.git', 'worktrees', resolvedLaneSegment);
+  const resolvedGitCommonDir = normalizeText(gitCommonDir) || path.join(repoRoot, '.git');
+  const worktreeAdminDir = path.join(resolvedGitCommonDir, 'worktrees', resolvedLaneSegment);
   const checkoutGitFile = path.join(checkoutPath, '.git');
   const adminGitdirFile = path.join(worktreeAdminDir, 'gitdir');
 
@@ -195,7 +196,8 @@ async function repairExistingWorktreeGitPointers({ repoRoot, checkoutPath, laneS
 
 export async function repairRegisteredWorktreeGitPointers({ repoRoot, deps = {} }) {
   const execFileFn = deps.execFileFn ?? execFileAsync;
-  const worktreesRoot = path.join(repoRoot, '.git', 'worktrees');
+  const gitCommonDir = await resolveGitCommonDir(execFileFn, repoRoot);
+  const worktreesRoot = path.join(gitCommonDir, 'worktrees');
   const runtimeRoot = path.join(repoRoot, '.runtime-worktrees');
   const report = {
     repaired: [],
@@ -250,7 +252,8 @@ export async function repairRegisteredWorktreeGitPointers({ repoRoot, deps = {} 
       const repair = await repairExistingWorktreeGitPointers({
         repoRoot,
         checkoutPath,
-        laneSegment
+        laneSegment,
+        gitCommonDir
       });
       report.repaired.push({
         laneSegment,
@@ -367,6 +370,19 @@ async function readGitStdout(execFileFn, args, options = {}) {
   return normalizeText(result?.stdout);
 }
 
+async function resolveGitCommonDir(execFileFn, repoRoot) {
+  try {
+    const gitCommonDir = await readGitStdout(execFileFn, ['rev-parse', '--git-common-dir'], { cwd: repoRoot });
+    if (gitCommonDir) {
+      return path.isAbsolute(gitCommonDir) ? path.normalize(gitCommonDir) : path.resolve(repoRoot, gitCommonDir);
+    }
+  } catch {
+    // Fall back to the conventional location when git metadata probing fails.
+  }
+
+  return path.join(repoRoot, '.git');
+}
+
 async function resolveWriterLeaseRoot(execFileFn, checkoutPath) {
   try {
     const gitDir = await readGitStdout(execFileFn, ['rev-parse', '--git-dir'], { cwd: checkoutPath });
@@ -475,6 +491,7 @@ export async function prepareCompareviWorkerCheckout({
     laneId: activeLane.laneId
   });
   const execFileFn = deps.execFileFn ?? execFileAsync;
+  const gitCommonDir = await resolveGitCommonDir(execFileFn, repoRoot);
   const gitMarkerPath = path.join(checkoutPath, '.git');
   if (await pathExists(gitMarkerPath)) {
     const fetchedRemotes = [];
@@ -482,7 +499,8 @@ export async function prepareCompareviWorkerCheckout({
       await repairExistingWorktreeGitPointers({
         repoRoot,
         checkoutPath,
-        laneSegment: activeLane.laneId
+        laneSegment: activeLane.laneId,
+        gitCommonDir
       });
       const worktreeStateRepair = await repairReusedWorktreeState(execFileFn, checkoutPath, activeLane.laneId);
       const availableRemotes = (await tryReadGitStdout(execFileFn, ['remote'], { cwd: checkoutPath }))
@@ -554,7 +572,8 @@ export async function prepareCompareviWorkerCheckout({
   await repairExistingWorktreeGitPointers({
     repoRoot,
     checkoutPath,
-    laneSegment: activeLane.laneId
+    laneSegment: activeLane.laneId,
+    gitCommonDir
   });
   const pushRemotesNormalized = await normalizeGitHubRemotePushUrls(execFileFn, checkoutPath, {
     platform: deps.platform ?? platform ?? process.platform

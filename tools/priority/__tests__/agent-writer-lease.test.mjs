@@ -2,12 +2,15 @@
 
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { spawnSync } from 'node:child_process';
 import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 
 import {
   acquireWriterLease,
+  defaultLeaseRoot,
   defaultOwner,
   heartbeatWriterLease,
   inspectWriterLease,
@@ -20,6 +23,8 @@ function randomTempRoot(prefix) {
     `${prefix}-${Date.now()}-${Math.random().toString(16).slice(2, 10)}`
   );
 }
+
+const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
 
 test('acquire blocks second owner while lease is active', async () => {
   const leaseRoot = randomTempRoot('agent-writer-lease-active');
@@ -157,4 +162,16 @@ test('defaultOwner prefers AGENT_WRITER_LEASE_OWNER when provided', () => {
       process.env.AGENT_WRITER_LEASE_OWNER = previous;
     }
   }
+});
+
+test('defaultLeaseRoot resolves the active worktree gitdir instead of assuming repoRoot/.git', () => {
+  const probe = spawnSync('git', ['rev-parse', '--git-dir'], {
+    cwd: repoRoot,
+    encoding: 'utf8',
+    stdio: ['ignore', 'pipe', 'pipe']
+  });
+  assert.equal(probe.status, 0, probe.stderr || 'git rev-parse --git-dir failed');
+  const gitDir = probe.stdout.trim();
+  const expectedGitDir = path.isAbsolute(gitDir) ? path.normalize(gitDir) : path.resolve(repoRoot, gitDir);
+  assert.equal(defaultLeaseRoot(), path.join(expectedGitDir, 'agent-writer-leases'));
 });

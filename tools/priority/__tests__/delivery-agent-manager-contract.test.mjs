@@ -99,8 +99,11 @@ test('delivery-agent manager and run scripts target the WSL runtime daemon inste
   assert.match(runner, /runtime-daemon\.mjs/);
   assert.match(runner, /WslDistro/);
   assert.match(runner, /AGENT_WRITER_LEASE_OWNER/);
+  assert.match(runner, /AGENT_WRITER_LEASE_ROOT/);
   assert.match(runner, /DOCKER_HOST='unix:\/\/\/var\/run\/docker\.sock'/);
   assert.match(runner, /COMPAREVI_DOCKER_RUNTIME_PROVIDER='native-wsl'/);
+  assert.match(runner, /--lease-root/);
+  assert.match(runner, /exec >> '\$LogPathWsl' 2>&1/);
   assert.match(runner, /Invoke-CodexStateHygiene/);
   assert.match(runner, /Invoke-DeliveryMemory/);
   assert.match(runner, /Invoke-DeliveryHostSignal/);
@@ -125,6 +128,9 @@ test('delivery-agent manager and run scripts target the WSL runtime daemon inste
   assert.match(ensurePrereqs, /systemctl reset-failed docker\.service docker\.socket/);
   assert.match(ensurePrereqs, /healthy_service_reused='false'/);
   assert.match(ensurePrereqs, /service_restarted='false'/);
+  assert.match(ensurePrereqs, /--repo-root \$RepoRoot --apply --report/);
+  assert.match(ensurePrereqs, /status = 'ok'/);
+  assert.match(ensurePrereqs, /report = \$report/);
   assert.doesNotMatch(ensurePrereqs, /systemctl restart docker\.service/);
   assert.match(runner, /Invoke-EnsureWslDeliveryPrereqs/);
   assert.match(runner, /wsl-prereqs-failed/);

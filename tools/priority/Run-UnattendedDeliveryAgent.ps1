@@ -87,10 +87,28 @@ function Resolve-CommandPath {
   return $command.Source
 }
 
+function Resolve-GitDirPath {
+  param([Parameter(Mandatory)][string]$RepoRoot)
+
+  $gitDirRaw = (& git -C $RepoRoot rev-parse --git-dir 2>$null | Select-Object -Last 1)
+  if ($LASTEXITCODE -ne 0 -or [string]::IsNullOrWhiteSpace([string]$gitDirRaw)) {
+    throw "Unable to resolve git dir for $RepoRoot."
+  }
+
+  $gitDirValue = ([string]$gitDirRaw).Trim()
+  $gitDirPath = if ([System.IO.Path]::IsPathRooted($gitDirValue)) {
+    $gitDirValue
+  } else {
+    Join-Path $RepoRoot $gitDirValue
+  }
+
+  return (Resolve-Path -LiteralPath $gitDirPath).Path
+}
+
 function Get-StableLeaseOwner {
   param([Parameter(Mandatory)][string]$RepoRoot)
 
-  $leasePath = Join-Path $RepoRoot '.git\agent-writer-leases\workspace.json'
+  $leasePath = Join-Path (Resolve-GitDirPath -RepoRoot $RepoRoot) 'agent-writer-leases\workspace.json'
   $lease = Read-JsonFile -Path $leasePath
   if ($lease -and $lease.PSObject.Properties['owner'] -and -not [string]::IsNullOrWhiteSpace([string]$lease.owner)) {
     return [string]$lease.owner
@@ -274,6 +292,7 @@ function Start-WslRuntimeDaemon {
     [Parameter(Mandatory)][string]$Repo,
     [Parameter(Mandatory)][int]$DaemonPollIntervalSeconds,
     [Parameter(Mandatory)][string]$LeaseOwner,
+    [Parameter(Mandatory)][string]$LeaseRootWsl,
     [Parameter(Mandatory)][string]$UnitName,
     [switch]$StopOnIdle
   )
@@ -285,6 +304,8 @@ function Start-WslRuntimeDaemon {
     $Repo,
     '--runtime-dir',
     $RuntimeDir,
+    '--lease-root',
+    $LeaseRootWsl,
     '--poll-interval-seconds',
     "$DaemonPollIntervalSeconds",
     '--execute-turn'
@@ -301,16 +322,18 @@ function Start-WslRuntimeDaemon {
 
   $launchScript = @(
     '#!/usr/bin/env bash',
+    "exec >> '$LogPathWsl' 2>&1",
     'set -euo pipefail',
     'export PATH="$HOME/.local/bin:$PATH"',
     "export AGENT_WRITER_LEASE_OWNER='$LeaseOwner'",
+    "export AGENT_WRITER_LEASE_ROOT='$LeaseRootWsl'",
     "export DOCKER_HOST='unix:///var/run/docker.sock'",
     "export COMPAREVI_DOCKER_RUNTIME_PROVIDER='native-wsl'",
     "export COMPAREVI_DOCKER_EXPECTED_CONTEXT=''",
     "cd '$RepoRootWsl'",
     "exec $($quotedArgs -join ' ') >> '$LogPathWsl' 2>&1"
   ) -join "`n"
-  $launchScript | Set-Content -LiteralPath $LaunchScriptPath -Encoding utf8
+  $launchScript | Set-Content -LiteralPath $LaunchScriptPath -Encoding utf8NoBOM
   $launchScriptPathWsl = Convert-ToWslPath -Path $LaunchScriptPath
 
   & wsl.exe -d $Distro -- bash -lc "systemctl --user reset-failed '$UnitName.service' >/dev/null 2>&1 || true"
@@ -607,6 +630,8 @@ $wslNativeDockerPath = Join-Path $runtimeDirPath 'wsl-native-docker.json'
 $daemonLogPath = Join-Path $runtimeDirPath 'runtime-daemon-wsl.log'
 $launchScriptPath = Join-Path $runtimeDirPath 'start-runtime-daemon.sh'
 $repoRootWsl = Convert-ToWslPath -Path $repoRoot
+$gitDirPath = Resolve-GitDirPath -RepoRoot $repoRoot
+$leaseRootWsl = Convert-ToWslPath -Path (Join-Path $gitDirPath 'agent-writer-leases')
 $daemonLogPathWsl = Convert-ToWslPath -Path $daemonLogPath
 $leaseOwner = Get-StableLeaseOwner -RepoRoot $repoRoot
 $daemonUnitName = Get-WslRuntimeDaemonUnitName -Repo $Repo
@@ -795,6 +820,7 @@ try {
         -Repo $Repo `
         -DaemonPollIntervalSeconds $DaemonPollIntervalSeconds `
         -LeaseOwner $leaseOwner `
+        -LeaseRootWsl $leaseRootWsl `
         -UnitName $daemonUnitName `
         -StopOnIdle:($StopWhenNoOpenIssues -or $SleepMode)
 
@@ -812,6 +838,8 @@ try {
             $Repo,
             '--runtime-dir',
             $RuntimeDir,
+            '--lease-root',
+            $leaseRootWsl,
             '--poll-interval-seconds',
             "$DaemonPollIntervalSeconds",
             '--execute-turn'

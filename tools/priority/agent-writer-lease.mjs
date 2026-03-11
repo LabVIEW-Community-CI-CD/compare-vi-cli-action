@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 
+import { spawnSync } from 'node:child_process';
 import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
@@ -38,8 +39,26 @@ function envBool(name, fallback = false) {
   return raw === '1' || raw.toLowerCase() === 'true';
 }
 
+function resolveDefaultGitDir(repoRoot = REPO_ROOT) {
+  const probe = spawnSync('git', ['rev-parse', '--git-dir'], {
+    cwd: repoRoot,
+    encoding: 'utf8',
+    stdio: ['ignore', 'pipe', 'pipe']
+  });
+  if (probe.status !== 0) {
+    return path.join(repoRoot, '.git');
+  }
+
+  const gitDir = String(probe.stdout ?? '').trim();
+  if (!gitDir) {
+    return path.join(repoRoot, '.git');
+  }
+
+  return path.isAbsolute(gitDir) ? path.normalize(gitDir) : path.normalize(path.resolve(repoRoot, gitDir));
+}
+
 export function defaultLeaseRoot() {
-  return process.env.AGENT_WRITER_LEASE_ROOT || path.join(REPO_ROOT, '.git', 'agent-writer-leases');
+  return process.env.AGENT_WRITER_LEASE_ROOT || path.join(resolveDefaultGitDir(), 'agent-writer-leases');
 }
 
 export function defaultOwner() {

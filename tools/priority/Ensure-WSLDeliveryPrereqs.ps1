@@ -58,9 +58,10 @@ function Repair-CrossPlaneRuntimeWorktrees {
   $scriptPath = Join-Path $RepoRoot 'tools\priority\repair-runtime-worktrees.mjs'
   if (-not (Test-Path -LiteralPath $scriptPath -PathType Leaf)) {
     return [pscustomobject]@{
-      repaired = $false
+      status = 'skipped'
       reason = 'script-missing'
       reportPath = $null
+      report = $null
     }
   }
 
@@ -71,12 +72,19 @@ function Repair-CrossPlaneRuntimeWorktrees {
   }
 
   try {
-    return (($output -join [Environment]::NewLine) | ConvertFrom-Json -Depth 20 -ErrorAction Stop)
+    $report = (($output -join [Environment]::NewLine) | ConvertFrom-Json -Depth 20 -ErrorAction Stop)
+    return [pscustomobject]@{
+      status = 'ok'
+      reason = 'completed'
+      reportPath = $reportPath
+      report = $report
+    }
   } catch {
     return [pscustomobject]@{
-      repaired = $false
+      status = 'error'
       reason = 'report-parse-failed'
       reportPath = $reportPath
+      report = $null
     }
   }
 }
@@ -95,7 +103,7 @@ function Repair-CodexState {
   }
 
   $reportPath = Join-Path $RepoRoot 'tests\results\_agent\runtime\codex-state-hygiene.json'
-  $output = & $nodePath --no-warnings $scriptPath --apply --report $reportPath
+  $output = & $nodePath --no-warnings $scriptPath --repo-root $RepoRoot --apply --report $reportPath
   $exitCode = $LASTEXITCODE
   if ($exitCode -ne 0) {
     return [pscustomobject]@{

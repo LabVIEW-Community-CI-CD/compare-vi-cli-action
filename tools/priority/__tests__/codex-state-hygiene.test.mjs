@@ -114,6 +114,36 @@ test('normalizeCodexCwd converts Linux and WSL worktree paths into host-safe Win
     normalizeCodexCwd('\\\\wsl.localhost\\Ubuntu\\mnt\\c\\dev\\compare-vi-cli-action\\compare-vi-cli-action', { repoRoot }),
     'C:\\dev\\compare-vi-cli-action\\compare-vi-cli-action'
   );
+  assert.equal(
+    normalizeCodexCwd('C:/dev/compare-vi-cli-action/compare-vi-cli-action', { repoRoot }),
+    'C:\\dev\\compare-vi-cli-action\\compare-vi-cli-action'
+  );
+});
+
+test('runCodexStateHygiene reports action-needed when node:sqlite is unavailable', async () => {
+  const tempRoot = await mkdtemp(path.join(os.tmpdir(), 'codex-state-hygiene-no-sqlite-'));
+  const codexHome = path.join(tempRoot, '.codex');
+  const stateDbPath = path.join(codexHome, 'state_5.sqlite');
+
+  await mkdir(codexHome, { recursive: true });
+  await writeFile(stateDbPath, '', 'utf8');
+
+  const report = await runCodexStateHygiene(
+    {
+      codexHome,
+      repoRoot: tempRoot,
+      now: new Date('2026-03-11T20:00:00.000Z')
+    },
+    {
+      importSqliteFn: async () => {
+        throw Object.assign(new Error('node:sqlite unavailable'), { code: 'ERR_UNKNOWN_BUILTIN_MODULE' });
+      }
+    }
+  );
+
+  assert.equal(report.status, 'action-needed');
+  assert.equal(report.database.driver, 'unavailable');
+  assert.match(report.applied.error, /node:sqlite/i);
 });
 
 test('runCodexStateHygiene archives stale threads, prunes old null logs, and writes a report', async () => {

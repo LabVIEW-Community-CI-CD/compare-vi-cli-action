@@ -128,7 +128,11 @@ function normalizePathForFs(value) {
 }
 
 function isWindowsAbsolutePath(value) {
-  return /^[a-z]:\\/i.test(value);
+  if (typeof value !== 'string') {
+    return false;
+  }
+
+  return /^[a-z]:[\\/]/i.test(value) || /^\\\\[^\\]+\\[^\\]+/i.test(value);
 }
 
 function pathExistsOrNull(value) {
@@ -144,23 +148,23 @@ export function normalizeCodexCwd(cwd, options = {}) {
     return '';
   }
 
-  if (isWindowsAbsolutePath(normalized)) {
-    return path.normalize(normalized);
-  }
-
   const repoRoot = path.resolve(options.repoRoot || process.cwd());
-
-  const linuxMountMatch = normalized.match(/^\/mnt\/([a-z])\/(.*)$/i);
-  if (linuxMountMatch) {
-    const drive = linuxMountMatch[1].toUpperCase();
-    const rest = linuxMountMatch[2].replace(/\//g, '\\');
-    return `${drive}:\\${rest}`;
-  }
 
   const wslUncMountMatch = normalized.match(/^\\\\wsl(?:\.localhost)?\\[^\\]+\\mnt\\([a-z])\\(.*)$/i);
   if (wslUncMountMatch) {
     const drive = wslUncMountMatch[1].toUpperCase();
     const rest = wslUncMountMatch[2].replace(/\\/g, '\\');
+    return `${drive}:\\${rest}`;
+  }
+
+  if (isWindowsAbsolutePath(normalized)) {
+    return path.normalize(normalized);
+  }
+
+  const linuxMountMatch = normalized.match(/^\/mnt\/([a-z])\/(.*)$/i);
+  if (linuxMountMatch) {
+    const drive = linuxMountMatch[1].toUpperCase();
+    const rest = linuxMountMatch[2].replace(/\//g, '\\');
     return `${drive}:\\${rest}`;
   }
 
@@ -523,8 +527,26 @@ function deriveStatus(summary, options = {}) {
   return 'ok';
 }
 
-async function openDatabaseSync(dbPath) {
-  const sqlite = await import('node:sqlite');
+async function openDatabaseSync(dbPath, deps = {}) {
+  const importSqliteFn = deps.importSqliteFn ?? ((specifier) => import(specifier));
+  let sqlite;
+  try {
+    sqlite = await importSqliteFn('node:sqlite');
+  } catch (error) {
+    const unavailable = new Error(
+      'Built-in SQLite module "node:sqlite" is not available in this Node.js runtime.'
+    );
+    unavailable.code = 'SQLITE_MODULE_UNAVAILABLE';
+    unavailable.cause = error;
+    throw unavailable;
+  }
+
+  if (typeof sqlite?.DatabaseSync !== 'function') {
+    const unavailable = new Error('The "node:sqlite" module does not expose DatabaseSync.');
+    unavailable.code = 'SQLITE_DATABASESYNC_UNAVAILABLE';
+    throw unavailable;
+  }
+
   return new sqlite.DatabaseSync(dbPath);
 }
 
@@ -547,7 +569,7 @@ function checkpointWal(db) {
   }
 }
 
-export async function runCodexStateHygiene(options = {}) {
+export async function runCodexStateHygiene(options = {}, deps = {}) {
   const now = options.now instanceof Date ? options.now : new Date();
   const codexHome = path.resolve(options.codexHome || path.join(os.homedir(), '.codex'));
   const repoRoot = path.resolve(options.repoRoot || process.cwd());
@@ -615,7 +637,19 @@ export async function runCodexStateHygiene(options = {}) {
     return summary;
   }
 
-  const db = await openDatabaseSync(stateDbPath);
+  let db;
+  try {
+    db = await openDatabaseSync(stateDbPath, deps);
+  } catch (error) {
+    if (error?.code === 'SQLITE_MODULE_UNAVAILABLE' || error?.code === 'SQLITE_DATABASESYNC_UNAVAILABLE') {
+      summary.database.driver = 'unavailable';
+      summary.database.unavailableReason = error.message;
+      summary.applied.error = error.message;
+      summary.status = 'action-needed';
+      return summary;
+    }
+    throw error;
+  }
   try {
     db.exec('PRAGMA busy_timeout = 10000');
     summary.database.journalMode = db.prepare('PRAGMA journal_mode').get().journal_mode || null;

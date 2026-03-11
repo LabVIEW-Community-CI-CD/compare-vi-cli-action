@@ -32,6 +32,7 @@ import { acquireWriterLease, defaultOwner, releaseWriterLease } from './agent-wr
 import { getRepoRoot } from './lib/branch-utils.mjs';
 import { handoffStandingPriority } from './standing-priority-handoff.mjs';
 import {
+  __test as workerCheckoutTest,
   bootstrapCompareviWorkerCheckout,
   activateCompareviWorkerLane,
   prepareCompareviWorkerCheckout,
@@ -891,6 +892,7 @@ export const compareviRuntimeTest = {
   bootstrapCompareviWorkerCheckout,
   executeCompareviTurn,
   isCadenceAlertIssue,
+  isPathWithin: workerCheckoutTest.isPathWithin,
   parseIssueRows,
   planCompareviRuntimeStep,
   planCompareviRuntimeStepFromLiveStanding,
