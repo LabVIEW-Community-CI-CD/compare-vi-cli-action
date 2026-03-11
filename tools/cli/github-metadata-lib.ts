@@ -196,15 +196,26 @@ const issueTypeRefSchema = z.object({
 });
 
 const reviewerRequestedSchema = z.object({
-  requestedReviewer: z.object({
-    __typename: z.enum(['User', 'Team']),
-    id: z.string().min(1),
-    login: z.string().min(1).optional(),
-    slug: z.string().min(1).optional(),
-    organization: z.object({
+  requestedReviewer: z.discriminatedUnion('__typename', [
+    z.object({
+      __typename: z.literal('User'),
+      id: z.string().min(1),
       login: z.string().min(1),
-    }).optional(),
-  }).nullable().optional(),
+    }),
+    z.object({
+      __typename: z.literal('Team'),
+      id: z.string().min(1),
+      slug: z.string().min(1),
+      organization: z.object({
+        login: z.string().min(1),
+      }),
+    }),
+    z.object({
+      __typename: z.literal('Bot'),
+      id: z.string().min(1).optional(),
+      login: z.string().min(1).optional(),
+    }),
+  ]).nullable().optional(),
 });
 
 const resourceQuerySchema = z.object({
