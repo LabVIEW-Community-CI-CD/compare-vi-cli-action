@@ -93,6 +93,7 @@ if ($FullName -and $FullName.Count -gt 0) {
   $conf.Filter.FullName = @($FullName)
 }
 $conf.Output.Verbosity = $OutputVerbosity
+$conf.Run.PassThru = $true
 $conf.TestResult.Enabled = $true
 $conf.TestResult.OutputFormat = 'NUnitXml'
 $conf.TestResult.OutputPath = 'pester-results.xml'  # filename relative to CWD per Pester 5
@@ -100,7 +101,7 @@ $conf.TestResult.OutputPath = 'pester-results.xml'  # filename relative to CWD p
 # Run from results directory so XML lands there
 Push-Location -LiteralPath $resultsDir
 try {
-  Invoke-Pester -Configuration $conf
+  $pesterResult = Invoke-Pester -Configuration $conf
 }
 finally {
   Pop-Location
@@ -108,22 +109,47 @@ finally {
 
 # Derive summary from NUnit XML
 $xmlPath = Join-Path $resultsDir 'pester-results.xml'
+$summaryPath = Join-Path $resultsDir 'pester-summary.txt'
 if (-not (Test-Path -LiteralPath $xmlPath)) {
+  $fallbackSummary = @(
+    ("Tests Passed: {0}" -f $(if ($null -ne $pesterResult) { [int]$pesterResult.PassedCount } else { 0 }))
+    ("Tests Failed: {0}" -f $(if ($null -ne $pesterResult) { [int]$pesterResult.FailedCount } else { 0 }))
+    ("Tests Skipped: {0}" -f $(if ($null -ne $pesterResult) { [int]$pesterResult.SkippedCount } else { 0 }))
+    'Summary source: in-memory fallback'
+    ("Result XML missing: {0}" -f $xmlPath)
+  ) -join [Environment]::NewLine
+  $fallbackSummary | Tee-Object -FilePath $summaryPath
   Write-Error "Pester result XML not found at: $xmlPath"
   exit 1
 }
-[xml]$doc = Get-Content -LiteralPath $xmlPath -Raw
-$rootNode = $doc.'test-results'
-[int]$total = $rootNode.total
-[int]$failed = $rootNode.failures
-[int]$errors = $rootNode.errors
-$passed = $total - $failed - $errors
-$skipped = 0
-$summary = @(
-  "Tests Passed: $passed",
-  "Tests Failed: $failed",
-  "Tests Skipped: $skipped"
-) -join [Environment]::NewLine
-$summary | Tee-Object -FilePath (Join-Path $resultsDir 'pester-summary.txt')
+
+try {
+  [xml]$doc = Get-Content -LiteralPath $xmlPath -Raw
+  $rootNode = $doc.'test-results'
+  [int]$total = $rootNode.total
+  [int]$failed = $rootNode.failures
+  [int]$errors = $rootNode.errors
+  $passed = $total - $failed - $errors
+  $skipped = 0
+  $summary = @(
+    "Tests Passed: $passed",
+    "Tests Failed: $failed",
+    "Tests Skipped: $skipped"
+  ) -join [Environment]::NewLine
+  $summary | Tee-Object -FilePath $summaryPath
+}
+catch {
+  $fallbackSummary = @(
+    ("Tests Passed: {0}" -f $(if ($null -ne $pesterResult) { [int]$pesterResult.PassedCount } else { 0 }))
+    ("Tests Failed: {0}" -f $(if ($null -ne $pesterResult) { [int]$pesterResult.FailedCount } else { 0 }))
+    ("Tests Skipped: {0}" -f $(if ($null -ne $pesterResult) { [int]$pesterResult.SkippedCount } else { 0 }))
+    'Summary source: in-memory fallback'
+    ("XML parse error: {0}" -f $_.Exception.Message)
+    ("Result XML: {0}" -f $xmlPath)
+  ) -join [Environment]::NewLine
+  $fallbackSummary | Tee-Object -FilePath $summaryPath
+  Write-Warning ("Failed to parse NUnit XML at {0}: {1}" -f $xmlPath, $_.Exception.Message)
+  exit 1
+}
 
 if ($failed -gt 0 -or $errors -gt 0) { exit 1 }

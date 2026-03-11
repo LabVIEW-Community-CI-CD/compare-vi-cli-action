@@ -520,6 +520,78 @@ function Resolve-OutputPathFromBaseDirectory {
   return [System.IO.Path]::GetFullPath((Join-Path $BaseDirectory $effectiveInput))
 }
 
+function Invoke-WithoutGitWorkspaceOverride {
+  param([Parameter(Mandatory)][scriptblock]$ScriptBlock)
+
+  $gitEnvNames = @(
+    'GIT_DIR',
+    'GIT_WORK_TREE',
+    'GIT_COMMON_DIR',
+    'GIT_INDEX_FILE',
+    'GIT_OBJECT_DIRECTORY',
+    'GIT_ALTERNATE_OBJECT_DIRECTORIES',
+    'GIT_PREFIX',
+    'GIT_CEILING_DIRECTORIES'
+  )
+  $savedEnv = @{}
+  foreach ($name in $gitEnvNames) {
+    $savedEnv[$name] = [System.Environment]::GetEnvironmentVariable($name, 'Process')
+    Remove-Item -Path ("Env:{0}" -f $name) -ErrorAction SilentlyContinue
+    [System.Environment]::SetEnvironmentVariable($name, $null, 'Process')
+  }
+
+  try {
+    $gitPath = (Get-Command git -CommandType Application -ErrorAction Stop | Select-Object -First 1).Source
+    function local:git {
+      param([Parameter(ValueFromRemainingArguments = $true)][object[]]$Arguments)
+
+      $psi = [System.Diagnostics.ProcessStartInfo]::new()
+      $psi.FileName = $gitPath
+      $psi.WorkingDirectory = (Get-Location).Path
+      $psi.UseShellExecute = $false
+      $psi.RedirectStandardOutput = $true
+      $psi.RedirectStandardError = $true
+      foreach ($arg in @($Arguments)) {
+        [void]$psi.ArgumentList.Add([string]$arg)
+      }
+      foreach ($envName in $gitEnvNames) {
+        [void]$psi.Environment.Remove($envName)
+      }
+
+      $proc = [System.Diagnostics.Process]::new()
+      $proc.StartInfo = $psi
+      try {
+        [void]$proc.Start()
+        $stdout = $proc.StandardOutput.ReadToEnd()
+        $stderr = $proc.StandardError.ReadToEnd()
+        $proc.WaitForExit()
+        $global:LASTEXITCODE = [int]$proc.ExitCode
+        if (-not [string]::IsNullOrWhiteSpace($stderr)) {
+          [Console]::Error.Write($stderr)
+        }
+        if ([string]::IsNullOrWhiteSpace($stdout)) {
+          return @()
+        }
+        return @($stdout -split "(`r`n|`n|`r)" | Where-Object { -not [string]::IsNullOrWhiteSpace($_) })
+      } finally {
+        $proc.Dispose()
+      }
+    }
+    & $ScriptBlock
+  } finally {
+    Remove-Item -Path Function:git -ErrorAction SilentlyContinue
+    foreach ($name in $savedEnv.Keys) {
+      if ($null -eq $savedEnv[$name]) {
+        Remove-Item -Path ("Env:{0}" -f $name) -ErrorAction SilentlyContinue
+        [System.Environment]::SetEnvironmentVariable($name, $null, 'Process')
+      } else {
+        Set-Item -Path ("Env:{0}" -f $name) -Value $savedEnv[$name]
+        [System.Environment]::SetEnvironmentVariable($name, $savedEnv[$name], 'Process')
+      }
+    }
+  }
+}
+
 function Get-HostGitBranchBudget {
   param(
     [Parameter(Mandatory)][string]$RepoPath,
@@ -547,8 +619,9 @@ function Get-HostGitBranchBudget {
     return [pscustomobject]$result
   }
 
-  Push-Location $RepoPath
-  try {
+  return Invoke-WithoutGitWorkspaceOverride {
+    Push-Location $RepoPath
+    try {
     & git rev-parse --verify $normalizedBranchRef *> $null
     if ($LASTEXITCODE -ne 0) {
       $result.status = 'invalid'
@@ -624,9 +697,10 @@ function Get-HostGitBranchBudget {
 
     $result.status = 'ok'
     $result.reason = 'within-limit'
-    return [pscustomobject]$result
-  } finally {
-    Pop-Location | Out-Null
+      return [pscustomobject]$result
+    } finally {
+      Pop-Location | Out-Null
+    }
   }
 }
 
@@ -784,8 +858,11 @@ function Resolve-RuntimeBootstrapViHistory {
   if (-not (Test-Path -LiteralPath $repoHostPath -PathType Container)) {
     throw ("Runtime bootstrap viHistory.repoPath must be a directory: {0}" -f $repoHostPath)
   }
-  & git -C $repoHostPath rev-parse --is-inside-work-tree *> $null
-  if ($LASTEXITCODE -ne 0) {
+  $isGitWorkingTree = Invoke-WithoutGitWorkspaceOverride {
+    & git -C $repoHostPath rev-parse --is-inside-work-tree *> $null
+    return ($LASTEXITCODE -eq 0)
+  }
+  if (-not $isGitWorkingTree) {
     throw ("Runtime bootstrap viHistory.repoPath is not a git working tree: {0}" -f $repoHostPath)
   }
 
