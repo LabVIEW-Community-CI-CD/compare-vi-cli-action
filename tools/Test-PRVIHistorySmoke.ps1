@@ -63,6 +63,12 @@ param(
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
+if ($DryRun) {
+    Write-Host 'pr-vi-history workflow is retired; no smoke dispatch is available.'
+    return
+}
+throw 'pr-vi-history workflow is retired. Use local VI history helper scripts for manual evidence runs.'
+
 $policyHelperPath = Join-Path $PSScriptRoot 'Resolve-VIHistoryPolicyDecision.ps1'
 if (-not (Test-Path -LiteralPath $policyHelperPath -PathType Leaf)) {
     throw "Policy helper not found: $policyHelperPath"

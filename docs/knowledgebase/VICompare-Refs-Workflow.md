@@ -15,10 +15,10 @@
 
 ## Pull request staging helper
 
-- Comment `/vi-stage` on a pull request (or dispatch `pr-vi-staging.yml`) to have the automation generate a manifest with
+- Comment `/vi-stage` on a pull request (legacy path, retired) to have the automation generate a manifest with
   `tools/Get-PRVIDiffManifest.ps1`, stage the resolvable base/head pairs via `tools/Invoke-PRVIStaging.ps1`, and upload a
   zipped bundle per staged pair.
-- The workflow runs on the repository's self-hosted Windows runner (`self-hosted, Windows, X64`) so the same LabVIEW/LVCompare
+- The workflow runs on the repository's hosted Linux runner (`ubuntu-latest`) so the same LabVIEW/LVCompare
   environment used in production compares is exercised during staging, and immediately launches `Invoke-LVCompare.ps1`
   against each staged pair. The capture artifacts (HTML report, `lvcompare-capture.json`, stdout/stderr) are stored under
   `vi-compare-artifacts/compare/pair-XX/` and summarised in the PR comment.
@@ -37,8 +37,7 @@
 
   The attribute fixtures live alongside the baseline set so we can keep the scenario data in-source without editing binaries in place. Update them only when you intend to change the smoke baseline.
   The PR comment table now appends per-category detail lines (for example `VI Attribute - Documentation � Description`) so attribute-only changes are visible at a glance. Additional atomic fixtures live under `fixtures/vi-stage/`; update those copies in LabVIEW (or via LabVIEW CLI) before wiring more scenarios into `tools/Test-PRVIStagingSmoke.ps1`.
-- The workflow only honours comments authored by repository members/collaborators. Maintainers can also run the job
-  manually with `gh workflow run pr-vi-staging.yml -f pr=<number> [-f note="context"]`.
+- The workflow path above is retained for historical context only; use the local helper scripts for new runs.
 - Outputs:
   - `vi-compare-manifest` artifact containing `vi-manifest.json`, `vi-staging-results.json` (full JSON payload), and a
     Markdown summary table.
@@ -92,7 +91,7 @@
   normally to open a draft PR and validate the automatic compare job, then repeat with `-KeepBranch` when you want the
   scratch branch preserved while the `/vi-stage` and `/vi-history` dispatches finish.
 - Comment `/vi-history` when you want the automation to walk commit history for every VI in the PR. The companion
-  workflow (`pr-vi-history.yml`) generates the diff manifest, runs `tools/Invoke-PRVIHistory.ps1` (which now walks every
+  workflow path is retired; use `tools/Invoke-PRVIHistory.ps1` directly (which now walks every
   reachable commit pair by default; add `max_pairs=<n>` in the comment or `-MaxPairs <n>` locally when you need a
   deliberate cap; enable `-Verbose` locally to see the resolved helper and whether we lifted the path from the base or
   head tree), renders the Markdown table via `tools/Summarize-PRVIHistory.ps1`, uploads `tests/results/pr-vi-history/`,
@@ -329,8 +328,8 @@ gh workflow run vi-compare-refs.yml `
 
 ### Fork pull request automation
 
-- VI Compare (Fork PR) runs automatically on PRs targeting develop (including forks). The workflow fetches the fork head via the composite etch-pr-head helper, stages pairs, runs LVCompare on the self-hosted Windows runner, and uploads the same artifacts as /vi-stage.
-- The command-driven workflows (pr-vi-staging.yml, pr-vi-history.yml) now reuse the helper so they operate on fork commits safely without bespoke checkout logic.
+- VI Compare (Fork PR) runs automatically on PRs targeting develop (including forks). The workflow fetches the fork head via the composite etch-pr-head helper, stages pairs, runs NI Linux container compare on hosted Linux, and uploads the same artifacts as /vi-stage.
+- The command-driven `pr-vi-staging.yml` and `pr-vi-history.yml` workflows are retired.
 - Manual `/vi-stage` and `/vi-history` dispatches accept an optional `fetch_depth` input (default `20`) so you can deepen history when needed.
 - PRs no longer use auto-approval labels; queue admission depends on required checks and branch policy while deployment
   acknowledgement for protected promotion flows uses environment reviewers (`production` / `monthly-stability-release`).
@@ -347,3 +346,4 @@ gh workflow run vi-compare-refs.yml `
       missing coverage.
 - [ ] Documentation and helper usage notes stay in sync with the bucket terminology (Functional behavior, UI / visual,
       Metadata) and explain how to add new fixtures or buckets.
+

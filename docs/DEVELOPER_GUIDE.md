@@ -94,7 +94,7 @@ Quick reference for building, testing, and releasing the LVCompare composite act
       Leak counts now appear in the staging Markdown table and PR comment so reviewers can see lingering
       LVCompare/LabVIEW processes without downloading the artifacts.
 
-    - `pr-vi-staging.yml` now calls `tools/Summarize-VIStaging.ps1` after
+    - Staging summary tooling calls `tools/Summarize-VIStaging.ps1` after
       LVCompare finishes. The helper inspects `vi-staging-compare.json`, captures
       the categories surfaced in each compare report (front panel, block diagram
       functional/cosmetic, VI attributes), and emits both a Markdown table and
@@ -109,7 +109,7 @@ Quick reference for building, testing, and releasing the LVCompare composite act
         -SummaryJsonPath ./vi-staging-compare-summary.json
       ``
 
-    - `/vi-history` PR comments (or the `pr-vi-history.yml` workflow) reuse the same pattern for history diffs:
+    - Manual VI history analysis reuses the same pattern for history diffs:
       1. `tools/Get-PRVIDiffManifest.ps1` enumerates VI changes between the PR base/head commits.
       2. `tools/Invoke-PRVIHistory.ps1` resolves the history helper once
         (works with repo-relative targets) and runs the compare suite per VI.
@@ -157,9 +157,8 @@ Quick reference for building, testing, and releasing the LVCompare composite act
         Extractor toggles:
         - `PR_VI_HISTORY_EXTRACT_REPORT_IMAGES`
         - `VI_HISTORY_EXTRACT_REPORT_IMAGES`
-    - Override the history depth via the workflow_dispatch input `max_pairs` when you need a longer runway; otherwise
-      accept the default for quick attribution. The workflow uploads the results directory as
-      `pr-vi-history-<pr-number>.zip` for local inspection.
+    - Override history depth with `-MaxPairs` when you need a longer runway; otherwise accept
+      the default for quick attribution.
     - History runs now keep the full signal by default (no quiet bundle). Override the compare flags with repository or
       runner variables when you need to restore selective filters:
       - `PR_VI_HISTORY_COMPARE_FLAGS_MODE` / `VI_HISTORY_COMPARE_FLAGS_MODE` (values `replace` or `append`)
@@ -595,3 +594,4 @@ pwsh -File scripts/CompareVI.ps1 `
   `-KeepBranch` preserves the branch/PR after the staging and history dispatches complete for manual inspection.
 - When testing fork scenarios locally, use the composite `.github/actions/fetch-pr-head` action to simulate
   `pull/<id>/head` checkouts before invoking the staging or history helpers.
+

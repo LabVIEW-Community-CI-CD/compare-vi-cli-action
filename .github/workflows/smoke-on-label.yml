@@ -1,10 +1,6 @@
 name: Smoke test on PR label
 
 on:
-  pull_request:
-    types: [labeled, reopened, synchronize]
-    paths-ignore:
-      - '**/*.md'
   workflow_dispatch:
     inputs:
       sample_id:
@@ -57,7 +53,7 @@ jobs:
 
   smoke:
     needs: pre-init
-    if: contains(toJson(github.event.pull_request.labels), 'smoke') && needs.pre-init.outputs.docs_only != 'true'
+    if: github.event_name == 'workflow_dispatch' && needs.pre-init.outputs.docs_only != 'true'
     runs-on: [self-hosted, Windows, X64]
     env:
       UNBLOCK_GUARD: '1'
@@ -132,7 +128,7 @@ jobs:
           Write-Host "command   = ${{ steps.compare.outputs.command }}"
 
       - name: Comment results on PR (using XCLI_PAT)
-        if: always()
+        if: always() && github.event.pull_request.number
         shell: pwsh
         env:
           GH_REPO: ${{ github.repository }}
@@ -155,7 +151,7 @@ jobs:
 
   smoke-docs-only:
     needs: pre-init
-    if: contains(toJson(github.event.pull_request.labels), 'smoke') && needs.pre-init.outputs.docs_only == 'true'
+    if: github.event_name == 'workflow_dispatch' && needs.pre-init.outputs.docs_only == 'true'
     runs-on: ubuntu-latest
     steps:
       - name: Append summary (docs-only)

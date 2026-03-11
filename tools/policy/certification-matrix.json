@@ -28,17 +28,6 @@
       "os": "linux",
       "image_tag": "nationalinstruments/labview:2026q1-linux",
       "scenario": "Hosted NI Linux container CreateComparisonReport contract run."
-    },
-    {
-      "id": "fixture-drift-windows-docker-desktop-self-hosted",
-      "workflow": "fixture-drift.yml",
-      "job_name": "Fixture Drift (Docker Desktop Host - LabVIEW 2026 q1 windows)",
-      "branch": "*",
-      "event": "pull_request",
-      "runner": "self-hosted-docker-windows",
-      "os": "windows",
-      "image_tag": "nationalinstruments/labview:2026q1-windows",
-      "scenario": "Self-hosted Docker Desktop NI Windows container drift lane."
     }
   ]
 }

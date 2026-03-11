@@ -11,7 +11,7 @@ function readRepoFile(relativePath) {
   return readFileSync(path.join(repoRoot, relativePath), 'utf8');
 }
 
-test('validate workflow centralizes VI-history dispatch planning before Linux and Windows lanes', () => {
+test('validate workflow centralizes VI-history dispatch planning before Linux lane execution', () => {
   const workflow = readRepoFile('.github/workflows/validate.yml');
 
   assert.match(workflow, /vi-history-scenarios-plan:/);
@@ -23,7 +23,7 @@ test('validate workflow centralizes VI-history dispatch planning before Linux an
   assert.match(workflow, /history_scenario_set:\s+\$\{\{\s*steps\.plan\.outputs\.history_scenario_set\s*\}\}/);
 });
 
-test('validate workflow Linux and Windows VI-history lanes consume the shared dispatch-plan outputs', () => {
+test('validate workflow Linux VI-history lane consumes shared dispatch-plan outputs', () => {
   const workflow = readRepoFile('.github/workflows/validate.yml');
 
   assert.match(workflow, /vi-history-scenarios-linux:\s*\r?\n\s+needs:\s*\[smoke-gate, lint, session-index, session-index-v2-contract, vi-history-scenarios-plan\]\r?\n\s+if:\s+needs\.smoke-gate\.outputs\.skip != 'true'/);

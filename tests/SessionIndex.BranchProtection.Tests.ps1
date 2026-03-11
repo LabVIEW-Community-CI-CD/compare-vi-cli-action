@@ -125,14 +125,7 @@ Describe 'Update-SessionIndexBranchProtection' -Tag 'Unit' {
   It 'treats prefixed produced contexts as equivalent to short expected contexts' {
     $resultsDir = & $script:newSessionIndexFixture 'results-prefixed-produced'
     $produced = @(
-      'Validate / lint'
-      'Validate / fixtures'
-      'Validate / session-index'
-      'Validate / issue-snapshot'
-      'Validate / semver'
-      'Validate / hook-parity (windows-latest)'
-      'Validate / hook-parity (ubuntu-latest)'
-      'Validate / vi-history-scenarios-linux'
+      $script:developExpected | ForEach-Object { "Validate / $_" }
     )
 
     & $script:updateScript `
@@ -210,14 +203,7 @@ Describe 'Update-SessionIndexBranchProtection' -Tag 'Unit' {
     $resultsDir = & $script:newSessionIndexFixture 'results-prefixed-actual'
     $produced = $script:developExpected
     $actual = @(
-      'Validate / lint'
-      'Validate / fixtures'
-      'Validate / session-index'
-      'Validate / issue-snapshot'
-      'Validate / semver'
-      'Validate / hook-parity (windows-latest)'
-      'Validate / hook-parity (ubuntu-latest)'
-      'Validate / vi-history-scenarios-linux'
+      $script:developExpected | ForEach-Object { "Validate / $_" }
     )
 
     & $script:updateScript `

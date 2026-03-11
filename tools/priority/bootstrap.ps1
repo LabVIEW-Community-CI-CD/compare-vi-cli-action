@@ -314,7 +314,7 @@ function Get-GitStatusPorcelain {
 
 function Test-GitBranchExists {
   param([Parameter(Mandatory=$true)][string]$Name)
-  Invoke-GitCommand -Arguments @('show-ref','--verify','--quiet',"refs/heads/$Name") -AllowFailure
+  Invoke-GitCommand -Arguments @('show-ref','--verify','--quiet',"refs/heads/$Name") -AllowFailure | Out-Null
   return ($LASTEXITCODE -eq 0)
 }
 

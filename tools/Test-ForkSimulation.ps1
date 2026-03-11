@@ -412,43 +412,17 @@ $summary += [PSCustomObject]@{
     Conclusion = $autoRun.conclusion
 }
 
-if ($prNumber) {
-    $stagingNote = "fork-sim staging $timestamp"
-    $stagingRun = Invoke-WorkflowDispatch -WorkflowFile 'pr-vi-staging.yml' -Inputs @{
-        pr = $prNumber
-        note = $stagingNote
-    } -Ref $BaseBranch -BranchForWait $BaseBranch -TimeoutMinutes 25
-    $summary += [PSCustomObject]@{
-        Pass       = 'staging'
-        Workflow   = 'PR VI Compare Staging'
-        ResultUrl  = $stagingRun.url
-        Conclusion = $stagingRun.conclusion
-    }
-
-    $historyNote = "fork-sim history $timestamp"
-    $historyRun = Invoke-WorkflowDispatch -WorkflowFile 'pr-vi-history.yml' -Inputs @{
-        pr = $prNumber
-        note = $historyNote
-    } -Ref $BaseBranch -BranchForWait $BaseBranch -TimeoutMinutes 25
-    $summary += [PSCustomObject]@{
-        Pass       = 'history'
-        Workflow   = 'PR VI History'
-        ResultUrl  = $historyRun.url
-        Conclusion = $historyRun.conclusion
-    }
-} else {
-    $summary += [PSCustomObject]@{
-        Pass       = 'staging'
-        Workflow   = 'PR VI Compare Staging'
-        ResultUrl  = '(dry-run)'
-        Conclusion = 'skipped'
-    }
-    $summary += [PSCustomObject]@{
-        Pass       = 'history'
-        Workflow   = 'PR VI History'
-        ResultUrl  = '(dry-run)'
-        Conclusion = 'skipped'
-    }
+$summary += [PSCustomObject]@{
+    Pass       = 'staging'
+    Workflow   = 'PR VI Compare Staging'
+    ResultUrl  = '(retired)'
+    Conclusion = 'retired'
+}
+$summary += [PSCustomObject]@{
+    Pass       = 'history'
+    Workflow   = 'PR VI History'
+    ResultUrl  = '(retired)'
+    Conclusion = 'retired'
 }
 
 if (-not $KeepBranch) {

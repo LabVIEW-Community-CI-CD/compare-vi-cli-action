@@ -1,12 +1,6 @@
 name: PR VI Compare (on label)
 
 on:
-  pull_request:
-    types: [labeled, reopened, synchronize]
-    paths-ignore:
-      - '**/*.md'
-  merge_group:
-    branches: [ main ]
   workflow_dispatch:
     inputs:
       sample_id:
@@ -22,7 +16,7 @@ jobs:
   preflight:
     runs-on: [self-hosted, Windows, X64]
     timeout-minutes: 10
-    if: github.event_name == 'workflow_dispatch' || github.event_name == 'merge_group' || (github.event_name == 'pull_request' && contains(github.event.pull_request.labels.*.name, 'vi-compare'))
+    if: github.event_name == 'workflow_dispatch'
     steps:
       - name: Checkout
         uses: actions/checkout@v5
@@ -38,7 +32,7 @@ jobs:
           Write-Host 'Preflight OK: LVCompare present; LabVIEW not running.'
 
   vi-compare:
-    if: github.event_name == 'workflow_dispatch' || github.event_name == 'merge_group' || (github.event_name == 'pull_request' && contains(github.event.pull_request.labels.*.name, 'vi-compare'))
+    if: github.event_name == 'workflow_dispatch'
     runs-on: [self-hosted, Windows, X64]
     needs: preflight
     timeout-minutes: 45
@@ -228,4 +222,3 @@ jobs:
           $headers = @{ Authorization = "Bearer $env:XCLI_PAT"; Accept = 'application/vnd.github+json'; 'User-Agent' = 'xcli-bot' }
           $uri = "https://api.github.com/repos/$env:GH_REPO/issues/$env:PR_NUMBER/comments"
           Invoke-RestMethod -Method POST -Uri $uri -Headers $headers -ContentType 'application/json' -Body $payload
-

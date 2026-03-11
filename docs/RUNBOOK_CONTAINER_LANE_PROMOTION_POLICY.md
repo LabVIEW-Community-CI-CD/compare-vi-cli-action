@@ -72,7 +72,7 @@ Rollback behavior was validated against the canary state for #662/#663:
 
 - Canary lane remains non-required during this policy phase.
 - Current develop required-check contract remains satisfiable with no runbook-container context required.
-- Expected branch-protection behavior after rollback: merges continue using canonical required contexts (`lint`, `fixtures`, `session-index`, `issue-snapshot`, `semver`, `Policy Guard (Upstream) / policy-guard`, `hook-parity (windows-latest)`, `hook-parity (ubuntu-latest)`, `vi-history-scenarios-linux`, `agent-review-policy`, `commit-integrity`).
+- Expected branch-protection behavior after rollback: merges continue using canonical required contexts (`lint`, `fixtures`, `session-index`, `issue-snapshot`, `semver`, `Policy Guard (Upstream) / policy-guard`, `hook-parity (ubuntu-latest)`, `vi-history-scenarios-linux`, `agent-review-policy`, `commit-integrity`).
 
 ## Decision for #663
 
