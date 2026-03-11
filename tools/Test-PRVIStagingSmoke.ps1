@@ -29,6 +29,12 @@ param(
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
+if ($DryRun) {
+    Write-Host 'pr-vi-staging workflow is retired; no smoke dispatch is available.'
+    return
+}
+throw 'pr-vi-staging workflow is retired. Use vi-compare-fork workflow evidence or local staging helpers instead.'
+
 function Invoke-Git {
     param(
         [Parameter(Mandatory)]

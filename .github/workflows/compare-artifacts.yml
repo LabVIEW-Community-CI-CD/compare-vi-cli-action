@@ -7,11 +7,6 @@ on:
         description: 'Sampling correlation id (prevents cancels)'
         required: false
         type: string
-  push:
-    branches: [main]
-    paths-ignore:
-    - '**/*.md'
-    - 'docs/**'
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.event.inputs.sample_id || github.ref }}

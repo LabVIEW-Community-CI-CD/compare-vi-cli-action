@@ -1,0 +1,71 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://labview-community-ci-cd.github.io/compare-vi-cli-action/schemas/runtime-delivery-task-packet-v1.schema.json",
+  "title": "Runtime Delivery Task Packet v1",
+  "type": "object",
+  "additionalProperties": true,
+  "required": ["schema", "repository", "status", "objective", "evidence"],
+  "properties": {
+    "schema": { "const": "priority/runtime-worker-task-packet@v1" },
+    "generatedAt": { "type": "string", "format": "date-time" },
+    "cycle": { "type": ["integer", "null"], "minimum": 1 },
+    "laneId": { "type": ["string", "null"] },
+    "repository": { "type": "string" },
+    "status": { "type": "string" },
+    "objective": {
+      "type": "object",
+      "required": ["summary"],
+      "additionalProperties": true,
+      "properties": {
+        "summary": { "type": ["string", "null"] },
+        "source": { "type": ["string", "null"] }
+      }
+    },
+    "branch": { "type": "object", "additionalProperties": true },
+    "pullRequest": { "type": "object", "additionalProperties": true },
+    "checks": { "type": "object", "additionalProperties": true },
+    "helperSurface": { "type": "object", "additionalProperties": true },
+    "recentEvents": { "type": "array" },
+    "evidence": {
+      "type": "object",
+      "additionalProperties": true,
+      "required": ["delivery"],
+      "properties": {
+        "delivery": {
+          "type": "object",
+          "additionalProperties": true,
+          "required": ["executionMode", "laneLifecycle", "mutationEnvelope", "turnBudget"],
+          "properties": {
+            "executionMode": { "type": "string" },
+            "laneLifecycle": {
+              "enum": [
+                "planning",
+                "reshaping-backlog",
+                "coding",
+                "waiting-ci",
+                "waiting-review",
+                "ready-merge",
+                "blocked",
+                "complete",
+                "idle"
+              ]
+            },
+            "selectedActionType": { "type": ["string", "null"] },
+            "standingIssue": { "type": ["object", "null"], "additionalProperties": true },
+            "selectedIssue": { "type": ["object", "null"], "additionalProperties": true },
+            "issueGraph": { "type": ["object", "null"], "additionalProperties": true },
+            "pullRequest": { "type": ["object", "null"], "additionalProperties": true },
+            "backlog": { "type": ["object", "null"], "additionalProperties": true },
+            "mutationEnvelope": { "type": "object", "additionalProperties": true },
+            "turnBudget": { "type": "object", "additionalProperties": true },
+            "relevantFiles": {
+              "type": "array",
+              "items": { "type": "string" }
+            }
+          }
+        }
+      }
+    },
+    "artifacts": { "type": "object", "additionalProperties": true }
+  }
+}

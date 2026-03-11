@@ -1,9 +1,10 @@
 #!/usr/bin/env node
 
-import { spawnSync } from 'node:child_process';
+import { execFile, spawnSync } from 'node:child_process';
 import { readFile } from 'node:fs/promises';
 import path from 'node:path';
 import process from 'node:process';
+import { promisify } from 'node:util';
 import { fileURLToPath } from 'node:url';
 import {
   WORKER_READY_SCHEMA,
@@ -44,6 +45,13 @@ import {
   resolveStandingPriorityLabels,
   selectAutoStandingPriorityCandidate
 } from './sync-standing-priority.mjs';
+import {
+  buildCanonicalDeliveryDecision,
+  DELIVERY_AGENT_POLICY_RELATIVE_PATH,
+  fetchIssueExecutionGraph,
+  loadDeliveryAgentPolicy,
+  persistDeliveryAgentRuntimeState
+} from './delivery-agent.mjs';
 
 export {
   ACTIONS,
@@ -69,12 +77,13 @@ export {
 const COMPAREVI_UPSTREAM_REPOSITORY = 'LabVIEW-Community-CI-CD/compare-vi-cli-action';
 const PRIORITY_CACHE_FILENAME = '.agent_priority_cache.json';
 const PRIORITY_ISSUE_DIR = path.join('tests', 'results', '_agent', 'issue');
+const execFileAsync = promisify(execFile);
 const COMPAREVI_PREFERRED_HELPERS = [
-  'pwsh -NoLogo -NoProfile -File tools/priority/bootstrap.ps1',
-  'node tools/npm/run-script.mjs priority:develop:sync',
   'node tools/npm/run-script.mjs priority:github:metadata:apply',
   'node tools/npm/run-script.mjs priority:project:portfolio:apply',
-  'node tools/npm/run-script.mjs priority:pr'
+  'node tools/npm/run-script.mjs priority:pr',
+  'node tools/npm/run-script.mjs priority:merge-sync',
+  'node tools/npm/run-script.mjs priority:validate'
 ];
 const COMPAREVI_FALLBACK_HELPERS = [
   'gh issue create --body-file <path>',
@@ -85,6 +94,14 @@ const COMPAREVI_FALLBACK_HELPERS = [
 function normalizeText(value) {
   if (value == null) return '';
   return String(value).trim();
+}
+
+function coercePositiveInteger(value) {
+  const parsed = Number(value);
+  if (!Number.isInteger(parsed) || parsed <= 0) {
+    return null;
+  }
+  return parsed;
 }
 
 const CADENCE_CHECK_MARKER_REGEX = /<!--\s*cadence-check:/i;
@@ -189,11 +206,30 @@ function parseRepositoryFromIssueUrl(url) {
   return match?.[1] || '';
 }
 
-function resolveForkRemoteForRepository(repository, upstreamRepository) {
+function normalizeMirrorOfPointer(rawMirrorOf) {
+  if (!rawMirrorOf || typeof rawMirrorOf !== 'object') {
+    return null;
+  }
+  const number = coercePositiveInteger(rawMirrorOf.number);
+  const url = normalizeText(rawMirrorOf.url) || null;
+  const repository = normalizeText(rawMirrorOf.repository) || parseRepositoryFromIssueUrl(url) || null;
+  if (!number && !url && !repository) {
+    return null;
+  }
+  return {
+    repository,
+    number,
+    url
+  };
+}
+
+function resolveForkRemoteForRepository(repository, upstreamRepository, implementationRemote = 'origin') {
   const normalizedRepository = normalizeText(repository);
   const normalizedUpstream = normalizeText(upstreamRepository) || COMPAREVI_UPSTREAM_REPOSITORY;
   if (!normalizedRepository || !normalizedUpstream) return null;
-  if (normalizedRepository === normalizedUpstream) return 'upstream';
+  if (normalizedRepository === normalizedUpstream) {
+    return normalizeText(implementationRemote) || 'origin';
+  }
 
   const [upstreamOwner] = normalizedUpstream.split('/');
   const [repositoryOwner] = normalizedRepository.split('/');
@@ -203,6 +239,7 @@ function resolveForkRemoteForRepository(repository, upstreamRepository) {
 function buildSchedulerDecisionFromSnapshot({
   snapshot,
   upstreamRepository,
+  implementationRemote,
   source,
   artifactPaths
 }) {
@@ -239,7 +276,7 @@ function buildSchedulerDecisionFromSnapshot({
     };
   }
 
-  const forkRemote = resolveForkRemoteForRepository(standingRepository, upstreamRepository);
+  const forkRemote = resolveForkRemoteForRepository(standingRepository, upstreamRepository, implementationRemote);
   const laneId = [forkRemote, selectedIssue].filter(Boolean).join('-') || `issue-${selectedIssue}`;
   const branch = resolveCompareviIssueBranchName({
     issueNumber: selectedIssue,
@@ -281,6 +318,10 @@ async function planCompareviRuntimeStepFromLiveStanding({ repoRoot, targetReposi
     return null;
   }
 
+  const deliveryPolicy = await loadDeliveryAgentPolicy(repoRoot, {
+    ...deps,
+    policyPath: deps.deliveryAgentPolicyPath || DELIVERY_AGENT_POLICY_RELATIVE_PATH
+  });
   const standingPriorityLabels = resolveStandingPriorityLabels(repoRoot, targetRepository, env);
   const resolveStandingPriorityForRepoFn =
     deps.resolveStandingPriorityForRepoFn ?? resolveStandingPriorityForRepo;
@@ -291,13 +332,37 @@ async function planCompareviRuntimeStepFromLiveStanding({ repoRoot, targetReposi
       restIssueFetcher: deps.restIssueFetcher
     });
     const mirrorOf = parseUpstreamIssuePointerFromBody(issueSnapshot.body);
+    const snapshotWithRepo = {
+      ...issueSnapshot,
+      repository: targetRepository,
+      mirrorOf
+    };
+    if (!mirrorOf?.number && targetRepository === upstreamRepository) {
+      try {
+        const issueGraph = await fetchIssueExecutionGraph({
+          repoRoot,
+          repository: targetRepository,
+          issueNumber: standingLookup.found.number,
+          deps
+        });
+        return buildCanonicalDeliveryDecision({
+          repoRoot,
+          issueSnapshot: snapshotWithRepo,
+          issueGraph,
+          upstreamRepository,
+          targetRepository,
+          policy: deliveryPolicy,
+          source: 'comparevi-standing-priority-live'
+        });
+      } catch {
+        // Fall back to snapshot-only scheduling when the live execution graph
+        // cannot be resolved in this cycle.
+      }
+    }
     return buildSchedulerDecisionFromSnapshot({
-      snapshot: {
-        ...issueSnapshot,
-        repository: targetRepository,
-        mirrorOf
-      },
+      snapshot: snapshotWithRepo,
       upstreamRepository,
+      implementationRemote: deliveryPolicy.implementationRemote,
       source: 'comparevi-standing-priority-live',
       artifactPaths: {
         standingLabel: standingLookup.found.label || null,
@@ -346,6 +411,10 @@ async function planCompareviRuntimeStep({ repoRoot, env, explicitStepOptions, op
 
   const upstreamRepository =
     normalizeText(env.AGENT_PRIORITY_UPSTREAM_REPOSITORY) || COMPAREVI_UPSTREAM_REPOSITORY;
+  const deliveryPolicy = await loadDeliveryAgentPolicy(repoRoot, {
+    ...deps,
+    policyPath: deps.deliveryAgentPolicyPath || DELIVERY_AGENT_POLICY_RELATIVE_PATH
+  });
   const targetRepository = normalizeText(options.repo) || normalizeText(env.GITHUB_REPOSITORY);
   const liveDecision = await planCompareviRuntimeStepFromLiveStanding({
     repoRoot,
@@ -364,6 +433,7 @@ async function planCompareviRuntimeStep({ repoRoot, env, explicitStepOptions, op
     return buildSchedulerDecisionFromSnapshot({
       snapshot: cacheSnapshot,
       upstreamRepository,
+      implementationRemote: deliveryPolicy.implementationRemote,
       source: 'comparevi-standing-priority-cache',
       artifactPaths: {
         cachePath
@@ -389,6 +459,7 @@ async function planCompareviRuntimeStep({ repoRoot, env, explicitStepOptions, op
   return buildSchedulerDecisionFromSnapshot({
     snapshot: issueSnapshot,
     upstreamRepository,
+    implementationRemote: deliveryPolicy.implementationRemote,
     source: 'comparevi-standing-priority-router',
     artifactPaths: {
       routerPath,
@@ -399,6 +470,9 @@ async function planCompareviRuntimeStep({ repoRoot, env, explicitStepOptions, op
 
 async function resolveCompareviTaskPacketSnapshot({ repoRoot, schedulerDecision }) {
   const artifactPaths = schedulerDecision?.artifacts ?? {};
+  if (artifactPaths.selectedIssueSnapshot && typeof artifactPaths.selectedIssueSnapshot === 'object') {
+    return artifactPaths.selectedIssueSnapshot;
+  }
   for (const candidate of [artifactPaths.issuePath, artifactPaths.cachePath]) {
     const resolved = normalizeText(candidate);
     if (!resolved) {
@@ -419,27 +493,43 @@ async function resolveCompareviTaskPacketSnapshot({ repoRoot, schedulerDecision 
 
 async function buildCompareviTaskPacket({ repoRoot, schedulerDecision, preparedWorker, workerReady, workerBranch }) {
   const activeLane = schedulerDecision?.activeLane ?? null;
+  const artifacts = schedulerDecision?.artifacts ?? {};
   const snapshot = await resolveCompareviTaskPacketSnapshot({ repoRoot, schedulerDecision });
   const issueNumber = activeLane?.issue;
   const issueTitle = normalizeText(snapshot?.title);
   const branchName = normalizeText(workerBranch?.branch) || normalizeText(activeLane?.branch);
-  const objectiveSummary = Number.isInteger(issueNumber)
-    ? `Advance issue #${issueNumber}${issueTitle ? `: ${issueTitle}` : ''}${branchName ? ` on ${branchName}` : ''}`
-    : normalizeText(schedulerDecision?.reason) || 'No compare-vi lane selected.';
+  const selectedActionType = normalizeText(artifacts.selectedActionType);
+  const laneLifecycle = normalizeText(artifacts.laneLifecycle) || (activeLane?.prUrl ? 'waiting-ci' : 'coding');
+  const objectiveSummary =
+    selectedActionType === 'reshape-backlog'
+      ? `Reshape epic #${issueNumber}${issueTitle ? `: ${issueTitle}` : ''} into an executable child slice`
+      : Number.isInteger(issueNumber)
+        ? `Advance issue #${issueNumber}${issueTitle ? `: ${issueTitle}` : ''}${branchName ? ` on ${branchName}` : ''}`
+        : normalizeText(schedulerDecision?.reason) || 'No compare-vi lane selected.';
+  const pullRequestArtifact = artifacts.pullRequest ?? null;
+  const standingIssueSnapshot = artifacts.standingIssueSnapshot ?? null;
 
   return {
     source: 'comparevi-runtime',
+    status: laneLifecycle,
     objective: {
       summary: objectiveSummary,
       source: issueTitle ? 'comparevi-issue-snapshot' : 'comparevi-runtime'
     },
     pullRequest: {
-      url: normalizeText(activeLane?.prUrl) || null,
-      status: normalizeText(activeLane?.prUrl) ? 'linked' : 'none'
+      url: normalizeText(activeLane?.prUrl) || normalizeText(pullRequestArtifact?.url) || null,
+      status:
+        pullRequestArtifact?.readyToMerge === true
+          ? 'ready-merge'
+          : normalizeText(activeLane?.prUrl) || normalizeText(pullRequestArtifact?.url)
+            ? 'linked'
+            : 'none'
     },
     checks: {
-      status: activeLane?.blockerClass === 'ci' ? 'blocked' : normalizeText(activeLane?.prUrl) ? 'pending-or-unknown' : 'not-linked',
-      blockerClass: normalizeText(activeLane?.blockerClass) || 'none'
+      status:
+        normalizeText(pullRequestArtifact?.checks?.status) ||
+        (activeLane?.blockerClass === 'ci' ? 'blocked' : normalizeText(activeLane?.prUrl) ? 'pending-or-unknown' : 'not-linked'),
+      blockerClass: normalizeText(pullRequestArtifact?.checks?.blockerClass) || normalizeText(activeLane?.blockerClass) || 'none'
     },
     helperSurface: {
       preferred: COMPAREVI_PREFERRED_HELPERS,
@@ -457,6 +547,50 @@ async function buildCompareviTaskPacket({ repoRoot, schedulerDecision, preparedW
           normalizeText(workerReady?.checkoutPath) ||
           normalizeText(preparedWorker?.checkoutPath) ||
           null
+      },
+      delivery: {
+        executionMode: normalizeText(artifacts.executionMode) || 'fork-mirror-auto-drain',
+        laneLifecycle,
+        selectedActionType: selectedActionType || null,
+        standingIssue:
+          standingIssueSnapshot && typeof standingIssueSnapshot === 'object'
+            ? {
+                number: coercePositiveInteger(standingIssueSnapshot.number),
+                title: normalizeText(standingIssueSnapshot.title) || null,
+                url: normalizeText(standingIssueSnapshot.url) || null
+              }
+            : {
+                number: coercePositiveInteger(artifacts.standingIssueNumber),
+                title: null,
+                url: null
+              },
+        selectedIssue:
+          snapshot && typeof snapshot === 'object'
+            ? {
+                number: coercePositiveInteger(snapshot.number),
+                title: normalizeText(snapshot.title) || null,
+                url: normalizeText(snapshot.url) || null
+              }
+            : null,
+        issueGraph: artifacts.issueGraph ?? null,
+        pullRequest: pullRequestArtifact,
+        backlog: artifacts.backlogRepair ?? null,
+        mutationEnvelope: {
+          backlogAuthority: 'issues',
+          implementationRemote: normalizeText(activeLane?.forkRemote) || 'origin',
+          allowPolicyMutations: false,
+          allowReleaseAdmin: false,
+          maxActiveCodingLanes: 1
+        },
+        turnBudget: {
+          maxMinutes: 20,
+          maxToolCalls: 12
+        },
+        relevantFiles: [
+          path.join(repoRoot, 'tools', 'priority', 'runtime-supervisor.mjs'),
+          path.join(repoRoot, 'tools', 'priority', 'runtime-turn-broker.mjs'),
+          path.join(repoRoot, 'tools', 'priority', 'delivery-agent.policy.json')
+        ]
       }
     }
   };
@@ -469,53 +603,202 @@ function buildMirrorCloseComment({ upstreamIssueNumber, upstreamIssueUrl, implem
   return `Closing this fork mirror so the fork queue keeps only active local work. Canonical tracking continues on upstream issue #${upstreamIssueNumber} (${upstreamIssueUrl}); rematerialize a fork mirror later if local execution needs to resume.`;
 }
 
+async function invokeCanonicalDeliveryTurn({
+  repoRoot,
+  deps,
+  taskPacket,
+  taskPacketArtifacts,
+  schedulerDecision
+}) {
+  if (typeof deps.invokeDeliveryTurnBrokerFn === 'function') {
+    return deps.invokeDeliveryTurnBrokerFn({
+      repoRoot,
+      taskPacket,
+      taskPacketPath: taskPacketArtifacts?.latestPath || null,
+      schedulerDecision
+    });
+  }
+
+  const brokerModulePath = path.join(repoRoot, 'tools', 'priority', 'runtime-turn-broker.mjs');
+  const taskPacketPath = normalizeText(taskPacketArtifacts?.latestPath);
+  if (!taskPacketPath) {
+    throw new Error('task packet artifact path is required for canonical delivery turns');
+  }
+  const execFn = deps.execFileFn ?? execFileAsync;
+  const { stdout } = await execFn(
+    'node',
+    [
+      brokerModulePath,
+      '--repo-root',
+      repoRoot,
+      '--task-packet',
+      taskPacketPath,
+      '--policy',
+      DELIVERY_AGENT_POLICY_RELATIVE_PATH
+    ],
+    {
+      cwd: repoRoot,
+      env: process.env
+    }
+  );
+  const parsed = JSON.parse(stdout || '{}');
+  return parsed && typeof parsed === 'object' ? parsed : {};
+}
+
+async function persistCompareviDeliveryRuntime({
+  repository,
+  runtimeArtifactPaths,
+  schedulerDecision,
+  taskPacket,
+  executionReceipt,
+  repoRoot,
+  deps,
+  now
+}) {
+  if (!runtimeArtifactPaths?.runtimeDir) {
+    return null;
+  }
+  const deliveryPolicy = await loadDeliveryAgentPolicy(repoRoot, {
+    ...deps,
+    policyPath: deps.deliveryAgentPolicyPath || DELIVERY_AGENT_POLICY_RELATIVE_PATH
+  });
+  return persistDeliveryAgentRuntimeState({
+    runtimeDir: runtimeArtifactPaths.runtimeDir,
+    repository,
+    policy: deliveryPolicy,
+    schedulerDecision,
+    taskPacket,
+    executionReceipt,
+    now
+  });
+}
+
 async function executeCompareviTurn({
   options,
   env,
   repoRoot,
   deps,
-  schedulerDecision
+  schedulerDecision,
+  taskPacket,
+  taskPacketArtifacts,
+  runtimeArtifactPaths,
+  repository,
+  now
 }) {
   const upstreamRepository = normalizeText(env.AGENT_PRIORITY_UPSTREAM_REPOSITORY) || COMPAREVI_UPSTREAM_REPOSITORY;
-  const standingRepository =
+  let standingRepository =
     normalizeText(schedulerDecision?.artifacts?.standingRepository) ||
     normalizeText(options.repo) ||
+    normalizeText(env.GITHUB_REPOSITORY) ||
     null;
-  const standingIssueNumber = Number(schedulerDecision?.artifacts?.standingIssueNumber);
-  const mirrorOf = schedulerDecision?.artifacts?.mirrorOf ?? null;
-  const cadence = schedulerDecision?.artifacts?.cadence === true;
+  let standingIssueNumber =
+    coercePositiveInteger(schedulerDecision?.artifacts?.standingIssueNumber) ||
+    coercePositiveInteger(schedulerDecision?.activeLane?.issue) ||
+    coercePositiveInteger(options.issue);
+  let mirrorOf = normalizeMirrorOfPointer(schedulerDecision?.artifacts?.mirrorOf);
+  let cadenceKnown = schedulerDecision?.artifacts?.cadence === true || schedulerDecision?.artifacts?.cadence === false;
+  let cadence = schedulerDecision?.artifacts?.cadence === true;
+
+  if (standingRepository && standingIssueNumber) {
+    const localSnapshot = await readJsonIfPresent(path.join(repoRoot, PRIORITY_ISSUE_DIR, `${standingIssueNumber}.json`));
+    if (localSnapshot) {
+      mirrorOf = mirrorOf ?? normalizeMirrorOfPointer(localSnapshot.mirrorOf) ?? parseUpstreamIssuePointerFromBody(localSnapshot.body);
+      cadence = cadence || isCadenceAlertIssue(localSnapshot.title, localSnapshot.body);
+      cadenceKnown = true;
+      standingRepository = standingRepository || parseRepositoryFromIssueUrl(localSnapshot.url);
+    }
+
+    if (!mirrorOf || !mirrorOf.number || !normalizeText(mirrorOf.url) || !cadenceKnown) {
+      try {
+        const issueSnapshot = await fetchIssue(standingIssueNumber, repoRoot, standingRepository, {
+          ghIssueFetcher: deps.ghIssueFetcher,
+          restIssueFetcher: deps.restIssueFetcher
+        });
+        mirrorOf = mirrorOf ?? normalizeMirrorOfPointer(issueSnapshot.mirrorOf) ?? parseUpstreamIssuePointerFromBody(issueSnapshot.body);
+        cadence = cadence || isCadenceAlertIssue(issueSnapshot.title, issueSnapshot.body);
+        cadenceKnown = true;
+        standingRepository = standingRepository || parseRepositoryFromIssueUrl(issueSnapshot.url);
+      } catch {
+        // Keep the current context and let the decision logic below retry in later cycles.
+      }
+    }
+  }
 
   if (!standingRepository || !Number.isInteger(standingIssueNumber) || standingIssueNumber <= 0) {
-    return {
+    const receipt = {
       status: 'completed',
-      outcome: 'execution-noop',
-      reason: 'standing repository or issue number unavailable for unattended execution'
+      outcome: 'idle',
+      reason: 'standing repository or issue number unavailable for unattended execution',
+      source: 'comparevi-runtime',
+      details: {
+        laneLifecycle: 'idle',
+        blockerClass: 'none',
+        actionType: 'idle',
+        retryable: false,
+        nextWakeCondition: 'next-scheduler-cycle'
+      }
     };
+    await persistCompareviDeliveryRuntime({
+      repository: repository || standingRepository || options.repo || env.GITHUB_REPOSITORY || 'unknown/unknown',
+      runtimeArtifactPaths,
+      schedulerDecision,
+      taskPacket,
+      executionReceipt: receipt,
+      repoRoot,
+      deps,
+      now
+    });
+    return receipt;
   }
 
   if (cadence) {
-    return {
+    const receipt = {
       status: 'completed',
       outcome: 'cadence-only',
       reason: `Standing issue #${standingIssueNumber} is a cadence alert; unattended development loop is stopping.`,
       stopLoop: true,
       details: {
+        laneLifecycle: 'idle',
+        blockerClass: 'none',
+        actionType: 'cadence-stop',
+        retryable: false,
+        nextWakeCondition: 'new-standing-issue',
         standingRepository,
         standingIssueNumber
       }
     };
+    await persistCompareviDeliveryRuntime({
+      repository: repository || standingRepository,
+      runtimeArtifactPaths,
+      schedulerDecision,
+      taskPacket,
+      executionReceipt: receipt,
+      repoRoot,
+      deps,
+      now
+    });
+    return receipt;
   }
 
   if (standingRepository === upstreamRepository || !Number.isInteger(mirrorOf?.number) || !normalizeText(mirrorOf?.url)) {
-    return {
-      status: 'completed',
-      outcome: 'execution-noop',
-      reason: 'selected lane is canonical work, not a fork mirror auto-drain candidate',
-      details: {
-        standingRepository,
-        standingIssueNumber
-      }
-    };
+    const receipt = await invokeCanonicalDeliveryTurn({
+      repoRoot,
+      deps,
+      taskPacket,
+      taskPacketArtifacts,
+      schedulerDecision
+    });
+    await persistCompareviDeliveryRuntime({
+      repository: repository || standingRepository,
+      runtimeArtifactPaths,
+      schedulerDecision,
+      taskPacket,
+      executionReceipt: receipt,
+      repoRoot,
+      deps,
+      now
+    });
+    return receipt;
   }
 
   const openIssues = await listOpenIssuesForTargetRepository(standingRepository, deps);
@@ -551,7 +834,7 @@ async function executeCompareviTurn({
     deps
   );
 
-  return {
+  const receipt = {
     schema: EXECUTION_RECEIPT_SCHEMA,
     status: 'completed',
     outcome: hasNextDevelopmentIssue ? 'mirror-closed-advanced' : 'mirror-closed-queue-exhausted',
@@ -560,6 +843,11 @@ async function executeCompareviTurn({
       : `Closed fork mirror #${standingIssueNumber}; no non-cadence development issues remain in ${standingRepository}.`,
     stopLoop: !hasNextDevelopmentIssue,
     details: {
+      laneLifecycle: 'complete',
+      blockerClass: 'none',
+      actionType: 'fork-mirror-auto-drain',
+      retryable: false,
+      nextWakeCondition: hasNextDevelopmentIssue ? 'next-standing-issue' : 'new-standing-issue',
       standingRepository,
       standingIssueNumber,
       canonicalIssueNumber: mirrorOf.number,
@@ -567,6 +855,17 @@ async function executeCompareviTurn({
       nextStandingIssueNumber: hasNextDevelopmentIssue ? nextCandidate.number : null
     }
   };
+  await persistCompareviDeliveryRuntime({
+    repository: repository || standingRepository,
+    runtimeArtifactPaths,
+    schedulerDecision,
+    taskPacket,
+    executionReceipt: receipt,
+    repoRoot,
+    deps,
+    now
+  });
+  return receipt;
 }
 
 export const compareviRuntimeAdapter = createRuntimeAdapter({

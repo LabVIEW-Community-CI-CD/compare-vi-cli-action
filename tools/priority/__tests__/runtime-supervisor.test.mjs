@@ -6,6 +6,7 @@ import { mkdtemp, readFile, stat } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import { compareviRuntimeTest, parseArgs, runRuntimeSupervisor } from '../runtime-supervisor.mjs';
+import { buildCanonicalDeliveryDecision, fetchIssueExecutionGraph, runDeliveryTurnBroker } from '../delivery-agent.mjs';
 
 async function readJson(filePath) {
   return JSON.parse(await readFile(filePath, 'utf8'));
@@ -238,4 +239,411 @@ test('stop, step with stop request, and resume manage runtime control state dete
   assert.equal(state.lifecycle.status, 'idle');
   assert.equal(events.map((entry) => entry.action).join(','), 'stop,step,resume');
   assert.equal(events[1].outcome, 'stop-requested');
+});
+
+test('canonical delivery scheduler ranks existing PR unblock before ready child issues and backlog repair', async () => {
+  const repoRoot = await mkdtemp(path.join(os.tmpdir(), 'runtime-canonical-scheduler-'));
+  const decision = await buildCanonicalDeliveryDecision({
+    repoRoot,
+    upstreamRepository: 'LabVIEW-Community-CI-CD/compare-vi-cli-action',
+    targetRepository: 'LabVIEW-Community-CI-CD/compare-vi-cli-action',
+    issueSnapshot: {
+      number: 1010,
+      title: 'Epic: Linux-first unattended delivery runtime',
+      body: 'epic body',
+      url: 'https://github.com/LabVIEW-Community-CI-CD/compare-vi-cli-action/issues/1010',
+      repository: 'LabVIEW-Community-CI-CD/compare-vi-cli-action'
+    },
+    issueGraph: {
+      standingIssue: {
+        number: 1010,
+        title: 'Epic: Linux-first unattended delivery runtime',
+        body: 'epic body',
+        url: 'https://github.com/LabVIEW-Community-CI-CD/compare-vi-cli-action/issues/1010',
+        state: 'OPEN',
+        labels: [],
+        repository: 'LabVIEW-Community-CI-CD/compare-vi-cli-action',
+        createdAt: '2026-03-10T00:00:00Z',
+        updatedAt: '2026-03-10T00:00:00Z',
+        priority: 1,
+        epic: true,
+        pullRequests: []
+      },
+      subIssues: [
+        {
+          number: 1012,
+          title: '[P1] Wire canonical delivery broker',
+          body: 'child',
+          url: 'https://github.com/LabVIEW-Community-CI-CD/compare-vi-cli-action/issues/1012',
+          state: 'OPEN',
+          labels: [],
+          repository: 'LabVIEW-Community-CI-CD/compare-vi-cli-action',
+          createdAt: '2026-03-10T00:00:00Z',
+          updatedAt: '2026-03-10T00:00:00Z',
+          priority: 1,
+          epic: false,
+          pullRequests: [
+            {
+              number: 88,
+              title: 'Broker wiring',
+              url: 'https://github.com/LabVIEW-Community-CI-CD/compare-vi-cli-action/pull/88',
+              state: 'OPEN',
+              isDraft: false,
+              reviewDecision: 'APPROVED',
+              mergeStateStatus: 'CLEAN',
+              mergeable: 'MERGEABLE',
+              statusCheckRollup: [
+                { __typename: 'CheckRun', name: 'lint', status: 'COMPLETED', conclusion: 'SUCCESS' }
+              ]
+            }
+          ]
+        },
+        {
+          number: 1013,
+          title: '[P1] Add overnight manager aliases',
+          body: 'child',
+          url: 'https://github.com/LabVIEW-Community-CI-CD/compare-vi-cli-action/issues/1013',
+          state: 'OPEN',
+          labels: [],
+          repository: 'LabVIEW-Community-CI-CD/compare-vi-cli-action',
+          createdAt: '2026-03-09T00:00:00Z',
+          updatedAt: '2026-03-09T00:00:00Z',
+          priority: 1,
+          epic: false,
+          pullRequests: []
+        }
+      ],
+      pullRequests: []
+    },
+    policy: {
+      schema: 'priority/delivery-agent-policy@v1',
+      backlogAuthority: 'issues',
+      implementationRemote: 'origin',
+      autoSlice: true,
+      autoMerge: true,
+      maxActiveCodingLanes: 1,
+      allowPolicyMutations: false,
+      allowReleaseAdmin: false,
+      stopWhenNoOpenEpics: true
+    }
+  });
+
+  assert.equal(decision.stepOptions.issue, 1012);
+  assert.equal(decision.stepOptions.epic, 1010);
+  assert.equal(decision.stepOptions.forkRemote, 'origin');
+  assert.equal(decision.stepOptions.prUrl, 'https://github.com/LabVIEW-Community-CI-CD/compare-vi-cli-action/pull/88');
+  assert.equal(decision.artifacts.selectedActionType, 'existing-pr-unblock');
+  assert.equal(decision.artifacts.laneLifecycle, 'ready-merge');
+});
+
+test('fetchIssueExecutionGraph normalizes status rollup contexts from GraphQL payloads', async () => {
+  const repoRoot = await mkdtemp(path.join(os.tmpdir(), 'runtime-canonical-graph-'));
+  const graph = await fetchIssueExecutionGraph({
+    repoRoot,
+    repository: 'LabVIEW-Community-CI-CD/compare-vi-cli-action',
+    issueNumber: 1010,
+    deps: {
+      runGhGraphqlFn: () => ({
+        data: {
+          repository: {
+            issue: {
+              number: 1010,
+              title: 'Containerize NILinuxCompare tests via tools image Docker contract',
+              body: 'issue body',
+              url: 'https://github.com/LabVIEW-Community-CI-CD/compare-vi-cli-action/issues/1010',
+              state: 'OPEN',
+              createdAt: '2026-03-10T00:00:00Z',
+              updatedAt: '2026-03-10T00:00:00Z',
+              labels: { nodes: [{ name: 'standing-priority' }] },
+              subIssues: {
+                totalCount: 0,
+                nodes: []
+              },
+              timelineItems: {
+                nodes: [
+                  {
+                    source: {
+                      __typename: 'PullRequest',
+                      number: 88,
+                      title: 'Containerize NILinuxCompare tests',
+                      url: 'https://github.com/LabVIEW-Community-CI-CD/compare-vi-cli-action/pull/88',
+                      state: 'OPEN',
+                      isDraft: false,
+                      reviewDecision: 'APPROVED',
+                      mergeStateStatus: 'CLEAN',
+                      mergeable: 'MERGEABLE',
+                      statusCheckRollup: {
+                        contexts: {
+                          nodes: [
+                            {
+                              __typename: 'CheckRun',
+                              name: 'lint',
+                              status: 'COMPLETED',
+                              conclusion: 'SUCCESS',
+                              detailsUrl: 'https://example.test/lint'
+                            },
+                            {
+                              __typename: 'StatusContext',
+                              context: 'fixtures',
+                              state: 'SUCCESS',
+                              targetUrl: 'https://example.test/fixtures'
+                            }
+                          ]
+                        }
+                      }
+                    }
+                  }
+                ]
+              }
+            }
+          }
+        }
+      })
+    }
+  });
+
+  assert.equal(graph.pullRequests.length, 1);
+  assert.deepEqual(
+    graph.pullRequests[0].statusCheckRollup.map((entry) => ({
+      name: entry.name,
+      status: entry.status,
+      conclusion: entry.conclusion
+    })),
+    [
+      { name: 'lint', status: 'COMPLETED', conclusion: 'SUCCESS' },
+      { name: 'fixtures', status: 'SUCCESS', conclusion: 'SUCCESS' }
+    ]
+  );
+});
+
+test('canonical delivery scheduler falls back to backlog repair when an epic has no open child slices', async () => {
+  const repoRoot = await mkdtemp(path.join(os.tmpdir(), 'runtime-canonical-backlog-'));
+  const decision = await buildCanonicalDeliveryDecision({
+    repoRoot,
+    upstreamRepository: 'LabVIEW-Community-CI-CD/compare-vi-cli-action',
+    targetRepository: 'LabVIEW-Community-CI-CD/compare-vi-cli-action',
+    issueSnapshot: {
+      number: 1010,
+      title: 'Epic: Linux-first unattended delivery runtime',
+      body: 'epic body',
+      url: 'https://github.com/LabVIEW-Community-CI-CD/compare-vi-cli-action/issues/1010',
+      repository: 'LabVIEW-Community-CI-CD/compare-vi-cli-action'
+    },
+    issueGraph: {
+      standingIssue: {
+        number: 1010,
+        title: 'Epic: Linux-first unattended delivery runtime',
+        body: 'epic body',
+        url: 'https://github.com/LabVIEW-Community-CI-CD/compare-vi-cli-action/issues/1010',
+        state: 'OPEN',
+        labels: [],
+        repository: 'LabVIEW-Community-CI-CD/compare-vi-cli-action',
+        createdAt: '2026-03-10T00:00:00Z',
+        updatedAt: '2026-03-10T00:00:00Z',
+        priority: 1,
+        epic: true,
+        pullRequests: []
+      },
+      subIssues: [],
+      pullRequests: []
+    },
+    policy: {
+      schema: 'priority/delivery-agent-policy@v1',
+      backlogAuthority: 'issues',
+      implementationRemote: 'origin',
+      autoSlice: true,
+      autoMerge: true,
+      maxActiveCodingLanes: 1,
+      allowPolicyMutations: false,
+      allowReleaseAdmin: false,
+      stopWhenNoOpenEpics: true
+    }
+  });
+
+  assert.equal(decision.stepOptions.issue, 1010);
+  assert.equal(decision.artifacts.selectedActionType, 'reshape-backlog');
+  assert.equal(decision.artifacts.laneLifecycle, 'reshaping-backlog');
+  assert.equal(decision.artifacts.backlogRepair.mode, 'repair-child-slice');
+});
+
+test('comparevi canonical execution delegates to the delivery broker instead of returning execution-noop', async () => {
+  const execution = await compareviRuntimeTest.executeCompareviTurn({
+    options: {
+      repo: 'LabVIEW-Community-CI-CD/compare-vi-cli-action'
+    },
+    env: {
+      AGENT_PRIORITY_UPSTREAM_REPOSITORY: 'LabVIEW-Community-CI-CD/compare-vi-cli-action'
+    },
+    repoRoot: '/tmp/repo',
+    repository: 'LabVIEW-Community-CI-CD/compare-vi-cli-action',
+    schedulerDecision: {
+      activeLane: {
+        laneId: 'origin-1012',
+        issue: 1012,
+        forkRemote: 'origin',
+        branch: 'issue/origin-1012-wire-canonical-delivery-broker'
+      },
+      artifacts: {
+        standingRepository: 'LabVIEW-Community-CI-CD/compare-vi-cli-action',
+        standingIssueNumber: 1010,
+        laneLifecycle: 'coding',
+        selectedActionType: 'advance-child-issue'
+      }
+    },
+    taskPacket: {
+      repository: 'LabVIEW-Community-CI-CD/compare-vi-cli-action',
+      objective: { summary: 'Advance issue #1012' },
+      evidence: {
+        delivery: {
+          laneLifecycle: 'coding',
+          selectedActionType: 'advance-child-issue',
+          mutationEnvelope: {
+            maxActiveCodingLanes: 1
+          },
+          turnBudget: {
+            maxMinutes: 20,
+            maxToolCalls: 12
+          }
+        }
+      }
+    },
+    taskPacketArtifacts: {
+      latestPath: '/tmp/repo/tests/results/_agent/runtime/task-packet.json'
+    },
+    runtimeArtifactPaths: {
+      runtimeDir: '/tmp/repo/tests/results/_agent/runtime'
+    },
+    deps: {
+      invokeDeliveryTurnBrokerFn: async () => ({
+        status: 'completed',
+        outcome: 'coding-command-finished',
+        source: 'delivery-agent-broker',
+        details: {
+          actionType: 'execute-coding-turn',
+          laneLifecycle: 'coding',
+          blockerClass: 'none',
+          retryable: true,
+          nextWakeCondition: 'scheduler-rescan'
+        }
+      })
+    }
+  });
+
+  assert.equal(execution.outcome, 'coding-command-finished');
+  assert.equal(execution.source, 'delivery-agent-broker');
+  assert.equal(execution.details.actionType, 'execute-coding-turn');
+});
+
+test('delivery broker auto-slices epics by creating and linking a child issue', async () => {
+  const brokerResult = await runDeliveryTurnBroker({
+    repoRoot: '/tmp/repo',
+    taskPacket: {
+      repository: 'LabVIEW-Community-CI-CD/compare-vi-cli-action',
+      status: 'reshaping-backlog',
+      objective: {
+        summary: 'Reshape epic #1010'
+      },
+      evidence: {
+        delivery: {
+          laneLifecycle: 'reshaping-backlog',
+          backlog: {
+            mode: 'repair-child-slice'
+          },
+          standingIssue: {
+            number: 1010,
+            title: 'Epic: Linux-first unattended delivery runtime',
+            url: 'https://github.com/LabVIEW-Community-CI-CD/compare-vi-cli-action/issues/1010'
+          }
+        }
+      }
+    },
+    deps: {
+      loadDeliveryAgentPolicyFn: async () => ({
+        schema: 'priority/delivery-agent-policy@v1',
+        backlogAuthority: 'issues',
+        implementationRemote: 'origin',
+        autoSlice: true,
+        autoMerge: true,
+        maxActiveCodingLanes: 1,
+        allowPolicyMutations: false,
+        allowReleaseAdmin: false,
+        stopWhenNoOpenEpics: true,
+        codingTurnCommand: []
+      }),
+      autoSliceIssueFn: async () => ({
+        status: 'completed',
+        outcome: 'child-issue-created',
+        source: 'delivery-agent-broker',
+        details: {
+          actionType: 'create-child-issue',
+          laneLifecycle: 'complete',
+          blockerClass: 'none',
+          retryable: false,
+          nextWakeCondition: 'next-scheduler-cycle',
+          childIssue: {
+            number: 1015
+          }
+        }
+      })
+    }
+  });
+
+  assert.equal(brokerResult.outcome, 'child-issue-created');
+  assert.equal(brokerResult.details.actionType, 'create-child-issue');
+  assert.equal(brokerResult.details.childIssue.number, 1015);
+});
+
+test('delivery broker classifies rate-limit failures with a retryable blocker', async () => {
+  const brokerResult = await runDeliveryTurnBroker({
+    repoRoot: '/tmp/repo',
+    taskPacket: {
+      repository: 'LabVIEW-Community-CI-CD/compare-vi-cli-action',
+      status: 'coding',
+      objective: {
+        summary: 'Advance issue #1012'
+      },
+      evidence: {
+        delivery: {
+          laneLifecycle: 'coding',
+          mutationEnvelope: {
+            maxActiveCodingLanes: 1
+          },
+          turnBudget: {
+            maxMinutes: 20,
+            maxToolCalls: 12
+          }
+        }
+      }
+    },
+    deps: {
+      loadDeliveryAgentPolicyFn: async () => ({
+        schema: 'priority/delivery-agent-policy@v1',
+        backlogAuthority: 'issues',
+        implementationRemote: 'origin',
+        autoSlice: true,
+        autoMerge: true,
+        maxActiveCodingLanes: 1,
+        allowPolicyMutations: false,
+        allowReleaseAdmin: false,
+        stopWhenNoOpenEpics: true,
+        codingTurnCommand: ['node', 'mock-broker']
+      }),
+      invokeCodingTurnFn: async () => ({
+        status: 'blocked',
+        outcome: 'rate-limit',
+        source: 'delivery-agent-broker',
+        details: {
+          actionType: 'execute-coding-turn',
+          laneLifecycle: 'blocked',
+          blockerClass: 'rate-limit',
+          retryable: true,
+          nextWakeCondition: 'github-rate-limit-reset'
+        }
+      })
+    }
+  });
+
+  assert.equal(brokerResult.outcome, 'rate-limit');
+  assert.equal(brokerResult.details.blockerClass, 'rate-limit');
+  assert.equal(brokerResult.details.retryable, true);
 });

@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 
-import { access, mkdir } from 'node:fs/promises';
+import { access, mkdir, readFile, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
@@ -9,6 +9,7 @@ const execFileAsync = promisify(execFile);
 const DEFAULT_WORKER_REF = 'upstream/develop';
 const BOOTSTRAP_RELATIVE_PATH = path.join('tools', 'priority', 'bootstrap.ps1');
 const ATTACHABLE_REMOTES = ['upstream', 'origin', 'personal'];
+const GITHUB_PUSH_REMOTES = ['origin', 'personal'];
 
 function normalizeText(value) {
   if (value == null) return '';
@@ -37,6 +38,49 @@ async function pathExists(filePath) {
   }
 }
 
+function formatGitPointerPath(targetPath) {
+  return path.resolve(targetPath).replace(/\\/g, '/');
+}
+
+async function repairExistingWorktreeGitPointers({ repoRoot, checkoutPath }) {
+  const laneSegment = sanitizeSegment(path.basename(checkoutPath));
+  const worktreeAdminDir = path.join(repoRoot, '.git', 'worktrees', laneSegment);
+  const checkoutGitFile = path.join(checkoutPath, '.git');
+  const adminGitdirFile = path.join(worktreeAdminDir, 'gitdir');
+
+  if (!(await pathExists(checkoutGitFile)) || !(await pathExists(worktreeAdminDir)) || !(await pathExists(adminGitdirFile))) {
+    return {
+      repaired: false,
+      worktreeAdminDir,
+      checkoutGitFile,
+      adminGitdirFile
+    };
+  }
+
+  const expectedCheckoutPointer = `gitdir: ${formatGitPointerPath(worktreeAdminDir)}\n`;
+  const expectedAdminPointer = `${formatGitPointerPath(checkoutGitFile)}\n`;
+  let repaired = false;
+
+  const currentCheckoutPointer = await readFile(checkoutGitFile, 'utf8');
+  if (currentCheckoutPointer !== expectedCheckoutPointer) {
+    await writeFile(checkoutGitFile, expectedCheckoutPointer, 'utf8');
+    repaired = true;
+  }
+
+  const currentAdminPointer = await readFile(adminGitdirFile, 'utf8');
+  if (currentAdminPointer !== expectedAdminPointer) {
+    await writeFile(adminGitdirFile, expectedAdminPointer, 'utf8');
+    repaired = true;
+  }
+
+  return {
+    repaired,
+    worktreeAdminDir,
+    checkoutGitFile,
+    adminGitdirFile
+  };
+}
+
 function formatBootstrapFailure(error) {
   const message = normalizeText(error?.message || error);
   const stderr = normalizeText(error?.stderr);
@@ -50,9 +94,54 @@ function formatExecError(error) {
   return normalizeText(error?.stderr) || normalizeText(error?.message) || String(error);
 }
 
+function resolveGitHubSshPushUrl(remoteUrl) {
+  const normalized = normalizeText(remoteUrl);
+  if (!normalized) {
+    return '';
+  }
+  if (/^git@github\.com:/i.test(normalized)) {
+    return normalized.endsWith('.git') ? normalized : `${normalized}.git`;
+  }
+  const httpsMatch = normalized.match(/^https:\/\/github\.com\/([^/]+)\/([^/]+?)(?:\.git)?\/?$/i);
+  if (httpsMatch) {
+    return `git@github.com:${httpsMatch[1]}/${httpsMatch[2]}.git`;
+  }
+  const sshMatch = normalized.match(/^ssh:\/\/git@github\.com\/([^/]+)\/([^/]+?)(?:\.git)?\/?$/i);
+  if (sshMatch) {
+    return `git@github.com:${sshMatch[1]}/${sshMatch[2]}.git`;
+  }
+  return '';
+}
+
 async function readGitStdout(execFileFn, args, options = {}) {
   const result = await execFileFn('git', args, options);
   return normalizeText(result?.stdout);
+}
+
+async function resolveWriterLeaseRoot(execFileFn, checkoutPath) {
+  try {
+    const gitDir = await readGitStdout(execFileFn, ['rev-parse', '--git-dir'], { cwd: checkoutPath });
+    if (!gitDir) {
+      return '';
+    }
+    const resolvedGitDir = path.isAbsolute(gitDir) ? gitDir : path.resolve(checkoutPath, gitDir);
+    return path.join(resolvedGitDir, 'agent-writer-leases');
+  } catch {
+    return '';
+  }
+}
+
+async function resolveExistingLeaseOwner(leaseRoot) {
+  if (!leaseRoot) {
+    return '';
+  }
+  const leasePath = path.join(leaseRoot, 'workspace.json');
+  try {
+    const payload = JSON.parse(await readFile(leasePath, 'utf8'));
+    return normalizeText(payload?.owner);
+  } catch {
+    return '';
+  }
 }
 
 async function tryReadGitStdout(execFileFn, args, options = {}) {
@@ -70,6 +159,39 @@ async function gitRefExists(execFileFn, cwd, ref) {
   } catch {
     return false;
   }
+}
+
+async function normalizeGitHubRemotePushUrls(execFileFn, checkoutPath, { platform = process.platform } = {}) {
+  if (normalizeText(platform).toLowerCase() !== 'linux') {
+    return [];
+  }
+
+  const availableRemotes = (await tryReadGitStdout(execFileFn, ['remote'], { cwd: checkoutPath }))
+    .split(/\r?\n/)
+    .map((entry) => normalizeText(entry))
+    .filter(Boolean);
+  const updatedRemotes = [];
+
+  for (const remote of GITHUB_PUSH_REMOTES) {
+    if (!availableRemotes.includes(remote)) {
+      continue;
+    }
+    const fetchUrl = await tryReadGitStdout(execFileFn, ['remote', 'get-url', remote], { cwd: checkoutPath });
+    const desiredPushUrl = resolveGitHubSshPushUrl(fetchUrl);
+    if (!desiredPushUrl) {
+      continue;
+    }
+    const currentPushUrl = await tryReadGitStdout(execFileFn, ['remote', 'get-url', '--push', remote], {
+      cwd: checkoutPath
+    });
+    if (currentPushUrl === desiredPushUrl) {
+      continue;
+    }
+    await execFileFn('git', ['remote', 'set-url', '--push', remote, desiredPushUrl], { cwd: checkoutPath });
+    updatedRemotes.push(remote);
+  }
+
+  return updatedRemotes;
 }
 
 export function resolveCompareviWorkerCheckoutRoot({ repoRoot, repository }) {
@@ -90,6 +212,7 @@ export async function prepareCompareviWorkerCheckout({
   repoRoot,
   repository,
   schedulerDecision,
+  platform,
   deps = {}
 }) {
   const activeLane = schedulerDecision?.activeLane ?? null;
@@ -107,6 +230,7 @@ export async function prepareCompareviWorkerCheckout({
   if (await pathExists(gitMarkerPath)) {
     const fetchedRemotes = [];
     try {
+      await repairExistingWorktreeGitPointers({ repoRoot, checkoutPath });
       const availableRemotes = (await tryReadGitStdout(execFileFn, ['remote'], { cwd: checkoutPath }))
         .split(/\r?\n/)
         .map((entry) => normalizeText(entry))
@@ -120,11 +244,14 @@ export async function prepareCompareviWorkerCheckout({
       }
       let resolvedRef = DEFAULT_WORKER_REF;
       try {
-        await execFileFn('git', ['checkout', '--detach', DEFAULT_WORKER_REF], { cwd: checkoutPath });
+        await execFileFn('git', ['checkout', '--force', '--detach', DEFAULT_WORKER_REF], { cwd: checkoutPath });
       } catch {
         resolvedRef = 'develop';
-        await execFileFn('git', ['checkout', '--detach', resolvedRef], { cwd: checkoutPath });
+        await execFileFn('git', ['checkout', '--force', '--detach', resolvedRef], { cwd: checkoutPath });
       }
+      const pushRemotesNormalized = await normalizeGitHubRemotePushUrls(execFileFn, checkoutPath, {
+        platform: deps.platform ?? platform ?? process.platform
+      });
       return {
         laneId: activeLane.laneId,
         checkoutRoot,
@@ -133,7 +260,8 @@ export async function prepareCompareviWorkerCheckout({
         ref: resolvedRef,
         requestedBranch: normalizeText(schedulerDecision?.stepOptions?.branch) || null,
         source: 'comparevi-worktree',
-        fetchedRemotes
+        fetchedRemotes,
+        pushRemotesNormalized
       };
     } catch (error) {
       return {
@@ -168,6 +296,9 @@ export async function prepareCompareviWorkerCheckout({
   await execFileFn('git', ['worktree', 'add', '--detach', checkoutPath, DEFAULT_WORKER_REF], {
     cwd: repoRoot
   });
+  const pushRemotesNormalized = await normalizeGitHubRemotePushUrls(execFileFn, checkoutPath, {
+    platform: deps.platform ?? platform ?? process.platform
+  });
   return {
     laneId: activeLane.laneId,
     checkoutRoot,
@@ -175,7 +306,8 @@ export async function prepareCompareviWorkerCheckout({
     status: 'created',
     ref: DEFAULT_WORKER_REF,
     requestedBranch: normalizeText(schedulerDecision?.stepOptions?.branch) || null,
-    source: 'comparevi-worktree'
+    source: 'comparevi-worktree',
+    pushRemotesNormalized
   };
 }
 
@@ -189,12 +321,77 @@ export async function bootstrapCompareviWorkerCheckout({
   }
 
   const execFileFn = deps.execFileFn ?? execFileAsync;
+  const leaseRoot = await resolveWriterLeaseRoot(execFileFn, preparedWorker.checkoutPath);
+  const bootstrapEnv = { ...process.env };
+  if (leaseRoot) {
+    bootstrapEnv.AGENT_WRITER_LEASE_ROOT = leaseRoot;
+    if (!normalizeText(bootstrapEnv.AGENT_WRITER_LEASE_OWNER)) {
+      const existingOwner = await resolveExistingLeaseOwner(leaseRoot);
+      if (existingOwner) {
+        bootstrapEnv.AGENT_WRITER_LEASE_OWNER = existingOwner;
+      }
+    }
+    if (!normalizeText(bootstrapEnv.AGENT_WRITER_LEASE_FORCE_TAKEOVER)) {
+      bootstrapEnv.AGENT_WRITER_LEASE_FORCE_TAKEOVER = '1';
+    }
+    if (!normalizeText(bootstrapEnv.AGENT_WRITER_LEASE_STALE_SECONDS)) {
+      // Worker checkout leases are lane-scoped and ephemeral; allow immediate
+      // takeover so container restarts do not block bootstrap on stale owner ids.
+      bootstrapEnv.AGENT_WRITER_LEASE_STALE_SECONDS = '0';
+    }
+  }
+  const branch = normalizeText(schedulerDecision?.stepOptions?.branch) || normalizeText(schedulerDecision?.activeLane?.branch);
+  if (branch) {
+    const forkRemote = normalizeText(schedulerDecision?.activeLane?.forkRemote) || 'upstream';
+    try {
+      const availableRemotes = (await tryReadGitStdout(execFileFn, ['remote'], { cwd: preparedWorker.checkoutPath }))
+        .split(/\r?\n/)
+        .map((entry) => normalizeText(entry))
+        .filter(Boolean);
+      for (const remote of ATTACHABLE_REMOTES) {
+        if (!availableRemotes.includes(remote)) {
+          continue;
+        }
+        await execFileFn('git', ['fetch', remote, '--prune'], { cwd: preparedWorker.checkoutPath });
+      }
+
+      const currentBranch = await tryReadGitStdout(execFileFn, ['branch', '--show-current'], {
+        cwd: preparedWorker.checkoutPath
+      });
+      if (currentBranch !== branch) {
+        const trackingRef = `${forkRemote}/${branch}`;
+        const trackingExists = await gitRefExists(execFileFn, preparedWorker.checkoutPath, `refs/remotes/${trackingRef}`);
+        const checkoutTarget = trackingExists ? trackingRef : DEFAULT_WORKER_REF;
+        await execFileFn('git', ['checkout', '--force', '-B', branch, checkoutTarget], {
+          cwd: preparedWorker.checkoutPath
+        });
+        if (trackingExists) {
+          await execFileFn('git', ['branch', '--set-upstream-to', trackingRef, branch], {
+            cwd: preparedWorker.checkoutPath
+          });
+        }
+      }
+    } catch (error) {
+      return {
+        laneId: schedulerDecision.activeLane.laneId,
+        checkoutPath: preparedWorker.checkoutPath,
+        status: 'blocked',
+        source: 'comparevi-bootstrap',
+        reason: `failed to activate branch before bootstrap: ${formatExecError(error)}`,
+        bootstrapCommand: [],
+        bootstrapExitCode: Number.isInteger(error?.code) ? error.code : 1,
+        preparedAt: preparedWorker.generatedAt ?? null
+      };
+    }
+  }
+
   const bootstrapPath = path.join(preparedWorker.checkoutPath, BOOTSTRAP_RELATIVE_PATH);
   const bootstrapCommand = ['pwsh', '-NoLogo', '-NoProfile', '-File', bootstrapPath];
 
   try {
     await execFileFn(bootstrapCommand[0], bootstrapCommand.slice(1), {
-      cwd: preparedWorker.checkoutPath
+      cwd: preparedWorker.checkoutPath,
+      env: bootstrapEnv
     });
   } catch (error) {
     return {
@@ -269,7 +466,9 @@ export async function activateCompareviWorkerLane({
     const trackingExists = await gitRefExists(execFileFn, checkoutPath, `refs/remotes/${trackingRef}`);
     if (currentBranch !== branch) {
       const checkoutTarget = trackingExists ? trackingRef : DEFAULT_WORKER_REF;
-      await execFileFn('git', ['checkout', '-B', branch, checkoutTarget], { cwd: checkoutPath });
+      // Runtime worktrees are ephemeral execution sandboxes; force checkout so
+      // local bootstrap edits in detached refs cannot block lane activation.
+      await execFileFn('git', ['checkout', '--force', '-B', branch, checkoutTarget], { cwd: checkoutPath });
       if (trackingExists) {
         await execFileFn('git', ['branch', '--set-upstream-to', trackingRef, branch], { cwd: checkoutPath });
       }
@@ -307,5 +506,10 @@ export async function activateCompareviWorkerLane({
 export const __test = {
   ATTACHABLE_REMOTES,
   BOOTSTRAP_RELATIVE_PATH,
-  DEFAULT_WORKER_REF
+  DEFAULT_WORKER_REF,
+  formatGitPointerPath,
+  GITHUB_PUSH_REMOTES,
+  normalizeGitHubRemotePushUrls,
+  repairExistingWorktreeGitPointers,
+  resolveGitHubSshPushUrl
 };

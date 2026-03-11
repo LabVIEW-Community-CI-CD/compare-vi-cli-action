@@ -8,6 +8,7 @@ import path from 'node:path';
 
 import {
   acquireWriterLease,
+  defaultOwner,
   heartbeatWriterLease,
   inspectWriterLease,
   releaseWriterLease
@@ -142,4 +143,18 @@ test('release and heartbeat enforce owner or lease-id matching', async () => {
     owner: 'owner-a'
   });
   assert.equal(inspect.status, 'not-found');
+});
+
+test('defaultOwner prefers AGENT_WRITER_LEASE_OWNER when provided', () => {
+  const previous = process.env.AGENT_WRITER_LEASE_OWNER;
+  process.env.AGENT_WRITER_LEASE_OWNER = 'explicit-owner';
+  try {
+    assert.equal(defaultOwner(), 'explicit-owner');
+  } finally {
+    if (previous === undefined) {
+      delete process.env.AGENT_WRITER_LEASE_OWNER;
+    } else {
+      process.env.AGENT_WRITER_LEASE_OWNER = previous;
+    }
+  }
 });

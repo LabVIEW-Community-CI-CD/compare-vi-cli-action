@@ -441,7 +441,7 @@ jobs:
   fixtures:
     needs: [smoke-gate, lint, validate-scope-plan]
     if: needs.smoke-gate.outputs.skip != 'true'
-    runs-on: [self-hosted, Windows, X64]
+    runs-on: ubuntu-latest
     permissions:
       contents: read
     env:
@@ -584,10 +584,7 @@ jobs:
 
   hook-parity:
     needs: lint
-    strategy:
-      matrix:
-        os: [ubuntu-latest, windows-latest]
-    runs-on: ${{ matrix.os }}
+    runs-on: ubuntu-latest
     env:
       PREPUSH_SKIP_ICON_EDITOR_FIXTURE_CHECKS: '1'
       PREPUSH_SKIP_LEGACY_FIXTURE_CHECKS: '1'
@@ -641,7 +638,7 @@ jobs:
       if: always()
       uses: actions/upload-artifact@v5
       with:
-        name: hook-parity-${{ matrix.os }}
+        name: hook-parity-ubuntu-latest
         path: tests/results/_hooks/*.json
 
     - name: Reset staged files
@@ -1122,118 +1119,6 @@ jobs:
           name: validate-vi-history-dispatch-plan
           path: tests/results/_agent/vi-history-dispatch/validate-vi-history-dispatch-plan.json
           if-no-files-found: error
-
-  vi-history-scenarios-windows:
-    needs: [smoke-gate, lint, session-index, session-index-v2-contract, vi-history-scenarios-plan, vi-history-scenarios-linux]
-    if: >
-      needs.smoke-gate.outputs.skip != 'true' &&
-      needs.vi-history-scenarios-plan.outputs.execute_lanes == 'true'
-    runs-on: [self-hosted, Windows, X64, self-hosted-docker-windows]
-    permissions:
-      contents: read
-    env:
-      NI_WINDOWS_IMAGE: nationalinstruments/labview:2026q1-windows
-      NI_WINDOWS_LABVIEW_PATH: C:\Program Files\National Instruments\LabVIEW 2026\LabVIEW.exe
-    defaults:
-      run:
-        shell: pwsh
-    timeout-minutes: 20
-    steps:
-      - uses: actions/checkout@v5
-
-      - name: Ensure Docker Desktop service is running (self-hosted)
-        run: |
-          $service = Get-Service -Name 'com.docker.service' -ErrorAction SilentlyContinue
-          if (-not $service) {
-            throw "Docker service 'com.docker.service' was not found on this runner."
-          }
-          if ($service.Status -ne 'Running') {
-            Start-Service -Name 'com.docker.service' -ErrorAction Stop
-            $service = Get-Service -Name 'com.docker.service' -ErrorAction Stop
-          }
-          Write-Host ("[docker-bootstrap] com.docker.service status={0}" -f $service.Status)
-
-      - name: Manage Docker runtime (Windows lane preflight)
-        run: |
-          $resultsRoot = 'tests/results/local-parity/windows'
-          New-Item -ItemType Directory -Path $resultsRoot -Force | Out-Null
-          $snapshotPath = Join-Path $resultsRoot 'runtime-manager-preflight-windows.json'
-          pwsh -NoLogo -NoProfile -File tools/Assert-DockerRuntimeDeterminism.ps1 `
-            -ExpectedOsType windows `
-            -ExpectedContext desktop-windows `
-            -AutoRepair:$true `
-            -ManageDockerEngine:$false `
-            -EngineReadyTimeoutSeconds 120 `
-            -EngineReadyPollSeconds 3 `
-            -SnapshotPath $snapshotPath `
-            -GitHubOutputPath ''
-
-      - name: Run Docker Desktop fast-loop (Windows VI history lane, self-hosted only)
-        id: loop
-        run: |
-          $set = '${{ needs.vi-history-scenarios-plan.outputs.history_scenario_set }}'
-          $resultsRoot = 'tests/results/local-parity/windows'
-          $summaryOutput = pwsh -NoLogo -NoProfile -File tools/Test-DockerDesktopFastLoop.ps1 `
-            -ResultsRoot $resultsRoot `
-            -LaneScope windows `
-            -SkipLinuxProbe `
-            -WindowsImage $env:NI_WINDOWS_IMAGE `
-            -WindowsLabVIEWPath $env:NI_WINDOWS_LABVIEW_PATH `
-            -HistoryScenarioSet $set
-          $exit = $LASTEXITCODE
-          $summaryPath = ''
-          if ($summaryOutput) {
-            $summaryPath = ($summaryOutput | Select-Object -Last 1).ToString().Trim()
-          }
-          if ($summaryPath -and (Test-Path -LiteralPath $summaryPath -PathType Leaf)) {
-            "summary_path=$summaryPath" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
-          } else {
-            Write-Host '::warning::Fast-loop summary path was not captured from stdout; readiness step will resolve latest summary.'
-          }
-          if ($exit -ne 0) { exit $exit }
-
-      - name: Write Docker fast-loop readiness
-        id: readiness
-        if: always() && steps.loop.outcome != 'skipped'
-        run: |
-          $summaryPath = '${{ steps.loop.outputs.summary_path }}'
-          $resultsRoot = 'tests/results/local-parity/windows'
-          $args = @(
-            '-NoLogo', '-NoProfile', '-File', 'tools/Write-DockerFastLoopReadiness.ps1',
-            '-ResultsRoot', $resultsRoot,
-            '-GitHubOutputPath', $env:GITHUB_OUTPUT,
-            '-StepSummaryPath', $env:GITHUB_STEP_SUMMARY
-          )
-          if (-not [string]::IsNullOrWhiteSpace($summaryPath)) {
-            $args += @('-SummaryPath', $summaryPath)
-          }
-          & pwsh @args
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-
-      - name: Write Docker fast-loop proof
-        id: proof
-        if: always() && steps.readiness.outputs.readiness-json-path != ''
-        run: |
-          $resultsRoot = 'tests/results/local-parity/windows'
-          $statusPath = Join-Path $resultsRoot 'docker-runtime-fastloop-status.json'
-          pwsh -NoLogo -NoProfile -File tools/Write-DockerFastLoopProof.ps1 `
-            -ReadinessPath '${{ steps.readiness.outputs.readiness-json-path }}' `
-            -SummaryPath '${{ steps.loop.outputs.summary_path }}' `
-            -StatusPath $statusPath `
-            -GitHubOutputPath $env:GITHUB_OUTPUT
-
-      - name: Upload VI history scenario artifacts (Windows lane)
-        if: always()
-        uses: actions/upload-artifact@v5
-        with:
-          name: validate-vi-history-scenarios-windows
-          path: |
-            tests/results/local-parity/windows/docker-runtime-fastloop-*.json
-            tests/results/local-parity/windows/docker-runtime-fastloop-status.json
-            tests/results/local-parity/windows/docker-runtime-fastloop-readiness.json
-            tests/results/local-parity/windows/docker-runtime-fastloop-readiness.md
-            tests/results/_agent/gates/docker-fast-loop-proof-*.json
-          if-no-files-found: warn
 
   vi-history-scenarios-linux:
     needs: [smoke-gate, lint, session-index, session-index-v2-contract, vi-history-scenarios-plan]

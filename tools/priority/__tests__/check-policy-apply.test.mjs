@@ -29,7 +29,6 @@ const EXPECTED_DEVELOP_CHECKS = [
   'issue-snapshot',
   'semver',
   'Policy Guard (Upstream) / policy-guard',
-  'hook-parity (windows-latest)',
   'hook-parity (ubuntu-latest)',
   'vi-history-scenarios-linux',
   'agent-review-policy',
@@ -228,7 +227,6 @@ test('priority:policy --apply updates rulesets for develop/main/release', async 
     'issue-snapshot',
     'semver',
     'Policy Guard (Upstream) / policy-guard',
-    'hook-parity (windows-latest)',
     'hook-parity (ubuntu-latest)',
     'vi-history-scenarios-linux',
     'agent-review-policy',
@@ -1651,7 +1649,6 @@ test('priority:policy verify fails when queue-managed ruleset is missing merge_q
     'issue-snapshot',
     'semver',
     'Policy Guard (Upstream) / policy-guard',
-    'hook-parity (windows-latest)',
     'hook-parity (ubuntu-latest)',
     'vi-history-scenarios-linux',
     'agent-review-policy',
@@ -1885,7 +1882,6 @@ test('priority:policy verify uses queue-managed rulesets as required-check sourc
     'issue-snapshot',
     'semver',
     'Policy Guard (Upstream) / policy-guard',
-    'hook-parity (windows-latest)',
     'hook-parity (ubuntu-latest)',
     'vi-history-scenarios-linux',
     'agent-review-policy',
@@ -2424,3 +2420,4 @@ test('priority:policy optional ruleset seam detects copilot review parameter dri
     'copilot_code_review.review_draft_pull_requests: expected false, actual true'
   ]);
 });
+

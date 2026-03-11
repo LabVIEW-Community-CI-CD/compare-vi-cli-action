@@ -25,66 +25,21 @@ CI can gate on non-zero exit code or inspect `autoManifest.written` to flag drif
 
 ## Docker runtime manager contract
 
-Fixture Drift uses `tools/Invoke-DockerRuntimeManager.ps1` (schema `docker-runtime-manager@v1`) to
-enforce Docker Desktop engine determinism before Windows-host comparison steps.
+Fixture Drift now uses hosted Linux lanes only. The workflow keeps two Linux jobs:
 
-- Workflow job: `docker-runtime-manager` in `.github/workflows/fixture-drift.yml`
-- Primary artifact: `results/fixture-drift/docker-runtime-manager.json`
-- Windows lane context artifact:
-  `results/fixture-drift/docker-runtime-manager-context.json`
-- Windows runtime determinism snapshot:
-  `results/fixture-drift/windows-runtime-determinism.json`
+- `Fixture Drift (Ubuntu)` for fixture validator drift checks.
+- `NI Linux Container Compare (Hosted)` for NI Linux image parity evidence.
 
-Dedicated Windows host lane name:
+Linux container evidence is written under:
 
-- `Fixture Drift (Docker Desktop Host - LabVIEW 2026 q1 windows)`
+- `results/fixture-drift/ni-linux-container/**`
+- Includes the review suite outputs (`history-report.md`, `history-report.html`,
+  `history-summary.json`, and related inspection artifacts).
 
-Windows lane container evidence (required for non-docs runs):
-
-- Runs `tools/Run-NIWindowsContainerCompare.ps1` against fixture base/head copies.
-- Enforces image match: `nationalinstruments/labview:2026q1-windows`.
-- Fails the lane if container compare `gateOutcome` is not `pass`.
-- Uploads container artifacts under:
-  - `results/fixture-drift/ni-windows-container/ni-windows-container-capture.json`
-  - `results/fixture-drift/ni-windows-container/compare-report.html`
-  - `results/fixture-drift/ni-windows-container/runtime-determinism.json`
-  - `results/fixture-drift/ni-windows-container/container-export/**`
-
-Invoker lifecycle in the same lane is explicit and ordered:
-
-- `Wire Invoker (start)` then `Ensure Invoker (start)` before drift execution.
-- `Ensure Invoker (stop)` then `Wire Invoker (stop)` during teardown.
-
-Reusable output keys emitted by the manager step:
-
-- `manager_status`
-- `manager_summary_path`
-- `windows_image_digest`
-- `linux_image_digest`
-- `start_context`
-- `final_context`
-
-The Windows fixture lane consumes these fields into step summary output and injects them into
-`session-index.json` under `runContext.dockerRuntimeManager` for downstream evidence review.
-
-The manager also bootstraps NI images when missing (`docker pull`) and records local runtime probe
-results per lane (`probes.<lane>.probe`), so evidence includes:
-
-- host OS + Docker start/final context metadata
-- local image presence and digest (`probes.<lane>.bootstrap.localDigest`)
-- probe command outcome (`probes.<lane>.probe.status` / `exitCode`)
-
-Safety mode for shared self-hosted runners:
-
-- Fixture Drift runtime checks run in non-mutating mode (`ManageDockerEngine=false`).
-- `tools/Assert-DockerRuntimeDeterminism.ps1` blocks host engine mutation actions unless
-  `-AllowHostEngineMutation` is explicitly set (`Restart-Service`, `DockerCli -Shutdown`,
-  `wsl --shutdown` remain opt-in only).
-
-Quick local host bootstrap command:
+Quick local Linux bootstrap command:
 
 ```powershell
-node tools/npm/run-script.mjs docker:ni:windows:bootstrap
+node tools/npm/run-script.mjs docker:ni:linux:bootstrap
 ```
 
 ## Manual manifest updates

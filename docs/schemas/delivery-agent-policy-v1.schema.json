@@ -1,0 +1,50 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://labview-community-ci-cd.github.io/compare-vi-cli-action/schemas/delivery-agent-policy-v1.schema.json",
+  "title": "Delivery Agent Policy v1",
+  "type": "object",
+  "additionalProperties": true,
+  "required": [
+    "schema",
+    "backlogAuthority",
+    "implementationRemote",
+    "autoSlice",
+    "autoMerge",
+    "maxActiveCodingLanes",
+    "allowPolicyMutations",
+    "allowReleaseAdmin",
+    "stopWhenNoOpenEpics"
+  ],
+  "properties": {
+    "schema": { "const": "priority/delivery-agent-policy@v1" },
+    "backlogAuthority": { "const": "issues" },
+    "implementationRemote": { "enum": ["origin", "personal", "upstream"] },
+    "autoSlice": { "type": "boolean" },
+    "autoMerge": { "type": "boolean" },
+    "maxActiveCodingLanes": { "type": "integer", "minimum": 1 },
+    "allowPolicyMutations": { "type": "boolean" },
+    "allowReleaseAdmin": { "type": "boolean" },
+    "stopWhenNoOpenEpics": { "type": "boolean" },
+    "turnBudget": {
+      "type": "object",
+      "additionalProperties": true,
+      "properties": {
+        "maxMinutes": { "type": "integer", "minimum": 1 },
+        "maxToolCalls": { "type": "integer", "minimum": 1 }
+      }
+    },
+    "retry": {
+      "type": "object",
+      "additionalProperties": true,
+      "properties": {
+        "maxAttempts": { "type": "integer", "minimum": 1 },
+        "blockerBackoffMinutes": { "type": "integer", "minimum": 0 },
+        "rateLimitCooldownMinutes": { "type": "integer", "minimum": 0 }
+      }
+    },
+    "codingTurnCommand": {
+      "type": "array",
+      "items": { "type": "string" }
+    }
+  }
+}

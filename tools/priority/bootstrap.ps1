@@ -71,7 +71,7 @@ function Invoke-WorkspaceHealthGate {
     '--report', $reportPath,
     '--lease-mode', $LeaseMode
   )
-  if (-not [string]::IsNullOrWhiteSpace($env:AGENT_WRITER_LEASE_OWNER)) {
+  if ($LeaseMode -eq 'required' -and -not [string]::IsNullOrWhiteSpace($env:AGENT_WRITER_LEASE_OWNER)) {
     $arguments += @('--expected-owner', $env:AGENT_WRITER_LEASE_OWNER)
   }
   if ($LeaseMode -eq 'required' -and -not [string]::IsNullOrWhiteSpace($env:AGENT_WRITER_LEASE_ID)) {
@@ -314,7 +314,7 @@ function Get-GitStatusPorcelain {
 
 function Test-GitBranchExists {
   param([Parameter(Mandatory=$true)][string]$Name)
-  Invoke-GitCommand -Arguments @('show-ref','--verify','--quiet',"refs/heads/$Name") -AllowFailure
+  Invoke-GitCommand -Arguments @('show-ref','--verify','--quiet',"refs/heads/$Name") -AllowFailure | Out-Null
   return ($LASTEXITCODE -eq 0)
 }
 

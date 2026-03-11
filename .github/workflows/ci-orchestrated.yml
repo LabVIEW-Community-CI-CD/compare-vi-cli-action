@@ -1,8 +1,6 @@
 name: CI Orchestrated (deterministic chain)
 
 on:
-  push:
-    branches: [develop]
   workflow_dispatch:
     inputs:
       origin_kind:

@@ -129,7 +129,8 @@ test('runtime-daemon wrapper defaults to the comparevi adapter', async () => {
   assert.equal(heartbeat.activeLane.workerBranch.status, 'attached');
   assert.equal(heartbeat.activeLane.workerBranch.branch, 'issue/origin-977-fork-policy-portability');
   assert.equal(taskPacket.objective.summary, 'Advance issue #977 on issue/origin-977-fork-policy-portability');
-  assert.equal(taskPacket.helperSurface.preferred[0], 'pwsh -NoLogo -NoProfile -File tools/priority/bootstrap.ps1');
+  assert.equal(taskPacket.helperSurface.preferred[0], 'node tools/npm/run-script.mjs priority:github:metadata:apply');
+  assert.ok(!taskPacket.helperSurface.preferred.includes('pwsh -NoLogo -NoProfile -File tools/priority/bootstrap.ps1'));
   assert.ok(execDeps.calls.some((entry) => entry.command === 'pwsh'));
   assert.ok(execDeps.calls.some((entry) => entry.command === 'git' && entry.args[0] === 'checkout'));
   assert.deepEqual(
@@ -223,8 +224,11 @@ test('comparevi worker checkout allocator refreshes and reuses an existing lane 
     repository: 'example/repo',
     laneId: 'personal-995'
   });
+  const worktreeAdminDir = path.join(repoRoot, '.git', 'worktrees', 'personal-995');
   await mkdir(checkoutPath, { recursive: true });
-  await writeFile(path.join(checkoutPath, '.git'), 'gitdir: reused\n', 'utf8');
+  await mkdir(worktreeAdminDir, { recursive: true });
+  await writeFile(path.join(checkoutPath, '.git'), 'gitdir: C:/stale/windows/path\n', 'utf8');
+  await writeFile(path.join(worktreeAdminDir, 'gitdir'), '/mnt/c/stale/linux/path/.git\n', 'utf8');
   const calls = [];
 
   const prepared = await compareviRuntimeTest.prepareCompareviWorkerCheckout({
@@ -237,18 +241,29 @@ test('comparevi worker checkout allocator refreshes and reuses an existing lane 
       stepOptions: {}
     },
     deps: {
+      platform: 'linux',
       execFileFn: async (command, args, options) => {
         calls.push({ command, args, options });
         if (command !== 'git') {
           throw new Error(`unexpected command: ${command}`);
         }
         if (args[0] === 'remote') {
+          if (args[1] === 'get-url' && args[2] === 'origin') {
+            return { stdout: 'https://github.com/example/repo-fork\n', stderr: '' };
+          }
+          if (args[1] === 'get-url' && args[2] === '--push' && args[3] === 'origin') {
+            return { stdout: 'https://github.com/example/repo-fork\n', stderr: '' };
+          }
+          if (args[1] === 'set-url' && args[2] === '--push' && args[3] === 'origin') {
+            assert.equal(args[4], 'git@github.com:example/repo-fork.git');
+            return { stdout: '', stderr: '' };
+          }
           return { stdout: 'upstream\norigin\n', stderr: '' };
         }
         if (args[0] === 'fetch' && args[1] === 'upstream' && args[2] === '--prune') {
           return { stdout: '', stderr: '' };
         }
-        if (args[0] === 'checkout' && args[1] === '--detach' && args[2] === 'upstream/develop') {
+        if (args[0] === 'checkout' && args[1] === '--force' && args[2] === '--detach' && args[3] === 'upstream/develop') {
           return { stdout: '', stderr: '' };
         }
         throw new Error(`unexpected git args: ${args.join(' ')}`);
@@ -260,8 +275,35 @@ test('comparevi worker checkout allocator refreshes and reuses an existing lane 
   assert.equal(prepared.checkoutPath, checkoutPath);
   assert.equal(prepared.ref, 'upstream/develop');
   assert.deepEqual(prepared.fetchedRemotes, ['upstream']);
+  assert.deepEqual(prepared.pushRemotesNormalized, ['origin']);
+  assert.equal(
+    await readFile(path.join(checkoutPath, '.git'), 'utf8'),
+    `gitdir: ${path.join(repoRoot, '.git', 'worktrees', 'personal-995').replace(/\\/g, '/')}\n`
+  );
+  assert.equal(
+    await readFile(path.join(worktreeAdminDir, 'gitdir'), 'utf8'),
+    `${path.join(checkoutPath, '.git').replace(/\\/g, '/')}\n`
+  );
   assert.ok(calls.some((entry) => entry.command === 'git' && entry.args[0] === 'fetch' && entry.args[1] === 'upstream'));
-  assert.ok(calls.some((entry) => entry.command === 'git' && entry.args[0] === 'checkout' && entry.args[1] === '--detach'));
+  assert.ok(
+    calls.some(
+      (entry) =>
+        entry.command === 'git' &&
+        entry.args[0] === 'remote' &&
+        entry.args[1] === 'set-url' &&
+        entry.args[2] === '--push' &&
+        entry.args[3] === 'origin'
+    )
+  );
+  assert.ok(
+    calls.some(
+      (entry) =>
+        entry.command === 'git' &&
+        entry.args[0] === 'checkout' &&
+        entry.args.includes('--force') &&
+        entry.args.includes('--detach')
+    )
+  );
 });
 
 test('comparevi worker checkout path sanitizes traversal-only segments and keeps the root under repoRoot', async () => {
@@ -307,7 +349,122 @@ test('comparevi worker bootstrap marks an allocated checkout ready after bootstr
 
   assert.equal(ready.status, 'ready');
   assert.equal(ready.checkoutPath, checkoutPath);
-  assert.equal(calls[0].command, 'pwsh');
+  assert.ok(
+    calls.some(
+      (entry) =>
+        entry.command === 'pwsh' &&
+        entry.args.includes('-File') &&
+        entry.args[entry.args.length - 1] === path.join(checkoutPath, 'tools', 'priority', 'bootstrap.ps1')
+    )
+  );
+});
+
+test('comparevi worker bootstrap configures lane lease env and reuses existing lane lease owner', async () => {
+  const repoRoot = await mkdtemp(path.join(os.tmpdir(), 'runtime-daemon-worker-ready-lease-env-'));
+  const { checkoutPath } = compareviRuntimeTest.resolveCompareviWorkerCheckoutPath({
+    repoRoot,
+    repository: 'example/repo',
+    laneId: 'origin-997'
+  });
+  await mkdir(path.join(checkoutPath, 'tools', 'priority'), { recursive: true });
+  await writeFile(path.join(checkoutPath, 'tools', 'priority', 'bootstrap.ps1'), '# mocked bootstrap', 'utf8');
+  const leaseRoot = path.resolve(checkoutPath, '.git/worktrees/origin-997', 'agent-writer-leases');
+  await mkdir(leaseRoot, { recursive: true });
+  await writeFile(
+    path.join(leaseRoot, 'workspace.json'),
+    `${JSON.stringify({ owner: 'persisted-lane-owner' }, null, 2)}\n`,
+    'utf8'
+  );
+
+  const calls = [];
+  const ready = await compareviRuntimeTest.bootstrapCompareviWorkerCheckout({
+    schedulerDecision: {
+      activeLane: {
+        laneId: 'origin-997'
+      }
+    },
+    preparedWorker: {
+      generatedAt: '2026-03-10T18:00:00.000Z',
+      checkoutPath
+    },
+    deps: {
+      execFileFn: async (command, args, options) => {
+        calls.push({ command, args, options });
+        if (command === 'git' && args[0] === 'rev-parse' && args[1] === '--git-dir') {
+          return { stdout: '.git/worktrees/origin-997\n', stderr: '' };
+        }
+        return { stdout: '', stderr: '' };
+      }
+    }
+  });
+
+  assert.equal(ready.status, 'ready');
+  const bootstrapCall = calls.find((entry) => entry.command === 'pwsh');
+  assert.ok(bootstrapCall, 'expected bootstrap pwsh call');
+  assert.equal(
+    bootstrapCall.options.env.AGENT_WRITER_LEASE_ROOT,
+    path.resolve(checkoutPath, '.git/worktrees/origin-997', 'agent-writer-leases')
+  );
+  assert.equal(bootstrapCall.options.env.AGENT_WRITER_LEASE_OWNER, 'persisted-lane-owner');
+  assert.equal(bootstrapCall.options.env.AGENT_WRITER_LEASE_FORCE_TAKEOVER, '1');
+  assert.equal(bootstrapCall.options.env.AGENT_WRITER_LEASE_STALE_SECONDS, '0');
+});
+
+test('comparevi worker bootstrap activates the lane branch before invoking bootstrap', async () => {
+  const repoRoot = await mkdtemp(path.join(os.tmpdir(), 'runtime-daemon-worker-ready-branch-'));
+  const { checkoutPath } = compareviRuntimeTest.resolveCompareviWorkerCheckoutPath({
+    repoRoot,
+    repository: 'example/repo',
+    laneId: 'origin-997'
+  });
+  await mkdir(path.join(checkoutPath, 'tools', 'priority'), { recursive: true });
+  await writeFile(path.join(checkoutPath, 'tools', 'priority', 'bootstrap.ps1'), '# mocked bootstrap', 'utf8');
+
+  const branchName = 'issue/origin-997-bootstrap-branch-first';
+  const calls = [];
+  const ready = await compareviRuntimeTest.bootstrapCompareviWorkerCheckout({
+    schedulerDecision: {
+      activeLane: {
+        laneId: 'origin-997',
+        forkRemote: 'origin',
+        branch: branchName
+      },
+      stepOptions: {
+        branch: branchName
+      }
+    },
+    preparedWorker: {
+      generatedAt: '2026-03-10T18:00:00.000Z',
+      checkoutPath
+    },
+    deps: {
+      execFileFn: async (command, args, options) => {
+        calls.push({ command, args, options });
+        if (command !== 'git') {
+          return { stdout: '', stderr: '' };
+        }
+        if (args[0] === 'remote') {
+          return { stdout: 'upstream\norigin\n', stderr: '' };
+        }
+        if (args[0] === 'branch' && args[1] === '--show-current') {
+          return { stdout: '', stderr: '' };
+        }
+        return { stdout: '', stderr: '' };
+      }
+    }
+  });
+
+  assert.equal(ready.status, 'ready');
+  assert.ok(
+    calls.some(
+      (entry) =>
+        entry.command === 'git' &&
+        entry.args[0] === 'checkout' &&
+        entry.args.includes('--force') &&
+        entry.args.includes(branchName)
+    )
+  );
+  assert.equal(calls[calls.length - 1].command, 'pwsh');
 });
 
 test('comparevi worker bootstrap includes stderr in blocked bootstrap diagnostics', async () => {
@@ -396,7 +553,7 @@ test('comparevi worker activation attaches a ready checkout onto the determinist
   assert.equal(attached.branch, 'issue/personal-998-runtime-worker-branch-activation');
   assert.equal(attached.trackingRef, 'personal/issue/personal-998-runtime-worker-branch-activation');
   assert.deepEqual(attached.fetchedRemotes, ['upstream', 'origin', 'personal']);
-  assert.ok(calls.some((entry) => entry.command === 'git' && entry.args[0] === 'checkout'));
+  assert.ok(calls.some((entry) => entry.command === 'git' && entry.args[0] === 'checkout' && entry.args.includes('--force')));
 });
 
 test('comparevi worker activation blocks when the scheduler does not resolve a branch name', async () => {
@@ -574,6 +731,89 @@ test('comparevi execution stops when the standing issue is cadence-only work', a
   assert.equal(execution.status, 'completed');
   assert.equal(execution.outcome, 'cadence-only');
   assert.equal(execution.stopLoop, true);
+});
+
+test('comparevi execution derives standing context from explicit lane metadata when scheduler artifacts are missing', async () => {
+  const handoffCalls = [];
+  const closeCalls = [];
+  const fetchCalls = [];
+  const execution = await compareviRuntimeTest.executeCompareviTurn({
+    options: {
+      repo: 'svelderrainruiz/compare-vi-cli-action',
+      issue: 315
+    },
+    env: {
+      AGENT_PRIORITY_UPSTREAM_REPOSITORY: 'LabVIEW-Community-CI-CD/compare-vi-cli-action'
+    },
+    repoRoot: '/tmp/repo',
+    schedulerDecision: {
+      activeLane: {
+        laneId: 'personal-1004',
+        issue: 315,
+        forkRemote: 'personal',
+        branch: 'issue/personal-1004-runtime-worker-flow'
+      }
+    },
+    deps: {
+      ghIssueFetcher: async ({ number, slug }) => {
+        fetchCalls.push({ number, slug });
+        return {
+          number: 315,
+          title: '[P1] Fork mirror for upstream issue #1004',
+          state: 'open',
+          updatedAt: '2026-03-10T00:00:00Z',
+          html_url: 'https://github.com/svelderrainruiz/compare-vi-cli-action/issues/315',
+          url: 'https://api.github.com/repos/svelderrainruiz/compare-vi-cli-action/issues/315',
+          labels: [{ name: 'fork-standing-priority' }],
+          assignees: [],
+          milestone: null,
+          comments: 0,
+          body:
+            '<!-- upstream-issue-url: https://github.com/LabVIEW-Community-CI-CD/compare-vi-cli-action/issues/1004 -->\n\nBody'
+        };
+      },
+      restIssueFetcher: async () => null,
+      listRepoOpenIssuesFn: async () => [
+        {
+          number: 315,
+          title: '[P1] Current mirror',
+          body: 'body',
+          labels: [{ name: 'fork-standing-priority' }],
+          createdAt: '2026-03-10T00:00:00Z'
+        },
+        {
+          number: 313,
+          title: '[P1] Next development issue',
+          body: 'body',
+          labels: [],
+          createdAt: '2026-03-09T00:00:00Z'
+        }
+      ],
+      handoffGhRunner: (args) => {
+        handoffCalls.push(args);
+        if (args[0] === 'issue' && args[1] === 'list' && args.includes('--label')) {
+          if (args.includes('fork-standing-priority')) {
+            return JSON.stringify([{ number: 315, labels: [{ name: 'fork-standing-priority' }] }]);
+          }
+          return '[]';
+        }
+        return '';
+      },
+      handoffSyncFn: async () => {},
+      closeIssueFn: async (payload) => {
+        closeCalls.push(payload);
+      }
+    }
+  });
+
+  assert.equal(execution.outcome, 'mirror-closed-advanced');
+  assert.equal(execution.details.standingIssueNumber, 315);
+  assert.ok(fetchCalls.length >= 1);
+  assert.deepEqual(handoffCalls.slice(-2), [
+    ['issue', 'edit', '315', '--remove-label', 'fork-standing-priority'],
+    ['issue', 'edit', '313', '--add-label', 'fork-standing-priority']
+  ]);
+  assert.equal(closeCalls[0].issueNumber, 315);
 });
 
 test('comparevi cadence detection tolerates compact cadence markers', () => {

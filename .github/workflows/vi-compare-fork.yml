@@ -12,7 +12,7 @@ concurrency:
 jobs:
   detect-and-compare:
     name: Compare Changed VIs
-    runs-on: [self-hosted, Windows, X64, self-hosted-docker-windows]
+    runs-on: ubuntu-latest
     permissions:
       contents: read
       actions: read
@@ -22,7 +22,8 @@ jobs:
       BASE_SHA: ${{ github.event.pull_request.base.sha }}
       HEAD_SHA: ${{ github.event.pull_request.head.sha }}
       FETCH_DEPTH: 20
-      NI_WINDOWS_IMAGE: nationalinstruments/labview:2026q1-windows
+      NI_LINUX_IMAGE: nationalinstruments/labview:2026q1-linux
+      NI_LINUX_LABVIEW_PATH: /usr/local/natinst/LabVIEW-2026-64/labview
       COMPARE_TIMEOUT_SECONDS: 600
     steps:
       - name: Checkout base (parent repository)
@@ -30,21 +31,6 @@ jobs:
         with:
           ref: ${{ env.BASE_SHA }}
           fetch-depth: 0
-
-      - name: Assert self-hosted-docker-windows runner label
-        id: runner_label_contract
-        shell: pwsh
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          pwsh -NoLogo -NoProfile -File tools/Assert-RunnerLabelContract.ps1 `
-            -Repository '${{ github.repository }}' `
-            -RunId '${{ github.run_id }}' `
-            -RunnerName '${{ runner.name }}' `
-            -RequiredLabel 'self-hosted-docker-windows' `
-            -OutputJsonPath 'results/vi-compare-fork/runner-label-contract.json' `
-            -GitHubOutputPath $env:GITHUB_OUTPUT `
-            -StepSummaryPath $env:GITHUB_STEP_SUMMARY
 
       - name: Checkout PR head
         shell: pwsh
@@ -125,14 +111,14 @@ jobs:
 
           $stagedPairs | ConvertTo-Json -Depth 6 | Set-Content -LiteralPath $resultsPath -Encoding UTF8
 
-          $containerCompareScript = Join-Path $repoRoot 'tools' 'Run-NIWindowsContainerCompare.ps1'
+          $containerCompareScript = Join-Path $repoRoot 'tools' 'Run-NILinuxContainerCompare.ps1'
           if (-not (Test-Path -LiteralPath $containerCompareScript -PathType Leaf)) {
             throw "Container compare script not found: $containerCompareScript"
           }
 
-          $image = [string]$env:NI_WINDOWS_IMAGE
+          $image = [string]$env:NI_LINUX_IMAGE
           if ([string]::IsNullOrWhiteSpace($image)) {
-            throw 'NI_WINDOWS_IMAGE is not set.'
+            throw 'NI_LINUX_IMAGE is not set.'
           }
           & docker image inspect $image *> $null
           if ($LASTEXITCODE -ne 0) {
@@ -166,7 +152,8 @@ jobs:
               '-File', $containerCompareScript,
               '-BaseVi', $BaseVi,
               '-HeadVi', $HeadVi,
-              '-Image', $env:NI_WINDOWS_IMAGE,
+              '-Image', $env:NI_LINUX_IMAGE,
+              '-LabVIEWPath', $env:NI_LINUX_LABVIEW_PATH,
               '-ReportPath', $reportPath,
               '-ReportType', 'html',
               '-RuntimeSnapshotPath', $runtimeSnapshotPath,
@@ -182,7 +169,7 @@ jobs:
               $output | ForEach-Object { Write-Host $_ }
             }
 
-            $capturePath = Join-Path $OutputDir 'ni-windows-container-capture.json'
+            $capturePath = Join-Path $OutputDir 'ni-linux-container-capture.json'
             [pscustomobject]@{
               ExitCode    = $LASTEXITCODE
               ReportPath  = $reportPath
@@ -297,4 +284,3 @@ jobs:
           path: |
             ${{ steps.compare.outputs.compare_dir }}
             vi-diff-manifest.json
-            results/vi-compare-fork/runner-label-contract.json

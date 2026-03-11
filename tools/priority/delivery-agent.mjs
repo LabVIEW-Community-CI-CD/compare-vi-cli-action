@@ -1,0 +1,1363 @@
+#!/usr/bin/env node
+
+import { spawnSync } from 'node:child_process';
+import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
+import os from 'node:os';
+import path from 'node:path';
+
+export const DELIVERY_AGENT_POLICY_SCHEMA = 'priority/delivery-agent-policy@v1';
+export const DELIVERY_AGENT_RUNTIME_STATE_SCHEMA = 'priority/delivery-agent-runtime-state@v1';
+export const DELIVERY_AGENT_LANE_STATE_SCHEMA = 'priority/delivery-agent-lane-state@v1';
+export const DELIVERY_AGENT_POLICY_RELATIVE_PATH = path.join('tools', 'priority', 'delivery-agent.policy.json');
+export const DELIVERY_AGENT_STATE_FILENAME = 'delivery-agent-state.json';
+export const DELIVERY_AGENT_LANES_DIRNAME = 'delivery-agent-lanes';
+export const DELIVERY_AGENT_LIFECYCLE_STATES = new Set([
+  'planning',
+  'reshaping-backlog',
+  'coding',
+  'waiting-ci',
+  'waiting-review',
+  'ready-merge',
+  'blocked',
+  'complete',
+  'idle'
+]);
+
+const DEFAULT_POLICY = {
+  schema: DELIVERY_AGENT_POLICY_SCHEMA,
+  backlogAuthority: 'issues',
+  implementationRemote: 'origin',
+  autoSlice: true,
+  autoMerge: true,
+  maxActiveCodingLanes: 1,
+  allowPolicyMutations: false,
+  allowReleaseAdmin: false,
+  stopWhenNoOpenEpics: true,
+  turnBudget: {
+    maxMinutes: 20,
+    maxToolCalls: 12
+  },
+  retry: {
+    maxAttempts: 3,
+    blockerBackoffMinutes: 10,
+    rateLimitCooldownMinutes: 30
+  },
+  codingTurnCommand: []
+};
+
+const SUCCESSFUL_CHECK_CONCLUSIONS = new Set(['SUCCESS', 'NEUTRAL', 'SKIPPED']);
+const PENDING_CHECK_STATES = new Set(['QUEUED', 'IN_PROGRESS', 'PENDING', 'EXPECTED', 'WAITING']);
+const BLOCKING_CHECK_STATES = new Set(['FAILURE', 'FAILED', 'TIMED_OUT', 'ERROR', 'ACTION_REQUIRED', 'CANCELLED']);
+
+function normalizeText(value) {
+  if (value == null) return '';
+  return String(value).trim();
+}
+
+function toIso(now = new Date()) {
+  return now.toISOString();
+}
+
+function coercePositiveInteger(value) {
+  if (value == null || value === '') return null;
+  const parsed = Number(value);
+  return Number.isInteger(parsed) && parsed > 0 ? parsed : null;
+}
+
+function sanitizeSegment(value) {
+  return String(value || '')
+    .trim()
+    .replace(/[^A-Za-z0-9._-]+/g, '-')
+    .replace(/^-+|-+$/g, '') || 'runtime';
+}
+
+function resolvePath(repoRoot, filePath) {
+  return path.isAbsolute(filePath) ? filePath : path.join(repoRoot, filePath);
+}
+
+async function readJsonIfPresent(filePath) {
+  try {
+    return JSON.parse(await readFile(filePath, 'utf8'));
+  } catch (error) {
+    if (error?.code === 'ENOENT') return null;
+    throw error;
+  }
+}
+
+function normalizeCommandList(value) {
+  return Array.isArray(value) ? value.map((entry) => normalizeText(entry)).filter(Boolean) : [];
+}
+
+function parsePriorityOrdinal(title) {
+  const match = String(title || '').match(/\[\s*p(?<priority>\d+)\s*\]/i);
+  const parsed = Number(match?.groups?.priority ?? '9');
+  return Number.isInteger(parsed) && parsed >= 0 ? parsed : 9;
+}
+
+function isEpicTitle(title) {
+  return /^\s*epic\s*:/i.test(String(title || ''));
+}
+
+function normalizeLabelEntries(labels) {
+  return Array.isArray(labels)
+    ? labels
+        .map((label) => {
+          if (typeof label === 'string') return label;
+          if (label && typeof label === 'object') return label.name;
+          return null;
+        })
+        .map((entry) => normalizeText(entry).toLowerCase())
+        .filter(Boolean)
+    : [];
+}
+
+function normalizeIssueLike(issue, { repository } = {}) {
+  if (!issue || typeof issue !== 'object') return null;
+  const number = coercePositiveInteger(issue.number);
+  if (!number) return null;
+  return {
+    id: normalizeText(issue.id) || null,
+    number,
+    title: normalizeText(issue.title) || null,
+    body: typeof issue.body === 'string' ? issue.body : '',
+    url: normalizeText(issue.url) || null,
+    state: normalizeText(issue.state || issue.status || 'OPEN').toUpperCase() || 'OPEN',
+    createdAt: normalizeText(issue.createdAt) || null,
+    updatedAt: normalizeText(issue.updatedAt) || null,
+    labels: normalizeLabelEntries(issue.labels),
+    repository: normalizeText(issue.repository) || repository || null,
+    priority: parsePriorityOrdinal(issue.title),
+    epic: isEpicTitle(issue.title)
+  };
+}
+
+function compareIssueRank(left, right) {
+  if (left.priority !== right.priority) {
+    return left.priority - right.priority;
+  }
+  const leftCreated = Date.parse(left.createdAt || '') || Number.POSITIVE_INFINITY;
+  const rightCreated = Date.parse(right.createdAt || '') || Number.POSITIVE_INFINITY;
+  if (leftCreated !== rightCreated) {
+    return leftCreated - rightCreated;
+  }
+  const leftUpdated = Date.parse(left.updatedAt || '') || Number.POSITIVE_INFINITY;
+  const rightUpdated = Date.parse(right.updatedAt || '') || Number.POSITIVE_INFINITY;
+  if (leftUpdated !== rightUpdated) {
+    return leftUpdated - rightUpdated;
+  }
+  return left.number - right.number;
+}
+
+function selectBestIssueCandidate(candidates = []) {
+  const normalized = candidates.filter(Boolean).slice().sort(compareIssueRank);
+  return normalized[0] ?? null;
+}
+
+function resolveIssueBranchName({ issueNumber, title, implementationRemote = 'origin', branchPrefix = 'issue' }) {
+  const slug = normalizeText(title)
+    .normalize('NFKD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[^A-Za-z0-9]+/g, ' ')
+    .replace(/\s+/g, '-')
+    .replace(/-+/g, '-')
+    .toLowerCase()
+    .replace(/^-+|-+$/g, '') || 'work';
+  const remotePrefix = normalizeText(implementationRemote) ? `${normalizeText(implementationRemote).toLowerCase()}-` : '';
+  return `${branchPrefix}/${remotePrefix}${issueNumber}-${slug}`;
+}
+
+function parseRepositorySlug(repository) {
+  const trimmed = normalizeText(repository);
+  if (!trimmed.includes('/')) {
+    throw new Error(`Invalid repository slug '${repository}'. Expected owner/repo.`);
+  }
+  const [owner, repo] = trimmed.split('/', 2);
+  return { owner, repo };
+}
+
+function summarizeCheckRollup(rollup = []) {
+  return Array.isArray(rollup)
+    ? rollup
+        .map((entry) => {
+          if (!entry || typeof entry !== 'object') return null;
+          const typeName = normalizeText(entry.__typename);
+          if (typeName === 'StatusContext') {
+            return {
+              name: normalizeText(entry.context) || null,
+              status: normalizeText(entry.state).toUpperCase() || null,
+              conclusion: normalizeText(entry.state).toUpperCase() || null,
+              url: normalizeText(entry.targetUrl) || null
+            };
+          }
+          return {
+            name: normalizeText(entry.name) || null,
+            status: normalizeText(entry.status).toUpperCase() || null,
+            conclusion: normalizeText(entry.conclusion).toUpperCase() || null,
+            url: normalizeText(entry.detailsUrl) || null
+          };
+        })
+        .filter(Boolean)
+    : [];
+}
+
+function classifyChecks(rollup = []) {
+  const checks = summarizeCheckRollup(rollup);
+  if (checks.length === 0) {
+    return {
+      status: 'not-linked',
+      blockerClass: 'none'
+    };
+  }
+  let hasPending = false;
+  let hasFailure = false;
+  for (const check of checks) {
+    const status = normalizeText(check.status).toUpperCase();
+    const conclusion = normalizeText(check.conclusion).toUpperCase();
+    if (PENDING_CHECK_STATES.has(status) || PENDING_CHECK_STATES.has(conclusion)) {
+      hasPending = true;
+      continue;
+    }
+    if (BLOCKING_CHECK_STATES.has(status) || BLOCKING_CHECK_STATES.has(conclusion)) {
+      hasFailure = true;
+      continue;
+    }
+    if (status === 'COMPLETED' && conclusion && !SUCCESSFUL_CHECK_CONCLUSIONS.has(conclusion)) {
+      hasFailure = true;
+    }
+  }
+  if (hasFailure) {
+    return {
+      status: 'failed',
+      blockerClass: 'ci'
+    };
+  }
+  if (hasPending) {
+    return {
+      status: 'pending',
+      blockerClass: 'ci'
+    };
+  }
+  return {
+    status: 'success',
+    blockerClass: 'none'
+  };
+}
+
+export function classifyPullRequestWork(pr = {}) {
+  const checks = classifyChecks(pr.statusCheckRollup);
+  const mergeStateStatus = normalizeText(pr.mergeStateStatus).toUpperCase();
+  const mergeable = normalizeText(pr.mergeable).toUpperCase();
+  const reviewDecision = normalizeText(pr.reviewDecision).toUpperCase();
+  const isDraft = pr.isDraft === true;
+
+  if (isDraft || reviewDecision === 'REVIEW_REQUIRED' || reviewDecision === 'CHANGES_REQUESTED') {
+    return {
+      laneLifecycle: 'waiting-review',
+      blockerClass: 'review',
+      checksStatus: checks.status,
+      readyToMerge: false,
+      retryable: true,
+      nextWakeCondition: 'review-disposition-updated'
+    };
+  }
+  if (mergeStateStatus === 'DIRTY' || mergeable === 'CONFLICTING' || mergeable === 'UNMERGEABLE') {
+    return {
+      laneLifecycle: 'blocked',
+      blockerClass: 'merge',
+      checksStatus: checks.status,
+      readyToMerge: false,
+      retryable: false,
+      nextWakeCondition: 'manual-conflict-resolution'
+    };
+  }
+  if (checks.blockerClass === 'ci') {
+    return {
+      laneLifecycle: 'waiting-ci',
+      blockerClass: 'ci',
+      checksStatus: checks.status,
+      readyToMerge: false,
+      retryable: true,
+      nextWakeCondition: 'checks-green'
+    };
+  }
+  return {
+    laneLifecycle: 'ready-merge',
+    blockerClass: 'none',
+    checksStatus: checks.status,
+    readyToMerge: true,
+    retryable: false,
+    nextWakeCondition: 'merge-attempt'
+  };
+}
+
+function prLifecyclePriority(lifecycle) {
+  switch (lifecycle) {
+    case 'ready-merge':
+      return 0;
+    case 'waiting-review':
+      return 1;
+    case 'waiting-ci':
+      return 2;
+    case 'blocked':
+      return 3;
+    default:
+      return 4;
+  }
+}
+
+function dedupePullRequests(pullRequests = []) {
+  const byNumber = new Map();
+  for (const pr of pullRequests) {
+    const number = coercePositiveInteger(pr?.number);
+    if (!number || byNumber.has(number)) continue;
+    byNumber.set(number, pr);
+  }
+  return [...byNumber.values()];
+}
+
+function normalizePullRequest(pr, fallbackRepository) {
+  if (!pr || typeof pr !== 'object') return null;
+  const number = coercePositiveInteger(pr.number);
+  if (!number) return null;
+  const statusCheckRollupNodes = Array.isArray(pr.statusCheckRollup?.contexts?.nodes)
+    ? pr.statusCheckRollup.contexts.nodes
+    : pr.statusCheckRollup;
+  return {
+    id: normalizeText(pr.id) || null,
+    number,
+    title: normalizeText(pr.title) || null,
+    url: normalizeText(pr.url) || null,
+    state: normalizeText(pr.state || 'OPEN').toUpperCase() || 'OPEN',
+    isDraft: pr.isDraft === true,
+    createdAt: normalizeText(pr.createdAt) || null,
+    updatedAt: normalizeText(pr.updatedAt) || null,
+    baseRefName: normalizeText(pr.baseRefName) || null,
+    headRefName: normalizeText(pr.headRefName) || null,
+    mergeStateStatus: normalizeText(pr.mergeStateStatus) || null,
+    mergeable: normalizeText(pr.mergeable) || null,
+    reviewDecision: normalizeText(pr.reviewDecision) || null,
+    statusCheckRollup: summarizeCheckRollup(statusCheckRollupNodes),
+    repository: normalizeText(pr.repository?.nameWithOwner) || normalizeText(pr.repository) || fallbackRepository || null,
+    headRepositoryOwner: normalizeText(pr.headRepositoryOwner?.login) || normalizeText(pr.headRepositoryOwner) || null,
+    isCrossRepository: pr.isCrossRepository === true
+  };
+}
+
+function collectPullRequestCandidates(issue, epicNumber = null) {
+  const candidates = [];
+  for (const pullRequest of issue.pullRequests ?? []) {
+    if (normalizeText(pullRequest.state) !== 'OPEN') continue;
+    const prStatus = classifyPullRequestWork(pullRequest);
+    candidates.push({
+      issue,
+      epicNumber,
+      pullRequest,
+      prStatus
+    });
+  }
+  return candidates;
+}
+
+function buildIssueGraphSummary(issueGraph) {
+  const standingIssue = issueGraph?.standingIssue ?? null;
+  const selectedIssue = issueGraph?.selectedIssue ?? null;
+  return {
+    standingIssueNumber: standingIssue?.number ?? null,
+    selectedIssueNumber: selectedIssue?.number ?? null,
+    standingIsEpic: standingIssue?.epic === true,
+    openChildIssueCount: Array.isArray(issueGraph?.subIssues)
+      ? issueGraph.subIssues.filter((issue) => normalizeText(issue.state) === 'OPEN').length
+      : 0,
+    openPullRequestCount: Array.isArray(issueGraph?.pullRequests)
+      ? issueGraph.pullRequests.filter((pullRequest) => normalizeText(pullRequest.state) === 'OPEN').length
+      : 0
+  };
+}
+function selectCanonicalCandidate({ issueGraph, implementationRemote }) {
+  const standingIssue = issueGraph?.standingIssue ?? null;
+  if (!standingIssue) {
+    return null;
+  }
+
+  const openStandingPullRequests = collectPullRequestCandidates(standingIssue, standingIssue.epic === true ? standingIssue.number : null);
+  const openChildIssues = Array.isArray(issueGraph?.subIssues)
+    ? issueGraph.subIssues.filter((issue) => normalizeText(issue.state) === 'OPEN')
+    : [];
+  const childPullRequests = openChildIssues.flatMap((issue) => collectPullRequestCandidates(issue, standingIssue.epic === true ? standingIssue.number : null));
+  const prCandidates = dedupePullRequests(
+    [...openStandingPullRequests, ...childPullRequests].map((entry) => ({
+      ...entry.pullRequest,
+      _candidate: entry
+    }))
+  )
+    .map((pullRequest) => pullRequest._candidate)
+    .sort((left, right) => {
+      const lifecycleDelta = prLifecyclePriority(left.prStatus.laneLifecycle) - prLifecyclePriority(right.prStatus.laneLifecycle);
+      if (lifecycleDelta !== 0) return lifecycleDelta;
+      return compareIssueRank(left.issue, right.issue);
+    });
+
+  if (prCandidates.length > 0) {
+    const selected = prCandidates[0];
+    return {
+      actionType: 'existing-pr-unblock',
+      laneLifecycle: selected.prStatus.laneLifecycle,
+      selectedIssue: selected.issue,
+      epicNumber: selected.epicNumber,
+      pullRequest: selected.pullRequest,
+      pullRequestStatus: selected.prStatus,
+      branch:
+        normalizeText(selected.pullRequest.headRefName) ||
+        resolveIssueBranchName({
+          issueNumber: selected.issue.number,
+          title: selected.issue.title,
+          implementationRemote
+        })
+    };
+  }
+
+  if (openChildIssues.length > 0) {
+    const selectedChild = selectBestIssueCandidate(openChildIssues);
+    return {
+      actionType: 'advance-child-issue',
+      laneLifecycle: 'coding',
+      selectedIssue: selectedChild,
+      epicNumber: standingIssue.epic === true ? standingIssue.number : null,
+      pullRequest: null,
+      pullRequestStatus: null,
+      branch: resolveIssueBranchName({
+        issueNumber: selectedChild.number,
+        title: selectedChild.title,
+        implementationRemote
+      })
+    };
+  }
+
+  if (standingIssue.epic === true) {
+    return {
+      actionType: 'reshape-backlog',
+      laneLifecycle: 'reshaping-backlog',
+      selectedIssue: standingIssue,
+      epicNumber: standingIssue.number,
+      pullRequest: null,
+      pullRequestStatus: null,
+      backlogRepair: {
+        mode: 'repair-child-slice',
+        parentIssueNumber: standingIssue.number,
+        parentIssueUrl: standingIssue.url,
+        reason: 'standing epic has no executable open child issues'
+      },
+      branch: resolveIssueBranchName({
+        issueNumber: standingIssue.number,
+        title: standingIssue.title,
+        implementationRemote
+      })
+    };
+  }
+
+  return {
+    actionType: 'advance-standing-issue',
+    laneLifecycle: 'coding',
+    selectedIssue: standingIssue,
+    epicNumber: null,
+    pullRequest: null,
+    pullRequestStatus: null,
+    branch: resolveIssueBranchName({
+      issueNumber: standingIssue.number,
+      title: standingIssue.title,
+      implementationRemote
+    })
+  };
+}
+
+function buildGraphqlArgs(query, variables = {}) {
+  const args = ['api', 'graphql', '-f', `query=${query}`];
+  for (const [key, value] of Object.entries(variables)) {
+    if (value == null) continue;
+    const switchName = typeof value === 'number' ? '-F' : '-f';
+    args.push(switchName, `${key}=${String(value)}`);
+  }
+  return args;
+}
+
+function runGhGraphql(repoRoot, query, variables = {}, deps = {}) {
+  if (typeof deps.runGhGraphqlFn === 'function') {
+    return deps.runGhGraphqlFn({ repoRoot, query, variables });
+  }
+  const result = spawnSync('gh', buildGraphqlArgs(query, variables), {
+    cwd: repoRoot,
+    encoding: 'utf8',
+    stdio: ['ignore', 'pipe', 'pipe']
+  });
+  if (result.status !== 0) {
+    throw new Error(`gh api graphql failed (${result.status}): ${normalizeText(result.stderr) || 'unknown error'}`);
+  }
+  return JSON.parse(result.stdout || '{}');
+}
+
+export async function loadDeliveryAgentPolicy(repoRoot, deps = {}) {
+  if (typeof deps.loadDeliveryAgentPolicyFn === 'function') {
+    return deps.loadDeliveryAgentPolicyFn({ repoRoot, defaultPolicy: { ...DEFAULT_POLICY } });
+  }
+  const policyPath = resolvePath(repoRoot, deps.policyPath || DELIVERY_AGENT_POLICY_RELATIVE_PATH);
+  const filePolicy = await readJsonIfPresent(policyPath);
+  return {
+    ...DEFAULT_POLICY,
+    ...(filePolicy && typeof filePolicy === 'object' ? filePolicy : {}),
+    schema: DELIVERY_AGENT_POLICY_SCHEMA,
+    turnBudget: {
+      ...DEFAULT_POLICY.turnBudget,
+      ...(filePolicy?.turnBudget && typeof filePolicy.turnBudget === 'object' ? filePolicy.turnBudget : {})
+    },
+    retry: {
+      ...DEFAULT_POLICY.retry,
+      ...(filePolicy?.retry && typeof filePolicy.retry === 'object' ? filePolicy.retry : {})
+    },
+    codingTurnCommand: normalizeCommandList(filePolicy?.codingTurnCommand)
+  };
+}
+
+export async function fetchIssueExecutionGraph({ repoRoot, repository, issueNumber, deps = {} }) {
+  if (typeof deps.fetchIssueExecutionGraphFn === 'function') {
+    return deps.fetchIssueExecutionGraphFn({ repoRoot, repository, issueNumber });
+  }
+
+  const { owner, repo } = parseRepositorySlug(repository);
+  const query = `
+    query($owner: String!, $repo: String!, $number: Int!) {
+      repository(owner: $owner, name: $repo) {
+        issue(number: $number) {
+          id
+          number
+          title
+          body
+          url
+          state
+          createdAt
+          updatedAt
+          labels(first: 50) { nodes { name } }
+          subIssues(first: 25) {
+            totalCount
+            nodes {
+              id
+              number
+              title
+              body
+              url
+              state
+              createdAt
+              updatedAt
+              labels(first: 20) { nodes { name } }
+              timelineItems(first: 25, itemTypes: [CROSS_REFERENCED_EVENT]) {
+                nodes {
+                  ... on CrossReferencedEvent {
+                    source {
+                      __typename
+                      ... on PullRequest {
+                        id
+                        number
+                        title
+                        url
+                        state
+                        isDraft
+                        createdAt
+                        updatedAt
+                        baseRefName
+                        headRefName
+                        mergeStateStatus
+                        mergeable
+                        reviewDecision
+                        isCrossRepository
+                        headRepositoryOwner { login }
+                        repository { nameWithOwner }
+                        statusCheckRollup {
+                          contexts(first: 50) {
+                            nodes {
+                              __typename
+                              ... on CheckRun {
+                                name
+                                status
+                                conclusion
+                                detailsUrl
+                              }
+                              ... on StatusContext {
+                                context
+                                state
+                                targetUrl
+                              }
+                            }
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+          timelineItems(first: 25, itemTypes: [CROSS_REFERENCED_EVENT]) {
+            nodes {
+              ... on CrossReferencedEvent {
+                source {
+                  __typename
+                  ... on PullRequest {
+                    id
+                    number
+                    title
+                    url
+                    state
+                    isDraft
+                    createdAt
+                    updatedAt
+                    baseRefName
+                    headRefName
+                    mergeStateStatus
+                    mergeable
+                    reviewDecision
+                    isCrossRepository
+                    headRepositoryOwner { login }
+                    repository { nameWithOwner }
+                    statusCheckRollup {
+                      contexts(first: 50) {
+                        nodes {
+                          __typename
+                          ... on CheckRun {
+                            name
+                            status
+                            conclusion
+                            detailsUrl
+                          }
+                          ... on StatusContext {
+                            context
+                            state
+                            targetUrl
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  `;
+  const payload = runGhGraphql(repoRoot, query, { owner, repo, number: issueNumber }, deps);
+  const issueNode = payload?.data?.repository?.issue;
+  if (!issueNode?.number) {
+    throw new Error(`Unable to resolve execution graph for issue #${issueNumber} in ${repository}.`);
+  }
+
+  const standingIssue = normalizeIssueLike(issueNode, { repository });
+  const standingPullRequests = dedupePullRequests(
+    (issueNode.timelineItems?.nodes ?? [])
+      .map((entry) => normalizePullRequest(entry?.source?.__typename === 'PullRequest' ? entry.source : null, repository))
+      .filter(Boolean)
+  );
+  const subIssues = (issueNode.subIssues?.nodes ?? [])
+    .map((entry) => {
+      const normalizedIssue = normalizeIssueLike(entry, { repository });
+      if (!normalizedIssue) return null;
+      return {
+        ...normalizedIssue,
+        pullRequests: dedupePullRequests(
+          (entry.timelineItems?.nodes ?? [])
+            .map((item) => normalizePullRequest(item?.source?.__typename === 'PullRequest' ? item.source : null, repository))
+            .filter(Boolean)
+        )
+      };
+    })
+    .filter(Boolean);
+
+  return {
+    standingIssue: {
+      ...standingIssue,
+      pullRequests: standingPullRequests
+    },
+    subIssues,
+    pullRequests: dedupePullRequests([
+      ...standingPullRequests,
+      ...subIssues.flatMap((issue) => issue.pullRequests ?? [])
+    ])
+  };
+}
+
+export async function buildCanonicalDeliveryDecision({
+  repoRoot,
+  issueSnapshot,
+  issueGraph,
+  upstreamRepository,
+  targetRepository,
+  policy,
+  source = 'comparevi-standing-priority-live'
+}) {
+  const effectivePolicy = policy ?? (await loadDeliveryAgentPolicy(repoRoot));
+  const implementationRemote = normalizeText(effectivePolicy.implementationRemote) || 'origin';
+  const standingIssue = normalizeIssueLike(issueSnapshot, { repository: targetRepository || upstreamRepository });
+  if (!standingIssue) {
+    return null;
+  }
+  const graph = issueGraph ?? {
+    standingIssue: {
+      ...standingIssue,
+      pullRequests: []
+    },
+    subIssues: [],
+    pullRequests: []
+  };
+  const selected = selectCanonicalCandidate({
+    issueGraph: graph,
+    implementationRemote
+  });
+  if (!selected?.selectedIssue) {
+    return null;
+  }
+  const selectedIssue = selected.selectedIssue;
+  const pullRequest = selected.pullRequest ?? null;
+  const pullRequestStatus = selected.pullRequestStatus ?? null;
+  const blockerClass = pullRequestStatus?.blockerClass ?? 'none';
+  const laneId = `${implementationRemote}-${selectedIssue.number}`;
+  const reason =
+    selected.actionType === 'existing-pr-unblock'
+      ? `standing issue #${standingIssue.number} prioritizes existing PR #${pullRequest.number} for issue #${selectedIssue.number}`
+      : selected.actionType === 'advance-child-issue'
+        ? `standing epic #${standingIssue.number} selects child issue #${selectedIssue.number}`
+        : selected.actionType === 'reshape-backlog'
+          ? `standing epic #${standingIssue.number} requires child-slice repair before coding`
+          : `standing issue #${selectedIssue.number}`;
+
+  return {
+    source,
+    outcome: 'selected',
+    reason,
+    stepOptions: {
+      lane: laneId,
+      issue: selectedIssue.number,
+      epic: selected.epicNumber,
+      forkRemote: implementationRemote,
+      branch: selected.branch,
+      prUrl: pullRequest?.url ?? null,
+      blockerClass
+    },
+    artifacts: {
+      standingIssueNumber: standingIssue.number,
+      standingRepository: normalizeText(targetRepository) || normalizeText(upstreamRepository) || null,
+      canonicalIssueNumber: selectedIssue.number,
+      canonicalRepository: normalizeText(upstreamRepository) || normalizeText(targetRepository) || null,
+      issueUrl: selectedIssue.url,
+      issueTitle: selectedIssue.title,
+      cadence: false,
+      executionMode: 'canonical-delivery',
+      selectedActionType: selected.actionType,
+      laneLifecycle: selected.laneLifecycle,
+      selectedIssueSnapshot: selectedIssue,
+      standingIssueSnapshot: standingIssue,
+      issueGraph: buildIssueGraphSummary({
+        ...graph,
+        selectedIssue
+      }),
+      backlogRepair: selected.backlogRepair ?? null,
+      pullRequest:
+        pullRequest == null
+          ? null
+          : {
+              number: pullRequest.number,
+              url: pullRequest.url,
+              title: pullRequest.title,
+              state: pullRequest.state,
+              headRefName: pullRequest.headRefName,
+              baseRefName: pullRequest.baseRefName,
+              reviewDecision: pullRequest.reviewDecision,
+              mergeStateStatus: pullRequest.mergeStateStatus,
+              mergeable: pullRequest.mergeable,
+              checks: {
+                status: pullRequestStatus?.checksStatus ?? 'not-linked',
+                blockerClass: pullRequestStatus?.blockerClass ?? 'none'
+              },
+              readyToMerge: pullRequestStatus?.readyToMerge === true
+            }
+    }
+  };
+}
+
+function isRateLimitMessage(message) {
+  return /rate limit/i.test(normalizeText(message));
+}
+
+function extractIssueNumberFromUrl(url) {
+  const match = normalizeText(url).match(/\/issues\/(\d+)$/i);
+  return coercePositiveInteger(match?.[1]);
+}
+
+function extractPullRequestNumberFromUrl(url) {
+  const match = normalizeText(url).match(/\/pull\/(\d+)$/i);
+  return coercePositiveInteger(match?.[1]);
+}
+
+function normalizeLifecycle(value, fallback = 'idle') {
+  const normalized = normalizeText(value).toLowerCase();
+  return DELIVERY_AGENT_LIFECYCLE_STATES.has(normalized) ? normalized : fallback;
+}
+export function buildDeliveryAgentRuntimeRecord({
+  now = new Date(),
+  repository,
+  runtimeDir,
+  policy,
+  schedulerDecision,
+  taskPacket,
+  executionReceipt,
+  statePath,
+  lanePath
+}) {
+  const laneId =
+    normalizeText(executionReceipt?.laneId) ||
+    normalizeText(taskPacket?.laneId) ||
+    normalizeText(schedulerDecision?.activeLane?.laneId) ||
+    'idle';
+  const issue =
+    coercePositiveInteger(executionReceipt?.issue) ??
+    coercePositiveInteger(schedulerDecision?.activeLane?.issue) ??
+    null;
+  const epic = coercePositiveInteger(schedulerDecision?.activeLane?.epic) ?? null;
+  const prUrl =
+    normalizeText(taskPacket?.pullRequest?.url) ||
+    normalizeText(schedulerDecision?.activeLane?.prUrl) ||
+    null;
+  const blockerClass =
+    normalizeText(executionReceipt?.details?.blockerClass) ||
+    normalizeText(taskPacket?.checks?.blockerClass) ||
+    normalizeText(schedulerDecision?.activeLane?.blockerClass) ||
+    'none';
+  const laneLifecycle = normalizeLifecycle(
+    executionReceipt?.details?.laneLifecycle ||
+      taskPacket?.evidence?.delivery?.laneLifecycle ||
+      schedulerDecision?.artifacts?.laneLifecycle,
+    schedulerDecision?.outcome === 'idle' ? 'idle' : blockerClass !== 'none' ? 'blocked' : 'planning'
+  );
+  const activeCodingLanes = laneLifecycle === 'coding' ? 1 : 0;
+  return {
+    schema: DELIVERY_AGENT_RUNTIME_STATE_SCHEMA,
+    generatedAt: toIso(now),
+    repository,
+    runtimeDir,
+    policy: {
+      schema: DELIVERY_AGENT_POLICY_SCHEMA,
+      backlogAuthority: policy.backlogAuthority,
+      implementationRemote: policy.implementationRemote,
+      autoSlice: policy.autoSlice === true,
+      autoMerge: policy.autoMerge === true,
+      maxActiveCodingLanes: policy.maxActiveCodingLanes,
+      allowPolicyMutations: policy.allowPolicyMutations === true,
+      allowReleaseAdmin: policy.allowReleaseAdmin === true,
+      stopWhenNoOpenEpics: policy.stopWhenNoOpenEpics === true
+    },
+    status: laneLifecycle === 'blocked' ? 'blocked' : laneLifecycle === 'idle' ? 'idle' : 'running',
+    laneLifecycle,
+    activeCodingLanes,
+    activeLane: {
+      schema: DELIVERY_AGENT_LANE_STATE_SCHEMA,
+      generatedAt: toIso(now),
+      laneId,
+      issue,
+      epic,
+      branch:
+        normalizeText(taskPacket?.branch?.name) ||
+        normalizeText(schedulerDecision?.activeLane?.branch) ||
+        null,
+      forkRemote:
+        normalizeText(taskPacket?.branch?.forkRemote) ||
+        normalizeText(schedulerDecision?.activeLane?.forkRemote) ||
+        null,
+      prUrl,
+      blockerClass,
+      laneLifecycle,
+      actionType: normalizeText(executionReceipt?.details?.actionType) || normalizeText(schedulerDecision?.artifacts?.selectedActionType) || null,
+      outcome: normalizeText(executionReceipt?.outcome) || null,
+      reason: normalizeText(executionReceipt?.reason) || null,
+      retryable: executionReceipt?.details?.retryable === true,
+      nextWakeCondition: normalizeText(executionReceipt?.details?.nextWakeCondition) || null
+    },
+    artifacts: {
+      statePath,
+      lanePath
+    }
+  };
+}
+
+export async function persistDeliveryAgentRuntimeState({
+  runtimeDir,
+  repository,
+  policy,
+  schedulerDecision,
+  taskPacket,
+  executionReceipt,
+  now = new Date()
+}) {
+  await mkdir(runtimeDir, { recursive: true });
+  const statePath = path.join(runtimeDir, DELIVERY_AGENT_STATE_FILENAME);
+  const laneId =
+    normalizeText(executionReceipt?.laneId) ||
+    normalizeText(taskPacket?.laneId) ||
+    normalizeText(schedulerDecision?.activeLane?.laneId) ||
+    'idle';
+  const lanesDir = path.join(runtimeDir, DELIVERY_AGENT_LANES_DIRNAME);
+  await mkdir(lanesDir, { recursive: true });
+  const lanePath = path.join(lanesDir, `${sanitizeSegment(laneId)}.json`);
+  const payload = buildDeliveryAgentRuntimeRecord({
+    now,
+    repository,
+    runtimeDir,
+    policy,
+    schedulerDecision,
+    taskPacket,
+    executionReceipt,
+    statePath,
+    lanePath
+  });
+  await writeFile(statePath, `${JSON.stringify(payload, null, 2)}\n`, 'utf8');
+  await writeFile(lanePath, `${JSON.stringify(payload.activeLane, null, 2)}\n`, 'utf8');
+  return {
+    statePath,
+    lanePath,
+    payload
+  };
+}
+
+function buildAutoSliceTitle(parentIssue) {
+  return `Slice: ${normalizeText(parentIssue?.title) || `Issue #${parentIssue?.number}`}`;
+}
+
+function buildAutoSliceBody(parentIssue, taskPacket) {
+  return [
+    `Auto-created child slice for parent issue #${parentIssue.number}.`,
+    '',
+    '## Context',
+    `- Parent issue: ${parentIssue.url || `#${parentIssue.number}`}`,
+    `- Objective: ${normalizeText(taskPacket?.objective?.summary) || 'Unattended delivery backlog repair'}`,
+    '',
+    '## Initial acceptance',
+    '- Produce one executable, bounded implementation slice.',
+    '- Preserve upstream issue/PR policy contracts.',
+    '- Keep the delivery lane suitable for unattended execution.'
+  ].join('\n');
+}
+
+async function runCommand(command, args, { cwd, env }, deps = {}) {
+  if (typeof deps.runCommandFn === 'function') {
+    return deps.runCommandFn(command, args, { cwd, env });
+  }
+  const result = spawnSync(command, args, {
+    cwd,
+    env,
+    encoding: 'utf8',
+    stdio: ['ignore', 'pipe', 'pipe']
+  });
+  return {
+    status: result.status ?? 0,
+    stdout: result.stdout ?? '',
+    stderr: result.stderr ?? ''
+  };
+}
+
+async function autoSliceIssue({ taskPacket, repoRoot, deps = {} }) {
+  if (typeof deps.autoSliceIssueFn === 'function') {
+    return deps.autoSliceIssueFn({ taskPacket, repoRoot });
+  }
+
+  const repository = normalizeText(taskPacket?.repository);
+  const parentIssue = taskPacket?.evidence?.delivery?.standingIssue ?? taskPacket?.evidence?.delivery?.selectedIssue ?? null;
+  if (!repository || !parentIssue?.number || !parentIssue?.url) {
+    throw new Error('Auto-slice requires repository and parent issue context.');
+  }
+
+  const tmpDir = await mkdtemp(path.join(os.tmpdir(), 'delivery-agent-slice-'));
+  const bodyPath = path.join(tmpDir, 'issue-body.md');
+  try {
+    await writeFile(bodyPath, `${buildAutoSliceBody(parentIssue, taskPacket)}\n`, 'utf8');
+    const createResult = await runCommand(
+      'gh',
+      [
+        'issue',
+        'create',
+        '--repo',
+        repository,
+        '--title',
+        buildAutoSliceTitle(parentIssue),
+        '--body-file',
+        bodyPath
+      ],
+      { cwd: repoRoot, env: process.env },
+      deps
+    );
+    if (createResult.status !== 0) {
+      throw new Error(normalizeText(createResult.stderr) || normalizeText(createResult.stdout) || 'gh issue create failed');
+    }
+    const childUrl = normalizeText(createResult.stdout)
+      .split(/\r?\n/)
+      .map((entry) => normalizeText(entry))
+      .filter(Boolean)
+      .pop();
+    const childNumber = extractIssueNumberFromUrl(childUrl);
+    if (!childUrl || !childNumber) {
+      throw new Error(`Unable to parse created child issue URL from gh output: ${normalizeText(createResult.stdout)}`);
+    }
+
+    const metadataResult = await runCommand(
+      'node',
+      [
+        'tools/npm/run-script.mjs',
+        'priority:github:metadata:apply',
+        '--',
+        '--url',
+        parentIssue.url,
+        '--sub-issue',
+        childUrl
+      ],
+      { cwd: repoRoot, env: process.env },
+      deps
+    );
+    if (metadataResult.status !== 0) {
+      throw new Error(
+        normalizeText(metadataResult.stderr) || normalizeText(metadataResult.stdout) || 'priority:github:metadata:apply failed'
+      );
+    }
+
+    const portfolioResult = await runCommand(
+      'node',
+      [
+        'tools/npm/run-script.mjs',
+        'priority:project:portfolio:apply',
+        '--',
+        '--url',
+        childUrl,
+        '--use-config'
+      ],
+      { cwd: repoRoot, env: process.env },
+      deps
+    );
+
+    return {
+      status: 'completed',
+      outcome: 'child-issue-created',
+      reason: `Created child issue #${childNumber} and linked it to parent issue #${parentIssue.number}.`,
+      source: 'delivery-agent-broker',
+      details: {
+        actionType: 'create-child-issue',
+        laneLifecycle: 'complete',
+        blockerClass: 'none',
+        retryable: false,
+        nextWakeCondition: 'next-scheduler-cycle',
+        helperCallsExecuted: [
+          'gh issue create',
+          'node tools/npm/run-script.mjs priority:github:metadata:apply',
+          'node tools/npm/run-script.mjs priority:project:portfolio:apply'
+        ],
+        filesTouched: [],
+        childIssue: {
+          number: childNumber,
+          url: childUrl
+        },
+        portfolioApplyStatus: portfolioResult.status === 0 ? 'applied' : 'best-effort-failed'
+      }
+    };
+  } finally {
+    await rm(tmpDir, { recursive: true, force: true }).catch(() => {});
+  }
+}
+async function mergePullRequest({ taskPacket, repoRoot, deps = {} }) {
+  if (typeof deps.mergePullRequestFn === 'function') {
+    return deps.mergePullRequestFn({ taskPacket, repoRoot });
+  }
+  const pullRequest = taskPacket?.evidence?.delivery?.pullRequest ?? null;
+  const repository = normalizeText(taskPacket?.repository);
+  const prNumber = coercePositiveInteger(pullRequest?.number) ?? extractPullRequestNumberFromUrl(pullRequest?.url);
+  if (!repository || !prNumber) {
+    throw new Error('Merge action requires repository and pull request number.');
+  }
+  const result = await runCommand(
+    'node',
+    ['tools/priority/merge-sync-pr.mjs', '--pr', String(prNumber), '--repo', repository],
+    { cwd: repoRoot, env: process.env },
+    deps
+  );
+  if (result.status !== 0) {
+    const message = normalizeText(result.stderr) || normalizeText(result.stdout) || `merge-sync failed (${result.status})`;
+    return {
+      status: 'blocked',
+      outcome: isRateLimitMessage(message) ? 'rate-limit' : 'merge-blocked',
+      reason: message,
+      source: 'delivery-agent-broker',
+      details: {
+        actionType: 'merge-pr',
+        laneLifecycle: 'blocked',
+        blockerClass: isRateLimitMessage(message) ? 'rate-limit' : 'merge',
+        retryable: isRateLimitMessage(message),
+        nextWakeCondition: isRateLimitMessage(message) ? 'github-rate-limit-reset' : 'mergeable-pr'
+      }
+    };
+  }
+  return {
+    status: 'completed',
+    outcome: 'merged',
+    reason: `Merged PR #${prNumber}.`,
+    source: 'delivery-agent-broker',
+    details: {
+      actionType: 'merge-pr',
+      laneLifecycle: 'complete',
+      blockerClass: 'none',
+      retryable: false,
+      nextWakeCondition: 'next-scheduler-cycle',
+      helperCallsExecuted: ['node tools/priority/merge-sync-pr.mjs'],
+      filesTouched: []
+    }
+  };
+}
+
+async function invokeCodingTurnCommand({ taskPacket, policy, repoRoot, policyPath, deps = {} }) {
+  if (typeof deps.invokeCodingTurnFn === 'function') {
+    return deps.invokeCodingTurnFn({ taskPacket, policy, repoRoot, policyPath });
+  }
+
+  const command = normalizeCommandList(policy?.codingTurnCommand);
+  if (command.length === 0) {
+    return {
+      status: 'blocked',
+      outcome: 'coding-command-missing',
+      reason: 'delivery-agent policy does not define codingTurnCommand for unattended coding turns.',
+      source: 'delivery-agent-broker',
+      details: {
+        actionType: 'execute-coding-turn',
+        laneLifecycle: 'blocked',
+        blockerClass: 'scope',
+        retryable: false,
+        nextWakeCondition: 'policy-updated-with-coding-command',
+        helperCallsExecuted: [],
+        filesTouched: []
+      }
+    };
+  }
+
+  const tmpDir = await mkdtemp(path.join(os.tmpdir(), 'delivery-agent-turn-'));
+  const receiptPath = path.join(tmpDir, 'coding-receipt.json');
+  try {
+    const env = {
+      ...process.env,
+      COMPAREVI_DELIVERY_TASK_PACKET_PATH: taskPacket.__taskPacketPath || '',
+      COMPAREVI_DELIVERY_RECEIPT_PATH: receiptPath,
+      COMPAREVI_DELIVERY_POLICY_PATH: policyPath || '',
+      COMPAREVI_DELIVERY_REPO_ROOT: repoRoot
+    };
+    const result = await runCommand(command[0], command.slice(1), { cwd: repoRoot, env }, deps);
+    const fileReceipt = await readJsonIfPresent(receiptPath);
+    if (result.status !== 0) {
+      const message = normalizeText(result.stderr) || normalizeText(result.stdout) || `${command[0]} failed (${result.status})`;
+      return {
+        status: 'blocked',
+        outcome: isRateLimitMessage(message) ? 'rate-limit' : 'coding-command-failed',
+        reason: message,
+        source: 'delivery-agent-broker',
+        details: {
+          actionType: 'execute-coding-turn',
+          laneLifecycle: 'blocked',
+          blockerClass: isRateLimitMessage(message) ? 'rate-limit' : 'helperbug',
+          retryable: isRateLimitMessage(message),
+          nextWakeCondition: isRateLimitMessage(message) ? 'github-rate-limit-reset' : 'coding-command-fixed',
+          helperCallsExecuted: [command.join(' ')],
+          filesTouched: fileReceipt?.details?.filesTouched ?? []
+        }
+      };
+    }
+    if (fileReceipt && typeof fileReceipt === 'object') {
+      return {
+        ...fileReceipt,
+        source: normalizeText(fileReceipt.source) || 'delivery-agent-broker',
+        details: {
+          ...(fileReceipt.details && typeof fileReceipt.details === 'object' ? fileReceipt.details : {}),
+          helperCallsExecuted: [command.join(' '), ...(Array.isArray(fileReceipt.details?.helperCallsExecuted) ? fileReceipt.details.helperCallsExecuted : [])],
+          laneLifecycle: normalizeLifecycle(fileReceipt.details?.laneLifecycle, 'coding')
+        }
+      };
+    }
+    try {
+      const stdoutReceipt = JSON.parse(result.stdout);
+      if (stdoutReceipt && typeof stdoutReceipt === 'object') {
+        return {
+          ...stdoutReceipt,
+          source: normalizeText(stdoutReceipt.source) || 'delivery-agent-broker'
+        };
+      }
+    } catch {
+      // Ignore stdout parse failures and fall back to a generic success receipt.
+    }
+    return {
+      status: 'completed',
+      outcome: 'coding-command-finished',
+      reason: 'codingTurnCommand completed without an explicit receipt payload.',
+      source: 'delivery-agent-broker',
+      details: {
+        actionType: 'execute-coding-turn',
+        laneLifecycle: 'coding',
+        blockerClass: 'none',
+        retryable: true,
+        nextWakeCondition: 'scheduler-rescan',
+        helperCallsExecuted: [command.join(' ')],
+        filesTouched: []
+      }
+    };
+  } finally {
+    await rm(tmpDir, { recursive: true, force: true }).catch(() => {});
+  }
+}
+
+export function planDeliveryBrokerAction(taskPacket = {}) {
+  const delivery = taskPacket?.evidence?.delivery ?? {};
+  const pullRequest = delivery.pullRequest ?? null;
+  const backlog = delivery.backlog ?? null;
+  const lifecycle = normalizeLifecycle(delivery.laneLifecycle, taskPacket.status === 'idle' ? 'idle' : 'planning');
+  if (taskPacket.status === 'idle') {
+    return {
+      actionType: 'idle',
+      laneLifecycle: 'idle'
+    };
+  }
+  if (backlog?.mode === 'repair-child-slice') {
+    return {
+      actionType: 'reshape-backlog',
+      laneLifecycle: 'reshaping-backlog'
+    };
+  }
+  if (pullRequest?.url) {
+    if (pullRequest.readyToMerge === true) {
+      return {
+        actionType: 'merge-pr',
+        laneLifecycle: 'ready-merge'
+      };
+    }
+    if (pullRequest.checks?.blockerClass === 'ci' || lifecycle === 'waiting-ci') {
+      return {
+        actionType: 'watch-pr',
+        laneLifecycle: 'waiting-ci'
+      };
+    }
+    if (lifecycle === 'waiting-review') {
+      return {
+        actionType: 'watch-pr',
+        laneLifecycle: 'waiting-review'
+      };
+    }
+    return {
+      actionType: 'watch-pr',
+      laneLifecycle: lifecycle
+    };
+  }
+  return {
+    actionType: 'execute-coding-turn',
+    laneLifecycle: lifecycle === 'planning' ? 'coding' : lifecycle
+  };
+}
+
+export async function runDeliveryTurnBroker({
+  taskPacket,
+  taskPacketPath = '',
+  repoRoot,
+  policyPath,
+  now = new Date(),
+  deps = {}
+}) {
+  if (!taskPacket || typeof taskPacket !== 'object') {
+    throw new Error('runDeliveryTurnBroker requires a task packet object.');
+  }
+  const effectivePolicyPath = resolvePath(repoRoot, policyPath || DELIVERY_AGENT_POLICY_RELATIVE_PATH);
+  const policy = await loadDeliveryAgentPolicy(repoRoot, {
+    ...deps,
+    policyPath: effectivePolicyPath
+  });
+  const enrichedPacket = {
+    ...taskPacket,
+    __taskPacketPath: taskPacketPath
+  };
+  const planned = planDeliveryBrokerAction(enrichedPacket);
+
+  if (planned.actionType === 'idle') {
+    return {
+      status: 'completed',
+      outcome: 'idle',
+      reason: normalizeText(taskPacket.objective?.summary) || 'No actionable delivery lane is selected.',
+      source: 'delivery-agent-broker',
+      details: {
+        actionType: 'idle',
+        laneLifecycle: 'idle',
+        blockerClass: 'none',
+        retryable: false,
+        nextWakeCondition: 'next-scheduler-cycle',
+        helperCallsExecuted: [],
+        filesTouched: []
+      }
+    };
+  }
+
+  if (planned.actionType === 'watch-pr') {
+    return {
+      status: 'completed',
+      outcome: planned.laneLifecycle,
+      reason:
+        planned.laneLifecycle === 'waiting-review'
+          ? 'Pull request is waiting on review disposition.'
+          : 'Pull request is waiting on required checks.',
+      source: 'delivery-agent-broker',
+      details: {
+        actionType: 'watch-pr',
+        laneLifecycle: planned.laneLifecycle,
+        blockerClass: planned.laneLifecycle === 'waiting-review' ? 'review' : 'ci',
+        retryable: true,
+        nextWakeCondition: planned.laneLifecycle === 'waiting-review' ? 'review-disposition-updated' : 'checks-green',
+        helperCallsExecuted: [],
+        filesTouched: []
+      }
+    };
+  }
+
+  if (planned.actionType === 'merge-pr') {
+    return mergePullRequest({
+      taskPacket: enrichedPacket,
+      repoRoot,
+      deps
+    });
+  }
+
+  if (planned.actionType === 'reshape-backlog') {
+    if (policy.autoSlice !== true) {
+      return {
+        status: 'blocked',
+        outcome: 'auto-slice-disabled',
+        reason: 'delivery-agent policy disables unattended child-slice creation.',
+        source: 'delivery-agent-broker',
+        details: {
+          actionType: 'reshape-backlog',
+          laneLifecycle: 'blocked',
+          blockerClass: 'policy',
+          retryable: false,
+          nextWakeCondition: 'policy-updated-to-enable-auto-slice',
+          helperCallsExecuted: [],
+          filesTouched: []
+        }
+      };
+    }
+    return autoSliceIssue({
+      taskPacket: enrichedPacket,
+      repoRoot,
+      deps,
+      now
+    });
+  }
+
+  return invokeCodingTurnCommand({
+    taskPacket: enrichedPacket,
+    policy,
+    repoRoot,
+    policyPath: effectivePolicyPath,
+    deps
+  });
+}

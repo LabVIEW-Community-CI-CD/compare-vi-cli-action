@@ -3,11 +3,11 @@ name: Fixture Drift Validation
 on:
   pull_request:
     paths:
-    - 'fixtures.manifest.json'
-    - 'VI*.vi'
-    - 'scripts/**'
-    - 'tools/**'
-    - 'docs/schemas/**'
+      - 'fixtures.manifest.json'
+      - 'VI*.vi'
+      - 'scripts/**'
+      - 'tools/**'
+      - 'docs/schemas/**'
   workflow_dispatch:
     inputs:
       sample_id:
@@ -20,78 +20,6 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  preflight-windows:
-    name: Preflight (Windows)
-    runs-on: windows-latest
-    timeout-minutes: 3
-    steps:
-    - uses: actions/checkout@v5
-    - name: Verify Windows runner and idle LabVIEW (surface LVCompare notice)
-      shell: pwsh
-      run: |-
-        Write-Host "Runner: $([System.Environment]::OSVersion.VersionString)"
-        Write-Host "Pwsh:   $($PSVersionTable.PSVersion)"
-        $cli = 'C:\Program Files\National Instruments\Shared\LabVIEW Compare\LVCompare.exe'
-        if (-not (Test-Path -LiteralPath $cli)) {
-          Write-Host "::notice::LVCompare.exe not found at canonical path: $cli (hosted preflight)"
-        } else { Write-Host "LVCompare present: $cli" }
-        $lv = Get-Process -Name 'LabVIEW' -ErrorAction SilentlyContinue
-        if ($lv) { $pids = ($lv | ForEach-Object Id); $msg = "::error::LabVIEW.exe is running (PID(s): {0})" -f ([string]::Join(",", $pids)); Write-Host $msg; exit 1 }
-        Write-Host 'Preflight OK: Windows runner healthy; LabVIEW not running.'
-        if ($env:GITHUB_STEP_SUMMARY) {
-          $note = @('Note:', '- This preflight runs on hosted Windows (windows-latest); LVCompare presence is not required here.', '- Self-hosted Windows steps later in this workflow enforce LVCompare at the canonical path.') -join "`n"
-          $note | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8
-        }
-    - name: Verify LVCompare and idle LabVIEW state (notice-only on hosted)
-      shell: pwsh
-      run: |-
-        $cli = 'C:\Program Files\National Instruments\Shared\LabVIEW Compare\LVCompare.exe'
-        if (-not (Test-Path -LiteralPath $cli)) {
-          Write-Host "::notice::LVCompare.exe not found at canonical path: $cli (hosted preflight)"
-        } else {
-          Write-Host "LVCompare present: $cli"
-        }
-        $lv = Get-Process -Name 'LabVIEW' -ErrorAction SilentlyContinue
-        if ($lv) { $pids = ($lv | ForEach-Object Id); $msg = '::notice::LabVIEW.exe is running (PID(s): {0}).' -f ([string]::Join(',', $pids)); Write-Host $msg } else { Write-Host 'LabVIEW not running.' }
-        Write-Host 'Preflight check complete.'
-
-  docker-runtime-manager:
-    name: Docker Runtime Manager (Host)
-    runs-on: [self-hosted, Windows, X64, self-hosted-docker-windows]
-    needs:
-    - preflight-windows
-    timeout-minutes: 10
-    outputs:
-      manager_status: ${{ steps.manager.outputs.manager_status }}
-      manager_summary_path: ${{ steps.manager.outputs.manager_summary_path }}
-      windows_image_digest: ${{ steps.manager.outputs.windows_image_digest }}
-      linux_image_digest: ${{ steps.manager.outputs.linux_image_digest }}
-      start_context: ${{ steps.manager.outputs.start_context }}
-      final_context: ${{ steps.manager.outputs.final_context }}
-    env:
-      NI_WINDOWS_IMAGE: nationalinstruments/labview:2026q1-windows
-      NI_LINUX_IMAGE: nationalinstruments/labview:2026q1-linux
-    steps:
-    - uses: actions/checkout@v5
-    - name: Run Docker runtime manager
-      id: manager
-      shell: pwsh
-      run: |
-        pwsh -NoLogo -NoProfile -File tools/Invoke-DockerRuntimeManager.ps1 `
-          -WindowsImage $env:NI_WINDOWS_IMAGE `
-          -LinuxImage $env:NI_LINUX_IMAGE `
-          -BootstrapWindowsImage:$true `
-          -BootstrapLinuxImage:$true `
-          -OutputJsonPath 'results/fixture-drift/docker-runtime-manager.json' `
-          -GitHubOutputPath $env:GITHUB_OUTPUT `
-          -StepSummaryPath $env:GITHUB_STEP_SUMMARY
-    - name: Upload docker runtime manager artifact
-      if: always()
-      uses: actions/upload-artifact@v5
-      with:
-        name: fixture-drift-docker-runtime-manager
-        path: results/fixture-drift/docker-runtime-manager.json
-        if-no-files-found: warn
   validate-ubuntu:
     name: Fixture Drift (Ubuntu)
     runs-on: ubuntu-latest
@@ -105,63 +33,65 @@ jobs:
       contents: read
       pull-requests: write
     steps:
-    - name: Checkout
-      uses: actions/checkout@v5
-      with:
-        fetch-depth: 0
+      - name: Checkout
+        uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
 
-    - name: LV Guard (pre)
-      uses: ./.github/actions/runner-unblock-guard
-      with:
-        snapshot-path: results/fixture-drift/lv-guard-pre.json
-        cleanup: ${{ env.CLEAN_LV_BEFORE == 'true' }}
-        process-names: 'LVCompare,LabVIEW'
-    - name: LabVIEW warmup (best-effort)
-      shell: pwsh
-      run: pwsh -File tools/Warmup-LabVIEW.ps1
-    - name: Ensure Invoker (start)
-      uses: ./.github/actions/ensure-invoker
-      with:
-        mode: start
-        results-dir: results/fixture-drift
+      - name: LV Guard (pre)
+        uses: ./.github/actions/runner-unblock-guard
+        with:
+          snapshot-path: results/fixture-drift/lv-guard-pre.json
+          cleanup: ${{ env.CLEAN_LV_BEFORE == 'true' }}
+          process-names: 'LVCompare,LabVIEW'
 
-    - name: Detect docs-only change
-      id: docs
-      shell: pwsh
-      run: |
-        $ErrorActionPreference = 'Continue'
-        $docsOnly = 'false'
-        if ('${{ github.event_name }}' -eq 'pull_request') {
-          $ownerRepo = '${{ github.repository }}'
-          $pr = '${{ github.event.pull_request.number }}'
-          $uri = "https://api.github.com/repos/$ownerRepo/pulls/$pr/files"
-          $headers = @{ Authorization = "Bearer $env:GITHUB_TOKEN"; 'X-GitHub-Api-Version' = '2022-11-28'; Accept='application/vnd.github+json' }
-          try {
-            $files = Invoke-RestMethod -Method Get -Uri $uri -Headers $headers -ErrorAction Stop
-            $names = @($files | ForEach-Object { $_.filename })
-            if ($names.Count -gt 0) {
-              $isDocs = $true
-              foreach ($n in $names) {
-                $inDocs = ($n -like 'docs/**' -or $n -like '**/*.md')
-                $isSchema = ($n -like 'docs/schemas/**')
-                if (-not $inDocs -or $isSchema) { $isDocs = $false; break }
+      - name: LabVIEW warmup (best-effort)
+        shell: pwsh
+        run: pwsh -File tools/Warmup-LabVIEW.ps1
+
+      - name: Ensure Invoker (start)
+        uses: ./.github/actions/ensure-invoker
+        with:
+          mode: start
+          results-dir: results/fixture-drift
+
+      - name: Detect docs-only change
+        id: docs
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Continue'
+          $docsOnly = 'false'
+          if ('${{ github.event_name }}' -eq 'pull_request') {
+            $ownerRepo = '${{ github.repository }}'
+            $pr = '${{ github.event.pull_request.number }}'
+            $uri = "https://api.github.com/repos/$ownerRepo/pulls/$pr/files"
+            $headers = @{ Authorization = "Bearer $env:GITHUB_TOKEN"; 'X-GitHub-Api-Version' = '2022-11-28'; Accept='application/vnd.github+json' }
+            try {
+              $files = Invoke-RestMethod -Method Get -Uri $uri -Headers $headers -ErrorAction Stop
+              $names = @($files | ForEach-Object { $_.filename })
+              if ($names.Count -gt 0) {
+                $isDocs = $true
+                foreach ($n in $names) {
+                  $inDocs = ($n -like 'docs/**' -or $n -like '**/*.md')
+                  $isSchema = ($n -like 'docs/schemas/**')
+                  if (-not $inDocs -or $isSchema) { $isDocs = $false; break }
+                }
+                if ($isDocs) { $docsOnly = 'true' }
               }
-              if ($isDocs) { $docsOnly = 'true' }
+            } catch {
+              Write-Host '::notice::Docs-only detection skipped (unable to query PR files). Treating as non-docs.'
             }
-          } catch {
-            Write-Host '::notice::Docs-only detection skipped (unable to query PR files). Treating as non-docs.'
           }
-        }
-        "docs_only=$docsOnly" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+          "docs_only=$docsOnly" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
 
-    - name: Fixture Drift Orchestrator
-      uses: ./.github/actions/fixture-drift
-      with:
-        render-report: 'false'
-        comment-on-fail: 'true'
-        upload-artifacts: 'true'
-        artifact-name: fixture-drift-ubuntu
-        soft-fail: ${{ steps.docs.outputs.docs_only }}
+      - name: Fixture Drift Orchestrator
+        uses: ./.github/actions/fixture-drift
+        with:
+          render-report: 'false'
+          comment-on-fail: 'true'
+          upload-artifacts: 'true'
+          artifact-name: fixture-drift-ubuntu
+          soft-fail: ${{ steps.docs.outputs.docs_only }}
 
   ni-linux-container-hosted:
     name: NI Linux Container Compare (Hosted)
@@ -174,641 +104,62 @@ jobs:
       actions: read
       contents: read
     steps:
-    - name: Checkout
-      uses: actions/checkout@v5
-      with:
-        fetch-depth: 0
+      - name: Checkout
+        uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
 
-    - name: Prepare fixture copies (base/head)
-      id: prep
-      shell: pwsh
-      run: |
-        $ErrorActionPreference = 'Stop'
-        $tmp = Join-Path $env:RUNNER_TEMP ("fixtures-linux-" + [guid]::NewGuid().ToString())
-        New-Item -ItemType Directory -Force -Path $tmp | Out-Null
-        $base = Join-Path $tmp 'base.vi'
-        $head = Join-Path $tmp 'head.vi'
-        Copy-Item -LiteralPath (Join-Path $env:GITHUB_WORKSPACE 'VI1.vi') -Destination $base -Force
-        Copy-Item -LiteralPath (Join-Path $env:GITHUB_WORKSPACE 'VI2.vi') -Destination $head -Force
-        "base=$base`nhead=$head" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+      - name: Prepare fixture copies (base/head)
+        id: prep
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $tmp = Join-Path $env:RUNNER_TEMP ("fixtures-linux-" + [guid]::NewGuid().ToString())
+          New-Item -ItemType Directory -Force -Path $tmp | Out-Null
+          $base = Join-Path $tmp 'base.vi'
+          $head = Join-Path $tmp 'head.vi'
+          Copy-Item -LiteralPath (Join-Path $env:GITHUB_WORKSPACE 'VI1.vi') -Destination $base -Force
+          Copy-Item -LiteralPath (Join-Path $env:GITHUB_WORKSPACE 'VI2.vi') -Destination $head -Force
+          "base=$base`nhead=$head" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
 
-    - name: Pull NI Linux image
-      shell: bash
-      run: docker pull "${NI_LINUX_IMAGE}"
+      - name: Pull NI Linux image
+        shell: bash
+        run: docker pull "${NI_LINUX_IMAGE}"
 
-    - name: NI Linux review suite artifacts
-      id: ni_linux_review_suite
-      shell: pwsh
-      run: |
-        $ErrorActionPreference = 'Stop'
-        $outDir = 'results/fixture-drift/ni-linux-container'
-        $historyBranchRef = '${{ github.sha }}'
-        $historyBaselineRef = ''
-        if ('${{ github.event_name }}' -eq 'pull_request') {
-          $historyBranchRef = '${{ github.event.pull_request.head.sha }}'
-          $historyBaselineRef = '${{ github.event.pull_request.base.sha }}'
-        }
-        New-Item -ItemType Directory -Path $outDir -Force | Out-Null
-
-        pwsh -NoLogo -NoProfile -File tools/Invoke-NILinuxReviewSuite.ps1 `
-          -BaseVi '${{ steps.prep.outputs.base }}' `
-          -HeadVi '${{ steps.prep.outputs.head }}' `
-          -ResultsRoot $outDir `
-          -Image $env:NI_LINUX_IMAGE `
-          -LabVIEWPath $env:NI_LINUX_LABVIEW_PATH `
-          -HistoryTargetPath 'fixtures/vi-attr/Head.vi' `
-          -HistoryBranchRef $historyBranchRef `
-          -HistoryBaselineRef $historyBaselineRef `
-          -TimeoutSeconds 240 `
-          -HeartbeatSeconds 15 `
-          -RuntimeEngineReadyTimeoutSeconds 120 `
-          -RuntimeEngineReadyPollSeconds 3 `
-          -GitHubOutputPath $env:GITHUB_OUTPUT `
-          -GitHubStepSummaryPath $env:GITHUB_STEP_SUMMARY
-
-    - name: Upload NI Linux container compare artifacts
-      if: always()
-      uses: actions/upload-artifact@v5
-      with:
-        name: fixture-drift-ni-linux-container
-        path: results/fixture-drift/ni-linux-container/**
-        if-no-files-found: warn
-
-  validate-windows:
-    name: Fixture Drift (Docker Desktop Host - LabVIEW 2026 q1 windows)
-    runs-on: [self-hosted, Windows, X64, self-hosted-docker-windows]
-    concurrency:
-      group: lv-fixture-win
-      cancel-in-progress: false
-    needs:
-    - preflight-windows
-    - docker-runtime-manager
-    timeout-minutes: 12
-    env:
-      INVOKER_REQUIRED: '0'
-      UNBLOCK_GUARD: '0'
-      NI_WINDOWS_IMAGE: nationalinstruments/labview:2026q1-windows
-      NI_WINDOWS_LABVIEW_PATH: C:\Program Files\National Instruments\LabVIEW 2026\LabVIEW.exe
-      LV_SUPPRESS_UI: ${{ vars.LV_SUPPRESS_UI || '1' }}
-      CLEAN_LV_BEFORE: ${{ vars.CLEAN_LV_BEFORE || 'true' }}
-      CLEAN_LV_AFTER: ${{ vars.CLEAN_LV_AFTER || 'true' }}
-      CLEAN_LV_INCLUDE_COMPARE: ${{ vars.CLEAN_LV_INCLUDE_COMPARE || vars.CLEAN_LVCOMPARE || 'true' }}
-      LVCI_SINGLE_COMPARE: '1'
-      WATCH_CONSOLE: '1'
-      LV_NOTICE_DIR: 'results/fixture-drift/_lv'
-      LV_NO_ACTIVATE: ${{ vars.LV_NO_ACTIVATE || '1' }}
-      LV_CURSOR_RESTORE: ${{ vars.LV_CURSOR_RESTORE || '1' }}
-      LV_IDLE_WAIT_SECONDS: ${{ vars.LV_IDLE_WAIT_SECONDS || '2' }}
-      LV_IDLE_MAX_WAIT_SECONDS: ${{ vars.LV_IDLE_MAX_WAIT_SECONDS || '5' }}
-      DOCKER_MANAGER_STATUS: ${{ needs.docker-runtime-manager.outputs.manager_status }}
-      DOCKER_MANAGER_SUMMARY_PATH: ${{ needs.docker-runtime-manager.outputs.manager_summary_path }}
-      DOCKER_MANAGER_WINDOWS_IMAGE_DIGEST: ${{ needs.docker-runtime-manager.outputs.windows_image_digest }}
-      DOCKER_MANAGER_LINUX_IMAGE_DIGEST: ${{ needs.docker-runtime-manager.outputs.linux_image_digest }}
-      DOCKER_MANAGER_START_CONTEXT: ${{ needs.docker-runtime-manager.outputs.start_context }}
-      DOCKER_MANAGER_FINAL_CONTEXT: ${{ needs.docker-runtime-manager.outputs.final_context }}
-    permissions:
-      actions: read
-      contents: read
-      pull-requests: write
-    steps:
-    - name: Wire Probe (J1)
-      uses: ./.github/actions/wire-probe
-      with:
-        phase: J1
-        results-dir: results/fixture-drift
-    - name: Checkout
-      uses: actions/checkout@v5
-      with:
-        fetch-depth: 0
-    - name: Wire Probe (J2)
-      uses: ./.github/actions/wire-probe
-      with:
-        phase: J2
-        results-dir: results/fixture-drift
-    - name: Assert Docker runtime determinism (windows)
-      id: runtime_determinism
-      shell: pwsh
-      run: |
-        pwsh -NoLogo -NoProfile -File tools/Assert-DockerRuntimeDeterminism.ps1 `
-          -ExpectedOsType windows `
-          -ExpectedContext desktop-windows `
-          -AutoRepair:$true `
-          -ManageDockerEngine:$false `
-          -SnapshotPath 'results/fixture-drift/windows-runtime-determinism.json' `
-          -GitHubOutputPath $env:GITHUB_OUTPUT
-    - name: Assert self-hosted-docker-windows runner label
-      id: runner_label_contract
-      shell: pwsh
-      env:
-        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      run: |
-        pwsh -NoLogo -NoProfile -File tools/Assert-RunnerLabelContract.ps1 `
-          -Repository '${{ github.repository }}' `
-          -RunId '${{ github.run_id }}' `
-          -RunnerName '${{ runner.name }}' `
-          -RequiredLabel 'self-hosted-docker-windows' `
-          -OutputJsonPath 'results/fixture-drift/runner-label-contract.json' `
-          -GitHubOutputPath $env:GITHUB_OUTPUT `
-          -StepSummaryPath $env:GITHUB_STEP_SUMMARY
-
-    - name: Persist docker runtime manager context
-      id: docker_manager_context
-      shell: pwsh
-      run: |
-        $ErrorActionPreference = 'Stop'
-        $dir = 'results/fixture-drift'
-        New-Item -ItemType Directory -Path $dir -Force | Out-Null
-        $path = Join-Path $dir 'docker-runtime-manager-context.json'
-        $labelsRaw = '${{ steps.runner_label_contract.outputs.labels }}'
-        $labels = if ([string]::IsNullOrWhiteSpace($labelsRaw)) { @() } else { @($labelsRaw -split ',' | Where-Object { -not [string]::IsNullOrWhiteSpace($_) }) }
-        $payload = [ordered]@{
-          schema = 'fixture-drift/docker-runtime-manager-context@v1'
-          generatedAtUtc = (Get-Date).ToUniversalTime().ToString('o')
-          manager = [ordered]@{
-            status = [string]$env:DOCKER_MANAGER_STATUS
-            summaryPath = [string]$env:DOCKER_MANAGER_SUMMARY_PATH
-            windowsImageDigest = [string]$env:DOCKER_MANAGER_WINDOWS_IMAGE_DIGEST
-            linuxImageDigest = [string]$env:DOCKER_MANAGER_LINUX_IMAGE_DIGEST
-            startContext = [string]$env:DOCKER_MANAGER_START_CONTEXT
-            finalContext = [string]$env:DOCKER_MANAGER_FINAL_CONTEXT
+      - name: NI Linux review suite artifacts
+        id: ni_linux_review_suite
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $outDir = 'results/fixture-drift/ni-linux-container'
+          $historyBranchRef = '${{ github.sha }}'
+          $historyBaselineRef = ''
+          if ('${{ github.event_name }}' -eq 'pull_request') {
+            $historyBranchRef = '${{ github.event.pull_request.head.sha }}'
+            $historyBaselineRef = '${{ github.event.pull_request.base.sha }}'
           }
-          runner = [ordered]@{
-            name = '${{ runner.name }}'
-            id = '${{ steps.runner_label_contract.outputs.runner_id }}'
-            requiredLabel = 'self-hosted-docker-windows'
-            hasRequiredLabel = ('${{ steps.runner_label_contract.outputs.has_required_label }}' -eq 'true')
-            labels = $labels
-          }
-        }
-        ($payload | ConvertTo-Json -Depth 20) | Set-Content -LiteralPath $path -Encoding utf8
-        "context_path=$path" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+          New-Item -ItemType Directory -Path $outDir -Force | Out-Null
 
-    - name: Download docker runtime manager artifact
-      if: always()
-      uses: actions/download-artifact@v5
-      with:
-        name: fixture-drift-docker-runtime-manager
-        path: results/fixture-drift/_docker-runtime-manager
+          pwsh -NoLogo -NoProfile -File tools/Invoke-NILinuxReviewSuite.ps1 `
+            -BaseVi '${{ steps.prep.outputs.base }}' `
+            -HeadVi '${{ steps.prep.outputs.head }}' `
+            -ResultsRoot $outDir `
+            -Image $env:NI_LINUX_IMAGE `
+            -LabVIEWPath $env:NI_LINUX_LABVIEW_PATH `
+            -HistoryTargetPath 'fixtures/vi-attr/Head.vi' `
+            -HistoryBranchRef $historyBranchRef `
+            -HistoryBaselineRef $historyBaselineRef `
+            -TimeoutSeconds 240 `
+            -HeartbeatSeconds 15 `
+            -RuntimeEngineReadyTimeoutSeconds 120 `
+            -RuntimeEngineReadyPollSeconds 3 `
+            -GitHubOutputPath $env:GITHUB_OUTPUT `
+            -GitHubStepSummaryPath $env:GITHUB_STEP_SUMMARY
 
-    - name: Stage docker runtime manager artifact
-      if: always()
-      shell: pwsh
-      run: |
-        $ErrorActionPreference = 'Stop'
-        $resultsDir = 'results/fixture-drift'
-        New-Item -ItemType Directory -Path $resultsDir -Force | Out-Null
-        $dest = Join-Path $resultsDir 'docker-runtime-manager.json'
-        $source = Get-ChildItem -Path (Join-Path $resultsDir '_docker-runtime-manager') -Recurse -File -Filter 'docker-runtime-manager.json' -ErrorAction SilentlyContinue | Select-Object -First 1
-        if ($source) {
-          Copy-Item -LiteralPath $source.FullName -Destination $dest -Force
-          Write-Host "Staged docker runtime manager artifact: $dest"
-          exit 0
-        }
-
-        Write-Host '::warning::docker-runtime-manager artifact not found; writing fallback context file for evidence continuity.'
-        $fallback = [ordered]@{
-          schema = 'fixture-drift/docker-runtime-manager-fallback@v1'
-          generatedAtUtc = (Get-Date).ToUniversalTime().ToString('o')
-          status = [string]$env:DOCKER_MANAGER_STATUS
-          summaryPath = [string]$env:DOCKER_MANAGER_SUMMARY_PATH
-          windowsImageDigest = [string]$env:DOCKER_MANAGER_WINDOWS_IMAGE_DIGEST
-          linuxImageDigest = [string]$env:DOCKER_MANAGER_LINUX_IMAGE_DIGEST
-          startContext = [string]$env:DOCKER_MANAGER_START_CONTEXT
-          finalContext = [string]$env:DOCKER_MANAGER_FINAL_CONTEXT
-          note = 'Source artifact missing in downstream lane; values copied from docker-runtime-manager job outputs.'
-        }
-        ($fallback | ConvertTo-Json -Depth 20) | Set-Content -LiteralPath $dest -Encoding utf8
-
-    - name: Detect docs-only change
-      id: docs
-      shell: pwsh
-      run: |
-        $ErrorActionPreference = 'Continue'
-        $docsOnly = 'false'
-        if ('${{ github.event_name }}' -eq 'pull_request') {
-          $ownerRepo = '${{ github.repository }}'
-          $pr = '${{ github.event.pull_request.number }}'
-          $uri = "https://api.github.com/repos/$ownerRepo/pulls/$pr/files"
-          $headers = @{ Authorization = "Bearer $env:GITHUB_TOKEN"; 'X-GitHub-Api-Version' = '2022-11-28'; Accept='application/vnd.github+json' }
-          try {
-            $files = Invoke-RestMethod -Method Get -Uri $uri -Headers $headers -ErrorAction Stop
-            $names = @($files | ForEach-Object { $_.filename })
-            if ($names.Count -gt 0) {
-              $isDocs = $true
-              foreach ($n in $names) {
-                $inDocs = ($n -like 'docs/**' -or $n -like '**/*.md')
-                $isSchema = ($n -like 'docs/schemas/**')
-                if (-not $inDocs -or $isSchema) { $isDocs = $false; break }
-              }
-              if ($isDocs) { $docsOnly = 'true' }
-            }
-          } catch {
-            Write-Host '::notice::Docs-only detection skipped (unable to query PR files). Treating as non-docs.'
-          }
-        }
-        "docs_only=$docsOnly" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
-
-    - name: LV Guard (pre)
-      if: env.INVOKER_REQUIRED == '1'
-      uses: ./.github/actions/runner-unblock-guard
-      with:
-        snapshot-path: results/fixture-drift/lv-guard-pre.json
-        cleanup: ${{ env.CLEAN_LV_BEFORE == 'true' }}
-        process-names: 'LVCompare,LabVIEW'
-    - name: Wire Guard (pre)
-      if: env.INVOKER_REQUIRED == '1'
-      uses: ./.github/actions/wire-guard-pre
-      with:
-        results-dir: results/fixture-drift
-    - name: LabVIEW warmup (best-effort)
-      if: env.INVOKER_REQUIRED == '1'
-      shell: pwsh
-      run: pwsh -File tools/Warmup-LabVIEW.ps1
-    - name: Wire Invoker (start)
-      if: env.INVOKER_REQUIRED == '1'
-      uses: ./.github/actions/wire-invoker-start
-      with:
-        results-dir: results/fixture-drift
-    - name: Ensure Invoker (start)
-      if: env.INVOKER_REQUIRED == '1'
-      uses: ./.github/actions/ensure-invoker
-      with:
-        mode: start
-        results-dir: results/fixture-drift
-
-    - name: Prepare fixture copies (base/head)
-      id: prep
-      shell: pwsh
-      run: |
-        $ErrorActionPreference = 'Stop'
-        $tmp = Join-Path $env:RUNNER_TEMP ("fixtures-" + [guid]::NewGuid().ToString())
-        New-Item -ItemType Directory -Force -Path $tmp | Out-Null
-        $base = Join-Path $tmp 'base.vi'
-        $head = Join-Path $tmp 'head.vi'
-        Copy-Item -LiteralPath (Join-Path $env:GITHUB_WORKSPACE 'VI1.vi') -Destination $base -Force
-        Copy-Item -LiteralPath (Join-Path $env:GITHUB_WORKSPACE 'VI2.vi') -Destination $head -Force
-        "base=$base`nhead=$head" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
-
-    - name: Wire Probe (C1)
-      if: env.INVOKER_REQUIRED == '1'
-      uses: ./.github/actions/wire-probe
-      with:
-        phase: C1
-        results-dir: results/fixture-drift
-    - name: Fixture Drift Orchestrator
-      if: env.INVOKER_REQUIRED == '1'
-      uses: ./.github/actions/fixture-drift
-      with:
-        render-report: 'true'
-        comment-on-fail: 'true'
-        upload-artifacts: 'true'
-        artifact-name: fixture-drift-windows
-        soft-fail: ${{ steps.docs.outputs.docs_only }}
-        base-path: ${{ steps.prep.outputs.base }}
-        head-path: ${{ steps.prep.outputs.head }}
-    - name: Wire Probe (C2)
-      if: env.INVOKER_REQUIRED == '1'
-      uses: ./.github/actions/wire-probe
-      with:
-        phase: C2
-        results-dir: results/fixture-drift
-
-    - name: NI Windows container compare evidence
-      id: ni_windows_compare
-      if: steps.docs.outputs.docs_only != 'true'
-      shell: pwsh
-      run: |
-        $ErrorActionPreference = 'Stop'
-        $outDir = 'results/fixture-drift/ni-windows-container'
-        New-Item -ItemType Directory -Path $outDir -Force | Out-Null
-        $reportPath = Join-Path $outDir 'compare-report.html'
-        $runtimeSnapshotPath = Join-Path $outDir 'runtime-determinism.json'
-
-        pwsh -NoLogo -NoProfile -File tools/Run-NIWindowsContainerCompare.ps1 `
-          -BaseVi '${{ steps.prep.outputs.base }}' `
-          -HeadVi '${{ steps.prep.outputs.head }}' `
-          -Image $env:NI_WINDOWS_IMAGE `
-          -LabVIEWPath $env:NI_WINDOWS_LABVIEW_PATH `
-          -ReportPath $reportPath `
-          -TimeoutSeconds 180 `
-          -HeartbeatSeconds 15 `
-          -AutoRepairRuntime:$true `
-          -ManageDockerEngine:$false `
-          -RuntimeEngineReadyTimeoutSeconds 120 `
-          -RuntimeEngineReadyPollSeconds 3 `
-          -RuntimeSnapshotPath $runtimeSnapshotPath
-
-        $capturePath = Join-Path $outDir 'ni-windows-container-capture.json'
-        if (-not (Test-Path -LiteralPath $capturePath -PathType Leaf)) {
-          throw ("NI Windows container capture missing: {0}" -f $capturePath)
-        }
-
-        $capture = Get-Content -LiteralPath $capturePath -Raw | ConvertFrom-Json -Depth 24
-        $gateOutcome = if ($capture.PSObject.Properties['gateOutcome']) { [string]$capture.gateOutcome } else { '' }
-        $resultClass = if ($capture.PSObject.Properties['resultClass']) { [string]$capture.resultClass } else { '' }
-        $imageUsed = if ($capture.PSObject.Properties['image']) { [string]$capture.image } else { '' }
-        if ([string]::IsNullOrWhiteSpace($imageUsed)) {
-          throw 'NI Windows container compare did not report an image tag.'
-        }
-        if (-not [string]::Equals($imageUsed, $env:NI_WINDOWS_IMAGE, [System.StringComparison]::OrdinalIgnoreCase)) {
-          throw ("Unexpected NI Windows image. expected={0} actual={1}" -f $env:NI_WINDOWS_IMAGE, $imageUsed)
-        }
-        if (-not [string]::Equals($gateOutcome, 'pass', [System.StringComparison]::OrdinalIgnoreCase)) {
-          throw ("NI Windows container compare gate outcome is not pass (resultClass={0}, gateOutcome={1})" -f $resultClass, $gateOutcome)
-        }
-
-        "capture_path=$capturePath" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
-        "report_path=$reportPath" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
-        "runtime_snapshot_path=$runtimeSnapshotPath" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
-
-        if ($env:GITHUB_STEP_SUMMARY) {
-          $lines = @(
-            '### NI Windows Container Compare',
-            '',
-            "- image: $imageUsed",
-            "- resultClass: $resultClass",
-            "- gateOutcome: $gateOutcome",
-            "- capture: $capturePath",
-            "- report: $reportPath"
-          )
-          $lines -join "`n" | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8
-        }
-
-    - name: NI Windows container compare skipped (docs-only)
-      if: steps.docs.outputs.docs_only == 'true'
-      shell: pwsh
-      run: |
-        if ($env:GITHUB_STEP_SUMMARY) {
-          @(
-            '### NI Windows Container Compare',
-            '',
-            '- skipped: docs-only pull request'
-          ) -join "`n" | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8
-        }
-
-    - name: Upload NI Windows container compare artifacts
-      if: always()
-      uses: actions/upload-artifact@v5
-      with:
-        name: fixture-drift-ni-windows-container
-        path: |
-          results/fixture-drift/ni-windows-container/compare-report.html
-          results/fixture-drift/ni-windows-container/ni-windows-container-capture.json
-          results/fixture-drift/ni-windows-container/ni-windows-container-stdout.txt
-          results/fixture-drift/ni-windows-container/ni-windows-container-stderr.txt
-          results/fixture-drift/ni-windows-container/runtime-determinism.json
-          results/fixture-drift/ni-windows-container/container-export/**
-        if-no-files-found: warn
-
-    - name: Verify fixture vs LVCompare (notice-only)
-      if: env.INVOKER_REQUIRED == '1'
-      shell: pwsh
-      continue-on-error: true
-      run: |
-        $ErrorActionPreference = 'Continue'
-        $rd = 'results/fixture-drift'
-        try {
-          $exec = Join-Path $rd 'compare-exec.json'
-          if (Test-Path -LiteralPath $exec) {
-            pwsh -NoLogo -NoProfile -File tools/Verify-FixtureCompare.ps1 -ResultsDir $rd -ExecJsonPath $exec -VerboseOutput
-          } else {
-            pwsh -NoLogo -NoProfile -File tools/Verify-FixtureCompare.ps1 -ResultsDir $rd -VerboseOutput
-          }
-          $code = $LASTEXITCODE
-        } catch { $code = 7 }
-        $sumPath = Join-Path $rd 'fixture-verify-summary.json'
-        if (Test-Path -LiteralPath $sumPath) {
-          try {
-            $obj = Get-Content -LiteralPath $sumPath -Raw | ConvertFrom-Json -ErrorAction Stop
-            $lines = @('### Fixture Verify',
-              "- ok=$($obj.ok)",
-              "- reason=$($obj.reason)",
-              "- expectDiff=$($obj.expectDiff)",
-              "- cli diff=$($obj.cli.diff)",
-              "- cli exitCode=$($obj.cli.exitCode)",
-              "- duration_s=$($obj.cli.duration_s)")
-            if ($env:GITHUB_STEP_SUMMARY) { ($lines -join "`n") | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8 }
-          } catch {
-            if ($env:GITHUB_STEP_SUMMARY) { "### Fixture Verify`n- summary parse error: $_" | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8 }
-          }
-        } else {
-          if ($env:GITHUB_STEP_SUMMARY) { "### Fixture Verify`n- no summary produced" | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8 }
-        }
-        # Notice-only step, never fail the job here
-        exit 0
-
-    - name: Assert single LVCompare launch
-      if: always() && env.INVOKER_REQUIRED == '1'
-      shell: pwsh
-      run: |
-        $originalDir = $env:LV_NOTICE_DIR
-        if (-not $originalDir) {
-          Write-Host '::error::LV notice directory environment variable (LV_NOTICE_DIR) not set.'; exit 1
-        }
-        $noticeDir = $originalDir
-        if (-not (Test-Path -LiteralPath $noticeDir)) {
-          $searchRoot = 'results/fixture-drift'
-          $fallbackDirs = @()
-          if (Test-Path -LiteralPath $searchRoot) {
-            $fallbackDirs = Get-ChildItem -LiteralPath $searchRoot -Directory -Recurse -ErrorAction SilentlyContinue | Where-Object { $_.Name -eq '_lv' }
-          }
-          if ($fallbackDirs -and $fallbackDirs.Count -gt 0) {
-            $noticeDir = $fallbackDirs[0].FullName
-            Write-Host ("::notice::LV notice directory fallback → {0} (original={1})" -f $noticeDir,$originalDir)
-          } else {
-            Write-Host ("::error::LV notice directory not found: {0}" -f $originalDir); exit 1
-          }
-        }
-        $files = @(Get-ChildItem -LiteralPath $noticeDir -Filter 'notice-*.json' -File -ErrorAction SilentlyContinue | Sort-Object FullName)
-        $postStarts = 0
-        $legacyWithoutPath = 0
-        $pathsObserved = New-Object System.Collections.Generic.List[string]
-        foreach ($f in $files) {
-          try {
-            $j = Get-Content -LiteralPath $f.FullName -Raw | ConvertFrom-Json -ErrorAction Stop
-          } catch {
-            continue
-          }
-          if ($j.phase -eq 'post-start') {
-            $candidatePath = $null
-            if ($j.PSObject.Properties['path'] -and -not [string]::IsNullOrWhiteSpace([string]$j.path)) {
-              $candidatePath = [string]$j.path
-            } elseif ($j.PSObject.Properties['cli'] -and -not [string]::IsNullOrWhiteSpace([string]$j.cli)) {
-              $candidatePath = [string]$j.cli
-              $legacyWithoutPath++
-            } else {
-              $legacyWithoutPath++
-            }
-            if ($candidatePath) { $null = $pathsObserved.Add($candidatePath) }
-            $postStarts++
-          }
-        }
-        if ($env:GITHUB_STEP_SUMMARY) {
-          $lines = @('### LVCompare Launch Check','',"- Notice dir: $noticeDir", "- Notices: $($files.Count)", "- post-start: $postStarts")
-          if ($legacyWithoutPath -gt 0) {
-            $lines += ("- post-start without path metadata: {0}" -f $legacyWithoutPath)
-          }
-          if ($pathsObserved.Count -gt 0) {
-            $uniquePaths = ($pathsObserved | Sort-Object -Unique)
-            $lines += ("- paths observed: {0}" -f ([string]::Join(', ', $uniquePaths)))
-          }
-          $lines -join "`n" | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8
-        }
-        if ($postStarts -ne 1) {
-          Write-Host ("::error::Expected exactly one LVCompare launch (post-start={0})" -f $postStarts); exit 1
-        }
-        Write-Host "Single LVCompare launch verified (post-start=1)"
-    - name: Wire Probe (C3)
-      if: env.INVOKER_REQUIRED == '1'
-      uses: ./.github/actions/wire-probe
-      with:
-        phase: C3
-        results-dir: results/fixture-drift
-    - name: Wire Probe (V1)
-      uses: ./.github/actions/wire-probe
-      with:
-        phase: V1
-        results-dir: results/fixture-drift
-
-    - name: Ensure session index (fallback)
-      if: always()
-      shell: pwsh
-      run: pwsh -File tools/Ensure-SessionIndex.ps1 -ResultsDir 'results/fixture-drift' -SummaryJson 'drift-summary.json'
-
-    - name: Attach docker manager metadata to session index
-      if: always()
-      shell: pwsh
-      run: |
-        $hasRequiredLabel = ('${{ steps.runner_label_contract.outputs.has_required_label }}' -eq 'true')
-        pwsh -NoLogo -NoProfile -File tools/Update-FixtureDriftSessionIndex.ps1 `
-          -ResultsDir 'results/fixture-drift' `
-          -ContextPath '${{ steps.docker_manager_context.outputs.context_path }}' `
-          -RuntimeSnapshotPath 'results/fixture-drift/windows-runtime-determinism.json' `
-          -RequiredLabel 'self-hosted-docker-windows' `
-          -HasRequiredLabel:$hasRequiredLabel `
-          -RunnerLabelsCsv '${{ steps.runner_label_contract.outputs.labels }}' `
-          -ManagerStatus $env:DOCKER_MANAGER_STATUS `
-          -ManagerSummaryPath $env:DOCKER_MANAGER_SUMMARY_PATH `
-          -WindowsImageDigest $env:DOCKER_MANAGER_WINDOWS_IMAGE_DIGEST `
-          -LinuxImageDigest $env:DOCKER_MANAGER_LINUX_IMAGE_DIGEST `
-          -StartContext $env:DOCKER_MANAGER_START_CONTEXT `
-          -FinalContext $env:DOCKER_MANAGER_FINAL_CONTEXT `
-          -IgnoreMissingSessionIndex
-
-    - name: Wire Session Index (S1)
-      if: always()
-      uses: ./.github/actions/wire-session-index
-      with:
-        results-dir: results/fixture-drift
-    - name: Session index post (best-effort)
-      if: always()
-      uses: ./.github/actions/session-index-post
-      with:
-        results-dir: results/fixture-drift
-        validate-schema: true
-        upload: true
-        artifact-name: fixture-drift-session-index
-
-    - name: Generate dev dashboard (fixture drift)
-      if: always()
-      shell: pwsh
-      run: pwsh -File tools/Invoke-DevDashboard.ps1 -Group 'fixture-drift' -ResultsRoot 'results/fixture-drift' -OutputRoot 'results/fixture-drift/dev-dashboard'
-
-    - name: Upload dev dashboard (fixture drift)
-      if: always()
-      uses: actions/upload-artifact@v5
-      with:
-        name: fixture-drift-dev-dashboard
-        path: |
-          results/fixture-drift/dev-dashboard/dashboard.html
-          results/fixture-drift/dev-dashboard/dashboard.json
-        if-no-files-found: warn
-
-    - name: Ensure Invoker (stop)
-      if: always() && env.INVOKER_REQUIRED == '1'
-      uses: ./.github/actions/ensure-invoker
-      with:
-        mode: stop
-        results-dir: results/fixture-drift
-    - name: Wire Invoker (stop)
-      if: always() && env.INVOKER_REQUIRED == '1'
-      uses: ./.github/actions/wire-invoker-stop
-      with:
-        results-dir: results/fixture-drift
-    - name: Runner Unblock Guard
-      if: always()
-      uses: ./.github/actions/runner-unblock-guard
-      with:
-        snapshot-path: results/fixture-drift/runner-unblock-snapshot.json
-        cleanup: ${{ env.UNBLOCK_GUARD == '1' }}
-        process-names: 'conhost,pwsh,LabVIEW,LVCompare'
-
-    - name: Wire Probe (P1)
-      if: always()
-      uses: ./.github/actions/wire-probe
-      with:
-        phase: P1
-        results-dir: results/fixture-drift
-    - name: Append determinism summary
-      if: always()
-      shell: pwsh
-      run: pwsh -File tools/Write-DeterminismSummary.ps1
-
-    - name: Append runner identity
-      if: always()
-      shell: pwsh
-      run: pwsh -File tools/Write-RunnerIdentity.ps1 -SampleId '${{ github.event.inputs.sample_id || '' }}'
-
-    - name: Append dev dashboard summary (fixture drift)
-      if: always()
-      shell: pwsh
-      run: |
-        $html = Join-Path 'results/fixture-drift/dev-dashboard' 'dashboard.html'
-        $json = Join-Path 'results/fixture-drift/dev-dashboard' 'dashboard.json'
-        if ($env:GITHUB_STEP_SUMMARY -and (Test-Path $html)) {
-          $lines = @(
-            '### Fixture Drift Dev Dashboard',
-            '',
-            "- HTML: $(Resolve-Path $html)",
-            "- JSON: $(Resolve-Path $json)"
-          )
-          $lines -join "`n" | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8
-        }
-
-    - name: Append fixture drift summary
-      if: always()
-      shell: pwsh
-      run: pwsh -File tools/Write-FixtureDriftSummary.ps1 -Dir 'results/fixture-drift'
-
-    - name: Append artifact map
-      if: always()
-      shell: pwsh
-      run: |
-        $list = 'results/fixture-drift/drift-summary.json;results/fixture-drift/compare-report.html;results/fixture-drift/session-index.json;results/fixture-drift/docker-runtime-manager-context.json;results/fixture-drift/docker-runtime-manager.json;results/fixture-drift/runner-label-contract.json;results/fixture-drift/windows-runtime-determinism.json;results/fixture-drift/ni-windows-container/ni-windows-container-capture.json;results/fixture-drift/ni-windows-container/compare-report.html;results/fixture-drift/ni-windows-container/runtime-determinism.json'
-        pwsh -File tools/Write-ArtifactMap.ps1 -PathsList $list -Title 'Artifacts'
-
-    - name: Re-run hint
-      if: always()
-      shell: pwsh
-      run: pwsh -File tools/Write-RerunHint.ps1 -Workflow 'fixture-drift.yml' -SampleId '${{ github.event.inputs.sample_id || '' }}'
-
-    - name: Agent wait summary (windows)
-      if: always()
-      uses: ./.github/actions/agent-wait-post
-      with:
-        results-dir: results/fixture-drift
-        fail-on-outside: 'false'
-        upload-artifact: 'false'
-
-    - name: LV Guard (post)
-      if: always()
-      uses: ./.github/actions/runner-unblock-guard
-      with:
-        snapshot-path: results/fixture-drift/lv-guard-post.json
-        cleanup: ${{ env.CLEAN_LV_AFTER == 'true' }}
-        process-names: 'LVCompare,LabVIEW'
-    - name: Wire Guard (post)
-      if: always()
-      uses: ./.github/actions/wire-guard-post
-      with:
-        results-dir: results/fixture-drift
+      - name: Upload NI Linux container compare artifacts
+        if: always()
+        uses: actions/upload-artifact@v5
+        with:
+          name: fixture-drift-ni-linux-container
+          path: results/fixture-drift/ni-linux-container/**
+          if-no-files-found: warn
