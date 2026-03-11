@@ -271,6 +271,17 @@ export function classifyPullRequestWork(pr = {}) {
   const reviewDecision = normalizeText(pr.reviewDecision).toUpperCase();
   const isDraft = pr.isDraft === true;
 
+  if (mergeStateStatus === 'BEHIND') {
+    return {
+      laneLifecycle: 'waiting-ci',
+      blockerClass: 'ci',
+      checksStatus: checks.status,
+      readyToMerge: false,
+      retryable: true,
+      nextWakeCondition: 'branch-synced',
+      syncRequired: true
+    };
+  }
   if (isDraft || reviewDecision === 'REVIEW_REQUIRED' || reviewDecision === 'CHANGES_REQUESTED') {
     return {
       laneLifecycle: 'waiting-review',
@@ -278,7 +289,8 @@ export function classifyPullRequestWork(pr = {}) {
       checksStatus: checks.status,
       readyToMerge: false,
       retryable: true,
-      nextWakeCondition: 'review-disposition-updated'
+      nextWakeCondition: 'review-disposition-updated',
+      syncRequired: false
     };
   }
   if (mergeStateStatus === 'DIRTY' || mergeable === 'CONFLICTING' || mergeable === 'UNMERGEABLE') {
@@ -288,7 +300,8 @@ export function classifyPullRequestWork(pr = {}) {
       checksStatus: checks.status,
       readyToMerge: false,
       retryable: false,
-      nextWakeCondition: 'manual-conflict-resolution'
+      nextWakeCondition: 'manual-conflict-resolution',
+      syncRequired: false
     };
   }
   if (checks.blockerClass === 'ci') {
@@ -298,7 +311,8 @@ export function classifyPullRequestWork(pr = {}) {
       checksStatus: checks.status,
       readyToMerge: false,
       retryable: true,
-      nextWakeCondition: 'checks-green'
+      nextWakeCondition: 'checks-green',
+      syncRequired: false
     };
   }
   return {
@@ -307,22 +321,25 @@ export function classifyPullRequestWork(pr = {}) {
     checksStatus: checks.status,
     readyToMerge: true,
     retryable: false,
-    nextWakeCondition: 'merge-attempt'
+    nextWakeCondition: 'merge-attempt',
+    syncRequired: false
   };
 }
 
-function prLifecyclePriority(lifecycle) {
+function prLifecyclePriority(status) {
+  const lifecycle = typeof status === 'string' ? status : normalizeText(status?.laneLifecycle).toLowerCase();
+  const syncRequired = status && typeof status === 'object' ? status.syncRequired === true : false;
   switch (lifecycle) {
     case 'ready-merge':
       return 0;
-    case 'waiting-review':
-      return 1;
     case 'waiting-ci':
+      return syncRequired ? 1 : 3;
+    case 'waiting-review':
       return 2;
     case 'blocked':
-      return 3;
-    default:
       return 4;
+    default:
+      return 5;
   }
 }
 
@@ -413,7 +430,7 @@ function selectCanonicalCandidate({ issueGraph, implementationRemote }) {
   )
     .map((pullRequest) => pullRequest._candidate)
     .sort((left, right) => {
-      const lifecycleDelta = prLifecyclePriority(left.prStatus.laneLifecycle) - prLifecyclePriority(right.prStatus.laneLifecycle);
+      const lifecycleDelta = prLifecyclePriority(left.prStatus) - prLifecyclePriority(right.prStatus);
       if (lifecycleDelta !== 0) return lifecycleDelta;
       return compareIssueRank(left.issue, right.issue);
     });
@@ -801,6 +818,7 @@ export async function buildCanonicalDeliveryDecision({
               reviewDecision: pullRequest.reviewDecision,
               mergeStateStatus: pullRequest.mergeStateStatus,
               mergeable: pullRequest.mergeable,
+              syncRequired: pullRequestStatus?.syncRequired === true,
               checks: {
                 status: pullRequestStatus?.checksStatus ?? 'not-linked',
                 blockerClass: pullRequestStatus?.blockerClass ?? 'none'
@@ -1327,6 +1345,62 @@ async function mergePullRequest({ taskPacket, repoRoot, deps = {} }) {
   };
 }
 
+async function updatePullRequestBranch({ taskPacket, repoRoot, deps = {} }) {
+  if (typeof deps.updatePullRequestBranchFn === 'function') {
+    return deps.updatePullRequestBranchFn({ taskPacket, repoRoot });
+  }
+  const pullRequest = taskPacket?.evidence?.delivery?.pullRequest ?? null;
+  const repository = normalizeText(taskPacket?.repository);
+  const prNumber = coercePositiveInteger(pullRequest?.number) ?? extractPullRequestNumberFromUrl(pullRequest?.url);
+  if (!repository || !prNumber) {
+    throw new Error('Branch sync action requires repository and pull request number.');
+  }
+  const result = await runCommand(
+    'gh',
+    ['pr', 'update-branch', String(prNumber), '--repo', repository],
+    { cwd: repoRoot, env: process.env },
+    deps
+  );
+  if (result.status !== 0) {
+    const message = normalizeText(result.stderr) || normalizeText(result.stdout) || `pr update-branch failed (${result.status})`;
+    const mergeBlocked = /conflict|rebase|merge/i.test(message);
+    return {
+      status: 'blocked',
+      outcome: isRateLimitMessage(message) ? 'rate-limit' : mergeBlocked ? 'branch-sync-blocked' : 'branch-sync-failed',
+      reason: message,
+      source: 'delivery-agent-broker',
+      details: {
+        actionType: 'sync-pr-branch',
+        laneLifecycle: mergeBlocked ? 'blocked' : 'waiting-ci',
+        blockerClass: isRateLimitMessage(message) ? 'rate-limit' : mergeBlocked ? 'merge' : 'ci',
+        retryable: isRateLimitMessage(message) || !mergeBlocked,
+        nextWakeCondition: isRateLimitMessage(message)
+          ? 'github-rate-limit-reset'
+          : mergeBlocked
+            ? 'manual-conflict-resolution'
+            : 'branch-sync-retry',
+        helperCallsExecuted: ['gh pr update-branch'],
+        filesTouched: []
+      }
+    };
+  }
+  return {
+    status: 'completed',
+    outcome: 'branch-updated',
+    reason: `Updated PR #${prNumber} with the latest base branch.`,
+    source: 'delivery-agent-broker',
+    details: {
+      actionType: 'sync-pr-branch',
+      laneLifecycle: 'waiting-ci',
+      blockerClass: 'ci',
+      retryable: true,
+      nextWakeCondition: 'checks-green',
+      helperCallsExecuted: ['gh pr update-branch'],
+      filesTouched: []
+    }
+  };
+}
+
 async function invokeCodingTurnCommand({ taskPacket, policy, repoRoot, policyPath, deps = {} }) {
   if (typeof deps.invokeCodingTurnFn === 'function') {
     return deps.invokeCodingTurnFn({ taskPacket, policy, repoRoot, policyPath });
@@ -1441,6 +1515,12 @@ export function planDeliveryBrokerAction(taskPacket = {}) {
     };
   }
   if (pullRequest?.url) {
+    if (pullRequest.syncRequired === true || normalizeText(pullRequest.mergeStateStatus).toUpperCase() === 'BEHIND') {
+      return {
+        actionType: 'sync-pr-branch',
+        laneLifecycle: 'waiting-ci'
+      };
+    }
     if (pullRequest.readyToMerge === true) {
       return {
         actionType: 'merge-pr',
@@ -1529,6 +1609,14 @@ export async function runDeliveryTurnBroker({
         filesTouched: []
       }
     };
+  }
+
+  if (planned.actionType === 'sync-pr-branch') {
+    return updatePullRequestBranch({
+      taskPacket: enrichedPacket,
+      repoRoot,
+      deps
+    });
   }
 
   if (planned.actionType === 'merge-pr') {
