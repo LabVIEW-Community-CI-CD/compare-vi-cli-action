@@ -1,0 +1,55 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://labview-community-ci-cd.github.io/compare-vi-cli-action/schemas/runtime-delivery-execution-receipt-v1.schema.json",
+  "title": "Runtime Delivery Execution Receipt v1",
+  "type": "object",
+  "additionalProperties": true,
+  "required": ["status", "outcome", "details"],
+  "properties": {
+    "schema": { "const": "priority/runtime-execution-receipt@v1" },
+    "generatedAt": { "type": ["string", "null"], "format": "date-time" },
+    "cycle": { "type": ["integer", "null"], "minimum": 1 },
+    "runtimeAdapter": { "type": ["string", "null"] },
+    "repository": { "type": ["string", "null"] },
+    "laneId": { "type": ["string", "null"] },
+    "issue": { "type": ["integer", "null"], "minimum": 1 },
+    "status": { "type": "string" },
+    "outcome": { "type": "string" },
+    "reason": { "type": ["string", "null"] },
+    "source": { "type": ["string", "null"] },
+    "stopLoop": { "type": "boolean" },
+    "details": {
+      "type": "object",
+      "additionalProperties": true,
+      "required": ["actionType", "laneLifecycle", "blockerClass", "retryable", "nextWakeCondition"],
+      "properties": {
+        "actionType": { "type": "string" },
+        "laneLifecycle": {
+          "enum": [
+            "planning",
+            "reshaping-backlog",
+            "coding",
+            "waiting-ci",
+            "waiting-review",
+            "ready-merge",
+            "blocked",
+            "complete",
+            "idle"
+          ]
+        },
+        "blockerClass": { "type": "string" },
+        "retryable": { "type": "boolean" },
+        "nextWakeCondition": { "type": ["string", "null"] },
+        "helperCallsExecuted": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "filesTouched": {
+          "type": "array",
+          "items": { "type": "string" }
+        }
+      }
+    },
+    "artifacts": { "type": "object", "additionalProperties": true }
+  }
+}

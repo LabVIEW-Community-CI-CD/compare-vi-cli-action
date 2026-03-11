@@ -1,0 +1,24 @@
+{
+  "schema": "priority/delivery-agent-policy@v1",
+  "backlogAuthority": "issues",
+  "implementationRemote": "origin",
+  "autoSlice": true,
+  "autoMerge": true,
+  "maxActiveCodingLanes": 1,
+  "allowPolicyMutations": false,
+  "allowReleaseAdmin": false,
+  "stopWhenNoOpenEpics": true,
+  "turnBudget": {
+    "maxMinutes": 20,
+    "maxToolCalls": 12
+  },
+  "retry": {
+    "maxAttempts": 3,
+    "blockerBackoffMinutes": 10,
+    "rateLimitCooldownMinutes": 30
+  },
+  "codingTurnCommand": [
+    "node",
+    "tools/priority/run-delivery-turn-with-codex.mjs"
+  ]
+}

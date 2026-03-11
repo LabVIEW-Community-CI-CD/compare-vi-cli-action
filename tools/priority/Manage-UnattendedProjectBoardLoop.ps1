@@ -7,6 +7,7 @@ param(
   [switch]$QueueApply,
   [switch]$NoPortfolioApply,
   [switch]$StopWhenNoOpenIssues,
+  [switch]$SleepMode,
   [string]$Repo = 'LabVIEW-Community-CI-CD/compare-vi-cli-action',
   [string]$RuntimeDir = 'tests/results/_agent/runtime',
   [string]$OrchestratorDir = 'tests/results/_agent/runtime-linux-orchestrator',
@@ -22,7 +23,18 @@ param(
   [string]$ProjectEnvironmentClass = 'Infra',
   [string]$ProjectBlockingSignal = 'Scope',
   [string]$ProjectEvidenceState = 'Partial',
-  [string]$ProjectPortfolioTrack = 'Agent UX'
+  [string]$ProjectPortfolioTrack = 'Agent UX',
+  [int]$QueuePauseRecoveryThresholdCycles = 2,
+  [int]$QueuePauseRecoveryCooldownMinutes = 30,
+  [int]$QueuePauseRecoveryMaxAttempts = 8,
+  [string]$QueuePauseRecoveryRef = 'develop',
+  [switch]$DispatchValidateOnQueuePause,
+  [switch]$QueuePauseRecoveryAllowFork,
+  [switch]$OnlyRecoverQueueWhenEligible,
+  [int]$MaxConsecutiveCycleFailures = 0,
+  [switch]$AutoBootstrapOnFailure,
+  [switch]$AutoPrioritySyncLane,
+  [switch]$AutoDevelopSync
 )
 
 Set-StrictMode -Version Latest
@@ -119,12 +131,23 @@ $pidPath = Join-Path $orchestratorDirHost 'loop-pid.json'
 $statePath = Join-Path $orchestratorDirHost 'state.json'
 $statusPath = Join-Path $orchestratorDirHost 'status.json'
 $eventsPath = Join-Path $orchestratorDirHost 'events.ndjson'
+$sleepStatePath = Join-Path $orchestratorDirHost 'sleep-mode-state.json'
 $stopRequestPath = Join-Path $orchestratorDirHost 'stop-request.json'
 $stdoutPath = Join-Path $orchestratorDirHost 'loop.out'
 $stderrPath = Join-Path $orchestratorDirHost 'loop.err'
 $scriptPath = Join-Path $PSScriptRoot 'Run-UnattendedProjectBoardLoop.ps1'
 
 if ($Ensure) {
+  if ($SleepMode) {
+    if (-not $PSBoundParameters.ContainsKey('QueueApply')) { $QueueApply = $true }
+    if (-not $PSBoundParameters.ContainsKey('StopWhenNoOpenIssues')) { $StopWhenNoOpenIssues = $true }
+    if (-not $PSBoundParameters.ContainsKey('DispatchValidateOnQueuePause')) { $DispatchValidateOnQueuePause = $true }
+    if (-not $PSBoundParameters.ContainsKey('QueuePauseRecoveryAllowFork')) { $QueuePauseRecoveryAllowFork = $true }
+    if (-not $PSBoundParameters.ContainsKey('OnlyRecoverQueueWhenEligible')) { $OnlyRecoverQueueWhenEligible = $true }
+    if (-not $PSBoundParameters.ContainsKey('AutoBootstrapOnFailure')) { $AutoBootstrapOnFailure = $true }
+    if (-not $PSBoundParameters.ContainsKey('AutoPrioritySyncLane')) { $AutoPrioritySyncLane = $true }
+  }
+
   $existing = Read-JsonFile -Path $pidPath
   if ($existing -and $existing.pid) {
     $existingPid = [int]$existing.pid
@@ -138,6 +161,7 @@ if ($Ensure) {
           statePath = $statePath
           statusPath = $statusPath
           eventsPath = $eventsPath
+          sleepStatePath = $sleepStatePath
           stdoutPath = $stdoutPath
           stderrPath = $stderrPath
         } | ConvertTo-Json -Depth 20
@@ -185,8 +209,21 @@ if ($Ensure) {
     '-ProjectEvidenceState',
     $ProjectEvidenceState,
     '-ProjectPortfolioTrack',
-    $ProjectPortfolioTrack
+    $ProjectPortfolioTrack,
+    '-QueuePauseRecoveryThresholdCycles',
+    "$QueuePauseRecoveryThresholdCycles",
+    '-QueuePauseRecoveryCooldownMinutes',
+    "$QueuePauseRecoveryCooldownMinutes",
+    '-QueuePauseRecoveryMaxAttempts',
+    "$QueuePauseRecoveryMaxAttempts",
+    '-QueuePauseRecoveryRef',
+    $QueuePauseRecoveryRef,
+    '-MaxConsecutiveCycleFailures',
+    "$MaxConsecutiveCycleFailures"
   )
+  if ($SleepMode) {
+    $args += '-SleepMode'
+  }
   if ($QueueApply) {
     $args += '-QueueApply'
   }
@@ -195,6 +232,24 @@ if ($Ensure) {
   }
   if ($StopWhenNoOpenIssues) {
     $args += '-StopWhenNoOpenIssues'
+  }
+  if ($DispatchValidateOnQueuePause) {
+    $args += '-DispatchValidateOnQueuePause'
+  }
+  if ($QueuePauseRecoveryAllowFork) {
+    $args += '-QueuePauseRecoveryAllowFork'
+  }
+  if ($OnlyRecoverQueueWhenEligible) {
+    $args += '-OnlyRecoverQueueWhenEligible'
+  }
+  if ($AutoBootstrapOnFailure) {
+    $args += '-AutoBootstrapOnFailure'
+  }
+  if ($AutoPrioritySyncLane) {
+    $args += '-AutoPrioritySyncLane'
+  }
+  if ($AutoDevelopSync) {
+    $args += '-AutoDevelopSync'
   }
 
   $argumentLine = ConvertTo-QuotedCommandLine -Arguments $args
@@ -219,6 +274,7 @@ if ($Ensure) {
     statePath = $statePath
     statusPath = $statusPath
     eventsPath = $eventsPath
+    sleepStatePath = $sleepStatePath
     stopRequestPath = $stopRequestPath
   }
   Write-JsonFile -Path $pidPath -Payload $pidPayload
@@ -230,6 +286,7 @@ if ($Ensure) {
     statePath = $statePath
     statusPath = $statusPath
     eventsPath = $eventsPath
+    sleepStatePath = $sleepStatePath
     stdoutPath = $stdoutPath
     stderrPath = $stderrPath
     stopRequestPath = $stopRequestPath
@@ -285,6 +342,7 @@ if ($Status) {
   $alive = if ($loopPid) { Test-ProcessAlive -ProcessId $loopPid } else { $false }
   $state = Read-JsonFile -Path $statePath
   $statusJson = Read-JsonFile -Path $statusPath
+  $sleepState = Read-JsonFile -Path $sleepStatePath
   [ordered]@{
     status = if ($alive) { 'running' } else { 'stopped' }
     pid = $loopPid
@@ -293,18 +351,20 @@ if ($Status) {
     statePath = $statePath
     statusPath = $statusPath
     eventsPath = $eventsPath
+    sleepStatePath = $sleepStatePath
     stdoutPath = $stdoutPath
     stderrPath = $stderrPath
     stopRequestPath = $stopRequestPath
     state = $state
     statusPayload = $statusJson
+    sleepState = $sleepState
   } | ConvertTo-Json -Depth 30
   return
 }
 
 [ordered]@{
   usage = @(
-    'pwsh -File tools/priority/Manage-UnattendedProjectBoardLoop.ps1 -Ensure -QueueApply -StopWhenNoOpenIssues',
+    'pwsh -File tools/priority/Manage-UnattendedProjectBoardLoop.ps1 -Ensure -SleepMode',
     'pwsh -File tools/priority/Manage-UnattendedProjectBoardLoop.ps1 -Status',
     'pwsh -File tools/priority/Manage-UnattendedProjectBoardLoop.ps1 -Stop'
   )
@@ -313,6 +373,7 @@ if ($Status) {
   statePath = $statePath
   statusPath = $statusPath
   eventsPath = $eventsPath
+  sleepStatePath = $sleepStatePath
   stdoutPath = $stdoutPath
   stderrPath = $stderrPath
   stopRequestPath = $stopRequestPath

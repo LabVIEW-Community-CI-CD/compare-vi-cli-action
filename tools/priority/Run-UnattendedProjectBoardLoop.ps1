@@ -18,7 +18,19 @@ param(
   [string]$ProjectEnvironmentClass = 'Infra',
   [string]$ProjectBlockingSignal = 'Scope',
   [string]$ProjectEvidenceState = 'Partial',
-  [string]$ProjectPortfolioTrack = 'Agent UX'
+  [string]$ProjectPortfolioTrack = 'Agent UX',
+  [switch]$SleepMode,
+  [int]$QueuePauseRecoveryThresholdCycles = 2,
+  [int]$QueuePauseRecoveryCooldownMinutes = 30,
+  [int]$QueuePauseRecoveryMaxAttempts = 8,
+  [string]$QueuePauseRecoveryRef = 'develop',
+  [switch]$DispatchValidateOnQueuePause,
+  [switch]$QueuePauseRecoveryAllowFork,
+  [switch]$OnlyRecoverQueueWhenEligible,
+  [int]$MaxConsecutiveCycleFailures = 0,
+  [switch]$AutoBootstrapOnFailure,
+  [switch]$AutoPrioritySyncLane,
+  [switch]$AutoDevelopSync
 )
 
 Set-StrictMode -Version Latest
@@ -27,6 +39,29 @@ $ErrorActionPreference = 'Stop'
 $schemaState = 'priority/unattended-project-board-state@v1'
 $schemaCycle = 'priority/unattended-project-board-cycle@v1'
 $schemaEvent = 'priority/unattended-project-board-event@v1'
+$schemaSleepState = 'priority/unattended-sleep-mode-state@v1'
+$recoverableQueuePauseReasons = @(
+  'success-rate-below-threshold',
+  'trunk-red-window-exceeded',
+  'health-workflow-fetch-errors',
+  'queued-runs-threshold-exceeded',
+  'in-progress-runs-threshold-exceeded',
+  'stalled-runs-detected'
+)
+
+if ($SleepMode) {
+  if (-not $PSBoundParameters.ContainsKey('QueueApply')) { $QueueApply = $true }
+  if (-not $PSBoundParameters.ContainsKey('StopWhenNoOpenIssues')) { $StopWhenNoOpenIssues = $true }
+  if (-not $PSBoundParameters.ContainsKey('DispatchValidateOnQueuePause')) { $DispatchValidateOnQueuePause = $true }
+  if (-not $PSBoundParameters.ContainsKey('QueuePauseRecoveryAllowFork')) { $QueuePauseRecoveryAllowFork = $true }
+  if (-not $PSBoundParameters.ContainsKey('OnlyRecoverQueueWhenEligible')) { $OnlyRecoverQueueWhenEligible = $true }
+  if (-not $PSBoundParameters.ContainsKey('AutoBootstrapOnFailure')) { $AutoBootstrapOnFailure = $true }
+  if (-not $PSBoundParameters.ContainsKey('AutoPrioritySyncLane')) { $AutoPrioritySyncLane = $true }
+}
+
+function Get-NowUtcIso {
+  return (Get-Date).ToUniversalTime().ToString('o')
+}
 
 function Resolve-RepoRoot {
   return [System.IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..' '..'))
@@ -78,6 +113,19 @@ function Invoke-CommandCapture {
   }
 }
 
+function Test-RateLimitSignal {
+  param([string[]]$Lines)
+  foreach ($line in @($Lines)) {
+    if ([string]::IsNullOrWhiteSpace($line)) {
+      continue
+    }
+    if ($line -match '(?i)rate limit') {
+      return $true
+    }
+  }
+  return $false
+}
+
 function Append-Event {
   param(
     [Parameter(Mandatory)][string]$EventsPath,
@@ -87,7 +135,7 @@ function Append-Event {
   )
   $event = [ordered]@{
     schema = $schemaEvent
-    generatedAt = (Get-Date).ToUniversalTime().ToString('o')
+    generatedAt = Get-NowUtcIso
     action = $Action
     outcome = $Outcome
     details = $Details
@@ -97,6 +145,60 @@ function Append-Event {
     Ensure-Directory -Path $dir
   }
   Add-Content -LiteralPath $EventsPath -Value ($event | ConvertTo-Json -Depth 40) -Encoding utf8
+}
+
+function Get-SleepProfile {
+  return [ordered]@{
+    enabled = [bool]$SleepMode
+    dispatchValidateOnQueuePause = [bool]$DispatchValidateOnQueuePause
+    queuePauseRecoveryThresholdCycles = $QueuePauseRecoveryThresholdCycles
+    queuePauseRecoveryCooldownMinutes = $QueuePauseRecoveryCooldownMinutes
+    queuePauseRecoveryMaxAttempts = $QueuePauseRecoveryMaxAttempts
+    queuePauseRecoveryRef = $QueuePauseRecoveryRef
+    queuePauseRecoveryAllowFork = [bool]$QueuePauseRecoveryAllowFork
+    onlyRecoverQueueWhenEligible = [bool]$OnlyRecoverQueueWhenEligible
+    maxConsecutiveCycleFailures = $MaxConsecutiveCycleFailures
+    autoBootstrapOnFailure = [bool]$AutoBootstrapOnFailure
+    autoPrioritySyncLane = [bool]$AutoPrioritySyncLane
+    autoDevelopSync = [bool]$AutoDevelopSync
+  }
+}
+
+function Write-SleepState {
+  param(
+    [Parameter(Mandatory)][string]$Path,
+    [Parameter(Mandatory)][string]$LoopStartedAt,
+    [Parameter(Mandatory)][int]$Cycle,
+    [Parameter(Mandatory)][string]$Status,
+    [Parameter(Mandatory)][int]$ConsecutiveCycleFailures,
+    [Parameter(Mandatory)][int]$QueuePausedStreak,
+    [string[]]$LastQueuePauseReasons = @(),
+    [string]$LastQueueRecoveryAttemptAt,
+    [string]$LastRateLimitDetectedAt,
+    [Parameter(Mandatory)][int]$QueueRecoveryAttempts,
+    [object]$LastQueueRecovery,
+    [object]$LastCycleRecovery,
+    [object]$SleepProfile
+  )
+  $payload = [ordered]@{
+    schema = $schemaSleepState
+    generatedAt = Get-NowUtcIso
+    loopStartedAt = $LoopStartedAt
+    cycle = $Cycle
+    status = $Status
+    sleepMode = $SleepProfile
+    consecutiveCycleFailures = $ConsecutiveCycleFailures
+    queuePausedStreak = $QueuePausedStreak
+    lastQueuePauseReasons = @($LastQueuePauseReasons)
+    queuePauseRecovery = [ordered]@{
+      attempts = $QueueRecoveryAttempts
+      lastAttemptAt = $LastQueueRecoveryAttemptAt
+      last = $LastQueueRecovery
+    }
+    lastRateLimitDetectedAt = $LastRateLimitDetectedAt
+    lastCycleRecovery = $LastCycleRecovery
+  }
+  Write-JsonFile -Path $Path -Payload $payload
 }
 
 function Resolve-IssueUrlFromHeartbeat {
@@ -185,6 +287,120 @@ function Invoke-GhIssueListCount {
   }
 }
 
+function Read-QueueSupervisorReport {
+  param([Parameter(Mandatory)][string]$RepoRoot)
+  $path = Join-Path $RepoRoot 'tests/results/_agent/queue/queue-supervisor-report.json'
+  $parsed = Read-JsonFile -Path $path
+  return [pscustomobject]@{
+    path = $path
+    exists = (Test-Path -LiteralPath $path -PathType Leaf)
+    parsed = $parsed
+  }
+}
+
+function Test-CooldownElapsed {
+  param(
+    [string]$LastAttemptAt,
+    [int]$CooldownMinutes
+  )
+  if ([string]::IsNullOrWhiteSpace($LastAttemptAt)) {
+    return $true
+  }
+  try {
+    $last = [DateTime]::Parse($LastAttemptAt).ToUniversalTime()
+    $delta = (Get-Date).ToUniversalTime() - $last
+    return $delta.TotalMinutes -ge [double]([Math]::Max(0, $CooldownMinutes))
+  } catch {
+    return $true
+  }
+}
+
+function Invoke-QueuePauseRecovery {
+  param(
+    [Parameter(Mandatory)][string]$Ref,
+    [switch]$AllowFork
+  )
+  $args = @(
+    'tools/npm/run-script.mjs',
+    'priority:validate',
+    '--',
+    '--ref',
+    $Ref
+  )
+  if ($AllowFork) {
+    $args += '--allow-fork'
+  }
+  return Invoke-CommandCapture -FilePath 'node' -Arguments $args
+}
+
+function Invoke-CycleFailureRecovery {
+  param(
+    [switch]$RunBootstrap,
+    [switch]$RunPrioritySyncLane,
+    [switch]$RunDevelopSync
+  )
+
+  $steps = @()
+  if ($RunBootstrap) {
+    $result = Invoke-CommandCapture -FilePath 'pwsh' -Arguments @(
+      '-NoLogo',
+      '-NoProfile',
+      '-File',
+      'tools/priority/bootstrap.ps1'
+    )
+    $steps += [ordered]@{
+      action = 'bootstrap'
+      skipped = $false
+      command = $result.command
+      exitCode = $result.exitCode
+      output = $result.lines
+    }
+  } else {
+    $steps += [ordered]@{ action = 'bootstrap'; skipped = $true }
+  }
+
+  if ($RunPrioritySyncLane) {
+    $result = Invoke-CommandCapture -FilePath 'node' -Arguments @(
+      'tools/npm/run-script.mjs',
+      'priority:sync:lane'
+    )
+    $steps += [ordered]@{
+      action = 'priority-sync-lane'
+      skipped = $false
+      command = $result.command
+      exitCode = $result.exitCode
+      output = $result.lines
+    }
+  } else {
+    $steps += [ordered]@{ action = 'priority-sync-lane'; skipped = $true }
+  }
+
+  if ($RunDevelopSync) {
+    $result = Invoke-CommandCapture -FilePath 'node' -Arguments @(
+      'tools/npm/run-script.mjs',
+      'priority:develop:sync'
+    )
+    $steps += [ordered]@{
+      action = 'priority-develop-sync'
+      skipped = $false
+      command = $result.command
+      exitCode = $result.exitCode
+      output = $result.lines
+    }
+  } else {
+    $steps += [ordered]@{ action = 'priority-develop-sync'; skipped = $true }
+  }
+
+  $blocking = @($steps | Where-Object { -not $_.skipped -and ($_.exitCode -ne 0) })
+  return [ordered]@{
+    generatedAt = Get-NowUtcIso
+    status = if ($blocking.Count -eq 0) { 'pass' } else { 'blocked' }
+    stepCount = @($steps | Where-Object { -not $_.skipped }).Count
+    blockedSteps = $blocking.Count
+    steps = $steps
+  }
+}
+
 $repoRoot = Resolve-RepoRoot
 Set-Location -LiteralPath $repoRoot
 
@@ -198,14 +414,24 @@ $statePath = Join-Path $orchestratorDirHost 'state.json'
 $eventsPath = Join-Path $orchestratorDirHost 'events.ndjson'
 $stopRequestPath = Join-Path $orchestratorDirHost 'stop-request.json'
 $statusPath = Join-Path $orchestratorDirHost 'status.json'
+$sleepStatePath = Join-Path $orchestratorDirHost 'sleep-mode-state.json'
 
 Ensure-Directory -Path $orchestratorDirHost
 Ensure-Directory -Path $cyclesDir
 
-$loopStartedAt = (Get-Date).ToUniversalTime().ToString('o')
+$loopStartedAt = Get-NowUtcIso
 $cycle = 0
 $finalOutcome = 'running'
 $finalMessage = ''
+$consecutiveCycleFailures = 0
+$queuePausedStreak = 0
+$lastQueuePauseReasons = @()
+$lastQueueRecoveryAttemptAt = $null
+$queueRecoveryAttempts = 0
+$lastQueueRecovery = $null
+$lastCycleRecovery = $null
+$lastRateLimitDetectedAt = $null
+$sleepProfile = Get-SleepProfile
 
 Append-Event -EventsPath $eventsPath -Action 'loop-start' -Outcome 'started' -Details @{
   repo = $Repo
@@ -213,10 +439,11 @@ Append-Event -EventsPath $eventsPath -Action 'loop-start' -Outcome 'started' -De
   queueApply = [bool]$QueueApply
   portfolioApplyEnabled = [bool](-not $NoPortfolioApply)
   stopWhenNoOpenIssues = [bool]$StopWhenNoOpenIssues
+  sleepMode = $sleepProfile
 }
 Write-JsonFile -Path $statePath -Payload ([ordered]@{
   schema = $schemaState
-  generatedAt = (Get-Date).ToUniversalTime().ToString('o')
+  generatedAt = Get-NowUtcIso
   loopStartedAt = $loopStartedAt
   cycle = 0
   status = 'running'
@@ -227,14 +454,29 @@ Write-JsonFile -Path $statePath -Payload ([ordered]@{
   queueApply = [bool]$QueueApply
   portfolioApplyEnabled = [bool](-not $NoPortfolioApply)
   stopWhenNoOpenIssues = [bool]$StopWhenNoOpenIssues
+  sleepMode = $sleepProfile
   artifacts = [ordered]@{
     statePath = $statePath
     statusPath = $statusPath
     eventsPath = $eventsPath
     cyclesDir = $cyclesDir
     stopRequestPath = $stopRequestPath
+    sleepStatePath = $sleepStatePath
   }
 })
+Write-SleepState -Path $sleepStatePath `
+  -LoopStartedAt $loopStartedAt `
+  -Cycle 0 `
+  -Status 'running' `
+  -ConsecutiveCycleFailures $consecutiveCycleFailures `
+  -QueuePausedStreak $queuePausedStreak `
+  -LastQueuePauseReasons $lastQueuePauseReasons `
+  -LastQueueRecoveryAttemptAt $lastQueueRecoveryAttemptAt `
+  -LastRateLimitDetectedAt $lastRateLimitDetectedAt `
+  -QueueRecoveryAttempts $queueRecoveryAttempts `
+  -LastQueueRecovery $lastQueueRecovery `
+  -LastCycleRecovery $lastCycleRecovery `
+  -SleepProfile $sleepProfile
 
 while ($true) {
   if (Test-Path -LiteralPath $stopRequestPath -PathType Leaf) {
@@ -256,7 +498,8 @@ while ($true) {
   }
 
   $cycle += 1
-  $cycleStartedAt = (Get-Date).ToUniversalTime().ToString('o')
+  $cycleStartedAt = Get-NowUtcIso
+  $rateLimitDetectedThisCycle = $false
   Write-JsonFile -Path $statePath -Payload ([ordered]@{
     schema = $schemaState
     generatedAt = $cycleStartedAt
@@ -270,12 +513,14 @@ while ($true) {
     queueApply = [bool]$QueueApply
     portfolioApplyEnabled = [bool](-not $NoPortfolioApply)
     stopWhenNoOpenIssues = [bool]$StopWhenNoOpenIssues
+    sleepMode = $sleepProfile
     artifacts = [ordered]@{
       statePath = $statePath
       statusPath = $statusPath
       eventsPath = $eventsPath
       cyclesDir = $cyclesDir
       stopRequestPath = $stopRequestPath
+      sleepStatePath = $sleepStatePath
     }
   })
   $cycleReport = [ordered]@{
@@ -289,7 +534,10 @@ while ($true) {
     projectPortfolioCheck = $null
     projectPortfolioApply = @()
     queueSupervisor = $null
+    queuePauseRecovery = $null
+    cycleRecovery = $null
     openIssues = $null
+    sleepMode = $sleepProfile
     status = 'pass'
     outcome = 'completed'
     message = $null
@@ -361,11 +609,30 @@ while ($true) {
       exitCode = $portfolioCheck.exitCode
       output = $portfolioCheck.lines
     }
+    $portfolioCheckOk = $portfolioCheck.exitCode -eq 0
     if ($portfolioCheck.exitCode -ne 0) {
-      throw "Project portfolio check failed (exit=$($portfolioCheck.exitCode))."
+      if (Test-RateLimitSignal -Lines $portfolioCheck.lines) {
+        $rateLimitDetectedThisCycle = $true
+        $lastRateLimitDetectedAt = Get-NowUtcIso
+      }
+      $portfolioFailureMessage = "Project portfolio check failed (exit=$($portfolioCheck.exitCode))."
+      $cycleReport.projectPortfolioCheck.status = 'blocked'
+      if ($SleepMode) {
+        if ($cycleReport.status -eq 'pass') {
+          $cycleReport.status = 'degraded'
+          $cycleReport.outcome = 'portfolio-check-failed'
+          $cycleReport.message = $portfolioFailureMessage
+        }
+        Append-Event -EventsPath $eventsPath -Action 'portfolio-check' -Outcome 'blocked' -Details @{
+          cycle = $cycle
+          message = $portfolioFailureMessage
+        }
+      } else {
+        throw $portfolioFailureMessage
+      }
     }
 
-    if (-not $NoPortfolioApply -and $heartbeat) {
+    if (-not $NoPortfolioApply -and $heartbeat -and $portfolioCheckOk) {
       $issueUrl = Resolve-IssueUrlFromHeartbeat -RepoSlug $Repo -Heartbeat $heartbeat
       if (-not [string]::IsNullOrWhiteSpace($issueUrl)) {
         $issueApply = Invoke-ProjectPortfolioApply -TargetUrl $issueUrl
@@ -376,7 +643,25 @@ while ($true) {
           output = $issueApply.lines
         }
         if ($issueApply.exitCode -ne 0) {
-          throw "Project portfolio apply failed for issue URL $issueUrl (exit=$($issueApply.exitCode))."
+          if (Test-RateLimitSignal -Lines $issueApply.lines) {
+            $rateLimitDetectedThisCycle = $true
+            $lastRateLimitDetectedAt = Get-NowUtcIso
+          }
+          $applyFailureMessage = "Project portfolio apply failed for issue URL $issueUrl (exit=$($issueApply.exitCode))."
+          if ($SleepMode) {
+            if ($cycleReport.status -eq 'pass') {
+              $cycleReport.status = 'degraded'
+              $cycleReport.outcome = 'portfolio-apply-failed'
+              $cycleReport.message = $applyFailureMessage
+            }
+            Append-Event -EventsPath $eventsPath -Action 'portfolio-apply' -Outcome 'blocked' -Details @{
+              cycle = $cycle
+              target = $issueUrl
+              message = $applyFailureMessage
+            }
+          } else {
+            throw $applyFailureMessage
+          }
         }
       }
 
@@ -390,7 +675,25 @@ while ($true) {
           output = $prApply.lines
         }
         if ($prApply.exitCode -ne 0) {
-          throw "Project portfolio apply failed for PR URL $prUrl (exit=$($prApply.exitCode))."
+          if (Test-RateLimitSignal -Lines $prApply.lines) {
+            $rateLimitDetectedThisCycle = $true
+            $lastRateLimitDetectedAt = Get-NowUtcIso
+          }
+          $applyFailureMessage = "Project portfolio apply failed for PR URL $prUrl (exit=$($prApply.exitCode))."
+          if ($SleepMode) {
+            if ($cycleReport.status -eq 'pass') {
+              $cycleReport.status = 'degraded'
+              $cycleReport.outcome = 'portfolio-apply-failed'
+              $cycleReport.message = $applyFailureMessage
+            }
+            Append-Event -EventsPath $eventsPath -Action 'portfolio-apply' -Outcome 'blocked' -Details @{
+              cycle = $cycle
+              target = $prUrl
+              message = $applyFailureMessage
+            }
+          } else {
+            throw $applyFailureMessage
+          }
         }
       }
     }
@@ -413,13 +716,138 @@ while ($true) {
       exitCode = $queueResult.exitCode
       output = $queueResult.lines
       apply = [bool]$QueueApply
+      report = $null
     }
-    if ($queueResult.exitCode -ne 0) {
-      throw "Queue supervisor run failed (exit=$($queueResult.exitCode))."
+    $queueRunOk = $queueResult.exitCode -eq 0
+    if (-not $queueRunOk) {
+      if (Test-RateLimitSignal -Lines $queueResult.lines) {
+        $rateLimitDetectedThisCycle = $true
+        $lastRateLimitDetectedAt = Get-NowUtcIso
+      }
+      $queueFailureMessage = "Queue supervisor run failed (exit=$($queueResult.exitCode))."
+      if ($SleepMode) {
+        if ($cycleReport.status -eq 'pass') {
+          $cycleReport.status = 'degraded'
+          $cycleReport.outcome = 'queue-supervisor-failed'
+          $cycleReport.message = $queueFailureMessage
+        }
+        Append-Event -EventsPath $eventsPath -Action 'queue-supervisor' -Outcome 'blocked' -Details @{
+          cycle = $cycle
+          message = $queueFailureMessage
+        }
+      } else {
+        throw $queueFailureMessage
+      }
+    }
+
+    $queueReport = if ($queueRunOk) { Read-QueueSupervisorReport -RepoRoot $repoRoot } else {
+      [pscustomobject]@{
+        path = (Join-Path $repoRoot 'tests/results/_agent/queue/queue-supervisor-report.json')
+        exists = $false
+        parsed = $null
+      }
+    }
+    $pausedReasons = @()
+    $paused = $false
+    $eligibleCount = $null
+    $plannedCount = $null
+    $enqueuedCount = $null
+    if ($queueReport.parsed) {
+      $paused = [bool]$queueReport.parsed.paused
+      $pausedReasons = @($queueReport.parsed.pausedReasons | ForEach-Object { [string]$_ } | Where-Object { -not [string]::IsNullOrWhiteSpace($_) })
+      $eligibleCount = $queueReport.parsed.summary.eligibleCount
+      $plannedCount = $queueReport.parsed.summary.plannedCount
+      $enqueuedCount = $queueReport.parsed.summary.enqueuedCount
+    }
+    $cycleReport.queueSupervisor.report = [ordered]@{
+      path = $queueReport.path
+      exists = $queueReport.exists
+      parsed = [bool]$queueReport.parsed
+      paused = $paused
+      pausedReasons = $pausedReasons
+      eligibleCount = $eligibleCount
+      plannedCount = $plannedCount
+      enqueuedCount = $enqueuedCount
+    }
+
+    if ($paused) {
+      $queuePausedStreak += 1
+      $lastQueuePauseReasons = $pausedReasons
+    } else {
+      $queuePausedStreak = 0
+      $lastQueuePauseReasons = @()
+      $lastQueueRecovery = $null
+    }
+
+    if ($paused -and $SleepMode -and $DispatchValidateOnQueuePause) {
+      $queuePauseDecision = [ordered]@{
+        generatedAt = Get-NowUtcIso
+        pausedStreak = $queuePausedStreak
+        thresholdCycles = $QueuePauseRecoveryThresholdCycles
+        cooldownMinutes = $QueuePauseRecoveryCooldownMinutes
+        maxAttempts = $QueuePauseRecoveryMaxAttempts
+        attemptsSoFar = $queueRecoveryAttempts
+        pauseReasons = $pausedReasons
+        eligibleCount = $eligibleCount
+        attempted = $false
+        skippedReason = $null
+        recovery = $null
+      }
+
+      $hasRecoverableReason = @($pausedReasons | Where-Object { $recoverableQueuePauseReasons -contains $_ }).Count -gt 0
+      if (-not $hasRecoverableReason) {
+        $queuePauseDecision.skippedReason = 'pause-reason-not-recoverable'
+      } elseif ($OnlyRecoverQueueWhenEligible -and ($null -eq $eligibleCount -or [int]$eligibleCount -le 0)) {
+        $queuePauseDecision.skippedReason = 'no-eligible-prs'
+      } elseif ($queuePausedStreak -lt [Math]::Max(1, $QueuePauseRecoveryThresholdCycles)) {
+        $queuePauseDecision.skippedReason = 'streak-below-threshold'
+      } elseif ($queueRecoveryAttempts -ge [Math]::Max(1, $QueuePauseRecoveryMaxAttempts)) {
+        $queuePauseDecision.skippedReason = 'max-attempts-reached'
+      } elseif (-not (Test-CooldownElapsed -LastAttemptAt $lastQueueRecoveryAttemptAt -CooldownMinutes $QueuePauseRecoveryCooldownMinutes)) {
+        $queuePauseDecision.skippedReason = 'cooldown-active'
+      } else {
+        $queuePauseDecision.attempted = $true
+        $queueRecoveryAttempts += 1
+        $lastQueueRecoveryAttemptAt = Get-NowUtcIso
+        $validateRecovery = Invoke-QueuePauseRecovery -Ref $QueuePauseRecoveryRef -AllowFork:$QueuePauseRecoveryAllowFork
+        $lastQueueRecovery = [ordered]@{
+          generatedAt = Get-NowUtcIso
+          command = $validateRecovery.command
+          exitCode = $validateRecovery.exitCode
+          output = $validateRecovery.lines
+          recoveryRef = $QueuePauseRecoveryRef
+          allowFork = [bool]$QueuePauseRecoveryAllowFork
+          status = if ($validateRecovery.exitCode -eq 0) { 'pass' } else { 'blocked' }
+        }
+        $queuePauseDecision.recovery = $lastQueueRecovery
+        Append-Event -EventsPath $eventsPath `
+          -Action 'sleep-mode-queue-recovery' `
+          -Outcome $lastQueueRecovery.status `
+          -Details @{
+            cycle = $cycle
+            pauseReasons = $pausedReasons
+            pausedStreak = $queuePausedStreak
+            attempts = $queueRecoveryAttempts
+            recoveryRef = $QueuePauseRecoveryRef
+            allowFork = [bool]$QueuePauseRecoveryAllowFork
+          }
+      }
+      $cycleReport.queuePauseRecovery = $queuePauseDecision
+    }
+
+    $queuePauseBlocking = $paused -and ($null -eq $eligibleCount -or [int]$eligibleCount -gt 0)
+    if ($queuePauseBlocking) {
+      $cycleReport.status = 'degraded'
+      $cycleReport.outcome = 'queue-paused'
+      $cycleReport.message = "Queue paused: $($pausedReasons -join ', ')"
     }
 
     $openIssues = Invoke-GhIssueListCount -RepoSlug $Repo
     $cycleReport.openIssues = $openIssues
+    if ($openIssues.status -ne 'ok' -and (Test-RateLimitSignal -Lines $openIssues.output)) {
+      $rateLimitDetectedThisCycle = $true
+      $lastRateLimitDetectedAt = Get-NowUtcIso
+    }
 
     if ($StopWhenNoOpenIssues -and $openIssues.status -eq 'ok' -and $openIssues.count -eq 0) {
       $cycleReport.outcome = 'queue-empty'
@@ -432,24 +860,72 @@ while ($true) {
         repo = $Repo
         openIssueCount = 0
       }
+      $consecutiveCycleFailures = 0
       break
     }
+
+    $consecutiveCycleFailures = 0
+    $lastCycleRecovery = $null
   } catch {
+    if (Test-RateLimitSignal -Lines @([string]$_.Exception.Message)) {
+      $rateLimitDetectedThisCycle = $true
+      $lastRateLimitDetectedAt = Get-NowUtcIso
+    }
+    $consecutiveCycleFailures += 1
     $cycleReport.status = 'blocked'
     $cycleReport.outcome = 'cycle-failed'
     $cycleReport.message = $_.Exception.Message
     Append-Event -EventsPath $eventsPath -Action 'cycle' -Outcome 'blocked' -Details @{
       cycle = $cycle
       message = $_.Exception.Message
+      consecutiveCycleFailures = $consecutiveCycleFailures
+    }
+
+    if ($SleepMode -and ($AutoBootstrapOnFailure -or $AutoPrioritySyncLane -or $AutoDevelopSync)) {
+      $lastCycleRecovery = Invoke-CycleFailureRecovery `
+        -RunBootstrap:$AutoBootstrapOnFailure `
+        -RunPrioritySyncLane:$AutoPrioritySyncLane `
+        -RunDevelopSync:$AutoDevelopSync
+      $cycleReport.cycleRecovery = $lastCycleRecovery
+      Append-Event -EventsPath $eventsPath `
+        -Action 'sleep-mode-cycle-recovery' `
+        -Outcome $lastCycleRecovery.status `
+        -Details @{
+          cycle = $cycle
+          consecutiveCycleFailures = $consecutiveCycleFailures
+          stepCount = $lastCycleRecovery.stepCount
+          blockedSteps = $lastCycleRecovery.blockedSteps
+        }
     }
   }
 
   $cyclePath = Join-Path $cyclesDir ("{0:yyyyMMddTHHmmssfffZ}-cycle-{1:0000}.json" -f (Get-Date).ToUniversalTime(), $cycle)
   Write-JsonFile -Path $cyclePath -Payload $cycleReport
 
+  $maxFailureThresholdReached = $MaxConsecutiveCycleFailures -gt 0 -and $consecutiveCycleFailures -ge $MaxConsecutiveCycleFailures
+  if ($maxFailureThresholdReached) {
+    Append-Event -EventsPath $eventsPath `
+      -Action 'sleep-mode-failure-threshold' `
+      -Outcome 'degraded' `
+      -Details @{
+        cycle = $cycle
+        consecutiveCycleFailures = $consecutiveCycleFailures
+        threshold = $MaxConsecutiveCycleFailures
+      }
+  }
+  if ($rateLimitDetectedThisCycle) {
+    Append-Event -EventsPath $eventsPath `
+      -Action 'sleep-mode-rate-limit' `
+      -Outcome 'degraded' `
+      -Details @{
+        cycle = $cycle
+        message = 'GitHub API rate limit signal detected; extending loop backoff.'
+      }
+  }
+
   $statusPayload = [ordered]@{
     schema = $schemaState
-    generatedAt = (Get-Date).ToUniversalTime().ToString('o')
+    generatedAt = Get-NowUtcIso
     loopStartedAt = $loopStartedAt
     cycle = $cycle
     status = if ($cycleReport.status -eq 'pass') { 'running' } else { 'degraded' }
@@ -460,24 +936,57 @@ while ($true) {
     queueApply = [bool]$QueueApply
     portfolioApplyEnabled = [bool](-not $NoPortfolioApply)
     stopWhenNoOpenIssues = [bool]$StopWhenNoOpenIssues
+    sleepMode = $sleepProfile
+    metrics = [ordered]@{
+      consecutiveCycleFailures = $consecutiveCycleFailures
+      queuePausedStreak = $queuePausedStreak
+      queueRecoveryAttempts = $queueRecoveryAttempts
+      lastQueuePauseReasons = $lastQueuePauseReasons
+      lastQueueRecoveryAttemptAt = $lastQueueRecoveryAttemptAt
+      rateLimitDetected = $rateLimitDetectedThisCycle
+      lastRateLimitDetectedAt = $lastRateLimitDetectedAt
+    }
     artifacts = [ordered]@{
       statePath = $statePath
       statusPath = $statusPath
       eventsPath = $eventsPath
       cyclesDir = $cyclesDir
       stopRequestPath = $stopRequestPath
+      sleepStatePath = $sleepStatePath
       latestCyclePath = $cyclePath
     }
   }
   Write-JsonFile -Path $statePath -Payload $statusPayload
   Write-JsonFile -Path $statusPath -Payload $statusPayload
+  Write-SleepState -Path $sleepStatePath `
+    -LoopStartedAt $loopStartedAt `
+    -Cycle $cycle `
+    -Status $statusPayload.status `
+    -ConsecutiveCycleFailures $consecutiveCycleFailures `
+    -QueuePausedStreak $queuePausedStreak `
+    -LastQueuePauseReasons $lastQueuePauseReasons `
+    -LastQueueRecoveryAttemptAt $lastQueueRecoveryAttemptAt `
+    -LastRateLimitDetectedAt $lastRateLimitDetectedAt `
+    -QueueRecoveryAttempts $queueRecoveryAttempts `
+    -LastQueueRecovery $lastQueueRecovery `
+    -LastCycleRecovery $lastCycleRecovery `
+    -SleepProfile $sleepProfile
 
-  Start-Sleep -Seconds $CycleIntervalSeconds
+  $sleepSeconds = $CycleIntervalSeconds
+  if ($rateLimitDetectedThisCycle) {
+    $sleepSeconds = [Math]::Max($sleepSeconds, 600)
+  }
+  if ($maxFailureThresholdReached) {
+    $sleepSeconds = [Math]::Max($CycleIntervalSeconds, 300)
+  } elseif ($consecutiveCycleFailures -gt 0) {
+    $sleepSeconds = [Math]::Max($CycleIntervalSeconds, [Math]::Min(180, $CycleIntervalSeconds * 2))
+  }
+  Start-Sleep -Seconds $sleepSeconds
 }
 
 $finalState = [ordered]@{
   schema = $schemaState
-  generatedAt = (Get-Date).ToUniversalTime().ToString('o')
+  generatedAt = Get-NowUtcIso
   loopStartedAt = $loopStartedAt
   cycle = $cycle
   status = 'stopped'
@@ -488,13 +997,36 @@ $finalState = [ordered]@{
   queueApply = [bool]$QueueApply
   portfolioApplyEnabled = [bool](-not $NoPortfolioApply)
   stopWhenNoOpenIssues = [bool]$StopWhenNoOpenIssues
+  sleepMode = $sleepProfile
+  metrics = [ordered]@{
+    consecutiveCycleFailures = $consecutiveCycleFailures
+    queuePausedStreak = $queuePausedStreak
+    queueRecoveryAttempts = $queueRecoveryAttempts
+    lastQueuePauseReasons = $lastQueuePauseReasons
+    lastQueueRecoveryAttemptAt = $lastQueueRecoveryAttemptAt
+    lastRateLimitDetectedAt = $lastRateLimitDetectedAt
+  }
   artifacts = [ordered]@{
     statePath = $statePath
     statusPath = $statusPath
     eventsPath = $eventsPath
     cyclesDir = $cyclesDir
     stopRequestPath = $stopRequestPath
+    sleepStatePath = $sleepStatePath
   }
 }
 Write-JsonFile -Path $statePath -Payload $finalState
 Write-JsonFile -Path $statusPath -Payload $finalState
+Write-SleepState -Path $sleepStatePath `
+  -LoopStartedAt $loopStartedAt `
+  -Cycle $cycle `
+  -Status 'stopped' `
+  -ConsecutiveCycleFailures $consecutiveCycleFailures `
+  -QueuePausedStreak $queuePausedStreak `
+  -LastQueuePauseReasons $lastQueuePauseReasons `
+  -LastQueueRecoveryAttemptAt $lastQueueRecoveryAttemptAt `
+  -LastRateLimitDetectedAt $lastRateLimitDetectedAt `
+  -QueueRecoveryAttempts $queueRecoveryAttempts `
+  -LastQueueRecovery $lastQueueRecovery `
+  -LastCycleRecovery $lastCycleRecovery `
+  -SleepProfile $sleepProfile

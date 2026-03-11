@@ -129,7 +129,8 @@ test('runtime-daemon wrapper defaults to the comparevi adapter', async () => {
   assert.equal(heartbeat.activeLane.workerBranch.status, 'attached');
   assert.equal(heartbeat.activeLane.workerBranch.branch, 'issue/origin-977-fork-policy-portability');
   assert.equal(taskPacket.objective.summary, 'Advance issue #977 on issue/origin-977-fork-policy-portability');
-  assert.equal(taskPacket.helperSurface.preferred[0], 'pwsh -NoLogo -NoProfile -File tools/priority/bootstrap.ps1');
+  assert.equal(taskPacket.helperSurface.preferred[0], 'node tools/npm/run-script.mjs priority:github:metadata:apply');
+  assert.ok(!taskPacket.helperSurface.preferred.includes('pwsh -NoLogo -NoProfile -File tools/priority/bootstrap.ps1'));
   assert.ok(execDeps.calls.some((entry) => entry.command === 'pwsh'));
   assert.ok(execDeps.calls.some((entry) => entry.command === 'git' && entry.args[0] === 'checkout'));
   assert.deepEqual(
@@ -223,8 +224,11 @@ test('comparevi worker checkout allocator refreshes and reuses an existing lane 
     repository: 'example/repo',
     laneId: 'personal-995'
   });
+  const worktreeAdminDir = path.join(repoRoot, '.git', 'worktrees', 'personal-995');
   await mkdir(checkoutPath, { recursive: true });
-  await writeFile(path.join(checkoutPath, '.git'), 'gitdir: reused\n', 'utf8');
+  await mkdir(worktreeAdminDir, { recursive: true });
+  await writeFile(path.join(checkoutPath, '.git'), 'gitdir: C:/stale/windows/path\n', 'utf8');
+  await writeFile(path.join(worktreeAdminDir, 'gitdir'), '/mnt/c/stale/linux/path/.git\n', 'utf8');
   const calls = [];
 
   const prepared = await compareviRuntimeTest.prepareCompareviWorkerCheckout({
@@ -260,6 +264,14 @@ test('comparevi worker checkout allocator refreshes and reuses an existing lane 
   assert.equal(prepared.checkoutPath, checkoutPath);
   assert.equal(prepared.ref, 'upstream/develop');
   assert.deepEqual(prepared.fetchedRemotes, ['upstream']);
+  assert.equal(
+    await readFile(path.join(checkoutPath, '.git'), 'utf8'),
+    `gitdir: ${path.join(repoRoot, '.git', 'worktrees', 'personal-995').replace(/\\/g, '/')}\n`
+  );
+  assert.equal(
+    await readFile(path.join(worktreeAdminDir, 'gitdir'), 'utf8'),
+    `${path.join(checkoutPath, '.git').replace(/\\/g, '/')}\n`
+  );
   assert.ok(calls.some((entry) => entry.command === 'git' && entry.args[0] === 'fetch' && entry.args[1] === 'upstream'));
   assert.ok(
     calls.some(

@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 
-import { access, mkdir, readFile } from 'node:fs/promises';
+import { access, mkdir, readFile, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
@@ -35,6 +35,49 @@ async function pathExists(filePath) {
     if (error?.code === 'ENOENT') return false;
     throw error;
   }
+}
+
+function formatGitPointerPath(targetPath) {
+  return path.resolve(targetPath).replace(/\\/g, '/');
+}
+
+async function repairExistingWorktreeGitPointers({ repoRoot, checkoutPath }) {
+  const laneSegment = sanitizeSegment(path.basename(checkoutPath));
+  const worktreeAdminDir = path.join(repoRoot, '.git', 'worktrees', laneSegment);
+  const checkoutGitFile = path.join(checkoutPath, '.git');
+  const adminGitdirFile = path.join(worktreeAdminDir, 'gitdir');
+
+  if (!(await pathExists(checkoutGitFile)) || !(await pathExists(worktreeAdminDir)) || !(await pathExists(adminGitdirFile))) {
+    return {
+      repaired: false,
+      worktreeAdminDir,
+      checkoutGitFile,
+      adminGitdirFile
+    };
+  }
+
+  const expectedCheckoutPointer = `gitdir: ${formatGitPointerPath(worktreeAdminDir)}\n`;
+  const expectedAdminPointer = `${formatGitPointerPath(checkoutGitFile)}\n`;
+  let repaired = false;
+
+  const currentCheckoutPointer = await readFile(checkoutGitFile, 'utf8');
+  if (currentCheckoutPointer !== expectedCheckoutPointer) {
+    await writeFile(checkoutGitFile, expectedCheckoutPointer, 'utf8');
+    repaired = true;
+  }
+
+  const currentAdminPointer = await readFile(adminGitdirFile, 'utf8');
+  if (currentAdminPointer !== expectedAdminPointer) {
+    await writeFile(adminGitdirFile, expectedAdminPointer, 'utf8');
+    repaired = true;
+  }
+
+  return {
+    repaired,
+    worktreeAdminDir,
+    checkoutGitFile,
+    adminGitdirFile
+  };
 }
 
 function formatBootstrapFailure(error) {
@@ -133,6 +176,7 @@ export async function prepareCompareviWorkerCheckout({
   if (await pathExists(gitMarkerPath)) {
     const fetchedRemotes = [];
     try {
+      await repairExistingWorktreeGitPointers({ repoRoot, checkoutPath });
       const availableRemotes = (await tryReadGitStdout(execFileFn, ['remote'], { cwd: checkoutPath }))
         .split(/\r?\n/)
         .map((entry) => normalizeText(entry))
@@ -400,5 +444,7 @@ export async function activateCompareviWorkerLane({
 export const __test = {
   ATTACHABLE_REMOTES,
   BOOTSTRAP_RELATIVE_PATH,
-  DEFAULT_WORKER_REF
+  DEFAULT_WORKER_REF,
+  formatGitPointerPath,
+  repairExistingWorktreeGitPointers
 };
