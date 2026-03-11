@@ -189,6 +189,51 @@ export async function bootstrapCompareviWorkerCheckout({
   }
 
   const execFileFn = deps.execFileFn ?? execFileAsync;
+  const branch = normalizeText(schedulerDecision?.stepOptions?.branch) || normalizeText(schedulerDecision?.activeLane?.branch);
+  if (branch) {
+    const forkRemote = normalizeText(schedulerDecision?.activeLane?.forkRemote) || 'upstream';
+    try {
+      const availableRemotes = (await tryReadGitStdout(execFileFn, ['remote'], { cwd: preparedWorker.checkoutPath }))
+        .split(/\r?\n/)
+        .map((entry) => normalizeText(entry))
+        .filter(Boolean);
+      for (const remote of ATTACHABLE_REMOTES) {
+        if (!availableRemotes.includes(remote)) {
+          continue;
+        }
+        await execFileFn('git', ['fetch', remote, '--prune'], { cwd: preparedWorker.checkoutPath });
+      }
+
+      const currentBranch = await tryReadGitStdout(execFileFn, ['branch', '--show-current'], {
+        cwd: preparedWorker.checkoutPath
+      });
+      if (currentBranch !== branch) {
+        const trackingRef = `${forkRemote}/${branch}`;
+        const trackingExists = await gitRefExists(execFileFn, preparedWorker.checkoutPath, `refs/remotes/${trackingRef}`);
+        const checkoutTarget = trackingExists ? trackingRef : DEFAULT_WORKER_REF;
+        await execFileFn('git', ['checkout', '--force', '-B', branch, checkoutTarget], {
+          cwd: preparedWorker.checkoutPath
+        });
+        if (trackingExists) {
+          await execFileFn('git', ['branch', '--set-upstream-to', trackingRef, branch], {
+            cwd: preparedWorker.checkoutPath
+          });
+        }
+      }
+    } catch (error) {
+      return {
+        laneId: schedulerDecision.activeLane.laneId,
+        checkoutPath: preparedWorker.checkoutPath,
+        status: 'blocked',
+        source: 'comparevi-bootstrap',
+        reason: `failed to activate branch before bootstrap: ${formatExecError(error)}`,
+        bootstrapCommand: [],
+        bootstrapExitCode: Number.isInteger(error?.code) ? error.code : 1,
+        preparedAt: preparedWorker.generatedAt ?? null
+      };
+    }
+  }
+
   const bootstrapPath = path.join(preparedWorker.checkoutPath, BOOTSTRAP_RELATIVE_PATH);
   const bootstrapCommand = ['pwsh', '-NoLogo', '-NoProfile', '-File', bootstrapPath];
 
@@ -269,7 +314,9 @@ export async function activateCompareviWorkerLane({
     const trackingExists = await gitRefExists(execFileFn, checkoutPath, `refs/remotes/${trackingRef}`);
     if (currentBranch !== branch) {
       const checkoutTarget = trackingExists ? trackingRef : DEFAULT_WORKER_REF;
-      await execFileFn('git', ['checkout', '-B', branch, checkoutTarget], { cwd: checkoutPath });
+      // Runtime worktrees are ephemeral execution sandboxes; force checkout so
+      // local bootstrap edits in detached refs cannot block lane activation.
+      await execFileFn('git', ['checkout', '--force', '-B', branch, checkoutTarget], { cwd: checkoutPath });
       if (trackingExists) {
         await execFileFn('git', ['branch', '--set-upstream-to', trackingRef, branch], { cwd: checkoutPath });
       }

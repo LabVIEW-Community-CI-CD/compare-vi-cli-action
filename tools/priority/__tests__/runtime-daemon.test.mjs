@@ -310,6 +310,63 @@ test('comparevi worker bootstrap marks an allocated checkout ready after bootstr
   assert.equal(calls[0].command, 'pwsh');
 });
 
+test('comparevi worker bootstrap activates the lane branch before invoking bootstrap', async () => {
+  const repoRoot = await mkdtemp(path.join(os.tmpdir(), 'runtime-daemon-worker-ready-branch-'));
+  const { checkoutPath } = compareviRuntimeTest.resolveCompareviWorkerCheckoutPath({
+    repoRoot,
+    repository: 'example/repo',
+    laneId: 'origin-997'
+  });
+  await mkdir(path.join(checkoutPath, 'tools', 'priority'), { recursive: true });
+  await writeFile(path.join(checkoutPath, 'tools', 'priority', 'bootstrap.ps1'), '# mocked bootstrap', 'utf8');
+
+  const branchName = 'issue/origin-997-bootstrap-branch-first';
+  const calls = [];
+  const ready = await compareviRuntimeTest.bootstrapCompareviWorkerCheckout({
+    schedulerDecision: {
+      activeLane: {
+        laneId: 'origin-997',
+        forkRemote: 'origin',
+        branch: branchName
+      },
+      stepOptions: {
+        branch: branchName
+      }
+    },
+    preparedWorker: {
+      generatedAt: '2026-03-10T18:00:00.000Z',
+      checkoutPath
+    },
+    deps: {
+      execFileFn: async (command, args, options) => {
+        calls.push({ command, args, options });
+        if (command !== 'git') {
+          return { stdout: '', stderr: '' };
+        }
+        if (args[0] === 'remote') {
+          return { stdout: 'upstream\norigin\n', stderr: '' };
+        }
+        if (args[0] === 'branch' && args[1] === '--show-current') {
+          return { stdout: '', stderr: '' };
+        }
+        return { stdout: '', stderr: '' };
+      }
+    }
+  });
+
+  assert.equal(ready.status, 'ready');
+  assert.ok(
+    calls.some(
+      (entry) =>
+        entry.command === 'git' &&
+        entry.args[0] === 'checkout' &&
+        entry.args.includes('--force') &&
+        entry.args.includes(branchName)
+    )
+  );
+  assert.equal(calls[calls.length - 1].command, 'pwsh');
+});
+
 test('comparevi worker bootstrap includes stderr in blocked bootstrap diagnostics', async () => {
   const repoRoot = await mkdtemp(path.join(os.tmpdir(), 'runtime-daemon-worker-ready-stderr-'));
   const { checkoutPath } = compareviRuntimeTest.resolveCompareviWorkerCheckoutPath({
@@ -396,7 +453,7 @@ test('comparevi worker activation attaches a ready checkout onto the determinist
   assert.equal(attached.branch, 'issue/personal-998-runtime-worker-branch-activation');
   assert.equal(attached.trackingRef, 'personal/issue/personal-998-runtime-worker-branch-activation');
   assert.deepEqual(attached.fetchedRemotes, ['upstream', 'origin', 'personal']);
-  assert.ok(calls.some((entry) => entry.command === 'git' && entry.args[0] === 'checkout'));
+  assert.ok(calls.some((entry) => entry.command === 'git' && entry.args[0] === 'checkout' && entry.args.includes('--force')));
 });
 
 test('comparevi worker activation blocks when the scheduler does not resolve a branch name', async () => {
