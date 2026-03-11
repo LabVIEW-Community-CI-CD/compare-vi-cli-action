@@ -484,10 +484,11 @@ exit 0
 "@
       Set-Content -LiteralPath (Join-Path $binDir 'docker.cmd') -Value $stubCmd -Encoding ascii
 
-      $stubSh = @"
+      $stubSh = @'
 #!/usr/bin/env bash
-exec "$pwshPath" -NoLogo -NoProfile -File "\$(dirname "\$0")/docker.ps1" "\$@"
-"@
+script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+exec "__PWSH__" -NoLogo -NoProfile -File "${script_dir}/docker.ps1" "$@"
+'@.Replace('__PWSH__', $pwshPath)
       $stubShPath = Join-Path $binDir 'docker'
       Set-Content -LiteralPath $stubShPath -Value $stubSh -Encoding utf8
       if (-not $IsWindows) {
