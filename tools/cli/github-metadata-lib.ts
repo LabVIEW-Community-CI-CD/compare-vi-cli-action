@@ -444,6 +444,10 @@ function reviewerKeyForNode(node: z.infer<typeof reviewerRequestedSchema>): Revi
     };
   }
 
+  if (reviewer.__typename !== 'Team') {
+    return null;
+  }
+
   if (!reviewer.slug || !reviewer.organization?.login) {
     return null;
   }
