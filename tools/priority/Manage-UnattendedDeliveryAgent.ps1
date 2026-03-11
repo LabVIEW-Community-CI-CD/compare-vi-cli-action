@@ -101,6 +101,40 @@ function Write-JsonFile {
   $Payload | ConvertTo-Json -Depth 20 | Set-Content -LiteralPath $Path -Encoding utf8
 }
 
+function Add-JsonLine {
+  param(
+    [Parameter(Mandatory)][string]$Path,
+    [Parameter(Mandatory)][object]$Payload
+  )
+
+  $directory = Split-Path -Parent $Path
+  if ($directory) {
+    New-Item -ItemType Directory -Path $directory -Force | Out-Null
+  }
+  Add-Content -LiteralPath $Path -Value (($Payload | ConvertTo-Json -Depth 20 -Compress) + [Environment]::NewLine) -Encoding utf8
+}
+
+function Read-LogTail {
+  param(
+    [Parameter(Mandatory)][string]$Path,
+    [int]$TailLines = 40
+  )
+
+  if (-not (Test-Path -LiteralPath $Path -PathType Leaf)) {
+    return ,([string[]]@())
+  }
+
+  try {
+    $lines = Get-Content -LiteralPath $Path -Tail $TailLines -ErrorAction Stop
+    if ($null -eq $lines) {
+      return ,([string[]]@())
+    }
+    return ,([string[]]@($lines | ForEach-Object { [string]$_ }))
+  } catch {
+    return ,([string[]]@())
+  }
+}
+
 function Get-ArtifactPaths {
   param([Parameter(Mandatory)][string]$RepoRoot)
 
@@ -118,7 +152,9 @@ function Get-ArtifactPaths {
     HostSignalPath = Join-Path $runtimeDirPath 'daemon-host-signal.json'
     HostIsolationPath = Join-Path $runtimeDirPath 'delivery-agent-host-isolation.json'
     HostTracePath = Join-Path $runtimeDirPath 'delivery-agent-host-trace.ndjson'
+    ManagerTracePath = Join-Path $runtimeDirPath 'delivery-agent-manager-trace.ndjson'
     WslNativeDockerPath = Join-Path $runtimeDirPath 'wsl-native-docker.json'
+    DaemonLogPath = Join-Path $runtimeDirPath 'runtime-daemon-wsl.log'
     RunnerLogPath = Join-Path $runtimeDirPath 'delivery-agent-manager.log'
     RunnerErrorPath = Join-Path $runtimeDirPath 'delivery-agent-manager.stderr.log'
   }
@@ -218,34 +254,146 @@ function Get-OptionalDateTimeProperty {
   }
 }
 
+function Write-ManagerTrace {
+  param(
+    [Parameter(Mandatory)][object]$Paths,
+    [Parameter(Mandatory)][string]$EventType,
+    [AllowNull()][hashtable]$Detail = $null
+  )
+
+  $payload = [ordered]@{
+    schema = 'priority/unattended-delivery-agent-trace@v1'
+    generatedAt = [DateTime]::UtcNow.ToString('o')
+    repo = $Repo
+    runtimeDir = $RuntimeDir
+    distro = $WslDistro
+    eventType = $EventType
+  }
+  if ($Detail) {
+    foreach ($entry in $Detail.GetEnumerator()) {
+      $payload[$entry.Key] = $entry.Value
+    }
+  }
+  Add-JsonLine -Path $Paths.ManagerTracePath -Payload $payload
+}
+
+function Write-LogTailTrace {
+  param(
+    [Parameter(Mandatory)][object]$Paths,
+    [Parameter(Mandatory)][string]$Source,
+    [Parameter(Mandatory)][string]$Reason,
+    [Parameter(Mandatory)][string]$LogPath,
+    [AllowNull()][string[]]$Lines = $null
+  )
+
+  $tailLines = if ($null -eq $Lines) {
+    Read-LogTail -Path $LogPath
+  } else {
+    ,([string[]]@($Lines | ForEach-Object { [string]$_ }))
+  }
+
+  if ($tailLines.Count -le 0) {
+    return
+  }
+
+  Write-ManagerTrace -Paths $Paths -EventType 'log-tail' -Detail @{
+    source = $Source
+    reason = $Reason
+    logPath = $LogPath
+    lineCount = $tailLines.Count
+    lines = $tailLines
+  }
+}
+
 function Resolve-DeliveryStateForStatus {
   param(
     [AllowNull()][object]$DeliveryState,
     [AllowNull()][object]$Heartbeat,
-    [Parameter(Mandatory)][object]$Paths
+    [Parameter(Mandatory)][object]$Paths,
+    [Nullable[DateTime]]$ManagerStartedAt = $null,
+    [Nullable[DateTime]]$DaemonStartedAt = $null,
+    [bool]$DaemonAlive = $false,
+    [int]$HeartbeatFreshnessSeconds = 300
   )
 
+  $deliveryGeneratedAt = Get-OptionalDateTimeProperty -InputObject $DeliveryState -Name 'generatedAt'
+  $heartbeatGeneratedAt = Get-OptionalDateTimeProperty -InputObject $Heartbeat -Name 'generatedAt'
+  $diagnostics = [ordered]@{
+    usedHeartbeat = $false
+    reason = 'delivery-state-missing'
+    heartbeatGeneratedAt = if ($heartbeatGeneratedAt) { $heartbeatGeneratedAt.ToString('o') } else { $null }
+    deliveryGeneratedAt = if ($deliveryGeneratedAt) { $deliveryGeneratedAt.ToString('o') } else { $null }
+    managerStartedAt = if ($ManagerStartedAt) { $ManagerStartedAt.ToString('o') } else { $null }
+    daemonStartedAt = if ($DaemonStartedAt) { $DaemonStartedAt.ToString('o') } else { $null }
+    daemonAlive = [bool]$DaemonAlive
+    heartbeatFreshnessSeconds = [int]$HeartbeatFreshnessSeconds
+    heartbeatRepository = Get-OptionalStringProperty -InputObject $Heartbeat -Name 'repository'
+  }
+
   if ($null -eq $Heartbeat -or $null -eq $Heartbeat.activeLane) {
-    return $DeliveryState
+    if ($null -ne $DeliveryState) {
+      $diagnostics.reason = 'delivery-state-current'
+    }
+    return [ordered]@{
+      state = $DeliveryState
+      diagnostics = $diagnostics
+    }
   }
 
   $heartbeatLane = $Heartbeat.activeLane
   $heartbeatIssue = Get-OptionalIntProperty -InputObject $heartbeatLane -Name 'issue'
   if ($heartbeatIssue -le 0) {
-    return $DeliveryState
+    $diagnostics.reason = 'heartbeat-missing-issue'
+    return [ordered]@{
+      state = $DeliveryState
+      diagnostics = $diagnostics
+    }
   }
 
-  $deliveryGeneratedAt = Get-OptionalDateTimeProperty -InputObject $DeliveryState -Name 'generatedAt'
-  $heartbeatGeneratedAt = Get-OptionalDateTimeProperty -InputObject $Heartbeat -Name 'generatedAt'
   $deliveryIssue = 0
   if ($DeliveryState -and $DeliveryState.PSObject.Properties['activeLane']) {
     $deliveryIssue = Get-OptionalIntProperty -InputObject $DeliveryState.activeLane -Name 'issue'
   }
 
+  $heartbeatRepo = Get-OptionalStringProperty -InputObject $Heartbeat -Name 'repository'
+  if (-not [string]::IsNullOrWhiteSpace($heartbeatRepo) -and $heartbeatRepo -ne $Repo) {
+    $diagnostics.reason = 'heartbeat-repository-mismatch'
+    return [ordered]@{
+      state = $DeliveryState
+      diagnostics = $diagnostics
+    }
+  }
+
+  $nowUtc = (Get-Date).ToUniversalTime()
+  $heartbeatTooOld = $false
+  if ($heartbeatGeneratedAt -and $HeartbeatFreshnessSeconds -gt 0) {
+    $heartbeatTooOld = (($nowUtc - $heartbeatGeneratedAt.ToUniversalTime()).TotalSeconds -gt $HeartbeatFreshnessSeconds)
+  }
+  $beforeCurrentManager = $ManagerStartedAt -and $heartbeatGeneratedAt -and ($heartbeatGeneratedAt.ToUniversalTime() -lt $ManagerStartedAt.ToUniversalTime())
+  $beforeCurrentDaemon = $DaemonStartedAt -and $heartbeatGeneratedAt -and ($heartbeatGeneratedAt.ToUniversalTime() -lt $DaemonStartedAt.ToUniversalTime())
+  if (-not $DaemonAlive -and ($beforeCurrentManager -or $beforeCurrentDaemon)) {
+    $diagnostics.reason = 'stale-before-current-manager'
+    return [ordered]@{
+      state = $DeliveryState
+      diagnostics = $diagnostics
+    }
+  }
+  if (-not $DaemonAlive -and $heartbeatTooOld) {
+    $diagnostics.reason = 'stale-heartbeat-daemon-dead'
+    return [ordered]@{
+      state = $DeliveryState
+      diagnostics = $diagnostics
+    }
+  }
+
   $heartbeatNewer = $heartbeatGeneratedAt -and ((-not $deliveryGeneratedAt) -or ($heartbeatGeneratedAt -gt $deliveryGeneratedAt))
   $issueDrift = $deliveryIssue -ne $heartbeatIssue
   if (-not $heartbeatNewer -and -not $issueDrift) {
-    return $DeliveryState
+    $diagnostics.reason = 'delivery-state-current'
+    return [ordered]@{
+      state = $DeliveryState
+      diagnostics = $diagnostics
+    }
   }
 
   $laneId = Get-OptionalStringProperty -InputObject $heartbeatLane -Name 'laneId'
@@ -272,7 +420,11 @@ function Resolve-DeliveryStateForStatus {
     $null
   }
 
+  $diagnostics.usedHeartbeat = $true
+  $diagnostics.reason = 'fresh-heartbeat'
+
   return [ordered]@{
+    state = [ordered]@{
     schema = 'priority/delivery-agent-runtime-state@v1'
     generatedAt = if ($heartbeatGeneratedAt) { $heartbeatGeneratedAt.ToString('o') } else { [DateTime]::UtcNow.ToString('o') }
     repository = $Repo
@@ -302,6 +454,8 @@ function Resolve-DeliveryStateForStatus {
       statePath = $Paths.DeliveryStatePath
       lanePath = $lanePath
     }
+    }
+    diagnostics = $diagnostics
   }
 }
 
@@ -364,16 +518,32 @@ function Emit-Status {
 
   $pidState = Read-JsonFile -Path $Paths.ManagerPidPath
   $managerAlive = Test-ProcessAlive -ProcessId (Get-OptionalIntProperty -InputObject $pidState -Name 'pid')
+  $managerStartedAt = Get-OptionalDateTimeProperty -InputObject $pidState -Name 'startedAt'
   $daemonState = Read-JsonFile -Path $Paths.WslDaemonPidPath
   $daemonAlive = Test-WslProcessAlive -Distro $WslDistro -ProcessId (Get-OptionalIntProperty -InputObject $daemonState -Name 'pid')
+  $daemonStartedAt = Get-OptionalDateTimeProperty -InputObject $daemonState -Name 'startedAt'
   $heartbeat = Read-JsonFile -Path $Paths.ObserverHeartbeatPath
-  $deliveryState = Resolve-DeliveryStateForStatus -DeliveryState (Read-JsonFile -Path $Paths.DeliveryStatePath) -Heartbeat $heartbeat -Paths $Paths
+  $resolvedDelivery = Resolve-DeliveryStateForStatus `
+    -DeliveryState (Read-JsonFile -Path $Paths.DeliveryStatePath) `
+    -Heartbeat $heartbeat `
+    -Paths $Paths `
+    -ManagerStartedAt $managerStartedAt `
+    -DaemonStartedAt $daemonStartedAt `
+    -DaemonAlive:$daemonAlive
+  $deliveryState = $resolvedDelivery.state
   $deliveryMemory = Read-JsonFile -Path $Paths.DeliveryMemoryPath
   $codexStateHygiene = Read-JsonFile -Path $Paths.CodexStateHygienePath
   $hostSignal = Read-JsonFile -Path $Paths.HostSignalPath
   $hostIsolation = Read-JsonFile -Path $Paths.HostIsolationPath
   $wslNativeDocker = Read-JsonFile -Path $Paths.WslNativeDockerPath
+  $daemonLogTail = Read-LogTail -Path $Paths.DaemonLogPath
+  $managerLogTail = Read-LogTail -Path $Paths.RunnerLogPath
+  $managerErrorLogTail = Read-LogTail -Path $Paths.RunnerErrorPath
   $status = if ($managerAlive -or $daemonAlive) { 'running' } else { 'stopped' }
+
+  Write-LogTailTrace -Paths $Paths -Source 'daemon' -Reason ("status:{0}" -f $Outcome) -LogPath $Paths.DaemonLogPath -Lines $daemonLogTail
+  Write-LogTailTrace -Paths $Paths -Source 'manager-stdout' -Reason ("status:{0}" -f $Outcome) -LogPath $Paths.RunnerLogPath -Lines $managerLogTail
+  Write-LogTailTrace -Paths $Paths -Source 'manager-stderr' -Reason ("status:{0}" -f $Outcome) -LogPath $Paths.RunnerErrorPath -Lines $managerErrorLogTail
 
   $report = [ordered]@{
     schema = 'priority/unattended-delivery-agent-report@v1'
@@ -397,11 +567,17 @@ function Emit-Status {
     }
     heartbeat = $heartbeat
     delivery = $deliveryState
+    heartbeatDiagnostics = $resolvedDelivery.diagnostics
     deliveryMemory = $deliveryMemory
     codexStateHygiene = $codexStateHygiene
     hostSignal = $hostSignal
     hostIsolation = $hostIsolation
     wslNativeDocker = $wslNativeDocker
+    logTail = [ordered]@{
+      daemon = $daemonLogTail
+      managerStdout = $managerLogTail
+      managerStderr = $managerErrorLogTail
+    }
     paths = [ordered]@{
       managerStatePath = $Paths.ManagerStatePath
       managerPidPath = $Paths.ManagerPidPath
@@ -414,13 +590,26 @@ function Emit-Status {
       hostSignalPath = $Paths.HostSignalPath
       hostIsolationPath = $Paths.HostIsolationPath
       hostTracePath = $Paths.HostTracePath
+      managerTracePath = $Paths.ManagerTracePath
       wslNativeDockerPath = $Paths.WslNativeDockerPath
+      daemonLogPath = $Paths.DaemonLogPath
       runnerLogPath = $Paths.RunnerLogPath
       runnerErrorPath = $Paths.RunnerErrorPath
     }
   }
 
   Write-JsonFile -Path $Paths.ManagerStatePath -Payload $report
+  Write-ManagerTrace -Paths $Paths -EventType 'status' -Detail @{
+    outcome = $Outcome
+    managerAlive = $managerAlive
+    daemonAlive = $daemonAlive
+    heartbeatReason = $resolvedDelivery.diagnostics.reason
+    heartbeatUsed = [bool]$resolvedDelivery.diagnostics.usedHeartbeat
+    heartbeatGeneratedAt = $resolvedDelivery.diagnostics.heartbeatGeneratedAt
+    daemonLogLineCount = $daemonLogTail.Count
+    managerStdoutLineCount = $managerLogTail.Count
+    managerStderrLineCount = $managerErrorLogTail.Count
+  }
   $report | ConvertTo-Json -Depth 20
 }
 

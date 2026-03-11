@@ -132,6 +132,99 @@ function Write-JsonFile {
   $Payload | ConvertTo-Json -Depth 20 | Set-Content -LiteralPath $Path -Encoding utf8
 }
 
+function Add-JsonLine {
+  param(
+    [Parameter(Mandatory)][string]$Path,
+    [Parameter(Mandatory)][object]$Payload
+  )
+
+  $directory = Split-Path -Parent $Path
+  if ($directory) {
+    New-Item -ItemType Directory -Path $directory -Force | Out-Null
+  }
+  Add-Content -LiteralPath $Path -Value (($Payload | ConvertTo-Json -Depth 20 -Compress) + [Environment]::NewLine) -Encoding utf8
+}
+
+function Read-LogTail {
+  param(
+    [Parameter(Mandatory)][string]$Path,
+    [int]$TailLines = 40
+  )
+
+  if (-not (Test-Path -LiteralPath $Path -PathType Leaf)) {
+    return ,([string[]]@())
+  }
+
+  try {
+    $lines = Get-Content -LiteralPath $Path -Tail $TailLines -ErrorAction Stop
+    if ($null -eq $lines) {
+      return ,([string[]]@())
+    }
+    return ,([string[]]@($lines | ForEach-Object { [string]$_ }))
+  } catch {
+    return ,([string[]]@())
+  }
+}
+
+function Write-ManagerTrace {
+  param(
+    [Parameter(Mandatory)][string]$Path,
+    [Parameter(Mandatory)][string]$EventType,
+    [AllowNull()][hashtable]$Detail = $null
+  )
+
+  $payload = [ordered]@{
+    schema = 'priority/unattended-delivery-agent-trace@v1'
+    generatedAt = [DateTime]::UtcNow.ToString('o')
+    repo = $Repo
+    runtimeDir = $RuntimeDir
+    distro = $WslDistro
+    eventType = $EventType
+  }
+  if ($Detail) {
+    foreach ($entry in $Detail.GetEnumerator()) {
+      $payload[$entry.Key] = $entry.Value
+    }
+  }
+  Add-JsonLine -Path $Path -Payload $payload
+}
+
+function Write-LogTailTrace {
+  param(
+    [Parameter(Mandatory)][string]$TracePath,
+    [Parameter(Mandatory)][string]$Source,
+    [Parameter(Mandatory)][string]$Reason,
+    [Parameter(Mandatory)][string]$LogPath,
+    [AllowNull()][string[]]$Lines = $null,
+    [AllowNull()][hashtable]$Detail = $null
+  )
+
+  $tailLines = if ($null -eq $Lines) {
+    Read-LogTail -Path $LogPath
+  } else {
+    ,([string[]]@($Lines | ForEach-Object { [string]$_ }))
+  }
+
+  if ($tailLines.Count -le 0) {
+    return
+  }
+
+  $payload = @{
+    source = $Source
+    reason = $Reason
+    logPath = $LogPath
+    lineCount = $tailLines.Count
+    lines = $tailLines
+  }
+  if ($Detail) {
+    foreach ($entry in $Detail.GetEnumerator()) {
+      $payload[$entry.Key] = $entry.Value
+    }
+  }
+
+  Write-ManagerTrace -Path $TracePath -EventType 'log-tail' -Detail $payload
+}
+
 function Test-WslProcessAlive {
   param(
     [Parameter(Mandatory)][string]$Distro,
@@ -161,6 +254,16 @@ function Get-OptionalIntProperty {
   return [int]$InputObject.$Name
 }
 
+function Get-WslRuntimeDaemonUnitName {
+  param([Parameter(Mandatory)][string]$Repo)
+
+  $sanitized = ($Repo.ToLowerInvariant() -replace '[^a-z0-9]+', '-').Trim('-')
+  if ($sanitized.Length -gt 48) {
+    $sanitized = $sanitized.Substring($sanitized.Length - 48)
+  }
+  return "comparevi-$sanitized-daemon"
+}
+
 function Start-WslRuntimeDaemon {
   param(
     [Parameter(Mandatory)][string]$RepoRootWsl,
@@ -171,6 +274,7 @@ function Start-WslRuntimeDaemon {
     [Parameter(Mandatory)][string]$Repo,
     [Parameter(Mandatory)][int]$DaemonPollIntervalSeconds,
     [Parameter(Mandatory)][string]$LeaseOwner,
+    [Parameter(Mandatory)][string]$UnitName,
     [switch]$StopOnIdle
   )
 
@@ -204,13 +308,13 @@ function Start-WslRuntimeDaemon {
     "export COMPAREVI_DOCKER_RUNTIME_PROVIDER='native-wsl'",
     "export COMPAREVI_DOCKER_EXPECTED_CONTEXT=''",
     "cd '$RepoRootWsl'",
-    "nohup $($quotedArgs -join ' ') > '$LogPathWsl' 2>&1 < /dev/null &",
-    'echo $!'
+    "exec $($quotedArgs -join ' ') >> '$LogPathWsl' 2>&1"
   ) -join "`n"
   $launchScript | Set-Content -LiteralPath $LaunchScriptPath -Encoding utf8
   $launchScriptPathWsl = Convert-ToWslPath -Path $LaunchScriptPath
 
-  $daemonPid = & wsl.exe -d $Distro -- bash $launchScriptPathWsl
+  & wsl.exe -d $Distro -- bash -lc "systemctl --user reset-failed '$UnitName.service' >/dev/null 2>&1 || true"
+  $daemonPid = & wsl.exe -d $Distro -- bash -lc "systemd-run --user --unit '$UnitName' --collect --quiet bash '$launchScriptPathWsl' >/dev/null && systemctl --user show '$UnitName.service' -p MainPID --value"
   if ($LASTEXITCODE -ne 0) {
     throw "Failed to start WSL runtime daemon in distro '$Distro'."
   }
@@ -220,8 +324,13 @@ function Start-WslRuntimeDaemon {
 function Stop-WslRuntimeDaemon {
   param(
     [Parameter(Mandatory)][string]$Distro,
+    [string]$UnitName,
     [int]$ProcessId
   )
+
+  if (-not [string]::IsNullOrWhiteSpace($UnitName)) {
+    & wsl.exe -d $Distro -- bash -lc "systemctl --user stop '$UnitName.service' >/dev/null 2>&1 || true"
+  }
 
   if ($ProcessId -le 0) {
     return
@@ -394,6 +503,44 @@ function Invoke-DeliveryHostSignal {
   return (($output -join [Environment]::NewLine) | ConvertFrom-Json -Depth 20 -ErrorAction Stop)
 }
 
+function Invoke-EnsureWslDeliveryPrereqs {
+  param(
+    [Parameter(Mandatory)][string]$EnsureScriptPath,
+    [Parameter(Mandatory)][string]$Distro
+  )
+
+  try {
+    $ensureOutput = & pwsh -NoLogo -NoProfile -File $EnsureScriptPath -Distro $Distro
+    if ($LASTEXITCODE -ne 0) {
+      throw "Ensure-WSLDeliveryPrereqs failed for distro '$Distro'."
+    }
+    $ensureResult = (($ensureOutput -join [Environment]::NewLine) | ConvertFrom-Json -Depth 20 -ErrorAction Stop)
+    $ensureStatus = if (
+      $ensureResult.PSObject.Properties['hostSignal'] -and
+      $ensureResult.hostSignal -and
+      $ensureResult.hostSignal.PSObject.Properties['status'] -and
+      -not [string]::IsNullOrWhiteSpace([string]$ensureResult.hostSignal.status)
+    ) {
+      [string]$ensureResult.hostSignal.status
+    } else {
+      'ok'
+    }
+    return [ordered]@{
+      ok = $true
+      status = $ensureStatus
+      result = $ensureResult
+      error = $null
+    }
+  } catch {
+    return [ordered]@{
+      ok = $false
+      status = 'error'
+      result = $null
+      error = $_.Exception.Message
+    }
+  }
+}
+
 function Update-HostIsolationState {
   param(
     [Parameter(Mandatory)][string]$Path,
@@ -455,21 +602,33 @@ $deliveryMemoryPath = Join-Path $runtimeDirPath 'delivery-memory.json'
 $hostSignalPath = Join-Path $runtimeDirPath 'daemon-host-signal.json'
 $hostIsolationPath = Join-Path $runtimeDirPath 'delivery-agent-host-isolation.json'
 $hostTracePath = Join-Path $runtimeDirPath 'delivery-agent-host-trace.ndjson'
+$managerTracePath = Join-Path $runtimeDirPath 'delivery-agent-manager-trace.ndjson'
 $wslNativeDockerPath = Join-Path $runtimeDirPath 'wsl-native-docker.json'
 $daemonLogPath = Join-Path $runtimeDirPath 'runtime-daemon-wsl.log'
 $launchScriptPath = Join-Path $runtimeDirPath 'start-runtime-daemon.sh'
 $repoRootWsl = Convert-ToWslPath -Path $repoRoot
 $daemonLogPathWsl = Convert-ToWslPath -Path $daemonLogPath
 $leaseOwner = Get-StableLeaseOwner -RepoRoot $repoRoot
+$daemonUnitName = Get-WslRuntimeDaemonUnitName -Repo $Repo
 
 New-Item -ItemType Directory -Path $runtimeDirPath -Force | Out-Null
 
 $ensureScript = Join-Path $PSScriptRoot 'Ensure-WSLDeliveryPrereqs.ps1'
-$ensureOutput = & pwsh -NoLogo -NoProfile -File $ensureScript -Distro $WslDistro
-if ($LASTEXITCODE -ne 0) {
-  throw "Ensure-WSLDeliveryPrereqs failed for distro '$WslDistro'."
+$ensureAttempt = Invoke-EnsureWslDeliveryPrereqs -EnsureScriptPath $ensureScript -Distro $WslDistro
+$ensureResult = $ensureAttempt.result
+if ($ensureAttempt.ok) {
+  Write-ManagerTrace -Path $managerTracePath -EventType 'manager-started' -Detail @{
+    ensureStatus = $ensureAttempt.status
+    repoRootWsl = $repoRootWsl
+    leaseOwner = $leaseOwner
+  }
+} else {
+  Write-ManagerTrace -Path $managerTracePath -EventType 'wsl-prereqs-failed' -Detail @{
+    repoRootWsl = $repoRootWsl
+    leaseOwner = $leaseOwner
+    message = $ensureAttempt.error
+  }
 }
-$ensureResult = (($ensureOutput -join [Environment]::NewLine) | ConvertFrom-Json -Depth 20 -ErrorAction Stop)
 
 $cycle = 0
 $activeDaemonPid = [int]0
@@ -492,6 +651,11 @@ try {
     $pidState = Read-JsonFile -Path $wslPidPath
     $activeDaemonPid = Get-OptionalIntProperty -InputObject $pidState -Name 'pid'
     $daemonAlive = Test-WslProcessAlive -Distro $WslDistro -ProcessId $activeDaemonPid
+    Write-ManagerTrace -Path $managerTracePath -EventType 'cycle-start' -Detail @{
+      cycle = $cycle
+      daemonPid = $activeDaemonPid
+      daemonAlive = $daemonAlive
+    }
     $previousFingerprint = if ($hostSignal -and $hostSignal.PSObject.Properties['daemonFingerprint']) {
       [string]$hostSignal.daemonFingerprint
     } else {
@@ -508,10 +672,17 @@ try {
     $hostSignal = $hostSignalResult.report
     $hostIsolation = $hostSignalResult.isolation
     $wslNativeDocker = Read-JsonFile -Path $wslNativeDockerPath
+    Write-ManagerTrace -Path $managerTracePath -EventType 'host-signal' -Detail @{
+      cycle = $cycle
+      status = $hostSignal.status
+      provider = $hostSignal.provider
+      daemonFingerprint = $hostSignal.daemonFingerprint
+      fingerprintChanged = [bool]$hostSignal.fingerprintChanged
+    }
 
     if ($hostSignal.status -eq 'runner-conflict') {
       if ($daemonAlive) {
-        Stop-WslRuntimeDaemon -Distro $WslDistro -ProcessId $activeDaemonPid
+        Stop-WslRuntimeDaemon -Distro $WslDistro -UnitName $daemonUnitName -ProcessId $activeDaemonPid
         $daemonAlive = $false
       }
       $hostSignalResult = Invoke-DeliveryHostSignal `
@@ -523,12 +694,17 @@ try {
         -PreviousFingerprint $hostSignal.daemonFingerprint
       $hostSignal = $hostSignalResult.report
       $hostIsolation = $hostSignalResult.isolation
+      Write-ManagerTrace -Path $managerTracePath -EventType 'runner-conflict-isolated' -Detail @{
+        cycle = $cycle
+        status = $hostSignal.status
+        daemonPid = $activeDaemonPid
+      }
     }
 
     $blockedByHostConflict = $false
     if ($hostSignal.status -ne 'native-wsl') {
       if ($daemonAlive) {
-        Stop-WslRuntimeDaemon -Distro $WslDistro -ProcessId $activeDaemonPid
+        Stop-WslRuntimeDaemon -Distro $WslDistro -UnitName $daemonUnitName -ProcessId $activeDaemonPid
         $daemonAlive = $false
       }
       Remove-Item -LiteralPath $wslPidPath -Force -ErrorAction SilentlyContinue
@@ -542,15 +718,19 @@ try {
         -Increment 1 `
         -LastEventType 'host-runtime-conflict' `
         -LastEventDetail ("status={0}" -f $hostSignal.status) `
-        -HostSignal $hostSignal
+          -HostSignal $hostSignal
+      Write-ManagerTrace -Path $managerTracePath -EventType 'host-runtime-conflict' -Detail @{
+        cycle = $cycle
+        status = $hostSignal.status
+      }
 
       $repairError = $null
       try {
-        $ensureOutput = & pwsh -NoLogo -NoProfile -File $ensureScript -Distro $WslDistro
-        if ($LASTEXITCODE -ne 0) {
-          throw "Ensure-WSLDeliveryPrereqs failed for distro '$WslDistro'."
+        $ensureAttempt = Invoke-EnsureWslDeliveryPrereqs -EnsureScriptPath $ensureScript -Distro $WslDistro
+        if (-not $ensureAttempt.ok) {
+          throw $ensureAttempt.error
         }
-        $ensureResult = (($ensureOutput -join [Environment]::NewLine) | ConvertFrom-Json -Depth 20 -ErrorAction Stop)
+        $ensureResult = $ensureAttempt.result
         $hostSignal = Read-JsonFile -Path $hostSignalPath
         $hostIsolation = Update-HostIsolationState `
           -Path $hostIsolationPath `
@@ -564,6 +744,10 @@ try {
           -LastEventDetail ("status={0}" -f $hostSignal.status) `
           -HostSignal $hostSignal
         $wslNativeDocker = Read-JsonFile -Path $wslNativeDockerPath
+        Write-ManagerTrace -Path $managerTracePath -EventType 'native-daemon-repaired' -Detail @{
+          cycle = $cycle
+          status = $hostSignal.status
+        }
       } catch {
         $repairError = $_.Exception.Message
         $hostIsolation = Update-HostIsolationState `
@@ -575,6 +759,10 @@ try {
           -LastEventType 'native-daemon-repair-failed' `
           -LastEventDetail $repairError `
           -HostSignal $hostSignal
+        Write-ManagerTrace -Path $managerTracePath -EventType 'native-daemon-repair-failed' -Detail @{
+          cycle = $cycle
+          message = $repairError
+        }
       }
 
       if (-not $repairError) {
@@ -607,12 +795,14 @@ try {
         -Repo $Repo `
         -DaemonPollIntervalSeconds $DaemonPollIntervalSeconds `
         -LeaseOwner $leaseOwner `
+        -UnitName $daemonUnitName `
         -StopOnIdle:($StopWhenNoOpenIssues -or $SleepMode)
 
       Write-JsonFile -Path $wslPidPath -Payload ([ordered]@{
           schema = 'priority/unattended-delivery-agent-wsl-daemon-pid@v1'
           startedAt = [DateTime]::UtcNow.ToString('o')
           pid = $activeDaemonPid
+          unit = "$daemonUnitName.service"
           repo = $Repo
           distro = $WslDistro
           command = @(
@@ -629,6 +819,11 @@ try {
         })
       Start-Sleep -Seconds 3
       $daemonAlive = Test-WslProcessAlive -Distro $WslDistro -ProcessId $activeDaemonPid
+      Write-ManagerTrace -Path $managerTracePath -EventType 'daemon-started' -Detail @{
+        cycle = $cycle
+        daemonPid = $activeDaemonPid
+        daemonAlive = $daemonAlive
+      }
     }
 
     if ($CodexHygieneIntervalCycles -gt 0 -and (($cycle -eq 1) -or (($cycle % $CodexHygieneIntervalCycles) -eq 0))) {
@@ -639,6 +834,24 @@ try {
 
     $heartbeat = Read-JsonFile -Path $observerHeartbeatPath
     $report = Read-JsonFile -Path $observerReportPath
+    $heartbeatGeneratedAt = if ($heartbeat -and $heartbeat.PSObject.Properties['generatedAt']) { [string]$heartbeat.generatedAt } else { $null }
+    $heartbeatOutcome = if ($heartbeat -and $heartbeat.PSObject.Properties['outcome']) { [string]$heartbeat.outcome } else { $null }
+    $reportOutcome = if ($report -and $report.PSObject.Properties['outcome']) { [string]$report.outcome } else { $null }
+    if (-not $daemonAlive) {
+      $daemonLogTail = Read-LogTail -Path $daemonLogPath
+      Write-LogTailTrace -TracePath $managerTracePath -Source 'daemon' -Reason 'daemon-not-running' -LogPath $daemonLogPath -Lines $daemonLogTail -Detail @{
+        cycle = $cycle
+        daemonPid = $activeDaemonPid
+      }
+      Write-ManagerTrace -Path $managerTracePath -EventType 'daemon-not-running' -Detail @{
+        cycle = $cycle
+        daemonPid = $activeDaemonPid
+        heartbeatGeneratedAt = $heartbeatGeneratedAt
+        heartbeatOutcome = $heartbeatOutcome
+        reportOutcome = $reportOutcome
+        daemonLogLineCount = $daemonLogTail.Count
+      }
+    }
     $state = [ordered]@{
       schema = $schemaState
       generatedAt = [DateTime]::UtcNow.ToString('o')
@@ -661,6 +874,7 @@ try {
       hostSignalPath = $hostSignalPath
       hostIsolationPath = $hostIsolationPath
       hostTracePath = $hostTracePath
+      managerTracePath = $managerTracePath
       wslNativeDockerPath = $wslNativeDockerPath
       blockedByHostRuntimeConflict = $blockedByHostConflict
       stopWhenNoOpenIssues = ($StopWhenNoOpenIssues -or $SleepMode)
@@ -677,6 +891,7 @@ try {
         wslNativeDocker = $wslNativeDocker
         codexStateHygiene = $codexStateHygiene
         deliveryMemory = $deliveryMemory
+        managerTracePath = $managerTracePath
       })
 
     if ($blockedByHostConflict) {
@@ -693,20 +908,30 @@ try {
     Start-Sleep -Seconds $CycleIntervalSeconds
   }
 } finally {
-  Stop-WslRuntimeDaemon -Distro $WslDistro -ProcessId $activeDaemonPid
+  Stop-WslRuntimeDaemon -Distro $WslDistro -UnitName $daemonUnitName -ProcessId $activeDaemonPid
   Remove-Item -LiteralPath $stopRequestPath -Force -ErrorAction SilentlyContinue
   Remove-Item -LiteralPath $wslPidPath -Force -ErrorAction SilentlyContinue
 
   try {
+    $restorePreviousFingerprint = if ($hostSignal -and $hostSignal.PSObject.Properties['daemonFingerprint']) {
+      [string]$hostSignal.daemonFingerprint
+    } else {
+      $null
+    }
     $restoreResult = Invoke-DeliveryHostSignal `
       -Mode 'restore' `
       -RepoRoot $repoRoot `
       -Distro $WslDistro `
       -ReportPath $hostSignalPath `
       -IsolationPath $hostIsolationPath `
-      -PreviousFingerprint (if ($hostSignal -and $hostSignal.PSObject.Properties['daemonFingerprint']) { [string]$hostSignal.daemonFingerprint } else { $null })
+      -PreviousFingerprint $restorePreviousFingerprint
     $hostSignal = $restoreResult.report
     $hostIsolation = $restoreResult.isolation
+    Write-ManagerTrace -Path $managerTracePath -EventType 'manager-stopped' -Detail @{
+      cycle = $cycle
+      restored = $true
+      daemonPid = $activeDaemonPid
+    }
   } catch {
     $hostIsolation = Update-HostIsolationState `
       -Path $hostIsolationPath `
@@ -717,6 +942,10 @@ try {
       -LastEventType 'runner-service-restore-failed' `
       -LastEventDetail $_.Exception.Message `
       -HostSignal $hostSignal
+    Write-ManagerTrace -Path $managerTracePath -EventType 'manager-stop-restore-failed' -Detail @{
+      cycle = $cycle
+      message = $_.Exception.Message
+    }
   }
   $wslNativeDocker = Read-JsonFile -Path $wslNativeDockerPath
 
@@ -740,6 +969,7 @@ try {
       hostSignalPath = $hostSignalPath
       hostIsolationPath = $hostIsolationPath
       hostTracePath = $hostTracePath
+      managerTracePath = $managerTracePath
       wslNativeDockerPath = $wslNativeDockerPath
       outcome = 'stopped'
     })
