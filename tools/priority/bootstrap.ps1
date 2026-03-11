@@ -336,7 +336,7 @@ function Ensure-DevelopBranch {
   $remoteRef = $null
 
   if ($current -in @('main', 'master', 'HEAD')) {
-    $dirty = Get-GitStatusPorcelain
+    $dirty = @(Get-GitStatusPorcelain)
     $isDirty = $dirty.Count -gt 0
 
     if (-not $isDirty) {

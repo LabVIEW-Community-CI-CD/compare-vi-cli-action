@@ -216,7 +216,7 @@ test('runtime-daemon wrapper schedules from the comparevi standing-priority cach
   );
 });
 
-test('comparevi worker checkout allocator reuses an existing lane worktree path', async () => {
+test('comparevi worker checkout allocator refreshes and reuses an existing lane worktree path', async () => {
   const repoRoot = await mkdtemp(path.join(os.tmpdir(), 'runtime-daemon-worker-reuse-'));
   const { checkoutPath } = compareviRuntimeTest.resolveCompareviWorkerCheckoutPath({
     repoRoot,
@@ -225,6 +225,7 @@ test('comparevi worker checkout allocator reuses an existing lane worktree path'
   });
   await mkdir(checkoutPath, { recursive: true });
   await writeFile(path.join(checkoutPath, '.git'), 'gitdir: reused\n', 'utf8');
+  const calls = [];
 
   const prepared = await compareviRuntimeTest.prepareCompareviWorkerCheckout({
     repoRoot,
@@ -236,14 +237,31 @@ test('comparevi worker checkout allocator reuses an existing lane worktree path'
       stepOptions: {}
     },
     deps: {
-      execFileFn: async () => {
-        throw new Error('execFileFn should not run for reused worktrees');
+      execFileFn: async (command, args, options) => {
+        calls.push({ command, args, options });
+        if (command !== 'git') {
+          throw new Error(`unexpected command: ${command}`);
+        }
+        if (args[0] === 'remote') {
+          return { stdout: 'upstream\norigin\n', stderr: '' };
+        }
+        if (args[0] === 'fetch' && args[1] === 'upstream' && args[2] === '--prune') {
+          return { stdout: '', stderr: '' };
+        }
+        if (args[0] === 'checkout' && args[1] === '--detach' && args[2] === 'upstream/develop') {
+          return { stdout: '', stderr: '' };
+        }
+        throw new Error(`unexpected git args: ${args.join(' ')}`);
       }
     }
   });
 
   assert.equal(prepared.status, 'reused');
   assert.equal(prepared.checkoutPath, checkoutPath);
+  assert.equal(prepared.ref, 'upstream/develop');
+  assert.deepEqual(prepared.fetchedRemotes, ['upstream']);
+  assert.ok(calls.some((entry) => entry.command === 'git' && entry.args[0] === 'fetch' && entry.args[1] === 'upstream'));
+  assert.ok(calls.some((entry) => entry.command === 'git' && entry.args[0] === 'checkout' && entry.args[1] === '--detach'));
 });
 
 test('comparevi worker checkout path sanitizes traversal-only segments and keeps the root under repoRoot', async () => {

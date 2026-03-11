@@ -1254,6 +1254,11 @@ try {
       $dockerArgs += @('-e', "GITHUB_TOKEN=$resolvedGitHubToken")
     }
 
+    # Mark the bind-mounted workspace as trusted for git inside the container.
+    $dockerArgs += @('-e', 'GIT_CONFIG_COUNT=1')
+    $dockerArgs += @('-e', 'GIT_CONFIG_KEY_0=safe.directory')
+    $dockerArgs += @('-e', 'GIT_CONFIG_VALUE_0=/work')
+
     if ($detached) {
       $dockerArgs += '--detach'
     }
