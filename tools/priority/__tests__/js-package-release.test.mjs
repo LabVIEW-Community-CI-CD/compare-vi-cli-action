@@ -264,6 +264,53 @@ test('verifyJsPackageRelease rejects unsafe consumer directories', async () => {
   );
 });
 
+test('verifyJsPackageRelease removes transient npmrc files after registry verification', async () => {
+  const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'runtime-harness-registry-verify-'));
+  const consumerDir = path.join(tempRoot, 'consumer');
+  let observedNpmrcPath = null;
+  let npmrcExistedDuringInstall = false;
+
+  const verified = await verifyJsPackageRelease(
+    {
+      action: 'verify',
+      packageDir: 'packages/runtime-harness',
+      version: '0.1.0',
+      channel: 'stable',
+      publish: false,
+      repository: 'LabVIEW-Community-CI-CD/compare-vi-cli-action-fork',
+      owner: 'LabVIEW-Community-CI-CD',
+      serverUrl: 'https://github.com',
+      sourceSpec: '@labview-community-ci-cd/runtime-harness@0.1.0',
+      consumerDir,
+      token: 'ghp_test_token'
+    },
+    {
+      repoRoot,
+      now: new Date('2026-03-10T08:12:00Z'),
+      runNpmFn: async (_args, options) => {
+        observedNpmrcPath = options?.env?.NPM_CONFIG_USERCONFIG ?? null;
+        npmrcExistedDuringInstall = Boolean(observedNpmrcPath && fs.existsSync(observedNpmrcPath));
+        return { displayCommand: 'npm install --ignore-scripts --no-package-lock @labview-community-ci-cd/runtime-harness@0.1.0' };
+      },
+      runNodeFn: async () => ({
+        stdout: JSON.stringify({
+          version: '0.1.0',
+          imports: [
+            { specifier: '@labview-community-ci-cd/runtime-harness', exportKeys: ['default'] },
+            { specifier: '@labview-community-ci-cd/runtime-harness/worker', exportKeys: ['default'] },
+            { specifier: '@labview-community-ci-cd/runtime-harness/observer', exportKeys: ['default'] }
+          ]
+        })
+      })
+    }
+  );
+
+  assert.equal(verified.outputs.verificationMode, 'registry');
+  assert.equal(verified.verification.npmrcPath, null);
+  assert.equal(npmrcExistedDuringInstall, true);
+  assert.equal(fs.existsSync(path.join(consumerDir, '.npmrc')), false);
+});
+
 test('helper utilities classify release modes deterministically', () => {
   assert.equal(__test.defaultDistTag('stable'), 'latest');
   assert.equal(__test.defaultDistTag('rc'), 'rc');

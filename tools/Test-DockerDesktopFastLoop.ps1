@@ -217,6 +217,13 @@ function Get-VIHistorySourceBranchGuard {
     return [pscustomobject]$result
   }
 
+  $normalizedBranchRef = $BranchRef.Trim()
+  $result.branchRef = $normalizedBranchRef
+  if ($normalizedBranchRef.StartsWith('-')) {
+    $result.reason = 'branch-ref-invalid-format'
+    return [pscustomobject]$result
+  }
+
   if (-not (Get-Command -Name 'git' -ErrorAction SilentlyContinue)) {
     $result.reason = 'git-unavailable'
     return [pscustomobject]$result
@@ -229,25 +236,39 @@ function Get-VIHistorySourceBranchGuard {
 
   Push-Location $RepoRoot
   try {
-    & git rev-parse --verify $BranchRef *> $null
+    $branchResolveSpec = '{0}^{{commit}}' -f $normalizedBranchRef
+    $branchResolveOutput = & git rev-parse --verify --end-of-options $branchResolveSpec 2>$null
     if ($LASTEXITCODE -ne 0) {
       $result.reason = 'branch-not-found'
       return [pscustomobject]$result
     }
+    $branchCommitRef = [string]($branchResolveOutput | Select-Object -Last 1)
+    if ($null -ne $branchCommitRef) {
+      $branchCommitRef = $branchCommitRef.Trim()
+    }
+    if ([string]::IsNullOrWhiteSpace($branchCommitRef)) {
+      $result.reason = 'branch-parse-failed'
+      return [pscustomobject]$result
+    }
 
-    $range = $BranchRef
+    $range = $branchCommitRef
     $hasDevelopBaseline = $false
-    & git rev-parse --verify develop *> $null
+    $developResolveSpec = 'develop^{commit}'
+    $developResolveOutput = & git rev-parse --verify --end-of-options $developResolveSpec 2>$null
     if ($LASTEXITCODE -eq 0) {
       $hasDevelopBaseline = $true
     }
 
     if ($hasDevelopBaseline) {
       $result.baselineRef = 'develop'
-      if ([string]::Equals($BranchRef, 'develop', [System.StringComparison]::OrdinalIgnoreCase)) {
-        $range = 'develop..develop'
+      $developCommitRef = [string]($developResolveOutput | Select-Object -Last 1)
+      if ($null -ne $developCommitRef) {
+        $developCommitRef = $developCommitRef.Trim()
+      }
+      if ([string]::Equals($branchCommitRef, $developCommitRef, [System.StringComparison]::OrdinalIgnoreCase)) {
+        $range = ('{0}..{0}' -f $developCommitRef)
       } else {
-        $range = ('develop..{0}' -f $BranchRef)
+        $range = ('{0}..{1}' -f $developCommitRef, $branchCommitRef)
       }
     }
 
@@ -263,7 +284,7 @@ function Get-VIHistorySourceBranchGuard {
     if ($count -gt $MaxCommitCount) {
       $result.status = 'blocked'
       $result.reason = 'commit-limit-exceeded'
-      throw ("VI history source branch '{0}' exceeds the commit safeguard ({1} > {2}). Narrow the branch or raise -VIHistorySourceBranchCommitLimit." -f $BranchRef, $count, $MaxCommitCount)
+      throw ("VI history source branch '{0}' exceeds the commit safeguard ({1} > {2}). Narrow the branch or raise -VIHistorySourceBranchCommitLimit." -f $normalizedBranchRef, $count, $MaxCommitCount)
     }
 
     $result.status = 'ok'

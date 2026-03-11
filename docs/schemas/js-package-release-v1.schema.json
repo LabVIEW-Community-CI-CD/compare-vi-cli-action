@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://raw.githubusercontent.com/LabVIEW-Community-CI-CD/compare-vi-cli-action/develop/docs/schemas/js-package-release-v1.schema.json",
+  "$id": "https://labview-community-ci-cd.github.io/compare-vi-cli-action/schemas/js-package-release-v1.schema.json",
   "title": "JavaScript Package Release Report",
   "type": "object",
   "additionalProperties": false,

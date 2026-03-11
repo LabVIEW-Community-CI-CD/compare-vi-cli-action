@@ -25,6 +25,13 @@
   Skip building the CompareVI .NET CLI inside the dotnet SDK container (outputs to dist/comparevi-cli by default).
 .PARAMETER PrioritySync
   Run standing-priority sync inside the tools container (requires GH_TOKEN or cached priority artifacts).
+.PARAMETER PesterPath
+  Optional Pester path(s) to execute inside the tools container. When provided, the host only orchestrates Docker and
+  the requested Pester run happens in-container.
+.PARAMETER PesterFullName
+  Optional Pester FullName filter(s) forwarded to tools/Run-Pester.ps1 for targeted containerized execution.
+.PARAMETER PesterIncludeIntegration
+  Include Integration-tagged tests in the containerized Pester run.
 .NOTES
   Environment variables:
     - COMPAREVI_TOOLS_IMAGE: Default image tag when -UseToolsImage is supplied without -ToolsImageTag.
@@ -41,7 +48,13 @@ param(
   [switch]$PrioritySync,
   [string]$ToolsImageTag,
   [switch]$UseToolsImage,
-  [string[]]$ExcludeWorkflowPaths
+  [string[]]$ExcludeWorkflowPaths,
+  [string[]]$PesterPath,
+  [string[]]$PesterFullName,
+  [string[]]$PesterTag,
+  [string[]]$PesterExcludeTag,
+  [switch]$PesterIncludeIntegration,
+  [string]$PesterResultsDir = 'tests/results/docker-pester'
 )
 
 Set-StrictMode -Version Latest
@@ -112,9 +125,46 @@ function Get-DockerHostPath {
   return $resolved
 }
 
+function Resolve-ContainerGitArgs {
+  param([string]$RepoRoot)
+
+  $gitPointerPath = Join-Path $RepoRoot '.git'
+  if (-not (Test-Path -LiteralPath $gitPointerPath -PathType Leaf)) {
+    return @()
+  }
+
+  $gitDirRaw = (& git -C $RepoRoot rev-parse --git-dir 2>$null)
+  $gitCommonDirRaw = (& git -C $RepoRoot rev-parse --git-common-dir 2>$null)
+  if ($LASTEXITCODE -ne 0 -or [string]::IsNullOrWhiteSpace($gitDirRaw) -or [string]::IsNullOrWhiteSpace($gitCommonDirRaw)) {
+    throw 'Unable to resolve git worktree metadata for containerized execution.'
+  }
+
+  $gitDirValue = ($gitDirRaw -split "`r?`n" | Where-Object { $_ -and $_.Trim() } | Select-Object -First 1).Trim()
+  $gitCommonDirValue = ($gitCommonDirRaw -split "`r?`n" | Where-Object { $_ -and $_.Trim() } | Select-Object -First 1).Trim()
+  $gitDirPath = if ([System.IO.Path]::IsPathRooted($gitDirValue)) {
+    (Resolve-Path -LiteralPath $gitDirValue).Path
+  } else {
+    (Resolve-Path -LiteralPath (Join-Path $RepoRoot $gitDirValue)).Path
+  }
+  $gitCommonDirPath = if ([System.IO.Path]::IsPathRooted($gitCommonDirValue)) {
+    (Resolve-Path -LiteralPath $gitCommonDirValue).Path
+  } else {
+    (Resolve-Path -LiteralPath (Join-Path $RepoRoot $gitCommonDirValue)).Path
+  }
+  $worktreeName = Split-Path -Leaf $gitDirPath
+
+  return @(
+    '-v', ("{0}:/comparevi-git" -f (Get-DockerHostPath -Path $gitCommonDirPath)),
+    '-v', ("{0}:/comparevi-git/worktrees/{1}" -f (Get-DockerHostPath -Path $gitDirPath), $worktreeName),
+    '-e', ("GIT_DIR=/comparevi-git/worktrees/{0}" -f $worktreeName),
+    '-e', 'GIT_WORK_TREE=/work'
+  )
+}
+
 $hostPath = Get-DockerHostPath '.'
 $volumeSpec = "${hostPath}:/work"
 $commonArgs = @('--rm','-v', $volumeSpec,'-w','/work')
+$commonArgs += @(Resolve-ContainerGitArgs -RepoRoot (Resolve-Path -LiteralPath '.').Path)
 $forwardKeys = [System.Collections.Generic.HashSet[string]]::new([StringComparer]::OrdinalIgnoreCase)
 foreach ($key in @('GH_TOKEN','GITHUB_TOKEN','HTTP_PROXY','HTTPS_PROXY','NO_PROXY','http_proxy','https_proxy','no_proxy')) {
   $value = [Environment]::GetEnvironmentVariable($key)
@@ -153,6 +203,12 @@ function ConvertTo-SingleQuotedList {
   param([string[]]$Values)
   if (-not $Values) { return '' }
   return ($Values | ForEach-Object { "'$_'" }) -join ' '
+}
+
+function ConvertTo-PowerShellSingleQuotedLiteral {
+  param([string]$Value)
+  if ($null -eq $Value) { return "''" }
+  return "'" + $Value.Replace("'", "''") + "'"
 }
 
 function Test-WorkflowDriftPending {
@@ -237,6 +293,19 @@ if ($UseToolsImage -and -not $ToolsImageTag -and $env:COMPAREVI_TOOLS_IMAGE) {
   $ToolsImageTag = $env:COMPAREVI_TOOLS_IMAGE
 }
 
+$pesterRequested = $PSBoundParameters.ContainsKey('PesterPath') -or
+  $PSBoundParameters.ContainsKey('PesterFullName') -or
+  $PSBoundParameters.ContainsKey('PesterTag') -or
+  $PSBoundParameters.ContainsKey('PesterExcludeTag')
+
+if ($pesterRequested -and -not $UseToolsImage) {
+  $UseToolsImage = $true
+}
+
+if ($UseToolsImage -and -not $ToolsImageTag) {
+  $ToolsImageTag = 'ghcr.io/labview-community-ci-cd/comparevi-tools:latest'
+}
+
 if ($UseToolsImage -and $ToolsImageTag) {
   if (-not $SkipActionlint) {
     Invoke-Container -Image $ToolsImageTag -Arguments @('actionlint','-color') -Label 'actionlint (tools)'
@@ -308,6 +377,47 @@ if ($PrioritySync) {
   if (-not $ran) {
     Invoke-Container -Image 'node:20' -Arguments @('bash','-lc',$syncScript) -Label 'priority-sync' | Out-Null
   }
+}
+
+if ($pesterRequested) {
+  $pesterScriptLines = New-Object System.Collections.Generic.List[string]
+  $pesterScriptLines.Add('$ErrorActionPreference = ''Stop''')
+  $pesterScriptLines.Add('git config --global --add safe.directory /work | Out-Null')
+  $pesterScriptLines.Add('$params = @{')
+  $pesterScriptLines.Add(("  ResultsDir = {0}" -f (ConvertTo-PowerShellSingleQuotedLiteral -Value $PesterResultsDir)))
+  if ($PesterIncludeIntegration) {
+    $pesterScriptLines.Add('  IncludeIntegration = $true')
+  }
+  if ($PesterPath) {
+    $pathEntries = @($PesterPath | Where-Object { -not [string]::IsNullOrWhiteSpace($_) } | ForEach-Object { ConvertTo-PowerShellSingleQuotedLiteral -Value ([string]$_) })
+    if ($pathEntries.Count -gt 0) {
+      $pesterScriptLines.Add(("  Path = @({0})" -f ($pathEntries -join ', ')))
+    }
+  }
+  if ($PesterFullName) {
+    $fullNameEntries = @($PesterFullName | Where-Object { -not [string]::IsNullOrWhiteSpace($_) } | ForEach-Object { ConvertTo-PowerShellSingleQuotedLiteral -Value ([string]$_) })
+    if ($fullNameEntries.Count -gt 0) {
+      $pesterScriptLines.Add(("  FullName = @({0})" -f ($fullNameEntries -join ', ')))
+    }
+  }
+  if ($PesterTag) {
+    $tagEntries = @($PesterTag | Where-Object { -not [string]::IsNullOrWhiteSpace($_) } | ForEach-Object { ConvertTo-PowerShellSingleQuotedLiteral -Value ([string]$_) })
+    if ($tagEntries.Count -gt 0) {
+      $pesterScriptLines.Add(("  Tag = @({0})" -f ($tagEntries -join ', ')))
+    }
+  }
+  if ($PesterExcludeTag) {
+    $excludeTagEntries = @($PesterExcludeTag | Where-Object { -not [string]::IsNullOrWhiteSpace($_) } | ForEach-Object { ConvertTo-PowerShellSingleQuotedLiteral -Value ([string]$_) })
+    if ($excludeTagEntries.Count -gt 0) {
+      $pesterScriptLines.Add(("  ExcludeTag = @({0})" -f ($excludeTagEntries -join ', ')))
+    }
+  }
+  $pesterScriptLines.Add('}')
+  $pesterScriptLines.Add('& ./tools/Run-Pester.ps1 @params')
+  $pesterScriptLines.Add('exit $LASTEXITCODE')
+  $pesterScript = $pesterScriptLines -join [Environment]::NewLine
+
+  Invoke-Container -Image $ToolsImageTag -Arguments @('pwsh', '-NoLogo', '-NoProfile', '-Command', $pesterScript) -Label 'pester (tools)' | Out-Null
 }
 
 Write-Host 'Non-LabVIEW container checks completed.' -ForegroundColor Green

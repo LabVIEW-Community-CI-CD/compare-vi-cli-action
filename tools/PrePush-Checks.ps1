@@ -716,21 +716,22 @@ try {
   if ($scenarioNameDifferences.Count -gt 0) {
     throw ("NI image flag scenario '{0}' ledger names did not match the expected combination set." -f $activeScenarioName)
   }
+  $failureMarkers = @(
+    'Report path already exists:'
+    'Use -o to overwrite existing report.'
+    'CreateComparisonReport operation failed.'
+  )
   foreach ($entry in $ledgerEntries) {
     $resolvedEntryLogPath = Resolve-ContainerMountedHostPath -Path $entry.logPath -Mounts @($capture.runtimeInjection.mounts)
     if ([string]::IsNullOrWhiteSpace($resolvedEntryLogPath) -or -not (Test-Path -LiteralPath $resolvedEntryLogPath -PathType Leaf)) {
       throw ("NI image flag scenario '{0}' missing single-container CLI log for {1}: {2} (resolved: {3})" -f $activeScenarioName, $entry.name, $entry.logPath, $resolvedEntryLogPath)
     }
-    $entryLogText = Get-Content -LiteralPath $resolvedEntryLogPath -Raw -ErrorAction SilentlyContinue
     if (-not [string]::Equals($entry.status, 'completed', [System.StringComparison]::OrdinalIgnoreCase)) {
       $entryLogTail = Get-LogTailText -Path $resolvedEntryLogPath
       throw ("NI image flag scenario '{0}' recorded non-completed ledger status for {1}: {2}`nlog={3}`n{4}" -f $activeScenarioName, $entry.name, $entry.status, $resolvedEntryLogPath, $entryLogTail)
     }
-    if (
-      $entryLogText -match 'Report path already exists:' -or
-      $entryLogText -match 'Use -o to overwrite existing report\.' -or
-      $entryLogText -match 'CreateComparisonReport operation failed\.'
-    ) {
+    $hasFailureText = Select-String -Path $resolvedEntryLogPath -SimpleMatch -Quiet -Pattern $failureMarkers -ErrorAction SilentlyContinue
+    if ($hasFailureText) {
       $entryLogTail = Get-LogTailText -Path $resolvedEntryLogPath
       throw ("NI image flag scenario '{0}' detected wrapper/tool failure text for {1}`nlog={2}`n{3}" -f $activeScenarioName, $entry.name, $resolvedEntryLogPath, $entryLogTail)
     }

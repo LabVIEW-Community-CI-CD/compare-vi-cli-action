@@ -4,20 +4,19 @@ $reportFixtureCases = Get-ReportFixtureCases
 Describe 'Compare-VIHistory helper' -Tag 'Integration' {
   BeforeAll {
     $ErrorActionPreference = 'Stop'
-    try { git --version | Out-Null } catch { throw 'git is required for this test' }
-
-    $repoRoot = (Get-Location).Path
+    $repoRoot = (Resolve-Path -LiteralPath (Join-Path $PSScriptRoot '..')).Path
+    try { & git -C $repoRoot --version | Out-Null } catch { throw 'git is required for this test' }
     $target = 'VI1.vi'
     if (-not (Test-Path -LiteralPath (Join-Path $repoRoot $target))) {
       Set-ItResult -Skipped -Because "Target file not found: $target"
     }
 
-    $revList = & git rev-list --max-count=12 HEAD -- $target
+    $revList = & git -C $repoRoot rev-list --max-count=12 HEAD -- $target
     if (-not $revList) { Set-ItResult -Skipped -Because 'No commit history for target'; return }
 
     $pairs = @()
     foreach ($head in $revList) {
-      $parent = (& git rev-parse "$head^" 2>$null)
+      $parent = (& git -C $repoRoot rev-parse "$head^" 2>$null)
       if (-not $parent) { continue }
       $parent = ($parent -split "`n")[0].Trim()
       if (-not $parent) { continue }
@@ -353,11 +352,11 @@ exit 0
       & pwsh -NoLogo -NoProfile -File (Join-Path $_repoRoot 'tools/Compare-VIHistory.ps1') @Parameters
     }
 
-    $firstParent = & git rev-list --first-parent HEAD
+    $firstParent = & git -C $repoRoot rev-list --first-parent HEAD
     $commits = @($firstParent | Where-Object { $_ })
     $touchMap = @{}
     foreach ($commit in $commits) {
-      $changed = & git diff-tree --no-commit-id --name-only -r $commit -- $target
+      $changed = & git -C $repoRoot diff-tree --no-commit-id --name-only -r $commit -- $target
       $touchMap[$commit] = -not [string]::IsNullOrWhiteSpace($changed)
     }
 
@@ -1014,126 +1013,121 @@ exit 0
     $attributeManifest.comparisons.Count | Should -Be 1
   }
 
-  It 'emits GitHub outputs describing aggregate and per-mode manifests' {
+  It 'emits GitHub outputs describing aggregate history manifests and summary artifacts' {
     if (-not $_pairs) { Set-ItResult -Skipped -Because 'Missing commit data'; return }
     $env:STUB_COMPARE_DIFF = '0'
-    $pair = $_pairs[0]
-    $rd = Join-Path $TestDrive 'history-github-output'
-    $outputPath = Join-Path $TestDrive 'github-output.txt'
-    $summaryPath = Join-Path $TestDrive 'github-summary.md'
+    $fixture = & {
+      param(
+        [Parameter(Mandatory)][pscustomobject]$Pair,
+        [Parameter(Mandatory)][string]$TestDriveRoot,
+        [Parameter(Mandatory)][string]$ResultsDirName,
+        [Parameter(Mandatory)][string]$TargetPath,
+        [Parameter(Mandatory)][string]$StubPath,
+        [Parameter(Mandatory)][scriptblock]$InvokeCompareHistory
+      )
 
-    $runParams = @{
-      TargetPath        = $_target
-      StartRef          = $pair.Head
-      MaxPairs          = 1
-      SourceBranchRef   = 'develop'
-      MaxBranchCommits  = 1
-      InvokeScriptPath  = $_stubPath
-      ResultsDir        = $rd
-      Mode              = 'default,attributes'
-      FailOnDiff        = $false
-      GitHubOutputPath  = $outputPath
-      StepSummaryPath   = $summaryPath
-    }
-    & $script:InvokeCompareHistory -Parameters $runParams | Out-Null
+      $rd = Join-Path $TestDriveRoot $ResultsDirName
+      $outputPath = Join-Path $TestDriveRoot ("{0}-github-output.txt" -f $ResultsDirName)
+      $summaryPath = Join-Path $TestDriveRoot ("{0}-github-summary.md" -f $ResultsDirName)
+      $runParams = @{
+        TargetPath        = $TargetPath
+        StartRef          = $Pair.Head
+        MaxPairs          = 1
+        SourceBranchRef   = 'develop'
+        MaxBranchCommits  = 1
+        InvokeScriptPath  = $StubPath
+        ResultsDir        = $rd
+        Mode              = 'default,attributes'
+        FailOnDiff        = $false
+        GitHubOutputPath  = $outputPath
+        StepSummaryPath   = $summaryPath
+      }
+      & $InvokeCompareHistory -Parameters $runParams | Out-Null
 
-    Test-Path -LiteralPath $outputPath | Should -BeTrue
-    $outputLines = Get-Content -LiteralPath $outputPath
+      $outputLines = if (Test-Path -LiteralPath $outputPath -PathType Leaf) { @(Get-Content -LiteralPath $outputPath) } else { @() }
+      $manifestLine = $outputLines | Where-Object { $_ -like 'manifest-path=*' } | Select-Object -First 1
+      $manifestPath = if ($manifestLine) { (($manifestLine -split '=', 2)[1]).Trim() } else { '' }
+      $modeJsonLine = $outputLines | Where-Object { $_ -like 'mode-manifests-json=*' } | Select-Object -First 1
+      $modeJsonValue = if ($modeJsonLine) { (($modeJsonLine -split '=', 2)[1]).Trim() } else { '' }
+      $historyMdLine = $outputLines | Where-Object { $_ -like 'history-report-md=*' } | Select-Object -First 1
+      $historyMdPath = if ($historyMdLine) { (($historyMdLine -split '=', 2)[1]).Trim() } else { '' }
+      $historyHtmlLine = $outputLines | Where-Object { $_ -like 'history-report-html=*' } | Select-Object -First 1
+      $historyHtmlPath = if ($historyHtmlLine) { (($historyHtmlLine -split '=', 2)[1]).Trim() } else { '' }
+      $historySummaryLine = $outputLines | Where-Object { $_ -like 'history-summary-json=*' } | Select-Object -First 1
+      $historySummaryPath = if ($historySummaryLine) { (($historySummaryLine -split '=', 2)[1]).Trim() } else { '' }
 
-    $manifestLine = $outputLines | Where-Object { $_ -like 'manifest-path=*' } | Select-Object -First 1
-    $manifestLine | Should -Not -BeNullOrEmpty
-    $manifestValue = (($manifestLine -split '=', 2)[1]).Trim()
-    $manifestValue | Should -Match 'manifest\.json$'
-    Test-Path -LiteralPath $manifestValue | Should -BeTrue
-    $suiteManifest = Get-Content -LiteralPath $manifestValue -Raw | ConvertFrom-Json -Depth 12
-    @($suiteManifest.requestedModes) | Should -Be @('default', 'attributes')
-    @($suiteManifest.executedModes) | Should -Be @('default', 'attributes')
-    $suiteManifest.branchBudget.sourceBranchRef | Should -Be 'develop'
-    $suiteManifest.branchBudget.maxCommitCount | Should -Be 1
-    $suiteManifest.branchBudget.commitCount | Should -Be 0
-    $suiteManifest.branchBudget.status | Should -Be 'ok'
+      [pscustomobject]@{
+        resultsDir = $rd
+        outputPath = $outputPath
+        summaryPath = $summaryPath
+        outputLines = @($outputLines)
+        manifestPath = $manifestPath
+        suiteManifest = if ($manifestPath -and (Test-Path -LiteralPath $manifestPath -PathType Leaf)) { Get-Content -LiteralPath $manifestPath -Raw | ConvertFrom-Json -Depth 12 } else { $null }
+        modeSummary = if ($modeJsonValue) { $modeJsonValue | ConvertFrom-Json } else { @() }
+        historyMarkdownPath = $historyMdPath
+        historyHtmlPath = $historyHtmlPath
+        historySummaryPath = $historySummaryPath
+        historySummary = if ($historySummaryPath -and (Test-Path -LiteralPath $historySummaryPath -PathType Leaf)) { Get-Content -LiteralPath $historySummaryPath -Raw | ConvertFrom-Json -Depth 12 } else { $null }
+      }
+    } `
+      -Pair $_pairs[0] `
+      -TestDriveRoot $TestDrive `
+      -ResultsDirName 'history-github-output-aggregate' `
+      -TargetPath $_target `
+      -StubPath $_stubPath `
+      -InvokeCompareHistory $script:InvokeCompareHistory
+
+    Test-Path -LiteralPath $fixture.outputPath | Should -BeTrue
+    $fixture.manifestPath | Should -Match 'manifest\.json$'
+    Test-Path -LiteralPath $fixture.manifestPath | Should -BeTrue
+    $fixture.suiteManifest | Should -Not -BeNullOrEmpty
+    @($fixture.suiteManifest.requestedModes) | Should -Be @('default', 'attributes')
+    @($fixture.suiteManifest.executedModes) | Should -Be @('default', 'attributes')
+    $fixture.suiteManifest.branchBudget.sourceBranchRef | Should -Be 'develop'
+    $fixture.suiteManifest.branchBudget.maxCommitCount | Should -Be 1
+    $fixture.suiteManifest.branchBudget.commitCount | Should -Be 0
+    $fixture.suiteManifest.branchBudget.status | Should -Be 'ok'
 
     $suiteSchemaPath = Join-Path $_repoRoot 'docs' 'schemas' 'vi-compare-history-suite-v1.schema.json'
-    $schemaValidation = & node (Join-Path $_repoRoot 'tools' 'npm' 'run-script.mjs') 'schema:validate' '--' '--schema' $suiteSchemaPath '--data' $manifestValue 2>&1
+    $schemaValidation = & node (Join-Path $_repoRoot 'tools' 'npm' 'run-script.mjs') 'schema:validate' '--' '--schema' $suiteSchemaPath '--data' $fixture.manifestPath 2>&1
     $LASTEXITCODE | Should -Be 0 -Because (($schemaValidation | ForEach-Object { "$_" }) -join [Environment]::NewLine)
 
-    $requestedModeLine = $outputLines | Where-Object { $_ -like 'requested-mode-list=*' } | Select-Object -First 1
+    $requestedModeLine = $fixture.outputLines | Where-Object { $_ -like 'requested-mode-list=*' } | Select-Object -First 1
     $requestedModeLine | Should -Not -BeNullOrEmpty
     ((($requestedModeLine -split '=', 2)[1]).Trim()) | Should -Be 'default, attributes'
 
-    $executedModeLine = $outputLines | Where-Object { $_ -like 'executed-mode-list=*' } | Select-Object -First 1
+    $executedModeLine = $fixture.outputLines | Where-Object { $_ -like 'executed-mode-list=*' } | Select-Object -First 1
     $executedModeLine | Should -Not -BeNullOrEmpty
     ((($executedModeLine -split '=', 2)[1]).Trim()) | Should -Be 'default, attributes'
 
-    $modeJsonLine = $outputLines | Where-Object { $_ -like 'mode-manifests-json=*' } | Select-Object -First 1
-    $modeJsonLine | Should -Not -BeNullOrEmpty
-    $modeJsonValue = (($modeJsonLine -split '=', 2)[1]).Trim()
-    $modeSummary = $modeJsonValue | ConvertFrom-Json
-    $modeSummary.Count | Should -Be 2
-    foreach ($entry in $modeSummary) {
-      $entry.stopReason | Should -Be 'max-pairs'
-      $entry.processed | Should -Be 1
-      $entry.signalDiffs | Should -Be 0
-      $entry.noiseCollapsed | Should -Be 0
-      $entry.errors | Should -Be 0
-      @($entry.categoryCounts.PSObject.Properties).Count | Should -Be 0
-      @($entry.bucketCounts.PSObject.Properties).Count | Should -Be 0
-    }
-
-    $bucketJsonLine = $outputLines | Where-Object { $_ -like 'bucket-counts-json=*' } | Select-Object -First 1
+    $bucketJsonLine = $fixture.outputLines | Where-Object { $_ -like 'bucket-counts-json=*' } | Select-Object -First 1
     $bucketJsonLine | Should -Not -BeNullOrEmpty
     $bucketJson = (($bucketJsonLine -split '=', 2)[1]).Trim()
     $bucketJson | Should -Be '{}'
 
-    $bySlug = @{}
-    foreach ($entry in $modeSummary) {
-      $entry | Should -Not -BeNullOrEmpty
-      $entry.mode | Should -Not -BeNullOrEmpty
-      $entry.manifest | Should -Not -BeNullOrEmpty
-      Test-Path -LiteralPath $entry.manifest | Should -BeTrue
-      $entry.resultsDir | Should -Not -BeNullOrEmpty
-      $bySlug[$entry.slug] = $entry
-    }
-
-    $bySlug.ContainsKey('default') | Should -BeTrue
-    $bySlug.ContainsKey('attributes') | Should -BeTrue
-    $bySlug['default'].mode | Should -Be 'default'
-    $bySlug['attributes'].mode | Should -Be 'attributes'
-
-    $historyMdLine = $outputLines | Where-Object { $_ -like 'history-report-md=*' } | Select-Object -First 1
-    $historyMdLine | Should -Not -BeNullOrEmpty
-    $historyMdPath = (($historyMdLine -split '=', 2)[1]).Trim()
-    Test-Path -LiteralPath $historyMdPath | Should -BeTrue
-
-    $historyHtmlLine = $outputLines | Where-Object { $_ -like 'history-report-html=*' } | Select-Object -First 1
-    $historyHtmlLine | Should -Not -BeNullOrEmpty
-    $historyHtmlPath = (($historyHtmlLine -split '=', 2)[1]).Trim()
-    Test-Path -LiteralPath $historyHtmlPath | Should -BeTrue
-
-    $historySummaryLine = $outputLines | Where-Object { $_ -like 'history-summary-json=*' } | Select-Object -First 1
-    $historySummaryLine | Should -Not -BeNullOrEmpty
-    $historySummaryPath = (($historySummaryLine -split '=', 2)[1]).Trim()
-    Test-Path -LiteralPath $historySummaryPath | Should -BeTrue
+    Test-Path -LiteralPath $fixture.historyMarkdownPath | Should -BeTrue
+    Test-Path -LiteralPath $fixture.historyHtmlPath | Should -BeTrue
+    Test-Path -LiteralPath $fixture.historySummaryPath | Should -BeTrue
 
     $historySummarySchemaPath = Join-Path $_repoRoot 'docs' 'schemas' 'comparevi-tools-history-facade-v1.schema.json'
     $schemaLitePath = Join-Path $_repoRoot 'tools' 'Invoke-JsonSchemaLite.ps1'
-    & pwsh -NoLogo -NoProfile -File $schemaLitePath -JsonPath $historySummaryPath -SchemaPath $historySummarySchemaPath | Out-Null
+    & pwsh -NoLogo -NoProfile -File $schemaLitePath -JsonPath $fixture.historySummaryPath -SchemaPath $historySummarySchemaPath | Out-Null
     $LASTEXITCODE | Should -Be 0
 
-    $historySummary = Get-Content -LiteralPath $historySummaryPath -Raw | ConvertFrom-Json -Depth 12
-    $historySummary.schema | Should -Be 'comparevi-tools/history-facade@v1'
-    @($historySummary.execution.requestedModes) | Should -Be @('default', 'attributes')
-    @($historySummary.execution.executedModes) | Should -Be @('default', 'attributes')
-    $historySummary.observedInterpretation.coverageClass | Should -Be 'catalog-aligned'
-    $historySummary.target.sourceBranchRef | Should -Be 'develop'
-    $historySummary.target.branchBudget.maxCommitCount | Should -Be 1
-    $historySummary.target.branchBudget.commitCount | Should -Be 0
-    $historySummary.reports.markdownPath | Should -Be $historyMdPath
-    $historySummary.reports.htmlPath | Should -Be $historyHtmlPath
-    @($historySummary.modes | ForEach-Object { [string]$_.slug }) | Should -Be @('default', 'attributes')
+    $fixture.historySummary | Should -Not -BeNullOrEmpty
+    $fixture.historySummary.schema | Should -Be 'comparevi-tools/history-facade@v1'
+    @($fixture.historySummary.execution.requestedModes) | Should -Be @('default', 'attributes')
+    @($fixture.historySummary.execution.executedModes) | Should -Be @('default', 'attributes')
+    $fixture.historySummary.observedInterpretation.coverageClass | Should -Be 'catalog-aligned'
+    $fixture.historySummary.target.sourceBranchRef | Should -Be 'develop'
+    $fixture.historySummary.target.branchBudget.maxCommitCount | Should -Be 1
+    $fixture.historySummary.target.branchBudget.commitCount | Should -Be 0
+    $fixture.historySummary.reports.markdownPath | Should -Be $fixture.historyMarkdownPath
+    $fixture.historySummary.reports.htmlPath | Should -Be $fixture.historyHtmlPath
+    @($fixture.historySummary.modes | ForEach-Object { [string]$_.slug }) | Should -Be @('default', 'attributes')
 
-    Test-Path -LiteralPath $summaryPath | Should -BeTrue
-    $summaryContent = Get-Content -LiteralPath $summaryPath -Raw
+    Test-Path -LiteralPath $fixture.summaryPath | Should -BeTrue
+    $summaryContent = Get-Content -LiteralPath $fixture.summaryPath -Raw
     $summaryContent | Should -Match 'VI history report'
     $summaryContent | Should -Match 'history-summary.json'
     $summaryContent | Should -Match 'history-report.md'
@@ -1145,6 +1139,78 @@ exit 0
     $summaryContent | Should -Match '\| Mode \| Processed \| Diffs \| Signal \| Collapsed Noise \| Missing \| Categories \| Buckets \| Flags \|'
     $summaryContent | Should -Match '\| default \| 1 \| 0 \| 0 \| 0 \|'
     $summaryContent | Should -Match '\| attributes \| 1 \| 0 \| 0 \| 0 \|'
+  }
+
+  It 'emits GitHub outputs describing per-mode manifests' {
+    if (-not $_pairs) { Set-ItResult -Skipped -Because 'Missing commit data'; return }
+    $env:STUB_COMPARE_DIFF = '0'
+    $fixture = & {
+      param(
+        [Parameter(Mandatory)][pscustomobject]$Pair,
+        [Parameter(Mandatory)][string]$TestDriveRoot,
+        [Parameter(Mandatory)][string]$ResultsDirName,
+        [Parameter(Mandatory)][string]$TargetPath,
+        [Parameter(Mandatory)][string]$StubPath,
+        [Parameter(Mandatory)][scriptblock]$InvokeCompareHistory
+      )
+
+      $rd = Join-Path $TestDriveRoot $ResultsDirName
+      $outputPath = Join-Path $TestDriveRoot ("{0}-github-output.txt" -f $ResultsDirName)
+      $summaryPath = Join-Path $TestDriveRoot ("{0}-github-summary.md" -f $ResultsDirName)
+      $runParams = @{
+        TargetPath        = $TargetPath
+        StartRef          = $Pair.Head
+        MaxPairs          = 1
+        SourceBranchRef   = 'develop'
+        MaxBranchCommits  = 1
+        InvokeScriptPath  = $StubPath
+        ResultsDir        = $rd
+        Mode              = 'default,attributes'
+        FailOnDiff        = $false
+        GitHubOutputPath  = $outputPath
+        StepSummaryPath   = $summaryPath
+      }
+      & $InvokeCompareHistory -Parameters $runParams | Out-Null
+
+      $outputLines = if (Test-Path -LiteralPath $outputPath -PathType Leaf) { @(Get-Content -LiteralPath $outputPath) } else { @() }
+      $modeJsonLine = $outputLines | Where-Object { $_ -like 'mode-manifests-json=*' } | Select-Object -First 1
+      $modeJsonValue = if ($modeJsonLine) { (($modeJsonLine -split '=', 2)[1]).Trim() } else { '' }
+
+      [pscustomobject]@{
+        modeSummary = if ($modeJsonValue) { $modeJsonValue | ConvertFrom-Json } else { @() }
+      }
+    } `
+      -Pair $_pairs[0] `
+      -TestDriveRoot $TestDrive `
+      -ResultsDirName 'history-github-output-modes' `
+      -TargetPath $_target `
+      -StubPath $_stubPath `
+      -InvokeCompareHistory $script:InvokeCompareHistory
+
+    $fixture.modeSummary.Count | Should -Be 2
+    foreach ($entry in $fixture.modeSummary) {
+      $entry.stopReason | Should -Be 'max-pairs'
+      $entry.processed | Should -Be 1
+      $entry.signalDiffs | Should -Be 0
+      $entry.noiseCollapsed | Should -Be 0
+      $entry.errors | Should -Be 0
+      @($entry.categoryCounts.PSObject.Properties).Count | Should -Be 0
+      @($entry.bucketCounts.PSObject.Properties).Count | Should -Be 0
+      $entry.mode | Should -Not -BeNullOrEmpty
+      $entry.manifest | Should -Not -BeNullOrEmpty
+      Test-Path -LiteralPath $entry.manifest | Should -BeTrue
+      $entry.resultsDir | Should -Not -BeNullOrEmpty
+    }
+
+    $bySlug = @{}
+    foreach ($entry in $fixture.modeSummary) {
+      $bySlug[$entry.slug] = $entry
+    }
+
+    $bySlug.ContainsKey('default') | Should -BeTrue
+    $bySlug.ContainsKey('attributes') | Should -BeTrue
+    $bySlug['default'].mode | Should -Be 'default'
+    $bySlug['attributes'].mode | Should -Be 'attributes'
   }
 
   It 'renders enriched history report with commit metadata and artifact links' {

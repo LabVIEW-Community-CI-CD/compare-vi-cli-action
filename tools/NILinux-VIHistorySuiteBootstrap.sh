@@ -945,7 +945,7 @@ EOF
       },
       \"lineage\": {
         \"type\": \"mainline\",
-        \"parentIndex\": ${processed},
+        \"parentIndex\": 1,
         \"parentCount\": ${selected_pair_total},
         \"depth\": ${depth_value}
       },
@@ -986,7 +986,7 @@ EOF
       },
       \"lineage\": {
         \"type\": \"mainline\",
-        \"parentIndex\": ${processed},
+        \"parentIndex\": 1,
         \"parentCount\": ${selected_pair_total},
         \"depth\": ${depth_value}
       },
@@ -1212,7 +1212,7 @@ EOF
       ;;
     *)
       result_status="error"
-      suite_status="error"
+      suite_status="failed"
       error_count=1
       stop_reason="error"
       ;;

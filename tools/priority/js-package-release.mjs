@@ -896,6 +896,8 @@ async function installPackageCandidate({
   const installArgs = ['install', '--ignore-scripts', '--no-package-lock', sourceSpec];
   let npmrcPath = null;
   const npmEnv = {};
+  let installOutcome = null;
+  let terminalError = null;
 
   if (detectSourceMode(sourceSpec) === 'registry') {
     if (!token) {
@@ -916,23 +918,37 @@ async function installPackageCandidate({
 
   let lastError = null;
   let attempts = 0;
-  for (attempts = 1; attempts <= installRetries; attempts += 1) {
-    try {
-      const result = await runNpmFn(installArgs, { cwd: consumerDir, env: npmEnv });
-      return {
-        attempts,
-        npmrcPath,
-        result
-      };
-    } catch (error) {
-      lastError = error;
-      if (attempts < installRetries) {
-        await sleep(retryDelayMs);
+  try {
+    for (attempts = 1; attempts <= installRetries; attempts += 1) {
+      try {
+        const result = await runNpmFn(installArgs, { cwd: consumerDir, env: npmEnv });
+        installOutcome = {
+          attempts,
+          npmrcPath,
+          result
+        };
+        return installOutcome;
+      } catch (error) {
+        lastError = error;
+        if (attempts < installRetries) {
+          await sleep(retryDelayMs);
+        }
+      }
+    }
+
+    terminalError = Object.assign(lastError ?? new Error('Install failed.'), { installAttempts: attempts, npmrcPath });
+    throw terminalError;
+  } finally {
+    if (npmrcPath) {
+      await rm(npmrcPath, { force: true });
+      if (installOutcome) {
+        installOutcome.npmrcPath = null;
+      }
+      if (terminalError) {
+        terminalError.npmrcPath = null;
       }
     }
   }
-
-  throw Object.assign(lastError ?? new Error('Install failed.'), { installAttempts: attempts, npmrcPath });
 }
 
 export async function verifyJsPackageRelease(options = {}, deps = {}) {

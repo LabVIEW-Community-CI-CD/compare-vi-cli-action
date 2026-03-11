@@ -1110,8 +1110,20 @@ function Get-SourceBranchBudget {
     return [pscustomobject]$result
   }
 
+  if ($normalizedBranchRef.StartsWith('-')) {
+    $result.status = 'invalid'
+    $result.reason = 'branch-ref-invalid-format'
+    return [pscustomobject]$result
+  }
+
+  $branchResolveSpec = '{0}^{{commit}}' -f $normalizedBranchRef
+  $branchCommitRef = $null
   try {
-    Invoke-Git -Arguments @('rev-parse', '--verify', $normalizedBranchRef) -Quiet | Out-Null
+    $branchCommitRaw = Invoke-Git -Arguments @('rev-parse', '--verify', '--end-of-options', $branchResolveSpec) -Quiet
+    $branchCommitRef = [string]($branchCommitRaw | Select-Object -Last 1)
+    if ($null -ne $branchCommitRef) {
+      $branchCommitRef = $branchCommitRef.Trim()
+    }
   } catch {
     $result.status = 'invalid'
     $result.reason = 'branch-ref-not-found'
@@ -1119,23 +1131,29 @@ function Get-SourceBranchBudget {
   }
 
   $baselineRef = $null
+  $baselineCommitRef = $null
   try {
-    Invoke-Git -Arguments @('rev-parse', '--verify', 'develop') -Quiet | Out-Null
+    $baselineCommitRaw = Invoke-Git -Arguments @('rev-parse', '--verify', '--end-of-options', 'develop^{commit}') -Quiet
+    $baselineCommitRef = [string]($baselineCommitRaw | Select-Object -Last 1)
+    if ($null -ne $baselineCommitRef) {
+      $baselineCommitRef = $baselineCommitRef.Trim()
+    }
     $baselineRef = 'develop'
   } catch {
     $baselineRef = $null
+    $baselineCommitRef = $null
   }
   $result.baselineRef = $baselineRef
 
   $countArguments = @('rev-list', '--count', '--first-parent')
-  if ($baselineRef) {
-    if ([string]::Equals($normalizedBranchRef, $baselineRef, [System.StringComparison]::OrdinalIgnoreCase)) {
-      $countArguments += ('{0}..{0}' -f $baselineRef)
+  if ($baselineCommitRef) {
+    if ([string]::Equals($branchCommitRef, $baselineCommitRef, [System.StringComparison]::OrdinalIgnoreCase)) {
+      $countArguments += ('{0}..{0}' -f $baselineCommitRef)
     } else {
-      $countArguments += ('{0}..{1}' -f $baselineRef, $normalizedBranchRef)
+      $countArguments += ('{0}..{1}' -f $baselineCommitRef, $branchCommitRef)
     }
   } else {
-    $countArguments += $normalizedBranchRef
+    $countArguments += $branchCommitRef
   }
 
   try {

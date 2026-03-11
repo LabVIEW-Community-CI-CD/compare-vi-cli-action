@@ -38,7 +38,8 @@ test('PrePush NI image known-flag scenario uses the Linux runner with explicit L
   assert.match(content, /-ContainerNameLabel \$activeScenarioName/);
   assert.match(content, /history-summary\.json/);
   assert.match(content, /logPath = if \(\$parts.Count -gt 7\)/);
-  assert.match(content, /Report path already exists:/);
+  assert.match(content, /\$failureMarkers = @\(/);
+  assert.match(content, /Select-String -Path \$resolvedEntryLogPath -SimpleMatch -Quiet -Pattern \$failureMarkers/);
   assert.match(content, /VI Comparison Report flag combination scenarios OK/);
   assert.doesNotMatch(content, /pwsh\s+-NoLogo\s+-NoProfile\s+-File\s+\$niCompareScript/);
   assert.doesNotMatch(content, /Render-VIHistoryReport\.ps1/);
@@ -75,6 +76,24 @@ test('PrePush validates watcher telemetry via the sanitized schema wrapper', () 
 test('PrePush log tail helper uses streaming tail reads for large CLI logs', () => {
   const content = readRepoFile('tools/PrePush-Checks.ps1');
   assert.match(content, /Get-Content -LiteralPath \$Path -Tail \$TailLines -ErrorAction SilentlyContinue/);
+  assert.doesNotMatch(content, /Get-Content -LiteralPath \$resolvedEntryLogPath -Raw/);
+});
+
+test('VI history branch guards harden git ref inputs before counting commits', () => {
+  const compareHistory = readRepoFile('tools/Compare-VIHistory.ps1');
+  assert.match(compareHistory, /\$normalizedBranchRef\.StartsWith\('-'\)/);
+  assert.match(compareHistory, /Invoke-Git -Arguments @\('rev-parse', '--verify', '--end-of-options', \$branchResolveSpec\)/);
+
+  const fastLoop = readRepoFile('tools/Test-DockerDesktopFastLoop.ps1');
+  assert.match(fastLoop, /\$normalizedBranchRef\.StartsWith\('-'\)/);
+  assert.match(fastLoop, /git rev-parse --verify --end-of-options \$branchResolveSpec/);
+});
+
+test('NI Linux VI history bootstrap preserves mainline lineage semantics on error paths', () => {
+  const content = readRepoFile('tools/NILinux-VIHistorySuiteBootstrap.sh');
+  assert.match(content, /\\"parentIndex\\": 1/);
+  assert.match(content, /suite_status="failed"/);
+  assert.doesNotMatch(content, /suite_status="error"/);
 });
 
 test('PrePush emits deterministic incident-event report for NI known-flag failures', () => {

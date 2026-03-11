@@ -355,11 +355,11 @@ if (-not [string]::IsNullOrWhiteSpace($RuntimeBootstrapContractPath) -and (Test-
   $runtimeInjection.scriptContainerPath = '/compare/m9/bootstrap.sh'
   $runtimeInjection.mounts = @($mounts)
 
-    if ($contract.PSObject.Properties['viHistory'] -and $contract.viHistory) {
-      $resultsPath = [string]$contract.viHistory.resultsPath
-      if (-not [System.IO.Path]::IsPathRooted($resultsPath)) {
-        $resultsPath = [System.IO.Path]::GetFullPath((Join-Path $contractDirectory $resultsPath))
-      }
+  if ($contract.PSObject.Properties['viHistory'] -and $contract.viHistory) {
+    $resultsPath = [string]$contract.viHistory.resultsPath
+    if (-not [System.IO.Path]::IsPathRooted($resultsPath)) {
+      $resultsPath = [System.IO.Path]::GetFullPath((Join-Path $contractDirectory $resultsPath))
+    }
     if (-not (Test-Path -LiteralPath $resultsPath -PathType Container)) {
       New-Item -ItemType Directory -Path $resultsPath -Force | Out-Null
     }
