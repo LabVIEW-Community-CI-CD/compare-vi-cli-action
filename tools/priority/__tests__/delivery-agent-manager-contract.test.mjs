@@ -47,12 +47,23 @@ test('delivery-agent manager and run scripts target the WSL runtime daemon inste
   const ensurePrereqs = await readText('tools/priority/Ensure-WSLDeliveryPrereqs.ps1');
 
   assert.match(manager, /Ensure-WSLDeliveryPrereqs\.ps1/);
+  assert.match(manager, /CodexStateHygienePath/);
   assert.match(manager, /wsl\.exe/);
   assert.match(runner, /runtime-daemon\.mjs/);
   assert.match(runner, /WslDistro/);
   assert.match(runner, /AGENT_WRITER_LEASE_OWNER/);
+  assert.match(runner, /Invoke-CodexStateHygiene/);
+  assert.match(runner, /CodexHygieneIntervalCycles/);
   assert.match(ensurePrereqs, /nodejs\.org\/dist/);
   assert.match(ensurePrereqs, /@openai\/codex/);
   assert.match(ensurePrereqs, /codex_needs_install=0/);
   assert.match(ensurePrereqs, /core\.worktree/);
+});
+
+test('delivery-agent manager status synthesizes the active lane from the freshest heartbeat when delivery state is stale', async () => {
+  const manager = await readText('tools/priority/Manage-UnattendedDeliveryAgent.ps1');
+
+  assert.match(manager, /function Resolve-DeliveryStateForStatus/);
+  assert.match(manager, /derivedFromHeartbeat/);
+  assert.match(manager, /Read-JsonFile -Path \$Paths\.ObserverHeartbeatPath/);
 });

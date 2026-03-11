@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 
-import { access, mkdir, readFile, writeFile } from 'node:fs/promises';
+import { access, mkdir, readFile, readdir, unlink, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
@@ -42,9 +42,120 @@ function formatGitPointerPath(targetPath) {
   return path.resolve(targetPath).replace(/\\/g, '/');
 }
 
-async function repairExistingWorktreeGitPointers({ repoRoot, checkoutPath }) {
-  const laneSegment = sanitizeSegment(path.basename(checkoutPath));
-  const worktreeAdminDir = path.join(repoRoot, '.git', 'worktrees', laneSegment);
+function formatRelativeGitPointer(fromDir, toPath) {
+  const relativePath = path.relative(fromDir, toPath).replace(/\\/g, '/');
+  return relativePath || '.';
+}
+
+function isPathWithin(parentPath, childPath) {
+  const relativePath = path.relative(parentPath, childPath);
+  return Boolean(relativePath) && !relativePath.startsWith('..') && !path.isAbsolute(relativePath);
+}
+
+function isWindowsAbsolutePath(value) {
+  return /^[A-Za-z]:[\\/]/.test(value) || /^\\\\/.test(value);
+}
+
+function isUnixAbsolutePath(value) {
+  return value.startsWith('/');
+}
+
+function tryTranslateMountedWindowsPath(value) {
+  const match = normalizeText(value).match(/^\/mnt\/([a-zA-Z])\/(.*)$/);
+  if (!match) {
+    return '';
+  }
+  return `${match[1].toUpperCase()}:\\${match[2].replace(/\//g, '\\')}`;
+}
+
+function extractRuntimeWorktreeHint(pointerPath) {
+  const match = normalizeText(pointerPath).replace(/\\/g, '/').match(/\/\.runtime-worktrees\/([^/]+)\/([^/]+)\/\.git$/);
+  if (!match) {
+    return null;
+  }
+  return {
+    repoKey: sanitizeSegment(match[1]),
+    laneSegment: sanitizeSegment(match[2])
+  };
+}
+
+async function tryResolveCheckoutGitFromAdminPointer({ repoRoot, worktreeAdminDir, laneSegment }) {
+  const adminGitdirFile = path.join(worktreeAdminDir, 'gitdir');
+  if (!(await pathExists(adminGitdirFile))) {
+    return '';
+  }
+
+  const rawPointer = normalizeText(await readFile(adminGitdirFile, 'utf8'));
+  const candidates = [];
+  if (rawPointer) {
+    if (isWindowsAbsolutePath(rawPointer)) {
+      candidates.push(rawPointer);
+    } else if (isUnixAbsolutePath(rawPointer)) {
+      const translatedMountedPath = tryTranslateMountedWindowsPath(rawPointer);
+      if (translatedMountedPath) {
+        candidates.push(translatedMountedPath);
+      }
+      candidates.push(rawPointer);
+    } else {
+      candidates.push(path.resolve(worktreeAdminDir, rawPointer));
+    }
+
+    const runtimeHint = extractRuntimeWorktreeHint(rawPointer);
+    if (runtimeHint?.laneSegment === laneSegment) {
+      candidates.push(path.join(repoRoot, '.runtime-worktrees', runtimeHint.repoKey, laneSegment, '.git'));
+    }
+  }
+
+  const runtimeRoot = path.join(repoRoot, '.runtime-worktrees');
+  if (await pathExists(runtimeRoot)) {
+    const repoRoots = await readdir(runtimeRoot, { withFileTypes: true });
+    for (const entry of repoRoots) {
+      if (!entry.isDirectory()) {
+        continue;
+      }
+      candidates.push(path.join(runtimeRoot, entry.name, laneSegment, '.git'));
+    }
+  }
+
+  candidates.push(path.join(path.dirname(repoRoot), laneSegment, '.git'));
+
+  const seen = new Set();
+  for (const candidate of candidates) {
+    const normalizedCandidate = normalizeText(candidate);
+    if (!normalizedCandidate) {
+      continue;
+    }
+    const key = normalizedCandidate.toLowerCase();
+    if (seen.has(key)) {
+      continue;
+    }
+    seen.add(key);
+    if (await pathExists(normalizedCandidate)) {
+      return normalizedCandidate;
+    }
+  }
+
+  return '';
+}
+
+async function clearStaleInitializingLock(worktreeAdminDir) {
+  const lockPath = path.join(worktreeAdminDir, 'locked');
+  if (!(await pathExists(lockPath))) {
+    return false;
+  }
+
+  const lockReason = normalizeText(await readFile(lockPath, 'utf8'));
+  if (lockReason !== 'initializing') {
+    return false;
+  }
+
+  await unlink(lockPath);
+  return true;
+}
+
+async function repairExistingWorktreeGitPointers({ repoRoot, checkoutPath, laneSegment }) {
+  const resolvedLaneSegment = sanitizeSegment(laneSegment || path.basename(checkoutPath));
+  const worktreeAdminDir = path.join(repoRoot, '.git', 'worktrees', resolvedLaneSegment);
   const checkoutGitFile = path.join(checkoutPath, '.git');
   const adminGitdirFile = path.join(worktreeAdminDir, 'gitdir');
 
@@ -57,8 +168,8 @@ async function repairExistingWorktreeGitPointers({ repoRoot, checkoutPath }) {
     };
   }
 
-  const expectedCheckoutPointer = `gitdir: ${formatGitPointerPath(worktreeAdminDir)}\n`;
-  const expectedAdminPointer = `${formatGitPointerPath(checkoutGitFile)}\n`;
+  const expectedCheckoutPointer = `gitdir: ${formatRelativeGitPointer(checkoutPath, worktreeAdminDir)}\n`;
+  const expectedAdminPointer = `${formatRelativeGitPointer(worktreeAdminDir, checkoutGitFile)}\n`;
   let repaired = false;
 
   const currentCheckoutPointer = await readFile(checkoutGitFile, 'utf8');
@@ -75,10 +186,104 @@ async function repairExistingWorktreeGitPointers({ repoRoot, checkoutPath }) {
 
   return {
     repaired,
+    laneSegment: resolvedLaneSegment,
     worktreeAdminDir,
     checkoutGitFile,
     adminGitdirFile
   };
+}
+
+export async function repairRegisteredWorktreeGitPointers({ repoRoot, deps = {} }) {
+  const execFileFn = deps.execFileFn ?? execFileAsync;
+  const worktreesRoot = path.join(repoRoot, '.git', 'worktrees');
+  const runtimeRoot = path.join(repoRoot, '.runtime-worktrees');
+  const report = {
+    repaired: [],
+    skipped: [],
+    unlocked: [],
+    unresolved: [],
+    prune: {
+      attempted: false,
+      exitCode: 0,
+      output: ''
+    }
+  };
+
+  if (!(await pathExists(worktreesRoot))) {
+    return report;
+  }
+
+  const entries = await readdir(worktreesRoot, { withFileTypes: true });
+  for (const entry of entries) {
+    if (!entry.isDirectory()) {
+      continue;
+    }
+
+    const laneSegment = sanitizeSegment(entry.name);
+    const worktreeAdminDir = path.join(worktreesRoot, entry.name);
+    const checkoutGitFile = await tryResolveCheckoutGitFromAdminPointer({
+      repoRoot,
+      worktreeAdminDir,
+      laneSegment
+    });
+
+    if (!checkoutGitFile) {
+      report.unresolved.push({
+        laneSegment,
+        worktreeAdminDir,
+        reason: 'checkout-git-not-found'
+      });
+      continue;
+    }
+
+    const checkoutPath = path.dirname(checkoutGitFile);
+    if (!(await pathExists(runtimeRoot)) || !isPathWithin(runtimeRoot, checkoutPath)) {
+      report.skipped.push({
+        laneSegment,
+        checkoutPath,
+        reason: 'non-runtime-worktree'
+      });
+      continue;
+    }
+
+    try {
+      const repair = await repairExistingWorktreeGitPointers({
+        repoRoot,
+        checkoutPath,
+        laneSegment
+      });
+      report.repaired.push({
+        laneSegment,
+        checkoutPath,
+        repaired: repair.repaired
+      });
+
+      if (await clearStaleInitializingLock(worktreeAdminDir)) {
+        report.unlocked.push({
+          laneSegment,
+          worktreeAdminDir,
+          reason: 'removed-stale-initializing-lock'
+        });
+      }
+    } catch (error) {
+      report.unresolved.push({
+        laneSegment,
+        worktreeAdminDir,
+        reason: formatExecError(error)
+      });
+    }
+  }
+
+  report.prune.attempted = true;
+  try {
+    const result = await execFileFn('git', ['worktree', 'prune', '--verbose', '--expire', 'now'], { cwd: repoRoot });
+    report.prune.output = `${normalizeText(result?.stdout)}\n${normalizeText(result?.stderr)}`.trim();
+  } catch (error) {
+    report.prune.exitCode = Number.isInteger(error?.code) ? error.code : 1;
+    report.prune.output = formatExecError(error);
+  }
+
+  return report;
 }
 
 function formatBootstrapFailure(error) {
@@ -230,7 +435,11 @@ export async function prepareCompareviWorkerCheckout({
   if (await pathExists(gitMarkerPath)) {
     const fetchedRemotes = [];
     try {
-      await repairExistingWorktreeGitPointers({ repoRoot, checkoutPath });
+      await repairExistingWorktreeGitPointers({
+        repoRoot,
+        checkoutPath,
+        laneSegment: activeLane.laneId
+      });
       const availableRemotes = (await tryReadGitStdout(execFileFn, ['remote'], { cwd: checkoutPath }))
         .split(/\r?\n/)
         .map((entry) => normalizeText(entry))
@@ -295,6 +504,11 @@ export async function prepareCompareviWorkerCheckout({
   await mkdir(checkoutRoot, { recursive: true });
   await execFileFn('git', ['worktree', 'add', '--detach', checkoutPath, DEFAULT_WORKER_REF], {
     cwd: repoRoot
+  });
+  await repairExistingWorktreeGitPointers({
+    repoRoot,
+    checkoutPath,
+    laneSegment: activeLane.laneId
   });
   const pushRemotesNormalized = await normalizeGitHubRemotePushUrls(execFileFn, checkoutPath, {
     platform: deps.platform ?? platform ?? process.platform
@@ -508,8 +722,12 @@ export const __test = {
   BOOTSTRAP_RELATIVE_PATH,
   DEFAULT_WORKER_REF,
   formatGitPointerPath,
+  isPathWithin,
+  formatRelativeGitPointer,
   GITHUB_PUSH_REMOTES,
   normalizeGitHubRemotePushUrls,
+  repairRegisteredWorktreeGitPointers,
   repairExistingWorktreeGitPointers,
+  tryResolveCheckoutGitFromAdminPointer,
   resolveGitHubSshPushUrl
 };

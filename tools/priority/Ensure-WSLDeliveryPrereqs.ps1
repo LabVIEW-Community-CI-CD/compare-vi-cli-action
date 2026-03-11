@@ -40,6 +40,72 @@ function Resolve-CommandPath {
   return $command.Source
 }
 
+function Repair-CrossPlaneRuntimeWorktrees {
+  param([Parameter(Mandatory)][string]$RepoRoot)
+
+  $nodePath = Resolve-CommandPath -Name 'node'
+  $scriptPath = Join-Path $RepoRoot 'tools\priority\repair-runtime-worktrees.mjs'
+  if (-not (Test-Path -LiteralPath $scriptPath -PathType Leaf)) {
+    return [pscustomobject]@{
+      repaired = $false
+      reason = 'script-missing'
+      reportPath = $null
+    }
+  }
+
+  $reportPath = Join-Path $RepoRoot 'tests\results\_agent\runtime\cross-plane-worktree-repair.json'
+  $output = & $nodePath $scriptPath --repo-root $RepoRoot --report $reportPath
+  if ($LASTEXITCODE -ne 0) {
+    throw "Cross-plane runtime worktree repair failed for $RepoRoot"
+  }
+
+  try {
+    return (($output -join [Environment]::NewLine) | ConvertFrom-Json -Depth 20 -ErrorAction Stop)
+  } catch {
+    return [pscustomobject]@{
+      repaired = $false
+      reason = 'report-parse-failed'
+      reportPath = $reportPath
+    }
+  }
+}
+
+function Repair-CodexState {
+  param([Parameter(Mandatory)][string]$RepoRoot)
+
+  $nodePath = Resolve-CommandPath -Name 'node'
+  $scriptPath = Join-Path $RepoRoot 'tools\priority\codex-state-hygiene.mjs'
+  if (-not (Test-Path -LiteralPath $scriptPath -PathType Leaf)) {
+    return [pscustomobject]@{
+      status = 'skipped'
+      reason = 'script-missing'
+      reportPath = $null
+    }
+  }
+
+  $reportPath = Join-Path $RepoRoot 'tests\results\_agent\runtime\codex-state-hygiene.json'
+  $output = & $nodePath --no-warnings $scriptPath --apply --report $reportPath
+  $exitCode = $LASTEXITCODE
+  if ($exitCode -ne 0) {
+    return [pscustomobject]@{
+      status = 'error'
+      reason = 'tool-failed'
+      exitCode = $exitCode
+      reportPath = $reportPath
+    }
+  }
+
+  try {
+    return (($output -join [Environment]::NewLine) | ConvertFrom-Json -Depth 20 -ErrorAction Stop)
+  } catch {
+    return [pscustomobject]@{
+      status = 'error'
+      reason = 'report-parse-failed'
+      reportPath = $reportPath
+    }
+  }
+}
+
 function Repair-RepoGitWorktreeConfig {
   param([Parameter(Mandatory)][string]$RepoRoot)
 
@@ -82,6 +148,8 @@ $gitUserEmail = (& git config --global user.email 2>$null)
 $codexVersion = (& npm view @openai/codex version)
 $codexHomePath = Join-Path $HOME '.codex'
 $repoGitWorktreeRepair = Repair-RepoGitWorktreeConfig -RepoRoot $repoRoot
+$crossPlaneWorktreeRepair = Repair-CrossPlaneRuntimeWorktrees -RepoRoot $repoRoot
+$codexStateHygiene = Repair-CodexState -RepoRoot $repoRoot
 
 $env:COMPAREVI_WSL_NODE_VERSION = $NodeVersion
 $env:COMPAREVI_WSL_GH_EXE = Convert-ToWslPath -Path $ghPath
@@ -246,6 +314,8 @@ $report | Add-Member -NotePropertyName nodeRequested -NotePropertyValue $NodeVer
 $report | Add-Member -NotePropertyName pwshRequested -NotePropertyValue $pwshVersion -Force
 $report | Add-Member -NotePropertyName codexRequested -NotePropertyValue $codexVersion -Force
 $report | Add-Member -NotePropertyName repoGitWorktreeRepair -NotePropertyValue $repoGitWorktreeRepair -Force
+$report | Add-Member -NotePropertyName crossPlaneWorktreeRepair -NotePropertyValue $crossPlaneWorktreeRepair -Force
+$report | Add-Member -NotePropertyName codexStateHygiene -NotePropertyValue $codexStateHygiene -Force
 
 $directory = Split-Path -Parent $reportPath
 if ($directory) {

@@ -31,6 +31,7 @@ param(
   [switch]$AutoBootstrapOnFailure,
   [switch]$AutoPrioritySyncLane,
   [switch]$AutoDevelopSync,
+  [int]$CodexHygieneIntervalCycles = 3,
   [string]$WslDistro = 'Ubuntu'
 )
 
@@ -73,6 +74,17 @@ function Read-JsonFile {
   } catch {
     return $null
   }
+}
+
+function Resolve-CommandPath {
+  param([Parameter(Mandatory)][string]$Name)
+
+  $command = Get-Command -Name $Name -ErrorAction SilentlyContinue | Select-Object -First 1
+  if (-not $command) {
+    throw "Required command not found on the Windows host: $Name"
+  }
+
+  return $command.Source
 }
 
 function Get-StableLeaseOwner {
@@ -219,6 +231,42 @@ function Stop-WslRuntimeDaemon {
   }
 }
 
+function Invoke-CodexStateHygiene {
+  param([Parameter(Mandatory)][string]$RepoRoot)
+
+  $nodePath = Resolve-CommandPath -Name 'node'
+  $scriptPath = Join-Path $RepoRoot 'tools\priority\codex-state-hygiene.mjs'
+  $reportPath = Join-Path $RepoRoot 'tests\results\_agent\runtime\codex-state-hygiene.json'
+  if (-not (Test-Path -LiteralPath $scriptPath -PathType Leaf)) {
+    return [ordered]@{
+      status = 'skipped'
+      reason = 'script-missing'
+      reportPath = $reportPath
+    }
+  }
+
+  $output = & $nodePath --no-warnings $scriptPath --apply --repo-root $RepoRoot --report $reportPath
+  $exitCode = $LASTEXITCODE
+  if ($exitCode -ne 0) {
+    return [ordered]@{
+      status = 'error'
+      reason = 'tool-failed'
+      exitCode = $exitCode
+      reportPath = $reportPath
+    }
+  }
+
+  try {
+    return (($output -join [Environment]::NewLine) | ConvertFrom-Json -Depth 20 -ErrorAction Stop)
+  } catch {
+    return [ordered]@{
+      status = 'error'
+      reason = 'report-parse-failed'
+      reportPath = $reportPath
+    }
+  }
+}
+
 $repoRoot = Resolve-RepoRoot
 $runtimeDirPath = Join-Path $repoRoot $RuntimeDir
 $statePath = Join-Path $runtimeDirPath 'delivery-agent-manager-state.json'
@@ -243,6 +291,7 @@ if ($LASTEXITCODE -ne 0) {
 
 $cycle = 0
 $activeDaemonPid = [int]0
+$codexStateHygiene = $null
 
 try {
   while ($true) {
@@ -292,6 +341,10 @@ try {
       $daemonAlive = Test-WslProcessAlive -Distro $WslDistro -ProcessId $activeDaemonPid
     }
 
+    if ($CodexHygieneIntervalCycles -gt 0 -and (($cycle -eq 1) -or (($cycle % $CodexHygieneIntervalCycles) -eq 0))) {
+      $codexStateHygiene = Invoke-CodexStateHygiene -RepoRoot $repoRoot
+    }
+
     $heartbeat = Read-JsonFile -Path $observerHeartbeatPath
     $report = Read-JsonFile -Path $observerReportPath
     $state = [ordered]@{
@@ -307,6 +360,7 @@ try {
       }
       heartbeat = $heartbeat
       report = $report
+      codexStateHygiene = $codexStateHygiene
       stopWhenNoOpenIssues = ($StopWhenNoOpenIssues -or $SleepMode)
     }
     Write-JsonFile -Path $statePath -Payload $state
@@ -316,6 +370,7 @@ try {
         cycle = $cycle
         daemon = $state.daemon
         report = $report
+        codexStateHygiene = $codexStateHygiene
       })
 
     if (-not $daemonAlive) {
@@ -344,6 +399,7 @@ try {
         pid = $activeDaemonPid
         alive = (Test-WslProcessAlive -Distro $WslDistro -ProcessId $activeDaemonPid)
       }
+      codexStateHygiene = $codexStateHygiene
       outcome = 'stopped'
     })
 }

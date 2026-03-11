@@ -1,0 +1,154 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://labview-community-ci-cd.github.io/compare-vi-cli-action/schemas/codex-state-hygiene-v1.schema.json",
+  "title": "Codex State Hygiene Report v1",
+  "type": "object",
+  "additionalProperties": true,
+  "required": [
+    "schema",
+    "generatedAt",
+    "codexHome",
+    "stateDb",
+    "sessions",
+    "extensionLog",
+    "database",
+    "applied",
+    "status"
+  ],
+  "properties": {
+    "schema": {
+      "const": "priority/codex-state-hygiene-report@v1"
+    },
+    "generatedAt": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "codexHome": {
+      "type": "string"
+    },
+    "repoRoot": {
+      "type": "string"
+    },
+    "status": {
+      "enum": ["ok", "action-needed", "mutated", "skipped"]
+    },
+    "stateDb": {
+      "type": "object",
+      "additionalProperties": true,
+      "required": ["path", "exists", "sizeBytes", "walPath", "walExists", "walSizeBytes"],
+      "properties": {
+        "path": { "type": "string" },
+        "exists": { "type": "boolean" },
+        "sizeBytes": { "type": "integer", "minimum": 0 },
+        "walPath": { "type": "string" },
+        "walExists": { "type": "boolean" },
+        "walSizeBytes": { "type": "integer", "minimum": 0 }
+      }
+    },
+    "sessions": {
+      "type": "object",
+      "additionalProperties": true,
+      "required": ["exists", "fileCount", "totalBytes"],
+      "properties": {
+        "exists": { "type": "boolean" },
+        "fileCount": { "type": "integer", "minimum": 0 },
+        "totalBytes": { "type": "integer", "minimum": 0 }
+      }
+    },
+    "archiveSessions": {
+      "type": "object",
+      "additionalProperties": true,
+      "required": ["exists", "fileCount", "totalBytes"],
+      "properties": {
+        "exists": { "type": "boolean" },
+        "fileCount": { "type": "integer", "minimum": 0 },
+        "totalBytes": { "type": "integer", "minimum": 0 }
+      }
+    },
+    "extensionLog": {
+      "type": "object",
+      "additionalProperties": true,
+      "required": ["available", "counts"],
+      "properties": {
+        "available": { "type": "boolean" },
+        "counts": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "gitOriginAndRoots",
+            "localEnvironmentsUnsupported",
+            "openInTargetUnsupported",
+            "threadStreamStateChanged",
+            "databaseLocked",
+            "slowStatement"
+          ],
+          "properties": {
+            "gitOriginAndRoots": { "type": "integer", "minimum": 0 },
+            "localEnvironmentsUnsupported": { "type": "integer", "minimum": 0 },
+            "openInTargetUnsupported": { "type": "integer", "minimum": 0 },
+            "threadStreamStateChanged": { "type": "integer", "minimum": 0 },
+            "databaseLocked": { "type": "integer", "minimum": 0 },
+            "slowStatement": { "type": "integer", "minimum": 0 }
+          }
+        }
+      }
+    },
+    "database": {
+      "type": "object",
+      "additionalProperties": true,
+      "required": [
+        "threadCount",
+        "logCount",
+        "threadlessLogRows",
+        "nullThreadLogRowsOlderThanRetention",
+        "staleThreadCandidates"
+      ],
+      "properties": {
+        "threadCount": { "type": "integer", "minimum": 0 },
+        "logCount": { "type": "integer", "minimum": 0 },
+        "threadlessLogRows": { "type": "integer", "minimum": 0 },
+        "nullThreadLogRowsOlderThanRetention": { "type": "integer", "minimum": 0 },
+        "staleThreadCandidates": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": true,
+            "required": ["id", "reason", "cwdKind", "cwdExists", "updatedAt", "ageSeconds"],
+            "properties": {
+              "id": { "type": "string" },
+              "reason": { "type": "string" },
+              "cwdKind": { "type": "string" },
+              "cwdExists": { "type": "boolean" },
+              "updatedAt": { "type": "integer", "minimum": 0 },
+              "ageSeconds": { "type": "integer", "minimum": 0 }
+            }
+          }
+        }
+      }
+    },
+    "applied": {
+      "type": "object",
+      "additionalProperties": true,
+      "required": [
+        "requested",
+        "archivedThreadCount",
+        "deletedNullLogCount",
+        "normalizedThreadCwdCount",
+        "relocatedRolloutCount",
+        "relocatedRolloutBytes",
+        "rewrittenRolloutCount",
+        "error"
+      ],
+      "properties": {
+        "requested": { "type": "boolean" },
+        "archivedThreadCount": { "type": "integer", "minimum": 0 },
+        "deletedNullLogCount": { "type": "integer", "minimum": 0 },
+        "normalizedThreadCwdCount": { "type": "integer", "minimum": 0 },
+        "relocatedRolloutCount": { "type": "integer", "minimum": 0 },
+        "relocatedRolloutBytes": { "type": "integer", "minimum": 0 },
+        "rewrittenRolloutCount": { "type": "integer", "minimum": 0 },
+        "error": { "type": ["string", "null"] }
+      }
+    }
+  }
+}

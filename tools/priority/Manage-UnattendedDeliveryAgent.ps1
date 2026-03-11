@@ -35,6 +35,7 @@ param(
   [switch]$AutoBootstrapOnFailure,
   [switch]$AutoPrioritySyncLane,
   [switch]$AutoDevelopSync,
+  [int]$CodexHygieneIntervalCycles = 3,
   [string]$WslDistro = 'Ubuntu'
 )
 
@@ -101,6 +102,7 @@ function Get-ArtifactPaths {
     ObserverHeartbeatPath = Join-Path $runtimeDirPath 'observer-heartbeat.json'
     DeliveryStatePath = Join-Path $runtimeDirPath 'delivery-agent-state.json'
     WslDaemonPidPath = Join-Path $runtimeDirPath 'delivery-agent-wsl-daemon-pid.json'
+    CodexStateHygienePath = Join-Path $runtimeDirPath 'codex-state-hygiene.json'
     RunnerLogPath = Join-Path $runtimeDirPath 'delivery-agent-manager.log'
     RunnerErrorPath = Join-Path $runtimeDirPath 'delivery-agent-manager.stderr.log'
   }
@@ -165,6 +167,128 @@ function Get-OptionalProperty {
   return $InputObject.$Name
 }
 
+function Get-OptionalStringProperty {
+  param(
+    [AllowNull()][object]$InputObject,
+    [Parameter(Mandatory)][string]$Name
+  )
+
+  $value = Get-OptionalProperty -InputObject $InputObject -Name $Name
+  if ($null -eq $value) {
+    return $null
+  }
+  $text = [string]$value
+  if ([string]::IsNullOrWhiteSpace($text)) {
+    return $null
+  }
+  return $text
+}
+
+function Get-OptionalDateTimeProperty {
+  param(
+    [AllowNull()][object]$InputObject,
+    [Parameter(Mandatory)][string]$Name
+  )
+
+  $text = Get-OptionalStringProperty -InputObject $InputObject -Name $Name
+  if ([string]::IsNullOrWhiteSpace($text)) {
+    return $null
+  }
+
+  try {
+    return [DateTime]::Parse($text, [System.Globalization.CultureInfo]::InvariantCulture, [System.Globalization.DateTimeStyles]::RoundtripKind)
+  } catch {
+    return $null
+  }
+}
+
+function Resolve-DeliveryStateForStatus {
+  param(
+    [AllowNull()][object]$DeliveryState,
+    [AllowNull()][object]$Heartbeat,
+    [Parameter(Mandatory)][object]$Paths
+  )
+
+  if ($null -eq $Heartbeat -or $null -eq $Heartbeat.activeLane) {
+    return $DeliveryState
+  }
+
+  $heartbeatLane = $Heartbeat.activeLane
+  $heartbeatIssue = Get-OptionalIntProperty -InputObject $heartbeatLane -Name 'issue'
+  if ($heartbeatIssue -le 0) {
+    return $DeliveryState
+  }
+
+  $deliveryGeneratedAt = Get-OptionalDateTimeProperty -InputObject $DeliveryState -Name 'generatedAt'
+  $heartbeatGeneratedAt = Get-OptionalDateTimeProperty -InputObject $Heartbeat -Name 'generatedAt'
+  $deliveryIssue = 0
+  if ($DeliveryState -and $DeliveryState.PSObject.Properties['activeLane']) {
+    $deliveryIssue = Get-OptionalIntProperty -InputObject $DeliveryState.activeLane -Name 'issue'
+  }
+
+  $heartbeatNewer = $heartbeatGeneratedAt -and ((-not $deliveryGeneratedAt) -or ($heartbeatGeneratedAt -gt $deliveryGeneratedAt))
+  $issueDrift = $deliveryIssue -ne $heartbeatIssue
+  if (-not $heartbeatNewer -and -not $issueDrift) {
+    return $DeliveryState
+  }
+
+  $laneId = Get-OptionalStringProperty -InputObject $heartbeatLane -Name 'laneId'
+  $taskPacket = Get-OptionalProperty -InputObject $heartbeatLane -Name 'taskPacket'
+  $taskStatus = Get-OptionalStringProperty -InputObject $taskPacket -Name 'status'
+  $runtimeOutcome = Get-OptionalStringProperty -InputObject $Heartbeat -Name 'outcome'
+  $laneLifecycle = if ($runtimeOutcome -match 'blocked|failed') {
+    'blocked'
+  } elseif ($taskStatus -and $taskStatus -in @('planning', 'reshaping-backlog', 'coding', 'waiting-ci', 'waiting-review', 'ready-merge', 'blocked', 'complete', 'idle')) {
+    $taskStatus
+  } else {
+    'planning'
+  }
+  $status = if ($laneLifecycle -eq 'idle') {
+    'idle'
+  } elseif ($laneLifecycle -eq 'blocked') {
+    'blocked'
+  } else {
+    'running'
+  }
+  $lanePath = if (-not [string]::IsNullOrWhiteSpace($laneId)) {
+    Join-Path (Join-Path $Paths.RuntimeDirPath 'delivery-agent-lanes') ("{0}.json" -f $laneId)
+  } else {
+    $null
+  }
+
+  return [ordered]@{
+    schema = 'priority/delivery-agent-runtime-state@v1'
+    generatedAt = if ($heartbeatGeneratedAt) { $heartbeatGeneratedAt.ToString('o') } else { [DateTime]::UtcNow.ToString('o') }
+    repository = $Repo
+    runtimeDir = $RuntimeDir
+    status = $status
+    laneLifecycle = $laneLifecycle
+    activeCodingLanes = if ($laneLifecycle -eq 'coding') { 1 } else { 0 }
+    derivedFromHeartbeat = $true
+    activeLane = [ordered]@{
+      schema = 'priority/delivery-agent-lane-state@v1'
+      generatedAt = if ($heartbeatGeneratedAt) { $heartbeatGeneratedAt.ToString('o') } else { [DateTime]::UtcNow.ToString('o') }
+      laneId = $laneId
+      issue = $heartbeatIssue
+      epic = Get-OptionalIntProperty -InputObject $heartbeatLane -Name 'epic'
+      branch = Get-OptionalStringProperty -InputObject $heartbeatLane -Name 'branch'
+      forkRemote = Get-OptionalStringProperty -InputObject $heartbeatLane -Name 'forkRemote'
+      prUrl = Get-OptionalStringProperty -InputObject $heartbeatLane -Name 'prUrl'
+      blockerClass = Get-OptionalStringProperty -InputObject $heartbeatLane -Name 'blockerClass'
+      laneLifecycle = $laneLifecycle
+      actionType = $runtimeOutcome
+      outcome = $runtimeOutcome
+      reason = $runtimeOutcome
+      retryable = $false
+      nextWakeCondition = $null
+    }
+    artifacts = [ordered]@{
+      statePath = $Paths.DeliveryStatePath
+      lanePath = $lanePath
+    }
+  }
+}
+
 function Invoke-EnsurePrereqs {
   $scriptPath = Join-Path $PSScriptRoot 'Ensure-WSLDeliveryPrereqs.ps1'
   & pwsh -NoLogo -NoProfile -File $scriptPath -Distro $WslDistro | Out-Null
@@ -184,7 +308,8 @@ function Emit-Status {
   $daemonState = Read-JsonFile -Path $Paths.WslDaemonPidPath
   $daemonAlive = Test-WslProcessAlive -Distro $WslDistro -ProcessId (Get-OptionalIntProperty -InputObject $daemonState -Name 'pid')
   $heartbeat = Read-JsonFile -Path $Paths.ObserverHeartbeatPath
-  $deliveryState = Read-JsonFile -Path $Paths.DeliveryStatePath
+  $deliveryState = Resolve-DeliveryStateForStatus -DeliveryState (Read-JsonFile -Path $Paths.DeliveryStatePath) -Heartbeat $heartbeat -Paths $Paths
+  $codexStateHygiene = Read-JsonFile -Path $Paths.CodexStateHygienePath
   $status = if ($managerAlive -or $daemonAlive) { 'running' } else { 'stopped' }
 
   $report = [ordered]@{
@@ -209,6 +334,7 @@ function Emit-Status {
     }
     heartbeat = $heartbeat
     delivery = $deliveryState
+    codexStateHygiene = $codexStateHygiene
     paths = [ordered]@{
       managerStatePath = $Paths.ManagerStatePath
       managerPidPath = $Paths.ManagerPidPath
@@ -216,6 +342,7 @@ function Emit-Status {
       observerHeartbeatPath = $Paths.ObserverHeartbeatPath
       deliveryStatePath = $Paths.DeliveryStatePath
       wslDaemonPidPath = $Paths.WslDaemonPidPath
+      codexStateHygienePath = $Paths.CodexStateHygienePath
       runnerLogPath = $Paths.RunnerLogPath
       runnerErrorPath = $Paths.RunnerErrorPath
     }
@@ -302,6 +429,8 @@ $argumentList = @(
   "$CycleIntervalSeconds",
   '-MaxCycles',
   "$MaxCycles",
+  '-CodexHygieneIntervalCycles',
+  "$CodexHygieneIntervalCycles",
   '-WslDistro',
   $WslDistro
 )

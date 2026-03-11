@@ -454,6 +454,19 @@ Invoke-Npm -Script 'hooks:plane' -AllowFailure
 Write-Host '[bootstrap] Running workspace health gate (preflight)…'
 Invoke-WorkspaceHealthGate -LeaseMode 'optional' -ReportName 'bootstrap-preflight-workspace-health.json'
 
+Write-Host '[bootstrap] Repairing cross-plane runtime worktree registrations…'
+Invoke-Npm -Script 'priority:runtime:worktrees:repair' -AllowFailure:$true
+
+if ($env:AGENT_CODEX_STATE_HYGIENE_MODE -ne 'off') {
+  $codexStateScript = if ($env:AGENT_CODEX_STATE_HYGIENE_MODE -eq 'apply') {
+    'priority:codex:state:hygiene:apply'
+  } else {
+    'priority:codex:state:hygiene'
+  }
+  Write-Host ("[bootstrap] Checking Codex local-state hygiene ({0})…" -f $codexStateScript)
+  Invoke-Npm -Script $codexStateScript -AllowFailure:$true
+}
+
 Write-Host '[bootstrap] Running hook preflight…'
 Invoke-Npm -Script 'hooks:preflight' -AllowFailure
 

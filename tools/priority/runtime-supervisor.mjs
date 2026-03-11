@@ -35,6 +35,7 @@ import {
   bootstrapCompareviWorkerCheckout,
   activateCompareviWorkerLane,
   prepareCompareviWorkerCheckout,
+  repairRegisteredWorktreeGitPointers,
   resolveCompareviWorkerCheckoutPath
 } from './runtime-worker-checkout.mjs';
 import {
@@ -894,6 +895,7 @@ export const compareviRuntimeTest = {
   planCompareviRuntimeStep,
   planCompareviRuntimeStepFromLiveStanding,
   prepareCompareviWorkerCheckout,
+  repairRegisteredWorktreeGitPointers,
   resolveCompareviIssueBranchName,
   resolveCompareviWorkerCheckoutPath,
   resolveForkRemoteForRepository
