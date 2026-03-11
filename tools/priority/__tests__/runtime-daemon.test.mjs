@@ -260,6 +260,9 @@ test('comparevi worker checkout allocator refreshes and reuses an existing lane 
           }
           return { stdout: 'upstream\norigin\n', stderr: '' };
         }
+        if (args[0] === 'status' && args[1] === '--porcelain' && args[2] === '--untracked-files=all') {
+          return { stdout: '', stderr: '' };
+        }
         if (args[0] === 'fetch' && args[1] === 'upstream' && args[2] === '--prune') {
           return { stdout: '', stderr: '' };
         }
@@ -276,6 +279,7 @@ test('comparevi worker checkout allocator refreshes and reuses an existing lane 
   assert.equal(prepared.ref, 'upstream/develop');
   assert.deepEqual(prepared.fetchedRemotes, ['upstream']);
   assert.deepEqual(prepared.pushRemotesNormalized, ['origin']);
+  assert.deepEqual(prepared.worktreeStateRepair, { repaired: false, dirtyEntries: [] });
   assert.equal(
     await readFile(path.join(checkoutPath, '.git'), 'utf8'),
     `gitdir: ${path.relative(checkoutPath, path.join(repoRoot, '.git', 'worktrees', 'personal-995')).replace(/\\/g, '/')}\n`
@@ -302,6 +306,86 @@ test('comparevi worker checkout allocator refreshes and reuses an existing lane 
         entry.args[0] === 'checkout' &&
         entry.args.includes('--force') &&
         entry.args.includes('--detach')
+    )
+  );
+});
+
+test('comparevi worker checkout allocator stashes stale runtime drift before reusing a lane worktree', async () => {
+  const repoRoot = await mkdtemp(path.join(os.tmpdir(), 'runtime-daemon-worker-repair-'));
+  const laneId = 'origin-959';
+  const { checkoutPath } = compareviRuntimeTest.resolveCompareviWorkerCheckoutPath({
+    repoRoot,
+    repository: 'example/repo',
+    laneId
+  });
+  const worktreeAdminDir = path.join(repoRoot, '.git', 'worktrees', laneId);
+  await mkdir(checkoutPath, { recursive: true });
+  await mkdir(worktreeAdminDir, { recursive: true });
+  await writeFile(path.join(checkoutPath, '.git'), 'gitdir: C:/stale/windows/path\n', 'utf8');
+  await writeFile(path.join(worktreeAdminDir, 'gitdir'), '/mnt/c/stale/linux/path/.git\n', 'utf8');
+
+  const calls = [];
+  let statusCalls = 0;
+  const prepared = await compareviRuntimeTest.prepareCompareviWorkerCheckout({
+    repoRoot,
+    repository: 'example/repo',
+    schedulerDecision: {
+      activeLane: {
+        laneId
+      },
+      stepOptions: {}
+    },
+    deps: {
+      platform: 'linux',
+      execFileFn: async (command, args, options) => {
+        calls.push({ command, args, options });
+        if (command !== 'git') {
+          throw new Error(`unexpected command: ${command}`);
+        }
+        if (args[0] === 'status' && args[1] === '--porcelain' && args[2] === '--untracked-files=all') {
+          statusCalls += 1;
+          return {
+            stdout: statusCalls === 1 ? 'M  tools/priority/delivery-agent.mjs\n' : '',
+            stderr: ''
+          };
+        }
+        if (args[0] === 'stash' && args[1] === 'push') {
+          return { stdout: 'Saved working directory and index state', stderr: '' };
+        }
+        if (args[0] === 'remote') {
+          if (args[1] === 'get-url' && args[2] === 'origin') {
+            return { stdout: 'https://github.com/example/repo-fork\n', stderr: '' };
+          }
+          if (args[1] === 'get-url' && args[2] === '--push' && args[3] === 'origin') {
+            return { stdout: 'https://github.com/example/repo-fork\n', stderr: '' };
+          }
+          if (args[1] === 'set-url' && args[2] === '--push' && args[3] === 'origin') {
+            return { stdout: '', stderr: '' };
+          }
+          return { stdout: 'upstream\norigin\n', stderr: '' };
+        }
+        if (args[0] === 'fetch' && args[1] === 'upstream' && args[2] === '--prune') {
+          return { stdout: '', stderr: '' };
+        }
+        if (args[0] === 'checkout' && args[1] === '--force' && args[2] === '--detach' && args[3] === 'upstream/develop') {
+          return { stdout: '', stderr: '' };
+        }
+        throw new Error(`unexpected git args: ${args.join(' ')}`);
+      }
+    }
+  });
+
+  assert.equal(prepared.status, 'reused');
+  assert.equal(prepared.worktreeStateRepair.repaired, true);
+  assert.deepEqual(prepared.worktreeStateRepair.dirtyEntries, ['M  tools/priority/delivery-agent.mjs']);
+  assert.match(prepared.worktreeStateRepair.stashMessage, /^priority-runtime-worktree-repair:origin-959:/);
+  assert.ok(
+    calls.some(
+      (entry) =>
+        entry.command === 'git' &&
+        entry.args[0] === 'stash' &&
+        entry.args[1] === 'push' &&
+        entry.args.includes('--include-untracked')
     )
   );
 });

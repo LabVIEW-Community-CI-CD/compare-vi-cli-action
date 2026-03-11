@@ -299,6 +299,50 @@ function formatExecError(error) {
   return normalizeText(error?.stderr) || normalizeText(error?.message) || String(error);
 }
 
+async function repairReusedWorktreeState(execFileFn, checkoutPath, laneId) {
+  const statusResult = await execFileFn(
+    'git',
+    ['status', '--porcelain', '--untracked-files=all'],
+    { cwd: checkoutPath }
+  );
+  const dirtyEntries = normalizeText(statusResult?.stdout)
+    .split(/\r?\n/)
+    .map((entry) => normalizeText(entry))
+    .filter(Boolean);
+  if (dirtyEntries.length === 0) {
+    return {
+      repaired: false,
+      dirtyEntries: []
+    };
+  }
+
+  const stashMessage = `priority-runtime-worktree-repair:${sanitizeSegment(laneId)}:${new Date().toISOString()}`;
+  await execFileFn(
+    'git',
+    ['stash', 'push', '--include-untracked', '--message', stashMessage],
+    { cwd: checkoutPath }
+  );
+
+  const postStatusResult = await execFileFn(
+    'git',
+    ['status', '--porcelain', '--untracked-files=all'],
+    { cwd: checkoutPath }
+  );
+  const remainingEntries = normalizeText(postStatusResult?.stdout)
+    .split(/\r?\n/)
+    .map((entry) => normalizeText(entry))
+    .filter(Boolean);
+  if (remainingEntries.length > 0) {
+    throw new Error(`reused worker checkout remained dirty after stash repair: ${remainingEntries.join('; ')}`);
+  }
+
+  return {
+    repaired: true,
+    dirtyEntries,
+    stashMessage
+  };
+}
+
 function resolveGitHubSshPushUrl(remoteUrl) {
   const normalized = normalizeText(remoteUrl);
   if (!normalized) {
@@ -440,6 +484,7 @@ export async function prepareCompareviWorkerCheckout({
         checkoutPath,
         laneSegment: activeLane.laneId
       });
+      const worktreeStateRepair = await repairReusedWorktreeState(execFileFn, checkoutPath, activeLane.laneId);
       const availableRemotes = (await tryReadGitStdout(execFileFn, ['remote'], { cwd: checkoutPath }))
         .split(/\r?\n/)
         .map((entry) => normalizeText(entry))
@@ -470,7 +515,8 @@ export async function prepareCompareviWorkerCheckout({
         requestedBranch: normalizeText(schedulerDecision?.stepOptions?.branch) || null,
         source: 'comparevi-worktree',
         fetchedRemotes,
-        pushRemotesNormalized
+        pushRemotesNormalized,
+        worktreeStateRepair
       };
     } catch (error) {
       return {

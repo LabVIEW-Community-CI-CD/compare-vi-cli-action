@@ -96,6 +96,14 @@ function resolvePath(repoRoot, filePath) {
   return path.isAbsolute(filePath) ? filePath : path.join(repoRoot, filePath);
 }
 
+function resolveExecutionRoot(repoRoot, taskPacket) {
+  const workerCheckoutPath =
+    normalizeText(taskPacket?.evidence?.lane?.workerCheckoutPath) ||
+    normalizeText(taskPacket?.branch?.checkoutPath) ||
+    '';
+  return workerCheckoutPath ? resolvePath(repoRoot, workerCheckoutPath) : repoRoot;
+}
+
 async function readJsonIfPresent(filePath) {
   try {
     return JSON.parse(await readFile(filePath, 'utf8'));
@@ -1345,9 +1353,9 @@ async function mergePullRequest({ taskPacket, repoRoot, deps = {} }) {
   };
 }
 
-async function updatePullRequestBranch({ taskPacket, repoRoot, deps = {} }) {
+async function updatePullRequestBranch({ taskPacket, repoRoot, executionRoot = repoRoot, deps = {} }) {
   if (typeof deps.updatePullRequestBranchFn === 'function') {
-    return deps.updatePullRequestBranchFn({ taskPacket, repoRoot });
+    return deps.updatePullRequestBranchFn({ taskPacket, repoRoot, executionRoot });
   }
   const pullRequest = taskPacket?.evidence?.delivery?.pullRequest ?? null;
   const repository = normalizeText(taskPacket?.repository);
@@ -1364,7 +1372,7 @@ async function updatePullRequestBranch({ taskPacket, repoRoot, deps = {} }) {
   const result = await runCommand(
     'gh',
     ['pr', 'update-branch', String(prNumber), '--repo', repository],
-    { cwd: repoRoot, env: process.env },
+    { cwd: executionRoot, env: process.env },
     deps
   );
   if (result.status !== 0) {
@@ -1372,34 +1380,67 @@ async function updatePullRequestBranch({ taskPacket, repoRoot, deps = {} }) {
     const mergeBlocked = /conflict|rebase|merge/i.test(message);
     const helperCallsExecuted = ['gh pr update-branch'];
     if (!isRateLimitMessage(message) && !mergeBlocked && branchName) {
-      const workspaceStatus = await runCommand('git', ['status', '--porcelain'], { cwd: repoRoot, env: process.env }, deps);
+      const workspaceStatus = await runCommand(
+        'git',
+        ['status', '--porcelain'],
+        { cwd: executionRoot, env: process.env },
+        deps
+      );
       if (workspaceStatus.status === 0 && !normalizeText(workspaceStatus.stdout)) {
-        const fetchResult = await runCommand(
+        const upstreamFetchResult = await runCommand(
           'git',
-          ['fetch', 'upstream', baseRefName, 'origin', branchName],
-          { cwd: repoRoot, env: process.env },
+          ['fetch', 'upstream', baseRefName],
+          { cwd: executionRoot, env: process.env },
           deps
         );
-        helperCallsExecuted.push(`git fetch upstream ${baseRefName} origin ${branchName}`);
-        if (fetchResult.status === 0) {
-          const checkoutResult = await runCommand('git', ['checkout', branchName], { cwd: repoRoot, env: process.env }, deps);
+        helperCallsExecuted.push(`git fetch upstream ${baseRefName}`);
+        if (upstreamFetchResult.status === 0) {
+          const originFetchResult = await runCommand(
+            'git',
+            ['fetch', 'origin', branchName],
+            { cwd: executionRoot, env: process.env },
+            deps
+          );
+          helperCallsExecuted.push(`git fetch origin ${branchName}`);
+          if (originFetchResult.status !== 0) {
+            const originFetchMessage =
+              normalizeText(originFetchResult.stderr) ||
+              normalizeText(originFetchResult.stdout) ||
+              `git fetch origin failed (${originFetchResult.status})`;
+            return {
+              status: 'blocked',
+              outcome: isRateLimitMessage(originFetchMessage) ? 'rate-limit' : 'branch-sync-failed',
+              reason: originFetchMessage,
+              source: 'delivery-agent-broker',
+              details: {
+                actionType: 'sync-pr-branch',
+                laneLifecycle: 'waiting-ci',
+                blockerClass: isRateLimitMessage(originFetchMessage) ? 'rate-limit' : 'ci',
+                retryable: true,
+                nextWakeCondition: isRateLimitMessage(originFetchMessage) ? 'github-rate-limit-reset' : 'branch-sync-retry',
+                helperCallsExecuted,
+                filesTouched: []
+              }
+            };
+          }
+          const checkoutResult = await runCommand('git', ['checkout', branchName], { cwd: executionRoot, env: process.env }, deps);
           helperCallsExecuted.push(`git checkout ${branchName}`);
           if (checkoutResult.status === 0) {
-            const mergeResult = await runCommand(
+            const rebaseResult = await runCommand(
               'git',
-              ['merge', '--no-edit', `upstream/${baseRefName}`],
-              { cwd: repoRoot, env: process.env },
+              ['rebase', `upstream/${baseRefName}`],
+              { cwd: executionRoot, env: process.env },
               deps
             );
-            helperCallsExecuted.push(`git merge --no-edit upstream/${baseRefName}`);
-            if (mergeResult.status === 0) {
+            helperCallsExecuted.push(`git rebase upstream/${baseRefName}`);
+            if (rebaseResult.status === 0) {
               const pushResult = await runCommand(
                 'git',
-                ['push', 'origin', `HEAD:${branchName}`],
-                { cwd: repoRoot, env: process.env },
+                ['push', '--force-with-lease', 'origin', `HEAD:${branchName}`],
+                { cwd: executionRoot, env: process.env },
                 deps
               );
-              helperCallsExecuted.push(`git push origin HEAD:${branchName}`);
+              helperCallsExecuted.push(`git push --force-with-lease origin HEAD:${branchName}`);
               if (pushResult.status === 0) {
                 return {
                   status: 'completed',
@@ -1435,19 +1476,32 @@ async function updatePullRequestBranch({ taskPacket, repoRoot, deps = {} }) {
                 }
               };
             }
-            const mergeMessage =
-              normalizeText(mergeResult.stderr) || normalizeText(mergeResult.stdout) || `git merge failed (${mergeResult.status})`;
+            const rebaseMessage =
+              normalizeText(rebaseResult.stderr) || normalizeText(rebaseResult.stdout) || `git rebase failed (${rebaseResult.status})`;
+            if (/conflict|could not apply|resolve all conflicts/i.test(rebaseMessage)) {
+              const abortResult = await runCommand(
+                'git',
+                ['rebase', '--abort'],
+                { cwd: executionRoot, env: process.env },
+                deps
+              );
+              if (abortResult.status === 0) {
+                helperCallsExecuted.push('git rebase --abort');
+              }
+            }
             return {
               status: 'blocked',
-              outcome: /conflict|automatic merge failed/i.test(mergeMessage) ? 'branch-sync-blocked' : 'branch-sync-failed',
-              reason: mergeMessage,
+              outcome: /conflict|could not apply|resolve all conflicts/i.test(rebaseMessage)
+                ? 'branch-sync-blocked'
+                : 'branch-sync-failed',
+              reason: rebaseMessage,
               source: 'delivery-agent-broker',
               details: {
                 actionType: 'sync-pr-branch',
-                laneLifecycle: /conflict|automatic merge failed/i.test(mergeMessage) ? 'blocked' : 'waiting-ci',
-                blockerClass: /conflict|automatic merge failed/i.test(mergeMessage) ? 'merge' : 'ci',
-                retryable: /conflict|automatic merge failed/i.test(mergeMessage) ? false : true,
-                nextWakeCondition: /conflict|automatic merge failed/i.test(mergeMessage)
+                laneLifecycle: /conflict|could not apply|resolve all conflicts/i.test(rebaseMessage) ? 'blocked' : 'waiting-ci',
+                blockerClass: /conflict|could not apply|resolve all conflicts/i.test(rebaseMessage) ? 'merge' : 'ci',
+                retryable: /conflict|could not apply|resolve all conflicts/i.test(rebaseMessage) ? false : true,
+                nextWakeCondition: /conflict|could not apply|resolve all conflicts/i.test(rebaseMessage)
                   ? 'manual-conflict-resolution'
                   : 'branch-sync-retry',
                 helperCallsExecuted,
@@ -1495,9 +1549,9 @@ async function updatePullRequestBranch({ taskPacket, repoRoot, deps = {} }) {
   };
 }
 
-async function invokeCodingTurnCommand({ taskPacket, policy, repoRoot, policyPath, deps = {} }) {
+async function invokeCodingTurnCommand({ taskPacket, policy, repoRoot, executionRoot = repoRoot, policyPath, deps = {} }) {
   if (typeof deps.invokeCodingTurnFn === 'function') {
-    return deps.invokeCodingTurnFn({ taskPacket, policy, repoRoot, policyPath });
+    return deps.invokeCodingTurnFn({ taskPacket, policy, repoRoot, executionRoot, policyPath });
   }
 
   const command = normalizeCommandList(policy?.codingTurnCommand);
@@ -1527,9 +1581,10 @@ async function invokeCodingTurnCommand({ taskPacket, policy, repoRoot, policyPat
       COMPAREVI_DELIVERY_TASK_PACKET_PATH: taskPacket.__taskPacketPath || '',
       COMPAREVI_DELIVERY_RECEIPT_PATH: receiptPath,
       COMPAREVI_DELIVERY_POLICY_PATH: policyPath || '',
-      COMPAREVI_DELIVERY_REPO_ROOT: repoRoot
+      COMPAREVI_DELIVERY_REPO_ROOT: executionRoot,
+      COMPAREVI_DELIVERY_CONTROL_ROOT: repoRoot
     };
-    const result = await runCommand(command[0], command.slice(1), { cwd: repoRoot, env }, deps);
+    const result = await runCommand(command[0], command.slice(1), { cwd: executionRoot, env }, deps);
     const fileReceipt = await readJsonIfPresent(receiptPath);
     if (result.status !== 0) {
       const message = normalizeText(result.stderr) || normalizeText(result.stdout) || `${command[0]} failed (${result.status})`;
@@ -1664,6 +1719,7 @@ export async function runDeliveryTurnBroker({
     ...taskPacket,
     __taskPacketPath: taskPacketPath
   };
+  const executionRoot = resolveExecutionRoot(repoRoot, enrichedPacket);
   const planned = planDeliveryBrokerAction(enrichedPacket);
 
   if (planned.actionType === 'idle') {
@@ -1709,6 +1765,7 @@ export async function runDeliveryTurnBroker({
     return updatePullRequestBranch({
       taskPacket: enrichedPacket,
       repoRoot,
+      executionRoot,
       deps
     });
   }
@@ -1800,6 +1857,7 @@ export async function runDeliveryTurnBroker({
     taskPacket: enrichedPacket,
     policy,
     repoRoot,
+    executionRoot,
     policyPath: effectivePolicyPath,
     deps
   });
