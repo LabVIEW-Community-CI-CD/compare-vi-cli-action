@@ -553,3 +553,116 @@ test('runDeliveryTurnBroker executes coding commands in the worker checkout inst
   assert.equal(calls[0].env.COMPAREVI_DELIVERY_REPO_ROOT, executionRoot);
   assert.equal(calls[0].env.COMPAREVI_DELIVERY_CONTROL_ROOT, repoRoot);
 });
+
+test('runDeliveryTurnBroker keeps priority sync stdout chatter out of merge receipts', async (t) => {
+  const repoRoot = await mkdtemp(path.join(os.tmpdir(), 'delivery-agent-merge-sync-stdout-'));
+  t.after(async () => {
+    await rm(repoRoot, { recursive: true, force: true });
+  });
+
+  const commandLog = [];
+  const brokerResult = await runDeliveryTurnBroker({
+    repoRoot,
+    taskPacket: {
+      repository: 'LabVIEW-Community-CI-CD/compare-vi-cli-action',
+      status: 'ready-merge',
+      objective: {
+        summary: 'Advance issue #959'
+      },
+      evidence: {
+        delivery: {
+          laneLifecycle: 'ready-merge',
+          selectedIssue: {
+            number: 959,
+            url: 'https://github.com/LabVIEW-Community-CI-CD/compare-vi-cli-action/issues/959'
+          },
+          standingIssue: {
+            number: 959,
+            url: 'https://github.com/LabVIEW-Community-CI-CD/compare-vi-cli-action/issues/959'
+          },
+          pullRequest: {
+            number: 1017,
+            url: 'https://github.com/LabVIEW-Community-CI-CD/compare-vi-cli-action/pull/1017',
+            readyToMerge: true
+          }
+        }
+      }
+    },
+    deps: {
+      loadDeliveryAgentPolicyFn: async () => ({
+        schema: 'priority/delivery-agent-policy@v1',
+        backlogAuthority: 'issues',
+        implementationRemote: 'origin',
+        autoSlice: true,
+        autoMerge: true,
+        maxActiveCodingLanes: 1,
+        allowPolicyMutations: false,
+        allowReleaseAdmin: false,
+        stopWhenNoOpenEpics: true,
+        codingTurnCommand: []
+      }),
+      listOpenIssuesFn: async () => [],
+      runCommandFn: async (command, args, options) => {
+        commandLog.push({ command, args, cwd: options?.cwd || '' });
+        if (command === 'node' && args[0] === 'tools/priority/merge-sync-pr.mjs') {
+          return {
+            status: 0,
+            stdout: '[priority:merge-sync] selected mode=auto\n',
+            stderr: ''
+          };
+        }
+        if (command === 'node' && args[0] === 'tools/priority/sync-standing-priority.mjs') {
+          return {
+            status: 0,
+            stdout: '[priority] Standing issue: #960\n',
+            stderr: ''
+          };
+        }
+        return {
+          status: 0,
+          stdout: '',
+          stderr: ''
+        };
+      }
+    }
+  });
+
+  assert.equal(brokerResult.outcome, 'merged');
+  assert.equal(brokerResult.details.finalizedIssueNumber, 959);
+  assert.deepEqual(brokerResult.details.helperCallsExecuted, [
+    'node tools/priority/merge-sync-pr.mjs',
+    'gh issue edit 959 --remove-label standing-priority',
+    'node tools/priority/sync-standing-priority.mjs',
+    'gh issue close 959'
+  ]);
+  assert.deepEqual(commandLog, [
+    {
+      command: 'node',
+      args: ['tools/priority/merge-sync-pr.mjs', '--pr', '1017', '--repo', 'LabVIEW-Community-CI-CD/compare-vi-cli-action'],
+      cwd: repoRoot
+    },
+    {
+      command: 'gh',
+      args: ['issue', 'edit', '959', '--repo', 'LabVIEW-Community-CI-CD/compare-vi-cli-action', '--remove-label', 'standing-priority'],
+      cwd: repoRoot
+    },
+    {
+      command: 'node',
+      args: ['tools/priority/sync-standing-priority.mjs'],
+      cwd: repoRoot
+    },
+    {
+      command: 'gh',
+      args: [
+        'issue',
+        'close',
+        '959',
+        '--repo',
+        'LabVIEW-Community-CI-CD/compare-vi-cli-action',
+        '--comment',
+        'Completed by PR #1017 (https://github.com/LabVIEW-Community-CI-CD/compare-vi-cli-action/pull/1017). No next standing-priority issue is currently labeled, so the queue is now idle until a new issue is promoted.'
+      ],
+      cwd: repoRoot
+    }
+  ]);
+});

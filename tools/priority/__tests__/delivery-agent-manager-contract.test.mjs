@@ -104,6 +104,10 @@ test('delivery-agent manager and run scripts target the WSL runtime daemon inste
   assert.match(runner, /COMPAREVI_DOCKER_RUNTIME_PROVIDER='native-wsl'/);
   assert.match(runner, /--lease-root/);
   assert.match(runner, /exec >> '\$LogPathWsl' 2>&1/);
+  assert.match(runner, /exec \$\(\$quotedArgs -join ' '\)/);
+  assert.doesNotMatch(runner, /exec \$\(\$quotedArgs -join ' '\) >> '\$LogPathWsl' 2>&1/);
+  assert.match(runner, /\[System\.IO\.File\]::WriteAllText\(/);
+  assert.match(runner, /\[System\.Text\.UTF8Encoding\]::new\(\$false\)/);
   assert.match(runner, /Invoke-CodexStateHygiene/);
   assert.match(runner, /Invoke-DeliveryMemory/);
   assert.match(runner, /Invoke-DeliveryHostSignal/);

@@ -6,7 +6,6 @@ import os from 'node:os';
 import path from 'node:path';
 import { handoffStandingPriority } from './standing-priority-handoff.mjs';
 import {
-  main as syncStandingPriority,
   resolveStandingPriorityLabels,
   selectAutoStandingPriorityCandidate
 } from './sync-standing-priority.mjs';
@@ -1166,13 +1165,32 @@ async function finalizeMergedPullRequest({ taskPacket, mergeResult, repoRoot, de
         });
         helperCallsExecuted.push(`gh issue edit ${standingIssueNumber} --remove-label ${standingLabels.join(',')}`);
       }
-      const syncFn = deps.syncStandingPriorityFn ?? syncStandingPriority;
-      await syncFn({
-        env: {
-          ...process.env,
-          GITHUB_REPOSITORY: repository
+      if (typeof deps.syncStandingPriorityFn === 'function') {
+        await deps.syncStandingPriorityFn({
+          env: {
+            ...process.env,
+            GITHUB_REPOSITORY: repository
+          }
+        });
+      } else {
+        const syncResult = await runCommand(
+          'node',
+          ['tools/priority/sync-standing-priority.mjs'],
+          {
+            cwd: repoRoot,
+            env: {
+              ...process.env,
+              GITHUB_REPOSITORY: repository
+            }
+          },
+          deps
+        );
+        if (syncResult.status !== 0) {
+          throw new Error(
+            normalizeText(syncResult.stderr) || normalizeText(syncResult.stdout) || 'priority sync failed after merge finalization'
+          );
         }
-      });
+      }
       helperCallsExecuted.push('node tools/priority/sync-standing-priority.mjs');
     }
   }

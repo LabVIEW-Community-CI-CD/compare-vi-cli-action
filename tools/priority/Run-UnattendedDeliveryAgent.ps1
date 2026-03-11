@@ -331,9 +331,14 @@ function Start-WslRuntimeDaemon {
     "export COMPAREVI_DOCKER_RUNTIME_PROVIDER='native-wsl'",
     "export COMPAREVI_DOCKER_EXPECTED_CONTEXT=''",
     "cd '$RepoRootWsl'",
-    "exec $($quotedArgs -join ' ') >> '$LogPathWsl' 2>&1"
+    "exec $($quotedArgs -join ' ')"
   ) -join "`n"
-  $launchScript | Set-Content -LiteralPath $LaunchScriptPath -Encoding utf8NoBOM
+  $launchScript += "`n"
+  [System.IO.File]::WriteAllText(
+    $LaunchScriptPath,
+    $launchScript,
+    [System.Text.UTF8Encoding]::new($false)
+  )
   $launchScriptPathWsl = Convert-ToWslPath -Path $LaunchScriptPath
 
   & wsl.exe -d $Distro -- bash -lc "systemctl --user reset-failed '$UnitName.service' >/dev/null 2>&1 || true"
