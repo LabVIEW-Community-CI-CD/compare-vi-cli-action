@@ -140,8 +140,12 @@ function resolveTargetIssue(nextIssue, auto, openIssues, excludedIssueNumbers) {
     if (!/^\d+$/.test(target)) {
       throw new Error(`Issue number must be digits only (received: ${target})`);
     }
+    const issueNumber = Number.parseInt(target, 10);
+    if (!Number.isInteger(issueNumber) || issueNumber <= 0) {
+      throw new Error(`Issue number must be a positive integer (> 0), received: ${target}`);
+    }
     return {
-      issueNumber: Number.parseInt(target, 10),
+      issueNumber,
       source: 'explicit'
     };
   }
@@ -196,7 +200,6 @@ export async function handoffStandingPriority(
   );
   const currentIssues = collectStandingIssues(ghRunner, resolvedRepoSlug, standingPriorityLabels);
   const currentIssueNumbers = currentIssues.map((issue) => issue.number);
-  const currentSet = new Set(currentIssueNumbers);
   const openIssues = auto ? listOpenIssues(ghRunner, resolvedRepoSlug) : [];
   const targetSelection = resolveTargetIssue(nextIssue, auto, openIssues, currentIssueNumbers);
   const targetIssueNumber = targetSelection.issueNumber;

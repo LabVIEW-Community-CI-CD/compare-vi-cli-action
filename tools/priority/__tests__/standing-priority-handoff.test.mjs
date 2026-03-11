@@ -255,3 +255,20 @@ test('handoffStandingPriority dry-run only inspects current issues and candidate
     ]
   ]);
 });
+
+test('handoffStandingPriority rejects non-positive explicit issue numbers', async () => {
+  await assert.rejects(
+    () =>
+      handoffStandingPriority(0, {
+        ghRunner: () => '[]',
+        syncFn: async () => {},
+        leaseReleaseFn: async () => ({ status: 'released' }),
+        logger: () => {},
+        env: {
+          GITHUB_REPOSITORY: 'owner/repo',
+          AGENT_PRIORITY_UPSTREAM_REPOSITORY: 'owner/repo'
+        }
+      }),
+    /positive integer/
+  );
+});

@@ -134,6 +134,9 @@ function makeAdapter(repoRoot, calls, options = {}) {
       executeMode === 'none'
         ? null
         : async ({ schedulerDecision }) => {
+            if (executeMode === 'throw') {
+              throw new Error('execution hook exploded');
+            }
             if (executeMode === 'blocked') {
               return {
                 status: 'blocked',
@@ -588,6 +591,48 @@ test('runRuntimeObserverLoop writes an execution receipt when executeTurn is ena
   assert.equal(result.report.lastStep.execution.outcome, 'execution-completed');
   assert.equal(executionReceipt.outcome, 'execution-completed');
   assert.equal(heartbeat.activeLane.execution.outcome, 'execution-completed');
+});
+
+test('runRuntimeObserverLoop persists heartbeat and blocked receipt when executeTurn throws', async () => {
+  const runtimeDir = await mkdtemp(path.join(os.tmpdir(), 'runtime-observer-execution-throw-'));
+  const repoRoot = await mkdtemp(path.join(os.tmpdir(), 'runtime-observer-execution-throw-root-'));
+  const calls = [];
+  let tick = 0;
+
+  const result = await runRuntimeObserverLoop(
+    {
+      repo: 'example/repo',
+      runtimeDir,
+      lane: 'origin-1007',
+      issue: 1007,
+      forkRemote: 'origin',
+      branch: 'issue/origin-1007-runtime-execution-throw',
+      owner: 'agent@example',
+      pollIntervalSeconds: 0,
+      maxCycles: 1,
+      executeTurn: true
+    },
+    {
+      platform: 'linux',
+      adapter: makeAdapter(repoRoot, calls, { executeMode: 'throw' }),
+      nowFactory: () => new Date(Date.UTC(2026, 2, 10, 16, 40, tick++)),
+      sleepFn: async () => {
+        throw new Error('sleep should not run when execution fails');
+      }
+    }
+  );
+
+  const executionReceipt = await readJson(path.join(runtimeDir, 'execution-receipt.json'));
+  const heartbeat = await readJson(path.join(runtimeDir, 'observer-heartbeat.json'));
+
+  assert.equal(result.exitCode, 16);
+  assert.equal(result.report.status, 'blocked');
+  assert.equal(result.report.outcome, 'execution-failed');
+  assert.equal(result.report.lastStep.execution.outcome, 'execution-failed');
+  assert.equal(executionReceipt.status, 'blocked');
+  assert.equal(executionReceipt.outcome, 'execution-failed');
+  assert.equal(heartbeat.outcome, 'execution-failed');
+  assert.equal(heartbeat.activeLane.execution.outcome, 'execution-failed');
 });
 
 test('runRuntimeObserverLoop stops after execution hook requests it', async () => {

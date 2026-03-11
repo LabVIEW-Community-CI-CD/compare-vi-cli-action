@@ -87,15 +87,12 @@ function normalizeText(value) {
   return String(value).trim();
 }
 
-function normalizeBoolean(value) {
-  const normalized = normalizeText(value).toLowerCase();
-  return normalized === '1' || normalized === 'true' || normalized === 'yes' || normalized === 'on';
-}
+const CADENCE_CHECK_MARKER_REGEX = /<!--\s*cadence-check:/i;
 
 function isCadenceAlertIssue(title, body) {
   const normalizedTitle = normalizeText(title).toLowerCase();
-  const normalizedBody = typeof body === 'string' ? body.toLowerCase() : '';
-  return normalizedTitle.startsWith('[cadence]') || normalizedBody.includes('<!-- cadence-check:');
+  const bodyText = typeof body === 'string' ? body : '';
+  return normalizedTitle.startsWith('[cadence]') || CADENCE_CHECK_MARKER_REGEX.test(bodyText);
 }
 
 function runGhCommand(args, { quiet = false } = {}) {
@@ -109,13 +106,20 @@ function runGhCommand(args, { quiet = false } = {}) {
   return (result.stdout || '').trim();
 }
 
-function parseIssueRows(raw) {
+function parseIssueRows(raw, { source = 'gh issue list' } = {}) {
   const trimmed = normalizeText(raw);
   if (!trimmed) {
     return [];
   }
-  const parsed = JSON.parse(trimmed);
-  return Array.isArray(parsed) ? parsed : [];
+  try {
+    const parsed = JSON.parse(trimmed);
+    return Array.isArray(parsed) ? parsed : [];
+  } catch (error) {
+    const preview = trimmed.length > 240 ? `${trimmed.slice(0, 240)}...` : trimmed;
+    throw new Error(
+      `Unable to parse issue rows from ${source}: ${error?.message || String(error)} (output=${JSON.stringify(preview)})`
+    );
+  }
 }
 
 async function listOpenIssuesForTargetRepository(targetRepository, deps = {}) {
@@ -138,7 +142,10 @@ async function listOpenIssuesForTargetRepository(targetRepository, deps = {}) {
         'number,title,body,labels,createdAt,updatedAt,url'
       ],
       { quiet: true }
-    )
+    ),
+    {
+      source: `gh issue list --repo ${targetRepository} --state open --limit 100 --json number,title,body,labels,createdAt,updatedAt,url`
+    }
   );
 }
 
@@ -583,6 +590,8 @@ export const compareviRuntimeTest = {
   buildCompareviTaskPacket,
   bootstrapCompareviWorkerCheckout,
   executeCompareviTurn,
+  isCadenceAlertIssue,
+  parseIssueRows,
   planCompareviRuntimeStep,
   planCompareviRuntimeStepFromLiveStanding,
   prepareCompareviWorkerCheckout,

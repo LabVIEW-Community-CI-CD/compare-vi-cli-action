@@ -575,3 +575,24 @@ test('comparevi execution stops when the standing issue is cadence-only work', a
   assert.equal(execution.outcome, 'cadence-only');
   assert.equal(execution.stopLoop, true);
 });
+
+test('comparevi cadence detection tolerates compact cadence markers', () => {
+  assert.equal(
+    compareviRuntimeTest.isCadenceAlertIssue('Maintenance queue', '<!--cadence-check:package-staleness -->'),
+    true
+  );
+  assert.equal(
+    compareviRuntimeTest.isCadenceAlertIssue('Maintenance queue', '<!--  cadence-check:package-staleness -->'),
+    true
+  );
+});
+
+test('comparevi issue row parser throws clear diagnostics for malformed JSON', () => {
+  assert.throws(
+    () =>
+      compareviRuntimeTest.parseIssueRows('warning: noisy output\nnot-json', {
+        source: 'gh issue list --repo example/repo --json number,title'
+      }),
+    /Unable to parse issue rows from gh issue list --repo example\/repo --json number,title/
+  );
+});

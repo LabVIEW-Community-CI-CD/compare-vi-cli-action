@@ -1601,9 +1601,73 @@ export async function runRuntimeObserverLoop(options = {}, deps = {}) {
           schedulerDecision
         });
       } catch (error) {
+        const executionErrorMessage = error?.message || String(error);
         report.status = 'blocked';
         report.outcome = 'execution-failed';
-        report.message = error?.message || String(error);
+        report.message = executionErrorMessage;
+
+        try {
+          executionReceipt = normalizeExecutionReceipt(
+            {
+              status: 'blocked',
+              outcome: 'execution-failed',
+              reason: executionErrorMessage
+            },
+            {
+              now: stepNow,
+              adapter,
+              repository: report.repository,
+              cycle,
+              schedulerDecision
+            }
+          );
+          const persistedExecutionReceipt = await writeExecutionReceipt(executionPaths, executionReceipt);
+          executionReceipt = persistedExecutionReceipt.executionReceipt;
+          executionArtifacts = {
+            latestPath: persistedExecutionReceipt.latestPath,
+            historyPath: persistedExecutionReceipt.historyPath
+          };
+          report.lastStep.execution = summarizeExecutionReceipt(executionReceipt);
+        } catch {
+          // Ignore receipt persistence failures and preserve the execution error as the primary failure.
+        }
+
+        try {
+          const heartbeatNow = nowFactory();
+          await writeJson(heartbeatPath, {
+            schema: OBSERVER_HEARTBEAT_SCHEMA,
+            generatedAt: toIso(heartbeatNow),
+            runtimeAdapter: adapter.name,
+            repository: report.repository,
+            platform,
+            cyclesCompleted: report.cyclesCompleted,
+            outcome: executionReceipt?.outcome || report.outcome,
+            stopRequested: Boolean(stepResult.report.state?.lifecycle?.stopRequested),
+            activeLane:
+              buildObservedActiveLane(
+                schedulerDecision,
+                stepResult.report.worker ?? preparedWorker,
+                stepResult.report.workerReady ?? workerReady,
+                stepResult.report.workerBranch ?? workerBranch,
+                stepResult.report.taskPacket ?? taskPacket,
+                executionReceipt
+              ) ?? stepResult.report.state?.activeLane ?? null,
+            schedulerDecision: report.lastDecision,
+            artifacts: buildObserverArtifacts({
+              runtimeArtifactPaths,
+              workerArtifacts,
+              workerReadyArtifacts,
+              workerBranchArtifacts,
+              schedulerArtifacts,
+              taskPacketArtifacts,
+              executionArtifacts,
+              includeRuntimeState: true
+            })
+          });
+        } catch {
+          // Ignore heartbeat persistence failures and preserve the execution error as the primary failure.
+        }
+
         return { exitCode: 16, report };
       }
 
