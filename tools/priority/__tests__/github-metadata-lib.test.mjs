@@ -155,14 +155,19 @@ function makeRunGhJson({ targets, issueTypes, milestones, calls = [] }) {
       ...base,
       reviewRequests: {
         nodes: target.reviewers.map((reviewer) => ({
-          requestedReviewer: reviewer.kind === 'User'
-            ? { __typename: 'User', id: `R_${reviewer.key}`, login: reviewer.login }
-            : {
-                __typename: 'Team',
-                id: `R_${reviewer.key}`,
-                slug: reviewer.teamSlug,
-                organization: { login: reviewer.organization },
-              },
+          requestedReviewer:
+            reviewer.kind === 'User'
+              ? { __typename: 'User', id: `R_${reviewer.key}`, login: reviewer.login }
+              : reviewer.kind === 'Team'
+                ? {
+                    __typename: 'Team',
+                    id: `R_${reviewer.key}`,
+                    slug: reviewer.teamSlug,
+                    organization: { login: reviewer.organization },
+                  }
+                : {
+                    __typename: 'Bot',
+                  },
         })),
       },
     };
@@ -383,6 +388,106 @@ test('runMetadataApply applies pull-request milestone, assignee, and reviewer ch
   assert.deepEqual(result.report.observed.after.assignees, ['svelderrainruiz']);
   assert.deepEqual(result.report.observed.after.reviewers, ['copilot-swe-agent', 'example/reviewers']);
   assert.equal(result.report.observed.after.milestone.number, 2);
+});
+
+test('runMetadataApply ignores bot review requests when reconciling pull-request reviewers', () => {
+  const calls = [];
+  const target = createPullRequest({
+    id: 'PR_TARGET',
+    url: 'https://github.com/example/repo/pull/43',
+    number: 43,
+    title: 'Metadata helper PR with bot reviewer',
+    reviewers: [
+      reviewerRef('legacy-reviewer'),
+      {
+        kind: 'Bot',
+        key: 'github-actions[bot]',
+        login: 'github-actions[bot]',
+        teamSlug: null,
+        organization: null,
+        display: 'github-actions[bot]',
+      },
+    ],
+  });
+  const runGhJsonFn = makeRunGhJson({
+    targets: { target },
+    issueTypes: [{ id: 'IT_FEATURE', name: 'Feature' }],
+    milestones: [],
+    calls,
+  });
+
+  const result = metadataLib.runMetadataApply({
+    argv: [
+      '--url', target.url,
+      '--reviewer', 'next-reviewer',
+      '--out', 'tests/results/_agent/issue/github-metadata-lib-bot-reviewer.json',
+    ],
+    now: new Date('2026-03-09T18:05:30Z'),
+    env: {
+      COMPAREVI_GITHUB_METADATA_VERIFY_ATTEMPTS: '1',
+      COMPAREVI_GITHUB_METADATA_VERIFY_DELAY_MS: '0',
+    },
+    runGhJsonFn,
+  });
+
+  assert.equal(result.exitCode, 0);
+  assert.equal(result.report.execution.status, 'pass');
+  assert.deepEqual(result.report.observed.after.reviewers, ['next-reviewer']);
+
+  const removeCall = calls.find((args) => args[1] === 'repos/example/repo/pulls/43/requested_reviewers' && args.includes('DELETE'));
+  assert.ok(removeCall);
+  assert.equal(removeCall.includes('reviewers[]=github-actions[bot]'), false);
+});
+
+test('runMetadataApply tolerates mixed user, team, and bot reviewers without mutating bot-only drift', () => {
+  const calls = [];
+  const target = createPullRequest({
+    id: 'PR_TARGET',
+    url: 'https://github.com/example/repo/pull/44',
+    number: 44,
+    title: 'Metadata helper PR with mixed reviewers',
+    reviewers: [
+      reviewerRef('legacy-reviewer'),
+      reviewerRef('example/reviewers'),
+      {
+        kind: 'Bot',
+        key: 'copilot-pull-request-reviewer',
+        login: 'copilot-pull-request-reviewer',
+        teamSlug: null,
+        organization: null,
+        display: 'copilot-pull-request-reviewer',
+      },
+    ],
+  });
+  const runGhJsonFn = makeRunGhJson({
+    targets: { target },
+    issueTypes: [{ id: 'IT_FEATURE', name: 'Feature' }],
+    milestones: [],
+    calls,
+  });
+
+  const result = metadataLib.runMetadataApply({
+    argv: [
+      '--url', target.url,
+      '--reviewer', 'legacy-reviewer',
+      '--reviewer', 'example/reviewers',
+      '--out', 'tests/results/_agent/issue/github-metadata-lib-mixed-reviewers.json',
+    ],
+    now: new Date('2026-03-09T18:06:00Z'),
+    env: {
+      COMPAREVI_GITHUB_METADATA_VERIFY_ATTEMPTS: '1',
+      COMPAREVI_GITHUB_METADATA_VERIFY_DELAY_MS: '0',
+    },
+    runGhJsonFn,
+  });
+
+  assert.equal(result.exitCode, 0);
+  assert.equal(result.report.execution.status, 'pass');
+  assert.deepEqual(result.report.observed.after.reviewers, ['example/reviewers', 'legacy-reviewer']);
+  assert.equal(
+    calls.some((args) => args[1] === 'repos/example/repo/pulls/44/requested_reviewers' && (args.includes('POST') || args.includes('DELETE'))),
+    false
+  );
 });
 
 test('runMetadataApply applies parent issue linkage with typed GraphQL boolean variables', () => {
