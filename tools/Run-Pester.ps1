@@ -1,10 +1,25 @@
 param(
-  [switch]$IncludeIntegration
+  [switch]$IncludeIntegration,
+  [string[]]$Path,
+  [string[]]$FullName,
+  [string[]]$Tag,
+  [string[]]$ExcludeTag,
+  [ValidateSet('None', 'Normal', 'Detailed', 'Diagnostic')]
+  [string]$OutputVerbosity = 'Detailed',
+  [string]$ResultsDir
 )
 
 $ErrorActionPreference = 'Stop'
 $root = Split-Path -Parent $PSScriptRoot
-$resultsDir = Join-Path $root 'tests' 'results'
+$resultsDir = if ($ResultsDir) {
+  if ([System.IO.Path]::IsPathRooted($ResultsDir)) {
+    $ResultsDir
+  } else {
+    Join-Path $root $ResultsDir
+  }
+} else {
+  Join-Path $root 'tests' 'results'
+}
 New-Item -ItemType Directory -Force -Path $resultsDir | Out-Null
 
 $pesterVersion = '5.7.1'
@@ -45,11 +60,39 @@ Write-Host ("Using Pester {0}" -f (Get-Module Pester).Version)
 
 # Build configuration
 $conf = New-PesterConfiguration
-$conf.Run.Path = (Join-Path $root 'tests')
-if (-not $IncludeIntegration) {
-  $conf.Filter.ExcludeTag = @('Integration')
+$resolvedPaths = if ($Path -and $Path.Count -gt 0) {
+  @($Path | ForEach-Object {
+    if ([System.IO.Path]::IsPathRooted($_)) {
+      $_
+    } else {
+      Join-Path $root $_
+    }
+  })
+} else {
+  @(Join-Path $root 'tests')
 }
-$conf.Output.Verbosity = 'Detailed'
+$conf.Run.Path = $resolvedPaths
+$effectiveExcludeTag = New-Object System.Collections.Generic.List[string]
+if ($ExcludeTag) {
+  foreach ($entry in $ExcludeTag) {
+    if (-not [string]::IsNullOrWhiteSpace($entry)) {
+      $effectiveExcludeTag.Add($entry.Trim())
+    }
+  }
+}
+if (-not $IncludeIntegration -and -not ($Tag -contains 'Integration')) {
+  $effectiveExcludeTag.Add('Integration')
+}
+if ($Tag -and $Tag.Count -gt 0) {
+  $conf.Filter.Tag = @($Tag)
+}
+if ($effectiveExcludeTag.Count -gt 0) {
+  $conf.Filter.ExcludeTag = @($effectiveExcludeTag | Select-Object -Unique)
+}
+if ($FullName -and $FullName.Count -gt 0) {
+  $conf.Filter.FullName = @($FullName)
+}
+$conf.Output.Verbosity = $OutputVerbosity
 $conf.TestResult.Enabled = $true
 $conf.TestResult.OutputFormat = 'NUnitXml'
 $conf.TestResult.OutputPath = 'pester-results.xml'  # filename relative to CWD per Pester 5

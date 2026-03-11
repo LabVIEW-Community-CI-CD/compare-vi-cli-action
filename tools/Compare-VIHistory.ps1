@@ -7,6 +7,8 @@ param(
   [string]$StartRef = 'HEAD',
   [string]$EndRef,
   [int]$MaxPairs,
+  [string]$SourceBranchRef,
+  [Nullable[int]]$MaxBranchCommits,
   [int]$MaxSignalPairs = 2,
   [ValidateSet('include','collapse','skip')]
   [string]$NoisePolicy = 'collapse',
@@ -1086,6 +1088,102 @@ function Resolve-CommitWithChange {
   return $null
 }
 
+function Get-SourceBranchBudget {
+  param(
+    [Parameter(Mandatory = $true)][string]$BranchRef,
+    [Parameter(Mandatory = $true)][int]$MaxCommitCount
+  )
+
+  $normalizedBranchRef = if ([string]::IsNullOrWhiteSpace($BranchRef)) { '' } else { $BranchRef.Trim() }
+  $result = [ordered]@{
+    sourceBranchRef = $normalizedBranchRef
+    baselineRef = $null
+    maxCommitCount = [int]$MaxCommitCount
+    commitCount = $null
+    status = 'pending'
+    reason = 'not-evaluated'
+  }
+
+  if ([string]::IsNullOrWhiteSpace($normalizedBranchRef)) {
+    $result.status = 'invalid'
+    $result.reason = 'branch-ref-empty'
+    return [pscustomobject]$result
+  }
+
+  if ($normalizedBranchRef.StartsWith('-')) {
+    $result.status = 'invalid'
+    $result.reason = 'branch-ref-invalid-format'
+    return [pscustomobject]$result
+  }
+
+  $branchResolveSpec = '{0}^{{commit}}' -f $normalizedBranchRef
+  $branchCommitRef = $null
+  try {
+    $branchCommitRaw = Invoke-Git -Arguments @('rev-parse', '--verify', '--end-of-options', $branchResolveSpec) -Quiet
+    $branchCommitRef = [string]($branchCommitRaw | Select-Object -Last 1)
+    if ($null -ne $branchCommitRef) {
+      $branchCommitRef = $branchCommitRef.Trim()
+    }
+  } catch {
+    $result.status = 'invalid'
+    $result.reason = 'branch-ref-not-found'
+    return [pscustomobject]$result
+  }
+
+  $baselineRef = $null
+  $baselineCommitRef = $null
+  try {
+    $baselineCommitRaw = Invoke-Git -Arguments @('rev-parse', '--verify', '--end-of-options', 'develop^{commit}') -Quiet
+    $baselineCommitRef = [string]($baselineCommitRaw | Select-Object -Last 1)
+    if ($null -ne $baselineCommitRef) {
+      $baselineCommitRef = $baselineCommitRef.Trim()
+    }
+    $baselineRef = 'develop'
+  } catch {
+    $baselineRef = $null
+    $baselineCommitRef = $null
+  }
+  $result.baselineRef = $baselineRef
+
+  $countArguments = @('rev-list', '--count', '--first-parent')
+  if ($baselineCommitRef) {
+    if ([string]::Equals($branchCommitRef, $baselineCommitRef, [System.StringComparison]::OrdinalIgnoreCase)) {
+      $countArguments += ('{0}..{0}' -f $baselineCommitRef)
+    } else {
+      $countArguments += ('{0}..{1}' -f $baselineCommitRef, $branchCommitRef)
+    }
+  } else {
+    $countArguments += $branchCommitRef
+  }
+
+  try {
+    $countRaw = Invoke-Git -Arguments $countArguments -Quiet
+  } catch {
+    $result.status = 'error'
+    $result.reason = 'commit-count-query-failed'
+    return [pscustomobject]$result
+  }
+
+  $countText = (($countRaw -split "`n")[0]).Trim()
+  $countValue = 0
+  if (-not [int]::TryParse($countText, [ref]$countValue)) {
+    $result.status = 'error'
+    $result.reason = 'commit-count-parse-failed'
+    return [pscustomobject]$result
+  }
+
+  $result.commitCount = [int]$countValue
+  if ($countValue -gt $MaxCommitCount) {
+    $result.status = 'blocked'
+    $result.reason = 'commit-limit-exceeded'
+  } else {
+    $result.status = 'ok'
+    $result.reason = 'within-limit'
+  }
+
+  return [pscustomobject]$result
+}
+
 function Write-GitHubOutput {
   param(
     [Parameter(Mandatory = $true)][string]$Key,
@@ -1186,6 +1284,8 @@ if ([string]::IsNullOrWhiteSpace($targetLeaf)) { $targetLeaf = 'vi' }
 $startRef = if ([string]::IsNullOrWhiteSpace($StartRef)) { 'HEAD' } else { $StartRef.Trim() }
 if ([string]::IsNullOrWhiteSpace($startRef)) { $startRef = 'HEAD' }
 $endRef = if ([string]::IsNullOrWhiteSpace($EndRef)) { $null } else { $EndRef.Trim() }
+$sourceBranchBudget = $null
+$sourceBranchRefEffective = if ([string]::IsNullOrWhiteSpace($SourceBranchRef)) { $startRef } else { $SourceBranchRef.Trim() }
 
 
 $modeTokens = Expand-ModeTokens -Values $Mode
@@ -1206,6 +1306,23 @@ $reportFormatEffective = if ($ReportFormat) { $ReportFormat.ToLowerInvariant() }
 
 $requestedStartRef = $startRef
 Write-Verbose ("StartRef before resolve: {0}" -f $startRef)
+$branchCommitBudgetRequested = $PSBoundParameters.ContainsKey('MaxBranchCommits') -and $null -ne $MaxBranchCommits -and $MaxBranchCommits -gt 0
+if ($branchCommitBudgetRequested) {
+  $sourceBranchBudget = Get-SourceBranchBudget -BranchRef $sourceBranchRefEffective -MaxCommitCount ([int]$MaxBranchCommits)
+  if ([string]::Equals($sourceBranchBudget.status, 'blocked', [System.StringComparison]::OrdinalIgnoreCase)) {
+    throw ("VI history source branch '{0}' exceeds the commit safeguard ({1} > {2}). Narrow the branch or raise -MaxBranchCommits." -f $sourceBranchBudget.sourceBranchRef, $sourceBranchBudget.commitCount, $sourceBranchBudget.maxCommitCount)
+  }
+  if (-not [string]::Equals($sourceBranchBudget.status, 'ok', [System.StringComparison]::OrdinalIgnoreCase)) {
+    $reasonText = switch ([string]$sourceBranchBudget.reason) {
+      'branch-ref-empty' { 'branch ref was empty' }
+      'branch-ref-not-found' { 'branch ref was not found' }
+      'commit-count-query-failed' { 'commit count query failed' }
+      'commit-count-parse-failed' { 'commit count could not be parsed' }
+      default { [string]$sourceBranchBudget.reason }
+    }
+    throw ("Unable to evaluate VI history source branch commit budget for '{0}' ({1}). Specify a valid branch via -SourceBranchRef or choose a branch-like -StartRef." -f $sourceBranchBudget.sourceBranchRef, $reasonText)
+  }
+}
 $resolvedStartRef = Resolve-CommitWithChange -StartRef $startRef -Path $targetRel -HeadRef 'HEAD'
 if (-not $resolvedStartRef) {
   Write-Warning ("Unable to locate a commit near {0} that modifies '{1}'. Using the provided start ref." -f $startRef, $targetRel)
@@ -1373,6 +1490,19 @@ if ($requestedStartRef -ne $startRef) {
 } else {
   $summaryLines += "- Start ref: $startRef"
 }
+if ($sourceBranchBudget) {
+  $summaryLines += "- Source branch: $($sourceBranchBudget.sourceBranchRef)"
+  $budgetDisplay = if ($null -ne $sourceBranchBudget.commitCount) {
+    '{0} / {1}' -f $sourceBranchBudget.commitCount, $sourceBranchBudget.maxCommitCount
+  } else {
+    'n/a / {0}' -f $sourceBranchBudget.maxCommitCount
+  }
+  if (-not [string]::IsNullOrWhiteSpace([string]$sourceBranchBudget.baselineRef)) {
+    $summaryLines += "- Source branch budget: $budgetDisplay (baseline: $($sourceBranchBudget.baselineRef))"
+  } else {
+    $summaryLines += "- Source branch budget: $budgetDisplay"
+  }
+}
 if ($endRef) { $summaryLines += "- End ref: $endRef" }
 $summaryLines += "- Requested modes: $requestedModeListValue"
 $summaryLines += "- Report format: $reportFormatEffective"
@@ -1409,6 +1539,16 @@ $aggregate = [ordered]@{
     bucketCounts   = [ordered]@{}
   }
   status      = 'pending'
+}
+if ($sourceBranchBudget) {
+  $aggregate.branchBudget = [ordered]@{
+    sourceBranchRef = [string]$sourceBranchBudget.sourceBranchRef
+    baselineRef = if ([string]::IsNullOrWhiteSpace([string]$sourceBranchBudget.baselineRef)) { $null } else { [string]$sourceBranchBudget.baselineRef }
+    maxCommitCount = [int]$sourceBranchBudget.maxCommitCount
+    commitCount = if ($null -eq $sourceBranchBudget.commitCount) { $null } else { [int]$sourceBranchBudget.commitCount }
+    status = [string]$sourceBranchBudget.status
+    reason = [string]$sourceBranchBudget.reason
+  }
 }
 
 $totalProcessed = 0

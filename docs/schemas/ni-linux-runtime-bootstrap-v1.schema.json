@@ -1,0 +1,118 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://labview-community-ci-cd.github.io/compare-vi-cli-action/schemas/ni-linux-runtime-bootstrap-v1.schema.json",
+  "title": "NI Linux Runtime Bootstrap v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema"
+  ],
+  "properties": {
+    "schema": {
+      "const": "ni-linux-runtime-bootstrap/v1"
+    },
+    "mode": {
+      "type": "string",
+      "minLength": 1
+    },
+    "branchRef": {
+      "type": "string",
+      "minLength": 1
+    },
+    "maxCommitCount": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "scriptPath": {
+      "type": "string",
+      "minLength": 1
+    },
+    "env": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "name"
+        ],
+        "properties": {
+          "name": {
+            "type": "string",
+            "pattern": "^[A-Za-z_][A-Za-z0-9_]*$"
+          },
+          "value": {
+            "type": "string"
+          },
+          "fromHostEnv": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "oneOf": [
+          {
+            "required": [
+              "value"
+            ]
+          },
+          {
+            "required": [
+              "fromHostEnv"
+            ]
+          }
+        ]
+      }
+    },
+    "mounts": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "hostPath",
+          "containerPath"
+        ],
+        "properties": {
+          "hostPath": {
+            "type": "string",
+            "minLength": 1
+          },
+          "containerPath": {
+            "type": "string",
+            "pattern": "^/.+"
+          }
+        }
+      }
+    },
+    "viHistory": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "repoPath",
+        "targetPath",
+        "resultsPath"
+      ],
+      "properties": {
+        "repoPath": {
+          "type": "string",
+          "minLength": 1
+        },
+        "targetPath": {
+          "type": "string",
+          "minLength": 1
+        },
+        "resultsPath": {
+          "type": "string",
+          "minLength": 1
+        },
+        "baselineRef": {
+          "type": "string",
+          "minLength": 1
+        },
+        "maxPairs": {
+          "type": "integer",
+          "minimum": 1
+        }
+      }
+    }
+  }
+}

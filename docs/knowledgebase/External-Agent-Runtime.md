@@ -89,6 +89,21 @@ Each lane record should include:
 - last heartbeat time
 - last meaningful change
 
+## Fork Plane Split
+
+The runtime should treat the fork planes as different delivery roles, not just
+different remotes:
+
+- `personal` is the fast hosted code-iteration plane
+- `origin` is the org-namespace release rehearsal and post-publish verification
+  plane
+- `upstream` is the final merge and ship authority
+
+That means the runtime should not send generic feature throughput to `origin`
+just because a fork slot is free. The org fork should be reserved for work that
+needs the organization namespace itself, such as package publication, GHCR
+image rehearsal, provenance checks, and post-publish consumer verification.
+
 ## Lease Model
 
 `tools/priority/agent-writer-lease.mjs` already provides the base lock
@@ -135,6 +150,10 @@ Worker bootstrap sequence:
 5. record the worker as `ready`
 6. attach the ready checkout onto the deterministic lane branch
 7. refresh local handoff and standing-priority artifacts
+
+Release-rehearsal workers on `origin` may skip the generic PR lane entirely
+when the value is in workflow-dispatch publication and consumer verification
+rather than ordinary feature CI.
 
 ## Model Turn Contract
 
@@ -205,6 +224,7 @@ Preferred commands:
 - `node tools/npm/run-script.mjs priority:issue:mirror`
 - `node tools/npm/run-script.mjs priority:pr`
 - `node tools/npm/run-script.mjs priority:queue:supervisor`
+- `node tools/npm/run-script.mjs priority:js-package:release`
 - `node tools/npm/run-script.mjs ci:watch:rest`
 - `node tools/npm/run-script.mjs ci:watch:safe`
 
@@ -374,3 +394,8 @@ Initial extraction note:
 - that same manager now exposes `reconcile`, which scans persisted lane state,
   reapplies `start` as the repair primitive per lane, and writes a shared
   `docker-daemon-reconcile.json` artifact for operator-free recovery
+- the first org-fork release-plane slice now stages, packs, optionally
+  publishes, and then re-verifies
+  `@labview-community-ci-cd/runtime-harness` from a clean consumer context
+  through `tools/priority/js-package-release.mjs` and
+  `.github/workflows/runtime-harness-package-rehearsal.yml`

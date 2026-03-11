@@ -195,8 +195,10 @@ line buffers).
   - Installs `actionlint` (`vars.ACTIONLINT_VERSION`, default 1.7.7) if missing.
   - Runs `actionlint` across `.github/workflows`.
   - Runs safe PR watch task contract validation (`safe-watch:contract`).
-  - Runs NI image known-flag scenarios via `tests/Run-NIWindowsContainerCompare.Tests.ps1` (Pester 5 cached under
-    `%LOCALAPPDATA%\compare-vi-cli-action\PowerShell\Modules` on Windows).
+  - Runs the NI Linux image flag-combination matrix via `tools/Run-NILinuxContainerCompare.ps1`, covering the no-flags
+    baseline plus every combination of `-noattr`, `-nofppos`, and `-nobdcosm`.
+  - Runs the VI history suite smoke inside the same Linux container contract so `history-report.md`,
+    `history-report.html`, and `history-summary.json` are generated in-container before push.
   - Optionally round-trips YAML with `ruamel.yaml` (if Python available).
   - Validate safe PR watch task contracts manually before task/workspace changes when iterating locally:
     - `node tools/npm/run-script.mjs safe-watch:contract`

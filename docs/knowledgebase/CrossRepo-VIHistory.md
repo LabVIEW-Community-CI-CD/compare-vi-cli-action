@@ -89,6 +89,77 @@ For hosted GitHub runner diagnostics, use the same extracted bundle root as
 `Compare-ExitCodeClassifier.ps1`) in the extracted bundle; do not copy the
 runner by itself.
 
+### Single-container smoke bootstrap
+
+When a hosted or local smoke lane needs extra dependencies or config inside the
+NI Linux image, prefer runtime injection over starting multiple short-lived
+containers. `Run-NILinuxContainerCompare.ps1` now accepts either the low-level
+runtime injection switches or an explicit bootstrap contract
+(`-RuntimeBootstrapContractPath`):
+
+- `-RuntimeInjectionScriptPath` for a bash fragment that is sourced inside the
+  running container before LabVIEW CLI/Xvfb discovery.
+- `-RuntimeInjectionEnv` for additional `KEY=VALUE` pairs passed into that same
+  container execution.
+- `-RuntimeInjectionMount` for extra `hostPath::/container/path` mounts that
+  carry config or dependency payloads.
+- `branchRef` and `maxCommitCount` inside the bootstrap contract so consumers
+  can bind the VI-history smoke run to a specific source branch and fail early
+  when that branch drifts past the agreed history window.
+- `viHistory` inside the bootstrap contract when the container should derive the
+  compare pair from a mounted git repo instead of relying on host-supplied
+  `-BaseVi` / `-HeadVi`. The explicit block accepts:
+  - `repoPath`
+  - `targetPath`
+  - `resultsPath`
+  - optional `baselineRef`
+  - optional `maxPairs`
+
+Because the injection script is sourced in the same bash session that later
+invokes the LabVIEW CLI, sequential bootstrap steps such as exporting config,
+amending `PATH`, unpacking sidecar tools, or verifying mounted payloads all run
+inside one container start before the compare operation executes.
+
+When the explicit `viHistory` block is present, the bootstrap script now:
+
+- resolves the requested branch inside the mounted repo
+- enforces the branch budget against divergence from `develop` (when present)
+- materializes a bounded first-parent pair plan inside the container work root
+- emits `suite-manifest.json`, `history-context.json`, and
+  `vi-history-bootstrap-receipt.json` under the mounted results directory
+- hands that plan to the same in-container compare command, so one container
+  session can walk multiple sequential VI-history pairs and still emit a single
+  bounded suite bundle
+
+For VI-history consumers, the host-side fast loop enforces the commit cap before
+starting Docker, using divergence from `develop` as the budget when that
+baseline exists. The bootstrap script enforces the same cap again inside the
+container when `COMPAREVI_VI_HISTORY_BRANCH_COMMIT_COUNT` is provided. That
+keeps oversized feature branches from silently turning the smoke lane into a
+full-history replay while leaving the baseline `develop` lane usable.
+
+```powershell
+pwsh -NoLogo -NoProfile -File tools/Run-NILinuxContainerCompare.ps1 `
+  -RuntimeBootstrapContractPath .\runtime-bootstrap.json
+```
+
+```json
+{
+  "schema": "ni-linux-runtime-bootstrap/v1",
+  "mode": "vi-history-suite-smoke",
+  "branchRef": "consumer/feature-history",
+  "maxCommitCount": 64,
+  "scriptPath": "tools/NILinux-VIHistorySuiteBootstrap.sh",
+  "viHistory": {
+    "repoPath": ".",
+    "targetPath": "fixtures/vi-attr/Head.vi",
+    "resultsPath": "tests/results/local-parity/linux-smoke/vi-history-suite/results",
+    "baselineRef": "develop",
+    "maxPairs": 2
+  }
+}
+```
+
 ## Pinned sample flow
 
 Use this exact sample when you need a documented cross-repo consumer reference:
@@ -136,11 +207,15 @@ renderers.
    Set-Location labview-icon-editor
 Invoke-CompareVIHistory `
   -TargetPath "resource/plugins/NIIconEditor/Miscellaneous/Settings Init.vi" `
+  -SourceBranchRef "feature/history-source" `
+  -MaxBranchCommits 64 `
   -RenderReport `
   -FailOnDiff:$false `
   -InvokeScriptPath ..\compare-vi-cli-action\tools\Invoke-LVCompare.ps1
 ```
 Add `-MaxPairs <n>` when you need to cap the number of commit pairs in the cross-repo run.
+Add `-SourceBranchRef` plus `-MaxBranchCommits` when the consumer needs an
+explicit budget against branch sprawl before the history suite runs.
 
    - Outputs land in `tests/results/ref-compare/history/` inside the cloned
      repo (`history-report.md`, `history-report.html`, manifest JSON, etc.).

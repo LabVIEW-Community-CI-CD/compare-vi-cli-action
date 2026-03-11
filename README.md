@@ -376,3 +376,13 @@ module consumers. Compatibility expectations for that asset are strict:
 - when a downstream repo uses hosted NI Linux diagnostics, resolve
   `tools/Run-NILinuxContainerCompare.ps1` from the extracted bundle root and
   keep its adjacent support scripts in place
+- for single-container NI Linux smoke/bootstrap lanes, prefer the runner's
+  runtime-injection surface (`-RuntimeInjectionScriptPath`,
+  `-RuntimeInjectionEnv`, `-RuntimeInjectionMount`) or the explicit
+  `-RuntimeBootstrapContractPath` `viHistory` block so config/dependency setup,
+  repo-branch materialization, bounded sequential VI-history pair execution,
+  and the compare invocation stay inside one container execution
+- when the smoke lane is bound to a VI-history source branch, keep the
+  `maxCommitCount` safeguard in the bootstrap contract so oversized branches
+  fail before the container turns into a full-history sweep; budget divergence
+  from `develop`, not the entire baseline history

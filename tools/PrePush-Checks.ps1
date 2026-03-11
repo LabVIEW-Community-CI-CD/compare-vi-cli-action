@@ -24,6 +24,64 @@ Import-Module (Join-Path (Split-Path -Parent $PSCommandPath) 'VendorTools.psm1')
 
 function Write-Info([string]$msg){ Write-Host $msg -ForegroundColor DarkGray }
 
+function Resolve-ContainerMountedHostPath {
+  param(
+    [string]$Path,
+    [object[]]$Mounts
+  )
+
+  if ([string]::IsNullOrWhiteSpace($Path)) {
+    return $Path
+  }
+
+  if (Test-Path -LiteralPath $Path) {
+    return (Resolve-Path -LiteralPath $Path).Path
+  }
+
+  $normalizedCandidate = $Path.Replace('\', '/')
+  foreach ($mount in @($Mounts)) {
+    if ($null -eq $mount) {
+      continue
+    }
+    $hostPath = if ($mount.PSObject.Properties['hostPath']) { [string]$mount.hostPath } else { '' }
+    $containerPath = if ($mount.PSObject.Properties['containerPath']) { [string]$mount.containerPath } else { '' }
+    if ([string]::IsNullOrWhiteSpace($hostPath) -or [string]::IsNullOrWhiteSpace($containerPath)) {
+      continue
+    }
+
+    $normalizedContainerPath = $containerPath.Trim().TrimEnd('/').Replace('\', '/')
+    if ($normalizedCandidate -eq $normalizedContainerPath) {
+      return $hostPath
+    }
+
+    $prefix = '{0}/' -f $normalizedContainerPath
+    if ($normalizedCandidate.StartsWith($prefix, [System.StringComparison]::Ordinal)) {
+      $relativePath = $normalizedCandidate.Substring($prefix.Length).Replace('/', [System.IO.Path]::DirectorySeparatorChar)
+      return (Join-Path $hostPath $relativePath)
+    }
+  }
+
+  return $Path
+}
+
+function Get-LogTailText {
+  param(
+    [string]$Path,
+    [int]$TailLines = 20
+  )
+
+  if ([string]::IsNullOrWhiteSpace($Path) -or -not (Test-Path -LiteralPath $Path -PathType Leaf)) {
+    return ''
+  }
+
+  $lines = @(Get-Content -LiteralPath $Path -Tail $TailLines -ErrorAction SilentlyContinue)
+  if ($lines.Count -eq 0) {
+    return ''
+  }
+
+  return (($lines | ForEach-Object { [string]$_ }) -join [Environment]::NewLine).Trim()
+}
+
 function Get-RepoRoot {
   $here = Split-Path -Parent $PSCommandPath
   return (Resolve-Path -LiteralPath (Join-Path $here '..'))
@@ -238,10 +296,12 @@ function Write-PrePushNIKnownFlagIncidentEvent {
   param(
     [string]$repoRoot,
     [string]$errorMessage,
+    [string]$scenarioName,
     [string]$scenarioDir,
+    [string]$capturePath,
     [string]$expectedImage,
     [string]$containerLabVIEWPath,
-    [string[]]$knownFlags,
+    [string[]]$scenarioFlags,
     [string]$reportPath,
     [string]$runtimeSnapshotPath
   )
@@ -256,8 +316,6 @@ function Write-PrePushNIKnownFlagIncidentEvent {
   New-Item -ItemType Directory -Path $canaryDir -Force | Out-Null
   $inputPath = Join-Path $canaryDir 'pre-push-ni-known-flag-incident-input.json'
   $eventReportPath = Join-Path $canaryDir 'pre-push-ni-known-flag-incident-event.json'
-
-  $capturePath = Join-Path $scenarioDir 'ni-windows-container-capture.json'
   $repository = if ([string]::IsNullOrWhiteSpace($env:GITHUB_REPOSITORY)) {
     'local/compare-vi-cli-action'
   } else {
@@ -293,10 +351,12 @@ function Write-PrePushNIKnownFlagIncidentEvent {
     occurredAt = (Get-Date).ToUniversalTime().ToString('o')
     labels = @('ci', 'canary')
     metadata = [ordered]@{
-      scenario = 'ni-known-flag'
+      scenarioFamily = 'vi-comparison-report-flags'
+      scenarioGroup = $scenarioName
+      scenario = $scenarioName
       expectedImage = $expectedImage
       containerLabVIEWPath = $containerLabVIEWPath
-      knownFlags = @($knownFlags)
+      flags = @($scenarioFlags)
       scenarioDir = $scenarioDir
       compareReportPath = $reportPath
       capturePath = $capturePath
@@ -402,11 +462,11 @@ $skipNiImageChecks = $SkipNiImageFlagScenarios `
   -or ($env:PREPUSH_SKIP_LEGACY_FIXTURE_CHECKS -match '^(1|true|yes|on)$') `
   -or ($env:PREPUSH_SKIP_ICON_EDITOR_FIXTURE_CHECKS -match '^(1|true|yes|on)$')
 if ($skipNiImageChecks) {
-  Write-Host '[pre-push] Skipping NI image known-flag scenarios by request' -ForegroundColor Yellow
+  Write-Host '[pre-push] Skipping VI Comparison Report flag combination scenarios by request' -ForegroundColor Yellow
   return
 }
 
-$niCompareScript = Join-Path $root 'tools' 'Run-NIWindowsContainerCompare.ps1'
+$niCompareScript = Join-Path $root 'tools' 'Run-NILinuxContainerCompare.ps1'
 if (-not (Test-Path -LiteralPath $niCompareScript -PathType Leaf)) {
   throw ("NI image compare script not found: {0}" -f $niCompareScript)
 }
@@ -419,20 +479,165 @@ if (-not (Test-Path -LiteralPath $headVi -PathType Leaf)) {
   throw ("Head VI not found for NI image known-flag scenario: {0}" -f $headVi)
 }
 
-$expectedImage = 'nationalinstruments/labview:2026q1-windows'
-$containerLabVIEWPath = if ([string]::IsNullOrWhiteSpace($env:NI_WINDOWS_LABVIEW_PATH)) {
-  'C:\Program Files\National Instruments\LabVIEW 2026\LabVIEW.exe'
+$expectedImage = 'nationalinstruments/labview:2026q1-linux'
+$containerLabVIEWPath = if ([string]::IsNullOrWhiteSpace($env:NI_LINUX_LABVIEW_PATH)) {
+  '/usr/local/natinst/LabVIEW-2026-64/labview'
 } else {
-  $env:NI_WINDOWS_LABVIEW_PATH.Trim()
+  $env:NI_LINUX_LABVIEW_PATH.Trim()
 }
-$knownFlags = @('-noattr', '-nofppos', '-nobdcosm')
-$scenarioDir = Join-Path $root 'tests' 'results' '_agent' 'pre-push-ni-image'
-New-Item -ItemType Directory -Path $scenarioDir -Force | Out-Null
+$singleContainerBootstrapScript = Join-Path $root 'tools' 'NILinux-FlagMatrixBootstrap.sh'
+if (-not (Test-Path -LiteralPath $singleContainerBootstrapScript -PathType Leaf)) {
+  throw ("Single-container flag matrix bootstrap script not found: {0}" -f $singleContainerBootstrapScript)
+}
+$viHistoryBootstrapScript = Join-Path $root 'tools' 'NILinux-VIHistorySuiteBootstrap.sh'
+if (-not (Test-Path -LiteralPath $viHistoryBootstrapScript -PathType Leaf)) {
+  throw ("VI history bootstrap script not found: {0}" -f $viHistoryBootstrapScript)
+}
+$baseFlagOptions = @(
+  [ordered]@{ label = 'noattr'; flag = '-noattr' },
+  [ordered]@{ label = 'nofppos'; flag = '-nofppos' },
+  [ordered]@{ label = 'nobdcosm'; flag = '-nobdcosm' }
+)
+$knownFlagScenarioBuffer = New-Object System.Collections.Generic.List[object]
+for ($mask = 0; $mask -lt (1 -shl $baseFlagOptions.Count); $mask++) {
+  $scenarioFlags = @()
+  $scenarioLabels = @()
+  $selectedIndices = @()
+  for ($i = 0; $i -lt $baseFlagOptions.Count; $i++) {
+    if (($mask -band (1 -shl $i)) -ne 0) {
+      $scenarioFlags += [string]$baseFlagOptions[$i].flag
+      $scenarioLabels += [string]$baseFlagOptions[$i].label
+      $selectedIndices += $i
+    }
+  }
+
+  $knownFlagScenarioBuffer.Add([pscustomobject]@{
+    name = if ($scenarioLabels.Count -eq 0) { 'baseline' } else { [string]::Join('__', $scenarioLabels) }
+    flags = @($scenarioFlags)
+    requestedFlagsLabel = if ($scenarioFlags.Count -eq 0) { '(none)' } else { [string]::Join(', ', $scenarioFlags) }
+    orderKey = if ($selectedIndices.Count -eq 0) { 'none' } else { [string]::Join('-', @($selectedIndices | ForEach-Object { '{0:d2}' -f $_ })) }
+  }) | Out-Null
+}
+$knownFlagScenarios = @($knownFlagScenarioBuffer | Sort-Object @{ Expression = { $_.flags.Count } }, @{ Expression = { $_.orderKey } })
+$scenarioRoot = Join-Path $root 'tests' 'results' '_agent' 'pre-push-ni-image'
+New-Item -ItemType Directory -Path $scenarioRoot -Force | Out-Null
+$activeScenarioName = ''
+$activeScenarioFlags = @()
+$scenarioDir = $scenarioRoot
 $reportPath = Join-Path $scenarioDir 'compare-report.html'
 $runtimeSnapshotPath = Join-Path $scenarioDir 'runtime-determinism.json'
+$capturePath = Join-Path $scenarioDir 'ni-linux-container-capture.json'
+$scenarioResults = New-Object System.Collections.Generic.List[object]
 
 try {
-  Write-Host '[pre-push] Running NI image known-flag scenario (real container compare)' -ForegroundColor Cyan
+  Write-Host '[pre-push] Running VI Comparison Report flag combination scenarios (real container compare)' -ForegroundColor Cyan
+  foreach ($scenario in $knownFlagScenarios) {
+    $activeScenarioName = [string]$scenario.name
+    $activeScenarioFlags = @($scenario.flags | ForEach-Object { [string]$_ })
+    $scenarioDir = Join-Path $scenarioRoot $activeScenarioName
+    New-Item -ItemType Directory -Path $scenarioDir -Force | Out-Null
+    $reportPath = Join-Path $scenarioDir 'compare-report.html'
+    $runtimeSnapshotPath = Join-Path $scenarioDir 'runtime-determinism.json'
+    $capturePath = Join-Path $scenarioDir 'ni-linux-container-capture.json'
+
+    Write-Host ("[pre-push] Running NI image flag scenario '{0}' requestedFlags={1}" -f $activeScenarioName, [string]$scenario.requestedFlagsLabel) -ForegroundColor Cyan
+    Push-Location $root
+    try {
+      & $niCompareScript `
+        -BaseVi $baseVi `
+        -HeadVi $headVi `
+        -Image $expectedImage `
+        -ReportPath $reportPath `
+        -LabVIEWPath $containerLabVIEWPath `
+        -ContainerNameLabel $activeScenarioName `
+        -Flags $activeScenarioFlags `
+        -TimeoutSeconds 240 `
+        -HeartbeatSeconds 15 `
+        -AutoRepairRuntime:$true `
+        -RuntimeEngineReadyTimeoutSeconds 120 `
+        -RuntimeEngineReadyPollSeconds 3 `
+        -RuntimeSnapshotPath $runtimeSnapshotPath
+      $compareExit = $LASTEXITCODE
+      if ($compareExit -notin @(0, 1)) {
+        throw ("NI image flag scenario '{0}' compare failed (exit={1})." -f $activeScenarioName, $compareExit)
+      }
+    } finally {
+      Pop-Location | Out-Null
+    }
+
+    if (-not (Test-Path -LiteralPath $capturePath -PathType Leaf)) {
+      throw ("NI image flag scenario '{0}' capture missing: {1}" -f $activeScenarioName, $capturePath)
+    }
+    $capture = Get-Content -LiteralPath $capturePath -Raw | ConvertFrom-Json -Depth 20
+    $gateOutcome = if ($capture.PSObject.Properties['gateOutcome']) { [string]$capture.gateOutcome } else { '' }
+    $resultClass = if ($capture.PSObject.Properties['resultClass']) { [string]$capture.resultClass } else { '' }
+    $imageUsed = if ($capture.PSObject.Properties['image']) { [string]$capture.image } else { '' }
+    $commandText = if ($capture.PSObject.Properties['command']) { [string]$capture.command } else { '' }
+    $flagsUsed = @()
+    if ($capture.PSObject.Properties['flags'] -and $capture.flags) {
+      $flagsUsed = @($capture.flags | ForEach-Object { [string]$_ })
+    }
+
+    if (-not [string]::Equals($imageUsed, $expectedImage, [System.StringComparison]::OrdinalIgnoreCase)) {
+      throw ("NI image flag scenario '{0}' used unexpected image: {1}" -f $activeScenarioName, $imageUsed)
+    }
+    if (-not [string]::Equals($gateOutcome, 'pass', [System.StringComparison]::OrdinalIgnoreCase)) {
+      throw ("NI image flag scenario '{0}' did not pass (resultClass={1}, gateOutcome={2})." -f $activeScenarioName, $resultClass, $gateOutcome)
+    }
+    if ([string]::IsNullOrWhiteSpace($commandText) -or $commandText -notmatch '(?i)docker run') {
+      throw ("NI image flag scenario '{0}' did not emit a docker run command in capture evidence." -f $activeScenarioName)
+    }
+    foreach ($flag in $activeScenarioFlags) {
+      if ($flagsUsed -notcontains $flag) {
+        throw ("NI image flag scenario '{0}' missing expected flag in capture: {1}" -f $activeScenarioName, $flag)
+      }
+    }
+    if ($flagsUsed -notcontains '-Headless') {
+      throw ("NI image flag scenario '{0}' missing enforced -Headless flag in capture." -f $activeScenarioName)
+    }
+
+    $scenarioResults.Add([pscustomobject]@{
+      name = $activeScenarioName
+      requestedFlags = @($activeScenarioFlags)
+      flags = @($flagsUsed)
+      resultClass = $resultClass
+      gateOutcome = $gateOutcome
+      capturePath = $capturePath
+      reportPath = $reportPath
+    }) | Out-Null
+  }
+
+  $activeScenarioName = 'single-container-matrix'
+  $activeScenarioFlags = @()
+  $scenarioDir = Join-Path $scenarioRoot $activeScenarioName
+  $singleContainerResultsDir = Join-Path $scenarioDir 'matrix-results'
+  New-Item -ItemType Directory -Path $singleContainerResultsDir -Force | Out-Null
+  $reportPath = Join-Path $scenarioDir 'compare-report.html'
+  $runtimeSnapshotPath = Join-Path $scenarioDir 'runtime-determinism.json'
+  $capturePath = Join-Path $scenarioDir 'ni-linux-container-capture.json'
+  $singleContainerContractPath = Join-Path $scenarioDir 'runtime-bootstrap.json'
+  $singleContainerLedgerPath = Join-Path $singleContainerResultsDir 'flag-matrix-ledger.tsv'
+  $singleContainerMarkerPath = Join-Path $singleContainerResultsDir 'flag-matrix-ran.txt'
+  $singleContainerContract = [ordered]@{
+    schema = 'ni-linux-runtime-bootstrap/v1'
+    mode = 'flag-matrix-single-container'
+    scriptPath = $singleContainerBootstrapScript
+    env = @(
+      [ordered]@{
+        name = 'COMPAREVI_FLAG_MATRIX_RESULTS_DIR'
+        value = '/opt/comparevi/flag-matrix'
+      }
+    )
+    mounts = @(
+      [ordered]@{
+        hostPath = $singleContainerResultsDir
+        containerPath = '/opt/comparevi/flag-matrix'
+      }
+    )
+  }
+  $singleContainerContract | ConvertTo-Json -Depth 12 | Set-Content -LiteralPath $singleContainerContractPath -Encoding utf8
+
+  Write-Host '[pre-push] Running NI image flag scenario group single-container-matrix requestedFlags=all combinations' -ForegroundColor Cyan
   Push-Location $root
   try {
     & $niCompareScript `
@@ -441,25 +646,24 @@ try {
       -Image $expectedImage `
       -ReportPath $reportPath `
       -LabVIEWPath $containerLabVIEWPath `
-      -Flags $knownFlags `
+      -ContainerNameLabel $activeScenarioName `
       -TimeoutSeconds 240 `
       -HeartbeatSeconds 15 `
       -AutoRepairRuntime:$true `
-      -ManageDockerEngine:$false `
       -RuntimeEngineReadyTimeoutSeconds 120 `
       -RuntimeEngineReadyPollSeconds 3 `
-      -RuntimeSnapshotPath $runtimeSnapshotPath
+      -RuntimeSnapshotPath $runtimeSnapshotPath `
+      -RuntimeBootstrapContractPath $singleContainerContractPath
     $compareExit = $LASTEXITCODE
-    if ($compareExit -ne 0) {
-      throw ("NI image known-flag scenario compare failed (exit={0})." -f $compareExit)
+    if ($compareExit -notin @(0, 1)) {
+      throw ("NI image flag scenario '{0}' compare failed (exit={1})." -f $activeScenarioName, $compareExit)
     }
   } finally {
     Pop-Location | Out-Null
   }
 
-  $capturePath = Join-Path $scenarioDir 'ni-windows-container-capture.json'
   if (-not (Test-Path -LiteralPath $capturePath -PathType Leaf)) {
-    throw ("NI image known-flag scenario capture missing: {0}" -f $capturePath)
+    throw ("NI image flag scenario '{0}' capture missing: {1}" -f $activeScenarioName, $capturePath)
   }
   $capture = Get-Content -LiteralPath $capturePath -Raw | ConvertFrom-Json -Depth 20
   $gateOutcome = if ($capture.PSObject.Properties['gateOutcome']) { [string]$capture.gateOutcome } else { '' }
@@ -472,46 +676,247 @@ try {
   }
 
   if (-not [string]::Equals($imageUsed, $expectedImage, [System.StringComparison]::OrdinalIgnoreCase)) {
-    throw ("NI image known-flag scenario used unexpected image: {0}" -f $imageUsed)
+    throw ("NI image flag scenario '{0}' used unexpected image: {1}" -f $activeScenarioName, $imageUsed)
   }
   if (-not [string]::Equals($gateOutcome, 'pass', [System.StringComparison]::OrdinalIgnoreCase)) {
-    throw ("NI image known-flag scenario did not pass (resultClass={0}, gateOutcome={1})." -f $resultClass, $gateOutcome)
+    throw ("NI image flag scenario '{0}' did not pass (resultClass={1}, gateOutcome={2})." -f $activeScenarioName, $resultClass, $gateOutcome)
   }
   if ([string]::IsNullOrWhiteSpace($commandText) -or $commandText -notmatch '(?i)docker run') {
-    throw 'NI image known-flag scenario did not emit a docker run command in capture evidence.'
-  }
-  foreach ($flag in $knownFlags) {
-    if ($flagsUsed -notcontains $flag) {
-      throw ("NI image known-flag scenario missing expected flag in capture: {0}" -f $flag)
-    }
+    throw ("NI image flag scenario '{0}' did not emit a docker run command in capture evidence." -f $activeScenarioName)
   }
   if ($flagsUsed -notcontains '-Headless') {
-    throw 'NI image known-flag scenario missing enforced -Headless flag in capture.'
+    throw ("NI image flag scenario '{0}' missing enforced -Headless flag in capture." -f $activeScenarioName)
+  }
+  if (-not (Test-Path -LiteralPath $singleContainerLedgerPath -PathType Leaf)) {
+    throw ("NI image flag scenario '{0}' missing single-container ledger: {1}" -f $activeScenarioName, $singleContainerLedgerPath)
+  }
+  if (-not (Test-Path -LiteralPath $singleContainerMarkerPath -PathType Leaf)) {
+    throw ("NI image flag scenario '{0}' missing single-container marker: {1}" -f $activeScenarioName, $singleContainerMarkerPath)
   }
 
+  $ledgerRows = @(Get-Content -LiteralPath $singleContainerLedgerPath | Where-Object { $_ -and $_.Trim() })
+  if ($ledgerRows.Count -ne $knownFlagScenarios.Count) {
+    throw ("NI image flag scenario '{0}' ledger count mismatch ({1} != {2})." -f $activeScenarioName, $ledgerRows.Count, $knownFlagScenarios.Count)
+  }
+  $ledgerEntries = @(
+    $ledgerRows | ForEach-Object {
+      $parts = [string]$_ -split "`t"
+      [pscustomobject]@{
+        index = if ($parts.Count -gt 0) { [int]$parts[0] } else { 0 }
+        name = if ($parts.Count -gt 1) { [string]$parts[1] } else { '' }
+        requestedFlags = if ($parts.Count -gt 2) { [string]$parts[2] } else { '' }
+        exitCode = if ($parts.Count -gt 3) { [int]$parts[3] } else { 0 }
+        status = if ($parts.Count -gt 4) { [string]$parts[4] } else { '' }
+        diff = if ($parts.Count -gt 5) { [string]$parts[5] } else { '' }
+        reportPath = if ($parts.Count -gt 6) { [string]$parts[6] } else { '' }
+        logPath = if ($parts.Count -gt 7) { [string]$parts[7] } else { '' }
+      }
+    }
+  )
+  $expectedScenarioNames = @($knownFlagScenarios | ForEach-Object { [string]$_.name })
+  $actualScenarioNames = @($ledgerEntries | ForEach-Object { [string]$_.name })
+  $scenarioNameDifferences = @(Compare-Object -ReferenceObject $expectedScenarioNames -DifferenceObject $actualScenarioNames)
+  if ($scenarioNameDifferences.Count -gt 0) {
+    throw ("NI image flag scenario '{0}' ledger names did not match the expected combination set." -f $activeScenarioName)
+  }
+  $failureMarkers = @(
+    'Report path already exists:'
+    'Use -o to overwrite existing report.'
+    'CreateComparisonReport operation failed.'
+  )
+  foreach ($entry in $ledgerEntries) {
+    $resolvedEntryLogPath = Resolve-ContainerMountedHostPath -Path $entry.logPath -Mounts @($capture.runtimeInjection.mounts)
+    if ([string]::IsNullOrWhiteSpace($resolvedEntryLogPath) -or -not (Test-Path -LiteralPath $resolvedEntryLogPath -PathType Leaf)) {
+      throw ("NI image flag scenario '{0}' missing single-container CLI log for {1}: {2} (resolved: {3})" -f $activeScenarioName, $entry.name, $entry.logPath, $resolvedEntryLogPath)
+    }
+    if (-not [string]::Equals($entry.status, 'completed', [System.StringComparison]::OrdinalIgnoreCase)) {
+      $entryLogTail = Get-LogTailText -Path $resolvedEntryLogPath
+      throw ("NI image flag scenario '{0}' recorded non-completed ledger status for {1}: {2}`nlog={3}`n{4}" -f $activeScenarioName, $entry.name, $entry.status, $resolvedEntryLogPath, $entryLogTail)
+    }
+    $hasFailureText = Select-String -Path $resolvedEntryLogPath -SimpleMatch -Quiet -Pattern $failureMarkers -ErrorAction SilentlyContinue
+    if ($hasFailureText) {
+      $entryLogTail = Get-LogTailText -Path $resolvedEntryLogPath
+      throw ("NI image flag scenario '{0}' detected wrapper/tool failure text for {1}`nlog={2}`n{3}" -f $activeScenarioName, $entry.name, $resolvedEntryLogPath, $entryLogTail)
+    }
+    $resolvedEntryReportPath = Resolve-ContainerMountedHostPath -Path $entry.reportPath -Mounts @($capture.runtimeInjection.mounts)
+    if (-not (Test-Path -LiteralPath $resolvedEntryReportPath -PathType Leaf)) {
+      throw ("NI image flag scenario '{0}' missing single-container report for {1}: {2} (resolved: {3})" -f $activeScenarioName, $entry.name, $entry.reportPath, $resolvedEntryReportPath)
+    }
+  }
+
+  $scenarioResults.Add([pscustomobject]@{
+    name = $activeScenarioName
+    requestedFlags = @('all combinations')
+    flags = @($flagsUsed)
+    resultClass = $resultClass
+    gateOutcome = $gateOutcome
+    capturePath = $capturePath
+    reportPath = $reportPath
+  }) | Out-Null
+
+  $activeScenarioName = 'vi-history-report'
+  $activeScenarioFlags = @('vi-history-suite')
+  $scenarioDir = Join-Path $scenarioRoot $activeScenarioName
+  $viHistoryResultsDir = Join-Path $scenarioDir 'results'
+  New-Item -ItemType Directory -Path $viHistoryResultsDir -Force | Out-Null
+  $reportPath = Join-Path $viHistoryResultsDir 'linux-compare-report.html'
+  $runtimeSnapshotPath = Join-Path $scenarioDir 'runtime-determinism.json'
+  $capturePath = Join-Path $viHistoryResultsDir 'ni-linux-container-capture.json'
+  $viHistoryContractPath = Join-Path $scenarioDir 'runtime-bootstrap.json'
+  $viHistoryManifestPath = Join-Path $viHistoryResultsDir 'suite-manifest.json'
+  $viHistoryContextPath = Join-Path $viHistoryResultsDir 'history-context.json'
+  $viHistoryReceiptPath = Join-Path $viHistoryResultsDir 'vi-history-bootstrap-receipt.json'
+  $viHistoryMarkdownPath = Join-Path $viHistoryResultsDir 'history-report.md'
+  $viHistoryHtmlPath = Join-Path $viHistoryResultsDir 'history-report.html'
+  $viHistorySummaryJsonPath = Join-Path $viHistoryResultsDir 'history-summary.json'
+  $viHistoryInspectionJsonPath = Join-Path $viHistoryResultsDir 'history-suite-inspection.json'
+  $viHistoryInspectionHtmlPath = Join-Path $viHistoryResultsDir 'history-suite-inspection.html'
+  $viHistoryContract = [ordered]@{
+    schema = 'ni-linux-runtime-bootstrap/v1'
+    mode = 'vi-history-suite-smoke'
+    branchRef = 'develop'
+    maxCommitCount = 64
+    scriptPath = $viHistoryBootstrapScript
+    viHistory = [ordered]@{
+      repoPath = $root
+      targetPath = 'fixtures/vi-attr/Head.vi'
+      resultsPath = $viHistoryResultsDir
+      baselineRef = 'develop'
+      maxPairs = 2
+    }
+  }
+  $viHistoryContract | ConvertTo-Json -Depth 12 | Set-Content -LiteralPath $viHistoryContractPath -Encoding utf8
+
+  Write-Host '[pre-push] Running NI image flag scenario group vi-history-report requestedFlags=vi-history-suite' -ForegroundColor Cyan
+  Push-Location $root
+  try {
+    & $niCompareScript `
+      -Image $expectedImage `
+      -ReportPath $reportPath `
+      -LabVIEWPath $containerLabVIEWPath `
+      -ContainerNameLabel $activeScenarioName `
+      -TimeoutSeconds 240 `
+      -HeartbeatSeconds 15 `
+      -AutoRepairRuntime:$true `
+      -RuntimeEngineReadyTimeoutSeconds 120 `
+      -RuntimeEngineReadyPollSeconds 3 `
+      -RuntimeSnapshotPath $runtimeSnapshotPath `
+      -RuntimeBootstrapContractPath $viHistoryContractPath
+    $compareExit = $LASTEXITCODE
+    if ($compareExit -notin @(0, 1)) {
+      throw ("NI image flag scenario '{0}' compare failed (exit={1})." -f $activeScenarioName, $compareExit)
+    }
+  } finally {
+    Pop-Location | Out-Null
+  }
+
+  if (-not (Test-Path -LiteralPath $capturePath -PathType Leaf)) {
+    throw ("NI image flag scenario '{0}' capture missing: {1}" -f $activeScenarioName, $capturePath)
+  }
+  $capture = Get-Content -LiteralPath $capturePath -Raw | ConvertFrom-Json -Depth 20
+  $gateOutcome = if ($capture.PSObject.Properties['gateOutcome']) { [string]$capture.gateOutcome } else { '' }
+  $resultClass = if ($capture.PSObject.Properties['resultClass']) { [string]$capture.resultClass } else { '' }
+  $imageUsed = if ($capture.PSObject.Properties['image']) { [string]$capture.image } else { '' }
+  $commandText = if ($capture.PSObject.Properties['command']) { [string]$capture.command } else { '' }
+
+  if (-not [string]::Equals($imageUsed, $expectedImage, [System.StringComparison]::OrdinalIgnoreCase)) {
+    throw ("NI image flag scenario '{0}' used unexpected image: {1}" -f $activeScenarioName, $imageUsed)
+  }
+  if (-not [string]::Equals($gateOutcome, 'pass', [System.StringComparison]::OrdinalIgnoreCase)) {
+    throw ("NI image flag scenario '{0}' did not pass (resultClass={1}, gateOutcome={2})." -f $activeScenarioName, $resultClass, $gateOutcome)
+  }
+  if ([string]::IsNullOrWhiteSpace($commandText) -or $commandText -notmatch '(?i)docker run') {
+    throw ("NI image flag scenario '{0}' did not emit a docker run command in capture evidence." -f $activeScenarioName)
+  }
+  if (-not (Test-Path -LiteralPath $viHistoryManifestPath -PathType Leaf)) {
+    throw ("NI image flag scenario '{0}' missing VI history manifest: {1}" -f $activeScenarioName, $viHistoryManifestPath)
+  }
+  if (-not (Test-Path -LiteralPath $viHistoryContextPath -PathType Leaf)) {
+    throw ("NI image flag scenario '{0}' missing VI history context: {1}" -f $activeScenarioName, $viHistoryContextPath)
+  }
+  if (-not (Test-Path -LiteralPath $viHistoryReceiptPath -PathType Leaf)) {
+    throw ("NI image flag scenario '{0}' missing VI history bootstrap receipt: {1}" -f $activeScenarioName, $viHistoryReceiptPath)
+  }
+  $viHistoryManifest = Get-Content -LiteralPath $viHistoryManifestPath -Raw | ConvertFrom-Json -Depth 20
+  if (-not $viHistoryManifest.stats -or [int]$viHistoryManifest.stats.processed -lt 1) {
+    throw ("NI image flag scenario '{0}' generated an empty VI history suite manifest." -f $activeScenarioName)
+  }
+  foreach ($artifactPath in @($viHistoryMarkdownPath, $viHistoryHtmlPath, $viHistorySummaryJsonPath)) {
+    if (-not (Test-Path -LiteralPath $artifactPath -PathType Leaf)) {
+      throw ("NI image flag scenario '{0}' missing in-container VI history artifact: {1}" -f $activeScenarioName, $artifactPath)
+    }
+  }
+  $viHistoryReceipt = Get-Content -LiteralPath $viHistoryReceiptPath -Raw | ConvertFrom-Json -Depth 20
+  foreach ($receiptProperty in @('historyReportMarkdownPath', 'historyReportHtmlPath', 'historySummaryPath')) {
+    if (-not $viHistoryReceipt.PSObject.Properties[$receiptProperty]) {
+      throw ("NI image flag scenario '{0}' missing receipt property: {1}" -f $activeScenarioName, $receiptProperty)
+    }
+  }
+  if ([string]$viHistoryReceipt.historyReportMarkdownPath -notmatch 'history-report\.md$') {
+    throw ("NI image flag scenario '{0}' receipt markdown path is not normalized: {1}" -f $activeScenarioName, $viHistoryReceipt.historyReportMarkdownPath)
+  }
+  if ([string]$viHistoryReceipt.historyReportHtmlPath -notmatch 'history-report\.html$') {
+    throw ("NI image flag scenario '{0}' receipt html path is not normalized: {1}" -f $activeScenarioName, $viHistoryReceipt.historyReportHtmlPath)
+  }
+  if ([string]$viHistoryReceipt.historySummaryPath -notmatch 'history-summary\.json$') {
+    throw ("NI image flag scenario '{0}' receipt summary path is not normalized: {1}" -f $activeScenarioName, $viHistoryReceipt.historySummaryPath)
+  }
+  $viHistorySummary = Get-Content -LiteralPath $viHistorySummaryJsonPath -Raw | ConvertFrom-Json -Depth 20
+  if (-not [string]::Equals([string]$viHistorySummary.schema, 'comparevi-tools/history-facade@v1', [System.StringComparison]::Ordinal)) {
+    throw ("NI image flag scenario '{0}' emitted an unexpected VI history summary schema: {1}" -f $activeScenarioName, $viHistorySummary.schema)
+  }
+  if (-not $viHistorySummary.summary -or [int]$viHistorySummary.summary.comparisons -lt 1) {
+    throw ("NI image flag scenario '{0}' emitted an empty VI history summary facade." -f $activeScenarioName)
+  }
+  if (-not $viHistorySummary.reports -or [string]::IsNullOrWhiteSpace([string]$viHistorySummary.reports.htmlPath)) {
+    throw ("NI image flag scenario '{0}' missing HTML report path in VI history summary facade." -f $activeScenarioName)
+  }
+  & (Join-Path $root 'tools' 'Inspect-VIHistorySuiteArtifacts.ps1') `
+    -ResultsDir $viHistoryResultsDir `
+    -HistoryReportPath $viHistoryHtmlPath `
+    -HistorySummaryPath $viHistorySummaryJsonPath `
+    -OutputJsonPath $viHistoryInspectionJsonPath `
+    -OutputHtmlPath $viHistoryInspectionHtmlPath `
+    -GitHubOutputPath '' `
+    -GitHubStepSummaryPath ''
+  if (-not (Test-Path -LiteralPath $viHistoryInspectionJsonPath -PathType Leaf)) {
+    throw ("NI image flag scenario '{0}' missing VI history inspection JSON: {1}" -f $activeScenarioName, $viHistoryInspectionJsonPath)
+  }
+  if (-not (Test-Path -LiteralPath $viHistoryInspectionHtmlPath -PathType Leaf)) {
+    throw ("NI image flag scenario '{0}' missing VI history inspection HTML: {1}" -f $activeScenarioName, $viHistoryInspectionHtmlPath)
+  }
+
+  $scenarioResults.Add([pscustomobject]@{
+    name = $activeScenarioName
+    requestedFlags = @('vi-history-suite')
+    flags = @('suite-manifest', 'history-report', 'history-summary')
+    resultClass = $resultClass
+    gateOutcome = $gateOutcome
+    capturePath = $capturePath
+    reportPath = $viHistoryHtmlPath
+  }) | Out-Null
+
   if ($env:GITHUB_STEP_SUMMARY) {
-    $lines = @(
-      '### Pre-push NI Image Scenario',
-      '',
-      ('- image: `{0}`' -f $imageUsed),
-      ('- resultClass: `{0}`' -f $resultClass),
-      ('- gateOutcome: `{0}`' -f $gateOutcome),
-      ('- flags: `{0}`' -f [string]::Join(', ', $flagsUsed)),
-      ('- capture: `{0}`' -f $capturePath),
-      ('- report: `{0}`' -f $reportPath)
-    )
+    $lines = @('### Pre-push NI Image Scenarios', '')
+    foreach ($scenarioResult in $scenarioResults) {
+      $requestedFlags = if (@($scenarioResult.requestedFlags).Count -eq 0) { '(none)' } else { [string]::Join(', ', @($scenarioResult.requestedFlags)) }
+      $lines += ('- `{0}`: resultClass=`{1}` gateOutcome=`{2}` requestedFlags=`{3}` effectiveFlags=`{4}`' -f $scenarioResult.name, $scenarioResult.resultClass, $scenarioResult.gateOutcome, $requestedFlags, [string]::Join(', ', @($scenarioResult.flags)))
+      $lines += ('  capture=`{0}` report=`{1}`' -f $scenarioResult.capturePath, $scenarioResult.reportPath)
+    }
     $lines -join "`n" | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8
   }
-  Write-Host '[pre-push] NI image known-flag scenarios OK' -ForegroundColor Green
+  Write-Host '[pre-push] VI Comparison Report flag combination scenarios OK' -ForegroundColor Green
 } catch {
   $failureMessage = if ($_.Exception -and $_.Exception.Message) { $_.Exception.Message } else { [string]$_ }
   $eventReportPath = Write-PrePushNIKnownFlagIncidentEvent `
     -repoRoot $root `
     -errorMessage $failureMessage `
+    -scenarioName $activeScenarioName `
     -scenarioDir $scenarioDir `
+    -capturePath $capturePath `
     -expectedImage $expectedImage `
     -containerLabVIEWPath $containerLabVIEWPath `
-    -knownFlags $knownFlags `
+    -scenarioFlags $activeScenarioFlags `
     -reportPath $reportPath `
     -runtimeSnapshotPath $runtimeSnapshotPath
   if (-not [string]::IsNullOrWhiteSpace($eventReportPath)) {

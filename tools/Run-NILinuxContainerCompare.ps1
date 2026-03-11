@@ -37,6 +37,11 @@
   Optional explicit in-container LabVIEW executable path forwarded as
   -LabVIEWPath and used for prelaunch.
 
+.PARAMETER ContainerNameLabel
+  Optional deterministic label used when composing the Docker container name.
+  The helper sanitizes the label and appends a short stable suffix so parallel
+  runs do not collide on shared Docker hosts.
+
 .PARAMETER Probe
   Preflight only (Docker availability, Linux container mode, and image
   presence). Does not require BaseVi/HeadVi.
@@ -57,6 +62,25 @@
 .PARAMETER RetryDelaySeconds
   Delay between retry attempts for transient startup failures.
 
+.PARAMETER RuntimeInjectionScriptPath
+  Optional bash fragment mounted into the container and sourced before CLI
+  discovery so callers can inject dependencies, PATH updates, and config at
+  runtime.
+
+.PARAMETER RuntimeBootstrapContractPath
+  Optional JSON contract describing a single-container smoke/bootstrap setup.
+  The contract can declare the runtime injection script, extra env pairs, and
+  extra mounts relative to the contract file.
+
+.PARAMETER RuntimeInjectionEnv
+  Optional additional container environment pairs in KEY=VALUE form. Values
+  may reference host env vars via $env:NAME.
+
+.PARAMETER RuntimeInjectionMount
+  Optional additional runtime mounts in hostPath::/container/path form for
+  dependency/config payloads that should be available inside the running
+  container.
+
 .PARAMETER PassThru
   Emit the capture object to stdout in addition to writing capture JSON.
 #>
@@ -72,6 +96,7 @@ param(
   [int]$HeartbeatSeconds = 15,
   [string[]]$Flags,
   [string]$LabVIEWPath,
+  [string]$ContainerNameLabel,
   [switch]$Probe,
   [bool]$AutoRepairRuntime = $true,
   [int]$RuntimeEngineReadyTimeoutSeconds = 120,
@@ -80,6 +105,10 @@ param(
   [int]$StartupRetryCount = 1,
   [int]$PrelaunchWaitSeconds = 8,
   [int]$RetryDelaySeconds = 8,
+  [string]$RuntimeInjectionScriptPath,
+  [string]$RuntimeBootstrapContractPath,
+  [string[]]$RuntimeInjectionEnv,
+  [string[]]$RuntimeInjectionMount,
   [switch]$PassThru
 )
 
@@ -128,6 +157,87 @@ function Resolve-DockerCommandSource {
     throw 'Unable to resolve docker command source path.'
   }
   return [string]$command.Source
+}
+
+function Get-EffectiveCompareFlags {
+  param(
+    [AllowNull()][string[]]$InputFlags
+  )
+
+  $flags = @()
+  if ($InputFlags) {
+    foreach ($flag in $InputFlags) {
+      if (-not [string]::IsNullOrWhiteSpace([string]$flag)) {
+        $flags += [string]$flag
+      }
+    }
+  }
+
+  $hasHeadless = $false
+  foreach ($flag in $flags) {
+    if ($flag.Trim().ToLowerInvariant() -eq '-headless') {
+      $hasHeadless = $true
+      break
+    }
+  }
+  if (-not $hasHeadless) {
+    $flags += '-Headless'
+  }
+
+  return @($flags)
+}
+
+function ConvertTo-ContainerNameSegment {
+  param(
+    [AllowEmptyString()][string]$Value,
+    [int]$MaxLength = 40
+  )
+
+  if ([string]::IsNullOrWhiteSpace($Value)) {
+    return ''
+  }
+
+  $segment = $Value.Trim().ToLowerInvariant()
+  $segment = [regex]::Replace($segment, '[^a-z0-9_.-]+', '-')
+  $segment = [regex]::Replace($segment, '[-_.]{2,}', '-')
+  $segment = $segment.Trim('-', '_', '.')
+  if ([string]::IsNullOrWhiteSpace($segment)) {
+    return ''
+  }
+  if ($segment.Length -gt $MaxLength) {
+    $segment = $segment.Substring(0, $MaxLength).TrimEnd('-', '_', '.')
+  }
+  return $segment
+}
+
+function Get-DeterministicContainerSuffix {
+  param([Parameter(Mandatory)][string]$Seed)
+
+  $bytes = [System.Text.Encoding]::UTF8.GetBytes($Seed)
+  $hasher = [System.Security.Cryptography.MD5]::Create()
+  try {
+    $hash = $hasher.ComputeHash($bytes)
+  } finally {
+    $hasher.Dispose()
+  }
+  return ((($hash | ForEach-Object { $_.ToString('x2') }) -join '').Substring(0, 8))
+}
+
+function New-CompareContainerName {
+  param(
+    [AllowEmptyString()][string]$Label,
+    [AllowEmptyString()][string]$HashSeed
+  )
+
+  $prefix = 'ni-lnx-compare'
+  $segment = ConvertTo-ContainerNameSegment -Value $Label
+  if ([string]::IsNullOrWhiteSpace($segment)) {
+    return ('{0}-{1}' -f $prefix, ([guid]::NewGuid().ToString('N').Substring(0, 12)))
+  }
+
+  $seed = if ([string]::IsNullOrWhiteSpace($HashSeed)) { $segment } else { $HashSeed }
+  $suffix = Get-DeterministicContainerSuffix -Seed $seed
+  return ('{0}-{1}-{2}' -f $prefix, $segment, $suffix)
 }
 
 function Resolve-EnvTokenValue {
@@ -183,27 +293,50 @@ function Resolve-ExistingFilePath {
   }
 }
 
+function Resolve-ExistingFileSystemPath {
+  param(
+    [Parameter(Mandatory)][string]$InputPath,
+    [Parameter(Mandatory)][string]$ParameterName
+  )
+  $effectiveInput = Resolve-EffectivePathInput -InputPath $InputPath -ParameterName $ParameterName
+  if ([string]::IsNullOrWhiteSpace($effectiveInput)) {
+    throw ("Parameter -{0} is required." -f $ParameterName)
+  }
+  try {
+    $resolved = Resolve-Path -LiteralPath $effectiveInput -ErrorAction Stop
+    if (
+      (Test-Path -LiteralPath $resolved.Path -PathType Leaf) -or
+      (Test-Path -LiteralPath $resolved.Path -PathType Container)
+    ) {
+      return $resolved.Path
+    }
+    throw ("Path is not a file or directory: {0}" -f $effectiveInput)
+  } catch {
+    throw ("Unable to resolve -{0} path '{1}'." -f $ParameterName, $effectiveInput)
+  }
+}
+
 function Resolve-ReportTypeInfo {
   param([Parameter(Mandatory)][string]$Type)
   switch ($Type.ToLowerInvariant()) {
     'html' {
       return [pscustomobject]@{
         InputType     = 'html'
-        CliReportType = 'HTMLSingleFile'
+        CliReportType = 'html'
         Extension     = 'html'
       }
     }
     'xml' {
       return [pscustomobject]@{
         InputType     = 'xml'
-        CliReportType = 'XML'
+        CliReportType = 'xml'
         Extension     = 'xml'
       }
     }
     'text' {
       return [pscustomobject]@{
         InputType     = 'text'
-        CliReportType = 'Text'
+        CliReportType = 'text'
         Extension     = 'txt'
       }
     }
@@ -258,6 +391,684 @@ function Convert-HostFileToContainerPath {
   return (Join-Path $containerDir (Split-Path -Leaf $HostFilePath)).Replace('\', '/')
 }
 
+function Resolve-RuntimeInjectionEnvEntries {
+  param(
+    [string[]]$Entries,
+    [string[]]$ReservedNames = @()
+  )
+
+  $resolved = @()
+  foreach ($entry in @($Entries)) {
+    if ([string]::IsNullOrWhiteSpace([string]$entry)) {
+      continue
+    }
+
+    $candidate = [string]$entry
+    if ($candidate -notmatch '^(?<name>[A-Za-z_][A-Za-z0-9_]*)=(?<value>.*)$') {
+      throw ("Invalid -RuntimeInjectionEnv entry '{0}'. Use KEY=VALUE." -f $candidate)
+    }
+
+    $name = [string]$Matches['name']
+    if ($ReservedNames -contains $name) {
+      throw ("-RuntimeInjectionEnv cannot override reserved variable '{0}'." -f $name)
+    }
+
+    $value = Resolve-EffectivePathInput -InputPath ([string]$Matches['value']) -ParameterName 'RuntimeInjectionEnv'
+    $resolved += [pscustomobject]@{
+      name = $name
+      value = [string]$value
+    }
+  }
+
+  return @($resolved)
+}
+
+function Resolve-RuntimeInjectionMountEntries {
+  param([string[]]$Entries)
+
+  $resolved = @()
+  foreach ($entry in @($Entries)) {
+    if ([string]::IsNullOrWhiteSpace([string]$entry)) {
+      continue
+    }
+
+    $candidate = [string]$entry
+    $separatorIndex = $candidate.IndexOf('::', [System.StringComparison]::Ordinal)
+    if ($separatorIndex -lt 1) {
+      throw ("Invalid -RuntimeInjectionMount entry '{0}'. Use hostPath::/container/path." -f $candidate)
+    }
+
+    $hostPart = $candidate.Substring(0, $separatorIndex).Trim()
+    $containerPart = $candidate.Substring($separatorIndex + 2).Trim().Replace('\', '/')
+    if ([string]::IsNullOrWhiteSpace($hostPart) -or [string]::IsNullOrWhiteSpace($containerPart)) {
+      throw ("Invalid -RuntimeInjectionMount entry '{0}'. Use hostPath::/container/path." -f $candidate)
+    }
+    if (-not $containerPart.StartsWith('/')) {
+      throw ("-RuntimeInjectionMount container path must be absolute: {0}" -f $candidate)
+    }
+    if (
+      [string]::Equals($containerPart, '/compare', [System.StringComparison]::Ordinal) -or
+      $containerPart -match '^/compare/m\d+(/|$)'
+    ) {
+      throw ("-RuntimeInjectionMount container path '{0}' collides with reserved compare mounts." -f $containerPart)
+    }
+
+    $resolvedHostPath = Resolve-ExistingFileSystemPath -InputPath $hostPart -ParameterName 'RuntimeInjectionMount'
+    $kind = if (Test-Path -LiteralPath $resolvedHostPath -PathType Container) { 'directory' } else { 'file' }
+    $resolved += [pscustomobject]@{
+      hostPath = [string]$resolvedHostPath
+      containerPath = [string]$containerPart
+      kind = $kind
+    }
+  }
+
+  return @($resolved)
+}
+
+function Resolve-ExistingPathFromBaseDirectory {
+  param(
+    [Parameter(Mandatory)][string]$BaseDirectory,
+    [Parameter(Mandatory)][string]$InputPath,
+    [Parameter(Mandatory)][string]$ParameterName,
+    [switch]$RequireFile
+  )
+
+  $effectiveInput = Resolve-EffectivePathInput -InputPath $InputPath -ParameterName $ParameterName
+  if ([string]::IsNullOrWhiteSpace($effectiveInput)) {
+    throw ("Parameter -{0} is required." -f $ParameterName)
+  }
+
+  $candidate = if ([System.IO.Path]::IsPathRooted($effectiveInput)) {
+    [System.IO.Path]::GetFullPath($effectiveInput)
+  } else {
+    [System.IO.Path]::GetFullPath((Join-Path $BaseDirectory $effectiveInput))
+  }
+
+  if ($RequireFile) {
+    if (-not (Test-Path -LiteralPath $candidate -PathType Leaf)) {
+      throw ("Unable to resolve -{0} file path '{1}'." -f $ParameterName, $effectiveInput)
+    }
+    return $candidate
+  }
+
+  if (
+    -not (Test-Path -LiteralPath $candidate -PathType Leaf) -and
+    -not (Test-Path -LiteralPath $candidate -PathType Container)
+  ) {
+    throw ("Unable to resolve -{0} path '{1}'." -f $ParameterName, $effectiveInput)
+  }
+
+  return $candidate
+}
+
+function Resolve-OutputPathFromBaseDirectory {
+  param(
+    [Parameter(Mandatory)][string]$BaseDirectory,
+    [Parameter(Mandatory)][string]$InputPath,
+    [Parameter(Mandatory)][string]$ParameterName
+  )
+
+  $effectiveInput = Resolve-EffectivePathInput -InputPath $InputPath -ParameterName $ParameterName
+  if ([string]::IsNullOrWhiteSpace($effectiveInput)) {
+    throw ("Parameter -{0} is required." -f $ParameterName)
+  }
+
+  if ([System.IO.Path]::IsPathRooted($effectiveInput)) {
+    return [System.IO.Path]::GetFullPath($effectiveInput)
+  }
+
+  return [System.IO.Path]::GetFullPath((Join-Path $BaseDirectory $effectiveInput))
+}
+
+function Get-HostGitBranchBudget {
+  param(
+    [Parameter(Mandatory)][string]$RepoPath,
+    [Parameter(Mandatory)][string]$BranchRef,
+    [AllowEmptyString()][string]$BaselineRef,
+    [Parameter(Mandatory)][int]$MaxCommitCount
+  )
+
+  $normalizedBranchRef = $BranchRef.Trim()
+  $result = [ordered]@{
+    sourceBranchRef = $normalizedBranchRef
+    requestedBaselineRef = if ([string]::IsNullOrWhiteSpace($BaselineRef)) { $null } else { [string]$BaselineRef.Trim() }
+    baselineRef = $null
+    mergeBaseRef = $null
+    commitRange = $null
+    maxCommitCount = [int]$MaxCommitCount
+    commitCount = $null
+    status = 'pending'
+    reason = 'not-evaluated'
+  }
+
+  if ([string]::IsNullOrWhiteSpace($normalizedBranchRef)) {
+    $result.status = 'invalid'
+    $result.reason = 'branch-ref-empty'
+    return [pscustomobject]$result
+  }
+
+  Push-Location $RepoPath
+  try {
+    & git rev-parse --verify $normalizedBranchRef *> $null
+    if ($LASTEXITCODE -ne 0) {
+      $result.status = 'invalid'
+      $result.reason = 'branch-ref-not-found'
+      return [pscustomobject]$result
+    }
+
+    $effectiveBaselineRef = $null
+    if (-not [string]::IsNullOrWhiteSpace($BaselineRef)) {
+      $requestedBaselineRef = $BaselineRef.Trim()
+      & git rev-parse --verify $requestedBaselineRef *> $null
+      if ($LASTEXITCODE -ne 0) {
+        $result.status = 'invalid'
+        $result.reason = 'baseline-ref-not-found'
+        return [pscustomobject]$result
+      }
+      $effectiveBaselineRef = $requestedBaselineRef
+    } else {
+      & git rev-parse --verify develop *> $null
+      if ($LASTEXITCODE -eq 0) {
+        $effectiveBaselineRef = 'develop'
+      }
+    }
+    $result.baselineRef = $effectiveBaselineRef
+
+    $range = if ($effectiveBaselineRef) {
+      if ([string]::Equals($normalizedBranchRef, $effectiveBaselineRef, [System.StringComparison]::OrdinalIgnoreCase)) {
+        ('{0}..{0}' -f $effectiveBaselineRef)
+      } else {
+        $mergeBaseOutput = & git merge-base $effectiveBaselineRef $normalizedBranchRef
+        if ($LASTEXITCODE -ne 0) {
+          $result.status = 'error'
+          $result.reason = 'merge-base-query-failed'
+          return [pscustomobject]$result
+        }
+
+        $mergeBaseRef = [string]($mergeBaseOutput | Select-Object -Last 1)
+        if ([string]::IsNullOrWhiteSpace($mergeBaseRef)) {
+          $result.status = 'error'
+          $result.reason = 'merge-base-empty'
+          return [pscustomobject]$result
+        }
+
+        $result.mergeBaseRef = $mergeBaseRef
+        ('{0}..{1}' -f $mergeBaseRef, $normalizedBranchRef)
+      }
+    } else {
+      $normalizedBranchRef
+    }
+    $result.commitRange = $range
+
+    $countOutput = & git rev-list --count --first-parent $range
+    if ($LASTEXITCODE -ne 0) {
+      $result.status = 'error'
+      $result.reason = 'commit-count-query-failed'
+      return [pscustomobject]$result
+    }
+
+    $countText = [string]($countOutput | Select-Object -Last 1)
+    $countValue = 0
+    if (-not [int]::TryParse($countText, [ref]$countValue)) {
+      $result.status = 'error'
+      $result.reason = 'commit-count-parse-failed'
+      return [pscustomobject]$result
+    }
+
+    $result.commitCount = [int]$countValue
+    if ($countValue -gt $MaxCommitCount) {
+      $result.status = 'blocked'
+      $result.reason = 'commit-limit-exceeded'
+      throw ("VI history source branch '{0}' exceeds the commit safeguard ({1} > {2}). Narrow the branch or raise -RuntimeBootstrapContractPath maxCommitCount." -f $normalizedBranchRef, $countValue, $MaxCommitCount)
+    }
+
+    $result.status = 'ok'
+    $result.reason = 'within-limit'
+    return [pscustomobject]$result
+  } finally {
+    Pop-Location | Out-Null
+  }
+}
+
+function Resolve-GitWorkTreeInjection {
+  param(
+    [Parameter(Mandatory)][string]$RepoHostPath,
+    [Parameter(Mandatory)][string]$RepoContainerPath
+  )
+
+  $empty = [pscustomobject]@{
+    enabled = $false
+    strategy = 'none'
+    dotGitHostPath = ''
+    commonGitHostPath = ''
+    commonGitContainerPath = ''
+    gitDirContainerPath = ''
+    gitWorkTreeContainerPath = ''
+    env = @()
+    mounts = @()
+  }
+
+  $dotGitPath = Join-Path $RepoHostPath '.git'
+  if (-not (Test-Path -LiteralPath $dotGitPath)) {
+    return $empty
+  }
+
+  $resolvedDotGitHostPath = (Resolve-Path -LiteralPath $dotGitPath).Path
+  if (Test-Path -LiteralPath $dotGitPath -PathType Container) {
+    $gitDirContainerPath = '{0}/.git' -f $RepoContainerPath.TrimEnd('/')
+    return [pscustomobject]@{
+      enabled = $true
+      strategy = 'git-directory'
+      dotGitHostPath = $resolvedDotGitHostPath
+      commonGitHostPath = $resolvedDotGitHostPath
+      commonGitContainerPath = $gitDirContainerPath
+      gitDirContainerPath = $gitDirContainerPath
+      gitWorkTreeContainerPath = $RepoContainerPath
+      env = @(
+        [pscustomobject]@{ name = 'COMPAREVI_VI_HISTORY_GIT_DIR'; value = $gitDirContainerPath },
+        [pscustomobject]@{ name = 'COMPAREVI_VI_HISTORY_GIT_WORK_TREE'; value = $RepoContainerPath }
+      )
+      mounts = @()
+    }
+  }
+  if (-not (Test-Path -LiteralPath $dotGitPath -PathType Leaf)) {
+    return $empty
+  }
+
+  $dotGitContent = Get-Content -LiteralPath $dotGitPath -Raw
+  if (-not ($dotGitContent -match 'gitdir:\s*(?<path>.+)')) {
+    return $empty
+  }
+
+  $gitDirHostPath = $Matches['path'].Trim()
+  if (-not [System.IO.Path]::IsPathRooted($gitDirHostPath)) {
+    $gitDirHostPath = [System.IO.Path]::GetFullPath((Join-Path $RepoHostPath $gitDirHostPath))
+  }
+  if (-not (Test-Path -LiteralPath $gitDirHostPath -PathType Container)) {
+    throw ("Runtime bootstrap viHistory worktree gitdir path not found: {0}" -f $gitDirHostPath)
+  }
+
+  $worktreeName = Split-Path -Leaf $gitDirHostPath
+  $worktreesRoot = Split-Path -Parent $gitDirHostPath
+  if ([string]::IsNullOrWhiteSpace($worktreeName) -or -not $worktreesRoot) {
+    throw ("Runtime bootstrap viHistory worktree gitdir path is invalid: {0}" -f $gitDirHostPath)
+  }
+
+  $commonGitHostPath = Split-Path -Parent $worktreesRoot
+  if (-not (Test-Path -LiteralPath $commonGitHostPath -PathType Container)) {
+    throw ("Runtime bootstrap viHistory common git dir not found: {0}" -f $commonGitHostPath)
+  }
+
+  $commonGitContainerPath = '/opt/comparevi/git/common'
+  $gitDirContainerPath = '{0}/worktrees/{1}' -f $commonGitContainerPath, $worktreeName
+
+  return [pscustomobject]@{
+    enabled = $true
+    strategy = 'git-worktree-file'
+    dotGitHostPath = $resolvedDotGitHostPath
+    commonGitHostPath = $commonGitHostPath
+    commonGitContainerPath = $commonGitContainerPath
+    gitDirContainerPath = $gitDirContainerPath
+    gitWorkTreeContainerPath = $RepoContainerPath
+    env = @(
+      [pscustomobject]@{ name = 'COMPAREVI_VI_HISTORY_GIT_DIR'; value = $gitDirContainerPath },
+      [pscustomobject]@{ name = 'COMPAREVI_VI_HISTORY_GIT_WORK_TREE'; value = $RepoContainerPath }
+    )
+    mounts = @(
+      [pscustomobject]@{
+        hostPath = $commonGitHostPath
+        containerPath = $commonGitContainerPath
+        kind = 'directory'
+      }
+    )
+  }
+}
+
+function Resolve-RuntimeBootstrapViHistory {
+  param(
+    [AllowNull()]$ViHistory,
+    [Parameter(Mandatory)][string]$ContractDirectory,
+    [AllowEmptyString()][string]$Mode,
+    [AllowEmptyString()][string]$BranchRef,
+    [AllowNull()][int]$MaxCommitCount
+  )
+
+  $empty = [pscustomobject]@{
+    enabled = $false
+    repoHostPath = ''
+    repoContainerPath = ''
+    targetPath = ''
+    baselineRef = ''
+    bootstrapMode = ''
+    resultsHostPath = ''
+    resultsContainerPath = ''
+    suiteManifestContainerPath = ''
+    historyContextContainerPath = ''
+    bootstrapReceiptContainerPath = ''
+    bootstrapMarkerContainerPath = ''
+    maxPairs = $null
+    branchBudget = $null
+    gitInjection = [pscustomobject]@{
+      enabled = $false
+      strategy = 'none'
+      dotGitHostPath = ''
+      commonGitHostPath = ''
+      commonGitContainerPath = ''
+      gitDirContainerPath = ''
+      gitWorkTreeContainerPath = ''
+    }
+    env = @()
+    mounts = @()
+  }
+  if (-not $ViHistory) {
+    return $empty
+  }
+
+  $repoPathInput = if ($ViHistory.PSObject.Properties['repoPath']) { [string]$ViHistory.repoPath } else { '' }
+  if ([string]::IsNullOrWhiteSpace($repoPathInput)) {
+    throw 'Runtime bootstrap viHistory.repoPath is required.'
+  }
+  $targetPath = if ($ViHistory.PSObject.Properties['targetPath']) { [string]$ViHistory.targetPath } else { '' }
+  if ([string]::IsNullOrWhiteSpace($targetPath)) {
+    throw 'Runtime bootstrap viHistory.targetPath is required.'
+  }
+  $resultsPathInput = if ($ViHistory.PSObject.Properties['resultsPath']) { [string]$ViHistory.resultsPath } else { '' }
+  if ([string]::IsNullOrWhiteSpace($resultsPathInput)) {
+    throw 'Runtime bootstrap viHistory.resultsPath is required.'
+  }
+
+  $repoHostPath = Resolve-ExistingPathFromBaseDirectory `
+    -BaseDirectory $ContractDirectory `
+    -InputPath $repoPathInput `
+    -ParameterName 'RuntimeBootstrapContractPath'
+  if (-not (Test-Path -LiteralPath $repoHostPath -PathType Container)) {
+    throw ("Runtime bootstrap viHistory.repoPath must be a directory: {0}" -f $repoHostPath)
+  }
+  & git -C $repoHostPath rev-parse --is-inside-work-tree *> $null
+  if ($LASTEXITCODE -ne 0) {
+    throw ("Runtime bootstrap viHistory.repoPath is not a git working tree: {0}" -f $repoHostPath)
+  }
+
+  $resultsHostPath = Resolve-OutputPathFromBaseDirectory `
+    -BaseDirectory $ContractDirectory `
+    -InputPath $resultsPathInput `
+    -ParameterName 'RuntimeBootstrapContractPath'
+  if (-not (Test-Path -LiteralPath $resultsHostPath -PathType Container)) {
+    New-Item -ItemType Directory -Path $resultsHostPath -Force | Out-Null
+  }
+
+  $baselineRef = if ($ViHistory.PSObject.Properties['baselineRef'] -and -not [string]::IsNullOrWhiteSpace([string]$ViHistory.baselineRef)) {
+    [string]$ViHistory.baselineRef
+  } else {
+    'develop'
+  }
+  $maxPairs = if ($ViHistory.PSObject.Properties['maxPairs'] -and $null -ne $ViHistory.maxPairs) {
+    [int]$ViHistory.maxPairs
+  } else {
+    1
+  }
+  if ($maxPairs -le 0) {
+    throw 'Runtime bootstrap viHistory.maxPairs must be greater than zero.'
+  }
+
+  $repoContainerPath = '/opt/comparevi/source'
+  $resultsContainerPath = '/opt/comparevi/vi-history/results'
+  $suiteManifestContainerPath = '{0}/suite-manifest.json' -f $resultsContainerPath
+  $historyContextContainerPath = '{0}/history-context.json' -f $resultsContainerPath
+  $bootstrapReceiptContainerPath = '{0}/vi-history-bootstrap-receipt.json' -f $resultsContainerPath
+  $bootstrapMarkerContainerPath = '{0}/vi-history-bootstrap-ran.txt' -f $resultsContainerPath
+  $gitInjection = Resolve-GitWorkTreeInjection -RepoHostPath $repoHostPath -RepoContainerPath $repoContainerPath
+
+  $branchBudget = $null
+  if (-not [string]::IsNullOrWhiteSpace($BranchRef) -and $null -ne $MaxCommitCount) {
+    $branchBudget = Get-HostGitBranchBudget -RepoPath $repoHostPath -BranchRef $BranchRef -BaselineRef $baselineRef -MaxCommitCount $MaxCommitCount
+  }
+
+  $bootstrapMode = if (-not [string]::IsNullOrWhiteSpace($Mode)) {
+    [string]$Mode
+  } elseif (-not [string]::IsNullOrWhiteSpace($env:COMPAREVI_VI_HISTORY_BOOTSTRAP_MODE)) {
+    [string]$env:COMPAREVI_VI_HISTORY_BOOTSTRAP_MODE
+  } else {
+    'vi-history-suite-smoke'
+  }
+
+  $env = @(
+    [pscustomobject]@{ name = 'COMPAREVI_VI_HISTORY_BOOTSTRAP_MODE'; value = $bootstrapMode },
+    [pscustomobject]@{ name = 'COMPAREVI_VI_HISTORY_REPO_PATH'; value = $repoContainerPath },
+    [pscustomobject]@{ name = 'COMPAREVI_VI_HISTORY_TARGET_PATH'; value = $targetPath },
+    [pscustomobject]@{ name = 'COMPAREVI_VI_HISTORY_BASELINE_REF'; value = $baselineRef },
+    [pscustomobject]@{ name = 'COMPAREVI_VI_HISTORY_RESULTS_DIR'; value = $resultsContainerPath },
+    [pscustomobject]@{ name = 'COMPAREVI_VI_HISTORY_SUITE_MANIFEST'; value = $suiteManifestContainerPath },
+    [pscustomobject]@{ name = 'COMPAREVI_VI_HISTORY_CONTEXT'; value = $historyContextContainerPath },
+    [pscustomobject]@{ name = 'COMPAREVI_VI_HISTORY_BOOTSTRAP_RECEIPT'; value = $bootstrapReceiptContainerPath },
+    [pscustomobject]@{ name = 'COMPAREVI_VI_HISTORY_BOOTSTRAP_MARKER'; value = $bootstrapMarkerContainerPath },
+    [pscustomobject]@{ name = 'COMPAREVI_VI_HISTORY_MAX_PAIRS'; value = [string]$maxPairs }
+  )
+  if (-not [string]::IsNullOrWhiteSpace($BranchRef)) {
+    $env += [pscustomobject]@{ name = 'COMPAREVI_VI_HISTORY_SOURCE_BRANCH'; value = $BranchRef }
+  }
+  if ($null -ne $MaxCommitCount) {
+    $env += [pscustomobject]@{ name = 'COMPAREVI_VI_HISTORY_MAX_BRANCH_COMMITS'; value = [string]$MaxCommitCount }
+  }
+  if ($branchBudget -and $null -ne $branchBudget.commitCount) {
+    $env += [pscustomobject]@{ name = 'COMPAREVI_VI_HISTORY_BRANCH_COMMIT_COUNT'; value = [string]$branchBudget.commitCount }
+  }
+  if ($gitInjection.enabled) {
+    $env += @($gitInjection.env)
+  }
+
+  $mounts = @(
+    [pscustomobject]@{
+      hostPath = [string]$repoHostPath
+      containerPath = $repoContainerPath
+      kind = 'directory'
+    },
+    [pscustomobject]@{
+      hostPath = [string]$resultsHostPath
+      containerPath = $resultsContainerPath
+      kind = 'directory'
+    }
+  )
+  if ($gitInjection.enabled) {
+    $mounts += @($gitInjection.mounts)
+  }
+
+  return [pscustomobject]@{
+    enabled = $true
+    repoHostPath = [string]$repoHostPath
+    repoContainerPath = $repoContainerPath
+    targetPath = $targetPath
+    baselineRef = $baselineRef
+    bootstrapMode = [string]$bootstrapMode
+    resultsHostPath = [string]$resultsHostPath
+    resultsContainerPath = $resultsContainerPath
+    suiteManifestContainerPath = $suiteManifestContainerPath
+    historyContextContainerPath = $historyContextContainerPath
+    bootstrapReceiptContainerPath = $bootstrapReceiptContainerPath
+    bootstrapMarkerContainerPath = $bootstrapMarkerContainerPath
+    maxPairs = [int]$maxPairs
+    branchBudget = $branchBudget
+    gitInjection = [pscustomobject]@{
+      enabled = [bool]$gitInjection.enabled
+      strategy = [string]$gitInjection.strategy
+      dotGitHostPath = [string]$gitInjection.dotGitHostPath
+      commonGitHostPath = [string]$gitInjection.commonGitHostPath
+      commonGitContainerPath = [string]$gitInjection.commonGitContainerPath
+      gitDirContainerPath = [string]$gitInjection.gitDirContainerPath
+      gitWorkTreeContainerPath = [string]$gitInjection.gitWorkTreeContainerPath
+    }
+    env = @($env)
+    mounts = @($mounts)
+  }
+}
+
+function Resolve-RuntimeBootstrapContract {
+  param(
+    [string]$ContractPath,
+    [string[]]$ReservedNames = @()
+  )
+
+  if ([string]::IsNullOrWhiteSpace($ContractPath)) {
+    return [pscustomobject]@{
+      contractPath = ''
+      mode = ''
+      branchRef = ''
+      maxCommitCount = $null
+      scriptPath = ''
+      viHistory = [pscustomobject]@{
+        enabled = $false
+        repoHostPath = ''
+        repoContainerPath = ''
+        targetPath = ''
+        baselineRef = ''
+        resultsHostPath = ''
+        resultsContainerPath = ''
+        suiteManifestContainerPath = ''
+        historyContextContainerPath = ''
+        bootstrapReceiptContainerPath = ''
+        bootstrapMarkerContainerPath = ''
+        maxPairs = $null
+        branchBudget = $null
+        gitInjection = [pscustomobject]@{
+          enabled = $false
+          strategy = 'none'
+          dotGitHostPath = ''
+          commonGitHostPath = ''
+          commonGitContainerPath = ''
+          gitDirContainerPath = ''
+          gitWorkTreeContainerPath = ''
+        }
+      }
+      env = @()
+      mounts = @()
+    }
+  }
+
+  $resolvedContractPath = Resolve-ExistingFilePath -InputPath $ContractPath -ParameterName 'RuntimeBootstrapContractPath'
+  try {
+    $contract = Get-Content -LiteralPath $resolvedContractPath -Raw | ConvertFrom-Json -Depth 12 -ErrorAction Stop
+  } catch {
+    throw ("Unable to parse -RuntimeBootstrapContractPath JSON '{0}'." -f $resolvedContractPath)
+  }
+
+  $schema = if ($contract -and $contract.PSObject.Properties['schema']) { [string]$contract.schema } else { '' }
+  if (-not [string]::Equals($schema, 'ni-linux-runtime-bootstrap/v1', [System.StringComparison]::Ordinal)) {
+    throw ("Unsupported runtime bootstrap schema '{0}' in {1}." -f $schema, $resolvedContractPath)
+  }
+
+  $contractDirectory = Split-Path -Parent $resolvedContractPath
+  $resolvedScriptPath = ''
+  if ($contract.PSObject.Properties['scriptPath'] -and -not [string]::IsNullOrWhiteSpace([string]$contract.scriptPath)) {
+    $resolvedScriptPath = Resolve-ExistingPathFromBaseDirectory `
+      -BaseDirectory $contractDirectory `
+      -InputPath ([string]$contract.scriptPath) `
+      -ParameterName 'RuntimeBootstrapContractPath' `
+      -RequireFile
+  }
+
+  $resolvedEnv = @()
+  foreach ($entry in @($(if ($contract.PSObject.Properties['env']) { $contract.env } else { @() }))) {
+    if (-not $entry) { continue }
+    $name = if ($entry.PSObject.Properties['name']) { [string]$entry.name } else { '' }
+    if ([string]::IsNullOrWhiteSpace($name)) {
+      throw ("Runtime bootstrap env entry in {0} is missing 'name'." -f $resolvedContractPath)
+    }
+    if ($ReservedNames -contains $name) {
+      throw ("Runtime bootstrap contract cannot override reserved variable '{0}'." -f $name)
+    }
+
+    $hasLiteralValue = $entry.PSObject.Properties['value'] -and $null -ne $entry.value
+    $hasHostEnv = $entry.PSObject.Properties['fromHostEnv'] -and -not [string]::IsNullOrWhiteSpace([string]$entry.fromHostEnv)
+    if ($hasLiteralValue -eq $hasHostEnv) {
+      throw ("Runtime bootstrap env entry '{0}' in {1} must set exactly one of 'value' or 'fromHostEnv'." -f $name, $resolvedContractPath)
+    }
+
+    $value = if ($hasHostEnv) {
+      $hostEnvName = [string]$entry.fromHostEnv
+      $resolvedValue = Resolve-EnvTokenValue -Name $hostEnvName
+      if ([string]::IsNullOrWhiteSpace($resolvedValue)) {
+        throw ("Runtime bootstrap env entry '{0}' references host env '{1}', but it is not set." -f $name, $hostEnvName)
+      }
+      [string]$resolvedValue
+    } else {
+      [string]$entry.value
+    }
+
+    $resolvedEnv += [pscustomobject]@{
+      name = $name
+      value = $value
+    }
+  }
+
+  $resolvedMounts = @()
+  foreach ($entry in @($(if ($contract.PSObject.Properties['mounts']) { $contract.mounts } else { @() }))) {
+    if (-not $entry) { continue }
+    $hostPathValue = if ($entry.PSObject.Properties['hostPath']) { [string]$entry.hostPath } else { '' }
+    $containerPath = if ($entry.PSObject.Properties['containerPath']) { [string]$entry.containerPath } else { '' }
+    if ([string]::IsNullOrWhiteSpace($hostPathValue) -or [string]::IsNullOrWhiteSpace($containerPath)) {
+      throw ("Runtime bootstrap mount entry in {0} requires 'hostPath' and 'containerPath'." -f $resolvedContractPath)
+    }
+
+    $resolvedHostPath = Resolve-ExistingPathFromBaseDirectory `
+      -BaseDirectory $contractDirectory `
+      -InputPath $hostPathValue `
+      -ParameterName 'RuntimeBootstrapContractPath'
+
+    $normalizedContainerPath = $containerPath.Trim().Replace('\', '/')
+    if (-not $normalizedContainerPath.StartsWith('/')) {
+      throw ("Runtime bootstrap mount container path must be absolute in {0}: {1}" -f $resolvedContractPath, $containerPath)
+    }
+    if (
+      [string]::Equals($normalizedContainerPath, '/compare', [System.StringComparison]::Ordinal) -or
+      $normalizedContainerPath -match '^/compare/m\d+(/|$)'
+    ) {
+      throw ("Runtime bootstrap mount path '{0}' in {1} collides with reserved compare mounts." -f $normalizedContainerPath, $resolvedContractPath)
+    }
+
+    $kind = if (Test-Path -LiteralPath $resolvedHostPath -PathType Container) { 'directory' } else { 'file' }
+    $resolvedMounts += [pscustomobject]@{
+      hostPath = [string]$resolvedHostPath
+      containerPath = [string]$normalizedContainerPath
+      kind = $kind
+    }
+  }
+
+  $mode = if ($contract.PSObject.Properties['mode'] -and -not [string]::IsNullOrWhiteSpace([string]$contract.mode)) {
+    [string]$contract.mode
+  } else {
+    'single-container-smoke'
+  }
+  $branchRef = if ($contract.PSObject.Properties['branchRef'] -and -not [string]::IsNullOrWhiteSpace([string]$contract.branchRef)) {
+    [string]$contract.branchRef
+  } else {
+    ''
+  }
+  $maxCommitCount = if ($contract.PSObject.Properties['maxCommitCount'] -and $null -ne $contract.maxCommitCount) {
+    [int]$contract.maxCommitCount
+  } else {
+    $null
+  }
+  $resolvedViHistory = Resolve-RuntimeBootstrapViHistory `
+    -ViHistory $(if ($contract.PSObject.Properties['viHistory']) { $contract.viHistory } else { $null }) `
+    -ContractDirectory $contractDirectory `
+    -Mode $mode `
+    -BranchRef $branchRef `
+    -MaxCommitCount $maxCommitCount
+  $resolvedEnv = @($resolvedViHistory.env) + @($resolvedEnv)
+  $resolvedMounts = @($resolvedViHistory.mounts) + @($resolvedMounts)
+
+  return [pscustomobject]@{
+    contractPath = $resolvedContractPath
+    mode = $mode
+    branchRef = $branchRef
+    maxCommitCount = $maxCommitCount
+    scriptPath = $resolvedScriptPath
+    viHistory = $resolvedViHistory
+    env = @($resolvedEnv)
+    mounts = @($resolvedMounts)
+  }
+}
+
 function New-ContainerCommand {
   return @'
 set -u
@@ -265,11 +1076,11 @@ set -o pipefail
 
 find_cli() {
   if command -v LabVIEWCLI >/dev/null 2>&1; then
-    command -v LabVIEWCLI
+    echo "LabVIEWCLI"
     return 0
   fi
   if command -v labviewcli >/dev/null 2>&1; then
-    command -v labviewcli
+    echo "labviewcli"
     return 0
   fi
   local found
@@ -337,6 +1148,51 @@ find_cli_ini() {
   return 1
 }
 
+if [ -n "${COMPARE_RUNTIME_INJECTION_SCRIPT:-}" ]; then
+  if [ ! -f "${COMPARE_RUNTIME_INJECTION_SCRIPT}" ]; then
+    echo "Runtime injection script not found: ${COMPARE_RUNTIME_INJECTION_SCRIPT}" 1>&2
+    exit 2
+  fi
+  # shellcheck source=/dev/null
+  if ! . "${COMPARE_RUNTIME_INJECTION_SCRIPT}"; then
+    echo "Runtime injection script failed: ${COMPARE_RUNTIME_INJECTION_SCRIPT}" 1>&2
+    exit 2
+  fi
+fi
+
+require_compare_input() {
+  local label="$1"
+  local path="$2"
+  if [ -z "$path" ]; then
+    echo "${label} is required after runtime bootstrap." 1>&2
+    exit 2
+  fi
+  if [ ! -f "$path" ]; then
+    echo "${label} not found: ${path}" 1>&2
+    exit 2
+  fi
+}
+
+if [ -z "${COMPARE_REPORT_PATH:-}" ]; then
+  echo "COMPARE_REPORT_PATH is required after runtime bootstrap." 1>&2
+  exit 2
+fi
+
+PAIR_PLAN_PATH="${COMPAREVI_VI_HISTORY_PAIR_PLAN:-}"
+PAIR_RESULT_LEDGER="${COMPAREVI_VI_HISTORY_RESULT_LEDGER:-}"
+if [ -n "${PAIR_PLAN_PATH}" ] && [ ! -f "${PAIR_PLAN_PATH}" ]; then
+  echo "COMPAREVI_VI_HISTORY_PAIR_PLAN not found: ${PAIR_PLAN_PATH}" 1>&2
+  exit 2
+fi
+if [ -n "${PAIR_PLAN_PATH}" ] && [ -z "${PAIR_RESULT_LEDGER}" ]; then
+  echo "COMPAREVI_VI_HISTORY_RESULT_LEDGER is required when COMPAREVI_VI_HISTORY_PAIR_PLAN is set." 1>&2
+  exit 2
+fi
+if [ -z "${PAIR_PLAN_PATH}" ] || [ ! -s "${PAIR_PLAN_PATH}" ]; then
+  require_compare_input "COMPARE_BASE_VI" "${COMPARE_BASE_VI:-}"
+  require_compare_input "COMPARE_HEAD_VI" "${COMPARE_HEAD_VI:-}"
+fi
+
 if ! CLI_PATH="$(find_cli)"; then
   echo "LabVIEWCLI not found in container. Ensure NI image includes LabVIEW CLI component." 1>&2
   exit 2
@@ -347,27 +1203,24 @@ if ! command -v xvfb-run >/dev/null 2>&1; then
   exit 2
 fi
 
-declare -a CLI_ARGS
+declare -a CLI_ARGS_BASE
 
 if [ -n "${COMPARE_LABVIEW_PATH:-}" ]; then
-  CLI_ARGS+=("-LabVIEWPath" "${COMPARE_LABVIEW_PATH}")
+  CLI_ARGS_BASE+=("-LabVIEWPath" "${COMPARE_LABVIEW_PATH}")
 else
   if LV_PATH="$(find_labview)"; then
-    CLI_ARGS+=("-LabVIEWPath" "${LV_PATH}")
+    CLI_ARGS_BASE+=("-LabVIEWPath" "${LV_PATH}")
   fi
 fi
 
-CLI_ARGS+=("-OperationName" "CreateComparisonReport")
-CLI_ARGS+=("-VI1" "${COMPARE_BASE_VI}")
-CLI_ARGS+=("-VI2" "${COMPARE_HEAD_VI}")
-CLI_ARGS+=("-ReportPath" "${COMPARE_REPORT_PATH}")
-CLI_ARGS+=("-ReportType" "${COMPARE_REPORT_TYPE}")
-CLI_ARGS+=("-Headless")
+CLI_ARGS_BASE+=("-OperationName" "CreateComparisonReport")
+CLI_ARGS_BASE+=("-ReportType" "${COMPARE_REPORT_TYPE}")
+CLI_ARGS_BASE+=("-Headless" "true")
 
 if [ -n "${COMPARE_FLAGS_B64:-}" ]; then
   while IFS= read -r flag; do
     if [ -n "$flag" ]; then
-      CLI_ARGS+=("$flag")
+      CLI_ARGS_BASE+=("$flag")
     fi
   done < <(printf "%s" "${COMPARE_FLAGS_B64}" | base64 -d 2>/dev/null || true)
 fi
@@ -389,35 +1242,142 @@ fi
 
 MAX_RETRIES="${COMPARE_STARTUP_RETRY_COUNT:-1}"
 RETRY_DELAY="${COMPARE_RETRY_DELAY_SECONDS:-8}"
-ATTEMPT=0
 RETRY_TRIGGERED=0
-EXIT_CODE=1
-OUTPUT_TEXT=""
+TOTAL_COMPARE_ATTEMPTS=0
+TOTAL_PROCESSED_PAIRS=0
+EXIT_CODE=0
+SUITE_STARTED_AT="$(date -u +"%Y-%m-%dT%H:%M:%SZ")"
+LAST_COMPARE_EXIT_CODE=0
+LAST_COMPARE_STARTED_AT="${SUITE_STARTED_AT}"
 
-while true; do
-  ATTEMPT=$((ATTEMPT + 1))
-  OUTPUT_TEXT="$(xvfb-run -a "${CLI_PATH}" "${CLI_ARGS[@]}" 2>&1)"
-  EXIT_CODE=$?
-  printf "%s\n" "${OUTPUT_TEXT}"
+run_compare_with_retry() {
+  local base_vi_path="$1"
+  local head_vi_path="$2"
+  local report_path="$3"
+  local attempt=0
+  local output_text=""
+  local output_file=""
+  local exit_code=1
+  local started_at
+  local -a run_args
 
-  if [ "${EXIT_CODE}" = "0" ]; then
+  started_at="$(date -u +"%Y-%m-%dT%H:%M:%SZ")"
+  run_args=("${CLI_ARGS_BASE[@]}")
+  run_args+=("-VI1" "${base_vi_path}")
+  run_args+=("-VI2" "${head_vi_path}")
+  run_args+=("-ReportPath" "${report_path}")
+
+  if [ "${COMPARE_TRACE_ARGS:-0}" = "1" ]; then
+    printf '[ni-linux-cli] path=%s\n' "${CLI_PATH}"
+    printf '[ni-linux-cli] args='
+    printf '%q ' "${run_args[@]}"
+    printf '\n'
+  fi
+
+  while true; do
+    attempt=$((attempt + 1))
+    output_file="$(mktemp "/tmp/comparevi-cli-output-${attempt}-XXXXXX.log")"
+    xvfb-run -a "${CLI_PATH}" "${run_args[@]}" </dev/null >"${output_file}" 2>&1
+    exit_code=$?
+    output_text="$(cat "${output_file}")"
+    rm -f "${output_file}"
+    printf "%s\n" "${output_text}"
+
+    if [ "${exit_code}" = "0" ]; then
+      break
+    fi
+
+    if [ "${exit_code}" = "1" ] && ! printf "%s" "${output_text}" | grep -Eq "Error code|An error occurred while running the LabVIEW CLI|-350000"; then
+      break
+    fi
+
+    if printf "%s" "${output_text}" | grep -q -- "-350000" && [ "${attempt}" -le "${MAX_RETRIES}" ]; then
+      RETRY_TRIGGERED=1
+      sleep "${RETRY_DELAY}"
+      continue
+    fi
+
     break
+  done
+
+  TOTAL_COMPARE_ATTEMPTS=$((TOTAL_COMPARE_ATTEMPTS + attempt))
+  LAST_COMPARE_EXIT_CODE="${exit_code}"
+  LAST_COMPARE_STARTED_AT="${started_at}"
+  return 0
+}
+
+if [ -n "${PAIR_PLAN_PATH}" ] && [ -s "${PAIR_PLAN_PATH}" ]; then
+  pair_ledger_dir="$(dirname "${PAIR_RESULT_LEDGER}")"
+  if [ -n "${pair_ledger_dir}" ]; then
+    mkdir -p "${pair_ledger_dir}" || exit 2
   fi
+  : > "${PAIR_RESULT_LEDGER}" || exit 2
 
-  if [ "${EXIT_CODE}" = "1" ] && ! printf "%s" "${OUTPUT_TEXT}" | grep -Eq "Error code|An error occurred while running the LabVIEW CLI|-350000"; then
-    break
+  while IFS="$(printf '\t')" read -r pair_index pair_base_ref pair_head_ref pair_base_vi pair_head_vi pair_report_path pair_out_name; do
+    local_pair_exit_code=0
+    local_pair_status="completed"
+    local_pair_diff="false"
+    compare_report_asset_dir="${COMPARE_REPORT_PATH%.*}_files"
+
+    [ -z "${pair_index:-}" ] && continue
+    require_compare_input "COMPARE_BASE_VI" "${pair_base_vi:-}"
+    require_compare_input "COMPARE_HEAD_VI" "${pair_head_vi:-}"
+    TOTAL_PROCESSED_PAIRS=$((TOTAL_PROCESSED_PAIRS + 1))
+
+    rm -f "${COMPARE_REPORT_PATH}"
+    rm -rf "${compare_report_asset_dir}"
+    if [ -n "${pair_report_path:-}" ] && [ "${pair_report_path}" != "${COMPARE_REPORT_PATH}" ]; then
+      rm -f "${pair_report_path}"
+      rm -rf "$(dirname "${pair_report_path}")/$(basename "${pair_report_path%.*}")_files"
+    fi
+
+    run_compare_with_retry "${pair_base_vi}" "${pair_head_vi}" "${COMPARE_REPORT_PATH}"
+    local_pair_exit_code="${LAST_COMPARE_EXIT_CODE}"
+    if [ "${local_pair_exit_code}" = "1" ]; then
+      local_pair_diff="true"
+      if [ "${EXIT_CODE}" = "0" ]; then
+        EXIT_CODE=1
+      fi
+    elif [ "${local_pair_exit_code}" != "0" ]; then
+      local_pair_status="error"
+      EXIT_CODE=2
+    fi
+
+    if [ -n "${pair_report_path:-}" ] && [ -f "${COMPARE_REPORT_PATH}" ]; then
+      pair_report_dir="$(dirname "${pair_report_path}")"
+      if [ -n "${pair_report_dir}" ]; then
+        mkdir -p "${pair_report_dir}" || exit 2
+      fi
+      if [ "${pair_report_path}" != "${COMPARE_REPORT_PATH}" ]; then
+        cp -f "${COMPARE_REPORT_PATH}" "${pair_report_path}" || exit 2
+      fi
+      if declare -F comparevi_vi_history_stage_pair_report_bundle >/dev/null 2>&1; then
+        comparevi_vi_history_stage_pair_report_bundle "${COMPARE_REPORT_PATH}" "${pair_report_path}" || exit 2
+      fi
+    fi
+
+    printf '%s\t%s\t%s\t%s\t%s\t%s\n' "${pair_index}" "${local_pair_exit_code}" "${local_pair_status}" "${local_pair_diff}" "${pair_report_path:-${COMPARE_REPORT_PATH}}" "${LAST_COMPARE_STARTED_AT}" >> "${PAIR_RESULT_LEDGER}" || exit 2
+    if [ "${local_pair_exit_code}" != "0" ] && [ "${local_pair_exit_code}" != "1" ]; then
+      break
+    fi
+  done < "${PAIR_PLAN_PATH}"
+else
+  require_compare_input "COMPARE_BASE_VI" "${COMPARE_BASE_VI:-}"
+  require_compare_input "COMPARE_HEAD_VI" "${COMPARE_HEAD_VI:-}"
+  TOTAL_PROCESSED_PAIRS=1
+  rm -f "${COMPARE_REPORT_PATH}"
+  run_compare_with_retry "${COMPARE_BASE_VI}" "${COMPARE_HEAD_VI}" "${COMPARE_REPORT_PATH}"
+  EXIT_CODE="${LAST_COMPARE_EXIT_CODE}"
+fi
+
+if declare -F comparevi_vi_history_emit_suite_bundle >/dev/null 2>&1; then
+  if ! comparevi_vi_history_emit_suite_bundle "${EXIT_CODE}" "${COMPARE_REPORT_PATH}" "${SUITE_STARTED_AT}"; then
+    echo "VI history suite bootstrap finalization failed." 1>&2
+    EXIT_CODE=2
   fi
+fi
 
-  if printf "%s" "${OUTPUT_TEXT}" | grep -q -- "-350000" && [ "${ATTEMPT}" -le "${MAX_RETRIES}" ]; then
-    RETRY_TRIGGERED=1
-    sleep "${RETRY_DELAY}"
-    continue
-  fi
-
-  break
-done
-
-printf "%s\n" "[ni-linux-meta]retryAttempts=${ATTEMPT};retryTriggered=${RETRY_TRIGGERED};prelaunchAttempted=${PRELAUNCH_ATTEMPTED};iniPath=${INI_PATH};openTimeout=${COMPARE_OPEN_APP_TIMEOUT:-180};afterLaunchTimeout=${COMPARE_AFTER_LAUNCH_TIMEOUT:-180}"
+printf "%s\n" "[ni-linux-meta]retryAttempts=${TOTAL_COMPARE_ATTEMPTS};retryTriggered=${RETRY_TRIGGERED};pairsProcessed=${TOTAL_PROCESSED_PAIRS};prelaunchAttempted=${PRELAUNCH_ATTEMPTED};iniPath=${INI_PATH};openTimeout=${COMPARE_OPEN_APP_TIMEOUT:-180};afterLaunchTimeout=${COMPARE_AFTER_LAUNCH_TIMEOUT:-180}"
 exit "${EXIT_CODE}"
 '@
 }
@@ -803,10 +1763,46 @@ $capture = [ordered]@{
   baseVi         = $null
   headVi         = $null
   reportPath     = $null
+  containerName  = $null
   command        = $null
   stdoutPath     = $null
   stderrPath     = $null
   runtimeDeterminism = $null
+  runtimeInjection = [ordered]@{
+    enabled = $false
+    contractPath = ''
+    contractMode = ''
+    branchRef = ''
+    maxCommitCount = $null
+    scriptHostPath = ''
+    scriptContainerPath = ''
+    viHistory = [ordered]@{
+      enabled = $false
+      repoHostPath = ''
+      repoContainerPath = ''
+      targetPath = ''
+      baselineRef = ''
+      resultsHostPath = ''
+      resultsContainerPath = ''
+      suiteManifestContainerPath = ''
+      historyContextContainerPath = ''
+      bootstrapReceiptContainerPath = ''
+      bootstrapMarkerContainerPath = ''
+      maxPairs = $null
+      branchBudget = $null
+      gitInjection = [ordered]@{
+        enabled = $false
+        strategy = 'none'
+        dotGitHostPath = ''
+        commonGitHostPath = ''
+        commonGitContainerPath = ''
+        gitDirContainerPath = ''
+        gitWorkTreeContainerPath = ''
+      }
+    }
+    envNames = @()
+    mounts = @()
+  }
   headlessContract = [ordered]@{
     required = $true
     enforcedCliHeadless = $true
@@ -859,6 +1855,7 @@ $containerNameForCleanup = ''
 $containerReportPathForExport = ''
 $reportDirectoryForExport = ''
 $additionalExportPaths = @()
+$runtimeInjectionScriptContainerPath = ''
 
 try {
   Assert-Tool -Name 'docker'
@@ -927,10 +1924,73 @@ try {
     $capture.message = ("Docker is in linux mode and image '{0}' is available." -f $Image)
     Write-Host ("[ni-linux-container-probe] {0}" -f $capture.message) -ForegroundColor Green
   } else {
-    $baseViPath = Resolve-ExistingFilePath -InputPath $BaseVi -ParameterName 'BaseVi'
-    $headViPath = Resolve-ExistingFilePath -InputPath $HeadVi -ParameterName 'HeadVi'
+    $reservedRuntimeInjectionVars = @(
+      'COMPARE_BASE_VI',
+      'COMPARE_HEAD_VI',
+      'COMPARE_REPORT_PATH',
+      'COMPARE_REPORT_TYPE',
+      'COMPARE_FLAGS_B64',
+      'LV_RTE_HEADLESS',
+      'COMPARE_PRELAUNCH_ENABLED',
+      'COMPARE_PRELAUNCH_WAIT_SECONDS',
+      'COMPARE_STARTUP_RETRY_COUNT',
+      'COMPARE_RETRY_DELAY_SECONDS',
+      'COMPARE_OPEN_APP_TIMEOUT',
+      'COMPARE_AFTER_LAUNCH_TIMEOUT',
+      'COMPARE_LABVIEW_PATH',
+      'COMPARE_RUNTIME_INJECTION_SCRIPT',
+      'COMPAREVI_VI_HISTORY_BOOTSTRAP_MODE',
+      'COMPAREVI_VI_HISTORY_REPO_PATH',
+      'COMPAREVI_VI_HISTORY_TARGET_PATH',
+      'COMPAREVI_VI_HISTORY_BASELINE_REF',
+      'COMPAREVI_VI_HISTORY_RESULTS_DIR',
+      'COMPAREVI_VI_HISTORY_SUITE_MANIFEST',
+      'COMPAREVI_VI_HISTORY_CONTEXT',
+      'COMPAREVI_VI_HISTORY_BOOTSTRAP_RECEIPT',
+      'COMPAREVI_VI_HISTORY_BOOTSTRAP_MARKER',
+      'COMPAREVI_VI_HISTORY_SOURCE_BRANCH',
+      'COMPAREVI_VI_HISTORY_MAX_BRANCH_COMMITS',
+      'COMPAREVI_VI_HISTORY_BRANCH_COMMIT_COUNT',
+      'COMPAREVI_VI_HISTORY_MAX_PAIRS',
+      'COMPAREVI_VI_HISTORY_GIT_DIR',
+      'COMPAREVI_VI_HISTORY_GIT_WORK_TREE'
+    )
+    $resolvedRuntimeBootstrap = Resolve-RuntimeBootstrapContract `
+      -ContractPath $RuntimeBootstrapContractPath `
+      -ReservedNames $reservedRuntimeInjectionVars
+    if (
+      -not [string]::IsNullOrWhiteSpace([string]$resolvedRuntimeBootstrap.scriptPath) -and
+      -not [string]::IsNullOrWhiteSpace($RuntimeInjectionScriptPath)
+    ) {
+      throw 'Specify either -RuntimeBootstrapContractPath or -RuntimeInjectionScriptPath for the injection script, not both.'
+    }
+
+    $viHistoryEnabled = [bool](
+      $resolvedRuntimeBootstrap.viHistory -and
+      $resolvedRuntimeBootstrap.viHistory.PSObject.Properties['enabled'] -and
+      $resolvedRuntimeBootstrap.viHistory.enabled
+    )
+    $baseViPath = if ([string]::IsNullOrWhiteSpace($BaseVi)) {
+      if ($viHistoryEnabled) { '' } else { throw '-BaseVi is required unless -Probe or runtime bootstrap viHistory is configured.' }
+    } else {
+      Resolve-ExistingFilePath -InputPath $BaseVi -ParameterName 'BaseVi'
+    }
+    $headViPath = if ([string]::IsNullOrWhiteSpace($HeadVi)) {
+      if ($viHistoryEnabled) { '' } else { throw '-HeadVi is required unless -Probe or runtime bootstrap viHistory is configured.' }
+    } else {
+      Resolve-ExistingFilePath -InputPath $HeadVi -ParameterName 'HeadVi'
+    }
+
     $reportInfo = Resolve-ReportTypeInfo -Type $ReportType
-    $resolvedReportPath = Resolve-OutputReportPath -PathValue $ReportPath -Extension $reportInfo.Extension
+    $resolvedReportPath = if (
+      [string]::IsNullOrWhiteSpace($ReportPath) -and
+      $viHistoryEnabled -and
+      -not [string]::IsNullOrWhiteSpace([string]$resolvedRuntimeBootstrap.viHistory.resultsHostPath)
+    ) {
+      Join-Path ([string]$resolvedRuntimeBootstrap.viHistory.resultsHostPath) ("linux-compare-report.{0}" -f $reportInfo.Extension)
+    } else {
+      Resolve-OutputReportPath -PathValue $ReportPath -Extension $reportInfo.Extension
+    }
     $reportDirectory = Split-Path -Parent $resolvedReportPath
     if (-not (Test-Path -LiteralPath $reportDirectory -PathType Container)) {
       New-Item -ItemType Directory -Path $reportDirectory -Force | Out-Null
@@ -948,12 +2008,88 @@ try {
       $LabVIEWPath.Trim()
     }
 
-    $capture.baseVi = $baseViPath
-    $capture.headVi = $headViPath
+    $capture.baseVi = if ([string]::IsNullOrWhiteSpace($baseViPath)) { $null } else { $baseViPath }
+    $capture.headVi = if ([string]::IsNullOrWhiteSpace($headViPath)) { $null } else { $headViPath }
     $capture.reportPath = $resolvedReportPath
     $capture.labviewPath = $resolvedLabVIEWPath
     $capture.stdoutPath = $stdoutPath
     $capture.stderrPath = $stderrPath
+    $resolvedRuntimeInjectionScriptPath = if (-not [string]::IsNullOrWhiteSpace([string]$resolvedRuntimeBootstrap.scriptPath)) {
+      [string]$resolvedRuntimeBootstrap.scriptPath
+    } elseif ([string]::IsNullOrWhiteSpace($RuntimeInjectionScriptPath)) {
+      ''
+    } else {
+      Resolve-ExistingFilePath -InputPath $RuntimeInjectionScriptPath -ParameterName 'RuntimeInjectionScriptPath'
+    }
+    $resolvedRuntimeInjectionEnv = @($resolvedRuntimeBootstrap.env) + @(
+      Resolve-RuntimeInjectionEnvEntries `
+        -Entries $RuntimeInjectionEnv `
+        -ReservedNames $reservedRuntimeInjectionVars
+    )
+    $resolvedRuntimeInjectionMounts = @($resolvedRuntimeBootstrap.mounts) + @(
+      Resolve-RuntimeInjectionMountEntries -Entries $RuntimeInjectionMount
+    )
+    $runtimeInjectionEnabled = (
+      (-not [string]::IsNullOrWhiteSpace($resolvedRuntimeInjectionScriptPath)) -or
+      $resolvedRuntimeInjectionEnv.Count -gt 0 -or
+      $resolvedRuntimeInjectionMounts.Count -gt 0
+    )
+    $capture.runtimeInjection = [ordered]@{
+      enabled = [bool]$runtimeInjectionEnabled
+      contractPath = [string]$resolvedRuntimeBootstrap.contractPath
+      contractMode = [string]$resolvedRuntimeBootstrap.mode
+      branchRef = [string]$resolvedRuntimeBootstrap.branchRef
+      maxCommitCount = $resolvedRuntimeBootstrap.maxCommitCount
+      scriptHostPath = [string]$resolvedRuntimeInjectionScriptPath
+      scriptContainerPath = ''
+      viHistory = [ordered]@{
+        enabled = [bool]$viHistoryEnabled
+        repoHostPath = if ($viHistoryEnabled) { [string]$resolvedRuntimeBootstrap.viHistory.repoHostPath } else { '' }
+        repoContainerPath = if ($viHistoryEnabled) { [string]$resolvedRuntimeBootstrap.viHistory.repoContainerPath } else { '' }
+        targetPath = if ($viHistoryEnabled) { [string]$resolvedRuntimeBootstrap.viHistory.targetPath } else { '' }
+        baselineRef = if ($viHistoryEnabled) { [string]$resolvedRuntimeBootstrap.viHistory.baselineRef } else { '' }
+        bootstrapMode = if ($viHistoryEnabled) { [string]$resolvedRuntimeBootstrap.viHistory.bootstrapMode } else { '' }
+        resultsHostPath = if ($viHistoryEnabled) { [string]$resolvedRuntimeBootstrap.viHistory.resultsHostPath } else { '' }
+        resultsContainerPath = if ($viHistoryEnabled) { [string]$resolvedRuntimeBootstrap.viHistory.resultsContainerPath } else { '' }
+        suiteManifestContainerPath = if ($viHistoryEnabled) { [string]$resolvedRuntimeBootstrap.viHistory.suiteManifestContainerPath } else { '' }
+        historyContextContainerPath = if ($viHistoryEnabled) { [string]$resolvedRuntimeBootstrap.viHistory.historyContextContainerPath } else { '' }
+        bootstrapReceiptContainerPath = if ($viHistoryEnabled) { [string]$resolvedRuntimeBootstrap.viHistory.bootstrapReceiptContainerPath } else { '' }
+        bootstrapMarkerContainerPath = if ($viHistoryEnabled) { [string]$resolvedRuntimeBootstrap.viHistory.bootstrapMarkerContainerPath } else { '' }
+        maxPairs = if ($viHistoryEnabled) { $resolvedRuntimeBootstrap.viHistory.maxPairs } else { $null }
+        branchBudget = if ($viHistoryEnabled) { $resolvedRuntimeBootstrap.viHistory.branchBudget } else { $null }
+        gitInjection = if ($viHistoryEnabled) {
+          [ordered]@{
+            enabled = [bool]$resolvedRuntimeBootstrap.viHistory.gitInjection.enabled
+            strategy = [string]$resolvedRuntimeBootstrap.viHistory.gitInjection.strategy
+            dotGitHostPath = [string]$resolvedRuntimeBootstrap.viHistory.gitInjection.dotGitHostPath
+            commonGitHostPath = [string]$resolvedRuntimeBootstrap.viHistory.gitInjection.commonGitHostPath
+            commonGitContainerPath = [string]$resolvedRuntimeBootstrap.viHistory.gitInjection.commonGitContainerPath
+            gitDirContainerPath = [string]$resolvedRuntimeBootstrap.viHistory.gitInjection.gitDirContainerPath
+            gitWorkTreeContainerPath = [string]$resolvedRuntimeBootstrap.viHistory.gitInjection.gitWorkTreeContainerPath
+          }
+        } else {
+          [ordered]@{
+            enabled = $false
+            strategy = 'none'
+            dotGitHostPath = ''
+            commonGitHostPath = ''
+            commonGitContainerPath = ''
+            gitDirContainerPath = ''
+            gitWorkTreeContainerPath = ''
+          }
+        }
+      }
+      envNames = @($resolvedRuntimeInjectionEnv | ForEach-Object { [string]$_.name })
+      mounts = @(
+        $resolvedRuntimeInjectionMounts | ForEach-Object {
+          [ordered]@{
+            hostPath = [string]$_.hostPath
+            containerPath = [string]$_.containerPath
+            kind = [string]$_.kind
+          }
+        }
+      )
+    }
     if (-not $capture.runtimeDeterminism) {
       $capture.runtimeDeterminism = [ordered]@{
         status = 'unknown'
@@ -963,10 +2099,8 @@ try {
       $capture.runtimeDeterminism.snapshotPath = $runtimeSnapshot
     }
 
-    [string[]]$flagsPayload = @()
-    if ($Flags) {
-      $flagsPayload = @($Flags | Where-Object { -not [string]::IsNullOrWhiteSpace([string]$_) } | ForEach-Object { [string]$_ })
-    }
+    [string[]]$flagsPayload = @(Get-EffectiveCompareFlags -InputFlags $Flags)
+    $capture.flags = @($flagsPayload)
     $flagsJoined = ''
     if ($null -ne $flagsPayload -and $flagsPayload.Length -gt 0) {
       $flagsJoined = [string]::Join("`n", [string[]]$flagsPayload)
@@ -976,18 +2110,43 @@ try {
     $mounts = @{}
     $mountIndex = 0
     $mountRef = [ref]$mountIndex
-    $containerBaseVi = Convert-HostFileToContainerPath -HostFilePath $baseViPath -MountMap $mounts -MountIndex $mountRef
-    $containerHeadVi = Convert-HostFileToContainerPath -HostFilePath $headViPath -MountMap $mounts -MountIndex $mountRef
+    $containerBaseVi = if ([string]::IsNullOrWhiteSpace($baseViPath)) {
+      ''
+    } else {
+      Convert-HostFileToContainerPath -HostFilePath $baseViPath -MountMap $mounts -MountIndex $mountRef
+    }
+    $containerHeadVi = if ([string]::IsNullOrWhiteSpace($headViPath)) {
+      ''
+    } else {
+      Convert-HostFileToContainerPath -HostFilePath $headViPath -MountMap $mounts -MountIndex $mountRef
+    }
     $containerReportPath = Convert-HostFileToContainerPath -HostFilePath $resolvedReportPath -MountMap $mounts -MountIndex $mountRef
 
-    $containerName = 'ni-lnx-compare-{0}' -f ([guid]::NewGuid().ToString('N').Substring(0, 12))
+    $effectiveContainerLabel = if ([string]::IsNullOrWhiteSpace($ContainerNameLabel)) {
+      if ($viHistoryEnabled -and -not [string]::IsNullOrWhiteSpace([string]$resolvedRuntimeBootstrap.mode)) {
+        [string]$resolvedRuntimeBootstrap.mode
+      } else {
+        ''
+      }
+    } else {
+      $ContainerNameLabel
+    }
+    $containerName = New-CompareContainerName -Label $effectiveContainerLabel -HashSeed $reportDirectory
     $containerNameForCleanup = $containerName
+    $capture.containerName = $containerName
     $containerReportPathForExport = $containerReportPath
     $reportDirectoryForExport = $reportDirectory
     $containerCommand = New-ContainerCommand
     $containerScriptHostPath = Join-Path $reportDirectory ('linux-compare-entrypoint-{0}.sh' -f $containerName)
     Write-UnixScriptArtifact -Path $containerScriptHostPath -Content $containerCommand
     $containerScriptPath = Convert-HostFileToContainerPath -HostFilePath $containerScriptHostPath -MountMap $mounts -MountIndex $mountRef
+    if (-not [string]::IsNullOrWhiteSpace($resolvedRuntimeInjectionScriptPath)) {
+      $runtimeInjectionScriptContainerPath = Convert-HostFileToContainerPath `
+        -HostFilePath $resolvedRuntimeInjectionScriptPath `
+        -MountMap $mounts `
+        -MountIndex $mountRef
+      $capture.runtimeInjection.scriptContainerPath = $runtimeInjectionScriptContainerPath
+    }
 
     $dockerArgs = @(
       'run',
@@ -998,8 +2157,15 @@ try {
       $volumeSpec = '{0}:{1}' -f $entry.Name, $entry.Value
       $dockerArgs += @('-v', $volumeSpec)
     }
-    $dockerArgs += @('--env', ("COMPARE_BASE_VI={0}" -f $containerBaseVi))
-    $dockerArgs += @('--env', ("COMPARE_HEAD_VI={0}" -f $containerHeadVi))
+    foreach ($runtimeMount in $resolvedRuntimeInjectionMounts) {
+      $dockerArgs += @('-v', ('{0}:{1}' -f $runtimeMount.hostPath, $runtimeMount.containerPath))
+    }
+    if (-not [string]::IsNullOrWhiteSpace($containerBaseVi)) {
+      $dockerArgs += @('--env', ("COMPARE_BASE_VI={0}" -f $containerBaseVi))
+    }
+    if (-not [string]::IsNullOrWhiteSpace($containerHeadVi)) {
+      $dockerArgs += @('--env', ("COMPARE_HEAD_VI={0}" -f $containerHeadVi))
+    }
     $dockerArgs += @('--env', ("COMPARE_REPORT_PATH={0}" -f $containerReportPath))
     $dockerArgs += @('--env', ("COMPARE_REPORT_TYPE={0}" -f $reportInfo.CliReportType))
     $dockerArgs += @('--env', ("COMPARE_FLAGS_B64={0}" -f $flagsB64))
@@ -1010,7 +2176,7 @@ try {
     $dockerArgs += @('--env', ("COMPARE_RETRY_DELAY_SECONDS={0}" -f [Math]::Max(0, $RetryDelaySeconds)))
     $dockerArgs += @('--env', 'COMPARE_OPEN_APP_TIMEOUT=180')
     $dockerArgs += @('--env', 'COMPARE_AFTER_LAUNCH_TIMEOUT=180')
-    foreach ($stubVar in @('DOCKER_STUB_RUN_EXIT_CODE', 'DOCKER_STUB_RUN_SLEEP_SECONDS', 'DOCKER_STUB_RUN_STDOUT', 'DOCKER_STUB_RUN_STDERR', 'DOCKER_STUB_CP_REPORT_HTML', 'DOCKER_STUB_CP_FAIL')) {
+    foreach ($stubVar in @('DOCKER_STUB_RUN_EXIT_CODE', 'DOCKER_STUB_RUN_SLEEP_SECONDS', 'DOCKER_STUB_RUN_STDOUT', 'DOCKER_STUB_RUN_STDERR', 'DOCKER_STUB_CP_REPORT_HTML', 'DOCKER_STUB_CP_FAIL', 'DOCKER_STUB_RUN_WRITE_REPORT', 'DOCKER_STUB_RUN_WRITE_HISTORY_SUITE')) {
       $stubValue = [Environment]::GetEnvironmentVariable($stubVar, 'Process')
       if (-not [string]::IsNullOrWhiteSpace($stubValue)) {
         $dockerArgs += @('--env', ("{0}={1}" -f $stubVar, $stubValue))
@@ -1018,6 +2184,12 @@ try {
     }
     if (-not [string]::IsNullOrWhiteSpace($resolvedLabVIEWPath)) {
       $dockerArgs += @('--env', ("COMPARE_LABVIEW_PATH={0}" -f $resolvedLabVIEWPath))
+    }
+    foreach ($runtimeEnv in $resolvedRuntimeInjectionEnv) {
+      $dockerArgs += @('--env', ('{0}={1}' -f $runtimeEnv.name, $runtimeEnv.value))
+    }
+    if (-not [string]::IsNullOrWhiteSpace($runtimeInjectionScriptContainerPath)) {
+      $dockerArgs += @('--env', ("COMPARE_RUNTIME_INJECTION_SCRIPT={0}" -f $runtimeInjectionScriptContainerPath))
     }
     $dockerArgs += @(
       $Image,

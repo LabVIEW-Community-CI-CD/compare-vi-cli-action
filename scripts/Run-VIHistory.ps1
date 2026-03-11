@@ -1,14 +1,32 @@
 param(
-  [Parameter(Mandatory = $true)]
   [string]$ViPath,
   [string]$StartRef = 'HEAD',
   [Nullable[int]]$MaxPairs,
+  [string]$SourceBranchRef,
+  [Nullable[int]]$MaxBranchCommits,
+  [Alias('help', 'h')]
+  [switch]$ShowHelp,
   [switch]$HtmlReport = $true,
   [switch]$IncludeMergeParents
 )
 
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
+
+if ($ShowHelp.IsPresent) {
+  @(
+    'Run-VIHistory.ps1'
+    ''
+    'Usage:'
+    '  pwsh -File scripts/Run-VIHistory.ps1 -ViPath <path> [-StartRef <ref>] [-MaxPairs <n>]'
+    '    [-SourceBranchRef <branch>] [-MaxBranchCommits <n>] [-HtmlReport] [-IncludeMergeParents]'
+  ) | Write-Output
+  return
+}
+
+if ([string]::IsNullOrWhiteSpace($ViPath)) {
+  throw 'ViPath is required. Use -ShowHelp (or -help / -h) for usage.'
+}
 
 try {
   $scriptRoot = Split-Path -Parent $PSCommandPath
@@ -109,6 +127,10 @@ function Get-CompareHistoryGuidance {
     $guidance = 'The compare helper script was not located. Run tools/priority/bootstrap.ps1 or restore the tools directory before retrying.'
   } elseif ($message -match 'No valid comparison modes resolved') {
     $guidance = 'No comparison modes resolved. Confirm the history helper configuration includes at least one mode (default is `default`).'
+  } elseif ($message -match 'exceeds the commit safeguard') {
+    $guidance = 'The source branch exceeded the configured commit budget. Narrow the branch, choose a closer start ref, or raise `-MaxBranchCommits`.'
+  } elseif ($message -match 'Unable to evaluate VI history source branch commit budget') {
+    $guidance = 'The source branch budget could not be evaluated. Pass a valid branch via `-SourceBranchRef` or choose a branch-like `-StartRef` before retrying.'
   } elseif ($message -match 'git must be available on PATH') {
     $guidance = 'Git is required for history capture. Install git and ensure it is on PATH.'
   }
@@ -180,6 +202,12 @@ try {
   }
   if ($PSBoundParameters.ContainsKey('MaxPairs') -and $MaxPairs -and $MaxPairs -gt 0) {
     $compareArgs['MaxPairs'] = $MaxPairs
+  }
+  if ($PSBoundParameters.ContainsKey('SourceBranchRef') -and -not [string]::IsNullOrWhiteSpace($SourceBranchRef)) {
+    $compareArgs['SourceBranchRef'] = $SourceBranchRef
+  }
+  if ($PSBoundParameters.ContainsKey('MaxBranchCommits') -and $null -ne $MaxBranchCommits -and $MaxBranchCommits -gt 0) {
+    $compareArgs['MaxBranchCommits'] = [int]$MaxBranchCommits
   }
   if ($IncludeMergeParents.IsPresent) {
     $compareArgs['IncludeMergeParents'] = $true
@@ -332,6 +360,7 @@ try {
     requestedStartRef  = $manifest.requestedStartRef
     startRef           = $manifest.startRef
     maxPairs           = $manifest.maxPairs
+    branchBudget       = if ($manifest.PSObject.Properties['branchBudget']) { $manifest.branchBudget } else { $null }
     requestedModes     = if ($manifest.PSObject.Properties['requestedModes']) { @($manifest.requestedModes) } else { @($manifest.modes | ForEach-Object { $_.name }) }
     executedModes      = if ($manifest.PSObject.Properties['executedModes']) { @($manifest.executedModes) } else { @($manifest.modes | ForEach-Object { $_.name }) }
     comparisons        = $comparisonDetails

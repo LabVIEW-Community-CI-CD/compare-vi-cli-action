@@ -88,6 +88,8 @@ $targetPath = Get-ObjectPropertyValue -InputObject $aggregate -PropertyName 'tar
 $requestedStart = Get-ObjectPropertyValue -InputObject $aggregate -PropertyName 'requestedStartRef'
 $resolvedStart = Get-ObjectPropertyValue -InputObject $aggregate -PropertyName 'startRef'
 $endRef = Get-ObjectPropertyValue -InputObject $aggregate -PropertyName 'endRef'
+$branchBudget = Get-ObjectPropertyValue -InputObject $aggregate -PropertyName 'branchBudget'
+$sourceBranchRef = Get-ObjectPropertyValue -InputObject $branchBudget -PropertyName 'sourceBranchRef'
 $aggregateStats = Get-ObjectPropertyValue -InputObject $aggregate -PropertyName 'stats'
 if (-not $aggregateStats) {
   $aggregateStats = [ordered]@{
@@ -124,6 +126,30 @@ if ($requestedStart -and $requestedStart -ne $resolvedStart) {
 }
 if ($endRef) {
   $lines.Add(('* End ref: `{0}`' -f $endRef))
+}
+if ($sourceBranchRef) {
+  $lines.Add(('* Source branch: `{0}`' -f $sourceBranchRef))
+}
+if ($branchBudget) {
+  $budgetParts = New-Object System.Collections.Generic.List[string]
+  $commitCount = Get-ObjectPropertyValue -InputObject $branchBudget -PropertyName 'commitCount'
+  $maxCommitCount = Get-ObjectPropertyValue -InputObject $branchBudget -PropertyName 'maxCommitCount'
+  $baselineRef = Get-ObjectPropertyValue -InputObject $branchBudget -PropertyName 'baselineRef'
+  $budgetStatus = Get-ObjectPropertyValue -InputObject $branchBudget -PropertyName 'status'
+  if ($null -ne $commitCount -and $null -ne $maxCommitCount) {
+    $budgetParts.Add(('{0}/{1}' -f $commitCount, $maxCommitCount)) | Out-Null
+  } elseif ($null -ne $maxCommitCount) {
+    $budgetParts.Add(('max {0}' -f $maxCommitCount)) | Out-Null
+  }
+  if ($baselineRef) {
+    $budgetParts.Add(('baseline: {0}' -f $baselineRef)) | Out-Null
+  }
+  if ($budgetStatus) {
+    $budgetParts.Add(('status: {0}' -f $budgetStatus)) | Out-Null
+  }
+  if ($budgetParts.Count -gt 0) {
+    $lines.Add(('* Source branch budget: `{0}`' -f ([string]::Join('; ', @($budgetParts.ToArray())))))
+  }
 }
 $lines.Add(('* Modes: {0}' -f ([string]::Join(', ', $modeNames))))
 $lines.Add(('* Total processed pairs: {0}' -f $totalProcessed))

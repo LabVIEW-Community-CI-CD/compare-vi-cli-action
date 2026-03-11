@@ -1,0 +1,192 @@
+name: Runtime Harness Package Rehearsal
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Package version (for example: 0.1.0 or 0.1.0-rc.1)'
+        required: true
+        type: string
+      channel:
+        description: 'Release channel'
+        required: false
+        default: stable
+        type: choice
+        options:
+          - stable
+          - rc
+      publish:
+        description: 'Publish the candidate to GitHub Packages before verification'
+        required: false
+        default: false
+        type: boolean
+
+permissions:
+  actions: read
+  contents: read
+  packages: write
+
+jobs:
+  rehearse-runtime-harness:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Assert promotion contract alignment
+        shell: pwsh
+        run: |
+          pwsh -NoLogo -NoProfile -File tools/Assert-PromotionContractAlignment.ps1 -OutputJsonPath tests/results/promotion-contract/runtime-harness-package-alignment.json -StepSummaryPath $env:GITHUB_STEP_SUMMARY
+
+      - name: Setup Node
+        uses: actions/setup-node@v5
+        with:
+          node-version: '20'
+          cache: npm
+          registry-url: https://npm.pkg.github.com
+          scope: '@labview-community-ci-cd'
+
+      - name: Install repository dependencies
+        run: npm ci --ignore-scripts
+
+      - name: Resolve runtime-harness publish context
+        id: context
+        shell: bash
+        run: |
+          set -euo pipefail
+          node tools/priority/js-package-release.mjs \
+            --action resolve \
+            --package-dir packages/runtime-harness \
+            --version "${{ inputs.version }}" \
+            --channel "${{ inputs.channel }}" \
+            --publish "${{ inputs.publish }}" \
+            --repo "${{ github.repository }}" \
+            --owner "${{ github.repository_owner }}" \
+            --server-url "${{ github.server_url }}" \
+            --report tests/results/_agent/release/runtime-harness-package-context.json \
+            --github-output "$GITHUB_OUTPUT"
+
+      - name: Stage runtime-harness package candidate
+        id: stage
+        shell: bash
+        run: |
+          set -euo pipefail
+          node tools/priority/js-package-release.mjs \
+            --action stage \
+            --package-dir packages/runtime-harness \
+            --version "${{ inputs.version }}" \
+            --channel "${{ inputs.channel }}" \
+            --publish "${{ inputs.publish }}" \
+            --repo "${{ github.repository }}" \
+            --owner "${{ github.repository_owner }}" \
+            --server-url "${{ github.server_url }}" \
+            --staging-dir tests/results/_agent/release/runtime-harness-package/staging \
+            --tarball-dir tests/results/_agent/release/runtime-harness-package/tarballs \
+            --copy-license-from LICENSE \
+            --report tests/results/_agent/release/runtime-harness-package-stage.json \
+            --github-output "$GITHUB_OUTPUT"
+
+      - name: Publish runtime-harness candidate
+        if: steps.context.outputs.publish == 'true'
+        env:
+          NODE_AUTH_TOKEN: ${{ github.token }}
+        run: >
+          node tools/npm/cli.mjs publish "${{ steps.stage.outputs.tarball_path }}"
+          --tag "${{ steps.context.outputs.dist_tag }}"
+
+      - name: Verify runtime-harness candidate from clean consumer context
+        id: verify
+        env:
+          NODE_AUTH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          verify_source="${{ steps.stage.outputs.tarball_path }}"
+          if [ "${{ steps.context.outputs.publish }}" = "true" ]; then
+            verify_source="${{ steps.context.outputs.package_spec }}"
+          fi
+          node tools/priority/js-package-release.mjs \
+            --action verify \
+            --package-dir packages/runtime-harness \
+            --version "${{ inputs.version }}" \
+            --channel "${{ inputs.channel }}" \
+            --publish "${{ inputs.publish }}" \
+            --repo "${{ github.repository }}" \
+            --owner "${{ github.repository_owner }}" \
+            --server-url "${{ github.server_url }}" \
+            --source-spec "$verify_source" \
+            --consumer-dir tests/results/_agent/release/runtime-harness-package/consumer \
+            --registry-url "${{ steps.context.outputs.registry_url }}" \
+            --report tests/results/_agent/release/runtime-harness-package-verification.json \
+            --github-output "$GITHUB_OUTPUT"
+
+      - name: Validate release reports
+        run: |
+          node tools/npm/run-script.mjs schema:validate -- --schema docs/schemas/js-package-release-v1.schema.json --data tests/results/_agent/release/runtime-harness-package-context.json --data tests/results/_agent/release/runtime-harness-package-stage.json --data tests/results/_agent/release/runtime-harness-package-verification.json
+
+      - name: Write rehearsal summary
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p tests/results/_agent/release
+          summary_path="tests/results/_agent/release/runtime-harness-package-summary.md"
+          verification_source="packed tarball"
+          if [ "${{ steps.context.outputs.publish }}" = "true" ]; then
+            verification_source="published package spec"
+          fi
+          {
+            echo "# runtime-harness package rehearsal summary"
+            echo ""
+            echo "- Package: \`${{ steps.context.outputs.package_name }}\`"
+            echo "- Version: \`${{ steps.context.outputs.version }}\`"
+            echo "- Channel: \`${{ steps.context.outputs.channel }}\`"
+            echo "- Published: \`${{ steps.context.outputs.publish }}\`"
+            echo "- Dist tag: \`${{ steps.context.outputs.dist_tag }}\`"
+            echo "- Registry: \`${{ steps.context.outputs.registry_url }}\`"
+            echo "- Package spec: \`${{ steps.context.outputs.package_spec }}\`"
+            echo "- Verification source: \`${verification_source}\`"
+            echo "- Tarball: \`${{ steps.stage.outputs.tarball_path }}\`"
+          } | tee "$summary_path"
+
+      - name: Append summary
+        shell: bash
+        run: |
+          cat tests/results/_agent/release/runtime-harness-package-summary.md >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Write promotion evidence ledger
+        if: always()
+        shell: pwsh
+        run: |
+          $gateStatus = switch ('${{ job.status }}') {
+            'success' { 'pass' }
+            'cancelled' { 'blocked' }
+            default { 'fail' }
+          }
+          $channel = if ([string]::IsNullOrWhiteSpace('${{ steps.context.outputs.channel }}')) { 'unknown' } else { '${{ steps.context.outputs.channel }}' }
+          $version = if ([string]::IsNullOrWhiteSpace('${{ steps.context.outputs.version }}')) { 'unknown' } else { '${{ steps.context.outputs.version }}' }
+          pwsh -NoLogo -NoProfile -File tools/Write-PromotionEvidenceLedger.ps1 -OutputPath tests/results/promotion-contract/runtime-harness-package-ledger.json -WorkflowName '${{ github.workflow }}' -Stream '@labview-community-ci-cd/runtime-harness' -Channel $channel -Version $version -GateStatus $gateStatus -GateReason 'runtime-harness-package-rehearsal workflow result' -SummaryPath 'tests/results/_agent/release/runtime-harness-package-summary.md' -StepSummaryPath $env:GITHUB_STEP_SUMMARY
+
+      - name: Emit SLO metrics
+        if: always()
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          node tools/priority/slo-metrics.mjs \
+            --repo "${{ github.repository }}" \
+            --output tests/results/_agent/slo/runtime-harness-package-rehearsal-slo-metrics.json
+
+      - name: Upload rehearsal artifacts
+        if: always()
+        uses: actions/upload-artifact@v5
+        with:
+          name: runtime-harness-package-rehearsal-${{ github.run_id }}
+          path: |
+            tests/results/_agent/release/runtime-harness-package-context.json
+            tests/results/_agent/release/runtime-harness-package-stage.json
+            tests/results/_agent/release/runtime-harness-package-verification.json
+            tests/results/_agent/release/runtime-harness-package-summary.md
+            tests/results/promotion-contract/runtime-harness-package-ledger.json
+            tests/results/_agent/slo/runtime-harness-package-rehearsal-slo-metrics.json
+            tests/results/_agent/release/runtime-harness-package/tarballs/*.tgz
+          if-no-files-found: error

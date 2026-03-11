@@ -22,14 +22,44 @@ test('PrePush-Checks invokes workspace health gate in optional lease mode', () =
   assert.match(content, /check-workspace-health\.mjs/);
   assert.match(content, /--lease-mode optional/);
   assert.match(content, /pre-push-workspace-health\.json/);
+  assert.match(content, /if \(\$null -eq \$mount\) \{\s*continue\s*\}/);
 });
 
-test('PrePush NI image known-flag scenario uses direct script invocation and explicit LabVIEWPath', () => {
+test('PrePush NI image known-flag scenario uses the Linux runner with explicit LabVIEWPath', () => {
   const content = readRepoFile('tools/PrePush-Checks.ps1');
+  assert.match(content, /Run-NILinuxContainerCompare\.ps1/);
+  assert.match(content, /nationalinstruments\/labview:2026q1-linux/);
+  assert.match(content, /NI_LINUX_LABVIEW_PATH/);
+  assert.match(content, /name = if \(\$scenarioLabels\.Count -eq 0\) \{ 'baseline' \}/);
+  assert.match(content, /label = 'noattr'; flag = '-noattr'/);
+  assert.match(content, /label = 'nofppos'; flag = '-nofppos'/);
+  assert.match(content, /label = 'nobdcosm'; flag = '-nobdcosm'/);
   assert.match(content, /& \$niCompareScript/);
   assert.match(content, /-LabVIEWPath \$containerLabVIEWPath/);
-  assert.match(content, /\$knownFlags = @\('-noattr', '-nofppos', '-nobdcosm'\)/);
+  assert.match(content, /-ContainerNameLabel \$activeScenarioName/);
+  assert.match(content, /history-summary\.json/);
+  assert.match(content, /logPath = if \(\$parts.Count -gt 7\)/);
+  assert.match(content, /\$failureMarkers = @\(/);
+  assert.match(content, /Select-String -Path \$resolvedEntryLogPath -SimpleMatch -Quiet -Pattern \$failureMarkers/);
+  assert.match(content, /VI Comparison Report flag combination scenarios OK/);
   assert.doesNotMatch(content, /pwsh\s+-NoLogo\s+-NoProfile\s+-File\s+\$niCompareScript/);
+  assert.doesNotMatch(content, /Render-VIHistoryReport\.ps1/);
+});
+
+test('single-container flag matrix bootstrap clears stale reports and writes per-scenario CLI logs', () => {
+  const content = readRepoFile('tools/NILinux-FlagMatrixBootstrap.sh');
+  assert.ok(content.includes('command -v LabVIEWCLI.sh'));
+  assert.ok(content.includes('comparevi_flag_matrix_arg_has_value() {'));
+  assert.ok(content.includes('scenario_log="\\${RESULTS_DIR}/\\${name}-cli-output.log"'));
+  assert.ok(content.includes('rm -f "\\${scenario_report}"'));
+  assert.ok(content.includes('rm -rf "\\${scenario_report_assets_dir}"'));
+  assert.ok(content.includes('printf \'%s\\n\' "\\${cli_output}" > "\\${scenario_log}"'));
+  assert.ok(content.includes('printf \'%s\\t%s\\t%s\\t%s\\t%s\\t%s\\t%s\\t%s\\n\''));
+  assert.ok(content.includes('<a href=\\"\\${name}-cli-output.log\\">cli-log</a>'));
+  assert.ok(content.includes('if comparevi_flag_matrix_arg_has_value "\\$@"; then'));
+  assert.ok(content.includes('COMMON_ARGS+=("true")'));
+  assert.ok(content.includes('if [ "\\${exit_code}" = "1" ]; then'));
+  assert.ok(content.includes('if [ "\\${has_diff_markers}" != "true" ]; then'));
 });
 
 test('PrePush includes local PSScriptAnalyzer gate for changed PowerShell files', () => {
@@ -46,6 +76,35 @@ test('PrePush validates watcher telemetry via the sanitized schema wrapper', () 
   assert.match(content, /run-script\.mjs/);
   assert.match(content, /schema:watcher:validate/);
   assert.match(content, /Invoke-WatcherTelemetrySchemaGate -repoRoot \$root/);
+});
+
+test('PrePush log tail helper uses streaming tail reads for large CLI logs', () => {
+  const content = readRepoFile('tools/PrePush-Checks.ps1');
+  assert.match(content, /Get-Content -LiteralPath \$Path -Tail \$TailLines -ErrorAction SilentlyContinue/);
+  assert.doesNotMatch(content, /Get-Content -LiteralPath \$resolvedEntryLogPath -Raw/);
+});
+
+test('VI history branch guards harden git ref inputs before counting commits', () => {
+  const compareHistory = readRepoFile('tools/Compare-VIHistory.ps1');
+  assert.match(compareHistory, /\$normalizedBranchRef\.StartsWith\('-'\)/);
+  assert.match(compareHistory, /Invoke-Git -Arguments @\('rev-parse', '--verify', '--end-of-options', \$branchResolveSpec\)/);
+
+  const fastLoop = readRepoFile('tools/Test-DockerDesktopFastLoop.ps1');
+  assert.match(fastLoop, /\$normalizedBranchRef\.StartsWith\('-'\)/);
+  assert.match(fastLoop, /git rev-parse --verify --end-of-options \$branchResolveSpec/);
+});
+
+test('NI Linux VI history bootstrap preserves mainline lineage semantics on error paths', () => {
+  const content = readRepoFile('tools/NILinux-VIHistorySuiteBootstrap.sh');
+  assert.match(content, /\\"parentIndex\\": 1/);
+  assert.match(content, /suite_status="failed"/);
+  assert.doesNotMatch(content, /suite_status="error"/);
+});
+
+test('Run-NonLVChecksInDocker honors explicit containerized Pester requests without filters', () => {
+  const content = readRepoFile('tools/Run-NonLVChecksInDocker.ps1');
+  assert.match(content, /\$PSBoundParameters\.ContainsKey\('PesterIncludeIntegration'\)/);
+  assert.match(content, /\$PSBoundParameters\.ContainsKey\('PesterResultsDir'\)/);
 });
 
 test('PrePush emits deterministic incident-event report for NI known-flag failures', () => {

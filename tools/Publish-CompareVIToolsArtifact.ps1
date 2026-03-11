@@ -284,6 +284,8 @@ try {
         'target.path',
         'target.requestedStartRef',
         'target.effectiveStartRef',
+        'target.sourceBranchRef',
+        'target.branchBudget',
         'execution.requestedModes',
         'execution.executedModes',
         'execution.reportFormat',
@@ -297,7 +299,8 @@ try {
       )
       notes = @(
         'Use the reviewed release tag and bundle metadata as the supported downstream pin.',
-        'The facade omits raw per-comparison backend payloads so downstream consumers only depend on the stabilized summary surface.'
+        'The facade omits raw per-comparison backend payloads so downstream consumers only depend on the stabilized summary surface.',
+        'When source-branch budgeting is requested, the facade also records the evaluated branch budget so downstream consumers can audit the safeguard without parsing raw git state.'
       )
     }
     diagnosticsCommentRenderer = [ordered]@{

@@ -1,0 +1,245 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://labview-community-ci-cd.github.io/compare-vi-cli-action/schemas/js-package-release-v1.schema.json",
+  "title": "JavaScript Package Release Report",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema",
+    "action",
+    "status",
+    "generatedAt",
+    "package",
+    "repository",
+    "source",
+    "outputs",
+    "execution"
+  ],
+  "properties": {
+    "schema": {
+      "const": "priority/js-package-release@v1"
+    },
+    "action": {
+      "enum": ["resolve", "stage", "verify"]
+    },
+    "status": {
+      "enum": ["pass", "fail"]
+    },
+    "generatedAt": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "package": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "name",
+        "version",
+        "channel",
+        "publish",
+        "publishCapable",
+        "distTag",
+        "registryUrl",
+        "packageDir",
+        "packageSpec",
+        "scope",
+        "expectedExports"
+      ],
+      "properties": {
+        "name": {
+          "type": "string",
+          "minLength": 1
+        },
+        "version": {
+          "type": "string",
+          "minLength": 1
+        },
+        "channel": {
+          "enum": ["stable", "rc"]
+        },
+        "publish": {
+          "type": "boolean"
+        },
+        "publishCapable": {
+          "type": "boolean"
+        },
+        "distTag": {
+          "type": "string",
+          "minLength": 1
+        },
+        "registryUrl": {
+          "type": "string",
+          "format": "uri"
+        },
+        "packageDir": {
+          "type": "string",
+          "minLength": 1
+        },
+        "packageSpec": {
+          "type": "string",
+          "minLength": 1
+        },
+        "scope": {
+          "type": "string",
+          "pattern": "^@"
+        },
+        "expectedExports": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        }
+      }
+    },
+    "repository": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["slug", "owner", "serverUrl"],
+      "properties": {
+        "slug": {
+          "type": "string",
+          "minLength": 1
+        },
+        "owner": {
+          "type": ["string", "null"]
+        },
+        "serverUrl": {
+          "type": "string",
+          "format": "uri"
+        }
+      }
+    },
+    "source": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["packageJsonPath", "private", "publishEntries"],
+      "properties": {
+        "packageJsonPath": {
+          "type": "string",
+          "minLength": 1
+        },
+        "private": {
+          "type": "boolean"
+        },
+        "publishEntries": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "stagedPackageJsonPath": {
+          "type": ["string", "null"]
+        },
+        "copiedFiles": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        }
+      }
+    },
+    "outputs": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["stagingDir", "tarballPath", "consumerDir", "verificationMode"],
+      "properties": {
+        "stagingDir": {
+          "type": ["string", "null"]
+        },
+        "tarballPath": {
+          "type": ["string", "null"]
+        },
+        "consumerDir": {
+          "type": ["string", "null"]
+        },
+        "verificationMode": {
+          "enum": ["tarball", "registry", null]
+        }
+      }
+    },
+    "execution": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["packCommand", "installCommand", "importCommand", "installAttempts"],
+      "properties": {
+        "packCommand": {
+          "type": ["string", "null"]
+        },
+        "installCommand": {
+          "type": ["string", "null"]
+        },
+        "importCommand": {
+          "type": ["string", "null"]
+        },
+        "installAttempts": {
+          "type": "integer",
+          "minimum": 0
+        }
+      }
+    },
+    "pack": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["filename", "unpackedSize", "shasum", "integrity"],
+      "properties": {
+        "filename": {
+          "type": "string",
+          "minLength": 1
+        },
+        "unpackedSize": {
+          "type": ["integer", "null"]
+        },
+        "shasum": {
+          "type": ["string", "null"]
+        },
+        "integrity": {
+          "type": ["string", "null"]
+        }
+      }
+    },
+    "verification": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["sourceSpec", "installMode", "installedVersion", "npmrcPath", "imports"],
+      "properties": {
+        "sourceSpec": {
+          "type": "string",
+          "minLength": 1
+        },
+        "installMode": {
+          "enum": ["tarball", "registry"]
+        },
+        "installedVersion": {
+          "type": "string",
+          "minLength": 1
+        },
+        "npmrcPath": {
+          "type": ["string", "null"]
+        },
+        "imports": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["specifier", "exportKeys"],
+            "properties": {
+              "specifier": {
+                "type": "string",
+                "minLength": 1
+              },
+              "exportKeys": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}
