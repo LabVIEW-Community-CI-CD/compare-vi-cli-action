@@ -1352,6 +1352,12 @@ async function updatePullRequestBranch({ taskPacket, repoRoot, deps = {} }) {
   const pullRequest = taskPacket?.evidence?.delivery?.pullRequest ?? null;
   const repository = normalizeText(taskPacket?.repository);
   const prNumber = coercePositiveInteger(pullRequest?.number) ?? extractPullRequestNumberFromUrl(pullRequest?.url);
+  const branchName =
+    normalizeText(pullRequest?.headRefName) ||
+    normalizeText(taskPacket?.branch?.name) ||
+    normalizeText(taskPacket?.evidence?.lane?.branch) ||
+    null;
+  const baseRefName = normalizeText(pullRequest?.baseRefName) || 'develop';
   if (!repository || !prNumber) {
     throw new Error('Branch sync action requires repository and pull request number.');
   }
@@ -1364,6 +1370,94 @@ async function updatePullRequestBranch({ taskPacket, repoRoot, deps = {} }) {
   if (result.status !== 0) {
     const message = normalizeText(result.stderr) || normalizeText(result.stdout) || `pr update-branch failed (${result.status})`;
     const mergeBlocked = /conflict|rebase|merge/i.test(message);
+    const helperCallsExecuted = ['gh pr update-branch'];
+    if (!isRateLimitMessage(message) && !mergeBlocked && branchName) {
+      const workspaceStatus = await runCommand('git', ['status', '--porcelain'], { cwd: repoRoot, env: process.env }, deps);
+      if (workspaceStatus.status === 0 && !normalizeText(workspaceStatus.stdout)) {
+        const fetchResult = await runCommand(
+          'git',
+          ['fetch', 'upstream', baseRefName, 'origin', branchName],
+          { cwd: repoRoot, env: process.env },
+          deps
+        );
+        helperCallsExecuted.push(`git fetch upstream ${baseRefName} origin ${branchName}`);
+        if (fetchResult.status === 0) {
+          const checkoutResult = await runCommand('git', ['checkout', branchName], { cwd: repoRoot, env: process.env }, deps);
+          helperCallsExecuted.push(`git checkout ${branchName}`);
+          if (checkoutResult.status === 0) {
+            const mergeResult = await runCommand(
+              'git',
+              ['merge', '--no-edit', `upstream/${baseRefName}`],
+              { cwd: repoRoot, env: process.env },
+              deps
+            );
+            helperCallsExecuted.push(`git merge --no-edit upstream/${baseRefName}`);
+            if (mergeResult.status === 0) {
+              const pushResult = await runCommand(
+                'git',
+                ['push', 'origin', `HEAD:${branchName}`],
+                { cwd: repoRoot, env: process.env },
+                deps
+              );
+              helperCallsExecuted.push(`git push origin HEAD:${branchName}`);
+              if (pushResult.status === 0) {
+                return {
+                  status: 'completed',
+                  outcome: 'branch-updated',
+                  reason: `Updated PR #${prNumber} with the latest base branch.`,
+                  source: 'delivery-agent-broker',
+                  details: {
+                    actionType: 'sync-pr-branch',
+                    laneLifecycle: 'waiting-ci',
+                    blockerClass: 'ci',
+                    retryable: true,
+                    nextWakeCondition: 'checks-green',
+                    helperCallsExecuted,
+                    filesTouched: []
+                  }
+                };
+              }
+              const pushMessage =
+                normalizeText(pushResult.stderr) || normalizeText(pushResult.stdout) || `git push failed (${pushResult.status})`;
+              return {
+                status: 'blocked',
+                outcome: isRateLimitMessage(pushMessage) ? 'rate-limit' : 'branch-sync-failed',
+                reason: pushMessage,
+                source: 'delivery-agent-broker',
+                details: {
+                  actionType: 'sync-pr-branch',
+                  laneLifecycle: 'waiting-ci',
+                  blockerClass: isRateLimitMessage(pushMessage) ? 'rate-limit' : 'ci',
+                  retryable: true,
+                  nextWakeCondition: isRateLimitMessage(pushMessage) ? 'github-rate-limit-reset' : 'branch-sync-retry',
+                  helperCallsExecuted,
+                  filesTouched: []
+                }
+              };
+            }
+            const mergeMessage =
+              normalizeText(mergeResult.stderr) || normalizeText(mergeResult.stdout) || `git merge failed (${mergeResult.status})`;
+            return {
+              status: 'blocked',
+              outcome: /conflict|automatic merge failed/i.test(mergeMessage) ? 'branch-sync-blocked' : 'branch-sync-failed',
+              reason: mergeMessage,
+              source: 'delivery-agent-broker',
+              details: {
+                actionType: 'sync-pr-branch',
+                laneLifecycle: /conflict|automatic merge failed/i.test(mergeMessage) ? 'blocked' : 'waiting-ci',
+                blockerClass: /conflict|automatic merge failed/i.test(mergeMessage) ? 'merge' : 'ci',
+                retryable: /conflict|automatic merge failed/i.test(mergeMessage) ? false : true,
+                nextWakeCondition: /conflict|automatic merge failed/i.test(mergeMessage)
+                  ? 'manual-conflict-resolution'
+                  : 'branch-sync-retry',
+                helperCallsExecuted,
+                filesTouched: []
+              }
+            };
+          }
+        }
+      }
+    }
     return {
       status: 'blocked',
       outcome: isRateLimitMessage(message) ? 'rate-limit' : mergeBlocked ? 'branch-sync-blocked' : 'branch-sync-failed',
@@ -1379,7 +1473,7 @@ async function updatePullRequestBranch({ taskPacket, repoRoot, deps = {} }) {
           : mergeBlocked
             ? 'manual-conflict-resolution'
             : 'branch-sync-retry',
-        helperCallsExecuted: ['gh pr update-branch'],
+        helperCallsExecuted,
         filesTouched: []
       }
     };

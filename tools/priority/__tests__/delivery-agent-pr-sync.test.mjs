@@ -115,3 +115,94 @@ test('runDeliveryTurnBroker updates a behind PR branch before waiting on review'
   assert.equal(brokerResult.details.actionType, 'sync-pr-branch');
   assert.equal(brokerResult.details.nextWakeCondition, 'checks-green');
 });
+
+test('runDeliveryTurnBroker falls back to local git sync when gh pr update-branch fails', async (t) => {
+  const repoRoot = await mkdtemp(path.join(os.tmpdir(), 'delivery-agent-pr-sync-fallback-'));
+  t.after(async () => {
+    await rm(repoRoot, { recursive: true, force: true });
+  });
+
+  const commandLog = [];
+  const brokerResult = await runDeliveryTurnBroker({
+    repoRoot,
+    taskPacket: {
+      repository: 'LabVIEW-Community-CI-CD/compare-vi-cli-action',
+      status: 'waiting-review',
+      branch: {
+        name: 'issue/origin-959-codex-pressure-governor'
+      },
+      objective: {
+        summary: 'Advance issue #959'
+      },
+      evidence: {
+        delivery: {
+          laneLifecycle: 'waiting-review',
+          pullRequest: {
+            number: 1017,
+            url: 'https://github.com/LabVIEW-Community-CI-CD/compare-vi-cli-action/pull/1017',
+            headRefName: 'issue/origin-959-codex-pressure-governor',
+            baseRefName: 'develop',
+            mergeStateStatus: 'BEHIND',
+            syncRequired: true,
+            checks: {
+              blockerClass: 'ci'
+            }
+          }
+        }
+      }
+    },
+    deps: {
+      loadDeliveryAgentPolicyFn: async () => ({
+        schema: 'priority/delivery-agent-policy@v1',
+        backlogAuthority: 'issues',
+        implementationRemote: 'origin',
+        autoSlice: true,
+        autoMerge: true,
+        maxActiveCodingLanes: 1,
+        allowPolicyMutations: false,
+        allowReleaseAdmin: false,
+        stopWhenNoOpenEpics: true,
+        codingTurnCommand: []
+      }),
+      runCommandFn: async (command, args) => {
+        commandLog.push([command, ...args]);
+        if (command === 'gh' && args[0] === 'pr' && args[1] === 'update-branch') {
+          return {
+            status: 1,
+            stdout: '',
+            stderr: 'GraphQL: Something went wrong while executing your query.'
+          };
+        }
+        if (command === 'git' && args[0] === 'status') {
+          return {
+            status: 0,
+            stdout: '',
+            stderr: ''
+          };
+        }
+        return {
+          status: 0,
+          stdout: '',
+          stderr: ''
+        };
+      }
+    }
+  });
+
+  assert.equal(brokerResult.outcome, 'branch-updated');
+  assert.deepEqual(brokerResult.details.helperCallsExecuted, [
+    'gh pr update-branch',
+    'git fetch upstream develop origin issue/origin-959-codex-pressure-governor',
+    'git checkout issue/origin-959-codex-pressure-governor',
+    'git merge --no-edit upstream/develop',
+    'git push origin HEAD:issue/origin-959-codex-pressure-governor'
+  ]);
+  assert.deepEqual(commandLog, [
+    ['gh', 'pr', 'update-branch', '1017', '--repo', 'LabVIEW-Community-CI-CD/compare-vi-cli-action'],
+    ['git', 'status', '--porcelain'],
+    ['git', 'fetch', 'upstream', 'develop', 'origin', 'issue/origin-959-codex-pressure-governor'],
+    ['git', 'checkout', 'issue/origin-959-codex-pressure-governor'],
+    ['git', 'merge', '--no-edit', 'upstream/develop'],
+    ['git', 'push', 'origin', 'HEAD:issue/origin-959-codex-pressure-governor']
+  ]);
+});
