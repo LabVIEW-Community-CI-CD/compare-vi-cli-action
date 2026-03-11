@@ -87,6 +87,14 @@ function normalizeText(value) {
   return String(value).trim();
 }
 
+function coercePositiveInteger(value) {
+  const parsed = Number(value);
+  if (!Number.isInteger(parsed) || parsed <= 0) {
+    return null;
+  }
+  return parsed;
+}
+
 const CADENCE_CHECK_MARKER_REGEX = /<!--\s*cadence-check:/i;
 
 function isCadenceAlertIssue(title, body) {
@@ -187,6 +195,23 @@ async function readJsonIfPresent(filePath) {
 function parseRepositoryFromIssueUrl(url) {
   const match = String(url || '').match(/^https:\/\/github\.com\/([^/]+\/[^/]+)\/issues\/\d+$/i);
   return match?.[1] || '';
+}
+
+function normalizeMirrorOfPointer(rawMirrorOf) {
+  if (!rawMirrorOf || typeof rawMirrorOf !== 'object') {
+    return null;
+  }
+  const number = coercePositiveInteger(rawMirrorOf.number);
+  const url = normalizeText(rawMirrorOf.url) || null;
+  const repository = normalizeText(rawMirrorOf.repository) || parseRepositoryFromIssueUrl(url) || null;
+  if (!number && !url && !repository) {
+    return null;
+  }
+  return {
+    repository,
+    number,
+    url
+  };
 }
 
 function resolveForkRemoteForRepository(repository, upstreamRepository) {
@@ -477,13 +502,43 @@ async function executeCompareviTurn({
   schedulerDecision
 }) {
   const upstreamRepository = normalizeText(env.AGENT_PRIORITY_UPSTREAM_REPOSITORY) || COMPAREVI_UPSTREAM_REPOSITORY;
-  const standingRepository =
+  let standingRepository =
     normalizeText(schedulerDecision?.artifacts?.standingRepository) ||
     normalizeText(options.repo) ||
+    normalizeText(env.GITHUB_REPOSITORY) ||
     null;
-  const standingIssueNumber = Number(schedulerDecision?.artifacts?.standingIssueNumber);
-  const mirrorOf = schedulerDecision?.artifacts?.mirrorOf ?? null;
-  const cadence = schedulerDecision?.artifacts?.cadence === true;
+  let standingIssueNumber =
+    coercePositiveInteger(schedulerDecision?.artifacts?.standingIssueNumber) ||
+    coercePositiveInteger(schedulerDecision?.activeLane?.issue) ||
+    coercePositiveInteger(options.issue);
+  let mirrorOf = normalizeMirrorOfPointer(schedulerDecision?.artifacts?.mirrorOf);
+  let cadenceKnown = schedulerDecision?.artifacts?.cadence === true || schedulerDecision?.artifacts?.cadence === false;
+  let cadence = schedulerDecision?.artifacts?.cadence === true;
+
+  if (standingRepository && standingIssueNumber) {
+    const localSnapshot = await readJsonIfPresent(path.join(repoRoot, PRIORITY_ISSUE_DIR, `${standingIssueNumber}.json`));
+    if (localSnapshot) {
+      mirrorOf = mirrorOf ?? normalizeMirrorOfPointer(localSnapshot.mirrorOf) ?? parseUpstreamIssuePointerFromBody(localSnapshot.body);
+      cadence = cadence || isCadenceAlertIssue(localSnapshot.title, localSnapshot.body);
+      cadenceKnown = true;
+      standingRepository = standingRepository || parseRepositoryFromIssueUrl(localSnapshot.url);
+    }
+
+    if (!mirrorOf || !mirrorOf.number || !normalizeText(mirrorOf.url) || !cadenceKnown) {
+      try {
+        const issueSnapshot = await fetchIssue(standingIssueNumber, repoRoot, standingRepository, {
+          ghIssueFetcher: deps.ghIssueFetcher,
+          restIssueFetcher: deps.restIssueFetcher
+        });
+        mirrorOf = mirrorOf ?? normalizeMirrorOfPointer(issueSnapshot.mirrorOf) ?? parseUpstreamIssuePointerFromBody(issueSnapshot.body);
+        cadence = cadence || isCadenceAlertIssue(issueSnapshot.title, issueSnapshot.body);
+        cadenceKnown = true;
+        standingRepository = standingRepository || parseRepositoryFromIssueUrl(issueSnapshot.url);
+      } catch {
+        // Keep the current context and let the decision logic below retry in later cycles.
+      }
+    }
+  }
 
   if (!standingRepository || !Number.isInteger(standingIssueNumber) || standingIssueNumber <= 0) {
     return {

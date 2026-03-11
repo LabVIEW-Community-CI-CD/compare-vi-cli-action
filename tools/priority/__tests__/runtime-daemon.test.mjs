@@ -633,6 +633,89 @@ test('comparevi execution stops when the standing issue is cadence-only work', a
   assert.equal(execution.stopLoop, true);
 });
 
+test('comparevi execution derives standing context from explicit lane metadata when scheduler artifacts are missing', async () => {
+  const handoffCalls = [];
+  const closeCalls = [];
+  const fetchCalls = [];
+  const execution = await compareviRuntimeTest.executeCompareviTurn({
+    options: {
+      repo: 'svelderrainruiz/compare-vi-cli-action',
+      issue: 315
+    },
+    env: {
+      AGENT_PRIORITY_UPSTREAM_REPOSITORY: 'LabVIEW-Community-CI-CD/compare-vi-cli-action'
+    },
+    repoRoot: '/tmp/repo',
+    schedulerDecision: {
+      activeLane: {
+        laneId: 'personal-1004',
+        issue: 315,
+        forkRemote: 'personal',
+        branch: 'issue/personal-1004-runtime-worker-flow'
+      }
+    },
+    deps: {
+      ghIssueFetcher: async ({ number, slug }) => {
+        fetchCalls.push({ number, slug });
+        return {
+          number: 315,
+          title: '[P1] Fork mirror for upstream issue #1004',
+          state: 'open',
+          updatedAt: '2026-03-10T00:00:00Z',
+          html_url: 'https://github.com/svelderrainruiz/compare-vi-cli-action/issues/315',
+          url: 'https://api.github.com/repos/svelderrainruiz/compare-vi-cli-action/issues/315',
+          labels: [{ name: 'fork-standing-priority' }],
+          assignees: [],
+          milestone: null,
+          comments: 0,
+          body:
+            '<!-- upstream-issue-url: https://github.com/LabVIEW-Community-CI-CD/compare-vi-cli-action/issues/1004 -->\n\nBody'
+        };
+      },
+      restIssueFetcher: async () => null,
+      listRepoOpenIssuesFn: async () => [
+        {
+          number: 315,
+          title: '[P1] Current mirror',
+          body: 'body',
+          labels: [{ name: 'fork-standing-priority' }],
+          createdAt: '2026-03-10T00:00:00Z'
+        },
+        {
+          number: 313,
+          title: '[P1] Next development issue',
+          body: 'body',
+          labels: [],
+          createdAt: '2026-03-09T00:00:00Z'
+        }
+      ],
+      handoffGhRunner: (args) => {
+        handoffCalls.push(args);
+        if (args[0] === 'issue' && args[1] === 'list' && args.includes('--label')) {
+          if (args.includes('fork-standing-priority')) {
+            return JSON.stringify([{ number: 315, labels: [{ name: 'fork-standing-priority' }] }]);
+          }
+          return '[]';
+        }
+        return '';
+      },
+      handoffSyncFn: async () => {},
+      closeIssueFn: async (payload) => {
+        closeCalls.push(payload);
+      }
+    }
+  });
+
+  assert.equal(execution.outcome, 'mirror-closed-advanced');
+  assert.equal(execution.details.standingIssueNumber, 315);
+  assert.ok(fetchCalls.length >= 1);
+  assert.deepEqual(handoffCalls.slice(-2), [
+    ['issue', 'edit', '315', '--remove-label', 'fork-standing-priority'],
+    ['issue', 'edit', '313', '--add-label', 'fork-standing-priority']
+  ]);
+  assert.equal(closeCalls[0].issueNumber, 315);
+});
+
 test('comparevi cadence detection tolerates compact cadence markers', () => {
   assert.equal(
     compareviRuntimeTest.isCadenceAlertIssue('Maintenance queue', '<!--cadence-check:package-staleness -->'),
