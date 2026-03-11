@@ -43,6 +43,12 @@ export function defaultLeaseRoot() {
 }
 
 export function defaultOwner() {
+  const explicitOwner = typeof process.env.AGENT_WRITER_LEASE_OWNER === 'string'
+    ? process.env.AGENT_WRITER_LEASE_OWNER.trim()
+    : '';
+  if (explicitOwner) {
+    return explicitOwner;
+  }
   const actor =
     process.env.AGENT_WRITER_LEASE_ACTOR ||
     process.env.GITHUB_ACTOR ||

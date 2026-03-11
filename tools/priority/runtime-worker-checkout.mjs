@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 
-import { access, mkdir } from 'node:fs/promises';
+import { access, mkdir, readFile } from 'node:fs/promises';
 import path from 'node:path';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
@@ -53,6 +53,32 @@ function formatExecError(error) {
 async function readGitStdout(execFileFn, args, options = {}) {
   const result = await execFileFn('git', args, options);
   return normalizeText(result?.stdout);
+}
+
+async function resolveWriterLeaseRoot(execFileFn, checkoutPath) {
+  try {
+    const gitDir = await readGitStdout(execFileFn, ['rev-parse', '--git-dir'], { cwd: checkoutPath });
+    if (!gitDir) {
+      return '';
+    }
+    const resolvedGitDir = path.isAbsolute(gitDir) ? gitDir : path.resolve(checkoutPath, gitDir);
+    return path.join(resolvedGitDir, 'agent-writer-leases');
+  } catch {
+    return '';
+  }
+}
+
+async function resolveExistingLeaseOwner(leaseRoot) {
+  if (!leaseRoot) {
+    return '';
+  }
+  const leasePath = path.join(leaseRoot, 'workspace.json');
+  try {
+    const payload = JSON.parse(await readFile(leasePath, 'utf8'));
+    return normalizeText(payload?.owner);
+  } catch {
+    return '';
+  }
 }
 
 async function tryReadGitStdout(execFileFn, args, options = {}) {
@@ -120,10 +146,10 @@ export async function prepareCompareviWorkerCheckout({
       }
       let resolvedRef = DEFAULT_WORKER_REF;
       try {
-        await execFileFn('git', ['checkout', '--detach', DEFAULT_WORKER_REF], { cwd: checkoutPath });
+        await execFileFn('git', ['checkout', '--force', '--detach', DEFAULT_WORKER_REF], { cwd: checkoutPath });
       } catch {
         resolvedRef = 'develop';
-        await execFileFn('git', ['checkout', '--detach', resolvedRef], { cwd: checkoutPath });
+        await execFileFn('git', ['checkout', '--force', '--detach', resolvedRef], { cwd: checkoutPath });
       }
       return {
         laneId: activeLane.laneId,
@@ -189,6 +215,25 @@ export async function bootstrapCompareviWorkerCheckout({
   }
 
   const execFileFn = deps.execFileFn ?? execFileAsync;
+  const leaseRoot = await resolveWriterLeaseRoot(execFileFn, preparedWorker.checkoutPath);
+  const bootstrapEnv = { ...process.env };
+  if (leaseRoot) {
+    bootstrapEnv.AGENT_WRITER_LEASE_ROOT = leaseRoot;
+    if (!normalizeText(bootstrapEnv.AGENT_WRITER_LEASE_OWNER)) {
+      const existingOwner = await resolveExistingLeaseOwner(leaseRoot);
+      if (existingOwner) {
+        bootstrapEnv.AGENT_WRITER_LEASE_OWNER = existingOwner;
+      }
+    }
+    if (!normalizeText(bootstrapEnv.AGENT_WRITER_LEASE_FORCE_TAKEOVER)) {
+      bootstrapEnv.AGENT_WRITER_LEASE_FORCE_TAKEOVER = '1';
+    }
+    if (!normalizeText(bootstrapEnv.AGENT_WRITER_LEASE_STALE_SECONDS)) {
+      // Worker checkout leases are lane-scoped and ephemeral; allow immediate
+      // takeover so container restarts do not block bootstrap on stale owner ids.
+      bootstrapEnv.AGENT_WRITER_LEASE_STALE_SECONDS = '0';
+    }
+  }
   const branch = normalizeText(schedulerDecision?.stepOptions?.branch) || normalizeText(schedulerDecision?.activeLane?.branch);
   if (branch) {
     const forkRemote = normalizeText(schedulerDecision?.activeLane?.forkRemote) || 'upstream';
@@ -239,7 +284,8 @@ export async function bootstrapCompareviWorkerCheckout({
 
   try {
     await execFileFn(bootstrapCommand[0], bootstrapCommand.slice(1), {
-      cwd: preparedWorker.checkoutPath
+      cwd: preparedWorker.checkoutPath,
+      env: bootstrapEnv
     });
   } catch (error) {
     return {

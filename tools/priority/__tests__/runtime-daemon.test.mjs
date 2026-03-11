@@ -248,7 +248,7 @@ test('comparevi worker checkout allocator refreshes and reuses an existing lane 
         if (args[0] === 'fetch' && args[1] === 'upstream' && args[2] === '--prune') {
           return { stdout: '', stderr: '' };
         }
-        if (args[0] === 'checkout' && args[1] === '--detach' && args[2] === 'upstream/develop') {
+        if (args[0] === 'checkout' && args[1] === '--force' && args[2] === '--detach' && args[3] === 'upstream/develop') {
           return { stdout: '', stderr: '' };
         }
         throw new Error(`unexpected git args: ${args.join(' ')}`);
@@ -261,7 +261,15 @@ test('comparevi worker checkout allocator refreshes and reuses an existing lane 
   assert.equal(prepared.ref, 'upstream/develop');
   assert.deepEqual(prepared.fetchedRemotes, ['upstream']);
   assert.ok(calls.some((entry) => entry.command === 'git' && entry.args[0] === 'fetch' && entry.args[1] === 'upstream'));
-  assert.ok(calls.some((entry) => entry.command === 'git' && entry.args[0] === 'checkout' && entry.args[1] === '--detach'));
+  assert.ok(
+    calls.some(
+      (entry) =>
+        entry.command === 'git' &&
+        entry.args[0] === 'checkout' &&
+        entry.args.includes('--force') &&
+        entry.args.includes('--detach')
+    )
+  );
 });
 
 test('comparevi worker checkout path sanitizes traversal-only segments and keeps the root under repoRoot', async () => {
@@ -307,7 +315,65 @@ test('comparevi worker bootstrap marks an allocated checkout ready after bootstr
 
   assert.equal(ready.status, 'ready');
   assert.equal(ready.checkoutPath, checkoutPath);
-  assert.equal(calls[0].command, 'pwsh');
+  assert.ok(
+    calls.some(
+      (entry) =>
+        entry.command === 'pwsh' &&
+        entry.args.includes('-File') &&
+        entry.args[entry.args.length - 1] === path.join(checkoutPath, 'tools', 'priority', 'bootstrap.ps1')
+    )
+  );
+});
+
+test('comparevi worker bootstrap configures lane lease env and reuses existing lane lease owner', async () => {
+  const repoRoot = await mkdtemp(path.join(os.tmpdir(), 'runtime-daemon-worker-ready-lease-env-'));
+  const { checkoutPath } = compareviRuntimeTest.resolveCompareviWorkerCheckoutPath({
+    repoRoot,
+    repository: 'example/repo',
+    laneId: 'origin-997'
+  });
+  await mkdir(path.join(checkoutPath, 'tools', 'priority'), { recursive: true });
+  await writeFile(path.join(checkoutPath, 'tools', 'priority', 'bootstrap.ps1'), '# mocked bootstrap', 'utf8');
+  const leaseRoot = path.resolve(checkoutPath, '.git/worktrees/origin-997', 'agent-writer-leases');
+  await mkdir(leaseRoot, { recursive: true });
+  await writeFile(
+    path.join(leaseRoot, 'workspace.json'),
+    `${JSON.stringify({ owner: 'persisted-lane-owner' }, null, 2)}\n`,
+    'utf8'
+  );
+
+  const calls = [];
+  const ready = await compareviRuntimeTest.bootstrapCompareviWorkerCheckout({
+    schedulerDecision: {
+      activeLane: {
+        laneId: 'origin-997'
+      }
+    },
+    preparedWorker: {
+      generatedAt: '2026-03-10T18:00:00.000Z',
+      checkoutPath
+    },
+    deps: {
+      execFileFn: async (command, args, options) => {
+        calls.push({ command, args, options });
+        if (command === 'git' && args[0] === 'rev-parse' && args[1] === '--git-dir') {
+          return { stdout: '.git/worktrees/origin-997\n', stderr: '' };
+        }
+        return { stdout: '', stderr: '' };
+      }
+    }
+  });
+
+  assert.equal(ready.status, 'ready');
+  const bootstrapCall = calls.find((entry) => entry.command === 'pwsh');
+  assert.ok(bootstrapCall, 'expected bootstrap pwsh call');
+  assert.equal(
+    bootstrapCall.options.env.AGENT_WRITER_LEASE_ROOT,
+    path.resolve(checkoutPath, '.git/worktrees/origin-997', 'agent-writer-leases')
+  );
+  assert.equal(bootstrapCall.options.env.AGENT_WRITER_LEASE_OWNER, 'persisted-lane-owner');
+  assert.equal(bootstrapCall.options.env.AGENT_WRITER_LEASE_FORCE_TAKEOVER, '1');
+  assert.equal(bootstrapCall.options.env.AGENT_WRITER_LEASE_STALE_SECONDS, '0');
 });
 
 test('comparevi worker bootstrap activates the lane branch before invoking bootstrap', async () => {

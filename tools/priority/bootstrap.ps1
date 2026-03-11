@@ -71,7 +71,7 @@ function Invoke-WorkspaceHealthGate {
     '--report', $reportPath,
     '--lease-mode', $LeaseMode
   )
-  if (-not [string]::IsNullOrWhiteSpace($env:AGENT_WRITER_LEASE_OWNER)) {
+  if ($LeaseMode -eq 'required' -and -not [string]::IsNullOrWhiteSpace($env:AGENT_WRITER_LEASE_OWNER)) {
     $arguments += @('--expected-owner', $env:AGENT_WRITER_LEASE_OWNER)
   }
   if ($LeaseMode -eq 'required' -and -not [string]::IsNullOrWhiteSpace($env:AGENT_WRITER_LEASE_ID)) {
