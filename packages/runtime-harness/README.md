@@ -63,6 +63,9 @@ Adapters may also provide:
   lane branch before real repo-native work runs
 - `buildTaskPacket(context)` to compile the one-turn worker packet that the next
   execution seam should consume from durable runtime state
+- `executeTurn(context)` to consume that packet after a successful worker step
+  and emit a durable execution receipt when the adapter owns a real unattended
+  action
 
 The observer persists scheduler evidence under the runtime directory:
 
@@ -77,6 +80,23 @@ The observer persists scheduler evidence under the runtime directory:
 - `workers-branch/*.json` for per-lane worker branch attachment history
 - `task-packet.json` for the latest bounded worker packet
 - `task-packets/*.json` for per-cycle task-packet history
+- `execution-receipt.json` for the latest adapter execution result
+- `execution-receipts/*.json` for per-cycle execution receipt history
+
+Observer loop control flags:
+
+- `--stop-on-idle` exits cleanly after the planner reports no actionable work
+  instead of sleeping forever.
+- `--execute-turn` invokes the adapter execution hook after each successful
+  worker step.
+
+The compare-vi adapter now uses those controls for guarded fork-mirror drain
+mode:
+
+- planner preference is live standing-priority state for the target repo
+- canonical upstream issues still remain read-only
+- fork mirror issues can be closed and advanced deterministically
+- cadence-only standing issues stop the loop cleanly instead of spinning
 
 The compare-vi repository is the first adapter implementation.
 

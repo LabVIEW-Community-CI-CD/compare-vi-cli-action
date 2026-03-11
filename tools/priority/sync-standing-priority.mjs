@@ -122,6 +122,13 @@ function hasChildTracksSection(body) {
   return /(^|\n)##\s*child\s*tracks\b/i.test(String(body || ''));
 }
 
+function isCadenceAlertIssue(title, body) {
+  return (
+    /^\s*\[cadence\]\b/i.test(String(title || '')) ||
+    /<!--\s*cadence-check:/i.test(String(body || ''))
+  );
+}
+
 function parseDateMs(value) {
   if (!value) {
     return Number.POSITIVE_INFINITY;
@@ -156,17 +163,29 @@ function normalizeOpenIssueCandidate(entry) {
     url: entry.html_url || entry.url || null,
     priority: parsePriorityOrdinal(title),
     epic: isEpicTitle(title),
-    umbrella: hasChildTracksSection(body)
+    umbrella: hasChildTracksSection(body),
+    cadence: isCadenceAlertIssue(title, body)
   };
 }
 
-export function selectAutoStandingPriorityCandidate(entries = []) {
-  const normalized = entries.map((entry) => normalizeOpenIssueCandidate(entry)).filter(Boolean);
+export function selectAutoStandingPriorityCandidate(entries = [], options = {}) {
+  const excludedIssueNumbers = new Set(
+    Array.isArray(options.excludeIssueNumbers)
+      ? options.excludeIssueNumbers
+          .map((value) => Number(value))
+          .filter((value) => Number.isInteger(value) && value > 0)
+      : []
+  );
+  const normalized = entries
+    .map((entry) => normalizeOpenIssueCandidate(entry))
+    .filter((entry) => entry && !excludedIssueNumbers.has(entry.number));
   if (normalized.length === 0) {
     return null;
   }
 
-  const nonEpic = normalized.filter((entry) => !entry.epic);
+  const nonCadence = normalized.filter((entry) => !entry.cadence);
+  const cadencePool = nonCadence.length > 0 ? nonCadence : normalized;
+  const nonEpic = cadencePool.filter((entry) => !entry.epic);
   const nonUmbrella = nonEpic.filter((entry) => !entry.umbrella);
   const nonProgram = nonUmbrella.filter((entry) => !entry.labels.includes('program'));
   const pool =
@@ -806,7 +825,7 @@ export function parseUpstreamIssuePointerFromBody(body) {
   };
 }
 
-function resolveRepositorySlug(repoRoot, env = process.env) {
+export function resolveRepositorySlug(repoRoot, env = process.env) {
   if (env.GITHUB_REPOSITORY) {
     const slug = env.GITHUB_REPOSITORY.trim();
     if (slug) return slug;

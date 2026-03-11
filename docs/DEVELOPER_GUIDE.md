@@ -189,8 +189,10 @@ Quick reference for building, testing, and releasing the LVCompare composite act
   `tests/results/_agent/issue/github-metadata-apply-report.json` and verifies the post-apply state against the
   projected target state. Use this when the issue/PR metadata itself is the source of truth; use the project helper
   only for board fields.
-- `node tools/priority/standing-priority-handoff.mjs [--dry-run] <next-issue>`  
-  Removes the `standing-priority` label from the current issue (if any), applies it to `<next-issue>`, and re-runs the cache sync (`tools/priority/sync-standing-priority.mjs`). Use `--dry-run` to preview the actions without mutating labels.
+- `node tools/priority/standing-priority-handoff.mjs [--repo <owner/repo>] [--dry-run] <next-issue>`  
+  Normalizes the current repository lane back to exactly one standing issue, using the repo-aware label set (`fork-standing-priority` first on fork lanes, `standing-priority` on upstream), removes legacy standing labels from non-target issues, and re-runs the cache sync (`tools/priority/sync-standing-priority.mjs`).
+- `node tools/priority/standing-priority-handoff.mjs [--repo <owner/repo>] [--dry-run] --auto`  
+  Lists all open issues in the current repository, excludes the currently labelled standing issue, auto-selects the next actionable development item deterministically, and then applies the same label normalization flow. Cadence alert issues are deprioritized when non-cadence development issues are available.
 - Standing-priority repository resolution is owner-agnostic. Order:
   1. `GITHUB_REPOSITORY`
   2. git remotes (`upstream`, then `origin`)
@@ -223,6 +225,17 @@ For Docker/Desktop VI history validation, run fast-loop lanes explicitly:
   - `windows-docker-fast-loop`
   - `dual-docker-fast-loop`
 - `-ManageDockerEngine` is permitted only when `-LaneScope both`.
+
+## Runtime daemon
+
+- The portable observer loop remains Linux-only. On this Windows workspace, run it through the existing Docker/Linux path rather than invoking `tools/priority/runtime-daemon.mjs` directly.
+- `node tools/priority/runtime-daemon.mjs --repo <owner/repo> --stop-on-idle --execute-turn`
+  enables the unattended execution seam:
+  - planner prefers live standing-priority state for the target repo
+  - the loop exits cleanly when no actionable work remains
+  - compare-vi fork mirrors can be closed and advanced deterministically
+  - cadence-only standing issues stop the loop instead of spinning
+- For fork-drain runs, point `--repo` at the fork queue you want to drain and set `AGENT_PRIORITY_UPSTREAM_REPOSITORY=<upstream-owner/repo>` when the canonical upstream differs from the target repo.
 
 ## Release checklist
 

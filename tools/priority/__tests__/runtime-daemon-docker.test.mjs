@@ -61,7 +61,7 @@ function logCommand(args) {
 }
 
 function currentStamp() {
-  return '2026-03-10T18:00:00.000Z';
+  return process.env.FAKE_DOCKER_NOW || new Date().toISOString();
 }
 
 function fail(message) {

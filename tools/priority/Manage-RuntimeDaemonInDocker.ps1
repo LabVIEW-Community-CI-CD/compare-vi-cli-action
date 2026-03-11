@@ -13,6 +13,8 @@ param(
   [int]$StartGraceSeconds = 180,
   [int]$PollIntervalSeconds = 60,
   [int]$MaxCycles = 0,
+  [switch]$StopOnIdle,
+  [switch]$ExecuteTurn,
   [int]$TailLines = 200,
   [ValidateRange(5, 900)]
   [int]$SwitchTimeoutSeconds = 120,
@@ -1215,6 +1217,12 @@ try {
       '--max-cycles',
       "$MaxCycles"
     )
+    if ($StopOnIdle) {
+      $containerArgs += '--stop-on-idle'
+    }
+    if ($ExecuteTurn) {
+      $containerArgs += '--execute-turn'
+    }
     if (-not [string]::IsNullOrWhiteSpace($HeartbeatPath)) {
       $containerArgs += @('--heartbeat-path', $HeartbeatPath)
     }

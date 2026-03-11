@@ -26,6 +26,7 @@ function makeAdapter(repoRoot, calls, options = {}) {
   const bootstrapMode = options.bootstrapMode ?? 'ready';
   const plannerMode = options.plannerMode ?? 'manual';
   const activateMode = options.activateMode ?? 'attached';
+  const executeMode = options.executeMode ?? 'none';
   return createRuntimeAdapter({
     name: 'test-adapter',
     resolveRepoRoot: () => repoRoot,
@@ -129,6 +130,26 @@ function makeAdapter(repoRoot, calls, options = {}) {
         }
       }
     }),
+    executeTurn:
+      executeMode === 'none'
+        ? null
+        : async ({ schedulerDecision }) => {
+            if (executeMode === 'blocked') {
+              return {
+                status: 'blocked',
+                outcome: 'execution-blocked',
+                reason: 'execution hook blocked the lane'
+              };
+            }
+            return {
+              status: 'completed',
+              outcome: executeMode === 'stop' ? 'execution-stop' : 'execution-completed',
+              stopLoop: executeMode === 'stop',
+              details: {
+                issue: schedulerDecision.activeLane?.issue ?? null
+              }
+            };
+          },
     acquireLease: async (leaseOptions) => {
       calls.push({ type: 'acquire', leaseOptions });
       return {
@@ -189,7 +210,9 @@ test('parseObserverArgs preserves daemon loop options', () => {
     '--poll-interval-seconds',
     '15',
     '--max-cycles',
-    '3'
+    '3',
+    '--stop-on-idle',
+    '--execute-turn'
   ]);
 
   assert.equal(parsed.repo, 'example/repo');
@@ -205,6 +228,8 @@ test('parseObserverArgs preserves daemon loop options', () => {
   assert.equal(parsed.blockerClass, 'ci');
   assert.equal(parsed.pollIntervalSeconds, 15);
   assert.equal(parsed.maxCycles, 3);
+  assert.equal(parsed.stopOnIdle, true);
+  assert.equal(parsed.executeTurn, true);
 });
 
 test('runRuntimeObserverLoop blocks on non-linux platforms', async () => {
@@ -364,6 +389,39 @@ test('runRuntimeObserverLoop emits an idle task packet when the planner returns 
   assert.equal(taskPacket.evidence.adapter.cycle, 1);
 });
 
+test('runRuntimeObserverLoop stops cleanly on idle when stopOnIdle is enabled', async () => {
+  const runtimeDir = await mkdtemp(path.join(os.tmpdir(), 'runtime-observer-idle-stop-'));
+  const repoRoot = await mkdtemp(path.join(os.tmpdir(), 'runtime-observer-idle-stop-root-'));
+  const calls = [];
+  let tick = 0;
+
+  const result = await runRuntimeObserverLoop(
+    {
+      repo: 'example/repo',
+      runtimeDir,
+      owner: 'agent@example',
+      pollIntervalSeconds: 0,
+      maxCycles: 0,
+      stopOnIdle: true
+    },
+    {
+      platform: 'linux',
+      adapter: makeAdapter(repoRoot, calls, { plannerMode: 'idle' }),
+      nowFactory: () => new Date(Date.UTC(2026, 2, 10, 16, 16, tick++)),
+      sleepFn: async () => {
+        throw new Error('sleep should not run when stopOnIdle is enabled');
+      }
+    }
+  );
+
+  const heartbeat = await readJson(path.join(runtimeDir, 'observer-heartbeat.json'));
+
+  assert.equal(result.exitCode, 0);
+  assert.equal(result.report.outcome, 'idle-stop');
+  assert.equal(result.report.lastStep.outcome, 'idle');
+  assert.equal(heartbeat.outcome, 'idle-stop');
+});
+
 test('runRuntimeObserverLoop emits a blocked task packet when the planner blocks the lane', async () => {
   const runtimeDir = await mkdtemp(path.join(os.tmpdir(), 'runtime-observer-task-blocked-'));
   const repoRoot = await mkdtemp(path.join(os.tmpdir(), 'runtime-observer-task-blocked-root-'));
@@ -492,6 +550,77 @@ test('runRuntimeObserverLoop still writes a task packet when worker branch activ
   assert.equal(heartbeat.activeLane.taskPacket.objective.summary, 'Execute issue #1005');
   assert.equal(heartbeat.artifacts.taskPacketPath, path.join(runtimeDir, 'task-packet.json'));
   assert.equal(workerBranch.status, 'blocked');
+});
+
+test('runRuntimeObserverLoop writes an execution receipt when executeTurn is enabled', async () => {
+  const runtimeDir = await mkdtemp(path.join(os.tmpdir(), 'runtime-observer-execution-'));
+  const repoRoot = await mkdtemp(path.join(os.tmpdir(), 'runtime-observer-execution-root-'));
+  const calls = [];
+  let tick = 0;
+
+  const result = await runRuntimeObserverLoop(
+    {
+      repo: 'example/repo',
+      runtimeDir,
+      lane: 'origin-1005',
+      issue: 1005,
+      forkRemote: 'origin',
+      branch: 'issue/origin-1005-runtime-execution',
+      owner: 'agent@example',
+      pollIntervalSeconds: 0,
+      maxCycles: 1,
+      executeTurn: true
+    },
+    {
+      platform: 'linux',
+      adapter: makeAdapter(repoRoot, calls, { executeMode: 'complete' }),
+      nowFactory: () => new Date(Date.UTC(2026, 2, 10, 16, 40, tick++)),
+      sleepFn: async () => {
+        throw new Error('sleep should not run when maxCycles=1');
+      }
+    }
+  );
+
+  const executionReceipt = await readJson(path.join(runtimeDir, 'execution-receipt.json'));
+  const heartbeat = await readJson(path.join(runtimeDir, 'observer-heartbeat.json'));
+
+  assert.equal(result.exitCode, 0);
+  assert.equal(result.report.lastStep.execution.outcome, 'execution-completed');
+  assert.equal(executionReceipt.outcome, 'execution-completed');
+  assert.equal(heartbeat.activeLane.execution.outcome, 'execution-completed');
+});
+
+test('runRuntimeObserverLoop stops after execution hook requests it', async () => {
+  const runtimeDir = await mkdtemp(path.join(os.tmpdir(), 'runtime-observer-execution-stop-'));
+  const repoRoot = await mkdtemp(path.join(os.tmpdir(), 'runtime-observer-execution-stop-root-'));
+  const calls = [];
+  let tick = 0;
+
+  const result = await runRuntimeObserverLoop(
+    {
+      repo: 'example/repo',
+      runtimeDir,
+      lane: 'origin-1006',
+      issue: 1006,
+      forkRemote: 'origin',
+      branch: 'issue/origin-1006-runtime-execution-stop',
+      owner: 'agent@example',
+      pollIntervalSeconds: 0,
+      maxCycles: 0,
+      executeTurn: true
+    },
+    {
+      platform: 'linux',
+      adapter: makeAdapter(repoRoot, calls, { executeMode: 'stop' }),
+      nowFactory: () => new Date(Date.UTC(2026, 2, 10, 16, 41, tick++)),
+      sleepFn: async () => {
+        throw new Error('sleep should not run when execution stop is requested');
+      }
+    }
+  );
+
+  assert.equal(result.exitCode, 0);
+  assert.equal(result.report.outcome, 'execution-stop');
 });
 
 test('runRuntimeObserverLoop records worker-bootstrap-failed heartbeat when bootstrap throws', async () => {

@@ -11,6 +11,8 @@ param(
   [int]$StartGraceSeconds = 180,
   [int]$PollIntervalSeconds = 60,
   [int]$MaxCycles = 0,
+  [switch]$StopOnIdle,
+  [switch]$ExecuteTurn,
   [int]$SwitchTimeoutSeconds = 120,
   [int]$SwitchRetryCount = 3,
   [int]$SwitchRetryDelaySeconds = 4,
@@ -38,6 +40,13 @@ $invokeArgs = @(
   '-LockWaitSeconds', "$LockWaitSeconds",
   '-DockerCommand', $DockerCommand
 )
+
+if ($StopOnIdle) {
+  $invokeArgs += '-StopOnIdle'
+}
+if ($ExecuteTurn) {
+  $invokeArgs += '-ExecuteTurn'
+}
 
 if (-not [string]::IsNullOrWhiteSpace($Repo)) {
   $invokeArgs += @('-Repo', $Repo)
