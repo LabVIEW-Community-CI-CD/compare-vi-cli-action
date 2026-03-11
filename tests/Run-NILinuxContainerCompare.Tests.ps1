@@ -484,8 +484,20 @@ exit 0
 "@
       Set-Content -LiteralPath (Join-Path $binDir 'docker.cmd') -Value $stubCmd -Encoding ascii
 
-      $env:PATH = "{0};{1}" -f $binDir, $env:PATH
-      $env:DOCKER_COMMAND_OVERRIDE = (Join-Path $binDir 'docker.cmd')
+      $stubSh = @"
+#!/usr/bin/env bash
+exec "$pwshPath" -NoLogo -NoProfile -File "\$(dirname "\$0")/docker.ps1" "\$@"
+"@
+      $stubShPath = Join-Path $binDir 'docker'
+      Set-Content -LiteralPath $stubShPath -Value $stubSh -Encoding utf8
+      if (-not $IsWindows) {
+        & chmod +x $stubShPath
+      }
+
+      $pathSeparator = if ($IsWindows) { ';' } else { ':' }
+      $dockerOverrideName = if ($IsWindows) { 'docker.cmd' } else { 'docker' }
+      $env:PATH = "{0}{1}{2}" -f $binDir, $pathSeparator, $env:PATH
+      $env:DOCKER_COMMAND_OVERRIDE = (Join-Path $binDir $dockerOverrideName)
       return $binDir
     }
 
