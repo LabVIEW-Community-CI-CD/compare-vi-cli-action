@@ -241,12 +241,23 @@ test('comparevi worker checkout allocator refreshes and reuses an existing lane 
       stepOptions: {}
     },
     deps: {
+      platform: 'linux',
       execFileFn: async (command, args, options) => {
         calls.push({ command, args, options });
         if (command !== 'git') {
           throw new Error(`unexpected command: ${command}`);
         }
         if (args[0] === 'remote') {
+          if (args[1] === 'get-url' && args[2] === 'origin') {
+            return { stdout: 'https://github.com/example/repo-fork\n', stderr: '' };
+          }
+          if (args[1] === 'get-url' && args[2] === '--push' && args[3] === 'origin') {
+            return { stdout: 'https://github.com/example/repo-fork\n', stderr: '' };
+          }
+          if (args[1] === 'set-url' && args[2] === '--push' && args[3] === 'origin') {
+            assert.equal(args[4], 'git@github.com:example/repo-fork.git');
+            return { stdout: '', stderr: '' };
+          }
           return { stdout: 'upstream\norigin\n', stderr: '' };
         }
         if (args[0] === 'fetch' && args[1] === 'upstream' && args[2] === '--prune') {
@@ -264,6 +275,7 @@ test('comparevi worker checkout allocator refreshes and reuses an existing lane 
   assert.equal(prepared.checkoutPath, checkoutPath);
   assert.equal(prepared.ref, 'upstream/develop');
   assert.deepEqual(prepared.fetchedRemotes, ['upstream']);
+  assert.deepEqual(prepared.pushRemotesNormalized, ['origin']);
   assert.equal(
     await readFile(path.join(checkoutPath, '.git'), 'utf8'),
     `gitdir: ${path.join(repoRoot, '.git', 'worktrees', 'personal-995').replace(/\\/g, '/')}\n`
@@ -273,6 +285,16 @@ test('comparevi worker checkout allocator refreshes and reuses an existing lane 
     `${path.join(checkoutPath, '.git').replace(/\\/g, '/')}\n`
   );
   assert.ok(calls.some((entry) => entry.command === 'git' && entry.args[0] === 'fetch' && entry.args[1] === 'upstream'));
+  assert.ok(
+    calls.some(
+      (entry) =>
+        entry.command === 'git' &&
+        entry.args[0] === 'remote' &&
+        entry.args[1] === 'set-url' &&
+        entry.args[2] === '--push' &&
+        entry.args[3] === 'origin'
+    )
+  );
   assert.ok(
     calls.some(
       (entry) =>

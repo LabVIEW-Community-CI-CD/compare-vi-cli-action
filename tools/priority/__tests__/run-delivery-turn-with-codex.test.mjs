@@ -3,7 +3,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 
-import { buildCodexTurnPrompt } from '../run-delivery-turn-with-codex.mjs';
+import { buildCodexTurnPrompt, buildUnattendedCommandEnv } from '../run-delivery-turn-with-codex.mjs';
 
 test('buildCodexTurnPrompt includes bounded delivery context and helper surfaces', () => {
   const prompt = buildCodexTurnPrompt({
@@ -52,4 +52,30 @@ test('buildCodexTurnPrompt includes bounded delivery context and helper surfaces
   assert.match(prompt, /priority:pr/);
   assert.match(prompt, /runtime-supervisor\.mjs/);
   assert.match(prompt, /returning only JSON/i);
+});
+
+test('buildUnattendedCommandEnv forces non-interactive git and gh defaults', () => {
+  const env = buildUnattendedCommandEnv({
+    PATH: '/tmp/bin',
+    GIT_TERMINAL_PROMPT: '',
+    GH_PROMPT_DISABLED: '',
+    GCM_INTERACTIVE: ''
+  });
+
+  assert.equal(env.PATH, '/tmp/bin');
+  assert.equal(env.GIT_TERMINAL_PROMPT, '0');
+  assert.equal(env.GH_PROMPT_DISABLED, '1');
+  assert.equal(env.GCM_INTERACTIVE, 'Never');
+});
+
+test('buildUnattendedCommandEnv preserves explicit non-default settings', () => {
+  const env = buildUnattendedCommandEnv({
+    GIT_TERMINAL_PROMPT: '1',
+    GH_PROMPT_DISABLED: '0',
+    GCM_INTERACTIVE: 'Auto'
+  });
+
+  assert.equal(env.GIT_TERMINAL_PROMPT, '1');
+  assert.equal(env.GH_PROMPT_DISABLED, '0');
+  assert.equal(env.GCM_INTERACTIVE, 'Auto');
 });

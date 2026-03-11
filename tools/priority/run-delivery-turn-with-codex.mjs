@@ -52,6 +52,20 @@ function runCommand(command, args, { cwd, env, input } = {}) {
   };
 }
 
+export function buildUnattendedCommandEnv(baseEnv = process.env) {
+  const env = { ...baseEnv };
+  if (!normalizeText(env.GIT_TERMINAL_PROMPT)) {
+    env.GIT_TERMINAL_PROMPT = '0';
+  }
+  if (!normalizeText(env.GH_PROMPT_DISABLED)) {
+    env.GH_PROMPT_DISABLED = '1';
+  }
+  if (!normalizeText(env.GCM_INTERACTIVE)) {
+    env.GCM_INTERACTIVE = 'Never';
+  }
+  return env;
+}
+
 function resolveWorkDir(taskPacket, repoRoot) {
   const candidate = normalizeText(taskPacket?.evidence?.lane?.workerCheckoutPath);
   if (candidate) {
@@ -237,18 +251,18 @@ function classifyFailureMessage(message) {
   };
 }
 
-function gitStdout(workDir, args) {
-  const result = runCommand('git', args, { cwd: workDir, env: process.env });
+function gitStdout(workDir, args, env = process.env) {
+  const result = runCommand('git', args, { cwd: workDir, env });
   if (result.status !== 0) {
     return '';
   }
   return normalizeText(result.stdout);
 }
 
-function collectFilesTouched(workDir, startHead, endHead) {
+function collectFilesTouched(workDir, startHead, endHead, env = process.env) {
   const touched = new Set();
   if (startHead && endHead && startHead !== endHead) {
-    const diffNames = gitStdout(workDir, ['diff', '--name-only', `${startHead}..${endHead}`]);
+    const diffNames = gitStdout(workDir, ['diff', '--name-only', `${startHead}..${endHead}`], env);
     for (const entry of diffNames.split(/\r?\n/)) {
       const normalized = normalizeText(entry);
       if (normalized) {
@@ -256,7 +270,7 @@ function collectFilesTouched(workDir, startHead, endHead) {
       }
     }
   }
-  const statusOutput = gitStdout(workDir, ['status', '--short']);
+  const statusOutput = gitStdout(workDir, ['status', '--short'], env);
   for (const line of statusOutput.split(/\r?\n/)) {
     const normalized = normalizeText(line);
     if (!normalized) {
@@ -270,14 +284,14 @@ function collectFilesTouched(workDir, startHead, endHead) {
   return Array.from(touched).sort();
 }
 
-function findPullRequest({ repository, branch, workDir }) {
+function findPullRequest({ repository, branch, workDir, env = process.env }) {
   if (!normalizeText(repository) || !normalizeText(branch)) {
     return null;
   }
   const result = runCommand(
     'gh',
     ['pr', 'list', '--repo', repository, '--head', branch, '--limit', '1', '--json', 'number,url,state,isDraft'],
-    { cwd: workDir, env: process.env }
+    { cwd: workDir, env }
   );
   if (result.status !== 0) {
     return null;
@@ -398,9 +412,10 @@ export async function runCodexDeliveryTurn({ taskPacketPath, receiptPath, repoRo
   const schema = buildCodexOutputSchema();
   await writeFile(promptPath, `${prompt}\n`, 'utf8');
   await writeJson(schemaPath, schema);
+  const unattendedEnv = buildUnattendedCommandEnv(process.env);
 
-  const startHead = gitStdout(workDir, ['rev-parse', 'HEAD']);
-  const branchName = gitStdout(workDir, ['branch', '--show-current']);
+  const startHead = gitStdout(workDir, ['rev-parse', 'HEAD'], unattendedEnv);
+  const branchName = gitStdout(workDir, ['branch', '--show-current'], unattendedEnv);
   const codexArgs = [
     'exec',
     '--json',
@@ -417,19 +432,20 @@ export async function runCodexDeliveryTurn({ taskPacketPath, receiptPath, repoRo
   ];
   const codexResult = runCommand('codex', codexArgs, {
     cwd: workDir,
-    env: process.env,
+    env: unattendedEnv,
     input: prompt
   });
   await writeFile(stdoutPath, codexResult.stdout || '', 'utf8');
   await writeFile(stderrPath, codexResult.stderr || '', 'utf8');
 
-  const endHead = gitStdout(workDir, ['rev-parse', 'HEAD']);
-  const filesTouched = collectFilesTouched(workDir, startHead, endHead);
+  const endHead = gitStdout(workDir, ['rev-parse', 'HEAD'], unattendedEnv);
+  const filesTouched = collectFilesTouched(workDir, startHead, endHead, unattendedEnv);
   const parsedLastMessage = parseJsonOrNull(await readFile(lastMessagePath, 'utf8').catch(() => ''));
   const pullRequest = findPullRequest({
     repository: normalizeText(packet.repository),
     branch: branchName,
-    workDir
+    workDir,
+    env: unattendedEnv
   });
   const artifacts = {
     taskPacketPath,

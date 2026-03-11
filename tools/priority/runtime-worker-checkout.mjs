@@ -9,6 +9,7 @@ const execFileAsync = promisify(execFile);
 const DEFAULT_WORKER_REF = 'upstream/develop';
 const BOOTSTRAP_RELATIVE_PATH = path.join('tools', 'priority', 'bootstrap.ps1');
 const ATTACHABLE_REMOTES = ['upstream', 'origin', 'personal'];
+const GITHUB_PUSH_REMOTES = ['origin', 'personal'];
 
 function normalizeText(value) {
   if (value == null) return '';
@@ -93,6 +94,25 @@ function formatExecError(error) {
   return normalizeText(error?.stderr) || normalizeText(error?.message) || String(error);
 }
 
+function resolveGitHubSshPushUrl(remoteUrl) {
+  const normalized = normalizeText(remoteUrl);
+  if (!normalized) {
+    return '';
+  }
+  if (/^git@github\.com:/i.test(normalized)) {
+    return normalized.endsWith('.git') ? normalized : `${normalized}.git`;
+  }
+  const httpsMatch = normalized.match(/^https:\/\/github\.com\/([^/]+)\/([^/]+?)(?:\.git)?\/?$/i);
+  if (httpsMatch) {
+    return `git@github.com:${httpsMatch[1]}/${httpsMatch[2]}.git`;
+  }
+  const sshMatch = normalized.match(/^ssh:\/\/git@github\.com\/([^/]+)\/([^/]+?)(?:\.git)?\/?$/i);
+  if (sshMatch) {
+    return `git@github.com:${sshMatch[1]}/${sshMatch[2]}.git`;
+  }
+  return '';
+}
+
 async function readGitStdout(execFileFn, args, options = {}) {
   const result = await execFileFn('git', args, options);
   return normalizeText(result?.stdout);
@@ -141,6 +161,39 @@ async function gitRefExists(execFileFn, cwd, ref) {
   }
 }
 
+async function normalizeGitHubRemotePushUrls(execFileFn, checkoutPath, { platform = process.platform } = {}) {
+  if (normalizeText(platform).toLowerCase() !== 'linux') {
+    return [];
+  }
+
+  const availableRemotes = (await tryReadGitStdout(execFileFn, ['remote'], { cwd: checkoutPath }))
+    .split(/\r?\n/)
+    .map((entry) => normalizeText(entry))
+    .filter(Boolean);
+  const updatedRemotes = [];
+
+  for (const remote of GITHUB_PUSH_REMOTES) {
+    if (!availableRemotes.includes(remote)) {
+      continue;
+    }
+    const fetchUrl = await tryReadGitStdout(execFileFn, ['remote', 'get-url', remote], { cwd: checkoutPath });
+    const desiredPushUrl = resolveGitHubSshPushUrl(fetchUrl);
+    if (!desiredPushUrl) {
+      continue;
+    }
+    const currentPushUrl = await tryReadGitStdout(execFileFn, ['remote', 'get-url', '--push', remote], {
+      cwd: checkoutPath
+    });
+    if (currentPushUrl === desiredPushUrl) {
+      continue;
+    }
+    await execFileFn('git', ['remote', 'set-url', '--push', remote, desiredPushUrl], { cwd: checkoutPath });
+    updatedRemotes.push(remote);
+  }
+
+  return updatedRemotes;
+}
+
 export function resolveCompareviWorkerCheckoutRoot({ repoRoot, repository }) {
   const rawRepoKey = normalizeText(repository)?.replace(/\//g, '--') || path.basename(repoRoot);
   const repoKey = sanitizeSegment(rawRepoKey);
@@ -159,6 +212,7 @@ export async function prepareCompareviWorkerCheckout({
   repoRoot,
   repository,
   schedulerDecision,
+  platform,
   deps = {}
 }) {
   const activeLane = schedulerDecision?.activeLane ?? null;
@@ -195,6 +249,9 @@ export async function prepareCompareviWorkerCheckout({
         resolvedRef = 'develop';
         await execFileFn('git', ['checkout', '--force', '--detach', resolvedRef], { cwd: checkoutPath });
       }
+      const pushRemotesNormalized = await normalizeGitHubRemotePushUrls(execFileFn, checkoutPath, {
+        platform: deps.platform ?? platform ?? process.platform
+      });
       return {
         laneId: activeLane.laneId,
         checkoutRoot,
@@ -203,7 +260,8 @@ export async function prepareCompareviWorkerCheckout({
         ref: resolvedRef,
         requestedBranch: normalizeText(schedulerDecision?.stepOptions?.branch) || null,
         source: 'comparevi-worktree',
-        fetchedRemotes
+        fetchedRemotes,
+        pushRemotesNormalized
       };
     } catch (error) {
       return {
@@ -238,6 +296,9 @@ export async function prepareCompareviWorkerCheckout({
   await execFileFn('git', ['worktree', 'add', '--detach', checkoutPath, DEFAULT_WORKER_REF], {
     cwd: repoRoot
   });
+  const pushRemotesNormalized = await normalizeGitHubRemotePushUrls(execFileFn, checkoutPath, {
+    platform: deps.platform ?? platform ?? process.platform
+  });
   return {
     laneId: activeLane.laneId,
     checkoutRoot,
@@ -245,7 +306,8 @@ export async function prepareCompareviWorkerCheckout({
     status: 'created',
     ref: DEFAULT_WORKER_REF,
     requestedBranch: normalizeText(schedulerDecision?.stepOptions?.branch) || null,
-    source: 'comparevi-worktree'
+    source: 'comparevi-worktree',
+    pushRemotesNormalized
   };
 }
 
@@ -446,5 +508,8 @@ export const __test = {
   BOOTSTRAP_RELATIVE_PATH,
   DEFAULT_WORKER_REF,
   formatGitPointerPath,
-  repairExistingWorktreeGitPointers
+  GITHUB_PUSH_REMOTES,
+  normalizeGitHubRemotePushUrls,
+  repairExistingWorktreeGitPointers,
+  resolveGitHubSshPushUrl
 };
